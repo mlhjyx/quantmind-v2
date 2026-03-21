@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     DINGTALK_WEBHOOK_URL: str = ""
     DINGTALK_SECRET: str = ""
 
+    # --- Paper Trading ---
+    PAPER_STRATEGY_ID: str = ""
+    PAPER_INITIAL_CAPITAL: float = 1_000_000.0
+
     # --- 服务 ---
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
