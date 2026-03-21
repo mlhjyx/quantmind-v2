@@ -1,8 +1,8 @@
 #!/bin/bash
-# Paper Trading crontab安装脚本
+# Paper Trading 两阶段crontab安装脚本
 #
-# 添加每日16:30自动运行Paper Trading管道
-# 脚本内部会检查是否交易日，非交易日自动跳过
+# Phase 1 (signal): 工作日 16:30 — 生成信号
+# Phase 2 (execute): 工作日 09:00 — 读信号用T+1 open执行
 #
 # 用法:
 #   bash scripts/install_crontab.sh        # 安装
@@ -11,34 +11,37 @@
 PROJECT_DIR="/Users/xin/Documents/quantmind-v2"
 PYTHON="/Users/xin/miniconda3/bin/python3"
 LOG_DIR="${PROJECT_DIR}/logs"
-CRON_TAG="# quantmind-paper-trading"
+CRON_TAG_SIGNAL="# quantmind-signal"
+CRON_TAG_EXECUTE="# quantmind-execute"
 
 mkdir -p "${LOG_DIR}"
 
 if [ "$1" = "remove" ]; then
-    crontab -l 2>/dev/null | grep -v "${CRON_TAG}" | crontab -
+    crontab -l 2>/dev/null | grep -v "quantmind-" | crontab -
     echo "✅ Paper Trading crontab已移除"
     exit 0
 fi
 
 # 检查是否已安装
-if crontab -l 2>/dev/null | grep -q "${CRON_TAG}"; then
-    echo "⚠️  crontab已存在，跳过安装"
-    crontab -l | grep "${CRON_TAG}"
+if crontab -l 2>/dev/null | grep -q "quantmind-signal"; then
+    echo "⚠️  crontab已存在:"
+    crontab -l | grep "quantmind-"
     exit 0
 fi
 
-# 添加crontab
-# 每个工作日16:30运行（脚本内部判断是否交易日）
-CRON_LINE="30 16 * * 1-5 cd ${PROJECT_DIR} && ${PYTHON} scripts/run_paper_trading.py >> ${LOG_DIR}/paper_trading_cron.log 2>&1 ${CRON_TAG}"
+# 两行crontab
+SIGNAL_LINE="30 16 * * 1-5 cd ${PROJECT_DIR} && ${PYTHON} scripts/run_paper_trading.py signal >> ${LOG_DIR}/paper_signal.log 2>&1 ${CRON_TAG_SIGNAL}"
+EXECUTE_LINE="0 9 * * 1-5 cd ${PROJECT_DIR} && ${PYTHON} scripts/run_paper_trading.py execute >> ${LOG_DIR}/paper_execute.log 2>&1 ${CRON_TAG_EXECUTE}"
 
-(crontab -l 2>/dev/null; echo "${CRON_LINE}") | crontab -
+(crontab -l 2>/dev/null; echo "${SIGNAL_LINE}"; echo "${EXECUTE_LINE}") | crontab -
 
-echo "✅ Paper Trading crontab已安装"
-echo "   时间: 每个工作日 16:30"
-echo "   日志: ${LOG_DIR}/paper_trading_cron.log"
+echo "✅ Paper Trading 两阶段crontab已安装"
+echo "   信号阶段: 工作日 16:30 (T日盘后)"
+echo "   执行阶段: 工作日 09:00 (T+1日盘前)"
 echo ""
 echo "当前crontab:"
-crontab -l | grep "${CRON_TAG}"
+crontab -l | grep "quantmind-"
 echo ""
-echo "手动测试: ${PYTHON} scripts/run_paper_trading.py --dry-run"
+echo "手动测试:"
+echo "  ${PYTHON} scripts/run_paper_trading.py signal --date YYYY-MM-DD --dry-run"
+echo "  ${PYTHON} scripts/run_paper_trading.py execute --date YYYY-MM-DD --dry-run"

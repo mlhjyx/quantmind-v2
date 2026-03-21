@@ -90,9 +90,9 @@ class PaperBroker:
                 if r["quantity"] > 0:
                     holdings[r["code"]] = int(r["quantity"])
 
-            # 读取NAV和现金比率
+            # R3 fix: 直接读取cash列，不再从cash_ratio反推
             perf = pd.read_sql(
-                """SELECT nav, cash_ratio
+                """SELECT nav, cash, cash_ratio
                    FROM performance_series
                    WHERE strategy_id = %s AND trade_date = %s
                      AND execution_mode = 'paper'""",
@@ -102,8 +102,13 @@ class PaperBroker:
 
             if not perf.empty:
                 nav = float(perf.iloc[0]["nav"])
-                cash_ratio = float(perf.iloc[0]["cash_ratio"] or 0)
-                cash = nav * cash_ratio
+                cash_val = perf.iloc[0]["cash"]
+                if cash_val is not None:
+                    cash = float(cash_val)
+                else:
+                    # fallback for old rows without cash column
+                    cash_ratio = float(perf.iloc[0]["cash_ratio"] or 0)
+                    cash = nav * cash_ratio
             else:
                 nav = self.initial_capital
                 cash = self.initial_capital
@@ -150,13 +155,13 @@ class PaperBroker:
             return True
 
         cur = conn.cursor()
+        # R4 fix: 去掉 "trade_date <= %s" 约束，查整个月的最后交易日
         cur.execute(
             """SELECT MAX(trade_date)
                FROM trading_calendar
                WHERE market = 'astock' AND is_trading_day = TRUE
-                 AND DATE_TRUNC('month', trade_date) = DATE_TRUNC('month', %s::date)
-                 AND trade_date <= %s""",
-            (trade_date, trade_date),
+                 AND DATE_TRUNC('month', trade_date) = DATE_TRUNC('month', %s::date)""",
+            (trade_date,),
         )
         row = cur.fetchone()
         last_trading_day_of_month = row[0] if row else None
@@ -392,16 +397,20 @@ class PaperBroker:
             # 换手率
             turnover = sum(abs(f.amount) for f in fills) / nav if nav > 0 else 0
 
+            # R3 fix: 直接存cash金额，不依赖cash_ratio反推
+            actual_cash = self.broker.cash
+
             cur.execute(
                 """INSERT INTO performance_series
                    (trade_date, strategy_id, nav, daily_return, cumulative_return,
-                    drawdown, cash_ratio, position_count, turnover,
+                    drawdown, cash_ratio, cash, position_count, turnover,
                     benchmark_nav, execution_mode)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
                    ON CONFLICT (trade_date, strategy_id) DO UPDATE SET
                     nav=EXCLUDED.nav, daily_return=EXCLUDED.daily_return,
                     cumulative_return=EXCLUDED.cumulative_return,
                     drawdown=EXCLUDED.drawdown, cash_ratio=EXCLUDED.cash_ratio,
+                    cash=EXCLUDED.cash,
                     position_count=EXCLUDED.position_count, turnover=EXCLUDED.turnover,
                     benchmark_nav=EXCLUDED.benchmark_nav""",
                 (
@@ -412,6 +421,7 @@ class PaperBroker:
                     cum_return,
                     drawdown,
                     cash_ratio,
+                    actual_cash,
                     position_count,
                     turnover,
                     bench_nav_val,
