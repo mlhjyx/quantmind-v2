@@ -85,6 +85,7 @@ class RiskMetrics:
     initial_capital: Decimal           # 初始资金
     cumulative_return: Decimal         # 累计收益率 (nav/initial - 1)
     rolling_20d_return: Decimal | None  # 滚动20日累计收益率(不足20日传None)
+    portfolio_vol_20d: float | None = None  # 组合近20日年化波动率(用于自适应阈值)
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,11 @@ class CircuitBreakerThresholds:
     l3_position_multiplier: Decimal = Decimal("0.5")
     l3_recovery_days: int = 5
     l3_recovery_return: Decimal = Decimal("0.02")
+
+    # 波动率自适应参数
+    vol_baseline: float = 0.1485      # 基准年化波动率(沪深300长期均值)
+    vol_clip_min: float = 0.5         # vol_ratio下限(低波时不过度放松)
+    vol_clip_max: float = 2.0         # vol_ratio上限(高波时不过度收紧)
 
 
 # ─────────────────────────────────────────────
@@ -728,6 +734,33 @@ class RiskControlService:
 
     # ── 内部方法 ──
 
+    def _calc_vol_ratio(self, metrics: RiskMetrics) -> float:
+        """计算波动率自适应比率。
+
+        vol_ratio = clip(portfolio_vol_20d / vol_baseline, clip_min, clip_max)
+
+        高波时vol_ratio > 1, 阈值放宽(更难触发熔断, 允许更大波动);
+        低波时vol_ratio < 1, 阈值收紧(更容易触发, 保护低波时期收益)。
+
+        Args:
+            metrics: 当日风控指标, 需包含portfolio_vol_20d。
+
+        Returns:
+            vol_ratio, 范围[vol_clip_min, vol_clip_max]。
+            如果portfolio_vol_20d未提供, 返回1.0(不做调整)。
+        """
+        if metrics.portfolio_vol_20d is None or metrics.portfolio_vol_20d <= 0:
+            return 1.0
+
+        if self.thresholds.vol_baseline <= 0:
+            return 1.0
+
+        raw_ratio = metrics.portfolio_vol_20d / self.thresholds.vol_baseline
+        return max(
+            self.thresholds.vol_clip_min,
+            min(raw_ratio, self.thresholds.vol_clip_max),
+        )
+
     def _check_trigger_conditions(
         self,
         metrics: RiskMetrics,
@@ -735,6 +768,7 @@ class RiskControlService:
         """评估熔断触发条件(纯计算, 不写DB)。
 
         按严重程度从高到低检查: L4 → L3 → L2 → L1 → NORMAL。
+        四级阈值均乘以vol_ratio进行波动率自适应调整。
 
         Args:
             metrics: 当日风控指标。
@@ -743,43 +777,62 @@ class RiskControlService:
             (触发级别, 原因描述, 指标快照)。
         """
         metrics_dict = _metrics_to_dict(metrics)
+        vol_ratio = self._calc_vol_ratio(metrics)
 
-        # L4: 累计亏>25%
-        if metrics.cumulative_return <= self.thresholds.l4_cumulative_loss:
+        # 自适应阈值: 原始阈值 × vol_ratio
+        # 注意: 阈值是负数, 乘以vol_ratio后绝对值变大 → 更难触发
+        l1_threshold = self.thresholds.l1_daily_loss * Decimal(str(vol_ratio))
+        l2_threshold = self.thresholds.l2_daily_loss * Decimal(str(vol_ratio))
+        l3_threshold = self.thresholds.l3_rolling_loss * Decimal(str(vol_ratio))
+        l4_threshold = self.thresholds.l4_cumulative_loss * Decimal(str(vol_ratio))
+
+        if vol_ratio != 1.0:
+            logger.debug(
+                "[RiskControl] 波动率自适应: vol_ratio=%.3f, "
+                "L1=%.1f%%, L2=%.1f%%, L3=%.1f%%, L4=%.1f%%",
+                vol_ratio,
+                float(l1_threshold) * 100,
+                float(l2_threshold) * 100,
+                float(l3_threshold) * 100,
+                float(l4_threshold) * 100,
+            )
+
+        # L4: 累计亏损超阈值
+        if metrics.cumulative_return <= l4_threshold:
             return (
                 CircuitBreakerLevel.L4_STOPPED,
                 f"累计亏损{float(metrics.cumulative_return) * 100:.1f}%"
-                f"(阈值{float(self.thresholds.l4_cumulative_loss) * 100:.0f}%)，停止交易",
+                f"(自适应阈值{float(l4_threshold) * 100:.1f}%, vol_ratio={vol_ratio:.2f})，停止交易",
                 metrics_dict,
             )
 
-        # L3: 滚动20日亏>10%
+        # L3: 滚动20日亏损超阈值
         if (
             metrics.rolling_20d_return is not None
-            and metrics.rolling_20d_return <= self.thresholds.l3_rolling_loss
+            and metrics.rolling_20d_return <= l3_threshold
         ):
             return (
                 CircuitBreakerLevel.L3_REDUCED,
                 f"滚动20日亏损{float(metrics.rolling_20d_return) * 100:.1f}%"
-                f"(阈值{float(self.thresholds.l3_rolling_loss) * 100:.0f}%)，降仓50%",
+                f"(自适应阈值{float(l3_threshold) * 100:.1f}%, vol_ratio={vol_ratio:.2f})，降仓50%",
                 metrics_dict,
             )
 
-        # L2: 单日亏>5%
-        if metrics.daily_return <= self.thresholds.l2_daily_loss:
+        # L2: 单日亏损>自适应阈值
+        if metrics.daily_return <= l2_threshold:
             return (
                 CircuitBreakerLevel.L2_HALTED,
                 f"单日亏损{float(metrics.daily_return) * 100:.1f}%"
-                f"(阈值{float(self.thresholds.l2_daily_loss) * 100:.0f}%)，全部暂停",
+                f"(自适应阈值{float(l2_threshold) * 100:.1f}%, vol_ratio={vol_ratio:.2f})，全部暂停",
                 metrics_dict,
             )
 
-        # L1: 单日亏>3%
-        if metrics.daily_return <= self.thresholds.l1_daily_loss:
+        # L1: 单日亏损>自适应阈值
+        if metrics.daily_return <= l1_threshold:
             return (
                 CircuitBreakerLevel.L1_PAUSED,
                 f"单日亏损{float(metrics.daily_return) * 100:.1f}%"
-                f"(阈值{float(self.thresholds.l1_daily_loss) * 100:.0f}%)，暂停1天",
+                f"(自适应阈值{float(l1_threshold) * 100:.1f}%, vol_ratio={vol_ratio:.2f})，暂停1天",
                 metrics_dict,
             )
 
@@ -1032,4 +1085,5 @@ def _metrics_to_dict(metrics: RiskMetrics) -> dict[str, Any]:
             if metrics.rolling_20d_return is not None
             else None
         ),
+        "portfolio_vol_20d": metrics.portfolio_vol_20d,
     }

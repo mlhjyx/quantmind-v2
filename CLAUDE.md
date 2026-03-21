@@ -504,6 +504,22 @@ T+1日 09:30  开盘执行
 
 ---
 
+## 策略版本化纪律（Paper Trading期间强制执行）
+
+- 当前版本：**v1.1**（5因子等权+Top15+月度+行业25%）
+- 因子：turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio
+- 基线Sharpe：1.037（修复后代码，2021-2025全期）
+- 基线MDD：-39.7%
+- 毕业标准：Sharpe ≥ 0.73, MDD < 35%, 滑点偏差 < 50%
+- v1.0→v1.1变更：Top-N从20改为15（整手约束误差8%→3-4%）
+- **任何参数变更 = 新版本号**（v1.1/v1.2...）
+- Paper Trading期间**只允许运行一个版本**
+- 改参数 = 新版本 → **60天Paper Trading重新计时**
+- strategy_configs表的version字段必须严格维护，每次变更写入param_change_log
+- 防止"Paper Trading到一半觉得不好就改参数"
+
+---
+
 ## 开源工具集成规范
 
 > 核心原则：统一集成，不是拼凑。所有工具藏在Service内部，换任何一个工具其他层无感知。

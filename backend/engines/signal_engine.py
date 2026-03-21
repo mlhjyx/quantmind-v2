@@ -65,7 +65,7 @@ class SignalConfig:
     ])
 
 
-# Route A锁定配置: 5因子等权 + Top20月频 + IndCap=25%
+# Route A锁定配置: 5因子等权 + Top15月频 + IndCap=25% (v1.1: Top20→15)
 PAPER_TRADING_CONFIG = SignalConfig(
     factor_names=[
         "turnover_mean_20",
@@ -74,7 +74,7 @@ PAPER_TRADING_CONFIG = SignalConfig(
         "amihud_20",
         "bp_ratio",
     ],
-    top_n=20,
+    top_n=15,
     weight_method="equal",
     rebalance_freq="monthly",
     industry_cap=0.25,

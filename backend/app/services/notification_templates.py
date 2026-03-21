@@ -184,6 +184,72 @@ PIPELINE_ERROR = NotificationTemplate(
     category="pipeline",
 )
 
+FACTOR_COVERAGE_LOW = NotificationTemplate(
+    key="factor_coverage_low",
+    title_template="P0 因子覆盖率严重不足: {factor_name} ({count}只)",
+    content_template=(
+        "### 因子截面覆盖率严重不足\n\n"
+        "**交易日**: {trade_date}\n\n"
+        "**因子**: {factor_name}\n\n"
+        "**覆盖股票数**: {count}只 (阈值: 1000)\n\n"
+        "**影响**: 信号生成已阻塞，当日管道停止。\n\n"
+        "可能原因: 数据源故障、拉取异常、因子计算报错。请排查后手动恢复。"
+    ),
+    default_level="P0",
+    category="pipeline",
+    market="astock",
+)
+
+FACTOR_COVERAGE_WARNING = NotificationTemplate(
+    key="factor_coverage_warning",
+    title_template="因子覆盖率偏低: {factor_name} ({count}只)",
+    content_template=(
+        "### 因子截面覆盖率偏低\n\n"
+        "**交易日**: {trade_date}\n\n"
+        "**因子**: {factor_name}\n\n"
+        "**覆盖股票数**: {count}只 (正常应>3000)\n\n"
+        "**影响**: 信号生成继续，但截面覆盖不足可能导致排名偏差。\n\n"
+        "请排查数据完整性，关注当日信号质量。"
+    ),
+    default_level="P1",
+    category="pipeline",
+    market="astock",
+)
+
+INDUSTRY_CONCENTRATION_HIGH = NotificationTemplate(
+    key="industry_concentration_high",
+    title_template="行业集中度超标: {max_industry} ({max_weight})",
+    content_template=(
+        "### Top20持仓行业集中度超标\n\n"
+        "**交易日**: {trade_date}\n\n"
+        "**最大行业**: {max_industry}\n\n"
+        "**行业权重**: {max_weight} (阈值: 25%)\n\n"
+        "**Top5行业分布**: {industry_distribution}\n\n"
+        "行业过于集中会增大尾部风险，建议检查因子是否对特定行业有系统性偏好。"
+    ),
+    default_level="P1",
+    category="strategy",
+    market="astock",
+)
+
+HIGH_TURNOVER_ALERT = NotificationTemplate(
+    key="high_turnover_alert",
+    title_template="持仓换手剧烈: 重合度{overlap_ratio}",
+    content_template=(
+        "### 持仓重合度过低\n\n"
+        "**交易日**: {trade_date}\n\n"
+        "**重合度**: {overlap_ratio} (阈值: 30%)\n\n"
+        "**重合数量**: {overlap_count}/{prev_count}\n\n"
+        "**新进标的**: {new_codes}\n\n"
+        "**退出标的**: {exit_codes}\n\n"
+        "重合度低于30%意味着大幅换仓，可能导致高额交易成本和执行滑点。"
+        "建议人工确认信号合理性后再执行。"
+    ),
+    default_level="P1",
+    category="strategy",
+    market="astock",
+)
+
 SYSTEM_DISK_WARNING = NotificationTemplate(
     key="system_disk_warning",
     title_template="磁盘空间不足: 剩余{free_gb:.1f}GB",
@@ -216,6 +282,10 @@ TEMPLATE_REGISTRY: dict[str, NotificationTemplate] = {
         FACTOR_IC_DECAY,
         PARAMETER_CHANGED,
         PIPELINE_ERROR,
+        FACTOR_COVERAGE_LOW,
+        FACTOR_COVERAGE_WARNING,
+        INDUSTRY_CONCENTRATION_HIGH,
+        HIGH_TURNOVER_ALERT,
         SYSTEM_DISK_WARNING,
     ]
 }

@@ -383,6 +383,32 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             conn.close()
             sys.exit(1)
 
+        # ── 检查2: 因子截面覆盖率（每个因子当日覆盖股票数）──
+        for fname in config.factor_names:
+            if 'factor_name' in fv.columns:
+                count = fv[fv['factor_name'] == fname].shape[0]
+            else:
+                count = len(fv)
+            if count < 1000:
+                msg = (f"因子 {fname} 截面覆盖率严重不足: {count}只 < 1000。"
+                       f"可能数据源故障或拉取异常，阻塞信号生成。")
+                logger.error(f"[Step3] P0 {msg}")
+                if not dry_run:
+                    log_step(conn, "signal_gen", "failed", msg)
+                    send_alert("P0", f"因子覆盖率严重不足 {trade_date}", msg,
+                               settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+                conn.close()
+                sys.exit(1)
+            elif count < 3000:
+                msg = (f"因子 {fname} 截面覆盖率偏低: {count}只 < 3000。"
+                       f"信号生成继续，但请排查数据完整性。")
+                logger.warning(f"[Step3] P1 {msg}")
+                if not dry_run:
+                    send_alert("P1", f"因子覆盖率偏低 {trade_date}", msg,
+                               settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+            else:
+                logger.info(f"[Step3] 因子 {fname} 覆盖率正常: {count}只")
+
         universe = load_universe(trade_date, conn)
         industry = load_industry(conn)
 
@@ -419,6 +445,54 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         )
         hedged_target = target  # 不缩放，直接使用原始权重
         logger.info(f"[Step3] Beta={beta:.3f}(监控), 总权重={sum(hedged_target.values()):.3f}")
+
+        # ── 检查3: Top20行业集中度（最大行业权重<25%）──
+        if hedged_target:
+            top20_codes = sorted(hedged_target, key=lambda c: hedged_target[c], reverse=True)[:20]
+            top20_weights = {c: hedged_target[c] for c in top20_codes}
+            # join symbols.industry_sw1 获取行业
+            if top20_codes:
+                cur = conn.cursor()
+                placeholders = ','.join(['%s'] * len(top20_codes))
+                cur.execute(
+                    f"""SELECT code, industry_sw1 FROM symbols
+                        WHERE code IN ({placeholders})""",
+                    tuple(top20_codes),
+                )
+                code_industry = dict(cur.fetchall())
+                # 按行业汇总权重
+                industry_weights: dict[str, float] = {}
+                for code in top20_codes:
+                    ind = code_industry.get(code, "未知")
+                    industry_weights[ind] = industry_weights.get(ind, 0) + top20_weights[code]
+                max_ind = max(industry_weights, key=industry_weights.get) if industry_weights else "N/A"
+                max_ind_weight = industry_weights.get(max_ind, 0)
+                logger.info(f"[Step3] 行业集中度: 最大行业={max_ind} 权重={max_ind_weight:.1%}")
+                if max_ind_weight > 0.25:
+                    msg = (f"Top20持仓行业集中度过高: {max_ind} 权重={max_ind_weight:.1%} > 25%。"
+                           f"行业分布: {', '.join(f'{k}={v:.1%}' for k, v in sorted(industry_weights.items(), key=lambda x: -x[1])[:5])}")
+                    logger.warning(f"[Step3] P1 {msg}")
+                    if not dry_run:
+                        send_alert("P1", f"行业集中度超标 {trade_date}", msg,
+                                   settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+
+        # ── 检查4: 持仓重合度（与上期持仓比较，<30%重合→P1告警）──
+        if hedged_target and prev_weights:
+            current_top = set(sorted(hedged_target, key=lambda c: hedged_target[c], reverse=True)[:20])
+            prev_top = set(sorted(prev_weights, key=lambda c: prev_weights[c], reverse=True)[:20])
+            if prev_top:
+                overlap = len(current_top & prev_top)
+                overlap_ratio = overlap / max(len(prev_top), 1)
+                logger.info(f"[Step3] 持仓重合度: {overlap}/{len(prev_top)} = {overlap_ratio:.0%}")
+                if overlap_ratio < 0.30:
+                    msg = (f"持仓重合度过低: {overlap}/{len(prev_top)} = {overlap_ratio:.0%} < 30%。"
+                           f"换手剧烈，建议人工确认信号合理性。"
+                           f"\n新进: {', '.join(sorted(current_top - prev_top)[:10])}"
+                           f"\n退出: {', '.join(sorted(prev_top - current_top)[:10])}")
+                    logger.warning(f"[Step3] P1 {msg}")
+                    if not dry_run:
+                        send_alert("P1", f"持仓换手剧烈 {trade_date}", msg,
+                                   settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
 
         # 检查是否需要调仓
         paper_broker = PaperBroker(
