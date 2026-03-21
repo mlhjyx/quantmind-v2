@@ -5,6 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dashboard import router as dashboard_router
+from app.api.health import router as health_router
+from app.api.notifications import router as notifications_router
+from app.api.paper_trading import router as paper_trading_router
+from app.api.params import router as params_router
+from app.api.risk import router as risk_router
+from app.api.strategies import router as strategies_router
 from app.config import settings
 from app.db import engine
 
@@ -31,9 +38,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- API 路由注册 ---
+app.include_router(health_router)
+app.include_router(dashboard_router)
+app.include_router(notifications_router)
+app.include_router(paper_trading_router)
+app.include_router(params_router)
+app.include_router(risk_router)
+app.include_router(strategies_router)
+
 
 @app.get("/health")
 async def health_check():
+    """简易健康检查（向后兼容）。"""
     return {
         "status": "ok",
         "execution_mode": settings.EXECUTION_MODE,

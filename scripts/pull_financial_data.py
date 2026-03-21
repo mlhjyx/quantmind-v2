@@ -34,7 +34,7 @@ FINA_FIELDS = [
     "ts_code", "ann_date", "end_date",
     "roe", "roe_dt", "roa",
     "grossprofit_margin", "netprofit_margin",
-    "revenue_yoy", "netprofit_yoy", "basic_eps_yoy",
+    "or_yoy", "netprofit_yoy", "basic_eps_yoy",  # or_yoy=营收同比（非revenue_yoy!）
     "eps", "bps",
     "current_ratio", "quick_ratio",
     "debt_to_assets",
@@ -104,6 +104,7 @@ def process_fina_df(df: pd.DataFrame, symbols_set: set) -> pd.DataFrame:
     rename_map = {
         "grossprofit_margin": "gross_profit_margin",
         "netprofit_margin": "net_profit_margin",
+        "or_yoy": "revenue_yoy",       # Tushare字段名 or_yoy → DDL字段 revenue_yoy
         "netprofit_yoy": "net_profit_yoy",
         "debt_to_assets": "debt_to_asset",
     }

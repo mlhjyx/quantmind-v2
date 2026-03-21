@@ -48,7 +48,7 @@ import pandas as pd
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import Fill
-from engines.beta_hedge import apply_beta_hedge, calc_portfolio_beta
+from engines.beta_hedge import calc_portfolio_beta  # apply_beta_hedge removed: A股无做空工具
 from engines.factor_engine import compute_daily_factors, save_daily_factors
 from engines.paper_broker import PaperBroker
 from engines.signal_engine import (
@@ -164,6 +164,98 @@ def load_today_prices(trade_date: date, conn) -> pd.DataFrame:
     )
 
 
+def check_circuit_breaker(
+    conn, strategy_id: str, exec_date: date, initial_capital: float
+) -> dict:
+    """4级熔断检查（DESIGN_V5 §8.1 + risk评审方案）。
+
+    L1: 单策略日亏>3% → 暂停1天(次日自动恢复)
+    L2: 总组合日亏>5% → 全部暂停+P0告警
+    L3: 月亏>10% → 降仓50%
+    L4: 累计亏损>25%(NAV<750k) → 停止所有交易+人工审批
+    阈值来源: DESIGN_V5 §8.1，用户确认不要过于敏感
+
+    Returns:
+        {"level": 0-4, "action": str, "reason": str}
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT trade_date, nav::float, daily_return::float
+           FROM performance_series
+           WHERE strategy_id = %s AND execution_mode = 'paper'
+           ORDER BY trade_date DESC LIMIT 20""",
+        (strategy_id,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return {"level": 0, "action": "normal", "reason": "无历史数据(首次运行)"}
+
+    latest_nav = rows[0][1]
+    latest_ret = rows[0][2]
+
+    # L4: 累计亏损 > 25%
+    cum_loss = (latest_nav / initial_capital) - 1
+    if cum_loss < -0.25:
+        return {"level": 4, "action": "halt",
+                "reason": f"累计亏损{cum_loss:.1%}, NAV={latest_nav:.0f}"}
+
+    # L3: 滚动20日累计 > -10%
+    if len(rows) >= 5:
+        rolling_cum = 1.0
+        for r in rows[:20]:
+            rolling_cum *= (1 + r[2])
+        rolling_loss = rolling_cum - 1
+        if rolling_loss < -0.10:
+            return {"level": 3, "action": "reduce",
+                    "reason": f"20日累计{rolling_loss:.1%}"}
+
+    # L2: 单日亏损 > 5%
+    if latest_ret < -0.05:
+        return {"level": 2, "action": "pause",
+                "reason": f"昨日亏损{latest_ret:.1%}"}
+
+    # L1: 单日亏损 > 3%
+    if latest_ret < -0.03:
+        return {"level": 1, "action": "skip_rebalance",
+                "reason": f"昨日亏损{latest_ret:.1%}"}
+
+    return {"level": 0, "action": "normal", "reason": "正常"}
+
+
+def run_daily_risk_check(broker, today_close: dict, nav: float, fills: list) -> list[str]:
+    """风控日检（risk评审blocking要求#2）。
+
+    检查: 单股权重/现金比例/持仓数量/调仓拒绝率。
+    返回异常列表（空=全部正常）。
+    """
+    warnings = []
+
+    # 单股最大权重 > 15%
+    if broker.holdings and nav > 0:
+        max_weight = max(
+            shares * today_close.get(code, 0) / nav
+            for code, shares in broker.holdings.items()
+        )
+        if max_weight > 0.15:
+            warnings.append(f"单股权重超限: {max_weight:.1%} > 15%")
+
+    # 现金比例异常
+    cash_ratio = broker.cash / nav if nav > 0 else 1
+    if cash_ratio > 0.15:
+        warnings.append(f"现金比例过高: {cash_ratio:.1%}")
+    elif cash_ratio < 0.005 and broker.holdings:
+        warnings.append(f"现金比例过低: {cash_ratio:.1%}")
+
+    # 持仓数量异常
+    pos_count = len(broker.holdings)
+    if pos_count < 15 and pos_count > 0:
+        warnings.append(f"持仓不足: {pos_count}只 < 15")
+    elif pos_count > 25:
+        warnings.append(f"持仓过多: {pos_count}只 > 25")
+
+    return warnings
+
+
 def get_benchmark_close(trade_date: date, conn) -> float:
     """获取CSI300当日收盘价。"""
     cur = conn.cursor()
@@ -274,6 +366,23 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             conn.close()
             sys.exit(1)
 
+        # ── 因子完整性硬性检查（防止静默降级）──
+        # 如果配置要求5因子但实际只拿到<5因子，阻塞并告警
+        available_factors = set(fv.columns) if hasattr(fv, 'columns') else set()
+        if 'factor_name' in fv.columns:
+            available_factors = set(fv['factor_name'].unique())
+        required_factors = set(config.factor_names)
+        missing_factors = required_factors - available_factors
+        if missing_factors:
+            msg = f"因子缺失: {missing_factors}。配置要求{len(required_factors)}因子，实际只有{len(required_factors - missing_factors)}。不允许静默降级。"
+            logger.error(f"[Step3] P0 {msg}")
+            if not dry_run:
+                log_step(conn, "signal_gen", "failed", msg)
+                send_alert("P0", f"因子缺失 {trade_date}", msg,
+                           settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+            conn.close()
+            sys.exit(1)
+
         universe = load_universe(trade_date, conn)
         industry = load_industry(conn)
 
@@ -303,12 +412,13 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         target = builder.build(scores, industry, prev_weights)
         logger.info(f"[Step3] 目标持仓: {len(target)}只, 总权重={sum(target.values()):.3f}")
 
-        # Beta对冲
+        # Beta监控（只记录，不缩放权重）
+        # A股无做空工具，Beta对冲=纯减仓，三方讨论共识：去掉
         beta = calc_portfolio_beta(
             trade_date, settings.PAPER_STRATEGY_ID, lookback_days=60, conn=conn
         )
-        hedged_target = apply_beta_hedge(target, beta)
-        logger.info(f"[Step3] Beta={beta:.3f}, 对冲后总权重={sum(hedged_target.values()):.3f}")
+        hedged_target = target  # 不缩放，直接使用原始权重
+        logger.info(f"[Step3] Beta={beta:.3f}(监控), 总权重={sum(hedged_target.values()):.3f}")
 
         # 检查是否需要调仓
         paper_broker = PaperBroker(
@@ -420,13 +530,40 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
 
         if not signal_rows:
             logger.warning(f"[Step5] {signal_date} 无信号记录。可能信号阶段未运行。")
-            # 仍然继续——需要更新非调仓日的NAV
             hedged_target = {}
             is_rebalance = False
         else:
             hedged_target = {r[0]: float(r[1]) for r in signal_rows}
-            is_rebalance = signal_rows[0][2] == "rebalance"
-            logger.info(f"[Step5] 读取{len(hedged_target)}只信号, action={signal_rows[0][2]}")
+            signal_action = signal_rows[0][2]
+            logger.info(f"[Step5] 读取{len(hedged_target)}只信号, signal_action={signal_action}")
+
+        # ── Step 5.6: 信号调仓标记验证 ──
+        # 正常流程：T日signal标记rebalance → T+1日execute执行。
+        # signal的rebalance判断是在T日（月末）做的，T+1日不是月末是正常的。
+        # 所以execute应该信任signal的action标记。
+        #
+        # 独立验证只在以下异常场景覆盖：
+        # 1. signal标记rebalance但execute发现已无持仓需要清仓（不应该发生）
+        # 2. 信号日期与exec_date间隔超过3天（信号已过时）
+        if signal_rows:
+            # 用交易日间隔而非自然日（A股有国庆9天、五一6天长假）
+            cur.execute(
+                """SELECT COUNT(*) FROM trading_calendar
+                   WHERE market='astock' AND is_trading_day=TRUE
+                     AND trade_date > %s AND trade_date < %s""",
+                (signal_date, exec_date),
+            )
+            trading_days_between = cur.fetchone()[0]
+
+            if trading_days_between > 2:
+                # 信号过时（中间超过2个交易日=不正常，正常T→T+1间隔0个中间交易日）
+                logger.warning(f"[Step5.6] 信号日{signal_date}距执行日{exec_date}中间有{trading_days_between}个交易日，信号过时")
+                is_rebalance = False
+            elif signal_action == "rebalance":
+                is_rebalance = True
+                logger.info(f"[Step5.6] 信任信号rebalance标记（T日={signal_date} → T+1={exec_date}，间隔{trading_days_between}交易日）")
+            else:
+                is_rebalance = False
 
         # ── Step 5.5: 拉取T+1日数据（如果还没有）──
         if not skip_fetch:
@@ -459,6 +596,94 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
             sys.exit(1)
         today_close = dict(zip(price_data["code"], price_data["close"]))
         benchmark_close = get_benchmark_close(exec_date, conn)
+
+        # ── Step 5.9: 熔断检查（risk评审blocking要求）──
+        cb = check_circuit_breaker(conn, settings.PAPER_STRATEGY_ID,
+                                   exec_date, settings.PAPER_INITIAL_CAPITAL)
+        logger.info(f"[Step5.9] 熔断检查: L{cb['level']} - {cb['reason']}")
+
+        if cb["level"] >= 4:
+            logger.error(f"[L4 HALT] {cb['reason']}")
+            if not dry_run:
+                log_step(conn, "circuit_breaker", "halt", cb["reason"])
+                send_alert("P0", f"L4熔断 {exec_date}", cb["reason"],
+                           settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+            conn.close()
+            sys.exit(1)
+
+        if cb["level"] == 3:
+            logger.warning(f"[L3 REDUCE] 降仓50%: {cb['reason']}")
+            hedged_target = {k: v * 0.5 for k, v in hedged_target.items()}
+            is_rebalance = True  # 强制调仓（减仓）
+            if not dry_run:
+                log_step(conn, "circuit_breaker", "reduce", cb["reason"])
+                send_alert("P0", f"L3降仓 {exec_date}", cb["reason"],
+                           settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+
+        if cb["level"] == 2:
+            logger.warning(f"[L2 PAUSE] 暂停交易: {cb['reason']}")
+            is_rebalance = False
+            if not dry_run:
+                log_step(conn, "circuit_breaker", "pause", cb["reason"])
+                send_alert("P0", f"L2暂停 {exec_date}", cb["reason"],
+                           settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+
+        if cb["level"] == 1:
+            if is_rebalance:
+                # 方案C：延迟月度调仓到L1恢复后
+                logger.info(f"[L1 DELAY] {cb['reason']}，月度调仓延迟到L1恢复后执行")
+                is_rebalance = False  # 今天不执行
+                if not dry_run:
+                    log_step(conn, "pending_monthly_rebalance", "pending",
+                             f"L1触发延迟月度调仓 signal_date={signal_date}",
+                             result={"signal_date": str(signal_date),
+                                     "target": {k: round(v, 6) for k, v in hedged_target.items()}})
+                    log_step(conn, "circuit_breaker", "l1_delay", cb["reason"])
+            else:
+                logger.info(f"[L1 SKIP] {cb['reason']}")
+                is_rebalance = False
+                if not dry_run:
+                    log_step(conn, "circuit_breaker", "skip", cb["reason"])
+
+        # ── Step 5.95: 检查延迟调仓（L1恢复后执行pending月度调仓）──
+        if cb["level"] == 0 and not is_rebalance:  # 当前NORMAL且不是调仓日
+            cur.execute(
+                """SELECT result_json FROM scheduler_task_log
+                   WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'
+                   ORDER BY created_at DESC LIMIT 1""")
+            pending = cur.fetchone()
+            if pending and pending[0]:
+                pending_data = json.loads(pending[0]) if isinstance(pending[0], str) else pending[0]
+                pending_signal_date = pending_data.get("signal_date")
+                pending_target = pending_data.get("target", {})
+
+                if pending_signal_date:
+                    p_date = datetime.strptime(pending_signal_date, "%Y-%m-%d").date()
+                    # risk附加条件2: 延迟只存在有限交易日内
+                    cur.execute(
+                        """SELECT COUNT(*) FROM trading_calendar
+                           WHERE market='astock' AND is_trading_day=TRUE
+                           AND trade_date > %s AND trade_date < %s""",
+                        (p_date, exec_date))
+                    gap = cur.fetchone()[0]
+
+                    if gap <= 2 and pending_target:  # 2个交易日内且有target
+                        logger.info(f"[DELAYED REBALANCE] L1已恢复，执行延迟月度调仓(signal={pending_signal_date})")
+                        hedged_target = {k: float(v) for k, v in pending_target.items()}
+                        is_rebalance = True
+                        # 标记pending为已执行
+                        if not dry_run:
+                            cur.execute(
+                                """UPDATE scheduler_task_log SET status='executed'
+                                   WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                            conn.commit()
+                    else:
+                        logger.info(f"[DELAYED REBALANCE EXPIRED] pending过期(gap={gap}交易日)，放弃")
+                        if not dry_run:
+                            cur.execute(
+                                """UPDATE scheduler_task_log SET status='expired'
+                                   WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                            conn.commit()
 
         # ── Step 6: 执行调仓 ──
         paper_broker = PaperBroker(
@@ -539,6 +764,19 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 webhook_url=settings.DINGTALK_WEBHOOK_URL,
                 secret=settings.DINGTALK_SECRET, conn=conn,
             )
+
+        # ── Step 8.5: 风控日检 ──
+        risk_warnings = run_daily_risk_check(
+            paper_broker.broker, today_close, nav, fills
+        )
+        if risk_warnings:
+            warn_msg = "\n".join(risk_warnings)
+            logger.warning(f"[Step8.5] 风控日检异常:\n{warn_msg}")
+            if not dry_run:
+                send_alert("P1", f"风控日检 {exec_date}", warn_msg,
+                           settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+        else:
+            logger.info("[Step8.5] 风控日检: 全部正常")
 
         elapsed = time.time() - t_total
         logger.info(f"[EXECUTE PHASE] 完成: {elapsed:.0f}s")

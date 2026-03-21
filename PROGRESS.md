@@ -272,8 +272,9 @@ IR:         0.58
 **Key finding**: Monthly rebalance (avg Sharpe 1.243) >> Biweekly (avg 0.976).
 Top-N and IndCap have minor impact within monthly configs.
 
-**Locked config**: Top20 monthly IndCap=25%, 5因子等权 + Beta对冲
-- Sharpe ≈1.29, MDD ≈-32.9%, CI_lo=0.41
+**Locked config**: Top20 monthly IndCap=25%, 5因子等权, **无Beta对冲**（A股无做空工具）
+- Sharpe ≈1.29 (unhedged), MDD ≈-32.9%, CI_lo=0.41
+- Pre-trade hedge测试: Sharpe 1.01, CI_lo=0.04 — 三方讨论共识：对冲=减仓，去掉
 
 ### Route B: Paper Trading Pipeline ✅ COMPLETED
 
@@ -290,15 +291,45 @@ Top-N and IndCap have minor impact within monthly configs.
 
 **验证**: 2026-03-19首次建仓20只，NAV=987,251，6张表写入全部正确。
 
-### Route C: Financial Quality Factors 🔨 IN PROGRESS
+### Route C: Financial Quality Factors ✅ COMPLETED
 
 | 任务 | 状态 |
 |------|------|
 | financial_indicators表创建 | ✅ |
-| Tushare fina_indicator数据拉取 | 🔨 运行中 |
-| 因子设计 (roe_change_q, revenue_accel, accrual_anomaly) | ✅ 代码完成 |
-| IC测试 + 回测验证 | ⬜ 待数据 |
+| Tushare fina_indicator数据拉取 | ✅ 408,984行 |
+| 因子设计 (roe_change_q, revenue_accel, accrual_anomaly) | ✅ |
+| IC测试 | ✅ revenue_accel IC=2.37%通过Gate, 其余未通过 |
+| 6因子组合回测 | ✅ 加入revenue_accel后Sharpe未提升(1.28→1.28), **不纳入基线** |
+
+### Sprint 0.1: P0-Bug修复 🔨 IN PROGRESS
+
+**6-Agent独立审查→quant一票否决→全面修复**
+
+| Bug | 修复 | 状态 |
+|-----|------|------|
+| R1 执行价格(T日open→T+1 open) | 两阶段pipeline | ✅ 已修复 |
+| R2 Beta方法(post-hoc vs pre-trade) | pre-trade回测确认Sharpe=1.01, 三方共识去掉对冲 | ✅ 已修复(移除) |
+| R3 Cash从ratio反推 | 直接存cash列到performance_series | ✅ 已修复 |
+| R4 调仓日SQL | 去掉 trade_date<=限制 | ✅ 已修复 |
+| R7 并发保护 | pg_advisory_lock | ✅ 已修复 |
+| Beta对冲移除 | 改为纯监控指标 | ✅ 已修复 |
+| L1/L2熔断机制 | risk评审中,即将实现 | 🔨 |
+
+### Team V2 (2026-03-21)
+
+| 角色 | 状态 | 当前任务 |
+|------|------|---------|
+| Team Lead | 活跃 | Sprint 0.1执行 |
+| quant | 待命 | 等qa验证后撤销否决 |
+| arch | 待命 | P0修复已完成 |
+| data | 待命 | |
+| qa | 待命 | 等risk评审后验证 |
+| factor | 待命 | GPA因子研究准备 |
+| strategy | 待命 | 调仓错峰研究准备 |
+| **risk** | **首次启用** | Paper Trading风险评审中 |
+| frontend | 未启用 | Phase 1B启用 |
+| ml | 未启用 | Phase 1C启用 |
 
 ## Blockers
-- Route C数据拉取中（~30min），完成后做IC分析
+- risk风险评审中（熔断机制阈值+实现方案）
 - crontab待用户手动安装: `bash scripts/install_crontab.sh`

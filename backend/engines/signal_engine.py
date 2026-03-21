@@ -202,11 +202,17 @@ class PortfolioBuilder:
         target: dict[str, float],
         prev: dict[str, float],
     ) -> dict[str, float]:
-        """应用换手率上限。
+        """应用换手率上限（严格保持Top-N持仓数）。
 
-        如果换手率超过上限，保留部分旧持仓。
+        关键不变式: 输出持仓数 <= len(target) = top_n。
+        旧持仓中不在target的股票目标权重=0（全卖），
+        换手率上限只控制卖出速度，不保留旧持仓。
+
+        Bug fix: 原代码对target∪prev取并集做blend,
+        导致持仓从20膨胀到43。修复: blend后只保留target中的股票。
         """
-        all_codes = set(target) | set(prev)
+        target_codes = set(target)
+        all_codes = target_codes | set(prev)
         turnover = sum(
             abs(target.get(c, 0) - prev.get(c, 0)) for c in all_codes
         ) / 2  # 单边换手
@@ -214,7 +220,7 @@ class PortfolioBuilder:
         if turnover <= self.config.turnover_cap:
             return target
 
-        # 需要混合旧持仓
+        # 缩放变化量，降低换手率
         ratio = self.config.turnover_cap / max(turnover, 1e-12)
         blended = {}
         for c in all_codes:
@@ -222,8 +228,12 @@ class PortfolioBuilder:
             p = prev.get(c, 0)
             blended[c] = p + ratio * (t - p)
 
-        # 去掉权重太小的
-        blended = {c: w for c, w in blended.items() if w > 0.001}
+        # ── 关键修复: 只保留target中的股票 ──
+        # 旧持仓中不在target的股票: blended值>0但不应保留在目标中。
+        # 它们在execute时会因target_weight=0而被卖出（受can_trade限制）。
+        blended = {c: w for c, w in blended.items()
+                   if c in target_codes and w > 0.001}
+
         # 重新归一化
         total = sum(blended.values())
         if total > 0:
