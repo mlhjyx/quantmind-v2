@@ -10,6 +10,7 @@
 4. 防洪泛: 同类通知在TTL内不重复
 """
 
+import contextlib
 import logging
 from datetime import datetime
 from typing import Any
@@ -324,6 +325,155 @@ class NotificationService:
             content=dingtalk_content,
             secret=settings.DINGTALK_SECRET,
         )
+
+
+# ────────────────────── Sync Wrappers（给pipeline脚本用） ──────────────────────
+# run_paper_trading.py等同步脚本通过这些函数调用，签名兼容旧版notification_service。
+
+
+def send_alert(
+    level: str,
+    title: str,
+    content: str,
+    webhook_url: str = "",
+    secret: str = "",
+    conn: Any = None,
+) -> bool:
+    """同步告警（兼容旧版接口，给pipeline脚本用）。
+
+    内部通过钉钉直接发送 + 写DB（如有conn）。
+    不走async NotificationService，避免脚本中创建事件循环。
+
+    Args:
+        level: 告警级别 'P0'/'P1'/'P2'。
+        title: 告警标题。
+        content: 详细内容。
+        webhook_url: DingTalk Webhook地址。
+        secret: DingTalk签名密钥。
+        conn: psycopg2同步连接（可选，用于写DB）。
+
+    Returns:
+        DingTalk是否发送成功。
+    """
+    level_emoji = {"P0": "\U0001f534", "P1": "\U0001f7e1", "P2": "\U0001f535"}.get(level, "\u26aa")
+    md = f"### {level_emoji} [{level}] {title}\n\n{content}"
+
+    # 写DB
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO notifications (level, category, market, title, content)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (level, "alert", "astock", title, content),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.warning("[Notify] sync写入DB失败: %s", e)
+            with contextlib.suppress(Exception):
+                conn.rollback()
+
+    # 发送DingTalk
+    return dingtalk.send_markdown_sync(
+        webhook_url=webhook_url,
+        title=f"[{level}] {title}",
+        content=md,
+        secret=secret,
+    )
+
+
+def send_daily_report(
+    trade_date: Any,
+    nav: float,
+    daily_return: float,
+    cum_return: float,
+    position_count: int,
+    is_rebalance: bool,
+    beta: float,
+    buys: list[str],
+    sells: list[str],
+    rejected: list[str],
+    initial_capital: float,
+    webhook_url: str = "",
+    secret: str = "",
+    conn: Any = None,
+) -> bool:
+    """同步每日报告（兼容旧版接口，给pipeline脚本用）。
+
+    Args:
+        trade_date: 交易日期。
+        nav: 净资产。
+        daily_return: 日收益率。
+        cum_return: 累计收益率。
+        position_count: 持仓数。
+        is_rebalance: 是否调仓日。
+        beta: 组合Beta。
+        buys: 买入列表。
+        sells: 卖出列表。
+        rejected: 受限列表。
+        initial_capital: 初始资金。
+        webhook_url: DingTalk Webhook地址。
+        secret: DingTalk签名密钥。
+        conn: psycopg2同步连接。
+
+    Returns:
+        DingTalk是否发送成功。
+    """
+    rebal_text = "**是（调仓）**" if is_rebalance else "否"
+    ret_emoji = "\U0001f4c8" if daily_return >= 0 else "\U0001f4c9"
+
+    lines = [
+        f"### {ret_emoji} Paper Trading {trade_date}",
+        "",
+        "| 指标 | 数值 |",
+        "|------|------|",
+        f"| 调仓 | {rebal_text} |",
+        f"| 持仓 | {position_count}只 |",
+        f"| NAV | \u00a5{nav:,.0f} |",
+        f"| 日收益 | {daily_return:+.2%} |",
+        f"| 累计收益 | {cum_return:+.2%} |",
+        f"| Beta | {beta:.3f} |",
+    ]
+
+    if buys:
+        buy_str = ", ".join(buys[:8])
+        if len(buys) > 8:
+            buy_str += f" +{len(buys) - 8}"
+        lines.append(f"\n**买入({len(buys)})**: {buy_str}")
+
+    if sells:
+        sell_str = ", ".join(sells[:8])
+        if len(sells) > 8:
+            sell_str += f" +{len(sells) - 8}"
+        lines.append(f"\n**卖出({len(sells)})**: {sell_str}")
+
+    if rejected:
+        lines.append(f"\n\u26a0\ufe0f **受限({len(rejected)})**: {', '.join(rejected[:5])}")
+
+    content = "\n".join(lines)
+
+    # 写DB
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO notifications (level, category, market, title, content)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                ("info", "paper_daily", "astock", f"Paper Trading {trade_date}", content),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.warning("[Notify] sync写入DB失败: %s", e)
+            with contextlib.suppress(Exception):
+                conn.rollback()
+
+    # 发送DingTalk
+    return dingtalk.send_markdown_sync(
+        webhook_url=webhook_url,
+        title=f"Paper {trade_date} {daily_return:+.2%}",
+        content=content,
+        secret=secret,
+    )
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:

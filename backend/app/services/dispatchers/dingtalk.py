@@ -98,6 +98,61 @@ async def send_markdown(
         return False
 
 
+def send_markdown_sync(
+    webhook_url: str,
+    title: str,
+    content: str,
+    secret: str = "",
+) -> bool:
+    """同步版Markdown发送（给pipeline脚本用，避免async事件循环）。
+
+    Args:
+        webhook_url: 钉钉Webhook地址。
+        title: 消息标题。
+        content: Markdown格式内容。
+        secret: HMAC签名密钥。
+
+    Returns:
+        是否发送成功。
+    """
+    if not webhook_url:
+        logger.warning("[DingTalk] webhook_url未配置，跳过发送")
+        return False
+
+    url = _build_sign_url(webhook_url, secret) if secret else webhook_url
+
+    payload = {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": title,
+            "text": content,
+        },
+    }
+
+    try:
+        with httpx.Client(timeout=_TIMEOUT) as client:
+            resp = client.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            result = resp.json()
+
+        if result.get("errcode") == 0:
+            logger.info("[DingTalk] sync发送成功: title='%s'", title)
+            return True
+        else:
+            logger.error("[DingTalk] sync返回错误: %s", result)
+            return False
+
+    except httpx.TimeoutException:
+        logger.error("[DingTalk] sync发送超时(%.0f秒): title='%s'", _TIMEOUT, title)
+        return False
+    except Exception as e:
+        logger.error("[DingTalk] sync发送异常: %s", e)
+        return False
+
+
 async def send_text(
     webhook_url: str,
     content: str,

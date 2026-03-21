@@ -11,22 +11,24 @@ import argparse
 import logging
 import sys
 import time
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import generate_report, print_report
 from engines.signal_engine import (
+    PAPER_TRADING_CONFIG,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
     get_rebalance_dates,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +43,8 @@ def load_factor_values(trade_date, conn) -> pd.DataFrame:
     return pd.read_sql(
         """SELECT code, factor_name, neutral_value
            FROM factor_values WHERE trade_date = %s""",
-        conn, params=(trade_date,),
+        conn,
+        params=(trade_date,),
     )
 
 
@@ -59,7 +62,8 @@ def load_universe(trade_date, conn) -> set[str]:
              AND (s.list_date IS NULL OR s.list_date <= %s - INTERVAL '60 days')
              AND COALESCE(db.total_mv, 0) > 100000
         """,
-        conn, params=(trade_date, trade_date),
+        conn,
+        params=(trade_date, trade_date),
     )
     return set(df["code"].tolist())
 
@@ -85,7 +89,8 @@ def load_price_data(start_date, end_date, conn) -> pd.DataFrame:
            WHERE k.trade_date BETWEEN %s AND %s
              AND k.volume > 0
            ORDER BY k.trade_date, k.code""",
-        conn, params=(start_date, end_date),
+        conn,
+        params=(start_date, end_date),
     )
 
 
@@ -97,7 +102,8 @@ def load_benchmark(start_date, end_date, conn) -> pd.DataFrame:
            WHERE index_code = '000300.SH'
              AND trade_date BETWEEN %s AND %s
            ORDER BY trade_date""",
-        conn, params=(start_date, end_date),
+        conn,
+        params=(start_date, end_date),
     )
 
 
@@ -105,8 +111,12 @@ def main():
     parser = argparse.ArgumentParser(description="QuantMind V2 回测")
     parser.add_argument("--start", type=str, required=True)
     parser.add_argument("--end", type=str, required=True)
-    parser.add_argument("--top-n", type=int, default=20)
-    parser.add_argument("--freq", choices=["weekly", "biweekly", "monthly"], default="biweekly")
+    parser.add_argument("--top-n", type=int, default=PAPER_TRADING_CONFIG.top_n)
+    parser.add_argument(
+        "--freq",
+        choices=["weekly", "biweekly", "monthly"],
+        default=PAPER_TRADING_CONFIG.rebalance_freq,
+    )
     parser.add_argument("--capital", type=float, default=1_000_000)
     parser.add_argument("--slippage", type=float, default=10.0, help="滑点(bps)")
     args = parser.parse_args()
@@ -119,6 +129,7 @@ def main():
 
     # 1. 配置
     sig_config = SignalConfig(
+        factor_names=PAPER_TRADING_CONFIG.factor_names,
         top_n=args.top_n,
         rebalance_freq=args.freq,
     )
@@ -167,7 +178,7 @@ def main():
             prev_weights = target
 
         if (i + 1) % 20 == 0:
-            logger.info(f"  信号 [{i+1}/{len(rebalance_dates)}] {rd}: {len(target)}只")
+            logger.info(f"  信号 [{i + 1}/{len(rebalance_dates)}] {rd}: {len(target)}只")
 
     logger.info(f"信号生成完成: {len(target_portfolios)}个调仓日")
 

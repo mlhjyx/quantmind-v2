@@ -56,7 +56,7 @@ from engines.signal_engine import (
     PortfolioBuilder,
     SignalComposer,
 )
-from services.notification_service import send_alert, send_daily_report
+from app.services.notification_service import send_alert, send_daily_report
 from health_check import run_health_check
 from run_backtest import load_factor_values, load_industry, load_universe
 

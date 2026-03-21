@@ -1,12 +1,17 @@
-"""通知服务 — DingTalk Webhook + DB记录。
+"""[DEPRECATED] 旧版通知服务 — 已迁移到 app.services.notification_service。
 
-支持:
-- 每日Paper Trading报告
-- 健康预检失败告警
-- 自定义P0/P1/P2告警
+请使用:
+    from app.services.notification_service import send_alert, send_daily_report
 
-DingTalk签名方式: HMAC-SHA256 (如果配置了DINGTALK_SECRET)
+本文件保留仅为向后兼容，后续版本将删除。
 """
+
+import warnings as _warnings
+_warnings.warn(
+    "services.notification_service 已废弃，请使用 app.services.notification_service",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import base64
 import hashlib
