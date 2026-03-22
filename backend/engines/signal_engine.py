@@ -37,6 +37,7 @@ FACTOR_DIRECTION = {
     "ep_ratio": 1,           # 高E/P好
     "price_volume_corr_20": -1,  # 低价量相关好
     "high_low_range_20": -1,     # 低振幅好
+    "mf_momentum_divergence": -1,  # 资金流动量背离: 值越负=背离越大→信号越强
 }
 
 
@@ -73,6 +74,28 @@ PAPER_TRADING_CONFIG = SignalConfig(
         "reversal_20",
         "amihud_20",
         "bp_ratio",
+    ],
+    top_n=15,
+    weight_method="equal",
+    rebalance_freq="monthly",
+    industry_cap=0.25,
+    turnover_cap=0.50,
+)
+
+
+# v1.2候选配置: 6因子 = 基线5 + mf_momentum_divergence (资金流维度)
+# 不替换v1.1(PAPER_TRADING_CONFIG)，v1.1继续Paper Trading跑
+# mf_momentum_divergence IC=9.1%，与基线5因子正交（资金流-价格背离维度）
+V12_CONFIG = SignalConfig(
+    factor_names=[
+        # 基线5因子（与PAPER_TRADING_CONFIG一致）
+        "turnover_mean_20",
+        "volatility_20",
+        "reversal_20",
+        "amihud_20",
+        "bp_ratio",
+        # v1.2新增: 资金流维度
+        "mf_momentum_divergence",
     ],
     top_n=15,
     weight_method="equal",
