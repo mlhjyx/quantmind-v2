@@ -28,6 +28,19 @@
 - **数据依赖**: 方向1需fina_indicator已有数据，方向2需Sprint 1.3新增stk_holdernumber接口
 - **状态**: 📋 BACKLOG，Sprint 1.3数据源扩展时推进
 
+### [Team Lead] Sprint 1.3方向+研究报告#2预告 (2026-03-22)
+
+**Sprint 1.3核心任务**：
+1. v1.2因子升级(+mf_divergence IC=9.1%)→回测确认Sharpe提升
+2. strategy从多策略→调仓/风控/执行优化
+3. L3日频风控实现(5日>-5%)
+4. alpha_miner继续挖资金流维度
+
+**研究报告#2预告（用户下周产出）**：
+- 课题1：交易执行优化(TWAP/VWAP) → 服务Sprint 1.5 miniQMT
+- 课题2：多重检验校正(BH-FDR) → 服务因子审批流程优化
+- 课题3：LightGBM特征工程 → 服务Sprint 1.8 ML模型
+
 ### [risk] 2025-04-07 关税冲击事件
 
 - **事件**: 单日组合亏损-13.15%（20只等权），触发L2熔断
