@@ -14,9 +14,13 @@
     python scripts/analyze_moneyflow_factors.py
 """
 
+import functools
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+# 强制flush输出
+print = functools.partial(print, flush=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
@@ -307,24 +311,24 @@ def main():
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*), MIN(trade_date), MAX(trade_date) FROM moneyflow_daily")
     n_mf, min_d, max_d = cur.fetchone()
-    print(f"moneyflow_daily: {n_mf:,}行 ({min_d} ~ {max_d})")
+    print(f"moneyflow_daily: {n_mf:,}行 ({min_d} ~ {max_d})", flush=True)
 
     if n_mf < 100_000:
         print("数据量不足，退出")
         conn.close()
         return
 
-    # 分析日期: 每周最后一个交易日 (2021-06 ~ 2025-12, 给20日rolling留buffer)
+    # 分析日期: 每月最后一个交易日 (2021-06 ~ 2025-12, 给20日rolling留buffer)
     cur.execute(
-        """SELECT DISTINCT ON (DATE_TRUNC('week', trade_date))
+        """SELECT DISTINCT ON (DATE_TRUNC('month', trade_date))
                   trade_date
            FROM trading_calendar
            WHERE market = 'astock' AND is_trading_day = TRUE
              AND trade_date >= '2021-06-01' AND trade_date <= '2025-12-31'
-           ORDER BY DATE_TRUNC('week', trade_date) DESC, trade_date DESC"""
+           ORDER BY DATE_TRUNC('month', trade_date) DESC, trade_date DESC"""
     )
     analysis_dates = sorted([r[0] for r in cur.fetchall()])
-    print(f"分析日期: {len(analysis_dates)}周 ({analysis_dates[0]} ~ {analysis_dates[-1]})")
+    print(f"分析日期: {len(analysis_dates)}月 ({analysis_dates[0]} ~ {analysis_dates[-1]})", flush=True)
 
     # 1. 加载数据（从2021-01开始，给rolling留buffer）
     print("\n[1] 加载moneyflow数据...")
