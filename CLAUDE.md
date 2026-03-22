@@ -4,6 +4,48 @@
 
 ---
 
+## ⚠️ Compaction保护（触发compaction时必须保留以下信息）
+
+```
+当前阶段: Phase 1, Sprint 1.2b
+Paper Trading: v1.1已启动(2026-03-23), 60天倒计时
+v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/bp_ratio) + Top15 + 月度 + 行业25%
+基线Sharpe: 1.037, MDD: -39.7%, 毕业标准: Sharpe≥0.73, MDD<35%
+团队: 10+1人(quant/arch/data/qa/factor/strategy/risk/frontend/ml/alpha_miner + Team Lead)
+已启用: quant/arch/data/qa/factor/strategy/risk/alpha_miner (8人)
+未启用: frontend(Phase 1B)/ml(Phase 1C)
+阻塞项: 无
+待决策: 候选4(大盘低波)OOS验证中
+关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md
+```
+
+**compaction自定义指令**: 保留所有因子IC数据、配置变更记录、bug根因分析、§3.6.3决策和理由。可压缩：具体代码实现讨论、agent间中间对话、已解决的排查过程。
+
+---
+
+## 上下文管理制度
+
+### 操作规则（每次会话/Sprint/compaction时执行）
+
+**每次会话开始**：读PROGRESS.md + TodoWrite列表恢复状态，确认活跃agent列表
+
+**每天结束**：更新PROGRESS.md（任务状态+阻塞项），上下文>60%时主动`/compact`
+
+**Sprint结束**：`/clear`清空上下文，归档到PROGRESS.md，新Sprint新会话
+
+**Agent管理**：
+- 同时spawn不超过4个agent（token成本+管理复杂度）
+- 轻量任务用subagent而非full agent
+- spawn prompt精简到最小必要信息，不让每个agent读整个CLAUDE.md
+- qa/data等不需要最强推理的角色可用Sonnet模型
+
+**防compaction丢失**：
+- 关键决策写入文件（LESSONS_LEARNED/strategy_configs/param_change_log），不依赖对话记忆
+- 每次compaction后自检：还知道当前Sprint？还知道有哪些agent？不知道就读文件恢复
+- CLAUDE.md顶部compaction保护段落必须随Sprint进展更新
+
+---
+
 ## 项目概述
 
 QuantMind V2 是个人A股+外汇绝对收益量化交易系统，完全从零重写（V1已废弃）。
