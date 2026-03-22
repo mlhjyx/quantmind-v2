@@ -38,6 +38,11 @@ FACTOR_DIRECTION = {
     "price_volume_corr_20": -1,  # 低价量相关好
     "high_low_range_20": -1,     # 低振幅好
     "mf_momentum_divergence": -1,  # 资金流动量背离: 值越负=背离越大→信号越强
+    # ---- v1.2 新增因子 ----
+    "price_level_factor": -1,      # -ln(close), 方向-1: 低价股偏好（因子本身已取负，direction再取反→选低价）
+    "relative_volume_20": -1,      # 相对成交量, 方向-1: 低异常放量好
+    "dv_ttm": 1,                   # 股息率TTM, 方向+1: 高股息好
+    "turnover_surge_ratio": -1,    # 换手率突增比, 方向-1: 低突增好
 }
 
 

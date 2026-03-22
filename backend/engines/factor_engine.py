@@ -101,6 +101,24 @@ def calc_hl_range(
     return daily_range.rolling(window, min_periods=max(window // 2, 5)).mean()
 
 
+def calc_price_level(close: pd.Series) -> pd.Series:
+    """价格水平因子: -ln(close)。用原始close（非复权），反映价格分层偏好。"""
+    return -np.log(close.clip(lower=1e-12))
+
+
+def calc_relative_volume(volume: pd.Series, window: int) -> pd.Series:
+    """相对成交量: volume_today / mean(volume, Nd)。"""
+    vol_ma = volume.rolling(window, min_periods=max(window // 2, 5)).mean()
+    return volume / (vol_ma + 1e-12)
+
+
+def calc_turnover_surge_ratio(turnover_rate: pd.Series) -> pd.Series:
+    """换手率突增比: mean(turnover_rate, 5d) / mean(turnover_rate, 20d)。"""
+    ma5 = turnover_rate.rolling(5, min_periods=3).mean()
+    ma20 = turnover_rate.rolling(20, min_periods=10).mean()
+    return ma5 / (ma20 + 1e-12)
+
+
 # ============================================================
 # 因子注册表
 # ============================================================
@@ -158,6 +176,17 @@ PHASE0_FULL_FACTORS = {
         lambda g: calc_hl_range(g["adj_high"], g["adj_low"], 20)
     ).droplevel(0),
     # northbound_pct: Phase 1 (需要额外数据源 AKShare)
+    # ---- v1.2 新增因子 ----
+    "price_level_factor": lambda df: df.groupby("code")["close"].transform(
+        lambda x: calc_price_level(x)
+    ),
+    "relative_volume_20": lambda df: df.groupby("code")["volume"].transform(
+        lambda x: calc_relative_volume(x.astype(float), 60)
+    ),
+    "dv_ttm": lambda df: df["dv_ttm"],  # daily_basic直接取值
+    "turnover_surge_ratio": lambda df: df.groupby("code")["turnover_rate"].transform(
+        lambda x: calc_turnover_surge_ratio(x)
+    ),
 }
 
 
@@ -380,6 +409,7 @@ def load_daily_data(
             db.total_mv,
             db.pb,
             db.pe_ttm,
+            db.dv_ttm,
             s.industry_sw1
         FROM klines_daily k
         JOIN latest_adj la ON k.code = la.code
@@ -691,6 +721,7 @@ def load_bulk_data(
             db.total_mv,
             db.pb,
             db.pe_ttm,
+            db.dv_ttm,
             s.industry_sw1
         FROM klines_daily k
         JOIN latest_adj la ON k.code = la.code
