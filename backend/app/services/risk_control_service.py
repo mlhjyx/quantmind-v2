@@ -742,18 +742,36 @@ class RiskControlService:
         高波时vol_ratio > 1, 阈值放宽(更难触发熔断, 允许更大波动);
         低波时vol_ratio < 1, 阈值收紧(更容易触发, 保护低波时期收益)。
 
+        风控保守原则: 当波动率数据缺失或异常时, 返回vol_clip_max(最保守值),
+        使阈值放到最宽, 等价于"不确定就假设高波动"。
+        宁可误杀(多触发熔断)不可漏杀(漏掉真正的风险)。
+
         Args:
             metrics: 当日风控指标, 需包含portfolio_vol_20d。
 
         Returns:
             vol_ratio, 范围[vol_clip_min, vol_clip_max]。
-            如果portfolio_vol_20d未提供, 返回1.0(不做调整)。
+            如果portfolio_vol_20d缺失或<=0, 返回vol_clip_max(保守假设)。
         """
         if metrics.portfolio_vol_20d is None or metrics.portfolio_vol_20d <= 0:
-            return 1.0
+            logger.warning(
+                "[RiskControl] portfolio_vol_20d缺失或非正(值=%s), "
+                "按保守假设返回vol_clip_max=%.2f",
+                metrics.portfolio_vol_20d,
+                self.thresholds.vol_clip_max,
+            )
+            return self.thresholds.vol_clip_max
 
         if self.thresholds.vol_baseline <= 0:
-            return 1.0
+            return self.thresholds.vol_clip_max
+
+        # 极大值告警: 年化波动率>100%属于异常, 记录警告
+        if metrics.portfolio_vol_20d > 1.0:
+            logger.warning(
+                "[RiskControl] portfolio_vol_20d=%.4f (年化>100%%), 波动率异常偏高, "
+                "请检查数据质量或市场是否出现极端行情",
+                metrics.portfolio_vol_20d,
+            )
 
         raw_ratio = metrics.portfolio_vol_20d / self.thresholds.vol_baseline
         return max(
