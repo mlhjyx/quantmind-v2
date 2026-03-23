@@ -14,7 +14,7 @@ from uuid import UUID
 import numpy as np
 import pandas as pd
 
-from engines.backtest_engine import BacktestConfig, Fill, SimBroker
+from engines.backtest_engine import BacktestConfig, Fill, PendingOrder, SimBroker
 
 logger = logging.getLogger(__name__)
 
@@ -180,8 +180,9 @@ class PaperBroker:
         target_weights: dict[str, float],
         trade_date: date,
         price_data: pd.DataFrame,
-    ) -> list[Fill]:
-        """执行调仓：先卖后买。
+        signal_date: Optional[date] = None,
+    ) -> tuple[list[Fill], list[PendingOrder]]:
+        """执行调仓：先卖后买，封板记录为PendingOrder。
 
         复用SimpleBacktester._rebalance()的逻辑，
         但直接操作self.broker（状态化，非一次性）。
@@ -190,9 +191,10 @@ class PaperBroker:
             target_weights: {code: weight} 目标权重
             trade_date: 执行日期
             price_data: 当日全市场价格数据
+            signal_date: 信号生成日期（用于PendingOrder记录）
 
         Returns:
-            成交记录列表
+            (成交记录列表, 新增的pending_orders列表)
         """
         assert self.broker is not None, "必须先调用load_state()"
 
@@ -202,7 +204,7 @@ class PaperBroker:
         day_data = price_data[price_data["trade_date"] == trade_date]
         if day_data.empty:
             logger.warning(f"[PaperBroker] {trade_date} 无价格数据")
-            return []
+            return [], []
 
         price_idx = {}
         today_close = {}
@@ -212,16 +214,117 @@ class PaperBroker:
 
         portfolio_value = self.broker.get_portfolio_value(today_close)
 
-        # 复用_rebalance逻辑
-        fills = self._do_rebalance(
-            target_weights, portfolio_value, trade_date, price_idx, today_close
+        # 执行调仓（封板记录为pending）
+        fills, new_pending = self._do_rebalance(
+            target_weights, portfolio_value, trade_date, price_idx, today_close,
+            signal_date or trade_date,
         )
 
         logger.info(
             f"[PaperBroker] 调仓完成: {len(fills)}笔成交, "
+            f"{len(new_pending)}只封板待补, "
             f"NAV={self.broker.get_portfolio_value(today_close):.0f}"
         )
-        return fills
+        return fills, new_pending
+
+    def process_pending_orders(
+        self,
+        pending_orders: list[PendingOrder],
+        trade_date: date,
+        price_data: pd.DataFrame,
+        next_rebal_date: Optional[date] = None,
+        conn=None,
+    ) -> tuple[list[Fill], list[PendingOrder]]:
+        """处理封板补单。T+1日尝试买入。
+
+        Args:
+            pending_orders: 待处理的pending_orders列表
+            trade_date: 当日日期（应为exec_date + 1交易日）
+            price_data: 当日价格数据
+            next_rebal_date: 下次调仓日（用于判断距离）
+            conn: 数据库连接（用于计算交易日间隔）
+
+        Returns:
+            (成交列表, 更新后的pending_orders列表)
+        """
+        assert self.broker is not None, "必须先调用load_state()"
+
+        self.broker.new_day()
+
+        day_data = price_data[price_data["trade_date"] == trade_date]
+        if day_data.empty:
+            logger.warning(f"[PaperBroker] 补单: {trade_date} 无价格数据")
+            return [], pending_orders
+
+        price_idx = {}
+        today_close = {}
+        for _, row in day_data.iterrows():
+            price_idx[(row["code"], trade_date)] = row
+            today_close[row["code"]] = row["close"]
+
+        # 检查距下次调仓是否太近
+        min_days = 5
+        if next_rebal_date and conn:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT COUNT(*) FROM trading_calendar
+                   WHERE market='astock' AND is_trading_day=TRUE
+                   AND trade_date > %s AND trade_date <= %s""",
+                (trade_date, next_rebal_date),
+            )
+            days_to_next = cur.fetchone()[0]
+            if days_to_next <= min_days:
+                for po in pending_orders:
+                    if po.status == "pending":
+                        po.status = "cancelled"
+                        po.cancel_reason = f"too_close_to_next_rebalance({days_to_next}d)"
+                logger.info(f"[PaperBroker] 补单: 距下次调仓{days_to_next}d, 全部取消")
+                return [], pending_orders
+
+        # 筛选可执行的pending
+        actionable = [po for po in pending_orders if po.status == "pending"]
+        actionable.sort(key=lambda x: -x.original_score)
+
+        max_retry = 3
+        retry_weight_cap = 0.10
+        to_execute = actionable[:max_retry]
+
+        for po in actionable[max_retry:]:
+            po.status = "cancelled"
+            po.cancel_reason = "exceeded_max_retry_count"
+
+        fills = []
+        for po in to_execute:
+            row = price_idx.get((po.code, trade_date))
+            if row is None:
+                po.status = "cancelled"
+                po.cancel_reason = "no_price_data"
+                continue
+
+            if not self.broker.can_trade(po.code, "buy", row):
+                po.status = "cancelled"
+                po.cancel_reason = "still_limit_up_or_suspended"
+                continue
+
+            portfolio_value = self.broker.get_portfolio_value(today_close)
+            target_amount = portfolio_value * min(po.target_weight, retry_weight_cap)
+
+            open_price = row.get("open", 0)
+            if open_price <= 0 or target_amount < open_price * self.broker.config.lot_size:
+                po.status = "cancelled"
+                po.cancel_reason = "insufficient_for_one_lot"
+                continue
+
+            fill = self.broker.execute_buy(po.code, min(target_amount, self.broker.cash), row)
+            if fill:
+                fills.append(fill)
+                po.status = "filled"
+                logger.info(f"[PaperBroker] 补单成功: {po.code} {fill.shares}股")
+            else:
+                po.status = "cancelled"
+                po.cancel_reason = "insufficient_cash"
+
+        return fills, pending_orders
 
     def _do_rebalance(
         self,
@@ -230,10 +333,12 @@ class PaperBroker:
         exec_date: date,
         price_idx: dict,
         today_close: dict,
-    ) -> list[Fill]:
-        """先卖后买调仓（从SimpleBacktester._rebalance复制，适配PaperBroker）。"""
+        signal_date: Optional[date] = None,
+    ) -> tuple[list[Fill], list[PendingOrder]]:
+        """先卖后买调仓，封板记录为PendingOrder。"""
         broker = self.broker
         fills = []
+        new_pending = []
         lot_size = broker.config.lot_size
 
         # 1. 计算目标股数
@@ -260,29 +365,37 @@ class PaperBroker:
                 if fill:
                     fills.append(fill)
 
-        # 3. 买入（按金额降序）
+        # 3. 买入（封板记录为pending）
         buy_orders = []
         for code, target_s in target_shares.items():
             curr_shares = broker.holdings.get(code, 0)
             if target_s > curr_shares:
                 buy_amount = (target_s - curr_shares) * today_close.get(code, 0)
-                buy_orders.append((code, buy_amount))
+                weight = target.get(code, 0)
+                buy_orders.append((code, buy_amount, weight))
         buy_orders.sort(key=lambda x: -x[1])
 
-        for code, buy_amount in buy_orders:
+        for code, buy_amount, weight in buy_orders:
             if broker.cash < buy_amount * 0.1:
                 break
             row = price_idx.get((code, exec_date))
             if row is None:
                 continue
             if not broker.can_trade(code, "buy", row):
-                logger.debug(f"[{exec_date}] {code} 买入受限")
+                logger.debug(f"[{exec_date}] {code} 买入封板，加入补单队列")
+                new_pending.append(PendingOrder(
+                    code=code,
+                    signal_date=signal_date or exec_date,
+                    exec_date=exec_date,
+                    target_weight=weight,
+                    original_score=buy_amount,
+                ))
                 continue
             fill = broker.execute_buy(code, min(buy_amount, broker.cash), row)
             if fill:
                 fills.append(fill)
 
-        return fills
+        return fills, new_pending
 
     def get_current_nav(self, today_close: dict[str, float]) -> float:
         """获取当前NAV。"""

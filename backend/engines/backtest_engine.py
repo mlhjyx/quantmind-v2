@@ -56,6 +56,33 @@ class Fill:
 
 
 @dataclass
+class PendingOrder:
+    """封板未成交的补单记录（回测引擎内部使用）。
+
+    仅买入方向。涨停封板时创建，T+1日尝试补单，最多补1次。
+    """
+    code: str
+    signal_date: date
+    exec_date: date          # 封板发生日
+    target_weight: float     # 目标权重
+    original_score: float    # 原始composite score（排序用）
+    direction: str = "buy"
+    status: str = "pending"  # pending / filled / cancelled
+    cancel_reason: str = ""
+
+
+@dataclass
+class PendingOrderStats:
+    """补单统计。"""
+    total_pending: int = 0           # 总封板次数
+    filled_count: int = 0            # 补单成功次数
+    cancelled_count: int = 0         # 放弃次数
+    fill_rate: float = 0.0           # 补单成功率 = filled / total
+    avg_retry_return_1d: float = 0.0 # 补单股票T+1日平均涨幅
+    cancel_reasons: dict = field(default_factory=dict)  # {reason: count}
+
+
+@dataclass
 class BacktestResult:
     """回测结果。"""
     daily_nav: pd.Series         # date → NAV
@@ -66,6 +93,7 @@ class BacktestResult:
     holdings_history: dict       # date → {code: shares}
     config: BacktestConfig
     turnover_series: pd.Series   # date → turnover ratio
+    pending_order_stats: Optional[PendingOrderStats] = None
 
 
 # ============================================================
@@ -251,13 +279,18 @@ class SimpleBacktester:
 
     流程:
     1. 遍历每个交易日
-    2. 在调仓日: 读取目标持仓 → 先卖后买 → 记录成交
-    3. 非调仓日: 更新NAV
-    4. 计算绩效指标
+    2. 处理封板补单（如果有pending_orders）
+    3. 在调仓日: 读取目标持仓 → 先卖后买 → 记录成交（封板记录为pending）
+    4. 非调仓日: 更新NAV
+    5. 计算绩效指标
     """
 
     def __init__(self, config: BacktestConfig):
         self.config = config
+        self.pending_orders: list[PendingOrder] = []
+        self.max_retry_orders: int = 3         # 单次调仓最多补3只
+        self.retry_weight_cap: float = 0.10    # 单只补单上限10%
+        self.min_days_to_next_rebal: int = 5   # 距下次调仓<5天不补
 
     def run(
         self,
@@ -309,9 +342,17 @@ class SimpleBacktester:
         holdings_history = {}
         turnover_dates = {}
         prev_weights = {}
+        self.pending_orders = []  # 重置pending_orders
 
         for i, td in enumerate(all_dates):
             broker.new_day()
+
+            # ===== 处理封板补单 =====
+            if self.pending_orders:
+                self._process_pending_orders(
+                    broker, td, price_idx, daily_close.get(td, {}),
+                    all_dates, exec_map, trades
+                )
 
             # 检查是否是执行日
             if td in exec_map:
@@ -321,11 +362,13 @@ class SimpleBacktester:
                 # 计算当前组合市值
                 portfolio_value = broker.get_portfolio_value(daily_close.get(td, {}))
 
-                # 先卖后买
-                day_fills = self._rebalance(
-                    broker, target, portfolio_value, td, price_idx, daily_close.get(td, {})
+                # 先卖后买（封板记录为pending）
+                day_fills, new_pending = self._rebalance_with_pending(
+                    broker, target, portfolio_value, td, price_idx,
+                    daily_close.get(td, {}), signal_date
                 )
                 trades.extend(day_fills)
+                self.pending_orders.extend(new_pending)
 
                 # 记录换手率
                 new_weights = {}
@@ -362,6 +405,9 @@ class SimpleBacktester:
 
         turnover = pd.Series(turnover_dates).sort_index()
 
+        # 补单统计
+        po_stats = self._calc_pending_order_stats(price_idx)
+
         return BacktestResult(
             daily_nav=nav,
             daily_returns=daily_ret,
@@ -371,6 +417,7 @@ class SimpleBacktester:
             holdings_history=holdings_history,
             config=self.config,
             turnover_series=turnover,
+            pending_order_stats=po_stats,
         )
 
     def _rebalance(
@@ -382,8 +429,30 @@ class SimpleBacktester:
         price_idx: dict,
         today_close: dict,
     ) -> list[Fill]:
-        """执行调仓: 先卖后买。"""
+        """执行调仓: 先卖后买（向后兼容，不记录pending）。"""
+        fills, _ = self._rebalance_with_pending(
+            broker, target, portfolio_value, exec_date, price_idx,
+            today_close, exec_date,
+        )
+        return fills
+
+    def _rebalance_with_pending(
+        self,
+        broker: SimBroker,
+        target: dict[str, float],
+        portfolio_value: float,
+        exec_date: date,
+        price_idx: dict,
+        today_close: dict,
+        signal_date: date,
+    ) -> tuple[list[Fill], list[PendingOrder]]:
+        """执行调仓: 先卖后买，封板记录为PendingOrder。
+
+        Returns:
+            (成交列表, 新增pending_orders列表)
+        """
         fills = []
+        new_pending = []
 
         # 1. 计算目标持仓股数
         target_shares = {}
@@ -413,28 +482,173 @@ class SimpleBacktester:
             if fill:
                 fills.append(fill)
 
-        # 3. 买入 (在目标中但未持有或需加仓的, 按score降序)
+        # 3. 买入 (封板记录为pending)
         buy_orders = []
         for code, target_s in target_shares.items():
             curr_shares = broker.holdings.get(code, 0)
             if target_s > curr_shares:
                 buy_amount = (target_s - curr_shares) * today_close.get(code, 0)
-                buy_orders.append((code, buy_amount))
+                weight = target.get(code, 0)
+                buy_orders.append((code, buy_amount, weight))
 
         # 按金额降序买入(优先买最大权重)
         buy_orders.sort(key=lambda x: -x[1])
 
-        for code, buy_amount in buy_orders:
+        for code, buy_amount, weight in buy_orders:
             if broker.cash < buy_amount * 0.1:  # 现金太少停止买入
                 break
             row = price_idx.get((code, exec_date))
             if row is None:
                 continue
+
             if not broker.can_trade(code, "buy", row):
-                logger.debug(f"[{exec_date}] {code} 买入受限(封板/停牌)")
+                # ===== 封板: 记录为pending_order =====
+                logger.debug(f"[{exec_date}] {code} 买入封板，加入补单队列")
+                new_pending.append(PendingOrder(
+                    code=code,
+                    signal_date=signal_date,
+                    exec_date=exec_date,
+                    target_weight=weight,
+                    original_score=buy_amount,  # 用金额排序（等权下weight相同）
+                ))
                 continue
+
             fill = broker.execute_buy(code, min(buy_amount, broker.cash), row)
             if fill:
                 fills.append(fill)
 
-        return fills
+        return fills, new_pending
+
+    def _process_pending_orders(
+        self,
+        broker: SimBroker,
+        today: date,
+        price_idx: dict,
+        today_close: dict,
+        all_dates: list[date],
+        exec_map: dict[date, date],
+        trades_list: list[Fill],
+    ) -> None:
+        """处理封板补单。T+1日尝试买入。
+
+        规则（SPRINT_1_3B_STRATEGY_DESIGN.md §2.2）:
+        - 仅买入方向
+        - 最多补1次（T+1日尝试，失败放弃）
+        - 距下次调仓<5天不补
+        - 单次最多补3只
+        - 单只不超过组合市值10%
+        """
+        actionable = []
+        today_idx = all_dates.index(today) if today in all_dates else -1
+
+        for po in self.pending_orders:
+            if po.status != "pending":
+                continue
+
+            # 找到exec_date的下一个交易日作为retry_date
+            retry_date = None
+            for d in all_dates:
+                if d > po.exec_date:
+                    retry_date = d
+                    break
+
+            if retry_date is None or retry_date != today:
+                # 不是今天该处理的
+                if retry_date is not None and today > retry_date:
+                    po.status = "cancelled"
+                    po.cancel_reason = "expired"
+                continue
+
+            # 检查距下次调仓是否太近
+            next_rebal_dates = [d for d in exec_map.keys() if d > today]
+            if next_rebal_dates:
+                next_rebal = min(next_rebal_dates)
+                next_rebal_idx = all_dates.index(next_rebal) if next_rebal in all_dates else len(all_dates)
+                days_to_next = next_rebal_idx - today_idx
+                if days_to_next <= self.min_days_to_next_rebal:
+                    po.status = "cancelled"
+                    po.cancel_reason = f"too_close_to_next_rebalance({days_to_next}d)"
+                    continue
+
+            actionable.append(po)
+
+        # 按original_score降序，最多补3只
+        actionable.sort(key=lambda x: -x.original_score)
+        to_execute = actionable[:self.max_retry_orders]
+
+        # 超出数量上限的标记取消
+        for po in actionable[self.max_retry_orders:]:
+            po.status = "cancelled"
+            po.cancel_reason = "exceeded_max_retry_count"
+
+        for po in to_execute:
+            row = price_idx.get((po.code, today))
+            if row is None:
+                po.status = "cancelled"
+                po.cancel_reason = "no_price_data"
+                continue
+
+            if not broker.can_trade(po.code, "buy", row):
+                po.status = "cancelled"
+                po.cancel_reason = "still_limit_up_or_suspended"
+                continue
+
+            # 按当前组合市值重算目标金额
+            portfolio_value = broker.get_portfolio_value(today_close)
+            target_amount = portfolio_value * min(po.target_weight, self.retry_weight_cap)
+
+            # 检查能否买入1手
+            open_price = row.get("open", 0)
+            if open_price <= 0 or target_amount < open_price * self.config.lot_size:
+                po.status = "cancelled"
+                po.cancel_reason = "insufficient_for_one_lot"
+                continue
+
+            fill = broker.execute_buy(po.code, min(target_amount, broker.cash), row)
+            if fill:
+                trades_list.append(fill)
+                po.status = "filled"
+                logger.debug(f"[{today}] 补单成功: {po.code} {fill.shares}股")
+            else:
+                po.status = "cancelled"
+                po.cancel_reason = "insufficient_cash"
+
+    def _calc_pending_order_stats(self, price_idx: dict) -> PendingOrderStats:
+        """计算补单统计。"""
+        stats = PendingOrderStats()
+        if not self.pending_orders:
+            return stats
+
+        stats.total_pending = len(self.pending_orders)
+        stats.filled_count = sum(1 for po in self.pending_orders if po.status == "filled")
+        stats.cancelled_count = sum(1 for po in self.pending_orders if po.status == "cancelled")
+        stats.fill_rate = (
+            stats.filled_count / stats.total_pending
+            if stats.total_pending > 0 else 0.0
+        )
+
+        # cancel_reasons统计
+        for po in self.pending_orders:
+            if po.status == "cancelled" and po.cancel_reason:
+                stats.cancel_reasons[po.cancel_reason] = (
+                    stats.cancel_reasons.get(po.cancel_reason, 0) + 1
+                )
+
+        # 补单股票T+1日平均涨幅（衡量追涨风险）
+        retry_returns = []
+        for po in self.pending_orders:
+            if po.status == "filled":
+                row = price_idx.get((po.code, po.exec_date))
+                if row is not None:
+                    pre_close = row.get("close", 0)
+                    # 找retry_date的close
+                    # retry_date = exec_date + 1 trading day，用open近似
+                    open_price = row.get("open", 0)
+                    if pre_close > 0 and open_price > 0:
+                        retry_returns.append(open_price / pre_close - 1)
+
+        stats.avg_retry_return_1d = (
+            float(np.mean(retry_returns)) if retry_returns else 0.0
+        )
+
+        return stats

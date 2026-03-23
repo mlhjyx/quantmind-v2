@@ -47,7 +47,7 @@ import pandas as pd
 
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
-from engines.backtest_engine import Fill
+from engines.backtest_engine import Fill, PendingOrder
 from engines.beta_hedge import calc_portfolio_beta  # apply_beta_hedge removed: A股无做空工具
 from engines.factor_engine import compute_daily_factors, save_daily_factors
 from engines.paper_broker import PaperBroker
@@ -775,6 +775,28 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                                    WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
                             conn.commit()
 
+        # ── Step 5.96: 补单检查（封板未成交T+1日补单）──
+        # 读取pending_orders（scheduler_task_log中status='pending'的封板记录）
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT result_json FROM scheduler_task_log
+               WHERE task_name = 'pending_buy_orders' AND status = 'pending'
+               ORDER BY created_at DESC LIMIT 1"""
+        )
+        pending_row = cur.fetchone()
+        saved_pending: list[PendingOrder] = []
+        if pending_row and pending_row[0]:
+            pending_data = json.loads(pending_row[0]) if isinstance(pending_row[0], str) else pending_row[0]
+            for po_dict in pending_data.get("orders", []):
+                saved_pending.append(PendingOrder(
+                    code=po_dict["code"],
+                    signal_date=datetime.strptime(po_dict["signal_date"], "%Y-%m-%d").date(),
+                    exec_date=datetime.strptime(po_dict["exec_date"], "%Y-%m-%d").date(),
+                    target_weight=po_dict["target_weight"],
+                    original_score=po_dict.get("original_score", 0),
+                ))
+            logger.info(f"[Step5.96] 发现{len(saved_pending)}只封板待补单")
+
         # ── Step 6: 执行调仓 ──
         paper_broker = PaperBroker(
             strategy_id=settings.PAPER_STRATEGY_ID,
@@ -783,15 +805,81 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
         paper_broker.load_state(conn)
 
         fills: list[Fill] = []
+        new_pending: list[PendingOrder] = []
         beta = 0.0
+
+        # 先处理补单（在调仓之前，用闲置现金）
+        if saved_pending:
+            # 获取下次调仓日用于距离检查
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT MIN(trade_date) FROM trading_calendar
+                   WHERE market = 'astock' AND is_trading_day = TRUE
+                     AND trade_date > %s
+                     AND trade_date = (
+                         SELECT MAX(trade_date) FROM trading_calendar
+                         WHERE market = 'astock' AND is_trading_day = TRUE
+                           AND DATE_TRUNC('month', trade_date) = DATE_TRUNC('month',
+                               (SELECT MIN(trade_date) FROM trading_calendar
+                                WHERE market='astock' AND is_trading_day=TRUE
+                                AND trade_date > %s))
+                     )""",
+                (exec_date, exec_date),
+            )
+            next_rebal_row = cur.fetchone()
+            next_rebal_date = next_rebal_row[0] if next_rebal_row else None
+
+            retry_fills, updated_pending = paper_broker.process_pending_orders(
+                saved_pending, exec_date, price_data,
+                next_rebal_date=next_rebal_date, conn=conn,
+            )
+            fills.extend(retry_fills)
+
+            filled = [po for po in updated_pending if po.status == "filled"]
+            cancelled = [po for po in updated_pending if po.status == "cancelled"]
+            logger.info(
+                f"[Step5.96] 补单结果: {len(filled)}成功, {len(cancelled)}取消"
+            )
+            for po in cancelled:
+                logger.info(f"  取消: {po.code} 原因={po.cancel_reason}")
+
+            # 更新pending状态
+            if not dry_run:
+                cur.execute(
+                    """UPDATE scheduler_task_log SET status='executed'
+                       WHERE task_name='pending_buy_orders' AND status='pending'"""
+                )
+                conn.commit()
 
         if is_rebalance and hedged_target:
             logger.info(f"[Step6] 执行调仓 (T+1 open价格)...")
             # R1 fix: 使用exec_date的价格数据（T+1日open价格）
-            fills = paper_broker.execute_rebalance(
-                hedged_target, exec_date, price_data
+            rebal_fills, new_pending = paper_broker.execute_rebalance(
+                hedged_target, exec_date, price_data, signal_date=signal_date,
             )
-            logger.info(f"[Step6] 调仓完成: {len(fills)}笔成交")
+            fills.extend(rebal_fills)
+            logger.info(f"[Step6] 调仓完成: {len(rebal_fills)}笔成交, {len(new_pending)}只封板")
+
+            # 保存封板补单记录（供T+2日处理）
+            if new_pending and not dry_run:
+                pending_data = {
+                    "orders": [
+                        {
+                            "code": po.code,
+                            "signal_date": po.signal_date.isoformat(),
+                            "exec_date": po.exec_date.isoformat(),
+                            "target_weight": po.target_weight,
+                            "original_score": po.original_score,
+                        }
+                        for po in new_pending
+                    ]
+                }
+                log_step(conn, "pending_buy_orders", "pending",
+                         result=pending_data)
+                logger.info(
+                    f"[Step6] 封板补单已保存: "
+                    f"{', '.join(po.code for po in new_pending)}"
+                )
 
             # 从信号日读取beta
             cur.execute(
