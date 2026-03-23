@@ -161,6 +161,42 @@ def calculate_indicator(
             timeperiod=params.get("period", 14),
         )
 
+    elif name == "KDJ":
+        # KDJ指标: 基于STOCH(K,D), J = 3K - 2D
+        # 默认返回K线; output='D'返回D线, output='J'返回J线
+        _require(high, "high", name)
+        _require(low, "low", name)
+        _require(close, "close", name)
+        k, d = talib.STOCH(
+            high, low, close,
+            fastk_period=params.get("fastk_period", 9),
+            slowk_period=params.get("slowk_period", 3),
+            slowk_matype=0,
+            slowd_period=params.get("slowd_period", 3),
+            slowd_matype=0,
+        )
+        output = params.get("output", "K")
+        if output == "D":
+            return d
+        elif output == "J":
+            return 3 * k - 2 * d
+        return k  # default: K
+
+    elif name == "STOCH":
+        # 原始Stochastic Oscillator
+        _require(high, "high", name)
+        _require(low, "low", name)
+        _require(close, "close", name)
+        k, d = talib.STOCH(
+            high, low, close,
+            fastk_period=params.get("fastk_period", 5),
+            slowk_period=params.get("slowk_period", 3),
+            slowk_matype=0,
+            slowd_period=params.get("slowd_period", 3),
+            slowd_matype=0,
+        )
+        return k  # default: slowK
+
     else:
         raise ValueError(
             f"未知指标: {name}。请在ta_wrapper.py中添加支持，"
@@ -173,6 +209,7 @@ def list_supported_indicators() -> list[str]:
     return [
         "RSI", "MACD", "MACD_FULL", "ATR", "BBANDS", "BBANDS_FULL",
         "ADX", "OBV", "CCI", "SMA", "EMA", "WILLR", "MFI",
+        "KDJ", "STOCH",
     ]
 
 

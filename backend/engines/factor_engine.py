@@ -748,6 +748,7 @@ def compute_batch_factors(
     factor_set: str = "core",
     conn=None,
     write: bool = True,
+    factor_names: Optional[list[str]] = None,
 ) -> dict:
     """批量计算因子并逐日写入。
 
@@ -759,6 +760,7 @@ def compute_batch_factors(
         factor_set: 'core' 或 'full'
         conn: 可选连接
         write: 是否写入数据库
+        factor_names: 可选，只计算指定因子列表。None=计算全部。
 
     Returns:
         dict with stats (total_rows, elapsed, etc.)
@@ -768,6 +770,12 @@ def compute_batch_factors(
     from app.services.price_utils import _get_sync_conn
 
     factors = PHASE0_CORE_FACTORS if factor_set == "core" else PHASE0_FULL_FACTORS
+    if factor_names:
+        factors = {k: v for k, v in factors.items() if k in factor_names}
+        if not factors:
+            logger.warning(f"指定的因子名 {factor_names} 在 {factor_set} 集中均未找到")
+            return {"total_rows": 0, "elapsed": 0, "dates": 0,
+                    "load_time": 0, "calc_time": 0, "total_time": 0}
     close_conn = conn is None
     if conn is None:
         conn = _get_sync_conn()

@@ -244,3 +244,75 @@ class TestInterpretPBO:
         """PBO = 1.0 → 高风险。"""
         text = interpret_pbo(1.0)
         assert "高过拟合" in text
+
+
+# ===========================================================================
+# 边界条件补充测试
+# ===========================================================================
+
+
+class TestPBOEdgeCases:
+    """PBO边界条件和特殊输入。"""
+
+    def test_3d_array_rejected(self):
+        """3D数组应被拒绝。"""
+        returns = np.random.default_rng(42).normal(0, 0.01, size=(3, 5, 100))
+        with pytest.raises(ValueError, match="2D"):
+            probability_of_backtest_overfitting(returns)
+
+    def test_all_zero_returns(self):
+        """全零收益矩阵（std=0）不应崩溃，PBO仍在[0,1]。"""
+        returns = np.zeros((5, 100))
+        result = probability_of_backtest_overfitting(returns, n_partitions=4)
+        assert 0 <= result["pbo"] <= 1
+
+    def test_identical_strategies(self):
+        """所有策略相同收益序列时不应崩溃。"""
+        rng = np.random.default_rng(42)
+        base = rng.normal(0, 0.01, size=(1, 200))
+        returns = np.tile(base, (10, 1))  # 10个完全相同的策略
+        result = probability_of_backtest_overfitting(returns, n_partitions=4)
+        assert 0 <= result["pbo"] <= 1
+
+    def test_timepoints_equal_partitions(self):
+        """时间点数恰好等于分区数（每block仅1个点）。
+
+        ddof=1时单点std=NaN，验证代码处理安全。
+        """
+        rng = np.random.default_rng(42)
+        returns = rng.normal(0, 0.01, size=(5, 4))
+        # n_timepoints=4, n_partitions=4, block_size=1
+        result = probability_of_backtest_overfitting(returns, n_partitions=4)
+        # 结果可能含NaN或特殊值，关键是不崩溃
+        assert isinstance(result["pbo"], float)
+
+    def test_max_partitions_20_works(self):
+        """n_partitions=20（上限）正常运行，组合数=C(20,10)=184756。"""
+        rng = np.random.default_rng(42)
+        returns = rng.normal(0, 0.01, size=(5, 2000))
+        result = probability_of_backtest_overfitting(returns, n_partitions=20)
+        assert result["n_partitions"] == 20
+        assert result["n_combinations"] == math.comb(20, 10)
+        assert len(result["logit_distribution"]) == math.comb(20, 10)
+
+    def test_nan_in_returns(self):
+        """含NaN的输入：验证行为（抛异常或NaN结果均可，不应silent错误）。"""
+        rng = np.random.default_rng(42)
+        returns = rng.normal(0, 0.01, size=(5, 100))
+        returns[0, 50] = np.nan
+        # NaN输入时可能得到NaN pbo或抛异常，关键是不崩溃产生误导结果
+        try:
+            result = probability_of_backtest_overfitting(returns, n_partitions=4)
+            # 如果没抛异常，pbo应该是NaN（因为计算受NaN污染）
+            assert math.isnan(result["pbo"]) or 0 <= result["pbo"] <= 1
+        except (ValueError, RuntimeWarning):
+            pass  # 抛异常也是可接受行为
+
+    def test_tail_trimming_correct(self):
+        """时间点不能被分区数整除时，尾部应被截断。"""
+        rng = np.random.default_rng(42)
+        # 107个时间点, 8分区 → block_size=13, 使用104个点, 丢弃尾部3个
+        returns = rng.normal(0, 0.01, size=(5, 107))
+        result = probability_of_backtest_overfitting(returns, n_partitions=8)
+        assert result["n_timepoints"] == 107  # 原始值仍记录
+        assert result["n_combinations"] == math.comb(8, 4)

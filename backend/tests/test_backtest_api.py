@@ -441,20 +441,24 @@ async def test_report_no_nav_data(completed_run: dict):
 
 
 @pytest.mark.asyncio
-async def test_history_blocked_by_uuid_route():
-    """GET /history 被 /{run_id} 路由拦截，返回422。
+async def test_history_returns_200():
+    """GET /history 路由正确匹配，返回200 + 分页结果。
 
-    已知路由优先级Bug: @router.get("/{run_id}") 在 @router.get("/history") 之前注册，
-    FastAPI将"history"当作UUID参数解析失败。需将 /history 路由提前到 /{run_id} 之前。
+    修复: /history 路由已提前到 /{run_id} 之前注册，
+    避免 FastAPI 将 "history" 当作 UUID 参数解析。
     """
-    session = AsyncMock()
+    items = [_make_run_row(_uuid())]
+    session = _mock_session_for_history(total=1, items=items)
     app.dependency_overrides[_get_session] = lambda: session
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             resp = await ac.get("/api/backtest/history?limit=10&offset=0")
-        # 当前行为: 被/{run_id}拦截，UUID解析失败返回422
-        assert resp.status_code == 422
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "total" in data
+        assert "items" in data
+        assert data["total"] == 1
     finally:
         app.dependency_overrides.clear()
 

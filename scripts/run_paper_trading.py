@@ -317,7 +317,7 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             from app.data_fetcher.tushare_fetcher import TushareFetcher
             from app.data_fetcher.data_loader import upsert_klines_daily, upsert_daily_basic
 
-            fetcher = TushareFetcher(settings.TUSHARE_TOKEN)
+            fetcher = TushareFetcher()
             td_str = trade_date.strftime("%Y%m%d")
 
             t1 = time.time()
@@ -651,7 +651,7 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 from app.data_fetcher.tushare_fetcher import TushareFetcher
                 from app.data_fetcher.data_loader import upsert_klines_daily, upsert_daily_basic
 
-                fetcher = TushareFetcher(settings.TUSHARE_TOKEN)
+                fetcher = TushareFetcher()
                 td_str = exec_date.strftime("%Y%m%d")
                 df_k = fetcher.merge_daily_data(td_str)
                 if not df_k.empty:

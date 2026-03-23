@@ -91,6 +91,13 @@ def main():
         default=6,
         help="分片月数(默认6，避免OOM)",
     )
+    parser.add_argument(
+        "--factors",
+        type=str,
+        nargs="+",
+        default=None,
+        help="只计算指定因子(空格分隔)，如 --factors price_level_factor dv_ttm",
+    )
     args = parser.parse_args()
 
     if args.date:
@@ -114,9 +121,11 @@ def main():
 
     # 批量模式: 按chunk分片处理
     chunks = split_date_range(start, end, args.chunk_months)
+    factor_filter = args.factors
     logger.info(
         f"批量模式: {start} → {end}, {len(chunks)}个分片 (每片{args.chunk_months}月), "
         f"因子集={args.factor_set}"
+        + (f", 指定因子={factor_filter}" if factor_filter else "")
     )
 
     total_rows = 0
@@ -130,6 +139,7 @@ def main():
             factor_set=args.factor_set,
             conn=conn,
             write=not args.dry_run,
+            factor_names=factor_filter,
         )
         total_rows += stats["total_rows"]
         total_dates += stats["dates"]

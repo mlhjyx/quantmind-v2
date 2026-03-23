@@ -189,70 +189,6 @@ async def submit_backtest(
     )
 
 
-@router.get("/{run_id}", response_model=BacktestStatusResponse)
-async def get_backtest_status(
-    run_id: UUID,
-    session: AsyncSession = Depends(_get_session),
-) -> BacktestStatusResponse:
-    """查询回测任务状态。
-
-    Args:
-        run_id: 回测运行ID。
-
-    Returns:
-        当前状态（running/completed/failed）及进度信息。
-    """
-    run = await _get_run_or_404(session, run_id)
-    return BacktestStatusResponse(
-        run_id=str(run["run_id"]),
-        status=run["status"],
-        progress=1.0 if run["status"] == "completed" else None,
-        error_msg=run.get("error_msg"),
-        created_at=str(run["created_at"]) if run.get("created_at") else None,
-        finished_at=str(run["finished_at"]) if run.get("finished_at") else None,
-    )
-
-
-@router.get("/{run_id}/result")
-async def get_backtest_result(
-    run_id: UUID,
-    session: AsyncSession = Depends(_get_session),
-) -> dict[str, Any]:
-    """获取回测汇总结果。
-
-    返回完整绩效指标，包括 CLAUDE.md 规定的必含指标：
-    Sharpe/MDD/年化收益/超额收益/Calmar/Sortino/Bootstrap CI 等。
-
-    Args:
-        run_id: 回测运行ID（需 status=completed）。
-
-    Returns:
-        包含策略信息、绩效指标、配置快照的字典。
-    """
-    run = await _require_completed(session, run_id)
-
-    return {
-        "run_id": str(run["run_id"]),
-        "strategy_id": str(run["strategy_id"]) if run.get("strategy_id") else None,
-        "status": run["status"],
-        "start_date": str(run["start_date"]),
-        "end_date": str(run["end_date"]),
-        "config": run.get("config_json"),
-        "metrics": {
-            "annual_return": run.get("annual_return"),
-            "sharpe_ratio": run.get("sharpe_ratio"),
-            "max_drawdown": run.get("max_drawdown"),
-            "calmar_ratio": run.get("calmar_ratio"),
-            "total_turnover": run.get("total_turnover"),
-            "win_rate": run.get("win_rate"),
-            # 以下指标从 config_json 或 backtest_daily_nav 二次计算
-            # Phase 0 先返回 run 表中的冗余字段
-        },
-        "created_at": str(run["created_at"]) if run.get("created_at") else None,
-        "finished_at": str(run["finished_at"]) if run.get("finished_at") else None,
-    }
-
-
 @router.get("/history")
 async def get_backtest_history(
     strategy_id: str = Query(default="", description="按策略ID筛选"),
@@ -320,6 +256,70 @@ async def get_backtest_history(
                 item[key] = str(item[key])
 
     return {"total": total, "items": items}
+
+
+@router.get("/{run_id}", response_model=BacktestStatusResponse)
+async def get_backtest_status(
+    run_id: UUID,
+    session: AsyncSession = Depends(_get_session),
+) -> BacktestStatusResponse:
+    """查询回测任务状态。
+
+    Args:
+        run_id: 回测运行ID。
+
+    Returns:
+        当前状态（running/completed/failed）及进度信息。
+    """
+    run = await _get_run_or_404(session, run_id)
+    return BacktestStatusResponse(
+        run_id=str(run["run_id"]),
+        status=run["status"],
+        progress=1.0 if run["status"] == "completed" else None,
+        error_msg=run.get("error_msg"),
+        created_at=str(run["created_at"]) if run.get("created_at") else None,
+        finished_at=str(run["finished_at"]) if run.get("finished_at") else None,
+    )
+
+
+@router.get("/{run_id}/result")
+async def get_backtest_result(
+    run_id: UUID,
+    session: AsyncSession = Depends(_get_session),
+) -> dict[str, Any]:
+    """获取回测汇总结果。
+
+    返回完整绩效指标，包括 CLAUDE.md 规定的必含指标：
+    Sharpe/MDD/年化收益/超额收益/Calmar/Sortino/Bootstrap CI 等。
+
+    Args:
+        run_id: 回测运行ID（需 status=completed）。
+
+    Returns:
+        包含策略信息、绩效指标、配置快照的字典。
+    """
+    run = await _require_completed(session, run_id)
+
+    return {
+        "run_id": str(run["run_id"]),
+        "strategy_id": str(run["strategy_id"]) if run.get("strategy_id") else None,
+        "status": run["status"],
+        "start_date": str(run["start_date"]),
+        "end_date": str(run["end_date"]),
+        "config": run.get("config_json"),
+        "metrics": {
+            "annual_return": run.get("annual_return"),
+            "sharpe_ratio": run.get("sharpe_ratio"),
+            "max_drawdown": run.get("max_drawdown"),
+            "calmar_ratio": run.get("calmar_ratio"),
+            "total_turnover": run.get("total_turnover"),
+            "win_rate": run.get("win_rate"),
+            # 以下指标从 config_json 或 backtest_daily_nav 二次计算
+            # Phase 0 先返回 run 表中的冗余字段
+        },
+        "created_at": str(run["created_at"]) if run.get("created_at") else None,
+        "finished_at": str(run["finished_at"]) if run.get("finished_at") else None,
+    }
 
 
 # ---------------------------------------------------------------------------
