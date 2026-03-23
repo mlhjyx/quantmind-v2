@@ -28,6 +28,8 @@ from engines.signal_engine import (
     get_rebalance_dates,
 )
 
+from engines.config_guard import assert_baseline_config, print_config_header
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
@@ -108,6 +110,7 @@ def load_benchmark(start_date, end_date, conn) -> pd.DataFrame:
 
 
 def main():
+    print_config_header()
     parser = argparse.ArgumentParser(description="QuantMind V2 回测")
     parser.add_argument("--start", type=str, required=True)
     parser.add_argument("--end", type=str, required=True)
@@ -133,6 +136,7 @@ def main():
         top_n=args.top_n,
         rebalance_freq=args.freq,
     )
+    assert_baseline_config(sig_config.factor_names, config_source="run_backtest.py")
     bt_config = BacktestConfig(
         initial_capital=args.capital,
         top_n=args.top_n,

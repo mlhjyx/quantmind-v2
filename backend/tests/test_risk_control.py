@@ -62,8 +62,13 @@ def _make_metrics(
     rolling_20d_return: Decimal | None = Decimal("0.02"),
     trade_date: date = TODAY,
     nav: Decimal | None = None,
+    portfolio_vol_20d: float | None = 0.1485,  # 默认=vol_baseline → vol_ratio=1.0
 ) -> RiskMetrics:
-    """构造RiskMetrics测试数据。"""
+    """构造RiskMetrics测试数据。
+
+    portfolio_vol_20d默认为0.1485(=CircuitBreakerThresholds.vol_baseline)，
+    使vol_ratio=1.0，阈值不缩放。测试波动率自适应行为时可传入其他值。
+    """
     if nav is None:
         nav = INITIAL_CAPITAL * (Decimal("1") + cumulative_return)
     return RiskMetrics(
@@ -73,6 +78,7 @@ def _make_metrics(
         initial_capital=INITIAL_CAPITAL,
         cumulative_return=cumulative_return,
         rolling_20d_return=rolling_20d_return,
+        portfolio_vol_20d=portfolio_vol_20d,
     )
 
 

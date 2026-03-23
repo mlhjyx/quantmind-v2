@@ -153,9 +153,9 @@ async def test_rolling_stats_mdd_calculation(perf_repo, seeded_perf_data):
     # drawdown:             0,    0, -0.00495, 0, -0.00490, 0, -0.00485, 0, -0.00481, 0
     # MDD ≈ -0.00495
     assert stats["mdd"] < 0  # 应该是负数
-    # repo的MDD计算: peak从最新NAV(1.05)开始，遍历正序(1.0, 1.01, ...)
-    # 所以MDD = 1.0/1.05 - 1 ≈ -0.0476
-    assert stats["mdd"] == pytest.approx(-0.0476, abs=0.002)
+    # repo的MDD计算: peak从最早NAV(1.0)开始，时间正序遍历
+    # 最大回撤发生在 1.005/1.01 - 1 ≈ -0.00495, 四舍五入到 -0.005
+    assert stats["mdd"] == pytest.approx(-0.005, abs=0.001)
 
 
 @pytest.mark.asyncio

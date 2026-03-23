@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 
 import numpy as np
 import pandas as pd
@@ -144,6 +145,7 @@ def load_forward_returns(trade_dates: list, horizon: int, conn) -> pd.DataFrame:
 
 
 def main():
+    print_config_header()
     conn = _get_sync_conn()
 
     # 1. 获取分析日期

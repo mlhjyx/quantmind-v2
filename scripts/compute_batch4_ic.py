@@ -20,6 +20,11 @@ from datetime import date as dt_date
 import time
 import warnings
 warnings.filterwarnings('ignore')
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 
 DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
 
@@ -123,6 +128,7 @@ def rolling_skewness(df: pd.DataFrame, window: int = 20, min_periods: int = 15) 
 
 
 def main():
+    print_config_header()
     t0 = time.time()
 
     # ════════════════════════════════════════════════════════════════

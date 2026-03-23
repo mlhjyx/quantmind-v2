@@ -29,8 +29,13 @@ RECOMMENDATION:
 """
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 
 def main():
+    print_config_header()
     print("="*70)
     print("ACCRUAL ANOMALY Factor - DATA AVAILABILITY CHECK")
     print("="*70)

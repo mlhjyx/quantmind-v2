@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import calc_sharpe, calc_max_drawdown, TRADING_DAYS_PER_YEAR
+from engines.config_guard import print_config_header
 from engines.signal_engine import (
     PortfolioBuilder,
     SignalComposer,
@@ -299,6 +300,7 @@ def run_single_backtest(
 # ============================================================
 
 def main():
+    print_config_header()
     start = date(2021, 1, 1)
     end = date(2025, 12, 31)
 

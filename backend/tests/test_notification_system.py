@@ -54,9 +54,9 @@ class TestNotificationTemplates:
         assert "2026-03-22 17:00:00" in content
         assert level == "P0"
 
-    def test_all_10_templates_render_without_error(self):
-        """全部10个注册模板都能成功render，不抛异常。"""
-        assert len(TEMPLATE_REGISTRY) == 10, f"期望10个模板，实际{len(TEMPLATE_REGISTRY)}个"
+    def test_all_14_templates_render_without_error(self):
+        """全部14个注册模板都能成功render，不抛异常。"""
+        assert len(TEMPLATE_REGISTRY) == 14, f"期望14个模板，实际{len(TEMPLATE_REGISTRY)}个"
 
         # 每个模板的测试变量
         test_kwargs: dict[str, dict[str, Any]] = {
@@ -118,6 +118,30 @@ class TestNotificationTemplates:
                 "stage": "因子计算",
                 "error_message": "NaN detected",
                 "impact": "当日信号延迟",
+            },
+            "factor_coverage_low": {
+                "factor_name": "turnover_mean_20",
+                "count": 50,
+                "trade_date": "2026-03-22",
+            },
+            "factor_coverage_warning": {
+                "factor_name": "volatility_20",
+                "count": 200,
+                "trade_date": "2026-03-22",
+            },
+            "industry_concentration_high": {
+                "max_industry": "银行",
+                "max_weight": "35.2%",
+                "trade_date": "2026-03-22",
+                "industry_distribution": "银行35.2%, 食品20.1%",
+            },
+            "high_turnover_alert": {
+                "overlap_ratio": "40%",
+                "trade_date": "2026-03-22",
+                "prev_count": 15,
+                "overlap_count": 6,
+                "new_codes": "600519,000858",
+                "exit_codes": "601318,000001",
             },
             "system_disk_warning": {
                 "free_gb": 8.5,

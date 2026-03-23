@@ -21,6 +21,7 @@ from pathlib import Path
 print = functools.partial(print, flush=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 
 import numpy as np
 import pandas as pd
@@ -236,6 +237,7 @@ def calc_ic_series(factor_df: pd.DataFrame, fwd_returns: pd.DataFrame) -> dict:
 
 
 def main():
+    print_config_header()
     conn = _get_sync_conn()
 
     # 检查数据量

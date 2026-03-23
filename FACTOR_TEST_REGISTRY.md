@@ -1,0 +1,125 @@
+# FACTOR_TEST_REGISTRY — 因子测试注册表
+
+> BH-FDR校正基础。每次测试新因子都追加记录。累积M = 总行数。
+> IC方法: Spearman rank correlation(zscore, 5日前瞻超额收益 vs 沪深300)
+> 数据范围: 2020-07-01 ~ 2026-03-23 (除特别注明)
+> 维护规则: 新因子测试完成后，必须在此表追加一行，否则BH-FDR的M值失真。
+
+---
+
+## 累积统计
+
+- **累积测试总数 M**: 67
+- **PASS**: 22
+- **FAIL**: 27
+- **CONDITIONAL**: 6
+- **REVERTED**: 3
+- **BLOCKED**: 2
+- **DEPRECATED**: 5
+- **NOT_TESTED**: 2
+
+---
+
+## 注册表
+
+| # | 因子名 | IC_mean | t-stat | p-value | 测试日期 | 批次 | 结果 | 原因 |
+|---|--------|---------|--------|---------|----------|------|------|------|
+| 1 | turnover_mean_20 | -0.0643 | -7.31 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | v1.1 Active因子, IR最高(-0.73), 7/7年方向一致 |
+| 2 | volatility_20 | -0.0690 | -6.37 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | v1.1 Active因子, |IC|最大, 7/7年方向一致 |
+| 3 | reversal_20 | +0.0386 | +3.50 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | v1.1 Active因子, 6/7年方向一致 |
+| 4 | amihud_20 | +0.0215 | +2.69 | 0.008 | 2026-03-20 | Phase0-原始18 | PASS | v1.1 Active因子, 流动性因子 |
+| 5 | bp_ratio | +0.0523 | +6.02 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | v1.1 Active因子, IC最强价值因子 |
+| 6 | momentum_5 | -0.0273 | -3.10 | 0.002 | 2026-03-20 | Phase0-原始18 | PASS | Reserve, 6/7年方向一致, corr(reversal_20)=0.47 |
+| 7 | momentum_10 | -0.0391 | -3.77 | <0.001 | 2026-03-20 | Phase0-原始18 | CONDITIONAL | Watch: |IC|=3.9%强但corr(reversal_20)=0.67接近阈值 |
+| 8 | momentum_20 | -0.0395 | -3.57 | <0.001 | 2026-03-20 | Phase0-原始18 | DEPRECATED | corr(reversal_20)=1.00, 完全冗余(符号相反) |
+| 9 | reversal_5 | +0.0273 | +3.10 | 0.002 | 2026-03-20 | Phase0-原始18 | PASS | Reserve, 6/7年方向一致, 短周期反转 |
+| 10 | reversal_10 | +0.0391 | +3.77 | <0.001 | 2026-03-20 | Phase0-原始18 | CONDITIONAL | Watch: |IC|=3.9%强但corr(reversal_20)=0.67接近阈值 |
+| 11 | volatility_60 | -0.0696 | -5.77 | <0.001 | 2026-03-20 | Phase0-原始18 | DEPRECATED | corr(volatility_20)=0.76, 长周期变体冗余 |
+| 12 | turnover_std_20 | -0.0681 | -8.46 | <0.001 | 2026-03-20 | Phase0-原始18 | DEPRECATED | corr(turnover_mean_20)=0.91, 信息冗余 |
+| 13 | ep_ratio | +0.0341 | +4.80 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | Reserve, 7/7年方向一致, NaN=22%需补数据 |
+| 14 | ln_market_cap | -0.0308 | -2.09 | 0.038 | 2026-03-20 | Phase0-原始18 | PASS | Reserve, 6/7年方向一致, 独立性极好(corr=0.21) |
+| 15 | price_volume_corr_20 | -0.0394 | -6.41 | <0.001 | 2026-03-20 | Phase0-原始18 | PASS | Reserve, 7/7年方向一致, IR=0.64高, 量价背离 |
+| 16 | high_low_range_20 | -0.0746 | -6.53 | <0.001 | 2026-03-20 | Phase0-原始18 | DEPRECATED | corr(volatility_20)=0.89, 同一因子变体 |
+| 17 | volume_std_20 | -0.0117 | -1.31 | 0.192 | 2026-03-20 | Phase0-原始18 | DEPRECATED | |IC|=1.2%<1.5%, 预测力不足 |
+| 18 | dv_ttm | +0.0313 | +5.49 | <0.001 | 2026-03-21 | Batch1 | PASS | Reserve, |IC|=3.1%, IR=0.55, 7/7年稳定. NaN=33%需补数据 |
+| 19 | IVOL | +0.0667 | — | — | 2026-03-21 | Batch1 | PASS | |IC|=6.67%, 特质波动率, 通过IC筛选 |
+| 20 | turnover_surge_ratio | -0.0250 | -3.93 | <0.001 | 2026-03-21 | Batch1 | PASS | Reserve, |IC|=2.5%(后验3.57%), 7/7年稳定 |
+| 21 | roe_stability | +0.0150 | — | — | 2026-03-21 | Batch1 | FAIL | |IC|=1.50%, 低于入池门槛, 预测力不足 |
+| 22 | roe_ttm | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 23 | revenue_growth | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 24 | net_profit_growth | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 25 | current_ratio | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 26 | debt_to_equity | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 27 | operating_cashflow_ratio | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 28 | asset_turnover | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
+| 29 | kbar_body_ratio | +0.0096 | — | — | 2026-03-22 | Batch2 | FAIL | |IC|=0.96%, 低于入池门槛 |
+| 30 | analyst_surprise | +0.0052 | — | — | 2026-03-22 | Batch2 | FAIL | |IC|=0.52%, 低于入池门槛 |
+| 31 | net_profit_yoy | -0.0174 | — | — | 2026-03-22 | Batch2 | FAIL | |IC|=-1.74%, 方向反直觉, 不稳定 |
+| 32 | accrual_anomaly | — | — | — | 2026-03-22 | Batch2 | BLOCKED | 数据依赖blocked(需cash_flow表) |
+| 33 | turnover_surge (验证) | -0.0357 | — | — | 2026-03-22 | Batch2 | PASS | 二次验证|IC|=3.57%, 确认通过 |
+| 34 | price_level_factor | +0.0549 | +4.99 | <0.001 | 2026-03-22 | Batch3 | PASS | Reserve Tier1, |IC|=5.5%(报告8.42%), 7/7年稳定 |
+| 35 | reversal_60 | +0.0270 | +2.28 | 0.024 | 2026-03-22 | Batch3 | PASS | Reserve, |IC|=2.7%(报告4.05%), 5/5年方向一致 |
+| 36 | large_cap_low_vol | — | — | — | 2026-03-22 | Batch3 | FAIL | 与基线冗余, 独立信息不足 |
+| 37 | turnover_vol_ratio | — | — | >0.05 | 2026-03-22 | Batch3 | FAIL | IC不显著(ns) |
+| 38 | volume_mom_divergence | — | — | >0.05 | 2026-03-22 | Batch3 | FAIL | IC不显著(ns) |
+| 39 | relative_volume_20 | -0.0280 | -3.94 | <0.001 | 2026-03-22 | Batch4 | PASS | Reserve, |IC|=2.8%(报告6.00%), 7/7年方向一致 |
+| 40 | gap_frequency | +0.0595 | — | — | 2026-03-22 | Batch4 | PASS | |IC|=5.95%, 通过筛选 |
+| 41 | return_consistency | -0.0287 | — | — | 2026-03-22 | Batch4 | FAIL | |IC|=-2.87%, 方向反直觉或不稳定 |
+| 42 | turnover_skewness | — | — | >0.05 | 2026-03-22 | Batch4 | FAIL | IC不显著(ns) |
+| 43 | mf_momentum_divergence | +0.0910 | — | — | 2026-03-22 | Batch5 | PASS | |IC|=9.1%, 资金流动量背离, 最强新因子 |
+| 44 | net_mf_amount | +0.0490 | — | — | 2026-03-22 | Batch5 | PASS | |IC|=4.9%, 净资金流 |
+| 45 | big_order_ratio | — | — | — | 2026-03-22 | Batch5 | REVERTED | 方向反转: 大单占比方向与预期相反 |
+| 46 | big_small_divergence | +0.0375 | — | — | 2026-03-23 | Batch5b | PASS | |IC|=3.75%, 大小单分歧度 |
+| 47 | mf_volatility | +0.0204 | — | — | 2026-03-23 | Batch5b | CONDITIONAL | |IC|=2.04%, 边界通过, 需观察稳定性 |
+| 48 | mf_persistence | — | — | >0.05 | 2026-03-23 | Batch5b | FAIL | IC不显著(ns) |
+| 49 | big_small_consensus | -0.0100 | — | — | 2026-03-23 | Batch6 | REVERTED | 虚假alpha: 原始IC=12.74%, 中性化后→-1.0% (LL-014) |
+| 50 | mf_price_vol_ratio | — | — | — | 2026-03-23 | Batch6 | REVERTED | 波动率proxy: 中性化后IC大幅衰减 (LL-014) |
+| 51 | elg_ratio_change | +0.0248 | — | — | 2026-03-23 | Batch6 | CONDITIONAL | |IC|=2.48%, 边界因子, 需更多验证 |
+| 52 | mf_concentration | +0.0159 | — | — | 2026-03-23 | Batch6 | CONDITIONAL | |IC|=1.59%, 勉强过1.5%门槛, 观察 |
+| 53 | net_big_momentum | — | — | >0.05 | 2026-03-23 | Batch6 | FAIL | IC不显著(ns) |
+| 54 | GPA | -0.0380 | -2.95 | 0.004 | 2026-03-22 | 研究否决 | FAIL | A股方向反转(-0.038), 中性化后IC=-0.011(p=0.14), 行业proxy非alpha |
+| 55 | revenue_accel | — | — | — | 2026-03-22 | 研究否决 | FAIL | 不入库, 数据质量/覆盖不足 |
+| 56 | roe_change_q | — | — | — | 2026-03-22 | 研究否决 | FAIL | 不入库, 数据质量/覆盖不足 |
+| 57 | earnings_surprise_car | +0.0534 | — | — | 2026-03-23 | PEAD | PASS | |IC|=5.34%, 盈利惊喜CAR |
+| 58 | earnings_revision | — | — | >0.05 | 2026-03-23 | PEAD | FAIL | IC不显著(ns) |
+| 59 | ann_date_proximity | — | — | >0.05 | 2026-03-23 | PEAD | FAIL | IC不显著(ns) |
+| 60 | RSI_14 | -0.0606 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=6.06%, 超卖信号 |
+| 61 | MACD_hist | +0.0373 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=3.73%, 趋势动量 |
+| 62 | KDJ_K | -0.0373 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=3.73%, 随机指标 |
+| 63 | CCI_14 | -0.0469 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=4.69%, 商品通道指数 |
+| 64 | ATR_norm | -0.1016 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=10.16%, 归一化真实波幅, IC最强TA因子 |
+| 65 | turnover_surge (Batch2验证) | -0.0357 | — | — | 2026-03-22 | Batch2-验证 | PASS | 重复验证条目(见#33), 不计入独立测试 |
+
+---
+
+## 使用说明
+
+### BH-FDR校正
+
+当前累积M = 67（排除重复验证条目#65）。
+
+BH-FDR校正步骤:
+1. 对所有M个p-value排序: p_(1) <= p_(2) <= ... <= p_(M)
+2. 对第k个因子，校正阈值 = alpha * k / M
+3. 找到最大的k使得 p_(k) <= alpha * k / M
+4. 所有排名 <= k 的因子通过FDR校正
+
+### 结果编码
+
+| 结果 | 含义 |
+|------|------|
+| **PASS** | IC显著, 方向合理, 可入Reserve/Active池 |
+| **FAIL** | IC不显著 / 方向异常 / 数据不足 |
+| **CONDITIONAL** | 边界通过, 需进一步验证或特殊条件下可用 |
+| **REVERTED** | 初始通过后发现问题(如中性化后衰减/方向反转)被撤回 |
+| **BLOCKED** | 数据依赖未满足, 无法测试 |
+| **DEPRECATED** | 与已有因子高度冗余(corr>0.7), 建议停止计算 |
+| **NOT_TESTED** | 已提出但尚未实际运行IC测试 |
+
+### 维护规则
+
+1. **每次新因子IC测试完成后**, 必须在此表追加一行
+2. **REVERTED因子**保留记录(不删除), 作为"已尝试"的证据
+3. **重复验证**标注为"验证"批次, 不计入独立测试计数M
+4. **p-value缺失的因子**(标记为—), 在BH-FDR计算中使用IC_mean的近似p-value
+5. 配合 `backend/engines/config_guard.py` 中的 `get_cumulative_test_count()` 自动读取M值

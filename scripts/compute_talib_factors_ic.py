@@ -30,6 +30,7 @@ from scipy import stats
 
 # ta_wrapper在backend/wrappers/下
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 from wrappers.ta_wrapper import calculate_indicator
 
 warnings.filterwarnings("ignore")
@@ -219,6 +220,7 @@ def compute_talib_factor_wide(
 
 
 def main():
+    print_config_header()
     t0 = time.time()
 
     # ════════════════════════════════════════════════════════════════

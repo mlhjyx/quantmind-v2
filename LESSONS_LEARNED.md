@@ -324,3 +324,17 @@ def test_turnover_cap_preserves_max_positions():
 ### 总结
 
 Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题：**隐含假设没有被代码显式表达和自动验证**。Phase 1的核心防线不是"更小心"，而是让错误的假设在写入代码的瞬间就被机器拦截。6项措施中，措施1（不变量断言）和措施2（交易日历强制工具函数）优先级最高，应在Phase 1 Sprint 1.1第一周落地。
+
+## LL-013: IC分析必须用生产一致的基线因子集 (2026-03-23)
+**来源**: quant v1.2 paired bootstrap
+**问题**: batch7报告mf_divergence增量+1.12%，但用的基线含ln_market_cap/momentum_20而非实际v1.1的reversal_20/amihud_20。正确基线下增量仅+0.10%(p=0.387)
+**规则**: 任何IC对比分析，基线因子集必须与PAPER_TRADING_CONFIG完全一致。脚本开头打印因子列表供核对
+
+## LL-014: 资金流因子天然与市值/波动率高相关，必须中性化验证 (2026-03-23)
+**来源**: alpha_miner batch 8 moneyflow depth
+**问题**: big_small_consensus原始IC=12.74%，中性化后→-1.0%。mf_price_vol_ratio同理
+**规则**: 所有新因子（特别是资金流/成交量类）必须做中性化后IC验证。原始IC>5%但中性化后<1.5%的标记为"虚假alpha"
+
+## LL-015: 说了就要做，做了才算数 (2026-03-23)
+**来源**: Team Lead说"启动中"但没spawn agent
+**规则**: "启动"=Agent工具已调用。文字回复"开始执行"不算启动。用户问"在做吗"时如果没有running agent=失职

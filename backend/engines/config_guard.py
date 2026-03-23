@@ -1,0 +1,333 @@
+"""配置一致性守卫 — 防止分析脚本使用与Paper Trading不一致的因子集。
+
+背景（LL-010 + LL-013）:
+- LL-010: run_backtest.py默认8因子 vs Paper Trading 5因子，导致Sharpe误诊
+- LL-013: IC分析用错误基线因子集，导致v1.2升级被错误推荐
+
+BH-FDR校正（研究报告#2）:
+- 累积测试总数M从FACTOR_TEST_REGISTRY.md自动读取
+- 校正后阈值 = alpha * k / M（Benjamini-Hochberg步进法）
+
+用法:
+    from engines.config_guard import assert_baseline_config, print_config_header
+    from engines.config_guard import get_cumulative_test_count, bh_fdr_adjusted_threshold
+
+    # 脚本开头打印当前配置（人工核对）
+    print_config_header()
+
+    # 如果脚本自定义了因子列表，检查是否与基线一致
+    assert_baseline_config(my_factor_list, config_source="my_script.py")
+
+    # BH-FDR校正
+    M = get_cumulative_test_count()  # 从FACTOR_TEST_REGISTRY.md读取
+    threshold = bh_fdr_adjusted_threshold(alpha=0.05)
+"""
+
+import logging
+import re
+from pathlib import Path
+from typing import Optional
+
+from engines.signal_engine import PAPER_TRADING_CONFIG
+
+logger = logging.getLogger(__name__)
+
+# ANSI颜色码
+_YELLOW = "\033[93m"
+_RED = "\033[91m"
+_GREEN = "\033[92m"
+_CYAN = "\033[96m"
+_BOLD = "\033[1m"
+_RESET = "\033[0m"
+
+
+def print_config_header() -> None:
+    """打印当前PAPER_TRADING_CONFIG的完整配置。
+
+    用于脚本开头强制输出，让人一眼看到在用什么配置。
+    """
+    cfg = PAPER_TRADING_CONFIG
+    factors_str = ", ".join(cfg.factor_names)
+    n_factors = len(cfg.factor_names)
+
+    print(f"\n{_BOLD}{'=' * 60}{_RESET}")
+    print(f"{_BOLD}{_CYAN}  PAPER_TRADING_CONFIG (v1.1 基线){_RESET}")
+    print(f"{'=' * 60}")
+    print(f"  因子数量:   {n_factors}")
+    print(f"  因子列表:   [{factors_str}]")
+    print(f"  Top-N:      {cfg.top_n}")
+    print(f"  调仓频率:   {cfg.rebalance_freq}")
+    print(f"  权重方法:   {cfg.weight_method}")
+    print(f"  行业上限:   {cfg.industry_cap:.0%}")
+    print(f"  换手上限:   {cfg.turnover_cap:.0%}")
+    print(f"{'=' * 60}\n")
+
+
+def assert_baseline_config(
+    factor_names: list[str],
+    config_source: str = "unknown",
+) -> bool:
+    """检查传入的factor_names是否与PAPER_TRADING_CONFIG一致。
+
+    Args:
+        factor_names: 待检查的因子名称列表。
+        config_source: 调用来源（脚本名），用于日志定位。
+
+    Returns:
+        True 如果一致，False 如果不一致。
+
+    不一致时打印WARNING + 详细差异（多了哪些、少了哪些），
+    并打印当前配置供人工确认。不会raise异常（脚本可选择继续执行）。
+    """
+    baseline = set(PAPER_TRADING_CONFIG.factor_names)
+    current = set(factor_names)
+
+    if baseline == current:
+        logger.info(
+            "[config_guard] %s: 因子集与PAPER_TRADING_CONFIG一致 (%d因子)",
+            config_source,
+            len(baseline),
+        )
+        return True
+
+    # ---- 不一致：打印详细差异 ----
+    extra = sorted(current - baseline)
+    missing = sorted(baseline - current)
+
+    print(f"\n{_BOLD}{_RED}{'!' * 60}{_RESET}")
+    print(f"{_BOLD}{_RED}  WARNING: 因子集与PAPER_TRADING_CONFIG不一致!{_RESET}")
+    print(f"{_RED}  来源: {config_source}{_RESET}")
+    print(f"{'!' * 60}")
+
+    if extra:
+        print(f"  {_YELLOW}多出的因子 (不在基线中): {extra}{_RESET}")
+    if missing:
+        print(f"  {_YELLOW}缺少的因子 (基线中有):   {missing}{_RESET}")
+
+    print(f"\n  当前传入 ({len(factor_names)}因子): {sorted(factor_names)}")
+    print(f"  基线配置 ({len(PAPER_TRADING_CONFIG.factor_names)}因子): "
+          f"{sorted(PAPER_TRADING_CONFIG.factor_names)}")
+    print(f"{'!' * 60}\n")
+
+    # 同时打印完整配置供人工核对
+    print_config_header()
+
+    logger.warning(
+        "[config_guard] %s: 因子集不一致! 多出=%s, 缺少=%s",
+        config_source,
+        extra,
+        missing,
+    )
+    return False
+
+
+# ---------------------------------------------------------------------------
+# BH-FDR 多重检验校正
+# ---------------------------------------------------------------------------
+
+# FACTOR_TEST_REGISTRY.md的默认路径（项目根目录）
+_REGISTRY_PATH: Path | None = None
+
+
+def _resolve_registry_path() -> Path:
+    """解析FACTOR_TEST_REGISTRY.md路径。
+
+    搜索顺序:
+    1. 显式设置的 _REGISTRY_PATH（测试注入用）
+    2. 从当前文件向上查找项目根目录下的 FACTOR_TEST_REGISTRY.md
+    """
+    if _REGISTRY_PATH is not None:
+        return _REGISTRY_PATH
+
+    # 从 backend/engines/config_guard.py 向上两层到项目根
+    project_root = Path(__file__).resolve().parent.parent.parent
+    return project_root / "FACTOR_TEST_REGISTRY.md"
+
+
+def set_registry_path(path: Path | str | None) -> None:
+    """显式设置FACTOR_TEST_REGISTRY.md路径（主要用于测试注入）。
+
+    Args:
+        path: 注册表文件路径。传None恢复默认行为。
+    """
+    global _REGISTRY_PATH
+    _REGISTRY_PATH = Path(path) if path is not None else None
+
+
+def get_cumulative_test_count(registry_path: Path | str | None = None) -> int:
+    """从FACTOR_TEST_REGISTRY.md读取累积测试总数M。
+
+    解析Markdown表格，统计数据行数（排除header行和分隔符行）。
+    排除标注为"重复验证"的条目（原因列含"重复验证"或"不计入"）。
+
+    Args:
+        registry_path: 注册表文件路径。None则使用默认路径。
+
+    Returns:
+        累积测试总数M（正整数）。
+
+    Raises:
+        FileNotFoundError: 注册表文件不存在。
+        ValueError: 文件中未找到有效的因子测试记录。
+    """
+    path = Path(registry_path) if registry_path is not None else _resolve_registry_path()
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"FACTOR_TEST_REGISTRY.md 未找到: {path}\n"
+            "请先创建因子测试注册表。"
+        )
+
+    content = path.read_text(encoding="utf-8")
+
+    # 匹配表格数据行: 以 | 数字 | 开头的行
+    # 排除 header 行（含"因子名"）和分隔符行（含"---"）
+    table_row_pattern = re.compile(
+        r"^\|\s*(\d+)\s*\|"  # 第一列是序号
+        r".*\|"              # 中间内容
+        r".*\|$",            # 以|结尾
+        re.MULTILINE,
+    )
+
+    rows = table_row_pattern.findall(content)
+    count = 0
+
+    for line in content.splitlines():
+        line = line.strip()
+        # 跳过非表格行
+        if not line.startswith("|"):
+            continue
+        # 跳过 header 和分隔符
+        if "因子名" in line or "---" in line:
+            continue
+        # 检查是否是数据行（第一列是数字）
+        cells = [c.strip() for c in line.split("|") if c.strip()]
+        if not cells:
+            continue
+        try:
+            int(cells[0])  # 第一列是序号
+        except ValueError:
+            continue
+
+        # 排除标注为"重复验证"或"不计入独立测试"的条目
+        row_text = line.lower()
+        if "重复验证" in row_text or "不计入" in row_text:
+            continue
+
+        count += 1
+
+    if count == 0:
+        raise ValueError(
+            f"FACTOR_TEST_REGISTRY.md 中未找到有效的因子测试记录: {path}"
+        )
+
+    logger.info("[config_guard] 累积因子测试总数 M = %d", count)
+    return count
+
+
+def bh_fdr_adjusted_threshold(
+    alpha: float = 0.05,
+    rank: int = 1,
+    registry_path: Path | str | None = None,
+) -> float:
+    """计算BH-FDR校正后的显著性阈值。
+
+    Benjamini-Hochberg步进法: 对第k个因子(按p-value排序),
+    校正阈值 = alpha * k / M
+
+    当rank=1时，返回最严格的阈值（最小p-value需要通过的门槛）。
+    这是"新因子要通过FDR校正至少需要多显著"的保守估计。
+
+    Args:
+        alpha: 目标FDR水平，默认0.05。
+        rank: 该因子在所有p-value中的排名(1=最小)。
+            默认1，返回最严格的阈值。
+        registry_path: 注册表文件路径。None则使用默认路径。
+
+    Returns:
+        BH-FDR校正后的显著性阈值。
+
+    Raises:
+        ValueError: alpha不在(0,1)范围或rank<1。
+    """
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha必须在(0,1)范围内，收到: {alpha}")
+    if rank < 1:
+        raise ValueError(f"rank必须>=1，收到: {rank}")
+
+    m = get_cumulative_test_count(registry_path=registry_path)
+
+    if rank > m:
+        raise ValueError(
+            f"rank({rank})不能超过累积测试总数M({m})"
+        )
+
+    threshold = alpha * rank / m
+
+    logger.info(
+        "[config_guard] BH-FDR阈值: alpha=%.3f, rank=%d, M=%d → threshold=%.6f",
+        alpha,
+        rank,
+        m,
+        threshold,
+    )
+    return threshold
+
+
+def bh_fdr_check_significance(
+    p_values: dict[str, float],
+    alpha: float = 0.05,
+    registry_path: Path | str | None = None,
+) -> dict[str, bool]:
+    """对一组因子的p-value做BH-FDR校正，返回每个因子是否显著。
+
+    BH步进法:
+    1. 对M个p-value排序: p_(1) <= p_(2) <= ... <= p_(M_batch)
+    2. 对第k个(在全局排名中), 阈值 = alpha * k / M_total
+    3. 找到最大的k使得 p_(k) <= alpha * k / M_total
+    4. 所有排名 <= k 的因子通过
+
+    注意: M_total是累积测试总数（含历史所有测试），不是当前批次的N。
+
+    Args:
+        p_values: {因子名: p-value} 字典。
+        alpha: 目标FDR水平。
+        registry_path: 注册表文件路径。
+
+    Returns:
+        {因子名: True/False} 字典，True表示通过FDR校正。
+    """
+    if not p_values:
+        return {}
+
+    m_total = get_cumulative_test_count(registry_path=registry_path)
+
+    # 按p-value排序
+    sorted_factors = sorted(p_values.items(), key=lambda x: x[1])
+
+    # BH步进法: 从最大的rank开始，找到第一个通过的
+    results: dict[str, bool] = {}
+    max_passing_rank = 0
+
+    for rank_in_batch, (name, pval) in enumerate(sorted_factors, start=1):
+        # 使用全局M（累积测试总数），rank用批内排名
+        # 保守做法: rank从1开始在当前批次内
+        bh_threshold = alpha * rank_in_batch / m_total
+        if pval <= bh_threshold:
+            max_passing_rank = rank_in_batch
+
+    # 所有排名 <= max_passing_rank 的因子通过
+    for rank_in_batch, (name, pval) in enumerate(sorted_factors, start=1):
+        results[name] = rank_in_batch <= max_passing_rank
+
+    # 日志
+    n_pass = sum(1 for v in results.values() if v)
+    logger.info(
+        "[config_guard] BH-FDR校正: %d/%d因子通过 (alpha=%.3f, M=%d)",
+        n_pass,
+        len(p_values),
+        alpha,
+        m_total,
+    )
+
+    return results

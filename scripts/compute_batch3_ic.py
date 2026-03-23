@@ -19,6 +19,11 @@ from datetime import date as dt_date
 import time
 import warnings
 warnings.filterwarnings('ignore')
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from engines.config_guard import print_config_header
 
 DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
 
@@ -116,6 +121,7 @@ def print_ic_report(name, formula, ic_df):
 
 
 def main():
+    print_config_header()
     t0 = time.time()
 
     # ════════════════════════════════════════════════════════════════

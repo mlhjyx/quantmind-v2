@@ -7,16 +7,16 @@
 ## ⚠️ Compaction保护（触发compaction时必须保留以下信息）
 
 ```
-当前阶段: Phase 1, Sprint 1.2b
-Paper Trading: v1.1已启动(2026-03-23), 60天倒计时
+当前阶段: Phase 1, Sprint 1.3b
+Paper Trading: v1.1运行中(2026-03-23启动), Day 2, 60天倒计时
 v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/bp_ratio) + Top15 + 月度 + 行业25%
 基线Sharpe: 1.037, MDD: -39.7%, 毕业标准: Sharpe≥0.73, MDD<35%
 团队: 10+1人(quant/arch/data/qa/factor/strategy/risk/frontend/ml/alpha_miner + Team Lead)
 已启用: quant/arch/data/qa/factor/strategy/risk/alpha_miner (8人)
 未启用: frontend(Phase 1B)/ml(Phase 1C)
 阻塞项: 无
-待决策: 候选4(大盘低波)OOS验证中
-关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md
+待决策: PEAD因子(IC=5.34%)等审批, v1.2升级NOT JUSTIFIED(待新因子)
+关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md / FACTOR_HEALTH_REPORT.md
 ```
 
 **compaction自定义指令**: 保留所有因子IC数据、配置变更记录、bug根因分析、§3.6.3决策和理由。可压缩：具体代码实现讨论、agent间中间对话、已解决的排查过程。
@@ -43,6 +43,63 @@ v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/b
 - 关键决策写入文件（LESSONS_LEARNED/strategy_configs/param_change_log），不依赖对话记忆
 - 每次compaction后自检：还知道当前Sprint？还知道有哪些agent？不知道就读文件恢复
 - CLAUDE.md顶部compaction保护段落必须随Sprint进展更新
+
+---
+
+## 技术决策快查表
+
+> 新会话恢复上下文时一眼看完整个决策历史。每个技术决策追加一行。
+
+| 决策 | 结果 | 判定 | 阶段 |
+|------|------|------|------|
+| Beta对冲 | 现金拖累36%，去掉后Sharpe 1.01→1.29 | Reverted | Phase 0 |
+| GPA因子 | 行业proxy，中性化后IC不显著(p=0.14) | Reverted | Phase 0 |
+| 候选2红利低波 | 与基线corr=0.778，无分散价值 | Reverted | Sprint 1.2 |
+| 候选4大盘低波 | OOS Sharpe=-0.11，2022年亏-37.85% | Reverted | Sprint 1.2 |
+| 候选5中期反转 | corr=0.627，不够正交 | Reverted | Sprint 1.2 |
+| Top20→Top15 | 整手误差8%→3%，Sharpe 1.054→1.037无差异 | KEEP | Sprint 1.2 |
+| 波动率自适应阈值 | 高波放宽低波收紧，clip(0.5, 2.0) | KEEP | Sprint 1.1 |
+| L1延迟方案C | L1触发时月度调仓延迟不跳过 | KEEP | Sprint 1.2 |
+| days_gap改交易日 | 自然日→交易日，修复国庆/五一误杀 | KEEP | Sprint 1.2 |
+| mf_divergence | IC=9.1%全项目最强，资金流新维度 | KEEP(入池) | Sprint 1.3 |
+| price_level | IC=8.42%，低价股效应 | KEEP(入池) | Sprint 1.3 |
+| PEAD earnings_surprise | IC=5.34%，corr<0.11最干净新维度 | Pending审批 | Sprint 1.3b |
+| IVOL替换vol_20 | IC 6.67% vs 3.27%，但OOS Sharpe持平 | Pending | Sprint 1.3 |
+| 等权 vs IC加权 | 等权表现更好（三轮讨论共识） | KEEP等权 | Phase 0 |
+| 同框架多策略 | 5候选全部失败，50/50组合拉低基线 | Reverted方向 | Sprint 1.2 |
+| 5因子vs8因子 | 8因子Sharpe=0.50(弱因子稀释)，5因子=1.05 | KEEP 5因子 | Sprint 1.2 |
+| Deprecated 5因子 | momentum_20/high_low_range等停止计算省23% | KEEP | Sprint 1.3b |
+| v1.2升级(+mf_divergence) | paired bootstrap p=0.387，增量不显著 | NOT JUSTIFIED | Sprint 1.3a |
+| big_small_consensus | 原始IC=12.74%中性化后-1.0%，虚假alpha | Reverted | Sprint 1.3a |
+
+---
+
+## 资源约束（Mac M1 Pro 16GB环境）
+
+> 显式声明系统资源上限，防止某个模块吃光资源。超过任何一项 → P1告警。
+
+| 资源 | 上限 | 说明 |
+|------|------|------|
+| PostgreSQL | ~3GB数据 + ~1GB索引 | 日频数据5年+moneyflow 614万行 |
+| Redis | <512MB | Celery broker + 缓存 |
+| Python主进程 | <2GB RSS | FastAPI + 因子计算 |
+| Celery worker | <1GB per worker | 后台任务 |
+| crontab信号阶段 | <5分钟 | 16:30触发，17:00前完成 |
+| crontab执行阶段 | <2分钟 | 17:00触发 |
+| Mac总内存 | 16GB | 留>8GB给OS |
+| PG+Redis+Python+Celery | <8GB总计 | — |
+| 磁盘监控 | >50GB剩余 | 健康检查已覆盖 |
+
+---
+
+## 因子审批硬性标准
+
+> 研究报告#2确定，Harvey Liu Zhu (2016)折中标准。
+
+- **t > 2.5**：硬性下限，不管BH-FDR结果如何，t<2.5直接否决
+- **t 2.0-2.5**：需额外经济学解释支撑才可有条件通过
+- **BH-FDR校正**：用FACTOR_TEST_REGISTRY.md中的累积测试总数M作为分母
+- **中性化后IC**：所有新因子必须做中性化验证（LL-014）
 
 ---
 
