@@ -123,11 +123,8 @@ def calc_turnover_surge_ratio(turnover_rate: pd.Series) -> pd.Series:
 # 因子注册表
 # ============================================================
 
-# Phase 0 Week 3: 6 core factors
+# Phase 0 Week 3: 5 core factors (momentum_20 deprecated per factor评级报告)
 PHASE0_CORE_FACTORS = {
-    "momentum_20": lambda df: df.groupby("code")["adj_close"].transform(
-        lambda x: calc_momentum(x, 20)
-    ),
     "volatility_20": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_volatility(x, 20)
     ),
@@ -141,7 +138,7 @@ PHASE0_CORE_FACTORS = {
     "bp_ratio": lambda df: calc_bp_ratio(df["pb"]),
 }
 
-# Phase 0 Week 6: 扩展到 18 factors
+# Phase 0 Week 6: 扩展因子 (不含deprecated)
 PHASE0_FULL_FACTORS = {
     **PHASE0_CORE_FACTORS,
     "momentum_5": lambda df: df.groupby("code")["adj_close"].transform(
@@ -159,21 +156,9 @@ PHASE0_FULL_FACTORS = {
     "reversal_20": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_reversal(x, 20)
     ),
-    "volatility_60": lambda df: df.groupby("code")["adj_close"].transform(
-        lambda x: calc_volatility(x, 60)
-    ),
-    "volume_std_20": lambda df: df.groupby("code")["volume"].transform(
-        lambda x: calc_volume_std(x, 20)
-    ),
-    "turnover_std_20": lambda df: df.groupby("code")["turnover_rate"].transform(
-        lambda x: calc_turnover_std(x, 20)
-    ),
     "ep_ratio": lambda df: calc_ep_ratio(df["pe_ttm"]),
     "price_volume_corr_20": lambda df: df.groupby("code").apply(
         lambda g: calc_pv_corr(g["adj_close"], g["volume"].astype(float), 20)
-    ).droplevel(0),
-    "high_low_range_20": lambda df: df.groupby("code").apply(
-        lambda g: calc_hl_range(g["adj_high"], g["adj_low"], 20)
     ).droplevel(0),
     # northbound_pct: Phase 1 (需要额外数据源 AKShare)
     # ---- v1.2 新增因子 ----
@@ -188,6 +173,29 @@ PHASE0_FULL_FACTORS = {
         lambda x: calc_turnover_surge_ratio(x)
     ),
 }
+
+# Deprecated因子 (factor评级报告确认, 从日常计算中移除)
+# 原因: IC衰减/正交性不足/被更优因子替代
+DEPRECATED_FACTORS = {
+    "momentum_20": lambda df: df.groupby("code")["adj_close"].transform(
+        lambda x: calc_momentum(x, 20)
+    ),
+    "volatility_60": lambda df: df.groupby("code")["adj_close"].transform(
+        lambda x: calc_volatility(x, 60)
+    ),
+    "volume_std_20": lambda df: df.groupby("code")["volume"].transform(
+        lambda x: calc_volume_std(x, 20)
+    ),
+    "turnover_std_20": lambda df: df.groupby("code")["turnover_rate"].transform(
+        lambda x: calc_turnover_std(x, 20)
+    ),
+    "high_low_range_20": lambda df: df.groupby("code").apply(
+        lambda g: calc_hl_range(g["adj_high"], g["adj_low"], 20)
+    ).droplevel(0),
+}
+
+# 全量因子(含deprecated): 用于回测对比、历史分析
+PHASE0_ALL_FACTORS = {**PHASE0_FULL_FACTORS, **DEPRECATED_FACTORS}
 
 
 # ============================================================
@@ -594,13 +602,18 @@ def compute_daily_factors(
 
     Args:
         trade_date: 交易日期
-        factor_set: 'core'(6因子) 或 'full'(18因子)
+        factor_set: 'core'(5因子) / 'full'(不含deprecated) / 'all'(含deprecated,向后兼容)
         conn: 可选连接
 
     Returns:
         DataFrame [code, factor_name, raw_value, neutral_value, zscore]
     """
-    factors = PHASE0_CORE_FACTORS if factor_set == "core" else PHASE0_FULL_FACTORS
+    if factor_set == "core":
+        factors = PHASE0_CORE_FACTORS
+    elif factor_set == "all":
+        factors = PHASE0_ALL_FACTORS
+    else:
+        factors = PHASE0_FULL_FACTORS
 
     # 1. 加载数据
     logger.info(f"[{trade_date}] 加载行情数据...")
@@ -757,7 +770,7 @@ def compute_batch_factors(
     Args:
         start_date: 开始日期
         end_date: 结束日期
-        factor_set: 'core' 或 'full'
+        factor_set: 'core'(5因子) / 'full'(不含deprecated) / 'all'(含deprecated,向后兼容)
         conn: 可选连接
         write: 是否写入数据库
         factor_names: 可选，只计算指定因子列表。None=计算全部。
@@ -769,7 +782,12 @@ def compute_batch_factors(
     from psycopg2.extras import execute_values
     from app.services.price_utils import _get_sync_conn
 
-    factors = PHASE0_CORE_FACTORS if factor_set == "core" else PHASE0_FULL_FACTORS
+    if factor_set == "core":
+        factors = PHASE0_CORE_FACTORS
+    elif factor_set == "all":
+        factors = PHASE0_ALL_FACTORS
+    else:
+        factors = PHASE0_FULL_FACTORS
     if factor_names:
         factors = {k: v for k, v in factors.items() if k in factor_names}
         if not factors:

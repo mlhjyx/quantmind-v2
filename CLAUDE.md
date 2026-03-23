@@ -15,7 +15,7 @@ v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/b
 已启用: quant/arch/data/qa/factor/strategy/risk/alpha_miner (8人)
 未启用: frontend(Phase 1B)/ml(Phase 1C)
 阻塞项: 无
-待决策: PEAD因子(IC=5.34%)等审批, v1.2升级NOT JUSTIFIED(待新因子)
+战略调整: v1.1锁死不升级(等权天花板LL-017), alpha_miner转为LightGBM特征池, 分层排序研究中
 管理制度: 10条铁律(每次回复前检查) + 组长制(arch管编码组, quant管研究组) + Sprint模板(3阶段) + Session目标制(最多3个)
 关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md / FACTOR_HEALTH_REPORT.md / FACTOR_TEST_REGISTRY.md
 ```
@@ -158,6 +158,19 @@ Sprint X.Y 执行流程:
 | Deprecated 5因子 | momentum_20/high_low_range等停止计算省23% | KEEP | Sprint 1.3b |
 | v1.2升级(+mf_divergence) | paired bootstrap p=0.387，增量不显著 | NOT JUSTIFIED | Sprint 1.3a |
 | big_small_consensus | 原始IC=12.74%中性化后-1.0%，虚假alpha | Reverted | Sprint 1.3a |
+| PEAD加入等权组合 | IC=5.34%但组合Sharpe-0.085(等权天花板LL-017) | Reverted | Sprint 1.3b |
+| 等权因子数上限 | 5-6因子局部最优，更多反而差 | KEEP 5因子 | Sprint 1.3b |
+| v1.1配置锁死 | 不再等权升级，60天Paper Trading跑完 | KEEP | Sprint 1.3b |
+| KBAR 15因子 | 15/20 PASS但大部分与vol/rev冗余，3个独立候选入Reserve | Reserve | Sprint 1.3b |
+| 最大化ICIR加权 | Sharpe=0.992<基线1.035，集中度过高(turnover50-70%) | Reverted | Sprint 1.3b |
+| 最大化IC加权 | Sharpe=0.929，更激进更差 | Reverted | Sprint 1.3b |
+| ICIR简单加权 | Sharpe=0.912，CI下界<0 | Reverted | Sprint 1.3b |
+| 收益率加权 | Sharpe=0.861 | Reverted | Sprint 1.3b |
+| 因子择时(5F) | Sharpe=0.876，择时引入滞后噪声 | Reverted | Sprint 1.3b |
+| 因子择时+PEAD(6F) | Sharpe=0.679最差，PEAD 2024崩塌-23.5% | Reverted | Sprint 1.3b |
+| 半衰期加权 | Sharpe=0.838 | Reverted | Sprint 1.3b |
+| BP子维度融合 | Sharpe=0.820，子维度增加噪声 | Reverted | Sprint 1.3b |
+| **线性合成全面对比** | **9种方法全部劣于等权，等权=线性全局最优(LL-018)** | **KEEP等权** | Sprint 1.3b |
 
 ---
 
