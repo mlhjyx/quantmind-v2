@@ -3,7 +3,7 @@
 DESIGN_V5 §8.1 定义的4级熔断状态机:
   L1: 单策略日亏>3% → 暂停1天(次日自动恢复)
   L2: 总组合日亏>5% → 全部暂停(次日自动恢复)
-  L3: 月亏(滚动20日)>10% → 降仓50%, 恢复条件: 连续5天盈利>2%
+  L3: 滚动5日亏>7% OR 滚动20日亏>10% → 降仓50%, 恢复条件: 连续3天盈利>1.5%
   L4: 累计亏>25% → 停止所有交易, 人工审批
 
 遵循CLAUDE.md: async/await + 类型注解 + Google docstring(中文) + Depends注入。
@@ -36,8 +36,8 @@ class CircuitBreakerLevel(enum.IntEnum):
     """熔断级别。数值越大越严重。"""
 
     NORMAL = 0
-    L1_PAUSED = 1   # 单策略日亏>3%, 暂停1天
-    L2_HALTED = 2   # 总组合日亏>5%, 全部暂停
+    L1_PAUSED = 1  # 单策略日亏>3%, 暂停1天
+    L2_HALTED = 2  # 总组合日亏>5%, 全部暂停
     L3_REDUCED = 3  # 月亏>10%, 降仓50%
     L4_STOPPED = 4  # 累计>25%, 停止交易
 
@@ -46,8 +46,8 @@ class TransitionType(enum.StrEnum):
     """状态变更类型。"""
 
     ESCALATE = "escalate"  # 升级(恶化)
-    RECOVER = "recover"    # 自动恢复
-    MANUAL = "manual"      # 人工审批恢复/强制重置
+    RECOVER = "recover"  # 自动恢复
+    MANUAL = "manual"  # 人工审批恢复/强制重置
 
 
 @dataclass(frozen=True)
@@ -80,11 +80,12 @@ class RiskMetrics:
     """每日风控指标，由调用方组装后传入。"""
 
     trade_date: date
-    daily_return: Decimal              # 当日策略收益率
-    nav: Decimal                       # 当日净值
-    initial_capital: Decimal           # 初始资金
-    cumulative_return: Decimal         # 累计收益率 (nav/initial - 1)
-    rolling_20d_return: Decimal | None  # 滚动20日累计收益率(不足20日传None)
+    daily_return: Decimal  # 当日策略收益率
+    nav: Decimal  # 当日净值
+    initial_capital: Decimal  # 初始资金
+    cumulative_return: Decimal  # 累计收益率 (nav/initial - 1)
+    rolling_5d_return: Decimal | None = None  # 滚动5日累计收益率(不足5日传None)
+    rolling_20d_return: Decimal | None = None  # 滚动20日累计收益率(不足20日传None)
     portfolio_vol_20d: float | None = None  # 组合近20日年化波动率(用于自适应阈值)
 
 
@@ -112,16 +113,17 @@ class CircuitBreakerThresholds:
     l1_daily_loss: Decimal = Decimal("-0.03")
     l2_daily_loss: Decimal = Decimal("-0.05")
     l3_rolling_loss: Decimal = Decimal("-0.10")
+    l3_rolling_5d_loss: Decimal = Decimal("-0.07")  # 滚动5日亏损>7%触发L3
     l3_rolling_window: int = 20
     l4_cumulative_loss: Decimal = Decimal("-0.25")
     l3_position_multiplier: Decimal = Decimal("0.5")
-    l3_recovery_days: int = 5
-    l3_recovery_return: Decimal = Decimal("0.02")
+    l3_recovery_days: int = 3
+    l3_recovery_return: Decimal = Decimal("0.015")
 
     # 波动率自适应参数
-    vol_baseline: float = 0.1485      # 基准年化波动率(沪深300长期均值)
-    vol_clip_min: float = 0.5         # vol_ratio下限(低波时不过度放松)
-    vol_clip_max: float = 2.0         # vol_ratio上限(高波时不过度收紧)
+    vol_baseline: float = 0.1485  # 基准年化波动率(沪深300长期均值)
+    vol_clip_min: float = 0.5  # vol_ratio下限(低波时不过度放松)
+    vol_clip_max: float = 2.0  # vol_ratio上限(高波时不过度收紧)
 
 
 # ─────────────────────────────────────────────
@@ -132,7 +134,7 @@ _LEVEL_CAN_REBALANCE: dict[CircuitBreakerLevel, bool] = {
     CircuitBreakerLevel.NORMAL: True,
     CircuitBreakerLevel.L1_PAUSED: False,
     CircuitBreakerLevel.L2_HALTED: False,
-    CircuitBreakerLevel.L3_REDUCED: True,   # 只允许减仓，由调用方控制
+    CircuitBreakerLevel.L3_REDUCED: True,  # 只允许减仓，由调用方控制
     CircuitBreakerLevel.L4_STOPPED: False,
 }
 
@@ -267,7 +269,9 @@ class RiskControlService:
                 metrics=_metrics_to_dict(metrics),
             )
             await self._persist_transition(
-                strategy_id, execution_mode, transition,
+                strategy_id,
+                execution_mode,
+                transition,
                 entered_date=metrics.trade_date,
                 position_multiplier=Decimal("1.0"),
                 recovery_streak_days=0,
@@ -278,12 +282,14 @@ class RiskControlService:
 
             logger.info(
                 "[RiskControl] %s 从L%d恢复到NORMAL (日期=%s)",
-                strategy_id, prev_level.value, metrics.trade_date,
+                strategy_id,
+                prev_level.value,
+                metrics.trade_date,
             )
 
         # 4. 不管是否恢复，都检查触发条件
-        triggered_level, trigger_reason, trigger_metrics_dict = (
-            self._check_trigger_conditions(metrics)
+        triggered_level, trigger_reason, trigger_metrics_dict = self._check_trigger_conditions(
+            metrics
         )
 
         if triggered_level > current_level:
@@ -304,7 +310,9 @@ class RiskControlService:
 
             new_multiplier = _LEVEL_POSITION_MULTIPLIER[new_level]
             await self._persist_transition(
-                strategy_id, execution_mode, transition,
+                strategy_id,
+                execution_mode,
+                transition,
                 entered_date=metrics.trade_date,
                 position_multiplier=new_multiplier,
                 recovery_streak_days=0,
@@ -315,15 +323,16 @@ class RiskControlService:
 
             logger.warning(
                 "[RiskControl] %s 升级到L%d: %s (日期=%s)",
-                strategy_id, new_level.value, trigger_reason, metrics.trade_date,
+                strategy_id,
+                new_level.value,
+                trigger_reason,
+                metrics.trade_date,
             )
             current_level = new_level
 
         # 5. 如果处于L3且未升级也未恢复，更新recovery streak
         if current_level == CircuitBreakerLevel.L3_REDUCED and not recovered:
-            await self._update_recovery_streak(
-                strategy_id, execution_mode, metrics.daily_return
-            )
+            await self._update_recovery_streak(strategy_id, execution_mode, metrics.daily_return)
 
         # 6. 返回最新状态
         return await self.get_current_state(strategy_id, execution_mode)
@@ -383,9 +392,7 @@ class RiskControlService:
 
         db_state = await self.repo.get_state(strategy_id, execution_mode)
         if db_state is None or db_state["current_level"] != CircuitBreakerLevel.L4_STOPPED:
-            raise ValueError(
-                f"策略 {strategy_id} 当前不是L4_STOPPED状态，无法发起恢复审批"
-            )
+            raise ValueError(f"策略 {strategy_id} 当前不是L4_STOPPED状态，无法发起恢复审批")
 
         # 插入approval_queue记录
         row = await self.repo.fetch_one(
@@ -417,7 +424,8 @@ class RiskControlService:
 
         logger.info(
             "[RiskControl] L4恢复审批已创建: strategy=%s approval=%s",
-            strategy_id, approval_id,
+            strategy_id,
+            approval_id,
         )
         return approval_id
 
@@ -485,7 +493,9 @@ class RiskControlService:
             metrics={},
         )
         await self._persist_transition(
-            strategy_id, execution_mode, transition,
+            strategy_id,
+            execution_mode,
+            transition,
             entered_date=today,
             position_multiplier=Decimal("1.0"),
             recovery_streak_days=0,
@@ -586,12 +596,8 @@ class RiskControlService:
         await self._ensure_tables()
 
         state = await self.get_current_state(strategy_id, execution_mode)
-        total_escalations = await self.repo.count_escalations(
-            strategy_id, execution_mode
-        )
-        last_escalation = await self.repo.get_last_escalation_date(
-            strategy_id, execution_mode
-        )
+        total_escalations = await self.repo.count_escalations(strategy_id, execution_mode)
+        last_escalation = await self.repo.get_last_escalation_date(strategy_id, execution_mode)
 
         days_in_state = (date.today() - state.entered_date).days
 
@@ -613,14 +619,13 @@ class RiskControlService:
             "entered_date": state.entered_date.isoformat(),
             "trigger_reason": state.trigger_reason,
             "total_escalations": total_escalations,
-            "last_escalation_date": (
-                last_escalation.isoformat() if last_escalation else None
-            ),
+            "last_escalation_date": (last_escalation.isoformat() if last_escalation else None),
             "l3_recovery_progress": l3_progress,
             "thresholds": {
                 "l1_daily_loss": float(self.thresholds.l1_daily_loss),
                 "l2_daily_loss": float(self.thresholds.l2_daily_loss),
                 "l3_rolling_loss": float(self.thresholds.l3_rolling_loss),
+                "l3_rolling_5d_loss": float(self.thresholds.l3_rolling_5d_loss),
                 "l4_cumulative_loss": float(self.thresholds.l4_cumulative_loss),
                 "l3_recovery_days": self.thresholds.l3_recovery_days,
                 "l3_recovery_return": float(self.thresholds.l3_recovery_return),
@@ -668,7 +673,8 @@ class RiskControlService:
 
         logger.info(
             "[RiskControl] 状态已初始化: strategy=%s mode=%s",
-            strategy_id, execution_mode,
+            strategy_id,
+            execution_mode,
         )
         return await self.get_current_state(strategy_id, execution_mode)
 
@@ -717,7 +723,9 @@ class RiskControlService:
             metrics={},
         )
         await self._persist_transition(
-            strategy_id, execution_mode, transition,
+            strategy_id,
+            execution_mode,
+            transition,
             entered_date=today,
             position_multiplier=Decimal("1.0"),
             recovery_streak_days=0,
@@ -728,7 +736,9 @@ class RiskControlService:
 
         logger.warning(
             "[RiskControl] 强制重置: strategy=%s 从L%d→NORMAL 原因=%s",
-            strategy_id, prev_level.value, reason,
+            strategy_id,
+            prev_level.value,
+            reason,
         )
         return await self.get_current_state(strategy_id, execution_mode)
 
@@ -755,8 +765,7 @@ class RiskControlService:
         """
         if metrics.portfolio_vol_20d is None or metrics.portfolio_vol_20d <= 0:
             logger.warning(
-                "[RiskControl] portfolio_vol_20d缺失或非正(值=%s), "
-                "按保守假设返回vol_clip_max=%.2f",
+                "[RiskControl] portfolio_vol_20d缺失或非正(值=%s), 按保守假设返回vol_clip_max=%.2f",
                 metrics.portfolio_vol_20d,
                 self.thresholds.vol_clip_max,
             )
@@ -801,17 +810,19 @@ class RiskControlService:
         # 注意: 阈值是负数, 乘以vol_ratio后绝对值变大 → 更难触发
         l1_threshold = self.thresholds.l1_daily_loss * Decimal(str(vol_ratio))
         l2_threshold = self.thresholds.l2_daily_loss * Decimal(str(vol_ratio))
-        l3_threshold = self.thresholds.l3_rolling_loss * Decimal(str(vol_ratio))
+        l3_20d_threshold = self.thresholds.l3_rolling_loss * Decimal(str(vol_ratio))
+        l3_5d_threshold = self.thresholds.l3_rolling_5d_loss * Decimal(str(vol_ratio))
         l4_threshold = self.thresholds.l4_cumulative_loss * Decimal(str(vol_ratio))
 
         if vol_ratio != 1.0:
             logger.debug(
                 "[RiskControl] 波动率自适应: vol_ratio=%.3f, "
-                "L1=%.1f%%, L2=%.1f%%, L3=%.1f%%, L4=%.1f%%",
+                "L1=%.1f%%, L2=%.1f%%, L3_5d=%.1f%%, L3_20d=%.1f%%, L4=%.1f%%",
                 vol_ratio,
                 float(l1_threshold) * 100,
                 float(l2_threshold) * 100,
-                float(l3_threshold) * 100,
+                float(l3_5d_threshold) * 100,
+                float(l3_20d_threshold) * 100,
                 float(l4_threshold) * 100,
             )
 
@@ -824,15 +835,31 @@ class RiskControlService:
                 metrics_dict,
             )
 
-        # L3: 滚动20日亏损超阈值
-        if (
+        # L3: OR条件 — 滚动5日 < -7% OR 滚动20日 < -10% (均受波动率自适应)
+        l3_triggered_5d = (
+            metrics.rolling_5d_return is not None and metrics.rolling_5d_return <= l3_5d_threshold
+        )
+        l3_triggered_20d = (
             metrics.rolling_20d_return is not None
-            and metrics.rolling_20d_return <= l3_threshold
-        ):
+            and metrics.rolling_20d_return <= l3_20d_threshold
+        )
+
+        if l3_triggered_5d or l3_triggered_20d:
+            # 构造触发原因: 说明哪个条件触发
+            reasons: list[str] = []
+            if l3_triggered_5d:
+                reasons.append(
+                    f"滚动5日亏损{float(metrics.rolling_5d_return) * 100:.1f}%"
+                    f"(阈值{float(l3_5d_threshold) * 100:.1f}%)"
+                )
+            if l3_triggered_20d:
+                reasons.append(
+                    f"滚动20日亏损{float(metrics.rolling_20d_return) * 100:.1f}%"
+                    f"(阈值{float(l3_20d_threshold) * 100:.1f}%)"
+                )
             return (
                 CircuitBreakerLevel.L3_REDUCED,
-                f"滚动20日亏损{float(metrics.rolling_20d_return) * 100:.1f}%"
-                f"(自适应阈值{float(l3_threshold) * 100:.1f}%, vol_ratio={vol_ratio:.2f})，降仓50%",
+                f"{' + '.join(reasons)}(vol_ratio={vol_ratio:.2f})，降仓50%",
                 metrics_dict,
             )
 
@@ -871,7 +898,7 @@ class RiskControlService:
         """评估恢复条件(纯计算, 不写DB)。
 
         L1/L2: entered_date < metrics.trade_date (已过1个交易日冷却)
-        L3: recovery_streak_days >= 5 且 recovery_streak_return > 2%
+        L3: recovery_streak_days >= 3 且 recovery_streak_return > 1.5%
         L4: 关联的approval_queue.status == 'approved'
 
         Args:
@@ -893,9 +920,7 @@ class RiskControlService:
         if current_level == CircuitBreakerLevel.L3_REDUCED:
             # 连续5天盈利 且 累计收益>2%
             streak_days = db_state.get("recovery_streak_days", 0) or 0
-            streak_return = Decimal(
-                str(db_state.get("recovery_streak_return", 0) or 0)
-            )
+            streak_return = Decimal(str(db_state.get("recovery_streak_return", 0) or 0))
             return (
                 streak_days >= self.thresholds.l3_recovery_days
                 and streak_return >= self.thresholds.l3_recovery_return
@@ -935,22 +960,20 @@ class RiskControlService:
 
         if daily_return > Decimal("0"):
             new_days = (db_state.get("recovery_streak_days", 0) or 0) + 1
-            prev_return = Decimal(
-                str(db_state.get("recovery_streak_return", 0) or 0)
-            )
+            prev_return = Decimal(str(db_state.get("recovery_streak_return", 0) or 0))
             new_return = prev_return + daily_return
         else:
             # 亏损或持平: 重置
             new_days = 0
             new_return = Decimal("0")
 
-        await self.repo.update_recovery_streak(
-            strategy_id, execution_mode, new_days, new_return
-        )
+        await self.repo.update_recovery_streak(strategy_id, execution_mode, new_days, new_return)
 
         logger.debug(
             "[RiskControl] L3恢复追踪: strategy=%s streak=%d天 累计=%.4f%%",
-            strategy_id, new_days, float(new_return) * 100,
+            strategy_id,
+            new_days,
+            float(new_return) * 100,
         )
 
     async def _persist_transition(
@@ -1082,9 +1105,7 @@ def _db_state_to_dataclass(db_state: dict[str, Any]) -> CircuitBreakerState:
         trigger_metrics=db_state.get("trigger_metrics") or {},
         position_multiplier=multiplier,
         recovery_streak_days=db_state.get("recovery_streak_days", 0) or 0,
-        recovery_streak_return=Decimal(
-            str(db_state.get("recovery_streak_return", 0) or 0)
-        ),
+        recovery_streak_return=Decimal(str(db_state.get("recovery_streak_return", 0) or 0)),
         can_rebalance=_LEVEL_CAN_REBALANCE[level],
         approval_id=UUID(approval_id_str) if approval_id_str else None,
     )
@@ -1098,10 +1119,11 @@ def _metrics_to_dict(metrics: RiskMetrics) -> dict[str, Any]:
         "nav": float(metrics.nav),
         "initial_capital": float(metrics.initial_capital),
         "cumulative_return": float(metrics.cumulative_return),
+        "rolling_5d_return": (
+            float(metrics.rolling_5d_return) if metrics.rolling_5d_return is not None else None
+        ),
         "rolling_20d_return": (
-            float(metrics.rolling_20d_return)
-            if metrics.rolling_20d_return is not None
-            else None
+            float(metrics.rolling_20d_return) if metrics.rolling_20d_return is not None else None
         ),
         "portfolio_vol_20d": metrics.portfolio_vol_20d,
     }

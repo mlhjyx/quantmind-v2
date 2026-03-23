@@ -8,7 +8,7 @@
 覆盖的状态机路径:
   1. NORMAL → L1(日亏>3%) → NORMAL(次日自动恢复)
   2. NORMAL → L2(日亏>5%) → NORMAL(恢复条件满足)
-  3. NORMAL → L3(20日累计>10%) → 降仓50% → 连续5天盈利>2% → NORMAL
+  3. NORMAL → L3(5日累计>7% OR 20日累计>10%) → 降仓50% → 连续3天盈利>1.5% → NORMAL
   4. NORMAL → L4(累计>25%) → 人工审批 → NORMAL
   5. L1 → L3(同时满足两条件直接跳级)
   6. L3 streak重置(当日亏损时streak归零)
@@ -315,7 +315,7 @@ class TestCircuitBreakerStateMachine:
         first_call = mock_repo.upsert_state.call_args_list[0]
         assert first_call.kwargs["current_level"] == CircuitBreakerLevel.NORMAL
 
-    # ── 路径3: NORMAL → L3(20日累计>10%) → 降仓 → 连续5天盈利>2% → NORMAL ──
+    # ── 路径3: NORMAL → L3(5日>7% OR 20日>10%) → 降仓 → 连续3天盈利>1.5% → NORMAL ──
 
     @pytest.mark.asyncio
     async def test_normal_to_l3_on_rolling_20d_loss(self):
@@ -345,20 +345,82 @@ class TestCircuitBreakerStateMachine:
         assert call_kwargs["position_multiplier"] == Decimal("0.5")
 
     @pytest.mark.asyncio
+    async def test_normal_to_l3_on_rolling_5d_loss(self):
+        """NORMAL状态下滚动5日累计亏损>7%触发L3_REDUCED(OR条件)。"""
+        normal_state = _make_db_state(current_level=0)
+        l3_state = _make_db_state(
+            current_level=3,
+            entered_date=TODAY,
+            position_multiplier=Decimal("0.5"),
+        )
+        service, mock_repo, _ = _build_service(
+            get_state_returns=[normal_state, l3_state, l3_state]
+        )
+
+        metrics = _make_metrics(
+            daily_return=Decimal("-0.02"),
+            cumulative_return=Decimal("-0.08"),
+            rolling_20d_return=Decimal("-0.03"),  # 20日不触发
+            trade_date=TODAY,
+        )
+        # 添加rolling_5d_return: -8% < -7%阈值
+        metrics = RiskMetrics(
+            trade_date=TODAY,
+            daily_return=Decimal("-0.02"),
+            nav=INITIAL_CAPITAL * Decimal("0.92"),
+            initial_capital=INITIAL_CAPITAL,
+            cumulative_return=Decimal("-0.08"),
+            rolling_5d_return=Decimal("-0.08"),  # -8% < L3_5d阈值-7%
+            rolling_20d_return=Decimal("-0.03"),  # 20日不触发
+            portfolio_vol_20d=0.1485,
+        )
+
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+
+        call_kwargs = mock_repo.upsert_state.call_args.kwargs
+        assert call_kwargs["current_level"] == CircuitBreakerLevel.L3_REDUCED
+        assert call_kwargs["position_multiplier"] == Decimal("0.5")
+
+    @pytest.mark.asyncio
+    async def test_l3_not_triggered_when_5d_none_and_20d_ok(self):
+        """rolling_5d_return为None时仅用20d条件判断。"""
+        normal_state = _make_db_state(current_level=0)
+        service, mock_repo, _ = _build_service(
+            get_state_returns=[normal_state, normal_state]
+        )
+
+        # 5d=None, 20d=-5%(不触发) → 应保持NORMAL
+        metrics = RiskMetrics(
+            trade_date=TODAY,
+            daily_return=Decimal("-0.01"),
+            nav=INITIAL_CAPITAL * Decimal("0.95"),
+            initial_capital=INITIAL_CAPITAL,
+            cumulative_return=Decimal("-0.05"),
+            rolling_5d_return=None,  # 不足5日
+            rolling_20d_return=Decimal("-0.05"),  # 不触发
+            portfolio_vol_20d=0.1485,
+        )
+
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+
+        # 不应升级(无upsert_state调用，因为没有状态变更)
+        mock_repo.upsert_state.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_l3_position_multiplier_is_half(self):
         """L3的仓位系数应为0.5。"""
         assert _LEVEL_POSITION_MULTIPLIER[CircuitBreakerLevel.L3_REDUCED] == Decimal("0.5")
 
     @pytest.mark.asyncio
-    async def test_l3_recovery_after_5_day_streak(self):
-        """L3恢复: 连续5天盈利且累计>2%后恢复到NORMAL。"""
-        # L3 state with streak already at 5 days, 2.5% return
+    async def test_l3_recovery_after_3_day_streak(self):
+        """L3恢复: 连续3天盈利且累计>1.5%后恢复到NORMAL。"""
+        # L3 state with streak already at 3 days, 1.8% return
         l3_state = _make_db_state(
             current_level=3,
             entered_date=date(2026, 3, 10),  # 10天前
             position_multiplier=Decimal("0.5"),
-            recovery_streak_days=5,
-            recovery_streak_return=Decimal("0.025"),  # 2.5% > 2%阈值
+            recovery_streak_days=3,
+            recovery_streak_return=Decimal("0.018"),  # 1.8% > 1.5%阈值
         )
         normal_state = _make_db_state(
             current_level=0,
@@ -392,10 +454,10 @@ class TestCircuitBreakerStateMachine:
             current_level=3,
             entered_date=date(2026, 3, 15),
             position_multiplier=Decimal("0.5"),
-            recovery_streak_days=2,
-            recovery_streak_return=Decimal("0.008"),
+            recovery_streak_days=1,
+            recovery_streak_return=Decimal("0.003"),
         )
-        # 未满足恢复条件(streak_days=2 < 5)，所以不恢复
+        # 未满足恢复条件(streak_days=1 < 3)，所以不恢复
         # get_state: 1) check_and_update 2) _update_recovery_streak 3) final state
         service, mock_repo, _ = _build_service(
             get_state_returns=[l3_state, l3_state, l3_state]
@@ -418,8 +480,8 @@ class TestCircuitBreakerStateMachine:
         # 验证streak更新
         mock_repo.update_recovery_streak.assert_called_once()
         call_args = mock_repo.update_recovery_streak.call_args
-        assert call_args.args[2] == 3  # streak_days: 2 + 1 = 3
-        expected_return = Decimal("0.008") + Decimal("0.003")
+        assert call_args.args[2] == 2  # streak_days: 1 + 1 = 2
+        expected_return = Decimal("0.003") + Decimal("0.003")
         assert call_args.args[3] == expected_return
 
     # ── 路径6: L3 streak重置 ──
@@ -431,8 +493,8 @@ class TestCircuitBreakerStateMachine:
             current_level=3,
             entered_date=date(2026, 3, 15),
             position_multiplier=Decimal("0.5"),
-            recovery_streak_days=3,
-            recovery_streak_return=Decimal("0.012"),
+            recovery_streak_days=2,
+            recovery_streak_return=Decimal("0.008"),
         )
         service, mock_repo, _ = _build_service(
             get_state_returns=[l3_state, l3_state, l3_state]
@@ -459,8 +521,8 @@ class TestCircuitBreakerStateMachine:
             current_level=3,
             entered_date=date(2026, 3, 15),
             position_multiplier=Decimal("0.5"),
-            recovery_streak_days=4,
-            recovery_streak_return=Decimal("0.018"),
+            recovery_streak_days=2,
+            recovery_streak_return=Decimal("0.008"),
         )
         service, mock_repo, _ = _build_service(
             get_state_returns=[l3_state, l3_state, l3_state]
@@ -813,10 +875,11 @@ class TestCircuitBreakerStateMachine:
         assert t.l1_daily_loss == Decimal("-0.03")
         assert t.l2_daily_loss == Decimal("-0.05")
         assert t.l3_rolling_loss == Decimal("-0.10")
+        assert t.l3_rolling_5d_loss == Decimal("-0.07")
         assert t.l4_cumulative_loss == Decimal("-0.25")
         assert t.l3_position_multiplier == Decimal("0.5")
-        assert t.l3_recovery_days == 5
-        assert t.l3_recovery_return == Decimal("0.02")
+        assert t.l3_recovery_days == 3
+        assert t.l3_recovery_return == Decimal("0.015")
 
 
 # ============================================================================

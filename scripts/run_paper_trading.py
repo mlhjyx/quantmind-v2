@@ -199,15 +199,31 @@ def check_circuit_breaker(
         return {"level": 4, "action": "halt",
                 "reason": f"累计亏损{cum_loss:.1%}, NAV={latest_nav:.0f}"}
 
-    # L3: 滚动20日累计 > -10%
+    # L3: 滚动5日亏>7% OR 滚动20日亏>10%（OR条件, 任一触发即降仓）
+    # 滚动5日（日频响应: 短窗口快速检测急跌）
+    rolling_5d_loss = None
     if len(rows) >= 5:
-        rolling_cum = 1.0
+        rolling_5d = 1.0
+        for r in rows[:5]:
+            rolling_5d *= (1 + r[2])
+        rolling_5d_loss = rolling_5d - 1
+
+    # 滚动20日
+    rolling_20d_loss = None
+    if len(rows) >= 5:
+        rolling_20d = 1.0
         for r in rows[:20]:
-            rolling_cum *= (1 + r[2])
-        rolling_loss = rolling_cum - 1
-        if rolling_loss < -0.10:
-            return {"level": 3, "action": "reduce",
-                    "reason": f"20日累计{rolling_loss:.1%}"}
+            rolling_20d *= (1 + r[2])
+        rolling_20d_loss = rolling_20d - 1
+
+    l3_reasons = []
+    if rolling_5d_loss is not None and rolling_5d_loss < -0.07:
+        l3_reasons.append(f"5日累计{rolling_5d_loss:.1%}")
+    if rolling_20d_loss is not None and rolling_20d_loss < -0.10:
+        l3_reasons.append(f"20日累计{rolling_20d_loss:.1%}")
+    if l3_reasons:
+        return {"level": 3, "action": "reduce",
+                "reason": " + ".join(l3_reasons)}
 
     # L2: 单日亏损 > 5%
     if latest_ret < -0.05:

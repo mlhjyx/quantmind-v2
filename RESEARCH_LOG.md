@@ -1,48 +1,69 @@
 # RESEARCH_LOG.md — 研究记录
 
-> 所有研究发现记录于此，无论是否采纳。
-> 格式：[角色] 标题 / 来源 / 核心方法 / 对项目价值 / 状态
+> TEAM_CHARTER §9.4.3 格式。所有研究发现记录于此。
 
 ---
 
 ## 2026-03 研究记录
 
-### [factor] GPA(Gross Profit to Assets)因子在A股的方向反转
+### [quant] Deflated Sharpe Ratio评估基线策略
+- **来源**: Bailey & López de Prado (2014), "The Deflated Sharpe Ratio"
+- **核心方法**: 考虑多重检验偏差，校正因尝试多个策略导致的Sharpe膨胀
+- **对项目价值**: DSR=0.591("可疑")，说明Sharpe 1.037部分来自数据挖掘。Paper Trading是唯一验证手段
+- **实现难度**: 低（已实现在engines/dsr.py）
+- **状态**: ✅ 已实现，Sprint 1.2a
 
-- **来源**: Novy-Marx (2013), "The Other Side of Value: The Gross Profitability Premium", JFE
-- **核心发现**: A股GPA因子方向与美股相反——低毛利率股票5日跑赢高毛利率（IC=-0.038, t=-2.95）
-- **quant审查结论**: 行业中性化后IC衰减61.6%至-0.011(p=0.14不显著)。本质是行业暴露proxy，不是stock-level alpha
-- **对项目的价值**: 排除了一个潜在因子，避免引入伪alpha
-- **状态**: ❌ 不纳入组合（quant否决）
+### [quant] BH-FDR多重检验校正
+- **来源**: Benjamini & Hochberg (1995); Harvey, Liu & Zhu (2016) "...and the Cross-Section of Expected Returns"
+- **核心方法**: 用累积测试总数M（非当批N）做FDR控制，防止因子挖掘"碰运气"
+- **对项目价值**: 64个因子测试中控制假阳性率，t>2.5硬下限+BH-FDR校正
+- **实现难度**: 低（已实现在config_guard.py）
+- **状态**: ✅ 已实现，Sprint 1.3b
 
-### [quant] 回测与Paper Trading模拟的入场时机差异
+### [quant] Paired Bootstrap检验因子增量
+- **来源**: Ledoit & Wolf (2008), "Robust Performance Hypothesis Testing"
+- **核心方法**: 对同一股票池同一时段，bootstrap 5因子vs6因子IC差异的分布
+- **对项目价值**: 发现v1.2(+mf_divergence)增量仅+0.10%(p=0.387)——NOT JUSTIFIED。防止了一次无效版本切换
+- **状态**: ✅ 已使用，Sprint 1.3a
 
-- **发现**: 同期(2025-04~2026-03)回测Sharpe=3.07 vs 模拟Sharpe=1.80，差异源于回测4月空仓(等月末首信号)躲过4/7关税冲击-13.15%
-- **方法论启示**: 回测start_date的首次建仓时机会显著影响结果。建议加`--initial-rebalance-now`参数
-- **状态**: 📝 BACKLOG（回测参数改进）
+### [risk] 波动率自适应熔断阈值
+- **来源**: Engle (1982) ARCH/GARCH框架; 研究报告#1课题2
+- **核心方法**: 阈值×clip(portfolio_vol/baseline_vol, 0.5, 2.0)，高波放宽低波收紧
+- **对项目价值**: CSI300 2021-2025波动率中位数14.85%作为基线。解决静态阈值"牛市频繁误触/熊市反应太慢"
+- **状态**: ✅ 已实现，Sprint 1.2a
 
-### [factor] 下一因子候选方向（BACKLOG → Sprint 1.3）
+### [risk] L3日频触发方案5阈值对比
+- **来源**: A股历史急跌事件回测(2015/2016/2020/2024)
+- **核心方法**: 5个阈值(-3%/-5%/-6%/-7%/-10%)对比触发次数/误杀率/漏报率
+- **对项目价值**: 确定5d<-7% OR 20d<-10%为最优，年均触发2次。-5%误触发严重(年均3.8次)
+- **状态**: ✅ 参数已确认，编码实现中
 
-- **方向1**: 盈利惊喜因子——ann_date前后超额收益，捕捉PEAD(Post-Earnings-Announcement Drift)
-- **方向2**: 股东人数变化——stk_holdernumber季度变化率，筹码集中度proxy
-- **数据依赖**: 方向1需fina_indicator已有数据，方向2需Sprint 1.3新增stk_holdernumber接口
-- **状态**: 📋 BACKLOG，Sprint 1.3数据源扩展时推进
+### [strategy] 同框架多策略在A股不可行
+- **来源**: 5个候选策略全部SimBroker验证失败
+- **核心发现**: 因子正交≠选股正交(LL-009)，proxy回测≠SimBroker回测(LL-011)。同样用5因子等权框架的子策略与基线corr=0.49-0.78
+- **对项目价值**: 降MDD不能靠同框架多策略捷径。正确路径：因子分散化+timing+风控
+- **状态**: 📝 记录，V8.0方向转型为基线优化
 
-### [Team Lead] Sprint 1.3方向+研究报告#2预告 (2026-03-22)
+### [alpha_miner] 资金流因子虚假alpha模式
+- **来源**: Batch 6/8中性化验证
+- **核心发现**: 资金流因子天然与市值/波动率高相关。big_small_consensus原始IC=12.74%中性化后-1.0%。必须做中性化验证(LL-014)
+- **对项目价值**: 避免纳入虚假alpha因子污染组合
+- **状态**: 📝 规则已写入CLAUDE.md
 
-**Sprint 1.3核心任务**：
-1. v1.2因子升级(+mf_divergence IC=9.1%)→回测确认Sharpe提升
-2. strategy从多策略→调仓/风控/执行优化
-3. L3日频风控实现(5日>-5%)
-4. alpha_miner继续挖资金流维度
+### [alpha_miner] PEAD效应在A股逐年增强
+- **来源**: Batch PEAD earnings_surprise_car IC验证
+- **核心发现**: A股PEAD IC从2021年3.57%递增至2025年7.50%，IR从0.46升至1.07。中性化后IC反而更高。与现有因子corr<0.11
+- **对项目价值**: 全项目最干净的新维度因子，已通过factor+quant联合审批
+- **状态**: ✅ PASS，待6因子组合回测
 
-**研究报告#2预告（用户下周产出）**：
-- 课题1：交易执行优化(TWAP/VWAP) → 服务Sprint 1.5 miniQMT
-- 课题2：多重检验校正(BH-FDR) → 服务因子审批流程优化
-- 课题3：LightGBM特征工程 → 服务Sprint 1.8 ML模型
+### [factor] 因子池22因子→5级评级
+- **来源**: FACTOR_HEALTH_REPORT.md全面盘点
+- **核心发现**: 5 Active / 10 Reserve / 2 Watch / 5 Deprecated。5个Deprecated停止计算省23%算力
+- **对项目价值**: 因子池管理从"只加不减"转为主动维护
+- **状态**: ✅ 报告完成，Deprecated待arch实施
 
-### [risk] 2025-04-07 关税冲击事件
-
-- **事件**: 单日组合亏损-13.15%（20只等权），触发L2熔断
-- **对项目的价值**: 真实的"突发政策冲击"压力测试案例
-- **状态**: 📋 纳入压力测试场景库（Sprint 1.2）
+### [strategy] 交易执行优化——100万规模TWAP/VWAP不需要
+- **来源**: 研究报告#2课题1
+- **核心发现**: 100万/15只=6.5万/只，A股单票日均成交额5000万+，参与率0.1%，零市场冲击。唯一值得做的是封板补单(次日补1次)
+- **对项目价值**: 避免过度工程化执行层。TWAP/VWAP等资金>500万后再做
+- **状态**: 📝 记录，封板补单Sprint 1.3b实现

@@ -38,6 +38,7 @@ FACTOR_DIRECTION = {
     "price_volume_corr_20": -1,  # 低价量相关好
     "high_low_range_20": -1,     # 低振幅好
     "mf_momentum_divergence": -1,  # 资金流动量背离: 值越负=背离越大→信号越强
+    "earnings_surprise_car": 1,     # PEAD盈利惊喜CAR: 正惊喜→正漂移, 方向+1
     # ---- v1.2 新增因子 ----
     "price_level_factor": -1,      # -ln(close), 方向-1: 低价股偏好（因子本身已取负，direction再取反→选低价）
     "relative_volume_20": -1,      # 相对成交量, 方向-1: 低异常放量好

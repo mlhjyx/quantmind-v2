@@ -16,16 +16,103 @@ v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/b
 未启用: frontend(Phase 1B)/ml(Phase 1C)
 阻塞项: 无
 待决策: PEAD因子(IC=5.34%)等审批, v1.2升级NOT JUSTIFIED(待新因子)
-关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md / FACTOR_HEALTH_REPORT.md
+管理制度: 10条铁律(每次回复前检查) + 组长制(arch管编码组, quant管研究组) + Sprint模板(3阶段) + Session目标制(最多3个)
+关键文件: TEAM_CHARTER_V2.md / PHASE_1_PLAN.md / PROGRESS.md / STRATEGY_CANDIDATES.md / LESSONS_LEARNED.md / FACTOR_HEALTH_REPORT.md / FACTOR_TEST_REGISTRY.md
 ```
 
 **compaction自定义指令**: 保留所有因子IC数据、配置变更记录、bug根因分析、§3.6.3决策和理由。可压缩：具体代码实现讨论、agent间中间对话、已解决的排查过程。
 
 ---
 
+## Team Lead 10条铁律（每次回复前强制检查，不可跳过）
+
+```
+1. spawn了才算启动——文字说"开始"不算，Agent工具调用了才算（LL-015）
+2. 零角色空闲——完成任务后立即分配下一个（§1.6.1）
+3. 新因子必须中性化验证——原始IC>5%但中性化后<1.5%=虚假alpha（LL-014）
+4. IC分析用生产基线——PAPER_TRADING_CONFIG是唯一权威（LL-013）
+5. 候选策略必须SimBroker验证——proxy分析≠正式回测（LL-011）
+6. 每Sprint结束全员复盘——不可跳过（§7.1）
+7. 编码+研究同时分配——不允许只列编码组忘研究组（LL-001）
+8. Git每批完成后commit——不积攒超过10个新文件
+9. Paper Trading每天确认——日志+DB+风控状态
+10. 用户指令立即执行——不说"稍后"不拖延
+```
+
+违反任何一条 → 在回复开头写"⚠️ 铁律X违反：..."然后先修再答。
+
+---
+
+## 组长制（2026-03-23生效，替代Team Lead直管10人）
+
+```
+Team Lead（我）
+├── 编码组长 = arch
+│   ├── qa — arch完成编码后自动分配测试，不等Team Lead
+│   └── data — arch协调数据依赖，不等Team Lead
+└── 研究组长 = quant
+    ├── factor — quant协调因子审批链，不等Team Lead
+    ├── strategy — quant协调策略评估，不等Team Lead
+    ├── risk — quant协调风控审查，不等Team Lead
+    └── alpha_miner — quant协调因子挖掘方向，不等Team Lead
+```
+
+**Team Lead只做**：跨组协调 + 用户沟通 + 战略决策 + 复盘 + Git
+**arch组长职责**：编码完成后自动给qa分配测试；协调data的数据依赖；编码组内质量把控
+**quant组长职责**：因子通过Gate后自动启动审批链；研究产出汇总；研究组内方向把控
+
+spawn arch/quant时必须在prompt中注明组长职责。
+
+---
+
+## Sprint执行模板（不可删减）
+
+```
+Sprint X.Y 执行流程:
+├── 开始（Day 1）
+│   ├── 列出编码组+研究组全部任务（同时，LL-001）
+│   ├── 确认每角色最多2个任务
+│   └── 写session目标（最多3个）
+├── 中间（Day 2-N）
+│   ├── 每批agent完成 → 铁律自检 → 分配下一批
+│   ├── 重大决策 → 三轮讨论（§3.5）
+│   └── 每个产出 → 交叉审查矩阵检查（§3.5.2）
+├── 结束
+│   ├── 全员复盘（§7.1，不可跳过）
+│   ├── Git commit
+│   ├── PROGRESS.md更新
+│   └── RESEARCH_LOG.md更新
+└── 周五: PT周报
+```
+
+---
+
+## Session目标制（每个session开始时写，最多3个）
+
+```
+本session目标:
+1. [必须完成的P0目标]
+2. [应该完成的P1目标]
+3. [争取完成的P2目标]
+完成3个再加新的。不贪多。
+```
+
+**务实原则**：接受80%执行率。把精力放在"不遗漏P0"上，而不是追求100%合规。P2延迟可接受，P0遗漏不可接受。
+
+---
+
 ## 上下文管理制度
 
 ### 操作规则（每次会话/Sprint/compaction时执行）
+
+**每次回复用户前（强制，不可跳过）**：
+```
+□ 我说"启动"的任务真的spawn了吗？（LL-015检查）
+□ 有角色空闲吗？空闲就分配（§1.6.1）
+□ 有待跟进的协作请求吗？（跨角色传递）
+□ TodoWrite列表是否反映真实状态？
+```
+违反任何一条 = 在回复开头写"⚠️ 自检发现问题：..."然后先修再答。
 
 **每次会话开始**：读PROGRESS.md + TodoWrite列表恢复状态，确认活跃agent列表
 
