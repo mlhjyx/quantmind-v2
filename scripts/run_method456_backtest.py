@@ -764,16 +764,17 @@ def print_comparison(summaries: list[dict]) -> None:
     print()
     print("-" * (22 + (col_w + 2) * (len(summaries) - 1)))
 
-    for label, key, fmt, sign in [
-        ("Sharpe增量", "sharpe", "+.3f", True),
-        ("年化收益增量", "ann_return", "+.1%", True),
-        ("MDD变化", "mdd", "+.1%", True),
-        ("CI下界增量", "bootstrap_ci_low", "+.3f", True),
+    for label, key, fmt in [
+        ("Sharpe增量", "sharpe", "+.3f"),
+        ("年化收益增量", "ann_return", "+.1%"),
+        ("MDD变化", "mdd", "+.1%"),
+        ("CI下界增量", "bootstrap_ci_low", "+.3f"),
     ]:
         print(f"  {label:<20}", end="")
         for s in summaries[1:]:
             delta = s[key] - baseline[key]
-            print(f"  {delta:>{col_w}{fmt}}", end="")
+            formatted = f"{delta:{fmt}}"
+            print(f"  {formatted:>{col_w}}", end="")
         print()
 
     # 年度逐年: 每个方法 vs 基线 胜负

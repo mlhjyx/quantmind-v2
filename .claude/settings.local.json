@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(source .venv/Scripts/activate)",
+      "Bash(python scripts/run_paper_trading.py signal --date 2026-03-25)"
+    ]
+  }
+}

@@ -16,10 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Windows UTF-8 控制台输出修复
+# Windows UTF-8 输出修复（兼容Git Bash管道模式）
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import pandas as pd

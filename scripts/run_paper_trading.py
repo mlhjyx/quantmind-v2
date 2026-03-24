@@ -42,10 +42,8 @@ import traceback
 from datetime import date, datetime
 from pathlib import Path
 
-# Windows UTF-8 控制台输出修复
+# Windows UTF-8 输出修复（兼容Git Bash管道模式）
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -72,14 +70,22 @@ from run_backtest import load_factor_values, load_industry, load_universe
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+_log_handlers = [
+    logging.FileHandler(LOG_DIR / "paper_trading.log", encoding="utf-8"),
+]
+# StreamHandler在Git Bash管道模式下exit时会crash (ValueError: I/O on closed file)
+# Task Scheduler用的是cmd.exe直接调python，不受影响；交互调试通过日志文件查看
+if sys.stdout and not getattr(sys.stdout, "closed", True) and sys.stderr and not getattr(sys.stderr, "closed", True):
+    try:
+        _log_handlers.insert(0, logging.StreamHandler(sys.stderr))
+    except Exception:
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_DIR / "paper_trading.log", encoding="utf-8"),
-    ],
+    handlers=_log_handlers,
 )
 logger = logging.getLogger("paper_trading")
 
