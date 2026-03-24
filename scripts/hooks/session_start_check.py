@@ -35,6 +35,17 @@ def main():
             file=sys.stderr,
         )
 
+    # 提醒读记忆文件
+    memory_dir = Path.home() / ".claude" / "memory"
+    if memory_dir.exists():
+        memory_files = list(memory_dir.glob("*.md"))
+        if memory_files:
+            print(
+                f"📋 记忆文件提醒：{memory_dir} 有 {len(memory_files)} 个记忆文件，"
+                f"请读取 current_state.md 恢复完整上下文。",
+                file=sys.stderr,
+            )
+
     sys.exit(0)
 
 
