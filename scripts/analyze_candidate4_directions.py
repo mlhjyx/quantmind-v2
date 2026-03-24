@@ -12,7 +12,7 @@
 4. 实战可行性
 
 用法:
-    cd /Users/xin/Documents/quantmind-v2 && python scripts/analyze_candidate4_directions.py
+    python scripts/analyze_candidate4_directions.py
 """
 
 import sys

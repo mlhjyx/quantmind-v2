@@ -23,7 +23,7 @@ from app.main import app
 # 确保backend目录在sys.path中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-DATABASE_URL = "postgresql+asyncpg://quantmind:quantmind@localhost:5432/quantmind_v2"
+DATABASE_URL = "postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2"
 
 
 @pytest_asyncio.fixture

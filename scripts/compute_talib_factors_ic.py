@@ -14,7 +14,7 @@ Sprint 1.3a — 用ta_wrapper计算5个技术指标的截面IC。
 数据源: klines_daily (2021-2025)
 输出: 月度IC均值/IR/t值/年度分解
 
-DB: postgresql://quantmind:quantmind@localhost:5432/quantmind_v2
+DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
 import sys
@@ -35,7 +35,7 @@ from wrappers.ta_wrapper import calculate_indicator
 
 warnings.filterwarnings("ignore")
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 # IC评估的日期范围
 IC_START = dt_date(2021, 1, 1)

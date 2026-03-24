@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # --- 数据库 ---
-    DATABASE_URL: str = "postgresql+asyncpg://quantmind:quantmind@localhost:5432/quantmind_v2"
+    DATABASE_URL: str = "postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # --- 数据源 ---

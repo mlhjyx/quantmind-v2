@@ -35,7 +35,7 @@ from engines.signal_engine import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 # ── IVOL Computation (from compute_ivol_ic.py logic) ──
 

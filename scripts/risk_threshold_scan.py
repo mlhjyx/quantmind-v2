@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # 默认参数
 # ============================================================
 
-DEFAULT_DB_URL = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DEFAULT_DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 # CSI500(60%) + CSI1000(40%) 混合代理权重，与Sprint 1.3a L3分析一致
 PROXY_WEIGHTS: dict[str, float] = {

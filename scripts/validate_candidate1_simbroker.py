@@ -14,7 +14,7 @@ LL-011教训：必须用SimpleBacktester+SimBroker跑正式回测，不能用pro
 所以本脚本同时测试正向和反向策略。
 
 用法:
-    cd /Users/xin/Documents/quantmind-v2 && python scripts/validate_candidate1_simbroker.py
+    python scripts/validate_candidate1_simbroker.py
 """
 
 import logging

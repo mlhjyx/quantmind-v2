@@ -27,7 +27,7 @@ START_DATE = date(2021, 1, 4)
 END_DATE = date(2025, 12, 31)
 FORWARD_DAYS = 5
 FACTOR_NAME = "bp_ratio"
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 
 def load_monthly_trade_dates(conn) -> list[date]:

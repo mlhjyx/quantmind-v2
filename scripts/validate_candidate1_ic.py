@@ -11,7 +11,7 @@ Forward return: 20日超额收益(相对沪深300)。
 验证标准: IC_mean > 0.02 (STRATEGY_CANDIDATES.md)
 
 用法:
-    cd /Users/xin/Documents/quantmind-v2 && python scripts/validate_candidate1_ic.py
+    python scripts/validate_candidate1_ic.py
 """
 
 import sys

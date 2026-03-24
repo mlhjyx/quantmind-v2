@@ -32,7 +32,7 @@ import psycopg2
 
 from app.config import settings
 
-DB_URL = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 STRATEGY_ID = settings.PAPER_STRATEGY_ID
 START_DATE = date(2025, 4, 1)
 END_DATE = date(2026, 3, 20)

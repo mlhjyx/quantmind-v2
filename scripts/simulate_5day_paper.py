@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psycopg2
 from app.config import settings
 
-DB_URL = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 STRATEGY_ID = settings.PAPER_STRATEGY_ID
 
 # 交易日列表 — 从DB动态查询

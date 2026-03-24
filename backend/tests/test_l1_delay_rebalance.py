@@ -21,7 +21,7 @@ import psycopg2
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
-DB_URL = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 
 @pytest.fixture

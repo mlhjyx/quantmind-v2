@@ -22,7 +22,7 @@ A股适用性:
 IC计算: 月度截面Spearman IC, 20日超额收益(vs CSI300), 2021-2025
 相关性预筛: vs vol_20/reversal_20/turnover_mean_20, corr>0.6标记冗余
 
-DB: postgresql://quantmind:quantmind@localhost:5432/quantmind_v2
+DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
 import sys
@@ -41,7 +41,7 @@ from engines.config_guard import print_config_header
 
 warnings.filterwarnings("ignore")
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 IC_START = dt_date(2021, 1, 1)
 IC_END = dt_date(2025, 12, 31)

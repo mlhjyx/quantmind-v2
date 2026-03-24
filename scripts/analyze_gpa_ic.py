@@ -30,7 +30,7 @@ END_DATE = date(2025, 12, 31)
 FORWARD_DAYS = 5
 IC_GATE = 0.015
 EXCLUDE_INDUSTRIES = ("银行", "保险", "证券")
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 
 def load_monthly_trade_dates(conn) -> list[date]:

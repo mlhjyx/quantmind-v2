@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 import warnings
 warnings.filterwarnings('ignore')
 
-DB_URL = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
+DB_URL = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
 engine = create_engine(DB_URL)
 
 # ============================================================

@@ -58,7 +58,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 # 金融+房地产行业列表(申万一级)
 FINANCE_RE_INDUSTRIES = {"银行", "证券", "保险", "多元金融", "区域地产", "全国地产"}

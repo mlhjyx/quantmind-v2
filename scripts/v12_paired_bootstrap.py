@@ -33,7 +33,7 @@ import pandas as pd
 import psycopg2
 from scipy import stats
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 # v1.1 baseline (must match PAPER_TRADING_CONFIG exactly)
 BASELINE_5 = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]

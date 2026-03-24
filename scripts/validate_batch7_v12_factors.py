@@ -20,7 +20,7 @@ import time
 import warnings
 warnings.filterwarnings('ignore')
 
-DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
+DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
 
 BASELINE_5 = ['volatility_20', 'ln_market_cap', 'momentum_20', 'turnover_mean_20', 'bp_ratio']
 # Factor directions (positive direction = higher zscore => higher expected return)

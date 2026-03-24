@@ -12,7 +12,7 @@
 6. 各两因子等权合成
 
 用法:
-    cd /Users/xin/Documents/quantmind-v2 && python scripts/evaluate_candidate4_multifactor.py
+    python scripts/evaluate_candidate4_multifactor.py
 """
 
 import sys
@@ -28,7 +28,7 @@ from scipy import stats
 
 warnings.filterwarnings("ignore")
 
-DB_URI = "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 
 def get_month_end_dates(conn, start: str = "2021-01-01", end: str = "2025-12-31") -> list:

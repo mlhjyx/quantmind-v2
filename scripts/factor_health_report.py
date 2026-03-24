@@ -5,6 +5,8 @@ IC计算方法: Spearman rank correlation(zscore, 5日超额收益)
 超额收益: 相对沪深300
 """
 
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -338,7 +340,7 @@ def main():
             print(f"  {row['factor_name']:<24} {row['yearly_detail']}")
 
     # Save to markdown
-    md_path = '/Users/xin/Documents/quantmind-v2/docs/FACTOR_HEALTH_REPORT.md'
+    md_path = str(Path(__file__).resolve().parent.parent / 'docs' / 'FACTOR_HEALTH_REPORT.md')
     with open(md_path, 'w') as f:
         f.write("# 因子池健康报告 — Sprint 1.3b\n\n")
         f.write(f"> 生成时间: 2026-03-23\n")

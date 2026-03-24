@@ -3,6 +3,8 @@
 Sprint 1.3b: 对factor_values表22个因子做统一评级
 """
 
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -387,7 +389,7 @@ def main():
             print(f"  {row['factor_name']:<24} {yd}")
 
     # Save markdown
-    md_path = '/Users/xin/Documents/quantmind-v2/docs/FACTOR_HEALTH_REPORT.md'
+    md_path = str(Path(__file__).resolve().parent.parent / 'docs' / 'FACTOR_HEALTH_REPORT.md')
     with open(md_path, 'w') as f:
         f.write("# 因子池健康报告 — Sprint 1.3b\n\n")
         f.write("> 生成时间: 2026-03-23\n")

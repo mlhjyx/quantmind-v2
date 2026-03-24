@@ -187,7 +187,7 @@ class TestFactorHealthIntegration:
         """获取同步测试连接。"""
         import psycopg2
         return psycopg2.connect(
-            "postgresql://quantmind:quantmind@localhost:5432/quantmind_v2"
+            "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
         )
 
     def test_dry_run_normal_date(self) -> None:

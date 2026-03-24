@@ -9,7 +9,7 @@ Batch 4 Factor IC Analysis (4 factors — new dimensions)
 Factor 1 (shareholder_concentration) skipped: daily_basic has no
 shareholders_num column; data not in DB.
 
-DB: postgresql://quantmind:quantmind@localhost:5432/quantmind_v2
+DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
 import pandas as pd
@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from engines.config_guard import print_config_header
 
-DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
+DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
 
 
 # ── IC computation helper (same as batch3) ──

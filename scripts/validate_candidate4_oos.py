@@ -14,7 +14,7 @@
 4. Bootstrap Sharpe CI
 
 用法:
-    cd /Users/xin/Documents/quantmind-v2 && python scripts/validate_candidate4_oos.py
+    python scripts/validate_candidate4_oos.py
 """
 
 import logging

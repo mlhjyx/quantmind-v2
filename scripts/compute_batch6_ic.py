@@ -10,7 +10,7 @@
 Factor 1 is market-level: IC is time-series (does spread predict next-month market alpha dispersion?).
 Factors 2-5 are stock-level: standard cross-sectional Spearman IC.
 
-DB: postgresql://quantmind:quantmind@localhost:5432/quantmind_v2
+DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
 import pandas as pd
@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from engines.config_guard import print_config_header
 
-DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
+DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
 
 
 # ══════════════════════════════════════════════════════════════════

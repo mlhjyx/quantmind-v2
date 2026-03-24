@@ -63,7 +63,7 @@ def main():
     import numpy as np
     from scipy import stats
 
-    DB_URI = 'postgresql://quantmind:quantmind@localhost:5432/quantmind_v2'
+    DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
     conn = psycopg2.connect(DB_URI)
 
     # Check if we can construct any proxy from available data
