@@ -9,11 +9,18 @@ CLAUDE.md要求: 任何一项失败 → P0告警 + 暂停当日链路。
   ✓ 磁盘空间 > 10GB
 """
 
+import io
 import os
 import shutil
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+# Windows UTF-8 控制台输出修复
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
@@ -144,7 +151,7 @@ def run_health_check(
     for name, func, args in checks:
         ok, msg = func(*args)
         results[name] = ok
-        status = "✓" if ok else "✗"
+        status = "OK" if ok else "FAIL"
         print(f"  {status} {name}: {msg}", flush=True)
         if not ok:
             failed_items.append(f"{name}: {msg}")

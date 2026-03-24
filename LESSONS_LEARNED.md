@@ -401,3 +401,70 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 **教训**: 9种线性合成方法全面测试（改权重×4+改时序×2+改选股池×2+改因子×1），全部劣于等权。突破需要非线性（LightGBM可以学习因子间交互效应、动态权重、条件选择——正是线性方法无法做的）。
 
 **执行状态**: v1.1锁定60天Paper Trading。Sprint 1.8 LightGBM是下一个突破点。
+
+---
+
+## LL-019: Agent状态判断必须验代码，不信文档 (2026-03-25)
+
+**事件**: Sprint 1.3b复盘时，risk agent说"L1/L2熔断连续两个Sprint逾期，最大风控失职"。Team Lead采信并写入复盘汇总。实际检查代码发现L1/L2/L3/L4早已在run_paper_trading.py:175-744完整实现且集成到Paper Trading管道。
+
+**根因**: PROGRESS.md写着"🔨 L1/L2熔断机制"（2026-03-20旧信息，5天未更新）。risk agent读了文档就下结论，没grep代码验证。Team Lead也没独立验证就采信。两层防护都失效。
+
+**改进措施**: 宪法V3.1新增铁律5"下结论前验代码"。§6.3交叉验证强化为"必须验代码/数据，不是读文档然后同意"。
+
+**执行状态**: 写入宪法V3.1。
+
+---
+
+## LL-020: PROGRESS.md维护不能依赖"每天更新" (2026-03-25)
+
+**事件**: V3.0§7写了"每天结束更新PROGRESS.md"，但从3/20到3/25五天没人更新。Sprint 1.1~1.3b的大量进展只在CLAUDE.md compaction段有，PROGRESS.md完全空白。
+
+**根因**: "每天更新"没有强制触发点。写文档和写代码是不同agent，信息传递断裂。违反LL-016"执行不能依赖记忆"。
+
+**改进措施**: 宪法V3.1新增铁律6"Sprint结束必更新PROGRESS.md"。§7.3定义3个强制触发点替代"每天更新"。Compaction段分稳定层/动态层，动态信息只在PROGRESS.md维护一份。
+
+**执行状态**: 写入宪法V3.1。
+
+---
+
+## LL-021: 关税冲击场景需纳入压力测试 (2026-03-25，迁移自RISK-007)
+
+**事件**: 1年模拟中2025-04-07单日亏损-13.15%，原因为突发关税政策冲击导致全市场暴跌。
+
+**影响**: 以Paper Trading当前NAV计算约亏损12.9万，会触发L1级别。Paper Trading 60天窗口（3月底至6月初）正值中美贸易政策不确定性较高时期。
+
+**改进措施**: 此场景已加入压力测试场景库。作为L1/L2集成测试的必测用例。
+
+**执行状态**: 场景已记录，L1/L2代码已实现（run_paper_trading.py:175-744）。
+
+---
+
+## LL-022: 研究不能片面——遇到问题必须主动查阅最新方法/论文/技术 (2026-03-25)
+
+**事件**: V3.0→V3.1修订时，Team Lead仅凭已有知识写宪法，没有去搜索"量化团队最佳实践"、"LLM agent治理框架"、"MLOps实验管理"等外部资源。用户指出后，Team Lead搜索发现：
+- Qlib Alpha158因子集（158个因子，我们只覆盖22个）
+- Qlib RollingGen walk-forward框架（可直接参考）
+- LawClaw宪法治理模式（agent不可修改自身规则）
+- Gu Kelly Xiu 2020（94个ML特征，LightGBM截面预测经典论文）
+- QuantaAlpha（LLM+进化策略自动挖掘因子）
+
+如果不搜索，这些关键参考资料全部错过。
+
+**根因**: Team Lead把"我已经知道的"当作全部，没有"我不知道的可能更重要"的意识。合伙人遇到问题应该主动研究，不是只靠脑子想。
+
+**改进措施**:
+- 宪法V3.2 §9新增第6条工作原则："遇到问题主动研究——搜索文献/开源项目/最佳实践，不只靠脑子想"
+- 每个角色的研究方向（§10）明确列出了关注前沿+资源+应用
+- Sprint规划时必须包含"本Sprint需要研究的问题"清单
+
+**关键参考资源（已发现，待Sprint 1.4深入）**:
+- [Qlib Alpha158](https://github.com/microsoft/qlib/blob/main/examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml) — 因子池对标
+- [Qlib RollingGen](https://qlib.readthedocs.io/en/latest/advanced/task_management.html) — Walk-Forward框架
+- [Gu Kelly Xiu 2020](https://academic.oup.com/rfs/article/33/5/2223/5758276) — 94特征ML截面预测
+- [QuantaAlpha](https://github.com/QuantaAlpha/QuantaAlpha) — LLM因子挖掘
+- [R&D-Agent-Quant](https://arxiv.org/html/2505.15155v2) — 多Agent因子+模型联合优化
+- [LawClaw](https://dev.to/nghiahsgs/i-built-an-ai-agent-that-governs-itself-separation-of-powers-for-llms-123) — AI agent宪法治理
+- [MLOps for Quant](https://medium.com/@online-inference/mlops-best-practices-for-quantitative-trading-teams-59f063d3aaf8) — 回测作为一等公民
+
+**执行状态**: 写入宪法V3.2 §9.6 + §10研究方向。Sprint 1.4需深入研究Alpha158和Gu Kelly Xiu 2020。

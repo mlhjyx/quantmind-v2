@@ -48,6 +48,7 @@ async def send_markdown(
     title: str,
     content: str,
     secret: str = "",
+    keyword: str = "",
 ) -> bool:
     """发送Markdown消息到钉钉。
 
@@ -55,7 +56,8 @@ async def send_markdown(
         webhook_url: 钉钉Webhook地址。
         title: 消息标题(在通知栏显示)。
         content: Markdown格式内容。
-        secret: HMAC签名密钥，为空则不签名。
+        secret: HMAC签名密钥（加签模式），为空则不签名。
+        keyword: 自定义关键词（关键词模式），非空时自动追加到消息末尾。
 
     Returns:
         是否发送成功。失败不抛异常，仅记日志返回False。
@@ -66,11 +68,16 @@ async def send_markdown(
 
     url = _build_sign_url(webhook_url, secret) if secret else webhook_url
 
+    # 关键词模式：确保消息包含关键词
+    actual_content = content
+    if keyword and keyword not in content:
+        actual_content = f"{content}\n\n> {keyword}"
+
     payload = {
         "msgtype": "markdown",
         "markdown": {
             "title": title,
-            "text": content,
+            "text": actual_content,
         },
     }
 
@@ -103,6 +110,7 @@ def send_markdown_sync(
     title: str,
     content: str,
     secret: str = "",
+    keyword: str = "",
 ) -> bool:
     """同步版Markdown发送（给pipeline脚本用，避免async事件循环）。
 
@@ -110,7 +118,8 @@ def send_markdown_sync(
         webhook_url: 钉钉Webhook地址。
         title: 消息标题。
         content: Markdown格式内容。
-        secret: HMAC签名密钥。
+        secret: HMAC签名密钥（加签模式）。
+        keyword: 自定义关键词（关键词模式）。
 
     Returns:
         是否发送成功。
@@ -121,11 +130,16 @@ def send_markdown_sync(
 
     url = _build_sign_url(webhook_url, secret) if secret else webhook_url
 
+    # 关键词模式：确保消息包含关键词
+    actual_content = content
+    if keyword and keyword not in content:
+        actual_content = f"{content}\n\n> {keyword}"
+
     payload = {
         "msgtype": "markdown",
         "markdown": {
             "title": title,
-            "text": content,
+            "text": actual_content,
         },
     }
 

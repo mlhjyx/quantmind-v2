@@ -35,9 +35,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
     LOG_MAX_FILES: int = 10
 
-    # --- 通知（可选） ---
+    # --- 通知 ---
     DINGTALK_WEBHOOK_URL: str = ""
-    DINGTALK_SECRET: str = ""
+    DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式），为空则不签名
+    DINGTALK_KEYWORD: str = ""  # 自定义关键词（关键词模式），非空时自动追加到消息
 
     # --- Paper Trading ---
     PAPER_STRATEGY_ID: str = ""

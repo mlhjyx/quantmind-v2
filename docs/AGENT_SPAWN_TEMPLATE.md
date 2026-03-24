@@ -46,7 +46,7 @@
 2. [任务2，最多2个]
 
 完成后：
-- 记录到RESEARCH_LOG.md格式
+- 记录到LESSONS_LEARNED.md（研究方法论）或FACTOR_TEST_REGISTRY.md（因子发现）
 - 有没有发现需要通知其他角色的？
 ```
 

@@ -1,7 +1,10 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-20
-> Current stage: Phase 0 COMPLETED ✅
+> Last updated: 2026-03-25
+> Current: Phase 1, Sprint 1.3b COMPLETED → Sprint 1.4 规划中
+> Paper Trading: v1.1 Day 3/60, NAV=979,294
+> Blockers: 无硬阻塞
+> 宪法: V3.1 生效 (7铁律+按需spawn+因子审批链)
 
 ## Week 0: Data Feasibility Verification ✅ COMPLETED
 
@@ -301,7 +304,7 @@ Top-N and IndCap have minor impact within monthly configs.
 | IC测试 | ✅ revenue_accel IC=2.37%通过Gate, 其余未通过 |
 | 6因子组合回测 | ✅ 加入revenue_accel后Sharpe未提升(1.28→1.28), **不纳入基线** |
 
-### Sprint 0.1: P0-Bug修复 🔨 IN PROGRESS
+### Sprint 0.1: P0-Bug修复 ✅ COMPLETED
 
 **6-Agent独立审查→quant一票否决→全面修复**
 
@@ -313,23 +316,155 @@ Top-N and IndCap have minor impact within monthly configs.
 | R4 调仓日SQL | 去掉 trade_date<=限制 | ✅ 已修复 |
 | R7 并发保护 | pg_advisory_lock | ✅ 已修复 |
 | Beta对冲移除 | 改为纯监控指标 | ✅ 已修复 |
-| L1/L2熔断机制 | risk评审中,即将实现 | 🔨 |
+| L1/L2熔断机制 | risk评审→方案确定 | ⚠️ 编码未完成，遗留到Sprint 1.4 |
 
-### Team V2 (2026-03-21)
+---
 
-| 角色 | 状态 | 当前任务 |
-|------|------|---------|
-| Team Lead | 活跃 | Sprint 0.1执行 |
-| quant | 待命 | 等qa验证后撤销否决 |
-| arch | 待命 | P0修复已完成 |
-| data | 待命 | |
-| qa | 待命 | 等risk评审后验证 |
-| factor | 待命 | GPA因子研究准备 |
-| strategy | 待命 | 调仓错峰研究准备 |
-| **risk** | **首次启用** | Paper Trading风险评审中 |
-| frontend | 未启用 | Phase 1B启用 |
-| ml | 未启用 | Phase 1C启用 |
+## Sprint 1.1: 参数敏感性 + Paper Trading基础设施 ✅ COMPLETED (2026-03-21)
+
+### 参数敏感性 (Route A) ✅
+- 18-config grid search (Top-N 20/30/50 × Freq biweekly/monthly × IndCap 20/25/30%)
+- **关键发现**: 月度调仓(avg Sharpe 1.243) >> 双周频(avg 0.976)
+- **锁定配置**: Top20 monthly IndCap=25%, 5因子等权, 无Beta对冲
+- Sharpe ≈1.29(unhedged), MDD ≈-32.9%
+- 波动率自适应阈值: clip(0.5, 2.0)
+
+### Paper Trading Pipeline (Route B) ✅
+- paper_broker.py / run_paper_trading.py / health_check.py / setup_paper_trading.py
+- 首次建仓: 2026-03-19, 20只, NAV=987,251
+
+### 财务质量因子 (Route C) ✅
+- roe_change_q/revenue_accel/accrual_anomaly → revenue_accel IC=2.37%通过但组合未提升
+
+### Bug修复 ✅
+- 持仓膨胀bug (LL-002), MDD peak初始化 (LL-003), 时序不一致 (LL-004/005)
+
+---
+
+## Sprint 1.2: 多策略探索 + 配置优化 ✅ COMPLETED (2026-03-22)
+
+### 5候选策略全部失败
+- 候选2 红利低波: corr=0.778, 无分散价值
+- 候选4 大盘低波: OOS Sharpe=-0.11
+- 候选5 中期反转: corr=0.627, 不够正交
+- **教训**: 因子正交≠选股正交(LL-009), Proxy≠正式回测(LL-011)
+
+### 配置优化 ✅
+- Top20→Top15: 整手误差8%→3%, Sharpe无差异 → KEEP
+- L1延迟方案C: L1触发时月度调仓延迟不跳过 → KEEP
+- days_gap改交易日: 修复国庆/五一误杀 → KEEP
+
+### v1.1确立
+- 5因子等权 + Top15 + 月度 + 行业25%
+- 基线Sharpe=1.037(Mac), MDD=-39.7%
+
+---
+
+## Sprint 1.2a: 统计工具 ✅ COMPLETED (2026-03-22)
+
+- DSR(Deflated Sharpe Ratio): DSR=0.591("可疑") → engines/dsr.py
+- BH-FDR多重检验校正 → engines/config_guard.py
+- 波动率自适应熔断阈值 → risk_control_service.py
+
+---
+
+## Sprint 1.3: 因子挖掘深度 ✅ COMPLETED (2026-03-22~23)
+
+### alpha_miner因子挖掘 (Batch 1~8)
+- 67个因子测试(FACTOR_TEST_REGISTRY.md)
+- **亮点**: mf_divergence IC=9.1%(全项目最强), price_level IC=8.42%
+- **陷阱**: big_small_consensus原始IC=12.74%中性化后-1.0%(虚假alpha, LL-014)
+- PEAD earnings_surprise: IC=5.34%, corr<0.11最干净新维度
+
+### moneyflow数据拉取 ✅
+- moneyflow_daily: 614万行入库
+
+---
+
+## Sprint 1.3a: v1.2升级验证 ✅ COMPLETED (2026-03-23)
+
+- v1.2(+mf_divergence) paired bootstrap: p=0.387, 增量不显著 → NOT JUSTIFIED
+- **决策**: v1.2升级取消, v1.1维持
+
+---
+
+## Sprint 1.3b: 线性合成全面对比 + 收尾 ✅ COMPLETED (2026-03-23)
+
+### 9种线性合成方法 vs 等权基线
+| 方法 | 最佳Sharpe | vs 基线1.035 | 结论 |
+|------|-----------|-------------|------|
+| 最大化ICIR加权 | 0.992 | 劣 | Reverted |
+| 最大化IC加权 | 0.929 | 劣 | Reverted |
+| ICIR简单加权 | 0.912 | 劣 | Reverted |
+| 收益率加权 | 0.861 | 劣 | Reverted |
+| 因子择时(5F) | 0.876 | 劣 | Reverted |
+| 因子择时+PEAD(6F) | 0.679 | 最差 | Reverted |
+| 半衰期加权 | 0.838 | 劣 | Reverted |
+| BP子维度融合 | 0.820 | 劣 | Reverted |
+| 分层排序A/B/C | 0.666~0.820 | 劣 | Reverted |
+
+**结论**: 等权=线性全局最优(LL-018), 突破需要非线性(LightGBM)
+
+### 其他完成项
+- KBAR 15因子: 15/20 PASS, 大部分与vol/rev冗余, 3个独立候选入Reserve
+- Deprecated 5因子标记(momentum_20/volatility_60/turnover_std_20/high_low_range_20/volume_std_20)
+- 封板补单机制实现
+- PEAD加入等权组合验证→Sharpe-0.085, 确认等权天花板(LL-017)
+- v1.1配置锁死, 60天Paper Trading启动(2026-03-23)
+
+---
+
+## Windows迁移 ✅ COMPLETED (2026-03-24~25)
+
+### 完成项
+- [x] Python 3.11.9 安装
+- [x] PostgreSQL 16 (D:\pgsql, D:\pgdata16, 用户xin)
+- [x] Redis Windows服务
+- [x] Python虚拟环境 + 依赖安装
+- [x] 数据库恢复(2.8GB dump, 1.6亿行, 46张表)
+- [x] 行数校验: 160,299,461行全部匹配
+- [x] Paper Trading 3/23首次运行(Windows) + 3/24补跑
+- [x] Task Scheduler注册: QuantMind_DailySignal(16:30) + QuantMind_DailyExecute(09:00)
+- [x] macOS残留清理(278个._文件 + 12个.DS_Store)
+- [x] .gitignore重建
+- [x] CLAUDE.md环境描述更新
+- [x] Python脚本UTF-8编码修复
+
+### Sharpe差异诊断
+- Windows: 1.019 vs Mac: 1.037 (差0.018)
+- **根因**: dump中reversal_20因子在2021-01-29(第一个月度调仓日)缺失, 该日用4因子等权而非5因子
+- **决策**: 接受1.019为Windows新基线, 毕业标准调整为Sharpe≥0.71
+
+---
+
+## Paper Trading v1.1 运行状态
+
+- **启动**: 2026-03-23
+- **当前**: Day 3 / 60天
+- **NAV**: 979,294 (+2.15% on Day 2)
+- **持仓**: 15只
+- **自动化**: Task Scheduler (16:30信号 + 09:00执行)
+- **毕业标准**: Sharpe≥0.71, MDD<35%, 滑点偏差<50%
+
+---
+
+## 当前团队状态 (2026-03-25)
+
+| 角色 | 状态 | 待办 |
+|------|------|------|
+| Team Lead | 活跃 | Sprint 1.3b复盘 + 1.4规划 |
+| quant | 待命 | — |
+| arch | 待命 | Deprecated因子停止计算 |
+| data | 待命 | 3/25 Task Scheduler首次自动运行验证 |
+| qa | 待命 | Windows环境全量pytest |
+| factor | 待命 | — |
+| strategy | 待命 | — |
+| risk | 待命 | **L1/L2熔断编码(逾期)** |
+| alpha_miner | 待命 | 目标转型→LightGBM特征池 |
+| frontend | 未启用 | Phase 1B |
+| ml | 未启用 | Phase 1C |
 
 ## Blockers
-- risk风险评审中（熔断机制阈值+实现方案）
-- crontab待用户手动安装: `bash scripts/install_crontab.sh`
+- 无硬阻塞
+- L1/L2熔断编码逾期(从Sprint 0.1遗留), 优先级P1
+- accrual_anomaly因子blocked(需cash_flow表), 优先级低

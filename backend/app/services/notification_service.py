@@ -324,6 +324,7 @@ class NotificationService:
             title=f"[{level}] {title}",
             content=dingtalk_content,
             secret=settings.DINGTALK_SECRET,
+            keyword=settings.DINGTALK_KEYWORD,
         )
 
 
@@ -379,6 +380,7 @@ def send_alert(
         title=f"[{level}] {title}",
         content=md,
         secret=secret,
+        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, 'DINGTALK_KEYWORD') else "",
     )
 
 

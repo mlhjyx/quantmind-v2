@@ -32,13 +32,21 @@ Phase 2 — execute（T+1日 09:00 cron触发）:
 """
 
 import argparse
+import io
 import json
 import logging
+import os
 import sys
 import time
 import traceback
 from datetime import date, datetime
 from pathlib import Path
+
+# Windows UTF-8 控制台输出修复
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -927,7 +935,7 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 report_lines.append(f"卖出({len(sell_list)}): {', '.join(sell_list[:5])}")
 
         report = "\n".join(report_lines)
-        print("\n" + report)
+        print("\n" + report.encode('utf-8', errors='replace').decode('utf-8'))
 
         if not dry_run:
             buys = [f.code for f in fills if f.direction == "buy"]
