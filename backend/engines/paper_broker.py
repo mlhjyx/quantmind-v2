@@ -441,6 +441,8 @@ class PaperBroker(BaseBroker):
         """
         if not fills:
             return
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
         cur = conn.cursor()
         try:
             for fill in fills:
@@ -448,8 +450,8 @@ class PaperBroker(BaseBroker):
                     """INSERT INTO trade_log
                        (code, trade_date, strategy_id, direction, quantity,
                         fill_price, slippage_bps, commission, stamp_tax,
-                        total_cost, execution_mode)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+                        total_cost, execution_mode, executed_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper', %s)
                        ON CONFLICT DO NOTHING""",
                     (
                         fill.code,
@@ -462,6 +464,7 @@ class PaperBroker(BaseBroker):
                         float(fill.commission),
                         float(fill.tax),
                         float(fill.total_cost),
+                        now_utc,
                     ),
                 )
             conn.commit()
@@ -486,6 +489,8 @@ class PaperBroker(BaseBroker):
         3. performance_series — 当日绩效
         """
         assert self.broker is not None
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
         cur = conn.cursor()
 
         try:
@@ -495,8 +500,8 @@ class PaperBroker(BaseBroker):
                     """INSERT INTO trade_log
                        (code, trade_date, strategy_id, direction, quantity,
                         fill_price, slippage_bps, commission, stamp_tax,
-                        total_cost, execution_mode)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+                        total_cost, execution_mode, executed_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper', %s)
                        ON CONFLICT DO NOTHING""",
                     (
                         fill.code,
@@ -509,6 +514,7 @@ class PaperBroker(BaseBroker):
                         float(fill.commission),
                         float(fill.tax),
                         float(fill.total_cost),
+                        now_utc,
                     ),
                 )
 

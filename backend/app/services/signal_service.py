@@ -10,7 +10,7 @@ Service内部不commit，由调用方统一管理事务。
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import pandas as pd
@@ -402,12 +402,13 @@ class SignalService:
                WHERE trade_date = %s AND strategy_id = %s AND execution_mode = 'paper'""",
             (trade_date, strategy_id),
         )
+        now_utc = datetime.now(timezone.utc)
         for sig in signals_list:
             cur.execute(
                 """INSERT INTO signals
                    (code, trade_date, strategy_id, alpha_score, rank,
-                    target_weight, action, execution_mode)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'paper')""",
+                    target_weight, action, execution_mode, signal_generated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'paper', %s)""",
                 (
                     sig["code"],
                     sig["trade_date"],
@@ -416,5 +417,6 @@ class SignalService:
                     sig["rank"],
                     sig["target_weight"],
                     sig["action"],
+                    now_utc,
                 ),
             )

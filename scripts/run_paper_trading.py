@@ -990,6 +990,21 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 log_step(conn, "execute_phase", "success",
                          result={"fills": len(fills), "is_rebalance": False})
 
+        # ── Step 7.5: 回填executed_at时间戳(gap_hours毕业指标) ──
+        if not dry_run and fills:
+            from datetime import datetime as dt_mod, timezone as tz_mod
+            now_utc = dt_mod.now(tz_mod.utc)
+            cur = conn.cursor()
+            cur.execute(
+                """UPDATE trade_log
+                   SET executed_at = %s
+                   WHERE trade_date = %s AND strategy_id = %s
+                     AND execution_mode = 'paper' AND executed_at IS NULL""",
+                (now_utc, exec_date, settings.PAPER_STRATEGY_ID),
+            )
+            conn.commit()
+            logger.info(f"[Step7.5] executed_at已更新: {cur.rowcount}行")
+
         # ── Step 8: 执行结果通知 ──
         report_lines = [
             f"[QuantMind Paper] {exec_date} 执行确认",

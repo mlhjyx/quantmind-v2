@@ -313,6 +313,7 @@ CREATE TABLE signals (
     target_weight   DECIMAL(8,6),
     action          VARCHAR(10),                       -- buy/sell/hold
     execution_mode  VARCHAR(10) DEFAULT 'paper',       -- paper/live
+    signal_generated_at TIMESTAMPTZ DEFAULT NULL,      -- 信号生成时间(UTC), gap_hours毕业指标
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (code, trade_date, strategy_id)
 );
@@ -339,6 +340,7 @@ CREATE TABLE trade_log (
     total_cost      DECIMAL(12,4),                     -- 元
     execution_mode  VARCHAR(10) DEFAULT 'paper',       -- ⭐paper/live
     reject_reason   VARCHAR(100),                      -- limit_up/limit_down/suspended/insufficient_fund
+    executed_at     TIMESTAMPTZ DEFAULT NULL,           -- 实际执行确认时间(UTC)
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 COMMENT ON TABLE trade_log IS '交易记录。execution_mode区分paper/live';
