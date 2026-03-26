@@ -25,6 +25,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
+from engines.slippage_model import SlippageConfig
 from engines.metrics import generate_report, print_report
 from engines.signal_engine import (
     PAPER_TRADING_CONFIG,
@@ -127,7 +128,9 @@ def main():
         default=PAPER_TRADING_CONFIG.rebalance_freq,
     )
     parser.add_argument("--capital", type=float, default=1_000_000)
-    parser.add_argument("--slippage", type=float, default=10.0, help="滑点(bps)")
+    parser.add_argument("--slippage", type=float, default=10.0, help="滑点(bps), fixed模式使用")
+    parser.add_argument("--slippage-mode", choices=["volume_impact", "fixed"],
+                        default="volume_impact", help="滑点模型(default: volume_impact)")
     args = parser.parse_args()
 
     start = datetime.strptime(args.start, "%Y-%m-%d").date()
@@ -148,6 +151,8 @@ def main():
         top_n=args.top_n,
         rebalance_freq=args.freq,
         slippage_bps=args.slippage,
+        slippage_mode=args.slippage_mode,
+        slippage_config=SlippageConfig(),
     )
 
     # 2. 获取调仓日历

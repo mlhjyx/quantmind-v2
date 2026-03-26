@@ -1,11 +1,67 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-27
-> Current: Phase 1, Sprint 1.10 ✅ COMPLETED
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅
+> Current: Phase 1, Sprint 1.11 ✅ COMPLETED
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
-> Blockers: miniQMT买卖验证需交易时间执行
+> Blockers: 无（miniQMT连接已验证OK）
 > 宪法: V3.3 生效 (8铁律+strategy升级+设计文档对照)
+
+## Sprint 1.11: PT毕业加速 ✅ COMPLETED
+
+### 目标
+市场冲击成本真实化 + gap_hours采集 + PT心跳watchdog + 毕业一键评估 + V3.3同步
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| 冲击成本集成 | SimBroker volume_impact(市值分层k) | SlippageConfig+方向参数 | **PASS** |
+| 基线重跑 | volume-impact下全期Sharpe+CI | 回测运行中 | **PENDING** |
+| gap_hours采集 | signal_generated_at写入DB | signals+trade_log双列 | **PASS** |
+| PT心跳 | watchdog检测缺失→P0告警 | pt_watchdog.py+Task Scheduler | **PASS** |
+| 毕业评估CLI | 9项指标格式化输出 | check_graduation.py 411行 | **PASS** |
+| collection error | 0个 | importorskip修复5个 | **PASS** |
+| config_guard入链路 | Step 0.5配置一致性守卫 | assert_baseline_config | **PASS** |
+| PT不中断 | v1.1日报持续 | 0 regression | **PASS** |
+| 0 regression | 新增测试全PASS | 53新测试(35+8+10) | **PASS** |
+
+### 产出物
+- `backend/engines/slippage_model.py` — SlippageConfig(市值分层k_large=0.05/k_mid=0.10/k_small=0.15)
+- `backend/engines/backtest_engine.py` — SimBroker volume_impact模式+direction参数
+- `backend/app/services/param_defaults.py` — 6个滑点参数L2可配置
+- `backend/app/services/signal_service.py` — signal_generated_at时间戳
+- `backend/engines/paper_broker.py` — executed_at时间戳(双INSERT路径)
+- `scripts/run_paper_trading.py` — heartbeat写入+config_guard Step 0.5+executed_at backfill
+- `scripts/pt_watchdog.py` — PT心跳监控(Task Scheduler 20:00)
+- `scripts/check_graduation.py` — 9项毕业评估CLI
+- `CLAUDE.md` — V3.3完全同步(8铁律+9毕业标准)
+- `LESSONS_LEARNED.md` — LL-030(宪法流程是编码前置条件)
+- 新增测试53个(35 slippage_model + 8 integration + 10 gap_hours), 0 regression
+
+### 研究产出
+- **策略R1**: 冤杀因子策略匹配方案——RSRS(事件型,weekly,优先级1) > VWAP(排序型,daily/weekly,优先级2) > PEAD(事件型,信心最低)
+- **miniQMT连接**: 验证OK(账户81001102, 总资产100万, API正常)
+
+### 决策
+| 决策 | 结果 | 判定 | 阶段 |
+|------|------|------|------|
+| SlippageConfig市值分层 | k_large=0.05/k_mid=0.10/k_small=0.15 | KEEP | Sprint 1.11 |
+| volume_impact默认模式 | BacktestConfig.slippage_mode="volume_impact" | KEEP | Sprint 1.11 |
+| 6滑点参数L2可配置 | param_defaults注册 | KEEP | Sprint 1.11 |
+| PT心跳watchdog | 每日20:00检测 | KEEP | Sprint 1.11 |
+| config_guard入PT链路 | Step 0.5强制检查 | KEEP | Sprint 1.11 |
+| RSRS优先验证 | 事件型weekly, t=-4.35最强 | Sprint 1.12验证 | Sprint 1.11 |
+
+### 违规记录
+- LL-030: Sprint启动时跳过TeamCreate直接编码（LL-027同根第2次）
+- 用户2次提醒后纠正
+
+### 遗留
+- Task 8基线重跑（回测运行中）
+- Task R2风险评估（延后）
+- 前沿研究+设计文档审查（Sprint 1.11后独立进行）
+
+---
 
 ## Sprint 1.10: PT风控加固 + 毕业标准补全 ✅ COMPLETED
 
