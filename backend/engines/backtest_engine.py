@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from engines.base_broker import BaseBroker
+from engines.slippage_model import SlippageConfig, volume_impact_slippage
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,9 @@ class BacktestConfig:
     initial_capital: float = 1_000_000.0
     top_n: int = 20
     rebalance_freq: str = "biweekly"
-    slippage_bps: float = 10.0   # 基础滑点 (bps)
+    slippage_bps: float = 10.0   # 基础滑点 (bps), fixed模式使用
+    slippage_mode: str = "volume_impact"  # 'volume_impact' | 'fixed'
+    slippage_config: SlippageConfig = field(default_factory=SlippageConfig)
     commission_rate: float = 0.0000854  # 佣金万0.854（国金证券实际费率）
     stamp_tax_rate: float = 0.0005   # 印花税千0.5(仅卖出)
     transfer_fee_rate: float = 0.00001  # 过户费万0.1
@@ -169,17 +172,48 @@ class SimBroker(BaseBroker):
 
         return True
 
-    def calc_slippage(self, price: float, amount: float, row: pd.Series) -> float:
-        """计算滑点(Volume-impact模型简化版)。
+    def calc_slippage(
+        self,
+        price: float,
+        amount: float,
+        row: pd.Series,
+        direction: str = "buy",
+    ) -> float:
+        """计算滑点。
 
-        Phase 0用固定bps, Phase 1切换到分市值k系数模型。
+        slippage_mode='volume_impact': 市值分层Volume-Impact模型（DEV_BACKTEST_ENGINE.md §4.5）。
+        slippage_mode='fixed': 固定bps（向后兼容）。
         """
-        return price * self.config.slippage_bps / 10000
+        if self.config.slippage_mode == "volume_impact":
+            daily_amount = row.get("amount", 0)
+            # daily.amount单位是千元(TUSHARE_DATA_SOURCE_CHECKLIST)，转为元
+            # 千元范围: 典型值1e3~1e7(=百万~百亿元), 阈值1e9区分
+            # 已是元的值(如5e7)不会被误转(5e7 < 1e9会转→5e10，但回测数据
+            # 统一用千元入库，所以实际不会出现已转换的元值)
+            if daily_amount > 0 and daily_amount < 1e9:
+                daily_amount *= 1000
+            daily_volume = row.get("volume", 0)
+            market_cap = row.get("total_mv", 0)
+            # total_mv单位是万元(daily_basic)，转为元
+            # 万元范围: 最大~3e8万元(=3万亿元), 阈值1e10区分万元/元
+            if market_cap > 0 and market_cap < 1e10:
+                market_cap *= 10000
+            total_bps = volume_impact_slippage(
+                trade_amount=amount,
+                daily_volume=daily_volume,
+                daily_amount=daily_amount,
+                market_cap=market_cap,
+                direction=direction,
+                config=self.config.slippage_config,
+            )
+            return price * total_bps / 10000
+        else:
+            return price * self.config.slippage_bps / 10000
 
     def execute_sell(self, code: str, shares: int, row: pd.Series) -> Optional[Fill]:
         """执行卖出。"""
         price = row["open"]  # 次日开盘价成交
-        slippage = self.calc_slippage(price, shares * price, row)
+        slippage = self.calc_slippage(price, shares * price, row, direction="sell")
         exec_price = price - slippage  # 卖出价格偏低
 
         amount = exec_price * shares
@@ -219,7 +253,7 @@ class SimBroker(BaseBroker):
         actual_shares = floor(target_value / price / 100) * 100
         """
         price = row["open"]  # 次日开盘价成交
-        slippage = self.calc_slippage(price, target_amount, row)
+        slippage = self.calc_slippage(price, target_amount, row, direction="buy")
         exec_price = price + slippage  # 买入价格偏高
 
         # 整手约束
