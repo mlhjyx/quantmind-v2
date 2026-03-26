@@ -30,6 +30,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+
+fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
+httpx = pytest.importorskip("httpx", reason="httpx not installed")
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
