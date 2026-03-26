@@ -250,6 +250,80 @@ HIGH_TURNOVER_ALERT = NotificationTemplate(
     market="astock",
 )
 
+DRAWDOWN_WARNING = NotificationTemplate(
+    key="drawdown_warning",
+    title_template="回撤预警: {current_dd:.1f}% (阈值{threshold:.1f}%)",
+    content_template=(
+        "### 回撤预警\n\n"
+        "**当前回撤**: {current_dd:.1f}%\n\n"
+        "**预警阈值**: {threshold:.1f}%\n\n"
+        "**当前NAV**: {nav:,.0f}\n\n"
+        "回撤接近熔断线，请关注后续走势。"
+    ),
+    default_level="P1",
+    category="risk",
+    market="astock",
+)
+
+DATA_UPDATE_FAILED = NotificationTemplate(
+    key="data_update_failed",
+    title_template="数据更新失败: {source}",
+    content_template=(
+        "### 数据更新失败\n\n"
+        "**数据源**: {source}\n\n"
+        "**日期**: {date}\n\n"
+        "**错误**: {error}\n\n"
+        "请检查数据源连接和API配额。"
+    ),
+    default_level="P1",
+    category="system",
+    market="system",
+)
+
+PAPER_MILESTONE = NotificationTemplate(
+    key="paper_milestone",
+    title_template="PT里程碑: Day {day}/{total}",
+    content_template=(
+        "### Paper Trading 里程碑\n\n"
+        "**进度**: Day {day}/{total}\n\n"
+        "**NAV**: {nav:,.0f}\n\n"
+        "**Sharpe**: {sharpe:.2f}\n\n"
+        "**MDD**: {mdd:.1f}%\n\n"
+        "距毕业标准: Sharpe≥0.72, MDD<35%。"
+    ),
+    default_level="P2",
+    category="strategy",
+    market="astock",
+)
+
+SIGNAL_BLOCKED = NotificationTemplate(
+    key="signal_blocked",
+    title_template="信号生成被阻止",
+    content_template=(
+        "### 信号生成被阻止\n\n"
+        "**日期**: {date}\n\n"
+        "**原因**: {reason}\n\n"
+        "当日信号未生成，T+1执行将跳过。请排查后手动触发。"
+    ),
+    default_level="P0",
+    category="system",
+    market="astock",
+)
+
+FACTOR_ACTIVE_COUNT_LOW = NotificationTemplate(
+    key="factor_active_count_low",
+    title_template="活跃因子数不足: {count}/{min_count}",
+    content_template=(
+        "### 活跃因子数不足\n\n"
+        "**当前活跃数**: {count}\n\n"
+        "**最低要求**: {min_count}\n\n"
+        "因子池缩小可能导致信号集中度过高，建议启动因子挖掘补充。"
+    ),
+    default_level="P1",
+    category="factor",
+    market="astock",
+)
+
 SYSTEM_DISK_WARNING = NotificationTemplate(
     key="system_disk_warning",
     title_template="磁盘空间不足: 剩余{free_gb:.1f}GB",
@@ -286,6 +360,11 @@ TEMPLATE_REGISTRY: dict[str, NotificationTemplate] = {
         FACTOR_COVERAGE_WARNING,
         INDUSTRY_CONCENTRATION_HIGH,
         HIGH_TURNOVER_ALERT,
+        DRAWDOWN_WARNING,
+        DATA_UPDATE_FAILED,
+        PAPER_MILESTONE,
+        SIGNAL_BLOCKED,
+        FACTOR_ACTIVE_COUNT_LOW,
         SYSTEM_DISK_WARNING,
     ]
 }

@@ -6,16 +6,35 @@
 
 Sprint 1.0: 任务定义，可通过 celery_app.send_task() 手动触发。
 Sprint 1.1: 由 Beat 自动调度。
+Sprint 1.9: health_check结果写Redis，signal_task启动前检查。
 """
 
 import asyncio
+import json
 import logging
 import time
 from datetime import date, datetime
 
+import redis
+
+from app.config import settings
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("celery.daily_pipeline")
+
+# Redis key模板: health_check结果，TTL=24h
+HEALTH_CHECK_KEY_TEMPLATE = "task_status:{date}:health_check"
+HEALTH_CHECK_TTL = 86400  # 24小时
+
+
+def _get_redis_client() -> redis.Redis:
+    """获取Redis连接（用于任务间状态传递）。"""
+    return redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _health_check_key(d: date) -> str:
+    """生成health_check Redis key。"""
+    return HEALTH_CHECK_KEY_TEMPLATE.format(date=d.isoformat())
 
 
 # ════════════════════════════════════════════════════════════
@@ -34,6 +53,7 @@ def daily_health_check_task(self) -> dict:
 
     检查: PostgreSQL / Redis / 昨日数据 / 磁盘 / Worker。
     任何一项失败 → P0 告警 + 阻止后续信号任务。
+    结果写入Redis供signal_task检查。
 
     Returns:
         预检结果 dict（JSON 序列化存 Celery result backend）。
@@ -44,6 +64,16 @@ def daily_health_check_task(self) -> dict:
         result = asyncio.run(_async_health_check())
         elapsed = time.time() - t0
         logger.info(f"[HealthCheck] 完成 ({elapsed:.1f}s): pass={result.get('all_pass')}")
+
+        # 写入Redis供signal_task检查
+        try:
+            r = _get_redis_client()
+            key = _health_check_key(date.today())
+            r.setex(key, HEALTH_CHECK_TTL, json.dumps(result))
+            logger.info("[HealthCheck] 结果已写入Redis: %s", key)
+        except Exception as e:
+            logger.error("[HealthCheck] 写入Redis失败: %s", e)
+
         return result
     except Exception as exc:
         logger.error(f"[HealthCheck] 异常: {exc}")
@@ -128,6 +158,10 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
     复用 scripts/run_paper_trading.py 的 run_signal_phase()。
     Celery 层只负责: 参数解析 → 调用 → 异常重试 → 返回摘要。
 
+    启动前检查Redis中的health_check结果:
+    - 未通过: 跳过信号生成 + 发送P0告警
+    - 无结果: 放行但打warning log（手动触发场景）
+
     Args:
         trade_date_str: T日日期，格式 'YYYY-MM-DD'。
             None 时使用 date.today()（Beat 自动触发场景）。
@@ -141,6 +175,21 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
         else date.today()
     )
     trade_date_str = str(trade_date)
+
+    # ── 检查health_check结果 ──
+    health_status = _check_health_gate(trade_date)
+    if health_status == "failed":
+        msg = f"[Signal] health_check未通过，跳过T日={trade_date}信号生成"
+        logger.error(msg)
+        _send_health_gate_alert(trade_date)
+        return {"status": "skipped", "trade_date": trade_date_str,
+                "reason": "health_check_failed"}
+    elif health_status == "missing":
+        logger.warning(
+            "[Signal] 无health_check结果(T日=%s)，放行（可能是手动触发）",
+            trade_date,
+        )
+
     logger.info(f"[Signal] T日={trade_date}")
     t0 = time.time()
 
@@ -153,6 +202,59 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
     except Exception as exc:
         logger.error(f"[Signal] 异常: {exc}", exc_info=True)
         raise self.retry(exc=exc)
+
+
+def _check_health_gate(trade_date: date) -> str:
+    """检查Redis中的health_check结果。
+
+    Args:
+        trade_date: T日日期。
+
+    Returns:
+        "passed" / "failed" / "missing"。
+    """
+    try:
+        r = _get_redis_client()
+        key = _health_check_key(trade_date)
+        raw = r.get(key)
+        if raw is None:
+            return "missing"
+        result = json.loads(raw)
+        return "passed" if result.get("all_pass") else "failed"
+    except Exception as e:
+        logger.warning("[Signal] 读取health_check Redis失败: %s，放行", e)
+        return "missing"
+
+
+def _send_health_gate_alert(trade_date: date) -> None:
+    """health_check未通过时发送P0告警。"""
+    try:
+        from app.services.notification_service import NotificationService
+
+        ns = NotificationService()
+        # 读取失败详情
+        r = _get_redis_client()
+        key = _health_check_key(trade_date)
+        raw = r.get(key)
+        details = json.loads(raw) if raw else {}
+        failed_items = [k for k, v in details.items() if k != "all_pass" and not v]
+
+        import psycopg2
+        conn = psycopg2.connect(settings.DATABASE_URL.replace("+asyncpg", ""))
+        try:
+            ns.send_sync(
+                conn=conn,
+                level="P0",
+                category="pipeline",
+                title=f"健康预检未通过，信号生成已跳过 T={trade_date}",
+                content=f"失败项: {', '.join(failed_items) if failed_items else '未知'}",
+                force=True,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error("[Signal] 发送P0告警失败: %s", e)
 
 
 async def _async_signal(trade_date: date) -> dict:

@@ -49,7 +49,9 @@ class PerformanceReport:
     avg_open_gap: float  # 买入日 open vs 前日close 的平均偏差
 
     # 仓位偏差
-    avg_position_deviation: float  # 实际vs理论仓位偏差
+    mean_position_deviation: float  # mean(|actual_w - target_w|) * 100
+    max_position_deviation: float   # max(|actual_w - target_w|) * 100
+    total_cash_drag: float          # (1 - sum(actual_mv) / total_capital) * 100
 
     # 年度分解
     annual_breakdown: pd.DataFrame  # year → {return, sharpe, mdd}
@@ -262,6 +264,62 @@ def calc_open_gap_stats(fills: list, price_data: pd.DataFrame) -> float:
     return float(np.mean(gaps)) if gaps else 0.0
 
 
+def calc_position_deviation(
+    holdings: dict[str, int],
+    target_weights: dict[str, float],
+    prices: dict[str, float],
+    total_value: float,
+) -> dict[str, float]:
+    """计算实际vs理论仓位偏差。
+
+    输出3个指标:
+    - mean_position_deviation: mean(|actual_w - target_w|) * 100
+    - max_position_deviation: max(|actual_w - target_w|) * 100
+    - total_cash_drag: (1 - sum(actual_mv) / total_value) * 100
+
+    Args:
+        holdings: {code: shares} 实际持仓。
+        target_weights: {code: weight} 目标权重（0-1）。
+        prices: {code: price} 当日收盘价。
+        total_value: 组合总市值（持仓+现金）。
+
+    Returns:
+        包含三个偏差指标的dict。
+    """
+    if total_value <= 0 or not target_weights:
+        return {
+            "mean_position_deviation": 0.0,
+            "max_position_deviation": 0.0,
+            "total_cash_drag": 0.0,
+        }
+
+    # 所有涉及的股票
+    all_codes = set(target_weights.keys()) | set(holdings.keys())
+
+    deviations: list[float] = []
+    total_holdings_mv = 0.0
+
+    for code in all_codes:
+        actual_shares = holdings.get(code, 0)
+        price = prices.get(code, 0.0)
+        actual_mv = actual_shares * price
+        total_holdings_mv += actual_mv
+
+        actual_w = actual_mv / total_value
+        target_w = target_weights.get(code, 0.0)
+        deviations.append(abs(actual_w - target_w))
+
+    mean_dev = float(np.mean(deviations)) * 100 if deviations else 0.0
+    max_dev = float(np.max(deviations)) * 100 if deviations else 0.0
+    cash_drag = (1 - total_holdings_mv / total_value) * 100
+
+    return {
+        "mean_position_deviation": round(mean_dev, 4),
+        "max_position_deviation": round(max_dev, 4),
+        "total_cash_drag": round(cash_drag, 4),
+    }
+
+
 def generate_report(
     result: "BacktestResult",
     price_data: Optional[pd.DataFrame] = None,
@@ -315,8 +373,11 @@ def generate_report(
     # 跳空统计
     avg_gap = calc_open_gap_stats(result.trades, price_data) if price_data is not None else 0.0
 
-    # 仓位偏差(TODO: 需要理论持仓对比)
-    avg_pos_dev = 0.0
+    # 仓位偏差（需要target_portfolios数据，generate_report无此参数，
+    # 保留默认值，由调用方通过calc_position_deviation单独计算）
+    mean_pos_dev = 0.0
+    max_pos_dev = 0.0
+    cash_drag = 0.0
 
     # 年度分解
     annual = calc_annual_breakdown(nav, bench_nav)
@@ -343,7 +404,9 @@ def generate_report(
         ),
         cost_sensitivity=cost_sens,
         avg_open_gap=round(avg_gap * 100, 4),
-        avg_position_deviation=round(avg_pos_dev * 100, 2),
+        mean_position_deviation=round(mean_pos_dev, 2),
+        max_position_deviation=round(max_pos_dev, 2),
+        total_cash_drag=round(cash_drag, 2),
         annual_breakdown=annual,
         monthly_returns=monthly,
     )
@@ -384,6 +447,11 @@ def print_report(report: PerformanceReport):
 
     print(f"\n--- 隔夜跳空 ---")
     print(f"  买入日平均跳空: {report.avg_open_gap:.4f}%")
+
+    print(f"\n--- 仓位偏差 ---")
+    print(f"  {'平均偏差':>12}: {report.mean_position_deviation:>8.2f}%")
+    print(f"  {'最大偏差':>12}: {report.max_position_deviation:>8.2f}%")
+    print(f"  {'现金拖累':>12}: {report.total_cash_drag:>8.2f}%")
 
     print(f"\n--- 年度分解 ---")
     if not report.annual_breakdown.empty:

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from engines.backtest_engine import BacktestConfig, Fill, PendingOrder, SimBroker
+from engines.base_broker import BaseBroker
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class PaperState:
     last_rebalance_date: Optional[date] = None
 
 
-class PaperBroker:
+class PaperBroker(BaseBroker):
     """状态化Paper Trading Broker。
 
     负责:
@@ -402,6 +403,73 @@ class PaperBroker:
         assert self.broker is not None
         return self.broker.get_portfolio_value(today_close)
 
+    # ── BaseBroker统一接口 ──
+
+    def get_positions(self) -> dict[str, int]:
+        """获取当前持仓（委托给内部SimBroker）。"""
+        if self.broker is None:
+            return dict(self.state.holdings) if self.state else {}
+        return dict(self.broker.holdings)
+
+    def get_cash(self) -> float:
+        """获取当前可用现金。"""
+        if self.broker is None:
+            return self.state.cash if self.state else self.initial_capital
+        return self.broker.cash
+
+    def get_total_value(self, prices: dict[str, float]) -> float:
+        """计算组合总市值。"""
+        if self.broker is None:
+            # 未初始化时用state估算
+            if self.state is None:
+                return self.initial_capital
+            holdings_value = sum(
+                shares * prices.get(code, 0)
+                for code, shares in self.state.holdings.items()
+            )
+            return holdings_value + self.state.cash
+        return self.broker.get_portfolio_value(prices)
+
+    def save_fills_only(
+        self,
+        fills: list[Fill],
+        conn,
+    ) -> None:
+        """只写trade_log（成交记录），不更新NAV/position_snapshot。
+
+        方案B拆分: execute阶段只写成交，NAV在signal阶段更新。
+        """
+        if not fills:
+            return
+        cur = conn.cursor()
+        try:
+            for fill in fills:
+                cur.execute(
+                    """INSERT INTO trade_log
+                       (code, trade_date, strategy_id, direction, quantity,
+                        fill_price, slippage_bps, commission, stamp_tax,
+                        total_cost, execution_mode)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+                       ON CONFLICT DO NOTHING""",
+                    (
+                        fill.code,
+                        fill.trade_date,
+                        self.strategy_id,
+                        fill.direction,
+                        fill.shares,
+                        float(fill.price),
+                        float(fill.slippage),
+                        float(fill.commission),
+                        float(fill.tax),
+                        float(fill.total_cost),
+                    ),
+                )
+            conn.commit()
+            logger.info(f"[PaperBroker] trade_log已保存: {len(fills)}笔成交")
+        except Exception:
+            conn.rollback()
+            raise
+
     def save_state(
         self,
         trade_date: date,
@@ -470,20 +538,32 @@ class PaperBroker:
             cash_ratio = self.broker.cash / nav if nav > 0 else 1.0
             position_count = len(self.broker.holdings)
 
-            # 计算日收益率
-            prev_nav = self.state.nav if self.state else self.initial_capital
+            # 计算日收益率（从DB读前一日NAV，防止重跑时self.state指向错误日期）
+            cur.execute(
+                """SELECT nav FROM performance_series
+                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                     AND trade_date < %s
+                   ORDER BY trade_date DESC LIMIT 1""",
+                (self.strategy_id, trade_date),
+            )
+            prev_row = cur.fetchone()
+            prev_nav = float(prev_row[0]) if prev_row else self.initial_capital
             daily_return = (nav / prev_nav - 1) if prev_nav > 0 else 0
             cum_return = (nav / self.initial_capital - 1)
 
             # 计算回撤（需要历史最高NAV）
+            # peak = max(initial_capital, 当日及之前所有NAV)
+            # - 必须包含initial_capital（首日买入即亏也算回撤）
+            # - 必须限制 trade_date <= 当日（幂等重跑不被未来数据污染）
             cur.execute(
                 """SELECT COALESCE(MAX(nav), %s)
                    FROM performance_series
-                   WHERE strategy_id = %s AND execution_mode = 'paper'""",
-                (self.initial_capital, self.strategy_id),
+                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                     AND trade_date <= %s""",
+                (self.initial_capital, self.strategy_id, trade_date),
             )
             peak_nav = float(cur.fetchone()[0])
-            peak_nav = max(peak_nav, nav)
+            peak_nav = max(peak_nav, nav, self.initial_capital)
             drawdown = (nav / peak_nav - 1) if peak_nav > 0 else 0
 
             # 基准NAV

@@ -12,11 +12,13 @@ Phase 0 核心组件, 严格遵守 CLAUDE.md 回测可信度规则:
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 from typing import Optional, Protocol
 
 import numpy as np
 import pandas as pd
-from decimal import Decimal
+
+from engines.base_broker import BaseBroker
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ class BacktestConfig:
     top_n: int = 20
     rebalance_freq: str = "biweekly"
     slippage_bps: float = 10.0   # 基础滑点 (bps)
-    commission_rate: float = 0.00015  # 佣金万1.5
+    commission_rate: float = 0.0000854  # 佣金万0.854（国金证券实际费率）
     stamp_tax_rate: float = 0.0005   # 印花税千0.5(仅卖出)
     transfer_fee_rate: float = 0.00001  # 过户费万0.1
     lot_size: int = 100  # A股最小交易单位
@@ -100,13 +102,15 @@ class BacktestResult:
 # SimBroker — 模拟交易执行
 # ============================================================
 
-class SimBroker:
+class SimBroker(BaseBroker):
     """Paper Trading模拟交易器。
 
     CLAUDE.md 回测可信度规则强制要求:
     - 涨跌停封板检测 (can_trade)
     - 整手约束 (100股为最小单位)
     - 资金T+1 (卖出资金当日可用于买入)
+
+    继承BaseBroker提供统一查询接口（延迟导入避免循环依赖）。
     """
 
     def __init__(self, config: BacktestConfig):
@@ -264,6 +268,20 @@ class SimBroker:
             for code, shares in self.holdings.items()
         )
         return holdings_value + self.cash
+
+    # ── BaseBroker统一接口 ──
+
+    def get_positions(self) -> dict[str, int]:
+        """获取当前持仓。"""
+        return dict(self.holdings)
+
+    def get_cash(self) -> float:
+        """获取当前可用现金。"""
+        return self.cash
+
+    def get_total_value(self, prices: dict[str, float]) -> float:
+        """计算组合总市值。"""
+        return self.get_portfolio_value(prices)
 
     def new_day(self):
         """每日开始时重置日内状态。"""
