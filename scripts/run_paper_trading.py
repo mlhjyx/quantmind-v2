@@ -812,6 +812,21 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             except Exception as e:
                 logger.warning(f"[Step4] PT日报发送失败（不影响主流程）: {e}")
 
+        # ── 心跳记录（PT watchdog用）──
+        try:
+            import json as _json
+            heartbeat_file = Path("D:/quantmind-v2/logs/pt_heartbeat.json")
+            heartbeat_file.parent.mkdir(parents=True, exist_ok=True)
+            heartbeat_file.write_text(_json.dumps({
+                "trade_date": str(trade_date),
+                "completed_at": datetime.now().isoformat(),
+                "phase": "signal",
+                "status": "ok",
+            }))
+            logger.info(f"[Heartbeat] written: {trade_date}")
+        except Exception as e_hb:
+            logger.warning(f"[Heartbeat] write failed: {e_hb}")
+
         elapsed = time.time() - t_total
         logger.info(f"[SIGNAL PHASE] 完成: {elapsed:.0f}s")
 
