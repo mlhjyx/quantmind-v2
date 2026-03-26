@@ -529,6 +529,26 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             conn.close()
             sys.exit(1)
 
+        # ── Step 0.5: 配置一致性守卫 ──
+        try:
+            from engines.config_guard import assert_baseline_config
+            config_ok = assert_baseline_config(
+                PAPER_TRADING_CONFIG.factor_names,
+                config_source="run_paper_trading.py",
+            )
+            if not config_ok:
+                raise AssertionError("因子集与v1.1基线不一致")
+            logger.info("[Step0.5] config_guard: v1.1配置一致 ✓")
+        except (AssertionError, Exception) as e:
+            logger.error(f"[Step0.5] P0 配置漂移! {e}")
+            if not dry_run:
+                log_step(conn, "config_guard", "failed", str(e))
+                notif_svc.send_sync(conn, "P0", "pipeline",
+                                    f"配置漂移 {trade_date}", str(e))
+                conn.commit()
+            conn.close()
+            sys.exit(1)
+
         # ── Step 1: 拉取数据（尚未Service化）──
         if skip_fetch:
             logger.info("[Step1] 跳过数据拉取")
