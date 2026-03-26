@@ -17,6 +17,7 @@ from decimal import Decimal
 import pytest
 
 from engines.slippage_model import (
+    SlippageConfig,
     SlippageResult,
     estimate_execution_price,
     volume_impact_slippage,
@@ -385,3 +386,101 @@ class TestEstimateExecutionPrice:
         assert result.slippage_amount == result.slippage_amount.quantize(Decimal("0.01"))
         # execution_price 应精确到0.0001
         assert result.execution_price == result.execution_price.quantize(Decimal("0.0001"))
+
+
+# ────────────────────────────────────────────
+# SlippageConfig 市值分层配置测试
+# ────────────────────────────────────────────
+
+
+class TestSlippageConfig:
+    """SlippageConfig 数据类及 get_k 分层逻辑测试。"""
+
+    def test_defaults(self) -> None:
+        """默认参数值正确。"""
+        cfg = SlippageConfig()
+        assert cfg.k_large == 0.05
+        assert cfg.k_mid == 0.10
+        assert cfg.k_small == 0.15
+        assert cfg.sell_penalty == 1.2
+        assert cfg.base_bps == 5.0
+
+    def test_get_k_for_cap_large(self) -> None:
+        """大盘股(>=500亿)返回k_large。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=100_000_000_000) == 0.05
+
+    def test_get_k_for_cap_mid(self) -> None:
+        """中盘股(100-500亿)返回k_mid。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=30_000_000_000) == 0.10
+
+    def test_get_k_for_cap_small(self) -> None:
+        """小盘股(<100亿)返回k_small。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=5_000_000_000) == 0.15
+
+    def test_get_k_zero_cap_fallback(self) -> None:
+        """零市值回退到k_small。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=0) == 0.15
+
+    def test_get_k_boundary_500b(self) -> None:
+        """500亿边界: >=500亿用k_large, <500亿用k_mid。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=50_000_000_000) == 0.05
+        assert cfg.get_k(market_cap=49_999_999_999) == 0.10
+
+    def test_get_k_boundary_100b(self) -> None:
+        """100亿边界: >=100亿用k_mid, <100亿用k_small。"""
+        cfg = SlippageConfig()
+        assert cfg.get_k(market_cap=10_000_000_000) == 0.10
+        assert cfg.get_k(market_cap=9_999_999_999) == 0.15
+
+
+# ────────────────────────────────────────────
+# volume_impact_slippage + SlippageConfig 集成测试
+# ────────────────────────────────────────────
+
+
+class TestVolumeImpactWithConfig:
+    """传入SlippageConfig时的滑点计算测试。"""
+
+    def test_large_cap_lower_impact(self) -> None:
+        """大盘股冲击 < 小盘股冲击(同等交易规模)。"""
+        cfg = SlippageConfig()
+        large = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=100_000_000_000,
+            direction="buy", config=cfg,
+        )
+        small = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=5_000_000_000,
+            direction="buy", config=cfg,
+        )
+        assert large < small
+
+    def test_backward_compat_without_config(self) -> None:
+        """不传config时走旧逻辑, 向后兼容。"""
+        result = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=100_000_000_000,
+            direction="buy", base_bps=5.0, impact_coeff=0.1,
+        )
+        assert result > 5.0
+
+    def test_sell_penalty_uses_config(self) -> None:
+        """卖出惩罚使用config.sell_penalty。"""
+        cfg = SlippageConfig(sell_penalty=1.5)
+        buy = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg,
+        )
+        sell = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="sell", config=cfg,
+        )
+        assert sell > buy

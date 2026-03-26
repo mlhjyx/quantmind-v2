@@ -43,6 +43,37 @@ class SlippageResult:
     execution_price: Decimal
 
 
+@dataclass(frozen=True)
+class SlippageConfig:
+    """市值分层滑点配置（DEV_BACKTEST_ENGINE.md §4.5）。
+
+    市值越大流动性越好，冲击系数越小。
+    参数为L2级可配置（DEV_PARAM_CONFIG.md §3.7）。
+
+    Attributes:
+        k_large: 大盘(500亿+)冲击系数。
+        k_mid: 中盘(100-500亿)冲击系数。
+        k_small: 小盘(< 100亿)冲击系数。
+        sell_penalty: 卖出方向冲击惩罚倍数。
+        base_bps: 基础滑点(bps, bid-ask spread)。
+    """
+
+    k_large: float = 0.05
+    k_mid: float = 0.10
+    k_small: float = 0.15
+    sell_penalty: float = 1.2
+    base_bps: float = 5.0
+
+    def get_k(self, market_cap: float) -> float:
+        """根据总市值(元)返回对应冲击系数。"""
+        if market_cap >= 50_000_000_000:
+            return self.k_large
+        elif market_cap >= 10_000_000_000:
+            return self.k_mid
+        else:
+            return self.k_small
+
+
 def volume_impact_slippage(
     trade_amount: float,
     daily_volume: float,
@@ -51,6 +82,7 @@ def volume_impact_slippage(
     direction: str,
     base_bps: float = 5.0,
     impact_coeff: float = 0.1,
+    config: SlippageConfig | None = None,
 ) -> float:
     """双因素滑点 = 基础滑点 + 冲击成本。
 
@@ -112,22 +144,33 @@ def volume_impact_slippage(
     if trade_amount <= 0:
         return 0.0
 
-    # 1. 基础滑点 (固定)
-    base = base_bps
+    # 根据是否传入config走不同路径
+    if config is not None:
+        # ── 新路径: 市值分层配置 ──
+        base = config.base_bps
+        k = config.get_k(market_cap)
 
-    # 2. 冲击成本 = coeff * sqrt(参与率)
-    participation_rate = trade_amount / daily_amount
-    impact = impact_coeff * math.sqrt(participation_rate) * 10000  # 转为bps
+        participation_rate = trade_amount / daily_amount
+        impact = k * math.sqrt(participation_rate) * 10000  # 转为bps
 
-    # 3. 小盘股惩罚: 市值<50亿额外加20%冲击
-    if market_cap > 0 and market_cap < 5_000_000_000:
-        small_cap_penalty = 1.2
-        impact *= small_cap_penalty
-        logger.debug("小盘股惩罚(市值%.0f亿): 冲击×1.2", market_cap / 1e8)
+        if direction == "sell":
+            impact *= config.sell_penalty
+    else:
+        # ── 旧路径: 向后兼容 ──
+        base = base_bps
 
-    # 4. 卖出方向惩罚: 卖出冲击 × 1.2
-    if direction == "sell":
-        impact *= 1.2
+        participation_rate = trade_amount / daily_amount
+        impact = impact_coeff * math.sqrt(participation_rate) * 10000  # 转为bps
+
+        # 小盘股惩罚: 市值<50亿额外加20%冲击
+        if market_cap > 0 and market_cap < 5_000_000_000:
+            small_cap_penalty = 1.2
+            impact *= small_cap_penalty
+            logger.debug("小盘股惩罚(市值%.0f亿): 冲击×1.2", market_cap / 1e8)
+
+        # 卖出方向惩罚: 卖出冲击 × 1.2
+        if direction == "sell":
+            impact *= 1.2
 
     total = base + impact
 
