@@ -11,11 +11,11 @@
 当前阶段: Phase 1
 v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/bp_ratio) + Top15 + 月度 + 行业25%
 环境: Windows 11 Pro (R9-9900X3D 12C/24T + RTX 5070 12GB + 32GB DDR5-6000), PG: D:\pgdata16, 用户: xin
-管理制度: 宪法V3.2(7铁律+按需spawn≤4+因子审批链+角色Spawn Prompt+交叉审查矩阵)
-关键文件: TEAM_CHARTER_V3.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md
+管理制度: 宪法V3.3(8铁律+按需spawn≤4+因子审批链+角色Spawn Prompt+交叉审查矩阵+strategy升级+设计文档对照)
+关键文件: TEAM_CHARTER_V3.3.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md
 --- 动态层（读PROGRESS.md恢复）---
 compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.md 恢复完整上下文
-⚠️ 第二步(LL-027强制): 读TEAM_CHARTER_V3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
+⚠️ 第二步(LL-027强制): 读TEAM_CHARTER_V3.3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
 ⚠️ 用户计划有N个角色必须spawn N个，不能跳过任何一个
 ```
 
@@ -23,7 +23,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 
 ---
 
-## 7铁律（宪法V3.2，每次回复前检查）
+## 7铁律（宪法V3.3，每次回复前检查）
 
 ```
 1. spawn了才算启动（LL-015）
@@ -37,7 +37,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 
 ---
 
-## 管理模式（宪法V3.2）
+## 管理模式（宪法V3.3）
 
 - **按需spawn**：同时≤4个，完成即释放。Spawn前必须读附录A角色定义
 - **每角色每Sprint≤2任务**，编码组+研究组并行
@@ -49,7 +49,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 - **研究方向**：§10按角色定义（quant统计前沿/factor Alpha158对标/strategy组合优化/risk压力测试/alpha_miner Gu Kelly Xiu 94特征/ml Qlib RollingGen）
 - **文档体系**：5个文档，RISK_LOG和RESEARCH_LOG已废弃删除
 
-详见 TEAM_CHARTER_V3.md
+详见 TEAM_CHARTER_V3.3.md
 
 ---
 
