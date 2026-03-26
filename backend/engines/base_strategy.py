@@ -223,6 +223,7 @@ class BaseStrategy(ABC):
             industry_cap=self.config.get("industry_cap", 0.25),
             rebalance_freq=self.config.get("rebalance_freq", "monthly"),
             turnover_cap=self.config.get("turnover_cap", 0.50),
+            cash_buffer=self.config.get("cash_buffer", 0.03),
         )
 
     def _validate_config(self) -> None:

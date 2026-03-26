@@ -62,6 +62,7 @@ class SignalService:
         industry: pd.Series,
         config: SignalConfig,
         dry_run: bool = False,
+        vol_regime_scale: float = 1.0,
     ) -> SignalResult:
         """完整信号生成：compose -> build -> 4项验证 -> Beta -> 写signals表。
 
@@ -74,6 +75,8 @@ class SignalService:
             industry: 行业分类 (code -> industry_sw1)。
             config: 信号配置。
             dry_run: 不写DB。
+            vol_regime_scale: 波动率regime仓位缩放系数 [0.5, 2.0]，默认1.0（不调整）。
+                              由调用方用vol_regime.calc_vol_regime()计算后传入。
 
         Returns:
             SignalResult: 包含目标权重、信号列表、Beta等。
@@ -146,7 +149,7 @@ class SignalService:
 
         # ── 构建目标持仓 ──
         # 对应 script L1187-1188
-        target = builder.build(scores, industry, prev_weights)
+        target = builder.build(scores, industry, prev_weights, vol_regime_scale=vol_regime_scale)
         logger.info(
             f"[SignalService] 目标持仓: {len(target)}只, "
             f"总权重={sum(target.values()):.3f}"

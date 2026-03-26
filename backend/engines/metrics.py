@@ -28,6 +28,8 @@ class PerformanceReport:
     total_return: float
     annual_return: float
     sharpe_ratio: float
+    autocorr_adjusted_sharpe_ratio: float  # Lo (2002) 自相关调整Sharpe
+    autocorr_rho: float                    # 一阶自相关系数
     max_drawdown: float
     calmar_ratio: float
     sortino_ratio: float
@@ -66,6 +68,45 @@ def calc_sharpe(returns: pd.Series, rf: float = 0.0) -> float:
         return 0.0
     excess = returns - rf / TRADING_DAYS_PER_YEAR
     return float(excess.mean() / excess.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
+
+
+def autocorr_adjusted_sharpe(
+    returns: pd.Series,
+    periods_per_year: int = 12,
+    rf: float = 0.0,
+) -> tuple[float, float]:
+    """自相关调整Sharpe（Lo 2002）。
+
+    月度调仓策略收益序列存在正自相关时，标准Sharpe会高估真实风险调整收益。
+    调整公式: adjusted_sharpe = sharpe * sqrt((1 - ρ) / (1 + ρ))
+
+    参考: Lo, A.W. (2002). "The Statistics of Sharpe Ratios".
+          Financial Analysts Journal, 58(4), 36-52.
+
+    Args:
+        returns: 收益率序列（与periods_per_year频率对应，如月度则传月度收益）。
+        periods_per_year: 每年周期数（日频=244，月频=12）。
+        rf: 无风险利率（年化）。
+
+    Returns:
+        (adjusted_sharpe, rho) — 调整后Sharpe和一阶自相关系数。
+        如果 ρ ≤ 0，返回原始Sharpe不调整（不惩罚负自相关）。
+    """
+    if len(returns) < 3 or returns.std() < 1e-12:
+        return 0.0, 0.0
+
+    excess = returns - rf / periods_per_year
+    raw_sharpe = float(excess.mean() / excess.std() * np.sqrt(periods_per_year))
+
+    # 一阶自相关：Pearson corr(r_t, r_{t-1})
+    rho = float(returns.autocorr(lag=1))
+
+    # NaN（序列太短或常数）→ 无调整
+    if np.isnan(rho) or rho <= 0:
+        return raw_sharpe, max(rho if not np.isnan(rho) else 0.0, 0.0)
+
+    adjusted = raw_sharpe * np.sqrt((1.0 - rho) / (1.0 + rho))
+    return float(adjusted), float(rho)
 
 
 def calc_max_drawdown(nav: pd.Series) -> float:
@@ -320,6 +361,113 @@ def calc_position_deviation(
     }
 
 
+# ────────────────────── PT毕业评估专用指标 ──────────────────────
+
+
+def calc_fill_rate(target_orders: int, successful_fills: int) -> float:
+    """成交率: 实际成交笔数 / 目标订单笔数 × 100。
+
+    PT毕业标准补充指标（Sprint 1.10 Task 8）。
+    反映执行层的有效成交比例，低成交率表示频繁封板或流动性不足。
+
+    Args:
+        target_orders: 目标订单笔数（调仓时预期下单的股票数量）。
+        successful_fills: 实际成交笔数。
+
+    Returns:
+        成交率百分比(0-100)。target_orders=0时返回100.0。
+    """
+    if target_orders <= 0:
+        return 100.0
+    return round(successful_fills / target_orders * 100, 2)
+
+
+def calc_avg_slippage_pct(
+    fills: list,
+    signal_prices: dict[str, float],
+) -> float:
+    """平均滑点: mean(|actual_price - signal_price| / signal_price) × 100。
+
+    PT毕业标准补充指标（Sprint 1.10 Task 8）。
+    衡量执行价格与信号生成时价格的平均偏差，反映市场冲击和执行质量。
+
+    Args:
+        fills: Fill对象列表，需包含 code, price 字段。
+        signal_prices: 信号生成时的参考价格 {code: price}。
+
+    Returns:
+        平均滑点百分比(>=0)。无有效数据时返回0.0。
+    """
+    if not fills or not signal_prices:
+        return 0.0
+
+    slippages = []
+    for f in fills:
+        sig_price = signal_prices.get(f.code, 0.0)
+        if sig_price > 0 and f.price > 0:
+            slip = abs(f.price - sig_price) / sig_price * 100
+            slippages.append(slip)
+
+    return round(float(np.mean(slippages)), 4) if slippages else 0.0
+
+
+def calc_tracking_error(
+    actual_returns: pd.Series,
+    target_returns: pd.Series,
+) -> float:
+    """跟踪误差: annualized std(actual_ret - target_ret) × sqrt(TRADING_DAYS_PER_YEAR)。
+
+    PT毕业标准补充指标（Sprint 1.10 Task 8）。
+    衡量实际收益率与目标信号收益率的偏差波动性，
+    反映执行层（整手约束/封板/滑点）对策略信号的偏离程度。
+
+    Args:
+        actual_returns: 实际日收益率序列。
+        target_returns: 目标（信号端）日收益率序列，需与actual_returns对齐。
+
+    Returns:
+        年化跟踪误差百分比(>=0)。数据不足(<3天)时返回0.0。
+    """
+    diff = (actual_returns - target_returns).dropna()
+    if len(diff) < 3:
+        return 0.0
+    return round(float(diff.std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100), 4)
+
+
+def calc_signal_execution_gap_hours(
+    signal_timestamps: list,
+    execution_timestamps: list,
+) -> float:
+    """信号生成到执行的平均时间差（小时）。
+
+    PT毕业标准补充指标（Sprint 1.10 Task 8）。
+    标准链路: T日17:20生成信号 → T+1日09:30执行 ≈ 16h。
+    时间差过大（>24h）说明信号日期计算有误或执行脚本未按时运行。
+
+    Args:
+        signal_timestamps: 信号生成时间戳列表（datetime对象）。
+        execution_timestamps: 对应的执行时间戳列表。
+
+    Returns:
+        平均时间差（小时），精确到0.01h。列表为空或长度不匹配时返回0.0。
+    """
+    if not signal_timestamps or not execution_timestamps:
+        return 0.0
+    if len(signal_timestamps) != len(execution_timestamps):
+        return 0.0
+
+    gaps = []
+    for sig_ts, exec_ts in zip(signal_timestamps, execution_timestamps):
+        try:
+            delta_hours = (exec_ts - sig_ts).total_seconds() / 3600
+            if delta_hours >= 0:  # 负值说明数据异常，跳过
+                gaps.append(delta_hours)
+        except (TypeError, AttributeError):
+            continue
+
+    return round(float(np.mean(gaps)), 2) if gaps else 0.0
+
+
 def generate_report(
     result: "BacktestResult",
     price_data: Optional[pd.DataFrame] = None,
@@ -340,6 +488,7 @@ def generate_report(
     total_return = float(nav.iloc[-1] / nav.iloc[0] - 1)
     annual_return = float((1 + total_return) ** (1 / max(years, 0.01)) - 1)
     sharpe = calc_sharpe(returns)
+    adj_sharpe, rho = autocorr_adjusted_sharpe(returns)
     mdd = calc_max_drawdown(nav)
     calmar = calc_calmar(annual_return, mdd)
     sortino = calc_sortino(returns)
@@ -389,6 +538,8 @@ def generate_report(
         total_return=round(total_return * 100, 2),
         annual_return=round(annual_return * 100, 2),
         sharpe_ratio=round(sharpe, 2),
+        autocorr_adjusted_sharpe_ratio=round(adj_sharpe, 2),
+        autocorr_rho=round(rho, 4),
         max_drawdown=round(mdd * 100, 2),
         calmar_ratio=round(calmar, 2),
         sortino_ratio=round(sortino, 2),
@@ -420,7 +571,12 @@ def print_report(report: PerformanceReport):
 
     print(f"\n{'总收益':>12}: {report.total_return:>8.2f}%")
     print(f"{'年化收益':>12}: {report.annual_return:>8.2f}%")
-    print(f"{'Sharpe':>12}: {report.sharpe_ratio:>8.2f}")
+    _adj = report.autocorr_adjusted_sharpe_ratio
+    _rho = report.autocorr_rho
+    print(
+        f"{'Sharpe':>12}: {report.sharpe_ratio:>8.2f}"
+        f"  (autocorr-adj: {_adj:.2f}, \u03c1={_rho:.2f})"
+    )
     print(f"{'最大回撤':>12}: {report.max_drawdown:>8.2f}%")
     print(f"{'Calmar':>12}: {report.calmar_ratio:>8.2f}")
     print(f"{'Sortino':>12}: {report.sortino_ratio:>8.2f}")

@@ -413,14 +413,14 @@ class TestCircuitBreakerStateMachine:
 
     @pytest.mark.asyncio
     async def test_l3_recovery_after_3_day_streak(self):
-        """L3恢复: 连续3天盈利且累计>1.5%后恢复到NORMAL。"""
-        # L3 state with streak already at 3 days, 1.8% return
+        """L3恢复: 连续5天盈利且累计>2%后恢复到NORMAL。"""
+        # L3 state with streak already at 5 days, 2.1% return
         l3_state = _make_db_state(
             current_level=3,
             entered_date=date(2026, 3, 10),  # 10天前
             position_multiplier=Decimal("0.5"),
-            recovery_streak_days=3,
-            recovery_streak_return=Decimal("0.018"),  # 1.8% > 1.5%阈值
+            recovery_streak_days=5,
+            recovery_streak_return=Decimal("0.021"),  # 2.1% > 2%阈值
         )
         normal_state = _make_db_state(
             current_level=0,
@@ -878,8 +878,8 @@ class TestCircuitBreakerStateMachine:
         assert t.l3_rolling_5d_loss == Decimal("-0.07")
         assert t.l4_cumulative_loss == Decimal("-0.25")
         assert t.l3_position_multiplier == Decimal("0.5")
-        assert t.l3_recovery_days == 3
-        assert t.l3_recovery_return == Decimal("0.015")
+        assert t.l3_recovery_days == 5
+        assert t.l3_recovery_return == Decimal("0.02")
 
 
 # ============================================================================

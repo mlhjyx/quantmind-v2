@@ -51,6 +51,7 @@ class TestTurnoverCapFix:
             industry_cap=0.25,
             turnover_cap=0.50,
             factor_names=["turnover_mean_20"],
+            cash_buffer=0.0,  # 测试专注换手率约束逻辑，不引入现金缓冲
         )
         self.builder = PortfolioBuilder(self.config)
 

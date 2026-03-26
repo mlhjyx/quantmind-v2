@@ -255,3 +255,101 @@ async def health_precheck() -> dict[str, bool]:
 - 因子计算用**事务写入**: 要么全部因子写成功，要么全部回滚
 - 或每个因子独立写入 + **完成标记**，重启后检查标记只重算未完成的
 - Celery task加 `acks_late=True`，crash后自动重试
+
+### P6. 三阶段风控调度增强（Sprint 1.9/1.10研究成果，2026-03-26）
+
+> 基于FIA 2024自动交易风控标准、khQuant策略4阶段架构、vnpy EventEngine模式、20+学术论文研究综合制定。
+
+当前调度只有"盘后计算+次日执行"两阶段。需补充盘前预检和每日风控，形成完整三层：
+
+#### 1. T+1日盘前预检（09:25-09:30，新增）
+
+| 时间 | 任务 | 实现方式 | 优先级 |
+|------|------|---------|--------|
+| 09:25 | 集合竞价跳空预检 | `xtdata.get_full_tick()`获取持仓开盘价 | P1 |
+| 09:25 | 个股跳空>5%告警 | 钉钉P1推送 | P1 |
+| 09:25 | 组合跳空>3%暂停执行 | 等人工确认后继续 | P1 |
+| 09:25 | 停牌股检测+跳过 | 停牌标的用下一排名替补 | P1 |
+
+```python
+def pre_open_risk_check(positions, last_closes):
+    """09:25开盘价确定后，执行前风险预检。"""
+    snapshot = xtdata.get_full_tick([code for code in positions])
+    for code in positions:
+        gap = (snapshot[code]['lastPrice'] - last_closes[code]) / last_closes[code]
+        if gap < -0.05:
+            alert_p1(f"{code} 跳空 {gap:.1%}")
+    portfolio_gap = np.mean([...])
+    if portfolio_gap < -0.03:
+        alert_p0(f"组合跳空 {portfolio_gap:.1%}，暂停执行等人工确认")
+        return False
+    return True
+```
+
+#### 2. 每日风控检查（每日16:30，非仅调仓日）
+
+**关键发现：如果L1-L4只在调仓日运行，两次调仓间的20个交易日完全无风控保护。**
+
+| 检查项 | 触发条件 | 动作 |
+|--------|---------|------|
+| 日终PnL检查 | 每日16:30 | 计算当日组合PnL |
+| L1告警 | 月亏>10% | 记录+钉钉通知 |
+| L2降仓 | 月亏>15% | 生成减仓指令次日执行 |
+| L3停止 | 累计亏>25% | P0告警+等人工审批 |
+| 因子IC检查 | 每周一 | 滚动60日IC是否正常 |
+
+#### 3. 盘中监控（Phase 1实盘前，可选长驻进程）
+
+```python
+# 独立进程：scripts/intraday_monitor.py
+# 使用subscribe_whole_quote回调，每~3秒触发
+def on_portfolio_update(data):
+    total_pnl = calc_portfolio_pnl(data, positions)
+    if total_pnl < -0.05:
+        emergency_reduce(0.5)  # 减仓50%
+        alert_p0(f"盘中亏损{total_pnl:.1%}")
+    elif total_pnl < -0.03:
+        alert_p1(f"盘中亏损{total_pnl:.1%}")
+```
+
+miniQMT能力确认（khQuant教程+迅投文档验证）：
+- `subscribe_quote`: 回调周期~3秒（普通用户限制）
+- `get_full_tick`: 即时获取全市场快照（不需订阅）
+- `order_stock_async`: 异步下单+`on_stock_trade`回调确认
+- 不支持条件单/止损单，需自己实现逻辑
+
+#### 4. Pre-Trade订单级检查（FIA 2024标准）
+
+在执行层下单前增加验证，5项检查：
+
+```python
+class PreTradeValidator:
+    def validate(self, order, portfolio):
+        checks = [
+            ("max_order_size", order.value < portfolio.total * 0.15),
+            ("price_tolerance", abs(order.price/last_close - 1) < 0.05),
+            ("sector_limit", sector_weight_after < 0.25),
+            ("daily_loss_gate", daily_pnl > -0.03 * portfolio.total),
+            ("position_limit", position_weight_after < 0.10),
+        ]
+        failed = [(name, ok) for name, ok in checks if not ok]
+        return ValidationResult(passed=len(failed)==0, failed_checks=failed)
+```
+
+来源：FIA Best Practices for Automated Trading Risk Controls (July 2024)
+
+### P7. 调仓结果合理性检查（Canary Check，Sprint 1.10新增）
+
+信号生成后、执行前加入合理性验证，防止静默错误：
+
+```python
+def sanity_check(signals, target_weights):
+    assert 10 <= len(signals) <= 20, f"信号数量异常: {len(signals)}"
+    assert 0.90 < sum(target_weights.values()) < 1.0, "权重和异常"
+    assert max(target_weights.values()) < 0.10, "单股权重过高"
+    # 停牌股不应出现在信号中
+    for code in signals:
+        assert not is_suspended(code), f"{code} 停牌"
+```
+
+不通过 → P0告警 + 暂停执行等人工确认。

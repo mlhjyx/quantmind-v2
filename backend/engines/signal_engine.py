@@ -55,6 +55,7 @@ class SignalConfig:
     industry_cap: float = 0.25   # 单行业上限25%
     rebalance_freq: str = "biweekly"  # 'weekly', 'biweekly', 'monthly'
     turnover_cap: float = 0.50   # 单次换手率上限50%
+    cash_buffer: float = 0.03    # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
     factor_names: list[str] = field(default_factory=lambda: [
         # P0诊断后去冗余: 17→8个独立因子
         # 删除: momentum_5/10/20 (方向反, 与reversal完全冗余 corr=-1.0)
@@ -175,6 +176,7 @@ class PortfolioBuilder:
         scores: pd.Series,
         industry: pd.Series,
         prev_holdings: Optional[dict[str, float]] = None,
+        vol_regime_scale: float = 1.0,
     ) -> dict[str, float]:
         """构建目标持仓权重。
 
@@ -182,9 +184,11 @@ class PortfolioBuilder:
             scores: 综合得分 (code → score), 已排序
             industry: 行业分类 (code → industry_sw1)
             prev_holdings: 上期持仓权重 (code → weight)
+            vol_regime_scale: 波动率regime缩放系数 [0.5, 2.0]，默认1.0（不调整）。
+                              由vol_regime.calc_vol_regime()计算并在调用方传入。
 
         Returns:
-            dict: {code: target_weight}, 权重之和=1.0
+            dict: {code: target_weight}, 权重之和 = (1 - cash_buffer) × vol_regime_scale
         """
         top_n = self.config.top_n
         industry_cap = self.config.industry_cap
@@ -220,9 +224,24 @@ class PortfolioBuilder:
             total = sel_scores.sum()
             target = {code: float(s / total) for code, s in sel_scores.items()}
 
-        # 3. 换手率约束
+        # 3. 换手率约束（在cash_buffer缩放前做，以便内部归一化不影响缓冲比例）
         if prev_holdings and self.config.turnover_cap < 1.0:
             target = self._apply_turnover_cap(target, prev_holdings)
+
+        # 4. 现金缓冲: 目标权重总和 = 1 - cash_buffer (强制保留现金，最后一步应用)
+        # 放在turnover_cap之后，避免被内部归一化覆盖
+        if self.config.cash_buffer > 0:
+            invest_ratio = 1.0 - self.config.cash_buffer
+            target = {code: w * invest_ratio for code, w in target.items()}
+
+        # 5. 波动率regime缩放: 高波动降仓，低波动加仓 (Sprint 1.1)
+        # scale在cash_buffer之后应用，进一步调整总投入比例
+        if abs(vol_regime_scale - 1.0) > 1e-6:
+            target = {code: w * vol_regime_scale for code, w in target.items()}
+            logger.info(
+                f"[VolRegime] 仓位缩放 scale={vol_regime_scale:.4f}, "
+                f"权重总和={sum(target.values()):.4f}"
+            )
 
         return target
 

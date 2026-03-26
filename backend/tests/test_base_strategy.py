@@ -176,9 +176,9 @@ class TestEqualWeightGenerateSignals:
         assert isinstance(decision, StrategyDecision)
         assert len(decision.target_weights) > 0
         assert len(decision.target_weights) <= config["top_n"]
-        # 权重归一化到1.0
+        # 权重总和 = 1 - cash_buffer(0.03) = 0.97（含3%现金缓冲）
         total_weight = sum(decision.target_weights.values())
-        assert abs(total_weight - 1.0) < 0.01
+        assert abs(total_weight - 0.97) < 0.01
 
     @patch("engines.strategies.equal_weight.get_rebalance_dates")
     def test_equal_weights(self, mock_rebal):
@@ -571,8 +571,9 @@ class TestBoundaryConditions:
         # 所以target和prev完全不交叉 → 新进=target全部，截断到max_replace=3
         # 保留: (target∩prev=空集) | 3个新进 = 3只
         # 实际上，target中可能有些stock是prev中的，取决于code生成
-        # 关键检查: 结果合法，权重归一化
-        assert abs(sum(decision.target_weights.values()) - 1.0) < 0.01
+        # 关键检查: 结果合法，权重总和≤0.97（含3%现金缓冲）
+        total_w = sum(decision.target_weights.values())
+        assert total_w <= 0.97 + 0.01
 
     @patch("engines.strategies.equal_weight.get_rebalance_dates")
     def test_industry_concentration_warning(self, mock_rebal):
@@ -633,7 +634,8 @@ class TestMultiFreqStrategy:
 
         decision = strategy.generate_signals(context)
         assert len(decision.target_weights) > 0
-        assert abs(sum(decision.target_weights.values()) - 1.0) < 0.01
+        # 权重总和 = 1 - cash_buffer(0.03) = 0.97
+        assert abs(sum(decision.target_weights.values()) - 0.97) < 0.01
 
 
 class TestFactorProfile:

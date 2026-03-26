@@ -145,6 +145,105 @@ def _get_notif_service() -> NotificationService:
     return NotificationService(session=None)  # type: ignore[arg-type]
 
 
+def _check_opening_gap(
+    exec_date: date,
+    price_data: pd.DataFrame,
+    conn,
+    notif_svc: NotificationService,
+    dry_run: bool,
+    single_stock_gap_threshold: float = 0.05,
+    portfolio_gap_threshold: float = 0.03,
+) -> None:
+    """开盘跳空预检 — 在execute阶段执行调仓前检测跳空风险。
+
+    用DB数据（klines_daily）计算 open vs pre_close 的偏差。
+    PT阶段：只告警，不暂停执行（实盘阶段可升级为暂停）。
+
+    Args:
+        exec_date: 执行日（T+1）。
+        price_data: load_today_prices()返回的DataFrame，含open/pre_close列。
+        conn: psycopg2连接。
+        notif_svc: 通知服务。
+        dry_run: 不发通知。
+        single_stock_gap_threshold: 单股跳空告警阈值（默认5%）。
+        portfolio_gap_threshold: 组合加权跳空告警阈值（默认3%）。
+    """
+    if price_data.empty:
+        logger.warning("[Step5.8] 无价格数据，跳过开盘跳空预检")
+        return
+
+    # 计算跳空率: (open - pre_close) / pre_close
+    df = price_data[["code", "open", "pre_close"]].copy()
+    df = df[df["pre_close"] > 0]
+    df["gap"] = (df["open"] - df["pre_close"]) / df["pre_close"]
+
+    # ── 单股跳空 >5% 告警（P1）──
+    large_gaps = df[df["gap"].abs() > single_stock_gap_threshold].copy()
+    large_gaps = large_gaps.sort_values("gap", key=abs, ascending=False)
+
+    if not large_gaps.empty:
+        gap_summary = ", ".join(
+            f"{row['code']}({row['gap']:+.1%})"
+            for _, row in large_gaps.head(5).iterrows()
+        )
+        msg = (
+            f"开盘跳空预警 {exec_date}\n"
+            f"单股跳空>5%的股票: {len(large_gaps)}只\n"
+            f"Top5: {gap_summary}"
+        )
+        logger.warning(f"[Step5.8] P1 {msg}")
+        if not dry_run:
+            notif_svc.send_sync(
+                conn, "P1", "risk",
+                f"开盘跳空P1 {exec_date}",
+                msg,
+            )
+
+    # ── 组合加权平均跳空（读当前持仓权重）──
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT code, weight FROM position_snapshot
+               WHERE strategy_id = %s AND execution_mode = 'paper'
+               ORDER BY trade_date DESC, weight DESC
+               LIMIT 50""",
+            (settings.PAPER_STRATEGY_ID,),
+        )
+        rows = cur.fetchall()
+        if rows:
+            weights = {r[0]: float(r[1]) for r in rows}
+            total_w = sum(weights.values())
+            if total_w > 0:
+                # 用当前持仓计算组合加权跳空
+                gap_map = df.set_index("code")["gap"].to_dict()
+                portfolio_gap = sum(
+                    weights.get(code, 0) * gap_map.get(code, 0)
+                    for code in weights
+                ) / total_w
+
+                logger.info(
+                    f"[Step5.8] 组合加权跳空={portfolio_gap:+.2%} "
+                    f"(阈值>{portfolio_gap_threshold:.0%}告P0)"
+                )
+
+                if abs(portfolio_gap) > portfolio_gap_threshold:
+                    msg = (
+                        f"组合开盘跳空告警 {exec_date}\n"
+                        f"持仓加权平均跳空={portfolio_gap:+.2%}(阈值{portfolio_gap_threshold:.0%})\n"
+                        f"PT阶段继续执行，请人工复核"
+                    )
+                    logger.error(f"[Step5.8] P0 {msg}")
+                    if not dry_run:
+                        notif_svc.send_sync(
+                            conn, "P0", "risk",
+                            f"组合跳空P0 {exec_date}",
+                            msg,
+                        )
+                        conn.commit()
+    except Exception as e:
+        logger.warning(f"[Step5.8] 组合跳空计算失败（不影响执行）: {e}")
+
+
 # ════════════════════════════════════════════════════════════
 # Shadow LightGBM Portfolio (影子选股 — 暂未Service化)
 # ════════════════════════════════════════════════════════════
@@ -532,6 +631,35 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         else:
             logger.warning(f"[Step1.5] {trade_date} 无价格数据，跳过NAV更新")
 
+        # ── Step 1.6: 每日风控评估 (L1-L4每日运行，非仅调仓日) ──
+        # 目的: 确保CB状态机每个交易日都更新，L3触发时非调仓日也能记录
+        # 并在下一个execute阶段生效（减仓指令）
+        t16 = time.time()
+        logger.info(f"[Step1.6] 每日风控评估 ({trade_date})...")
+        try:
+            if not dry_run:
+                cb_daily = check_circuit_breaker_sync(
+                    conn, settings.PAPER_STRATEGY_ID, trade_date,
+                    settings.PAPER_INITIAL_CAPITAL
+                )
+                logger.info(
+                    f"[Step1.6] 完成 ({time.time()-t16:.0f}s): "
+                    f"L{cb_daily['level']} - {cb_daily['reason']}"
+                )
+                if cb_daily["level"] >= 3:
+                    notif_svc.send_sync(
+                        conn, "P0", "risk",
+                        f"风控告警 L{cb_daily['level']} {trade_date}",
+                        f"{cb_daily['reason']}\n"
+                        f"仓位系数: {cb_daily['position_multiplier']:.0%}\n"
+                        f"次日执行将应用降仓指令",
+                    )
+                    conn.commit()
+            else:
+                logger.info("[Step1.6] dry-run，跳过风控评估写入")
+        except Exception as e:
+            logger.warning(f"[Step1.6] 风控评估异常（不影响主流程）: {e}")
+
         # ── Step 2: 因子计算 ──
         if skip_factors:
             logger.info("[Step2] 跳过因子计算")
@@ -556,6 +684,30 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         universe = load_universe(trade_date, conn)
         industry = load_industry(conn)
 
+        # ── Step 3 前置: 波动率Regime缩放（Sprint 1.1）──
+        vol_regime_scale = 1.0
+        try:
+            from engines.vol_regime import calc_vol_regime
+            csi300_closes = pd.read_sql(
+                """SELECT trade_date, close FROM index_daily
+                   WHERE index_code = '000300.SH'
+                     AND trade_date <= %s
+                   ORDER BY trade_date DESC LIMIT 260""",
+                conn,
+                params=(trade_date,),
+            )
+            if len(csi300_closes) >= 22:
+                csi300_series = csi300_closes.set_index("trade_date")["close"].sort_index()
+                vol_regime_scale = calc_vol_regime(csi300_series)
+                logger.info(f"[Step3-VolRegime] scale={vol_regime_scale:.4f}")
+            else:
+                logger.warning(
+                    f"[Step3-VolRegime] CSI300数据不足({len(csi300_closes)}条)，"
+                    "跳过Regime缩放"
+                )
+        except Exception as e:
+            logger.warning(f"[Step3-VolRegime] 计算异常，使用scale=1.0: {e}")
+
         signal_svc = SignalService()
         try:
             signal_result = signal_svc.generate_signals(
@@ -567,6 +719,7 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                 industry=industry,
                 config=config,
                 dry_run=dry_run,
+                vol_regime_scale=vol_regime_scale,
             )
         except ValueError as e:
             logger.error(f"[Step3] P0 {e}")
@@ -751,6 +904,18 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
             log_step(conn, "execute_phase", "failed", "T+1无价格数据")
             conn.close()
             sys.exit(1)
+
+        # ── Step 5.8: 开盘跳空预检（PT阶段：只告警，不暂停执行）──
+        try:
+            _check_opening_gap(
+                exec_date=exec_date,
+                price_data=price_data,
+                conn=conn,
+                notif_svc=notif_svc,
+                dry_run=dry_run,
+            )
+        except Exception as e:
+            logger.warning(f"[Step5.8] 开盘跳空预检异常（不影响主流程）: {e}")
 
         # ── Step 5.9: 熔断检查（RiskControlService）──
         cb = check_circuit_breaker_sync(

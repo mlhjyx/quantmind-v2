@@ -188,10 +188,12 @@ class EqualWeightStrategy(BaseStrategy):
         kept_codes = (target_codes & prev_codes) | keep_new
         trimmed = {c: target[c] for c in kept_codes}
 
-        # 重新归一化
-        total = sum(trimmed.values())
-        if total > 0:
-            trimmed = {c: w / total for c, w in trimmed.items()}
+        # 重新归一化: 保持原始权重总和（含cash_buffer缩放），等权重新分配
+        # target权重总和 = 1 - cash_buffer（已由PortfolioBuilder.build()应用）
+        original_total = sum(target.values())
+        if original_total > 0 and len(trimmed) > 0:
+            equal_w = original_total / len(trimmed)
+            trimmed = {c: equal_w for c in trimmed}
 
         logger.info(
             f"[EqualWeightStrategy] max_replace={max_replace}, "
