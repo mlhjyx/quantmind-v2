@@ -65,7 +65,9 @@
 
 **需要用户决策**: (1)接受新基线？(2)调整策略偏大盘？(3)校准k系数？(4)维持fixed基线？
 
-**Team Lead建议**: 先校准k系数——当前默认值源自DEV_BACKTEST_ENGINE.md设计文档，可能对A股偏保守。需用PT实际成交数据反向校准。
+**Team Lead建议**: 加σ(波动率)项让模型更精准（研究Finding#1），但k绝对值可能不需要大幅下调。
+
+**⚠️ qa关键发现**: PT实测avg slippage=64.5bps（vs SimBroker fixed预估10bps，偏差544.9%）。volume-impact模型估计55-60bps反而与实测接近！意味着真实Sharpe可能确实在0.4-0.7区间。Sprint 1.12应以PT实测数据校准，不能盲目降低k。
 
 ### 违规记录
 - LL-030: Sprint启动时跳过TeamCreate直接编码（LL-027同根第2次）
