@@ -562,3 +562,35 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 **执行状态**: 写入feedback记忆。下次session必须从TeamCreate开始。
 
 **严重等级**: 最高——这不是技术错误，是管理意识缺失。
+
+## LL-028: Spawn prompt必须包含设计文档完整路径（Sprint 1.9）
+
+**问题**: Sprint 1.9 spawn arch时，只给了设计文档名（如"DEV_BACKEND.md"）没给完整路径（如`D:\quantmind-v2\docs\DEV_BACKEND.md`）。Agent没有跨session记忆，无法自行定位文件。
+
+**根因**: §1.3要求"设计文档路径"但Team Lead理解为"文档名"即可。实际上agent需要完整路径才能执行Read操作。
+
+**改进措施**: 每次spawn时§1.3的5个必填字段中"设计文档"项必须给完整路径。模板：
+```
+必读设计文档（编码前必须Read）：
+- D:\quantmind-v2\docs\DEV_BACKEND.md
+- D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md
+```
+
+**执行状态**: Sprint 1.10已修正。写入feedback记忆。
+
+**严重等级**: 中——不影响代码正确性但降低agent效率。
+
+## LL-029: commit前必须完成复盘——不能"先commit再补"（Sprint 1.10）
+
+**问题**: Sprint 1.10所有Task完成后直接git commit，跳过了宪法§5.2要求的复盘顺序（先更新PROGRESS.md→复盘→再commit）。违反铁律4和铁律6。
+
+**根因**: 急于"完成"的心理——所有测试通过后觉得"大功告成"就直接提交了，忘记复盘是Sprint结束的**必须步骤**不是可选步骤。
+
+**改进措施**:
+1. 铁律4强制执行：commit message中必须包含"复盘已完成"标记
+2. 复盘清单贴在commit前：§5.3技术5问 + §5.4投资人3问 + PROGRESS.md更新 + CLAUDE.md决策表 + LL检查
+3. 如果再次违反（≥3次），需要升级为Hooks强制检查
+
+**执行状态**: 已补做复盘。写入feedback记忆。
+
+**严重等级**: 中——不影响代码但影响知识积累和团队纪律。

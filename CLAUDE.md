@@ -133,6 +133,19 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 | DB连接P1修复 | 13脚本统一化 | KEEP | Sprint 1.6 |
 | Drawdown P0修复 | qa 4/4 PASS | KEEP | Sprint 1.6 |
 | 方案B execute拆分 | qa 5/5 PASS | KEEP | Sprint 1.6 |
+| ic_decay交易日修复 | bisect_right偏移，国庆/春节测试PASS | KEEP | Sprint 1.9 |
+| health→signal依赖链 | Redis gate+P0告警，4场景测试 | KEEP | Sprint 1.9 |
+| BaseBroker ABC统一 | 3 Broker继承+get_broker工厂 | KEEP | Sprint 1.9 |
+| 仓位偏差3指标 | mean_dev+max_dev+cash_drag替代单一均值 | KEEP | Sprint 1.9 |
+| VWAP+RSRS入Reserve | 单因子Gate PASS但月度等权无增量 | Reserve | Sprint 1.9 |
+| v1.2(K=3)不升级 | p=0.657不显著+60天PT重计时代价 | NOT JUSTIFIED | Sprint 1.9 |
+| 每日风控(非仅调仓日) | signal阶段Step1.6新增L1-L4日终评估 | KEEP | Sprint 1.10 |
+| PreTradeValidator 5项 | 单笔<15%/价格容差/行业/日亏/集中度 | KEEP | Sprint 1.10 |
+| 现金缓冲3% | 权重总和0.97，整手约束余量+紧急调仓弹性 | KEEP | Sprint 1.10 |
+| 波动率regime缩放 | 对数收益率+中位数baseline+clip[0.5,2.0] | KEEP | Sprint 1.10 |
+| 开盘跳空预检 | 单股>5%P1/组合>3%P0，PT只告警 | KEEP | Sprint 1.10 |
+| PT毕业标准5→9项 | +fill_rate/slippage/TE/gap_hours | KEEP | Sprint 1.10 |
+| 自相关调整Sharpe | Lo(2002) ρ>0惩罚，月度策略可能高估 | KEEP | Sprint 1.10 |
 
 ---
 

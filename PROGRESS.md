@@ -1,11 +1,68 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-26
-> Current: Phase 1, Sprint 1.9 ✅ COMPLETED
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅
+> Last updated: 2026-03-27
+> Current: Phase 1, Sprint 1.10 ✅ COMPLETED
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: miniQMT买卖验证需交易时间执行
 > 宪法: V3.3 生效 (8铁律+strategy升级+设计文档对照)
+
+## Sprint 1.10: PT风控加固 + 毕业标准补全 ✅ COMPLETED
+
+### 目标
+风控三层架构落地(Pre-trade/Daily/Opening gap) + PT毕业标准从5项扩展到9项
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| 每日风控确认 | L1-L4每日运行 | Step1.6新增 | **PASS** |
+| PreTradeValidator | 5项订单级检查 | frozen dataclass | **PASS** |
+| 现金缓冲 | 3%强制保留 | SignalConfig.cash_buffer=0.03 | **PASS** |
+| pre-existing修复 | 2个测试修复 | l3_recovery参数同步 | **PASS** |
+| 波动率regime | 对数收益率+中位数 | clip[0.5,2.0] | **PASS** |
+| 开盘跳空预检 | 单股>5%/组合>3% | PT只告警 | **PASS** |
+| PT毕业标准 | 5→9项 | fill_rate/slippage/TE/gap | **PASS** |
+| 自相关Sharpe | Lo(2002)公式 | ρ>0惩罚 | **PASS** |
+| PT不中断 | v1.1持续运行 | 0 regression | **PASS** |
+
+### 产出物
+- `backend/engines/pre_trade_validator.py` — 5项订单级风控(FIA 2024标准)
+- `backend/engines/vol_regime.py` — 波动率regime缩放
+- `backend/engines/metrics.py` — autocorr_sharpe + 毕业4指标
+- `backend/engines/signal_engine.py` — cash_buffer + vol_regime_scale集成
+- `backend/app/services/paper_trading_service.py` — 毕业标准5→9项
+- `scripts/run_paper_trading.py` — Step1.6每日风控 + Step5.8跳空预检 + vol_regime前置
+- `docs/DEV_SCHEDULER.md` — P6三阶段风控调度 + P7合理性检查
+- `backend/tests/conftest.py` — fastapi try/except保护
+- 新增测试59个(7+21+8+16+9+27+7=95实际，arch报告52+quant7=59独立文件)
+- 全量回归628 passed, 1 xfailed, 0 new regression
+
+### 研究产出(同session)
+- 盘中风控全面分析报告(8维度4层方案)
+- khQuant看海量化教程精读(策略4阶段+miniQMT 3种行情+XtTrade API)
+- 前沿论文/平台研究(20+论文/5平台: Qlib/vnpy/Backtrader/Riskfolio-Lib/QuantStats)
+- FIA 2024自动交易风控标准、arXiv因子拥挤/Kelly-VIX/A股ML增强
+
+### 复盘
+
+**技术5问摘要**:
+1. 抓到7个错误(最严重: 非调仓日无风控)
+2. 铁律4/6违反(commit前未做复盘)
+3. 风控每日运行应在Sprint 1.8a就发现
+4. Sprint 1.11: 市场冲击成本/盘中监控/Processor Pipeline/Sizer解耦
+5. 新增LL-028(spawn文档路径) + LL-029(commit前复盘)
+
+**投资人视角**:
+- 敢投30万(30%)阶梯上量
+- 反转因子拥挤崩溃+系统性下跌是主要亏钱场景
+- Sprint 1.9-1.10是运维加固不是Alpha增强，没有让策略更赚钱
+
+### 违规记录
+- 铁律4违反: commit前未做复盘 → LL-029
+- 铁律6违反: PROGRESS.md未先更新 → 补做
+- §1.3违反: spawn缺文档路径 → LL-028
+
+---
 
 ## Sprint 1.9: PT稳定运行 + 系统加固 ✅ COMPLETED
 
