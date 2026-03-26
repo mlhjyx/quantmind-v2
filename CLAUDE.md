@@ -15,7 +15,8 @@ v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/b
 关键文件: TEAM_CHARTER_V3.3.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md
 --- 动态层（读PROGRESS.md恢复）---
 compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.md 恢复完整上下文
-⚠️ 第二步(LL-027强制): 读TEAM_CHARTER_V3.3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
+⚠️ 第二步(LL-027+LL-030强制): 读TEAM_CHARTER_V3.3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
+⚠️ Sprint启动顺序: TeamCreate → §5.1任务清单 → 附录A spawn prompt → 编码（编码是最后一步不是第一步）
 ⚠️ 用户计划有N个角色必须spawn N个，不能跳过任何一个
 ```
 
@@ -23,7 +24,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 
 ---
 
-## 7铁律（宪法V3.3，每次回复前检查）
+## 8铁律（宪法V3.3，每次回复前检查）
 
 ```
 1. spawn了才算启动（LL-015）
@@ -33,15 +34,18 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 5. 下结论前验代码——状态判断必须grep/read验证，不信文档（LL-019）
 6. Sprint结束必更新PROGRESS.md——复盘第一步（LL-020）
 7. ML实验必须OOS验证——训练/验证/测试三段分离（DSR=0.591警告）
+8. 因子评估前strategy必须确定匹配策略——ic_decay→调仓频率/权重/选股方式（LL-027）
 ```
 
 ---
 
 ## 管理模式（宪法V3.3）
 
-- **按需spawn**：同时≤4个，完成即释放。Spawn前必须读附录A角色定义
-- **每角色每Sprint≤2任务**，编码组+研究组并行
-- **因子审批链**：alpha_miner挖→factor审假设→quant审统计→SimBroker回测（过程拦截4检查点）
+- **按需spawn**：数量根据项目需要动态调整。Spawn前必须读附录A角色定义+§1.3的5项必填上下文
+- **每角色每Sprint≤2任务**，编码组+研究组并行（LL-001教训）
+- **因子审批链**：alpha_miner挖→factor审假设→quant审统计→★strategy确定匹配策略（铁律8）→SimBroker回测（过程拦截5检查点）
+- **strategy角色升级**：从审查员升级为策略设计师，负责因子-策略匹配（V3.3关键变更）
+- **编码前对照设计文档**：11个DEV文档中已设计的功能按设计实现，不重新发明（工作原则7）
 - **交叉审查矩阵**：附录B定义谁challenge谁，验代码/数据不是读文档（铁律5）
 - **投资人视角复盘**：每Sprint结束全员必答"敢投多少钱？什么时候亏？"
 - **优化目标排序**：MDD > Sharpe > 因子数量（全团队共识）
@@ -367,15 +371,19 @@ def get_broker() -> BaseBroker:
 - `trade_log`和`position_snapshot`用`execution_mode = 'paper'`字段区分
 - Paper和实盘共用`strategy_id`，通过`execution_mode`区分记录
 
-**毕业标准（转实盘前必须全部达标）**:
+**毕业标准（转实盘前必须全部达标，9项）**:
 
-| 指标 | 标准 |
-|------|------|
-| 运行时长 | ≥ 60个交易日（约3个月） |
-| Sharpe | ≥ 回测Sharpe × 70% |
-| 最大回撤 | ≤ 回测MDD × 1.5倍 |
-| 滑点偏差 | 实际滑点与模型预估偏差 < 50% |
-| 链路完整性 | 信号→审批→执行→归因 全链路无中断 |
+| # | 指标 | 标准 |
+|---|------|------|
+| 1 | 运行时长 | ≥ 60个交易日（约3个月） |
+| 2 | Sharpe | ≥ 回测Sharpe × 70% |
+| 3 | 最大回撤 | ≤ 回测MDD × 1.5倍 |
+| 4 | 滑点偏差 | 实际滑点与模型预估偏差 < 50% |
+| 5 | 链路完整性 | 信号→审批→执行→归因 全链路无中断 |
+| 6 | fill_rate | ≥ 95%（成交率，封板/停牌导致执行不全） |
+| 7 | avg_slippage | ≤ 30bps（平均滑点，执行质量） |
+| 8 | tracking_error | ≤ 2%（年化跟踪误差，信号→实际偏离） |
+| 9 | gap_hours | 12-20h（信号生成→执行的时间差，标准链路T日17:20→T+1 09:30≈16h） |
 
 **不达标不允许上实盘。降低标准需要书面记录理由。**
 
