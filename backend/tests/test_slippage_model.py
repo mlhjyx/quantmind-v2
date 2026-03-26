@@ -61,14 +61,16 @@ class TestVolumeImpactSlippage:
 
     def test_larger_trade_more_slippage(self) -> None:
         """交易金额越大，滑点越高。"""
-        common = dict(
-            daily_volume=50_000_000,
-            daily_amount=500_000_000,
-            market_cap=100_000_000_000,
+        s_small = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=100_000_000_000,
             direction="buy",
         )
-        s_small = volume_impact_slippage(trade_amount=100_000, **common)
-        s_large = volume_impact_slippage(trade_amount=10_000_000, **common)
+        s_large = volume_impact_slippage(
+            trade_amount=10_000_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=100_000_000_000,
+            direction="buy",
+        )
         assert s_large > s_small
 
     def test_custom_base_bps(self) -> None:
@@ -94,16 +96,16 @@ class TestVolumeImpactSlippage:
 
     def test_custom_impact_coeff(self) -> None:
         """更高的冲击系数→更大滑点。"""
-        common = dict(
-            trade_amount=1_000_000,
-            daily_volume=10_000_000,
-            daily_amount=100_000_000,
-            market_cap=100_000_000_000,
-            direction="buy",
-            base_bps=5.0,
+        s_low = volume_impact_slippage(
+            trade_amount=1_000_000, daily_volume=10_000_000,
+            daily_amount=100_000_000, market_cap=100_000_000_000,
+            direction="buy", base_bps=5.0, impact_coeff=0.05,
         )
-        s_low = volume_impact_slippage(impact_coeff=0.05, **common)
-        s_high = volume_impact_slippage(impact_coeff=0.2, **common)
+        s_high = volume_impact_slippage(
+            trade_amount=1_000_000, daily_volume=10_000_000,
+            daily_amount=100_000_000, market_cap=100_000_000_000,
+            direction="buy", base_bps=5.0, impact_coeff=0.2,
+        )
         assert s_high > s_low
 
     def test_zero_trade_amount(self) -> None:
@@ -132,17 +134,19 @@ class TestVolumeImpactSlippage:
 
     def test_small_cap_penalty(self) -> None:
         """小盘股(市值<50亿)冲击成本乘以1.2。"""
-        common = dict(
+        s_large_cap = volume_impact_slippage(
             trade_amount=1_000_000,
             daily_volume=5_000_000,
             daily_amount=50_000_000,
+            market_cap=10_000_000_000,  # 100亿，不触发惩罚
             direction="buy",
         )
-        s_large_cap = volume_impact_slippage(
-            market_cap=10_000_000_000, **common  # 100亿，不触发惩罚
-        )
         s_small_cap = volume_impact_slippage(
-            market_cap=3_000_000_000, **common  # 30亿，触发惩罚
+            trade_amount=1_000_000,
+            daily_volume=5_000_000,
+            daily_amount=50_000_000,
+            market_cap=3_000_000_000,  # 30亿，触发惩罚
+            direction="buy",
         )
         # 小盘股impact部分应为大盘股的1.2倍
         # base_bps相同(5.0), 所以差异在impact部分
@@ -152,30 +156,38 @@ class TestVolumeImpactSlippage:
 
     def test_small_cap_boundary_below(self) -> None:
         """市值刚好低于50亿阈值触发惩罚。"""
-        common = dict(
+        s_at_boundary = volume_impact_slippage(
             trade_amount=1_000_000,
             daily_volume=5_000_000,
             daily_amount=50_000_000,
+            market_cap=4_999_999_999,  # 刚好低于50亿
             direction="buy",
         )
-        s_at_boundary = volume_impact_slippage(
-            market_cap=4_999_999_999, **common  # 刚好低于50亿
-        )
         s_above = volume_impact_slippage(
-            market_cap=5_000_000_000, **common  # 恰好50亿，不触发
+            trade_amount=1_000_000,
+            daily_volume=5_000_000,
+            daily_amount=50_000_000,
+            market_cap=5_000_000_000,  # 恰好50亿，不触发
+            direction="buy",
         )
         assert s_at_boundary > s_above
 
     def test_small_cap_boundary_at(self) -> None:
         """市值恰好50亿(5e9)不触发惩罚。"""
-        common = dict(
+        s_at = volume_impact_slippage(
             trade_amount=1_000_000,
             daily_volume=5_000_000,
             daily_amount=50_000_000,
+            market_cap=5_000_000_000,
             direction="buy",
         )
-        s_at = volume_impact_slippage(market_cap=5_000_000_000, **common)
-        s_above = volume_impact_slippage(market_cap=10_000_000_000, **common)
+        s_above = volume_impact_slippage(
+            trade_amount=1_000_000,
+            daily_volume=5_000_000,
+            daily_amount=50_000_000,
+            market_cap=10_000_000_000,
+            direction="buy",
+        )
         # 两者impact部分应相同(都不触发惩罚)
         assert abs(s_at - s_above) < 0.01
 
@@ -183,14 +195,20 @@ class TestVolumeImpactSlippage:
 
     def test_sell_direction_penalty(self) -> None:
         """卖出方向冲击乘以1.2。"""
-        common = dict(
+        s_buy = volume_impact_slippage(
             trade_amount=1_000_000,
             daily_volume=10_000_000,
             daily_amount=100_000_000,
             market_cap=100_000_000_000,  # 大盘股，排除小盘惩罚
+            direction="buy",
         )
-        s_buy = volume_impact_slippage(direction="buy", **common)
-        s_sell = volume_impact_slippage(direction="sell", **common)
+        s_sell = volume_impact_slippage(
+            trade_amount=1_000_000,
+            daily_volume=10_000_000,
+            daily_amount=100_000_000,
+            market_cap=100_000_000_000,  # 大盘股，排除小盘惩罚
+            direction="sell",
+        )
         # 卖出impact = 买入impact * 1.2
         impact_buy = s_buy - 5.0
         impact_sell = s_sell - 5.0
@@ -198,16 +216,19 @@ class TestVolumeImpactSlippage:
 
     def test_sell_and_small_cap_compound(self) -> None:
         """卖出 + 小盘股 → 两个惩罚叠加(1.2*1.2=1.44)。"""
-        common = dict(
+        s_buy_large = volume_impact_slippage(
             trade_amount=1_000_000,
             daily_volume=5_000_000,
             daily_amount=50_000_000,
-        )
-        s_buy_large = volume_impact_slippage(
-            market_cap=100_000_000_000, direction="buy", **common
+            market_cap=100_000_000_000,
+            direction="buy",
         )
         s_sell_small = volume_impact_slippage(
-            market_cap=3_000_000_000, direction="sell", **common
+            trade_amount=1_000_000,
+            daily_volume=5_000_000,
+            daily_amount=50_000_000,
+            market_cap=3_000_000_000,
+            direction="sell",
         )
         impact_base = s_buy_large - 5.0
         impact_compound = s_sell_small - 5.0
