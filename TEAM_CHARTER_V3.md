@@ -89,7 +89,7 @@ factor审经济学假设(A股适用性+数据依赖+相关性检查)
     ↓ 通过 / 否决即停
 quant审统计(IC/t>2.5/BH-FDR/正交性corr<0.7)
     ↓ 通过 / 一票否决
-SimBroker组合回测(Sharpe≥基线1.019, paired bootstrap p<0.05)
+SimBroker组合回测(Sharpe≥基线1.03, paired bootstrap p<0.05)
     ↓ 通过 / 否决
 入池
 ```
@@ -102,7 +102,7 @@ SimBroker组合回测(Sharpe≥基线1.019, paired bootstrap p<0.05)
 
 **Gate硬性标准（不可协商）**：
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正：M = FACTOR_TEST_REGISTRY.md累积测试总数（当前67）
+- BH-FDR校正：M = FACTOR_TEST_REGISTRY.md累积测试总数（当前72）
 - 与现有Active因子corr < 0.7（截面），选股月收益corr < 0.3（LL-009）
 - SimBroker组合回测Sharpe ≥ 1.019（Windows基线）
 
@@ -341,7 +341,7 @@ alpha_miner(挖掘候选) → factor(审经济学假设) → quant(审统计+去
 | 指标 | 标准 | 来源 |
 |------|------|------|
 | 运行时长 | ≥ 60个交易日 | CLAUDE.md |
-| Sharpe | ≥ 1.019 × 70% = 0.71 | Windows基线 |
+| Sharpe | ≥ 1.03 × 70% = 0.72 | Windows基线(reversal_20补算后) |
 | MDD | < 回测MDD × 1.5 = 59.6% | CLAUDE.md |
 | 滑点偏差 | < 50% | CLAUDE.md |
 | 链路完整性 | 全链路无中断 | CLAUDE.md |
@@ -548,7 +548,7 @@ Team Lead是LLM，有结构性局限：
 5. 模型版本管理（model_registry表）
 6. 实验记录标准化（§11.2格式）
 7. 与factor分工：factor负责"用什么因子"，你负责"怎么训练怎么调参"
-8. 铁律7：OOS Sharpe < 基线1.019不上线。训练IC/OOS IC > 3倍 = 过拟合
+8. 铁律7：OOS Sharpe < 基线1.03不上线。训练IC/OOS IC > 3倍 = 过拟合
 ```
 
 ### A.10 frontend — 前端工程师（Phase 1B启用）

@@ -1,10 +1,330 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-25
-> Current: Phase 1, Sprint 1.3b COMPLETED → Sprint 1.4 规划中
-> Paper Trading: v1.1 Day 3/60, NAV=979,294
-> Blockers: 无硬阻塞
-> 宪法: V3.1 生效 (7铁律+按需spawn+因子审批链)
+> Last updated: 2026-03-26
+> Current: Phase 1, Sprint 1.9 ✅ COMPLETED
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅
+> Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
+> Blockers: miniQMT买卖验证需交易时间执行
+> 宪法: V3.3 生效 (8铁律+strategy升级+设计文档对照)
+
+## Sprint 1.9: PT稳定运行 + 系统加固 ✅ COMPLETED
+
+### 目标
+P0 bug修复 + 审计缺口关闭 + 策略基础设施接入
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| ic_decay修复 | 交易日计算 | bisect_right交易日偏移 | **PASS** |
+| 任务依赖链 | health→signal联动 | Redis gate + P0告警 | **PASS** |
+| BaseBroker统一 | 3个Broker继承基类 | ABC + get_broker工厂 | **PASS** |
+| 仓位偏差 | 非零计算 | 3指标(mean/max/cash_drag) | **PASS** |
+| VWAP+RSRS入管道 | 每日计算 | RESERVE_FACTORS注册+隔离 | **PASS** |
+| 通知模板补齐 | ≥5个新模板 | 5个新增(19总计) | **PASS** |
+| PT不中断 | v1.1持续运行 | 0 regression | **PASS** |
+
+### 产出物
+- `backend/engines/factor_profile.py` — ic_decay交易日修复 + 缓存
+- `backend/app/tasks/daily_pipeline.py` — health→signal Redis gate
+- `backend/engines/base_broker.py` — BaseBroker(ABC) + get_broker()
+- `backend/engines/backtest_engine.py` — SimBroker(BaseBroker)
+- `backend/engines/paper_broker.py` — PaperBroker(BaseBroker)
+- `backend/engines/broker_qmt.py` — MiniQMTBroker(BaseBroker)
+- `backend/engines/metrics.py` — calc_position_deviation(3指标)
+- `backend/engines/factor_engine.py` — calc_vwap_bias + calc_rsrs_raw + RESERVE_FACTORS
+- `backend/app/services/notification_templates.py` — +5模板(19总计)
+- 新增测试53个，全部通过。全量回归528/530(2 pre-existing)
+
+### 决策
+- v1.2(K=3) 不升级: p=0.657不显著 + 60天PT重计时代价太大
+- VWAP/RSRS入Reserve池: 不入v1.1等权组合(LL-018等权天花板)
+
+### 遗留
+- miniQMT完整买卖验证（需交易时间执行，脚本已准备）
+- 2个pre-existing测试失败(risk_control l3_recovery参数变更未同步)
+
+---
+
+## Sprint 1.8b: 策略层基础设施 ✅ COMPLETED
+
+### 目标
+BaseStrategy接口 + StrategyRegistry + 多频率回测框架
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| BaseStrategy接口 | 可插拔策略 | EqualWeight+MultiFreq | **PASS** |
+| qa验收 | 全部通过 | 44/44 PASS | **PASS** |
+| Pyright | 0错误 | 清零 | **PASS** |
+| 多策略卫星方案 | risk评估 | MDD-45%被否决 | 正确否决 |
+
+### 关键发现
+1. 5个活跃因子IC不衰减（慢速因子），月度调仓正确
+2. turnover/volatility本质是过滤型非排序型
+3. 等权天花板5因子(LL-018)
+4. A股系统性风险下相关性0.19→0.49，多策略分散化幻觉
+
+---
+
+## Sprint 1.8a: 架构收敛 ✅ COMPLETED
+
+### 目标
+run_paper_trading.py 1776行→<200行薄壳，业务逻辑收归Service层
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| run_paper_trading.py行数 | <200行(不含影子) | 658行核心+243影子=901行 | ⚠️ 核心658>200 |
+| Service层被调用 | 不是摆设 | 5个Service实际import | **PASS** |
+| 风控逻辑一份 | 无重复 | check_circuit_breaker_sync唯一 | **PASS** |
+| 通知逻辑一份 | 无重复 | NotificationService.send_sync | **PASS** |
+| 现有测试 | 全部通过 | 303 passed, 1 failed(pre-existing) | **PASS** |
+| PT不中断 | 链路正常 | 待明天验证 | Pending |
+
+### 产出物
+- backend/app/services/db.py — 统一sync DB连接(22行)
+- backend/app/services/trading_calendar.py — 交易日工具(60行)
+- backend/app/services/signal_service.py — 信号生成Service(417行)
+- backend/app/services/execution_service.py — 执行链路Service(499行)
+- backend/app/services/risk_control_service.py — +380行sync风控方法
+- backend/app/services/notification_service.py — +170行sync通知方法
+- backend/app/services/paper_trading_service.py — +120行NAV更新
+- scripts/run_paper_trading.py — 1776→901行(-49%)
+- scripts/run_paper_trading.py.bak — 旧版备份
+
+### 架构决策
+- 全部Service统一sync psycopg2（不推async）
+- FastAPI原生支持sync endpoint
+- Service内部不commit，调用方统一管理事务
+- 影子选股暂留script中（非核心功能）
+
+---
+
+## Sprint 1.7: miniQMT模拟对接 + 运维加固 ⚠️ 待收尾
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| miniQMT全链路 | 买入→确认→查持仓→卖出 | query-only通过，买卖待明天 | Pending |
+| pg_dump自动备份 | 运行中 | Task Scheduler已注册02:00 | **PASS** |
+| 钉钉通知覆盖 | PT日报+熔断 | 4项覆盖 | **PASS** |
+
+### 编码完成(7/7)
+- A1: broker_qmt.py (535行)
+- A2: verify_qmt_broker.py 验证脚本
+- A3: compare_simbroker_qmt.py 对比框架
+- A4: register_qmt_autostart.ps1 (XtMiniQmt.exe，非XtItClient.exe)
+- B1: pg_backup.py + register_backup_task.ps1 (首次备份3.7GB)
+- B2: 钉钉通知4项覆盖
+- B3: 前端Dashboard 17文件
+
+### 额外完成
+- 数据质量自动巡检(data_quality_check.py + Task Scheduler 17:00)
+- 成本模型校准(佣金万1.5→万0.854国金实际费率)
+- 换手率研究(方案A K=3: Sharpe=1.139, 换手242%, MDD=-35.23%)
+- 设计vs实现审计(3份报告56KB, 150+功能点)
+- 系统集成流程分析(识别双轨制架构问题)
+
+### 关键发现
+- miniQMT必须用XtMiniQmt.exe启动，XtItClient.exe是普通QMT模式
+- 佣金万0.854比假设万1.5低43%，年省1%交易成本
+- 方案A(K=3)换手率降70%且Sharpe提升10.8%，但p=0.657不显著
+
+### 遗留
+- miniQMT完整买卖验证（明天交易时间）
+- PT运行验证（明天signal+execute实际跑一次）
+
+---
+
+## Sprint 1.6: Rolling ensemble + 分析师预期 + VWAP/RSRS ✅ COMPLETED
+
+### 目标
+1. Rolling ensemble修复+清理（免费Sharpe提升）
+2. 分析师预期修正因子（Tushare forecast，新信息源）
+3. arch P1修复（DB连接硬编码统一化）
+4. 3/25 NAV入库问题修复
+5. VWAP+RSRS因子评估 → v1.2升级决策
+6. 信号平滑Inertia探索
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| v1.2升级(+vwap+rsrs) | Sharpe≥1.019, p<0.05 | Sharpe=0.902, p=0.652 | **FAIL — 否决** |
+| Rolling ensemble | Sharpe提升≥5% | +13.6%但p=0.35 | Reserve |
+| Forecast因子 | IC显著 | t<1.0, 中性化后归零 | **FAIL — 方向关闭** |
+| 信号平滑Inertia(0.7σ) | p<0.05 | Sharpe=1.172, p=0.09 | 影子PT观察 |
+| DB连接P1 | 13脚本统一 | 完成 | **PASS** |
+| Drawdown修复 | qa通过 | 4/4 PASS | **PASS** |
+| Execute拆分 | qa通过 | 5/5 PASS | **PASS** |
+
+### 7因子等权回测详细结果（Sprint 1.6关键实验）
+```
+7F(+vwap+rsrs) vs 5F基线, 2021-2025, Top15月度行业25%
+Sharpe: 0.902 vs 1.028 (-0.126)
+MDD: -39.90% vs -39.64% (略恶化)
+换手率: 1006% vs 799% (+207%)
+p-value: 0.652 (无显著差异)
+年度: 7F每年Sharpe均低于5F
+risk一票否决: 2项硬性条件触发(Sharpe<0.977, 2022 MDD差3.48%)
+```
+
+### §13.3 执行记分卡
+```
+铁律违规: 0次
+规则执行率: 7/7（1✅2✅3✅4✅5✅6✅7✅）
+用户提醒次数: 1次（多窗口团队模式）
+团队协作: ml+quant+risk三方审查，交叉验证完整
+```
+
+### 复盘5问（技术视角）
+1. **拦截了几个错误？** quant预审发现IC测试脚本缺MAD去极值（硬伤），已修复。risk设定5项否决条件，2项触发。
+2. **哪些规则执行了/没执行？** 7铁律全部执行。§1.3 agent启动规范完整（附录A prompt+上下文+交叉预期+主动发现）。交叉审查矩阵按附录B执行。
+3. **应该更早发现的问题？** vwap/rsrs是短周期因子，在月度框架下时频错配——factor在Gate审批时应前置评估调仓频率匹配性。
+4. **下个Sprint要改什么？** Gate审批链增加"调仓频率匹配性"检查点。
+5. **新规则？** 短周期因子(窗口<20日)在月度等权框架下预期表现差，需特别论证才可入组合。
+
+### 投资人视角3问
+1. **敢投多少？** 等权v1.1继续100万模拟。不加码。5因子集中度仍是最大风险。
+2. **什么环境亏？** 2022-2023小盘因子失效期（基线MDD=-39.7%）。L4熔断-25%触发。2025关税冲击单日-13.15%。
+3. **本Sprint哪些真正让策略更赚钱？** 无新alpha增量。但基础设施交付（DB统一/Drawdown修复/execute拆分）提升了运维可靠性。Inertia影子PT是潜在方向。
+
+### 编码组产出
+- DB连接P1修复（13脚本统一）
+- Drawdown P0修复（qa 4/4 PASS）
+- 方案B execute拆分（qa 5/5 PASS）
+- Inertia(0.7σ)影子PT实现
+- index_daily增量拉取 + moneyflow/SW行业补拉
+- backtest_7factor_comparison.py回测脚本
+
+### 研究组产出
+- Forecast因子关闭（全样本60月t<1.0）
+- VWAP+RSRS单因子Gate双PASS（t=-3.53/-4.35）
+- VWAP+RSRS LightGBM无增量
+- Rolling ensemble Reserve（Sharpe+13.6%, p=0.35）
+- 7因子等权回测否决（Sharpe=0.902, p=0.652）
+- 信号平滑bootstrap陷阱识别（LL-028）
+
+### 关键教训
+- LL-028: 信号平滑bootstrap陷阱（大bonus=隐性动量）
+- LL-029: 单因子IC强不等于ML增量（VWAP/RSRS t>3.5但LightGBM无增量）
+- LL-030: 对照组数据一致性问题（多次出现0.0696 vs 0.0823偏差）
+- 新发现: 短周期因子(窗口<20日)在月度等权框架下时频错配，换手暴增但alpha稀释
+
+---
+
+## Sprint 1.5b: 基本面使用方式穷举验证 ✅ COMPLETED (方向彻底关闭)
+
+### §13.3 执行记分卡
+```
+铁律违规: 0次（Sprint 1.5b期间）
+规则执行率: 5/7（铁律1✅2✅3-N/A 4✅5✅6✅7✅）
+用户提醒次数: 5次（团队未建/角色分配错误/未读宪法/漏掉frontend/不称职）
+用户提醒 > 自检发现 → LL-027升级执行机制（Hook+检查清单+Compaction保护）
+```
+
+### 复盘5问
+1. **拦截了几个错误？** qa-verify发现因子方向bug（reversal_20/amihud_20），修复后基线Sharpe从-0.255恢复到0.644。quant-verify确认PIT无泄露。
+2. **哪些规则执行了/没执行？** 铁律执行到位。但§1.2团队管理、§1.3 agent启动规范、§11.3协作链、附录B交叉审查严重不足（LL-027）。
+3. **应该更早发现的问题？** 因子方向bug——如果第一个脚本就有qa审查，不会传播到3个脚本。
+4. **下个Sprint要改什么？** 每次分配任务前读TEAM_LEAD_CHECKLIST.md，严格按§1.1职责分配。
+5. **新规则？** best_iter>10作为ML特征增量的门槛（写入LL-026）。
+
+### 投资人视角3问
+1. **敢投多少？** 等权v1.1继续100万模拟，Day 3 NAV=995K(-0.47%)。不加码。
+2. **什么环境亏？** 2022-2023小盘因子失效期（基线MDD=-39.7%）。L4熔断-25%触发。
+3. **本Sprint哪些真正让策略更赚钱？** 无。8/10基本面方案全FAIL。但因子生命周期基础设施和PIT验证是永久性交付。
+
+### 10方案穷举结果
+| # | 方案 | 结果 | 关键数据 |
+|---|------|------|---------|
+| 原始 | 7delta直接喂ML | FAIL | IC=0.044 |
+| 1 | ROE宇宙预筛选 | FAIL | p=0.989 |
+| 3 | 交互因子 | FAIL | IC≈0 |
+| 5 | 只加days_since | FAIL | IC=0.070,iter=7 |
+| 6 | 只加top2 delta | FAIL | IC=0.058,iter=51 |
+| 7 | ROE动量3Q | FAIL | IC=-8.47% |
+| 8 | Piotroski F5 | SKIP | 用户决定不测 |
+| 9 | 双模型融合 | MARGINAL | IC+0.006 |
+| 10 | 排除风险股 | FAIL | Sharpe 0.738<0.831 |
+
+## Sprint 1.5: 基本面因子扩展 ✅ COMPLETED (FAIL — 方向关闭)
+
+### 复盘（铁律4）
+**技术5问**: (1)6份研究报告+3份深度文献调研做了充分预研; (2)PIT验证100%通过; (3)基本面delta OOS IC仅0.044(vs基线0.082)，加入后严重拖累; (4)LL-026: A股基本面因子三轮验证全FAIL; (5)因子生命周期基础设施交付
+**投资人3问**: (1)不投基本面方向; (2)等权v1.1继续PT; (3)5因子集中度是最大风险
+
+### 成败标准结果
+| 标准 | 要求 | 实际 | 结果 |
+|------|------|------|------|
+| 基本面delta → OOS IC≥9.0% | IC提升 | **4.4%（下降46.7%）** | **FAIL** |
+| Rolling ensemble → Sharpe提升≥5% | ≥0.912 | 0.972（基线对比待清理） | **待确认** |
+
+### 研究组产出（9份报告）
+- quant: A股基本面IC 1-3%（中性化后），结构性偏弱
+- factor: 15候选中7个已FAIL，仅3个P1值得测试
+- risk: 5项风险评估（PIT/财报季/数据质量/时效性/行业偏露）
+- data: PIT验证PASS（240K行，ann_date 100%非NULL，茅台交叉验证通过）
+- 3份深度文献调研（弱因子ML增强/A股ML SOTA/工业界实践）
+
+### 编码组产出
+- 6+2基本面delta特征编码（factor_engine.py, factor_set="lgbm_v2"）
+- 因子生命周期状态机（factor_lifecycle表+monitor_factor_ic.py）
+- Rolling ensemble脚本（rolling_ensemble.py）
+- F1 fold测试脚本（test_lgbm_v2.py）
+
+### F1 Fold测试结果
+| 配置 | Train IC | Valid IC | OOS IC | Best Iter | Overfit |
+|------|----------|----------|--------|-----------|---------|
+| 5基线(Sprint 1.4b) | 0.1308 | 0.1208 | **0.0823** | 52 | 1.08 |
+| 12特征(5+7delta) | 0.1266 | 0.0901 | 0.0439 | 6 | 1.40 |
+
+### 关键教训
+- LL-026: 基本面因子三轮全FAIL（水平值→线性合成→delta+ML），方向关闭
+- 5基线因子在LightGBM中是最优特征集，无论加价量还是基本面特征都拖累
+- 因子生命周期基础设施是永久性交付（无论因子结果如何）
+
+---
+
+## Sprint 1.4b: LightGBM非线性模型 ✅ COMPLETED (NOT JUSTIFIED)
+
+### 复盘（铁律4）
+**技术5问**: (1)交叉审查发现P0 target泄露bug，做对了; (2)12个ML特征全量入库40分钟后证明全是噪声，应先小样本验证; (3)等权基线近3年Sharpe=-0.125，意外; (4)LL-023/024/025三条新教训; (5)新因子入库前强制小样本IC筛选
+**投资人3问**: (1)等权v1.1谨慎100万模拟; (2)2023年小盘因子失效时亏最多; (3)因子池仅5个价量因子缺基本面维度
+
+### 最终评估
+| 指标 | LightGBM | 等权基线(同期) | 标准 | 结果 |
+|------|----------|---------------|------|------|
+| OOS Sharpe | 0.869 | -0.125 | ≥1.10 | FAIL |
+| Bootstrap p | 0.073 | — | <0.05 | FAIL |
+| MDD | -39.51% | -48.57% | <55% | PASS |
+| 连亏月 | 4 | 4 | <3 | FAIL |
+| OOS IC | 0.0823 | — | >0.02 | PASS |
+| ICIR | 0.982 | — | >0.3 | PASS |
+| Fold一致性 | 7/7 | — | ≥70% | PASS |
+
+### 关键发现
+- 5基线特征完胜17特征（SHAP: ML特征引入维度噪声，best_iter=2）
+- Optuna仅+2.5% IC（默认超参已接近最优）
+- LightGBM在2024-2026每年Sharpe>1.1，但2023拖累整体
+
+### 决策
+- **NOT JUSTIFIED for go-live**（3项红线失败）
+- **影子Paper Trading并行运行**（shadow_portfolio表，每月调仓自动生成）
+- 等权v1.1继续做主策略
+
+### 产出物
+- `backend/engines/ml_engine.py` — Walk-Forward训练框架
+- 12个ML特征函数 + `LIGHTGBM_FEATURE_SET`(28)
+- 7个fold模型 + 400万行OOS预测
+- 统计审查框架（7红线+5检查表）
+- `docs/ML_WALKFORWARD_DESIGN.md`
+- `scripts/shap_analysis.py`, `optuna_search.py`, `run_7fold.py`, `evaluate_lgb_vs_baseline.py`
+- 影子PT集成: `shadow_portfolio`表 + `run_paper_trading.py`信号阶段
+- LL-023/024/025三条教训
+
+### 上线标准（存档）
+- **上线**(替换等权): paired bootstrap p<0.05 + OOS Sharpe≥1.10 + 6红线全过
+- **优秀**(高置信): OOS Sharpe≥1.30 + p<0.01
 
 ## Week 0: Data Feasibility Verification ✅ COMPLETED
 
@@ -434,6 +754,7 @@ Top-N and IndCap have minor impact within monthly configs.
 - Windows: 1.019 vs Mac: 1.037 (差0.018)
 - **根因**: dump中reversal_20因子在2021-01-29(第一个月度调仓日)缺失, 该日用4因子等权而非5因子
 - **决策**: 接受1.019为Windows新基线, 毕业标准调整为Sharpe≥0.71
+- **更新(Sprint 1.4a)**: reversal_20补算后基线恢复至1.03, 毕业标准更新为Sharpe≥0.72
 
 ---
 
@@ -445,6 +766,27 @@ Top-N and IndCap have minor impact within monthly configs.
 - **持仓**: 15只
 - **自动化**: Task Scheduler (16:30信号 + 09:00执行)
 - **毕业标准**: Sharpe≥0.71, MDD<35%, 滑点偏差<50%
+- **基线Sharpe**: 1.03 (reversal_20补算后, 2021-2025全期)
+
+---
+
+## Sprint 1.4a: 风控补债 + 基线修复 (2026-03-25)
+
+### 已完成
+| 任务 | 执行者 | 结果 |
+|------|--------|------|
+| Task Scheduler验证 | Team Lead | 已注册，3/25首次自动触发(16:30/09:00) |
+| reversal_20补算 | Team Lead | 2021-01的20个交易日补算完毕，Sharpe 1.019→1.03 |
+| Deprecated因子停计算 | arch | 已确认排除，无需代码修改。修复help text(core5/full16)+加deprecation warning |
+| Windows全量pytest | qa | **401 passed, 0 fail, 1 xfail**。零回归 |
+| L1-L4熔断编码 | risk | 状态机重写，DB持久化+审计日志+approve_l4.py人工审批CLI。L3恢复阈值对齐CLAUDE.md(5天/2%) |
+
+### 新增文件
+- `scripts/approve_l4.py` — L4人工审批CLI (--list/--approve/--reject/--force-reset)
+
+### 待做
+- Sprint 1.4a复盘（铁律4）
+- Sprint 1.4b规划（LightGBM）
 
 ---
 
@@ -452,19 +794,39 @@ Top-N and IndCap have minor impact within monthly configs.
 
 | 角色 | 状态 | 待办 |
 |------|------|------|
-| Team Lead | 活跃 | Sprint 1.3b复盘 + 1.4规划 |
-| quant | 待命 | — |
-| arch | 待命 | Deprecated因子停止计算 |
-| data | 待命 | 3/25 Task Scheduler首次自动运行验证 |
-| qa | 待命 | Windows环境全量pytest |
-| factor | 待命 | — |
-| strategy | 待命 | — |
-| risk | 待命 | **L1/L2熔断编码(逾期)** |
-| alpha_miner | 待命 | 目标转型→LightGBM特征池 |
-| frontend | 未启用 | Phase 1B |
-| ml | 未启用 | Phase 1C |
+| Team Lead | 活跃 | Sprint 1.4a收尾 + 1.4b规划 |
+| quant | 待命 | Sprint 1.4b: 特征池审查 |
+| ml | 待命 | Sprint 1.4b: LightGBM训练框架 |
+| alpha_miner | 待命 | Sprint 1.4b: 50+特征池准备 |
+| 其他角色 | 按需spawn | — |
 
 ## Blockers
 - 无硬阻塞
-- L1/L2熔断编码逾期(从Sprint 0.1遗留), 优先级P1
 - accrual_anomaly因子blocked(需cash_flow表), 优先级低
+
+---
+
+## Sprint 1.4b: LightGBM非线性模型 (2026-03-25 启动)
+
+### 提案阶段（§11.1步骤1）✅ COMPLETED
+
+**三方研究产出整合：**
+- alpha_miner: 50个候选因子（P1:25 + P2:15 + P3:10），6维度全覆盖
+- ml: Walk-Forward框架设计（7 fold + Optuna 200轮 + GPU配置）
+- quant: 统计审查框架（7条红线 + 5层检查清单）
+
+**关键决策：**
+- OOS上线标准: **paired bootstrap p<0.05 + Sharpe≥1.10 + 6红线**（用户确认）
+- OOS优秀标准: **Sharpe≥1.30 + p<0.01**
+- DSR门槛: **≥0.65**
+- 特征数: 51个（ml设计6组）
+- 训练窗口: F1-F3扩展→F4-F7固定24月
+- Purge gap: 5交易日
+- GPU: RTX 5070, VRAM预估1-2GB
+
+**设计文档**: docs/ML_WALKFORWARD_DESIGN.md
+
+### 特征工程阶段（§11.1步骤2）🔨 IN PROGRESS
+
+- alpha_miner: P1特征编码（第一批12个因子）
+- ml: Walk-Forward训练框架编码 (ml_engine.py)

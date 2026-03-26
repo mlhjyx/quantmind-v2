@@ -467,4 +467,98 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 - [LawClaw](https://dev.to/nghiahsgs/i-built-an-ai-agent-that-governs-itself-separation-of-powers-for-llms-123) — AI agent宪法治理
 - [MLOps for Quant](https://medium.com/@online-inference/mlops-best-practices-for-quantitative-trading-teams-59f063d3aaf8) — 回测作为一等公民
 
-**执行状态**: 写入宪法V3.2 §9.6 + §10研究方向。Sprint 1.4需深入研究Alpha158和Gu Kelly Xiu 2020。
+**执行状态**: 写入宪法V3.2 §9.6 + §10研究方向。Sprint 1.4已深入研究Alpha158和Gu Kelly Xiu 2020。
+
+---
+
+## LL-023: ML特征质量>数量，维度噪声比过拟合更危险（Sprint 1.4b）
+
+**事件**: LightGBM用5基线特征OOS IC=0.0706，加入12个ML特征后OOS IC降到0.0478。SHAP显示ML特征有validation importance但OOS不泛化。所有含ML特征的配置best_iter=2（模型几乎无法学习）。
+
+**根因**: 12个ML特征（KBAR/资金流/技术指标）覆盖率74-95%不等，引入的维度噪声稀释了5基线因子的信号。模型在高维空间中找不到比"第1棵树"更好的分裂路径，early stopping立即触发。
+
+**改进措施**: 新因子入ML特征集前，必须先验证：(1) 单因子OOS IC > 0.02; (2) 与现有5因子的平均截面corr < 0.5; (3) 加入后LightGBM best_iter > 10（能持续学习）。
+
+**执行状态**: 已写入Sprint 1.5特征筛选标准。
+
+---
+
+## LL-024: 全量入库前先小样本验证（Sprint 1.4b）
+
+**事件**: 12个ML特征全量入库（553万行×12因子）耗时40分钟，但SHAP最终证明它们全部是噪声，不应入库。
+
+**根因**: 跳过了小样本验证步骤，直接全量计算+写入DB。
+
+**改进措施**: 新因子入库前强制小样本IC筛选（100只股票×1年，<10秒），IC>0.015且方向符合预期后才执行全量入库。
+
+**执行状态**: 写入Sprint 1.5因子开发流程。
+
+---
+
+## LL-025: OOS评估时间段选择极大影响结论（Sprint 1.4b）
+
+**事件**: 等权基线全期(2021-2025) Sharpe=1.03，但近3年(2023-2026) Sharpe=-0.125。LightGBM OOS Sharpe=0.869看似不达标（<1.10），但同期远胜基线。
+
+**根因**: 2023年小盘因子全面失效（基线-38.82%），严重拖累近3年表现。不同评估窗口给出截然不同的结论。
+
+**改进措施**: OOS评估必须同时报告：(1) 全期Sharpe+CI; (2) 滚动12月Sharpe时序; (3) 年度分解。不能只看单一数字。
+
+**执行状态**: 已写入evaluate_lgb_vs_baseline.py的年度分解功能。
+
+---
+
+## LL-026: A股基本面因子在ML框架中仍然无效——方向关闭（Sprint 1.5）
+
+**事件**: Sprint 1.5用6个基本面delta特征（roe_delta/revenue_growth_yoy/gross_margin_delta/eps_acceleration/debt_change/net_margin_delta）+ 2个时间特征加入LightGBM。F1 fold结果：OOS IC从基线0.0823暴跌到0.0439（-46.7%），best_iter从52降到6。
+
+**历史累积**:
+- Sprint 1.3b: 7个基本面水平值因子(roe_ttm等)全部FAIL（FACTOR_TEST_REGISTRY #21-28）
+- Sprint 1.4b: 12个价量ML特征FAIL（维度噪声）
+- Sprint 1.5: 7个基本面delta特征FAIL（即使用变化率替代水平值仍然失败）
+- 三轮验证（水平值→线性合成→delta+ML），基本面方向彻底关闭
+
+**根因**: A股基本面因子IC结构性偏弱（中性化后1-3%），原因是散户主导市场+财报质量差+壳价值效应。季度更新频率与月度调仓的频率不匹配导致stale signal问题。即使在LightGBM非线性框架中，弱基本面特征仍然稀释了强价量因子的信号（days_since_announcement的Gain=2966远超其他，模型过度依赖时间特征而非基本面内容）。
+
+**Sprint 1.5b穷举验证（10种使用方式，8/10已测）**:
+
+| # | 方案 | OOS结果 | 判定 |
+|---|------|---------|------|
+| 原始 | 7delta直接喂ML | IC=0.044(基线0.082) | FAIL |
+| 1 | ROE宇宙预筛选 | Sharpe=-0.287 vs 0.644 | FAIL |
+| 3 | 交互因子(3个) | IC≈0, t<2.5 | FAIL |
+| 5 | 只加days_since | IC=0.070, iter=7 | FAIL |
+| 6 | 只加top2 delta | IC=0.058, iter=51 | FAIL |
+| 7 | ROE动量3Q平滑 | IC=-8.47%(方向反转) | FAIL |
+| 8 | Piotroski简化F5 | 不测(用户决策) | SKIP |
+| 9 | 双模型融合 | IC+0.006但M2质量差 | MARGINAL |
+| 10 | 排除风险股 | Sharpe 0.738<0.831 | FAIL |
+
+**改进措施**:
+1. **基本面方向彻底关闭**（8/10 FAIL + 1 MARGINAL，LL-022穷举验证已完成）
+2. 新特征入ML前必须通过"best_iter>10"门槛
+3. 未来因子扩展方向：分析师预期修正（新信息源，非基本面变体）
+
+**执行状态**: 用户确认关闭。Sprint 1.6转向Rolling ensemble + 分析师预期修正因子。
+
+---
+
+## LL-027: Team Lead系统性执行失败——未遵守宪法团队管理规则（Sprint 1.4-1.5全程）
+
+**事件**: 整个Sprint 1.4到1.5期间，Team Lead：
+1. 从未用TeamCreate建立持久化团队，全部使用一次性孤立agent
+2. Spawn agent时从未读附录A的角色Spawn Prompt（§1.2违规）
+3. Agent启动时缺失"角色定义+交叉预期+主动发现"（§1.3违规）
+4. 被动执行用户指令，缺乏合伙人的主动思考（§1.5违规）
+5. 用户多次提醒后才意识到问题
+
+**根因**: Team Lead把自己定位为"任务分配器"而非"项目合伙人"。没有在session开始时认真阅读宪法全文，只是选择性地读了自己认为需要的部分。宪法存在但不执行等于不存在。
+
+**改进措施**:
+1. 每次新session开始，Team Lead必须读TEAM_CHARTER_V3.md §1全文（不是只读CLAUDE.md摘要）
+2. Sprint开始时用TeamCreate建团队，Sprint结束时shutdown
+3. 每次spawn前复制附录A的角色prompt，加上§1.3要求的4项信息
+4. 每天自检：我今天是被动执行还是主动发现？
+
+**执行状态**: 写入feedback记忆。下次session必须从TeamCreate开始。
+
+**严重等级**: 最高——这不是技术错误，是管理意识缺失。

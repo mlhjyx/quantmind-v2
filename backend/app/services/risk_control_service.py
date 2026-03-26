@@ -12,6 +12,7 @@ DESIGN_V5 §8.1 定义的4级熔断状态机:
 from __future__ import annotations
 
 import enum
+import json
 import logging
 from dataclasses import dataclass
 from datetime import date
@@ -117,8 +118,8 @@ class CircuitBreakerThresholds:
     l3_rolling_window: int = 20
     l4_cumulative_loss: Decimal = Decimal("-0.25")
     l3_position_multiplier: Decimal = Decimal("0.5")
-    l3_recovery_days: int = 3
-    l3_recovery_return: Decimal = Decimal("0.015")
+    l3_recovery_days: int = 5       # CLAUDE.md: 连续5个交易日
+    l3_recovery_return: Decimal = Decimal("0.02")  # CLAUDE.md: 累计盈利>2%
 
     # 波动率自适应参数
     vol_baseline: float = 0.1485  # 基准年化波动率(沪深300长期均值)
@@ -1127,3 +1128,553 @@ def _metrics_to_dict(metrics: RiskMetrics) -> dict[str, Any]:
         ),
         "portfolio_vol_20d": metrics.portfolio_vol_20d,
     }
+
+
+# ─────────────────────────────────────────────
+# Sync 方法（scripts/run_paper_trading.py 调用）
+# ─────────────────────────────────────────────
+# 以下函数使用 psycopg2 同步连接，逻辑与 scripts 版完全一致。
+# 调用方管理事务（除 _ensure_cb_tables_sync 的 DDL 自行 commit）。
+
+# 熔断阈值（DESIGN_V5 §8.1 硬编码，AI无权修改）
+CB_THRESHOLDS: dict[str, float | int] = {
+    "l1_daily_loss": -0.03,     # L1: 单日亏>3% → 暂停1天
+    "l2_daily_loss": -0.05,     # L2: 单日亏>5% → 全部暂停
+    "l3_rolling_5d": -0.07,     # L3: 滚动5日亏>7% → 降仓50%
+    "l3_rolling_20d": -0.10,    # L3: 滚动20日亏>10% → 降仓50%
+    "l4_cumulative": -0.25,     # L4: 累计亏>25% → 停止交易+人工审批
+    "l3_recovery_days": 5,      # L3恢复: 连续5交易日盈利
+    "l3_recovery_return": 0.02, # L3恢复: 且累计>2%
+}
+
+# 级别 → 仓位系数
+CB_POSITION_MULTIPLIER: dict[int, float] = {0: 1.0, 1: 1.0, 2: 1.0, 3: 0.5, 4: 0.0}
+
+
+def _ensure_cb_tables_sync(conn: Any) -> None:
+    """确保circuit_breaker_state和circuit_breaker_log表存在（幂等）。
+
+    DDL操作自行commit，不依赖调用方事务。
+
+    Args:
+        conn: psycopg2同步连接。
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+            id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            strategy_id            UUID NOT NULL,
+            execution_mode         VARCHAR(10) NOT NULL DEFAULT 'paper',
+            current_level          SMALLINT NOT NULL DEFAULT 0,
+            entered_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            entered_date           DATE NOT NULL DEFAULT CURRENT_DATE,
+            trigger_reason         TEXT,
+            trigger_metrics        JSONB,
+            recovery_streak_days   INT DEFAULT 0,
+            recovery_streak_return DECIMAL(12,8) DEFAULT 0,
+            position_multiplier    DECIMAL(4,2) DEFAULT 1.0,
+            approval_id            UUID,
+            updated_at             TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(strategy_id, execution_mode)
+        );
+        CREATE TABLE IF NOT EXISTS circuit_breaker_log (
+            id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            strategy_id       UUID NOT NULL,
+            execution_mode    VARCHAR(10) NOT NULL DEFAULT 'paper',
+            trade_date        DATE NOT NULL,
+            prev_level        SMALLINT NOT NULL,
+            new_level         SMALLINT NOT NULL,
+            transition_type   VARCHAR(10) NOT NULL,
+            reason            TEXT NOT NULL,
+            metrics           JSONB,
+            created_at        TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_cb_log_strategy_date
+            ON circuit_breaker_log(strategy_id, trade_date DESC);
+    """)
+    conn.commit()
+
+
+def _load_cb_state_sync(conn: Any, strategy_id: str) -> dict[str, Any] | None:
+    """从circuit_breaker_state读取当前状态。
+
+    Args:
+        conn: psycopg2同步连接。
+        strategy_id: 策略UUID字符串。
+
+    Returns:
+        状态字典，无记录时返回None。
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT current_level, entered_date, trigger_reason,
+                  recovery_streak_days, recovery_streak_return,
+                  position_multiplier, approval_id
+           FROM circuit_breaker_state
+           WHERE strategy_id = %s AND execution_mode = 'paper'""",
+        (strategy_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return {
+        "current_level": row[0],
+        "entered_date": row[1],
+        "trigger_reason": row[2],
+        "recovery_streak_days": row[3] or 0,
+        "recovery_streak_return": float(row[4] or 0),
+        "position_multiplier": float(row[5] or 1.0),
+        "approval_id": row[6],
+    }
+
+
+def _upsert_cb_state_sync(
+    conn: Any,
+    strategy_id: str,
+    level: int,
+    entered_date: date,
+    reason: str,
+    metrics: dict[str, Any] | None,
+    recovery_streak_days: int,
+    recovery_streak_return: float,
+    position_multiplier: float,
+    approval_id: Any = None,
+) -> None:
+    """插入或更新circuit_breaker_state（UPSERT）。
+
+    不commit，由调用方管理事务。
+
+    Args:
+        conn: psycopg2同步连接。
+        strategy_id: 策略UUID字符串。
+        level: 熔断级别(0-4)。
+        entered_date: 进入当前状态日期。
+        reason: 触发原因。
+        metrics: 指标快照（可选）。
+        recovery_streak_days: L3恢复连续盈利天数。
+        recovery_streak_return: L3恢复累计收益率。
+        position_multiplier: 仓位系数。
+        approval_id: L4审批ID（可选）。
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO circuit_breaker_state
+               (strategy_id, execution_mode, current_level,
+                entered_at, entered_date, trigger_reason, trigger_metrics,
+                recovery_streak_days, recovery_streak_return,
+                position_multiplier, approval_id, updated_at)
+           VALUES (%s, 'paper', %s, NOW(), %s, %s, %s::jsonb,
+                   %s, %s, %s, %s, NOW())
+           ON CONFLICT (strategy_id, execution_mode)
+           DO UPDATE SET
+                current_level = EXCLUDED.current_level,
+                entered_at = CASE
+                    WHEN circuit_breaker_state.current_level != EXCLUDED.current_level
+                    THEN NOW() ELSE circuit_breaker_state.entered_at END,
+                entered_date = CASE
+                    WHEN circuit_breaker_state.current_level != EXCLUDED.current_level
+                    THEN EXCLUDED.entered_date ELSE circuit_breaker_state.entered_date END,
+                trigger_reason = EXCLUDED.trigger_reason,
+                trigger_metrics = EXCLUDED.trigger_metrics,
+                recovery_streak_days = EXCLUDED.recovery_streak_days,
+                recovery_streak_return = EXCLUDED.recovery_streak_return,
+                position_multiplier = EXCLUDED.position_multiplier,
+                approval_id = EXCLUDED.approval_id,
+                updated_at = NOW()""",
+        (strategy_id, level, entered_date, reason,
+         json.dumps(metrics) if metrics else None,
+         recovery_streak_days, recovery_streak_return,
+         position_multiplier,
+         str(approval_id) if approval_id else None),
+    )
+
+
+def _insert_cb_log_sync(
+    conn: Any,
+    strategy_id: str,
+    trade_date: date,
+    prev_level: int,
+    new_level: int,
+    transition_type: str,
+    reason: str,
+    metrics: dict[str, Any] | None,
+) -> None:
+    """追加circuit_breaker_log审计记录。
+
+    不commit，由调用方管理事务。
+
+    Args:
+        conn: psycopg2同步连接。
+        strategy_id: 策略UUID字符串。
+        trade_date: 交易日期。
+        prev_level: 变更前级别。
+        new_level: 变更后级别。
+        transition_type: 变更类型("escalate"/"recover")。
+        reason: 变更原因。
+        metrics: 指标快照（可选）。
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO circuit_breaker_log
+               (strategy_id, execution_mode, trade_date,
+                prev_level, new_level, transition_type, reason, metrics)
+           VALUES (%s, 'paper', %s, %s, %s, %s, %s, %s::jsonb)""",
+        (strategy_id, trade_date, prev_level, new_level,
+         transition_type, reason,
+         json.dumps(metrics) if metrics else None),
+    )
+
+
+def check_circuit_breaker_sync(
+    conn: Any,
+    strategy_id: str,
+    exec_date: date,
+    initial_capital: float,
+) -> dict[str, Any]:
+    """4级有状态熔断检查 + 恢复追踪 + DB持久化（同步版）。
+
+    状态机（DESIGN_V5 §8.1 + CLAUDE.md确认）:
+      L1: 单策略日亏>3% → 暂停1天(次日自动恢复)
+      L2: 总组合日亏>5% → 全部暂停(次日自动恢复)+P0告警
+      L3: 滚动5日亏>7% OR 滚动20日亏>10% → 降仓50%
+          恢复: 连续5个交易日累计盈利>2%
+      L4: 累计亏损>25% → 停止所有交易+人工审批
+          恢复: 需人工脚本approve后重置
+
+    L1延迟方案C（已确认）: L1触发时月度调仓不跳过，但仓位减半
+    → 实际处理在调用方（execute phase），本函数只返回级别。
+
+    逻辑与scripts/run_paper_trading.py L323-538完全一致。
+
+    Args:
+        conn: psycopg2同步连接。
+        strategy_id: 策略UUID字符串。
+        exec_date: 执行日期。
+        initial_capital: 初始资金。
+
+    Returns:
+        {"level": 0-4, "action": str, "reason": str,
+         "position_multiplier": float, "recovery_info": str}
+    """
+    _ensure_cb_tables_sync(conn)
+
+    # ── 1. 读取performance_series获取指标 ──
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT trade_date, nav::float, daily_return::float
+           FROM performance_series
+           WHERE strategy_id = %s AND execution_mode = 'paper'
+           ORDER BY trade_date DESC LIMIT 20""",
+        (strategy_id,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        # 首次运行，初始化DB状态为NORMAL
+        _upsert_cb_state_sync(conn, strategy_id, 0, exec_date,
+                              "初始化(首次运行)", None, 0, 0.0, 1.0)
+        conn.commit()
+        return {"level": 0, "action": "normal", "reason": "无历史数据(首次运行)",
+                "position_multiplier": 1.0, "recovery_info": ""}
+
+    latest_nav = rows[0][1]
+    latest_ret = rows[0][2]
+    cum_loss = (latest_nav / initial_capital) - 1
+
+    # 计算滚动收益
+    rolling_5d_loss = None
+    if len(rows) >= 5:
+        r5 = 1.0
+        for r in rows[:5]:
+            r5 *= (1 + r[2])
+        rolling_5d_loss = r5 - 1
+
+    rolling_20d_loss = None
+    if len(rows) >= 5:
+        r20 = 1.0
+        for r in rows[:20]:
+            r20 *= (1 + r[2])
+        rolling_20d_loss = r20 - 1
+
+    metrics_snap = {
+        "nav": round(latest_nav, 2),
+        "daily_return": round(latest_ret, 6),
+        "cumulative_return": round(cum_loss, 6),
+        "rolling_5d": round(rolling_5d_loss, 6) if rolling_5d_loss is not None else None,
+        "rolling_20d": round(rolling_20d_loss, 6) if rolling_20d_loss is not None else None,
+    }
+
+    # ── 2. 从DB加载当前持久化状态 ──
+    db_state = _load_cb_state_sync(conn, strategy_id)
+    prev_level = db_state["current_level"] if db_state else 0
+    prev_entered_date = db_state["entered_date"] if db_state else exec_date
+    streak_days = db_state["recovery_streak_days"] if db_state else 0
+    streak_return = db_state["recovery_streak_return"] if db_state else 0.0
+
+    # ── 3. 如果当前非NORMAL，先检查恢复条件 ──
+    recovered = False
+    recovery_info = ""
+
+    if prev_level > 0:
+        if prev_level in (1, 2):
+            # L1/L2: 次日自动恢复（当前exec_date > entered_date）
+            if exec_date > prev_entered_date:
+                recovered = True
+                recovery_info = f"L{prev_level}自动恢复(冷却1天已过)"
+                logger.info(
+                    "[CB] L%d自动恢复: entered=%s, exec=%s",
+                    prev_level, prev_entered_date, exec_date,
+                )
+
+        elif prev_level == 3:
+            # L3恢复: 连续5日盈利且累计>2%
+            if latest_ret > 0:
+                streak_days += 1
+                streak_return += latest_ret
+            else:
+                streak_days = 0
+                streak_return = 0.0
+
+            recovery_info = (
+                f"L3恢复进度: {streak_days}/{CB_THRESHOLDS['l3_recovery_days']}天, "
+                f"{streak_return:.2%}/{CB_THRESHOLDS['l3_recovery_return']:.0%}"
+            )
+            logger.info("[CB] %s", recovery_info)
+
+            if (streak_days >= CB_THRESHOLDS["l3_recovery_days"]
+                    and streak_return >= CB_THRESHOLDS["l3_recovery_return"]):
+                recovered = True
+                recovery_info = (
+                    f"L3恢复条件达成: 连续{streak_days}天盈利, "
+                    f"累计{streak_return:.2%} >= {CB_THRESHOLDS['l3_recovery_return']:.0%}"
+                )
+                logger.info("[CB] %s", recovery_info)
+
+        elif prev_level == 4:
+            # L4恢复: 检查approval_queue
+            if db_state and db_state.get("approval_id"):
+                cur.execute(
+                    "SELECT status FROM approval_queue WHERE id = %s",
+                    (str(db_state["approval_id"]),),
+                )
+                approval_row = cur.fetchone()
+                if approval_row and approval_row[0] == "approved":
+                    recovered = True
+                    recovery_info = "L4人工审批通过"
+                    logger.info("[CB] L4人工审批已通过，恢复到NORMAL")
+                else:
+                    recovery_info = "L4待人工审批"
+            else:
+                recovery_info = "L4待人工审批(未创建审批请求)"
+
+    # ── 4. 如果恢复，先降级到NORMAL ──
+    if recovered:
+        _insert_cb_log_sync(conn, strategy_id, exec_date,
+                            prev_level, 0, "recover", recovery_info, metrics_snap)
+        _upsert_cb_state_sync(conn, strategy_id, 0, exec_date,
+                              recovery_info, metrics_snap, 0, 0.0, 1.0)
+        prev_level = 0
+        streak_days = 0
+        streak_return = 0.0
+        logger.info(
+            "[CB] 状态变更: L%d -> NORMAL (%s)",
+            db_state["current_level"] if db_state else 0, recovery_info,
+        )
+
+    # ── 5. 不管是否刚恢复，都重新检查触发条件（防恢复当日又触发）──
+    triggered_level = 0
+    trigger_reason = "正常"
+    trigger_action = "normal"
+
+    # L4: 累计亏损 > 25%
+    if cum_loss < CB_THRESHOLDS["l4_cumulative"]:
+        triggered_level = 4
+        trigger_action = "halt"
+        trigger_reason = f"累计亏损{cum_loss:.1%}, NAV={latest_nav:.0f}"
+
+    # L3: 滚动5日亏>7% OR 滚动20日亏>10%
+    elif ((rolling_5d_loss is not None and rolling_5d_loss < CB_THRESHOLDS["l3_rolling_5d"])
+          or (rolling_20d_loss is not None and rolling_20d_loss < CB_THRESHOLDS["l3_rolling_20d"])):
+        triggered_level = 3
+        trigger_action = "reduce"
+        l3_parts = []
+        if rolling_5d_loss is not None and rolling_5d_loss < CB_THRESHOLDS["l3_rolling_5d"]:
+            l3_parts.append(f"5日累计{rolling_5d_loss:.1%}")
+        if rolling_20d_loss is not None and rolling_20d_loss < CB_THRESHOLDS["l3_rolling_20d"]:
+            l3_parts.append(f"20日累计{rolling_20d_loss:.1%}")
+        trigger_reason = " + ".join(l3_parts)
+
+    # L2: 单日亏损 > 5%
+    elif latest_ret < CB_THRESHOLDS["l2_daily_loss"]:
+        triggered_level = 2
+        trigger_action = "pause"
+        trigger_reason = f"昨日亏损{latest_ret:.1%}"
+
+    # L1: 单日亏损 > 3%
+    elif latest_ret < CB_THRESHOLDS["l1_daily_loss"]:
+        triggered_level = 1
+        trigger_action = "skip_rebalance"
+        trigger_reason = f"昨日亏损{latest_ret:.1%}"
+
+    # ── 6. 如果触发级别 > 当前级别，升级 ──
+    new_level = max(triggered_level, prev_level) if not recovered else triggered_level
+    # 如果已经在L3且没恢复，保持L3（不降回L1/L2，因为L3更严重）
+    if not recovered and prev_level > triggered_level:
+        new_level = prev_level
+        trigger_reason = f"维持L{prev_level}({db_state['trigger_reason'] if db_state else ''})"
+        trigger_action = {0: "normal", 1: "skip_rebalance", 2: "pause",
+                          3: "reduce", 4: "halt"}[prev_level]
+
+    if new_level != prev_level and new_level > 0:
+        # 状态升级
+        _insert_cb_log_sync(conn, strategy_id, exec_date,
+                            prev_level, new_level, "escalate", trigger_reason, metrics_snap)
+        position_mult = CB_POSITION_MULTIPLIER[new_level]
+        _upsert_cb_state_sync(conn, strategy_id, new_level, exec_date,
+                              trigger_reason, metrics_snap, 0, 0.0, position_mult)
+        logger.warning("[CB] 熔断升级: L%d -> L%d (%s)", prev_level, new_level, trigger_reason)
+
+        # 发送通知
+        from app.config import settings as app_settings
+        from app.services.notification_service import send_alert
+
+        alert_level = "P0" if new_level >= 2 else "P2"
+        send_alert(alert_level, f"熔断L{new_level} {exec_date}", trigger_reason,
+                   app_settings.DINGTALK_WEBHOOK_URL, app_settings.DINGTALK_SECRET, conn)
+    elif new_level == prev_level and new_level == 3 and not recovered:
+        # L3维持中，更新恢复追踪
+        _upsert_cb_state_sync(conn, strategy_id, 3, prev_entered_date,
+                              db_state["trigger_reason"] if db_state else trigger_reason,
+                              metrics_snap, streak_days, streak_return, 0.5)
+    elif new_level == 0 and prev_level == 0:
+        # 保持NORMAL，更新指标
+        _upsert_cb_state_sync(conn, strategy_id, 0, exec_date,
+                              "正常", metrics_snap, 0, 0.0, 1.0)
+
+    conn.commit()
+    position_multiplier = CB_POSITION_MULTIPLIER.get(new_level, 1.0)
+
+    return {
+        "level": new_level,
+        "action": trigger_action,
+        "reason": trigger_reason,
+        "position_multiplier": position_multiplier,
+        "recovery_info": recovery_info,
+    }
+
+
+def create_l4_approval_sync(conn: Any, strategy_id: str, reason: str) -> int | None:
+    """L4触发时自动创建审批请求（如果还没有pending的）。
+
+    写入approval_queue表，并关联到circuit_breaker_state。
+    人工通过脚本approve后，下次check_circuit_breaker_sync会检测到并恢复。
+
+    Args:
+        conn: psycopg2同步连接。
+        strategy_id: 策略UUID字符串。
+        reason: L4触发原因。
+
+    Returns:
+        审批ID，如果已存在pending审批则返回None。
+    """
+    cur = conn.cursor()
+
+    # 检查是否已有pending审批
+    cur.execute(
+        """SELECT id FROM approval_queue
+           WHERE approval_type = 'circuit_breaker_l4_recovery'
+             AND reference_id = %s AND status = 'pending'
+           LIMIT 1""",
+        (strategy_id,),
+    )
+    existing = cur.fetchone()
+    if existing:
+        logger.info("[L4] 审批请求已存在: %s", existing[0])
+        return None
+
+    # 创建审批请求
+    try:
+        cur.execute(
+            """INSERT INTO approval_queue
+                   (approval_type, reference_id, payload, submitted_by, notes, status)
+               VALUES
+                   ('circuit_breaker_l4_recovery', %s, '{}'::jsonb, 'system', %s, 'pending')
+               RETURNING id""",
+            (strategy_id, f"L4自动创建: {reason}"),
+        )
+        approval_row = cur.fetchone()
+        if approval_row:
+            approval_id = approval_row[0]
+            # 关联到circuit_breaker_state
+            cur.execute(
+                """UPDATE circuit_breaker_state
+                   SET approval_id = %s, updated_at = NOW()
+                   WHERE strategy_id = %s AND execution_mode = 'paper'""",
+                (str(approval_id), strategy_id),
+            )
+            conn.commit()
+            logger.info("[L4] 审批请求已创建: %s", approval_id)
+
+            from app.config import settings as app_settings
+            from app.services.notification_service import send_alert
+
+            send_alert("P0", "L4审批请求已创建",
+                       f"策略{strategy_id}触发L4熔断，需人工审批。\n原因: {reason}\n"
+                       f"审批ID: {approval_id}\n"
+                       f"恢复命令: python scripts/approve_l4.py --approval-id {approval_id}",
+                       app_settings.DINGTALK_WEBHOOK_URL, app_settings.DINGTALK_SECRET, conn)
+            return approval_id
+    except Exception as e:
+        logger.error("[L4] 创建审批请求失败: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    return None
+
+
+def run_daily_risk_check_sync(
+    holdings: dict[str, int],
+    cash: float,
+    nav: float,
+    today_close: dict[str, float],
+) -> list[str]:
+    """风控日检（同步版，risk评审blocking要求#2）。
+
+    检查: 单股权重/现金比例/持仓数量。
+    返回异常列表（空=全部正常）。
+
+    Args:
+        holdings: 当前持仓 {code: shares}。
+        cash: 当前现金。
+        nav: 当前净值。
+        today_close: 当日收盘价 {code: price}。
+
+    Returns:
+        异常警告列表。
+    """
+    warnings: list[str] = []
+
+    # 单股最大权重 > 15%
+    if holdings and nav > 0:
+        max_weight = max(
+            shares * today_close.get(code, 0) / nav
+            for code, shares in holdings.items()
+        )
+        if max_weight > 0.15:
+            warnings.append(f"单股权重超限: {max_weight:.1%} > 15%")
+
+    # 现金比例异常
+    cash_ratio = cash / nav if nav > 0 else 1
+    if cash_ratio > 0.15:
+        warnings.append(f"现金比例过高: {cash_ratio:.1%}")
+    elif cash_ratio < 0.005 and holdings:
+        warnings.append(f"现金比例过低: {cash_ratio:.1%}")
+
+    # 持仓数量异常
+    pos_count = len(holdings)
+    if pos_count < 15 and pos_count > 0:
+        warnings.append(f"持仓不足: {pos_count}只 < 15")
+    elif pos_count > 25:
+        warnings.append(f"持仓过多: {pos_count}只 > 25")
+
+    return warnings

@@ -33,6 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 import pandas as pd
 
+from app.config import settings
+from app.services.notification_service import send_alert
 from app.services.price_utils import _get_sync_conn
 from engines.factor_analyzer import FactorAnalyzer
 from engines.signal_engine import PAPER_TRADING_CONFIG
@@ -219,6 +221,7 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
         logger.info("=" * 60)
 
         corr_matrix = health.get("cross_correlation")
+        high_corr_pairs = []
         if isinstance(corr_matrix, pd.DataFrame) and not corr_matrix.empty:
             # 只显示ACTIVE_FACTORS的子集
             active_in_corr = [f for f in ACTIVE_FACTORS if f in corr_matrix.columns]
@@ -255,6 +258,31 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
         elif overall == "critical":
             logger.error(f"  总体状态: CRITICAL")
         logger.info("=" * 60)
+
+        # ── 发送钉钉告警（warning/critical时）──
+        if overall in ("warning", "critical"):
+            alert_level = "P0" if overall == "critical" else "P1"
+            # 构建告警摘要
+            problem_factors = []
+            for fname in ACTIVE_FACTORS:
+                fh = health["factors"].get(fname, {})
+                fstatus = fh.get("status", "unknown")
+                if fstatus in ("warning", "critical"):
+                    daily_ic = fh.get("daily_ic")
+                    ic_str = f"{daily_ic:.4f}" if daily_ic is not None else "N/A"
+                    problem_factors.append(f"{fname}({fstatus}, IC={ic_str})")
+            alert_msg = (
+                f"因子健康状态: {overall.upper()}\n"
+                f"异常因子: {', '.join(problem_factors)}\n"
+                f"高相关对: {len(high_corr_pairs)}对"
+            )
+            try:
+                send_alert(
+                    alert_level, f"因子健康{overall} {trade_date}", alert_msg,
+                    settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+                )
+            except Exception as e:
+                logger.warning(f"[DingTalk] 因子健康告警发送失败: {e}")
 
         # ── 写入health_checks表 ──
         if not dry_run:

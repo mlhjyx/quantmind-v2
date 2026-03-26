@@ -193,4 +193,46 @@ FINANCIAL_FACTOR_DIRECTION = {
     "roe_change_q": 1,       # 越大越好（盈利改善）
     "revenue_accel": 1,      # 越大越好（增速加速）
     "accrual_anomaly": -1,   # 越小越好（低应计=高质量）
+    "roe_momentum_3q": 1,    # 越大越好（3Q平滑ROE改善）
 }
+
+
+def calc_roe_momentum_3q(fina_df: pd.DataFrame) -> pd.Series:
+    """基本面动量因子: 3季度移动平均ROE变化。
+
+    海通研报方案: 单季度ROE环比噪声大，用3季度移动平均平滑。
+    定义: MA3_curr = mean(ROE_Q0, ROE_Q1, ROE_Q2)
+          MA3_prev = mean(ROE_Q1, ROE_Q2, ROE_Q3)
+          roe_momentum_3q = MA3_curr - MA3_prev
+    方向: +1 (越大越好，盈利趋势改善)
+
+    需要至少4个季度数据。使用roe_dt(扣非ROE)，fallback到roe。
+
+    Args:
+        fina_df: load_financial_pit返回的DataFrame，每个code有最近4季数据
+
+    Returns:
+        pd.Series: index=code, value=roe_momentum_3q
+    """
+    if fina_df.empty:
+        return pd.Series(dtype=float, name="roe_momentum_3q")
+
+    results: dict[str, float] = {}
+    for code, grp in fina_df.groupby("code"):
+        grp = grp.sort_values("report_date", ascending=False).head(4)
+        if len(grp) < 4:
+            continue
+
+        # 优先用roe_dt（扣非），fallback到roe
+        roe_col = "roe_dt" if grp["roe_dt"].notna().sum() >= 4 else "roe"
+        roe_vals = grp[roe_col].values  # Q0(最新), Q1, Q2, Q3(最旧)
+
+        if np.any(pd.isna(roe_vals)):
+            continue
+
+        roe_vals = roe_vals.astype(float)
+        ma3_curr = np.mean(roe_vals[0:3])  # Q0, Q1, Q2
+        ma3_prev = np.mean(roe_vals[1:4])  # Q1, Q2, Q3
+        results[code] = ma3_curr - ma3_prev
+
+    return pd.Series(results, dtype=float, name="roe_momentum_3q")

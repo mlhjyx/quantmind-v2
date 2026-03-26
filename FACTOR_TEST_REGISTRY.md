@@ -9,14 +9,15 @@
 
 ## 累积统计
 
-- **累积测试总数 M**: 67
-- **PASS**: 22
-- **FAIL**: 27
+- **累积测试总数 M**: 74 (含7个Sprint 1.4b ML实验预登记)
+- **PASS**: 24
+- **FAIL**: 32
 - **CONDITIONAL**: 6
 - **REVERTED**: 3
 - **BLOCKED**: 2
 - **DEPRECATED**: 5
 - **NOT_TESTED**: 2
+- **CANCELLED**: 2
 
 ---
 
@@ -89,6 +90,15 @@
 | 63 | CCI_14 | -0.0469 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=4.69%, 商品通道指数 |
 | 64 | ATR_norm | -0.1016 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=10.16%, 归一化真实波幅, IC最强TA因子 |
 | 65 | turnover_surge (Batch2验证) | -0.0357 | — | — | 2026-03-22 | Batch2-验证 | PASS | 重复验证条目(见#33), 不计入独立测试 |
+| 66 | LightGBM-5feat (基线5因子) | IC=0.0823 | — | 0.073 | 2026-03-25 | ML-Sprint1.4b | FAIL | OOS Sharpe=0.869<1.10, p=0.073>0.05, 4连亏月 |
+| 67 | LightGBM-top8-shap | IC=0.0493 | — | — | 2026-03-25 | ML-Sprint1.4b | FAIL | F1 OOS IC劣于5基线(4.93% vs 7.06%), 未跑7-fold |
+| 68 | LightGBM-top5-shap | IC=0.0614 | — | — | 2026-03-25 | ML-Sprint1.4b | FAIL | F1 OOS IC劣于5基线(6.14% vs 7.06%), 未跑7-fold |
+| 69 | LightGBM-5feat-optuna | IC=0.0844 | — | — | 2026-03-25 | ML-Sprint1.4b | FAIL | OOS IC +2.5%但ICIR -1.7%, 与默认无显著差异 |
+| 70 | LightGBM-topK-optuna | — | — | — | 2026-03-25 | ML-Sprint1.4b | CANCELLED | SHAP筛选后5基线完胜, 无需跑 |
+| 71 | LightGBM-17feat | IC=0.0478 | — | — | 2026-03-25 | ML-Sprint1.4b | FAIL | F1 OOS IC=4.78%劣于5基线7.06%, best_iter=2(噪声) |
+| 72 | LightGBM-17feat-optuna | — | — | — | 2026-03-25 | ML-Sprint1.4b | CANCELLED | 17特征SHAP确认为噪声, 无需跑 |
+| 73 | vwap_bias_1d | -0.0464 | -2.69 | 0.009 | 2026-03-25 | Sprint1.6-VWAP | PASS | 中性化IC=-0.0349 t=-3.53, ICIR=-0.43, 66月全样本, max_corr=0.36(turnover), 反转效应 |
+| 74 | rsrs_raw_18 | -0.0371 | -3.99 | <0.001 | 2026-03-25 | Sprint1.6-RSRS | PASS | 中性化IC=-0.0301 t=-4.35, ICIR=-0.54, 66月全样本, max_corr=0.27(volatility), 阻力支撑 |
 
 ---
 
@@ -96,7 +106,7 @@
 
 ### BH-FDR校正
 
-当前累积M = 67（排除重复验证条目#65）。
+当前累积M = 69（排除重复验证条目#65 + 2个CANCELLED）。
 
 BH-FDR校正步骤:
 1. 对所有M个p-value排序: p_(1) <= p_(2) <= ... <= p_(M)

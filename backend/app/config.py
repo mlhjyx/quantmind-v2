@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式），为空则不签名
     DINGTALK_KEYWORD: str = ""  # 自定义关键词（关键词模式），非空时自动追加到消息
 
+    # --- miniQMT ---
+    QMT_PATH: str = ""  # miniQMT userdata_mini路径
+    QMT_ACCOUNT_ID: str = ""  # 资金账号
+
     # --- Paper Trading ---
     PAPER_STRATEGY_ID: str = ""
     PAPER_INITIAL_CAPITAL: float = 1_000_000.0

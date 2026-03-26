@@ -12,7 +12,7 @@
 
 import contextlib
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -327,6 +327,210 @@ class NotificationService:
             keyword=settings.DINGTALK_KEYWORD,
         )
 
+    # ────────────────────── Sync 方法（给pipeline脚本用） ──────────────────────
+    # 这些方法接收psycopg2同步conn，写DB但不commit（由调用方管理事务）。
+
+    def send_sync(
+        self,
+        conn: Any,
+        level: str,
+        category: str,
+        title: str,
+        content: str,
+        market: str = "astock",
+        force: bool = False,
+    ) -> None:
+        """同步版通知发送：写DB + 钉钉分发。
+
+        复用throttler防洪泛。Service内部不commit。
+
+        Args:
+            conn: psycopg2同步连接。
+            level: 级别 P0/P1/P2/P3。
+            category: 分类 system/strategy/factor/risk/pipeline。
+            title: 标题。
+            content: 内容(Markdown)。
+            market: 市场 astock/forex/system。
+            force: 强制发送，跳过防洪泛。
+        """
+        # 1. 防洪泛
+        if not force and not self.throttler.throttle(level, title):
+            logger.info("[Notify] sync被限流: level=%s title='%s'", level, title)
+            return
+
+        # 2. 存库(P3不存)
+        if level in ("P0", "P1", "P2"):
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """INSERT INTO notifications (level, category, market, title, content)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (level, category, market, title[:100], content),
+                )
+                logger.info("[Notify] sync已存库: level=%s title='%s'", level, title)
+            except Exception as e:
+                logger.error("[Notify] sync存库失败: %s", e)
+        else:
+            logger.debug("[Notify] P3调试通知: title='%s'", title)
+
+        # 3. 钉钉分发
+        self._dispatch_sync(level, title, content)
+
+    def send_daily_report_sync(
+        self,
+        conn: Any,
+        trade_date: date,
+        nav: float,
+        daily_return: float,
+        holdings_count: int,
+        signals_summary: dict[str, Any],
+        is_rebalance: bool = False,
+    ) -> None:
+        """同步版PT日报。写DB + 发钉钉，不commit。
+
+        Args:
+            conn: psycopg2同步连接。
+            trade_date: 交易日期。
+            nav: 净资产。
+            daily_return: 日收益率。
+            holdings_count: 持仓数。
+            signals_summary: 信号摘要，可包含keys:
+                cum_return, beta, buys, sells, rejected, initial_capital。
+            is_rebalance: 是否调仓日。
+        """
+        cum_return = signals_summary.get("cum_return", 0.0)
+        beta = signals_summary.get("beta", 0.0)
+        buys: list[str] = signals_summary.get("buys", [])
+        sells: list[str] = signals_summary.get("sells", [])
+        rejected: list[str] = signals_summary.get("rejected", [])
+
+        rebal_text = "**是（调仓）**" if is_rebalance else "否"
+        ret_emoji = "\U0001f4c8" if daily_return >= 0 else "\U0001f4c9"
+
+        lines = [
+            f"### {ret_emoji} Paper Trading {trade_date}",
+            "",
+            "| 指标 | 数值 |",
+            "|------|------|",
+            f"| 调仓 | {rebal_text} |",
+            f"| 持仓 | {holdings_count}只 |",
+            f"| NAV | \u00a5{nav:,.0f} |",
+            f"| 日收益 | {daily_return:+.2%} |",
+            f"| 累计收益 | {cum_return:+.2%} |",
+            f"| Beta | {beta:.3f} |",
+        ]
+
+        if buys:
+            buy_str = ", ".join(buys[:8])
+            if len(buys) > 8:
+                buy_str += f" +{len(buys) - 8}"
+            lines.append(f"\n**买入({len(buys)})**: {buy_str}")
+
+        if sells:
+            sell_str = ", ".join(sells[:8])
+            if len(sells) > 8:
+                sell_str += f" +{len(sells) - 8}"
+            lines.append(f"\n**卖出({len(sells)})**: {sell_str}")
+
+        if rejected:
+            lines.append(f"\n\u26a0\ufe0f **受限({len(rejected)})**: {', '.join(rejected[:5])}")
+
+        content = "\n".join(lines)
+        title = f"Paper Trading {trade_date}"
+
+        # 写DB（不commit）
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO notifications (level, category, market, title, content)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                ("P1", "paper_daily", "astock", title, content),
+            )
+        except Exception as e:
+            logger.warning("[Notify] sync日报写入DB失败: %s", e)
+
+        # 发钉钉
+        dingtalk.send_markdown_sync(
+            webhook_url=settings.DINGTALK_WEBHOOK_URL,
+            title=f"Paper {trade_date} {daily_return:+.2%}",
+            content=content,
+            secret=settings.DINGTALK_SECRET,
+            keyword=getattr(settings, "DINGTALK_KEYWORD", ""),
+        )
+
+    def send_execute_report_sync(
+        self,
+        conn: Any,
+        exec_date: date,
+        fills_count: int,
+        nav: float,
+        cb_level: int,
+    ) -> None:
+        """同步版执行报告。写DB + 发钉钉，不commit。
+
+        Args:
+            conn: psycopg2同步连接。
+            exec_date: 执行日期。
+            fills_count: 成交笔数。
+            nav: 当前净资产。
+            cb_level: 熔断等级(0=正常)。
+        """
+        cb_text = f"L{cb_level}" if cb_level > 0 else "正常"
+        level_emoji = "\U0001f534" if cb_level >= 2 else ("\U0001f7e1" if cb_level > 0 else "\U0001f7e2")
+
+        content = (
+            f"### {level_emoji} 执行确认 {exec_date}\n\n"
+            f"| 指标 | 数值 |\n"
+            f"|------|------|\n"
+            f"| 成交 | {fills_count}笔 |\n"
+            f"| NAV | \u00a5{nav:,.0f} |\n"
+            f"| 熔断 | {cb_text} |"
+        )
+        title = f"执行确认 {exec_date}"
+        alert_level = "P0" if cb_level >= 2 else "P1"
+
+        # 写DB（不commit）
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO notifications (level, category, market, title, content)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (alert_level, "paper_execute", "astock", title, content),
+            )
+        except Exception as e:
+            logger.warning("[Notify] sync执行报告写入DB失败: %s", e)
+
+        # 发钉钉
+        self._dispatch_sync(alert_level, title, content)
+
+    def _dispatch_sync(self, level: str, title: str, content: str) -> None:
+        """同步版钉钉分发。P0/P1发送，其余不发。
+
+        Args:
+            level: 通知级别。
+            title: 标题。
+            content: Markdown内容。
+        """
+        webhook_url = settings.DINGTALK_WEBHOOK_URL
+        if not webhook_url:
+            return
+
+        should_dispatch = level in ("P0", "P1")
+        if not should_dispatch:
+            return
+
+        level_emoji = {"P0": "\U0001f534", "P1": "\U0001f7e1", "P2": "\U0001f535", "P3": "\u26aa"}.get(level, "\u26aa")
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        dingtalk_content = f"{level_emoji} **[{level}]** {title}\n\n{content}\n\n---\n*{now_str}*"
+
+        dingtalk.send_markdown_sync(
+            webhook_url=webhook_url,
+            title=f"[{level}] {title}",
+            content=dingtalk_content,
+            secret=settings.DINGTALK_SECRET,
+            keyword=getattr(settings, "DINGTALK_KEYWORD", ""),
+        )
+
 
 # ────────────────────── Sync Wrappers（给pipeline脚本用） ──────────────────────
 # run_paper_trading.py等同步脚本通过这些函数调用，签名兼容旧版notification_service。
@@ -475,6 +679,7 @@ def send_daily_report(
         title=f"Paper {trade_date} {daily_return:+.2%}",
         content=content,
         secret=secret,
+        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, 'DINGTALK_KEYWORD') else "",
     )
 
 

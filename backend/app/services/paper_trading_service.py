@@ -8,6 +8,7 @@ CLAUDE.md毕业标准:
 - 全链路无中断
 """
 
+import logging
 from datetime import date
 from typing import Any, Optional
 
@@ -15,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.performance_repository import PerformanceRepository
 from app.repositories.trade_repository import TradeRepository
+
+logger = logging.getLogger(__name__)
 
 
 # 毕业标准常量（CLAUDE.md §Paper Trading 毕业标准）
@@ -203,3 +206,129 @@ class PaperTradingService:
             return 0
 
         return sum(slippages) / len(slippages)
+
+    # ────────────────────── Sync 方法（给pipeline脚本用） ──────────────────────
+
+    @staticmethod
+    def update_nav_sync(
+        conn: Any,
+        strategy_id: str,
+        trade_date: date,
+        holdings: dict[str, int],
+        prices: dict[str, float],
+        cash: float,
+        initial_capital: float,
+    ) -> dict[str, Any]:
+        """T日close计算NAV，更新position_snapshot + performance_series。
+
+        从PaperBroker.save_state中提取的NAV写入逻辑，接受纯数据而非broker实例。
+        Service内部不commit，由调用方管理事务。
+
+        Args:
+            conn: psycopg2同步连接。
+            strategy_id: 策略ID。
+            trade_date: T日日期。
+            holdings: 当前持仓 {code: shares}。
+            prices: T日收盘价 {code: close_price}。
+            cash: 当前现金。
+            initial_capital: 初始资金。
+
+        Returns:
+            {nav, daily_return, cumulative_return, position_count, cash_ratio}
+        """
+        cur = conn.cursor()
+
+        # 计算NAV
+        market_value = sum(
+            shares * prices.get(code, 0) for code, shares in holdings.items()
+        )
+        nav = market_value + cash
+        position_count = len(holdings)
+        cash_ratio = cash / nav if nav > 0 else 1.0
+
+        # ── 1. position_snapshot（幂等：先删后插） ──
+        cur.execute(
+            """DELETE FROM position_snapshot
+               WHERE trade_date = %s AND strategy_id = %s
+                 AND execution_mode = 'paper'""",
+            (trade_date, strategy_id),
+        )
+        for code, shares in holdings.items():
+            price = prices.get(code, 0)
+            mv = shares * price
+            weight = mv / nav if nav > 0 else 0
+            cur.execute(
+                """INSERT INTO position_snapshot
+                   (code, trade_date, strategy_id, quantity, market_value,
+                    weight, execution_mode)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'paper')""",
+                (code, trade_date, strategy_id, shares, mv, weight),
+            )
+
+        # ── 2. performance_series ──
+        # 前一日NAV（从DB读，防止重跑时state指向错误日期）
+        cur.execute(
+            """SELECT nav FROM performance_series
+               WHERE strategy_id = %s AND execution_mode = 'paper'
+                 AND trade_date < %s
+               ORDER BY trade_date DESC LIMIT 1""",
+            (strategy_id, trade_date),
+        )
+        prev_row = cur.fetchone()
+        prev_nav = float(prev_row[0]) if prev_row else initial_capital
+        daily_return = (nav / prev_nav - 1) if prev_nav > 0 else 0.0
+        cumulative_return = (nav / initial_capital - 1)
+
+        # 计算回撤（peak = max(initial_capital, 当日及之前所有NAV)）
+        cur.execute(
+            """SELECT COALESCE(MAX(nav), %s)
+               FROM performance_series
+               WHERE strategy_id = %s AND execution_mode = 'paper'
+                 AND trade_date <= %s""",
+            (initial_capital, strategy_id, trade_date),
+        )
+        peak_nav = float(cur.fetchone()[0])
+        peak_nav = max(peak_nav, nav, initial_capital)
+        drawdown = (nav / peak_nav - 1) if peak_nav > 0 else 0.0
+
+        cur.execute(
+            """INSERT INTO performance_series
+               (trade_date, strategy_id, nav, daily_return, cumulative_return,
+                drawdown, cash_ratio, cash, position_count, turnover,
+                benchmark_nav, execution_mode)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+               ON CONFLICT (trade_date, strategy_id) DO UPDATE SET
+                nav=EXCLUDED.nav, daily_return=EXCLUDED.daily_return,
+                cumulative_return=EXCLUDED.cumulative_return,
+                drawdown=EXCLUDED.drawdown, cash_ratio=EXCLUDED.cash_ratio,
+                cash=EXCLUDED.cash,
+                position_count=EXCLUDED.position_count, turnover=EXCLUDED.turnover,
+                benchmark_nav=EXCLUDED.benchmark_nav""",
+            (
+                trade_date,
+                strategy_id,
+                nav,
+                daily_return,
+                cumulative_return,
+                drawdown,
+                cash_ratio,
+                cash,
+                position_count,
+                0.0,  # turnover: 0 for NAV-only update (no fills)
+                0.0,  # benchmark_nav: caller can update separately
+            ),
+        )
+
+        logger.info(
+            "[PaperTradingService] NAV更新: date=%s, NAV=%.0f, "
+            "positions=%d, daily_return=%+.4f",
+            trade_date, nav, position_count, daily_return,
+        )
+
+        return {
+            "nav": nav,
+            "daily_return": daily_return,
+            "cumulative_return": cumulative_return,
+            "position_count": position_count,
+            "cash_ratio": cash_ratio,
+        }

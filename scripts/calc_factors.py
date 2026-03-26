@@ -80,9 +80,9 @@ def main():
     parser.add_argument("--end", type=str, help="结束日期")
     parser.add_argument(
         "--factor-set",
-        choices=["core", "full"],
+        choices=["core", "full", "ml", "lgbm", "all"],
         default="core",
-        help="因子集: core(6) or full(18)",
+        help="因子集: core(5)/full(16)/ml(12)/lgbm(28)/all(含deprecated)",
     )
     parser.add_argument("--dry-run", action="store_true", help="只计算不写入")
     parser.add_argument(
