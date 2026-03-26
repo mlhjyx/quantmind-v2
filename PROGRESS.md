@@ -16,7 +16,7 @@
 | 标准 | 要求 | 实际 | 结果 |
 |------|------|------|------|
 | 冲击成本集成 | SimBroker volume_impact(市值分层k) | SlippageConfig+方向参数 | **PASS** |
-| 基线重跑 | volume-impact下全期Sharpe+CI | 回测运行中 | **PENDING** |
+| 基线重跑 | volume-impact下全期Sharpe+CI | Sharpe 1.03→0.39(⚠️重大变化) | **PASS但需用户决策** |
 | gap_hours采集 | signal_generated_at写入DB | signals+trade_log双列 | **PASS** |
 | PT心跳 | watchdog检测缺失→P0告警 | pt_watchdog.py+Task Scheduler | **PASS** |
 | 毕业评估CLI | 9项指标格式化输出 | check_graduation.py 411行 | **PASS** |
@@ -51,6 +51,21 @@
 | PT心跳watchdog | 每日20:00检测 | KEEP | Sprint 1.11 |
 | config_guard入PT链路 | Step 0.5强制检查 | KEEP | Sprint 1.11 |
 | RSRS优先验证 | 事件型weekly, t=-4.35最强 | Sprint 1.12验证 | Sprint 1.11 |
+
+### ⚠️ 基线重跑结果（§4.3用户决策级别）
+
+| 指标 | fixed(10bps) | volume_impact(市值分层) | 差异 |
+|------|-------------|----------------------|------|
+| Sharpe | 1.03 | 0.39 | -62% |
+| MDD | -39.7% | -58.4% | 恶化47% |
+| 年化收益 | 25.42% | 7.93% | -69% |
+| Bootstrap CI | [0.11, 1.99] | [-0.53, 1.31] | 5%分位<0 |
+
+**分析**: volume-impact模型使用市值分层k系数(0.05/0.10/0.15)对小盘股冲击成本建模更真实。v1.1 Top15偏小盘，实际成本远高于固定10bps。
+
+**需要用户决策**: (1)接受新基线？(2)调整策略偏大盘？(3)校准k系数？(4)维持fixed基线？
+
+**Team Lead建议**: 先校准k系数——当前默认值源自DEV_BACKTEST_ENGINE.md设计文档，可能对A股偏保守。需用PT实际成交数据反向校准。
 
 ### 违规记录
 - LL-030: Sprint启动时跳过TeamCreate直接编码（LL-027同根第2次）

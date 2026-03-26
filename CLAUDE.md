@@ -150,6 +150,12 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 | 开盘跳空预检 | 单股>5%P1/组合>3%P0，PT只告警 | KEEP | Sprint 1.10 |
 | PT毕业标准5→9项 | +fill_rate/slippage/TE/gap_hours | KEEP | Sprint 1.10 |
 | 自相关调整Sharpe | Lo(2002) ρ>0惩罚，月度策略可能高估 | KEEP | Sprint 1.10 |
+| SlippageConfig市值分层 | k_large=0.05/k_mid=0.10/k_small=0.15 + direction sell_penalty | KEEP | Sprint 1.11 |
+| volume_impact默认模式 | SimBroker slippage_mode="volume_impact" | KEEP | Sprint 1.11 |
+| **volume_impact基线重跑** | **Sharpe 1.03→0.39, MDD -39.7%→-58.4%, 年化25%→8%** | **⚠️需用户决策** | Sprint 1.11 |
+| PT心跳watchdog | 每日20:00检测+P0告警 | KEEP | Sprint 1.11 |
+| config_guard入PT Step 0.5 | v1.1配置一致性强制检查 | KEEP | Sprint 1.11 |
+| RSRS事件型策略(R1) | t=-4.35最强, weekly, 优先级1, 待1.12回测 | Pending验证 | Sprint 1.11 |
 
 ---
 
