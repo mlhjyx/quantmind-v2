@@ -56,7 +56,7 @@ class TestNotificationTemplates:
 
     def test_all_14_templates_render_without_error(self):
         """全部14个注册模板都能成功render，不抛异常。"""
-        assert len(TEMPLATE_REGISTRY) == 14, f"期望14个模板，实际{len(TEMPLATE_REGISTRY)}个"
+        assert len(TEMPLATE_REGISTRY) == 19, f"期望19个模板，实际{len(TEMPLATE_REGISTRY)}个"
 
         # 每个模板的测试变量
         test_kwargs: dict[str, dict[str, Any]] = {
@@ -142,6 +142,31 @@ class TestNotificationTemplates:
                 "overlap_count": 6,
                 "new_codes": "600519,000858",
                 "exit_codes": "601318,000001",
+            },
+            "drawdown_warning": {
+                "current_dd": 12.5,
+                "threshold": 15.0,
+                "nav": 950000,
+            },
+            "data_update_failed": {
+                "source": "Tushare",
+                "date": "2026-03-22",
+                "error": "API rate limit exceeded",
+            },
+            "paper_milestone": {
+                "day": 30,
+                "total": 60,
+                "nav": 1050000,
+                "sharpe": 0.95,
+                "mdd": 8.5,
+            },
+            "signal_blocked": {
+                "date": "2026-03-22",
+                "reason": "健康预检失败: Redis连接异常",
+            },
+            "factor_active_count_low": {
+                "count": 3,
+                "min_count": 5,
             },
             "system_disk_warning": {
                 "free_gb": 8.5,

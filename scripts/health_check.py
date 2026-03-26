@@ -103,7 +103,7 @@ def check_factor_nan(conn, trade_date: date) -> tuple[bool, str]:
 def check_disk_space() -> tuple[bool, str]:
     """磁盘空间 > 10GB。"""
     try:
-        usage = shutil.disk_usage("/")
+        usage = shutil.disk_usage("D:\\")
         free_gb = usage.free / (1024**3)
         if free_gb >= 10:
             return True, f"{free_gb:.1f}GB可用"

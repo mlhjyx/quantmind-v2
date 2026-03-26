@@ -125,7 +125,7 @@ async def _async_health_check() -> dict:
     # 4. 磁盘空间 > 10GB
     try:
         import shutil
-        usage = shutil.disk_usage("/")
+        usage = shutil.disk_usage("D:\\")
         free_gb = usage.free / (1024 ** 3)
         checks["disk_space"] = free_gb > 10
         if not checks["disk_space"]:
