@@ -61,6 +61,28 @@ def calc_turnover_std(turnover_rate: pd.Series, window: int) -> pd.Series:
     return turnover_rate.rolling(window, min_periods=max(window // 2, 5)).std()
 
 
+def calc_turnover_stability(turnover_rate: pd.Series, window: int) -> pd.Series:
+    """日频换手率稳定性因子: N日换手率的滚动标准差。
+
+    经济学假设: 换手率稳定的股票筹码结构稳定，机构持仓为主；
+    换手率波动大的股票散户交易活跃，信息噪声大。
+
+    与turnover_mean_20的区别: turnover_mean测均值水平，turnover_stability测波动性，
+    捕获不同维度的换手率信息。
+
+    方向: -1（低波动性 = 稳定 = 好）
+    来源: 国盛证券2024-2025量化策略展望(minute_turn_std IR=2.64的日频近似)
+
+    Args:
+        turnover_rate: 换手率序列, 已按code分组
+        window: 滚动窗口(默认20)
+
+    Returns:
+        pd.Series: 换手率稳定性因子值(标准差)
+    """
+    return turnover_rate.rolling(window, min_periods=max(window // 2, 5)).std()
+
+
 def calc_amihud(
     close_adj: pd.Series, volume: pd.Series, amount: pd.Series, window: int
 ) -> pd.Series:
@@ -495,12 +517,16 @@ RESERVE_FACTORS = {
     "rsrs_raw_18": lambda df: df.groupby("code", group_keys=False).apply(
         lambda g: calc_rsrs_raw(g["high"], g["low"], 18)
     ),
+    "turnover_stability_20": lambda df: df.groupby("code")["turnover_rate"].transform(
+        lambda x: calc_turnover_stability(x, 20)
+    ),
 }
 
 # Reserve因子方向映射
 RESERVE_FACTOR_DIRECTION = {
     "vwap_bias_1d": -1,   # 低偏差更好（收盘价低于VWAP）
     "rsrs_raw_18": -1,    # Sprint 1.6确认方向
+    "turnover_stability_20": -1,  # 低波动性=稳定=好（国盛证券IR=2.64日频近似）
 }
 
 # ============================================================
