@@ -10,9 +10,7 @@ Phase 0: 等权Top-N信号合成。
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -23,54 +21,58 @@ FACTOR_DIRECTION = {
     "momentum_5": 1,
     "momentum_10": 1,
     "momentum_20": 1,
-    "reversal_5": 1,   # 已经取反(calc_reversal = -pct_change)
+    "reversal_5": 1,  # 已经取反(calc_reversal = -pct_change)
     "reversal_10": 1,
     "reversal_20": 1,
-    "volatility_20": -1,     # 低波动好
+    "volatility_20": -1,  # 低波动好
     "volatility_60": -1,
-    "volume_std_20": -1,     # 低量波动好
+    "volume_std_20": -1,  # 低量波动好
     "turnover_mean_20": -1,  # 低换手好
     "turnover_std_20": -1,
-    "amihud_20": 1,          # 高非流动性=小盘溢价
-    "ln_market_cap": -1,     # 小市值好(Phase 0)
-    "bp_ratio": 1,           # 高B/P=价值股好
-    "ep_ratio": 1,           # 高E/P好
+    "amihud_20": 1,  # 高非流动性=小盘溢价
+    "ln_market_cap": -1,  # 小市值好(Phase 0)
+    "bp_ratio": 1,  # 高B/P=价值股好
+    "ep_ratio": 1,  # 高E/P好
     "price_volume_corr_20": -1,  # 低价量相关好
-    "high_low_range_20": -1,     # 低振幅好
+    "high_low_range_20": -1,  # 低振幅好
     "mf_momentum_divergence": -1,  # 资金流动量背离: 值越负=背离越大→信号越强
-    "earnings_surprise_car": 1,     # PEAD盈利惊喜CAR: 正惊喜→正漂移, 方向+1
+    "earnings_surprise_car": 1,  # PEAD盈利惊喜CAR: 正惊喜→正漂移, 方向+1
     # ---- v1.2 新增因子 ----
-    "price_level_factor": -1,      # -ln(close), 方向-1: 低价股偏好（因子本身已取负，direction再取反→选低价）
-    "relative_volume_20": -1,      # 相对成交量, 方向-1: 低异常放量好
-    "dv_ttm": 1,                   # 股息率TTM, 方向+1: 高股息好
-    "turnover_surge_ratio": -1,    # 换手率突增比, 方向-1: 低突增好
+    "price_level_factor": -1,  # -ln(close), 方向-1: 低价股偏好（因子本身已取负，direction再取反→选低价）
+    "relative_volume_20": -1,  # 相对成交量, 方向-1: 低异常放量好
+    "dv_ttm": 1,  # 股息率TTM, 方向+1: 高股息好
+    "turnover_surge_ratio": -1,  # 换手率突增比, 方向-1: 低突增好
 }
 
 
 @dataclass
 class SignalConfig:
     """信号生成配置。"""
+
     top_n: int = 20
     weight_method: str = "equal"  # 'equal' or 'score_weighted'
-    industry_cap: float = 0.25   # 单行业上限25%
+    industry_cap: float = 0.25  # 单行业上限25%
     rebalance_freq: str = "biweekly"  # 'weekly', 'biweekly', 'monthly'
-    turnover_cap: float = 0.50   # 单次换手率上限50%
-    cash_buffer: float = 0.03    # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
-    factor_names: list[str] = field(default_factory=lambda: [
-        # P0诊断后去冗余: 17→8个独立因子
-        # 删除: momentum_5/10/20 (方向反, 与reversal完全冗余 corr=-1.0)
-        # 删除: reversal_5/10 (只留20), volatility_60 (与vol20 corr=0.73)
-        # 删除: volume_std_20 (弱IC), high_low_range_20 (与vol20 corr=0.90)
-        # 删除: price_volume_corr_20 (信息重叠)
-        "turnover_mean_20",  # IC=4.55%, 核心Alpha, 4/5年>3%
-        "turnover_std_20",   # IC=3.90%, 4/5年>3%
-        "volatility_20",     # IC=3.27%, 3/5年>3%
-        "reversal_20",       # IC=2.48%, 反转效应
-        "amihud_20",         # IC=2.80%, 流动性维度独立
-        "bp_ratio",          # IC=2.64%, 价值维度
-        "ln_market_cap",     # IC=1.51%, 规模维度
-        "ep_ratio",          # IC=1.30%, 价值维度(与bp corr=0.33, 独立)
-    ])
+    turnover_cap: float = 0.50  # 单次换手率上限50%
+    cash_buffer: float = 0.03  # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
+    regime_mode: str = "vol_regime"  # 'vol_regime'（启发式）或 'hmm_regime'（HMM）
+    factor_names: list[str] = field(
+        default_factory=lambda: [
+            # P0诊断后去冗余: 17→8个独立因子
+            # 删除: momentum_5/10/20 (方向反, 与reversal完全冗余 corr=-1.0)
+            # 删除: reversal_5/10 (只留20), volatility_60 (与vol20 corr=0.73)
+            # 删除: volume_std_20 (弱IC), high_low_range_20 (与vol20 corr=0.90)
+            # 删除: price_volume_corr_20 (信息重叠)
+            "turnover_mean_20",  # IC=4.55%, 核心Alpha, 4/5年>3%
+            "turnover_std_20",  # IC=3.90%, 4/5年>3%
+            "volatility_20",  # IC=3.27%, 3/5年>3%
+            "reversal_20",  # IC=2.48%, 反转效应
+            "amihud_20",  # IC=2.80%, 流动性维度独立
+            "bp_ratio",  # IC=2.64%, 价值维度
+            "ln_market_cap",  # IC=1.51%, 规模维度
+            "ep_ratio",  # IC=1.30%, 价值维度(与bp corr=0.33, 独立)
+        ]
+    )
 
 
 # Route A锁定配置: 5因子等权 + Top15月频 + IndCap=25% (v1.1: Top20→15)
@@ -121,7 +123,7 @@ class SignalComposer:
     def compose(
         self,
         factor_df: pd.DataFrame,
-        universe: Optional[set[str]] = None,
+        universe: set[str] | None = None,
     ) -> pd.Series:
         """合成综合因子得分。
 
@@ -175,7 +177,7 @@ class PortfolioBuilder:
         self,
         scores: pd.Series,
         industry: pd.Series,
-        prev_holdings: Optional[dict[str, float]] = None,
+        prev_holdings: dict[str, float] | None = None,
         vol_regime_scale: float = 1.0,
     ) -> dict[str, float]:
         """构建目标持仓权重。
@@ -261,9 +263,7 @@ class PortfolioBuilder:
         """
         target_codes = set(target)
         all_codes = target_codes | set(prev)
-        turnover = sum(
-            abs(target.get(c, 0) - prev.get(c, 0)) for c in all_codes
-        ) / 2  # 单边换手
+        turnover = sum(abs(target.get(c, 0) - prev.get(c, 0)) for c in all_codes) / 2  # 单边换手
 
         if turnover <= self.config.turnover_cap:
             return target
@@ -279,8 +279,7 @@ class PortfolioBuilder:
         # ── 关键修复: 只保留target中的股票 ──
         # 旧持仓中不在target的股票: blended值>0但不应保留在目标中。
         # 它们在execute时会因target_weight=0而被卖出（受can_trade限制）。
-        blended = {c: w for c, w in blended.items()
-                   if c in target_codes and w > 0.001}
+        blended = {c: w for c, w in blended.items() if c in target_codes and w > 0.001}
 
         # 重新归一化
         total = sum(blended.values())
@@ -320,7 +319,8 @@ def get_rebalance_dates(
             """SELECT DISTINCT trade_date FROM klines_daily
                WHERE trade_date BETWEEN %s AND %s
                ORDER BY trade_date""",
-            conn, params=(start_date, end_date),
+            conn,
+            params=(start_date, end_date),
         )["trade_date"].tolist()
 
         if not all_dates:
@@ -331,23 +331,17 @@ def get_rebalance_dates(
 
         if freq == "weekly":
             # 每周最后一个交易日
-            weeks = date_series.groupby(
-                date_series.apply(lambda d: d.isocalendar()[:2])
-            ).last()
+            weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
             return sorted(weeks.tolist())
 
         elif freq == "biweekly":
             # 每两周最后一个交易日
-            weeks = date_series.groupby(
-                date_series.apply(lambda d: d.isocalendar()[:2])
-            ).last()
+            weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
             return sorted(weeks.iloc[::2].tolist())
 
         elif freq == "monthly":
             # 每月最后一个交易日
-            months = date_series.groupby(
-                date_series.apply(lambda d: (d.year, d.month))
-            ).last()
+            months = date_series.groupby(date_series.apply(lambda d: (d.year, d.month))).last()
             return sorted(months.tolist())
 
         else:

@@ -156,6 +156,8 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 | PT心跳watchdog | 每日20:00检测+P0告警 | KEEP | Sprint 1.11 |
 | config_guard入PT Step 0.5 | v1.1配置一致性强制检查 | KEEP | Sprint 1.11 |
 | RSRS事件型策略(R1) | t=-4.35最强, weekly, 优先级1, 待1.12回测 | Pending验证 | Sprint 1.11 |
+| **RSRS单因子weekly策略** | **Sharpe=0.15, MDD=-45%, 换手37倍, CI包含0** | **NOT JUSTIFIED** | Sprint 1.12 |
+| **RSRS单因子monthly策略** | **Sharpe=0.28, MDD=-43%, CI包含0, 2024亏-12.7%** | **NOT JUSTIFIED** | Sprint 1.12 |
 
 ---
 

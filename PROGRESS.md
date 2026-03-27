@@ -1,11 +1,39 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-27
-> Current: Phase 1, Sprint 1.11 ✅ COMPLETED
+> Current: Phase 1, Sprint 1.12 RSRS验证完成
+> RSRS事件型策略: NOT JUSTIFIED (Sharpe 0.15/0.28, CI包含0)
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无（miniQMT连接已验证OK）
 > 宪法: V3.3 生效 (8铁律+strategy升级+设计文档对照)
+
+## Sprint 1.12 RSRS验证: NOT JUSTIFIED
+
+### RSRS事件型策略SimBroker回测结果 (2026-03-27)
+
+| 指标 | RSRS Weekly | RSRS Monthly | v1.1基线 |
+|------|------------|-------------|---------|
+| Sharpe | 0.15 | 0.28 | 0.91 |
+| autocorr-adj | 0.03 | 0.06 | — |
+| 年化收益 | 0.80% | 4.02% | 21.55% |
+| MDD | -45.04% | -42.75% | -58.4% |
+| Bootstrap CI | [-0.78, 1.01] | [-0.64, 1.17] | [0.00, 1.85] |
+| 换手率(年化) | 37.11倍 | 10.05倍 | ~8倍 |
+| 2024年 | -15.92% | -12.67% | — |
+
+**判定: NOT JUSTIFIED**
+- 两种频率Sharpe均远低于基线(0.15/0.28 vs 0.91)
+- Bootstrap CI包含0，不能拒绝"策略不赚钱"
+- weekly换手37倍，成本1.5x下Sharpe即为负
+- 2024年持续亏损(因子失效期)
+- Beta=0.7，非独立Alpha
+
+**决策: RSRS单因子策略方向关闭，维持Reserve池，作为LightGBM特征候选**
+**脚本: scripts/backtest_rsrs_weekly.py (支持--freq weekly/monthly)**
+**因子数据: rsrs_raw_18已入库factor_values (2020-07~2026-03, 642万行)**
+
+---
 
 ## Sprint 1.11: PT毕业加速 ✅ COMPLETED
 

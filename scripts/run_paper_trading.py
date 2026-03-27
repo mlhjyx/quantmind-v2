@@ -704,29 +704,43 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         universe = load_universe(trade_date, conn)
         industry = load_industry(conn)
 
-        # ── Step 3 前置: 波动率Regime缩放（Sprint 1.1）──
+        # ── Step 3 前置: Regime缩放（vol_regime 启发式 或 hmm_regime HMM）──
         vol_regime_scale = 1.0
+        regime_mode = getattr(PAPER_TRADING_CONFIG, "regime_mode", "vol_regime")
         try:
-            from engines.vol_regime import calc_vol_regime
-            csi300_closes = pd.read_sql(
+            csi300_df = pd.read_sql(
                 """SELECT trade_date, close FROM index_daily
                    WHERE index_code = '000300.SH'
                      AND trade_date <= %s
-                   ORDER BY trade_date DESC LIMIT 260""",
+                   ORDER BY trade_date ASC LIMIT 500""",
                 conn,
                 params=(trade_date,),
             )
-            if len(csi300_closes) >= 22:
-                csi300_series = csi300_closes.set_index("trade_date")["close"].sort_index()
-                vol_regime_scale = calc_vol_regime(csi300_series)
-                logger.info(f"[Step3-VolRegime] scale={vol_regime_scale:.4f}")
+            if len(csi300_df) >= 22:
+                csi300_closes = csi300_df.set_index("trade_date")["close"]
+
+                if regime_mode == "hmm_regime":
+                    from engines.regime_detector import HMMRegimeDetector
+                    hmm_detector = HMMRegimeDetector()
+                    regime_result = hmm_detector.fit_predict(csi300_closes)
+                    vol_regime_scale = regime_result.scale
+                    logger.info(
+                        f"[Step3-HMMRegime] state={regime_result.state}, "
+                        f"scale={vol_regime_scale:.4f}, "
+                        f"bear_prob={regime_result.bear_prob:.3f}, "
+                        f"source={regime_result.source}"
+                    )
+                else:
+                    from engines.vol_regime import calc_vol_regime
+                    vol_regime_scale = calc_vol_regime(csi300_closes)
+                    logger.info(f"[Step3-VolRegime] scale={vol_regime_scale:.4f}")
             else:
                 logger.warning(
-                    f"[Step3-VolRegime] CSI300数据不足({len(csi300_closes)}条)，"
+                    f"[Step3-Regime] CSI300数据不足({len(csi300_df)}条)，"
                     "跳过Regime缩放"
                 )
         except Exception as e:
-            logger.warning(f"[Step3-VolRegime] 计算异常，使用scale=1.0: {e}")
+            logger.warning(f"[Step3-Regime] 计算异常，使用scale=1.0: {e}")
 
         signal_svc = SignalService()
         try:
