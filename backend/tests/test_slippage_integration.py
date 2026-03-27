@@ -1,4 +1,6 @@
-"""SimBroker volume-impact slippage integration tests."""
+"""SimBroker volume-impact slippage integration tests (Bouchaud 2018)."""
+
+import math
 
 import pandas as pd
 import pytest
@@ -21,21 +23,23 @@ class TestSimBrokerVolumeImpact:
         amount: float = 50_000,       # 千元(Tushare daily.amount惯例)=5000万元
         total_mv: float = 5_000_000,  # 万元(Tushare daily_basic.total_mv惯例)=500亿元
         turnover_rate: float = 5.0,
+        volatility_20: float | None = None,
     ) -> pd.Series:
-        return pd.Series(
-            {
-                "open": open_,
-                "close": close,
-                "pre_close": pre_close,
-                "volume": volume,
-                "amount": amount,
-                "total_mv": total_mv,
-                "turnover_rate": turnover_rate,
-                "trade_date": date(2024, 1, 2),
-                "up_limit": round(pre_close * 1.1, 2),
-                "down_limit": round(pre_close * 0.9, 2),
-            }
-        )
+        data = {
+            "open": open_,
+            "close": close,
+            "pre_close": pre_close,
+            "volume": volume,
+            "amount": amount,
+            "total_mv": total_mv,
+            "turnover_rate": turnover_rate,
+            "trade_date": date(2024, 1, 2),
+            "up_limit": round(pre_close * 1.1, 2),
+            "down_limit": round(pre_close * 0.9, 2),
+        }
+        if volatility_20 is not None:
+            data["volatility_20"] = volatility_20
+        return pd.Series(data)
 
     def test_volume_impact_mode_different_from_fixed(self) -> None:
         """volume_impact模式与fixed模式的滑点应不同."""
@@ -120,10 +124,7 @@ class TestSimBrokerVolumeImpact:
         row = self._make_row(amount=50_000)
         broker = SimBroker(config)
         slip = broker.calc_slippage(10.0, 100_000, row)
-        # 参与率 = 100_000 / (50_000 * 1000) = 0.002
-        # impact = 0.05 * sqrt(0.002) * 10000 ≈ 22.4bps, total ≈ 27.4bps
-        # slip = 10 * 27.4 / 10000 ≈ 0.0274
-        assert 0 < slip < 0.05  # 合理范围
+        assert 0 < slip < 0.10  # 合理范围(Y参数更大,滑点可能更高)
 
     def test_unit_conversion_total_mv_wan(self) -> None:
         """total_mv为万元(Tushare daily_basic.total_mv)时应自动转为元."""
@@ -131,9 +132,95 @@ class TestSimBrokerVolumeImpact:
             slippage_mode="volume_impact",
             slippage_config=SlippageConfig(),
         )
-        # total_mv=5_000_000 万元 = 500亿元 → 大盘股(k_large=0.05)
+        # total_mv=5_000_000 万元 = 500亿元 → 大盘股(Y_large=0.8)
         # 小于1e12阈值, 应×10000
         row = self._make_row(total_mv=5_000_000)
         broker = SimBroker(config)
         slip = broker.calc_slippage(10.0, 100_000, row)
         assert slip > 0  # 基本确认转换后计算正常
+
+    # ── volatility_20 → sigma_daily 集成测试 ──
+
+    def test_with_volatility_20_high_vol_more_slippage(self) -> None:
+        """行情数据包含volatility_20时: 高波动率 → 更大滑点。"""
+        config = BacktestConfig(
+            slippage_mode="volume_impact",
+            slippage_config=SlippageConfig(),
+        )
+        # volatility_20=0.20(20%年化) → sigma_daily=0.20/sqrt(252)≈0.0126
+        row_low = self._make_row(volatility_20=0.20)
+        # volatility_20=0.60(60%年化) → sigma_daily=0.60/sqrt(252)≈0.0378
+        row_high = self._make_row(volatility_20=0.60)
+
+        broker = SimBroker(config)
+        slip_low = broker.calc_slippage(10.0, 100_000, row_low)
+        slip_high = broker.calc_slippage(10.0, 100_000, row_high)
+
+        assert slip_high > slip_low
+
+    def test_without_volatility_20_uses_default(self) -> None:
+        """行情数据无volatility_20时使用默认sigma_daily=0.02。"""
+        config = BacktestConfig(
+            slippage_mode="volume_impact",
+            slippage_config=SlippageConfig(),
+        )
+        # 不传volatility_20
+        row_no_vol = self._make_row()
+        # 传入等价于默认的volatility_20=0.02*sqrt(252)
+        default_annual = 0.02 * math.sqrt(252)
+        row_explicit = self._make_row(volatility_20=default_annual)
+
+        broker = SimBroker(config)
+        slip_no_vol = broker.calc_slippage(10.0, 100_000, row_no_vol)
+        slip_explicit = broker.calc_slippage(10.0, 100_000, row_explicit)
+
+        assert slip_no_vol == pytest.approx(slip_explicit, rel=1e-6)
+
+    def test_volatility_20_zero_uses_default(self) -> None:
+        """volatility_20=0时回退到默认sigma_daily=0.02。"""
+        config = BacktestConfig(
+            slippage_mode="volume_impact",
+            slippage_config=SlippageConfig(),
+        )
+        row_zero = self._make_row(volatility_20=0)
+        row_default = self._make_row()  # 无volatility_20 → 默认
+
+        broker = SimBroker(config)
+        slip_zero = broker.calc_slippage(10.0, 100_000, row_zero)
+        slip_default = broker.calc_slippage(10.0, 100_000, row_default)
+
+        assert slip_zero == pytest.approx(slip_default, rel=1e-6)
+
+    def test_volatility_20_negative_uses_default(self) -> None:
+        """volatility_20<0时回退到默认sigma_daily=0.02。"""
+        config = BacktestConfig(
+            slippage_mode="volume_impact",
+            slippage_config=SlippageConfig(),
+        )
+        row_neg = self._make_row(volatility_20=-0.3)
+        row_default = self._make_row()
+
+        broker = SimBroker(config)
+        slip_neg = broker.calc_slippage(10.0, 100_000, row_neg)
+        slip_default = broker.calc_slippage(10.0, 100_000, row_default)
+
+        assert slip_neg == pytest.approx(slip_default, rel=1e-6)
+
+    def test_sigma_daily_conversion_numerical(self) -> None:
+        """volatility_20到sigma_daily转换数值验证。"""
+        config = BacktestConfig(
+            slippage_mode="volume_impact",
+            slippage_config=SlippageConfig(),
+        )
+        # volatility_20=0.3174(≈50.36%年化) → sigma_daily=0.3174/sqrt(252)=0.02
+        vol_20_for_sigma_002 = 0.02 * math.sqrt(252)  # ≈0.3174
+        row = self._make_row(volatility_20=vol_20_for_sigma_002)
+
+        broker = SimBroker(config)
+        slip = broker.calc_slippage(10.0, 100_000, row)
+
+        # 与默认sigma_daily=0.02应完全一致
+        row_default = self._make_row()
+        slip_default = broker.calc_slippage(10.0, 100_000, row_default)
+
+        assert slip == pytest.approx(slip_default, rel=1e-6)

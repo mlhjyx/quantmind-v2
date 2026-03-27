@@ -1,12 +1,14 @@
-"""双因素滑点模型单元测试。
+"""双因素滑点模型单元测试（Bouchaud 2018 square-root law）。
 
 测试覆盖:
-  - volume_impact_slippage 基本计算
-  - 小盘股惩罚 (market_cap < 50亿 → 1.2x)
+  - volume_impact_slippage 基本计算（旧路径向后兼容）
+  - 小盘股惩罚 (market_cap < 50亿 → 1.2x, 旧路径)
   - 卖出方向惩罚 (1.2x)
   - 零成交量 → 500bps
   - estimate_execution_price 返回正确价格
   - 边界条件和输入校验
+  - SlippageConfig Y参数 + get_Y 市值分层
+  - sigma_daily 波动率项: 高波动 > 低波动
 
 不依赖数据库，纯数学计算测试。
 """
@@ -25,11 +27,11 @@ from engines.slippage_model import (
 
 
 # ────────────────────────────────────────────
-# volume_impact_slippage 基本计算
+# volume_impact_slippage 基本计算（旧路径, 无config）
 # ────────────────────────────────────────────
 
 class TestVolumeImpactSlippage:
-    """滑点计算核心函数测试。"""
+    """滑点计算核心函数测试（旧路径向后兼容）。"""
 
     def test_basic_calculation(self) -> None:
         """大盘股小额买入：基础5bps + 少量冲击。"""
@@ -130,7 +132,7 @@ class TestVolumeImpactSlippage:
         )
         assert result == 0.0
 
-    # ── 小盘股惩罚测试 ──
+    # ── 小盘股惩罚测试（旧路径） ──
 
     def test_small_cap_penalty(self) -> None:
         """小盘股(市值<50亿)冲击成本乘以1.2。"""
@@ -191,7 +193,7 @@ class TestVolumeImpactSlippage:
         # 两者impact部分应相同(都不触发惩罚)
         assert abs(s_at - s_above) < 0.01
 
-    # ── 卖出方向惩罚测试 ──
+    # ── 卖出方向惩罚测试（旧路径） ──
 
     def test_sell_direction_penalty(self) -> None:
         """卖出方向冲击乘以1.2。"""
@@ -410,53 +412,53 @@ class TestEstimateExecutionPrice:
 
 
 # ────────────────────────────────────────────
-# SlippageConfig 市值分层配置测试
+# SlippageConfig Y参数 + get_Y 市值分层测试
 # ────────────────────────────────────────────
 
 
 class TestSlippageConfig:
-    """SlippageConfig 数据类及 get_k 分层逻辑测试。"""
+    """SlippageConfig 数据类及 get_Y 分层逻辑测试。"""
 
     def test_defaults(self) -> None:
-        """默认参数值正确。"""
+        """默认参数值正确（Bouchaud 2018 Y参数）。"""
         cfg = SlippageConfig()
-        assert cfg.k_large == 0.05
-        assert cfg.k_mid == 0.10
-        assert cfg.k_small == 0.15
+        assert cfg.Y_large == 0.8
+        assert cfg.Y_mid == 1.0
+        assert cfg.Y_small == 1.5
         assert cfg.sell_penalty == 1.2
         assert cfg.base_bps == 5.0
 
-    def test_get_k_for_cap_large(self) -> None:
-        """大盘股(>=500亿)返回k_large。"""
+    def test_get_Y_for_cap_large(self) -> None:
+        """大盘股(>=500亿)返回Y_large。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=100_000_000_000) == 0.05
+        assert cfg.get_Y(market_cap=100_000_000_000) == 0.8
 
-    def test_get_k_for_cap_mid(self) -> None:
-        """中盘股(100-500亿)返回k_mid。"""
+    def test_get_Y_for_cap_mid(self) -> None:
+        """中盘股(100-500亿)返回Y_mid。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=30_000_000_000) == 0.10
+        assert cfg.get_Y(market_cap=30_000_000_000) == 1.0
 
-    def test_get_k_for_cap_small(self) -> None:
-        """小盘股(<100亿)返回k_small。"""
+    def test_get_Y_for_cap_small(self) -> None:
+        """小盘股(<100亿)返回Y_small。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=5_000_000_000) == 0.15
+        assert cfg.get_Y(market_cap=5_000_000_000) == 1.5
 
-    def test_get_k_zero_cap_fallback(self) -> None:
-        """零市值回退到k_small。"""
+    def test_get_Y_zero_cap_fallback(self) -> None:
+        """零市值回退到Y_small。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=0) == 0.15
+        assert cfg.get_Y(market_cap=0) == 1.5
 
-    def test_get_k_boundary_500b(self) -> None:
-        """500亿边界: >=500亿用k_large, <500亿用k_mid。"""
+    def test_get_Y_boundary_500b(self) -> None:
+        """500亿边界: >=500亿用Y_large, <500亿用Y_mid。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=50_000_000_000) == 0.05
-        assert cfg.get_k(market_cap=49_999_999_999) == 0.10
+        assert cfg.get_Y(market_cap=50_000_000_000) == 0.8
+        assert cfg.get_Y(market_cap=49_999_999_999) == 1.0
 
-    def test_get_k_boundary_100b(self) -> None:
-        """100亿边界: >=100亿用k_mid, <100亿用k_small。"""
+    def test_get_Y_boundary_100b(self) -> None:
+        """100亿边界: >=100亿用Y_mid, <100亿用Y_small。"""
         cfg = SlippageConfig()
-        assert cfg.get_k(market_cap=10_000_000_000) == 0.10
-        assert cfg.get_k(market_cap=9_999_999_999) == 0.15
+        assert cfg.get_Y(market_cap=10_000_000_000) == 1.0
+        assert cfg.get_Y(market_cap=9_999_999_999) == 1.5
 
 
 # ────────────────────────────────────────────
@@ -465,7 +467,7 @@ class TestSlippageConfig:
 
 
 class TestVolumeImpactWithConfig:
-    """传入SlippageConfig时的滑点计算测试。"""
+    """传入SlippageConfig时的滑点计算测试（Bouchaud 2018公式）。"""
 
     def test_large_cap_lower_impact(self) -> None:
         """大盘股冲击 < 小盘股冲击(同等交易规模)。"""
@@ -505,3 +507,106 @@ class TestVolumeImpactWithConfig:
             direction="sell", config=cfg,
         )
         assert sell > buy
+
+    # ── sigma_daily 波动率项测试（Bouchaud 2018核心） ──
+
+    def test_high_sigma_more_slippage(self) -> None:
+        """高波动率股票冲击 > 低波动率股票冲击。"""
+        cfg = SlippageConfig()
+        s_low = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.01,
+        )
+        s_high = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.04,
+        )
+        assert s_high > s_low
+
+    def test_sigma_scales_linearly(self) -> None:
+        """冲击与sigma_daily线性关系: 2倍sigma → 2倍impact。"""
+        cfg = SlippageConfig()
+        s1 = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.01,
+        )
+        s2 = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.02,
+        )
+        # impact部分: s2_impact / s1_impact = 2
+        impact1 = s1 - cfg.base_bps
+        impact2 = s2 - cfg.base_bps
+        assert abs(impact2 / impact1 - 2.0) < 0.01
+
+    def test_sigma_default_0_02(self) -> None:
+        """默认sigma_daily=0.02时结果与显式传入一致。"""
+        cfg = SlippageConfig()
+        s_default = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg,
+        )
+        s_explicit = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.02,
+        )
+        assert s_default == s_explicit
+
+    def test_sigma_zero_uses_default(self) -> None:
+        """sigma_daily=0时回退到默认0.02。"""
+        cfg = SlippageConfig()
+        s_zero = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0,
+        )
+        s_default = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.02,
+        )
+        assert s_zero == s_default
+
+    def test_sigma_negative_uses_default(self) -> None:
+        """sigma_daily<0时回退到默认0.02。"""
+        cfg = SlippageConfig()
+        s_neg = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=-0.05,
+        )
+        s_default = volume_impact_slippage(
+            trade_amount=100_000, daily_volume=50_000_000,
+            daily_amount=500_000_000, market_cap=50_000_000_000,
+            direction="buy", config=cfg, sigma_daily=0.02,
+        )
+        assert s_neg == s_default
+
+    def test_bouchaud_formula_numerical(self) -> None:
+        """Bouchaud公式数值验证: Y * sigma * sqrt(Q/V) * 10000。"""
+        cfg = SlippageConfig()
+        sigma = 0.03  # 3%日波动率
+        trade = 200_000
+        daily_amt = 1_000_000_000
+        mcap = 100_000_000_000  # 大盘 → Y=0.8
+
+        result = volume_impact_slippage(
+            trade_amount=trade, daily_volume=50_000_000,
+            daily_amount=daily_amt, market_cap=mcap,
+            direction="buy", config=cfg, sigma_daily=sigma,
+        )
+
+        # 手算: participation = 200000/1e9 = 0.0002
+        # impact = 0.8 * 0.03 * sqrt(0.0002) * 10000
+        #        = 0.8 * 0.03 * 0.014142 * 10000
+        #        = 3.394 bps
+        # total = 5.0 + 3.394 = 8.394
+        expected_impact = 0.8 * 0.03 * math.sqrt(200_000 / 1_000_000_000) * 10000
+        expected_total = 5.0 + expected_impact
+        assert abs(result - expected_total) < 0.01

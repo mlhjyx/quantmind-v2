@@ -185,6 +185,8 @@ class SimBroker(BaseBroker):
         slippage_mode='fixed': 固定bps（向后兼容）。
         """
         if self.config.slippage_mode == "volume_impact":
+            import math as _math
+
             daily_amount = row.get("amount", 0)
             # daily.amount单位是千元(TUSHARE_DATA_SOURCE_CHECKLIST)，转为元
             # 千元范围: 典型值1e3~1e7(=百万~百亿元), 阈值1e9区分
@@ -198,6 +200,14 @@ class SimBroker(BaseBroker):
             # 万元范围: 最大~3e8万元(=3万亿元), 阈值1e10区分万元/元
             if market_cap > 0 and market_cap < 1e10:
                 market_cap *= 10000
+
+            # Bouchaud 2018: 从行情数据获取volatility_20(年化)转日波动率
+            vol_20 = row.get("volatility_20", None)
+            if vol_20 is not None and vol_20 > 0:
+                sigma_daily = vol_20 / _math.sqrt(252)
+            else:
+                sigma_daily = 0.02  # 默认≈30%年化
+
             total_bps = volume_impact_slippage(
                 trade_amount=amount,
                 daily_volume=daily_volume,
@@ -205,6 +215,7 @@ class SimBroker(BaseBroker):
                 market_cap=market_cap,
                 direction=direction,
                 config=self.config.slippage_config,
+                sigma_daily=sigma_daily,
             )
             return price * total_bps / 10000
         else:
