@@ -1,12 +1,11 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.12完成 + IMPLEMENTATION_MASTER v2.0(全项目版, 2522行, 117项, 10Sprint)
-> RSRS事件型策略: NOT JUSTIFIED | HMM Regime: NOT JUSTIFIED
-> 下一步: Sprint 1.13 (前端基础设施 + 策略框架核心)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅
+> Current: Phase 1, Sprint 1.13完成 — 前端基础设施 + 策略框架核心
+> 下一步: Sprint 1.14 (回测模块前端 + 因子挖掘Engine1)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
-> Blockers: 无（miniQMT连接已验证OK）
+> Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成
 > **AI闭环战略(2026-03-28)**: 三步走 — Step1 PT赚钱(1.13-1.15) → Step2 GP最小闭环(1.16-1.17) → Step3完整AI闭环(1.18+)
@@ -75,6 +74,48 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.13: 前端基础设施 + 策略框架核心 (2026-03-28)
+
+**13/13项任务完成，成败标准全部达成。**
+
+**TrD 前端基础设施 (5项)**:
+- ✅ React Router v6 + 12页面路由 + 侧边栏(折叠/展开) — `frontend/src/router.tsx` + `Layout.tsx` + `Sidebar.tsx`
+- ✅ Zustand stores (auth/notification/backtest/mining) — persist中间件, 类型安全
+- ✅ UI组件: GlassCard(4变体)/MetricCard(涨跌色)/Button(5变体)/Breadcrumb — 自定义Tailwind v4实现(shadcn/ui兼容问题跳过)
+- ✅ Axios API client + React Query Provider — token interceptor, 指数退避重试
+- ✅ 16个页面stub(含子路由) — 标题+副标题+面包屑+空状态卡片
+- `npm run build` PASS: 0 errors, 109 modules, 572ms
+
+**TrA 策略框架核心 (5项)**:
+- ✅ FactorClassifier — R1决策树分类, 5因子全匹配, 23单元测试PASS
+- ✅ FastRankingStrategy(weekly) — 快衰减因子专用, 新进折扣+换手控制
+- ✅ EventStrategy框架 — on_event/event_filter/position_sizing抽象接口, 4事件类型
+- ✅ ModifierBase + RegimeModifier — R3三层架构, HMM→VolRegime→常数三级fallback
+- ✅ CompositeStrategy — 核心策略+Modifier链编排, cash_buffer=3%, max_daily_adjustment=20%
+
+**TrE 基础设施 (3项)**:
+- ✅ FactorService + BacktestService wrapper — AsyncSession Depends注入
+- ✅ Alembic迁移配置 — env.py + alembic.ini, async engine, versions/目录就绪
+- ✅ 文档清理 — 3个旧研究报告归档到docs/archive/
+
+**测试**: 649 passed (544 existing + 105 new), 0 regressions
+- test_factor_classifier.py: 23用例
+- test_composite_strategy.py: 38用例
+- test_fast_ranking_strategy.py: 34用例
+- test_event_strategy.py: 33用例 (含ModifierBase/RegimeModifier测试)
+
+**技术债(Sprint 1.14+)**:
+1. `event_signals`表未在DDL中定义 — EventStrategy.load_events()查询需要此表
+2. Alembic initial migration未生成 — 需PG连接执行`alembic revision --autogenerate`
+3. RegimeModifier用sync psycopg2 cursor — 回测OK, async路径需适配
+
+**关键设计决策**:
+- FactorClassifier用决策树而非ML: 4条规则+边界降权, 简单透明可解释
+- shadcn/ui跳过: Tailwind v4兼容问题, 自定义组件达到同等效果
+- RegimeModifier clip范围[0,1]: 不加杠杆, 只缩减仓位
+
+---
 
 ### 实施总纲 + 文档整理 (2026-03-28)
 

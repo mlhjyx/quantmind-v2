@@ -1,0 +1,13 @@
+迁移文件目录。
+
+生成初始迁移:
+    cd backend
+    alembic revision --autogenerate -m "initial_schema"
+
+应用迁移:
+    alembic upgrade head
+
+注意:
+- 现有表已通过 docs/QUANTMIND_V2_DDL_FINAL.sql 手动建表
+- initial migration仅用于让Alembic感知当前schema状态
+- 后续增量变更通过autogenerate生成迁移文件
