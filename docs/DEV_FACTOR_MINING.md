@@ -1,9 +1,23 @@
 # QuantMind V2 — 因子挖掘系统 详细开发文档
 
 > **对应总设计文档**: 第七章 §7.5 + 第十七章(AI闭环)
-> **版本**: 2.0 | **日期**: 2026-03-19
+> **版本**: 2.1 | **日期**: 2026-03-28
 > **前置依赖**: 数据库schema(第十章), 因子Gate Pipeline(第四章§4.5)
 > **V2新增**: 前端4页面设计、因子生命周期管理、3张新DB表、工具函数库
+> **R2研究成果**: 详见 `docs/research/R2_factor_mining_frontier.md` — DEAP GP技术选型/AST去重/Thompson Sampling/Qlib Alpha158对标
+> **GP闭环设计**: 详见 `docs/GP_CLOSED_LOOP_DESIGN.md` — Warm Start GP+Gate+SimBroker反馈闭环(Step 2核心，Sprint 1.16-1.17)
+> **战略决策(2026-03-28)**: GP-first不上LLM → Warm Start GP用5因子模板初始化 → 适应度=SimBroker Sharpe(非IC proxy) → RD-Agent借鉴思想不集成
+
+### R2技术选型摘要（Sprint 1.14+实施参考）
+
+| 决策 | 选型 | 理由 | 实施Sprint |
+|------|------|------|-----------|
+| GP框架 | **DEAP**（非gplearn） | 支持岛屿模型/自定义适应度/逻辑+参数分离 | 1.16 |
+| AST去重 | **3层级联**: AST结构→Embedding相似度→Spearman相关性 | AlphaAgent(KDD 2025)验证，corr<0.7判定不重复 | 1.14 |
+| 搜索调度 | **Thompson Sampling** | 对比ε-greedy/UCB1，冷启动快+自然衰减 | 1.17 |
+| Alpha158对标 | **提取模式不引入依赖** | ~60%重叠，Gap因子(BETA/RSV/CORD/CNTP/CNTD)纳入挖掘候选 | 1.14 |
+| GP适应度 | **多目标异构**: IC/ICIR/Novelty/Decay | 4岛×200-500种群，环形迁移每50代 | 1.16 |
+| Factor Gate | **G1-G8自动化** | G4 t>2.5(Harvey 2016) + G5中性化存活 + G6 AST+Spearman去重 | 1.14 |
 
 ---
 
@@ -1100,3 +1114,24 @@ candidate → active → warning → critical → retired
   因子值排名靠前的股票，如果成交量异常放大+波动率飙升，说明因子拥挤
 - 拥挤度>阈值时自动降低该因子权重
 - 作为元因子(meta-factor)，Phase 0在FactorRegistry中预留拥挤度因子接口
+
+---
+
+## 因子计算规则（强制执行，从CLAUDE.md迁入）
+
+### 因子预处理顺序（严格按此顺序，不可调换）
+
+```
+1. 去极值（MAD）
+2. 缺失值填充
+3. 中性化（回归掉市值+行业）  ← 先中性化
+4. 标准化（zscore）            ← 再标准化
+```
+**如果先zscore再中性化，中性化回归的残差分布会不对，所有因子IC都不准。**
+
+### IC计算的forward return定义
+
+- forward return使用**相对沪深300的超额收益**（不是绝对收益）
+- 必须用**复权价格**（close × adj_factor / latest_adj_factor）计算
+- 停牌期间的return用**行业指数**代替
+- 同时计算1/5/10/20日IC，因子评估报告展示"绝对IC"和"超额IC"

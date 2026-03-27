@@ -296,6 +296,9 @@ INSERT INTO ai_parameters (param_name, param_value, param_min, param_max, param_
 | 滑点k(大盘) | float | [0.01,0.3] | 0.05 | 输入框 | L2 |
 | 滑点k(中盘) | float | [0.01,0.3] | 0.10 | 输入框 | L2 |
 | 滑点k(小盘) | float | [0.01,0.3] | 0.15 | 输入框 | L2 |
+| 隔夜跳空成本(bps) | float | [0,50] | 25 | 输入框 | L2 |
+| 日波动率σ | float | [0.005,0.05] | 0.02 | 输入框 | L2 |
+| 卖出惩罚系数 | float | [1.0,2.0] | 1.3 | 输入框 | L2 |
 | 成交量上限 | float | [5%,30%] | 10% | 滑块 | L2 |
 | 单行业上限 | float | [10%,50%] | 30% | 滑块 | L2 |
 | 单股上限 | float | [3%,15%] | 5% | 滑块 | L2 |
@@ -317,7 +320,36 @@ INSERT INTO ai_parameters (param_name, param_value, param_min, param_max, param_
 | 判定方法 | enum | ma/drawdown | ma | Radio | L2 |
 | 均线窗口 | int | [60,240] | 120 | 滑块 | L2 |
 
-## 3.13 AI闭环Agent配置（28个参数）— V2新增
+## 3.13 Modifier策略参数（R3新增, Sprint 1.13+）
+
+> 参考: `docs/research/R3_multi_strategy_framework.md` — CompositeStrategy核心+Modifier架构
+
+### RegimeModifier参数（4个）
+
+| 参数 | 类型 | 范围 | 默认值 | 前端控件 | 级别 |
+|------|------|------|--------|---------|------|
+| Regime启用 | bool | on/off | on | Toggle | L2 |
+| 高波缩放系数 | float | [0.3,1.0] | 0.7 | 滑块 | L2 |
+| 波动率基线方法 | enum | median/ma60/ma120 | median | 下拉 | L2 |
+| 缩放clip范围 | tuple | — | [0.5, 2.0] | 双滑块 | L2 |
+
+### CompositeStrategy参数（3个）
+
+| 参数 | 类型 | 范围 | 默认值 | 前端控件 | 级别 |
+|------|------|------|--------|---------|------|
+| 现金缓冲比例 | float | [0,10%] | 3% | 滑块 | L2 |
+| Modifier列表 | list[str] | — | ["regime"] | 多选框 | L2 |
+| 初始资金(可配置) | float | [10万,1亿] | 100万 | 输入框 | L2 |
+
+### FactorClassifier参数（3个）
+
+| 参数 | 类型 | 范围 | 默认值 | 前端控件 | 级别 |
+|------|------|------|--------|---------|------|
+| ic_decay快速阈值(天) | int | [3,10] | 5 | 滑块 | L2 |
+| ic_decay标准阈值(天) | int | [10,30] | 15 | 滑块 | L2 |
+| 分类置信度下限 | float | [0.5,0.9] | 0.7 | 滑块 | L2 |
+
+## 3.14 AI闭环Agent配置（28个参数）— V2新增
 
 ### 全局控制（2个）
 

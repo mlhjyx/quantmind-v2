@@ -12,6 +12,12 @@ model: claude-sonnet-4-6
 - D:\quantmind-v2\docs\DEV_BACKEND.md
 - D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md
 - D:\quantmind-v2\docs\QUANTMIND_V2_DESIGN_V5.md §3（架构）§6（7步组合构建）
+- D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §3（运行时架构）§4（接口规格）§7（Sprint计划）
+- D:\quantmind-v2\docs\RISK_CONTROL_SERVICE_DESIGN.md（风控服务接口设计：L1-L4熔断）
+- D:\quantmind-v2\docs\research\R3_multi_strategy_framework.md（核心+Modifier架构）
+- D:\quantmind-v2\docs\research\R5_backtest_live_alignment.md（回测-实盘对齐8个gap）
+- D:\quantmind-v2\docs\research\R6_production_architecture.md（NSSM+Task Scheduler+Tailscale）
+- D:\quantmind-v2\docs\GP_CLOSED_LOOP_DESIGN.md（GP最小闭环设计：QuickBacktester+Pipeline编排）
 
 编码前先对照设计文档确认功能规格——设计文档中已有的按设计实现，不重新发明。
 
@@ -23,10 +29,15 @@ model: claude-sonnet-4-6
    - 权重分配：等权/alpha加权/风险平价可切换
    - 换手控制：边际改善排序+换手率上限[10-80%]
    - 调仓频率：daily/weekly/biweekly/monthly可配置
-3. 市场状态regime.py：MA120判定牛/熊/震荡（DESIGN_V5 §9.5已设计）
-4. 建表只用docs/QUANTMIND_V2_DDL_FINAL.sql
-5. 代码规范：ruff check + ruff format
-6. Git纪律：每模块commit，feat/fix/test/docs+模块名
+3. **CompositeStrategy架构**（R3）：核心策略+Modifier叠加，Modifier不独立选股只调权重
+   - ModifierBase ABC + RegimeModifier/VwapModifier/EventModifier
+   - 权重归一化(cash_buffer=3%) → RiskControl → Broker
+4. **生产部署架构**（R6）：NSSM服务注册(FastAPI+Celery自动重启)、Task Scheduler调度、Tailscale远程
+5. **回测-实盘对齐**（R5）：T+1 open执行价、信号回放验证器、滑点分解
+6. 市场状态regime.py：MA120判定牛/熊/震荡（DESIGN_V5 §9.5已设计）
+7. 建表只用docs/QUANTMIND_V2_DDL_FINAL.sql
+8. 代码规范：ruff check + ruff format
+9. Git纪律：每模块commit，feat/fix/test/docs+模块名
 
 **交叉审查**：你的代码被 qa + data challenge。
 

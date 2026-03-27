@@ -1,0 +1,90 @@
+{
+  "enabledPlugins": {
+    "oh-my-claudecode@omc": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/session_context_inject.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/pre_commit_validate.py",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/protect_critical_files.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/iron_law_enforce.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/pre_spawn_check.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/post_edit_lint.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/audit_log.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/verify_completion.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -27,7 +27,7 @@
 | 1 | 架构模式 | Hybrid（向量化信号 + 事件驱动执行） | 速度 + 真实性兼顾 |
 | 2 | 成交价 | 次日开盘（默认）+ VWAP（可选），可配置 | T+1 天然匹配 |
 | 3 | 滑点模型 | Volume-impact 双因素（市值分层 + 换手率调整）+ 固定 fallback | 6 参数可配置 |
-| 4 | 交易成本 | 佣金万 1.5 + 印花税 0.05% + 过户费 0.001% | Step 1 用简化估算单边 10bps |
+| 4 | 交易成本 | 佣金万 1.5 + 印花税 0.05% + 过户费 0.001% | volume_impact模型(市值分层k) + overnight_gap + tiered_base，详见R4研究 |
 | 5 | 实现节奏 | 三步渐进：Step1 信号验证→Step2 执行模拟→Step3 WF | 累积式构建不重写 |
 | 6 | WF 窗口 | 36+6+3+3（可配置） | 训练/验证/测试/步长（月） |
 | 7 | 结果存储 | PostgreSQL 6 张新表 | 暂不分区 |
@@ -210,15 +210,20 @@ class SlippageConfig:
     turnover_ref: float = 0.02   # 参考换手率(2%)
     turnover_power: float = -0.5 # 调整幂次
 
-    # 固定滑点 fallback
+    # 固定滑点 fallback（已废弃，默认使用volume_impact模式）
     fixed_slippage_bps: float = 10.0
+
+    # Sprint 1.11+ 新增参数（R4研究成果）
+    overnight_gap_bps: float = 25.0       # 隔夜跳空成本(bps)，PT实测20-30bps为主要成本
+    sigma_daily: float = 0.02             # 日波动率σ，用于Bouchaud平方根模型
+    sell_penalty: float = 1.3             # 卖出方向惩罚系数（R4建议从1.2→1.3）
 
 
 @dataclass
 class CostConfig:
     """交易成本配置"""
-    # Step 1: 固定估算
-    estimated_cost_bps: float = 10.0      # 单边 10bps
+    # Step 1: 固定估算（已升级为volume_impact，保留向后兼容）
+    estimated_cost_bps: float = 10.0      # 已废弃，仅fallback用
 
     # Step 2+: 精确模型
     commission_rate: float = 0.00015      # 佣金万 1.5（单边）
@@ -548,7 +553,7 @@ class SimpleBacktester:
       - 不模拟 T+1(假设都能成交)
       - 不检查涨跌停拒单(Universe 已过滤)
       - 不检查成交量约束
-      - 固定成本估算(单边 10bps)
+      - 简化成本估算(volume_impact模型，参见R4: docs/research/R4_A股微观结构特性.md)
       - 不模拟停牌冻结
 
     保留的真实性:
@@ -1437,10 +1442,10 @@ CREATE TABLE backtest_wf_windows (
 | AI闭环(DEV_AI_EVOLUTION.md) | 策略构建Agent和诊断Agent调用回测引擎 | BacktestService.submit() |
 | 参数可配置(DEV_PARAM_CONFIG.md) | BacktestConfig全部参数前端可调 | ai_parameters表 |
 | 后端服务层(DEV_BACKEND.md) | Router→Service→Task→Engine调用链 | 见DEV_BACKEND §四数据流 |
-| 通知系统(DEV_NOTIFICATIONS.md) | 回测完成/失败→NotificationService | backtest.complete/failed模板 |
+| 通知系统(NotificationService) | 回测完成/失败→NotificationService | backtest.complete/failed模板 |
 | 调度系统(DEV_SCHEDULER.md) | Celery Beat可配置定期回测 | astock_backtest_task |
 | 前端(DEV_FRONTEND_UI.md) | 5个页面通过API+WS交互 | §七 API清单 |
-| 外汇回测(DEV_FOREX.md §六) | 独立Python引擎，不复用Rust | 共用WF/DSR/PBO框架 |
+| 外汇回测(Phase 2) | 独立Python引擎，不复用Rust | 共用WF/DSR/PBO框架 |
 
 ---
 
@@ -1639,3 +1644,88 @@ class DataFeed:
     @classmethod
     def from_dataframe(cls, df: pd.DataFrame) -> 'DataFeed': ...  # 压力测试/注入用
 ```
+
+---
+
+## 回测可信度规则（强制执行，从CLAUDE.md迁入）
+
+> 回测结果不可信 = 所有后续工作白费。以下规则与工作原则同等重要。
+
+### 规则1: 涨跌停封板必须处理
+
+SimBroker必须实现 `can_trade()` 函数：
+```python
+def can_trade(code: str, date: date, direction: str) -> bool:
+    # 停牌（volume=0 且 close=pre_close）→ False
+    # 买入 + 收盘价==涨停价 + 换手率<1% → False（封板买不进）
+    # 卖出 + 收盘价==跌停价 + 换手率<1% → False（封板卖不出）
+    # 成交量==0 → False
+```
+涨跌停幅度区分：主板10%、创业板/科创板20%、ST股5%、北交所30%。
+
+### 规则2: 整手约束和资金T+1必须建模
+
+**整手约束**:
+```python
+actual_shares = floor(target_value / price / 100) * 100  # A股最小交易单位100股
+```
+
+**资金T+1规则**:
+- A股卖出资金当日可用于买入（T+0可用），但不可取出（T+1可取）
+- SimBroker需跟踪：可用资金（含当日卖出回款）和 可取资金（不含当日卖出）
+- 部分成交处理：剩余部分次日继续执行，不取消
+
+**"实际vs理论仓位偏差"**: 作为回测输出指标。偏差长期>3%说明资金利用效率有问题。
+
+### 规则3: 确定性测试用固定数据快照
+
+- 用Parquet文件作为测试数据快照，不依赖数据库当前状态
+- 测试流程：`load_snapshot → run_backtest → compare_hash(result)`
+- 精确到**小数点后6位**完全一致（不是近似相等）
+
+### 规则4: 回测结果必须有统计显著性
+
+自动计算 **bootstrap Sharpe 95%置信区间**：
+- 对日收益率序列做1000次bootstrap采样，计算Sharpe的5%/95%分位
+- 展示格式：`Sharpe: 1.21 [0.43, 1.98] (95% CI)`
+- 如果5%分位的Sharpe < 0，标红警告"策略可能不赚钱"
+
+### 规则5: 隔夜跳空必须统计
+
+回测报告加 **"开盘跳空统计"** 指标：
+- 买入日 open vs 前日close 的平均偏差
+- 如果偏差持续>1%，说明信号有"追涨"倾向
+
+### 规则6: 交易成本敏感性分析
+
+回测结果必须包含不同成本假设下的绩效对比：
+```
+成本倍数    年化收益    Sharpe    MDD
+0.5x       ...        ...      ...
+1.0x       ...        ...      ...（基准）
+1.5x       ...        ...      ...
+2.0x       ...        ...      ...
+```
+如果2倍成本下Sharpe < 0.5，策略在实盘中大概率不行。
+
+---
+
+## 回测报告必含指标（从CLAUDE.md迁入）
+
+| 指标 | 说明 |
+|------|------|
+| Calmar Ratio | 年化收益/最大回撤 |
+| Sortino Ratio | 只看下行波动率的Sharpe |
+| 最大连续亏损天数 | 心理压力指标 |
+| 胜率 + 盈亏比 | 交易心理参考 |
+| 月度收益热力图 | 发现季节性 |
+| Beta | 策略跟大盘关联度，绝对收益策略应<0.3 |
+| 信息比率(IR) | 超额收益稳定性，>0.5算不错 |
+| 年化换手率 | × 单边成本 = 年交易成本 |
+| Bootstrap Sharpe CI | `Sharpe: 1.21 [0.43, 1.98] (95% CI)` |
+| 成本敏感性 | 0.5x/1x/1.5x/2x成本下的Sharpe |
+| 开盘跳空统计 | 买入日open vs 前日close偏差 |
+| 实际vs理论仓位偏差 | 整手约束导致的偏差 |
+
+**年度分解**: 每年的收益/Sharpe/MDD单独列出。最差年度标红。
+**市场状态分段**: 自动分牛市/熊市/震荡三段，分别看绩效。

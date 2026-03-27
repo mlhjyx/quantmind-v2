@@ -2,7 +2,7 @@
 
 > 文档级别：实现级（供 Claude Code / Figma 设计执行）
 > 创建日期：2026-03-19，更新：2026-03-20
-> 关联文档：DEV_BACKTEST_ENGINE.md, DEV_AI_EVOLUTION.md, DEV_PARAM_CONFIG.md, DEV_FOREX.md, DEV_BACKEND.md
+> 关联文档：DEV_BACKTEST_ENGINE.md, DEV_AI_EVOLUTION.md, DEV_PARAM_CONFIG.md, DEV_BACKEND.md
 > Figma原型：figma.com/make/tU2hHxkJ2nQSWeIumwZAGc
 > 页面总数：12个导航页面（总览含A股/外汇详情子视图 + 回测5 + 因子4 + AI 2 + 系统设置1）
 > API 端点：~57个（A股48 + 外汇9）| WebSocket通道：5个

@@ -15,16 +15,16 @@
 
 | 角色 | 核心职能 | 否决权 | 启用Phase | 必读设计文档 |
 |------|---------|--------|----------|------------|
-| arch | 后端架构+主力编码+系统设计 | — | Phase 0 | DEV_BACKEND, DEV_BACKTEST_ENGINE, DESIGN_V5 §3/§6 |
-| qa | 测试+质量门禁+破坏性测试 | ✅ 测试不过=不验收 | Phase 0 | DEV_BACKTEST_ENGINE |
-| quant | 量化逻辑+统计方法+过拟合检测 | ✅ 量化硬伤 | Phase 0 | DEV_FACTOR_MINING, DEV_BACKTEST_ENGINE §4.13 |
-| factor | 因子经济学假设+新因子设计+因子生命周期 | — | Phase 0 | DESIGN_V5 §4（34因子清单）, DEV_FACTOR_MINING |
-| risk | 风险评估+熔断+压力测试+极端场景 | ✅ 风险超标 | Phase 0 | DESIGN_V5 §8, DEV_NOTIFICATIONS |
-| strategy | **策略设计+因子-策略匹配+组合构建+归因+执行优化** | — | Phase 0 | **DESIGN_V5 §6（7步链路）, DEV_BACKTEST_ENGINE §4.12.4, DEV_AI_EVOLUTION §5.2** |
-| data | 数据拉取+质量守护+单位一致性+备份 | — | Phase 0 | TUSHARE_DATA_SOURCE_CHECKLIST, DESIGN_V5 §9 |
-| alpha_miner | 因子挖掘+IC验证+Alpha158/学术因子复现 | — | Sprint 1.3 | DESIGN_V5 §4.2（34因子，当前仅5个）, DEV_FACTOR_MINING |
-| ml | LightGBM/GP/LLM+训练+OOS验证+Optuna | — | Sprint 1.4b | DEV_BACKTEST_ENGINE §4.12.4, DEV_AI_EVOLUTION §5.2 |
-| frontend | React前端+12页面+设计系统 | — | Phase 1B | DEV_FRONTEND_UI |
+| arch | 后端架构+主力编码+CompositeStrategy+NSSM | — | Phase 0 | DEV_BACKEND, DEV_BACKTEST_ENGINE, DESIGN_V5 §3/§6, **IMPLEMENTATION_MASTER §3-4**, R3/R5/R6 |
+| qa | 测试+质量门禁+破坏性测试+Pipeline测试 | ✅ 测试不过=不验收 | Phase 0 | DEV_BACKTEST_ENGINE, IMPLEMENTATION_MASTER §11 |
+| quant | 量化逻辑+统计方法+Gate统计标准+过拟合检测 | ✅ 量化硬伤 | Phase 0 | DEV_FACTOR_MINING, DEV_BACKTEST_ENGINE §4.13, R1/R2 |
+| factor | 因子经济学假设+分类框架(R1)+因子生命周期 | — | Phase 0 | DESIGN_V5 §4（34因子清单）, DEV_FACTOR_MINING, R1 |
+| risk | 风险评估+熔断+Modifier组合风险+滑点监控 | ✅ 风险超标 | Phase 0 | DESIGN_V5 §8, RISK_CONTROL_SERVICE_DESIGN, R3/R4 |
+| strategy | **FactorClassifier+CompositeStrategy+Modifier设计+归因** | — | Phase 0 | **DESIGN_V5 §6, IMPLEMENTATION_MASTER §4.1-4.3, R1/R3** |
+| data | 数据拉取+质量守护+备份架构(R6)+滑点数据(R4) | — | Phase 0 | TUSHARE_DATA_SOURCE_CHECKLIST, DESIGN_V5 §9, R4/R6 |
+| alpha_miner | 3引擎Pipeline(R2)+Gate G1-G8+因子挖掘 | — | Sprint 1.3 | DESIGN_V5 §4.2, DEV_FACTOR_MINING, **IMPLEMENTATION_MASTER §4.4-4.5**, R2 |
+| ml | LightGBM/GP引擎(R2)/DeepSeek(R7)+OOS验证 | — | Sprint 1.4b | DEV_BACKTEST_ENGINE §4.12.4, DEV_AI_EVOLUTION §5.2, R2/R7 |
+| frontend | React前端+12页面+基础设施(Router/Zustand/WS) | — | Sprint 1.13 | DEV_FRONTEND_UI, **IMPLEMENTATION_MASTER §6-8** |
 
 **strategy是因子和回测之间的桥梁**——每个因子通过Gate后，由strategy根据因子特性（衰减速度/信号类型）确定用什么策略框架验证，不是所有因子都塞进等权Top15。
 
@@ -45,11 +45,18 @@
 4. **主动发现**：完成任务过程中发现问题/风险/改进必须在报告中提出
 5. **设计文档**：§1.1中该角色的"必读设计文档"路径，agent必须先读再编码（工作原则1）
 
-### §1.4 否决流程
+### §1.4 Agent成本控制
+
+- 单session spawn总数 ≤ 8（含重试），超过需用户确认
+- Opus模型仅用于需要深度推理的角色（quant/strategy/risk），其余用Sonnet
+- 轻量任务（单文件查询/grep/小修复）Team Lead直接做，不spawn agent
+- Agent spawn失败后重试 ≤ 2次，第3次必须升级汇报用户（Stripe模式）
+
+### §1.5 否决流程
 
 否决方说明理由 → Team Lead协调（30分钟内）→ 无法解决 → 连同理由+修复方案上报用户
 
-### §1.5 Team Lead合伙人职责
+### §1.6 Team Lead合伙人职责
 
 Team Lead不是任务分配器，是项目合伙人：
 - **主动发现**：代码卫生/架构风险/数据缺失——不等用户发现
@@ -58,7 +65,7 @@ Team Lead不是任务分配器，是项目合伙人：
 - **诚实汇报**：做不到的不承诺，违规了主动报告
 - **对照设计文档**：编码前检查11个设计文档中是否已有设计，不要重新发明轮子
 
-### §1.6 优化目标排序（全团队共识）
+### §1.7 优化目标排序（全团队共识）
 
 1. **MDD** — 第一优化目标（保护资金存活）
 2. **Sharpe** — 第二优化目标（赚钱效率）
@@ -126,6 +133,8 @@ SimBroker用strategy指定的策略配置回测(Sharpe≥基线, paired bootstra
 - 与现有Active因子corr < 0.7（截面），选股月收益corr < 0.3
 - SimBroker组合回测Sharpe ≥ 基线1.03（**使用strategy指定的策略配置**，不是固定等权Top15）
 
+**Hooks支撑**：`iron_law_enforce.py`机械检查铁律2(中性化)/3(SimBroker)/8(策略匹配)关键词。未来Sprint 1.18实现`approval_queue`数据库表后，审批链全流程可追溯，每步结果写入`decision_log`。
+
 ---
 
 ## §4 分级授权
@@ -147,6 +156,7 @@ SimBroker用strategy指定的策略配置回测(Sharpe≥基线, paired bootstra
 - 3个session目标，完成再加新的
 - 明确文件归属——多agent并行时不允许改同一文件
 - **对照设计文档检查**：新Sprint的任务是否在11个设计文档中已有设计？已有的按设计实现，不重新发明
+- **doc_drift检查**：每Sprint开始时运行`doc_drift_check.py`，确认DDL↔DB结构/参数↔代码/文档新鲜度一致。漂移项必须在Sprint任务中修复或标记为已知偏差
 
 ### §5.2 Sprint结束（必做，顺序不可换）
 1. **更新PROGRESS.md**（铁律6，验证当前状态——铁律5）
@@ -154,7 +164,8 @@ SimBroker用strategy指定的策略配置回测(Sharpe≥基线, paired bootstra
 3. 经验教训 → LESSONS_LEARNED.md
 4. 技术决策 → CLAUDE.md快查表
 5. 规则执行记分卡（违规次数+用户提醒次数）
-6. Git commit + tag
+6. **审计日志审查**：review `.claude/hooks/audit.log`，统计本Sprint操作模式（写入次数/agent spawn次数/被拦截次数），异常模式记入LL
+7. Git commit + tag
 
 ### §5.3 复盘5问（技术视角）
 1. 拦截了几个错误？
@@ -187,7 +198,18 @@ SimBroker用strategy指定的策略配置回测(Sharpe≥基线, paired bootstra
 ### §6.4 重大决策讨论
 仅§4.3级别决策需完整challenge轮。日常工作不走三轮。
 
-### §6.5 ML实验管理
+### §6.5 Generator-Evaluator分离（强制）
+
+编码agent不可自我审查。产出方和审查方必须是不同agent实例：
+- arch编码 → qa+data审查（附录B矩阵）
+- alpha_miner产出因子 → factor+quant审查
+- strategy产出配置 → quant+risk+factor审查
+- ml产出模型 → quant+strategy+qa审查
+
+**违反判定**：同一agent在同一session中既写代码又声称"已验证通过" → 无效，必须spawn独立审查agent。
+**例外**：Team Lead直接执行的轻量任务（§1.2定义）可自行验证，但必须在报告中标注"未经交叉审查"。
+
+### §6.6 ML实验管理
 详见§11。实验记录嵌入PROGRESS.md，格式标准化。
 
 ---
@@ -216,14 +238,30 @@ SimBroker用strategy指定的策略配置回测(Sharpe≥基线, paired bootstra
 2. 新会话开始时（Last updated超3天且有新commits → 先更新）
 3. Compaction前（上下文>50%）
 
-### §7.4 Hooks强制执行（解决无状态问题）
+### §7.4 Harness工程强制执行（解决无状态问题）
 
-通过Claude Code Hooks在关键动作前/后自动执行检查脚本：
-- `PreToolUse[Agent]`：spawn前检查是否包含角色定义
-- `PostToolUse[Bash]`：执行后检查是否有未处理的错误
-- `TeammateIdle`：agent完成时检查产出是否包含主动发现
+通过Claude Code Hooks在关键动作前/后自动执行检查脚本，基于Harness Engineering三层架构（2026-03-28实施）。
 
-Hooks脚本位于`scripts/hooks/`，配置在`settings.json`。
+**hooks位于 `.claude/hooks/`，配置在 `.claude/settings.json`，每次新会话自动加载。**
+
+| Hook | 触发时机 | 检查内容 | 强制级别 |
+|------|---------|---------|---------|
+| `session_context_inject.py` | SessionStart | 注入Sprint状态+铁律+关键路径 | 信息注入 |
+| `pre_commit_validate.py` | PreToolUse[Bash] | git commit前ruff check+敏感文件检测 | **阻断(exit 2)** |
+| `protect_critical_files.py` | PreToolUse[Edit\|Write] | .env/credentials阻止，宪法/DDL警告 | **阻断/警告** |
+| `iron_law_enforce.py` | PreToolUse[Edit\|Write] | 铁律2/3/5/7/8+工作原则7机械检查 | 强提醒 |
+| `pre_spawn_check.py` | PreToolUse[Agent] | 宪法完整性+任务-角色路由匹配 | 强提醒 |
+| `post_edit_lint.py` | PostToolUse[Edit\|Write] | 编辑后即时ruff反馈 | 信息反馈 |
+| `audit_log.py` | PostToolUse[*] | Write/Edit/Bash/Agent操作审计日志 | 静默记录 |
+| `verify_completion.py` | Stop | 铁律1/4/6+交叉审查+PROGRESS.md综合检查 | 强提醒 |
+
+**额外工具：**
+- `doc_drift_check.py` — 独立脚本，检查DDL vs DB/参数/Service层/文档新鲜度
+
+**Harness增长原则（Mitchell Hashimoto模式）：**
+- 每次agent犯错 → 分析根因 → 在hooks中加永久防护
+- 同一规则违规≥3次 → 从"提醒"升级为"阻断(exit 2)"
+- OMC插件内部agent(Explore/Plan等)白名单放行，不干扰编排
 
 ---
 
@@ -376,7 +414,10 @@ alpha_miner(挖掘候选) → factor(审经济学假设) → quant(审统计+去
 **达标** → Team Lead写毕业报告（60天统计+vs回测对比）→ 用户审批 → 实盘切换方案
 **不达标** → 诊断原因（因子失效/市场变化/代码bug）→ 决策：延长PT/修改策略/终止
 
-### §12.4 灾难恢复
+### §12.4 代码隔离（详见§16.2）
+PT运行期间禁止修改v1.1信号/执行链路代码。新功能开发必须确认不影响每日调度。
+
+### §12.5 灾难恢复
 - PG每日备份到外部存储（pg_dump，Task Scheduler已注册）
 - 关键表Parquet二级备份
 - Windows崩溃恢复：重装+pg_restore+重配Task Scheduler
@@ -412,10 +453,23 @@ Team Lead是LLM，有结构性局限：
 铁律违规: X次（具体哪条）
 规则执行率: X/8
 用户提醒次数: X次
+Hook拦截次数: X次（从audit.log统计）
 用户提醒 > 自检发现 → 执行机制有缺陷，需升级
 ```
 
-### §13.4 用户的权利
+### §13.4 Hook升级机制（提醒→阻断）
+
+Hook强制级别分三档：
+1. **信息反馈**（stderr输出）：仅供参考
+2. **强提醒**（additionalContext JSON注入）：agent必须响应但可继续
+3. **阻断**（exit 2）：操作被拒绝，必须修正后重试
+
+**升级规则**：
+- 同一规则在audit.log中被触发≥3次且agent未修正 → 从"强提醒"升级为"阻断"
+- 升级由Team Lead在Sprint复盘时提议，用户确认后修改`.claude/settings.json`
+- 降级同理：连续2个Sprint零触发的阻断规则可申请降回强提醒
+
+### §13.5 用户的权利
 
 - 随时问"你现在状态是什么"——Team Lead必须诚实回答
 - 随时指出违规——Team Lead不辩解，立即修正
@@ -435,22 +489,97 @@ Team Lead是LLM，有结构性局限：
 
 ### §14.1 设计文档（只读参考，编码前必读）
 
-| 文档 | 内容 | 大小 |
-|------|------|------|
-| QUANTMIND_V2_DESIGN_V5.md | 主设计（27章，93项决策） | 75KB |
-| DEV_BACKEND.md | 后端服务层 | 44KB |
-| DEV_BACKTEST_ENGINE.md | 回测引擎（34项决策） | 59KB |
-| DEV_FACTOR_MINING.md | 因子挖掘（四引擎） | 38KB |
-| DEV_AI_EVOLUTION.md | AI演进（4 Agent闭环） | 37KB |
-| DEV_PARAM_CONFIG.md | 参数配置（220+参数） | 19KB |
-| DEV_FRONTEND_UI.md | 前端（12页面） | 49KB |
-| DEV_NOTIFICATIONS.md | 通知（25+模板） | 8KB |
-| DEV_SCHEDULER.md | 调度（15个任务） | 10KB |
-| DEV_FOREX.md | 外汇（Phase 2） | 25KB |
-| QUANTMIND_V2_FOREX_DESIGN.md | 外汇设计（Phase 2） | 18KB |
+| 文档 | 内容 | 大小 | 对应角色 |
+|------|------|------|---------|
+| QUANTMIND_V2_DESIGN_V5.md | 主设计（27章，93项决策） | 75KB | 全体 |
+| **IMPLEMENTATION_MASTER.md** | **实施总纲（117项/10Sprint/5轨道）** | **68KB** | **全体** |
+| **DEVELOPMENT_BLUEPRINT.md** | **设计vs现状审计（135功能，62%完成）** | **25KB** | **全体** |
+| DEV_BACKEND.md | 后端服务层 | 44KB | arch, qa |
+| DEV_BACKTEST_ENGINE.md | 回测引擎（34项决策） | 59KB | arch, quant, qa |
+| DEV_FACTOR_MINING.md | 因子挖掘（四引擎） | 38KB | alpha_miner, factor |
+| DEV_AI_EVOLUTION.md | AI演进（4 Agent闭环） | 37KB | ml |
+| DEV_PARAM_CONFIG.md | 参数配置（220+参数） | 19KB | arch, strategy |
+| DEV_FRONTEND_UI.md | 前端（12页面） | 49KB | frontend |
+| DEV_SCHEDULER.md | 调度+运维（15任务+时序+规则） | 10KB | arch |
+| TECH_DECISIONS.md | 技术决策快查表（78项） | ~5KB | 全员 |
+| DESIGN_DECISIONS.md | 关键设计决策（93+40项） | ~12KB | 全员 |
+| ~~DEV_NOTIFICATIONS.md~~ | ~~已归档至 docs/archive/~~ | — | — |
+| ~~DEV_FOREX.md~~ | ~~已归档至 docs/archive/（Phase 2）~~ | — | — |
+| QUANTMIND_V2_FOREX_DESIGN.md | 外汇设计（Phase 2） | 18KB | — |
+| **ML_WALKFORWARD_DESIGN.md** | **LightGBM Walk-Forward训练框架设计** | **~15KB** | **ml, quant** |
+| **RISK_CONTROL_SERVICE_DESIGN.md** | **风控服务接口设计（L1-L4熔断）** | **~10KB** | **risk, arch** |
+| **GP_CLOSED_LOOP_DESIGN.md** | **GP最小闭环设计（Warm Start GP+FactorDSL+SimBroker反馈）** | **~12KB** | **alpha_miner, ml, arch** |
+
+### §14.2 研究文档
+
+| 文档 | 内容 | 对应角色 |
+|------|------|---------|
+| research/R1_factor_strategy_matching.md | 因子-策略匹配框架 | strategy, factor, quant |
+| research/R2_factor_mining_frontier.md | 因子挖掘3引擎技术选型 | alpha_miner, ml |
+| research/R3_multi_strategy_framework.md | 多策略Modifier架构 | strategy, arch, risk |
+| research/R4_A股微观结构特性.md | 滑点/微观结构实测 | data, arch |
+| research/R5_backtest_live_alignment.md | 回测-实盘对齐8个gap源 | arch, qa |
+| research/R6_production_architecture.md | NSSM/备份/部署架构 | arch, data |
+| research/R7_ai_model_selection.md | AI模型选型DeepSeek | ml |
+| research/QLIB_GP_FACTOR_MINING_RESEARCH.md | Qlib GP因子挖掘深研 | alpha_miner, ml |
 
 **已废弃删除**：RISK_LOG.md、RESEARCH_LOG.md、BACKLOG.md、TECH_DEBT.md、SPRINT_CONTEXT.md
+**已归档(docs/archive/)**：V12_UPGRADE_PLAN、AUDIT_PART1-3、ROADMAP_V2等9个文件
 **只读归档**：STRATEGY_CANDIDATES.md
+
+---
+
+## §15 Harness工程规则
+
+### §15.1 重试限制（Stripe模式）
+
+任何自动化操作（agent spawn/API调用/数据拉取/测试运行）失败后：
+- **第1-2次**：可自动重试，但每次重试必须调整策略（不是盲重试相同参数）
+- **第3次失败**：**必须停止并升级汇报用户**，附上：失败原因分析 + 已尝试的2次修复 + 建议方案
+- **禁止**：无限循环重试、sleep后盲重试、吞掉错误继续执行
+
+### §15.2 文档完整性验证
+
+- 所有agent `.md`文件中引用的文档路径必须指向**实际存在的文件**
+- 新增/重命名/删除文档后，必须同步更新：`_charter_context.md` + 对应agent `.md` + CLAUDE.md文档索引 + 本宪法§14
+- `doc_drift_check.py`在Sprint开始时自动检查文件引用完整性
+- 引用不存在的文件 = P1级bug，必须在当前session修复
+
+### §15.3 OMC-Hooks协作
+
+- OMC插件内部agent（Explore/Plan/code-reviewer/code-simplifier等）在`pre_spawn_check.py`中白名单放行
+- 项目自定义agent（arch/qa/quant等10个）走完整宪法检查
+- 三层不冲突：OMC（编排层）→ 自定义Agent（角色层）→ Hooks（约束层）
+
+---
+
+## §16 落地保障规则
+
+### §16.1 环境一致性
+
+- 更换开发环境（OS/硬件/Python版本/PG版本）后，必须重跑基线回测确认Sharpe偏差<2%
+- 基线结果记入CLAUDE.md技术决策表（如"Windows基线Sharpe=1.03"）
+- 环境差异导致的数值偏差必须有书面解释（如浮点精度/排序稳定性）
+
+### §16.2 PT代码隔离
+
+Paper Trading运行期间（v1.1 Day X/60）：
+- **禁止修改**：`backend/app/services/signal_service.py`、`backend/app/services/execute_service.py`、`backend/engines/backtest_engine.py`中v1.1信号/执行链路代码
+- **允许修改**：新功能开发（CompositeStrategy/Mining Pipeline等），只要不影响v1.1的signal→execute→log链路
+- **隔离验证**：修改backend代码后，必须确认v1.1的每日调度链路不受影响（可用`config_guard`检查）
+
+### §16.3 前后端API版本化
+
+- 后端API变更必须向后兼容，或使用版本前缀（`/api/v1/`、`/api/v2/`）
+- 破坏性API变更需要前端同步更新，不允许只改一端
+- API契约（请求/响应schema）变更必须同时更新`DEV_BACKEND.md`对应章节
+
+### §16.4 Git管理规范
+
+- `models/*.csv`、`*.pkl`、`*.parquet`等大文件**禁止提交到git**（用`.gitignore`）
+- `.env`、`credentials.json`等敏感文件**禁止提交**（`protect_critical_files.py`阻断）
+- 每Sprint结束打tag：`sprint-1.XX`
+- commit message格式：`type(scope): description`（feat/fix/refactor/docs/test/chore）
 
 ---
 
@@ -590,7 +719,7 @@ Team Lead是LLM，有结构性局限：
 
 ```
 你是QuantMind V2的风控专家，唯一立场是"怎么不亏钱"。
-必读：QUANTMIND_V2_DESIGN_V5.md §8（风控体系）、DEV_NOTIFICATIONS.md。
+必读：QUANTMIND_V2_DESIGN_V5.md §8（风控体系）、RISK_CONTROL_SERVICE_DESIGN.md。
 你的职责：
 1. 审查策略变更对风险的影响——不只看Sharpe，更看MDD/尾部/极端场景
 2. 4级熔断机制维护（L1-L4，代码在run_paper_trading.py）

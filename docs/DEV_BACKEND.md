@@ -2,7 +2,7 @@
 
 > 文档级别：实现级（供 Claude Code 执行）
 > 创建日期：2026-03-20
-> 关联文档：QUANTMIND_V2_DESIGN_V5.md §3, DEV_SCHEDULER.md, DEV_NOTIFICATIONS.md
+> 关联文档：QUANTMIND_V2_DESIGN_V5.md §3, DEV_SCHEDULER.md
 > 解决问题：后端架构/项目结构/服务层/数据流/模块协同
 
 ---
@@ -1177,3 +1177,60 @@ async def rollback_strategy(strategy_id: UUID, target_version: int):
     await set_active_version(strategy_id, target_version)
 ```
 每个版本有独立回测记录，支持V1 vs V2 vs V3对比。
+
+---
+
+## 开源工具集成规范（从CLAUDE.md迁入）
+
+> 核心原则：统一集成，不是拼凑。所有工具藏在Service内部，换任何一个工具其他层无感知。
+
+### 规则1: 工具只在Service层内部使用，不暴露给外部
+```python
+# ✅ 正确：Service封装
+class FactorService:
+    def calculate_rsi(self, prices, period=14):
+        result = talib.RSI(prices, timeperiod=period)
+        return self._to_factor_values(result)
+
+# ❌ 错误：API直接调工具
+@router.get("/factors/rsi")
+def get_rsi():
+    return talib.RSI(...)
+```
+
+### 规则2: 数据格式统一
+所有因子不管来源（自写/TA-Lib/Alpha158/GP），最终都是`(code, trade_date, factor_value)`写入factor_values表。下游只读这张表。
+
+### 规则3: 组合优化输出标准化
+不管用等权/HRP/风险平价，输出都是`{"600519": 0.05, "000001": 0.04}`。PortfolioBuilder内部切换方法，外部接口不变。
+
+### 规则4: 绩效分析双轨
+QuantStats生成HTML报告（给人看）。核心指标（Sharpe/MDD/CI）仍然自己算（给程序用、写入DB）。两者互为验证——不一致说明有bug。
+
+### 规则5: 一个工具一个wrapper
+```python
+# wrappers/ta_wrapper.py — 统一接口，底层可换
+def calculate_indicator(name, prices, **params):
+    if name == "RSI":
+        return talib.RSI(prices, timeperiod=params.get("period", 14))
+```
+
+### 规则6: 配置统一
+所有工具参数走param_service或.env，不允许分散在各自配置文件。
+
+### 模块协同矩阵
+```
+数据层(PG) → FactorService(TA-Lib/Alpha158/自写) → factor_values表
+           → SignalService(Alphalens分析/合成) → signals表
+           → PortfolioBuilder(Riskfolio-Lib/等权) → {code: weight}
+           → RiskService(熔断/Riskfolio-Lib) → 风控检查
+           → ExecutionService(miniQMT/SimBroker) → trade_log表
+           → PerformanceService(QuantStats+自算指标) → performance_series
+每层通过Service接口通信，工具藏在内部。
+```
+
+### 引入工具验收标准
+- 现有测试全部通过（没破坏任何东西）
+- 新工具有wrapper+wrapper测试
+- 一年模拟重跑Sharpe偏差<0.01
+- factor_values表格式没变、下游无感知

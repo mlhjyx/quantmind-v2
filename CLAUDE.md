@@ -12,10 +12,12 @@
 v1.1配置: 5因子等权(turnover_mean_20/volatility_20/reversal_20/amihud_20/bp_ratio) + Top15 + 月度 + 行业25%
 环境: Windows 11 Pro (R9-9900X3D 12C/24T + RTX 5070 12GB + 32GB DDR5-6000), PG: D:\pgdata16, 用户: xin
 管理制度: 宪法V3.3(8铁律+按需spawn≤4+因子审批链+角色Spawn Prompt+交叉审查矩阵+strategy升级+设计文档对照)
-关键文件: TEAM_CHARTER_V3.3.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md
---- 动态层（读PROGRESS.md恢复）---
-compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.md 恢复完整上下文
-⚠️ 第二步(LL-027+LL-030强制): 读TEAM_CHARTER_V3.3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
+关键文件: TEAM_CHARTER_V3.3.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / docs/IMPLEMENTATION_MASTER.md
+--- 动态层（读记忆+PROGRESS恢复）---
+compaction/新session第一步: 读记忆文件(自动加载MEMORY.md索引) + PROGRESS.md 恢复完整上下文
+⚠️ 记忆文件位置: C:\Users\hd\.claude\projects\D--quantmind-v2\memory\（MEMORY.md为索引，project_sprint_state.md为当前状态）
+⚠️ 第二步: 确认当前Sprint + 读docs/IMPLEMENTATION_MASTER.md对应Sprint章节
+⚠️ 第三步(LL-027+LL-030强制): 读TEAM_CHARTER_V3.3.md §1全文 → TeamCreate建团队 → 附录A角色Prompt
 ⚠️ Sprint启动顺序: TeamCreate → §5.1任务清单 → 附录A spawn prompt → 编码（编码是最后一步不是第一步）
 ⚠️ 用户计划有N个角色必须spawn N个，不能跳过任何一个
 ```
@@ -50,6 +52,13 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 - **投资人视角复盘**：每Sprint结束全员必答"敢投多少钱？什么时候亏？"
 - **优化目标排序**：MDD > Sharpe > 因子数量（全团队共识）
 - **自我问责**：违规记入LL，同一规则≥3次必须升级执行机制，隐瞒违规最严重
+- **Generator-Evaluator分离**：编码agent不可自我审查，产出方和审查方必须不同agent（§6.5）
+- **Agent成本控制**：session spawn≤8, Opus仅深度推理角色, 重试≤2次后升级用户（§1.4）
+- **Hook升级机制**：同一规则触发≥3次未修正→从提醒升级为阻断（§13.4）
+- **PT代码隔离**：PT运行期间禁止修改v1.1信号/执行链路代码（§12.4/§16.2）
+- **环境一致性**：换环境后重跑基线确认Sharpe偏差<2%（§16.1）
+- **文档完整性**：agent引用的文档路径必须指向实际存在文件，新增/删除文档后同步全部引用（§15.2）
+- **重试限制**：任何操作失败重试≤2次，第3次必须升级汇报用户（§15.1）
 - **研究方向**：§10按角色定义（quant统计前沿/factor Alpha158对标/strategy组合优化/risk压力测试/alpha_miner Gu Kelly Xiu 94特征/ml Qlib RollingGen）
 - **文档体系**：5个文档，RISK_LOG和RESEARCH_LOG已废弃删除
 
@@ -80,84 +89,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 
 ---
 
-## 技术决策快查表
-
-> 新会话恢复上下文时一眼看完整个决策历史。每个技术决策追加一行。
-
-| 决策 | 结果 | 判定 | 阶段 |
-|------|------|------|------|
-| Beta对冲 | 现金拖累36%，去掉后Sharpe 1.01→1.29 | Reverted | Phase 0 |
-| GPA因子 | 行业proxy，中性化后IC不显著(p=0.14) | Reverted | Phase 0 |
-| 候选2红利低波 | 与基线corr=0.778，无分散价值 | Reverted | Sprint 1.2 |
-| 候选4大盘低波 | OOS Sharpe=-0.11，2022年亏-37.85% | Reverted | Sprint 1.2 |
-| 候选5中期反转 | corr=0.627，不够正交 | Reverted | Sprint 1.2 |
-| Top20→Top15 | 整手误差8%→3%，Sharpe 1.054→1.037无差异 | KEEP | Sprint 1.2 |
-| 波动率自适应阈值 | 高波放宽低波收紧，clip(0.5, 2.0) | KEEP | Sprint 1.1 |
-| L1延迟方案C | L1触发时月度调仓延迟不跳过 | KEEP | Sprint 1.2 |
-| days_gap改交易日 | 自然日→交易日，修复国庆/五一误杀 | KEEP | Sprint 1.2 |
-| mf_divergence | IC=9.1%全项目最强，资金流新维度 | KEEP(入池) | Sprint 1.3 |
-| price_level | IC=8.42%，低价股效应 | KEEP(入池) | Sprint 1.3 |
-| PEAD earnings_surprise | IC=5.34%，corr<0.11最干净新维度 | Pending审批 | Sprint 1.3b |
-| IVOL替换vol_20 | IC 6.67% vs 3.27%，但OOS Sharpe持平 | Pending | Sprint 1.3 |
-| 等权 vs IC加权 | 等权表现更好（三轮讨论共识） | KEEP等权 | Phase 0 |
-| 同框架多策略 | 5候选全部失败，50/50组合拉低基线 | Reverted方向 | Sprint 1.2 |
-| 5因子vs8因子 | 8因子Sharpe=0.50(弱因子稀释)，5因子=1.05 | KEEP 5因子 | Sprint 1.2 |
-| Deprecated 5因子 | momentum_20/high_low_range等停止计算省23% | KEEP | Sprint 1.3b |
-| v1.2升级(+mf_divergence) | paired bootstrap p=0.387，增量不显著 | NOT JUSTIFIED | Sprint 1.3a |
-| big_small_consensus | 原始IC=12.74%中性化后-1.0%，虚假alpha | Reverted | Sprint 1.3a |
-| PEAD加入等权组合 | IC=5.34%但组合Sharpe-0.085(等权天花板LL-017) | Reverted | Sprint 1.3b |
-| 等权因子数上限 | 5-6因子局部最优，更多反而差 | KEEP 5因子 | Sprint 1.3b |
-| v1.1配置锁死 | 不再等权升级，60天Paper Trading跑完 | KEEP | Sprint 1.3b |
-| KBAR 15因子 | 15/20 PASS但大部分与vol/rev冗余，3个独立候选入Reserve | Reserve | Sprint 1.3b |
-| 最大化ICIR加权 | Sharpe=0.992<基线1.035，集中度过高(turnover50-70%) | Reverted | Sprint 1.3b |
-| 最大化IC加权 | Sharpe=0.929，更激进更差 | Reverted | Sprint 1.3b |
-| ICIR简单加权 | Sharpe=0.912，CI下界<0 | Reverted | Sprint 1.3b |
-| 收益率加权 | Sharpe=0.861 | Reverted | Sprint 1.3b |
-| 因子择时(5F) | Sharpe=0.876，择时引入滞后噪声 | Reverted | Sprint 1.3b |
-| 因子择时+PEAD(6F) | Sharpe=0.679最差，PEAD 2024崩塌-23.5% | Reverted | Sprint 1.3b |
-| 半衰期加权 | Sharpe=0.838 | Reverted | Sprint 1.3b |
-| BP子维度融合 | Sharpe=0.820，子维度增加噪声 | Reverted | Sprint 1.3b |
-| **线性合成全面对比** | **9种方法全部劣于等权，等权=线性全局最优(LL-018)** | **KEEP等权** | Sprint 1.3b |
-| reversal_20补算 | 2021-01缺失20天补算，Sharpe 1.019→1.03 | KEEP | Sprint 1.4a |
-| LightGBM上线标准 | 上线: p<0.05+Sharpe≥1.10+6红线; 优秀: Sharpe≥1.30+p<0.01 | 用户确认 | Sprint 1.4b |
-| LightGBM-5feat默认 | OOS Sharpe=0.869,p=0.073,同期基线=-0.125,3项红线FAIL | NOT JUSTIFIED | Sprint 1.4b |
-| LightGBM-5feat-optuna | OOS IC +2.5%但ICIR -1.7%,与默认超参无显著差异 | 选默认超参 | Sprint 1.4b |
-| SHAP特征筛选 | 5基线完胜17特征(IC 7.06% vs 4.78%),ML特征引入噪声 | KEEP 5基线 | Sprint 1.4b |
-| ML特征12个 | best_iter=2(噪声阻止学习),SHAP高但OOS差 | Reverted | Sprint 1.4b |
-| 基本面delta特征(7个) | OOS IC 0.0439 vs 基线0.0823(下降46.7%),best_iter=6 | Reverted | Sprint 1.5 |
-| **基本面方向彻底关闭** | **10种方式穷举：8 FAIL+1 MARGINAL+1 SKIP，证据充分** | **方向关闭** | Sprint 1.5b |
-| Rolling ensemble | Sharpe=0.972(基线对比待清理),概念验证通过 | Pending验证 | Sprint 1.5 |
-| 因子生命周期状态机 | factor_lifecycle表+监控脚本+5Active因子健康 | KEEP | Sprint 1.5 |
-| Forecast分析师预期因子 | 全样本60月t<1.0，中性化后归零，LightGBM FAIL | 方向关闭 | Sprint 1.6 |
-| 信号平滑Inertia(0.7σ) | Sharpe=1.172但p=0.09(Bonferroni后不显著) | 影子PT观察 | Sprint 1.6 |
-| VWAP+RSRS单因子Gate | vwap t=-3.53, rsrs t=-4.35, 双PASS | Reserve池 | Sprint 1.6 |
-| VWAP+RSRS LightGBM增量 | 无增量(IC不提升) | 无增量 | Sprint 1.6 |
-| Rolling ensemble | Sharpe+13.6%但p=0.35 | Reserve | Sprint 1.6 |
-| **7因子等权(+vwap+rsrs)** | **Sharpe=0.902<基线1.028, p=0.652, 换手+207%, 每年均差** | **Reverted** | Sprint 1.6 |
-| DB连接P1修复 | 13脚本统一化 | KEEP | Sprint 1.6 |
-| Drawdown P0修复 | qa 4/4 PASS | KEEP | Sprint 1.6 |
-| 方案B execute拆分 | qa 5/5 PASS | KEEP | Sprint 1.6 |
-| ic_decay交易日修复 | bisect_right偏移，国庆/春节测试PASS | KEEP | Sprint 1.9 |
-| health→signal依赖链 | Redis gate+P0告警，4场景测试 | KEEP | Sprint 1.9 |
-| BaseBroker ABC统一 | 3 Broker继承+get_broker工厂 | KEEP | Sprint 1.9 |
-| 仓位偏差3指标 | mean_dev+max_dev+cash_drag替代单一均值 | KEEP | Sprint 1.9 |
-| VWAP+RSRS入Reserve | 单因子Gate PASS但月度等权无增量 | Reserve | Sprint 1.9 |
-| v1.2(K=3)不升级 | p=0.657不显著+60天PT重计时代价 | NOT JUSTIFIED | Sprint 1.9 |
-| 每日风控(非仅调仓日) | signal阶段Step1.6新增L1-L4日终评估 | KEEP | Sprint 1.10 |
-| PreTradeValidator 5项 | 单笔<15%/价格容差/行业/日亏/集中度 | KEEP | Sprint 1.10 |
-| 现金缓冲3% | 权重总和0.97，整手约束余量+紧急调仓弹性 | KEEP | Sprint 1.10 |
-| 波动率regime缩放 | 对数收益率+中位数baseline+clip[0.5,2.0] | KEEP | Sprint 1.10 |
-| 开盘跳空预检 | 单股>5%P1/组合>3%P0，PT只告警 | KEEP | Sprint 1.10 |
-| PT毕业标准5→9项 | +fill_rate/slippage/TE/gap_hours | KEEP | Sprint 1.10 |
-| 自相关调整Sharpe | Lo(2002) ρ>0惩罚，月度策略可能高估 | KEEP | Sprint 1.10 |
-| SlippageConfig市值分层 | k_large=0.05/k_mid=0.10/k_small=0.15 + direction sell_penalty | KEEP | Sprint 1.11 |
-| volume_impact默认模式 | SimBroker slippage_mode="volume_impact" | KEEP | Sprint 1.11 |
-| **volume_impact基线重跑** | **Sharpe 1.03→0.39, MDD -39.7%→-58.4%, 年化25%→8%** | **⚠️需用户决策** | Sprint 1.11 |
-| PT心跳watchdog | 每日20:00检测+P0告警 | KEEP | Sprint 1.11 |
-| config_guard入PT Step 0.5 | v1.1配置一致性强制检查 | KEEP | Sprint 1.11 |
-| RSRS事件型策略(R1) | t=-4.35最强, weekly, 优先级1, 待1.12回测 | Pending验证 | Sprint 1.11 |
-| **RSRS单因子weekly策略** | **Sharpe=0.15, MDD=-45%, 换手37倍, CI包含0** | **NOT JUSTIFIED** | Sprint 1.12 |
-| **RSRS单因子monthly策略** | **Sharpe=0.28, MDD=-43%, CI包含0, 2024亏-12.7%** | **NOT JUSTIFIED** | Sprint 1.12 |
+> **技术决策快查表**: 已迁移至 `docs/TECH_DECISIONS.md`（78项决策历史）
 
 ---
 
@@ -198,7 +130,7 @@ compaction/新session第一步: 读PROGRESS.md + ~/.claude/memory/current_state.
 QuantMind V2 是个人A股+外汇绝对收益量化交易系统，完全从零重写（V1已废弃）。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
 - **用户**: 1人使用，全职投入
-- **月预算**: ≤¥500
+- **月预算**: 弹性调整(根据实际需求，不设固定上限)
 - **硬件**: Windows 11 Pro (AMD R9-9900X3D 12C/24T + RTX 5070 12GB VANGUARD SOC + 32GB DDR5-6000 EXPO → 后期64GB + 2TB NVMe)
 
 ## 技术栈
@@ -227,19 +159,23 @@ quantmind-v2/
 ├── CLAUDE.md                              ← 本文件（Claude Code入口）
 ├── pyproject.toml                         ← Python依赖（已生成）
 ├── docs/
+│   ├── IMPLEMENTATION_MASTER.md           ← ⭐ 实施总纲（117项/10Sprint/5轨道，唯一操作文档）
+│   ├── DEVELOPMENT_BLUEPRINT.md           ← 设计vs现状审计（135功能，62%完成）
 │   ├── QUANTMIND_V2_DDL_FINAL.sql         ← ⭐ 统一DDL（43张表，建表只看这个）
 │   ├── QUANTMIND_V2_DESIGN_V5.md          ← A股总设计文档（核心）
 │   ├── QUANTMIND_V2_FOREX_DESIGN.md       ← 外汇总设计（Phase 2）
-│   ├── DEV_BACKEND.md                     ← 后端服务层+数据流+协同矩阵
-│   ├── DEV_BACKTEST_ENGINE.md             ← 回测引擎后端
+│   ├── TECH_DECISIONS.md                  ← 技术决策快查表（78项历史）
+│   ├── DESIGN_DECISIONS.md                ← 关键设计决策（93+40项）
+│   ├── DEV_BACKEND.md                     ← 后端服务层+数据流+协同矩阵+工具集成规范
+│   ├── DEV_BACKTEST_ENGINE.md             ← 回测引擎+可信度规则+报告指标
 │   ├── DEV_AI_EVOLUTION.md                ← AI闭环后端
-│   ├── DEV_FACTOR_MINING.md               ← 因子挖掘后端
+│   ├── DEV_FACTOR_MINING.md               ← 因子挖掘+计算规则
 │   ├── DEV_PARAM_CONFIG.md                ← 参数可配置
-│   ├── DEV_FRONTEND_UI.md                 ← 前端UI（13章691行）
-│   ├── DEV_FOREX.md                       ← 外汇详细开发（Phase 2）
-│   ├── DEV_SCHEDULER.md                   ← 调度运维
-│   ├── DEV_NOTIFICATIONS.md               ← 通知告警
-│   └── TUSHARE_DATA_SOURCE_CHECKLIST.md   ← ⭐ 数据源接入checklist
+│   ├── DEV_FRONTEND_UI.md                 ← 前端UI（13章695行）
+│   ├── DEV_SCHEDULER.md                   ← 调度运维+时序+运维规则
+│   ├── TUSHARE_DATA_SOURCE_CHECKLIST.md   ← ⭐ 数据源接入checklist
+│   ├── research/                          ← R1-R7研究报告（7份已完成）
+│   └── archive/                           ← 已归档过时文档
 ├── backend/                               # Python后端
 │   ├── app/
 │   │   ├── main.py                        # FastAPI入口
@@ -268,364 +204,15 @@ quantmind-v2/
 
 ---
 
-## 关键设计决策（已确认，必须遵守）
+> **关键设计决策**: 已迁移至 `docs/DESIGN_DECISIONS.md`（93+40项，策略/数据/架构/风控/PT/AI闭环）
 
-### 策略层
+> **回测可信度规则 + 报告必含指标**: 已迁移至 `docs/DEV_BACKTEST_ENGINE.md`（6条硬规则+12项指标）
 
-**信号合成**: Phase 0 两个都做——**等权Top-N为基线**（先跑），IC加权为对比版。
-等权更稳健、更易调试。IC加权如果不如等权，则锁定等权作为规则版。
+> **因子计算规则**: 已迁移至 `docs/DEV_FACTOR_MINING.md`（预处理顺序+IC定义）
 
-**换手率上限**: 单次调仓换手率上限50%（即每次调仓最多换一半持仓），不是年化换手率。
+> **调度时序 + 运维规则**: 已迁移至 `docs/DEV_SCHEDULER.md`（A股T日链路+预检+备份+日志）
 
-### 数据完整性层
-
-**存活偏差处理**: symbols表必须包含已退市股票。
-拉取时用 `stock_basic(list_status='D')` 获取全量退市股。
-回测中退市股处理：退市前5个交易日强制平仓，按最后可交易价格结算。
-不处理存活偏差会让回测收益虚高2-5%/年。
-
-**交易日历维护**: 年初从Tushare导入后，加每日校验（今天是否交易日 vs 实际市场开盘状态）。
-加手动修改交易日历的API应对临时变动（如特殊事件休市）。
-
-### 数据存储层
-
-**factor_values用长表**: TimescaleDB hypertable，按月分chunk（不是默认7天）。
-索引 `(symbol_id, date, factor_name)`。读取时永远带date范围条件。
-5年1.27亿行在TimescaleDB可承受。Phase 1因子数涨到100+时如果出现瓶颈再迁宽表。
-**写入模式: 按日期批量写**——每日因子计算完成后，一次事务写入当日全部股票×全部因子。
-不要按因子逐个写（会产生34次事务，性能差且中途crash导致数据不一致）。
-```python
-# ✅ 正确: 按日期批量写
-async def save_daily_factors(date: date, factor_df: pd.DataFrame):
-    """factor_df: columns=[symbol_id, factor_name, value], 当日全部因子"""
-    async with session.begin():  # 单事务
-        await bulk_upsert(factor_df)  # 全部写入或全部回滚
-
-# ❌ 错误: 按因子逐个写
-for factor_name in factors:
-    await save_single_factor(date, factor_name, values)  # 34次事务，crash风险
-```
-
-**index_components表**: 需新建，存沪深300/中证500等指数的成分股权重历史。
-```sql
-CREATE TABLE index_components (
-    index_code VARCHAR(10),
-    code VARCHAR(10),
-    trade_date DATE,
-    weight DECIMAL(8,6),
-    PRIMARY KEY (index_code, code, trade_date)
-);
-```
-
-### 架构层
-
-**Service依赖注入**: 统一用FastAPI的 `Depends` 链注入，不要手动new。
-所有Service通过Depends获取db session，保证同一请求共享session。
-
-**Celery与async的混合**: 采用方案A——Celery task内部用 `asyncio.run()` 调用async Service。
-简单够用，每次创建新事件循环的开销对定时任务可忽略。
-```python
-# Celery task 标准写法
-@celery_app.task
-def daily_factor_calc_task():
-    asyncio.run(_async_daily_factor_calc())
-
-async def _async_daily_factor_calc():
-    async with get_async_session() as session:
-        service = FactorService(session)
-        await service.calc_daily_factors()
-```
-
-**执行层Broker策略模式**: Paper/实盘/外汇共用同一套因子→信号→风控链路，
-唯一区别是执行层。用策略模式切换，配置项`EXECUTION_MODE = paper / live`：
-```python
-class BaseBroker(ABC):
-    async def submit_order(self, order: Order) -> Fill: ...
-    async def cancel_order(self, order_id: str) -> bool: ...
-    async def get_positions(self) -> list[Position]: ...
-
-class SimBroker(BaseBroker): ...       # Paper Trading（Phase 0）
-class MiniQMTBroker(BaseBroker): ...   # A股实盘（Phase 1）
-class MT5Broker(BaseBroker): ...       # 外汇实盘（Phase 2）
-
-# 工厂函数
-def get_broker() -> BaseBroker:
-    if settings.EXECUTION_MODE == "paper":
-        return SimBroker()
-    elif settings.EXECUTION_MODE == "live":
-        return MiniQMTBroker()
-```
-
-**策略版本管理**: `strategy_configs.config`是JSONB，每次变更**插入新version行**
-而不是更新旧行。回滚 = 把`strategy.active_version`指回旧版本号。
-每个版本有独立回测记录，支持V1 vs V2 vs V3对比。
-
-### 风控层
-
-**回撤熔断恢复状态机**（Phase 1实现）:
-```
-正常 → 降仓（月亏>10%）→ 正常（连续5个交易日累计盈利>2%）
-降仓 → 停止（累计亏>25%）→ 人工审批重启
-```
-
-**外汇关联敞口限制**（Phase 2实现）:
-相关性>0.7的品种对，合并计算敞口，总和不超过单品种限仓的1.5倍。
-
-### Paper Trading 运行模式与毕业标准
-
-**Paper Trading = 实时回测**: 真实行情 + 虚拟资金，走和实盘完全一样的
-因子→信号→风控→执行链路，唯一区别是Broker用SimBroker。
-- 每日走T日盘后调度链路（16:30→17:20），与实盘完全一致
-- `trade_log`和`position_snapshot`用`execution_mode = 'paper'`字段区分
-- Paper和实盘共用`strategy_id`，通过`execution_mode`区分记录
-
-**毕业标准（转实盘前必须全部达标，9项）**:
-
-| # | 指标 | 标准 |
-|---|------|------|
-| 1 | 运行时长 | ≥ 60个交易日（约3个月） |
-| 2 | Sharpe | ≥ 回测Sharpe × 70% |
-| 3 | 最大回撤 | ≤ 回测MDD × 1.5倍 |
-| 4 | 滑点偏差 | 实际滑点与模型预估偏差 < 50% |
-| 5 | 链路完整性 | 信号→审批→执行→归因 全链路无中断 |
-| 6 | fill_rate | ≥ 95%（成交率，封板/停牌导致执行不全） |
-| 7 | avg_slippage | ≤ 30bps（平均滑点，执行质量） |
-| 8 | tracking_error | ≤ 2%（年化跟踪误差，信号→实际偏离） |
-| 9 | gap_hours | 12-20h（信号生成→执行的时间差，标准链路T日17:20→T+1 09:30≈16h） |
-
-**不达标不允许上实盘。降低标准需要书面记录理由。**
-
-### AI闭环层（Phase 1+）
-
-**LLM因子门槛**: 降低初始门槛到 IC > 0.015 即可入候选池观察。
-重点评估正交性（与现有因子相关性 < 0.5），低IC但高正交性的因子在组合中有分散化价值。
-
-**Agent冲突仲裁**（Phase 3）:
-- 风控Agent有一票否决权（安全优先）
-- 因子发现和策略构建的分歧由回测结果裁定
-- 所有冲突记录到 agent_decision_log
-
-**AI诊断触发机制**（Phase 1）:
-- 不只周日定时跑——**绩效衰退>阈值时事件驱动即时触发**
-- `performance_series`表加**滚动绩效视图**（近20/60/120天Sharpe/MDD），供Agent直接查询
-- 明确Agent输入context组装逻辑：从performance_series + factor_ic_history + 
-  active_factors + recent_trades 四张表拉数据，拼成结构化JSON给LLM
-
-**AI变更验证上线流程**（Phase 1，三步机制）:
-```
-1. AI输出变更建议 → 写入 approval_queue（不直接生效）
-2. 自动触发快速回测（最近1年，非全量5年）验证变更效果
-3. 验证通过 + 人工审批 → 生效到次日信号链路
-   验证不通过（回测变差）→ 自动拒绝 + 记录原因到 agent_decision_log
-```
-**不允许AI变更跳过回测验证直接上线。**
-
-**GP引擎优化**（Phase 1）:
-- 反拥挤阈值降到0.5-0.6（0.8太高，相关性0.79本质是同一因子变体）
-- 适应度加复杂度惩罚：`fitness = IC×w1 + IR×w2 + 原创性×w3 - 节点数×w4`
-- 岛屿模型：种群分3-4个子群独立进化，每N代交换少量个体
-- GP发现的因子必须通过样本外测试（GP只在训练集上跑）
-
-**暴力枚举剪枝**（Phase 1）:
-- 量纲不匹配的组合直接跳过（如 `ts_corr(volume, pe_ttm, 20)` 无经济学意义）
-- 分批优先级：先算单算子单字段（~150个），过IC快筛后再做二元组合
-- 设时间预算上限（如最多2小时），超时按已算IC排序取Top
-
-**LLM因子质量控制**（Phase 1）:
-- 去重检测：新因子与已有因子embedding相似度>0.8直接拒绝
-- 快速验证：代码生成后先跑100只股票×1年（~5秒），通过再跑全量
-- 有效率监控：连续5轮通过Gate的比例<5%自动暂停并触发诊断
-
-**知识库去重改进**（Phase 1）:
-- 去重基于因子值的Spearman相关性>0.7判定重复（不是表达式embedding）
-- failure_reason结构化：`{"gate": "ic", "ic_mean": 0.008, "threshold": 0.02}`
-- 给Idea Agent注入"这些方向已尝试N次都失败"的上下文
-
-**因子生命周期状态机**（Phase 1）:
-```
-candidate → active → warning → critical → retired
-                ↑                              │
-                └──── 新因子替补 ←─── 触发挖掘 ←┘
-```
-- critical持续2周 → 自动降权到0（保留计算用于监控恢复）
-- 活跃因子数<12 → P1告警 + 触发紧急因子挖掘
-- 退休因子进入冷宫6个月后自动检查一次（市场风格可能轮回）
-
-**因子拥挤度监控**（Phase 1，架构预留）:
-- 公式：`crowding = corr(factor_rank, abnormal_volume, cross_section)`
-- 拥挤度>阈值时自动降低该因子权重
-- 作为元因子(meta-factor)，Phase 0架构预留接口
-
----
-
-## ⭐ 回测可信度规则（Phase 0 强制执行）
-
-> 回测结果不可信 = 所有后续工作白费。以下规则与工作原则同等重要。
-
-### 规则1: 涨跌停封板必须处理
-
-SimBroker必须实现 `can_trade()` 函数：
-```python
-def can_trade(code: str, date: date, direction: str) -> bool:
-    # 停牌（volume=0 且 close=pre_close）→ False
-    # 买入 + 收盘价==涨停价 + 换手率<1% → False（封板买不进）
-    # 卖出 + 收盘价==跌停价 + 换手率<1% → False（封板卖不出）
-    # 成交量==0 → False
-```
-涨跌停幅度区分：主板10%、创业板/科创板20%、ST股5%、北交所30%。
-不处理封板限制会让回测假设任何信号都能成交，严重失真。
-
-### 规则2: 整手约束和资金T+1必须建模
-
-**整手约束**:
-```python
-actual_shares = floor(target_value / price / 100) * 100  # A股最小交易单位100股
-```
-30只等权持仓的整手误差累积可能导致总仓位<95%，5%+现金拖累。
-
-**资金T+1规则**:
-- A股卖出资金当日可用于买入（T+0可用），但不可取出（T+1可取）
-- SimBroker需跟踪：可用资金（含当日卖出回款）和 可取资金（不含当日卖出）
-- 部分成交处理：剩余部分次日继续执行，不取消
-
-**"实际vs理论仓位偏差"**: 作为回测输出指标。偏差长期>3%说明资金利用效率有问题。
-
-### 规则3: 确定性测试用固定数据快照
-
-- 用Parquet文件作为测试数据快照，不依赖数据库当前状态
-- 测试流程：`load_snapshot → run_backtest → compare_hash(result)`
-- 精确到**小数点后6位**完全一致（不是近似相等）
-- 任何引入随机性的地方（排序稳定性、浮点累积）都必须固定
-
-### 规则4: 回测结果必须有统计显著性
-
-自动计算 **bootstrap Sharpe 95%置信区间**：
-- 对日收益率序列做1000次bootstrap采样，计算Sharpe的5%/95%分位
-- 展示格式：`Sharpe: 1.21 [0.43, 1.98] (95% CI)`
-- 如果5%分位的Sharpe < 0，标红警告"策略可能不赚钱"
-
-### 规则5: 隔夜跳空必须统计
-
-回测报告加 **"开盘跳空统计"** 指标：
-- 买入日 open vs 前日close 的平均偏差
-- 如果偏差持续>1%，说明信号有"追涨"倾向，需要调整
-
-### 规则6: 交易成本敏感性分析
-
-回测结果必须包含不同成本假设下的绩效对比：
-```
-成本倍数    年化收益    Sharpe    MDD
-0.5x       ...        ...      ...
-1.0x       ...        ...      ...（基准）
-1.5x       ...        ...      ...
-2.0x       ...        ...      ...
-```
-如果2倍成本下Sharpe < 0.5，策略在实盘中大概率不行。
-
----
-
-## 因子计算规则（Phase 0 强制执行）
-
-### 因子预处理顺序（严格按此顺序，不可调换）
-
-```
-1. 去极值（MAD）
-2. 缺失值填充
-3. 中性化（回归掉市值+行业）  ← 先中性化
-4. 标准化（zscore）            ← 再标准化
-```
-**如果先zscore再中性化，中性化回归的残差分布会不对，所有因子IC都不准。**
-
-### IC计算的forward return定义
-
-- forward return使用**相对沪深300的超额收益**（不是绝对收益）
-- 必须用**复权价格**（close × adj_factor / latest_adj_factor）计算
-- 停牌期间的return用**行业指数**代替
-- 同时计算1/5/10/20日IC，因子评估报告展示"绝对IC"和"超额IC"
-
----
-
-## 调度时序（Phase 0 确认方案）
-
-### A股：T日盘后计算，T+1日盘前确认执行
-
-原方案（T+1日凌晨6:00计算）不可行——AKShare/Tushare数据在T日16:00-17:00才完整可用。
-
-**修正方案**:
-```
-T日 16:30  拉取T日收盘数据（Tushare入库时间约15:00-16:00）
-T日 17:00  因子计算（~15min）
-T日 17:20  信号生成 + 调仓指令（存库）
-T日 17:30  通知推送（钉钉/邮件，含调仓明细）
-------- 隔夜 -------
-T+1日 08:30  读指令 → 确认无异常 → 最终确认
-T+1日 09:30  开盘执行
-```
-这样时间充裕，不用凌晨跑任务，也避免数据未更新的风险。
-
-### 全链路健康预检（每日T日调度开始前）
-
-调度链路第一步不是拉数据，而是跑预检。任何一项失败 → P0告警 + 暂停当日链路：
-```
-✓ PostgreSQL 连接正常
-✓ Redis 连接正常
-✓ 昨日数据已更新（klines_daily最新日期 = 上一交易日）
-✓ 因子计算无NaN（抽样检查最近一日10只股票）
-✓ 磁盘空间 > 10GB
-✓ Celery worker 全部在线
-✗ miniQMT 连接（Phase 1，实盘模式才检查）
-✗ MT5 连接（Phase 2）
-```
-预检结果写入`health_checks`表，并与调度链路绑定——预检不过不触发后续任务。
-
-### 外汇（Phase 2）
-- Celery Beat统一用UTC
-- 所有cron表达式写UTC
-- 加 `utils/timezone.py` 封装 UTC ↔ 北京时间 ↔ broker时间转换
-- forex调度加夏令时偏移表
-
----
-
-## 回测报告必含指标
-
-除了已有的Sharpe/MDD/年化收益/超额收益，必须包含：
-
-| 指标 | 说明 |
-|------|------|
-| Calmar Ratio | 年化收益/最大回撤（关注尾部风险） |
-| Sortino Ratio | 只看下行波动率的Sharpe |
-| 最大连续亏损天数 | 心理压力指标 |
-| 胜率 + 盈亏比 | 交易心理参考 |
-| 月度收益热力图 | 发现季节性 |
-| Beta | 策略跟大盘关联度，绝对收益策略应<0.3 |
-| 信息比率(IR) | 超额收益稳定性，>0.5算不错 |
-| 年化换手率 | × 单边成本 = 年交易成本 |
-| Bootstrap Sharpe CI | `Sharpe: 1.21 [0.43, 1.98] (95% CI)` |
-| 成本敏感性 | 0.5x/1x/1.5x/2x成本下的Sharpe |
-| 开盘跳空统计 | 买入日open vs 前日close偏差 |
-| 实际vs理论仓位偏差 | 整手约束导致的偏差 |
-
-**年度分解**: 每年的收益/Sharpe/MDD单独列出。最差年度标红。
-**市场状态分段**: 自动分牛市/熊市/震荡三段，分别看绩效。
-
----
-
-## 运维规则（Phase 0 实现）
-
-### 数据库备份
-- 每日 `pg_dump` 到外部存储（外部硬盘或NAS）
-- 关键表（klines_daily, factor_values）额外导出Parquet作为二级备份
-- `scripts/verify_backup.sh` 定期验证备份可恢复
-
-### 日志管理
-- 开发阶段用DEBUG级别，Paper Trading及之后用**INFO级别**
-- 因子计算详细日志走单独文件（`logs/factor_calc.log`），定期归档
-- 加 `LOG_MAX_FILES` 配置，限制总日志大小
-
-### 优雅停机与状态恢复
-- 因子计算用**事务写入**：要么全部因子写成功，要么全部回滚
-- 或每个因子独立写入 + **完成标记**，重启后检查标记只重算未完成的
-- Celery task加 `acks_late=True`，crash后自动重试
+> **开源工具集成规范**: 已迁移至 `docs/DEV_BACKEND.md`（6规则+协同矩阵+验收标准）
 
 ---
 
@@ -656,44 +243,28 @@ T+1日 09:30  开盘执行
 
 | 你要做什么 | 读哪个文件 |
 |-----------|-----------|
+| **查下一步做什么/Sprint计划** | **`docs/IMPLEMENTATION_MASTER.md`** ⭐唯一操作总纲(117项/10Sprint/5轨道) |
 | **建数据库表** | **`docs/QUANTMIND_V2_DDL_FINAL.sql`** ⭐唯一DDL来源 |
+| 查技术决策历史 | `docs/TECH_DECISIONS.md`（78项决策） |
+| 查架构设计决策 | `docs/DESIGN_DECISIONS.md`（93+40项决策） |
 | 了解系统架构和技术选型 | `docs/QUANTMIND_V2_DESIGN_V5.md` §3 系统架构 |
 | 查数据库表设计意图 | `docs/QUANTMIND_V2_DESIGN_V5.md` §4 (DDL在DDL_FINAL.sql) |
-| 写后端服务/API | `docs/DEV_BACKEND.md` |
-| 写回测引擎 | `docs/DEV_BACKTEST_ENGINE.md` |
-| 写因子计算 | `docs/DEV_FACTOR_MINING.md` |
+| 查设计vs实现差距 | `docs/DEVELOPMENT_BLUEPRINT.md`（135功能审计，62%完成） |
+| 写后端服务/API/工具集成 | `docs/DEV_BACKEND.md` |
+| 写回测引擎/可信度规则 | `docs/DEV_BACKTEST_ENGINE.md` |
+| 写因子计算/因子规则 | `docs/DEV_FACTOR_MINING.md` |
 | 写AI闭环模块 | `docs/DEV_AI_EVOLUTION.md` |
 | 写参数配置 | `docs/DEV_PARAM_CONFIG.md` |
 | 写前端页面 | `docs/DEV_FRONTEND_UI.md` |
 | **接入任何数据源** | **`docs/TUSHARE_DATA_SOURCE_CHECKLIST.md`** ⭐必读 |
-| 写调度任务 | `docs/DEV_SCHEDULER.md` |
-| 写通知告警 | `docs/DEV_NOTIFICATIONS.md` |
-| 外汇相关（Phase 2） | `docs/DEV_FOREX.md` + `docs/QUANTMIND_V2_FOREX_DESIGN.md` |
-
----
-
-## 数据源关键信息（速查）
-
-> 详细信息必须查阅 `docs/TUSHARE_DATA_SOURCE_CHECKLIST.md`，以下仅为速查提醒。
-
-### Tushare Pro（8000积分已开通）
-
-| 接口 | 关键字段单位 | 常见陷阱 |
-|------|-------------|---------|
-| daily | vol=**手**(×100=股), amount=**千元** | 价格是未复权！必须配合adj_factor |
-| adj_factor | 累积因子（非每日比率） | 每次拉新数据后必须用最新因子重算全部历史adj_close |
-| daily_basic | total_mv=**万元**, turnover_rate=**%** | turnover_rate vs turnover_rate_f 含义不同，不能混用 |
-| moneyflow | 金额=**万元**, vol=**手** | 与daily的amount(千元)相差10倍！ |
-| fina_indicator | 百分比字段已×100 | **必须用ann_date(公告日)做时间对齐，不是end_date** |
-
-### AKShare（免费备用源）
-- 北向资金持股、融资融券：优先用AKShare（Tushare无此接口或积分要求高）
-- 降级策略: Tushare失败 → 重试3次 → 切AKShare → 都失败则报警
-
-### 跨源单位对齐（最危险）
-- `daily.amount`(千元) vs `moneyflow.amount`(万元) → 相差10倍
-- `daily.amount`(千元) vs `daily_basic.total_mv`(万元) → 相差10倍
-- 做截面排序(cs_rank)的因子不受单位影响，跨表计算的因子必须对齐
+| 写调度任务/运维规则 | `docs/DEV_SCHEDULER.md` |
+| 写ML Walk-Forward训练 | `docs/ML_WALKFORWARD_DESIGN.md`（LightGBM滚动训练框架） |
+| 写风控服务 | `docs/RISK_CONTROL_SERVICE_DESIGN.md`（L1-L4熔断+PreTradeValidator） |
+| 查R1-R7研究结论 | `docs/research/R1-R7`（因子匹配/挖掘技术/多策略/微观结构/对齐/生产/AI选型） |
+| 查Qlib GP因子挖掘 | `docs/research/QLIB_GP_FACTOR_MINING_RESEARCH.md` |
+| **写GP最小闭环（Step 2）** | **`docs/GP_CLOSED_LOOP_DESIGN.md`**（Warm Start GP+FactorDSL+SimBroker反馈） |
+| 外汇相关（Phase 2） | `docs/archive/DEV_FOREX.md` + `docs/QUANTMIND_V2_FOREX_DESIGN.md` |
+| 已归档文档（勿引用） | `docs/archive/`（已归档过时文件） |
 
 ---
 
@@ -710,63 +281,6 @@ T+1日 09:30  开盘执行
 - 改参数 = 新版本 → **60天Paper Trading重新计时**
 - strategy_configs表的version字段必须严格维护，每次变更写入param_change_log
 - 防止"Paper Trading到一半觉得不好就改参数"
-
----
-
-## 开源工具集成规范
-
-> 核心原则：统一集成，不是拼凑。所有工具藏在Service内部，换任何一个工具其他层无感知。
-
-### 规则1: 工具只在Service层内部使用，不暴露给外部
-```python
-# ✅ 正确：Service封装
-class FactorService:
-    def calculate_rsi(self, prices, period=14):
-        result = talib.RSI(prices, timeperiod=period)
-        return self._to_factor_values(result)
-
-# ❌ 错误：API直接调工具
-@router.get("/factors/rsi")
-def get_rsi():
-    return talib.RSI(...)
-```
-
-### 规则2: 数据格式统一
-所有因子不管来源（自写/TA-Lib/Alpha158/GP），最终都是`(code, trade_date, factor_value)`写入factor_values表。下游只读这张表。
-
-### 规则3: 组合优化输出标准化
-不管用等权/HRP/风险平价，输出都是`{"600519": 0.05, "000001": 0.04}`。PortfolioBuilder内部切换方法，外部接口不变。
-
-### 规则4: 绩效分析双轨
-QuantStats生成HTML报告（给人看）。核心指标（Sharpe/MDD/CI）仍然自己算（给程序用、写入DB）。两者互为验证——不一致说明有bug。
-
-### 规则5: 一个工具一个wrapper
-```python
-# wrappers/ta_wrapper.py — 统一接口，底层可换
-def calculate_indicator(name, prices, **params):
-    if name == "RSI":
-        return talib.RSI(prices, timeperiod=params.get("period", 14))
-```
-
-### 规则6: 配置统一
-所有工具参数走param_service或.env，不允许分散在各自配置文件。
-
-### 模块协同矩阵
-```
-数据层(PG) → FactorService(TA-Lib/Alpha158/自写) → factor_values表
-           → SignalService(Alphalens分析/合成) → signals表
-           → PortfolioBuilder(Riskfolio-Lib/等权) → {code: weight}
-           → RiskService(熔断/Riskfolio-Lib) → 风控检查
-           → ExecutionService(miniQMT/SimBroker) → trade_log表
-           → PerformanceService(QuantStats+自算指标) → performance_series
-每层通过Service接口通信，工具藏在内部。
-```
-
-### 引入工具验收标准
-- 现有测试全部通过（没破坏任何东西）
-- 新工具有wrapper+wrapper测试
-- 一年模拟重跑Sharpe偏差<0.01
-- factor_values表格式没变、下游无感知
 
 ---
 
@@ -800,8 +314,10 @@ def calculate_indicator(name, prices, **params):
 - ✅ P0设计全部完成（11个文档，8004行）
 - ✅ 93项设计决策 + 40项review补充决策（三轮review）已确认
 - ✅ 数据源Checklist完成（716行）
-- ✅ CLAUDE.md完整（含回测可信度规则、因子规则、调度时序、运维规则）
-- 🔨 **Phase 0代码实现** ← 当前阶段
+- ✅ R1-R7研究全部完成（7份报告，73个可落地项）
+- ✅ IMPLEMENTATION_MASTER v2.0（117项, 10 Sprint, 5轨道, 2522行）
+- ✅ 文档瘦身完成（CLAUDE.md 864→~350行，详细内容迁移至DEV文档）
+- 🔨 **Sprint 1.12完成, 下一步Sprint 1.13** ← 当前阶段
 - ⬜ Phase 1: A股完整 + AI替换
 - ⬜ Phase 2: 外汇MT5
 - ⬜ Phase 3: 整合 + AI闭环
@@ -812,12 +328,13 @@ def calculate_indicator(name, prices, **params):
 
 1. 读取本文件（CLAUDE.md）了解全局上下文
 2. 根据任务类型，去文档索引表找到对应DEV文档阅读
-3. **如果涉及数据拉取/数据源接入 → 先读 TUSHARE_DATA_SOURCE_CHECKLIST.md**
-4. **如果涉及回测引擎 → 先读本文件"回测可信度规则"章节（6条硬规则）**
-5. **如果涉及因子计算 → 先读本文件"因子计算规则"章节（预处理顺序+IC定义）**
-6. 按照DEV文档中的规范实现代码
-7. 实现完成后运行验证命令/测试
-8. 如果发现需要偏离指令的地方 → 先报告，等确认后再执行
+3. **如果涉及数据拉取/数据源接入 → 先读 `docs/TUSHARE_DATA_SOURCE_CHECKLIST.md`**
+4. **如果涉及回测引擎 → 先读 `docs/DEV_BACKTEST_ENGINE.md`（含回测可信度规则6条+报告指标12项）**
+5. **如果涉及因子计算 → 先读 `docs/DEV_FACTOR_MINING.md`（含因子计算规则：预处理顺序+IC定义）**
+6. **如果涉及调度/运维 → 先读 `docs/DEV_SCHEDULER.md`（含调度时序+运维规则）**
+7. 按照DEV文档中的规范实现代码
+8. 实现完成后运行验证命令/测试
+9. 如果发现需要偏离指令的地方 → 先报告，等确认后再执行
 
 ### 回测引擎架构要求
 回测引擎必须支持**注入自定义行情数据**（不只是从DB读历史数据），

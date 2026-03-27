@@ -3,12 +3,20 @@
 > 文档级别：实现级（供 Claude Code 执行）
 > 创建日期：2026-03-19
 > 关联文档：QUANTMIND_V2_DESIGN_V5.md、DEV_BACKTEST_ENGINE.md、DEV_FACTOR_MINING.md、DEV_BACKEND.md
+> **GP闭环设计**: `docs/GP_CLOSED_LOOP_DESIGN.md` — Step 2最小闭环(Warm Start GP+Gate+SimBroker反馈)
 
 ---
 
 ## 一、概述
 
-AI 闭环是 QuantMind V2 的终极目标——AI 自主完成"发现→评估→构建→回测→诊断→优化"的完整循环，人只做监督和决策。本文档覆盖：
+AI 闭环是 QuantMind V2 的终极目标——AI 自主完成"发现→评估→构建→回测→诊断→优化"的完整循环，人只做监督和决策。
+
+**三步走战略（2026-03-28确认）**:
+- **Step 1（当前）**: PT毕业→实盘，不需AI闭环也能赚钱
+- **Step 2（Sprint 1.16-1.17）**: GP最小闭环 — Warm Start GP + FactorGate G1-G8 + SimBroker反馈循环。详见 `docs/GP_CLOSED_LOOP_DESIGN.md`
+- **Step 3（Sprint 1.18+）**: 完整AI闭环 — 本文档设计的4 Agent + PipelineOrchestrator + 知识森林
+
+本文档覆盖Step 3的完整设计，Step 2的GP闭环是Step 3的子集和验证前提。本文档覆盖：
 
 - 三层架构设计（Agent 层→编排层→执行层）
 - 4 个 Agent 的详细决策逻辑

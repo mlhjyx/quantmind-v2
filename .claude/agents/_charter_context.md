@@ -7,6 +7,8 @@
 - 当前: Phase 1, v1.1配置(5因子等权Top15月度行业25%)锁死, Paper Trading Day 3/60
 - 目标: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
 - 优化目标排序: MDD > Sharpe > 因子数量（§1.6全团队共识）
+- **实施总纲**: `docs/IMPLEMENTATION_MASTER.md` v2.0 — 117项, 10 Sprint(1.13-1.22), 5并行轨道
+- **R1-R7研究完成**: 7份研究报告在 `docs/research/`，73个可落地项已纳入实施总纲
 
 ## 八条铁律（§2，不可协商，只有用户能修改）
 1. spawn了才算启动
@@ -59,6 +61,13 @@ challenge方式必须验代码/跑数据，不是读文档同意（铁律5）。
 ## 验收标准（§6.1）
 基于具体数字和可复现命令。不接受"完成"，必须是"5因子IC [+2.8%, +4.5%]"。
 
+## 质量强化规则
+- **Generator-Evaluator分离（§6.5）**：编码agent不可自我审查，产出方≠审查方
+- **重试限制（§15.1）**：失败重试≤2次，第3次必须升级汇报用户
+- **文档完整性（§15.2）**：agent引用路径必须指向实际存在文件
+- **PT代码隔离（§16.2）**：PT期间禁止修改v1.1信号/执行链路代码
+- **Hook升级（§13.4）**：同一规则触发≥3次未修正→从提醒升级为阻断
+
 ## 问责（§13）
 - 首次违规→记入LL
 - 同一规则≥3次→升级执行机制
@@ -71,4 +80,22 @@ challenge方式必须验代码/跑数据，不是读文档同意（铁律5）。
 - 进度: D:\quantmind-v2\PROGRESS.md
 - 教训: D:\quantmind-v2\LESSONS_LEARNED.md
 - 因子注册: D:\quantmind-v2\FACTOR_TEST_REGISTRY.md
+- **实施总纲: D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md**（唯一"下一步做什么"操作文档）
+- 技术决策: D:\quantmind-v2\docs\TECH_DECISIONS.md（78项决策历史）
+- 设计决策: D:\quantmind-v2\docs\DESIGN_DECISIONS.md（93+40项）
 - 设计文档目录: D:\quantmind-v2\docs\
+- 研究报告: D:\quantmind-v2\docs\research\（R1-R7，7份已完成）
+- 设计vs现状审计: D:\quantmind-v2\docs\DEVELOPMENT_BLUEPRINT.md
+- ML Walk-Forward设计: D:\quantmind-v2\docs\ML_WALKFORWARD_DESIGN.md
+- 风控服务接口: D:\quantmind-v2\docs\RISK_CONTROL_SERVICE_DESIGN.md
+- Qlib GP深研: D:\quantmind-v2\docs\research\QLIB_GP_FACTOR_MINING_RESEARCH.md
+- **GP最小闭环设计: D:\quantmind-v2\docs\GP_CLOSED_LOOP_DESIGN.md**（Warm Start GP+FactorDSL+SimBroker反馈，Sprint 1.16-1.17）
+
+## R1-R7研究关键结论（已融入IMPLEMENTATION_MASTER）
+- R1: 因子→策略匹配框架(FactorClassifier, ic_decay路由)
+- R2: 因子挖掘3引擎(暴力+GP+LLM) + AST去重 + Factor Gate G1-G8
+- R3: 多策略组合(核心+Modifier架构, CompositeStrategy)
+- R4: A股微观结构(PT实测64.5bps, 隔夜跳空主导, volume_impact模型)
+- R5: 回测-实盘对齐(8个gap源, T+1 open执行价)
+- R6: 生产架构(NSSM+Task Scheduler+Tailscale+备份)
+- R7: AI模型选型(DeepSeek混合, ~$65-95/月)

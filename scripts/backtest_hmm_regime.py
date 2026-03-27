@@ -333,11 +333,12 @@ def print_comparison_table(results_map: dict[str, object]) -> None:
 
     for key, report in results_map.items():
         label = labels.get(key, key)
-        sharpe = report.get("sharpe", float("nan"))
-        mdd = report.get("max_drawdown", float("nan"))
-        ann_ret = report.get("annual_return", float("nan"))
-        ci_low = report.get("bootstrap_sharpe_ci_low", float("nan"))
-        ci_high = report.get("bootstrap_sharpe_ci_high", float("nan"))
+        sharpe = getattr(report, "sharpe_ratio", float("nan"))
+        # PerformanceReport stores mdd/annual_return as percentage (e.g. -38.45, not -0.3845)
+        mdd = getattr(report, "max_drawdown", float("nan")) / 100.0
+        ann_ret = getattr(report, "annual_return", float("nan")) / 100.0
+        ci_low = getattr(report, "bootstrap_sharpe_ci_low", float("nan"))
+        ci_high = getattr(report, "bootstrap_sharpe_ci_high", float("nan"))
         ci_str = f"[{ci_low:.2f}, {ci_high:.2f}]"
 
         # 标红：Sharpe vs基线对比
@@ -360,7 +361,7 @@ def print_comparison_table(results_map: dict[str, object]) -> None:
     # MDD改善判断
     print("\nMDD改善分析（优化目标: MDD > Sharpe）:")
     for key, report in results_map.items():
-        mdd = report.get("max_drawdown", float("nan"))
+        mdd = getattr(report, "max_drawdown", float("nan")) / 100.0
         if not np.isnan(mdd):
             mdd_improvement = mdd - BASELINE_MDD  # 正数=改善（MDD变小）
             label = labels.get(key, key)

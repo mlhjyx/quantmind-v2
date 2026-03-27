@@ -2,7 +2,7 @@
 
 > 文档级别：实现级（供 Claude Code 执行）
 > 创建日期：2026-03-20
-> 关联文档：DEV_AI_EVOLUTION.md, DEV_FOREX.md, DEV_NOTIFICATIONS.md
+> 关联文档：DEV_AI_EVOLUTION.md
 
 ---
 
@@ -353,3 +353,62 @@ def sanity_check(signals, target_weights):
 ```
 
 不通过 → P0告警 + 暂停执行等人工确认。
+
+---
+
+## 调度时序（从CLAUDE.md迁入）
+
+### A股：T日盘后计算，T+1日盘前确认执行
+
+原方案（T+1日凌晨6:00计算）不可行——AKShare/Tushare数据在T日16:00-17:00才完整可用。
+
+**修正方案**:
+```
+T日 16:30  拉取T日收盘数据（Tushare入库时间约15:00-16:00）
+T日 17:00  因子计算（~15min）
+T日 17:20  信号生成 + 调仓指令（存库）
+T日 17:30  通知推送（钉钉/邮件，含调仓明细）
+------- 隔夜 -------
+T+1日 08:30  读指令 → 确认无异常 → 最终确认
+T+1日 09:30  开盘执行
+```
+
+### 全链路健康预检（每日T日调度开始前）
+
+调度链路第一步不是拉数据，而是跑预检。任何一项失败 → P0告警 + 暂停当日链路：
+```
+✓ PostgreSQL 连接正常
+✓ Redis 连接正常
+✓ 昨日数据已更新（klines_daily最新日期 = 上一交易日）
+✓ 因子计算无NaN（抽样检查最近一日10只股票）
+✓ 磁盘空间 > 10GB
+✓ Celery worker 全部在线
+✗ miniQMT 连接（Phase 1，实盘模式才检查）
+✗ MT5 连接（Phase 2）
+```
+预检结果写入`health_checks`表，并与调度链路绑定——预检不过不触发后续任务。
+
+### 外汇（Phase 2）
+- Celery Beat统一用UTC
+- 所有cron表达式写UTC
+- 加 `utils/timezone.py` 封装 UTC ↔ 北京时间 ↔ broker时间转换
+- forex调度加夏令时偏移表
+
+---
+
+## 运维规则（从CLAUDE.md迁入）
+
+### 数据库备份
+- 每日 `pg_dump` 到外部存储（外部硬盘或NAS）
+- 关键表（klines_daily, factor_values）额外导出Parquet作为二级备份
+- `scripts/verify_backup.sh` 定期验证备份可恢复
+
+### 日志管理
+- 开发阶段用DEBUG级别，Paper Trading及之后用**INFO级别**
+- 因子计算详细日志走单独文件（`logs/factor_calc.log`），定期归档
+- 加 `LOG_MAX_FILES` 配置，限制总日志大小
+
+### 优雅停机与状态恢复
+- 因子计算用**事务写入**：要么全部因子写成功，要么全部回滚
+- 或每个因子独立写入 + **完成标记**，重启后检查标记只重算未完成的
+- Celery task加 `acks_late=True`，crash后自动重试
