@@ -105,7 +105,7 @@ def _position_to_dict(pos: Any) -> dict[str, Any]:
         "stock_code": pos.stock_code,
         "volume": pos.volume,
         "can_use_volume": pos.can_use_volume,
-        "avg_price": pos.avg_price,
+        "avg_price": pos.open_price,  # xtquant用open_price不是avg_price
         "market_value": pos.market_value,
         "frozen_volume": pos.frozen_volume,
     }

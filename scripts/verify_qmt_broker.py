@@ -29,6 +29,8 @@ from pathlib import Path
 # 项目根目录加入sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+# xtquant嵌套路径修复（双层site-packages）
+sys.path.insert(0, str(PROJECT_ROOT / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"))
 
 from engines.broker_qmt import MiniQMTBroker
 
