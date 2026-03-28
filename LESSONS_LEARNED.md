@@ -588,7 +588,7 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 
 **改进措施**:
 1. 铁律4强制执行：commit message中必须包含"复盘已完成"标记
-2. 复盘清单贴在commit前：§5.3技术5问 + §5.4投资人3问 + PROGRESS.md更新 + CLAUDE.md决策表 + LL检查
+2. 复盘清单贴在commit前：§5.4复盘5问 + §5.5投资人3问 + PROGRESS.md更新 + CLAUDE.md决策表 + LL检查
 3. 如果再次违反（≥3次），需要升级为Hooks强制检查
 
 **执行状态**: 已补做复盘。写入feedback记忆。

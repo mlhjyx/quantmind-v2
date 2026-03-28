@@ -155,6 +155,80 @@ def check_audit_log_for_patterns(project_root: Path) -> str | None:
     return None
 
 
+def check_cross_review_executed(project_root: Path) -> str | None:
+    """§6.5 Generator-Evaluator分离: 有编码agent但没有审查agent。"""
+    audit_log = project_root / ".claude" / "hooks" / "audit.log"
+    if not audit_log.exists():
+        return None
+
+    try:
+        lines = audit_log.read_text(encoding="utf-8").strip().split("\n")
+        recent = lines[-80:] if len(lines) > 80 else lines
+
+        # 检测编码角色和审查角色
+        coding_agents = {"arch", "frontend-dev", "alpha-miner", "ml-engineer", "data-engineer"}
+        review_agents = {"qa-tester", "quant-reviewer", "risk-guardian"}
+
+        spawned_coding = any(
+            any(agent in line.lower() for agent in coding_agents)
+            for line in recent if "Agent" in line
+        )
+        spawned_review = any(
+            any(agent in line.lower() for agent in review_agents)
+            for line in recent if "Agent" in line
+        )
+
+        if spawned_coding and not spawned_review:
+            return (
+                "§6.5违反: 有编码agent被spawn但未spawn审查agent。\n"
+                "  宪法要求: 产出方≠审查方。编码完成后必须由交叉审查角色review:\n"
+                "  arch→qa+data, factor→quant+strategy+risk, alpha_miner→factor+quant\n"
+                "  请在停止前spawn对应的审查agent完成交叉审查。"
+            )
+    except Exception:
+        pass
+    return None
+
+
+def check_task_retrospective(project_root: Path) -> str | None:
+    """任务/Sprint完成时必须有复盘总结+改善建议。"""
+    try:
+        # 检查是否有代码变更（说明做了实质工作）
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        unstaged = subprocess.run(
+            ["git", "diff", "--name-only"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        all_changed = result.stdout.strip() + "\n" + unstaged.stdout.strip()
+        py_changes = sum(1 for f in all_changed.split("\n")
+                         if f.strip() and f.endswith(".py"))
+
+        if py_changes >= 3:
+            return (
+                "任务复盘提醒(§5.2): 本次会话有实质性编码工作，停止前请完成:\n"
+                "  1. 设计对照: 实现是否符合DEV文档规格？偏差列表\n"
+                "  2. 质量总结: 测试通过率/ruff状态/已知问题\n"
+                "  3. 改善建议: 发现的流程/工具/规范可改进项\n"
+                "  4. 经验教训: 值得记入LESSONS_LEARNED的发现\n"
+                "  5. 下一步: 后续任务的依赖/阻塞/建议\n"
+                "  如果是Sprint结束，还须按§5.6模板输出Sprint完成报告给用户:\n"
+                "  计划vs实际 / 交付物清单 / 关键指标 / 质量与风险 / 经验教训 / 改善建议 / 下一步\n"
+                "  如已完成复盘输出，可以忽略此提醒。"
+            )
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         json.loads(sys.stdin.read())
@@ -181,6 +255,14 @@ def main():
     if audit_issue:
         issues.append(audit_issue)
 
+    cross_review_issue = check_cross_review_executed(project_root)
+    if cross_review_issue:
+        issues.append(cross_review_issue)
+
+    retro_issue = check_task_retrospective(project_root)
+    if retro_issue:
+        issues.append(retro_issue)
+
     # 构建检查清单
     checklist = "COMPLETION CHECKLIST (Harness综合验证):\n"
 
@@ -197,6 +279,7 @@ def main():
         "- [ ] 相关测试运行过?\n"
         "- [ ] PROGRESS.md需要更新? (铁律6)\n"
         "- [ ] 需要交叉审查? (宪法§6.3)\n"
+        "- [ ] 设计对照+复盘总结已输出? (§5.2)\n"
         "如果以上有未完成项，继续工作而不是停止。"
     )
 
