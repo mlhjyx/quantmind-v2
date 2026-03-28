@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.17完成(8/10项, T7+T8 defer) — GP闭环自动化 + 因子挖掘前端
-> 下一步: Sprint 1.17续(T7 DeepSeek+T8 Idea Agent) 或 Sprint 1.18
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ⚠️
+> Current: Phase 1, Sprint 1.17完成(10/10项) — GP闭环自动化 + 因子挖掘前端 + LLM基础
+> 下一步: Sprint 1.18 (AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -77,7 +77,7 @@
 
 ### Sprint 1.17: 因子挖掘前端 + GP闭环自动化 (2026-03-28)
 
-**8/10项完成（T7 DeepSeek客户端+T8 Idea Agent defer到下session）。§5.3全流程执行。**
+**10/10项全部完成。§5.3全流程执行。**
 
 **TrD 前端 (2项)**:
 - ✅ FactorLab — GP/LLM/枚举3模式切换, WebSocket实时进化曲线, 候选因子表, AI助手面板占位
@@ -106,11 +106,21 @@
 
 **测试**: 979+31=1010 passed, 0 regressions
 
+**TrB LLM基础 (续做完成)**:
+- ✅ DeepSeek API客户端 — DeepSeekClient+ModelRouter(R1/V3/Qwen3)+CostTracker, mock模式, 395行
+- ✅ Idea Agent — 因子假设生成, T10 prompt模板集成, DSL验证+重试, 396行
+- ✅ 论文深度研究(T10升级) — AlphaPROBE(20页)+AlphaAgent(10页)全文精读, 3升级版prompt+DAG剪枝策略
+- §6.5 QA: 57测试(29原有+28新增), 发现P2 bug(validate不检查算子名)
+
+**测试(最终)**: ~1067 passed (979+57+31), 0 regressions
+
 **技术债(Sprint 1.18+)**:
 1. 黑名单不检查种子因子(QA P1 bug)
 2. Celery mining_tasks未接入previous_run(跨轮次学习生产路径未生效)
 3. mining_service asyncpg直连绕过SQLAlchemy pool(双连接池)
 4. mining_tasks跨层导入scripts内部函数
+5. FactorDSL.validate()不检查算子名(QA P2 bug)
+6. DeepSeek R1 `<think>` 标签JSON解析容错(ml-engineer已有fallback,需真实API验证)
 
 ---
 
