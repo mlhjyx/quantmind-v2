@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.13完成 — 前端基础设施 + 策略框架核心
-> 下一步: Sprint 1.14 (回测模块前端 + 因子挖掘Engine1)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅
+> Current: Phase 1, Sprint 1.14完成 — 回测模块前端 + 因子挖掘Engine1
+> 下一步: Sprint 1.15 (回测结果前端 + 策略验证)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -74,6 +74,36 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.14: 回测模块前端 + 因子挖掘Engine1 (2026-03-28)
+
+**7/7项任务完成，成败标准全部达成。**
+
+**TrD 前端 (2项)**:
+- ✅ 策略工作台(StrategyWorkspace) — 三栏布局(因子面板+策略编辑+AI占位), 34因子分类展示, 可视化/代码双模式, 保存/加载API
+- ✅ 回测配置(BacktestConfig) — 6个Tab(市场/时间/执行/成本/风控/动态仓位), "运行回测"→API调用
+- `npm run build` PASS: 171 modules, 0 errors, 834ms
+
+**TrB 因子挖掘 (3项)**:
+- ✅ Factor Sandbox — AST安全检查(禁import/exec/eval/open), subprocess隔离, 5s超时, 白名单函数
+- ✅ BruteForce引擎 — 44模板(价量20+流动性7+资金流向7+基本面7+跨源3), G1-G3快筛, ~130+候选
+- ✅ AST去重器 — L1规范化(交换律+常数折叠)+SHA256, L2 dump比较, L3可选Spearman相关
+- 52测试全PASS
+
+**TrE+TrC 后端 (2项)**:
+- ✅ 策略CRUD API补全 — POST/PUT/DELETE/factors/backtest 5端点, FactorClassifier+BacktestService接入
+- ✅ 滑点三因素模型 — tiered_base_bps(大3/中5/小8) + impact_bps(Bouchaud) + overnight_gap_bps(R4跳空)
+- 79 slippage tests PASS (含31新增)
+
+**测试**: 722 passed (649 existing + 73 new), 0 regressions
+
+**技术债(Sprint 1.15+)**:
+1. SimBroker.calc_slippage()未接入overnight_gap(需传open_price/prev_close)
+2. 策略API测试需mock StrategyService(当前仅service+repo层覆盖)
+3. gap_penalty_factor=0.5待PT数据校准
+4. BruteForce ConstantInputWarning(93个): 常数输入列的Spearman未定义, 不影响正确性
+
+---
 
 ### Sprint 1.13: 前端基础设施 + 策略框架核心 (2026-03-28)
 

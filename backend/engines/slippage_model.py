@@ -1,20 +1,23 @@
-"""双因素滑点模型 — Volume-Impact 滑点估计（Bouchaud 2018 square-root law）。
+"""三因素滑点模型 — base_bps + impact_bps + overnight_gap_bps。
 
-替代SimBroker中的固定bps滑点, 采用更真实的
-基础滑点 + 市场冲击成本 模型。
+R4研究结论: PT实测64.5bps = 基础价差(10-15bps) + 市场冲击(25-35bps) + 隔夜跳空(10-15bps)。
+三组件合计目标与PT实测偏差 < 15%（54.8-74.2bps范围内）。
 
-冲击成本公式（新路径, config模式）:
-  impact = Y * sigma_daily * sqrt(Q/V) * 10000
-  其中 Y 按市值分档, sigma_daily 为个股日波动率。
+三因素结构:
+  total = base_bps + impact_bps + overnight_gap_bps
+
+  1. base_bps: 按市值分档的bid-ask spread（tiered_base_bps）
+     大盘(>500亿): 3bps / 中盘(100-500亿): 5bps / 小盘(<100亿): 8bps
+
+  2. impact_bps: Bouchaud 2018 square-root law（新路径, config模式）
+     impact = Y * sigma_daily * sqrt(Q/V) * 10000
+
+  3. overnight_gap_bps: 隔夜跳空成本（T日信号→T+1开盘执行）
+     gap_cost = abs(open/prev_close - 1) * gap_penalty_factor * 10000
+     gap_penalty_factor默认0.5（只承受部分跳空, 非全量承受）
 
 旧路径（向后兼容, 无config）:
   impact = impact_coeff * sqrt(trade_amount / daily_amount) * 10000
-
-核心逻辑:
-  - 大单相对日成交额的比例越高, 冲击越大
-  - 小盘股(市值小)天然流动性差, 冲击更大
-  - 高波动股票冲击更大（sigma项, Bouchaud 2018）
-  - 买入/卖出方向对冲击有不同影响(卖出通常更贵)
 
 遵循CLAUDE.md: 类型注解 + Google style docstring(中文) + Decimal用于金额
 """
@@ -31,18 +34,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SlippageResult:
-    """滑点计算结果。
+    """滑点计算结果（三因素分解）。
 
     Attributes:
-        base_bps: 基础滑点(bps)。
-        impact_bps: 冲击成本(bps)。
-        total_bps: 总滑点(bps) = 基础 + 冲击。
+        base_bps: 基础滑点(bps)，代表bid-ask spread，按市值分档。
+        impact_bps: 冲击成本(bps)，Bouchaud 2018 square-root law。
+        overnight_gap_bps: 隔夜跳空成本(bps)，T日信号→T+1开盘执行。
+        total_bps: 总滑点(bps) = base + impact + overnight_gap。
         slippage_amount: 滑点金额(元)。
         execution_price: 估计成交价格(元), 含滑点。
     """
 
     base_bps: float
     impact_bps: float
+    overnight_gap_bps: float
     total_bps: float
     slippage_amount: Decimal
     execution_price: Decimal
@@ -50,12 +55,14 @@ class SlippageResult:
 
 @dataclass(frozen=True)
 class SlippageConfig:
-    """市值分层滑点配置（Bouchaud 2018 square-root law）。
+    """市值分层滑点配置（三因素模型）。
+
+    R4研究结论: 三因素 = tiered_base + Bouchaud冲击 + overnight_gap。
+    tiered_base按市值分档替代固定base_bps，更准确反映A股流动性差异。
 
     公式: impact_bps = Y * sigma_daily * sqrt(Q/V) * 10000
     其中 Y 按市值分档, sigma_daily 为个股日波动率。
 
-    市值越大流动性越好，Y越小。
     参数为L2级可配置（DEV_PARAM_CONFIG.md §3.7）。
 
     Attributes:
@@ -63,7 +70,12 @@ class SlippageConfig:
         Y_mid: 中盘(100-500亿)冲击乘数。
         Y_small: 小盘(< 100亿)冲击乘数。
         sell_penalty: 卖出方向冲击惩罚倍数。
-        base_bps: 基础滑点(bps, bid-ask spread)。
+        base_bps: 旧版固定基础滑点(bps)，tiered模式下被覆盖。
+        base_bps_large: 大盘(500亿+)基础滑点(bps)，bid-ask spread分档。
+        base_bps_mid: 中盘(100-500亿)基础滑点(bps)。
+        base_bps_small: 小盘(<100亿)基础滑点(bps)。
+        gap_penalty_factor: 隔夜跳空惩罚系数(0-1)，默认0.5。
+            只承受部分跳空——策略会在高跳空股上自然减配。
     """
 
     Y_large: float = 0.8
@@ -71,8 +83,13 @@ class SlippageConfig:
     Y_small: float = 1.5
     sell_penalty: float = 1.2
     base_bps: float = 5.0
+    # tiered base bps（R4建议，按市值分档）
+    base_bps_large: float = 3.0  # 大盘: 流动性好，价差窄
+    base_bps_mid: float = 5.0  # 中盘: 中等价差
+    base_bps_small: float = 8.0  # 小盘: 流动性差，价差宽
+    gap_penalty_factor: float = 0.5  # 隔夜跳空：只承受50%
 
-    def get_Y(self, market_cap: float) -> float:
+    def get_y(self, market_cap: float) -> float:
         """根据总市值(元)返回对应冲击乘数Y。"""
         if market_cap >= 50_000_000_000:
             return self.Y_large
@@ -80,6 +97,73 @@ class SlippageConfig:
             return self.Y_mid
         else:
             return self.Y_small
+
+    def get_base_bps(self, market_cap: float) -> float:
+        """根据总市值(元)返回分档基础滑点(bps)。
+
+        Args:
+            market_cap: 总市值(元)。
+
+        Returns:
+            分档基础滑点(bps)。
+        """
+        if market_cap >= 50_000_000_000:  # 500亿+
+            return self.base_bps_large
+        elif market_cap >= 10_000_000_000:  # 100亿+
+            return self.base_bps_mid
+        else:
+            return self.base_bps_small
+
+
+def overnight_gap_cost(
+    open_price: float,
+    prev_close: float,
+    gap_penalty_factor: float = 0.5,
+) -> float:
+    """计算隔夜跳空成本(bps)。
+
+    R4核心发现: T日信号→T+1开盘执行存在~10-15bps的隔夜跳空成本。
+    公式: gap_cost = abs(open/prev_close - 1) * gap_penalty_factor * 10000
+
+    gap_penalty_factor=0.5的含义: 策略只承受一半的跳空成本。
+    另一半被视为新信息（策略在高跳空股上会自然减配）。
+
+    Args:
+        open_price: T+1日开盘价(元)。
+        prev_close: T日收盘价(元，即信号价格参考点）。
+        gap_penalty_factor: 跳空惩罚系数(0-1)，默认0.5。
+            0表示不计入跳空成本, 1表示全额承受跳空。
+
+    Returns:
+        隔夜跳空成本(bps)，非负值。
+
+    Raises:
+        ValueError: prev_close <= 0 时抛出。
+
+    Examples:
+        >>> # 小盘股隔夜跳空1.5%，承受50%
+        >>> gap = overnight_gap_cost(open_price=10.15, prev_close=10.0)
+        >>> abs(gap - 75.0) < 0.01  # 0.015 * 0.5 * 10000 = 75bps
+        True
+    """
+    if prev_close <= 0:
+        raise ValueError(f"prev_close必须为正值, 收到: {prev_close}")
+
+    if open_price <= 0 or gap_penalty_factor <= 0:
+        return 0.0
+
+    gap_ratio = abs(open_price / prev_close - 1.0)
+    gap_bps = gap_ratio * gap_penalty_factor * 10000
+
+    logger.debug(
+        "隔夜跳空: open=%.4f, prev_close=%.4f, gap_ratio=%.4f%%, gap_cost=%.2fbps",
+        open_price,
+        prev_close,
+        gap_ratio * 100,
+        gap_bps,
+    )
+
+    return gap_bps
 
 
 def volume_impact_slippage(
@@ -152,7 +236,8 @@ def volume_impact_slippage(
     if daily_volume <= 0 or daily_amount <= 0:
         logger.warning(
             "日成交量/额为0, 返回极大滑点(500bps): vol=%.0f, amount=%.0f",
-            daily_volume, daily_amount,
+            daily_volume,
+            daily_amount,
         )
         return 500.0  # 5% — 基本等于不可交易
 
@@ -161,17 +246,17 @@ def volume_impact_slippage(
 
     # 根据是否传入config走不同路径
     if config is not None:
-        # ── 新路径: Bouchaud 2018 square-root law ──
+        # ── 新路径: Bouchaud 2018 square-root law + tiered base bps ──
         # impact = Y * sigma_daily * sqrt(Q/V) * 10000
-        base = config.base_bps
-        Y = config.get_Y(market_cap)
+        base = config.get_base_bps(market_cap)  # tiered: 大3/中5/小8 bps
+        y_coeff = config.get_y(market_cap)
 
         # sigma_daily防御: 负值或零时用默认值
         if sigma_daily <= 0:
             sigma_daily = 0.02
 
         participation_rate = trade_amount / daily_amount
-        impact = Y * sigma_daily * math.sqrt(participation_rate) * 10000  # 转为bps
+        impact = y_coeff * sigma_daily * math.sqrt(participation_rate) * 10000  # 转为bps
 
         if direction == "sell":
             impact *= config.sell_penalty
@@ -197,8 +282,12 @@ def volume_impact_slippage(
     logger.debug(
         "滑点计算: trade=%.0f, daily_amt=%.0f, 参与率=%.4f%%, "
         "base=%.1fbps, impact=%.1fbps, total=%.1fbps",
-        trade_amount, daily_amount, participation_rate * 100,
-        base, impact, total,
+        trade_amount,
+        daily_amount,
+        participation_rate * 100,
+        base,
+        impact,
+        total,
     )
 
     return total
@@ -213,10 +302,15 @@ def estimate_execution_price(
     direction: str,
     base_bps: float = 5.0,
     impact_coeff: float = 0.1,
+    config: SlippageConfig | None = None,
+    sigma_daily: float = 0.02,
+    open_price: float | None = None,
+    prev_close: float | None = None,
 ) -> SlippageResult:
-    """估算含滑点的成交价格。
+    """估算含滑点的成交价格（三因素分解）。
 
-    封装volume_impact_slippage, 直接返回估计成交价格和详细分解。
+    R4研究: total = base_bps + impact_bps + overnight_gap_bps。
+    三组件合计目标与PT实测64.5bps偏差 < 15%。
 
     Args:
         signal_price: 信号价格(元), 通常是前收盘价或VWAP。
@@ -225,13 +319,18 @@ def estimate_execution_price(
         daily_amount: 日成交额(元)。
         market_cap: 总市值(元)。
         direction: "buy" 或 "sell"。
-        base_bps: 基础滑点(bps)。
-        impact_coeff: 冲击系数。
+        base_bps: 旧路径固定基础滑点(bps)，config模式下被tiered值覆盖。
+        impact_coeff: 旧路径冲击系数。
+        config: 市值分层配置，传入时走新路径（tiered base + Bouchaud冲击）。
+        sigma_daily: 个股日波动率，新路径使用，默认0.02。
+        open_price: T+1日开盘价(元)，用于计算隔夜跳空成本。
+            不传入则overnight_gap_bps=0。
+        prev_close: T日收盘价(元，信号参考价)，与open_price配合使用。
 
     Returns:
-        SlippageResult, 包含分项滑点和估计成交价。
+        SlippageResult, 包含三因素分项滑点和估计成交价。
     """
-    total_bps = volume_impact_slippage(
+    total_impact_bps = volume_impact_slippage(
         trade_amount=trade_amount,
         daily_volume=daily_volume,
         daily_amount=daily_amount,
@@ -239,28 +338,43 @@ def estimate_execution_price(
         direction=direction,
         base_bps=base_bps,
         impact_coeff=impact_coeff,
+        config=config,
+        sigma_daily=sigma_daily,
     )
 
-    # 分解: 重新计算base和impact部分(用于报告)
-    base_part = base_bps
-    impact_part = total_bps - base_part
+    # 分解base和impact部分
+    base_part = config.get_base_bps(market_cap) if config is not None else base_bps
+    impact_part = total_impact_bps - base_part
+
+    # 计算隔夜跳空成本
+    gap_bps = 0.0
+    if open_price is not None and prev_close is not None and prev_close > 0:
+        gap_factor = config.gap_penalty_factor if config is not None else 0.5
+        gap_bps = overnight_gap_cost(
+            open_price=open_price,
+            prev_close=prev_close,
+            gap_penalty_factor=gap_factor,
+        )
+
+    total_bps = total_impact_bps + gap_bps
 
     # 计算滑点金额和成交价
     slippage_pct = Decimal(str(total_bps)) / Decimal("10000")
     signal_price_d = Decimal(str(signal_price))
 
     if direction == "buy":
-        # 买入: 价格上移
         execution_price = signal_price_d * (1 + slippage_pct)
     else:
-        # 卖出: 价格下移
         execution_price = signal_price_d * (1 - slippage_pct)
 
-    slippage_amount = abs(execution_price - signal_price_d) * Decimal(str(trade_amount)) / signal_price_d
+    slippage_amount = (
+        abs(execution_price - signal_price_d) * Decimal(str(trade_amount)) / signal_price_d
+    )
 
     return SlippageResult(
         base_bps=round(base_part, 2),
         impact_bps=round(impact_part, 2),
+        overnight_gap_bps=round(gap_bps, 2),
         total_bps=round(total_bps, 2),
         slippage_amount=slippage_amount.quantize(Decimal("0.01")),
         execution_price=execution_price.quantize(Decimal("0.0001")),

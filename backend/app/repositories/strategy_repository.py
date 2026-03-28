@@ -5,8 +5,6 @@ CLAUDE.md: strategy_configs.config是JSONB，每次变更插入新version行。
 """
 
 import json
-from datetime import date
-from typing import Any, Optional
 
 from app.repositories.base_repository import BaseRepository
 
@@ -14,7 +12,7 @@ from app.repositories.base_repository import BaseRepository
 class StrategyRepository(BaseRepository):
     """strategy + strategy_configs表的数据访问。"""
 
-    async def get_strategy(self, strategy_id: str) -> Optional[dict]:
+    async def get_strategy(self, strategy_id: str) -> dict | None:
         """获取策略基本信息。"""
         row = await self.fetch_one(
             """SELECT id, name, market, mode, factor_config, backtest_config,
@@ -37,7 +35,7 @@ class StrategyRepository(BaseRepository):
             "created_at": row[9],
         }
 
-    async def get_active_config(self, strategy_id: str) -> Optional[dict]:
+    async def get_active_config(self, strategy_id: str) -> dict | None:
         """获取策略当前激活版本的配置。"""
         row = await self.fetch_one(
             """SELECT sc.version, sc.config, sc.changelog, sc.created_at
@@ -65,8 +63,7 @@ class StrategyRepository(BaseRepository):
             {"sid": strategy_id},
         )
         return [
-            {"version": r[0], "config": r[1], "changelog": r[2], "created_at": r[3]}
-            for r in rows
+            {"version": r[0], "config": r[1], "changelog": r[2], "created_at": r[3]} for r in rows
         ]
 
     async def create_config_version(
@@ -113,7 +110,7 @@ class StrategyRepository(BaseRepository):
         )
 
     async def list_strategies(
-        self, market: Optional[str] = None, status: Optional[str] = None
+        self, market: str | None = None, status: str | None = None
     ) -> list[dict]:
         """列出策略。"""
         sql = "SELECT id, name, market, status, active_version, created_at FROM strategy WHERE 1=1"
@@ -129,8 +126,89 @@ class StrategyRepository(BaseRepository):
         rows = await self.fetch_all(sql, params)
         return [
             {
-                "id": str(r[0]), "name": r[1], "market": r[2],
-                "status": r[3], "active_version": r[4], "created_at": r[5],
+                "id": str(r[0]),
+                "name": r[1],
+                "market": r[2],
+                "status": r[3],
+                "active_version": r[4],
+                "created_at": r[5],
             }
             for r in rows
         ]
+
+    async def create_strategy(
+        self,
+        name: str,
+        market: str,
+        config: dict,
+        factor_names: list[str],
+    ) -> str:
+        """创建新策略记录，返回新strategy的UUID字符串。
+
+        Args:
+            name: 策略名称。
+            market: 市场类型（'astock'/'forex'）。
+            config: 策略初始配置（JSONB）。
+            factor_names: 因子名称列表，写入factor_config字段。
+
+        Returns:
+            新策略的UUID字符串。
+        """
+        new_id = await self.fetch_scalar(
+            """INSERT INTO strategy (name, market, factor_config, backtest_config, status)
+               VALUES (:name, :market, :factor_cfg, :bt_cfg, 'draft')
+               RETURNING id""",
+            {
+                "name": name,
+                "market": market,
+                "factor_cfg": json.dumps({"factor_names": factor_names, **config}),
+                "bt_cfg": json.dumps({}),
+            },
+        )
+        return str(new_id)
+
+    async def update_strategy(
+        self,
+        strategy_id: str,
+        updates: dict,
+    ) -> bool:
+        """更新策略基本信息（name/status/factor_config/backtest_config）。
+
+        Args:
+            strategy_id: 策略ID。
+            updates: 待更新字段字典，支持 name/status/factor_config/backtest_config。
+
+        Returns:
+            是否成功更新（True=找到并更新，False=策略不存在）。
+        """
+        allowed = {"name", "status", "factor_config", "backtest_config"}
+        set_clauses = []
+        params: dict = {"sid": strategy_id}
+        for key, val in updates.items():
+            if key not in allowed:
+                continue
+            set_clauses.append(f"{key} = :{key}")
+            params[key] = json.dumps(val) if isinstance(val, dict) else val
+
+        if not set_clauses:
+            return True  # 无有效字段，视为成功
+
+        set_clauses.append("updated_at = NOW()")
+        sql = f"UPDATE strategy SET {', '.join(set_clauses)} WHERE id = :sid"
+        result = await self.execute(sql, params)
+        return result.rowcount > 0
+
+    async def soft_delete_strategy(self, strategy_id: str) -> bool:
+        """软删除策略，将status设为'archived'。
+
+        Args:
+            strategy_id: 策略ID。
+
+        Returns:
+            是否成功（True=找到并归档，False=不存在）。
+        """
+        result = await self.execute(
+            "UPDATE strategy SET status = 'archived', updated_at = NOW() WHERE id = :sid",
+            {"sid": strategy_id},
+        )
+        return result.rowcount > 0
