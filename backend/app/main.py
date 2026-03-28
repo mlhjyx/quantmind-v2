@@ -15,11 +15,14 @@ from app.api.risk import router as risk_router
 from app.api.strategies import router as strategies_router
 from app.config import settings
 from app.db import engine
+from app.logging_config import configure_logging
+from app.websocket import socket_app
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动时初始化资源，关闭时释放连接池。"""
+    configure_logging()
     yield
     await engine.dispose()
 
@@ -57,3 +60,9 @@ async def health_check():
         "status": "ok",
         "execution_mode": settings.EXECUTION_MODE,
     }
+
+
+# --- WebSocket挂载（/ws/socket.io）---
+# python-socketio ASGI应用挂载到 /ws 路径
+# 前端连接地址: ws://localhost:8000/ws/socket.io
+app.mount("/ws", socket_app)

@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.14完成 — 回测模块前端 + 因子挖掘Engine1
-> 下一步: Sprint 1.15 (回测结果前端 + 策略验证)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅
+> Current: Phase 1, Sprint 1.15完成 — 回测结果前端 + 策略验证 + Gate Pipeline
+> 下一步: Sprint 1.16 (因子模块前端 + GP最小闭环核心)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -74,6 +74,42 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.15: 回测结果前端 + 策略验证 + Gate Pipeline (2026-03-28)
+
+**8/8项任务完成，成败标准全部达成。**
+
+**TrD 前端 (3项)**:
+- ✅ BacktestRunner — 进度条+实时ECharts净值+日志流+取消, WS优先+REST fallback
+- ✅ BacktestResults(8Tab) — 8指标卡+净值曲线/月度热力图/持仓/交易明细/WF/风险/因子贡献/对比
+- ✅ StrategyLibrary — 卡片/表格双视图, 筛选+排序, 2策略对比模式
+- `npm run build` PASS: 782 modules, 0 errors
+
+**TrE WebSocket (1项)**:
+- ✅ python-socketio后端 + socket.io-client前端 — 4事件类型(progress/status/nav/log), room管理
+
+**TrB 因子Gate (1项)**:
+- ✅ FactorGatePipeline G1-G8 — G1-G5自动+G6-G8半自动, v1.1五因子全PASS验证一致
+- BH-FDR动态阈值(M=74→t≈3.27), quick_screen()供BruteForce调用
+- 51测试全PASS
+
+**TrA 策略验证 (1项)**:
+- ✅ CompositeStrategy回测(模拟数据) — v1.1+RegimeModifier MDD改善21.6%>5%阈值
+
+**TrC 生产基础 (2项)**:
+- ✅ PT信号回放验证器 — R5 8个gap来源建模, Day20+后运行
+- ✅ structlog JSON日志 — dev/prod自动切换, RotatingFileHandler 10MB×7
+
+**测试**: 857 passed (722→857, +135 new), 0 regressions
+**新依赖**: python-socketio, structlog, socket.io-client
+
+**技术债(Sprint 1.16+)**:
+1. WebSocket未接入backtest_service emit调用点
+2. CompositeStrategy DB完整回测路径待实现
+3. socketio cors="*"生产需收紧
+4. ECharts bundle 1054KB需代码分割
+
+---
 
 ### Sprint 1.14: 回测模块前端 + 因子挖掘Engine1 (2026-03-28)
 
