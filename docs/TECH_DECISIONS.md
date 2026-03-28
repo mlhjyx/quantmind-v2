@@ -82,3 +82,15 @@
 | **RD-Agent** | **借鉴思想(知识森林/联合优化/Co-STEER)，不直接集成(依赖Azure/不支持A股特有约束)** | **借鉴不集成** | Sprint 1.12 |
 | **Warm Start GP** | **用现有5因子做模板初始化GP，结构约束进化(arxiv 2412.00896)，优于随机DEAP** | **KEEP(Step2)** | Sprint 1.12 |
 | **Qlib** | **不集成为执行骨架(A股整手/涨跌停不支持)，但用Alpha158算子集做FactorDSL参考** | **算子参考** | Sprint 1.12 |
+| **shadcn/ui跳过** | **Tailwind v4与shadcn/ui有兼容问题，用自定义Tailwind组件(GlassCard/MetricCard/Button)替代** | **KEEP** | Sprint 1.13 |
+| **FactorClassifier决策树** | **规则简单透明(4条主规则+边界降权)，不用ML分类。R1明确建议保持简单规则** | **KEEP** | Sprint 1.13 |
+| **StrEnum替代str+Enum** | **Python 3.11+ StrEnum更简洁，但Pyright有版本兼容问题(false positives)** | **KEEP(接受Pyright噪音)** | Sprint 1.13 |
+| **RegimeModifier三级fallback** | **HMM→VolRegime→常数1.0，生产安全不崩溃** | **KEEP** | Sprint 1.13 |
+| **CompositeStrategy不拆资金池** | **R3结论:100万下不拆分，Modifier只调权重不选股** | **KEEP** | Sprint 1.13 |
+| **滑点三因素模型** | **tiered_base(大3/中5/小8bps)+impact(Bouchaud)+overnight_gap(R4跳空)，替代固定5bps** | **KEEP** | Sprint 1.14 |
+| **BruteForce 44模板** | **从Alpha158+DESIGN_V5 §4.2提取，覆盖4类(价量/流动性/资金流/基本面)** | **KEEP(Engine1基线)** | Sprint 1.14 |
+| **AST去重L1-L3** | **L1规范化+SHA256 > L2 dump比较 > L3 Spearman相关，比字符串去重准确率高81%(R2)** | **KEEP** | Sprint 1.14 |
+| **Gate Pipeline G1-G5自动+G6-G8半自动** | **FAIL不中断继续输出完整报告，BH-FDR动态阈值M=74→t≈3.27** | **KEEP** | Sprint 1.15 |
+| **WebSocket python-socketio** | **AsyncServer+ASGI挂载，WS优先+REST轮询fallback** | **KEEP** | Sprint 1.15 |
+| **structlog JSON日志** | **dev(ConsoleRenderer)/prod(JSONRenderer)自动切换，RotatingFileHandler 10MB×7** | **KEEP** | Sprint 1.15 |
+| **CompositeStrategy+RegimeModifier** | **模拟数据MDD改善21.6%(>5%阈值)，真实数据验证待DB接入** | **Pending验证** | Sprint 1.15 |

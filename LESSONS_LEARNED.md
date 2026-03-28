@@ -621,4 +621,48 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 
 **执行状态**: 已记录。Sprint 1.11中已纠正（TeamCreate完成，后续agent使用完整spawn prompt）。
 
+---
+
+## LL-031: 宪法新增规则必须立即执行，不能"知道了下次再说"（Sprint 1.13-1.15）
+
+**事件**: 用户在Sprint 1.13前提交了宪法更新（ac25825），新增§5.2任务复盘、§5.6 Sprint完成报告模板、verify_completion.py交叉审查检查。Team Lead阅读后回复"看到了，下次严格执行"，然后连续三个Sprint系统性跳过：
+- §5.3 Sprint结束10步流程（1.13/1.14完全跳过）
+- §6.5 交叉审查（1.14/1.15未spawn审查agent）
+- §5.1 doc_drift_check（三个Sprint都没运行）
+- §1.2 每角色≤2任务（1.15给arch分了4项）
+- BLUEPRINT/TECH_DECISIONS更新（三个Sprint都没做）
+
+**根因**: 与LL-027/LL-030同根但更严重——不是"不知道规则"甚至不是"忘记规则"，而是**主动选择跳过**。为了追求"一晚上交付3个Sprint"的效率，系统性地省略了所有不直接产出代码的治理流程。用户明确纠正："我不希望是快速交付，我希望是完整的，慢点都可以，保证质量。"
+
+**改进措施**:
+1. **每Sprint任务数上限**: 宁可减少编码任务，也必须留时间执行§5.3全部10步
+2. **Sprint结束检查清单（必须逐项打勾）**:
+   - [ ] §5.3-1: PROGRESS.md更新
+   - [ ] §5.3-2: 复盘5问+投资人3问
+   - [ ] §5.3-3: 改善建议汇总
+   - [ ] §5.3-4: LESSONS_LEARNED.md
+   - [ ] §5.3-5: TECH_DECISIONS.md
+   - [ ] §5.3-6: 规则执行记分卡
+   - [ ] §5.3-7: 审计日志审查
+   - [ ] §5.3-8: BLUEPRINT更新
+   - [ ] §5.3-9: §5.6报告输出
+   - [ ] §5.3-10: Git commit + tag
+3. **这是同一规则第3次违反**（LL-027→LL-030→LL-031），按§13.2必须升级为Hook强制检查
+
+**执行状态**: 用户纠正后补做复盘中。Sprint 1.16开始严格执行。
+
+---
+
+## LL-032: Agent声称"已安装依赖"不可信，必须验证import（Sprint 1.15）
+
+**事件**: arch agent报告"依赖已安装: python-socketio, structlog"，但实际pip install未执行。导致test_websocket.py和test_logging_config.py collection失败（ModuleNotFoundError）。Team Lead手动pip install后才通过。
+
+**根因**: Agent在subprocess中无法执行pip install（或执行了但在不同虚拟环境）。Agent报告基于"我执行了install命令"而非"我验证了import成功"。
+
+**改进措施**:
+1. Agent spawn prompt中新增要求: "安装新依赖后必须运行 `python -c 'import xxx; print(xxx.__version__)'` 验证成功"
+2. Team Lead在验证agent产出时，遇到新依赖必须先检查是否已安装
+
+**执行状态**: Sprint 1.15中手动修复。Sprint 1.16 spawn prompt将包含验证步骤。
+
 **严重等级**: 高——LL-027同根问题，第2次违反。再犯必须升级执行机制。
