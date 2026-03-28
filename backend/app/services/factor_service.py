@@ -57,19 +57,19 @@ class FactorService:
             pd.DataFrame: columns=[code, factor_name, value]
             空DataFrame表示无数据
         """
+        # factor_values表是扁平结构: code/trade_date/factor_name/raw_value/neutral_value/zscore
+        # 不需要JOIN factor_registry或symbols（Sprint 1.19集成修复）
         value_col = "neutral_value" if neutralized else "raw_value"
 
         sql = text(
             f"""
-            SELECT s.ts_code AS code,
-                   fr.factor_name,
-                   fv.{value_col} AS value
-            FROM factor_values fv
-            JOIN factor_registry fr ON fv.factor_id = fr.id
-            JOIN symbols s ON fv.symbol_id = s.id
-            WHERE fr.factor_name = :factor_name
-              AND fv.trade_date = :trade_date
-              AND fv.{value_col} IS NOT NULL
+            SELECT code,
+                   factor_name,
+                   {value_col} AS value
+            FROM factor_values
+            WHERE factor_name = :factor_name
+              AND trade_date = :trade_date
+              AND {value_col} IS NOT NULL
             """
         )
         params: dict[str, Any] = {
@@ -80,16 +80,14 @@ class FactorService:
         if codes:
             sql = text(
                 f"""
-                SELECT s.ts_code AS code,
-                       fr.factor_name,
-                       fv.{value_col} AS value
-                FROM factor_values fv
-                JOIN factor_registry fr ON fv.factor_id = fr.id
-                JOIN symbols s ON fv.symbol_id = s.id
-                WHERE fr.factor_name = :factor_name
-                  AND fv.trade_date = :trade_date
-                  AND fv.{value_col} IS NOT NULL
-                  AND s.ts_code = ANY(:codes)
+                SELECT code,
+                       factor_name,
+                       {value_col} AS value
+                FROM factor_values
+                WHERE factor_name = :factor_name
+                  AND trade_date = :trade_date
+                  AND {value_col} IS NOT NULL
+                  AND code = ANY(:codes)
                 """
             )
             params["codes"] = codes
@@ -125,15 +123,17 @@ class FactorService:
             pd.DataFrame: columns=[trade_date, ic_value, factor_name]
             按trade_date升序排列
         """
+        # factor_ic_history存储多周期IC: ic_1d/ic_5d/ic_10d/ic_20d
+        ic_col = {1: "ic_1d", 5: "ic_5d", 10: "ic_10d", 20: "ic_20d"}.get(
+            forward_days, "ic_20d"
+        )
         sql = text(
-            """
-            SELECT fi.trade_date, fi.ic_value, fr.factor_name
-            FROM factor_ic fi
-            JOIN factor_registry fr ON fi.factor_id = fr.id
-            WHERE fr.factor_name = :factor_name
-              AND fi.trade_date BETWEEN :start_date AND :end_date
-              AND fi.forward_days = :forward_days
-            ORDER BY fi.trade_date ASC
+            f"""
+            SELECT trade_date, {ic_col} AS ic_value, factor_name
+            FROM factor_ic_history
+            WHERE factor_name = :factor_name
+              AND trade_date BETWEEN :start_date AND :end_date
+            ORDER BY trade_date ASC
             """
         )
         result = await self._session.execute(
@@ -142,7 +142,6 @@ class FactorService:
                 "factor_name": factor_name,
                 "start_date": start_date,
                 "end_date": end_date,
-                "forward_days": forward_days,
             },
         )
         rows = result.fetchall()
@@ -162,21 +161,21 @@ class FactorService:
         if status:
             sql = text(
                 """
-                SELECT factor_name, category, direction, status,
-                       description, created_at
+                SELECT name, category, direction, status,
+                       hypothesis, created_at
                 FROM factor_registry
                 WHERE status = :status
-                ORDER BY category, factor_name
+                ORDER BY category, name
                 """
             )
             result = await self._session.execute(sql, {"status": status})
         else:
             sql = text(
                 """
-                SELECT factor_name, category, direction, status,
-                       description, created_at
+                SELECT name, category, direction, status,
+                       hypothesis, created_at
                 FROM factor_registry
-                ORDER BY category, factor_name
+                ORDER BY category, name
                 """
             )
             result = await self._session.execute(sql)
@@ -235,16 +234,14 @@ class FactorService:
         sql = text(
             """
             SELECT
-                AVG(fi.ic_value)                  AS ic_mean,
-                STDDEV(fi.ic_value)               AS ic_std,
-                AVG(fi.ic_value) /
-                    NULLIF(STDDEV(fi.ic_value), 0) AS ic_ir,
+                AVG(ic_20d)                       AS ic_mean,
+                STDDEV(ic_20d)                    AS ic_std,
+                AVG(ic_20d) /
+                    NULLIF(STDDEV(ic_20d), 0)     AS ic_ir,
                 COUNT(*)                          AS data_points
-            FROM factor_ic fi
-            JOIN factor_registry fr ON fi.factor_id = fr.id
-            WHERE fr.factor_name = :factor_name
-              AND fi.trade_date BETWEEN :start_date AND :end_date
-              AND fi.forward_days = 20
+            FROM factor_ic_history
+            WHERE factor_name = :factor_name
+              AND trade_date BETWEEN :start_date AND :end_date
             """
         )
         result = await self._session.execute(

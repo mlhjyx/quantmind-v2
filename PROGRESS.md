@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.18完成 — AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank
-> 下一步: Sprint 1.19 (系统设置 + Dashboard增强 + 生产加固)
+> Current: Phase 1, Sprint 1.19集成Sprint进行中 — 阶段1 API修复(factor_service SQL 4处修复, 真实DB验证5474行OK)
+> 下一步: 阶段2 GP真实数据运行 → 阶段3 前端连通
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
