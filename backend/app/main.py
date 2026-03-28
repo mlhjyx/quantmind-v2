@@ -11,12 +11,13 @@ from app.api.dashboard import router as dashboard_router
 from app.api.factors import router as factors_router
 from app.api.health import router as health_router
 from app.api.mining import router as mining_router
-from app.api.pipeline import router as pipeline_router
 from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
+from app.api.pipeline import router as pipeline_router
 from app.api.risk import router as risk_router
 from app.api.strategies import router as strategies_router
+from app.api.system import router as system_router
 from app.config import settings
 from app.db import engine
 from app.logging_config import configure_logging
@@ -59,6 +60,7 @@ app.include_router(factors_router)
 app.include_router(mining_router)
 app.include_router(pipeline_router)
 app.include_router(strategies_router)
+app.include_router(system_router)
 
 
 @app.get("/health")

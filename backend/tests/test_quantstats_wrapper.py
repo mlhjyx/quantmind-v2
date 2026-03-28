@@ -11,6 +11,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import quantstats  # noqa: F401
+    _QS_AVAILABLE = True
+except ImportError:
+    _QS_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _QS_AVAILABLE,
+    reason="quantstats not installed",
+)
+
 
 # ---------------------------------------------------------------------------
 # 辅助: 构造mock日收益率序列（不依赖DB）

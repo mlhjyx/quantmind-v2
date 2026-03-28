@@ -141,24 +141,20 @@ async def _load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFra
             """
             SELECT
                 k.trade_date,
-                s.ts_code AS code,
+                k.code,
                 k.open,
                 k.high,
                 k.low,
                 k.close,
                 k.volume,
                 k.amount,
-                k.turnover_rate,
-                v.pe_ttm,
-                v.pb
+                k.turnover_rate
             FROM klines_daily k
-            JOIN symbols s ON k.symbol_id = s.id
-            LEFT JOIN stock_valuation v
-                ON v.symbol_id = k.symbol_id AND v.trade_date = k.trade_date
+            JOIN symbols s ON k.code = s.code
             WHERE k.trade_date >= $1
-              AND s.market = 'A'
-              AND s.status = 'active'
-            ORDER BY k.trade_date, s.ts_code
+              AND s.market = 'astock'
+              AND s.is_active = true
+            ORDER BY k.trade_date, k.code
             """,
             cutoff,
         )
@@ -180,8 +176,6 @@ async def _load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFra
                 "volume",
                 "amount",
                 "turnover_rate",
-                "pe_ttm",
-                "pb",
             ],
         )
 
@@ -211,18 +205,18 @@ async def _load_existing_factor_data(db_url: str) -> dict[str, pd.Series]:
     try:
         conn = await asyncpg.connect(db_url)
         # 取最近一个截面（最新交易日）的因子值
+        # factor_values 是扁平结构: code/trade_date/factor_name/neutral_value
         rows = await conn.fetch(
             """
-            SELECT fr.factor_name, s.ts_code AS code, fv.factor_value
+            SELECT fv.factor_name, fv.code, fv.neutral_value AS factor_value
             FROM factor_values fv
-            JOIN factor_registry fr ON fr.id = fv.factor_id
-            JOIN symbols s ON s.id = fv.symbol_id
+            JOIN factor_registry fr ON fr.name = fv.factor_name
             WHERE fr.status = 'active'
-              AND fv.calc_date = (
-                  SELECT MAX(calc_date) FROM factor_values fv2
-                  JOIN factor_registry fr2 ON fr2.id = fv2.factor_id
-                  WHERE fr2.factor_name = fr.factor_name AND fr2.status = 'active'
+              AND fv.trade_date = (
+                  SELECT MAX(trade_date) FROM factor_values fv2
+                  WHERE fv2.factor_name = fv.factor_name
               )
+              AND fv.neutral_value IS NOT NULL
             """,
         )
         await conn.close()
@@ -508,12 +502,12 @@ async def _write_to_db(
         await conn.execute(
             """
             INSERT INTO pipeline_runs
-                (run_id, engine, started_at, finished_at, status, config, stats, error_message)
+                (run_id, engine_type, started_at, finished_at, status, config, result_summary, error_message)
             VALUES ($1, 'gp', NOW() - INTERVAL '1 second', NOW(), $2, $3, $4, $5)
             ON CONFLICT (run_id) DO UPDATE SET
                 finished_at = EXCLUDED.finished_at,
                 status = EXCLUDED.status,
-                stats = EXCLUDED.stats,
+                result_summary = EXCLUDED.result_summary,
                 error_message = EXCLUDED.error_message
             """,
             run_id,
@@ -527,9 +521,9 @@ async def _write_to_db(
         for factor in passed_factors:
             await conn.execute(
                 """
-                INSERT INTO approval_queue
+                INSERT INTO gp_approval_queue
                     (run_id, factor_name, factor_expr, ast_hash,
-                     gate_result, status, created_at)
+                     gate_report, status, created_at)
                 VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
                 ON CONFLICT DO NOTHING
                 """,
@@ -655,7 +649,7 @@ async def _run_pipeline_async(args: argparse.Namespace) -> int:
     # 从环境变量读取配置
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     dingtalk_webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
     dingtalk_secret = os.environ.get("DINGTALK_SECRET", "")
@@ -895,7 +889,6 @@ def _setup_logging() -> None:
     structlog.configure(
         processors=[
             structlog.stdlib.add_log_level,
-            structlog.stdlib.add_logger_name,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,

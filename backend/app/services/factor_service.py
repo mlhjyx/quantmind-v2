@@ -161,8 +161,8 @@ class FactorService:
         if status:
             sql = text(
                 """
-                SELECT name, category, direction, status,
-                       hypothesis, created_at
+                SELECT name AS factor_name, category, direction, status,
+                       hypothesis AS description, created_at
                 FROM factor_registry
                 WHERE status = :status
                 ORDER BY category, name
@@ -172,8 +172,8 @@ class FactorService:
         else:
             sql = text(
                 """
-                SELECT name, category, direction, status,
-                       hypothesis, created_at
+                SELECT name AS factor_name, category, direction, status,
+                       hypothesis AS description, created_at
                 FROM factor_registry
                 ORDER BY category, name
                 """

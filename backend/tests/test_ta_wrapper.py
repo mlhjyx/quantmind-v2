@@ -7,6 +7,17 @@
 import numpy as np
 import pytest
 
+try:
+    import talib  # noqa: F401
+    _TALIB_AVAILABLE = True
+except ImportError:
+    _TALIB_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _TALIB_AVAILABLE,
+    reason="TA-Lib C library not installed",
+)
+
 
 # ---------------------------------------------------------------------------
 # 辅助: 构造mock OHLCV价格数据

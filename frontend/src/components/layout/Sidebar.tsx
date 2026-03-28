@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { NotificationPanel } from "@/components/ui/NotificationPanel";
 
 interface NavItem {
   label: string;
@@ -58,17 +59,21 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         collapsed ? "w-14" : "w-[180px]",
       ].join(" ")}
     >
-      {/* Logo */}
-      <div
-        className="flex items-center gap-2 px-3 py-4 cursor-pointer shrink-0"
-        onClick={() => navigate("/dashboard")}
-      >
-        <span className="text-xl shrink-0">⚡</span>
-        {!collapsed && (
-          <span className="text-sm font-bold text-white truncate">
-            QuantMind
-          </span>
-        )}
+      {/* Logo + Bell */}
+      <div className="flex items-center justify-between px-3 py-4 shrink-0">
+        <div
+          className="flex items-center gap-2 cursor-pointer min-w-0"
+          onClick={() => navigate("/dashboard")}
+        >
+          <span className="text-xl shrink-0">⚡</span>
+          {!collapsed && (
+            <span className="text-sm font-bold text-white truncate">
+              QuantMind
+            </span>
+          )}
+        </div>
+        {/* Bell icon — visible in both states */}
+        <NotificationPanel />
       </div>
 
       {/* Market switcher */}

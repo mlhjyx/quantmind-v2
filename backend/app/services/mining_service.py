@@ -79,7 +79,7 @@ class MiningService:
         running_check = await self._session.execute(
             text(
                 "SELECT run_id FROM pipeline_runs "
-                "WHERE engine = :engine AND status = 'running' "
+                "WHERE engine_type = :engine AND status = 'running' "
                 "LIMIT 1"
             ),
             {"engine": engine},
@@ -101,7 +101,7 @@ class MiningService:
                 text(
                     """
                     INSERT INTO pipeline_runs
-                        (run_id, engine, started_at, status, config)
+                        (run_id, engine_type, started_at, status, config)
                     VALUES
                         (:run_id, :engine, NOW(), 'running', :config)
                     """
@@ -171,7 +171,7 @@ class MiningService:
         params: dict[str, Any] = {"limit": limit}
 
         if engine:
-            where_clauses.append("engine = :engine")
+            where_clauses.append("engine_type = :engine")
             params["engine"] = engine
         if status:
             where_clauses.append("status = :status")
@@ -182,8 +182,8 @@ class MiningService:
         rows = await self._session.execute(
             text(
                 f"""
-                SELECT run_id, engine, status, started_at, finished_at,
-                       config, stats, error_message
+                SELECT run_id, engine_type, status, started_at, finished_at,
+                       config, result_summary, error_message
                 FROM pipeline_runs
                 {where_sql}
                 ORDER BY started_at DESC
@@ -230,8 +230,8 @@ class MiningService:
         row = await self._session.execute(
             text(
                 """
-                SELECT run_id, engine, status, started_at, finished_at,
-                       config, stats, error_message
+                SELECT run_id, engine_type, status, started_at, finished_at,
+                       config, result_summary, error_message
                 FROM pipeline_runs
                 WHERE config->>'celery_task_id' = :task_id
                    OR run_id = :task_id
@@ -251,9 +251,8 @@ class MiningService:
             text(
                 """
                 SELECT id, factor_name, factor_expr, ast_hash,
-                       gate_result, sharpe_1y, sharpe_5y,
-                       status, created_at
-                FROM approval_queue
+                       gate_report, status, created_at
+                FROM gp_approval_queue
                 WHERE run_id = :run_id
                 ORDER BY created_at ASC
                 """
@@ -262,18 +261,16 @@ class MiningService:
         )
         candidates = []
         for c in cands_rows.fetchall():
-            cid, fname, fexpr, ahash, gate_r, s1y, s5y, cstatus, cat = c
+            cid, fname, fexpr, ahash, gate_r, cstatus, cat = c
             candidates.append(
                 {
                     "id": cid,
                     "factor_name": fname,
                     "factor_expr": fexpr,
                     "ast_hash": ahash,
-                    "gate_result": gate_r
+                    "gate_report": gate_r
                     if isinstance(gate_r, dict)
                     else (json.loads(gate_r) if gate_r else {}),
-                    "sharpe_1y": float(s1y) if s1y is not None else None,
-                    "sharpe_5y": float(s5y) if s5y is not None else None,
                     "status": cstatus,
                     "created_at": cat.isoformat() if cat else None,
                 }

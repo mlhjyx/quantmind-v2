@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.19集成Sprint进行中 — 阶段1 API修复(factor_service SQL 4处修复, 真实DB验证5474行OK)
-> 下一步: 阶段2 GP真实数据运行 → 阶段3 前端连通
+> Current: Phase 1, Sprint 1.19 ✅ 全部完成(7/7正式任务+3阶段集成) — 1523 tests passed
+> 下一步: Sprint 1.20
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
@@ -74,6 +74,50 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.19: 集成Sprint — 模块堆叠→系统可用 (2026-03-28)
+
+**阶段1-3全部完成。LL-033教训实践。**
+
+**阶段1: API修复 ✅**:
+- factor_service SQL: factor_name→name, description→hypothesis, factor_ic→factor_ic_history, 去掉多余JOIN
+- 真实DB验证: get_factor_values返回5474行reversal_20数据
+
+**阶段2: GP真实数据集成 ✅**:
+- run_gp_pipeline.py SQL修复: klines_daily JOIN改code-based, market='astock', 去stock_valuation
+- factor_values查询: 改扁平结构(code/trade_date/factor_name)
+- structlog配置: 移除add_logger_name(与PrintLoggerFactory不兼容)
+- DB URL: 改为quantmind_v2
+- 真实数据: 1,311,878行行情, 5490股票加载成功
+
+**阶段3: 前端→后端API连通 ✅**:
+- mining_service SQL: engine→engine_type, stats→result_summary, approval_queue→gp_approval_queue
+- DB补全: 创建pipeline_runs+gp_approval_queue表, 注册5个v1.1因子到factor_registry
+- API验证: factors(5因子)/health/mining/PT(NAV=995,337)/dashboard全通
+
+**测试修复(62个失败→0)**:
+- test_gp_pipeline: __wrapped__签名(去掉多余MagicMock self)
+- test_factor_api+test_mining_api: patch改dependency_overrides(FastAPI Depends兼容)
+- test_ta_wrapper+test_quantstats_wrapper: 添加skipif(可选依赖TA-Lib/quantstats)
+
+**正式任务 T1-T7 (2026-03-28完成)**:
+- ✅ T1: SystemSettings 5-Tab页面 (系统设置/DingTalk/调度器/健康/偏好) — 648行
+- ✅ T2: DashboardOverview增强 (市场快照/行业分布饼图/月度热力图) — 388行
+- ✅ T3: DashboardAstock子视图 (7KPI卡/净值曲线/行业分布/月度热力图/快速操作) — 599行
+- ✅ T4: 通知系统前端 (NotificationContext+Toast+NotificationPanel+Layout集成) — 458行
+- ✅ T5: 系统API路由 (datasources/health/scheduler 3端点+13测试) — system.py
+- ✅ T6: NSSM服务化 (FastAPI+Celery自动重启) — nssm_setup.ps1
+- ✅ T7: PG备份自动化 (pg_backup.py+verify_backup.py+register) — 3脚本+20测试
+
+**修复**:
+- conftest.py: 添加项目根目录到sys.path (scripts.run_gp_pipeline可import)
+- mining_service: engine→engine_type, stats→result_summary, approval_queue→gp_approval_queue
+- 65个测试失败→0 (dependency_overrides/wrapped签名/依赖安装)
+
+**测试**: 1523 passed, 1 xfailed, 0 failures
+**前端**: TypeScript 0 errors, DashboardAstock 599行, 通知系统4文件
+
+---
 
 ### Sprint 1.18: AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank (2026-03-28)
 

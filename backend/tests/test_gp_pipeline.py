@@ -85,7 +85,6 @@ class TestBruteforceMiningTask:
             with patch("asyncio.run"):
                 # 直接调用底层函数（绕过Celery装饰器）
                 result = run_bruteforce_mining.__wrapped__(
-                    MagicMock(),  # self (Celery task)
                     run_id="bf_test_001",
                     config={"generations": 10},
                 )
@@ -97,7 +96,6 @@ class TestBruteforceMiningTask:
         """run_bruteforce_mining 应调用 _mark_run_failed 标记任务失败。"""
         with patch("asyncio.run") as mock_run:
             run_bruteforce_mining.__wrapped__(
-                MagicMock(),
                 run_id="bf_fail_001",
                 config={},
             )
@@ -455,7 +453,6 @@ class TestRunGPMiningTask:
             ),pytest.raises(RuntimeError, match="GP内部错误")
         ):
             run_gp_mining.__wrapped__(
-                MagicMock(),
                 run_id="gp_exc_test",
                 config={"generations": 5},
             )

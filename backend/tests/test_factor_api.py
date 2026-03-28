@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pandas as pd
 import pytest
 
 try:
     from fastapi.testclient import TestClient
-    from app.api.factors import _calc_t_stat, router
+    from app.api.factors import _calc_t_stat, _get_factor_service, router
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
@@ -74,19 +74,17 @@ _MOCK_IC_DF = pd.DataFrame(
 
 
 def _build_mock_service(**overrides: Any) -> AsyncMock:
-    """构建带默认返回值的 FactorService mock。
-
-    Args:
-        **overrides: 覆盖特定方法的返回值。
-
-    Returns:
-        AsyncMock: FactorService mock实例。
-    """
+    """构建带默认返回值的 FactorService mock。"""
     svc = AsyncMock()
     svc.get_factor_list = AsyncMock(return_value=overrides.get("factor_list", _MOCK_FACTOR_LIST))
     svc.get_factor_stats = AsyncMock(return_value=overrides.get("stats", _MOCK_STATS))
     svc.get_factor_ic = AsyncMock(return_value=overrides.get("ic_df", _MOCK_IC_DF))
     return svc
+
+
+def _inject(app: Any, svc: AsyncMock) -> None:
+    """通过 dependency_overrides 注入 mock FactorService。"""
+    app.dependency_overrides[_get_factor_service] = lambda: svc
 
 
 # ---------------------------------------------------------------------------
@@ -95,13 +93,15 @@ def _build_mock_service(**overrides: Any) -> AsyncMock:
 
 
 @pytest.fixture()
-def client() -> TestClient:
-    """返回带 factors router 的 TestClient。"""
+def app_client():
+    """返回 (app, client)，测试结束后清理 dependency_overrides。"""
     from fastapi import FastAPI
 
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False)
+    yield app, client
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -112,20 +112,22 @@ def client() -> TestClient:
 class TestListFactors:
     """GET /api/factors 测试。"""
 
-    def test_returns_200_with_list(self, client: TestClient) -> None:
+    def test_returns_200_with_list(self, app_client) -> None:
         """正常请求返回200和因子列表。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors")
+        _inject(app, svc)
+        resp = client.get("/api/factors")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
-    def test_list_contains_expected_fields(self, client: TestClient) -> None:
+    def test_list_contains_expected_fields(self, app_client) -> None:
         """每个因子项包含必要字段。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors")
+        _inject(app, svc)
+        resp = client.get("/api/factors")
         data = resp.json()
         if data:
             item = data[0]
@@ -135,19 +137,21 @@ class TestListFactors:
             assert "ic_mean" in item
             assert "ic_ir" in item
 
-    def test_filter_by_status(self, client: TestClient) -> None:
+    def test_filter_by_status(self, app_client) -> None:
         """status参数应传递给 FactorService。"""
+        app, client = app_client
         svc = _build_mock_service(factor_list=[_MOCK_FACTOR_LIST[0]])
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors?status=active")
+        _inject(app, svc)
+        resp = client.get("/api/factors?status=active")
         assert resp.status_code == 200
         svc.get_factor_list.assert_called_once_with(status="active")
 
-    def test_filter_by_category(self, client: TestClient) -> None:
+    def test_filter_by_category(self, app_client) -> None:
         """category参数应过滤结果。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors?category=liquidity")
+        _inject(app, svc)
+        resp = client.get("/api/factors?category=liquidity")
         assert resp.status_code == 200
         data = resp.json()
         assert all(item["category"] == "liquidity" for item in data)
@@ -161,38 +165,42 @@ class TestListFactors:
 class TestFactorsHealth:
     """GET /api/factors/health 测试。"""
 
-    def test_returns_200(self, client: TestClient) -> None:
+    def test_returns_200(self, app_client) -> None:
         """健康度端点返回200。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/health")
+        _inject(app, svc)
+        resp = client.get("/api/factors/health")
         assert resp.status_code == 200
 
-    def test_response_structure(self, client: TestClient) -> None:
+    def test_response_structure(self, app_client) -> None:
         """响应包含 as_of/active_count/factors 字段。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/health")
+        _inject(app, svc)
+        resp = client.get("/api/factors/health")
         data = resp.json()
         assert "as_of" in data
         assert "active_count" in data
         assert "factors" in data
         assert isinstance(data["factors"], list)
 
-    def test_active_count_matches_active_factors(self, client: TestClient) -> None:
+    def test_active_count_matches_active_factors(self, app_client) -> None:
         """active_count 应等于 active 因子数量。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            svc.get_factor_list = AsyncMock(return_value=_MOCK_FACTOR_LIST)
-            resp = client.get("/api/factors/health")
+        svc.get_factor_list = AsyncMock(return_value=_MOCK_FACTOR_LIST)
+        _inject(app, svc)
+        resp = client.get("/api/factors/health")
         data = resp.json()
         assert data["active_count"] == len(_MOCK_FACTOR_LIST)
 
-    def test_factor_health_has_decay_warning_field(self, client: TestClient) -> None:
+    def test_factor_health_has_decay_warning_field(self, app_client) -> None:
         """每个因子健康记录包含 decay_warning 字段。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/health")
+        _inject(app, svc)
+        resp = client.get("/api/factors/health")
         data = resp.json()
         for item in data.get("factors", []):
             assert "decay_warning" in item
@@ -207,28 +215,31 @@ class TestFactorsHealth:
 class TestFactorCorrelation:
     """GET /api/factors/correlation 测试。"""
 
-    def test_returns_200(self, client: TestClient) -> None:
+    def test_returns_200(self, app_client) -> None:
         """相关性矩阵端点返回200。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/correlation")
+        _inject(app, svc)
+        resp = client.get("/api/factors/correlation")
         assert resp.status_code == 200
 
-    def test_response_structure(self, client: TestClient) -> None:
+    def test_response_structure(self, app_client) -> None:
         """响应包含 factor_names/matrix/period 字段。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/correlation")
+        _inject(app, svc)
+        resp = client.get("/api/factors/correlation")
         data = resp.json()
         assert "factor_names" in data
         assert "matrix" in data
         assert "period" in data
 
-    def test_matrix_is_square(self, client: TestClient) -> None:
+    def test_matrix_is_square(self, app_client) -> None:
         """相关性矩阵应是方阵。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/correlation")
+        _inject(app, svc)
+        resp = client.get("/api/factors/correlation")
         data = resp.json()
         names = data["factor_names"]
         matrix = data["matrix"]
@@ -236,21 +247,23 @@ class TestFactorCorrelation:
             assert len(matrix) == len(names)
             assert all(len(row) == len(names) for row in matrix)
 
-    def test_diagonal_is_one(self, client: TestClient) -> None:
+    def test_diagonal_is_one(self, app_client) -> None:
         """相关性矩阵对角线应为1.0。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/correlation")
+        _inject(app, svc)
+        resp = client.get("/api/factors/correlation")
         data = resp.json()
         matrix = data["matrix"]
         for i, row in enumerate(matrix):
             assert abs(row[i] - 1.0) < 1e-9, f"对角线[{i},{i}]={row[i]}，应为1.0"
 
-    def test_empty_factors_returns_empty_matrix(self, client: TestClient) -> None:
+    def test_empty_factors_returns_empty_matrix(self, app_client) -> None:
         """无因子时返回空矩阵。"""
+        app, client = app_client
         svc = _build_mock_service(factor_list=[])
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/correlation")
+        _inject(app, svc)
+        resp = client.get("/api/factors/correlation")
         data = resp.json()
         assert data["factor_names"] == []
         assert data["matrix"] == []
@@ -264,34 +277,38 @@ class TestFactorCorrelation:
 class TestGetFactorDetail:
     """GET /api/factors/{name} 测试。"""
 
-    def test_returns_200_for_existing_factor(self, client: TestClient) -> None:
+    def test_returns_200_for_existing_factor(self, app_client) -> None:
         """存在的因子返回200。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20")
         assert resp.status_code == 200
 
-    def test_returns_404_for_missing_factor(self, client: TestClient) -> None:
+    def test_returns_404_for_missing_factor(self, app_client) -> None:
         """不存在的因子返回404。"""
+        app, client = app_client
         svc = _build_mock_service(factor_list=[])
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/nonexistent_factor")
+        _inject(app, svc)
+        resp = client.get("/api/factors/nonexistent_factor")
         assert resp.status_code == 404
 
-    def test_response_has_ic_series(self, client: TestClient) -> None:
+    def test_response_has_ic_series(self, app_client) -> None:
         """响应包含ic_series列表。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20")
         data = resp.json()
         assert "ic_series" in data
         assert isinstance(data["ic_series"], list)
 
-    def test_response_has_stats(self, client: TestClient) -> None:
+    def test_response_has_stats(self, app_client) -> None:
         """响应包含stats字段（ic_mean/ic_ir/t_stat）。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20")
         data = resp.json()
         assert "stats" in data
         stats = data["stats"]
@@ -299,11 +316,12 @@ class TestGetFactorDetail:
         assert "ic_ir" in stats
         assert "t_stat" in stats
 
-    def test_ic_series_dates_are_strings(self, client: TestClient) -> None:
+    def test_ic_series_dates_are_strings(self, app_client) -> None:
         """ic_series中每项的trade_date应是字符串（JSON可序列化）。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20")
         data = resp.json()
         for item in data.get("ic_series", []):
             assert isinstance(item["trade_date"], str)
@@ -317,25 +335,28 @@ class TestGetFactorDetail:
 class TestGetFactorReport:
     """GET /api/factors/{name}/report 测试。"""
 
-    def test_returns_200(self, client: TestClient) -> None:
+    def test_returns_200(self, app_client) -> None:
         """评估报告端点返回200。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20/report")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20/report")
         assert resp.status_code == 200
 
-    def test_returns_404_for_missing_factor(self, client: TestClient) -> None:
+    def test_returns_404_for_missing_factor(self, app_client) -> None:
         """不存在的因子返回404。"""
+        app, client = app_client
         svc = _build_mock_service(factor_list=[])
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/bad_factor/report")
+        _inject(app, svc)
+        resp = client.get("/api/factors/bad_factor/report")
         assert resp.status_code == 404
 
-    def test_report_has_six_tab_sections(self, client: TestClient) -> None:
+    def test_report_has_six_tab_sections(self, app_client) -> None:
         """报告包含6 Tab所需的所有字段。"""
+        app, client = app_client
         svc = _build_mock_service()
-        with patch("app.api.factors._get_factor_service", return_value=svc):
-            resp = client.get("/api/factors/turnover_mean_20/report")
+        _inject(app, svc)
+        resp = client.get("/api/factors/turnover_mean_20/report")
         data = resp.json()
         assert "overview" in data
         assert "ic_analysis" in data

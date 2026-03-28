@@ -10,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
-# 确保backend目录在sys.path中
+# 确保backend目录和项目根目录在sys.path中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 try:
     import pytest_asyncio
