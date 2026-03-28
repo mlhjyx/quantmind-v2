@@ -666,3 +666,27 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 **执行状态**: Sprint 1.15中手动修复。Sprint 1.16 spawn prompt将包含验证步骤。
 
 **严重等级**: 高——LL-027同根问题，第2次违反。再犯必须升级执行机制。
+
+---
+
+## LL-033: 模块堆叠≠系统完成——每Sprint必须端到端集成验证（Sprint 1.13-1.18）
+
+**事件**: Sprint 1.13-1.18连续6个Sprint产出了1361个测试、88% BLUEPRINT完成度、全栈12页面+Pipeline+GP+SHAP。但安装fastapi后发现Factor API返回500（factor_registry列名不匹配），暴露出严重的集成问题：
+- 前端全部使用mock数据，没有一个页面连通真实后端API
+- PipelineOrchestrator只在内存模式测试（conn=None）
+- GP Engine从未在真实A股数据上运行
+- WebSocket挂载了但没有调用方emit
+- SHAP/lambdarank没有用真实LightGBM模型测试
+
+用户指出："不要功能都有了，但是功能之间的协同没有。不希望是摆设。"
+
+**根因**: 每个Sprint的agent只做单元测试验证自己的模块，从未启动完整服务栈（FastAPI+PG+Redis）验证模块间协同。BLUEPRINT完成度统计的是"文件存在"，不是"端到端可用"。Team Lead追求Sprint数量而非集成质量。
+
+**改进措施**:
+1. **每个Sprint必须包含集成验证任务**: 启动FastAPI+PG → 调用API → 验证响应（不是只跑pytest）
+2. **前端开发后必须至少1个页面连通真实API验证**（不能全mock）
+3. **新引擎/Pipeline必须用真实数据跑一次**（哪怕小样本100只×30天）
+4. **BLUEPRINT区分"文件存在度"和"端到端可用度"两列**
+5. **Sprint 1.19定为集成Sprint**: 不加新功能，专门修复集成问题
+
+**执行状态**: 用户2026-03-28指出。Sprint 1.19将作为集成Sprint执行。
