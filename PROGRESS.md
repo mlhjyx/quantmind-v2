@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.19 ✅ 全部完成(7/7正式任务+3阶段集成) — 1523 tests passed
-> 下一步: Sprint 1.20
+> Last updated: 2026-03-28 (Sprint 1.19 ✅ complete)
+> Current: Phase 1, Sprint 1.19 ✅ 全部完成(7/7正式任务+3阶段集成) — 1523 tests passed, 0 failures
+> 下一步: Sprint 1.20 — 回测引擎完善/因子审批链/PT监控校准
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无

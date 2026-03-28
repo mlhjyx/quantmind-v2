@@ -98,6 +98,21 @@ export function useNotifWebSocket() {
 // ─────────────────────────────────────────────
 // Notification center dropdown
 // ─────────────────────────────────────────────
+function groupByDay(items: ReturnType<typeof useNotifications>["notifications"]) {
+  const groups: { label: string; items: typeof items }[] = [];
+  const map = new Map<string, typeof items>();
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  for (const n of items) {
+    const d = new Date(n.created_at);
+    const key = d.toDateString();
+    const label = key === today ? "今天" : key === yesterday ? "昨天" : d.toLocaleDateString("zh-CN");
+    if (!map.has(label)) { map.set(label, []); groups.push({ label, items: map.get(label)! }); }
+    map.get(label)!.push(n);
+  }
+  return groups;
+}
+
 function NotificationDropdown({ onClose }: { onClose: () => void }) {
   const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
   const navigate = useNavigate();
@@ -109,6 +124,8 @@ function NotificationDropdown({ onClose }: { onClose: () => void }) {
       onClose();
     }
   }
+
+  const groups = groupByDay(notifications);
 
   return (
     <div
@@ -143,7 +160,7 @@ function NotificationDropdown({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* List */}
+      {/* List grouped by day */}
       <div className="max-h-96 overflow-y-auto">
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-500">
@@ -151,55 +168,48 @@ function NotificationDropdown({ onClose }: { onClose: () => void }) {
             <p className="text-sm">暂无通知</p>
           </div>
         ) : (
-          <div className="divide-y divide-white/5">
-            {notifications.map((n) => {
-              const s = LEVEL_STYLES[n.level];
-              return (
-                <div
-                  key={n.id}
-                  onClick={() => handleItemClick(n.id, n.link)}
-                  className={[
-                    "px-4 py-3 transition-colors",
-                    n.link ? "cursor-pointer hover:bg-white/5" : "hover:bg-white/3",
-                    !n.is_read ? "bg-white/[0.03]" : "",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div
-                      className={[
-                        "w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0",
-                        n.is_read ? "bg-white/15" : s.dot,
-                      ].join(" ")}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[10px] font-bold ${s.label}`}>
-                          {n.level}
-                        </span>
-                        <span className="text-[10px] text-slate-500">{n.category}</span>
-                        {!n.is_read && (
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
-                        )}
-                      </div>
-                      <p className={[
-                        "text-xs font-medium leading-tight",
-                        n.is_read ? "text-slate-400" : "text-slate-200",
-                      ].join(" ")}>
-                        {n.title}
-                      </p>
-                      {n.content && (
-                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">
-                          {n.content}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-slate-600 mt-1">
-                        {formatRelative(n.created_at)}
-                      </p>
-                    </div>
-                  </div>
+          <div>
+            {groups.map((group) => (
+              <div key={group.label}>
+                <div className="px-4 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider bg-white/[0.02] border-b border-white/5">
+                  {group.label}
                 </div>
-              );
-            })}
+                <div className="divide-y divide-white/5">
+                  {group.items.map((n) => {
+                    const s = LEVEL_STYLES[n.level];
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => handleItemClick(n.id, n.link)}
+                        className={[
+                          "px-4 py-3 transition-colors",
+                          n.link ? "cursor-pointer hover:bg-white/5" : "hover:bg-white/3",
+                          !n.is_read ? "bg-white/[0.03]" : "",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className={["w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", n.is_read ? "bg-white/15" : s.dot].join(" ")} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className={`text-[10px] font-bold ${s.label}`}>{n.level}</span>
+                              <span className="text-[10px] text-slate-500">{n.category}</span>
+                              {!n.is_read && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />}
+                            </div>
+                            <p className={["text-xs font-medium leading-tight", n.is_read ? "text-slate-400" : "text-slate-200"].join(" ")}>
+                              {n.title}
+                            </p>
+                            {n.content && (
+                              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">{n.content}</p>
+                            )}
+                            <p className="text-[10px] text-slate-600 mt-1">{formatRelative(n.created_at)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
