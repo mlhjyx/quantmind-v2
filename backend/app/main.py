@@ -12,6 +12,7 @@ from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
 from app.api.risk import router as risk_router
+from app.api.factors import router as factors_router
 from app.api.strategies import router as strategies_router
 from app.config import settings
 from app.db import engine
@@ -50,6 +51,7 @@ app.include_router(notifications_router)
 app.include_router(paper_trading_router)
 app.include_router(params_router)
 app.include_router(risk_router)
+app.include_router(factors_router)
 app.include_router(strategies_router)
 
 

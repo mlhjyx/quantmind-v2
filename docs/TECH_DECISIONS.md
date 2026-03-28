@@ -94,3 +94,8 @@
 | **WebSocket python-socketio** | **AsyncServer+ASGI挂载，WS优先+REST轮询fallback** | **KEEP** | Sprint 1.15 |
 | **structlog JSON日志** | **dev(ConsoleRenderer)/prod(JSONRenderer)自动切换，RotatingFileHandler 10MB×7** | **KEEP** | Sprint 1.15 |
 | **CompositeStrategy+RegimeModifier** | **模拟数据MDD改善21.6%(>5%阈值)，真实数据验证待DB接入** | **Pending验证** | Sprint 1.15 |
+| **FactorDSL 28算子** | **时序11+截面3+单目6+双目6+时序双目2，Qlib Alpha158兼容，量纲约束** | **KEEP** | Sprint 1.16 |
+| **GP Warm Start** | **5因子模板→变体初始化80%种群+20%随机，岛屿模型环形迁移** | **KEEP** | Sprint 1.16 |
+| **GP适应度IC_IR代理** | **IC_IR×(1-complexity)+novelty，替代SimBroker(需PG连接+2秒/次)，相关>0.85** | **KEEP(暂代)** | Sprint 1.16 |
+| **逻辑/参数分离** | **GP进化算子组合，Optuna TPE优化窗口参数，R2 P0改进** | **KEEP** | Sprint 1.16 |
+| **QuickBacktester** | **简化回测(无滑点/整手)，月度等权Top15，<2秒/因子，GP适应度用** | **KEEP** | Sprint 1.16 |

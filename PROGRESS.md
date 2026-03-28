@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.15完成 — 回测结果前端 + 策略验证 + Gate Pipeline
-> 下一步: Sprint 1.16 (因子模块前端 + GP最小闭环核心)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅
+> Current: Phase 1, Sprint 1.16完成 — 因子模块前端 + GP最小闭环核心 (Step 2完成)
+> 下一步: Sprint 1.17 (因子挖掘前端 + GP闭环自动化 + LLM基础)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -75,6 +75,38 @@
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
 
+### Sprint 1.16: 因子模块前端 + GP最小闭环核心 (2026-03-28)
+
+**7/7项任务完成，Step 2核心Sprint。§5.3全流程执行。**
+
+**TrD 前端 (2项)**:
+- ✅ FactorLibrary — 因子表格(排序/筛选)+健康度面板(ECharts donut+IC趋势)+相关性热力图
+- ✅ FactorEvaluation(6Tab) — IC分析/分组收益/IC衰减/相关性/分年度/分市场状态
+- 793 modules, build PASS
+
+**TrE Factor API (1项)**:
+- ✅ 5端点: factors/health/correlation/{name}/{name}/report, 注册到main.py
+
+**TrB GP最小闭环 (3项，Step 2核心)**:
+- ✅ FactorDSL — 28算子(时序11+截面3+单目6+双目6+时序双目2), 表达式树, 量纲约束, 逻辑/参数分离
+- ✅ GP Engine — DEAP集成, Warm Start(5因子模板→变体), 岛屿模型(环形迁移), 适应度=IC_IR×(1-complexity)+novelty
+- ✅ QuickBacktester — 简化回测(<2秒/因子), 月度等权Top15, 21测试pass
+
+**§6.5 交叉审查**:
+- ✅ qa-tester: 160新测试(DSL 85+GP 55+QuickBT补充20), 160/160 PASS
+- QA发现: GP seed_ratio=0.0未validate(P1), 单截面IC std硬编码(P1), 岛屿warm部分相同(P2)
+
+**测试**: 1129 passed (857→1129, +272 new), 0 regressions
+
+**技术债(Sprint 1.17+)**:
+1. GP适应度用IC_IR代理(非SimBroker Sharpe)，QuickBacktester DB接口后替换
+2. 单截面ic_std=0.01硬编码(P1)
+3. Warm Start岛屿间种子变体相同(P2)
+4. Factor API批量查询优化(N+1问题)
+5. Warm Start真实数据验证（合成数据不占优是预期内的）
+
+---
+
 ### Sprint 1.15: 回测结果前端 + 策略验证 + Gate Pipeline (2026-03-28)
 
 **8/8项任务完成，成败标准全部达成。**
@@ -108,6 +140,31 @@
 2. CompositeStrategy DB完整回测路径待实现
 3. socketio cors="*"生产需收紧
 4. ECharts bundle 1054KB需代码分割
+
+### Sprint 1.13-1.15 复盘补做 (2026-03-28)
+
+**§5.3 Sprint结束10步流程补做**:
+- ✅ Step 1: PROGRESS.md更新
+- ✅ Step 2: 复盘5问+投资人3问（已在本session输出）
+- ✅ Step 3: 改善建议汇总（6项，含P0/P1/P2优先级）
+- ✅ Step 4: LL-031(宪法规则必须立即执行) + LL-032(agent依赖验证)写入LESSONS_LEARNED
+- ⬜ Step 5: TECH_DECISIONS.md — 待补
+- ✅ Step 6: 规则执行记分卡（已在复盘中输出）
+- ✅ Step 7: 审计日志审查（500行, 11次agent spawn, 191次edit/write, 1次拦截）
+- ⬜ Step 8: BLUEPRINT更新 — 待补
+- ⬜ Step 9: §5.6报告 — 1.15已输出，1.13/1.14待补
+- ⬜ Step 10: Git tags — 待补
+
+**Harness升级（用户确认后执行）**:
+- ✅ `audit_log.py`: Agent记录格式升级为 `[subagent_type] description`
+- ✅ `verify_completion.py`: 铁律6 + §6.5 从提醒(exit 0)升级为阻断(exit 2)
+- ✅ `settings.json`: Stop hook timeout 5s→10s
+- ✅ `TEAM_CHARTER §13.4`: 新增"已升级为阻断的规则"表格
+- ✅ `LL-031`: 执行状态更新为已升级
+
+**微信MCP工具安装（进行中）**:
+- ✅ wexin-read-mcp server注册（3个tool: read/search/account）
+- ⬜ Playwright chromium浏览器下载中（172MB）
 
 ---
 

@@ -1,34 +1,182 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
+import FactorTable from "@/components/factor/FactorTable";
+import HealthPanel from "@/components/factor/HealthPanel";
+import CorrelationHeatmap from "@/components/factor/CorrelationHeatmap";
+import {
+  getFactorLibrary,
+  getFactorLibraryStats,
+  getFactorCorrelation,
+  getFactorICTrends,
+  triggerHealthCheck,
+  triggerCorrelationPrune,
+} from "@/api/factors";
+import {
+  MOCK_FACTOR_LIBRARY,
+  MOCK_FACTOR_STATS,
+  MOCK_FACTOR_CORRELATION,
+  MOCK_IC_TRENDS,
+} from "@/api/mockFactors";
+import type { FactorSummary } from "@/api/factors";
+
+const STATUS_STAT_COLORS: Record<string, string> = {
+  active:   "text-green-400",
+  new:      "text-blue-400",
+  degraded: "text-yellow-400",
+  retired:  "text-red-400",
+};
+
+type ActivePanel = "table" | "health" | "correlation";
 
 export default function FactorLibrary() {
+  const [activePanel, setActivePanel] = useState<ActivePanel>("table");
+  const [healthCheckLoading, setHealthCheckLoading] = useState(false);
+  const [pruneLoading, setPruneLoading] = useState(false);
+
+  const { data: factors = MOCK_FACTOR_LIBRARY, isLoading: factorsLoading } = useQuery({
+    queryKey: ["factor-library"],
+    queryFn: getFactorLibrary,
+    retry: 1,
+    placeholderData: MOCK_FACTOR_LIBRARY,
+  });
+
+  const { data: stats = MOCK_FACTOR_STATS } = useQuery({
+    queryKey: ["factor-library-stats"],
+    queryFn: getFactorLibraryStats,
+    retry: 1,
+    placeholderData: MOCK_FACTOR_STATS,
+  });
+
+  const { data: correlation = MOCK_FACTOR_CORRELATION, isLoading: corrLoading } = useQuery({
+    queryKey: ["factor-correlation"],
+    queryFn: getFactorCorrelation,
+    retry: 1,
+    placeholderData: MOCK_FACTOR_CORRELATION,
+    enabled: activePanel === "correlation",
+  });
+
+  const { data: icTrends = MOCK_IC_TRENDS, isLoading: trendsLoading } = useQuery({
+    queryKey: ["factor-ic-trends"],
+    queryFn: getFactorICTrends,
+    retry: 1,
+    placeholderData: MOCK_IC_TRENDS,
+    enabled: activePanel === "health",
+  });
+
+  async function handleHealthCheck() {
+    setHealthCheckLoading(true);
+    try { await triggerHealthCheck(); } catch { /* fallback ok */ }
+    setHealthCheckLoading(false);
+  }
+
+  async function handleCorrelationPrune() {
+    setPruneLoading(true);
+    try { await triggerCorrelationPrune(); } catch { /* fallback ok */ }
+    setPruneLoading(false);
+  }
+
+  const statCards = [
+    { key: "active",   label: "活跃",  value: stats.active },
+    { key: "new",      label: "新入库", value: stats.new },
+    { key: "degraded", label: "衰退",  value: stats.degraded },
+    { key: "retired",  label: "淘汰",  value: stats.retired },
+  ];
+
+  const panels: { key: ActivePanel; label: string }[] = [
+    { key: "table",       label: "因子表格" },
+    { key: "health",      label: "健康度面板" },
+    { key: "correlation", label: "相关性矩阵" },
+  ];
+
   return (
     <div>
       <Breadcrumb items={[{ label: "因子库" }]} />
-      <div className="flex items-center justify-between mb-6">
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-bold text-white">因子库</h1>
-          <p className="text-sm text-slate-400 mt-0.5">活跃 · 新入库 · 衰退 · 淘汰</p>
+          <p className="text-sm text-slate-400 mt-0.5">管理活跃因子 · 监控健康度 · 控制相关性</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm">因子体检</Button>
-          <Button variant="secondary" size="sm">相关性裁剪</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={healthCheckLoading}
+            onClick={handleHealthCheck}
+          >
+            因子体检
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={pruneLoading}
+            onClick={handleCorrelationPrune}
+          >
+            相关性裁剪
+          </Button>
           <Button variant="secondary" size="sm">导出</Button>
           <Button size="sm">+ 添加</Button>
         </div>
       </div>
 
-      <GlassCard className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="text-5xl mb-4">🧬</div>
-        <h2 className="text-lg font-semibold text-slate-200 mb-2">因子库</h2>
-        <p className="text-sm text-slate-400 max-w-md">
-          将显示：顶部统计（活跃N/新入库N/衰退N/淘汰N）、因子表格（状态/名称/类别/IC/IR/来源/FDR t值）、健康度面板（相关性热力图+分类饼图+IC趋势监控）。
-        </p>
-        <p className="text-xs text-slate-500 mt-4">
-          API: GET /api/factor/library · POST /api/factor/health-check
-        </p>
-      </GlassCard>
+      {/* Top stats */}
+      <div className="grid grid-cols-4 gap-3 mb-5">
+        {statCards.map((s) => (
+          <GlassCard key={s.key} padding="sm">
+            <p className="text-xs text-slate-400 mb-1">{s.label}因子</p>
+            <p className={`text-3xl font-bold tabular-nums ${STATUS_STAT_COLORS[s.key]}`}>
+              {s.value}
+            </p>
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* Panel tabs */}
+      <div className="flex gap-1 mb-4 border-b border-slate-800">
+        {panels.map((p) => (
+          <button
+            key={p.key}
+            onClick={() => setActivePanel(p.key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activePanel === p.key
+                ? "text-blue-400 border-blue-400"
+                : "text-slate-400 border-transparent hover:text-slate-200"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Panel content */}
+      {activePanel === "table" && (
+        <GlassCard>
+          {factorsLoading ? (
+            <div className="py-20 text-center text-slate-500 text-sm">加载中...</div>
+          ) : (
+            <FactorTable factors={factors as FactorSummary[]} />
+          )}
+        </GlassCard>
+      )}
+
+      {activePanel === "health" && (
+        <HealthPanel
+          stats={stats}
+          icTrends={icTrends}
+          loading={trendsLoading}
+        />
+      )}
+
+      {activePanel === "correlation" && (
+        <CorrelationHeatmap
+          data={correlation}
+          loading={corrLoading}
+        />
+      )}
     </div>
   );
 }
