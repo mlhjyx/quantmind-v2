@@ -16,7 +16,7 @@ import importlib.util
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -43,6 +43,7 @@ _spec.loader.exec_module(_mod)
 classify_ic_trend = _mod.classify_ic_trend
 format_correlation_matrix = _mod.format_correlation_matrix
 run_factor_health_daily = _mod.run_factor_health_daily
+check_and_update_lifecycle = _mod.check_and_update_lifecycle
 
 
 # ──────────────────────────────────────────────────────────
@@ -282,11 +283,8 @@ class TestFactorHealthIntegration:
             assert row is not None
             assert row[0] in ("healthy", "warning", "critical")
             # result_json应该是有效JSON
-            import json
-            if isinstance(row[1], str):
-                data = json.loads(row[1])
-            else:
-                data = row[1]
+            import json  # noqa: PLC0415
+            data = json.loads(row[1]) if isinstance(row[1], str) else row[1]
             assert "date" in data
             assert "overall_status" in data
             assert "factors" in data
@@ -381,3 +379,144 @@ class TestExitCodes:
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
+
+
+# ──────────────────────────────────────────────────────────
+# 因子生命周期自动迁移测试
+# ──────────────────────────────────────────────────────────
+
+def _make_mock_conn(fetchall_candidates, fetchone_side_effects):
+    """构造模拟psycopg2连接。"""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.fetchall.return_value = fetchall_candidates
+    mock_cursor.fetchone.side_effect = fetchone_side_effects
+    return mock_conn, mock_cursor
+
+
+class TestCheckAndUpdateLifecycle:
+    """check_and_update_lifecycle() 因子生命周期迁移测试。"""
+
+    def test_no_candidates_returns_empty(self) -> None:
+        """无active/warning因子 → 返回空列表，不查IC。"""
+        mock_conn, _ = _make_mock_conn(fetchall_candidates=[], fetchone_side_effects=[])
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert result == []
+        mock_conn.cursor.return_value.execute.assert_called_once()  # 只查了candidates
+
+    def test_active_to_degraded_dry_run(self) -> None:
+        """active因子近3月IC < 历史IC×0.5 → dry_run返回warning迁移，不UPDATE DB。"""
+        mock_conn, mock_cursor = _make_mock_conn(
+            fetchall_candidates=[("turnover_mean_20", "active")],
+            fetchone_side_effects=[
+                # 历史均IC + 样本数
+                (0.04, 30),
+                # 近3月均IC + 样本数 (0.015 < 0.04×0.5=0.02)
+                (0.015, 25),
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert len(result) == 1
+        assert result[0]["factor_name"] == "turnover_mean_20"
+        assert result[0]["old_status"] == "active"
+        assert result[0]["new_status"] == "warning"
+        # dry_run不应有UPDATE调用
+        update_calls = [
+            c for c in mock_cursor.execute.call_args_list
+            if "UPDATE" in str(c)
+        ]
+        assert len(update_calls) == 0
+
+    def test_degraded_to_active_dry_run(self) -> None:
+        """degraded因子近3月IC ≥ 历史IC×0.5 → dry_run返回active迁移，不UPDATE DB。"""
+        mock_conn, _ = _make_mock_conn(
+            fetchall_candidates=[("volatility_20", "warning")],
+            fetchone_side_effects=[
+                # 历史均IC + 样本数
+                (0.03, 40),
+                # 近3月均IC + 样本数 (0.02 >= 0.03×0.5=0.015)
+                (0.02, 20),
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert len(result) == 1
+        assert result[0]["factor_name"] == "volatility_20"
+        assert result[0]["old_status"] == "warning"
+        assert result[0]["new_status"] == "active"
+
+    def test_insufficient_history_skipped(self) -> None:
+        """历史数据不足MIN_HISTORY_DAYS → 跳过，返回空列表。"""
+        mock_conn, _ = _make_mock_conn(
+            fetchall_candidates=[("amihud_20", "active")],
+            fetchone_side_effects=[
+                # 历史均IC=None, 样本数=5 (< 20)
+                (None, 5),
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert result == []
+
+    def test_no_migration_when_ic_above_threshold(self) -> None:
+        """active因子近3月IC ≥ 历史IC×0.5 → 无迁移。"""
+        mock_conn, _ = _make_mock_conn(
+            fetchall_candidates=[("reversal_20", "active")],
+            fetchone_side_effects=[
+                # 历史均IC=0.04, 样本数=50
+                (0.04, 50),
+                # 近3月均IC=0.025 >= 0.04×0.5=0.02
+                (0.025, 30),
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert result == []
+
+    def test_active_to_degraded_writes_db(self) -> None:
+        """active→warning 非dry_run → 调用UPDATE factor_registry。"""
+        mock_conn, mock_cursor = _make_mock_conn(
+            fetchall_candidates=[("bp_ratio", "active")],
+            fetchone_side_effects=[
+                (0.05, 60),   # hist: mean=0.05, count=60
+                (0.01, 30),   # recent: mean=0.01 < 0.05×0.5=0.025
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=False)
+        assert len(result) == 1
+        assert result[0]["new_status"] == "warning"
+        update_calls = [
+            c for c in mock_cursor.execute.call_args_list
+            if "UPDATE" in str(c)
+        ]
+        assert len(update_calls) == 1
+        mock_conn.commit.assert_called_once()
+
+    def test_multiple_factors_mixed(self) -> None:
+        """多因子：1个需迁移，1个不需要。"""
+        mock_conn, _ = _make_mock_conn(
+            fetchall_candidates=[
+                ("factor_a", "active"),
+                ("factor_b", "active"),
+            ],
+            fetchone_side_effects=[
+                (0.04, 40),   # factor_a hist
+                (0.01, 20),   # factor_a recent → warning (0.01 < 0.04×0.5=0.02)
+                (0.03, 35),   # factor_b hist
+                (0.025, 25),  # factor_b recent → no change (0.025 >= 0.03×0.5=0.015)
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert len(result) == 1
+        assert result[0]["factor_name"] == "factor_a"
+        assert result[0]["new_status"] == "warning"
+
+    def test_insufficient_recent_data_skipped(self) -> None:
+        """近3个月数据不足5条 → 跳过该因子。"""
+        mock_conn, _ = _make_mock_conn(
+            fetchall_candidates=[("factor_c", "warning")],
+            fetchone_side_effects=[
+                (0.03, 30),  # hist ok
+                (0.04, 3),   # recent count=3 < 5 → skip
+            ],
+        )
+        result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)
+        assert result == []

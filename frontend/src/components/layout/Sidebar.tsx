@@ -37,7 +37,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: "系统",
-    items: [{ label: "系统设置", icon: "⚙️", path: "/settings" }],
+    items: [
+      { label: "PT毕业评估", icon: "📈", path: "/pt-graduation" },
+      { label: "系统设置", icon: "⚙️", path: "/settings" },
+    ],
   },
 ];
 

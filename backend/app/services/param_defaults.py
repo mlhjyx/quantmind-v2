@@ -7,11 +7,11 @@ DDL对应表: ai_parameters (param_name/param_value/param_min/param_max/param_de
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ParamType(str, Enum):
+class ParamType(StrEnum):
     """参数值类型。"""
 
     INT = "int"
@@ -22,7 +22,7 @@ class ParamType(str, Enum):
     LIST = "list"
 
 
-class ParamModule(str, Enum):
+class ParamModule(StrEnum):
     """参数所属模块。"""
 
     FACTOR = "factor"
@@ -603,6 +603,441 @@ _register(
         param_type=ParamType.BOOL,
         module=ParamModule.SCHEDULER,
         description="是否启用全链路健康预检（CLAUDE.md: 调度第一步）",
+    ),
+)
+
+# --- 组合构建模块 (portfolio) — §3.4 ---
+_register(
+    ParamDef(
+        key="signal.top_n_min",
+        default_value=10,
+        param_type=ParamType.INT,
+        module=ParamModule.SIGNAL,
+        description="选股数量下限（DESIGN_V5 §6.2，可配置[10-50]）",
+        min_value=5,
+        max_value=50,
+    ),
+    ParamDef(
+        key="signal.top_n_max",
+        default_value=50,
+        param_type=ParamType.INT,
+        module=ParamModule.SIGNAL,
+        description="选股数量上限（DESIGN_V5 §6.2，可配置[10-50]）",
+        min_value=10,
+        max_value=100,
+    ),
+    ParamDef(
+        key="signal.alpha_score_method",
+        default_value="equal",
+        param_type=ParamType.ENUM,
+        module=ParamModule.SIGNAL,
+        description="Alpha Score合成方式（DEV_BACKTEST_ENGINE §6.2：等权/IC加权/LightGBM）",
+        enum_options=["equal", "ic_weighted", "lightgbm"],
+    ),
+    ParamDef(
+        key="signal.cash_buffer_pct",
+        default_value=0.03,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.SIGNAL,
+        description="现金缓冲比例（R3 CompositeStrategy权重归一化后保留3%现金）",
+        min_value=0.0,
+        max_value=0.1,
+    ),
+    ParamDef(
+        key="signal.turnover_cap_min",
+        default_value=0.10,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.SIGNAL,
+        description="换手率上限下界（DEV_PARAM_CONFIG §3.4，可配置[10%-80%]）",
+        min_value=0.05,
+        max_value=0.5,
+    ),
+    ParamDef(
+        key="signal.turnover_cap_max",
+        default_value=0.80,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.SIGNAL,
+        description="换手率上限上界（DEV_PARAM_CONFIG §3.4，可配置[10%-80%]）",
+        min_value=0.1,
+        max_value=1.0,
+    ),
+)
+
+# --- 因子计算参数 (factor preprocessing) — §3.10 ---
+_register(
+    ParamDef(
+        key="factor.winsorize_std",
+        default_value=3.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Winsorize去极值标准差倍数（DEV_FACTOR_MINING：3σ截断）",
+        min_value=1.0,
+        max_value=5.0,
+    ),
+    ParamDef(
+        key="factor.zscore_clip",
+        default_value=3.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Z-Score标准化后截断值（DEV_FACTOR_MINING：±3截断）",
+        min_value=1.5,
+        max_value=5.0,
+    ),
+    ParamDef(
+        key="factor.preprocess_method",
+        default_value="mad",
+        param_type=ParamType.ENUM,
+        module=ParamModule.FACTOR,
+        description="去极值方法（DEV_PARAM_CONFIG §3.10：MAD/Winsorize/3σ）",
+        enum_options=["mad", "winsorize", "sigma3"],
+    ),
+    ParamDef(
+        key="factor.normalize_method",
+        default_value="zscore",
+        param_type=ParamType.ENUM,
+        module=ParamModule.FACTOR,
+        description="标准化方法（DEV_PARAM_CONFIG §3.10：Z-Score/Rank/MinMax）",
+        enum_options=["zscore", "rank", "minmax"],
+    ),
+    ParamDef(
+        key="factor.ic_type",
+        default_value="spearman",
+        param_type=ParamType.ENUM,
+        module=ParamModule.FACTOR,
+        description="IC类型（DEV_PARAM_CONFIG §3.3：Spearman/Pearson）",
+        enum_options=["spearman", "pearson"],
+    ),
+    ParamDef(
+        key="factor.gate1_ic_threshold",
+        default_value=0.02,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Gate1 IC阈值（DEV_PARAM_CONFIG §3.3）",
+        min_value=0.0,
+        max_value=0.1,
+    ),
+    ParamDef(
+        key="factor.gate1_tstat_threshold",
+        default_value=2.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Gate1 t-stat阈值（CLAUDE.md铁律：t>2.5硬性下限，此为初筛软阈值）",
+        min_value=1.0,
+        max_value=5.0,
+    ),
+    ParamDef(
+        key="factor.gate2_monotonicity_threshold",
+        default_value=0.7,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Gate2 单调性阈值（DEV_PARAM_CONFIG §3.3）",
+        min_value=0.0,
+        max_value=1.0,
+    ),
+    ParamDef(
+        key="factor.gate3_correlation_threshold",
+        default_value=0.7,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.FACTOR,
+        description="Gate3 与已有因子相关性上限（DEV_PARAM_CONFIG §3.3）",
+        min_value=0.0,
+        max_value=1.0,
+    ),
+)
+
+# --- 风控扩展参数 (risk) — §3.6 ---
+_register(
+    ParamDef(
+        key="risk.max_single_position",
+        default_value=0.08,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="单股最大持仓比例（DEV_PARAM_CONFIG §3.6：3%-15%）",
+        min_value=0.03,
+        max_value=0.15,
+    ),
+    ParamDef(
+        key="risk.max_industry_concentration",
+        default_value=0.25,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="单行业最大持仓比例（DEV_PARAM_CONFIG §3.6：10%-35%）",
+        min_value=0.10,
+        max_value=0.35,
+    ),
+    ParamDef(
+        key="risk.max_drawdown_l1",
+        default_value=-0.08,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="L1熔断：单股止损线（RISK_CONTROL_SERVICE_DESIGN L1）",
+        min_value=-0.30,
+        max_value=-0.01,
+    ),
+    ParamDef(
+        key="risk.max_drawdown_l2",
+        default_value=-0.05,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="L2熔断：组合日亏损阈值（RISK_CONTROL_SERVICE_DESIGN L2）",
+        min_value=-0.10,
+        max_value=-0.01,
+    ),
+    ParamDef(
+        key="risk.single_stock_hard_cap",
+        default_value=0.15,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="单股持仓硬上限（L0不可调，DEV_PARAM_CONFIG §3.6）",
+        level="L0",
+    ),
+    ParamDef(
+        key="risk.industry_hard_cap",
+        default_value=0.35,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.RISK,
+        description="行业持仓硬上限（L0不可调，DEV_PARAM_CONFIG §3.6）",
+        level="L0",
+    ),
+)
+
+# --- 滑点参数 (slippage) — §3.7 + DEV_BACKTEST_ENGINE ---
+_register(
+    ParamDef(
+        key="backtest.slippage_k_large",
+        default_value=0.05,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.BACKTEST,
+        description="滑点冲击系数k-大盘（DEV_PARAM_CONFIG §3.12，Bouchaud平方根冲击模型）",
+        min_value=0.01,
+        max_value=0.3,
+    ),
+    ParamDef(
+        key="backtest.slippage_k_mid",
+        default_value=0.10,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.BACKTEST,
+        description="滑点冲击系数k-中盘（DEV_PARAM_CONFIG §3.12）",
+        min_value=0.01,
+        max_value=0.3,
+    ),
+    ParamDef(
+        key="backtest.slippage_k_small",
+        default_value=0.15,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.BACKTEST,
+        description="滑点冲击系数k-小盘（DEV_PARAM_CONFIG §3.12）",
+        min_value=0.01,
+        max_value=0.3,
+    ),
+    ParamDef(
+        key="backtest.overnight_gap_bps",
+        default_value=25.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.BACKTEST,
+        description="隔夜跳空成本（bps，DEV_PARAM_CONFIG §3.12，T+1 open执行价附加成本）",
+        min_value=0.0,
+        max_value=50.0,
+    ),
+    ParamDef(
+        key="backtest.execution_price",
+        default_value="next_open",
+        param_type=ParamType.ENUM,
+        module=ParamModule.BACKTEST,
+        description="回测执行价（R5 T+1对齐：next_open/next_vwap）",
+        enum_options=["next_open", "next_vwap"],
+    ),
+    ParamDef(
+        key="backtest.start_date",
+        default_value="2018-01-01",
+        param_type=ParamType.STR,
+        module=ParamModule.BACKTEST,
+        description="回测开始日期（DEV_PARAM_CONFIG §3.7，格式YYYY-MM-DD）",
+    ),
+    ParamDef(
+        key="backtest.rebalance_signal_day",
+        default_value="friday",
+        param_type=ParamType.ENUM,
+        module=ParamModule.BACKTEST,
+        description="周频调仓信号日（DEV_PARAM_CONFIG §3.12）",
+        enum_options=["monday", "tuesday", "wednesday", "thursday", "friday"],
+    ),
+)
+
+# --- AI/ML模型参数 (llm_mining) — §3.8 ---
+_register(
+    ParamDef(
+        key="llm_mining.n_estimators",
+        default_value=500,
+        param_type=ParamType.INT,
+        module=ParamModule.LLM_MINING,
+        description="LightGBM n_estimators（DEV_PARAM_CONFIG §3.8）",
+        min_value=100,
+        max_value=5000,
+    ),
+    ParamDef(
+        key="llm_mining.max_depth",
+        default_value=6,
+        param_type=ParamType.INT,
+        module=ParamModule.LLM_MINING,
+        description="LightGBM max_depth（DEV_PARAM_CONFIG §3.8）",
+        min_value=3,
+        max_value=15,
+    ),
+    ParamDef(
+        key="llm_mining.learning_rate",
+        default_value=0.05,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="LightGBM learning_rate（DEV_PARAM_CONFIG §3.8）",
+        min_value=0.001,
+        max_value=0.3,
+    ),
+    ParamDef(
+        key="llm_mining.subsample",
+        default_value=0.8,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="LightGBM subsample（DEV_PARAM_CONFIG §3.8）",
+        min_value=0.1,
+        max_value=1.0,
+    ),
+    ParamDef(
+        key="llm_mining.colsample_bytree",
+        default_value=0.8,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="LightGBM colsample_bytree（DEV_PARAM_CONFIG §3.8）",
+        min_value=0.1,
+        max_value=1.0,
+    ),
+    ParamDef(
+        key="llm_mining.idea_agent_model",
+        default_value="deepseek-reasoner",
+        param_type=ParamType.ENUM,
+        module=ParamModule.LLM_MINING,
+        description="因子Idea Agent模型（DEV_PARAM_CONFIG §3.2）",
+        enum_options=["deepseek-reasoner", "deepseek-chat", "gpt-4o", "claude-sonnet-4-6"],
+    ),
+    ParamDef(
+        key="llm_mining.factor_agent_model",
+        default_value="deepseek-chat",
+        param_type=ParamType.ENUM,
+        module=ParamModule.LLM_MINING,
+        description="因子代码生成Agent模型（DEV_PARAM_CONFIG §3.2）",
+        enum_options=["deepseek-chat", "gpt-4o", "claude-sonnet-4-6"],
+    ),
+    ParamDef(
+        key="llm_mining.idea_temperature",
+        default_value=0.8,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="Idea Agent temperature（DEV_PARAM_CONFIG §3.2）",
+        min_value=0.0,
+        max_value=1.5,
+    ),
+    ParamDef(
+        key="llm_mining.factor_temperature",
+        default_value=0.2,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="Factor Agent temperature（DEV_PARAM_CONFIG §3.2）",
+        min_value=0.0,
+        max_value=1.5,
+    ),
+    ParamDef(
+        key="llm_mining.ic_quick_filter_threshold",
+        default_value=0.015,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.LLM_MINING,
+        description="IC快速筛选阈值（DEV_PARAM_CONFIG §3.2，低于此值不进入Gate2+）",
+        min_value=0.0,
+        max_value=0.05,
+    ),
+)
+
+# --- GP遗传编程扩展参数 (gp_engine) — §3.1 ---
+_register(
+    ParamDef(
+        key="gp_engine.tournament_size",
+        default_value=5,
+        param_type=ParamType.INT,
+        module=ParamModule.GP_ENGINE,
+        description="GP锦标赛选择大小（DEV_PARAM_CONFIG §3.1）",
+        min_value=2,
+        max_value=10,
+    ),
+    ParamDef(
+        key="gp_engine.max_tree_depth",
+        default_value=6,
+        param_type=ParamType.INT,
+        module=ParamModule.GP_ENGINE,
+        description="GP表达式树最大深度（DEV_PARAM_CONFIG §3.1）",
+        min_value=3,
+        max_value=10,
+    ),
+    ParamDef(
+        key="gp_engine.max_nodes",
+        default_value=30,
+        param_type=ParamType.INT,
+        module=ParamModule.GP_ENGINE,
+        description="GP表达式树最大节点数（DEV_PARAM_CONFIG §3.1）",
+        min_value=10,
+        max_value=80,
+    ),
+    ParamDef(
+        key="gp_engine.fitness_ic_weight",
+        default_value=1.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.GP_ENGINE,
+        description="GP适应度-IC权重（DEV_PARAM_CONFIG §3.1）",
+        min_value=0.0,
+        max_value=5.0,
+    ),
+    ParamDef(
+        key="gp_engine.fitness_ir_weight",
+        default_value=1.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.GP_ENGINE,
+        description="GP适应度-IR权重（DEV_PARAM_CONFIG §3.1）",
+        min_value=0.0,
+        max_value=5.0,
+    ),
+    ParamDef(
+        key="gp_engine.fitness_originality_weight",
+        default_value=1.0,
+        param_type=ParamType.FLOAT,
+        module=ParamModule.GP_ENGINE,
+        description="GP适应度-原创性权重（DEV_PARAM_CONFIG §3.1）",
+        min_value=0.0,
+        max_value=5.0,
+    ),
+)
+
+# --- 调度扩展参数 (scheduler) — §3.9 ---
+_register(
+    ParamDef(
+        key="scheduler.signal_generate_time",
+        default_value="17:10",
+        param_type=ParamType.STR,
+        module=ParamModule.SCHEDULER,
+        description="T日信号生成时间（DEV_PARAM_CONFIG §3.9，在数据拉取完成后）",
+    ),
+    ParamDef(
+        key="scheduler.push_deadline_time",
+        default_value="17:45",
+        param_type=ParamType.STR,
+        module=ParamModule.SCHEDULER,
+        description="T日推送截止时间（DEV_PARAM_CONFIG §3.9）",
+    ),
+    ParamDef(
+        key="scheduler.p1_alert_max_per_day",
+        default_value=3,
+        param_type=ParamType.INT,
+        module=ParamModule.SCHEDULER,
+        description="P1告警最大条数/天（DEV_PARAM_CONFIG §3.9）",
+        min_value=1,
+        max_value=10,
     ),
 )
 

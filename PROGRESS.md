@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-28 (Sprint 1.19 ✅ complete)
-> Current: Phase 1, Sprint 1.19 ✅ 全部完成(7/7正式任务+3阶段集成) — 1523 tests passed, 0 failures
-> 下一步: Sprint 1.20 — 回测引擎完善/因子审批链/PT监控校准
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅
+> Last updated: 2026-03-28 (Sprint 1.20 进行中 — T1-T7全部完成, 1583 tests)
+> Current: Phase 1, Sprint 1.20 🔨 PT监控前端 + 生产加固 — 7/7任务完成，待commit
+> 下一步: Sprint 1.21
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -74,6 +74,32 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.20: PT监控前端 + 生产加固 (2026-03-28) 🔨
+
+**7/7任务完成。1583 tests passed (+35 vs Sprint 1.19)。**
+
+- ✅ T1: PTGraduation.tsx — 9指标毕业仪表盘(Day 3/60进度, Sharpe/MDD/滑点偏差/IC趋势), 3×3网格 (243行)
+- ✅ T2: Dashboard待处理事项卡片 — 3条mock通知, 优先级标记
+- ✅ T3: bayesian_slippage_calibration.py — Bayesian/MLE滑点校准框架, ≥30条数据阈值, 45测试 (609行)
+- ✅ T4: remote_status.py — `/api/v1/status` + `/api/v1/ping`, X-API-Key鉴权 (349行)
+- ✅ T5: disaster_recovery_verify.py — 灾备恢复验证脚本 + SOP文档(419行) + 18测试
+- ✅ T6: factor_health_daily.py 生命周期迁移 — active↔warning自动迁移(IC<历史×0.5), check_and_update_lifecycle() + 8测试
+- ✅ T7: param_defaults.py 220参数 — 组合构建/风控/因子/滑点4模块全覆盖
+
+**修复**:
+- pg_backup.py ruff E741: `l` → `ln`
+- disaster_recovery_verify.py: tables_ok Pyright unbound修复
+- bayesian_slippage_calibration.py: np.asarray类型安全 + assert isinstance(DataFrame)
+- factor_registry: name列(非factor_name) + status warning(非degraded) + ic_1d列
+
+**QA发现(§6.5)**:
+- T4-NOTE-3: NotificationDropdown groupByDay分组(已修复)
+- P2 Toast: 5000ms→3000ms(按§13.4规范)
+
+**测试**: 1583 passed, 1 xfailed (Sprint 1.19: 1548 → +35)
+
+---
 
 ### Sprint 1.19: 集成Sprint — 模块堆叠→系统可用 (2026-03-28)
 

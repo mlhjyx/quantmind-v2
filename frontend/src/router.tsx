@@ -58,6 +58,9 @@ export const router = createBrowserRouter([
       { path: "pipeline", element: lazyPage(() => import("@/pages/PipelineConsole")) },
       { path: "pipeline/agents", element: lazyPage(() => import("@/pages/AgentConfig")) },
 
+      // PT Graduation
+      { path: "pt-graduation", element: lazyPage(() => import("@/pages/PTGraduation")) },
+
       // Settings
       { path: "settings", element: lazyPage(() => import("@/pages/SystemSettings")) },
       { path: "settings/:tab", element: lazyPage(() => import("@/pages/SystemSettings")) },

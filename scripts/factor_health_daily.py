@@ -21,10 +21,11 @@
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -32,12 +33,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 import pandas as pd
+from engines.factor_analyzer import FactorAnalyzer
+from engines.signal_engine import PAPER_TRADING_CONFIG
 
 from app.config import settings
 from app.services.notification_service import send_alert
 from app.services.price_utils import _get_sync_conn
-from engines.factor_analyzer import FactorAnalyzer
-from engines.signal_engine import PAPER_TRADING_CONFIG
 
 # ── 日志配置 ──
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -134,6 +135,151 @@ def format_correlation_matrix(corr_df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def check_and_update_lifecycle(
+    conn,
+    trade_date: date,
+    dry_run: bool = False,
+) -> list[dict]:
+    """检查并自动迁移因子生命周期状态。
+
+    迁移规则（基于factor_ic_history表，DDL状态: candidate/active/warning/critical/retired）:
+    - active  → warning: 近3个月均IC < 历史均IC × 0.5
+    - warning → active:  近3个月均IC ≥ 历史均IC × 0.5
+
+    所有其他状态（candidate / critical / retired）不参与自动迁移。
+
+    Args:
+        conn: psycopg2同步连接。
+        trade_date: 当前检查日期。
+        dry_run: 不写入DB，仅返回迁移列表。
+
+    Returns:
+        迁移记录列表，每项含 factor_name / old_status / new_status / reason。
+    """
+    recent_days = 63   # ~3个月交易日
+    degrade_ratio = 0.5
+    min_history_days = 20  # 历史均IC至少需要这么多样本
+
+    recent_cutoff = trade_date - timedelta(days=recent_days)
+
+    cur = conn.cursor()
+
+    # 取所有 active/warning 因子（DDL状态机：active↔warning自动迁移）
+    cur.execute(
+        """SELECT name, status
+           FROM factor_registry
+           WHERE status IN ('active', 'warning')
+           ORDER BY name"""
+    )
+    candidates = cur.fetchall()
+
+    if not candidates:
+        logger.info("[Lifecycle] 无active/warning因子，跳过生命周期检查")
+        return []
+
+    transitions: list[dict] = []
+
+    for factor_name, current_status in candidates:
+        # 历史均IC（截止到近3个月之前，至少MIN_HISTORY_DAYS条）
+        cur.execute(
+            """SELECT AVG(ABS(ic_1d)), COUNT(*)
+               FROM factor_ic_history
+               WHERE factor_name = %s
+                 AND trade_date < %s""",
+            (factor_name, recent_cutoff),
+        )
+        hist_row = cur.fetchone()
+        hist_abs_ic: float | None = hist_row[0] if hist_row and hist_row[0] is not None else None
+        hist_count: int = hist_row[1] if hist_row and hist_row[1] is not None else 0
+
+        if hist_abs_ic is None or hist_count < min_history_days:
+            logger.debug(
+                f"[Lifecycle] {factor_name}: 历史数据不足({hist_count}条)，跳过迁移判断"
+            )
+            continue
+
+        # 近3个月均IC
+        cur.execute(
+            """SELECT AVG(ABS(ic_1d)), COUNT(*)
+               FROM factor_ic_history
+               WHERE factor_name = %s
+                 AND trade_date >= %s
+                 AND trade_date <= %s""",
+            (factor_name, recent_cutoff, trade_date),
+        )
+        row = cur.fetchone()
+        recent_abs_ic: float | None = row[0] if row and row[0] is not None else None
+        recent_count: int = row[1] or 0
+
+        if recent_abs_ic is None or recent_count < 5:
+            logger.debug(
+                f"[Lifecycle] {factor_name}: 近3个月数据不足({recent_count}条)，跳过"
+            )
+            continue
+
+        threshold = hist_abs_ic * degrade_ratio
+        ratio = recent_abs_ic / hist_abs_ic if hist_abs_ic > 0 else 0.0
+
+        logger.debug(
+            f"[Lifecycle] {factor_name}: 历史|IC|={hist_abs_ic:.4f}, "
+            f"近3月|IC|={recent_abs_ic:.4f}, 比率={ratio:.2f}, 阈值={threshold:.4f}"
+        )
+
+        new_status: str | None = None
+        reason = ""
+
+        if current_status == "active" and recent_abs_ic < threshold:
+            new_status = "warning"
+            reason = (
+                f"近3月|IC|={recent_abs_ic:.4f} < 历史|IC|×0.5={threshold:.4f}"
+                f" (比率={ratio:.2f})"
+            )
+        elif current_status == "warning" and recent_abs_ic >= threshold:
+            new_status = "active"
+            reason = (
+                f"近3月|IC|={recent_abs_ic:.4f} ≥ 历史|IC|×0.5={threshold:.4f}"
+                f" (比率={ratio:.2f}, 已恢复)"
+            )
+
+        if new_status is None:
+            continue
+
+        transitions.append(
+            {
+                "factor_name": factor_name,
+                "old_status": current_status,
+                "new_status": new_status,
+                "reason": reason,
+                "recent_abs_ic": recent_abs_ic,
+                "hist_abs_ic": hist_abs_ic,
+            }
+        )
+
+        if not dry_run:
+            try:
+                cur.execute(
+                    """UPDATE factor_registry
+                       SET status = %s,
+                           updated_at = NOW()
+                       WHERE name = %s""",
+                    (new_status, factor_name),
+                )
+                conn.commit()
+                logger.info(
+                    f"[Lifecycle] {factor_name}: {current_status} → {new_status} | {reason}"
+                )
+            except Exception as e:
+                logger.warning(f"[Lifecycle] {factor_name} 状态更新失败: {e}")
+                with contextlib.suppress(Exception):
+                    conn.rollback()
+        else:
+            logger.info(
+                f"[Lifecycle][DRY-RUN] {factor_name}: {current_status} → {new_status} | {reason}"
+            )
+
+    return transitions
+
+
 def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
     """运行因子健康日报。
 
@@ -166,7 +312,8 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                WHERE trade_date = %s""",
             (trade_date,),
         )
-        factor_count = cur.fetchone()[0]
+        factor_count_row = cur.fetchone()
+        factor_count = factor_count_row[0] if factor_count_row else 0
         if factor_count == 0:
             logger.warning(f"{trade_date} 因子数据尚未计算，跳过")
             return {"status": "skipped", "reason": "no_factor_data"}
@@ -252,12 +399,34 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
         logger.info("=" * 60)
         overall = health.get("overall_status", "unknown")
         if overall == "healthy":
-            logger.info(f"  总体状态: HEALTHY")
+            logger.info("  总体状态: HEALTHY")
         elif overall == "warning":
-            logger.warning(f"  总体状态: WARNING")
+            logger.warning("  总体状态: WARNING")
         elif overall == "critical":
-            logger.error(f"  总体状态: CRITICAL")
+            logger.error("  总体状态: CRITICAL")
         logger.info("=" * 60)
+
+        # ── 因子生命周期自动迁移 ──
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("  因子生命周期检查")
+        logger.info("=" * 60)
+        try:
+            transitions = check_and_update_lifecycle(conn, trade_date, dry_run=dry_run)
+            if transitions:
+                for t in transitions:
+                    marker = "[DRY-RUN] " if dry_run else ""
+                    logger.info(
+                        f"  {marker}{t['factor_name']}: "
+                        f"{t['old_status']} → {t['new_status']} | {t['reason']}"
+                    )
+                health["lifecycle_transitions"] = transitions
+            else:
+                logger.info("  无需状态迁移，所有因子状态正常")
+                health["lifecycle_transitions"] = []
+        except Exception as e:
+            logger.warning(f"[Lifecycle] 生命周期检查失败: {e}")
+            health["lifecycle_transitions"] = []
 
         # ── 发送钉钉告警（warning/critical时）──
         if overall in ("warning", "critical"):
@@ -319,13 +488,11 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                     ),
                 )
                 conn.commit()
-                logger.info(f"[DB] 因子健康日报已写入 scheduler_task_log 表")
+                logger.info("[DB] 因子健康日报已写入 scheduler_task_log 表")
             except Exception as e:
                 logger.warning(f"[DB] 写入scheduler_task_log失败: {e}")
-                try:
+                with contextlib.suppress(Exception):
                     conn.rollback()
-                except Exception:
-                    pass
 
         return health
 
