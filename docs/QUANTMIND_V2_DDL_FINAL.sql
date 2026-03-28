@@ -747,6 +747,55 @@ CREATE TABLE param_change_log (
 );
 
 -- ═══════════════════════════════════════════════════
--- 总计: 43张表
+-- 域12: GP因子挖掘Pipeline（2张表）— Sprint 1.17
+-- 注: pipeline_run(域11)是AI进化闭环运行记录
+--     pipeline_runs(域12)是GP/BruteForce/LLM引擎运行记录，粒度不同
+-- ═══════════════════════════════════════════════════
+
+CREATE TABLE pipeline_runs (
+    run_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    engine_type     VARCHAR(20) NOT NULL,              -- gp/bruteforce/llm
+    status          VARCHAR(20) NOT NULL DEFAULT 'running', -- running/completed/failed/cancelled
+    config          JSONB NOT NULL,                    -- GPConfig/BruteForceConfig序列化
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at     TIMESTAMPTZ,
+    candidates_found INT NOT NULL DEFAULT 0,           -- 通过快速Gate的候选因子数
+    gate_passed     INT NOT NULL DEFAULT 0,            -- 通过完整Gate G1-G8的因子数
+    result_summary  JSONB,                             -- {best_fitness, best_expr, total_evaluated, ...}
+    error_message   TEXT                               -- 失败时的错误信息
+);
+COMMENT ON TABLE pipeline_runs IS 'GP/BruteForce/LLM引擎每次运行的记录。engine_type区分三引擎';
+COMMENT ON COLUMN pipeline_runs.candidates_found IS '通过快速Gate(G1-G4)的候选因子数';
+COMMENT ON COLUMN pipeline_runs.gate_passed IS '通过完整Gate(G1-G8)的因子数';
+COMMENT ON COLUMN pipeline_runs.result_summary IS 'JSONB摘要: {best_fitness, best_expr, total_evaluated, elapsed_seconds}';
+
+CREATE INDEX idx_pipeline_runs_engine_type ON pipeline_runs(engine_type);
+CREATE INDEX idx_pipeline_runs_status ON pipeline_runs(status);
+CREATE INDEX idx_pipeline_runs_started_at ON pipeline_runs(started_at DESC);
+
+CREATE TABLE gp_approval_queue (
+    id              SERIAL PRIMARY KEY,
+    run_id          UUID NOT NULL REFERENCES pipeline_runs(run_id),
+    factor_name     VARCHAR(100) NOT NULL,             -- 建议名称，如 gp_ts_mean_cs_rank_20
+    factor_expr     TEXT NOT NULL,                     -- DSL表达式字符串
+    ast_hash        VARCHAR(64) NOT NULL,              -- AST结构哈希（去重用）
+    gate_report     JSONB NOT NULL,                    -- G1-G8详细结果
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending/approved/rejected/hold
+    reviewer_notes  TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at     TIMESTAMPTZ,
+    reviewed_by     VARCHAR(50)                        -- 'user' | 'auto' | agent名称
+);
+COMMENT ON TABLE gp_approval_queue IS 'GP引擎产出因子的人工审批队列。通过完整Gate G1-G8后进入';
+COMMENT ON COLUMN gp_approval_queue.ast_hash IS 'ExprNode.to_ast_hash()结果，用于跨队列去重';
+COMMENT ON COLUMN gp_approval_queue.gate_report IS 'JSONB: {G1:{passed:bool,reason:str}, ..., G8:...}';
+COMMENT ON COLUMN gp_approval_queue.status IS 'pending=待审批 approved=通过 rejected=拒绝 hold=搁置';
+
+CREATE INDEX idx_gp_approval_queue_run_id ON gp_approval_queue(run_id);
+CREATE INDEX idx_gp_approval_queue_status ON gp_approval_queue(status);
+CREATE INDEX idx_gp_approval_queue_ast_hash ON gp_approval_queue(ast_hash);
+
+-- ═══════════════════════════════════════════════════
+-- 总计: 45张表（+2: pipeline_runs + gp_approval_queue）
 -- 旧版QUANTMIND_V2_DDL_COMPLETE.sql 已废弃，以本文件为准
 -- ═══════════════════════════════════════════════════

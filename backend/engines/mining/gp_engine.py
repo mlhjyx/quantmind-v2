@@ -1,6 +1,6 @@
 """Warm Start GP引擎 — DEAP + 岛屿模型 + 逻辑/参数分离
 
-设计来源: GP_CLOSED_LOOP_DESIGN.md §3 + §4
+设计来源: GP_CLOSED_LOOP_DESIGN.md §3 + §4 + §6.3/§6.5
 功能:
   1. Warm Start初始化: 用v1.1的5个种子因子生成初始种群
   2. 岛屿模型: 2-4个子种群独立进化，定期迁移
@@ -8,23 +8,26 @@
   4. 适应度函数: Sharpe×(1-0.1×complexity) + 0.3×novelty
   5. DEAP集成: creator/toolbox/algorithms标准接口
   6. 反拥挤: 与现有因子相关性>0.6时惩罚
+  7. 跨轮次学习: 上轮Top因子→本轮种子注入 + Gate FAIL因子→黑名单
 
 依赖:
   - factor_dsl.py: ExprNode/FactorDSL/SEED_FACTORS
   - factor_gate.py: FactorGatePipeline.quick_screen
   - backtest_engine.py: BacktestConfig（适应度快速回测接口）
 
-Sprint 1.16 alpha-miner
+Sprint 1.16 alpha-miner / Sprint 1.17 跨轮次学习
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import random
 import time
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -122,6 +125,205 @@ class GPRunStats:
     n_generations_completed: int = 0
     per_island_best: dict[int, float] = field(default_factory=dict)
     timeout: bool = False
+
+
+# ---------------------------------------------------------------------------
+# 跨轮次学习数据结构（GP_CLOSED_LOOP_DESIGN §6.3/§6.5）
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PreviousRunData:
+    """上一轮GP运行的关键信息，用于指导本轮进化。
+
+    跨轮次学习核心机制（§6.3）:
+    1. top_results: 上轮Top因子表达式 → 注入为本轮种子（扩展SEED_FACTORS）
+    2. blacklisted_hashes: Gate FAIL因子的AST hash → 本轮变异时跳过
+    3. rejection_reasons: 失败原因统计 → 未来可调整搜索方向（Step 3用）
+    """
+
+    top_results: list[dict[str, Any]] = field(default_factory=list)
+    """上轮通过快速Gate的Top因子，每项包含 factor_expr/ast_hash/fitness/ic_mean/t_stat。"""
+
+    blacklisted_hashes: set[str] = field(default_factory=set)
+    """Gate FAIL因子的AST hash集合，本轮进化时跳过这些结构。"""
+
+    rejection_reasons: dict[str, int] = field(default_factory=dict)
+    """失败原因统计 {reason: count}，如 {"ic_too_low": 42, "coverage_fail": 8}。"""
+
+    run_id: str = ""
+    """来源轮次的run_id。"""
+
+
+def save_run_results(
+    results: list[GPResult],
+    stats: GPRunStats,
+    output_dir: Path,
+    top_k: int = 20,
+) -> Path:
+    """保存本轮GP运行结果到JSON文件，供下一轮加载。
+
+    文件名格式: gp_results_{run_id}.json
+    文件内容:
+      - run_id: 本轮run_id
+      - top_results: Top-K因子（按fitness降序）
+      - blacklisted_hashes: 适应度<=0的因子的AST hash（Gate FAIL）
+      - rejection_reasons: 未来扩展用（当前仅统计failed数量）
+      - stats: 运行统计摘要
+
+    Args:
+        results: GP产出的通过快速Gate的因子列表（来自 evolve() 返回值）。
+        stats: 本轮运行统计信息。
+        output_dir: 结果保存目录（不存在会自动创建）。
+        top_k: 保存前K个结果作为下轮种子候选（默认20）。
+
+    Returns:
+        保存的JSON文件路径。
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / f"gp_results_{stats.run_id}.json"
+
+    # Top-K因子（已按fitness降序排列）
+    top_results = []
+    for r in results[:top_k]:
+        top_results.append({
+            "factor_expr": r.factor_expr,
+            "ast_hash": r.ast_hash,
+            "fitness": r.fitness,
+            "ic_mean": r.ic_mean,
+            "t_stat": r.t_stat,
+            "sharpe_proxy": r.sharpe_proxy,
+            "complexity": r.complexity,
+            "novelty": r.novelty,
+            "generation": r.generation,
+            "island_id": r.island_id,
+            "parent_seed": r.parent_seed,
+            "param_slots": r.param_slots,
+        })
+
+    # 黑名单：适应度<=0的因子的AST hash（这些是Gate FAIL的）
+    # 注意：GPResult里只有通过快速Gate的因子，failed的在进化过程中已经被丢弃
+    # 黑名单在外部调用时由调用方传入（例如从完整Gate G1-G8失败的因子）
+    # 此处保存空集，供调用方追加
+    data = {
+        "run_id": stats.run_id,
+        "top_results": top_results,
+        "blacklisted_hashes": [],   # 调用方可通过 add_blacklist_to_results_file() 追加
+        "rejection_reasons": {},
+        "stats": {
+            "total_evaluated": stats.total_evaluated,
+            "passed_quick_gate": stats.passed_quick_gate,
+            "best_fitness": stats.best_fitness,
+            "best_expr": stats.best_expr,
+            "elapsed_seconds": stats.elapsed_seconds,
+            "n_generations_completed": stats.n_generations_completed,
+            "timeout": stats.timeout,
+        },
+    }
+
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        "保存GP运行结果: path=%s, top_k=%d, blacklist=%d",
+        output_path, len(top_results), 0,
+    )
+    return output_path
+
+
+def add_blacklist_to_results_file(
+    results_file: Path,
+    failed_hashes: list[str],
+    rejection_reasons: dict[str, int] | None = None,
+) -> None:
+    """将完整Gate G1-G8失败的因子AST hash追加到已保存的结果文件。
+
+    典型调用时机: GP pipeline的Step 4（完整Gate）结束后，
+    将所有Gate FAIL因子的hash写入本轮结果文件，供下一轮加载为黑名单。
+
+    Args:
+        results_file: save_run_results() 返回的JSON文件路径。
+        failed_hashes: 完整Gate失败的因子AST hash列表。
+        rejection_reasons: 失败原因统计，追加合并到已有统计中。
+    """
+    if not results_file.exists():
+        logger.warning("结果文件不存在，无法追加黑名单: %s", results_file)
+        return
+
+    with results_file.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    existing_bl = set(data.get("blacklisted_hashes", []))
+    existing_bl.update(failed_hashes)
+    data["blacklisted_hashes"] = sorted(existing_bl)
+
+    if rejection_reasons:
+        existing_reasons = data.get("rejection_reasons", {})
+        for reason, count in rejection_reasons.items():
+            existing_reasons[reason] = existing_reasons.get(reason, 0) + count
+        data["rejection_reasons"] = existing_reasons
+
+    with results_file.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        "追加黑名单到结果文件: path=%s, new_hashes=%d, total_blacklist=%d",
+        results_file, len(failed_hashes), len(existing_bl),
+    )
+
+
+def load_previous_results(output_dir: Path, run_id: str | None = None) -> PreviousRunData | None:
+    """加载上一轮GP运行结果，用于本轮的跨轮次学习。
+
+    加载策略:
+    - run_id指定时: 加载 gp_results_{run_id}.json
+    - run_id为None时: 加载目录中最新的 gp_results_*.json（按文件修改时间）
+
+    Args:
+        output_dir: 结果文件目录（与 save_run_results 传入的一致）。
+        run_id: 要加载的特定轮次ID，None表示加载最新的。
+
+    Returns:
+        PreviousRunData，包含 top_results + blacklisted_hashes + rejection_reasons。
+        文件不存在时返回 None（首次运行）。
+    """
+    output_dir = Path(output_dir)
+
+    if run_id is not None:
+        target_file = output_dir / f"gp_results_{run_id}.json"
+    else:
+        # 找最新的结果文件
+        candidates = sorted(
+            output_dir.glob("gp_results_*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            logger.info("output_dir中没有历史GP结果文件: %s（首次运行）", output_dir)
+            return None
+        target_file = candidates[0]
+
+    if not target_file.exists():
+        logger.info("指定的GP结果文件不存在: %s（首次运行）", target_file)
+        return None
+
+    with target_file.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    previous = PreviousRunData(
+        top_results=data.get("top_results", []),
+        blacklisted_hashes=set(data.get("blacklisted_hashes", [])),
+        rejection_reasons=data.get("rejection_reasons", {}),
+        run_id=data.get("run_id", ""),
+    )
+
+    logger.info(
+        "加载上轮GP结果: source_run=%s, top_factors=%d, blacklist=%d",
+        previous.run_id, len(previous.top_results), len(previous.blacklisted_hashes),
+    )
+    return previous
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +571,7 @@ class GPEngine:
         self,
         config: GPConfig | None = None,
         existing_factor_data: dict[str, pd.Series] | None = None,
+        previous_run: PreviousRunData | None = None,
     ) -> None:
         """初始化GP引擎。
 
@@ -376,12 +579,16 @@ class GPEngine:
             config: GP配置，None使用默认配置。
             existing_factor_data: 现有Active因子值 {factor_name: Series}，
                                    用于适应度函数的正交性奖励计算。
+            previous_run: 上一轮GP运行数据（跨轮次学习，GP_CLOSED_LOOP_DESIGN §6.3）。
+                          提供时，本轮种群初始化会注入上轮Top因子作为额外种子，
+                          并在变异时跳过黑名单中的AST结构。
         """
         if not _DEAP_AVAILABLE:
             raise RuntimeError("DEAP未安装，请运行: pip install deap")
 
         self.config = config or GPConfig()
         self.existing_factor_data = existing_factor_data or {}
+        self.previous_run = previous_run  # 跨轮次学习数据
         self.dsl = FactorDSL(
             max_depth=self.config.max_depth,
             max_nodes=self.config.max_nodes,
@@ -392,6 +599,14 @@ class GPEngine:
             config=self.config,
         )
         self._setup_deap()
+
+        if previous_run:
+            logger.info(
+                "跨轮次学习已启用: source_run=%s, extra_seeds=%d, blacklist=%d",
+                previous_run.run_id,
+                len(previous_run.top_results),
+                len(previous_run.blacklisted_hashes),
+            )
 
     def _setup_deap(self) -> None:
         """注册DEAP的creator和toolbox。"""
@@ -447,9 +662,18 @@ class GPEngine:
         return ind1, ind2
 
     def _mutate_op(self, ind: creator.Individual) -> tuple[creator.Individual,]:
-        """DEAP变异算子。"""
+        """DEAP变异算子（含黑名单检查，§6.5）。"""
         tree = _get_tree(ind)
-        mutated = self.dsl.mutate(tree, mutation_rate=self.config.mutation_prob)
+        blacklist = (
+            self.previous_run.blacklisted_hashes
+            if self.previous_run
+            else set()
+        )
+        # 最多重试3次，避免变异出黑名单结构
+        for _ in range(3):
+            mutated = self.dsl.mutate(tree, mutation_rate=self.config.mutation_prob)
+            if not blacklist or mutated.to_ast_hash() not in blacklist:
+                break
         ind[0] = mutated
         del ind.fitness.values
         return (ind,)
@@ -478,13 +702,14 @@ class GPEngine:
         self,
         island_id: int = 0,
     ) -> list[creator.Individual]:
-        """Warm Start种群初始化（GP_CLOSED_LOOP_DESIGN §3.3）。
+        """Warm Start种群初始化（GP_CLOSED_LOOP_DESIGN §3.3 + §6.5）。
 
         种群分配策略:
           - 原始5个种子因子 (5个)
           - 每个种子×窗口变异 (最多20个)
           - 每个种子×字段替换 (最多20个)
           - 每个种子×外层包装 (最多15个)
+          - 跨轮次学习：上轮Top因子注入（§6.5，previous_run提供时）
           - 随机树填充剩余 (seed_ratio→random_ratio)
 
         Args:
@@ -513,11 +738,54 @@ class GPEngine:
                     ind = creator.Individual([tree])
                     warm_inds.append(ind)
 
-        # 3. 剪掉超出的
+        # 3. 跨轮次学习：注入上轮Top因子作为额外种子（§6.5）
+        # 只在第0个岛屿注入，其余岛屿保持多样性
+        cross_round_count = 0
+        if self.previous_run and self.previous_run.top_results:
+            blacklist = self.previous_run.blacklisted_hashes
+            # 每个岛注入不同的Top因子子集，保持岛间多样性
+            n_top = len(self.previous_run.top_results)
+            # 每岛最多注入top_k // n_islands个（均匀分配），最多取种群的20%
+            max_inject = max(1, min(
+                n_top // max(self.config.n_islands, 1),
+                int(pop_size * 0.2),
+            ))
+            # 按island_id偏移，不同岛注入不同因子
+            offset = (island_id * max_inject) % max(n_top, 1)
+            inject_candidates = (
+                self.previous_run.top_results[offset:offset + max_inject]
+                + self.previous_run.top_results[:max(0, offset + max_inject - n_top)]
+            )[:max_inject]
+
+            for factor_info in inject_candidates:
+                expr_str = factor_info.get("factor_expr", "")
+                ast_hash = factor_info.get("ast_hash", "")
+                # 跳过黑名单中的因子
+                if ast_hash and ast_hash in blacklist:
+                    logger.debug("跳过黑名单因子（跨轮次注入）: hash=%s", ast_hash[:8])
+                    continue
+                try:
+                    tree = self.dsl.from_string(expr_str)
+                    valid, reason = self.dsl.validate(tree)
+                    if valid:
+                        ind = creator.Individual([tree])
+                        warm_inds.append(ind)
+                        cross_round_count += 1
+                except Exception as e:
+                    logger.debug("跨轮次因子解析失败: expr=%s, err=%s", expr_str[:40], e)
+
+            if cross_round_count > 0:
+                logger.info(
+                    "岛屿%d 跨轮次注入: source_run=%s, injected=%d/%d",
+                    island_id, self.previous_run.run_id,
+                    cross_round_count, len(inject_candidates),
+                )
+
+        # 4. 剪掉超出的
         seed_budget = int(pop_size * self.config.seed_ratio)
         warm_inds = warm_inds[:seed_budget]
 
-        # 4. 随机树填充剩余
+        # 5. 随机树填充剩余
         random_count = pop_size - len(warm_inds)
         # 不同岛用不同随机种子，保证多样性
         rng_backup = self.dsl._rng
@@ -531,8 +799,9 @@ class GPEngine:
         self.dsl._rng = rng_backup
 
         logger.info(
-            "岛屿%d 初始化: warm=%d, random=%d, total=%d",
-            island_id, seed_budget, random_count, len(warm_inds),
+            "岛屿%d 初始化: warm=%d, cross_round=%d, random=%d, total=%d",
+            island_id, seed_budget - cross_round_count,
+            cross_round_count, random_count, len(warm_inds),
         )
         return warm_inds
 
@@ -960,6 +1229,7 @@ def run_gp_pipeline(
     existing_factor_data: dict[str, pd.Series] | None = None,
     config: GPConfig | None = None,
     run_id: str | None = None,
+    previous_run: PreviousRunData | None = None,
 ) -> tuple[list[GPResult], GPRunStats]:
     """便捷函数：一键运行GP因子挖掘Pipeline。
 
@@ -969,6 +1239,8 @@ def run_gp_pipeline(
         existing_factor_data: 现有Active因子值（用于正交性奖励）。
         config: GP配置，None使用默认（测试友好的小配置）。
         run_id: 本次运行ID。
+        previous_run: 上一轮GP结果（跨轮次学习，§6.5）。
+                      None表示首次运行，使用默认Warm Start种子。
 
     Returns:
         (results, stats)
@@ -976,5 +1248,9 @@ def run_gp_pipeline(
     if config is None:
         config = GPConfig()
 
-    engine = GPEngine(config=config, existing_factor_data=existing_factor_data)
+    engine = GPEngine(
+        config=config,
+        existing_factor_data=existing_factor_data,
+        previous_run=previous_run,
+    )
     return engine.evolve(market_data, forward_returns, run_id=run_id)

@@ -35,7 +35,11 @@ from engines.mining.gp_engine import (
     GPEngine,
     GPResult,
     GPRunStats,
+    PreviousRunData,
     _get_tree,
+    add_blacklist_to_results_file,
+    load_previous_results,
+    save_run_results,
 )
 
 # ---------------------------------------------------------------------------
@@ -723,3 +727,263 @@ class TestIslandIndependence:
         for gen in range(1, 4):
             pop = gp_engine._evolve_one_generation(pop, market_data, forward_returns, gen, 1)
             assert len(pop) == original_size, f"第 {gen} 代后种群大小变化: {len(pop)} != {original_size}"
+
+
+# ---------------------------------------------------------------------------
+# 跨轮次学习测试（Sprint 1.17 GP_CLOSED_LOOP_DESIGN §6.3/§6.5）
+# ---------------------------------------------------------------------------
+
+
+def _make_gp_results(n: int = 5) -> list[GPResult]:
+    """生成测试用GPResult列表。"""
+    dsl = FactorDSL()
+    results = []
+    for i in range(n):
+        tree = dsl.random_tree()
+        results.append(GPResult(
+            factor_expr=tree.to_string(),
+            ast_hash=tree.to_ast_hash(),
+            fitness=0.5 + i * 0.05,
+            sharpe_proxy=0.3 + i * 0.02,
+            complexity=0.3,
+            novelty=0.4,
+            ic_mean=0.02 + i * 0.001,
+            t_stat=2.6 + i * 0.1,
+            generation=10 + i,
+            island_id=i % 2,
+            parent_seed="turnover_mean_20",
+        ))
+    return sorted(results, key=lambda r: r.fitness, reverse=True)
+
+
+def _make_stats(run_id: str = "gp_test_001") -> GPRunStats:
+    return GPRunStats(
+        run_id=run_id,
+        total_evaluated=100,
+        passed_quick_gate=10,
+        best_fitness=0.75,
+        best_expr="ts_mean(turnover_rate, 20)",
+        elapsed_seconds=60.0,
+        n_generations_completed=20,
+    )
+
+
+class TestSaveLoadResults:
+    """save_run_results + load_previous_results 跨轮次序列化/反序列化。"""
+
+    def test_save_creates_json_file(self, tmp_path) -> None:
+        """save_run_results 应创建 gp_results_{run_id}.json 文件。"""
+        results = _make_gp_results(3)
+        stats = _make_stats("gp_save_test")
+        saved_path = save_run_results(results, stats, tmp_path)
+
+        assert saved_path.exists()
+        assert saved_path.name == "gp_results_gp_save_test.json"
+
+    def test_saved_file_contains_top_k_results(self, tmp_path) -> None:
+        """保存的文件应包含 Top-K 因子。"""
+        import json
+        results = _make_gp_results(10)
+        stats = _make_stats("gp_topk_test")
+        saved_path = save_run_results(results, stats, tmp_path, top_k=5)
+
+        with saved_path.open(encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert len(data["top_results"]) == 5
+        assert data["run_id"] == "gp_topk_test"
+
+    def test_load_returns_none_when_no_file(self, tmp_path) -> None:
+        """首次运行，目录中无文件时应返回 None。"""
+        result = load_previous_results(tmp_path)
+        assert result is None
+
+    def test_load_returns_previous_run_data(self, tmp_path) -> None:
+        """保存后再加载，应还原 top_results 和 blacklisted_hashes。"""
+        results = _make_gp_results(4)
+        stats = _make_stats("gp_roundtrip")
+        save_run_results(results, stats, tmp_path)
+
+        previous = load_previous_results(tmp_path)
+
+        assert previous is not None
+        assert previous.run_id == "gp_roundtrip"
+        assert len(previous.top_results) == 4
+        assert isinstance(previous.blacklisted_hashes, set)
+
+    def test_load_by_run_id(self, tmp_path) -> None:
+        """指定 run_id 应加载对应文件。"""
+        stats_a = _make_stats("gp_run_A")
+        stats_b = _make_stats("gp_run_B")
+        save_run_results(_make_gp_results(2), stats_a, tmp_path)
+        save_run_results(_make_gp_results(3), stats_b, tmp_path)
+
+        prev_a = load_previous_results(tmp_path, run_id="gp_run_A")
+        prev_b = load_previous_results(tmp_path, run_id="gp_run_B")
+
+        assert prev_a is not None and prev_a.run_id == "gp_run_A"
+        assert prev_b is not None and prev_b.run_id == "gp_run_B"
+        assert len(prev_a.top_results) == 2
+        assert len(prev_b.top_results) == 3
+
+    def test_load_nonexistent_run_id_returns_none(self, tmp_path) -> None:
+        """指定不存在的 run_id 应返回 None。"""
+        save_run_results(_make_gp_results(2), _make_stats("gp_exists"), tmp_path)
+        result = load_previous_results(tmp_path, run_id="gp_nonexistent")
+        assert result is None
+
+
+class TestBlacklist:
+    """add_blacklist_to_results_file + 黑名单追加/加载。"""
+
+    def test_add_blacklist_updates_file(self, tmp_path) -> None:
+        """add_blacklist_to_results_file 应将 hash 写入文件。"""
+        import json
+        stats = _make_stats("gp_bl_test")
+        path = save_run_results(_make_gp_results(2), stats, tmp_path)
+
+        add_blacklist_to_results_file(path, ["deadbeef01", "deadbeef02"])
+
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+        assert "deadbeef01" in data["blacklisted_hashes"]
+        assert "deadbeef02" in data["blacklisted_hashes"]
+
+    def test_add_blacklist_idempotent(self, tmp_path) -> None:
+        """重复追加相同 hash 不应产生重复项。"""
+        import json
+        path = save_run_results(_make_gp_results(2), _make_stats("gp_idem"), tmp_path)
+
+        add_blacklist_to_results_file(path, ["aabbcc"])
+        add_blacklist_to_results_file(path, ["aabbcc"])
+
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["blacklisted_hashes"].count("aabbcc") == 1
+
+    def test_loaded_blacklist_is_set(self, tmp_path) -> None:
+        """加载的 blacklisted_hashes 应为 set 类型。"""
+        path = save_run_results(_make_gp_results(2), _make_stats("gp_settype"), tmp_path)
+        add_blacklist_to_results_file(path, ["hash1", "hash2"])
+
+        previous = load_previous_results(tmp_path)
+        assert isinstance(previous.blacklisted_hashes, set)
+        assert "hash1" in previous.blacklisted_hashes
+
+    def test_add_blacklist_to_missing_file_no_crash(self, tmp_path) -> None:
+        """对不存在的文件调用 add_blacklist 应只记录日志，不抛出异常。"""
+        missing = tmp_path / "gp_results_nonexistent.json"
+        add_blacklist_to_results_file(missing, ["somehash"])
+
+
+class TestCrossRoundInjection:
+    """跨轮次种子注入：第2轮种群应包含第1轮 Top 因子。"""
+
+    def test_engine_accepts_previous_run(self) -> None:
+        """GPEngine 应能接受 previous_run 参数并初始化。"""
+        previous = PreviousRunData(
+            top_results=[{
+                "factor_expr": "ts_mean(turnover_rate, 20)",
+                "ast_hash": "abc123",
+                "fitness": 0.8,
+                "ic_mean": 0.025,
+                "t_stat": 3.1,
+            }],
+            blacklisted_hashes={"deadfactor"},
+            run_id="gp_prev_001",
+        )
+        config = GPConfig(n_islands=1, population_per_island=20, n_generations=2)
+        engine = GPEngine(config=config, previous_run=previous)
+        assert engine.previous_run is previous
+
+    def test_blacklist_checked_in_mutate(self) -> None:
+        """_mutate_op 遇到黑名单 hash 应重试，不崩溃。"""
+        from deap import creator
+        big_blacklist = {f"hash_{i:08x}" for i in range(1000)}
+        previous = PreviousRunData(blacklisted_hashes=big_blacklist, run_id="gp_bl")
+        config = GPConfig(n_islands=1, population_per_island=10, n_generations=1)
+        engine = GPEngine(config=config, previous_run=previous)
+
+        dsl = engine.dsl
+        tree = dsl.random_tree()
+        ind = creator.Individual([tree])
+        ind.fitness.values = (0.5,)
+        result = engine._mutate_op(ind)
+        assert result is not None
+        assert len(result) == 1
+
+    def test_previous_run_none_default_warm_start(self) -> None:
+        """previous_run=None 时应正常 Warm Start，无异常。"""
+        config = GPConfig(n_islands=1, population_per_island=20, n_generations=1)
+        engine = GPEngine(config=config, previous_run=None)
+        pop = engine.initialize_population(island_id=0)
+        assert len(pop) == 20
+
+    def test_cross_round_inject_valid_expr(self) -> None:
+        """注入合法表达式时，种群大小应保持 population_per_island。"""
+        previous = PreviousRunData(
+            top_results=[{
+                "factor_expr": "ts_mean(turnover_rate, 20)",
+                "ast_hash": "validhash001",
+                "fitness": 0.9,
+                "ic_mean": 0.03,
+                "t_stat": 3.5,
+            }],
+            blacklisted_hashes=set(),
+            run_id="gp_inject_test",
+        )
+        config = GPConfig(n_islands=1, population_per_island=30, n_generations=1)
+        engine = GPEngine(config=config, previous_run=previous)
+        pop = engine.initialize_population(island_id=0)
+        assert len(pop) == 30
+
+
+class TestSQLAlchemyModels:
+    """SQLAlchemy 模型基本结构验证（不需要数据库连接）。"""
+
+    def test_pipeline_run_tablename(self) -> None:
+        """PipelineRun 应映射到 pipeline_runs 表。"""
+        import sys
+        sys.path.insert(0, ".")
+        from app.models.pipeline_run import PipelineRun
+        assert PipelineRun.__tablename__ == "pipeline_runs"
+
+    def test_pipeline_run_from_gp_stats(self) -> None:
+        """from_gp_stats 工厂方法应正确设置字段。"""
+        import uuid
+
+        from app.models.pipeline_run import PipelineRun
+        run_id = uuid.uuid4()
+        obj = PipelineRun.from_gp_stats(
+            run_id=run_id,
+            config_dict={"n_islands": 2},
+            candidates_found=5,
+            gate_passed=2,
+        )
+        assert obj.engine_type == "gp"
+        assert obj.run_id == run_id
+        assert obj.candidates_found == 5
+        assert obj.gate_passed == 2
+
+    def test_gp_approval_queue_tablename(self) -> None:
+        """GPApprovalQueue 应映射到 gp_approval_queue 表。"""
+        from app.models.approval_queue import GPApprovalQueue
+        assert GPApprovalQueue.__tablename__ == "gp_approval_queue"
+
+    def test_gp_approval_queue_from_gp_result(self) -> None:
+        """from_gp_result 应设置正确字段，默认 pending 状态。"""
+        import uuid
+
+        from app.models.approval_queue import GPApprovalQueue
+        run_id = uuid.uuid4()
+        obj = GPApprovalQueue.from_gp_result(
+            run_id=run_id,
+            factor_name="gp_test_factor",
+            factor_expr="ts_mean(turnover_rate, 20)",
+            ast_hash="abc123def456",
+            gate_report={"G1": {"passed": True}, "G8": {"passed": True}},
+        )
+        assert obj.factor_name == "gp_test_factor"
+        assert obj.status == "pending"
+        assert obj.is_pending
+        assert not obj.is_approved

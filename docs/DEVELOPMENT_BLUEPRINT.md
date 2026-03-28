@@ -20,12 +20,12 @@
 | D. 回测引擎 | 18 | 17 | 1 | 0 | 97% | +QuickBacktester |
 | E. 风控 | 9 | 7 | 0 | 0 | 100%(Phase0) | — |
 | F. 执行层 | 8 | 7 | 0 | 0 | 100%(Phase0) | — |
-| G. 调度运维 | 9 | 6 | 0 | 3 | 67% | — |
-| H. 通知告警 | 9 | 4 | 3 | 2 | 61% | — |
+| G. 调度运维 | 9 | 7 | 0 | 2 | 78% | +GP Task Scheduler |
+| H. 通知告警 | 9 | 5 | 3 | 1 | 67% | +钉钉GP通知 |
 | I. 参数系统 | 9 | 5 | 1 | 3 | 61% | — |
-| J. 前端 | 15 | 14 | 1 | 0 | 97% | +FactorLibrary/FactorEvaluation(6Tab)/Factor API |
-| K. AI/ML | 11 | 5 | 1 | 5 | 50% | +GP Engine(Warm Start+岛屿)/FactorDSL/QuickBacktester |
-| **总计** | **135** | **111** | **9** | **15** | **85%** | Sprint 1.16: 78%→85% (+9功能) |
+| J. 前端 | 15 | 15 | 0 | 0 | 100% | +FactorLab/MiningTaskCenter(12页面全完成) |
+| K. AI/ML | 11 | 8 | 1 | 2 | 77% | +跨轮次学习/GP Pipeline/Mining API/DDL模型 |
+| **总计** | **135** | **117** | **7** | **11** | **88%** | Sprint 1.17: 85%→88% (+6功能) |
 
 ### 1.2 代码规模
 

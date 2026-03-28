@@ -99,3 +99,8 @@
 | **GP适应度IC_IR代理** | **IC_IR×(1-complexity)+novelty，替代SimBroker(需PG连接+2秒/次)，相关>0.85** | **KEEP(暂代)** | Sprint 1.16 |
 | **逻辑/参数分离** | **GP进化算子组合，Optuna TPE优化窗口参数，R2 P0改进** | **KEEP** | Sprint 1.16 |
 | **QuickBacktester** | **简化回测(无滑点/整手)，月度等权Top15，<2秒/因子，GP适应度用** | **KEEP** | Sprint 1.16 |
+| **GP跨轮次学习** | **save/load JSON + 种子注入(岛间偏移) + AST hash黑名单 + 失败原因统计** | **KEEP** | Sprint 1.17 |
+| **gp_approval_queue命名** | **域11已有approval_queue，GP用gp_approval_queue避免冲突** | **KEEP** | Sprint 1.17 |
+| **GP Pipeline 7步闭环** | **加载上轮→Warm Start→进化→Gate→DB/JSON→钉钉→保存** | **KEEP** | Sprint 1.17 |
+| **Mining API并发锁** | **同引擎不允许并发(409 Conflict)，防GPU/CPU竞争** | **KEEP** | Sprint 1.17 |
+| **AlphaPROBE DAG剪枝** | **子树黑名单+Bayesian Retriever+族谱LLM prompt，参考论文** | **研究结论** | Sprint 1.17 |

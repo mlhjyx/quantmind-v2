@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type MiningEngine = "gp" | "llm" | "brute";
-export type MiningStatus = "idle" | "running" | "paused" | "completed" | "failed";
+export type MiningStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export interface MiningTask {
   taskId: string;

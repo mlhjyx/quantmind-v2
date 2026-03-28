@@ -32,6 +32,7 @@ celery_app.conf.update(
     # 任务发现
     imports=[
         "app.tasks.daily_pipeline",
+        "app.tasks.mining_tasks",
     ],
 
     # 结果过期: 24 小时

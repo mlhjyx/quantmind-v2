@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.16完成 — 因子模块前端 + GP最小闭环核心 (Step 2完成)
-> 下一步: Sprint 1.17 (因子挖掘前端 + GP闭环自动化 + LLM基础)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅
+> Current: Phase 1, Sprint 1.17完成(8/10项, T7+T8 defer) — GP闭环自动化 + 因子挖掘前端
+> 下一步: Sprint 1.17续(T7 DeepSeek+T8 Idea Agent) 或 Sprint 1.18
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ⚠️
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -74,6 +74,45 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.17: 因子挖掘前端 + GP闭环自动化 (2026-03-28)
+
+**8/10项完成（T7 DeepSeek客户端+T8 Idea Agent defer到下session）。§5.3全流程执行。**
+
+**TrD 前端 (2项)**:
+- ✅ FactorLab — GP/LLM/枚举3模式切换, WebSocket实时进化曲线, 候选因子表, AI助手面板占位
+- ✅ MiningTaskCenter — 任务列表+批量操作, WS实时监控, 详情弹窗(进化曲线回放), 引擎效率BarChart
+- 1450 modules, build PASS
+
+**TrB GP闭环自动化 (3项)**:
+- ✅ 跨轮次学习 — save/load/黑名单/种子注入, 岛间多样性偏移, gp_engine.py 980→1256行
+- ✅ DDL — pipeline_runs + gp_approval_queue(域12, 45张表), SQLAlchemy模型
+- ✅ GP Pipeline入口 — run_gp_pipeline.py(910行, 7步闭环), JSON fallback, 钉钉通知
+
+**TrE Mining API (1项)**:
+- ✅ 5端点(run/tasks/tasks/{id}/cancel/evaluate) + MiningService(并发锁) + Celery任务
+
+**TrC+TrA (2项, Team Lead直做)**:
+- ✅ Task Scheduler — register_gp_task.ps1(每周六02:00)
+- ✅ 论文研究 — AlphaPROBE(DAG剪枝)+AlphaForge(动态组合)+AlphaBench → 3个LLM prompt模板+落地策略
+
+**Deferred (2项)**:
+- ⬜ T7 DeepSeek API客户端 — session spawn限制(§1.4 ≤8), defer到下session
+- ⬜ T8 Idea Agent — 同上
+
+**§6.5 交叉审查**: qa-tester 52测试(31 pass+21 skip/Celery)
+- **BUG发现**: 黑名单不检查Warm Start原始种子(P1, Sprint 1.18修)
+- **建议**: Celery任务未接入previous_run(P1) + load_previous_results JSON容错(P2)
+
+**测试**: 979+31=1010 passed, 0 regressions
+
+**技术债(Sprint 1.18+)**:
+1. 黑名单不检查种子因子(QA P1 bug)
+2. Celery mining_tasks未接入previous_run(跨轮次学习生产路径未生效)
+3. mining_service asyncpg直连绕过SQLAlchemy pool(双连接池)
+4. mining_tasks跨层导入scripts内部函数
+
+---
 
 ### Sprint 1.16: 因子模块前端 + GP最小闭环核心 (2026-03-28)
 
