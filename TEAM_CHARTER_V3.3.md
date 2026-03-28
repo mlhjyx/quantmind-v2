@@ -537,6 +537,12 @@ Hook强制级别分三档：
 - 升级由Team Lead在Sprint复盘时提议，用户确认后修改`.claude/settings.json`
 - 降级同理：连续2个Sprint零触发的阻断规则可申请降回强提醒
 
+**已升级为阻断的规则**（verify_completion.py Stop hook）：
+| 规则 | 检查函数 | 升级时间 | 触发条件 | 依据 |
+|------|----------|----------|----------|------|
+| 铁律6 PROGRESS.md | `check_progress_updated` | Sprint 1.15 | ≥3个代码文件变更但PROGRESS.md未更新 | LL-031（3次违反） |
+| §6.5 交叉审查分离 | `check_cross_review_executed` | Sprint 1.15 | 有编码agent但未spawn审查agent | LL-031（3次违反） |
+
 ### §13.5 用户的权利
 
 - 随时问"你现在状态是什么"——Team Lead必须诚实回答

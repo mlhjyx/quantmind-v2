@@ -649,7 +649,7 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
    - [ ] §5.3-10: Git commit + tag
 3. **这是同一规则第3次违反**（LL-027→LL-030→LL-031），按§13.2必须升级为Hook强制检查
 
-**执行状态**: 用户纠正后补做复盘中。Sprint 1.16开始严格执行。
+**执行状态**: ✅ 已升级执行机制。verify_completion.py Stop hook中 check_progress_updated + check_cross_review_executed 从提醒(exit 0)升级为阻断(exit 2)。audit_log.py 升级记录subagent_type。TEAM_CHARTER §13.4已记录升级规则。Sprint 1.16起强制执行。
 
 ---
 
