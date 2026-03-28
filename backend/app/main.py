@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.approval import router as approval_router
 from app.api.backtest import router as backtest_router
 from app.api.dashboard import router as dashboard_router
 from app.api.factors import router as factors_router
 from app.api.health import router as health_router
 from app.api.mining import router as mining_router
+from app.api.pipeline import router as pipeline_router
 from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
@@ -46,6 +48,7 @@ app.add_middleware(
 
 # --- API 路由注册 ---
 app.include_router(health_router)
+app.include_router(approval_router)
 app.include_router(backtest_router)
 app.include_router(dashboard_router)
 app.include_router(notifications_router)
@@ -54,6 +57,7 @@ app.include_router(params_router)
 app.include_router(risk_router)
 app.include_router(factors_router)
 app.include_router(mining_router)
+app.include_router(pipeline_router)
 app.include_router(strategies_router)
 
 

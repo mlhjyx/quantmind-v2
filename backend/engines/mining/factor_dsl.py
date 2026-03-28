@@ -677,10 +677,12 @@ class FactorDSL:
         if n > self.max_nodes:
             return False, f"节点数={n}超过上限{self.max_nodes}"
 
-        # 量纲检查（简化版：终端字段必须存在）
+        # 量纲检查：终端字段+算子名必须合法（QA P2 bug修复）
         for node in tree.all_nodes():
             if node.is_terminal() and node.op not in TERMINALS and node.op != "const":
                 return False, f"未知字段: {node.op}"
+            if not node.is_terminal() and node.op not in ALL_OPS and node.op != "const":
+                return False, f"未知算子: {node.op}"
 
         # 窗口参数检查
         for node in tree.all_nodes():

@@ -681,17 +681,29 @@ CREATE TABLE factor_mining_task (
 CREATE TABLE mining_knowledge (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     factor_name     VARCHAR(100),
+    factor_hash     VARCHAR(64),                       -- ⭐AST结构哈希，与 gp_approval_queue.ast_hash 一致
     expression      TEXT NOT NULL,
     hypothesis      TEXT,
     ic_mean         DECIMAL(8,6),
+    ic_stats        JSONB,                             -- ⭐{ic_mean,ic_std,t_stat,ic_ir,ic_win_rate}
     status          VARCHAR(10) NOT NULL,              -- success/failed
-    failure_reason  JSONB,                             -- ⭐结构化: {"gate":"ic","ic_mean":0.008}
+    failure_node    VARCHAR(20),                       -- ⭐失败节点: G1-G8 | approved | entry
+    failure_reason  JSONB,                             -- ⭐结构化: {"gate":"G3","ic_mean":0.008,"threshold":0.015}
+    failure_mode    VARCHAR(30),                       -- ⭐失败模式: ic_insufficient/correlation_high/...
     spearman_max_existing DECIMAL(8,4),                -- ⭐与现有因子最大Spearman相关性
     source          VARCHAR(20),                       -- llm/gp/brute_force/manual
-    embedding       BYTEA,                             -- 768维向量(序列化)
+    run_id          UUID REFERENCES pipeline_runs(run_id) ON DELETE SET NULL,  -- ⭐关联pipeline_runs
+    tags            TEXT[],                            -- ⭐标签数组: ['momentum','reversal']
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
-COMMENT ON TABLE mining_knowledge IS '因子知识库。去重基于Spearman>0.7判重（不是embedding）';
+COMMENT ON TABLE mining_knowledge IS '因子挖掘知识库(Sprint 1.18扩展)。记录成功/失败尝试，供Idea Agent读取避免重复';
+COMMENT ON COLUMN mining_knowledge.factor_hash IS 'AST结构哈希，与gp_approval_queue.ast_hash一致，用于跨表去重';
+COMMENT ON COLUMN mining_knowledge.failure_node IS '失败的Pipeline节点: G1/G2/.../G8 | approved | entry';
+COMMENT ON COLUMN mining_knowledge.failure_mode IS 'AlphaAgent失败模式: ic_insufficient/correlation_high/neutralization_decay/hypothesis_invalid/coverage_low/turnover_high/stability_low/compute_fail';
+CREATE INDEX idx_mining_knowledge_factor_hash ON mining_knowledge(factor_hash) WHERE factor_hash IS NOT NULL;
+CREATE INDEX idx_mining_knowledge_failure_mode ON mining_knowledge(failure_mode) WHERE failure_mode IS NOT NULL;
+CREATE INDEX idx_mining_knowledge_status_source ON mining_knowledge(status, source);
+CREATE INDEX idx_mining_knowledge_run_id ON mining_knowledge(run_id) WHERE run_id IS NOT NULL;
 
 -- ═══════════════════════════════════════════════════
 -- 域11: AI闭环（3张表）— Phase 1

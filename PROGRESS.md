@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
 > Last updated: 2026-03-28
-> Current: Phase 1, Sprint 1.17完成(10/10项) — GP闭环自动化 + 因子挖掘前端 + LLM基础
-> 下一步: Sprint 1.18 (AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank)
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅
+> Current: Phase 1, Sprint 1.18完成 — AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank
+> 下一步: Sprint 1.19 (系统设置 + Dashboard增强 + 生产加固)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -74,6 +74,37 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.18: AI Pipeline前端 + Pipeline编排 + SHAP + lambdarank (2026-03-28)
+
+**9/9项+2 bugfix完成。§5.3全流程执行。**
+
+**TrD 前端 (2项)**:
+- ✅ PipelineConsole — 4Tab(状态流程/审批/历史/AI日志), 8节点流程图, 自动化L0-L3, WS实时
+- ✅ AgentConfig — 3Tab(Agent配置/模型健康/费用仪表盘), 4 Agent侧边栏
+
+**TrB Pipeline编排 (3项)**:
+- ✅ PipelineOrchestrator — 8节点状态机(1210行), 单因子+批量并行, 内存模式无DB可测
+- ✅ approval API — 6端点(queue/detail/approve/reject/hold/history), 409重复保护
+- ✅ mining_knowledge扩展 — +5字段(factor_hash/failure_node/failure_mode/ic_stats/run_id), 8种失败模式
+
+**TrE Pipeline API (1项)**:
+- ✅ Pipeline API — 5端点(status/runs/detail/approve/reject), 注册到main.py
+
+**TrC ML增强 (2项)**:
+- ✅ SHAP可解释性 — explain_global/local/temporal, ECharts序列化, TreeExplainer
+- ✅ LightGBM lambdarank — dual mode(regression/lambdarank), NDCG@15, 截面group
+
+**TrC 滑点+bugfix (Team Lead)**:
+- ✅ T6 slippage_decompose.py — 三组件分解, 模拟+PT数据, R4对比
+- ✅ Bugfix: 黑名单检查种子(P1) + validate算子名(P2) + step2变体黑名单(QA P1)
+
+**§6.5 QA**: 77测试(48原有+29新增), 发现P1 step2变体黑名单漏洞(已修复)
+
+**测试**: 1130 passed, 0 regressions
+**前端**: 1458 modules, build PASS
+
+---
 
 ### Sprint 1.17: 因子挖掘前端 + GP闭环自动化 (2026-03-28)
 

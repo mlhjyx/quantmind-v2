@@ -723,8 +723,12 @@ class GPEngine:
 
         warm_inds: list[creator.Individual] = []
 
-        # 1. 原始种子因子
+        # 1. 原始种子因子（检查黑名单，QA P1 bug修复）
+        blacklist = self.previous_run.blacklisted_hashes if self.previous_run else set()
         for _name, tree in seed_trees.items():
+            if tree.to_ast_hash() in blacklist:
+                logger.info(f"[GPEngine] 种子因子 {_name} 在黑名单中，跳过")
+                continue
             ind = creator.Individual([tree.clone()])
             warm_inds.append(ind)
 
@@ -733,6 +737,8 @@ class GPEngine:
             n_variants = max(2, (pop_size - len(seed_trees)) // (len(SEED_FACTORS) * 3))
             variants = self.dsl.seed_to_variants(name, expr, n_variants=n_variants)
             for tree in variants[1:]:  # 跳过第一个（原始种子已加入）
+                if tree.to_ast_hash() in blacklist:  # QA P1 bug修复: step2变体也检查黑名单
+                    continue
                 valid, _ = self.dsl.validate(tree)
                 if valid:
                     ind = creator.Individual([tree])

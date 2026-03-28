@@ -74,6 +74,8 @@ class MLConfig:
     gpu: bool = True
     model_dir: str = "models/lgbm_walkforward"
     seed: int = 42
+    mode: str = "regression"  # 'regression' 或 'lambdarank'
+    ndcg_at_k: int = 15  # lambdarank模式下的NDCG@K评估指标
 
 
 @dataclass
@@ -383,6 +385,111 @@ class FeaturePreprocessor:
 
 
 # ============================================================
+# Lambdarank辅助函数
+# ============================================================
+
+
+def _build_rank_groups(df: pd.DataFrame, labels: np.ndarray) -> list[int]:
+    """构建lambdarank的group数组。
+
+    LightGBM lambdarank要求group数组描述每个query（截面）有多少条记录。
+    这里每个截面 = 一个交易日的所有股票。
+
+    Args:
+        df: 含trade_date列的DataFrame（与labels行对齐）
+        labels: 目标变量数组（仅用于长度校验）
+
+    Returns:
+        group列表，每个元素是该截面的股票数量
+    """
+    counts = df.groupby("trade_date", sort=True).size()
+    groups = counts.tolist()
+    assert sum(groups) == len(labels), (
+        f"group总数{sum(groups)} != labels长度{len(labels)}"
+    )
+    return groups
+
+
+def _to_rank_label(y: np.ndarray, n_bins: int = 5) -> np.ndarray:
+    """将连续收益率转换为非负整数分位数标签，用于lambdarank。
+
+    LightGBM lambdarank要求label为非负整数，值越大表示越相关。
+    这里按全局分位数分成n_bins桶，返回0~(n_bins-1)的整数标签。
+
+    Args:
+        y: 连续收益率数组
+        n_bins: 分桶数（默认5档：0=最差，4=最好）
+
+    Returns:
+        整数标签数组，dtype=int32
+    """
+    labels = np.zeros(len(y), dtype=np.int32)
+    valid_mask = ~np.isnan(y)
+    if valid_mask.sum() < n_bins:
+        return labels
+    quantiles = np.nanquantile(y, np.linspace(0, 1, n_bins + 1))
+    quantiles[-1] += 1e-8  # 确保最大值落入最高桶
+    for i in range(n_bins):
+        mask = valid_mask & (y >= quantiles[i]) & (y < quantiles[i + 1])
+        labels[mask] = i
+    return labels
+
+
+def _compute_ndcg_at_k(
+    df: pd.DataFrame,
+    predictions: np.ndarray,
+    target_col: str,
+    k: int = 15,
+) -> float:
+    """计算截面平均NDCG@K。
+
+    按每个交易日截面计算NDCG@K，再取均值。
+    NDCG@K衡量模型在top-K选股上的排序质量。
+
+    Args:
+        df: 含trade_date, target_col列的DataFrame
+        predictions: 模型预测值数组（与df行对齐）
+        target_col: 真实收益率列名
+        k: top-K
+
+    Returns:
+        日均NDCG@K
+    """
+    temp = df[["trade_date", target_col]].copy()
+    temp["predicted"] = predictions
+    ndcg_list = []
+
+    for _, group in temp.groupby("trade_date"):
+        if len(group) < k:
+            continue
+        # 按预测值降序取top-K，计算DCG
+        group_sorted_by_pred = group.sort_values("predicted", ascending=False)
+        group_sorted_by_actual = group.sort_values(target_col, ascending=False)
+
+        # 将真实收益转为相关性分数（非负，rank-based）
+        actual_vals = group[target_col].values
+        ranks = sp_stats.rankdata(actual_vals)  # 小的排名低，大的排名高
+        rel_dict = dict(zip(group.index, ranks))
+
+        def dcg_at_k(ordered_index: list, rel: dict, k_: int) -> float:
+            score = 0.0
+            for i, idx in enumerate(ordered_index[:k_]):
+                score += (2 ** rel[idx] - 1) / np.log2(i + 2)
+            return score
+
+        pred_index = list(group_sorted_by_pred.index)
+        ideal_index = list(group_sorted_by_actual.index)
+
+        dcg = dcg_at_k(pred_index, rel_dict, k)
+        idcg = dcg_at_k(ideal_index, rel_dict, k)
+
+        if idcg > 0:
+            ndcg_list.append(dcg / idcg)
+
+    return float(np.mean(ndcg_list)) if ndcg_list else 0.0
+
+
+# ============================================================
 # Walk-Forward训练器
 # ============================================================
 
@@ -415,24 +522,48 @@ class WalkForwardTrainer:
         return self._conn
 
     def _setup_default_params(self) -> None:
-        """设置LightGBM默认超参数（对标设计文档 3.1节）。"""
-        self._default_lgb_params = {
-            "objective": "regression",
-            "metric": "mse",
-            "boosting_type": "gbdt",
-            "learning_rate": 0.05,
-            "num_leaves": 63,
-            "max_depth": 6,
-            "min_child_samples": 50,
-            "reg_alpha": 1.0,
-            "reg_lambda": 5.0,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-            "subsample_freq": 1,
-            "n_jobs": -1,
-            "seed": self.config.seed,
-            "verbose": -1,
-        }
+        """设置LightGBM默认超参数（对标设计文档 3.1节）。
+
+        regression模式: objective=regression, metric=mse
+        lambdarank模式: objective=lambdarank, metric=ndcg
+        """
+        if self.config.mode == "lambdarank":
+            self._default_lgb_params = {
+                "objective": "lambdarank",
+                "metric": "ndcg",
+                "ndcg_eval_at": [self.config.ndcg_at_k],
+                "boosting_type": "gbdt",
+                "learning_rate": 0.05,
+                "num_leaves": 63,
+                "max_depth": 6,
+                "min_child_samples": 50,
+                "reg_alpha": 1.0,
+                "reg_lambda": 5.0,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+                "subsample_freq": 1,
+                "n_jobs": -1,
+                "seed": self.config.seed,
+                "verbose": -1,
+            }
+        else:
+            self._default_lgb_params = {
+                "objective": "regression",
+                "metric": "mse",
+                "boosting_type": "gbdt",
+                "learning_rate": 0.05,
+                "num_leaves": 63,
+                "max_depth": 6,
+                "min_child_samples": 50,
+                "reg_alpha": 1.0,
+                "reg_lambda": 5.0,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+                "subsample_freq": 1,
+                "n_jobs": -1,
+                "seed": self.config.seed,
+                "verbose": -1,
+            }
         if self.config.gpu:
             self._default_lgb_params.update({
                 "device_type": "gpu",
@@ -812,8 +943,24 @@ class WalkForwardTrainer:
         X_test = test_processed[feature_cols].values.astype(np.float32)
         y_test = test_processed["excess_return_20"].values.astype(np.float32)
 
-        train_data = lgb.Dataset(X_train, label=y_train, feature_name=feature_cols)
-        valid_data = lgb.Dataset(X_valid, label=y_valid, reference=train_data)
+        # lambdarank需要group数组（每个截面=一个query group）
+        if self.config.mode == "lambdarank":
+            train_groups = _build_rank_groups(train_processed, y_train)
+            valid_groups = _build_rank_groups(valid_processed, y_valid)
+            # lambdarank label必须为非负整数（分位数分桶）
+            y_train_rank = _to_rank_label(y_train)
+            y_valid_rank = _to_rank_label(y_valid)
+            train_data = lgb.Dataset(
+                X_train, label=y_train_rank,
+                group=train_groups, feature_name=feature_cols,
+            )
+            valid_data = lgb.Dataset(
+                X_valid, label=y_valid_rank,
+                group=valid_groups, reference=train_data,
+            )
+        else:
+            train_data = lgb.Dataset(X_train, label=y_train, feature_name=feature_cols)
+            valid_data = lgb.Dataset(X_valid, label=y_valid, reference=train_data)
 
         # 3. 训练
         lgb_params = {**self._default_lgb_params}
@@ -920,6 +1067,17 @@ class WalkForwardTrainer:
             test_samples=len(test_df),
             elapsed_seconds=elapsed,
         )
+
+        # lambdarank模式：额外计算并记录NDCG@K
+        ndcg_at_k_val = 0.0
+        if self.config.mode == "lambdarank":
+            ndcg_at_k_val = _compute_ndcg_at_k(
+                test_processed, test_pred,
+                "excess_return_20", k=self.config.ndcg_at_k,
+            )
+            logger.info(
+                f"F{fold.fold_id} [lambdarank] NDCG@{self.config.ndcg_at_k}={ndcg_at_k_val:.4f}"
+            )
 
         logger.info(
             f"F{fold.fold_id} 完成: "
