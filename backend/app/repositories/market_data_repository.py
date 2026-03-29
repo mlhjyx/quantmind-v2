@@ -5,7 +5,6 @@ CLAUDE.md: 所有(symbol_id, date)组合必须有联合索引。
 """
 
 from datetime import date
-from typing import Optional
 
 from app.repositories.base_repository import BaseRepository
 
@@ -14,7 +13,7 @@ class MarketDataRepository(BaseRepository):
     """行情+基本面+指数+股票信息的数据访问。"""
 
     async def get_daily_prices(
-        self, trade_date: date, codes: Optional[list[str]] = None
+        self, trade_date: date, codes: list[str] | None = None
     ) -> list[dict]:
         """获取指定日期的行情数据。"""
         sql = """SELECT code, open, high, low, close, pre_close,
@@ -41,7 +40,7 @@ class MarketDataRepository(BaseRepository):
 
     async def get_benchmark_close(
         self, trade_date: date, index_code: str = "000300.SH"
-    ) -> Optional[float]:
+    ) -> float | None:
         """获取基准指数收盘价。"""
         val = await self.fetch_scalar(
             "SELECT close FROM index_daily WHERE index_code = :ic AND trade_date = :td",
@@ -64,7 +63,7 @@ class MarketDataRepository(BaseRepository):
         )
         return [{"trade_date": r[0], "close": float(r[1])} for r in rows]
 
-    async def get_symbol_info(self, code: str) -> Optional[dict]:
+    async def get_symbol_info(self, code: str) -> dict | None:
         """获取股票基础信息。"""
         row = await self.fetch_one(
             """SELECT code, name, industry_sw1, industry_sw2, market,
@@ -92,7 +91,7 @@ class MarketDataRepository(BaseRepository):
 
     async def get_next_trading_day(
         self, trade_date: date, market: str = "astock"
-    ) -> Optional[date]:
+    ) -> date | None:
         """获取下一个交易日。"""
         return await self.fetch_scalar(
             """SELECT MIN(trade_date) FROM trading_calendar
@@ -100,6 +99,65 @@ class MarketDataRepository(BaseRepository):
             {"m": market, "td": trade_date},
         )
 
-    async def get_latest_data_date(self) -> Optional[date]:
+    async def get_latest_data_date(self) -> date | None:
         """获取最新行情日期。"""
         return await self.fetch_scalar("SELECT MAX(trade_date) FROM klines_daily")
+
+    async def get_market_ticker(self) -> list[dict]:
+        """获取主要指数最新行情快照（市场行情栏）。
+
+        读取 index_daily 最新日期的沪深300/上证/创业板数据，
+        同时汇总当日全市场成交额（klines_daily.amount，千元转亿元）。
+
+        Returns:
+            list[dict]: 每项含 label/code/value/change_pct/is_up。
+        """
+        # 获取指数最新日期
+        latest_date = await self.fetch_scalar(
+            "SELECT MAX(trade_date) FROM index_daily"
+        )
+        if not latest_date:
+            return []
+
+        rows = await self.fetch_all(
+            """SELECT index_code, close, pct_change
+               FROM index_daily
+               WHERE trade_date = :td
+                 AND index_code IN ('000300.SH', '000001.SH', '399006.SZ')
+               ORDER BY index_code""",
+            {"td": latest_date},
+        )
+
+        label_map = {
+            "000300.SH": "沪深300",
+            "000001.SH": "上证指数",
+            "399006.SZ": "创业板指",
+        }
+
+        result = []
+        for r in rows:
+            code, close, pct = r[0], r[1], r[2]
+            change_pct = float(pct) if pct is not None else 0.0
+            result.append({
+                "label": label_map.get(code, code),
+                "code": code,
+                "value": float(close) if close else 0.0,
+                "change_pct": change_pct,
+                "is_up": change_pct >= 0,
+            })
+
+        # 全市场成交额（千元→亿元）
+        amount_val = await self.fetch_scalar(
+            """SELECT SUM(amount) FROM klines_daily WHERE trade_date = :td""",
+            {"td": latest_date},
+        )
+        total_amount_b = round(float(amount_val) / 1_000_000, 2) if amount_val else 0.0
+        result.append({
+            "label": "成交额(亿)",
+            "code": "TOTAL_AMOUNT",
+            "value": total_amount_b,
+            "change_pct": 0.0,
+            "is_up": True,
+        })
+
+        return result

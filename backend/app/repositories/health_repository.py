@@ -4,7 +4,6 @@
 """
 
 from datetime import date
-from typing import Optional
 
 from app.repositories.base_repository import BaseRepository
 
@@ -12,7 +11,7 @@ from app.repositories.base_repository import BaseRepository
 class HealthRepository(BaseRepository):
     """health_checks + scheduler_task_log表访问。"""
 
-    async def get_latest_health(self) -> Optional[dict]:
+    async def get_latest_health(self) -> dict | None:
         """获取最新健康检查结果。"""
         row = await self.fetch_one(
             """SELECT check_date, postgresql_ok, redis_ok, data_fresh,
@@ -56,7 +55,7 @@ class HealthRepository(BaseRepository):
         ]
 
     async def get_circuit_breaker_history(
-        self, strategy_id: str, days: int = 30
+        self, _strategy_id: str, days: int = 30
     ) -> list[dict]:
         """获取最近N天的熔断事件。"""
         rows = await self.fetch_all(
@@ -72,6 +71,42 @@ class HealthRepository(BaseRepository):
                 "action": r[1],
                 "reason": r[2],
                 "detail": r[3],
+            }
+            for r in rows
+        ]
+
+    async def get_active_alerts(self, hours: int = 24) -> list[dict]:
+        """获取活跃预警列表（未读 + 最近N小时）。
+
+        从 notifications 表读取未读或最近N小时内的记录，
+        按 level(P0>P1>P2>P3) 和时间倒序排列。
+
+        Args:
+            hours: 时间窗口，默认24小时。
+
+        Returns:
+            list[dict]: 每项含 level/title/desc/time/color。
+        """
+        level_color = {"P0": "red", "P1": "orange", "P2": "yellow", "P3": "blue"}
+        rows = await self.fetch_all(
+            """SELECT level, title, content, created_at
+               FROM notifications
+               WHERE is_read = FALSE
+                  OR created_at >= NOW() - INTERVAL '1 hour' * :hours
+               ORDER BY
+                 CASE level WHEN 'P0' THEN 0 WHEN 'P1' THEN 1
+                             WHEN 'P2' THEN 2 ELSE 3 END,
+                 created_at DESC
+               LIMIT 50""",
+            {"hours": hours},
+        )
+        return [
+            {
+                "level": r[0],
+                "title": r[1],
+                "desc": r[2] or "",
+                "time": r[3].isoformat() if r[3] else None,
+                "color": level_color.get(r[0], "gray"),
             }
             for r in rows
         ]

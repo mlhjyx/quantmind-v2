@@ -5,11 +5,12 @@
 """
 
 from datetime import date, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.health_repository import HealthRepository
+from app.repositories.market_data_repository import MarketDataRepository
 from app.repositories.performance_repository import PerformanceRepository
 from app.repositories.position_repository import PositionRepository
 
@@ -25,6 +26,7 @@ class DashboardService:
         self.perf_repo = PerformanceRepository(session)
         self.pos_repo = PositionRepository(session)
         self.health_repo = HealthRepository(session)
+        self.market_repo = MarketDataRepository(session)
 
     async def get_summary(
         self, strategy_id: str, execution_mode: str = "paper"
@@ -153,8 +155,70 @@ class DashboardService:
 
         return actions
 
+    async def get_market_ticker(self) -> list[dict[str, Any]]:
+        """获取市场行情栏数据（沪深300/上证/创业板/成交额）。
+
+        Returns:
+            list[dict]: 每项含 label/code/value/change_pct/is_up。
+        """
+        return await self.market_repo.get_market_ticker()
+
+    async def get_alerts(self, hours: int = 24) -> list[dict[str, Any]]:
+        """获取活跃预警列表（P0-P2，未读 + 最近24h）。
+
+        Args:
+            hours: 查询时间窗口（小时），默认24。
+
+        Returns:
+            list[dict]: 每项含 level/title/desc/time/color。
+        """
+        return await self.health_repo.get_active_alerts(hours=hours)
+
+    async def get_strategies_overview(self) -> list[dict[str, Any]]:
+        """获取所有策略概览（name/status/market/sharpe/pnl/mdd）。
+
+        Returns:
+            list[dict]: 策略列表，最新绩效通过LATERAL JOIN附加。
+        """
+        return await self.perf_repo.get_strategies_overview()
+
+    async def get_monthly_returns(
+        self,
+        strategy_id: str,
+        execution_mode: str = "paper",
+    ) -> dict[int, list[float | None]]:
+        """获取月度收益矩阵。
+
+        Args:
+            strategy_id: 策略ID。
+            execution_mode: 执行模式。
+
+        Returns:
+            dict[int, list]: {year: [jan, feb, ..., dec]}。
+        """
+        sid = strategy_id
+        return await self.perf_repo.get_monthly_returns(sid, execution_mode)
+
+    async def get_industry_distribution(
+        self,
+        strategy_id: str,
+        execution_mode: str = "paper",
+    ) -> list[dict[str, Any]]:
+        """获取当前持仓行业分布（饼图数据）。
+
+        Args:
+            strategy_id: 策略ID。
+            execution_mode: 执行模式。
+
+        Returns:
+            list[dict]: 每项含 name/pct/color。
+        """
+        return await self.pos_repo.get_industry_distribution(
+            strategy_id, execution_mode
+        )
+
     @staticmethod
-    def _resolve_period_start(period: str) -> Optional[date]:
+    def _resolve_period_start(period: str) -> date | None:
         """将周期字符串转换为起始日期。
 
         Args:

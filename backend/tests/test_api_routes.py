@@ -4,17 +4,14 @@
 不依赖真实数据库，只验证路由层逻辑（参数解析、状态码、响应结构）。
 """
 
-from datetime import date
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
 httpx = pytest.importorskip("httpx", reason="httpx not installed")
-from httpx import ASGITransport, AsyncClient
 
-from app.main import app
+from app.main import app  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers: mock工厂
@@ -36,6 +33,11 @@ def _make_dashboard_service_mock(
     summary: dict | None = None,
     nav_series: list[dict] | None = None,
     pending_actions: list[dict] | None = None,
+    market_ticker: list[dict] | None = None,
+    alerts: list[dict] | None = None,
+    strategies: list[dict] | None = None,
+    monthly_returns: dict | None = None,
+    industry_distribution: list[dict] | None = None,
 ) -> MagicMock:
     """创建DashboardService mock。"""
     svc = MagicMock()
@@ -54,6 +56,37 @@ def _make_dashboard_service_mock(
     )
     svc.get_nav_series = AsyncMock(return_value=nav_series or [])
     svc.get_pending_actions = AsyncMock(return_value=pending_actions or [])
+    svc.get_market_ticker = AsyncMock(
+        return_value=market_ticker
+        or [
+            {"label": "沪深300", "code": "000300.SH", "value": 3800.5, "change_pct": 0.8, "is_up": True},
+            {"label": "上证指数", "code": "000001.SH", "value": 3200.1, "change_pct": -0.2, "is_up": False},
+            {"label": "创业板指", "code": "399006.SZ", "value": 2100.3, "change_pct": 1.1, "is_up": True},
+            {"label": "成交额(亿)", "code": "TOTAL_AMOUNT", "value": 8500.0, "change_pct": 0.0, "is_up": True},
+        ]
+    )
+    svc.get_alerts = AsyncMock(
+        return_value=alerts
+        or [
+            {"level": "P1", "title": "回撤预警", "desc": "MDD触及-8%", "time": "2026-03-29T10:00:00+08:00", "color": "orange"},
+        ]
+    )
+    svc.get_strategies_overview = AsyncMock(
+        return_value=strategies
+        or [
+            {"id": "abc-123", "name": "v1.1", "status": "paper", "market": "astock", "sharpe": None, "pnl": 0.05, "mdd": -0.08},
+        ]
+    )
+    svc.get_monthly_returns = AsyncMock(
+        return_value=monthly_returns or {2026: [None] * 12}
+    )
+    svc.get_industry_distribution = AsyncMock(
+        return_value=industry_distribution
+        or [
+            {"name": "医药生物", "pct": 0.25, "color": "#5470c6"},
+            {"name": "电子", "pct": 0.20, "color": "#91cc75"},
+        ]
+    )
     return svc
 
 
@@ -375,6 +408,127 @@ class TestDashboardAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
+
+
+# ============================================================================
+# Dashboard API Tests — 5 new endpoints (Sprint 1.22)
+# ============================================================================
+
+
+class TestDashboardNewEndpoints:
+    """GET /api/dashboard/market-ticker, /alerts, /strategies,
+    /monthly-returns, /industry-distribution 测试。"""
+
+    @pytest.mark.asyncio
+    async def test_market_ticker_returns_list(self, client, _override_dashboard_service):
+        """正常路径: market-ticker返回4项行情数据。"""
+        resp = await client.get("/api/dashboard/market-ticker")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 4
+        for item in data:
+            assert "label" in item
+            assert "code" in item
+            assert "value" in item
+            assert "change_pct" in item
+            assert "is_up" in item
+
+    @pytest.mark.asyncio
+    async def test_market_ticker_fields_types(self, client, _override_dashboard_service):
+        """market-ticker: value为数值，is_up为bool。"""
+        resp = await client.get("/api/dashboard/market-ticker")
+        data = resp.json()
+        for item in data:
+            assert isinstance(item["value"], (int, float))
+            assert isinstance(item["is_up"], bool)
+
+    @pytest.mark.asyncio
+    async def test_alerts_returns_list(self, client, _override_dashboard_service):
+        """正常路径: alerts返回预警列表。"""
+        resp = await client.get("/api/dashboard/alerts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        alert = data[0]
+        assert alert["level"] == "P1"
+        assert "title" in alert
+        assert "desc" in alert
+        assert "color" in alert
+
+    @pytest.mark.asyncio
+    async def test_alerts_hours_param(self, client, _override_dashboard_service):
+        """alerts: hours参数合法范围（1-168）。"""
+        resp = await client.get("/api/dashboard/alerts?hours=48")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_alerts_hours_out_of_range(self, client, _override_dashboard_service):
+        """边界: hours=0 应返回422。"""
+        resp = await client.get("/api/dashboard/alerts?hours=0")
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_strategies_returns_list(self, client, _override_dashboard_service):
+        """正常路径: strategies返回策略列表，包含必要字段。"""
+        resp = await client.get("/api/dashboard/strategies")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        s = data[0]
+        for key in ("id", "name", "status", "market", "pnl", "mdd"):
+            assert key in s, f"strategies缺少字段: {key}"
+
+    @pytest.mark.asyncio
+    async def test_monthly_returns_dict_structure(self, client, _override_dashboard_service):
+        """正常路径: monthly-returns返回 {year: [12个月]} 结构。"""
+        resp = await client.get("/api/dashboard/monthly-returns")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, dict)
+        for _year_key, months in data.items():
+            assert isinstance(months, list)
+            assert len(months) == 12
+
+    @pytest.mark.asyncio
+    async def test_monthly_returns_with_strategy_id(self, client, _override_dashboard_service):
+        """monthly-returns: 指定strategy_id和execution_mode参数。"""
+        resp = await client.get(
+            "/api/dashboard/monthly-returns?strategy_id=abc&execution_mode=live"
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_returns_list(self, client, _override_dashboard_service):
+        """正常路径: industry-distribution返回行业分布列表。"""
+        resp = await client.get("/api/dashboard/industry-distribution")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 2
+        for item in data:
+            assert "name" in item
+            assert "pct" in item
+            assert "color" in item
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_pct_numeric(self, client, _override_dashboard_service):
+        """industry-distribution: pct为数值且在[0,1]范围内。"""
+        resp = await client.get("/api/dashboard/industry-distribution")
+        data = resp.json()
+        for item in data:
+            assert isinstance(item["pct"], (int, float))
+            assert 0.0 <= item["pct"] <= 1.0
+
+    @pytest.mark.asyncio
+    async def test_industry_distribution_with_strategy_id(self, client, _override_dashboard_service):
+        """industry-distribution: 指定strategy_id参数。"""
+        resp = await client.get(
+            "/api/dashboard/industry-distribution?strategy_id=s1&execution_mode=paper"
+        )
+        assert resp.status_code == 200
 
 
 # ============================================================================

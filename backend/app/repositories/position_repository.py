@@ -4,7 +4,6 @@
 """
 
 from datetime import date
-from typing import Optional
 
 from app.repositories.base_repository import BaseRepository
 
@@ -97,6 +96,53 @@ class PositionRepository(BaseRepository):
         return [
             {"industry": r[0], "weight": float(r[1]), "n_stocks": r[2]}
             for r in rows
+        ]
+
+    async def get_industry_distribution(
+        self,
+        strategy_id: str,
+        execution_mode: str = "paper",
+    ) -> list[dict]:
+        """获取最新持仓的行业分布（用于饼图）。
+
+        JOIN symbols.industry_sw1，按权重汇总并计算百分比，
+        返回固定颜色列表便于前端直接渲染。
+
+        Args:
+            strategy_id: 策略ID。
+            execution_mode: 执行模式。
+
+        Returns:
+            list[dict]: 每项含 name/pct/color，按权重降序排列。
+        """
+        rows = await self.fetch_all(
+            """SELECT
+                 COALESCE(s.industry_sw1, '其他') AS industry,
+                 SUM(p.weight)                     AS total_weight
+               FROM position_snapshot p
+               JOIN symbols s ON p.code = s.code
+               WHERE p.strategy_id = :sid AND p.execution_mode = :mode
+                 AND p.trade_date = (
+                   SELECT MAX(trade_date) FROM position_snapshot
+                   WHERE strategy_id = :sid AND execution_mode = :mode
+                 )
+               GROUP BY industry
+               ORDER BY total_weight DESC""",
+            {"sid": strategy_id, "mode": execution_mode},
+        )
+        # 固定调色板（循环使用）
+        palette = [
+            "#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de",
+            "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#d4a520",
+        ]
+        total = sum(float(r[1]) for r in rows) or 1.0
+        return [
+            {
+                "name": r[0],
+                "pct": round(float(r[1]) / total, 4),
+                "color": palette[i % len(palette)],
+            }
+            for i, r in enumerate(rows)
         ]
 
     async def save_snapshot(

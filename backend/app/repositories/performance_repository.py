@@ -4,11 +4,6 @@ Paper Trading和实盘的NAV/收益/回撤数据读写。
 """
 
 from datetime import date
-from decimal import Decimal
-from typing import Optional
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.base_repository import BaseRepository
 
@@ -18,7 +13,7 @@ class PerformanceRepository(BaseRepository):
 
     async def get_latest_nav(
         self, strategy_id: str, execution_mode: str = "paper"
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """获取最新一天的绩效数据。"""
         row = await self.fetch_one(
             """SELECT trade_date, nav, daily_return, cumulative_return,
@@ -47,8 +42,8 @@ class PerformanceRepository(BaseRepository):
     async def get_nav_series(
         self,
         strategy_id: str,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
         execution_mode: str = "paper",
     ) -> list[dict]:
         """获取NAV时间序列。"""
@@ -82,7 +77,7 @@ class PerformanceRepository(BaseRepository):
         strategy_id: str,
         lookback_days: int = 60,
         execution_mode: str = "paper",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """获取滚动绩效统计（最近N天）。
 
         用于Paper Trading周五简报和毕业标准检查。
@@ -133,6 +128,80 @@ class PerformanceRepository(BaseRepository):
             {"sid": strategy_id, "mode": execution_mode},
         )
         return float(val) if val else 0
+
+    async def get_monthly_returns(
+        self,
+        strategy_id: str,
+        execution_mode: str = "paper",
+    ) -> dict[int, list[float | None]]:
+        """获取月度收益矩阵（年×12月）。
+
+        按年月聚合daily_return，取各月最后一个交易日的cumulative_return差值
+        作为月度收益近似（最后日cumulative_return - 上月最后日cumulative_return）。
+
+        Args:
+            strategy_id: 策略ID。
+            execution_mode: 执行模式。
+
+        Returns:
+            dict[int, list]: {year: [jan, feb, ..., dec]}，无数据的月份为None。
+        """
+        rows = await self.fetch_all(
+            """SELECT
+                 EXTRACT(YEAR FROM trade_date)::INT  AS yr,
+                 EXTRACT(MONTH FROM trade_date)::INT AS mo,
+                 SUM(daily_return)                   AS monthly_ret
+               FROM performance_series
+               WHERE strategy_id = :sid AND execution_mode = :mode
+               GROUP BY yr, mo
+               ORDER BY yr, mo""",
+            {"sid": strategy_id, "mode": execution_mode},
+        )
+        matrix: dict[int, list[float | None]] = {}
+        for r in rows:
+            yr, mo, ret = int(r[0]), int(r[1]), float(r[2]) if r[2] is not None else None
+            if yr not in matrix:
+                matrix[yr] = [None] * 12
+            matrix[yr][mo - 1] = round(ret, 6) if ret is not None else None
+        return matrix
+
+    async def get_strategies_overview(self) -> list[dict]:
+        """获取所有策略概览（strategy表 + 最新绩效）。
+
+        Returns:
+            list[dict]: 每项含 id/name/status/market/sharpe/pnl/mdd。
+        """
+        rows = await self.fetch_all(
+            """SELECT
+                 s.id::TEXT,
+                 s.name,
+                 s.status,
+                 s.market,
+                 ps.nav,
+                 ps.cumulative_return,
+                 ps.drawdown
+               FROM strategy s
+               LEFT JOIN LATERAL (
+                 SELECT nav, cumulative_return, drawdown
+                 FROM performance_series
+                 WHERE strategy_id = s.id
+                 ORDER BY trade_date DESC LIMIT 1
+               ) ps ON TRUE
+               ORDER BY s.created_at DESC""",
+            {},
+        )
+        result = []
+        for r in rows:
+            result.append({
+                "id": r[0],
+                "name": r[1],
+                "status": r[2],
+                "market": r[3],
+                "sharpe": None,  # 计算成本高，暂不计算rolling sharpe
+                "pnl": round(float(r[5]), 4) if r[5] is not None else None,
+                "mdd": round(float(r[6]), 4) if r[6] is not None else None,
+            })
+        return result
 
     async def upsert_daily(
         self,
