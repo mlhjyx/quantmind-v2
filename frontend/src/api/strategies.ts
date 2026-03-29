@@ -43,25 +43,25 @@ export interface StrategyCreatePayload {
 export type StrategyUpdatePayload = Partial<StrategyCreatePayload>;
 
 export async function listStrategies(): Promise<Strategy[]> {
-  const res = await apiClient.get<Strategy[]>("/strategy");
+  const res = await apiClient.get<Strategy[]>("/strategies");
   return res.data;
 }
 
 export async function getStrategy(id: string): Promise<Strategy> {
-  const res = await apiClient.get<Strategy>(`/strategy/${id}`);
+  const res = await apiClient.get<Strategy>(`/strategies/${id}`);
   return res.data;
 }
 
 export async function createStrategy(payload: StrategyCreatePayload): Promise<Strategy> {
-  const res = await apiClient.post<Strategy>("/strategy", payload);
+  const res = await apiClient.post<Strategy>("/strategies", payload);
   return res.data;
 }
 
 export async function updateStrategy(id: string, payload: StrategyUpdatePayload): Promise<Strategy> {
-  const res = await apiClient.put<Strategy>(`/strategy/${id}`, payload);
+  const res = await apiClient.put<Strategy>(`/strategies/${id}`, payload);
   return res.data;
 }
 
 export async function deleteStrategy(id: string): Promise<void> {
-  await apiClient.delete(`/strategy/${id}`);
+  await apiClient.delete(`/strategies/${id}`);
 }

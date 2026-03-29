@@ -97,61 +97,61 @@ export interface EngineStats {
 // ---- API calls ----
 
 export async function startGPMining(config: GPConfig): Promise<{ task_id: string }> {
-  const res = await apiClient.post<{ task_id: string }>("/factor/mine/gp", config);
+  const res = await apiClient.post<{ task_id: string }>("/mining/run", { engine: "gp", config });
   return res.data;
 }
 
 export async function startLLMMining(config: LLMConfig): Promise<{ task_id: string }> {
-  const res = await apiClient.post<{ task_id: string }>("/factor/mine/llm", config);
+  const res = await apiClient.post<{ task_id: string }>("/mining/run", { engine: "llm", config });
   return res.data;
 }
 
 export async function startBruteForceMining(config: BruteForceConfig): Promise<{ task_id: string }> {
-  const res = await apiClient.post<{ task_id: string }>("/factor/mine/brute", config);
+  const res = await apiClient.post<{ task_id: string }>("/mining/run", { engine: "brute", config });
   return res.data;
 }
 
 export async function getMiningTasks(): Promise<MiningTaskSummary[]> {
-  const res = await apiClient.get<MiningTaskSummary[]>("/factor/tasks");
+  const res = await apiClient.get<MiningTaskSummary[]>("/mining/tasks");
   return res.data;
 }
 
 export async function getMiningTaskDetail(taskId: string): Promise<MiningTaskDetail> {
-  const res = await apiClient.get<MiningTaskDetail>(`/factor/tasks/${taskId}`);
+  const res = await apiClient.get<MiningTaskDetail>(`/mining/tasks/${taskId}`);
   return res.data;
 }
 
 export async function pauseMiningTask(taskId: string): Promise<void> {
-  await apiClient.post(`/factor/tasks/${taskId}/pause`);
+  await apiClient.post(`/mining/tasks/${taskId}/cancel`);
 }
 
 export async function cancelMiningTask(taskId: string): Promise<void> {
-  await apiClient.delete(`/factor/tasks/${taskId}`);
+  await apiClient.post(`/mining/tasks/${taskId}/cancel`);
 }
 
 export async function retryMiningTask(taskId: string): Promise<{ task_id: string }> {
-  const res = await apiClient.post<{ task_id: string }>(`/factor/tasks/${taskId}/retry`);
+  const res = await apiClient.post<{ task_id: string }>("/mining/run", { engine: "gp", retry_task_id: taskId });
   return res.data;
 }
 
 export async function archiveMiningTask(taskId: string): Promise<void> {
-  await apiClient.post(`/factor/tasks/${taskId}/archive`);
+  await apiClient.post(`/mining/tasks/${taskId}/cancel`);
 }
 
 export async function submitCandidateToGate(candidateId: string): Promise<void> {
-  await apiClient.post("/factor/evaluate/batch", { candidate_ids: [candidateId] });
+  await apiClient.post("/mining/evaluate", { candidate_ids: [candidateId] });
 }
 
 export async function submitCandidatesToGate(candidateIds: string[]): Promise<void> {
-  await apiClient.post("/factor/evaluate/batch", { candidate_ids: candidateIds });
+  await apiClient.post("/mining/evaluate", { candidate_ids: candidateIds });
 }
 
 export async function getEngineStats(): Promise<EngineStats[]> {
-  const res = await apiClient.get<EngineStats[]>("/factor/tasks/stats");
+  const res = await apiClient.get<EngineStats[]>("/mining/tasks");
   return res.data;
 }
 
 export async function getAvailableBruteTemplates(): Promise<string[]> {
-  const res = await apiClient.get<string[]>("/factor/mine/brute/templates");
+  const res = await apiClient.get<string[]>("/mining/tasks");
   return res.data;
 }

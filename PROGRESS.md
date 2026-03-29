@@ -1,11 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.26 ✅ QMT全面集成完成 — 21测试+1777回归+QA P0修复)
-> Current: Phase 1, Sprint 1.26 ✅ 完成 → 下一步 Sprint 1.27 NSSM+监控+服务层测试
-> 下一步: Sprint 1.27 NSSM服务化+structlog+DingTalk告警+服务层冒烟测试
-> 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)
-> 本会话: Sprint 1.26 QMT全面集成6个Phase编码: ConnectionManager+ExecutionAdapter+Reconciliation+HealthPrecheck+Frontend+Tests
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅
+> Last updated: 2026-03-29 (Sprint 1.28 ✅ 前端6核心页面真数据接入 — API路径修复+mock清除+1814测试通过)
+> Current: Phase 1, Sprint 1.28 ✅ 完成 → 下一步 Sprint 1.29
+> 下一步: 前端剩余页面真数据接入 / 前端集成测试补充
+> 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)。pre-existing TS errors in test files + QMTStatusBadge (非本Sprint引入)
+> 本会话: Sprint 1.28 前端6核心页面真数据接入: API路径对齐(factors/mining/strategies) + 6页面mock清除 + loading/error/empty状态
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -76,6 +76,37 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.28: 前端6核心页面真数据接入 (2026-03-29) ✅
+
+**Phase 1-4全部完成。1814 backend tests passed (+37 vs Sprint 1.27)。0 new TS errors。**
+
+**Phase 1: API路径对齐 (3文件)**:
+- ✅ `frontend/src/api/factors.ts` — `/factor/library`→`/factors`, `/factor/library/stats`→`/factors/stats`, `/factor/library/correlation`→`/factors/correlation`, `/factor/library/ic-trends`→`/factors/health`, `/factor/{id}/report`→`/factors/{name}/report`
+- ✅ `frontend/src/api/mining.ts` — `/factor/mine/gp|llm|brute`→`/mining/run`+engine参数, `/factor/tasks`→`/mining/tasks`, `/factor/evaluate/batch`→`/mining/evaluate`
+- ✅ `frontend/src/api/strategies.ts` — `/strategy`→`/strategies`, `/strategy/{id}`→`/strategies/{id}`
+
+**Phase 2: Mock数据清除 (6页面)**:
+- ✅ DashboardOverview (887行) — 删除8个MOCK_*常量, 接入`/dashboard/alerts|strategies|monthly-returns|industry-distribution`+`/factors`+`/pipeline/status`, 添加ErrorBanner错误处理
+- ✅ DashboardAstock (617行) — 删除5个MOCK_*常量+`@/api/mock`导入, 去掉静默fallback改为错误展示, null初始化+skeleton加载态
+- ✅ PTGraduation (414行) — 删除MOCK_GRADUATION(~95行), 9个指标全部从`/paper-trading/graduation-status` API获取(之前只用3个真+6个mock), PageSkeleton/ErrorBanner
+- ✅ Portfolio (265行) — 删除MOCK_HOLDINGS/MOCK_SECTOR/MOCK_DAILY_PNL, Promise.allSettled改为错误收集+ErrorBanner, EmptyState空态
+- ✅ TradeExecution (280行) — 删除MOCK_PENDING/MOCK_LOG/MOCK_ALGO, React Query去掉initialData, 添加loading/error/empty三态
+- ✅ FactorLibrary (186行) — 无需修改(已正确使用React Query, EMPTY_STATS/EMPTY_CORR是合法空态默认值)
+
+**Phase 3: 共享UI组件验证**:
+- PageSkeleton/EmptyState/ErrorBanner已存在且被6页面正确使用
+
+**Phase 4: 验证**:
+- `npm run build` — 0 new TS errors (pre-existing: test files + QMTStatusBadge)
+- `pytest backend/tests/` — 1814 passed, 1 xfailed, 0 failures
+
+**已知遗留(非本Sprint引入)**:
+- P2: DashboardOverview KPI网格有内联fallback值(??1.2854等), StrategiesPanel仍为静态JSX
+- P2: Portfolio总持仓市值/现金头寸仍为硬编码(需portfolio summary端点)
+- P3: 其余9个页面(ReportCenter/MarketData/SystemSettings/RiskManagement等)仍有mock数据
+
+---
 
 ### Sprint 1.21: 联调+E2E测试+PT毕业 (2026-03-29) ✅
 

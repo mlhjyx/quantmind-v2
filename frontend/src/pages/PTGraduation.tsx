@@ -3,8 +3,9 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import NAVChart from "@/components/NAVChart";
 import type { NAVPoint, NAVPeriod } from "@/types/dashboard";
-import { MOCK_NAV_SERIES } from "@/api/mock";
 import { fetchNAVSeries } from "@/api/dashboard";
+import { PageSkeleton } from "@/components/ui/PageSkeleton";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,102 +29,6 @@ interface GraduationData {
   metrics: GraduationMetric[];
 }
 
-// ── Mock data ──────────────────────────────────────────────────────────────
-
-const MOCK_GRADUATION: GraduationData = {
-  pt_day: 3,
-  pt_total_days: 60,
-  overall_status: "on_track",
-  metrics: [
-    {
-      id: "sharpe",
-      name: "Sharpe Ratio",
-      current: 1.12,
-      target: "≥ 0.72",
-      status: "pass",
-      progress: 100,
-      description: "基线 1.03",
-    },
-    {
-      id: "mdd",
-      name: "最大回撤",
-      current: -12.3,
-      target: "< 35%",
-      status: "pass",
-      progress: 100,
-      unit: "%",
-      description: "基线 -39.7%",
-    },
-    {
-      id: "slippage",
-      name: "滑点偏差",
-      current: 38,
-      target: "< 50%",
-      status: "pass",
-      progress: 76,
-      unit: "%",
-      description: "实盘成本/回测成本",
-    },
-    {
-      id: "signal_consistency",
-      name: "信号一致性",
-      current: 91,
-      target: "≥ 80%",
-      status: "pass",
-      progress: 100,
-      unit: "%",
-      description: "实盘信号 vs 回测信号重合率",
-    },
-    {
-      id: "data_latency",
-      name: "数据延迟",
-      current: 1.2,
-      target: "< 2 分钟",
-      status: "pass",
-      progress: 100,
-      unit: "min",
-      description: "行情数据到因子计算延迟",
-    },
-    {
-      id: "system_stability",
-      name: "系统稳定性",
-      current: 100,
-      target: "≥ 99%",
-      status: "pass",
-      progress: 100,
-      unit: "%",
-      description: "无崩溃运行天数/总天数",
-    },
-    {
-      id: "rebalance_exec",
-      name: "调仓执行率",
-      current: 100,
-      target: "≥ 90%",
-      status: "pass",
-      progress: 100,
-      unit: "%",
-      description: "成功执行的调仓次数/计划次数",
-    },
-    {
-      id: "factor_ic",
-      name: "因子有效性 IC",
-      current: "全部 > 0",
-      target: "5因子 IC > 0",
-      status: "pass",
-      progress: 100,
-      description: "turnover/volatility/reversal/amihud/bp_ratio",
-    },
-    {
-      id: "nav_trend",
-      name: "净值趋势",
-      current: "观察中",
-      target: "60日净值向上",
-      status: "observe",
-      progress: 5,
-      description: "Day 3，数据积累中，主观判断",
-    },
-  ],
-};
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -240,80 +145,100 @@ function MetricCard({ metric }: { metric: GraduationMetric }) {
 export default function PTGraduation() {
   const navigate = useNavigate();
   const [navPeriod, setNavPeriod] = useState<NAVPeriod>("all");
-  const [data, setData] = useState<GraduationData>(MOCK_GRADUATION);
-  const [navData, setNavData] = useState<NAVPoint[]>(MOCK_NAV_SERIES);
+  const [data, setData] = useState<GraduationData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [navData, setNavData] = useState<NAVPoint[]>([]);
 
   useEffect(() => {
+    type GraduationCriterion = {
+      id?: string;
+      name: string;
+      target: string;
+      actual: string;
+      passed: boolean;
+      current?: number | string;
+      progress?: number;
+      status?: "pass" | "warn" | "fail" | "observe";
+      unit?: string;
+      description?: string;
+    };
     type GraduationStatusResp = {
       days_running: number;
       sharpe: number;
       mdd: number;
       slippage_deviation: number;
       graduate_ready: boolean;
-      criteria: { name: string; target: string; actual: string; passed: boolean }[];
+      overall_status?: "on_track" | "at_risk" | "failing";
+      criteria: GraduationCriterion[];
     };
 
     axios.get<GraduationStatusResp>("/api/paper-trading/graduation-status")
       .then((r) => {
         const resp = r.data;
         const criteria = resp.criteria ?? [];
-        const sharpeOk = criteria.find((c) => c.name === "Sharpe")?.passed ?? false;
-        const mddOk = criteria.find((c) => c.name === "最大回撤")?.passed ?? false;
-        const slipOk = criteria.find((c) => c.name === "滑点偏差")?.passed ?? false;
 
-        const mapped: GraduationData = {
+        // Map each criterion from the API response into GraduationMetric shape.
+        // The API provides the full criteria array — use it directly without padding with mock data.
+        const metrics: GraduationMetric[] = criteria.map((c, idx) => ({
+          id: c.id ?? `criterion_${idx}`,
+          name: c.name,
+          current: c.current ?? c.actual,
+          target: c.target,
+          status: c.status ?? (c.passed ? "pass" : "fail"),
+          progress: c.progress ?? (c.passed ? 100 : 0),
+          unit: c.unit,
+          description: c.description,
+        }));
+
+        const overallStatus: GraduationData["overall_status"] =
+          resp.overall_status ??
+          (resp.graduate_ready ? "on_track" : resp.sharpe > 0.5 ? "at_risk" : "failing");
+
+        setData({
           pt_day: resp.days_running,
           pt_total_days: 60,
-          overall_status: resp.graduate_ready ? "on_track" : (resp.sharpe > 0.5 ? "at_risk" : "failing"),
-          metrics: [
-            {
-              id: "sharpe",
-              name: "Sharpe Ratio",
-              current: +resp.sharpe.toFixed(3),
-              target: "≥ 0.72",
-              status: sharpeOk ? "pass" : resp.sharpe >= 0.5 ? "warn" : "fail",
-              progress: Math.min(100, Math.round((resp.sharpe / 0.72) * 100)),
-              description: "基线 1.03",
-            },
-            {
-              id: "mdd",
-              name: "最大回撤",
-              current: +(resp.mdd * 100).toFixed(1),
-              target: "< 35%",
-              status: mddOk ? "pass" : Math.abs(resp.mdd) < 0.40 ? "warn" : "fail",
-              progress: mddOk ? 100 : Math.max(0, Math.round((1 - Math.abs(resp.mdd) / 0.35) * 100)),
-              unit: "%",
-              description: "基线 -39.7%",
-            },
-            {
-              id: "slippage",
-              name: "滑点偏差",
-              current: +(resp.slippage_deviation * 100).toFixed(1),
-              target: "< 50%",
-              status: slipOk ? "pass" : resp.slippage_deviation < 0.60 ? "warn" : "fail",
-              progress: Math.min(100, Math.round((1 - resp.slippage_deviation / 0.50) * 100)),
-              unit: "%",
-              description: "实盘成本/回测成本",
-            },
-            ...MOCK_GRADUATION.metrics.slice(3),  // keep remaining mock metrics as observe
-          ],
-        };
-        setData(mapped);
+          overall_status: overallStatus,
+          metrics,
+        });
+        setLoadError(null);
       })
-      .catch(() => {});
+      .catch(() => {
+        setLoadError("毕业评估数据加载失败，请确认后端服务已启动");
+      });
 
     fetchNAVSeries("all")
       .then((pts) => { if (pts.length > 0) setNavData(pts); })
       .catch(() => {});
   }, []);
 
-  const passCount = data.metrics.filter((m) => m.status === "pass").length;
-  const totalCount = data.metrics.length;
-  const canApply = data.pt_day >= 55;
-  const progressPct = Math.round((data.pt_day / data.pt_total_days) * 100);
+  if (data === null && loadError === null) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] text-white p-4 lg:p-6">
+        <PageSkeleton cards={9} header />
+      </div>
+    );
+  }
+
+  if (loadError !== null && data === null) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] text-white p-4 lg:p-6">
+        <ErrorBanner message={loadError} />
+      </div>
+    );
+  }
+
+  // data is guaranteed non-null past this point
+  const passCount = data!.metrics.filter((m) => m.status === "pass").length;
+  const totalCount = data!.metrics.length;
+  const canApply = data!.pt_day >= 55;
+  const progressPct = Math.round((data!.pt_day / data!.pt_total_days) * 100);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-white p-4 lg:p-6">
+      {/* Error banner (non-fatal, data loaded from previous render) */}
+      {loadError !== null && (
+        <ErrorBanner message={loadError} className="mb-4" />
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -333,9 +258,9 @@ export default function PTGraduation() {
 
           {/* Overall badge */}
           <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${overallBadge(data.overall_status)}`}
+            className={`px-3 py-1 rounded-full text-xs font-medium ${overallBadge(data!.overall_status)}`}
           >
-            {overallLabel(data.overall_status)}
+            {overallLabel(data!.overall_status)}
           </span>
         </div>
       </div>
@@ -348,8 +273,8 @@ export default function PTGraduation() {
           </span>
           <span className="text-sm font-bold text-white">
             Day{" "}
-            <span className="text-blue-400">{data.pt_day}</span>{" "}
-            / {data.pt_total_days}
+            <span className="text-blue-400">{data!.pt_day}</span>{" "}
+            / {data!.pt_total_days}
           </span>
         </div>
         <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
@@ -361,7 +286,7 @@ export default function PTGraduation() {
         <div className="flex justify-between mt-1">
           <span className="text-[10px] text-gray-500">开始</span>
           <span className="text-[10px] text-gray-500">
-            {progressPct}% 完成 · 还剩 {data.pt_total_days - data.pt_day} 天
+            {progressPct}% 完成 · 还剩 {data!.pt_total_days - data!.pt_day} 天
           </span>
           <span className="text-[10px] text-gray-500">Day 60</span>
         </div>
@@ -369,7 +294,7 @@ export default function PTGraduation() {
 
       {/* Metrics grid 3×3 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {data.metrics.map((m) => (
+        {data!.metrics.map((m) => (
           <MetricCard key={m.id} metric={m} />
         ))}
       </div>
@@ -389,8 +314,7 @@ export default function PTGraduation() {
         <div>
           <p className="text-sm font-medium text-gray-200 mb-1">毕业建议</p>
           <p className="text-xs text-gray-400 leading-relaxed">
-            当前 Day 3，各项指标均处于达标区间。持续监控 MDD（当前
-            -12.3%，基线 -39.7%）和净值趋势，待 Day 55
+            当前 Day {data!.pt_day}，持续监控各项指标达标情况。待 Day 55
             后可申请毕业评估。重点关注月度调仓时的滑点偏差变化。
           </p>
         </div>
@@ -406,7 +330,7 @@ export default function PTGraduation() {
           ].join(" ")}
           title={canApply ? "" : "需运行至 Day 55 后方可申请"}
         >
-          {canApply ? "申请毕业评估" : `Day ${data.pt_day}/55 解锁`}
+          {canApply ? "申请毕业评估" : `Day ${data!.pt_day}/55 解锁`}
         </button>
       </div>
     </div>

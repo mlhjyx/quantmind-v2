@@ -5,38 +5,17 @@ import ReactECharts from "echarts-for-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { fetchSummary, fetchNAVSeries } from "@/api/dashboard";
-import { MOCK_SUMMARY, MOCK_NAV_SERIES } from "@/api/mock";
 import type { DashboardSummary, NAVPoint } from "@/types/dashboard";
 
-// ── Strategy options ──
+const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+
+// Strategy selector options — static UI list, not fetched data
 const STRATEGIES = [
   { id: "v1.1", label: "动量反转 v1.1" },
   { id: "v1.2", label: "动量反转 v1.2 (测试)" },
 ];
-
-// ── Sector mock (fallback) ──
-const MOCK_SECTORS = [
-  { value: 14.2, name: "食品饮料" },
-  { value: 12.1, name: "医药生物" },
-  { value: 11.5, name: "银行" },
-  { value: 10.3, name: "电力设备" },
-  { value: 9.8, name: "电子" },
-  { value: 8.4, name: "汽车" },
-  { value: 7.6, name: "家用电器" },
-  { value: 6.9, name: "非银金融" },
-  { value: 19.2, name: "其他" },
-];
-
-// ── Monthly returns mock (fallback) ──
-const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
-const MOCK_MONTHLY: Record<string, (number | null)[]> = {
-  "2025": [0.021, -0.013, 0.034, 0.018, -0.008, 0.042, 0.011, -0.022, 0.031, 0.016, -0.005, 0.028],
-  "2026": [0.015, -0.007, 0.032, null, null, null, null, null, null, null, null, null],
-};
-
-// ── Factor library status mock (fallback) ──
-const MOCK_FACTOR_STATUS = { active: 34, new: 2, warning: 2, failed: 8 };
 
 interface SectorItem { value: number; name: string; }
 interface FactorStatusData { active: number; new: number; warning: number; failed: number; }
@@ -508,15 +487,16 @@ function AIStatusAndActions() {
 export default function DashboardAstock() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [navSeries, setNavSeries] = useState<NAVPoint[]>([]);
-  const [sectors, setSectors] = useState<SectorItem[]>(MOCK_SECTORS);
-  const [monthlyData, setMonthlyData] = useState<Record<string, (number | null)[]>>(MOCK_MONTHLY);
-  const [factorStatus, setFactorStatus] = useState<FactorStatusData>(MOCK_FACTOR_STATUS);
+  const [sectors, setSectors] = useState<SectorItem[] | null>(null);
+  const [monthlyData, setMonthlyData] = useState<Record<string, (number | null)[]> | null>(null);
+  const [factorStatus, setFactorStatus] = useState<FactorStatusData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [useMock, setUseMock] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [strategy, setStrategy] = useState("v1.1");
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [s, n] = await Promise.all([
         fetchSummary(),
@@ -524,23 +504,21 @@ export default function DashboardAstock() {
       ]);
       setSummary(s);
       setNavSeries(n);
-      setUseMock(false);
-    } catch {
-      setSummary(MOCK_SUMMARY);
-      setNavSeries(MOCK_NAV_SERIES);
-      setUseMock(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "请求失败";
+      setError(`核心数据加载失败: ${msg}`);
     } finally {
       setLoading(false);
     }
 
-    // Supplementary data — fallback to mock on error
+    // Supplementary data — show empty on error, do not silently hide
     axios.get<SectorItem[]>("/api/portfolio/sector-distribution")
       .then((r) => setSectors(r.data))
-      .catch(() => {});
+      .catch(() => setSectors([]));
 
     axios.get<Record<string, (number | null)[]>>("/api/dashboard/monthly-returns")
       .then((r) => setMonthlyData(r.data))
-      .catch(() => {});
+      .catch(() => setMonthlyData({}));
 
     axios.get<{ total: number; active: number; candidate: number; warning: number; critical: number; retired: number }>("/api/factors/stats")
       .then((r) => {
@@ -551,7 +529,7 @@ export default function DashboardAstock() {
           failed: r.data.critical ?? 0,
         });
       })
-      .catch(() => {});
+      .catch(() => setFactorStatus({ active: 0, new: 0, warning: 0, failed: 0 }));
   }, []);
 
   useEffect(() => {
@@ -567,6 +545,13 @@ export default function DashboardAstock() {
         ]}
       />
 
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={() => void loadData()} />
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -577,11 +562,6 @@ export default function DashboardAstock() {
             ← 返回总览
           </Link>
           <h1 className="text-2xl font-bold text-white">A股详情</h1>
-          {useMock && (
-            <span className="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-              MOCK
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-2">
           <StrategySelector selected={strategy} onChange={setStrategy} />
@@ -599,12 +579,37 @@ export default function DashboardAstock() {
 
       {/* Layer 3: Sector pie + Factor library status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <SectorPie sectors={sectors} />
-        <FactorLibraryStatus factorStatus={factorStatus} />
+        {sectors === null ? (
+          <GlassCard>
+            <div className="h-3 w-20 bg-white/10 rounded animate-pulse mb-3" />
+            <div className="h-48 bg-white/5 rounded animate-pulse" />
+          </GlassCard>
+        ) : (
+          <SectorPie sectors={sectors} />
+        )}
+        {factorStatus === null ? (
+          <GlassCard>
+            <div className="h-3 w-20 bg-white/10 rounded animate-pulse mb-3" />
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-14 bg-white/5 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </GlassCard>
+        ) : (
+          <FactorLibraryStatus factorStatus={factorStatus} />
+        )}
       </div>
 
       {/* Layer 4: Monthly returns heatmap */}
-      <MonthlyHeatmap monthlyData={monthlyData} />
+      {monthlyData === null ? (
+        <GlassCard className="mb-4">
+          <div className="h-3 w-24 bg-white/10 rounded animate-pulse mb-3" />
+          <div className="h-32 bg-white/5 rounded animate-pulse" />
+        </GlassCard>
+      ) : (
+        <MonthlyHeatmap monthlyData={monthlyData} />
+      )}
 
       {/* Layer 5: AI status + quick actions */}
       <AIStatusAndActions />

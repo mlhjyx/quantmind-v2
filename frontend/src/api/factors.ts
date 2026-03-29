@@ -89,40 +89,40 @@ export async function getFactorsSummary(): Promise<FactorSummary[]> {
 }
 
 export async function getFactorLibrary(): Promise<FactorSummary[]> {
-  const res = await apiClient.get<FactorSummary[]>("/factor/library");
+  const res = await apiClient.get<FactorSummary[]>("/factors");
   return res.data;
 }
 
 export async function getFactorLibraryStats(): Promise<FactorLibraryStats> {
-  const res = await apiClient.get<FactorLibraryStats>("/factor/library/stats");
+  const res = await apiClient.get<FactorLibraryStats>("/factors/stats");
   return res.data;
 }
 
 export async function getFactorCorrelation(): Promise<FactorCorrelationMatrix> {
-  const res = await apiClient.get<FactorCorrelationMatrix>("/factor/library/correlation");
+  const res = await apiClient.get<FactorCorrelationMatrix>("/factors/correlation");
   return res.data;
 }
 
 export async function getFactorICTrends(): Promise<FactorICTrend[]> {
-  const res = await apiClient.get<FactorICTrend[]>("/factor/library/ic-trends");
+  const res = await apiClient.get<FactorICTrend[]>("/factors/health");
   return res.data;
 }
 
-export async function getFactorReport(id: string): Promise<FactorReport> {
-  const res = await apiClient.get<FactorReport>(`/factor/${id}/report`);
+export async function getFactorReport(name: string): Promise<FactorReport> {
+  const res = await apiClient.get<FactorReport>(`/factors/${name}/report`);
   return res.data;
 }
 
-export async function archiveFactor(id: string): Promise<void> {
-  await apiClient.post(`/factor/${id}/archive`);
+export async function archiveFactor(name: string): Promise<void> {
+  await apiClient.post(`/factors/${name}/archive`);
 }
 
 export async function triggerHealthCheck(): Promise<void> {
-  await apiClient.post("/factor/health-check");
+  await apiClient.post("/factors/health");
 }
 
 export async function triggerCorrelationPrune(): Promise<void> {
-  await apiClient.post("/factor/correlation-prune");
+  await apiClient.post("/factors/correlation-prune");
 }
 
 export function groupFactorsByCategory(factors: FactorSummary[]): FactorsByCategory {

@@ -9,65 +9,14 @@ import {
 import { ChevronRight, Clock, Play, Bell } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
-import {
-  MOCK_SUMMARY,
-  MOCK_POSITIONS,
-} from "@/api/mock";
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { C } from "@/theme";
 
-// ── Mock nav chart data (fallback) ──
-const seed = 42; let rng = seed;
-function pseudoRandom() { rng = (rng * 16807) % 2147483647; return rng / 2147483647; }
-const MOCK_NAV_CHART_DATA = Array.from({ length: 90 }, (_, i) => {
-  const d = new Date(2025, 3, 1); d.setDate(d.getDate() + i * 4);
-  const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-  const trend = i * 0.003;
-  const wave = Math.sin(i * 0.08) * 0.04 + Math.sin(i * 0.22) * 0.025;
-  const noise = (pseudoRandom() - 0.5) * 0.012;
-  const stratVal = 1 + trend + wave + noise;
-  const benchVal = 1 + i * 0.001 + Math.sin(i * 0.06) * 0.015;
-  const excess = stratVal - benchVal;
-  return { date: dateStr, strategy: +stratVal.toFixed(4), benchmark: +benchVal.toFixed(4), excess: +(excess * 100).toFixed(2) };
-});
-
-const MONTHLY_DATA: Record<string, number[]> = {
-  "2024": [3.2, -1.5, 4.1, 2.0, -0.8, 1.9, 5.3, -2.1, 3.4, 1.2, 2.7, -0.4],
-  "2025": [2.8, -3.2, 1.4, 3.1, 0.5, -1.2, 4.2, 1.8, -0.6, 2.9, 1.5, 3.7],
-  "2026": [1.9, 2.3, 1.4, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-};
-
 type FactorRow = { name: string; cat: string; ic: number; ir: number; dir: string; status: string; trend: number[] };
-const MOCK_FACTOR_DATA: FactorRow[] = [
-  { name: "reversal_5",    cat: "价量", ic: 0.038,  ir: 0.89, dir: "反向", status: "active", trend: [3, 4, 3.5, 4.2, 3.8, 4.5] },
-  { name: "momentum_60",   cat: "价量", ic: 0.045,  ir: 1.12, dir: "正向", status: "active", trend: [2, 3, 3.5, 4, 4.2, 4.5] },
-  { name: "turnover_20",   cat: "流动", ic: -0.041, ir: 0.78, dir: "反向", status: "decay",  trend: [4, 3.8, 3.5, 3, 2.8, 2.5] },
-  { name: "north_flow",    cat: "资金", ic: 0.032,  ir: 0.65, dir: "正向", status: "active", trend: [2, 2.5, 3, 3.2, 3.5, 3.8] },
-  { name: "volatility_20", cat: "价量", ic: -0.036, ir: 0.91, dir: "反向", status: "active", trend: [3, 3.2, 3.5, 3.8, 3.5, 3.7] },
-  { name: "ep_ttm",        cat: "基本面",ic: 0.028, ir: 0.55, dir: "正向", status: "active", trend: [2.5, 2.8, 2.5, 3, 2.8, 3] },
-  { name: "idio_vol_20",   cat: "价量", ic: -0.033, ir: 0.82, dir: "反向", status: "new",   trend: [0, 0, 2, 3, 3.5, 3.8] },
-  { name: "big_order_ratio",cat: "资金",ic: 0.022,  ir: 0.48, dir: "正向", status: "active", trend: [2, 2.2, 2.5, 2.3, 2.6, 2.4] },
-];
-
 type PipelineStep = { name: string; status: string };
-const MOCK_PIPELINE_STEPS: PipelineStep[] = [
-  { name: "发现", status: "done" },
-  { name: "评估", status: "running" },
-  { name: "入库", status: "pending" },
-  { name: "构建", status: "pending" },
-  { name: "回测", status: "pending" },
-  { name: "部署", status: "pending" },
-];
-
-type Alert ={ level: string; color: string; title: string; desc: string; time: string };
-
-const DEFAULT_ALERTS: Alert[] = [
-  { level: "P0", color: "#f87171", title: "单行业集中度超限", desc: "食品饮料 18.2% 接近上限 25%", time: "14:28" },
-  { level: "P1", color: "#fbbf24", title: "因子IC衰减",       desc: "turnover_20 IC滚动均值下降",   time: "13:55" },
-  { level: "P1", color: "#fbbf24", title: "VaR接近阈值",      desc: "95% VaR = 2.8% → 3.0%阈值",   time: "13:42" },
-  { level: "P2", color: "#60a5fa", title: "GP挖掘完成",       desc: "第47代完成·2个候选因子",       time: "12:30" },
-];
+type Alert = { level: string; color: string; title: string; desc: string; time: string };
 
 
 // ── Sparkline SVG component ──
@@ -376,21 +325,9 @@ function StrategiesPanel() {
   );
 }
 
-// Mock positions with correct Position shape
-const MOCK_POSITION_ROWS: Position[] = [
-  { code: "600519", quantity: 100, market_value: 189000, weight: 0.078, avg_cost: 1820, unrealized_pnl: 0.0321,  holding_days: 45 },
-  { code: "300750", quantity: 200, market_value: 150000, weight: 0.062, avg_cost: 183,  unrealized_pnl: -0.0105, holding_days: 32 },
-  { code: "601318", quantity: 500, market_value: 133000, weight: 0.055, avg_cost: 48.5, unrealized_pnl: 0.0087,  holding_days: 28 },
-  { code: "000858", quantity: 300, market_value: 124000, weight: 0.051, avg_cost: 152,  unrealized_pnl: 0.0243,  holding_days: 45 },
-  { code: "002594", quantity: 200, market_value: 116000, weight: 0.048, avg_cost: 285,  unrealized_pnl: 0.0412,  holding_days: 18 },
-  { code: "601899", quantity: 800, market_value: 102000, weight: 0.042, avg_cost: 12.8, unrealized_pnl: 0.0156,  holding_days: 32 },
-  { code: "600036", quantity: 300, market_value:  94000, weight: 0.039, avg_cost: 38.2, unrealized_pnl: -0.0032, holding_days: 45 },
-  { code: "002415", quantity: 400, market_value:  87000, weight: 0.036, avg_cost: 33.5, unrealized_pnl: 0.0189,  holding_days: 12 },
-];
-
 // ── Row 3a: Holdings table ──
 function HoldingsTable({ positions }: { positions: Position[] }) {
-  const rows = positions.length > 0 ? positions : MOCK_POSITION_ROWS;
+  const rows = positions;
 
   return (
     <Card className="col-span-4">
@@ -486,17 +423,6 @@ function MonthlyHeatmap({ monthlyData }: { monthlyData: Record<string, number[]>
 }
 
 type IndustryItem = { name: string; pct: number; color: string };
-
-const DEFAULT_INDUSTRY_DIST: IndustryItem[] = [
-  { name: "食品饮料", pct: 18.2, color: "#f59e0b" },
-  { name: "电力设备", pct: 12.5, color: "#818cf8" },
-  { name: "非银金融", pct: 10.8, color: "#8b5cf6" },
-  { name: "汽车",     pct: 9.3,  color: "#34d399" },
-  { name: "有色金属", pct: 8.1,  color: "#f87171" },
-  { name: "银行",     pct: 7.6,  color: "#60a5fa" },
-  { name: "电子",     pct: 6.4,  color: "#fb7185" },
-  { name: "其他",     pct: 27.1, color: "#3e4158" },
-];
 
 // ── Row 3c: Industry distribution + system status ──
 function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem[] }) {
@@ -700,17 +626,21 @@ function AIPipelinePanel({ pipelineSteps }: { pipelineSteps: PipelineStep[] }) {
 export default function DashboardOverview() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>(DEFAULT_ALERTS);
-  const [monthlyData, setMonthlyData] = useState<Record<string, number[]>>(MONTHLY_DATA);
-  const [industryDist, setIndustryDist] = useState<IndustryItem[]>(DEFAULT_INDUSTRY_DIST);
-  const [navChartData, setNavChartData] = useState<NavChartPoint[]>(MOCK_NAV_CHART_DATA);
-  const [factorData, setFactorData] = useState<FactorRow[]>(MOCK_FACTOR_DATA);
-  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>(MOCK_PIPELINE_STEPS);
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  const [monthlyData, setMonthlyData] = useState<Record<string, number[]> | null>(null);
+  const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
+  const [navChartData, setNavChartData] = useState<NavChartPoint[]>([]);
+  const [factorData, setFactorData] = useState<FactorRow[]>([]);
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [loading, setLoading] = useState(true);
-  const [useMock, setUseMock] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
+  const [monthlyError, setMonthlyError] = useState<string | null>(null);
+  const [industryError, setIndustryError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [s, p] = await Promise.all([
         fetchSummary(),
@@ -718,27 +648,42 @@ export default function DashboardOverview() {
       ]);
       setSummary(s);
       setPositions(p);
-      setUseMock(false);
-    } catch {
-      setSummary(MOCK_SUMMARY);
-      setPositions(MOCK_POSITIONS);
-      setUseMock(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "加载失败";
+      setError(`核心数据加载失败: ${msg}`);
     } finally {
       setLoading(false);
     }
 
-    // Load supplementary data independently — fallback to defaults on error
+    // Alerts
+    setAlertsError(null);
     axios.get<Alert[]>("/api/dashboard/alerts")
       .then((r) => setAlerts(r.data))
-      .catch(() => {});
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "请求失败";
+        setAlertsError(`预警数据加载失败: ${msg}`);
+        setAlerts([]);
+      });
 
+    // Monthly returns
+    setMonthlyError(null);
     axios.get<Record<string, number[]>>("/api/dashboard/monthly-returns")
       .then((r) => setMonthlyData(r.data))
-      .catch(() => {});
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "请求失败";
+        setMonthlyError(`月度收益加载失败: ${msg}`);
+        setMonthlyData({});
+      });
 
+    // Industry distribution
+    setIndustryError(null);
     axios.get<IndustryItem[]>("/api/dashboard/industry-distribution")
       .then((r) => setIndustryDist(r.data))
-      .catch(() => {});
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "请求失败";
+        setIndustryError(`行业分布加载失败: ${msg}`);
+        setIndustryDist([]);
+      });
 
     // NAV series → transform to chart format
     fetchNAVSeries("all")
@@ -749,9 +694,11 @@ export default function DashboardOverview() {
           benchmark: 1.0,               // benchmark not in API; keep flat
           excess: +(pt.cumulative_return * 100).toFixed(2),
         }));
-        if (chartPts.length > 0) setNavChartData(chartPts);
+        setNavChartData(chartPts);
       })
-      .catch(() => {});
+      .catch(() => {
+        setNavChartData([]);
+      });
 
     // Factors list
     axios.get<{ name: string; category: string; direction: string; status: string; ic_mean: number | null; ic_ir: number | null }[]>("/api/factors")
@@ -765,9 +712,11 @@ export default function DashboardOverview() {
           status: f.status === "active" ? "active" : f.status === "candidate" ? "new" : "decay",
           trend: [],
         }));
-        if (rows.length > 0) setFactorData(rows);
+        setFactorData(rows);
       })
-      .catch(() => {});
+      .catch(() => {
+        setFactorData([]);
+      });
 
     // Pipeline status → transform node_statuses to steps array
     axios.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/api/pipeline/status")
@@ -775,19 +724,19 @@ export default function DashboardOverview() {
         const nodeMap = r.data.node_statuses ?? {};
         const currentNode = r.data.current_node;
         const pipelineStatus = r.data.status;
-        if (Object.keys(nodeMap).length > 0) {
-          const steps: PipelineStep[] = Object.entries(nodeMap).map(([name, st]) => {
-            let status: string;
-            if (st === "completed") status = "done";
-            else if (name === currentNode && pipelineStatus === "running") status = "running";
-            else if (st === "pending") status = "pending";
-            else status = st;
-            return { name, status };
-          });
-          setPipelineSteps(steps);
-        }
+        const steps: PipelineStep[] = Object.entries(nodeMap).map(([name, st]) => {
+          let status: string;
+          if (st === "completed") status = "done";
+          else if (name === currentNode && pipelineStatus === "running") status = "running";
+          else if (st === "pending") status = "pending";
+          else status = st;
+          return { name, status };
+        });
+        setPipelineSteps(steps);
       })
-      .catch(() => {});
+      .catch(() => {
+        setPipelineSteps([]);
+      });
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
@@ -805,15 +754,10 @@ export default function DashboardOverview() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {useMock && (
-            <span className="px-2 py-0.5 text-xs rounded" style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
-              MOCK
-            </span>
-          )}
           <div className="relative w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ background: C.bg1, border: `1px solid ${C.border}` }}>
             <Bell size={15} color={C.text3} />
             <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: C.down, fontSize: 9, color: "#fff", fontWeight: 600 }}>
-              {alerts.length}
+              {alerts?.length ?? 0}
             </div>
           </div>
           <button
@@ -829,6 +773,28 @@ export default function DashboardOverview() {
           </Button>
         </div>
       </div>
+
+      {/* Error banners */}
+      {error && (
+        <div className="px-5 pt-3">
+          <ErrorBanner message={error} onRetry={() => void loadData()} />
+        </div>
+      )}
+      {alertsError && (
+        <div className="px-5 pt-2">
+          <ErrorBanner message={alertsError} onRetry={() => void loadData()} />
+        </div>
+      )}
+      {monthlyError && (
+        <div className="px-5 pt-2">
+          <ErrorBanner message={monthlyError} onRetry={() => void loadData()} />
+        </div>
+      )}
+      {industryError && (
+        <div className="px-5 pt-2">
+          <ErrorBanner message={industryError} onRetry={() => void loadData()} />
+        </div>
+      )}
 
       {/* Sub-market nav links */}
       <div className="flex items-center gap-3 px-5 py-2" style={{ borderBottom: `1px solid ${C.border}` }}>
@@ -864,7 +830,17 @@ export default function DashboardOverview() {
         <div className="grid grid-cols-12 gap-3">
           <EquityCurve navChartData={navChartData} />
           <div className="col-span-4 flex flex-col gap-3">
-            <AlertsPanel alerts={alerts} />
+            {alerts === null ? (
+              <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 320 }}>
+                <div className="p-4 space-y-2">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: C.bg2 }} />
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              <AlertsPanel alerts={alerts} />
+            )}
             <StrategiesPanel />
           </div>
         </div>
@@ -872,8 +848,32 @@ export default function DashboardOverview() {
         {/* ROW 3: Holdings (4) + Monthly heatmap (4) + Industry+System (4) */}
         <div className="grid grid-cols-12 gap-3">
           <HoldingsTable positions={positions} />
-          <MonthlyHeatmap monthlyData={monthlyData} />
-          <IndustryAndSystem industryDist={industryDist} />
+          {monthlyData === null ? (
+            <Card className="col-span-4">
+              <CardHeader title="月度收益" titleEn="Monthly %" />
+              <div className="p-3 space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-8 rounded animate-pulse" style={{ background: C.bg2 }} />
+                ))}
+              </div>
+            </Card>
+          ) : (
+            <MonthlyHeatmap monthlyData={monthlyData} />
+          )}
+          {industryDist === null ? (
+            <div className="col-span-4 flex flex-col gap-3">
+              <Card className="flex-1">
+                <CardHeader title="行业分布" titleEn="Industry" />
+                <div className="p-3 space-y-2">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-5 rounded animate-pulse" style={{ background: C.bg2 }} />
+                  ))}
+                </div>
+              </Card>
+            </div>
+          ) : (
+            <IndustryAndSystem industryDist={industryDist} />
+          )}
         </div>
 
         {/* ROW 4: Factor library (7) + AI Pipeline (5) */}
