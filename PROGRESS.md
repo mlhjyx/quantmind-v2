@@ -1,11 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.28 ✅ 前端6核心页面真数据接入 — API路径修复+mock清除+1814测试通过)
-> Current: Phase 1, Sprint 1.28 ✅ 完成 → 下一步 Sprint 1.29
-> 下一步: 前端剩余页面真数据接入 / 前端集成测试补充
+> Last updated: 2026-03-29 (Sprint 1.29 ✅ 全部22页面mock清除 — 11页面真数据+null-safe防御+内联硬编码修复)
+> Current: Phase 1, Sprint 1.29 ✅ 完成 → 下一步 mock文件清理+pipeline 500修复
+> 下一步: 清理mock.ts/mockFactors.ts + 修复/pipeline/status 500后端bug + Portfolio summary端点
 > 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)。pre-existing TS errors in test files + QMTStatusBadge (非本Sprint引入)
-> 本会话: Sprint 1.28 前端6核心页面真数据接入: API路径对齐(factors/mining/strategies) + 6页面mock清除 + loading/error/empty状态
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅
+> 本会话: Sprint 1.28-1.29 前端真数据接入: API路径对齐(25端点) + 11页面mock清除(20+MOCK_*常量) + null-safe防御(6组件) + 内联硬编码修复
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -76,6 +76,35 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.29: 剩余页面mock清除+null-safe防御 (2026-03-29) ✅
+
+**5页面mock清除 + null-safe修复 + 内联硬编码修复。0 new TS errors。**
+
+**Phase 1: 页面mock清除 (5页面)**:
+- ✅ MarketData — 删除MOCK_INDICES/SECTORS/GAINERS/LOSERS(4常量), useQuery默认[], loading/error/empty状态
+- ✅ ReportCenter — 删除MOCK_REPORTS/QUICK_STATS(2常量), 添加loading/error/empty状态
+- ✅ RiskManagement — 删除5个MOCK_*常量, useState(null)+useEffect真API, 全组件?.防御
+- ✅ FactorEvaluation — 删除MOCK_FACTOR_REPORTS/LIBRARY导入, 去掉placeholderData
+- ✅ DashboardOverview — KPI网格内联硬编码(18.4%/62.3%/VaR 2.8%等)替换为"—"
+
+**Phase 2: null-safe防御 (Sprint 1.28期间发现)**:
+- ✅ FactorTable fmtNum — `v === undefined` → `v == null` (API返回null)
+- ✅ SystemSettings HealthTab — health.postgres/redis/celery/disk/memory/data_freshness全部?.防御
+- ✅ SystemSettings SchedulerTab — Array.isArray防御, 去掉MOCK_*fallback
+- ✅ HealthPanel — icTrends Array.isArray防御
+- ✅ CorrelationHeatmap — data.factors/matrix ?.防御
+
+**结果**: 0 MOCK_*常量在任何页面文件中。11/22页面完全接入真数据。
+
+**复盘（技术5问）**:
+1. 什么做对了？→ API路径修复和mock清除是低风险高收益的工作，backend无需改动
+2. 什么该改进？→ Agent spawn应指定worktree路径，2个agent编辑了main repo而非worktree
+3. 学到什么？→ 前端组件对null/undefined防御严重不足，API返回null时大面积崩溃
+4. 技术债？→ api/mock.ts + api/mockFactors.ts定义文件仍存在(无引用), /pipeline/status 500, Portfolio summary端点缺失
+5. 下次怎么做？→ 新建组件时强制?.防御模式，API层加统一的null→default转换
+
+---
 
 ### Sprint 1.28: 前端6核心页面真数据接入 (2026-03-29) ✅
 
