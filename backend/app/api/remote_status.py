@@ -114,7 +114,7 @@ def _check_celery_sync() -> bool:
                 "-m",
                 "celery",
                 "-A",
-                "app.tasks",
+                "app.tasks.celery_app",
                 "inspect",
                 "ping",
                 "--timeout=3",

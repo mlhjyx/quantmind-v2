@@ -59,7 +59,7 @@ async def get_pending_orders(
             tl.created_at
         FROM trade_log tl
         LEFT JOIN symbols s ON s.code = tl.code
-        WHERE tl.strategy_id = :sid::uuid
+        WHERE tl.strategy_id = CAST(:sid AS uuid)
           AND tl.execution_mode = :mode
           AND tl.executed_at IS NULL
         ORDER BY tl.created_at DESC
@@ -142,7 +142,7 @@ async def get_execution_log(
             tl.created_at
         FROM trade_log tl
         LEFT JOIN symbols s ON s.code = tl.code
-        WHERE tl.strategy_id = :sid::uuid
+        WHERE tl.strategy_id = CAST(:sid AS uuid)
           AND tl.execution_mode = :mode
           AND tl.trade_date = :fdate
         ORDER BY tl.created_at DESC
@@ -203,7 +203,7 @@ async def get_algo_config(
         SELECT sc.config, sc.version, sc.created_at, s.name AS strategy_name
         FROM strategy_configs sc
         JOIN strategy s ON s.id = sc.strategy_id
-        WHERE sc.strategy_id = :sid::uuid
+        WHERE sc.strategy_id = CAST(:sid AS uuid)
         ORDER BY sc.version DESC
         LIMIT 1
     """)

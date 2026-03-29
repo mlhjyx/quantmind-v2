@@ -56,7 +56,7 @@ async def get_holdings(
         WITH latest_date AS (
             SELECT MAX(trade_date) AS max_date
             FROM position_snapshot
-            WHERE strategy_id = :sid::uuid
+            WHERE strategy_id = CAST(:sid AS uuid)
               AND execution_mode = :mode
         )
         SELECT
@@ -73,7 +73,7 @@ async def get_holdings(
         FROM position_snapshot ps
         LEFT JOIN symbols s ON s.code = ps.code
         JOIN latest_date ld ON ps.trade_date = ld.max_date
-        WHERE ps.strategy_id = :sid::uuid
+        WHERE ps.strategy_id = CAST(:sid AS uuid)
           AND ps.execution_mode = :mode
         ORDER BY ps.weight DESC NULLS LAST
     """)
@@ -126,7 +126,7 @@ async def get_sector_distribution(
         WITH latest_date AS (
             SELECT MAX(trade_date) AS max_date
             FROM position_snapshot
-            WHERE strategy_id = :sid::uuid
+            WHERE strategy_id = CAST(:sid AS uuid)
               AND execution_mode = :mode
         ),
         holdings AS (
@@ -137,7 +137,7 @@ async def get_sector_distribution(
             FROM position_snapshot ps
             LEFT JOIN symbols s ON s.code = ps.code
             JOIN latest_date ld ON ps.trade_date = ld.max_date
-            WHERE ps.strategy_id = :sid::uuid
+            WHERE ps.strategy_id = CAST(:sid AS uuid)
               AND ps.execution_mode = :mode
             GROUP BY COALESCE(s.industry_sw1, '其他')
         )
@@ -199,7 +199,7 @@ async def get_daily_pnl(
             position_count,
             turnover
         FROM performance_series
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
           AND execution_mode = :mode
           AND trade_date >= :cutoff
         ORDER BY trade_date ASC

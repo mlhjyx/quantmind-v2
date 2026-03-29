@@ -117,7 +117,7 @@ def _check_celery() -> dict[str, Any]:
                 "-m",
                 "celery",
                 "-A",
-                "app.tasks",
+                "app.tasks.celery_app",
                 "inspect",
                 "ping",
                 "--timeout=3",
