@@ -115,32 +115,31 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     import os
 
     from engines.mining.gp_engine import GPConfig, GPEngine
-
-    from scripts.run_gp_pipeline import (  # type: ignore[import]
-        _compute_forward_returns,
-        _load_existing_factor_data,
-        _load_market_data,
-        _run_full_gate,
-        _send_dingtalk_notification,
+    from engines.mining.pipeline_utils import (
+        compute_forward_returns,
+        load_existing_factor_data,
+        load_market_data,
+        run_full_gate,
+        send_dingtalk_notification,
     )
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     dingtalk_webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
     dingtalk_secret = os.environ.get("DINGTALK_SECRET", "")
 
     # 加载数据
-    market_data = await _load_market_data(db_url)
-    existing_factors = await _load_existing_factor_data(db_url)
+    market_data = await load_market_data(db_url)
+    existing_factors = await load_existing_factor_data(db_url)
 
     if market_data.empty:
         error_msg = "行情数据为空，GP任务中止"
         await _mark_run_failed(run_id, error_msg)
         return {"run_id": run_id, "status": "failed", "passed_factors": 0}
 
-    forward_returns = _compute_forward_returns(market_data)
+    forward_returns = compute_forward_returns(market_data)
 
     # 初始化 GP Engine
     gp_config = GPConfig(
@@ -175,7 +174,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     # 完整 Gate G1-G8（取 Top 20）
     passed_factors: list[dict[str, Any]] = []
     if gp_results:
-        passed_factors = _run_full_gate(
+        passed_factors = run_full_gate(
             candidates=gp_results[:20],
             market_data=market_data,
             forward_returns=forward_returns,
@@ -187,7 +186,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     await _write_results_to_db(db_url, run_id, stats, passed_factors)
 
     # 钉钉通知
-    _send_dingtalk_notification(
+    send_dingtalk_notification(
         webhook_url=dingtalk_webhook,
         secret=dingtalk_secret,
         run_id=run_id,
@@ -251,7 +250,7 @@ async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     try:
         conn = await asyncpg.connect(db_url)
@@ -287,7 +286,7 @@ async def _mark_run_failed(run_id: str, error_msg: str) -> None:
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     try:
         conn = await asyncpg.connect(db_url)

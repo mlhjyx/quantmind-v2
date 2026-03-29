@@ -269,7 +269,7 @@ async def test_factor_service_get_factor_stats_no_data(db_session: AsyncSession)
 @pytest_asyncio.fixture
 async def seeded_ic_history(db_session: AsyncSession):
     """向 factor_ic_history 插入 20 天 IC 数据。"""
-    factor_name = "turnover_mean_20"
+    factor_name = "_test_ic_factor"
     base_date = date(2024, 1, 1)
     for i in range(20):
         d = base_date + timedelta(days=i)

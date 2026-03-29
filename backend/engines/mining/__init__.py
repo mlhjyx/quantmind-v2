@@ -25,6 +25,13 @@ from .factor_dsl import (
 )
 from .factor_sandbox import FactorSandbox, ValidationResult
 from .gp_engine import GPConfig, GPEngine, GPResult, GPRunStats, run_gp_pipeline
+from .pipeline_utils import (
+    compute_forward_returns,
+    load_existing_factor_data,
+    load_market_data,
+    run_full_gate,
+    send_dingtalk_notification,
+)
 from .quick_backtester import QuickBacktester, QuickBacktestResult
 
 __all__ = [
@@ -48,4 +55,10 @@ __all__ = [
     "GPResult",
     "GPRunStats",
     "run_gp_pipeline",
+    # Sprint 1.32 — Pipeline Utils (共享接口)
+    "load_market_data",
+    "load_existing_factor_data",
+    "compute_forward_returns",
+    "run_full_gate",
+    "send_dingtalk_notification",
 ]

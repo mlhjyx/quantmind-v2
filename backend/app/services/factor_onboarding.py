@@ -177,9 +177,14 @@ class FactorOnboardingService:
                 "error": "行情数据为空",
             }
 
+        # 加载行业数据（symbols.industry_sw1），用于行业中性化
+        all_codes = market_data["code"].unique().tolist()
+        industry_map = await self._load_industry_map(conn, all_codes)
+
         factor_values_df = self._compute_factor_values(
             factor_expr=factor_expr,
             market_data=market_data,
+            industry_map=industry_map,
         )
         logger.info(
             "因子值计算完成: factor_name=%s, rows=%d",
@@ -362,22 +367,36 @@ class FactorOnboardingService:
         self,
         factor_expr: str,
         market_data: pd.DataFrame,
+        industry_map: dict[str, str] | None = None,
     ) -> pd.DataFrame:
-        """用 FactorDSL 按交易日逐截面计算因子值。
+        """用 FactorDSL 按交易日逐截面计算因子值，并应用行业中性化。
+
+        使用 FactorNeutralizer 进行行业+截面双重中性化（铁律2）：
+          1. MAD 法 Winsorize（3σ 截断）
+          2. 行业内 zscore（申万一级，组内 < 5 时 fallback 截面 zscore）
+          3. 全截面 zscore 再标准化
 
         Args:
             factor_expr: FactorDSL 表达式字符串（如 "ts_mean(close,20)"）。
-            market_data: klines_daily 行情 DataFrame。
+            market_data: klines_daily 行情 DataFrame（含 code/trade_date 列）。
+            industry_map: {code: industry_sw1} 字典，来自 symbols 表。
+                          None 或为空时 fallback 到截面 zscore（兼容旧调用）。
 
         Returns:
             DataFrame with columns [code, trade_date, raw_value, neutral_value]。
-            neutral_value = 截面 zscore（行业中性化暂用截面标准化近似，
-            完整中性化需 industry 数据，此处保持与 compute_factor_ic.py 一致）。
         """
         from engines.mining.factor_dsl import FactorDSL  # type: ignore[import]
+        from engines.neutralizer import FactorNeutralizer
 
         dsl = FactorDSL()
         expr_node = dsl.parse(factor_expr)
+        neutralizer = FactorNeutralizer()
+
+        # 构建 industry Series（全截面共享，不按日期变化）
+        if industry_map:
+            industry_series = pd.Series(industry_map, name="industry_sw1")
+        else:
+            industry_series = pd.Series(dtype=str)
 
         records: list[dict[str, Any]] = []
         trading_dates = sorted(market_data["trade_date"].unique().tolist())
@@ -394,17 +413,15 @@ class FactorOnboardingService:
                 logger.debug("FactorDSL 计算异常（跳过该日）: date=%s, error=%s", dt, exc)
                 continue
 
-            # 截面 zscore 中性化（近似）
             valid = factor_series.dropna()
             if len(valid) < MIN_STOCKS:
                 continue
 
-            mean_val = float(valid.mean())
-            std_val = float(valid.std(ddof=1))
-            if std_val < 1e-9:
-                continue
-
-            neutral_series = (factor_series - mean_val) / std_val
+            # 行业+截面双重中性化（FactorNeutralizer 内部 fallback 到截面 zscore）
+            neutral_series = neutralizer.neutralize(
+                raw_values=factor_series,
+                industry=industry_series,
+            )
 
             for code in valid.index:
                 records.append(
@@ -412,7 +429,9 @@ class FactorOnboardingService:
                         "code": code,
                         "trade_date": dt,
                         "raw_value": float(factor_series.get(code, np.nan)),
-                        "neutral_value": float(neutral_series.get(code, np.nan)),
+                        "neutral_value": float(neutral_series.get(code, np.nan))
+                        if pd.notna(neutral_series.get(code))
+                        else np.nan,
                     }
                 )
 
@@ -421,6 +440,48 @@ class FactorOnboardingService:
             if records
             else pd.DataFrame(columns=["code", "trade_date", "raw_value", "neutral_value"])
         )
+
+    # ------------------------------------------------------------------
+    # Step 3 helper: 加载行业标签
+    # ------------------------------------------------------------------
+
+    async def _load_industry_map(
+        self,
+        conn: asyncpg.Connection,
+        codes: list[str],
+    ) -> dict[str, str]:
+        """从 symbols 表加载申万一级行业标签。
+
+        Args:
+            conn: asyncpg 连接。
+            codes: 股票代码列表。
+
+        Returns:
+            {code: industry_sw1} 字典。industry_sw1 为 NULL 的股票不包含在内。
+            加载失败时返回空字典（中性化模块会 fallback 到截面 zscore）。
+        """
+        if not codes:
+            return {}
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT code, industry_sw1
+                FROM symbols
+                WHERE code = ANY($1::text[])
+                  AND industry_sw1 IS NOT NULL
+                """,
+                codes,
+            )
+            result = {row["code"]: row["industry_sw1"] for row in rows}
+            logger.info(
+                "行业标签加载完成: %d/%d 只股票有行业标签",
+                len(result),
+                len(codes),
+            )
+            return result
+        except Exception as exc:
+            logger.warning("行业标签加载失败，中性化 fallback 截面 zscore: error=%s", exc)
+            return {}
 
     # ------------------------------------------------------------------
     # Step 4: factor_values upsert
