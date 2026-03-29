@@ -51,18 +51,18 @@ export interface FactorReport {
   category: string;
   description: string;
   direction: 1 | -1;
-  recommended_freq: string;
-  source: string;
+  recommended_freq: string | null;
+  source: string | null;
   status: string;
-  // top metrics
-  ic_mean: number;
-  ic_ir: number;
-  t_stat: number;
-  fdr_t_stat: number;
-  newey_west_t: number;
-  half_life_days: number;
-  coverage: number;
-  gate_score: number;
+  // top metrics (nullable — may not be computed yet)
+  ic_mean: number | null;
+  ic_ir: number | null;
+  t_stat: number | null;
+  fdr_t_stat: number | null;
+  newey_west_t: number | null;
+  half_life_days: number | null;
+  coverage: number | null;
+  gate_score: number | null;
   // IC analysis
   ic_series: { date: string; ic: number }[];
   ic_cumsum: number[];
@@ -70,7 +70,7 @@ export interface FactorReport {
   ic_by_period: { period: string; ic: number; ir: number }[];
   // Group returns
   group_nav: { group: string; dates: string[]; nav: number[] }[];
-  longshort_nav: { dates: string[]; nav: number[] };
+  longshort_nav: { dates: string[]; nav: number[] } | null;
   group_monthly: { year: number; month: number; g1: number; g2: number; g3: number; g4: number; g5: number; ls: number }[];
   // IC decay
   ic_decay: { lag: number; ic: number }[];
@@ -109,8 +109,44 @@ export async function getFactorICTrends(): Promise<FactorICTrend[]> {
 }
 
 export async function getFactorReport(name: string): Promise<FactorReport> {
-  const res = await apiClient.get<FactorReport>(`/factors/${name}/report`);
-  return res.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any>(`/factors/${name}/report`);
+  const d = res.data;
+  const ov = d.overview ?? {};
+  const ics = d.ic_analysis?.stats ?? {};
+  const icDecayRaw = d.ic_decay ?? {};
+  return {
+    id: d.factor_name ?? name,
+    name: d.factor_name ?? name,
+    category: ov.category ?? "",
+    description: ov.description ?? "",
+    direction: ov.direction ?? 1,
+    recommended_freq: null,
+    source: null,
+    status: ov.status ?? "active",
+    ic_mean: ics.ic_mean ?? null,
+    ic_ir: ics.ic_ir ?? null,
+    t_stat: ics.t_stat ?? null,
+    fdr_t_stat: null,
+    newey_west_t: null,
+    half_life_days: null,
+    coverage: null,
+    gate_score: null,
+    ic_series: d.ic_analysis?.ic_series ?? [],
+    ic_cumsum: [],
+    ic_distribution: [],
+    ic_by_period: [],
+    group_nav: d.quintile_returns?.groups ?? [],
+    longshort_nav: null,
+    group_monthly: [],
+    ic_decay: Object.entries(icDecayRaw)
+      .filter(([k]) => k !== "note")
+      .map(([k, v]) => ({ lag: parseInt(k) || 0, ic: (v as { ic_mean: number | null }).ic_mean ?? 0 })),
+    correlations: [],
+    industry_ic: [],
+    annual_stats: [],
+    regime_stats: [],
+  };
 }
 
 export async function archiveFactor(name: string): Promise<void> {

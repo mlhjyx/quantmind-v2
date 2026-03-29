@@ -13,8 +13,15 @@ const CHART_TOOLTIP = {
   textStyle: { color: "#e2e8f0", fontSize: 11 },
 };
 
+function fmt(v: number | null, digits: number): string {
+  return v != null ? v.toFixed(digits) : "—";
+}
+
 export default function TabICAnalysis({ report }: Props) {
+  const hasIC = report.ic_series.length > 0;
+
   const icSeriesOption = useMemo(() => {
+    if (!hasIC) return null;
     const dates = report.ic_series.map((d) => d.date);
     const ics = report.ic_series.map((d) => d.ic);
     return {
@@ -62,14 +69,15 @@ export default function TabICAnalysis({ report }: Props) {
         },
       ],
     };
-  }, [report]);
+  }, [report, hasIC]);
 
   const distOption = useMemo(() => {
-    const vals = report.ic_distribution;
+    const vals = report.ic_distribution ?? [];
+    if (vals.length === 0) return null;
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const bins = 20;
-    const step = (max - min) / bins;
+    const step = (max - min) / bins || 1;
     const counts = new Array(bins).fill(0);
     vals.forEach((v) => {
       const i = Math.min(Math.floor((v - min) / step), bins - 1);
@@ -107,25 +115,25 @@ export default function TabICAnalysis({ report }: Props) {
       {/* Metric cards */}
       <div className="grid grid-cols-5 gap-3">
         {[
-          { label: "IC均值", value: ic_mean.toFixed(4), ok: Math.abs(ic_mean) >= 0.03 },
-          { label: "IC_IR", value: ic_ir.toFixed(3), ok: ic_ir >= 0.5 },
-          { label: "原始t值", value: t_stat.toFixed(3), ok: t_stat >= 2.5 },
+          { label: "IC均值", value: fmt(ic_mean, 4), ok: ic_mean != null && Math.abs(ic_mean) >= 0.03 },
+          { label: "IC_IR", value: fmt(ic_ir, 3), ok: ic_ir != null && ic_ir >= 0.5 },
+          { label: "原始t值", value: fmt(t_stat, 3), ok: t_stat != null && t_stat >= 2.5 },
           {
             label: "FDR校正t值",
-            value: fdr_t_stat.toFixed(3),
-            ok: fdr_t_stat >= 2.0,
-            warn: fdr_t_stat < 2.0,
+            value: fmt(fdr_t_stat, 3),
+            ok: fdr_t_stat != null && fdr_t_stat >= 2.0,
+            warn: fdr_t_stat != null && fdr_t_stat < 2.0,
           },
           {
             label: "Newey-West t",
-            value: newey_west_t.toFixed(3),
-            ok: newey_west_t >= 2.0,
+            value: fmt(newey_west_t, 3),
+            ok: newey_west_t != null && newey_west_t >= 2.0,
           },
         ].map((m) => (
           <GlassCard key={m.label} padding="sm">
             <p className="text-xs text-slate-400 mb-1">{m.label}</p>
             <p className={`text-xl font-bold tabular-nums ${
-              m.warn ? "text-yellow-400" : m.ok ? "text-green-400" : "text-red-400"
+              m.value === "—" ? "text-slate-500" : m.warn ? "text-yellow-400" : m.ok ? "text-green-400" : "text-red-400"
             }`}>
               {m.value}
             </p>
@@ -137,7 +145,7 @@ export default function TabICAnalysis({ report }: Props) {
       </div>
 
       {/* FDR note */}
-      {fdr_t_stat < 2.0 && (
+      {fdr_t_stat != null && fdr_t_stat < 2.0 && (
         <div className="px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400">
           ⚠️ FDR校正后 t={fdr_t_stat.toFixed(2)} &lt; 2.0，建议结合经济学逻辑审慎评估
         </div>
@@ -146,42 +154,54 @@ export default function TabICAnalysis({ report }: Props) {
       {/* IC time series */}
       <GlassCard>
         <p className="text-xs font-medium text-slate-400 mb-2">IC时序 + 累计IC</p>
-        <ReactECharts option={icSeriesOption} style={{ height: 200 }} opts={{ renderer: "canvas" }} />
+        {icSeriesOption ? (
+          <ReactECharts option={icSeriesOption} style={{ height: 200 }} opts={{ renderer: "canvas" }} />
+        ) : (
+          <div className="py-12 text-center text-slate-500 text-sm">暂无IC时序数据</div>
+        )}
       </GlassCard>
 
       {/* IC distribution + multi-period */}
       <div className="grid grid-cols-2 gap-4">
         <GlassCard>
           <p className="text-xs font-medium text-slate-400 mb-2">IC分布直方图</p>
-          <ReactECharts option={distOption} style={{ height: 160 }} opts={{ renderer: "canvas" }} />
+          {distOption ? (
+            <ReactECharts option={distOption} style={{ height: 160 }} opts={{ renderer: "canvas" }} />
+          ) : (
+            <div className="py-8 text-center text-slate-500 text-sm">暂无分布数据</div>
+          )}
         </GlassCard>
 
         <GlassCard>
           <p className="text-xs font-medium text-slate-400 mb-3">多周期IC对比</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-800">
-                  <th className="pb-2 text-left text-slate-500 font-medium">周期</th>
-                  <th className="pb-2 text-right text-slate-500 font-medium">IC均值</th>
-                  <th className="pb-2 text-right text-slate-500 font-medium">IC_IR</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {report.ic_by_period.map((row) => (
-                  <tr key={row.period}>
-                    <td className="py-2 text-slate-300">{row.period}</td>
-                    <td className={`py-2 text-right tabular-nums ${
-                      Math.abs(row.ic) >= 0.03 ? "text-green-400" : "text-yellow-400"
-                    }`}>{row.ic.toFixed(4)}</td>
-                    <td className={`py-2 text-right tabular-nums ${
-                      row.ir >= 0.5 ? "text-green-400" : "text-yellow-400"
-                    }`}>{row.ir.toFixed(3)}</td>
+          {report.ic_by_period.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800">
+                    <th className="pb-2 text-left text-slate-500 font-medium">周期</th>
+                    <th className="pb-2 text-right text-slate-500 font-medium">IC均值</th>
+                    <th className="pb-2 text-right text-slate-500 font-medium">IC_IR</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {report.ic_by_period.map((row) => (
+                    <tr key={row.period}>
+                      <td className="py-2 text-slate-300">{row.period}</td>
+                      <td className={`py-2 text-right tabular-nums ${
+                        Math.abs(row.ic) >= 0.03 ? "text-green-400" : "text-yellow-400"
+                      }`}>{row.ic.toFixed(4)}</td>
+                      <td className={`py-2 text-right tabular-nums ${
+                        row.ir >= 0.5 ? "text-green-400" : "text-yellow-400"
+                      }`}>{row.ir.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-slate-500 text-sm">暂无多周期数据</div>
+          )}
         </GlassCard>
       </div>
     </div>
