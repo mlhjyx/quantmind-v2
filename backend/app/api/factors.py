@@ -228,6 +228,152 @@ async def get_factor_correlation(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/factors/summary  — 因子库概览统计（必须在 /{name} 之前注册）
+# ---------------------------------------------------------------------------
+
+
+@router.get("/summary")
+async def get_factors_summary(
+    svc: FactorService = Depends(_get_factor_service),
+) -> list[dict[str, Any]]:
+    """获取因子列表（FactorSummary[]格式，供StrategyWorkspace/FactorPanel使用）。
+
+    返回与前端 FactorSummary interface 兼容的数组，字段:
+    id/name/category/ic/ir/direction/recommended_freq/t_stat/fdr_t_stat/status。
+
+    如需 Dashboard 统计概览（{total,active,...} 对象格式），使用 GET /api/factors/stats。
+
+    Args:
+        svc: FactorService实例（Depends注入）。
+
+    Returns:
+        list[dict]: FactorSummary 数组，每项含:
+            id/name/category/ic/ir/direction/recommended_freq/t_stat/fdr_t_stat/status。
+    """
+    today = date.today()
+    start_date = today - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
+
+    all_factors = await svc.get_factor_list(status=None)
+    result = []
+    for f in all_factors:
+        fname = f["factor_name"]
+        stats = await svc.get_factor_stats(fname, start_date, today)
+
+        ic_mean = float(stats.get("ic_mean") or 0.0)
+        ic_ir = float(stats.get("ic_ir") or 0.0)
+        t = float(_calc_t_stat(stats) or 0.0)
+
+        # status 映射到前端枚举: candidate→new, warning/critical→degraded
+        raw_status = f.get("status", "")
+        frontend_status = {
+            "active": "active",
+            "candidate": "new",
+            "warning": "degraded",
+            "critical": "degraded",
+            "retired": "retired",
+        }.get(raw_status, "active")
+
+        result.append(
+            {
+                "id": fname,
+                "name": fname,
+                "category": f.get("category") or "",
+                "ic": ic_mean,
+                "ir": ic_ir,
+                "direction": f.get("direction") or 1,
+                "recommended_freq": "月度",
+                "t_stat": t,
+                "fdr_t_stat": t,
+                "status": frontend_status,
+                "description": f.get("description"),
+                "source": f.get("source"),
+            }
+        )
+    return result
+
+
+@router.get("/stats")
+async def get_factors_stats(
+    svc: FactorService = Depends(_get_factor_service),
+) -> dict[str, Any]:
+    """获取因子库概览统计（{total,active,...}对象格式，供Dashboard使用）。
+
+    对 factor_registry 按 status 分组计数，同时返回 Top 因子列表。
+    用于前端 Dashboard 因子状态卡片。
+
+    Args:
+        svc: FactorService实例（Depends注入）。
+
+    Returns:
+        dict: {
+            "total": int,
+            "active": int,
+            "candidate": int,
+            "warning": int,
+            "critical": int,
+            "retired": int,
+            "top_factors": list[dict]
+        }
+    """
+    today = date.today()
+    start_date = today - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
+
+    all_factors = await svc.get_factor_list(status=None)
+
+    counts: dict[str, int] = {
+        "active": 0,
+        "candidate": 0,
+        "warning": 0,
+        "critical": 0,
+        "retired": 0,
+    }
+    for f in all_factors:
+        st = f.get("status", "")
+        if st in counts:
+            counts[st] += 1
+
+    total = sum(counts.values())
+
+    active_factors = [f for f in all_factors if f.get("status") in ("active", "warning")]
+    top_factors = []
+    for f in active_factors:
+        fname = f["factor_name"]
+        stats = await svc.get_factor_stats(fname, start_date, today)
+        ic_mean = stats.get("ic_mean")
+        ic_ir = stats.get("ic_ir")
+
+        stats_30d = await svc.get_factor_stats(fname, today - timedelta(days=30), today)
+        ic_30d = stats_30d.get("ic_mean")
+        if ic_mean is not None and ic_30d is not None and abs(ic_mean) > 1e-9:
+            ratio = ic_30d / ic_mean
+            trend = "improving" if ratio > 1.1 else ("degrading" if ratio < 0.7 else "stable")
+        else:
+            trend = "unknown"
+
+        top_factors.append(
+            {
+                "name": fname,
+                "ic_mean": ic_mean,
+                "ic_ir": ic_ir,
+                "direction": f.get("direction"),
+                "status": f.get("status"),
+                "trend": trend,
+            }
+        )
+
+    top_factors.sort(
+        key=lambda x: abs(x["ic_mean"]) if x["ic_mean"] is not None else 0.0, reverse=True
+    )
+    top_factors = top_factors[:10]
+
+    return {
+        "total": total,
+        **counts,
+        "top_factors": top_factors,
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /api/factors  — 因子库列表
 # ---------------------------------------------------------------------------
 
@@ -276,7 +422,7 @@ async def list_factors(
                 "ic_ir": stats.get("ic_ir"),
                 "t_stat": _calc_t_stat(stats),
                 "data_points": stats.get("data_points", 0),
-                "created_at": f.get("created_at").isoformat() if f.get("created_at") else None,
+                "created_at": _isoformat_or_none(f.get("created_at")),
             }
         )
 
@@ -368,9 +514,7 @@ async def get_factor_detail(
             "end": end_date.isoformat(),
             "forward_days": forward_days,
         },
-        "created_at": factor_info.get("created_at").isoformat()
-        if factor_info.get("created_at")
-        else None,
+        "created_at": _isoformat_or_none(factor_info.get("created_at")),
     }
 
 
@@ -457,9 +601,7 @@ async def get_factor_report(
             "direction": factor_info.get("direction"),
             "status": factor_info.get("status"),
             "description": factor_info.get("description"),
-            "created_at": factor_info.get("created_at").isoformat()
-            if factor_info.get("created_at")
-            else None,
+            "created_at": _isoformat_or_none(factor_info.get("created_at")),
         },
         # Tab2: IC分析
         "ic_analysis": {
@@ -494,6 +636,24 @@ async def get_factor_report(
 # ---------------------------------------------------------------------------
 # 内部工具函数
 # ---------------------------------------------------------------------------
+
+
+def _isoformat_or_none(value: Any) -> str | None:
+    """安全调用 isoformat()，None 时返回 None。
+
+    解决 Pyright 对 dict.get() 返回 Any 时无法推断 isoformat 的类型警告。
+
+    Args:
+        value: date/datetime 对象或 None。
+
+    Returns:
+        ISO格式字符串，或 None。
+    """
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 def _calc_t_stat(stats: dict[str, Any]) -> float | None:

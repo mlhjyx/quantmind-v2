@@ -73,7 +73,23 @@ export default function Portfolio() {
           axios.get<DailyPnl[]>("/api/portfolio/daily-pnl?days=20"),
         ]);
         if (!live) return;
-        if (h.status === "fulfilled") setHoldings(h.value.data);
+        if (h.status === "fulfilled") {
+          // API returns unrealized_pnl as ratio (e.g. 0.0321); map to Holding shape
+          type ApiHolding = { code: string; name: string; industry: string; quantity: number; avg_cost: number; market_value: number; weight: number; unrealized_pnl: number; holding_days: number };
+          const mapped: Holding[] = (h.value.data as unknown as ApiHolding[]).map((r) => ({
+            code: r.code,
+            name: r.name,
+            industry: r.industry,
+            wt: +(r.weight * 100).toFixed(2),
+            cost: r.avg_cost,
+            price: r.avg_cost * (1 + r.unrealized_pnl),  // derive price from cost + pnl ratio
+            pnl: +(r.unrealized_pnl * 100).toFixed(2),
+            pnlAmt: +(r.unrealized_pnl * r.market_value).toFixed(0),
+            days: r.holding_days,
+            signal: 0,
+          }));
+          setHoldings(mapped);
+        }
         if (s.status === "fulfilled") setSectorData(s.value.data);
         if (p.status === "fulfilled") setPnlByDay(p.value.data);
       } finally {
@@ -176,7 +192,7 @@ export default function Portfolio() {
                           <td className="text-right py-2" style={{ fontFamily: C.mono, color: C.text3 }}>{h.cost.toFixed(2)}</td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, color: C.text1 }}>{h.price.toFixed(2)}</td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, fontWeight: 600, color: h.pnl >= 0 ? C.up : C.down }}>
-                            {h.pnl >= 0 ? "+" : ""}{h.pnl}%
+                            {h.pnl >= 0 ? "+" : ""}{h.pnl.toFixed(2)}%
                           </td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, color: h.pnlAmt >= 0 ? C.up : C.down }}>
                             {h.pnlAmt >= 0 ? "+" : ""}¥{Math.abs(h.pnlAmt).toLocaleString()}

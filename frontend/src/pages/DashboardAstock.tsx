@@ -1,16 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
+import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
-import { fetchSummary, fetchNAVSeries, fetchPositions } from "@/api/dashboard";
-import {
-  MOCK_SUMMARY,
-  MOCK_NAV_SERIES,
-  MOCK_POSITIONS,
-} from "@/api/mock";
-import type { DashboardSummary, NAVPoint, Position } from "@/types/dashboard";
+import { fetchSummary, fetchNAVSeries } from "@/api/dashboard";
+import { MOCK_SUMMARY, MOCK_NAV_SERIES } from "@/api/mock";
+import type { DashboardSummary, NAVPoint } from "@/types/dashboard";
 
 // ── Strategy options ──
 const STRATEGIES = [
@@ -18,7 +15,7 @@ const STRATEGIES = [
   { id: "v1.2", label: "动量反转 v1.2 (测试)" },
 ];
 
-// ── Sector mock ──
+// ── Sector mock (fallback) ──
 const MOCK_SECTORS = [
   { value: 14.2, name: "食品饮料" },
   { value: 12.1, name: "医药生物" },
@@ -31,15 +28,18 @@ const MOCK_SECTORS = [
   { value: 19.2, name: "其他" },
 ];
 
-// ── Monthly returns mock (year × month grid) ──
+// ── Monthly returns mock (fallback) ──
 const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 const MOCK_MONTHLY: Record<string, (number | null)[]> = {
   "2025": [0.021, -0.013, 0.034, 0.018, -0.008, 0.042, 0.011, -0.022, 0.031, 0.016, -0.005, 0.028],
   "2026": [0.015, -0.007, 0.032, null, null, null, null, null, null, null, null, null],
 };
 
-// ── Factor library status mock ──
-const FACTOR_STATUS = { active: 34, new: 2, warning: 2, failed: 8 };
+// ── Factor library status mock (fallback) ──
+const MOCK_FACTOR_STATUS = { active: 34, new: 2, warning: 2, failed: 8 };
+
+interface SectorItem { value: number; name: string; }
+interface FactorStatusData { active: number; new: number; warning: number; failed: number; }
 
 function pnlColorClass(v: number) {
   if (v > 0) return "text-green-400";
@@ -255,8 +255,7 @@ function NAVChart({ navSeries }: { navSeries: NAVPoint[] }) {
 // ─────────────────────────────────────────────
 // Layer 3L: Sector Pie Chart
 // ─────────────────────────────────────────────
-function SectorPie({ positions }: { positions: Position[] }) {
-  void positions;
+function SectorPie({ sectors }: { sectors: SectorItem[] }) {
   const option = {
     backgroundColor: "transparent",
     tooltip: {
@@ -285,7 +284,7 @@ function SectorPie({ positions }: { positions: Position[] }) {
         emphasis: {
           label: { show: true, fontSize: 12, color: "#e2e8f0" },
         },
-        data: MOCK_SECTORS,
+        data: sectors,
         color: [
           "#3b82f6","#8b5cf6","#06b6d4","#10b981",
           "#f59e0b","#ef4444","#ec4899","#6366f1","#64748b",
@@ -305,12 +304,12 @@ function SectorPie({ positions }: { positions: Position[] }) {
 // ─────────────────────────────────────────────
 // Layer 3R: Factor Library Status
 // ─────────────────────────────────────────────
-function FactorLibraryStatus() {
+function FactorLibraryStatus({ factorStatus }: { factorStatus: FactorStatusData }) {
   const items = [
-    { icon: "✅", label: "Active", count: FACTOR_STATUS.active, color: "text-green-400" },
-    { icon: "🆕", label: "New", count: FACTOR_STATUS.new, color: "text-blue-400" },
-    { icon: "⚠️", label: "Warning", count: FACTOR_STATUS.warning, color: "text-amber-400" },
-    { icon: "❌", label: "Failed", count: FACTOR_STATUS.failed, color: "text-red-400" },
+    { icon: "✅", label: "Active", count: factorStatus.active, color: "text-green-400" },
+    { icon: "🆕", label: "New", count: factorStatus.new, color: "text-blue-400" },
+    { icon: "⚠️", label: "Warning", count: factorStatus.warning, color: "text-amber-400" },
+    { icon: "❌", label: "Failed", count: factorStatus.failed, color: "text-red-400" },
   ];
 
   return (
@@ -334,7 +333,7 @@ function FactorLibraryStatus() {
         <div className="flex justify-between">
           <span>总因子数</span>
           <span className="text-slate-300 font-mono">
-            {FACTOR_STATUS.active + FACTOR_STATUS.new + FACTOR_STATUS.warning + FACTOR_STATUS.failed}
+            {factorStatus.active + factorStatus.new + factorStatus.warning + factorStatus.failed}
           </span>
         </div>
         <div className="flex justify-between">
@@ -359,7 +358,7 @@ function FactorLibraryStatus() {
 // ─────────────────────────────────────────────
 // Layer 4: Monthly Returns Heatmap (table)
 // ─────────────────────────────────────────────
-function MonthlyHeatmap() {
+function MonthlyHeatmap({ monthlyData }: { monthlyData: Record<string, (number | null)[]> }) {
   function cellBg(v: number | null): string {
     if (v === null) return "bg-white/3 text-slate-600";
     if (v > 0.03) return "bg-green-500/70 text-white";
@@ -370,7 +369,7 @@ function MonthlyHeatmap() {
     return "bg-red-500/70 text-white";
   }
 
-  const years = Object.keys(MOCK_MONTHLY).sort().reverse();
+  const years = Object.keys(monthlyData).sort().reverse();
 
   return (
     <GlassCard className="mb-4">
@@ -388,7 +387,7 @@ function MonthlyHeatmap() {
           </thead>
           <tbody>
             {years.map((year) => {
-              const months = MOCK_MONTHLY[year] ?? [];
+              const months = monthlyData[year] ?? [];
               const validMonths = months.filter((v): v is number => v !== null);
               const yearTotal = validMonths.reduce((s, v) => s * (1 + v), 1) - 1;
               return (
@@ -509,7 +508,9 @@ function AIStatusAndActions() {
 export default function DashboardAstock() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [navSeries, setNavSeries] = useState<NAVPoint[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
+  const [sectors, setSectors] = useState<SectorItem[]>(MOCK_SECTORS);
+  const [monthlyData, setMonthlyData] = useState<Record<string, (number | null)[]>>(MOCK_MONTHLY);
+  const [factorStatus, setFactorStatus] = useState<FactorStatusData>(MOCK_FACTOR_STATUS);
   const [loading, setLoading] = useState(true);
   const [useMock, setUseMock] = useState(false);
   const [strategy, setStrategy] = useState("v1.1");
@@ -517,23 +518,40 @@ export default function DashboardAstock() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, n, p] = await Promise.all([
+      const [s, n] = await Promise.all([
         fetchSummary(),
         fetchNAVSeries("6m"),
-        fetchPositions(),
       ]);
       setSummary(s);
       setNavSeries(n);
-      setPositions(p);
       setUseMock(false);
     } catch {
       setSummary(MOCK_SUMMARY);
       setNavSeries(MOCK_NAV_SERIES);
-      setPositions(MOCK_POSITIONS);
       setUseMock(true);
     } finally {
       setLoading(false);
     }
+
+    // Supplementary data — fallback to mock on error
+    axios.get<SectorItem[]>("/api/portfolio/sector-distribution")
+      .then((r) => setSectors(r.data))
+      .catch(() => {});
+
+    axios.get<Record<string, (number | null)[]>>("/api/dashboard/monthly-returns")
+      .then((r) => setMonthlyData(r.data))
+      .catch(() => {});
+
+    axios.get<{ total: number; active: number; candidate: number; warning: number; critical: number; retired: number }>("/api/factors/stats")
+      .then((r) => {
+        setFactorStatus({
+          active: r.data.active ?? 0,
+          new: r.data.candidate ?? 0,
+          warning: r.data.warning ?? 0,
+          failed: r.data.critical ?? 0,
+        });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -581,12 +599,12 @@ export default function DashboardAstock() {
 
       {/* Layer 3: Sector pie + Factor library status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <SectorPie positions={positions} />
-        <FactorLibraryStatus />
+        <SectorPie sectors={sectors} />
+        <FactorLibraryStatus factorStatus={factorStatus} />
       </div>
 
       {/* Layer 4: Monthly returns heatmap */}
-      <MonthlyHeatmap />
+      <MonthlyHeatmap monthlyData={monthlyData} />
 
       {/* Layer 5: AI status + quick actions */}
       <AIStatusAndActions />

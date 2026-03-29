@@ -59,27 +59,63 @@ def _make_dashboard_service_mock(
     svc.get_market_ticker = AsyncMock(
         return_value=market_ticker
         or [
-            {"label": "沪深300", "code": "000300.SH", "value": 3800.5, "change_pct": 0.8, "is_up": True},
-            {"label": "上证指数", "code": "000001.SH", "value": 3200.1, "change_pct": -0.2, "is_up": False},
-            {"label": "创业板指", "code": "399006.SZ", "value": 2100.3, "change_pct": 1.1, "is_up": True},
-            {"label": "成交额(亿)", "code": "TOTAL_AMOUNT", "value": 8500.0, "change_pct": 0.0, "is_up": True},
+            {
+                "label": "沪深300",
+                "code": "000300.SH",
+                "value": 3800.5,
+                "change_pct": 0.8,
+                "is_up": True,
+            },
+            {
+                "label": "上证指数",
+                "code": "000001.SH",
+                "value": 3200.1,
+                "change_pct": -0.2,
+                "is_up": False,
+            },
+            {
+                "label": "创业板指",
+                "code": "399006.SZ",
+                "value": 2100.3,
+                "change_pct": 1.1,
+                "is_up": True,
+            },
+            {
+                "label": "成交额(亿)",
+                "code": "TOTAL_AMOUNT",
+                "value": 8500.0,
+                "change_pct": 0.0,
+                "is_up": True,
+            },
         ]
     )
     svc.get_alerts = AsyncMock(
         return_value=alerts
         or [
-            {"level": "P1", "title": "回撤预警", "desc": "MDD触及-8%", "time": "2026-03-29T10:00:00+08:00", "color": "orange"},
+            {
+                "level": "P1",
+                "title": "回撤预警",
+                "desc": "MDD触及-8%",
+                "time": "2026-03-29T10:00:00+08:00",
+                "color": "orange",
+            },
         ]
     )
     svc.get_strategies_overview = AsyncMock(
         return_value=strategies
         or [
-            {"id": "abc-123", "name": "v1.1", "status": "paper", "market": "astock", "sharpe": None, "pnl": 0.05, "mdd": -0.08},
+            {
+                "id": "abc-123",
+                "name": "v1.1",
+                "status": "paper",
+                "market": "astock",
+                "sharpe": None,
+                "pnl": 0.05,
+                "mdd": -0.08,
+            },
         ]
     )
-    svc.get_monthly_returns = AsyncMock(
-        return_value=monthly_returns or {2026: [None] * 12}
-    )
+    svc.get_monthly_returns = AsyncMock(return_value=monthly_returns or {2026: [None] * 12})
     svc.get_industry_distribution = AsyncMock(
         return_value=industry_distribution
         or [
@@ -113,11 +149,21 @@ def _make_paper_trading_service_mock(
         return_value=graduation
         or {
             "criteria": [
-                {"name": "运行时长", "target": ">= 60个交易日", "actual": "45个交易日", "passed": False},
+                {
+                    "name": "运行时长",
+                    "target": ">= 60个交易日",
+                    "actual": "45个交易日",
+                    "passed": False,
+                },
                 {"name": "Sharpe", "target": ">= 0.700", "actual": "0.950", "passed": True},
                 {"name": "最大回撤", "target": "<= -0.1800", "actual": "-0.0600", "passed": True},
                 {"name": "滑点偏差", "target": "< 50%", "actual": "3.0bps", "passed": True},
-                {"name": "链路完整性", "target": "全链路无中断", "actual": "待实现", "passed": False},
+                {
+                    "name": "链路完整性",
+                    "target": "全链路无中断",
+                    "actual": "待实现",
+                    "passed": False,
+                },
             ],
             "all_passed": False,
             "summary": "3/5",
@@ -158,9 +204,7 @@ def _make_strategy_service_mock(
 
     # strategy_repo.list_strategies
     svc.strategy_repo = MagicMock()
-    svc.strategy_repo.list_strategies = AsyncMock(
-        return_value=list_strategies_result or []
-    )
+    svc.strategy_repo.list_strategies = AsyncMock(return_value=list_strategies_result or [])
 
     # get_strategy_detail
     if detail_returns_none:
@@ -381,8 +425,13 @@ class TestDashboardAPI:
         assert resp.status_code == 200
         data = resp.json()
         required_keys = [
-            "nav", "sharpe", "mdd", "position_count",
-            "daily_return", "cumulative_return", "cash_ratio",
+            "nav",
+            "sharpe",
+            "mdd",
+            "position_count",
+            "daily_return",
+            "cumulative_return",
+            "cash_ratio",
         ]
         for key in required_keys:
             assert key in data, f"缺少指标字段: {key}"
@@ -523,7 +572,9 @@ class TestDashboardNewEndpoints:
             assert 0.0 <= item["pct"] <= 1.0
 
     @pytest.mark.asyncio
-    async def test_industry_distribution_with_strategy_id(self, client, _override_dashboard_service):
+    async def test_industry_distribution_with_strategy_id(
+        self, client, _override_dashboard_service
+    ):
         """industry-distribution: 指定strategy_id参数。"""
         resp = await client.get(
             "/api/dashboard/industry-distribution?strategy_id=s1&execution_mode=paper"
@@ -546,8 +597,14 @@ class TestPaperTradingAPI:
         assert resp.status_code == 200
         data = resp.json()
         required_keys = [
-            "nav", "position_count", "running_days", "sharpe",
-            "mdd", "total_return", "trade_date", "graduation_ready",
+            "nav",
+            "position_count",
+            "running_days",
+            "sharpe",
+            "mdd",
+            "total_return",
+            "trade_date",
+            "graduation_ready",
         ]
         for key in required_keys:
             assert key in data, f"缺少字段: {key}"
@@ -643,7 +700,9 @@ class TestStrategiesAPI:
         assert "version_history" in data
 
     @pytest.mark.asyncio
-    async def test_get_strategy_detail_not_found(self, client, _override_strategy_service_not_found):
+    async def test_get_strategy_detail_not_found(
+        self, client, _override_strategy_service_not_found
+    ):
         """异常路径: 策略不存在返回404。"""
         resp = await client.get("/api/strategies/nonexistent")
         assert resp.status_code == 404
@@ -664,7 +723,9 @@ class TestStrategiesAPI:
         assert data["changelog"] == "update"
 
     @pytest.mark.asyncio
-    async def test_create_version_strategy_not_found(self, client, _override_strategy_service_not_found):
+    async def test_create_version_strategy_not_found(
+        self, client, _override_strategy_service_not_found
+    ):
         """异常路径: 策略不存在时创建版本返回404。"""
         resp = await client.post(
             "/api/strategies/nonexistent/versions",
@@ -718,6 +779,186 @@ class TestStrategiesAPI:
             json={"target_version": 0},
         )
         assert resp.status_code == 422
+
+
+# ============================================================================
+# GET /api/paper-trading/graduation-status Tests
+# ============================================================================
+
+
+def _make_mock_session(
+    perf_row: dict | None = None,
+    slip_row: dict | None = None,
+) -> AsyncMock:
+    """构建 AsyncSession mock，返回指定的 performance_series 和 trade_log 查询结果。
+
+    Args:
+        perf_row: performance_series 查询行，None 表示无数据。
+        slip_row: trade_log 滑点查询行，None 表示无数据。
+
+    Returns:
+        配置好的 AsyncSession AsyncMock。
+    """
+    from unittest.mock import MagicMock
+
+    session = AsyncMock()
+
+    def _make_mapping_result(row: dict | None):
+        """构建模拟 MappingResult。"""
+        result = MagicMock()
+        mapping_result = MagicMock()
+        mapping_result.one_or_none = MagicMock(return_value=row)
+        result.mappings = MagicMock(return_value=mapping_result)
+        return result
+
+    call_count = 0
+
+    async def _side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return _make_mapping_result(perf_row)
+        return _make_mapping_result(slip_row)
+
+    session.execute = _side_effect
+    return session
+
+
+@pytest.fixture
+def _override_graduation_status():
+    """Override _get_session 依赖，注入 mock AsyncSession。"""
+    from datetime import date
+
+    from app.api.paper_trading import _get_session
+
+    mock_session = _make_mock_session(
+        perf_row={
+            "start_date": date(2026, 1, 1),
+            "end_date": date(2026, 3, 29),
+            "trading_days": 60,
+            "avg_return": 0.001,
+            "std_return": 0.012,
+            "max_drawdown": -0.08,
+        },
+        slip_row={"avg_slippage": 60.0},
+    )
+    app.dependency_overrides[_get_session] = lambda: mock_session
+    yield mock_session
+    app.dependency_overrides.pop(_get_session, None)
+
+
+@pytest.fixture
+def _override_graduation_status_no_data():
+    """Override _get_session — 无performance数据场景。"""
+    from app.api.paper_trading import _get_session
+
+    mock_session = _make_mock_session(perf_row=None, slip_row=None)
+    app.dependency_overrides[_get_session] = lambda: mock_session
+    yield mock_session
+    app.dependency_overrides.pop(_get_session, None)
+
+
+class TestGraduationStatus:
+    """GET /api/paper-trading/graduation-status 测试。"""
+
+    @pytest.mark.asyncio
+    async def test_returns_200(self, client, _override_graduation_status):
+        """正常路径: 返回200。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_response_has_required_fields(self, client, _override_graduation_status):
+        """响应包含 days_running/sharpe/mdd/slippage_deviation/graduate_ready/criteria。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        data = resp.json()
+        for field in (
+            "days_running",
+            "sharpe",
+            "mdd",
+            "slippage_deviation",
+            "graduate_ready",
+            "criteria",
+        ):
+            assert field in data, f"缺少字段: {field}"
+
+    @pytest.mark.asyncio
+    async def test_criteria_has_three_items(self, client, _override_graduation_status):
+        """criteria 包含3条固定标准: Sharpe/最大回撤/滑点偏差。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        data = resp.json()
+        assert len(data["criteria"]) == 3
+        names = {c["name"] for c in data["criteria"]}
+        assert "Sharpe" in names
+        assert "最大回撤" in names
+        assert "滑点偏差" in names
+
+    @pytest.mark.asyncio
+    async def test_criteria_items_have_required_fields(self, client, _override_graduation_status):
+        """criteria 每项包含 name/target/actual/passed。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        data = resp.json()
+        for item in data["criteria"]:
+            for field in ("name", "target", "actual", "passed"):
+                assert field in item, f"criteria 缺少字段: {field}"
+
+    @pytest.mark.asyncio
+    async def test_graduate_ready_is_bool(self, client, _override_graduation_status):
+        """graduate_ready 字段为布尔值。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        data = resp.json()
+        assert isinstance(data["graduate_ready"], bool)
+
+    @pytest.mark.asyncio
+    async def test_days_running_calculated_from_date_range(
+        self, client, _override_graduation_status
+    ):
+        """days_running 从 start_date 到 end_date 的自然日数。"""
+        from datetime import date
+
+        resp = await client.get("/api/paper-trading/graduation-status")
+        data = resp.json()
+        # mock: start=2026-01-01, end=2026-03-29 → 87 自然日
+        expected_days = (date(2026, 3, 29) - date(2026, 1, 1)).days
+        assert data["days_running"] == expected_days
+
+    @pytest.mark.asyncio
+    async def test_no_data_returns_zeros(self, client, _override_graduation_status_no_data):
+        """无performance数据时返回零值但格式正确。"""
+        resp = await client.get("/api/paper-trading/graduation-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["days_running"] == 0
+        assert data["sharpe"] == 0.0
+        assert data["mdd"] == 0.0
+        assert isinstance(data["criteria"], list)
+
+    @pytest.mark.asyncio
+    async def test_graduate_ready_false_when_sharpe_low(self, client):
+        """Sharpe不达标时 graduate_ready=False。"""
+        from datetime import date
+
+        from app.api.paper_trading import _get_session
+
+        # Sharpe极低场景：avg_return接近0
+        mock_session = _make_mock_session(
+            perf_row={
+                "start_date": date(2026, 1, 1),
+                "end_date": date(2026, 3, 29),
+                "trading_days": 60,
+                "avg_return": 0.00001,
+                "std_return": 0.02,
+                "max_drawdown": -0.05,
+            },
+            slip_row={"avg_slippage": 60.0},
+        )
+        app.dependency_overrides[_get_session] = lambda: mock_session
+        try:
+            resp = await client.get("/api/paper-trading/graduation-status")
+            data = resp.json()
+            assert data["graduate_ready"] is False
+        finally:
+            app.dependency_overrides.pop(_get_session, None)
 
 
 # ============================================================================

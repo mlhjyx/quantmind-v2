@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import NAVChart from "@/components/NAVChart";
 import type { NAVPoint, NAVPeriod } from "@/types/dashboard";
 import { MOCK_NAV_SERIES } from "@/api/mock";
+import { fetchNAVSeries } from "@/api/dashboard";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -238,8 +240,72 @@ function MetricCard({ metric }: { metric: GraduationMetric }) {
 export default function PTGraduation() {
   const navigate = useNavigate();
   const [navPeriod, setNavPeriod] = useState<NAVPeriod>("all");
-  const data = MOCK_GRADUATION;
-  const navData: NAVPoint[] = MOCK_NAV_SERIES;
+  const [data, setData] = useState<GraduationData>(MOCK_GRADUATION);
+  const [navData, setNavData] = useState<NAVPoint[]>(MOCK_NAV_SERIES);
+
+  useEffect(() => {
+    type GraduationStatusResp = {
+      days_running: number;
+      sharpe: number;
+      mdd: number;
+      slippage_deviation: number;
+      graduate_ready: boolean;
+      criteria: { name: string; target: string; actual: string; passed: boolean }[];
+    };
+
+    axios.get<GraduationStatusResp>("/api/paper-trading/graduation-status")
+      .then((r) => {
+        const resp = r.data;
+        const criteria = resp.criteria ?? [];
+        const sharpeOk = criteria.find((c) => c.name === "Sharpe")?.passed ?? false;
+        const mddOk = criteria.find((c) => c.name === "最大回撤")?.passed ?? false;
+        const slipOk = criteria.find((c) => c.name === "滑点偏差")?.passed ?? false;
+
+        const mapped: GraduationData = {
+          pt_day: resp.days_running,
+          pt_total_days: 60,
+          overall_status: resp.graduate_ready ? "on_track" : (resp.sharpe > 0.5 ? "at_risk" : "failing"),
+          metrics: [
+            {
+              id: "sharpe",
+              name: "Sharpe Ratio",
+              current: +resp.sharpe.toFixed(3),
+              target: "≥ 0.72",
+              status: sharpeOk ? "pass" : resp.sharpe >= 0.5 ? "warn" : "fail",
+              progress: Math.min(100, Math.round((resp.sharpe / 0.72) * 100)),
+              description: "基线 1.03",
+            },
+            {
+              id: "mdd",
+              name: "最大回撤",
+              current: +(resp.mdd * 100).toFixed(1),
+              target: "< 35%",
+              status: mddOk ? "pass" : Math.abs(resp.mdd) < 0.40 ? "warn" : "fail",
+              progress: mddOk ? 100 : Math.max(0, Math.round((1 - Math.abs(resp.mdd) / 0.35) * 100)),
+              unit: "%",
+              description: "基线 -39.7%",
+            },
+            {
+              id: "slippage",
+              name: "滑点偏差",
+              current: +(resp.slippage_deviation * 100).toFixed(1),
+              target: "< 50%",
+              status: slipOk ? "pass" : resp.slippage_deviation < 0.60 ? "warn" : "fail",
+              progress: Math.min(100, Math.round((1 - resp.slippage_deviation / 0.50) * 100)),
+              unit: "%",
+              description: "实盘成本/回测成本",
+            },
+            ...MOCK_GRADUATION.metrics.slice(3),  // keep remaining mock metrics as observe
+          ],
+        };
+        setData(mapped);
+      })
+      .catch(() => {});
+
+    fetchNAVSeries("all")
+      .then((pts) => { if (pts.length > 0) setNavData(pts); })
+      .catch(() => {});
+  }, []);
 
   const passCount = data.metrics.filter((m) => m.status === "pass").length;
   const totalCount = data.metrics.length;

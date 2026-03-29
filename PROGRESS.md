@@ -1,10 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.23 ✅ complete — 1664 backend + 31 frontend tests)
-> Current: Phase 1, Sprint 1.23 ✅ 5缺失页面+14后端API+真实数据接入 — 1695 tests passed
-> 下一步: Sprint 1.24 (策略工作台+Monaco编辑器)
+> Last updated: 2026-03-29 (Sprint 1.24 部分完成 — 1680 backend + 31 frontend tests)
+> Current: Phase 1, Sprint 1.24 前端真实数据接入+后端API补齐 — 1711 tests
+> 下一步: Sprint 1.24续 (全面读设计文档+修复allFactors.filter+PTGraduation API接入)
+> 已知bug: /api/factors/summary返回dict而非array导致StrategyPreview崩溃
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅
-> Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%) | Sprint 1.22 commit eec69f0
+> Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | Sprint 1.23 commit 8099eb8
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成

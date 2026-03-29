@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -23,7 +23,9 @@ import pytest
 
 try:
     from fastapi.testclient import TestClient
+
     from app.api.factors import _calc_t_stat, _get_factor_service, router
+
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
@@ -410,3 +412,194 @@ class TestCalcTStat:
         t = _calc_t_stat(stats)
         assert t is not None
         assert t < 0
+
+
+# ---------------------------------------------------------------------------
+# GET /api/factors/summary — FactorSummary[]数组端点（供StrategyWorkspace使用）
+# ---------------------------------------------------------------------------
+
+
+class TestGetFactorsSummary:
+    """GET /api/factors/summary 测试（FactorSummary[]格式）。"""
+
+    def test_returns_200(self, app_client) -> None:
+        """正常请求返回200。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        assert resp.status_code == 200
+
+    def test_returns_list(self, app_client) -> None:
+        """响应是数组格式（FactorSummary[]）。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        assert isinstance(data, list), f"期望list，得到: {type(data)}"
+
+    def test_items_have_factor_summary_fields(self, app_client) -> None:
+        """每项包含前端 FactorSummary interface 必要字段。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        for item in data:
+            for field in ("id", "name", "category", "ic", "ir", "direction",
+                          "recommended_freq", "t_stat", "fdr_t_stat", "status"):
+                assert field in item, f"缺少字段: {field}"
+
+    def test_status_mapped_to_frontend_enum(self, app_client) -> None:
+        """status 值映射到前端枚举: active/new/degraded/retired。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        valid_statuses = {"active", "new", "degraded", "retired"}
+        for item in data:
+            assert item["status"] in valid_statuses, f"无效status: {item['status']}"
+
+    def test_id_equals_name(self, app_client) -> None:
+        """id 字段与 name 字段相同（factor_name作为id）。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        for item in data:
+            assert item["id"] == item["name"]
+
+    def test_count_matches_mock_factor_list(self, app_client) -> None:
+        """返回条数与 factor_list 条数一致。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        assert len(data) == len(_MOCK_FACTOR_LIST)
+
+    def test_empty_factor_list_returns_empty_array(self, app_client) -> None:
+        """因子库为空时返回空数组。"""
+        app, client = app_client
+        svc = _build_mock_service(factor_list=[])
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == []
+
+    def test_ic_ir_are_numeric(self, app_client) -> None:
+        """ic/ir/t_stat 字段为数值类型。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/summary")
+        data = resp.json()
+        for item in data:
+            assert isinstance(item["ic"], (int, float))
+            assert isinstance(item["ir"], (int, float))
+            assert isinstance(item["t_stat"], (int, float))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/factors/stats — 因子库概览统计端点（供Dashboard使用）
+# ---------------------------------------------------------------------------
+
+
+class TestGetFactorsStats:
+    """GET /api/factors/stats 测试（{total,active,...}对象格式）。"""
+
+    def test_returns_200(self, app_client) -> None:
+        """正常请求返回200。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        assert resp.status_code == 200
+
+    def test_response_contains_count_fields(self, app_client) -> None:
+        """响应包含 total/active/candidate/warning/critical/retired 字段。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        for field in ("total", "active", "candidate", "warning", "critical", "retired"):
+            assert field in data, f"缺少字段: {field}"
+
+    def test_response_contains_top_factors(self, app_client) -> None:
+        """响应包含 top_factors 列表。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        assert "top_factors" in data
+        assert isinstance(data["top_factors"], list)
+
+    def test_active_count_matches_mock(self, app_client) -> None:
+        """active 计数与 mock 数据中 active 状态因子数一致。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        assert data["active"] == 2
+
+    def test_total_equals_sum_of_statuses(self, app_client) -> None:
+        """total 等于各状态之和。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        computed_total = (
+            data["active"] + data["candidate"] + data["warning"]
+            + data["critical"] + data["retired"]
+        )
+        assert data["total"] == computed_total
+
+    def test_top_factors_have_required_fields(self, app_client) -> None:
+        """top_factors 每项包含 name/ic_mean/ic_ir/direction/status/trend。"""
+        app, client = app_client
+        svc = _build_mock_service()
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        for item in data["top_factors"]:
+            for field in ("name", "ic_mean", "ic_ir", "direction", "status", "trend"):
+                assert field in item, f"top_factors 缺少字段: {field}"
+
+    def test_top_factors_max_10(self, app_client) -> None:
+        """top_factors 最多返回10条。"""
+        app, client = app_client
+        big_list = [
+            {
+                "factor_name": f"factor_{i}",
+                "category": "liquidity",
+                "direction": 1,
+                "status": "active",
+                "description": f"factor {i}",
+                "created_at": None,
+            }
+            for i in range(12)
+        ]
+        svc = _build_mock_service(factor_list=big_list)
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        data = resp.json()
+        assert len(data["top_factors"]) <= 10
+
+    def test_empty_factor_list_returns_zeros(self, app_client) -> None:
+        """因子库为空时各计数均为0，top_factors为空列表。"""
+        app, client = app_client
+        svc = _build_mock_service(factor_list=[])
+        _inject(app, svc)
+        resp = client.get("/api/factors/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert data["top_factors"] == []

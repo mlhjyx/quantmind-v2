@@ -9,7 +9,7 @@ import {
 import { ChevronRight, Clock, Play, Bell } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
-import { fetchSummary, fetchPositions } from "@/api/dashboard";
+import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
 import {
   MOCK_SUMMARY,
   MOCK_POSITIONS,
@@ -17,10 +17,10 @@ import {
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { C } from "@/theme";
 
-// ── Deterministic sparkline mock data ──
+// ── Mock nav chart data (fallback) ──
 const seed = 42; let rng = seed;
 function pseudoRandom() { rng = (rng * 16807) % 2147483647; return rng / 2147483647; }
-const navChartData = Array.from({ length: 90 }, (_, i) => {
+const MOCK_NAV_CHART_DATA = Array.from({ length: 90 }, (_, i) => {
   const d = new Date(2025, 3, 1); d.setDate(d.getDate() + i * 4);
   const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
   const trend = i * 0.003;
@@ -38,7 +38,8 @@ const MONTHLY_DATA: Record<string, number[]> = {
   "2026": [1.9, 2.3, 1.4, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
 
-const FACTOR_DATA = [
+type FactorRow = { name: string; cat: string; ic: number; ir: number; dir: string; status: string; trend: number[] };
+const MOCK_FACTOR_DATA: FactorRow[] = [
   { name: "reversal_5",    cat: "价量", ic: 0.038,  ir: 0.89, dir: "反向", status: "active", trend: [3, 4, 3.5, 4.2, 3.8, 4.5] },
   { name: "momentum_60",   cat: "价量", ic: 0.045,  ir: 1.12, dir: "正向", status: "active", trend: [2, 3, 3.5, 4, 4.2, 4.5] },
   { name: "turnover_20",   cat: "流动", ic: -0.041, ir: 0.78, dir: "反向", status: "decay",  trend: [4, 3.8, 3.5, 3, 2.8, 2.5] },
@@ -47,6 +48,16 @@ const FACTOR_DATA = [
   { name: "ep_ttm",        cat: "基本面",ic: 0.028, ir: 0.55, dir: "正向", status: "active", trend: [2.5, 2.8, 2.5, 3, 2.8, 3] },
   { name: "idio_vol_20",   cat: "价量", ic: -0.033, ir: 0.82, dir: "反向", status: "new",   trend: [0, 0, 2, 3, 3.5, 3.8] },
   { name: "big_order_ratio",cat: "资金",ic: 0.022,  ir: 0.48, dir: "正向", status: "active", trend: [2, 2.2, 2.5, 2.3, 2.6, 2.4] },
+];
+
+type PipelineStep = { name: string; status: string };
+const MOCK_PIPELINE_STEPS: PipelineStep[] = [
+  { name: "发现", status: "done" },
+  { name: "评估", status: "running" },
+  { name: "入库", status: "pending" },
+  { name: "构建", status: "pending" },
+  { name: "回测", status: "pending" },
+  { name: "部署", status: "pending" },
 ];
 
 type Alert ={ level: string; color: string; title: string; desc: string; time: string };
@@ -58,14 +69,6 @@ const DEFAULT_ALERTS: Alert[] = [
   { level: "P2", color: "#60a5fa", title: "GP挖掘完成",       desc: "第47代完成·2个候选因子",       time: "12:30" },
 ];
 
-const PIPELINE_STEPS = [
-  { name: "发现", status: "done" },
-  { name: "评估", status: "running" },
-  { name: "入库", status: "pending" },
-  { name: "构建", status: "pending" },
-  { name: "回测", status: "pending" },
-  { name: "部署", status: "pending" },
-];
 
 // ── Sparkline SVG component ──
 function Sparkline({ data, color, width = 52, height = 22 }: { data: number[]; color: string; width?: number; height?: number }) {
@@ -225,7 +228,8 @@ function KPIGrid({ summary }: { summary: DashboardSummary | null }) {
 }
 
 // ── Row 2a: Equity curve with time selector ──
-function EquityCurve() {
+type NavChartPoint = { date: string; strategy: number; benchmark: number; excess: number };
+function EquityCurve({ navChartData }: { navChartData: NavChartPoint[] }) {
   const [period, setPeriod] = useState("1Y");
 
   return (
@@ -535,16 +539,19 @@ function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem[] }) {
 }
 
 // ── Row 4a: Factor library table ──
-function FactorLibraryPanel() {
+function FactorLibraryPanel({ factorData }: { factorData: FactorRow[] }) {
+  const activeCount = factorData.filter((f) => f.status === "active").length;
+  const newCount = factorData.filter((f) => f.status === "new").length;
+  const decayCount = factorData.filter((f) => f.status === "decay").length;
   return (
     <Card className="col-span-7">
       <CardHeader
         title="因子库" titleEn="Factor Library"
         right={
           <div className="flex items-center gap-3" style={{ fontSize: 10 }}>
-            <span style={{ color: C.up }}>● 34 活跃</span>
-            <span style={{ color: C.accent }}>● 2 新入</span>
-            <span style={{ color: C.warn }}>● 2 衰退</span>
+            <span style={{ color: C.up }}>● {activeCount} 活跃</span>
+            <span style={{ color: C.accent }}>● {newCount} 新入</span>
+            <span style={{ color: C.warn }}>● {decayCount} 衰退</span>
           </div>
         }
       />
@@ -562,7 +569,7 @@ function FactorLibraryPanel() {
             </tr>
           </thead>
           <tbody>
-            {FACTOR_DATA.map((f) => (
+            {factorData.map((f) => (
               <tr key={f.name} className="cursor-pointer" style={{ borderTop: `1px solid ${C.border}` }}>
                 <td className="py-1.5" style={{ color: C.text2, fontFamily: C.mono }}>{f.name}</td>
                 <td className="py-1.5">
@@ -605,7 +612,7 @@ function FactorLibraryPanel() {
 }
 
 // ── Row 4b: AI Pipeline ──
-function AIPipelinePanel() {
+function AIPipelinePanel({ pipelineSteps }: { pipelineSteps: PipelineStep[] }) {
   return (
     <Card className="col-span-5">
       <CardHeader
@@ -619,7 +626,7 @@ function AIPipelinePanel() {
       <div className="p-3.5 space-y-3">
         {/* Pipeline steps */}
         <div className="flex items-center gap-[2px]">
-          {PIPELINE_STEPS.map((s, i) => (
+          {pipelineSteps.map((s, i) => (
             <div key={i} className="flex items-center">
               <div className="px-2 py-1.5 rounded-md text-center shrink-0" style={{
                 fontSize: 10, minWidth: 40,
@@ -628,7 +635,7 @@ function AIPipelinePanel() {
                 fontWeight: s.status === "running" ? 600 : 400,
                 ...(s.status === "running" ? { boxShadow: `0 0 10px ${C.accent}40` } : {}),
               }}>{s.name}</div>
-              {i < PIPELINE_STEPS.length - 1 && <ChevronRight size={10} color={C.text4} className="shrink-0 mx-[-1px]" />}
+              {i < pipelineSteps.length - 1 && <ChevronRight size={10} color={C.text4} className="shrink-0 mx-[-1px]" />}
             </div>
           ))}
         </div>
@@ -696,6 +703,9 @@ export default function DashboardOverview() {
   const [alerts, setAlerts] = useState<Alert[]>(DEFAULT_ALERTS);
   const [monthlyData, setMonthlyData] = useState<Record<string, number[]>>(MONTHLY_DATA);
   const [industryDist, setIndustryDist] = useState<IndustryItem[]>(DEFAULT_INDUSTRY_DIST);
+  const [navChartData, setNavChartData] = useState<NavChartPoint[]>(MOCK_NAV_CHART_DATA);
+  const [factorData, setFactorData] = useState<FactorRow[]>(MOCK_FACTOR_DATA);
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>(MOCK_PIPELINE_STEPS);
   const [loading, setLoading] = useState(true);
   const [useMock, setUseMock] = useState(false);
 
@@ -728,6 +738,55 @@ export default function DashboardOverview() {
 
     axios.get<IndustryItem[]>("/api/dashboard/industry-distribution")
       .then((r) => setIndustryDist(r.data))
+      .catch(() => {});
+
+    // NAV series → transform to chart format
+    fetchNAVSeries("all")
+      .then((pts) => {
+        const chartPts = pts.map((pt) => ({
+          date: pt.trade_date.slice(5),  // "MM-DD"
+          strategy: pt.nav,
+          benchmark: 1.0,               // benchmark not in API; keep flat
+          excess: +(pt.cumulative_return * 100).toFixed(2),
+        }));
+        if (chartPts.length > 0) setNavChartData(chartPts);
+      })
+      .catch(() => {});
+
+    // Factors list
+    axios.get<{ name: string; category: string; direction: string; status: string; ic_mean: number | null; ic_ir: number | null }[]>("/api/factors")
+      .then((r) => {
+        const rows: FactorRow[] = r.data.map((f) => ({
+          name: f.name,
+          cat: f.category ?? "未知",
+          ic: f.ic_mean ?? 0,
+          ir: f.ic_ir ?? 0,
+          dir: f.direction === "positive" ? "正向" : "反向",
+          status: f.status === "active" ? "active" : f.status === "candidate" ? "new" : "decay",
+          trend: [],
+        }));
+        if (rows.length > 0) setFactorData(rows);
+      })
+      .catch(() => {});
+
+    // Pipeline status → transform node_statuses to steps array
+    axios.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/api/pipeline/status")
+      .then((r) => {
+        const nodeMap = r.data.node_statuses ?? {};
+        const currentNode = r.data.current_node;
+        const pipelineStatus = r.data.status;
+        if (Object.keys(nodeMap).length > 0) {
+          const steps: PipelineStep[] = Object.entries(nodeMap).map(([name, st]) => {
+            let status: string;
+            if (st === "completed") status = "done";
+            else if (name === currentNode && pipelineStatus === "running") status = "running";
+            else if (st === "pending") status = "pending";
+            else status = st;
+            return { name, status };
+          });
+          setPipelineSteps(steps);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -803,7 +862,7 @@ export default function DashboardOverview() {
 
         {/* ROW 2: Equity curve (8 cols) + Alerts+Strategies (4 cols) */}
         <div className="grid grid-cols-12 gap-3">
-          <EquityCurve />
+          <EquityCurve navChartData={navChartData} />
           <div className="col-span-4 flex flex-col gap-3">
             <AlertsPanel alerts={alerts} />
             <StrategiesPanel />
@@ -819,8 +878,8 @@ export default function DashboardOverview() {
 
         {/* ROW 4: Factor library (7) + AI Pipeline (5) */}
         <div className="grid grid-cols-12 gap-3">
-          <FactorLibraryPanel />
-          <AIPipelinePanel />
+          <FactorLibraryPanel factorData={factorData} />
+          <AIPipelinePanel pipelineSteps={pipelineSteps} />
         </div>
       </div>
     </div>
