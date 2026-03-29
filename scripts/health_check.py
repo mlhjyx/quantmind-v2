@@ -112,6 +112,22 @@ def check_disk_space() -> tuple[bool, str]:
         return False, str(e)
 
 
+def check_qmt_connection() -> tuple[bool, str]:
+    """miniQMT连接检查（仅EXECUTION_MODE=live时调用）。"""
+    try:
+        from app.services.qmt_connection_manager import qmt_manager
+
+        health = qmt_manager.health_check()
+        if health.get("is_healthy"):
+            asset = health.get("account_asset", {})
+            total = asset.get("total_asset", 0)
+            return True, f"已连接, 总资产={total:.0f}"
+        else:
+            return False, f"状态={health['state']}, error={health.get('last_error', '')}"
+    except Exception as e:
+        return False, f"QMT检查异常: {e}"
+
+
 def run_health_check(
     trade_date: date | None = None,
     conn=None,
@@ -152,6 +168,22 @@ def run_health_check(
         print(f"  {status} {name}: {msg}", flush=True)
         if not ok:
             failed_items.append(f"{name}: {msg}")
+
+    # QMT连接检查（仅EXECUTION_MODE=live时）
+    try:
+        from app.config import settings
+        if settings.EXECUTION_MODE == "live":
+            qmt_ok, qmt_msg = check_qmt_connection()
+            results["qmt_ok"] = qmt_ok
+            status = "OK" if qmt_ok else "FAIL"
+            print(f"  {status} qmt_ok: {qmt_msg}", flush=True)
+            if not qmt_ok:
+                failed_items.append(f"qmt_ok: {qmt_msg}")
+        else:
+            results["qmt_ok"] = True  # paper模式跳过
+    except Exception as e:
+        results["qmt_ok"] = True  # 导入失败不阻断（paper模式兼容）
+        print(f"  SKIP qmt_ok: 导入失败({e})", flush=True)
 
     # Phase 0不用Redis和Celery
     results["redis_ok"] = True

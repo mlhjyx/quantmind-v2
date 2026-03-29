@@ -26,6 +26,7 @@ from app.api.system import router as system_router
 from app.config import settings
 from app.db import engine
 from app.logging_config import configure_logging
+from app.services.qmt_connection_manager import qmt_manager
 from app.websocket import socket_app
 
 
@@ -33,7 +34,9 @@ from app.websocket import socket_app
 async def lifespan(app: FastAPI):
     """启动时初始化资源，关闭时释放连接池。"""
     configure_logging()
+    qmt_manager.startup()
     yield
+    qmt_manager.shutdown()
     await engine.dispose()
 
 

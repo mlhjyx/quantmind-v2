@@ -1,7 +1,11 @@
 """ExecutionService — 交易执行Service。
 
 从scripts/run_paper_trading.py L1351-1713迁移。
-完整执行: 熔断检查 -> CB调整 -> PaperBroker执行 -> 封板补单 -> 写trade_log。
+完整执行: 熔断检查 -> CB调整 -> Broker执行 -> 封板补单 -> 写trade_log。
+
+支持两种执行模式:
+- paper: PaperBroker (SimBroker包装, 默认)
+- live: QMTExecutionAdapter (MiniQMTBroker逐单下单)
 
 复用现有engines(PaperBroker)，不重新实现。
 Service内部不commit，由调用方统一管理事务。
@@ -10,7 +14,7 @@ Service内部不commit，由调用方统一管理事务。
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pandas as pd
 from engines.backtest_engine import Fill, PendingOrder
@@ -56,8 +60,9 @@ class ExecutionService:
         initial_capital: float,
         signal_date: date | None = None,
         dry_run: bool = False,
+        execution_mode: str = "paper",
     ) -> ExecutionResult:
-        """完整执行: CB调整 -> PaperBroker执行 -> 写trade_log。
+        """完整执行: CB调整 -> Broker执行 -> 写trade_log。
 
         对应 script L1461-1679。
 
@@ -72,13 +77,14 @@ class ExecutionService:
             initial_capital: 初始资金。
             signal_date: 信号日期（T日）。
             dry_run: 不写DB。
+            execution_mode: 执行模式 "paper"(默认) 或 "live"(QMT)。
 
         Returns:
             ExecutionResult。
         """
         result = ExecutionResult()
 
-        # ── 熔断权重调整 ──
+        # ── 熔断权重调整（paper/live共享） ──
         # 对应 script L1461-1508
         hedged_target = dict(target_weights)
         is_rebalance = True
@@ -120,7 +126,17 @@ class ExecutionService:
                     conn, signal_date or exec_date, hedged_target,
                 )
 
-        # ── 加载Broker状态 ──
+        # ── 路由到对应Broker ──
+        if execution_mode == "live":
+            return self._execute_live(
+                conn, strategy_id, exec_date, hedged_target,
+                is_rebalance, price_data, signal_date, dry_run,
+                cb_level, result,
+            )
+
+        # ── paper模式（现有路径，保持不变） ──
+
+        # 加载Broker状态
         paper_broker = PaperBroker(
             strategy_id=strategy_id,
             initial_capital=initial_capital,
@@ -130,7 +146,7 @@ class ExecutionService:
         fills: list[Fill] = []
         new_pending: list[PendingOrder] = []
 
-        # ── 执行调仓 ──
+        # 执行调仓
         # 对应 script L1630-1658
         if is_rebalance and hedged_target:
             logger.info("[ExecutionService] 执行调仓 (T+1 open价格)...")
@@ -151,7 +167,7 @@ class ExecutionService:
         else:
             logger.info("[ExecutionService] 非调仓/暂停，无订单执行")
 
-        # ── 写trade_log ──
+        # 写trade_log
         # 对应 script L1676-1679
         if not dry_run:
             paper_broker.save_fills_only(fills, conn)
@@ -171,6 +187,137 @@ class ExecutionService:
         result.cb_level = cb_level
 
         return result
+
+    def _execute_live(
+        self,
+        conn,
+        strategy_id: str,
+        exec_date: date,
+        hedged_target: dict[str, float],
+        is_rebalance: bool,
+        price_data: pd.DataFrame,
+        signal_date: date | None,
+        dry_run: bool,
+        cb_level: int,
+        result: ExecutionResult,
+    ) -> ExecutionResult:
+        """live模式执行: 通过QMTExecutionAdapter下单到miniQMT。
+
+        Args:
+            conn: psycopg2连接。
+            strategy_id: 策略ID。
+            exec_date: 执行日期。
+            hedged_target: 熔断调整后的目标权重。
+            is_rebalance: 是否需要调仓。
+            price_data: 当日价格数据。
+            signal_date: 信号日期。
+            dry_run: 不写DB。
+            cb_level: 熔断级别。
+            result: 待填充的ExecutionResult。
+
+        Returns:
+            ExecutionResult。
+        """
+        from engines.qmt_execution_adapter import QMTExecutionAdapter
+
+        from app.services.qmt_connection_manager import qmt_manager
+
+        qmt_manager.ensure_connected()
+        broker = qmt_manager.broker
+
+        fills: list[Fill] = []
+        new_pending: list[PendingOrder] = []
+
+        if is_rebalance and hedged_target:
+            # 构建当日开盘价dict（用于限价单）
+            day_data = price_data[price_data["trade_date"] == exec_date]
+            prices: dict[str, float] = {}
+            if not day_data.empty:
+                for _, row in day_data.iterrows():
+                    prices[row["code"]] = row["open"]
+
+            logger.info("[ExecutionService] live模式: 通过QMT执行调仓...")
+            adapter = QMTExecutionAdapter(broker)
+            try:
+                rebal_fills, new_pending = adapter.execute_rebalance(
+                    hedged_target, exec_date, prices,
+                    signal_date=signal_date,
+                )
+                fills.extend(rebal_fills)
+            finally:
+                adapter.cleanup()
+
+            logger.info(
+                f"[ExecutionService] live调仓完成: {len(fills)}笔成交, "
+                f"{len(new_pending)}笔pending"
+            )
+
+            if new_pending and not dry_run:
+                self._save_pending_buy_orders(conn, new_pending)
+        else:
+            logger.info("[ExecutionService] live模式: 非调仓/暂停，无订单执行")
+
+        # 写trade_log（live模式用execution_mode='live'标记）
+        if not dry_run and fills:
+            self._save_live_fills(conn, strategy_id, fills)
+
+        # 从QMT查询实时资产作为结果
+        try:
+            total_value = broker.get_total_value({})
+            positions = broker.get_positions()
+        except Exception:
+            logger.exception("[ExecutionService] live模式查询QMT资产失败")
+            total_value = 0.0
+            positions = {}
+
+        result.fills = fills
+        result.nav = total_value
+        result.position_count = len(positions)
+        result.pending_orders = new_pending
+        result.is_rebalance = is_rebalance
+        result.cb_level = cb_level
+
+        return result
+
+    def _save_live_fills(
+        self,
+        conn,
+        strategy_id: str,
+        fills: list[Fill],
+    ) -> None:
+        """保存live模式的成交记录到trade_log。"""
+        if not fills:
+            return
+        now_utc = datetime.now(UTC)
+        cur = conn.cursor()
+        try:
+            for fill in fills:
+                cur.execute(
+                    """INSERT INTO trade_log
+                       (code, trade_date, strategy_id, direction, quantity,
+                        fill_price, slippage_bps, commission, stamp_tax,
+                        total_cost, execution_mode, executed_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', %s)
+                       ON CONFLICT DO NOTHING""",
+                    (
+                        fill.code,
+                        fill.trade_date,
+                        strategy_id,
+                        fill.direction,
+                        fill.shares,
+                        float(fill.price),
+                        float(fill.slippage),
+                        float(fill.commission),
+                        float(fill.tax),
+                        float(fill.total_cost),
+                        now_utc,
+                    ),
+                )
+            conn.commit()
+            logger.info(f"[ExecutionService] live trade_log已保存: {len(fills)}笔")
+        except Exception:
+            conn.rollback()
+            raise
 
     def process_pending_orders(
         self,

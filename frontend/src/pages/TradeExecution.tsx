@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Play, Pause } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { C } from "@/theme";
-import { Card, CardHeader, PageHeader, TabButtons } from "@/components/shared";
+import { Card, CardHeader, PageHeader, TabButtons, QMTStatusBadge } from "@/components/shared";
 import apiClient from "@/api/client";
 
 // ---- Types ----
@@ -120,6 +120,7 @@ export default function TradeExecution() {
       <PageHeader title="交易执行" titleEn="Trade Execution">
         <TabButtons tabs={["执行中", "历史记录", "算法设置"]} active={tab} onChange={setTab} />
         <div className="flex items-center gap-3" style={{ fontSize: 10 }}>
+          <QMTStatusBadge />
           <span style={{ color: C.up }}>● 待执行 {executingCount}</span>
           {rejectedCount > 0 && <span style={{ color: C.down }}>● 已拒绝 {rejectedCount}</span>}
         </div>

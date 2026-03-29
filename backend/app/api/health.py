@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.repositories.health_repository import HealthRepository
+from app.services.qmt_connection_manager import qmt_manager
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -72,3 +73,16 @@ async def health_check_history(
         "latest_health": latest,
         "pipeline_status": pipeline,
     }
+
+
+@router.get("/qmt")
+async def qmt_health() -> dict[str, Any]:
+    """获取QMT连接健康状态。
+
+    返回QMT连接管理器的当前状态，包含连接状态、账户信息等。
+    EXECUTION_MODE=paper时返回disabled状态。
+
+    Returns:
+        QMT连接状态字典。
+    """
+    return qmt_manager.health_check()
