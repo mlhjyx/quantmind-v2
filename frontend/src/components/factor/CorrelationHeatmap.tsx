@@ -10,7 +10,8 @@ interface Props {
 
 export default function CorrelationHeatmap({ data, loading }: Props) {
   const option = useMemo(() => {
-    const { factors, matrix } = data;
+    const factors = data?.factors ?? [];
+    const matrix = data?.matrix ?? [];
     const heatData: [number, number, number][] = [];
     for (let i = 0; i < factors.length; i++) {
       for (let j = 0; j < factors.length; j++) {
@@ -79,12 +80,14 @@ export default function CorrelationHeatmap({ data, loading }: Props) {
     };
   }, [data]);
 
+  const safeFactors = data?.factors ?? [];
+  const safeMatrix = data?.matrix ?? [];
   const highCorrPairs: { a: string; b: string; corr: number }[] = [];
-  for (let i = 0; i < data.factors.length; i++) {
-    for (let j = i + 1; j < data.factors.length; j++) {
-      const c = data.matrix[i]?.[j] ?? 0;
-      const fa = data.factors[i] ?? "";
-      const fb = data.factors[j] ?? "";
+  for (let i = 0; i < safeFactors.length; i++) {
+    for (let j = i + 1; j < safeFactors.length; j++) {
+      const c = safeMatrix[i]?.[j] ?? 0;
+      const fa = safeFactors[i] ?? "";
+      const fb = safeFactors[j] ?? "";
       if (Math.abs(c) > 0.7) {
         highCorrPairs.push({ a: fa, b: fb, corr: c });
       }
