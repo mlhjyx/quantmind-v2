@@ -7,12 +7,15 @@ Sprint 1.23: 为前端Execution页面补齐后端API。
 from datetime import date
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/execution", tags=["execution"])
 
@@ -67,6 +70,7 @@ async def get_pending_orders(
         result = await session.execute(sql, {"sid": sid, "mode": execution_mode})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询待执行订单失败")
         return []
 
     return [
@@ -151,6 +155,7 @@ async def get_execution_log(
         )
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询执行历史日志失败")
         return []
 
     return [
@@ -207,6 +212,7 @@ async def get_algo_config(
         result = await session.execute(sql, {"sid": sid})
         row = result.mappings().first()
     except Exception:
+        logger.exception("查询算法配置失败")
         row = None
 
     if not row:

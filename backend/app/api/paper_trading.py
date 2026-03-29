@@ -6,6 +6,7 @@
 import math
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,8 @@ from app.db import get_db
 from app.repositories.position_repository import PositionRepository
 from app.repositories.trade_repository import TradeRepository
 from app.services.paper_trading_service import PaperTradingService
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/paper-trading", tags=["paper-trading"])
 
@@ -142,6 +145,7 @@ async def paper_trading_graduation_status(
         result = await session.execute(perf_sql, {"sid": sid})
         row = result.mappings().one_or_none()
     except Exception:
+        logger.exception("查询Paper Trading绩效数据失败")
         row = None
 
     if row is None or row["start_date"] is None:
@@ -174,6 +178,7 @@ async def paper_trading_graduation_status(
             float(slip_row["avg_slippage"]) if slip_row and slip_row["avg_slippage"] else 0.0
         )
     except Exception:
+        logger.exception("查询Paper Trading滑点数据失败")
         actual_slippage_bps = 0.0
 
     slippage_deviation = (

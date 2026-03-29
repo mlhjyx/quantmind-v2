@@ -9,6 +9,7 @@ import math
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -18,6 +19,8 @@ from app.config import settings
 from app.db import get_db
 from app.services.notification_service import NotificationService
 from app.services.risk_control_service import RiskControlService
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
@@ -282,6 +285,7 @@ async def get_risk_overview(
         circuit_level = state.level.value
         position_multiplier = float(state.position_multiplier)
     except Exception:
+        logger.exception("获取熔断状态失败")
         circuit_level = 0
         position_multiplier = 1.0
 
@@ -298,6 +302,7 @@ async def get_risk_overview(
         result = await session.execute(sql, {"sid": sid, "mode": execution_mode})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询风险指标数据失败")
         rows = []
 
     if rows:
@@ -376,6 +381,7 @@ async def get_risk_limits(
         perf_res = await session.execute(perf_sql, {"sid": sid, "mode": execution_mode})
         perf_rows = perf_res.mappings().all()
     except Exception:
+        logger.exception("查询风控限额数据失败")
         pos_row = None
         perf_rows = []
 
@@ -449,6 +455,7 @@ async def get_stress_tests(
         nav_row = nav_res.mappings().first()
         nav = float(nav_row["nav"] or 1.0) if nav_row else 1.0
     except Exception:
+        logger.exception("查询压力测试NAV数据失败")
         nav = 1.0
 
     beta = 0.85  # v1.1低波特性近似值

@@ -36,6 +36,7 @@ dependencies = [
     # === 工具 ===
     "httpx>=0.27.0",
     "loguru>=0.7.0",
+    "structlog>=24.1.0",        # JSON结构化日志（R6生产架构）
     "psutil>=5.9.0",            # 系统资源监控（disk/memory健康检查）
     "pyarrow>=17.0.0",          # Parquet读写
 ]

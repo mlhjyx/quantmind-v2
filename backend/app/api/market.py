@@ -6,11 +6,14 @@ Sprint 1.23: 为前端Market页面补齐后端API。
 
 from typing import Any, Literal
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -67,6 +70,7 @@ async def get_indices(
         result = await session.execute(sql, {"codes": _INDEX_CODES})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询指数行情失败")
         return _mock_indices()
 
     if not rows:
@@ -139,6 +143,7 @@ async def get_sectors(
         result = await session.execute(sql)
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询行业板块数据失败")
         return []
 
     return [
@@ -201,6 +206,7 @@ async def get_top_movers(
         result = await session.execute(sql, {"lim": limit})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询涨跌幅排行失败")
         return []
 
     return [

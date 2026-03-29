@@ -11,11 +11,14 @@ from typing import Any
 
 import psutil
 import redis as redis_lib
+import structlog
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -65,6 +68,7 @@ async def _query_datasource(
             return {"latest_date": row.latest_date, "row_count": int(row.row_count)}
         return {"latest_date": None, "row_count": 0}
     except Exception:
+        logger.exception("查询数据源表 %s 状态失败", table)
         return {"latest_date": None, "row_count": None}
 
 
@@ -81,6 +85,7 @@ async def _check_pg(session: AsyncSession) -> dict[str, Any]:
         await session.execute(text("SELECT 1"))
         return {"ok": True}
     except Exception as exc:
+        logger.exception("PostgreSQL连接检查失败")
         return {"ok": False, "error": str(exc)}
 
 
@@ -95,6 +100,7 @@ def _check_redis() -> dict[str, Any]:
         r.ping()
         return {"ok": True}
     except Exception as exc:
+        logger.exception("Redis连接检查失败")
         return {"ok": False, "error": str(exc)}
 
 
@@ -131,6 +137,7 @@ def _check_celery() -> dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {"ok": False, "worker_count": 0, "error": "inspect timeout"}
     except Exception as exc:
+        logger.exception("Celery worker检查失败")
         return {"ok": False, "worker_count": 0, "error": str(exc)}
 
 
@@ -150,6 +157,7 @@ def _check_disk() -> dict[str, Any]:
             "total_gb": round(total_gb, 1),
         }
     except Exception as exc:
+        logger.exception("磁盘空间检查失败")
         return {"ok": False, "free_gb": None, "total_gb": None, "error": str(exc)}
 
 
@@ -170,6 +178,7 @@ def _check_memory() -> dict[str, Any]:
             "percent": vm.percent,
         }
     except Exception as exc:
+        logger.exception("内存使用检查失败")
         return {"ok": False, "used_gb": None, "total_gb": None, "error": str(exc)}
 
 
@@ -239,6 +248,7 @@ def _query_task_scheduler() -> list[dict[str, Any]]:
             )
         return tasks
     except Exception:
+        logger.exception("查询Windows Task Scheduler任务失败")
         return []
 
 

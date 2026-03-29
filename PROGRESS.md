@@ -1,11 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.26 进行中 — QMT全面集成 Phase 1-6 编码完成, 17新测试通过)
-> Current: Phase 1, Sprint 1.26 QMT全面集成 — 编码完成, 待回归验证+交叉审查
-> 下一步: 回归测试确认(1760+17) → 交叉审查(qa+quant) → 交易时间手动验证(verify_qmt_broker.py)
+> Last updated: 2026-03-29 (Sprint 1.26 ✅ QMT全面集成完成 — 21测试+1777回归+QA P0修复)
+> Current: Phase 1, Sprint 1.26 ✅ 完成 → 下一步 Sprint 1.27 NSSM+监控+服务层测试
+> 下一步: Sprint 1.27 NSSM服务化+structlog+DingTalk告警+服务层冒烟测试
 > 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)
 > 本会话: Sprint 1.26 QMT全面集成6个Phase编码: ConnectionManager+ExecutionAdapter+Reconciliation+HealthPrecheck+Frontend+Tests
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 🔨
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)

@@ -7,12 +7,15 @@ Sprint 1.23: 为前端Portfolio页面补齐后端API。
 from datetime import date, timedelta
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -79,6 +82,7 @@ async def get_holdings(
         result = await session.execute(sql, {"sid": sid, "mode": execution_mode})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询当前持仓失败")
         return []
 
     return [
@@ -149,6 +153,7 @@ async def get_sector_distribution(
         result = await session.execute(sql, {"sid": sid, "mode": execution_mode})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询行业分布失败")
         return []
 
     return [
@@ -207,6 +212,7 @@ async def get_daily_pnl(
         )
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询每日盈亏序列失败")
         return []
 
     return [

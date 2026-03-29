@@ -11,12 +11,15 @@ from typing import Any
 
 import psutil
 import redis as redis_lib
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["remote-status"])
 
@@ -76,6 +79,7 @@ async def _check_pg(session: AsyncSession) -> bool:
         await session.execute(text("SELECT 1"))
         return True
     except Exception:
+        logger.exception("PostgreSQL健康检查失败")
         return False
 
 
@@ -90,6 +94,7 @@ def _check_redis_sync() -> bool:
         r.ping()
         return True
     except Exception:
+        logger.exception("Redis健康检查失败")
         return False
 
 
@@ -122,6 +127,7 @@ def _check_celery_sync() -> bool:
         output = result.stdout + result.stderr
         return "pong" in output.lower()
     except Exception:
+        logger.exception("Celery worker健康检查失败")
         return False
 
 
@@ -131,6 +137,7 @@ def _disk_free_gb() -> float:
         usage = psutil.disk_usage("D:\\")
         return round(usage.free / (1024**3), 1)
     except Exception:
+        logger.exception("获取磁盘剩余空间失败")
         return 0.0
 
 
@@ -139,6 +146,7 @@ def _memory_used_pct() -> float:
     try:
         return psutil.virtual_memory().percent
     except Exception:
+        logger.exception("获取内存使用率失败")
         return 0.0
 
 
@@ -193,6 +201,7 @@ async def _get_pt_status(session: AsyncSession) -> dict[str, Any]:
             "strategy": row.strategy_version or "v1.1",
         }
     except Exception:
+        logger.exception("查询Paper Trading运行状态失败")
         return {
             "is_running": False,
             "day": 0,
@@ -220,6 +229,7 @@ async def _get_last_signal_at(session: AsyncSession) -> str | None:
         result = row.scalar()
         return result.isoformat() if result else None
     except Exception:
+        logger.exception("查询最近信号生成时间失败")
         return None
 
 
@@ -241,6 +251,7 @@ async def _get_last_execution_at(session: AsyncSession) -> str | None:
         result = row.scalar()
         return result.isoformat() if result else None
     except Exception:
+        logger.exception("查询最近调度执行时间失败")
         return None
 
 

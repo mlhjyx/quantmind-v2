@@ -7,12 +7,15 @@ Sprint 1.23: 为前端Report页面补齐后端API。
 from datetime import date, timedelta
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -69,6 +72,7 @@ async def list_reports(
         result = await session.execute(sql, {"sid": sid, "lim": limit})
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询回测报告列表失败")
         return []
 
     return [
@@ -134,6 +138,7 @@ async def get_quick_stats(
         )
         rows = result.mappings().all()
     except Exception:
+        logger.exception("查询快速统计数据失败")
         rows = []
 
     def _aggregate(rows_subset: list) -> dict[str, Any]:

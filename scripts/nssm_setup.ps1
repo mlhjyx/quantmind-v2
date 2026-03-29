@@ -1,4 +1,4 @@
-# nssm_setup.ps1 — QuantMind V2 Windows 服务注册脚本
+﻿# nssm_setup.ps1 — QuantMind V2 Windows 服务注册脚本
 #
 # 参考: docs/research/R6_production_architecture.md §3.1
 # NSSM (Non-Sucking Service Manager) 将 FastAPI + Celery 注册为 Windows 服务，
@@ -12,9 +12,9 @@
 #        要实际安装，将脚本末尾的 $DryRun = $true 改为 $false。
 
 param(
-    [switch]$Install,          # 真正执行安装（不加此参数则为 DryRun）
-    [switch]$Uninstall,        # 卸载已注册的服务
-    [switch]$Status            # 查看服务状态
+    [switch]$Install,          # Install services (default: DryRun)
+    [switch]$Uninstall,        # Uninstall registered services
+    [switch]$Status            # Show service status
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +29,7 @@ $BackendDir   = "$ProjectRoot\backend"
 $PythonExe    = "$ProjectRoot\.venv\Scripts\python.exe"
 $LogDir       = "$ProjectRoot\logs"
 $NssmDir      = "D:\tools\nssm"
-$NssmExe      = "$NssmDir\nssm.exe"
+$NssmExe      = "$NssmDir\win64\nssm.exe"
 $NssmDownload = "https://nssm.cc/release/nssm-2.24.zip"
 
 # 服务定义
@@ -49,7 +49,7 @@ $Services = @(
         Name        = "QuantMind-Celery"
         Exe         = $PythonExe
         # --pool=solo: Windows 不支持 fork，solo 是 Windows 推荐方案（R6 §3.2）
-        Args        = "-m celery -A app.tasks worker --pool=solo --concurrency=1 -Q default,factor_calc,data_fetch -n worker-main@%COMPUTERNAME%"
+        Args        = "-m celery -A app.tasks.celery_app worker --pool=solo --concurrency=1 -Q default,factor_calc,data_fetch -n worker-main@%COMPUTERNAME%"
         WorkDir     = $BackendDir
         StdoutLog   = "$LogDir\celery-stdout.log"
         StderrLog   = "$LogDir\celery-stderr.log"
@@ -186,7 +186,7 @@ function Uninstall-QuantMindServices {
 }
 
 function Show-ServiceStatus {
-    Write-Header "QuantMind 服务状态"
+    Write-Header "QuantMind Service Status"
     foreach ($Svc in $Services) {
         $Name = $Svc.Name
         $existing = Get-Service -Name $Name -ErrorAction SilentlyContinue
@@ -194,7 +194,7 @@ function Show-ServiceStatus {
             $color = if ($existing.Status -eq "Running") { "Green" } else { "Yellow" }
             Write-Host ("  {0,-30} {1}" -f $Name, $existing.Status) -ForegroundColor $color
         } else {
-            Write-Host ("  {0,-30} {1}" -f $Name, "未注册") -ForegroundColor Red
+            Write-Host ("  {0,-30} {1}" -f $Name, "Not Registered") -ForegroundColor Red
         }
     }
 
