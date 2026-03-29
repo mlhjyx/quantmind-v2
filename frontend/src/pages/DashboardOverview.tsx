@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import {
@@ -6,11 +7,12 @@ import {
   ResponsiveContainer, CartesianGrid, Tooltip,
   BarChart, Bar, Cell,
 } from "recharts";
-import { ChevronRight, Clock, Play, Bell } from "lucide-react";
+import { ChevronRight, Play, Bell } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
+import { fetchSummary, fetchPositions, fetchNAVSeries, fetchDashboardStrategies } from "@/api/dashboard";
+import { STALE } from "@/api/QueryProvider";
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { C } from "@/theme";
 
@@ -290,32 +292,42 @@ function AlertsPanel({ alerts }: { alerts: Alert[] }) {
 }
 
 function StrategiesPanel() {
+  const { data: strategies = [], isLoading } = useQuery({
+    queryKey: ["dashboard-strategies"],
+    queryFn: fetchDashboardStrategies,
+    staleTime: STALE.config,
+  });
+
   return (
     <Card className="overflow-hidden">
-      <CardHeader
-        title="策略" titleEn="Strategies"
-        right={<span style={{ fontSize: 10, color: C.text4 }}><Clock size={11} className="inline mr-1" />调仓 03-24</span>}
-      />
+      <CardHeader title="策略" titleEn="Strategies" />
       <div className="p-3 space-y-2">
-        {[
-          { name: "多因子选股 Alpha-V3", sub: "A股·30只", pnl: "+0.82%", sharpe: "1.87", up: true,  active: true },
-          { name: "CTA趋势跟踪",         sub: "A股·5只",  pnl: "-0.34%", sharpe: "0.95", up: false, active: true },
-          { name: "外汇 EUR/USD",        sub: "Phase 2",  pnl: "—",      sharpe: "—",    up: false, active: false },
-        ].map((s, i) => (
-          <div key={i} className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer" style={{ background: C.bg2, opacity: s.active ? 1 : 0.35 }}>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ background: s.active ? (s.up ? C.up : C.down) : C.text4 }} />
-              <span style={{ fontSize: 12, color: C.text1 }}>{s.name}</span>
-              <span style={{ fontSize: 10, color: C.text4 }}>{s.sub}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span style={{ fontSize: 10, color: C.text4 }}>SR {s.sharpe}</span>
-              <span style={{ fontSize: 15, fontFamily: C.mono, fontWeight: 700, color: s.pnl.startsWith("+") ? C.up : s.pnl.startsWith("-") ? C.down : C.text4 }}>
-                {s.pnl}
-              </span>
-            </div>
-          </div>
-        ))}
+        {isLoading ? (
+          <div className="h-20 animate-pulse rounded-lg" style={{ background: C.bg3 }} />
+        ) : strategies.length === 0 ? (
+          <div style={{ fontSize: 11, color: C.text4, textAlign: "center", padding: "12px 0" }}>暂无策略</div>
+        ) : (
+          strategies.map((s) => {
+            const pnlStr = s.pnl != null ? `${s.pnl >= 0 ? "+" : ""}${(s.pnl * 100).toFixed(2)}%` : "—";
+            const isActive = s.status !== "inactive" && s.status !== "archived";
+            const isUp = (s.pnl ?? 0) >= 0;
+            return (
+              <div key={s.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer" style={{ background: C.bg2, opacity: isActive ? 1 : 0.35 }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: isActive ? (isUp ? C.up : C.down) : C.text4 }} />
+                  <span style={{ fontSize: 12, color: C.text1 }}>{s.name}</span>
+                  {s.market && <span style={{ fontSize: 10, color: C.text4 }}>{s.market}</span>}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span style={{ fontSize: 10, color: C.text4 }}>SR {s.sharpe != null ? s.sharpe.toFixed(2) : "—"}</span>
+                  <span style={{ fontSize: 15, fontFamily: C.mono, fontWeight: 700, color: pnlStr.startsWith("+") ? C.up : pnlStr.startsWith("-") ? C.down : C.text4 }}>
+                    {pnlStr}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </Card>
   );

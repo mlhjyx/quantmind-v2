@@ -36,6 +36,21 @@ export async function fetchPositions(): Promise<Position[]> {
   return data;
 }
 
+export interface StrategyOverview {
+  id: string;
+  name: string;
+  status: string;
+  market: string | null;
+  sharpe: number | null;
+  pnl: number | null;
+  mdd: number | null;
+}
+
+export async function fetchDashboardStrategies(): Promise<StrategyOverview[]> {
+  const { data } = await api.get<StrategyOverview[]>("/dashboard/strategies");
+  return data;
+}
+
 export async function fetchCircuitBreakerState(): Promise<CircuitBreakerState | null> {
   try {
     const { data } = await api.get<CircuitBreakerState>(
