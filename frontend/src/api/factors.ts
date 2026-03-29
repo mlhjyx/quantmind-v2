@@ -14,7 +14,7 @@ export interface FactorSummary {
   description?: string;
   gate_score?: number;
   strategy_type?: string;
-  source?: "manual" | "gp" | "llm" | "brute";
+  source?: "manual" | "gp" | "llm" | "bruteforce";
   coverage?: number;
 }
 

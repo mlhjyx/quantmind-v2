@@ -17,12 +17,12 @@ import {
 } from "@/api/mining";
 import type { GPConfig, LLMConfig, BruteForceConfig, CandidateFactor, MiningEngine } from "@/api/mining";
 
-type ModeTab = "gp" | "llm" | "brute";
+type ModeTab = "gp" | "llm" | "bruteforce";
 
 const MODE_TABS: { key: ModeTab; label: string; desc: string }[] = [
   { key: "gp", label: "GP遗传编程", desc: "自动进化因子表达式" },
   { key: "llm", label: "LLM生成", desc: "AI根据投资假设生成" },
-  { key: "brute", label: "暴力枚举", desc: "系统性参数网格搜索" },
+  { key: "bruteforce", label: "暴力枚举", desc: "系统性参数网格搜索" },
 ];
 
 interface WsProgressMessage {
@@ -179,7 +179,7 @@ export default function FactorLab() {
       const { task_id } = await startBruteForceMining(config);
       upsertTask({
         taskId: task_id,
-        engine: "brute",
+        engine: "bruteforce",
         status: "running",
         progress: 0,
         discovered: 0,
@@ -197,7 +197,11 @@ export default function FactorLab() {
   async function handleSubmitGate(ids: string[]) {
     setGateSubmitting(true);
     try {
-      await submitCandidatesToGate(ids);
+      // Gate评估需要DSL表达式，从候选因子中提取
+      const gatePayloads = candidates
+        .filter((c) => ids.includes(c.id))
+        .map((c) => ({ expr: c.expression, name: c.name }));
+      await submitCandidatesToGate(gatePayloads);
       setCandidates((prev) =>
         prev.map((c) => ids.includes(c.id) ? { ...c, gate_status: "pending" as const } : c)
       );
@@ -208,7 +212,7 @@ export default function FactorLab() {
     }
   }
 
-  const engineLabel: Record<MiningEngine, string> = { gp: "GP", llm: "LLM", brute: "枚举" };
+  const engineLabel: Record<MiningEngine, string> = { gp: "GP", llm: "LLM", bruteforce: "枚举" };
 
   return (
     <div>
@@ -294,7 +298,7 @@ export default function FactorLab() {
               submitting={submitting}
             />
           )}
-          {activeMode === "brute" && (
+          {activeMode === "bruteforce" && (
             <BruteForcePanel
               onStart={handleStartBrute}
               isRunning={isRunning}

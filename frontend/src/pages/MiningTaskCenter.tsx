@@ -54,8 +54,8 @@ interface WsProgressMessage {
 
 // ---- Constants ----
 
-const ENGINE_LABEL: Record<MiningEngine, string> = { gp: "GP进化", llm: "LLM生成", brute: "暴力枚举" };
-const ENGINE_COLOR: Record<MiningEngine, string> = { gp: "#6c7eff", llm: "#a78bfa", brute: "#34d399" };
+const ENGINE_LABEL: Record<MiningEngine, string> = { gp: "GP进化", llm: "LLM生成", bruteforce: "暴力枚举" };
+const ENGINE_COLOR: Record<MiningEngine, string> = { gp: "#6c7eff", llm: "#a78bfa", bruteforce: "#34d399" };
 
 type StatusConfig = { label: string; cls: string };
 const STATUS_CONFIG: Record<string, StatusConfig> = {
@@ -336,7 +336,10 @@ export default function MiningTaskCenter() {
   async function handleRetry(taskId: string) {
     setActionLoading(taskId);
     try {
-      const { task_id: newId } = await retryMiningTask(taskId);
+      // 从任务列表中找到engine类型，用相同engine重启
+      const task = tasks.find((t) => t.task_id === taskId);
+      const engine = task?.engine ?? "gp";
+      const { task_id: newId } = await retryMiningTask(engine);
       await loadData();
       navigate(`/mining/tasks/${newId}`);
     } catch {
@@ -361,7 +364,9 @@ export default function MiningTaskCenter() {
   }
 
   async function handleGateSubmit(ids: string[]) {
-    await submitCandidatesToGate(ids);
+    // Gate评估需要DSL表达式，目前只传占位 — 实际应从task detail获取candidate expressions
+    const payloads = ids.map((id) => ({ expr: id, name: undefined }));
+    await submitCandidatesToGate(payloads);
   }
 
   // Running count stats
