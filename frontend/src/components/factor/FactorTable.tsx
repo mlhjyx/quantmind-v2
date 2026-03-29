@@ -195,7 +195,7 @@ export default function FactorTable({ factors, onSelect }: Props) {
                           className="px-2 py-0.5 text-xs rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/factors/evaluate/${f.id}`);
+                            navigate(`/factors/${f.id}`);
                           }}
                         >
                           详情
