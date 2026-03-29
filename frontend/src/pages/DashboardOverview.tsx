@@ -99,7 +99,6 @@ function KPIGrid({ summary }: { summary: DashboardSummary | null }) {
       value: `¥${nav.toLocaleString("zh", { maximumFractionDigits: 0 })}`,
       sub: `${cumRet >= 0 ? "+" : ""}${(cumRet * 100).toFixed(2)}%`,
       subC: cumRet >= 0 ? C.up : C.down,
-      spark: [1.0, 1.02, 1.05, 1.03, 1.08, 1.12, 1.15, 1.18, 1.22, nav],
       sparkC: C.up, accent: true,
     },
     {
@@ -108,40 +107,37 @@ function KPIGrid({ summary }: { summary: DashboardSummary | null }) {
       valueC: dayRet >= 0 ? C.up : C.down,
       sub: `${dayRet >= 0 ? "+" : ""}${(dayRet * 100).toFixed(2)}%`,
       subC: dayRet >= 0 ? C.up : C.down,
-      spark: [0, 2, -1, 5, 3, 8, 6, 10, 8, dayRet * 100 * 10],
       sparkC: dayRet >= 0 ? C.up : C.down,
     },
     {
       label: "年化收益", en: "CAGR",
-      value: "18.4%", valueC: C.up,
-      sub: "超额 +12.1%", subC: C.up,
-      spark: [10, 12, 15, 14, 16, 18, 17, 19, 18], sparkC: C.up,
+      value: "—", valueC: C.up,
+      sub: "—", subC: C.up,
     },
     {
       label: "Sharpe", en: "DSR✓",
       value: sharpe.toFixed(2),
-      sub: "Calmar 3.46", subC: C.text3,
+      sub: "—", subC: C.text3,
     },
     {
       label: "最大回撤", en: "MDD",
       value: `${(mdd * 100).toFixed(2)}%`, valueC: C.down,
-      sub: "02-05 ~ 02-18", subC: C.down,
+      sub: "—", subC: C.down,
     },
     {
       label: "胜率", en: "Win%",
-      value: `${summary ? (62.3).toFixed(1) : "62.3"}%`,
-      sub: "盈亏比 1.85", subC: C.text3,
+      value: "—",
+      sub: "—", subC: C.text3,
     },
     {
       label: "仓位", en: "POS",
-      value: `${summary ? (100 - (summary.cash_ratio ?? 0.145) * 100).toFixed(1) : "85.5"}%`,
-      sub: `${summary?.position_count ?? 30}只持仓`, subC: C.text3,
-      spark: [70, 75, 80, 85, 82, 86, 85], sparkC: C.accent,
+      value: summary ? `${(100 - (summary.cash_ratio ?? 0) * 100).toFixed(1)}%` : "—",
+      sub: summary ? `${summary.position_count ?? 0}只持仓` : "—", subC: C.text3,
     },
     {
       label: "风险", en: "RISK",
       value: "LOW", valueC: C.up,
-      sub: "VaR 2.8%", subC: C.warn,
+      sub: "—", subC: C.warn,
     },
   ];
 

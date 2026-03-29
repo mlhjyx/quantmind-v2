@@ -43,49 +43,6 @@ interface MoverItem {
   pct_change: number;
 }
 
-// ---- Mock fallbacks ----
-const MOCK_INDICES: IndexItem[] = [
-  { code: "000300.SH", name: "沪深300", close: 3891.62, pre_close: 3858.04, pct_change: 0.87, volume: 1020000, amount: 102000000000, is_up: true, trade_date: null },
-  { code: "000001.SH", name: "上证指数", close: 3287.45, pre_close: 3247.56, pct_change: 1.23, volume: 456200, amount: 45620000000, is_up: true, trade_date: null },
-  { code: "399006.SZ", name: "创业板", close: 2156.33, pre_close: 2124.13, pct_change: 1.52, volume: 289100, amount: 28910000000, is_up: true, trade_date: null },
-  { code: "000905.SH", name: "中证500", close: 5823.18, pre_close: 5843.03, pct_change: -0.34, volume: 123400, amount: 12340000000, is_up: false, trade_date: null },
-  { code: "000016.SH", name: "上证50", close: 982.45, pre_close: 961.84, pct_change: 2.15, volume: 89200, amount: 8920000000, is_up: true, trade_date: null },
-];
-
-const MOCK_SECTORS: SectorItem[] = [
-  { name: "食品饮料", pct_change: 2.35, stock_count: 82, amount: 0, is_up: true },
-  { name: "电力设备", pct_change: 1.82, stock_count: 120, amount: 0, is_up: true },
-  { name: "汽车", pct_change: 3.15, stock_count: 95, amount: 0, is_up: true },
-  { name: "非银金融", pct_change: 0.45, stock_count: 68, amount: 0, is_up: true },
-  { name: "银行", pct_change: -0.23, stock_count: 42, amount: 0, is_up: false },
-  { name: "有色金属", pct_change: 1.67, stock_count: 75, amount: 0, is_up: true },
-  { name: "电子", pct_change: -1.12, stock_count: 150, amount: 0, is_up: false },
-  { name: "医药", pct_change: 0.89, stock_count: 180, amount: 0, is_up: true },
-  { name: "计算机", pct_change: 2.56, stock_count: 130, amount: 0, is_up: true },
-  { name: "机械", pct_change: 0.34, stock_count: 110, amount: 0, is_up: true },
-  { name: "通信", pct_change: -0.67, stock_count: 55, amount: 0, is_up: false },
-  { name: "地产", pct_change: -2.45, stock_count: 90, amount: 0, is_up: false },
-  { name: "传媒", pct_change: 1.23, stock_count: 60, amount: 0, is_up: true },
-  { name: "煤炭", pct_change: -0.89, stock_count: 35, amount: 0, is_up: false },
-  { name: "钢铁", pct_change: 0.12, stock_count: 40, amount: 0, is_up: true },
-  { name: "公用事业", pct_change: 0.56, stock_count: 70, amount: 0, is_up: true },
-];
-
-const MOCK_GAINERS: MoverItem[] = [
-  { code: "002594", name: "比亚迪", industry: "汽车", close: 245.80, pct_change: 5.82 },
-  { code: "603259", name: "药明康德", industry: "医药", close: 54.80, pct_change: 4.56 },
-  { code: "600519", name: "贵州茅台", industry: "食品饮料", close: 1680.50, pct_change: 3.21 },
-  { code: "000858", name: "五粮液", industry: "食品饮料", close: 152.30, pct_change: 2.89 },
-  { code: "601899", name: "紫金矿业", industry: "有色金属", close: 15.80, pct_change: 2.45 },
-];
-
-const MOCK_LOSERS: MoverItem[] = [
-  { code: "601318", name: "中国平安", industry: "非银金融", close: 48.20, pct_change: -1.85 },
-  { code: "300750", name: "宁德时代", industry: "电力设备", close: 198.50, pct_change: -1.52 },
-  { code: "600036", name: "招商银行", industry: "银行", close: 35.20, pct_change: -0.89 },
-  { code: "002415", name: "海康威视", industry: "电子", close: 32.10, pct_change: -0.45 },
-  { code: "600900", name: "长江电力", industry: "公用事业", close: 29.10, pct_change: -0.23 },
-];
 
 // Static intraday chart (no intraday API endpoint yet)
 const priceData = Array.from({ length: 60 }, (_, i) => {
@@ -121,25 +78,25 @@ function spark(idx: IndexItem): number[] {
 export default function MarketData() {
   const [tab, setTab] = useState("行情概览");
 
-  const { data: indices = MOCK_INDICES, isLoading: loadingIndices } = useQuery<IndexItem[]>({
+  const { data: indices = [], isLoading: loadingIndices, isError: errorIndices } = useQuery<IndexItem[]>({
     queryKey: ["market-indices"],
     queryFn: () => apiClient.get("/market/indices").then((r) => r.data),
     staleTime: 30_000,
   });
 
-  const { data: sectors = MOCK_SECTORS, isLoading: loadingSectors } = useQuery<SectorItem[]>({
+  const { data: sectors = [], isLoading: loadingSectors, isError: errorSectors } = useQuery<SectorItem[]>({
     queryKey: ["market-sectors"],
     queryFn: () => apiClient.get("/market/sectors").then((r) => r.data),
     staleTime: 60_000,
   });
 
-  const { data: gainers = MOCK_GAINERS } = useQuery<MoverItem[]>({
+  const { data: gainers = [], isLoading: loadingMovers, isError: errorMovers } = useQuery<MoverItem[]>({
     queryKey: ["market-top-movers-up"],
     queryFn: () => apiClient.get("/market/top-movers?direction=up&limit=5").then((r) => r.data),
     staleTime: 30_000,
   });
 
-  const { data: losers = MOCK_LOSERS } = useQuery<MoverItem[]>({
+  const { data: losers = [] } = useQuery<MoverItem[]>({
     queryKey: ["market-top-movers-down"],
     queryFn: () => apiClient.get("/market/top-movers?direction=down&limit=5").then((r) => r.data),
     staleTime: 30_000,
@@ -157,8 +114,23 @@ export default function MarketData() {
 
       <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
         {/* Index Cards */}
+        {errorIndices && (
+          <div className="px-4 py-2 rounded-lg text-center" style={{ background: `${C.down}10`, border: `1px solid ${C.down}30`, fontSize: 12, color: C.down }}>
+            数据加载失败，指数行情暂不可用
+          </div>
+        )}
         <div className="grid grid-cols-5 gap-3">
-          {indices.map((idx) => (
+          {loadingIndices ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i} className="p-3.5">
+                <div className="h-3 w-20 rounded animate-pulse mb-2" style={{ background: C.bg3 }} />
+                <div className="h-6 w-24 rounded animate-pulse mb-1" style={{ background: C.bg3 }} />
+                <div className="h-3 w-14 rounded animate-pulse" style={{ background: C.bg3 }} />
+              </Card>
+            ))
+          ) : indices.length === 0 ? (
+            <div className="col-span-5 text-center py-6" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+          ) : indices.map((idx) => (
             <Card key={idx.code} className="p-3.5">
               <div className="flex items-center justify-between mb-1">
                 <span style={{ fontSize: 12, color: C.text1, fontWeight: 500 }}>{idx.name}</span>
@@ -208,7 +180,13 @@ export default function MarketData() {
               <Card className="flex-1 overflow-hidden">
                 <CardHeader title="涨幅榜" titleEn="Top Gainers" />
                 <div className="p-2 space-y-1">
-                  {gainers.map((s) => (
+                  {loadingMovers ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>加载中...</div>
+                  ) : errorMovers ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.down }}>数据加载失败</div>
+                  ) : gainers.length === 0 ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>暂无数据</div>
+                  ) : gainers.map((s) => (
                     <div key={s.code} className="flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer" style={{ background: `${C.up}04` }}>
                       <div>
                         <span style={{ fontSize: 11, color: C.text1 }}>{s.name}</span>
@@ -222,7 +200,11 @@ export default function MarketData() {
               <Card className="flex-1 overflow-hidden">
                 <CardHeader title="跌幅榜" titleEn="Top Losers" />
                 <div className="p-2 space-y-1">
-                  {losers.map((s) => (
+                  {loadingMovers ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>加载中...</div>
+                  ) : losers.length === 0 ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>暂无数据</div>
+                  ) : losers.map((s) => (
                     <div key={s.code} className="flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer" style={{ background: `${C.down}04` }}>
                       <div>
                         <span style={{ fontSize: 11, color: C.text1 }}>{s.name}</span>
@@ -241,6 +223,10 @@ export default function MarketData() {
           <Card className="p-4">
             {loadingSectors ? (
               <div className="text-center py-12" style={{ color: C.text4, fontSize: 12 }}>加载中...</div>
+            ) : errorSectors ? (
+              <div className="text-center py-12" style={{ color: C.down, fontSize: 12 }}>数据加载失败</div>
+            ) : sectors.length === 0 ? (
+              <div className="text-center py-12" style={{ color: C.text4, fontSize: 12 }}>暂无数据</div>
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {sectors.map((s) => {
