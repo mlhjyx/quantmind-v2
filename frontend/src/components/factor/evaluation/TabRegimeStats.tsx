@@ -23,15 +23,8 @@ export default function TabRegimeStats({ report }: Props) {
   const regimeStats = report.regime_stats ?? [];
   const icMean = report.ic_mean ?? 0;
 
-  if (regimeStats.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
-        暂无市场状态数据
-      </div>
-    );
-  }
-
   const barOption = useMemo(() => {
+    if (regimeStats.length === 0) return null;
     const regimes = regimeStats;
     const labels = regimes.map((r) => REGIME_LABELS[r.regime] ?? r.regime);
     return {
@@ -101,6 +94,15 @@ export default function TabRegimeStats({ report }: Props) {
       ],
     };
   }, [regimeStats]);
+
+  if (regimeStats.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+        暂无市场状态数据
+      </div>
+    );
+  }
+
   const best = regimeStats.reduce((a, b) => (a.ic > b.ic ? a : b));
   const worst = regimeStats.reduce((a, b) => (a.ic < b.ic ? a : b));
 

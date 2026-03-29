@@ -19,7 +19,9 @@
 
 import argparse
 import logging
+import os
 import sys
+from pathlib import Path
 from datetime import date, datetime
 from typing import Optional
 
@@ -40,13 +42,29 @@ logger = logging.getLogger(__name__)
 
 # ─── 常量 ────────────────────────────────────────────────────────────────────
 
-DB_DSN = dict(
-    dbname="quantmind_v2",
-    user="xin",
-    password="quantmind",
-    host="localhost",
-    port=5432,
-)
+def _get_db_dsn() -> dict:
+    """从 .env 或环境变量读取数据库连接信息，避免硬编码凭证。"""
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    # asyncpg URL: postgresql+asyncpg://user:pass@host:port/db
+    url = os.environ.get("DATABASE_URL", "")
+    if url:
+        # 解析 postgresql+asyncpg://user:pass@host:port/dbname
+        import re
+        m = re.match(r"postgresql\+?\w*://(\w+):([^@]+)@([^:]+):(\d+)/(\w+)", url)
+        if m:
+            return dict(user=m.group(1), password=m.group(2), host=m.group(3),
+                        port=int(m.group(4)), dbname=m.group(5))
+    return dict(
+        dbname=os.environ.get("DB_NAME", "quantmind_v2"),
+        user=os.environ.get("DB_USER", "xin"),
+        password=os.environ.get("DB_PASSWORD", ""),
+        host=os.environ.get("DB_HOST", "localhost"),
+        port=int(os.environ.get("DB_PORT", "5432")),
+    )
+
+
+DB_DSN = _get_db_dsn()
 
 # v1.1策略的5个核心因子优先计算，其余因子按名称排序
 V1_1_FACTORS = [
