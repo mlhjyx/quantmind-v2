@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ToastContainer } from "@/components/ui/Toast";
 import { C } from "@/theme";
+import { PageErrorBoundary } from "@/components/ui/PageErrorBoundary";
 
 function TopBar() {
   const now = new Date();
@@ -67,7 +68,9 @@ export function Layout() {
               }}
             />
             <div className="relative z-10 p-6">
-              <Outlet />
+              <PageErrorBoundary>
+                <Outlet />
+              </PageErrorBoundary>
             </div>
           </main>
         </div>
