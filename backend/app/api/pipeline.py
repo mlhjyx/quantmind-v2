@@ -188,7 +188,7 @@ async def list_pipeline_runs(
         ),
         params,
     )
-    rows = result.fetchall()
+    rows = list(result.mappings().all())
 
     return [
         {
@@ -237,7 +237,7 @@ async def get_pipeline_run(
         ),
         {"run_id": run_id},
     )
-    run_row = run_result.fetchone()
+    run_row = run_result.mappings().first()
     if run_row is None:
         raise HTTPException(status_code=404, detail=f"run_id={run_id!r} 不存在")
 
@@ -257,7 +257,7 @@ async def get_pipeline_run(
         ),
         {"run_id": run_id},
     )
-    aq_rows = aq_result.fetchall()
+    aq_rows = list(aq_result.mappings().all())
 
     candidates = [
         {
@@ -470,7 +470,7 @@ async def _fetch_latest_run(
         ),
         params,
     )
-    return result.fetchone()
+    return result.mappings().first()
 
 
 async def _fetch_approval_item(
@@ -489,7 +489,7 @@ async def _fetch_approval_item(
         ),
         {"id": factor_id, "run_id": run_id},
     )
-    return result.fetchone()
+    return result.mappings().first()
 
 
 async def _sync_rejection_to_knowledge(
