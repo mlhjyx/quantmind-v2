@@ -75,7 +75,35 @@
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
 
-### Sprint 1.20: PT监控前端 + 生产加固 (2026-03-28) 🔨
+### Sprint 1.21: 联调+E2E测试+PT毕业 (2026-03-29) ✅
+
+**6/6任务完成 + P1 bugfix。commit f717f85。1663 tests (+80 vs Sprint 1.20)。**
+
+- ✅ T1: backend/tests/test_e2e_full_chain.py — 14个E2E测试(factor→signal→paper trading全链路)
+- ✅ T2: frontend/src/__tests__/ — 31个前端集成测试(stores/api/pages, vitest+testing-library)
+- ✅ T3: scripts/pt_graduation_assessment.py — PT毕业评估脚本(Sharpe≥0.72/MDD<35%/滑点偏差<50%)
+- ✅ T4: scripts/verify_qmt_broker.py — 新增--dry-run模式(非交易日环境验证)
+- ✅ T5: 前端12页面polish — EmptyState/PageSkeleton/ErrorBanner共享组件+MiningTaskCenter响应式修复
+- ✅ T6: React Query性能优化 — STALE常量(price 30s/factor 5min/config 30min)+gcTime 5min→10min
+
+**P1 Bugfix**:
+- factor_service.get_factor_values() 返回 Decimal 类型 → astype(float) 修复(信号生成链路TypeError)
+
+**技术债记录**:
+- beta_hedge.py:37 SQLAlchemy兼容性警告(既存)
+- performance_series表无cash列 vs test fixture有cash字段(DDL不一致，下Sprint对齐)
+- FactorService返回value列 vs SignalComposer期望neutral_value(已文档化接口边界)
+- THEORETICAL_SLIPPAGE_BPS=5.0硬编码，建议后续从strategy_configs读取
+
+**QA发现**:
+- E2E测试初版有factor_weights参数错误+非法UUID+硬编码行数断言(铁律5违反，已修复)
+- P1: Decimal×float TypeError在全链路测试中首次被发现并修复
+
+**测试**: 1632 backend passed + 31 frontend = 1663 total (Sprint 1.20: 1583 → +80)
+
+---
+
+### Sprint 1.20: PT监控前端 + 生产加固 (2026-03-28) ✅
 
 **7/7任务完成。1583 tests passed (+35 vs Sprint 1.19)。**
 
