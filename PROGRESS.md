@@ -836,32 +836,82 @@ risk一票否决: 2项硬性条件触发(Sharpe<0.977, 2022 MDD差3.48%)
 
 ---
 
-### Sprint 1.25: 架构对齐专项 (2026-03-29) 进行中
+### Sprint 1.25: 架构对齐专项 (2026-03-29) ✅
 
 **目标**: 全面审计设计文档vs实际实现，修复架构偏离，补全基础设施。不加新功能。
+
+**9/9任务完成。commits 2397998+6967e14。1760 tests (+72 vs Sprint 1.24)。**
 
 **审计发现（P0-P2共14项）**:
 - P0: 无Pydantic schemas层、ORM models仅3文件、涨跌颜色弄反、Celery Beat未激活
 - P1: 6个设计外页面分散精力、shadcn/ui未安装、Monaco未安装、WebSocket未集成、factor_engine无测试
 - P2: 目录结构偏离、死代码、Service层薄、文档不同步
 
-**已完成**:
+**已完成(9/9)**:
 - ✅ T1: 涨跌颜色修复为A股惯例（涨红跌绿）— tokens.ts一处改动全局生效
-- ✅ T2: 删除死代码Dashboard.tsx + 修复测试引用
-- ✅ T3: 创建schemas/目录 — 8个文件覆盖dashboard/factor/strategy/backtest/pipeline/notification
-- ✅ T4: 补全ORM models — 15张核心表映射(symbols/klines/factors/signals/trades/backtest等)
-- ✅ T5: 创建utils/目录 — date_utils/math_utils/validation 3模块
-- ✅ T6: 重组前端导航 — 按生产使用频率分6组11项(交易高频→策略中频→因子/AI低频)
-- ✅ T7: PT心跳监控重写 — 修复SQL列名bug + 增加DB级数据检查(performance_series/signals) + 钉钉P0告警
-- ✅ T8: 清理mock fallback — FactorLibrary/StrategyWorkspace改为ErrorBanner显示真实错误
-- 🔨 T9: factor_engine.py补单元测试（进行中）
+- ✅ T2: 删除死代码Dashboard.tsx(-268行) + 修复测试引用指向DashboardOverview
+- ✅ T3: 创建schemas/目录(8文件) — dashboard/factor/strategy/backtest/pipeline/notification/common
+- ✅ T4: 补全ORM models(7文件) — 15张核心表: symbols/klines/daily_basic/trading_calendar/index_daily/factor_registry/factor_values/factor_ic_history/signals/universe_daily/trade_log/position_snapshot/performance_series/backtest_run/backtest_trades
+- ✅ T5: 创建utils/目录(4文件) — date_utils(交易日历re-export+周期转换)/math_utils(Sharpe/MDD/IC/年化收益)/validation(K线/因子值质量检查)
+- ✅ T6: 重组前端导航 — 按生产使用频率分6组11项(交易高频→策略中频→因子/AI低频→系统)
+- ✅ T7: PT心跳监控重写 — 修复SQL列名bug(cal_date→trade_date) + 3维度DB级检查(heartbeat/perf/signals) + 钉钉P0告警 + 注册Task Scheduler(周一-五20:00)
+- ✅ T8: 清理mock fallback — FactorLibrary/StrategyWorkspace从MOCK默认值改为空数组+ErrorBanner
+- ✅ T9: factor_engine.py补72个单元测试 — 8类: 价量(12)/基本面(6)/技术(7)/KBar(6)/资金流(5)/高级(12)/预处理(11)/IC(5)/边界(8)
 
-**架构改进建议（已确认方向）**:
-- 导航不机械照搬设计文档7项，而是从生产使用角度保留11项（持仓/风控/执行是每日高频操作）
-- 设计文档需要反向更新以反映好的实现决策（如Repository raw SQL比ORM性能更好）
-- PT链路可靠性优先于新功能开发
+**PT链路验证（铁律5——验代码不信文档）**:
+- Task Scheduler已注册: DailySignal(16:30) + DailyExecute(09:00) + PTWatchdog(20:00新增)
+- performance_series连续5天数据(3/23-3/27), NAV=995,338(-0.47%)
+- pt_watchdog实测: 3/3 checks passed
+- TushareFetcher旧bug(Mac环境)已在Windows版修复，当前代码正确
 
-**测试**: 1688 passed, 0 failed（全量后端测试无回归）
+**新增文件清单(19文件+3746行)**:
+```
+backend/app/schemas/{__init__,common,dashboard,factor,strategy,backtest,pipeline,notification}.py
+backend/app/models/{base,astock,factor,signal,trade,backtest}.py + __init__.py重写
+backend/app/utils/{__init__,date_utils,math_utils,validation}.py
+backend/tests/test_factor_engine_unit.py
+```
+
+**未完成/遗留(纳入后续Sprint)**:
+- shadcn/ui安装（前端组件库升级，需要较大重构）
+- Monaco Editor安装（策略工作台代码模式）
+- WebSocket集成到backtest_engine（基础设施就绪但引擎端未emit）
+- Celery Beat激活（当前PT用Task Scheduler稳定运行，不急切换）
+- 设计文档反向更新（DEV_BACKEND.md/DEV_FRONTEND_UI.md需反映实际架构）
+
+**测试**: 1760 passed, 0 failed, 1 xfailed
+
+---
+
+### Sprint 1.25 复盘
+
+**计划vs实际**:
+- 计划9项任务，实际完成9项+额外PT链路诊断+Task Scheduler注册
+- 预期中等工作量，实际偏重（全面审计+3个并行agent+大量文件创建）
+
+**关键指标**:
+- 代码变更: +3746行, -377行 (净+3369行)
+- 测试: 1688→1760 (+72)
+- 架构覆盖: schemas 0→8文件, models 3→10文件, utils 0→4文件
+
+**质量与风险**:
+- ruff: 全部通过（auto-fix 9处import排序）
+- TypeScript: 19个既有错误, 0个新增
+- PT链路: 连续运行无中断, watchdog已部署
+
+**经验教训**:
+- LL-031: 不要机械照搬设计文档——导航从7项精简后发现生产必需的页面（持仓/风控/执行）被删了，应从实际使用出发
+- LL-032: PT链路日志在Mac→Windows迁移后变空(0字节)——环境迁移后必须验证日志输出路径
+- LL-033: 设计文档和实现互相偏离时，不是单方面改代码回设计，也不是放弃设计——应该双向对齐，好的实现决策反向更新文档
+- LL-034: QMT模拟盘应作为PT主执行引擎（而非自写PaperBroker），可获得真实撮合+无缝切实盘
+
+**下一步(Sprint 1.26建议): QMT全面集成**
+- QMT连接管理服务（生命周期/心跳/重连）
+- QMT数据服务（实时行情→前端/账户查询→持仓页）
+- PT执行切换（PaperBroker→MiniQMTBroker模拟盘）
+- 前端数据源切换（Market/Portfolio/Execution页面从mock切到QMT真实数据）
+- WebSocket推送（QMT实时行情→Dashboard）
+- 依赖: QMT客户端持续运行，需确认miniQMT进程管理方案
 
 ---
 
