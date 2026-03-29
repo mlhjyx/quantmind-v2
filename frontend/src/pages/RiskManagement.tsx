@@ -21,51 +21,6 @@ interface StressTest     { scenario: string; impact: number; probability: string
 interface VarPoint       { date: string; var95: number; var99: number; limit: number; }
 interface ExposureItem   { factor: string; exposure: number; limit: number; color: string; }
 
-// ── Mock fallback data (kept as default values) ──
-const MOCK_VAR_DATA: VarPoint[] = Array.from({ length: 60 }, (_, i) => ({
-  date: `${Math.floor(i / 2) + 1}/${(i % 2) * 15 + 1}`,
-  var95: +(2.0 + Math.sin(i * 0.1) * 0.8 + (i % 7) * 0.04).toFixed(2),
-  var99: +(3.0 + Math.sin(i * 0.1) * 1.2 + (i % 5) * 0.05).toFixed(2),
-  limit: 3.0,
-}));
-
-const MOCK_EXPOSURE: ExposureItem[] = [
-  { factor: "市场Beta", exposure: 0.72,  limit: 1.0, color: C.accent },
-  { factor: "规模",     exposure: -0.35, limit: 0.5, color: "#818cf8" },
-  { factor: "价值",     exposure: 0.28,  limit: 0.5, color: "#f59e0b" },
-  { factor: "动量",     exposure: 0.45,  limit: 0.6, color: C.up },
-  { factor: "波动率",   exposure: -0.18, limit: 0.3, color: C.down },
-  { factor: "流动性",   exposure: 0.12,  limit: 0.4, color: "#60a5fa" },
-];
-
-const MOCK_STRESS: StressTest[] = [
-  { scenario: "2015股灾",      impact: -18.5, probability: "低",  recovery: "45天" },
-  { scenario: "2020疫情",      impact: -12.3, probability: "低",  recovery: "30天" },
-  { scenario: "利率上行100bp", impact: -5.8,  probability: "中",  recovery: "15天" },
-  { scenario: "行业集中风险",  impact: -8.2,  probability: "中",  recovery: "20天" },
-  { scenario: "流动性枯竭",    impact: -15.6, probability: "极低", recovery: "60天" },
-  { scenario: "北向大幅流出",  impact: -6.4,  probability: "中高", recovery: "10天" },
-];
-
-const MOCK_LIMITS: RiskLimit[] = [
-  { name: "单只持仓上限", current: "7.8%",  limit: "8%",   usage: 97,  status: "warn" },
-  { name: "行业集中度",   current: "18.2%", limit: "25%",  usage: 73,  status: "ok" },
-  { name: "95% VaR",     current: "2.8%",  limit: "3.0%", usage: 93,  status: "warn" },
-  { name: "最大回撤",     current: "4.32%", limit: "10%",  usage: 43,  status: "ok" },
-  { name: "Beta暴露",     current: "0.72",  limit: "1.0",  usage: 72,  status: "ok" },
-  { name: "换手率(月)",   current: "120%",  limit: "200%", usage: 60,  status: "ok" },
-  { name: "相关性(基准)", current: "0.65",  limit: "0.9",  usage: 72,  status: "ok" },
-  { name: "杠杆率",       current: "1.0x",  limit: "1.0x", usage: 100, status: "critical" },
-];
-
-const MOCK_OVERVIEW_METRICS: OverviewMetric[] = [
-  { label: "95% VaR",  value: "2.8%",   color: C.warn },
-  { label: "99% CVaR", value: "4.1%",   color: C.down },
-  { label: "Beta",     value: "0.72",   color: C.text1 },
-  { label: "年化波动", value: "12.8%",  color: C.text1 },
-  { label: "最大回撤", value: "-4.32%", color: C.down },
-  { label: "活跃预警", value: "2",      color: C.warn },
-];
 
 function usageColor(usage: number) {
   if (usage >= 90) return C.down;
@@ -76,12 +31,13 @@ function usageColor(usage: number) {
 export default function RiskManagement() {
   const [tab, setTab] = useState("风控总览");
 
-  const [overviewMetrics, setOverviewMetrics] = useState<OverviewMetric[]>(MOCK_OVERVIEW_METRICS);
-  const [varData, setVarData]                 = useState<VarPoint[]>(MOCK_VAR_DATA);
-  const [exposure, setExposure]               = useState<ExposureItem[]>(MOCK_EXPOSURE);
-  const [stressTests, setStressTests]         = useState<StressTest[]>(MOCK_STRESS);
-  const [riskLimits, setRiskLimits]           = useState<RiskLimit[]>(MOCK_LIMITS);
+  const [overviewMetrics, setOverviewMetrics] = useState<OverviewMetric[] | null>(null);
+  const [varData, setVarData]                 = useState<VarPoint[] | null>(null);
+  const [exposure, setExposure]               = useState<ExposureItem[] | null>(null);
+  const [stressTests, setStressTests]         = useState<StressTest[] | null>(null);
+  const [riskLimits, setRiskLimits]           = useState<RiskLimit[] | null>(null);
   const [loading, setLoading]                 = useState(true);
+  const [fetchError, setFetchError]           = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -93,14 +49,24 @@ export default function RiskManagement() {
           axios.get<StressTest[]>("/api/risk/stress-tests"),
         ]);
         if (!live) return;
-        if (overview.status === "fulfilled") {
-          const d = overview.value.data;
-          if (d.metrics)    setOverviewMetrics(d.metrics);
-          if (d.var_series) setVarData(d.var_series);
-          if (d.exposure)   setExposure(d.exposure);
+        const allFailed =
+          overview.status === "rejected" &&
+          limits.status === "rejected" &&
+          stress.status === "rejected";
+        if (allFailed) {
+          setFetchError(true);
+        } else {
+          if (overview.status === "fulfilled") {
+            const d = overview.value.data;
+            if (d.metrics)    setOverviewMetrics(d.metrics);
+            if (d.var_series) setVarData(d.var_series);
+            if (d.exposure)   setExposure(d.exposure);
+          }
+          if (limits.status === "fulfilled") setRiskLimits(limits.value.data);
+          if (stress.status === "fulfilled") setStressTests(stress.value.data);
         }
-        if (limits.status === "fulfilled") setRiskLimits(limits.value.data);
-        if (stress.status === "fulfilled") setStressTests(stress.value.data);
+      } catch {
+        if (live) setFetchError(true);
       } finally {
         if (live) setLoading(false);
       }
@@ -109,9 +75,9 @@ export default function RiskManagement() {
     return () => { live = false; };
   }, []);
 
-  const warnCount     = riskLimits.filter((r) => r.status === "warn").length;
-  const criticalCount = riskLimits.filter((r) => r.status === "critical").length;
-  const okCount       = riskLimits.filter((r) => r.status === "ok").length;
+  const warnCount     = riskLimits?.filter((r) => r.status === "warn").length ?? 0;
+  const criticalCount = riskLimits?.filter((r) => r.status === "critical").length ?? 0;
+  const okCount       = riskLimits?.filter((r) => r.status === "ok").length ?? 0;
 
   return (
     <>
@@ -127,16 +93,28 @@ export default function RiskManagement() {
       </PageHeader>
 
       <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
+        {fetchError && (
+          <div className="px-4 py-2 rounded-lg text-center" style={{ background: `${C.down}10`, border: `1px solid ${C.down}30`, fontSize: 12, color: C.down }}>
+            数据加载失败，风控数据暂不可用
+          </div>
+        )}
+
         {tab === "风控总览" && (
           <>
             <div className="grid grid-cols-6 gap-3">
-              {overviewMetrics.map((m) => (
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <Card key={i} className="px-3.5 py-2.5">
+                    <div className="h-2.5 w-12 rounded animate-pulse mb-2" style={{ background: C.bg3 }} />
+                    <div className="h-5 w-16 rounded animate-pulse" style={{ background: C.bg3 }} />
+                  </Card>
+                ))
+              ) : !overviewMetrics || overviewMetrics.length === 0 ? (
+                <div className="col-span-6 text-center py-4" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+              ) : overviewMetrics.map((m) => (
                 <Card key={m.label} className="px-3.5 py-2.5">
                   <div style={{ fontSize: 9, color: C.text4 }}>{m.label}</div>
-                  {loading
-                    ? <div className="h-5 w-16 rounded animate-pulse mt-1" style={{ background: C.bg3 }} />
-                    : <div style={{ fontSize: 16, fontFamily: C.mono, fontWeight: 700, color: m.color ?? C.text1 }}>{m.value}</div>
-                  }
+                  <div style={{ fontSize: 16, fontFamily: C.mono, fontWeight: 700, color: m.color ?? C.text1 }}>{m.value}</div>
                 </Card>
               ))}
             </div>
@@ -145,30 +123,40 @@ export default function RiskManagement() {
               <Card className="col-span-8 flex flex-col overflow-hidden">
                 <CardHeader title="VaR走势" titleEn="Value at Risk" />
                 <div className="px-4 pt-2 flex-1" style={{ minHeight: 240 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={varData} margin={{ top: 8, right: 15, bottom: 0, left: -10 }}>
-                      <defs>
-                        <linearGradient id="varFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={C.warn} stopOpacity={0.15} />
-                          <stop offset="100%" stopColor={C.warn} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke={`${C.border}60`} strokeDasharray="3 6" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill: C.text4, fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
-                      <YAxis tick={{ fill: C.text4, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Area name="95%VaR" dataKey="var95" stroke={C.warn} strokeWidth={2} fill="url(#varFill)" dot={false} />
-                      <Line name="99%VaR" dataKey="var99" stroke={C.down} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
-                      <Line name="限额"   dataKey="limit" stroke={C.text4} strokeWidth={1} strokeDasharray="8 4" dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {loading ? (
+                    <div className="h-full flex items-center justify-center" style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+                  ) : !varData || varData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={varData} margin={{ top: 8, right: 15, bottom: 0, left: -10 }}>
+                        <defs>
+                          <linearGradient id="varFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={C.warn} stopOpacity={0.15} />
+                            <stop offset="100%" stopColor={C.warn} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke={`${C.border}60`} strokeDasharray="3 6" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: C.text4, fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
+                        <YAxis tick={{ fill: C.text4, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Area name="95%VaR" dataKey="var95" stroke={C.warn} strokeWidth={2} fill="url(#varFill)" dot={false} />
+                        <Line name="99%VaR" dataKey="var99" stroke={C.down} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                        <Line name="限额"   dataKey="limit" stroke={C.text4} strokeWidth={1} strokeDasharray="8 4" dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </Card>
 
               <Card className="col-span-4">
                 <CardHeader title="因子暴露" titleEn="Factor Exposure" />
                 <div className="p-3 space-y-2.5">
-                  {exposure.map((e) => (
+                  {loading ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>加载中...</div>
+                  ) : !exposure || exposure.length === 0 ? (
+                    <div className="text-center py-4" style={{ fontSize: 11, color: C.text4 }}>暂无数据</div>
+                  ) : exposure.map((e) => (
                     <div key={e.factor}>
                       <div className="flex items-center justify-between mb-1">
                         <span style={{ fontSize: 11, color: C.text2 }}>{e.factor}</span>
@@ -198,23 +186,29 @@ export default function RiskManagement() {
           <Card>
             <CardHeader title="压力测试场景" titleEn="Stress Testing" />
             <div className="p-3">
-              <div className="grid grid-cols-3 gap-3">
-                {stressTests.map((s) => (
-                  <div key={s.scenario} className="rounded-xl p-4" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 13, color: C.text1, fontWeight: 500, marginBottom: 8 }}>{s.scenario}</div>
-                    <div style={{ fontSize: 28, fontFamily: C.mono, fontWeight: 700, color: C.down, marginBottom: 8 }}>{s.impact}%</div>
-                    <div className="flex items-center justify-between" style={{ fontSize: 10, color: C.text3 }}>
-                      <span>
-                        概率:{" "}
-                        <span style={{ color: s.probability === "极低" || s.probability === "低" ? C.up : C.warn }}>
-                          {s.probability}
+              {loading ? (
+                <div className="text-center py-8" style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+              ) : !stressTests || stressTests.length === 0 ? (
+                <div className="text-center py-8" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {stressTests.map((s) => (
+                    <div key={s.scenario} className="rounded-xl p-4" style={{ background: C.bg2, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 13, color: C.text1, fontWeight: 500, marginBottom: 8 }}>{s.scenario}</div>
+                      <div style={{ fontSize: 28, fontFamily: C.mono, fontWeight: 700, color: C.down, marginBottom: 8 }}>{s.impact}%</div>
+                      <div className="flex items-center justify-between" style={{ fontSize: 10, color: C.text3 }}>
+                        <span>
+                          概率:{" "}
+                          <span style={{ color: s.probability === "极低" || s.probability === "低" ? C.up : C.warn }}>
+                            {s.probability}
+                          </span>
                         </span>
-                      </span>
-                      <span>恢复: {s.recovery}</span>
+                        <span>恢复: {s.recovery}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
         )}
@@ -233,7 +227,11 @@ export default function RiskManagement() {
               }
             />
             <div className="p-3 space-y-2">
-              {riskLimits.map((r) => {
+              {loading ? (
+                <div className="text-center py-8" style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+              ) : !riskLimits || riskLimits.length === 0 ? (
+                <div className="text-center py-8" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+              ) : riskLimits.map((r) => {
                 const isWarn     = r.status === "warn";
                 const isCritical = r.status === "critical";
                 const hlColor    = isCritical ? C.down : isWarn ? C.warn : null;

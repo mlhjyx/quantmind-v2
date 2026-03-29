@@ -34,23 +34,6 @@ interface QuickStats {
   as_of: string;
 }
 
-// ---- Mock fallbacks ----
-const MOCK_REPORTS: ReportItem[] = [
-  { run_id: "RPT-2026-03-19", name: "每日策略报告", status: "completed", annual_return: 0.152, sharpe_ratio: 1.87, max_drawdown: -0.112, total_trades: 47, start_date: "2026-01-01", end_date: "2026-03-19", created_at: "2026-03-19T18:00:00" },
-  { run_id: "RPT-2026-W12", name: "周度分析报告", status: "completed", annual_return: 0.148, sharpe_ratio: 1.76, max_drawdown: -0.118, total_trades: 42, start_date: "2026-01-01", end_date: "2026-03-14", created_at: "2026-03-14T18:00:00" },
-  { run_id: "RPT-2026-02", name: "月度策略报告", status: "completed", annual_return: 0.135, sharpe_ratio: 1.62, max_drawdown: -0.125, total_trades: 38, start_date: "2026-01-01", end_date: "2026-02-28", created_at: "2026-02-28T18:00:00" },
-  { run_id: "RPT-2026-Q1", name: "季度综合报告", status: "running", annual_return: null, sharpe_ratio: null, max_drawdown: null, total_trades: null, start_date: "2026-01-01", end_date: "2026-03-31", created_at: "2026-03-29T10:00:00" },
-  { run_id: "RPT-2025-FY", name: "2025年度报告", status: "completed", annual_return: 0.189, sharpe_ratio: 2.03, max_drawdown: -0.098, total_trades: 215, start_date: "2025-01-01", end_date: "2025-12-31", created_at: "2025-12-31T18:00:00" },
-];
-
-const MOCK_QUICK_STATS: QuickStats = {
-  today: { return: 0.0097, trade_days: 1, avg_turnover: 0.08 },
-  week: { return: 0.0285, trade_days: 5, avg_turnover: 0.07 },
-  month: { return: 0.0144, trade_days: 18, avg_turnover: 0.06 },
-  year: { return: 0.0601, trade_days: 58, avg_turnover: 0.065 },
-  latest_position_count: 15,
-  as_of: "2026-03-29",
-};
 
 const templates = [
   { name: "策略绩效报告", icon: TrendingUp, desc: "净值曲线、收益归因、风险指标", color: C.up },
@@ -78,13 +61,13 @@ const PERIOD_LABELS: Record<keyof Omit<QuickStats, "latest_position_count" | "as
 export default function ReportCenter() {
   const [tab, setTab] = useState("报告列表");
 
-  const { data: reports = MOCK_REPORTS, isLoading: loadingReports } = useQuery<ReportItem[]>({
+  const { data: reports = [], isLoading: loadingReports, isError: errorReports } = useQuery<ReportItem[]>({
     queryKey: ["reports-list"],
     queryFn: () => apiClient.get("/reports/list").then((r) => r.data),
     staleTime: 60_000,
   });
 
-  const { data: quickStats = MOCK_QUICK_STATS } = useQuery<QuickStats>({
+  const { data: quickStats, isLoading: loadingStats, isError: errorStats } = useQuery<QuickStats>({
     queryKey: ["reports-quick-stats"],
     queryFn: () => apiClient.get("/reports/quick-stats").then((r) => r.data),
     staleTime: 60_000,
@@ -93,7 +76,7 @@ export default function ReportCenter() {
   const periods = (["today", "week", "month", "year"] as const).map((k) => ({
     key: k,
     label: PERIOD_LABELS[k],
-    stats: quickStats[k],
+    stats: quickStats?.[k],
   }));
 
   return (
@@ -119,6 +102,10 @@ export default function ReportCenter() {
             />
             {loadingReports ? (
               <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+            ) : errorReports ? (
+              <div className="p-6 text-center" style={{ fontSize: 12, color: C.down }}>数据加载失败</div>
+            ) : reports.length === 0 ? (
+              <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
             ) : (
               <div className="p-3 space-y-2">
                 {reports.map((r) => (
@@ -169,28 +156,36 @@ export default function ReportCenter() {
         )}
 
         {tab === "快速统计" && (
-          <div className="grid grid-cols-4 gap-3">
-            {periods.map(({ key, label, stats }) => (
-              <Card key={key} className="p-4">
-                <div style={{ fontSize: 12, color: C.text3, marginBottom: 8 }}>{label}</div>
-                <div style={{ fontSize: 22, fontFamily: C.mono, fontWeight: 700, color: stats.return >= 0 ? C.up : C.down, marginBottom: 4 }}>
-                  {fmtPct(stats.return)}
-                </div>
-                <div className="space-y-2 mt-3">
-                  {[
-                    { l: "交易日数", v: String(stats.trade_days) },
-                    { l: "平均换手", v: fmtPct(stats.avg_turnover) },
-                    { l: "持仓数", v: key === "today" ? String(quickStats.latest_position_count) : "—" },
-                  ].map((item) => (
-                    <div key={item.l} className="flex items-center justify-between" style={{ fontSize: 11 }}>
-                      <span style={{ color: C.text4 }}>{item.l}</span>
-                      <span style={{ fontFamily: C.mono, color: C.text1, fontWeight: 500 }}>{item.v}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ))}
-          </div>
+          loadingStats ? (
+            <div className="text-center py-12" style={{ fontSize: 12, color: C.text4 }}>加载中...</div>
+          ) : errorStats ? (
+            <div className="text-center py-12" style={{ fontSize: 12, color: C.down }}>数据加载失败</div>
+          ) : !quickStats ? (
+            <div className="text-center py-12" style={{ fontSize: 12, color: C.text4 }}>暂无数据</div>
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              {periods.map(({ key, label, stats }) => (
+                <Card key={key} className="p-4">
+                  <div style={{ fontSize: 12, color: C.text3, marginBottom: 8 }}>{label}</div>
+                  <div style={{ fontSize: 22, fontFamily: C.mono, fontWeight: 700, color: (stats?.return ?? 0) >= 0 ? C.up : C.down, marginBottom: 4 }}>
+                    {fmtPct(stats?.return ?? null)}
+                  </div>
+                  <div className="space-y-2 mt-3">
+                    {[
+                      { l: "交易日数", v: stats ? String(stats.trade_days) : "—" },
+                      { l: "平均换手", v: fmtPct(stats?.avg_turnover ?? null) },
+                      { l: "持仓数", v: key === "today" ? String(quickStats.latest_position_count) : "—" },
+                    ].map((item) => (
+                      <div key={item.l} className="flex items-center justify-between" style={{ fontSize: 11 }}>
+                        <span style={{ color: C.text4 }}>{item.l}</span>
+                        <span style={{ fontFamily: C.mono, color: C.text1, fontWeight: 500 }}>{item.v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )
         )}
 
         {tab === "模板" && (

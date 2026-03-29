@@ -12,7 +12,6 @@ import TabCorrelation from "@/components/factor/evaluation/TabCorrelation";
 import TabAnnual from "@/components/factor/evaluation/TabAnnual";
 import TabRegimeStats from "@/components/factor/evaluation/TabRegimeStats";
 import { getFactorReport } from "@/api/factors";
-import { MOCK_FACTOR_REPORTS, MOCK_FACTOR_LIBRARY } from "@/api/mockFactors";
 import { STALE } from "@/api/QueryProvider";
 
 type TabKey = "ic" | "groups" | "decay" | "correlation" | "annual" | "regime";
@@ -37,14 +36,13 @@ export default function FactorEvaluation() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<TabKey>("ic");
 
-  const factorId = id ?? MOCK_FACTOR_LIBRARY[0]?.id ?? "turnover_mean_20";
+  const factorId = id ?? "turnover_mean_20";
 
   const { data: report, isLoading, isError } = useQuery({
     queryKey: ["factor-report", factorId],
     queryFn: () => getFactorReport(factorId),
     staleTime: STALE.factor,
     retry: 1,
-    placeholderData: MOCK_FACTOR_REPORTS[factorId] ?? MOCK_FACTOR_REPORTS["turnover_mean_20"],
   });
 
   const badge = report ? (STATUS_BADGE[report.status] ?? { label: report.status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" }) : null;
@@ -95,7 +93,7 @@ export default function FactorEvaluation() {
       </div>
 
       {/* Loading state */}
-      {isLoading && !report && (
+      {isLoading && (
         <div className="grid grid-cols-4 gap-3 mb-5">
           {[0, 1, 2, 3].map((i) => (
             <GlassCard key={i} className="h-20 animate-pulse bg-slate-800/40">{null}</GlassCard>
@@ -104,10 +102,9 @@ export default function FactorEvaluation() {
       )}
 
       {/* Error state */}
-      {isError && !report && (
+      {isError && (
         <GlassCard className="mb-5 py-8 text-center">
           <p className="text-red-400 text-sm">加载因子报告失败</p>
-          <p className="text-slate-500 text-xs mt-1">使用模拟数据展示</p>
         </GlassCard>
       )}
 
