@@ -1,11 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.29 ✅ 全部22页面mock清除 — 11页面真数据+null-safe防御+内联硬编码修复)
-> Current: Phase 1, Sprint 1.29 ✅ 完成 → 下一步 mock文件清理+pipeline 500修复
-> 下一步: 清理mock.ts/mockFactors.ts + 修复/pipeline/status 500后端bug + Portfolio summary端点
+> Last updated: 2026-03-29 (Sprint 1.30 ✅ 硬编码值替换完成 — Portfolio市值/现金/仓位+DashboardStrategiesPanel)
+> Current: Phase 1, Sprint 1.30 ✅ 完成 → 下一步待定(PT Day 3/60监控中)
+> 下一步: 评估下一优先级 — PT监控完善/ErrorBoundary/DEVELOPMENT_BLUEPRINT差距分析
 > 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)。pre-existing TS errors in test files + QMTStatusBadge (非本Sprint引入)
-> 本会话: Sprint 1.28-1.29 前端真数据接入: API路径对齐(25端点) + 11页面mock清除(20+MOCK_*常量) + null-safe防御(6组件) + 内联硬编码修复
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅
+> 本会话: Sprint 1.28-1.30 前端真数据接入: API路径+mock清除+null-safe+硬编码替换+StrategiesPanel
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
@@ -76,6 +76,22 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.30: 硬编码值替换 — Portfolio/Dashboard (2026-03-29) ✅
+
+**Portfolio 3个硬编码值→真实API计算。DashboardOverview StrategiesPanel接入真实API。**
+
+- ✅ Portfolio 总持仓市值 — `holdings.market_value` 求和(替换¥1,285,430)
+- ✅ Portfolio 现金 — `latestNav - totalMarketValue`(替换¥192,085)
+- ✅ Portfolio 仓位% — `totalMarketValue / latestNav`(替换85.1%)
+- ✅ Portfolio DailyPnl接口字段名修复 — `date→trade_date`, `pnl→daily_return`(今日盈亏之前始终为0)
+- ✅ DashboardOverview StrategiesPanel — `useQuery({queryFn: fetchDashboardStrategies})`替换3条静态JSX
+- ✅ `dashboard.ts` 新增 `fetchDashboardStrategies()` + `StrategyOverview` 类型
+- ✅ 合并至main (3b8697b)
+
+**结果**: 0 new TS errors。前端无已知硬编码金融数据。
+
+---
 
 ### Sprint 1.29: 剩余页面mock清除+null-safe防御 (2026-03-29) ✅
 
