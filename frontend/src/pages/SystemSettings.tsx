@@ -10,9 +10,6 @@ import {
   fetchNotificationParams,
   saveNotificationParams,
   testNotification,
-  MOCK_DATASOURCES,
-  MOCK_SCHEDULER_TASKS,
-  MOCK_SYSTEM_HEALTH,
   type DataSource,
   type SchedulerTask,
   type SystemHealth,
@@ -74,7 +71,7 @@ function DataSourceTab() {
     try {
       setSources(await fetchDataSources());
     } catch {
-      setSources(MOCK_DATASOURCES);
+      setSources([]);
     } finally {
       setLoading(false);
     }
@@ -313,9 +310,10 @@ function SchedulerTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTasks(await fetchSchedulerTasks());
+      const result = await fetchSchedulerTasks();
+      setTasks(Array.isArray(result) ? result : []);
     } catch {
-      setTasks(MOCK_SCHEDULER_TASKS);
+      setTasks([]);
     } finally {
       setLoading(false);
     }
@@ -391,7 +389,7 @@ function HealthTab() {
       const data = await fetchSystemHealth();
       setHealth(data);
     } catch {
-      if (!health) setHealth(MOCK_SYSTEM_HEALTH);
+      if (!health) setError("系统健康数据加载失败");
     } finally {
       setLoading(false);
     }
@@ -417,13 +415,16 @@ function HealthTab() {
     );
   }
 
+  const pg = health.postgres ?? { ok: false, latency_ms: null };
+  const rd = health.redis ?? { ok: false, latency_ms: null };
+  const cel = health.celery ?? { ok: false, active_workers: 0 };
   const services = [
-    { label: "PostgreSQL", ...health.postgres, extra: health.postgres.latency_ms !== null ? `${health.postgres.latency_ms}ms` : undefined },
-    { label: "Redis", ...health.redis, extra: health.redis.latency_ms !== null ? `${health.redis.latency_ms}ms` : undefined },
-    { label: "Celery", ...health.celery, extra: `${health.celery.active_workers} 个 worker` },
+    { label: "PostgreSQL", ...pg, extra: pg.latency_ms != null ? `${pg.latency_ms}ms` : undefined },
+    { label: "Redis", ...rd, extra: rd.latency_ms != null ? `${rd.latency_ms}ms` : undefined },
+    { label: "Celery", ...cel, extra: `${cel.active_workers ?? 0} 个 worker` },
   ];
 
-  const staleDays = health.data_freshness.days_stale;
+  const staleDays = health.data_freshness?.days_stale ?? 0;
 
   return (
     <div className="space-y-5">
@@ -459,22 +460,22 @@ function HealthTab() {
           <div className="flex justify-between text-xs mb-2">
             <span className="text-slate-400">磁盘</span>
             <span className="text-slate-200 font-mono">
-              {health.disk.used_gb}GB / {health.disk.total_gb}GB
+              {health.disk?.used_gb ?? "—"}GB / {health.disk?.total_gb ?? "—"}GB
             </span>
           </div>
-          <ProgressBar value={health.disk.percent} />
-          <div className="text-xs text-slate-500 mt-1 text-right">{health.disk.percent.toFixed(1)}%</div>
+          <ProgressBar value={health.disk?.percent ?? 0} />
+          <div className="text-xs text-slate-500 mt-1 text-right">{(health.disk?.percent ?? 0).toFixed(1)}%</div>
         </GlassCard>
 
         <GlassCard padding="sm">
           <div className="flex justify-between text-xs mb-2">
             <span className="text-slate-400">内存</span>
             <span className="text-slate-200 font-mono">
-              {health.memory.used_gb.toFixed(1)}GB / {health.memory.total_gb}GB
+              {(health.memory?.used_gb ?? 0).toFixed(1)}GB / {health.memory?.total_gb ?? "—"}GB
             </span>
           </div>
-          <ProgressBar value={health.memory.percent} />
-          <div className="text-xs text-slate-500 mt-1 text-right">{health.memory.percent.toFixed(1)}%</div>
+          <ProgressBar value={health.memory?.percent ?? 0} />
+          <div className="text-xs text-slate-500 mt-1 text-right">{(health.memory?.percent ?? 0).toFixed(1)}%</div>
         </GlassCard>
       </div>
 
@@ -484,7 +485,7 @@ function HealthTab() {
         <div className="flex-1">
           <span className="text-sm text-slate-100">最新K线日期</span>
           <span className="ml-3 text-sm font-mono text-slate-300">
-            {health.data_freshness.latest_kline_date ?? "—"}
+            {health.data_freshness?.latest_kline_date ?? "—"}
           </span>
         </div>
         {staleDays > 0 && (

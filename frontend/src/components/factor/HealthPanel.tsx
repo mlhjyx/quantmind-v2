@@ -23,7 +23,8 @@ const STATUS_LABELS = {
   retired:  "淘汰",
 };
 
-export default function HealthPanel({ stats, icTrends, loading }: Props) {
+export default function HealthPanel({ stats, icTrends: rawTrends, loading }: Props) {
+  const icTrends = Array.isArray(rawTrends) ? rawTrends : [];
   const pieData = [
     { name: STATUS_LABELS.active,   value: stats.active,   itemStyle: { color: STATUS_COLORS.active } },
     { name: STATUS_LABELS.new,      value: stats.new,      itemStyle: { color: STATUS_COLORS.new } },
