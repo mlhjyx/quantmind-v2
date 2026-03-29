@@ -1,4 +1,17 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, useRouteError } from "react-router-dom";
+
+function RouterErrorPage() {
+  const err = useRouteError() as { status?: number; statusText?: string; message?: string };
+  const is404 = err?.status === 404;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", fontFamily: "sans-serif", background: "#0f172a", color: "#e2e8f0" }}>
+      <div style={{ fontSize: 40, marginBottom: 16 }}>{is404 ? "🗺️" : "⚠️"}</div>
+      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{is404 ? "页面不存在" : "路由错误"}</div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 24 }}>{err?.statusText ?? err?.message ?? "未知错误"}</div>
+      <a href="/dashboard" style={{ padding: "8px 20px", borderRadius: 8, background: "#6366f1", color: "#fff", textDecoration: "none", fontSize: 14 }}>返回总览</a>
+    </div>
+  );
+}
 import { Layout } from "@/components/layout/Layout";
 
 // Lazy page imports
@@ -25,6 +38,7 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <Layout />,
+    errorElement: <RouterErrorPage />,
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
 
@@ -72,6 +86,9 @@ export const router = createBrowserRouter([
       // Settings
       { path: "settings", element: lazyPage(() => import("@/pages/SystemSettings")) },
       { path: "settings/:tab", element: lazyPage(() => import("@/pages/SystemSettings")) },
+
+      // Catch-all: redirect unknown paths to dashboard
+      { path: "*", element: <Navigate to="/dashboard" replace /> },
     ],
   },
 ]);
