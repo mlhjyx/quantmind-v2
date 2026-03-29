@@ -130,7 +130,7 @@ export default function FactorTable({ factors, onSelect }: Props) {
                 const fdrOk = f.fdr_t_stat >= 2.0;
                 return (
                   <tr
-                    key={f.id}
+                    key={f.name}
                     className="hover:bg-white/3 transition-colors cursor-pointer"
                     onClick={() => onSelect?.(f)}
                   >
@@ -195,7 +195,7 @@ export default function FactorTable({ factors, onSelect }: Props) {
                           className="px-2 py-0.5 text-xs rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/factors/${f.id}`);
+                            navigate(`/factors/${f.name}`);
                           }}
                         >
                           详情
@@ -204,7 +204,7 @@ export default function FactorTable({ factors, onSelect }: Props) {
                           className="px-2 py-0.5 text-xs rounded bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600 transition-colors"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/factors/compare/${f.id}`);
+                            navigate(`/factors/compare/${f.name}`);
                           }}
                         >
                           对比
