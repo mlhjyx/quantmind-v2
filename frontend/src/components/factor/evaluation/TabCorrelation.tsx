@@ -9,7 +9,7 @@ interface Props {
 
 export default function TabCorrelation({ report }: Props) {
   const corrBarOption = useMemo(() => {
-    const sorted = [...report.correlations].sort((a, b) => Math.abs(b.corr) - Math.abs(a.corr));
+    const sorted = [...(report.correlations ?? [])].sort((a, b) => Math.abs(b.corr) - Math.abs(a.corr));
     return {
       backgroundColor: "transparent",
       tooltip: {
@@ -58,7 +58,7 @@ export default function TabCorrelation({ report }: Props) {
   }, [report]);
 
   const industryHeatOption = useMemo(() => {
-    const sorted = [...report.industry_ic].sort((a, b) => b.ic - a.ic);
+    const sorted = [...(report.industry_ic ?? [])].sort((a, b) => b.ic - a.ic);
     return {
       backgroundColor: "transparent",
       tooltip: {
@@ -99,7 +99,17 @@ export default function TabCorrelation({ report }: Props) {
     };
   }, [report]);
 
-  const highCorrCount = report.correlations.filter((c) => Math.abs(c.corr) > 0.7).length;
+  const correlations = report.correlations ?? [];
+  const industryIc = report.industry_ic ?? [];
+  const highCorrCount = correlations.filter((c) => Math.abs(c.corr) > 0.7).length;
+
+  if (correlations.length === 0 && industryIc.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+        暂无相关性数据
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -114,7 +124,7 @@ export default function TabCorrelation({ report }: Props) {
           <p className="text-xs font-medium text-slate-400 mb-2">与Active因子相关性</p>
           <ReactECharts
             option={corrBarOption}
-            style={{ height: Math.max(140, report.correlations.length * 28 + 60) }}
+            style={{ height: Math.max(140, correlations.length * 28 + 60) }}
             opts={{ renderer: "canvas" }}
           />
           <div className="flex gap-3 mt-2 text-xs text-slate-500">
@@ -128,7 +138,7 @@ export default function TabCorrelation({ report }: Props) {
           <p className="text-xs font-medium text-slate-400 mb-2">行业IC分布</p>
           <ReactECharts
             option={industryHeatOption}
-            style={{ height: Math.max(140, report.industry_ic.length * 22 + 60) }}
+            style={{ height: Math.max(140, industryIc.length * 22 + 60) }}
             opts={{ renderer: "canvas" }}
           />
         </GlassCard>

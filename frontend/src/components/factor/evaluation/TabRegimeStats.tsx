@@ -21,7 +21,7 @@ const REGIME_COLORS: Record<string, string> = {
 
 export default function TabRegimeStats({ report }: Props) {
   const barOption = useMemo(() => {
-    const regimes = report.regime_stats;
+    const regimes = regimeStats;
     const labels = regimes.map((r) => REGIME_LABELS[r.regime] ?? r.regime);
     return {
       backgroundColor: "transparent",
@@ -89,16 +89,27 @@ export default function TabRegimeStats({ report }: Props) {
         },
       ],
     };
-  }, [report]);
+  }, [regimeStats]);
 
-  const best = report.regime_stats.reduce((a, b) => (a.ic > b.ic ? a : b));
-  const worst = report.regime_stats.reduce((a, b) => (a.ic < b.ic ? a : b));
+  const regimeStats = report.regime_stats ?? [];
+
+  if (regimeStats.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+        暂无市场状态数据
+      </div>
+    );
+  }
+
+  const icMean = report.ic_mean ?? 0;
+  const best = regimeStats.reduce((a, b) => (a.ic > b.ic ? a : b));
+  const worst = regimeStats.reduce((a, b) => (a.ic < b.ic ? a : b));
 
   return (
     <div className="space-y-4">
       {/* Regime cards */}
       <div className="grid grid-cols-3 gap-3">
-        {report.regime_stats.map((r) => (
+        {regimeStats.map((r) => (
           <GlassCard key={r.regime} padding="sm">
             <div className="flex items-center gap-2 mb-2">
               <div
@@ -111,7 +122,7 @@ export default function TabRegimeStats({ report }: Props) {
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">IC均值</span>
-                <span className={r.ic >= report.ic_mean ? "text-green-400" : "text-yellow-400"}>
+                <span className={r.ic >= icMean ? "text-green-400" : "text-yellow-400"}>
                   {r.ic.toFixed(4)}
                 </span>
               </div>
@@ -121,8 +132,8 @@ export default function TabRegimeStats({ report }: Props) {
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">vs全期IC</span>
-                <span className={r.ic >= report.ic_mean ? "text-green-400" : "text-red-400"}>
-                  {r.ic >= report.ic_mean ? "+" : ""}{((r.ic - report.ic_mean) / Math.abs(report.ic_mean) * 100).toFixed(0)}%
+                <span className={r.ic >= icMean ? "text-green-400" : "text-red-400"}>
+                  {r.ic >= icMean ? "+" : ""}{icMean !== 0 ? ((r.ic - icMean) / Math.abs(icMean) * 100).toFixed(0) : "—"}%
                 </span>
               </div>
             </div>
