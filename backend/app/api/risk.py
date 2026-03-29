@@ -292,7 +292,7 @@ async def get_risk_overview(
     sql = text("""
         SELECT daily_return, drawdown, nav
         FROM performance_series
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
           AND execution_mode = :mode
         ORDER BY trade_date DESC
         LIMIT 250
@@ -358,20 +358,20 @@ async def get_risk_limits(
         WITH latest AS (
             SELECT MAX(trade_date) AS max_date
             FROM position_snapshot
-            WHERE strategy_id = :sid::uuid AND execution_mode = :mode
+            WHERE strategy_id = CAST(:sid AS uuid) AND execution_mode = :mode
         )
         SELECT
             MAX(ps.weight) AS max_weight,
             COUNT(*) AS position_count
         FROM position_snapshot ps
         JOIN latest l ON ps.trade_date = l.max_date
-        WHERE ps.strategy_id = :sid::uuid AND ps.execution_mode = :mode
+        WHERE ps.strategy_id = CAST(:sid AS uuid) AND ps.execution_mode = :mode
     """)
 
     perf_sql = text("""
         SELECT drawdown, daily_return, turnover
         FROM performance_series
-        WHERE strategy_id = :sid::uuid AND execution_mode = :mode
+        WHERE strategy_id = CAST(:sid AS uuid) AND execution_mode = :mode
         ORDER BY trade_date DESC LIMIT 20
     """)
 
@@ -446,7 +446,7 @@ async def get_stress_tests(
 
     nav_sql = text("""
         SELECT nav FROM performance_series
-        WHERE strategy_id = :sid::uuid AND execution_mode = :mode
+        WHERE strategy_id = CAST(:sid AS uuid) AND execution_mode = :mode
         ORDER BY trade_date DESC LIMIT 1
     """)
 

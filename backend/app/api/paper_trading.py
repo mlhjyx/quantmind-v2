@@ -138,7 +138,7 @@ async def paper_trading_graduation_status(
             STDDEV_SAMP(daily_return) AS std_return,
             MIN(drawdown)             AS max_drawdown
         FROM performance_series
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
           AND execution_mode = 'paper'
     """)
     try:
@@ -167,7 +167,7 @@ async def paper_trading_graduation_status(
     slip_sql = text("""
         SELECT AVG(slippage_bps) AS avg_slippage
         FROM trade_log
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
           AND execution_mode = 'paper'
           AND slippage_bps IS NOT NULL
     """)

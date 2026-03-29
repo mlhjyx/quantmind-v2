@@ -63,7 +63,7 @@ async def list_reports(
             elapsed_sec,
             created_at
         FROM backtest_run
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
         ORDER BY created_at DESC
         LIMIT :lim
     """)
@@ -126,7 +126,7 @@ async def get_quick_stats(
             turnover,
             position_count
         FROM performance_series
-        WHERE strategy_id = :sid::uuid
+        WHERE strategy_id = CAST(:sid AS uuid)
           AND execution_mode = :mode
           AND trade_date >= :year_start
         ORDER BY trade_date ASC
