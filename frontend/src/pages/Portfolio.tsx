@@ -12,9 +12,10 @@ interface Holding {
   code: string; name: string; industry: string;
   wt: number; cost: number; price: number;
   pnl: number; pnlAmt: number; days: number; signal: number;
+  marketValue: number;
 }
 interface SectorItem { name: string; value: number; color: string; }
-interface DailyPnl   { date: string; pnl: number; }
+interface DailyPnl   { trade_date: string; nav: number; daily_return: number; cumulative_return: number; drawdown: number; }
 
 
 function SkeletonRow() {
@@ -62,6 +63,7 @@ export default function Portfolio() {
           pnlAmt: +(r.unrealized_pnl * r.market_value).toFixed(0),
           days: r.holding_days,
           signal: 0,
+          marketValue: r.market_value,
         }));
         setHoldings(mapped);
       } else {
@@ -108,16 +110,25 @@ export default function Portfolio() {
   const safePnlByDay  = pnlByDay  ?? [];
 
   // Compute summary metrics from API data
-  const holdingPnl = safeHoldings.reduce((s, h) => s + h.pnlAmt, 0);
-  const todayPnl   = safePnlByDay[safePnlByDay.length - 1]?.pnl ?? 0;
-  const avgDays    = safeHoldings.length
+  const totalMarketValue = safeHoldings.reduce((s, h) => s + h.marketValue, 0);
+  const holdingPnl       = safeHoldings.reduce((s, h) => s + h.pnlAmt, 0);
+  const latestEntry      = safePnlByDay[safePnlByDay.length - 1];
+  const todayPnl         = latestEntry?.daily_return != null
+    ? +(latestEntry.daily_return * (latestEntry.nav ?? 0)).toFixed(0)
+    : 0;
+  const latestNav        = latestEntry?.nav ?? 0;
+  const cash             = latestNav > 0 ? latestNav - totalMarketValue : 0;
+  const positionPct      = latestNav > 0 ? (totalMarketValue / latestNav * 100).toFixed(1) : "—";
+  const avgDays          = safeHoldings.length
     ? Math.round(safeHoldings.reduce((s, h) => s + h.days, 0) / safeHoldings.length)
     : 0;
 
+  const fmtCny = (v: number) => `¥${Math.abs(v).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
+
   const summaryMetrics = [
-    { label: "总持仓市值", value: "¥1,285,430",                                                                       color: C.text1 },
-    { label: "今日盈亏",   value: `${todayPnl >= 0 ? "+" : ""}¥${Math.abs(todayPnl).toLocaleString()}`,               color: todayPnl >= 0 ? C.up : C.down },
-    { label: "持仓盈亏",   value: `${holdingPnl >= 0 ? "+" : ""}¥${Math.abs(holdingPnl).toLocaleString()}`,           color: holdingPnl >= 0 ? C.up : C.down },
+    { label: "总持仓市值", value: totalMarketValue > 0 ? fmtCny(totalMarketValue) : "—",                              color: C.text1 },
+    { label: "今日盈亏",   value: todayPnl !== 0 ? `${todayPnl >= 0 ? "+" : "-"}${fmtCny(todayPnl)}` : "—",          color: todayPnl >= 0 ? C.up : C.down },
+    { label: "持仓盈亏",   value: `${holdingPnl >= 0 ? "+" : "-"}${fmtCny(holdingPnl)}`,                             color: holdingPnl >= 0 ? C.up : C.down },
     { label: "持仓数量",   value: `${safeHoldings.length}只`,                                                          color: C.text1 },
     { label: "平均持仓天数", value: `${avgDays}天`,                                                                   color: C.text1 },
   ];
@@ -127,10 +138,10 @@ export default function Portfolio() {
       <PageHeader title="持仓管理" titleEn="Portfolio Management">
         <div className="flex items-center gap-4" style={{ fontSize: 11 }}>
           <span style={{ color: C.text3 }}>
-            现金 <span style={{ color: C.text1, fontFamily: C.mono, fontWeight: 600 }}>¥192,085</span>
+            现金 <span style={{ color: C.text1, fontFamily: C.mono, fontWeight: 600 }}>{cash > 0 ? fmtCny(cash) : "—"}</span>
           </span>
           <span style={{ color: C.text3 }}>
-            仓位 <span style={{ color: C.accent, fontFamily: C.mono, fontWeight: 600 }}>85.1%</span>
+            仓位 <span style={{ color: C.accent, fontFamily: C.mono, fontWeight: 600 }}>{positionPct !== "—" ? `${positionPct}%` : "—"}</span>
           </span>
         </div>
       </PageHeader>
@@ -269,11 +280,11 @@ export default function Portfolio() {
               <div className="px-3 pt-1 pb-2 flex-1" style={{ minHeight: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={safePnlByDay} margin={{ top: 5, right: 5, bottom: 0, left: -10 }}>
-                    <XAxis dataKey="date" tick={{ fill: C.text4, fontSize: 9 }} axisLine={false} tickLine={false} interval={3} />
-                    <YAxis tick={{ fill: C.text4, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                    <XAxis dataKey="trade_date" tick={{ fill: C.text4, fontSize: 9 }} axisLine={false} tickLine={false} interval={3} />
+                    <YAxis tick={{ fill: C.text4, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${(v * 100).toFixed(2)}%`} />
                     <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="pnl" radius={[3, 3, 0, 0]}>
-                      {safePnlByDay.map((d, i) => <Cell key={i} fill={d.pnl >= 0 ? `${C.up}70` : `${C.down}70`} />)}
+                    <Bar dataKey="daily_return" radius={[3, 3, 0, 0]}>
+                      {safePnlByDay.map((d, i) => <Cell key={i} fill={d.daily_return >= 0 ? `${C.up}70` : `${C.down}70`} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
