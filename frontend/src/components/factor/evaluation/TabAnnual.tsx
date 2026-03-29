@@ -23,7 +23,15 @@ function PctCell({ v }: { v: number }) {
 }
 
 export default function TabAnnual({ report }: Props) {
-  const stats = report.annual_stats;
+  const stats = report.annual_stats ?? [];
+
+  if (stats.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+        暂无分年度数据
+      </div>
+    );
+  }
 
   const avgIC = stats.reduce((s, r) => s + r.ic, 0) / stats.length;
   const avgIR = stats.reduce((s, r) => s + r.ir, 0) / stats.length;

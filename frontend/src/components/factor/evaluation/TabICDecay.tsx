@@ -14,10 +14,13 @@ const FREQ_MAP: Record<string, string> = {
 };
 
 export default function TabICDecay({ report }: Props) {
+  const icDecay = report.ic_decay ?? [];
+  const icMean = report.ic_mean ?? 0;
+
   const decayOption = useMemo(() => {
-    const lags = report.ic_decay.map((d) => d.lag);
-    const ics = report.ic_decay.map((d) => d.ic);
-    const halfIc = report.ic_mean * 0.5;
+    const lags = icDecay.map((d) => d.lag);
+    const ics = icDecay.map((d) => d.ic);
+    const halfIc = icMean * 0.5;
 
     // Find half-life point
     const halfIdx = ics.findIndex((v) => Math.abs(v) <= Math.abs(halfIc));
@@ -76,10 +79,10 @@ export default function TabICDecay({ report }: Props) {
         },
       ],
     };
-  }, [report]);
+  }, [icDecay, icMean]);
 
-  const halfLife = report.half_life_days;
-  const freq = report.recommended_freq;
+  const halfLife = report.half_life_days ?? null;
+  const freq = report.recommended_freq ?? "";
 
   return (
     <div className="space-y-4">
@@ -87,7 +90,9 @@ export default function TabICDecay({ report }: Props) {
       <div className="grid grid-cols-3 gap-3">
         <GlassCard padding="sm">
           <p className="text-xs text-slate-400 mb-1">IC半衰期</p>
-          <p className="text-2xl font-bold text-amber-400 tabular-nums">{halfLife} 日</p>
+          <p className="text-2xl font-bold text-amber-400 tabular-nums">
+            {halfLife != null ? `${halfLife} 日` : "—"}
+          </p>
         </GlassCard>
         <GlassCard padding="sm">
           <p className="text-xs text-slate-400 mb-1">FactorClassifier推荐频率</p>
@@ -111,12 +116,12 @@ export default function TabICDecay({ report }: Props) {
       <GlassCard padding="sm">
         <p className="text-xs font-medium text-slate-400 mb-2">衰减解读</p>
         <div className="grid grid-cols-3 gap-3 text-xs text-slate-300">
-          {report.ic_decay.filter((_, i) => [0, 4, 9].includes(i)).map((d) => (
+          {icDecay.filter((_, i) => [0, 4, 9].includes(i)).map((d) => (
             <div key={d.lag} className="text-center">
               <div className="text-lg font-bold text-blue-400">{d.ic.toFixed(4)}</div>
               <div className="text-slate-400">滞后{d.lag}日IC</div>
               <div className="text-slate-500">
-                保留 {((Math.abs(d.ic) / Math.abs(report.ic_mean)) * 100).toFixed(0)}%
+                保留 {icMean !== 0 ? ((Math.abs(d.ic) / Math.abs(icMean)) * 100).toFixed(0) : "—"}%
               </div>
             </div>
           ))}

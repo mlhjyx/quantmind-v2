@@ -511,7 +511,7 @@ export default function MiningTaskCenter() {
                             onClick={() => setSelectedTaskId(task.task_id)}
                             className="font-mono text-blue-400 hover:text-blue-300 transition-colors"
                           >
-                            {task.task_id.slice(0, 8)}...
+                            {task.task_id?.slice(0, 8) ?? "unknown"}...
                           </button>
                         </td>
                         <td className="py-2.5 pr-3">

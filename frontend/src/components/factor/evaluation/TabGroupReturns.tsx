@@ -17,13 +17,16 @@ const CHART_TOOLTIP = {
 };
 
 export default function TabGroupReturns({ report }: Props) {
+  const groupNav = report.group_nav ?? [];
+  const longshortNav = report.longshort_nav ?? null;
+
   const groupNavOption = useMemo(() => {
-    const dates = report.group_nav[0]?.dates ?? [];
+    const dates = groupNav[0]?.dates ?? [];
     return {
       backgroundColor: "transparent",
       tooltip: { trigger: "axis" as const, ...CHART_TOOLTIP },
       legend: {
-        data: [...report.group_nav.map((g) => g.group), "多空"],
+        data: [...groupNav.map((g) => g.group), "多空"],
         textStyle: { color: "#94a3b8", fontSize: 10 },
         top: 4,
         right: 4,
@@ -41,7 +44,7 @@ export default function TabGroupReturns({ report }: Props) {
         splitLine: { lineStyle: { color: "#1e293b" } },
       },
       series: [
-        ...report.group_nav.map((g, i) => ({
+        ...groupNav.map((g, i) => ({
           name: g.group,
           type: "line" as const,
           data: g.nav,
@@ -52,14 +55,14 @@ export default function TabGroupReturns({ report }: Props) {
         {
           name: "多空",
           type: "line" as const,
-          data: report.longshort_nav.nav,
+          data: longshortNav?.nav ?? [],
           smooth: true,
           symbol: "none",
           lineStyle: { color: LS_COLOR, width: 2, type: "dashed" as const },
         },
       ],
     };
-  }, [report]);
+  }, [groupNav, longshortNav]);
 
   const monthlyHeatOption = useMemo(() => {
     const months = report.group_monthly.map(
@@ -117,6 +120,14 @@ export default function TabGroupReturns({ report }: Props) {
     };
   }, [report]);
 
+  if (groupNav.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+        暂无分组收益数据
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Group NAV curves */}
@@ -135,7 +146,7 @@ export default function TabGroupReturns({ report }: Props) {
       <GlassCard>
         <p className="text-xs font-medium text-slate-400 mb-3">分组年化收益（估算）</p>
         <div className="flex items-end gap-2 h-24">
-          {report.group_nav.map((g, i) => {
+          {groupNav.map((g, i) => {
             const finalNav = g.nav[g.nav.length - 1] ?? 1;
             const years = g.nav.length / 12;
             const annualized = (Math.pow(finalNav, 1 / years) - 1) * 100;

@@ -37,7 +37,7 @@ function ConnectorArrow({ active }: { active: boolean }) {
   );
 }
 
-export function FlowChart({ nodes, currentNode }: FlowChartProps) {
+export function FlowChart({ nodes = [], currentNode }: FlowChartProps) {
   return (
     <div className="w-full overflow-x-auto pb-2">
       <div className="flex items-center min-w-max">
