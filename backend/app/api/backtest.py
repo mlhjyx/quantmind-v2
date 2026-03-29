@@ -233,9 +233,9 @@ async def get_backtest_history(
     rows_result = await session.execute(
         text(
             f"""
-            SELECT run_id, strategy_id, run_name, market, status,
+            SELECT run_id, strategy_id, name AS run_name, status,
                    annual_return, sharpe_ratio, max_drawdown, calmar_ratio,
-                   start_date, end_date, created_at, finished_at
+                   start_date, end_date, created_at
             FROM backtest_run
             WHERE {where_sql}
             ORDER BY created_at DESC
@@ -251,7 +251,7 @@ async def get_backtest_history(
         for key in ("run_id", "strategy_id"):
             if item.get(key) is not None:
                 item[key] = str(item[key])
-        for key in ("start_date", "end_date", "created_at", "finished_at"):
+        for key in ("start_date", "end_date", "created_at"):
             if item.get(key) is not None:
                 item[key] = str(item[key])
 

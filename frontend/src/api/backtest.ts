@@ -145,8 +145,11 @@ export async function cancelBacktest(runId: string): Promise<void> {
 
 export async function listBacktestHistory(strategyId?: string): Promise<BacktestHistoryItem[]> {
   const params = strategyId ? { strategy_id: strategyId } : {};
-  const res = await apiClient.get<BacktestHistoryItem[]>("/backtest/history", { params });
-  return res.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any>("/backtest/history", { params });
+  const data = res.data;
+  if (Array.isArray(data)) return data;
+  return data?.items ?? [];
 }
 
 export async function compareBacktests(runIds: string[]): Promise<{ results: BacktestResult[] }> {
