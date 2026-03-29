@@ -61,12 +61,13 @@ export const router = createBrowserRouter([
       // PT Graduation
       { path: "pt-graduation", element: lazyPage(() => import("@/pages/PTGraduation")) },
 
-      // Coming-soon placeholders for pages not yet implemented
-      { path: "portfolio", element: lazyPage(() => import("@/pages/ComingSoon")) },
-      { path: "risk", element: lazyPage(() => import("@/pages/ComingSoon")) },
-      { path: "market", element: lazyPage(() => import("@/pages/ComingSoon")) },
-      { path: "execution", element: lazyPage(() => import("@/pages/ComingSoon")) },
-      { path: "reports", element: lazyPage(() => import("@/pages/ComingSoon")) },
+      // Implemented pages
+      { path: "portfolio", element: lazyPage(() => import("@/pages/Portfolio")) },
+      { path: "risk", element: lazyPage(() => import("@/pages/RiskManagement")) },
+      // Market / Execution / Reports
+      { path: "market", element: lazyPage(() => import("@/pages/MarketData")) },
+      { path: "execution", element: lazyPage(() => import("@/pages/TradeExecution")) },
+      { path: "reports", element: lazyPage(() => import("@/pages/ReportCenter")) },
 
       // Settings
       { path: "settings", element: lazyPage(() => import("@/pages/SystemSettings")) },

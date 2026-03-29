@@ -140,13 +140,24 @@ export default function FactorTable({ factors, onSelect }: Props) {
                         {badge.label}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-slate-200 font-medium">
-                      {f.name}
+                    <td className="px-3 py-2.5 text-xs font-medium">
+                      <span className="font-mono text-slate-200">{f.name}</span>
+                      {Math.abs(f.ic) >= 0.02 && (
+                        <span
+                          className="ml-1.5 text-xs"
+                          style={{ color: f.ic > 0.02 ? "#00e5a0" : "#ffb020" }}
+                        >
+                          {f.ic > 0.02 ? "↑正向" : "↓反向"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-slate-400">{f.category}</td>
                     <td className="px-3 py-2.5 text-xs text-slate-400">{f.strategy_type ?? "—"}</td>
                     <td className="px-3 py-2.5 text-xs tabular-nums">
-                      <span className={Math.abs(f.ic) >= 0.04 ? "text-green-400" : "text-yellow-400"}>
+                      <span style={{
+                        color: Math.abs(f.ic) < 0.02 ? "#3d4270" : f.ic > 0.02 ? "#00e5a0" : "#ffb020",
+                        fontFamily: "inherit",
+                      }}>
                         {fmtNum(f.ic)}
                       </span>
                     </td>

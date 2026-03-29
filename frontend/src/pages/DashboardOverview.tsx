@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import axios from "axios";
 import { Link } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis,
@@ -48,18 +49,9 @@ const FACTOR_DATA = [
   { name: "big_order_ratio",cat: "资金",ic: 0.022,  ir: 0.48, dir: "正向", status: "active", trend: [2, 2.2, 2.5, 2.3, 2.6, 2.4] },
 ];
 
-const INDUSTRY_DIST = [
-  { name: "食品饮料", pct: 18.2, color: "#f59e0b" },
-  { name: "电力设备", pct: 12.5, color: "#818cf8" },
-  { name: "非银金融", pct: 10.8, color: "#8b5cf6" },
-  { name: "汽车",     pct: 9.3,  color: "#34d399" },
-  { name: "有色金属", pct: 8.1,  color: "#f87171" },
-  { name: "银行",     pct: 7.6,  color: "#60a5fa" },
-  { name: "电子",     pct: 6.4,  color: "#fb7185" },
-  { name: "其他",     pct: 27.1, color: "#3e4158" },
-];
+type Alert ={ level: string; color: string; title: string; desc: string; time: string };
 
-const ALERTS = [
+const DEFAULT_ALERTS: Alert[] = [
   { level: "P0", color: "#f87171", title: "单行业集中度超限", desc: "食品饮料 18.2% 接近上限 25%", time: "14:28" },
   { level: "P1", color: "#fbbf24", title: "因子IC衰减",       desc: "turnover_20 IC滚动均值下降",   time: "13:55" },
   { level: "P1", color: "#fbbf24", title: "VaR接近阈值",      desc: "95% VaR = 2.8% → 3.0%阈值",   time: "13:42" },
@@ -152,7 +144,7 @@ function KPIGrid({ summary }: { summary: DashboardSummary | null }) {
   const cards: KPICard[] = [
     {
       label: "总权益", en: "EQUITY",
-      value: `¥${(nav * 1000000).toLocaleString("zh", { maximumFractionDigits: 0 })}`,
+      value: `¥${nav.toLocaleString("zh", { maximumFractionDigits: 0 })}`,
       sub: `${cumRet >= 0 ? "+" : ""}${(cumRet * 100).toFixed(2)}%`,
       subC: cumRet >= 0 ? C.up : C.down,
       spark: [1.0, 1.02, 1.05, 1.03, 1.08, 1.12, 1.15, 1.18, 1.22, nav],
@@ -160,7 +152,7 @@ function KPIGrid({ summary }: { summary: DashboardSummary | null }) {
     },
     {
       label: "今日P&L", en: "TODAY",
-      value: `${dayRet >= 0 ? "+" : ""}¥${Math.abs(dayRet * 1000000).toFixed(0)}`,
+      value: `${dayRet >= 0 ? "+" : ""}¥${Math.abs(dayRet * nav).toFixed(0)}`,
       valueC: dayRet >= 0 ? C.up : C.down,
       sub: `${dayRet >= 0 ? "+" : ""}${(dayRet * 100).toFixed(2)}%`,
       subC: dayRet >= 0 ? C.up : C.down,
@@ -319,19 +311,19 @@ function EquityCurve() {
 }
 
 // ── Row 2b: Alerts + Strategies ──
-function AlertsPanel() {
+function AlertsPanel({ alerts }: { alerts: Alert[] }) {
   return (
-    <Card className="flex-1 flex flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 320 }}>
       <CardHeader
         title="预警" titleEn="Alerts"
         right={
           <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ fontSize: 10, color: "#fff", background: C.down, fontWeight: 600 }}>
-            {ALERTS.length}
+            {alerts.length}
           </span>
         }
       />
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {ALERTS.map((a, i) => (
+        {alerts.slice(0, 20).map((a, i) => (
           <div key={i} className="rounded-lg px-3 py-2.5 cursor-pointer" style={{ background: `${a.color}06`, border: `1px solid ${a.color}15` }}>
             <div className="flex items-center gap-2">
               <span className="shrink-0 px-1.5 py-0.5 rounded" style={{ fontSize: 9, color: a.color, fontWeight: 700, fontFamily: C.mono, background: `${a.color}12` }}>
@@ -440,7 +432,7 @@ function HoldingsTable({ positions }: { positions: Position[] }) {
 }
 
 // ── Row 3b: Monthly returns heatmap ──
-function MonthlyHeatmap() {
+function MonthlyHeatmap({ monthlyData }: { monthlyData: Record<string, number[]> }) {
   return (
     <Card className="col-span-4">
       <CardHeader title="月度收益" titleEn="Monthly %" />
@@ -452,12 +444,13 @@ function MonthlyHeatmap() {
           ))}
           <div className="text-center" style={{ width: 40, fontSize: 9, color: C.text4, fontWeight: 600 }}>YTD</div>
         </div>
-        {Object.entries(MONTHLY_DATA).map(([year, vals]) => {
-          const ytd = vals.filter(v => v !== 0).reduce((a, b) => a + b, 0);
+        {Object.entries(monthlyData).map(([year, vals]) => {
+          const safeVals = vals.map(v => v ?? 0);
+          const ytd = safeVals.filter(v => v !== 0).reduce((a, b) => a + b, 0);
           return (
             <div key={year} className="flex gap-[3px] mb-[3px]">
               <div style={{ width: 28, fontSize: 11, color: C.text3, lineHeight: "30px", fontWeight: 500 }}>{year.slice(2)}</div>
-              {vals.map((v, i) => {
+              {safeVals.map((v, i) => {
                 const isEmpty = year === "2026" && i >= 3;
                 if (isEmpty) return <div key={i} className="flex-1 rounded" style={{ height: 30, background: C.bg2 }} />;
                 const intensity = Math.min(Math.abs(v) / 5, 1);
@@ -488,14 +481,27 @@ function MonthlyHeatmap() {
   );
 }
 
+type IndustryItem = { name: string; pct: number; color: string };
+
+const DEFAULT_INDUSTRY_DIST: IndustryItem[] = [
+  { name: "食品饮料", pct: 18.2, color: "#f59e0b" },
+  { name: "电力设备", pct: 12.5, color: "#818cf8" },
+  { name: "非银金融", pct: 10.8, color: "#8b5cf6" },
+  { name: "汽车",     pct: 9.3,  color: "#34d399" },
+  { name: "有色金属", pct: 8.1,  color: "#f87171" },
+  { name: "银行",     pct: 7.6,  color: "#60a5fa" },
+  { name: "电子",     pct: 6.4,  color: "#fb7185" },
+  { name: "其他",     pct: 27.1, color: "#3e4158" },
+];
+
 // ── Row 3c: Industry distribution + system status ──
-function IndustryAndSystem() {
+function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem[] }) {
   return (
     <div className="col-span-4 flex flex-col gap-3">
       <Card className="flex-1">
         <CardHeader title="行业分布" titleEn="Industry" />
         <div className="px-3 pb-2.5 pt-1.5 space-y-2">
-          {INDUSTRY_DIST.map((ind) => (
+          {industryDist.map((ind) => (
             <div key={ind.name} className="flex items-center gap-2.5">
               <span className="shrink-0" style={{ fontSize: 11, color: C.text2, width: 52 }}>{ind.name}</span>
               <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.bg2 }}>
@@ -687,6 +693,9 @@ function AIPipelinePanel() {
 export default function DashboardOverview() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>(DEFAULT_ALERTS);
+  const [monthlyData, setMonthlyData] = useState<Record<string, number[]>>(MONTHLY_DATA);
+  const [industryDist, setIndustryDist] = useState<IndustryItem[]>(DEFAULT_INDUSTRY_DIST);
   const [loading, setLoading] = useState(true);
   const [useMock, setUseMock] = useState(false);
 
@@ -707,6 +716,19 @@ export default function DashboardOverview() {
     } finally {
       setLoading(false);
     }
+
+    // Load supplementary data independently — fallback to defaults on error
+    axios.get<Alert[]>("/api/dashboard/alerts")
+      .then((r) => setAlerts(r.data))
+      .catch(() => {});
+
+    axios.get<Record<string, number[]>>("/api/dashboard/monthly-returns")
+      .then((r) => setMonthlyData(r.data))
+      .catch(() => {});
+
+    axios.get<IndustryItem[]>("/api/dashboard/industry-distribution")
+      .then((r) => setIndustryDist(r.data))
+      .catch(() => {});
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
@@ -732,7 +754,7 @@ export default function DashboardOverview() {
           <div className="relative w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ background: C.bg1, border: `1px solid ${C.border}` }}>
             <Bell size={15} color={C.text3} />
             <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: C.down, fontSize: 9, color: "#fff", fontWeight: 600 }}>
-              {ALERTS.length}
+              {alerts.length}
             </div>
           </div>
           <button
@@ -783,7 +805,7 @@ export default function DashboardOverview() {
         <div className="grid grid-cols-12 gap-3">
           <EquityCurve />
           <div className="col-span-4 flex flex-col gap-3">
-            <AlertsPanel />
+            <AlertsPanel alerts={alerts} />
             <StrategiesPanel />
           </div>
         </div>
@@ -791,8 +813,8 @@ export default function DashboardOverview() {
         {/* ROW 3: Holdings (4) + Monthly heatmap (4) + Industry+System (4) */}
         <div className="grid grid-cols-12 gap-3">
           <HoldingsTable positions={positions} />
-          <MonthlyHeatmap />
-          <IndustryAndSystem />
+          <MonthlyHeatmap monthlyData={monthlyData} />
+          <IndustryAndSystem industryDist={industryDist} />
         </div>
 
         {/* ROW 4: Factor library (7) + AI Pipeline (5) */}
