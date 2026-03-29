@@ -165,7 +165,7 @@ async def list_pipeline_runs(
     }
 
     if engine:
-        conditions.append("engine = :engine")
+        conditions.append("engine_type = :engine")
         params["engine"] = engine
     if status:
         conditions.append("status = :status")
@@ -176,8 +176,8 @@ async def list_pipeline_runs(
     result = await session.execute(
         text(
             f"""
-            SELECT run_id, engine, started_at, finished_at, status,
-                   stats, error_message,
+            SELECT run_id, engine_type AS engine, started_at, finished_at, status,
+                   result_summary AS stats, error_message,
                    EXTRACT(EPOCH FROM (COALESCE(finished_at, NOW()) - started_at))::int
                      AS elapsed_seconds
             FROM pipeline_runs
@@ -229,8 +229,8 @@ async def get_pipeline_run(
     run_result = await session.execute(
         text(
             """
-            SELECT run_id, engine, started_at, finished_at, status,
-                   config, stats, error_message
+            SELECT run_id, engine_type AS engine, started_at, finished_at, status,
+                   config, result_summary AS stats, error_message
             FROM pipeline_runs
             WHERE run_id = :run_id
             """
@@ -460,8 +460,8 @@ async def _fetch_latest_run(
     result = await session.execute(
         text(
             f"""
-            SELECT run_id, engine, started_at, finished_at, status,
-                   config, stats, error_message
+            SELECT run_id, engine_type AS engine, started_at, finished_at, status,
+                   config, result_summary AS stats, error_message
             FROM pipeline_runs
             {where}
             ORDER BY started_at DESC
