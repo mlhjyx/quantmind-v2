@@ -114,46 +114,46 @@ export default function FactorEvaluation() {
           <div className="grid grid-cols-4 gap-3 mb-5">
             <MetricCard
               label="IC均值"
-              value={report.ic_mean.toFixed(4)}
-              status={Math.abs(report.ic_mean) >= 0.03 ? "good" : Math.abs(report.ic_mean) >= 0.02 ? "warning" : "alert"}
+              value={report.ic_mean != null ? report.ic_mean.toFixed(4) : "—"}
+              status={report.ic_mean != null ? (Math.abs(report.ic_mean) >= 0.03 ? "good" : Math.abs(report.ic_mean) >= 0.02 ? "warning" : "alert") : "normal"}
             />
             <MetricCard
               label="IC_IR"
-              value={report.ic_ir.toFixed(3)}
-              status={report.ic_ir >= 0.5 ? "good" : report.ic_ir >= 0.3 ? "warning" : "alert"}
+              value={report.ic_ir != null ? report.ic_ir.toFixed(3) : "—"}
+              status={report.ic_ir != null ? (report.ic_ir >= 0.5 ? "good" : report.ic_ir >= 0.3 ? "warning" : "alert") : "normal"}
             />
             <MetricCard
               label="t值 (Newey-West)"
-              value={`${report.t_stat.toFixed(2)} / ${report.newey_west_t.toFixed(2)}`}
-              status={report.t_stat >= 2.5 ? "good" : report.t_stat >= 2.0 ? "warning" : "alert"}
+              value={report.t_stat != null ? `${report.t_stat.toFixed(2)} / ${(report.newey_west_t ?? 0).toFixed(2)}` : "—"}
+              status={report.t_stat != null ? (report.t_stat >= 2.5 ? "good" : report.t_stat >= 2.0 ? "warning" : "alert") : "normal"}
             />
             <MetricCard
               label="Gate得分"
-              value={report.gate_score}
-              status={report.gate_score >= 75 ? "good" : report.gate_score >= 60 ? "warning" : "alert"}
+              value={report.gate_score ?? "—"}
+              status={report.gate_score != null ? (report.gate_score >= 75 ? "good" : report.gate_score >= 60 ? "warning" : "alert") : "normal"}
             />
           </div>
 
           <div className="grid grid-cols-4 gap-3 mb-5">
             <MetricCard
               label="FDR校正t值"
-              value={report.fdr_t_stat.toFixed(3)}
-              status={report.fdr_t_stat >= 2.0 ? "good" : "warning"}
-              subtitle={report.fdr_t_stat < 2.0 ? "FDR校正后<2.0 ⚠️" : undefined}
+              value={report.fdr_t_stat != null ? report.fdr_t_stat.toFixed(3) : "—"}
+              status={report.fdr_t_stat != null ? (report.fdr_t_stat >= 2.0 ? "good" : "warning") : "normal"}
+              subtitle={report.fdr_t_stat != null && report.fdr_t_stat < 2.0 ? "FDR校正后<2.0 ⚠️" : undefined}
             />
             <MetricCard
               label="IC半衰期"
-              value={`${report.half_life_days} 日`}
+              value={report.half_life_days != null ? `${report.half_life_days} 日` : "—"}
               status="normal"
             />
             <MetricCard
               label="覆盖率"
-              value={`${(report.coverage * 100).toFixed(1)}%`}
-              status={report.coverage >= 0.9 ? "good" : "warning"}
+              value={report.coverage != null ? `${(report.coverage * 100).toFixed(1)}%` : "—"}
+              status={report.coverage != null ? (report.coverage >= 0.9 ? "good" : "warning") : "normal"}
             />
             <MetricCard
               label="推荐调仓频率"
-              value={report.recommended_freq}
+              value={report.recommended_freq ?? "—"}
               status="normal"
             />
           </div>
