@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-28 (Sprint 1.20 进行中 — T1-T7全部完成, 1583 tests)
-> Current: Phase 1, Sprint 1.20 🔨 PT监控前端 + 生产加固 — 7/7任务完成，待commit
-> 下一步: Sprint 1.21
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅
+> Last updated: 2026-03-29 (Sprint 1.21 ✅ complete — 1632 backend + 31 frontend tests)
+> Current: Phase 1, Sprint 1.21 ✅ 全部完成(6/6任务+P1 bugfix) — 1663 tests passed
+> 下一步: Sprint 1.22
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,281(3/25, +1.63%)
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)

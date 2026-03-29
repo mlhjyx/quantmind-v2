@@ -21,6 +21,7 @@ import {
   MOCK_IC_TRENDS,
 } from "@/api/mockFactors";
 import type { FactorSummary } from "@/api/factors";
+import { STALE } from "@/api/QueryProvider";
 
 const STATUS_STAT_COLORS: Record<string, string> = {
   active:   "text-green-400",
@@ -39,6 +40,7 @@ export default function FactorLibrary() {
   const { data: factors = MOCK_FACTOR_LIBRARY, isLoading: factorsLoading } = useQuery({
     queryKey: ["factor-library"],
     queryFn: getFactorLibrary,
+    staleTime: STALE.factor,
     retry: 1,
     placeholderData: MOCK_FACTOR_LIBRARY,
   });
@@ -46,6 +48,7 @@ export default function FactorLibrary() {
   const { data: stats = MOCK_FACTOR_STATS } = useQuery({
     queryKey: ["factor-library-stats"],
     queryFn: getFactorLibraryStats,
+    staleTime: STALE.factor,
     retry: 1,
     placeholderData: MOCK_FACTOR_STATS,
   });
@@ -53,6 +56,7 @@ export default function FactorLibrary() {
   const { data: correlation = MOCK_FACTOR_CORRELATION, isLoading: corrLoading } = useQuery({
     queryKey: ["factor-correlation"],
     queryFn: getFactorCorrelation,
+    staleTime: STALE.factor,
     retry: 1,
     placeholderData: MOCK_FACTOR_CORRELATION,
     enabled: activePanel === "correlation",
@@ -61,6 +65,7 @@ export default function FactorLibrary() {
   const { data: icTrends = MOCK_IC_TRENDS, isLoading: trendsLoading } = useQuery({
     queryKey: ["factor-ic-trends"],
     queryFn: getFactorICTrends,
+    staleTime: STALE.factor,
     retry: 1,
     placeholderData: MOCK_IC_TRENDS,
     enabled: activePanel === "health",

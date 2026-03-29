@@ -102,7 +102,9 @@ class FactorService:
             )
             return pd.DataFrame(columns=["code", "factor_name", "value"])
 
-        return pd.DataFrame(rows, columns=["code", "factor_name", "value"])
+        df = pd.DataFrame(rows, columns=["code", "factor_name", "value"])
+        df["value"] = df["value"].astype(float)
+        return df
 
     async def get_factor_ic(
         self,

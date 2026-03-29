@@ -9,6 +9,7 @@ import { StrategyEditor } from "@/components/strategy/StrategyEditor";
 import { StrategyPreview } from "@/components/strategy/StrategyPreview";
 import { getFactorsSummary } from "@/api/factors";
 import { listStrategies, createStrategy, updateStrategy } from "@/api/strategies";
+import { STALE } from "@/api/QueryProvider";
 import type { StrategyCreatePayload, Strategy } from "@/api/strategies";
 
 const DEFAULT_CONFIG: StrategyCreatePayload = {
@@ -47,7 +48,7 @@ export default function StrategyWorkspace() {
   const { data: factors = MOCK_FACTORS } = useQuery({
     queryKey: ["factors", "summary"],
     queryFn: getFactorsSummary,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.factor,
     retry: false,
   });
 
@@ -55,6 +56,7 @@ export default function StrategyWorkspace() {
   const { data: strategies = [] } = useQuery({
     queryKey: ["strategies"],
     queryFn: listStrategies,
+    staleTime: STALE.config,
     enabled: loadPanelOpen,
     retry: false,
   });

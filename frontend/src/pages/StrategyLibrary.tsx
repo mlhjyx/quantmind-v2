@@ -6,6 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { listStrategies, type Strategy } from "@/api/strategies";
 import { listBacktestHistory, type BacktestHistoryItem } from "@/api/backtest";
+import { STALE } from "@/api/QueryProvider";
 
 // ---- Helpers ----
 
@@ -224,7 +225,7 @@ function BacktestHistoryPanel() {
   const { data: history, isLoading } = useQuery({
     queryKey: ["backtest-history"],
     queryFn: () => listBacktestHistory(),
-    staleTime: 30_000,
+    staleTime: STALE.factor,
   });
 
   if (isLoading) {
@@ -307,7 +308,7 @@ export default function StrategyLibrary() {
   const { data: strategies, isLoading } = useQuery({
     queryKey: ["strategies"],
     queryFn: listStrategies,
-    staleTime: 30_000,
+    staleTime: STALE.config,
   });
 
   const filtered = useMemo(() => {

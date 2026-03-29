@@ -6,6 +6,8 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { getBacktestResult, type BacktestResult, type NavPoint, type MonthlyReturn } from "@/api/backtest";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { STALE } from "@/api/QueryProvider";
 
 // ---- Shared helpers ----
 
@@ -45,7 +47,7 @@ function metricColor(label: string, value: number | null | undefined): string {
 
 function TabNavCurve({ nav }: { nav: NavPoint[] }) {
   if (!nav || nav.length === 0) {
-    return <EmptyState label="净值曲线数据不可用" />;
+    return <EmptyState title="净值曲线数据不可用" />;
   }
 
   const option = {
@@ -136,7 +138,7 @@ function TabNavCurve({ nav }: { nav: NavPoint[] }) {
 // ---- Tab: Monthly Attribution ----
 
 function TabMonthlyAttribution({ monthly }: { monthly: MonthlyReturn[] }) {
-  if (!monthly || monthly.length === 0) return <EmptyState label="月度归因数据不可用" />;
+  if (!monthly || monthly.length === 0) return <EmptyState title="月度归因数据不可用" />;
 
   const years = [...new Set(monthly.map((d) => d.year))].sort();
   const months = [1,2,3,4,5,6,7,8,9,10,11,12];
@@ -203,7 +205,7 @@ function TabMonthlyAttribution({ monthly }: { monthly: MonthlyReturn[] }) {
 // ---- Tab: Holdings ----
 
 function TabHoldings({ holdings }: { holdings: BacktestResult["holdings"] }) {
-  if (!holdings || holdings.length === 0) return <EmptyState label="持仓数据不可用" />;
+  if (!holdings || holdings.length === 0) return <EmptyState title="持仓数据不可用" />;
 
   // Industry distribution
   const industryMap: Record<string, number> = {};
@@ -269,7 +271,7 @@ function TabTrades({ trades }: { trades: BacktestResult["trades"] }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
 
-  if (!trades || trades.length === 0) return <EmptyState label="交易明细不可用" />;
+  if (!trades || trades.length === 0) return <EmptyState title="交易明细不可用" />;
 
   const filtered = trades.filter((t) => filter === "all" || t.direction === filter);
   const sorted = [...filtered].sort((a, b) => {
@@ -391,7 +393,7 @@ function TabTrades({ trades }: { trades: BacktestResult["trades"] }) {
 // ---- Tab: Risk Metrics ----
 
 function TabRisk({ riskMetrics }: { riskMetrics: BacktestResult["risk_metrics"] }) {
-  if (!riskMetrics || riskMetrics.length === 0) return <EmptyState label="风险指标数据不可用" />;
+  if (!riskMetrics || riskMetrics.length === 0) return <EmptyState title="风险指标数据不可用" />;
 
   const option = {
     backgroundColor: "transparent",
@@ -435,7 +437,7 @@ function TabRisk({ riskMetrics }: { riskMetrics: BacktestResult["risk_metrics"] 
 // ---- Tab: Factor Contributions ----
 
 function TabFactorContributions({ contributions }: { contributions: BacktestResult["factor_contributions"] }) {
-  if (!contributions || contributions.length === 0) return <EmptyState label="因子贡献数据不可用" />;
+  if (!contributions || contributions.length === 0) return <EmptyState title="因子贡献数据不可用" />;
 
   const option = {
     backgroundColor: "transparent",
@@ -487,7 +489,7 @@ function TabFactorContributions({ contributions }: { contributions: BacktestResu
 // ---- Tab: WF Analysis ----
 
 function TabWFAnalysis({ windows }: { windows: BacktestResult["wf_windows"] }) {
-  if (!windows || windows.length === 0) return <EmptyState label="Walk-Forward分析数据不可用（未启用WF模式）" />;
+  if (!windows || windows.length === 0) return <EmptyState title="Walk-Forward分析数据不可用（未启用WF模式）" />;
 
   const option = {
     backgroundColor: "transparent",
@@ -607,13 +609,7 @@ function TabCompare({ currentRunId }: { currentRunId: string }) {
   );
 }
 
-// ---- Shared EmptyState ----
-
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center h-48 text-slate-500 text-sm">{label}</div>
-  );
-}
+// EmptyState is imported from @/components/ui/EmptyState
 
 // ---- Top Metric Cards ----
 
@@ -653,7 +649,7 @@ export default function BacktestResults() {
     queryFn: () => getBacktestResult(runId!),
     enabled: !!runId,
     retry: 2,
-    staleTime: 60_000,
+    staleTime: STALE.factor,
   });
 
   return (

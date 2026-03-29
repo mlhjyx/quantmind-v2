@@ -13,11 +13,13 @@
 用法:
     python scripts/verify_qmt_broker.py                    # 完整测试
     python scripts/verify_qmt_broker.py --query-only       # 仅查询(不下单)
+    python scripts/verify_qmt_broker.py --dry-run          # 离线逻辑验证(不连接miniQMT)
     python scripts/verify_qmt_broker.py --code 600519.SH   # 指定标的
 
 前置条件:
     - miniQMT客户端已启动并登录模拟账户81001102
     - 市场交易时间内(9:30-11:30, 13:00-15:00)
+    - --dry-run 模式不需要miniQMT运行（非交易日/周末可用）
 """
 
 import argparse
@@ -32,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 # xtquant嵌套路径修复（双层site-packages）
 sys.path.insert(0, str(PROJECT_ROOT / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"))
 
-from engines.broker_qmt import MiniQMTBroker
+from engines.broker_qmt import MiniQMTBroker  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -189,7 +191,7 @@ def verify_full_cycle(broker: MiniQMTBroker, code: str, volume: int) -> None:
             print(f"  *** 卖出成交! 均价={sell_order['traded_price']:.3f} ***")
             break
         elif status in (54, 57):
-            print(f"  *** 卖出被拒绝/撤销 ***")
+            print("  *** 卖出被拒绝/撤销 ***")
             return
     else:
         print("  *** 超时未成交，尝试撤单 ***")
@@ -210,10 +212,75 @@ def verify_full_cycle(broker: MiniQMTBroker, code: str, volume: int) -> None:
     print(f"{'='*60}")
 
 
+def verify_dry_run(qmt_path: str, account: str, code: str) -> None:
+    """离线逻辑验证：检查环境配置是否正确，不连接miniQMT。
+
+    适用场景：周末/非交易时段快速确认配置路径和导入是否正常。
+    """
+    import importlib
+    import importlib.util
+
+    step(0, "离线逻辑验证 (--dry-run 模式)")
+    print("  注意: 本模式不连接miniQMT，仅验证环境配置")
+    print()
+
+    all_ok = True
+
+    # 1. 检查 qmt_path 目录
+    from pathlib import Path
+    qmt_path_obj = Path(qmt_path)
+    if qmt_path_obj.exists():
+        print(f"  [OK] QMT路径存在: {qmt_path}")
+    else:
+        print(f"  [WARN] QMT路径不存在: {qmt_path}")
+        print("         miniQMT未启动或路径错误，实盘前请确认")
+        all_ok = False
+
+    # 2. 检查 xtquant 可导入
+    xtquant_spec = importlib.util.find_spec("xtquant")
+    if xtquant_spec is not None:
+        print("  [OK] xtquant 模块可导入")
+        try:
+            import xtquant  # noqa: F401
+            print("  [OK] xtquant import 成功")
+        except Exception as e:
+            print(f"  [WARN] xtquant import 异常: {e}")
+            all_ok = False
+    else:
+        print("  [WARN] xtquant 模块未找到")
+        print("         请确认 .venv 路径或 xtquant_path.pth 配置")
+        all_ok = False
+
+    # 3. 检查 MiniQMTBroker 可实例化（不连接）
+    try:
+        broker = MiniQMTBroker(qmt_path=qmt_path, account_id=account)
+        print(f"  [OK] MiniQMTBroker 实例化成功 (account={account})")
+        del broker
+    except Exception as e:
+        print(f"  [FAIL] MiniQMTBroker 实例化失败: {e}")
+        all_ok = False
+
+    # 4. 检查合约格式
+    if "." in code and code.split(".")[-1] in ("SZ", "SH", "BJ"):
+        print(f"  [OK] 合约代码格式正确: {code}")
+    else:
+        print(f"  [WARN] 合约代码格式可能有误: {code} (期望如 000001.SZ)")
+        all_ok = False
+
+    print()
+    status = "通过" if all_ok else "部分检查未通过（见 WARN/FAIL）"
+    print(f"  干跑验证结果: {status}")
+    print("  实盘前请确保 miniQMT 客户端启动并登录模拟账户")
+
+
 def main() -> None:
     """主入口。"""
     parser = argparse.ArgumentParser(description="miniQMT Broker全链路验证")
     parser.add_argument("--query-only", action="store_true", help="仅查询不下单")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="离线逻辑验证（不连接miniQMT，周末/非交易时段可用）",
+    )
     parser.add_argument("--code", default="000001.SZ", help="测试标的(默认: 000001.SZ 平安银行)")
     parser.add_argument("--volume", type=int, default=100, help="测试数量(默认: 100股)")
     parser.add_argument(
@@ -223,12 +290,22 @@ def main() -> None:
     parser.add_argument("--account", default="81001102", help="资金账号")
     args = parser.parse_args()
 
-    print(f"miniQMT Broker 验证脚本")
+    print("miniQMT Broker 验证脚本")
     print(f"QMT路径: {args.qmt_path}")
     print(f"账号: {args.account}")
     print(f"标的: {args.code}")
     print(f"数量: {args.volume}股")
-    print(f"模式: {'仅查询' if args.query_only else '完整买卖周期'}")
+    if args.dry_run:
+        print("模式: 离线干跑验证")
+    elif args.query_only:
+        print("模式: 仅查询")
+    else:
+        print("模式: 完整买卖周期")
+
+    # --dry-run: 不需要 miniQMT 运行
+    if args.dry_run:
+        verify_dry_run(args.qmt_path, args.account, args.code)
+        return
 
     broker = MiniQMTBroker(
         qmt_path=args.qmt_path,

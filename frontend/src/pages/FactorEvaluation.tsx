@@ -13,6 +13,7 @@ import TabAnnual from "@/components/factor/evaluation/TabAnnual";
 import TabRegimeStats from "@/components/factor/evaluation/TabRegimeStats";
 import { getFactorReport } from "@/api/factors";
 import { MOCK_FACTOR_REPORTS, MOCK_FACTOR_LIBRARY } from "@/api/mockFactors";
+import { STALE } from "@/api/QueryProvider";
 
 type TabKey = "ic" | "groups" | "decay" | "correlation" | "annual" | "regime";
 
@@ -41,6 +42,7 @@ export default function FactorEvaluation() {
   const { data: report, isLoading, isError } = useQuery({
     queryKey: ["factor-report", factorId],
     queryFn: () => getFactorReport(factorId),
+    staleTime: STALE.factor,
     retry: 1,
     placeholderData: MOCK_FACTOR_REPORTS[factorId] ?? MOCK_FACTOR_REPORTS["turnover_mean_20"],
   });

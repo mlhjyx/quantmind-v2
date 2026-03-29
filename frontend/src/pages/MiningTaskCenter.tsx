@@ -454,6 +454,7 @@ export default function MiningTaskCenter() {
 
           {!loading && tasks.length > 0 && (
             <GlassCard padding="sm">
+              <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-white/10 text-slate-400">
@@ -594,6 +595,7 @@ export default function MiningTaskCenter() {
                   })}
                 </tbody>
               </table>
+              </div>
             </GlassCard>
           )}
         </div>
