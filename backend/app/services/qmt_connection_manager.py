@@ -124,6 +124,7 @@ class QMTConnectionManager:
         }
 
         # live模式且已连接时，尝试查询资产验证连接活跃
+        # P1-2 fix: 探测失败不修改_state，只在result中标记
         if self._state == "connected" and self._broker is not None:
             try:
                 asset = self._broker.query_asset()
@@ -136,8 +137,7 @@ class QMTConnectionManager:
             except Exception as e:
                 result["is_healthy"] = False
                 result["probe_error"] = str(e)
-                self._state = "error"
-                self._last_error = f"健康检查探测失败: {e}"
+                logger.warning(f"[QMTManager] 健康探测失败(不影响连接状态): {e}")
         else:
             result["is_healthy"] = self._state == "disabled"  # paper模式视为健康
 

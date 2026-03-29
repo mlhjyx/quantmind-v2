@@ -46,6 +46,7 @@ class _OrderTracker:
     filled_amount: float = 0.0
     is_done: bool = False
     error: str | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
     event: threading.Event = field(default_factory=threading.Event)
 
 
@@ -54,6 +55,7 @@ class _FillCollector:
 
     注册为MiniQMTBroker的trade/order/error回调,
     将异步成交事件同步到主线程的_OrderTracker。
+    所有tracker字段的修改都在tracker.lock内完成（P0-2 fix）。
     """
 
     def __init__(self) -> None:
@@ -72,12 +74,13 @@ class _FillCollector:
             tracker = self._trackers.get(order_id)
         if tracker is None:
             return
-        tracker.filled_volume += trade.get("traded_volume", 0)
-        tracker.filled_price = trade.get("traded_price", 0)
-        tracker.filled_amount += trade.get("traded_amount", 0)
-        if tracker.filled_volume >= tracker.volume:
-            tracker.is_done = True
-            tracker.event.set()
+        with tracker.lock:
+            tracker.filled_volume += trade.get("traded_volume", 0)
+            tracker.filled_price = trade.get("traded_price", 0)
+            tracker.filled_amount += trade.get("traded_amount", 0)
+            if tracker.filled_volume >= tracker.volume:
+                tracker.is_done = True
+                tracker.event.set()
 
     def on_order(self, order: dict[str, Any]) -> None:
         """委托状态变化回调。
@@ -93,14 +96,14 @@ class _FillCollector:
         if tracker is None:
             return
         status = order.get("order_status")
-        # 终态：已撤/废单/部撤
-        if status in (56, 57, 50):
-            tracker.is_done = True
-            if status == 57:
-                tracker.error = f"废单: {order.get('order_remark', '')}"
-            elif status == 56:
-                tracker.error = "已撤单"
-            tracker.event.set()
+        with tracker.lock:
+            # 终态：已撤/废单/部撤 — 标记done但不覆盖已有的filled数据
+            if status in (56, 57, 50):
+                tracker.is_done = True
+                if status == 57:
+                    tracker.error = f"废单: {order.get('order_remark', '')}"
+                # 56(已撤)/50(部撤) 不设error，因为可能有部分成交
+                tracker.event.set()
 
     def on_error(self, error: dict[str, Any]) -> None:
         """下单失败回调。"""
@@ -109,9 +112,10 @@ class _FillCollector:
             tracker = self._trackers.get(order_id)
         if tracker is None:
             return
-        tracker.is_done = True
-        tracker.error = f"下单失败: {error.get('error_msg', 'unknown')}"
-        tracker.event.set()
+        with tracker.lock:
+            tracker.is_done = True
+            tracker.error = f"下单失败: {error.get('error_msg', 'unknown')}"
+            tracker.event.set()
 
     def unregister_all(self) -> None:
         """清理所有跟踪器。"""
@@ -134,10 +138,14 @@ class QMTExecutionAdapter:
         """
         self._broker = broker
         self._collector = _FillCollector()
+        # 保存回调引用以便cleanup时注销（P0-3 fix）
+        self._on_trade = self._collector.on_trade
+        self._on_order = self._collector.on_order
+        self._on_error = self._collector.on_error
         # 注册回调
-        self._broker.register_trade_callback(self._collector.on_trade)
-        self._broker.register_order_callback(self._collector.on_order)
-        self._broker.register_error_callback(self._collector.on_error)
+        self._broker.register_trade_callback(self._on_trade)
+        self._broker.register_order_callback(self._on_order)
+        self._broker.register_error_callback(self._on_error)
 
     def execute_rebalance(
         self,
@@ -236,7 +244,7 @@ class QMTExecutionAdapter:
                 ))
                 logger.info(f"[QMTAdapter] 买入失败，加入pending: {code} {shares}股")
 
-        # 6. 清理回调
+        # 6. 清理trackers（回调在cleanup中注销）
         self._collector.unregister_all()
 
         logger.info(
@@ -255,6 +263,9 @@ class QMTExecutionAdapter:
     ) -> Fill | None:
         """下单并等待成交。
 
+        超时后无论是否有部分成交都会撤单（P0-1 fix）。
+        基于实际filled_volume构建Fill，部分成交也记录。
+
         Args:
             code: 股票代码。
             direction: "buy"或"sell"。
@@ -263,7 +274,7 @@ class QMTExecutionAdapter:
             exec_date: 执行日期。
 
         Returns:
-            Fill对象，失败/超时返回None。
+            Fill对象（含部分成交），完全失败返回None。
         """
         order_id = self._broker.place_order(
             code=code,
@@ -291,28 +302,39 @@ class QMTExecutionAdapter:
         # 等待成交或超时
         tracker.event.wait(timeout=ORDER_TIMEOUT_SEC)
 
-        if tracker.error:
-            logger.warning(
-                f"[QMTAdapter] 订单异常: {code} {direction} "
-                f"order_id={order_id}, error={tracker.error}"
-            )
-            return None
+        # P0-1 fix: 超时后总是撤单（无论部分成交与否），防止悬空委托
+        with tracker.lock:
+            filled_volume = tracker.filled_volume
+            filled_price = tracker.filled_price
+            error = tracker.error
+            is_fully_filled = filled_volume >= volume
 
-        if tracker.filled_volume <= 0:
-            # 超时未成交，尝试撤单
-            logger.warning(
-                f"[QMTAdapter] 超时未成交: {code} {direction} "
-                f"order_id={order_id}, 尝试撤单"
+        if not is_fully_filled:
+            # 未完全成交（超时或部撤） → 撤单
+            logger.info(
+                f"[QMTAdapter] 未完全成交: {code} {direction} "
+                f"filled={filled_volume}/{volume}, 撤单"
             )
             self._broker.cancel_order(order_id)
-            # 给撤单一点时间
-            time.sleep(2)
+            time.sleep(2)  # 等待撤单回调
+
+        # 废单/下单失败 且 无任何成交 → 返回None
+        if error and filled_volume <= 0:
+            logger.warning(
+                f"[QMTAdapter] 订单异常: {code} {direction} "
+                f"order_id={order_id}, error={error}"
+            )
             return None
 
-        # 构建Fill
-        filled_price = tracker.filled_price
-        filled_shares = tracker.filled_volume
-        amount = filled_price * filled_shares
+        # 完全未成交（超时+撤单成功） → 返回None
+        if filled_volume <= 0:
+            logger.warning(
+                f"[QMTAdapter] 超时未成交: {code} {direction} order_id={order_id}"
+            )
+            return None
+
+        # 构建Fill（含部分成交）
+        amount = filled_price * filled_volume
 
         if direction == "sell":
             commission = max(amount * COMMISSION_RATE, 5.0)
@@ -329,12 +351,18 @@ class QMTExecutionAdapter:
 
         slippage_bps = (slippage / price * 10000) if price > 0 else 0
 
+        if filled_volume < volume:
+            logger.info(
+                f"[QMTAdapter] 部分成交: {code} {direction} "
+                f"{filled_volume}/{volume}股 @{filled_price:.3f}"
+            )
+
         return Fill(
             code=code,
             trade_date=exec_date,
             direction=direction,
             price=filled_price,
-            shares=filled_shares,
+            shares=filled_volume,
             amount=amount,
             commission=commission,
             tax=tax,
@@ -343,5 +371,14 @@ class QMTExecutionAdapter:
         )
 
     def cleanup(self) -> None:
-        """清理回调注册（执行完毕后调用）。"""
+        """清理回调注册和trackers（P0-3 fix）。"""
+        import contextlib
+
         self._collector.unregister_all()
+        # 注销broker上的回调，防止多次实例化时回调累积
+        with contextlib.suppress(ValueError, AttributeError):
+            self._broker._trade_callbacks.remove(self._on_trade)
+        with contextlib.suppress(ValueError, AttributeError):
+            self._broker._order_callbacks.remove(self._on_order)
+        with contextlib.suppress(ValueError, AttributeError):
+            self._broker._error_callbacks.remove(self._on_error)

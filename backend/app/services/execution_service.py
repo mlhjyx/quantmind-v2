@@ -121,7 +121,23 @@ class ExecutionService:
             # 对应 script L1492-1508
             logger.info("[ExecutionService] L1 DELAY, 月度调仓延迟")
             is_rebalance = False
-            if not dry_run:
+            if execution_mode == "live":
+                # P0-4 fix: live模式L1不支持pending恢复，发告警
+                logger.error(
+                    "[ExecutionService] live模式触发L1延迟, "
+                    "live路径无pending恢复机制, 告警通知"
+                )
+                try:
+                    from app.services.notification_service import send_alert
+                    send_alert(
+                        level="P1",
+                        title="Live模式L1熔断告警",
+                        content="live模式触发L1延迟调仓，需要人工介入。"
+                        "当前版本live路径不支持自动pending恢复。",
+                    )
+                except Exception:
+                    logger.exception("[ExecutionService] L1告警发送失败")
+            elif not dry_run:
                 self._save_pending_rebalance(
                     conn, signal_date or exec_date, hedged_target,
                 )
@@ -285,39 +301,37 @@ class ExecutionService:
         strategy_id: str,
         fills: list[Fill],
     ) -> None:
-        """保存live模式的成交记录到trade_log。"""
+        """保存live模式的成交记录到trade_log。
+
+        不commit，由调用方统一管理事务（与paper路径一致）。
+        """
         if not fills:
             return
         now_utc = datetime.now(UTC)
         cur = conn.cursor()
-        try:
-            for fill in fills:
-                cur.execute(
-                    """INSERT INTO trade_log
-                       (code, trade_date, strategy_id, direction, quantity,
-                        fill_price, slippage_bps, commission, stamp_tax,
-                        total_cost, execution_mode, executed_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', %s)
-                       ON CONFLICT DO NOTHING""",
-                    (
-                        fill.code,
-                        fill.trade_date,
-                        strategy_id,
-                        fill.direction,
-                        fill.shares,
-                        float(fill.price),
-                        float(fill.slippage),
-                        float(fill.commission),
-                        float(fill.tax),
-                        float(fill.total_cost),
-                        now_utc,
-                    ),
-                )
-            conn.commit()
-            logger.info(f"[ExecutionService] live trade_log已保存: {len(fills)}笔")
-        except Exception:
-            conn.rollback()
-            raise
+        for fill in fills:
+            cur.execute(
+                """INSERT INTO trade_log
+                   (code, trade_date, strategy_id, direction, quantity,
+                    fill_price, slippage_bps, commission, stamp_tax,
+                    total_cost, execution_mode, executed_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', %s)
+                   ON CONFLICT DO NOTHING""",
+                (
+                    fill.code,
+                    fill.trade_date,
+                    strategy_id,
+                    fill.direction,
+                    fill.shares,
+                    float(fill.price),
+                    float(fill.slippage),
+                    float(fill.commission),
+                    float(fill.tax),
+                    float(fill.total_cost),
+                    now_utc,
+                ),
+            )
+        logger.info(f"[ExecutionService] live trade_log已保存: {len(fills)}笔")
 
     def process_pending_orders(
         self,

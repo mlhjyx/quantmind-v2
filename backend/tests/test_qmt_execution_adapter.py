@@ -32,6 +32,14 @@ def _make_mock_broker(
     broker.get_cash.return_value = cash
     broker.get_total_value.return_value = total_asset
 
+    # 真实回调列表（P0-3测试需要）
+    broker._trade_callbacks = []
+    broker._order_callbacks = []
+    broker._error_callbacks = []
+    broker.register_trade_callback.side_effect = lambda fn: broker._trade_callbacks.append(fn)
+    broker.register_order_callback.side_effect = lambda fn: broker._order_callbacks.append(fn)
+    broker.register_error_callback.side_effect = lambda fn: broker._error_callbacks.append(fn)
+
     _order_counter = [0]
 
     def mock_place_order(code, direction, volume, price, price_type="limit", remark=""):
@@ -234,6 +242,124 @@ class TestQMTExecutionAdapter:
 
         assert all(d == "sell" for d in call_directions)
         assert len(pending) == 0  # 卖出失败不产生pending
+
+
+    def test_partial_fill_then_cancel(self) -> None:
+        """部分成交后超时 → 撤单 + 返回部分成交的Fill。"""
+        broker = _make_mock_broker(total_asset=100_000.0, cash=100_000.0)
+        cancel_called: list[int] = []
+
+        def place_and_partial(code, direction, volume, price, price_type="limit", remark=""):
+            oid = 10
+            # 模拟50%成交（100/200），不触发done
+            threading.Timer(0.01, lambda: adapter._collector.on_trade({
+                "order_id": oid,
+                "traded_volume": volume // 2,
+                "traded_price": price,
+                "traded_amount": (volume // 2) * price,
+            })).start()
+            return oid
+
+        def mock_cancel(order_id):
+            cancel_called.append(order_id)
+            return True
+
+        broker.place_order.side_effect = place_and_partial
+        broker.cancel_order.side_effect = mock_cancel
+        adapter = QMTExecutionAdapter(broker)
+
+        # 用极短超时（避免测试慢）
+        import engines.qmt_execution_adapter as mod
+        orig_timeout = mod.ORDER_TIMEOUT_SEC
+        mod.ORDER_TIMEOUT_SEC = 0.5
+        try:
+            fills, pending = adapter.execute_rebalance(
+                {"000001.SZ": 0.5},
+                date(2026, 3, 29),
+                {"000001.SZ": 10.0},
+            )
+        finally:
+            mod.ORDER_TIMEOUT_SEC = orig_timeout
+
+        # 应有部分成交的Fill
+        assert len(fills) == 1
+        assert fills[0].shares > 0
+        assert fills[0].shares < 5000  # 不是全量
+        # 应调用了cancel_order
+        assert len(cancel_called) == 1
+        assert cancel_called[0] == 10
+
+    def test_concurrent_trade_callbacks(self) -> None:
+        """并发on_trade回调正确累积filled_volume（P0-2验证）。"""
+        collector = _FillCollector()
+        tracker = _OrderTracker(
+            order_id=5, code="000001.SZ", direction="buy",
+            volume=300, price=10.0,
+        )
+        collector.register(tracker)
+
+        # 模拟3个并发成交回调，各100股
+        threads = []
+        for i in range(3):
+            t = threading.Thread(target=collector.on_trade, args=({
+                "order_id": 5,
+                "traded_volume": 100,
+                "traded_price": 10.0 + i * 0.01,
+                "traded_amount": 100 * (10.0 + i * 0.01),
+            },))
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert tracker.filled_volume == 300
+        assert tracker.is_done
+        assert tracker.event.is_set()
+
+    def test_cleanup_unregisters_callbacks(self) -> None:
+        """cleanup注销broker回调（P0-3验证）。"""
+        broker = _make_mock_broker()
+        adapter = QMTExecutionAdapter(broker)
+
+        # 注册后应有回调
+        assert len(broker._trade_callbacks) == 1
+        assert len(broker._order_callbacks) == 1
+        assert len(broker._error_callbacks) == 1
+
+        adapter.cleanup()
+
+        # cleanup后应已注销
+        assert len(broker._trade_callbacks) == 0
+        assert len(broker._order_callbacks) == 0
+        assert len(broker._error_callbacks) == 0
+
+    def test_cancel_with_partial_fill_no_error(self) -> None:
+        """部撤(status=50)不设error，部分成交仍返回Fill。"""
+        collector = _FillCollector()
+        tracker = _OrderTracker(
+            order_id=6, code="000001.SZ", direction="buy",
+            volume=200, price=10.0,
+        )
+        collector.register(tracker)
+
+        # 先收到100股成交
+        collector.on_trade({
+            "order_id": 6,
+            "traded_volume": 100,
+            "traded_price": 10.05,
+            "traded_amount": 1005.0,
+        })
+        # 再收到部撤通知
+        collector.on_order({
+            "order_id": 6,
+            "order_status": 50,  # 部撤
+        })
+
+        assert tracker.is_done
+        assert tracker.error is None  # 部撤不设error
+        assert tracker.filled_volume == 100
 
 
 def _trigger_fill(adapter: QMTExecutionAdapter, order_id: int, volume: int, price: float) -> None:
