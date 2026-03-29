@@ -1,12 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.30 ✅ 前端完善 — Portfolio/Dashboard硬编码+ErrorBoundary+系统健康面板)
-> Current: Phase 1, Sprint 1.30 ✅ 完成 → 下一步: AgentConfig后端(/agent/cost-summary+/agent/model-health)或其他功能
-> 下一步候选: 1) 实现/agent/*后端端点 2) DEVELOPMENT_BLUEPRINT差距分析 3) 回测结果页面后端完善
-> 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。CRLF换行符未统一。pre-existing TS errors in test files + QMTStatusBadge
-> 本会话: Sprint 1.28-1.30 前端真数据接入: API路径+mock清除+null-safe+硬编码替换+StrategiesPanel
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅
+> Last updated: 2026-03-29 (Sprint 1.31 🔨 GP闭环生产化 + QA P1修复 + 审批→入库流程)
+> Current: Phase 1, Sprint 1.31 进行中
+> 本会话: Sprint 1.30B全系统修复 → Sprint 1.31 GP闭环
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
+> 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。pre-existing TS errors in stores.test.ts + QMTStatusBadge
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成
@@ -121,6 +120,39 @@
 3. 学到什么？→ 前端组件对null/undefined防御严重不足，API返回null时大面积崩溃
 4. 技术债？→ api/mock.ts + api/mockFactors.ts定义文件仍存在(无引用), /pipeline/status 500, Portfolio summary端点缺失
 5. 下次怎么做？→ 新建组件时强制?.防御模式，API层加统一的null→default转换
+
+---
+
+### Sprint 1.31: GP闭环生产化 + 审批→入库流程 (2026-03-29) 🔨
+
+**目标**: GP引擎从"可用"到"可运行"。QA P1修复 + 调度集成 + 审批→入库全链路。
+
+- ✅ risk.py VaR小样本修复（data_sufficient标志）
+- ✅ backtest.py Decimal序列化修复
+- 🔨 GP周期调度（beat_schedule.py 每周日22:00自动触发）
+- 🔨 审批API（approve/reject端点 + factor_onboarding入库服务）
+- 🔨 前端审批界面（PipelineConsole待审批Tab Approve/Reject按钮）
+
+---
+
+### Sprint 1.30B: 全系统健康修复 + 因子IC计算 (2026-03-29) ✅
+
+**25+文件修改，6大类底层问题修复。全22页面可用，因子IC有真实数据。**
+
+- ✅ Celery health check修复（-A app.tasks → app.tasks.celery_app）
+- ✅ 因子IC批量计算脚本（5因子×538天=2632行，bp_ratio t=20.8, turnover_mean_20 t=-24.2）
+- ✅ UUID cast修复（17处 :sid::uuid → CAST(:sid AS uuid)，Portfolio返回15持仓）
+- ✅ 3个crash页面修复（Pipeline FlowChart/MiningTaskCenter/BacktestHistory）
+- ✅ 5个因子评估Tab null-safe（TabAnnual/Correlation/GroupReturns/ICDecay/RegimeStats）
+- ✅ API响应适配（factors.ts/mining.ts/backtest.ts/strategies.ts 响应格式转换）
+- ✅ QA交叉审查通过（2个P0已修，P1本Sprint修）
+
+**复盘5问**:
+1. 完成了什么？→ 全系统从"页面能看"升级到"数据真实+底层可用"
+2. 什么做得好？→ 系统性测试22页面找出所有问题，因子IC一次性跑通
+3. 学到什么？→ SQLAlchemy text()的::uuid语法陷阱；前后端API响应格式必须在适配层转换
+4. 技术债？→ 前端API层大量any类型；Settings数据源端点未实现；AgentConfig 404
+5. 下次怎么做？→ 新端点开发时同步写API适配层+null guard，不等集成时再补
 
 ---
 

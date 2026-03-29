@@ -322,6 +322,7 @@ async def get_risk_overview(
         var_95 = cvar_95 = volatility_ann = sharpe_60 = max_dd = 0.0
         beta = 1.0
 
+    n_days = len(rows)
     return {
         "var_95": round(var_95, 6),
         "cvar_95": round(cvar_95, 6),
@@ -331,6 +332,8 @@ async def get_risk_overview(
         "max_drawdown": round(max_dd, 6),
         "circuit_level": circuit_level,
         "position_multiplier": position_multiplier,
+        "data_days": n_days,
+        "data_sufficient": n_days >= 20,
     }
 
 
