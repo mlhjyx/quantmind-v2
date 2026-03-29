@@ -20,9 +20,7 @@ import os
 import subprocess
 import sys
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,7 +37,7 @@ MIN_EXPECTED_TABLES = 40
 MIN_EXPECTED_SIZE_MB = 100.0
 
 
-def _pg_restore_list(backup_path: Path, timeout: int = 120) -> Optional[str]:
+def _pg_restore_list(backup_path: Path, timeout: int = 120) -> str | None:
     """运行 pg_restore --list，返回输出文本，失败返回 None。"""
     if not backup_path.exists():
         print(f"[ERROR] 文件不存在: {backup_path}")
@@ -161,7 +159,7 @@ def verify_single(backup_path: Path, verbose: bool = True) -> dict:
     return result
 
 
-def get_latest_backup(backup_dir: Path) -> Optional[Path]:
+def get_latest_backup(backup_dir: Path) -> Path | None:
     """返回目录中最新的备份文件（按文件名日期排序）。"""
     if not backup_dir.exists():
         return None

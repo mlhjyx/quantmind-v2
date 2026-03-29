@@ -470,7 +470,7 @@ def paired_block_bootstrap(
     """
     rng = np.random.RandomState(seed)
     T = len(lgb_rets)
-    assert T == len(base_rets), f"收益序列长度不匹配: {T} vs {len(base_rets)}"
+    assert len(base_rets) == T, f"收益序列长度不匹配: {T} vs {len(base_rets)}"
 
     # 差异序列
     d = lgb_rets - base_rets
@@ -717,9 +717,8 @@ def main():
     print("\n")
     print("=" * 80)
     print("  LightGBM OOS 评估报告")
-    print("  评估期间: {} ~ {} ({} 交易日)".format(
-        common_dates[0], common_dates[-1], len(common_dates)))
-    print("  Top-{} 等权 月度调仓 单边成本{:.1f}‰".format(TOP_N, COST_ONE_WAY * 1000))
+    print(f"  评估期间: {common_dates[0]} ~ {common_dates[-1]} ({len(common_dates)} 交易日)")
+    print(f"  Top-{TOP_N} 等权 月度调仓 单边成本{COST_ONE_WAY * 1000:.1f}‰")
     print("=" * 80)
 
     # --- 核心指标对比 ---
@@ -818,7 +817,7 @@ def main():
 
     # --- 上线决策 ---
     print("\n{:=^80}".format(" 上线决策 "))
-    print(f"上线标准: Paired Bootstrap p<0.05 + OOS Sharpe>=1.10")
+    print("上线标准: Paired Bootstrap p<0.05 + OOS Sharpe>=1.10")
     print(f"当前结果: p={boot_result['p_value']:.4f}, Sharpe={lgb_metrics['ann_sharpe']:.3f}")
 
     if all_pass:

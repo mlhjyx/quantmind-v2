@@ -35,7 +35,7 @@ import os
 import sys
 import time
 import traceback
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 # Windows UTF-8 输出修复（兼容Git Bash管道模式）
@@ -46,12 +46,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pandas as pd
+from engines.factor_engine import compute_daily_factors, save_daily_factors
+from engines.paper_broker import PaperBroker
+from engines.signal_engine import PAPER_TRADING_CONFIG
+from health_check import run_health_check
+from run_backtest import load_factor_values, load_industry, load_universe
 
 from app.config import settings
 from app.services.db import get_sync_conn
 from app.services.execution_service import ExecutionService
 from app.services.notification_service import NotificationService
-from app.services.paper_trading_service import PaperTradingService
 from app.services.risk_control_service import check_circuit_breaker_sync
 from app.services.signal_service import SignalService
 from app.services.trading_calendar import (
@@ -60,11 +64,6 @@ from app.services.trading_calendar import (
     get_prev_trading_day,
     is_trading_day,
 )
-from engines.factor_engine import compute_daily_factors, save_daily_factors
-from engines.paper_broker import PaperBroker
-from engines.signal_engine import PAPER_TRADING_CONFIG
-from health_check import run_health_check
-from run_backtest import load_factor_values, load_industry, load_universe
 
 # ── 日志配置 ──
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -277,9 +276,7 @@ def _select_fold_model(trade_date: date) -> str:
     model_dir = Path(__file__).resolve().parent.parent / "models" / "lgbm_walkforward"
     y, m = trade_date.year, trade_date.month
 
-    if y <= 2022:
-        fold_id = 1
-    elif y == 2023 and m <= 6:
+    if y <= 2022 or y == 2023 and m <= 6:
         fold_id = 1
     elif y == 2023 and m >= 7:
         fold_id = 2
@@ -302,7 +299,6 @@ def _get_lgbm_scored_universe(
 ) -> tuple[pd.DataFrame | None, int]:
     """LightGBM预测+Universe过滤。"""
     import lightgbm as lgb
-    import numpy as np  # noqa: F811
 
     SHADOW_TOP_N = 15
     FEATURE_NAMES = [
@@ -409,7 +405,7 @@ def _write_shadow_portfolio(
         conn.commit()
         logger.info(f"[SHADOW] 写入shadow_portfolio({strategy_name}): {len(df_top)}行")
     else:
-        logger.info(f"[SHADOW] dry-run模式，不写DB")
+        logger.info("[SHADOW] dry-run模式，不写DB")
 
 
 def generate_shadow_lgbm_signals(trade_date: date, conn, dry_run: bool = False) -> None:
@@ -426,7 +422,7 @@ def generate_shadow_lgbm_signals(trade_date: date, conn, dry_run: bool = False) 
     df_top["weight"] = 1.0 / top_n
 
     _write_shadow_portfolio(df_top, SHADOW_STRATEGY, trade_date, top_n, conn, dry_run)
-    logger.info(f"[SHADOW] Raw LGB影子选股完成")
+    logger.info("[SHADOW] Raw LGB影子选股完成")
 
 
 def generate_shadow_lgbm_inertia(trade_date: date, conn, dry_run: bool = False) -> None:
@@ -452,7 +448,7 @@ def generate_shadow_lgbm_inertia(trade_date: date, conn, dry_run: bool = False) 
     prev_holdings = set(prev_holdings_df["symbol_code"]) if not prev_holdings_df.empty else set()
 
     if not prev_holdings:
-        logger.info(f"[SHADOW] 无历史持仓，Inertia等同于Raw LGB（首次运行）")
+        logger.info("[SHADOW] 无历史持仓，Inertia等同于Raw LGB（首次运行）")
     else:
         logger.info(f"[SHADOW] 上期持仓: {len(prev_holdings)}只 — "
                     f"{','.join(sorted(prev_holdings))}")
@@ -481,10 +477,10 @@ def generate_shadow_lgbm_inertia(trade_date: date, conn, dry_run: bool = False) 
         turnover = len(new_holdings.symmetric_difference(prev_holdings)) / (2 * top_n)
         logger.info(f"[SHADOW] 换手率: {turnover:.1%}, 留存: {len(retained)}/{top_n}")
     else:
-        logger.info(f"[SHADOW] 首次建仓，换手率: 100%")
+        logger.info("[SHADOW] 首次建仓，换手率: 100%")
 
     _write_shadow_portfolio(df_top, SHADOW_STRATEGY, trade_date, top_n, conn, dry_run)
-    logger.info(f"[SHADOW] Inertia(0.7σ)影子选股完成")
+    logger.info("[SHADOW] Inertia(0.7σ)影子选股完成")
 
 
 # ════════════════════════════════════════════════════════════
@@ -553,8 +549,8 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         if skip_fetch:
             logger.info("[Step1] 跳过数据拉取")
         else:
+            from app.data_fetcher.data_loader import upsert_daily_basic, upsert_klines_daily
             from app.data_fetcher.tushare_fetcher import TushareFetcher
-            from app.data_fetcher.data_loader import upsert_klines_daily, upsert_daily_basic
 
             fetcher = TushareFetcher()
             td_str = trade_date.strftime("%Y%m%d")
@@ -688,7 +684,7 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             logger.info(f"[Step2] 计算因子 {trade_date}...")
             factor_df = compute_daily_factors(trade_date, factor_set="full", conn=conn)
             if factor_df.empty:
-                logger.error(f"[Step2] 因子计算结果为空")
+                logger.error("[Step2] 因子计算结果为空")
                 log_step(conn, "factor_calc", "failed", "因子为空")
                 conn.close()
                 sys.exit(1)
@@ -933,8 +929,8 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
             existing = cur.fetchone()[0]
             if existing < 100:
                 logger.info(f"[Step5.5] T+1日数据不足({existing}行), 拉取...")
+                from app.data_fetcher.data_loader import upsert_daily_basic, upsert_klines_daily
                 from app.data_fetcher.tushare_fetcher import TushareFetcher
-                from app.data_fetcher.data_loader import upsert_klines_daily, upsert_daily_basic
 
                 fetcher = TushareFetcher()
                 td_str = exec_date.strftime("%Y%m%d")
@@ -981,7 +977,7 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 cb_level=cb["level"], dry_run=dry_run,
             )
             if should_resume and resume_target:
-                logger.info(f"[DELAYED REBALANCE] L1已恢复，执行延迟月度调仓")
+                logger.info("[DELAYED REBALANCE] L1已恢复，执行延迟月度调仓")
                 hedged_target = resume_target
                 is_rebalance = True
 
@@ -1021,8 +1017,8 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
 
         # ── Step 7.5: 回填executed_at时间戳(gap_hours毕业指标) ──
         if not dry_run and fills:
-            from datetime import datetime as dt_mod, timezone as tz_mod
-            now_utc = dt_mod.now(tz_mod.utc)
+            from datetime import datetime as dt_mod
+            now_utc = dt_mod.now(UTC)
             cur = conn.cursor()
             cur.execute(
                 """UPDATE trade_log

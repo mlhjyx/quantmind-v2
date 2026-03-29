@@ -16,7 +16,7 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -169,7 +169,7 @@ def analyze_direction_a(analysis_dates, fwd_rets, existing_df, conn):
         print(f"  momentum_120 IC均值: {m120_ic:+.4f} ({m120_ic*100:+.2f}%)")
 
     # 与基线因子相关性
-    print(f"\n  与基线reversal_20的截面相关性:")
+    print("\n  与基线reversal_20的截面相关性:")
     corrs_rev = []
     for td in analysis_dates[-20:]:
         if td not in momentum_60.index:
@@ -183,7 +183,7 @@ def analyze_direction_a(analysis_dates, fwd_rets, existing_df, conn):
                 corrs_rev.append(c)
     if corrs_rev:
         print(f"    momentum_60 vs reversal_20: {np.mean(corrs_rev):+.4f}")
-        print(f"    (高正相关=与基线重叠，>0.5则无分散价值)")
+        print("    (高正相关=与基线重叠，>0.5则无分散价值)")
 
     return {
         "m60_ic": np.mean([x["ic"] for x in ics_m60]) if ics_m60 else None,
@@ -213,7 +213,7 @@ def analyze_direction_b(analysis_dates, fwd_rets, existing_df, conn):
     print("\n  评估小盘+成长因子组合...")
 
     # revenue_yoy IC已知 = -0.83% (FAIL)
-    print(f"  revenue_yoy IC = -0.83% (候选1已验证, FAIL)")
+    print("  revenue_yoy IC = -0.83% (候选1已验证, FAIL)")
 
     # 检查小盘universe内revenue_yoy的IC
     ics_small_rev = []
@@ -259,9 +259,9 @@ def analyze_direction_b(analysis_dates, fwd_rets, existing_df, conn):
         print(f"  小盘内revenue_yoy IC: {np.mean(ics_small_rev):+.4f}")
 
     # 与ln_market_cap的相关性（核心问题）
-    print(f"\n  与基线ln_market_cap的预期重叠:")
-    print(f"    小盘成长选股 ⊂ 基线小盘选股，市值维度完全重叠")
-    print(f"    唯一差异在成长因子，但revenue_yoy IC不显著")
+    print("\n  与基线ln_market_cap的预期重叠:")
+    print("    小盘成长选股 ⊂ 基线小盘选股，市值维度完全重叠")
+    print("    唯一差异在成长因子，但revenue_yoy IC不显著")
 
     return {
         "small_rev_ic": np.mean(ics_small_rev) if ics_small_rev else None,
@@ -350,7 +350,7 @@ def analyze_direction_c(analysis_dates, fwd_rets, existing_df, conn):
             if np.isfinite(ic):
                 ics_large_composite.append(ic)
 
-    print(f"\n  大盘内因子IC (top 30%市值):")
+    print("\n  大盘内因子IC (top 30%市值):")
     if ics_large_roe:
         print(f"    ROE: {np.mean(ics_large_roe):+.4f} ({np.mean(ics_large_roe)*100:+.2f}%)")
     if ics_large_vol:
@@ -359,12 +359,12 @@ def analyze_direction_c(analysis_dates, fwd_rets, existing_df, conn):
         print(f"    复合(ROE-Vol): {np.mean(ics_large_composite):+.4f} ({np.mean(ics_large_composite)*100:+.2f}%)")
 
     # 估算与基线的相关性方向
-    print(f"\n  与基线相关性分析:")
-    print(f"    基线: 小盘+低波+反转+低换手+高BP → 选的是'便宜安静的小票'")
-    print(f"    方向C: 大盘+高ROE+低波 → 选的是'优质稳健的大票'")
-    print(f"    市值维度完全相反 → 预期corr < 0 (真对冲)")
-    print(f"    但低波维度重叠 → corr不会太负")
-    print(f"    预期corr: -0.1 ~ +0.1")
+    print("\n  与基线相关性分析:")
+    print("    基线: 小盘+低波+反转+低换手+高BP → 选的是'便宜安静的小票'")
+    print("    方向C: 大盘+高ROE+低波 → 选的是'优质稳健的大票'")
+    print("    市值维度完全相反 → 预期corr < 0 (真对冲)")
+    print("    但低波维度重叠 → corr不会太负")
+    print("    预期corr: -0.1 ~ +0.1")
 
     return {
         "large_roe_ic": np.mean(ics_large_roe) if ics_large_roe else None,

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     PAPER_STRATEGY_ID: str = ""
     PAPER_INITIAL_CAPITAL: float = 1_000_000.0
 
+    # --- 远程状态API ---
+    REMOTE_API_KEY: str = ""  # 空字符串=禁用认证（仅本地开发），生产必须设置
+
     # --- 服务 ---
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000

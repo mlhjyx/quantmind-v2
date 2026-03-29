@@ -26,7 +26,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -37,16 +37,14 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.services.risk_control_service import (
+    _LEVEL_CAN_REBALANCE,
+    _LEVEL_POSITION_MULTIPLIER,
     CircuitBreakerLevel,
     CircuitBreakerState,
     CircuitBreakerThresholds,
     RiskControlService,
     RiskMetrics,
-    TransitionType,
-    _LEVEL_CAN_REBALANCE,
-    _LEVEL_POSITION_MULTIPLIER,
 )
-
 
 # ============================================================================
 # Helpers

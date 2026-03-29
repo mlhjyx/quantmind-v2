@@ -13,10 +13,9 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 import psycopg2
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))

@@ -21,10 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import numpy as np
 import pandas as pd
+from engines.factor_profile import FactorProfile
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
-from engines.factor_profile import FactorProfile
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

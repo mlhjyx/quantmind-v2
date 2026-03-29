@@ -28,7 +28,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import (
     TRADING_DAYS_PER_YEAR,
@@ -43,6 +42,8 @@ from engines.signal_engine import (
     SignalConfig,
     get_rebalance_dates,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -653,7 +654,7 @@ def main():
         combo_sharpe = calc_sharpe(combo_returns)
         combo_mdd = calc_max_drawdown(combo_nav)
 
-        print(f"\n  50/50组合 (候选1最佳50万 + 基线50万):")
+        print("\n  50/50组合 (候选1最佳50万 + 基线50万):")
         print(f"    年化收益: {combo_annual*100:>+8.2f}%")
         print(f"    Sharpe:   {combo_sharpe:>8.4f}")
         print(f"    MDD:      {combo_mdd*100:>8.2f}%")
@@ -661,7 +662,7 @@ def main():
         print(f"    vs 候选1: Sharpe {combo_sharpe - best_sharpe:>+.4f}")
 
         combo_annual_stats = calc_annual_stats(combo_nav)
-        print(f"\n  50/50组合分年度:")
+        print("\n  50/50组合分年度:")
         for year in years:
             stats = combo_annual_stats.get(year, {})
             ret = stats.get("return", float("nan"))

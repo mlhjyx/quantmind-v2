@@ -25,17 +25,16 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-import pandas as pd
-
 # 添加项目根目录到path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.factor_engine import (
     compute_batch_factors,
     compute_daily_factors,
     save_daily_factors,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
     level=logging.INFO,

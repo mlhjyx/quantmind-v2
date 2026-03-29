@@ -10,12 +10,8 @@
 
 from __future__ import annotations
 
-import math
-
 import pandas as pd
-import pytest
-
-from engines.signal_engine import PortfolioBuilder, SignalConfig, PAPER_TRADING_CONFIG
+from engines.signal_engine import PAPER_TRADING_CONFIG, PortfolioBuilder, SignalConfig
 
 
 def _make_scores(n: int) -> pd.Series:

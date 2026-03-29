@@ -481,11 +481,11 @@ def run_f1_fold(
     print(f"  [{'PASS' if pass_iter else 'FAIL'}] best_iter > 10: {best_iter}")
     print(f"  [{'PASS' if pass_ic else 'FAIL'}] OOS IC >= 0.082: {oos_ic:.4f}")
     if pass_iter and pass_ic:
-        print(f"\n  >>> PASS")
+        print("\n  >>> PASS")
     elif pass_iter and not pass_ic:
-        print(f"\n  >>> PARTIAL: 模型能学习(iter>10)但OOS IC不足")
+        print("\n  >>> PARTIAL: 模型能学习(iter>10)但OOS IC不足")
     else:
-        print(f"\n  >>> FAIL")
+        print("\n  >>> FAIL")
     print("=" * 80)
 
     return result

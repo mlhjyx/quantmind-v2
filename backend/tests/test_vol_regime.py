@@ -6,7 +6,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.vol_regime import (
     VOL_REGIME_CLIP_HIGH,
     VOL_REGIME_CLIP_LOW,

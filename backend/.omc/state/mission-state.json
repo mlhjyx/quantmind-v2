@@ -1,0 +1,241 @@
+{
+  "updatedAt": "2026-03-28T10:48:14.911Z",
+  "missions": [
+    {
+      "id": "session:6b2cfe44-dfa1-4c61-8d7c-bd5bab0d1ac2:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-03-28T06:40:42.733Z",
+      "updatedAt": "2026-03-28T10:48:14.911Z",
+      "status": "running",
+      "workerCount": 19,
+      "taskCounts": {
+        "total": 19,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 18,
+        "completed": 1,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "frontend-dev:a8ece52",
+          "role": "frontend-dev",
+          "ownership": "a8ece52f7db44a13e",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:35:41.773Z"
+        },
+        {
+          "name": "frontend-dev:a458f95",
+          "role": "frontend-dev",
+          "ownership": "a458f953146bbf6e8",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T06:40:42.746Z"
+        },
+        {
+          "name": "arch:a5cd839",
+          "role": "arch",
+          "ownership": "a5cd839c1b0d799d0",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T06:40:43.225Z"
+        },
+        {
+          "name": "arch:ac2d966",
+          "role": "arch",
+          "ownership": "ac2d9667a0be5648a",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T06:40:43.238Z"
+        },
+        {
+          "name": "alpha-miner:a771156",
+          "role": "alpha-miner",
+          "ownership": "a771156f888520769",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T06:40:43.818Z"
+        },
+        {
+          "name": "frontend-dev:a52b305",
+          "role": "frontend-dev",
+          "ownership": "a52b30550a9b7ec5b",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T07:12:31.739Z"
+        },
+        {
+          "name": "arch:a7ac3d1",
+          "role": "arch",
+          "ownership": "a7ac3d1b60213e655",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T07:12:31.916Z"
+        },
+        {
+          "name": "alpha-miner:a6f6921",
+          "role": "alpha-miner",
+          "ownership": "a6f69218f006fe490",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T07:12:32.763Z"
+        },
+        {
+          "name": "frontend-dev:abcf494",
+          "role": "frontend-dev",
+          "ownership": "abcf4945322bf3717",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T08:55:39.343Z"
+        },
+        {
+          "name": "arch:a9f80a8",
+          "role": "arch",
+          "ownership": "a9f80a8c583f10a34",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T08:55:39.503Z"
+        },
+        {
+          "name": "alpha-miner:a90e64f",
+          "role": "alpha-miner",
+          "ownership": "a90e64f3ce3f62da8",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T08:55:39.869Z"
+        },
+        {
+          "name": "qa-tester:a6fb1a3",
+          "role": "qa-tester",
+          "ownership": "a6fb1a3000fb33887",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T08:56:13.469Z"
+        },
+        {
+          "name": "ml-engineer:a3a7a0b",
+          "role": "ml-engineer",
+          "ownership": "a3a7a0bb17184a0e5",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:13:08.008Z"
+        },
+        {
+          "name": "qa-tester:a2af23e",
+          "role": "qa-tester",
+          "ownership": "a2af23eecdd899ac6",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:13:22.210Z"
+        },
+        {
+          "name": "frontend-dev:a6a96ad",
+          "role": "frontend-dev",
+          "ownership": "a6a96ad5eeeb7bf5b",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:36:16.128Z"
+        },
+        {
+          "name": "alpha-miner:afdd4ca",
+          "role": "alpha-miner",
+          "ownership": "afdd4ca403f7ad528",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:36:16.978Z"
+        },
+        {
+          "name": "arch:a1f6a58",
+          "role": "arch",
+          "ownership": "a1f6a58a25137baa7",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:36:17.032Z"
+        },
+        {
+          "name": "qa-tester:affd191",
+          "role": "qa-tester",
+          "ownership": "affd191ba6b0b7f1a",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:39:17.637Z"
+        },
+        {
+          "name": "qa-tester:a7cc020",
+          "role": "qa-tester",
+          "ownership": "a7cc020a57d23cbd0",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-03-28T10:48:14.911Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-start:a1f6a58a25137baa7:2026-03-28T10:36:17.032Z",
+          "at": "2026-03-28T10:36:17.032Z",
+          "kind": "update",
+          "agent": "arch:a1f6a58",
+          "detail": "started arch:a1f6a58",
+          "sourceKey": "session-start:a1f6a58a25137baa7"
+        },
+        {
+          "id": "session-start:affd191ba6b0b7f1a:2026-03-28T10:39:17.637Z",
+          "at": "2026-03-28T10:39:17.637Z",
+          "kind": "update",
+          "agent": "qa-tester:affd191",
+          "detail": "started qa-tester:affd191",
+          "sourceKey": "session-start:affd191ba6b0b7f1a"
+        },
+        {
+          "id": "session-start:a7cc020a57d23cbd0:2026-03-28T10:48:14.911Z",
+          "at": "2026-03-28T10:48:14.911Z",
+          "kind": "update",
+          "agent": "qa-tester:a7cc020",
+          "detail": "started qa-tester:a7cc020",
+          "sourceKey": "session-start:a7cc020a57d23cbd0"
+        }
+      ]
+    }
+  ]
+}

@@ -20,14 +20,13 @@
 import sys
 import time
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
-import pandas as pd
 import psycopg2
 
 from app.config import settings
@@ -184,12 +183,12 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
     if has_rebalance:
         details.append(f"  [1] 月度调仓: YES (trade_log {rebal_days}日有交易, signals {signal_rebal}日标记rebalance)")
     else:
-        details.append(f"  [1] 月度调仓: NO -- 本月无调仓记录")
+        details.append("  [1] 月度调仓: NO -- 本月无调仓记录")
         # 首月（4月）允许无调仓（如果月初不在月末调仓日）
         # 非首月没有调仓是异常
         if month_key != "2025-04":
             all_pass = False
-            details.append(f"      ** FAIL: 非首月应有至少1次调仓")
+            details.append("      ** FAIL: 非首月应有至少1次调仓")
 
     # ── 检查2: 持仓数量是否≤20？ ──
     cur.execute(
@@ -226,7 +225,7 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
             all_pass = False
             details.append(f"      ** FAIL: {len(over20_days)}天持仓>20: {[(str(d), n) for d, n in over20_days[:5]]}")
     else:
-        details.append(f"  [2] 持仓数量: 无快照数据")
+        details.append("  [2] 持仓数量: 无快照数据")
 
     # ── 检查3: NAV是否合理？(正值且与初始资金偏差<50%) ──
     cur.execute(
@@ -266,7 +265,7 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
             all_pass = False
             details.append(f"      ** FAIL: {neg_nav_days}天NAV<=0 **")
     else:
-        details.append(f"  [3] NAV: 无数据")
+        details.append("  [3] NAV: 无数据")
 
     # ── 检查4: 风控是否正确触发？(检查scheduler_task_log中circuit_breaker记录) ──
     cur.execute(
@@ -286,7 +285,7 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
         details.append(f"  [4] 风控记录: {len(cb_logs)}条 ({summary_str})")
     else:
         # 没有circuit_breaker记录也是正常的（意味着没触发熔断）
-        details.append(f"  [4] 风控记录: 0条 (无熔断触发，正常)")
+        details.append("  [4] 风控记录: 0条 (无熔断触发，正常)")
 
     # ── 检查5: 本月最大单日亏损是否触发了对应级别熔断？ ──
     cur.execute(
@@ -348,7 +347,7 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
             details.append(f"  [5] 最大单日亏损: {worst_ret:+.2%} ({worst_date}) "
                            f"未达熔断阈值 (正常)")
     else:
-        details.append(f"  [5] 最大单日亏损: 无数据")
+        details.append("  [5] 最大单日亏损: 无数据")
 
     # 输出结果
     status = "PASS" if all_pass else "** FAIL **"
@@ -381,7 +380,7 @@ def main():
     trading_days = [d for d in trading_days if d in factor_dates]
 
     print("=" * 70)
-    print(f"Paper Trading 1年模拟验证（月度检查点版）")
+    print("Paper Trading 1年模拟验证（月度检查点版）")
     print(f"期间: {trading_days[0]} -> {trading_days[-1]} ({len(trading_days)}天)")
     print(f"预期月度调仓: {len(month_ends)}次")
     print(f"策略: {STRATEGY_ID}")
@@ -640,20 +639,20 @@ def main():
     if ghost_days:
         print(f"  WARNING: 异常持仓天数: {len(ghost_days)} (首个: {ghost_days[0]})")
     else:
-        print(f"  持仓全部在10-30只范围: OK")
+        print("  持仓全部在10-30只范围: OK")
     conn.close()
 
     # 5. 风控事件
     if circuit_breaker_events:
-        print(f"\n  风控事件明细:")
+        print("\n  风控事件明细:")
         for td, level, reason in circuit_breaker_events:
             print(f"    {td} {level}: {reason}")
     else:
-        print(f"  风控熔断: 0次触发 OK")
+        print("  风控熔断: 0次触发 OK")
 
     # 6. 错误清单
     if errors:
-        print(f"\n  错误清单:")
+        print("\n  错误清单:")
         for td, phase, msg in errors[:10]:
             print(f"    {td} [{phase}]: {msg[:60]}")
         if len(errors) > 10:

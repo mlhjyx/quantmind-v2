@@ -11,8 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
-from unittest.mock import MagicMock, call, patch
-
+from unittest.mock import MagicMock
 
 # ── Step 1.6 逻辑内联提取 (与 run_paper_trading.py 一致) ──
 

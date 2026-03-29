@@ -5,12 +5,14 @@ CAPM residual std over 60-day rolling window.
 Direction: -1 (low IVOL outperforms high IVOL)
 """
 
-import pandas as pd
-import numpy as np
-import psycopg2
-from scipy import stats
 import time
 import warnings
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 import sys
 from pathlib import Path
@@ -214,7 +216,7 @@ def main():
     print(f"  Months:      {len(ic_df)}")
 
     # Annual breakdown
-    print(f"\n── Annual Breakdown ──")
+    print("\n── Annual Breakdown ──")
     print(f"  {'Year':<6} {'IC_Mean':>8} {'IC_Std':>8} {'IC_IR':>8} {'t-stat':>8} {'IC>0%':>6} {'N':>4}")
     print(f"  {'-'*50}")
     for year, grp in ic_df.groupby('year'):
@@ -226,7 +228,7 @@ def main():
         print(f"  {year:<6} {ym:>8.4f} {ys:>8.4f} {yir:>8.4f} {yt:>8.2f} {yp:>5.1f}% {len(grp):>4}")
 
     # ── 8. Correlation with existing 5 factors ──
-    print(f"\n── Correlation with Existing Factors (monthly cross-section rank corr) ──")
+    print("\n── Correlation with Existing Factors (monthly cross-section rank corr) ──")
     conn2 = psycopg2.connect(DB_URI)
 
     # Pick 5 key factors and 3 sample dates for speed
@@ -275,7 +277,7 @@ def main():
         print("  No existing factors in DB or no overlap.")
 
     # ── 9. Monthly IC time series ──
-    print(f"\n── Monthly IC Time Series ──")
+    print("\n── Monthly IC Time Series ──")
     print(f"  {'Month':<10} {'IC':>8} {'N_stocks':>8}")
     print(f"  {'-'*28}")
     for _, row in ic_df.iterrows():
@@ -287,13 +289,13 @@ def main():
     print("VERDICT:")
     if abs(t_stat) > 1.96 and abs(ic_mean) > 0.02:
         print(f"  IVOL is SIGNIFICANT (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  Recommend adding to candidate pool.")
+        print("  Recommend adding to candidate pool.")
     elif abs(t_stat) > 1.64:
         print(f"  IVOL is MARGINALLY significant (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  Worth monitoring, may add with lower weight.")
+        print("  Worth monitoring, may add with lower weight.")
     else:
         print(f"  IVOL is NOT significant (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  Not recommended for current factor pool.")
+        print("  Not recommended for current factor pool.")
     print(f"{'='*70}")
 
     print(f"\nTotal time: {time.time()-t0:.1f}s")

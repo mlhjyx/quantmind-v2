@@ -19,9 +19,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engines.ml_engine import (
-    MLConfig,
-    Fold,
     FeaturePreprocessor,
+    MLConfig,
     WalkForwardTrainer,
     _add_months,
     compute_daily_ic,

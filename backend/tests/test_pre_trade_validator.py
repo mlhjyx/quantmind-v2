@@ -10,9 +10,7 @@
 from __future__ import annotations
 
 import pytest
-
 from engines.pre_trade_validator import PreTradeValidator, ValidationResult
-
 
 # ── 测试夹具 ──
 

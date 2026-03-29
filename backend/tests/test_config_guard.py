@@ -7,7 +7,6 @@
 """
 
 import pytest
-
 from engines.config_guard import assert_baseline_config, print_config_header
 from engines.signal_engine import PAPER_TRADING_CONFIG
 

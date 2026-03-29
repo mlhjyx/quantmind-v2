@@ -17,10 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import numpy as np
 import pandas as pd
+from engines.financial_factors import calc_roe_momentum_3q, load_financial_pit
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
-from engines.financial_factors import load_financial_pit, calc_roe_momentum_3q
 
 
 def get_monthly_trade_dates(conn, year: int = 2024) -> list[date]:

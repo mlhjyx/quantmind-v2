@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import psycopg2
+
 from app.config import settings
 
 DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
@@ -264,7 +265,7 @@ def main():
     for i in range(1, len(navs)):
         if navs[i][1] <= 0:
             print(f"  ❌ {navs[i][0]}: NAV={navs[i][1]} <= 0!")
-    print(f"  ✅ NAV连续性: 全部>0" if all(n[1] > 0 for n in navs) else "  ❌ NAV异常")
+    print("  ✅ NAV连续性: 全部>0" if all(n[1] > 0 for n in navs) else "  ❌ NAV异常")
 
     # 持仓连续性
     cur.execute(
@@ -278,7 +279,7 @@ def main():
     for td, cnt in pos_counts:
         if cnt < 10 or cnt > 30:
             print(f"  ⚠️ {td}: 持仓={cnt}只(异常)")
-    print(f"  ✅ 持仓连续性: 全部在10-30只范围" if all(10 <= c <= 30 for _, c in pos_counts) else "")
+    print("  ✅ 持仓连续性: 全部在10-30只范围" if all(10 <= c <= 30 for _, c in pos_counts) else "")
 
     # 熔断触发检查
     cur.execute(
@@ -291,10 +292,10 @@ def main():
         for r in cb_rows:
             print(f"    {r[0]}: {r[1]} - {r[2]}")
     else:
-        print(f"  ✅ 熔断: 未触发(L0正常)")
+        print("  ✅ 熔断: 未触发(L0正常)")
 
     conn.close()
-    print(f"\n✅ 5天模拟验证完成")
+    print("\n✅ 5天模拟验证完成")
 
 
 if __name__ == "__main__":

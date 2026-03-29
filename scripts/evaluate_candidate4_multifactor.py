@@ -15,11 +15,9 @@
     python scripts/evaluate_candidate4_multifactor.py
 """
 
-import sys
 import time
 import warnings
 from datetime import date, timedelta
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -596,7 +594,7 @@ def main() -> None:
         print(f"    IC = {best3['ic_mean']:+.4f}, IR = {best3['ic_ir']:.3f}, t = {best3['t_stat']:.2f}")
 
     # 推荐逻辑
-    print(f"\n  推荐:")
+    print("\n  推荐:")
     if combo_results:
         best = combo_results[0]
         # 检查是否显著优于单因子
@@ -608,13 +606,13 @@ def main() -> None:
                 best3 = triple_results[0]
                 print(f"    可考虑三因子: {best3['combo']} (IC_IR={best3['ic_ir']:.3f})")
             else:
-                print(f"    三因子未带来显著提升, 建议维持两因子")
+                print("    三因子未带来显著提升, 建议维持两因子")
         else:
-            print(f"    多因子合成未带来显著提升, 建议维持单因子vol_20")
+            print("    多因子合成未带来显著提升, 建议维持单因子vol_20")
             print(f"    最优合成IC_IR={best['ic_ir']:.3f}, t={best['t_stat']:.2f}")
 
     # 冗余因子提醒
-    print(f"\n  冗余因子检查:")
+    print("\n  冗余因子检查:")
     for i, f1 in enumerate(factor_names):
         for j, f2 in enumerate(factor_names):
             if i >= j:

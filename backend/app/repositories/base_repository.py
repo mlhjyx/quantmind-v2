@@ -4,8 +4,7 @@
 遵循CLAUDE.md: 所有数据库操作用async/await。
 """
 
-from datetime import date
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,22 +22,22 @@ class BaseRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def execute(self, sql: str, params: Optional[dict] = None) -> Any:
+    async def execute(self, sql: str, params: dict | None = None) -> Any:
         """执行原生SQL。"""
         result = await self.session.execute(text(sql), params or {})
         return result
 
-    async def fetch_one(self, sql: str, params: Optional[dict] = None) -> Optional[Any]:
+    async def fetch_one(self, sql: str, params: dict | None = None) -> Any | None:
         """查询单行。"""
         result = await self.session.execute(text(sql), params or {})
         return result.fetchone()
 
-    async def fetch_all(self, sql: str, params: Optional[dict] = None) -> list[Any]:
+    async def fetch_all(self, sql: str, params: dict | None = None) -> list[Any]:
         """查询多行。"""
         result = await self.session.execute(text(sql), params or {})
         return result.fetchall()
 
-    async def fetch_scalar(self, sql: str, params: Optional[dict] = None) -> Any:
+    async def fetch_scalar(self, sql: str, params: dict | None = None) -> Any:
         """查询标量值。"""
         result = await self.session.execute(text(sql), params or {})
         row = result.fetchone()

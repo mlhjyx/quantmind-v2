@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Preview__preview_stop",
+  "tool_input_preview": "{\"serverId\":\"175c0a03-bca3-46bf-a4d8-2195a039d9ad\"}",
+  "error": "Server 175c0a03-bca3-46bf-a4d8-2195a039d9ad not found",
+  "timestamp": "2026-03-29T06:33:15.491Z",
+  "retry_count": 1
+}

@@ -20,9 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.signal_engine import (
     PortfolioBuilder,
@@ -37,6 +37,8 @@ from run_backtest import (
     load_price_data,
     load_universe,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 
 def beta_hedge_returns(strat_ret: pd.Series, bench_ret: pd.Series, window: int = 60) -> pd.Series:
@@ -250,7 +252,7 @@ def main():
 
     # 稳健性
     all_sharpes = [r["sharpe"] for r in results]
-    print(f"\n📊 稳健性分析:")
+    print("\n📊 稳健性分析:")
     print(f"  全部{len(results)}种配置Sharpe: min={min(all_sharpes):.2f}, max={max(all_sharpes):.2f}, median={np.median(all_sharpes):.2f}")
     print(f"  Sharpe > 1.0: {sum(1 for s in all_sharpes if s > 1.0)}/{len(results)}")
     print(f"  Sharpe > 1.2: {sum(1 for s in all_sharpes if s > 1.2)}/{len(results)}")
@@ -258,7 +260,7 @@ def main():
     print(f"  Sharpe > 1.4: {sum(1 for s in all_sharpes if s > 1.4)}/{len(results)}")
 
     # 各维度边际效应
-    print(f"\n📊 各维度边际效应 (avg Sharpe):")
+    print("\n📊 各维度边际效应 (avg Sharpe):")
     for tn in top_ns:
         avg = np.mean([r["sharpe"] for r in results if r["top_n"] == tn])
         print(f"  Top-N={tn}: {avg:.3f}")
@@ -271,7 +273,7 @@ def main():
         print(f"  IndCap={ic:.0%}: {avg:.3f}")
 
     # 各维度MDD边际效应
-    print(f"\n📊 各维度边际效应 (avg MDD%):")
+    print("\n📊 各维度边际效应 (avg MDD%):")
     for tn in top_ns:
         avg = np.mean([r["mdd"] * 100 for r in results if r["top_n"] == tn])
         print(f"  Top-N={tn}: {avg:.1f}%")
@@ -287,16 +289,16 @@ def main():
     best = results[0]
     print(f"\n{'='*80}")
     fl = "biweek" if best["freq"] == "biweekly" else "month"
-    print(f"📋 门禁评估:")
+    print("📋 门禁评估:")
     print(f"  最优配置: Top{best['top_n']} {fl} IndCap={best['ind_cap']:.0%}")
     print(f"  Sharpe = {best['sharpe']:.2f} (门禁: >1.4→更新基线)")
-    print(f"  当前基线: Sharpe 1.28 (Top20 biweek IndCap=25%)")
+    print("  当前基线: Sharpe 1.28 (Top20 biweek IndCap=25%)")
     if best["sharpe"] > 1.4:
-        print(f"  → ✅ 超过1.4门禁，建议更新基线再进Paper Trading")
+        print("  → ✅ 超过1.4门禁，建议更新基线再进Paper Trading")
     elif best["sharpe"] > 1.28:
-        print(f"  → ⚠️ 小幅提升但未超1.4，需讨论是否更新基线")
+        print("  → ⚠️ 小幅提升但未超1.4，需讨论是否更新基线")
     else:
-        print(f"  → 保持当前基线不变")
+        print("  → 保持当前基线不变")
 
     # 保存JSON
     out_path = Path(__file__).resolve().parent / "grid_search_results.json"

@@ -5,12 +5,11 @@
 
 import sys
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _EMPTY_UUID = str(uuid.UUID(int=0))

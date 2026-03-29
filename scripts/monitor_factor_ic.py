@@ -23,9 +23,8 @@ import argparse
 import json
 import logging
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -321,9 +320,9 @@ def update_lifecycle(
     factor_name: str,
     rolling_ic_12m: float,
     today: date,
-    new_status: Optional[str] = None,
-    warning_date: Optional[date] = None,
-    retired_date: Optional[date] = None,
+    new_status: str | None = None,
+    warning_date: date | None = None,
+    retired_date: date | None = None,
 ) -> None:
     """更新factor_lifecycle表。"""
     cur = conn.cursor()
@@ -445,9 +444,10 @@ def generate_report(
 def send_dingtalk(report: str, transitions: list[dict]) -> None:
     """发送钉钉通知（需配置webhook）。"""
     try:
-        from dotenv import load_dotenv
         import os
         import urllib.request
+
+        from dotenv import load_dotenv
 
         env_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
         load_dotenv(env_path)

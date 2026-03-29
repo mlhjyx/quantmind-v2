@@ -6,9 +6,8 @@
 - Room加入/离开逻辑（通过mock sio）
 """
 
-import asyncio
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -23,7 +22,6 @@ from app.websocket.events import (
     make_status,
 )
 from app.websocket.manager import BacktestWebSocketManager, _room_name
-
 
 # ─────────────────────────────────────────────────────────
 # events.py 测试

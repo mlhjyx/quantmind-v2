@@ -430,13 +430,13 @@ def run_f1_fold(
 
     all_pass = pass_iter and pass_ic and pass_overfit
     if all_pass:
-        print(f"\n  >>> PASS: 新因子有增量价值")
+        print("\n  >>> PASS: 新因子有增量价值")
     elif pass_iter and not pass_ic:
-        print(f"\n  >>> PARTIAL: 模型能学习(iter>10)但OOS IC不足")
+        print("\n  >>> PARTIAL: 模型能学习(iter>10)但OOS IC不足")
     elif not pass_iter:
-        print(f"\n  >>> FAIL: best_iter<=10 说明新因子引入噪声")
+        print("\n  >>> FAIL: best_iter<=10 说明新因子引入噪声")
     else:
-        print(f"\n  >>> PARTIAL: 部分指标不达标")
+        print("\n  >>> PARTIAL: 部分指标不达标")
     print("=" * 80)
 
     return result
@@ -615,7 +615,7 @@ def main():
             )
 
         # IC增量
-        print(f"\nOOS IC增量 vs 对照组:")
+        print("\nOOS IC增量 vs 对照组:")
         baseline_ic = r0["oos_ic"]
         for r in results[1:]:
             delta = r["oos_ic"] - baseline_ic
@@ -637,12 +637,12 @@ def main():
         )
         if best_pass:
             print(f"\n  >>> PASS: {best_result['scheme']}有显著增量价值")
-            print(f"  >>> 建议: 进入全7-fold walk-forward验证")
+            print("  >>> 建议: 进入全7-fold walk-forward验证")
         elif best_result["best_iter"] > 10:
-            print(f"\n  >>> PARTIAL: 模型能学习新因子, 但指标不全达标")
+            print("\n  >>> PARTIAL: 模型能学习新因子, 但指标不全达标")
         else:
-            print(f"\n  >>> FAIL: 新因子无增量价值")
-            print(f"  >>> 建议: 放弃VWAP/RSRS方向或调整因子定义")
+            print("\n  >>> FAIL: 新因子无增量价值")
+            print("  >>> 建议: 放弃VWAP/RSRS方向或调整因子定义")
 
         print("=" * 110)
 

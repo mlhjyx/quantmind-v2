@@ -22,7 +22,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -220,6 +219,7 @@ def load_features(conn) -> pd.DataFrame:
 def run_f1_fold(df: pd.DataFrame, gpu: bool = True) -> dict:
     """F1 fold LightGBM: 7特征 (5基线 + roe_delta + net_margin_delta)。"""
     import lightgbm as lgb
+
     from backend.engines.ml_engine import FeaturePreprocessor, compute_icir
 
     logger.info("=" * 70)
@@ -412,11 +412,11 @@ def run_f1_fold(df: pd.DataFrame, gpu: bool = True) -> dict:
     print(f"  [{'PASS' if pass_ic else 'FAIL'}] OOS IC > {BASELINE_OOS_IC}: {oos_ic:.4f}")
 
     if pass_iter and pass_ic:
-        print(f"\n  >>> PASS: top-2 delta特征有增量价值，可考虑全量7-fold验证")
+        print("\n  >>> PASS: top-2 delta特征有增量价值，可考虑全量7-fold验证")
     elif pass_iter and not pass_ic:
         print(f"\n  >>> MARGINAL: 模型能学(iter>{2}), 但OOS IC未超基线")
     else:
-        print(f"\n  >>> FAIL: top-2 delta特征增量不足")
+        print("\n  >>> FAIL: top-2 delta特征增量不足")
 
     print("=" * 80)
 

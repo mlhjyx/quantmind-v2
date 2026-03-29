@@ -1,11 +1,10 @@
 """SimBroker volume-impact slippage integration tests (Bouchaud 2018)."""
 
 import math
+from datetime import date
 
 import pandas as pd
 import pytest
-from datetime import date
-
 from engines.backtest_engine import BacktestConfig, SimBroker
 from engines.slippage_model import SlippageConfig
 

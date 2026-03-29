@@ -6,8 +6,8 @@ Sprint 1.3b: 对factor_values表22个因子做统一评级
 import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -304,7 +304,7 @@ def main():
 
             if r['note'] == '数据不足':
                 rating = 'Insufficient'
-                reason = f"仅有IC观测数不足，无法评估"
+                reason = "仅有IC观测数不足，无法评估"
             elif fname in baseline_factors:
                 rating = 'Active'
                 reason = "v1.1基线因子"
@@ -385,7 +385,7 @@ def main():
             print(f"{row['factor_name']:<24} {ic_s:>8} {ir_s:>8} {row['years_positive']:>6} {cr_s:>8} {row['corr_partner']:<20} {row['n_days']:>6} {row['null_pct']:>6} {row['rating']:<14} {row['reason']}")
 
         # Yearly detail
-        print(f"\n年度IC明细:")
+        print("\n年度IC明细:")
         for _, row in report_df.iterrows():
             yd = row.get('yearly_detail', '')
             if yd and yd != 'N/A':

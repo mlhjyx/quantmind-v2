@@ -28,7 +28,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import (
     TRADING_DAYS_PER_YEAR,
@@ -37,12 +36,13 @@ from engines.metrics import (
     calc_sharpe,
 )
 from engines.signal_engine import (
-    FACTOR_DIRECTION,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
     get_rebalance_dates,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -501,7 +501,7 @@ def main():
     if c4_ci[1] < 0:
         print("  *** 警告: CI下界 < 0, 策略可能不赚钱! ***")
     else:
-        print(f"  CI下界 > 0: 通过")
+        print("  CI下界 > 0: 通过")
 
     # --- 基线单独 ---
     print("\n--- 基线单独 (5因子Top15, 50万) ---")
@@ -630,7 +630,7 @@ def main():
             print(f"  [FAIL] Gate 3: 组合{year}年亏损{stats['return']*100:.1f}% > 20%")
     if not any_bad_year:
         gates_passed += 1
-        print(f"  [PASS] Gate 3: 组合无单年亏损>20%")
+        print("  [PASS] Gate 3: 组合无单年亏损>20%")
 
     # Gate 4: 组合Sharpe > 基线Sharpe (候选4有增益)
     if combo_sharpe > bl_result["sharpe"]:

@@ -12,8 +12,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'backend'))
 
-from app.data_fetcher.tushare_fetcher import TushareFetcher
 from app.data_fetcher.data_loader import get_sync_conn
+from app.data_fetcher.tushare_fetcher import TushareFetcher
 
 logging.basicConfig(
     level=logging.INFO,

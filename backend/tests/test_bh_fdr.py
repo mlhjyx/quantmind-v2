@@ -13,17 +13,16 @@
 10. 与真实FACTOR_TEST_REGISTRY.md集成测试
 """
 
-import pytest
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
 from engines.config_guard import (
     bh_fdr_adjusted_threshold,
     bh_fdr_check_significance,
     get_cumulative_test_count,
     set_registry_path,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

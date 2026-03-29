@@ -25,7 +25,7 @@ CLAUDE.md原则1: 不靠猜测做技术判断——经验证，Tushare的index_d
 import argparse
 import sys
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -34,6 +34,7 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 import tushare as ts
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 
@@ -102,7 +103,7 @@ def fetch_sw_daily(ts_code: str, start_date: str, end_date: str, retry: int = 3)
         except Exception as e:
             err_msg = str(e)
             if "每分钟" in err_msg or "频次" in err_msg or "too many" in err_msg.lower():
-                print(f"  [限频] 等待60s...")
+                print("  [限频] 等待60s...")
                 time.sleep(60)
             elif "权限" in err_msg:
                 raise
@@ -207,7 +208,7 @@ def add_column_comments(conn: psycopg2.extensions.connection) -> None:
 def verify(conn: psycopg2.extensions.connection) -> None:
     """验证申万行业指数数据。"""
     with conn.cursor() as cur:
-        print(f"\n=== index_daily 申万行业指数验证 ===")
+        print("\n=== index_daily 申万行业指数验证 ===")
 
         # 总览
         cur.execute("""
@@ -235,7 +236,7 @@ def verify(conn: psycopg2.extensions.connection) -> None:
         """)
         sample = cur.fetchall()
         if sample:
-            print(f"\n食品饮料(801120.SI)最近数据抽样:")
+            print("\n食品饮料(801120.SI)最近数据抽样:")
             for r in sample:
                 print(f"  {r[0]}: close={r[1]}, pct_chg={r[2]}%, vol={r[3]}, amount={r[4]}")
 
@@ -267,7 +268,7 @@ def main() -> None:
 
     print(f"[开始] 拉取申万一级行业指数 {start_date} ~ {end_date}")
     print(f"[指数] 共 {len(SW_INDEX_CODES)} 个指数代码")
-    print(f"[API] 使用sw_daily接口（非index_daily）")
+    print("[API] 使用sw_daily接口（非index_daily）")
 
     total_rows = 0
     success_count = 0

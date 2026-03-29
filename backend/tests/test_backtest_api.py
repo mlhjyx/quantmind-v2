@@ -18,7 +18,6 @@ from httpx import ASGITransport, AsyncClient
 from app.api.backtest import _get_session
 from app.main import app
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

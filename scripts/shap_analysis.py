@@ -7,7 +7,6 @@ Sprint 1.4b: 理解为什么17特征(+12ML)的OOS IC=0.0455 < 5基线的OOS IC=0
 import logging
 import sys
 import time
-from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -18,9 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from backend.engines.ml_engine import (
+    FeaturePreprocessor,
     MLConfig,
     WalkForwardTrainer,
-    FeaturePreprocessor,
     compute_icir,
 )
 
@@ -221,7 +220,7 @@ def main():
     folds = trainer.generate_folds()
     f1 = folds[0]
 
-    print(f"\nF1 fold时间窗口:")
+    print("\nF1 fold时间窗口:")
     print(f"  Train: {f1.train_start} ~ {f1.train_end}")
     print(f"  Valid: {f1.valid_start} ~ {f1.valid_end}")
     print(f"  Test:  {f1.test_start} ~ {f1.test_end}")

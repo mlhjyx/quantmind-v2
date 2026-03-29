@@ -25,7 +25,7 @@ import gc
 import logging
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -423,11 +423,11 @@ def run_f1_fold(
     print(f"  [{'PASS' if pass_iter else 'FAIL'}] best_iter > 2: {best_iter}")
     print(f"  [{'PASS' if pass_ic else 'FAIL'}] OOS IC >= 0.0823: {oos_ic:.4f}")
     if pass_iter and pass_ic:
-        print(f"\n  >>> PASS: forecast因子有增量价值")
+        print("\n  >>> PASS: forecast因子有增量价值")
     elif pass_iter and not pass_ic:
-        print(f"\n  >>> PARTIAL: 模型能学习(iter>2)但OOS IC不足")
+        print("\n  >>> PARTIAL: 模型能学习(iter>2)但OOS IC不足")
     else:
-        print(f"\n  >>> FAIL: best_iter<=2 说明forecast因子引入噪声")
+        print("\n  >>> FAIL: best_iter<=2 说明forecast因子引入噪声")
     print("=" * 80)
 
     return result
@@ -553,14 +553,14 @@ def main():
         print(f"  IC增量 vs 对照组:       {delta_ic:+.4f}")
 
         if overall == "PASS":
-            print(f"\n  >>> PASS: forecast因子在LightGBM中有显著增量价值")
-            print(f"  >>> 建议: 进入全7-fold walk-forward验证")
+            print("\n  >>> PASS: forecast因子在LightGBM中有显著增量价值")
+            print("  >>> 建议: 进入全7-fold walk-forward验证")
         elif result_8f["best_iter"] > 2:
-            print(f"\n  >>> PARTIAL: 模型能学习forecast信号, 但OOS IC不达标")
-            print(f"  >>> 建议: 检查forecast因子是否在特定市场状态下有效")
+            print("\n  >>> PARTIAL: 模型能学习forecast信号, 但OOS IC不达标")
+            print("  >>> 建议: 检查forecast因子是否在特定市场状态下有效")
         else:
-            print(f"\n  >>> FAIL: forecast因子引入噪声, best_iter<=2")
-            print(f"  >>> 建议: 放弃forecast因子方向")
+            print("\n  >>> FAIL: forecast因子引入噪声, best_iter<=2")
+            print("  >>> 建议: 放弃forecast因子方向")
 
         print("=" * 100)
 

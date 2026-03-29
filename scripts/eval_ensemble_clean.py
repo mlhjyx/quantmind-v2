@@ -11,11 +11,10 @@
 成功标准: ensemble Sharpe > 单fold Sharpe * 1.05 (提升>=5%)
 """
 
-import gc
 import logging
 import sys
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -27,11 +26,9 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "backend"))
 
 from backend.engines.ml_engine import (
+    FeaturePreprocessor,
     MLConfig,
     WalkForwardTrainer,
-    FeaturePreprocessor,
-    Fold,
-    compute_icir,
 )
 
 logging.basicConfig(
@@ -394,7 +391,7 @@ def paired_block_bootstrap(rets_a, rets_b, n_boot=BOOTSTRAP_N, block_size=BOOTST
     """Paired bootstrap: A vs B. H0: A <= B."""
     rng = np.random.RandomState(seed)
     T = len(rets_a)
-    assert T == len(rets_b)
+    assert len(rets_b) == T
     d = rets_a - rets_b
     orig = np.mean(d) / np.std(d, ddof=1) * np.sqrt(252) if np.std(d, ddof=1) > 0 else 0
     n_blocks = int(np.ceil(T / block_size))
@@ -542,7 +539,7 @@ def main():
     print("  Rolling Ensemble 干净评估报告")
     print(f"  OOS期间: {common[0]} ~ {common[-1]} ({len(common)} 交易日)")
     print(f"  Top-{TOP_N} 等权 月度调仓 单边成本{COST_ONE_WAY*1000:.1f}‰")
-    print(f"  Ensemble: 指数衰减, 半衰期=1 fold")
+    print("  Ensemble: 指数衰减, 半衰期=1 fold")
     print("=" * 90)
 
     print(f"\n{'核心指标三方对比':=^70}")
@@ -614,9 +611,9 @@ def main():
     print(f"  提升:              {ens_vs_single_pct:+.1f}%")
     print(f"  Bootstrap p-value: {b1['p_value']:.4f}")
     if achieved:
-        print(f"  结果: PASS - Ensemble Sharpe提升 >= 5%")
+        print("  结果: PASS - Ensemble Sharpe提升 >= 5%")
     else:
-        print(f"  结果: FAIL - Ensemble Sharpe提升不足5%")
+        print("  结果: FAIL - Ensemble Sharpe提升不足5%")
     print(f"  耗时: {elapsed:.1f}s ({elapsed/60:.1f}min)")
     print("=" * 90)
 

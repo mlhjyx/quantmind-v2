@@ -8,10 +8,9 @@ IC计算方法: Spearman rank correlation(zscore, 5日超额收益)
 import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from scipy import stats
-from itertools import combinations
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
@@ -274,7 +273,7 @@ def main():
                 reason = f"仅{r['n_dates']}天IC数据，无法评估"
             elif fname in baseline_factors:
                 rating = 'Active'
-                reason = f"v1.1基线因子"
+                reason = "v1.1基线因子"
             elif pd.isna(ic_mean):
                 rating = 'Insufficient'
                 reason = "IC计算失败"
@@ -347,14 +346,14 @@ def main():
         md_path = str(Path(__file__).resolve().parent.parent / 'docs' / 'FACTOR_HEALTH_REPORT.md')
         with open(md_path, 'w') as f:
             f.write("# 因子池健康报告 — Sprint 1.3b\n\n")
-            f.write(f"> 生成时间: 2026-03-23\n")
-            f.write(f"> IC方法: Spearman rank correlation(zscore, 5日超额收益vs沪深300)\n")
-            f.write(f"> 数据范围: 2020-07-01 ~ 2026-03-23\n\n")
+            f.write("> 生成时间: 2026-03-23\n")
+            f.write("> IC方法: Spearman rank correlation(zscore, 5日超额收益vs沪深300)\n")
+            f.write("> 数据范围: 2020-07-01 ~ 2026-03-23\n\n")
 
-            f.write(f"## 评级分布\n\n")
+            f.write("## 评级分布\n\n")
             for rating, count in rating_counts.items():
                 f.write(f"- **{rating}**: {count}个\n")
-            f.write(f"\n## 评级标准\n\n")
+            f.write("\n## 评级标准\n\n")
             f.write("| 评级 | 条件 | 含义 |\n")
             f.write("|------|------|------|\n")
             f.write("| **Active** | v1.1基线因子 | 当前策略使用中 |\n")

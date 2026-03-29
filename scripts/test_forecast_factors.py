@@ -604,8 +604,8 @@ def main():
         if pass_factors:
             print(f"\n  >>> {len(pass_factors)}个因子通过中性化t-stat>=2.0: {pass_factors}")
         else:
-            print(f"\n  >>> 全部FAIL: 中性化后t-stat均<2.0")
-            print(f"  >>> 结论: forecast方向关闭证据充分")
+            print("\n  >>> 全部FAIL: 中性化后t-stat均<2.0")
+            print("  >>> 结论: forecast方向关闭证据充分")
 
         print("=" * 70)
 

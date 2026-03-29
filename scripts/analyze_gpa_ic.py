@@ -13,7 +13,7 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +22,6 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from app.services.price_utils import _get_sync_conn
-
 
 # ---- 配置 ----
 START_DATE = date(2021, 1, 4)

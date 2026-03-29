@@ -6,16 +6,13 @@
 - API端点: dependency_overrides mock掉 Repo/Service，验证路由层。
 """
 
-import time
-from datetime import datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
 httpx = pytest.importorskip("httpx", reason="httpx not installed")
-from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.services.notification_templates import (
@@ -24,7 +21,6 @@ from app.services.notification_templates import (
     get_template,
 )
 from app.services.notification_throttler import NotificationThrottler
-
 
 # ============================================================================
 # Templates Tests (4个)

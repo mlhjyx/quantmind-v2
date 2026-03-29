@@ -21,7 +21,7 @@ import logging
 import math
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -316,16 +316,16 @@ def main():
     print(f"滑点三组件分解报告 ({report.data_source})")
     print(f"{'='*60}")
     print(f"交易笔数: {report.n_trades}")
-    print(f"\n三组件均值:")
+    print("\n三组件均值:")
     print(f"  Base:    {report.avg_base_bps:6.2f} bps ({report.base_pct:.1f}%)")
     print(f"  Impact:  {report.avg_impact_bps:6.2f} bps ({report.impact_pct:.1f}%)")
     print(f"  Gap:     {report.avg_gap_bps:6.2f} bps ({report.gap_pct:.1f}%)")
     print(f"  Total:   {report.avg_total_bps:6.2f} bps")
-    print(f"\n与R4对比:")
+    print("\n与R4对比:")
     print(f"  R4目标: {R4_TOTAL_BPS} bps")
     print(f"  偏差:   {report.vs_r4.get('deviation_bps', 'N/A')} bps ({report.vs_r4.get('deviation_pct', 'N/A')}%)")
     print(f"  15%内:  {'PASS' if report.vs_r4.get('within_15pct') else 'FAIL'}")
-    print(f"\n按市值分档:")
+    print("\n按市值分档:")
     for tier, data in report.by_cap_tier.items():
         print(f"  {tier:6s}: n={data['n']:3d}, total={data['avg_total']:.2f}bps")
     print(f"\n报告已保存: {output_path}")

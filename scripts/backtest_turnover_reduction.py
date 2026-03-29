@@ -27,10 +27,8 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 import numpy as np
 import pandas as pd
-
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import (
-    TRADING_DAYS_PER_YEAR,
     bootstrap_sharpe_ci,
     calc_annual_breakdown,
     calc_max_drawdown,
@@ -43,6 +41,7 @@ from engines.signal_engine import (
     SignalConfig,
     get_rebalance_dates,
 )
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
@@ -532,7 +531,7 @@ def print_final_report(baseline: dict, variants: list[dict]) -> None:
     print("=" * 110)
     print("  换手率降低方案 SimBroker回测对比")
     print(f"  周期: {START_DATE} ~ {END_DATE}  |  初始资金: {INITIAL_CAPITAL:,.0f}")
-    print(f"  基线: v1.1 5因子等权 Top15 月度 行业25%")
+    print("  基线: v1.1 5因子等权 Top15 月度 行业25%")
     print("=" * 110)
 
     # 对比表

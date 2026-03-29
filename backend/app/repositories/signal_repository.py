@@ -4,7 +4,6 @@
 """
 
 from datetime import date
-from typing import Optional
 
 from app.repositories.base_repository import BaseRepository
 

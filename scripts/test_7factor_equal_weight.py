@@ -19,7 +19,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -367,7 +366,7 @@ def _load_neutralize_data_for_date(conn, trade_date: date) -> tuple[pd.Series, p
     if trade_date in _neutralize_cache:
         return _neutralize_cache[trade_date]
 
-    sql = f"""
+    sql = """
     SELECT d.code,
            LN(b.total_mv * 10000) AS ln_mcap,
            s.industry_sw1 AS industry
@@ -628,7 +627,7 @@ def paired_block_bootstrap(
     """
     rng = np.random.RandomState(seed)
     T = len(new_rets)
-    assert T == len(base_rets), f"长度不匹配: {T} vs {len(base_rets)}"
+    assert len(base_rets) == T, f"长度不匹配: {T} vs {len(base_rets)}"
 
     d = new_rets - base_rets
     orig_diff_sharpe = (np.mean(d) / np.std(d, ddof=1) * np.sqrt(252)
@@ -869,7 +868,7 @@ def main():
     print("  7因子等权 vs 5因子基线 评估报告")
     print(f"  评估期间: {common_dates[0]} ~ {common_dates[-1]} ({len(common_dates)} 交易日)")
     print(f"  Top-{TOP_N} 等权 月度调仓 单边成本{COST_ONE_WAY * 1000:.1f}bps")
-    print(f"  行业约束: 单行业<=25% (简化版: 无整手约束)")
+    print("  行业约束: 单行业<=25% (简化版: 无整手约束)")
     print("=" * 80)
 
     # --- 核心指标对比 ---
@@ -959,8 +958,8 @@ def main():
     print(f"判定:       {verdict}")
 
     # 参考铁律: 等权因子数上限5-6因子局部最优
-    print(f"\n注意: CLAUDE.md技术决策表记载'5-6因子局部最优,更多反而差'(Sprint 1.3b)")
-    print(f"      7因子结果需要与该历史经验对比。")
+    print("\n注意: CLAUDE.md技术决策表记载'5-6因子局部最优,更多反而差'(Sprint 1.3b)")
+    print("      7因子结果需要与该历史经验对比。")
 
     print(f"\n耗时: {elapsed:.1f}s")
     print("=" * 80)

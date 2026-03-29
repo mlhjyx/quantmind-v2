@@ -20,7 +20,6 @@ import math
 from decimal import Decimal
 
 import pytest
-
 from engines.slippage_model import (
     SlippageConfig,
     SlippageResult,
@@ -28,7 +27,6 @@ from engines.slippage_model import (
     overnight_gap_cost,
     volume_impact_slippage,
 )
-
 
 # ────────────────────────────────────────────
 # volume_impact_slippage 基本计算（旧路径, 无config）

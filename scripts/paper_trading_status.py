@@ -9,12 +9,12 @@
 
 import argparse
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import pandas as pd
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 
@@ -72,7 +72,7 @@ def show_performance(conn, days: int = 10):
         import numpy as np
         sharpe = float(np.mean(rets) / np.std(rets) * (252**0.5)) if np.std(rets) > 0 else 0
         print(f"\n  运行: {total_days}个交易日 | 滚动Sharpe: {sharpe:.2f}")
-        print(f"  毕业标准: 60天, Sharpe ≥ 0.90 (回测1.28×70%)")
+        print("  毕业标准: 60天, Sharpe ≥ 0.90 (回测1.28×70%)")
 
 
 def show_holdings(conn):
@@ -158,7 +158,7 @@ def show_pipeline_status(conn):
         print("\n⚠️  今日无管道记录")
         return
 
-    print(f"\n  最近24h管道状态:")
+    print("\n  最近24h管道状态:")
     for _, r in df.iterrows():
         icon = "✅" if r["status"] == "success" else "❌"
         t = r["created_at"].strftime("%H:%M:%S") if r["created_at"] else "?"

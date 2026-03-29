@@ -8,6 +8,7 @@
 import json
 import sys
 
+
 def main():
     # Claude Code passes hook context via stdin
     try:

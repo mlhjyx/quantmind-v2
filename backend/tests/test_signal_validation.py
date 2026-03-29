@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # ────────────────────────────────────────────
 # 提取检查逻辑为可测试的纯函数
 # (复制run_paper_trading.py中的检查逻辑,

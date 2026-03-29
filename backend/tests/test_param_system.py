@@ -10,7 +10,7 @@ API测试通过FastAPI dependency_overrides注入mock session。
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,7 +29,6 @@ from app.services.param_defaults import (
     get_param_def,
 )
 from app.services.param_service import ParamService, ParamValidationError
-
 
 # ═══════════════════════════════════════════════════
 # Helpers

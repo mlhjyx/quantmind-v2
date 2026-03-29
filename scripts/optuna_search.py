@@ -9,24 +9,21 @@
 import logging
 import sys
 import time
-from datetime import date
 from pathlib import Path
 
 import numpy as np
 import optuna
-from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
+from optuna.samplers import TPESampler
 
 # 项目路径
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.engines.ml_engine import (
+    FeaturePreprocessor,
     MLConfig,
     WalkForwardTrainer,
-    FeaturePreprocessor,
-    compute_daily_ic,
-    compute_icir,
 )
 
 logging.basicConfig(
@@ -345,7 +342,7 @@ def main():
     print("\n" + "=" * 70)
     print("OOS对比 (F1 test set: 2023-01 ~ 2023-06)")
     print("=" * 70)
-    print(f"  默认超参 OOS IC:     0.0706 (baseline)")
+    print("  默认超参 OOS IC:     0.0706 (baseline)")
     print(f"  Best超参 OOS IC:     {oos_ic:.4f}")
     print(f"  Best超参 OOS RankIC: {oos_rank_ic:.4f}")
     print(f"  Best iteration:      {model_best.best_iteration}")

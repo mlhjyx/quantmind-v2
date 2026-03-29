@@ -31,11 +31,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 import pandas as pd
+from engines.factor_engine import (
+    preprocess_fill,
+    preprocess_mad,
+    preprocess_neutralize,
+    preprocess_zscore,
+)
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
-from engines.factor_engine import preprocess_mad, preprocess_fill, preprocess_neutralize, preprocess_zscore
-
 
 # ============================================================
 # 数据加载
@@ -444,7 +448,7 @@ def main():
                                         "existing_factor": ef,
                                         "corr": corr_val,
                                     })
-                except Exception as e:
+                except Exception:
                     pass  # factor_values表可能没该日数据
 
     # 3. 汇总统计
@@ -494,18 +498,18 @@ def main():
         print(f"{'─' * 60}")
         print(f"  月数: {len(ics_raw)}")
         print(f"  平均覆盖率: {avg_coverage:.0f}只")
-        print(f"  ┌─ 原始IC ─────────────────────────────────")
+        print("  ┌─ 原始IC ─────────────────────────────────")
         print(f"  │ IC均值:  {ic_mean_raw:+.4f}")
         print(f"  │ IC标准差: {ic_std_raw:.4f}")
         print(f"  │ IR:      {ir_raw:.3f}")
         print(f"  │ t-stat:  {t_raw:.2f}  {'***' if abs(t_raw) > 2.58 else '**' if abs(t_raw) > 1.96 else '*' if abs(t_raw) > 1.65 else ''}")
         print(f"  │ 正IC率:  {hit_raw:.1%}")
-        print(f"  ├─ 中性化后IC ─────────────────────────────")
+        print("  ├─ 中性化后IC ─────────────────────────────")
         print(f"  │ IC均值:  {ic_mean_n:+.4f}" if not np.isnan(ic_mean_n) else "  │ IC均值:  N/A")
         print(f"  │ IR:      {ir_n:.3f}" if not np.isnan(ir_n) else "  │ IR:      N/A")
         print(f"  │ t-stat:  {t_n:.2f}  {'***' if abs(t_n) > 2.58 else '**' if abs(t_n) > 1.96 else '*' if abs(t_n) > 1.65 else ''}" if not np.isnan(t_n) else "  │ t-stat:  N/A")
         print(f"  │ 正IC率:  {hit_n:.1%}" if not np.isnan(hit_n) else "  │ 正IC率:  N/A")
-        print(f"  └─ IC衰减检查: 原始{ic_mean_raw:+.4f} → 中性化{ic_mean_n:+.4f} = 衰减{abs(ic_mean_raw) - abs(ic_mean_n):.4f}" if not np.isnan(ic_mean_n) else f"  └─ IC衰减检查: N/A")
+        print(f"  └─ IC衰减检查: 原始{ic_mean_raw:+.4f} → 中性化{ic_mean_n:+.4f} = 衰减{abs(ic_mean_raw) - abs(ic_mean_n):.4f}" if not np.isnan(ic_mean_n) else "  └─ IC衰减检查: N/A")
 
     # 4. 分年IC
     print("\n\n[4/5] 分年IC分析...")
@@ -581,11 +585,11 @@ def main():
         if not np.isnan(decay_pct):
             print(f"  LL-014衰减检查(衰减<70%): {'PASS' if not ll014_flag else 'FAIL — 中性化后alpha消失!'} (衰减={decay_pct:.1%})")
         if raw_pass and neutral_pass and not ll014_flag:
-            print(f"  >>> 推荐进入因子候选池 <<<")
+            print("  >>> 推荐进入因子候选池 <<<")
         elif raw_pass and not neutral_pass:
-            print(f"  >>> 原始IC可观但中性化后消失，与LL-014相同模式，不推荐 <<<")
+            print("  >>> 原始IC可观但中性化后消失，与LL-014相同模式，不推荐 <<<")
         else:
-            print(f"  >>> 不推荐 <<<")
+            print("  >>> 不推荐 <<<")
 
     conn.close()
     print("\n分析完成。")

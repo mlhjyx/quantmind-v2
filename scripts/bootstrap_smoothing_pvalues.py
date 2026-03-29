@@ -10,10 +10,8 @@
 
 import sys
 import time
-from datetime import date
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 project_root = Path(__file__).resolve().parent.parent
@@ -21,18 +19,19 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "backend"))
 
 from scripts.lgb_signal_smoothing import (
+    OOS_END,
+    OOS_START,
     apply_ema_plus_inertia,
     apply_holding_inertia,
     build_portfolio_returns,
     calc_metrics,
+    get_conn,
     load_oos_predictions,
     load_price_data,
     load_trade_dates,
-    get_conn,
     paired_block_bootstrap,
-    OOS_START,
-    OOS_END,
 )
+
 
 def main():
     t0 = time.time()

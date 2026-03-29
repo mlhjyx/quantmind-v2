@@ -960,14 +960,14 @@ def print_comparison(summaries: list[dict]) -> None:
             )
 
     # 三种IC加权方法对比
-    print(f"\n  IC加权方法排名:")
+    print("\n  IC加权方法排名:")
     ic_sorted = sorted(ic_methods, key=lambda s: s["sharpe"], reverse=True)
     for i, s in enumerate(ic_sorted):
         marker = " <-- 最优" if i == 0 else ""
         print(f"    {i+1}. {s['label']}: Sharpe={s['sharpe']:.3f}, MDD={s['mdd']:.1%}{marker}")
 
     # 风险调整评估
-    print(f"\n  风险调整评估:")
+    print("\n  风险调整评估:")
     for s in summaries:
         risk_flag = ""
         if s["mdd"] < -0.40:

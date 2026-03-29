@@ -5,7 +5,6 @@
 """
 
 from datetime import date
-from typing import Optional
 
 
 def is_trading_day(conn, trade_date: date) -> bool:
@@ -21,7 +20,7 @@ def is_trading_day(conn, trade_date: date) -> bool:
     return bool(row and row[0])
 
 
-def get_next_trading_day(conn, trade_date: date) -> Optional[date]:
+def get_next_trading_day(conn, trade_date: date) -> date | None:
     """获取trade_date之后的下一个交易日。"""
     cur = conn.cursor()
     cur.execute(
@@ -35,7 +34,7 @@ def get_next_trading_day(conn, trade_date: date) -> Optional[date]:
     return row[0] if row else None
 
 
-def get_prev_trading_day(conn, trade_date: date) -> Optional[date]:
+def get_prev_trading_day(conn, trade_date: date) -> date | None:
     """获取trade_date之前的上一个交易日。"""
     cur = conn.cursor()
     cur.execute(

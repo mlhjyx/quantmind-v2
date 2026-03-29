@@ -779,7 +779,7 @@ def main():
     print("被排除风险股等权月均收益: {:.2%}".format(risk_ret_analysis["avg_monthly"]))
     print("被排除风险股年化收益:     {:.2%}".format(risk_ret_analysis["ann_return"]))
     print("统计月数:                 {}".format(risk_ret_analysis["n_months"]))
-    print("风险名单月度变化率:       {:.1%}".format(risk_turnover))
+    print(f"风险名单月度变化率:       {risk_turnover:.1%}")
     if risk_ret_analysis["ann_return"] < 0:
         print(">>> 风险股年化为负 -> 排除有价值 <<<")
     else:

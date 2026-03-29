@@ -6,12 +6,10 @@ CLAUDE.md: strategy_configs每次变更插入新version行，回滚=把active_ve
 
 import json
 import sys
-from datetime import date
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

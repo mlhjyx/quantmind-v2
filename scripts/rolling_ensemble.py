@@ -17,7 +17,7 @@ strategy角色 Sprint 1.5 并行任务。
 import logging
 import sys
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -29,12 +29,10 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "backend"))
 
 from app.services.price_utils import _get_sync_conn
-
 from backend.engines.ml_engine import (
+    FeaturePreprocessor,
     MLConfig,
     WalkForwardTrainer,
-    FeaturePreprocessor,
-    Fold,
 )
 
 logging.basicConfig(
@@ -409,7 +407,7 @@ def paired_block_bootstrap(lgb_rets, base_rets, n_boot=BOOTSTRAP_N,
     """Paired block bootstrap: ensemble vs 单fold。"""
     rng = np.random.RandomState(seed)
     T = len(lgb_rets)
-    assert T == len(base_rets)
+    assert len(base_rets) == T
 
     d = lgb_rets - base_rets
     orig_diff_sharpe = np.mean(d) / np.std(d, ddof=1) * np.sqrt(252) if np.std(d, ddof=1) > 0 else 0

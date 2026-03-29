@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from engines.config_guard import print_config_header
 
+
 def main():
     print_config_header()
     print("="*70)
@@ -58,10 +59,8 @@ def main():
     print("(This is NOT the clean Sloan accrual, just a feasibility test)")
     print()
 
-    import psycopg2
     import pandas as pd
-    import numpy as np
-    from scipy import stats
+    import psycopg2
 
     DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
     conn = psycopg2.connect(DB_URI)

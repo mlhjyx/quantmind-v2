@@ -115,8 +115,9 @@ def calc_spearman_ic(factor_vals: pd.Series, fwd_ret: pd.Series) -> float:
 
 
 def main():
-    from app.services.price_utils import _get_sync_conn
     from engines.factor_engine import load_fundamental_pit_data
+
+    from app.services.price_utils import _get_sync_conn
 
     conn = _get_sync_conn()
 

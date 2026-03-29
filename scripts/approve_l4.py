@@ -20,7 +20,6 @@ check_circuit_breaker会检测到审批通过并自动恢复到NORMAL。
 """
 
 import argparse
-import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -28,8 +27,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.config import settings
-from app.services.price_utils import _get_sync_conn
 from app.services.notification_service import send_alert
+from app.services.price_utils import _get_sync_conn
 
 
 def list_pending(conn) -> None:

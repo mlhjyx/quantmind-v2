@@ -23,13 +23,13 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
 import argparse
 import sys
 import time
-from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import pandas as pd
 import tushare as ts
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 

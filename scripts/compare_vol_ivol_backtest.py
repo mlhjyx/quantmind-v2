@@ -8,9 +8,9 @@ Runs two backtests (2024-2025) with Top15 monthly IndCap=25%:
 IVOL is computed on-the-fly (not in factor_values table).
 """
 
+import logging
 import sys
 import time
-import logging
 from datetime import date
 from pathlib import Path
 
@@ -21,16 +21,17 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.metrics import generate_report, print_report, calc_sharpe, calc_max_drawdown
+from engines.metrics import generate_report
 from engines.signal_engine import (
+    FACTOR_DIRECTION,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
-    FACTOR_DIRECTION,
     get_rebalance_dates,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ def main():
     print("COMPARISON SUMMARY: volatility_20 vs ivol_20")
     print("="*70)
     print(f"  Period: {start} ~ {end}")
-    print(f"  Config: Top15, Monthly, IndCap=25%, Equal-weight")
+    print("  Config: Top15, Monthly, IndCap=25%, Equal-weight")
     print()
     fmt = "  {:<25} {:>12} {:>12} {:>12}"
     print(fmt.format("Metric", "Original(vol)", "New(ivol)", "Delta"))
@@ -315,12 +316,12 @@ def main():
     # Bootstrap CI comparison
     pa, la, ua = report_a.bootstrap_sharpe_ci
     pb, lb, ub = report_b.bootstrap_sharpe_ci
-    print(f"\n  Bootstrap Sharpe CI:")
+    print("\n  Bootstrap Sharpe CI:")
     print(f"    Original: {pa:.2f} [{la:.2f}, {ua:.2f}]")
     print(f"    New:      {pb:.2f} [{lb:.2f}, {ub:.2f}]")
 
     # Annual breakdown
-    print(f"\n  Annual Breakdown:")
+    print("\n  Annual Breakdown:")
     print(f"    {'Year':<6} {'Orig Ret%':>10} {'New Ret%':>10} {'Orig Sharpe':>12} {'New Sharpe':>12}")
     for year in report_a.annual_breakdown.index:
         ar = report_a.annual_breakdown.loc[year, 'return'] if year in report_a.annual_breakdown.index else 0

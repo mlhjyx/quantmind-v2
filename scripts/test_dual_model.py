@@ -21,7 +21,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 # 项目根目录
 project_root = Path(__file__).resolve().parent.parent
@@ -312,6 +311,7 @@ def train_m2(conn) -> tuple[object, pd.DataFrame, dict]:
         (model, test_df_with_predictions, result_dict)
     """
     import lightgbm as lgb
+
     from backend.engines.ml_engine import FeaturePreprocessor
 
     logger.info("=" * 70)
@@ -683,7 +683,7 @@ def evaluate_fusion(fused_df: pd.DataFrame, m1_df: pd.DataFrame, m2_result: dict
         print("  FAIL: 融合未改善M1-only")
         verdict = "FAIL"
 
-    print(f"\n  建议: ", end="")
+    print("\n  建议: ", end="")
     if abs(corr_m1_m2) < 0.3 and m2_ic > 0.02:
         print("M2有独立alpha，值得继续优化融合权重")
     elif abs(corr_m1_m2) >= 0.3:

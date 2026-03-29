@@ -12,13 +12,15 @@ shareholders_num column; data not in DB.
 DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
-import pandas as pd
-import numpy as np
-import psycopg2
-from scipy import stats
-from datetime import date as dt_date
 import time
 import warnings
+from datetime import date as dt_date
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 import sys
 from pathlib import Path
@@ -90,7 +92,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
     print(f"  Months:      {len(ic_df)}")
 
     # Annual breakdown
-    print(f"\n-- Annual Breakdown --")
+    print("\n-- Annual Breakdown --")
     print(f"  {'Year':<6} {'IC_Mean':>8} {'IC_Std':>8} {'IC_IR':>8} {'t-stat':>8} {'IC>0%':>6} {'N':>4}")
     print(f"  {'-'*52}")
     for year, grp in ic_df.groupby('year'):
@@ -102,7 +104,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         print(f"  {year:<6} {ym:>8.4f} {ys:>8.4f} {yir:>8.4f} {yt:>8.2f} {yp:>5.1f}% {len(grp):>4}")
 
     # Monthly IC series (condensed)
-    print(f"\n-- Monthly IC (condensed) --")
+    print("\n-- Monthly IC (condensed) --")
     print(f"  {'Month':<10} {'IC':>8} {'N':>6}")
     print(f"  {'-'*26}")
     for _, row in ic_df.iterrows():
@@ -110,7 +112,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         print(f"  {row['date'].strftime('%Y-%m'):<10} {row['ic']:>8.4f} {int(row['n_stocks']):>6}{marker}")
 
     # Verdict
-    print(f"\n  VERDICT: ", end='')
+    print("\n  VERDICT: ", end='')
     if abs(t_stat) > 1.96 and abs(ic_mean) > 0.02:
         print(f"PASS (t={t_stat:.2f}, IC={ic_mean:.4f})")
     elif abs(t_stat) > 1.64 and abs(ic_mean) > 0.015:
@@ -473,8 +475,8 @@ def main():
                    "FAIL")
         print(f"  {r['name']:<35} {r['ic_mean']:>8.4f} {r['t_stat']:>8.2f} {r['ic_ir']:>8.4f} {r['pct_pos']:>5.1f}% {verdict:>10}")
 
-    print(f"\n  NOTE: shareholder_concentration skipped (no data in DB).")
-    print(f"        Need Tushare stk_holdernumber API to pull shareholder count data.")
+    print("\n  NOTE: shareholder_concentration skipped (no data in DB).")
+    print("        Need Tushare stk_holdernumber API to pull shareholder count data.")
     print(f"\nTotal time: {time.time()-t0:.1f}s")
 
 

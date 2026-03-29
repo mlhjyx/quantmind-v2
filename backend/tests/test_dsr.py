@@ -12,17 +12,13 @@
 
 import math
 
-import numpy as np
 import pytest
-from scipy.stats import norm
-
 from engines.dsr import (
     _expected_max_sharpe,
     _sharpe_std,
     deflated_sharpe_ratio,
     interpret_dsr,
 )
-
 
 # ────────────────────────────────────────────
 # _sharpe_std 内部函数测试

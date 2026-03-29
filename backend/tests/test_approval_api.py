@@ -13,14 +13,12 @@ Sprint 1.18 alpha-miner
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
 from app.models.mining_knowledge import MiningKnowledge, _infer_failure_mode
-
 
 # ---------------------------------------------------------------------------
 # MiningKnowledge 模型测试
@@ -170,7 +168,7 @@ class TestApprovalQueueItem:
         row.factor_expr = "ts_mean(cs_rank(close), 20)"
         row.ast_hash = "a" * 64
         row.status = status
-        row.created_at = datetime(2026, 3, 28, 10, 0, 0, tzinfo=timezone.utc)
+        row.created_at = datetime(2026, 3, 28, 10, 0, 0, tzinfo=UTC)
         row.reviewed_at = reviewed_at
         row.reviewed_by = None
         row.reviewer_notes = None
@@ -189,7 +187,7 @@ class TestApprovalQueueItem:
     def test_from_orm_approved(self) -> None:
         from app.api.approval import ApprovalQueueItem
 
-        ts = datetime(2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
         row = self._make_orm_row(status="approved", reviewed_at=ts)
         item = ApprovalQueueItem.from_orm(row)
         assert item.status == "approved"

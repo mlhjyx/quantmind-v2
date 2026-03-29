@@ -13,10 +13,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-import pytest
-
 from engines.attribution import BrinsonAttribution, BrinsonResult, MarketStateDetector
-
 
 # ===========================================================================
 # Brinson单期归因测试

@@ -879,13 +879,13 @@ def main():
 
     if resid_ic > 0.03 and resid_t > 2.0:
         print(f"\n  >>> PASS: Residual IC={resid_ic*100:.2f}% > 3%, t={resid_t:.2f} > 2.0")
-        print(f"      INDEPENDENT ALPHA confirmed. Worth adding to factor pool.")
+        print("      INDEPENDENT ALPHA confirmed. Worth adding to factor pool.")
     elif resid_ic > 0.02 and resid_t > 1.64:
         print(f"\n  >>> MARGINAL: Residual IC={resid_ic*100:.2f}%, t={resid_t:.2f}")
-        print(f"      Weak independent signal. Monitor but don't add yet.")
+        print("      Weak independent signal. Monitor but don't add yet.")
     else:
         print(f"\n  >>> FAIL: Residual IC={resid_ic*100:.2f}% < 2% or t={resid_t:.2f} < 2.0")
-        print(f"      REDUNDANT with vol_20. Drop from candidate pool.")
+        print("      REDUNDANT with vol_20. Drop from candidate pool.")
 
     # ════════════════════════════════════════════════════════════════
     # FINAL SUMMARY

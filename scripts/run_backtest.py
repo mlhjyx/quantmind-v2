@@ -8,7 +8,6 @@
 """
 
 import argparse
-import io
 import logging
 import os
 import sys
@@ -25,7 +24,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.slippage_model import SlippageConfig
+from engines.config_guard import assert_baseline_config, print_config_header
 from engines.metrics import generate_report, print_report
 from engines.signal_engine import (
     PAPER_TRADING_CONFIG,
@@ -34,8 +33,7 @@ from engines.signal_engine import (
     SignalConfig,
     get_rebalance_dates,
 )
-
-from engines.config_guard import assert_baseline_config, print_config_header
+from engines.slippage_model import SlippageConfig
 
 from app.services.price_utils import _get_sync_conn
 

@@ -49,10 +49,15 @@ def _make_mock_executions(
     slippage_std: float = 10.0,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """生成模拟执行记录，slippage_bps服从Normal(mean, std)。"""
+    """生成模拟执行记录，slippage_bps服从Normal(mean, std)。
+
+    使用v1.1策略典型规模: 30万/15只≈2万/只
+    quantity: 200-2000股(整手)，fill_price: 5-50元 → 约1千-10万元/笔
+    参与率: ~0.001%-0.1%（相对1亿元日成交额代理值）
+    """
     rng = np.random.default_rng(seed)
     directions = rng.choice(["buy", "sell"], size=n)
-    quantities = rng.integers(100, 5000, size=n) * 100  # 整手
+    quantities = rng.integers(2, 20, size=n) * 100  # 200-2000股整手
     fill_prices = rng.uniform(5.0, 50.0, size=n)
     target_prices = fill_prices * rng.uniform(0.99, 1.01, size=n)
     slippage_bps = np.clip(

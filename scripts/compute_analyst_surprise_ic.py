@@ -18,12 +18,14 @@ A-share applicability: MODERATE-HIGH
 - Caveat: A-share has T+1, no short selling for retail -> asymmetric PEAD
 """
 
-import pandas as pd
-import numpy as np
-import psycopg2
-from scipy import stats
 import time
 import warnings
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 import sys
 from pathlib import Path
@@ -224,7 +226,7 @@ def main():
     print(f"  Months:      {len(ic_df)}")
 
     # Annual breakdown
-    print(f"\n── Annual Breakdown ──")
+    print("\n── Annual Breakdown ──")
     print(f"  {'Year':<6} {'IC_Mean':>8} {'IC_Std':>8} {'IC_IR':>8} {'t-stat':>8} {'IC>0%':>6} {'N':>4}")
     print(f"  {'-'*50}")
     for year, grp in ic_df.groupby('year'):
@@ -236,7 +238,7 @@ def main():
         print(f"  {year:<6} {ym:>8.4f} {ys:>8.4f} {yir:>8.4f} {yt:>8.2f} {yp:>5.1f}% {len(grp):>4}")
 
     # ── 7. Correlation with existing factors ──
-    print(f"\n── Correlation with Existing Factors ──")
+    print("\n── Correlation with Existing Factors ──")
     conn2 = psycopg2.connect(DB_URI)
     key_factors = ['momentum_20', 'reversal_20', 'turnover_mean_20', 'volatility_20', 'ln_market_cap', 'bp_ratio']
     sample_dates = [str(month_ends_clean[len(month_ends_clean)//4]),
@@ -286,7 +288,7 @@ def main():
                 print(f"  {fname:<25} {corr:>10.4f}{flag}")
 
     # ── 8. Monthly IC time series ──
-    print(f"\n── Monthly IC Time Series ──")
+    print("\n── Monthly IC Time Series ──")
     print(f"  {'Month':<10} {'IC':>8} {'N_stocks':>8}")
     print(f"  {'-'*28}")
     for _, row in ic_df.iterrows():
@@ -298,13 +300,13 @@ def main():
     print("VERDICT:")
     if abs(t_stat) > 1.96 and abs(ic_mean) > 0.02:
         print(f"  SIGNIFICANT (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  PEAD effect confirmed in A-share. Recommend for candidate pool.")
+        print("  PEAD effect confirmed in A-share. Recommend for candidate pool.")
     elif abs(t_stat) > 1.64:
         print(f"  MARGINALLY significant (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  PEAD signal present but weak. May improve with longer CAR window.")
+        print("  PEAD signal present but weak. May improve with longer CAR window.")
     else:
         print(f"  NOT significant (t={t_stat:.2f}, IC={ic_mean:.4f})")
-        print(f"  PEAD proxy via CAR not effective. May need analyst consensus data.")
+        print("  PEAD proxy via CAR not effective. May need analyst consensus data.")
     print(f"{'='*70}")
     print(f"\nTotal time: {time.time()-t0:.1f}s")
 

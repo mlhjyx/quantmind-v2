@@ -1683,6 +1683,7 @@ interface MiningStore {
 | 7 | DeepSeek API客户端 | `backend/engines/mining/deepseek_client.py` | TrB | 1.5 |
 | 8 | Idea Agent(假设生成，Step 3基础) | `backend/engines/mining/agents/idea_agent.py` | TrB | 2 |
 | 9 | Mining API Router(mine/tasks/evaluate) | `backend/app/api/mining.py`(新) | TrE | 1 |
+| 10 | **前置研究: 读AlphaForgeBench+AlphaPROBE论文** | 产出: LLM prompt模板+DAG剪枝策略 | TrA | 1 |
 
 **成败标准**:
 - [ ] **GP Pipeline每周自动运行(Task Scheduler)，无人工干预**
@@ -1720,12 +1721,16 @@ interface MiningStore {
 | 5 | Pipeline API Router | `backend/app/api/pipeline.py`(新) | TrE | 1.5 |
 | 6 | 滑点分解脚本(三组件分析) | `scripts/slippage_decompose.py` | TrC | 1.5 |
 | 7 | mining_knowledge表+失败记录 | `backend/app/models/mining_knowledge.py` | TrB | 1 |
+| 8 | SHAP可解释性集成(LightGBM因子重要性+特征贡献) | `backend/engines/ml_explainer.py`(新) | TrC | 2 |
+| 9 | LightGBM ranking loss(lambdarank+group+NDCG评估) | `backend/engines/ml_engine.py` | TrC | 2 |
 
 **成败标准**:
 - [ ] Pipeline控制台展示8节点状态流程图，当前节点高亮
 - [ ] 审批队列支持approve/reject/hold三种操作
 - [ ] PipelineOrchestrator端到端: BruteForce→Sandbox→Gate→分类→审批
 - [ ] Agent配置可切换模型(DeepSeek-R1/V3.2/Qwen3)
+- [ ] SHAP: LightGBM模型可输出因子重要性排序+单预测特征贡献分解
+- [ ] LightGBM lambdarank: IC(rank correlation)作为评估指标，NDCG@15优于regression baseline
 
 **依赖关系**:
 - Sprint 1.17: LLM 3-Agent(Pipeline编排三引擎)
@@ -2060,6 +2065,13 @@ interface MiningStore {
 | BP-K03 | AI/ML | PipelineOrchestrator | P1 | 1.18 | TODO |
 | BP-K04 | AI/ML | approval_queue + decision_log | P1 | 1.18 | TODO |
 | BP-K05 | AI/ML | 14个AI参数渐进替换 | P2 | 未排 | TODO |
+| BP-K06 | AI/ML | SHAP可解释性集成(因子重要性+特征贡献可视化) | P1 | 1.18 | TODO |
+| BP-K07 | AI/ML | Autoencoder异常检测(替代HMM regime，双路径架构) | P1 | 未排 | TODO |
+| BP-K08 | AI/ML | 双路径架构(不同市场体制用不同因子权重/选股逻辑) | P2 | 未排 | TODO |
+| BP-K09 | AI/ML | GPU加速GP因子挖掘(RTX 5070 CUDA/PyTorch) | P3 | 未排 | TODO |
+| BP-K10 | AI/ML | LightGBM ranking loss替代regression(lambdarank+NDCG) | P1 | 1.18 | TODO |
+| BP-K11 | AI/ML | GARCH(1,1)条件方差增强RegimeModifier | P2 | 未排 | TODO |
+| BP-K12 | AI/ML | K-Means聚类特征增强因子模型(股票风格分组距离) | P3 | 未排 | TODO |
 
 ### 9.2 R1-R7新增条目
 

@@ -70,7 +70,7 @@ def main():
     logger.info("=" * 70)
     logger.info("全量 7-Fold Walk-Forward 训练（Optuna最优超参）")
     logger.info(f"特征: {baseline_features}")
-    logger.info(f"GPU: True")
+    logger.info("GPU: True")
     logger.info(f"Optuna超参: {OPTUNA_BEST_PARAMS}")
     logger.info("=" * 70)
 

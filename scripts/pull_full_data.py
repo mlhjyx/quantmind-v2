@@ -29,14 +29,14 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'backend'))
 
-from app.data_fetcher.tushare_fetcher import TushareFetcher
 from app.data_fetcher.data_loader import (
+    get_last_loaded_date,
     get_sync_conn,
-    upsert_klines_daily,
     upsert_daily_basic,
     upsert_index_daily,
-    get_last_loaded_date,
+    upsert_klines_daily,
 )
+from app.data_fetcher.tushare_fetcher import TushareFetcher
 
 logging.basicConfig(
     level=logging.INFO,

@@ -5,12 +5,13 @@ Batch 6: 资金流深度因子 — 5个新因子挖掘 + IC验证
 金额单位: moneyflow_daily = 万元, klines_daily.amount = 千元
 """
 
-import pandas as pd
-import numpy as np
-from scipy import stats
-import psycopg2
-from sqlalchemy import create_engine
 import warnings
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sqlalchemy import create_engine
+
 warnings.filterwarnings('ignore')
 
 DB_URL = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
@@ -252,10 +253,10 @@ for fname in factor_cols:
             continue
         ic, _ = stats.spearmanr(valid[fname], valid['excess_ret_20'])
         monthly_ic.append({'date': dt, 'ic': ic})
-    
+
     if not monthly_ic:
         continue
-    
+
     ic_series = pd.DataFrame(monthly_ic)
     mean_ic = ic_series['ic'].mean()
     std_ic = ic_series['ic'].std()
@@ -263,7 +264,7 @@ for fname in factor_cols:
     ic_pos_rate = (ic_series['ic'] > 0).mean()
     n = len(ic_series)
     t_stat = mean_ic / (std_ic / np.sqrt(n)) if std_ic > 0 and n > 1 else 0
-    
+
     ic_results[fname] = {
         'mean_ic': mean_ic,
         'std_ic': std_ic,
@@ -273,7 +274,7 @@ for fname in factor_cols:
         'n_months': n,
         'ic_series': ic_series
     }
-    
+
     print(f"\n{'─' * 50}")
     print(f"Factor: {fname}")
     print(f"  Mean IC:       {mean_ic:+.4f}")
@@ -329,10 +330,10 @@ if len(exist_fv) > 0:
     ref_date = exist_fv['trade_date'].iloc[0]
     print(f"  Reference date: {ref_date}")
     exist_pivot = exist_fv.pivot_table(index='code', columns='factor_name', values='zscore')
-    
+
     # Get new factors for same date or nearest
     new_snap = factor_df[factor_df['trade_date'] == ref_date][['code'] + factor_cols].set_index('code')
-    
+
     if len(new_snap) < 50:
         # Try nearest date
         close_dates = factor_df['trade_date'].unique()
@@ -342,10 +343,10 @@ if len(exist_fv) > 0:
             near_date = close_dates[min(idx, len(close_dates)-1)]
             new_snap = factor_df[factor_df['trade_date'] == near_date][['code'] + factor_cols].set_index('code')
             print(f"  Using nearest date: {near_date}")
-    
+
     merged = new_snap.join(exist_pivot, how='inner')
     print(f"  Matched stocks: {len(merged)}")
-    
+
     if len(merged) > 100:
         print("\n  Cross-correlation (new factors vs existing):")
         cross_corr = merged[factor_cols + existing_factors].corr(method='spearman')
@@ -370,7 +371,7 @@ for fname in factor_cols:
         sig = "***" if abs(r['t_stat']) > 2.58 else "**" if abs(r['t_stat']) > 1.96 else "*" if abs(r['t_stat']) > 1.64 else ""
         print(f"{fname:<30} {r['mean_ic']:>+8.4f} {r['ir']:>+8.4f} {r['ic_positive_rate']:>7.1%} {r['t_stat']:>+8.3f} {sig:>5}")
 
-print(f"\n入池门槛: |IC| > 0.015, |t-stat| > 1.64")
+print("\n入池门槛: |IC| > 0.015, |t-stat| > 1.64")
 print("正交性门槛: 与现有因子相关性 < 0.5")
 
 # Recommendations

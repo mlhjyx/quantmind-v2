@@ -19,16 +19,17 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.price_utils import _get_sync_conn
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.metrics import calc_sharpe, calc_max_drawdown, TRADING_DAYS_PER_YEAR
 from engines.config_guard import print_config_header
+from engines.metrics import TRADING_DAYS_PER_YEAR, calc_max_drawdown, calc_sharpe
 from engines.signal_engine import (
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
     get_rebalance_dates,
 )
+
+from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -396,7 +397,7 @@ def main():
     b = results[1]  # 修复+Top15
     c = results[2]  # 旧bug+Top20
 
-    print(f"\n1. Top-N效应 (A vs B):")
+    print("\n1. Top-N效应 (A vs B):")
     print(f"   修复+Top20 Sharpe={a['sharpe']:.4f} vs 修复+Top15 Sharpe={b['sharpe']:.4f}")
     print(f"   差异: {a['sharpe'] - b['sharpe']:.4f}")
     if a['sharpe'] > b['sharpe'] + 0.1:
@@ -406,7 +407,7 @@ def main():
     else:
         print("   -> Top-15 优于 Top-20")
 
-    print(f"\n2. Bug效应 (A vs C, 同为Top-20):")
+    print("\n2. Bug效应 (A vs C, 同为Top-20):")
     print(f"   修复+Top20 Sharpe={a['sharpe']:.4f} vs 旧bug+Top20 Sharpe={c['sharpe']:.4f}")
     print(f"   差异: {c['sharpe'] - a['sharpe']:.4f}")
     print(f"   旧bug平均持仓: {c['avg_target_holdings']:.1f} (名义Top-20)")
@@ -414,9 +415,9 @@ def main():
         print(f"   -> 持仓膨胀已确认! 名义Top-20实际持有{c['avg_target_holdings']:.0f}只")
         print(f"   -> Sharpe虚高 {c['sharpe'] - a['sharpe']:.4f} 来自过度分散化")
     elif c['sharpe'] > a['sharpe'] + 0.3:
-        print(f"   -> 旧bug Sharpe明显更高, 持仓膨胀是Sharpe虚高的主因")
+        print("   -> 旧bug Sharpe明显更高, 持仓膨胀是Sharpe虚高的主因")
 
-    print(f"\n3. 真实基线:")
+    print("\n3. 真实基线:")
     print(f"   修复后代码的真实Sharpe范围: {b['sharpe']:.4f} (Top-15) ~ {a['sharpe']:.4f} (Top-20)")
     print(f"   旧bug Sharpe {c['sharpe']:.4f} 的虚高幅度: +{c['sharpe'] - a['sharpe']:.4f}")
 

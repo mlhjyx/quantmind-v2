@@ -603,9 +603,9 @@ def run_f1_fold(
     print(f"  [{'PASS' if pass_iter else 'FAIL'}] best_iter > 2: {best_iter}")
     print(f"  [{'PASS' if pass_ic else 'FAIL'}] OOS IC > 0.082: {oos_ic:.4f}")
     if pass_iter and pass_ic:
-        print(f"\n  >>> PASS: 基本面delta特征有增量价值，可进入全量7-fold验证")
+        print("\n  >>> PASS: 基本面delta特征有增量价值，可进入全量7-fold验证")
     else:
-        print(f"\n  >>> FAIL: 基本面delta特征增量不足")
+        print("\n  >>> FAIL: 基本面delta特征增量不足")
 
     print("=" * 80)
 

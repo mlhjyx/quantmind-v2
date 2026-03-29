@@ -1,0 +1,3 @@
+﻿Signal task registered.
+Execute task registered.
+DONE

@@ -7,22 +7,19 @@
 Service内部不commit，由调用方统一管理事务。
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
-from typing import Optional
+from datetime import UTC, date, datetime
 
 import pandas as pd
-
 from engines.beta_hedge import calc_portfolio_beta
 from engines.paper_broker import PaperBroker
 from engines.signal_engine import (
-    PAPER_TRADING_CONFIG,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
 )
+
 from app.config import settings
 from app.services.notification_service import send_alert
 
@@ -286,7 +283,7 @@ class SignalService:
         hedged_target: dict[str, float],
         trade_date: date,
         dry_run: bool,
-    ) -> Optional[str]:
+    ) -> str | None:
         """行业集中度检查。对应 script L1198-1226。
 
         Returns:
@@ -343,7 +340,7 @@ class SignalService:
         trade_date: date,
         dry_run: bool,
         conn,
-    ) -> Optional[str]:
+    ) -> str | None:
         """持仓重合度检查。对应 script L1228-1244。
 
         Returns:
@@ -402,7 +399,7 @@ class SignalService:
                WHERE trade_date = %s AND strategy_id = %s AND execution_mode = 'paper'""",
             (trade_date, strategy_id),
         )
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         for sig in signals_list:
             cur.execute(
                 """INSERT INTO signals

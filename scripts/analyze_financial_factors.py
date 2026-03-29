@@ -12,7 +12,7 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -20,13 +20,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 import pandas as pd
+from engines.financial_factors import (
+    FINANCIAL_FACTOR_DIRECTION,
+    compute_financial_factors,
+)
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
-from engines.financial_factors import (
-    compute_financial_factors,
-    FINANCIAL_FACTOR_DIRECTION,
-)
 
 
 def load_forward_returns(trade_dates: list, horizon: int, conn) -> pd.DataFrame:

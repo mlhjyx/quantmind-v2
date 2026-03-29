@@ -1,7 +1,6 @@
 """Tushare Pro API 封装 — 带限速和重试"""
 
 import time
-from typing import Optional
 
 import pandas as pd
 import tushare as ts
@@ -16,7 +15,7 @@ class TushareClient:
     8000积分: 500请求/分钟 → sleep 0.15s 安全间隔
     """
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or settings.TUSHARE_TOKEN
         if not self.token:
             raise ValueError("TUSHARE_TOKEN 未配置")

@@ -13,13 +13,15 @@ Factors 2-5 are stock-level: standard cross-sectional Spearman IC.
 DB: postgresql://xin:quantmind@localhost:5432/quantmind_v2
 """
 
-import pandas as pd
-import numpy as np
-import psycopg2
-from scipy import stats
-from datetime import date as dt_date
 import time
 import warnings
+from datetime import date as dt_date
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 import sys
 from pathlib import Path
@@ -94,7 +96,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
     print(f"  Months:      {len(ic_df)}")
 
     # Annual breakdown
-    print(f"\n-- Annual Breakdown --")
+    print("\n-- Annual Breakdown --")
     print(f"  {'Year':<6} {'IC_Mean':>8} {'IC_Std':>8} {'IC_IR':>8} {'t-stat':>8} {'IC>0%':>6} {'N':>4}")
     print(f"  {'-'*52}")
     for year, grp in ic_df.groupby('year'):
@@ -106,7 +108,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         print(f"  {year:<6} {ym:>8.4f} {ys:>8.4f} {yir:>8.4f} {yt:>8.2f} {yp:>5.1f}% {len(grp):>4}")
 
     # Monthly IC series (condensed)
-    print(f"\n-- Monthly IC (condensed) --")
+    print("\n-- Monthly IC (condensed) --")
     print(f"  {'Month':<10} {'IC':>8} {'N':>6}")
     print(f"  {'-'*26}")
     for _, row in ic_df.iterrows():
@@ -114,7 +116,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         print(f"  {row['date'].strftime('%Y-%m'):<10} {row['ic']:>8.4f} {int(row['n_stocks']):>6}{marker}")
 
     # Verdict
-    print(f"\n  VERDICT: ", end='')
+    print("\n  VERDICT: ", end='')
     if abs(t_stat) > 1.96 and abs(ic_mean) > 0.02:
         print(f"PASS (t={t_stat:.2f}, IC={ic_mean:.4f})")
     elif abs(t_stat) > 1.64 and abs(ic_mean) > 0.015:
@@ -280,7 +282,7 @@ def main():
         # Time-series rank correlation
         ts_corr, ts_pval = stats.spearmanr(ts_df['spread'].values, ts_df['alpha_disp'].values)
 
-        print(f"  Time-series Spearman correlation (spread vs alpha_dispersion):")
+        print("  Time-series Spearman correlation (spread vs alpha_dispersion):")
         print(f"    rho = {ts_corr:.4f}, p-value = {ts_pval:.4f}")
         print(f"    N months = {len(ts_df)}")
         print()
@@ -302,13 +304,13 @@ def main():
 
         if len(sva_df) > 10:
             corr2, pval2 = stats.spearmanr(sva_df['spread'], sva_df['mean_abs_alpha'])
-            print(f"  Spread vs mean|alpha| (stock-picking opportunity):")
+            print("  Spread vs mean|alpha| (stock-picking opportunity):")
             print(f"    rho = {corr2:.4f}, p-value = {pval2:.4f}")
 
         # Annual breakdown
         sva_df['date_dt'] = pd.to_datetime(sva_df['date'])
         sva_df['year'] = sva_df['date_dt'].dt.year
-        print(f"\n  -- Annual Breakdown --")
+        print("\n  -- Annual Breakdown --")
         print(f"  {'Year':<6} {'rho_disp':>10} {'rho_abs':>10} {'N':>4}")
         print(f"  {'-'*32}")
         for year, grp in ts_df.groupby('year'):
@@ -322,14 +324,14 @@ def main():
                 print(f"  {year:<6} {yr_corr:>10.4f} {yr_corr2:>10.4f} {len(grp):>4}")
 
         # Monthly detail
-        print(f"\n  -- Monthly Values --")
+        print("\n  -- Monthly Values --")
         print(f"  {'Month':<10} {'Spread':>10} {'AlphaDisp':>10}")
         print(f"  {'-'*32}")
         for _, row in ts_df.iterrows():
             print(f"  {row['date']:<10} {row['spread']:>10.4f} {row['alpha_disp']:>10.4f}")
 
         # Verdict for market-level factor
-        print(f"\n  VERDICT (market-level): ", end='')
+        print("\n  VERDICT (market-level): ", end='')
         if abs(ts_corr) > 0.3 and ts_pval < 0.05:
             print(f"USEFUL as timing signal (rho={ts_corr:.3f}, p={ts_pval:.3f})")
         elif abs(ts_corr) > 0.15 and ts_pval < 0.1:
@@ -605,7 +607,7 @@ def main():
     print("\n" + "="*80)
     print("BATCH 6 SUMMARY")
     print("="*80)
-    print(f"\n  Factor 1 (industry_momentum_spread) is market-level — see above for time-series analysis.")
+    print("\n  Factor 1 (industry_momentum_spread) is market-level — see above for time-series analysis.")
     print()
     print(f"  {'Factor':<35} {'IC_Mean':>8} {'t-stat':>8} {'IC_IR':>8} {'IC>0%':>6} {'Verdict':>10}")
     print(f"  {'-'*77}")
@@ -617,7 +619,7 @@ def main():
         print(f"  {r['name']:<35} {r['ic_mean']:>8.4f} {r['t_stat']:>8.2f} {r['ic_ir']:>8.4f} {r['pct_pos']:>5.1f}% {verdict:>10}")
 
     # Gate check
-    print(f"\n  GATE CHECK (stock-level factors): IC > 1.5% AND t > 1.64")
+    print("\n  GATE CHECK (stock-level factors): IC > 1.5% AND t > 1.64")
     print(f"  {'-'*60}")
     for r in results:
         ic_pass = abs(r['ic_mean']) > 0.015

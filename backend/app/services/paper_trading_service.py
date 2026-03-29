@@ -16,18 +16,18 @@ Sprint 1.10 新增4项毕业评估指标:
 
 import logging
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.repositories.performance_repository import PerformanceRepository
-from app.repositories.trade_repository import TradeRepository
 from engines.metrics import (
     calc_avg_slippage_pct,
     calc_fill_rate,
     calc_signal_execution_gap_hours,
     calc_tracking_error,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories.performance_repository import PerformanceRepository
+from app.repositories.trade_repository import TradeRepository
 
 logger = logging.getLogger(__name__)
 
@@ -266,12 +266,6 @@ class PaperTradingService:
             - signal_execution_gap_hours: 信号→执行平均时延(h)
         """
         import pandas as pd
-        from engines.metrics import (
-            calc_avg_slippage_pct,
-            calc_fill_rate,
-            calc_signal_execution_gap_hours,
-            calc_tracking_error,
-        )
 
         trades = await self.trade_repo.get_trades(
             strategy_id, execution_mode="paper", limit=10000

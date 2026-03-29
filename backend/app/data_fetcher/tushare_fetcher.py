@@ -13,11 +13,8 @@
 - 批量upsert入库，单日单事务
 """
 
-import asyncio
 import logging
 import time
-from datetime import date, timedelta
-from decimal import Decimal
 from typing import Any
 
 import pandas as pd

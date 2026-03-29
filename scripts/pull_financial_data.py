@@ -17,13 +17,13 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
 import argparse
 import sys
 import time
-from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import pandas as pd
 import tushare as ts
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 
@@ -58,7 +58,7 @@ def fetch_fina_by_stock(ts_code: str, retry: int = 3) -> pd.DataFrame:
                 fields=FINA_FIELDS,
             )
             return df
-        except Exception as e:
+        except Exception:
             if attempt < retry - 1:
                 wait = 5 * (attempt + 1)
                 time.sleep(wait)
@@ -213,7 +213,7 @@ def verify_data(conn):
     if bad_pit > 0:
         print(f"  ⚠ ann_date < report_date: {bad_pit}行 (需检查)")
     else:
-        print(f"  ✓ PIT时序正确")
+        print("  ✓ PIT时序正确")
 
     # 重复检测
     cur.execute("""SELECT code, report_date, COUNT(*) FROM financial_indicators
@@ -222,7 +222,7 @@ def verify_data(conn):
     if dups:
         print(f"  ⚠ 发现{len(dups)}组重复")
     else:
-        print(f"  ✓ 无重复")
+        print("  ✓ 无重复")
 
 
 def main():

@@ -8,8 +8,6 @@ import sys
 import uuid
 from pathlib import Path
 
-import pytest
-
 # 确保backend目录和项目根目录在sys.path中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -22,6 +20,7 @@ try:
         AsyncSession,
         create_async_engine,
     )
+
     from app.main import app
 
     DATABASE_URL = "postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2"

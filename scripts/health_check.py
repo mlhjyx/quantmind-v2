@@ -9,11 +9,10 @@ CLAUDE.md要求: 任何一项失败 → P0告警 + 暂停当日链路。
   ✓ 磁盘空间 > 10GB
 """
 
-import io
 import os
 import shutil
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 # Windows UTF-8 输出修复（兼容Git Bash管道模式）

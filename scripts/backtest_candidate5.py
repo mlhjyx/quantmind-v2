@@ -12,7 +12,7 @@
 import logging
 import sys
 import time
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +28,7 @@ from engines.signal_engine import (
     SignalConfig,
     get_rebalance_dates,
 )
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(

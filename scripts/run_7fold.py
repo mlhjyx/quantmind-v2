@@ -43,7 +43,7 @@ def main():
     logger.info("=" * 70)
     logger.info("全量 7-Fold Walk-Forward 训练")
     logger.info(f"特征: {baseline_features}")
-    logger.info(f"GPU: True")
+    logger.info("GPU: True")
     logger.info("=" * 70)
 
     # 创建配置

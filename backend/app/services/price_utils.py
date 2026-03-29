@@ -16,7 +16,6 @@
 
 import logging
 from datetime import date
-from typing import Optional
 
 import pandas as pd
 import psycopg2
@@ -152,8 +151,8 @@ WHERE a2.trade_date = %s AND a1.trade_date = %s
 def get_adj_prices(
     start_date: date,
     end_date: date,
-    codes: Optional[list[str]] = None,
-    conn: Optional[psycopg2.extensions.connection] = None,
+    codes: list[str] | None = None,
+    conn: psycopg2.extensions.connection | None = None,
 ) -> pd.DataFrame:
     """获取前复权OHLC价格。
 
@@ -195,7 +194,7 @@ def get_adj_prices(
 
 
 def get_latest_adj_factors(
-    conn: Optional[psycopg2.extensions.connection] = None,
+    conn: psycopg2.extensions.connection | None = None,
 ) -> pd.Series:
     """获取每只股票的最新adj_factor。
 
@@ -218,7 +217,7 @@ def calc_adj_close_series(
     code: str,
     start_date: date,
     end_date: date,
-    conn: Optional[psycopg2.extensions.connection] = None,
+    conn: psycopg2.extensions.connection | None = None,
 ) -> pd.DataFrame:
     """获取单只股票的前复权收盘价序列。
 
@@ -246,8 +245,8 @@ def calc_adj_close_series(
 def verify_adj_factor_event(
     code: str,
     event_date: date,
-    expected_ratio: Optional[float] = None,
-    conn: Optional[psycopg2.extensions.connection] = None,
+    expected_ratio: float | None = None,
+    conn: psycopg2.extensions.connection | None = None,
 ) -> dict:
     """验证指定股票在某日是否存在除权事件。
 

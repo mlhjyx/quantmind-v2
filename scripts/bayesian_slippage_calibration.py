@@ -218,12 +218,12 @@ def compute_model_slippage(
 
     sigma_default = 0.02  # 约30%年化，A股小盘股典型值
 
-    # 估算参与率: 小额交易参与率通常0.1-2%
-    # 无日成交额数据时，用trade_amount / 代理日成交额(50万元)
+    # 估算参与率: v1.1策略30万/15只≈2万/只，参与率通常0.01-1%
+    # 无日成交额数据时，用trade_amount / 代理日成交额(1亿元，A股小盘股典型日成交额)
     qty = np.asarray(executions["quantity"], dtype=float)
     price = np.asarray(executions["fill_price"], dtype=float)
     trade_amounts = qty * price
-    proxy_daily_amount = 5_000_000.0  # 500万元代理，保守估计小盘股
+    proxy_daily_amount = 100_000_000.0  # 1亿元，A股小盘股典型日成交额
     participation = np.clip(trade_amounts / proxy_daily_amount, 1e-6, 0.5)
 
     impact_bps = y_small * sigma_default * np.sqrt(participation) * 10000
@@ -399,7 +399,7 @@ def _pymc_calibrate(executions: pd.DataFrame, pm, pt) -> CalibrationResult:
             np.asarray(executions["quantity"], dtype=float)
             * np.asarray(executions["fill_price"], dtype=float)
         )
-        participation = np.clip(trade_amounts / 5_000_000.0, 1e-6, 0.5)
+        participation = np.clip(trade_amounts / 100_000_000.0, 1e-6, 0.5)
         is_sell = (executions["direction"].values == "sell").astype(float)
 
         impact = y_small * 0.02 * pt.sqrt(participation) * 10000

@@ -32,9 +32,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.metrics import generate_report
 from engines.signal_engine import (
-    FACTOR_DIRECTION,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
@@ -451,7 +449,7 @@ def run_method_d_backtest(
         roe_df = load_recent_roe(rd, conn)
 
         # 获取当月PEAD截面
-        pead_series = pead_panel.get(rd, None)
+        pead_series = pead_panel.get(rd)
 
         # 方案D选股
         scores = method_d_select(
@@ -625,7 +623,7 @@ def print_comparison(summaries: list[dict]) -> None:
         print(f"  Bootstrap CI下界: {d_ci_low:+.3f}")
 
         # 年度逐年对比
-        print(f"\n  年度优劣对比:")
+        print("\n  年度优劣对比:")
         for year in range(2021, 2026):
             if year in baseline["annual"] and year in method_d["annual"]:
                 b_sharpe = baseline["annual"][year]["sharpe"]

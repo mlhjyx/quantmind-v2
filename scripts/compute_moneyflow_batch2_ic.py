@@ -21,10 +21,9 @@ from pathlib import Path
 print = functools.partial(print, flush=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
-from engines.config_guard import print_config_header
-
 import numpy as np
 import pandas as pd
+from engines.config_guard import print_config_header
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn

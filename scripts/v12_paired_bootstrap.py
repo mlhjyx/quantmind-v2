@@ -20,12 +20,12 @@ Usage:
 import argparse
 import sys
 import time
-from datetime import date as dt_date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning, message=".*pandas only supports.*")
 
 import numpy as np
@@ -349,7 +349,7 @@ def main():
         seed=args.seed,
     )
 
-    print(f"\n  --- Paired Bootstrap Results ---")
+    print("\n  --- Paired Bootstrap Results ---")
     print(f"  {'Observed mean(IC_diff):':35s} {result['observed_mean_diff']:+.5f}")
     print(f"  {'Observed std(IC_diff):':35s} {result['observed_std_diff']:.5f}")
     print(f"  {'Bootstrap mean:':35s} {result['boot_mean']:+.5f}")
@@ -383,22 +383,22 @@ def main():
     print(f"  Statistical significance: {verdict} ({sig_level})")
 
     if verdict == "SIGNIFICANT":
-        print(f"\n  RECOMMENDATION: v1.2 upgrade is justified.")
+        print("\n  RECOMMENDATION: v1.2 upgrade is justified.")
         print(f"  The +{result['observed_mean_diff']*100:.2f}% IC increment from mf_momentum_divergence")
-        print(f"  is statistically significant at 95% confidence.")
-        print(f"  However, Paper Trading v1.1 must complete 60 days first.")
-        print(f"  After graduation, run v1.2 backtest + new 60-day Paper Trading.")
+        print("  is statistically significant at 95% confidence.")
+        print("  However, Paper Trading v1.1 must complete 60 days first.")
+        print("  After graduation, run v1.2 backtest + new 60-day Paper Trading.")
     elif verdict == "MARGINALLY SIGNIFICANT":
-        print(f"\n  RECOMMENDATION: Borderline. Consider waiting for more data.")
-        print(f"  The increment is significant at 90% but not 95%.")
-        print(f"  May be worth testing with longer OOS period or different rebalance freq.")
+        print("\n  RECOMMENDATION: Borderline. Consider waiting for more data.")
+        print("  The increment is significant at 90% but not 95%.")
+        print("  May be worth testing with longer OOS period or different rebalance freq.")
     else:
-        print(f"\n  RECOMMENDATION: v1.2 upgrade NOT justified by current evidence.")
-        print(f"  The IC increment does not reliably exclude zero.")
-        print(f"  Keep v1.1 and look for stronger candidate factors.")
+        print("\n  RECOMMENDATION: v1.2 upgrade NOT justified by current evidence.")
+        print("  The IC increment does not reliably exclude zero.")
+        print("  Keep v1.1 and look for stronger candidate factors.")
 
     # ── Annual breakdown of IC diff ──
-    print(f"\n  --- Annual IC Diff Breakdown ---")
+    print("\n  --- Annual IC Diff Breakdown ---")
     paired_ic["year"] = pd.to_datetime(paired_ic["date"]).dt.year
     print(f"  {'Year':<6} {'IC_5':>8} {'IC_6':>8} {'Diff':>8} {'Diff>0':>6} {'N':>4}")
     for year, grp in paired_ic.groupby("year"):
@@ -410,7 +410,7 @@ def main():
         )
 
     # ── Monthly detail ──
-    print(f"\n  --- Monthly Detail (IC_5, IC_6, Diff) ---")
+    print("\n  --- Monthly Detail (IC_5, IC_6, Diff) ---")
     print(f"  {'Month':>10} {'IC_5':>8} {'IC_6':>8} {'Diff':>8} {'N':>6}")
     for _, r in paired_ic.iterrows():
         d = r["date"][:7]  # YYYY-MM

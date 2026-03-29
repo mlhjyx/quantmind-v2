@@ -4,7 +4,24 @@
       "Bash(*)",
       "Bash(source .venv/Scripts/activate)",
       "Bash(python scripts/run_paper_trading.py signal --date 2026-03-25)",
-      "WebFetch(domain:dict.thinktrader.net)"
+      "WebFetch(domain:dict.thinktrader.net)",
+      "WebSearch",
+      "WebFetch(domain:mitchellh.com)",
+      "WebFetch(domain:openai.com)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:manus.im)",
+      "WebFetch(domain:martinfowler.com)",
+      "WebFetch(domain:www.humanlayer.dev)",
+      "WebFetch(domain:www.ignorance.ai)",
+      "WebFetch(domain:www.philschmid.de)",
+      "WebFetch(domain:www.epsilla.com)",
+      "WebFetch(domain:www.louisbouchard.ai)",
+      "WebFetch(domain:stripe.dev)",
+      "WebFetch(domain:www.infoq.com)",
+      "WebFetch(domain:www.datadoghq.com)",
+      "WebFetch(domain:snowan.gitbook.io)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Figma__get_metadata"
     ]
   }
 }

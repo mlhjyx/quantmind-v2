@@ -11,14 +11,13 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
-from engines.config_guard import print_config_header
-
 import numpy as np
 import pandas as pd
+from engines.config_guard import print_config_header
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
@@ -153,7 +152,7 @@ def main():
     print(f"[1] 分析日期: {len(analysis_dates)}个月 ({analysis_dates[0]} ~ {analysis_dates[-1]})")
 
     # 2. 加载dv_ttm月末截面
-    print(f"\n[2] 加载dv_ttm月末截面数据...")
+    print("\n[2] 加载dv_ttm月末截面数据...")
     raw_df = load_dv_ttm_monthly(conn, analysis_dates)
     if raw_df.empty:
         print("ERROR: 无dv_ttm数据")
@@ -168,7 +167,7 @@ def main():
           f"zero_pct={100*(raw_df['dv_ttm']==0).mean():.1f}%")
 
     # 3. 截面rank + zscore
-    print(f"\n[3] 截面rank -> zscore...")
+    print("\n[3] 截面rank -> zscore...")
     factor_df = cross_section_rank_zscore(raw_df)
     print(f"  处理后: {len(factor_df):,}行")
 
@@ -206,7 +205,7 @@ def main():
     print(f"  有效月数: {len(ics)}")
 
     # 5. 年度IC分解
-    print(f"\n[5] 年度IC分解:")
+    print("\n[5] 年度IC分解:")
     ic_df["year"] = pd.to_datetime(ic_df["date"]).dt.year
     print(f"  {'年份':>6} {'IC均值':>8} {'IC_IR':>7} {'命中率':>6} {'月数':>4}")
     print(f"  {'-'*35}")
@@ -216,7 +215,7 @@ def main():
         print(f"  {year:>6} {np.mean(vals):>+.4f} {ir:>+.3f} {np.mean(vals>0):>5.0%} {len(vals):>4}")
 
     # 6. 与现有5因子的截面相关性
-    print(f"\n[6] 与现有5因子的截面相关性 (最近20个月平均)...")
+    print("\n[6] 与现有5因子的截面相关性 (最近20个月平均)...")
     existing_factors = [
         "turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"
     ]
@@ -263,7 +262,7 @@ def main():
     corr_pass = max_abs_corr < 0.5
     ic_pass = abs(ic_mean) > 0.015
     print(f"\n{'='*60}")
-    print(f"Gate Check:")
+    print("Gate Check:")
     print(f"  IC > 1.5%:       |{ic_mean:.4f}| > 0.015 = {'PASS' if ic_pass else 'FAIL'}")
     print(f"  max_corr < 0.5:  {max_abs_corr:.3f} < 0.5 = {'PASS' if corr_pass else 'FAIL'}")
     print(f"  Overall:         {'PASS' if (ic_pass and corr_pass) else 'FAIL'}")

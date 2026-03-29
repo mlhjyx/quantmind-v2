@@ -11,13 +11,14 @@ Tasks:
 Baseline 5 factors: volatility_20, ln_market_cap, momentum_20, turnover_mean_20, bp_ratio
 """
 
-import pandas as pd
-import numpy as np
-import psycopg2
-from scipy import stats
-from datetime import date as dt_date, timedelta
 import time
 import warnings
+
+import numpy as np
+import pandas as pd
+import psycopg2
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 
 DB_URI = 'postgresql://xin:quantmind@localhost:5432/quantmind_v2'
@@ -392,13 +393,13 @@ def main():
     print(f"\n  >>> VERDICT: Residual |IC| = {resid_ic*100:.2f}%")
     if resid_ic > 0.03:
         c2h_verdict = "PASS"
-        print(f"      PASS: > 3% => INDEPENDENT signal beyond vol_20")
+        print("      PASS: > 3% => INDEPENDENT signal beyond vol_20")
     elif resid_ic > 0.02:
         c2h_verdict = "MARGINAL"
-        print(f"      MARGINAL: 2-3% => weak independent signal, proceed with caution")
+        print("      MARGINAL: 2-3% => weak independent signal, proceed with caution")
     else:
         c2h_verdict = "FAIL"
-        print(f"      FAIL: < 2% => likely REDUNDANT with vol_20")
+        print("      FAIL: < 2% => likely REDUNDANT with vol_20")
 
     # ══════════════════════════════════════════════════════════════
     # TASK 2: mf_momentum_divergence incremental IC
@@ -497,20 +498,20 @@ def main():
     ic6_mean = s_6fac['ic_mean'] if s_6fac['n_months'] > 0 else np.nan
     delta_6v5 = ic6_mean - ic5_mean if not (np.isnan(ic5_mean) or np.isnan(ic6_mean)) else np.nan
 
-    print(f"\n  >>> COMPARISON:")
+    print("\n  >>> COMPARISON:")
     print(f"      5-Factor IC: {ic5_mean:+.4f}")
     print(f"      6-Factor IC: {ic6_mean:+.4f}")
     print(f"      Delta:       {delta_6v5:+.4f}" if not np.isnan(delta_6v5) else "      Delta:       N/A")
 
     if not np.isnan(delta_6v5) and delta_6v5 > 0.005:
         mfd_verdict = "PASS"
-        print(f"      PASS: Delta > 0.5% => mf_divergence has incremental value")
+        print("      PASS: Delta > 0.5% => mf_divergence has incremental value")
     elif not np.isnan(delta_6v5) and delta_6v5 > 0:
         mfd_verdict = "MARGINAL"
-        print(f"      MARGINAL: Delta positive but < 0.5%")
+        print("      MARGINAL: Delta positive but < 0.5%")
     else:
         mfd_verdict = "FAIL"
-        print(f"      FAIL: No incremental value")
+        print("      FAIL: No incremental value")
 
     # Annual comparison 5-factor vs 6-factor
     print("\n--- 2d. Annual comparison ---")
@@ -561,7 +562,7 @@ def main():
         delta_7v5 = ic7_mean - ic5_mean if not np.isnan(ic7_mean) else np.nan
         delta_7v6 = ic7_mean - ic6_mean if not (np.isnan(ic7_mean) or np.isnan(ic6_mean)) else np.nan
 
-        print(f"\n  >>> 7-Factor vs baseline:")
+        print("\n  >>> 7-Factor vs baseline:")
         print(f"      5-Factor IC: {ic5_mean:+.4f}")
         print(f"      6-Factor IC: {ic6_mean:+.4f}")
         print(f"      7-Factor IC: {ic7_mean:+.4f}")
@@ -581,8 +582,8 @@ def main():
             d7 = i7 - i5 if not (np.isnan(i7) or np.isnan(i5)) else np.nan
             print(f"  {year:<6} {i5:>+8.4f} {i6:>+8.4f} {i7:>+8.4f} {d7:>+8.4f}")
     else:
-        print(f"  close_to_high FAILED redundancy check. Skipping 7-factor with c2h.")
-        print(f"  Will test alternatives below.")
+        print("  close_to_high FAILED redundancy check. Skipping 7-factor with c2h.")
+        print("  Will test alternatives below.")
 
     # ══════════════════════════════════════════════════════════════
     # TASK 4: ALTERNATIVE — price_to_ma20_ratio
@@ -664,18 +665,18 @@ def main():
     pma_resid_ic = abs(s_pma_resid['ic_mean']) if s_pma_resid['n_months'] > 0 else 0
     c2h_resid_ic = resid_ic
 
-    print(f"\n  >>> COMPARISON of alternatives (neutralized IC):")
+    print("\n  >>> COMPARISON of alternatives (neutralized IC):")
     print(f"      close_to_high residual |IC|: {c2h_resid_ic*100:.2f}%")
     print(f"      price_to_ma20 residual |IC|: {pma_resid_ic*100:.2f}%")
 
     better_alt = None
     if pma_resid_ic > c2h_resid_ic and pma_resid_ic > 0.02:
-        print(f"      => price_to_ma20 is a better candidate")
+        print("      => price_to_ma20 is a better candidate")
         better_alt = ('price_to_ma20_resid', pma_resid_wide, pma_resid_dir)
     elif c2h_resid_ic > 0.02:
-        print(f"      => close_to_high_resid remains better")
+        print("      => close_to_high_resid remains better")
     else:
-        print(f"      => Neither has strong independent signal")
+        print("      => Neither has strong independent signal")
 
     # If we have a better alternative and c2h failed, test 7-factor
     if better_alt and c2h_verdict == "FAIL":
@@ -768,20 +769,20 @@ def main():
         print(f"  {'intraday_overnight_split':<40} {abs(s_io['ic_mean'])*100:>6.2f} {s_io['t_stat']:>7.2f} {'':>10}")
 
     # Recommendation
-    print(f"\n  RECOMMENDATION:")
+    print("\n  RECOMMENDATION:")
     if mfd_verdict in ("PASS", "MARGINAL"):
-        print(f"    [1] ADD mf_momentum_divergence to baseline (6-factor)")
+        print("    [1] ADD mf_momentum_divergence to baseline (6-factor)")
     else:
-        print(f"    [1] DO NOT ADD mf_momentum_divergence (no incremental value)")
+        print("    [1] DO NOT ADD mf_momentum_divergence (no incremental value)")
 
     if c2h_verdict == "PASS":
-        print(f"    [2] ADD close_to_high RESIDUALIZED version (7-factor)")
+        print("    [2] ADD close_to_high RESIDUALIZED version (7-factor)")
     elif c2h_verdict == "MARGINAL":
-        print(f"    [2] close_to_high MARGINAL — monitor, use raw version cautiously")
+        print("    [2] close_to_high MARGINAL — monitor, use raw version cautiously")
     elif better_alt and pma_resid_ic > 0.02:
-        print(f"    [2] SUBSTITUTE with price_to_ma20_residual (better independence from vol_20)")
+        print("    [2] SUBSTITUTE with price_to_ma20_residual (better independence from vol_20)")
     else:
-        print(f"    [2] NO good 7th factor candidate — stay at 6 factors")
+        print("    [2] NO good 7th factor candidate — stay at 6 factors")
 
     print(f"\nTotal time: {time.time()-t0:.1f}s")
 

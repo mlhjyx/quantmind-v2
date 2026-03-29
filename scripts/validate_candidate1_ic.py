@@ -170,7 +170,7 @@ def main():
                 ics.append({"date": td, "ic": ic})
 
         if not ics:
-            print(f"    ERROR: 无有效IC")
+            print("    ERROR: 无有效IC")
             all_results[fname] = None
             continue
 

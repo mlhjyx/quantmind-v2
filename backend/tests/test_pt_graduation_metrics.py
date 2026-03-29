@@ -7,12 +7,11 @@
 - calc_signal_execution_gap_hours
 """
 
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.metrics import (
     TRADING_DAYS_PER_YEAR,
     calc_avg_slippage_pct,
@@ -20,7 +19,6 @@ from engines.metrics import (
     calc_signal_execution_gap_hours,
     calc_tracking_error,
 )
-
 
 # ──────────────────── 辅助对象 ────────────────────
 

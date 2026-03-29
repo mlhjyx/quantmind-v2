@@ -11,15 +11,10 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional
 
 import pandas as pd
-
 from engines.backtest_engine import Fill, PendingOrder
 from engines.paper_broker import PaperBroker
-from app.config import settings
-from app.services.notification_service import send_alert
-from app.services.trading_calendar import get_prev_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +54,7 @@ class ExecutionService:
         position_multiplier: float,
         price_data: pd.DataFrame,
         initial_capital: float,
-        signal_date: Optional[date] = None,
+        signal_date: date | None = None,
         dry_run: bool = False,
     ) -> ExecutionResult:
         """完整执行: CB调整 -> PaperBroker执行 -> 写trade_log。
@@ -91,7 +86,7 @@ class ExecutionService:
         if cb_level >= 4:
             # L4 HALT: 清空调仓目标
             # 对应 script L1468-1477
-            logger.error(f"[ExecutionService] L4 HALT, 不执行任何交易")
+            logger.error("[ExecutionService] L4 HALT, 不执行任何交易")
             hedged_target = {}
             is_rebalance = False
             result.cb_level = cb_level
@@ -443,7 +438,7 @@ class ExecutionService:
         self,
         conn,
         exec_date: date,
-    ) -> Optional[date]:
+    ) -> date | None:
         """获取下次月度调仓日。对应 script L1590-1606。"""
         cur = conn.cursor()
         cur.execute(

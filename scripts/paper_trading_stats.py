@@ -10,12 +10,12 @@
 
 import argparse
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning, message=".*pandas only supports.*")
 
 import numpy as np
@@ -322,7 +322,7 @@ def print_factor_ic_section(conn):
     # 先尝试factor_ic_history
     ic_hist = load_factor_ic(conn)
     if not ic_hist.empty:
-        print(f"  Source: factor_ic_history table")
+        print("  Source: factor_ic_history table")
         for fname in V11_FACTORS:
             sub = ic_hist[ic_hist["factor_name"] == fname].sort_values("trade_date")
             if sub.empty:
@@ -342,7 +342,7 @@ def print_factor_ic_section(conn):
         if ic_rt.empty:
             print("  No factor IC data available (neither ic_history nor factor_values)")
             return
-        print(f"  Source: computed from factor_values + klines (recent)")
+        print("  Source: computed from factor_values + klines (recent)")
         for _, row in ic_rt.iterrows():
             fname = row["factor_name"]
             print(

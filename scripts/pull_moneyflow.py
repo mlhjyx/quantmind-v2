@@ -28,6 +28,7 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 import tushare as ts
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 
@@ -95,7 +96,7 @@ def fetch_moneyflow_by_date(trade_date: str, retry: int = 3) -> pd.DataFrame:
         except Exception as e:
             err_msg = str(e)
             if "每分钟" in err_msg or "频次" in err_msg or "too many" in err_msg.lower():
-                print(f"  [限频] 等待60s...")
+                print("  [限频] 等待60s...")
                 time.sleep(60)
             elif "权限" in err_msg:
                 raise
@@ -224,7 +225,7 @@ def verify(conn: psycopg2.extensions.connection) -> None:
         # 总行数
         cur.execute("SELECT COUNT(*) FROM moneyflow_daily;")
         total = cur.fetchone()[0]
-        print(f"\n=== moneyflow_daily 验证 ===")
+        print("\n=== moneyflow_daily 验证 ===")
         print(f"总行数: {total:,}")
 
         if total == 0:
@@ -270,7 +271,7 @@ def verify(conn: psycopg2.extensions.connection) -> None:
         """)
         rows = cur.fetchall()
         if rows:
-            print(f"\n茅台(600519)最近资金流向抽样（金额单位：万元）:")
+            print("\n茅台(600519)最近资金流向抽样（金额单位：万元）:")
             for r in rows:
                 print(f"  {r[0]}: 特大单买={r[1]}, 特大单卖={r[2]}, 净流入={r[3]}")
 

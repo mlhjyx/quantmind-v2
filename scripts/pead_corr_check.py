@@ -5,7 +5,7 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -13,16 +13,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 import pandas as pd
+from analyze_pead_factors import (
+    calc_earnings_surprise_car,
+    load_prices_and_index,
+)
+from engines.factor_engine import (
+    calc_amihud,
+    calc_bp_ratio,
+    calc_reversal,
+    calc_turnover_mean,
+    calc_volatility,
+)
 from scipy import stats
 
 from app.services.price_utils import _get_sync_conn
-from engines.factor_engine import (
-    calc_reversal, calc_volatility, calc_turnover_mean, calc_amihud, calc_bp_ratio,
-)
-from analyze_pead_factors import (
-    load_prices_and_index, load_financial_data,
-    calc_earnings_surprise_car, calc_earnings_revision, calc_ann_date_proximity,
-)
 
 
 def main():

@@ -9,10 +9,9 @@
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
 
 # 确保scripts目录可导入
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
@@ -45,7 +44,6 @@ class TestOpeningGapCheck:
     def setup_method(self):
         """导入被测函数（每次测试前重新导入避免mock污染）。"""
         # 延迟导入，避免依赖整个scripts模块
-        import importlib
         import run_paper_trading as rpt
         self.check_opening_gap = rpt._check_opening_gap
 

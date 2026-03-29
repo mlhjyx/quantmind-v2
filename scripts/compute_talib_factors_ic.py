@@ -118,7 +118,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
     print(f"  Months:      {len(ic_df)}")
 
     # Annual breakdown
-    print(f"\n-- Annual Breakdown --")
+    print("\n-- Annual Breakdown --")
     print(f"  {'Year':<6} {'IC_Mean':>8} {'IC_Std':>8} {'IC_IR':>8} {'t-stat':>8} {'IC>0%':>6} {'N':>4}")
     print(f"  {'-'*52}")
     for year, grp in ic_df.groupby("year"):
@@ -133,7 +133,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         )
 
     # Monthly IC series (condensed)
-    print(f"\n-- Monthly IC (condensed) --")
+    print("\n-- Monthly IC (condensed) --")
     print(f"  {'Month':<10} {'IC':>8} {'N':>6}")
     print(f"  {'-'*26}")
     for _, row in ic_df.iterrows():
@@ -144,7 +144,7 @@ def print_ic_report(name: str, formula: str, ic_df: pd.DataFrame) -> dict | None
         )
 
     # Verdict
-    print(f"\n  VERDICT: ", end="")
+    print("\n  VERDICT: ", end="")
     if abs(t_stat) > 1.96 and abs(ic_mean) > 0.02:
         print(f"PASS (t={t_stat:.2f}, IC={ic_mean:.4f})")
     elif abs(t_stat) > 1.64 and abs(ic_mean) > 0.015:

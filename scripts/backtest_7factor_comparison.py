@@ -22,7 +22,7 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -34,7 +34,6 @@ sys.path.insert(0, str(project_root / "scripts"))
 
 import numpy as np
 import pandas as pd
-
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
 from engines.metrics import (
     TRADING_DAYS_PER_YEAR,
@@ -50,6 +49,7 @@ from engines.signal_engine import (
     SignalConfig,
     get_rebalance_dates,
 )
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
@@ -494,7 +494,7 @@ def print_comparison_report(
 
     print("\n")
     print("=" * 80)
-    print(f"  7因子 vs 5因子 SimBroker回测对比")
+    print("  7因子 vs 5因子 SimBroker回测对比")
     print(f"  周期: {START_DATE} ~ {END_DATE}  |  初始资金: {INITIAL_CAPITAL:,.0f}")
     print(f"  配置: Top{PAPER_TRADING_CONFIG.top_n} + 月度 + 行业25%上限")
     print("=" * 80)
@@ -541,7 +541,7 @@ def print_comparison_report(
 
     # ── 成本敏感性 ──
     print(f"\n{'成本敏感性 (Sharpe)':=^72}")
-    print(f"  注: 精确成本敏感性需重跑回测。以下为近似估计（基于日收益率调整）")
+    print("  注: 精确成本敏感性需重跑回测。以下为近似估计（基于日收益率调整）")
     print(f"  成本倍数  |  {label_5f} Sharpe  |  {label_7f} Sharpe")
     print("  " + "-" * 50)
     # 近似: 年换手率 × 单边成本(bps) × 倍数 → 年度收益率调整

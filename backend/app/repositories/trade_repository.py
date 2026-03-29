@@ -4,7 +4,6 @@
 """
 
 from datetime import date
-from typing import Optional
 
 from app.repositories.base_repository import BaseRepository
 
@@ -15,8 +14,8 @@ class TradeRepository(BaseRepository):
     async def get_trades(
         self,
         strategy_id: str,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
         execution_mode: str = "paper",
         limit: int = 100,
     ) -> list[dict]:
@@ -92,7 +91,7 @@ class TradeRepository(BaseRepository):
         stamp_tax: float,
         total_cost: float,
         execution_mode: str = "paper",
-        reject_reason: Optional[str] = None,
+        reject_reason: str | None = None,
     ) -> None:
         """插入交易记录。"""
         await self.execute(

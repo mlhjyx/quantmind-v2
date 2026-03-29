@@ -40,7 +40,6 @@ from scipy import stats as sp_stats
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.metrics import generate_report
 from engines.signal_engine import (
     FACTOR_DIRECTION,
     PortfolioBuilder,
@@ -778,7 +777,7 @@ def print_comparison(summaries: list[dict]) -> None:
         print()
 
     # 年度逐年: 每个方法 vs 基线 胜负
-    print(f"\n  年度Sharpe胜负:")
+    print("\n  年度Sharpe胜负:")
     for year in range(2021, 2026):
         if year not in baseline["annual"]:
             continue

@@ -29,9 +29,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.metrics import generate_report
 from engines.signal_engine import (
-    FACTOR_DIRECTION,
     PortfolioBuilder,
     SignalConfig,
     get_rebalance_dates,
@@ -43,7 +41,7 @@ from run_backtest import (
     load_price_data,
     load_universe,
 )
-from run_pead_backtest import compute_pead_factor_panel, bootstrap_sharpe_ci
+from run_pead_backtest import bootstrap_sharpe_ci, compute_pead_factor_panel
 
 from app.services.price_utils import _get_sync_conn
 
@@ -507,7 +505,7 @@ def print_comparison(summaries: list[dict]) -> None:
         if config_a["sharpe"] > baseline["sharpe"] + 0.05:
             print(f"  分层排序(5F) vs 等权: Sharpe +{config_a['sharpe'] - baseline['sharpe']:.3f}, 分层有效")
         elif abs(config_a["sharpe"] - baseline["sharpe"]) <= 0.05:
-            print(f"  分层排序(5F) vs 等权: Sharpe差异<0.05, 分层对这组因子无增量")
+            print("  分层排序(5F) vs 等权: Sharpe差异<0.05, 分层对这组因子无增量")
         else:
             print(f"  分层排序(5F) vs 等权: Sharpe {config_a['sharpe'] - baseline['sharpe']:+.3f}, 等权更优")
 
@@ -531,9 +529,9 @@ def print_comparison(summaries: list[dict]) -> None:
             )
         elif config_c and config_b:
             if config_c["sharpe"] > config_b["sharpe"]:
-                print(f"  混合L3 > 纯PEAD L3: bp_ratio在L3有增量")
+                print("  混合L3 > 纯PEAD L3: bp_ratio在L3有增量")
             else:
-                print(f"  混合L3 <= 纯PEAD L3: bp在L3无增量")
+                print("  混合L3 <= 纯PEAD L3: bp在L3无增量")
 
     print()
 

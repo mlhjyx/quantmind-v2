@@ -219,7 +219,7 @@ def main():
     print(f"  有效月数: {len(ics)}")
 
     # 5. 年度IC分解
-    print(f"\n[5] 年度IC分解:")
+    print("\n[5] 年度IC分解:")
     ic_df["year"] = pd.to_datetime(ic_df["date"]).dt.year
     print(f"  {'年份':>6} {'IC均值':>8} {'IC_IR':>7} {'命中率':>6} {'月数':>4}")
     print(f"  {'-'*35}")
@@ -229,7 +229,7 @@ def main():
         print(f"  {year:>6} {np.mean(vals):>+.4f} {ir:>+.3f} {np.mean(vals>0):>5.0%} {len(vals):>4}")
 
     # 6. 与现有因子的截面相关性
-    print(f"\n[6] 与现有因子的截面相关性 (最近20个月平均)...")
+    print("\n[6] 与现有因子的截面相关性 (最近20个月平均)...")
     existing_factors = [
         "turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"
     ]

@@ -159,7 +159,7 @@ def compare_fills(sim_df: pd.DataFrame, qmt_df: pd.DataFrame) -> pd.DataFrame:
 def print_comparison_report(merged: pd.DataFrame, trade_date: date) -> None:
     """打印对比报告。"""
     print(f"\n{'='*70}")
-    print(f"  SimBroker vs miniQMT 成交对比报告")
+    print("  SimBroker vs miniQMT 成交对比报告")
     print(f"  交易日: {trade_date}")
     print(f"{'='*70}")
 
@@ -182,7 +182,7 @@ def print_comparison_report(merged: pd.DataFrame, trade_date: date) -> None:
         max_diff_bps = matched["price_diff_bps"].abs().max()
         std_diff_bps = matched["price_diff_bps"].std()
 
-        print(f"\n  价差统计(bps):")
+        print("\n  价差统计(bps):")
         print(f"    平均: {avg_diff_bps:+.2f}")
         print(f"    中位数: {median_diff_bps:+.2f}")
         print(f"    最大绝对值: {max_diff_bps:.2f}")
@@ -193,7 +193,7 @@ def print_comparison_report(merged: pd.DataFrame, trade_date: date) -> None:
         if sim_slippage_bps > 0:
             slippage_deviation = abs(avg_diff_bps) / sim_slippage_bps * 100
             pass_fail = "PASS" if slippage_deviation < 50 else "FAIL"
-            print(f"\n  毕业标准评估:")
+            print("\n  毕业标准评估:")
             print(f"    SimBroker滑点模型: {sim_slippage_bps}bps")
             print(f"    实际偏差: {abs(avg_diff_bps):.2f}bps")
             print(f"    偏差比例: {slippage_deviation:.1f}% (标准: <50%)")

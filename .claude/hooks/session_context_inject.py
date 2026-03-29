@@ -55,6 +55,16 @@ v1.1配置锁死: 5因子等权Top15月度, 不修改
 
 铁律速查: 1.spawn才算启动 2.因子+中性化 3.SimBroker回测 4.复盘不跳过 5.验代码不信文档 6.更新PROGRESS 7.ML必须OOS 8.因子→策略匹配"""
 
+    # 写入session开始标记到audit.log，用于verify_completion.py区分会话边界
+    from datetime import datetime
+    audit_log = project_root / ".claude" / "hooks" / "audit.log"
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(audit_log, "a", encoding="utf-8") as f:
+            f.write(f"{timestamp} | SESSION_START\n")
+    except Exception:
+        pass
+
     result = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

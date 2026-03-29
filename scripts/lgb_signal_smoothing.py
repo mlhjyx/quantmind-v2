@@ -484,7 +484,7 @@ def run_experiment(
     logger.info(f"  月均换手: {turnover_stats['avg_monthly_turnover']:.1%}")
     logger.info(f"  调仓次数: {turnover_stats['n_rebalances']}")
     logger.info(f"  交易天数: {metrics['n_days']}")
-    logger.info(f"  年度分解:")
+    logger.info("  年度分解:")
     for _, row in yearly.iterrows():
         logger.info(f"    {int(row['year'])}: Sharpe={row['ann_sharpe']:.3f} "
                      f"Ret={row['ann_return']:.2%} MDD={row['mdd']:.2%}")

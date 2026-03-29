@@ -16,23 +16,18 @@
 """
 
 from datetime import date
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.backtest_engine import (
     BacktestConfig,
-    BacktestResult,
-    Fill,
     PendingOrder,
     PendingOrderStats,
     SimBroker,
     SimpleBacktester,
 )
 from engines.paper_broker import PaperBroker, PaperState
-
 
 # ──────────────────────────────────────────────────────────
 # 辅助函数
@@ -517,7 +512,6 @@ class TestPendingOrderPersistence:
     def test_pending_data_round_trip_multiple(self) -> None:
         """多只pending的序列化往返一致。"""
         import json
-        from datetime import datetime
 
         orders = [
             PendingOrder(code=f"00000{i}", signal_date=date(2026, 3, 19),
