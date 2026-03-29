@@ -679,7 +679,7 @@ export default function MiningTaskCenter() {
                 .map((t) => (
                   <div key={t.task_id} className="mb-3 last:mb-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-mono text-slate-400">{t.task_id.slice(0, 12)}...</span>
+                      <span className="text-xs font-mono text-slate-400">{t.task_id?.slice(0, 12) ?? "unknown"}...</span>
                       <span
                         className="text-[10px] font-medium"
                         style={{ color: ENGINE_COLOR[t.engine] }}

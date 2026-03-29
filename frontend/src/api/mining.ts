@@ -162,8 +162,22 @@ export async function startBruteForceMining(config: BruteForceConfig): Promise<{
 }
 
 export async function getMiningTasks(): Promise<MiningTaskSummary[]> {
-  const res = await apiClient.get<MiningTaskSummary[]>("/mining/tasks");
-  return res.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any[]>("/mining/tasks");
+  return (res.data ?? []).map((d) => ({
+    task_id: d.run_id ?? d.task_id ?? "",
+    engine: d.engine ?? "gp",
+    status: d.status ?? "unknown",
+    progress: d.progress ?? 0,
+    generation: d.generation,
+    total_generations: d.total_generations,
+    best_fitness: d.best_fitness,
+    discovered: d.discovered ?? 0,
+    passed: d.passed ?? 0,
+    archived: d.archived ?? 0,
+    started_at: d.started_at ?? "",
+    completed_at: d.completed_at ?? d.finished_at,
+  }));
 }
 
 export async function getMiningTaskDetail(taskId: string): Promise<MiningTaskDetail> {

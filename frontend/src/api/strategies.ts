@@ -43,8 +43,24 @@ export interface StrategyCreatePayload {
 export type StrategyUpdatePayload = Partial<StrategyCreatePayload>;
 
 export async function listStrategies(): Promise<Strategy[]> {
-  const res = await apiClient.get<Strategy[]>("/strategies");
-  return res.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any[]>("/strategies");
+  return (res.data ?? []).map((d) => ({
+    id: d.id ?? "",
+    name: d.name ?? "",
+    description: d.description,
+    factor_ids: d.factor_ids ?? [],
+    top_n: d.top_n ?? 15,
+    rebalance_freq: d.rebalance_freq ?? "monthly",
+    weight_method: d.weight_method ?? "equal",
+    industry_cap: d.industry_cap ?? 0.25,
+    single_stock_cap: d.single_stock_cap ?? 0.1,
+    initial_capital: d.initial_capital ?? 1000000,
+    created_at: d.created_at ?? "",
+    updated_at: d.updated_at ?? "",
+    sharpe: d.sharpe,
+    mdd: d.mdd,
+  }));
 }
 
 export async function getStrategy(id: string): Promise<Strategy> {
