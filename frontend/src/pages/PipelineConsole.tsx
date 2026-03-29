@@ -10,14 +10,18 @@ import {
   getPendingApprovals,
   getPipelineHistory,
   getPipelineLogs,
+  getPipelineRun,
   triggerPipeline,
   pausePipeline,
   approveItem,
   rejectItem,
   holdItem,
+  approveFactor,
+  rejectFactor,
   setAutomationLevel,
   type PipelineStatus,
   type ApprovalItem,
+  type CandidateItem,
   type PipelineRun,
   type PipelineLogEntry,
   type AutomationLevel,
@@ -67,6 +71,10 @@ export default function PipelineConsole() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<CandidateItem[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  // Track per-candidate action loading: factorId → "approving" | "rejecting" | null
+  const [candidateActions, setCandidateActions] = useState<Record<number, "approving" | "rejecting" | null>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -92,6 +100,18 @@ export default function PipelineConsole() {
       // silent
     } finally {
       setLoadingPending(false);
+    }
+  }, []);
+
+  const loadCandidates = useCallback(async (runId: string) => {
+    setLoadingCandidates(true);
+    try {
+      const data = await getPipelineRun(runId);
+      setCandidates(data.candidates);
+    } catch {
+      // silent — pipeline run may not exist yet
+    } finally {
+      setLoadingCandidates(false);
     }
   }, []);
 
@@ -131,10 +151,15 @@ export default function PipelineConsole() {
 
   // Load tab-specific data when switching tabs
   useEffect(() => {
-    if (activeTab === "待审批") loadPending();
-    else if (activeTab === "运行历史") loadHistory();
-    else if (activeTab === "AI决策日志") loadLogs();
-  }, [activeTab, loadPending, loadHistory, loadLogs]);
+    if (activeTab === "待审批") {
+      loadPending();
+      if (status.run_id) loadCandidates(status.run_id);
+    } else if (activeTab === "运行历史") {
+      loadHistory();
+    } else if (activeTab === "AI决策日志") {
+      loadLogs();
+    }
+  }, [activeTab, loadPending, loadCandidates, loadHistory, loadLogs, status.run_id]);
 
   // WebSocket connection when pipeline is running
   useEffect(() => {
@@ -207,7 +232,47 @@ export default function PipelineConsole() {
     setPending((prev) => prev.map((p) => p.id === id ? { ...p, decision: "hold" as const } : p));
   };
 
+  const handleCandidateApprove = async (factorId: number) => {
+    if (!status.run_id) return;
+    setCandidateActions((prev) => ({ ...prev, [factorId]: "approving" }));
+    try {
+      await approveFactor(status.run_id, factorId);
+      setCandidates((prev) =>
+        prev.map((c) => c.id === factorId ? { ...c, status: "approved" as const, decision_by: "user" } : c)
+      );
+    } catch {
+      setError(`批准因子 #${factorId} 失败`);
+    } finally {
+      setCandidateActions((prev) => ({ ...prev, [factorId]: null }));
+    }
+  };
+
+  const handleCandidateReject = async (factorId: number) => {
+    if (!status.run_id) return;
+    const reason = window.prompt("请输入拒绝理由（必填，≥5字，将写入GP学习知识库）：");
+    if (!reason || reason.trim().length < 5) {
+      if (reason !== null) setError("拒绝理由不能少于5个字");
+      return;
+    }
+    setCandidateActions((prev) => ({ ...prev, [factorId]: "rejecting" }));
+    try {
+      await rejectFactor(status.run_id, factorId, reason.trim());
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === factorId
+            ? { ...c, status: "rejected" as const, decision_by: "user", decision_reason: reason.trim() }
+            : c
+        )
+      );
+    } catch {
+      setError(`拒绝因子 #${factorId} 失败`);
+    } finally {
+      setCandidateActions((prev) => ({ ...prev, [factorId]: null }));
+    }
+  };
+
   const pendingCount = pending.filter((p) => !p.decision).length;
+  const pendingCandidatesCount = candidates.filter((c) => c.status === "pending").length;
 
   return (
     <div>
@@ -382,13 +447,144 @@ export default function PipelineConsole() {
       )}
 
       {activeTab === "待审批" && (
-        <ApprovalPanel
-          items={pending}
-          loading={loadingPending}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          onHold={handleHold}
-        />
+        <div className="space-y-6">
+          <ApprovalPanel
+            items={pending}
+            loading={loadingPending}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onHold={handleHold}
+          />
+
+          {/* Candidate factors from approval_queue (current run) */}
+          {status.run_id && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-slate-400">
+                  当前运行候选因子
+                  {pendingCandidatesCount > 0 && (
+                    <span className="ml-2 text-white font-bold">{pendingCandidatesCount} 待审批</span>
+                  )}
+                </p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => loadCandidates(status.run_id!)}
+                  disabled={loadingCandidates}
+                >
+                  {loadingCandidates ? "加载中..." : "刷新"}
+                </Button>
+              </div>
+
+              {loadingCandidates ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 rounded-xl bg-slate-800/40 animate-pulse" />
+                  ))}
+                </div>
+              ) : candidates.length === 0 ? (
+                <GlassCard className="flex flex-col items-center justify-center py-8 text-center">
+                  <p className="text-sm text-slate-400">暂无候选因子</p>
+                  <p className="text-xs text-slate-500 mt-1">Pipeline 运行后将在此显示 Gate 通过的因子</p>
+                </GlassCard>
+              ) : (
+                <div className="space-y-2">
+                  {candidates.map((c) => {
+                    const action = candidateActions[c.id];
+                    const isPending = c.status === "pending";
+                    const sharpe1y = c.sharpe_1y != null ? c.sharpe_1y.toFixed(2) : "—";
+                    const sharpe5y = c.sharpe_5y != null ? c.sharpe_5y.toFixed(2) : "—";
+
+                    return (
+                      <GlassCard key={c.id} padding="sm">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {/* Status badge */}
+                          <span className={[
+                            "text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0",
+                            c.status === "pending"
+                              ? "text-yellow-300 bg-yellow-500/15 border-yellow-500/30"
+                              : c.status === "approved"
+                                ? "text-green-300 bg-green-500/15 border-green-500/30"
+                                : "text-red-300 bg-red-500/15 border-red-500/30",
+                          ].join(" ")}>
+                            {c.status === "pending" ? "待审批" : c.status === "approved" ? "已批准" : "已拒绝"}
+                          </span>
+
+                          {/* Factor name */}
+                          <span className="text-sm font-medium text-slate-200 min-w-0 flex-1 truncate">
+                            {c.factor_name}
+                          </span>
+
+                          {/* Sharpe stats */}
+                          <div className="flex gap-3 text-xs shrink-0">
+                            <span className="text-slate-500">
+                              Sharpe1Y: <span className={`font-semibold tabular-nums ${c.sharpe_1y != null && c.sharpe_1y >= 0.72 ? "text-green-400" : "text-yellow-400"}`}>{sharpe1y}</span>
+                            </span>
+                            <span className="text-slate-500">
+                              Sharpe5Y: <span className={`font-semibold tabular-nums ${c.sharpe_5y != null && c.sharpe_5y >= 0.72 ? "text-green-400" : "text-yellow-400"}`}>{sharpe5y}</span>
+                            </span>
+                          </div>
+
+                          {/* Decision info or action buttons */}
+                          {isPending ? (
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                disabled={!!action}
+                                onClick={() => handleCandidateApprove(c.id)}
+                                className={[
+                                  "px-3 py-1 text-xs font-semibold rounded-lg border transition-all duration-150",
+                                  "bg-green-500/15 text-green-400 border-green-500/30",
+                                  "hover:bg-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed",
+                                ].join(" ")}
+                              >
+                                {action === "approving" ? (
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-3 h-3 border border-green-400/50 border-t-green-400 rounded-full animate-spin inline-block" />
+                                    批准中
+                                  </span>
+                                ) : "通过"}
+                              </button>
+                              <button
+                                disabled={!!action}
+                                onClick={() => handleCandidateReject(c.id)}
+                                className={[
+                                  "px-3 py-1 text-xs font-semibold rounded-lg border transition-all duration-150",
+                                  "bg-red-500/15 text-red-400 border-red-500/30",
+                                  "hover:bg-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed",
+                                ].join(" ")}
+                              >
+                                {action === "rejecting" ? (
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-3 h-3 border border-red-400/50 border-t-red-400 rounded-full animate-spin inline-block" />
+                                    拒绝中
+                                  </span>
+                                ) : "拒绝"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-500 shrink-0">
+                              {c.decision_by && <span>by {c.decision_by}</span>}
+                              {c.decision_reason && (
+                                <span className="ml-2 text-slate-600 max-w-[160px] truncate inline-block align-bottom" title={c.decision_reason}>
+                                  "{c.decision_reason}"
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Factor expression */}
+                        <p className="text-[11px] text-slate-500 font-mono mt-1.5 truncate" title={c.factor_expr}>
+                          {c.factor_expr}
+                        </p>
+                      </GlassCard>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === "运行历史" && (
