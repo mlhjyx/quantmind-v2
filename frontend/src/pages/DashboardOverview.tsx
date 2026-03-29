@@ -12,6 +12,7 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { fetchSummary, fetchPositions, fetchNAVSeries, fetchDashboardStrategies } from "@/api/dashboard";
+import { fetchSystemHealth } from "@/api/system";
 import { STALE } from "@/api/QueryProvider";
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { C } from "@/theme";
@@ -434,6 +435,30 @@ type IndustryItem = { name: string; pct: number; color: string };
 
 // ── Row 3c: Industry distribution + system status ──
 function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem[] }) {
+  const { data: health } = useQuery({
+    queryKey: ["system-health-dash"],
+    queryFn: fetchSystemHealth,
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  const pg      = health?.postgres;
+  const redis   = health?.redis;
+  const celery  = health?.celery;
+  const fresh   = health?.data_freshness;
+  const staleLabel = fresh
+    ? fresh.days_stale === 0 ? "今日" : `${fresh.days_stale}d`
+    : "—";
+
+  const pills = [
+    { l: "PG",      ok: pg     ? pg.status === "ok"     : null, s: pg?.latency_ms != null ? `${pg.latency_ms}ms` : undefined },
+    { l: "Redis",   ok: redis  ? redis.status === "ok"  : null, s: redis?.latency_ms != null ? `${redis.latency_ms}ms` : undefined },
+    { l: "Celery",  ok: celery ? celery.status === "ok" : null, s: celery ? `${celery.active_workers}w` : undefined },
+    { l: "Tushare", ok: null  as boolean | null },
+    { l: "DeepSeek",ok: null  as boolean | null, s: "¥87" },
+    { l: "数据",    ok: fresh  ? fresh.days_stale <= 1   : null, s: staleLabel },
+  ];
+
   return (
     <div className="col-span-4 flex flex-col gap-3">
       <Card className="flex-1">
@@ -452,16 +477,11 @@ function IndustryAndSystem({ industryDist }: { industryDist: IndustryItem[] }) {
       </Card>
       <Card className="p-3">
         <div className="grid grid-cols-3 gap-2">
-          {[
-            { l: "PG",       ok: true },
-            { l: "Redis",    ok: true },
-            { l: "Celery",   ok: true },
-            { l: "Tushare",  ok: true },
-            { l: "DeepSeek", ok: true, s: "¥87" },
-            { l: "数据",     ok: true, s: "2m" },
-          ].map((s, i) => (
+          {pills.map((s, i) => (
             <div key={i} className="flex items-center gap-1.5 px-2 py-1.5 rounded-md" style={{ background: C.bg2 }}>
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.ok ? C.up : C.down }} />
+              <span className="w-2 h-2 rounded-full shrink-0" style={{
+                background: s.ok === null ? C.text4 : s.ok ? C.up : C.down,
+              }} />
               <span style={{ fontSize: 10, color: C.text2 }}>{s.l}</span>
               {s.s && <span className="ml-auto" style={{ fontSize: 9, color: C.text4, fontFamily: C.mono }}>{s.s}</span>}
             </div>
