@@ -11,14 +11,35 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("celery.mining_tasks")
+
+
+def _generate_run_id(config: dict[str, Any]) -> str:
+    """根据当前时间+配置生成唯一 run_id。
+
+    格式: gp_{YYYY}w{WW}_{hash8}
+    例如: gp_2026w14_a1b2c3d4
+
+    Args:
+        config: GP 配置字典（用于哈希，保证同周不同配置产生不同ID）。
+
+    Returns:
+        唯一 run_id 字符串。
+    """
+    now = datetime.now(UTC)
+    year = now.year
+    week = now.isocalendar()[1]
+    config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
+    return f"gp_{year}w{week:02d}_{config_hash}"
 
 
 # ---------------------------------------------------------------------------
@@ -34,18 +55,30 @@ logger = logging.getLogger("celery.mining_tasks")
     soft_time_limit=10800,  # 3小时软超时（GP 120min + Gate 60min + 余量）
     time_limit=11400,  # 3.17小时硬超时
 )
-def run_gp_mining(self, run_id: str, config: dict[str, Any]) -> dict[str, Any]:
+def run_gp_mining(self, run_id: str | None, config: dict[str, Any]) -> dict[str, Any]:
     """GP 因子挖掘 Celery 任务。
 
     asyncio.run() 包装：在 Celery prefork Worker 中安全运行 async 代码。
 
+    Beat 调度时 run_id=None，此时自动生成 run_id 并写入 pipeline_runs。
+    手动触发时需传入已写入 pipeline_runs 的 run_id。
+
     Args:
-        run_id: 本次运行 ID（已写入 pipeline_runs）。
+        run_id: 本次运行 ID。None 时自动生成（Beat 调度场景）。
         config: GP 配置 {generations/population/islands/time_budget_minutes}。
 
     Returns:
-        {"run_id": str, "status": str, "passed_factors": int}
+        {"run_id": str, "status": str, "passed_factors": int, "stats": dict}
     """
+    # Beat 触发时 run_id=None，自动生成并写入 pipeline_runs
+    if run_id is None:
+        run_id = _generate_run_id(config)
+        asyncio.run(_init_pipeline_run(run_id, config))
+        logger.info(
+            "Beat 调度触发 GP 挖掘，自动生成 run_id",
+            extra={"run_id": run_id, "config": config},
+        )
+
     logger.info("GP 挖掘任务启动", extra={"run_id": run_id, "config": config})
     start = time.monotonic()
 
@@ -203,6 +236,44 @@ def run_bruteforce_mining(self, run_id: str, config: dict[str, Any]) -> dict[str
 # ---------------------------------------------------------------------------
 
 
+async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:
+    """在 pipeline_runs 写入初始记录（status='running'）。
+
+    Beat 自动调度场景下由 task 自身负责写入，而非调用方。
+
+    Args:
+        run_id: 自动生成的运行 ID。
+        config: GP 配置字典，写入 config 列备查。
+    """
+    import os
+
+    import asyncpg
+
+    db_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+    )
+    try:
+        conn = await asyncpg.connect(db_url)
+        await conn.execute(
+            """
+            INSERT INTO pipeline_runs
+                (run_id, engine_type, status, config, started_at)
+            VALUES ($1, 'gp', 'running', $2, NOW())
+            ON CONFLICT (run_id) DO NOTHING
+            """,
+            run_id,
+            json.dumps(config),
+        )
+        await conn.close()
+        logger.info("pipeline_runs 初始记录写入成功", extra={"run_id": run_id})
+    except Exception as exc:
+        logger.error(
+            "_init_pipeline_run DB 写入失败（任务继续）",
+            extra={"run_id": run_id, "error": str(exc)},
+        )
+
+
 async def _mark_run_failed(run_id: str, error_msg: str) -> None:
     """标记 pipeline_runs 为 failed 状态。
 
@@ -253,13 +324,25 @@ async def _write_results_to_db(
     try:
         conn = await asyncpg.connect(db_url)
 
+        # result_summary 规范字段（Phase 2 要求）:
+        # total_evaluated, passed_gate, best_fitness, elapsed_seconds
+        result_summary = {
+            "total_evaluated": stats.get("total_evaluated", 0),
+            "passed_gate": stats.get("passed_gate_full", 0),  # 标准化字段名
+            "best_fitness": stats.get("best_fitness", 0.0),
+            "elapsed_seconds": stats.get("elapsed_seconds", 0.0),
+            # 附加字段（供前端详情页使用）
+            "passed_quick_gate": stats.get("passed_quick_gate", 0),
+            "n_generations_completed": stats.get("n_generations_completed", 0),
+            "timeout": stats.get("timeout", False),
+        }
         await conn.execute(
             """
             UPDATE pipeline_runs
-            SET status = 'completed', finished_at = NOW(), stats = $1
+            SET status = 'completed', finished_at = NOW(), result_summary = $1
             WHERE run_id = $2
             """,
-            json.dumps(stats),
+            json.dumps(result_summary),
             run_id,
         )
 

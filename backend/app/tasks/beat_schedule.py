@@ -26,6 +26,27 @@ from celery.schedules import crontab
 # 当前 celery_app.py 会 import 此变量，但 Beat 未启动时不会实际触发。
 
 CELERY_BEAT_SCHEDULE: dict = {
+    # ── 每周日 22:00 GP因子挖掘 ──
+    # NOTE: 周日非交易日，不影响盘前/盘后交易链路。
+    # 配置: population=100, generations=50, time_budget_minutes=120, islands=4
+    # 任务内部会生成 run_id（格式: gp_{YYYY}w{WW}_{hash8}）并写入 pipeline_runs。
+    "gp-weekly-mining": {
+        "task": "app.tasks.mining_tasks.run_gp_mining",
+        "schedule": crontab(hour=22, minute=0, day_of_week="0"),  # 0=周日
+        "kwargs": {
+            "run_id": None,  # None 表示 task 内部自动生成 run_id
+            "config": {
+                "population": 100,
+                "generations": 50,
+                "time_budget_minutes": 120,
+                "islands": 4,
+            },
+        },
+        "options": {
+            "queue": "default",
+            "expires": 7200,  # 2小时内未执行则过期（避免错过周日后积压）
+        },
+    },
     # ── T日 16:25 健康预检 ──
     "daily-health-check": {
         "task": "daily_pipeline.health_check",

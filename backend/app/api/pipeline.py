@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -355,8 +356,33 @@ async def approve_factor(
 
     logger.info(
         "因子审批通过: run_id=%s, factor_id=%d, factor_name=%s",
-        run_id, factor_id, row["factor_name"],
+        run_id,
+        factor_id,
+        row["factor_name"],
     )
+
+    # 触发因子入库 Celery 异步任务
+    # factor_onboarding_task 接收 approval_queue.id，入库完成后更新 factor_registry
+    onboarding_task_id: str | None = None
+    try:
+        task = celery_app.send_task(
+            "app.tasks.onboarding_tasks.onboard_factor",
+            kwargs={"approval_queue_id": factor_id},
+            queue="default",
+        )
+        onboarding_task_id = task.id
+        logger.info(
+            "因子入库任务已提交: approval_queue_id=%d, task_id=%s",
+            factor_id,
+            onboarding_task_id,
+        )
+    except Exception as exc:
+        # 入库任务提交失败不回滚审批结果（非阻断）
+        logger.error(
+            "因子入库任务提交失败（审批结果已保存）: factor_id=%d, error=%s",
+            factor_id,
+            exc,
+        )
 
     return {
         "success": True,
@@ -365,7 +391,12 @@ async def approve_factor(
         "factor_expr": row["factor_expr"],
         "status": "approved",
         "decision_reason": body.decision_reason,
-        "message": "因子已审批通过。请通过 /api/factors/activate 将其激活入库。",
+        "onboarding_task_id": onboarding_task_id,
+        "message": (
+            f"因子已审批通过，入库任务已提交（task_id={onboarding_task_id}）。"
+            if onboarding_task_id
+            else "因子已审批通过，但入库任务提交失败，请手动触发 /api/factors/activate。"
+        ),
     }
 
 
@@ -430,7 +461,10 @@ async def reject_factor(
 
     logger.info(
         "因子审批拒绝: run_id=%s, factor_id=%d, factor_name=%s, reason=%s",
-        run_id, factor_id, row["factor_name"], body.decision_reason,
+        run_id,
+        factor_id,
+        row["factor_name"],
+        body.decision_reason,
     )
 
     return {

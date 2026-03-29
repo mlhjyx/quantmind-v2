@@ -20,28 +20,23 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-
     # 可靠性: crash 后自动重试
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-
     # 时区（A 股调度用北京时间，Phase 2 外汇调度用 UTC）
     timezone="Asia/Shanghai",
     enable_utc=False,
-
     # 任务发现
     imports=[
         "app.tasks.daily_pipeline",
         "app.tasks.mining_tasks",
+        "app.tasks.onboarding_tasks",
     ],
-
     # 结果过期: 24 小时
     result_expires=86400,
-
     # Worker 并发: Mac M1 Pro 单机，prefork 4 进程足够
     worker_concurrency=4,
     worker_prefetch_multiplier=1,
-
     # Beat 调度表（Sprint 1.1 激活）
     # beat_schedule 从 beat_schedule.py 导入，见下方 conf.update
 )
