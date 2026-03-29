@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.31 ✅ GP闭环生产化 + QA P1修复 + 审批→入库流程)
-> Current: Phase 1, Sprint 1.31 ✅ 完成 → 下一步: 手动触发GP run验证全链路 / Modifier框架 / 回测完善
-> 本会话: Sprint 1.30B全系统修复 → Sprint 1.31 GP闭环
+> Last updated: 2026-03-29 (Sprint 1.31 ✅ GP闭环生产化 + 审批UI + 复盘+LL-034/035/036)
+> Current: Phase 1, Sprint 1.31 ✅ 完成 → 下一步: 手动触发GP run验证全链路 / factor_onboarding行业中性化 / Modifier框架
+> 本会话: Sprint 1.30B全系统修复 → Sprint 1.31 GP闭环 → 复盘完成
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。pre-existing TS errors in stores.test.ts + QMTStatusBadge
