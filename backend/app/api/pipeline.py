@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,15 @@ from app.db import get_db
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+_LOCALHOST_IPS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _require_local(request: Request) -> None:
+    """审批操作仅允许从本机访问（PT安全策略）。"""
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in _LOCALHOST_IPS:
+        raise HTTPException(status_code=403, detail="审批操作仅允许本机访问")
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -308,6 +317,7 @@ async def approve_factor(
     factor_id: int,
     body: ApproveRequest,
     session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
 ) -> dict[str, Any]:
     """人工审批通过候选因子，写入 approval_queue.status='approved'。
 
@@ -410,6 +420,7 @@ async def reject_factor(
     factor_id: int,
     body: RejectRequest,
     session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
 ) -> dict[str, Any]:
     """人工审批拒绝候选因子，写入 approval_queue.status='rejected'。
 
