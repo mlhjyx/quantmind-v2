@@ -1,13 +1,13 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.25 架构对齐专项 — 1688+ backend tests)
-> Current: Phase 1, Sprint 1.25 架构对齐+基础设施补全
-> 下一步: factor_engine单元测试(进行中) → 设计文档更新 → commit
-> 已知bug: factors/summary路由冲突已修复(c58f7b4)
-> 本会话: Sprint 1.25 架构对齐(全面审计+8项修复), 1688 tests passed
-> 复盘: 设计vs实现全面审计完成，8项P0-P1问题已修复
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅
-> Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | Sprint 1.23 commit 8099eb8
+> Last updated: 2026-03-29 (Sprint 1.25 ✅ 架构对齐专项完成 — 1760 tests)
+> Current: Phase 1, Sprint 1.25 ✅ 完成 → 下一步 Sprint 1.26 QMT全面集成
+> 下一步: Sprint 1.26 QMT全面集成(连接管理/实时行情/模拟盘执行/前端数据源切换)
+> 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)
+> 本会话: Sprint 1.25(2397998+6967e14+54e90ae) 架构对齐9项+PT链路诊断, 1760 tests
+> 复盘: 全面审计14项偏离→9项修复→4条LL(031-034)→Sprint 1.26方向确认(QMT集成)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅
+> Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > Blockers: 无
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成
