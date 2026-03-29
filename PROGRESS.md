@@ -1,9 +1,9 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.30 ✅ 硬编码值替换完成 — Portfolio市值/现金/仓位+DashboardStrategiesPanel)
-> Current: Phase 1, Sprint 1.30 ✅ 完成 → 下一步待定(PT Day 3/60监控中)
-> 下一步: 评估下一优先级 — PT监控完善/ErrorBoundary/DEVELOPMENT_BLUEPRINT差距分析
-> 已知bug: 无活跃bug。CRLF换行符未统一(Mac→Windows迁移残留,~120文件,不影响功能)。pre-existing TS errors in test files + QMTStatusBadge (非本Sprint引入)
+> Last updated: 2026-03-29 (Sprint 1.30 ✅ 前端完善 — Portfolio/Dashboard硬编码+ErrorBoundary+系统健康面板)
+> Current: Phase 1, Sprint 1.30 ✅ 完成 → 下一步: AgentConfig后端(/agent/cost-summary+/agent/model-health)或其他功能
+> 下一步候选: 1) 实现/agent/*后端端点 2) DEVELOPMENT_BLUEPRINT差距分析 3) 回测结果页面后端完善
+> 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。CRLF换行符未统一。pre-existing TS errors in test files + QMTStatusBadge
 > 本会话: Sprint 1.28-1.30 前端真数据接入: API路径+mock清除+null-safe+硬编码替换+StrategiesPanel
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
@@ -87,9 +87,11 @@
 - ✅ Portfolio DailyPnl接口字段名修复 — `date→trade_date`, `pnl→daily_return`(今日盈亏之前始终为0)
 - ✅ DashboardOverview StrategiesPanel — `useQuery({queryFn: fetchDashboardStrategies})`替换3条静态JSX
 - ✅ `dashboard.ts` 新增 `fetchDashboardStrategies()` + `StrategyOverview` 类型
-- ✅ 合并至main (3b8697b)
+- ✅ PageErrorBoundary — class组件包裹<Outlet>，22页面crash→恢复UI(不再白屏)
+- ✅ DashboardOverview系统状态面板 — PG/Redis/Celery/数据新鲜度接入/system/health(30s轮询)
+- ✅ 合并至main
 
-**结果**: 0 new TS errors。前端无已知硬编码金融数据。
+**结果**: 0 new TS errors。前端无已知硬编码金融数据。全部crash受ErrorBoundary保护。
 
 ---
 
