@@ -1,10 +1,11 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.24 部分完成 — 1680 backend + 31 frontend tests)
-> Current: Phase 1, Sprint 1.24 前端真实数据接入+后端API补齐 — 1711 tests
-> 下一步: Sprint 1.24续 (全面读设计文档+修复allFactors.filter+PTGraduation API接入)
-> 已知bug: /api/factors/summary返回dict而非array导致StrategyPreview崩溃
-> 本会话: Sprint 1.21(f717f85)+1.22(eec69f0)+1.23(8099eb8)+1.24(d57c13e) = 4个Sprint, 1663→1711 tests
+> Last updated: 2026-03-29 (Sprint 1.25 架构对齐专项 — 1688+ backend tests)
+> Current: Phase 1, Sprint 1.25 架构对齐+基础设施补全
+> 下一步: factor_engine单元测试(进行中) → 设计文档更新 → commit
+> 已知bug: factors/summary路由冲突已修复(c58f7b4)
+> 本会话: Sprint 1.25 架构对齐(全面审计+8项修复), 1688 tests passed
+> 复盘: 设计vs实现全面审计完成，8项P0-P1问题已修复
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | Sprint 1.23 commit 8099eb8
 > Blockers: 无
@@ -832,6 +833,35 @@ risk一票否决: 2项硬性条件触发(Sharpe<0.977, 2022 MDD差3.48%)
 - LL-029: 单因子IC强不等于ML增量（VWAP/RSRS t>3.5但LightGBM无增量）
 - LL-030: 对照组数据一致性问题（多次出现0.0696 vs 0.0823偏差）
 - 新发现: 短周期因子(窗口<20日)在月度等权框架下时频错配，换手暴增但alpha稀释
+
+---
+
+### Sprint 1.25: 架构对齐专项 (2026-03-29) 进行中
+
+**目标**: 全面审计设计文档vs实际实现，修复架构偏离，补全基础设施。不加新功能。
+
+**审计发现（P0-P2共14项）**:
+- P0: 无Pydantic schemas层、ORM models仅3文件、涨跌颜色弄反、Celery Beat未激活
+- P1: 6个设计外页面分散精力、shadcn/ui未安装、Monaco未安装、WebSocket未集成、factor_engine无测试
+- P2: 目录结构偏离、死代码、Service层薄、文档不同步
+
+**已完成**:
+- ✅ T1: 涨跌颜色修复为A股惯例（涨红跌绿）— tokens.ts一处改动全局生效
+- ✅ T2: 删除死代码Dashboard.tsx + 修复测试引用
+- ✅ T3: 创建schemas/目录 — 8个文件覆盖dashboard/factor/strategy/backtest/pipeline/notification
+- ✅ T4: 补全ORM models — 15张核心表映射(symbols/klines/factors/signals/trades/backtest等)
+- ✅ T5: 创建utils/目录 — date_utils/math_utils/validation 3模块
+- ✅ T6: 重组前端导航 — 按生产使用频率分6组11项(交易高频→策略中频→因子/AI低频)
+- ✅ T7: PT心跳监控重写 — 修复SQL列名bug + 增加DB级数据检查(performance_series/signals) + 钉钉P0告警
+- ✅ T8: 清理mock fallback — FactorLibrary/StrategyWorkspace改为ErrorBanner显示真实错误
+- 🔨 T9: factor_engine.py补单元测试（进行中）
+
+**架构改进建议（已确认方向）**:
+- 导航不机械照搬设计文档7项，而是从生产使用角度保留11项（持仓/风控/执行是每日高频操作）
+- 设计文档需要反向更新以反映好的实现决策（如Repository raw SQL比ORM性能更好）
+- PT链路可靠性优先于新功能开发
+
+**测试**: 1688 passed, 0 failed（全量后端测试无回归）
 
 ---
 

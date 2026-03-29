@@ -23,11 +23,11 @@ export const C = {
   accentBright: "#a78bfa",
   accentSoft: "rgba(124,92,252,0.15)",
 
-  // --- P&L colors ---
-  up: "#00e5a0",
-  upGlow: "rgba(0,229,160,0.25)",
-  down: "#ff5070",
-  downGlow: "rgba(255,80,112,0.25)",
+  // --- P&L colors (A股惯例: 涨红跌绿) ---
+  up: "#ef4444",
+  upGlow: "rgba(239,68,68,0.25)",
+  down: "#22c55e",
+  downGlow: "rgba(34,197,94,0.25)",
 
   // --- Status ---
   warn: "#ffb020",

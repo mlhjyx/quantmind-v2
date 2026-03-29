@@ -14,14 +14,11 @@ import {
   triggerHealthCheck,
   triggerCorrelationPrune,
 } from "@/api/factors";
-import {
-  MOCK_FACTOR_LIBRARY,
-  MOCK_FACTOR_STATS,
-  MOCK_FACTOR_CORRELATION,
-  MOCK_IC_TRENDS,
-} from "@/api/mockFactors";
-import type { FactorSummary } from "@/api/factors";
+import type { FactorSummary, FactorCorrelationMatrix } from "@/api/factors";
 import { STALE } from "@/api/QueryProvider";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+
+const EMPTY_STATS = { active: 0, new: 0, degraded: 0, retired: 0 };
 
 const STATUS_STAT_COLORS: Record<string, string> = {
   active:   "text-green-400",
@@ -37,37 +34,34 @@ export default function FactorLibrary() {
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
   const [pruneLoading, setPruneLoading] = useState(false);
 
-  const { data: factors = MOCK_FACTOR_LIBRARY, isLoading: factorsLoading } = useQuery({
+  const { data: factors = [], isLoading: factorsLoading, isError: factorsError } = useQuery({
     queryKey: ["factor-library"],
     queryFn: getFactorLibrary,
     staleTime: STALE.factor,
     retry: 1,
-    placeholderData: MOCK_FACTOR_LIBRARY,
   });
 
-  const { data: stats = MOCK_FACTOR_STATS } = useQuery({
+  const { data: stats = EMPTY_STATS } = useQuery({
     queryKey: ["factor-library-stats"],
     queryFn: getFactorLibraryStats,
     staleTime: STALE.factor,
     retry: 1,
-    placeholderData: MOCK_FACTOR_STATS,
   });
 
-  const { data: correlation = MOCK_FACTOR_CORRELATION, isLoading: corrLoading } = useQuery({
+  const EMPTY_CORR: FactorCorrelationMatrix = { factors: [], matrix: [] };
+  const { data: correlation = EMPTY_CORR, isLoading: corrLoading } = useQuery({
     queryKey: ["factor-correlation"],
     queryFn: getFactorCorrelation,
     staleTime: STALE.factor,
     retry: 1,
-    placeholderData: MOCK_FACTOR_CORRELATION,
     enabled: activePanel === "correlation",
   });
 
-  const { data: icTrends = MOCK_IC_TRENDS, isLoading: trendsLoading } = useQuery({
+  const { data: icTrends = [], isLoading: trendsLoading } = useQuery({
     queryKey: ["factor-ic-trends"],
     queryFn: getFactorICTrends,
     staleTime: STALE.factor,
     retry: 1,
-    placeholderData: MOCK_IC_TRENDS,
     enabled: activePanel === "health",
   });
 
@@ -99,6 +93,11 @@ export default function FactorLibrary() {
   return (
     <div>
       <Breadcrumb items={[{ label: "因子库" }]} />
+
+      {/* API error banner */}
+      {factorsError && (
+        <ErrorBanner message="因子数据加载失败，请确认后端API已启动" className="mb-4" />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-5">

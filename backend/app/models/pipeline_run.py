@@ -19,6 +19,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     """SQLAlchemy 2.0 声明式基类。"""
+
     pass
 
 

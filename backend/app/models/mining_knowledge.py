@@ -278,7 +278,7 @@ _GATE_TO_MODE: dict[str, str] = {
     "G1": "compute_fail",
     "G2": "coverage_low",
     "G3": "ic_insufficient",
-    "G4": "ic_insufficient",    # t_stat 不足，同属IC不足类
+    "G4": "ic_insufficient",  # t_stat 不足，同属IC不足类
     "G5": "neutralization_decay",
     "G6": "correlation_high",
     "G7": "stability_low",

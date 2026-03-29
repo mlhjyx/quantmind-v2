@@ -24,17 +24,7 @@ const DEFAULT_CONFIG: StrategyCreatePayload = {
   initial_capital: 1_000_000,
 };
 
-// Mock factors for when API is unavailable
-const MOCK_FACTORS = [
-  { id: "turnover_mean_20", name: "换手率均值20", category: "价量", ic: 0.042, ir: 0.38, direction: -1 as const, recommended_freq: "月度", t_stat: 3.1, fdr_t_stat: 2.8, status: "active" as const },
-  { id: "volatility_20", name: "波动率20", category: "价量", ic: -0.038, ir: 0.32, direction: -1 as const, recommended_freq: "月度", t_stat: 2.9, fdr_t_stat: 2.6, status: "active" as const },
-  { id: "reversal_20", name: "反转20", category: "价量", ic: -0.051, ir: 0.45, direction: -1 as const, recommended_freq: "月度", t_stat: 3.8, fdr_t_stat: 3.4, status: "active" as const },
-  { id: "amihud_20", name: "Amihud非流动性20", category: "流动性", ic: 0.035, ir: 0.28, direction: -1 as const, recommended_freq: "月度", t_stat: 2.6, fdr_t_stat: 2.3, status: "active" as const },
-  { id: "bp_ratio", name: "账面市值比", category: "基本面", ic: 0.029, ir: 0.24, direction: 1 as const, recommended_freq: "月度", t_stat: 2.2, fdr_t_stat: 1.9, status: "active" as const },
-  { id: "momentum_60", name: "动量60", category: "价量", ic: 0.031, ir: 0.27, direction: 1 as const, recommended_freq: "月度", t_stat: 2.4, fdr_t_stat: 2.1, status: "active" as const },
-  { id: "mkt_cap", name: "市值", category: "市值", ic: -0.022, ir: 0.18, direction: -1 as const, recommended_freq: "月度", t_stat: 1.7, fdr_t_stat: 1.5, status: "degraded" as const },
-  { id: "moneyflow_5", name: "资金流入5", category: "资金流", ic: 0.027, ir: 0.21, direction: 1 as const, recommended_freq: "周度", t_stat: 2.0, fdr_t_stat: 1.8, status: "new" as const },
-];
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 export default function StrategyWorkspace() {
   const navigate = useNavigate();
@@ -45,11 +35,11 @@ export default function StrategyWorkspace() {
   const [loadPanelOpen, setLoadPanelOpen] = useState(false);
 
   // Fetch factors
-  const { data: factors = MOCK_FACTORS } = useQuery({
+  const { data: factors = [], isError: factorsError } = useQuery({
     queryKey: ["factors", "summary"],
     queryFn: getFactorsSummary,
     staleTime: STALE.factor,
-    retry: false,
+    retry: 1,
   });
 
   // Fetch saved strategies for load panel
@@ -115,6 +105,10 @@ export default function StrategyWorkspace() {
   return (
     <div className="h-full flex flex-col">
       <Breadcrumb items={[{ label: "策略工作台" }]} />
+
+      {factorsError && (
+        <ErrorBanner message="因子数据加载失败，请确认后端API已启动" className="mb-3" />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">

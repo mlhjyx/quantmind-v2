@@ -8,11 +8,9 @@ import {
   Brain,
   TrendingUp,
   Shield,
-  LineChart,
   ArrowLeftRight,
-  FileText,
-  Settings,
   GraduationCap,
+  Settings,
 } from "lucide-react";
 import { C } from "@/theme";
 import { NotificationPanel } from "@/components/ui/NotificationPanel";
@@ -28,10 +26,22 @@ interface NavSection {
   items: NavItem[];
 }
 
+// 导航按生产使用频率组织（基于设计文档+实际运营需求）
+// 高频: 总览/持仓/风控/执行（每日使用）
+// 中频: 策略/回测（调仓周期使用）
+// 低频: 因子/挖掘/AI/设置（研究阶段使用）
 const NAV_SECTIONS: NavSection[] = [
   {
     group: "",
     items: [{ icon: LayoutGrid, label: "总览", path: "/dashboard" }],
+  },
+  {
+    group: "交易",
+    items: [
+      { icon: TrendingUp, label: "持仓管理", path: "/portfolio" },
+      { icon: Shield, label: "风控监控", path: "/risk" },
+      { icon: ArrowLeftRight, label: "交易执行", path: "/execution" },
+    ],
   },
   {
     group: "策略",
@@ -52,19 +62,9 @@ const NAV_SECTIONS: NavSection[] = [
     items: [{ icon: Brain, label: "AI闭环", path: "/pipeline" }],
   },
   {
-    group: "交易",
-    items: [
-      { icon: TrendingUp, label: "持仓管理", path: "/portfolio" },
-      { icon: Shield, label: "风控管理", path: "/risk" },
-      { icon: LineChart, label: "行情数据", path: "/market" },
-      { icon: ArrowLeftRight, label: "交易执行", path: "/execution" },
-    ],
-  },
-  {
     group: "系统",
     items: [
       { icon: GraduationCap, label: "PT毕业评估", path: "/pt-graduation" },
-      { icon: FileText, label: "报告中心", path: "/reports" },
       { icon: Settings, label: "系统设置", path: "/settings" },
     ],
   },
