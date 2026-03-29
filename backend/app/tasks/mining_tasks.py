@@ -115,6 +115,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
     import os
 
     from engines.mining.gp_engine import GPConfig, GPEngine
+
     from engines.mining.pipeline_utils import (
         compute_forward_returns,
         load_existing_factor_data,
@@ -125,7 +126,7 @@ async def _run_gp_mining_async(run_id: str, config: dict[str, Any]) -> dict[str,
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     dingtalk_webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
     dingtalk_secret = os.environ.get("DINGTALK_SECRET", "")
@@ -250,7 +251,7 @@ async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     try:
         conn = await asyncpg.connect(db_url)
@@ -286,7 +287,7 @@ async def _mark_run_failed(run_id: str, error_msg: str) -> None:
 
     db_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql://quantmind:quantmind@localhost:5432/quantmind",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
     )
     try:
         conn = await asyncpg.connect(db_url)
