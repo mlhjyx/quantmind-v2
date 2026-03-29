@@ -246,7 +246,7 @@ async def get_backtest_history(
     )
     items = [dict(row) for row in rows_result.mappings().all()]
 
-    # UUID/date 序列化
+    # UUID/date/Decimal 序列化
     for item in items:
         for key in ("run_id", "strategy_id"):
             if item.get(key) is not None:
@@ -254,6 +254,9 @@ async def get_backtest_history(
         for key in ("start_date", "end_date", "created_at"):
             if item.get(key) is not None:
                 item[key] = str(item[key])
+        for key in ("annual_return", "sharpe_ratio", "max_drawdown", "calmar_ratio"):
+            if item.get(key) is not None:
+                item[key] = float(item[key])
 
     return {"total": total, "items": items}
 
