@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.31 ✅ GP闭环生产化 + 审批UI + 复盘+LL-034/035/036)
-> Current: Phase 1, Sprint 1.31 ✅ 完成 → 下一步: 手动触发GP run验证全链路 / factor_onboarding行业中性化 / Modifier框架
-> 本会话: Sprint 1.30B全系统修复 → Sprint 1.31 GP闭环 → 复盘完成
+> Last updated: 2026-03-29 (Sprint 1.32 ✅ 行业中性化+GP全链路验证+Onboarding测试+重构)
+> Current: Phase 1, Sprint 1.32 ✅ 完成 → 下一步: RegimeModifier / 回测完善 / GP产参数优化
+> 本会话: Sprint 1.30B→1.31→1.32 全系统修复+GP闭环+中性化+全链路验证
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
 > 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。pre-existing TS errors in stores.test.ts + QMTStatusBadge
@@ -75,6 +75,20 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.32: 行业中性化 + GP全链路验证 + Onboarding测试 + 重构 (2026-03-29) ✅
+
+**铁律2合规(行业中性化) + GP端到端验证通过 + 62新测试 + 私有函数重构。**
+
+- ✅ neutralizer.py: 行业+截面双重中性化共享模块(Winsorize+行业内zscore+截面zscore)
+- ✅ factor_onboarding.py: 调用Neutralizer替代截面zscore近似（铁律2合规）
+- ✅ GP全链路验证: 手动触发成功(240 individuals, 5 generations, 43.9s, pipeline_runs完整)
+- ✅ pipeline_utils.py: 5个GP管道公开函数（从scripts私有函数提取，消除QA F2）
+- ✅ mining_tasks.py: import路径改pipeline_utils + DB URL修复(quantmind→xin)
+- ✅ test_factor_onboarding.py: 5个测试用例, 62 passed
+- ⚠️ GP产出0因子（5代×20 population太小+缺pb/circ_mv等字段），需加大参数+补充market data
+
+---
 
 ### Sprint 1.31: GP闭环生产化 + 审批→入库流程 (2026-03-29) ✅
 
