@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type MiningEngine = "gp" | "llm" | "brute";
+export type MiningEngine = "gp" | "llm" | "bruteforce";
 export type MiningStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export interface MiningTask {
