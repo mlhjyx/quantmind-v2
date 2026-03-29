@@ -690,3 +690,48 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 5. **Sprint 1.19定为集成Sprint**: 不加新功能，专门修复集成问题
 
 **执行状态**: 用户2026-03-28指出。Sprint 1.19将作为集成Sprint执行。
+
+---
+
+## LL-034: SQLAlchemy text()中不用PG专有::type语法（Sprint 1.30B）
+
+**事件**: Portfolio/Risk/Execution/Report/PaperTrading 5个API文件共17处使用`:sid::uuid`（PostgreSQL专有cast语法），SQLAlchemy的`text()`将`::uuid`误解析为命名参数`:uuid`，导致所有带strategy_id的查询静默返回空结果。Portfolio页面显示0持仓而Dashboard显示15持仓，排查耗时30分钟。
+
+**根因**: PG的`::type`语法在原生psycopg2中可用，但在SQLAlchemy text() binding中与`:param`命名参数语法冲突。开发时用psycopg2直接测试通过，但通过FastAPI+asyncpg调用时失败。没有统一的SQL编写规范。
+
+**改进措施**:
+1. **全局规范**: SQLAlchemy text()中一律使用`CAST(:param AS type)`替代`:param::type`
+2. **代码审查checklist**: 新增SQL text()检查项——禁止PG专有cast语法
+3. **grep守卫**: 可在pre-commit hook中检查`::uuid\|::int\|::text`出现在text()附近
+
+**执行状态**: Sprint 1.30B已修复全部17处。规范已记录。
+
+---
+
+## LL-035: 新API端点必须同步写前端适配层（Sprint 1.30B）
+
+**事件**: 后端API返回`{total, items}`但前端期望`[]`（backtest/history）；后端返回`run_id`但前端期望`task_id`（mining/tasks）；后端返回嵌套结构但前端期望扁平结构（factors/report）。3个crash + 3个数据不匹配，全部因为前后端开发时未同步适配。
+
+**根因**: 后端和前端在不同Sprint开发，API响应格式在后端变更后，前端适配层（api/*.ts）未同步更新。适配层直接`return res.data`透传，无类型转换。开发者倾向"先把后端写好，前端后面再对"，导致集成时大面积崩溃。
+
+**改进措施**:
+1. **同步开发**: 每个新API端点，必须同时写前端适配层（包含响应格式转换+字段默认值+null guard）
+2. **适配层模式**: `apiClient.get<any>()` → map/transform → return typed object，不直接透传
+3. **集成验证**: 新端点完成后必须用preview验证前端能正确渲染
+
+**执行状态**: Sprint 1.30B修复了4个适配层。规范已记录。
+
+---
+
+## LL-036: 因子入库IC口径必须与生产基线一致（Sprint 1.31）
+
+**事件**: factor_onboarding.py的中性化使用截面zscore近似，而生产基线compute_factor_ic.py使用完整行业中性化。QA审查标记为违反铁律2（因子验证用生产基线+中性化）。入库后的gate_ic/gate_ir/gate_t与因子库显示的IC不一致，可能导致Gate误判。
+
+**根因**: 入库服务为了快速交付，使用了简化的中性化方法。开发者意识到不一致但选择标注TODO而非立即修复。
+
+**改进措施**:
+1. **硬性要求**: 因子入库时的IC计算必须调用与生产基线完全相同的中性化函数
+2. **共享函数**: 将中性化逻辑提取为`backend/engines/neutralizer.py`共享模块，compute_factor_ic.py和factor_onboarding.py统一调用
+3. **验证**: 入库后IC与`/api/factors/{name}/report`返回值交叉验证，差异>5%报警
+
+**执行状态**: 已记录为Sprint 1.32 P0任务。

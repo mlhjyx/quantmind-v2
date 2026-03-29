@@ -1,7 +1,7 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.31 🔨 GP闭环生产化 + QA P1修复 + 审批→入库流程)
-> Current: Phase 1, Sprint 1.31 进行中
+> Last updated: 2026-03-29 (Sprint 1.31 ✅ GP闭环生产化 + QA P1修复 + 审批→入库流程)
+> Current: Phase 1, Sprint 1.31 ✅ 完成 → 下一步: 手动触发GP run验证全链路 / Modifier框架 / 回测完善
 > 本会话: Sprint 1.30B全系统修复 → Sprint 1.31 GP闭环
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅
 > Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
@@ -75,6 +75,34 @@
 - 本地部署: Qwen3-30B-A3B(MoE, 3.3B激活参数)可Q4_K_M量化装入12GB VRAM
 - 核心原则: 因子挖掘是概率游戏，降低单次成本($6.5-9.5/有效因子 vs $270/GPT-5)比提高单次质量更重要
 - 详见: `docs/research/R7_ai_model_selection.md`
+
+### Sprint 1.31: GP闭环生产化 + 审批→入库流程 (2026-03-29) ✅
+
+**GP引擎从"可用"升级到"全链路可运行"。1814 tests passed, 0 regressions。**
+
+- ✅ risk.py VaR小样本修复（data_sufficient标志 + data_days字段）
+- ✅ backtest.py Decimal序列化修复（float()转换4个数值字段）
+- ✅ GP周期调度（beat_schedule.py 每周日22:00自动触发，population=100/generations=50）
+- ✅ mining_tasks.py 状态同步（pipeline_runs完整记录 running→completed/failed）
+- ✅ 审批API（pipeline.py approve/reject端点 + celery入库触发）
+- ✅ factor_onboarding.py 6步入库服务（registry+values+IC+gate，幂等upsert）
+- ✅ onboarding_tasks.py Celery封装（max_retries=2, soft_time_limit=600s）
+- ✅ PipelineConsole审批按钮（Approve/Reject + pipeline.ts API）
+
+---
+
+### Sprint 1.30B: 全系统健康修复 + 因子IC计算 (2026-03-29) ✅
+
+**25+文件修改，6大类底层问题修复。全22页面可用，因子IC有真实数据。**
+
+- ✅ Celery health check修复（-A app.tasks → app.tasks.celery_app）
+- ✅ 因子IC批量计算脚本（5因子×538天=2632行，bp_ratio t=20.8, turnover_mean_20 t=-24.2）
+- ✅ UUID cast修复（17处 :sid::uuid → CAST(:sid AS uuid)，Portfolio返回15持仓）
+- ✅ 3个crash页面修复（Pipeline FlowChart/MiningTaskCenter/BacktestHistory）
+- ✅ 5个因子评估Tab null-safe（TabAnnual/Correlation/GroupReturns/ICDecay/RegimeStats）
+- ✅ API响应适配（factors.ts/mining.ts/backtest.ts/strategies.ts 响应格式转换）
+
+---
 
 ### Sprint 1.30: 硬编码值替换 — Portfolio/Dashboard (2026-03-29) ✅
 
