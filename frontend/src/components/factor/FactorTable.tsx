@@ -19,8 +19,8 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 const STATUS_FILTER_OPTIONS = ["全部", "active", "new", "degraded", "retired"];
 
-function fmtNum(v: number | undefined, decimals = 3) {
-  return v === undefined ? "—" : v.toFixed(decimals);
+function fmtNum(v: number | null | undefined, decimals = 3) {
+  return v == null ? "—" : v.toFixed(decimals);
 }
 
 export default function FactorTable({ factors, onSelect }: Props) {
