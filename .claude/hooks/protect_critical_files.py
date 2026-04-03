@@ -21,7 +21,7 @@ BLOCKED_PATTERNS = [
 
 # 需要警告但不阻止的文件（输出提醒到context）
 WARN_PATTERNS = [
-    r"TEAM_CHARTER_V3\.3\.md",  # 宪法文件，只有用户能改
+    # TEAM_CHARTER已归档到docs/archive/，不再保护
     r"docs/QUANTMIND_V2_DDL_FINAL\.sql",  # DDL唯一来源
     r"docs/QUANTMIND_V2_DESIGN_V5\.md",  # 设计圣经
 ]
