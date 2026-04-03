@@ -7,13 +7,13 @@ Phase 0: 等权Top-N信号合成。
 - 行业约束(单行业≤25%)
 """
 
-import logging
 from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # 因子方向: +1表示因子值越大越好, -1表示越小越好
@@ -75,21 +75,29 @@ class SignalConfig:
     )
 
 
-# Route A锁定配置: 5因子等权 + Top15月频 + IndCap=25% (v1.1: Top20→15)
-PAPER_TRADING_CONFIG = SignalConfig(
-    factor_names=[
-        "turnover_mean_20",
-        "volatility_20",
-        "reversal_20",
-        "amihud_20",
-        "bp_ratio",
-    ],
-    top_n=15,
-    weight_method="equal",
-    rebalance_freq="monthly",
-    industry_cap=0.25,
-    turnover_cap=0.50,
-)
+# Route A配置: 5因子等权 + 月频
+# top_n / industry_cap 从 .env 读取（可配置），其余锁定
+def _build_paper_trading_config() -> SignalConfig:
+    """从 .env 构建PT配置，支持热部署（改.env+重启服务即生效）。"""
+    from app.config import settings
+
+    return SignalConfig(
+        factor_names=[
+            "turnover_mean_20",
+            "volatility_20",
+            "reversal_20",
+            "amihud_20",
+            "bp_ratio",
+        ],
+        top_n=settings.PT_TOP_N,
+        weight_method="equal",
+        rebalance_freq="monthly",
+        industry_cap=settings.PT_INDUSTRY_CAP,
+        turnover_cap=0.50,
+    )
+
+
+PAPER_TRADING_CONFIG = _build_paper_trading_config()
 
 
 # v1.2候选配置: 6因子 = 基线5 + mf_momentum_divergence (资金流维度)
@@ -164,7 +172,8 @@ class SignalComposer:
         weights = {f: 1.0 / len(available) for f in available}
         composite = sum(pivot[f] * w for f, w in weights.items())
 
-        return composite.sort_values(ascending=False)
+        # A10: mergesort保证相同score下行顺序确定性（quicksort不稳定）
+        return composite.sort_values(ascending=False, kind="mergesort")
 
 
 class PortfolioBuilder:
@@ -179,6 +188,7 @@ class PortfolioBuilder:
         industry: pd.Series,
         prev_holdings: dict[str, float] | None = None,
         vol_regime_scale: float = 1.0,
+        volatility_map: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """构建目标持仓权重。
 
@@ -188,6 +198,8 @@ class PortfolioBuilder:
             prev_holdings: 上期持仓权重 (code → weight)
             vol_regime_scale: 波动率regime缩放系数 [0.5, 2.0]，默认1.0（不调整）。
                               由vol_regime.calc_vol_regime()计算并在调用方传入。
+            volatility_map: 个股波动率 {code: raw_value}，risk_parity/min_variance模式必需。
+                            用raw_value（非neutral_value），中性化后的不适合做绝对风险度量。
 
         Returns:
             dict: {code: target_weight}, 权重之和 = (1 - cash_buffer) × vol_regime_scale
@@ -215,10 +227,14 @@ class PortfolioBuilder:
         if not selected:
             return {}
 
-        # 2. 等权
+        # 2. 权重分配
         if self.config.weight_method == "equal":
             weight = 1.0 / len(selected)
             target = {code: weight for code in selected}
+        elif self.config.weight_method == "risk_parity":
+            target = self._calc_risk_parity_weights(selected, volatility_map, power=1)
+        elif self.config.weight_method == "min_variance":
+            target = self._calc_risk_parity_weights(selected, volatility_map, power=2)
         else:
             # score_weighted (Phase 1)
             sel_scores = scores.loc[selected]
@@ -245,6 +261,79 @@ class PortfolioBuilder:
                 f"权重总和={sum(target.values()):.4f}"
             )
 
+        return target
+
+    def _calc_risk_parity_weights(
+        self,
+        selected: list[str],
+        volatility_map: dict[str, float] | None,
+        power: int = 1,
+    ) -> dict[str, float]:
+        """反波动率加权: w_i ∝ 1/σ_i^power。
+
+        power=1: 风险平价（risk parity），每只股票风险贡献近似均等。
+        power=2: 最小方差近似（min variance），更激进地惩罚高波动。
+
+        Args:
+            selected: 选中的股票代码列表。
+            volatility_map: {code: raw_volatility}，来自factor_values.raw_value。
+            power: 波动率的幂次（1=风险平价, 2=最小方差）。
+
+        Returns:
+            {code: weight}，权重和=1。
+        """
+        import numpy as np
+
+        n = len(selected)
+        if n == 0:
+            return {}
+
+        # fallback: 无波动率数据时退化为等权
+        if not volatility_map:
+            logger.warning("[RiskParity] 无volatility_map，退化为等权")
+            w = 1.0 / n
+            return {code: w for code in selected}
+
+        # 提取波动率，缺失值用截面中位数填充
+        vols_raw = [volatility_map.get(code) for code in selected]
+        valid_vols = [v for v in vols_raw if v is not None and v > 0]
+
+        if not valid_vols:
+            logger.warning("[RiskParity] 所有股票波动率缺失，退化为等权")
+            w = 1.0 / n
+            return {code: w for code in selected}
+
+        median_vol = float(np.median(valid_vols))
+        vols = []
+        for v in vols_raw:
+            if v is not None and v > 0:
+                vols.append(v)
+            else:
+                vols.append(median_vol)
+
+        vols_arr = np.array(vols, dtype=float)
+
+        # clip到[5th, 95th]分位数防极端权重
+        lo, hi = np.percentile(vols_arr, [5, 95])
+        if lo < hi:
+            vols_arr = np.clip(vols_arr, lo, hi)
+
+        # 反波动率加权
+        inv_vol = 1.0 / (vols_arr ** power)
+        weights = inv_vol / inv_vol.sum()
+
+        # 单只上限: min(15%, 2/N)
+        max_w = min(0.15, 2.0 / n)
+        weights = np.clip(weights, 0, max_w)
+        weights = weights / weights.sum()  # 重新归一化
+
+        target = {code: float(w) for code, w in zip(selected, weights)}
+
+        logger.info(
+            f"[RiskParity] power={power}, n={n}, "
+            f"vol range=[{vols_arr.min():.4f}, {vols_arr.max():.4f}], "
+            f"weight range=[{weights.min():.4f}, {weights.max():.4f}]"
+        )
         return target
 
     def _apply_turnover_cap(

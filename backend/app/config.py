@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # --- 执行模式 ---
     EXECUTION_MODE: Literal["paper", "live"] = "paper"
 
+    # --- Paper Trading 核心参数 ---
+    PT_TOP_N: int = 20  # was 15, changed 2026-04-04, backtest X-D Sharpe 1.15
+    PT_INDUSTRY_CAP: float = 1.0  # was 0.25, changed 2026-04-04, removing constraint +0.09 Sharpe
+
     # --- 日志 ---
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
     LOG_MAX_FILES: int = 10
@@ -43,10 +47,15 @@ class Settings(BaseSettings):
     # --- miniQMT ---
     QMT_PATH: str = ""  # miniQMT userdata_mini路径
     QMT_ACCOUNT_ID: str = ""  # 资金账号
+    QMT_EXE_PATH: str = ""  # XtMiniQmt.exe完整路径（自启动用）
+    QMT_ALWAYS_CONNECT: bool = False  # True=不管EXECUTION_MODE都尝试连接QMT
 
     # --- Paper Trading ---
     PAPER_STRATEGY_ID: str = ""
     PAPER_INITIAL_CAPITAL: float = 1_000_000.0
+
+    # --- 执行操作认证 ---
+    ADMIN_TOKEN: str = ""  # 执行操作API认证token
 
     # --- 远程状态API ---
     REMOTE_API_KEY: str = ""  # 空字符串=禁用认证（仅本地开发），生产必须设置

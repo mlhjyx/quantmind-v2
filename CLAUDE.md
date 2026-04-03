@@ -155,6 +155,20 @@ if _xt.exists() and str(_xt) not in sys.path:
 | QuantMind-FastAPI | uvicorn --workers 2, port 8000 | Redis, PostgreSQL16 | logs/fastapi-std{out,err}.log |
 | QuantMind-Celery | celery worker --pool=solo | Redis | logs/celery-std{out,err}.log |
 | QuantMind-CeleryBeat | celery beat scheduler | Redis, QuantMind-Celery | logs/celery-beat-std{out,err}.log |
+| QuantMind-QMTData | QMT数据同步→Redis缓存(60s) | Redis | logs/qmt-data-std{out,err}.log |
+
+#### QMT数据架构（A-lite方案, 2026-04-04）
+- **QMT Data Service** (`scripts/qmt_data_service.py`): 独立常驻进程，唯一允许 `import xtquant` 的生产入口
+- 每60秒同步: 持仓→`portfolio:current` (Hash), 资产→`portfolio:nav` (JSON), 价格→`market:latest:{code}` (TTL=90s)
+- 其他模块通过 `QMTClient` (`app/core/qmt_client.py`) 读取Redis缓存，**不直接import xtquant**
+- xtquant路径统一管理: `app/core/xtquant_path.py` 的 `ensure_xtquant_path()`
+- 连接状态通过StreamBus广播 `qm:qmt:status`
+
+#### PT核心参数（.env驱动）
+- `PT_TOP_N`: 选股数量（默认20, 改后重启服务生效）
+- `PT_INDUSTRY_CAP`: 行业上限（默认1.0=不限, 改后重启服务生效）
+- 读取路径: `.env` → `config.py:Settings` → `signal_engine.py:PAPER_TRADING_CONFIG`
+- config_guard验证因子列表一致性（不验证top_n/industry_cap，因为是可配置的）
 
 #### 回滚到NSSM（紧急）
 NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和审计文档。

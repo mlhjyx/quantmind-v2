@@ -28,6 +28,7 @@ $Services = [ordered]@{
     fastapi = "QuantMind-FastAPI"
     worker  = "QuantMind-Celery"
     beat    = "QuantMind-CeleryBeat"
+    qmt     = "QuantMind-QMTData"
 }
 
 # 原生服务（只查状态，不管理）
@@ -106,11 +107,11 @@ function Invoke-ServiceAction {
     param([string]$ActionName, [string]$ServiceKey)
 
     if ($ServiceKey -eq "all") {
-        # 停止时反序: beat -> worker -> fastapi
+        # 停止时反序: qmt -> beat -> worker -> fastapi
         $orderedKeys = if ($ActionName -eq "stop") {
-            @("beat", "worker", "fastapi")
+            @("qmt", "beat", "worker", "fastapi")
         } else {
-            @("fastapi", "worker", "beat")
+            @("fastapi", "worker", "beat", "qmt")
         }
 
         foreach ($key in $orderedKeys) {

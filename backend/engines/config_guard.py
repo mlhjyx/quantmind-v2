@@ -23,14 +23,14 @@ BH-FDR校正（研究报告#2）:
     threshold = bh_fdr_adjusted_threshold(alpha=0.05)
 """
 
-import logging
 import re
 from pathlib import Path
-from typing import Optional
+
+import structlog
 
 from engines.signal_engine import PAPER_TRADING_CONFIG
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ANSI颜色码
 _YELLOW = "\033[93m"
@@ -51,14 +51,14 @@ def print_config_header() -> None:
     n_factors = len(cfg.factor_names)
 
     print(f"\n{_BOLD}{'=' * 60}{_RESET}")
-    print(f"{_BOLD}{_CYAN}  PAPER_TRADING_CONFIG (v1.1 基线){_RESET}")
+    print(f"{_BOLD}{_CYAN}  PAPER_TRADING_CONFIG (.env驱动, WLS中性化+涨跌停板块+volume_cap+zscore clip+mergesort){_RESET}")
     print(f"{'=' * 60}")
     print(f"  因子数量:   {n_factors}")
     print(f"  因子列表:   [{factors_str}]")
-    print(f"  Top-N:      {cfg.top_n}")
+    print(f"  Top-N:      {cfg.top_n}  {_YELLOW}(.env PT_TOP_N){_RESET}")
     print(f"  调仓频率:   {cfg.rebalance_freq}")
     print(f"  权重方法:   {cfg.weight_method}")
-    print(f"  行业上限:   {cfg.industry_cap:.0%}")
+    print(f"  行业上限:   {cfg.industry_cap:.0%}  {_YELLOW}(.env PT_INDUSTRY_CAP){_RESET}")
     print(f"  换手上限:   {cfg.turnover_cap:.0%}")
     print(f"{'=' * 60}\n")
 
