@@ -31,9 +31,25 @@ async def get_pms_positions() -> dict[str, Any]:
         codes = [p["code"] for p in positions]
         peak_prices = engine.get_peak_prices(conn, codes)
 
-        # 从Redis读取当前价格
+        # 从Redis读取当前价格，QMT代码格式
+        from app.services.pms_engine import _to_qmt_code
+
         client = get_qmt_client()
-        current_prices = client.get_prices(codes)
+        qmt_codes = [_to_qmt_code(c) for c in codes]
+        current_prices = client.get_prices(qmt_codes)
+
+        # Fallback: 非交易日/无实时数据时用klines_daily最新收盘价
+        if not current_prices:
+            cur = conn.cursor()
+            for code in codes:
+                cur.execute(
+                    """SELECT close FROM klines_daily
+                    WHERE code = %s ORDER BY trade_date DESC LIMIT 1""",
+                    (code,),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    current_prices[_to_qmt_code(code)] = float(row[0])
 
         monitor_data = engine.build_monitor_data(positions, peak_prices, current_prices)
         return {"positions": monitor_data, "count": len(monitor_data)}

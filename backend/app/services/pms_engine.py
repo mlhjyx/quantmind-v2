@@ -20,6 +20,24 @@ from app.config import settings
 logger = structlog.get_logger(__name__)
 
 
+def _to_qmt_code(code: str) -> str:
+    """DB代码(601138) → QMT代码(601138.SH)。"""
+    if "." in code:
+        return code
+    if code.startswith(("6",)):
+        return f"{code}.SH"
+    if code.startswith(("0", "3")):
+        return f"{code}.SZ"
+    if code.startswith(("8", "9", "4")):
+        return f"{code}.BJ"
+    return f"{code}.SH"
+
+
+def _from_qmt_code(code: str) -> str:
+    """QMT代码(601138.SH) → DB代码(601138)。"""
+    return code.split(".")[0] if "." in code else code
+
+
 @dataclass
 class PMSLevel:
     """单层保护阈值。"""
@@ -216,10 +234,12 @@ class PMSEngine:
 
         for pos in positions:
             code = pos["code"]
+            qmt_code = _to_qmt_code(code)
             entry_price = pos["entry_price"]
             shares = pos["shares"]
             peak = peak_prices.get(code, entry_price)
-            current = current_prices.get(code)
+            # 尝试DB代码和QMT代码两种格式匹配价格
+            current = current_prices.get(code) or current_prices.get(qmt_code)
 
             if not current or current <= 0:
                 logger.warning("[PMS] %s 无当前价格，跳过", code)
@@ -265,9 +285,10 @@ class PMSEngine:
         result = []
         for pos in positions:
             code = pos["code"]
+            qmt_code = _to_qmt_code(code)
             entry = pos["entry_price"]
             peak = peak_prices.get(code, entry)
-            current = current_prices.get(code)
+            current = current_prices.get(code) or current_prices.get(qmt_code)
 
             if not current or entry <= 0:
                 continue
