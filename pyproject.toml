@@ -61,6 +61,10 @@ ignore = [
     "B008",   # FastAPI Depends()在参数默认值中是惯用写法，非真正缺陷
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"backend/scripts/*.py" = ["E402", "E701"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 
