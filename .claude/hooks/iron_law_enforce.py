@@ -82,6 +82,22 @@ def check_law_8_ml_oos(file_path: str, content: str) -> list[str]:
     return ["铁律8: ML脚本未包含OOS验证。训练/验证/测试三段分离。"]
 
 
+def check_law_11_ic_traceable(file_path: str, content: str) -> list[str]:
+    """铁律11: IC必须有可追溯的入库记录。"""
+    if not file_path.endswith(".py") and not file_path.endswith(".md"):
+        return []
+    # 检测引用IC数字做决策的模式
+    ic_decision_kw = ["IC=", "ic=", "IC_mean", "gate_ic", "优先级", "入池", "入选"]
+    factor_kw = ["factor", "因子", "alpha"]
+    has_ic_ref = any(kw in content for kw in ic_decision_kw)
+    has_factor = any(kw in content.lower() for kw in factor_kw)
+    if has_ic_ref and has_factor:
+        traceable_kw = ["factor_ic_history", "compute_factor_ic", "compute_ic", "ic_results.csv"]
+        if not any(kw in content for kw in traceable_kw):
+            return ["铁律11: 引用了因子IC做决策但无可追溯计算来源。factor_ic_history无记录的IC视为不存在。"]
+    return []
+
+
 def check_pt_protection(file_path: str) -> list[str]:
     """PT核心链路文件保护提醒。"""
     norm = file_path.replace("\\", "/").lower()
@@ -111,6 +127,7 @@ def main():
         all_issues.extend(check_law_5_backtest(file_path, content))
         all_issues.extend(check_law_6_strategy_match(file_path, content))
         all_issues.extend(check_law_8_ml_oos(file_path, content))
+        all_issues.extend(check_law_11_ic_traceable(file_path, content))
     all_issues.extend(check_pt_protection(file_path))
 
     if not all_issues:
