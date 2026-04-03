@@ -20,7 +20,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 |----|------|
 | 后端 | FastAPI + **sync psycopg2** + Celery + Redis |
 | 前端 | React 18 + TypeScript + Tailwind 4.1 + ECharts/Recharts + Zustand |
-| 数据库 | PostgreSQL 16 (D:\pgdata16, user=xin, db=quantmind) + Redis |
+| 数据库 | PostgreSQL 16 (D:\pgdata16, user=xin, db=quantmind) + Redis 5.0.14.1 |
+| 事件总线 | Redis Streams (`qm:{domain}:{event_type}`), StreamBus模块 |
 | 服务管理 | Servy v7.6 (`D:\tools\Servy`), 替代NSSM |
 | 调度 | Windows Task Scheduler (PT) + Celery Beat (GP) |
 | 交易 | 国金miniQMT (A股) |
@@ -63,6 +64,8 @@ quantmind-v2/
 │       ├── main.py              # FastAPI入口
 │       ├── config.py            # pydantic-settings
 │       ├── api/                 # API路由
+│       ├── core/                # 核心基础设施
+│       │   └── stream_bus.py    # Redis Streams统一数据总线
 │       ├── services/            # ⭐ 业务逻辑层（sync）
 │       │   ├── signal_service.py
 │       │   ├── execution_service.py

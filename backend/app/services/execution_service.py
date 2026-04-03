@@ -12,15 +12,15 @@ Service内部不commit，由调用方统一管理事务。
 """
 
 import json
-import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
 import pandas as pd
+import structlog
 from engines.backtest_engine import Fill, PendingOrder
 from engines.paper_broker import PaperBroker
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -202,6 +202,25 @@ class ExecutionService:
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
 
+        # ── StreamBus: 订单执行结果事件 ──
+        if fills:
+            try:
+                from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
+
+                get_stream_bus().publish_sync(
+                    STREAM_EXECUTION_ORDER_FILLED,
+                    {
+                        "mode": "paper",
+                        "exec_date": str(exec_date),
+                        "fill_count": len(fills),
+                        "pending_count": len(new_pending),
+                        "nav": result.nav,
+                    },
+                    source="execution_service",
+                )
+            except Exception:
+                pass
+
         return result
 
     def _execute_live(
@@ -245,23 +264,30 @@ class ExecutionService:
         new_pending: list[PendingOrder] = []
 
         if is_rebalance and hedged_target:
-            # 构建当日开盘价dict（用于限价单）
+            # 构建参考价dict（T日close优先，xtdata实时价在adapter内获取）
             day_data = price_data[price_data["trade_date"] == exec_date]
             prices: dict[str, float] = {}
             if not day_data.empty:
                 for _, row in day_data.iterrows():
-                    prices[row["code"]] = row["open"]
+                    # 优先用close（更接近T+1开盘），fallback到open
+                    px = row.get("close") or row.get("open") or 0
+                    if px and float(px) > 0:
+                        prices[row["code"]] = float(px)
 
-            logger.info("[ExecutionService] live模式: 通过QMT执行调仓...")
-            adapter = QMTExecutionAdapter(broker)
-            try:
-                rebal_fills, new_pending = adapter.execute_rebalance(
-                    hedged_target, exec_date, prices,
-                    signal_date=signal_date,
-                )
-                fills.extend(rebal_fills)
-            finally:
-                adapter.cleanup()
+            if dry_run:
+                logger.info("[ExecutionService] live模式 dry-run: 跳过QMT下单")
+                # dry-run不调用adapter（避免真实下单冻结资金）
+            else:
+                logger.info("[ExecutionService] live模式: 通过QMT执行调仓...")
+                adapter = QMTExecutionAdapter(broker, audit_conn=conn)
+                try:
+                    rebal_fills, new_pending = adapter.execute_rebalance(
+                        hedged_target, exec_date, prices,
+                        signal_date=signal_date,
+                    )
+                    fills.extend(rebal_fills)
+                finally:
+                    adapter.cleanup()
 
             logger.info(
                 f"[ExecutionService] live调仓完成: {len(fills)}笔成交, "
@@ -292,6 +318,25 @@ class ExecutionService:
         result.pending_orders = new_pending
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
+
+        # ── StreamBus: live订单执行结果事件 ──
+        if fills:
+            try:
+                from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
+
+                get_stream_bus().publish_sync(
+                    STREAM_EXECUTION_ORDER_FILLED,
+                    {
+                        "mode": "live",
+                        "exec_date": str(exec_date),
+                        "fill_count": len(fills),
+                        "pending_count": len(new_pending),
+                        "nav": total_value,
+                    },
+                    source="execution_service",
+                )
+            except Exception:
+                pass
 
         return result
 

@@ -7,11 +7,11 @@
 Service内部不commit，由调用方统一管理事务。
 """
 
-import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
 import pandas as pd
+import structlog
 from engines.beta_hedge import calc_portfolio_beta
 from engines.paper_broker import PaperBroker
 from engines.signal_engine import (
@@ -23,7 +23,7 @@ from engines.signal_engine import (
 from app.config import settings
 from app.services.notification_service import send_alert
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -213,6 +213,24 @@ class SignalService:
 
         if not dry_run:
             self._write_signals(conn, strategy_id, trade_date, signals_list)
+
+        # ── StreamBus: 信号生成完成事件 ──
+        try:
+            from app.core.stream_bus import STREAM_SIGNAL_GENERATED, get_stream_bus
+
+            get_stream_bus().publish_sync(
+                STREAM_SIGNAL_GENERATED,
+                {
+                    "trade_date": str(trade_date),
+                    "strategy_id": strategy_id,
+                    "stock_count": len(signals_list),
+                    "is_rebalance": is_rebalance,
+                    "beta": float(beta) if beta else None,
+                },
+                source="signal_service",
+            )
+        except Exception:
+            pass  # publish失败不影响主流程
 
         return SignalResult(
             target_weights=hedged_target,

@@ -9,6 +9,7 @@ from app.api.approval import router as approval_router
 from app.api.backtest import router as backtest_router
 from app.api.dashboard import router as dashboard_router
 from app.api.execution import router as execution_router
+from app.api.execution_ops import router as execution_ops_router
 from app.api.factors import router as factors_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
@@ -18,6 +19,7 @@ from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
 from app.api.pipeline import router as pipeline_router
 from app.api.portfolio import router as portfolio_router
+from app.api.realtime import router as realtime_router
 from app.api.remote_status import router as remote_status_router
 from app.api.report import router as report_router
 from app.api.risk import router as risk_router
@@ -35,7 +37,12 @@ async def lifespan(app: FastAPI):
     """启动时初始化资源，关闭时释放连接池。"""
     configure_logging()
     qmt_manager.startup()
+    # 初始化 StreamBus（预热连接）
+    from app.core.stream_bus import close_stream_bus, get_stream_bus
+
+    get_stream_bus()
     yield
+    close_stream_bus()
     qmt_manager.shutdown()
     await engine.dispose()
 
@@ -61,6 +68,8 @@ app.include_router(approval_router)
 app.include_router(backtest_router)
 app.include_router(dashboard_router)
 app.include_router(execution_router)
+app.include_router(execution_ops_router)
+app.include_router(realtime_router)
 app.include_router(market_router)
 app.include_router(notifications_router)
 app.include_router(paper_trading_router)

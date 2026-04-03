@@ -74,10 +74,27 @@ def daily_health_check_task(self) -> dict:
         except Exception as e:
             logger.error("[HealthCheck] 写入Redis失败: %s", e)
 
+        # ── StreamBus: 健康检查结果事件 ──
+        try:
+            from app.core.stream_bus import STREAM_HEALTH_CHECK_RESULT, get_stream_bus
+
+            get_stream_bus().publish_sync(
+                STREAM_HEALTH_CHECK_RESULT,
+                {
+                    "date": date.today().isoformat(),
+                    "all_pass": result.get("all_pass"),
+                    "elapsed_s": round(elapsed, 1),
+                    "checks": result,
+                },
+                source="daily_pipeline",
+            )
+        except Exception:
+            pass
+
         return result
     except Exception as exc:
         logger.error(f"[HealthCheck] 异常: {exc}")
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 async def _async_health_check() -> dict:
@@ -201,7 +218,7 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
                 "elapsed_seconds": round(elapsed, 1), **result}
     except Exception as exc:
         logger.error(f"[Signal] 异常: {exc}", exc_info=True)
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 def _check_health_gate(trade_date: date) -> str:
@@ -322,7 +339,7 @@ def daily_execute_task(self, exec_date_str: str | None = None) -> dict:
                 "elapsed_seconds": round(elapsed, 1), **result}
     except Exception as exc:
         logger.error(f"[Execute] 异常: {exc}", exc_info=True)
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 async def _async_execute(exec_date: date) -> dict:

@@ -342,6 +342,18 @@ async def get_system_health(
     }
 
 
+@router.get("/streams")
+async def get_streams_status() -> dict[str, Any]:
+    """Redis Streams 状态概览（调试用）。
+
+    返回所有 qm:* Stream 的消息数量和最近发布时间。
+    """
+    from app.core.stream_bus import get_stream_bus
+
+    bus = get_stream_bus()
+    return {"streams": bus.all_streams_status()}
+
+
 @router.get("/scheduler")
 async def get_scheduler_status() -> dict[str, Any]:
     """查询 Windows Task Scheduler 中 QM- 前缀计划任务状态。
