@@ -20,10 +20,8 @@
 import argparse
 import logging
 import os
-import sys
+from datetime import date
 from pathlib import Path
-from datetime import date, datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -169,9 +167,6 @@ def compute_forward_returns(
     pivot = adj_close_df.pivot(index="trade_date", columns="code", values="adj_close")
     pivot = pivot.sort_index()
 
-    # 建立交易日序号索引
-    date_to_idx = {d: i for i, d in enumerate(trading_dates)}
-
     result_frames = []
     for h in horizons:
         # 计算N日后收益: P(T+N)/P(T) - 1
@@ -200,7 +195,14 @@ def load_factor_values(
     start_date: date,
     end_date: date,
 ) -> pd.DataFrame:
-    """加载因子中性化后的值。
+    """加载因子中性化后的值（与回测universe一致的过滤）。
+
+    过滤条件（对齐run_backtest.py load_universe）:
+    - 排除ST/*ST股票
+    - 排除上市不足60日的新股
+    - 排除总市值<100亿的小盘股
+    - 排除停牌股（volume=0）
+    - 只保留正常上市状态（list_status='L'）
 
     Args:
         conn: psycopg2连接。
@@ -212,11 +214,20 @@ def load_factor_values(
         DataFrame with columns [code, trade_date, neutral_value]。
     """
     df = pd.read_sql(
-        """SELECT code, trade_date, neutral_value
-           FROM factor_values
-           WHERE factor_name = %s
-             AND trade_date BETWEEN %s AND %s
-             AND neutral_value IS NOT NULL""",
+        """SELECT f.code, f.trade_date, f.neutral_value
+           FROM factor_values f
+           JOIN symbols s ON f.code = s.code
+           JOIN klines_daily k ON f.code = k.code AND f.trade_date = k.trade_date
+           LEFT JOIN daily_basic db ON f.code = db.code AND f.trade_date = db.trade_date
+           WHERE f.factor_name = %s
+             AND f.trade_date BETWEEN %s AND %s
+             AND f.neutral_value IS NOT NULL
+             -- 与回测universe一致的过滤
+             AND s.list_status = 'L'
+             AND s.name NOT LIKE '%%ST%%'
+             AND (s.list_date IS NULL OR s.list_date <= f.trade_date - INTERVAL '60 days')
+             AND COALESCE(db.total_mv, 0) > 100000
+             AND k.volume > 0""",
         conn,
         params=(factor_name, start_date, end_date),
     )
@@ -307,8 +318,8 @@ def enrich_ic_df(ic_df: pd.DataFrame) -> pd.DataFrame:
     """
     df = ic_df.copy()
 
-    df["ic_abs_1d"] = df["ic_1d"].abs() if "ic_1d" in df.columns else np.nan
-    df["ic_abs_5d"] = df["ic_5d"].abs() if "ic_5d" in df.columns else np.nan
+    df["ic_abs_1d"] = pd.to_numeric(df["ic_1d"], errors="coerce").abs() if "ic_1d" in df.columns else np.nan
+    df["ic_abs_5d"] = pd.to_numeric(df["ic_5d"], errors="coerce").abs() if "ic_5d" in df.columns else np.nan
 
     # 滚动均值（min_periods=5避免首期噪音）
     df["ic_ma20"] = df["ic_20d"].rolling(window=20, min_periods=5).mean()
@@ -366,9 +377,6 @@ def upsert_ic_history(
     """
     if ic_df.empty:
         return 0
-
-    cols = ["trade_date", "ic_1d", "ic_5d", "ic_10d", "ic_20d",
-            "ic_abs_1d", "ic_abs_5d", "ic_ma20", "ic_ma60", "decay_level"]
 
     rows = []
     for _, row in ic_df.iterrows():
@@ -479,7 +487,7 @@ def update_factor_registry(
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 
-def _safe_float(val) -> Optional[float]:
+def _safe_float(val) -> float | None:
     """将值安全转换为float，NaN/None返回None。"""
     if val is None:
         return None
@@ -544,10 +552,7 @@ def run(
 
     conn = get_conn()
 
-    # 加载交易日历（多加30日缓冲，用于计算最后一批forward return）
-    from datetime import timedelta
-    td_start = start_date
-    # 向前多加30日以便计算因子值起始日之前的forward return基准价格
+    # 向前多加1年以便计算因子值起始日之前的forward return基准价格
     klines_start = date(start_date.year - 1, start_date.month, start_date.day)
     klines_end = end_date
 
