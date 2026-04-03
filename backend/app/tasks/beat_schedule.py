@@ -69,6 +69,15 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1小时内未执行则过期
         },
     },
+    # ── T日 14:30 PMS利润保护检查 ──
+    "pms-daily-check": {
+        "task": "daily_pipeline.pms_check",
+        "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 300,
+        },
+    },
     # ── T+1日 09:00 执行调仓 ──
     "daily-execute": {
         "task": "daily_pipeline.execute",

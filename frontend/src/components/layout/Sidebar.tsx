@@ -3,12 +3,14 @@ import {
   LayoutGrid,
   Zap,
   BarChart3,
+  Library,
   Database,
   Layers,
   Brain,
   TrendingUp,
   Shield,
   ArrowLeftRight,
+  ShieldCheck,
   GraduationCap,
   Settings,
 } from "lucide-react";
@@ -41,6 +43,7 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: TrendingUp, label: "持仓管理", path: "/portfolio" },
       { icon: Shield, label: "风控监控", path: "/risk" },
       { icon: ArrowLeftRight, label: "交易执行", path: "/execution" },
+      { icon: ShieldCheck, label: "利润保护", path: "/pms" },
     ],
   },
   {
@@ -48,6 +51,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { icon: Zap, label: "策略工作台", path: "/strategy" },
       { icon: BarChart3, label: "回测分析", path: "/backtest/config" },
+      { icon: Library, label: "策略库", path: "/backtest/history" },
     ],
   },
   {

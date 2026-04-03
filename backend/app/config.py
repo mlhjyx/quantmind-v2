@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     PT_TOP_N: int = 20  # was 15, changed 2026-04-04, backtest X-D Sharpe 1.15
     PT_INDUSTRY_CAP: float = 1.0  # was 0.25, changed 2026-04-04, removing constraint +0.09 Sharpe
 
+    # --- PMS 阶梯利润保护 ---
+    PMS_ENABLED: bool = True
+    PMS_LEVEL1_GAIN: float = 0.30
+    PMS_LEVEL1_DRAWDOWN: float = 0.15
+    PMS_LEVEL2_GAIN: float = 0.20
+    PMS_LEVEL2_DRAWDOWN: float = 0.12
+    PMS_LEVEL3_GAIN: float = 0.10
+    PMS_LEVEL3_DRAWDOWN: float = 0.10
+
     # --- 日志 ---
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "DEBUG"
     LOG_MAX_FILES: int = 10

@@ -157,6 +157,108 @@ async def _async_health_check() -> dict:
 
 
 # ════════════════════════════════════════════════════════════
+# T日 14:30 — PMS利润保护检查
+# ════════════════════════════════════════════════════════════
+
+@celery_app.task(
+    bind=True,
+    name="daily_pipeline.pms_check",
+    acks_late=True,
+    max_retries=1,
+    default_retry_delay=60,
+    time_limit=300,
+)
+def pms_daily_check_task(self) -> dict:
+    """PMS阶梯利润保护检查。
+
+    14:30执行，检查所有持仓是否触发利润保护。
+    非交易日自动跳过。
+
+    Returns:
+        检查结果 dict。
+    """
+    # 交易日检查
+    from engines.trading_day_checker import TradingDayChecker
+
+    from app.core.qmt_client import get_qmt_client
+    from app.core.stream_bus import STREAM_PMS_PROTECTION_TRIGGERED, get_stream_bus
+    from app.services.pms_engine import PMSEngine
+    checker = TradingDayChecker()
+    is_td, reason = checker.is_trading_day(date.today())
+    if not is_td:
+        logger.info("[PMS] 非交易日(%s)，跳过", reason)
+        return {"status": "skipped", "reason": reason}
+
+    if not settings.PMS_ENABLED:
+        logger.info("[PMS] PMS已禁用")
+        return {"status": "disabled"}
+
+    engine = PMSEngine()
+    strategy_id = getattr(settings, "PAPER_STRATEGY_ID", "")
+    if not strategy_id:
+        return {"status": "error", "message": "PAPER_STRATEGY_ID未配置"}
+
+    conn = _get_redis_client  # 占位，实际用sync DB连接
+    from app.services.db import get_sync_conn
+    conn = get_sync_conn()
+
+    try:
+        positions = engine.sync_positions(conn, strategy_id)
+        if not positions:
+            logger.info("[PMS] 无持仓，跳过")
+            return {"status": "ok", "checked": 0, "triggered": 0}
+
+        codes = [p["code"] for p in positions]
+        peak_prices = engine.get_peak_prices(conn, codes)
+
+        client = get_qmt_client()
+        current_prices = client.get_prices(codes)
+
+        sell_signals = engine.check_all_positions(positions, peak_prices, current_prices)
+
+        bus = get_stream_bus()
+        for sig in sell_signals:
+            engine.record_trigger(conn, sig, strategy_id, date.today())
+            bus.publish_sync(
+                STREAM_PMS_PROTECTION_TRIGGERED,
+                {
+                    "code": sig.code,
+                    "level": sig.level,
+                    "pnl_pct": sig.unrealized_pnl_pct,
+                    "drawdown_pct": sig.drawdown_from_peak_pct,
+                },
+                source="pms_engine",
+            )
+            logger.info(
+                "[PMS] 触发: %s 层级%d 浮盈=%.1f%% 回撤=%.1f%%",
+                sig.code, sig.level,
+                sig.unrealized_pnl_pct * 100,
+                sig.drawdown_from_peak_pct * 100,
+            )
+
+        conn.commit()
+
+        result = {
+            "status": "ok",
+            "checked": len(positions),
+            "triggered": len(sell_signals),
+            "signals": [
+                {"code": s.code, "level": s.level}
+                for s in sell_signals
+            ],
+        }
+        logger.info("[PMS] 检查完成: %d只持仓, %d只触发", len(positions), len(sell_signals))
+        return result
+
+    except Exception as exc:
+        conn.rollback()
+        logger.error("[PMS] 检查异常: %s", exc, exc_info=True)
+        raise self.retry(exc=exc) from exc
+    finally:
+        conn.close()
+
+
+# ════════════════════════════════════════════════════════════
 # T日 16:30 — 信号生成
 # ════════════════════════════════════════════════════════════
 

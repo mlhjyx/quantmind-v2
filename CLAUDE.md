@@ -11,7 +11,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
 - **当前**: Phase 1, Sprint 1.35 完成, PT v1.2 Day 2/60, **QMT live模式**(SimBroker已禁用), Sharpe基线=0.91（2021-2025全5年volume_impact无流动性过滤）, 毕业阈值=0.315
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB, 32GB DDR5
-- **下一步**: PMS v1.0实时架构(清明) → PT v1.3切换(Top-20+去行业约束+PMS) → G1 LightGBM
+- **PMS**: v1.0阶梯利润保护已实现（3层保护, 14:30 Celery Beat检查, 前端页面 /pms）
+- **下一步**: PT v1.3切换(Top-20+去行业约束+PMS已配置) → G1 LightGBM
 - **调度链路**: 09:31 QMT live执行 → 09:35-15:00 盘中监控 → 15:10 对账 → 16:30 信号 → 17:30 因子衰减
 
 ## 技术栈（实际使用，非设计文档）

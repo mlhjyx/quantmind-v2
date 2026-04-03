@@ -18,6 +18,7 @@ from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
 from app.api.pipeline import router as pipeline_router
+from app.api.pms import router as pms_router
 from app.api.portfolio import router as portfolio_router
 from app.api.realtime import router as realtime_router
 from app.api.remote_status import router as remote_status_router
@@ -73,6 +74,7 @@ app.include_router(realtime_router)
 app.include_router(market_router)
 app.include_router(notifications_router)
 app.include_router(paper_trading_router)
+app.include_router(pms_router)
 app.include_router(params_router)
 app.include_router(portfolio_router)
 app.include_router(report_router)

@@ -43,7 +43,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
 
       // Dashboard
-      { path: "dashboard", element: lazyPage(() => import("@/pages/DashboardOverview")) },
+      { path: "dashboard", element: lazyPage(() => import("@/pages/Dashboard")) },
       { path: "dashboard/astock", element: lazyPage(() => import("@/pages/DashboardAstock")) },
       { path: "dashboard/forex", element: lazyPage(() => import("@/pages/DashboardForex")) },
 
@@ -72,6 +72,9 @@ export const router = createBrowserRouter([
       { path: "pipeline", element: lazyPage(() => import("@/pages/PipelineConsole")) },
       { path: "pipeline/agents", element: lazyPage(() => import("@/pages/AgentConfig")) },
 
+      // PMS
+      { path: "pms", element: lazyPage(() => import("@/pages/PMS")) },
+
       // PT Graduation
       { path: "pt-graduation", element: lazyPage(() => import("@/pages/PTGraduation")) },
 
@@ -80,7 +83,7 @@ export const router = createBrowserRouter([
       { path: "risk", element: lazyPage(() => import("@/pages/RiskManagement")) },
       // Market / Execution / Reports
       { path: "market", element: lazyPage(() => import("@/pages/MarketData")) },
-      { path: "execution", element: lazyPage(() => import("@/pages/TradeExecution")) },
+      { path: "execution", element: lazyPage(() => import("@/pages/Execution")) },
       { path: "reports", element: lazyPage(() => import("@/pages/ReportCenter")) },
 
       // Settings
