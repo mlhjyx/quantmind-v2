@@ -49,7 +49,7 @@ quantmind-v2/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表唯一来源（43张表）
 │   ├── QUANTMIND_V2_DESIGN_V5.md   ← 总设计文档
 │   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（117项/10Sprint）
-│   ├── TEAM_CHARTER_V3.3.md       ← 团队运营参考文档（已降级）
+│   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
 │   ├── DEV_BACKEND.md              ← 后端设计(分层/数据流/协同矩阵)
 │   ├── DEV_BACKTEST_ENGINE.md      ← 回测引擎(Hybrid架构/34项决策)
 │   ├── DEV_FACTOR_MINING.md        ← 因子计算(预处理/IC定义)
@@ -214,10 +214,19 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=69）
+- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=202）
 - 与现有Active因子 corr < 0.7, 选股月收益 corr < 0.3
 - 中性化后IC必须验证（原始IC和中性化IC并列展示）
 - 因子预处理顺序: **去极值(MAD 5σ) → 填充(行业中位数) → 中性化(行业+市值WLS) → z-score**（不可变）
+
+## 量化铁律（6条，hook强制检查）
+
+1. **因子验证用生产基线+中性化** — 原始IC和中性化IC必须并列展示，衰减>50%标记SUSPECT
+2. **因子入组合前回测验证** — paired bootstrap p<0.05 vs 基线，不是只看Sharpe数字
+3. **下结论前验代码** — grep/read验证，不信文档和记忆
+4. **ML实验必须OOS验证** — 训练/验证/测试三段分离
+5. **因子评估前确定匹配策略** — ic_decay→调仓频率，RANKING/FAST_RANKING/EVENT不混用
+6. **重大改动后更新CLAUDE.md/PROGRESS.md** — 保持文档与代码一致
 
 ## 策略配置（v1.2，PT运行中）
 # v1.1→v1.2变更: WLS中性化 + 涨跌停板块 + volume_cap 10% + zscore clip±3 + mergesort

@@ -8,14 +8,13 @@
 3. IC使用超额收益(vs CSI300)
 """
 
-import logging
-from datetime import date, timedelta
-from typing import Optional
+from datetime import date
 
 import numpy as np
 import pandas as pd
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ============================================================
@@ -88,7 +87,7 @@ def calc_amihud(
 ) -> pd.Series:
     """Amihud非流动性因子: mean(|return| / amount)。
 
-    注意: amount单位是千元, 不影响截面排序。
+    注意: amount单位是千元(klines_daily), 不影响截面排序（常数倍不改变排名）。
     """
     ret = close_adj.pct_change(1).abs()
     illiq = ret / (amount + 1e-12)
@@ -96,7 +95,7 @@ def calc_amihud(
 
 
 def calc_ln_mcap(total_mv: pd.Series) -> pd.Series:
-    """对数市值: ln(total_mv)。total_mv单位万元。"""
+    """对数市值: ln(total_mv)。total_mv单位万元(daily_basic)。"""
     return np.log(total_mv + 1e-12)
 
 
@@ -211,7 +210,7 @@ def calc_mf_divergence(
 
     Args:
         close_adj: 前复权收盘价 (已按code分组)
-        net_mf_amount: 净资金流入金额 (万元)
+        net_mf_amount: 净资金流入金额 (万元, moneyflow_daily)
         window: 滚动窗口
 
     Returns:
@@ -227,12 +226,13 @@ def calc_large_order_ratio(
     """主力资金占比: (大单+超大单买入) / 全部买入。
 
     衡量主力资金参与程度, 高值表示机构主导。
+    所有金额字段来自 moneyflow_daily，单位统一为万元，比值无量纲。
 
     Args:
-        buy_lg_amount: 大单买入金额 (万元)
-        buy_elg_amount: 超大单买入金额 (万元)
-        buy_md_amount: 中单买入金额 (万元)
-        buy_sm_amount: 小单买入金额 (万元)
+        buy_lg_amount: 大单买入金额 (万元, moneyflow_daily)
+        buy_elg_amount: 超大单买入金额 (万元, moneyflow_daily)
+        buy_md_amount: 中单买入金额 (万元, moneyflow_daily)
+        buy_sm_amount: 小单买入金额 (万元, moneyflow_daily)
 
     Returns:
         pd.Series: 主力资金占比因子值
@@ -247,11 +247,12 @@ def calc_money_flow_strength(
 ) -> pd.Series:
     """净资金流入强度: net_mf_amount / total_mv。
 
-    注意: net_mf_amount单位是万元, total_mv单位也是万元, 比值无量纲。
+    单位审计: net_mf_amount=万元(moneyflow_daily), total_mv=万元(daily_basic),
+    比值无量纲，单位一致无需转换。
 
     Args:
-        net_mf_amount: 净资金流入金额 (万元)
-        total_mv: 总市值 (万元)
+        net_mf_amount: 净资金流入金额 (万元, moneyflow_daily)
+        total_mv: 总市值 (万元, daily_basic)
 
     Returns:
         pd.Series: 净资金流入强度因子值
@@ -322,7 +323,7 @@ def calc_vwap_bias(
     """VWAP偏差因子: (close - VWAP) / VWAP。
 
     VWAP = amount * 10.0 / volume
-    单位换算: amount(千元)×1000 / (volume(手)×100) = amount×10/volume = 元/股
+    单位换算: amount(千元, klines_daily)×1000 / (volume(手)×100) = amount×10/volume = 元/股
 
     方向: -1（低偏差更好，收盘价低于VWAP暗示卖压已释放）
     极值保护: clip(-1.0, 1.0)
@@ -452,12 +453,7 @@ PHASE0_CORE_FACTORS = {
 # Phase 0 Week 6: 扩展因子 (不含deprecated)
 PHASE0_FULL_FACTORS = {
     **PHASE0_CORE_FACTORS,
-    "momentum_5": lambda df: df.groupby("code")["adj_close"].transform(
-        lambda x: calc_momentum(x, 5)
-    ),
-    "momentum_10": lambda df: df.groupby("code")["adj_close"].transform(
-        lambda x: calc_momentum(x, 10)
-    ),
+    # momentum_5/10 已移至DEPRECATED (与reversal_5/10数学等价, corr=-1.0)
     "reversal_5": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_reversal(x, 5)
     ),
@@ -479,7 +475,7 @@ PHASE0_FULL_FACTORS = {
     "relative_volume_20": lambda df: df.groupby("code")["volume"].transform(
         lambda x: calc_relative_volume(x.astype(float), 60)
     ),
-    "dv_ttm": lambda df: df["dv_ttm"],  # daily_basic直接取值
+    "dv_ttm": lambda df: df["dv_ttm"].fillna(df.get("dv_ratio", 0)),  # fallback到dv_ratio
     "turnover_surge_ratio": lambda df: df.groupby("code")["turnover_rate"].transform(
         lambda x: calc_turnover_surge_ratio(x)
     ),
@@ -490,6 +486,14 @@ PHASE0_FULL_FACTORS = {
 DEPRECATED_FACTORS = {
     "momentum_20": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_momentum(x, 20)
+    ),
+    # momentum_5 = -reversal_5 (数学等价, corr=-1.000), 保留reversal_5在FULL
+    "momentum_5": lambda df: df.groupby("code")["adj_close"].transform(
+        lambda x: calc_momentum(x, 5)
+    ),
+    # momentum_10 = -reversal_10 (数学等价, corr=-1.000), 保留reversal_10在FULL
+    "momentum_10": lambda df: df.groupby("code")["adj_close"].transform(
+        lambda x: calc_momentum(x, 10)
     ),
     "volatility_60": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_volatility(x, 60)
@@ -502,6 +506,10 @@ DEPRECATED_FACTORS = {
     ),
     "high_low_range_20": lambda df: df.groupby("code", group_keys=False).apply(
         lambda g: calc_hl_range(g["adj_high"], g["adj_low"], 20)
+    ),
+    # turnover_stability_20: corr(turnover_mean_20)=0.904, 高度冗余
+    "turnover_stability_20": lambda df: df.groupby("code")["turnover_rate"].transform(
+        lambda x: calc_turnover_stability(x, 20)
     ),
 }
 
@@ -517,16 +525,83 @@ RESERVE_FACTORS = {
     "rsrs_raw_18": lambda df: df.groupby("code", group_keys=False).apply(
         lambda g: calc_rsrs_raw(g["high"], g["low"], 18)
     ),
-    "turnover_stability_20": lambda df: df.groupby("code")["turnover_rate"].transform(
-        lambda x: calc_turnover_stability(x, 20)
-    ),
+    # turnover_stability_20 移至DEPRECATED (corr(turnover_mean_20)=0.904)
 }
 
 # Reserve因子方向映射
 RESERVE_FACTOR_DIRECTION = {
     "vwap_bias_1d": -1,   # 低偏差更好（收盘价低于VWAP）
     "rsrs_raw_18": -1,    # Sprint 1.6确认方向
-    "turnover_stability_20": -1,  # 低波动性=稳定=好（国盛证券IR=2.64日频近似）
+}
+
+# ============================================================
+# Alpha158因子 (Qlib导入, corr<0.7 vs现有因子)
+# 计算逻辑在 engines/alpha158_factors.py, 这里用lambda封装
+# ============================================================
+
+def _alpha158_rolling(df, op_name, window):
+    """Alpha158滚动因子的统一计算入口。"""
+    from engines.alpha158_factors import compute_rolling
+    result = compute_rolling(df)
+    key = f"{op_name}{window}"
+    return result.get(key, pd.Series(dtype=float))
+
+
+# 4个RANKING因子（月度调仓）
+ALPHA158_RANKING = {
+    "a158_std60": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: g["close"].rolling(60, min_periods=60).std() / g["close"]
+    ),
+    "a158_vsump60": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: (
+            (g["volume"] - g["volume"].shift(1)).clip(lower=0).rolling(60, min_periods=60).sum()
+            / ((g["volume"] - g["volume"].shift(1)).abs().rolling(60, min_periods=60).sum() + 1e-12)
+        )
+    ),
+    "a158_cord30": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: (g["close"] / g["close"].shift(1) - 1).rolling(30, min_periods=30).corr(
+            np.log(g["volume"] / g["volume"].shift(1).replace(0, np.nan) + 1)
+        )
+    ),
+    "a158_vstd30": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: g["volume"].rolling(30, min_periods=30).std() / (g["volume"] + 1e-12)
+    ),
+}
+
+# 4个FAST_RANKING因子（周度/双周调仓）
+ALPHA158_FAST_RANKING = {
+    "a158_rank5": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: (
+            (g["close"] - g["close"].rolling(5, min_periods=5).min())
+            / (g["close"].rolling(5, min_periods=5).max() - g["close"].rolling(5, min_periods=5).min() + 1e-12)
+        )
+    ),
+    "a158_corr5": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: g["close"].rolling(5, min_periods=5).corr(np.log(g["volume"] + 1))
+    ),
+    "a158_vsump5": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: (
+            (g["volume"] - g["volume"].shift(1)).clip(lower=0).rolling(5, min_periods=5).sum()
+            / ((g["volume"] - g["volume"].shift(1)).abs().rolling(5, min_periods=5).sum() + 1e-12)
+        )
+    ),
+    "a158_vma5": lambda df: df.groupby("code", group_keys=False).apply(
+        lambda g: g["volume"].rolling(5, min_periods=5).mean() / (g["volume"] + 1e-12)
+    ),
+}
+
+ALPHA158_FACTORS = {**ALPHA158_RANKING, **ALPHA158_FAST_RANKING}
+
+# Alpha158因子方向 (IC方向)
+ALPHA158_FACTOR_DIRECTION = {
+    "a158_std60": -1,      # 低波动好
+    "a158_vsump60": -1,    # 量能下降好
+    "a158_cord30": -1,     # 量价负相关好
+    "a158_vstd30": 1,      # 交易稳定性
+    "a158_rank5": -1,      # 低位好（反转）
+    "a158_corr5": -1,      # 价量负相关好
+    "a158_vsump5": -1,     # 短期量能下降好
+    "a158_vma5": 1,        # 近期放量好
 }
 
 # ============================================================
@@ -586,8 +661,8 @@ ML_FEATURES_INDEX = {
 # 全部ML特征 (合并三组)
 ML_FEATURES = {**ML_FEATURES_KLINE, **ML_FEATURES_MONEYFLOW, **ML_FEATURES_INDEX}
 
-# LightGBM完整特征集 = Phase0全量 + ML新特征
-LIGHTGBM_FEATURE_SET = {**PHASE0_FULL_FACTORS, **ML_FEATURES}
+# LightGBM完整特征集 = Phase0全量 + ML新特征 + Alpha158独立因子
+LIGHTGBM_FEATURE_SET = {**PHASE0_FULL_FACTORS, **ML_FEATURES, **ALPHA158_FACTORS}
 
 
 # ============================================================
@@ -668,7 +743,7 @@ def load_fundamental_pit_data(
     days_since_ann: dict[str, float] = {}
 
     for code, grp in fina_df.groupby("code"):
-        grp = grp.sort_values("report_date", ascending=False)
+        grp = grp.sort_values("report_date", ascending=False, kind="mergesort")
         latest = grp.iloc[0]
         prev = grp.iloc[1] if len(grp) >= 2 else None
 
@@ -807,18 +882,22 @@ def preprocess_neutralize(
     ln_mcap: pd.Series,
     industry: pd.Series,
 ) -> pd.Series:
-    """Step 3: 中性化 — 回归掉市值 + 行业。
+    """Step 3: WLS中性化 — 加权最小二乘回归掉市值 + 行业。
 
-    对 factor = alpha + beta1 × ln_mcap + sum(beta_i × industry_dummy) + residual
-    返回 residual。
+    模型: factor = alpha + beta1 × ln_mcap + Σ(beta_i × industry_dummy) + residual
+    权重: w_i = √market_cap_i = √exp(ln_mcap_i)（大市值股票权重更高）
+    WLS变换: 用 √w_i 乘以 X 和 y，转化为等价的OLS问题后 lstsq 求解。
+    残差: 用原始(未加权)的 y - X @ beta 计算，保留经济含义。
+
+    设计文档: DESIGN_V5 §4.4 — WLS(√market_cap加权)回归。
 
     Args:
         series: 单因子截面值 (已去极值+填充)
-        ln_mcap: 对数市值
+        ln_mcap: 对数市值（ln(流通市值)）
         industry: 行业分类
 
     Returns:
-        中性化后的残差
+        中性化后的残差 Series，无效样本保持 NaN
     """
     valid_mask = series.notna() & ln_mcap.notna() & industry.notna()
     if valid_mask.sum() < 30:
@@ -826,23 +905,35 @@ def preprocess_neutralize(
         return series
 
     y = series[valid_mask].values
-    # 构建X: [ln_mcap, industry_dummies]
-    mcap_col = ln_mcap[valid_mask].values.reshape(-1, 1)
-    ind_dummies = pd.get_dummies(industry[valid_mask], drop_first=True).values
+    mcap_vals = ln_mcap[valid_mask].values
 
-    X = np.column_stack([np.ones(len(y)), mcap_col, ind_dummies])
+    # 构建设计矩阵 X: [intercept, ln_mcap, industry_dummies]
+    mcap_col = mcap_vals.reshape(-1, 1)
+    ind_dummies = pd.get_dummies(industry[valid_mask], drop_first=True).values
+    x_mat = np.column_stack([np.ones(len(y)), mcap_col, ind_dummies])  # noqa: N806
+
+    # WLS权重: w_i = √market_cap = √exp(ln_mcap)
+    # WLS → OLS变换: 用 √w_i 乘以 X 和 y
+    weights = np.sqrt(np.exp(mcap_vals))          # w_i = √market_cap
+    w_sqrt = np.sqrt(weights)                      # √w_i = market_cap^(1/4)
+    # 归一化避免数值溢出 (不影响回归结果)
+    w_sqrt = w_sqrt / w_sqrt.mean()
+
+    xw = x_mat * w_sqrt[:, np.newaxis]
+    yw = y * w_sqrt
 
     try:
-        # OLS: beta = (X'X)^-1 X'y
-        beta = np.linalg.lstsq(X, y, rcond=None)[0]
-        residual = y - X @ beta
+        # WLS: beta = (X'WX)^-1 X'Wy，等价OLS on (Xw, yw)
+        beta = np.linalg.lstsq(xw, yw, rcond=None)[0]
+        # 残差使用原始空间（非加权），保留经济含义
+        residual = y - x_mat @ beta
 
         result = series.copy()
         result[valid_mask] = residual
         result[~valid_mask] = np.nan
         return result
     except np.linalg.LinAlgError:
-        logger.warning("中性化回归失败(矩阵奇异)，返回原值")
+        logger.warning("WLS中性化回归失败(矩阵奇异)，返回原值")
         return series
 
 
@@ -866,7 +957,14 @@ def preprocess_pipeline(
     """完整预处理管道。
 
     返回 (raw_value, neutral_value)。
-    neutral_value = 经过MAD→fill→neutralize→zscore全部4步处理后的值。
+    neutral_value = 经过 MAD→fill→neutralize(WLS)→zscore→clip(±3) 全部5步处理后的值。
+
+    步骤:
+      1. MAD去极值 (5σ)
+      2. 缺失值填充 (行业中位数→0)
+      3. WLS中性化 (行业+市值加权回归，w=√market_cap)
+      4. zscore标准化
+      5. clip(±3): 截断|z|>3的极端值 (DESIGN_V5 §4.4)
 
     Args:
         factor_series: 原始因子截面值
@@ -878,16 +976,18 @@ def preprocess_pipeline(
     """
     raw = factor_series.copy()
 
-    # Step 1: MAD去极值
+    # Step 1: MAD去极值 (5σ)
     step1 = preprocess_mad(raw)
     # Step 2: 缺失值填充
     step2 = preprocess_fill(step1, industry)
-    # Step 3: 中性化
+    # Step 3: WLS中性化 (行业+市值加权回归)
     step3 = preprocess_neutralize(step2, ln_mcap, industry)
     # Step 4: zscore
     step4 = preprocess_zscore(step3)
+    # Step 5: clip ±3σ (截断zscore极端值)
+    step5 = step4.clip(lower=-3.0, upper=3.0)
 
-    return raw, step4
+    return raw, step5
 
 
 # ============================================================
@@ -1095,6 +1195,7 @@ def save_daily_factors(
         写入行数
     """
     from psycopg2.extras import execute_values
+
     from app.services.price_utils import _get_sync_conn
 
     close_conn = conn is None
@@ -1177,6 +1278,7 @@ def compute_daily_factors(
     # Reserve池因子随日常管道一起计算(不入v1.1等权组合, 仅写入factor_values供监控)
     if include_reserve:
         factors.update(RESERVE_FACTORS)
+        factors.update(ALPHA158_FACTORS)
 
     # 1. 加载数据
     logger.info(f"[{trade_date}] 加载行情数据...")
@@ -1498,7 +1600,7 @@ def compute_batch_factors(
     factor_set: str = "core",
     conn=None,
     write: bool = True,
-    factor_names: Optional[list[str]] = None,
+    factor_names: list[str] | None = None,
 ) -> dict:
     """批量计算因子并逐日写入。
 
@@ -1516,7 +1618,9 @@ def compute_batch_factors(
         dict with stats (total_rows, elapsed, etc.)
     """
     import time
+
     from psycopg2.extras import execute_values
+
     from app.services.price_utils import _get_sync_conn
 
     use_extras = False  # 是否需要加载moneyflow+index数据
@@ -1563,7 +1667,15 @@ def compute_batch_factors(
         # 仅当实际需要moneyflow/index因子时才加载额外数据
         _mf_and_idx = set(ML_FEATURES_MONEYFLOW) | set(ML_FEATURES_INDEX)
         use_extras = use_extras and bool(set(factors) & _mf_and_idx)
-    close_conn = conn is None
+
+    # 字符串→date转换（命令行调用时传入str）
+    if isinstance(start_date, str):
+        from datetime import datetime as _dt
+        start_date = _dt.strptime(start_date, "%Y-%m-%d").date()
+    if isinstance(end_date, str):
+        from datetime import datetime as _dt
+        end_date = _dt.strptime(end_date, "%Y-%m-%d").date()
+
     if conn is None:
         conn = _get_sync_conn()
 

@@ -1,13 +1,7 @@
-"""Harness Hook: 八条铁律+工作原则机械执行 — 约束层核心。
+"""Hook: 量化铁律机械执行（6条精简版）。
 
 触发: PreToolUse[Edit|Write]
-功能: 在文件写入前，根据文件路径和内容检查是否违反铁律
-- 铁律2: 因子测试必须包含中性化
-- 铁律3: 因子入组合评估必须包含SimBroker/backtest
-- 铁律5: 结论性文档必须包含验证证据
-- 铁律7: ML脚本必须包含OOS验证
-- 铁律8: 因子评估必须包含strategy匹配
-- 工作原则7: 编码目录→对应设计文档提醒
+检查: 铁律1(中性化) 2(回测) 3(验代码) 4(ML OOS) 5(策略匹配) 6(更新文档)
 退出码: 0=通过（注入提醒）
 """
 
@@ -15,8 +9,8 @@ import json
 import sys
 
 
-def check_iron_law_2(file_path: str, content: str) -> list[str]:
-    """铁律2: 因子验证用生产基线+中性化。"""
+def check_law_1_neutralize(file_path: str, content: str) -> list[str]:
+    """铁律1: 因子验证用生产基线+中性化。"""
     violations = []
     normalized = file_path.replace("\\", "/").lower()
 
@@ -35,14 +29,14 @@ def check_iron_law_2(file_path: str, content: str) -> list[str]:
         ]
         if not any(kw in content.lower() for kw in neutralize_keywords):
             violations.append(
-                "铁律2: 因子测试文件未包含中性化验证。"
-                "必须同时展示原始IC和中性化后IC（LL-014）。"
+                "铁律1: 因子测试文件未包含中性化验证。"
+                "必须同时展示原始IC和中性化后IC。"
             )
     return violations
 
 
-def check_iron_law_3(file_path: str, content: str) -> list[str]:
-    """铁律3: 因子入组合前SimBroker回测。"""
+def check_law_2_backtest(file_path: str, content: str) -> list[str]:
+    """铁律2: 因子入组合前回测验证。"""
     violations = []
     normalized = file_path.replace("\\", "/").lower()
 
@@ -55,20 +49,20 @@ def check_iron_law_3(file_path: str, content: str) -> list[str]:
     )
 
     if is_factor_portfolio:
-        simbroker_keywords = [
+        backtest_keywords = [
             "simbroker", "sim_broker", "backtest", "回测",
             "paired_bootstrap", "bootstrap", "backtest_engine",
         ]
-        if not any(kw in content.lower() for kw in simbroker_keywords):
+        if not any(kw in content.lower() for kw in backtest_keywords):
             violations.append(
-                "铁律3: 因子入组合评估未包含SimBroker回测。"
-                "必须paired bootstrap p<0.05才能入池。"
+                "铁律2: 因子入组合评估未包含回测验证。"
+                "必须paired bootstrap p<0.05。"
             )
     return violations
 
 
-def check_iron_law_5(file_path: str, content: str) -> list[str]:
-    """铁律5: 下结论前验代码——结论性文档必须有验证证据。"""
+def check_law_3_verify_code(file_path: str, content: str) -> list[str]:
+    """铁律3: 下结论前验代码。"""
     violations = []
 
     is_conclusion_doc = (
@@ -87,14 +81,13 @@ def check_iron_law_5(file_path: str, content: str) -> list[str]:
         ]
         if not any(kw in content for kw in evidence_keywords):
             violations.append(
-                "铁律5: 结论性文档未包含代码/数据验证证据。"
-                "下结论前必须验代码——grep/read验证，不信文档（LL-019）。"
+                "铁律3: 结论性文档未包含代码/数据验证证据。"
             )
     return violations
 
 
-def check_iron_law_7(file_path: str, content: str) -> list[str]:
-    """铁律7: ML实验必须OOS验证。"""
+def check_law_4_ml_oos(file_path: str, content: str) -> list[str]:
+    """铁律4: ML实验必须OOS验证。"""
     violations = []
 
     is_ml_script = (
@@ -114,14 +107,13 @@ def check_iron_law_7(file_path: str, content: str) -> list[str]:
         ]
         if not any(kw in content.lower() for kw in oos_keywords):
             violations.append(
-                "铁律7: ML脚本未包含OOS(样本外)验证。"
-                "训练/验证/测试三段分离是强制要求。"
+                "铁律4: ML脚本未包含OOS(样本外)验证。"
             )
     return violations
 
 
-def check_iron_law_8(file_path: str, content: str) -> list[str]:
-    """铁律8: 因子评估前strategy必须确定匹配策略。"""
+def check_law_5_strategy_match(file_path: str, content: str) -> list[str]:
+    """铁律5: 因子评估前确定匹配策略。"""
     violations = []
     normalized = file_path.replace("\\", "/").lower()
 
@@ -139,45 +131,14 @@ def check_iron_law_8(file_path: str, content: str) -> list[str]:
             "rebalance_freq", "factor_classifier", "signal_type",
             "排序型", "过滤型", "事件型", "调节型",
             "weekly", "monthly", "daily", "event_driven",
+            "RANKING", "FAST_RANKING", "EVENT",
         ]
         if not any(kw in content.lower() for kw in strategy_keywords):
             violations.append(
-                "铁律8: 因子评估未包含策略匹配信息。"
-                "ic_decay→调仓频率/权重/选股方式（LL-027）。"
-                "不是所有因子都用等权Top15月度。"
+                "铁律5: 因子评估未包含策略匹配信息。"
+                "ic_decay→调仓频率，RANKING/FAST_RANKING/EVENT不混用。"
             )
     return violations
-
-
-def check_design_doc_reference(file_path: str, content: str) -> list[str]:
-    """工作原则7: 编码前对照设计文档提醒。"""
-    warnings = []
-    normalized = file_path.replace("\\", "/").lower()
-
-    if not any(normalized.endswith(ext) for ext in (".py", ".tsx", ".ts")):
-        return warnings
-
-    # 目录→对应设计文档映射
-    dir_doc_map = [
-        ("backend/app/services/", "DEV_BACKEND.md"),
-        ("backend/app/api/", "DEV_BACKEND.md"),
-        ("backend/engines/mining/", "DEV_FACTOR_MINING.md"),
-        ("backend/engines/", "DEV_BACKTEST_ENGINE.md"),
-        ("backend/app/tasks/", "DEV_SCHEDULER.md"),
-        ("backend/integrations/", "DEV_AI_EVOLUTION.md"),
-        ("frontend/src/", "DEV_FRONTEND_UI.md"),
-    ]
-
-    for dir_pattern, doc_name in dir_doc_map:
-        if dir_pattern in normalized:
-            warnings.append(
-                f"工作原则7: 正在写入 {dir_pattern} 目录，"
-                f"对应设计文档: docs/{doc_name}。"
-                f"编码前请先阅读确认功能规格（宪法§9.7）。"
-            )
-            break
-
-    return warnings
 
 
 def main():
@@ -188,23 +149,17 @@ def main():
 
     tool_input = input_data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
-    content = tool_input.get("content", "")
-
-    # Edit工具没有content字段，只有new_string
-    if not content:
-        content = tool_input.get("new_string", "")
+    content = tool_input.get("content", "") or tool_input.get("new_string", "")
 
     if not file_path or not content:
         sys.exit(0)
 
-    # 运行所有检查
     all_issues = []
-    all_issues.extend(check_iron_law_2(file_path, content))
-    all_issues.extend(check_iron_law_3(file_path, content))
-    all_issues.extend(check_iron_law_5(file_path, content))
-    all_issues.extend(check_iron_law_7(file_path, content))
-    all_issues.extend(check_iron_law_8(file_path, content))
-    all_issues.extend(check_design_doc_reference(file_path, content))
+    all_issues.extend(check_law_1_neutralize(file_path, content))
+    all_issues.extend(check_law_2_backtest(file_path, content))
+    all_issues.extend(check_law_3_verify_code(file_path, content))
+    all_issues.extend(check_law_4_ml_oos(file_path, content))
+    all_issues.extend(check_law_5_strategy_match(file_path, content))
 
     if not all_issues:
         sys.exit(0)
@@ -216,8 +171,7 @@ def main():
             "additionalContext": (
                 f"IRON LAW CHECK ({len(all_issues)} issues):\n"
                 f"{issues_text}\n\n"
-                "这些是TEAM_CHARTER_V3.3 §2不可协商规则。"
-                "如果检测不适用，可以忽略；如果确实违反，请立即修正。"
+                "如果检测不适用可以忽略；如果确实违反请立即修正。"
             ),
         }
     }
