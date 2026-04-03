@@ -121,24 +121,37 @@ quantmind-v2/
 - 新组件必须 `?.` null-safe 防御
 - 状态管理: Zustand, 异步请求: @tanstack/react-query
 
-### xtquant/miniQMT 路径规则（必须遵守）
+### xtquant/miniQMT 规则（清明改造后）
 
-xtquant（miniQMT的Python SDK）不在标准pip环境中，安装在特殊路径:
-`D:\quantmind-v2\.venv\Lib\site-packages\Lib\site-packages`
+- **唯一允许 `import xtquant` 的生产入口**: `scripts/qmt_data_service.py`（QMT Data Service独立进程）
+- **其他模块读QMT数据**: 通过 `QMTClient` (`app/core/qmt_client.py`) 从Redis缓存读取，**不直接import xtquant**
+- **路径管理**: 统一使用 `app/core/xtquant_path.py` 的 `ensure_xtquant_path()`
+- **降级路径**: QMTClient读Redis超时时可降级直连xtquant（应急通道）
+- xtquant安装在 `.venv/Lib/site-packages/Lib/site-packages`，用 `append` 不是 `insert`
 
-**任何使用xtquant的Python文件**（脚本或FastAPI后端），import xtquant之前必须先加路径:
-```python
-import sys
-from pathlib import Path
-_xt = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
-if _xt.exists() and str(_xt) not in sys.path:
-    sys.path.append(str(_xt))  # append不是insert，避免旧numpy覆盖项目numpy
-```
+### Redis Streams 数据总线规则
 
-注意:
-- **append不是insert** — `insert(0,...)` 会导致xtquant自带的旧numpy覆盖项目numpy
-- 涉及的文件: `qmt_connection_manager.py`, `run_paper_trading.py`, `intraday_monitor.py`, `daily_reconciliation.py`, `cancel_stale_orders.py`
-- 未来新建使用 `xtdata` 或 `xttrader` 的文件也必须遵守
+- 命名规范: `qm:{domain}:{event_type}`（如 `qm:signal:generated`）
+- 发布: `from app.core.stream_bus import get_stream_bus; bus.publish_sync(stream, data, source="module_name")`
+- publish失败不阻塞主流程（try/except包裹）
+- maxlen=10000，防止Stream无限增长
+- 调试: `redis-cli XRANGE qm:signal:generated - + COUNT 5`
+- 管理端点: `GET /api/system/streams`
+
+### PMS 阶梯利润保护规则
+
+- 14:30 Celery Beat执行检查（非交易日自动跳过）
+- 三层保护: L1(浮盈>30%+回撤>15%), L2(>20%+>12%), L3(>10%+>10%)
+- 配置在.env: `PMS_ENABLED`, `PMS_LEVEL{1,2,3}_GAIN`, `PMS_LEVEL{1,2,3}_DRAWDOWN`
+- PMS卖出后自动更新`position_snapshot`，确保信号生成看到最新持仓
+- 触发记录写`position_monitor`表，通过StreamBus广播`qm:pms:protection_triggered`
+- 前端页面: `/pms`
+
+### PT核心参数（.env驱动）
+
+- `PT_TOP_N`: 选股数量（当前=20），改后重启服务生效
+- `PT_INDUSTRY_CAP`: 行业上限（当前=1.0=不限），改后重启服务生效
+- 读取路径: `.env` → `config.py` → `signal_engine.py:PAPER_TRADING_CONFIG`
 
 ### 部署规则（Servy服务管理）
 - **服务管理工具**: Servy v7.6 (`D:\tools\Servy\servy-cli.exe`)，替代NSSM（2026-04-04迁移）
@@ -249,8 +262,9 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - ✅ G2研究完成（25+组回测: 权重优化无效, PMS有效, Top-20>15, 去行业约束）
 - ✅ 全面数据审计完成（0❌9⚠️, FF3: Alpha=21.1% t=2.45, SMB beta=0.83）
 - ✅ 因子盘点完成（37个DB因子, 20候选入池, 3个P0因子冗余, GP管线0产出）
+- ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0+配置.env化）
 - 🔨 PT v1.2 运行中 Day 2/60, Sharpe基线=0.91
-- ⬜ 下一步: PMS v1.0实时架构 → PT v1.3(Top-20+去约束+PMS) → G1 LightGBM
+- ⬜ 下一步: PT v1.3切换(Top-20+去约束+PMS已配置) → G1 LightGBM
 - 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.2)
 ---
 
