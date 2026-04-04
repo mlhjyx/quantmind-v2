@@ -1,10 +1,11 @@
 # QuantMind V2 — 修复+升级+架构演进 落地文档
 
-> **版本**: 3.2 | **日期**: 2026-04-03
-> **基于**: v3.1 + 全面审计(FF3归因/DSR校正/数据质量) + 实时架构重设计 + PMS持仓管理系统
-> **当前状态**: QMT模拟盘live模式, 4/2首次建仓, 初始资金≈¥1,000,752, PT Day 1
-> **核心基线**: Sharpe=0.91 (保守估计0.70-0.85), MDD=-43%, Alpha=21.1%/年(t=2.45), SMB beta=0.83
-> **v3.1→v3.2新增**: 全面审计结论(Alpha真实/SMB暴露/DSR校正), 实时架构(Redis Streams+QMT数据服务), PMS持仓管理系统(利润保护/分类止损/观察名单), 分钟数据聚合因子方向, NSSM→Servy迁移, 清明改造计划, 分市值层回测实验
+> **版本**: 3.6 | **日期**: 2026-04-05
+> **基于**: v3.5 + 假期阶段1(FF3归因/PMS v2.0/PEAD/北向/分钟数据) + 流水线断点更新
+> **当前状态**: QMT模拟盘live模式, 4/2首次建仓, 初始≈¥1,000,752, 当前15只持仓NAV≈¥958,684, PT Day 2
+> **核心基线**: Sharpe=1.080(全期，被2021拉高) / 0.830(2023-2025同期) / 0.70-0.85(DSR校正保守)
+> **新最优配置(已部署)**: Top-20+无行业约束+PMS阶梯利润保护 → Sharpe=1.15, MDD=-35.1%, Calmar=0.83
+> **v3.4→v3.5核心变化**: G1 LightGBM完成(ML Sharpe=0.68 vs 等权同期0.83, 差距0.15非此前认为的0.42), 根因定位(数据维度不够非模型不够), 流水线10环节×8断点全面审计, 战略从"ML替代等权"转向"新数据源→新因子类型→多策略叠加+PMS增强"
 
 ---
 
@@ -119,11 +120,82 @@
 | 基本面因子在等权框架完全无效 | Sprint 1.5, 10种方式8 FAIL | 方向关闭, 但LightGBM可能发现交互效应 |
 | 量价因子IC天花板0.05-0.06 | 暴力枚举Layer 1-2 | 继续量价维度边际收益极低 |
 | amount类因子IC=0.09是市值效应(假信号) | 暴力枚举分析 | 排除, 不入库 |
-| mf_divergence(IC=9.1%)被月度框架冤杀 | LL-027 | 需EVENT框架重测 |
-| PEAD(IC=5.34%)被月度框架冤杀 | LL-027 | 需EVENT框架重测 |
+| mf_divergence(IC=9.1%)被月度框架冤杀 | ~~LL-027~~ **GA2证伪(v3.4)** | ⚠️ **IC=9.1%是幽灵数据, 实际IC=-2.27%。不是被冤杀, 本来就没什么alpha。详见GA2完成记录** |
+| PEAD(IC=5.34%)被月度框架冤杀 | LL-027 | 需先用铁律11验证IC真实性, 再决定是否EVENT回测(v3.4更新) |
 | LLM自由生成因子失败(IC=0.006-0.008) | W7b 5次测试 | 需数据驱动prompt, 不是盲猜 |
 | 动态仓位(20d momentum): Sharpe 0.32→1.76, MDD -28%→-11.4% | 旧代码验证 | 效果极好但需在新基线上重新验证(G2.5) |
 | QMT真实滑点47.6bps, SimBroker预估176.7bps(高估3.7x) | 实盘数据 | 5000万流动性过滤不必要 |
+| **mf_divergence IC=9.1%是幽灵数据, 实际-2.27%** | **GA2验证(v3.4)** | **从未入库factor_ic_history, 错误数字驱动GA2⭐2优先级数月。铁律11由此诞生** |
+| **Alpha158集成回测: 7因子Sharpe+0.11但p=0.24不显著** | **GA7集成回测(v3.4)** | **等权天花板第3次独立验证(Sprint1.5+PEAD+Alpha158)** |
+| **所有2025-2026论文用ML模型评估因子, 非单因子IC** | **15篇前沿论文对标(v3.4)** | **评估范式转移: G1 LightGBM是正确评估一切的前提** |
+
+### GA2 EVENT回测器 — 已完成 ✅（v3.4）
+
+> **日期**: 2026-04-04 | **commit**: `147b345` | **tag**: `ga2-event-backtest`
+
+**交付物:**
+| 组件 | 文件 | 状态 |
+|------|------|------|
+| EVENT回测引擎 | `backend/engines/event_backtest_engine.py` (357行) | ✅ |
+| 单元测试 | `backend/tests/test_event_backtest.py` (9/9通过) | ✅ |
+
+**引擎能力:** 事件触发(因子超阈值→T+1买入→持有N天→自动卖出), A股处理(T+1/涨跌停/停牌顺延/整手), 成本模型(佣金万0.854+印花税0.05%+过户费万0.1)
+
+**mf_divergence验证结论:**
+
+| 项目 | 声称的 | 实际的 |
+|------|--------|--------|
+| IC值 | 9.1% | **-2.27%** (20d, 中性化后) |
+| IC方向 | 未知(默认above) | **below** (高因子值→低收益) |
+| IC来源 | factor_ic_history | **不存在，从未入库** |
+| IR | 未知 | -0.76 (t=-5.68, 显著) |
+
+**回测结果(14组, 实际独立4组):** above全负Sharpe(-1.67/-1.00), below全负Sharpe(-0.57/-0.06)。阈值不影响结果(max_positions每天饱和)。
+
+**决策:**
+- mf_divergence不适合独立策略, 保留在G1 LightGBM特征池
+- "LL-027被冤杀"叙事推翻——mf_divergence本来就没alpha, 两种框架给出一致答案
+- GA2引擎功能验证通过, 后续PEAD/RSRS可用
+- PEAD需先验证IC(铁律11)再决定是否回测
+
+### G1 LightGBM Walk-Forward — 已完成（v3.5, 分支2/3, ML pipeline就绪但当前因子池不支持超越等权）
+
+> **日期**: 2026-04-04 | **设计文档**: ML_WALKFORWARD_DESIGN.md v2.0 (1,096行)
+
+**执行过程:**
+
+| 阶段 | 内容 | 结果 |
+|------|------|------|
+| 阶段1 | 审计+特征工程+基线确认 | 48因子全OK, 2.97亿行, ml_engine.py(1359行)可复用, 基线Sharpe=1.080 |
+| 阶段2(月度) | 首次用月度Parquet(66截面)训练 | 严重过拟合: 样本/特征=0.5, ML选928亿大盘股(等权选40亿小盘) |
+| 阶段2b(日频) | 日频Parquet重建, Purge 5→21天 | ML Sharpe 0.41→0.68(+65%), 但仍低于等权同期0.84 |
+| 阶段2c(混合) | 70/30等权+ML混合 | corr=0.72(中等互补), 70%等权+30%ML=0.860(最优但仅+2.4%) |
+
+**数据一致性审计（v3.5关键修正）:**
+
+| 基线 | Sharpe | ×1.2成功线 | ML 0.68差距 |
+|------|--------|----------|-----------|
+| 全期1.080 | 1.080 | 1.296 | -0.616(不公平, 被2021年3.66拉高) |
+| **同期0.830** | **0.830** | 0.996 | **-0.150(公平)** |
+| DSR保守0.75 | 0.750 | 0.900 | -0.070(接近) |
+
+**v3.5结论修正:** ML OOS Sharpe=0.68 vs 等权同期0.83, 差距只有0.15(非此前认为的0.42)。等权全期1.08被2021年(Sharpe=3.66小盘牛市)严重拉高, 去掉2021后等权=0.71, DSR校正后0.70-0.85——**ML的0.68在DSR区间边缘, 两者真实alpha水平可能相当(~0.70)。**
+
+**年度分解揭示的本质:**
+
+| 年 | ML | 等权 | 谁赢 | 原因 |
+|----|-----|------|------|------|
+| 2023 | 0.68 | 0.41 | ML | 非牛市, ML更稳 |
+| 2024 | 0.80 | 0.27 | ML | 小盘危机, ML分散风险 |
+| 2025 | 0.68 | 1.98 | 等权 | 小盘牛市, 等权集中暴露 |
+
+**根因:** ML和等权在纯选股alpha上水平相当(~0.70), 区别在SMB暴露。等权5因子天然选小盘→牛市暴涨, ML分散→稳定但不爆发。48因子中43个扩展因子与5基线因子信息高度重叠(Alpha158 SHAP仅5.3%), **瓶颈是数据维度不够, 不是模型不够。**
+
+**G1资产保留:**
+- 日频Walk-Forward pipeline(ml_engine.py+walk_forward.py) → 评估新因子的ML贡献
+- Optuna最优超参(num_leaves=16, reg_lambda=8.4) → 48特征下的最优正则化
+- SHAP分析框架 → 新因子SHAP贡献度量化
+- 影子PT机制 → 新因子入池后重跑G1可快速部署
 
 ---
 
@@ -160,11 +232,12 @@
 |------|------|------|
 | CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20, amihud_20, bp_ratio |
 | FULL | 14 | 含CORE+扩展(momentum_20等) |
-| RESERVE | 2 | vwap_bias, rsrs_raw(被月度框架冤杀, 待正确框架重测) |
+| RESERVE | 1 | vwap_bias(rsrs_raw待EVENT重测) |
+| INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非此前声称的9.1%, v3.4确认) |
 | DEPRECATED | 8 | momentum_5/10, turnover_stability_20等(冗余或IC衰减) |
 | ML特征 | 12 | zscore clip ±3已修复 |
-| LGBM特征集 | 26 | G1 Walk-Forward设计中的特征集 |
-| factor_values有数据 | 37 | DB中实际有数据的因子 |
+| LGBM特征集(v3.4) | **48+** | 全部factor_values有数据的因子(37历史+8 Alpha158+数据质量修复), 替代v3.3的26个设计 |
+| factor_values有数据 | **48** | DB中实际有数据的因子(v3.3从37扩展到48) |
 
 ### 代码规模
 
@@ -205,12 +278,87 @@
 | **上线标准** | OOS Sharpe ≥ 基线×1.2 + p < 0.05 + 6红线全过 → 影子PT → v1.3升级 |
 | **估时** | 10天(Optuna 5h + 7fold训练70min + 回测分析) |
 | **GPU** | RTX 5070, device_type=gpu, max_bin=63 |
+| **v3.4优先级** | **⭐5 最高** — 评估范式转移的核心。所有2025-2026论文(QuantaAlpha/AlphaAgent/RD-Agent/FactorMAD/Chain-of-Alpha)无一例外用ML模型做最终因子评估。没有G1, 新因子无法被正确评估——等权天花板已到(Sprint 1.5 + PEAD + Alpha158三次独立验证) |
+| **v3.4特征池** | 48+因子就绪(37历史+8 Alpha158+数据质量修复后), 比Sprint 1.3b(26特征)多85% |
+| **v3.4 fail-fast** | OOS Sharpe<基线×1.2且p>0.05→ML在当前数据上没有增量, 需重新审视方向 |
+
+#### G1.1 预测目标升级 — 回归→LambdaRank（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | 将LightGBM目标从回归(MSE)改为LambdaRank排名优化(NDCG) |
+| **理由** | 我们关心的是"哪只股票排名更高"而非"绝对收益预测多准"。回归模型MSE小但排名不一定好，LambdaRank直接优化排名质量 |
+| **验证** | 对比回归目标vs排名目标的OOS选股Sharpe |
+| **估时** | 1天 |
+| **依赖** | G1完成 |
+
+#### G1.2 时序特征增强（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | 当前模型只用当月因子截面值，增加时序维度特征 |
+| **新增特征** | 因子变化率(delta_factor_1m)、因子加速度(delta2_factor_1m)、最近3个月因子值堆叠、因子自身动量(因子均值回归/趋势信号) |
+| **理由** | 当前模型只看"这个月turnover=0.8"，看不到"连续3个月turnover加速上升"这个趋势信号。一个股票因子在变好还是变差，比当前绝对值更有信息量 |
+| **估时** | 1天 |
+| **依赖** | G1完成 |
+
+#### G1.3 XGBoost + CatBoost同架构训练（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | 用G1相同的特征集和Walk-Forward框架训练XGBoost和CatBoost |
+| **理由** | 三种GBDT实现细节不同(正则化/分裂算法/类别特征处理)，同数据下产出不同预测，集成减少方差 |
+| **CatBoost优势** | 原生支持类别特征(行业编码)，不需要one-hot编码 |
+| **估时** | 1-2天 |
+| **依赖** | G1完成 |
+
+#### G1.4 三模型Ensemble（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | LightGBM + XGBoost + CatBoost集成：简单平均 → OOS表现加权平均 |
+| **预期** | Sharpe +0.05-0.10(减少单模型方差，ML界最确定的结论之一) |
+| **验证** | Ensemble vs 单LightGBM的OOS Sharpe + paired bootstrap |
+| **确定性** | 高——GBDT Ensemble是行业标准做法 |
+| **估时** | 半天 |
+| **依赖** | G1.3完成 |
+
+#### G1.5 分位数回归 — 预测不确定性（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | LightGBM quantile regression输出收益分布(10%/50%/90%分位)，用预测不确定性调整仓位权重 |
+| **理由** | 等权分配忽略了模型信心差异。高信心股票应给更多权重，低信心的给更少 |
+| **备选方案** | NGBoost(直接输出分布参数)、Conformal Prediction(模型无关的校准区间)、多模型离散度(3个GBDT预测值标准差作为不确定性代理) |
+| **估时** | 2天 |
+| **依赖** | G1.4完成 |
+
+#### G1.6 MLP基线 + 四模型Stacking（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | 2-3层MLP(dropout 0.3, batch norm)作为第四个base模型，然后用线性模型做Stacking |
+| **理由** | MLP是连续平滑函数，与GBDT的分段常数函数互补。Stacking让不同模型长处融合 |
+| **风险** | 60个月独立截面可能不够训练NN，需严格正则化。tabular数据上MLP常不如GBDT |
+| **触发条件** | 特征池80+且G1.4 Ensemble确认有效后才做 |
+| **估时** | 5天 |
+
+#### G1.7 Regime感知模型切换（v3.3新增）
+
+| 属性 | 值 |
+|------|------|
+| **任务** | 多个模型+regime检测器动态切换权重 |
+| **理由** | 2021/2025小盘牛市和2022/2024熊市的最优模型参数不同，一个模型覆盖所有环境是妥协 |
+| **实现** | regime指标(市场宽度/波动率水平/动量) → 根据当前regime选择近期类似regime下OOS最好的模型权重 |
+| **风险** | regime分类本身可能过拟合，需Walk-Forward验证regime切换收益 |
+| **估时** | 5-7天 |
+| **依赖** | G1.4完成，且回测证明不同regime下最优模型确实不同 |
 
 #### G2. 风险平价替代等权 ✅ 已完成 — 结论：无效
 
 > 见第二部分研究记录。权重优化走不通，回撤控制应靠总仓位管理。
 
-#### G2.5 动态仓位验证（进行中）
+#### G2.5 动态仓位验证 ✅ 已完成 — 结论：无效
 
 | 属性 | 值 |
 |------|------|
@@ -220,7 +368,7 @@
 | **旧代码结果** | Sharpe 0.32→1.76, MDD -28%→-11.4%(不同基线, 需重新验证) |
 | **预期** | Sharpe 1.2-1.5, MDD -15%~-25% |
 | **估时** | 1天 |
-| **状态** | ⏳ 正在运行 |
+| **状态** | ✅ 已完成 — Sharpe不变CAGR大降, 无效 |
 
 #### G3. 风格归因分析（v3新增, P0）
 
@@ -287,9 +435,9 @@
 
 | 指标 | 值 |
 |------|------|
-| 任务数 | 9 (G1/G2✅/G2.5⏳/G3-G8) |
-| 总估时 | ~25天(扣除已完成的G2) |
-| 预期收益 | MDD -43% → -15%~-25%(动态仓位), Sharpe维持0.8+, DSR校正确认策略有效性 |
+| 任务数 | 16 (G1+G1.1~G1.7+G2✅+G2.5✅+G3✅+G4-G8) |
+| 总估时 | ~45天(含G1.1-G1.7新增~17天, 扣除已完成的G2/G2.5/G3/G8) |
+| 预期收益 | ML从单LightGBM→三GBDT Ensemble→Stacking, 预期Sharpe +0.1-0.2。Regime感知解决2022/2024熊市适应性问题 |
 
 ---
 
@@ -308,16 +456,14 @@
 | **接口** | `strategy_matcher.match(factor_class) → BacktestConfig` |
 | **估时** | 2天 |
 
-#### GA2. EVENT回测器（关键缺失模块）
+#### GA2. EVENT回测器 ✅ 已完成（v3.4, 引擎验证通过, mf_divergence无效）
 
 | 属性 | 值 |
 |------|------|
-| **任务** | 实现事件触发式回测: 信号出现→买入, 持有N日→卖出 |
-| **为什么缺失** | 当前只有月度Top-N一种回测方式, EVENT型因子(mf_divergence/PEAD)被强制塞入月度框架导致"冤杀" |
-| **接口** | `run_event_backtest.py --trigger-threshold 0.8 --hold-days 20 --max-positions 10` |
-| **验证** | mf_divergence(IC=9.1%)用EVENT框架重测, 对比月度框架下p=0.387的旧结果 |
-| **估时** | 5天 |
-| **优先级** | 极高 — 这是释放已有高IC因子价值的关键 |
+| **状态** | ✅ 引擎功能验证通过(357行+9/9测试), mf_divergence验证: IC=9.1%证伪为-2.27%, 全配置负Sharpe |
+| **v3.4认知修正** | v3.3升为⭐2的依据是"mf_divergence IC=9.1%被冤杀"——该依据已被证伪。引擎本身有价值但紧迫性回归正常, 当前无高IC的EVENT因子等待释放 |
+| **后续** | PEAD待验证(先用铁律11确认IC真实性), RSRS同理 |
+| **commit** | `147b345` tag: `ga2-event-backtest` |
 
 #### GA3. 诊断Agent + Experience Memory（反馈环, v3.1升级参考FactorMiner）
 
@@ -366,25 +512,48 @@
 | **为什么重要** | 之前暴力枚举只用了6个字段×4个算子, 搜索空间太小。扩展算子后GP搜索空间指数级增长, 且能表达更复杂的金融逻辑(如条件因子) |
 | **实现** | 在factor_dsl.py中注册新算子, 每个算子需包含: 计算函数、量纲约束(防止无意义组合)、复杂度权重 |
 | **估时** | 5天 |
+| **v3.4优先级调整** | **⭐1 降低** — FactorMAD(ICAIF 2025)证明code-based因子生成可绕过DSL算子限制。Alpha158已走这条路(158个pandas函数不走FactorDSL)。范围缩小: 28→40(非55+), 同时新增并行实验: GA5扩展LLM code-based因子生成 |
 
-#### GA7. Alpha101/158因子公式批量导入（v3.1新增）
+#### GA7. Alpha101/158因子公式批量导入 ✅ 已完成（v3.3）
 
 | 属性 | 值 |
 |------|------|
-| **任务** | 从Qlib Alpha158公式集中提取因子, 翻译成我们的管道格式, 批量跑IC筛选 |
-| **为什么到现在没做** | 讨论了至少3次(Sprint 1.3/K扩展/V3路线图), 但每次被更高优先级任务挤掉 |
-| **实现** | 1) 下载Alpha158因子定义(不安装Qlib框架); 2) 翻译成FactorDSL表达式或pandas函数; 3) 批量计算5年IC; 4) 与现有37个因子做相关性矩阵; 5) IC>0.02且corr<0.7的入候选池 |
-| **预计产出** | 158个公式去掉与现有因子重叠的, 预计60-80个新候选, 其中10-20个通过Gate |
-| **零成本** | 不需要API/LLM, 纯数学公式翻译+计算 |
-| **估时** | 3天 |
+| **任务** | 从Qlib Alpha158公式集中提取因子, 翻译成pandas函数, 批量IC筛选 |
+| **结果** | 158公式 → 128实际计算(13分钟) → 102通过IC → 23内部去重 → 8个独立新因子入池 |
+| **入池因子** | STD60, VSUMP60, CORD30, RANK5, CORR5, VSTD30, VSUMP5, VMA5 |
+| **分类** | 4个RANKING(月度) + 4个FAST_RANKING(待GA2正确框架评估) |
+| **代码** | `alpha158_factors.py`(158个pandas实现), `compute_alpha158_ic.py` |
+| **commit** | `a5ea6f6` tag: `alpha158-import` |
 
 #### Phase GA 汇总
 
 | 指标 | 值 |
 |------|------|
-| 任务数 | 7 (GA1-GA7) |
-| 总估时 | ~30天 |
-| 预期收益 | 因子挖掘从手动变自动, 被冤杀因子释放, LLM成功率提升, 因子池从37扩展到80+, 搜索空间从28算子扩展到60+ |
+| 任务数 | 7 (GA1⬜, GA2✅, GA3-GA6⬜, GA7✅) |
+| 总估时 | ~22天(扣除GA2+GA7已完成) |
+| 预期收益 | 因子挖掘从手动变自动, LLM从盲猜变数据驱动, 搜索空间扩展 |
+| **v3.4关键修正** | GA2完成但mf_divergence无效, 推翻了"冤杀"叙事。评估层瓶颈的真正解决方案不是GA2(EVENT回测器)而是G1(ML模型评估)——所有2025-2026论文都用ML模型而非单因子IC做最终评估。GA6降为⭐1, 范围缩小28→40(非55+) |
+
+#### GP零产出根因分析（v3.3新增）
+
+> GP管道D1-D4代码全部建好（标记✅）但从未产出一个生产因子，根因分析：
+
+| # | 根因 | 说明 |
+|---|------|------|
+| 1 | **搜索空间太小** | FactorDSL仅28算子, 暴力枚举9秒就能覆盖, GP无用武之地 |
+| 2 | **适应度太简单** | 单一IC目标, 高IC因子可能与现有因子高相关或MDD大 |
+| 3 | **缺少Warm Start** | 随机种群效率极低, Ren et al. 2024证明Warm Start效果远超随机(>50%年化, Sharpe>1.0) |
+| 4 | **评估层偏差** | 即使GP搜到EVENT型因子, 也被塞进月度框架→失败→GP学到错误方向(GA2不建此问题无解) |
+| 5 | **从未真正运行** | 每个Sprint都有更紧急的事, GP始终排在最后被挤掉 |
+
+**GP启动条件（全部满足后再跑）**:
+1. ✅ GA7 Alpha158完成 → 提供算子实现基础
+2. ⬜ GA6 算子扩展28→55+ → 搜索空间从~2万→~900万
+3. ⬜ 三目标适应度: 0.5×RankIC + 0.3×ICIR − 0.15×max_corr_existing − 0.05×complexity
+4. ⬜ Warm Start: 20%现有因子结构变体 + 20%Alpha158变体 + 60%随机half-and-half
+5. ⬜ GA2 EVENT回测器就绪 → GP产出不再被错误评估
+6. ⬜ GA1 StrategyMatcher就绪 → 自动路由到正确回测框架
+7. ⬜ G1 LightGBM完成 → 新因子用ML模型OOS评估, 不再依赖等权IC天花板(v3.4新增, 所有2025-2026论文共识)
 
 **完整AI闭环流程图:**
 
@@ -450,7 +619,7 @@
 
 | 属性 | 值 |
 |------|------|
-| **任务** | RSRS用EVENT触发框架, VWAP用FAST_RANKING(周度), mf_divergence(IC=9.1%)用EVENT框架 |
+| **任务** | RSRS用EVENT触发框架, VWAP用FAST_RANKING(周度), mf_divergence已确认无效(v3.4, IC=-2.27%非9.1%) |
 | **历史** | 全部通过单因子Gate但在月度等权框架下失败 |
 | **依赖** | GA1(StrategyMatcher) + GA2(EVENT回测器) |
 | **估时** | 3天 |
@@ -460,7 +629,7 @@
 | 属性 | 值 |
 |------|------|
 | **任务** | CompositeStrategy(C6)框架下实现真正的多层策略 |
-| **架构** | 核心层(60-70%, RANKING月度Top-N) + 增强层(20-30%, EVENT触发mf_divergence/PEAD) + 防御层(MODIFIER, 动态仓位调总仓位) |
+| **架构** | 核心层(60-70%, RANKING月度Top-N) + 增强层(20-30%, EVENT触发PEAD/RSRS, 待IC验证) + 防御层(MODIFIER, 动态仓位调总仓位) |
 | **验证** | 三层叠加 vs 单一核心层: Sharpe对比 + MDD对比 + 相关性分析 |
 | **依赖** | K2/K3完成后 |
 | **估时** | 7天 |
@@ -829,35 +998,74 @@
 | 学术因子复刻 | RANKING/EVENT(Alpha101/158/论文) | LLM翻译 |
 | 跨市场数据 | MODIFIER(VIX/商品/汇率) | 手动+K7 |
 
+### 因子挖掘分层策略（v3.3新增）
+
+> **核心洞察**: 项目实践证明简单低成本方法远超复杂高成本方法。
+> 手工5因子+暴力枚举9秒+Alpha158半天 >> LLM ¥1.11零产出+GP管道5天零产出。
+> 但GP/LLM的长期价值在于可持续供给，短期用暴力枚举铺量，长期建GP闭环。
+
+#### 第一层: 确定性高、成本低（已完成/进行中）
+
+| 方法 | 产出 | 成本 | 状态 |
+|------|------|------|------|
+| 手工设计(金融知识) | 5个核心因子 | 0 | ✅ PT在用 |
+| 暴力枚举Layer 1-2 | 15个独立因子 | 9秒 | ✅ 完成 |
+| Alpha158导入 | 8个独立因子 | 半天 | ✅ 完成(v3.3) |
+| 暴力枚举Layer 3跨表 | 预计10-20个 | 半天 | ⬜ 待做 |
+
+#### 第二层: 确定性中等、成本中等（短期可做）
+
+| 方法 | 预期产出 | 成本 | 状态 |
+|------|---------|------|------|
+| 分钟数据聚合因子(L10) | 5-10个微观结构因子 | 3-5天 | ⬜ 依赖QMT xtdata验证 |
+| 另类数据因子(K6) | 5-10个 | 5-7天 | ⬜ 龙虎榜/大宗/股东人数 |
+| tsfresh/catch22时序特征 | 不确定 | 半天验证 | ⬜ 可能大部分是噪声，但验证成本低 |
+
+#### 第三层: 长期建设、高价值（中期）
+
+| 方法 | 预期产出 | 成本 | 前提条件 |
+|------|---------|------|---------|
+| GP进化搜索(55+算子) | 持续产出非线性因子 | 3-5天建设+持续 | GA6算子扩展+三目标适应度+Warm Start+GA2就绪 |
+| LLM诊断驱动(GA3+GA5) | 提升GP搜索效率 | 7-10天 | GP先跑通产出因子 |
+| 图特征(基金共同持仓等) | 关系维度因子 | 5天 | fund_portfolio数据(季报,滞后3月) |
+
+#### 第四层: 研究探索（长期，需充分验证）
+
+| 方法 | 理论价值 | A股实证 | 建议 |
+|------|---------|--------|------|
+| 互信息替代IC | 发现非线性因子-收益关系 | 很少 | 先用IC，遇到瓶颈时试 |
+| Autoencoder潜在因子 | 自动降维发现模式 | 很少 | 特征池100+后考虑 |
+| Double ML因果推断 | 因果效应而非相关性 | 几乎没有 | 学术探索方向 |
+
 ---
 
 ## 第六部分: 全局路线图
 
-### 依赖关系（v3更新）
+### 依赖关系（v3.3更新）
 
 ```
-Phase A-F (已完成) + G2 (已完成-无效)
+Phase A-F (已完成) + G2✅ + G2.5✅(无效) + G3✅ + G8✅
     │
-    ├──→ G2.5 动态仓位验证 (⏳ 正在运行)
-    │       ↓ 如果有效
-    │       部署到QMT PT
-    │
-    ├──→ G3 风格归因 (P0, 决定项目方向)
-    │    G4 因子正交化
-    │    G5 分市值层分析
-    │       ↓ 确认alpha来源后
-    │
-    ├──→ K0 因子资产盘点 → GA1+GA2 (EVENT回测器+StrategyMatcher)
+    ├──→ GA2 EVENT回测器 (⭐2, 闭环评估层瓶颈)
+    │    + GA1 StrategyMatcher (⭐3)
     │       ↓
     │    K2+K3 被冤杀因子正确框架重测
     │       ↓
     │    K4 多策略叠加回测
     │
-    ├──→ G1 LightGBM Walk-Forward (与上面并行)
+    ├──→ GA6 算子扩展 → GP首次正式运行 (与上面并行)
     │       ↓
     │    GA3+GA4+GA5 (诊断Agent+AutoRouter+LLM数据驱动)
     │       ↓
     │    G6 因子+模型联合迭代
+    │
+    ├──→ G1 LightGBM Walk-Forward (与上面并行)
+    │       ↓
+    │    G1.1 LambdaRank → G1.2 时序特征 → G1.3 XGB+Cat
+    │       ↓
+    │    G1.4 三模型Ensemble → G1.5 分位数回归
+    │       ↓
+    │    G1.6 MLP+Stacking → G1.7 Regime感知
     │
     ├──→ Phase H (执行优化, QMT积累数据后)
     │
@@ -865,52 +1073,49 @@ Phase A-F (已完成) + G2 (已完成-无效)
     │
     ├──→ Phase J (研究效率, 随时可做)
     │
-    └──→ Phase L (基础设施, 长期持续)
+    └──→ Phase L (基础设施, L8✅L9✅清明完成)
 ```
 
-### 执行优先级排序（v3更新）
+### 执行优先级排序（v3.4更新）
 
-| 优先级 | 任务 | 预期收益 | 工作量 | 建议时间 |
+| 优先级 | 任务 | 预期收益 | 工作量 | 状态/建议时间 |
 |--------|------|---------|--------|---------|
-| ⭐1 | G2.5 动态仓位验证 | MDD -43%→-15%~-25% | 1天 | 正在运行 |
-| ⭐2 | G3 风格归因分析 | 决定项目方向 | 1-2天 | 本周 |
-| ⭐3 | K0 因子资产盘点 | 摸清家底 | 1天 | 本周 |
-| ⭐4 | GA2 EVENT回测器 | 释放mf_divergence/PEAD | 5天 | 本周 |
-| ⭐5 | G1 LightGBM v1.3 | 非线性选股 | 10天 | 本周启动 |
-| 6 | GA1 StrategyMatcher | 自动化管道 | 2天 | GA2后 |
-| 7 | K2+K3 被冤杀因子重测 | 新alpha来源 | 6天 | GA2后 |
-| 8 | G4+G5 因子分析 | 深入理解策略 | 2天 | G3后 |
-| 9 | K1 行业轮动 | 独立维度alpha | 3天 | G3后 |
-| 10 | K4 多策略叠加 | 真正多策略 | 7天 | K2/K3后 |
-| 11 | GA3 诊断Agent | AI闭环反馈 | 5天 | GA2后 |
-| 12 | I2 因子正交化监控 | 预警因子趋同 | 1天 | 随时 |
-| 13 | K5 暴力枚举Layer 3-4 | 零成本因子扩展 | 2天 | 随时 |
-| 14 | H1 TWAP拆单 | 滑点降50%+ | 3天 | QMT稳定后 |
-| 15 | GA4+GA5 AutoRouter+LLM | 完整AI闭环 | 6天 | GA3后 |
-| 16 | J1 实验追踪 | 研究效率 | 2天 | 随时 |
-| 17 | I1 宏观择时 | 系统性风险 | 5天 | G1后 |
-| 18 | H2 TCA归因 | 理解真实盈利 | 2天 | QMT积累数据后 |
-| 19 | G6 联合迭代 | 因子+模型协同 | 7天 | G1后 |
-| 20 | I5 对抗过拟合 | DSR/CPCV | 5天 | G1后 |
-| 21 | L7 实盘反馈循环 | 校准SimBroker | 3天 | QMT 2周后 |
-| 22 | K6 另类数据 | 新信号维度 | 5-7天 | K4后 |
-| 23 | K7 跨市场信号 | MODIFIER信号 | 5天 | K4后 |
-| 24 | L1 模型重训自动化 | 适应市场变化 | 5天 | G1后 |
-| 25+ | 其他I/J/K/L项 | 长期持续 | 各项 | 按需 |
+| ~~⭐1~~ | ~~G2.5 动态仓位验证~~ | — | — | ✅ 完成(无效) |
+| ~~⭐1~~ | ~~清明架构改造(L8+L9+PMS)~~ | — | — | ✅ 完成(v3.3) |
+| ~~⭐2~~ | ~~GA2 EVENT回测器~~ | — | — | ✅ 完成(v3.4, mf_divergence无效) |
+| **⭐5** | **G1 LightGBM v1.3** | **评估范式转移核心, 所有论文共识** | 10天 | **4/8立即开始** |
+| ⭐3 | GA1 StrategyMatcher | 自动路由因子到正确回测框架 | 2天 | G1后 |
+| ⭐2 | GA5 LLM数据驱动prompt + code gen实验 | LLM从盲猜→数据驱动, code-based因子生成 | 5+2天 | G1后 |
+| ⭐1 | GA6 算子扩展28→40(非55+) | GP搜索空间扩展, 但范围缩小 | 3天 | GA5后 |
+| 6 | GP首次正式运行(三目标+WarmStart) | 持续非线性因子供给 | 3天 | 7项条件全满足后 |
+| 7 | K2+K3 PEAD/RSRS重测(先铁律11验IC) | 释放EVENT因子(如果IC验证通过) | 6天 | GA2✅+IC验证后 |
+| 8 | G1.1-G1.4 ML模型扩展 | LambdaRank+时序特征+三GBDT Ensemble | 5天 | G1成功后 |
+| 9 | K4 多策略叠加 | 核心+增强+防御三层策略 | 7天 | K2/K3后 |
+| 10 | GA3+GA4+GA5 AI闭环串联 | 诊断Agent+AutoRouter+LLM数据驱动 | 15天 | GP跑通后 |
+| 11 | G1.5-G1.7 ML高级扩展 | 分位数回归+MLP+Regime感知 | 12天 | G1.4后 |
+| 12 | K1 行业轮动 | 独立维度alpha | 3天 | 随时 |
+| 13 | I2 因子正交化监控 | 预警因子趋同 | 1天 | 随时 |
+| 14 | K5 暴力枚举Layer 3-4 | 零成本因子扩展 | 2天 | 随时 |
+| 15 | H1 TWAP拆单 | 滑点降50%+ | 3天 | QMT稳定后 |
+| 16 | G6 因子+模型联合迭代 | 因子搜索+模型训练交替优化 | 7天 | G1+GP后 |
+| 17 | J1 实验追踪 | 研究效率 | 2天 | 随时 |
+| 18 | I1 宏观择时 | 系统性风险防御 | 5天 | G1后 |
+| 19 | L7 实盘反馈循环 | 校准SimBroker | 3天 | QMT 2周后 |
+| 20+ | K6/K7/K8/L1/I5 | 长期持续 | 各项 | 按需 |
 
-### 总工时估算（v3.2更新）
+### 总工时估算（v3.3更新）
 
 | Phase | 工时 | 状态 |
 |-------|------|------|
 | A-F | ~69天 | ✅ 已完成 |
-| G 组合升级+ML+DSR | ~25天 | G2✅ G2.5✅(无效) G3✅ G8✅ 其他⬜ |
-| GA AI闭环管道 | ~30天 | ⬜ |
+| G 组合升级+ML+DSR | ~45天 | G1⬜ G1.1-G1.7⬜(v3.3新增~17天) G2✅ G2.5✅ G3✅ G8✅ |
+| GA AI闭环管道 | ~27天 | GA7✅(v3.3) 其他⬜ |
 | H 执行优化 | ~8天 | ⬜ |
-| I 风险升级 | ~29天 | ⬜ (v3.2: +I6 PMS ~12天) |
+| I 风险升级 | ~29天 | I6 PMS v1.0✅(v3.3清明) |
 | J 研究效率 | ~11天 | ⬜ |
-| K Alpha多元化 | ~43天 | ⬜ (v3.2: +分市值回测进行中) |
-| L 基础设施 | ~44天 | ⬜ (v3.2: +L8实时架构3天+L9 Servy含在L8+L10分钟数据5天) |
-| **总计** | **~260天** | 并行可压缩到~5-6个月 |
+| K Alpha多元化 | ~43天 | K0✅ 其他⬜ |
+| L 基础设施 | ~44天 | L8✅ L9✅(v3.3清明完成) |
+| **总计** | **~277天** | 并行可压缩到~6个月 |
 
 ---
 
@@ -919,7 +1124,7 @@ Phase A-F (已完成) + G2 (已完成-无效)
 | 能力 | Qlib | RD-Agent | vnpy 4.0 | FinRL | QuantMind V2 |
 |------|------|---------|----------|-------|-------------|
 | 因子研究 | ⭐⭐⭐ Alpha158 | ⭐⭐⭐ 自动挖掘 | ⭐ Alpha模块 | ✗ | ⭐⭐⭐ 37因子+GP+LLM+暴力枚举 |
-| ML模型 | ⭐⭐⭐ 15+模型 | ⭐⭐⭐ 联合优化 | ⭐⭐ LightGBM | ⭐⭐ PPO/SAC | ⭐ LightGBM(未上线,G1) |
+| ML模型 | ⭐⭐⭐ 15+模型 | ⭐⭐⭐ 联合优化 | ⭐⭐ LightGBM | ⭐⭐ PPO/SAC | ⭐⭐ LightGBM+XGB+Cat规划(G1.1-G1.7) |
 | 回测引擎 | ⭐⭐ 简化版 | 用Qlib | ⭐⭐⭐ 完整 | ⭐⭐ Gym | ⭐⭐⭐ Hybrid+A股特化 |
 | 多策略 | ⭐ 单策略 | ⭐ 单策略 | ⭐⭐⭐ 多策略 | ⭐ | ⭐⭐ 框架就绪未启用(K4) |
 | 事件驱动 | ✗ | ✗ | ⭐⭐⭐ | ✗ | ✗ (GA2补全) |
@@ -977,26 +1182,53 @@ Phase A-F (已完成) + G2 (已完成-无效)
 
 ---
 
-## 第十部分: 前沿研究对标（v3.1新增）
+## 第十部分: 前沿研究对标（v3.1新增, v3.4大幅扩展+分层重组）
 
-### 2025-2026年AI量化前沿论文
+> v3.4变化: 从8篇扩展到15篇, 按落地可行性分三层组织。
+> **核心发现: 所有2025-2026年AI因子挖掘论文无一例外用ML模型(LightGBM/XGBoost)做最终评估, 而非单因子IC。这直接支持G1升为⭐5。**
 
-| 论文 | 机构 | 会议/期刊 | 核心贡献 | 对QuantMind的价值 | 对应Phase |
-|------|------|---------|---------|-----------------|----------|
-| **FactorMiner** | 清华 | Preprint 2026-02 | Ralph Loop(retrieve→generate→evaluate→distill) + Experience Memory(成功模式+禁区) + 60+算子 | GA3诊断Agent参考Experience Memory, GA6算子扩展 | GA3/GA6 |
-| **AlphaForge** | AAAI 2025 | AAAI | 生成式神经网络挖因子 + 动态因子组合权重(每日重新评估Factor Zoo) | G7动态因子权重参考 | G7 |
-| **Alpha-GPT** | HKUST 2025 | EMNLP Demo | 人机交互Alpha挖掘 + 分层RAG从因子库检索构建prompt | GA5分层RAG参考 | GA5 |
-| **QuantaAlpha** | SUFE 2026-02 | Preprint | LLM自进化因子挖掘框架, 开源可复现 | 可直接参考代码实现 | GA |
-| **AlphaAgent** | KDD 2025 | KDD | 正则化探索对抗Alpha衰减, CSI500上IC稳定0.02-0.025持续4年 | Alpha衰减管理参考 | C3/GA3 |
-| **RD-Agent(Q)** | CMU/MSRA NeurIPS 2025 | NeurIPS | 因子+模型联合优化(Co-STEER), 5单元自动化 | G6联合迭代框架参考(已在设计中) | G6 |
-| **Dynamic GP+LightGBM** | Comp. Economics 2026 | 期刊 | GP三目标适应度 + 滚动窗口 + LightGBM, CSI300 Sharpe 1.59 | K9 GP三目标适应度, G1 LightGBM集成 | K9/G1 |
-| **AI in Quant Survey** | HKUST 2025-03 | Survey | Alpha策略三阶段演进: 手动→DL→LLM Agent | 确认我们处于DL→Agent过渡期方向正确 | 全局 |
+### Tier 1: 直接可落地（有开源代码 + 明确落地方案）
+
+| 论文 | 会议 | 核心贡献 | 对QuantMind的落地方案 | 对应Phase |
+|------|------|---------|-------------------|----------|
+| **AlphaAgent** | KDD 2025 | AST结构相似度去重 + hypothesis alignment + complexity control, CSI500 IC稳定4年, hit ratio +81% | 抽取AST去重模块加入Gate G8; originality enforcement加入GA3 | GA3/G8 |
+| **QuantaAlpha** | Preprint 2026-02 | trajectory-level mutation/crossover进化因子, GPT-5.2 CSI300 IC=0.1501/ARR=27.75%/MDD=7.98% | G1后参考其LightGBM评估框架; GP warm start参考trajectory archive | GA/GP/G1 |
+| **FactorMAD** | ICAIF 2025 | 两个LLM通过结构化辩论迭代优化因子, 直接生成可执行代码(不受算子集限制) | GA5扩展: LLM code-based因子生成实验(绕过FactorDSL 28算子限制), 1-2天探索性实验 | GA5/GA6 |
+
+### Tier 2: 设计参考（思路对但不直接用代码, 影响架构设计）
+
+| 论文 | 会议 | 核心贡献 | 设计影响 | 对应Phase |
+|------|------|---------|---------|----------|
+| **Sortify** | Preprint 2026-03 | Belief/Preference双通道解耦 + LLM元控制器 + 7表Memory DB + 一人AI Agent开发范式(98K行) | GA3双通道设计(IC评估vs约束调整分离); mining_knowledge闭环写入pipeline; IC→Sharpe transfer calibration思路 | GA3/GA5 |
+| **FactorMiner** | 清华 Preprint 2026-02 | Ralph Loop + Experience Memory(成功模式+禁区) + 60+算子 | GA3 Experience Memory设计; GA6算子库参考 | GA3/GA6 |
+| **Chain-of-Alpha** | Preprint 2025 | 双链架构(Generation多样性 + Optimization有效性), 全自动无人工反馈 | GA4重构: 分离"探索新因子"和"优化已有因子" | GA4 |
+| **Alpha-GPT** | EMNLP Demo 2025 | 人机交互Alpha挖掘 + 分层RAG从因子库检索构建prompt | GA5分层RAG: 因子库+Experience Memory+mining_knowledge三层自动组装prompt | GA5 |
+| **AlphaForge** | AAAI 2025 | 生成式神经网络 + 动态因子组合权重(每日重新评估Factor Zoo) | G7动态因子权重参考 | G7 |
+| **RD-Agent(Q)** | NeurIPS 2025 | 因子+模型联合优化(Co-STEER), 5单元自动化 | G6联合迭代框架参考 | G6 |
+
+### Tier 3: 验证/警示（确认方向或暴露风险）
+
+| 论文 | 会议 | 核心贡献 | 警示 | 对应Phase |
+|------|------|---------|------|----------|
+| **Backtest Implementation Risk** | Preprint 2026-03 | 5个回测引擎对比, cost model差异导致最高97%结果偏差 | 验证铁律重要性; IC/回测pipeline不一致是系统性风险(mf_divergence事件的外部验证) | 铁律 |
+| **Dynamic GP+LightGBM** | Comp. Economics 2026 | GP三目标适应度 + 滚动窗口 + LightGBM, CSI300 Sharpe 1.59 | K9 GP三目标验证; G1 LightGBM方向验证 | K9/G1 |
+| **AI in Quant Survey** | HKUST Survey 2025 | Alpha策略三阶段: 手动→DL→LLM Agent | 确认我们处于DL→Agent过渡期方向正确 | 全局 |
+
+### 论文共识 → QuantMind行动映射（v3.4新增）
+
+| 论文共识 | 我们的现状 | 行动 |
+|---------|---------|------|
+| 所有论文用LightGBM/XGB做最终评估 | 单因子IC + 等权组合Sharpe | G1升⭐5, G1后Gate G8从等权升级为ML OOS |
+| 因子价值=模型特征贡献, 非单因子IC | IC=9.1%→实际-2.27%, IC不可靠 | 铁律11 + G1后改Gate最终评估标准 |
+| code-based因子生成>算子集搜索 | FactorDSL 28算子, LLM盲猜IC=0.006 | GA5加入code gen实验, GA6从28→40(非55+) |
+| AST结构去重防止伪创新 | Gate G8用BH-FDR+相关性, 无结构检查 | G8加入AST similarity(参考AlphaAgent开源) |
+| persistent memory跨轮累积 | mining_knowledge 25张空表 | 核心问题不是表设计而是GP/LLM从未跑起来 |
 
 ### 已讨论但0个代码级利用的开源项目
 
 | 项目 | 可利用部分 | 落地方案 | 对应Phase |
 |------|-----------|---------|----------|
-| **Qlib Alpha158** | 158个因子公式 | GA7: 批量翻译→IC筛选→入候选池 | GA7 |
+| **Qlib Alpha158** | 158个因子公式 | ✅ GA7已完成(v3.3): 128因子→8个独立新因子入池 | GA7 |
 | **PandaFactor算子库** | RSI/MACD/KDJ/ATR等30+技术指标 | GA6: 移植到FactorDSL | GA6 |
 | **RD-Agent Co-STEER** | Research→Dev→Feedback循环 | G6: 联合迭代框架参考实现 | G6 |
 | **QuantaAlpha** | 完整LLM因子挖掘框架(开源) | GA3/GA5: 参考其Agent实现 | GA |
@@ -1085,111 +1317,500 @@ R²=49%
 
 ---
 
-## 第十三部分: 清明改造（v3.2新增, 4/4执行完成 ✅）
+## 第十二部分(续): 评估范式转移 — G1结论后的修正（v3.5重写）
 
-> **目标**: 彻底替换碎片化通信架构，建立统一实时数据总线，上线PMS v1.0
-> **原则**: 彻底替换，不做并行运行
-> **实际执行**: 4/4一天内完成全部4步（原计划3天）
+> **v3.4原始叙事**: "等权天花板已到, G1 LightGBM是评估一切的前提"
+> **v3.5修正**: G1完成后发现ML选股不优于等权(差距0.15非0.42), 根因是数据维度不够非模型不够。范式转移方向正确但前提是先有独立新因子维度。
 
-### 执行结果
+### v3.4 → v3.5 认知变化
 
-| Step | 内容 | Commit | Tag | 状态 |
-|------|------|--------|-----|------|
-| Step 1 | NSSM→Servy v7.6 服务管理迁移 | `326f2ed` | `qingming-step1-servy` | ✅ |
-| Step 2 | Redis 3.0→5.0 + StreamBus统一数据总线 | `ca9309d` | `qingming-step2-streams` | ✅ |
-| Step 3 | QMT Data Service A-lite + 配置.env化 + 全景审计 | `f12d3b4` | `qingming-step3-qmt` | ✅ |
-| Step 4 | PMS v1.0 阶梯利润保护系统 | `b60f418` | `qingming-step4-pms` | ✅ |
+| 维度 | v3.4认为 | v3.5证实 |
+|------|---------|---------|
+| 等权天花板 | 线性组合太简单, ML可突破 | 天花板来自因子信息量, 不是组合方式 |
+| ML vs 等权 | ML应替代等权 | 纯alpha相当(~0.70), 差异在SMB暴露 |
+| 48特征 | 比26特征多85%=更多信息 | 43个扩展因子与基线高度重叠(SHAP仅5.3%) |
+| 基线1.08 | fail-fast分母 | 被2021(3.66)拉高, 同期0.83才公平 |
+| G1的价值 | 替代等权选股 | **ML pipeline作为因子评估工具+regime信号+PMS风控输入** |
 
-### 关键交付物
+### 修正后的ML角色
 
-- **Servy v7.6**: 4个Windows服务(FastAPI/Celery/Beat/QMTData)，Ctrl+C优雅关闭，健康监控+自动重启
-- **Redis 5.0.14.1**: Streams支持，StreamBus模块(`app/core/stream_bus.py`)，10个Stream已注册
-- **QMT Data Service**: 独立常驻进程，每60s同步持仓/价格到Redis，QMTClient读缓存接口
-- **配置.env化**: PT_TOP_N=20(was 15), PT_INDUSTRY_CAP=1.0(was 0.25)，改.env+重启即生效
-- **PMS v1.0**: 阶梯利润保护（**不是硬止损**，回测已证明止损有害：卖后1月反弹+7.8%，66%概率）
-  - 三层保护: L1(浮盈>30%+回撤>15%), L2(>20%+>12%), L3(>10%+>10%)
-  - 14:30 Celery Beat检查，前端`/pms`页面
-- **service_manager.ps1**: 一键管理所有服务(start/stop/restart/status)
-
-### 审计纠正的认知偏差
-
-| 原认知 | 实际 |
-|--------|------|
-| run_paper_trading.py约901行 | 实际1430行，混合架构(Service委托+内联) |
-| strategy_configs DB表驱动配置 | 实际是Python硬编码`PAPER_TRADING_CONFIG`，已改为.env驱动 |
-| 调度链路16:15→17:00→17:15串行 | 实际Beat 16:25 health→16:30 signal(内含data fetch) |
-
-### 事件驱动评估结论
-
-当前Beat定时间隔(5分钟)足够，事件驱动改造可行但不紧急。PMS上线后盘中监控才需要，建议Sprint 1.37+实施。
+| 场景 | ML怎么用 | 说明 |
+|------|---------|------|
+| 因子评估 | SHAP分析新因子贡献 | 比单因子IC更准确, G1 pipeline直接可用 |
+| Regime信号 | ML预测全市场均值→MODIFIER因子 | ML年际Sharpe稳定(0.68/0.80/0.68), 适合做regime |
+| PMS风控 | ML与等权持仓分歧度→减仓信号 | 分歧度高=等权持仓风险高 |
+| 选股(暂停) | 等新因子充实后重评估 | 当前因子池不支持ML超越等权 |
 
 ---
 
-## 第十四部分: 更新后的落地行动计划（v3.2，替代第十二部分旧计划）
+## 第十二部分(续续): 流水线全景与断点分析（v3.5新增）
 
-### 已完成（4/2-4/3）
+### 系统完整生命周期
+
+```
+数据源①→因子计算②→Gate评估③→因子分类④→策略路由⑤→回测验证⑥→组合构建⑦→PMS风控⑧→QMT执行⑨→反馈校准⑩
+```
+
+### 10个环节当前状态
+
+| # | 环节 | 状态 | 说明 |
+|---|------|------|------|
+| ① | 数据源 | ⚠️ | 量价✅, 资金流✅, 盈利公告❌, 分钟数据❌(Baostock已验证可用), 另类❌, 北向⚠️停2024-08 |
+| ② | 因子计算 | ✅ | 48因子注册, 2.97亿行。但全部量价衍生, 信息高度重叠 |
+| ③ | Gate评估 | ✅ | G1-G7完整, 铁律11生效。G8等权天花板 |
+| ④ | 因子分类 | ⚠️ | FactorClassifier 8类型已定义, 只用了RANKING 1种 |
+| ⑤ | 策略路由 | ❌ | GA1 StrategyMatcher未实现 |
+| ⑥ | 回测验证 | ⚠️ | 月度✅, EVENT(GA2)✅, 周度❌, 仓位调节❌ |
+| ⑦ | 组合构建 | ⚠️ | 核心层✅, 增强层空, 防御层空 |
+| ⑧ | PMS风控 | ⚠️ | v1.0个股阶梯✅(Calmar+54%), v2.0组合级❌ |
+| ⑨ | QMT执行 | ✅ | 清明改造完成, 4/7首次验证 |
+| ⑩ | 反馈校准 | ❌ | L7设计了未启动, 需积累数据 |
+
+### 8个断点
+
+```
+独立(可立即做):
+  H: PMS v2.0组合级保护 → 纯规则, 不需要新因子
+  A: 盈利公告数据接入 → tushare forecast/express
+  B: 分钟数据拉取+聚合 → Baostock已验证, Top-100×5年
+
+有依赖:
+  D: GA1路由表 → 需先有不同类型因子(A/B产出后)
+  E: 周度回测 → SimpleBacktester改freq参数
+  F: 增强层 → 需EVENT/FAST_RANKING因子通过Gate
+  G: 防御层 → 需MODIFIER因子或PMS v2.0
+
+不可控:
+  C: 另类数据 → 多数据源, 工作量大
+```
+
+### 核心瓶颈
+
+**数据维度不够, 不是模型不够, 不是权重方案不够, 不是回测框架不够。**
+
+48因子本质都是量价衍生(含资金流), 12组corr>0.85。G1证明48因子喂ML也不比5因子等权好。突破需要真正独立的新数据维度。
+
+### 数据源→因子类型→策略层映射
+
+| 数据源 | 状态 | 产出因子类型 | 与量价corr | 接入成本 | 填充策略层 |
+|--------|------|------------|-----------|---------|----------|
+| 量价(klines) | ✅ 已充分 | RANKING | — | — | 核心层(已满) |
+| 资金流(moneyflow) | ✅ 已挖掘 | RANKING | 高 | — | 核心层 |
+| **盈利公告(tushare)** | ❌ | **EVENT** | 低 | 低 | **增强层** |
+| **分钟(Baostock)** | ⚠️ 已验证未拉 | **RANKING/FAST_RANKING** | 中 | 低(免费) | 核心/增强 |
+| **大宗交易(tushare)** | ❌ | **EVENT** | 低 | 低 | **增强层** |
+| **股东人数(tushare)** | ❌ | RANKING | 低 | 低 | 核心层 |
+| **限售解禁(tushare)** | ❌ | **EVENT** | 低 | 低 | **增强层** |
+| 北向资金 | ⚠️ 停2024-08 | **MODIFIER** | 中 | 极低 | **防御层** |
+| VIX/商品/国债 | ❌ | **MODIFIER** | 低 | 低 | **防御层** |
+
+### 因子标准生命周期（所有新因子必须走此流程）
+
+```
+数据源接入 → data_source_checklist确认质量
+  → factor_engine.py注册(RANKING) 或 event_factor_engine.py注册(EVENT)
+  → 因子值写入factor_values表(RANKING) 或 event_triggers表(EVENT)
+  → IC计算写入factor_ic_history(铁律11)
+  → Gate G1-G7评估
+  → FactorClassifier分类
+  → GA1路由到对应回测框架(月度/EVENT/周度/仓位调节)
+  → G8验证通过
+  → 进入对应策略层(核心/增强/防御)
+  → C3因子生命周期监控(IC衰减检测)
+```
+
+### FactorClassifier 8种类型使用状态
+
+| 类型 | 使用方式 | 状态 | 需要什么才能激活 |
+|------|---------|------|---------------|
+| RANKING | 月度截面排名→Top-N | ✅ 唯一在用 | — |
+| FAST_RANKING | 周度截面排名 | ❌ | 周度回测框架(断点E) |
+| EVENT | 因子超阈值触发买入 | ❌ | EVENT因子(断点A/C) + GA2引擎(✅已有) |
+| MODIFIER | 调整总仓位 | ❌ | MODIFIER因子(北向/VIX) 或 PMS v2.0 |
+| CONDITIONAL | 条件激活因子 | ❌ | ML regime分类器(G1资产复用) |
+| 其他3种 | — | ❌ | 长期 |
+
+---
+
+## 第十二部分(续续续): 生产级多策略运行设计（v3.5新增）
+
+> 不是"应该有一个路由表"——是具体到哪个文件、哪个表、哪个调度时间点的落地设计。
+
+### 扩展后的每日调度表
+
+```
+现有(不动):
+  02:00   QM-DailyBackup               备份
+  16:15   QuantMind_DailyPull           klines_daily + daily_basic
+  16:25   QM-HealthCheck                预检
+  16:30   QuantMind_DailySignal         因子计算 + 信号生成(等权Top-20)
+  17:00   QuantMind_DailyMoneyflow      moneyflow补拉
+  17:15   QuantMind_DataQualityCheck    数据巡检
+  17:30   QuantMind_FactorHealthDaily   因子衰减检测(C3)
+  T+1 09:31   QuantMind_DailyExecute    QMT读signals执行
+  T+1 15:10   QuantMind_DailyReconciliation  QMT对账
+
+新增(渐进式加入):
+  16:20   QuantMind_EventDataPull       盈利公告/大宗交易/限售解禁(tushare)
+          └─ 写入: earnings_announce / block_trade / share_float_calendar表
+          └─ 容错: tushare超时→重试3次→16:28前放弃→DingTalk告警→当日EVENT不触发
+  
+  16:32   QuantMind_EventSignal         EVENT因子触发检测(16:30因子计算完成后)
+          └─ 读: 今日公告数据 + factor_values(如earnings_surprise)
+          └─ 检查: 是否有股票触发EVENT阈值
+          └─ 写入: event_triggers表(date/symbol/event_type/signal_strength)
+          └─ 注意: 只检测T日已公告的事件, Point-in-Time严格
+  
+  16:35   QuantMind_ModifierSignal      MODIFIER因子计算(北向变化/市场宽度/VIX)
+          └─ 写入: modifier_signals表(date/signal_type/position_coefficient)
+          └─ 系数范围: 0.2(极端减仓) / 0.5(半仓) / 0.8(轻度减仓) / 1.0(满仓)
+
+月末额外(月末最后交易日, 16:30后自动触发):
+  16:38   CompositeSignalEngine         多策略信号合并
+          ├─ 读core_signals: 等权Top-N → 14只(70%资金, ¥5万/只)
+          ├─ 读event_triggers: 当月有触发且仍在持有期的 → 最多6只(30%资金)
+          ├─ 读modifier_signals: 当日仓位系数
+          ├─ 去重合并(同一股票在core+event→合并, 资金叠加)
+          ├─ 应用仓位系数(系数=0.5→所有持仓资金减半)
+          └─ 写signals表 → QMT T+1执行
+
+周度(如有FAST_RANKING因子, 每周五16:35):
+  只调整增强层持仓(核心层月度才动)
+```
+
+### 新增数据库表
+
+```sql
+-- EVENT因子触发记录(GA2 EVENT回测器的生产版)
+CREATE TABLE event_triggers (
+    id SERIAL PRIMARY KEY,
+    trade_date DATE NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    event_type VARCHAR(50) NOT NULL,     -- 'earnings_surprise'/'block_discount'/'share_unlock'
+    signal_strength DECIMAL(10,6),        -- 触发强度(如earnings surprise的标准差数)
+    hold_start DATE,                      -- 持有起始日(T+1)
+    hold_end DATE,                        -- 持有结束日(T+hold_days)
+    hold_days INT DEFAULT 20,             -- 持有期
+    status VARCHAR(20) DEFAULT 'active',  -- active/expired/stopped
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- MODIFIER仓位调节信号
+CREATE TABLE modifier_signals (
+    id SERIAL PRIMARY KEY,
+    trade_date DATE NOT NULL,
+    signal_type VARCHAR(50) NOT NULL,     -- 'northbound_warning'/'vix_spike'/'pms_drawdown'
+    position_coefficient DECIMAL(4,2),    -- 0.2~1.0
+    reason TEXT,                           -- 人可读的触发原因
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 盈利公告(新数据源)
+CREATE TABLE earnings_announce (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    ann_date DATE NOT NULL,               -- 公告日期(Point-in-Time)
+    report_date DATE,                     -- 报告期
+    eps_actual DECIMAL(10,4),
+    eps_forecast DECIMAL(10,4),           -- 分析师预期(如有)
+    surprise DECIMAL(10,4),               -- 实际-预期
+    surprise_pct DECIMAL(10,4),           -- (实际-预期)/|预期|
+    source VARCHAR(20),                   -- 'forecast'/'express'/'annual'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### 代码落地映射
+
+| 功能 | 落地文件 | 改动性质 | 依赖 |
+|------|---------|---------|------|
+| EVENT数据拉取 | `backend/tasks/event_data_tasks.py`(新) | Celery task调tushare | tushare API |
+| EVENT因子触发 | `backend/engines/event_factor_engine.py`(新) | 读数据→判断阈值→写event_triggers | earnings_announce表有数据 |
+| MODIFIER信号 | `backend/engines/modifier_engine.py`(新) | 读北向/VIX/宽度→算系数→写modifier_signals | 北向数据补拉 |
+| 信号合并 | `backend/engines/composite_signal_engine.py`(新或扩展signal_engine.py) | 读3层信号→合并→写signals | EVENT/MODIFIER有产出 |
+| PMS v2.0 | `backend/engines/pms_engine.py`(扩展) | 新增check_portfolio_drawdown() | Redis market:ticks |
+| 分钟聚合因子 | `backend/factors/minute_factors.py`(新) | Baostock拉取→聚合→写factor_values | Baostock数据 |
+| 周度回测 | `backend/engines/backtest_engine.py`(参数扩展) | rebalance_freq='weekly' | FAST_RANKING因子 |
+| 新stream | `backend/services/stream_bus.py`(扩展) | 新增event:signals/modifier:signals | 无 |
+
+### 容错与降级
+
+| 故障场景 | 处理方式 | 降级行为 |
+|---------|---------|---------|
+| tushare earnings API超时 | 重试3次, 16:28前放弃, DingTalk告警 | 当日EVENT不触发, 核心层正常运行 |
+| Baostock连接断开 | 批量拉取非实时, 次日重试 | 分钟因子用上次值, 标记stale |
+| PMS v2.0误判(假回撤) | 触发前用QMT实时价格二次确认 | 价格确认失败→不执行减仓 |
+| CompositeSignalEngine异常 | 合并失败→fallback到纯核心层信号 | 增强/防御层当月不生效 |
+| 北向数据缺失(已知停2024-08) | MODIFIER信号标记"北向不可用" | 不产出北向相关仓位调节 |
+| EVENT因子全部未触发 | 正常情况(非异常), 增强层当月空仓 | 核心层100%资金 |
+
+### 信号冲突优先级（不可妥协）
+
+```
+PMS强制减仓(组合回撤>15%) > MODIFIER仓位调节 > EVENT增强信号 > RANKING核心信号
+
+例: PMS检测到组合5日回撤>15%→强制2成仓
+    即使当月有3个EVENT触发信号, 也只按2成仓执行
+    → 资金分配: 总资金×0.2 → 核心层70%+增强层30%都按0.2执行
+```
+
+### 渐进式上线路径（每步独立可回滚）
+
+```
+阶段1(4/5-4/7): 无风险改动
+  ├─ G1代码commit + tag
+  ├─ PMS v2.0组合级保护回测(不上线, 只验证规则)
+  └─ 盈利公告tushare API可行性检查(不拉全量, 只测1只)
+
+阶段2(4/8-4/14): 新数据接入
+  ├─ 盈利公告数据拉取 → earnings_announce表
+  ├─ Baostock分钟数据拉取Top-100×5年 → 本地Parquet
+  ├─ 5个分钟聚合因子计算 → factor_values
+  ├─ 北向数据补拉2024-08至今
+  └─ 所有新因子走标准生命周期: IC入库→Gate→分类
+
+阶段3(阶段2产出因子后): 策略层扩展
+  ├─ 有EVENT因子通过Gate → event_factor_engine.py实现
+  ├─ 有MODIFIER因子 → modifier_engine.py实现
+  ├─ GA1路由表(因子类型→回测框架映射)
+  ├─ 周度回测框架(如有FAST_RANKING因子)
+  └─ PMS v2.0上线(如果阶段1回测验证通过)
+
+阶段4(阶段3稳定后): 多策略合并
+  ├─ CompositeSignalEngine实现
+  ├─ 调度表新增16:20/16:32/16:35/16:38任务
+  ├─ 影子PT多策略版(与等权PT并行)
+  └─ 观察30天
+
+阶段5(阶段4观察通过后): 切换+G1重跑
+  ├─ 多策略替代纯等权(如果影子PT表现更好)
+  ├─ G1 LightGBM用新因子池重跑(真正独立的特征维度)
+  ├─ G1.1-G1.4(如果G1重跑通过)
+  └─ GP启动条件评估
+
+回滚计划:
+  每个阶段独立。阶段2新数据接入不影响生产PT。
+  阶段3/4在影子模式运行, 不动主PT。
+  阶段5切换后如果30天Sharpe<等权→一条命令切回等权。
+```
+
+---
+
+## 第十三部分: 清明改造 ✅ 已完成（v3.3确认）
+
+> **目标**: 彻底替换碎片化通信架构，建立统一实时数据总线，上线PMS v1.0
+> **原则**: 彻底替换，不做并行运行
+> **结果**: 4步全部完成，全链路验证10 PASS/2 SKIP/0 FAIL
+
+| Step | 任务 | Commit | Tag | 新增代码 |
+|------|------|--------|-----|---------|
+| 1 | NSSM→Servy v7.6(4服务+SCM recovery) | `326f2ed` | `qingming-step1-servy` | 服务配置+管理脚本 |
+| 2 | Redis 3.0→5.0.14.1 + StreamBus(10 Streams) | `ca9309d` | `qingming-step2-streams` | stream_bus.py 202行 |
+| 3 | QMT A-lite + Config .env化 + 全景审计 | `f12d3b4` | `qingming-step3-qmt` | qmt_data_service 257行 + qmt_client 105行 |
+| 4 | PMS v1.0 阶梯利润保护(3层+14:30检查) | `b60f418` | `qingming-step4-pms` | pms_engine 373行 + PMS.tsx 227行 |
+| 文档 | CLAUDE.md+Roadmap更新 | `a075aea` | — | — |
+
+**总计**: 5个commit, ~1980行新代码, 12个新文件
+
+**审计纠正3个认知偏差**:
+1. run_paper_trading.py实际1430行（非901行）
+2. strategy_configs DB表不存在（配置硬编码在signal_engine.py，已改.env驱动）
+3. 调度链路实际16:25→16:30（非16:15→17:00→17:15，data_fetch嵌入signal_task内部）
+
+**改造后架构**:
+- Servy管理4服务: FastAPI/Celery/CeleryBeat/QMTDataService + SCM三级恢复(5s/10s/30s)
+- Redis Streams统一数据总线: 10个Stream, `qm:{domain}:{event_type}`命名
+- QMT Data Service: 唯一xtquant连接点, 每60秒同步持仓/资产/价格到Redis
+- PMS v1.0: 阶梯利润保护(L1:30%+15%/L2:20%+12%/L3:10%+10%), 14:30 Celery Beat检查
+- 配置.env化: PT_TOP_N=20, PT_INDUSTRY_CAP=1.0(4/30首次调仓生效)
+
+---
+
+## 假期阶段1完成记录（2026-04-05, v3.6更新）
+
+### 完成项
+
+| 任务 | Commit | 状态 |
+|------|--------|------|
+| G1 LightGBM Walk-Forward + 诊断 | `c4767ff` (tag: g1-lightgbm-v1) | ✅ |
+| PMS v2.0组合级回撤保护回测 | — (研究脚本) | ✅ 结论：不上线 |
+| 盈利公告数据接入(207K行) | `14642eb` | ✅ |
+| 北向资金全量入库(3.88M行, 5176只) | `097a495` | ✅ |
+| PEAD Q1季报因子框架 | `e15ee7a` | ✅ |
+| 分钟数据拉取(全量A股×5年) | — | 🔄 进行中 |
+| Alpha158因子导入(8个独立因子) | `a5ea6f6` + `2e4f94c` | ✅ |
+| GA2 EVENT回测器 | `147b345` (tag: ga2-event-backtest) | ✅ |
+
+### 关键结论
+
+#### FF3分期归因（2026-04-05）
+
+| 期间 | Alpha年化 | t-stat | SMB beta | 结论 |
+|------|----------|--------|----------|------|
+| 2021单年 | +107.9% | 4.14 | 0.85 | 异常年份，拉高全期数据 |
+| 2022-2025 | +13.6% | 1.54 | 1.22 | 边界显著 |
+| 2023-2025(OOS) | +6.6% | 0.58 | 1.09 | **统计不显著** |
+
+**近两年等权alpha≈0，策略靠SMB beta（小盘暴露）盈利，不是选股alpha。
+新数据源优先（V3.5方向）的直接证据。**
+
+#### PMS v2.0结论
+
+- 2022年慢熊0次触发（阈值对渐进式下跌无效）
+- 2024年3次触发仅1次有效（命中率1/3）
+- p=0.655，统计等于随机
+- **结论：不实现v2.0，v1.0维持现状**
+
+#### PEAD Q1季报信号（2026-04-05）
+
+- 全量混合方向反转（H1/Q3/Y全部反转 — "利空出尽"效应）
+- **Q1季报唯一方向正确：spread=+1.19%, t=8.42**
+- 最优持有窗口：+7天
+- 触发时间：每年4月集中
+- 2026年Q1数据4/20-4/25拉取后开始IC计算
+
+#### 流水线断点更新
+
+| 断点 | 之前 | 现在 |
+|------|------|------|
+| A 盈利公告 | ❌ | ✅ 数据入库+PEAD代码框架 |
+| B 分钟数据 | ⚠️ | 🔄 全量拉取中 |
+| C 另类数据 | ❌ | 部分✅ 北向5176只入库 |
+
+---
+
+## 第十四部分: 更新后的落地行动计划（v3.5, 基于流水线断点分析）
+
+### 优先级原则（v3.5更新）
+
+```
+生存(4/7开盘验证) > 已验证路径(PMS v2.0) > 数据维度突破(新数据源) > 多策略落地 > ML重跑(G1 v2)
+```
+
+**v3.4→v3.5优先级变化:**
+| 任务 | v3.4 | v3.5 | 变化原因 |
+|------|------|------|---------|
+| G1 LightGBM | ⭐5最高, 4/8开始 | **✅已完成, pipeline保留** | ML不优于等权(差距0.15), 根因是数据维度 |
+| G1.1-G1.4 ML扩展 | G1成功后立即做 | **暂停, 等新因子充实后** | 同因子换模型不解决数据维度问题 |
+| PMS v2.0 | 未排入 | **⭐3提升, 阶段1立即做** | 唯一已验证有效(Calmar+54%)且不需新因子的路径 |
+| 新数据源接入 | 未明确排入 | **⭐4最高, 阶段2核心** | 流水线断点分析定位的核心瓶颈 |
+| GA1 路由表 | G1后做 | **阶段3, 等新因子类型确认后** | 路由表需要先有不同类型因子 |
+
+### 已完成（4/2-4/4, 累计）
 
 | 任务 | 结果 |
 |------|------|
-| G2风险平价7组实验 | ❌ 无效(Sharpe↓MDD↑) |
-| G2.5动态仓位3组实验 | ❌ 无效(Sharpe不变CAGR大降) |
-| 双周调仓实验 | ❌ Sharpe 0.91→0.73 |
-| K0因子资产盘点 | ✅ 37因子完整清单 |
-| 32因子批量IC测试 | ✅ 20个候选入池因子 |
+| G2风险平价7组 | ❌ 无效 |
+| G2.5动态仓位3组 | ❌ 无效 |
+| 双周调仓 | ❌ Sharpe 0.91→0.73 |
+| K0因子资产盘点 | ✅ 37→48因子 |
+| 32因子批量IC | ✅ 20个候选 |
 | G3 FF3风格归因 | ✅ Alpha=21.1%(t=2.45), SMB=0.83 |
 | G8 DSR粗估 | ✅ 保守Sharpe=0.70-0.85 |
-| 全面数据审计 | ✅ 0❌9⚠️, 数据地基稳固 |
+| 全面数据审计 | ✅ 0❌9⚠️ |
+| PMS利润保护回测 | ✅ 阶梯保护Calmar+54% |
+| Top-15→20+去行业约束 | ✅ Sharpe 0.91→1.15 |
+| 清明架构改造(L8+L9) | ✅ Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0 |
+| 数据质量修复 | ✅ IC universe过滤+CSI300历史成分 |
+| GA7 Alpha158导入 | ✅ 8个独立新因子入池 |
+| GA2 EVENT回测器 | ✅ 引擎验证通过(357行+9/9测试) |
+| mf_divergence IC证伪 | ✅ IC=9.1%→实际-2.27% |
+| **G1 LightGBM Walk-Forward** | **✅ 完成: ML Sharpe=0.68 vs 等权同期0.83, 差距0.15** |
+| **G1数据一致性审计** | **✅ 等权全期1.08被2021拉高, 去掉2021后0.71, 同期0.83** |
 
-### 正在进行（4/3，Claude Code运行中）
+### 4/5-4/6（假期, 无风险改动）
 
-| 任务 | 目的 | 预计 |
-|------|------|------|
-| 分市值层回测(>100亿/30-100亿/<30亿) | **决定G1方向**: alpha跨市值有效→加市值约束; 只在小盘有效→多策略 | 今天出结果 |
-| IC测试universe对齐 | 排除ST/新股/微盘后重跑20因子确认 | 0.5h |
-| northbound数据拉取(AKShare) | 跨源因子新数据源 | 2-3h |
-| margin_detail数据拉取(Tushare) | 融资融券因子数据 | 2-3h |
-| index_components拉取(Tushare) | 修复IC前瞻偏差 | 1h |
+| 任务 | 说明 | 工作量 |
+|------|------|--------|
+| G1代码commit + tag `g1-lightgbm-v1` | 保留ML pipeline作为评估工具 | 10分钟 |
+| PMS v2.0组合级保护回测 | 用2021-2025数据验证, 不上线只看结果 | 2小时 |
+| 盈利公告tushare API可行性检查 | 测forecast/express接口, 1只股票 | 30分钟 |
 
-### 清明假期（4/4）✅
+### 4/7（开盘日 — 不可推迟）
 
-实时架构改造 + PMS v1.0 + NSSM→Servy（见第十三部分，已完成）
+| 任务 | 说明 |
+|------|------|
+| 08:30 启动miniQMT | 手动启动 |
+| 09:30 检查实时价格 | `redis-cli KEYS "market:latest:*"` |
+| 14:30 PMS v1.0首次实战检查 | 观察日志确认阶梯保护逻辑正常 |
+| 收盘后 peak_price更新 | 确认position_monitor数据正确 |
 
-### 下周（4/7-4/11）
+### 4/8-4/14（阶段2: 新数据源接入 — 核心瓶颈突破）
+
+| 任务 | 产出因子类型 | 工作量 |
+|------|------------|--------|
+| 盈利公告数据接入(tushare forecast/express) | EVENT | 2天 |
+| earnings_surprise因子计算+Gate评估 | EVENT | 1天 |
+| Baostock分钟数据拉取Top-100×5年 | — | 30分钟 |
+| 5个分钟聚合因子计算(morning_volume_ratio等) | RANKING/FAST_RANKING | 1天 |
+| 分钟因子Gate评估+FactorClassifier分类 | — | 半天 |
+| 北向数据补拉2024-08至今 | MODIFIER | 半天 |
+| 北向变化/市场宽度→MODIFIER因子计算 | MODIFIER | 1天 |
+| generate_report CAGR/MDD格式bug修复 | — | 顺手做 |
+
+**判断点:** 上述新因子有多少通过Gate？通过的因子是什么类型？
+- 有EVENT因子通过 → 阶段3建EVENT流水线
+- 有FAST_RANKING因子通过 → 阶段3建周度回测
+- 有MODIFIER因子通过 → 阶段3建仓位调节
+- 全部不通过 → 重新评估数据源质量或换方向
+
+### 4/14-4/21（阶段3: 策略层扩展 — 依赖阶段2产出）
 
 | 任务 | 依赖 | 工作量 |
 |------|------|--------|
-| 4/7 PMS实盘观察 | 清明改造完成 | 1天观察 |
-| ATR_norm/IVOL/gap因子实现 | — | 1.5天 |
-| GA7 Alpha158批量导入+IC筛选 | — | 2-3天 |
-| northbound/margin因子IC测试 | 数据拉取完成 | 1天 |
-| QMT xtdata分钟数据可行性验证(1只股票) | — | 1h |
-| 个股止损回测(-15%/-20%/-25%) | — | 半天 |
+| event_factor_engine.py | 有EVENT因子通过Gate | 2天 |
+| modifier_engine.py | 有MODIFIER因子 | 1天 |
+| GA1路由表(因子类型→回测框架映射) | FactorClassifier有多种输出 | 1天 |
+| 周度回测框架(freq='weekly') | 有FAST_RANKING因子 | 半天 |
+| PMS v2.0上线 | 阶段1回测验证通过 | 1天 |
+| 调度表新增16:20/16:32/16:35任务 | 新引擎实现完成 | 半天 |
 
-### 第三周（4/14-4/18）
+### 4/21-5/1（阶段4: 多策略合并）
 
 | 任务 | 依赖 |
 |------|------|
-| G1 LightGBM启动(30-50特征，基于分市值回测结果设计) | 因子池扩展完成 |
-| GA2 EVENT回测器 | — |
-| PMS v2.0(利润保护，如果v1.0回测有效) | v1.0验证 |
-| 分钟数据聚合因子(如果可行性验证通过) | L10验证 |
+| CompositeSignalEngine实现 | 阶段3引擎就绪 |
+| 影子PT多策略版(与等权PT并行) | CompositeSignalEngine |
+| 观察影子PT表现(持续) | — |
+| 4/30月末调仓(首次Top-20+industry_cap=1.0) | .env驱动 |
+
+### 5月起（阶段5: G1重跑+GP评估）
+
+| 任务 | 条件 |
+|------|------|
+| G1 LightGBM用新因子池重跑 | 影子PT多策略表现≥等权 |
+| G1.1-G1.4 ML扩展 | G1重跑通过 |
+| GA5 LLM code gen(用新数据源prompt) | G1重跑结论出来后 |
+| GP启动条件评估(7项) | G1+GA5完成 |
 
 ---
 
 ## 第八部分(续): 关键工作原则（完整版）
 
-*(保留原有11条, v3.2新增12-14条)*
+*(保留原有11条, v3.2新增12-14条, v3.4新增15条, v3.5新增16条)*
 
-12. **全方面思考，不能太局限** — 不要在一个框架/方向上反复优化(G2教训), 质疑默认假设(为什么日频?为什么月度?为什么不做盘中风控?)(v3.2新增)
-13. **外部资料参考但不盲从** — 搜索要广泛深入, 但每条结论需要独立判断是否适用于我们的数据量/策略类型/市场环境(v3.2新增)
-14. **彻底替换优于并行运行** — 新旧系统并行增加复杂度和排查难度, 有窗口期就彻底切换(v3.2新增, 清明改造决策)
+12. **全方面思考，不能太局限** — 不要在一个框架/方向上反复优化(G2教训), 质疑默认假设(v3.2新增)
+13. **外部资料参考但不盲从** — 搜索要广泛深入, 但每条结论需要独立判断(v3.2新增)
+14. **彻底替换优于并行运行** — 新旧系统并行增加复杂度(v3.2新增, 清明改造决策)
+15. **结论传播必须标注来源和验证状态** — 未验证结论不能作为优先级排序依据(v3.4新增, mf_divergence教训)
+16. **瓶颈在上游时不优化下游** — 因子信息量不够(上游)时, 优化权重方案/换模型(下游)无效。G1/G2/IC加权/Lasso全在下游优化, 而瓶颈在数据源(v3.5新增, G1教训)
+
+### 铁律11: IC可追溯性（v3.4新增）
+
+> 任何因子的IC/IR必须有可追溯的计算记录。**未入库的IC视为不存在。**
+> **教训来源**: mf_divergence "IC=9.1%" 实际为 -2.27%
 
 ---
 
-*本文档是QuantMind V2的完整技术路线图v3.2。*
+*本文档是QuantMind V2的完整技术路线图v3.5。*
 *Phase A-F已完成, G2/G2.5已完成(全部无效), G3/G8已完成(Alpha真实t=2.45, 保守Sharpe 0.70-0.85)。*
-*v3.2核心新增: 全面审计结论(FF3/DSR/数据质量), Redis Streams实时架构, PMS持仓管理系统, 分钟数据聚合因子, NSSM→Servy迁移, 清明改造计划。*
+*GA2 EVENT回测器已完成(引擎✅, mf_divergence证伪)。GA7 Alpha158已完成(8新因子)。*
+*G1 LightGBM已完成(ML Sharpe=0.68 vs 等权同期0.83, 差距0.15, 根因: 数据维度不够非模型不够)。*
+*v3.5核心: G1完成→战略转向(ML替代等权→新数据源+多策略+PMS增强), 流水线10环节×8断点审计, 生产级多策略运行设计(调度表/新表/容错/降级/信号优先级), 渐进式5阶段上线路径(每步独立可回滚), 原则16(瓶颈在上游不优化下游)。*
+*v3.4核心: 评估范式转移(已被v3.5修正), mf_divergence证伪, GA2完成, 铁律11, 原则15, 15篇前沿论文。*
+*v3.3核心: 清明改造完成, ML扩展规划(G1.1-G1.7), 因子挖掘分层, GP根因分析, Alpha158。*
+*v3.2核心: 全面审计(FF3/DSR/数据质量), Redis Streams, PMS, Servy迁移。*
 *v3.1核心: 前沿AI研究对标, Experience Memory, 动态因子权重, 实盘反馈闭环。*
 *v3核心: 基线修正(0.91/-43%), AI闭环管道(Phase GA), 多策略架构, Alpha多元化优先。*
-*QMT模拟盘4/2首次建仓, PT毕业阈值=保守Sharpe×0.7≈0.56-0.60。*
+*QMT模拟盘4/2首次建仓, 当前15只持仓NAV≈¥958,684。PT毕业阈值=保守Sharpe×0.7≈0.56-0.60。*
 *回测协议参考: Arnott, Harvey, Markowitz (2019) "A Backtesting Protocol in the Era of Machine Learning", JFDS 1(1), 64-74.*
