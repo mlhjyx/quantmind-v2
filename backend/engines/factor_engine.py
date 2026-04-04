@@ -605,6 +605,77 @@ ALPHA158_FACTOR_DIRECTION = {
 }
 
 # ============================================================
+# PEAD因子 (Post-Earnings Announcement Drift, Q1季报限定)
+# EVENT类型: 公告后7天内有效，非日频rolling
+# 验证: Q1季报 spread=+1.19%, t=8.42, 最优窗口+7天
+# H1/Q3/Y方向反转，禁止使用
+# ============================================================
+
+
+def calc_pead_q1(trade_date, conn=None) -> pd.Series:
+    """PEAD Q1季报因子 — 公告后7天内的eps_surprise_pct。
+
+    只使用report_type='Q1'的公告。同一股票取最近一条。
+    超过7天的记录返回NaN（信号衰减）。
+
+    Args:
+        trade_date: 计算日期 (date或str)
+        conn: psycopg2连接（None则自建）
+
+    Returns:
+        pd.Series: index=code, values=eps_surprise_pct (正=超预期)
+    """
+    import psycopg2 as _pg2
+
+    close_conn = conn is None
+    if conn is None:
+        conn = _pg2.connect(
+            dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
+        )
+
+    if isinstance(trade_date, str):
+        from datetime import datetime as _dt
+
+        trade_date = _dt.strptime(trade_date, "%Y-%m-%d").date()
+
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT ea.ts_code, ea.eps_surprise_pct, ea.trade_date AS ann_td
+        FROM earnings_announcements ea
+        WHERE ea.report_type = 'Q1'
+          AND ea.trade_date <= %s
+          AND ea.trade_date >= %s - INTERVAL '7 days'
+          AND ea.eps_surprise_pct IS NOT NULL
+          AND ABS(ea.eps_surprise_pct) < 10
+        ORDER BY ea.ts_code, ea.trade_date DESC""",
+        (trade_date, trade_date),
+    )
+
+    rows = cur.fetchall()
+    if close_conn:
+        conn.close()
+
+    if not rows:
+        return pd.Series(dtype=float)
+
+    # 同一股票取最近一条（已按trade_date DESC排序）
+    seen = set()
+    data = {}
+    for ts_code, surprise, _ann_td in rows:
+        code = ts_code.split(".")[0] if "." in ts_code else ts_code
+        if code not in seen:
+            data[code] = float(surprise)
+            seen.add(code)
+
+    return pd.Series(data, name="pead_q1")
+
+
+# PEAD因子方向和分类
+PEAD_FACTOR_DIRECTION = {
+    "pead_q1": 1,  # 正surprise → 正drift (Q1季报限定)
+}
+
+# ============================================================
 # ML特征注册表 (Sprint 1.4b LightGBM 50+特征池)
 # ============================================================
 # 注意: 资金流因子和beta_market需要额外数据(moneyflow_daily / index_daily),
