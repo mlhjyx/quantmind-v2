@@ -1,11 +1,17 @@
 """Walk-Forward LightGBM 训练框架 -- Phase 1 ML核心模块。
 
+G1实验结论 (2026-04-05):
+  ML OOS Sharpe=0.68 vs 等权同期0.83 (差距0.15, 非此前认为的0.42)
+  根因: 48因子量价信息重叠，SHAP扩展因子仅5.3%
+  当前用途: 因子评估工具 + regime信号 (不替代等权选股)
+  下一步: 新数据源（盈利公告/分钟数据）接入后重跑G1
+
 参考设计: docs/ML_WALKFORWARD_DESIGN.md
 参考Qlib RollingGen，实现扩展->固定窗口混合策略。
 
 核心流程:
-  1. generate_folds() 生成7个fold时间分割（F1-F3扩展窗口，F4-F7固定24月）
-  2. load_features() 从factor_values表加载特征矩阵，pivot成宽表
+  1. generate_folds() 生成fold时间分割（F1-F3扩展窗口，F4+固定24月）
+  2. load_features() 从Parquet或factor_values表加载特征矩阵
   3. train_fold() 单fold LightGBM GPU训练 + Early Stopping + 过拟合检测
   4. predict_oos() 在测试集上做OOS预测
   5. run_full_walkforward() 遍历所有fold，汇总OOS预测，计算整体指标
