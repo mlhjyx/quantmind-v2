@@ -10,10 +10,10 @@
   4. predict_oos() 在测试集上做OOS预测
   5. run_full_walkforward() 遍历所有fold，汇总OOS预测，计算整体指标
 
-铁律7: OOS Sharpe < 基线1.019不上线；训练IC/OOS IC > 3倍 = 过拟合
+铁律7: OOS Sharpe < 基线1.080不上线；训练IC/OOS IC > 3倍 = 过拟合
 """
 
-import logging
+import contextlib
 import os
 import time
 from dataclasses import dataclass, field
@@ -23,9 +23,10 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats as sp_stats
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ============================================================
 # 数据类定义
@@ -52,22 +53,14 @@ class MLConfig:
         seed: 随机种子
     """
 
-    feature_names: list[str] = field(default_factory=lambda: [
-        # 5个核心基线因子
-        "turnover_mean_20", "volatility_20", "reversal_20",
-        "amihud_20", "bp_ratio",
-        # 12个ML新特征
-        "kbar_kmid", "kbar_ksft", "kbar_kup",
-        "mf_divergence", "large_order_ratio", "money_flow_strength",
-        "maxret_20", "chmom_60_20", "up_days_ratio_20",
-        "beta_market_20", "stoch_rsv_20", "gain_loss_ratio_20",
-    ])
+    feature_names: list[str] = field(default_factory=list)  # 空=从Parquet/DB自动发现
+    parquet_path: str = ""  # 非空时从Parquet加载，跳过DB查询
     target: str = "excess_return_20"
     train_months: int = 24
     valid_months: int = 6
     test_months: int = 6
     step_months: int = 6
-    purge_days: int = 5
+    purge_days: int = 21  # ≥标签窗口(20d)防泄露
     expanding_folds: int = 3  # F1-F3使用扩展窗口
     data_start: date = date(2020, 7, 1)
     data_end: date = date(2026, 3, 24)
@@ -159,7 +152,7 @@ class WalkForwardResult:
     """
 
     fold_results: list[FoldResult] = field(default_factory=list)
-    oos_predictions: Optional[pd.DataFrame] = None
+    oos_predictions: pd.DataFrame | None = None
     overall_ic: float = 0.0
     overall_rank_ic: float = 0.0
     overall_icir: float = 0.0
@@ -256,10 +249,7 @@ def compute_daily_ic(
             continue
         pred = group["predicted"]
         actual = group["actual"]
-        if method == "spearman":
-            ic = pred.rank().corr(actual.rank())
-        else:
-            ic = pred.corr(actual)
+        ic = pred.rank().corr(actual.rank()) if method == "spearman" else pred.corr(actual)
         if not np.isnan(ic):
             daily_ics[td] = ic
     return pd.Series(daily_ics)
@@ -469,7 +459,7 @@ def _compute_ndcg_at_k(
         # 将真实收益转为相关性分数（非负，rank-based）
         actual_vals = group[target_col].values
         ranks = sp_stats.rankdata(actual_vals)  # 小的排名低，大的排名高
-        rel_dict = dict(zip(group.index, ranks))
+        rel_dict = dict(zip(group.index, ranks, strict=False))
 
         def dcg_at_k(ordered_index: list, rel: dict, k_: int) -> float:
             score = 0.0
@@ -699,8 +689,8 @@ class WalkForwardTrainer:
     ) -> pd.DataFrame:
         """加载特征矩阵。
 
-        从factor_values表读取中性化后的因子值，pivot成宽表。
-        同时加载目标变量（T+20日超额收益）。
+        优先从Parquet加载（config.parquet_path），否则从DB加载。
+        Parquet已包含label列，DB路径需要额外计算target。
 
         Args:
             start_date: 开始日期
@@ -709,12 +699,21 @@ class WalkForwardTrainer:
 
         Returns:
             DataFrame，列为 [trade_date, code, feature1, ..., featureN, target]
-            target = T+20日vs沪深300超额收益（对数）
         """
+        # ── Parquet快速路径 ──
+        if self.config.parquet_path:
+            return self._load_from_parquet(start_date, end_date)
+
         if conn is None:
             conn = self._get_conn()
 
         feature_names = self.config.feature_names
+        if not feature_names:
+            # 自动发现: 从DB查所有可用因子
+            cur = conn.cursor()
+            cur.execute("SELECT DISTINCT factor_name FROM factor_values ORDER BY factor_name")
+            feature_names = [r[0] for r in cur.fetchall()]
+            logger.info(f"自动发现 {len(feature_names)} 个特征")
         placeholders = ",".join(["%s"] * len(feature_names))
 
         t0 = time.time()
@@ -844,6 +843,47 @@ class WalkForwardTrainer:
         )
         return df_merged
 
+    def _load_from_parquet(self, start_date: date, end_date: date) -> pd.DataFrame:
+        """从Parquet加载预构建的特征矩阵。
+
+        Parquet已包含: trade_date, code, factor1..N, label
+        label列重命名为excess_return_20以兼容下游代码。
+        """
+        path = self.config.parquet_path
+        logger.info(f"从Parquet加载: {path}")
+        t0 = time.time()
+
+        df = pd.read_parquet(path)
+
+        # 确保trade_date是date类型
+        if hasattr(df["trade_date"].iloc[0], "date"):
+            df["trade_date"] = df["trade_date"].apply(
+                lambda x: x.date() if hasattr(x, "date") else x
+            )
+
+        # 日期过滤
+        df = df[(df["trade_date"] >= start_date) & (df["trade_date"] <= end_date)]
+
+        # label → excess_return_20（兼容下游代码）
+        if "label" in df.columns and "excess_return_20" not in df.columns:
+            df = df.rename(columns={"label": "excess_return_20"})
+
+        df = df.dropna(subset=["excess_return_20"])
+
+        # 自动发现特征列
+        meta_cols = {"code", "trade_date", "excess_return_20", "label"}
+        feature_cols = [c for c in df.columns if c not in meta_cols]
+        if not self.config.feature_names:
+            self.config.feature_names = feature_cols
+            logger.info(f"自动发现 {len(feature_cols)} 个特征")
+
+        logger.info(
+            f"Parquet加载完成: {len(df)}行, {df['code'].nunique()}股, "
+            f"{df['trade_date'].nunique()}天, {len(feature_cols)}特征, "
+            f"{time.time() - t0:.1f}s"
+        )
+        return df
+
     def _split_fold_data(
         self,
         df: pd.DataFrame,
@@ -867,15 +907,16 @@ class WalkForwardTrainer:
         if hasattr(trade_date_col.iloc[0], "date"):
             trade_date_col = trade_date_col.apply(lambda x: x.date() if hasattr(x, "date") else x)
 
-        # P0-1修复: 训练集丢弃最后20个交易日，防止target标签泄露到验证期
-        # target是T+20日收益，所以train_end前20个交易日的target会跨入验证期
+        # P0-1修复: 训练集丢弃尾部日期，防止target标签(T+20)泄露到验证期
         all_train_dates = sorted(trade_date_col[
             (trade_date_col >= fold.train_start) & (trade_date_col <= fold.train_end)
         ].unique())
-        if len(all_train_dates) > 20:
-            train_cutoff = all_train_dates[-21]  # 丢弃最后20个交易日
+        # 月度数据(≤100个日期): 丢弃最后1个月; 日频数据: 丢弃最后20个交易日
+        purge_n = 1 if len(all_train_dates) <= 100 else 20
+        if len(all_train_dates) > purge_n + 5:
+            train_cutoff = all_train_dates[-(purge_n + 1)]
         else:
-            train_cutoff = fold.train_start  # 数据不足时保留全部
+            train_cutoff = fold.train_end  # 数据不足时保留全部
 
         train_mask = (trade_date_col >= fold.train_start) & (trade_date_col <= train_cutoff)
         valid_mask = (trade_date_col >= fold.valid_start) & (trade_date_col <= fold.valid_end)
@@ -887,7 +928,7 @@ class WalkForwardTrainer:
         self,
         fold: Fold,
         df: pd.DataFrame,
-        params: Optional[dict] = None,
+        params: dict | None = None,
     ) -> tuple[FoldResult, "FeaturePreprocessor"]:
         """训练单个fold。
 
@@ -941,7 +982,7 @@ class WalkForwardTrainer:
         X_valid = valid_processed[feature_cols].values.astype(np.float32)
         y_valid = valid_processed["excess_return_20"].values.astype(np.float32)
         X_test = test_processed[feature_cols].values.astype(np.float32)
-        y_test = test_processed["excess_return_20"].values.astype(np.float32)
+        test_processed["excess_return_20"].values.astype(np.float32)
 
         # lambdarank需要group数组（每个截面=一个query group）
         if self.config.mode == "lambdarank":
@@ -1040,7 +1081,7 @@ class WalkForwardTrainer:
 
         # 6. 特征重要性
         importance = model.feature_importance(importance_type="gain")
-        feat_imp = dict(zip(feature_cols, [float(v) for v in importance]))
+        feat_imp = dict(zip(feature_cols, [float(v) for v in importance], strict=False))
 
         # 7. 保存模型
         model_dir = Path(self.config.model_dir)
@@ -1093,7 +1134,7 @@ class WalkForwardTrainer:
         self,
         fold: Fold,
         df: pd.DataFrame,
-        model_path: Optional[str] = None,
+        model_path: str | None = None,
         preprocessor: Optional["FeaturePreprocessor"] = None,
     ) -> pd.DataFrame:
         """在测试集上做OOS预测。
@@ -1145,7 +1186,7 @@ class WalkForwardTrainer:
 
     def run_full_walkforward(
         self,
-        params: Optional[dict] = None,
+        params: dict | None = None,
     ) -> WalkForwardResult:
         """运行完整Walk-Forward流程。
 
@@ -1266,7 +1307,6 @@ class WalkForwardTrainer:
 
         # 上线条件检查（ML-09）
         logger.info("-" * 40)
-        baseline_sharpe = 1.019
         ic_threshold = 0.02
         icir_threshold = 0.3
 
@@ -1309,10 +1349,7 @@ class WalkForwardTrainer:
                 continue
             pred = group["predicted"]
             actual = group[target_col]
-            if method == "spearman":
-                ic = pred.rank().corr(actual.rank())
-            else:
-                ic = pred.corr(actual)
+            ic = pred.rank().corr(actual.rank()) if method == "spearman" else pred.corr(actual)
             if not np.isnan(ic):
                 daily_ics[td] = ic
 
@@ -1321,10 +1358,8 @@ class WalkForwardTrainer:
     def close(self) -> None:
         """关闭数据库连接。"""
         if self._conn is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._conn.close()
-            except Exception:
-                pass
             self._conn = None
 
 
@@ -1334,9 +1369,9 @@ class WalkForwardTrainer:
 
 
 def run_walkforward(
-    feature_names: Optional[list[str]] = None,
+    feature_names: list[str] | None = None,
     gpu: bool = True,
-    params: Optional[dict] = None,
+    params: dict | None = None,
 ) -> WalkForwardResult:
     """运行Walk-Forward训练的便捷函数。
 
