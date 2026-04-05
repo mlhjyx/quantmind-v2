@@ -13,7 +13,6 @@
 
 import logging
 import time
-from io import StringIO
 
 import numpy as np
 import pandas as pd
@@ -183,54 +182,28 @@ def fast_neutralize_batch(
             conn.close()
         return 0
 
-    # Step 4: 分批COPY + JOIN UPDATE（避免OOM）
-    total_written = 0
-    batch_size = 2_000_000  # 200万行/批
+    # Step 4: 写入Parquet（秒级，替代hypertable UPDATE的4小时）
+    import os
 
-    cur.execute("""
-        CREATE TEMP TABLE IF NOT EXISTS _tmp_neutral (
-            code VARCHAR(20), trade_date DATE,
-            factor_name VARCHAR(100), neutral_value NUMERIC(20,6)
-        )
-    """)
+    cache_dir = os.path.join(os.path.dirname(__file__), "..", "..", "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    output_path = os.path.join(cache_dir, "neutral_values.parquet")
 
-    for batch_start in range(0, len(results), batch_size):
-        batch = results[batch_start:batch_start + batch_size]
-        t2 = time.time()
+    t2 = time.time()
+    result_df = pd.DataFrame(results, columns=["code", "trade_date", "factor_name", "neutral_value"])
+    result_df["trade_date"] = pd.to_datetime(result_df["trade_date"])
 
-        cur.execute("TRUNCATE _tmp_neutral")
+    # 增量合并：保留已有因子，更新/追加本次计算的因子
+    if os.path.exists(output_path):
+        existing = pd.read_parquet(output_path)
+        existing = existing[~existing["factor_name"].isin(factor_names)]
+        result_df = pd.concat([existing, result_df], ignore_index=True)
 
-        buf = StringIO()
-        for code, dt, fname, val in batch:
-            dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
-            buf.write(f"{code}\t{dt_str}\t{fname}\t{val:.6f}\n")
-        buf.seek(0)
-        cur.copy_from(buf, "_tmp_neutral", columns=["code", "trade_date", "factor_name", "neutral_value"])
-        del buf  # 释放内存
-
-        cur.execute("""
-            UPDATE factor_values fv
-            SET neutral_value = t.neutral_value,
-                zscore = t.neutral_value
-            FROM _tmp_neutral t
-            WHERE fv.code = t.code
-              AND fv.trade_date = t.trade_date
-              AND fv.factor_name = t.factor_name
-        """)
-        conn.commit()
-        total_written += len(batch)
-        logger.info(
-            "  批次 %d/%d: %d行写入 (%.1fs)",
-            batch_start // batch_size + 1,
-            (len(results) + batch_size - 1) // batch_size,
-            len(batch), time.time() - t2,
-        )
-
-    cur.execute("DROP TABLE IF EXISTS _tmp_neutral")
-    conn.commit()
+    result_df.to_parquet(output_path, index=False)
+    logger.info("  Parquet写入: %s (%d行, %.1fs)", output_path, len(result_df), time.time() - t2)
 
     total_time = time.time() - t_start
-    logger.info("中性化完成: %d行, %.1f分钟", total_written, total_time / 60)
+    logger.info("中性化完成: %d行, %.1f分钟", len(results), total_time / 60)
 
     if own_conn:
         conn.close()
