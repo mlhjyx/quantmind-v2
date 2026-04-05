@@ -546,70 +546,115 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             conn.close()
             sys.exit(1)
 
-        # ── Step 1: 拉取数据（尚未Service化）──
+        # ── Step 1: 拉取数据（并行化：klines + daily_basic + index_daily）──
         if skip_fetch:
             logger.info("[Step1] 跳过数据拉取")
         else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
             from app.data_fetcher.data_loader import upsert_daily_basic, upsert_klines_daily
             from app.data_fetcher.tushare_fetcher import TushareFetcher
 
             fetcher = TushareFetcher()
             td_str = trade_date.strftime("%Y%m%d")
-
             t1 = time.time()
-            logger.info(f"[Step1] 拉取 {td_str}...")
-            df_klines = fetcher.merge_daily_data(td_str)
-            if df_klines.empty:
+            logger.info(f"[Step1] 并行拉取 {td_str}...")
+
+            # 各拉取任务用独立DB连接（避免线程共享连接）
+            fetch_results = {}
+            fetch_errors = []
+
+            def _fetch_klines():
+                _conn = get_sync_conn()
+                try:
+                    df = fetcher.merge_daily_data(td_str)
+                    if not df.empty:
+                        upsert_klines_daily(df, _conn)
+                    return "klines", len(df)
+                finally:
+                    _conn.close()
+
+            def _fetch_basic():
+                _conn = get_sync_conn()
+                try:
+                    df = fetcher.fetch_daily_basic_by_date(td_str)
+                    if not df.empty:
+                        upsert_daily_basic(df, _conn)
+                    return "basic", len(df)
+                finally:
+                    _conn.close()
+
+            def _fetch_index():
+                _conn = get_sync_conn()
+                try:
+                    idx_codes = ["000300.SH", "000905.SH", "000852.SH"]
+                    start_5d = (trade_date - timedelta(days=10)).strftime("%Y%m%d")
+                    total = 0
+                    for idx_code in idx_codes:
+                        try:
+                            df_idx = fetcher.fetch_index_daily(idx_code, start_5d, td_str)
+                            if df_idx is not None and not df_idx.empty:
+                                _cur = _conn.cursor()
+                                for _, r in df_idx.iterrows():
+                                    _cur.execute(
+                                        """INSERT INTO index_daily
+                                               (index_code, trade_date, open, high, low, close,
+                                                pre_close, pct_change, volume, amount)
+                                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                           ON CONFLICT (index_code, trade_date) DO UPDATE SET
+                                               close = EXCLUDED.close,
+                                               pre_close = EXCLUDED.pre_close""",
+                                        (
+                                            str(r.get("ts_code", idx_code)),
+                                            pd.to_datetime(r["trade_date"]).date(),
+                                            float(r["open"]) if pd.notna(r.get("open")) else None,
+                                            float(r["high"]) if pd.notna(r.get("high")) else None,
+                                            float(r["low"]) if pd.notna(r.get("low")) else None,
+                                            float(r["close"]) if pd.notna(r.get("close")) else None,
+                                            float(r["pre_close"]) if pd.notna(r.get("pre_close")) else None,
+                                            float(r["pct_chg"]) if pd.notna(r.get("pct_chg")) else None,
+                                            int(r["vol"]) if pd.notna(r.get("vol")) else None,
+                                            float(r["amount"]) if pd.notna(r.get("amount")) else None,
+                                        ),
+                                    )
+                                _conn.commit()
+                                total += len(df_idx)
+                        except Exception as e:
+                            logger.warning(f"[Step1] index_daily({idx_code}): {e}")
+                            with contextlib.suppress(Exception):
+                                _conn.rollback()
+                    return "index", total
+                finally:
+                    _conn.close()
+
+            # 并行执行3个拉取任务（各自独立连接，无锁竞争）
+            with ThreadPoolExecutor(max_workers=3, thread_name_prefix="fetch") as pool:
+                futures = [
+                    pool.submit(_fetch_klines),
+                    pool.submit(_fetch_basic),
+                    pool.submit(_fetch_index),
+                ]
+                for f in as_completed(futures):
+                    try:
+                        name, count = f.result()
+                        fetch_results[name] = count
+                        logger.info(f"[Step1] {name}: {count}行 ✓")
+                    except Exception as e:
+                        fetch_errors.append(str(e))
+                        logger.error(f"[Step1] 拉取失败: {e}")
+
+            if fetch_results.get("klines", 0) == 0 and not fetch_errors:
                 logger.error(f"[Step1] {td_str} 无行情数据")
                 log_step(conn, "data_fetch", "failed", "无数据返回")
                 conn.close()
                 sys.exit(1)
-            upsert_klines_daily(df_klines, conn)
 
-            df_basic = fetcher.fetch_daily_basic_by_date(td_str)
-            if not df_basic.empty:
-                upsert_daily_basic(df_basic, conn)
-
-            # 增量拉取index_daily
-            idx_codes = ["000300.SH", "000905.SH", "000852.SH"]
-            start_5d = (trade_date - timedelta(days=10)).strftime("%Y%m%d")
-            idx_total = 0
-            for idx_code in idx_codes:
-                try:
-                    df_idx = fetcher.fetch_index_daily(idx_code, start_5d, td_str)
-                    if df_idx is not None and not df_idx.empty:
-                        cur = conn.cursor()
-                        for _, r in df_idx.iterrows():
-                            cur.execute(
-                                """INSERT INTO index_daily
-                                       (index_code, trade_date, open, high, low, close,
-                                        pre_close, pct_change, volume, amount)
-                                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                   ON CONFLICT (index_code, trade_date) DO UPDATE SET
-                                       close = EXCLUDED.close,
-                                       pre_close = EXCLUDED.pre_close""",
-                                (
-                                    str(r.get("ts_code", idx_code)),
-                                    pd.to_datetime(r["trade_date"]).date(),
-                                    float(r["open"]) if pd.notna(r.get("open")) else None,
-                                    float(r["high"]) if pd.notna(r.get("high")) else None,
-                                    float(r["low"]) if pd.notna(r.get("low")) else None,
-                                    float(r["close"]) if pd.notna(r.get("close")) else None,
-                                    float(r["pre_close"]) if pd.notna(r.get("pre_close")) else None,
-                                    float(r["pct_chg"]) if pd.notna(r.get("pct_chg")) else None,
-                                    int(r["vol"]) if pd.notna(r.get("vol")) else None,
-                                    float(r["amount"]) if pd.notna(r.get("amount")) else None,
-                                ),
-                            )
-                        conn.commit()
-                        idx_total += len(df_idx)
-                except Exception as e:
-                    logger.warning(f"[Step1] index_daily拉取失败({idx_code}): {e}")
-                    with contextlib.suppress(Exception):
-                        conn.rollback()
-            logger.info(f"[Step1] index_daily增量拉取: {idx_total}行")
-
-            logger.info(f"[Step1] 完成 ({time.time()-t1:.0f}s): klines={len(df_klines)}, basic={len(df_basic)}, index={idx_total}")
+            logger.info(
+                f"[Step1] 完成 ({time.time()-t1:.0f}s): "
+                f"klines={fetch_results.get('klines',0)}, "
+                f"basic={fetch_results.get('basic',0)}, "
+                f"index={fetch_results.get('index',0)}"
+            )
             if not dry_run:
                 log_step(conn, "data_fetch", "success")
 
@@ -848,6 +893,47 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                 logger.info("[Step4] PT日报已发送钉钉")
             except Exception as e:
                 logger.warning(f"[Step4] PT日报发送失败（不影响主流程）: {e}")
+
+        # ── Step 5: 收尾任务（并行：Parquet缓存导出 + 因子衰减检测）──
+        if not dry_run:
+            from concurrent.futures import ThreadPoolExecutor
+
+            t5 = time.time()
+            logger.info("[Step5] 并行收尾任务...")
+
+            def _export_parquet_cache():
+                """导出Parquet缓存（研究脚本用，避免DB锁竞争）。"""
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        [sys.executable, "scripts/precompute_cache.py", "--quick"],
+                        capture_output=True, text=True, timeout=300,
+                        cwd="D:/quantmind-v2",
+                    )
+                    if result.returncode == 0:
+                        logger.info("[Step5] Parquet缓存导出 ✓")
+                    else:
+                        logger.warning(f"[Step5] Parquet导出异常: {result.stderr[:200]}")
+                except Exception as e:
+                    logger.warning(f"[Step5] Parquet导出失败: {e}")
+
+            def _run_factor_decay():
+                """因子衰减检测。"""
+                try:
+                    _dconn = get_sync_conn()
+                    from engines.factor_decay import check_factor_decay
+                    decay_result = check_factor_decay(trade_date, _dconn)
+                    if decay_result:
+                        logger.info(f"[Step5] 因子衰减检测 ✓: {len(decay_result)}个因子")
+                    _dconn.close()
+                except Exception as e:
+                    logger.warning(f"[Step5] 因子衰减检测失败（不影响主流程）: {e}")
+
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="cleanup") as pool:
+                pool.submit(_export_parquet_cache)
+                pool.submit(_run_factor_decay)
+
+            logger.info(f"[Step5] 收尾完成 ({time.time()-t5:.0f}s)")
 
         # ── 心跳记录（PT watchdog用）──
         try:
