@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """紧急撤单脚本 — 撤销所有非终态QMT委托。"""
-import sys, time, subprocess
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -24,6 +26,7 @@ def main():
 
     # 2. 连接QMT
     from engines.broker_qmt import MiniQMTBroker
+
     from app.config import settings
     broker = MiniQMTBroker(settings.QMT_PATH, settings.QMT_ACCOUNT_ID)
     broker.connect()

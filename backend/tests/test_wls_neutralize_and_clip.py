@@ -17,14 +17,12 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.factor_engine import (
     preprocess_neutralize,
     preprocess_pipeline,
     preprocess_zscore,
 )
-from engines.neutralizer import FactorNeutralizer, _WINSORIZE_K
-
+from engines.neutralizer import _WINSORIZE_K, FactorNeutralizer
 
 # ============================================================
 # Fixtures

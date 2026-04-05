@@ -84,7 +84,7 @@ def main():
     print(f"宽表形状: {pivot.shape}")
 
     # 3. 计算因子
-    ret_1d = pivot.pct_change(1)
+    pivot.pct_change(1)
     ret_20d = pivot.pct_change(20)
     ret_60d = pivot.pct_change(60)
 

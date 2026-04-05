@@ -24,10 +24,7 @@ def _make_scores(n: int) -> pd.Series:
 def _make_industry(n: int, all_different: bool = True) -> pd.Series:
     """构造行业映射，默认所有股票不同行业（不触发行业约束）。"""
     codes = [f"{i:06d}" for i in range(1, n + 1)]
-    if all_different:
-        industries = [f"行业{i}" for i in range(1, n + 1)]
-    else:
-        industries = ["行业A"] * n
+    industries = [f"行业{i}" for i in range(1, n + 1)] if all_different else ["行业A"] * n
     return pd.Series(industries, index=codes)
 
 
@@ -119,7 +116,7 @@ class TestCashBuffer:
         total_invested = 0.0
         avg_price = 50.0   # 假设每只股票均价50元
 
-        for code, weight in target.items():
+        for _code, weight in target.items():
             target_value = total_value * weight
             shares = int(target_value / avg_price / lot_size) * lot_size
             actual_value = shares * avg_price

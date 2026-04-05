@@ -10,11 +10,11 @@
 - total_mv/circ_mv: 万元
 """
 
-import structlog
 from datetime import date
 
 import pandas as pd
 import psycopg2
+import structlog
 from psycopg2 import sql as psql
 from psycopg2.extras import execute_values
 

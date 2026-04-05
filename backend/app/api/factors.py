@@ -16,10 +16,10 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 """
 # ruff: noqa: B008
 
-import structlog
 from datetime import date, timedelta
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -631,7 +631,6 @@ async def get_factor_report(
                     float(v) for v in fwd_df["ic_value"].tolist() if v is not None
                 ]
                 if valid:
-                    import math
                     fwd_mean = sum(valid) / len(valid)
                     fwd_std = (sum((x - fwd_mean) ** 2 for x in valid) / max(len(valid) - 1, 1)) ** 0.5
                     ic_decay[f"{fwd}d"] = {
@@ -805,6 +804,7 @@ def _calc_fdr_t_stat(t_stat: float | None, m_tests: int = 69) -> float | None:
         FDR校正后等效t值。
     """
     import math
+
     from scipy import stats as sp_stats
 
     if t_stat is None or m_tests < 1:
@@ -837,6 +837,7 @@ def _calc_newey_west_t(ic_values: list[float]) -> float | None:
         Newey-West t统计量。
     """
     import math
+
     import numpy as np
 
     if len(ic_values) < 10:
@@ -881,6 +882,7 @@ def _calc_ic_half_life(ic_values: list[float]) -> float | None:
         半衰期（天数），无法拟合时返回None。
     """
     import math
+
     import numpy as np
 
     if len(ic_values) < 20:
@@ -911,7 +913,7 @@ def _calc_ic_half_life(ic_values: list[float]) -> float | None:
     ln_acf = np.log(np.array([x[1] for x in acf_vals], dtype=float))
 
     # OLS: ln_acf = a + b*lags, τ = -1/b, half_life = τ*ln(2)
-    n_pts = len(lags)
+    len(lags)
     mean_x = lags.mean()
     mean_y = ln_acf.mean()
     b = float(np.dot(lags - mean_x, ln_acf - mean_y) / np.dot(lags - mean_x, lags - mean_x))

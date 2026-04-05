@@ -24,13 +24,13 @@ GP进化循环中每个个体需要评估适应度，完整SimBroker回测太慢
 
 from __future__ import annotations
 
-import structlog
 import math
 from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

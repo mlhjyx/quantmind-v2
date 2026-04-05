@@ -206,7 +206,7 @@ class TestPendingOrderFill:
 
         config = BacktestConfig(initial_capital=1_000_000, top_n=3)
         bt = SimpleBacktester(config)
-        result = bt.run(target_portfolios, price_data, benchmark)
+        bt.run(target_portfolios, price_data, benchmark)
 
         # A应该被补单成功
         filled = [po for po in bt.pending_orders if po.code == "A" and po.status == "filled"]
@@ -238,7 +238,7 @@ class TestPendingOrderCancelledStillLimit:
 
         config = BacktestConfig(initial_capital=1_000_000, top_n=2)
         bt = SimpleBacktester(config)
-        result = bt.run(target_portfolios, price_data, benchmark)
+        bt.run(target_portfolios, price_data, benchmark)
 
         # A应该被标记为cancelled
         cancelled = [po for po in bt.pending_orders
@@ -276,10 +276,10 @@ class TestPendingOrderTooCloseToRebalance:
         config = BacktestConfig(initial_capital=1_000_000, top_n=2)
         bt = SimpleBacktester(config)
         bt.min_days_to_next_rebal = 5
-        result = bt.run(target_portfolios, price_data, benchmark)
+        bt.run(target_portfolios, price_data, benchmark)
 
         # A的pending应该被取消（距下次调仓太近）
-        cancelled_close = [
+        [
             po for po in bt.pending_orders
             if po.code == "A" and po.status == "cancelled"
             and "too_close" in po.cancel_reason

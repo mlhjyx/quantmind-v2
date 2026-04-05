@@ -20,9 +20,9 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-import structlog
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text

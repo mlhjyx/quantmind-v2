@@ -53,18 +53,34 @@ dev = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+extend-exclude = [
+    "scripts/compute_batch3_ic.py",
+    "scripts/compute_batch4_ic.py",
+    "scripts/compute_batch6_ic.py",
+    "scripts/compute_talib_factors_ic.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
 ignore = [
     "E501",   # line length由line-length控制
-    "B008",   # FastAPI Depends()在参数默认值中是惯用写法，非真正缺陷
+    "E741",   # ambiguous variable name (l/O/I) — quant代码常用
+    "B008",   # FastAPI Depends()在参数默认值中是惯用写法
+    "N806",   # uppercase variable in function — 矩阵变量X/W/R是数学惯例
+    "N802",   # lowercase function name — 部分遵循学术论文命名
+    "N803",   # lowercase argument name — 同上
+    "N805",   # first argument not self — 某些特殊方法
+    "SIM108", # ternary — 多行if/else可读性更好
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/*.py" = ["E402"]
+"scripts/*.py" = ["E402", "B023", "B007", "SIM102", "UP031"]
+"scripts/_*.py" = ["E402", "E701"]
 "backend/scripts/*.py" = ["E402", "E701"]
-"backend/engines/ml_engine.py" = ["N806"]  # X_train/X_valid/X_test ML convention
+"backend/app/tasks/*.py" = ["E402"]
+"backend/services/*.py" = ["E402"]
+"backend/tests/*.py" = ["E402"]
+"backend/engines/*.py" = ["B023"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

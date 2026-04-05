@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """QMT xtdata能力全面测试 v2 — 历史深度/财务/Level2/本地目录。"""
-import sys, os, time
+import os
+import sys
+import time
 from pathlib import Path
-from datetime import datetime
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")

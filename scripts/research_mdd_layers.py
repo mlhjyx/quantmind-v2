@@ -3,9 +3,11 @@
 
 内存安全: 单进程运行, 共享数据加载一次。
 """
-import logging, os, sys, time
-from dataclasses import dataclass, field
-from datetime import date, datetime
+import logging
+import os
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -16,10 +18,16 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, PMSConfig, SimpleBacktester
-from engines.signal_engine import (PAPER_TRADING_CONFIG, PortfolioBuilder,
-                                   SignalComposer, SignalConfig, get_rebalance_dates)
-from engines.slippage_model import SlippageConfig
 from engines.metrics import generate_report
+from engines.signal_engine import (
+    PAPER_TRADING_CONFIG,
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
+from engines.slippage_model import SlippageConfig
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -231,7 +239,7 @@ def main():
                 "C-D: +PMS+ind+top20", "C-E: +PMS+ind+top20+tv20"]
 
     years = sorted(all_results[0][1].annual_breakdown.index)
-    print(f"\n--- 年度Sharpe (关键实验) ---")
+    print("\n--- 年度Sharpe (关键实验) ---")
     hdr = f"{'实验':<30} " + " ".join(f"{y:>8}" for y in years)
     print(f"{hdr}\n{'-'*len(hdr)}")
     for name, rpt in all_results:
@@ -240,7 +248,7 @@ def main():
             vals = " ".join(f"{ab.loc[y,'sharpe']:>8.2f}" if y in ab.index else f"{'N/A':>8}" for y in years)
             print(f"{name:<30} {vals}")
 
-    print(f"\n--- 年度MDD (关键实验) ---")
+    print("\n--- 年度MDD (关键实验) ---")
     print(f"{hdr}\n{'-'*len(hdr)}")
     for name, rpt in all_results:
         if name in key_exps:
@@ -249,7 +257,7 @@ def main():
             print(f"{name:<30} {vals}")
 
     # MDD Waterfall
-    print(f"\n--- MDD改善瀑布 ---")
+    print("\n--- MDD改善瀑布 ---")
     waterfall = [(n, r) for n, r in all_results if n.startswith("C-")]
     for name, rpt in waterfall:
         print(f"  {name:<30} MDD={rpt.max_drawdown*100:>7.1f}%  Sharpe={rpt.sharpe_ratio:.2f}  Calmar={rpt.calmar_ratio:.2f}")

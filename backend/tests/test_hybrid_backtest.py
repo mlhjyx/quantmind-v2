@@ -31,7 +31,6 @@ from engines.vectorized_signal import (
     compute_rebalance_dates,
 )
 
-
 # ═══════════════════════════════════════════════════
 # Fixtures: 合成测试数据
 # ═══════════════════════════════════════════════════
@@ -53,7 +52,7 @@ def _make_price_data(codes: list[str], trading_days: list[date], seed: int = 42)
     rows = []
     for code in codes:
         base_price = rng.uniform(10, 50)
-        for i, td in enumerate(trading_days):
+        for _i, td in enumerate(trading_days):
             ret = rng.normal(0.001, 0.02)
             close = base_price * (1 + ret)
             base_price = close
@@ -156,7 +155,7 @@ class TestPhaseASignal:
         )
 
         assert len(targets) > 0
-        for rd, portfolio in targets.items():
+        for _rd, portfolio in targets.items():
             assert len(portfolio) == 15
             weights = list(portfolio.values())
             assert abs(sum(weights) - 1.0) < 1e-10  # 权重和=1
@@ -171,7 +170,7 @@ class TestPhaseASignal:
             test_data["factor_df"], test_data["directions"], rebal, config,
         )
 
-        for rd, portfolio in targets.items():
+        for _rd, portfolio in targets.items():
             assert len(portfolio) == 5
             assert abs(sum(portfolio.values()) - 1.0) < 1e-10
 
@@ -280,7 +279,7 @@ class TestHybridConsistency:
             f"Trade count mismatch: simple={len(simple.trades)}, hybrid={len(hybrid.trades)}"
         )
 
-        for s_fill, h_fill in zip(simple.trades, hybrid.trades):
+        for s_fill, h_fill in zip(simple.trades, hybrid.trades, strict=False):
             assert s_fill.code == h_fill.code, f"Code mismatch: {s_fill.code} vs {h_fill.code}"
             assert s_fill.direction == h_fill.direction
             assert s_fill.shares == h_fill.shares

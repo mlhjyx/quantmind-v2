@@ -14,13 +14,12 @@ signal_func 回调设计:
 - 未来ML策略: signal_func 内部用 LightGBM 训练→预测
 """
 
-import structlog
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
-from typing import Callable, Optional
 
-import numpy as np
 import pandas as pd
+import structlog
 
 from backend.engines.backtest_engine import BacktestConfig, BacktestResult, SimpleBacktester
 from backend.engines.metrics import (
@@ -114,7 +113,7 @@ class WalkForwardEngine:
     def __init__(
         self,
         wf_config: WFConfig,
-        backtest_config: Optional[BacktestConfig] = None,
+        backtest_config: BacktestConfig | None = None,
     ):
         self.wf_config = wf_config
         self.bt_config = backtest_config or BacktestConfig()
@@ -207,8 +206,8 @@ class WalkForwardEngine:
         self,
         signal_func: SignalFunc,
         price_data: pd.DataFrame,
-        benchmark_data: Optional[pd.DataFrame] = None,
-        all_dates: Optional[list[date]] = None,
+        benchmark_data: pd.DataFrame | None = None,
+        all_dates: list[date] | None = None,
     ) -> WFResult:
         """执行 Walk-Forward 回测。
 
@@ -307,7 +306,7 @@ class WalkForwardEngine:
         test_dates: list[date],
         signal_func: SignalFunc,
         price_data: pd.DataFrame,
-        benchmark_data: Optional[pd.DataFrame],
+        benchmark_data: pd.DataFrame | None,
     ) -> WFFoldResult:
         """执行单折 Walk-Forward。
 
@@ -446,7 +445,7 @@ class WalkForwardEngine:
 # 辅助: 打印 Walk-Forward 报告
 # ============================================================
 
-def print_wf_report(wf_result: WFResult, full_sample_sharpe: Optional[float] = None) -> None:
+def print_wf_report(wf_result: WFResult, full_sample_sharpe: float | None = None) -> None:
     """打印 Walk-Forward 报告到终端。
 
     Args:

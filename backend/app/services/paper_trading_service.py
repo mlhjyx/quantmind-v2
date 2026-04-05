@@ -14,10 +14,10 @@ Sprint 1.10 新增4项毕业评估指标:
 - signal_execution_gap_hours 12-20h: 标准链路T日17:20→T+1 09:30≈16h
 """
 
-import structlog
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
+import structlog
 from engines.metrics import (
     calc_avg_slippage_pct,
     calc_fill_rate,
@@ -388,7 +388,7 @@ class PaperTradingService:
         prices: dict[str, float],
         cash: float,
         initial_capital: float,
-        avg_costs: Optional[dict[str, float]] = None,
+        avg_costs: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         """T日close计算NAV，更新position_snapshot + performance_series。
 
@@ -432,8 +432,8 @@ class PaperTradingService:
             weight = mv / nav if nav > 0 else 0
 
             # A7修复: 计算 avg_cost 和 unrealized_pnl（需调用方传入avg_costs）
-            avg_cost: Optional[float] = None
-            unrealized_pnl: Optional[float] = None
+            avg_cost: float | None = None
+            unrealized_pnl: float | None = None
             if avg_costs is not None:
                 ac = avg_costs.get(code)
                 if ac is not None and ac > 0:

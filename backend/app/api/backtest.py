@@ -6,12 +6,12 @@
 参考：DEV_BACKTEST_ENGINE.md §七 后端 API 清单。
 """
 
-import structlog
 import tempfile
 from datetime import date
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -974,11 +974,11 @@ async def get_quantstats_report(
     try:
         import pandas as pd
         import quantstats as qs  # type: ignore[import-untyped]
-    except ImportError:
+    except ImportError as err:
         raise HTTPException(
             status_code=501,
             detail="quantstats 未安装，请执行: pip install quantstats",
-        )
+        ) from err
 
     # 构建 pandas Series
     dates = [r["trade_date"] for r in rows]
@@ -991,16 +991,16 @@ async def get_quantstats_report(
     )
 
     # 生成 HTML 到临时文件
-    tmp = tempfile.NamedTemporaryFile(
+    with tempfile.NamedTemporaryFile(
         suffix=".html", prefix=f"quantmind_bt_{run_id}_", delete=False
-    )
-    tmp.close()
+    ) as tmp:
+        tmp_name = tmp.name
 
     try:
         qs.reports.html(
             returns_series,
             benchmark=benchmark_series,
-            output=tmp.name,
+            output=tmp_name,
             title=f"QuantMind V2 Backtest — {run_id}",
         )
     except Exception as e:
@@ -1008,10 +1008,10 @@ async def get_quantstats_report(
         raise HTTPException(
             status_code=500,
             detail=f"QuantStats 报告生成失败: {e}",
-        )
+        ) from e
 
     return FileResponse(
-        path=tmp.name,
+        path=tmp_name,
         media_type="text/html",
         filename=f"backtest_report_{run_id}.html",
     )
@@ -1048,8 +1048,8 @@ async def compare_strategies(
     for rid_str in req.run_ids:
         try:
             rid = UUID(rid_str)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"无效的 run_id: {rid_str}")
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=f"无效的 run_id: {rid_str}") from err
 
         run = await _get_run_or_404(session, rid)
         results.append({

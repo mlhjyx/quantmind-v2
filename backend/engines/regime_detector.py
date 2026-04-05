@@ -11,11 +11,11 @@
 铁律7: ML实验必须OOS验证——rolling fit每次只用T-1前数据。
 """
 
-import structlog
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

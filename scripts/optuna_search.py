@@ -94,7 +94,7 @@ def compute_mean_rank_ic(df, predictions, target_col="excess_return_20"):
     temp["predicted"] = predictions
 
     daily_ics = []
-    for td, group in temp.groupby("trade_date"):
+    for _td, group in temp.groupby("trade_date"):
         if len(group) < 30:
             continue
         ic = group["predicted"].rank().corr(group[target_col].rank())
@@ -110,7 +110,7 @@ def compute_mean_ic(df, predictions, target_col="excess_return_20"):
     temp["predicted"] = predictions
 
     daily_ics = []
-    for td, group in temp.groupby("trade_date"):
+    for _td, group in temp.groupby("trade_date"):
         if len(group) < 30:
             continue
         ic = group["predicted"].corr(group[target_col])
@@ -227,7 +227,7 @@ def main():
     X_valid = valid_processed[feature_cols].values.astype(np.float32)
     y_valid = valid_processed["excess_return_20"].values.astype(np.float32)
     X_test = test_processed[feature_cols].values.astype(np.float32)
-    y_test = test_processed["excess_return_20"].values.astype(np.float32)
+    test_processed["excess_return_20"].values.astype(np.float32)
 
     logger.info(f"X_train: {X_train.shape}, X_valid: {X_valid.shape}, X_test: {X_test.shape}")
 

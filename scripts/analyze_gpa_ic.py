@@ -276,10 +276,7 @@ def main():
 
     # 选取一个中间日期的截面做相关性
     mid_dates = [d for d in monthly_dates if d.year in (2022, 2023)]
-    if len(mid_dates) >= 6:
-        sample_dates = mid_dates[::len(mid_dates) // 6][:6]
-    else:
-        sample_dates = mid_dates[:6]
+    sample_dates = mid_dates[::len(mid_dates) // 6][:6] if len(mid_dates) >= 6 else mid_dates[:6]
 
     corr_records = []
     for td in sample_dates:

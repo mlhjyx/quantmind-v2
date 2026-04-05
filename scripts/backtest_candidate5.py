@@ -141,7 +141,7 @@ def run_strategy(factor_names: list[str], label: str, conn,
     target_portfolios = {}
     prev_weights = {}
 
-    for i, rd in enumerate(rebalance_dates):
+    for _i, rd in enumerate(rebalance_dates):
         fv = load_factor_values(rd, factor_names, conn)
         if fv.empty:
             logger.warning(f"[{label}][{rd}] 无因子数据, 跳过")

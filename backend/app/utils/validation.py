@@ -9,11 +9,11 @@
 
 from __future__ import annotations
 
-import structlog
 from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

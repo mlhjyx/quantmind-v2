@@ -14,17 +14,22 @@ Phase 0 核心组件, 严格遵守 CLAUDE.md 回测可信度规则:
 6. 交易成本敏感性分析
 """
 
-import structlog
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
-from typing import Optional, Protocol
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import structlog
 
 from engines.base_broker import BaseBroker
 from engines.slippage_model import SlippageConfig, volume_impact_slippage
+
+if TYPE_CHECKING:
+    from engines.datafeed import DataFeed
+    from engines.vectorized_signal import SignalConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -127,7 +132,7 @@ class BacktestResult:
     holdings_history: dict       # date → {code: shares}
     config: BacktestConfig
     turnover_series: pd.Series   # date → turnover ratio
-    pending_order_stats: Optional[PendingOrderStats] = None
+    pending_order_stats: PendingOrderStats | None = None
     pms_events: list[dict] = field(default_factory=list)  # 利润保护触发事件
 
 
@@ -182,7 +187,7 @@ class SimBroker(BaseBroker):
         code: str,
         direction: str,
         row: pd.Series,
-        symbols_info: Optional[pd.DataFrame] = None,
+        symbols_info: pd.DataFrame | None = None,
     ) -> bool:
         """判断是否可以成交。
 
@@ -222,14 +227,12 @@ class SimBroker(BaseBroker):
         turnover = 999.0 if (_t is None or pd.isna(_t)) else float(_t)
 
         # 3. 封板判断
-        if direction == "buy":
+        if direction == "buy" and abs(close - up_limit) < 0.015 and turnover < 1.0:
             # 涨停封板: 收盘价≈涨停价 且 换手率<1%
-            if abs(close - up_limit) < 0.015 and turnover < 1.0:
-                return False
-        elif direction == "sell":
+            return False
+        elif direction == "sell" and abs(close - down_limit) < 0.015 and turnover < 1.0:
             # 跌停封板: 收盘价≈跌停价 且 换手率<1%
-            if abs(close - down_limit) < 0.015 and turnover < 1.0:
-                return False
+            return False
 
         return True
 
@@ -297,7 +300,7 @@ class SimBroker(BaseBroker):
             daily_amount *= 1000
         return daily_amount
 
-    def execute_sell(self, code: str, shares: int, row: pd.Series) -> Optional[Fill]:
+    def execute_sell(self, code: str, shares: int, row: pd.Series) -> Fill | None:
         """执行卖出。
 
         A5修复: 单笔成交额上限 = daily_amount * volume_cap_pct (DEV_BACKTEST_ENGINE §4.9)。
@@ -350,7 +353,7 @@ class SimBroker(BaseBroker):
             total_cost=total_cost,
         )
 
-    def execute_buy(self, code: str, target_amount: float, row: pd.Series) -> Optional[Fill]:
+    def execute_buy(self, code: str, target_amount: float, row: pd.Series) -> Fill | None:
         """执行买入。
 
         CLAUDE.md 规则2: 整手约束。
@@ -467,7 +470,7 @@ class SimpleBacktester:
         self,
         target_portfolios: dict[date, dict[str, float]],
         price_data: pd.DataFrame,
-        benchmark_data: Optional[pd.DataFrame] = None,
+        benchmark_data: pd.DataFrame | None = None,
     ) -> BacktestResult:
         """执行回测。
 
@@ -506,7 +509,7 @@ class SimpleBacktester:
         daily_close = {}
         for d in all_dates:
             day_data = price_data[price_data["trade_date"] == d]
-            daily_close[d] = dict(zip(day_data["code"], day_data["close"]))
+            daily_close[d] = dict(zip(day_data["code"], day_data["close"], strict=False))
 
         # 回测主循环
         nav_series = {}
@@ -521,7 +524,7 @@ class SimpleBacktester:
         pms_pending_sells: list[str] = []  # next_open模式下延迟到T+1卖出的code
         pms_events: list[dict] = []  # 记录触发事件
 
-        for i, td in enumerate(all_dates):
+        for _i, td in enumerate(all_dates):
             broker.new_day()
 
             # ===== PMS: 执行T+1延迟卖出 =====
@@ -820,7 +823,7 @@ class SimpleBacktester:
                 continue
 
             # 检查距下次调仓是否太近
-            next_rebal_dates = [d for d in exec_map.keys() if d > today]
+            next_rebal_dates = [d for d in exec_map if d > today]
             if next_rebal_dates:
                 next_rebal = min(next_rebal_dates)
                 next_rebal_idx = all_dates.index(next_rebal) if next_rebal in all_dates else len(all_dates)
@@ -923,9 +926,9 @@ def run_hybrid_backtest(
     directions: dict[str, int],
     price_data: pd.DataFrame,
     config: BacktestConfig,
-    benchmark_data: Optional[pd.DataFrame] = None,
-    signal_config: Optional["SignalConfig"] = None,
-    datafeed: Optional["DataFeed"] = None,
+    benchmark_data: pd.DataFrame | None = None,
+    signal_config: SignalConfig | None = None,
+    datafeed: DataFeed | None = None,
 ) -> BacktestResult:
     """Hybrid回测: Phase A向量化信号 → Phase B事件驱动执行。
 

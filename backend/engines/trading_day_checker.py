@@ -13,9 +13,11 @@ Layer 4: 启发式判断（周末=非交易日，工作日=假定交易日，约
     next_td = checker.next_trading_day()
 """
 
-import structlog
+import contextlib
 from datetime import date, timedelta
 from typing import Any
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -203,7 +205,5 @@ class TradingDayChecker:
             self._conn.commit()
         except Exception as e:
             logger.debug(f"[TradingDayChecker] UPSERT失败: {e}")
-            try:
+            with contextlib.suppress(Exception):
                 self._conn.rollback()
-            except Exception:
-                pass

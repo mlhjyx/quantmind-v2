@@ -123,7 +123,7 @@ async def test_rolling_stats_sharpe_calculation(perf_repo, seeded_perf_data):
     # 手动计算期望值
     navs = seeded_perf_data["navs"]
     # repo按DESC取，rets对应倒序nav
-    navs_desc = list(reversed(navs))
+    list(reversed(navs))
     # daily_return是存入DB的值，我们重新算
     daily_rets_stored = []
     for i in range(len(navs)):

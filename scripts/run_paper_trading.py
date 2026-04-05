@@ -47,6 +47,8 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import contextlib
+
 import pandas as pd
 from engines.factor_engine import compute_daily_factors, save_daily_factors
 from engines.paper_broker import PaperBroker
@@ -75,10 +77,8 @@ _log_handlers = [
     logging.FileHandler(LOG_DIR / "paper_trading.log", encoding="utf-8"),
 ]
 if sys.stdout and not getattr(sys.stdout, "closed", True) and sys.stderr and not getattr(sys.stderr, "closed", True):
-    try:
+    with contextlib.suppress(Exception):
         _log_handlers.insert(0, logging.StreamHandler(sys.stderr))
-    except Exception:
-        pass
 
 logging.basicConfig(
     level=logging.INFO,
@@ -108,10 +108,8 @@ def log_step(conn, task_name: str, status: str, error: str = None, result: dict 
         conn.commit()
     except Exception as e:
         logger.warning(f"写入scheduler_task_log失败: {e}")
-        try:
+        with contextlib.suppress(Exception):
             conn.rollback()
-        except Exception:
-            pass
 
 
 def load_today_prices(trade_date: date, conn) -> pd.DataFrame:
@@ -607,10 +605,8 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                         idx_total += len(df_idx)
                 except Exception as e:
                     logger.warning(f"[Step1] index_daily拉取失败({idx_code}): {e}")
-                    try:
+                    with contextlib.suppress(Exception):
                         conn.rollback()
-                    except Exception:
-                        pass
             logger.info(f"[Step1] index_daily增量拉取: {idx_total}行")
 
             logger.info(f"[Step1] 完成 ({time.time()-t1:.0f}s): klines={len(df_klines)}, basic={len(df_basic)}, index={idx_total}")
@@ -625,7 +621,7 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         logger.info(f"[Step1.5] 更新T日NAV ({trade_date})...")
         price_data_t = load_today_prices(trade_date, conn)
         if not price_data_t.empty:
-            today_close_t = dict(zip(price_data_t["code"], price_data_t["close"]))
+            today_close_t = dict(zip(price_data_t["code"], price_data_t["close"], strict=False))
             benchmark_close_t = get_benchmark_close(trade_date, conn)
 
             paper_broker_nav = PaperBroker(
@@ -874,10 +870,8 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
     except Exception as e:
         logger.error(f"[SIGNAL PHASE] 异常: {e}")
         traceback.print_exc()
-        try:
+        with contextlib.suppress(Exception):
             log_step(conn, "signal_phase", "failed", str(e))
-        except Exception:
-            pass
         sys.exit(1)
     finally:
         conn.close()
@@ -1053,7 +1047,7 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool,
                     # 用xtdata实时价或klines close估算
                     px = 0.0
                     try:
-                        from engines.qmt_execution_adapter import _to_qmt_code, _get_realtime_tick
+                        from engines.qmt_execution_adapter import _get_realtime_tick, _to_qmt_code
                         tick = _get_realtime_tick(_to_qmt_code(code))
                         if tick and tick.get("lastPrice", 0) > 0:
                             px = tick["lastPrice"]
@@ -1099,7 +1093,10 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool,
                     def _est_price(code: str) -> float:
                         """获取估价（xtdata或klines）。"""
                         try:
-                            from engines.qmt_execution_adapter import _to_qmt_code, _get_realtime_tick
+                            from engines.qmt_execution_adapter import (
+                                _get_realtime_tick,
+                                _to_qmt_code,
+                            )
                             t = _get_realtime_tick(_to_qmt_code(code))
                             if t and t.get("lastPrice", 0) > 0:
                                 return t["lastPrice"]
@@ -1367,10 +1364,8 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool,
     except Exception as e:
         logger.error(f"[EXECUTE PHASE] 异常: {e}")
         traceback.print_exc()
-        try:
+        with contextlib.suppress(Exception):
             log_step(conn, f"execute_phase_{exec_mode}", "failed", str(e))
-        except Exception:
-            pass
         sys.exit(1)
     finally:
         conn.close()

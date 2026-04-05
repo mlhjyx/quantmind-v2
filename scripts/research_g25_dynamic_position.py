@@ -21,12 +21,11 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -44,6 +43,7 @@ from engines.signal_engine import (
     get_rebalance_dates,
 )
 from engines.slippage_model import SlippageConfig
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
@@ -300,7 +300,7 @@ def analyze_position_dynamics(position_scale: pd.Series, start_d, end_d):
 
 def paired_bootstrap_test(returns_a: pd.Series, returns_b: pd.Series, n_boot=5000):
     """Paired bootstrap test for Sharpe ratio difference."""
-    diff_returns = returns_a - returns_b
+    returns_a - returns_b
     # Align dates
     common = returns_a.index.intersection(returns_b.index)
     ra = returns_a.reindex(common).dropna()
@@ -327,10 +327,7 @@ def paired_bootstrap_test(returns_a: pd.Series, returns_b: pd.Series, n_boot=500
 
     boot_diffs = np.array(boot_diffs)
     # Two-sided p-value: proportion of bootstrap diffs with opposite sign
-    if observed_diff > 0:
-        p_value = (boot_diffs <= 0).mean()
-    else:
-        p_value = (boot_diffs >= 0).mean()
+    p_value = (boot_diffs <= 0).mean() if observed_diff > 0 else (boot_diffs >= 0).mean()
 
     return {
         "sharpe_diff": observed_diff,
@@ -417,7 +414,7 @@ def format_report(all_results, baseline_result):
     lines.append("G2.5 动态仓位研究 — 对比报告")
     lines.append("=" * 100)
     lines.append(f"回测: {START} ~ {END} | 5因子等权Top15月度 | volume_impact | 资金{CAPITAL:,.0f}")
-    lines.append(f"动态仓位: 全市场等权20d累积收益 → 满仓(>0)/半仓(<0)/空仓(<-10%)")
+    lines.append("动态仓位: 全市场等权20d累积收益 → 满仓(>0)/半仓(<0)/空仓(<-10%)")
 
     # 核心指标
     lines.append("\n--- 核心指标对比 ---")

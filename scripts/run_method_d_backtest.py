@@ -198,10 +198,7 @@ def method_d_select(
         pq_in_pool = pq_score.loc[pq_score.index.isin(pq_pool)]
         pq_mean = pq_in_pool.mean()
         pq_std = pq_in_pool.std()
-        if pq_std > 0:
-            pq_scores = (pq_in_pool - pq_mean) / pq_std
-        else:
-            pq_scores = pq_in_pool * 0
+        pq_scores = (pq_in_pool - pq_mean) / pq_std if pq_std > 0 else pq_in_pool * 0
 
     logger.debug(f"  价量池: {len(pq_pool)}只")
 
@@ -371,7 +368,7 @@ def run_baseline_backtest(
     target_portfolios = {}
     prev_weights = {}
 
-    for i, rd in enumerate(rebalance_dates):
+    for _i, rd in enumerate(rebalance_dates):
         fv = load_factor_values(rd, conn)
         if fv.empty:
             continue

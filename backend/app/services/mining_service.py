@@ -17,11 +17,11 @@ Celery 任务在 asyncio.run() 内调用（DEV_BACKEND.md 规范）。
 from __future__ import annotations
 
 import json
-import structlog
 import uuid
 from datetime import datetime
 from typing import Any
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

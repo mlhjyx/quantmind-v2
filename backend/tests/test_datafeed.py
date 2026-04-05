@@ -19,8 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from engines.datafeed import DataFeed, DataFeedValidationError, REQUIRED_COLUMNS
-
+from engines.datafeed import REQUIRED_COLUMNS, DataFeed, DataFeedValidationError
 
 # ═══════════════════════════════════════════════════
 # Helpers

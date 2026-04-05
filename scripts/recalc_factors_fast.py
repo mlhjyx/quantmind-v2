@@ -16,7 +16,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import date, datetime
+from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -28,8 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 import numpy as np
 import pandas as pd
 import psycopg2
-from psycopg2.extras import execute_values
-
+import structlog
 from engines.factor_engine import (
     PHASE0_FULL_FACTORS,
     RESERVE_FACTORS,
@@ -38,8 +37,8 @@ from engines.factor_engine import (
     preprocess_mad,
     preprocess_zscore,
 )
+from psycopg2.extras import execute_values
 
-import structlog
 logger = structlog.get_logger("recalc_fast")
 
 SEGMENTS = [
@@ -235,23 +234,22 @@ def process_segment(args: tuple) -> dict:
         total_rows += len(day_rows)
 
         # 优化3: 每COMMIT_INTERVAL天批量commit
-        if (i + 1) % COMMIT_INTERVAL == 0 or i == len(all_dates) - 1:
-            if batch_rows:
-                with conn.cursor() as cur:
-                    execute_values(
-                        cur,
-                        """INSERT INTO factor_values
+        if ((i + 1) % COMMIT_INTERVAL == 0 or i == len(all_dates) - 1) and batch_rows:
+            with conn.cursor() as cur:
+                execute_values(
+                    cur,
+                    """INSERT INTO factor_values
                            (code, trade_date, factor_name, raw_value, neutral_value, zscore)
                            VALUES %s
                            ON CONFLICT (code, trade_date, factor_name)
                            DO UPDATE SET raw_value = EXCLUDED.raw_value,
                                          neutral_value = EXCLUDED.neutral_value,
                                          zscore = EXCLUDED.zscore""",
-                        batch_rows,
-                        page_size=10000,
-                    )
-                conn.commit()
-                batch_rows = []
+                    batch_rows,
+                    page_size=10000,
+                )
+            conn.commit()
+            batch_rows = []
 
         if (i + 1) % 50 == 0 or i == 0 or i == len(all_dates) - 1:
             elapsed = time.time() - t0

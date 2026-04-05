@@ -135,7 +135,6 @@ def verify_1_factor_ic():
         # 新pipeline: 从raw_value重新做WLS中性化+clip
         # 简化版: 用raw_value做zscore+clip(因为完整WLS需要ln_mcap数据)
         # 实际WLS效果通过IC差异间接验证
-        from engines.factor_engine import preprocess_pipeline
 
         # 需要读取ln_mcap和行业
         new_ic_list = []
@@ -388,19 +387,19 @@ def verify_2_backtest_sharpe():
     mdd = float(drawdown.min())
 
     # 年换手率(近似)
-    n_years = len(nav) / 252
-    n_rebals = len(rebal_dates)
+    len(nav) / 252
+    len(rebal_dates)
 
     print(f"\n  回测结果 (新代码, {bt_start}~{bt_end}):")
-    print(f"  ┌──────────────────────┬────────────┐")
-    print(f"  │ 指标                 │ 新值       │")
-    print(f"  ├──────────────────────┼────────────┤")
+    print("  ┌──────────────────────┬────────────┐")
+    print("  │ 指标                 │ 新值       │")
+    print("  ├──────────────────────┼────────────┤")
     print(f"  │ Sharpe               │ {sharpe:>10.4f} │")
     print(f"  │ MDD                  │ {mdd:>9.2%} │")
     print(f"  │ 年化收益             │ {annual_ret:>9.2%} │")
     print(f"  │ NAV终值              │ {float(nav.iloc[-1]):>10.4f} │")
     print(f"  │ 回测天数             │ {len(nav):>10d} │")
-    print(f"  └──────────────────────┴────────────┘")
+    print("  └──────────────────────┴────────────┘")
 
     # 与基线对比(CLAUDE.md: Sharpe=1.03, MDD=-39.7%)
     baseline_sharpe = 1.03
@@ -408,7 +407,7 @@ def verify_2_backtest_sharpe():
     sharpe_diff = (sharpe - baseline_sharpe) / abs(baseline_sharpe) * 100
     mdd_diff = (mdd - baseline_mdd) / abs(baseline_mdd) * 100
 
-    print(f"\n  与基线对比 (Sharpe=1.03, MDD=-39.7%):")
+    print("\n  与基线对比 (Sharpe=1.03, MDD=-39.7%):")
     print(f"  Sharpe差异: {sharpe_diff:+.2f}%  {'✅' if abs(sharpe_diff) < 3 else '⚠️'}")
     print(f"  MDD差异: {mdd_diff:+.2f}%  {'✅' if abs(mdd_diff) < 5 else '⚠️'}")
 

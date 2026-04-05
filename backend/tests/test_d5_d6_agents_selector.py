@@ -13,7 +13,6 @@ import sys
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -22,15 +21,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engines.mining.agents.eval_agent import (
+    MIN_DATES,
     EvalAgent,
     EvalResult,
-    IC_THRESHOLD_ACCEPT,
-    IC_THRESHOLD_REVIEW,
-    MIN_DATES,
 )
 from engines.mining.agents.factor_agent import (
     FactorAgent,
-    GeneratedFactorCode,
 )
 from engines.mining.agents.idea_agent import FactorHypothesis
 from engines.mining.engine_selector import (
@@ -41,7 +37,6 @@ from engines.mining.engine_selector import (
     EngineStats,
     ThompsonSamplingSelector,
 )
-
 
 # ═══════════════════════════════════════════════════
 # Helpers

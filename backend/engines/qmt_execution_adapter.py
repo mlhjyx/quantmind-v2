@@ -10,12 +10,14 @@
 安全层8: execution_audit_log审计日志
 """
 
-import structlog
+import contextlib
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, UTC
+from datetime import date
 from typing import Any
+
+import structlog
 
 from engines.backtest_engine import Fill, PendingOrder
 
@@ -141,10 +143,8 @@ def _audit_log(
         )
         conn.commit()
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             conn.rollback()
-        except Exception:
-            pass
 
 
 # ════════════════════════════════════════════════════════════
@@ -669,10 +669,9 @@ class QMTExecutionAdapter:
             try:
                 orders = self._broker.query_orders()
                 for o in orders:
-                    if o.get("order_id") == order_id:
-                        if is_final_status(o.get("order_status", 0)):
-                            logger.info(f"[QMTAdapter] 撤单确认: {code} status={o['order_status']}")
-                            return True
+                    if o.get("order_id") == order_id and is_final_status(o.get("order_status", 0)):
+                        logger.info(f"[QMTAdapter] 撤单确认: {code} status={o['order_status']}")
+                        return True
             except Exception:
                 pass
 

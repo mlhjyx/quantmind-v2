@@ -14,11 +14,11 @@
 - 数据验证时抽样比对
 """
 
-import structlog
 from datetime import date
 
 import pandas as pd
 import psycopg2
+import structlog
 from psycopg2.extras import RealDictCursor
 
 from app.config import settings

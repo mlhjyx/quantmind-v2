@@ -21,9 +21,10 @@
 - IMPLEMENTATION_MASTER.md §4.1: FactorClassifier任务规格
 """
 
-import structlog
 from dataclasses import dataclass, field
 from enum import StrEnum
+
+import structlog
 
 from engines.factor_profile import FactorProfile, fit_exponential_decay, recommend_freq
 

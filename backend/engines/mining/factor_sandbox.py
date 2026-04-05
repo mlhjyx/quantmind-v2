@@ -10,7 +10,6 @@ R2研究选型: AlphaAgent AST去重准确率+81%，Gate G0层前置安全检查
 """
 
 import ast
-import structlog
 import multiprocessing
 import time
 import traceback
@@ -19,6 +18,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

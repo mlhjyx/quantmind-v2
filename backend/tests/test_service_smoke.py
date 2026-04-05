@@ -207,7 +207,7 @@ class TestPaperTradingService:
 
     def _get_service(self):
         from app.services.paper_trading_service import PaperTradingService
-        mock_session = AsyncMock()
+        AsyncMock()
         svc = PaperTradingService.__new__(PaperTradingService)
         svc.perf_repo = MagicMock()
         svc.trade_repo = MagicMock()
@@ -461,7 +461,7 @@ class TestRiskControlServiceTriggers:
             RiskControlService,
         )
 
-        mock_session = AsyncMock()
+        AsyncMock()
         mock_notif = MagicMock()
         svc = RiskControlService.__new__(RiskControlService)
         svc.repo = MagicMock()
@@ -583,7 +583,7 @@ class TestDashboardService:
     def _get_service(self):
         from app.services.dashboard_service import DashboardService
 
-        mock_session = AsyncMock()
+        AsyncMock()
         svc = DashboardService.__new__(DashboardService)
         svc.perf_repo = MagicMock()
         svc.pos_repo = MagicMock()

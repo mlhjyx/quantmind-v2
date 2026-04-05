@@ -26,12 +26,13 @@
 - DESIGN_V5.md §6 信号类型定义
 """
 
-import structlog
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from typing import Any
+
+import structlog
 
 from engines.base_strategy import (
     BaseStrategy,

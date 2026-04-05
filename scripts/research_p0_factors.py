@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """P0因子补全: ATR_norm / IVOL / gap_frequency — 计算+写入DB+IC测试。"""
-import logging, os, sys, time
-from datetime import datetime
+import logging
+import os
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -127,7 +129,7 @@ def compute_and_write(conn):
         g_mkt = pd.Series(mkt, index=g.index)
         ivol = calc_ivol(g["stock_ret"], g_mkt, 20)
 
-        for td, atr_v, gap_v, ivol_v in zip(g["trade_date"], atr_n, gap_f, ivol):
+        for td, atr_v, gap_v, ivol_v in zip(g["trade_date"], atr_n, gap_f, ivol, strict=False):
             if td < pd.Timestamp("2020-07-01"):
                 continue
             td_date = td.date() if hasattr(td, "date") else td
@@ -237,7 +239,7 @@ def run_ic_test(conn):
         merged = merged.dropna(subset=["raw_value", "excess_ret"])
 
         ic_list = []
-        for ym, grp in merged.groupby("ym"):
+        for _ym, grp in merged.groupby("ym"):
             if len(grp) < 30:
                 continue
             rho, _ = sp_stats.spearmanr(grp["raw_value"].values, grp["excess_ret"].values)

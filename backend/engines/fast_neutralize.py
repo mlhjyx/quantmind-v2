@@ -183,44 +183,54 @@ def fast_neutralize_batch(
             conn.close()
         return 0
 
-    # Step 4: COPY写临时表 + JOIN UPDATE
-    logger.info("批量写回%d行...", len(results))
-    t2 = time.time()
+    # Step 4: 分批COPY + JOIN UPDATE（避免OOM）
+    total_written = 0
+    batch_size = 2_000_000  # 200万行/批
 
     cur.execute("""
         CREATE TEMP TABLE IF NOT EXISTS _tmp_neutral (
             code VARCHAR(20), trade_date DATE,
             factor_name VARCHAR(100), neutral_value NUMERIC(20,6)
-        ) ON COMMIT DROP
+        )
     """)
-    cur.execute("TRUNCATE _tmp_neutral")
 
-    # COPY协议写入临时表
-    buf = StringIO()
-    for code, dt, fname, val in results:
-        dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
-        buf.write(f"{code}\t{dt_str}\t{fname}\t{val:.6f}\n")
-    buf.seek(0)
-    cur.copy_from(buf, "_tmp_neutral", columns=["code", "trade_date", "factor_name", "neutral_value"])
-    logger.info("  临时表写入完成 (%.1fs)", time.time() - t2)
+    for batch_start in range(0, len(results), batch_size):
+        batch = results[batch_start:batch_start + batch_size]
+        t2 = time.time()
 
-    # JOIN UPDATE
-    t3 = time.time()
-    cur.execute("""
-        UPDATE factor_values fv
-        SET neutral_value = t.neutral_value,
-            zscore = t.neutral_value
-        FROM _tmp_neutral t
-        WHERE fv.code = t.code
-          AND fv.trade_date = t.trade_date
-          AND fv.factor_name = t.factor_name
-    """)
-    updated = cur.rowcount
+        cur.execute("TRUNCATE _tmp_neutral")
+
+        buf = StringIO()
+        for code, dt, fname, val in batch:
+            dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
+            buf.write(f"{code}\t{dt_str}\t{fname}\t{val:.6f}\n")
+        buf.seek(0)
+        cur.copy_from(buf, "_tmp_neutral", columns=["code", "trade_date", "factor_name", "neutral_value"])
+        del buf  # 释放内存
+
+        cur.execute("""
+            UPDATE factor_values fv
+            SET neutral_value = t.neutral_value,
+                zscore = t.neutral_value
+            FROM _tmp_neutral t
+            WHERE fv.code = t.code
+              AND fv.trade_date = t.trade_date
+              AND fv.factor_name = t.factor_name
+        """)
+        conn.commit()
+        total_written += len(batch)
+        logger.info(
+            "  批次 %d/%d: %d行写入 (%.1fs)",
+            batch_start // batch_size + 1,
+            (len(results) + batch_size - 1) // batch_size,
+            len(batch), time.time() - t2,
+        )
+
+    cur.execute("DROP TABLE IF EXISTS _tmp_neutral")
     conn.commit()
-    logger.info("  UPDATE完成: %d行 (%.1fs)", updated, time.time() - t3)
 
     total_time = time.time() - t_start
-    logger.info("中性化完成: %d行, %.1f分钟", len(results), total_time / 60)
+    logger.info("中性化完成: %d行, %.1f分钟", total_written, total_time / 60)
 
     if own_conn:
         conn.close()

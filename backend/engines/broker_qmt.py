@@ -14,9 +14,10 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from engines.base_broker import BaseBroker
 
@@ -174,7 +175,7 @@ class MiniQMTBroker(BaseBroker):
         self,
         qmt_path: str,
         account_id: str,
-        session_id: Optional[int] = None,
+        session_id: int | None = None,
     ):
         """初始化Broker。
 
@@ -383,7 +384,7 @@ class MiniQMTBroker(BaseBroker):
         code: str,
         direction: str,
         volume: int,
-        price: Optional[float] = None,
+        price: float | None = None,
         price_type: str = "limit",
         remark: str = "",
     ) -> int:

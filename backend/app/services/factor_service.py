@@ -14,11 +14,11 @@ FastAPI Depends注入模式:
         return FactorService(session)
 """
 
-import structlog
 from datetime import date
 from typing import Any
 
 import pandas as pd
+import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -285,7 +285,7 @@ def main():
     consecutive_fail = 0
     t_start = time.time()
 
-    for i, (code, ts_code) in enumerate(stocks):
+    for i, (_code, ts_code) in enumerate(stocks):
         if i < args.offset:
             continue
 

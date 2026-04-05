@@ -66,10 +66,7 @@ def load_performance(conn, sid: str) -> pd.DataFrame:
 
 def calc_rolling_sharpe(returns: np.ndarray, window: int = 20) -> float:
     """滚动Sharpe（年化）。用最近window个交易日。"""
-    if len(returns) < window:
-        r = returns
-    else:
-        r = returns[-window:]
+    r = returns if len(returns) < window else returns[-window:]
     if len(r) < 2:
         return np.nan
     mu = np.mean(r)
@@ -329,7 +326,7 @@ def print_factor_ic_section(conn):
                 print(f"  {fname:25s}  NO DATA")
                 continue
             latest = sub.iloc[-1]
-            ic_5d = latest.get("ic_5d", np.nan)
+            latest.get("ic_5d", np.nan)
             ic_ma20 = latest.get("ic_ma20", np.nan)
             decay = latest.get("decay_level", "?")
             n = len(sub)

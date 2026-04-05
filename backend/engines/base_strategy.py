@@ -16,27 +16,25 @@
 - modifier: 调节型(调整权重/仓位，如regime切换)
 """
 
-import structlog
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 import pandas as pd
+import structlog
 
 from engines.signal_engine import (
-    FACTOR_DIRECTION,
     PortfolioBuilder,
     SignalComposer,
     SignalConfig,
-    get_rebalance_dates,
 )
 
 logger = structlog.get_logger(__name__)
 
 
-class SignalType(str, Enum):
+class SignalType(StrEnum):
     """信号类型分类。"""
 
     RANKING = "ranking"    # 排序型: 因子得分排名选Top-N
@@ -45,7 +43,7 @@ class SignalType(str, Enum):
     MODIFIER = "modifier"  # 调节型: 调整权重/仓位(regime切换)
 
 
-class WeightMethod(str, Enum):
+class WeightMethod(StrEnum):
     """权重分配方案（DESIGN_V5 §6.4）。"""
 
     EQUAL = "equal"              # 等权 1/N
@@ -53,7 +51,7 @@ class WeightMethod(str, Enum):
     RISK_PARITY = "risk_parity"  # 风险平价 (Phase 1)
 
 
-class RebalanceFreq(str, Enum):
+class RebalanceFreq(StrEnum):
     """调仓频率。"""
 
     DAILY = "daily"
@@ -71,7 +69,7 @@ class StrategyContext:
     factor_df: pd.DataFrame  # [code, factor_name, neutral_value]
     universe: set[str]
     industry_map: dict[str, str]  # code -> industry_sw1
-    prev_holdings: Optional[dict[str, float]]  # code -> weight (上期)
+    prev_holdings: dict[str, float] | None  # code -> weight (上期)
     conn: Any  # psycopg2连接
     total_capital: float = 0.0  # 当前总资产(用于整手计算)
 
@@ -145,7 +143,7 @@ class BaseStrategy(ABC):
     def compute_alpha(
         self,
         factor_df: pd.DataFrame,
-        universe: Optional[set[str]] = None,
+        universe: set[str] | None = None,
     ) -> pd.Series:
         """Alpha Score合成（DESIGN_V5 §6.2）。复用SignalComposer。
 
@@ -163,7 +161,7 @@ class BaseStrategy(ABC):
         self,
         scores: pd.Series,
         industry_map: dict[str, str],
-        prev_holdings: Optional[dict[str, float]] = None,
+        prev_holdings: dict[str, float] | None = None,
     ) -> dict[str, float]:
         """构建目标持仓权重（§6.3-§6.5）。复用PortfolioBuilder。
 

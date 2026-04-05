@@ -15,11 +15,10 @@
 Engine层规范: 纯计算，无IO，无数据库访问。
 """
 
-import structlog
-from typing import Optional
 
 import numpy as np
 import pandas as pd
+import structlog
 
 from engines.factor_decay import DecayLevel, DecayResult
 
@@ -32,7 +31,7 @@ TIMING_WEIGHT_MAX = 1.5   # 最高权重倍数
 MIN_IC_DAYS = 60           # IC数据最少天数（不够则不调整）
 
 
-def calc_timing_score(ic_daily: pd.Series) -> Optional[float]:
+def calc_timing_score(ic_daily: pd.Series) -> float | None:
     """计算单因子的timing_score = IC_MA20 / IC_MA60。
 
     Args:
@@ -58,8 +57,8 @@ def calc_timing_score(ic_daily: pd.Series) -> Optional[float]:
 def calc_timing_weights(
     factor_names: list[str],
     ic_data: dict[str, pd.Series],
-    base_weights: Optional[dict[str, float]] = None,
-    decay_results: Optional[list[DecayResult]] = None,
+    base_weights: dict[str, float] | None = None,
+    decay_results: list[DecayResult] | None = None,
 ) -> dict[str, float]:
     """计算择时调整后的因子权重。
 
@@ -130,7 +129,7 @@ def calc_timing_weights(
 def compare_timing_vs_equal(
     factor_names: list[str],
     ic_data: dict[str, pd.Series],
-    decay_results: Optional[list[DecayResult]] = None,
+    decay_results: list[DecayResult] | None = None,
 ) -> dict:
     """对比择时权重 vs 等权。
 

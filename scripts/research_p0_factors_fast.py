@@ -5,8 +5,11 @@
 默认: all (顺序执行3个因子)
 并行: 3个终端分别跑 atr / ivol / gap
 """
-import logging, os, sys, time, io
-from datetime import datetime
+import io
+import logging
+import os
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -61,7 +64,7 @@ def calc_atr_norm_batch(pdf):
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         atr = tr.rolling(20, min_periods=10).mean()
         val = atr / g["close"].clip(lower=0.01)
-        for td, v in zip(g["trade_date"], val):
+        for td, v in zip(g["trade_date"], val, strict=False):
             if td >= pd.Timestamp("2020-07-01") and pd.notna(v) and np.isfinite(v):
                 results.append((code, td.date(), "atr_norm_20", float(v)))
     return results
@@ -76,7 +79,7 @@ def calc_gap_freq_batch(pdf):
             continue
         gap = ((g["open"] - g["pre_close"]).abs() / g["pre_close"].clip(lower=0.01)) > 0.01
         val = gap.astype(float).rolling(20, min_periods=10).mean()
-        for td, v in zip(g["trade_date"], val):
+        for td, v in zip(g["trade_date"], val, strict=False):
             if td >= pd.Timestamp("2020-07-01") and pd.notna(v) and np.isfinite(v):
                 results.append((code, td.date(), "gap_frequency_20", float(v)))
     return results
@@ -215,7 +218,7 @@ def run_ic_test(conn, factor_name):
         print(f"    {yr}: IC={np.mean(yearly[yr]):+.4f} ({len(yearly[yr])}m)")
 
     # Correlation with Active factors
-    last_date = merged["ym"].max()
+    merged["ym"].max()
     active = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
     fv_all = pd.read_sql(
         "SELECT code, factor_name, raw_value FROM factor_values "
@@ -225,7 +228,7 @@ def run_ic_test(conn, factor_name):
     if not fv_all.empty:
         pivot = fv_all.pivot_table(index="code", columns="factor_name", values="raw_value")
         if factor_name in pivot.columns:
-            print(f"  Correlations with Active:")
+            print("  Correlations with Active:")
             for af in active:
                 if af in pivot.columns:
                     valid = pivot[[factor_name, af]].dropna()

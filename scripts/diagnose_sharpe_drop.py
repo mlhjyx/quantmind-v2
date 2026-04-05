@@ -239,7 +239,7 @@ def run_single_backtest(
     prev_weights = {}
     holdings_counts = []  # 每期持仓数
 
-    for i, rd in enumerate(rebalance_dates):
+    for _i, rd in enumerate(rebalance_dates):
         fv = load_factor_values(rd, conn)
         if fv.empty:
             continue
@@ -273,7 +273,7 @@ def run_single_backtest(
 
     # 从holdings_history计算实际平均持仓数
     actual_holdings_counts = []
-    for d, h in result.holdings_history.items():
+    for _d, h in result.holdings_history.items():
         actual_holdings_counts.append(len(h))
 
     avg_target_holdings = np.mean(holdings_counts) if holdings_counts else 0

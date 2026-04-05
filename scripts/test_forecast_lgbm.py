@@ -290,7 +290,7 @@ def run_f1_fold(
     X_valid = valid_p[feature_cols].values.astype(np.float32)
     y_valid = valid_p["excess_return_20"].values.astype(np.float32)
     X_test = test_p[feature_cols].values.astype(np.float32)
-    y_test = test_p["excess_return_20"].values.astype(np.float32)
+    test_p["excess_return_20"].values.astype(np.float32)
 
     logger.info(f"X_train: {X_train.shape}, X_valid: {X_valid.shape}, X_test: {X_test.shape}")
 
@@ -351,10 +351,7 @@ def run_f1_fold(
                 continue
             pred = group["predicted"]
             actual = group["excess_return_20"]
-            if method == "spearman":
-                ic = pred.rank().corr(actual.rank())
-            else:
-                ic = pred.corr(actual)
+            ic = pred.rank().corr(actual.rank()) if method == "spearman" else pred.corr(actual)
             if not np.isnan(ic):
                 daily_ics[td_val] = ic
         return pd.Series(daily_ics)
@@ -378,7 +375,7 @@ def run_f1_fold(
     overfit_ratio = train_ic / valid_ic if valid_ic > 1e-8 else 99.0
 
     importance = model.feature_importance(importance_type="gain")
-    feat_imp = dict(zip(feature_cols, [float(v) for v in importance]))
+    feat_imp = dict(zip(feature_cols, [float(v) for v in importance], strict=False))
 
     elapsed = time.time() - t0
 

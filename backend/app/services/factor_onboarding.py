@@ -22,7 +22,6 @@
 from __future__ import annotations
 
 import json
-import structlog
 import os
 from datetime import date, timedelta
 from typing import Any
@@ -30,6 +29,7 @@ from typing import Any
 import asyncpg
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats as scipy_stats
 
 logger = structlog.get_logger(__name__)

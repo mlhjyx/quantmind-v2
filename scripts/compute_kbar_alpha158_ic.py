@@ -558,10 +558,10 @@ def main():
         """
         SELECT code, trade_date, factor_name, zscore::float AS value
         FROM factor_values
-        WHERE factor_name IN (%s)
+        WHERE factor_name IN ({})
           AND trade_date >= '2021-01-01'
         ORDER BY trade_date, code
-        """ % ",".join(f"'{f}'" for f in CORR_CHECK_FACTORS),
+        """.format(",".join(f"'{f}'" for f in CORR_CHECK_FACTORS)),
         conn,
     )
     print(f"  Existing factor rows: {len(existing_factors):,}")
@@ -779,15 +779,12 @@ def main():
 
     if len(ic_c2h_neg) > 0 and len(ic_c2h_pos) > 0:
         if abs(ic_c2h_neg["ic"].mean()) > abs(ic_c2h_pos["ic"].mean()):
-            c2h_dir = -1
             ic_c2h_raw = ic_c2h_neg
             print("  Best direction: -1 (close near high => reversal)")
         else:
-            c2h_dir = +1
             ic_c2h_raw = ic_c2h_pos
             print("  Best direction: +1 (close near high => continuation)")
     else:
-        c2h_dir = -1
         ic_c2h_raw = ic_c2h_neg if len(ic_c2h_neg) > 0 else ic_c2h_pos
 
     s_raw = ic_summary(ic_c2h_raw)
@@ -857,7 +854,7 @@ def main():
         resid_dir = +1
         ic_resid = ic_resid_pos if len(ic_resid_pos) > 0 else ic_resid_neg
 
-    r_resid = print_ic_report(
+    print_ic_report(
         "close_to_high RESIDUAL (vol_20 removed)",
         "OLS residual: close_to_high_20 ~ vol_20",
         ic_resid,

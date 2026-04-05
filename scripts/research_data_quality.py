@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """数据质量巡检 + 交叉一致性 + 异常值检查。"""
-import os, sys
+import os
+import sys
+
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 
 from app.services.price_utils import _get_sync_conn
+
 
 def main():
     conn = _get_sync_conn()
@@ -101,7 +104,7 @@ def main():
             cur.execute(f"SELECT COUNT(*) FROM {t}")
             if cur.fetchone()[0] == 0:
                 empty.append(t)
-        except:
+        except Exception:
             conn.rollback()
     print(f"  {len(empty)} empty tables: {', '.join(empty)}")
 

@@ -6,20 +6,17 @@ A7: update_nav_sync 传入 avg_costs 时正确写入 unrealized_pnl / avg_cost
 A10: 相同输入两次运行回测结果完全一致（mergesort 确定性）
 """
 
-import hashlib
 from datetime import date
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.backtest_engine import (
     BacktestConfig,
     SimBroker,
     SimpleBacktester,
 )
-
 
 # ============================================================
 # Fixtures
@@ -346,7 +343,7 @@ class TestA10Determinism:
             f"两次运行交易数量不同: {len(result1.trades)} vs {len(result2.trades)}"
 
         # 每笔交易的关键字段一致
-        for i, (t1, t2) in enumerate(zip(result1.trades, result2.trades)):
+        for i, (t1, t2) in enumerate(zip(result1.trades, result2.trades, strict=False)):
             assert t1.code == t2.code, f"第{i}笔: code不同 {t1.code} vs {t2.code}"
             assert t1.trade_date == t2.trade_date, f"第{i}笔: date不同"
             assert abs(t1.shares - t2.shares) == 0, f"第{i}笔: shares不同"

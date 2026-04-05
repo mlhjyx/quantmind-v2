@@ -23,12 +23,11 @@ Sprint 1.18 (D6补全)
 from __future__ import annotations
 
 import json
-import structlog
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -185,8 +184,7 @@ class ThompsonSamplingSelector:
             stats.beta += 1
 
         logger.info(
-            "[EngineSelector] 更新 %s: success=%s, alpha=%.1f, beta=%.1f, runs=%d"
-            % (engine, success, stats.alpha, stats.beta, stats.total_runs),
+            f"[EngineSelector] 更新 {engine}: success={success}, alpha={stats.alpha:.1f}, beta={stats.beta:.1f}, runs={stats.total_runs}",
         )
 
     def get_stats(self) -> dict[str, dict]:

@@ -10,7 +10,6 @@ import asyncio
 import json
 import logging
 import math
-import os
 import sys
 import time
 import uuid
@@ -69,7 +68,11 @@ def run_backtest(self, run_id: str) -> dict[str, Any]:
 async def _run_async(run_id: str) -> dict[str, Any]:
     import asyncpg
     from engines.backtest_engine import BacktestConfig, SimpleBacktester
-    from engines.vectorized_signal import SignalConfig, build_target_portfolios, compute_rebalance_dates
+    from engines.vectorized_signal import (
+        SignalConfig,
+        build_target_portfolios,
+        compute_rebalance_dates,
+    )
 
     conn = await asyncpg.connect(DB_URL)
     try:
@@ -284,10 +287,7 @@ def _build_targets(
         for f in available_factors:
             col = pivot[f]
             std = col.std()
-            if std > 0:
-                z = (col - col.mean()) / std
-            else:
-                z = col * 0.0
+            z = (col - col.mean()) / std if std > 0 else col * 0.0
             direction = directions.get(f, 1)
             scores[f] = z * direction
 

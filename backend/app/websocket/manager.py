@@ -14,9 +14,8 @@ FastAPI挂载示例（在main.py中）:
     app.mount("/ws", socket_app)
 """
 
-import structlog
-
 import socketio
+import structlog
 
 from app.websocket.events import (
     EVENT_LOG,

@@ -390,10 +390,7 @@ def generate_report(
         else:
             roll_ic = float(row["rolling_ic_12m"]) if pd.notna(row["rolling_ic_12m"]) else 0.0
 
-        if abs(entry_ic) > 1e-8:
-            ratio = abs(roll_ic) / abs(entry_ic)
-        else:
-            ratio = 0.0
+        ratio = abs(roll_ic) / abs(entry_ic) if abs(entry_ic) > 1e-08 else 0.0
 
         if ratio >= 0.70:
             health = "OK"
@@ -415,7 +412,7 @@ def generate_report(
             continue
         recent = monthly_ic_dict[fname].tail(6)
         trend_str = " | ".join(
-            f"{p}: {v:+.4f}" for p, v in zip(recent.index.astype(str), recent.values)
+            f"{p}: {v:+.4f}" for p, v in zip(recent.index.astype(str), recent.values, strict=False)
         )
         lines.append(f"  {fname}: {trend_str}")
 

@@ -16,10 +16,10 @@ Sprint 1.18 ml-engineer (D5补全)
 
 from __future__ import annotations
 
-import structlog
 import re
 from dataclasses import dataclass, field
-from typing import Any
+
+import structlog
 
 from ..deepseek_client import (
     DeepSeekClient,

@@ -91,7 +91,7 @@ def train_and_evaluate_fold(
     X_valid = valid_p[feature_cols].values.astype(np.float32)
     y_valid = valid_p["excess_return_20"].values.astype(np.float32)
     X_test = test_p[feature_cols].values.astype(np.float32)
-    y_test = test_p["excess_return_20"].values.astype(np.float32)
+    test_p["excess_return_20"].values.astype(np.float32)
 
     train_data = lgb.Dataset(X_train, label=y_train, feature_name=feature_cols)
     valid_data = lgb.Dataset(X_valid, label=y_valid, reference=train_data)

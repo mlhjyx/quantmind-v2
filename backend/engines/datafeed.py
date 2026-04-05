@@ -8,12 +8,11 @@
 Engine层规范: 纯计算无IO（from_database除外，它是数据加载边界）。
 """
 
-import structlog
 from datetime import date
 from pathlib import Path
-from typing import Optional, Union
 
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -64,10 +63,10 @@ class DataFeed:
     @classmethod
     def from_database(
         cls,
-        start_date: Union[str, date],
-        end_date: Union[str, date],
-        universe: Optional[list[str]] = None,
-        db_url: Optional[str] = None,
+        start_date: str | date,
+        end_date: str | date,
+        universe: list[str] | None = None,
+        db_url: str | None = None,
     ) -> "DataFeed":
         """从PostgreSQL读取行情数据。
 
@@ -147,7 +146,7 @@ class DataFeed:
         return feed
 
     @classmethod
-    def from_parquet(cls, path: Union[str, Path]) -> "DataFeed":
+    def from_parquet(cls, path: str | Path) -> "DataFeed":
         """从Parquet文件读取行情数据。
 
         用途: 确定性测试数据快照，保证同一输入永远产出同一结果。
@@ -165,9 +164,8 @@ class DataFeed:
         df = pd.read_parquet(path)
 
         # trade_date可能被序列化为Timestamp，转回date
-        if not df.empty and "trade_date" in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df["trade_date"]):
-                df["trade_date"] = df["trade_date"].dt.date
+        if not df.empty and "trade_date" in df.columns and pd.api.types.is_datetime64_any_dtype(df["trade_date"]):
+            df["trade_date"] = df["trade_date"].dt.date
 
         logger.info(
             "DataFeed.from_parquet: %d行, 文件=%s",
@@ -255,13 +253,12 @@ class DataFeed:
         # 3. 数值列类型检查
         numeric_cols = ["open", "high", "low", "close", "volume", "amount"]
         for col in numeric_cols:
-            if col in self._data.columns:
-                if not pd.api.types.is_numeric_dtype(self._data[col]):
-                    raise DataFeedValidationError(
-                        f"列 '{col}' 应为数值类型，实际为 {self._data[col].dtype}"
-                    )
+            if col in self._data.columns and not pd.api.types.is_numeric_dtype(self._data[col]):
+                raise DataFeedValidationError(
+                    f"列 '{col}' 应为数值类型，实际为 {self._data[col].dtype}"
+                )
 
-    def to_parquet(self, path: Union[str, Path]) -> None:
+    def to_parquet(self, path: str | Path) -> None:
         """将数据导出为Parquet文件（用于创建测试快照）。
 
         Args:

@@ -20,8 +20,7 @@
 import json
 import os
 import sys
-import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -243,7 +242,7 @@ def run_monitor(force: bool = False) -> None:
 
     # 5. 单股跌停检测
     for pos in positions:
-        code = pos.get("stock_code", "")
+        pos.get("stock_code", "")
         mv = pos.get("market_value", 0)
         # 简单检测: 如果持仓市值=0且有持股，可能跌停
         vol = pos.get("volume", 0)

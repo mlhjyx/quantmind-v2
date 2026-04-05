@@ -190,10 +190,10 @@ def assess_graduation(conn, strategy_id: str, verbose: bool = False) -> dict:
         signals = [(r[1], r[2]) for r in gap_rows if r[0] == 'signal_phase']
         executes = [(r[1], r[2]) for r in gap_rows if r[0] == 'execute_phase']
         gaps = []
-        for sig_start, sig_end in signals:
+        for _sig_start, sig_end in signals:
             if sig_end is None:
                 continue
-            for exe_start, exe_end in executes:
+            for exe_start, _exe_end in executes:
                 if exe_start is None:
                     continue
                 if exe_start > sig_end:
@@ -381,10 +381,7 @@ def main():
 
     conn = get_sync_conn()
     try:
-        if args.strategy_id:
-            strategy_id = args.strategy_id
-        else:
-            strategy_id = get_strategy_id(conn, args.strategy_name)
+        strategy_id = args.strategy_id or get_strategy_id(conn, args.strategy_name)
 
         if not strategy_id:
             print(f"{_RED}错误: 未找到策略 '{args.strategy_name}'{_RESET}")

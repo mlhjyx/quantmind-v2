@@ -1,4 +1,5 @@
 import psycopg2
+
 conn = psycopg2.connect(dbname='quantmind_v2', user='xin', password='quantmind', host='localhost')
 cur = conn.cursor()
 

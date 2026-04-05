@@ -206,7 +206,7 @@ def select_with_max_replace(
     # Step 2: 分离保留和替换
     new_top_n = set(candidates[:top_n])
     to_sell = prev_codes - new_top_n  # 旧持仓中不在新Top-N的
-    to_buy = new_top_n - prev_codes   # 新Top-N中不在旧持仓的
+    new_top_n - prev_codes   # 新Top-N中不在旧持仓的
 
     if len(to_sell) <= max_replace:
         # 换的不多，直接用新Top-N

@@ -18,7 +18,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 # 强制flush输出
-print = functools.partial(print, flush=True)
+print = functools.partial(print, flush=True)  # noqa: A001
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 import numpy as np

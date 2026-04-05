@@ -13,7 +13,6 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -284,7 +283,7 @@ def main():
     print("\n" + "=" * 120)
     print("因子池扩展 — ML因子 + 孤儿 + Deprecated + FULL/Reserve 批量IC测试")
     print("=" * 120)
-    print(f"数据范围: 2021-01 ~ 2026-03 | IC方法: 截面Spearman(neutral_value, next-month excess return)")
+    print("数据范围: 2021-01 ~ 2026-03 | IC方法: 截面Spearman(neutral_value, next-month excess return)")
     print(f"测试因子: {len(test_factors)}个 | Active参照: {ACTIVE_FACTORS}")
 
     # Active参照
@@ -337,19 +336,19 @@ def main():
     candidates["max_corr"] = candidates["factor"].map(lambda f: max_corr.get(f, np.nan))
     independent = candidates[candidates["max_corr"].isna() | (candidates["max_corr"] < 0.7)]
 
-    print(f"\n--- 汇总 ---")
+    print("\n--- 汇总 ---")
     print(f"  测试因子总数: {len(test_factors)}")
     print(f"  |IC|>=0.02: {len(candidates)}")
     print(f"  |IC|>=0.02 且 max_corr<0.7: {len(independent)} (候选入池)")
     print(f"  |IC|<0.02: {len(results_df) - len(candidates)} (确认弃用/边界)")
 
     if not independent.empty:
-        print(f"\n--- 候选入池因子 ---")
+        print("\n--- 候选入池因子 ---")
         for _, r in independent.iterrows():
             print(f"  {r['factor']:30s} IC={r['ic_mean']:+.4f}  IR={r['ic_ir']:+.3f}  maxCorr={r['max_corr']:.3f}" if not pd.isna(r["max_corr"]) else f"  {r['factor']:30s} IC={r['ic_mean']:+.4f}  IR={r['ic_ir']:+.3f}")
 
     # 写入文件
-    output_path = Path(__file__).resolve().parent.parent / "FACTOR_IC_BATCH_REPORT.md"
+    Path(__file__).resolve().parent.parent / "FACTOR_IC_BATCH_REPORT.md"
     # Capture output by re-running print to string
     conn.close()
     elapsed = time.time() - t0

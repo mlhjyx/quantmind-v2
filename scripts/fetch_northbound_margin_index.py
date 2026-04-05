@@ -9,15 +9,17 @@
 
 策略: 先拉index_components和margin(最重要), northbound个股留TODO。
 """
-import logging, os, sys, time
-from datetime import datetime, date
+import logging
+import os
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-import pandas as pd
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 def get_pro():
     import tushare as ts
+
     from app.config import settings
     return ts.pro_api(settings.TUSHARE_TOKEN)
 
@@ -152,11 +155,11 @@ def main():
     conn.close()
 
     print(f"\n{'='*50}")
-    print(f"DATA PULL SUMMARY")
+    print("DATA PULL SUMMARY")
     print(f"{'='*50}")
     print(f"  index_components: {n_idx} rows")
     print(f"  margin_data:      {n_margin} rows")
-    print(f"  northbound:       SKIPPED (hk_hold需更高积分, TODO: AKShare)")
+    print("  northbound:       SKIPPED (hk_hold需更高积分, TODO: AKShare)")
 
     elapsed = time.time() - t0
     print(f"\n总耗时: {elapsed:.0f}s ({elapsed/60:.1f}分钟)")

@@ -11,11 +11,10 @@ Sprint 1.1设计：高波动时缩减仓位，低波动时加仓，clip[0.5, 2.0
    - 当前波动率 < baseline → scale > 1 → 加仓
 """
 
-import structlog
-from typing import Optional
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +28,7 @@ VOL_WINDOW: int = 20
 
 def calc_vol_regime(
     csi300_closes: pd.Series,
-    baseline_vol: Optional[float] = None,
+    baseline_vol: float | None = None,
 ) -> float:
     """根据CSI300波动率计算仓位缩放系数。
 

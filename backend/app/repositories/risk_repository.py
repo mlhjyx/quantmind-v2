@@ -4,11 +4,12 @@ Sprint 1.1: 4级熔断状态机持久化。
 遵循CLAUDE.md: async/await + 类型注解 + Google docstring(中文)。
 """
 
-import structlog
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
+
+import structlog
 
 from app.repositories.base_repository import BaseRepository
 

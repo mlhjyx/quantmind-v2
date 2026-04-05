@@ -22,8 +22,9 @@ Modifier不独立选股，只调节核心策略的目标权重。
 - backend/engines/portfolio_aggregator.py（Phase B卫星策略合并）
 """
 
-import structlog
 from dataclasses import dataclass, field
+
+import structlog
 
 from engines.base_strategy import BaseStrategy, StrategyContext, StrategyDecision
 from engines.modifiers.base import ModifierBase

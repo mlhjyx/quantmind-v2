@@ -11,15 +11,16 @@ DESIGN_V5 §8.1 定义的4级熔断状态机:
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import json
-import structlog
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.risk_repository import RiskRepository
@@ -1625,10 +1626,8 @@ def create_l4_approval_sync(conn: Any, strategy_id: str, reason: str) -> int | N
             return approval_id
     except Exception as e:
         logger.error("[L4] 创建审批请求失败: %s", e)
-        try:
+        with contextlib.suppress(Exception):
             conn.rollback()
-        except Exception:
-            pass
     return None
 
 

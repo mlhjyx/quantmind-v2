@@ -91,7 +91,7 @@ def compute_composite_ic_paired(
 
         # Collect zscored factors for 5-factor composite
         series_5 = []
-        for fw, dirn in zip(factor_wides_5, directions_5):
+        for fw, dirn in zip(factor_wides_5, directions_5, strict=False):
             fw2 = fw.copy()
             fw2.index = fw2.index.astype(str)
             if d_str not in fw2.index:
@@ -104,7 +104,7 @@ def compute_composite_ic_paired(
 
         # Collect zscored factors for 6-factor composite
         series_6 = []
-        for fw, dirn in zip(factor_wides_6, directions_6):
+        for fw, dirn in zip(factor_wides_6, directions_6, strict=False):
             fw2 = fw.copy()
             fw2.index = fw2.index.astype(str)
             if d_str not in fw2.index:

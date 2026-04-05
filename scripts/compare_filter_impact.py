@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """对比流动性过滤 + 因子扩展的Sharpe影响。"""
-import os, sys, warnings, logging
+import logging
+import os
+import sys
+import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.basicConfig(level=logging.WARNING)
 
@@ -10,14 +14,26 @@ if sys.platform == "win32":
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
 
-import pandas as pd
 from datetime import date
 
+import pandas as pd
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.signal_engine import PortfolioBuilder, SignalComposer, SignalConfig, get_rebalance_dates
-from engines.slippage_model import SlippageConfig
 from engines.metrics import generate_report
-from run_backtest import load_factor_values, load_industry, load_universe, load_price_data, load_benchmark
+from engines.signal_engine import (
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
+from engines.slippage_model import SlippageConfig
+from run_backtest import (
+    load_benchmark,
+    load_factor_values,
+    load_industry,
+    load_price_data,
+    load_universe,
+)
+
 from app.services.price_utils import _get_sync_conn
 
 

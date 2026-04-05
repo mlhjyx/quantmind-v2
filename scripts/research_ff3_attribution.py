@@ -7,14 +7,17 @@ HML = 高BP组月度收益 - 低BP组月度收益 (价值减成长)
 
 R_strategy = alpha + beta1*RM + beta2*SMB + beta3*HML + epsilon
 """
-import os, sys
+import os
+import sys
+
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 
-import numpy as np
 import pandas as pd
+
 from app.services.price_utils import _get_sync_conn
+
 
 def main():
     conn = _get_sync_conn()
@@ -81,11 +84,17 @@ def main():
 
     # 4. Strategy monthly returns (run backtest)
     print("Running backtest for strategy returns...")
-    from engines.backtest_engine import BacktestConfig, SimpleBacktester
-    from engines.signal_engine import (PAPER_TRADING_CONFIG, PortfolioBuilder,
-                                       SignalComposer, SignalConfig, get_rebalance_dates)
-    from engines.slippage_model import SlippageConfig
     from datetime import datetime
+
+    from engines.backtest_engine import BacktestConfig, SimpleBacktester
+    from engines.signal_engine import (
+        PAPER_TRADING_CONFIG,
+        PortfolioBuilder,
+        SignalComposer,
+        SignalConfig,
+        get_rebalance_dates,
+    )
+    from engines.slippage_model import SlippageConfig
 
     start = datetime.strptime("2021-01-01", "%Y-%m-%d").date()
     end = datetime.strptime("2026-03-31", "%Y-%m-%d").date()
@@ -169,7 +178,7 @@ def main():
     contrib = model.params[["RM", "SMB", "HML"]] * avg * 12
     total = strat_m.mean() * 12
     print(f"\n{'='*50}")
-    print(f"RETURN DECOMPOSITION (annualized)")
+    print("RETURN DECOMPOSITION (annualized)")
     print(f"{'='*50}")
     print(f"Total strategy:  {total*100:+.1f}%")
     print(f"  Alpha:         {alpha_m*12*100:+.1f}%")
@@ -180,7 +189,7 @@ def main():
 
     # Interpretation
     print(f"\n{'='*50}")
-    print(f"INTERPRETATION")
+    print("INTERPRETATION")
     print(f"{'='*50}")
     if model.params["SMB"] > 0.3 and model.tvalues["SMB"] > 2:
         print(f"  ⚠️  SMB beta={model.params['SMB']:.2f} (t={model.tvalues['SMB']:.1f}): 显著小盘暴露")

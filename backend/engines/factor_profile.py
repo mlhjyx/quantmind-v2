@@ -14,13 +14,13 @@ FactorProfilePipeline提供编程式API，可从Service层调用:
 """
 
 import bisect
-import structlog
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats
 
 logger = structlog.get_logger(__name__)
@@ -88,7 +88,7 @@ def fit_exponential_decay(ic_decay: dict[int, float]) -> float:
     # 过滤掉IC<=0的点（无法取log）
     valid_h = []
     valid_log_ic = []
-    for h, ic in zip(horizons, abs_ics):
+    for h, ic in zip(horizons, abs_ics, strict=False):
         if ic > 1e-8:
             valid_h.append(h)
             valid_log_ic.append(np.log(ic))
@@ -100,7 +100,7 @@ def fit_exponential_decay(ic_decay: dict[int, float]) -> float:
     x = np.array(valid_h, dtype=float)
     y = np.array(valid_log_ic, dtype=float)
 
-    n = len(x)
+    len(x)
     x_mean = x.mean()
     y_mean = y.mean()
     ss_xx = ((x - x_mean) ** 2).sum()
@@ -168,9 +168,9 @@ class FactorProfilePipeline:
     def __init__(
         self,
         conn: Any,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-        horizons: Optional[list[int]] = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        horizons: list[int] | None = None,
         sample_step: int = 5,
     ):
         """初始化管道。
@@ -187,13 +187,13 @@ class FactorProfilePipeline:
         self.end_date = end_date or DEFAULT_END
         self.horizons = horizons or DEFAULT_HORIZONS
         self.sample_step = sample_step
-        self._excess_returns: Optional[pd.DataFrame] = None
+        self._excess_returns: pd.DataFrame | None = None
         self._trading_days: list[date] | None = None
 
     def analyze_factors(
         self,
         factor_names: list[str],
-        factor_meta: Optional[dict[str, dict]] = None,
+        factor_meta: dict[str, dict] | None = None,
     ) -> list[FactorProfile]:
         """分析多个因子的IC衰减画像。
 
@@ -242,7 +242,7 @@ class FactorProfilePipeline:
 
     def analyze_active_factors(
         self,
-        factor_meta: Optional[dict[str, dict]] = None,
+        factor_meta: dict[str, dict] | None = None,
     ) -> list[FactorProfile]:
         """分析所有Active因子。
 

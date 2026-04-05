@@ -88,6 +88,7 @@ class TestBackupScript:
 
         # 动态导入避免模块级副作用
         import importlib
+
         import scripts.pg_backup as backup_mod
         backup_mod = importlib.reload(backup_mod)
 
@@ -117,6 +118,7 @@ class TestBackupScript:
         """验证7天前文件被删除。"""
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import importlib
+
         import scripts.pg_backup as backup_mod
         backup_mod = importlib.reload(backup_mod)
 
@@ -144,6 +146,7 @@ class TestBackupScript:
         """每月1号应复制到monthly目录。"""
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import importlib
+
         import scripts.pg_backup as backup_mod
         backup_mod = importlib.reload(backup_mod)
 
@@ -159,6 +162,7 @@ class TestBackupScript:
         """非1号不复制。"""
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import importlib
+
         import scripts.pg_backup as backup_mod
         backup_mod = importlib.reload(backup_mod)
 

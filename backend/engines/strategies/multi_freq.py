@@ -14,11 +14,10 @@ config必须包含:
     weight_method: str   # "equal" or "score_weighted"
 """
 
-import structlog
 from datetime import date, timedelta
-from typing import Any, Optional
+from typing import Any
 
-import pandas as pd
+import structlog
 
 from engines.base_strategy import (
     BaseStrategy,

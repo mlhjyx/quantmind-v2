@@ -4,22 +4,29 @@
 改造: 月频选股 + 日频持仓监控(每天检查止损/利润保护规则)。
 实验矩阵: 7组(A无→G阶梯式)。
 """
-import logging, os, sys, time
-from dataclasses import dataclass, field
+import logging
+import os
+import sys
+import time
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from engines.signal_engine import (PAPER_TRADING_CONFIG, PortfolioBuilder,
-                                   SignalComposer, SignalConfig, get_rebalance_dates)
-from engines.slippage_model import SlippageConfig, volume_impact_slippage
+from engines.signal_engine import (
+    PAPER_TRADING_CONFIG,
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -111,10 +118,9 @@ def is_limit_down(row, close):
     """跌停封板检查。"""
     dl = row.get("down_limit")
     tr = row.get("turnover_rate")
-    if dl is not None and not pd.isna(dl):
-        if abs(close - float(dl)) < 0.015:
-            if tr is None or pd.isna(tr) or float(tr) < 1.0:
-                return True
+    if dl is not None and not pd.isna(dl) and abs(close - float(dl)) < 0.015:
+        if tr is None or pd.isna(tr) or float(tr) < 1.0:
+            return True
     return False
 
 
@@ -133,7 +139,6 @@ def run_experiment(cfg: PMSConfig, rebalance_dates, target_portfolios,
             rebal_targets[rd] = target_portfolios[rd]
 
     current_target = {}
-    last_rebal = None
 
     for td in all_trading_days:
         day_prices = price_lookup.get(td, {})
@@ -141,7 +146,6 @@ def run_experiment(cfg: PMSConfig, rebalance_dates, target_portfolios,
         # 1. 月末调仓日: 执行买卖
         if td in rebal_set and td in rebal_targets:
             current_target = rebal_targets[td]
-            last_rebal = td
             portfolio_value = cash + sum(
                 h.shares * float(day_prices.get(h.code, {}).get("close", h.buy_price))
                 for h in holdings.values()
@@ -385,21 +389,21 @@ def main():
 
     # 年度分解
     years = sorted(all_results[0]["annual"].keys())
-    print(f"\n--- 年度Sharpe ---")
+    print("\n--- 年度Sharpe ---")
     hdr = f"{'实验':<20} " + " ".join(f"{y:>8}" for y in years)
     print(f"{hdr}\n{'-'*len(hdr)}")
     for r in all_results:
         vals = " ".join(f"{r['annual'].get(y, {}).get('sharpe', 0):>8.2f}" for y in years)
         print(f"{r['name']:<20} {vals}")
 
-    print(f"\n--- 年度MDD ---")
+    print("\n--- 年度MDD ---")
     print(f"{hdr}\n{'-'*len(hdr)}")
     for r in all_results:
         vals = " ".join(f"{r['annual'].get(y, {}).get('mdd', 0)*100:>7.1f}%" for y in years)
         print(f"{r['name']:<20} {vals}")
 
     # Bootstrap
-    print(f"\n--- Paired Bootstrap (vs baseline) ---")
+    print("\n--- Paired Bootstrap (vs baseline) ---")
     baseline_ret = all_results[0]["returns"]
     for r in all_results[1:]:
         common = baseline_ret.index.intersection(r["returns"].index)

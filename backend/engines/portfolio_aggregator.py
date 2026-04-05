@@ -9,8 +9,9 @@
 - 冲突检测: 同一股票多策略方向冲突时告警
 """
 
-import structlog
 from dataclasses import dataclass, field
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 

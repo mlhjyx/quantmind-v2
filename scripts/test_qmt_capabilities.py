@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """QMT xtdata能力探索 — 历史深度/分钟数据/因子/指数成分。"""
-import sys, os
+import os
+import sys
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -54,7 +55,7 @@ try:
               "FinancialIndex", "CapitalStructure", "ShareHolder", "ShareHolderNum"]
     xtdata.download_financial_data(["000001.SZ"], tables)
     fin = xtdata.get_financial_data(["000001.SZ"], table_list=tables)
-    for code, tdata in fin.items():
+    for _code, tdata in fin.items():
         for tname, records in tdata.items():
             if isinstance(records, list) and len(records) > 0:
                 fields = list(records[0].keys())
@@ -77,7 +78,7 @@ for base in ["C:/国金QMT实盘", "C:/国金QMT", "D:/国金QMT", "C:/MiniQmt"]
                     files = list(d.rglob("*"))
                     size = sum(f.stat().st_size for f in files if f.is_file())
                     print(f"    {d.name}/: {len(files)} files, {size/1024/1024:.0f} MB")
-                except:
+                except Exception:
                     print(f"    {d.name}/: (access error)")
             else:
                 print(f"    {d.name}: {d.stat().st_size/1024:.0f} KB")

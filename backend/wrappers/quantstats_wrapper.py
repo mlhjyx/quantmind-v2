@@ -8,7 +8,6 @@ CLAUDE.md规则4(绩效分析双轨):
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -17,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 def generate_html_report(
     returns: pd.Series,
-    benchmark: Optional[pd.Series] = None,
+    benchmark: pd.Series | None = None,
     title: str = "QuantMind V2",
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
 ) -> str:
     """生成HTML绩效报告。
 
@@ -38,8 +37,8 @@ def generate_html_report(
     """
     try:
         import quantstats as qs
-    except ImportError:
-        raise RuntimeError("quantstats未安装: pip install quantstats")
+    except ImportError as err:
+        raise RuntimeError("quantstats未安装: pip install quantstats") from err
 
     if returns.empty:
         raise ValueError("returns序列为空，无法生成报告")
@@ -61,7 +60,7 @@ def generate_html_report(
 
 def get_metrics(
     returns: pd.Series,
-    benchmark: Optional[pd.Series] = None,
+    benchmark: pd.Series | None = None,
 ) -> dict:
     """获取核心绩效指标（双轨验证：与自写metrics互为校验）。
 
@@ -87,8 +86,8 @@ def get_metrics(
     """
     try:
         import quantstats as qs
-    except ImportError:
-        raise RuntimeError("quantstats未安装: pip install quantstats")
+    except ImportError as err:
+        raise RuntimeError("quantstats未安装: pip install quantstats") from err
 
     if returns.empty:
         return {}

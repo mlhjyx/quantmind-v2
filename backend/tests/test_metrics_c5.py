@@ -11,7 +11,7 @@
 """
 
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -21,18 +21,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engines.metrics import (
-    TRADING_DAYS_PER_YEAR,
-    PerformanceReport,
     bootstrap_sharpe_ci,
     calc_calmar,
     calc_max_consecutive_loss_days,
-    calc_max_drawdown,
     calc_sharpe,
     calc_sortino,
     calc_win_rate_and_profit_factor,
     generate_report,
 )
-
 
 # ═══════════════════════════════════════════════════
 # Helpers

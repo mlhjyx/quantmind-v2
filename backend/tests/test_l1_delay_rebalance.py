@@ -105,7 +105,7 @@ class TestL1DelayRebalance:
             (signal_date,))
         next_days = [r[0] for r in cur.fetchall()]
         assert len(next_days) >= 2, "需要至少2个后续交易日"
-        exec_date_t1 = next_days[0]  # L1触发日
+        next_days[0]  # L1触发日
         exec_date_t2 = next_days[1]  # L1恢复日
 
         # 模拟L1触发时写入pending记录
@@ -143,7 +143,7 @@ class TestL1DelayRebalance:
             gap_check = count_trading_days_between(db_conn, p_date, exec_date_t2)
 
             if gap_check <= 2 and pending_target:
-                hedged_target = {k: float(v) for k, v in pending_target.items()}
+                {k: float(v) for k, v in pending_target.items()}
                 is_rebalance = True
                 cur.execute(
                     """UPDATE scheduler_task_log SET status='executed'
@@ -339,7 +339,7 @@ class TestL1DelayRebalance:
                 gap_check = count_trading_days_between(db_conn, p_date, exec_date)
 
                 if gap_check <= 2 and pending_target:
-                    hedged_target = {k: float(v) for k, v in pending_target.items()}
+                    {k: float(v) for k, v in pending_target.items()}
                     is_rebalance = True
                     cur.execute(
                         """UPDATE scheduler_task_log SET status='executed'

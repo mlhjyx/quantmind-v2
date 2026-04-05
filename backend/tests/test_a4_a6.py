@@ -4,14 +4,12 @@ A4: 验证单位注释准确性（通过因子计算结果间接验证）
 A6: 验证6个端点不返回500
 """
 
-import math
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
-
 
 # =====================================================================
 # A4: 单位一致性验证
@@ -235,7 +233,6 @@ class TestA6BacktestNavEndpoint:
     @pytest.mark.asyncio
     async def test_nav_returns_empty_when_table_missing(self):
         """backtest_daily_nav表不存在时返回空列表。"""
-        from uuid import UUID
 
         from app.api.backtest import _safe_query
 

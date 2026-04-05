@@ -508,7 +508,7 @@ class BaseDataFetcher:
         # 加载有效code集合
         async with self.session_factory() as session:
             result = await session.execute(text("SELECT code FROM symbols"))
-            valid_codes = {row[0] for row in result.fetchall()}
+            {row[0] for row in result.fetchall()}
 
         total = len(periods)
         total_rows = 0

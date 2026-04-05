@@ -258,10 +258,10 @@ def main():
             max_corr, corr_partner = corr_results.get(fname, (np.nan, ''))
 
             cov = coverage.loc[fname] if fname in coverage.index else {}
-            n_days = cov.get('n_days', 0) if isinstance(cov, dict) == False else 0
+            n_days = cov.get('n_days', 0) if not isinstance(cov, dict) else 0
             try:
                 n_days = int(cov['n_days'])
-            except:
+            except Exception:
                 n_days = 0
             null_pct = float(cov.get('raw_null_pct', 0)) if hasattr(cov, 'get') else 0.0
             min_date = cov.get('min_date', '') if hasattr(cov, 'get') else ''

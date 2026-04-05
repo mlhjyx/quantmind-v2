@@ -14,17 +14,17 @@
 Engine层规范: 纯计算，无IO，无数据库访问。
 """
 
-import structlog
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 
 
-class DecayLevel(str, Enum):
+class DecayLevel(StrEnum):
     """因子衰减等级。"""
     L0 = "L0"  # 正常
     L1 = "L1"  # 告警

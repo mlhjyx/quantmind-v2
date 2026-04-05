@@ -246,7 +246,7 @@ def main():
                 "WHERE trade_date = %s AND factor_name = %s",
                 conn, params=(rd, args.vol_factor),
             )
-            vol_map = dict(zip(vol_df["code"], vol_df["raw_value"].astype(float)))
+            vol_map = dict(zip(vol_df["code"], vol_df["raw_value"].astype(float), strict=False))
 
         # 计算动态仓位缩放
         if args.vol_regime and csi300_closes is not None:

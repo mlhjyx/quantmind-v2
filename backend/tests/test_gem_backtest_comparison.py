@@ -4,13 +4,14 @@
 修复后(板块差异20%)正确允许交易。
 """
 
-import pandas as pd
 from datetime import date
+
+import pandas as pd
 
 from backend.engines.backtest_engine import (
     BacktestConfig,
-    SimpleBacktester,
     SimBroker,
+    SimpleBacktester,
 )
 
 
@@ -128,7 +129,7 @@ class TestGEMBacktestComparison:
         result = engine.run(target, price_data, benchmark)
 
         # 主板涨15%超过10%→涨停封板→买入应被阻止(或创建pending order)
-        buy_trades = [t for t in result.trades
+        [t for t in result.trades
                       if t.code == "000001.SZ" and t.direction == "buy"]
         # 主板10%涨停: close=11.5 > up_limit=11.0 → 封板
         # 但执行日是1/3, 当天close=10.0(没涨), 实际1/3可以买

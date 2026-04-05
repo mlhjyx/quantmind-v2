@@ -13,11 +13,11 @@
 - 批量upsert入库，单日单事务
 """
 
-import structlog
 import time
 from typing import Any
 
 import pandas as pd
+import structlog
 import tushare as ts
 
 from app.config import settings

@@ -11,8 +11,6 @@
 """
 
 import argparse
-import json
-import os
 import subprocess
 import sys
 import time
@@ -64,13 +62,7 @@ def test_endpoint(path: str) -> dict:
         r = requests.get(url, timeout=TIMEOUT)
         elapsed = time.time() - t0
 
-        if r.status_code == 200:
-            if elapsed > SLOW_THRESHOLD:
-                status = "slow"
-            else:
-                status = "ok"
-        else:
-            status = "fail"
+        status = ("slow" if elapsed > SLOW_THRESHOLD else "ok") if r.status_code == 200 else "fail"
 
         # 尝试计算响应条目数
         items = "?"
@@ -165,7 +157,7 @@ def main():
         r = requests.get(f"{BASE_URL}/health", timeout=5)
         if r.status_code != 200:
             raise Exception(f"health返回{r.status_code}")
-        print(f"[Health] OK")
+        print("[Health] OK")
     except Exception as e:
         print(f"[Health] 后端无响应: {e}")
         if args.auto_restart:

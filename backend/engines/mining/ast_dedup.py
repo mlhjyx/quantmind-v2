@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import structlog
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
+import structlog
 from scipy import stats
 
 logger = structlog.get_logger(__name__)

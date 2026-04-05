@@ -1,4 +1,5 @@
 import psycopg2
+
 c = psycopg2.connect(dbname='quantmind_v2', user='xin', password='quantmind', host='localhost')
 cur = c.cursor()
 cur.execute("SELECT pid, state, query_start, left(query, 80) FROM pg_stat_activity WHERE datname = 'quantmind_v2' ORDER BY query_start")

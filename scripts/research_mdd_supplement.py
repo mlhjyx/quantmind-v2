@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """补充实验: X-A~X-E叠加 + IC-A~IC-D行业参数敏感性 + 行业集中度分析。"""
-import logging, os, sys, time
+import logging
+import os
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -12,10 +15,16 @@ if sys.platform == "win32":
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from engines.backtest_engine import BacktestConfig, PMSConfig, SimpleBacktester
-from engines.signal_engine import (PAPER_TRADING_CONFIG, PortfolioBuilder,
-                                   SignalComposer, SignalConfig, get_rebalance_dates)
-from engines.slippage_model import SlippageConfig
 from engines.metrics import generate_report
+from engines.signal_engine import (
+    PAPER_TRADING_CONFIG,
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
+from engines.slippage_model import SlippageConfig
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -85,7 +94,7 @@ def run_exp(name, rebalance_dates, industry, price_data, benchmark_data, fc, uc,
 
         # Track industry concentration
         ind_counts = {}
-        for code in t.keys():
+        for code in t:
             ind = industry.get(code, "其他")
             ind_counts[ind] = ind_counts.get(ind, 0) + 1
         max_ind = max(ind_counts.values()) if ind_counts else 0
@@ -162,7 +171,7 @@ def main():
 
     # Annual
     years = sorted(all_results[0][1].annual_breakdown.index)
-    print(f"\n--- Annual Sharpe ---")
+    print("\n--- Annual Sharpe ---")
     hdr = f"{'Experiment':<42} " + " ".join(f"{y:>8}" for y in years)
     print(f"{hdr}\n{'-'*len(hdr)}")
     for name, rpt, _ in all_results:
@@ -170,7 +179,7 @@ def main():
         vals = " ".join(f"{ab.loc[y,'sharpe']:>8.2f}" if y in ab.index else f"{'N/A':>8}" for y in years)
         print(f"{name:<42} {vals}")
 
-    print(f"\n--- Annual MDD ---")
+    print("\n--- Annual MDD ---")
     print(f"{hdr}\n{'-'*len(hdr)}")
     for name, rpt, _ in all_results:
         ab = rpt.annual_breakdown
@@ -178,22 +187,22 @@ def main():
         print(f"{name:<42} {vals}")
 
     # Industry concentration analysis (from IC-D: no constraint)
-    print(f"\n--- Industry Concentration (no constraint, Top-20) ---")
+    print("\n--- Industry Concentration (no constraint, Top-20) ---")
     ic_d_stats = [s for n, _, s in all_results if "IC-D" in n][0]
     if ic_d_stats:
         max_counts = [s["max_count"] for s in ic_d_stats]
-        print(f"  Max same-industry count per rebalance:")
+        print("  Max same-industry count per rebalance:")
         print(f"    Mean: {np.mean(max_counts):.1f}, Max: {max(max_counts)}, Min: {min(max_counts)}")
-        print(f"    Distribution: " + ", ".join(f"{c}只={sum(1 for x in max_counts if x==c)}月" for c in sorted(set(max_counts))))
+        print("    Distribution: " + ", ".join(f"{c}只={sum(1 for x in max_counts if x==c)}月" for c in sorted(set(max_counts))))
         # Most common max industry
         from collections import Counter
         top_inds = Counter(s["max_industry"] for s in ic_d_stats).most_common(5)
         print(f"  Most concentrated industries: {top_inds}")
 
     # Comparison
-    print(f"\n--- vs Baselines ---")
-    print(f"  Original baseline (ind=0.25, top15, noPMS):     Sharpe=0.91  MDD=-43.0%  Calmar=0.54")
-    print(f"  Previous best C-E (ind=0.13, top20, PMS, tv20): Sharpe=1.05  MDD=-38.6%  Calmar=0.61")
+    print("\n--- vs Baselines ---")
+    print("  Original baseline (ind=0.25, top15, noPMS):     Sharpe=0.91  MDD=-43.0%  Calmar=0.54")
+    print("  Previous best C-E (ind=0.13, top20, PMS, tv20): Sharpe=1.05  MDD=-38.6%  Calmar=0.61")
     for name, rpt, _ in all_results:
         if name.startswith("X-"):
             print(f"  {name:<42} Sharpe={rpt.sharpe_ratio:.2f}  MDD={rpt.max_drawdown*100:.1f}%  Calmar={rpt.calmar_ratio:.2f}")

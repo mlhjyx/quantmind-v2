@@ -427,7 +427,7 @@ def method5_compose(
 
     # 半衰期权重: 当月=1.0, t-1=0.5, t-2=0.25
     halflife_weights = [1.0, 0.5, 0.25]
-    weight_sum = sum(halflife_weights)  # 1.75
+    sum(halflife_weights)  # 1.75
 
     # 取最近3个月的调仓日(含当月)
     lookback_indices = [rd_idx - k for k in range(3) if rd_idx - k >= 0]

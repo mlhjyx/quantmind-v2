@@ -8,7 +8,7 @@ CLAUDE.md规则2(数据格式统一): 所有因子不管来源，最终都是
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -44,10 +44,10 @@ def calculate_indicator(
     """
     try:
         import talib
-    except ImportError:
+    except ImportError as err:
         raise RuntimeError(
             "TA-Lib未安装: brew install ta-lib && pip install TA-Lib"
-        )
+        ) from err
 
     name = name.upper()
 
@@ -214,7 +214,7 @@ def list_supported_indicators() -> list[str]:
 
 
 def _require(
-    arr: Optional[np.ndarray],
+    arr: np.ndarray | None,
     field_name: str,
     indicator_name: str,
 ) -> None:

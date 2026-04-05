@@ -11,10 +11,10 @@
 """
 
 import contextlib
-import structlog
 from datetime import date, datetime
 from typing import Any
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings

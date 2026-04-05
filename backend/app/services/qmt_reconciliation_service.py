@@ -7,10 +7,11 @@
 差异超阈值时触发DingTalk告警。
 """
 
-import structlog
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 

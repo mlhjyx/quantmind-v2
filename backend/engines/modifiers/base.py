@@ -15,9 +15,10 @@ R3研究结论(§7.2): Modifier不独立选股，只产出调节因子。
 - docs/research/R3_multi_strategy_framework.md §7.2
 """
 
-import structlog
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+
+import structlog
 
 from engines.base_strategy import StrategyContext
 

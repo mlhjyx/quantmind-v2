@@ -7,6 +7,7 @@
 """
 
 import warnings as _warnings
+
 _warnings.warn(
     "services.notification_service 已废弃，请使用 app.services.notification_service",
     DeprecationWarning,
@@ -21,8 +22,7 @@ import logging
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
-from typing import Optional
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +146,8 @@ def send_daily_report(
     lines = [
         f"### {ret_emoji} Paper Trading {trade_date}",
         "",
-        f"| 指标 | 数值 |",
-        f"|------|------|",
+        "| 指标 | 数值 |",
+        "|------|------|",
         f"| 调仓 | {rebal_text} |",
         f"| 持仓 | {position_count}只 |",
         f"| NAV | ¥{nav:,.0f} |",

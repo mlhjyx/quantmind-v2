@@ -300,7 +300,7 @@ if len(latest_snap) > 100:
 else:
     # Average cross-sectional correlation
     corrs = []
-    for dt, grp in monthly.groupby('trade_date'):
+    for _dt, grp in monthly.groupby('trade_date'):
         if len(grp) < 200:
             continue
         c = grp[factor_cols].corr(method='spearman')

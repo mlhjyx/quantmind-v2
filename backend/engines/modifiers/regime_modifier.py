@@ -19,9 +19,8 @@ R3 §6.2 Layer 3: 市场regime仓位缩放（Risk Overlay）。
 - DESIGN_V5.md §9.5 MA120牛熊判定（规则版fallback）
 """
 
-import structlog
-
 import pandas as pd
+import structlog
 
 from engines.base_strategy import StrategyContext
 from engines.modifiers.base import ModifierBase, ModifierResult

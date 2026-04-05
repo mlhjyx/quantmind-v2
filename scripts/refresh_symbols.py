@@ -76,8 +76,6 @@ def main() -> None:
 
     # 构建upsert记录
     conn = get_sync_conn()
-    inserted = 0
-    updated = 0
 
     try:
         with conn.cursor() as cur:

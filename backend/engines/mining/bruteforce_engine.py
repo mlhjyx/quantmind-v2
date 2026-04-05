@@ -15,12 +15,12 @@ Gate筛选 (G1-G3，宽松前置筛选，最终标准 G1-G8 在 FactorGatePipeli
 from __future__ import annotations
 
 import ast
-import structlog
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats
 
 logger = structlog.get_logger(__name__)

@@ -18,10 +18,10 @@ FastAPI Depends注入模式:
         return BacktestService(session)
 """
 
-import structlog
 import uuid
 from typing import Any
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

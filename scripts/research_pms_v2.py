@@ -2,7 +2,6 @@
 import importlib.util
 import logging
 import sys
-import time
 from datetime import date
 from pathlib import Path
 
@@ -18,7 +17,12 @@ spec.loader.exec_module(rb)
 
 from engines.backtest_engine import BacktestConfig, PMSConfig, SimpleBacktester, SlippageConfig
 from engines.metrics import generate_report
-from engines.signal_engine import SignalComposer, SignalConfig, PortfolioBuilder, get_rebalance_dates
+from engines.signal_engine import (
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
 
 conn = rb._get_sync_conn()
 industry = rb.load_industry(conn)
@@ -178,7 +182,7 @@ for label, sharpe, mdd, triggers in [
     print(f"{label:<10s} {sharpe:>+8.3f} {mdd * 100:>7.1f}% {n_trig:>6d} {avg_dur:>10.0f}")
 
 # 年度分解(C)
-print(f"\n=== 实验C年度分解 ===")
+print("\n=== 实验C年度分解 ===")
 nav_c_dt = nav_c.copy()
 nav_c_dt.index = pd.to_datetime(nav_c_dt.index)
 ret_c_dt = ret_c.copy()
@@ -194,13 +198,13 @@ for year in range(2019, 2025):
     print(f"  {year}: Sharpe={s:+.3f} MDD={m * 100:.1f}% 触发={n_t}")
 
 # 触发记录(C)
-print(f"\n=== 实验C触发记录 ===")
+print("\n=== 实验C触发记录 ===")
 for t in triggers_c:
     print(f"  {t['trigger_date']} | {t['rule']} | NAV={t['nav_at_trigger']:.0f} | "
           f"恢复={t['recover_date']} | {t['duration']}天 | {t['target_ratio'] * 100:.0f}%仓位")
 
 # 机会成本(C)
-print(f"\n=== 降仓机会成本 ===")
+print("\n=== 降仓机会成本 ===")
 for t in triggers_c:
     td, rd = t["trigger_date"], t["recover_date"]
     if rd is None:
@@ -211,7 +215,7 @@ for t in triggers_c:
         print(f"  {td}~{rd}: 满仓收益={fullhold_ret * 100:+.1f}% → {verdict}")
 
 # Bootstrap
-print(f"\n=== Bootstrap(C vs A) ===")
+print("\n=== Bootstrap(C vs A) ===")
 a_r = result_a.daily_returns.values
 c_r = ret_c.values
 ml = min(len(a_r), len(c_r))
@@ -228,7 +232,7 @@ p = float((boots <= 0).mean())
 print(f"  p-value: {p:.4f}")
 
 # 锯齿检测
-print(f"\n=== 7天内重复触发 ===")
+print("\n=== 7天内重复触发 ===")
 sawteeth = 0
 for i in range(1, len(triggers_c)):
     pr = triggers_c[i - 1].get("recover_date")

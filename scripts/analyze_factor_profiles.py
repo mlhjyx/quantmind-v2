@@ -223,10 +223,7 @@ def main() -> None:
     conn = _get_sync_conn()
 
     # 获取因子列表
-    if args.factors:
-        factor_names = args.factors
-    else:
-        factor_names = load_active_factors(conn)
+    factor_names = args.factors or load_active_factors(conn)
 
     if not factor_names:
         logger.error("无Active因子")

@@ -9,12 +9,17 @@ CLAUDE.md 回测报告必含指标:
 - 年度分解
 """
 
-import structlog
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import structlog
+
+if TYPE_CHECKING:
+    from engines.backtest_engine import BacktestResult
 
 logger = structlog.get_logger(__name__)
 
@@ -499,7 +504,7 @@ def calc_signal_execution_gap_hours(
         return 0.0
 
     gaps = []
-    for sig_ts, exec_ts in zip(signal_timestamps, execution_timestamps):
+    for sig_ts, exec_ts in zip(signal_timestamps, execution_timestamps, strict=False):
         try:
             delta_hours = (exec_ts - sig_ts).total_seconds() / 3600
             if delta_hours >= 0:  # 负值说明数据异常，跳过
@@ -511,8 +516,8 @@ def calc_signal_execution_gap_hours(
 
 
 def generate_report(
-    result: "BacktestResult",
-    price_data: Optional[pd.DataFrame] = None,
+    result: BacktestResult,
+    price_data: pd.DataFrame | None = None,
 ) -> PerformanceReport:
     """生成完整绩效报告。"""
     nav = result.daily_nav
@@ -632,7 +637,7 @@ def print_report(report: PerformanceReport):
     print(f"{'Beta':>12}: {report.beta:>8.3f}")
     print(f"{'IR':>12}: {report.information_ratio:>8.2f}")
 
-    print(f"\n--- 交易统计 ---")
+    print("\n--- 交易统计 ---")
     print(f"{'总交易次数':>12}: {report.total_trades:>8d}")
     print(f"{'胜率':>12}: {report.win_rate:>8.1f}%")
     print(f"{'盈亏比(总额)':>12}: {report.profit_factor:>8.2f}")
@@ -641,25 +646,25 @@ def print_report(report: PerformanceReport):
     print(f"{'最大连亏天数':>12}: {report.max_consecutive_loss_days:>8d}")
 
     p, lo, hi = report.bootstrap_sharpe_ci
-    print(f"\n--- Bootstrap Sharpe CI ---")
+    print("\n--- Bootstrap Sharpe CI ---")
     print(f"  Sharpe: {p:.2f} [{lo:.2f}, {hi:.2f}] (95% CI)")
     if lo < 0:
         print("  ⚠️ 警告: 5%分位Sharpe < 0，策略可能不赚钱!")
 
-    print(f"\n--- 成本敏感性 ---")
+    print("\n--- 成本敏感性 ---")
     print(f"  {'成本倍数':>8}  {'年化收益':>8}  {'Sharpe':>8}  {'MDD':>8}")
     for mult, data in report.cost_sensitivity.items():
         print(f"  {mult:>8}  {data['annual_return']:>7.2f}%  {data['sharpe']:>8.2f}  {data['mdd']:>7.2f}%")
 
-    print(f"\n--- 隔夜跳空 ---")
+    print("\n--- 隔夜跳空 ---")
     print(f"  买入日平均跳空: {report.avg_open_gap:.4f}%")
 
-    print(f"\n--- 仓位偏差 ---")
+    print("\n--- 仓位偏差 ---")
     print(f"  {'平均偏差':>12}: {report.mean_position_deviation:>8.2f}%")
     print(f"  {'最大偏差':>12}: {report.max_position_deviation:>8.2f}%")
     print(f"  {'现金拖累':>12}: {report.total_cash_drag:>8.2f}%")
 
-    print(f"\n--- 年度分解 ---")
+    print("\n--- 年度分解 ---")
     if not report.annual_breakdown.empty:
         print(report.annual_breakdown.to_string())
 

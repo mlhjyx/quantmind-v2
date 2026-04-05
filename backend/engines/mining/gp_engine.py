@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-
-import structlog
 import math
 import random
 import time
@@ -34,6 +32,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 
 # DEAP导入（已验证版本1.4）
 try:

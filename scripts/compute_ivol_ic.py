@@ -135,7 +135,7 @@ def main():
     fwd_ret = close_wide.shift(-5) / close_wide - 1
 
     # CSI300 5-day forward return
-    bench_close = bench_df.set_index('trade_date').reindex(ret_wide.index)
+    bench_df.set_index('trade_date').reindex(ret_wide.index)
     # Recompute from index close
     bench_close_df = pd.read_sql("""
         SELECT trade_date, close::float

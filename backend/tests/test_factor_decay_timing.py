@@ -26,26 +26,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engines.factor_decay import (
+    L1_RATIO,
     DecayLevel,
     DecayResult,
-    L1_RATIO,
-    L2_RATIO,
-    L3_CONSECUTIVE_DAYS,
-    L3_IC_THRESHOLD,
     calc_consecutive_low_ic_days,
     check_all_factors_decay,
     check_factor_decay,
     classify_decay_level,
 )
 from engines.factor_timing import (
-    MIN_IC_DAYS,
-    TIMING_WEIGHT_MAX,
-    TIMING_WEIGHT_MIN,
     calc_timing_score,
     calc_timing_weights,
     compare_timing_vs_equal,
 )
-
 
 # ═══════════════════════════════════════════════════
 # Helpers

@@ -187,7 +187,7 @@ class TestCircuitBreakerStateMachine:
             trade_date=TODAY,
         )
 
-        result = await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
 
         # 验证upsert_state被调用，且new_level=L1
         mock_repo.upsert_state.assert_called()
@@ -230,7 +230,7 @@ class TestCircuitBreakerStateMachine:
             trade_date=TODAY,
         )
 
-        result = await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
 
         # 验证恢复transition被持久化
         assert mock_repo.upsert_state.call_count >= 1
@@ -440,7 +440,7 @@ class TestCircuitBreakerStateMachine:
             trade_date=TODAY,
         )
 
-        result = await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
 
         # 验证恢复: 第一次upsert是恢复到NORMAL, multiplier=1.0
         first_call = mock_repo.upsert_state.call_args_list[0]
@@ -618,7 +618,7 @@ class TestCircuitBreakerStateMachine:
             trade_date=TODAY,
         )
 
-        result = await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
+        await service.check_and_update(STRATEGY_ID, EXEC_MODE, metrics)
 
         # 应该触发恢复
         first_call = mock_repo.upsert_state.call_args_list[0]
@@ -799,7 +799,7 @@ class TestCircuitBreakerStateMachine:
             get_state_returns=[None, normal_state]
         )
 
-        result = await service.initialize_state(STRATEGY_ID, EXEC_MODE)
+        await service.initialize_state(STRATEGY_ID, EXEC_MODE)
 
         mock_repo.upsert_state.assert_called_once()
         call_kwargs = mock_repo.upsert_state.call_args.kwargs
@@ -821,7 +821,7 @@ class TestCircuitBreakerStateMachine:
             get_state_returns=[l3_state, normal_state]
         )
 
-        result = await service.force_reset(STRATEGY_ID, EXEC_MODE, "紧急运维")
+        await service.force_reset(STRATEGY_ID, EXEC_MODE, "紧急运维")
 
         mock_repo.upsert_state.assert_called_once()
         call_kwargs = mock_repo.upsert_state.call_args.kwargs

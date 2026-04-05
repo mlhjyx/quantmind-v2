@@ -1,8 +1,8 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-04-05 (Factor Profiler V2 — 7项推荐逻辑修正+画像评估协议)
+> Last updated: 2026-04-05 PM (性能优化+北向因子研究+ARIS+知识库)
 > Current: Phase 1, Sprint 1.35 完成 → PT v1.2 QMT live Day 2/60
-> 本会话: Factor Profiler V2(regime修正+120d IC+单调性+成本可行性+冗余标记+FMP聚类+多模板评分) + 分钟数据拉取(5194只)
+> 本会话(PM): 性能优化8项 + 北向MODIFIER/RANKING研究 + ARIS安装 + 研究知识库19条目 + ECC配置
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅ | Sprint 1.32 ✅ | Sprint 1.33 ✅ | Sprint 1.34 ✅ | Sprint 1.35 ✅
 > Paper Trading: v1.2 QMT live Day 2/60 (Day 0=2026-04-02), NAV=¥989,391, 基线Sharpe=0.91(5年volume_impact), 毕业阈值≥0.315
 > G2研究结论: 权重/仓位优化无效(15组), PMS阶梯利润保护有效(Sharpe+0.06~0.24), Top-20>Top-15, 行业约束损害alpha
@@ -143,6 +143,36 @@
 - ⚠️ 3个并行Python进程(各3.5GB)+PG(2.5GB)超过32GB → PG OOM崩溃
 - ✅ postgresql.conf: logging_collector=on, work_mem 64→32MB
 - ✅ CLAUDE.md: 新增并发限制规则(最多2个重数据进程)
+
+---
+
+### 性能优化 + 北向因子 + ARIS + 知识库 (2026-04-05 PM) ✅
+
+**8项性能优化 + 北向30因子研究 + 研究基础设施建设。**
+
+#### 性能优化
+- ✅ TimescaleDB 2.26.0: 手动DLL复制安装成功(之前"不兼容"记忆纠正)
+- ✅ factor_values hypertable: 352M行→71月chunks/53GB
+- ✅ klines_daily hypertable: 7.4M行→27季chunks/1.3GB
+- ✅ Parquet缓存: `_load_shared_data` **30min→1.6s** (1000x加速)
+- ✅ `fast_neutralize_batch()`: 批量IO替代逐天读写, 测试通过
+- ✅ 行业L1映射: 5490/5810只(94.5%), `sw_industry_mapping`表110行
+- 🔨 分钟数据: 4分片后台拉取(1867/5194, 35.9%)
+
+#### 北向因子研究
+- ✅ MODIFIER V1(4因子): 信号方向反向(corr=-0.093), 不推荐择时
+- ✅ MODIFIER V2(15因子): 8个OOS通过, nb_size_shift_20d corr=-0.304
+- ✅ RANKING(15因子): 3个Active — nb_increase_ratio_20d(t=-2.82), nb_new_entry(t=-2.43), nb_contrarian(t=-2.11)
+- ✅ 关键发现: 北向反向指标(外资增持→跑输), 与5核心因子corr<0.17(独立新维度)
+- ✅ 3因子中性化+画像: nb_increase_ratio_20d→模板11, nb_new_entry→模板1
+
+#### 研究基础设施
+- ✅ ARIS 8个研究skills安装(arxiv/idea-discovery/research-pipeline等)
+- ✅ 6个QuantMind自定义skills(factor-research/db-safety/performance/discovery/overnight/research-kb)
+- ✅ 研究知识库: 19条目(8 failed + 6 findings + 5 decisions)
+- ✅ ECC深度配置: Continuous Learning hooks + quantmind-overrides规则
+- ✅ `/check-ic`命令创建
+- ✅ GitHub push: mlhjyx/quantmind-v2 (private)
 
 ---
 

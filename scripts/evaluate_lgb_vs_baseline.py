@@ -277,10 +277,7 @@ def build_portfolio_returns(
             for s in top_stocks:
                 if s in day_ret.index and not np.isnan(day_ret[s]):
                     stock_rets.append(day_ret[s])
-            if stock_rets:
-                port_ret = np.mean(stock_rets)
-            else:
-                port_ret = 0.0
+            port_ret = np.mean(stock_rets) if stock_rets else 0.0
 
             # 第一天扣除调仓成本
             if day_idx == hold_start_idx:
@@ -699,7 +696,7 @@ def main():
     # 9. 年度分解
     # ----------------------------------------------------------
     logger.info("Step 9: 年度分解...")
-    dates_array = np.array(common_dates)
+    np.array(common_dates)
 
     yearly_lgb = {}
     yearly_base = {}

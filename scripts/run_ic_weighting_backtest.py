@@ -715,7 +715,6 @@ def run_bp_enhanced(
             continue
 
         for fname in available:
-            real_fname = fname if fname != "bp_enhanced" else fname
             direction = FACTOR_DIRECTION.get(
                 "bp_ratio" if fname == "bp_enhanced" else fname, 1
             )

@@ -122,10 +122,7 @@ def load_factor_values_with_ivol(trade_date, conn, ivol_wide, use_ivol=False):
                 vals = ivol_cross.values
                 mean_v = np.nanmean(vals)
                 std_v = np.nanstd(vals)
-                if std_v > 1e-12:
-                    zscored = (vals - mean_v) / std_v
-                else:
-                    zscored = np.zeros_like(vals)
+                zscored = (vals - mean_v) / std_v if std_v > 1e-12 else np.zeros_like(vals)
                 ivol_rows = pd.DataFrame({
                     'code': ivol_cross.index,
                     'factor_name': 'ivol_20',
@@ -227,7 +224,7 @@ def run_single_backtest(label, factor_names, conn, rebalance_dates, industry,
     target_portfolios = {}
     prev_weights = {}
 
-    for i, rd in enumerate(rebalance_dates):
+    for _i, rd in enumerate(rebalance_dates):
         fv = load_factor_values_with_ivol(rd, conn, ivol_wide, use_ivol=use_ivol)
         if fv.empty:
             continue

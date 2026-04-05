@@ -239,7 +239,7 @@ def main():
               f"{s['cum_ret']:>+7.2%} {s['positions']:>4} {s['trades']:>4} {cb:>6}")
 
     if results:
-        first_nav = results[0][1]['nav']
+        results[0][1]['nav']
         last_nav = results[-1][1]['nav']
         total_ret = (last_nav / 1_000_000) - 1
         print("-" * 60)

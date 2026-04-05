@@ -24,10 +24,11 @@ R4研究结论: PT实测64.5bps = 基础价差(10-15bps) + 市场冲击(25-35bps
 
 from __future__ import annotations
 
-import structlog
 import math
 from dataclasses import dataclass
 from decimal import Decimal
+
+import structlog
 
 logger = structlog.get_logger(__name__)
 

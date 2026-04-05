@@ -228,7 +228,7 @@ def run_baseline_backtest(
     target_portfolios = {}
     prev_weights = {}
 
-    for i, rd in enumerate(rebalance_dates):
+    for _i, rd in enumerate(rebalance_dates):
         fv = load_factor_values(rd, conn)
         if fv.empty:
             continue
@@ -319,10 +319,7 @@ def run_layered_backtest(
             # zscore处理PEAD, 与其他因子一致
             pead_mean = pead_series.mean()
             pead_std = pead_series.std()
-            if pead_std > 0:
-                pead_zscore = (pead_series - pead_mean) / pead_std
-            else:
-                pead_zscore = pead_series * 0
+            pead_zscore = (pead_series - pead_mean) / pead_std if pead_std > 0 else pead_series * 0
             pivot["earnings_surprise_car"] = pead_zscore
 
         # 分层排序选股

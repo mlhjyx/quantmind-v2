@@ -249,7 +249,7 @@ def main():
         if res is None:
             print(f"{fname:>25} {'N/A':>10}")
             continue
-        ic_pct = res["ic_mean"] * 100
+        res["ic_mean"] * 100
         passed = abs(res["ic_mean"]) > IC_THRESHOLD
         if passed:
             pass_count += 1

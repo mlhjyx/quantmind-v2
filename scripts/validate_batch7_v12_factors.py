@@ -135,7 +135,7 @@ def composite_factor_ic(factor_wides: list[pd.DataFrame], directions: list[int],
 
         # Collect zscored factors for this date
         factor_series = []
-        for fw, dirn in zip(factor_wides, directions):
+        for fw, dirn in zip(factor_wides, directions, strict=False):
             fw_idx = fw.index.astype(str) if not isinstance(fw.index[0], str) else fw.index
             if d_str not in fw_idx:
                 break
@@ -248,7 +248,7 @@ def main():
     high_wide = klines.pivot(index='trade_date', columns='code', values='high_price')
     close_raw_wide = klines.pivot(index='trade_date', columns='code', values='close_raw')
     pre_close_wide = klines.pivot(index='trade_date', columns='code', values='pre_close')
-    volume_wide = klines.pivot(index='trade_date', columns='code', values='volume')
+    klines.pivot(index='trade_date', columns='code', values='volume')
     mf_wide = mf.pivot(index='trade_date', columns='code', values='net_mf_amount')
 
     common_dates = adj_close_wide.index.sort_values()
@@ -685,7 +685,7 @@ def main():
         factor7_alt_wides = [baseline_pivots[f] for f in BASELINE_5] + [mf_div_daily, alt_wide]
         factor7_alt_dirs = [FACTOR_DIRECTIONS[f] for f in BASELINE_5] + [mfd_dir, alt_dir]
         ic_7fac_alt = composite_factor_ic(factor7_alt_wides, factor7_alt_dirs, excess_fwd, month_ends)
-        s_7fac_alt = print_ic_table(f"7-Factor (5 + mf_div + {alt_name})", ic_7fac_alt)
+        print_ic_table(f"7-Factor (5 + mf_div + {alt_name})", ic_7fac_alt)
 
     # ══════════════════════════════════════════════════════════════
     # TASK 5: INTRADAY_OVERNIGHT_SPLIT

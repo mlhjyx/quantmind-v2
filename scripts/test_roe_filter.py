@@ -101,7 +101,7 @@ def load_trade_dates(conn, start_date, end_date):
 
 def load_industry_map(conn):
     df = pd.read_sql("SELECT code, industry_sw1 FROM symbols WHERE industry_sw1 IS NOT NULL", conn)
-    return dict(zip(df["code"], df["industry_sw1"]))
+    return dict(zip(df["code"], df["industry_sw1"], strict=False))
 
 
 def load_roe_pit(conn, start_date, end_date):

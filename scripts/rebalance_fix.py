@@ -21,7 +21,7 @@
 import os
 import sys
 import time
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -29,6 +29,8 @@ if sys.platform == "win32":
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.append(str(Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"))
+
+import contextlib
 
 import psycopg2
 
@@ -71,15 +73,14 @@ def audit_log(conn, action, code="", order_id=0, qty=0, price=0.0, detail=""):
         )
         conn.commit()
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             conn.rollback()
-        except Exception:
-            pass
 
 
 def connect_qmt():
     """连接QMT并返回broker。"""
     from engines.broker_qmt import MiniQMTBroker
+
     from app.config import settings
     broker = MiniQMTBroker(settings.QMT_PATH, settings.QMT_ACCOUNT_ID)
     broker.connect()
@@ -95,7 +96,7 @@ def print_status(broker):
     print(f"  持仓市值: ¥{asset['market_value']:,.2f}")
     print(f"  持仓数: {len(positions)}只")
     for p in positions:
-        code = p["stock_code"].split(".")[0]
+        p["stock_code"].split(".")[0]
         print(f"    {p['stock_code']:12s} {p['volume']:>6}股 ¥{p['market_value']:>10,.2f}")
     return asset, positions
 
@@ -103,8 +104,8 @@ def print_status(broker):
 def get_realtime_price(code):
     """获取实时价格。"""
     try:
-        from xtquant import xtdata
         from engines.qmt_execution_adapter import _to_qmt_code
+        from xtquant import xtdata
         qmt_code = _to_qmt_code(code)
         ticks = xtdata.get_full_tick([qmt_code])
         if isinstance(ticks, dict) and qmt_code in ticks:
@@ -144,7 +145,7 @@ def place_and_wait(broker, code, direction, volume, ref_price, conn):
     print(f"  委托已提交: order_id={order_id}, 等待成交...", flush=True)
 
     # 等待成交（轮询）
-    for i in range(ORDER_WAIT_SEC // 2):
+    for _i in range(ORDER_WAIT_SEC // 2):
         time.sleep(2)
         orders = broker.query_orders()
         for o in orders:
@@ -167,7 +168,7 @@ def place_and_wait(broker, code, direction, volume, ref_price, conn):
                     return 0, 0
 
     # 超时 → 撤单
-    print(f"  ⏰ 超时，撤单...")
+    print("  ⏰ 超时，撤单...")
     broker.cancel_order(order_id)
     time.sleep(3)
 
@@ -181,7 +182,7 @@ def place_and_wait(broker, code, direction, volume, ref_price, conn):
                 print(f"  ⚠️ 超时但部分成交: {traded}股 @{traded_price:.2f}")
                 return traded, traded_price
 
-    print(f"  ❌ 超时未成交")
+    print("  ❌ 超时未成交")
     return 0, 0
 
 

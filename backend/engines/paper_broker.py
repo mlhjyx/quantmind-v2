@@ -4,15 +4,11 @@
 包装现有SimBroker，不修改原始引擎代码。
 """
 
-import structlog
 from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal
-from typing import Optional
-from uuid import UUID
+from datetime import UTC, date
 
-import numpy as np
 import pandas as pd
+import structlog
 
 from engines.backtest_engine import BacktestConfig, Fill, PendingOrder, SimBroker
 from engines.base_broker import BaseBroker
@@ -27,8 +23,8 @@ class PaperState:
     cash: float
     holdings: dict[str, int]  # code → shares
     nav: float
-    last_trade_date: Optional[date] = None
-    last_rebalance_date: Optional[date] = None
+    last_trade_date: date | None = None
+    last_rebalance_date: date | None = None
 
 
 class PaperBroker(BaseBroker):
@@ -47,8 +43,8 @@ class PaperBroker(BaseBroker):
     ):
         self.strategy_id = strategy_id
         self.initial_capital = initial_capital
-        self.broker: Optional[SimBroker] = None
-        self.state: Optional[PaperState] = None
+        self.broker: SimBroker | None = None
+        self.state: PaperState | None = None
 
     def load_state(self, conn) -> PaperState:
         """从DB加载最新Paper Trading状态。
@@ -181,7 +177,7 @@ class PaperBroker(BaseBroker):
         target_weights: dict[str, float],
         trade_date: date,
         price_data: pd.DataFrame,
-        signal_date: Optional[date] = None,
+        signal_date: date | None = None,
     ) -> tuple[list[Fill], list[PendingOrder]]:
         """执行调仓：先卖后买，封板记录为PendingOrder。
 
@@ -233,7 +229,7 @@ class PaperBroker(BaseBroker):
         pending_orders: list[PendingOrder],
         trade_date: date,
         price_data: pd.DataFrame,
-        next_rebal_date: Optional[date] = None,
+        next_rebal_date: date | None = None,
         conn=None,
     ) -> tuple[list[Fill], list[PendingOrder]]:
         """处理封板补单。T+1日尝试买入。
@@ -334,7 +330,7 @@ class PaperBroker(BaseBroker):
         exec_date: date,
         price_idx: dict,
         today_close: dict,
-        signal_date: Optional[date] = None,
+        signal_date: date | None = None,
     ) -> tuple[list[Fill], list[PendingOrder]]:
         """先卖后买调仓，封板记录为PendingOrder。"""
         broker = self.broker
@@ -441,8 +437,8 @@ class PaperBroker(BaseBroker):
         """
         if not fills:
             return
-        from datetime import datetime, timezone
-        now_utc = datetime.now(timezone.utc)
+        from datetime import datetime
+        now_utc = datetime.now(UTC)
         cur = conn.cursor()
         try:
             for fill in fills:
@@ -489,8 +485,8 @@ class PaperBroker(BaseBroker):
         3. performance_series — 当日绩效
         """
         assert self.broker is not None
-        from datetime import datetime, timezone
-        now_utc = datetime.now(timezone.utc)
+        from datetime import datetime
+        now_utc = datetime.now(UTC)
         cur = conn.cursor()
 
         try:
@@ -581,7 +577,7 @@ class PaperBroker(BaseBroker):
             )
             first_row = cur.fetchone()
             if first_row:
-                first_nav = float(first_row[0])
+                float(first_row[0])
                 # 计算基准NAV（假设初始与策略等值）
                 cur.execute(
                     """SELECT close FROM index_daily

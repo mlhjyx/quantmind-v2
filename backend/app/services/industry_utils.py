@@ -21,9 +21,8 @@
 
 from __future__ import annotations
 
-import structlog
-
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

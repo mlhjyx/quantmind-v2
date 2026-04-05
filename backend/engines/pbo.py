@@ -24,11 +24,11 @@ Bailey, Borwein, Lopez de Prado & Zhu (2017) 提出的CSCV
 
 from __future__ import annotations
 
-import structlog
 import math
 from itertools import combinations
 
 import numpy as np
+import structlog
 
 logger = structlog.get_logger(__name__)
 

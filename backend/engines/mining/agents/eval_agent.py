@@ -17,13 +17,12 @@ Sprint 1.18 ml-engineer (D5补全)
 
 from __future__ import annotations
 
-import structlog
 import traceback
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats
 
 logger = structlog.get_logger(__name__)
@@ -149,7 +148,7 @@ class EvalAgent:
                 try:
                     values = compute_fn(group)
                     if isinstance(values, pd.Series):
-                        for code_str, val in zip(group["code"], values):
+                        for code_str, val in zip(group["code"], values, strict=False):
                             if pd.notna(val) and np.isfinite(val):
                                 rows.append({
                                     "code": code_str,

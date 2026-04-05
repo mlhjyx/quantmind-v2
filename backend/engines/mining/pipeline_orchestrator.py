@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import structlog
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,6 +28,7 @@ from enum import StrEnum
 from typing import Any
 
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 

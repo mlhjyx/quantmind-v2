@@ -152,10 +152,7 @@ def run_monthly_checkpoint(month_key: str, conn) -> tuple[bool, list[str]]:
     year, month = int(month_key[:4]), int(month_key[5:7])
     # 月首月末
     month_start = date(year, month, 1)
-    if month == 12:
-        month_end = date(year + 1, 1, 1)
-    else:
-        month_end = date(year, month + 1, 1)
+    month_end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
 
     print(f"\n{'─'*60}")
     print(f"  月度检查点: {month_key}")

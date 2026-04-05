@@ -359,7 +359,7 @@ def main() -> None:
                         text=f"**[P0] moneyflow_daily** {td} 数据经{MAX_RETRY}次重试(间隔{RETRY_WAIT}s)仍为空\n\nTushare可能延迟入库，请手动检查",
                     )
                 except Exception:
-                    print(f"  [告警] DingTalk发送失败")
+                    print("  [告警] DingTalk发送失败")
                 continue
         elif df.empty:
             print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")

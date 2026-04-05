@@ -265,10 +265,7 @@ def main() -> None:
 
     try:
         # 确定检查日期
-        if args.date:
-            check_date = date.fromisoformat(args.date)
-        else:
-            check_date = get_latest_trading_day(cur)
+        check_date = date.fromisoformat(args.date) if args.date else get_latest_trading_day(cur)
         logger.info("检查日期: %s", check_date)
 
         # 执行所有检查

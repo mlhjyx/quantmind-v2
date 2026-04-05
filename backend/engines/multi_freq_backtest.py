@@ -15,16 +15,15 @@
     runner.print_comparison(results)
 """
 
-import structlog
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 
 from engines.backtest_engine import BacktestConfig, BacktestResult, SimpleBacktester
-from engines.base_strategy import RebalanceFreq
 from engines.signal_engine import (
     PortfolioBuilder,
     SignalComposer,
@@ -57,7 +56,7 @@ class FreqBacktestResult:
     calmar: float
     annual_turnover: float
     avg_holding_period: float  # 平均持仓周期(交易日)
-    full_result: Optional[BacktestResult] = None
+    full_result: BacktestResult | None = None
 
 
 @dataclass
@@ -79,8 +78,8 @@ class MultiFreqBacktestRunner:
         self,
         conn: Any,
         initial_capital: float = 1_000_000.0,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ):
         self.conn = conn
         self.initial_capital = initial_capital
@@ -93,11 +92,11 @@ class MultiFreqBacktestRunner:
         top_n: int = 15,
         industry_cap: float = 0.25,
         turnover_cap: float = 0.50,
-        freqs: Optional[list[str]] = None,
-        price_data: Optional[pd.DataFrame] = None,
-        factor_data: Optional[pd.DataFrame] = None,
-        industry_map: Optional[dict[str, str]] = None,
-        benchmark_data: Optional[pd.DataFrame] = None,
+        freqs: list[str] | None = None,
+        price_data: pd.DataFrame | None = None,
+        factor_data: pd.DataFrame | None = None,
+        industry_map: dict[str, str] | None = None,
+        benchmark_data: pd.DataFrame | None = None,
     ) -> MultiFreqComparison:
         """运行多频率回测对比。
 
@@ -172,7 +171,7 @@ class MultiFreqBacktestRunner:
         price_data: pd.DataFrame,
         factor_data: pd.DataFrame,
         industry_map: dict[str, str],
-        benchmark_data: Optional[pd.DataFrame],
+        benchmark_data: pd.DataFrame | None,
     ) -> FreqBacktestResult:
         """运行单个频率的回测。"""
         config = SignalConfig(
@@ -205,7 +204,7 @@ class MultiFreqBacktestRunner:
         industry_series = pd.Series(industry_map)
 
         target_portfolios: dict[date, dict[str, float]] = {}
-        prev_holdings: Optional[dict[str, float]] = None
+        prev_holdings: dict[str, float] | None = None
 
         for rd in rebalance_dates:
             # 获取该日因子数据
@@ -375,7 +374,7 @@ class MultiFreqBacktestRunner:
             WHERE industry_sw1 IS NOT NULL
         """
         df = pd.read_sql(query, self.conn)
-        return dict(zip(df["code"], df["industry_sw1"]))
+        return dict(zip(df["code"], df["industry_sw1"], strict=False))
 
     @staticmethod
     def print_comparison(comparison: MultiFreqComparison) -> str:
@@ -385,10 +384,10 @@ class MultiFreqBacktestRunner:
             格式化的对比表格字符串
         """
         lines = [
-            f"=== 多频率回测对比 ===",
+            "=== 多频率回测对比 ===",
             f"因子: {', '.join(comparison.factor_names)}",
             f"Top-N: {comparison.top_n} | 期间: {comparison.period}",
-            f"",
+            "",
             f"{'频率':<10} {'Sharpe':>8} {'CI_low':>8} {'CI_high':>8} "
             f"{'年化收益':>10} {'MDD':>8} {'Calmar':>8} {'年化换手':>10}",
             f"{'-'*80}",
@@ -403,7 +402,7 @@ class MultiFreqBacktestRunner:
                 f"{r.annual_turnover:>9.1f}x{marker}"
             )
 
-        lines.append(f"")
+        lines.append("")
         lines.append(f"最优频率(Sharpe最高): {comparison.best_freq}")
         lines.append(f"推荐频率(CI下界>0): {comparison.recommended_freq}")
 

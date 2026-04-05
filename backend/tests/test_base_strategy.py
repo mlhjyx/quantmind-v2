@@ -561,7 +561,7 @@ class TestBoundaryConditions:
         # 新进股票不超过max_replace
         old_set = set(old_codes)
         target_set = set(decision.target_weights.keys())
-        new_in = target_set - old_set
+        target_set - old_set
         # max_replace=3，但old_codes不在universe中（不同prefix），
         # 所以target和prev完全不交叉 → 新进=target全部，截断到max_replace=3
         # 保留: (target∩prev=空集) | 3个新进 = 3只

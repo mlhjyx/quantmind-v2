@@ -8,12 +8,12 @@
 遵循CLAUDE.md: IC使用沪深300超额收益、复权价格。
 """
 
-import structlog
 from datetime import date, timedelta
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 from scipy import stats
 
 logger = structlog.get_logger(__name__)

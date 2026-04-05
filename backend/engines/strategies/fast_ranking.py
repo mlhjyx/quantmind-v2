@@ -23,9 +23,10 @@ config必须包含:
 - R3: 核心+Modifier架构，本策略作为快频核心策略
 """
 
-import structlog
 from datetime import date, timedelta
 from typing import Any
+
+import structlog
 
 from engines.base_strategy import (
     BaseStrategy,

@@ -8,7 +8,10 @@
   D: 市值<30亿(小盘)
   E: 市值>50亿(排除微盘)
 """
-import logging, os, sys, time
+import logging
+import os
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -18,9 +21,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 import pandas as pd
 from engines.backtest_engine import BacktestConfig, SimpleBacktester
-from engines.signal_engine import (PAPER_TRADING_CONFIG, PortfolioBuilder,
-                                   SignalComposer, SignalConfig, get_rebalance_dates)
+from engines.signal_engine import (
+    PAPER_TRADING_CONFIG,
+    PortfolioBuilder,
+    SignalComposer,
+    SignalConfig,
+    get_rebalance_dates,
+)
 from engines.slippage_model import SlippageConfig
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
@@ -163,20 +172,20 @@ def main():
 
     # Annual breakdown
     years = sorted(results[0][1].annual_breakdown.index)
-    print(f"\n--- 年度Sharpe ---")
+    print("\n--- 年度Sharpe ---")
     hdr = f"{'实验':<20} " + " ".join(f"{y:>8}" for y in years)
     print(f"{hdr}\n{'-'*len(hdr)}")
     for exp, rpt, _ in results:
         vals = " ".join(f"{rpt.annual_breakdown.loc[y,'sharpe']:>8.2f}" if y in rpt.annual_breakdown.index else f"{'N/A':>8}" for y in years)
         print(f"{exp['name']:<20} {vals}")
 
-    print(f"\n--- 年度MDD ---")
+    print("\n--- 年度MDD ---")
     print(f"{hdr}\n{'-'*len(hdr)}")
     for exp, rpt, _ in results:
         vals = " ".join(f"{rpt.annual_breakdown.loc[y,'mdd']:>7.1f}%" if y in rpt.annual_breakdown.index else f"{'N/A':>8}" for y in years)
         print(f"{exp['name']:<20} {vals}")
 
-    print(f"\n--- 年度收益 ---")
+    print("\n--- 年度收益 ---")
     print(f"{hdr}\n{'-'*len(hdr)}")
     for exp, rpt, _ in results:
         vals = " ".join(f"{rpt.annual_breakdown.loc[y,'return']:>7.1f}%" if y in rpt.annual_breakdown.index else f"{'N/A':>8}" for y in years)

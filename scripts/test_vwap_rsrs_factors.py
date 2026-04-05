@@ -533,7 +533,7 @@ def main():
     )
 
     try:
-        results = ic_test(conn)
+        ic_test(conn)
     finally:
         conn.close()
 

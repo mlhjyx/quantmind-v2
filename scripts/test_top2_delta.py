@@ -266,7 +266,7 @@ def run_f1_fold(df: pd.DataFrame, gpu: bool = True) -> dict:
     X_valid = valid_p[feature_cols].values.astype(np.float32)
     y_valid = valid_p["excess_return_20"].values.astype(np.float32)
     X_test = test_p[feature_cols].values.astype(np.float32)
-    y_test = test_p["excess_return_20"].values.astype(np.float32)
+    test_p["excess_return_20"].values.astype(np.float32)
 
     logger.info(f"X_train: {X_train.shape}, X_valid: {X_valid.shape}, X_test: {X_test.shape}")
 
@@ -330,10 +330,7 @@ def run_f1_fold(df: pd.DataFrame, gpu: bool = True) -> dict:
                 continue
             pred = group["predicted"]
             actual = group["excess_return_20"]
-            if method == "spearman":
-                ic = pred.rank().corr(actual.rank())
-            else:
-                ic = pred.corr(actual)
+            ic = pred.rank().corr(actual.rank()) if method == "spearman" else pred.corr(actual)
             if not np.isnan(ic):
                 daily_ics[td] = ic
         return pd.Series(daily_ics)
@@ -356,7 +353,7 @@ def run_f1_fold(df: pd.DataFrame, gpu: bool = True) -> dict:
 
     # 特征重要性
     importance = model.feature_importance(importance_type="gain")
-    feat_imp = dict(zip(feature_cols, [float(v) for v in importance]))
+    feat_imp = dict(zip(feature_cols, [float(v) for v in importance], strict=False))
 
     elapsed = time.time() - t0
 
@@ -443,7 +440,7 @@ def main():
             return
 
         # 运行F1 fold
-        result = run_f1_fold(df, gpu=True)
+        run_f1_fold(df, gpu=True)
 
         total = time.time() - t_start
         logger.info(f"\n总耗时: {total:.1f}s ({total/60:.1f}min)")

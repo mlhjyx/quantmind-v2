@@ -13,11 +13,10 @@ config必须包含:
     max_replace: int | None  # 每次最大换仓数，None=不限制
 """
 
-import structlog
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
-import pandas as pd
+import structlog
 
 from engines.base_strategy import (
     BaseStrategy,
@@ -205,7 +204,7 @@ class EqualWeightStrategy(BaseStrategy):
         self,
         target: dict[str, float],
         industry_map: dict[str, str],
-    ) -> Optional[str]:
+    ) -> str | None:
         """行业集中度检查。最大行业权重>25%时告警。"""
         if not target:
             return None
@@ -231,7 +230,7 @@ class EqualWeightStrategy(BaseStrategy):
         self,
         target: dict[str, float],
         prev_holdings: dict[str, float],
-    ) -> Optional[str]:
+    ) -> str | None:
         """持仓重合度检查。<30%重合时告警。"""
         current_codes = set(target.keys())
         prev_codes = set(prev_holdings.keys())

@@ -21,7 +21,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +45,7 @@ from engines.signal_engine import (
 )
 from engines.slippage_model import SlippageConfig
 from engines.vol_regime import calc_vol_regime
+
 from app.services.price_utils import _get_sync_conn
 
 logging.basicConfig(
@@ -93,7 +94,7 @@ def load_volatility(trade_date, factor_name, conn):
         "SELECT code, raw_value FROM factor_values WHERE trade_date = %s AND factor_name = %s",
         conn, params=(trade_date, factor_name),
     )
-    return dict(zip(df["code"], df["raw_value"].astype(float)))
+    return dict(zip(df["code"], df["raw_value"].astype(float), strict=False))
 
 
 def load_universe(trade_date, conn):
@@ -146,7 +147,7 @@ def load_market_cap(trade_date, conn):
         "SELECT code, total_mv FROM daily_basic WHERE trade_date = %s AND total_mv > 0",
         conn, params=(trade_date,),
     )
-    return dict(zip(df["code"], df["total_mv"].astype(float)))
+    return dict(zip(df["code"], df["total_mv"].astype(float), strict=False))
 
 
 # ============================================================

@@ -436,7 +436,7 @@ def train_m2(conn) -> tuple[object, pd.DataFrame, dict]:
 
     # 特征重要性
     importance = model.feature_importance(importance_type="gain")
-    feat_imp = dict(zip(feature_cols, [float(v) for v in importance]))
+    feat_imp = dict(zip(feature_cols, [float(v) for v in importance], strict=False))
 
     # 训练集/验证集IC
     train_pred = model.predict(X_train, num_iteration=best_iter)
@@ -526,7 +526,7 @@ def fuse_predictions(
     # 标准化M1和M2预测到截面rank percentile，再融合
     # 这样避免不同模型的预测值量纲不同
     fused_rows = []
-    for td, group in fused.groupby("trade_date"):
+    for _td, group in fused.groupby("trade_date"):
         g = group.copy()
         # 截面rank -> [0,1]百分位
         g["m1_rank"] = g["m1_pred"].rank(pct=True)
@@ -578,7 +578,7 @@ def evaluate_fusion(fused_df: pd.DataFrame, m1_df: pd.DataFrame, m2_result: dict
     monthly_returns = {"m1": [], "m2": [], "fused": []}
     month_labels = []
 
-    for td, group in fused_df.groupby("trade_date"):
+    for _td, _group in fused_df.groupby("trade_date"):
         # 只取月末日期（每月最后一个交易日）
         pass
 
@@ -738,7 +738,7 @@ def main():
             return
 
         # Step 4: 评估
-        eval_result = evaluate_fusion(fused_df, m1_df, m2_result)
+        evaluate_fusion(fused_df, m1_df, m2_result)
 
         total_elapsed = time.time() - t_start
         print(f"\n总耗时: {total_elapsed:.1f}s ({total_elapsed/60:.1f}min)")

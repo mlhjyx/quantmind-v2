@@ -15,7 +15,6 @@ Sprint 1.16 alpha-miner
 from __future__ import annotations
 
 import hashlib
-import structlog
 import random
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -24,6 +23,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import structlog
 
 logger = structlog.get_logger(__name__)
 
