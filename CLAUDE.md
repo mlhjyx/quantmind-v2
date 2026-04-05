@@ -39,7 +39,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | RESERVE | 1 | vwap_bias |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 8 | momentum_5/10等(冗余或IC衰减) |
-| LGBM特征集 | 48+ | 全部factor_values有数据的因子(37历史+8 Alpha158+修复) |
+| 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
+| LGBM特征集 | 63 | 全部factor_values因子(48核心+15北向, DB自动发现) |
 
 ### 因子存储
 - **factor_values**: 352M行, TimescaleDB hypertable, 71 chunks ~53GB
@@ -68,7 +69,7 @@ quantmind-v2/
 ├── LESSONS_LEARNED.md           ← 经验教训（36条）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
-│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表唯一来源（43张表）
+│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表唯一来源（62张表）
 │   ├── QUANTMIND_V2_DESIGN_V5.md   ← 总设计文档
 │   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（117项/10Sprint）
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
@@ -93,9 +94,9 @@ quantmind-v2/
 │       │   ├── signal_service.py
 │       │   ├── execution_service.py
 │       │   ├── risk_control_service.py
-│       │   ├── factor_onboarding.py  # Sprint 1.32: 调用FactorNeutralizer
-│       │   ├── db.py                 # sync psycopg2连接器(22行)
-│       │   └── trading_calendar.py   # 交易日工具(60行)
+│       │   ├── factor_onboarding.py  # 因子入库pipeline
+│       │   ├── db.py                 # sync psycopg2连接器
+│       │   └── trading_calendar.py   # 交易日工具
 │       ├── models/              # SQLAlchemy ORM
 │       ├── schemas/             # Pydantic请求/响应
 │       ├── tasks/               # Celery任务
@@ -104,27 +105,32 @@ quantmind-v2/
 │       │   └── beat_schedule.py # 定时调度配置
 │       └── data_fetcher/        # 数据拉取
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
-│   ├── factor_engine.py         # 34因子计算
+│   ├── factor_engine.py         # 因子计算
+│   ├── factor_profiler.py       # 因子画像V2（48+15因子, 12章节报告）
+│   ├── fast_neutralize.py       # 批量中性化（Parquet写入, 17.5min/15因子）
 │   ├── backtest_engine.py       # 回测引擎(Hybrid: 向量化+事件驱动)
-│   ├── slippage_model.py         # 三因素滑点模型(R4研究)
-│   ├── neutralizer.py           # Sprint 1.32: FactorNeutralizer共享模块
+│   ├── slippage_model.py        # 三因素滑点模型(R4研究)
+│   ├── neutralizer.py           # FactorNeutralizer共享模块
 │   └── mining/                  # GP因子挖掘子包
 │       ├── gp_engine.py         # GP引擎(DEAP+WarmStart+岛屿模型)
-│       ├── pipeline_utils.py    # Sprint 1.32: GP管道5个公开函数
+│       ├── pipeline_utils.py    # GP管道公开函数
 │       ├── factor_dsl.py        # FactorDSL算子集
 │       └── pipeline_orchestrator.py  # 闭环编排(部分实现)
 ├── frontend/src/                # React前端
 │   ├── api/                     # API调用层
-│   ├── pages/                   # 22个页面
-│   ├── components/              # 44个共享组件
+│   ├── pages/                   # 35个页面
+│   ├── components/              # 53个共享组件
 │   └── store/                   # Zustand 4个store
 ├── scripts/
-│   ├── run_paper_trading.py     # ⭐ PT主脚本（~901行，运行期间禁改）
+│   ├── run_paper_trading.py     # ⭐ PT主脚本（~1511行，运行期间禁改）
 │   ├── monitor_factor_ic.py     # 因子IC监控
 │   ├── pt_watchdog.py           # PT心跳监控
 │   ├── pg_backup.py             # 数据库备份
 │   └── data_quality_check.py    # 数据巡检
-└── backend/tests/               # 1876+个测试
+├── cache/                       # Parquet缓存（profiler/中性化用）
+├── docs/research-kb/            # 研究知识库（failed/findings/decisions）
+├── .claude/skills/              # 6个QuantMind自定义skills
+└── backend/tests/               # 2076+个测试（90个test文件）
 ```
 
 ## 编码规则（强制）
