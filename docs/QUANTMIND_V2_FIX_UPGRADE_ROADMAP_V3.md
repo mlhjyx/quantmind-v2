@@ -1,7 +1,7 @@
 # QuantMind V2 — 修复+升级+架构演进 落地文档
 
-> **版本**: 3.8 | **日期**: 2026-04-05
-> **基于**: v3.7 + 全文审查修正(22项: 6数据不一致/5过期/4逻辑矛盾/5遗漏)
+> **版本**: 3.8.1 | **日期**: 2026-04-05
+> **基于**: v3.8 + 4/5全天进展(性能优化/北向研究/因子画像V2/ECC-ARIS/GitHub/行业分类)
 > **当前状态**: QMT模拟盘live模式, 4/2首次建仓, 初始≈¥1,000,752, 当前15只持仓NAV≈¥958,684(截至4/3, 以QMT query_asset()为准), PT Day 0起算于4/2
 > **核心基线**: Sharpe=1.080(全期，被2021拉高) / 0.830(2023-2025同期) / 0.70-0.85(DSR校正保守)
 > **新最优配置(已部署)**: Top-20+无行业约束+PMS阶梯利润保护 → Sharpe=1.15, MDD=-35.1%, Calmar=0.83
@@ -32,7 +32,7 @@
 |---|------|------|
 | B1 | structlog全栈统一(76文件迁移) | ✅ |
 | B2 | FastAPI Depends(18个API文件已100%使用) | ✅ 已到位 |
-| B3 | TimescaleDB | ⚠️ 方案B跳过(EDB PG16不兼容) |
+| B3 | TimescaleDB | ✅ 社区PG16.8迁移+TimescaleDB 2.26.0(v3.8.1, 详见性能优化章节) |
 | B4 | DDL对齐(45张表全在, mining_knowledge补6列) | ✅ |
 | B5 | 备份自动化(pg_backup.py + verify_backup.py) | ✅ |
 | B6 | 健康预检(Redis/Celery真实检查) | ✅ |
@@ -1898,6 +1898,165 @@ PMS组合层保护(净值<20日均线×0.90→70%仓位) > 系统性事件暂停
 | B 分钟数据 | ⚠️ | 🔄 全量拉取中 |
 | C 另类数据 | ❌ | 部分✅ 北向5176只3.88M行入库 |
 
+---
+
+## 4/5全天进展记录（v3.8.1新增）
+
+### 性能优化 — TimescaleDB + Parquet缓存 + GPU + 并行化
+
+> **核心成果**: 数据加载从30min降到1.6s(1000x), 因子中性化15因子/17.5min, Pipeline并行化
+
+#### TimescaleDB迁移（EDB PG16→社区PG16.8）
+
+| 项目 | 值 |
+|------|------|
+| 原始问题 | EDB PG16与TimescaleDB不兼容(B3跳过) |
+| 解决方案 | 迁移到社区PostgreSQL 16.8, 安装TimescaleDB 2.26.0 |
+| factor_values | 352M行→hypertable, 71 chunks, ~53GB |
+| klines_daily | 7.4M行→hypertable, 27 chunks, ~1.3GB |
+| 查询加速 | 时间范围查询自动chunk exclusion |
+
+#### Parquet缓存层
+
+| 项目 | 值 |
+|------|------|
+| `_load_shared_data` | 30min(DB)→1.6s(Parquet), **1000x加速** |
+| `fast_neutralize_batch` | Parquet写入, 15因子/17.5min完成全量中性化 |
+| 缓存路径 | 本地Parquet快照, 按日期分区 |
+
+#### Pipeline并行化
+
+| 项目 | 值 |
+|------|------|
+| Step1 | 三API并行拉取(klines+daily_basic+moneyflow) |
+| Step5 | 收尾任务并行化 |
+| 效果 | 端到端Pipeline时间显著缩短 |
+
+#### GPU加速
+
+| 项目 | 值 |
+|------|------|
+| PyTorch | cu128, RTX 5070 12GB |
+| 加速比 | 6.2x(GPU vs CPU) |
+| cupy | 不支持Blackwell架构(sm_120), 暂不可用 |
+
+#### 分钟数据拉取
+
+| 项目 | 值 |
+|------|------|
+| 进度 | 4分片中已完成~36% |
+| 频率 | Baostock 5分钟, 前复权 |
+| 范围 | 全量A股×5年 |
+| 存储 | 本地Parquet分片 |
+
+### 北向研究完整结论（2026-04-05）
+
+> 三轮研究(RANKING→MODIFIER V1→MODIFIER V2), 最终定位确定
+
+#### 第一轮: RANKING因子(个股截面选股)
+
+| 项目 | 值 |
+|------|------|
+| 候选 | 15个北向相关因子 |
+| 结果 | 3个Active(raw IC显著), 但**中性化后全部t<2.0** |
+| 根因 | 北向偏好大盘蓝筹, 个股截面IC被市值效应主导 |
+| 处置 | 全部降级为G1特征池(ML特征, 非独立选股因子) |
+
+#### 第二轮: MODIFIER V1(市场级仓位调节)
+
+| 项目 | 值 |
+|------|------|
+| 方案 | 北向净流入→仓位系数(大幅流出→减仓) |
+| 结果 | **废弃**: corr=-0.093, 方向错误(北向流出时市场反弹) |
+| 根因 | 北向资金流与短期市场走势非单调关系 |
+
+#### 第三轮: MODIFIER V2(改进版)
+
+| 项目 | 值 |
+|------|------|
+| 改进 | 换用变化率/偏离度/持仓集中度等8个衍生指标 |
+| OOS通过 | 8个因子通过OOS验证 |
+| 最强 | nb_size_shift_20d, corr=-0.304(北向大→小盘轮动信号) |
+| 定位 | 待仓位映射优化后可作为MODIFIER信号 |
+
+**最终定位**: 个股级→G1特征池(ML输入); 市场级→MODIFIER V2待仓位映射优化
+
+### 因子画像V2结果（Factor Profiler V2, 2026-04-05）
+
+> commit: `d8af7ff` | 7项推荐逻辑修正, 48因子全量画像完成
+
+**7项修正内容:**
+
+| # | 修正 | 说明 |
+|---|------|------|
+| 1 | Regime方向反转 | `sign(ic_bull) != sign(ic_bear)`才推荐模板12, 幅度差异不构成regime切换 |
+| 2 | 120d衰减判定 | 使用120d(非60d)评估长期IC衰减趋势 |
+| 3 | 单调性阈值 | monotonicity>0.6才推荐截面排名模板 |
+| 4 | 成本一票否决 | annual_cost > estimated_alpha x 0.5 → 不可作独立策略主因子 |
+| 5 | 冗余因子标记 | abs(corr)>0.85的因子对中IC较低者标记drop |
+| 6 | FMP聚类验证 | 独立组合候选必须与所有聚类代表abs(corr)<0.3 |
+| 7 | 多模板推荐 | 置信度低时推荐多个候选模板并行回测 |
+
+**模板分布(48因子):**
+
+| 模板 | 数量 | 说明 |
+|------|------|------|
+| T1(月度截面排名) | 33 | 主力模板, IC半衰期≥20d |
+| T2(周度截面排名) | 4 | IC半衰期<20d |
+| T11(北向MODIFIER) | 6 | 市场级仓位调节因子 |
+| T12(Regime切换) | 5 | IC方向在bull/bear间反转 |
+
+### ECC / ARIS / 自主研究能力建设（2026-04-05）
+
+> 系统从"人工驱动研究"向"AI辅助自主研究"跨越
+
+#### Everything Claude Code (ECC) Plugin
+
+| 项目 | 值 |
+|------|------|
+| 安装 | ECC plugin + Continuous Learning hooks |
+| 能力 | 自动提取session模式, 持久化为instinct, 跨session复用 |
+
+#### ARIS Skills (8个)
+
+| Skill | 用途 |
+|-------|------|
+| quantmind-db-safety | DB操作安全(防锁/OOM/数据丢失) |
+| quantmind-factor-research | 因子研究标准流程(构思→入库) |
+| quantmind-factor-discovery | 自主因子发现pipeline(学术论文→IC→画像→报告) |
+| quantmind-overnight-experiment | 过夜批量实验(参数网格+反过拟合) |
+| quantmind-performance | 性能优化最佳实践 |
+| quantmind-research-kb | 研究知识库(19 entries, 防重复失败方向) |
+| check-ic | 快速IC检查 |
+| 6个QuantMind custom skills | 领域专用agent上下文 |
+
+#### Research Knowledge Base
+
+| 项目 | 值 |
+|------|------|
+| 条目数 | 19 |
+| 覆盖 | 已完成实验结论/失败方向/设计决策/数据源状态 |
+| 用途 | 新研究启动前自动检查是否重复已失败方向 |
+
+### GitHub基础设施（2026-04-05）
+
+| 项目 | 值 |
+|------|------|
+| 仓库 | mlhjyx/quantmind-v2 (private) |
+| 代码质量 | Ruff lint: 5704→0 warnings/errors |
+| 格式化 | ruff format全量通过 |
+
+### 行业分类修正（2026-04-05）
+
+| 项目 | 值 |
+|------|------|
+| 问题 | 原始行业分类使用SW2(二级行业), 导致中性化分组过细 |
+| 修正 | 建立SW2→SW1映射表, 统一使用SW1(一级行业)进行中性化 |
+| 覆盖率 | 94.5%股票成功映射 |
+| 影响 | 中性化质量提升, 行业中性IC更准确 |
+
+---
+
 #### 48因子IC重算结果（数据质量修复后，🔄进行中）
 
 > 数据质量修复（universe过滤+CSI300历史成分）后对48因子重新计算IC。
@@ -1962,6 +2121,15 @@ PMS组合层保护(净值<20日均线×0.90→70%仓位) > 系统性事件暂停
 | mf_divergence IC证伪 | ✅ IC=9.1%→实际-2.27% |
 | **G1 LightGBM Walk-Forward** | **✅ 完成: ML Sharpe=0.68 vs 等权同期0.83, 差距0.15** |
 | **G1数据一致性审计** | **✅ 等权全期1.08被2021拉高, 去掉2021后0.71, 同期0.83** |
+| **TimescaleDB迁移** | **✅ 社区PG16.8+TimescaleDB 2.26.0, factor_values 352M行hypertable** |
+| **Parquet缓存层** | **✅ _load_shared_data 30min→1.6s(1000x), fast_neutralize_batch 17.5min/15因子** |
+| **Pipeline并行化** | **✅ Step1三API并行+Step5收尾并行** |
+| **GPU加速** | **✅ PyTorch cu128 RTX 5070 6.2x(cupy不支持Blackwell)** |
+| **北向研究三轮** | **✅ RANKING→G1池, MODIFIER V1废弃, V2八因子OOS通过(最强nb_size_shift_20d corr=-0.304)** |
+| **因子画像V2** | **✅ 7项修正, 模板分布T1=33/T2=4/T11=6/T12=5** |
+| **行业分类修正** | **✅ SW2→SW1映射, 94.5%覆盖** |
+| **GitHub+代码质量** | **✅ mlhjyx/quantmind-v2 private, Ruff 5704→0** |
+| **ECC/ARIS** | **✅ 8 skills+research-kb 19条+Continuous Learning hooks** |
 
 ### 4/5-4/6（假期, 无风险改动）
 
@@ -2081,10 +2249,11 @@ PMS组合层保护(净值<20日均线×0.90→70%仓位) > 系统性事件暂停
 
 ---
 
-*本文档是QuantMind V2的完整技术路线图v3.8。*
+*本文档是QuantMind V2的完整技术路线图v3.8.1。*
 *Phase A-F已完成, G2/G2.5已完成(全部无效), G3/G8已完成(Alpha真实t=2.45, 保守Sharpe 0.70-0.85)。*
 *GA2 EVENT回测器已完成(引擎✅, mf_divergence证伪)。GA7 Alpha158已完成(8新因子)。*
 *G1 LightGBM已完成(ML Sharpe=0.68 vs 等权同期0.83, 差距0.15, 根因: 数据维度不够非模型不够)。*
+*v3.8.1核心: 性能优化(TimescaleDB 2.26.0社区PG16.8/factor_values 352M行hypertable/Parquet缓存1000x加速/GPU PyTorch cu128 6.2x/Pipeline并行化), 北向研究三轮结论(RANKING→G1特征池/MODIFIER V1废弃/MODIFIER V2八因子OOS通过), 因子画像V2(7项修正/模板T1=33+T2=4+T11=6+T12=5), ECC+ARIS 8 skills+research-kb 19条, GitHub mlhjyx/quantmind-v2+Ruff 5704→0, 行业分类SW2→SW1映射94.5%覆盖。*
 *v3.8核心: 全文审查修正22项(6数据不一致/5过期/4逻辑矛盾/5遗漏), GA1重构为因子画像(严谨版:8项不可妥协要求,基于Alphalens方法论)+15策略模板(4大类)+自动匹配引擎, PMS重构为三层架构(个股层:按策略模板调阈值+策略层:模板自带MDD控制配置+组合层:净值均线保护替代v2.0失败方案), 原则20(因子评估协议:先画像再选模板), 北向/盈利公告断点状态同步, 行动计划各阶段同步策略模板分批实施。*
 *v3.7核心: 前沿论文深度阅读(AlphaAgent/QuantaAlpha/FactorEngine/FactorMiner/ImplementationRisk/AlphaLogics原文)落地为具体规划: GA6重构(三重Gate前置→算子扩展→宏微分离), GA3升级(结构化失败记忆+Ralph Loop+禁区初始化), H0新增(回测成本对齐验证), GP启动条件更新(9条), 铁律12-13, 原则17-19, reversal_20 regime感知处理, G1方法论注意事项。*
 *v3.6核心: 假期阶段1完成(FF3归因/PMS v2.0不上线/PEAD Q1季报t=8.42/北向5176只/分钟数据全量/PEAD因子框架)。*
