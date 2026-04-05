@@ -9,11 +9,11 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase 1, Sprint 1.35 完成, PT v1.2 Day 2/60, **QMT live模式**(SimBroker已禁用), Sharpe基线=0.91（2021-2025全5年volume_impact无流动性过滤）, 毕业阈值=0.315
-- **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB, 32GB DDR5
-- **PMS**: v1.0阶梯利润保护已实现（3层保护, 14:30 Celery Beat检查, 前端页面 /pms）
-- **下一步**: PT v1.3切换(Top-20+去行业约束+PMS已配置) → G1 LightGBM
-- **调度链路**: 09:31 QMT live执行 → 09:35-15:00 盘中监控 → 15:10 对账 → 16:30 信号 → 17:30 因子衰减
+- **当前**: Phase A-F完成, v3.8路线图, PT QMT live运行中, Sharpe基线=1.15(Top-20+无行业约束+PMS), 毕业阈值≈0.56-0.60
+- **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
+- **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
+- **下一步**: 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER) → 阶段4(CompositeSignalEngine)
+- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
 
@@ -21,11 +21,33 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 |----|------|
 | 后端 | FastAPI + **sync psycopg2** + Celery + Redis |
 | 前端 | React 18 + TypeScript + Tailwind 4.1 + ECharts/Recharts + Zustand |
-| 数据库 | PostgreSQL 16 (D:\pgdata16, user=xin, db=quantmind) + Redis 5.0.14.1 |
+| 数据库 | PostgreSQL 16.8 + TimescaleDB 2.26.0 (D:\pgsql, D:\pgdata16, user=xin, db=quantmind_v2) + Redis 5.0.14.1 |
 | 事件总线 | Redis Streams (`qm:{domain}:{event_type}`), StreamBus模块 |
 | 服务管理 | Servy v7.6 (`D:\tools\Servy`), 替代NSSM |
 | 调度 | Windows Task Scheduler (PT) + Celery Beat (GP) |
+| GPU | PyTorch cu128, RTX 5070 12GB (cupy不支持Blackwell sm_120) |
+| 缓存 | 本地Parquet快照(因子/价格), factor_values 352M行→TimescaleDB hypertable |
 | 交易 | 国金miniQMT (A股) |
+
+## 因子系统
+
+### 因子池状态
+| 池 | 数量 | 说明 |
+|----|------|------|
+| CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20(WARNING), amihud_20, bp_ratio |
+| FULL | 14 | CORE+扩展(momentum_20等) |
+| RESERVE | 1 | vwap_bias |
+| INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
+| DEPRECATED | 8 | momentum_5/10等(冗余或IC衰减) |
+| LGBM特征集 | 48+ | 全部factor_values有数据的因子(37历史+8 Alpha158+修复) |
+
+### 因子存储
+- **factor_values**: 352M行, TimescaleDB hypertable, 71 chunks ~53GB
+- **factor_ic_history**: IC唯一入库点(铁律11), 未入库IC视为不存在
+- **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
+
+### 因子评估流程
+1. 经济机制假设(铁律13/14) → 2. IC计算+入库(铁律11) → 3. 画像(factor_profiler, 5维) → 4. 模板匹配(T1-T15) → 5. Gate G1-G8+BH-FDR → 6. 回测验证(paired bootstrap p<0.05)
 
 ## 架构分层（DEV_BACKEND §3.1）
 
@@ -194,7 +216,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - 违反此规则会导致PG OOM崩溃（Windows error 1455 + postgres.exe 0xc0000409）
 - 因子计算、回测等重数据任务必须串行或最多2并发
 - 轻量任务（API测试、IC计算等<500MB）不受此限制
-- PG安装路径: `D:\pgsql\bin\pg_ctl.exe`, 数据目录: `D:\pgdata16`
+- PG安装路径: `D:\pgsql\bin\pg_ctl.exe`, 数据目录: `D:\pgdata16`, db=quantmind_v2
 
 ### SQL
 - SQLAlchemy text() 中用 `CAST(:param AS type)`，**禁止** `::type` 语法（LL-034）
@@ -249,19 +271,49 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 4. **冗余因子标记不可绕过** — `|corr| > 0.85` 的因子对中，IC较低者标记 `keep_recommendation=drop`，不得同时进入Active组合（镜像对corr<-0.85取绝对值后同理）
 5. **FMP候选须经聚类验证** — 独立组合候选因子必须满足与所有其他聚类代表 `|corr| < 0.3`，不可凭主观判断跳过相关性检查
 
-## 策略配置（v1.2，PT运行中）
+## 性能规范
+
+| 优化项 | 基线 | 优化后 | 方法 |
+|--------|------|--------|------|
+| 数据加载(`_load_shared_data`) | 30min(DB) | 1.6s | Parquet缓存, 按日期分区 |
+| 因子中性化 | 慢(逐因子DB读写) | 15因子/17.5min | `fast_neutralize_batch` Parquet批量 |
+| LightGBM训练 | CPU | 6.2x加速 | PyTorch cu128, RTX 5070 12GB |
+| Pipeline Step1 | 串行拉取 | 三API并行 | klines+daily_basic+moneyflow并行 |
+| 时间范围查询 | 全表扫描 | chunk exclusion | TimescaleDB hypertable自动分区 |
+
+- **Parquet缓存路径**: 本地快照, 按日期分区, `_load_shared_data`自动检测缓存有效性
+- **cupy**: 不支持Blackwell架构(sm_120), 暂不可用, 用PyTorch替代
+- **分钟数据**: Baostock 5min全A股x5年, 本地Parquet分片存储
+
+## 已知失败方向（不可重复）
+
+| 方向 | 结论 | 来源 |
+|------|------|------|
+| 风险平价/最小方差权重 | 等权最优, 降风险=降Alpha(小盘暴露) | G2 7组实验 |
+| 动态仓位(20d momentum) | 新基线上无效 | G2.5 3组实验 |
+| 双周调仓 | Sharpe 0.91→0.73 | G2实验 |
+| 基本面因子(等权框架) | 10种方式8 FAIL | Sprint 1.5 |
+| 量价因子窗口变体 | IC天花板0.05-0.06, 边际收益极低 | 暴力枚举Layer 1-2 |
+| PMS v2.0组合级保护 | p=0.655等于随机, 2022慢熊0触发 | v3.6验证 |
+| LLM自由生成因子 | IC=0.006-0.008, 需数据驱动prompt | W7b 5次测试 |
+| mf_divergence独立策略 | IC=-2.27%(非9.1%), 14组回测全负 | GA2证伪 |
+| 同因子换ML模型 | ML Sharpe=0.68 vs 等权0.83, 瓶颈在数据维度 | G1 LightGBM |
+| IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
+
+## 策略配置（v1.2→Top-20已部署，PT运行中）
 # v1.1→v1.2变更: WLS中性化 + 涨跌停板块 + volume_cap 10% + zscore clip±3 + mergesort
-# v1.1归档: Day 0-3 (2026-03-23~27), NAV终值=995,338
+# v1.2→Top-20: 选股15→20, 行业约束25%→无(1.0), PMS v1.0阶梯保护(.env驱动)
 
 ```
 因子: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio
 合成: 等权平均
-选股: Top 15
+选股: Top 20 (PT_TOP_N=20)
 调仓: 月度（月末最后交易日）
-约束: 行业上限 25%, 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
-基线: Sharpe=0.91（2021-2025全5年, WLS+volume_impact+无流动性过滤）, MDD=-43.03%
-# 0.91为5年全量回测确认值。保守估计(DSR+风格调整)=0.70-0.85。PT毕业阈值=0.45×0.7=0.315
-# 新最优配置X-D(未部署): Top-20+无行业约束+PMS(same_close) → Sharpe=1.15, MDD=-35.1%
+约束: 行业上限=无(PT_INDUSTRY_CAP=1.0), 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
+基线(旧): Sharpe=0.91（2021-2025全5年, Top-15+行业25%, WLS+volume_impact无流动性过滤）, MDD=-43.03%
+基线(新,已部署): Sharpe=1.15（Top-20+无行业约束+PMS same_close）, MDD=-35.1%, Calmar=0.83
+# 0.91为旧配置5年全量回测值。1.15为当前部署配置。DSR保守估计=0.70-0.85
+# FF3归因: Alpha=21.1%/年(t=2.45), 但2023-2025 OOS Alpha仅+6.6%(t=0.58不显著), 近年靠SMB beta盈利
 成本: 佣金万0.854(国金实际) + 印花税0.05%(卖出) + 过户费0.001% + volume_impact滑点
 ```
 
@@ -294,19 +346,28 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
 | 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
 | 查设计决策 | docs/DESIGN_DECISIONS.md (93+40项) |
+| ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
+| 研究知识库(防重复失败) | `.claude/skills/quantmind-research-kb/` (19条目) |
+| 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
+| 路线图/全面状态/决策历史 | docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8) |
 
 ## 当前进度
 
-- ✅ Phase 0 设计完成（11文档, 8004行, 93+40决策）
+- ✅ Phase A-F全部完成（185新测试, 904全量通过, 0回归）
 - ✅ R1-R7 研究完成（7份报告, 73项可落地）
-- ✅ Sprint 1.32-1.35 完成（中性化+GP验证+实时数据+前端重构+审计）
-- ✅ G2研究完成（25+组回测: 权重优化无效, PMS有效, Top-20>15, 去行业约束）
-- ✅ 全面数据审计完成（0❌9⚠️, FF3: Alpha=21.1% t=2.45, SMB beta=0.83）
-- ✅ 因子盘点完成（37个DB因子, 20候选入池, 3个P0因子冗余, GP管线0产出）
+- ✅ G1 LightGBM Walk-Forward完成（ML Sharpe=0.68 vs 等权同期0.83, 差距0.15, pipeline保留为评估工具）
+- ✅ G2风险平价+G2.5动态仓位: 均无效, 等权是最优权重方案
+- ✅ GA2 EVENT回测器完成（mf_divergence IC=9.1%证伪→实际-2.27%, 铁律11由此诞生）
+- ✅ 因子画像V2完成（48因子全量画像, 7项推荐逻辑修正, 模板T1=33/T2=4/T11=6/T12=5）
+- ✅ 北向研究三轮完成（RANKING→G1池, MODIFIER V1废弃, V2八因子OOS通过）
+- ✅ 性能优化（TimescaleDB 2.26.0 + Parquet缓存1000x + GPU 6.2x + Pipeline并行化）
 - ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0+配置.env化）
-- 🔨 PT v1.2 运行中 Day 2/60, Sharpe基线=0.91
-- ⬜ 下一步: PT v1.3切换(Top-20+去约束+PMS已配置) → G1 LightGBM
-- 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.2)
+- ✅ GitHub+代码质量（mlhjyx/quantmind-v2 private, Ruff 5704→0）
+- ✅ ECC/ARIS（8 skills + research-kb 19条 + Continuous Learning hooks）
+- 🔨 PT QMT live运行中, Top-20+无行业约束+PMS, 基线Sharpe=1.15
+- 🔄 分钟数据全量拉取中（Baostock 5min, 全A股x5年, ~36%完成）
+- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER → 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
+- 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8)
 ---
 
 ## 执行标准流程
