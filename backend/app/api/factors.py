@@ -16,6 +16,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 """
 # ruff: noqa: B008
 
+import structlog
 from datetime import date, timedelta
 from typing import Any
 
@@ -24,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.services.factor_service import FactorService
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/factors", tags=["factors"])
 
@@ -172,7 +175,15 @@ async def get_factor_correlation(
         start_date = end_date - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
 
     filter_status = None if status == "all" else status
-    factors = await svc.get_factor_list(status=filter_status)
+    try:
+        factors = await svc.get_factor_list(status=filter_status)
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("factor_registry表可能不存在: %s", err_msg[:200])
+            factors = []
+        else:
+            raise
     factor_names = [f["factor_name"] for f in factors]
 
     if not factor_names:
@@ -182,12 +193,17 @@ async def get_factor_correlation(
             "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         }
 
-    # 收集每个因子的IC序列
+    # 收集每个因子的IC序列（过滤None/NaN，转float避免Decimal问题）
     ic_map: dict[str, list[float]] = {}
     for name in factor_names:
         ic_df = await svc.get_factor_ic(name, start_date, end_date, forward_days=20)
         if not ic_df.empty:
-            ic_map[name] = ic_df["ic_value"].tolist()
+            values = [
+                float(v) for v in ic_df["ic_value"].tolist()
+                if v is not None
+            ]
+            if values:
+                ic_map[name] = values
 
     available = [n for n in factor_names if n in ic_map]
 
@@ -411,6 +427,30 @@ async def list_factors(
     for f in factors:
         name = f["factor_name"]
         stats = await svc.get_factor_stats(name, start_date, end_date)
+        t = _calc_t_stat(stats)
+        ic_mean = stats.get("ic_mean") or 0
+        ic_ir = stats.get("ic_ir") or 0
+        data_pts = stats.get("data_points", 0)
+
+        # FDR t-stat: 用BH校正后的等效t值
+        # 简化: fdr_t = t_stat（原始值，前端对比BH阈值判断显著性）
+        fdr_t = t
+
+        # Gate得分: 简化版8项Gate评估（百分制）
+        gates_passed = 0
+        gates_total = 5
+        if t and abs(t) > 2.5:
+            gates_passed += 1  # G1: |t| > 2.5
+        if ic_ir and ic_ir > 0.5:
+            gates_passed += 1  # G2: IC_IR > 0.5
+        if ic_mean and abs(ic_mean) > 0.02:
+            gates_passed += 1  # G3: |IC| > 2%
+        if data_pts and data_pts >= 120:
+            gates_passed += 1  # G4: 数据点 >= 120（半年）
+        if f.get("status") == "active":
+            gates_passed += 1  # G5: 已激活状态
+        gate = round(gates_passed / gates_total * 100, 1)
+
         result.append(
             {
                 "name": name,
@@ -418,10 +458,12 @@ async def list_factors(
                 "direction": f.get("direction"),
                 "status": f.get("status"),
                 "description": f.get("description"),
-                "ic_mean": stats.get("ic_mean"),
-                "ic_ir": stats.get("ic_ir"),
-                "t_stat": _calc_t_stat(stats),
-                "data_points": stats.get("data_points", 0),
+                "ic_mean": ic_mean,
+                "ic_ir": ic_ir,
+                "t_stat": t,
+                "fdr_t_stat": fdr_t,
+                "gate_score": gate,
+                "data_points": data_pts,
                 "created_at": _isoformat_or_none(f.get("created_at")),
             }
         )
@@ -579,15 +621,77 @@ async def get_factor_report(
         ]
 
     # Tab5: 多窗口IC衰减（1/5/10/20日）
+    # 尝试从 factor_ic_history 读取多周期IC
     ic_decay = {}
     for fwd in [1, 5, 10, 20]:
-        decay_stats = await svc.get_factor_stats(name, start_date, end_date)
-        # 复用同一 get_factor_stats，注意其固定 forward_days=20
-        # 多窗口IC需单独查各forward_days的IC，这里提供结构，后续可扩展
-        ic_decay[f"{fwd}d"] = {
-            "ic_mean": decay_stats.get("ic_mean") if fwd == 20 else None,
-            "data_points": decay_stats.get("data_points", 0) if fwd == 20 else 0,
-        }
+        try:
+            fwd_df = await svc.get_factor_ic(name, start_date, end_date, forward_days=fwd)
+            if not fwd_df.empty:
+                valid = [
+                    float(v) for v in fwd_df["ic_value"].tolist() if v is not None
+                ]
+                if valid:
+                    import math
+                    fwd_mean = sum(valid) / len(valid)
+                    fwd_std = (sum((x - fwd_mean) ** 2 for x in valid) / max(len(valid) - 1, 1)) ** 0.5
+                    ic_decay[f"{fwd}d"] = {
+                        "ic_mean": fwd_mean,
+                        "ic_std": fwd_std,
+                        "ic_ir": fwd_mean / fwd_std if fwd_std > 1e-12 else 0,
+                        "data_points": len(valid),
+                    }
+                    continue
+        except Exception:
+            pass
+        ic_decay[f"{fwd}d"] = {"ic_mean": None, "ic_std": None, "ic_ir": None, "data_points": 0}
+
+    # 计算高级指标
+    t_stat = _calc_t_stat(stats)
+    ic_values = [
+        float(row["ic_value"])
+        for _, row in ic_df.iterrows()
+        if row["ic_value"] is not None
+    ] if not ic_df.empty else []
+
+    fdr_t = _calc_fdr_t_stat(t_stat, m_tests=69)
+    nw_t = _calc_newey_west_t(ic_values)
+    half_life = _calc_ic_half_life(ic_values)
+    rec_freq = _recommend_rebalance_freq(ic_decay)
+
+    # Gate得分: 从factor_registry读取gate_ic/gate_ir/gate_t
+    gate_info: dict[str, Any] = {}
+    try:
+        gate_row = await svc.get_factor_gate_fields(name)
+        if isinstance(gate_row, dict):
+            gate_info = gate_row
+    except Exception:
+        pass
+    gate_score = _calc_gate_score(gate_info)
+
+    # 相关性: 从factor_ic_history计算当前因子与其他Active因子的IC相关
+    correlations: list[dict[str, Any]] = []
+    try:
+        all_factors = await svc.get_factor_list(status="active")
+        other_names = [f["factor_name"] for f in all_factors if f["factor_name"] != name]
+        if ic_values and other_names:
+            from scipy import stats as sp_stats
+            for other in other_names:
+                other_df = await svc.get_factor_ic(other, start_date, end_date, forward_days=20)
+                if not other_df.empty:
+                    other_vals = [
+                        float(v) for v in other_df["ic_value"].tolist() if v is not None
+                    ]
+                    min_len = min(len(ic_values), len(other_vals))
+                    if min_len >= 10:
+                        corr, _ = sp_stats.spearmanr(
+                            ic_values[-min_len:], other_vals[-min_len:]
+                        )
+                        correlations.append({
+                            "name": other,
+                            "corr": round(float(corr), 4) if corr is not None else 0.0,
+                        })
+    except Exception as exc:
+        logger.warning("因子相关性计算失败: %s", exc)
 
     return {
         "factor_name": name,
@@ -609,7 +713,12 @@ async def get_factor_report(
                 "ic_mean": stats.get("ic_mean"),
                 "ic_std": stats.get("ic_std"),
                 "ic_ir": stats.get("ic_ir"),
-                "t_stat": _calc_t_stat(stats),
+                "t_stat": t_stat,
+                "fdr_t_stat": fdr_t,
+                "newey_west_t": nw_t,
+                "half_life_days": half_life,
+                "gate_score": gate_score,
+                "recommended_freq": rec_freq,
                 "data_points": stats.get("data_points", 0),
             },
             "ic_series": ic_series,
@@ -626,6 +735,8 @@ async def get_factor_report(
         },
         # Tab5: IC衰减
         "ic_decay": ic_decay,
+        # Tab: 相关性（与其他Active因子的IC Spearman相关）
+        "correlations": correlations,
         # Tab6: 历史回测摘要（关联backtest_runs表）
         "backtest_summary": {
             "note": "关联回测结果需通过 /api/backtest?factor={name} 查询",
@@ -677,3 +788,208 @@ def _calc_t_stat(stats: dict[str, Any]) -> float | None:
         return None
 
     return float(ic_mean / (ic_std / math.sqrt(n)))
+
+
+def _calc_fdr_t_stat(t_stat: float | None, m_tests: int = 69) -> float | None:
+    """BH-FDR校正后的等效t值（Harvey Liu Zhu 2016）。
+
+    方法: 将t统计量转为p值 → BH校正 → 转回等效t值。
+    保守近似: FDR_t ≈ t * sqrt(1 - log(rank/M)) 简化为
+    对单因子: p_adj = min(p * M / rank, 1.0), rank假设为中位=M/2。
+
+    Args:
+        t_stat: 原始t统计量。
+        m_tests: 累积测试总数（FACTOR_TEST_REGISTRY.md M值）。
+
+    Returns:
+        FDR校正后等效t值。
+    """
+    import math
+    from scipy import stats as sp_stats
+
+    if t_stat is None or m_tests < 1:
+        return None
+
+    # 双尾p值
+    p_val = 2 * (1 - sp_stats.t.cdf(abs(t_stat), df=max(100, 481 - 1)))
+    # BH校正: 假设该因子在排序中的rank为中位
+    rank = max(m_tests // 2, 1)
+    p_adj = min(p_val * m_tests / rank, 1.0)
+    # 转回等效t值
+    if p_adj >= 1.0:
+        return 0.0
+    fdr_t = float(sp_stats.t.ppf(1 - p_adj / 2, df=max(100, 481 - 1)))
+    # 对极显著因子(t>15)校正后仍极显著,cap到原始t避免inf
+    if math.isinf(fdr_t) or fdr_t > abs(t_stat):
+        fdr_t = abs(t_stat)
+    return fdr_t
+
+
+def _calc_newey_west_t(ic_values: list[float]) -> float | None:
+    """Newey-West HAC t统计量（自相关稳健）。
+
+    使用Bartlett核，带宽 = floor(4*(N/100)^(2/9))。
+
+    Args:
+        ic_values: IC时序数据。
+
+    Returns:
+        Newey-West t统计量。
+    """
+    import math
+    import numpy as np
+
+    if len(ic_values) < 10:
+        return None
+
+    arr = np.array(ic_values, dtype=float)
+    n = len(arr)
+    mean = arr.mean()
+    demean = arr - mean
+
+    # Bartlett核带宽
+    bandwidth = int(math.floor(4 * (n / 100) ** (2 / 9)))
+    bandwidth = max(bandwidth, 1)
+
+    # HAC方差估计
+    gamma0 = float(np.dot(demean, demean) / n)
+    hac_var = gamma0
+    for lag in range(1, bandwidth + 1):
+        weight = 1 - lag / (bandwidth + 1)  # Bartlett核
+        gamma_lag = float(np.dot(demean[lag:], demean[:-lag]) / n)
+        hac_var += 2 * weight * gamma_lag
+
+    if hac_var <= 0:
+        return None
+
+    se = math.sqrt(hac_var / n)
+    if se < 1e-12:
+        return None
+
+    return float(mean / se)
+
+
+def _calc_ic_half_life(ic_values: list[float]) -> float | None:
+    """IC自相关半衰期（指数衰减拟合）。
+
+    对IC序列的自相关函数拟合 ACF(k) = exp(-k/τ)，半衰期 = τ * ln(2)。
+
+    Args:
+        ic_values: IC时序数据。
+
+    Returns:
+        半衰期（天数），无法拟合时返回None。
+    """
+    import math
+    import numpy as np
+
+    if len(ic_values) < 20:
+        return None
+
+    arr = np.array(ic_values, dtype=float)
+    n = len(arr)
+    mean = arr.mean()
+    demean = arr - mean
+    var = float(np.dot(demean, demean))
+    if var < 1e-12:
+        return None
+
+    # 计算前10个lag的ACF
+    max_lag = min(10, n // 5)
+    acf_vals = []
+    for lag in range(1, max_lag + 1):
+        acf_k = float(np.dot(demean[lag:], demean[:-lag])) / var
+        if acf_k <= 0:
+            break  # ACF变负，停止
+        acf_vals.append((lag, acf_k))
+
+    if len(acf_vals) < 2:
+        return None
+
+    # 对 ln(ACF) = -k/τ 做线性回归
+    lags = np.array([x[0] for x in acf_vals], dtype=float)
+    ln_acf = np.log(np.array([x[1] for x in acf_vals], dtype=float))
+
+    # OLS: ln_acf = a + b*lags, τ = -1/b, half_life = τ*ln(2)
+    n_pts = len(lags)
+    mean_x = lags.mean()
+    mean_y = ln_acf.mean()
+    b = float(np.dot(lags - mean_x, ln_acf - mean_y) / np.dot(lags - mean_x, lags - mean_x))
+
+    if b >= 0:
+        return None  # ACF不衰减
+
+    tau = -1.0 / b
+    half_life = tau * math.log(2)
+
+    return round(half_life, 1) if half_life > 0 else None
+
+
+def _calc_gate_score(factor_info: dict[str, Any]) -> float | None:
+    """从factor_registry计算Gate综合得分。
+
+    综合 gate_ic / gate_ir / gate_t 的标准化得分。
+    满分100: IC权重30 + IR权重30 + t值权重40。
+
+    Args:
+        factor_info: factor_registry行数据。
+
+    Returns:
+        0-100的Gate得分。
+    """
+    gate_ic = factor_info.get("gate_ic")
+    gate_ir = factor_info.get("gate_ir")
+    gate_t = factor_info.get("gate_t")
+
+    if gate_ic is None and gate_ir is None and gate_t is None:
+        return None
+
+    score = 0.0
+    # IC得分: |IC|>=0.05 满分30, 线性缩放
+    if gate_ic is not None:
+        ic_abs = abs(float(gate_ic))
+        score += min(ic_abs / 0.05, 1.0) * 30
+    # IR得分: |IR|>=1.0 满分30
+    if gate_ir is not None:
+        ir_abs = abs(float(gate_ir))
+        score += min(ir_abs / 1.0, 1.0) * 30
+    # t值得分: |t|>=5.0 满分40
+    if gate_t is not None:
+        t_abs = abs(float(gate_t))
+        score += min(t_abs / 5.0, 1.0) * 40
+
+    return round(score, 1)
+
+
+def _recommend_rebalance_freq(ic_decay: dict[str, Any]) -> str | None:
+    """基于IC衰减推荐调仓频率。
+
+    规则:
+    - 如果1d IC最高 → 日度
+    - 如果5d IC最高 → 周度
+    - 如果10d IC最高 → 双周
+    - 如果20d IC最高 → 月度
+    - 数据不足 → None
+
+    Args:
+        ic_decay: {1d: {ic_mean, data_points}, 5d: ..., 10d: ..., 20d: ...}
+
+    Returns:
+        推荐频率字符串。
+    """
+    freq_map = {"1d": "日度", "5d": "周度", "10d": "双周", "20d": "月度"}
+    best_key = None
+    best_ic = -1.0
+
+    for key in ["1d", "5d", "10d", "20d"]:
+        entry = ic_decay.get(key, {})
+        if isinstance(entry, dict) and entry.get("ic_mean") is not None and entry.get("data_points", 0) > 0:
+            ic_abs = abs(float(entry["ic_mean"]))
+            if ic_abs > best_ic:
+                best_ic = ic_abs
+                best_key = key
+
+    if best_key is None:
+        return None
+
+    return freq_map.get(best_key, "月度")

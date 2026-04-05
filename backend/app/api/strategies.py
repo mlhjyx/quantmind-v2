@@ -111,6 +111,39 @@ async def get_strategy_detail(
     return detail
 
 
+@router.get("/{strategy_id}/versions")
+async def get_strategy_versions(
+    strategy_id: str,
+    svc: StrategyService = Depends(_get_strategy_service),
+) -> list[dict[str, Any]]:
+    """获取策略版本历史列表。
+
+    返回该策略所有配置版本(最新在前)。
+
+    Args:
+        strategy_id: 策略ID。
+
+    Returns:
+        版本列表，每项含 version/config/changelog/created_at。
+
+    Raises:
+        HTTPException: 策略不存在时返回 404。
+    """
+    try:
+        versions = await svc.strategy_repo.get_config_history(strategy_id)
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            return []
+        raise
+    if not versions:
+        # 检查策略是否存在
+        strategy = await svc.strategy_repo.get_strategy(strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail=f"策略不存在: {strategy_id}")
+    return versions
+
+
 @router.post("/{strategy_id}/versions")
 async def create_strategy_version(
     strategy_id: str,

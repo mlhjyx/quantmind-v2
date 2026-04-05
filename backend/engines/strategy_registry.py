@@ -4,11 +4,11 @@
 预注册: equal_weight, multi_freq。
 """
 
-import logging
+import structlog
 
 from engines.base_strategy import BaseStrategy, StrategyMeta
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class StrategyRegistry:

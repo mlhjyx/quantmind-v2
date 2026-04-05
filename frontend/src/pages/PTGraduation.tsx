@@ -172,7 +172,7 @@ export default function PTGraduation() {
       criteria: GraduationCriterion[];
     };
 
-    axios.get<GraduationStatusResp>("/api/paper-trading/graduation-status")
+    axios.get<GraduationStatusResp>("/api/paper-trading/graduation-status", { params: { execution_mode: "live" } })
       .then((r) => {
         const resp = r.data;
         const criteria = resp.criteria ?? [];
@@ -290,6 +290,13 @@ export default function PTGraduation() {
           </span>
           <span className="text-[10px] text-gray-500">Day 60</span>
         </div>
+        {data!.pt_day < 20 && (
+          <div className="mt-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <span className="text-[11px] text-blue-300">
+              数据积累中 — 需要至少20个交易日才能计算可靠的Sharpe/MDD。当前指标仅供参考。
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Metrics grid 3×3 */}

@@ -18,14 +18,14 @@ FastAPI Depends注入模式:
         return BacktestService(session)
 """
 
-import logging
+import structlog
 import uuid
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BacktestService:
@@ -86,9 +86,9 @@ class BacktestService:
         # 提交Celery任务
         try:
             if market == "astock":
-                from app.tasks.astock_tasks import run_backtest_task  # type: ignore
+                from app.tasks.backtest_tasks import run_backtest  # type: ignore
 
-                task = run_backtest_task.delay(run_id, strategy_id, config)
+                task = run_backtest.delay(run_id)
             else:
                 from app.tasks.forex_tasks import run_forex_backtest_task  # type: ignore
 

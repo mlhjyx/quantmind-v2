@@ -1,0 +1,2 @@
+ensemble_sharpe,single_sharpe,baseline_sharpe,ens_vs_single_pct,ens_vs_base_pct,bootstrap_p_ens_vs_single,bootstrap_p_ens_vs_base,ensemble_mdd,single_mdd,baseline_mdd,target_met
+0.9377294367801862,0.825242403995502,-0.1205583509092584,13.630786813676302,-877.8220502418735,0.3544,0.0464,-0.43191934065666027,-0.39511444283592,-0.4856819721182749,True

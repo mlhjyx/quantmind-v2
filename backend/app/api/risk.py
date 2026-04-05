@@ -90,7 +90,27 @@ async def get_risk_state(
     """
     sid = _parse_uuid(strategy_id, "策略ID")
 
-    state = await svc.get_current_state(sid, execution_mode)
+    try:
+        state = await svc.get_current_state(sid, execution_mode)
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("风控表可能不存在: %s", err_msg[:200])
+            from datetime import date as _date
+            return {
+                "level": 0,
+                "level_name": "NORMAL",
+                "entered_date": _date.today().isoformat(),
+                "trigger_reason": "",
+                "trigger_metrics": {},
+                "position_multiplier": 1.0,
+                "can_rebalance": True,
+                "recovery_streak_days": 0,
+                "recovery_streak_return": 0.0,
+                "requires_manual_approval": False,
+            }
+        raise
+
     return {
         "level": state.level.value,
         "level_name": state.level.name,
@@ -124,7 +144,15 @@ async def get_risk_history(
     """
     sid = _parse_uuid(strategy_id, "策略ID")
 
-    transitions = await svc.get_transition_history(sid, execution_mode, limit)
+    try:
+        transitions = await svc.get_transition_history(sid, execution_mode, limit)
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("风控日志表可能不存在: %s", err_msg[:200])
+            return []
+        raise
+
     return [
         {
             "trade_date": t.trade_date.isoformat(),

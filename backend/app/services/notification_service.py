@@ -11,7 +11,7 @@
 """
 
 import contextlib
-import logging
+import structlog
 from datetime import date, datetime
 from typing import Any
 
@@ -25,7 +25,7 @@ from app.services.notification_templates import (
 )
 from app.services.notification_throttler import NotificationThrottler, default_throttler
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NotificationRepository(BaseRepository):

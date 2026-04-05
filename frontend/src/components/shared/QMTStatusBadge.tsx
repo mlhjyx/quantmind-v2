@@ -17,11 +17,11 @@ interface QMTHealth {
 }
 
 const STATE_CONFIG: Record<string, { label: string; color: string }> = {
-  connected: { label: "QMT", color: C.up },
-  connecting: { label: "QMT", color: C.warn },
-  disconnected: { label: "QMT", color: C.down },
-  error: { label: "QMT", color: C.down },
-  disabled: { label: "SimBroker", color: C.text3 },
+  connected: { label: "QMT 实盘", color: C.up },
+  connecting: { label: "QMT 连接中", color: C.warn },
+  disconnected: { label: "QMT 断开", color: C.down },
+  error: { label: "QMT 异常", color: C.down },
+  disabled: { label: "模拟盘", color: C.text3 },
 };
 
 export function QMTStatusBadge() {
@@ -34,7 +34,7 @@ export function QMTStatusBadge() {
 
   if (!data) return null;
 
-  const fallback = STATE_CONFIG["disabled"];
+  const fallback = STATE_CONFIG["disabled"]!;
   const cfg = STATE_CONFIG[data.state] ?? fallback;
   const dotColor = data.is_healthy ? cfg.color : C.down;
 
@@ -49,8 +49,8 @@ export function QMTStatusBadge() {
       }}
       title={
         data.state === "disabled"
-          ? "Paper Trading (SimBroker)"
-          : `QMT ${data.state} | ${data.account_id ?? ""}`
+          ? "模拟盘模式 (QMT未连接)"
+          : `QMT ${data.state === "connected" ? "已连接" : data.state} | ${data.account_id ?? ""}`
       }
     >
       <span

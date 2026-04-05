@@ -11,13 +11,13 @@
   - 百分比字段已×100（roe=15.23表示15.23%）
 """
 
-import logging
+import structlog
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def load_financial_pit(

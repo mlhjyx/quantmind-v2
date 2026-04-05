@@ -83,14 +83,27 @@ export interface FactorReport {
   regime_stats: { regime: "bull" | "bear" | "sideways"; ic: number; ir: number; n_periods: number }[];
 }
 
+/** 后端返回 ic_mean/ic_ir/gate_t，前端类型用 ic/ir/t_stat — 此处做映射 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapFactor(raw: any): FactorSummary {
+  return {
+    ...raw,
+    ic: raw.ic ?? raw.ic_mean ?? 0,
+    ir: raw.ir ?? raw.ic_ir ?? 0,
+    t_stat: raw.t_stat ?? raw.gate_t ?? 0,
+    fdr_t_stat: raw.fdr_t_stat ?? 0,
+    gate_score: raw.gate_score ?? 0,
+  };
+}
+
 export async function getFactorsSummary(): Promise<FactorSummary[]> {
   const res = await apiClient.get<FactorSummary[]>("/factors/summary");
-  return res.data;
+  return res.data.map(mapFactor);
 }
 
 export async function getFactorLibrary(): Promise<FactorSummary[]> {
   const res = await apiClient.get<FactorSummary[]>("/factors");
-  return res.data;
+  return res.data.map(mapFactor);
 }
 
 export async function getFactorLibraryStats(): Promise<FactorLibraryStats> {
@@ -115,34 +128,64 @@ export async function getFactorReport(name: string): Promise<FactorReport> {
   const ov = d.overview ?? {};
   const ics = d.ic_analysis?.stats ?? {};
   const icDecayRaw = d.ic_decay ?? {};
+
+  // Map ic_series: API returns {trade_date, ic_value} → frontend expects {date, ic}
+  const rawSeries: { trade_date?: string; date?: string; ic_value?: number; ic?: number }[] =
+    d.ic_analysis?.ic_series ?? [];
+  const icSeries = rawSeries.map((p) => ({
+    date: p.date ?? p.trade_date ?? "",
+    ic: p.ic ?? p.ic_value ?? 0,
+  }));
+
+  // Compute cumulative IC from series
+  let cumSum = 0;
+  const icCumsum = icSeries.map((p) => { cumSum += p.ic; return cumSum; });
+
+  // IC distribution = raw IC values (for histogram)
+  const icDistribution = icSeries.map((p) => p.ic);
+
+  // Multi-period IC: compute from ic_decay where data exists
+  const icByPeriod: { period: string; ic: number; ir: number }[] = [];
+  for (const [k, v] of Object.entries(icDecayRaw)) {
+    if (k === "note") continue;
+    const entry = v as { ic_mean: number | null; ic_ir?: number | null; data_points: number };
+    if (entry.ic_mean != null && entry.data_points > 0) {
+      icByPeriod.push({
+        period: `${k}`,
+        ic: entry.ic_mean,
+        ir: entry.ic_ir ?? 0,
+      });
+    }
+  }
+
   return {
     id: d.factor_name ?? name,
     name: d.factor_name ?? name,
     category: ov.category ?? "",
     description: ov.description ?? "",
     direction: ov.direction ?? 1,
-    recommended_freq: null,
+    recommended_freq: ics.recommended_freq ?? null,
     source: null,
     status: ov.status ?? "active",
     ic_mean: ics.ic_mean ?? null,
     ic_ir: ics.ic_ir ?? null,
     t_stat: ics.t_stat ?? null,
-    fdr_t_stat: null,
-    newey_west_t: null,
-    half_life_days: null,
-    coverage: null,
-    gate_score: null,
-    ic_series: d.ic_analysis?.ic_series ?? [],
-    ic_cumsum: [],
-    ic_distribution: [],
-    ic_by_period: [],
+    fdr_t_stat: ics.fdr_t_stat ?? null,
+    newey_west_t: ics.newey_west_t ?? null,
+    half_life_days: ics.half_life_days ?? null,
+    coverage: ics.data_points ? ics.data_points / 481 : null,
+    gate_score: ics.gate_score ?? null,
+    ic_series: icSeries,
+    ic_cumsum: icCumsum,
+    ic_distribution: icDistribution,
+    ic_by_period: icByPeriod,
     group_nav: d.quintile_returns?.groups ?? [],
     longshort_nav: null,
     group_monthly: [],
     ic_decay: Object.entries(icDecayRaw)
       .filter(([k]) => k !== "note")
       .map(([k, v]) => ({ lag: parseInt(k) || 0, ic: (v as { ic_mean: number | null }).ic_mean ?? 0 })),
-    correlations: [],
+    correlations: d.correlations ?? [],
     industry_ic: [],
     annual_stats: [],
     regime_stats: [],

@@ -26,7 +26,7 @@
 - DESIGN_V5.md §6 信号类型定义
 """
 
-import logging
+import structlog
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
@@ -43,7 +43,7 @@ from engines.base_strategy import (
     WeightMethod,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class EventType(StrEnum):

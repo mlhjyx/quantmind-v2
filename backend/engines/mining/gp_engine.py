@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+import structlog
 import math
 import random
 import time
@@ -52,7 +54,7 @@ from engines.mining.factor_dsl import (
     get_seed_trees,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

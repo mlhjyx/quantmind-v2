@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
+import structlog
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -30,7 +30,7 @@ from typing import Any
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

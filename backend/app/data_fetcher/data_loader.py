@@ -10,7 +10,7 @@
 - total_mv/circ_mv: 万元
 """
 
-import logging
+import structlog
 from datetime import date
 
 import pandas as pd
@@ -20,7 +20,7 @@ from psycopg2.extras import execute_values
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_sync_conn() -> psycopg2.extensions.connection:

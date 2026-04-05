@@ -7,12 +7,12 @@
 差异超阈值时触发DingTalk告警。
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 对账阈值
 POSITION_MISMATCH_THRESHOLD = 0  # 股数差异容忍（0=精确匹配）

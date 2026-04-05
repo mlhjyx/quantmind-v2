@@ -14,7 +14,7 @@ FastAPI Depends注入模式:
         return FactorService(session)
 """
 
-import logging
+import structlog
 from datetime import date
 from typing import Any
 
@@ -22,7 +22,7 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FactorService:
@@ -262,4 +262,31 @@ class FactorService:
             "ic_std": float(row[1]) if row[1] is not None else None,
             "ic_ir": float(row[2]) if row[2] is not None else None,
             "data_points": int(row[3]),
+        }
+
+    async def get_factor_gate_fields(self, factor_name: str) -> dict[str, Any] | None:
+        """查询因子Gate相关字段（gate_ic/gate_ir/gate_t）。
+
+        Args:
+            factor_name: 因子名称。
+
+        Returns:
+            dict含gate_ic/gate_ir/gate_t，不存在返回None。
+        """
+        sql = text(
+            """
+            SELECT gate_ic, gate_ir, gate_t
+            FROM factor_registry
+            WHERE name = :name
+            LIMIT 1
+            """
+        )
+        result = await self._session.execute(sql, {"name": factor_name})
+        row = result.fetchone()
+        if not row:
+            return None
+        return {
+            "gate_ic": float(row[0]) if row[0] is not None else None,
+            "gate_ir": float(row[1]) if row[1] is not None else None,
+            "gate_t": float(row[2]) if row[2] is not None else None,
         }

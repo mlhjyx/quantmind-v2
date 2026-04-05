@@ -96,7 +96,7 @@ vi.mock("@/components/CircuitBreaker", () => ({
 // Dashboard
 // ─────────────────────────────────────────────────────────────
 
-import Dashboard from "@/pages/DashboardOverview";
+import Dashboard from "@/pages/Dashboard";
 
 function renderWithRouter(ui: React.ReactElement) {
   const queryClient = new QueryClient({

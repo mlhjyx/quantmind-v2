@@ -25,7 +25,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,7 +38,7 @@ from sqlalchemy.orm import selectinload
 from app.db import get_db
 from app.models.approval_queue import GPApprovalQueue
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/approval", tags=["approval"])
 

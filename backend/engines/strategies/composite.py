@@ -22,14 +22,14 @@ Modifier不独立选股，只调节核心策略的目标权重。
 - backend/engines/portfolio_aggregator.py（Phase B卫星策略合并）
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 
 from engines.base_strategy import BaseStrategy, StrategyContext, StrategyDecision
 from engines.modifiers.base import ModifierBase
 from engines.portfolio_aggregator import AggregatedPortfolio, PortfolioAggregator
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # R3 §6.4默认约束
 _DEFAULT_CASH_BUFFER: float = 0.03

@@ -20,7 +20,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.services.mining_service import MiningService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/mining", tags=["mining"])
 

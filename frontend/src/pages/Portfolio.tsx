@@ -6,13 +6,14 @@ import { Card, CardHeader, PageHeader, ChartTooltip } from "@/components/shared"
 import { PageSkeleton } from "@/components/ui/PageSkeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { usePortfolio } from "@/hooks/useRealtimeData";
 
 // ── Types ──
 interface Holding {
   code: string; name: string; industry: string;
   wt: number; cost: number; price: number;
   pnl: number; pnlAmt: number; days: number; signal: number;
-  marketValue: number;
+  marketValue: number; dailyReturn: number;
 }
 interface SectorItem { name: string; value: number; color: string; }
 interface DailyPnl   { trade_date: string; nav: number; daily_return: number; cumulative_return: number; drawdown: number; }
@@ -21,7 +22,7 @@ interface DailyPnl   { trade_date: string; nav: number; daily_return: number; cu
 function SkeletonRow() {
   return (
     <tr style={{ borderTop: `1px solid ${C.border}` }}>
-      {Array.from({ length: 10 }).map((_, i) => (
+      {Array.from({ length: 11 }).map((_, i) => (
         <td key={i} className="py-2 px-1">
           <div className="h-3 rounded animate-pulse" style={{ background: C.bg3, width: i === 1 ? 60 : 40 }} />
         </td>
@@ -31,45 +32,46 @@ function SkeletonRow() {
 }
 
 export default function Portfolio() {
-  const [holdings, setHoldings]     = useState<Holding[] | null>(null);
+  // Realtime portfolio data (5s refresh)
+  const { data: rtPortfolio, isLoading: rtLoading } = usePortfolio();
+
+  // Map realtime positions to Holding interface
+  const rtHoldings: Holding[] | null = rtPortfolio
+    ? rtPortfolio.positions.map((p) => ({
+        code: p.code,
+        name: p.name,
+        industry: p.industry,
+        wt: p.weight,
+        cost: p.cost_price,
+        price: p.last_price,
+        pnl: p.pnl_pct,
+        pnlAmt: p.pnl,
+        days: 0, // realtime API doesn't track holding days
+        signal: 0,
+        marketValue: p.market_value,
+        dailyReturn: p.daily_return,
+      }))
+    : null;
+
+  // Historical data (sector distribution + daily PnL still from legacy API)
   const [sectorData, setSectorData] = useState<SectorItem[] | null>(null);
   const [pnlByDay, setPnlByDay]     = useState<DailyPnl[] | null>(null);
   const [loading, setLoading]       = useState(true);
   const [errors, setErrors]         = useState<string[]>([]);
 
+  // Use realtime for holdings, fallback to legacy
+  const holdings = rtHoldings;
+
   useEffect(() => {
     let live = true;
     const load = async () => {
-      const [h, s, p] = await Promise.allSettled([
-        axios.get<Holding[]>("/api/portfolio/holdings"),
-        axios.get<SectorItem[]>("/api/portfolio/sector-distribution"),
-        axios.get<DailyPnl[]>("/api/portfolio/daily-pnl?days=20"),
+      const [s, p] = await Promise.allSettled([
+        axios.get<SectorItem[]>("/api/portfolio/sector-distribution", { params: { execution_mode: "live" } }),
+        axios.get<DailyPnl[]>("/api/portfolio/daily-pnl", { params: { days: 20, execution_mode: "live" } }),
       ]);
       if (!live) return;
 
       const newErrors: string[] = [];
-
-      if (h.status === "fulfilled") {
-        // API returns unrealized_pnl as ratio (e.g. 0.0321); map to Holding shape
-        type ApiHolding = { code: string; name: string; industry: string; quantity: number; avg_cost: number; market_value: number; weight: number; unrealized_pnl: number; holding_days: number };
-        const mapped: Holding[] = (h.value.data as unknown as ApiHolding[]).map((r) => ({
-          code: r.code,
-          name: r.name,
-          industry: r.industry,
-          wt: +(r.weight * 100).toFixed(2),
-          cost: r.avg_cost,
-          price: r.avg_cost * (1 + r.unrealized_pnl),
-          pnl: +(r.unrealized_pnl * 100).toFixed(2),
-          pnlAmt: +(r.unrealized_pnl * r.market_value).toFixed(0),
-          days: r.holding_days,
-          signal: 0,
-          marketValue: r.market_value,
-        }));
-        setHoldings(mapped);
-      } else {
-        setHoldings([]);
-        newErrors.push("持仓数据加载失败");
-      }
 
       if (s.status === "fulfilled") {
         setSectorData(s.value.data);
@@ -89,11 +91,12 @@ export default function Portfolio() {
       if (live) setLoading(false);
     };
     void load();
-    return () => { live = false; };
+    const id = setInterval(() => void load(), 60_000); // slower refresh for historical
+    return () => { live = false; clearInterval(id); };
   }, []);
 
-  // Show full-page skeleton on first load (all three datasets still null)
-  if (loading && holdings === null && sectorData === null && pnlByDay === null) {
+  // Show full-page skeleton on first load
+  if (rtLoading && holdings === null && sectorData === null && pnlByDay === null) {
     return (
       <>
         <PageHeader title="持仓管理" titleEn="Portfolio Management" />
@@ -109,16 +112,14 @@ export default function Portfolio() {
   const safeSector    = sectorData ?? [];
   const safePnlByDay  = pnlByDay  ?? [];
 
-  // Compute summary metrics from API data
-  const totalMarketValue = safeHoldings.reduce((s, h) => s + h.marketValue, 0);
-  const holdingPnl       = safeHoldings.reduce((s, h) => s + h.pnlAmt, 0);
-  const latestEntry      = safePnlByDay[safePnlByDay.length - 1];
-  const todayPnl         = latestEntry?.daily_return != null
-    ? +(latestEntry.daily_return * (latestEntry.nav ?? 0)).toFixed(0)
-    : 0;
-  const latestNav        = latestEntry?.nav ?? 0;
-  const cash             = latestNav > 0 ? latestNav - totalMarketValue : 0;
-  const positionPct      = latestNav > 0 ? (totalMarketValue / latestNav * 100).toFixed(1) : "—";
+  // Compute summary metrics — prefer realtime, fallback to legacy
+  const rtAcct = rtPortfolio?.account;
+  const totalMarketValue = rtAcct?.market_value ?? safeHoldings.reduce((s, h) => s + h.marketValue, 0);
+  const holdingPnl       = rtAcct?.total_pnl ?? safeHoldings.reduce((s, h) => s + h.pnlAmt, 0);
+  const todayPnl         = rtAcct?.daily_pnl ?? 0;
+  const totalAsset       = rtAcct?.total_asset ?? 0;
+  const cash             = rtAcct?.available_cash ?? (totalAsset > 0 ? totalAsset - totalMarketValue : 0);
+  const positionPct      = totalAsset > 0 ? (totalMarketValue / totalAsset * 100).toFixed(1) : "—";
   const avgDays          = safeHoldings.length
     ? Math.round(safeHoldings.reduce((s, h) => s + h.days, 0) / safeHoldings.length)
     : 0;
@@ -137,6 +138,9 @@ export default function Portfolio() {
     <>
       <PageHeader title="持仓管理" titleEn="Portfolio Management">
         <div className="flex items-center gap-4" style={{ fontSize: 11 }}>
+          {rtPortfolio && !rtPortfolio.qmt_connected && (
+            <span className="px-2 py-0.5 rounded" style={{ fontSize: 9, background: `${C.warn}20`, color: C.warn }}>DB数据</span>
+          )}
           <span style={{ color: C.text3 }}>
             现金 <span style={{ color: C.text1, fontFamily: C.mono, fontWeight: 600 }}>{cash > 0 ? fmtCny(cash) : "—"}</span>
           </span>
@@ -184,6 +188,7 @@ export default function Portfolio() {
                     <th className="text-right py-2 font-normal">权重</th>
                     <th className="text-right py-2 font-normal">成本</th>
                     <th className="text-right py-2 font-normal">现价</th>
+                    <th className="text-right py-2 font-normal">日涨跌</th>
                     <th className="text-right py-2 font-normal">盈亏%</th>
                     <th className="text-right py-2 font-normal">盈亏额</th>
                     <th className="text-right py-2 font-normal">天数</th>
@@ -196,7 +201,7 @@ export default function Portfolio() {
                     : safeHoldings.length === 0
                     ? (
                         <tr>
-                          <td colSpan={10}>
+                          <td colSpan={11}>
                             <EmptyState title="暂无持仓" description="当前组合无持仓记录" />
                           </td>
                         </tr>
@@ -222,6 +227,9 @@ export default function Portfolio() {
                           </td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, color: C.text3 }}>{h.cost.toFixed(2)}</td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, color: C.text1 }}>{h.price.toFixed(2)}</td>
+                          <td className="text-right py-2" style={{ fontFamily: C.mono, fontWeight: 500, color: h.dailyReturn >= 0 ? C.up : C.down }}>
+                            {h.dailyReturn >= 0 ? "+" : ""}{h.dailyReturn.toFixed(2)}%
+                          </td>
                           <td className="text-right py-2" style={{ fontFamily: C.mono, fontWeight: 600, color: h.pnl >= 0 ? C.up : C.down }}>
                             {h.pnl >= 0 ? "+" : ""}{h.pnl.toFixed(2)}%
                           </td>

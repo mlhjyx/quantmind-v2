@@ -8,13 +8,16 @@ Singleton模式，在EXECUTION_MODE=live时:
 PT代码隔离: 此模块是ADDITIVE的，不修改任何现有执行路径。
 """
 
-import logging
+import sys
+from pathlib import Path
+
+import structlog
 from datetime import datetime
 from typing import Any, Optional
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class QMTConnectionManager:
@@ -60,19 +63,34 @@ class QMTConnectionManager:
         return self._broker
 
     def startup(self) -> None:
-        """FastAPI启动时调用。仅EXECUTION_MODE=live时连接。"""
-        if not self.is_live_mode:
+        """FastAPI启动时调用。
+
+        连接策略:
+        - EXECUTION_MODE=live → 必须连接，失败报错
+        - QMT_ALWAYS_CONNECT=true → 尝试连接，失败不报错(API用DB fallback)
+        - 其他 → 禁用
+        """
+        if not self.is_live_mode and not settings.QMT_ALWAYS_CONNECT:
             self._state = "disabled"
-            logger.info("[QMTManager] EXECUTION_MODE=paper, QMT连接管理器已禁用")
+            logger.info("[QMTManager] EXECUTION_MODE=paper且QMT_ALWAYS_CONNECT=false, QMT连接管理器已禁用")
             return
 
         if not settings.QMT_PATH or not settings.QMT_ACCOUNT_ID:
-            self._state = "error"
-            self._last_error = "QMT_PATH或QMT_ACCOUNT_ID未配置"
-            logger.error(f"[QMTManager] {self._last_error}")
+            if self.is_live_mode:
+                self._state = "error"
+                self._last_error = "QMT_PATH或QMT_ACCOUNT_ID未配置"
+                logger.error(f"[QMTManager] {self._last_error}")
+            else:
+                self._state = "disabled"
+                logger.info("[QMTManager] QMT_ALWAYS_CONNECT=true但QMT_PATH/ACCOUNT_ID未配置，跳过连接")
             return
 
         self._connect()
+        # QMT_ALWAYS_CONNECT模式下连接失败不阻塞启动
+        if not self.is_live_mode and self._state != "connected":
+            logger.warning(
+                f"[QMTManager] QMT连接失败(state={self._state})，API将使用DB fallback"
+            )
 
     def shutdown(self) -> None:
         """FastAPI关闭时调用。"""
@@ -88,6 +106,12 @@ class QMTConnectionManager:
     def _connect(self) -> None:
         """连接miniQMT。"""
         self._state = "connecting"
+        # xtquant双层嵌套路径修复（与run_paper_trading.py一致）
+        # append不insert，避免其旧numpy覆盖venv版本
+        _xt = Path(__file__).resolve().parent.parent.parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+        if _xt.exists() and str(_xt) not in sys.path:
+            sys.path.append(str(_xt))
+            logger.info(f"[QMTManager] 已添加xtquant路径: {_xt}")
         try:
             from engines.broker_qmt import MiniQMTBroker
 

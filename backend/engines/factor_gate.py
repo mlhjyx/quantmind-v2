@@ -26,7 +26,7 @@ Gate定义（DEV_FACTOR_MINING.md §13.1 + 宪法§3 + R2研究）:
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -36,7 +36,7 @@ import numpy as np
 
 from engines.config_guard import get_cumulative_test_count
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

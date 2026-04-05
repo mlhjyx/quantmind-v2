@@ -46,7 +46,22 @@ frontend/build/
 # Jupyter
 .ipynb_checkpoints/
 
+# Cache
+cache/*.parquet
+cache/cache_meta.json
+
+# Celery
+celerybeat-schedule.*
+
+# Large data files
+*.parquet
+models/*.parquet
+models/*.db
+
 # Misc
 *.bak
 *.tmp
 .claude/scheduled_tasks.lock
+.claude/worktrees/
+.omc/
+models/*.csv

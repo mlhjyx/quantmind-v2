@@ -1,0 +1,82 @@
+01:54:19 [INFO] 加载行情数据...
+D:\quantmind-v2\scripts\research_p0_factors.py:85: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  price_df = pd.read_sql(
+01:54:58 [INFO] 行情: 6,954,970行, 5694股票
+D:\quantmind-v2\scripts\research_p0_factors.py:95: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  idx = pd.read_sql(
+01:55:00 [INFO] 计算5694只股票的3个因子...
+01:55:53 [INFO]   进度: 500/5694 (9%)
+01:56:43 [INFO]   进度: 1000/5694 (18%)
+01:57:27 [INFO]   进度: 1500/5694 (26%)
+01:58:19 [INFO]   进度: 2000/5694 (35%)
+01:59:04 [INFO]   进度: 2500/5694 (44%)
+01:59:36 [INFO]   进度: 3000/5694 (53%)
+02:00:26 [INFO]   进度: 3500/5694 (61%)
+02:01:11 [INFO]   进度: 4000/5694 (70%)
+02:01:54 [INFO]   进度: 4500/5694 (79%)
+02:02:39 [INFO]   进度: 5000/5694 (88%)
+02:03:14 [INFO]   进度: 5500/5694 (97%)
+02:03:29 [INFO] 计算完成: 20,648,418条记录
+02:03:29 [INFO] 写入factor_values...
+02:03:30 [INFO]   写入: 10,000/20,648,418
+02:03:37 [INFO]   写入: 60,000/20,648,418
+02:03:44 [INFO]   写入: 110,000/20,648,418
+02:03:51 [INFO]   写入: 160,000/20,648,418
+02:03:58 [INFO]   写入: 210,000/20,648,418
+02:04:04 [INFO]   写入: 260,000/20,648,418
+02:04:11 [INFO]   写入: 310,000/20,648,418
+02:04:18 [INFO]   写入: 360,000/20,648,418
+02:04:25 [INFO]   写入: 410,000/20,648,418
+02:04:31 [INFO]   写入: 460,000/20,648,418
+02:04:38 [INFO]   写入: 510,000/20,648,418
+02:04:45 [INFO]   写入: 560,000/20,648,418
+02:04:53 [INFO]   写入: 610,000/20,648,418
+02:05:02 [INFO]   写入: 660,000/20,648,418
+02:05:09 [INFO]   写入: 710,000/20,648,418
+02:05:15 [INFO]   写入: 760,000/20,648,418
+02:05:21 [INFO]   写入: 810,000/20,648,418
+02:05:27 [INFO]   写入: 860,000/20,648,418
+02:05:33 [INFO]   写入: 910,000/20,648,418
+02:05:40 [INFO]   写入: 960,000/20,648,418
+02:05:47 [INFO]   写入: 1,010,000/20,648,418
+02:05:53 [INFO]   写入: 1,060,000/20,648,418
+02:05:59 [INFO]   写入: 1,110,000/20,648,418
+02:06:05 [INFO]   写入: 1,160,000/20,648,418
+02:06:12 [INFO]   写入: 1,210,000/20,648,418
+02:06:18 [INFO]   写入: 1,260,000/20,648,418
+02:06:24 [INFO]   写入: 1,310,000/20,648,418
+02:06:31 [INFO]   写入: 1,360,000/20,648,418
+02:06:36 [INFO]   写入: 1,410,000/20,648,418
+02:06:42 [INFO]   写入: 1,460,000/20,648,418
+02:06:48 [INFO]   写入: 1,510,000/20,648,418
+02:06:54 [INFO]   写入: 1,560,000/20,648,418
+02:07:00 [INFO]   写入: 1,610,000/20,648,418
+02:07:06 [INFO]   写入: 1,660,000/20,648,418
+02:07:11 [INFO]   写入: 1,710,000/20,648,418
+02:07:17 [INFO]   写入: 1,760,000/20,648,418
+02:07:22 [INFO]   写入: 1,810,000/20,648,418
+02:07:27 [INFO]   写入: 1,860,000/20,648,418
+02:07:33 [INFO]   写入: 1,910,000/20,648,418
+02:07:39 [INFO]   写入: 1,960,000/20,648,418
+02:07:44 [INFO]   写入: 2,010,000/20,648,418
+02:07:50 [INFO]   写入: 2,060,000/20,648,418
+02:07:55 [INFO]   写入: 2,110,000/20,648,418
+02:08:00 [INFO]   写入: 2,160,000/20,648,418
+02:08:06 [INFO]   写入: 2,210,000/20,648,418
+02:08:12 [INFO]   写入: 2,260,000/20,648,418
+02:08:18 [INFO]   写入: 2,310,000/20,648,418
+02:08:25 [INFO]   写入: 2,360,000/20,648,418
+02:08:33 [INFO]   写入: 2,410,000/20,648,418
+02:08:39 [INFO]   写入: 2,460,000/20,648,418
+02:08:46 [INFO]   写入: 2,510,000/20,648,418
+Traceback (most recent call last):
+  File "D:\quantmind-v2\scripts\research_p0_factors.py", line 296, in <module>
+    main()
+  File "D:\quantmind-v2\scripts\research_p0_factors.py", line 285, in main
+    compute_and_write(conn)
+  File "D:\quantmind-v2\scripts\research_p0_factors.py", line 161, in compute_and_write
+    conn.commit()
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+

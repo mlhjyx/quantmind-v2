@@ -45,7 +45,7 @@ MF_FIELDS = [
 ]
 
 DEFAULT_START = "20210101"
-DEFAULT_END = "20260319"
+DEFAULT_END = date.today().strftime("%Y%m%d")
 
 
 def get_trading_dates(start: str, end: str) -> list[str]:
@@ -332,11 +332,37 @@ def main() -> None:
     total_rows = 0
     failed_dates = []
 
+    # 最近日期（当天或昨天）需要重试，Tushare可能延迟入库
+    MAX_RETRY = 5
+    RETRY_WAIT = 120  # 2分钟（17:00→17:02→17:04→17:06→17:08）
+
     for i, td in enumerate(trading_dates):
         t0 = time.time()
         df = fetch_moneyflow_by_date(td)
-        if df.empty:
-            print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（可能非交易日或停牌日）")
+
+        # 对最近日期(今天/昨天)的空数据做重试
+        is_recent = td >= (date.today() - timedelta(days=1)).strftime("%Y%m%d")
+        if df.empty and is_recent:
+            for attempt in range(1, MAX_RETRY + 1):
+                print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据，重试 {attempt}/{MAX_RETRY}（等待{RETRY_WAIT}s）")
+                time.sleep(RETRY_WAIT)
+                df = fetch_moneyflow_by_date(td)
+                if not df.empty:
+                    break
+            if df.empty:
+                print(f"  [{i+1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警")
+                failed_dates.append(td)
+                try:
+                    from app.services.dispatchers.dingtalk import send_markdown_sync
+                    send_markdown_sync(
+                        title=f"moneyflow数据延迟 {td}",
+                        text=f"**[P0] moneyflow_daily** {td} 数据经{MAX_RETRY}次重试(间隔{RETRY_WAIT}s)仍为空\n\nTushare可能延迟入库，请手动检查",
+                    )
+                except Exception:
+                    print(f"  [告警] DingTalk发送失败")
+                continue
+        elif df.empty:
+            print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")
             time.sleep(0.35)
             continue
 
@@ -360,4 +386,20 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # 交易日历检查（非交易日跳过，DailyBackup除外）
+    try:
+        conn_check = _get_sync_conn()
+        cur_check = conn_check.cursor()
+        cur_check.execute(
+            """SELECT is_trading_day FROM trading_calendar
+               WHERE market = 'astock' AND trade_date = %s""",
+            (date.today(),),
+        )
+        row_check = cur_check.fetchone()
+        conn_check.close()
+        if row_check and not row_check[0]:
+            print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取")
+            sys.exit(0)
+    except Exception:
+        pass  # trading_calendar不可用时不阻塞
     main()

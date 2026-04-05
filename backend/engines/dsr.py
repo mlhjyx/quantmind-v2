@@ -26,13 +26,13 @@ DSR通过考虑试验次数、偏度、峰度来校正这种膨胀。
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 
 import numpy as np
 from scipy.stats import norm
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Euler-Mascheroni 常数
 _EULER_MASCHERONI = 0.5772156649015329

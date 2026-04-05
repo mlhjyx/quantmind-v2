@@ -14,7 +14,7 @@ FactorProfilePipeline提供编程式API，可从Service层调用:
 """
 
 import bisect
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Optional
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

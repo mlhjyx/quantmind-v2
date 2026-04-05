@@ -15,7 +15,7 @@
     runner.print_comparison(results)
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
@@ -32,7 +32,7 @@ from engines.signal_engine import (
     get_rebalance_dates,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # 标准化成本参数（国金证券）

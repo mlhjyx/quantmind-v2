@@ -9,14 +9,14 @@ CLAUDE.md 回测报告必含指标:
 - 年度分解
 """
 
-import logging
+import structlog
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 TRADING_DAYS_PER_YEAR = 244  # A股年交易日数
 
@@ -40,6 +40,7 @@ class PerformanceReport:
     total_trades: int
     win_rate: float
     profit_factor: float
+    profit_loss_ratio: float  # 平均盈利额 / 平均亏损额
     annual_turnover: float
     max_consecutive_loss_days: int
 
@@ -60,6 +61,36 @@ class PerformanceReport:
 
     # 月度热力图数据
     monthly_returns: pd.DataFrame  # year × month
+
+    # 警告标志（有默认值，放最后）
+    warning_negative_ci: bool = False   # Bootstrap CI 5%分位 < 0
+    warning_cost_sensitive: bool = False  # 2x成本下Sharpe < 0.5
+
+    def to_dict(self) -> dict:
+        """输出回测报告为标准dict（API/存储用）。"""
+        ci_point, ci_lower, ci_upper = self.bootstrap_sharpe_ci
+        return {
+            "total_return": self.total_return,
+            "annual_return": self.annual_return,
+            "sharpe": self.sharpe_ratio,
+            "autocorr_adjusted_sharpe": self.autocorr_adjusted_sharpe_ratio,
+            "max_drawdown": self.max_drawdown,
+            "calmar_ratio": self.calmar_ratio,
+            "sortino_ratio": self.sortino_ratio,
+            "max_consecutive_loss_days": self.max_consecutive_loss_days,
+            "win_rate": self.win_rate,
+            "profit_loss_ratio": self.profit_loss_ratio,
+            "beta": self.beta,
+            "information_ratio": self.information_ratio,
+            "annual_turnover": self.annual_turnover,
+            "sharpe_ci_lower": ci_lower,
+            "sharpe_ci_upper": ci_upper,
+            "avg_overnight_gap": self.avg_open_gap,
+            "position_deviation": self.mean_position_deviation,
+            "cost_sensitivity": self.cost_sensitivity,
+            "warning_negative_ci": self.warning_negative_ci,
+            "warning_cost_sensitive": self.warning_cost_sensitive,
+        }
 
 
 def calc_sharpe(returns: pd.Series, rf: float = 0.0) -> float:
@@ -161,13 +192,19 @@ def calc_max_consecutive_loss_days(returns: pd.Series) -> int:
     return int(loss_groups.max()) if len(loss_groups) > 0 else 0
 
 
-def calc_win_rate_and_profit_factor(fills: list) -> tuple[float, float]:
-    """胜率和盈亏比（基于每次调仓的PnL）。"""
+def calc_win_rate_and_profit_factor(fills: list) -> tuple[float, float, float]:
+    """胜率、盈亏比和平均盈亏比（基于每次调仓的PnL）。
+
+    Returns:
+        (win_rate, profit_factor, profit_loss_ratio)
+        - profit_factor: sum(wins) / sum(|losses|)（总额比）
+        - profit_loss_ratio: mean(wins) / mean(|losses|)（平均额比）
+    """
     if not fills:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     # 按交易日分组计算PnL
-    pnl_by_trade = {}
+    pnl_by_trade: dict = {}
     for f in fills:
         key = (f.code, f.trade_date)
         if key not in pnl_by_trade:
@@ -186,7 +223,12 @@ def calc_win_rate_and_profit_factor(fills: list) -> tuple[float, float]:
     total_loss = abs(sum(losses)) if losses else 1e-12
     profit_factor = total_win / total_loss
 
-    return win_rate, profit_factor
+    # 平均盈亏比: mean(wins) / mean(|losses|)
+    avg_win = float(np.mean(wins)) if wins else 0.0
+    avg_loss = float(np.mean([abs(l) for l in losses])) if losses else 1e-12
+    profit_loss_ratio = avg_win / avg_loss
+
+    return win_rate, profit_factor, profit_loss_ratio
 
 
 def bootstrap_sharpe_ci(
@@ -496,7 +538,7 @@ def generate_report(
     ir = calc_information_ratio(returns, bench_ret)
 
     # 交易统计
-    win_rate, profit_factor = calc_win_rate_and_profit_factor(result.trades)
+    win_rate, profit_factor, profit_loss_ratio = calc_win_rate_and_profit_factor(result.trades)
     max_loss_days = calc_max_consecutive_loss_days(returns)
 
     # 年化换手率
@@ -534,6 +576,10 @@ def generate_report(
     # 月度热力图
     monthly = calc_monthly_returns(nav)
 
+    # 警告标志
+    warn_ci = bs_ci[1] < 0
+    warn_cost = cost_sens.get("2.0x", {}).get("sharpe", 1.0) < 0.5
+
     return PerformanceReport(
         total_return=round(total_return * 100, 2),
         annual_return=round(annual_return * 100, 2),
@@ -548,6 +594,7 @@ def generate_report(
         total_trades=len(result.trades),
         win_rate=round(win_rate * 100, 1),
         profit_factor=round(profit_factor, 2),
+        profit_loss_ratio=round(profit_loss_ratio, 2),
         annual_turnover=round(annual_turnover, 2),
         max_consecutive_loss_days=max_loss_days,
         bootstrap_sharpe_ci=(
@@ -560,6 +607,8 @@ def generate_report(
         total_cash_drag=round(cash_drag, 2),
         annual_breakdown=annual,
         monthly_returns=monthly,
+        warning_negative_ci=warn_ci,
+        warning_cost_sensitive=warn_cost,
     )
 
 
@@ -586,7 +635,8 @@ def print_report(report: PerformanceReport):
     print(f"\n--- 交易统计 ---")
     print(f"{'总交易次数':>12}: {report.total_trades:>8d}")
     print(f"{'胜率':>12}: {report.win_rate:>8.1f}%")
-    print(f"{'盈亏比':>12}: {report.profit_factor:>8.2f}")
+    print(f"{'盈亏比(总额)':>12}: {report.profit_factor:>8.2f}")
+    print(f"{'盈亏比(均额)':>12}: {report.profit_loss_ratio:>8.2f}")
     print(f"{'年化换手率':>12}: {report.annual_turnover:>8.2f}")
     print(f"{'最大连亏天数':>12}: {report.max_consecutive_loss_days:>8d}")
 

@@ -17,7 +17,7 @@ from engines.qmt_execution_adapter import (
     LOT_SIZE,
     QMTExecutionAdapter,
     _FillCollector,
-    _OrderTracker,
+    _WaitTracker as _OrderTracker,  # renamed in v2
 )
 
 
@@ -354,7 +354,7 @@ class TestQMTExecutionAdapter:
         # 再收到部撤通知
         collector.on_order({
             "order_id": 6,
-            "order_status": 50,  # 部撤
+            "order_status": 53,  # 部撤 (50=已报/pending, 53=部撤/final)
         })
 
         assert tracker.is_done

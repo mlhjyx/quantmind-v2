@@ -43,27 +43,53 @@ export default function RiskManagement() {
     let live = true;
     const load = async () => {
       try {
+        // 先请求live数据，如果为空fallback到paper
+        let mode = "live";
         const [overview, limits, stress] = await Promise.allSettled([
-          axios.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/api/risk/overview"),
-          axios.get<RiskLimit[]>("/api/risk/limits"),
-          axios.get<StressTest[]>("/api/risk/stress-tests"),
+          axios.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/api/risk/overview", { params: { execution_mode: mode } }),
+          axios.get<RiskLimit[]>("/api/risk/limits", { params: { execution_mode: mode } }),
+          axios.get<StressTest[]>("/api/risk/stress-tests", { params: { execution_mode: mode } }),
         ]);
         if (!live) return;
-        const allFailed =
-          overview.status === "rejected" &&
-          limits.status === "rejected" &&
-          stress.status === "rejected";
-        if (allFailed) {
-          setFetchError(true);
-        } else {
-          if (overview.status === "fulfilled") {
-            const d = overview.value.data;
+
+        // 检查live数据是否足够
+        const liveMetrics = overview.status === "fulfilled" ? overview.value.data.metrics : undefined;
+        const liveEmpty = !liveMetrics || liveMetrics.length === 0;
+
+        // 如果live数据不足，fallback到paper
+        if (liveEmpty && mode === "live") {
+          mode = "paper";
+          const [ov2, li2, st2] = await Promise.allSettled([
+            axios.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/api/risk/overview", { params: { execution_mode: mode } }),
+            axios.get<RiskLimit[]>("/api/risk/limits", { params: { execution_mode: mode } }),
+            axios.get<StressTest[]>("/api/risk/stress-tests", { params: { execution_mode: mode } }),
+          ]);
+          if (!live) return;
+          if (ov2.status === "fulfilled") {
+            const d = ov2.value.data;
             if (d.metrics)    setOverviewMetrics(d.metrics);
             if (d.var_series) setVarData(d.var_series);
             if (d.exposure)   setExposure(d.exposure);
           }
-          if (limits.status === "fulfilled") setRiskLimits(limits.value.data);
-          if (stress.status === "fulfilled") setStressTests(stress.value.data);
+          if (li2.status === "fulfilled") setRiskLimits(li2.value.data);
+          if (st2.status === "fulfilled") setStressTests(st2.value.data);
+        } else {
+          const allFailed =
+            overview.status === "rejected" &&
+            limits.status === "rejected" &&
+            stress.status === "rejected";
+          if (allFailed) {
+            setFetchError(true);
+          } else {
+            if (overview.status === "fulfilled") {
+              const d = overview.value.data;
+              if (d.metrics)    setOverviewMetrics(d.metrics);
+              if (d.var_series) setVarData(d.var_series);
+              if (d.exposure)   setExposure(d.exposure);
+            }
+            if (limits.status === "fulfilled") setRiskLimits(limits.value.data);
+            if (stress.status === "fulfilled") setStressTests(stress.value.data);
+          }
         }
       } catch {
         if (live) setFetchError(true);
@@ -72,7 +98,8 @@ export default function RiskManagement() {
       }
     };
     void load();
-    return () => { live = false; };
+    const id = setInterval(() => void load(), 30_000);
+    return () => { live = false; clearInterval(id); };
   }, []);
 
   const warnCount     = riskLimits?.filter((r) => r.status === "warn").length ?? 0;

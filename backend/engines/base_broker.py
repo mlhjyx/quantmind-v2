@@ -8,10 +8,10 @@ Paper/实盘/外汇共用同一套因子→信号→风控链路，
 使上层（风控、归因、监控）可以无差别地查询任何Broker的状态。
 """
 
-import logging
+import structlog
 from abc import ABC, abstractmethod
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class BaseBroker(ABC):

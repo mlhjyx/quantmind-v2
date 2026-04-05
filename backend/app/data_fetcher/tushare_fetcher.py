@@ -13,7 +13,7 @@
 - 批量upsert入库，单日单事务
 """
 
-import logging
+import structlog
 import time
 from typing import Any
 
@@ -22,7 +22,7 @@ import tushare as ts
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Tushare接口sleep间隔（秒）
 SLEEP_INTERVALS = {

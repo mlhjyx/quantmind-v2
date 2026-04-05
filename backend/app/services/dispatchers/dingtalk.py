@@ -8,13 +8,13 @@
 import base64
 import hashlib
 import hmac
-import logging
+import structlog
 import time
 import urllib.parse
 
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 钉钉API超时(秒)
 _TIMEOUT = 10.0

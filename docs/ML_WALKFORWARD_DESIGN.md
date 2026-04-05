@@ -1,10 +1,11 @@
 # QuantMind V2 — LightGBM Walk-Forward 训练框架设计文档
 
-> **文档版本**: Sprint 1.4b
-> **创建日期**: 2026-03-25
-> **作者**: ML Agent (Sprint 1.4b)
-> **关联文档**: DEV_BACKTEST_ENGINE.md, DEV_FACTOR_MINING.md, QUANTMIND_V2_DDL_FINAL.sql
-> **硬性约束**: 铁律7 — OOS Sharpe < 基线1.03不上线；训练IC/OOS IC > 3倍 = 过拟合
+> **文档版本**: v2.0（对齐Roadmap V3.4）
+> **创建日期**: 2026-03-25（Sprint 1.4b）
+> **更新日期**: 2026-04-04（V3.4评估范式转移）
+> **关联文档**: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md(v3.4), DEV_BACKTEST_ENGINE.md
+> **硬性约束**: V3.4 fail-fast决策树（三分支）; 铁律11（特征IC必须入库可追溯）
+> **v1.0→v2.0核心变化**: 特征池51→48+(DB自动发现), 基线1.03→1.15(新配置), 评估标准→V3.4 fail-fast三分支, mf_divergence IC=9.1%证伪→移出重点特征, 新增Sprint 1.3b教训+Ablation计划+影子PT部署方案
 
 ---
 
@@ -13,15 +14,60 @@
 | # | 决策项 | 选择 | 理由 |
 |---|--------|------|------|
 | ML-01 | Walk-Forward模式 | 扩展窗口(expanding)首轮+固定窗口后续 | 早期数据不足时扩展，稳定后固定24月避免regime变化污染 |
-| ML-02 | 目标变量 | T+20日vs沪深300超额收益(对数) | 月度调仓对齐，与基线Sharpe可比 |
+| ML-02 | 目标变量 | T+20日vs沪深300超额收益(对数) | 月度调仓对齐，与基线Sharpe可比。⚠️ T+1开始计算（不含信号日T） |
 | ML-03 | Purge gap | 训练集末尾到验证集开始留5交易日 | 防20日forward return信息泄露 |
 | ML-04 | Embargo gap | 验证集末尾到测试集额外留0天 | Purge已足够，fold边界已对齐 |
 | ML-05 | GPU策略 | device_type=gpu + max_bin=63 + gpu_use_dp=false | RTX 5070 VRAM 12GB，单精度快5-10倍 |
 | ML-06 | 过拟合判定 | 训练IC/验证IC > 2.0警告, > 3.0强制停止 | 宽松一档，2倍阈值给early stopping余地 |
 | ML-07 | Optuna目标函数 | validation set RankIC均值 | 比IC更稳定，抗异常值 |
-| ML-08 | 特征数量 | 50-80个（不用Alpha158全集，选与现有5因子正交的新特征） | 减少噪声，控制VRAM |
-| ML-09 | 上线条件(两级) | 上线: p<0.05 + Sharpe≥1.10 + 6红线; 优秀: Sharpe≥1.30 + p<0.01 | 用户确认 |
+| ML-08 | 特征数量 | **48+个（从factor_values表自动发现，不手动列表）** | v2.0变更：DB中有数据的因子全部纳入候选，相关性预检后筛选 |
+| ML-09 | 评估标准(v2.0) | **V3.4 fail-fast三分支决策树（见§8.3）** | v2.0变更：替换旧两级标准，增加"方向对但特征不够"分支 |
 | ML-10 | 预测聚合 | 所有fold预测按时间拼接，不平均 | 保留时序连续性，与SimBroker回测对齐 |
+| ML-11 | 特征来源(v2.0新增) | factor_values表自动查询 + 覆盖率/相关性筛选 | 不依赖手动维护的特征清单，新因子入库后自动纳入 |
+| ML-12 | Top-N(v2.0新增) | **Top-20**（新最优配置） | v3.3确认Top-20+无行业约束+PMS阶梯保护 → Sharpe=1.15 |
+| ML-13 | 基线(v2.0新增) | **Sharpe=1.15（新配置）/ 0.70-0.85（保守DSR校正后）** | v2.0变更：基线从1.03更新，fail-fast用保守基线 |
+| ML-14 | 代码起点(v2.0新增) | **复用Sprint 1.3b的ml_engine.py框架** | 已有Walk-Forward+Optuna+20测试，不从头写 |
+| ML-15 | 串行执行(v2.0新增) | 数据密集任务串行，不并行 | PostgreSQL OOM风险（3进程×3.5GB≈10.5GB接近32GB RAM上限） |
+
+---
+
+## 0.5 Sprint 1.3b教训与Benchmark（v2.0新增）
+
+> G1 v2.0不是从零开始——Sprint 1.3b已经跑过一次LightGBM Walk-Forward，结果未通过上线门槛但有重要发现。
+
+### Sprint 1.3b结果（作为G1 v2.0的参照基准）
+
+| 指标 | Sprint 1.3b值 | 说明 |
+|------|-------------|------|
+| 特征数 | 26 | 5基线+12多尺度+9衍生 |
+| OOS IC | 0.0823 | 7/7 fold全正 |
+| OOS RankIC | 0.0989 | — |
+| ICIR | 0.982 | 非常稳定 |
+| OOS Sharpe | 0.869 | 未达1.10门槛 |
+| paired bootstrap p | 0.073 | 未达0.05门槛 |
+| 连续亏损月 | 4 | 超过<3红线 |
+| Optuna改进 | +2.5% IC | 几乎无提升 |
+
+### 关键教训
+
+| # | 教训 | 对G1 v2.0的影响 |
+|---|------|---------------|
+| 1 | **SHAP显示5基线因子完胜** — 12个多尺度扩展特征的SHAP贡献很小 | v2.0需要Ablation实验确认：48特征的信息增量在哪里？ |
+| 2 | **Optuna仅+2.5%** — 超参不是瓶颈 | v2.0不需要更多Optuna轮数，200轮足够 |
+| 3 | **p=0.073差一点没过** — 效果方向对但统计功效不足 | 48特征可能提供足够的信息增量让p<0.05 |
+| 4 | **2024年fold表现差** — 小盘危机期间模型失效 | v2.0需要按年度分解分析，特别关注2022/2024熊市 |
+| 5 | **同期等权基线=-0.125** — LightGBM相对大幅跑赢 | 绝对门槛vs相对门槛的讨论。V3.4用fail-fast决策树解决 |
+
+### G1 v2.0 vs Sprint 1.3b的主要差异
+
+| 维度 | Sprint 1.3b | G1 v2.0 | 预期影响 |
+|------|-----------|---------|---------|
+| 特征数 | 26 | 48+ | +85%特征空间，更多信息维度 |
+| 特征来源 | 手动列表 | DB自动发现 | 不遗漏、可复现 |
+| 数据质量 | Phase A修复前 | Phase A修复后(WLS/涨跌停/clip) | 更干净的训练数据 |
+| 基线配置 | Top-15+行业约束 | Top-20+无行业约束 | 更优的比较基准 |
+| Alpha158因子 | 无 | 8个新因子(STD60/VSUMP60/CORD30等) | 新信息维度 |
+| 评估标准 | 固定门槛 | V3.4 fail-fast三分支 | 更务实的判断 |
 
 ---
 
@@ -30,8 +76,8 @@
 ### 1.1 全量数据窗口
 
 ```
-数据可用范围: 2020-07-01 → 2026-03-24
-总长度: ~68个月
+数据可用范围: 2020-07-01 → 2026-04-03（v2.0更新）
+总长度: ~69个月
 
 分配方案:
   热身期(不用作任何fold测试): 2020-07-01 → 2021-06-30 (12个月)
@@ -100,7 +146,7 @@ FeatureBuilder (按fold时间切分)
                                                               SimBroker回测（月度调仓）
                                                                        │
                                                                        ▼
-                                                              OOS Sharpe vs 基线1.03
+                                                              OOS Sharpe → V3.4 fail-fast决策树
 
 重要：预处理参数（MAD中位数、中性化系数、zscore均值/std）
       必须在训练集上fit，然后transform验证集和测试集
@@ -123,99 +169,73 @@ FeatureBuilder (按fold时间切分)
 ML模型的特征需要包含这5个因子 + 新的正交特征。
 目标是让ML找到5因子的非线性组合关系，同时引入这5因子没有覆盖的信息维度。
 
-### 2.2 特征分组（50-80个）
+### 2.2 特征池：DB自动发现 + 覆盖筛选 + 相关性预检（v2.0重写）
 
-**组A：基线5因子（直接复用，共5个）**
+> **v1.0→v2.0核心变化**: 从手动列举51个特征改为从factor_values表自动发现。
+> 原因: 手动列表容易过时（如mf_divergence IC=9.1%已证伪为-2.27%），自动发现确保特征池与DB实际状态一致。
 
-```
-A1. turnover_mean_20       - 换手率均值
-A2. volatility_20          - 20日波动率
-A3. reversal_20            - 20日反转
-A4. amihud_20              - Amihud非流动性
-A5. bp_ratio               - 账面市值比
-```
-
-**组B：基线因子的多尺度变体（捕捉非线性，共12个）**
-
-```
-B1.  turnover_mean_5       - 短期换手率（5日）
-B2.  turnover_mean_60      - 长期换手率（60日）
-B3.  turnover_trend_20     - 换手率趋势（20日均值/60日均值）
-B4.  volatility_5          - 短期波动率（5日）
-B5.  volatility_60         - 长期波动率（60日）
-B6.  vol_regime            - 波动率regime（5日/60日比）
-B7.  reversal_5            - 短期反转（5日）
-B8.  reversal_60           - 长期反转（60日，动量因子）
-B9.  amihud_5              - 短期非流动性（5日）
-B10. amihud_60             - 长期非流动性（60日）
-B11. bp_ratio_change_60    - BP变化率（60日delta）
-B12. size_factor           - 市值因子（log总市值，控制因子）
+**Step 1: 自动发现**
+```sql
+SELECT factor_name, COUNT(*) as rows, 
+       MIN(trade_date) as start_date, MAX(trade_date) as end_date,
+       COUNT(DISTINCT symbol) as stocks, COUNT(DISTINCT trade_date) as dates
+FROM factor_values 
+GROUP BY factor_name
+HAVING COUNT(*) > 100000  -- 排除极少数据的因子
+ORDER BY factor_name;
 ```
 
-**组C：资金流向维度（Sprint 1.3已验证IC=9.1%，共8个）**
+**Step 2: 覆盖率筛选**
+- 时间覆盖: 起始日期 ≤ 2021-07-01（保证F1训练集有数据）
+- 股票覆盖: ≥ 2000只/月（排除覆盖太窄的因子，如北向资金只覆盖~2000只可以保留）
+- 缺失率: 截面缺失率 ≤ 30%（超过的降级为WARNING，不排除但记录）
+- 短覆盖因子（如Alpha158 2021起）: 在早期fold(F1-F3)中设为NaN，LightGBM原生支持缺失值
 
-```
-C1.  mf_divergence         - 大单vs小单背离度（核心）
-C2.  net_lg_ratio_5        - 大单净流入/成交额 5日
-C3.  net_lg_ratio_20       - 大单净流入/成交额 20日
-C4.  buy_sell_ratio_lg     - 大单买卖比（买/(买+卖)）
-C5.  mf_acceleration       - 资金流入加速度（5日变化率）
-C6.  lg_md_divergence      - 大单vs中单分歧
-C7.  northbound_ratio_20   - 北向资金持股比例20日均值（如有）
-C8.  margin_net_change_20  - 融资净变化率20日
-```
-
-**组D：价格行为特征（共10个）**
-
-```
-D1.  price_level           - 价格水平（Sprint 1.3已验证IC=8.42%）
-D2.  high_low_range_20     - 20日高低价幅度
-D3.  open_gap_20           - 20日平均跳空幅度（回测可信度规则5）
-D4.  close_to_high_ratio   - 收盘相对最高价位置 20日均值
-D5.  volume_price_trend    - 量价背离指标
-D6.  up_down_vol_ratio     - 上涨日vs下跌日成交量比
-D7.  rsi_20                - RSI（20日，检测超买超卖）
-D8.  macd_signal           - MACD信号线方向
-D9.  bollinger_position    - 布林带相对位置
-D10. intraday_strength_20  - 日内强度（(close-open)/range）20日均值
+**Step 3: 相关性预检**
+```python
+# 月底截面做48×48相关矩阵
+corr_matrix = feature_df.corr(method='spearman')
+# corr > 0.85的对标记为"高相关"
+# 高相关对中保留IC更高的那个（IC从factor_ic_history查，铁律11）
+# 不自动删除，只标记——让LightGBM自己学权重，但SHAP分析时重点关注
 ```
 
-**组E：财务基本面（季频，需PIT对齐，共8个）**
-
+**Step 4: 输出特征就绪报告**
 ```
-E1.  roe_ttm               - ROE（滚动12月）
-E2.  roe_change_yoy        - ROE同比变化
-E3.  gross_margin_ttm      - 毛利率（滚动）
-E4.  revenue_yoy           - 营收同比增长
-E5.  profit_yoy            - 净利润同比增长
-E6.  debt_to_asset         - 资产负债率
-E7.  current_ratio         - 流动比率
-E8.  earnings_surprise_std - 盈利惊喜标准化（PEAD候选）
+因子名 | 行数 | 起止日期 | 股票数 | 缺失率 | 高相关对 | 就绪状态
+-------|------|---------|--------|--------|---------|--------
+turnover_mean_20 | 5.3M | 2021-01~2025-12 | 5405 | 2% | vol_20(0.72) | ✅ READY
+...
+mf_divergence | 5.3M | 2021-01~2025-12 | 5405 | 3% | — | ⚠️ IC=-2.27%(弱)
 ```
 
-**组F：市场状态特征（宏观regime，共8个）**
+**当前预期特征池组成（48+个，以DB实际为准）:**
 
-```
-F1.  csi300_return_20      - 沪深300近20日收益（市场方向）
-F2.  csi300_vol_20         - 沪深300近20日波动（市场风险）
-F3.  market_breadth_20     - 市场涨跌家数比（市场情绪）
-F4.  industry_momentum_20  - 行业动量（所属行业vs全市场）
-F5.  cross_stock_corr_20   - 截面相关性（高=系统性风险上升）
-F6.  vix_proxy             - 隐含波动率代理（历史波动率的历史分位）
-F7.  bull_bear_regime      - 牛熊状态（MA120判定，二值）
-F8.  month_of_year         - 月份（季节性，用sin/cos编码）
-```
+| 组 | 来源 | 预计数量 | 说明 |
+|---|------|---------|------|
+| A: 基线5因子 | factor_values(历史) | 5 | turnover_mean_20/volatility_20/reversal_20/amihud_20/bp_ratio |
+| B: 多尺度变体 | factor_values(历史) | ~12 | 5/10/60日窗口衍生 |
+| C: 资金流 | factor_values(历史) | ~8 | mf_divergence等。⚠️ mf_divergence IC=-2.27%但保留让ML判断 |
+| D: 价格行为 | factor_values(历史) | ~10 | high_low_range_20等 |
+| E: 基本面 | factor_values(历史) | ~2-4 | Sprint 1.5证明大部分无效，只保留bp_ratio衍生 |
+| F: Alpha158新增 | factor_values(v3.3新增) | 8 | STD60/VSUMP60/CORD30/RANK5/CORR5/VSTD30/VSUMP5/VMA5 |
+| 合计 | — | **48+** | 以DB实际查询为准 |
 
-**总特征数: 5+12+8+10+8+8 = 51个（在50-80范围内）**
+**与v1.0的51个特征对比:**
+- 组E(基本面)从8个缩减为2-4个（Sprint 1.5证明ROE/营收增速等无效）
+- 组F(市场状态)移除（csi300_return等宏观特征不在factor_values表，需额外数据源，暂不纳入）
+- 新增Alpha158的8个因子
+- mf_divergence保留但不再标记为"核心"（IC=-2.27%，v1.0错误标注IC=9.1%）
+- earnings_surprise_std(PEAD)移除（DB中无此因子数据）
 
-### 2.3 特征预处理流水线（严格遵守铁律顺序）
+### 2.3 特征预处理流水线（严格遵守铁律顺序，Phase A对齐）
 
 ```python
-# 预处理顺序（与CLAUDE.md因子计算规则完全一致）:
+# 预处理顺序（与CLAUDE.md因子计算规则完全一致，Phase A修复后）:
 # 1. MAD去极值（基于训练集的中位数和MAD）
 # 2. 缺失值填充（截面中位数填充）
-# 3. 中性化（回归掉市值+行业，保留残差）
-# 4. zscore标准化（使用训练集的均值和标准差）
+# 3. WLS中性化（回归掉市值+行业，√market_cap加权，Phase A修复）
+# 4. zscore标准化（±3 clip，Phase A修复）
 
 # 关键：所有预处理参数在train set上fit，
 # 用fit后的参数transform valid set和test set
@@ -224,12 +244,14 @@ F8.  month_of_year         - 月份（季节性，用sin/cos编码）
 class FeaturePreprocessor:
     def fit(self, train_df: pd.DataFrame) -> 'FeaturePreprocessor':
         # 1. 计算每个特征的中位数和MAD（用于去极值）
-        # 2. 计算行业哑变量和市值（用于中性化）
-        # 3. 计算zscore参数（均值、std，中性化后）
+        # 2. 计算行业哑变量和√market_cap（用于WLS中性化）
+        # 3. 计算zscore参数（均值、std，中性化后，±3 clip）
         pass
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         # 按fit好的参数依次执行4步
+        # ⚠️ 中性化用WLS（非OLS），与生产代码一致
+        # ⚠️ zscore后clip到±3，与Phase A修复一致
         pass
 ```
 
@@ -239,15 +261,52 @@ class FeaturePreprocessor:
 target = log(1 + r_stock_t+20) - log(1 + r_csi300_t+20)
 
 其中:
-  r_stock_t+20  = 股票T到T+20交易日的复权收益率
+  r_stock_t+20  = 股票T+1到T+21交易日的复权收益率（⚠️ 从T+1开始，不含信号日T）
   r_csi300_t+20 = 沪深300同期收益率
 
 计算约束:
   - 使用复权价格（close × adj_factor）
+  - ⚠️ 从T+1开始计算，不是T+0（之前有bug导致~6.5% IC膨胀，已修复）
   - 停牌期间（volume=0）：目标变量设为NaN，从训练集中删除该行
   - 退市前5日：目标变量设为实际退市收益，包含在训练集
   - T+20不满（接近当前日期）：整行删除，不预测未来
 ```
+
+### 2.5 Universe定义（v2.0新增，确保训练=回测=PT一致）
+
+```
+训练/回测/PT共用同一Universe筛选条件:
+  - 排除ST/*ST（当月有ST标记的股票）
+  - 排除上市不满60个交易日的新股
+  - 排除当月停牌>10个交易日的股票
+  - 排除退市前最后5个交易日外的退市股票（保留前5日用于退出）
+  - 不排除微盘股（SMB beta=0.83，alpha主要来自小盘，排除会损害策略）
+
+⚠️ 这个Universe必须与回测引擎(run_backtest.py)和PT(run_paper_trading.py)使用的完全一致。
+如果不一致，会导致训练时学到的模式在回测/实盘中不存在（mf_divergence事件的教训之一）。
+```
+
+### 2.6 Ablation实验计划（v2.0新增）
+
+> Sprint 1.3b SHAP显示5基线因子完胜。G1 v2.0必须证明48特征的信息增量在哪里。
+
+**三个tier对比（同一Walk-Forward框架，只改特征集）:**
+
+| Tier | 特征集 | 特征数 | 目的 |
+|------|--------|--------|------|
+| Tier-A | 5基线因子 | 5 | 纯基线，作为ML vs 等权的直接对比 |
+| Tier-B | 基线+最强扩展 | ~20 | 加入SHAP重要性>1%的非基线因子 |
+| Tier-C | 全集 | 48+ | 所有factor_values有数据的因子 |
+
+**预期结果解读:**
+```
+Tier-C > Tier-B > Tier-A → 最好情况：更多特征=更多信息
+Tier-C ≈ Tier-B > Tier-A → 好：扩展因子有用但不需要全部
+Tier-C ≈ Tier-B ≈ Tier-A → 差：所有扩展因子都是噪声，ML增量来自非线性组合
+Tier-C < Tier-A           → 最差：噪声特征严重干扰模型
+```
+
+**执行顺序:** 先跑Tier-C（全集），如果通过fail-fast则成功。如果未通过，跑Tier-A和Tier-B做诊断——定位是特征问题还是模型问题。
 
 ---
 
@@ -302,13 +361,14 @@ hyperparams_init:
   实际训练样本 = 4000 × 528 = ~211万行
 
 内存占用估算:
-  特征数: 51
+  特征数: 48+（v2.0更新，以DB实际为准）
   float32精度: 4字节
-  原始数据: 211万 × 51 × 4字节 = ~430MB
-  LightGBM直方图(max_bin=63): 数据量约压缩到原始的20%→~90MB
+  原始数据: 211万 × 48 × 4字节 = ~405MB
+  LightGBM直方图(max_bin=63): 数据量约压缩到原始的20%→~81MB
   GPU VRAM使用: 数据 + 模型 + 梯度 ≈ 1-2GB（远低于12GB上限）
 
 结论: RTX 5070 12GB VRAM完全满足，每fold训练预计<15分钟
+⚠️ 注意PostgreSQL查询内存: 48因子×5年×5000股的factor_values查询可能占3-5GB RAM，串行执行
 ```
 
 ### 3.3 评估指标定义
@@ -464,7 +524,7 @@ def optuna_objective(trial: optuna.Trial) -> float:
 
 ```
 单轮trial时间估算:
-  F1训练集: 211万行 × 51特征
+  F1训练集: 211万行 × 48+特征（v2.0更新）
   GPU训练500轮: ~5分钟（RTX 5070，max_bin=63）
   Pruner剪枝率: ~50%（被剪trial平均只跑100轮，约2.5分钟）
 
@@ -498,11 +558,10 @@ def optuna_objective(trial: optuna.Trial) -> float:
   > 3.0: CRITICAL（该fold标记为过拟合，不纳入预测拼接）
   > 5.0: 铁律7触发（强制停止所有fold，不上线）
 
-层3 - OOS最终评估（Sharpe比较）:
+层3 - OOS最终评估（V3.4 fail-fast决策树）:
   所有fold预测拼接 → SimBroker回测
-  OOS Sharpe < 基线1.03 → 不上线（铁律7）
-  paired bootstrap p >= 0.05 → 不上线（不显著）
-  2x成本Sharpe < 0.5 → 不上线（成本敏感性）
+  V3.4 fail-fast三分支判断（见§8.3）
+  附加红线: trainIC/validIC>3.0 / 2x成本Sharpe<0.3 / 连续亏损月>4
 ```
 
 ### 5.2 过拟合检测流程图
@@ -573,9 +632,9 @@ SHAP计算开销估算:
 │  └─ OptunaConfig（搜索空间、轮数、存储）                      │
 │                                                             │
 │  数据层                                                      │
-│  ├─ FeatureLoader（从PG factor_values读取）                  │
-│  ├─ FeatureBuilder（计算B/C/D/E/F组新特征）                  │
-│  └─ FeaturePreprocessor（MAD→填充→中性化→zscore）            │
+│  ├─ FeatureLoader（从PG factor_values自动发现48+因子）        │
+│  ├─ FeaturePreprocessor（MAD→填充→WLS中性化→zscore±3clip）   │
+│  └─ AblationManager（Tier-A/B/C三组对比，§2.6）              │
 │                                                             │
 │  训练层                                                      │
 │  ├─ OptunaSearcher（200轮超参搜索，基于F1 fold）              │
@@ -588,9 +647,9 @@ SHAP计算开销估算:
 │  └─ PredictionAggregator（fold预测拼接）                     │
 │                                                             │
 │  回测层（复用已有SimBroker）                                  │
-│  ├─ 预测值 → 月底截面排名 → Top15持仓                        │
+│  ├─ 预测值 → 月底截面排名 → Top20持仓（V3.4新配置）           │
 │  ├─ SimBroker回测（涨跌停/整手约束/T+1）                      │
-│  └─ OOS Sharpe vs 基线1.03（铁律7）                         │
+│  └─ V3.4 fail-fast决策树（三分支判断）                        │
 │                                                             │
 │  存储层（PostgreSQL）                                        │
 │  ├─ model_registry（每fold保存模型元信息）                    │
@@ -609,11 +668,12 @@ Step 0: 初始化
   ├─ 创建实验记录（experiments表，status='running'）
   └─ 初始化Optuna study（SQLite存储，支持断点续跑）
 
-Step 1: 特征构建
-  ├─ 从factor_values表加载5个基线因子（A组）
-  ├─ 从klines_daily/moneyflow/fina_indicator计算B-F组特征
-  ├─ 合并形成完整特征矩阵（约4000股×68月×51特征）
-  ├─ 计算目标变量（T+20日超额收益）
+Step 1: 特征构建（v2.0更新：DB自动发现）
+  ├─ 运行§2.2 Step 1 SQL查询factor_values表所有可用因子
+  ├─ 运行§2.2 Step 2-3覆盖率筛选+相关性预检
+  ├─ 从factor_values表加载通过筛选的48+因子
+  ├─ 合并形成完整特征矩阵（约4000股×68月×48+特征）
+  ├─ 计算目标变量（T+1到T+21日超额收益，⚠️不含信号日T）
   └─ 保存到本地Parquet（加速后续fold读取，防止重复查DB）
 
 Step 2: Optuna超参搜索（使用F1 fold，不碰测试集）
@@ -640,22 +700,30 @@ Step 3: Walk-Forward训练（F1→F7，使用best_params）
 Step 4: 预测聚合与回测
   ├─ 按时间顺序拼接所有fold的测试集预测
   ├─ 检查时间连续性（无gap、无overlap）
-  ├─ 月底截面：按预测值排名，选Top15
+  ├─ 月底截面：按预测值排名，选Top20（v2.0更新，V3.4新配置）
   ├─ 传入SimBroker回测（2021-07 ~ 2026-03）
   ├─ 应用完整交易规则（涨跌停/整手/T+1/成本）
   └─ 生成回测报告（含所有CLAUDE.md要求的指标）
 
-Step 5: 上线判断（两级标准）
-  上线标准: paired bootstrap p < 0.05 + OOS Sharpe ≥ 1.10 + 6条红线全过
-  优秀标准: OOS Sharpe ≥ 1.30 + p < 0.01
-  检验1: OOS Sharpe ≥ 1.10？
-    └─ NO → 不上线，记录到LESSONS_LEARNED
-  检验2: paired bootstrap p < 0.05？
-         （ML策略 vs 等权基线的Sharpe差异显著性）
-    └─ NO → 不上线，记录原因
-  检验3: 2x成本下Sharpe > 0.5？
-    └─ NO → 不上线，成本敏感性不足
-  ALL PASS → 提交approval_queue，等待人工审批
+Step 5: V3.4 fail-fast判断（v2.0重写，替换旧两级标准）
+  基线 = 当前等权配置OOS Sharpe（预期~1.15，以实际回测确认值为准）
+
+  分支1: OOS Sharpe ≥ 基线×1.2 且 paired bootstrap p<0.05
+    → 成功 → 上线影子PT → Gate G8升级为ML评估 → 继续G1.1-G1.4
+  
+  分支2: OOS Sharpe ≥ 基线 但 p>0.05
+    → 方向对但特征不够 → GA5 code gen扩展特征池后重跑
+    → 同时做Ablation(§2.6)定位瓶颈
+  
+  分支3: OOS Sharpe < 基线
+    → ML在当前数据上无增量
+    → 诊断路径: 是因子质量不够? 数据量不够? A股月频信噪比根本不支持ML?
+    → 尝试Tier-A(5因子)确认: 如果Tier-A也差→信噪比问题; 如果Tier-A还行→特征噪声问题
+
+  附加红线（任何一条不过则不上线）:
+    - trainIC/validIC > 3.0 → 过拟合
+    - 2x成本Sharpe < 0.3 → 成本敏感
+    - 连续亏损月 > 4 → 不稳定
 ```
 
 ### 6.3 每fold时间预算
@@ -719,7 +787,7 @@ COMMENT ON TABLE ml_predictions IS 'Walk-Forward OOS预测值，每fold测试集
     "valid_months": 6,
     "test_months": 6,
     "purge_gap_days": 5,
-    "n_features": 51,
+    "n_features": "48+ (DB auto-discovered)",
     "optuna_trials": 200,
     "best_hyperparams": { ... },
     "lgbm_version": "4.x"
@@ -771,12 +839,12 @@ COMMENT ON TABLE ml_predictions IS 'Walk-Forward OOS预测值，每fold测试集
 
 | 风险 | 可能性 | 影响 | 缓解措施 |
 |------|--------|------|---------|
-| OOS Sharpe < 1.019（铁律7）| 中 | ML方案失败 | LESSONS_LEARNED记录失败原因；不强行上线 |
+| OOS Sharpe < 基线（V3.4 fail-fast分支3）| 中 | ML方案需诊断 | §8.4诊断预案；Ablation定位瓶颈 |
 | 所有fold过拟合 | 中 | 等权天花板也适用于ML | 分析哪类特征过拟合；尝试更强正则 |
 | A股2024年风格剧变影响OOS | 高 | F6/F7 fold IC差 | 在报告中单独分析2024年fold；考虑regime-aware训练 |
 | ML信号换手率远超等权 | 中 | 成本吃掉Alpha | 计算年化换手率；如>300%需加换手率约束项 |
 
-### 8.3 Go/No-Go决策树
+### 8.3 V3.4 fail-fast决策树（v2.0重写）
 
 ```
 Optuna完成后 (Step 2结束):
@@ -790,18 +858,40 @@ Optuna完成后 (Step 2结束):
     YES → 继续回测
 
 回测后 (Step 4结束):
-    OOS Sharpe ≥ 1.019?
-    NO → 不上线，记录失败 → 复盘因子工程
-    YES → 继续检验
+    ┌─ OOS Sharpe ≥ 基线×1.2 且 p<0.05
+    │    → 成功 → 影子PT → Gate G8升级为ML评估
+    │    → 继续G1.1(LambdaRank) → G1.3(XGB+Cat) → G1.4(Ensemble)
+    │
+    ├─ OOS Sharpe ≥ 基线 但 p>0.05
+    │    → 方向对但特征不够
+    │    → 做Ablation(§2.6)定位瓶颈
+    │    → GA5 LLM code gen扩展特征池后重跑
+    │
+    └─ OOS Sharpe < 基线
+         → ML无增量，诊断:
+         → 跑Tier-A(5因子)确认信噪比 vs 特征噪声
+         → 尝试线性模型(Lasso/Ridge)确认是否需要非线性
 
-    paired bootstrap p < 0.05?
-    NO → 样本不足或效果不稳定，继续Paper Trading观察
-    YES → 继续检验
-
-    2x成本Sharpe > 0.5?
-    NO → 实盘成本会吃掉Alpha，不上线
-    YES → 提交人工审批 → approval_queue
+    附加红线（任何一条不过则不上线）:
+    - trainIC/validIC > 3.0 → 过拟合
+    - 2x成本Sharpe < 0.3 → 成本敏感
+    - 连续亏损月 > 4 → 不稳定
 ```
+
+### 8.4 "48特征仍不如等权"的诊断预案（v2.0新增）
+
+> 这是G1最大的风险。Sprint 1.3b用26特征已经差一点(Sharpe=0.869/p=0.073)。
+> 如果48特征也未通过，需要有系统的诊断路径而非盲目重试。
+
+**诊断路径:**
+
+| 步骤 | 检查 | 如果是 | 如果否 |
+|------|------|--------|--------|
+| 1 | Ablation: Tier-A(5因子) Sharpe如何？ | ≈等权→信噪比不支持ML | >等权→5因子非线性有增量，问题在扩展特征 |
+| 2 | SHAP: 扩展因子贡献占比？ | <10%→扩展因子是噪声 | >10%→有信息但被其他因素抵消 |
+| 3 | 换手率对比: ML vs 等权 | ML换手率>>等权→成本吃掉alpha | 换手率相近→不是成本问题 |
+| 4 | 年度分解: 哪年拉低了整体？ | 2022/2024→熊市regime问题 | 全年均差→基础alpha不够 |
+| 5 | 线性对比: Lasso/Ridge用48特征 | Lasso>等权→非线性不需要，线性即可 | Lasso≈等权→特征本身无增量 |
 
 ---
 
@@ -813,14 +903,14 @@ Optuna完成后 (Step 2结束):
 SimBroker: 直接复用，ML策略传入的是月底截面的预测值排名
            SimBroker不需要知道是ML预测还是等权因子
 
-因子预处理: 复用FactorService的中性化和zscore逻辑
+因子预处理: 复用FactorService的WLS中性化和zscore(±3 clip)逻辑（Phase A修复后）
            不重写，确保与等权基线完全一致的预处理方式
 
-回测报告: 复用PerformanceService，生成CLAUDE.md要求的全部指标
-          新增：按fold分解的IC时序图
+回测报告: 复用PerformanceService，生成所有指标
+          新增：按fold分解的IC时序图 + 年度分解
 
-Task Scheduler: Walk-Forward训练作为新的Celery task
-               与现有每日信号生成task共享GPU但时间错开
+Sprint 1.3b代码: 复用ml_engine.py框架（Walk-Forward+Optuna+20测试）
+                重构特征加载（从手动列表改为DB查询）
 ```
 
 ### 9.2 信号生成逻辑（上线后）
@@ -839,6 +929,7 @@ else:
     scores = equal_weight(factor_values)  # fallback到等权基线
 
 # 两个模式共用同一SimBroker/MiniQMTBroker，只有scores来源不同
+# Top-N = 20（V3.4新配置）
 ```
 
 ### 9.3 模型更新机制（上线后）
@@ -852,26 +943,66 @@ else:
      NO → 直接用新fold模型更新model_registry
   4. 新模型status='candidate'，通过OOS评估后→'active'
   5. 旧模型status='retired'
+```
 
-这与现有strategy_configs版本管理机制一致
+### 9.4 影子PT部署方案（v2.0新增）
+
+> Sprint 1.3b已实现影子PT机制——每月调仓时同步生成影子选股，记录到DB但不影响主策略。
+
+**G1通过fail-fast后的部署步骤:**
+
+```
+1. 最新fold模型写入model_registry (status='shadow')
+2. 每月调仓时:
+   a. 等权策略正常执行（主PT不受影响）
+   b. LightGBM用当月截面特征生成预测值
+   c. 预测值排名Top-20写入shadow_signals表
+   d. shadow_signals不传入QMT执行
+3. 每月对比: 等权实际收益 vs LightGBM影子收益
+4. 观察期30-60天后:
+   如果LightGBM影子Sharpe > 等权实际Sharpe → 评估升级为主策略
+   如果LightGBM影子Sharpe ≤ 等权实际Sharpe → 不升级，继续观察或放弃
+```
+
+### 9.5 与清明改造后架构的集成（v2.0新增）
+
+```
+ML训练是研究任务，不走生产调度（Servy/Celery/CeleryBeat）:
+- 手动触发或cron触发，不纳入Servy管理的4个服务
+- 训练结果写入PostgreSQL（model_registry/experiments/ml_predictions）
+- 影子PT信号生成可以作为Celery task（轻量，每月一次）
+
+数据读取:
+- 特征从factor_values表读取（通过PostgreSQL连接）
+- 不从Redis读取（Redis是实时数据总线，ML训练用历史数据）
+- ⚠️ 串行执行，不并行多个数据密集查询（PostgreSQL OOM风险）
+
+GPU资源:
+- RTX 5070独占（训练时不跑其他GPU任务）
+- 训练时段建议：收盘后18:00-次日08:00（不与盘中监控冲突）
 ```
 
 ---
 
-## 10. 执行检查表（实现前验证）
+## 10. 执行检查表（v2.0更新）
 
 在开始代码实现前，以下前置条件必须满足：
 
 ```
-□ factor_values表数据确认（2020-07-01开始，5因子均有记录）
-□ klines_daily/moneyflow/fina_indicator表数据完整（用于B-F组特征）
+□ factor_values表数据确认（运行§2.2 Step 1 SQL，确认48+因子数据覆盖）
+□ 特征就绪报告生成（§2.2 Step 4，每个因子的覆盖率/缺失率/就绪状态）
+□ 相关性预检完成（§2.2 Step 3，48×48相关矩阵，标记高相关对）
 □ RTX 5070 GPU驱动确认（nvidia-smi可见，CUDA版本检查）
 □ LightGBM GPU版本安装验证（import lightgbm; lgb.Dataset.__module__）
 □ Optuna安装（pip install optuna optuna-integration）
-□ 交易日历完整（2020-07 ~ 2026-03，用于Purge gap计算）
-□ SimBroker与等权基线跑通（有参照Sharpe=1.03可以比较）
+□ 交易日历完整（2020-07 ~ 2026-04，用于Purge gap计算）
+□ 等权基线回测确认（Top-20+无行业约束配置，记录Sharpe作为fail-fast分母）
 □ ml_predictions表创建（本文档7.1节DDL）
-□ CLAUDE.md铁律7确认（OOS Sharpe<1.019不上线，无例外）
+□ Sprint 1.3b代码审查（ml_engine.py可复用程度评估）
+□ Universe定义确认（§2.5，训练=回测=PT一致）
+□ 目标变量T+1起算确认（不含信号日T，防止~6.5% IC膨胀bug复发）
+□ 铁律11确认（所有参考的IC值必须有factor_ic_history入库记录）
+□ 内存预估（48因子×5年×5000股×4字节≈目标<8GB RAM，串行执行）
 ```
 
 ---
@@ -887,19 +1018,79 @@ else:
 
 ---
 
-## 附录B：关键数值速查
+## 附录B：关键数值速查（v2.0更新）
 
 ```
-基线Sharpe:          1.019（Windows环境，2021-2025全期）
-ML上线阈值:          OOS Sharpe ≥ 1.10 + p < 0.05（优秀: ≥1.30 + p<0.01）
+等权基线Sharpe:      1.15（Top-20+无行业约束新配置，V3.4确认）
+保守基线Sharpe:      0.70-0.85（DSR校正后，V3.4确认）
+fail-fast成功线:     OOS Sharpe ≥ 基线×1.2 且 p<0.05
 过拟合预警:          trainIC/validIC > 2.0
-过拟合硬停:          trainIC/validIC > 3.0（CLAUDE.md铁律7）
+过拟合硬停:          trainIC/validIC > 3.0
 Fold总数:            7个（F1~F7）
-有效OOS月数:         57个月（2021-07 ~ 2026-03）
+有效OOS月数:         ~57个月（2021-07 ~ 2026-04）
 训练样本/fold:       ~211万行（4000股×528天）
-特征数:              51个（A~F六组）
+特征数:              48+个（factor_values表自动发现，v2.0更新）
 GPU VRAM预估:        1-2GB（远低于12GB上限）
-单fold训练时间:      <15分钟（满足30分钟约束）
-Optuna总预算:        200轮（预计~5小时，分次运行）
-bootstrap次数:       1000次（CLAUDE.md回测可信度规则4）
+单fold训练时间:      <15分钟
+Optuna总预算:        200轮（预计~5小时）
+bootstrap次数:       1000次
+Top-N:               20（V3.4新配置，v1.0为15）
+Sprint 1.3b参照:     26特征/Sharpe=0.869/p=0.073/未通过
+```
+
+---
+
+## 附录C：Sprint 1.3b完整结果（v2.0新增，历史对比基准）
+
+```
+实验配置:
+  特征数: 26（5基线+12多尺度+9衍生）
+  Walk-Forward: 7-fold，与本文档§1.3相同
+  Optuna: 200轮，F1 fold
+  基线: 等权5因子Top-15（Sharpe=1.03当时基线）
+
+Fold-by-fold OOS IC:
+  F1: 0.071  F2: 0.072  F3: 0.109  F4: 0.086
+  F5: 0.100  F6: 0.044  F7: 0.095
+  均值: 0.0823  一致性: 7/7正（100%）
+
+Optuna最优超参:
+  num_leaves=17, lr=0.033, min_child=74
+  subsample=0.54, colsample=0.57, n_est=272
+  改进: 仅+2.5%（默认超参已足够好）
+
+最终评估:
+  OOS Sharpe: 0.869  → FAIL（门槛1.10）
+  p-value: 0.073     → FAIL（门槛0.05）
+  连续亏损月: 4      → FAIL（门槛<3）
+  trainIC/validIC: 1.51 → PASS
+  MDD: -39.51%       → PASS
+  Fold一致性: 100%   → PASS
+
+SHAP发现:
+  Top-5特征全部是基线因子
+  扩展特征SHAP贡献很小
+  结论: 26特征中21个扩展特征被基线因子信息覆盖
+
+决策: NOT JUSTIFIED for go-live，部署为影子PT观察
+```
+
+---
+
+## 附录D：G1.1-G1.7扩展路径提要（v2.0新增，详见V3.4 roadmap）
+
+```
+G1:   LightGBM Walk-Forward（本文档）
+G1.1: 预测目标升级 → 回归→LambdaRank排名优化（1天）
+G1.2: 时序特征增强 → 因子delta/delta2/3月堆叠（1天）
+G1.3: XGBoost + CatBoost同架构训练（1-2天）
+G1.4: 三模型Ensemble → 简单平均 → OOS加权（半天）
+G1.5: 分位数回归 → 输出收益分布，不确定性调仓位（2天）
+G1.6: MLP基线 + 四模型Stacking（特征池80+后，5天）
+G1.7: Regime感知模型切换（5-7天）
+
+前沿论文参考:
+  QuantaAlpha(2026): GPT-5.2+LightGBM, CSI300 IC=0.1501, ARR=27.75%
+  AlphaAgent(KDD 2025): AST去重+正则化探索, hit ratio+81%
+  Dynamic GP+LightGBM(2026): GP三目标+滚动窗口, CSI300 Sharpe=1.59
 ```

@@ -17,14 +17,14 @@ Sprint 1.17 ml-engineer
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import os
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # 模型常量 (R7 §4.1 推荐)

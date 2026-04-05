@@ -423,10 +423,21 @@ class MiniQMTBroker(BaseBroker):
         )
 
         # 价格类型映射
-        xt_price_type = (
-            xtconstant.FIX_PRICE if price_type == "limit"
-            else xtconstant.LATEST_PRICE
-        )
+        # 市价单需根据交易所选择正确类型:
+        #   LATEST_PRICE(5) 在模拟盘卖单不撮合（实测2026-03-30确认）
+        #   SH: MARKET_SH_CONVERT_5_CANCEL(42) — 最优五档即时成交剩余撤销
+        #   SZ: MARKET_SZ_CONVERT_5_CANCEL(47) — 同上
+        if price_type == "limit":
+            xt_price_type = xtconstant.FIX_PRICE
+        elif price_type == "market":
+            if code.endswith(".SH"):
+                xt_price_type = xtconstant.MARKET_SH_CONVERT_5_CANCEL
+            else:
+                # SZ/BJ 统一用深市五档
+                xt_price_type = xtconstant.MARKET_SZ_CONVERT_5_CANCEL
+        else:
+            # fallback: 其他price_type值直接用LATEST_PRICE
+            xt_price_type = xtconstant.LATEST_PRICE
 
         # 市价单price设0
         order_price = price if price is not None else 0.0

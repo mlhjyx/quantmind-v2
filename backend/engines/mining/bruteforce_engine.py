@@ -15,7 +15,7 @@ Gate筛选 (G1-G3，宽松前置筛选，最终标准 G1-G8 在 FactorGatePipeli
 from __future__ import annotations
 
 import ast
-import logging
+import structlog
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -410,9 +410,10 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
             "Amihud (2002)，A股小市值股票此效应尤显著。"
         ),
         direction="positive",
-        required_fields=["close", "amount"],
+        required_fields=["close", "amount"],  # amount: 千元(klines_daily)
         windows=(5, 10, 20),
         expr_template=(
+            # amount/1e4 将千元转为千万元级别缩放，不影响截面排序
             "ts_mean(abs(close / delay(close, 1) - 1) / "
             "(amount / 1e4 + 1e-10), {w})"
         ),
@@ -509,6 +510,9 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
 
     # ============================================================
     # 类别③：资金流向类（DESIGN_V5 §4.2 类别③ — 全部未实现）
+    # 单位说明: buy_lg_amount等来自moneyflow_daily(万元),
+    #          amount来自klines_daily(千元)。
+    #          比值有10x常数偏差，但不影响截面排序（所有股票同一日期同乘）。
     # ============================================================
     FactorTemplate(
         name="big_order_ratio",

@@ -23,7 +23,6 @@ BH-FDR校正（研究报告#2）:
     threshold = bh_fdr_adjusted_threshold(alpha=0.05)
 """
 
-import re
 from pathlib import Path
 
 import structlog
@@ -180,16 +179,6 @@ def get_cumulative_test_count(registry_path: Path | str | None = None) -> int:
 
     content = path.read_text(encoding="utf-8")
 
-    # 匹配表格数据行: 以 | 数字 | 开头的行
-    # 排除 header 行（含"因子名"）和分隔符行（含"---"）
-    table_row_pattern = re.compile(
-        r"^\|\s*(\d+)\s*\|"  # 第一列是序号
-        r".*\|"              # 中间内容
-        r".*\|$",            # 以|结尾
-        re.MULTILINE,
-    )
-
-    rows = table_row_pattern.findall(content)
     count = 0
 
     for line in content.splitlines():
@@ -309,7 +298,7 @@ def bh_fdr_check_significance(
     results: dict[str, bool] = {}
     max_passing_rank = 0
 
-    for rank_in_batch, (name, pval) in enumerate(sorted_factors, start=1):
+    for rank_in_batch, (_name, pval) in enumerate(sorted_factors, start=1):
         # 使用全局M（累积测试总数），rank用批内排名
         # 保守做法: rank从1开始在当前批次内
         bh_threshold = alpha * rank_in_batch / m_total
@@ -317,7 +306,7 @@ def bh_fdr_check_significance(
             max_passing_rank = rank_in_batch
 
     # 所有排名 <= max_passing_rank 的因子通过
-    for rank_in_batch, (name, pval) in enumerate(sorted_factors, start=1):
+    for rank_in_batch, (name, _pval) in enumerate(sorted_factors, start=1):
         results[name] = rank_in_batch <= max_passing_rank
 
     # 日志

@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import os
 from datetime import date, timedelta
 from typing import Any
@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
 

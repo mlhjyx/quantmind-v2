@@ -8,7 +8,7 @@
 遵循CLAUDE.md: IC使用沪深300超额收益、复权价格。
 """
 
-import logging
+import structlog
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FactorAnalyzer:

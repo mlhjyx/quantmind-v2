@@ -12,14 +12,14 @@
 """
 # ruff: noqa: N803 N806 B905 B007
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ============================================================

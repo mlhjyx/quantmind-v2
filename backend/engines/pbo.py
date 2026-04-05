@@ -24,13 +24,13 @@ Bailey, Borwein, Lopez de Prado & Zhu (2017) 提出的CSCV
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from itertools import combinations
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def probability_of_backtest_overfitting(

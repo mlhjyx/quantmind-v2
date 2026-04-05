@@ -135,8 +135,37 @@ export async function getBacktestProgress(runId: string): Promise<BacktestProgre
 }
 
 export async function getBacktestResult(runId: string): Promise<BacktestResult> {
-  const res = await apiClient.get<BacktestResult>(`/backtest/${runId}/result`);
-  return res.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any>(`/backtest/${runId}/result`);
+  const d = res.data;
+  const raw = d.metrics ?? {};
+  const num = (v: unknown): number => (v != null ? Number(v) : 0);
+  return {
+    run_id: d.run_id ?? runId,
+    strategy_id: d.strategy_id ?? "",
+    strategy_name: d.run_name ?? d.strategy_name ?? `回测_${runId.slice(0, 8)}`,
+    status: d.status ?? "completed",
+    created_at: d.created_at ?? "",
+    completed_at: d.finished_at ?? d.completed_at ?? null,
+    metrics: {
+      annual_return: num(raw.annual_return),
+      sharpe: num(raw.sharpe ?? raw.sharpe_ratio),
+      dsr: num(raw.dsr ?? raw.deflated_sharpe),
+      mdd: num(raw.mdd ?? raw.max_drawdown),
+      calmar: num(raw.calmar ?? raw.calmar_ratio),
+      annual_turnover: num(raw.annual_turnover ?? raw.total_turnover),
+      net_return_after_cost: num(raw.net_return_after_cost),
+      wf_oos_sharpe: raw.wf_oos_sharpe != null ? num(raw.wf_oos_sharpe) : null,
+    },
+    nav: d.nav ?? d.nav_series ?? [],
+    monthly_returns: d.monthly_returns ?? [],
+    holdings: d.holdings ?? [],
+    trades: d.trades ?? d.trade_log ?? [],
+    risk_metrics: d.risk_metrics ?? [],
+    factor_contributions: d.factor_contributions ?? [],
+    wf_windows: d.wf_windows ?? null,
+    config_snapshot: d.config ?? {},
+  };
 }
 
 export async function cancelBacktest(runId: string): Promise<void> {
@@ -147,9 +176,20 @@ export async function listBacktestHistory(strategyId?: string): Promise<Backtest
   const params = strategyId ? { strategy_id: strategyId } : {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await apiClient.get<any>("/backtest/history", { params });
-  const data = res.data;
-  if (Array.isArray(data)) return data;
-  return data?.items ?? [];
+  const raw = res.data;
+  const items: unknown[] = Array.isArray(raw) ? raw : raw?.items ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return items.map((r: any) => ({
+    run_id: r.run_id,
+    strategy_id: r.strategy_id,
+    strategy_name: r.run_name ?? r.strategy_name ?? "",
+    status: r.status,
+    created_at: r.created_at,
+    completed_at: r.completed_at ?? r.finished_at ?? null,
+    sharpe: r.sharpe ?? (r.sharpe_ratio != null ? Number(r.sharpe_ratio) : null),
+    mdd: r.mdd ?? (r.max_drawdown != null ? Number(r.max_drawdown) : null),
+    annual_return: r.annual_return != null ? Number(r.annual_return) : null,
+  }));
 }
 
 export async function compareBacktests(runIds: string[]): Promise<{ results: BacktestResult[] }> {

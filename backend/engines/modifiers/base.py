@@ -15,13 +15,13 @@ R3研究结论(§7.2): Modifier不独立选股，只产出调节因子。
 - docs/research/R3_multi_strategy_framework.md §7.2
 """
 
-import logging
+import structlog
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from engines.base_strategy import StrategyContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # R3 §6.4 默认调节约束
 DEFAULT_ADJUSTMENT_CLIP_LOW: float = 0.5

@@ -146,6 +146,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2021-01-01")
     parser.add_argument("--end", default="2025-12-31")
+    parser.add_argument("--shard", type=int, default=0, help="分片编号(0-based)")
+    parser.add_argument("--total-shards", type=int, default=1, help="总分片数")
     args = parser.parse_args()
 
     lg = bs.login()
@@ -156,8 +158,14 @@ def main():
     conn = get_db_conn()
     total_rows = 0
     skip_list = []
-    STOCK_CODES = load_stock_codes()
-    logger.info("股票列表: %d只 (CSI500+Top100合并去重)", len(STOCK_CODES))
+    ALL_CODES = load_stock_codes()
+    # 分片支持：并行拉取
+    if args.total_shards > 1:
+        STOCK_CODES = [c for i, c in enumerate(ALL_CODES) if i % args.total_shards == args.shard]
+        logger.info("分片 %d/%d: %d只 (总%d只)", args.shard, args.total_shards, len(STOCK_CODES), len(ALL_CODES))
+    else:
+        STOCK_CODES = ALL_CODES
+        logger.info("股票列表: %d只 (全量)", len(STOCK_CODES))
 
     for i, code in enumerate(STOCK_CODES):
         bs_code = to_bs_code(code)

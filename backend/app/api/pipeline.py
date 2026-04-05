@@ -20,7 +20,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.tasks.celery_app import celery_app
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _LOCALHOST_IPS = {"127.0.0.1", "::1", "localhost"}
 

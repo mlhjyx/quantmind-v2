@@ -11,7 +11,9 @@ import type {
 const api = axios.create({ baseURL: "/api" });
 
 export async function fetchSummary(): Promise<DashboardSummary> {
-  const { data } = await api.get<DashboardSummary>("/dashboard/summary");
+  const { data } = await api.get<DashboardSummary>("/dashboard/summary", {
+    params: { execution_mode: "live" },
+  });
   return data;
 }
 
@@ -19,7 +21,7 @@ export async function fetchNAVSeries(
   period: NAVPeriod = "3m",
 ): Promise<NAVPoint[]> {
   const { data } = await api.get<NAVPoint[]>("/dashboard/nav-series", {
-    params: { period },
+    params: { period, execution_mode: "live" },
   });
   return data;
 }
@@ -32,8 +34,23 @@ export async function fetchPendingActions(): Promise<PendingAction[]> {
 }
 
 export async function fetchPositions(): Promise<Position[]> {
-  const { data } = await api.get<Position[]>("/paper-trading/positions");
-  return data;
+  // 优先使用realtime API（QMT实时持仓），fallback到paper-trading
+  try {
+    interface RtPosition { code: string; shares: number; market_value: number; weight: number; cost_price: number; pnl_pct: number }
+    const { data } = await api.get<{ positions: RtPosition[] }>("/realtime/portfolio");
+    return (data.positions ?? []).map((p) => ({
+      code: p.code,
+      quantity: p.shares,
+      market_value: p.market_value,
+      weight: p.weight / 100,
+      avg_cost: p.cost_price,
+      unrealized_pnl: p.pnl_pct / 100,
+      holding_days: 0,
+    }));
+  } catch {
+    const { data } = await api.get<Position[]>("/paper-trading/positions");
+    return data;
+  }
 }
 
 export interface StrategyOverview {
@@ -55,7 +72,7 @@ export async function fetchCircuitBreakerState(): Promise<CircuitBreakerState | 
   try {
     const { data } = await api.get<CircuitBreakerState>(
       "/risk/state/default",
-      { params: { execution_mode: "paper" } },
+      { params: { execution_mode: "live" } },
     );
     return data;
   } catch {

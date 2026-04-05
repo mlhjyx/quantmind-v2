@@ -512,11 +512,11 @@ export default function DashboardAstock() {
     }
 
     // Supplementary data — show empty on error, do not silently hide
-    axios.get<SectorItem[]>("/api/portfolio/sector-distribution")
+    axios.get<SectorItem[]>("/api/portfolio/sector-distribution", { params: { execution_mode: "live" } })
       .then((r) => setSectors(r.data))
       .catch(() => setSectors([]));
 
-    axios.get<Record<string, (number | null)[]>>("/api/dashboard/monthly-returns")
+    axios.get<Record<string, (number | null)[]>>("/api/dashboard/monthly-returns", { params: { execution_mode: "live" } })
       .then((r) => setMonthlyData(r.data))
       .catch(() => setMonthlyData({}));
 

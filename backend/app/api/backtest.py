@@ -6,7 +6,7 @@
 参考：DEV_BACKTEST_ENGINE.md §七 后端 API 清单。
 """
 
-import logging
+import structlog
 import tempfile
 from datetime import date
 from typing import Any
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -122,6 +122,21 @@ async def _require_completed(
     return run
 
 
+async def _safe_query(
+    session: AsyncSession, sql_text: str, params: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """安全执行SQL查询，表不存在时返回空列表而非500。"""
+    try:
+        result = await session.execute(text(sql_text), params)
+        return [dict(r) for r in result.mappings().all()]
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("查询失败（表可能不存在）: %s", err_msg[:200])
+            return []
+        raise
+
+
 # ---------------------------------------------------------------------------
 # 1. 回测管理
 # ---------------------------------------------------------------------------
@@ -164,22 +179,27 @@ async def submit_backtest(
         text(
             """
             INSERT INTO backtest_run
-                (run_id, strategy_id, config_json, start_date, end_date, status)
+                (run_id, strategy_id, config_json, factor_list, start_date, end_date, status)
             VALUES
-                (:run_id, :sid, :cfg::jsonb, :sd, :ed, 'running')
+                (:run_id, :sid, CAST(:cfg AS JSONB), CAST(:factors AS TEXT[]), :sd, :ed, 'running')
             """
         ),
         {
             "run_id": run_id,
             "sid": req.strategy_id,
             "cfg": config_json,
-            "sd": req.start_date.isoformat(),
-            "ed": req.end_date.isoformat(),
+            "factors": req.extra_config.get("factor_list", [
+                "turnover_mean_20", "volatility_20", "reversal_20",
+                "amihud_20", "bp_ratio",
+            ]),
+            "sd": req.start_date,
+            "ed": req.end_date,
         },
     )
     await session.commit()
 
-    # TODO: 触发 Celery task — celery_app.send_task("backtest.run", args=[run_id])
+    from app.tasks.backtest_tasks import run_backtest
+    run_backtest.delay(run_id)
     logger.info("回测任务已提交: run_id=%s, strategy=%s", run_id, req.strategy_id)
 
     return BacktestRunResponse(
@@ -322,7 +342,31 @@ async def get_backtest_result(
         },
         "created_at": str(run["created_at"]) if run.get("created_at") else None,
         "finished_at": str(run["finished_at"]) if run.get("finished_at") else None,
+        "nav": await _get_nav_series(session, run_id),
     }
+
+
+async def _get_nav_series(session: AsyncSession, run_id: UUID) -> list[dict[str, Any]]:
+    """获取回测每日NAV序列。"""
+    result = await session.execute(
+        text("""
+            SELECT trade_date, nav, benchmark_nav, excess_return, drawdown
+            FROM backtest_daily_nav
+            WHERE run_id = CAST(:rid AS uuid)
+            ORDER BY trade_date
+        """),
+        {"rid": str(run_id)},
+    )
+    return [
+        {
+            "date": str(r["trade_date"]),
+            "strategy": float(r["nav"]) if r["nav"] else 1.0,
+            "benchmark": float(r["benchmark_nav"]) if r["benchmark_nav"] else 1.0,
+            "excess": round(float(r["excess_return"]) * 100, 2) if r["excess_return"] else 0,
+            "drawdown": round(float(r["drawdown"]) * 100, 2) if r["drawdown"] else 0,
+        }
+        for r in result.mappings().all()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -345,22 +389,30 @@ async def get_nav_series(
     Returns:
         按日期排序的 NAV 列表。
     """
-    await _require_completed(session, run_id)
-    result = await session.execute(
-        text(
-            """
-            SELECT trade_date, nav, cash, market_value,
-                   daily_return, benchmark_nav, benchmark_return, excess_return
-            FROM backtest_daily_nav
-            WHERE run_id = :rid
-            ORDER BY trade_date
-            """
-        ),
+    try:
+        await _require_completed(session, run_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("backtest_run表可能不存在: %s", err_msg[:200])
+            return []
+        raise
+
+    rows = await _safe_query(
+        session,
+        """
+        SELECT trade_date, nav, cash, market_value,
+               daily_return, benchmark_nav, benchmark_return, excess_return
+        FROM backtest_daily_nav
+        WHERE run_id = :rid
+        ORDER BY trade_date
+        """,
         {"rid": str(run_id)},
     )
-    rows = result.mappings().all()
     return [
-        {**dict(r), "trade_date": str(r["trade_date"])}
+        {**r, "trade_date": str(r["trade_date"])}
         for r in rows
     ]
 
@@ -389,7 +441,16 @@ async def get_trades(
     Returns:
         包含 total/page/page_size/items 的分页结果。
     """
-    await _require_completed(session, run_id)
+    try:
+        await _require_completed(session, run_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("backtest_run表可能不存在: %s", err_msg[:200])
+            return {"total": 0, "page": page, "page_size": page_size, "items": []}
+        raise
 
     where_parts = ["run_id = :rid"]
     params: dict[str, Any] = {
@@ -407,27 +468,35 @@ async def get_trades(
 
     where_sql = " AND ".join(where_parts)
 
-    count_res = await session.execute(
-        text(f"SELECT COUNT(*) FROM backtest_trades WHERE {where_sql}"),  # noqa: S608
-        params,
-    )
-    total = count_res.scalar() or 0
+    try:
+        count_res = await session.execute(
+            text(f"SELECT COUNT(*) FROM backtest_trades WHERE {where_sql}"),  # noqa: S608
+            params,
+        )
+        total = count_res.scalar() or 0
 
-    rows_res = await session.execute(
-        text(
-            f"""
-            SELECT id, signal_date, exec_date, stock_code, side, shares,
-                   target_price, exec_price, slippage_bps,
-                   commission, stamp_tax, transfer_fee, total_cost,
-                   reject_reason
-            FROM backtest_trades
-            WHERE {where_sql}
-            ORDER BY exec_date, stock_code
-            LIMIT :lim OFFSET :off
-            """  # noqa: S608
-        ),
-        params,
-    )
+        rows_res = await session.execute(
+            text(
+                f"""
+                SELECT id, signal_date, exec_date, stock_code, side, shares,
+                       target_price, exec_price, slippage_bps,
+                       commission, stamp_tax, transfer_fee, total_cost,
+                       reject_reason
+                FROM backtest_trades
+                WHERE {where_sql}
+                ORDER BY exec_date, stock_code
+                LIMIT :lim OFFSET :off
+                """  # noqa: S608
+            ),
+            params,
+        )
+    except Exception as exc:
+        err_msg = str(exc).lower()
+        if "does not exist" in err_msg or "relation" in err_msg:
+            logger.warning("backtest_trades表可能不存在: %s", err_msg[:200])
+            return {"total": 0, "page": page, "page_size": page_size, "items": []}
+        raise
+
     items = []
     for r in rows_res.mappings().all():
         row = dict(r)

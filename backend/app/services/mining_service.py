@@ -17,7 +17,7 @@ Celery 任务在 asyncio.run() 内调用（DEV_BACKEND.md 规范）。
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import uuid
 from datetime import datetime
 from typing import Any
@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Celery 任务名称（在 app.tasks.mining_tasks 中注册）
 _CELERY_TASK_GP = "app.tasks.mining_tasks.run_gp_mining"

@@ -42,11 +42,11 @@
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "python D:/quantmind-v2/.claude/hooks/pre_spawn_check.py",
+            "command": "C:/Program Files/Git/bin/bash.exe C:/Users/hd/.claude/plugins/marketplaces/everything-claude-code/skills/continuous-learning-v2/hooks/observe.sh pre",
             "timeout": 5
           }
         ]
@@ -69,6 +69,11 @@
           {
             "type": "command",
             "command": "python D:/quantmind-v2/.claude/hooks/audit_log.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "C:/Program Files/Git/bin/bash.exe C:/Users/hd/.claude/plugins/marketplaces/everything-claude-code/skills/continuous-learning-v2/hooks/observe.sh post",
             "timeout": 5
           }
         ]

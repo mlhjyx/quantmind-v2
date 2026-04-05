@@ -19,14 +19,14 @@ R3 §6.2 Layer 3: 市场regime仓位缩放（Risk Overlay）。
 - DESIGN_V5.md §9.5 MA120牛熊判定（规则版fallback）
 """
 
-import logging
+import structlog
 
 import pandas as pd
 
 from engines.base_strategy import StrategyContext
 from engines.modifiers.base import ModifierBase, ModifierResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 各状态的仓位缩放系数（R3 §6.2 Layer 3设计值）
 _SCALE_RISK_ON: float = 1.0  # 牛市/risk-on: 满仓

@@ -5,6 +5,14 @@ Sprint 1.0: 创建框架 + 任务定义。
 Sprint 1.1: 激活 Beat 调度，替换 crontab。
 """
 
+import sys
+from pathlib import Path
+
+# 确保 backend/ 在 sys.path 中，使 engines 模块可被 Celery worker 导入
+_backend_dir = str(Path(__file__).resolve().parent.parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 from celery import Celery
 
 from app.config import settings
@@ -31,6 +39,7 @@ celery_app.conf.update(
         "app.tasks.daily_pipeline",
         "app.tasks.mining_tasks",
         "app.tasks.onboarding_tasks",
+        "app.tasks.backtest_tasks",
     ],
     # 结果过期: 24 小时
     result_expires=86400,

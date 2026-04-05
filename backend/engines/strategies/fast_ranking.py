@@ -23,7 +23,7 @@ config必须包含:
 - R3: 核心+Modifier架构，本策略作为快频核心策略
 """
 
-import logging
+import structlog
 from datetime import date, timedelta
 from typing import Any
 
@@ -38,7 +38,7 @@ from engines.base_strategy import (
 )
 from engines.signal_engine import get_rebalance_dates
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 快衰减因子的最大调仓频率限制
 _FAST_FREQS = {"daily", "weekly"}

@@ -14,7 +14,7 @@ FastAPI挂载示例（在main.py中）:
     app.mount("/ws", socket_app)
 """
 
-import logging
+import structlog
 
 import socketio
 
@@ -30,7 +30,7 @@ from app.websocket.events import (
     make_status,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ─────────────────────────────────────────────────────────
 # socketio AsyncServer实例（全局单例）

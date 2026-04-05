@@ -656,12 +656,11 @@ class TestCompositeDecisionCompleteness:
 
         assert "core告警" in decision.warnings
 
-    def test_satellites_logged_but_not_used(self) -> None:
+    def test_satellites_logged_but_not_used(self, capsys) -> None:
         """设置satellites时产生警告，但当前仅运行core+modifiers。"""
-        import logging
-
         core = _make_mock_core()
         satellite = MagicMock()
-        with patch.object(logging.getLogger("engines.strategies.composite"), "warning") as mock_log:
-            CompositeStrategy(core=core, satellites=[satellite])
-            mock_log.assert_called_once()
+        # structlog输出到stdout/stderr，验证警告消息存在
+        CompositeStrategy(core=core, satellites=[satellite])
+        captured = capsys.readouterr()
+        assert "satellites" in captured.out.lower() or "phase b" in captured.out.lower()

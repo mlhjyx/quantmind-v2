@@ -4,9 +4,11 @@
 CLAUDE.md要求: 任何一项失败 → P0告警 + 暂停当日链路。
 检查项:
   ✓ PostgreSQL连接
+  ✓ Redis连接
   ✓ 昨日数据已更新
   ✓ 因子计算无NaN（抽样）
   ✓ 磁盘空间 > 10GB
+  ✓ Celery worker在线（可选）
 """
 
 import os
@@ -112,6 +114,39 @@ def check_disk_space() -> tuple[bool, str]:
         return False, str(e)
 
 
+def check_redis() -> tuple[bool, str]:
+    """Redis连接测试。"""
+    try:
+        import redis
+        r = redis.Redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+            socket_connect_timeout=3,
+        )
+        r.ping()
+        info = r.info("memory")
+        used_mb = info.get("used_memory", 0) / (1024 * 1024)
+        return True, f"OK (内存{used_mb:.1f}MB)"
+    except ImportError:
+        return True, "SKIP(redis包未安装，不阻断)"
+    except Exception as e:
+        return False, str(e)
+
+
+def check_celery() -> tuple[bool, str]:
+    """检查Celery worker是否在线（可选，未启动不阻断）。"""
+    try:
+        from app.tasks.celery_app import celery_app
+        inspector = celery_app.control.inspect(timeout=3)
+        active = inspector.active_queues()
+        if active:
+            worker_count = len(active)
+            return True, f"{worker_count}个worker在线"
+        else:
+            return True, "SKIP(无worker在线，不阻断)"
+    except Exception as e:
+        return True, f"SKIP(Celery检查异常: {e})"
+
+
 def check_qmt_connection() -> tuple[bool, str]:
     """miniQMT连接检查（仅EXECUTION_MODE=live时调用）。"""
     try:
@@ -156,9 +191,11 @@ def run_health_check(
     # 执行各项检查
     checks = [
         ("postgresql_ok", check_postgresql, (conn,)),
+        ("redis_ok", check_redis, ()),
         ("data_fresh", check_data_freshness, (conn, trade_date)),
         ("factor_nan_ok", check_factor_nan, (conn, trade_date)),
         ("disk_ok", check_disk_space, ()),
+        ("celery_ok", check_celery, ()),
     ]
 
     for name, func, args in checks:
@@ -184,10 +221,6 @@ def run_health_check(
     except Exception as e:
         results["qmt_ok"] = True  # 导入失败不阻断（paper模式兼容）
         print(f"  SKIP qmt_ok: 导入失败({e})", flush=True)
-
-    # Phase 0不用Redis和Celery
-    results["redis_ok"] = True
-    results["celery_ok"] = True
 
     all_pass = all(results.values())
     results["all_pass"] = all_pass

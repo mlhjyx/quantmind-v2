@@ -34,6 +34,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 import pandas as pd
 from engines.factor_analyzer import FactorAnalyzer
+from engines.factor_decay import (
+    DecayLevel,
+    check_all_factors_decay,
+)
 from engines.signal_engine import PAPER_TRADING_CONFIG
 
 from app.config import settings
@@ -427,6 +431,95 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
         except Exception as e:
             logger.warning(f"[Lifecycle] 生命周期检查失败: {e}")
             health["lifecycle_transitions"] = []
+
+        # ── C3: 3级衰减检测（基于factor_ic_history的IC_MA20/IC_MA60）──
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("  因子衰减3级检测 (L0/L1/L2/L3)")
+        logger.info("=" * 60)
+        try:
+            # 从factor_ic_history加载每个因子的IC日频时序
+            factor_ic_data = {}
+            for fname in ACTIVE_FACTORS:
+                ic_df = pd.read_sql(
+                    """SELECT trade_date, ic_5d
+                       FROM factor_ic_history
+                       WHERE factor_name = %s
+                       ORDER BY trade_date""",
+                    conn,
+                    params=(fname,),
+                )
+                if not ic_df.empty:
+                    ic_series = ic_df.set_index("trade_date")["ic_5d"].dropna()
+                    if not ic_series.empty:
+                        factor_ic_data[fname] = ic_series
+
+            if factor_ic_data:
+                decay_results = check_all_factors_decay(factor_ic_data)
+                health["decay_results"] = []
+                for dr in decay_results:
+                    level_marker = ""
+                    if dr.decay_level == DecayLevel.L1:
+                        level_marker = " [!]"
+                        logger.warning(
+                            "  %s: %s — %s%s",
+                            dr.factor_name, dr.decay_level.value, dr.reason, level_marker,
+                        )
+                    elif dr.decay_level in (DecayLevel.L2, DecayLevel.L3):
+                        level_marker = " [!!!]"
+                        logger.error(
+                            "  %s: %s — %s%s",
+                            dr.factor_name, dr.decay_level.value, dr.reason, level_marker,
+                        )
+                    else:
+                        logger.info(
+                            "  %s: %s — %s",
+                            dr.factor_name, dr.decay_level.value, dr.reason,
+                        )
+                    health["decay_results"].append({
+                        "factor_name": dr.factor_name,
+                        "decay_level": dr.decay_level.value,
+                        "ic_ma20": dr.ic_ma20,
+                        "ic_ma60": dr.ic_ma60,
+                        "consecutive_low_days": dr.consecutive_low_days,
+                        "weight_multiplier": dr.weight_multiplier,
+                        "reason": dr.reason,
+                    })
+
+                    # 写入factor_ic_history.decay_level（非dry_run）
+                    if not dry_run and dr.decay_level != DecayLevel.L0:
+                        try:
+                            cur = conn.cursor()
+                            cur.execute(
+                                """UPDATE factor_ic_history
+                                   SET decay_level = %s
+                                   WHERE factor_name = %s AND trade_date = %s""",
+                                (dr.decay_level.value.lower(), dr.factor_name, trade_date),
+                            )
+                            conn.commit()
+                        except Exception as e:
+                            logger.warning(f"[Decay] 更新decay_level失败: {e}")
+                            with contextlib.suppress(Exception):
+                                conn.rollback()
+
+                # 升级overall_status（L2/L3比existing lifecycle更严重）
+                max_level = max(
+                    (dr.decay_level for dr in decay_results),
+                    default=DecayLevel.L0,
+                    key=lambda x: ["L0", "L1", "L2", "L3"].index(x.value),
+                )
+                if max_level in (DecayLevel.L2, DecayLevel.L3):
+                    overall = "critical"
+                    health["overall_status"] = "critical"
+                elif max_level == DecayLevel.L1 and overall == "healthy":
+                    overall = "warning"
+                    health["overall_status"] = "warning"
+            else:
+                logger.info("  无IC历史数据，跳过衰减检测")
+                health["decay_results"] = []
+        except Exception as e:
+            logger.warning(f"[Decay] 衰减检测失败: {e}")
+            health["decay_results"] = []
 
         # ── 发送钉钉告警（warning/critical时）──
         if overall in ("warning", "critical"):

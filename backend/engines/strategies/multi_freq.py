@@ -14,7 +14,7 @@ config必须包含:
     weight_method: str   # "equal" or "score_weighted"
 """
 
-import logging
+import structlog
 from datetime import date, timedelta
 from typing import Any, Optional
 
@@ -31,7 +31,7 @@ from engines.base_strategy import (
 )
 from engines.signal_engine import get_rebalance_dates
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class MultiFreqStrategy(BaseStrategy):

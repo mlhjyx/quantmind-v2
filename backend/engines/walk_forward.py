@@ -14,7 +14,7 @@ signal_func 回调设计:
 - 未来ML策略: signal_func 内部用 LightGBM 训练→预测
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Optional
@@ -29,7 +29,7 @@ from backend.engines.metrics import (
     calc_sharpe,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ============================================================

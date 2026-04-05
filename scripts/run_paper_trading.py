@@ -12,7 +12,9 @@ Phase 1 — signal（T日 16:30 cron触发）:
   Step 3.5: 影子选股（LightGBM Raw + Inertia）
   Step 4: 通知（调仓预告 + PT日报）
 
-Phase 2 — execute（T+1日 09:00 cron触发）:
+Phase 2 — execute（T+1日触发）:
+  调度: miniQMT模式→09:00 / SimBroker(paper)模式→17:05(收盘数据可用后)
+  09:00无数据时SimBroker模式正常退出(exit 0)，不报错
   Step 5: 读取昨日信号
   Step 5.5: 拉取T+1数据
   Step 5.9: 熔断检查
@@ -83,6 +85,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
     handlers=_log_handlers,
+    force=True,  # 确保覆盖structlog的root handler配置
 )
 logger = logging.getLogger("paper_trading")
 
@@ -533,8 +536,8 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                 config_source="run_paper_trading.py",
             )
             if not config_ok:
-                raise AssertionError("因子集与v1.1基线不一致")
-            logger.info("[Step0.5] config_guard: v1.1配置一致 ✓")
+                raise AssertionError("因子集与v1.2基线不一致")
+            logger.info("[Step0.5] config_guard: v1.2配置一致 ✓")
         except (AssertionError, Exception) as e:
             logger.error(f"[Step0.5] P0 配置漂移! {e}")
             if not dry_run:
@@ -675,6 +678,34 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                 logger.info("[Step1.6] dry-run，跳过风控评估写入")
         except Exception as e:
             logger.warning(f"[Step1.6] 风控评估异常（不影响主流程）: {e}")
+
+        # ── Step 1.7: 数据完整性预检 ──
+        logger.info("[Step1.7] 数据完整性预检...")
+        td_str_check = trade_date.strftime("%Y%m%d")
+        _data_ok = True
+        _data_cur = conn.cursor()
+        for _tbl, _label in [("klines_daily", "日线行情"), ("daily_basic", "每日指标")]:
+            _data_cur.execute(
+                f"SELECT MAX(trade_date) FROM {_tbl}"
+            )
+            _max = _data_cur.fetchone()[0]
+            _max_str = _max.strftime("%Y%m%d") if _max else "NULL"
+            if _max_str < td_str_check:
+                logger.error(f"[Step1.7] {_label}({_tbl})数据未就绪: 最新={_max_str}, 需要={td_str_check}")
+                _data_ok = False
+            else:
+                logger.info(f"[Step1.7] {_label}: {_max_str} ✓")
+        if not _data_ok:
+            msg = f"信号生成阻塞: 核心数据未就绪({td_str_check})"
+            logger.error(f"[Step1.7] {msg}")
+            if not dry_run:
+                log_step(conn, "data_readiness_check", "failed", msg)
+                notif_svc.send_sync(
+                    conn, "P0", "system", "数据预检失败", msg,
+                )
+                conn.commit()
+            conn.close()
+            sys.exit(1)
 
         # ── Step 2: 因子计算 ──
         if skip_factors:
@@ -856,10 +887,30 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
 # Phase 2: EXECUTE — T+1日盘前 09:00
 # ════════════════════════════════════════════════════════════
 
-def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
-    """T+1日盘前：读昨日信号 → 用今日open价格执行 → 保存状态。"""
+def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool,
+                      execution_mode: str = "paper"):
+    """T+1日盘前：读昨日信号 → 用今日open价格执行 → 保存状态。
+
+    Args:
+        execution_mode: "paper"=SimBroker, "live"=miniQMT。
+    """
+    exec_mode = execution_mode  # 简写
+
+    # live模式: 覆盖settings + xtquant路径 + 初始化qmt_manager连接
+    if exec_mode == "live":
+        os.environ["EXECUTION_MODE"] = "live"
+        settings.EXECUTION_MODE = "live"  # type: ignore[misc]
+        # xtquant双层嵌套路径修复（append不insert，避免其旧numpy覆盖venv版本）
+        _xt = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+        if _xt.exists() and str(_xt) not in sys.path:
+            sys.path.append(str(_xt))
+        # qmt_manager是单例，需要手动startup（.env是paper，不会自动启动）
+        from app.services.qmt_connection_manager import qmt_manager
+        if qmt_manager.state == "disabled":
+            qmt_manager.startup()
+
     logger.info(f"{'='*60}")
-    logger.info(f"[EXECUTE PHASE] exec_date={exec_date}")
+    logger.info(f"[EXECUTE PHASE] exec_date={exec_date}, mode={exec_mode}")
     logger.info(f"{'='*60}")
 
     conn = get_sync_conn()
@@ -872,6 +923,61 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
 
         if not is_trading_day(conn, exec_date):
             logger.info(f"{exec_date} 非交易日，退出")
+            conn.close()
+            return
+
+        # ── QMT进程检查+自启动（live模式）──
+        if exec_mode == "live":
+            import subprocess as _sp
+            qmt_exe = getattr(settings, "QMT_EXE_PATH", "")
+
+            def _qmt_is_running() -> bool:
+                """检查XtMiniQmt.exe进程是否存在。"""
+                try:
+                    r = _sp.run(
+                        ["tasklist"], capture_output=True, timeout=10,
+                        encoding="gbk", errors="ignore",
+                    )
+                    return "XtMiniQmt.exe" in (r.stdout or "")
+                except Exception:
+                    return False
+
+            qmt_running = _qmt_is_running()
+
+            if not qmt_running and qmt_exe:
+                logger.info(f"[QMT] 进程未运行, 尝试启动: {qmt_exe}")
+                try:
+                    _sp.Popen([qmt_exe], cwd=str(Path(qmt_exe).parent))
+                    time.sleep(10)  # 等待QMT启动
+                    qmt_running = _qmt_is_running()
+                except Exception as e:
+                    logger.error(f"[QMT] 自启动失败: {e}")
+
+            if not qmt_running:
+                logger.error("[QMT] 进程未运行且无法启动, 跳过live执行")
+                try:
+                    notif_svc = _get_notif_service()
+                    notif_svc.send_sync(
+                        conn, "P0", f"QMT进程未运行 {exec_date}",
+                        "miniQMT进程不存在, live执行已跳过, 17:05 SimBroker兜底",
+                    )
+                except Exception:
+                    pass
+                log_step(conn, f"execute_phase_{exec_mode}", "failed", "QMT进程未运行")
+                conn.close()
+                return  # exit 0, SimBroker 17:05兜底
+
+        # ── 防止重复执行（paper和live独立判断）──
+        guard_task = f"execute_phase_{exec_mode}"
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT COUNT(*) FROM scheduler_task_log
+               WHERE task_name = %s AND status = 'success'
+                 AND start_time::date = %s""",
+            (guard_task, exec_date),
+        )
+        if cur.fetchone()[0] > 0:
+            logger.info(f"[Execute] {exec_date} {exec_mode}模式已成功执行，跳过")
             conn.close()
             return
 
@@ -919,6 +1025,156 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
             else:
                 is_rebalance = False
 
+        # ── Step 5.7: QMT持仓偏差检测（live模式）──
+        # 检测3种情况: 首次建仓 / 超买修复 / 缺失补买
+        # adapter内部自动处理差额（sell overweight + buy missing）
+        DRIFT_OVERWEIGHT_RATIO = 1.3  # 超买阈值: 实际 > 目标×130%
+        DRIFT_MAX_SELL_PCT = 0.30     # 单日修复最多卖总市值30%
+
+        if exec_mode == "live" and hedged_target and not is_rebalance:
+            try:
+                from app.services.qmt_connection_manager import qmt_manager
+                qmt_manager.ensure_connected()
+                broker = qmt_manager.broker
+                qmt_pos = broker.query_positions()
+                qmt_asset = broker.query_asset()
+                total_value = qmt_asset.get("total_asset", 0)
+
+                # 转为 {code: shares} 去后缀
+                actual_holdings: dict[str, int] = {}
+                for p in qmt_pos:
+                    code = p.get("stock_code", "").split(".")[0]
+                    if code and p.get("market_value", 0) > 1000:
+                        actual_holdings[code] = p["volume"]
+
+                # 计算目标股数
+                target_shares: dict[str, int] = {}
+                for code, weight in hedged_target.items():
+                    # 用xtdata实时价或klines close估算
+                    px = 0.0
+                    try:
+                        from engines.qmt_execution_adapter import _to_qmt_code, _get_realtime_tick
+                        tick = _get_realtime_tick(_to_qmt_code(code))
+                        if tick and tick.get("lastPrice", 0) > 0:
+                            px = tick["lastPrice"]
+                    except Exception:
+                        pass
+                    if px <= 0:
+                        # fallback: klines_daily close
+                        cur = conn.cursor()
+                        cur.execute(
+                            "SELECT close FROM klines_daily WHERE code=%s ORDER BY trade_date DESC LIMIT 1",
+                            (code,),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            px = float(row[0])
+                    if px > 0 and total_value > 0:
+                        target_shares[code] = int(total_value * float(weight) / px / 100) * 100
+
+                # 偏差分析
+                overweight = {}  # code → excess shares
+                missing = {}    # code → target shares
+                for code, target_s in target_shares.items():
+                    actual_s = actual_holdings.get(code, 0)
+                    if actual_s == 0 and target_s > 0:
+                        missing[code] = target_s
+                    elif target_s > 0 and actual_s > target_s * DRIFT_OVERWEIGHT_RATIO:
+                        overweight[code] = actual_s - target_s
+
+                effective_count = len(actual_holdings)
+                target_count = len(hedged_target)
+
+                if target_count > 0 and effective_count < target_count * 0.5:
+                    # 首次建仓（空仓或极少持仓）
+                    is_rebalance = True
+                    logger.info(
+                        f"[Step5.7] QMT首次建仓: "
+                        f"当前{effective_count}只, 目标{target_count}只"
+                    )
+                elif overweight or missing:
+                    # 持仓偏差修复
+                    # 安全检查: 卖出不超过总市值30%
+                    # 估算卖出金额: excess_shares × 参考价格
+                    def _est_price(code: str) -> float:
+                        """获取估价（xtdata或klines）。"""
+                        try:
+                            from engines.qmt_execution_adapter import _to_qmt_code, _get_realtime_tick
+                            t = _get_realtime_tick(_to_qmt_code(code))
+                            if t and t.get("lastPrice", 0) > 0:
+                                return t["lastPrice"]
+                        except Exception:
+                            pass
+                        c2 = conn.cursor()
+                        c2.execute("SELECT close FROM klines_daily WHERE code=%s ORDER BY trade_date DESC LIMIT 1", (code,))
+                        r2 = c2.fetchone()
+                        return float(r2[0]) if r2 and r2[0] else 0
+
+                    sell_value = sum(
+                        overweight[c] * _est_price(c) for c in overweight
+                    )
+                    if total_value > 0 and sell_value > total_value * DRIFT_MAX_SELL_PCT:
+                        logger.warning(
+                            f"[Step5.7] 偏差修复卖出额¥{sell_value:,.0f} > "
+                            f"总市值{DRIFT_MAX_SELL_PCT:.0%}，跳过（防意外清仓）"
+                        )
+                    else:
+                        # 检查超买部分是否可卖（T+1约束）
+                        # can_use从query_positions获取
+                        can_use_map: dict[str, int] = {}
+                        for p in qmt_pos:
+                            pc = p.get("stock_code", "").split(".")[0]
+                            can_use_map[pc] = p.get("can_use_volume", 0)
+
+                        actually_sellable = {
+                            c: min(excess, can_use_map.get(c, 0))
+                            for c, excess in overweight.items()
+                        }
+                        sellable_count = sum(1 for v in actually_sellable.values() if v >= 100)
+
+                        if sellable_count == 0 and overweight:
+                            logger.info(
+                                f"[Step5.7] 超买{len(overweight)}只但可卖=0(T+1), "
+                                "跳过偏差修复"
+                            )
+                        else:
+                            is_rebalance = True
+
+                            # 节前保护: 下一交易日距今>2天 → 买入仓位降至70%
+                            next_td = get_next_trading_day(conn, exec_date)
+                            holiday_gap = (next_td - exec_date).days if next_td else 1
+                            if holiday_gap > 2:
+                                buy_scale = 0.7
+                                logger.info(
+                                    f"[Step5.7] 节前保护: 假期{holiday_gap}天, "
+                                    "买入仓位降至70%"
+                                )
+                                # 缩放缺失股票的目标权重
+                                for c in missing:
+                                    hedged_target[c] = float(hedged_target.get(c, 0)) * buy_scale
+
+                            logger.info(
+                                f"[Step5.7] 持仓偏差修复: "
+                                f"超买{len(overweight)}只(可卖{sellable_count}只), "
+                                f"缺失{len(missing)}只"
+                            )
+                            for c, excess in overweight.items():
+                                can = can_use_map.get(c, 0)
+                                logger.info(
+                                    f"  超买 {c}: 实际{actual_holdings[c]} "
+                                    f"目标{target_shares[c]} 超{excess}股 "
+                                    f"可卖{can}股"
+                                )
+                            for c, target_s in missing.items():
+                                logger.info(f"  缺失 {c}: 目标{target_s}股")
+                else:
+                    logger.info(
+                        f"[Step5.7] QMT持仓正常: "
+                        f"{effective_count}只 (目标{target_count}只), 无偏差"
+                    )
+            except Exception as e:
+                logger.warning(f"[Step5.7] QMT持仓检查失败: {e}")
+
         # ── Step 5.5: 拉取T+1日数据 ──
         if not skip_fetch:
             cur = conn.cursor()
@@ -945,10 +1201,31 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
         # ── 加载T+1日价格 ──
         price_data = load_today_prices(exec_date, conn)
         if price_data.empty:
-            logger.error(f"[Execute] {exec_date} 无价格数据")
-            log_step(conn, "execute_phase", "failed", "T+1无价格数据")
-            conn.close()
-            sys.exit(1)
+            if exec_mode == "live":
+                # live模式: klines_daily盘中无数据是正常的(收盘后才更新)
+                # adapter内部通过xtdata获取实时价格，不依赖klines
+                logger.info(
+                    f"[Execute] {exec_date} klines无数据 — live模式使用xtdata实时价格"
+                )
+                # 构造空DataFrame让后续代码不报错
+                price_data = pd.DataFrame(
+                    columns=["code", "trade_date", "open", "close", "high",
+                             "low", "volume", "amount", "pre_close",
+                             "up_limit", "down_limit"]
+                )
+            elif exec_mode == "paper":
+                logger.info(
+                    f"[Execute] {exec_date} 无价格数据 — SimBroker模式等待收盘数据，"
+                    "将由17:05调度重试"
+                )
+                log_step(conn, guard_task, "skipped", "SimBroker等待收盘数据")
+                conn.close()
+                return
+            else:
+                logger.error(f"[Execute] {exec_date} 无价格数据")
+                log_step(conn, guard_task, "failed", "T+1无价格数据")
+                conn.close()
+                sys.exit(1)
 
         # ── Step 5.8: 开盘跳空预检（PT阶段：只告警，不暂停执行）──
         try:
@@ -1001,34 +1278,56 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
                 initial_capital=settings.PAPER_INITIAL_CAPITAL,
                 signal_date=signal_date,
                 dry_run=dry_run,
+                execution_mode=exec_mode,
             )
             fills = pending_fills + exec_result.fills
             logger.info(f"[Step6] 调仓完成: {len(exec_result.fills)}笔成交")
 
             if not dry_run:
-                log_step(conn, "execute_phase", "success",
+                log_step(conn, guard_task, "success",
                          result={"fills": len(fills), "is_rebalance": True})
         else:
             fills = pending_fills
             logger.info("[Step6] 非调仓日，无订单执行")
             if not dry_run:
-                log_step(conn, "execute_phase", "success",
+                log_step(conn, guard_task, "success",
                          result={"fills": len(fills), "is_rebalance": False})
 
-        # ── Step 7.5: 回填executed_at时间戳(gap_hours毕业指标) ──
+        # ── Step 7.5: 回填executed_at + signal_price(gap_hours/slippage毕业指标) ──
         if not dry_run and fills:
             from datetime import datetime as dt_mod
             now_utc = dt_mod.now(UTC)
             cur = conn.cursor()
+            # 回填executed_at
             cur.execute(
                 """UPDATE trade_log
                    SET executed_at = %s
                    WHERE trade_date = %s AND strategy_id = %s
-                     AND execution_mode = 'paper' AND executed_at IS NULL""",
-                (now_utc, exec_date, settings.PAPER_STRATEGY_ID),
+                     AND execution_mode = %s AND executed_at IS NULL""",
+                (now_utc, exec_date, settings.PAPER_STRATEGY_ID, exec_mode),
             )
             conn.commit()
             logger.info(f"[Step7.5] executed_at已更新: {cur.rowcount}行")
+
+            # 回填signal_price（信号日收盘价，用于滑点计算）
+            if signal_date:
+                codes = [f.code for f in fills]
+                cur.execute(
+                    """SELECT code, close FROM klines_daily
+                       WHERE trade_date = %s AND code = ANY(%s)""",
+                    (signal_date, codes),
+                )
+                for code, close_px in cur.fetchall():
+                    cur.execute(
+                        """UPDATE trade_log SET signal_price = %s
+                           WHERE trade_date = %s AND code = %s
+                             AND strategy_id = %s AND execution_mode = %s
+                             AND signal_price IS NULL""",
+                        (float(close_px), exec_date, code,
+                         settings.PAPER_STRATEGY_ID, exec_mode),
+                    )
+                conn.commit()
+                logger.info(f"[Step7.5] signal_price已回填: {len(codes)}只")
 
         # ── Step 8: 执行结果通知 ──
         report_lines = [
@@ -1069,7 +1368,7 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool):
         logger.error(f"[EXECUTE PHASE] 异常: {e}")
         traceback.print_exc()
         try:
-            log_step(conn, "execute_phase", "failed", str(e))
+            log_step(conn, f"execute_phase_{exec_mode}", "failed", str(e))
         except Exception:
             pass
         sys.exit(1)
@@ -1104,6 +1403,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="仅模拟，不写DB")
     parser.add_argument("--skip-fetch", action="store_true", help="跳过数据拉取")
     parser.add_argument("--skip-factors", action="store_true", help="跳过因子计算(仅signal阶段)")
+    parser.add_argument("--execution-mode", type=str, default=None,
+                        choices=["paper", "live"],
+                        help="覆盖执行模式: paper=SimBroker, live=miniQMT")
     args = parser.parse_args()
 
     if not settings.PAPER_STRATEGY_ID:
@@ -1119,7 +1421,9 @@ def main():
     if args.phase == "signal":
         run_signal_phase(trade_date, args.dry_run, args.skip_fetch, args.skip_factors)
     elif args.phase == "execute":
-        run_execute_phase(trade_date, args.dry_run, args.skip_fetch)
+        exec_mode = args.execution_mode or settings.EXECUTION_MODE
+        run_execute_phase(trade_date, args.dry_run, args.skip_fetch,
+                          execution_mode=exec_mode)
 
 
 if __name__ == "__main__":

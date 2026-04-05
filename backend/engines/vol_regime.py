@@ -11,13 +11,13 @@ Sprint 1.1设计：高波动时缩减仓位，低波动时加仓，clip[0.5, 2.0
    - 当前波动率 < baseline → scale > 1 → 加仓
 """
 
-import logging
+import structlog
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Sprint 1.1: 仓位缩放区间 [0.5, 2.0]
 VOL_REGIME_CLIP_LOW: float = 0.5

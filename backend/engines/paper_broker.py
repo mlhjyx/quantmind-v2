@@ -4,7 +4,7 @@
 包装现有SimBroker，不修改原始引擎代码。
 """
 
-import logging
+import structlog
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -17,7 +17,7 @@ import pandas as pd
 from engines.backtest_engine import BacktestConfig, Fill, PendingOrder, SimBroker
 from engines.base_broker import BaseBroker
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass

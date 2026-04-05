@@ -1,7 +1,7 @@
 """行业中性化共享模块 — 替代 factor_onboarding.py 中的截面 zscore 近似。
 
 行业+截面双重中性化流程:
-  1. Winsorize: 3σ 截断（MAD 法）
+  1. Winsorize: 5σ 截断（MAD 法，与 preprocess_mad 对齐）
   2. 行业内 zscore: 每个行业组内 (value - group_mean) / group_std
   3. 截面 zscore: 全截面再做一次标准化
 
@@ -10,22 +10,28 @@
   - docs/QUANTMIND_V2_DESIGN_V5.md §9.5: 市场状态+行业中性化
 
 铁律2: 因子验证用生产基线+中性化（宪法 §2）
+
+DEPRECATED:
+  FactorNeutralizer 用行业内 zscore 近似中性化，不含市值加权回归。
+  新代码（有 ln_mcap 可用时）应使用 factor_engine.preprocess_pipeline()，
+  其 Step 3 为 WLS 回归（DESIGN_V5 §4.4 标准实现）。
+  本模块保留供 factor_onboarding（GP 管道）使用，该路径暂无 ln_mcap 数据。
 """
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 行业组内样本数最低阈值，低于此值时 fallback 到截面 zscore
 _MIN_INDUSTRY_SIZE: int = 5
 
-# Winsorize 截断倍数（MAD 法）
-_WINSORIZE_K: float = 3.0
+# Winsorize 截断倍数（MAD 法）— 对齐 preprocess_mad 的 5σ 标准（DESIGN_V5 §4.4）
+_WINSORIZE_K: float = 5.0
 
 
 class FactorNeutralizer:

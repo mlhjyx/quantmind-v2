@@ -1,4 +1,9 @@
-"""回测引擎 — SimpleBacktester + SimBroker。
+"""回测引擎 — SimpleBacktester + SimBroker + Hybrid入口。
+
+Hybrid回测架构 (DEV_BACKTEST_ENGINE §3.1):
+- Phase A (vectorized_signal.py): 因子合成→排序→目标持仓, 纯numpy/pandas
+- Phase B (本文件 SimpleBacktester): 事件驱动执行, 逐日循环处理约束
+- run_hybrid_backtest(): 统一入口, 先Phase A再Phase B
 
 Phase 0 核心组件, 严格遵守 CLAUDE.md 回测可信度规则:
 1. 涨跌停封板必须处理
@@ -9,7 +14,7 @@ Phase 0 核心组件, 严格遵守 CLAUDE.md 回测可信度规则:
 6. 交易成本敏感性分析
 """
 
-import logging
+import structlog
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -21,12 +26,34 @@ import pandas as pd
 from engines.base_broker import BaseBroker
 from engines.slippage_model import SlippageConfig, volume_impact_slippage
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ============================================================
 # 数据类型定义
 # ============================================================
+
+@dataclass
+class PMSConfig:
+    """利润保护配置(Position Management System)。
+
+    阶梯式利润保护: 盈利越多,允许的回撤越大。
+    tiers: [(pnl_threshold, trailing_stop), ...] 按pnl从高到低排列。
+    例: [(0.30, 0.15), (0.20, 0.12), (0.10, 0.10)]
+      = 盈利>30%且从高点回撤>15%卖出
+      = 盈利>20%且从高点回撤>12%卖出
+      = 盈利>10%且从高点回撤>10%卖出
+
+    exec_mode:
+      'next_open': 收盘后发现→T+1日开盘卖(保守/真实)
+      'same_close': 盘中发现→当日收盘卖(乐观)
+    """
+    enabled: bool = False
+    tiers: list[tuple[float, float]] = field(default_factory=lambda: [
+        (0.30, 0.15), (0.20, 0.12), (0.10, 0.10),
+    ])
+    exec_mode: str = "next_open"  # 'next_open' | 'same_close'
+
 
 @dataclass
 class BacktestConfig:
@@ -43,6 +70,8 @@ class BacktestConfig:
     lot_size: int = 100  # A股最小交易单位
     turnover_cap: float = 0.50
     benchmark_code: str = "000300.SH"
+    volume_cap_pct: float = 0.10  # 单笔成交额上限(占当日成交额比例) DEV_BACKTEST_ENGINE §4.9
+    pms: PMSConfig = field(default_factory=PMSConfig)  # 利润保护
 
 
 @dataclass
@@ -99,6 +128,32 @@ class BacktestResult:
     config: BacktestConfig
     turnover_series: pd.Series   # date → turnover ratio
     pending_order_stats: Optional[PendingOrderStats] = None
+    pms_events: list[dict] = field(default_factory=list)  # 利润保护触发事件
+
+
+def _infer_price_limit(code: str) -> float:
+    """从股票代码推断涨跌停幅度（纯计算，无IO）。
+
+    板块规则:
+    - 创业板(300/301开头): ±20%
+    - 科创板(688开头): ±20%
+    - 北交所(8/4开头): ±30%
+    - ST股(代码无法判断，需symbols_info): 默认归入主板10%
+    - 主板(其余): ±10%
+
+    注意: ST股需要name字段判断，仅靠代码无法识别。
+    当symbols_info可用时应优先使用其price_limit字段。
+    """
+    # tushare ts_code 格式: 000001.SZ, 取纯数字部分
+    pure_code = code.split(".")[0] if "." in code else code
+
+    if pure_code.startswith("68"):
+        return 0.20  # 科创板
+    if pure_code.startswith("30"):
+        return 0.20  # 创业板
+    if pure_code.startswith("8") or pure_code.startswith("4"):
+        return 0.30  # 北交所
+    return 0.10  # 主板(含ST fallback — ST需symbols_info.price_limit覆盖)
 
 
 # ============================================================
@@ -152,13 +207,19 @@ class SimBroker(BaseBroker):
 
         # 如果没有limit数据，用board类型推算
         if up_limit is None or down_limit is None:
-            price_limit = 0.10  # 默认主板10%
+            # 优先从symbols_info获取price_limit
             if symbols_info is not None and code in symbols_info.index:
                 price_limit = float(symbols_info.loc[code, "price_limit"])
+            else:
+                # fallback: 从股票代码推断板块涨跌幅
+                price_limit = _infer_price_limit(code)
             up_limit = round(pre_close * (1 + price_limit), 2)
             down_limit = round(pre_close * (1 - price_limit), 2)
 
-        turnover = row.get("turnover_rate", 999)  # 默认高换手(不限制)
+        # A3修复: turnover_rate可能为NULL(NaN)，row.get()返回NaN而非默认值999
+        # NaN/None → 999(不限制封板检测)，避免茅台等数据缺失股误判为封板
+        _t = row.get("turnover_rate")
+        turnover = 999.0 if (_t is None or pd.isna(_t)) else float(_t)
 
         # 3. 封板判断
         if direction == "buy":
@@ -194,8 +255,8 @@ class SimBroker(BaseBroker):
             # 统一用千元入库，所以实际不会出现已转换的元值)
             if daily_amount > 0 and daily_amount < 1e9:
                 daily_amount *= 1000
-            daily_volume = row.get("volume", 0)
-            market_cap = row.get("total_mv", 0)
+            daily_volume = row.get("volume", 0)  # volume: 手(klines_daily)
+            market_cap = row.get("total_mv", 0)  # total_mv: 万元(daily_basic)
             # total_mv单位是万元(daily_basic)，转为元
             # 万元范围: 最大~3e8万元(=3万亿元), 阈值1e10区分万元/元
             if market_cap > 0 and market_cap < 1e10:
@@ -221,9 +282,41 @@ class SimBroker(BaseBroker):
         else:
             return price * self.config.slippage_bps / 10000
 
+    def _daily_amount_yuan(self, row: pd.Series) -> float:
+        """从行情行中提取当日成交额（元）。
+
+        amount字段单位为千元(TUSHARE_DATA_SOURCE_CHECKLIST)，转换为元。
+        数据缺失或为0时返回0.0（调用方跳过volume cap检查）。
+        """
+        daily_amount = row.get("amount", 0)
+        if daily_amount is None or pd.isna(daily_amount):
+            return 0.0
+        daily_amount = float(daily_amount)
+        # 千元→元: 典型值1e3~1e7千元(=百万~百亿元)，阈值1e9区分
+        if 0 < daily_amount < 1e9:
+            daily_amount *= 1000
+        return daily_amount
+
     def execute_sell(self, code: str, shares: int, row: pd.Series) -> Optional[Fill]:
-        """执行卖出。"""
+        """执行卖出。
+
+        A5修复: 单笔成交额上限 = daily_amount * volume_cap_pct (DEV_BACKTEST_ENGINE §4.9)。
+        超过上限时截断股数到上限，数据缺失时跳过检查。
+        """
         price = row["open"]  # 次日开盘价成交
+
+        # A5: 成交量约束 — 卖出
+        if self.config.volume_cap_pct > 0:
+            daily_amt = self._daily_amount_yuan(row)
+            if daily_amt > 0:
+                max_sell_value = daily_amt * self.config.volume_cap_pct
+                max_shares = int(max_sell_value / price / self.config.lot_size) * self.config.lot_size
+                if max_shares > 0 and shares > max_shares:
+                    logger.debug(
+                        "volume_cap卖出截断: code=%s shares=%d→%d (cap=%.0f元)",
+                        code, shares, max_shares, max_sell_value,
+                    )
+                    shares = max_shares
         slippage = self.calc_slippage(price, shares * price, row, direction="sell")
         exec_price = price - slippage  # 卖出价格偏低
 
@@ -262,8 +355,23 @@ class SimBroker(BaseBroker):
 
         CLAUDE.md 规则2: 整手约束。
         actual_shares = floor(target_value / price / 100) * 100
+
+        A5修复: 单笔成交额上限 = daily_amount * volume_cap_pct (DEV_BACKTEST_ENGINE §4.9)。
+        超过上限时截断到上限，数据缺失时跳过检查。
         """
         price = row["open"]  # 次日开盘价成交
+
+        # A5: 成交量约束 — 买入
+        if self.config.volume_cap_pct > 0:
+            daily_amt = self._daily_amount_yuan(row)
+            if daily_amt > 0:
+                max_buy_value = daily_amt * self.config.volume_cap_pct
+                if target_amount > max_buy_value:
+                    logger.debug(
+                        "volume_cap买入截断: code=%s amount=%.0f→%.0f (cap=%.0f元)",
+                        code, target_amount, max_buy_value, max_buy_value,
+                    )
+                    target_amount = max_buy_value
         slippage = self.calc_slippage(price, target_amount, row, direction="buy")
         exec_price = price + slippage  # 买入价格偏高
 
@@ -388,7 +496,8 @@ class SimpleBacktester:
                 exec_map[future_dates[0]] = sd
 
         # 价格索引: (code, date) → row
-        price_data = price_data.sort_values(["trade_date", "code"])
+        # A10: mergesort保证相同key下行顺序确定性（quicksort不稳定）
+        price_data = price_data.sort_values(["trade_date", "code"], kind="mergesort")
         price_idx = {}
         for _, row in price_data.iterrows():
             price_idx[(row["code"], row["trade_date"])] = row
@@ -407,8 +516,32 @@ class SimpleBacktester:
         prev_weights = {}
         self.pending_orders = []  # 重置pending_orders
 
+        # PMS利润保护状态: {code: {buy_price, buy_date, max_price}}
+        pms_state: dict[str, dict] = {}
+        pms_pending_sells: list[str] = []  # next_open模式下延迟到T+1卖出的code
+        pms_events: list[dict] = []  # 记录触发事件
+
         for i, td in enumerate(all_dates):
             broker.new_day()
+
+            # ===== PMS: 执行T+1延迟卖出 =====
+            if self.config.pms.enabled and pms_pending_sells:
+                for code in list(pms_pending_sells):
+                    if code not in broker.holdings:
+                        pms_pending_sells.remove(code)
+                        continue
+                    row = price_idx.get((code, td))
+                    if row is None:
+                        continue
+                    if not broker.can_trade(code, "sell", row):
+                        continue  # 跌停卖不出,保留在pending
+                    shares = broker.holdings.get(code, 0)
+                    if shares > 0:
+                        fill = broker.execute_sell(code, shares, row)
+                        if fill:
+                            trades.append(fill)
+                            pms_state.pop(code, None)
+                    pms_pending_sells.remove(code)
 
             # ===== 处理封板补单 =====
             if self.pending_orders:
@@ -416,6 +549,55 @@ class SimpleBacktester:
                     broker, td, price_idx, daily_close.get(td, {}),
                     all_dates, exec_map, trades
                 )
+
+            # ===== PMS: 日频利润保护检查 =====
+            if self.config.pms.enabled and broker.holdings:
+                today_prices = daily_close.get(td, {})
+                for code in list(broker.holdings.keys()):
+                    if code in pms_pending_sells:
+                        continue  # 已在待卖队列
+                    close = today_prices.get(code, 0)
+                    if close <= 0:
+                        continue
+                    state = pms_state.get(code)
+                    if state is None:
+                        continue  # 无买入记录(不应发生)
+
+                    # 更新max_price
+                    state["max_price"] = max(state["max_price"], close)
+
+                    # 计算PnL和从峰值回撤(用收益率,避免复权问题)
+                    pnl = (close - state["buy_price"]) / state["buy_price"]
+                    dd = (close - state["max_price"]) / state["max_price"] if state["max_price"] > 0 else 0
+
+                    # 阶梯式检查(tiers按pnl从高到低)
+                    triggered = False
+                    for pnl_thresh, trail_stop in self.config.pms.tiers:
+                        if pnl > pnl_thresh and dd < -trail_stop:
+                            triggered = True
+                            pms_events.append({
+                                "date": td, "code": code,
+                                "pnl": pnl, "dd": dd,
+                                "tier": f">{pnl_thresh:.0%}/>{trail_stop:.0%}",
+                                "buy_price": state["buy_price"],
+                                "close": close, "max_price": state["max_price"],
+                            })
+                            break
+
+                    if triggered:
+                        if self.config.pms.exec_mode == "same_close":
+                            # 当日收盘卖(乐观)
+                            row = price_idx.get((code, td))
+                            if row is not None and broker.can_trade(code, "sell", row):
+                                shares = broker.holdings.get(code, 0)
+                                if shares > 0:
+                                    fill = broker.execute_sell(code, shares, row)
+                                    if fill:
+                                        trades.append(fill)
+                                        pms_state.pop(code, None)
+                        else:
+                            # next_open: 延迟到T+1
+                            pms_pending_sells.append(code)
 
             # 检查是否是执行日
             if td in exec_map:
@@ -432,6 +614,20 @@ class SimpleBacktester:
                 )
                 trades.extend(day_fills)
                 self.pending_orders.extend(new_pending)
+
+                # PMS: 记录新买入股票的buy_price
+                if self.config.pms.enabled:
+                    for fill in day_fills:
+                        if fill.direction == "buy":
+                            pms_state[fill.code] = {
+                                "buy_price": fill.price,
+                                "buy_date": fill.trade_date,
+                                "max_price": fill.price,
+                            }
+                    # 清理已卖出的pms_state
+                    for code in list(pms_state.keys()):
+                        if code not in broker.holdings:
+                            pms_state.pop(code, None)
 
                 # 记录换手率
                 new_weights = {}
@@ -481,6 +677,7 @@ class SimpleBacktester:
             config=self.config,
             turnover_series=turnover,
             pending_order_stats=po_stats,
+            pms_events=pms_events,
         )
 
     def _rebalance(
@@ -715,3 +912,66 @@ class SimpleBacktester:
         )
 
         return stats
+
+
+# ============================================================
+# Hybrid 回测入口
+# ============================================================
+
+def run_hybrid_backtest(
+    factor_df: pd.DataFrame,
+    directions: dict[str, int],
+    price_data: pd.DataFrame,
+    config: BacktestConfig,
+    benchmark_data: Optional[pd.DataFrame] = None,
+    signal_config: Optional["SignalConfig"] = None,
+    datafeed: Optional["DataFeed"] = None,
+) -> BacktestResult:
+    """Hybrid回测: Phase A向量化信号 → Phase B事件驱动执行。
+
+    DEV_BACKTEST_ENGINE §3.1 Hybrid架构统一入口。
+
+    Args:
+        factor_df: 因子长表 (code, trade_date, factor_name, raw_value)
+        directions: {factor_name: direction} (+1正向, -1反向)
+        price_data: 全量价格数据（当datafeed非None时忽略此参数）
+        config: 回测配置（Phase B使用）
+        benchmark_data: 基准指数数据
+        signal_config: Phase A信号配置（默认从config推断）
+        datafeed: DataFeed数据源（优先于price_data）
+
+    Returns:
+        BacktestResult
+    """
+    from engines.vectorized_signal import (
+        SignalConfig,
+        build_target_portfolios,
+        compute_rebalance_dates,
+    )
+
+    # DataFeed兼容: 如果传入DataFeed对象，提取底层DataFrame
+    if datafeed is not None:
+        from engines.datafeed import DataFeed
+        if isinstance(datafeed, DataFeed):
+            price_data = datafeed.df
+
+    # Phase A: 向量化信号生成
+    if signal_config is None:
+        signal_config = SignalConfig(
+            top_n=config.top_n,
+            rebalance_freq=config.rebalance_freq,
+        )
+
+    trading_days = sorted(price_data["trade_date"].unique())
+    rebal_dates = compute_rebalance_dates(trading_days, signal_config.rebalance_freq)
+
+    target_portfolios = build_target_portfolios(
+        factor_df, directions, rebal_dates, signal_config,
+    )
+
+    if not target_portfolios:
+        raise ValueError("Phase A信号生成失败: target_portfolios为空")
+
+    # Phase B: 事件驱动执行
+    tester = SimpleBacktester(config)
+    return tester.run(target_portfolios, price_data, benchmark_data)

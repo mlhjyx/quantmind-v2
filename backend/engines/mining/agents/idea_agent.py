@@ -18,7 +18,7 @@ Sprint 1.17 ml-engineer
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,7 +36,7 @@ from ..factor_dsl import (
     FactorDSL,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # 数据结构

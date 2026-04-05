@@ -1,12 +1,16 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-03-29 (Sprint 1.32 ✅ 行业中性化+GP全链路验证+Onboarding测试+重构)
-> Current: Phase 1, Sprint 1.32 ✅ 完成 → 下一步: RegimeModifier / 回测完善 / GP产参数优化
-> 本会话: Sprint 1.30B→1.31→1.32 全系统修复+GP闭环+中性化+全链路验证
-> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅
-> Paper Trading: v1.1 Day 3/60, NAV=995,338(3/27) | 链路正常(5天连续数据) | watchdog已注册20:00
-> 已知bug: AgentConfig页面404(后端/agent/*路由未实现)。pre-existing TS errors in stores.test.ts + QMTStatusBadge
-> Blockers: 无
+> Last updated: 2026-04-05 (Factor Profiler V2 — 7项推荐逻辑修正+画像评估协议)
+> Current: Phase 1, Sprint 1.35 完成 → PT v1.2 QMT live Day 2/60
+> 本会话: Factor Profiler V2(regime修正+120d IC+单调性+成本可行性+冗余标记+FMP聚类+多模板评分) + 分钟数据拉取(5194只)
+> Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅ | Sprint 1.32 ✅ | Sprint 1.33 ✅ | Sprint 1.34 ✅ | Sprint 1.35 ✅
+> Paper Trading: v1.2 QMT live Day 2/60 (Day 0=2026-04-02), NAV=¥989,391, 基线Sharpe=0.91(5年volume_impact), 毕业阈值≥0.315
+> G2研究结论: 权重/仓位优化无效(15组), PMS阶梯利润保护有效(Sharpe+0.06~0.24), Top-20>Top-15, 行业约束损害alpha
+> 新最优配置X-D: Top-20+无行业约束+PMS(same_close) → Sharpe=1.15, MDD=-35.1%, Calmar=0.83 (vs基线0.91/-43%/0.54)
+> FF3归因: Alpha=21.1%/年(t=2.45)✅, SMB beta=0.83⚠️, 保守Sharpe=0.70-0.85
+> 数据审计: 0❌9⚠️, 数据地基稳固, 新增margin_data(95K行)+index_components(11K行)+3个P0因子(ATR/IVOL/gap, 冗余)
+> 下一步: PMS v1.0实时架构(清明) → PT v1.3切换(Top-20+去行业约束+PMS) → G1 LightGBM
+> Blockers: PMS same_close需要盘中实时监控架构
 > 宪法: V3.3 生效 (8铁律+14项补充+§15 Harness工程+§16落地保障)
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成
 > **AI闭环战略(2026-03-28)**: 三步走 — Step1 PT赚钱(1.13-1.15) → Step2 GP最小闭环(1.16-1.17) → Step3完整AI闭环(1.18+)
@@ -87,6 +91,149 @@
 - ✅ mining_tasks.py: import路径改pipeline_utils + DB URL修复(quantmind→xin)
 - ✅ test_factor_onboarding.py: 5个测试用例, 62 passed
 - ⚠️ GP产出0因子（5代×20 population太小+缺pb/circ_mv等字段），需加大参数+补充market data
+
+---
+
+### G2研究: 回撤控制 + 因子扩展 + 数据审计 + 风格归因 (2026-04-02~04-03, 4个session) ✅
+
+**25+组回测实验 + 全面数据审计 + FF3归因 + 因子池盘点 + PMS集成。**
+
+#### 关键结论
+- ⚠️ 权重/仓位优化全部无效: risk_parity/min_variance/vol_regime/动态仓位(15组), Sharpe不变
+- ✅ PMS阶梯利润保护有效: T+1执行Sharpe+0.06, 当日close执行Sharpe+0.24, MDD改善3-8pct
+- ✅ Top-20 > Top-15: Sharpe+0.08, MDD-4.6pct (分散化甜蜜点)
+- ⚠️ 行业约束(ind_cap=0.25)损害alpha: 去掉后Sharpe+0.09 (因子选股的行业分布本身合理)
+- ❌ 止损砍alpha: 被止损股票卖后1月+7.8%反弹, 66%概率反弹
+- ❌ Target Vol无效: 跟动态仓位一样降仓=砍alpha
+- ✅ FF3归因: Alpha=21.1%/年(t=2.45), SMB beta=0.83, R²=49%
+- ✅ 分市值: Alpha在小盘最强(0.95), 大盘无效(0.36)
+- ✅ 数据地基: 0❌9⚠️, 复权/PIT/调仓/成本全✅
+
+#### 新最优配置 X-D
+- **Top-20 + 无行业约束 + PMS阶梯利润保护(same_close)**
+- Sharpe=1.15, MDD=-35.1%, CAGR=29.3%, Calmar=0.83
+- vs基线(Top-15/ind0.25/无PMS): Sharpe+26%, MDD+7.9pct, Calmar+54%
+
+#### 代码改动
+- ✅ `backtest_engine.py`: 新增PMSConfig + 日频利润保护检查 + T+1/same_close执行模式
+- ✅ `signal_engine.py`: 新增risk_parity/min_variance权重方法 + _calc_risk_parity_weights()
+- ✅ `run_backtest.py`: 新增--pms/--weight-method/--vol-regime/--vol-factor参数
+- ✅ 3个P0因子(atr_norm_20/gap_frequency_20/ivol_20)计算并写入factor_values (~1650万行)
+- ✅ margin_data拉取: 95,398行, 3,961股票, 2021-01~2026-03
+- ✅ index_components拉取: 11,100行, CSI300历史成分
+- ✅ Baostock安装验证: 5m历史数据2021年起可用
+
+#### 研究脚本
+- `scripts/research_g2_risk_parity.py` — G2权重优化7组实验
+- `scripts/research_g25_dynamic_position.py` — 动态仓位4组实验
+- `scripts/research_pms_stoploss.py` — PMS止损7组实验
+- `scripts/research_ml_factor_ic.py` — 32因子批量IC测试
+- `scripts/research_market_cap_layers.py` — 分市值层5组回测
+- `scripts/research_mdd_layers.py` — MDD三层叠加25组实验
+- `scripts/research_mdd_supplement.py` — 补充X-A~X-E叠加实验
+- `scripts/research_ff3_attribution.py` — FF3风格归因
+- `scripts/research_p0_factors_fast.py` — P0因子快速计算
+
+#### 审计报告
+- `COMPREHENSIVE_AUDIT_REPORT.md` — 全面审计(5部分)
+- `FACTOR_ASSET_INVENTORY.md` — 37因子资产清单
+- `DATA_QUALITY_AUDIT.md` — 数据质量巡检
+
+#### PG OOM修复 (2026-04-03)
+- ⚠️ 3个并行Python进程(各3.5GB)+PG(2.5GB)超过32GB → PG OOM崩溃
+- ✅ postgresql.conf: logging_collector=on, work_mem 64→32MB
+- ✅ CLAUDE.md: 新增并发限制规则(最多2个重数据进程)
+
+---
+
+### GA1-A: Factor Profiler V2 — 7项推荐逻辑修正 (2026-04-05) ✅
+
+**因子画像系统全面升级：regime修正+120d IC+单调性+成本可行性+冗余标记+FMP聚类+多模板评分。**
+
+#### 7项修正
+1. ✅ **Regime切换修正**: `regime_sensitivity>0.03` 改为 `sign(ic_bull)≠sign(ic_bear)` 方向反转判定 → 模板12从33个降至5个
+2. ✅ **120d IC + 天花板检测**: 新增120d horizon，60d IC仍在上升的因子标记"ceiling_not_reached"
+3. ✅ **单调性影响选股方式**: mono≥0.6推荐Top-N, 0.3-0.6建议缩小N, <0.3不适合ranking
+4. ✅ **成本可行性检查**: `annual_cost = turnover×rebalances×2×0.1%`, cost>alpha×0.5标记不可行 → 11个因子标记cost_infeasible
+5. ✅ **冗余标记**: |corr|>0.85标记redundant, |corr|<-0.85标记mirror_pair → 11对冗余关系
+6. ✅ **FMP独立组合候选**: Union-Find聚类(|corr|>0.7), 聚类代表间|corr|<0.3才是FMP候选 → 32聚类, 2个FMP候选
+7. ✅ **多模板Top-2评分**: 模板1/2/11/12加权打分, 推荐主/备两个模板
+
+#### 模板分布(修正后)
+- 模板1(月度RANKING): 33个 | 模板2(周度): 4个 | 模板11(Modifier): 6个 | 模板12(Regime): 5个
+
+#### 代码改动
+- ✅ `backend/engines/factor_profiler.py`: ~900行重写, HORIZONS新增120d, 15个新字段, 报告12章节
+- ✅ `factor_profile`表: ALTER TABLE新增15列, 48行全量更新
+- ✅ `docs/FACTOR_PROFILE_REPORT.md`: V2报告12章节(23K字符)
+
+#### CLAUDE.md更新
+- ✅ 新增"因子画像评估协议"5条规则(regime方向反转/成本一票否决/冗余不可绕过/FMP聚类验证)
+
+#### 数据拉取(并行)
+- 🔨 5分钟K线(Baostock): 5194只全量A股, 2021-2025, 进行中
+
+---
+
+### Sprint 1.35: 实时数据层 + 前端重构 + 后端审计 + 运维自动化 (2026-04-02 PM) ✅
+
+**实时数据服务 + 交易执行API + 前端组件拆分 + 3份审计报告 + 冒烟测试自动化。**
+
+#### 后端新建
+- ✅ `api/execution_ops.py`: QMT交易操作17个API端点(drift/cancel/fix-drift/trigger-rebalance/emergency等)
+- ✅ `api/realtime.py`: 实时数据API(portfolio/market), sync def防止event loop阻塞
+- ✅ `services/realtime_data_service.py`: QMT持仓+xtdata行情+信号目标聚合, 5s/10s TTL缓存
+- ✅ `scripts/smoke_test.py`: 62端点自动发现冒烟测试, DingTalk P0告警, --auto-restart NSSM
+- ✅ `scripts/pull_moneyflow.py`: Moneyflow拉取+5次×2min重试+P0告警
+
+#### 后端修改
+- ✅ `qmt_connection_manager.py`: QMT_ALWAYS_CONNECT机制+xtquant路径自动添加
+- ✅ `daily_reconciliation.py`: live持仓快照(position_snapshot)+live NAV(performance_series), 使用QMT total_asset
+- ✅ `execution_ops.py`: drift修复(signal_mode=paper, position_mode=live, QMT代码strip后缀, 8s trades超时)
+- ✅ `config.py`: 新增QMT_ALWAYS_CONNECT配置项
+- ✅ `.env`: QMT_ALWAYS_CONNECT=true
+- ✅ Task Scheduler: moneyflow→17:00, signal→17:15, 新增QM-SmokeTest每小时
+
+#### 前端
+- ✅ Dashboard拆分: 923行→10个组件文件(KPIGrid/EquityCurve/AlertsPanel等)
+- ✅ Execution拆分: 885行→3个文件(index/modals/ActionBtn)
+- ✅ usePortfolio/useMarketOverview hooks + queryKeys统一
+- ✅ Error Toast全局拦截(client.ts interceptor: 403/422/429/503/500+/网络断开)
+- ✅ execution_mode=live统一(Dashboard/Portfolio/PT/Risk全部切换)
+- ✅ QMTStatusBadge中文化("QMT 实盘"/"模拟盘")
+- ✅ EquityCurve Y轴格式修复(989K而非989391.00)
+- ✅ Sharpe/MDD数据不足时显示"—"+"数据积累中"
+- ⚠️ 前端暂停进一步修复 — 等后端API契约统一后重建
+
+#### 审计报告(3份)
+- ✅ `FRONTEND_BACKEND_INTEGRATION_AUDIT.md`: 19维度32问题
+- ✅ `BACKEND_FULL_AUDIT.md`: 16维度52问题(5 CRITICAL/12 HIGH)
+- ✅ `BACKEND_FUNCTIONALITY_AUDIT.md`: 86项功能73%完成(核心交易链路97%)
+
+#### CLAUDE.md更新
+- ✅ xtquant/miniQMT路径规则(必须append不insert)
+- ✅ 部署规则(NSSM restart/dev模式/端口冲突)
+
+---
+
+### Sprint 1.34: QMT Live切换 + 8层安全架构 + 前端修复 + 因子审计 (2026-04-02 AM) ✅
+
+**SimBroker→QMT live全面切换 + 执行层8层安全 + 前端深度修复 + 因子全量重算。**
+
+- ✅ QMT live切换: SimBroker禁用, 09:31执行, xtdata实时行情, 3轮重试
+- ✅ 执行层8层安全: OrderTracker + 撤单确认 + 资金预扣 + 状态码映射 + 残留清理 + 硬限制 + audit_log
+- ✅ 前端修复: 因子评估6项指标 + 回测字段映射 + 4个API 500修复 + 侧边栏
+- ✅ 因子全量重算: 122M行/19.5min + 冗余清理(FULL 16→14) + ML clip修复
+- ✅ 基线回测: Sharpe=0.45(5年), 毕业阈值=0.315
+- ✅ 数据拉取修复: hardcoded日期→dynamic + Task Scheduler 13任务
+- ✅ TradingDayChecker: 4层fallback + 自动UPSERT
+- ✅ 盘中监控+收盘对账: intraday_monitor + daily_reconciliation
+- ✅ QMT持仓偏差: 9/15只, drift fix待4/3-4/7自动修复
+
+### Sprint 1.33: PT v1.2迁移 + structlog + 参数补全 (2026-04-01) ✅
+
+- ✅ v1.2 config_guard + mergesort + 因子重算2024-2026
+- ✅ structlog迁移76文件 + 参数106→220 + doc_drift_check
 
 ---
 

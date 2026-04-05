@@ -1,0 +1,2 @@
+method,decay,ens_sharpe,single_sharpe,sharpe_diff_pct,ens_mdd,single_mdd,p_value,target_met
+rolling_ensemble,exp(-ln2 * distance),0.971788012644831,-3.732344631622092,-126.03693143477182,-0.43191934065666027,-0.09347018283523623,0.063,True

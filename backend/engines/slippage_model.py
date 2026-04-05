@@ -24,12 +24,12 @@ R4研究结论: PT实测64.5bps = 基础价差(10-15bps) + 市场冲击(25-35bps
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from dataclasses import dataclass
 from decimal import Decimal
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -194,12 +194,12 @@ def volume_impact_slippage(
          - 实证研究表明卖出(尤其恐慌性卖出)冲击更大
 
     Args:
-        trade_amount: 交易金额(元)。
+        trade_amount: 交易金额(元)。调用方负责转换。
         daily_volume: 日成交量(股)。
             用于流动性判断, 成交量为0时返回极大滑点。
-        daily_amount: 日成交额(元)。
+        daily_amount: 日成交额(元)。调用方已从千元(klines_daily)转换。
             冲击成本的分母, 代表市场可吸收的交易规模。
-        market_cap: 总市值(元)。
+        market_cap: 总市值(元)。调用方已从万元(daily_basic)转换。
             用于市值分层(config模式)或小盘股惩罚(旧模式)。
         direction: 交易方向, "buy" 或 "sell"。
         base_bps: 基础滑点(bps), 默认5bps。旧路径使用。

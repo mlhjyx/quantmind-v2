@@ -101,6 +101,7 @@ async def paper_trading_graduation(
 @router.get("/graduation-status")
 async def paper_trading_graduation_status(
     strategy_id: str = Query(default="", description="策略ID"),
+    execution_mode: str = Query(default="live", description="执行模式: paper/live"),
     session: AsyncSession = Depends(_get_session),
 ) -> dict[str, Any]:
     """获取Paper Trading毕业状态（固定标准版）。
@@ -139,10 +140,10 @@ async def paper_trading_graduation_status(
             MIN(drawdown)             AS max_drawdown
         FROM performance_series
         WHERE strategy_id = CAST(:sid AS uuid)
-          AND execution_mode = 'paper'
+          AND execution_mode = :mode
     """)
     try:
-        result = await session.execute(perf_sql, {"sid": sid})
+        result = await session.execute(perf_sql, {"sid": sid, "mode": execution_mode})
         row = result.mappings().one_or_none()
     except Exception:
         logger.exception("查询Paper Trading绩效数据失败")
@@ -168,11 +169,11 @@ async def paper_trading_graduation_status(
         SELECT AVG(slippage_bps) AS avg_slippage
         FROM trade_log
         WHERE strategy_id = CAST(:sid AS uuid)
-          AND execution_mode = 'paper'
+          AND execution_mode = :mode
           AND slippage_bps IS NOT NULL
     """)
     try:
-        slip_result = await session.execute(slip_sql, {"sid": sid})
+        slip_result = await session.execute(slip_sql, {"sid": sid, "mode": execution_mode})
         slip_row = slip_result.mappings().one_or_none()
         actual_slippage_bps = (
             float(slip_row["avg_slippage"]) if slip_row and slip_row["avg_slippage"] else 0.0

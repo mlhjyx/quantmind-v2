@@ -4,10 +4,10 @@ Phase 0用内存dict做简单限流，不需要Redis。
 限流key = level + title，不同级别有不同最小间隔。
 """
 
-import logging
+import structlog
 import time
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 各级别默认最小间隔(秒)
 _DEFAULT_INTERVALS: dict[str, int] = {

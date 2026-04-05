@@ -65,11 +65,40 @@ def _f(v):
 
 
 def _load_shared_data(conn):
-    """预加载共享数据（一次加载，所有因子复用）。"""
-    logger.info("加载共享数据...")
+    """预加载共享数据（一次加载，所有因子复用）。
+
+    优先读Parquet缓存（cache/），回退到DB查询。
+    缓存由 scripts/precompute_cache.py --quick 生成。
+    """
+    import os
+
+    cache_dir = os.path.join(os.path.dirname(__file__), "..", "..", "cache")
+    use_cache = os.path.exists(os.path.join(cache_dir, "close_pivot.parquet"))
+
+    if use_cache:
+        logger.info("加载共享数据(Parquet缓存)...")
+        t0 = time.time()
+
+        close_pivot = pd.read_parquet(os.path.join(cache_dir, "close_pivot.parquet"))
+        trading_dates = sorted(close_pivot.index)
+
+        fwd_excess = {}
+        for h in HORIZONS:
+            fwd_excess[h] = pd.read_parquet(os.path.join(cache_dir, f"fwd_excess_{h}d.parquet"))
+
+        csi_monthly_df = pd.read_parquet(os.path.join(cache_dir, "csi_monthly.parquet"))
+        csi_monthly = csi_monthly_df.iloc[:, 0]
+
+        industry_df = pd.read_parquet(os.path.join(cache_dir, "industry_map.parquet"))
+        industry_map = industry_df.set_index("code")["industry_sw1"].fillna("其他")
+
+        logger.info("共享数据加载完成(缓存): %.1fs", time.time() - t0)
+        return close_pivot, fwd_excess, csi_monthly, industry_map, trading_dates
+
+    # 回退: 从DB加载（原逻辑）
+    logger.info("加载共享数据(DB回退)...")
     t0 = time.time()
 
-    # 复权价（T和T+1入场价, 延伸到2026-06以支持120d forward return）
     close_df = pd.read_sql(
         "SELECT code, trade_date, close * adj_factor as adj_close "
         "FROM klines_daily WHERE trade_date BETWEEN %s AND %s AND volume > 0",
@@ -81,7 +110,6 @@ def _load_shared_data(conn):
     ).sort_index()
     trading_dates = sorted(close_pivot.index)
 
-    # CSI300
     csi = pd.read_sql(
         "SELECT trade_date, close FROM index_daily "
         "WHERE index_code='000300.SH' AND trade_date BETWEEN %s AND %s",
@@ -90,27 +118,24 @@ def _load_shared_data(conn):
     )
     csi_close = csi.set_index("trade_date")["close"].sort_index()
 
-    # Forward excess returns: close[T+1] -> close[T+h] - CSI300同期
     fwd_excess = {}
     for h in HORIZONS:
-        entry = close_pivot.shift(-1)  # T+1 close作为入场价
-        exit_p = close_pivot.shift(-h)  # T+h close作为出场价
+        entry = close_pivot.shift(-1)
+        exit_p = close_pivot.shift(-h)
         stock_ret = exit_p / entry - 1
         csi_entry = csi_close.shift(-1)
         csi_exit = csi_close.shift(-h)
         idx_ret = csi_exit / csi_entry - 1
         fwd_excess[h] = stock_ret.sub(idx_ret, axis=0)
 
-    # CSI300月收益（regime分类）
     csi_dt = csi_close.copy()
     csi_dt.index = pd.to_datetime(csi_dt.index)
     csi_monthly = csi_dt.resample("ME").last().pct_change().dropna()
 
-    # 行业分类
     industry = pd.read_sql("SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn)
     industry_map = industry.set_index("code")["industry_sw1"].fillna("其他")
 
-    logger.info("共享数据加载完成: %.1fs", time.time() - t0)
+    logger.info("共享数据加载完成(DB): %.1fs", time.time() - t0)
     return close_pivot, fwd_excess, csi_monthly, industry_map, trading_dates
 
 

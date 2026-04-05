@@ -14,7 +14,7 @@
 - 数据验证时抽样比对
 """
 
-import logging
+import structlog
 from datetime import date
 
 import pandas as pd
@@ -23,7 +23,7 @@ from psycopg2.extras import RealDictCursor
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _get_sync_conn() -> psycopg2.extensions.connection:

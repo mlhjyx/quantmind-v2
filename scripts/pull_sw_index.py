@@ -25,7 +25,7 @@ CLAUDE.md原则1: 不靠猜测做技术判断——经验证，Tushare的index_d
 import argparse
 import sys
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -77,7 +77,7 @@ SW_INDEX_CODES = [
 ]
 
 DEFAULT_START = "20200101"
-DEFAULT_END = "20260319"
+DEFAULT_END = date.today().strftime("%Y%m%d")
 
 
 def fetch_sw_daily(ts_code: str, start_date: str, end_date: str, retry: int = 3) -> pd.DataFrame:

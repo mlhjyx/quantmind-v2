@@ -10,6 +10,7 @@ import { StrategyPreview } from "@/components/strategy/StrategyPreview";
 import { getFactorsSummary } from "@/api/factors";
 import { listStrategies, createStrategy, updateStrategy } from "@/api/strategies";
 import { STALE } from "@/api/QueryProvider";
+import { queryKeys } from "@/lib/queryKeys";
 import type { StrategyCreatePayload, Strategy } from "@/api/strategies";
 
 const DEFAULT_CONFIG: StrategyCreatePayload = {
@@ -36,7 +37,7 @@ export default function StrategyWorkspace() {
 
   // Fetch factors
   const { data: factors = [], isError: factorsError } = useQuery({
-    queryKey: ["factors", "summary"],
+    queryKey: [...queryKeys.factorsSummary],
     queryFn: getFactorsSummary,
     staleTime: STALE.factor,
     retry: 1,
@@ -44,7 +45,7 @@ export default function StrategyWorkspace() {
 
   // Fetch saved strategies for load panel
   const { data: strategies = [] } = useQuery({
-    queryKey: ["strategies"],
+    queryKey: [...queryKeys.strategies],
     queryFn: listStrategies,
     staleTime: STALE.config,
     enabled: loadPanelOpen,
@@ -58,7 +59,7 @@ export default function StrategyWorkspace() {
         : createStrategy(config),
     onSuccess: (saved: Strategy) => {
       setEditingId(saved.id);
-      queryClient.invalidateQueries({ queryKey: ["strategies"] });
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.strategies] });
     },
   });
 

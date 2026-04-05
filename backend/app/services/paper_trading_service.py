@@ -14,9 +14,9 @@ Sprint 1.10 新增4项毕业评估指标:
 - signal_execution_gap_hours 12-20h: 标准链路T日17:20→T+1 09:30≈16h
 """
 
-import logging
+import structlog
 from datetime import date
-from typing import Any
+from typing import Any, Optional
 
 from engines.metrics import (
     calc_avg_slippage_pct,
@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.performance_repository import PerformanceRepository
 from app.repositories.trade_repository import TradeRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # 毕业标准常量（CLAUDE.md §Paper Trading 毕业标准）
@@ -388,6 +388,7 @@ class PaperTradingService:
         prices: dict[str, float],
         cash: float,
         initial_capital: float,
+        avg_costs: Optional[dict[str, float]] = None,
     ) -> dict[str, Any]:
         """T日close计算NAV，更新position_snapshot + performance_series。
 
@@ -402,6 +403,8 @@ class PaperTradingService:
             prices: T日收盘价 {code: close_price}。
             cash: 当前现金。
             initial_capital: 初始资金。
+            avg_costs: 可选 {code: avg_cost_per_share}，用于计算unrealized_pnl（A7修复）。
+                       None时avg_cost/unrealized_pnl写入NULL（向后兼容）。
 
         Returns:
             {nav, daily_return, cumulative_return, position_count, cash_ratio}
@@ -427,12 +430,24 @@ class PaperTradingService:
             price = prices.get(code, 0)
             mv = shares * price
             weight = mv / nav if nav > 0 else 0
+
+            # A7修复: 计算 avg_cost 和 unrealized_pnl（需调用方传入avg_costs）
+            avg_cost: Optional[float] = None
+            unrealized_pnl: Optional[float] = None
+            if avg_costs is not None:
+                ac = avg_costs.get(code)
+                if ac is not None and ac > 0:
+                    avg_cost = float(ac)
+                    cost_basis = avg_cost * shares
+                    unrealized_pnl = mv - cost_basis
+
             cur.execute(
                 """INSERT INTO position_snapshot
                    (code, trade_date, strategy_id, quantity, market_value,
-                    weight, execution_mode)
-                   VALUES (%s, %s, %s, %s, %s, %s, 'paper')""",
-                (code, trade_date, strategy_id, shares, mv, weight),
+                    weight, avg_cost, unrealized_pnl, execution_mode)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'paper')""",
+                (code, trade_date, strategy_id, shares, mv, weight,
+                 avg_cost, unrealized_pnl),
             )
 
         # ── 2. performance_series ──

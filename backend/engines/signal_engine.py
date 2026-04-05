@@ -327,7 +327,7 @@ class PortfolioBuilder:
         weights = np.clip(weights, 0, max_w)
         weights = weights / weights.sum()  # 重新归一化
 
-        target = {code: float(w) for code, w in zip(selected, weights)}
+        target = {code: float(w) for code, w in zip(selected, weights, strict=False)}
 
         logger.info(
             f"[RiskParity] power={power}, n={n}, "

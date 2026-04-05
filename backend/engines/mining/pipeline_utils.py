@@ -27,8 +27,8 @@ logger = structlog.get_logger(__name__)
 async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFrame:
     """从 PG 加载行情数据（最近 lookback_days 日）。
 
-    列: trade_date, code, open, high, low, close, volume, amount,
-        turnover_rate, returns
+    列: trade_date, code, open, high, low, close, volume(手), amount(千元, klines_daily),
+        turnover_rate(%, daily_basic), returns
 
     Args:
         db_url: PostgreSQL 连接字符串。
@@ -87,7 +87,7 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
         )
 
         # 计算 returns（当日收益率，用于 amihud 等因子）
-        df = df.sort_values(["code", "trade_date"])
+        df = df.sort_values(["code", "trade_date"], kind="mergesort")
         df["returns"] = df.groupby("code")["close"].pct_change()
 
         logger.info("行情数据加载完成", rows=len(df), codes=df["code"].nunique())
@@ -163,7 +163,7 @@ def compute_forward_returns(
         return pd.Series(dtype=float)
 
     df = market_data[["trade_date", "code", "close"]].copy()
-    df = df.sort_values(["code", "trade_date"])
+    df = df.sort_values(["code", "trade_date"], kind="mergesort")
 
     latest_date = df["trade_date"].max()
     all_dates = sorted(df["trade_date"].unique())

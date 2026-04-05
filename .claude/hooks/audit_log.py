@@ -36,9 +36,7 @@ def main():
     elif tool_name in ("Write", "Edit"):
         detail = tool_input.get("file_path", "")
     elif tool_name == "Agent":
-        subagent_type = tool_input.get("subagent_type", "")
-        description = tool_input.get("description", "")[:60]
-        detail = f"[{subagent_type}] {description}" if subagent_type else description
+        detail = tool_input.get("description", "")[:80]
     else:
         detail = ""
 

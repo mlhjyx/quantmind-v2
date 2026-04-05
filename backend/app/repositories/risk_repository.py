@@ -4,7 +4,7 @@ Sprint 1.1: 4级熔断状态机持久化。
 遵循CLAUDE.md: async/await + 类型注解 + Google docstring(中文)。
 """
 
-import logging
+import structlog
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.repositories.base_repository import BaseRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ─────────────────────────────────────────────
 # DDL — 首次运行时自动建表
@@ -64,8 +64,14 @@ class RiskRepository(BaseRepository):
     """
 
     async def ensure_tables(self) -> None:
-        """确保风控相关表存在（幂等）。"""
-        await self.execute(_CREATE_TABLES_SQL)
+        """确保风控相关表存在（幂等）。
+
+        asyncpg不支持单次execute多条语句，需逐条执行。
+        """
+        for stmt in _CREATE_TABLES_SQL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                await self.execute(stmt)
         logger.info("[RiskRepo] circuit_breaker 表已就绪")
 
     # ── circuit_breaker_state ──

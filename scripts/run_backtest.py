@@ -23,7 +23,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from engines.backtest_engine import BacktestConfig, SimpleBacktester
+from engines.backtest_engine import BacktestConfig, PMSConfig, SimpleBacktester
 from engines.config_guard import assert_baseline_config, print_config_header
 from engines.metrics import generate_report, print_report
 from engines.signal_engine import (
@@ -55,22 +55,44 @@ def load_factor_values(trade_date, conn) -> pd.DataFrame:
     )
 
 
-def load_universe(trade_date, conn) -> set[str]:
-    """加载Universe（排除ST/新股/停牌/低流动性）。"""
+def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
+    """加载Universe（排除ST/新股/停牌/低流动性）。
+
+    Args:
+        trade_date: 交易日。
+        conn: psycopg2连接。
+        min_avg_amount: 过去20日日均成交额下限（万元），0=不过滤。
+            设为5000即过滤日均<5000万的股票。暂不过滤，用QMT真实数据验证后再决定。
+
+    Returns:
+        可交易股票代码集合。
+    """
+    # amount单位=千元, min_avg_amount单位=万元 → 阈值=min_avg_amount×10 千元
+    amount_threshold = min_avg_amount * 10  # 万元→千元
+
     df = pd.read_sql(
         """SELECT k.code
            FROM klines_daily k
            JOIN symbols s ON k.code = s.code
            LEFT JOIN daily_basic db ON k.code = db.code AND k.trade_date = db.trade_date
+           LEFT JOIN LATERAL (
+               SELECT AVG(amount) AS avg_amount_20d
+               FROM klines_daily k2
+               WHERE k2.code = k.code
+                 AND k2.trade_date <= %s
+                 AND k2.trade_date >= %s - INTERVAL '30 days'
+                 AND k2.volume > 0
+           ) amt ON TRUE
            WHERE k.trade_date = %s
              AND k.volume > 0
              AND s.list_status = 'L'
              AND s.name NOT LIKE '%%ST%%'
              AND (s.list_date IS NULL OR s.list_date <= %s - INTERVAL '60 days')
              AND COALESCE(db.total_mv, 0) > 100000
+             AND COALESCE(amt.avg_amount_20d, 0) >= %s
         """,
         conn,
-        params=(trade_date, trade_date),
+        params=(trade_date, trade_date, trade_date, trade_date, amount_threshold),
     )
     return set(df["code"].tolist())
 
@@ -129,6 +151,14 @@ def main():
     parser.add_argument("--slippage", type=float, default=10.0, help="滑点(bps), fixed模式使用")
     parser.add_argument("--slippage-mode", choices=["volume_impact", "fixed"],
                         default="volume_impact", help="滑点模型(default: volume_impact)")
+    parser.add_argument("--weight-method", choices=["equal", "risk_parity", "min_variance"],
+                        default="equal", help="权重方法(default: equal)")
+    parser.add_argument("--vol-regime", action="store_true",
+                        help="启用动态仓位(CSI300波动率regime缩放)")
+    parser.add_argument("--vol-factor", choices=["volatility_20", "volatility_5", "volatility_60"],
+                        default="volatility_20", help="风险平价用的波动率因子(default: volatility_20)")
+    parser.add_argument("--pms", choices=["off", "tiered", "tiered_close"],
+                        default="off", help="利润保护: off/tiered(T+1open)/tiered_close(当日close)")
     args = parser.parse_args()
 
     start = datetime.strptime(args.start, "%Y-%m-%d").date()
@@ -142,8 +172,23 @@ def main():
         factor_names=PAPER_TRADING_CONFIG.factor_names,
         top_n=args.top_n,
         rebalance_freq=args.freq,
+        weight_method=args.weight_method,
     )
     assert_baseline_config(sig_config.factor_names, config_source="run_backtest.py")
+    need_vol = args.weight_method in ("risk_parity", "min_variance")
+    if need_vol:
+        logger.info(f"权重方法={args.weight_method}, 波动率因子={args.vol_factor}")
+    if args.vol_regime:
+        logger.info("动态仓位(vol_regime)已启用")
+    # PMS配置
+    pms_cfg = PMSConfig(enabled=False)
+    if args.pms == "tiered":
+        pms_cfg = PMSConfig(enabled=True, exec_mode="next_open")
+        logger.info("PMS: 阶梯式利润保护(T+1 open执行)")
+    elif args.pms == "tiered_close":
+        pms_cfg = PMSConfig(enabled=True, exec_mode="same_close")
+        logger.info("PMS: 阶梯式利润保护(当日close执行)")
+
     bt_config = BacktestConfig(
         initial_capital=args.capital,
         top_n=args.top_n,
@@ -151,6 +196,7 @@ def main():
         slippage_bps=args.slippage,
         slippage_mode=args.slippage_mode,
         slippage_config=SlippageConfig(),
+        pms=pms_cfg,
     )
 
     # 2. 获取调仓日历
@@ -161,7 +207,15 @@ def main():
     # 3. 加载行业分类
     industry = load_industry(conn)
 
-    # 4. 逐日生成目标持仓
+    # 4. 动态仓位: 预加载CSI300收盘价
+    vol_regime_scale = 1.0
+    csi300_closes = None
+    if args.vol_regime:
+        from engines.vol_regime import calc_vol_regime
+        csi300_df = load_benchmark(start, end, conn)
+        csi300_closes = csi300_df.set_index("trade_date")["close"]
+
+    # 5. 逐日生成目标持仓
     logger.info("生成目标持仓信号...")
     composer = SignalComposer(sig_config)
     builder = PortfolioBuilder(sig_config)
@@ -184,8 +238,28 @@ def main():
         if scores.empty:
             continue
 
+        # 加载波动率数据（risk_parity/min_variance模式）
+        vol_map = None
+        if need_vol:
+            vol_df = pd.read_sql(
+                "SELECT code, raw_value FROM factor_values "
+                "WHERE trade_date = %s AND factor_name = %s",
+                conn, params=(rd, args.vol_factor),
+            )
+            vol_map = dict(zip(vol_df["code"], vol_df["raw_value"].astype(float)))
+
+        # 计算动态仓位缩放
+        if args.vol_regime and csi300_closes is not None:
+            closes_up_to = csi300_closes[csi300_closes.index <= rd]
+            if len(closes_up_to) >= 21:
+                vol_regime_scale = calc_vol_regime(closes_up_to)
+
         # 构建目标持仓
-        target = builder.build(scores, industry, prev_weights)
+        target = builder.build(
+            scores, industry, prev_weights,
+            vol_regime_scale=vol_regime_scale,
+            volatility_map=vol_map,
+        )
         if target:
             target_portfolios[rd] = target
             prev_weights = target

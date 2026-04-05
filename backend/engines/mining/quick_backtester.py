@@ -24,7 +24,7 @@ GP进化循环中每个个体需要评估适应度，完整SimBroker回测太慢
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from dataclasses import dataclass
 from datetime import date
@@ -32,7 +32,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 年化交易日数（A股）
 _TRADING_DAYS_PER_YEAR = 244

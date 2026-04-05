@@ -4,13 +4,13 @@ Phase 0 Paper Trading: 通过缩放持仓权重模拟对冲（无实际做空）
 Phase 1 实盘: 替换为指数期货/ETF融券真实对冲。
 """
 
-import logging
+import structlog
 from datetime import date
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def calc_portfolio_beta(
