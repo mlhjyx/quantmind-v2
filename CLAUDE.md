@@ -71,7 +71,7 @@ quantmind-v2/
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表唯一来源（62张表）
 │   ├── QUANTMIND_V2_DESIGN_V5.md   ← 总设计文档
-│   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（117项/10Sprint）
+│   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（历史参考，当前用Phase/G/GA编号）
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
 │   ├── DEV_BACKEND.md              ← 后端设计(分层/数据流/协同矩阵)
 │   ├── DEV_BACKTEST_ENGINE.md      ← 回测引擎(Hybrid架构/34项决策)
@@ -175,12 +175,6 @@ quantmind-v2/
 - 触发记录写`position_monitor`表，通过StreamBus广播`qm:pms:protection_triggered`
 - 前端页面: `/pms`
 
-### PT核心参数（.env驱动）
-
-- `PT_TOP_N`: 选股数量（当前=20），改后重启服务生效
-- `PT_INDUSTRY_CAP`: 行业上限（当前=1.0=不限），改后重启服务生效
-- 读取路径: `.env` → `config.py` → `signal_engine.py:PAPER_TRADING_CONFIG`
-
 ### 部署规则（Servy服务管理）
 - **服务管理工具**: Servy v7.6 (`D:\tools\Servy\servy-cli.exe`)，替代NSSM（2026-04-04迁移）
 - 后端代码修改后重启: `powershell -File scripts\service_manager.ps1 restart fastapi`
@@ -194,7 +188,7 @@ quantmind-v2/
 #### Servy管理的服务（启动顺序）
 | 服务名 | 描述 | 依赖 | 日志 |
 |--------|------|------|------|
-| QuantMind-FastAPI | uvicorn --workers 2, port 8000 | Redis, PostgreSQL16 | logs/fastapi-std{out,err}.log |
+| QuantMind-FastAPI | uvicorn --workers 2, port 8000 | Redis, PostgreSQL 16.8 | logs/fastapi-std{out,err}.log |
 | QuantMind-Celery | celery worker --pool=solo | Redis | logs/celery-std{out,err}.log |
 | QuantMind-CeleryBeat | celery beat scheduler | Redis, QuantMind-Celery | logs/celery-beat-std{out,err}.log |
 | QuantMind-QMTData | QMT数据同步→Redis缓存(60s) | Redis | logs/qmt-data-std{out,err}.log |
@@ -283,7 +277,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 |--------|------|--------|------|
 | 数据加载(`_load_shared_data`) | 30min(DB) | 1.6s | Parquet缓存, 按日期分区 |
 | 因子中性化 | 慢(逐因子DB读写) | 15因子/17.5min | `fast_neutralize_batch` Parquet批量 |
-| LightGBM训练 | CPU | 6.2x加速 | PyTorch cu128, RTX 5070 12GB |
+| GPU矩阵运算 | CPU numpy | 6.2x加速(5000×5000 matmul) | PyTorch cu128, RTX 5070 12GB |
 | Pipeline Step1 | 串行拉取 | 三API并行 | klines+daily_basic+moneyflow并行 |
 | 时间范围查询 | 全表扫描 | chunk exclusion | TimescaleDB hypertable自动分区 |
 
@@ -301,7 +295,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 基本面因子(等权框架) | 10种方式8 FAIL | Sprint 1.5 |
 | 量价因子窗口变体 | IC天花板0.05-0.06, 边际收益极低 | 暴力枚举Layer 1-2 |
 | PMS v2.0组合级保护 | p=0.655等于随机, 2022慢熊0触发 | v3.6验证 |
-| LLM自由生成因子 | IC=0.006-0.008, 需数据驱动prompt | W7b 5次测试 |
+| LLM自由生成因子 | IC=0.006-0.008, 需数据驱动prompt | 5次测试 |
 | mf_divergence独立策略 | IC=-2.27%(非9.1%), 14组回测全负 | GA2证伪 |
 | 同因子换ML模型 | ML Sharpe=0.68 vs 等权0.83, 瓶颈在数据维度 | G1 LightGBM |
 | IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
@@ -353,7 +347,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
 | 查设计决策 | docs/DESIGN_DECISIONS.md (93+40项) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
-| 研究知识库(防重复失败) | `.claude/skills/quantmind-research-kb/` (19条目) |
+| 研究知识库(防重复失败) | `docs/research-kb/` (19条目: 8 failed + 6 findings + 5 decisions) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
 | 路线图/全面状态/决策历史 | docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8) |
 
