@@ -1,11 +1,11 @@
 # QuantMind V2 — LightGBM Walk-Forward 训练框架设计文档
 
-> **文档版本**: v2.0（对齐Roadmap V3.4）
+> **文档版本**: v2.1（对齐Roadmap V3.8）
 > **创建日期**: 2026-03-25（Sprint 1.4b）
-> **更新日期**: 2026-04-04（V3.4评估范式转移）
-> **关联文档**: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md(v3.4), DEV_BACKTEST_ENGINE.md
+> **更新日期**: 2026-04-05（v2.1: 特征池扩充+GPU+数据层升级）
+> **关联文档**: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md(v3.8), DEV_BACKTEST_ENGINE.md
 > **硬性约束**: V3.4 fail-fast决策树（三分支）; 铁律11（特征IC必须入库可追溯）
-> **v1.0→v2.0核心变化**: 特征池51→48+(DB自动发现), 基线1.03→1.15(新配置), 评估标准→V3.4 fail-fast三分支, mf_divergence IC=9.1%证伪→移出重点特征, 新增Sprint 1.3b教训+Ablation计划+影子PT部署方案
+> **v2.0→v2.1核心变化**: 特征池48→63+(15北向因子入库), GPU cupy→PyTorch cu128(RTX 5070 Blackwell), 数据层TimescaleDB hypertable+Parquet缓存(1000x加速), neutral_value存储迁移到cache/neutral_values.parquet
 
 ---
 
@@ -17,10 +17,10 @@
 | ML-02 | 目标变量 | T+20日vs沪深300超额收益(对数) | 月度调仓对齐，与基线Sharpe可比。⚠️ T+1开始计算（不含信号日T） |
 | ML-03 | Purge gap | 训练集末尾到验证集开始留5交易日 | 防20日forward return信息泄露 |
 | ML-04 | Embargo gap | 验证集末尾到测试集额外留0天 | Purge已足够，fold边界已对齐 |
-| ML-05 | GPU策略 | device_type=gpu + max_bin=63 + gpu_use_dp=false | RTX 5070 VRAM 12GB，单精度快5-10倍 |
+| ML-05 | GPU策略 | device_type=gpu + max_bin=63 + gpu_use_dp=false | RTX 5070 12GB. GPU运算用PyTorch cu128(cupy不支持Blackwell sm_120). Benchmark: matmul 6.2x加速 |
 | ML-06 | 过拟合判定 | 训练IC/验证IC > 2.0警告, > 3.0强制停止 | 宽松一档，2倍阈值给early stopping余地 |
 | ML-07 | Optuna目标函数 | validation set RankIC均值 | 比IC更稳定，抗异常值 |
-| ML-08 | 特征数量 | **48+个（从factor_values表自动发现，不手动列表）** | v2.0变更：DB中有数据的因子全部纳入候选，相关性预检后筛选 |
+| ML-08 | 特征数量 | **63+个（48核心+15北向RANKING因子, DB自动发现）** | v2.1: 北向因子已入库factor_values(5400万行), 后续盈利公告/分钟聚合因子将继续扩充至80+ |
 | ML-09 | 评估标准(v2.0) | **V3.4 fail-fast三分支决策树（见§8.3）** | v2.0变更：替换旧两级标准，增加"方向对但特征不够"分支 |
 | ML-10 | 预测聚合 | 所有fold预测按时间拼接，不平均 | 保留时序连续性，与SimBroker回测对齐 |
 | ML-11 | 特征来源(v2.0新增) | factor_values表自动查询 + 覆盖率/相关性筛选 | 不依赖手动维护的特征清单，新因子入库后自动纳入 |
@@ -219,7 +219,18 @@ mf_divergence | 5.3M | 2021-01~2025-12 | 5405 | 3% | — | ⚠️ IC=-2.27%(弱)
 | D: 价格行为 | factor_values(历史) | ~10 | high_low_range_20等 |
 | E: 基本面 | factor_values(历史) | ~2-4 | Sprint 1.5证明大部分无效，只保留bp_ratio衍生 |
 | F: Alpha158新增 | factor_values(v3.3新增) | 8 | STD60/VSUMP60/CORD30/RANK5/CORR5/VSTD30/VSUMP5/VMA5 |
-| 合计 | — | **48+** | 以DB实际查询为准 |
+| G: 北向个股RANKING | factor_values(v2.1新增) | 15 | 持仓变化/持续性/金额口径/交互条件类因子（2026-04-05入库，5400万行） |
+| 合计 | — | **63+** | 以DB实际查询为准 |
+
+**v2.1新增: 组G 北向个股RANKING因子（15个）:**
+- 持仓变化类: nb_ratio_change_5d/20d, nb_change_rate_20d
+- 持续性类: nb_consecutive_increase, nb_increase_ratio_20d, nb_trend_20d
+- 相对市场类: nb_change_excess, nb_rank_change_20d, nb_concentration_signal
+- 金额口径类: nb_net_buy_ratio, nb_net_buy_5d_ratio, nb_net_buy_20d_ratio
+- 交互条件类: nb_contrarian, nb_acceleration, nb_new_entry
+- 关键发现: IC方向全部为负（外资一致性增持→跑输=反向信号）
+- 中性化后3个Active因子t均<2.0，作为独立因子不显著，但ML非线性组合可能贡献增量alpha
+- neutral_value存储在cache/neutral_values.parquet（不在factor_values表的neutral_value列）
 
 **与v1.0的51个特征对比:**
 - 组E(基本面)从8个缩减为2-4个（Sprint 1.5证明ROE/营收增速等无效）
@@ -227,6 +238,7 @@ mf_divergence | 5.3M | 2021-01~2025-12 | 5405 | 3% | — | ⚠️ IC=-2.27%(弱)
 - 新增Alpha158的8个因子
 - mf_divergence保留但不再标记为"核心"（IC=-2.27%，v1.0错误标注IC=9.1%）
 - earnings_surprise_std(PEAD)移除（DB中无此因子数据）
+- **v2.1新增15个北向因子（组G），特征池从48→63**
 
 ### 2.3 特征预处理流水线（严格遵守铁律顺序，Phase A对齐）
 
@@ -361,9 +373,9 @@ hyperparams_init:
   实际训练样本 = 4000 × 528 = ~211万行
 
 内存占用估算:
-  特征数: 48+（v2.0更新，以DB实际为准）
+  特征数: 63+（v2.1: 48核心+15北向）
   float32精度: 4字节
-  原始数据: 211万 × 48 × 4字节 = ~405MB
+  原始数据: 211万 × 63 × 4字节 = ~532MB
   LightGBM直方图(max_bin=63): 数据量约压缩到原始的20%→~81MB
   GPU VRAM使用: 数据 + 模型 + 梯度 ≈ 1-2GB（远低于12GB上限）
 
@@ -972,13 +984,18 @@ ML训练是研究任务，不走生产调度（Servy/Celery/CeleryBeat）:
 - 训练结果写入PostgreSQL（model_registry/experiments/ml_predictions）
 - 影子PT信号生成可以作为Celery task（轻量，每月一次）
 
-数据读取:
-- 特征从factor_values表读取（通过PostgreSQL连接）
+数据读取(v2.1更新):
+- raw_value从factor_values表读取（TimescaleDB hypertable, 71月chunks, 查询2.2ms）
+- neutral_value优先从cache/neutral_values.parquet读取（不读factor_values的neutral_value列）
+- 价格/forward return优先从cache/close_pivot.parquet + cache/fwd_excess_*d.parquet读取
 - 不从Redis读取（Redis是实时数据总线，ML训练用历史数据）
 - ⚠️ 串行执行，不并行多个数据密集查询（PostgreSQL OOM风险）
 
-GPU资源:
-- RTX 5070独占（训练时不跑其他GPU任务）
+GPU资源(v2.1更新):
+- RTX 5070 Blackwell (sm_120, 12GB VRAM)
+- LightGBM GPU: device_type=gpu（CUDA Toolkit 12.6）
+- 矩阵运算: PyTorch cu128（cupy不支持Blackwell）
+- Benchmark: matmul(5000×5000) CPU 117ms → GPU 19ms (6.2x)
 - 训练时段建议：收盘后18:00-次日08:00（不与盘中监控冲突）
 ```
 
@@ -989,10 +1006,11 @@ GPU资源:
 在开始代码实现前，以下前置条件必须满足：
 
 ```
-□ factor_values表数据确认（运行§2.2 Step 1 SQL，确认48+因子数据覆盖）
+□ factor_values表数据确认（63+因子, 含15北向因子, TimescaleDB hypertable）
+□ neutral_values.parquet确认（cache/neutral_values.parquet存在, 含北向因子）
 □ 特征就绪报告生成（§2.2 Step 4，每个因子的覆盖率/缺失率/就绪状态）
-□ 相关性预检完成（§2.2 Step 3，48×48相关矩阵，标记高相关对）
-□ RTX 5070 GPU驱动确认（nvidia-smi可见，CUDA版本检查）
+□ 相关性预检完成（§2.2 Step 3，63×63相关矩阵，标记高相关对）
+□ RTX 5070 GPU驱动确认（nvidia-smi可见，CUDA 12.6, PyTorch cu128）
 □ LightGBM GPU版本安装验证（import lightgbm; lgb.Dataset.__module__）
 □ Optuna安装（pip install optuna optuna-integration）
 □ 交易日历完整（2020-07 ~ 2026-04，用于Purge gap计算）
@@ -1094,3 +1112,10 @@ G1.7: Regime感知模型切换（5-7天）
   AlphaAgent(KDD 2025): AST去重+正则化探索, hit ratio+81%
   Dynamic GP+LightGBM(2026): GP三目标+滚动窗口, CSI300 Sharpe=1.59
 ```
+
+---
+
+> **版本历史**
+> - v1.0 (2026-03-25): 初版，51特征，基线1.03
+> - v2.0 (2026-04-04): 特征池48+(DB自动发现), 基线1.15, V3.4 fail-fast
+> - v2.1 (2026-04-05): 特征池63+(15北向), GPU PyTorch cu128, TimescaleDB hypertable+Parquet缓存
