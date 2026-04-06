@@ -313,6 +313,8 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 基线(旧): Sharpe=0.91（2021-2025全5年, Top-15+行业25%, WLS+volume_impact无流动性过滤）, MDD=-43.03%
 基线(新,已部署): Sharpe=1.15（Top-20+无行业约束+PMS same_close）, MDD=-35.1%, Calmar=0.83
 # 0.91为旧配置5年全量回测值。1.15为当前部署配置。DSR保守估计=0.70-0.85
+# run_backtest.py验证(2026-04-06): Sharpe=1.24(同配置3次确定性PASS), MDD=-34.95%, Calmar=0.93
+# 1.24 vs 1.15差异0.09待追溯(可能年化方法或PMS执行模式差异)
 # FF3归因: Alpha=21.1%/年(t=2.45), 但2023-2025 OOS Alpha仅+6.6%(t=0.58不显著), 近年靠SMB beta盈利
 成本: 佣金万0.854(国金实际) + 印花税0.05%(卖出) + 过户费0.001% + volume_impact滑点
 ```
