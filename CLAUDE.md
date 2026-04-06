@@ -35,10 +35,9 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 池 | 数量 | 说明 |
 |----|------|------|
 | CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20(WARNING), amihud_20, bp_ratio |
-| FULL | 14 | CORE+扩展(momentum_20等) |
-| RESERVE | 1 | vwap_bias |
+| PASS候选 | 30 | FACTOR_TEST_REGISTRY.md中PASS状态因子，待评估入池 |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
-| DEPRECATED | 8 | momentum_5/10等(冗余或IC衰减) |
+| DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
 | LGBM特征集 | 63 | 全部factor_values因子(48核心+15北向, DB自动发现) |
 
@@ -69,8 +68,8 @@ quantmind-v2/
 ├── LESSONS_LEARNED.md           ← 经验教训（36条）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
-│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表唯一来源（62张表）
-│   ├── QUANTMIND_V2_DESIGN_V5.md   ← 总设计文档
+│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 45张+代码动态建表17张=DB实际62张）
+│   ├── QUANTMIND_V2_DESIGN_V5.md   ← ⚠️历史设计(被ROADMAP_V3替代，仅局部参考)
 │   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（历史参考，当前用Phase/G/GA编号）
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
 │   ├── DEV_BACKEND.md              ← 后端设计(分层/数据流/协同矩阵)
@@ -129,7 +128,7 @@ quantmind-v2/
 │   └── data_quality_check.py    # 数据巡检
 ├── cache/                       # Parquet缓存（profiler/中性化用）
 ├── docs/research-kb/            # 研究知识库（failed/findings/decisions）
-├── .claude/skills/              # 6个QuantMind自定义skills
+├── .claude/skills/              # 7个自定义skills(factor-discovery/research/overnight/db-safety/performance/research-kb/omc-reference)
 └── backend/tests/               # 2076+个测试（90个test文件）
 ```
 
@@ -258,7 +257,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=202）
+- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=69，排除重复验证+CANCELLED）
 - 与现有Active因子 corr < 0.7, 选股月收益 corr < 0.3
 - 中性化后IC必须验证（原始IC和中性化IC并列展示）
 - 因子预处理顺序: **去极值(MAD 5σ) → 填充(行业中位数) → 中性化(行业+市值WLS) → z-score**（不可变）
@@ -371,6 +370,32 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER → 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
 - 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8)
 ---
+
+## 文件归属规则（防腐）
+
+### 根目录只允许以下文件
+CLAUDE.md / SYSTEM_RUNBOOK.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / pyproject.toml / .gitignore
+- 新审计/盘点报告 → `docs/reports/`
+- 新研究报告 → `docs/research/`
+- 回测输出 → 用完即删，不留根目录
+- 临时文件/artifact → 用完即删
+
+### 引用完整性规则
+- 引用文件必须用完整相对路径
+- 归档/移动文件后 `grep -r "文件名" --include="*.md" --include="*.py"` 更新所有引用
+- 重构函数/重命名后检查所有import方
+
+### 数字同步规则
+- CLAUDE.md中的统计数字（表数/因子数/测试数）变更时同步更新
+- 不确定的数字标注"约"或"截至日期"
+- 因子池状态以FACTOR_TEST_REGISTRY.md为唯一真相源
+
+### 文档层级（固定）
+- **总设计**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md`
+- **运行手册**: `SYSTEM_RUNBOOK.md`
+- **入口导航**: `CLAUDE.md`（本文件）
+- **Schema定义**: `docs/QUANTMIND_V2_DDL_FINAL.sql`
+- DESIGN_V5只做局部参考，不是当前总设计
 
 ## 执行标准流程
 

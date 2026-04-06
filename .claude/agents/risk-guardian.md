@@ -10,7 +10,7 @@ model: claude-opus-4-6
 
 **必读设计文档**：
 - D:\quantmind-v2\docs\QUANTMIND_V2_DESIGN_V5.md §8（风控体系）
-- D:\quantmind-v2\docs\DEV_NOTIFICATIONS.md
+- D:\quantmind-v2\docs\archive\DEV_NOTIFICATIONS.md
 - D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §4.3（CompositeStrategy风控接口）
 - D:\quantmind-v2\docs\RISK_CONTROL_SERVICE_DESIGN.md（风控服务接口设计：L1-L4熔断+PreTradeValidator）
 - D:\quantmind-v2\docs\research\R3_multi_strategy_framework.md（Modifier组合风险分析）

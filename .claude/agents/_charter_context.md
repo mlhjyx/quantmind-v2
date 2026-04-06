@@ -76,7 +76,7 @@ challenge方式必须验代码/跑数据，不是读文档同意（铁律5）。
 
 ## 关键文件路径
 - 主控: D:\quantmind-v2\CLAUDE.md
-- 宪法: D:\quantmind-v2\TEAM_CHARTER_V3.3.md
+- 宪法(已归档): D:\quantmind-v2\docs\archive\TEAM_CHARTER_V3.3.md
 - 进度: D:\quantmind-v2\PROGRESS.md
 - 教训: D:\quantmind-v2\LESSONS_LEARNED.md
 - 因子注册: D:\quantmind-v2\FACTOR_TEST_REGISTRY.md
