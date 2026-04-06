@@ -357,10 +357,10 @@ CREATE TABLE position_snapshot (
     weight          DECIMAL(8,6),
     unrealized_pnl  DECIMAL(16,2),                     -- 元
     holding_days    INT,
-    execution_mode  VARCHAR(10) DEFAULT 'paper',       -- ⭐paper/live
-    PRIMARY KEY (code, trade_date, strategy_id)
+    execution_mode  VARCHAR(10) NOT NULL DEFAULT 'paper',  -- ⭐paper/live/qmt_sim
+    PRIMARY KEY (code, trade_date, strategy_id, execution_mode)
 );
-COMMENT ON TABLE position_snapshot IS '每日持仓快照。execution_mode区分paper/live';
+COMMENT ON TABLE position_snapshot IS '每日持仓快照。execution_mode参与PK，paper/live天然隔离';
 
 CREATE TABLE performance_series (
     trade_date      DATE NOT NULL,
@@ -375,8 +375,8 @@ CREATE TABLE performance_series (
     turnover        DECIMAL(8,6),
     benchmark_nav   DECIMAL(16,6),
     excess_return   DECIMAL(12,8),
-    execution_mode  VARCHAR(10) DEFAULT 'paper',       -- ⭐paper/live
-    PRIMARY KEY (trade_date, strategy_id)
+    execution_mode  VARCHAR(10) NOT NULL DEFAULT 'paper',  -- ⭐paper/live/qmt_sim
+    PRIMARY KEY (trade_date, strategy_id, execution_mode)
 );
 
 -- ═══════════════════════════════════════════════════

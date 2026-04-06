@@ -270,6 +270,56 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_FactorHealthDaily registered (daily 17:30)" -ForegroundColor Green
 
+# ── 11. QuantMind_PT_Watchdog: 每日20:00 ─────────────
+$wdAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\pt_watchdog.py" `
+    -WorkingDirectory $ProjectRoot
+
+$wdTrigger = New-ScheduledTaskTrigger -Daily -At "20:00"
+
+$wdSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_PT_Watchdog" `
+    -Description "QuantMind V2: PT heartbeat watchdog — check daily execution" `
+    -Action $wdAction `
+    -Trigger $wdTrigger `
+    -Settings $wdSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_PT_Watchdog registered (daily 20:00)" -ForegroundColor Green
+
+# ── 12. QuantMind_GPPipeline: 每周六02:00 ────────────
+$gpAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\run_gp_pipeline.py --generations 50 --population 100 --islands 3 --output-dir $ProjectRoot\gp_results" `
+    -WorkingDirectory $ProjectRoot
+
+$gpTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At "02:00"
+
+$gpSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 4) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_GPPipeline" `
+    -Description "QuantMind V2: GP Factor Mining Pipeline — weekly Saturday 02:00 (max 4h)" `
+    -Action $gpAction `
+    -Trigger $gpTrigger `
+    -Settings $gpSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_GPPipeline registered (Saturday 02:00)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete. Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (12 tasks). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"

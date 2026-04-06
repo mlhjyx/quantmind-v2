@@ -1,8 +1,9 @@
 # SYSTEM_RUNBOOK.md — QuantMind V2 系统运行手册
 
 > **用途**: 给 Claude Code 的技术实施指南。描述系统**当前真实状态**，不是设计愿景。
-> **更新时间**: 2026-03-29 (Sprint 1.32 完成后)
+> **更新时间**: 2026-04-06 (系统诊断修复后)
 > **配合文档**: CLAUDE.md（规则约束）、DEV_*.md（详细设计参考）
+> **总设计文档**: docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8.1)
 > **注意**: §10标注了设计文档与实际实现的已知差异。编码以"实际"列为准。
 
 ---
@@ -11,53 +12,48 @@
 
 | 维度 | 实际状态 |
 |------|---------|
-| 阶段 | Phase 1, Sprint 1.32 完成 |
-| PT状态 | v1.1 Day 3/60, NAV=995,338 |
+| 阶段 | Phase 1, Sprint 1.35 完成, PT Day 4/60 |
+| PT状态 | v1.2 QMT live, Top-20+无行业约束+PMS v1.0, NAV≈¥968,163 |
 | 后端 | 128+ Python 文件, ~40K LOC, sync psycopg2 (Service层) + async asyncpg (部分) |
-| 前端 | 22 页面(16功能+1存根+5设计外新增), ~13K LOC |
-| 测试 | 1876+ passed (1814 + 62 Sprint 1.32新增) |
-| 调度 | Windows Task Scheduler (PT) + Celery Beat (GP) |
-| 数据库 | PostgreSQL 16 @ D:\pgdata16, user=xin, 43张表 |
-| 基线 | 5因子等权, Top15, 月度, 行业25%, Sharpe=0.91（volume_impact, Sprint 1.11; 旧fixed=1.03已废弃） |
-| GP状态 | 全链路验证通过(240 individuals, 5 gen, 43.9s), 但产出0因子 |
+| 前端 | 35 页面, 53 共享组件, ~13K LOC |
+| 测试 | 2076+ passed (90个test文件) |
+| 调度 | Task Scheduler=PT主链(12任务), Beat=GP+PMS平台任务, Servy=进程托管 |
+| 数据库 | PostgreSQL 16.8 + TimescaleDB 2.26.0 @ D:\pgdata16, user=xin, 62+张表 |
+| 基线 | 5因子等权, **Top-20**, 月度, **无行业约束(1.0)**, Sharpe=**1.15**, MDD=-35.1%, Calmar=0.83 |
+| GP状态 | 全链路验证通过, Beat周日22:00自动触发 |
 
 ---
 
 ## 2. 启动链路（如何跑起来）
 
-### 2.1 基础服务（必须按顺序启动）
+### 2.1 基础服务（Servy管理，自动启动）
 
 ```bash
-# 1. PostgreSQL — 已注册 Windows 服务，自动启动
-#    数据目录: D:\pgdata16, 端口5432, 用户xin, 数据库名quantmind
-#    验证: psql -U xin -d quantmind -c "SELECT 1"
+# 生产环境: 所有服务由 Servy v7.6 管理，开机自启动
+# 查看状态: powershell -File scripts\service_manager.ps1 status
+# 重启单个: powershell -File scripts\service_manager.ps1 restart fastapi
+# 重启全部: powershell -File scripts\service_manager.ps1 restart all
 
-# 2. Redis — 已注册 Windows 服务，自动启动
-#    端口6379, Celery Broker用6379/1, Result Backend用6379/2
-#    验证: redis-cli ping → PONG
+# Servy管理的服务（启动顺序由依赖自动决定）:
+#   QuantMind-FastAPI    — uvicorn --workers 2, port 8000
+#   QuantMind-Celery     — celery worker --pool=solo
+#   QuantMind-CeleryBeat — celery beat (GP+PMS，不含PT主链)
+#   QuantMind-QMTData    — qmt_data_service.py (QMT→Redis缓存)
 
-# 3. Celery Worker（后台任务执行）
-#    注意: 必须用 python -m celery 启动，确保 backend/ 在 sys.path 中
-#    直接用 celery 命令会导致 engines 模块 import 失败
+# 原生Windows服务（不由Servy管理）:
+#   PostgreSQL16 — D:\pgdata16, 端口5432, 用户xin, 数据库quantmind_v2
+#   Redis        — 端口6379
+
+# 开发调试时手动启动（需先停Servy服务避免端口冲突）:
+#   D:\tools\Servy\servy-cli.exe stop --name="QuantMind-FastAPI"
 cd D:\quantmind-v2\backend
-python -m celery -A app.tasks.celery_app worker --pool=solo --loglevel=info
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+#   验证: curl http://localhost:8000/api/health → {"status": "ok"}
 
-# 4. Celery Beat（定时调度，GP周调度等）
-cd D:\quantmind-v2\backend
-python -m celery -A app.tasks.celery_app beat --loglevel=info
-
-# 5. FastAPI 后端
-#    注意: 必须先cd到backend目录，从项目根目录运行 uvicorn backend.app.main:app
-#    会报 ModuleNotFoundError（内部import用的是 from app.xxx）
-cd D:\quantmind-v2\backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-#    验证: curl http://localhost:8000/api/health → {"status": "ok"}
-#    API文档: http://localhost:8000/docs
-
-# 6. React 前端
+# React 前端
 cd D:\quantmind-v2\frontend
 npm run dev
-#    访问: http://localhost:3000
+#   访问: http://localhost:3000
 #    API代理: VITE_API_BASE_URL 默认 /api，由Vite devServer代理到8000端口
 ```
 
