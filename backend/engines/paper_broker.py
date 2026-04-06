@@ -601,7 +601,7 @@ class PaperBroker(BaseBroker):
                     drawdown, cash_ratio, cash, position_count, turnover,
                     benchmark_nav, execution_mode)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
-                   ON CONFLICT (trade_date, strategy_id) DO UPDATE SET
+                   ON CONFLICT (trade_date, strategy_id, execution_mode) DO UPDATE SET
                     nav=EXCLUDED.nav, daily_return=EXCLUDED.daily_return,
                     cumulative_return=EXCLUDED.cumulative_return,
                     drawdown=EXCLUDED.drawdown, cash_ratio=EXCLUDED.cash_ratio,
