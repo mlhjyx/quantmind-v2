@@ -47,28 +47,9 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 7200,  # 2小时内未执行则过期（避免错过周日后积压）
         },
     },
-    # ── T日 16:25 健康预检 ──
-    "daily-health-check": {
-        "task": "daily_pipeline.health_check",
-        "schedule": crontab(hour=16, minute=25, day_of_week="1-5"),
-        "options": {
-            "queue": "default",
-            "expires": 300,  # 5分钟内未执行则过期
-        },
-    },
-    # ── T日 16:30 信号生成 ──
-    # NOTE: trade_date_str 不通过 Beat args 传入，
-    # 改为 task 内部获取 date.today()（确保取到当日日期）。
-    # 如需手动指定日期，用 send_task() 传参。
-    "daily-signal": {
-        "task": "daily_pipeline.signal",
-        "schedule": crontab(hour=16, minute=30, day_of_week="1-5"),
-        "args": [],  # task 内部计算 trade_date
-        "options": {
-            "queue": "default",
-            "expires": 3600,  # 1小时内未执行则过期
-        },
-    },
+    # ── [已移除] PT主链任务由Task Scheduler驱动，Beat不再触发 ──
+    # daily-health-check: 移除(2026-04-06) — 由Task Scheduler QM-HealthCheck 16:25触发
+    # daily-signal: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailySignal 16:30触发
     # ── T日 14:30 PMS利润保护检查 ──
     "pms-daily-check": {
         "task": "daily_pipeline.pms_check",
@@ -78,14 +59,5 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 300,
         },
     },
-    # ── T+1日 09:00 执行调仓 ──
-    "daily-execute": {
-        "task": "daily_pipeline.execute",
-        "schedule": crontab(hour=9, minute=0, day_of_week="1-5"),
-        "args": [],
-        "options": {
-            "queue": "default",
-            "expires": 1800,
-        },
-    },
+    # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
 }

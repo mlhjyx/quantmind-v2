@@ -8,7 +8,7 @@
 #   T日 16:30  QuantMind_DailySignal             数据拉取(klines+basic+index)+因子+信号
 #   T日 16:35  QuantMind_DailyMoneyflow          moneyflow补拉(信号不依赖,但因子挖掘需要)
 #   T日 16:40  QuantMind_DataQualityCheck        数据质量巡检(全表时效+行数验证)
-#   T+1 09:00  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
+#   T+1 09:31  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
 #   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
 #   T+1 17:05  QuantMind_DailyExecuteAfterData   SimBroker执行(收盘数据可用后)
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
@@ -91,13 +91,13 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_DailySignal registered (daily 16:30)" -ForegroundColor Green
 
-# ── 4. QuantMind_DailyExecute: 每日09:00 (QMT live模式) ──
+# ── 4. QuantMind_DailyExecute: 每日09:31 (QMT live模式) ──
 $execAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\run_paper_trading.py execute --execution-mode live" `
     -WorkingDirectory $ProjectRoot
 
-$execTrigger = New-ScheduledTaskTrigger -Daily -At "09:00"
+$execTrigger = New-ScheduledTaskTrigger -Daily -At "09:31"
 
 $execSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
@@ -108,13 +108,13 @@ $execSettings = New-ScheduledTaskSettingsSet `
 
 Register-ScheduledTask `
     -TaskName "QuantMind_DailyExecute" `
-    -Description "QuantMind V2: T+1 09:00 miniQMT live执行(QMT未连接时跳过)" `
+    -Description "QuantMind V2: T+1 09:31 miniQMT live执行(QMT未连接时跳过)" `
     -Action $execAction `
     -Trigger $execTrigger `
     -Settings $execSettings `
     -Force
 
-Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:00)" -ForegroundColor Green
+Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31)" -ForegroundColor Green
 
 # ── 5. QuantMind_DailyExecuteAfterData: 每日17:05 ────────
 $execAfterAction = New-ScheduledTaskAction `

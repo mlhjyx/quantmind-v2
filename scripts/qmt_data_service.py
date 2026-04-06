@@ -224,14 +224,28 @@ class QMTDataService:
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
 
-        # 连接QMT
+        # 连接QMT（带退避重试）
         if not self._connect_qmt():
-            logger.warning("QMT未连接，服务将以降级模式运行（无数据同步）")
-            # 降级模式：不退出，等待手动重连或QMT启动
+            logger.warning("QMT未连接，服务将以退避模式重试连接")
+            retry_delay = 30  # 初始30秒
+            max_delay = 300   # 最大5分钟
+            retry_count = 0
             while self._running:
-                time.sleep(30)
-                if self._connect_qmt():
+                # 等待（可被信号中断）
+                for _ in range(retry_delay):
+                    if not self._running:
+                        break
+                    time.sleep(1)
+                if not self._running:
                     break
+                retry_count += 1
+                if self._connect_qmt():
+                    logger.info("QMT重连成功（第%d次尝试）", retry_count)
+                    break
+                # 退避：30 → 60 → 120 → 300（封顶）
+                retry_delay = min(retry_delay * 2, max_delay)
+                if retry_count % 10 == 0:
+                    logger.warning("QMT连续%d次连接失败，下次重试间隔%ds", retry_count, retry_delay)
 
         if not self._running:
             return

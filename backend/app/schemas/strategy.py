@@ -60,7 +60,7 @@ class TriggerBacktestRequest(BaseModel):
 
     start_date: str = Field(..., description="回测开始日期(YYYY-MM-DD)")
     end_date: str = Field(..., description="回测结束日期(YYYY-MM-DD)")
-    top_n: int = Field(default=15, ge=1, le=100, description="选股数量")
+    top_n: int = Field(default=20, ge=1, le=100, description="选股数量")
     rebalance_freq: str = Field(
         default="monthly",
         description="调仓频率: daily/weekly/biweekly/monthly",

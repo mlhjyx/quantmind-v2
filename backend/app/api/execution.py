@@ -227,12 +227,12 @@ async def get_algo_config(
         "slippage_model": cfg.get("slippage_model", "fixed_bps"),
         "slippage_bps": cfg.get("slippage_bps", 10),
         "order_type": cfg.get("order_type", "market_open"),
-        "top_n": cfg.get("top_n", 15),
+        "top_n": cfg.get("top_n", 20),
         "rebalance_freq": cfg.get("rebalance_freq", "monthly"),
         "turnover_cap": cfg.get("turnover_cap", 0.5),
         "cash_buffer": cfg.get("cash_buffer", 0.03),
         "max_single_weight": cfg.get("max_single_weight", 0.1),
-        "max_industry_weight": cfg.get("max_industry_weight", 0.25),
+        "max_industry_weight": cfg.get("max_industry_weight", 1.0),
     }
 
 
@@ -246,10 +246,10 @@ def _default_algo_config() -> dict[str, Any]:
         "slippage_model": "fixed_bps",
         "slippage_bps": 10,
         "order_type": "market_open",
-        "top_n": 15,
+        "top_n": 20,
         "rebalance_freq": "monthly",
         "turnover_cap": 0.5,
         "cash_buffer": 0.03,
         "max_single_weight": 0.10,
-        "max_industry_weight": 0.25,
+        "max_industry_weight": 1.0,
     }

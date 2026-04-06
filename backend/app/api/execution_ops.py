@@ -494,7 +494,7 @@ async def get_drift(
             can_buy_count += 1
             remaining -= d["target_value"]
 
-    signal_date = signals[0]["trade_date"].isoformat() if signals else None
+    signal_date = signals[0]["signal_date"].isoformat() if signals else None
 
     return {
         "signal_date": signal_date,
