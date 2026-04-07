@@ -188,6 +188,82 @@ def _infer_price_limit(code: str) -> float:
 
 
 # ============================================================
+# ValidatorChain — 可组合的交易验证器 (Phase 3)
+# ============================================================
+
+class BaseValidator:
+    """交易验证器基类。返回None=通过, 返回str=拒绝原因。"""
+
+    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+        raise NotImplementedError
+
+
+class SuspensionValidator(BaseValidator):
+    """停牌检测: volume=0。"""
+
+    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+        if row.get("volume", 0) == 0:
+            return "停牌(volume=0)"
+        return None
+
+
+class DataCompletenessValidator(BaseValidator):
+    """数据完整性: close/pre_close不为0。"""
+
+    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+        close = row.get("close", 0)
+        pre_close = row.get("pre_close", 0)
+        if close == 0 or pre_close == 0:
+            return f"数据不完整(close={close}, pre_close={pre_close})"
+        return None
+
+
+class PriceLimitValidator(BaseValidator):
+    """涨跌停封板检测。"""
+
+    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+        close = row.get("close", 0)
+        pre_close = row.get("pre_close", 0)
+        if close == 0 or pre_close == 0:
+            return None  # DataCompletenessValidator已处理
+
+        up_limit = row.get("up_limit", None)
+        down_limit = row.get("down_limit", None)
+        if up_limit is None or down_limit is None:
+            price_limit = _infer_price_limit(code)
+            up_limit = round(pre_close * (1 + price_limit), 2)
+            down_limit = round(pre_close * (1 - price_limit), 2)
+
+        _t = row.get("turnover_rate")
+        turnover = 999.0 if (_t is None or pd.isna(_t)) else float(_t)
+
+        if direction == "buy" and abs(close - up_limit) < 0.015 and turnover < 1.0:
+            return f"涨停封板(close={close}≈up_limit={up_limit}, turnover={turnover:.1f}%)"
+        if direction == "sell" and abs(close - down_limit) < 0.015 and turnover < 1.0:
+            return f"跌停封板(close={close}≈down_limit={down_limit}, turnover={turnover:.1f}%)"
+        return None
+
+
+class ValidatorChain:
+    """可组合的验证器链。按顺序执行，第一个拒绝即停止。"""
+
+    def __init__(self, validators: list[BaseValidator] | None = None):
+        self.validators = validators or [
+            SuspensionValidator(),
+            DataCompletenessValidator(),
+            PriceLimitValidator(),
+        ]
+
+    def can_trade(self, code: str, direction: str, row: pd.Series) -> tuple[bool, str | None]:
+        """返回(can_trade, reject_reason)。"""
+        for v in self.validators:
+            reason = v.validate(code, direction, row)
+            if reason:
+                return False, reason
+        return True, None
+
+
+# ============================================================
 # SimBroker — 模拟交易执行
 # ============================================================
 
@@ -207,6 +283,7 @@ class SimBroker(BaseBroker):
         self.cash = config.initial_capital
         self.holdings: dict[str, int] = {}  # code → shares
         self._sell_proceeds_today = 0.0  # 当日卖出回款(T+0可用)
+        self._validator = ValidatorChain()  # Phase 3: 可组合验证器
 
     def can_trade(
         self,
@@ -215,56 +292,11 @@ class SimBroker(BaseBroker):
         row: pd.Series,
         symbols_info: pd.DataFrame | None = None,
     ) -> bool:
-        """判断是否可以成交。
-
-        CLAUDE.md 规则1: 涨跌停封板必须处理。
-        - 停牌(volume=0) → False
-        - 买入+收盘价==涨停价+换手率<1% → False
-        - 卖出+收盘价==跌停价+换手率<1% → False
-        """
-        # 1. 成交量为0 → 停牌
-        if row.get("volume", 0) == 0:
-            return False
-
-        close = row.get("close", 0)
-        pre_close = row.get("pre_close", 0)
-
-        if close == 0 or pre_close == 0:
-            logger.warning(
-                "数据不完整: code=%s date=%s close=%s pre_close=%s → 跳过交易",
-                code, row.get("trade_date", "?"), close, pre_close,
-            )
-            return False
-
-        # 2. 获取涨跌停价(优先用数据中的up_limit/down_limit)
-        up_limit = row.get("up_limit", None)
-        down_limit = row.get("down_limit", None)
-
-        # 如果没有limit数据，用board类型推算
-        if up_limit is None or down_limit is None:
-            # 优先从symbols_info获取price_limit
-            if symbols_info is not None and code in symbols_info.index:
-                price_limit = float(symbols_info.loc[code, "price_limit"])
-            else:
-                # fallback: 从股票代码推断板块涨跌幅
-                price_limit = _infer_price_limit(code)
-            up_limit = round(pre_close * (1 + price_limit), 2)
-            down_limit = round(pre_close * (1 - price_limit), 2)
-
-        # A3修复: turnover_rate可能为NULL(NaN)，row.get()返回NaN而非默认值999
-        # NaN/None → 999(不限制封板检测)，避免茅台等数据缺失股误判为封板
-        _t = row.get("turnover_rate")
-        turnover = 999.0 if (_t is None or pd.isna(_t)) else float(_t)
-
-        # 3. 封板判断
-        if direction == "buy" and abs(close - up_limit) < 0.015 and turnover < 1.0:
-            # 涨停封板: 收盘价≈涨停价 且 换手率<1%
-            return False
-        elif direction == "sell" and abs(close - down_limit) < 0.015 and turnover < 1.0:
-            # 跌停封板: 收盘价≈跌停价 且 换手率<1%
-            return False
-
-        return True
+        """判断是否可以成交。委托给ValidatorChain，拒绝原因可追溯。"""
+        ok, reason = self._validator.can_trade(code, direction, row)
+        if not ok and reason:
+            logger.debug("交易拒绝: %s %s %s — %s", code, direction, row.get("trade_date", "?"), reason)
+        return ok
 
     def calc_slippage(
         self,
