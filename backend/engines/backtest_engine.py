@@ -152,6 +152,15 @@ class BacktestResult:
     pending_order_stats: PendingOrderStats | None = None
     pms_events: list[dict] = field(default_factory=list)  # 利润保护触发事件
 
+    def metrics(self, num_trials: int = 69, **kwargs):
+        """生成完整绩效报告(Phase 2: P9)。
+
+        Args:
+            num_trials: M = FACTOR_TEST_REGISTRY累计测试数, 用于DSR计算。
+        """
+        from engines.metrics import generate_report
+        return generate_report(self, num_trials=num_trials, **kwargs)
+
 
 def _infer_price_limit(code: str) -> float:
     """从股票代码推断涨跌停幅度（纯计算，无IO）。

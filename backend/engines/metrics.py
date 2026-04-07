@@ -11,7 +11,7 @@ CLAUDE.md 回测报告必含指标:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -29,12 +29,13 @@ TRADING_DAYS_PER_YEAR = 244  # A股年交易日数
 @dataclass
 class PerformanceReport:
     """完整的回测绩效报告。"""
+
     # 核心指标
     total_return: float
     annual_return: float
     sharpe_ratio: float
     autocorr_adjusted_sharpe_ratio: float  # Lo (2002) 自相关调整Sharpe
-    autocorr_rho: float                    # 一阶自相关系数
+    autocorr_rho: float  # 一阶自相关系数
     max_drawdown: float
     calmar_ratio: float
     sortino_ratio: float
@@ -58,18 +59,27 @@ class PerformanceReport:
 
     # 仓位偏差
     mean_position_deviation: float  # mean(|actual_w - target_w|) * 100
-    max_position_deviation: float   # max(|actual_w - target_w|) * 100
-    total_cash_drag: float          # (1 - sum(actual_mv) / total_capital) * 100
+    max_position_deviation: float  # max(|actual_w - target_w|) * 100
+    total_cash_drag: float  # (1 - sum(actual_mv) / total_capital) * 100
+
+    # Phase 2: 新增指标
+    tracking_error: float = 0.0  # 年化跟踪误差(vs benchmark)
+    excess_max_drawdown: float = 0.0  # 超额收益序列最大回撤
+    max_dd_duration: int = 0  # 最长水下天数
+    deflated_sharpe: float = 0.0  # DSR p-value (Bailey & Lopez de Prado 2014)
+    num_trials: int = 0  # M = 多重测试次数
+    sub_periods: dict = field(default_factory=dict)  # 子期间分析 {period: metrics}
 
     # 年度分解
-    annual_breakdown: pd.DataFrame  # year → {return, sharpe, mdd}
+    annual_breakdown: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
 
     # 月度热力图数据
-    monthly_returns: pd.DataFrame  # year × month
+    monthly_returns: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
 
     # 警告标志（有默认值，放最后）
-    warning_negative_ci: bool = False   # Bootstrap CI 5%分位 < 0
+    warning_negative_ci: bool = False  # Bootstrap CI 5%分位 < 0
     warning_cost_sensitive: bool = False  # 2x成本下Sharpe < 0.5
+    warning_dsr_insignificant: bool = False  # DSR > 0.05 (Sharpe不显著)
 
     def to_dict(self) -> dict:
         """输出回测报告为标准dict（API/存储用）。"""
@@ -93,9 +103,142 @@ class PerformanceReport:
             "avg_overnight_gap": self.avg_open_gap,
             "position_deviation": self.mean_position_deviation,
             "cost_sensitivity": self.cost_sensitivity,
+            "tracking_error": self.tracking_error,
+            "excess_max_drawdown": self.excess_max_drawdown,
+            "max_dd_duration": self.max_dd_duration,
+            "deflated_sharpe": self.deflated_sharpe,
+            "num_trials": self.num_trials,
+            "sub_periods": self.sub_periods,
             "warning_negative_ci": self.warning_negative_ci,
             "warning_cost_sensitive": self.warning_cost_sensitive,
+            "warning_dsr_insignificant": self.warning_dsr_insignificant,
         }
+
+
+def deflated_sharpe_ratio(
+    observed_sr: float,
+    num_trials: int,
+    T: int,
+    skew: float,
+    kurtosis: float,
+) -> float:
+    """Deflated Sharpe Ratio — Bailey & Lopez de Prado (2014)。
+
+    检测多重测试下Sharpe是否显著高于随机预期。
+    DSR < 0.05 → Sharpe在M次测试中仍然显著（非运气）。
+
+    Args:
+        observed_sr: 观察到的年化Sharpe（已除以sqrt(252)标准化为日频）。
+        num_trials: M = 累计测试次数(FACTOR_TEST_REGISTRY总数)。
+        T: 观察天数。
+        skew: 日收益偏度。
+        kurtosis: 日收益峰度(excess kurtosis + 3 = raw kurtosis)。
+    """
+    from math import e, sqrt
+
+    from scipy.stats import norm
+
+    euler_mascheroni = 0.5772156649
+
+    if T <= 1 or num_trials <= 0:
+        return 0.0
+
+    # 标准化为日频Sharpe
+    sr_daily = observed_sr / sqrt(TRADING_DAYS_PER_YEAR)
+
+    # Sharpe标准误
+    sr_std = sqrt((1 - skew * sr_daily + (kurtosis - 3) / 4 * sr_daily**2) / (T - 1))
+    if sr_std < 1e-12:
+        return 0.0
+
+    # 多重测试下的期望最大Sharpe
+    expected_max_sr = sr_std * (
+        (1 - euler_mascheroni) * norm.ppf(1 - 1 / num_trials)
+        + euler_mascheroni * norm.ppf(1 - 1 / (num_trials * e))
+    )
+
+    # DSR = P(SR* < observed | M trials)
+    return float(norm.cdf((sr_daily - expected_max_sr) / sr_std))
+
+
+def calc_max_dd_duration(nav: pd.Series) -> int:
+    """最长水下天数（从峰值到恢复的最长时间）。"""
+    peak = nav.cummax()
+    underwater = peak > nav  # True = 在水下
+    if not underwater.any():
+        return 0
+
+    # 找连续水下区间
+    groups = (~underwater).cumsum()
+    underwater_groups = groups[underwater]
+    if underwater_groups.empty:
+        return 0
+    return int(underwater_groups.value_counts().max())
+
+
+def calc_excess_max_drawdown(
+    strategy_returns: pd.Series,
+    benchmark_returns: pd.Series,
+) -> float:
+    """超额收益序列的最大回撤。"""
+    common = strategy_returns.index.intersection(benchmark_returns.index)
+    if len(common) < 2:
+        return 0.0
+    excess = strategy_returns.loc[common] - benchmark_returns.loc[common]
+    excess_nav = (1 + excess).cumprod()
+    return calc_max_drawdown(excess_nav)
+
+
+def sub_period_analysis(
+    nav: pd.Series,
+    benchmark_nav: pd.Series | None = None,
+) -> dict[str, dict]:
+    """按年度+牛熊regime拆分指标。
+
+    Returns:
+        {period_name: {return, sharpe, mdd, sortino}}
+    """
+    results = {}
+
+    # 按年度 (index可能是date对象而非DatetimeIndex)
+    years_list = sorted({d.year for d in nav.index})
+    for year in years_list:
+        mask = pd.Index([d.year == year for d in nav.index])
+        year_nav = nav[mask]
+        if len(year_nav) < 10:
+            continue
+        year_ret = year_nav.pct_change().dropna()
+        ann_ret = float(year_nav.iloc[-1] / year_nav.iloc[0] - 1)
+        results[f"Y{year}"] = {
+            "return": round(ann_ret * 100, 2),
+            "sharpe": round(calc_sharpe(year_ret), 2),
+            "mdd": round(calc_max_drawdown(year_nav) * 100, 2),
+            "sortino": round(calc_sortino(year_ret), 2),
+        }
+
+    # 按牛熊(基准累计收益趋势)
+    if benchmark_nav is not None and len(benchmark_nav) > 20:
+        common = nav.index.intersection(benchmark_nav.index)
+        if len(common) > 20:
+            bench_ret = benchmark_nav.loc[common].pct_change().dropna()
+            bench_cum = bench_ret.cumsum()
+            bull_mask = bench_cum > bench_cum.expanding().mean()
+
+            for label, mask in [("Bull", bull_mask), ("Bear", ~bull_mask)]:
+                period_nav = nav.loc[common][mask.reindex(common, fill_value=False)]
+                if len(period_nav) < 10:
+                    continue
+                period_ret = period_nav.pct_change().dropna()
+                if len(period_ret) < 5:
+                    continue
+                results[label] = {
+                    "return": round(float((period_nav.iloc[-1] / period_nav.iloc[0] - 1) * 100), 2),
+                    "sharpe": round(calc_sharpe(period_ret), 2),
+                    "mdd": round(calc_max_drawdown(period_nav) * 100, 2),
+                    "sortino": round(calc_sortino(period_ret), 2),
+                }
+
+    return results
 
 
 def calc_sharpe(returns: pd.Series, rf: float = 0.0) -> float:
@@ -170,17 +313,13 @@ def calc_calmar(annual_return: float, max_dd: float) -> float:
 
 def calc_beta(strategy_returns: pd.Series, benchmark_returns: pd.Series) -> float:
     """策略Beta。"""
-    aligned = pd.DataFrame({
-        "s": strategy_returns, "b": benchmark_returns
-    }).dropna()
+    aligned = pd.DataFrame({"s": strategy_returns, "b": benchmark_returns}).dropna()
     if len(aligned) < 30 or aligned["b"].var() < 1e-12:
         return 0.0
     return float(aligned["s"].cov(aligned["b"]) / aligned["b"].var())
 
 
-def calc_information_ratio(
-    strategy_returns: pd.Series, benchmark_returns: pd.Series
-) -> float:
+def calc_information_ratio(strategy_returns: pd.Series, benchmark_returns: pd.Series) -> float:
     """信息比率 = 超额收益均值 / 超额收益标准差。"""
     excess = strategy_returns - benchmark_returns
     excess = excess.dropna()
@@ -265,9 +404,7 @@ def bootstrap_sharpe_ci(
     return (point, lower, upper)
 
 
-def calc_annual_breakdown(
-    nav: pd.Series, benchmark_nav: pd.Series
-) -> pd.DataFrame:
+def calc_annual_breakdown(nav: pd.Series, benchmark_nav: pd.Series) -> pd.DataFrame:
     """年度分解: 每年的收益/Sharpe/MDD。"""
     results = []
     years = sorted(set(d.year for d in nav.index))
@@ -291,13 +428,15 @@ def calc_annual_breakdown(
         else:
             bench_ret = float(bench_year.iloc[-1] / bench_year.iloc[0] - 1)
 
-        results.append({
-            "year": year,
-            "return": round(annual_ret * 100, 2),
-            "excess_return": round((annual_ret - bench_ret) * 100, 2),
-            "sharpe": round(sharpe, 2),
-            "mdd": round(mdd * 100, 2),
-        })
+        results.append(
+            {
+                "year": year,
+                "return": round(annual_ret * 100, 2),
+                "excess_return": round((annual_ret - bench_ret) * 100, 2),
+                "sharpe": round(sharpe, 2),
+                "mdd": round(mdd * 100, 2),
+            }
+        )
 
     return pd.DataFrame(results).set_index("year")
 
@@ -518,6 +657,7 @@ def calc_signal_execution_gap_hours(
 def generate_report(
     result: BacktestResult,
     price_data: pd.DataFrame | None = None,
+    **kwargs,
 ) -> PerformanceReport:
     """生成完整绩效报告。"""
     nav = result.daily_nav
@@ -561,7 +701,9 @@ def generate_report(
         cost_drag = base_cost * mult / TRADING_DAYS_PER_YEAR
         adj_returns = returns - cost_drag
         cost_sens[mult_str] = {
-            "annual_return": round(float((1 + adj_returns.sum()) ** (1 / max(years, 0.01)) - 1) * 100, 2),
+            "annual_return": round(
+                float((1 + adj_returns.sum()) ** (1 / max(years, 0.01)) - 1) * 100, 2
+            ),
             "sharpe": round(calc_sharpe(adj_returns), 2),
             "mdd": round(calc_max_drawdown(nav) * 100, 2),  # MDD不受成本影响
         }
@@ -569,11 +711,33 @@ def generate_report(
     # 跳空统计
     avg_gap = calc_open_gap_stats(result.trades, price_data) if price_data is not None else 0.0
 
-    # 仓位偏差（需要target_portfolios数据，generate_report无此参数，
-    # 保留默认值，由调用方通过calc_position_deviation单独计算）
+    # 仓位偏差
     mean_pos_dev = 0.0
     max_pos_dev = 0.0
     cash_drag = 0.0
+
+    # Phase 2: 新增指标
+    # P10: tracking_error (vs benchmark)
+    te = 0.0
+    if len(common_idx) > 10:
+        excess_ret = returns - bench_ret
+        te = float(excess_ret.std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100)
+
+    # P10: excess_max_drawdown
+    excess_mdd = calc_excess_max_drawdown(returns, bench_ret) if len(common_idx) > 10 else 0.0
+
+    # P9: max_dd_duration
+    dd_duration = calc_max_dd_duration(nav)
+
+    # P11: Deflated Sharpe Ratio
+    num_trials = kwargs.get("num_trials", 69)  # M默认从FACTOR_TEST_REGISTRY
+    T = len(returns)
+    skew_val = float(returns.skew()) if len(returns) > 10 else 0.0
+    kurt_val = float(returns.kurtosis() + 3) if len(returns) > 10 else 3.0  # raw kurtosis
+    dsr = deflated_sharpe_ratio(sharpe, num_trials, T, skew_val, kurt_val)
+
+    # P12: 子期间分析
+    sub_periods = sub_period_analysis(nav, bench_nav)
 
     # 年度分解
     annual = calc_annual_breakdown(nav, bench_nav)
@@ -584,6 +748,7 @@ def generate_report(
     # 警告标志
     warn_ci = bs_ci[1] < 0
     warn_cost = cost_sens.get("2.0x", {}).get("sharpe", 1.0) < 0.5
+    warn_dsr = dsr > 0.05
 
     return PerformanceReport(
         total_return=round(total_return * 100, 2),
@@ -603,17 +768,26 @@ def generate_report(
         annual_turnover=round(annual_turnover, 2),
         max_consecutive_loss_days=max_loss_days,
         bootstrap_sharpe_ci=(
-            round(bs_ci[0], 2), round(bs_ci[1], 2), round(bs_ci[2], 2)
+            round(bs_ci[0], 2),
+            round(bs_ci[1], 2),
+            round(bs_ci[2], 2),
         ),
         cost_sensitivity=cost_sens,
         avg_open_gap=round(avg_gap * 100, 4),
         mean_position_deviation=round(mean_pos_dev, 2),
         max_position_deviation=round(max_pos_dev, 2),
         total_cash_drag=round(cash_drag, 2),
+        tracking_error=round(te, 2),
+        excess_max_drawdown=round(excess_mdd * 100, 2),
+        max_dd_duration=dd_duration,
+        deflated_sharpe=round(dsr, 4),
+        num_trials=num_trials,
+        sub_periods=sub_periods,
         annual_breakdown=annual,
         monthly_returns=monthly,
         warning_negative_ci=warn_ci,
         warning_cost_sensitive=warn_cost,
+        warning_dsr_insignificant=warn_dsr,
     )
 
 
@@ -636,6 +810,9 @@ def print_report(report: PerformanceReport):
     print(f"{'Sortino':>12}: {report.sortino_ratio:>8.2f}")
     print(f"{'Beta':>12}: {report.beta:>8.3f}")
     print(f"{'IR':>12}: {report.information_ratio:>8.2f}")
+    print(f"{'Tracking Err':>12}: {report.tracking_error:>8.2f}%")
+    print(f"{'超额MDD':>12}: {report.excess_max_drawdown:>8.2f}%")
+    print(f"{'水下天数':>12}: {report.max_dd_duration:>8d}")
 
     print("\n--- 交易统计 ---")
     print(f"{'总交易次数':>12}: {report.total_trades:>8d}")
@@ -654,7 +831,9 @@ def print_report(report: PerformanceReport):
     print("\n--- 成本敏感性 ---")
     print(f"  {'成本倍数':>8}  {'年化收益':>8}  {'Sharpe':>8}  {'MDD':>8}")
     for mult, data in report.cost_sensitivity.items():
-        print(f"  {mult:>8}  {data['annual_return']:>7.2f}%  {data['sharpe']:>8.2f}  {data['mdd']:>7.2f}%")
+        print(
+            f"  {mult:>8}  {data['annual_return']:>7.2f}%  {data['sharpe']:>8.2f}  {data['mdd']:>7.2f}%"
+        )
 
     print("\n--- 隔夜跳空 ---")
     print(f"  买入日平均跳空: {report.avg_open_gap:.4f}%")
@@ -664,8 +843,23 @@ def print_report(report: PerformanceReport):
     print(f"  {'最大偏差':>12}: {report.max_position_deviation:>8.2f}%")
     print(f"  {'现金拖累':>12}: {report.total_cash_drag:>8.2f}%")
 
+    print(f"\n--- Deflated Sharpe Ratio (M={report.num_trials}) ---")
+    print(f"  DSR p-value: {report.deflated_sharpe:.4f}")
+    if report.deflated_sharpe < 0.05:
+        print("  ✅ Sharpe显著(p<0.05, 非多重测试运气)")
+    else:
+        print("  ⚠️ Sharpe不显著(p>0.05, 可能是多重测试偶然)")
+
     print("\n--- 年度分解 ---")
     if not report.annual_breakdown.empty:
         print(report.annual_breakdown.to_string())
+
+    if report.sub_periods:
+        print("\n--- 子期间分析 ---")
+        print(f"  {'期间':<8} {'收益%':>8} {'Sharpe':>8} {'MDD%':>8} {'Sortino':>8}")
+        for period, m in report.sub_periods.items():
+            print(
+                f"  {period:<8} {m['return']:>8.2f} {m['sharpe']:>8.2f} {m['mdd']:>8.2f} {m['sortino']:>8.2f}"
+            )
 
     print("\n" + "=" * 60)
