@@ -55,8 +55,21 @@
 - **ValidatorChain**: 可组合验证器(Suspension/DataCompleteness/PriceLimit), 拒绝原因可追溯
 - **P15+P16**: iterrows→MultiIndex + pivot daily_close(上session完成)
 
+### Phase 4 ✅ 完成 (2026-04-08)
+- **4.1 run_composite_backtest()**: Phase A核心信号 + Modifier链调节 → Phase B执行
+- **4.3 BaseExecutor + SimpleExecutor**: 统一执行接口, NestedExecutor预留
+- **4.4 QuantMindQlibAdapter**: factor_values → StaticDataLoader, 不需qlib.init()
+- **4.2 H0校准**: ⏳ 待QMT实际成交数据入库(当前trade_log仅SimBroker数据)
+
+### 回测引擎加固总结
+- **17项审计问题**: Phase 1-3全部完成(P1-P17), Phase 4核心3项完成
+- **Sharpe基线**: 1.24 → 0.94(真实值, 5层验证), DSR=0.375(M=69)
+- **新增能力**: metrics()/DSR/子期间/ValidatorChain/退市/MultiIndex/Composite回测/Qlib适配
+
 ### 待执行
-- Phase 4: Qlib ML集成 + Executor抽象 + CompositeSignalEngine
+- H0成本模型校准(待QMT实盘数据)
+- 因子研究: 30个PASS候选入池评估(DSR驱动)
+- 盈利公告因子 + 分钟聚合因子 + 北向MODIFIER
 
 ### 因子候选研究 (2026-04-07)
 - 5个PASS因子paired bootstrap: 仅vwap_bias_1d边际(p=0.046), 其余4个不显著
