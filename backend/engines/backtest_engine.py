@@ -264,6 +264,77 @@ class ValidatorChain:
 
 
 # ============================================================
+# BaseExecutor — 执行器抽象 (Phase 4)
+# ============================================================
+
+class BaseExecutor:
+    """执行器基类。将交易决策转为实际成交。
+
+    Phase 4前置: 为NestedExecutor(月度→日度多层执行)预留扩展点。
+    当前仅有SimpleExecutor(直接调用SimBroker)。
+    """
+
+    def execute(
+        self,
+        trade_decision: dict[str, float],
+        broker: SimBroker,
+        portfolio_value: float,
+        exec_date: date,
+        price_idx,
+        daily_close: dict,
+    ) -> list[Fill]:
+        """执行交易决策。
+
+        Args:
+            trade_decision: {code: target_weight}
+            broker: SimBroker实例
+            portfolio_value: 当前组合市值
+            exec_date: 执行日期
+            price_idx: 价格索引
+            daily_close: {code: close}
+
+        Returns:
+            成交记录列表
+        """
+        raise NotImplementedError
+
+
+class SimpleExecutor(BaseExecutor):
+    """直接执行: 先卖后买, 委托SimBroker。"""
+
+    def execute(self, trade_decision, broker, portfolio_value, exec_date, price_idx, daily_close):
+        fills = []
+        target = trade_decision
+
+        # 先卖(不在目标或超配)
+        for code in list(broker.holdings.keys()):
+            if code not in target:
+                row = price_idx.get((code, exec_date))
+                if row is not None and broker.can_trade(code, "sell", row):
+                    shares = broker.holdings.get(code, 0)
+                    if shares > 0:
+                        fill = broker.execute_sell(code, shares, row)
+                        if fill:
+                            fills.append(fill)
+
+        # 后买
+        for code, weight in sorted(target.items(), key=lambda x: -x[1]):
+            if code in broker.holdings:
+                continue
+            row = price_idx.get((code, exec_date))
+            if row is None or not broker.can_trade(code, "buy", row):
+                continue
+            buy_amount = portfolio_value * weight
+            if broker.cash < buy_amount * 0.1:
+                break
+            fill = broker.execute_buy(code, min(buy_amount, broker.cash), row)
+            if fill:
+                fills.append(fill)
+
+        return fills
+
+
+# ============================================================
 # SimBroker — 模拟交易执行
 # ============================================================
 
@@ -1151,6 +1222,116 @@ def run_hybrid_backtest(
 
     if not target_portfolios:
         raise ValueError("Phase A信号生成失败: target_portfolios为空")
+
+    # Phase B: 事件驱动执行
+    tester = SimpleBacktester(config)
+    return tester.run(target_portfolios, price_data, benchmark_data, dividend_calendar)
+
+
+# ============================================================
+# Composite 回测入口 (Phase 4)
+# ============================================================
+
+def run_composite_backtest(
+    factor_df: pd.DataFrame,
+    directions: dict[str, int],
+    price_data: pd.DataFrame,
+    config: BacktestConfig,
+    modifiers: list | None = None,
+    benchmark_data: pd.DataFrame | None = None,
+    signal_config: SignalConfig | None = None,
+    datafeed: DataFeed | None = None,
+    dividend_calendar: dict[date, list[CorporateAction]] | None = None,
+) -> BacktestResult:
+    """CompositeStrategy回测: Phase A核心信号 + Modifier调节 → Phase B执行。
+
+    与run_hybrid_backtest的区别: 在Phase A生成基础权重后，
+    逐日应用Modifier链调节权重(RegimeModifier等)再交给Phase B执行。
+
+    Args:
+        factor_df: 因子长表 (code, trade_date, factor_name, raw_value)
+        directions: {factor_name: direction}
+        price_data: 全量价格数据
+        config: 回测配置
+        modifiers: ModifierBase实例列表(为None时等同run_hybrid_backtest)
+        benchmark_data: 基准指数数据
+        signal_config: Phase A信号配置
+        datafeed: DataFeed数据源
+        dividend_calendar: 分红日历
+
+    Returns:
+        BacktestResult
+    """
+    from engines.vectorized_signal import (
+        SignalConfig,
+        build_target_portfolios,
+        compute_rebalance_dates,
+    )
+
+    if datafeed is not None:
+        from engines.datafeed import DataFeed
+        if isinstance(datafeed, DataFeed):
+            price_data = datafeed.df
+
+    # Phase A: 核心策略信号(等权排序)
+    if signal_config is None:
+        signal_config = SignalConfig(
+            top_n=config.top_n,
+            rebalance_freq=config.rebalance_freq,
+        )
+
+    trading_days = sorted(price_data["trade_date"].unique())
+    rebal_dates = compute_rebalance_dates(trading_days, signal_config.rebalance_freq)
+
+    target_portfolios = build_target_portfolios(
+        factor_df, directions, rebal_dates, signal_config,
+    )
+
+    if not target_portfolios:
+        raise ValueError("Phase A信号生成失败: target_portfolios为空")
+
+    # Phase A.5: Modifier调节
+    if modifiers:
+        from engines.base_strategy import StrategyContext
+
+        adjusted_portfolios: dict[date, dict[str, float]] = {}
+        for signal_date, base_weights in target_portfolios.items():
+            # 构造轻量StrategyContext(回测模式, 无DB连接)
+            ctx = StrategyContext(
+                strategy_id="backtest",
+                trade_date=signal_date,
+                factor_df=factor_df[factor_df["trade_date"] == signal_date]
+                if "trade_date" in factor_df.columns
+                else factor_df,
+                universe=set(base_weights.keys()),
+                industry_map={},
+                prev_holdings=None,
+                conn=None,
+            )
+
+            adjusted = dict(base_weights)
+            for modifier in modifiers:
+                if modifier.should_trigger(ctx):
+                    result = modifier.compute_adjustments(adjusted, ctx)
+                    if result.triggered:
+                        # 应用调节因子
+                        for code, factor in result.adjustment_factors.items():
+                            if code in adjusted:
+                                adjusted[code] *= max(
+                                    modifier.clip_low,
+                                    min(factor, modifier.clip_high),
+                                )
+                        # 归一化权重
+                        total = sum(adjusted.values())
+                        if total > 0:
+                            adjusted = {c: w / total for c, w in adjusted.items()}
+                        logger.info(
+                            "[Composite] %s: %s triggered (%s)",
+                            signal_date, modifier.name, result.reasoning,
+                        )
+
+            adjusted_portfolios[signal_date] = adjusted
+        target_portfolios = adjusted_portfolios
 
     # Phase B: 事件驱动执行
     tester = SimpleBacktester(config)
