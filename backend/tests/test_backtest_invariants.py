@@ -237,16 +237,16 @@ class TestPriceLimitBlock:
         price_data = _make_price_data(["000001.SZ"], dates, {"000001.SZ": p})
 
         config = _simple_config(top_n=1)
-        # 信号D3 → 执行D4, D4是涨停日后的正常日, 应该可以买
-        # D2信号 → D3执行, D3涨停封板(close=up_limit=11.0, turnover=0.3)
-        target_blocked = {date(2024, 1, 2): {"000001.SZ": 1.0}}
+        # dates=[1/2,1/3,1/4,1/5], 涨停在index 2即1/4
+        # 信号D3(1/3) → 执行D4(1/4), D4是涨停封板日
+        target_blocked = {date(2024, 1, 3): {"000001.SZ": 1.0}}
         result_blocked = SimpleBacktester(config).run(target_blocked, price_data)
-        # 涨停封板日买入应进入pending(非直接成交)
-        direct_buys_d3 = [
+        # 涨停封板日(1/4)买入应进入pending(非直接成交)
+        direct_buys_d4 = [
             t for t in result_blocked.trades
-            if t.direction == "buy" and t.trade_date == date(2024, 1, 3)
+            if t.direction == "buy" and t.trade_date == date(2024, 1, 4)
         ]
-        assert len(direct_buys_d3) == 0, "涨停封板日不应直接成交"
+        assert len(direct_buys_d4) == 0, "涨停封板日不应直接成交"
 
     def test_limit_down_blocks_sell(self):
         """跌停封板(close≈down_limit且turnover<1%) → 卖出被拒。"""

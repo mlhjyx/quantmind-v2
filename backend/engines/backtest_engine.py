@@ -587,18 +587,34 @@ class SimpleBacktester:
             if future_dates:
                 exec_map[future_dates[0]] = sd
 
-        # 价格索引: (code, date) → row
-        # A10: mergesort保证相同key下行顺序确定性（quicksort不稳定）
+        # 价格索引: MultiIndex (code, trade_date) → 快速.loc查询
+        # P15: 替代iterrows()遍历6M行，回测启动从分钟级→秒级
         price_data = price_data.sort_values(["trade_date", "code"], kind="mergesort")
-        price_idx = {}
-        for _, row in price_data.iterrows():
-            price_idx[(row["code"], row["trade_date"])] = row
+        # 保留code/trade_date列副本，set_index后仍可通过row["trade_date"]访问
+        if "code" not in price_data.columns or "trade_date" not in price_data.columns:
+            raise ValueError("price_data必须包含code和trade_date列")
+        price_indexed = price_data.set_index(["code", "trade_date"])
+        # 将index值写回为普通列，使row["code"]和row["trade_date"]仍可访问
+        price_indexed["code"] = price_indexed.index.get_level_values(0)
+        price_indexed["trade_date"] = price_indexed.index.get_level_values(1)
+        price_indexed = price_indexed.sort_index()
+        _idx_set = set(price_indexed.index)  # O(1)存在性检查
 
-        # 每日收盘价
-        daily_close = {}
-        for d in all_dates:
-            day_data = price_data[price_data["trade_date"] == d]
-            daily_close[d] = dict(zip(day_data["code"], day_data["close"], strict=False))
+        class _PriceIdx:
+            """price_idx.get((code, date))兼容层，底层用MultiIndex .loc。"""
+            __slots__ = ()
+            def get(self, key, default=None):
+                if key in _idx_set:
+                    return price_indexed.loc[key]
+                return default
+
+        price_idx = _PriceIdx()
+
+        # 每日收盘价: P16优化 — pivot一次性构建
+        close_pivot = price_data.pivot_table(
+            index="trade_date", columns="code", values="close", aggfunc="last",
+        )
+        daily_close = {d: row.dropna().to_dict() for d, row in close_pivot.iterrows()}
 
         # 回测主循环
         nav_series = {}
