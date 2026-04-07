@@ -121,11 +121,18 @@ quantmind-v2/
 │   ├── components/              # 53个共享组件
 │   └── store/                   # Zustand 4个store
 ├── scripts/
-│   ├── run_paper_trading.py     # ⭐ PT主脚本（~1511行，运行期间禁改）
+│   ├── run_paper_trading.py     # ⭐ PT主脚本（~1600行，QMT数据源）
+│   ├── run_backtest.py          # 回测脚本(PT依赖)
+│   ├── qmt_data_service.py      # QMT数据同步→Redis(Servy常驻)
+│   ├── health_check.py          # 盘前健康检查
 │   ├── monitor_factor_ic.py     # 因子IC监控
 │   ├── pt_watchdog.py           # PT心跳监控
 │   ├── pg_backup.py             # 数据库备份
-│   └── data_quality_check.py    # 数据巡检
+│   ├── data_quality_check.py    # 数据巡检
+│   ├── approve_l4.py            # L4熔断恢复CLI(紧急)
+│   ├── cancel_stale_orders.py   # QMT紧急撤单(紧急)
+│   ├── archive/                 # 131个归档脚本(审计完成, README.md有说明)
+│   └── research/                # 研究脚本(验证/回测实验)
 ├── cache/                       # Parquet缓存（profiler/中性化用）
 ├── docs/research-kb/            # 研究知识库（failed/findings/decisions）
 ├── .claude/skills/              # 7个自定义skills(factor-discovery/research/overnight/db-safety/performance/research-kb/omc-reference)
