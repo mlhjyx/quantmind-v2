@@ -66,10 +66,17 @@
 - **Sharpe基线**: 1.24 → 0.94(真实值, 5层验证), DSR=0.375(M=69)
 - **新增能力**: metrics()/DSR/子期间/ValidatorChain/退市/MultiIndex/Composite回测/Qlib适配
 
+### 因子研究 + 北向MODIFIER (2026-04-08)
+- **因子独立性筛选**: 43候选→17个独立因子通过(与Active |corr|<0.7)
+  - Top: price_volume_corr_20(ICIR=1.02), large_order_ratio(0.87), a158_corr5(0.91)
+- **NorthboundModifier**: 8个V2行为因子→综合z-score→3级缩放(恐慌50%/消极70%/中性100%)
+  - 8/60月触发(2022/2023熊市+2024恐慌), 从hold_vol差分计算净买入
+- **Composite回测**: Sharpe 0.840→0.890(+0.05), MDD -52%→-50%(+2pp), Sortino 1.11→1.20
+
 ### 待执行
 - H0成本模型校准(待QMT实盘数据)
-- 因子研究: 30个PASS候选入池评估(DSR驱动)
-- 盈利公告因子 + 分钟聚合因子 + 北向MODIFIER
+- 独立因子paired bootstrap回测(17个候选 vs 基线)
+- 盈利公告因子H1季报扩展 + 分钟聚合因子
 
 ### 因子候选研究 (2026-04-07)
 - 5个PASS因子paired bootstrap: 仅vwap_bias_1d边际(p=0.046), 其余4个不显著
