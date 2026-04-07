@@ -3,6 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\setup_task_scheduler.ps1
 #
 # 调度链路(优化后):
+#   T日 06:00  QM-LogRotate                     日志轮转+7天保留
 #   T日 02:00  QM-DailyBackup                   pg_dump备份
 #   T日 16:25  QM-HealthCheck                   健康预检
 #   T日 16:30  QuantMind_DailySignal             数据拉取(klines+basic+index)+因子+信号
@@ -320,6 +321,31 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_GPPipeline registered (Saturday 02:00)" -ForegroundColor Green
 
+# ── 13. QM-LogRotate: 每日06:00 ─────────────────────
+$lrAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\log_rotate.py" `
+    -WorkingDirectory $ProjectRoot
+
+$lrTrigger = New-ScheduledTaskTrigger -Daily -At "06:00"
+
+$lrSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QM-LogRotate" `
+    -Description "QuantMind V2: Daily log rotation + 7-day retention" `
+    -Action $lrAction `
+    -Trigger $lrTrigger `
+    -Settings $lrSettings `
+    -Force
+
+Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete (12 tasks). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (13 tasks). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
