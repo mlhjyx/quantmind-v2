@@ -42,9 +42,15 @@
 - **归档破损修复**: 6个脚本恢复, 131个文件全量审计无其他破损
 - **PT切QMT**: NAV/持仓/绩效全面切到QMT实际数据, PaperBroker降级对比工具
 
+### Phase 2 ✅ 完成 (2026-04-08)
+- **BacktestResult.metrics()**: 一行调用生成完整报告(20+指标)
+- **DSR**: deflated_sharpe_ratio(M=69)=0.375 ⚠️ Sharpe=0.94在69次测试中不显著
+- **新指标**: tracking_error=22.72%, excess_mdd=-35.70%, max_dd_duration=803天
+- **子期间**: Bull Sharpe=2.93 / Bear=0.85, 年度+牛熊自动拆分
+- **P13换手率**: 每日记录(含PMS/补单), 年化9.25(之前7.46)
+
 ### 待执行
-- Phase 2(下一步): 分析专业化(metrics/DSR/benchmark/子期间/执行质量)
-- Phase 3: 性能+健壮性(MultiIndex/ValidatorChain/退市)
+- Phase 3: 性能+健壮性(ValidatorChain/退市/单位转换集中化)
 - Phase 4: Qlib ML集成 + Executor抽象 + CompositeSignalEngine
 
 ### 因子候选研究 (2026-04-07)
