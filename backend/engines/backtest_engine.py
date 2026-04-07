@@ -1242,6 +1242,7 @@ def run_composite_backtest(
     signal_config: SignalConfig | None = None,
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
+    conn=None,  # DB连接(Modifier需要查询北向等数据)
 ) -> BacktestResult:
     """CompositeStrategy回测: Phase A核心信号 + Modifier调节 → Phase B执行。
 
@@ -1296,7 +1297,6 @@ def run_composite_backtest(
 
         adjusted_portfolios: dict[date, dict[str, float]] = {}
         for signal_date, base_weights in target_portfolios.items():
-            # 构造轻量StrategyContext(回测模式, 无DB连接)
             ctx = StrategyContext(
                 strategy_id="backtest",
                 trade_date=signal_date,
@@ -1306,7 +1306,7 @@ def run_composite_backtest(
                 universe=set(base_weights.keys()),
                 industry_map={},
                 prev_holdings=None,
-                conn=None,
+                conn=conn,
             )
 
             adjusted = dict(base_weights)
@@ -1314,20 +1314,17 @@ def run_composite_backtest(
                 if modifier.should_trigger(ctx):
                     result = modifier.compute_adjustments(adjusted, ctx)
                     if result.triggered:
-                        # 应用调节因子
+                        # 应用调节因子(不归一化 — 缩放意味着减仓到现金)
                         for code, factor in result.adjustment_factors.items():
                             if code in adjusted:
                                 adjusted[code] *= max(
                                     modifier.clip_low,
                                     min(factor, modifier.clip_high),
                                 )
-                        # 归一化权重
-                        total = sum(adjusted.values())
-                        if total > 0:
-                            adjusted = {c: w / total for c, w in adjusted.items()}
                         logger.info(
-                            "[Composite] %s: %s triggered (%s)",
+                            "[Composite] %s: %s triggered (%s), weight_sum=%.2f",
                             signal_date, modifier.name, result.reasoning,
+                            sum(adjusted.values()),
                         )
 
             adjusted_portfolios[signal_date] = adjusted
