@@ -752,25 +752,26 @@ class SimpleBacktester:
                         if code not in broker.holdings:
                             pms_state.pop(code, None)
 
-                # 记录换手率
-                new_weights = {}
-                for code, shares in broker.holdings.items():
-                    p = daily_close.get(td, {}).get(code, 0)
-                    if portfolio_value > 0:
-                        new_weights[code] = shares * p / portfolio_value
-
-                turnover = sum(
-                    abs(new_weights.get(c, 0) - prev_weights.get(c, 0))
-                    for c in set(new_weights) | set(prev_weights)
-                ) / 2
-                turnover_dates[td] = turnover
-                prev_weights = new_weights
-
                 holdings_history[td] = dict(broker.holdings)
 
+            # P13: 每日记录换手率(含PMS卖出/封板补单, 不限于调仓日)
+            pv = broker.get_portfolio_value(daily_close.get(td, {}))
+            new_weights = {}
+            for code, shares in broker.holdings.items():
+                p = daily_close.get(td, {}).get(code, 0)
+                if pv > 0:
+                    new_weights[code] = shares * p / pv
+
+            turnover = sum(
+                abs(new_weights.get(c, 0) - prev_weights.get(c, 0))
+                for c in set(new_weights) | set(prev_weights)
+            ) / 2
+            if turnover > 0.001:  # 忽略浮点噪声
+                turnover_dates[td] = turnover
+            prev_weights = new_weights
+
             # 每日NAV
-            prices = daily_close.get(td, {})
-            nav_series[td] = broker.get_portfolio_value(prices)
+            nav_series[td] = pv
 
         # 转换结果
         nav = pd.Series(nav_series).sort_index()
