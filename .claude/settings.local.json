@@ -21,7 +21,14 @@
       "WebFetch(domain:www.datadoghq.com)",
       "WebFetch(domain:snowan.gitbook.io)",
       "mcp__Claude_Preview__preview_start",
-      "mcp__Figma__get_metadata"
+      "mcp__Figma__get_metadata",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:qlib.readthedocs.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:tianpan.co)",
+      "WebFetch(domain:actorsfit.com)",
+      "WebFetch(domain:db-engines.com)",
+      "WebFetch(domain:docs.dolphindb.com)"
     ]
   }
 }

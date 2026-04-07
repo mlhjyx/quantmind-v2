@@ -423,6 +423,16 @@ class BacktestConfig:
 # start_date/end_date/exec_price/weight_method/industry_cap_pct等)，实际未实现。
 
 # 架构: SimpleBacktester + SimBroker（非设计文档描述的Hybrid Phase A/B）
+
+# ⚠️ 2026-04-07审计发现的已知问题（加固计划Phase 1修复中）:
+# - 缺分红除权处理（5年累计~10%偏差）
+# - 印花税固定0.05%（2023-08-28前应为0.1%）
+# - 无最低佣金5元/笔
+# - overnight_gap滑点未接入SimBroker（slippage_model.py中是死代码）
+# - pre_close缺失时can_trade静默返回False（已修复校验）
+# - Phase A无z-score clip±3
+# - BacktestResult无内置metrics/DSR/benchmark相对指标
+# 详见: docs/BACKTEST_ENGINE_HARDENING_PLAN.md
 ```
 
 ### 6.7 GPEngine (`backend/engines/mining/gp_engine.py`, ~1262行)

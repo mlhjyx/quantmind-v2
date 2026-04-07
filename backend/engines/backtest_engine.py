@@ -25,7 +25,7 @@ import pandas as pd
 import structlog
 
 from engines.base_broker import BaseBroker
-from engines.slippage_model import SlippageConfig, volume_impact_slippage
+from engines.slippage_model import SlippageConfig, overnight_gap_cost, volume_impact_slippage
 
 if TYPE_CHECKING:
     from engines.datafeed import DataFeed
@@ -70,7 +70,8 @@ class BacktestConfig:
     slippage_mode: str = "volume_impact"  # 'volume_impact' | 'fixed'
     slippage_config: SlippageConfig = field(default_factory=SlippageConfig)
     commission_rate: float = 0.0000854  # 佣金万0.854（国金证券实际费率）
-    stamp_tax_rate: float = 0.0005   # 印花税千0.5(仅卖出)
+    stamp_tax_rate: float = 0.0005   # 印花税千0.5(仅卖出), historical_stamp_tax=True时此值被覆盖
+    historical_stamp_tax: bool = True  # P3: 启用历史税率(2023-08-28前0.1%, 后0.05%)
     transfer_fee_rate: float = 0.00001  # 过户费万0.1
     lot_size: int = 100  # A股最小交易单位
     turnover_cap: float = 0.50
@@ -92,6 +93,22 @@ class Fill:
     tax: float
     slippage: float
     total_cost: float
+
+
+@dataclass
+class CorporateAction:
+    """分红/送股/拆股事件（P1+P2）。
+
+    ex_date当日开盘前处理:
+    - cash_div_per_share: 每股现金分红(税前，元)
+    - stock_div_ratio: 送股比例(如10送5=0.5)
+    - tax_rate: 红利税率(持股>1年免税=0, <1月=0.20, 1月-1年=0.10)
+    """
+    code: str
+    ex_date: date
+    cash_div_per_share: float = 0.0
+    stock_div_ratio: float = 0.0
+    tax_rate: float = 0.10  # 默认10%(持股1月-1年)
 
 
 @dataclass
@@ -204,6 +221,10 @@ class SimBroker(BaseBroker):
         pre_close = row.get("pre_close", 0)
 
         if close == 0 or pre_close == 0:
+            logger.warning(
+                "数据不完整: code=%s date=%s close=%s pre_close=%s → 跳过交易",
+                code, row.get("trade_date", "?"), close, pre_close,
+            )
             return False
 
         # 2. 获取涨跌停价(优先用数据中的up_limit/down_limit)
@@ -281,6 +302,23 @@ class SimBroker(BaseBroker):
                 config=self.config.slippage_config,
                 sigma_daily=sigma_daily,
             )
+
+            # P5: 接入隔夜跳空成本(R4研究: ~10-15bps/笔)
+            open_price = row.get("open", 0)
+            prev_close = row.get("pre_close", 0)
+            if open_price > 0 and prev_close > 0:
+                gap_penalty = (
+                    self.config.slippage_config.gap_penalty_factor
+                    if self.config.slippage_config is not None
+                    else 0.5
+                )
+                gap_bps = overnight_gap_cost(
+                    open_price=float(open_price),
+                    prev_close=float(prev_close),
+                    gap_penalty_factor=gap_penalty,
+                )
+                total_bps += gap_bps
+
             return price * total_bps / 10000
         else:
             return price * self.config.slippage_bps / 10000
@@ -325,7 +363,15 @@ class SimBroker(BaseBroker):
 
         amount = exec_price * shares
         commission = max(amount * self.config.commission_rate, 5.0)  # 最低5元
-        tax = amount * self.config.stamp_tax_rate  # 印花税仅卖出
+        # P3: 印花税历史税率(2023-08-28起0.05%, 之前0.1%)
+        if self.config.historical_stamp_tax:
+            trade_date = row.get("trade_date", date.today())
+            if isinstance(trade_date, str):
+                trade_date = date.fromisoformat(trade_date)
+            stamp_tax_rate = 0.0005 if trade_date >= date(2023, 8, 28) else 0.001
+        else:
+            stamp_tax_rate = self.config.stamp_tax_rate
+        tax = amount * stamp_tax_rate  # 印花税仅卖出
         transfer_fee = amount * self.config.transfer_fee_rate
         total_cost = commission + tax + transfer_fee
 
@@ -443,6 +489,48 @@ class SimBroker(BaseBroker):
         """每日开始时重置日内状态。"""
         self._sell_proceeds_today = 0.0
 
+    def process_corporate_actions(
+        self, actions: list[CorporateAction],
+    ) -> list[dict]:
+        """处理分红/送股事件(P1+P2)，在每日开盘前调用。
+
+        Args:
+            actions: 当日除权除息事件列表。
+
+        Returns:
+            处理记录列表，用于日志追踪。
+        """
+        records = []
+        for action in actions:
+            code = action.code
+            shares = self.holdings.get(code, 0)
+            if shares <= 0:
+                continue
+
+            record = {"code": code, "ex_date": action.ex_date, "shares_before": shares}
+
+            # P1: 现金分红(税后)
+            if action.cash_div_per_share > 0:
+                tax_rate = action.tax_rate
+                net_div = action.cash_div_per_share * (1 - tax_rate)
+                cash_received = net_div * shares
+                self.cash += cash_received
+                record["cash_dividend"] = cash_received
+                record["tax_rate"] = tax_rate
+
+            # P2: 送股/拆股(持仓数量调整，NAV不变因为除权日股价已调整)
+            if action.stock_div_ratio > 0:
+                new_shares = int(shares * (1 + action.stock_div_ratio))
+                self.holdings[code] = new_shares
+                record["shares_after"] = new_shares
+                record["stock_div_ratio"] = action.stock_div_ratio
+
+            records.append(record)
+
+        if records:
+            logger.info("分红/送股处理: %d笔", len(records))
+        return records
+
 
 # ============================================================
 # SimpleBacktester — 单次回测
@@ -471,6 +559,7 @@ class SimpleBacktester:
         target_portfolios: dict[date, dict[str, float]],
         price_data: pd.DataFrame,
         benchmark_data: pd.DataFrame | None = None,
+        dividend_calendar: dict[date, list[CorporateAction]] | None = None,
     ) -> BacktestResult:
         """执行回测。
 
@@ -526,6 +615,12 @@ class SimpleBacktester:
 
         for _i, td in enumerate(all_dates):
             broker.new_day()
+
+            # ===== P1+P2: 分红/送股处理(开盘前) =====
+            if dividend_calendar:
+                day_actions = dividend_calendar.get(td, [])
+                if day_actions:
+                    broker.process_corporate_actions(day_actions)
 
             # ===== PMS: 执行T+1延迟卖出 =====
             if self.config.pms.enabled and pms_pending_sells:
@@ -929,6 +1024,7 @@ def run_hybrid_backtest(
     benchmark_data: pd.DataFrame | None = None,
     signal_config: SignalConfig | None = None,
     datafeed: DataFeed | None = None,
+    dividend_calendar: dict[date, list[CorporateAction]] | None = None,
 ) -> BacktestResult:
     """Hybrid回测: Phase A向量化信号 → Phase B事件驱动执行。
 
@@ -977,4 +1073,4 @@ def run_hybrid_backtest(
 
     # Phase B: 事件驱动执行
     tester = SimpleBacktester(config)
-    return tester.run(target_portfolios, price_data, benchmark_data)
+    return tester.run(target_portfolios, price_data, benchmark_data, dividend_calendar)

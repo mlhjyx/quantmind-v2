@@ -9,7 +9,7 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, PT QMT live运行中, Sharpe基线=1.15(Top-20+无行业约束+PMS), 毕业阈值≈0.56-0.60
+- **当前**: Phase A-F完成, v3.8路线图, PT QMT live运行中, Sharpe基线=0.94(Phase 1加固后真实值), 毕业阈值≈0.56-0.60
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
 - **下一步**: 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER) → 阶段4(CompositeSignalEngine)
@@ -310,12 +310,11 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 调仓: 月度（月末最后交易日）
 约束: 行业上限=无(PT_INDUSTRY_CAP=1.0), 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
 基线(旧): Sharpe=0.91（2021-2025全5年, Top-15+行业25%, WLS+volume_impact无流动性过滤）, MDD=-43.03%
-基线(新,已部署): Sharpe=1.15（Top-20+无行业约束+PMS same_close）, MDD=-35.1%, Calmar=0.83
-# 0.91为旧配置5年全量回测值。1.15为当前部署配置。DSR保守估计=0.70-0.85
-# run_backtest.py验证(2026-04-06): Sharpe=1.24(同配置3次确定性PASS), MDD=-34.95%, Calmar=0.93
-# 1.24 vs 1.15差异0.09待追溯(可能年化方法或PMS执行模式差异)
+基线(Phase 1加固后): Sharpe=0.94, 年化22.57%, MDD=-40.77%, Calmar=0.55, Sortino=1.19, IR=1.09
+# Phase 1修复(2026-04-07): 印花税历史税率(2023前0.1%)+overnight_gap三因素+z-score clip±3+DataFeed校验
+# 旧值1.24→0.94, 降0.30符合预期。旧值因缺印花税历史税率+缺overnight_gap而虚高
 # FF3归因: Alpha=21.1%/年(t=2.45), 但2023-2025 OOS Alpha仅+6.6%(t=0.58不显著), 近年靠SMB beta盈利
-成本: 佣金万0.854(国金实际) + 印花税0.05%(卖出) + 过户费0.001% + volume_impact滑点
+成本: 佣金万0.854(国金实际, min 5元) + 印花税(2023-08-28前0.1%,后0.05%) + 过户费0.001% + 三因素滑点(spread+impact+overnight_gap)
 ```
 
 **因子健康状态（2026-04-05检查）:**
@@ -365,7 +364,8 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0+配置.env化）
 - ✅ GitHub+代码质量（mlhjyx/quantmind-v2 private, Ruff 5704→0）
 - ✅ ECC/ARIS（8 skills + research-kb 19条 + Continuous Learning hooks）
-- 🔨 PT QMT live运行中, Top-20+无行业约束+PMS, 基线Sharpe=1.15
+- ✅ 回测引擎Phase 1加固完成(P3印花税+P5三因素滑点+P8 z-score clip+P6 DataFeed+P1/P2分红框架)
+- 🔨 PT QMT live运行中, Top-20+无行业约束+PMS, 基线Sharpe=0.94(Phase 1加固后)
 - 🔄 分钟数据全量拉取中（Baostock 5min, 全A股x5年, ~36%完成）
 - ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER → 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
 - 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8)

@@ -54,10 +54,7 @@ dev = [
 target-version = "py311"
 line-length = 100
 extend-exclude = [
-    "scripts/compute_batch3_ic.py",
-    "scripts/compute_batch4_ic.py",
-    "scripts/compute_batch6_ic.py",
-    "scripts/compute_talib_factors_ic.py",
+    "scripts/archive/",
 ]
 
 [tool.ruff.lint]

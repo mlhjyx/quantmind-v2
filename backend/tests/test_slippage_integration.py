@@ -123,7 +123,8 @@ class TestSimBrokerVolumeImpact:
         row = self._make_row(amount=50_000)
         broker = SimBroker(config)
         slip = broker.calc_slippage(10.0, 100_000, row)
-        assert 0 < slip < 0.10  # 合理范围(Y参数更大,滑点可能更高)
+        # P5: 含overnight_gap(open=10.0 vs pre_close=9.8 → ~102bps gap)
+        assert 0 < slip < 0.15  # volume_impact + overnight_gap
 
     def test_unit_conversion_total_mv_wan(self) -> None:
         """total_mv为万元(Tushare daily_basic.total_mv)时应自动转为元."""

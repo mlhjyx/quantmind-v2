@@ -1,12 +1,14 @@
 # Phase 0 Progress Tracker
 
-> Last updated: 2026-04-05 PM (性能优化+北向因子研究+ARIS+知识库)
-> Current: Phase 1, Sprint 1.35 完成 → PT v1.2 QMT live Day 2/60
-> 本会话(PM): 性能优化8项 + 北向MODIFIER/RANKING研究 + ARIS安装 + 研究知识库19条目 + ECC配置
+> Last updated: 2026-04-07 (Phase 1加固完成+5层验证+QMT切换)
+> Current: Phase 1, Sprint 1.35 完成 → PT v1.2 QMT live Day 5/60
+> 本会话(4/7 PM): Phase 1加固6项修复→Sharpe 1.24→0.94 + 5层严谨性验证 + 归档破损修复 + PT全面切QMT数据
+> 本会话(4/7 AM): 因子候选研究(vwap_bias_1d FAIL) + 回测引擎全面审计(17项问题) + 战略决策(加固自建+Qlib ML层)
+> 前会话(4/5 PM): 性能优化8项 + 北向MODIFIER/RANKING研究 + ARIS安装 + 研究知识库19条目 + ECC配置
 > Sprint 1.8a ✅ | Sprint 1.8b ✅ | Sprint 1.9 ✅ | Sprint 1.10 ✅ | Sprint 1.11 ✅ | Sprint 1.12 ✅ | Sprint 1.13 ✅ | Sprint 1.14 ✅ | Sprint 1.15 ✅ | Sprint 1.16 ✅ | Sprint 1.17 ✅ | Sprint 1.18 ✅ | Sprint 1.19 ✅ | Sprint 1.20 ✅ | Sprint 1.21 ✅ | Sprint 1.22 ✅ | Sprint 1.25 ✅ | Sprint 1.26 ✅ | Sprint 1.27 ✅ | Sprint 1.28 ✅ | Sprint 1.29 ✅ | Sprint 1.30 ✅ | Sprint 1.30B ✅ | Sprint 1.32 ✅ | Sprint 1.33 ✅ | Sprint 1.34 ✅ | Sprint 1.35 ✅
 > Paper Trading: v1.2 QMT live Day 2/60 (Day 0=2026-04-02), NAV=¥989,391, 基线Sharpe=0.91(5年volume_impact), 毕业阈值≥0.315
 > G2研究结论: 权重/仓位优化无效(15组), PMS阶梯利润保护有效(Sharpe+0.06~0.24), Top-20>Top-15, 行业约束损害alpha
-> 新最优配置X-D: Top-20+无行业约束+PMS(same_close) → Sharpe=1.15, MDD=-35.1%, Calmar=0.83 (vs基线0.91/-43%/0.54)
+> 新基线(Phase 1加固后): Sharpe=0.94, 年化22.57%, MDD=-40.77%, Calmar=0.55 (旧1.24虚高, 缺印花税历史税率+overnight_gap)
 > FF3归因: Alpha=21.1%/年(t=2.45)✅, SMB beta=0.83⚠️, 保守Sharpe=0.70-0.85
 > 数据审计: 0❌9⚠️, 数据地基稳固, 新增margin_data(95K行)+index_components(11K行)+3个P0因子(ATR/IVOL/gap, 冗余)
 > 下一步: PMS v1.0实时架构(清明) → PT v1.3切换(Top-20+去行业约束+PMS) → G1 LightGBM
@@ -15,6 +17,42 @@
 > 研究进度: R1✅ R2✅ R3✅ R4✅ R5✅ R6✅ R7✅ — 7维度研究全部完成
 > **AI闭环战略(2026-03-28)**: 三步走 — Step1 PT赚钱(1.13-1.15) → Step2 GP最小闭环(1.16-1.17) → Step3完整AI闭环(1.18+)
 > **关键决策**: GP-first不上LLM | RD-Agent借鉴不集成 | Warm Start GP(arxiv 2412.00896) | Qlib Alpha158做DSL参考
+
+## 回测引擎加固 (2026-04-07)
+
+### 审计触发
+- `backtest_vwap_bias_weekly.py`因SQL遗漏`pre_close`字段导致0成交bug，SimBroker静默返回False无报错
+- 三路并行审计: 代码审计(architect) + Qlib源码研究 + RQAlpha/QUANTAXIS/vectorbt研究
+
+### 战略决策: 加固自建引擎 + 选择性集成Qlib
+- **不迁移到Qlib原因**: Qlib的A股规则(T+1/涨跌停/整手)实际不如我们完善，迁移ROI低
+- **Qlib集成方式**: StaticDataLoader喂数据→Qlib ML模型出分数→我们引擎回测
+- **详细计划**: `docs/BACKTEST_ENGINE_HARDENING_PLAN.md`
+
+### 审计发现17项问题(P1-P17)
+- 🔴准确性(8): 缺分红除权/缺送股拆股/缺历史印花税率/缺最低佣金5元/overnight_gap死代码/pre_close静默失败/Fill.slippage(验证非bug)/Phase A无z-score clip
+- 🟡分析(6): 无内置metrics/无benchmark相对指标/无DSR/无子期间分析/换手率不完整/无退市处理
+- 🟠架构(3): iterrows性能瓶颈/magic number单位转换/can_trade不可追溯
+
+### Phase 1 ✅ 完成 (2026-04-07)
+- **代码修复**: P3印花税历史税率 + P5 overnight_gap三因素 + P8 z-score clip + P6 DataFeed校验 + P1/P2分红框架
+- **新基线**: Sharpe=0.94, 年化22.57%, MDD=-40.77% (旧1.24虚高0.30, 96%来自P5)
+- **隔离验证**: P3=-0.011, P5=-0.374, 交互=0.000, 加法性成立
+- **5层严谨性验证**: L1解析解5/5 + L2不变性7/7 + L3随机信号mean=-0.336 + L5交叉验证<0.05%
+- **归档破损修复**: 6个脚本恢复, 131个文件全量审计无其他破损
+- **PT切QMT**: NAV/持仓/绩效全面切到QMT实际数据, PaperBroker降级对比工具
+
+### 待执行
+- Phase 2(下一步): 分析专业化(metrics/DSR/benchmark/子期间/执行质量)
+- Phase 3: 性能+健壮性(MultiIndex/ValidatorChain/退市)
+- Phase 4: Qlib ML集成 + Executor抽象 + CompositeSignalEngine
+
+### 因子候选研究 (2026-04-07)
+- 5个PASS因子paired bootstrap: 仅vwap_bias_1d边际(p=0.046), 其余4个不显著
+- vwap_bias_1d独立回测: weekly Sharpe=-1.26, monthly=-0.44 → **单因子FAIL**
+- 结论: vwap_bias_1d保留在LGBM特征池(63因子之一), 不入Active池
+
+---
 
 ## 开发蓝图研究 (2026-03-28)
 

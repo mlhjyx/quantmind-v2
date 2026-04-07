@@ -124,6 +124,7 @@ def build_target_portfolios(
             col = pivot[f]
             std = col.std()
             z = (col - col.mean()) / std if std > 0 else col * 0.0
+            z = z.clip(-3, 3)  # P8: 与CLAUDE.md生产流程一致
             direction = directions.get(f, 1)
             scores[f] = z * direction
 

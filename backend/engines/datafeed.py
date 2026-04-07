@@ -24,6 +24,7 @@ REQUIRED_COLUMNS = [
     "high",
     "low",
     "close",
+    "pre_close",  # P6: 涨跌停判断必需，缺失会导致0成交静默bug
     "volume",
     "amount",
 ]
@@ -34,7 +35,6 @@ RECOMMENDED_COLUMNS = [
     "turnover_rate",
     "industry_sw1",
     "total_mv",
-    "pre_close",
     "up_limit",
     "down_limit",
 ]

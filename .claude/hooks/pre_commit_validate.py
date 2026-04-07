@@ -41,7 +41,8 @@ def main():
                 timeout=10,
             )
             py_files = [f for f in staged_py.stdout.strip().split("\n")
-                        if f.strip() and (f.startswith("backend/") or f.startswith("scripts/"))]
+                        if f.strip() and (f.startswith("backend/") or f.startswith("scripts/"))
+                        and not f.startswith("scripts/archive/")]
             if py_files:
                 result = subprocess.run(
                     ["ruff", "check"] + py_files,

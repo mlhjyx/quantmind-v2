@@ -212,6 +212,7 @@ class TestValidate:
             "high": [11.0],
             "low": [9.0],
             "close": [10.5],
+            "pre_close": [10.0],
             "volume": [100000],
             "amount": [1050000.0],
         })
