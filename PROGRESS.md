@@ -49,8 +49,13 @@
 - **子期间**: Bull Sharpe=2.93 / Bear=0.85, 年度+牛熊自动拆分
 - **P13换手率**: 每日记录(含PMS/补单), 年化9.25(之前7.46)
 
+### Phase 3 ✅ 完成 (2026-04-08)
+- **P17**: 单位转换集中到DataFeed.standardize_units(), 移除SimBroker 3处magic number
+- **P14**: 退市检测+自动清算(连续20日无数据→按最后价格清算)
+- **ValidatorChain**: 可组合验证器(Suspension/DataCompleteness/PriceLimit), 拒绝原因可追溯
+- **P15+P16**: iterrows→MultiIndex + pivot daily_close(上session完成)
+
 ### 待执行
-- Phase 3: 性能+健壮性(ValidatorChain/退市/单位转换集中化)
 - Phase 4: Qlib ML集成 + Executor抽象 + CompositeSignalEngine
 
 ### 因子候选研究 (2026-04-07)
