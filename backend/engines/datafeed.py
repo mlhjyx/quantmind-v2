@@ -258,6 +258,37 @@ class DataFeed:
                     f"列 '{col}' 应为数值类型，实际为 {self._data[col].dtype}"
                 )
 
+    def standardize_units(self) -> None:
+        """P17: 统一单位转换(千元→元, 万元→元), 消灭SimBroker中的magic number。
+
+        Tushare数据约定:
+        - amount: 千元(klines_daily) → 转为元
+        - total_mv: 万元(daily_basic) → 转为元
+
+        阈值判断: amount中位数<1e6→千元; total_mv中位数<1e8→万元。
+        转换后设标记防重复转换。
+        """
+        if getattr(self, "_units_standardized", False):
+            return
+
+        df = self._data
+
+        # amount: 千元 → 元
+        if "amount" in df.columns:
+            median_amt = df["amount"].median()
+            if 0 < median_amt < 1e6:  # 千元范围: 中位数<百万
+                df["amount"] = df["amount"] * 1000
+                logger.info("DataFeed: amount 千元→元 (median was %.0f)", median_amt)
+
+        # total_mv: 万元 → 元
+        if "total_mv" in df.columns:
+            median_mv = df["total_mv"].median()
+            if 0 < median_mv < 1e8:  # 万元范围: 中位数<亿
+                df["total_mv"] = df["total_mv"] * 10000
+                logger.info("DataFeed: total_mv 万元→元 (median was %.0f)", median_mv)
+
+        self._units_standardized = True
+
     def to_parquet(self, path: str | Path) -> None:
         """将数据导出为Parquet文件（用于创建测试快照）。
 

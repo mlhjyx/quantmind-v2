@@ -281,19 +281,10 @@ class SimBroker(BaseBroker):
         if self.config.slippage_mode == "volume_impact":
             import math as _math
 
+            # P17: 单位已在DataFeed.standardize_units()中统一转为元
             daily_amount = row.get("amount", 0)
-            # daily.amount单位是千元(TUSHARE_DATA_SOURCE_CHECKLIST)，转为元
-            # 千元范围: 典型值1e3~1e7(=百万~百亿元), 阈值1e9区分
-            # 已是元的值(如5e7)不会被误转(5e7 < 1e9会转→5e10，但回测数据
-            # 统一用千元入库，所以实际不会出现已转换的元值)
-            if daily_amount > 0 and daily_amount < 1e9:
-                daily_amount *= 1000
-            daily_volume = row.get("volume", 0)  # volume: 手(klines_daily)
-            market_cap = row.get("total_mv", 0)  # total_mv: 万元(daily_basic)
-            # total_mv单位是万元(daily_basic)，转为元
-            # 万元范围: 最大~3e8万元(=3万亿元), 阈值1e10区分万元/元
-            if market_cap > 0 and market_cap < 1e10:
-                market_cap *= 10000
+            daily_volume = row.get("volume", 0)  # volume: 手
+            market_cap = row.get("total_mv", 0)  # total_mv: 元(已转换)
 
             # Bouchaud 2018: 从行情数据获取volatility_20(年化)转日波动率
             vol_20 = row.get("volatility_20", None)
@@ -335,17 +326,13 @@ class SimBroker(BaseBroker):
     def _daily_amount_yuan(self, row: pd.Series) -> float:
         """从行情行中提取当日成交额（元）。
 
-        amount字段单位为千元(TUSHARE_DATA_SOURCE_CHECKLIST)，转换为元。
+        P17: 单位已在DataFeed.standardize_units()中统一为元。
         数据缺失或为0时返回0.0（调用方跳过volume cap检查）。
         """
         daily_amount = row.get("amount", 0)
         if daily_amount is None or pd.isna(daily_amount):
             return 0.0
-        daily_amount = float(daily_amount)
-        # 千元→元: 典型值1e3~1e7千元(=百万~百亿元)，阈值1e9区分
-        if 0 < daily_amount < 1e9:
-            daily_amount *= 1000
-        return daily_amount
+        return float(daily_amount)
 
     def execute_sell(self, code: str, shares: int, row: pd.Series) -> Fill | None:
         """执行卖出。
@@ -595,6 +582,12 @@ class SimpleBacktester:
             future_dates = [d for d in all_dates if d > sd]
             if future_dates:
                 exec_map[future_dates[0]] = sd
+
+        # P17: 单位标准化(千元→元, 万元→元) — 在索引构建前完成
+        from engines.datafeed import DataFeed as _DataFeed
+        _feed = _DataFeed(price_data)
+        _feed.standardize_units()
+        price_data = _feed.df
 
         # 价格索引: MultiIndex (code, trade_date) → 快速.loc查询
         # P15: 替代iterrows()遍历6M行，回测启动从分钟级→秒级

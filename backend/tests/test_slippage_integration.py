@@ -19,8 +19,8 @@ class TestSimBrokerVolumeImpact:
         close: float = 10.0,
         pre_close: float = 9.8,
         volume: float = 5_000_000,
-        amount: float = 50_000,       # 千元(Tushare daily.amount惯例)=5000万元
-        total_mv: float = 5_000_000,  # 万元(Tushare daily_basic.total_mv惯例)=500亿元
+        amount: float = 50_000_000,   # 元(P17: standardize_units已转换, =5000万元)
+        total_mv: float = 50_000_000_000,  # 元(P17: standardize_units已转换, =500亿元)
         turnover_rate: float = 5.0,
         volatility_20: float | None = None,
     ) -> pd.Series:
@@ -75,10 +75,10 @@ class TestSimBrokerVolumeImpact:
             slippage_mode="volume_impact",
             slippage_config=SlippageConfig(),
         )
-        # total_mv使用万元单位(Tushare daily_basic惯例)
-        # 10_000_000万元 = 1000亿元(大盘), 500_000万元 = 50亿元(小盘)
-        row_large = self._make_row(total_mv=10_000_000)
-        row_small = self._make_row(total_mv=500_000)
+        # P17: total_mv已标准化为元
+        # 1000亿元(大盘), 50亿元(小盘)
+        row_large = self._make_row(total_mv=100_000_000_000)
+        row_small = self._make_row(total_mv=5_000_000_000)
 
         broker = SimBroker(config)
         slip_large = broker.calc_slippage(10.0, 100_000, row_large)
@@ -113,31 +113,30 @@ class TestSimBrokerVolumeImpact:
 
         assert slip_sell > slip_buy
 
-    def test_unit_conversion_amount_thousands(self) -> None:
-        """amount为千元(Tushare daily.amount)时应自动转为元并正确计算冲击."""
+    def test_amount_in_yuan(self) -> None:
+        """P17: amount已由DataFeed标准化为元, SimBroker直接使用."""
         config = BacktestConfig(
             slippage_mode="volume_impact",
             slippage_config=SlippageConfig(),
         )
-        # amount=50_000 千元 = 5000万元, 小于1e9阈值, 应×1000
-        row = self._make_row(amount=50_000)
+        # amount=50_000_000元(=5000万), 默认值已是元
+        row = self._make_row(amount=50_000_000)
         broker = SimBroker(config)
         slip = broker.calc_slippage(10.0, 100_000, row)
-        # P5: 含overnight_gap(open=10.0 vs pre_close=9.8 → ~102bps gap)
-        assert 0 < slip < 0.15  # volume_impact + overnight_gap
+        # volume_impact + overnight_gap(open=10.0 vs pre_close=9.8)
+        assert 0 < slip < 0.15
 
-    def test_unit_conversion_total_mv_wan(self) -> None:
-        """total_mv为万元(Tushare daily_basic.total_mv)时应自动转为元."""
+    def test_total_mv_in_yuan(self) -> None:
+        """P17: total_mv已由DataFeed标准化为元, SimBroker直接使用."""
         config = BacktestConfig(
             slippage_mode="volume_impact",
             slippage_config=SlippageConfig(),
         )
-        # total_mv=5_000_000 万元 = 500亿元 → 大盘股(Y_large=0.8)
-        # 小于1e12阈值, 应×10000
-        row = self._make_row(total_mv=5_000_000)
+        # total_mv=500亿元 → 大盘股(Y_large=0.8)
+        row = self._make_row(total_mv=50_000_000_000)
         broker = SimBroker(config)
         slip = broker.calc_slippage(10.0, 100_000, row)
-        assert slip > 0  # 基本确认转换后计算正常
+        assert slip > 0
 
     # ── volatility_20 → sigma_daily 集成测试 ──
 
