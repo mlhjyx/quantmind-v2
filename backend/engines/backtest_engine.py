@@ -631,6 +631,10 @@ class SimpleBacktester:
         pms_pending_sells: list[str] = []  # next_open模式下延迟到T+1卖出的code
         pms_events: list[dict] = []  # 记录触发事件
 
+        # P14: 退市检测状态
+        _delist_count: dict[str, int] = {}  # code → 连续无数据天数
+        _last_known_price: dict[str, float] = {}  # code → 最后已知收盘价
+
         for _i, td in enumerate(all_dates):
             broker.new_day()
 
@@ -639,6 +643,32 @@ class SimpleBacktester:
                 day_actions = dividend_calendar.get(td, [])
                 if day_actions:
                     broker.process_corporate_actions(day_actions)
+
+            # ===== P14: 退市检测+自动清算 =====
+            if broker.holdings:
+                today_codes = daily_close.get(td, {})
+                for code in list(broker.holdings.keys()):
+                    if code in today_codes:
+                        # 有价格数据 → 清除退市计数
+                        _delist_count.pop(code, None)
+                    else:
+                        # 无价格数据 → 累计天数
+                        _delist_count[code] = _delist_count.get(code, 0) + 1
+                        if _delist_count[code] >= 20:
+                            # 连续20日无数据 → 退市清算(按最后已知价格)
+                            shares = broker.holdings.pop(code, 0)
+                            last_price = _last_known_price.get(code, 0)
+                            if shares > 0 and last_price > 0:
+                                proceeds = shares * last_price
+                                broker.cash += proceeds
+                                logger.warning(
+                                    "[%s] %s 退市清算: %d股 @ %.2f = ¥%.0f",
+                                    td, code, shares, last_price, proceeds,
+                                )
+                            _delist_count.pop(code, None)
+                    # 记录最后已知价格
+                    if code in today_codes and today_codes[code] > 0:
+                        _last_known_price[code] = today_codes[code]
 
             # ===== PMS: 执行T+1延迟卖出 =====
             if self.config.pms.enabled and pms_pending_sells:
