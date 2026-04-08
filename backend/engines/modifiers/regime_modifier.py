@@ -19,6 +19,8 @@ R3 §6.2 Layer 3: 市场regime仓位缩放（Risk Overlay）。
 - DESIGN_V5.md §9.5 MA120牛熊判定（规则版fallback）
 """
 
+import contextlib
+
 import pandas as pd
 import structlog
 
@@ -158,15 +160,14 @@ class RegimeModifier(ModifierBase):
 
         try:
             cur = context.conn.cursor()
-            # 取trade_date前300个交易日的收盘价（足够HMM训练）
+            # 从index_daily取基准指数收盘价(300交易日, 足够HMM训练)
             cur.execute(
                 """
                 SELECT trade_date, close
-                FROM klines_daily k
-                JOIN symbols s ON k.symbol_id = s.id
-                WHERE s.ts_code = %s
-                  AND k.trade_date <= %s
-                ORDER BY k.trade_date ASC
+                FROM index_daily
+                WHERE index_code = %s
+                  AND trade_date <= %s
+                ORDER BY trade_date DESC
                 LIMIT 300
                 """,
                 (self._benchmark_code, context.trade_date),
@@ -175,6 +176,8 @@ class RegimeModifier(ModifierBase):
             cur.close()
             if not rows:
                 return None
+            # 反转为升序
+            rows = rows[::-1]
             dates, closes = zip(*rows, strict=False)
             return pd.Series(
                 [float(c) for c in closes],
@@ -183,6 +186,9 @@ class RegimeModifier(ModifierBase):
             )
         except Exception as exc:
             logger.warning(f"[RegimeModifier] 拉取基准数据失败: {exc}")
+            # 防止事务污染: rollback让conn恢复可用
+            with contextlib.suppress(Exception):
+                context.conn.rollback()
             return None
 
     def _regime_to_scale(self, state: str) -> float:
