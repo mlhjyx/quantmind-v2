@@ -29,7 +29,6 @@ from engines.slippage_model import SlippageConfig, overnight_gap_cost, volume_im
 
 if TYPE_CHECKING:
     from engines.datafeed import DataFeed
-    from engines.vectorized_signal import SignalConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +64,7 @@ class BacktestConfig:
     """回测配置。"""
     initial_capital: float = 1_000_000.0
     top_n: int = 20
-    rebalance_freq: str = "biweekly"
+    rebalance_freq: str = "monthly"  # 与PT配置对齐(之前默认biweekly导致回测与PT不一致)
     slippage_bps: float = 10.0   # 基础滑点 (bps), fixed模式使用
     slippage_mode: str = "volume_impact"  # 'volume_impact' | 'fixed'
     slippage_config: SlippageConfig = field(default_factory=SlippageConfig)
@@ -1171,7 +1170,7 @@ def run_hybrid_backtest(
     price_data: pd.DataFrame,
     config: BacktestConfig,
     benchmark_data: pd.DataFrame | None = None,
-    signal_config: SignalConfig | None = None,
+    signal_config: "SignalConfig | None" = None,
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
 ) -> BacktestResult:
@@ -1191,24 +1190,15 @@ def run_hybrid_backtest(
     Returns:
         BacktestResult
     """
-    from engines.vectorized_signal import (
-        SignalConfig,
-        build_target_portfolios,
-        compute_rebalance_dates,
-    )
+    from engines.signal_engine import SignalComposer, PortfolioBuilder
+    from engines.signal_engine import SignalConfig as SEConfig
+    from engines.vectorized_signal import compute_rebalance_dates
 
     # DataFeed兼容: 如果传入DataFeed对象，提取底层DataFrame
     if datafeed is not None:
         from engines.datafeed import DataFeed
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
-
-    # Phase A: 向量化信号生成
-    if signal_config is None:
-        signal_config = SignalConfig(
-            top_n=config.top_n,
-            rebalance_freq=config.rebalance_freq,
-        )
 
     # 过滤ST/停牌股: 从price_data中提取标记，排除因子选股
     if "is_st" in price_data.columns:
@@ -1219,15 +1209,57 @@ def run_hybrid_backtest(
             factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
             logger.info("Phase A: 排除%d只ST股", len(st_codes))
 
-    trading_days = sorted(price_data["trade_date"].unique())
-    rebal_dates = compute_rebalance_dates(trading_days, signal_config.rebalance_freq)
-
-    target_portfolios = build_target_portfolios(
-        factor_df, directions, rebal_dates, signal_config,
+    # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
+    se_config = SEConfig(
+        factor_names=list(directions.keys()),
+        top_n=config.top_n,
+        weight_method="equal",
+        rebalance_freq=config.rebalance_freq,
+        industry_cap=1.0,    # 回测默认无行业约束(可通过config覆盖)
+        turnover_cap=1.0,    # 回测默认无换手约束
+        cash_buffer=0.0,     # 回测默认无现金缓冲
     )
+    # 覆盖FACTOR_DIRECTION: 用调用方传入的directions
+    from engines.signal_engine import FACTOR_DIRECTION
+    saved_directions = dict(FACTOR_DIRECTION)
+    FACTOR_DIRECTION.update(directions)
+
+    composer = SignalComposer(se_config)
+    builder = PortfolioBuilder(se_config)
+
+    trading_days = sorted(price_data["trade_date"].unique())
+    rebal_dates = compute_rebalance_dates(trading_days, config.rebalance_freq)
+
+    # 确保factor_df有neutral_value列(兼容raw_value输入)
+    if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
+        factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
+
+    target_portfolios: dict[date, dict[str, float]] = {}
+    for rd in rebal_dates:
+        day_data = factor_df[factor_df["trade_date"] <= rd]
+        if day_data.empty:
+            continue
+        latest_date = day_data["trade_date"].max()
+        day_data = day_data[day_data["trade_date"] == latest_date]
+
+        scores = composer.compose(day_data)
+        if scores.empty:
+            continue
+        weights = builder.build(scores, pd.Series(dtype=str))
+        if weights:
+            target_portfolios[rd] = weights
+
+    # 恢复FACTOR_DIRECTION
+    FACTOR_DIRECTION.clear()
+    FACTOR_DIRECTION.update(saved_directions)
 
     if not target_portfolios:
         raise ValueError("Phase A信号生成失败: target_portfolios为空")
+
+    logger.info(
+        "Phase A信号生成完成(SignalComposer): %d个调仓日, %d个因子, Top-%d",
+        len(target_portfolios), len(directions), config.top_n,
+    )
 
     # Phase B: 事件驱动执行
     tester = SimpleBacktester(config)
@@ -1245,7 +1277,7 @@ def run_composite_backtest(
     config: BacktestConfig,
     modifiers: list | None = None,
     benchmark_data: pd.DataFrame | None = None,
-    signal_config: SignalConfig | None = None,
+    signal_config: "SignalConfig | None" = None,
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
     conn=None,  # DB连接(Modifier需要查询北向等数据)
@@ -1269,11 +1301,10 @@ def run_composite_backtest(
     Returns:
         BacktestResult
     """
-    from engines.vectorized_signal import (
-        SignalConfig,
-        build_target_portfolios,
-        compute_rebalance_dates,
-    )
+    from engines.signal_engine import SignalComposer, PortfolioBuilder
+    from engines.signal_engine import FACTOR_DIRECTION
+    from engines.signal_engine import SignalConfig as SEConfig
+    from engines.vectorized_signal import compute_rebalance_dates
 
     if datafeed is not None:
         from engines.datafeed import DataFeed
@@ -1289,19 +1320,44 @@ def run_composite_backtest(
             factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
             logger.info("Composite Phase A: 排除%d只ST股", len(st_codes))
 
-    # Phase A: 核心策略信号(等权排序)
-    if signal_config is None:
-        signal_config = SignalConfig(
-            top_n=config.top_n,
-            rebalance_freq=config.rebalance_freq,
-        )
+    # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
+    se_config = SEConfig(
+        factor_names=list(directions.keys()),
+        top_n=config.top_n,
+        weight_method="equal",
+        rebalance_freq=config.rebalance_freq,
+        industry_cap=1.0,
+        turnover_cap=1.0,
+        cash_buffer=0.0,
+    )
+    saved_directions = dict(FACTOR_DIRECTION)
+    FACTOR_DIRECTION.update(directions)
+
+    composer = SignalComposer(se_config)
+    builder = PortfolioBuilder(se_config)
 
     trading_days = sorted(price_data["trade_date"].unique())
-    rebal_dates = compute_rebalance_dates(trading_days, signal_config.rebalance_freq)
+    rebal_dates = compute_rebalance_dates(trading_days, config.rebalance_freq)
 
-    target_portfolios = build_target_portfolios(
-        factor_df, directions, rebal_dates, signal_config,
-    )
+    if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
+        factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
+
+    target_portfolios: dict[date, dict[str, float]] = {}
+    for rd in rebal_dates:
+        day_data = factor_df[factor_df["trade_date"] <= rd]
+        if day_data.empty:
+            continue
+        latest_date = day_data["trade_date"].max()
+        day_data = day_data[day_data["trade_date"] == latest_date]
+        scores = composer.compose(day_data)
+        if scores.empty:
+            continue
+        weights = builder.build(scores, pd.Series(dtype=str))
+        if weights:
+            target_portfolios[rd] = weights
+
+    FACTOR_DIRECTION.clear()
+    FACTOR_DIRECTION.update(saved_directions)
 
     if not target_portfolios:
         raise ValueError("Phase A信号生成失败: target_portfolios为空")

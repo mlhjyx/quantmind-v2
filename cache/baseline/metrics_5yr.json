@@ -1,12 +1,12 @@
 {
-  "sharpe": 0.8176,
-  "mdd_pct": -50.53,
-  "annual_return_pct": 23.16,
-  "sortino": 1.0777,
-  "total_trades": 1875,
+  "sharpe": 0.8192,
+  "mdd_pct": -50.4,
+  "annual_return_pct": 23.22,
+  "sortino": 1.0884,
+  "total_trades": 1867,
   "nav_start": 1000000.0,
-  "nav_end": 2723216.68,
+  "nav_end": 2730262.04,
   "nav_min": 978204.88,
   "trading_days": 1212,
-  "elapsed_sec": 72.0
+  "elapsed_sec": 91.0
 }

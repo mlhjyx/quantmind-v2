@@ -67,12 +67,7 @@ def run_backtest(self, run_id: str) -> dict[str, Any]:
 
 async def _run_async(run_id: str) -> dict[str, Any]:
     import asyncpg
-    from engines.backtest_engine import BacktestConfig, SimpleBacktester
-    from engines.vectorized_signal import (
-        SignalConfig,
-        build_target_portfolios,
-        compute_rebalance_dates,
-    )
+    from engines.backtest_engine import BacktestConfig, run_hybrid_backtest
 
     conn = await asyncpg.connect(DB_URL)
     try:
@@ -109,15 +104,8 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         # 4. Build target portfolios
         top_n = int(cfg.get("holding_count", cfg.get("top_n", 15)))
         rebal_freq = cfg.get("rebalance_freq", "monthly")
-        trading_days = sorted(price_df["trade_date"].unique())
-        rebal_dates = compute_rebalance_dates(trading_days, rebal_freq)
 
-        sig_config = SignalConfig(top_n=top_n, rebalance_freq=rebal_freq)
-        target_portfolios = build_target_portfolios(factor_df, directions, rebal_dates, sig_config)
-        if not target_portfolios:
-            raise ValueError("target_portfolios 为空，检查因子数据覆盖")
-
-        # 5. Run engine
+        # 5. Run engine (统一信号路径: SignalComposer + PortfolioBuilder)
         bt_config = BacktestConfig(
             initial_capital=float(cfg.get("initial_capital", 1_000_000)),
             top_n=top_n,
@@ -126,8 +114,7 @@ async def _run_async(run_id: str) -> dict[str, Any]:
             benchmark_code=cfg.get("benchmark", "000300.SH"),
         )
         t0 = time.monotonic()
-        tester = SimpleBacktester(bt_config)
-        result = tester.run(target_portfolios, price_df, bench_df)
+        result = run_hybrid_backtest(factor_df, directions, price_df, bt_config, bench_df)
         elapsed = int(time.monotonic() - t0)
 
         # 6. Calc metrics & write results
