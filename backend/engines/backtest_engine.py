@@ -694,32 +694,31 @@ class SimpleBacktester:
 
         # 价格索引: MultiIndex (code, trade_date) → 快速.loc查询
         # P15: 替代iterrows()遍历6M行，回测启动从分钟级→秒级
-        price_data = price_data.sort_values(["trade_date", "code"], kind="mergesort")
-        # 保留code/trade_date列副本，set_index后仍可通过row["trade_date"]访问
         if "code" not in price_data.columns or "trade_date" not in price_data.columns:
             raise ValueError("price_data必须包含code和trade_date列")
-        price_indexed = price_data.set_index(["code", "trade_date"])
-        # 将index值写回为普通列，使row["code"]和row["trade_date"]仍可访问
-        price_indexed["code"] = price_indexed.index.get_level_values(0)
-        price_indexed["trade_date"] = price_indexed.index.get_level_values(1)
-        price_indexed = price_indexed.sort_index()
-        _idx_set = set(price_indexed.index)  # O(1)存在性检查
+        price_data = price_data.sort_values(["code", "trade_date"], kind="mergesort")
+        # 构建(code,trade_date)→row dict, 避免MultiIndex set_index消耗大量内存
+        _price_dict: dict[tuple, int] = {}
+        for idx, (code, td) in enumerate(
+            zip(price_data["code"].values, price_data["trade_date"].values)
+        ):
+            _price_dict[(code, td)] = idx
 
         class _PriceIdx:
-            """price_idx.get((code, date))兼容层，底层用MultiIndex .loc。"""
+            """price_idx.get((code, date))兼容层，底层用dict→iloc查询。"""
             __slots__ = ()
             def get(self, key, default=None):
-                if key in _idx_set:
-                    return price_indexed.loc[key]
+                idx = _price_dict.get(key)
+                if idx is not None:
+                    return price_data.iloc[idx]
                 return default
 
         price_idx = _PriceIdx()
 
-        # 每日收盘价: P16优化 — pivot一次性构建
-        close_pivot = price_data.pivot_table(
-            index="trade_date", columns="code", values="close", aggfunc="last",
-        )
-        daily_close = {d: row.dropna().to_dict() for d, row in close_pivot.iterrows()}
+        # 每日收盘价: groupby构建(避免pivot_table OOM, 12年×5000+股)
+        daily_close: dict[date, dict[str, float]] = {}
+        for td, grp in price_data.groupby("trade_date"):
+            daily_close[td] = dict(zip(grp["code"], grp["close"], strict=False))
 
         # 回测主循环
         nav_series = {}
@@ -1213,6 +1212,15 @@ def run_hybrid_backtest(
             rebalance_freq=config.rebalance_freq,
         )
 
+    # 过滤ST/停牌股: 从price_data中提取标记，排除因子选股
+    if "is_st" in price_data.columns:
+        st_codes = set(
+            price_data.loc[price_data["is_st"] == True, "code"].unique()  # noqa: E712
+        )
+        if st_codes:
+            factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
+            logger.info("Phase A: 排除%d只ST股", len(st_codes))
+
     trading_days = sorted(price_data["trade_date"].unique())
     rebal_dates = compute_rebalance_dates(trading_days, signal_config.rebalance_freq)
 
@@ -1273,6 +1281,15 @@ def run_composite_backtest(
         from engines.datafeed import DataFeed
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
+
+    # 过滤ST/停牌股: 从price_data中提取标记，排除因子选股
+    if "is_st" in price_data.columns:
+        st_codes = set(
+            price_data.loc[price_data["is_st"] == True, "code"].unique()  # noqa: E712
+        )
+        if st_codes:
+            factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
+            logger.info("Composite Phase A: 排除%d只ST股", len(st_codes))
 
     # Phase A: 核心策略信号(等权排序)
     if signal_config is None:

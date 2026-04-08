@@ -189,8 +189,18 @@ class TushareFetcher:
             ((df['close'] - df['pre_close']).abs() < 0.001)
         )
 
-        # 标记ST：从symbols表获取（后续在入库时join）
-        df['is_st'] = False  # 默认False，入库时更新
+        # 标记ST：从Tushare stock_basic获取当前ST状态
+        try:
+            st_df = self.pro.stock_basic(exchange='', fields='ts_code,name')
+            st_codes = set(
+                st_df.loc[
+                    st_df['name'].str.contains('ST', case=False, na=False),
+                    'ts_code',
+                ].str.replace(r'\.\w+$', '', regex=True)
+            )
+            df['is_st'] = df['code'].isin(st_codes)
+        except Exception:
+            df['is_st'] = False  # API失败时降级为False
 
         # turnover_rate在daily接口中没有，设为None
         if 'turnover_rate' not in df.columns:
