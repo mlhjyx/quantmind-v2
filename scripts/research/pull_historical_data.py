@@ -127,23 +127,30 @@ def pull_daily_basic(trading_dates: list[str], conn):
                 continue
 
             df = df.rename(columns={"ts_code": "code"})
+            skipped = 0
             for _, row in df.iterrows():
-                cur.execute(
-                    """INSERT INTO daily_basic
-                       (code, trade_date, turnover_rate, volume_ratio, pe_ttm, pb, dv_ttm,
-                        total_mv, circ_mv)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                       ON CONFLICT (code, trade_date) DO UPDATE SET
-                        turnover_rate=EXCLUDED.turnover_rate, pe_ttm=EXCLUDED.pe_ttm,
-                        pb=EXCLUDED.pb, dv_ttm=EXCLUDED.dv_ttm,
-                        total_mv=EXCLUDED.total_mv, circ_mv=EXCLUDED.circ_mv""",
-                    (
-                        row.get("code"), td,
-                        row.get("turnover_rate"), row.get("volume_ratio"),
-                        row.get("pe_ttm"), row.get("pb"), row.get("dv_ttm"),
-                        row.get("total_mv"), row.get("circ_mv"),
-                    ),
-                )
+                try:
+                    cur.execute("SAVEPOINT sp_row")
+                    cur.execute(
+                        """INSERT INTO daily_basic
+                           (code, trade_date, turnover_rate, volume_ratio, pe_ttm, pb, dv_ttm,
+                            total_mv, circ_mv)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (code, trade_date) DO UPDATE SET
+                            turnover_rate=EXCLUDED.turnover_rate, pe_ttm=EXCLUDED.pe_ttm,
+                            pb=EXCLUDED.pb, dv_ttm=EXCLUDED.dv_ttm,
+                            total_mv=EXCLUDED.total_mv, circ_mv=EXCLUDED.circ_mv""",
+                        (
+                            row.get("code"), td,
+                            row.get("turnover_rate"), row.get("volume_ratio"),
+                            row.get("pe_ttm"), row.get("pb"), row.get("dv_ttm"),
+                            row.get("total_mv"), row.get("circ_mv"),
+                        ),
+                    )
+                    cur.execute("RELEASE SAVEPOINT sp_row")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_row")
+                    skipped += 1
             conn.commit()
 
             if (i + 1) % 20 == 0:
@@ -200,22 +207,29 @@ def pull_moneyflow(trading_dates: list[str], conn):
             if df is None or df.empty:
                 continue
             df = df.rename(columns={"ts_code": "code"})
+            skipped = 0
             for _, row in df.iterrows():
-                cur.execute(
-                    """INSERT INTO moneyflow_daily
-                       (code, trade_date, net_mf_amount, buy_lg_amount, sell_lg_amount,
-                        buy_elg_amount, sell_elg_amount, buy_md_amount, sell_md_amount,
-                        buy_sm_amount, sell_sm_amount)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                       ON CONFLICT (code, trade_date) DO NOTHING""",
-                    (
-                        row.get("code"), td,
-                        row.get("net_mf_amount"), row.get("buy_lg_amount"), row.get("sell_lg_amount"),
-                        row.get("buy_elg_amount"), row.get("sell_elg_amount"),
-                        row.get("buy_md_amount"), row.get("sell_md_amount"),
-                        row.get("buy_sm_amount"), row.get("sell_sm_amount"),
-                    ),
-                )
+                try:
+                    cur.execute("SAVEPOINT sp_mf")
+                    cur.execute(
+                        """INSERT INTO moneyflow_daily
+                           (code, trade_date, net_mf_amount, buy_lg_amount, sell_lg_amount,
+                            buy_elg_amount, sell_elg_amount, buy_md_amount, sell_md_amount,
+                            buy_sm_amount, sell_sm_amount)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (code, trade_date) DO NOTHING""",
+                        (
+                            row.get("code"), td,
+                            row.get("net_mf_amount"), row.get("buy_lg_amount"), row.get("sell_lg_amount"),
+                            row.get("buy_elg_amount"), row.get("sell_elg_amount"),
+                            row.get("buy_md_amount"), row.get("sell_md_amount"),
+                            row.get("buy_sm_amount"), row.get("sell_sm_amount"),
+                        ),
+                    )
+                    cur.execute("RELEASE SAVEPOINT sp_mf")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_mf")
+                    skipped += 1
             conn.commit()
             if (i + 1) % 50 == 0:
                 logger.info("[moneyflow] %d/%d %s: %d行", i + 1, total, td, len(df))
