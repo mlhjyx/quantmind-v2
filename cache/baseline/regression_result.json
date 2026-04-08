@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-04-08 22:42:51",
+  "baseline_file": "D:\\quantmind-v2\\cache\\baseline\\nav_5yr.parquet",
+  "run1": {
+    "common_days": 1212,
+    "baseline_days": 1212,
+    "current_days": 1212,
+    "max_diff": 0.0,
+    "mean_diff": 0.0,
+    "max_pct_diff": 0.0,
+    "mean_pct_diff": 0.0,
+    "days_above_0001pct": 0,
+    "days_above_001pct": 0,
+    "sharpe_baseline": 0.4496,
+    "sharpe_current": 0.4496,
+    "mdd_baseline": -99.44,
+    "mdd_current": -99.44,
+    "deterministic": true,
+    "run2_max_diff": 0.0
+  },
+  "elapsed_sec": 118.0
+}

@@ -1,0 +1,14 @@
+{
+  "sharpe": 0.4494,
+  "mdd_pct": -99.44,
+  "annual_return_pct": 24.23,
+  "calmar": 0.2437,
+  "sortino": 47.1854,
+  "total_trades": 1902,
+  "nav_start": 1000000.0,
+  "nav_end": 2839586.75,
+  "nav_min": 12043.22,
+  "nav_max": 2945785.26,
+  "trading_days": 1212,
+  "elapsed_sec": 83.0
+}
