@@ -1,14 +1,13 @@
-"""HMM市场状态检测器 — 2状态Hidden Markov Model识别risk-on/risk-off。
+"""HMM市场状态检测器 — 3状态Hidden Markov Model识别bull/sideways/bear。
 
-根据quant-reviewer + risk-guardian交叉审查结果修正：
-- 2-state替代3-state（参数6个 vs 33个，730样本/6参数=122>50阈值）
-- 单特征(对数收益率)避免多重共线性（quant C2要求）
-- Rolling fit(252天窗口)防look-ahead（quant C1强制要求）
-- 去抖动：最小持续5天 + 概率阈值0.7（quant §4.3要求）
-- 连续scale：scale = 1.0 - spread × (bear_prob - 0.5)（quant §7建议）
-- 不入PT链路，仅回测+影子模式（risk §5一票否决PT替换）
+Phase 2改进(2026-04-08):
+- 3-state: bull/sideways/bear（12参数/3000+样本=250x，充足）
+- 扩展窗口(expanding): 用所有历史数据fit，随时间推移越稳定
+- 连续缩放: P(bull)*1.0 + P(sideways)*0.7 + P(bear)*0.3
+- 去抖动20天: 与月度调仓对齐
+- 单特征(对数收益率): 避免多重共线性
 
-铁律7: ML实验必须OOS验证——rolling fit每次只用T-1前数据。
+铁律7: ML实验必须OOS验证——rolling/expanding fit每次只用T-1前数据。
 """
 
 from dataclasses import dataclass
@@ -20,18 +19,21 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 # ── 参数 ──────────────────────────────────────────────────────────────────────
-N_STATES: int = 2  # risk-on / risk-off（quant审查：2-state参数更稳定）
-MIN_TRAIN_SAMPLES: int = 200  # ~10个月训练数据（quant C2: 200/6参数=33, 2-state够用）
-ROLLING_WINDOW: int = 252  # rolling fit窗口（1年，quant §2.3最短504可选）
+N_STATES: int = 3  # bull / sideways / bear (12参数, 3000样本/12=250x)
+MIN_TRAIN_SAMPLES: int = 200  # ~10个月训练数据
+USE_EXPANDING: bool = True  # True=扩展窗口(用所有历史), False=固定rolling
+ROLLING_WINDOW: int = 504  # rolling模式下的窗口(2年), expanding模式下为最大cap
 
-# 去抖动参数（quant §4.3要求）
-MIN_REGIME_DURATION: int = 5  # 最小持续交易日
-SWITCH_PROB_THRESHOLD: float = 0.7  # 切换概率阈值
+# 去抖动参数
+MIN_REGIME_DURATION: int = 20  # 最小持续交易日(与月度调仓对齐)
+SWITCH_PROB_THRESHOLD: float = 0.6  # 切换概率阈值(3-state下降低)
 
-# 仓位缩放参数
-SCALE_SPREAD: float = 0.4  # scale在[0.6, 1.4]之间变化
-REGIME_CLIP_LOW: float = 0.5
-REGIME_CLIP_HIGH: float = 2.0
+# 3-state连续缩放权重
+SCALE_BULL: float = 1.0   # 牛市满仓
+SCALE_SIDEWAYS: float = 0.7  # 震荡7成
+SCALE_BEAR: float = 0.3   # 熊市3成
+REGIME_CLIP_LOW: float = 0.3
+REGIME_CLIP_HIGH: float = 1.0
 
 
 @dataclass
@@ -39,17 +41,17 @@ class RegimeResult:
     """HMM状态检测结果。
 
     Attributes:
-        state: 当前市场状态（risk_on / risk_off）
-        scale: 仓位缩放系数 [0.5, 2.0]
-        bear_prob: risk-off状态的后验概率（0~1）
-        state_probs: 两个状态的后验概率数组
+        state: 当前市场状态（bull / sideways / bear）
+        scale: 仓位缩放系数 [0.3, 1.0]
+        bear_prob: bear状态后验概率（0~1）
+        state_probs: 各状态后验概率数组
         source: 数据来源标识（hmm / fallback_vol_regime / fallback_constant）
     """
 
-    state: str  # "risk_on" | "risk_off"
-    scale: float  # 仓位缩放系数 [0.5, 2.0]
-    bear_prob: float  # risk-off后验概率
-    state_probs: np.ndarray  # shape (2,)
+    state: str  # "bull" | "sideways" | "bear"
+    scale: float  # 仓位缩放系数 [0.3, 1.0]
+    bear_prob: float  # bear后验概率
+    state_probs: np.ndarray  # shape (N_STATES,)
     source: str  # 计算来源
 
 
@@ -75,61 +77,69 @@ def _compute_features(closes: pd.Series) -> np.ndarray | None:
 
 
 def _map_states(model) -> dict[int, str]:
-    """按均值排序状态：高收益=risk_on, 低收益=risk_off。
+    """按均值排序3状态：最高收益=bull, 中间=sideways, 最低=bear。
 
-    quant §1.5要求：强制排序防label switching。
+    强制排序防label switching。
 
     Args:
-        model: 已训练的GaussianHMM实例
+        model: 已训练的GaussianHMM实例(2或3状态)
 
     Returns:
-        {state_id: "risk_on" | "risk_off"}
+        {state_id: "bull" | "sideways" | "bear"}
     """
-    means = model.means_.flatten()  # shape (2,)
-    if means[0] >= means[1]:
-        return {0: "risk_on", 1: "risk_off"}
+    means = model.means_.flatten()
+    n = len(means)
+    sorted_indices = np.argsort(means)  # 从小到大
+
+    if n == 3:
+        return {
+            int(sorted_indices[0]): "bear",
+            int(sorted_indices[1]): "sideways",
+            int(sorted_indices[2]): "bull",
+        }
+    elif n == 2:
+        return {
+            int(sorted_indices[0]): "bear",
+            int(sorted_indices[1]): "bull",
+        }
     else:
-        return {0: "risk_off", 1: "risk_on"}
+        return {0: "bull"}
 
 
-def _bear_prob_to_scale(bear_prob: float) -> float:
-    """连续映射：bear_prob → 仓位缩放系数。
+def _probs_to_scale(state_probs: np.ndarray, state_mapping: dict[int, str]) -> float:
+    """3-state后验概率 → 连续缩放系数。
 
-    quant §7建议：连续信号比离散分类更有价值。
-    scale = 1.0 - SCALE_SPREAD × (bear_prob - 0.5)
-    - bear_prob=0.0 → scale=1.2（满仓偏多）
-    - bear_prob=0.5 → scale=1.0（不调整）
-    - bear_prob=1.0 → scale=0.6（降仓保护）
+    scale = P(bull)*SCALE_BULL + P(sideways)*SCALE_SIDEWAYS + P(bear)*SCALE_BEAR
+    输出范围[SCALE_BEAR, SCALE_BULL] = [0.3, 1.0]
 
     Args:
-        bear_prob: risk-off状态后验概率 [0, 1]
+        state_probs: 各状态后验概率 shape (N,)
+        state_mapping: {state_id: state_name}
 
     Returns:
         仓位缩放系数，clip到[REGIME_CLIP_LOW, REGIME_CLIP_HIGH]
     """
-    raw = 1.0 - SCALE_SPREAD * (bear_prob - 0.5) * 2.0
+    scale_map = {"bull": SCALE_BULL, "sideways": SCALE_SIDEWAYS, "bear": SCALE_BEAR}
+    raw = sum(
+        float(state_probs[sid]) * scale_map.get(name, SCALE_SIDEWAYS)
+        for sid, name in state_mapping.items()
+    )
     return float(np.clip(raw, REGIME_CLIP_LOW, REGIME_CLIP_HIGH))
 
 
 class HMMRegimeDetector:
-    """2状态HMM市场状态检测器（risk-on / risk-off）。
+    """3状态HMM市场状态检测器（bull / sideways / bear）。
 
-    设计原则（quant+risk审查后）：
-    - 2-state单特征：6参数/252+样本，比值>42（接近50阈值）
-    - Rolling fit：每次调仓日用过去252天数据refit，无look-ahead
-    - 去抖动：状态切换需概率>0.7且持续>=5天
-    - 连续scale：不用离散3档，用bear_prob连续映射
+    Phase 2改进:
+    - 3-state: bull/sideways/bear, 12参数, 需200+天数据
+    - 扩展窗口: 默认用所有历史数据fit(expanding), 可选固定rolling
+    - 连续缩放: P(bull)*1.0 + P(sideways)*0.7 + P(bear)*0.3
+    - 去抖动20天: 与月度调仓对齐
 
-    用法（回测）：
+    用法（回测）:
         detector = HMMRegimeDetector()
-        for rebal_date in rebal_dates:
-            train_data = closes[:rebal_date]  # 严格T-1前
-            result = detector.fit_predict(train_data)
-            scale = result.scale
-
-    用法（影子模式PT）：
-        result = detector.fit_predict(csi300_closes_to_yesterday)
-        save_shadow_regime(trade_date, result)  # 只记录不使用
+        result = detector.fit_predict(csi300_closes)
+        scale = result.scale  # [0.3, 1.0]
     """
 
     def __init__(
@@ -137,6 +147,7 @@ class HMMRegimeDetector:
         n_states: int = N_STATES,
         min_train: int = MIN_TRAIN_SAMPLES,
         rolling_window: int = ROLLING_WINDOW,
+        use_expanding: bool = USE_EXPANDING,
         min_duration: int = MIN_REGIME_DURATION,
         switch_threshold: float = SWITCH_PROB_THRESHOLD,
         random_state: int = 42,
@@ -144,6 +155,7 @@ class HMMRegimeDetector:
         self.n_states = n_states
         self.min_train = min_train
         self.rolling_window = rolling_window
+        self.use_expanding = use_expanding
         self.min_duration = min_duration
         self.switch_threshold = switch_threshold
         self.random_state = random_state
@@ -173,8 +185,10 @@ class HMMRegimeDetector:
         """
         from hmmlearn.hmm import GaussianHMM
 
-        # 取rolling窗口
-        if len(closes) > self.rolling_window:
+        # expanding模式用所有数据, rolling模式取固定窗口
+        if self.use_expanding:
+            train_closes = closes
+        elif len(closes) > self.rolling_window:
             train_closes = closes.iloc[-self.rolling_window :]
         else:
             train_closes = closes
@@ -225,25 +239,28 @@ class HMMRegimeDetector:
         try:
             # 后验概率
             posteriors = self._model.predict_proba(features)
-            current_probs = posteriors[-1]  # shape (2,)
+            current_probs = posteriors[-1]  # shape (N_STATES,)
 
-            # 找到risk_off状态的概率
+            # bear概率
             bear_state_id = next(
-                (k for k, v in self._state_mapping.items() if v == "risk_off"),
+                (k for k, v in self._state_mapping.items() if v == "bear"),
                 0,
             )
             bear_prob = float(current_probs[bear_state_id])
 
             # 原始状态判断（argmax）
-            raw_state = self._state_mapping.get(int(np.argmax(current_probs)), "risk_on")
+            raw_state = self._state_mapping.get(int(np.argmax(current_probs)), "sideways")
 
-            # 去抖动（quant §4.3）
+            # 去抖动
             state = self._debounce(raw_state, bear_prob)
-            scale = _bear_prob_to_scale(bear_prob)
+
+            # 3-state连续缩放: P(bull)*1.0 + P(sideways)*0.7 + P(bear)*0.3
+            scale = _probs_to_scale(current_probs, self._state_mapping)
 
             logger.info(
-                f"[HMMRegime] state={state}, bear_prob={bear_prob:.3f}, "
-                f"scale={scale:.3f}, raw={raw_state}"
+                "[HMMRegime] state=%s, bear_prob=%.3f, scale=%.3f, raw=%s, probs=%s",
+                state, bear_prob, scale, raw_state,
+                {v: round(float(current_probs[k]), 3) for k, v in self._state_mapping.items()},
             )
             return RegimeResult(
                 state=state,
@@ -336,20 +353,25 @@ class HMMRegimeDetector:
             from engines.vol_regime import calc_vol_regime
 
             scale = calc_vol_regime(closes)
-            state = "risk_off" if scale < 0.95 else "risk_on"
+            if scale < 0.7:
+                state = "bear"
+            elif scale < 0.95:
+                state = "sideways"
+            else:
+                state = "bull"
             return RegimeResult(
                 state=state,
-                scale=scale,
-                bear_prob=0.5,
-                state_probs=np.array([0.5, 0.5]),
+                scale=float(np.clip(scale, REGIME_CLIP_LOW, REGIME_CLIP_HIGH)),
+                bear_prob=max(0.0, 1.0 - scale),
+                state_probs=np.array([0.33, 0.34, 0.33]),
                 source="fallback_vol_regime",
             )
         except Exception:
             return RegimeResult(
-                state="risk_on",
+                state="bull",
                 scale=1.0,
-                bear_prob=0.5,
-                state_probs=np.array([0.5, 0.5]),
+                bear_prob=0.0,
+                state_probs=np.array([0.33, 0.34, 0.33]),
                 source="fallback_constant",
             )
 

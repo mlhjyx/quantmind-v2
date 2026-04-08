@@ -110,7 +110,7 @@ class RegimeModifier(ModifierBase):
         Returns:
             (scale, state_name, source_name)
         """
-        # ── Level 1: HMM检测 ──
+        # ── Level 1: HMM检测(3-state, expanding window) ──
         if self._use_hmm:
             try:
                 closes = self._fetch_benchmark_closes(context)
@@ -120,8 +120,8 @@ class RegimeModifier(ModifierBase):
                     detector = HMMRegimeDetector()
                     result = detector.fit_predict(closes)
                     if result is not None:
-                        scale = self._regime_to_scale(result.state)
-                        return scale, result.state, "hmm"
+                        # HMM直接输出连续scale [0.3, 1.0]
+                        return result.scale, result.state, f"hmm({result.source})"
             except Exception as exc:
                 msg = f"HMM检测失败: {exc}，降级到VolRegime"
                 logger.warning(f"[RegimeModifier] {msg}")
@@ -134,8 +134,13 @@ class RegimeModifier(ModifierBase):
                 from engines.vol_regime import calc_vol_regime
 
                 vol_scale = calc_vol_regime(closes)
-                # VolRegime输出[0.5, 2.0]，映射到三状态
-                state, scale = self._vol_scale_to_regime(vol_scale)
+                scale = max(0.3, min(vol_scale, 1.0))
+                if scale < 0.7:
+                    state = "bear"
+                elif scale < 0.95:
+                    state = "sideways"
+                else:
+                    state = "bull"
                 return scale, state, "vol_regime"
         except Exception as exc:
             msg = f"VolRegime计算失败: {exc}，使用常数1.0"
@@ -191,25 +196,3 @@ class RegimeModifier(ModifierBase):
                 context.conn.rollback()
             return None
 
-    def _regime_to_scale(self, state: str) -> float:
-        """HMM状态名映射到仓位缩放系数。"""
-        if state == "risk_on":
-            return self._scale_risk_on
-        elif state == "risk_off":
-            return self._scale_risk_off
-        else:
-            return self._scale_neutral
-
-    def _vol_scale_to_regime(self, vol_scale: float) -> tuple[str, float]:
-        """将VolRegime输出[0.5, 2.0]映射到三状态+对应缩放系数。
-
-        VolRegime > 1.1 → risk_on（低波动）
-        VolRegime 0.9~1.1 → neutral
-        VolRegime < 0.9 → risk_off（高波动）
-        """
-        if vol_scale > 1.1:
-            return "risk_on", self._scale_risk_on
-        elif vol_scale < 0.9:
-            return "risk_off", self._scale_risk_off
-        else:
-            return "neutral", self._scale_neutral
