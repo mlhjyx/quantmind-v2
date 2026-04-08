@@ -1,7 +1,7 @@
 # CLAUDE.md — QuantMind V2
 
 > **Claude Code 入口文件。启动时自动读取。只含编码必需信息。**
-> **详细运行手册**: SYSTEM_RUNBOOK.md（启动链路/数据流/接口契约/模块依赖）
+> **系统现状**: SYSTEM_STATUS.md（环境/数据库/代码/架构全景）
 
 ---
 
@@ -63,14 +63,13 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 ```
 quantmind-v2/
 ├── CLAUDE.md                    ← 本文件
-├── SYSTEM_RUNBOOK.md            ← ⭐ 系统运行手册
-├── PROGRESS.md                  ← 开发进度
+├── SYSTEM_STATUS.md             ← ⭐ 系统现状全景（重构前体检产出）
 ├── LESSONS_LEARNED.md           ← 经验教训（36条）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 45张+代码动态建表17张=DB实际62张）
 │   ├── QUANTMIND_V2_DESIGN_V5.md   ← ⚠️历史设计(被ROADMAP_V3替代，仅局部参考)
-│   ├── IMPLEMENTATION_MASTER.md    ← 实施总纲（历史参考，当前用Phase/G/GA编号）
+│   ├── IMPLEMENTATION_MASTER.md    ← 已归档至docs/archive/
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
 │   ├── DEV_BACKEND.md              ← 后端设计(分层/数据流/协同矩阵)
 │   ├── DEV_BACKTEST_ENGINE.md      ← 回测引擎(Hybrid架构/34项决策)
@@ -341,8 +340,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 | 你要做什么 | 读这个 |
 |-----------|--------|
-| 了解系统怎么跑/模块怎么对接 | **SYSTEM_RUNBOOK.md** ⭐ |
-| 查Sprint计划/下一步 | docs/IMPLEMENTATION_MASTER.md |
+| 了解系统现状/模块怎么对接 | **SYSTEM_STATUS.md** ⭐ |
 | 建数据库表 | docs/QUANTMIND_V2_DDL_FINAL.sql ⭐ |
 | 接入数据源 | docs/TUSHARE_DATA_SOURCE_CHECKLIST.md ⭐ |
 | 写后端Service/理解分层 | docs/DEV_BACKEND.md (§3分层/§4数据流/§5协同矩阵) |
@@ -352,7 +350,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 写调度任务 | docs/DEV_SCHEDULER.md |
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
 | 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
-| 查设计决策 | docs/DESIGN_DECISIONS.md (93+40项) |
+| 查设计决策 | V3 附录F（从DESIGN_DECISIONS+TECH_DECISIONS合并） |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (19条目: 8 failed + 6 findings + 5 decisions) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
@@ -381,7 +379,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 文件归属规则（防腐）
 
 ### 根目录只允许以下文件
-CLAUDE.md / SYSTEM_RUNBOOK.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / pyproject.toml / .gitignore
+CLAUDE.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / pyproject.toml / .gitignore
 - 新审计/盘点报告 → `docs/reports/`
 - 新研究报告 → `docs/research/`
 - 回测输出 → 用完即删，不留根目录
@@ -399,7 +397,7 @@ CLAUDE.md / SYSTEM_RUNBOOK.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_R
 
 ### 文档层级（固定）
 - **总设计**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md`
-- **运行手册**: `SYSTEM_RUNBOOK.md`
+- **系统现状**: `SYSTEM_STATUS.md`
 - **入口导航**: `CLAUDE.md`（本文件）
 - **Schema定义**: `docs/QUANTMIND_V2_DDL_FINAL.sql`
 - DESIGN_V5只做局部参考，不是当前总设计
@@ -407,8 +405,8 @@ CLAUDE.md / SYSTEM_RUNBOOK.md / PROGRESS.md / LESSONS_LEARNED.md / FACTOR_TEST_R
 ## 执行标准流程
 
 1. 读本文件了解全局
-2. **读 SYSTEM_RUNBOOK.md** 了解系统怎么跑、模块怎么对接
+2. **读 SYSTEM_STATUS.md** 了解系统现状、模块怎么对接
 3. 根据任务类型读对应DEV文档（见查阅索引）
 4. 编码 → 测试 → 验证
 5. 发现需要偏离指令的地方 → **先报告，等确认**
-6. 任务完成后更新 SYSTEM_RUNBOOK.md 对应章节（保持RUNBOOK与代码一致）
+6. 任务完成后更新 SYSTEM_STATUS.md 对应章节（保持文档与代码一致）
