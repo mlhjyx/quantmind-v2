@@ -73,9 +73,15 @@
   - 8/60月触发(2022/2023熊市+2024恐慌), 从hold_vol差分计算净买入
 - **Composite回测**: Sharpe 0.840→0.890(+0.05), MDD -52%→-50%(+2pp), Sortino 1.11→1.20
 
+### Paired Bootstrap因子回测 (2026-04-08)
+- **9个独立候选(ICIR>0.5)全部FAIL**: 加入第6因子后Sharpe均下降(0.84→0.52~0.73)
+- **根因**: 等权框架稀释效应 — 新因子IC独立但边际alpha不足以补偿信号稀释
+- **结论**: 因子扩展应通过Modifier/ML/分层策略,非等权逐一添加
+- **知识库**: docs/research-kb/findings/factor-addition-dilution-effect.md
+
 ### 待执行
 - H0成本模型校准(待QMT实盘数据)
-- 独立因子paired bootstrap回测(17个候选 vs 基线)
+- IC加权替代等权评估(paired bootstrap)
 - 盈利公告因子H1季报扩展 + 分钟聚合因子
 
 ### 因子候选研究 (2026-04-07)
