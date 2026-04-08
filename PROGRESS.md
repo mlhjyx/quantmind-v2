@@ -79,9 +79,17 @@
 - **结论**: 因子扩展应通过Modifier/ML/分层策略,非等权逐一添加
 - **知识库**: docs/research-kb/findings/factor-addition-dilution-effect.md
 
+### MDD优化 (2026-04-08)
+- **RegimeModifier修复**: SQL(klines→index_daily) + rollback防事务污染
+- **双层Modifier(E)**: Regime(VolRegime fallback) + NB激进(50%/30%,阈值-0.3)
+  - MDD: -52.07% → **-35.37%** (-16.7pp)
+  - Sharpe: 0.844 → **1.115** (+0.271)
+  - Sortino: 1.11 → 1.59, DSR: 0.31 → 0.62
+- HMM训练数据不足(251<252)降级VolRegime, min_hmm_samples可调到200
+
 ### 待执行
+- 双层Modifier部署到PT生产
 - H0成本模型校准(待QMT实盘数据)
-- IC加权替代等权评估(paired bootstrap)
 - 盈利公告因子H1季报扩展 + 分钟聚合因子
 
 ### 因子候选研究 (2026-04-07)
