@@ -34,8 +34,8 @@ def _to_qmt_code(code: str) -> str:
 
 
 def _from_qmt_code(code: str) -> str:
-    """QMT代码(601138.SH) → DB代码(601138)。"""
-    return code.split(".")[0] if "." in code else code
+    """QMT代码 → DB代码（统一后均为带后缀格式，直接返回）。"""
+    return code
 
 
 @dataclass

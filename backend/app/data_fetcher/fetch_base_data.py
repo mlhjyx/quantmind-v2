@@ -118,7 +118,7 @@ class BaseDataFetcher:
         rows = []
         for _, r in df.iterrows():
             ts_code = str(r["ts_code"])
-            code = ts_code.split(".")[0]  # 000001.SZ → 000001
+            code = ts_code  # 保留完整ts_code作为code（统一带后缀格式）
             name = str(r["name"])
             board = _board_from_ts_code(ts_code, name)
             exchange = "SSE" if ts_code.endswith(".SH") else "SZSE"
@@ -292,7 +292,7 @@ class BaseDataFetcher:
             rows = []
             for _, r in df.iterrows():
                 ts_code = str(r["ts_code"])
-                code = ts_code.split(".")[0]
+                code = ts_code  # 保留带后缀格式
                 if code not in valid_codes:
                     continue
                 vol = r.get("vol")  # Tushare daily.vol = 手
@@ -392,7 +392,7 @@ class BaseDataFetcher:
 
             rows = []
             for _, r in df.iterrows():
-                code = str(r["ts_code"]).split(".")[0]
+                code = str(r["ts_code"])  # 保留带后缀格式
                 if code not in valid_codes:
                     continue
                 row = {"code": code, "trade_date": td}
@@ -527,7 +527,7 @@ class BaseDataFetcher:
 
             rows = []
             for _, r in df.iterrows():
-                code = str(r["ts_code"]).split(".")[0]
+                code = str(r["ts_code"])  # 保留带后缀格式
                 report_date = pd.to_datetime(r["end_date"]).date()
 
                 # PIT关键: 用ann_date (实际公告日)

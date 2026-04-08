@@ -1326,10 +1326,10 @@ def run_execute_phase(
                 qmt_asset = broker.query_asset()
                 total_value = qmt_asset.get("total_asset", 0)
 
-                # 转为 {code: shares} 去后缀
+                # 转为 {code: shares} (统一带后缀格式)
                 actual_holdings: dict[str, int] = {}
                 for p in qmt_pos:
-                    code = p.get("stock_code", "").split(".")[0]
+                    code = p.get("stock_code", "")
                     if code and p.get("market_value", 0) > 1000:
                         actual_holdings[code] = p["volume"]
 
@@ -1414,7 +1414,7 @@ def run_execute_phase(
                         # can_use从query_positions获取
                         can_use_map: dict[str, int] = {}
                         for p in qmt_pos:
-                            pc = p.get("stock_code", "").split(".")[0]
+                            pc = p.get("stock_code", "")
                             can_use_map[pc] = p.get("can_use_volume", 0)
 
                         actually_sellable = {

@@ -662,7 +662,7 @@ def calc_pead_q1(trade_date, conn=None) -> pd.Series:
     seen = set()
     data = {}
     for ts_code, surprise, _ann_td in rows:
-        code = ts_code.split(".")[0] if "." in ts_code else ts_code
+        code = ts_code  # 统一带后缀格式
         if code not in seen:
             data[code] = float(surprise)
             seen.add(code)

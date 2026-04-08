@@ -175,14 +175,12 @@ def _infer_price_limit(code: str) -> float:
     注意: ST股需要name字段判断，仅靠代码无法识别。
     当symbols_info可用时应优先使用其price_limit字段。
     """
-    # tushare ts_code 格式: 000001.SZ, 取纯数字部分
-    pure_code = code.split(".")[0] if "." in code else code
-
-    if pure_code.startswith("68"):
+    # code统一为带后缀格式(000001.SZ), startswith仍可正确匹配板块
+    if code.startswith("68"):
         return 0.20  # 科创板
-    if pure_code.startswith("30"):
+    if code.startswith("30"):
         return 0.20  # 创业板
-    if pure_code.startswith("8") or pure_code.startswith("4"):
+    if code.startswith("8") or code.startswith("4") or code.endswith(".BJ"):
         return 0.30  # 北交所
     return 0.10  # 主板(含ST fallback — ST需symbols_info.price_limit覆盖)
 

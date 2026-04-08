@@ -333,7 +333,7 @@ async def get_drift(
     if qmt_manager.state == "connected" and qmt_manager.broker is not None:
         try:
             for p in (await _broker_query_positions()):
-                code = p["stock_code"].split(".")[0] if "." in p["stock_code"] else p["stock_code"]
+                code = p["stock_code"]  # 统一带后缀格式，不strip
                 actual_positions[code] = {
                     "volume": p["volume"],
                     "can_use_volume": p["can_use_volume"],

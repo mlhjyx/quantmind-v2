@@ -90,8 +90,8 @@ def query_db_positions(conn, d: date) -> dict[str, int]:
 
 
 def _strip_suffix(code: str) -> str:
-    """去除QMT代码后缀: 688570.SH → 688570。"""
-    return code.split(".")[0] if "." in code else code
+    """统一后DB和QMT均为带后缀格式，直接返回。"""
+    return code
 
 
 def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:

@@ -152,8 +152,7 @@ def upsert_daily_basic(
         conn = get_sync_conn()
 
     df = df.rename(columns={'ts_code': 'code'})
-    # Strip交易所后缀: 000001.SZ → 000001
-    df['code'] = df['code'].str.split('.').str[0]
+    # code保留带后缀格式(统一为600519.SH)
     # FK过滤
     df = _filter_valid_codes(df, conn)
     if df.empty:

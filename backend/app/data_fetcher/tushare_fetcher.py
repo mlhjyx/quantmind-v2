@@ -181,7 +181,7 @@ class TushareFetcher:
             'vol': 'volume',
         })
         # Strip交易所后缀: 000001.SZ → 000001（与symbols表PK对齐）
-        df['code'] = df['code'].str.split('.').str[0]
+        # code保留Tushare原始带后缀格式(统一为600519.SH)
 
         # 标记停牌：volume=0 且 close≈pre_close（用容差避免浮点精度问题）
         df['is_suspended'] = (

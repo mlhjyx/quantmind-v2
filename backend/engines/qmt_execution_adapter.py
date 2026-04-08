@@ -110,8 +110,8 @@ def _to_qmt_code(code: str) -> str:
 
 
 def _from_qmt_code(qmt_code: str) -> str:
-    """QMT格式 → 6位代码。"""
-    return qmt_code.split(".")[0] if "." in qmt_code else qmt_code
+    """QMT格式 → DB代码（统一后均为带后缀格式，直接返回）。"""
+    return qmt_code
 
 
 # ════════════════════════════════════════════════════════════
