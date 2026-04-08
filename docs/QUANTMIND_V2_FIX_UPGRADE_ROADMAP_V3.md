@@ -2265,3 +2265,111 @@ PMS组合层保护(净值<20日均线×0.90→70%仓位) > 系统性事件暂停
 *v3核心: 基线修正(0.91/-43%), AI闭环管道(Phase GA), 多策略架构, Alpha多元化优先。*
 *QMT模拟盘4/2首次建仓, 当前15只持仓NAV≈¥958,684(截至4/3)。PT毕业阈值=保守Sharpe×0.7≈0.56-0.60。*
 *回测协议参考: Arnott, Harvey, Markowitz (2019) "A Backtesting Protocol in the Era of Machine Learning", JFDS 1(1), 64-74。*
+
+---
+
+# 附录F：决策记录（从DESIGN_DECISIONS.md和TECH_DECISIONS.md合并）
+
+## F.1 关键设计决策（93项+40项补充）
+
+> 从 CLAUDE.md 迁移，原始位置已替换为指向本文件的引用。
+> 这些决策经过三轮review确认（93项+40项补充），变更需用户审批。
+
+### 策略层
+
+**信号合成**: Phase 0 两个都做——**等权Top-N为基线**（先跑），IC加权为对比版。
+等权更稳健、更易调试。IC加权如果不如等权，则锁定等权作为规则版。
+
+**换手率上限**: 单次调仓换手率上限50%（即每次调仓最多换一半持仓），不是年化换手率。
+
+### 数据完整性层
+
+**存活偏差处理**: symbols表必须包含已退市股票。
+拉取时用 `stock_basic(list_status='D')` 获取全量退市股。
+回测中退市股处理：退市前5个交易日强制平仓，按最后可交易价格结算。
+不处理存活偏差会让回测收益虚高2-5%/年。
+
+**交易日历维护**: 年初从Tushare导入后，加每日校验（今天是否交易日 vs 实际市场开盘状态）。
+加手动修改交易日历的API应对临时变动（如特殊事件休市）。
+
+### 数据存储层
+
+**factor_values用长表**: TimescaleDB hypertable，按月分chunk（不是默认7天）。
+索引 `(symbol_id, date, factor_name)`。读取时永远带date范围条件。
+
+**写入模式: 按日期批量写**——每日因子计算完成后，一次事务写入当日全部股票×全部因子。
+
+**index_components表**: 已建，存沪深300/中证500等指数的成分股权重历史。
+
+### 架构层
+
+**Service依赖注入**: 统一用FastAPI的 `Depends` 链注入，不要手动new。
+
+**Celery与async的混合**: 采用方案A——Celery task内部用 `asyncio.run()` 调用async Service。
+
+**执行层Broker策略模式**: Paper/实盘/外汇共用同一套因子→信号→风控链路，
+唯一区别是执行层。用策略模式切换，配置项`EXECUTION_MODE = paper / live`。
+
+**策略版本管理**: `strategy_configs.config`是JSONB，每次变更**插入新version行**
+而不是更新旧行。回滚 = 把`strategy.active_version`指回旧版本号。
+
+### 风控层
+
+**回撤熔断恢复状态机**（Phase 1实现）:
+正常 → 降仓（月亏>10%）→ 正常（连续5个交易日累计盈利>2%）
+降仓 → 停止（累计亏>25%）→ 人工审批重启
+
+### Paper Trading 运行模式与毕业标准
+
+**Paper Trading = 实时回测**: 真实行情 + 虚拟资金，走和实盘完全一样的
+因子→信号→风控→执行链路，唯一区别是Broker用SimBroker。
+
+**毕业标准（9项）**: 运行≥60交易日, Sharpe≥回测×70%, MDD≤回测×1.5,
+滑点偏差<50%, 链路完整, fill_rate≥95%, avg_slippage≤30bps,
+tracking_error≤2%, gap_hours 12-20h。
+
+### AI闭环层
+
+**三步走战略（2026-03-28确认）**:
+Step 1: PT毕业→实盘 → Step 2: GP最小闭环 → Step 3: 完整AI闭环
+
+**GP-first原则**: GP零成本、确定性高、天然闭环。GP跑不通→LLM也跑不通。
+
+**Warm Start GP**: 用现有5因子表达式结构做模板初始化（arxiv 2412.00896）。
+
+**因子生命周期状态机**: candidate → active → warning → critical → retired
+
+## F.2 技术决策快查表
+
+> 新会话恢复上下文时一眼看完整个决策历史。每个技术决策追加一行。
+
+| 决策 | 结果 | 判定 | 阶段 |
+|------|------|------|------|
+| Beta对冲 | 现金拖累36%，去掉后Sharpe 1.01→1.29 | Reverted | Phase 0 |
+| GPA因子 | 行业proxy，中性化后IC不显著(p=0.14) | Reverted | Phase 0 |
+| 候选2红利低波 | 与基线corr=0.778，无分散价值 | Reverted | Sprint 1.2 |
+| 候选4大盘低波 | OOS Sharpe=-0.11，2022年亏-37.85% | Reverted | Sprint 1.2 |
+| 候选5中期反转 | corr=0.627，不够正交 | Reverted | Sprint 1.2 |
+| Top20→Top15 | 整手误差8%→3%，Sharpe无差异 | KEEP | Sprint 1.2 |
+| 波动率自适应阈值 | 高波放宽低波收紧，clip(0.5, 2.0) | KEEP | Sprint 1.1 |
+| mf_divergence | IC=9.1%→证伪IC=-2.27%(铁律11) | INVALIDATED | Sprint 1.3 |
+| 等权 vs IC加权 | 9种方法全部劣于等权(LL-018) | KEEP等权 | Sprint 1.3b |
+| 5因子vs8因子 | 8因子Sharpe=0.50(弱因子稀释)，5因子=1.05 | KEEP 5因子 | Sprint 1.2 |
+| 基本面方向 | 10种方式穷举：8 FAIL+1 MARGINAL+1 SKIP | 方向关闭 | Sprint 1.5b |
+| LightGBM-5feat | OOS Sharpe=0.869,p=0.073,3项红线FAIL | NOT JUSTIFIED | Sprint 1.4b |
+| HMM 2-state regime | Sharpe=1.02<Vol Regime 1.08, MDD更差 | NOT JUSTIFIED | Sprint 1.12 |
+| AI闭环三步走 | GP-first不上LLM | KEEP(战略) | Sprint 1.12 |
+| 滑点三因素模型 | tiered_base+impact(Bouchaud)+overnight_gap | KEEP | Sprint 1.14 |
+| AST去重L1-L3 | 规范化+SHA256>dump>Spearman | KEEP | Sprint 1.14 |
+| Gate Pipeline G1-G5自动+G6-G8半自动 | BH-FDR动态阈值 | KEEP | Sprint 1.15 |
+| FactorDSL 28算子 | Qlib Alpha158兼容，量纲约束 | KEEP | Sprint 1.16 |
+| GP Warm Start | 5因子模板→变体初始化80%+20%随机 | KEEP | Sprint 1.16 |
+| GP Pipeline 7步闭环 | 加载→WarmStart→进化→Gate→DB→钉钉→保存 | KEEP | Sprint 1.17 |
+| RSRS单因子monthly | Sharpe=0.28, MDD=-43%, CI包含0 | NOT JUSTIFIED | Sprint 1.12 |
+| 7因子等权(+vwap+rsrs) | Sharpe=0.902<基线1.028, 换手+207% | Reverted | Sprint 1.6 |
+| v1.1配置锁死 | 不再等权升级，60天PT跑完 | KEEP | Sprint 1.3b |
+| volume_impact默认模式 | SimBroker slippage_mode="volume_impact" | KEEP | Sprint 1.11 |
+| config_guard入PT | v1.1配置一致性强制检查 | KEEP | Sprint 1.11 |
+
+> 完整107条决策见原始归档: docs/archive/TECH_DECISIONS.md
+> 原始文件已归档至 docs/archive/
