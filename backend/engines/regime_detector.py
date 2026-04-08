@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 # ── 参数 ──────────────────────────────────────────────────────────────────────
 N_STATES: int = 2  # risk-on / risk-off（quant审查：2-state参数更稳定）
-MIN_TRAIN_SAMPLES: int = 252  # 至少1年训练数据（quant C2: 样本/参数>=50）
+MIN_TRAIN_SAMPLES: int = 200  # ~10个月训练数据（quant C2: 200/6参数=33, 2-state够用）
 ROLLING_WINDOW: int = 252  # rolling fit窗口（1年，quant §2.3最短504可选）
 
 # 去抖动参数（quant §4.3要求）

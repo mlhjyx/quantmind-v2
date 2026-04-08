@@ -61,7 +61,7 @@ class RegimeModifier(ModifierBase):
         self._scale_risk_on = config.get("scale_risk_on", _SCALE_RISK_ON)
         self._scale_neutral = config.get("scale_neutral", _SCALE_NEUTRAL)
         self._scale_risk_off = config.get("scale_risk_off", _SCALE_RISK_OFF)
-        self._min_hmm_samples = config.get("min_hmm_samples", 252)
+        self._min_hmm_samples = config.get("min_hmm_samples", 200)
         self._use_hmm = config.get("use_hmm", True)
         self._benchmark_code = config.get("benchmark_code", "000300.SH")
 
@@ -160,7 +160,7 @@ class RegimeModifier(ModifierBase):
 
         try:
             cur = context.conn.cursor()
-            # 从index_daily取基准指数收盘价(300交易日, 足够HMM训练)
+            # 从index_daily取基准指数收盘价(500交易日, 确保早期日期也有足够HMM训练数据)
             cur.execute(
                 """
                 SELECT trade_date, close
@@ -168,7 +168,7 @@ class RegimeModifier(ModifierBase):
                 WHERE index_code = %s
                   AND trade_date <= %s
                 ORDER BY trade_date DESC
-                LIMIT 300
+                LIMIT 500
                 """,
                 (self._benchmark_code, context.trade_date),
             )
