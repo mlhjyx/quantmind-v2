@@ -1,0 +1,123 @@
+{
+  "config": {
+    "n_splits": 5,
+    "train_window": 750,
+    "gap": 5,
+    "test_window": 250,
+    "factors": [
+      "turnover_mean_20",
+      "volatility_20",
+      "reversal_20",
+      "amihud_20",
+      "bp_ratio"
+    ],
+    "top_n": 20,
+    "rebalance_freq": "monthly",
+    "exclude_bj_st_new_suspended": true,
+    "slippage": "volume_impact",
+    "pms_enabled": true
+  },
+  "folds": [
+    {
+      "fold_idx": 0,
+      "test_start": "2021-02-04",
+      "test_end": "2022-02-21",
+      "oos_sharpe": 3.1783,
+      "oos_mdd": -0.105011,
+      "oos_annual_return": 0.75129,
+      "oos_sortino": 4.1592,
+      "oos_total_return": 0.771515,
+      "monthly_win_rate": 0.8333,
+      "test_days": 250,
+      "total_trades": 381,
+      "elapsed_sec": 5.3
+    },
+    {
+      "fold_idx": 1,
+      "test_start": "2022-02-22",
+      "test_end": "2023-03-02",
+      "oos_sharpe": 0.1227,
+      "oos_mdd": -0.240633,
+      "oos_annual_return": 0.002544,
+      "oos_sortino": 0.1472,
+      "oos_total_return": 0.002596,
+      "monthly_win_rate": 0.6154,
+      "test_days": 250,
+      "total_trades": 402,
+      "elapsed_sec": 5.3
+    },
+    {
+      "fold_idx": 2,
+      "test_start": "2023-03-03",
+      "test_end": "2024-03-13",
+      "oos_sharpe": -0.8268,
+      "oos_mdd": -0.376631,
+      "oos_annual_return": -0.219357,
+      "oos_sortino": -1.0488,
+      "oos_total_return": -0.223308,
+      "monthly_win_rate": 0.5,
+      "test_days": 250,
+      "total_trades": 361,
+      "elapsed_sec": 5.4
+    },
+    {
+      "fold_idx": 3,
+      "test_start": "2024-03-14",
+      "test_end": "2025-03-26",
+      "oos_sharpe": 0.2926,
+      "oos_mdd": -0.280787,
+      "oos_annual_return": 0.043908,
+      "oos_sortino": 0.4113,
+      "oos_total_return": 0.044828,
+      "monthly_win_rate": 0.3333,
+      "test_days": 250,
+      "total_trades": 346,
+      "elapsed_sec": 5.4
+    },
+    {
+      "fold_idx": 4,
+      "test_start": "2025-03-27",
+      "test_end": "2026-04-08",
+      "oos_sharpe": 1.253,
+      "oos_mdd": -0.152811,
+      "oos_annual_return": 0.316661,
+      "oos_sortino": 1.2299,
+      "oos_total_return": 0.324104,
+      "monthly_win_rate": 0.7692,
+      "test_days": 250,
+      "total_trades": 377,
+      "elapsed_sec": 5.8
+    }
+  ],
+  "fold_stats": {
+    "sharpe_mean": 0.804,
+    "sharpe_std": 1.5186,
+    "sharpe_min": -0.8268,
+    "sharpe_max": 3.1783,
+    "mdd_mean": -0.231175,
+    "mdd_worst": -0.376631,
+    "annual_mean": 0.179009,
+    "folds_with_negative_sharpe": 1
+  },
+  "chain_link": {
+    "sharpe": 0.6336,
+    "mdd": -0.45721,
+    "annual_return": 0.135153,
+    "sortino": 0.7577,
+    "total_return": 0.908476,
+    "monthly_win_rate": 0.6129,
+    "total_days": 1245,
+    "date_range": [
+      "2021-02-05",
+      "2026-04-08"
+    ]
+  },
+  "in_sample_12yr": {
+    "sharpe": 0.5309,
+    "mdd": -0.5637,
+    "annual_return": 0.1306
+  },
+  "overfit_ratio": 1.1934,
+  "elapsed_sec": 40.0,
+  "stability_verdict": "UNSTABLE — 存在负 Sharpe fold, 策略在某时期失效"
+}

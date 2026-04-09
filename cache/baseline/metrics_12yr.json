@@ -1,0 +1,32 @@
+{
+  "sharpe": 0.5309,
+  "mdd_pct": -56.37,
+  "annual_return_pct": 13.06,
+  "sortino": 0.6445,
+  "total_return_pct": 347.92,
+  "total_trades": 4617,
+  "nav_start": 1000000.0,
+  "nav_end": 4479226.607666443,
+  "trading_days": 2980,
+  "years_covered": 12.21,
+  "date_range": [
+    "2014-01-02",
+    "2026-04-08"
+  ],
+  "elapsed_sec": 328.0,
+  "config": {
+    "factors": [
+      "turnover_mean_20",
+      "volatility_20",
+      "reversal_20",
+      "amihud_20",
+      "bp_ratio"
+    ],
+    "top_n": 20,
+    "rebalance_freq": "monthly",
+    "initial_capital": 1000000,
+    "slippage_mode": "volume_impact",
+    "stamp_tax": "historical",
+    "pms_enabled": true
+  }
+}

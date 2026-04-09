@@ -12,6 +12,14 @@ Sprint 1.2a — 过拟合检测核心组件。
 signal_func 回调设计:
 - 当前等权策略: signal_func 内部用 SignalComposer + PortfolioBuilder 生成信号
 - 未来ML策略: signal_func 内部用 LightGBM 训练→预测
+
+Step 6-D (2026-04-09): 与重构后 engines.backtest 包对齐
+- Fix 5: import 路径从 backend.engines.backtest_engine 改为 engines.backtest
+- Fix 2: 新增 per-date ST/BJ/suspended/new_stock 过滤 (`build_exclusion_map`), 跟
+  run_hybrid_backtest 的过滤逻辑一致, 避免 signal_func 忘记过滤导致 BJ 股进入信号
+- Fix 4: 提供 `make_equal_weight_signal_func` 工厂函数, 自动管理 factor_df/directions/exclude
+- Fix 7: PMS 状态在 fold 之间重置 (每折新建 SimpleBacktester) — 这是正确行为
+  (每折独立 OOS 评估), 不是 bug。跨 fold 的累计盈亏追踪见 WFResult.combined_oos_nav
 """
 
 from collections.abc import Callable
@@ -21,14 +29,175 @@ from datetime import date
 import pandas as pd
 import structlog
 
-from backend.engines.backtest_engine import BacktestConfig, BacktestResult, SimpleBacktester
-from backend.engines.metrics import (
+# Step 4-A 之后走新的 engines.backtest 包 re-export (原 backend.engines.backtest_engine 是 shim)
+from engines.backtest import BacktestConfig, BacktestResult, SimpleBacktester
+from engines.metrics import (
     TRADING_DAYS_PER_YEAR,
     calc_max_drawdown,
     calc_sharpe,
 )
 
 logger = structlog.get_logger(__name__)
+
+
+# ============================================================
+# Fix 2 — Universe 过滤 helper
+# ============================================================
+
+def build_exclusion_map(price_data: pd.DataFrame) -> dict[date, set[str]]:
+    """从 price_data 构建 per-date 排除集合 (ST / suspended / new / BJ)。
+
+    与 run_hybrid_backtest (runner.py) 里的 _status_by_date 逻辑一致,
+    避免 walk_forward 的 signal_func 忘记过滤导致 BJ/ST 股进入信号。
+
+    Args:
+        price_data: 必须包含 code/trade_date 列, 以及可选的 is_st/is_suspended/
+                    is_new_stock/board 列 (至少一个)
+
+    Returns:
+        {trade_date: set of codes to exclude on that date}
+        如果 price_data 没有任何 status 列, 返回空 dict (不过滤)
+    """
+    status_by_date: dict[date, set[str]] = {}
+    cols = set(price_data.columns)
+
+    # ST / suspended / new_stock: 这些列是 bool
+    for status_col in ("is_st", "is_suspended", "is_new_stock"):
+        if status_col not in cols:
+            continue
+        excluded = price_data.loc[
+            price_data[status_col] == True, ["code", "trade_date"]  # noqa: E712
+        ]
+        for td, grp in excluded.groupby("trade_date"):
+            status_by_date.setdefault(td, set()).update(grp["code"].tolist())
+
+    # BJ (board='bse')
+    if "board" in cols:
+        bj = price_data.loc[price_data["board"] == "bse", ["code", "trade_date"]]
+        for td, grp in bj.groupby("trade_date"):
+            status_by_date.setdefault(td, set()).update(grp["code"].tolist())
+
+    logger.debug(
+        "build_exclusion_map: %d 天有排除项, 总计排除 %d 条 (code,date)",
+        len(status_by_date),
+        sum(len(s) for s in status_by_date.values()),
+    )
+    return status_by_date
+
+
+# ============================================================
+# Fix 4 — 等权 signal_func 工厂
+# ============================================================
+
+def make_equal_weight_signal_func(
+    factor_df: pd.DataFrame,
+    directions: dict[str, int],
+    price_data: pd.DataFrame,
+    top_n: int = 20,
+    rebalance_freq: str = "monthly",
+) -> "SignalFunc":
+    """构造一个标准的等权 Walk-Forward signal_func。
+
+    自动处理:
+      - 加载因子 (factor_df)
+      - 方向注入 (directions) — 通过 SignalComposer.compose 的 direction_map 参数
+      - per-date universe 过滤 (price_data 的 is_st/is_suspended/is_new_stock/board)
+      - Top-N 等权组合
+      - 调仓日计算 (monthly/weekly/biweekly)
+
+    train_dates 参数被 **忽略** — 等权策略没有 train-dependent 参数, 纯稳定性测试。
+    如果需要 train-dependent 信号 (选因子 / 调参), 需要自己写 signal_func。
+
+    Args:
+        factor_df: 因子长表 (code, trade_date, factor_name, neutral_value 或 raw_value)
+                   注意: 如果列名是 raw_value 但内容是已中性化的值
+                   (cache/backtest/*.parquet 的历史坑), 会自动 rename
+        directions: {factor_name: +1|-1}
+        price_data: 用于构建 per-date 排除集
+        top_n: Top-N 选股 (默认 20)
+        rebalance_freq: 调仓频率 ("monthly"/"biweekly"/"weekly")
+
+    Returns:
+        符合 SignalFunc 签名的回调
+    """
+    from engines.signal_engine import (
+        FACTOR_DIRECTION,
+        PortfolioBuilder,
+        SignalComposer,
+    )
+    from engines.signal_engine import SignalConfig as SEConfig
+    from engines.vectorized_signal import compute_rebalance_dates
+
+    # factor_df 列名兼容 (cache/backtest/*.parquet 里列名是 raw_value 但内容已中性化)
+    if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
+        factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
+
+    # 构建 universe 排除集 (一次性, 所有 fold 共用)
+    exclusion_map = build_exclusion_map(price_data)
+
+    # 构建 SignalComposer/PortfolioBuilder (配置固定, 所有 fold 共用)
+    se_config = SEConfig(
+        factor_names=list(directions.keys()),
+        top_n=top_n,
+        weight_method="equal",
+        rebalance_freq=rebalance_freq,
+        industry_cap=1.0,
+        turnover_cap=1.0,
+        cash_buffer=0.0,
+    )
+    composer = SignalComposer(se_config)
+    builder = PortfolioBuilder(se_config)
+
+    # 预计算全部 rebal dates (后面按 fold 过滤)
+    all_trading_days = sorted(price_data["trade_date"].unique())
+    all_rebal_dates = compute_rebalance_dates(all_trading_days, rebalance_freq)
+
+    def signal_func(
+        train_dates: list[date], test_dates: list[date]
+    ) -> dict[date, dict[str, float]]:
+        # train_dates 被忽略 — 等权策略无 train-dependent 参数
+        test_set = set(test_dates)
+        fold_rebal = [rd for rd in all_rebal_dates if rd in test_set]
+
+        if not fold_rebal:
+            logger.warning(
+                "make_equal_weight_signal_func: test 期 [%s..%s] 没有 rebal 日",
+                test_dates[0], test_dates[-1],
+            )
+            return {}
+
+        # 注入 directions (全局状态, 用完恢复)
+        saved = dict(FACTOR_DIRECTION)
+        FACTOR_DIRECTION.update(directions)
+
+        target_portfolios: dict[date, dict[str, float]] = {}
+        try:
+            for rd in fold_rebal:
+                day_data = factor_df[factor_df["trade_date"] <= rd]
+                if day_data.empty:
+                    continue
+                latest_date = day_data["trade_date"].max()
+                day_data = day_data[day_data["trade_date"] == latest_date]
+
+                exclude = exclusion_map.get(latest_date, set())
+                scores = composer.compose(day_data, exclude=exclude)
+                if scores.empty:
+                    continue
+                weights = builder.build(scores, pd.Series(dtype=str))
+                if weights:
+                    target_portfolios[rd] = weights
+        finally:
+            # 恢复全局
+            FACTOR_DIRECTION.clear()
+            FACTOR_DIRECTION.update(saved)
+
+        logger.info(
+            "signal_func fold: test [%s..%s] 生成 %d 个调仓日信号",
+            test_dates[0], test_dates[-1], len(target_portfolios),
+        )
+        return target_portfolios
+
+    return signal_func
 
 
 # ============================================================
@@ -504,8 +673,10 @@ def print_wf_report(wf_result: WFResult, full_sample_sharpe: float | None = None
 #
 # === 示例1: 等权策略的 Walk-Forward 验证 ===
 #
-# from backend.engines.walk_forward import WalkForwardEngine, WFConfig
-# from backend.engines.backtest_engine import BacktestConfig
+# from engines.walk_forward import (
+#     WalkForwardEngine, WFConfig, make_equal_weight_signal_func
+# )
+# from engines.backtest import BacktestConfig
 #
 # def equal_weight_signal_func(
 #     train_dates: list[date],

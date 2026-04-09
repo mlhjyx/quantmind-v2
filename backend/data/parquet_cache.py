@@ -62,6 +62,12 @@ PRICE_SQL = """
     ORDER BY k.trade_date, k.code
 """
 
+# NOTE (Step 6-D, Fix 1): "raw_value" 列名是历史遗留 —
+# 实际内容是 COALESCE(neutral_value, raw_value), 即 **WLS 中性化后的值**
+# (中性化列 NULL 时才回退到真正的原始值)。run_hybrid_backtest() 在 runner.py
+# 里靠 `df.rename(columns={"raw_value": "neutral_value"})` 兼容这一命名。
+# 直接读 Parquet 的代码请参考 cache/backtest/SCHEMA.md 避免误解。
+# 不改列名是为了保持 regression_test 基线 Parquet 的 hash 稳定。
 FACTOR_SQL = """
     SELECT code, trade_date, factor_name,
            COALESCE(neutral_value, raw_value) as raw_value
