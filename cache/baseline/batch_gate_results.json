@@ -1,0 +1,3160 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "id": "neutral_value_T1_excess_spearman",
+    "horizon": 20,
+    "total_factors": 63,
+    "passed": 21,
+    "failed": 32,
+    "errored": 0,
+    "elapsed_sec": 1654.0
+  },
+  "core_5_verdicts": {
+    "turnover_mean_20": "FAIL",
+    "volatility_20": "FAIL",
+    "reversal_20": "PASS",
+    "amihud_20": "PASS",
+    "bp_ratio": "FAIL"
+  },
+  "candidate_3_verdicts": {
+    "turnover_stability_20": "FAIL",
+    "atr_norm_20": "FAIL",
+    "gap_frequency_20": "FAIL"
+  },
+  "results": {
+    "a158_cord30": {
+      "factor_name": "a158_cord30",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.0466,
+        "std": 0.058497,
+        "ir": -0.7966,
+        "t_stat": -27.4113,
+        "hit_rate": 0.2069,
+        "n_days": 1184,
+        "min": -0.246246,
+        "max": 0.138237
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.0466,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.479,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -27.4113,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2811,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -27.4113,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "a158_corr5": {
+      "factor_name": "a158_corr5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.041738,
+        "std": 0.049423,
+        "ir": -0.8445,
+        "t_stat": -29.3764,
+        "hit_rate": 0.1727,
+        "n_days": 1210,
+        "min": -0.367888,
+        "max": 0.158009
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.041738,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3444,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -29.3764,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.1732,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -29.3764,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "a158_rank5": {
+      "factor_name": "a158_rank5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.017963,
+        "std": 0.071424,
+        "ir": -0.2515,
+        "t_stat": -8.7485,
+        "hit_rate": 0.4074,
+        "n_days": 1210,
+        "min": -0.582741,
+        "max": 0.346672
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.017963,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3637,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -8.7485,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0699,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -8.7485,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "a158_std60": {
+      "factor_name": "a158_std60",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.030826,
+        "std": 0.109651,
+        "ir": -0.2811,
+        "t_stat": -9.5543,
+        "hit_rate": 0.3247,
+        "n_days": 1155,
+        "min": -0.440116,
+        "max": 0.539689
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030826,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.7776,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -9.5543,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.1344,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -9.5543,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "a158_vma5": {
+      "factor_name": "a158_vma5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.009186,
+        "std": 0.042537,
+        "ir": 0.216,
+        "t_stat": 7.512,
+        "hit_rate": 0.5983,
+        "n_days": 1210,
+        "min": -0.222321,
+        "max": 0.17294
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.009186,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.1256,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 7.512,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.7409,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 7.512,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "a158_vstd30": {
+      "factor_name": "a158_vstd30",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.007142,
+        "std": 0.048653,
+        "ir": 0.1468,
+        "t_stat": 5.0531,
+        "hit_rate": 0.562,
+        "n_days": 1185,
+        "min": -0.139218,
+        "max": 0.182029
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.007142,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4409,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 5.0531,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -2.4414,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 5.0531,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "a158_vsump5": {
+      "factor_name": "a158_vsump5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.014966,
+        "std": 0.043077,
+        "ir": -0.3474,
+        "t_stat": -12.0804,
+        "hit_rate": 0.3664,
+        "n_days": 1209,
+        "min": -0.178221,
+        "max": 0.163522
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.014966,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.1468,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -12.0804,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.803,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -12.0804,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "a158_vsump60": {
+      "factor_name": "a158_vsump60",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.04113,
+        "std": 0.05098,
+        "ir": -0.8068,
+        "t_stat": -27.4071,
+        "hit_rate": 0.1889,
+        "n_days": 1154,
+        "min": -0.168763,
+        "max": 0.127901
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.04113,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4858,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -27.4071,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.2409,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -27.4071,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "amihud_20": {
+      "factor_name": "amihud_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.064275,
+        "std": 0.073095,
+        "ir": 0.8793,
+        "t_stat": 47.6704,
+        "hit_rate": 0.8118,
+        "n_days": 2939,
+        "min": -0.34602,
+        "max": 0.399628
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.064275,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4027,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 47.6704,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0772,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 47.6704,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "atr_norm_20": {
+      "factor_name": "atr_norm_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.09803,
+        "std": 0.207286,
+        "ir": -0.4729,
+        "t_stat": -17.4981,
+        "hit_rate": 0.2995,
+        "n_days": 1369,
+        "min": -0.679947,
+        "max": 0.77099
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.09803,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8312,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -17.4981,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2951,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -17.4981,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "beta_market_20": {
+      "factor_name": "beta_market_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 2e-05,
+        "std": 0.077969,
+        "ir": 0.0003,
+        "t_stat": 0.0132,
+        "hit_rate": 0.5128,
+        "n_days": 2660,
+        "min": -0.289069,
+        "max": 0.238253
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 2e-05,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5155,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "False",
+          "metric": 0.0132,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0082,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "False",
+          "metric": 0.0132,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "bp_ratio": {
+      "factor_name": "bp_ratio",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.059085,
+        "std": 0.0924,
+        "ir": 0.6394,
+        "t_stat": 34.7779,
+        "hit_rate": 0.7177,
+        "n_days": 2958,
+        "min": -0.261095,
+        "max": 0.309157
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.059085,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.712,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 34.7779,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0826,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 34.7779,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "chmom_60_20": {
+      "factor_name": "chmom_60_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.019693,
+        "std": 0.083016,
+        "ir": -0.2372,
+        "t_stat": -12.0025,
+        "hit_rate": 0.3816,
+        "n_days": 2560,
+        "min": -0.285258,
+        "max": 0.433704
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019693,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.1318,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -12.0025,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2297,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -12.0025,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "dv_ttm": {
+      "factor_name": "dv_ttm",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.039848,
+        "std": 0.061021,
+        "ir": 0.653,
+        "t_stat": 35.5167,
+        "hit_rate": 0.7732,
+        "n_days": 2958,
+        "min": -0.255068,
+        "max": 0.302801
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.039848,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5085,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 35.5167,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.3072,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 35.5167,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "ep_ratio": {
+      "factor_name": "ep_ratio",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.050278,
+        "std": 0.072701,
+        "ir": 0.6916,
+        "t_stat": 37.6126,
+        "hit_rate": 0.7569,
+        "n_days": 2958,
+        "min": -0.181087,
+        "max": 0.342251
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.050278,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.6118,
+          "max_corr_with": "bp_ratio",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 37.6126,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.4113,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 37.6126,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "gain_loss_ratio_20": {
+      "factor_name": "gain_loss_ratio_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.05502,
+        "std": 0.092048,
+        "ir": -0.5977,
+        "t_stat": -30.8283,
+        "hit_rate": 0.2808,
+        "n_days": 2660,
+        "min": -0.381724,
+        "max": 0.209626
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.05502,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9127,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -30.8283,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2754,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -30.8283,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "gap_frequency_20": {
+      "factor_name": "gap_frequency_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.095754,
+        "std": 0.163264,
+        "ir": -0.5865,
+        "t_stat": -21.7004,
+        "hit_rate": 0.2652,
+        "n_days": 1369,
+        "min": -0.576009,
+        "max": 0.416397
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.095754,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8263,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -21.7004,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2248,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -21.7004,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "high_low_range_20": {
+      "factor_name": "high_low_range_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.085749,
+        "std": 0.110844,
+        "ir": -0.7736,
+        "t_stat": -26.9985,
+        "hit_rate": 0.22,
+        "n_days": 1218,
+        "min": -0.35211,
+        "max": 0.250902
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.085749,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9512,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -26.9985,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0444,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -26.9985,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "ivol_20": {
+      "factor_name": "ivol_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.100058,
+        "std": 0.18194,
+        "ir": -0.5499,
+        "t_stat": -20.2662,
+        "hit_rate": 0.2651,
+        "n_days": 1358,
+        "min": -0.621043,
+        "max": 0.653145
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.100058,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8232,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -20.2662,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2102,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -20.2662,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "kbar_kmid": {
+      "factor_name": "kbar_kmid",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.021957,
+        "std": 0.067087,
+        "ir": -0.3273,
+        "t_stat": -16.9433,
+        "hit_rate": 0.3694,
+        "n_days": 2680,
+        "min": -0.412786,
+        "max": 0.284795
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.021957,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.2571,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -16.9433,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2587,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -16.9433,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "kbar_ksft": {
+      "factor_name": "kbar_ksft",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.014588,
+        "std": 0.066382,
+        "ir": -0.2198,
+        "t_stat": -11.3766,
+        "hit_rate": 0.4216,
+        "n_days": 2680,
+        "min": -0.39878,
+        "max": 0.308882
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.014588,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.2547,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -11.3766,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "False",
+          "metric": 0.603,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -11.3766,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "kbar_kup": {
+      "factor_name": "kbar_kup",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.030492,
+        "std": 0.050341,
+        "ir": -0.6057,
+        "t_stat": -31.3574,
+        "hit_rate": 0.2444,
+        "n_days": 2680,
+        "min": -0.213316,
+        "max": 0.321004
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030492,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5415,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -31.3574,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0785,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -31.3574,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "large_order_ratio": {
+      "factor_name": "large_order_ratio",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.03319,
+        "std": 0.067334,
+        "ir": -0.4929,
+        "t_stat": -24.9594,
+        "hit_rate": 0.289,
+        "n_days": 2564,
+        "min": -0.223703,
+        "max": 0.231982
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.03319,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3836,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -24.9594,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -4.1424,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -24.9594,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "ln_market_cap": {
+      "factor_name": "ln_market_cap",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.048872,
+        "std": 0.165132,
+        "ir": -0.296,
+        "t_stat": -16.0963,
+        "hit_rate": 0.3428,
+        "n_days": 2958,
+        "min": -0.596245,
+        "max": 0.683128
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.048872,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4349,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -16.0963,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.1396,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -16.0963,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "maxret_20": {
+      "factor_name": "maxret_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.087911,
+        "std": 0.078101,
+        "ir": -1.1256,
+        "t_stat": -58.0537,
+        "hit_rate": 0.135,
+        "n_days": 2660,
+        "min": -0.330657,
+        "max": 0.196447
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.087911,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8765,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -58.0537,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.1344,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -58.0537,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "mf_divergence": {
+      "factor_name": "mf_divergence",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.021389,
+        "std": 0.050464,
+        "ir": -0.4238,
+        "t_stat": -21.3865,
+        "hit_rate": 0.313,
+        "n_days": 2546,
+        "min": -0.198665,
+        "max": 0.206639
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.021389,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5509,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -21.3865,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.8253,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -21.3865,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "momentum_10": {
+      "factor_name": "momentum_10",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.046984,
+        "std": 0.077833,
+        "ir": -0.6036,
+        "t_stat": -22.4081,
+        "hit_rate": 0.2787,
+        "n_days": 1378,
+        "min": -0.606532,
+        "max": 0.196214
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.046984,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.7463,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -22.4081,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0197,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -22.4081,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "momentum_20": {
+      "factor_name": "momentum_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.055053,
+        "std": 0.087996,
+        "ir": -0.6256,
+        "t_stat": -23.2244,
+        "hit_rate": 0.2656,
+        "n_days": 1378,
+        "min": -0.476793,
+        "max": 0.189239
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.055053,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9739,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -23.2244,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0756,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -23.2244,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "momentum_5": {
+      "factor_name": "momentum_5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.033892,
+        "std": 0.075812,
+        "ir": -0.4471,
+        "t_stat": -16.5953,
+        "hit_rate": 0.3179,
+        "n_days": 1378,
+        "min": -0.603315,
+        "max": 0.352808
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.033892,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5367,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -16.5953,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.1176,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -16.5953,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "money_flow_strength": {
+      "factor_name": "money_flow_strength",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.019845,
+        "std": 0.053415,
+        "ir": 0.3715,
+        "t_stat": 18.809,
+        "hit_rate": 0.6586,
+        "n_days": 2563,
+        "min": -0.27162,
+        "max": 0.188566
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019845,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3026,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 18.809,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.344,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 18.809,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "nb_acceleration": {
+      "factor_name": "nb_acceleration",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_change_excess": {
+      "factor_name": "nb_change_excess",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_change_rate_20d": {
+      "factor_name": "nb_change_rate_20d",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_concentration_signal": {
+      "factor_name": "nb_concentration_signal",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_consecutive_increase": {
+      "factor_name": "nb_consecutive_increase",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_contrarian": {
+      "factor_name": "nb_contrarian",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.00551,
+        "std": 0.045986,
+        "ir": -0.1198,
+        "t_stat": -4.0983,
+        "hit_rate": 0.4197,
+        "n_days": 1170,
+        "min": -0.244992,
+        "max": 0.204954
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.00551,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.1841,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -4.0983,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -1.0542,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -4.0983,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "nb_increase_ratio_20d": {
+      "factor_name": "nb_increase_ratio_20d",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.019095,
+        "std": 0.057462,
+        "ir": -0.3323,
+        "t_stat": -10.3762,
+        "hit_rate": 0.3744,
+        "n_days": 975,
+        "min": -0.160931,
+        "max": 0.185389
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019095,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.2924,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -10.3762,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -1.1642,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -10.3762,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "nb_net_buy_20d_ratio": {
+      "factor_name": "nb_net_buy_20d_ratio",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_net_buy_5d_ratio": {
+      "factor_name": "nb_net_buy_5d_ratio",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_net_buy_ratio": {
+      "factor_name": "nb_net_buy_ratio",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_new_entry": {
+      "factor_name": "nb_new_entry",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.025081,
+        "std": 0.138106,
+        "ir": -0.1816,
+        "t_stat": -4.9369,
+        "hit_rate": 0.4005,
+        "n_days": 739,
+        "min": -0.362527,
+        "max": 0.396738
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.025081,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4837,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -4.9369,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.3,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -4.9369,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "nb_rank_change_20d": {
+      "factor_name": "nb_rank_change_20d",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "nb_ratio_change_20d": {
+      "factor_name": "nb_ratio_change_20d",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.004102,
+        "std": 0.040987,
+        "ir": -0.1001,
+        "t_stat": -1.6598,
+        "hit_rate": 0.48,
+        "n_days": 275,
+        "min": -0.124077,
+        "max": 0.077861
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.004102,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.2383,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "False",
+          "metric": -1.6598,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.3743,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "False",
+          "metric": -1.6598,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "nb_ratio_change_5d": {
+      "factor_name": "nb_ratio_change_5d",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.010234,
+        "std": 0.063056,
+        "ir": 0.1623,
+        "t_stat": 5.5514,
+        "hit_rate": 0.5684,
+        "n_days": 1170,
+        "min": -0.228551,
+        "max": 0.27772
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.010234,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.1927,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 5.5514,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -9.3347,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 5.5514,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "nb_trend_20d": {
+      "factor_name": "nb_trend_20d",
+      "passed": false,
+      "gates": {},
+      "reason": "no factor data"
+    },
+    "price_level_factor": {
+      "factor_name": "price_level_factor",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.035567,
+        "std": 0.118881,
+        "ir": 0.2992,
+        "t_stat": 16.2745,
+        "hit_rate": 0.5989,
+        "n_days": 2959,
+        "min": -0.541393,
+        "max": 0.559969
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.035567,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8436,
+          "max_corr_with": "bp_ratio",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 16.2745,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0128,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 16.2745,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "price_volume_corr_20": {
+      "factor_name": "price_volume_corr_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.060979,
+        "std": 0.061226,
+        "ir": -0.996,
+        "t_stat": -54.0124,
+        "hit_rate": 0.1635,
+        "n_days": 2941,
+        "min": -0.28083,
+        "max": 0.134873
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.060979,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3464,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -54.0124,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.039,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -54.0124,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "relative_volume_20": {
+      "factor_name": "relative_volume_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.045038,
+        "std": 0.064376,
+        "ir": -0.6996,
+        "t_stat": -37.6819,
+        "hit_rate": 0.2358,
+        "n_days": 2901,
+        "min": -0.313358,
+        "max": 0.164729
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.045038,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5379,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -37.6819,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2264,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -37.6819,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "reversal_10": {
+      "factor_name": "reversal_10",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.05556,
+        "std": 0.087969,
+        "ir": 0.6316,
+        "t_stat": 34.2399,
+        "hit_rate": 0.737,
+        "n_days": 2939,
+        "min": -0.21446,
+        "max": 0.606532
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.05556,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.7742,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 34.2399,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2779,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 34.2399,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "reversal_20": {
+      "factor_name": "reversal_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.067333,
+        "std": 0.094367,
+        "ir": 0.7135,
+        "t_stat": 38.5501,
+        "hit_rate": 0.7698,
+        "n_days": 2919,
+        "min": -0.235524,
+        "max": 0.578268
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.067333,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.0887,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 38.5501,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2393,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 38.5501,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "reversal_5": {
+      "factor_name": "reversal_5",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.04059,
+        "std": 0.080909,
+        "ir": 0.5017,
+        "t_stat": 27.2435,
+        "hit_rate": 0.6935,
+        "n_days": 2949,
+        "min": -0.352808,
+        "max": 0.603315
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.04059,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5617,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 27.2435,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2722,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 27.2435,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "reversal_60": {
+      "factor_name": "reversal_60",
+      "direction": 1,
+      "ic_stats": {
+        "mean": 0.046018,
+        "std": 0.105838,
+        "ir": 0.4348,
+        "t_stat": 15.1308,
+        "hit_rate": 0.6846,
+        "n_days": 1211,
+        "min": -0.371584,
+        "max": 0.454432
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.046018,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.4314,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 15.1308,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0869,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": 15.1308,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "rsrs_raw_18": {
+      "factor_name": "rsrs_raw_18",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.041486,
+        "std": 0.060744,
+        "ir": -0.683,
+        "t_stat": -37.0506,
+        "hit_rate": 0.2042,
+        "n_days": 2943,
+        "min": -0.280376,
+        "max": 0.322061
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.041486,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.5847,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -37.0506,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0712,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -37.0506,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "stoch_rsv_20": {
+      "factor_name": "stoch_rsv_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.035078,
+        "std": 0.090117,
+        "ir": -0.3892,
+        "t_stat": -20.083,
+        "hit_rate": 0.37,
+        "n_days": 2662,
+        "min": -0.369166,
+        "max": 0.228211
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.035078,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.7935,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -20.083,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2894,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -20.083,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "turnover_mean_20": {
+      "factor_name": "turnover_mean_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.095969,
+        "std": 0.098815,
+        "ir": -0.9712,
+        "t_stat": -52.6688,
+        "hit_rate": 0.1707,
+        "n_days": 2941,
+        "min": -0.381188,
+        "max": 0.205303
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.095969,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8739,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -52.6688,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0151,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -52.6688,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "turnover_stability_20": {
+      "factor_name": "turnover_stability_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.098288,
+        "std": 0.079908,
+        "ir": -1.23,
+        "t_stat": -43.5221,
+        "hit_rate": 0.1062,
+        "n_days": 1252,
+        "min": -0.281028,
+        "max": 0.241514
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.098288,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9729,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -43.5221,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.1891,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -43.5221,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "turnover_std_20": {
+      "factor_name": "turnover_std_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.091287,
+        "std": 0.079737,
+        "ir": -1.1448,
+        "t_stat": -39.9551,
+        "hit_rate": 0.1297,
+        "n_days": 1218,
+        "min": -0.284888,
+        "max": 0.14716
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.091287,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9512,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -39.9551,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.1271,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -39.9551,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "turnover_surge_ratio": {
+      "factor_name": "turnover_surge_ratio",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.030682,
+        "std": 0.060307,
+        "ir": -0.5088,
+        "t_stat": -27.5907,
+        "hit_rate": 0.2958,
+        "n_days": 2941,
+        "min": -0.242554,
+        "max": 0.197676
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030682,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3769,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -27.5907,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.253,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -27.5907,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "up_days_ratio_20": {
+      "factor_name": "up_days_ratio_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.027807,
+        "std": 0.063945,
+        "ir": -0.4349,
+        "t_stat": -22.436,
+        "hit_rate": 0.352,
+        "n_days": 2662,
+        "min": -0.26868,
+        "max": 0.167358
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.027807,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.7635,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -22.436,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.2915,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -22.436,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "volatility_20": {
+      "factor_name": "volatility_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.090989,
+        "std": 0.106546,
+        "ir": -0.854,
+        "t_stat": -46.2971,
+        "hit_rate": 0.1882,
+        "n_days": 2939,
+        "min": -0.403483,
+        "max": 0.290515
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.090989,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.8739,
+          "max_corr_with": "turnover_mean_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -46.2971,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": -0.0259,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -46.2971,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "volatility_60": {
+      "factor_name": "volatility_60",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.084654,
+        "std": 0.11334,
+        "ir": -0.7469,
+        "t_stat": -26.0671,
+        "hit_rate": 0.2217,
+        "n_days": 1218,
+        "min": -0.344311,
+        "max": 0.245185
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.084654,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "False",
+          "metric": 0.9162,
+          "max_corr_with": "volatility_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -26.0671,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.0879,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -26.0671,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    },
+    "volume_std_20": {
+      "factor_name": "volume_std_20",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.032205,
+        "std": 0.079347,
+        "ir": -0.4059,
+        "t_stat": -14.1648,
+        "hit_rate": 0.3251,
+        "n_days": 1218,
+        "min": -0.41616,
+        "max": 0.435163
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.032205,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.3329,
+          "max_corr_with": "amihud_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -14.1648,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "True",
+          "metric": 0.175,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -14.1648,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": true,
+      "overall_verdict": "PASS"
+    },
+    "vwap_bias_1d": {
+      "factor_name": "vwap_bias_1d",
+      "direction": 1,
+      "ic_stats": {
+        "mean": -0.015966,
+        "std": 0.061335,
+        "ir": -0.2603,
+        "t_stat": -13.8549,
+        "hit_rate": 0.3975,
+        "n_days": 2833,
+        "min": -0.417698,
+        "max": 0.438281
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.015966,
+          "threshold": 0.02
+        },
+        "G2": {
+          "passed": "True",
+          "metric": 0.2383,
+          "max_corr_with": "reversal_20",
+          "threshold": 0.7
+        },
+        "G3": {
+          "passed": "True",
+          "metric": -13.8549,
+          "threshold": 2.0
+        },
+        "G4": {
+          "passed": "False",
+          "metric": 0.6403,
+          "threshold": 0.5,
+          "note": "简化版: 前半期 vs 后半期 IC 衰减, 非中性化消除"
+        },
+        "G5": {
+          "passed": true,
+          "note": "简化版: 假设 direction 参数已通过经济假设验证"
+        },
+        "G6": {
+          "passed": "True",
+          "metric": -13.8549,
+          "threshold": 2.5,
+          "note": "简化版: |t| > 2.5 (Harvey Liu Zhu 2016 硬性下限), 非完整 BH-FDR"
+        },
+        "G7": {
+          "passed": null,
+          "note": "skipped (需完整回测)"
+        },
+        "G8": {
+          "passed": null,
+          "note": "skipped (需 FactorClassifier)"
+        }
+      },
+      "auto_gates_passed": false,
+      "overall_verdict": "FAIL"
+    }
+  }
+}

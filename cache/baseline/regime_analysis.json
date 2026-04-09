@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "id": "neutral_value_T1_excess_spearman",
+    "rolling_months": 3,
+    "prediction_horizons": [
+      1,
+      3,
+      6
+    ]
+  },
+  "predictive_power": {
+    "factor_rolling_ic": {
+      "indicator": "factor_rolling_ic",
+      "corr_1m": 0.0436,
+      "p_1m": 0.601,
+      "n_1m": 146,
+      "corr_3m": 0.0693,
+      "p_3m": 0.406,
+      "n_3m": 146,
+      "corr_6m": 0.1021,
+      "p_6m": 0.2202,
+      "n_6m": 146
+    },
+    "smb_momentum": {
+      "indicator": "smb_momentum",
+      "corr_1m": -0.0306,
+      "p_1m": 0.7139,
+      "n_1m": 146,
+      "corr_3m": -0.0526,
+      "p_3m": 0.5286,
+      "n_3m": 146,
+      "corr_6m": 0.074,
+      "p_6m": 0.3748,
+      "n_6m": 146
+    },
+    "market_breadth": {
+      "indicator": "market_breadth",
+      "corr_1m": 0.1008,
+      "p_1m": 0.2263,
+      "n_1m": 146,
+      "corr_3m": 0.0297,
+      "p_3m": 0.7218,
+      "n_3m": 146,
+      "corr_6m": 0.0041,
+      "p_6m": 0.9606,
+      "n_6m": 146
+    },
+    "factor_corr_mean": {
+      "indicator": "factor_corr_mean",
+      "corr_1m": 0.114,
+      "p_1m": 0.172,
+      "n_1m": 145,
+      "corr_3m": 0.0244,
+      "p_3m": 0.7709,
+      "n_3m": 145,
+      "corr_6m": 0.074,
+      "p_6m": 0.3761,
+      "n_6m": 145
+    },
+    "vol_regime": {
+      "indicator": "vol_regime",
+      "corr_1m": 0.0083,
+      "p_1m": 0.9207,
+      "n_1m": 146,
+      "corr_3m": 0.1145,
+      "p_3m": 0.1686,
+      "n_3m": 146,
+      "corr_6m": 0.1536,
+      "p_6m": 0.0642,
+      "n_6m": 146
+    }
+  },
+  "crisis_snapshots": {
+    "pre_2017": {
+      "factor_rolling_ic": 0.0912,
+      "smb_momentum": -0.0114,
+      "market_breadth": 0.4424,
+      "factor_corr_mean": 0.2328,
+      "vol_regime": 0.0894
+    },
+    "pre_2018": {
+      "factor_rolling_ic": 0.0495,
+      "smb_momentum": -0.0863,
+      "market_breadth": 0.3429,
+      "factor_corr_mean": 0.2343,
+      "vol_regime": 0.1477
+    },
+    "pre_2022": {
+      "factor_rolling_ic": 0.091,
+      "smb_momentum": -0.0071,
+      "market_breadth": 0.4247,
+      "factor_corr_mean": 0.2497,
+      "vol_regime": 0.1734
+    },
+    "pre_2023": {
+      "factor_rolling_ic": 0.0964,
+      "smb_momentum": -0.0156,
+      "market_breadth": 0.5361,
+      "factor_corr_mean": 0.2385,
+      "vol_regime": 0.1576
+    }
+  },
+  "regime_flag_oos": {
+    "threshold": 0.072933,
+    "train_baseline_2014_2020": {
+      "sharpe": 0.7463,
+      "mdd": -0.5598,
+      "annual": 0.2323,
+      "total_return": 3.2813,
+      "days": 1699
+    },
+    "train_flagged_2014_2020": {
+      "sharpe": 0.3823,
+      "mdd": -0.5598,
+      "annual": 0.0718,
+      "total_return": 0.6207,
+      "days": 1699
+    },
+    "test_baseline_2021_2026": {
+      "sharpe": 0.7306,
+      "mdd": -0.3832,
+      "annual": 0.1608,
+      "total_return": 1.1694,
+      "days": 1267
+    },
+    "test_flagged_2021_2026": {
+      "sharpe": 0.5747,
+      "mdd": -0.3383,
+      "annual": 0.0828,
+      "total_return": 0.5116,
+      "days": 1267
+    },
+    "test_days_active": 678,
+    "test_days_total": 1267
+  }
+}
