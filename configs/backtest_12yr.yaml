@@ -1,0 +1,60 @@
+# QuantMind V2 12年回测配置
+
+strategy:
+  name: equal_weight_top20
+  factors:
+    - {name: turnover_mean_20, direction: -1}
+    - {name: volatility_20, direction: -1}
+    - {name: reversal_20, direction: 1}
+    - {name: amihud_20, direction: 1}
+    - {name: bp_ratio, direction: 1}
+  compose: equal_weight
+  top_n: 20
+  rebalance_freq: monthly
+  industry_cap: 1.0
+  turnover_cap: 0.5
+  cash_buffer: 0.0
+
+execution:
+  mode: backtest
+  slippage:
+    mode: volume_impact
+    config:
+      Y_large: 0.8
+      Y_mid: 1.0
+      Y_small: 1.5
+      base_bps_large: 3.0
+      base_bps_mid: 5.0
+      base_bps_small: 8.0
+      sell_penalty: 1.2
+      gap_penalty_factor: 0.5
+  costs:
+    commission_rate: 0.0000854
+    min_commission: 5.0
+    stamp_tax: historical
+    stamp_tax_rate: 0.0005
+    transfer_fee_rate: 0.00001
+  pms:
+    enabled: true
+    exec_mode: same_close
+    tiers:
+      - {gain: 0.30, drawdown: 0.15}
+      - {gain: 0.20, drawdown: 0.12}
+      - {gain: 0.10, drawdown: 0.10}
+
+universe:
+  exclude_st: true
+  exclude_bj: true
+  exclude_suspended: true
+  exclude_new_stock: true
+  min_listing_days: 60
+
+backtest:
+  initial_capital: 1000000
+  benchmark: "000300.SH"
+  lot_size: 100
+  volume_cap_pct: 0.10
+
+data:
+  start_date: "2014-01-01"
+  end_date: "2025-12-31"
