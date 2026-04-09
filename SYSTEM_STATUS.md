@@ -65,8 +65,8 @@
 ### 核心指标变化
 | 维度 | 重构前 | 重构后 (Step 6-B) |
 |------|-------|-----------------|
-| 基线 Sharpe | 0.94 (5年 Phase 1 加固) | **0.6095 (12年 Step 5)** — `cache/baseline/regression_result.json`, max_diff=0 |
-| 基线 MDD | -40.77% | -50.75% |
+| 基线 Sharpe | 0.94 (5年 Phase 1 加固) | **5yr 0.6095 / 12yr 0.5309** — Step 6-D 发现之前把5yr误写成12yr. 5yr基线`cache/baseline/metrics_5yr.json` + `regression_test.py` (max_diff=0), 12yr基线`cache/baseline/metrics_12yr.json` (2026-04-09首跑) |
+| 基线 MDD | -40.77% | 5yr -50.75% / 12yr **-56.37%** |
 | run_paper_trading.py | 1734 行单体 | 345 行编排器 + 4 Service |
 | backtest_engine.py | 单文件 >3000 行 | backend/engines/backtest/ 8 模块 |
 | 测试数 | 2051 | 2115 (Step 5 +48) |
@@ -76,7 +76,7 @@
 | 数据入库路径 | 多处直接 INSERT | DataPipeline.ingest() 唯一入口 (铁律 17) |
 | 信号路径 | PT/回测 2 套 | SignalComposer 唯一路径 (铁律 16) |
 | 策略配置 | 硬编码 | YAML 驱动 (configs/pt_live.yaml / backtest_12yr.yaml) |
-| 12 年回测 | OOM 无法运行 | **80 秒跑通** (Parquet 缓存 + Phase A 向量化) |
+| 12 年回测 | OOM 无法运行 | **328 秒跑通** (12yr full in-sample, Step 6-D 首次真跑 `build_12yr_baseline.py`. Step 5 声称的 80 秒 "12年跑通" 实为 5yr regression) |
 | 回测可复现 | 无配置指纹 | (config_yaml_hash, git_commit) 进 DB (铁律 15) |
 
 ### §9 问题清单状态更新 (以下问题已在 Step 0→6-B 中解决)

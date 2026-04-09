@@ -8,11 +8,9 @@ from datetime import date
 
 import pandas as pd
 
-from backend.engines.backtest_engine import (
-    BacktestConfig,
-    SimBroker,
-    SimpleBacktester,
-)
+from backend.engines.backtest.broker import SimBroker
+from backend.engines.backtest.config import BacktestConfig
+from backend.engines.backtest.engine import SimpleBacktester
 
 
 def _build_price_data() -> pd.DataFrame:

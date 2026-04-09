@@ -2483,9 +2483,10 @@ Commit: `b15b5fe feat: Step 5完成 — Parquet缓存 + 12yr回测 + 48新测试
 - `backend/data/parquet_cache.py` (233 行): BacktestDataCache, 按年分区 (cache/backtest/2014/..., 2015/...)
 - price_data / factor_data / benchmark 三类数据分别缓存
 - 12 年数据加载: 30 分钟(DB) → 20 秒(Parquet) — ~90x 加速
-- 12 年完整回测跑通: Sharpe=0.6095, MDD=-50.75%, 耗时 80 秒 (不再 OOM)
+- 12 年 Parquet 缓存构建完成 (2014-2026 各年份 × 3 文件 = 39 文件, 936 MB)
 - 48 个新测试: test_validators (8) + test_broker_costs (8) + test_pms (6) + test_config_loader (6) + test_engine_e2e (4) + 其他
-- regression_test 基准更新为 12 年版 (保持 max_diff=0)
+- regression_test 基准: **5yr** Parquet (2021-01~2025-12, 1212 天, Sharpe=0.6095, max_diff=0, 82s)
+- ⚠️ **文档漂移** (Step 6-D 修正): Step 5 commit message 与早期段落曾写作 "12yr 回测跑通 Sharpe=0.6095", 实际该数字来自 `cache/baseline/*_5yr.parquet` 的 5 年 regression. 真正的 12 年 full in-sample 首次真跑在 Step 6-D (`scripts/build_12yr_baseline.py`, 328s, Sharpe=0.5309)
 
 ### Step 6-A: run_paper_trading.py 拆分
 
@@ -2541,7 +2542,7 @@ minute_bars 格式统一:
 | 信号路径 | PT/回测 2 套 | SignalComposer 唯一路径 |
 | 策略配置 | 硬编码 + config_guard 补丁 | YAML 驱动 + config_yaml_hash |
 | 数据缓存 | 每次 30 分钟从 DB 加载 | 按年 Parquet 20 秒加载 |
-| 12 年回测 | OOM 无法运行 | 80 秒跑通 Sharpe=0.6095 |
+| 12 年回测 | OOM 无法运行 | 328 秒跑通 (Step 6-D 首跑 Sharpe=**0.5309**, 非早期误标的 0.6095) |
 | 可复现性 | 无配置指纹 | (config_yaml_hash, git_commit) 进 DB |
 | code 格式 | 混合带/不带后缀 | 全表统一带后缀 |
 | 铁律 | 13 条 | 18 条 (新增 14-17 重构原则类) |
@@ -2552,9 +2553,38 @@ minute_bars 格式统一:
 |------|------|--------|-----|------|
 | 旧虚高 | 5年 | 1.24 | - | 缺印花税历史税率 + 缺 overnight_gap |
 | Phase 1 加固 | 5年 | 0.94 | -40.77% | 修复印花税 + 三因素滑点 + z-score clip + DataFeed 校验 |
-| Step 5 (12年) | 12年 | **0.6095** | **-50.75%** | 12 年 + 排除 BJ + Parquet 缓存 |
+| Step 5 5yr regression | 5年 (2021-2025) | **0.6095** | **-50.75%** | `regression_test.py` + `cache/baseline/*_5yr.parquet` (1212 天), 修正 Phase 1 部分算账 |
+| Step 6-D 12yr 真跑 | 12年 (2014-2026) | **0.5309** | **-56.37%** | `build_12yr_baseline.py` + `cache/baseline/metrics_12yr.json` (2980 天), 首次真跑, 取代之前文档中误标的 0.6095 |
 
-**Sharpe 从 0.94 降到 0.6095 不是恶化** — 5 年样本 2021-2025 偏小盘/高波动区间, 12 年包含 2014-2020 的多个区制, 才是真实长期水平。regression_test.py max_diff=0 验证: Step 5 新结果与新基线比对完全一致, 说明引擎改造本身没引入回归 (是范围扩展导致的指标下降, 不是 bug)。
+**基线语义澄清** (Step 6-D 事后归档):
+- 0.6095 是 **5 年 (2021-2025) 的真实基线**, 来自 `regression_test.py` 读 `cache/baseline/*_5yr.parquet` 的 1212 天数据
+- 0.5309 是 **12 年 (2014-2026) 的真实基线**, 来自 `build_12yr_baseline.py` 读 `cache/backtest/2014-2026/*.parquet` 的 2980 天数据
+- 两者差距 +0.078 Sharpe, MDD 恶化 5.6pp, 12 年更真实 (含 2014-2016 大牛 + 2017-2018 弱期 + 2021 小盘牛 + 2022-2023 再弱)
+- **Step 5 commit message 与部分文档曾把 5yr 的 0.6095 当 12yr 写, Step 6-D 已修正**
+- 逐年度 breakdown (`cache/baseline/yearly_breakdown.json`) 显示: 2017/2018/2022/2023 四年 Sharpe 为负, 说明策略有 regime dependency
+- WF 5-fold OOS (Step 6-D, 仅覆盖 2021-02~2026-04): chain-link Sharpe=0.6336, 折间 std=1.52 UNSTABLE
+
+### Step 6-C: 冒烟测试 + PT 重启
+
+Commit: `b516a87 chore: Step 6-C 冒烟测试通过 + PT重启`
+
+8 项冒烟测试全 PASS, 6 个 runtime bug 修复 (run_paper_trading.py 3 处 / pt_qmt_state.py 1 处 / load_universe 核心 bug / test_can_trade_board import)。14/16 Task Scheduler 任务重启, CeleryBeat 启动, 首次信号生成 Top-20 (0 BJ) 成功。PT 毕业评估窗口从 2026-04-09 重新计算 60 天。
+
+### Step 6-D: OOS 验证 + 12yr 真跑 + FF3 + 逐年度 + 文档修正
+
+Commit: (本次提交)
+
+主要产出:
+- `backend/engines/walk_forward.py`: import 统一 + `build_exclusion_map()` per-date ST/BJ 过滤 + `make_equal_weight_signal_func()` 工厂 (注入 directions + filter) + docstring 增补 PMS fold 间重置说明
+- `cache/backtest/SCHEMA.md` (新): Parquet 列名 "raw_value 实际是 neutral_value" 陷阱文档
+- `scripts/build_12yr_baseline.py` (新): 12 年全样本 in-sample 首跑 (328s, Sharpe=0.5309, MDD=-56.37%)
+- `scripts/wf_equal_weight_oos.py` (新): WF 5-fold OOS 实验 (40s, chain-link Sharpe=0.6336, 折间 std=1.52, verdict=UNSTABLE)
+- `scripts/yearly_breakdown_backtest.py` (新): 2014-2026 逐年度回测 (12 full years + 2026 partial, mean Sharpe=0.79 std=1.20)
+- `scripts/research/ff3_attribution.py` (新): 自建 A股 FF3 (SMB/HML/MKT) + HAC Newey-West 回归 + 全样本/分期/逐年归因
+- 文档修正: CLAUDE.md / SYSTEM_STATUS.md / `_charter_context.md` / 本文件, 把 "0.6095 12 年" 全部改为 "0.6095 5年 / 0.5309 12年"
+- `backend/tests/test_gem_backtest_comparison.py`: 旧 `backend.engines.backtest_engine` import → 新 `backend.engines.backtest.*` (Fix 5 遗留收尾)
+
+核心结论: 策略是 **regime-conditional**, 长期无 persistent alpha, 2021 小盘牛贡献绝大部分 chain-link Sharpe, 折间标准差 1.52 意味着单一年份决定业绩。
 
 ### 遗留未完成项
 
