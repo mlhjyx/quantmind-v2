@@ -259,35 +259,13 @@ class DataFeed:
                 )
 
     def standardize_units(self) -> None:
-        """P17: 统一单位转换(千元→元, 万元→元), 消灭SimBroker中的magic number。
+        """单位标准化（Step 3-A后DB已统一存元，此方法为空操作）。
 
-        Tushare数据约定:
-        - amount: 千元(klines_daily) → 转为元
-        - total_mv: 万元(daily_basic) → 转为元
-
-        阈值判断: amount中位数<1e6→千元; total_mv中位数<1e8→万元。
-        转换后设标记防重复转换。
+        历史: 之前DB存Tushare原始单位(amount千元/total_mv万元)，需要启发式猜测转换。
+        Step 3-A统一入库管道后，DataPipeline在入库时完成转换，DB已全部是元。
+        保留方法签名保持API兼容。
         """
-        if getattr(self, "_units_standardized", False):
-            return
-
-        df = self._data
-
-        # amount: 千元 → 元
-        if "amount" in df.columns:
-            median_amt = df["amount"].median()
-            if 0 < median_amt < 1e6:  # 千元范围: 中位数<百万
-                df["amount"] = df["amount"] * 1000
-                logger.info("DataFeed: amount 千元→元 (median was %.0f)", median_amt)
-
-        # total_mv: 万元 → 元
-        if "total_mv" in df.columns:
-            median_mv = df["total_mv"].median()
-            if 0 < median_mv < 1e8:  # 万元范围: 中位数<亿
-                df["total_mv"] = df["total_mv"] * 10000
-                logger.info("DataFeed: total_mv 万元→元 (median was %.0f)", median_mv)
-
-        self._units_standardized = True
+        pass
 
     def to_parquet(self, path: str | Path) -> None:
         """将数据导出为Parquet文件（用于创建测试快照）。

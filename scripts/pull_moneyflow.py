@@ -109,12 +109,14 @@ def fetch_moneyflow_by_date(trade_date: str, retry: int = 3) -> pd.DataFrame:
 
 
 def upsert_moneyflow(conn: psycopg2.extensions.connection, df: pd.DataFrame, valid_codes: set[str]) -> int:
-    """将moneyflow数据upsert入库。
+    """将moneyflow数据upsert入库（通过DataPipeline）。
+
+    Pipeline自动处理: rename(ts_code→code) + 单位转换(万元→元) + 验证 + FK过滤 + upsert。
 
     Args:
         conn: 数据库连接
         df: Tushare返回的DataFrame
-        valid_codes: symbols表中的合法code集合
+        valid_codes: 不再使用(Pipeline内部做FK过滤)
 
     Returns:
         实际写入行数
@@ -122,72 +124,22 @@ def upsert_moneyflow(conn: psycopg2.extensions.connection, df: pd.DataFrame, val
     if df.empty:
         return 0
 
-    # 去除ts_code后缀 → code
+    from app.data_fetcher.contracts import MONEYFLOW_DAILY
+    from app.data_fetcher.pipeline import DataPipeline
+
+    # trade_date确保是date类型
     df = df.copy()
-    df["code"] = df["ts_code"].str.replace(r"\.(SZ|SH|BJ)", "", regex=True)
-    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+    if "trade_date" in df.columns:
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
 
-    # 过滤不在symbols表中的code
-    df = df[df["code"].isin(valid_codes)]
-    if df.empty:
-        return 0
-
-    # 数值列：NaN → None
-    num_cols = [c for c in df.columns if c not in ("ts_code", "code", "trade_date")]
-    for c in num_cols:
-        df[c] = df[c].where(df[c].notna(), None)
-
-    insert_sql = """
-    INSERT INTO moneyflow_daily (
-        code, trade_date,
-        buy_sm_vol, buy_sm_amount, sell_sm_vol, sell_sm_amount,
-        buy_md_vol, buy_md_amount, sell_md_vol, sell_md_amount,
-        buy_lg_vol, buy_lg_amount, sell_lg_vol, sell_lg_amount,
-        buy_elg_vol, buy_elg_amount, sell_elg_vol, sell_elg_amount,
-        net_mf_vol, net_mf_amount
-    ) VALUES (
-        %(code)s, %(trade_date)s,
-        %(buy_sm_vol)s, %(buy_sm_amount)s, %(sell_sm_vol)s, %(sell_sm_amount)s,
-        %(buy_md_vol)s, %(buy_md_amount)s, %(sell_md_vol)s, %(sell_md_amount)s,
-        %(buy_lg_vol)s, %(buy_lg_amount)s, %(sell_lg_vol)s, %(sell_lg_amount)s,
-        %(buy_elg_vol)s, %(buy_elg_amount)s, %(sell_elg_vol)s, %(sell_elg_amount)s,
-        %(net_mf_vol)s, %(net_mf_amount)s
-    )
-    ON CONFLICT (code, trade_date) DO UPDATE SET
-        buy_sm_vol = EXCLUDED.buy_sm_vol,
-        buy_sm_amount = EXCLUDED.buy_sm_amount,
-        sell_sm_vol = EXCLUDED.sell_sm_vol,
-        sell_sm_amount = EXCLUDED.sell_sm_amount,
-        buy_md_vol = EXCLUDED.buy_md_vol,
-        buy_md_amount = EXCLUDED.buy_md_amount,
-        sell_md_vol = EXCLUDED.sell_md_vol,
-        sell_md_amount = EXCLUDED.sell_md_amount,
-        buy_lg_vol = EXCLUDED.buy_lg_vol,
-        buy_lg_amount = EXCLUDED.buy_lg_amount,
-        sell_lg_vol = EXCLUDED.sell_lg_vol,
-        sell_lg_amount = EXCLUDED.sell_lg_amount,
-        buy_elg_vol = EXCLUDED.buy_elg_vol,
-        buy_elg_amount = EXCLUDED.buy_elg_amount,
-        sell_elg_vol = EXCLUDED.sell_elg_vol,
-        sell_elg_amount = EXCLUDED.sell_elg_amount,
-        net_mf_vol = EXCLUDED.net_mf_vol,
-        net_mf_amount = EXCLUDED.net_mf_amount;
-    """
-
-    db_cols = [
-        "code", "trade_date",
-        "buy_sm_vol", "buy_sm_amount", "sell_sm_vol", "sell_sm_amount",
-        "buy_md_vol", "buy_md_amount", "sell_md_vol", "sell_md_amount",
-        "buy_lg_vol", "buy_lg_amount", "sell_lg_vol", "sell_lg_amount",
-        "buy_elg_vol", "buy_elg_amount", "sell_elg_vol", "sell_elg_amount",
-        "net_mf_vol", "net_mf_amount",
-    ]
-
-    records = df[db_cols].to_dict("records")
-    with conn.cursor() as cur:
-        psycopg2.extras.execute_batch(cur, insert_sql, records, page_size=1000)
-    conn.commit()
-    return len(records)
+    pipeline = DataPipeline(conn)
+    result = pipeline.ingest(df, MONEYFLOW_DAILY)
+    if result.rejected_rows > 0:
+        print(
+            f"moneyflow: {result.rejected_rows}/{result.total_rows} rows rejected: "
+            f"{result.reject_reasons}"
+        )
+    return result.upserted_rows
 
 
 def add_column_comments(conn: psycopg2.extensions.connection) -> None:

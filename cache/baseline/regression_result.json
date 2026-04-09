@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-09 02:05:20",
+  "timestamp": "2026-04-09 10:27:41",
   "baseline_file": "D:\\quantmind-v2\\cache\\baseline\\nav_5yr.parquet",
   "run1": {
     "common_days": 1212,
@@ -18,5 +18,5 @@
     "deterministic": true,
     "run2_max_diff": 0.0
   },
-  "elapsed_sec": 94.0
+  "elapsed_sec": 74.0
 }

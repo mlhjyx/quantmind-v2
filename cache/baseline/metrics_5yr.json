@@ -4,9 +4,7 @@
   "annual_return_pct": 23.22,
   "sortino": 1.0884,
   "total_trades": 1867,
-  "nav_start": 1000000.0,
   "nav_end": 2730262.04,
-  "nav_min": 978204.88,
   "trading_days": 1212,
-  "elapsed_sec": 91.0
+  "elapsed_sec": 114.0
 }

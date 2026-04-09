@@ -322,16 +322,16 @@ def calc_vwap_bias(
 ) -> pd.Series:
     """VWAP偏差因子: (close - VWAP) / VWAP。
 
-    VWAP = amount * 10.0 / volume
-    单位换算: amount(千元, klines_daily)×1000 / (volume(手)×100) = amount×10/volume = 元/股
+    VWAP = amount(元) / (volume(手) × 100) = 元/股
+    Step 3-A后DB统一存元，不再需要千元×10的换算。
 
     方向: -1（低偏差更好，收盘价低于VWAP暗示卖压已释放）
     极值保护: clip(-1.0, 1.0)
 
     Args:
-        close: 收盘价（未复权，与VWAP单位一致）
-        amount: 成交额（千元）
-        volume: 成交量（手）
+        close: 收盘价（未复权，元/股）
+        amount: 成交额（元, Step 3-A后DB统一单位）
+        volume: 成交量（手, 1手=100股）
         window: 窗口（默认1，当日VWAP偏差，无rolling）
 
     Returns:
@@ -339,7 +339,7 @@ def calc_vwap_bias(
     """
     # 零成交量保护: volume=0时VWAP无意义
     safe_volume = volume.replace(0, np.nan)
-    vwap = amount * 10.0 / safe_volume
+    vwap = amount / (safe_volume * 100)  # 元 / (手×100) = 元/股
     bias = (close - vwap) / (vwap.abs() + 1e-12)
     return bias.clip(-1.0, 1.0)
 
@@ -1253,9 +1253,11 @@ def save_daily_factors(
     factor_df: pd.DataFrame,
     conn=None,
 ) -> int:
-    """按日期批量写入因子值(单事务)。
+    """按日期批量写入因子值(通过DataPipeline，单事务)。
 
     CLAUDE.md强制要求: 一次事务写入当日全部股票×全部因子。
+    Pipeline自动处理: inf/NaN→None + 验证 + upsert。
+    factor_values跳过单位转换(skip_unit_conversion=True)。
 
     Args:
         trade_date: 交易日期
@@ -1265,50 +1267,34 @@ def save_daily_factors(
     Returns:
         写入行数
     """
-    from psycopg2.extras import execute_values
-
+    from app.data_fetcher.contracts import FACTOR_VALUES
+    from app.data_fetcher.pipeline import DataPipeline
     from app.services.price_utils import _get_sync_conn
 
     close_conn = conn is None
     if conn is None:
         conn = _get_sync_conn()
 
-    def _safe_float(val):
-        """将NaN/inf转为None（PostgreSQL NUMERIC不支持inf）。"""
-        if pd.isna(val):
-            return None
-        v = float(val)
-        if not np.isfinite(v):
-            return None
-        return v
-
     try:
-        rows = []
-        for _, row in factor_df.iterrows():
-            rows.append((
-                row["code"],
-                trade_date,
-                row["factor_name"],
-                _safe_float(row.get("raw_value")),
-                _safe_float(row.get("neutral_value")),
-                _safe_float(row.get("zscore")),
-            ))
+        # 确保trade_date列存在
+        df = factor_df.copy()
+        if "trade_date" not in df.columns:
+            df["trade_date"] = trade_date
 
-        with conn.cursor() as cur:
-            execute_values(
-                cur,
-                """INSERT INTO factor_values (code, trade_date, factor_name, raw_value, neutral_value, zscore)
-                   VALUES %s
-                   ON CONFLICT (code, trade_date, factor_name)
-                   DO UPDATE SET raw_value = EXCLUDED.raw_value,
-                                 neutral_value = EXCLUDED.neutral_value,
-                                 zscore = EXCLUDED.zscore""",
-                rows,
-                page_size=5000,
+        pipeline = DataPipeline(conn)
+        result = pipeline.ingest(df, FACTOR_VALUES)
+
+        if result.rejected_rows > 0:
+            logger.warning(
+                "[%s] factor_values: %d/%d rejected: %s",
+                trade_date,
+                result.rejected_rows,
+                result.total_rows,
+                result.reject_reasons,
             )
-        conn.commit()
-        logger.info(f"[{trade_date}] 写入因子 {len(rows)} 行")
-        return len(rows)
+
+        logger.info("[%s] 写入因子 %d 行", trade_date, result.upserted_rows)
+        return result.upserted_rows
     except Exception:
         conn.rollback()
         raise
