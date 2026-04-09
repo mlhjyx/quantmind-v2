@@ -155,31 +155,40 @@ def run_with_yaml(config_path: str):
         len(directions),
     )
 
-    conn = _get_sync_conn()
     t0 = time.time()
 
-    # 加载数据
-    logger.info("加载因子数据...")
-    factor_df = pd.read_sql(
-        """SELECT code, trade_date, factor_name,
-                  COALESCE(neutral_value, raw_value) as raw_value
-           FROM factor_values
-           WHERE factor_name IN %s AND trade_date BETWEEN %s AND %s""",
-        conn,
-        params=(tuple(directions.keys()), start, end),
-    )
+    # 加载数据: Parquet缓存优先, DB回退
+    from data.parquet_cache import BacktestDataCache
 
-    logger.info("加载价格数据...")
-    price_data = load_price_data(start, end, conn)
-    benchmark = load_benchmark(start, end, conn)
-
-    logger.info(
-        "数据: factor=%d行, price=%d行, benchmark=%d行 (%.0fs)",
-        len(factor_df),
-        len(price_data),
-        len(benchmark),
-        time.time() - t0,
-    )
+    cache = BacktestDataCache()
+    if cache.is_valid(start, end):
+        logger.info("从Parquet缓存加载数据...")
+        data = cache.load(start, end)
+        factor_df = data["factor_data"]
+        price_data = data["price_data"]
+        benchmark = data["benchmark"]
+        logger.info(
+            "缓存加载: factor=%d行, price=%d行, benchmark=%d行 (%.1fs)",
+            len(factor_df), len(price_data), len(benchmark), time.time() - t0,
+        )
+    else:
+        logger.info("缓存不可用, 从DB加载...")
+        conn = _get_sync_conn()
+        factor_df = pd.read_sql(
+            """SELECT code, trade_date, factor_name,
+                      COALESCE(neutral_value, raw_value) as raw_value
+               FROM factor_values
+               WHERE factor_name IN %s AND trade_date BETWEEN %s AND %s""",
+            conn,
+            params=(tuple(directions.keys()), start, end),
+        )
+        price_data = load_price_data(start, end, conn)
+        benchmark = load_benchmark(start, end, conn)
+        conn.close()
+        logger.info(
+            "DB加载: factor=%d行, price=%d行, benchmark=%d行 (%.0fs)",
+            len(factor_df), len(price_data), len(benchmark), time.time() - t0,
+        )
 
     # 运行回测(统一信号路径)
     logger.info("运行回测...")
@@ -194,8 +203,6 @@ def run_with_yaml(config_path: str):
 
     elapsed = time.time() - t0
     logger.info("回测完成, 总耗时 %.0fs (信号+执行 %.0fs)", elapsed, time.time() - t1)
-
-    conn.close()
 
 
 def run_with_args(args):
