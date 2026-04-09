@@ -32,11 +32,16 @@ REQUIRED_COLUMNS = [
 # 可选但推荐的列（缺失时发出警告，不阻断）
 RECOMMENDED_COLUMNS = [
     "adj_factor",
+    "adj_close",
     "turnover_rate",
     "industry_sw1",
     "total_mv",
     "up_limit",
     "down_limit",
+    "is_st",
+    "is_suspended",
+    "is_new_stock",
+    "board",
 ]
 
 
@@ -89,42 +94,56 @@ class DataFeed:
         conn = psycopg2.connect(db_url)
         try:
             # 基础行情 + 日线指标
+            # Step 3-B: SQL修复 — 对齐实际DDL schema + 加adj_close + stock_status
             universe_clause = ""
             params: dict = {
                 "start": str(start_date),
                 "end": str(end_date),
             }
             if universe:
-                universe_clause = "AND k.ts_code = ANY(%(codes)s)"
+                universe_clause = "AND k.code = ANY(%(codes)s)"
                 params["codes"] = universe
 
             sql = f"""
+                WITH latest_af AS (
+                    SELECT DISTINCT ON (code) code, adj_factor AS latest_adj_factor
+                    FROM klines_daily
+                    WHERE adj_factor IS NOT NULL AND adj_factor > 0
+                    ORDER BY code, trade_date DESC
+                )
                 SELECT
-                    k.ts_code AS code,
+                    k.code,
                     k.trade_date,
                     k.open, k.high, k.low, k.close,
-                    k.vol AS volume,
+                    k.volume,
                     k.amount,
                     k.pre_close,
-                    COALESCE(af.adj_factor, 1.0) AS adj_factor,
+                    COALESCE(k.adj_factor, 1.0) AS adj_factor,
+                    k.up_limit,
+                    k.down_limit,
+                    CASE WHEN laf.latest_adj_factor > 0
+                         THEN k.close * COALESCE(k.adj_factor, 1.0) / laf.latest_adj_factor
+                         ELSE k.close END AS adj_close,
                     db.turnover_rate,
                     db.total_mv,
-                    si.industry_sw1,
-                    ll.up_limit,
-                    ll.down_limit
+                    s.industry_sw1,
+                    COALESCE(ss.is_st, FALSE) AS is_st,
+                    COALESCE(ss.is_suspended, FALSE) AS is_suspended,
+                    COALESCE(ss.is_new_stock, FALSE) AS is_new_stock,
+                    ss.board
                 FROM klines_daily k
-                LEFT JOIN adj_factor af
-                    ON k.ts_code = af.ts_code AND k.trade_date = af.trade_date
                 LEFT JOIN daily_basic db
-                    ON k.ts_code = db.ts_code AND k.trade_date = db.trade_date
-                LEFT JOIN symbols_info si
-                    ON k.ts_code = si.ts_code
-                LEFT JOIN stk_limit ll
-                    ON k.ts_code = ll.ts_code AND k.trade_date = ll.trade_date
+                    ON k.code = db.code AND k.trade_date = db.trade_date
+                LEFT JOIN symbols s
+                    ON k.code = s.code
+                LEFT JOIN latest_af laf
+                    ON k.code = laf.code
+                LEFT JOIN stock_status_daily ss
+                    ON k.code = ss.code AND k.trade_date = ss.trade_date
                 WHERE k.trade_date >= %(start)s
                   AND k.trade_date <= %(end)s
                   {universe_clause}
-                ORDER BY k.trade_date, k.ts_code
+                ORDER BY k.trade_date, k.code
             """
             df = pd.read_sql(sql, conn, params=params)
         finally:
@@ -143,6 +162,7 @@ class DataFeed:
         )
         feed = cls(df)
         feed.validate()
+        feed._ensure_adj_close()
         return feed
 
     @classmethod
@@ -174,6 +194,7 @@ class DataFeed:
         )
         feed = cls(df)
         feed.validate()
+        feed._ensure_adj_close()
         return feed
 
     @classmethod
@@ -188,6 +209,7 @@ class DataFeed:
         """
         feed = cls(df.copy())
         feed.validate()
+        feed._ensure_adj_close()
         return feed
 
     # ────────────────── 属性 ──────────────────
@@ -257,6 +279,27 @@ class DataFeed:
                 raise DataFeedValidationError(
                     f"列 '{col}' 应为数值类型，实际为 {self._data[col].dtype}"
                 )
+
+    def _ensure_adj_close(self) -> None:
+        """确保adj_close列存在。从adj_factor计算（Parquet/DataFrame来源需要）。
+
+        from_database()已在SQL中计算adj_close，此方法处理其他来源。
+        adj_close = close × adj_factor / latest_adj_factor_per_code
+        """
+        df = self._data
+        if "adj_close" in df.columns or df.empty:
+            return
+
+        if "adj_factor" not in df.columns or "close" not in df.columns:
+            return  # 无法计算
+
+        # 每只股票最新的adj_factor作为基准
+        latest_af = df.groupby("code")["adj_factor"].transform("last")
+        # 避免除零
+        safe_latest = latest_af.replace(0, 1.0).fillna(1.0)
+        df["adj_close"] = df["close"] * df["adj_factor"].fillna(1.0) / safe_latest
+
+        logger.info("DataFeed: adj_close computed from adj_factor (%d rows)", len(df))
 
     def standardize_units(self) -> None:
         """单位标准化（Step 3-A后DB已统一存元，此方法为空操作）。

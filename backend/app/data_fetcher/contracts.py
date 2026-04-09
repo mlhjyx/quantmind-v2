@@ -253,6 +253,23 @@ EARNINGS_ANNOUNCEMENTS = TableContract(
     skip_unit_conversion=True,
 )
 
+STOCK_STATUS_DAILY = TableContract(
+    table_name="stock_status_daily",
+    pk_columns=("code", "trade_date"),
+    columns={
+        "code": ColumnSpec("str", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False),
+        "is_st": ColumnSpec("bool", nullable=False),
+        "is_suspended": ColumnSpec("bool", nullable=False),
+        "is_new_stock": ColumnSpec("bool", nullable=False),
+        "board": ColumnSpec("str"),
+        "list_date": ColumnSpec("date"),
+        "delist_date": ColumnSpec("date"),
+    },
+    fk_filter_col=None,  # 不过滤FK(回填时包含所有code)
+    skip_unit_conversion=True,
+)
+
 
 # ════════════════════════════════════════════════════════════
 # Contract注册表 — 按table_name查找
@@ -269,6 +286,7 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
         NORTHBOUND_HOLDINGS,
         SYMBOLS,
         EARNINGS_ANNOUNCEMENTS,
+        STOCK_STATUS_DAILY,
     ]
 }
 

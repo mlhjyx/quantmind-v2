@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -697,7 +697,7 @@ class SimpleBacktester:
         # 构建(code,trade_date)→row dict, 避免MultiIndex set_index消耗大量内存
         _price_dict: dict[tuple, int] = {}
         for idx, (code, td) in enumerate(
-            zip(price_data["code"].values, price_data["trade_date"].values)
+            zip(price_data["code"].values, price_data["trade_date"].values, strict=False)
         ):
             _price_dict[(code, td)] = idx
 
@@ -716,6 +716,13 @@ class SimpleBacktester:
         daily_close: dict[date, dict[str, float]] = {}
         for td, grp in price_data.groupby("trade_date"):
             daily_close[td] = dict(zip(grp["code"], grp["close"], strict=False))
+
+        # 每日adj_close: PMS用(避免除权日false trigger)
+        _has_adj_close = "adj_close" in price_data.columns
+        daily_adj_close: dict[date, dict[str, float]] = {}
+        if _has_adj_close:
+            for td, grp in price_data.groupby("trade_date"):
+                daily_adj_close[td] = dict(zip(grp["code"], grp["adj_close"], strict=False))
 
         # 回测主循环
         nav_series = {}
@@ -795,9 +802,10 @@ class SimpleBacktester:
                     all_dates, exec_map, trades
                 )
 
-            # ===== PMS: 日频利润保护检查 =====
+            # ===== PMS: 日频利润保护检查(用adj_close避免除权日false trigger) =====
             if self.config.pms.enabled and broker.holdings:
                 today_prices = daily_close.get(td, {})
+                today_adj = daily_adj_close.get(td, {}) if _has_adj_close else {}
                 for code in list(broker.holdings.keys()):
                     if code in pms_pending_sells:
                         continue  # 已在待卖队列
@@ -808,12 +816,15 @@ class SimpleBacktester:
                     if state is None:
                         continue  # 无买入记录(不应发生)
 
-                    # 更新max_price
-                    state["max_price"] = max(state["max_price"], close)
+                    # 用adj_close做PMS判断(除权日raw close跳变不代表真实亏损)
+                    adj = today_adj.get(code, close)  # fallback to raw if no adj
 
-                    # 计算PnL和从峰值回撤(用收益率,避免复权问题)
-                    pnl = (close - state["buy_price"]) / state["buy_price"]
-                    dd = (close - state["max_price"]) / state["max_price"] if state["max_price"] > 0 else 0
+                    # 更新max_price(adj_close)
+                    state["max_price"] = max(state["max_price"], adj)
+
+                    # 计算PnL和从峰值回撤
+                    pnl = (adj - state["buy_price"]) / state["buy_price"]
+                    dd = (adj - state["max_price"]) / state["max_price"] if state["max_price"] > 0 else 0
 
                     # 阶梯式检查(tiers按pnl从高到低)
                     triggered = False
@@ -860,14 +871,16 @@ class SimpleBacktester:
                 trades.extend(day_fills)
                 self.pending_orders.extend(new_pending)
 
-                # PMS: 记录新买入股票的buy_price
+                # PMS: 记录新买入股票的buy_price(用adj_close避免除权日偏差)
                 if self.config.pms.enabled:
+                    today_adj_pms = daily_adj_close.get(td, {}) if _has_adj_close else {}
                     for fill in day_fills:
                         if fill.direction == "buy":
+                            adj_buy = today_adj_pms.get(fill.code, fill.price)
                             pms_state[fill.code] = {
-                                "buy_price": fill.price,
+                                "buy_price": adj_buy,
                                 "buy_date": fill.trade_date,
-                                "max_price": fill.price,
+                                "max_price": adj_buy,
                             }
                     # 清理已卖出的pms_state
                     for code in list(pms_state.keys()):
@@ -1170,7 +1183,7 @@ def run_hybrid_backtest(
     price_data: pd.DataFrame,
     config: BacktestConfig,
     benchmark_data: pd.DataFrame | None = None,
-    signal_config: "SignalConfig | None" = None,
+    signal_config: Any | None = None,  # SignalConfig (unused, kept for API compat)
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
 ) -> BacktestResult:
@@ -1190,7 +1203,7 @@ def run_hybrid_backtest(
     Returns:
         BacktestResult
     """
-    from engines.signal_engine import SignalComposer, PortfolioBuilder
+    from engines.signal_engine import PortfolioBuilder, SignalComposer
     from engines.signal_engine import SignalConfig as SEConfig
     from engines.vectorized_signal import compute_rebalance_dates
 
@@ -1199,15 +1212,6 @@ def run_hybrid_backtest(
         from engines.datafeed import DataFeed
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
-
-    # 过滤ST/停牌股: 从price_data中提取标记，排除因子选股
-    if "is_st" in price_data.columns:
-        st_codes = set(
-            price_data.loc[price_data["is_st"] == True, "code"].unique()  # noqa: E712
-        )
-        if st_codes:
-            factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
-            logger.info("Phase A: 排除%d只ST股", len(st_codes))
 
     # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
     se_config = SEConfig(
@@ -1234,6 +1238,25 @@ def run_hybrid_backtest(
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
 
+    # 构建per-date排除集(ST/停牌/新股/BJ) — 替代旧的set-level ST过滤
+    _has_status = "is_st" in price_data.columns
+    _status_by_date: dict[date, set[str]] = {}
+    if _has_status:
+        for col in ("is_st", "is_suspended", "is_new_stock"):
+            if col in price_data.columns:
+                excluded = price_data.loc[price_data[col] == True, ["code", "trade_date"]]  # noqa: E712
+                for td, grp in excluded.groupby("trade_date"):
+                    if td not in _status_by_date:
+                        _status_by_date[td] = set()
+                    _status_by_date[td].update(grp["code"].tolist())
+        # BJ股(board='bse')
+        if "board" in price_data.columns:
+            bj = price_data.loc[price_data["board"] == "bse", ["code", "trade_date"]]
+            for td, grp in bj.groupby("trade_date"):
+                if td not in _status_by_date:
+                    _status_by_date[td] = set()
+                _status_by_date[td].update(grp["code"].tolist())
+
     target_portfolios: dict[date, dict[str, float]] = {}
     for rd in rebal_dates:
         day_data = factor_df[factor_df["trade_date"] <= rd]
@@ -1242,7 +1265,9 @@ def run_hybrid_backtest(
         latest_date = day_data["trade_date"].max()
         day_data = day_data[day_data["trade_date"] == latest_date]
 
-        scores = composer.compose(day_data)
+        # per-date排除
+        exclude = _status_by_date.get(latest_date, set())
+        scores = composer.compose(day_data, exclude=exclude)
         if scores.empty:
             continue
         weights = builder.build(scores, pd.Series(dtype=str))
@@ -1277,7 +1302,7 @@ def run_composite_backtest(
     config: BacktestConfig,
     modifiers: list | None = None,
     benchmark_data: pd.DataFrame | None = None,
-    signal_config: "SignalConfig | None" = None,
+    signal_config: Any | None = None,  # SignalConfig (unused, kept for API compat)
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
     conn=None,  # DB连接(Modifier需要查询北向等数据)
@@ -1301,8 +1326,7 @@ def run_composite_backtest(
     Returns:
         BacktestResult
     """
-    from engines.signal_engine import SignalComposer, PortfolioBuilder
-    from engines.signal_engine import FACTOR_DIRECTION
+    from engines.signal_engine import FACTOR_DIRECTION, PortfolioBuilder, SignalComposer
     from engines.signal_engine import SignalConfig as SEConfig
     from engines.vectorized_signal import compute_rebalance_dates
 
@@ -1310,15 +1334,6 @@ def run_composite_backtest(
         from engines.datafeed import DataFeed
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
-
-    # 过滤ST/停牌股: 从price_data中提取标记，排除因子选股
-    if "is_st" in price_data.columns:
-        st_codes = set(
-            price_data.loc[price_data["is_st"] == True, "code"].unique()  # noqa: E712
-        )
-        if st_codes:
-            factor_df = factor_df[~factor_df["code"].isin(st_codes)].copy()
-            logger.info("Composite Phase A: 排除%d只ST股", len(st_codes))
 
     # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
     se_config = SEConfig(
@@ -1342,6 +1357,24 @@ def run_composite_backtest(
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
 
+    # 构建per-date排除集(同run_hybrid_backtest逻辑)
+    _has_status_c = "is_st" in price_data.columns
+    _status_by_date_c: dict[date, set[str]] = {}
+    if _has_status_c:
+        for col in ("is_st", "is_suspended", "is_new_stock"):
+            if col in price_data.columns:
+                excluded = price_data.loc[price_data[col] == True, ["code", "trade_date"]]  # noqa: E712
+                for td, grp in excluded.groupby("trade_date"):
+                    if td not in _status_by_date_c:
+                        _status_by_date_c[td] = set()
+                    _status_by_date_c[td].update(grp["code"].tolist())
+        if "board" in price_data.columns:
+            bj = price_data.loc[price_data["board"] == "bse", ["code", "trade_date"]]
+            for td, grp in bj.groupby("trade_date"):
+                if td not in _status_by_date_c:
+                    _status_by_date_c[td] = set()
+                _status_by_date_c[td].update(grp["code"].tolist())
+
     target_portfolios: dict[date, dict[str, float]] = {}
     for rd in rebal_dates:
         day_data = factor_df[factor_df["trade_date"] <= rd]
@@ -1349,7 +1382,8 @@ def run_composite_backtest(
             continue
         latest_date = day_data["trade_date"].max()
         day_data = day_data[day_data["trade_date"] == latest_date]
-        scores = composer.compose(day_data)
+        exclude = _status_by_date_c.get(latest_date, set())
+        scores = composer.compose(day_data, exclude=exclude)
         if scores.empty:
             continue
         weights = builder.build(scores, pd.Series(dtype=str))

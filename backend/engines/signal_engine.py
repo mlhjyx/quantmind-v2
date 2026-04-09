@@ -132,13 +132,15 @@ class SignalComposer:
         self,
         factor_df: pd.DataFrame,
         universe: set[str] | None = None,
+        exclude: set[str] | None = None,
     ) -> pd.Series:
         """合成综合因子得分。
 
         Args:
             factor_df: 宽表 columns=[code, factor_name, neutral_value]
                        （单日截面数据）
-            universe: 可选的universe过滤集合
+            universe: 可选的universe包含集合
+            exclude: 可选的排除集合(ST/停牌/新股/BJ等,日期级过滤)
 
         Returns:
             pd.Series indexed by code, values = composite score
@@ -153,6 +155,9 @@ class SignalComposer:
 
         if universe:
             pivot = pivot[pivot.index.isin(universe)]
+
+        if exclude:
+            pivot = pivot[~pivot.index.isin(exclude)]
 
         # 选择配置的因子
         available = [f for f in self.config.factor_names if f in pivot.columns]
