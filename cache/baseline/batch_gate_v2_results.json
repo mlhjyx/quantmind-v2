@@ -1,0 +1,3694 @@
+{
+  "meta": {
+    "version": "v2",
+    "ic_calculator": "neutral_value_T1_excess_spearman",
+    "horizon": 20,
+    "total": 53,
+    "passed": 17,
+    "failed": 36,
+    "errored": 0,
+    "elapsed_sec": 1733.0,
+    "thresholds": {
+      "G1_IC": 0.02,
+      "G2_IR": 0.3,
+      "G3_T_SOFT": 2.0,
+      "G4_NEUTRALIZATION_MAX_DECAY": 0.5,
+      "G5_MIN_HALF_LIFE": 5,
+      "G6_MAX_CORR": 0.7,
+      "G7_MIN_COVERAGE": 0.8
+    }
+  },
+  "core_5_verdicts": {
+    "turnover_mean_20": "PASS",
+    "volatility_20": "PASS",
+    "reversal_20": "PASS",
+    "amihud_20": "PASS",
+    "bp_ratio": "PASS"
+  },
+  "candidate_verdicts": {
+    "turnover_stability_20": "FAIL",
+    "atr_norm_20": "FAIL",
+    "gap_frequency_20": "PASS",
+    "ivol_20": "FAIL"
+  },
+  "results": {
+    "a158_cord30": {
+      "factor_name": "a158_cord30",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.0466,
+        "std": 0.058497,
+        "ir": -0.7966,
+        "t_stat": -27.4113,
+        "hit_rate": 0.2069,
+        "n_days": 1184,
+        "min": -0.246246,
+        "max": 0.138237
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.0466,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.7966,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 27.4113,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.1397,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.054166,
+          "neutral_ic": -0.0466
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.41,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.31,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.013,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "a158_corr5": {
+      "factor_name": "a158_corr5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.041738,
+        "std": 0.049423,
+        "ir": -0.8445,
+        "t_stat": -29.3764,
+        "hit_rate": 0.1727,
+        "n_days": 1210,
+        "min": -0.367888,
+        "max": 0.158009
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.041738,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.8445,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 29.3764,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0883,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.045778,
+          "neutral_ic": -0.041738
+        },
+        "G5": {
+          "passed": false,
+          "metric": 2.54,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2181,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0273,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "a158_rank5": {
+      "factor_name": "a158_rank5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.017963,
+        "std": 0.071424,
+        "ir": -0.2515,
+        "t_stat": -8.7485,
+        "hit_rate": 0.4074,
+        "n_days": 1210,
+        "min": -0.582741,
+        "max": 0.346672
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.017963,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2515,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 8.7485,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0664,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.01924,
+          "neutral_ic": -0.017963
+        },
+        "G5": {
+          "passed": false,
+          "metric": 1.16,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2483,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0273,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5"
+      ]
+    },
+    "a158_std60": {
+      "factor_name": "a158_std60",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.030826,
+        "std": 0.109651,
+        "ir": -0.2811,
+        "t_stat": -9.5543,
+        "hit_rate": 0.3247,
+        "n_days": 1155,
+        "min": -0.440116,
+        "max": 0.539689
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030826,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2811,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 9.5543,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.3656,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.04859,
+          "neutral_ic": -0.030826
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.43,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.4466,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 0.9964,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G2"
+      ]
+    },
+    "a158_vma5": {
+      "factor_name": "a158_vma5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.009186,
+        "std": 0.042537,
+        "ir": 0.216,
+        "t_stat": 7.512,
+        "hit_rate": 0.5983,
+        "n_days": 1210,
+        "min": -0.222321,
+        "max": 0.17294
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.009186,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.216,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 7.512,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0923,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.01012,
+          "neutral_ic": 0.009186
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.9,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1006,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0273,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5"
+      ]
+    },
+    "a158_vstd30": {
+      "factor_name": "a158_vstd30",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.007142,
+        "std": 0.048653,
+        "ir": 0.1468,
+        "t_stat": 5.0531,
+        "hit_rate": 0.562,
+        "n_days": 1185,
+        "min": -0.139218,
+        "max": 0.182029
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.007142,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.1468,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 5.0531,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": false,
+          "metric": 0.5884,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.017353,
+          "neutral_ic": 0.007142
+        },
+        "G5": {
+          "passed": true,
+          "metric": 5.85,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2064,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0135,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G4"
+      ]
+    },
+    "a158_vsump5": {
+      "factor_name": "a158_vsump5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.014966,
+        "std": 0.043077,
+        "ir": -0.3474,
+        "t_stat": -12.0804,
+        "hit_rate": 0.3664,
+        "n_days": 1209,
+        "min": -0.178221,
+        "max": 0.163522
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.014966,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.3474,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 12.0804,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0577,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.015883,
+          "neutral_ic": -0.014966
+        },
+        "G5": {
+          "passed": false,
+          "metric": 1.33,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1197,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0267,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G5"
+      ]
+    },
+    "a158_vsump60": {
+      "factor_name": "a158_vsump60",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.04113,
+        "std": 0.05098,
+        "ir": -0.8068,
+        "t_stat": -27.4071,
+        "hit_rate": 0.1889,
+        "n_days": 1154,
+        "min": -0.168763,
+        "max": 0.127901
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.04113,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.8068,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 27.4071,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.2885,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.057808,
+          "neutral_ic": -0.04113
+        },
+        "G5": {
+          "passed": true,
+          "metric": 5.23,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2859,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 0.9961,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "amihud_20": {
+      "factor_name": "amihud_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.064284,
+        "std": 0.073138,
+        "ir": 0.8789,
+        "t_stat": 47.6498,
+        "hit_rate": 0.8118,
+        "n_days": 2939,
+        "min": -0.34602,
+        "max": 0.399628
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.064284,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.8789,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 47.6498,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.331,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.048297,
+          "neutral_ic": 0.064284
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.61,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.4213,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "atr_norm_20": {
+      "factor_name": "atr_norm_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.09803,
+        "std": 0.207286,
+        "ir": -0.4729,
+        "t_stat": -17.4981,
+        "hit_rate": 0.2995,
+        "n_days": 1369,
+        "min": -0.679947,
+        "max": 0.77099
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.09803,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4729,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 17.4981,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.09803,
+          "neutral_ic": -0.09803
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.44,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.7119,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 0.9065,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "beta_market_20": {
+      "factor_name": "beta_market_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 2e-05,
+        "std": 0.077969,
+        "ir": 0.0003,
+        "t_stat": 0.0132,
+        "hit_rate": 0.5128,
+        "n_days": 2660,
+        "min": -0.289069,
+        "max": 0.238253
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 2e-05,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.0003,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "False",
+          "metric": 0.0132,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": false,
+          "metric": 0.9951,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.004074,
+          "neutral_ic": 2e-05
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.0,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2793,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ]
+    },
+    "bp_ratio": {
+      "factor_name": "bp_ratio",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.059085,
+        "std": 0.0924,
+        "ir": 0.6394,
+        "t_stat": 34.7779,
+        "hit_rate": 0.7177,
+        "n_days": 2958,
+        "min": -0.261095,
+        "max": 0.309157
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.059085,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6394,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 34.7779,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0468,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.061987,
+          "neutral_ic": 0.059085
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.15,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.3137,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "chmom_60_20": {
+      "factor_name": "chmom_60_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.019693,
+        "std": 0.083016,
+        "ir": -0.2372,
+        "t_stat": -12.0025,
+        "hit_rate": 0.3816,
+        "n_days": 2560,
+        "min": -0.285258,
+        "max": 0.433704
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019693,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2372,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 12.0025,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.4091,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.033325,
+          "neutral_ic": -0.019693
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.3,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1991,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0676,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2"
+      ]
+    },
+    "dv_ttm": {
+      "factor_name": "dv_ttm",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.039848,
+        "std": 0.061021,
+        "ir": 0.653,
+        "t_stat": 35.5167,
+        "hit_rate": 0.7732,
+        "n_days": 2958,
+        "min": -0.255068,
+        "max": 0.302801
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.039848,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.653,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 35.5167,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.304,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.030558,
+          "neutral_ic": 0.039848
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.14,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2826,
+          "threshold": 0.7,
+          "max_corr_with": "bp_ratio",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "ep_ratio": {
+      "factor_name": "ep_ratio",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.050278,
+        "std": 0.072701,
+        "ir": 0.6916,
+        "t_stat": 37.6126,
+        "hit_rate": 0.7569,
+        "n_days": 2958,
+        "min": -0.181087,
+        "max": 0.342251
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.050278,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6916,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 37.6126,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.1957,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.042048,
+          "neutral_ic": 0.050278
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.55,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.3421,
+          "threshold": 0.7,
+          "max_corr_with": "bp_ratio",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "gain_loss_ratio_20": {
+      "factor_name": "gain_loss_ratio_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.05502,
+        "std": 0.092048,
+        "ir": -0.5977,
+        "t_stat": -30.8283,
+        "hit_rate": 0.2808,
+        "n_days": 2660,
+        "min": -0.381724,
+        "max": 0.209626
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.05502,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.5977,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 30.8283,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.1097,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.061796,
+          "neutral_ic": -0.05502
+        },
+        "G5": {
+          "passed": true,
+          "metric": 5.86,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.9171,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "gap_frequency_20": {
+      "factor_name": "gap_frequency_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.095754,
+        "std": 0.163264,
+        "ir": -0.5865,
+        "t_stat": -21.7004,
+        "hit_rate": 0.2652,
+        "n_days": 1369,
+        "min": -0.576009,
+        "max": 0.416397
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.095754,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.5865,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 21.7004,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.095754,
+          "neutral_ic": -0.095754
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.71,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.579,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 0.9065,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "high_low_range_20": {
+      "factor_name": "high_low_range_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.085749,
+        "std": 0.110844,
+        "ir": -0.7736,
+        "t_stat": -26.9985,
+        "hit_rate": 0.22,
+        "n_days": 1218,
+        "min": -0.35211,
+        "max": 0.250902
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.085749,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.7736,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 26.9985,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.1231,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.097781,
+          "neutral_ic": -0.085749
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.51,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.8786,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1125,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "ivol_20": {
+      "factor_name": "ivol_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.100058,
+        "std": 0.18194,
+        "ir": -0.5499,
+        "t_stat": -20.2662,
+        "hit_rate": 0.2651,
+        "n_days": 1358,
+        "min": -0.621043,
+        "max": 0.653145
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.100058,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.5499,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 20.2662,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.100058,
+          "neutral_ic": -0.100058
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.25,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.772,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 0.9041,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "kbar_kmid": {
+      "factor_name": "kbar_kmid",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.021957,
+        "std": 0.067087,
+        "ir": -0.3273,
+        "t_stat": -16.9433,
+        "hit_rate": 0.3694,
+        "n_days": 2680,
+        "min": -0.412786,
+        "max": 0.284795
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.021957,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.3273,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 16.9433,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.2696,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.017295,
+          "neutral_ic": -0.021957
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.59,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1698,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "kbar_ksft": {
+      "factor_name": "kbar_ksft",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.014588,
+        "std": 0.066382,
+        "ir": -0.2198,
+        "t_stat": -11.3766,
+        "hit_rate": 0.4216,
+        "n_days": 2680,
+        "min": -0.39878,
+        "max": 0.308882
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.014588,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2198,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 11.3766,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.3803,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.010569,
+          "neutral_ic": -0.014588
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.57,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1368,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5"
+      ]
+    },
+    "kbar_kup": {
+      "factor_name": "kbar_kup",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.030492,
+        "std": 0.050341,
+        "ir": -0.6057,
+        "t_stat": -31.3574,
+        "hit_rate": 0.2444,
+        "n_days": 2680,
+        "min": -0.213316,
+        "max": 0.321004
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030492,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6057,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 31.3574,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0904,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.033521,
+          "neutral_ic": -0.030492
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.78,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2293,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "large_order_ratio": {
+      "factor_name": "large_order_ratio",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.03319,
+        "std": 0.067334,
+        "ir": -0.4929,
+        "t_stat": -24.9594,
+        "hit_rate": 0.289,
+        "n_days": 2564,
+        "min": -0.223703,
+        "max": 0.231982
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.03319,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4929,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 24.9594,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.3737,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.052992,
+          "neutral_ic": -0.03319
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.99,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2079,
+          "threshold": 0.7,
+          "max_corr_with": "amihud_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.068,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "ln_market_cap": {
+      "factor_name": "ln_market_cap",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.048872,
+        "std": 0.165132,
+        "ir": -0.296,
+        "t_stat": -16.0963,
+        "hit_rate": 0.3428,
+        "n_days": 2958,
+        "min": -0.596245,
+        "max": 0.683128
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.048872,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.296,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 16.0963,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0987,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.054226,
+          "neutral_ic": -0.048872
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.66,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.287,
+          "threshold": 0.7,
+          "max_corr_with": "amihud_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G2"
+      ]
+    },
+    "maxret_20": {
+      "factor_name": "maxret_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.087911,
+        "std": 0.078101,
+        "ir": -1.1256,
+        "t_stat": -58.0537,
+        "hit_rate": 0.135,
+        "n_days": 2660,
+        "min": -0.330657,
+        "max": 0.196447
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.087911,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 1.1256,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 58.0537,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0917,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.096787,
+          "neutral_ic": -0.087911
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.08,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.8163,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "mf_divergence": {
+      "factor_name": "mf_divergence",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.021389,
+        "std": 0.050464,
+        "ir": -0.4238,
+        "t_stat": -21.3865,
+        "hit_rate": 0.313,
+        "n_days": 2546,
+        "min": -0.198665,
+        "max": 0.206639
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.021389,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4238,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 21.3865,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.0458,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.020452,
+          "neutral_ic": -0.021389
+        },
+        "G5": {
+          "passed": false,
+          "metric": 4.96,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2005,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.068,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "momentum_10": {
+      "factor_name": "momentum_10",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.046984,
+        "std": 0.077833,
+        "ir": -0.6036,
+        "t_stat": -22.4081,
+        "hit_rate": 0.2787,
+        "n_days": 1378,
+        "min": -0.606532,
+        "max": 0.196214
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.046984,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6036,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 22.4081,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0761,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.050854,
+          "neutral_ic": -0.046984
+        },
+        "G5": {
+          "passed": false,
+          "metric": 3.67,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.6157,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1124,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "momentum_20": {
+      "factor_name": "momentum_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.055053,
+        "std": 0.087996,
+        "ir": -0.6256,
+        "t_stat": -23.2244,
+        "hit_rate": 0.2656,
+        "n_days": 1378,
+        "min": -0.476793,
+        "max": 0.189239
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.055053,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6256,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 23.2244,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.2207,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.070644,
+          "neutral_ic": -0.055053
+        },
+        "G5": {
+          "passed": true,
+          "metric": 6.0,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.9887,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1124,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "momentum_5": {
+      "factor_name": "momentum_5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.033892,
+        "std": 0.075812,
+        "ir": -0.4471,
+        "t_stat": -16.5953,
+        "hit_rate": 0.3179,
+        "n_days": 1378,
+        "min": -0.603315,
+        "max": 0.352808
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.033892,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4471,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 16.5953,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.032,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.035012,
+          "neutral_ic": -0.033892
+        },
+        "G5": {
+          "passed": false,
+          "metric": 2.2,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.4151,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1124,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "money_flow_strength": {
+      "factor_name": "money_flow_strength",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.019845,
+        "std": 0.053415,
+        "ir": 0.3715,
+        "t_stat": 18.809,
+        "hit_rate": 0.6586,
+        "n_days": 2563,
+        "min": -0.27162,
+        "max": 0.188566
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019845,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.3715,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 18.809,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.006,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.019965,
+          "neutral_ic": 0.019845
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.64,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1752,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.068,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G5"
+      ]
+    },
+    "nb_contrarian": {
+      "factor_name": "nb_contrarian",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.00551,
+        "std": 0.045986,
+        "ir": -0.1198,
+        "t_stat": -4.0983,
+        "hit_rate": 0.4197,
+        "n_days": 1170,
+        "min": -0.244992,
+        "max": 0.204954
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.00551,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.1198,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 4.0983,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.4632,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.010265,
+          "neutral_ic": -0.00551
+        },
+        "G5": {
+          "passed": false,
+          "metric": 2.81,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.0637,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": false,
+          "metric": 0.6323,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5",
+        "G7"
+      ]
+    },
+    "nb_increase_ratio_20d": {
+      "factor_name": "nb_increase_ratio_20d",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.019095,
+        "std": 0.057462,
+        "ir": -0.3323,
+        "t_stat": -10.3762,
+        "hit_rate": 0.3744,
+        "n_days": 975,
+        "min": -0.160931,
+        "max": 0.185389
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.019095,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.3323,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 10.3762,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -3.0438,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.004722,
+          "neutral_ic": -0.019095
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.66,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.0685,
+          "threshold": 0.7,
+          "max_corr_with": "amihud_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": false,
+          "metric": 0.7947,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G7"
+      ]
+    },
+    "nb_new_entry": {
+      "factor_name": "nb_new_entry",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.025081,
+        "std": 0.138106,
+        "ir": -0.1816,
+        "t_stat": -4.9369,
+        "hit_rate": 0.4005,
+        "n_days": 739,
+        "min": -0.362527,
+        "max": 0.396738
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.025081,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.1816,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 4.9369,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -1.0702,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.012115,
+          "neutral_ic": -0.025081
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.61,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.0537,
+          "threshold": 0.7,
+          "max_corr_with": "amihud_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": false,
+          "metric": 0.7947,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G2",
+        "G7"
+      ]
+    },
+    "nb_ratio_change_20d": {
+      "factor_name": "nb_ratio_change_20d",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.004102,
+        "std": 0.040987,
+        "ir": -0.1001,
+        "t_stat": -1.6598,
+        "hit_rate": 0.48,
+        "n_days": 275,
+        "min": -0.124077,
+        "max": 0.077861
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.004102,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.1001,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "False",
+          "metric": 1.6598,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -1.2354,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.001835,
+          "neutral_ic": -0.004102
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.43,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.0646,
+          "threshold": 0.7,
+          "max_corr_with": "bp_ratio",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": false,
+          "metric": 0.5593,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G3",
+        "G7"
+      ]
+    },
+    "nb_ratio_change_5d": {
+      "factor_name": "nb_ratio_change_5d",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.010234,
+        "std": 0.063056,
+        "ir": 0.1623,
+        "t_stat": 5.5514,
+        "hit_rate": 0.5684,
+        "n_days": 1170,
+        "min": -0.228551,
+        "max": 0.27772
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.010234,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.1623,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 5.5514,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.4595,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.007012,
+          "neutral_ic": 0.010234
+        },
+        "G5": {
+          "passed": false,
+          "metric": 2.56,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.0482,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": false,
+          "metric": 0.6369,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5",
+        "G7"
+      ]
+    },
+    "price_level_factor": {
+      "factor_name": "price_level_factor",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.035567,
+        "std": 0.118881,
+        "ir": 0.2992,
+        "t_stat": 16.2745,
+        "hit_rate": 0.5989,
+        "n_days": 2959,
+        "min": -0.541393,
+        "max": 0.559969
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.035567,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2992,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 16.2745,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.2595,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.048029,
+          "neutral_ic": 0.035567
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.88,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.4554,
+          "threshold": 0.7,
+          "max_corr_with": "bp_ratio",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G2"
+      ]
+    },
+    "price_volume_corr_20": {
+      "factor_name": "price_volume_corr_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.060979,
+        "std": 0.061226,
+        "ir": -0.996,
+        "t_stat": -54.0124,
+        "hit_rate": 0.1635,
+        "n_days": 2941,
+        "min": -0.28083,
+        "max": 0.134873
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.060979,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.996,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 54.0124,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0433,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.063739,
+          "neutral_ic": -0.060979
+        },
+        "G5": {
+          "passed": true,
+          "metric": 7.01,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2504,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "relative_volume_20": {
+      "factor_name": "relative_volume_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.045038,
+        "std": 0.064376,
+        "ir": -0.6996,
+        "t_stat": -37.6819,
+        "hit_rate": 0.2358,
+        "n_days": 2901,
+        "min": -0.313358,
+        "max": 0.164729
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.045038,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6996,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 37.6819,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0641,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.048125,
+          "neutral_ic": -0.045038
+        },
+        "G5": {
+          "passed": true,
+          "metric": 5.09,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.36,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0703,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "reversal_10": {
+      "factor_name": "reversal_10",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.05556,
+        "std": 0.087969,
+        "ir": 0.6316,
+        "t_stat": 34.2399,
+        "hit_rate": 0.737,
+        "n_days": 2939,
+        "min": -0.21446,
+        "max": 0.606532
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.05556,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.6316,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 34.2399,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.0378,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.053538,
+          "neutral_ic": 0.05556
+        },
+        "G5": {
+          "passed": false,
+          "metric": 4.02,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.6118,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "reversal_20": {
+      "factor_name": "reversal_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.067331,
+        "std": 0.094373,
+        "ir": 0.7135,
+        "t_stat": 38.5465,
+        "hit_rate": 0.7698,
+        "n_days": 2919,
+        "min": -0.235524,
+        "max": 0.578268
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.067331,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.7135,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 38.5465,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0907,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.074043,
+          "neutral_ic": 0.067331
+        },
+        "G5": {
+          "passed": true,
+          "metric": 6.25,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2469,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0703,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "reversal_5": {
+      "factor_name": "reversal_5",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": 0.04059,
+        "std": 0.080909,
+        "ir": 0.5017,
+        "t_stat": 27.2435,
+        "hit_rate": 0.6935,
+        "n_days": 2949,
+        "min": -0.352808,
+        "max": 0.603315
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.04059,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.5017,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 27.2435,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.131,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.035888,
+          "neutral_ic": 0.04059
+        },
+        "G5": {
+          "passed": false,
+          "metric": 2.49,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.4114,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "reversal_60": {
+      "factor_name": "reversal_60",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": 0.046018,
+        "std": 0.105838,
+        "ir": 0.4348,
+        "t_stat": 15.1308,
+        "hit_rate": 0.6846,
+        "n_days": 1211,
+        "min": -0.371584,
+        "max": 0.454432
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.046018,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4348,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 15.1308,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.2993,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": 0.065679,
+          "neutral_ic": 0.046018
+        },
+        "G5": {
+          "passed": true,
+          "metric": 6.73,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.3353,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0971,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "rsrs_raw_18": {
+      "factor_name": "rsrs_raw_18",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.041486,
+        "std": 0.060744,
+        "ir": -0.683,
+        "t_stat": -37.0506,
+        "hit_rate": 0.2042,
+        "n_days": 2943,
+        "min": -0.280376,
+        "max": 0.322061
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.041486,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.683,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 37.0506,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0568,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.043985,
+          "neutral_ic": -0.041486
+        },
+        "G5": {
+          "passed": true,
+          "metric": 6.33,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2833,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "stoch_rsv_20": {
+      "factor_name": "stoch_rsv_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.035078,
+        "std": 0.090117,
+        "ir": -0.3892,
+        "t_stat": -20.083,
+        "hit_rate": 0.37,
+        "n_days": 2662,
+        "min": -0.369166,
+        "max": 0.228211
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.035078,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.3892,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 20.083,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0175,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.035701,
+          "neutral_ic": -0.035078
+        },
+        "G5": {
+          "passed": false,
+          "metric": 4.33,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.6789,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "turnover_mean_20": {
+      "factor_name": "turnover_mean_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.095969,
+        "std": 0.098815,
+        "ir": -0.9712,
+        "t_stat": -52.6688,
+        "hit_rate": 0.1707,
+        "n_days": 2941,
+        "min": -0.381188,
+        "max": 0.205303
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.095969,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.9712,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 52.6688,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.055,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.090965,
+          "neutral_ic": -0.095969
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.7,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.6159,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "turnover_stability_20": {
+      "factor_name": "turnover_stability_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.098288,
+        "std": 0.079908,
+        "ir": -1.23,
+        "t_stat": -43.5221,
+        "hit_rate": 0.1062,
+        "n_days": 1252,
+        "min": -0.281028,
+        "max": 0.241514
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.098288,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 1.23,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 43.5221,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.0728,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.091618,
+          "neutral_ic": -0.098288
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.38,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.9125,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1158,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "turnover_std_20": {
+      "factor_name": "turnover_std_20",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.091287,
+        "std": 0.079737,
+        "ir": -1.1448,
+        "t_stat": -39.9551,
+        "hit_rate": 0.1297,
+        "n_days": 1218,
+        "min": -0.284888,
+        "max": 0.14716
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.091287,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 1.1448,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 39.9551,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0067,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.091904,
+          "neutral_ic": -0.091287
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.46,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.9068,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1125,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "turnover_surge_ratio": {
+      "factor_name": "turnover_surge_ratio",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.030682,
+        "std": 0.060307,
+        "ir": -0.5088,
+        "t_stat": -27.5907,
+        "hit_rate": 0.2958,
+        "n_days": 2941,
+        "min": -0.242554,
+        "max": 0.197676
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.030682,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.5088,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 27.5907,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.0522,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.029159,
+          "neutral_ic": -0.030682
+        },
+        "G5": {
+          "passed": false,
+          "metric": 3.97,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.2607,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G5"
+      ]
+    },
+    "up_days_ratio_20": {
+      "factor_name": "up_days_ratio_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.027807,
+        "std": 0.063945,
+        "ir": -0.4349,
+        "t_stat": -22.436,
+        "hit_rate": 0.352,
+        "n_days": 2662,
+        "min": -0.26868,
+        "max": 0.167358
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.027807,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4349,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 22.436,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.1642,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.033271,
+          "neutral_ic": -0.027807
+        },
+        "G5": {
+          "passed": true,
+          "metric": 5.96,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.5152,
+          "threshold": 0.7,
+          "max_corr_with": "reversal_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0671,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "volatility_20": {
+      "factor_name": "volatility_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.091019,
+        "std": 0.106576,
+        "ir": -0.854,
+        "t_stat": -46.299,
+        "hit_rate": 0.1885,
+        "n_days": 2939,
+        "min": -0.403696,
+        "max": 0.290584
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.091019,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.854,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 46.299,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0167,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.092566,
+          "neutral_ic": -0.091019
+        },
+        "G5": {
+          "passed": true,
+          "metric": 8.31,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.6159,
+          "threshold": 0.7,
+          "max_corr_with": "turnover_mean_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0702,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "volatility_60": {
+      "factor_name": "volatility_60",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.084654,
+        "std": 0.11334,
+        "ir": -0.7469,
+        "t_stat": -26.0671,
+        "hit_rate": 0.2217,
+        "n_days": 1218,
+        "min": -0.344311,
+        "max": 0.245185
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.084654,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.7469,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 26.0671,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.0611,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.090167,
+          "neutral_ic": -0.084654
+        },
+        "G5": {
+          "passed": true,
+          "metric": 9.39,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": false,
+          "metric": 0.7562,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1125,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G6"
+      ]
+    },
+    "volume_std_20": {
+      "factor_name": "volume_std_20",
+      "verdict": "PASS",
+      "ic_stats": {
+        "mean": -0.032205,
+        "std": 0.079347,
+        "ir": -0.4059,
+        "t_stat": -14.1648,
+        "hit_rate": 0.3251,
+        "n_days": 1218,
+        "min": -0.41616,
+        "max": 0.435163
+      },
+      "gates": {
+        "G1": {
+          "passed": true,
+          "metric": 0.032205,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": true,
+          "metric": 0.4059,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 14.1648,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": 0.4977,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.064112,
+          "neutral_ic": -0.032205
+        },
+        "G5": {
+          "passed": true,
+          "metric": 6.41,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.3945,
+          "threshold": 0.7,
+          "max_corr_with": "amihud_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.1125,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": []
+    },
+    "vwap_bias_1d": {
+      "factor_name": "vwap_bias_1d",
+      "verdict": "FAIL",
+      "ic_stats": {
+        "mean": -0.015966,
+        "std": 0.061335,
+        "ir": -0.2603,
+        "t_stat": -13.8549,
+        "hit_rate": 0.3975,
+        "n_days": 2833,
+        "min": -0.417698,
+        "max": 0.438281
+      },
+      "gates": {
+        "G1": {
+          "passed": false,
+          "metric": 0.015966,
+          "threshold": 0.02,
+          "name": "|IC_mean|"
+        },
+        "G2": {
+          "passed": false,
+          "metric": 0.2603,
+          "threshold": 0.3,
+          "name": "|IC_IR|"
+        },
+        "G3": {
+          "passed": "True",
+          "metric": 13.8549,
+          "threshold": 2.0,
+          "name": "|t-stat|"
+        },
+        "G4": {
+          "passed": true,
+          "metric": -0.1776,
+          "threshold": 0.5,
+          "name": "中性化衰减",
+          "raw_ic": -0.013558,
+          "neutral_ic": -0.015966
+        },
+        "G5": {
+          "passed": false,
+          "metric": 0.55,
+          "threshold": 5,
+          "name": "half_life"
+        },
+        "G6": {
+          "passed": true,
+          "metric": 0.1269,
+          "threshold": 0.7,
+          "max_corr_with": "volatility_20",
+          "name": "cross-sectional corr with CORE"
+        },
+        "G7": {
+          "passed": true,
+          "metric": 1.0699,
+          "threshold": 0.8,
+          "name": "coverage"
+        },
+        "G8": {
+          "passed": null,
+          "note": "SimBroker backtest skipped in batch"
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G5"
+      ]
+    }
+  },
+  "v1_vs_v2_diff": {
+    "total_changed": 14,
+    "changes": {
+      "a158_corr5": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "bp_ratio": {
+        "v1": "FAIL",
+        "v2": "PASS"
+      },
+      "gap_frequency_20": {
+        "v1": "FAIL",
+        "v2": "PASS"
+      },
+      "kbar_kmid": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "kbar_kup": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "ln_market_cap": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "mf_divergence": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "momentum_5": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "nb_new_entry": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "reversal_5": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "turnover_mean_20": {
+        "v1": "FAIL",
+        "v2": "PASS"
+      },
+      "turnover_surge_ratio": {
+        "v1": "PASS",
+        "v2": "FAIL"
+      },
+      "up_days_ratio_20": {
+        "v1": "FAIL",
+        "v2": "PASS"
+      },
+      "volatility_20": {
+        "v1": "FAIL",
+        "v2": "PASS"
+      }
+    }
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "meta": {
+    "total_factors": 6,
+    "core_factors": [
+      "turnover_mean_20",
+      "volatility_20",
+      "reversal_20",
+      "amihud_20",
+      "bp_ratio"
+    ],
+    "note": "IC time series correlation 衡量 regime 是否同步; 符号反转衡量方向是否regime-dependent"
+  },
+  "factors": {
+    "a158_vstd30": {
+      "ic_20d": 0.0025,
+      "ic_ir": 0.0502,
+      "ic_bull": -0.00583,
+      "ic_bear": 0.02293,
+      "ic_sideways": -0.00466,
+      "regime_sensitivity": 0.02876,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "a158_vma5",
+      "max_corr_value_profile": 0.541,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": 0.4409,
+        "volatility_20": 0.4211,
+        "reversal_20": 0.3346,
+        "amihud_20": -0.0885,
+        "bp_ratio": -0.4148
+      },
+      "mean_ic_ts_corr_with_core": 0.1387,
+      "is_regime_hedge": "False"
+    },
+    "beta_market_20": {
+      "ic_20d": -0.01611,
+      "ic_ir": -0.1993,
+      "ic_bull": -0.05672,
+      "ic_bear": 0.02412,
+      "ic_sideways": -0.02247,
+      "regime_sensitivity": 0.08083,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "volatility_60",
+      "max_corr_value_profile": 0.352,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": 0.4352,
+        "volatility_20": 0.5154,
+        "reversal_20": 0.1972,
+        "amihud_20": -0.2785,
+        "bp_ratio": -0.2888
+      },
+      "mean_ic_ts_corr_with_core": 0.1161,
+      "is_regime_hedge": "False"
+    },
+    "nb_ratio_change_20d": {
+      "ic_20d": -0.01276,
+      "ic_ir": -0.311,
+      "ic_bull": -0.03934,
+      "ic_bear": 0.02934,
+      "ic_sideways": -0.02694,
+      "regime_sensitivity": 0.06868,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "nb_ratio_change_5d",
+      "max_corr_value_profile": 0.467,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": -0.0399,
+        "volatility_20": 0.0031,
+        "reversal_20": -0.2383,
+        "amihud_20": -0.1458,
+        "bp_ratio": -0.0808
+      },
+      "mean_ic_ts_corr_with_core": -0.1003,
+      "is_regime_hedge": "True"
+    },
+    "stoch_rsv_20": {
+      "ic_20d": -0.0206,
+      "ic_ir": -0.274,
+      "ic_bull": 0.0008,
+      "ic_bear": -0.03872,
+      "ic_sideways": -0.01874,
+      "regime_sensitivity": 0.03952,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "momentum_10",
+      "max_corr_value_profile": 0.744,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": -0.1519,
+        "volatility_20": -0.2277,
+        "reversal_20": -0.7936,
+        "amihud_20": 0.0337,
+        "bp_ratio": 0.1444
+      },
+      "mean_ic_ts_corr_with_core": -0.199,
+      "is_regime_hedge": "True"
+    },
+    "turnover_surge_ratio": {
+      "ic_20d": -0.02269,
+      "ic_ir": -0.4476,
+      "ic_bull": 0.00992,
+      "ic_bear": -0.02904,
+      "ic_sideways": -0.0293,
+      "regime_sensitivity": 0.03921,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "relative_volume_20",
+      "max_corr_value_profile": 0.572,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": -0.1504,
+        "volatility_20": -0.1368,
+        "reversal_20": -0.3769,
+        "amihud_20": -0.0081,
+        "bp_ratio": 0.1658
+      },
+      "mean_ic_ts_corr_with_core": -0.1013,
+      "is_regime_hedge": "True"
+    },
+    "up_days_ratio_20": {
+      "ic_20d": -0.01829,
+      "ic_ir": -0.2833,
+      "ic_bull": 0.01904,
+      "ic_bear": -0.04041,
+      "ic_sideways": -0.01964,
+      "regime_sensitivity": 0.05945,
+      "bull_bear_sign_flip": "True",
+      "max_corr_factor_profile": "gain_loss_ratio_20",
+      "max_corr_value_profile": 0.619,
+      "ic_ts_corr_with_core": {
+        "turnover_mean_20": 0.1256,
+        "volatility_20": -0.02,
+        "reversal_20": -0.7635,
+        "amihud_20": 0.0206,
+        "bp_ratio": 0.0046
+      },
+      "mean_ic_ts_corr_with_core": -0.1265,
+      "is_regime_hedge": "True"
+    }
+  }
+}

@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = "D:/quantmind-v2/cache"
 HORIZONS = [1, 5, 10, 20, 60, 120]
-START_DATE = date(2020, 7, 1)  # 给120d warmup留余量
+# Step 6-G: START_DATE 从 2020-07-01 扩展到 2014-01-01 支持 12 年 factor_profiler 画像
+# (之前 profile 只有 5.5 年, Step 6-F 发现 profiler cache 范围不够)
+START_DATE = date(2014, 1, 1)
 END_DATE = date(2026, 6, 30)  # 支持120d forward return
 
 
