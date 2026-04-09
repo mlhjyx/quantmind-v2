@@ -11,7 +11,7 @@ model: claude-sonnet-4-6
 **必读设计文档**：
 - D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md §4.12.4（BaseStrategy接口）
 - D:\quantmind-v2\docs\DEV_AI_EVOLUTION.md §5.2（策略构建Agent搜索空间）
-- D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §4.6（DeepSeek模型路由器API规格）
+- D:\quantmind-v2\docs\QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分（IMPLEMENTATION_MASTER 已归档）
 - D:\quantmind-v2\docs\ML_WALKFORWARD_DESIGN.md（LightGBM Walk-Forward训练框架设计）
 - D:\quantmind-v2\docs\research\R2_factor_mining_frontier.md（GP引擎设计：DEAP岛屿模型+适应度函数）
 - D:\quantmind-v2\docs\research\R7_ai_model_selection.md（DeepSeek混合架构+成本模型）

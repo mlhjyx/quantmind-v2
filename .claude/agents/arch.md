@@ -12,7 +12,9 @@ model: claude-sonnet-4-6
 - D:\quantmind-v2\docs\DEV_BACKEND.md
 - D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md
 - D:\quantmind-v2\docs\QUANTMIND_V2_DESIGN_V5.md §3（架构）§6（7步组合构建）
-- D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §3（运行时架构）§4（接口规格）§7（Sprint计划）
+- D:\quantmind-v2\docs\QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分（Step 0→6-B 重构记录, IMPLEMENTATION_MASTER 已归档）
+- D:\quantmind-v2\docs\DEV_BACKEND.md §0（重构后的新分层 + Data 层 + pt_* Service）
+- D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md §0（backend/engines/backtest/ 8 模块拆分）
 - D:\quantmind-v2\docs\RISK_CONTROL_SERVICE_DESIGN.md（风控服务接口设计：L1-L4熔断）
 - D:\quantmind-v2\docs\research\R3_multi_strategy_framework.md（核心+Modifier架构）
 - D:\quantmind-v2\docs\research\R5_backtest_live_alignment.md（回测-实盘对齐8个gap）

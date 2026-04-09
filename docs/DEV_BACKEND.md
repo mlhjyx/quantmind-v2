@@ -2,8 +2,114 @@
 
 > 文档级别：实现级（供 Claude Code 执行）
 > 创建日期：2026-03-20
-> 关联文档：QUANTMIND_V2_DESIGN_V5.md §3, DEV_SCHEDULER.md
+> 最后更新: 2026-04-09 (Step 3-A + Step 4-B + Step 5 + Step 6-A/B)
+> 关联文档：QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分, DEV_SCHEDULER.md
 > 解决问题：后端架构/项目结构/服务层/数据流/模块协同
+
+---
+
+## §0 Step 3-A + 5 + 6 重构后的新分层 (2026-04-09, 优先阅读)
+
+> 本节描述重构后的**实际代码结构**, 优先级高于下方历史章节。
+
+### 新增分层: Data 层 (Step 5)
+
+```
+backend/data/
+└── parquet_cache.py     # BacktestDataCache: 按年分区 Parquet 缓存 (233 行)
+```
+
+**职责边界**:
+- 本地数据快照 / 缓存 (Parquet 文件)
+- 无业务逻辑, 无 DB 访问
+- 数据契约: 与生产 DB 表完全一致 (列名/类型/单位)
+- 由 `scripts/build_backtest_cache.py` 从 DB 导出构建
+
+**使用场景**:
+- 回测引擎 (runner.py) 加载历史数据: 优先查 Parquet, 未命中回退 DB
+- 研究脚本 (scripts/research/*.py) 快速启动: 30 min → 20 sec
+
+**分层位置**:
+```
+Router(api/) → Service(services/) → Engine(engines/) ──→ Data(data/)
+                                       │                    │
+                                       └──→ Integration(data_fetcher/) → DB
+```
+
+Data 层在 Engine 层下方, Engine 直接消费 Data 层的 DataFrame, 完全不依赖 Integration 层 (DB)。
+
+### Data Contract + DataPipeline (Step 3-A, 铁律 17)
+
+```
+backend/app/data_fetcher/
+├── contracts.py    # 每张表的 TableContract (列/单位/rename_map/FK过滤)
+└── pipeline.py     # DataPipeline.ingest(df, contract) — 唯一数据入库入口
+```
+
+**禁止**: 生产代码任何位置的 `INSERT INTO <core_table>` 都必须改为 `DataPipeline.ingest()`。违反即破坏单位一致性和 code 格式一致性。
+
+**Contract 注册表** (11 张表, Step 6-B 新增 MINUTE_BARS):
+- KLINES_DAILY / DAILY_BASIC / MONEYFLOW_DAILY / INDEX_DAILY
+- FACTOR_VALUES / NORTHBOUND_HOLDINGS / SYMBOLS
+- EARNINGS_ANNOUNCEMENTS / STOCK_STATUS_DAILY / MINUTE_BARS
+
+**DataPipeline.ingest() 流程**:
+1. rename (ts_code → code 等)
+2. 列对齐 (保留 contract 列, 补缺失 nullable)
+3. 单位转换 (千元→元, 万元→元)
+4. 逐列验证 (PK 非空, 值域, inf/NaN → None)
+5. FK 过滤 (symbols.code)
+6. Upsert (ON CONFLICT DO UPDATE)
+
+### 新增 Services (Step 4-B + 6-A)
+
+```
+backend/app/services/
+├── config_loader.py         # Step 4-B: YAML 策略配置加载 (147 行)
+├── pt_data_service.py       # Step 6-A: PT 并行数据拉取 (104 行)
+├── pt_monitor_service.py    # Step 6-A: PT 开盘跳空检测 (90 行)
+├── pt_qmt_state.py          # Step 6-A: QMT↔DB 状态同步 (84 行)
+└── shadow_portfolio.py      # Step 6-A: LightGBM 影子选股 (238 行)
+```
+
+**config_loader.py**: `load_strategy_config(yaml_path)` 返回 (BacktestConfig, SignalConfig, config_hash)。config_hash 是 sha256(yaml_text), 写入 backtest_run.config_yaml_hash 满足铁律 15。
+
+**pt_data_service.py**: `fetch_daily_data(trade_date, skip_fetch=False)` 并行拉取 klines/basic/index 三个 API (ThreadPoolExecutor max_workers=3), 走 DataPipeline.ingest() 入库。
+
+**pt_monitor_service.py**: `check_opening_gap(exec_date, price_data, conn, notif_svc, dry_run)` — 单股跳空 >5% 告 P1, 组合加权跳空 >3% 告 P0。
+
+**pt_qmt_state.py**: `save_qmt_state(conn, trade_date, qmt_positions, today_close, nav, prev_nav, qmt_nav_data, benchmark_close)` — 把 QMT 的实际持仓和 NAV 写入 position_snapshot + performance_series (execution_mode='paper')。
+
+**shadow_portfolio.py**: 两个函数 `generate_shadow_lgbm_signals()` (Raw 选股) + `generate_shadow_lgbm_inertia()` (Inertia 0.7σ), 用 fold_{1..7}.txt 训练好的 LightGBM 模型预测, 写 shadow_portfolio 表。失败不阻塞主流程。
+
+### PT 主脚本重构 (Step 6-A)
+
+`scripts/run_paper_trading.py` 从 1734 行 → 345 行, 变成纯编排器:
+- signal phase: 健康预检 → 配置守卫 → Step1 数据拉取(委托 pt_data_service) → Step1.5 NAV 更新(pt_qmt_state) → 风控 → 因子 → 信号 → 影子选股 → 收尾
+- execute phase: QMT 连接 → 读信号 → 数据拉取 → QMT drift → 开盘跳空(pt_monitor_service) → 熔断 → 执行 → 收尾
+
+业务逻辑全部在 4 个 pt_* Service 中, 脚本自身只编排。
+
+### 重构后的调用链示例 (PT signal phase)
+
+```
+scripts/run_paper_trading.py :: run_signal_phase()
+  ├─ health_check.run_health_check()
+  ├─ config_guard.assert_baseline_config()  [铁律15]
+  ├─ pt_data_service.fetch_daily_data()     [走 DataPipeline, 铁律17]
+  │   └─ DataPipeline.ingest(df, KLINES_DAILY)
+  │   └─ DataPipeline.ingest(df, DAILY_BASIC)
+  │   └─ DataPipeline.ingest(df, INDEX_DAILY)
+  ├─ QMTClient().get_positions() / get_nav()
+  ├─ pt_qmt_state.save_qmt_state()
+  ├─ risk_control_service.check_circuit_breaker_sync()
+  ├─ factor_engine.compute_daily_factors()
+  ├─ factor_engine.save_daily_factors()
+  ├─ load_factor_values()
+  ├─ SignalService().generate_signals()     [唯一信号路径, 铁律16]
+  │   └─ SignalComposer.compose()
+  └─ shadow_portfolio.generate_shadow_lgbm_signals() (实验, 失败不阻塞)
+```
 
 ---
 

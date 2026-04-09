@@ -13,7 +13,8 @@ model: claude-opus-4-6
 - D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md §4.12.4（BaseStrategy接口）
 - D:\quantmind-v2\docs\DEV_AI_EVOLUTION.md §5.2（策略构建Agent搜索空间）
 - D:\quantmind-v2\docs\DEV_PARAM_CONFIG.md §3.4（组合构建6个可配参数）+ §3.13（Modifier参数）
-- D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §4.1-4.3（FactorClassifier/ModifierBase/CompositeStrategy API规格）
+- D:\quantmind-v2\docs\QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分（IMPLEMENTATION_MASTER 已归档）
+- D:\quantmind-v2\docs\DEV_BACKTEST_ENGINE.md §0（backend/engines/backtest/ 8 模块拆分）
 - D:\quantmind-v2\docs\research\R1_factor_strategy_matching.md（因子分类→策略匹配框架）
 - D:\quantmind-v2\docs\research\R3_multi_strategy_framework.md（核心+Modifier架构设计）
 

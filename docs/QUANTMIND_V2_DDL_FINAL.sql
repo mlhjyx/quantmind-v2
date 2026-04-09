@@ -582,9 +582,13 @@ CREATE TABLE backtest_run (
     end_date        DATE,
     elapsed_sec     INT,
     error_message   TEXT,
+    -- Step 6-B 新增: 可复现性追溯 (铁律15)
+    config_yaml_hash VARCHAR(64),                       -- configs/strategy/*.yaml 的 sha256
+    git_commit      VARCHAR(40),                        -- 回测运行时的git commit
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_backtest_strategy ON backtest_run(strategy_id, created_at DESC);
+CREATE INDEX idx_backtest_config_hash ON backtest_run(config_yaml_hash);
 
 CREATE TABLE backtest_daily_nav (
     run_id          UUID NOT NULL REFERENCES backtest_run(run_id) ON DELETE CASCADE,
@@ -808,6 +812,50 @@ CREATE INDEX idx_gp_approval_queue_status ON gp_approval_queue(status);
 CREATE INDEX idx_gp_approval_queue_ast_hash ON gp_approval_queue(ast_hash);
 
 -- ═══════════════════════════════════════════════════
--- 总计: 45张表（+2: pipeline_runs + gp_approval_queue）
+-- Step 3-B 新增 (2026-04-09): stock_status_daily
+-- 用途: 日期级股票状态 (解决 klines_daily.is_st 只存当前 vs 回测需要历史)
+-- Contract: backend/app/data_fetcher/contracts.py::STOCK_STATUS_DAILY
+-- ═══════════════════════════════════════════════════
+CREATE TABLE stock_status_daily (
+    code            VARCHAR(16) NOT NULL,              -- 带后缀, 如 600519.SH
+    trade_date      DATE NOT NULL,
+    is_st           BOOLEAN NOT NULL DEFAULT false,
+    is_suspended    BOOLEAN NOT NULL DEFAULT false,
+    is_new_stock    BOOLEAN NOT NULL DEFAULT false,    -- 上市60日内
+    board           VARCHAR(20),                        -- main/gem/star/bj
+    list_date       DATE,
+    delist_date     DATE,
+    PRIMARY KEY (code, trade_date)
+);
+CREATE INDEX idx_stock_status_daily_date ON stock_status_daily(trade_date);
+COMMENT ON TABLE stock_status_daily IS 'Step 3-B: 日期级股票状态快照。回测必须按日期读, 不能用klines_daily当前状态';
+
+-- ═══════════════════════════════════════════════════
+-- Step 6-B 新增 (2026-04-09): minute_bars DDL确认
+-- 用途: Baostock 5分钟K线 (2021-至今, 2537只A股)
+-- Contract: backend/app/data_fetcher/contracts.py::MINUTE_BARS
+-- 注: 表在Step 6-B前已存在 (代码动态建表), 此处DDL化确认正式schema
+--     列名 ts_code → code (Step 6-B rename), code格式统一为带后缀
+-- ═══════════════════════════════════════════════════
+CREATE TABLE minute_bars (
+    id              BIGSERIAL PRIMARY KEY,
+    code            VARCHAR(16) NOT NULL,              -- 带后缀, 如 600519.SH (原 ts_code, Step 6-B 已 RENAME)
+    trade_time      TIMESTAMP NOT NULL,                -- 分钟级时间戳
+    trade_date      DATE NOT NULL,
+    open            NUMERIC(12,4),
+    high            NUMERIC(12,4),
+    low             NUMERIC(12,4),
+    close           NUMERIC(12,4),
+    volume          BIGINT NOT NULL DEFAULT 0,         -- 手(全系统一致)
+    amount          NUMERIC(18,2) NOT NULL DEFAULT 0,  -- 元
+    adjustflag      VARCHAR(4) DEFAULT '3',            -- 1=后复权 2=前复权 3=不复权
+    UNIQUE (code, trade_time)
+);
+CREATE INDEX idx_minute_bars_code_date ON minute_bars(code, trade_date);
+CREATE INDEX idx_minute_bars_trade_date ON minute_bars(trade_date);
+COMMENT ON TABLE minute_bars IS 'Step 6-B: Baostock 5min K线, 所有code统一带后缀';
+
+-- ═══════════════════════════════════════════════════
+-- 总计: 47张表（+2: stock_status_daily + minute_bars正式DDL化）
 -- 旧版QUANTMIND_V2_DDL_COMPLETE.sql 已废弃，以本文件为准
 -- ═══════════════════════════════════════════════════

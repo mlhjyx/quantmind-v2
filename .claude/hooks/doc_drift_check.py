@@ -115,9 +115,9 @@ def check_doc_freshness(project_root: Path) -> list[str]:
     """检查关键文档的最后修改时间。"""
     issues = []
     critical_docs = [
-        "PROGRESS.md",
-        "docs/IMPLEMENTATION_MASTER.md",
-        "docs/DEVELOPMENT_BLUEPRINT.md",
+        "CLAUDE.md",
+        "SYSTEM_STATUS.md",
+        "docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md",
     ]
 
     for doc_path in critical_docs:

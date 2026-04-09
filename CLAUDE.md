@@ -9,10 +9,10 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, PT QMT live运行中, Sharpe基线=0.94(Phase 1加固后真实值), 毕业阈值≈0.56-0.60
+- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-A重构完成(PT暂停窗口), Sharpe基线=**0.6095**(12年2014-2025真实值, 排除BJ)
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步**: 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER) → 阶段4(CompositeSignalEngine)
+- **下一步**: Step 6-B文档更新 → BJ股过滤落地 / is_st修复 / 12年OOM修复 → 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER)
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -26,7 +26,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 服务管理 | Servy v7.6 (`D:\tools\Servy`), 替代NSSM |
 | 调度 | Windows Task Scheduler (PT) + Celery Beat (GP) |
 | GPU | PyTorch cu128, RTX 5070 12GB (cupy不支持Blackwell sm_120) |
-| 缓存 | 本地Parquet快照(因子/价格), factor_values 352M行→TimescaleDB hypertable |
+| 缓存 | 本地Parquet快照(backend/data/parquet_cache.py按年分区), factor_values 501M行→TimescaleDB hypertable |
 | 交易 | 国金miniQMT (A股) |
 
 ## 因子系统
@@ -42,9 +42,10 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | LGBM特征集 | 63 | 全部factor_values因子(48核心+15北向, DB自动发现) |
 
 ### 因子存储
-- **factor_values**: 352M行, TimescaleDB hypertable, 71 chunks ~53GB
+- **factor_values**: 501M行(12年扩展后), TimescaleDB hypertable ~53GB
 - **factor_ic_history**: IC唯一入库点(铁律11), 未入库IC视为不存在
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
+- **minute_bars**: 139M行(Step 6-B已统一code格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
 
 ### 因子评估流程
 1. 经济机制假设(铁律13/14) → 2. IC计算+入库(铁律11) → 3. 画像(factor_profiler, 5维) → 4. 模板匹配(T1-T15) → 5. Gate G1-G8+BH-FDR → 6. 回测验证(paired bootstrap p<0.05)
@@ -93,6 +94,11 @@ quantmind-v2/
 │       │   ├── execution_service.py
 │       │   ├── risk_control_service.py
 │       │   ├── factor_onboarding.py  # 因子入库pipeline
+│       │   ├── config_loader.py      # ⭐ Step 4-B: YAML策略配置加载
+│       │   ├── pt_data_service.py    # ⭐ Step 6-A: PT并行数据拉取
+│       │   ├── pt_monitor_service.py # ⭐ Step 6-A: PT开盘跳空检测
+│       │   ├── pt_qmt_state.py       # ⭐ Step 6-A: QMT↔DB状态同步
+│       │   ├── shadow_portfolio.py   # ⭐ Step 6-A: LightGBM影子选股
 │       │   ├── db.py                 # sync psycopg2连接器
 │       │   └── trading_calendar.py   # 交易日工具
 │       ├── models/              # SQLAlchemy ORM
@@ -102,11 +108,26 @@ quantmind-v2/
 │       │   ├── mining_tasks.py  # GP挖掘Celery封装
 │       │   └── beat_schedule.py # 定时调度配置
 │       └── data_fetcher/        # 数据拉取
+│           ├── contracts.py     # ⭐ Step 3-A: Data Contract (10张表schema+单位)
+│           ├── pipeline.py      # ⭐ Step 3-A: DataPipeline统一入库管道(铁律17)
+│           ├── tushare_fetcher.py
+│           ├── tushare_client.py
+│           └── data_loader.py
+├── backend/data/                # ⭐ Step 5新增: Data层(本地缓存/快照, 无业务逻辑)
+│   └── parquet_cache.py         # BacktestDataCache 按年分区Parquet缓存
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
 │   ├── factor_engine.py         # 因子计算
 │   ├── factor_profiler.py       # 因子画像V2（48+15因子, 12章节报告）
 │   ├── fast_neutralize.py       # 批量中性化（Parquet写入, 17.5min/15因子）
-│   ├── backtest_engine.py       # 回测引擎(Hybrid: 向量化+事件驱动)
+│   ├── backtest/                # ⭐ Step 4-A: 回测引擎8模块拆分
+│   │   ├── engine.py            #   核心事件循环(562行)
+│   │   ├── runner.py            #   run_hybrid_backtest/run_composite_backtest入口(281行)
+│   │   ├── broker.py            #   成本模型+SimBroker(309行)
+│   │   ├── validators.py        #   涨跌停/停牌/完整性过滤链(105行)
+│   │   ├── executor.py          #   事件执行器(81行)
+│   │   ├── types.py             #   BacktestResult/Fill/Order数据类(92行)
+│   │   └── config.py            #   BacktestConfig(49行)
+│   ├── config_guard.py          # 基线配置断言(PT启动前检查)
 │   ├── slippage_model.py        # 三因素滑点模型(R4研究)
 │   ├── neutralizer.py           # FactorNeutralizer共享模块
 │   └── mining/                  # GP因子挖掘子包
@@ -114,14 +135,20 @@ quantmind-v2/
 │       ├── pipeline_utils.py    # GP管道公开函数
 │       ├── factor_dsl.py        # FactorDSL算子集
 │       └── pipeline_orchestrator.py  # 闭环编排(部分实现)
+├── configs/                     # ⭐ Step 4-B新增: YAML配置
+│   ├── pt_live.yaml             # PT生产配置(5因子等权Top-20月度+PMS v1.0)
+│   ├── backtest_12yr.yaml       # 12年基线回测
+│   └── backtest_5yr.yaml        # 5年回测(历史基线比对用)
 ├── frontend/src/                # React前端
 │   ├── api/                     # API调用层
 │   ├── pages/                   # 35个页面
 │   ├── components/              # 53个共享组件
 │   └── store/                   # Zustand 4个store
 ├── scripts/
-│   ├── run_paper_trading.py     # ⭐ PT主脚本（~1600行，QMT数据源）
-│   ├── run_backtest.py          # 回测脚本(PT依赖)
+│   ├── run_paper_trading.py     # ⭐ PT主脚本(345行编排器, Step 6-A拆分后)
+│   ├── run_backtest.py          # ⭐ 回测脚本(345行, Step 4-B改造为YAML驱动: --config configs/pt_live.yaml)
+│   ├── fetch_minute_bars.py     # ⭐ Step 6-B: Baostock 5分钟拉取(走DataPipeline)
+│   ├── build_backtest_cache.py  # Step 5: 构建Parquet缓存
 │   ├── qmt_data_service.py      # QMT数据同步→Redis(Servy常驻)
 │   ├── health_check.py          # 盘前健康检查
 │   ├── monitor_factor_ic.py     # 因子IC监控
@@ -253,12 +280,18 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### 因子质量类
 12. **新颖性可证明性（G9 Gate）** — 新候选因子与现有因子AST相似度>0.7直接拒绝，不进入IC评估。未经新颖性验证的因子视为变体（AlphaAgent KDD 2025：无此Gate有效因子比例低81%）
+    > 补充: 相似因子不是新因子。GP/LLM产出的候选因子IC计算前必须先过G9 Gate，48个量价因子的窗口变体不算新因子。
 13. **市场逻辑可解释性（G10 Gate）** — 新因子注册必须附带经济机制描述「[市场行为]→[因子信号]→[预测方向]」。IC显著不是充分理由，无法解释预测力来源的因子不允许进入Active池（reversal_20在momentum regime下反转的教训）
+    > 补充: 新因子必须有可解释的市场逻辑假设, 不接受"IC显著就行"。经济机制假设必须与因子表达式语义对齐。
 
-### 工作原则补充
-14. **新因子必须有可解释的市场逻辑假设** — 不接受"IC显著就行"。每个候选因子必须有经济机制假设且与因子表达式语义对齐
-15. **相似因子不是新因子** — GP/LLM产出的候选因子IC计算前必须先过G9新颖性Gate。48个量价因子的窗口变体不算新因子
-16. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认H0验证通过（理论成本vs QMT实盘误差<5bps）
+### 重构原则类（Step 6-B, 2026-04-09）
+14. **回测引擎不做数据清洗** — 数据必须在入库时通过 DataPipeline 验证和标准化。回测引擎不猜单位、不推断ST、不计算adj_close。DataFeed 提供什么就用什么。违反→数据契约被冲破，回测不可复现。
+15. **任何回测结果必须可复现** — 每次回测必须记录 `(config_yaml_hash, git_commit)` 到 backtest_run 表。`regression_test.py` 能验证同一输入产出完全相同的 NAV (max_diff=0)。违反→策略迭代失去基准比对能力。
+16. **信号路径唯一** — 所有回测/研究/PT 必须走 `SignalComposer → PortfolioBuilder → BacktestEngine`。禁止编写独立的简化信号生成或回测框架。违反→PT 与回测结果不一致(原历史问题: `load_factor_values`/`vectorized_signal` 各读各的字段)。
+17. **数据入库必须通过 DataPipeline** — 禁止直接 `INSERT INTO` 生产表。`DataPipeline.ingest(df, Contract)` 负责 rename → 列对齐 → 单位转换 → 值域验证 → FK 过滤 → Upsert。违反→重新引入单位混乱/code 格式不一致等历史技术债。
+
+### 成本对齐
+18. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认H0验证通过（理论成本vs QMT实盘误差<5bps）
 
 ## 因子审批硬标准
 
@@ -305,9 +338,10 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 同因子换ML模型 | ML Sharpe=0.68 vs 等权0.83, 瓶颈在数据维度 | G1 LightGBM |
 | IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
 
-## 策略配置（v1.2→Top-20已部署，PT运行中）
-# v1.1→v1.2变更: WLS中性化 + 涨跌停板块 + volume_cap 10% + zscore clip±3 + mergesort
-# v1.2→Top-20: 选股15→20, 行业约束25%→无(1.0), PMS v1.0阶梯保护(.env驱动)
+## 策略配置（v1.2→Top-20已部署，PT暂停中→Step 6重构窗口）
+# 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 12年)
+# 配置来源: configs/pt_live.yaml (Step 4-B, 铁律15要求YAML驱动)
+# 回测入口: python scripts/run_backtest.py --config configs/pt_live.yaml
 
 ```
 因子: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio
@@ -315,11 +349,20 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 选股: Top 20 (PT_TOP_N=20)
 调仓: 月度（月末最后交易日）
 约束: 行业上限=无(PT_INDUSTRY_CAP=1.0), 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
-基线(旧): Sharpe=0.91（2021-2025全5年, Top-15+行业25%, WLS+volume_impact无流动性过滤）, MDD=-43.03%
-基线(Phase 1加固后): Sharpe=0.94, 年化22.57%, MDD=-40.77%, Calmar=0.55, Sortino=1.19, IR=1.09
-# Phase 1修复(2026-04-07): 印花税历史税率(2023前0.1%)+overnight_gap三因素+z-score clip±3+DataFeed校验
-# 旧值1.24→0.94, 降0.30符合预期。旧值因缺印花税历史税率+缺overnight_gap而虚高
-# FF3归因: Alpha=21.1%/年(t=2.45), 但2023-2025 OOS Alpha仅+6.6%(t=0.58不显著), 近年靠SMB beta盈利
+排除: 北交所BJ股(回测2014-2025, PT生产)
+
+基线历史演进:
+  旧值1: 5年回测, Sharpe=0.91, Top-15+行业25%, WLS+volume_impact无流动性过滤, MDD=-43.03%
+  旧值2(Phase 1加固, 5年): Sharpe=0.94, 年化22.57%, MDD=-40.77%, Calmar=0.55, Sortino=1.19, IR=1.09
+    - Phase 1修复(2026-04-07): 印花税历史税率(2023前0.1%)+overnight_gap三因素+z-score clip±3+DataFeed校验
+    - 1.24→0.94, 旧值因缺印花税历史税率+缺overnight_gap而虚高
+  当前基线(Step 5, 12年2014-2025): Sharpe=0.6095, MDD=-50.75%, elapsed=80s
+    - 范围扩展: 5年→12年, 排除BJ股, 新Parquet缓存路径
+    - 不是恶化: 5年样本2021-2025有小盘+高波动偏差, 12年才是真实长期水平
+    - regression_test.py max_diff=0 (Step 5验收, 铁律15可复现)
+
+FF3归因(5年): Alpha=21.1%/年(t=2.45), 但2023-2025 OOS Alpha仅+6.6%(t=0.58不显著), 近年靠SMB beta盈利
+
 成本: 佣金万0.854(国金实际, min 5元) + 印花税(2023-08-28前0.1%,后0.05%) + 过户费0.001% + 三因素滑点(spread+impact+overnight_gap)
 ```
 
@@ -334,7 +377,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
   - 处理: 保留Active，等权框架下不单独降权
   - 恢复条件: 连续3月IC_adjusted>0.01自动确认
 
-**PT期间禁止修改**: signal_service.py / execution_service.py / run_paper_trading.py 中 v1.2 链路代码
+**PT状态**: 暂停(Step 0→6重构窗口, 2026-04-09起)。重构完成并通过全链路验证后再恢复。
 
 ## 文档查阅索引
 
@@ -358,22 +401,38 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ## 当前进度
 
+### 累计完成
 - ✅ Phase A-F全部完成（185新测试, 904全量通过, 0回归）
 - ✅ R1-R7 研究完成（7份报告, 73项可落地）
-- ✅ G1 LightGBM Walk-Forward完成（ML Sharpe=0.68 vs 等权同期0.83, 差距0.15, pipeline保留为评估工具）
+- ✅ G1 LightGBM Walk-Forward完成（ML Sharpe=0.68 vs 等权同期0.83）
 - ✅ G2风险平价+G2.5动态仓位: 均无效, 等权是最优权重方案
-- ✅ GA2 EVENT回测器完成（mf_divergence IC=9.1%证伪→实际-2.27%, 铁律11由此诞生）
-- ✅ 因子画像V2完成（48因子全量画像, 7项推荐逻辑修正, 模板T1=33/T2=4/T11=6/T12=5）
-- ✅ 北向研究三轮完成（RANKING→G1池, MODIFIER V1废弃, V2八因子OOS通过）
-- ✅ 性能优化（TimescaleDB 2.26.0 + Parquet缓存1000x + GPU 6.2x + Pipeline并行化）
-- ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0+配置.env化）
-- ✅ GitHub+代码质量（mlhjyx/quantmind-v2 private, Ruff 5704→0）
-- ✅ ECC/ARIS（8 skills + research-kb 19条 + Continuous Learning hooks）
-- ✅ 回测引擎Phase 1加固完成(P3印花税+P5三因素滑点+P8 z-score clip+P6 DataFeed+P1/P2分红框架)
-- 🔨 PT QMT live运行中, Top-20+无行业约束+PMS, 基线Sharpe=0.94(Phase 1加固后)
-- 🔄 分钟数据全量拉取中（Baostock 5min, 全A股x5年, ~36%完成）
-- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER → 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
-- 📋 路线图: QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8)
+- ✅ 因子画像V2完成（48因子全量画像, 模板T1=33/T2=4/T11=6/T12=5）
+- ✅ 北向研究三轮完成
+- ✅ 性能优化（TimescaleDB 2.26.0 + Parquet缓存1000x + GPU 6.2x）
+- ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0）
+- ✅ 回测引擎Phase 1加固(印花税+三因素滑点+z-score clip+DataFeed校验)
+
+### Step 0→6-B 重构 (2026-04-09)
+- ✅ Step 0: PT暂停+备份+基线建立(Sharpe=0.94, 5年)
+- ✅ Step 1: DB全表code格式统一带后缀 + 缓存重建
+- ✅ Step 2: 信号路径统一为SignalComposer(铁律16)
+- ✅ Step 3-A: Data Contract + DataPipeline统一入库管道(铁律17) + 单位标准化
+- ✅ Step 3-B: stock_status_daily表 + adj_close + 日期级过滤 + is_suspended完整检测
+- ✅ Step 4-A: backtest_engine.py拆分为backend/engines/backtest/ 8模块
+- ✅ Step 4-B: YAML配置驱动 + config_loader + run_backtest改造
+- ✅ Step 5: Parquet缓存系统 + 12yr回测跑通(Sharpe=0.6095, 80s) + 48新测试
+- ✅ Step 6-A: run_paper_trading.py拆分1734→345行 + 4个pt_* Service
+- 🔨 Step 6-B: minute_bars格式统一(139M行) + 7份文档全面更新 + 重构遗留项收尾(进行中)
+
+### 遗留项(Step 6-B后)
+- ⬜ BJ股过滤落地(signal_service生产+回测默认)
+- ⬜ is_st标记全是false → 从Tushare补充
+- ⬜ 回测引擎12年OOM → DataHandler模式
+- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER
+- ⬜ 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
+
+📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
+📊 测试: 2115 tests / 98 test files (Step 5新增48测试)
 ---
 
 ## 文件归属规则（防腐）

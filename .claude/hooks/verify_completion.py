@@ -27,9 +27,9 @@ def check_docs_updated(project_root: Path) -> str | None:
                       if f.strip() and (f.endswith(".py") or f.endswith(".tsx") or f.endswith(".ts"))]
 
         if len(code_files) >= 3:
-            docs_updated = any(f in all_changed for f in ["CLAUDE.md", "PROGRESS.md"])
+            docs_updated = any(f in all_changed for f in ["CLAUDE.md", "SYSTEM_STATUS.md", "SYSTEM_RUNBOOK.md"])
             if not docs_updated:
-                return f"铁律6: {len(code_files)}个代码文件变更但CLAUDE.md/PROGRESS.md未更新。"
+                return f"铁律15/重构原则: {len(code_files)}个代码文件变更但CLAUDE.md/SYSTEM_STATUS.md/SYSTEM_RUNBOOK.md未更新。"
     except Exception:
         pass
     return None
@@ -54,7 +54,7 @@ def main():
     checklist += (
         "- [ ] ruff check通过?\n"
         "- [ ] 相关测试运行过?\n"
-        "- [ ] CLAUDE.md/PROGRESS.md需要更新?\n"
+        "- [ ] CLAUDE.md/SYSTEM_STATUS.md需要更新?\n"
     )
 
     result = {

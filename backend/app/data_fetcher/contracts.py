@@ -253,6 +253,30 @@ EARNINGS_ANNOUNCEMENTS = TableContract(
     skip_unit_conversion=True,
 )
 
+MINUTE_BARS = TableContract(
+    table_name="minute_bars",
+    pk_columns=("code", "trade_time"),
+    columns={
+        "code": ColumnSpec("str", nullable=False),
+        "trade_time": ColumnSpec("str", nullable=False),  # timestamp类型, 用str占位
+        "trade_date": ColumnSpec("date", nullable=False),
+        "open": _price_col,
+        "high": _price_col,
+        "low": _price_col,
+        "close": _price_col,
+        "volume": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU, min_val=0),
+        "amount": ColumnSpec("float", source_unit=SourceUnit.YUAN, db_unit=DBUnit.YUAN, min_val=0),
+        "adjustflag": ColumnSpec("str"),  # "1"=后复权 "2"=前复权 "3"=不复权
+    },
+    # Baostock原始code是 "sh.600519"/"sz.000001" 形式,
+    # 由puller在DataFrame构造时转为带后缀的 "600519.SH"/"000001.SZ",
+    # 此处不做rename (puller已经用'code'字段)。
+    # Baostock不返回ts_code，不需要rename。
+    rename_map={},
+    fk_filter_col=None,  # Top-100 + A股补充, 不强制匹配symbols
+    skip_unit_conversion=False,  # amount单位为元(Baostock原始)
+)
+
 STOCK_STATUS_DAILY = TableContract(
     table_name="stock_status_daily",
     pk_columns=("code", "trade_date"),
@@ -287,6 +311,7 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
         SYMBOLS,
         EARNINGS_ANNOUNCEMENTS,
         STOCK_STATUS_DAILY,
+        MINUTE_BARS,
     ]
 }
 

@@ -22,11 +22,9 @@ if sys.platform == "win32":
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-import numpy as np
 import pandas as pd
 
 from app.services.price_utils import _get_sync_conn
-
 
 ACTIVE_FACTORS = [
     "turnover_mean_20",

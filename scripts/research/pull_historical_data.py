@@ -12,7 +12,6 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -20,7 +19,6 @@ if sys.platform == "win32":
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-import pandas as pd
 import tushare as ts
 
 from app.services.price_utils import _get_sync_conn

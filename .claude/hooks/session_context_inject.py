@@ -11,19 +11,19 @@ from pathlib import Path
 
 
 def get_current_state(project_root: Path) -> str:
-    """从PROGRESS.md提取当前状态。"""
-    progress = project_root / "PROGRESS.md"
-    if not progress.exists():
-        return "PROGRESS.md not found"
+    """从 SYSTEM_STATUS.md §0 提取当前状态 (Step 6-B 更新: PROGRESS.md 已废弃)。"""
+    status = project_root / "SYSTEM_STATUS.md"
+    if not status.exists():
+        return "SYSTEM_STATUS.md not found"
     try:
-        content = progress.read_text(encoding="utf-8")[:2000]
-        sprint_match = re.search(r"Sprint\s+(\d+\.\d+)", content)
-        sprint = sprint_match.group(0) if sprint_match else "unknown"
-        pt_match = re.search(r"Day\s+(\d+)/60", content)
-        pt = f"PT Day {pt_match.group(1)}/60" if pt_match else ""
-        nav_match = re.search(r"NAV[=:]\s*[¥￥]?([\d,.]+)", content)
-        nav = f"NAV=¥{nav_match.group(1)}" if nav_match else ""
-        return f"{sprint}, {pt} {nav}".strip()
+        content = status.read_text(encoding="utf-8")[:4000]
+        # Match "Step 0→6-B" or latest Step marker
+        step_match = re.search(r"Step\s+[0-9a-zA-Z\-→\s]+(?=重构|完成|窗口|进行)", content)
+        step = step_match.group(0).strip() if step_match else "unknown"
+        # Match baseline Sharpe
+        sharpe_match = re.search(r"Sharpe[=:\s]*(\d+\.\d+)", content)
+        sharpe = f"Sharpe={sharpe_match.group(1)}" if sharpe_match else ""
+        return f"{step}, {sharpe}".strip().rstrip(",")
     except Exception:
         return "parse error"
 
@@ -36,12 +36,13 @@ def main():
 当前状态: {state}
 
 关键路径:
-- CLAUDE.md (硬规则+铁律+配置)
+- CLAUDE.md (硬规则+18条铁律+配置)
+- SYSTEM_STATUS.md (系统现状 §0含重构完成状态)
 - SYSTEM_RUNBOOK.md (运行手册)
-- docs/IMPLEMENTATION_MASTER.md (实施总纲)
+- docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (总路线图 §第四部分含Step 0→6-B重构)
 - docs/QUANTMIND_V2_DDL_FINAL.sql (建表唯一来源)
 
-铁律速查: 1.因子+中性化 2.回测验证 3.验代码不信文档 4.ML必须OOS 5.因子→策略匹配 6.改动后更新文档"""
+铁律速查: 2.验代码不信文档 4.因子+中性化 5.paired bootstrap 7.数据地基 8.ML必须OOS 9.重数据串行 14.引擎不清洗 15.可复现 16.信号路径唯一 17.DataPipeline入库"""
 
     from datetime import datetime
     audit_log = project_root / ".claude" / "hooks" / "audit.log"

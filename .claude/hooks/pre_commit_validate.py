@@ -3,7 +3,7 @@
 触发: PreToolUse[Bash] when git commit
 功能:
 1. ruff check 检查Python代码质量
-2. 检查PROGRESS.md是否最近更新过（铁律6）
+2. 检查关键文档 (CLAUDE.md/SYSTEM_STATUS.md/SYSTEM_RUNBOOK.md) 是否同步
 3. 检查是否有.env等敏感文件被staged
 退出码: 0=通过, 2=阻止
 """

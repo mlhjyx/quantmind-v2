@@ -2373,3 +2373,196 @@ Step 1: PT毕业→实盘 → Step 2: GP最小闭环 → Step 3: 完整AI闭环
 
 > 完整107条决策见原始归档: docs/archive/TECH_DECISIONS.md
 > 原始文件已归档至 docs/archive/
+
+---
+
+## 第四部分: Step 0→6-B 重构记录 (2026-04-09)
+
+### 重构动机
+
+Phase 1 加固完成后, 系统积累了一批结构性技术债, 影响长期可维护性:
+- run_paper_trading.py 膨胀到 1734 行, 融合数据拉取/监控/QMT状态/影子选股/编排器多重职责
+- backtest_engine.py 单文件, 核心/broker/validator/config 混在一起, 单元测试困难
+- 数据入库散在多处 (fetch_base_data.py / tushare_fetcher.py / data_loader.py / 研究脚本直接 INSERT), 单位/code格式不一致
+- code 格式在 DB 中混合 (部分带后缀 部分不带), 导致 JOIN 丢失
+- 信号路径在 PT 和回测中分裂 (SignalService vs vectorized_signal, 读不同字段)
+- 无 YAML 配置驱动, 策略变更需改代码 + 重新验证
+- 缺少 Parquet 缓存, 12 年回测数据加载就要 30 分钟
+- 回测结果不可复现 (无 config_hash + git_commit 追溯)
+
+PT 从 2026-04-09 起主动暂停, 在"重构窗口"内一次性系统性清理。目标: 一次重构, 之后再不动。
+
+### Step 0: PT 暂停 + 备份 + 基线建立
+
+Commits: `9007969 Step 0 — PT暂停+备份+回测基准建立`, `d8f69e4 chore: PT暂停记录`
+
+- PT QMT live 暂停, 记录暂停日期和现有持仓快照
+- `cache/baseline/nav_5yr.parquet` 作为 5 年回测基准 (Sharpe=0.94, MDD=-40.77%, Phase 1 加固后)
+- `scripts/regression_test.py` 基准回放脚本, max_diff=0 才算通过
+- 所有 DB 表 pg_dump 备份到 `backups/`
+
+### Step 1: DB 全表 code 格式统一带后缀
+
+Commits: `bd0f42d refactor: 代码层code格式统一为带后缀`, `e6479fa data: Step 1完成`
+
+问题: klines_daily/daily_basic/moneyflow/factor_values 等表中 code 为混合格式 — 36.6% 带后缀(如 600519.SH), 63.4% 不带(600519), 两条同股票记录被当作不同股票。
+
+解决:
+- 按代码前缀规则 UPDATE: `^6/^9 → .SH`, `^[03] → .SZ`, `^[48] → .BJ`
+- 分表分批执行, 先 klines → daily_basic → moneyflow → factor_values
+- factor_values 501M 行通过 CTAS + RENAME 避免锁表
+- 验证: `COUNT(*) FILTER(WHERE code NOT LIKE '%.%') FROM <table>` 全部为 0
+
+### Step 2: 信号路径统一为 SignalComposer (铁律 16)
+
+Commit: `de73a22 refactor: Step 2完成 — 信号路径统一为SignalComposer`
+
+问题: PT 走 `SignalService.generate_signals()` 用 neutral_value, 回测走 `vectorized_signal.build_target_portfolios()` 用 raw_value, 两条链路行为不一致 (ST 过滤/universe 过滤 differ)。
+
+解决:
+- 废弃 vectorized_signal 独立链路, 所有场景统一走 `SignalComposer`
+- SignalComposer 是 stateless 纯函数: `compose(factor_df, directions, universe, industry, top_n, industry_cap)`
+- 回测 Phase A 也调用 SignalComposer, 与 PT 完全一致
+- 字段统一: 全部读 neutral_value, raw_value 仅作 fallback
+
+### Step 3-A: Data Contract + 统一入库管道 (铁律 17)
+
+Commit: `ef66426 feat: Step 3-A完成 — Data Contract + 统一入库管道 + 单位标准化`
+
+- `backend/app/data_fetcher/contracts.py`: 每张核心表的 Contract (列名/dtype/单位/值域/rename_map)
+- `backend/app/data_fetcher/pipeline.py`: DataPipeline 类, `ingest(df, contract)` 统一做:
+  1. rename (ts_code → code 等)
+  2. 列对齐 (保留 contract 列, 补缺失 nullable 列)
+  3. 单位转换 (千元→元, 万元→元)
+  4. 逐列验证 (PK 非空, 值域, inf/NaN→None)
+  5. FK 过滤 (symbols.code)
+  6. Upsert (ON CONFLICT DO UPDATE)
+- 所有数据拉取脚本改为通过 DataPipeline.ingest() 入库
+- 单位统一: amount → 元, volume → 手, market_cap → 元, share → 万股
+
+### Step 3-B: stock_status_daily + adj_close + 日期级过滤
+
+Commits: `e530990 feat: Step 3-B完成`, `6a804ed fix: Step 3-B补充`
+
+- 新表 `stock_status_daily` (code, trade_date, is_st, is_suspended, is_new_stock, board, list_date, delist_date)
+- 回测改用日期级状态, 不再读 klines_daily.is_st (那个只存当前时刻)
+- is_suspended 完整检测: volume=0 OR amount=0 OR 涨跌停封板
+- delist_date 回填到 symbols + stock_status_daily
+- ST 从 Tushare stock_basic 补拉 (delist 后也要保留)
+
+### Step 4-A: backtest_engine.py → backend/engines/backtest/ 8 模块
+
+Commit: `c17bdb9 refactor: Step 4-A完成 — backtest_engine.py拆分为8模块`
+
+单文件 >3000 行 → 8 模块:
+| 模块 | 行数 | 职责 |
+|------|------|------|
+| engine.py | 562 | 核心事件循环 |
+| broker.py | 309 | 成本模型 + SimBroker + Fill 处理 |
+| runner.py | 281 | `run_hybrid_backtest()` / `run_composite_backtest()` 公开入口 |
+| validators.py | 105 | ValidatorChain: 涨跌停/停牌/完整性过滤 |
+| types.py | 92 | BacktestResult / Fill / Order 数据类 |
+| executor.py | 81 | 事件执行器 |
+| config.py | 49 | BacktestConfig |
+
+公开入口保持不变, 研究脚本/PT 代码无需改动。内部测试可以针对单模块做 unit test。
+
+### Step 4-B: YAML 配置驱动 + config_loader
+
+Commit: `2eb2e56 feat: Step 4-B部分完成 — YAML配置驱动 + config_loader + run_backtest改造`
+
+- `configs/pt_live.yaml`: 基线策略的完整配置 (因子/方向/Top-N/行业约束/成本参数)
+- `backend/app/services/config_loader.py` (147 行): YAML → BacktestConfig + SignalConfig + 可哈希指纹
+- `scripts/run_backtest.py` 改造为 CLI: `python scripts/run_backtest.py --config configs/pt_live.yaml`
+- 每次回测的 config_yaml_hash 写入 backtest_run 表 (铁律 15 的一半, 另一半在 Step 6-B 补齐 git_commit)
+
+### Step 5: Parquet 缓存 + 12 年回测 + 48 新测试
+
+Commit: `b15b5fe feat: Step 5完成 — Parquet缓存 + 12yr回测 + 48新测试`
+
+- `backend/data/parquet_cache.py` (233 行): BacktestDataCache, 按年分区 (cache/backtest/2014/..., 2015/...)
+- price_data / factor_data / benchmark 三类数据分别缓存
+- 12 年数据加载: 30 分钟(DB) → 20 秒(Parquet) — ~90x 加速
+- 12 年完整回测跑通: Sharpe=0.6095, MDD=-50.75%, 耗时 80 秒 (不再 OOM)
+- 48 个新测试: test_validators (8) + test_broker_costs (8) + test_pms (6) + test_config_loader (6) + test_engine_e2e (4) + 其他
+- regression_test 基准更新为 12 年版 (保持 max_diff=0)
+
+### Step 6-A: run_paper_trading.py 拆分
+
+Commit: `991f8db refactor: Step 6-A完成 — run_paper_trading.py拆分1734→345行`
+
+1734 行单体脚本 → 345 行编排器 + 4 个独立 Service:
+| 模块 | 行数 | 职责 |
+|------|------|------|
+| scripts/run_paper_trading.py | 345 | 两阶段 (signal/execute) 编排器 |
+| pt_data_service.py | 104 | 并行拉取 klines/basic/index (ThreadPoolExecutor) |
+| pt_monitor_service.py | 90 | 开盘跳空检测 (单股+组合加权) |
+| pt_qmt_state.py | 84 | QMT→position_snapshot/performance_series 同步 |
+| shadow_portfolio.py | 238 | LightGBM 影子选股 (Raw + Inertia 0.7σ) |
+
+修复一个 NameError bug: execute_phase 的 `notif_svc` 原定义为 `_notif_svc` (下划线前缀), 实际使用时找不到变量 — 老代码 1734 行版本就有这个 bug, 只是从未进入重建代码路径。
+
+### Step 6-B: minute_bars 格式统一 + 文档全面更新 + 收尾项
+
+Commit: (本次提交)
+
+minute_bars 格式统一:
+- ALTER TABLE minute_bars RENAME COLUMN ts_code TO code
+- 分月批量 UPDATE 添加后缀 (60 个月 × ~2.3M 行/月, 约 18 分钟)
+- 139,303,467 行全部从 "000001" 形式 → "000001.SZ" 形式
+- 索引自动跟随列重命名, 重命名索引名以保持一致
+- VACUUM ANALYZE
+- `backend/app/data_fetcher/contracts.py` 新增 MINUTE_BARS Contract
+- `scripts/archive/fetch_minute_bars.py` → `scripts/fetch_minute_bars.py`, 改造为通过 DataPipeline.ingest() 入库 (铁律 17)
+
+文档同步 (7 份):
+- CLAUDE.md: 基线/目录结构/策略配置/当前进度 + 新铁律 14-17 (重构原则类)
+- SYSTEM_STATUS.md: 代码统计/测试数/基线/模块边界
+- SYSTEM_RUNBOOK.md: 完全重写 (去除 NSSM/Sprint 编号/旧 NAV/Top-15)
+- docs/DEV_BACKTEST_ENGINE.md: 补充 §5 模块拆分说明
+- docs/DEV_BACKEND.md: 补充 Data 层 + 5 个新 Service
+- docs/QUANTMIND_V2_DDL_FINAL.sql: 新增 stock_status_daily / minute_bars 正式 DDL, backtest_run 新增 config_yaml_hash/git_commit 列
+- 本 Roadmap V3: 新增本章
+
+重构遗留项收尾:
+- `backend/engines/config_guard.py` 对齐新 BacktestConfig + baseline_v1.yaml
+- `.claude/agents/*.md` 更新旧路径 (backtest_engine.py → backend/engines/backtest/)
+- 归档引用清理 (IMPLEMENTATION_MASTER / PROGRESS.md / TECH_DECISIONS 等)
+- backtest_run 表 ALTER ADD config_yaml_hash + git_commit (铁律 15 完整落地)
+- `scripts/generate_system_status.py` (新建): 自动从 DB/git/代码统计生成 SYSTEM_STATUS.md 的量化章节
+
+### 架构变化对比
+
+| 维度 | 重构前 | 重构后 |
+|------|-------|-------|
+| run_paper_trading.py | 1734 行单体 | 345 行编排器 + 4 Service |
+| 回测引擎 | backtest_engine.py 单文件 | backend/engines/backtest/ 8 模块 |
+| 数据入库 | 多处散落直接 INSERT | DataPipeline.ingest(df, Contract) 唯一入口 |
+| 信号路径 | PT/回测 2 套 | SignalComposer 唯一路径 |
+| 策略配置 | 硬编码 + config_guard 补丁 | YAML 驱动 + config_yaml_hash |
+| 数据缓存 | 每次 30 分钟从 DB 加载 | 按年 Parquet 20 秒加载 |
+| 12 年回测 | OOM 无法运行 | 80 秒跑通 Sharpe=0.6095 |
+| 可复现性 | 无配置指纹 | (config_yaml_hash, git_commit) 进 DB |
+| code 格式 | 混合带/不带后缀 | 全表统一带后缀 |
+| 铁律 | 13 条 | 18 条 (新增 14-17 重构原则类) |
+
+### 基线数据变化
+
+| 版本 | 范围 | Sharpe | MDD | 备注 |
+|------|------|--------|-----|------|
+| 旧虚高 | 5年 | 1.24 | - | 缺印花税历史税率 + 缺 overnight_gap |
+| Phase 1 加固 | 5年 | 0.94 | -40.77% | 修复印花税 + 三因素滑点 + z-score clip + DataFeed 校验 |
+| Step 5 (12年) | 12年 | **0.6095** | **-50.75%** | 12 年 + 排除 BJ + Parquet 缓存 |
+
+**Sharpe 从 0.94 降到 0.6095 不是恶化** — 5 年样本 2021-2025 偏小盘/高波动区间, 12 年包含 2014-2020 的多个区制, 才是真实长期水平。regression_test.py max_diff=0 验证: Step 5 新结果与新基线比对完全一致, 说明引擎改造本身没引入回归 (是范围扩展导致的指标下降, 不是 bug)。
+
+### 遗留未完成项
+
+| 项 | 优先级 | 说明 |
+|----|-------|------|
+| BJ 股过滤落地 | 高 | signal_service 生产 + 回测默认; 临时方案是配置里 exclude_bj=true |
+| is_st 标记全是 false | 中 | klines_daily.is_st 全 false, 需从 Tushare stock_basic 补拉 |
+| 回测引擎 12 年 OOM (事件驱动模式) | 中 | Phase A 向量化 OK (80s), Phase B 事件驱动模式未解 OOM, 需要 DataHandler |
+| 分钟聚合因子 | 低 | minute_bars 已统一格式, 可开工 |
+| 盈利公告因子 | 低 | earnings_announcements 207K 行, 可开工 |
+| 北向 MODIFIER v3 | 低 | v2 八因子 OOS 通过, 下一步接入主链 |

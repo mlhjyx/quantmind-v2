@@ -11,7 +11,7 @@ model: claude-sonnet-4-6
 **必读设计文档**：
 - D:\quantmind-v2\docs\QUANTMIND_V2_DESIGN_V5.md §4.2（34因子完整清单）
 - D:\quantmind-v2\docs\DEV_FACTOR_MINING.md（含R2技术选型摘要）
-- D:\quantmind-v2\docs\IMPLEMENTATION_MASTER.md §4.4-4.5（Factor Gate Pipeline/Mining Orchestrator API规格）
+- D:\quantmind-v2\docs\QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分（Step 0→6-B 重构记录, IMPLEMENTATION_MASTER 已归档）
 - D:\quantmind-v2\docs\research\R2_factor_mining_frontier.md（3引擎+AST去重+Thompson Sampling完整方案）
 - D:\quantmind-v2\docs\research\QLIB_GP_FACTOR_MINING_RESEARCH.md（Qlib GP因子挖掘深研）
 - D:\quantmind-v2\docs\GP_CLOSED_LOOP_DESIGN.md（GP最小闭环设计：Warm Start GP+FactorDSL+SimBroker反馈）

@@ -2,7 +2,137 @@
 
 > 文档级别：实现级（供 Claude Code 执行）
 > 创建日期：2026-03-19
-> 关联文档：QUANTMIND_V2_DESIGN_V5.md、DEV_FACTOR_MINING.md、DEV_PARAM_CONFIG.md、DEV_AI_EVOLUTION.md、DEV_BACKEND.md
+> 最后更新: 2026-04-09 (Step 4-A + Step 4-B + Step 5)
+> 关联文档：QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分、DEV_FACTOR_MINING.md、DEV_PARAM_CONFIG.md、DEV_AI_EVOLUTION.md、DEV_BACKEND.md
+
+---
+
+## §0 Step 4-A 模块拆分 (2026-04-09, 优先阅读)
+
+> 本节描述重构后的**实际代码结构**, 优先级高于下方的 §三 / §四 的历史设计描述。
+> 历史章节保留作为决策记录和接口契约来源。
+
+### 拆分动机
+
+原 `backend/engines/backtest_engine.py` 单文件 >3000 行, 融合事件循环/broker 成本/校验器/数据结构/config 多重职责:
+- SRP 严重违反, 单元测试困难 (无法只测 broker 不连带 engine 初始化)
+- import 圆环 (engine ↔ broker ↔ executor)
+- 研究脚本 import 整个 3000 行模块, 启动开销大
+
+### 拆分后的 8 模块
+
+```
+backend/engines/backtest/
+├── __init__.py          (18 行, 只导出公开符号)
+├── engine.py            (562 行) — BacktestEngine 核心事件循环
+├── broker.py            (309 行) — SimBroker + 三因素成本模型
+├── runner.py            (281 行) — run_hybrid_backtest() / run_composite_backtest() 公开入口
+├── validators.py        (105 行) — ValidatorChain (涨跌停/停牌/完整性)
+├── types.py             ( 92 行) — BacktestResult / Fill / Order / Trade dataclass
+├── executor.py          ( 81 行) — 事件执行器 (把 signal 转为 order)
+└── config.py            ( 49 行) — BacktestConfig dataclass
+```
+
+### 依赖关系
+
+```
+runner.py
+  ├─ config.py (BacktestConfig)
+  ├─ engine.py
+  │   ├─ broker.py (SimBroker)
+  │   │   └─ types.py (Fill/Order)
+  │   ├─ validators.py (ValidatorChain)
+  │   ├─ executor.py
+  │   └─ types.py (BacktestResult)
+  └─ types.py (BacktestResult)
+```
+
+规则:
+- `runner.py` 是唯一公开入口, 外部代码只 import runner 中的函数 (run_hybrid_backtest, run_composite_backtest)
+- `types.py` 是叶节点, 不依赖其他子模块
+- `config.py` 只依赖标准库
+- `engine.py` / `broker.py` / `validators.py` / `executor.py` 相互独立, 可单测
+
+### 公开入口 (兼容性)
+
+外部代码的 import 保持不变:
+
+```python
+# 老代码 (保留, 通过 backend/engines/backtest_engine.py 顶层 shim 或直接迁移)
+from backend.engines.backtest_engine import run_hybrid_backtest, BacktestConfig
+
+# 新代码 (推荐)
+from backend.engines.backtest.runner import run_hybrid_backtest
+from backend.engines.backtest.config import BacktestConfig
+```
+
+研究脚本 (scripts/research/*.py) 只用公开入口, 不受影响。
+
+### 数据层: Step 5 新增
+
+```
+backend/data/
+└── parquet_cache.py     (233 行) — BacktestDataCache 按年分区 Parquet 缓存
+```
+
+`BacktestDataCache.build(start, end, conn)` 按年导出:
+```
+cache/backtest/2014/price_data.parquet
+cache/backtest/2014/factor_data.parquet
+cache/backtest/2014/benchmark.parquet
+cache/backtest/2015/...
+...
+cache/backtest/cache_meta.json  (build_date, row_counts, git_commit)
+```
+
+`BacktestDataCache.load(start, end)` 只读取需要的年份。加载速度从 30 分钟 (DB) 降到 20 秒 (Parquet) — ~90x 加速。
+run_backtest.py 先查 cache, 没有再回退到 DB。
+
+### Step 4-B 配置加载
+
+```
+backend/app/services/config_loader.py  (147 行)
+configs/
+├── pt_live.yaml                       — PT生产配置 (5因子等权Top-20月度+PMS)
+├── backtest_12yr.yaml                 — 12年基线回测 (2014-2025)
+└── backtest_5yr.yaml                  — 5年回测 (历史比对)
+```
+
+`load_strategy_config(yaml_path) → (BacktestConfig, SignalConfig, config_hash)`:
+- 读 YAML 文件
+- 映射到 BacktestConfig (成本/滑点/窗口等)
+- 映射到 SignalConfig (因子列表/方向/Top-N/行业约束)
+- 计算 sha256(yaml_text) 作为可复现指纹
+- 指纹写入 backtest_run.config_yaml_hash (铁律 15)
+
+CLI 入口:
+```bash
+python scripts/run_backtest.py --config configs/pt_live.yaml
+```
+
+### 测试覆盖 (Step 5 新增 48 测试)
+
+- `test_validators.py` (8): price_limit 板块 / suspension / data_completeness / 封板
+- `test_broker_costs.py` (8): commission min5元 / 印花税历史税率 / 过户费 / lot_size 100 股 / buy/sell 更新 holdings+cash
+- `test_pms.py` (6): 阈值/L1/L3 触发 / adj_close 除权日不误触发 / T+1 延迟卖出 / disabled
+- `test_config_loader.py` (6): YAML 加载 / BacktestConfig 映射 / SignalConfig 映射 / directions 提取 / hash 确定性 / 缺失文件报错
+- `test_engine_e2e.py` (4): 5yr Parquet 基准匹配 / 确定性 / 空 factor raise / 单月回测
+
+### 基线数据 (12 年)
+
+- 5 年回测 (Phase 1 加固后): Sharpe=0.94, MDD=-40.77%
+- **12 年回测 (Step 5 基线): Sharpe=0.6095, MDD=-50.75%, 耗时 80s**
+- `cache/baseline/regression_result.json` 存基准, max_diff=0 验证可复现
+- `python scripts/regression_test.py` 做基准比对
+
+### 铁律落地 (Step 6-B)
+
+| 铁律 | 落地点 |
+|------|-------|
+| 14 (引擎不做数据清洗) | backend/engines/backtest/engine.py 不做 ST 推断/单位猜测, 只用 DataFeed 提供的数据 |
+| 15 (结果可复现) | backtest_run.config_yaml_hash + git_commit 列, regression_test.py max_diff=0 |
+| 16 (信号路径唯一) | runner.py 调用 SignalComposer.compose(), 不再有 vectorized_signal 独立链路 |
+| 17 (DataPipeline 入库) | 回测引擎不入库, 只消费 DataFeed; DataFeed 的数据来源必须经 DataPipeline |
 
 ---
 
