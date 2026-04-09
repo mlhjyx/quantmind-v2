@@ -47,13 +47,26 @@ def load_factor_values(trade_date, conn) -> pd.DataFrame:
 
 
 def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
-    """加载Universe（排除ST/新股/停牌/低流动性）。
+    """加载 Universe（排除 ST/新股/停牌/BJ/退市/低流动性）。
+
+    Step 6-C 修复: 之前只过滤 volume>0, 导致 BJ 股全部进入信号。
+    现在正确 JOIN stock_status_daily + symbols 做完整过滤。
 
     调用方: run_paper_trading.py Step 3
     """
     df = pd.read_sql(
-        """SELECT DISTINCT code FROM klines_daily
-           WHERE trade_date = %s AND volume > 0""",
+        """SELECT DISTINCT k.code
+           FROM klines_daily k
+           LEFT JOIN stock_status_daily ss
+             ON k.code = ss.code AND k.trade_date = ss.trade_date
+           LEFT JOIN symbols s ON k.code = s.code
+           WHERE k.trade_date = %s
+             AND k.volume > 0
+             AND COALESCE(ss.is_st, false) = false
+             AND COALESCE(ss.is_suspended, false) = false
+             AND COALESCE(ss.is_new_stock, false) = false
+             AND COALESCE(ss.board, '') != 'bse'
+             AND COALESCE(s.list_status, 'L') = 'L'""",
         conn,
         params=(trade_date,),
     )

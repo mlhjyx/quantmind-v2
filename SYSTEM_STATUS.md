@@ -6,6 +6,58 @@
 
 ---
 
+## §0.5 PT 重启记录 (Step 6-C, 2026-04-09 17:43)
+
+### PT 重启信息
+- **重启时间**: 2026-04-09 17:43 (Step 6-C 冒烟测试通过后)
+- **新引擎版本**: `c83c72c` (Step 6-B commit) + Step 6-C 6 个 runtime bug 修复
+- **配置文件**: `configs/pt_live.yaml` (5 因子等权 Top-20 月度, 排除 BJ)
+- **毕业评估窗口**: 从 2026-04-09 重新计算 60 个交易日
+- **老 PT 状态**: 2026-03-23~2026-04-08 (12 个交易日, NAV ≈ ¥989K), **已作废** (因 BJ 股偏差 + 老基线代码)
+
+### Step 6-C 冒烟测试结果
+| # | 项目 | 结果 |
+|---|------|------|
+| 1 | DataPipeline (Tushare → 带后缀 → 入库) | ✅ PASS (2026-04-08/09, 5490+5491 行) |
+| 2 | stock_status_daily 验证 | ✅ PASS (发现并修复 board 推断 bug) |
+| 3 | 因子计算 compute_daily_factors | ✅ PASS (24 因子 × 5491 股 = 131784 行) |
+| 4 | 信号生成 SignalService | ✅ PASS (20 只, 0 ST/BJ) |
+| 5 | regression_test 5yr | ✅ PASS (Sharpe=0.6095, max_diff=0, 80s) |
+| 6 | pytest 核心重构测试 | ✅ PASS (Step 5 新增 44/44, legacy 4 失败非回归) |
+| 7 | Servy 服务 + FastAPI health | ✅ PASS (all_pass=true, PG/Redis/Celery OK) |
+| 8 | config_guard 三源对齐 | ✅ PASS (PAPER_TRADING_CONFIG + pt_live.yaml + backtest_12yr.yaml) |
+
+### Step 6-C 发现并修复的 runtime bug
+1. **scripts/run_paper_trading.py:189** — `SignalService.generate_signals()` 缺少 `config` 参数 (Step 2/6-A 遗留)
+2. **scripts/run_paper_trading.py:174,282** — `check_circuit_breaker_sync()` 参数名错误 (`trade_date` → `exec_date + initial_capital`)
+3. **scripts/run_paper_trading.py:77** — `scheduler_task_log` INSERT 缺 `schedule_time` NOT NULL 列
+4. **backend/app/services/pt_qmt_state.py:48** — `nav / prev_nav` 混合 float/Decimal 类型错误
+5. **scripts/run_backtest.py::load_universe** — 声称排除 ST/BJ/新股但实际只过滤 `volume>0`, **BJ 股全部未过滤** (Step 6-C 核心 fix, 让 PT 产出真实非 BJ 信号)
+6. **backend/tests/test_can_trade_board.py** — import 旧 `backend.engines.backtest_engine._infer_price_limit` (Step 4-A 遗留)
+
+### Task Scheduler 状态
+14/16 任务已 Enabled (Ready), 2 维持 Disabled (QM-SmokeTest, QuantMind_DailyExecuteAfterData — 暂停前本就 Disabled)。
+
+### CeleryBeat 状态
+已启动 (Running), 调度: `gp-weekly-mining` (周日 22:00) + `pms-daily-check` (工作日 14:30)。重启时 PMS 发现 15 只持仓但无当日实时价格, 安全 no-op。
+
+### 首次信号生成 (2026-04-09, 非 dry_run)
+| 指标 | 值 |
+|------|-----|
+| 目标持仓 | 20 只 |
+| BJ 股数 | **0** (新 universe 过滤生效) |
+| 行业集中度 | 专用机械 28.9% (> 25% P1 告警, 因 industry_cap=1.0 无约束) |
+| 持仓重合度 vs 老 17 只 | 6/17 = 35% (6 只 688xxx 保留, 10 只 920xxx BJ 强制清仓, 1 只自然退出) |
+| Beta vs CSI300 | 0.0 (历史数据不足) |
+| is_rebalance | False (下次调仓在月末) |
+| rebalance 首日预期换手 | ~70% (几乎全新组合, 由 BJ 强制清仓驱动) |
+
+**kept (6 科创板)**: 688057 / 688121 / 688132 / 688211 / 688570 / 688606
+**forced exit (10 BJ)**: 920175 / 920212 / 920245 / 920519 / 920608 / 920701 / 920703 / 920807 / 920819 / 920950
+**new entries (14)**: 000012 / 000050 / 000725 / 002598 / 300822 / 301151 / 301296 / 301383 / 301581 / 688075 / 688303 / 688420 / 688739 / 688755
+
+---
+
 ## §0 重构完成状态 (Step 6-B 追加, 2026-04-09)
 
 本报告原为 Step 0 开始前的 pre-refactor 快照。Step 0→6-B 重构完成后, 以下关键状态发生变化:

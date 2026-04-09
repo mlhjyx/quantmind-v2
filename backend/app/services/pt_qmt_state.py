@@ -45,15 +45,19 @@ def save_qmt_state(
         )
 
     # 2. performance_series: UPSERT
+    # DB中的numeric字段返回Decimal, 统一cast为float避免混合类型运算
+    nav = float(nav)
+    prev_nav = float(prev_nav) if prev_nav is not None else 0.0
     daily_return = (nav / prev_nav - 1) if prev_nav > 0 else 0
-    cumulative_return = nav / settings.PAPER_INITIAL_CAPITAL - 1
+    cumulative_return = nav / float(settings.PAPER_INITIAL_CAPITAL) - 1
 
     cur.execute(
         "SELECT COALESCE(MAX(nav), %s) FROM performance_series "
         "WHERE execution_mode = 'paper' AND strategy_id = %s",
         (settings.PAPER_INITIAL_CAPITAL, strategy_id),
     )
-    peak_nav = max(cur.fetchone()[0], nav)
+    peak_nav = float(cur.fetchone()[0])
+    peak_nav = max(peak_nav, nav)
     drawdown = (nav / peak_nav - 1) if peak_nav > 0 else 0
 
     qmt_cash = qmt_nav_data.get("cash", 0) if qmt_nav_data else 0

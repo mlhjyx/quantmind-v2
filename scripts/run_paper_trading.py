@@ -72,11 +72,12 @@ logger = logging.getLogger("paper_trading")
 
 
 def log_step(conn, task_name: str, status: str, error: str = None, result: dict = None):
-    """写入scheduler_task_log。"""
+    """写入 scheduler_task_log。schedule_time 用 now() 代替 (实际执行时间)。"""
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO scheduler_task_log (task_name, status, error_message, result_json, created_at) "
-        "VALUES (%s, %s, %s, %s, NOW())",
+        "INSERT INTO scheduler_task_log "
+        "(task_name, status, error_message, result_json, schedule_time, start_time, end_time, market) "
+        "VALUES (%s, %s, %s, %s, NOW(), NOW(), NOW(), 'astock')",
         (task_name, status, error, json.dumps(result) if result else None),
     )
     conn.commit()
@@ -171,7 +172,12 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             logger.warning("[Step1.5] NAV更新失败(不影响信号): %s", e)
 
         # Step 1.6: 风控评估
-        cb = check_circuit_breaker_sync(conn=conn, strategy_id=settings.PAPER_STRATEGY_ID, trade_date=trade_date)
+        cb = check_circuit_breaker_sync(
+            conn=conn,
+            strategy_id=settings.PAPER_STRATEGY_ID,
+            exec_date=trade_date,
+            initial_capital=settings.PAPER_INITIAL_CAPITAL,
+        )
         logger.info("[Step1.6] 熔断: L%s - %s", cb.get("level", 0), cb.get("reason", ""))
 
         # Step 2: 因子计算
@@ -189,7 +195,8 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
         signal_result = signal_svc.generate_signals(
             conn=conn, strategy_id=settings.PAPER_STRATEGY_ID,
             trade_date=trade_date, factor_df=fv,
-            universe=universe, industry=industry, dry_run=dry_run,
+            universe=universe, industry=industry,
+            config=PAPER_TRADING_CONFIG, dry_run=dry_run,
         )
         logger.info("[Step3] 信号: %d只目标, rebalance=%s",
                      len(signal_result.target_weights), signal_result.is_rebalance)
@@ -278,7 +285,12 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool, executio
         check_opening_gap(exec_date, price_data_t, conn, notif_svc, dry_run)
 
         # Step 5.9: 熔断检查
-        cb = check_circuit_breaker_sync(conn=conn, strategy_id=settings.PAPER_STRATEGY_ID, trade_date=exec_date)
+        cb = check_circuit_breaker_sync(
+            conn=conn,
+            strategy_id=settings.PAPER_STRATEGY_ID,
+            exec_date=exec_date,
+            initial_capital=settings.PAPER_INITIAL_CAPITAL,
+        )
         logger.info("[Step5.9] 熔断: L%s", cb.get("level", 0))
 
         # Step 6: 执行调仓

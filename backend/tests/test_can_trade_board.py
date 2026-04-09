@@ -12,11 +12,9 @@
 import pandas as pd
 import pytest
 
-from backend.engines.backtest_engine import (
-    BacktestConfig,
-    SimBroker,
-    _infer_price_limit,
-)
+from backend.engines.backtest.broker import SimBroker
+from backend.engines.backtest.config import BacktestConfig
+from backend.engines.backtest.validators import _infer_price_limit
 
 
 @pytest.fixture
