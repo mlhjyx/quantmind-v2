@@ -1,12 +1,34 @@
-"""因子IC批量计算脚本。
+"""因子IC批量计算脚本 — ⚠️ DEPRECATED (Step 6-E, 2026-04-09).
+
+⚠️⚠️⚠️ 已过时 — 请使用 `scripts/fast_ic_recompute.py` 替代 ⚠️⚠️⚠️
+
+弃用原因 (Step 6-E 发现):
+- 本脚本在 12 年数据 (2014-2026) 上 O(n²) 的 trade_date 过滤循环, 单因子 30+ 分钟无进度
+- 全 53 因子需要 5+ 小时, 不可用
+- IC 计算用的是 raw return (非超额) — 跟铁律 19 (ic_calculator.py 的超额收益口径) 不一致
+
+替代:
+- `scripts/fast_ic_recompute.py` 使用 `engines/ic_calculator.py` 的向量化实现
+- 53 因子 12 年 ≈ 28 分钟 (超过 10 倍加速)
+- IC 用 T+1 入场超额收益 (相对 CSI300), 符合铁律 19 标准
+- 用法: `python scripts/fast_ic_recompute.py [--factor X] [--core] [--dry-run]`
+
+本文件保留是因为:
+- factor_registry 的 gate_ic/gate_ir/gate_t 字段更新逻辑只在这里
+- 单因子 (--factor) 的 2 年默认窗口仍可用 (轻量诊断)
+- 批量处理 12 年数据**禁止使用**
+
+后续 (Step 7?) 计划: 把 gate_ic/gate_ir/gate_t 更新逻辑迁移到 fast_ic_recompute, 然后删除本文件。
+
+──────────────────────────────────────────────────────────────────
+原始文档:
 
 对factor_values中的因子批量计算Rank IC（Spearman相关系数），
 写入factor_ic_history表，并更新factor_registry的gate汇总统计。
 
-用法:
-    python compute_factor_ic.py                      # 计算所有因子，最近2年
+用法 (仅限单因子+短窗口诊断):
     python compute_factor_ic.py --factor bp_ratio    # 只算1个因子
-    python compute_factor_ic.py --start 2022-01-01   # 自定义起始日期
+    python compute_factor_ic.py --start 2024-01-01   # 短窗口
     python compute_factor_ic.py --dry-run            # 只计算不写库
 
 设计说明:

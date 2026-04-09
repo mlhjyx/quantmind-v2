@@ -303,6 +303,16 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
     **raw_value 的 IC 只作参考对比, 不作入池/淘汰依据**。未经 `ic_calculator` 计算的 IC 数字视为不可追溯, 不允许写入 factor_ic_history / factor_profile / factor_registry 作决策依据。违反→口径漂移 (IVOL 在 registry 写+0.067, 实测 -0.103 反向) 重新出现。
 
+### 因子噪声鲁棒性（Step 6-F, 2026-04-10）
+20. **因子噪声鲁棒性 G_robust** — 新候选因子必须通过噪声鲁棒性测试:
+    - 方法: 对截面因子值加 N(0, σ) 高斯噪声, σ = noise_pct × cross_section_std
+    - 重算 IC, 计算 retention = |noisy_IC| / |clean_IC|
+    - **5% 噪声 retention < 0.95**: 警告 (信号质量下降)
+    - **20% 噪声 retention < 0.50**: 标记 fragile, 不得进入 Active 池
+    - 工具: `scripts/research/noise_robustness.py --noise-pct 0.20`
+    - 实证: 21 个 PASS 因子在 5% 噪声下 retention 全部 ≥ 0.94 (无 fragile),
+      在 20% 噪声下 retention 仍全部 ≥ 0.59 (最弱: nb_new_entry 0.591). CORE 5 因子全部稳健 (retention ≥ 0.96 @ 20%)
+
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）

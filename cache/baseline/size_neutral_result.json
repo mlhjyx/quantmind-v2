@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "config": {
+      "top_n": 20,
+      "rebalance": "monthly",
+      "slippage": "volume_impact",
+      "stamp_tax": "historical",
+      "pms": true
+    },
+    "method": "Size-neutral via OLS residualization of scores on ln_mcap"
+  },
+  "base": {
+    "sharpe": 0.5309,
+    "mdd": -0.563682,
+    "sortino": 0.6445,
+    "annual": 0.130629,
+    "total_return": 3.479227,
+    "n_days": 2980,
+    "elapsed": 507.0
+  },
+  "size_neutral": {
+    "sharpe": 0.4718,
+    "mdd": -0.540933,
+    "sortino": 0.5696,
+    "annual": 0.105955,
+    "total_return": 2.421148,
+    "n_days": 2980,
+    "elapsed": 25.0
+  },
+  "delta": {
+    "sharpe_diff": -0.0591,
+    "mdd_diff": 0.022749,
+    "annual_diff": -0.0247
+  },
+  "holding_size_distribution": {
+    "signal_date": "2026-04-08",
+    "base_mean_ln_mcap": -0.4518,
+    "base_median_ln_mcap": -0.495,
+    "sn_mean_ln_mcap": 0.0145,
+    "sn_median_ln_mcap": -0.2062,
+    "base_n": 53,
+    "sn_n": 20
+  }
+}

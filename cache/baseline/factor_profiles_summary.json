@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "total_factors": 63,
+    "valid": 53,
+    "errored": 10,
+    "elapsed_sec": 1092.0,
+    "cache_range": "2020-07-01 to 2026-06-30 (~5.5 years)",
+    "note": "非 12 年画像 — 受 precompute_cache START_DATE 限制"
+  },
+  "keep_distribution": {
+    "keep": 47,
+    "drop": 6
+  },
+  "fmp_candidates": 1,
+  "redundant_pairs": 11,
+  "template_distribution": {
+    "1": 35,
+    "11": 8,
+    "12": 6,
+    "2": 4
+  },
+  "errors": [
+    {
+      "factor": "nb_acceleration",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_change_excess",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_change_rate_20d",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_concentration_signal",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_consecutive_increase",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_net_buy_20d_ratio",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_net_buy_5d_ratio",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_net_buy_ratio",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_rank_change_20d",
+      "error": "no data"
+    },
+    {
+      "factor": "nb_trend_20d",
+      "error": "no data"
+    }
+  ]
+}
