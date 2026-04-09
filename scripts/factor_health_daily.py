@@ -193,7 +193,8 @@ def check_and_update_lifecycle(
             (factor_name, recent_cutoff),
         )
         hist_row = cur.fetchone()
-        hist_abs_ic: float | None = hist_row[0] if hist_row and hist_row[0] is not None else None
+        # SQL AVG 返回 Decimal, 显式 cast 避免与 float degrade_ratio 混合运算 TypeError
+        hist_abs_ic: float | None = float(hist_row[0]) if hist_row and hist_row[0] is not None else None
         hist_count: int = hist_row[1] if hist_row and hist_row[1] is not None else 0
 
         if hist_abs_ic is None or hist_count < min_history_days:
@@ -212,7 +213,7 @@ def check_and_update_lifecycle(
             (factor_name, recent_cutoff, trade_date),
         )
         row = cur.fetchone()
-        recent_abs_ic: float | None = row[0] if row and row[0] is not None else None
+        recent_abs_ic: float | None = float(row[0]) if row and row[0] is not None else None
         recent_count: int = row[1] or 0
 
         if recent_abs_ic is None or recent_count < 5:

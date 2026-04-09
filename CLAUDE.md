@@ -293,6 +293,16 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ### 成本对齐
 18. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认H0验证通过（理论成本vs QMT实盘误差<5bps）
 
+### IC 口径统一（Step 6-E, 2026-04-09）
+19. **IC 定义全项目统一** — 所有 IC 计算必须走 `backend/engines/ic_calculator.py` 共享模块:
+    - 因子值: `neutral_value` (MAD → fill → WLS 行业+ln市值 → zscore → clip±3)
+    - 前瞻收益: T+1 买入到 T+horizon 卖出的**超额收益** (相对 CSI300)
+    - IC 类型: Spearman Rank IC
+    - Universe: 排除 ST/BJ/停牌/新股 (调用方负责 filter)
+    - 标识符: `neutral_value_T1_excess_spearman` (version 1.0.0)
+
+    **raw_value 的 IC 只作参考对比, 不作入池/淘汰依据**。未经 `ic_calculator` 计算的 IC 数字视为不可追溯, 不允许写入 factor_ic_history / factor_profile / factor_registry 作决策依据。违反→口径漂移 (IVOL 在 registry 写+0.067, 实测 -0.103 反向) 重新出现。
+
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）

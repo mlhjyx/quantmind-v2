@@ -43,7 +43,7 @@
 | 16 | high_low_range_20 | -0.0746 | -6.53 | <0.001 | 2026-03-20 | Phase0-原始18 | DEPRECATED | corr(volatility_20)=0.89, 同一因子变体 |
 | 17 | volume_std_20 | -0.0117 | -1.31 | 0.192 | 2026-03-20 | Phase0-原始18 | DEPRECATED | |IC|=1.2%<1.5%, 预测力不足 |
 | 18 | dv_ttm | +0.0313 | +5.49 | <0.001 | 2026-03-21 | Batch1 | PASS | Reserve, |IC|=3.1%, IR=0.55, 7/7年稳定. NaN=33%需补数据 |
-| 19 | IVOL | +0.0667 | — | — | 2026-03-21 | Batch1 | PASS | |IC|=6.67%, 特质波动率, 通过IC筛选 |
+| 19 | IVOL (ivol_20) | **-0.0667** | — | — | 2026-03-21 / 修正 2026-04-09 | Batch1 | PASS (方向-1) | Step 6-E 修正: 原记录 `+0.0667` 是 `\|IC\|` 未含符号, 实测 factor_ic_history avg_ic_20d=-0.1033. **方向-1 (IVOL puzzle: 高特质波动→低未来收益)**. 跟 volatility_20 高相关, 不建议独立入池 |
 | 20 | turnover_surge_ratio | -0.0250 | -3.93 | <0.001 | 2026-03-21 | Batch1 | PASS | Reserve, |IC|=2.5%(后验3.57%), 7/7年稳定 |
 | 21 | roe_stability | +0.0150 | — | — | 2026-03-21 | Batch1 | FAIL | |IC|=1.50%, 低于入池门槛, 预测力不足 |
 | 22 | roe_ttm | — | — | — | 2026-03-21 | Batch1-否决 | FAIL | 数据覆盖不足或IC不显著 |
