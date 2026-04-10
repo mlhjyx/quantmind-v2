@@ -100,6 +100,8 @@
 | 72 | LightGBM-17feat-optuna | — | — | — | 2026-03-25 | ML-Sprint1.4b | CANCELLED | 17特征SHAP确认为噪声, 无需跑 |
 | 73 | vwap_bias_1d | -0.0464 | -2.69 | 0.009 | 2026-03-25 | Sprint1.6-VWAP | PASS | 中性化IC=-0.0349 t=-3.53, ICIR=-0.43, 66月全样本, max_corr=0.36(turnover), 反转效应 |
 | 74 | rsrs_raw_18 | -0.0371 | -3.99 | <0.001 | 2026-03-25 | Sprint1.6-RSRS | PASS | 中性化IC=-0.0301 t=-4.35, ICIR=-0.54, 66月全样本, max_corr=0.27(volatility), 阻力支撑 |
+| 75 | ind_mom_20 | -0.0308 | -11.32 | <0.001 | 2026-04-10 | Phase1.2-IndMom | PASS | SW1行业20日动量, direction=-1(A股行业反转效应), ICIR=-0.218, hit=42.9%, max_core_corr=0.539(reversal_20), 不推荐独立入池(高相关) |
+| 76 | ind_mom_60 | -0.0347 | -12.91 | <0.001 | 2026-04-10 | Phase1.2-IndMom | PASS | SW1行业60日动量, direction=-1(A股行业反转效应), ICIR=-0.249, hit=40.1%, max_core_corr=0.286(reversal_20), **推荐E2E特征池** |
 
 ---
 
@@ -107,7 +109,7 @@
 
 ### BH-FDR校正
 
-当前累积M = 69（排除重复验证条目#65 + 2个CANCELLED）。
+当前累积M = 71（排除重复验证条目#65 + 2个CANCELLED）。
 
 BH-FDR校正步骤:
 1. 对所有M个p-value排序: p_(1) <= p_(2) <= ... <= p_(M)
