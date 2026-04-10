@@ -4,7 +4,7 @@
 
 ## 项目概况
 - 个人 A 股绝对收益量化交易系统, Python 3.11 + PostgreSQL 16 + FastAPI + LightGBM
-- 当前: **Step 0→6-H 完成, PT 运行中 (SN b=0.50, 2026-04-10)**, 基线: 5yr Sharpe=0.6095 (`regression_test.py`) / 12yr 0.5309 / **SN b=0.50 inner 0.68, MDD=-39.35%** / WF OOS 0.6521, 排除 BJ/ST/停牌/新股
+- 当前: **Step 0→6-H 完成, PT 已暂停+已清仓 (2026-04-10, 等V4 Phase 2验证后重启)**, 基线: 5yr Sharpe=0.6095 (`regression_test.py`) / 12yr 0.5309 / **SN b=0.50 inner 0.68, MDD=-39.35%** / WF OOS 0.6521, 排除 BJ/ST/停牌/新股
 - 目标: 年化 15-25%, Sharpe 1.0-2.0, MDD <15%
 - 优化目标排序: MDD > Sharpe > 因子数量（全团队共识）
 - **总路线图**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)

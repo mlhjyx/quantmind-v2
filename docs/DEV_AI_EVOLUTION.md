@@ -1,7 +1,8 @@
 > **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~20% — IdeaAgent/FactorAgent/EvalAgent+PipelineOrchestrator已有代码框架(backend/engines/mining/agents/, 共4034行), 但未形成端到端自动闭环。RD-Agent(Q)已实现类似架构且更成熟。
-> 仍有价值: AI 闭环的概念框架可作为 RD-Agent 集成的参考
-> 已过时/被替代: 端到端闭环设计建议用 RD-Agent(Q) 替代自建
+> 实现状态: ~20% — IdeaAgent/FactorAgent/EvalAgent+PipelineOrchestrator已有代码框架(backend/engines/mining/agents/, 共4034行), 但未形成端到端自动闭环。
+> 仍有价值: AI 闭环的概念框架、Agent 角色定义、审批流程设计
+> 已过时/被替代: RD-Agent ❌ 不适用（Docker硬依赖+Windows bug+Claude API不支持, 三重阻断, 阶段0调研 2026-04-10）; 完整4-Agent闭环 → 简版AI闭环替代 (V4 Phase 3)
+> V4 路线: Phase 3 简版AI闭环 = 因子生命周期自动化 + Rolling WF + IC监控告警, 不追求全自动L3级别
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — AI 闭环详细开发文档
@@ -10,6 +11,12 @@
 > 创建日期：2026-03-19
 > 关联文档：QUANTMIND_V2_DESIGN_V5.md、DEV_BACKTEST_ENGINE.md、DEV_FACTOR_MINING.md、DEV_BACKEND.md
 > **GP闭环设计**: `docs/GP_CLOSED_LOOP_DESIGN.md` — Step 2最小闭环(Warm Start GP+Gate+SimBroker反馈)
+
+> **⚠️ Route C 决策 (2026-04-10)**:
+> 阶段0调研结论 — RD-Agent ❌（Docker+Windows+Claude三重阻断）, Qlib ⚠️（数据层/回测不适配, Factor Zoo可借鉴）。
+> 路线C(混合): 自建核心(回测/信号/执行) + Alpha158因子借鉴(6类新因子) + riskfolio-lib(Portfolio优化)。
+> 本文档的完整4-Agent+Pipeline设计降级为 **V4 Phase 3 简版AI闭环**: 因子生命周期自动化 + Rolling WF + IC监控。
+> 详见: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §4 Phase 3 + `docs/research-kb/findings/qlib-rdagent-research.md`。
 
 ---
 

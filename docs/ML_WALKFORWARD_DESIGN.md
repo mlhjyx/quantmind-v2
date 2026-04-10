@@ -1,7 +1,8 @@
 > **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
 > 实现状态: ~50% — walk_forward.py 已修复可用 (Step 6-D)。LightGBM 17因子 WF 验证 ML 无效 (OOS Sharpe=0.09)。
-> 仍有价值: WF 框架设计、fold 划分策略、OOS 验证方法论
-> 已过时/被替代: ML 模型选择部分 (LightGBM结论: 瓶颈在数据维度非模型)
+> 仍有价值: WF 框架设计、fold 划分策略(F1-F7)、OOS 验证方法论 — E2E Portfolio Network (V4 Phase 2.1) 将复用此 WF 框架
+> 已过时/被替代: LightGBM predict-then-optimize 方案降为 baseline 对比; E2E (loss=-Sharpe) 为 V4 Phase 2 主攻方向
+> V4 方向: E2E Portfolio Network 章节见本文档末尾 + QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md 附录A
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — LightGBM Walk-Forward 训练框架设计文档
@@ -1125,3 +1126,37 @@ G1.7: Regime感知模型切换（5-7天）
 > - v1.0 (2026-03-25): 初版，51特征，基线1.03
 > - v2.0 (2026-04-04): 特征池48+(DB自动发现), 基线1.15, V3.4 fail-fast
 > - v2.1 (2026-04-05): 特征池63+(15北向), GPU PyTorch cu128, TimescaleDB hypertable+Parquet缓存
+> - v2.2 (2026-04-10): LightGBM CLOSED + E2E章节追加 (V4 Phase 2方向)
+
+---
+
+## 十二、E2E Portfolio Network — V4 Phase 2 主攻方向 (2026-04-10)
+
+> **本章定位**: 概述 E2E 与 LightGBM WF 的对比关系。完整 E2E 网络设计见 `QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md 附录A`。
+
+### 12.1 为什么从 LightGBM 转向 E2E
+
+| 维度 | LightGBM WF (本文档 §1-§11) | E2E Portfolio Network (V4 Phase 2.1) |
+|------|---------------------------|--------------------------------------|
+| 训练目标 | MSE (预测收益率) | -Sharpe (直接优化组合表现) |
+| 输出 | 个股预测值 → rank → Top-N → 等权 | 组合权重向量 w∈ΔN (端到端) |
+| 已验证结果 | G1: IC=0.082, Sharpe=0.68; 6-H: IC=0.067, Sharpe=0.09 | 未验证 (V4 Phase 2 实验) |
+| 核心问题 | IC衡量全截面 vs Top-20只取0.5%极端分位; MSE≠Sharpe | 需要可微分Sharpe Loss + 约束层 |
+| WF框架 | ✅ 本文档 F1-F7 fold + walk_forward.py | ✅ 复用同一 WF 框架 (train_one_fold 替换模型) |
+
+### 12.2 E2E 如何复用本文档 WF 框架
+
+E2E Portfolio Network 训练将复用本文档定义的 Walk-Forward 框架:
+- **Fold 划分**: 沿用 F1-F7 (§5), 训练窗口3年/验证1年/测试1年
+- **OOS 拼接**: 沿用 chain-link Sharpe 方法 (§6)
+- **对比验证**: E2E OOS Sharpe vs LightGBM OOS Sharpe (0.09) vs 等权 OOS Sharpe (0.6336)
+- **差异**: `train_one_fold` 内部替换为 PyTorch 训练循环 (loss=-differentiable_sharpe), 输出为权重向量而非预测值
+
+### 12.3 LightGBM 最终结论 (CLOSED)
+
+**两次验证均确认 predict-then-optimize 两阶段方法在当前数据条件下无效:**
+- G1 (48因子, 2021-2025): IC=0.082, 月度回测 Sharpe=0.68 vs 等权 0.83 → ML不如等权
+- Step 6-H (17因子, 12年WF): OOS IC=0.067, 月度回测 Sharpe=0.09 → IC正但Sharpe≈0
+- 根因: 训练目标(MSE)与交易目标(Sharpe)不对齐; IC衡量全截面排序但Top-N只取极端0.5%分位
+
+**LightGBM 不再作为独立策略方向, 降为 E2E 的 baseline 对比。**

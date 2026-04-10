@@ -1,7 +1,7 @@
 > **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~25% — Step 4-A 完成8模块拆分，Hybrid 架构已实现。Step 2(向量化)/Step 3(Rust加速)未启动。
-> 仍有价值: §3 Hybrid架构设计、§4 接口定义、SignalComposer 已实现部分
-> 已过时/被替代: 性能优化路径(Rust/向量化)未启动，OOM 问题未在原设计中预见
+> 实现状态: ~30% — Step 4-A 完成8模块拆分，Hybrid 架构已实现。V4 Phase 1.1 向量化（841s→<60s）为下一优先级。
+> 仍有价值: §3 Hybrid架构设计、§4 接口定义、SignalComposer/PortfolioBuilder 已实现部分
+> 已过时/被替代: Rust加速→Archived（numpy向量化优先, Rust ROI不足）; ExecutionSimulator→redesigned as VectorizedBacktester (V4 Phase 1.1)
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 回测引擎详细开发文档
@@ -234,6 +234,10 @@ Phase B: 事件驱动层（逐日，精确）
     ├─ 持仓更新 + 现金更新
     └─ 记录: 交易明细、每日净值、持仓快照
 ```
+
+> **V4 Phase 1.1 注**: Phase B 事件驱动循环是当前性能瓶颈（12年回测 841s, Step 6-D实测）。
+> V4 Phase 1.1 计划用 numpy 向量化重写核心循环（VectorizedBacktester），目标 <60s。
+> SimpleBacktester 保留作为精确验证基准（铁律15: 可复现）。详见 §4.9 + V4 附录。
 
 ### 3.2 前后端完整交互流
 
@@ -618,9 +622,11 @@ class SignalComposer:
     def __init__(self, method: str = 'equal_weight'):
         """
         method:
-          'equal_weight' — 等权(Step 1 默认)
-          'ic_weight'    — IC 加权(用过去 N 日 IC 均值)
-          'ml'           — ML 模型(Step 2+)
+          'equal_weight' — 等权(Step 1 默认) ✅ 已实现, PT在用
+          'ic_weight'    — IC 加权(用过去 N 日 IC 均值) ⬜ V4 Phase 2.2 baseline
+          'ml'           — ML 模型 → 改为 'e2e' (E2E Portfolio Network, V4 Phase 2.1 主攻)
+        实现状态(2026-04-10): equal_weight 在 signal_engine.py 已落地;
+          ic_weight/e2e 待 V4 Phase 2 实现, 详见 QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md §4 Phase 2
         """
         self.method = method
 
@@ -637,7 +643,15 @@ class SignalComposer:
 
 
 class PortfolioBuilder:
-    """得分→目标持仓"""
+    """得分→目标持仓
+    
+    weight_method 扩展计划 (V4 Phase 2):
+      'equal_weight'    — 等权 ✅ 已实现, PT在用
+      'mvo'             — 均值方差优化 ⬜ riskfolio-lib MVO (V4 Phase 2.3)
+      'risk_parity'     — 风险平价 ⬜ riskfolio-lib RP (V4 Phase 2.3)
+      'black_litterman' — BL模型 ⬜ riskfolio-lib BL (V4 Phase 2.3)
+      'e2e'             — E2E Portfolio Network直接输出权重 ⬜ (V4 Phase 2.1, 跳过rank→select)
+    """
 
     def build(self, scores: pd.Series, date: str,
               universe: pd.Index, config: BacktestConfig) -> Dict[str, float]:
@@ -704,13 +718,27 @@ class SimpleBacktester:
         pass
 ```
 
-### 4.9 ExecutionSimulator（Step 2）
+### 4.9 VectorizedBacktester（V4 Phase 1.1）
+
+> **V4 变更**: 原 ExecutionSimulator(事件驱动) → VectorizedBacktester(numpy向量化)。
+> 目标: 12年回测 841s → <60s。SimpleBacktester 保留作精确验证基准。
 
 ```python
-class ExecutionSimulator:
+class VectorizedBacktester:
     """
-    Step 2 完整执行模拟器 — 事件驱动层
-    替代 SimpleBacktester，接口完全相同(IBacktester)
+    V4 Phase 1.1 向量化回测器 — numpy 批量计算
+    替代原 ExecutionSimulator 设计, 接口仍遵循 IBacktester Protocol
+    
+    核心思路: 将逐日事件循环转为矩阵运算
+      - 持仓矩阵: (T, N) float64, T=交易日数, N=universe大小
+      - 收益矩阵: (T, N) = 持仓矩阵 * 日收益率矩阵
+      - 约束向量化: 涨跌停/停牌用 boolean mask 批量处理
+      - 成本向量化: 换手率矩阵 * 费率向量
+    
+    与 SimpleBacktester 的关系:
+      - VectorizedBacktester: 日常研究/WF/参数扫描 (速度优先)
+      - SimpleBacktester: 最终验证/回归测试 (精度优先, 铁律15)
+      - 验收标准: 同一输入, 两者 NAV max_diff < 1e-6
     """
 
     def __init__(self, config: BacktestConfig):
@@ -1332,33 +1360,37 @@ class RebalanceCalendar:
 | 数据完整性 | 因子覆盖率>90%平均 | 检查数据源和计算逻辑 |
 | 回测基本合理 | Sharpe 在 0.3~3.0 | <0.3 无信号, >3.0 有 bug |
 
-### Step 2: 完整执行模拟器（5-7 天）
+### Step 2: 向量化回测器 — V4 Phase 1.1（5-7 天）
 
-**目标**: 执行约束吃掉多少收益？
+> **V4 更新**: 原 ExecutionSimulator(事件驱动精确模拟) 已由 Step 4-A 的 SimpleBacktester 实现。
+> Step 2 目标改为 **VectorizedBacktester**(numpy向量化), 解决 841s 性能瓶颈。
 
-**在 Step 1 基础上新增**:
-- ExecutionSimulator(替代 SimpleBacktester)
-- ConstraintChecker(T+1 / 涨跌停 / 停牌 / 成交量)
-- CostModel(精确版)
-- SlippageModel(双因素)
-- PortfolioTracker(完整版)
+**目标**: 12年回测 841s → <60s, 解锁参数扫描/WF/E2E训练的速度需求
 
-**验收标准**:
-- Step 1 vs Step 2 收益对比报告(量化执行 gap)
-- 全部 5 个约束通过单元测试
-- 确定性验证通过
-
-### Step 3: Walk-Forward 框架（5-7 天）
-
-**目标**: 真实 Sharpe 多少？是否过拟合？
-
-**在 Step 2 基础上新增**:
-- WalkForwardEngine
-- 窗口结果存储(backtest_wf_windows 表)
+**实现范围**:
+- VectorizedBacktester(numpy矩阵运算, 接口遵循 IBacktester Protocol)
+- 持仓矩阵(T,N) + 收益矩阵(T,N) + 成本矩阵(T,N) 批量计算
+- 约束向量化: 涨跌停/停牌用 boolean mask
+- 成本向量化: 换手率矩阵 * 费率向量(含历史印花税分段)
 
 **验收标准**:
-- WF-OOS 拼接 Sharpe vs 全量 Sharpe 对比
-- 如果 WF-Sharpe < 全量 × 0.5 → 过拟合严重, 需简化模型
+- 12年回测 <60s (vs SimpleBacktester 841s)
+- 同一输入, VectorizedBacktester vs SimpleBacktester NAV max_diff < 1e-6
+- regression_test.py 全量通过(铁律15)
+
+### Step 3: Walk-Forward 框架 ✅ 已实现（Step 6-D）
+
+> **状态**: walk_forward.py 已修复可用。5-fold OOS Sharpe=0.6336(base)/0.6521(SN b=0.50)。
+> 详见 ML_WALKFORWARD_DESIGN.md + cache/baseline/wf_*_result.json。
+
+~~**原设计**~~:
+- ~~WalkForwardEngine~~ → ✅ scripts/walk_forward.py 已实现
+- ~~窗口结果存储(backtest_wf_windows 表)~~ → ✅ cache/baseline/ JSON存储
+
+### ~~Step 3b: Rust 加速~~（Archived）
+
+> **决策**: Rust 加速 ROI 不足, numpy 向量化(Step 2)优先。
+> 如果 Step 2 向量化后仍 >60s, 再评估 Rust/Cython 热点函数。Archived, 不列入 V4 路线图。
 
 ---
 

@@ -9,10 +9,10 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT运行中(SN b=0.50已激活), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
+- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等V4 Phase 2验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步**: Alpha158新因子实现(RSQR/RESI/IMAX/IMIN/QTLU/CORD) → 阶段2(新信号维度: 盈利公告/分钟聚合/北向MODIFIER/行业动量/PEAD) → riskfolio-lib Portfolio优化 → 阶段3(CompositeSignalEngine)
+- **下一步(V4路线图)**: Phase 1.1 回测向量化(841s→<60s) + Phase 1.2 新信号维度(Alpha158六因子+行业动量+北向V2+PEAD) → Phase 2 信号框架(E2E Portfolio Network主攻 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -388,8 +388,9 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 组合Modifier(Vol+DD叠加) | 叠加更差, Modifier相互干扰 | Step 6-G |
 | RD-Agent集成 | Docker硬依赖+Windows bug+Claude不支持, 三重阻断 | 阶段0调研(2026-04-10) |
 | Qlib数据层/回测引擎迁移 | .bin格式需双份数据, 回测无PMS/涨跌停/历史税率, 迁移=倒退 | 阶段0调研(2026-04-10) |
+| predict-then-optimize两阶段方法 | IC正但Sharpe≈0: 训练目标(MSE)≠交易目标(Sharpe), IC衡量全截面vs Top-N只取0.5%极端分位 | G1+Step 6-H两次验证 |
 
-## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT运行中+SN b=0.50激活 2026-04-10）
+## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT已暂停+已清仓 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
 # 配置来源: configs/pt_live.yaml (Step 4-B, 铁律15要求YAML驱动)
 # 回测入口: python scripts/run_backtest.py --config configs/pt_live.yaml
@@ -438,7 +439,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - 处理: 保留Active，等权框架下不单独降权
   - 恢复条件: 连续3月IC_adjusted>0.01自动确认
 
-**PT状态**: 运行中 (SN b=0.50, 2026-04-10激活)。Step 0→6-H重构完成, Step 6-C冒烟测试8/8通过后重启。
+**PT状态**: 已暂停+已清仓 (2026-04-10)。原因: 等权Top-N框架触到天花板(11实验1成功), V4 Phase 2 E2E验证后重启。重启前提: E2E OOS Sharpe > 等权基线(0.6336) + MDD < 40%。
 
 ## 文档查阅索引
 
@@ -496,12 +497,15 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ✅ is_st标记: stock_status_daily已有552K/12M条is_st=true记录
 - ✅ 12年OOM: Parquet缓存+groupby替代pivot_table, Step 6-D成功跑通12年(2980天)
 
-### 待办(阶段2+)
-- ✅ Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + 6个Alpha158新因子 + riskfolio-lib (2026-04-10)
-- ⬜ Alpha158新因子实现: RSQR/RESI/IMAX/IMIN/QTLU/CORD 在factor_engine.py (P0/P1)
-- ⬜ 阶段2: 新信号维度探索（盈利公告因子/分钟聚合因子/北向MODIFIER/行业动量/PEAD）
-- ⬜ 阶段3: 策略层扩展 → CompositeSignalEngine (多策略组合)
-- ⬜ 回测引擎向量化（841s→<60s 目标）
+### 待办(V4路线图)
+- ✅ 阶段0: Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + Alpha158因子借鉴 + riskfolio-lib (2026-04-10)
+- ⬜ **Phase 1.1**: 回测向量化 VectorizedBacktester（841s→<60s, numpy矩阵运算）
+- ⬜ **Phase 1.2**: 新信号维度（Alpha158六因子RSQR/RESI/IMAX/IMIN/QTLU/CORD + 行业动量 + 北向V2 + PEAD）— 可与1.1并行
+- ⬜ **Phase 2.1**: E2E Portfolio Network（主攻, loss=-Sharpe, 详见V4附录A）
+- ⬜ **Phase 2.2**: IC加权SignalComposer（baseline对比）
+- ⬜ **Phase 2.3**: riskfolio-lib Portfolio优化 MVO/RP/BL（baseline对比）
+- ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
+- ⬜ **Phase 4**: PT重启（前提: E2E OOS Sharpe > 0.6336 + MDD < 40%）
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
