@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT运行中(SN b=0.50已激活), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步**: Qlib+RD-Agent技术调研 → 阶段2(新信号维度: 盈利公告/分钟聚合/北向MODIFIER/行业动量/PEAD) → 阶段3(CompositeSignalEngine)
+- **下一步**: Alpha158新因子实现(RSQR/RESI/IMAX/IMIN/QTLU/CORD) → 阶段2(新信号维度: 盈利公告/分钟聚合/北向MODIFIER/行业动量/PEAD) → riskfolio-lib Portfolio优化 → 阶段3(CompositeSignalEngine)
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -28,6 +28,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | GPU | PyTorch cu128, RTX 5070 12GB (cupy不支持Blackwell sm_120) |
 | 缓存 | 本地Parquet快照(backend/data/parquet_cache.py按年分区), factor_values 501M行→TimescaleDB hypertable |
 | 交易 | 国金miniQMT (A股) |
+| Portfolio优化 | riskfolio-lib 7.2.1 (MVO/RP/BL, 阶段2评估) |
+| 向量化回测 | vectorbt 0.28.5 (Numba加速, 待评估快速筛选用) |
 
 ## 因子系统
 
@@ -384,6 +386,8 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | 因子替换turnover_stability_20 | paired bootstrap p=0.92不显著, 非真alpha | Step 6-F |
 | Regime线性检测(5指标) | 5指标全p>0.05, 线性方法无法捕捉regime | Step 6-E |
 | 组合Modifier(Vol+DD叠加) | 叠加更差, Modifier相互干扰 | Step 6-G |
+| RD-Agent集成 | Docker硬依赖+Windows bug+Claude不支持, 三重阻断 | 阶段0调研(2026-04-10) |
+| Qlib数据层/回测引擎迁移 | .bin格式需双份数据, 回测无PMS/涨跌停/历史税率, 迁移=倒退 | 阶段0调研(2026-04-10) |
 
 ## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT运行中+SN b=0.50激活 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
@@ -493,7 +497,8 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ✅ 12年OOM: Parquet缓存+groupby替代pivot_table, Step 6-D成功跑通12年(2980天)
 
 ### 待办(阶段2+)
-- ⬜ Qlib + RD-Agent 技术调研（评估是否替代自建引擎部分功能）
+- ✅ Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + 6个Alpha158新因子 + riskfolio-lib (2026-04-10)
+- ⬜ Alpha158新因子实现: RSQR/RESI/IMAX/IMIN/QTLU/CORD 在factor_engine.py (P0/P1)
 - ⬜ 阶段2: 新信号维度探索（盈利公告因子/分钟聚合因子/北向MODIFIER/行业动量/PEAD）
 - ⬜ 阶段3: 策略层扩展 → CompositeSignalEngine (多策略组合)
 - ⬜ 回测引擎向量化（841s→<60s 目标）
