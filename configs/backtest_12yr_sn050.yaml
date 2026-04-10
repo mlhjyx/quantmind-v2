@@ -1,8 +1,8 @@
-# QuantMind V2 5年回测配置
-# 基于pt_live.yaml策略参数，覆盖回测专属设置
+# QuantMind V2 12年回测配置 — Partial Size-Neutral beta=0.50
+# Step 6-H: 基于 backtest_12yr.yaml + size_neutral_beta=0.50
 
 strategy:
-  name: equal_weight_top20
+  name: equal_weight_top20_sn050
   factors:
     - {name: turnover_mean_20, direction: -1}
     - {name: volatility_20, direction: -1}
@@ -14,8 +14,8 @@ strategy:
   rebalance_freq: monthly
   industry_cap: 1.0
   turnover_cap: 0.5
-  cash_buffer: 0.0           # 回测无现金缓冲(与历史基准一致)
-  size_neutral_beta: 0.0     # 默认关闭（向后兼容）
+  cash_buffer: 0.0
+  size_neutral_beta: 0.50
 
 execution:
   mode: backtest
@@ -58,5 +58,5 @@ backtest:
   volume_cap_pct: 0.10
 
 data:
-  start_date: "2021-01-01"
+  start_date: "2014-01-01"
   end_date: "2025-12-31"

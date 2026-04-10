@@ -95,6 +95,8 @@ def make_equal_weight_signal_func(
     price_data: pd.DataFrame,
     top_n: int = 20,
     rebalance_freq: str = "monthly",
+    size_neutral_beta: float = 0.0,
+    ln_mcap_pivot: pd.DataFrame | None = None,
 ) -> "SignalFunc":
     """构造一个标准的等权 Walk-Forward signal_func。
 
@@ -183,6 +185,12 @@ def make_equal_weight_signal_func(
                 scores = composer.compose(day_data, exclude=exclude)
                 if scores.empty:
                     continue
+
+                # Size-neutral adjustment
+                if size_neutral_beta > 0 and ln_mcap_pivot is not None and latest_date in ln_mcap_pivot.index:
+                    from engines.size_neutral import apply_size_neutral
+                    scores = apply_size_neutral(scores, ln_mcap_pivot.loc[latest_date], size_neutral_beta)
+
                 weights = builder.build(scores, pd.Series(dtype=str))
                 if weights:
                     target_portfolios[rd] = weights

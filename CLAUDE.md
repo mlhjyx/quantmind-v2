@@ -255,6 +255,14 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - 所有 (symbol_id, date) 组合必须有联合索引
 - 金额字段列注释标明单位
 
+### 研究任务资源调度
+- 启动前检查: `tasklist | grep python` + `nvidia-smi` (Windows)
+- CPU密集(回测/IC): RAM可用<8GB时不启动新重型任务
+- GPU任务(LightGBM/PyTorch): VRAM可用<4GB时不启动
+- DB密集(大表SELECT): 同时最多1个(PG连接池限制)
+- 32GB机器禁止同时跑两个>4GB的Python进程
+- 铁律9: 重数据max 2并发
+
 ---
 
 ## 铁律（违反即停）

@@ -122,6 +122,7 @@ def to_signal_config(config: dict) -> SignalConfig:
         industry_cap=float(strategy.get("industry_cap", 1.0)),
         turnover_cap=float(strategy.get("turnover_cap", 0.50)),
         cash_buffer=float(strategy.get("cash_buffer", 0.0)),
+        size_neutral_beta=float(strategy.get("size_neutral_beta", 0.0)),
     )
 
 

@@ -342,8 +342,8 @@ def print_report(results: dict, strategy_id: str) -> None:
 
     # 汇总
     all_results = [p for _, _, p in items]
-    passed_count = sum(1 for p in all_results if p is True)
-    failed_count = sum(1 for p in all_results if p is False)
+    passed_count = sum(1 for p in all_results if p is not None and bool(p))
+    failed_count = sum(1 for p in all_results if p is not None and not bool(p))
     pending_count = sum(1 for p in all_results if p is None)
 
     print(f"\n  {'─' * 70}")

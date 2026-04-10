@@ -27,6 +27,7 @@ def run_hybrid_backtest(
     signal_config: Any | None = None,  # SignalConfig (unused, kept for API compat)
     datafeed: DataFeed | None = None,
     dividend_calendar: dict[date, list[CorporateAction]] | None = None,
+    conn=None,  # DB连接(size-neutral需要加载ln_mcap)
 ) -> BacktestResult:
     """Hybrid回测: Phase A向量化信号 → Phase B事件驱动执行。
 
@@ -55,6 +56,11 @@ def run_hybrid_backtest(
             price_data = datafeed.df
 
     # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
+    # 从signal_config提取size_neutral_beta(如果传入了SignalConfig)
+    _sn_beta_from_cfg = 0.0
+    if signal_config is not None and hasattr(signal_config, "size_neutral_beta"):
+        _sn_beta_from_cfg = signal_config.size_neutral_beta
+
     se_config = SEConfig(
         factor_names=list(directions.keys()),
         top_n=config.top_n,
@@ -63,6 +69,7 @@ def run_hybrid_backtest(
         industry_cap=1.0,    # 回测默认无行业约束(可通过config覆盖)
         turnover_cap=1.0,    # 回测默认无换手约束
         cash_buffer=0.0,     # 回测默认无现金缓冲
+        size_neutral_beta=_sn_beta_from_cfg,
     )
     # 覆盖FACTOR_DIRECTION: 用调用方传入的directions
     from engines.signal_engine import FACTOR_DIRECTION
@@ -74,6 +81,13 @@ def run_hybrid_backtest(
 
     trading_days = sorted(price_data["trade_date"].unique())
     rebal_dates = compute_rebalance_dates(trading_days, config.rebalance_freq)
+
+    # Size-neutral: 一次性加载 ln_mcap pivot (beta=0.0 时跳过)
+    _sn_beta = se_config.size_neutral_beta
+    _ln_mcap_pivot = None
+    if _sn_beta > 0:
+        from engines.size_neutral import load_ln_mcap_pivot
+        _ln_mcap_pivot = load_ln_mcap_pivot(min(trading_days), max(trading_days), conn)
 
     # 确保factor_df有neutral_value列(兼容raw_value输入)
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
@@ -111,6 +125,12 @@ def run_hybrid_backtest(
         scores = composer.compose(day_data, exclude=exclude)
         if scores.empty:
             continue
+
+        # Size-neutral adjustment (beta=0.0 时 apply_size_neutral 直接返回原值)
+        if _sn_beta > 0 and _ln_mcap_pivot is not None and latest_date in _ln_mcap_pivot.index:
+            from engines.size_neutral import apply_size_neutral
+            scores = apply_size_neutral(scores, _ln_mcap_pivot.loc[latest_date], _sn_beta)
+
         weights = builder.build(scores, pd.Series(dtype=str))
         if weights:
             target_portfolios[rd] = weights
@@ -123,8 +143,8 @@ def run_hybrid_backtest(
         raise ValueError("Phase A信号生成失败: target_portfolios为空")
 
     logger.info(
-        "Phase A信号生成完成(SignalComposer): %d个调仓日, %d个因子, Top-%d",
-        len(target_portfolios), len(directions), config.top_n,
+        "Phase A信号生成完成(SignalComposer): %d个调仓日, %d个因子, Top-%d, SN_beta=%.2f",
+        len(target_portfolios), len(directions), config.top_n, _sn_beta,
     )
 
     # Phase B: 事件驱动执行
@@ -177,6 +197,10 @@ def run_composite_backtest(
             price_data = datafeed.df
 
     # Phase A: 统一信号生成 (SignalComposer + PortfolioBuilder)
+    _sn_beta_from_cfg_c = 0.0
+    if signal_config is not None and hasattr(signal_config, "size_neutral_beta"):
+        _sn_beta_from_cfg_c = signal_config.size_neutral_beta
+
     se_config = SEConfig(
         factor_names=list(directions.keys()),
         top_n=config.top_n,
@@ -185,6 +209,7 @@ def run_composite_backtest(
         industry_cap=1.0,
         turnover_cap=1.0,
         cash_buffer=0.0,
+        size_neutral_beta=_sn_beta_from_cfg_c,
     )
     saved_directions = dict(FACTOR_DIRECTION)
     FACTOR_DIRECTION.update(directions)
@@ -194,6 +219,13 @@ def run_composite_backtest(
 
     trading_days = sorted(price_data["trade_date"].unique())
     rebal_dates = compute_rebalance_dates(trading_days, config.rebalance_freq)
+
+    # Size-neutral: 一次性加载 ln_mcap pivot (beta=0.0 时跳过)
+    _sn_beta_c = se_config.size_neutral_beta
+    _ln_mcap_pivot_c = None
+    if _sn_beta_c > 0:
+        from engines.size_neutral import load_ln_mcap_pivot
+        _ln_mcap_pivot_c = load_ln_mcap_pivot(min(trading_days), max(trading_days), conn)
 
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
@@ -227,6 +259,12 @@ def run_composite_backtest(
         scores = composer.compose(day_data, exclude=exclude)
         if scores.empty:
             continue
+
+        # Size-neutral adjustment
+        if _sn_beta_c > 0 and _ln_mcap_pivot_c is not None and latest_date in _ln_mcap_pivot_c.index:
+            from engines.size_neutral import apply_size_neutral
+            scores = apply_size_neutral(scores, _ln_mcap_pivot_c.loc[latest_date], _sn_beta_c)
+
         weights = builder.build(scores, pd.Series(dtype=str))
         if weights:
             target_portfolios[rd] = weights

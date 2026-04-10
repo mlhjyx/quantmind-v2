@@ -148,10 +148,12 @@ def run_with_yaml(config_path: str):
         get_directions,
         load_config,
         to_backtest_config,
+        to_signal_config,
     )
 
     cfg = load_config(config_path)
     bt_config = to_backtest_config(cfg)
+    sig_config = to_signal_config(cfg)
     directions = get_directions(cfg)
     start_str, end_str = get_data_range(cfg)
     start = datetime.strptime(start_str, "%Y-%m-%d").date()
@@ -208,6 +210,7 @@ def run_with_yaml(config_path: str):
     t1 = time.time()
     result = run_hybrid_backtest(
         factor_df, directions, price_data, bt_config, benchmark,
+        signal_config=sig_config,
     )
 
     # 报告

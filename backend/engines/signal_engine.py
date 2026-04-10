@@ -55,6 +55,7 @@ class SignalConfig:
     rebalance_freq: str = "biweekly"  # 'weekly', 'biweekly', 'monthly'
     turnover_cap: float = 0.50  # 单次换手率上限50%
     cash_buffer: float = 0.03  # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
+    size_neutral_beta: float = 0.0  # 0.0=关闭, 0.50=Step 6-G验证最优
     regime_mode: str = "vol_regime"  # 'vol_regime'（启发式）或 'hmm_regime'（HMM）
     factor_names: list[str] = field(
         default_factory=lambda: [

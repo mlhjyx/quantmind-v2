@@ -1,0 +1,62 @@
+{
+  "config": {
+    "size_neutral_beta": 0.5,
+    "top_n": 20,
+    "rebalance_freq": "monthly"
+  },
+  "wf_5fold": {
+    "folds": [
+      {
+        "fold": 0,
+        "sharpe": 1.49,
+        "mdd": -0.0688,
+        "annual_return": 0.2278,
+        "test": "2021-02~2022-02"
+      },
+      {
+        "fold": 1,
+        "sharpe": -0.08,
+        "mdd": -0.173,
+        "annual_return": -0.0239,
+        "test": "2022-02~2023-03"
+      },
+      {
+        "fold": 2,
+        "sharpe": -0.66,
+        "mdd": -0.2283,
+        "annual_return": -0.1002,
+        "test": "2023-03~2024-03"
+      },
+      {
+        "fold": 3,
+        "sharpe": 0.42,
+        "mdd": -0.1956,
+        "annual_return": 0.0842,
+        "test": "2024-03~2025-03"
+      },
+      {
+        "fold": 4,
+        "sharpe": 1.81,
+        "mdd": -0.1204,
+        "annual_return": 0.4845,
+        "test": "2025-03~2026-04"
+      }
+    ],
+    "combined": {
+      "combined_sharpe": 0.6521,
+      "combined_mdd": -0.3023,
+      "annual_return": 0.1166,
+      "oos_days": 1250,
+      "elapsed_s": 190.7
+    }
+  },
+  "annual_breakdown_source": "see inner backtest result (Sharpe=0.68, MDD=-39.35%)",
+  "comparison_vs_base": {
+    "base_combined_sharpe": 0.6336,
+    "sn050_combined_sharpe": 0.6521,
+    "sharpe_improvement": 0.0185,
+    "base_combined_mdd": -0.457,
+    "sn050_combined_mdd": -0.3023,
+    "mdd_improvement": 0.1547
+  }
+}

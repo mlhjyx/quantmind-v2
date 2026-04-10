@@ -140,6 +140,13 @@ class SignalService:
         if scores.empty:
             raise ValueError("信号合成结果为空(scores为空)")
 
+        # Size-neutral adjustment (beta=0.0 时跳过)
+        if config.size_neutral_beta > 0:
+            from engines.size_neutral import apply_size_neutral, load_ln_mcap_for_date
+            _ln_row = load_ln_mcap_for_date(trade_date, conn)
+            if _ln_row is not None:
+                scores = apply_size_neutral(scores, _ln_row, config.size_neutral_beta)
+
         # ── 读取当前持仓权重 ──
         # 对应 script L1174-1185
         prev_weights = self._load_prev_weights(conn, strategy_id)
