@@ -1,17 +1,17 @@
-# QuantMind V2 宪法共享上下文（Step 6-B 更新, 2026-04-09）
+# QuantMind V2 宪法共享上下文（Step 6-H 更新, 2026-04-10）
 
 > 所有 agent 的 prompt 必须引用本文件内容。这是项目的不可协商规则。
 
 ## 项目概况
 - 个人 A 股绝对收益量化交易系统, Python 3.11 + PostgreSQL 16 + FastAPI + LightGBM
-- 当前: **Step 0→6-D 完成, PT 已重启 (2026-04-09)**, 基线: 5yr Sharpe=0.6095 (2021-2025, `regression_test.py`) / **12yr Sharpe=0.5309** (2014-2026, `metrics_12yr.json`, Step 6-D首跑), 排除 BJ/ST/停牌/新股
+- 当前: **Step 0→6-H 完成, PT 运行中 (SN b=0.50, 2026-04-10)**, 基线: 5yr Sharpe=0.6095 (`regression_test.py`) / 12yr 0.5309 / **SN b=0.50 inner 0.68, MDD=-39.35%** / WF OOS 0.6521, 排除 BJ/ST/停牌/新股
 - 目标: 年化 15-25%, Sharpe 1.0-2.0, MDD <15%
 - 优化目标排序: MDD > Sharpe > 因子数量（全团队共识）
 - **总路线图**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
 - **系统现状**: `SYSTEM_STATUS.md` (重构前快照 + §0 重构完成状态)
 - R1-R7 研究完成: 7 份报告已融入 Roadmap V3 第二部分
 
-## 十八条铁律（CLAUDE.md 完整定义, 此处仅列标题）
+## 二十四条铁律（CLAUDE.md 完整定义, 此处仅列标题）
 
 ### 工作原则类
 1. 不靠猜测做技术判断 — 外部 API/数据接口必须先读官方文档
@@ -44,6 +44,18 @@
 
 ### 成本对齐
 18. 回测成本实现必须与实盘对齐 — H0 验证 vs QMT 实盘误差 <5bps
+
+### IC 口径统一（Step 6-E）
+19. IC 定义全项目统一 — 走 `ic_calculator.py`, neutral_value + T+1 excess + Spearman
+
+### 因子噪声鲁棒性（Step 6-F）
+20. 因子噪声鲁棒性 G_robust — 20% 噪声 retention ≥0.50, 否则不入 Active 池
+
+### 工程纪律类（Step 6-H）
+21. 先搜索开源方案再自建 — Qlib/RD-Agent 优先评估
+22. 文档跟随代码 — 每次变更同步更新受影响文档
+23. 每个任务独立可执行 — 不依赖未实现模块
+24. 设计不超过 2 页 — 超过说明范围太大需拆分
 
 ## 因子审批链
 alpha_miner 提出 → factor 审经济学假设 → quant 审统计 (t>2.5/BH-FDR/corr<0.7) → ★strategy 确定匹配策略 (铁律 6) → SimBroker 回测 (paired bootstrap p<0.05 vs 基线) → 入池
@@ -86,7 +98,7 @@ challenge 方式必须验代码/跑数据, 不是读文档同意 (铁律 2)。
 ## 关键文件路径 (Step 6-B 更新)
 
 ### 主控
-- `D:\quantmind-v2\CLAUDE.md` — 编码必需信息 (18 条铁律完整定义)
+- `D:\quantmind-v2\CLAUDE.md` — 编码必需信息 (24 条铁律完整定义)
 - `D:\quantmind-v2\SYSTEM_STATUS.md` — 系统现状 (含 §0 重构完成状态)
 - `D:\quantmind-v2\LESSONS_LEARNED.md` — 经验教训
 - `D:\quantmind-v2\FACTOR_TEST_REGISTRY.md` — 因子测试注册表 (BH-FDR M 源)

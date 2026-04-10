@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT运行中(SN b=0.50已激活), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步**: 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER) → 阶段3(策略层扩展/CompositeSignalEngine)
+- **下一步**: Qlib+RD-Agent技术调研 → 阶段2(新信号维度: 盈利公告/分钟聚合/北向MODIFIER/行业动量/PEAD) → 阶段3(CompositeSignalEngine)
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -65,7 +65,7 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 quantmind-v2/
 ├── CLAUDE.md                    ← 本文件
 ├── SYSTEM_STATUS.md             ← ⭐ 系统现状全景（重构前体检产出）
-├── LESSONS_LEARNED.md           ← 经验教训（36条）
+├── LESSONS_LEARNED.md           ← 经验教训（48条, LL-001~051）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 45张+代码动态建表17张=DB实际62张）
@@ -321,6 +321,12 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - 实证: 21 个 PASS 因子在 5% 噪声下 retention 全部 ≥ 0.94 (无 fragile),
       在 20% 噪声下 retention 仍全部 ≥ 0.59 (最弱: nb_new_entry 0.591). CORE 5 因子全部稳健 (retention ≥ 0.96 @ 20%)
 
+### 工程纪律类（Step 6-H后, 2026-04-10）
+21. **先搜索开源方案再自建** — 任何新功能开发前先花半天搜索成熟开源实现（Qlib/RD-Agent/alphalens等）。自建引擎90%功能已被Qlib覆盖的教训。违反→重复造轮子浪费数月。
+22. **文档跟随代码** — 每次代码变更后必须同步更新受影响的文档（CLAUDE.md/SYSTEM_STATUS.md/DEV_*.md）。不留过时信息。违反→文档与代码不一致导致错误决策（5yr/12yr Sharpe混淆教训）。
+23. **每个任务独立可执行** — 不允许任务依赖未实现的模块。如果存在依赖，先实现依赖或拆分为独立可执行的子任务。违反→依赖死锁导致整个功能链条卡住（11份设计文档80%未实现的根因）。
+24. **设计不超过2页** — 超过2页的设计文档说明范围太大，需要拆分为可独立交付的子模块。每个子模块的设计必须包含MVP定义和验收标准。违反→过度设计无法落地（DEV_AI_EVOLUTION 0%实现教训）。
+
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
@@ -368,6 +374,10 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
 | Regime动态beta(RSV) | static b=0.50 Sharpe=0.6287 > dynamic 0.5253 > binary 0.5669 | Step 6-H |
 | Vol-targeting/DD-aware | 无改善或更差, Partial SN是唯一有效Modifier | Step 6-G |
+| 完全Size-neutral(b=1.0) | 损11% Sharpe, 过度惩罚小盘暴露 | Step 6-F |
+| 因子替换turnover_stability_20 | paired bootstrap p=0.92不显著, 非真alpha | Step 6-F |
+| Regime线性检测(5指标) | 5指标全p>0.05, 线性方法无法捕捉regime | Step 6-E |
+| 组合Modifier(Vol+DD叠加) | 叠加更差, Modifier相互干扰 | Step 6-G |
 
 ## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT运行中+SN b=0.50激活 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
@@ -418,7 +428,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - 处理: 保留Active，等权框架下不单独降权
   - 恢复条件: 连续3月IC_adjusted>0.01自动确认
 
-**PT状态**: 暂停(Step 0→6重构窗口, 2026-04-09起)。重构完成并通过全链路验证后再恢复。
+**PT状态**: 运行中 (SN b=0.50, 2026-04-10激活)。Step 0→6-H重构完成, Step 6-C冒烟测试8/8通过后重启。
 
 ## 文档查阅索引
 
@@ -477,8 +487,11 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ✅ 12年OOM: Parquet缓存+groupby替代pivot_table, Step 6-D成功跑通12年(2980天)
 
 ### 待办(阶段2+)
-- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER (新alpha来源)
+- ⬜ Qlib + RD-Agent 技术调研（评估是否替代自建引擎部分功能）
+- ⬜ 阶段2: 新信号维度探索（盈利公告因子/分钟聚合因子/北向MODIFIER/行业动量/PEAD）
 - ⬜ 阶段3: 策略层扩展 → CompositeSignalEngine (多策略组合)
+- ⬜ 回测引擎向量化（841s→<60s 目标）
+- 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
 📊 测试: 2115 tests / 98 test files (Step 5新增48测试)

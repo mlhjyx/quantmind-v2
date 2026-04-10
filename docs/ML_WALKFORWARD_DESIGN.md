@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~50% — walk_forward.py 已修复可用 (Step 6-D)。LightGBM 17因子 WF 验证 ML 无效 (OOS Sharpe=0.09)。
+> 仍有价值: WF 框架设计、fold 划分策略、OOS 验证方法论
+> 已过时/被替代: ML 模型选择部分 (LightGBM结论: 瓶颈在数据维度非模型)
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — LightGBM Walk-Forward 训练框架设计文档
 
 > **文档版本**: v2.1（对齐Roadmap V3.8）

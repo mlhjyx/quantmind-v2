@@ -1,18 +1,20 @@
 # SYSTEM_RUNBOOK.md — QuantMind V2 系统运行手册
 
 > **用途**: 给 Claude Code 的技术实施指南。描述系统**当前真实状态**, 不是设计愿景。
-> **更新时间**: 2026-04-09 (Step 6-B 重构后完全重写)
-> **配合文档**: CLAUDE.md (18 条铁律 + 配置), SYSTEM_STATUS.md (现状快照), docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (§第四部分含 Step 0→6-B 重构记录)
+> **更新时间**: 2026-04-10 (Step 6-H 更新)
+> **配合文档**: CLAUDE.md (24 条铁律 + 配置), SYSTEM_STATUS.md (现状快照), docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (§第四部分含 Step 0→6-H 重构记录)
 
 ---
+
+> ⚠️ 本文档在 Step 6-B 时编写，Step 6-C~H 后部分接口可能有变化。以实际代码为准。
 
 ## §1 系统当前状态快照
 
 | 维度 | 实际状态 |
 |------|---------|
-| 阶段 | Step 0→6-B 重构完成, PT 暂停中 |
-| 基线 Sharpe | **0.6095** (12 年 2014-2025, 排除 BJ, `cache/baseline/regression_result.json`) |
-| 基线 MDD | -50.75% |
+| 阶段 | Step 0→6-H 完成, PT 运行中 (SN b=0.50, 2026-04-10 激活) |
+| 基线 Sharpe | **0.6095** (5 年 regression 基线) / **0.5309** (12 年 2014-2026) / **0.68** (SN b=0.50 inner) |
+| 基线 MDD | -50.75% (5yr) / -56.37% (12yr base) / -39.35% (SN b=0.50 inner) |
 | 回测验收 | max_diff=0 (regression_test.py, 铁律 15) |
 | 后端 | 297 Python 文件 (backend/), FastAPI + sync psycopg2 + Celery |
 | 前端 | 122 TS/TSX 文件, React 18 + Tailwind 4.1 + ECharts, 重构窗口内暂停开发 |
@@ -99,7 +101,7 @@ D:\pgsql\bin\psql.exe -U xin -d quantmind_v2 -h 127.0.0.1
 
 ### 3.1 Task Scheduler (PT 主链)
 
-> PT 暂停期内以下任务不会实质触发, 但注册表中保持 Ready 状态。
+> PT 运行中 (SN b=0.50, 2026-04-10 激活)。以下任务正常调度。
 
 | 时间 | 任务名 | 执行命令 | 用途 |
 |------|--------|---------|------|
@@ -419,7 +421,7 @@ python scripts/approve_l4.py            # L4 熔断人工审批恢复
 | 你要做什么 | 看这里 |
 |-----------|-------|
 | 了解系统现状 | `SYSTEM_STATUS.md` (含 §0 重构完成状态) |
-| 查 18 条铁律 | `CLAUDE.md` |
+| 查 24 条铁律 | `CLAUDE.md` |
 | 查 Step 0→6-B 重构历史/决策 | `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分` |
 | 建数据库表 / 看 schema | `docs/QUANTMIND_V2_DDL_FINAL.sql` |
 | 后端架构/分层 | `docs/DEV_BACKEND.md §0` (重构后的新分层) |

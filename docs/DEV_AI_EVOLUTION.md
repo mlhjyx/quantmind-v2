@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~20% — IdeaAgent/FactorAgent/EvalAgent+PipelineOrchestrator已有代码框架(backend/engines/mining/agents/, 共4034行), 但未形成端到端自动闭环。RD-Agent(Q)已实现类似架构且更成熟。
+> 仍有价值: AI 闭环的概念框架可作为 RD-Agent 集成的参考
+> 已过时/被替代: 端到端闭环设计建议用 RD-Agent(Q) 替代自建
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — AI 闭环详细开发文档
 
 > 文档级别：实现级（供 Claude Code 执行）

@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~30% — notification_service(706行)+templates(387行)+throttler(111行)已实现多渠道通知框架, 但完整通知系统(邮件/微信/告警升级)未实现。
+> 仍有价值: 通知分级设计思路、多渠道路由逻辑
+> 已过时/被替代: 邮件/微信/告警升级等高级功能设计未启动
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — 通知告警详细开发文档
 
 > 文档级别：实现级（供 Claude Code 执行）

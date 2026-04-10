@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~25% — Step 4-A 完成8模块拆分，Hybrid 架构已实现。Step 2(向量化)/Step 3(Rust加速)未启动。
+> 仍有价值: §3 Hybrid架构设计、§4 接口定义、SignalComposer 已实现部分
+> 已过时/被替代: 性能优化路径(Rust/向量化)未启动，OOM 问题未在原设计中预见
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — 回测引擎详细开发文档
 
 > 文档级别：实现级（供 Claude Code 执行）
@@ -121,7 +127,7 @@ python scripts/run_backtest.py --config configs/pt_live.yaml
 ### 基线数据 (12 年)
 
 - 5 年回测 (Phase 1 加固后): Sharpe=0.94, MDD=-40.77%
-- **12 年回测 (Step 5 基线): Sharpe=0.6095, MDD=-50.75%, 耗时 80s**
+- **5 年回测 (Step 5 基线): Sharpe=0.6095, MDD=-50.75%, 耗时 80s** (注: 0.6095是5年非12年, 12年真实Sharpe=0.5309, Step 6-D首跑)
 - `cache/baseline/regression_result.json` 存基准, max_diff=0 验证可复现
 - `python scripts/regression_test.py` 做基准比对
 

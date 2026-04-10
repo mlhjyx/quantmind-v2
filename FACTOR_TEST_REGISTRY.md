@@ -10,10 +10,11 @@
 ## 累积统计
 
 - **累积测试总数 M**: 202 (74原始 + 128 Alpha158批量测试, 2026-04-04)
-- **PASS**: 24
+- **PASS**: 23
 - **FAIL**: 32
 - **CONDITIONAL**: 6
 - **REVERTED**: 3
+- **INVALIDATED**: 1 (mf_momentum_divergence, v3.4证伪)
 - **BLOCKED**: 2
 - **DEPRECATED**: 5
 - **NOT_TESTED**: 2
@@ -67,7 +68,7 @@
 | 40 | gap_frequency | +0.0595 | — | — | 2026-03-22 | Batch4 | PASS | |IC|=5.95%, 通过筛选 |
 | 41 | return_consistency | -0.0287 | — | — | 2026-03-22 | Batch4 | FAIL | |IC|=-2.87%, 方向反直觉或不稳定 |
 | 42 | turnover_skewness | — | — | >0.05 | 2026-03-22 | Batch4 | FAIL | IC不显著(ns) |
-| 43 | mf_momentum_divergence | +0.0910 | — | — | 2026-03-22 | Batch5 | PASS | |IC|=9.1%, 资金流动量背离, 最强新因子 |
+| 43 | mf_momentum_divergence | ~~+0.0910~~ **-0.0227** | — | — | 2026-03-22 / 修正 2026-04-10 | Batch5 | **INVALIDATED** | 原始IC=+9.1%为raw_value虚高, 中性化后IC=-2.27%. 14组回测全负. v3.4证伪(GA2). 见CLAUDE.md已知失败方向 |
 | 44 | net_mf_amount | +0.0490 | — | — | 2026-03-22 | Batch5 | PASS | |IC|=4.9%, 净资金流 |
 | 45 | big_order_ratio | — | — | — | 2026-03-22 | Batch5 | REVERTED | 方向反转: 大单占比方向与预期相反 |
 | 46 | big_small_divergence | +0.0375 | — | — | 2026-03-23 | Batch5b | PASS | |IC|=3.75%, 大小单分歧度 |
@@ -122,6 +123,7 @@ BH-FDR校正步骤:
 | **FAIL** | IC不显著 / 方向异常 / 数据不足 |
 | **CONDITIONAL** | 边界通过, 需进一步验证或特殊条件下可用 |
 | **REVERTED** | 初始通过后发现问题(如中性化后衰减/方向反转)被撤回 |
+| **INVALIDATED** | 经深入验证证伪(如raw IC虚高, 中性化后IC方向反转, 回测全负) |
 | **BLOCKED** | 数据依赖未满足, 无法测试 |
 | **DEPRECATED** | 与已有因子高度冗余(corr>0.7), 建议停止计算 |
 | **NOT_TESTED** | 已提出但尚未实际运行IC测试 |

@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~25% — 220 参数中约50个在用。Step 4-B YAML 配置驱动已实现核心参数。
+> 仍有价值: 参数命名规范、配置分层原则
+> 已过时/被替代: 未实现功能的参数定义无意义，实际参数以 configs/*.yaml 为准
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — 参数可配置性系统 详细开发文档
 
 > **对应总设计文档**: 第七章 §7.6

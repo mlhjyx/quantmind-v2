@@ -1,3 +1,9 @@
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
+> 实现状态: ~60% — 29个Service文件+22个API路由已实现, Router→Service→Engine三层分层完全落地。设计的17个核心Service全部有对应实现, 另有12个扩展Service(pt_*, qmt_*, realtime等)。
+> 仍有价值: §3 分层规范、§4 数据流定义、§5 协同矩阵
+> 已过时/被替代: 部分Service详细接口设计与实际签名有差异, 以代码为准
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+
 # QuantMind V2 — 后端服务层详细开发文档
 
 > 文档级别：实现级（供 Claude Code 执行）

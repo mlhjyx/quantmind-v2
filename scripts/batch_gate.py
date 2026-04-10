@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEPRECATED: 此为 batch_gate v1。请使用 scripts/batch_gate_v2.py
 """Step 6-E Part 3C: 批量 Factor Gate 执行.
 
 对 factor_values 里所有因子逐个跑 FactorGatePipeline 的 G1-G8 (可跑的部分),

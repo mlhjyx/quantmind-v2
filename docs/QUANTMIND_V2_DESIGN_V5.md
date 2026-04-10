@@ -1,8 +1,10 @@
 # QuantMind V2 — AI量化交易终端系统 总设计文档
 
-> **⚠️ 历史文档**: 本文档已被 `QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` 替代为当前总设计。
-> 本文件保留供局部设计参考（如§4.2因子清单、§8风控体系），不代表当前系统目标。
-> 729处引用使其无法归档，但引用方应以ROADMAP_V3为准。
+> **⚠️ 文档状态: ARCHIVED (2026-04-10)**
+> 实现状态: ~20% — 已被 ROADMAP_V3 替代。整体架构设计过大，实际运行的是子集。
+> 仍有价值: 数据模型定义、分层架构原则
+> 已过时/被替代: 大部分模块设计被 DEV_*.md 系列替代，总路线图迁移至 ROADMAP_V3
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
 
 > **版本**: 5.0 | **日期**: 2026-03-19
 > **作者**: Stanley Tu + Claude (Anthropic)
