@@ -1,6 +1,6 @@
-# Phase 1.2: 新信号维度 IC 评估报告
+# Phase 1.2: 新信号维度 IC 评估报告 (完整版)
 
-**日期**: 2026-04-10 | **来源**: Phase 1.2 自动生成
+**日期**: 2026-04-11 | **来源**: Phase 1.2 自动生成 (行业动量+北向V2+Alpha158六因子+PEAD)
 
 ---
 
@@ -101,8 +101,98 @@
 
 ### 不推荐 (高相关或IC不显著)
 
-- ind_mom_20: IC=-0.0308, t=-11.32
+- ind_mom_20: IC=-0.0308, t=-11.32, core_corr=0.539(reversal_20)
 - nb_acceleration: IC=0.0019, t=1.48
 - nb_change_excess: IC=0.0018, t=1.31
 - nb_consecutive_increase: IC=0.0030, t=1.78
 - nb_increase_ratio_20d: IC=0.0032, t=1.79
+
+---
+
+## 5. Alpha158六因子 IC评估 (用户定义版本, 非Qlib)
+
+**脚本**: `scripts/research/phase12_alpha158_six.py` | **数据**: 12年(2014-2026), 5419股
+
+| 因子 | 定义 | IC | IR | t-stat | 方向 | max CORE corr | 独立? |
+|------|------|------|------|--------|------|-------------|-------|
+| **RSQR_20** | stock_ret~market_ret OLS R² | +0.0515 | +0.409 | +22.19 | +1 | 0.348(bp_ratio) | **独立** |
+| **QTLU_20** | 收益率75th分位(20d) | -0.0823 | -0.539 | -29.24 | -1 | 0.673(turnover) | **borderline** |
+| IMAX_20 | max(daily_ret, 20d) | -0.0904 | -0.656 | -35.55 | -1 | 0.760(volatility) | 冗余 |
+| RESI_20 | OLS截距/alpha(20d) | -0.0681 | -0.466 | -25.29 | -1 | 0.817(reversal) | 冗余 |
+| IMIN_20 | min(daily_ret, 20d) | +0.0481 | +0.282 | +15.31 | +1 | 0.733(volatility) | 冗余 |
+| CORD_20 | corr(close, time, 20d) | -0.0447 | -0.307 | -16.63 | -1 | 0.740(reversal) | 冗余 |
+
+**结论**: 6/6 PASS (t>2.5), 全部regime stable. 仅RSQR_20和QTLU_20独立于CORE 5 (corr<0.7).
+**推荐E2E特征池**: RSQR_20 (强独立), QTLU_20 (borderline独立, IC强)
+**冗余因子仍可作ML特征**: IMAX/IMIN/RESI/CORD IC均显著, 作为LightGBM候选特征不受corr限制
+
+## 6. PEAD盈利公告因子验证
+
+**脚本**: `scripts/research/earnings_factor_calc.py` | **数据**: 154,571 SUE事件, 5690股, 2017-2026
+
+| 报告类型 | 5d IC | 7d IC | 10d IC | 15d IC | 20d IC | N |
+|---------|-------|-------|--------|--------|--------|---|
+| Q1 | -0.025(-4.8) | -0.011(-2.2) | -0.008(-1.6) | +0.000(+0.0) | -0.001(-0.2) | 36,708 |
+| H1 | -0.004(-0.8) | -0.012(-2.3) | +0.003(+0.6) | +0.001(+0.1) | -0.009(-1.7) | 37,828 |
+| **Q3** | **-0.078(-15.3)** | **-0.092(-18.1)** | **-0.098(-19.4)** | **-0.092(-18.2)** | **-0.076(-15.0)** | **38,645** |
+| Y | -0.032(-6.0) | -0.038(-7.2) | -0.041(-7.5) | -0.033(-6.1) | -0.037(-6.8) | 33,725 |
+| ALL | -0.034(-12.9) | -0.037(-14.1) | -0.035(-13.3) | -0.031(-11.8) | -0.030(-11.5) | 146,906 |
+
+**关键发现**:
+- A股PEAD是**反转效应**(direction=-1), 非美股式正漂移
+- 最强信号: Q3 × 10d IC=-0.098, t=-19.4 (利空出尽效应)
+- Y报告全持有期显著负IC (t>6)
+- Q1/H1信号较弱
+- FACTOR_TEST_REGISTRY #57 方向从+1修正为-1
+
+## 7. 数据缺口修复结果
+
+| 项目 | 结果 |
+|------|------|
+| financial_indicators | roe 97.1%, revenue_yoy 78.7%, eps 97.1%, basic_eps_yoy 78.7% |
+| eps_surprise_pct | 86%已填充(178,526/207,893), 足够PEAD使用 |
+| industry_sw2 | **未填充**: industry_sw1已存储SW二级(110值), DDL industry_sw2冗余 |
+| industry_sw_l1 | 0%未填充, 但不影响中性化(用industry_sw1) |
+| board列 | symbols表全NULL, 但Parquet cache已正确填充(main/gem/star/bse) |
+| 磁盘 | D盘430GB可用 |
+
+## 8. 分钟聚合因子 — 候选清单 (Phase 1.2遗留)
+
+项目无明确因子定义, 以下为候选清单供后续Phase确认:
+
+| 候选因子 | 定义 | 数据需求 | 限制 |
+|---------|------|---------|------|
+| minute_turn_std | 日内5min成交量std/mean | minute_bars | 覆盖率46%(2537/5499), 仅5年 |
+| minute_volatility | 日内5min收益率std | minute_bars | 同上 |
+| morning_volume_ratio | 上午量/全天量 | minute_bars | 同上 |
+| intraday_vol_skew | 日内收益率偏度 | minute_bars | 同上 |
+| max_intraday_drawdown | 日内最大回撤 | minute_bars | 同上 |
+
+**阻塞**: 覆盖率仅46.1%, 截面不足。需补拉后再计算。标记Phase 2或独立Sprint处理。
+
+## 9. E2E特征池最终推荐 (Phase 1.2完成)
+
+### Tier 1: 独立信息维度 (推荐入池)
+
+| 因子 | IC | t-stat | max CORE corr | 来源 |
+|------|------|--------|-------------|------|
+| **RSQR_20** | +0.052 | +22.2 | 0.348 | Alpha158六因子 |
+| **QTLU_20** | -0.082 | -29.2 | 0.673 | Alpha158六因子 |
+| **ind_mom_60** | -0.035 | -12.9 | 0.286 | 行业动量 |
+| nb_change_rate_20d | +0.016 | +12.6 | 0.383 | 北向V2 |
+| nb_trend_20d | +0.016 | +12.2 | 0.378 | 北向V2 |
+| nb_ratio_change_5d | +0.012 | +7.6 | 0.093 | 北向V2 |
+| nb_net_buy_5d_ratio | +0.010 | +6.3 | 0.100 | 北向V2 |
+
+### Tier 2: ML特征候选 (corr>0.5但IC强, 适合LightGBM)
+
+IMAX_20, IMIN_20, RESI_20, CORD_20, ind_mom_20, PEAD(Q3方向-1)
+
+### 总结
+
+Phase 1.2共评估 **4个方向26个因子**, 其中:
+- Alpha158六因子: 6/6 PASS, 2独立(RSQR_20, QTLU_20)
+- 行业动量: 2/2 PASS, 1独立(ind_mom_60)
+- 北向V2: 15因子, 7显著独立
+- PEAD: 方向修正为-1(反转), Q3×10d IC=-0.098极强
+- 分钟因子: 遗留(覆盖率不足)
