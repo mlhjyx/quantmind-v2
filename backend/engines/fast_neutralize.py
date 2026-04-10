@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from app.services.db import get_sync_conn
+from app.services.industry_utils import apply_sw2_to_sw1
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,10 @@ def fast_neutralize_batch(
     factor_df["raw_value"] = factor_df["raw_value"].astype(float)
     logger.info("  加载%d行 (%.1fs)", len(factor_df), time.time() - t_start)
 
-    # Step 2: 行业映射 + 市值
+    # Step 2: 行业映射(SW2→SW1一级29组) + 市值
     cur.execute("SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'")
-    ind_dict = {r[0]: r[1] if r[1] and r[1] != "nan" else "其他" for r in cur.fetchall()}
+    ind_dict_sw2 = {r[0]: r[1] if r[1] and r[1] != "nan" else "其他" for r in cur.fetchall()}
+    ind_dict = apply_sw2_to_sw1(ind_dict_sw2, conn)
 
     cur.execute(
         "SELECT code, trade_date, total_mv FROM daily_basic "

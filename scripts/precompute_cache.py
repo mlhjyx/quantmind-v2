@@ -93,12 +93,18 @@ def export_profiler_shared(conn):
     csi_monthly = csi_dt.resample("ME").last().pct_change().dropna()
     csi_monthly.to_frame("monthly_ret").to_parquet(f"{CACHE_DIR}/csi_monthly.parquet")
 
-    # 5. Industry map
+    # 5. Industry map (SW2→SW1一级29组映射)
     industry = pd.read_sql(
         "SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn
     )
+    l2_to_l1 = pd.read_sql(
+        "SELECT sw_l2_name, sw_l1_name FROM sw_industry_mapping", conn
+    ).set_index("sw_l2_name")["sw_l1_name"].to_dict()
+    industry["industry_sw1"] = industry["industry_sw1"].map(
+        lambda x: l2_to_l1.get(x, "其他") if pd.notna(x) else "其他"
+    )
     industry.to_parquet(f"{CACHE_DIR}/industry_map.parquet", index=False)
-    meta["industry_map"] = {"rows": len(industry)}
+    meta["industry_map"] = {"rows": len(industry), "groups": industry["industry_sw1"].nunique()}
 
     return meta
 

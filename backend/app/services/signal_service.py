@@ -324,8 +324,10 @@ class SignalService:
         cur = conn.cursor()
         placeholders = ",".join(["%s"] * len(top_codes))
         cur.execute(
-            f"""SELECT code, industry_sw1 FROM symbols
-                WHERE code IN ({placeholders})""",
+            f"""SELECT s.code, COALESCE(m.sw_l1_name, '其他') AS industry_l1
+                FROM symbols s
+                LEFT JOIN sw_industry_mapping m ON s.industry_sw1 = m.sw_l2_name
+                WHERE s.code IN ({placeholders})""",
             tuple(top_codes),
         )
         code_industry = dict(cur.fetchall())

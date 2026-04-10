@@ -90,9 +90,9 @@ DB_PARAMS = {
 
 
 def load_parquet_cache(start_year: int = 2014, end_year: int = 2026) -> tuple:
-    """从Parquet缓存加载 price_data + factor_data + benchmark。"""
+    """从Parquet缓存加载 price_data + benchmark。"""
     t0 = time.monotonic()
-    frames_pd, frames_fd, frames_bm = [], [], []
+    frames_pd, frames_bm = [], []
     for year in range(start_year, end_year + 1):
         ydir = CACHE_DIR / str(year)
         if not ydir.exists():
@@ -112,18 +112,15 @@ def load_parquet_cache(start_year: int = 2014, end_year: int = 2026) -> tuple:
                 ],
             )
         )
-        frames_fd.append(pd.read_parquet(ydir / "factor_data.parquet"))
         frames_bm.append(pd.read_parquet(ydir / "benchmark.parquet"))
 
     price_df = pd.concat(frames_pd, ignore_index=True)
-    factor_df = pd.concat(frames_fd, ignore_index=True)
     bench_df = pd.concat(frames_bm, ignore_index=True)
     elapsed = time.monotonic() - t0
     print(
-        f"  Parquet加载完成: price={len(price_df)}行, factor={len(factor_df)}行, "
-        f"bench={len(bench_df)}行 ({elapsed:.1f}s)"
+        f"  Parquet加载完成: price={len(price_df):,}行, bench={len(bench_df):,}行 ({elapsed:.1f}s)"
     )
-    return price_df, factor_df, bench_df
+    return price_df, bench_df
 
 
 # ═══════════════════════════════════════════════════
@@ -156,13 +153,11 @@ def compute_simple_four(
     print(f"    QTLU_20: {n_valid:,} 有效值 ({time.monotonic() - t0:.1f}s)")
 
     # CORD_20: corr(close, time_index) over rolling window
-    # 对每列(股票), 滚动计算close与[0,1,...,19]的Pearson相关
+    # corr(close, [0..W-1]) is invariant to shift, so corr(close, global_index) is equivalent
     time_idx = pd.Series(np.arange(len(price_wide), dtype=float), index=price_wide.index)
-    cord_parts = {}
-    for col in price_wide.columns:
-        cord_parts[col] = price_wide[col].rolling(window, min_periods=window).corr(time_idx)
-    results["CORD_20"] = pd.DataFrame(cord_parts, index=price_wide.index)
-    n_valid = results["CORD_20"].notna().sum().sum()
+    cord = price_wide.rolling(window, min_periods=window).corr(time_idx)
+    results["CORD_20"] = cord
+    n_valid = cord.notna().sum().sum()
     print(f"    CORD_20: {n_valid:,} 有效值 ({time.monotonic() - t0:.1f}s)")
 
     print(f"  简单四因子计算完成 ({time.monotonic() - t0:.1f}s)")
@@ -246,22 +241,6 @@ def evaluate_factor_ic(
     stats["factor_name"] = factor_name
     stats["ic_series"] = ic_series
     return stats
-
-
-def build_core5_wide(factor_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """从Parquet factor_data构建CORE 5因子宽表。"""
-    results = {}
-    for fname in CORE_5:
-        sub = factor_df[factor_df["factor_name"] == fname]
-        wide = sub.pivot_table(
-            index="trade_date",
-            columns="code",
-            values="raw_value",
-            aggfunc="last",
-        ).sort_index()
-        results[fname] = wide
-        print(f"    {fname}: {wide.shape[0]}日 × {wide.shape[1]}股")
-    return results
 
 
 # ═══════════════════════════════════════════════════
@@ -508,7 +487,7 @@ def main():
 
     # ─── 1. 加载数据 ───
     print("\n[1/6] 加载Parquet缓存...")
-    price_df, factor_df, bench_df = load_parquet_cache(start_year, 2026)
+    price_df, bench_df = load_parquet_cache(start_year, 2026)
 
     # 过滤: 排除BJ/ST/停牌/新股
     mask = (
@@ -539,7 +518,11 @@ def main():
     # ─── 3. 计算forward excess returns ───
     print("\n[3/6] 计算前瞻超额收益 (horizon=20d)...")
     t0 = time.monotonic()
-    fwd_returns = compute_forward_excess_returns(price_df, bench_df, horizon=20)
+    # ic_calculator expects long format (code, trade_date, adj_close)
+    price_long = clean[["code", "trade_date", "adj_close"]].copy()
+    bench_long = bench_df[["trade_date", "close"]].drop_duplicates("trade_date").copy()
+    fwd_returns = compute_forward_excess_returns(price_long, bench_long, horizon=20)
+    del price_long, bench_long
     print(f"  fwd_returns: {fwd_returns.shape}, {time.monotonic() - t0:.1f}s")
 
     # ─── 4. 计算六因子 (先简单四个, 后RSQR/RESI) ───
@@ -583,15 +566,35 @@ def main():
     del all_factors
     gc.collect()
 
-    # ─── 5b. CORE 5 IC (用于相关性比对) ───
-    print("\n  构建CORE 5 IC...")
-    core5_wide = build_core5_wide(factor_df)
+    # ─── 5b. CORE 5 IC (用于相关性比对, 从DB加载) ───
+    print("\n  构建CORE 5 IC (from DB)...")
+    conn = psycopg2.connect(**DB_PARAMS)
     core5_ic = {}
-    for fname, fw in core5_wide.items():
-        ic_s = compute_ic_series(fw, fwd_returns)
+    for fname in CORE_5:
+        df_c5 = pd.read_sql(
+            "SELECT code, trade_date, COALESCE(neutral_value, raw_value) as value "
+            "FROM factor_values WHERE factor_name = %s AND raw_value IS NOT NULL",
+            conn,
+            params=(fname,),
+        )
+        if df_c5.empty:
+            continue
+        df_c5["trade_date"] = pd.to_datetime(df_c5["trade_date"]).dt.date
+        wide_c5 = df_c5.pivot_table(
+            index="trade_date", columns="code", values="value", aggfunc="last"
+        ).sort_index()
+        common_d = wide_c5.index.intersection(fwd_returns.index)
+        common_c = wide_c5.columns.intersection(fwd_returns.columns)
+        if len(common_d) < 30:
+            continue
+        ic_s = compute_ic_series(
+            wide_c5.loc[common_d, common_c], fwd_returns.loc[common_d, common_c]
+        )
         core5_ic[fname] = ic_s
         all_ic_series[fname] = ic_s
-    del core5_wide, factor_df
+        print(f"    {fname}: IC={ic_s.mean():.4f}, {len(ic_s)}天")
+        del df_c5, wide_c5
+    conn.close()
     gc.collect()
 
     # ─── 6. 相关性 + Regime + 报告 ───

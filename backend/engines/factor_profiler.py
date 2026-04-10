@@ -130,7 +130,10 @@ def _load_shared_data(conn):
     csi_monthly = csi_dt.resample("ME").last().pct_change().dropna()
 
     industry = pd.read_sql("SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn)
-    industry_map = industry.set_index("code")["industry_sw1"].fillna("其他")
+    # SW2→SW1映射: 110组→29组, 避免小组WLS不稳定
+    from app.services.industry_utils import apply_sw2_to_sw1
+    sw2_series = industry.set_index("code")["industry_sw1"].fillna("其他")
+    industry_map = apply_sw2_to_sw1(sw2_series, conn)
 
     logger.info("共享数据加载完成(DB): %.1fs", time.time() - t0)
     return close_pivot, fwd_excess, csi_monthly, industry_map, trading_dates

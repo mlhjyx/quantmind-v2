@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等V4 Phase 2验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅完成(841s→14.6s) → Phase 1.2 新信号维度(Alpha158六因子+行业动量+北向V2+PEAD) → Phase 2 信号框架(融合E2E主攻: LightGBM预测层+Portfolio Network权重层 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
+- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅完成(841s→14.6s) → ~~Phase 1.2~~ ✅完成(Alpha158六因子+行业动量+北向V2+PEAD+SW1中性化迁移) → **Phase 2 信号框架**(融合E2E主攻: LightGBM预测层+Portfolio Network权重层 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -37,7 +37,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 池 | 数量 | 说明 |
 |----|------|------|
 | CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20(WARNING), amihud_20, bp_ratio |
-| PASS候选 | 30 | FACTOR_TEST_REGISTRY.md中PASS状态因子，待评估入池 |
+| PASS候选 | 32 | FACTOR_TEST_REGISTRY.md中PASS状态因子(含Alpha158六+PEAD-SUE)，待评估入池 |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
@@ -338,7 +338,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=69，排除重复验证+CANCELLED）
+- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=88，排除重复验证+CANCELLED）
 - 与现有Active因子 corr < 0.7, 选股月收益 corr < 0.3
 - 中性化后IC必须验证（原始IC和中性化IC并列展示）
 - 因子预处理顺序: **去极值(MAD 5σ) → 填充(行业中位数) → 中性化(行业+市值WLS) → z-score**（不可变）
@@ -501,7 +501,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 ### 待办(V4路线图)
 - ✅ 阶段0: Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + Alpha158因子借鉴 + riskfolio-lib (2026-04-10)
 - ✅ **Phase 1.1**: 回测Phase A优化（841s→14.6s, groupby+bisect替代O(N×M)全表扫描, 2026-04-10）
-- ⬜ **Phase 1.2**: 新信号维度（Alpha158六因子RSQR/RESI/IMAX/IMIN/QTLU/CORD + 行业动量 + 北向V2 + PEAD）— 可与1.1并行
+- ✅ **Phase 1.2**: 新信号维度（Alpha158六因子6/6 PASS + 行业动量2/2 PASS + 北向V2 15因子 + PEAD方向修正为-1 + SW1中性化迁移53因子, 2026-04-11）
 - ⬜ **Phase 2.1**: 融合E2E（LightGBM预测层+Portfolio Network权重层, loss=-Sharpe, 详见V4附录A）
 - ⬜ **Phase 2.2**: IC加权SignalComposer（baseline对比）
 - ⬜ **Phase 2.3**: riskfolio-lib Portfolio优化 MVO/RP/BL（baseline对比）

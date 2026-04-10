@@ -368,13 +368,16 @@ class MultiFreqBacktestRunner:
         return pd.read_sql(query, self.conn, params=params)
 
     def _load_industry_map(self) -> dict[str, str]:
-        """从DB加载行业映射。"""
+        """从DB加载行业映射(SW1一级29组)。"""
+        from app.services.industry_utils import apply_sw2_to_sw1
+
         query = """
             SELECT code, industry_sw1 FROM symbols
             WHERE industry_sw1 IS NOT NULL
         """
         df = pd.read_sql(query, self.conn)
-        return dict(zip(df["code"], df["industry_sw1"], strict=False))
+        sw2_dict = dict(zip(df["code"], df["industry_sw1"], strict=False))
+        return apply_sw2_to_sw1(sw2_dict, self.conn)
 
     @staticmethod
     def print_comparison(comparison: MultiFreqComparison) -> str:

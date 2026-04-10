@@ -113,3 +113,29 @@ def get_l2_to_l1_map(conn) -> dict[str, str]:
             "AND industry_sw_l1 IS NOT NULL"
         )
         return {r[0]: r[1] for r in cur.fetchall()}
+
+
+def apply_sw2_to_sw1(
+    industry_sw2: dict[str, str] | pd.Series,
+    conn,
+    fallback: str = "其他",
+) -> dict[str, str] | pd.Series:
+    """将SW2(二级110组)行业映射为SW1(一级29组)。
+
+    中性化统一使用SW1一级行业(29组)，避免SW2小组(<10只)导致WLS回归不稳定。
+    映射来源: sw_industry_mapping表(110→29)。
+
+    Args:
+        industry_sw2: {code: sw2_name} dict 或 pd.Series(index=code)
+        conn: psycopg2连接
+        fallback: 未映射的SW2行业归入此分组
+
+    Returns:
+        与输入同类型，值替换为SW1一级行业名
+    """
+    l2_to_l1 = get_l2_to_l1_map(conn)
+
+    if isinstance(industry_sw2, pd.Series):
+        return industry_sw2.map(lambda x: l2_to_l1.get(x, fallback))
+
+    return {code: l2_to_l1.get(sw2, fallback) for code, sw2 in industry_sw2.items()}

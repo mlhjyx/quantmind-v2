@@ -1,7 +1,7 @@
 > **⚠️ 文档状态: NOT_STARTED (2026-04-10)**
 > 实现状态: 0% — A股未成熟前不启动外汇模块。Phase 2+ 计划。
 > 仍有价值: 外汇数据源调研、交易时间设计
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 外汇模块详细开发文档
 

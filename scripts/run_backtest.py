@@ -86,12 +86,15 @@ def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
 
 
 def load_industry(conn) -> pd.Series:
-    """加载行业分类。"""
+    """加载行业分类(SW1一级29组)。"""
+    from app.services.industry_utils import apply_sw2_to_sw1
+
     df = pd.read_sql(
         "SELECT code, industry_sw1 FROM symbols WHERE industry_sw1 IS NOT NULL",
         conn,
     )
-    return df.set_index("code")["industry_sw1"]
+    sw2_series = df.set_index("code")["industry_sw1"]
+    return apply_sw2_to_sw1(sw2_series, conn)
 
 
 def load_price_data(start_date, end_date, conn) -> pd.DataFrame:

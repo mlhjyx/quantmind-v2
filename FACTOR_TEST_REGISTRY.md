@@ -9,9 +9,9 @@
 
 ## 累积统计
 
-- **累积测试总数 M**: 202 (74原始 + 128 Alpha158批量测试, 2026-04-04)
-- **PASS**: 23
-- **FAIL**: 32
+- **累积测试总数 M**: 213 (74原始 + 128 Alpha158批量 + 6 Alpha158用户定义 + 5 PEAD-SUE验证, 2026-04-11)
+- **PASS**: 32 (原23 + 6 Alpha158六因子 + 3 PEAD-SUE)
+- **FAIL**: 34 (原32 + 2 PEAD-SUE弱信号)
 - **CONDITIONAL**: 6
 - **REVERTED**: 3
 - **INVALIDATED**: 1 (mf_momentum_divergence, v3.4证伪)
@@ -82,7 +82,7 @@
 | 54 | GPA | -0.0380 | -2.95 | 0.004 | 2026-03-22 | 研究否决 | FAIL | A股方向反转(-0.038), 中性化后IC=-0.011(p=0.14), 行业proxy非alpha |
 | 55 | revenue_accel | — | — | — | 2026-03-22 | 研究否决 | FAIL | 不入库, 数据质量/覆盖不足 |
 | 56 | roe_change_q | — | — | — | 2026-03-22 | 研究否决 | FAIL | 不入库, 数据质量/覆盖不足 |
-| 57 | earnings_surprise_car | +0.0534 | — | — | 2026-03-23 | PEAD | PASS | |IC|=5.34%, 盈利惊喜CAR |
+| 57 | earnings_surprise_car | +0.0534 | — | — | 2026-03-23 | PEAD | PASS | |IC|=5.34%, 盈利惊喜CAR. **方向修正**: A股PEAD为反转效应(direction=-1), 非美股式正漂移. 详见#83-87 SUE验证 |
 | 58 | earnings_revision | — | — | >0.05 | 2026-03-23 | PEAD | FAIL | IC不显著(ns) |
 | 59 | ann_date_proximity | — | — | >0.05 | 2026-03-23 | PEAD | FAIL | IC不显著(ns) |
 | 60 | RSI_14 | -0.0606 | — | — | 2026-03-23 | TA-Lib | PASS | |IC|=6.06%, 超卖信号 |
@@ -108,6 +108,11 @@
 | 80 | IMIN_20 | +0.0481 | +15.31 | <0.001 | 2026-04-11 | Phase1.2-A158Six | PASS | 窗口内最小日收益率(rolling 20d), direction=+1(深跌均值回归), ICIR=+0.282, hit=63.2%, max_core_corr=0.733(volatility_20), 冗余不推荐独立入池 |
 | 81 | CORD_20 | -0.0447 | -16.63 | <0.001 | 2026-04-11 | Phase1.2-A158Six | PASS | close-time相关性(rolling 20d), direction=-1(趋势反转), ICIR=-0.307, hit=39.4%, max_core_corr=0.740(reversal_20), 冗余不推荐独立入池 |
 | 82 | RESI_20 | -0.0681 | -25.29 | <0.001 | 2026-04-11 | Phase1.2-A158Six | PASS | CAPM回归截距/alpha(rolling 20d), direction=-1(跑输→均值回归), ICIR=-0.466, hit=33.2%, max_core_corr=0.817(reversal_20), 冗余不推荐独立入池 |
+| 83 | sue_all (PEAD验证) | -0.0340 | -12.90 | <0.001 | 2026-04-11 | Phase1.2-PEAD | PASS | SUE全报告类型(154K事件), direction=-1(A股反转效应), 5d/10d/20d IC均显著, 非独立测试(#57验证) |
+| 84 | sue_q3 (PEAD验证) | -0.0980 | -19.40 | <0.001 | 2026-04-11 | Phase1.2-PEAD | PASS | **最强PEAD信号**: Q3报告×10d IC=-0.098(t=-19.4), direction=-1(利空出尽效应), 38645事件, **推荐E2E特征池** |
+| 85 | sue_y (PEAD验证) | -0.0410 | -7.50 | <0.001 | 2026-04-11 | Phase1.2-PEAD | PASS | 年报SUE, direction=-1, 全持有期显著(t>6), 33725事件 |
+| 86 | sue_q1 (PEAD验证) | -0.0080 | -1.60 | 0.110 | 2026-04-11 | Phase1.2-PEAD | FAIL | Q1报告SUE信号弱, 10d IC=-0.008(t=-1.6不显著), 36708事件 |
+| 87 | sue_h1 (PEAD验证) | -0.0090 | -1.70 | 0.090 | 2026-04-11 | Phase1.2-PEAD | FAIL | H1(半年报)SUE信号弱, 20d IC=-0.009(t=-1.7不显著), 37828事件 |
 
 ---
 
@@ -115,7 +120,7 @@
 
 ### BH-FDR校正
 
-当前累积M = 77（排除重复验证条目#65 + 2个CANCELLED）。
+当前累积M = 88（排除重复验证条目#65 + 2个CANCELLED, 包含#77-82 Alpha158六因子 + #83-87 PEAD-SUE验证）。
 
 BH-FDR校正步骤:
 1. 对所有M个p-value排序: p_(1) <= p_(2) <= ... <= p_(M)
