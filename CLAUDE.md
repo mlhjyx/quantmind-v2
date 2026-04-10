@@ -502,7 +502,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ⬜ 阶段2: 新信号维度探索（盈利公告因子/分钟聚合因子/北向MODIFIER/行业动量/PEAD）
 - ⬜ 阶段3: 策略层扩展 → CompositeSignalEngine (多策略组合)
 - ⬜ 回测引擎向量化（841s→<60s 目标）
-- 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+- 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
 📊 测试: 2115 tests / 98 test files (Step 5新增48测试)

@@ -2,7 +2,7 @@
 > 实现状态: ~40% — 24个页面文件已创建(超过设计的12个), 含Dashboard/Execution/Portfolio/FactorLab/Backtest/Mining/Strategy/Risk/PMS等。但部分页面功能不完整, 重构窗口内暂停开发。
 > 仍有价值: 页面布局规范、组件设计、数据流定义
 > 已过时/被替代: 后端 API 接口在 Step 6 重构后可能有变化, 前端需重新对齐
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 前端 UI 详细开发文档
 

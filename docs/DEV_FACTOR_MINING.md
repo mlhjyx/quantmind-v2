@@ -2,7 +2,7 @@
 > 实现状态: ~55% — Gate/Profiler/IC完整。GP引擎(1263行)+暴力枚举(1167行)+DeepSeek客户端(396行)+3个Agent(idea/factor/eval)+Pipeline编排器(1208行)已实现, 但未形成端到端自动闭环。
 > 仍有价值: 因子预处理流程、Gate 评估框架、IC 定义规范、GP算子集设计
 > 已过时/被替代: 如采用 RD-Agent 则GP/LLM挖掘部分被替代
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 因子挖掘系统 详细开发文档
 

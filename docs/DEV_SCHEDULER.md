@@ -2,7 +2,7 @@
 > 实现状态: ~25% — 7个Celery task文件+2个beat crontab(周日IC监控+工作日PMS)+Windows Task Scheduler PT链路已实现。
 > 仍有价值: 调度链路时间线设计、任务依赖关系
 > 已过时/被替代: 未实现模块的调度设计, 实际调度以 Windows Task Scheduler + Celery Beat 为准
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 调度与运维详细开发文档
 

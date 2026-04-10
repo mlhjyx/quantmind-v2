@@ -1,6 +1,6 @@
 # 设计文档 vs 实际实现差距分析
 
-**日期**: 2026-04-10 | **来源**: Step 6-H 审计 + QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+**日期**: 2026-04-10 | **来源**: Step 6-H 审计 + QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 ---
 

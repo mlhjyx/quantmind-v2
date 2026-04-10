@@ -2,7 +2,7 @@
 > 实现状态: ~25% — Step 4-A 完成8模块拆分，Hybrid 架构已实现。Step 2(向量化)/Step 3(Rust加速)未启动。
 > 仍有价值: §3 Hybrid架构设计、§4 接口定义、SignalComposer 已实现部分
 > 已过时/被替代: 性能优化路径(Rust/向量化)未启动，OOM 问题未在原设计中预见
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 # QuantMind V2 — 回测引擎详细开发文档
 

@@ -4,7 +4,7 @@
 > 实现状态: ~20% — 已被 ROADMAP_V3 替代。整体架构设计过大，实际运行的是子集。
 > 仍有价值: 数据模型定义、分层架构原则
 > 已过时/被替代: 大部分模块设计被 DEV_*.md 系列替代，总路线图迁移至 ROADMAP_V3
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V3.md
+> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 > **版本**: 5.0 | **日期**: 2026-03-19
 > **作者**: Stanley Tu + Claude (Anthropic)
