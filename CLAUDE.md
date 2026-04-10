@@ -9,10 +9,10 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-C重构完成, PT已重启(2026-04-09), Sharpe基线=**5yr 0.6095 (2021-2025, `regression_test.py`) / 12yr 0.5309 (2014-2026, `metrics_12yr.json`)** — 排除BJ. 历史文档曾把5yr误标为12yr, Step 6-D已修正
+- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT运行中(SN b=0.50已激活), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步**: Step 6-B文档更新 → BJ股过滤落地 / is_st修复 / 12年OOM修复 → 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER)
+- **下一步**: 阶段2(盈利公告因子+分钟聚合因子+北向MODIFIER) → 阶段3(策略层扩展/CompositeSignalEngine)
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -364,9 +364,12 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | LLM自由生成因子 | IC=0.006-0.008, 需数据驱动prompt | 5次测试 |
 | mf_divergence独立策略 | IC=-2.27%(非9.1%), 14组回测全负 | GA2证伪 |
 | 同因子换ML模型 | ML Sharpe=0.68 vs 等权0.83, 瓶颈在数据维度 | G1 LightGBM |
+| LightGBM 17因子WF | OOS IC=0.067正但弱, 月度回测Sharpe=0.09, 再次确认ML无效 | Step 6-H |
 | IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
+| Regime动态beta(RSV) | static b=0.50 Sharpe=0.6287 > dynamic 0.5253 > binary 0.5669 | Step 6-H |
+| Vol-targeting/DD-aware | 无改善或更差, Partial SN是唯一有效Modifier | Step 6-G |
 
-## 策略配置（v1.2→Top-20已部署，Step 0→6-C重构完成 PT已重启 2026-04-09）
+## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT运行中+SN b=0.50激活 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
 # 配置来源: configs/pt_live.yaml (Step 4-B, 铁律15要求YAML驱动)
 # 回测入口: python scripts/run_backtest.py --config configs/pt_live.yaml
@@ -376,6 +379,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 合成: 等权平均
 选股: Top 20 (PT_TOP_N=20)
 调仓: 月度（月末最后交易日）
+Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap), Step 6-H验证)
 约束: 行业上限=无(PT_INDUSTRY_CAP=1.0), 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
 排除: 北交所BJ股 + ST + 停牌 + 新股(list<60天)
 
@@ -395,6 +399,10 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - 逐年Sharpe mean=0.79 ± 1.20, 负年份: 2017/2018/2022/2023 (4/12年)
     - WF 5-fold OOS (仅覆盖 2021-02~2026-04): chain-link Sharpe=0.6336, std=1.52 UNSTABLE
     - 结论: regime-dependent, 小盘牛/熊市杀, 非alpha强策略 (FF3归因见 cache/baseline/ff3_attribution.json)
+  SN b=0.50 inner (Step 6-H, 2014-01~2026-04): **Sharpe=0.68, MDD=-39.35%**
+    - 来源: cache/baseline/wf_sn050_result.json
+    - WF 5-fold OOS: Sharpe=0.6521, MDD=-30.23% (优于base 0.6336/-45.7%)
+    - 唯一有效Modifier, PT已激活 (pt_live.yaml size_neutral_beta=0.50)
 
 成本: 佣金万0.854(国金实际, min 5元) + 印花税(2023-08-28前0.1%,后0.05%) + 过户费0.001% + 三因素滑点(spread+impact+overnight_gap)
 ```
@@ -445,7 +453,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - ✅ 清明改造完成（Servy+Redis5.0+StreamBus+QMT A-lite+PMS v1.0）
 - ✅ 回测引擎Phase 1加固(印花税+三因素滑点+z-score clip+DataFeed校验)
 
-### Step 0→6-D 重构 + OOS 验证 (2026-04-09)
+### Step 0→6-H 重构 + OOS 验证 + 研究收束 (2026-04-09~10)
 - ✅ Step 0: PT暂停+备份+基线建立(Sharpe=0.94, 5年)
 - ✅ Step 1: DB全表code格式统一带后缀 + 缓存重建
 - ✅ Step 2: 信号路径统一为SignalComposer(铁律16)
@@ -454,18 +462,23 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 - ✅ Step 4-A: backtest_engine.py拆分为backend/engines/backtest/ 8模块
 - ✅ Step 4-B: YAML配置驱动 + config_loader + run_backtest改造
 - ✅ Step 5: Parquet缓存系统(`cache/backtest/2014-2026/`, 12年×3文件) + 48新测试
-  - ⚠️ 当时声称"12yr回测跑通 Sharpe=0.6095"实为5yr regression, 12yr首跑在Step 6-D
 - ✅ Step 6-A: run_paper_trading.py拆分1734→345行 + 4个pt_* Service
 - ✅ Step 6-B: minute_bars格式统一(139M行) + 7份文档全面更新 + 重构遗留项收尾
 - ✅ Step 6-C: 冒烟测试8/8 + PT重启 + 6 runtime bug修复
-- ✅ Step 6-D: walk_forward.py修复 + 12年首次真跑(Sharpe=0.5309) + WF 5-fold OOS + 逐年度分解 + FF3归因 + 文档修正
+- ✅ Step 6-D: walk_forward.py修复 + 12年首次真跑(Sharpe=0.5309) + WF 5-fold OOS + 逐年度分解 + FF3归因
+- ✅ Step 6-E: IC基础设施修复 (ic_calculator统一口径 + 铁律19) + Alpha衰减归因
+- ✅ Step 6-F: 因子替换无效 + Size-neutral有效 + 噪声鲁棒性全PASS + 铁律20
+- ✅ Step 6-G: Modifier层实验 (Vol-targeting/DD-aware无效, Partial SN是唯一有效Modifier)
+- ✅ Step 6-H: SN inner实现(Sharpe=0.68) + WF验证(0.6521) + Regime CLOSED + LightGBM CLOSED + PT激活SN b=0.50
 
-### 遗留项(Step 6-B后)
-- ⬜ BJ股过滤落地(signal_service生产+回测默认)
-- ⬜ is_st标记全是false → 从Tushare补充
-- ⬜ 回测引擎12年OOM → DataHandler模式
-- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER
-- ⬜ 阶段3: 策略层扩展 → 阶段4: CompositeSignalEngine
+### 已解决的遗留项(Step 6-B~6-H期间)
+- ✅ BJ股过滤: `load_universe()` 已过滤 `board != 'bse'`, PT+回测+WF三路径全覆盖
+- ✅ is_st标记: stock_status_daily已有552K/12M条is_st=true记录
+- ✅ 12年OOM: Parquet缓存+groupby替代pivot_table, Step 6-D成功跑通12年(2980天)
+
+### 待办(阶段2+)
+- ⬜ 阶段2: 盈利公告因子+分钟聚合因子+北向MODIFIER (新alpha来源)
+- ⬜ 阶段3: 策略层扩展 → CompositeSignalEngine (多策略组合)
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
 📊 测试: 2115 tests / 98 test files (Step 5新增48测试)

@@ -15,7 +15,7 @@ strategy:
   industry_cap: 1.0       # 无行业约束(1.0=不限)
   turnover_cap: 0.5       # 单次换手率上限50%
   cash_buffer: 0.03       # 3%现金缓冲
-  # size_neutral_beta: 0.50  # Step 6-H validated, activate in next PT window
+  size_neutral_beta: 0.50  # Step 6-H validated (Sharpe=0.68, WF OOS=0.6521), activated 2026-04-10
 
 execution:
   mode: paper             # paper / live / backtest
