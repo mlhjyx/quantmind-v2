@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,36 @@ if TYPE_CHECKING:
     from engines.datafeed import DataFeed
 
 logger = structlog.get_logger(__name__)
+
+
+def _build_factor_date_index(
+    factor_df: pd.DataFrame,
+) -> tuple[list[date], dict[date, pd.DataFrame]]:
+    """预索引factor_df: groupby一次, O(1)按日期查找。
+
+    Phase 1.1 优化: 替代 factor_df[factor_df["trade_date"] <= rd] 的O(N)全表扫描。
+    原代码每次调仓日扫描56.8M行(OBJECT dtype比较), 144次调仓=8.2B次Python比较。
+    改为一次groupby + bisect查找, O(N+M*logM)。
+
+    Returns:
+        (sorted_dates, date_to_df) — 排序日期列表 + 日期→因子DataFrame字典
+    """
+    factor_by_date: dict[date, pd.DataFrame] = {}
+    for td, grp in factor_df.groupby("trade_date"):
+        factor_by_date[td] = grp
+    sorted_dates = sorted(factor_by_date.keys())
+    return sorted_dates, factor_by_date
+
+
+def _find_latest_factor_date(
+    sorted_dates: list[date],
+    target_date: date,
+) -> date | None:
+    """用bisect找到 <= target_date 的最近因子日期。O(logN)。"""
+    idx = bisect_right(sorted_dates, target_date)
+    if idx == 0:
+        return None
+    return sorted_dates[idx - 1]
 
 
 def run_hybrid_backtest(
@@ -52,6 +83,7 @@ def run_hybrid_backtest(
     # DataFeed兼容: 如果传入DataFeed对象，提取底层DataFrame
     if datafeed is not None:
         from engines.datafeed import DataFeed
+
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
 
@@ -66,13 +98,14 @@ def run_hybrid_backtest(
         top_n=config.top_n,
         weight_method="equal",
         rebalance_freq=config.rebalance_freq,
-        industry_cap=1.0,    # 回测默认无行业约束(可通过config覆盖)
-        turnover_cap=1.0,    # 回测默认无换手约束
-        cash_buffer=0.0,     # 回测默认无现金缓冲
+        industry_cap=1.0,  # 回测默认无行业约束(可通过config覆盖)
+        turnover_cap=1.0,  # 回测默认无换手约束
+        cash_buffer=0.0,  # 回测默认无现金缓冲
         size_neutral_beta=_sn_beta_from_cfg,
     )
     # 覆盖FACTOR_DIRECTION: 用调用方传入的directions
     from engines.signal_engine import FACTOR_DIRECTION
+
     saved_directions = dict(FACTOR_DIRECTION)
     FACTOR_DIRECTION.update(directions)
 
@@ -87,6 +120,7 @@ def run_hybrid_backtest(
     _ln_mcap_pivot = None
     if _sn_beta > 0:
         from engines.size_neutral import load_ln_mcap_pivot
+
         _ln_mcap_pivot = load_ln_mcap_pivot(min(trading_days), max(trading_days), conn)
 
     # 确保factor_df有neutral_value列(兼容raw_value输入)
@@ -112,13 +146,17 @@ def run_hybrid_backtest(
                     _status_by_date[td] = set()
                 _status_by_date[td].update(grp["code"].tolist())
 
+    # Phase 1.1 优化: 预索引factor_df, O(1)按日期查找
+    # 原代码: factor_df[factor_df["trade_date"] <= rd] 每次扫描全表(56.8M行×OBJECT比较)
+    # 优化后: groupby一次 + bisect查找, 消除8.2B次Python比较(12yr 144调仓日)
+    factor_sorted_dates, factor_by_date = _build_factor_date_index(factor_df)
+
     target_portfolios: dict[date, dict[str, float]] = {}
     for rd in rebal_dates:
-        day_data = factor_df[factor_df["trade_date"] <= rd]
-        if day_data.empty:
+        latest_date = _find_latest_factor_date(factor_sorted_dates, rd)
+        if latest_date is None:
             continue
-        latest_date = day_data["trade_date"].max()
-        day_data = day_data[day_data["trade_date"] == latest_date]
+        day_data = factor_by_date[latest_date]
 
         # per-date排除
         exclude = _status_by_date.get(latest_date, set())
@@ -129,6 +167,7 @@ def run_hybrid_backtest(
         # Size-neutral adjustment (beta=0.0 时 apply_size_neutral 直接返回原值)
         if _sn_beta > 0 and _ln_mcap_pivot is not None and latest_date in _ln_mcap_pivot.index:
             from engines.size_neutral import apply_size_neutral
+
             scores = apply_size_neutral(scores, _ln_mcap_pivot.loc[latest_date], _sn_beta)
 
         weights = builder.build(scores, pd.Series(dtype=str))
@@ -144,7 +183,10 @@ def run_hybrid_backtest(
 
     logger.info(
         "Phase A信号生成完成(SignalComposer): %d个调仓日, %d个因子, Top-%d, SN_beta=%.2f",
-        len(target_portfolios), len(directions), config.top_n, _sn_beta,
+        len(target_portfolios),
+        len(directions),
+        config.top_n,
+        _sn_beta,
     )
 
     # Phase B: 事件驱动执行
@@ -155,6 +197,7 @@ def run_hybrid_backtest(
 # ============================================================
 # Composite 回测入口 (Phase 4)
 # ============================================================
+
 
 def run_composite_backtest(
     factor_df: pd.DataFrame,
@@ -193,6 +236,7 @@ def run_composite_backtest(
 
     if datafeed is not None:
         from engines.datafeed import DataFeed
+
         if isinstance(datafeed, DataFeed):
             price_data = datafeed.df
 
@@ -225,6 +269,7 @@ def run_composite_backtest(
     _ln_mcap_pivot_c = None
     if _sn_beta_c > 0:
         from engines.size_neutral import load_ln_mcap_pivot
+
         _ln_mcap_pivot_c = load_ln_mcap_pivot(min(trading_days), max(trading_days), conn)
 
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
@@ -248,21 +293,28 @@ def run_composite_backtest(
                     _status_by_date_c[td] = set()
                 _status_by_date_c[td].update(grp["code"].tolist())
 
+    # Phase 1.1 优化: 预索引factor_df (同run_hybrid_backtest)
+    factor_sorted_dates_c, factor_by_date_c = _build_factor_date_index(factor_df)
+
     target_portfolios: dict[date, dict[str, float]] = {}
     for rd in rebal_dates:
-        day_data = factor_df[factor_df["trade_date"] <= rd]
-        if day_data.empty:
+        latest_date = _find_latest_factor_date(factor_sorted_dates_c, rd)
+        if latest_date is None:
             continue
-        latest_date = day_data["trade_date"].max()
-        day_data = day_data[day_data["trade_date"] == latest_date]
+        day_data = factor_by_date_c[latest_date]
         exclude = _status_by_date_c.get(latest_date, set())
         scores = composer.compose(day_data, exclude=exclude)
         if scores.empty:
             continue
 
         # Size-neutral adjustment
-        if _sn_beta_c > 0 and _ln_mcap_pivot_c is not None and latest_date in _ln_mcap_pivot_c.index:
+        if (
+            _sn_beta_c > 0
+            and _ln_mcap_pivot_c is not None
+            and latest_date in _ln_mcap_pivot_c.index
+        ):
             from engines.size_neutral import apply_size_neutral
+
             scores = apply_size_neutral(scores, _ln_mcap_pivot_c.loc[latest_date], _sn_beta_c)
 
         weights = builder.build(scores, pd.Series(dtype=str))
@@ -307,7 +359,9 @@ def run_composite_backtest(
                                 )
                         logger.info(
                             "[Composite] %s: %s triggered (%s), weight_sum=%.2f",
-                            signal_date, modifier.name, result.reasoning,
+                            signal_date,
+                            modifier.name,
+                            result.reasoning,
                             sum(adjusted.values()),
                         )
 

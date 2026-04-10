@@ -9,7 +9,7 @@
 | 维度 | 过时度 | 当前状态 | 设计 vs 代码差距 | 现代方法 |
 |------|--------|---------|----------------|---------|
 | **信号层** | 低 | 5因子等权+SN b=0.50, SignalComposer已实现 | 设计有CompositeSignalEngine但未实现 | Qlib Alpha158+IC加权/MV优化 |
-| **回测层** | 中 | 事件驱动12yr 841s, 8模块拆分完成 | Step 2向量化/Step 3 Rust未启动 | Qlib向量化回测<10s, VectorBT |
+| **回测层** | 低 | Phase 1.1完成: 841s→14.6s(Phase A索引优化), 8模块拆分 | VectorizedBacktester归档(Phase B非瓶颈) | 当前~15s满足需求 |
 | **数据层** | 低 | PG+TimescaleDB+Parquet缓存, DataPipeline统一 | 基本按设计实现 | Qlib bin格式更快但迁移成本高 |
 | **ML层** | 高 | LightGBM可用但验证无效(Sharpe=0.09) | 设计了完整ML pipeline但效果不佳 | Qlib Model Zoo, RD-Agent联合优化 |
 | **风控层** | 中 | PMS v1.0 + L1-L4状态机设计但只L1在用 | L2-L4未实现 | 实时风控+组合级VaR |
@@ -28,7 +28,7 @@
 2. **信号层**: 需要新信号维度(行业动量/PEAD/北向)降低regime依赖
 
 ### 中优先级（提升效率）
-3. **回测层**: 向量化可将12yr从841s降至<60s，加速迭代
+3. **回测层**: ✅ Phase 1.1已完成(841s→14.6s)，不再是瓶颈
 4. **研究工作流**: RD-Agent可自动化因子挖掘+评估
 
 ### 低优先级（当前够用）

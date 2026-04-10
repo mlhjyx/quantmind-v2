@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等V4 Phase 2验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: Phase 1.1 回测向量化(841s→<60s) + Phase 1.2 新信号维度(Alpha158六因子+行业动量+北向V2+PEAD) → Phase 2 信号框架(融合E2E主攻: LightGBM预测层+Portfolio Network权重层 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
+- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅完成(841s→14.6s) → Phase 1.2 新信号维度(Alpha158六因子+行业动量+北向V2+PEAD) → Phase 2 信号框架(融合E2E主攻: LightGBM预测层+Portfolio Network权重层 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -360,6 +360,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | GPU矩阵运算 | CPU numpy | 6.2x加速(5000×5000 matmul) | PyTorch cu128, RTX 5070 12GB |
 | Pipeline Step1 | 串行拉取 | 三API并行 | klines+daily_basic+moneyflow并行 |
 | 时间范围查询 | 全表扫描 | chunk exclusion | TimescaleDB hypertable自动分区 |
+| 回测Phase A信号生成 | 841s(12yr) | ~15s | groupby预索引+bisect O(logN)替代O(N×M)全表扫描 |
 
 - **Parquet缓存路径**: 本地快照, 按日期分区, `_load_shared_data`自动检测缓存有效性
 - **cupy**: 不支持Blackwell架构(sm_120), 暂不可用, 用PyTorch替代
@@ -499,7 +500,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 ### 待办(V4路线图)
 - ✅ 阶段0: Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + Alpha158因子借鉴 + riskfolio-lib (2026-04-10)
-- ⬜ **Phase 1.1**: 回测向量化 VectorizedBacktester（841s→<60s, numpy矩阵运算）
+- ✅ **Phase 1.1**: 回测Phase A优化（841s→14.6s, groupby+bisect替代O(N×M)全表扫描, 2026-04-10）
 - ⬜ **Phase 1.2**: 新信号维度（Alpha158六因子RSQR/RESI/IMAX/IMIN/QTLU/CORD + 行业动量 + 北向V2 + PEAD）— 可与1.1并行
 - ⬜ **Phase 2.1**: 融合E2E（LightGBM预测层+Portfolio Network权重层, loss=-Sharpe, 详见V4附录A）
 - ⬜ **Phase 2.2**: IC加权SignalComposer（baseline对比）
