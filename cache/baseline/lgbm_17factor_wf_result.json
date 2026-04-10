@@ -1,0 +1,147 @@
+{
+  "config": {
+    "features": [
+      "a158_cord30",
+      "a158_vsump60",
+      "amihud_20",
+      "bp_ratio",
+      "dv_ttm",
+      "ep_ratio",
+      "gap_frequency_20",
+      "large_order_ratio",
+      "price_volume_corr_20",
+      "relative_volume_20",
+      "reversal_20",
+      "reversal_60",
+      "rsrs_raw_18",
+      "turnover_mean_20",
+      "up_days_ratio_20",
+      "volatility_20",
+      "volume_std_20"
+    ],
+    "target": "excess_return_20",
+    "gpu": true,
+    "train_months": 24,
+    "n_folds": 7
+  },
+  "fold_results": [
+    {
+      "fold_id": 1,
+      "train_period": "2020-07-01..2022-06-30",
+      "test_period": "2023-01-03..2023-06-30",
+      "train_ic": 0.1435,
+      "valid_ic": 0.1274,
+      "oos_ic": 0.0526,
+      "feature_importance_top5": {
+        "reversal_60": 4210.317846536636,
+        "volume_std_20": 1623.2861072421074,
+        "turnover_mean_20": 1062.0717467069626,
+        "a158_cord30": 969.8837040662766,
+        "up_days_ratio_20": 944.8751960992813
+      }
+    },
+    {
+      "fold_id": 2,
+      "train_period": "2020-07-01..2022-12-30",
+      "test_period": "2023-07-03..2023-12-29",
+      "train_ic": 0.1292,
+      "valid_ic": 0.0492,
+      "oos_ic": 0.0569,
+      "feature_importance_top5": {
+        "reversal_60": 2375.6635632514954,
+        "large_order_ratio": 1142.0273205041885,
+        "turnover_mean_20": 948.2157789468765,
+        "volume_std_20": 923.0709995031357,
+        "a158_cord30": 854.7853572368622
+      }
+    },
+    {
+      "fold_id": 3,
+      "train_period": "2020-07-01..2023-06-30",
+      "test_period": "2024-01-02..2024-06-28",
+      "train_ic": 0.1663,
+      "valid_ic": 0.0916,
+      "oos_ic": 0.1391,
+      "feature_importance_top5": {
+        "reversal_60": 6782.034364789724,
+        "turnover_mean_20": 2155.0789992064238,
+        "large_order_ratio": 2040.887800052762,
+        "gap_frequency_20": 1733.3200136721134,
+        "volume_std_20": 1619.4855504333973
+      }
+    },
+    {
+      "fold_id": 4,
+      "train_period": "2022-01-04..2023-12-29",
+      "test_period": "2024-07-01..2024-12-31",
+      "train_ic": 0.2076,
+      "valid_ic": 0.1683,
+      "oos_ic": 0.0982,
+      "feature_importance_top5": {
+        "gap_frequency_20": 2472.8320836871862,
+        "large_order_ratio": 2078.6637498512864,
+        "volume_std_20": 1743.7664436101913,
+        "amihud_20": 1521.0537650063634,
+        "ep_ratio": 1283.9209819696844
+      }
+    },
+    {
+      "fold_id": 5,
+      "train_period": "2022-07-01..2024-06-28",
+      "test_period": "2025-01-02..2025-06-30",
+      "train_ic": 0.1265,
+      "valid_ic": 0.0666,
+      "oos_ic": 0.0704,
+      "feature_importance_top5": {
+        "up_days_ratio_20": 360.22547340393066,
+        "volatility_20": 145.56639218330383,
+        "turnover_mean_20": 70.37383794784546,
+        "dv_ttm": 69.53946954011917,
+        "volume_std_20": 60.991249799728394
+      }
+    },
+    {
+      "fold_id": 6,
+      "train_period": "2023-01-03..2024-12-31",
+      "test_period": "2025-07-01..2025-12-31",
+      "train_ic": 0.2024,
+      "valid_ic": 0.1063,
+      "oos_ic": 0.0487,
+      "feature_importance_top5": {
+        "volume_std_20": 1979.0192121118307,
+        "gap_frequency_20": 1936.59544493258,
+        "amihud_20": 1604.1373080164194,
+        "reversal_20": 1561.2111696228385,
+        "turnover_mean_20": 1461.8253713846207
+      }
+    },
+    {
+      "fold_id": 7,
+      "train_period": "2023-07-03..2025-06-30",
+      "test_period": "2026-01-05..2026-03-24",
+      "train_ic": 0.142,
+      "valid_ic": 0.0351,
+      "oos_ic": 0.0233,
+      "feature_importance_top5": {
+        "turnover_mean_20": 154.62525844573975,
+        "up_days_ratio_20": 145.73433208465576,
+        "amihud_20": 145.06279921531677,
+        "volume_std_20": 117.88406205177307,
+        "reversal_20": 95.43931818008423
+      }
+    }
+  ],
+  "backtest": {
+    "sharpe": 0.0901,
+    "mdd": -0.5325,
+    "annual_return": -0.0256,
+    "n_rebal": 39,
+    "total_return": -0.0804
+  },
+  "elapsed_s": 45.4,
+  "comparison": {
+    "lgbm_17factor_sharpe": 0.0901,
+    "equal_weight_base_wf_sharpe": 0.6336,
+    "equal_weight_12yr_sharpe": 0.5309
+  }
+}

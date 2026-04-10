@@ -1,0 +1,78 @@
+{
+  "regime_signal": "stoch_rsv_20 on CSI300",
+  "beta_distribution": {
+    "oversold_025": 702,
+    "neutral_050": 1306,
+    "overbought_075": 972
+  },
+  "results": {
+    "static_b050": {
+      "sharpe": 0.6287,
+      "mdd": -0.4142,
+      "sortino": 0.7496,
+      "annual_return": 0.1478,
+      "total_return": 4.3841,
+      "days": 2980,
+      "train_2014_2020": {
+        "sharpe": 0.6658,
+        "mdd": -0.4142
+      },
+      "test_2021_2026": {
+        "sharpe": 0.5895,
+        "mdd": -0.3294
+      },
+      "elapsed_s": 322.0
+    },
+    "dynamic_rsv": {
+      "sharpe": 0.5253,
+      "mdd": -0.4679,
+      "sortino": 0.6107,
+      "annual_return": 0.1187,
+      "total_return": 2.9366,
+      "days": 2980,
+      "train_2014_2020": {
+        "sharpe": 0.5553,
+        "mdd": -0.4679
+      },
+      "test_2021_2026": {
+        "sharpe": 0.4859,
+        "mdd": -0.4553
+      },
+      "elapsed_s": 445.4
+    },
+    "binary_rsv": {
+      "sharpe": 0.5669,
+      "mdd": -0.412,
+      "sortino": 0.6717,
+      "annual_return": 0.1269,
+      "total_return": 3.3004,
+      "days": 2980,
+      "train_2014_2020": {
+        "sharpe": 0.608,
+        "mdd": -0.412
+      },
+      "test_2021_2026": {
+        "sharpe": 0.5177,
+        "mdd": -0.3079
+      },
+      "elapsed_s": 530.8
+    },
+    "base_no_sn": {
+      "sharpe": 0.4575,
+      "mdd": -0.5684,
+      "sortino": 0.5542,
+      "annual_return": 0.1037,
+      "total_return": 2.3374,
+      "days": 2980,
+      "train_2014_2020": {
+        "sharpe": 0.4967,
+        "mdd": -0.5684
+      },
+      "test_2021_2026": {
+        "sharpe": 0.4036,
+        "mdd": -0.5479
+      },
+      "elapsed_s": 402.6
+    }
+  }
+}

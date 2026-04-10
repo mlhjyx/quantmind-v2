@@ -40,14 +40,30 @@ def predictions_to_backtest(
     benchmark_data: pd.DataFrame | None = None,
     top_n: int = 20,
 ) -> dict:
-    """将 OOS 预测转为 target_portfolios 并回测。"""
+    """将 OOS 预测转为 target_portfolios 并回测（月度调仓）。"""
+    # 只在月末最后交易日调仓，与等权基线对齐
+    oos_df = oos_df.copy()
+    oos_df["trade_date"] = pd.to_datetime(oos_df["trade_date"])
+    all_dates = sorted(oos_df["trade_date"].unique())
+    monthly_dates = (
+        pd.Series(all_dates)
+        .groupby(pd.Series(all_dates).dt.to_period("M"))
+        .last()
+        .values
+    )
+    monthly_set = set(pd.to_datetime(monthly_dates))
+
     target_portfolios = {}
     for td, group in oos_df.groupby("trade_date"):
+        if td not in monthly_set:
+            continue
         top = group.nlargest(top_n, "predicted")
         if len(top) == 0:
             continue
         w = 1.0 / len(top)
-        target_portfolios[td] = {row["code"]: w for _, row in top.iterrows()}
+        # BacktestEngine expects datetime.date keys (matching price_data)
+        key = td.date() if hasattr(td, "date") else td
+        target_portfolios[key] = {row["code"]: w for _, row in top.iterrows()}
 
     if not target_portfolios:
         return {"sharpe": 0.0, "mdd": 0.0, "annual_return": 0.0, "n_rebal": 0}
@@ -74,10 +90,11 @@ def main():
     print("LightGBM 17-Factor Walk-Forward Experiment")
     print("=" * 60)
 
-    # 配置
+    # 配置 — parquet_path跳过DB查询, 避免LATERAL JOIN OOM
     config = MLConfig(
         feature_names=PASS_17_FACTORS,
         target="excess_return_20",
+        parquet_path="cache/ml/features_17factor.parquet",
         gpu=True,
         train_months=24,
         valid_months=6,
@@ -115,7 +132,7 @@ def main():
         print(f"\n--- Fold {fold.fold_id} ---")
         try:
             fr, preprocessor = trainer.train_fold(fold, df)
-            oos_df = trainer.predict_oos(fold, df, preprocessor, fr.model)
+            oos_df = trainer.predict_oos(fold, df, model_path=fr.model_path, preprocessor=preprocessor)
 
             fold_results.append({
                 "fold_id": fold.fold_id,
