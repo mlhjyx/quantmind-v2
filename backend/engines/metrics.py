@@ -464,6 +464,10 @@ def calc_open_gap_stats(fills: list, price_data: pd.DataFrame) -> float:
     """隔夜跳空统计(CLAUDE.md规则5)。
 
     买入日 open vs 前日close 的平均偏差。
+
+    Phase 1.2 优化: 预索引price_data by code, O(1)查找替代全表扫描。
+    原代码每笔交易扫描11M行price_data, 4507笔=49.5B次比较(507秒)。
+    优化后: groupby一次 + dict查找, O(N_price + N_trades)。
     """
     if not fills:
         return 0.0
@@ -472,19 +476,27 @@ def calc_open_gap_stats(fills: list, price_data: pd.DataFrame) -> float:
     if not buy_fills:
         return 0.0
 
+    # 预索引: 只处理有交易的股票, groupby一次 + date→row_idx字典
+    trade_codes = {f.code for f in buy_fills}
+    relevant = price_data[price_data["code"].isin(trade_codes)]
+    _by_code: dict[str, pd.DataFrame] = {}
+    _date_idx: dict[str, dict] = {}
+    for code, grp in relevant.groupby("code"):
+        df = grp.sort_values("trade_date").reset_index(drop=True)
+        _by_code[code] = df
+        _date_idx[code] = dict(zip(df["trade_date"], range(len(df)), strict=False))
+
     gaps = []
     for f in buy_fills:
-        # 找到该股票执行日的open和前日close
-        stock_data = price_data[price_data["code"] == f.code].sort_values("trade_date")
-        exec_idx = stock_data[stock_data["trade_date"] == f.trade_date].index
-        if len(exec_idx) == 0:
+        di = _date_idx.get(f.code)
+        if di is None:
             continue
-        idx = exec_idx[0]
-        row_idx = stock_data.index.get_loc(idx)
-        if row_idx == 0:
+        row_idx = di.get(f.trade_date)
+        if row_idx is None or row_idx == 0:
             continue
-        prev_close = stock_data.iloc[row_idx - 1]["close"]
-        exec_open = stock_data.iloc[row_idx]["open"]
+        sdf = _by_code[f.code]
+        prev_close = float(sdf.at[row_idx - 1, "close"])
+        exec_open = float(sdf.at[row_idx, "open"])
         if prev_close > 0:
             gaps.append((exec_open - prev_close) / prev_close)
 

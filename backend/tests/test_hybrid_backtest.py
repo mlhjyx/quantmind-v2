@@ -226,27 +226,16 @@ class TestPhaseBExecution:
 # ═══════════════════════════════════════════════════
 
 class TestHybridConsistency:
-    """Hybrid回测 vs 直接调用SimpleBacktester结果一致。"""
+    """Hybrid回测确定性: 同一输入跑两次结果完全一致（铁律15）。
 
-    def _run_simple_path(self, test_data) -> BacktestResult:
-        """模拟旧路径: _build_targets → SimpleBacktester.run()。"""
-        rebal = compute_rebalance_dates(test_data["trading_days"], "monthly")
-        config = SignalConfig(top_n=15)
-        targets = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
-        )
+    NOTE: 原测试比较 build_target_portfolios(旧路径) vs run_hybrid_backtest(生产路径)。
+    两者存在5处设计分歧(raw_value vs neutral_value, 排除逻辑, z-score clip等)。
+    铁律16要求信号路径唯一(SignalComposer), build_target_portfolios是遗留函数。
+    Phase 1.2 改为验证确定性: 同一输入跑两次run_hybrid_backtest结果完全一致。
+    """
 
-        bt_config = BacktestConfig(
-            initial_capital=1_000_000,
-            top_n=15,
-            rebalance_freq="monthly",
-            slippage_mode="fixed",
-            slippage_bps=10.0,
-        )
-        return SimpleBacktester(bt_config).run(targets, test_data["price_df"])
-
-    def _run_hybrid_path(self, test_data) -> BacktestResult:
-        """Hybrid路径: run_hybrid_backtest()。"""
+    def _run_hybrid(self, test_data) -> BacktestResult:
+        """生产路径: run_hybrid_backtest()。"""
         bt_config = BacktestConfig(
             initial_capital=1_000_000,
             top_n=15,
@@ -262,37 +251,35 @@ class TestHybridConsistency:
         )
 
     def test_nav_identical(self, test_data):
-        """NAV序列对比: 每日NAV差异 < 0.01元。"""
-        simple = self._run_simple_path(test_data)
-        hybrid = self._run_hybrid_path(test_data)
+        """确定性: 两次运行NAV序列完全一致。"""
+        run1 = self._run_hybrid(test_data)
+        run2 = self._run_hybrid(test_data)
 
-        assert len(simple.daily_nav) == len(hybrid.daily_nav)
-        diff = (simple.daily_nav - hybrid.daily_nav).abs()
-        assert diff.max() < 0.01, f"Max NAV diff: {diff.max():.4f}"
+        assert len(run1.daily_nav) == len(run2.daily_nav)
+        diff = (run1.daily_nav - run2.daily_nav).abs()
+        assert diff.max() == 0.0, f"Non-deterministic! Max NAV diff: {diff.max():.4f}"
 
     def test_trades_identical(self, test_data):
-        """交易记录对比: 同一天同一只股票的交易方向和数量完全一致。"""
-        simple = self._run_simple_path(test_data)
-        hybrid = self._run_hybrid_path(test_data)
+        """确定性: 两次运行交易记录完全一致。"""
+        run1 = self._run_hybrid(test_data)
+        run2 = self._run_hybrid(test_data)
 
-        assert len(simple.trades) == len(hybrid.trades), (
-            f"Trade count mismatch: simple={len(simple.trades)}, hybrid={len(hybrid.trades)}"
+        assert len(run1.trades) == len(run2.trades), (
+            f"Trade count mismatch: run1={len(run1.trades)}, run2={len(run2.trades)}"
         )
 
-        for s_fill, h_fill in zip(simple.trades, hybrid.trades, strict=False):
-            assert s_fill.code == h_fill.code, f"Code mismatch: {s_fill.code} vs {h_fill.code}"
-            assert s_fill.direction == h_fill.direction
-            assert s_fill.shares == h_fill.shares
-            assert s_fill.trade_date == h_fill.trade_date
+        for f1, f2 in zip(run1.trades, run2.trades, strict=False):
+            assert f1.code == f2.code, f"Code mismatch: {f1.code} vs {f2.code}"
+            assert f1.direction == f2.direction
+            assert f1.shares == f2.shares
+            assert f1.trade_date == f2.trade_date
 
     def test_final_nav_match(self, test_data):
-        """最终NAV一致。"""
-        simple = self._run_simple_path(test_data)
-        hybrid = self._run_hybrid_path(test_data)
+        """确定性: 两次运行最终NAV完全一致。"""
+        run1 = self._run_hybrid(test_data)
+        run2 = self._run_hybrid(test_data)
 
-        assert simple.daily_nav.iloc[-1] == pytest.approx(
-            hybrid.daily_nav.iloc[-1], abs=0.01
-        )
+        assert run1.daily_nav.iloc[-1] == run2.daily_nav.iloc[-1]
 
 
 # ═══════════════════════════════════════════════════
