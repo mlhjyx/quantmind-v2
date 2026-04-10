@@ -228,12 +228,12 @@
 |--------|------|------|
 | QuantMind-FastAPI | ✅ Running | uvicorn --workers 2, port 8000 |
 | QuantMind-Celery | ✅ Running | celery worker --pool=solo |
-| QuantMind-CeleryBeat | 🔴 **Stopped** | 定时调度器未运行 |
-| QuantMind-QMTData | ✅ Running | QMT数据同步→Redis(60s) |
+| QuantMind-CeleryBeat | ✅ Running | 定时调度器 (PMS 14:30 + GP 周日22:00), 自04-03 Servy迁移后持续运行 |
+| QuantMind-QMTData | 🔴 **Stopped** | PT暂停期间已停止 (2026-04-10) |
 | Redis | ✅ Running | port 6379, uptime 2天 |
 | PostgreSQL | ✅ Running | port 5432 |
 
-> 🔴 **CeleryBeat已停止** — PMS 14:30检查、GP周日触发等Celery Beat调度任务全部不执行。
+> ℹ️ CeleryBeat 自04-03 Servy迁移后持续运行。QMTData 因PT暂停已停止。
 
 ---
 
@@ -468,11 +468,13 @@ run_paper_trading.py
 > 🟡 两个备份任务重复: QM-DailyBackup和QuantMind_DailyBackup
 > 🟡 QuantMind_DailySignal的NextRun显示3月25日,可能触发条件有问题
 
-### Celery Beat调度（当前不运行）
-CeleryBeat服务已停止 🔴,以下任务不会执行:
-- PMS 14:30阶梯利润保护检查
-- GP因子挖掘(周日22:00)
+### Celery Beat调度（正常运行 ✅）
+CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
+- PMS 14:30阶梯利润保护检查 (工作日, 最近触发: 2026-04-10 14:30)
+- GP因子挖掘(周日22:00, 最近触发: 2026-04-05 22:00)
 - 其他Beat定时任务
+
+> ⚠️ 审计时 (04-02) 误判为 Stopped, 实际 stderr 日志显示 04-03 17:32 首次启动后持续运行。历史记录: 04-07→04-09 有短暂中断 (PT暂停期间), 04-09 17:34 自动恢复。
 
 ---
 
@@ -637,7 +639,7 @@ CeleryBeat服务已停止 🔴,以下任务不会执行:
 | F1 | **code格式混乱**: 同一张表同时存在`600519`和`600519.SH`两种格式 | 跨表JOIN失效,因子与价格无法关联,所有依赖code的查询结果不可信 | §2.3 |
 | F2 | **DataFeed.from_database()完全不可用**: SQL引用不存在的表/列 | 生产回测数据源断路 | §3.6 |
 | F3 | **PT和回测两条不同信号链路**: SignalComposer vs vectorized_signal | 同一策略在PT和回测产生不同结果,回测验证无意义 | §5 |
-| F4 | **CeleryBeat已停**: PMS保护/GP调度等全部不执行 | PT无利润保护 | §1 |
+| F4 | ~~**CeleryBeat已停**~~ ✅ **误报**: 审计时误判, 实际自04-03 Servy迁移后持续运行 | ~~PT无利润保护~~ PMS正常执行 | §1 |
 
 **🟡 高（重构中必须处理）**
 
@@ -696,7 +698,7 @@ CeleryBeat服务已停止 🔴,以下任务不会执行:
 
 5. **分块回测** — 按年分块,每块独立加载数据,块间传递持仓状态。
 
-6. **重启CeleryBeat** — 重构前确保PMS保护恢复(或确认PT已暂停)。
+6. ~~**重启CeleryBeat**~~ ✅ 已确认持续运行中 (自04-03), 无需重启。
 
 ### 疑问（需确认）
 
