@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # --- Paper Trading 核心参数 ---
     PT_TOP_N: int = 20  # was 15, changed 2026-04-04, backtest X-D Sharpe 1.15
     PT_INDUSTRY_CAP: float = 1.0  # was 0.25, changed 2026-04-04, removing constraint +0.09 Sharpe
+    PT_SIZE_NEUTRAL_BETA: float = 0.0  # 0.0=关闭, 0.50=Step 6-H验证最优. .env设置覆盖
 
     # --- PMS 阶梯利润保护 ---
     PMS_ENABLED: bool = True

@@ -78,9 +78,27 @@
 | FF3 Alpha | +18.98%/年 (t=2.90) | — | — |
 
 ### PT 状态更新
-- **状态**: 运行中 (SN b=0.50 已激活, 2026-04-10)
-- **配置**: `configs/pt_live.yaml`, `size_neutral_beta: 0.50`
-- **毕业评估窗口**: 从 2026-04-09 重新计算 60 个交易日
+- **状态**: ⛔ **已暂停+已清仓 (2026-04-10)**
+- **暂停原因**:
+  1. **P0 SN config 未生效**: `PAPER_TRADING_CONFIG.size_neutral_beta=0.0` (关闭), `configs/pt_live.yaml` 的 `0.50` 被 PT 忽略。PT 从 4/9 起实际运行 b=0.0 (无 SN)。
+  2. CeleryBeat 已恢复, 但审计修复未完成
+  3. 框架升级 (Qlib 调研) 未开始
+- **4/9~4/10 PT 数据**: 无效 (b=0.0 配置错误, 非预期的 SN b=0.50)
+- **旧持仓**: 17 只 (7 SH/科创 + 10 BJ 遗留), 需手动在 QMT 客户端清仓
+- **已执行停止操作**:
+  - Servy: QMTData=Stopped
+  - Task Scheduler: 8 个 PT 任务已 Disabled (DailyExecute/Signal/Moneyflow/Reconciliation/CancelStaleOrders/IntradayMonitor/MiniQMT_AutoStart/PTWatchdog)
+  - CeleryBeat: 保持运行 (PMS 为重启做准备)
+
+### PT 重启硬门槛 (全部满足才能重启)
+- [ ] P0 SN config 修复 + 验证运行时 `PAPER_TRADING_CONFIG.size_neutral_beta == 0.50`
+- [ ] CeleryBeat 运行 + PMS 链路端到端验证
+- [ ] 审计 CRITICAL 项全部修复或验证为误报
+- [ ] IC 时间对齐验证脚本通过
+- [ ] 冒烟测试 8 项全部 PASS
+- [ ] Qlib 调研完成 + 路线决策
+- [ ] 至少 1 个新信号维度 IC 评估完成
+- [ ] QMT 清仓确认 (持仓=0, 无挂单)
 
 ---
 
@@ -123,25 +141,43 @@
 - ✅ M1 minute_bars ts_code → Step 6-B RENAME COLUMN + 带后缀
 - ✅ M4 缓存基于 2020-2025 → Step 5 新 Parquet 缓存覆盖 12 年
 
-### §9 问题清单状态更新 (以下问题仍然开放)
+### §9 问题清单状态更新 (2026-04-10 遗留清理)
 
-**🔴 致命 → 开放**
-- ⬜ F4 CeleryBeat 已停 — 需重启; PT 暂停期内 PMS 不关键
+**🔴 致命 → 状态变更**
+- ✅ F4 CeleryBeat → 实际已在运行 (调查确认 Running 状态)
 
-**🟡 高优先级 → 开放**
-- ⬜ H3 两个 Tushare 客户端 (TushareClient / TushareFetcher)
+**🟡 高优先级 → 已解决 (2026-04-10)**
+- ✅ H3 两个 Tushare 客户端 → tushare_fetcher.py 删除(0引用), tushare_client.py 删除(1引用→改到 tushare_api)
+- ✅ H8 两个备份任务重复 → 确认 QM-DailyBackup 和 QuantMind_DailyBackup 完全相同(同脚本/同时间/双双失败), 建议 disable QuantMind_DailyBackup
+
+**🟡 高优先级 → 仍然开放**
 - ⬜ H4 financial_indicators upsert 只更新 3/16 字段
-- ⬜ H8 两个备份任务重复
 
-**🟠 中优先级 → 开放**
+**🟠 中优先级 → 已解决 (2026-04-10)**
+- ✅ M6 两个同名 notification_service.py → backend/services/ 版本已确认 0 引用, 标记 DEPRECATED
+
+**🟠 中优先级 → 仍然开放**
 - ⬜ M2 退市检测 hardcoded 20 天
 - ⬜ M3 slippage volume 单位脆弱
 - ⬜ M5 DEV_SCHEDULER.md 与实际偏离
-- ⬜ M6 两个同名 notification_service.py
 - ⬜ M7 24 张空表
-- ⬜ BJ 股过滤 (signal_service 生产 + 回测默认)
-- ⬜ is_st 标记从 Tushare 补拉
-- ⬜ 回测引擎 12 年事件驱动 OOM (Phase A 向量化已 OK)
+
+**其他修复 (2026-04-10 遗留清理)**
+- ✅ P0: PT Size-Neutral b=0.50 config 修复 (config.py + signal_engine.py + .env)
+- ✅ IC 时间对齐验证脚本 5/5 PASS (scripts/research/verify_ic_alignment.py)
+- ✅ db.py 连接计数器泄漏修复 (_TrackedConnection 包装器)
+- ✅ pms.py 3 个 async def → def (阻塞 IO 不可用 async)
+- ✅ DDL 单位注释 12 处修正 (万元/千元 → 元, DataPipeline 已转换)
+- ✅ 硬编码凭证清理 6 文件 (统一用 get_sync_conn)
+- ✅ ic_calculator.py 死代码删除 (exit_p 重复赋值)
+
+**铁律17 INSERT 违规扫描 (Part 4, 2026-04-10)**
+- 生产路径: 65 处 INSERT (6 CRITICAL: fetch_base_data.py 直接写 Contract 表)
+- 研究脚本: 5 处 (pull_historical_data.py)
+- 归档/测试: 49 处 (可忽略)
+- Engine 层 DB 写入违规: 12 处 (factor_engine/paper_broker/factor_profiler 等)
+- Engine 层 DB 读取违规: 20 文件
+- 详细清单见本次 commit message 或 git log
 
 **重构历史详见**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md §第四部分`
 

@@ -915,3 +915,17 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 **改进措施**: 新增铁律21——先搜索开源方案再自建。任何新功能开发前先花半天搜索成熟开源实现。阶段0安排Qlib+RD-Agent技术调研。
 
 **执行状态**: V3方案原则4"站在巨人肩膀上"已确立。
+
+## LL-052: PT配置双源导致SN未生效——YAML有值但代码不读（2026-04-10）
+
+**事件**: Step 6-H声称"SN b=0.50已激活PT"，`configs/pt_live.yaml`的`size_neutral_beta: 0.50`也已设置。但PT实际运行`PAPER_TRADING_CONFIG`来自`signal_engine.py:_build_paper_trading_config()`，该函数未设置`size_neutral_beta`，使用dataclass默认值0.0（关闭）。`config.py:Settings`类也无`PT_SIZE_NEUTRAL_BETA`字段。结果：PT从4/9起以b=0.0运行，SN从未生效。
+
+**根因**: 配置双源——回测走YAML（config_loader.py解析），PT走.env→Settings→`_build_paper_trading_config()`。新增策略参数`size_neutral_beta`时只更新了YAML，没有同步到PT的.env→config.py→signal_engine.py链路。缺少运行时值验证步骤。
+
+**改进措施**:
+1. 新策略参数上PT前必须验证运行时实际值（打印`PAPER_TRADING_CONFIG.xxx`确认），不能只看YAML配置文件
+2. PT停止/重启必须有checklist验证所有配置参数的运行时值
+3. `config_guard.py:print_config_header()`已添加SN beta显示，PT启动时可视化确认
+4. 修复：config.py添加`PT_SIZE_NEUTRAL_BETA`，.env设置0.50，`_build_paper_trading_config()`传入
+
+**执行状态**: 已修复(config.py+signal_engine.py+config_guard.py)，.env受保护需用户手动添加。PT暂停中待全部门槛满足后重启。

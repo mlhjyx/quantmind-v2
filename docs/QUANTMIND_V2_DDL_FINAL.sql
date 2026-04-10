@@ -53,7 +53,7 @@ CREATE TABLE klines_daily (
     change          DECIMAL(12,4),                     -- 涨跌额(元)
     pct_change      DECIMAL(8,4),                      -- 涨跌幅(%, 已乘100: 5.06=涨5.06%)
     volume          BIGINT,                            -- 手(1手=100股)
-    amount          DECIMAL(16,2),                     -- 千元(Tushare原始单位)
+    amount          DECIMAL(16,2),                     -- 元(DataPipeline从Tushare千元×1000转换)
     turnover_rate   DECIMAL(8,4),                      -- 换手率%(总股本)
     adj_factor      DECIMAL(12,6) DEFAULT 1.0,         -- 复权因子(累积因子,非每日比率)
     is_suspended    BOOLEAN DEFAULT FALSE,
@@ -62,9 +62,9 @@ CREATE TABLE klines_daily (
     down_limit      DECIMAL(12,4),                     -- 跌停价
     PRIMARY KEY (code, trade_date)
 );
-COMMENT ON TABLE klines_daily IS '日线行情。价格=未复权元, volume=手(×100=股), amount=千元';
+COMMENT ON TABLE klines_daily IS '日线行情。价格=未复权元, volume=手(×100=股), amount=元(Pipeline从千元转换)';
 COMMENT ON COLUMN klines_daily.volume IS '成交量（手，1手=100股）';
-COMMENT ON COLUMN klines_daily.amount IS '成交额（千元，⚠️与moneyflow的万元不同！）';
+COMMENT ON COLUMN klines_daily.amount IS '成交额（元，DataPipeline已从Tushare千元×1000转换）';
 COMMENT ON COLUMN klines_daily.pct_change IS '涨跌幅（%，已乘100：5.06表示涨5.06%）';
 COMMENT ON COLUMN klines_daily.adj_factor IS '累积复权因子。adj_close = close × adj_factor / latest_adj_factor';
 SELECT create_hypertable('klines_daily', 'trade_date', if_not_exists => TRUE,
@@ -104,12 +104,12 @@ CREATE TABLE daily_basic (
     total_share     DECIMAL(16,4),                     -- 万股
     float_share     DECIMAL(16,4),                     -- 万股
     free_share      DECIMAL(16,4),                     -- 万股
-    total_mv        DECIMAL(16,2),                     -- 万元(⚠️不是元！)
-    circ_mv         DECIMAL(16,2),                     -- 万元(⚠️不是元！)
+    total_mv        DECIMAL(16,2),                     -- 元(DataPipeline从万元×10000转换)
+    circ_mv         DECIMAL(16,2),                     -- 元(DataPipeline从万元×10000转换)
     PRIMARY KEY (code, trade_date)
 );
-COMMENT ON TABLE daily_basic IS '每日指标。total_mv/circ_mv=万元, turnover_rate=%';
-COMMENT ON COLUMN daily_basic.total_mv IS '总市值（万元，⚠️不是元！跨表计算注意单位）';
+COMMENT ON TABLE daily_basic IS '每日指标。total_mv/circ_mv=元(Pipeline从万元转换), turnover_rate=%';
+COMMENT ON COLUMN daily_basic.total_mv IS '总市值（元，DataPipeline已从Tushare万元×10000转换）';
 COMMENT ON COLUMN daily_basic.turnover_rate_f IS '换手率-自由流通股（%，⭐因子计算推荐用这个）';
 
 CREATE TABLE trading_calendar (
@@ -139,26 +139,26 @@ CREATE TABLE moneyflow_daily (
     sell_md_vol     BIGINT,
     sell_md_amount  DECIMAL(16,2),
     buy_lg_vol      BIGINT,
-    buy_lg_amount   DECIMAL(16,2),                     -- 万元
+    buy_lg_amount   DECIMAL(16,2),                     -- 元(Pipeline从万元转换)
     sell_lg_vol     BIGINT,
     sell_lg_amount  DECIMAL(16,2),
     buy_elg_vol     BIGINT,
-    buy_elg_amount  DECIMAL(16,2),                     -- 万元
+    buy_elg_amount  DECIMAL(16,2),                     -- 元(Pipeline从万元转换)
     sell_elg_vol    BIGINT,
     sell_elg_amount DECIMAL(16,2),
     net_mf_vol      BIGINT,                            -- 手
-    net_mf_amount   DECIMAL(16,2),                     -- 万元(大单+超大单净流入)
+    net_mf_amount   DECIMAL(16,2),                     -- 元(Pipeline从万元转换, 大单+超大单净流入)
     PRIMARY KEY (code, trade_date)
 );
-COMMENT ON TABLE moneyflow_daily IS '资金流向。金额=万元（⚠️与klines的千元不同，相差10倍！）';
-COMMENT ON COLUMN moneyflow_daily.buy_elg_amount IS '特大单买入金额（万元，总买入不是净买入）';
+COMMENT ON TABLE moneyflow_daily IS '资金流向。金额=元（DataPipeline统一从Tushare万元×10000转换，与klines_daily同为元）';
+COMMENT ON COLUMN moneyflow_daily.buy_elg_amount IS '特大单买入金额（元，DataPipeline从万元转换。总买入不是净买入）';
 
 CREATE TABLE northbound_holdings (
     code            VARCHAR(10) NOT NULL REFERENCES symbols(code),
     trade_date      DATE NOT NULL,
     hold_vol        BIGINT,                            -- 股
     hold_ratio      DECIMAL(8,4),                      -- %
-    hold_mv         DECIMAL(16,2),                     -- 万元
+    hold_mv         DECIMAL(16,2),                     -- 元(Pipeline从万元转换)
     net_buy_vol     BIGINT,                            -- 当日净买入量
     PRIMARY KEY (code, trade_date)
 );

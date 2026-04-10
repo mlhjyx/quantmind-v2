@@ -16,16 +16,10 @@ import time
 
 import numpy as np
 import pandas as pd
-import psycopg2
+
+from app.services.db import get_sync_conn
 
 logger = logging.getLogger(__name__)
-
-DB_PARAMS = {
-    "dbname": "quantmind_v2",
-    "user": "xin",
-    "password": "quantmind",
-    "host": "localhost",
-}
 
 
 def _mad_winsorize(values: np.ndarray, n_sigma: float = 5.0) -> np.ndarray:
@@ -109,7 +103,7 @@ def fast_neutralize_batch(
     """
     own_conn = conn is None
     if own_conn:
-        conn = psycopg2.connect(**DB_PARAMS)
+        conn = get_sync_conn()
 
     t_start = time.time()
 

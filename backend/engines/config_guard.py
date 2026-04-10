@@ -59,6 +59,8 @@ def print_config_header() -> None:
     print(f"  权重方法:   {cfg.weight_method}")
     print(f"  行业上限:   {cfg.industry_cap:.0%}  {_YELLOW}(.env PT_INDUSTRY_CAP){_RESET}")
     print(f"  换手上限:   {cfg.turnover_cap:.0%}")
+    sn_status = f"{cfg.size_neutral_beta:.2f}" if cfg.size_neutral_beta > 0 else "OFF"
+    print(f"  Size-Neutral: {sn_status}  {_YELLOW}(.env PT_SIZE_NEUTRAL_BETA){_RESET}")
     print(f"{'=' * 60}\n")
 
 

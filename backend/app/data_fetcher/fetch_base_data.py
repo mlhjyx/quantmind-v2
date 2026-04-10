@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.data_fetcher.tushare_client import TushareClient
+from app.data_fetcher.tushare_api import TushareAPI as TushareClient
 
 # 数据拉取范围: 2019-01-01起 (多留1年lookback给因子计算)
 START_DATE = "20190101"

@@ -477,15 +477,9 @@ async def test_signal_service_raises_on_low_coverage():
 
 def _psycopg2_sync_conn():
     """建立真实 psycopg2 同步连接（用于 update_nav_sync 写库测试）。"""
-    import psycopg2  # type: ignore
+    from app.services.db import get_sync_conn
 
-    return psycopg2.connect(
-        host="localhost",
-        port=5432,
-        dbname="quantmind_v2",
-        user="xin",
-        password="quantmind",
-    )
+    return get_sync_conn()
 
 
 @pytest.mark.asyncio

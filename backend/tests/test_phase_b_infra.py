@@ -1,6 +1,5 @@
 """Phase B 基础设施测试 — B4 DDL对齐 / B5 备份 / B6 健康预检。"""
 
-import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -39,12 +38,8 @@ DDL_TABLES = [
 @pytest.fixture(scope="module")
 def db_conn():
     """获取sync psycopg2连接。"""
-    import psycopg2
-    dsn = os.environ.get(
-        "TEST_DATABASE_URL",
-        "dbname=quantmind_v2 user=xin password=quantmind host=localhost port=5432",
-    )
-    conn = psycopg2.connect(dsn)
+    from app.services.db import get_sync_conn
+    conn = get_sync_conn()
     yield conn
     conn.close()
 

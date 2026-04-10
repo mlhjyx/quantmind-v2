@@ -625,13 +625,10 @@ def calc_pead_q1(trade_date, conn=None) -> pd.Series:
     Returns:
         pd.Series: index=code, values=eps_surprise_pct (正=超预期)
     """
-    import psycopg2 as _pg2
-
     close_conn = conn is None
     if conn is None:
-        conn = _pg2.connect(
-            dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
-        )
+        from app.services.db import get_sync_conn
+        conn = get_sync_conn()
 
     if isinstance(trade_date, str):
         from datetime import datetime as _dt

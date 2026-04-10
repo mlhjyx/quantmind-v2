@@ -28,8 +28,6 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-import psycopg2
-import psycopg2.extras
 from scipy import stats as sp_stats
 
 logger = logging.getLogger(__name__)
@@ -52,9 +50,8 @@ TMPL_NAMES = {1: "月度", 2: "周度", 7: "事件", 11: "仓位", 12: "regime�
 
 
 def _get_conn():
-    return psycopg2.connect(
-        dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
-    )
+    from app.services.db import get_sync_conn
+    return get_sync_conn()
 
 
 def _f(v):

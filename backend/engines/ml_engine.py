@@ -173,13 +173,8 @@ class WalkForwardResult:
 
 def _get_db_conn():
     """获取同步数据库连接。"""
-    import psycopg2
-    return psycopg2.connect(
-        dbname="quantmind_v2",
-        user="xin",
-        password="quantmind",
-        host="localhost",
-    )
+    from app.services.db import get_sync_conn
+    return get_sync_conn()
 
 
 def _add_months(d: date, months: int) -> date:

@@ -65,7 +65,7 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 quantmind-v2/
 ├── CLAUDE.md                    ← 本文件
 ├── SYSTEM_STATUS.md             ← ⭐ 系统现状全景（重构前体检产出）
-├── LESSONS_LEARNED.md           ← 经验教训（48条, LL-001~051）
+├── LESSONS_LEARNED.md           ← 经验教训（49条, LL-001~052）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 45张+代码动态建表17张=DB实际62张）

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/pms", tags=["pms"])
 
 
 @router.get("/positions")
-async def get_pms_positions() -> dict[str, Any]:
+def get_pms_positions() -> dict[str, Any]:
     """当前持仓监控列表（含浮盈/最高价/回撤/保护线距离）。"""
     engine = PMSEngine()
     conn = get_sync_conn()
@@ -58,7 +58,7 @@ async def get_pms_positions() -> dict[str, Any]:
 
 
 @router.get("/history")
-async def get_pms_history(limit: int = 50) -> dict[str, Any]:
+def get_pms_history(limit: int = 50) -> dict[str, Any]:
     """历史PMS触发记录。"""
     conn = get_sync_conn()
     try:
@@ -129,7 +129,7 @@ async def get_pms_config() -> dict[str, Any]:
 
 
 @router.post("/check")
-async def trigger_pms_check() -> dict[str, Any]:
+def trigger_pms_check() -> dict[str, Any]:
     """手动触发一次PMS检查（调试用）。"""
     if not settings.PMS_ENABLED:
         return {"status": "disabled", "message": "PMS is disabled in .env"}

@@ -95,6 +95,7 @@ def _build_paper_trading_config() -> SignalConfig:
         rebalance_freq="monthly",
         industry_cap=settings.PT_INDUSTRY_CAP,
         turnover_cap=0.50,
+        size_neutral_beta=settings.PT_SIZE_NEUTRAL_BETA,
     )
 
 

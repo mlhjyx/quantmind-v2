@@ -108,14 +108,10 @@ def compute_forward_excess_returns(
         .astype(float)
     )
 
-    # 3. 计算股票 T+1 → T+1+horizon 收益
-    #    T 行对应 "从 T+1 开始的 horizon 天持有收益"
-    entry = price_wide.shift(-1)  # T+1 价格
-    exit_p = price_wide.shift(-(1 + horizon) + 1)  # T+horizon 价格 (含 T+1 共 horizon 天)
-    # 等价: shift(-horizon) 给出 T+horizon 行; 但这里我们要"持有 horizon 天"
-    # 持有 horizon 天 = 从 T+1 买 到 T+1+horizon-1 卖 = T+horizon
-    # 简化: exit = shift(-horizon), entry = shift(-1)
-    exit_p = price_wide.shift(-horizon)
+    # 3. 计算股票 T+1 → T+horizon 收益
+    #    T 行对应 "T+1 买入, T+horizon 卖出" 的收益
+    entry = price_wide.shift(-1)       # T+1 价格 (买入)
+    exit_p = price_wide.shift(-horizon)  # T+horizon 价格 (卖出)
     stock_ret = exit_p / entry - 1
 
     # 4. benchmark 同样
