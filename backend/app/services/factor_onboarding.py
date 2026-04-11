@@ -424,14 +424,25 @@ class FactorOnboardingService:
             )
 
             for code in valid.index:
+                # 禁止写 float NaN 到 DB — NaN 不等于 SQL NULL，
+                # 会导致 COALESCE(neutral_value, raw_value) 返回 NaN 而非回退
+                raw_val = factor_series.get(code, np.nan)
+                raw_val = None if (isinstance(raw_val, float) and np.isnan(raw_val)) else float(raw_val)
+
+                neutral_val = neutral_series.get(code)
+                if neutral_val is not None and pd.notna(neutral_val):
+                    neutral_val = float(neutral_val)
+                    if np.isnan(neutral_val):
+                        neutral_val = None  # float NaN → SQL NULL
+                else:
+                    neutral_val = None
+
                 records.append(
                     {
                         "code": code,
                         "trade_date": dt,
-                        "raw_value": float(factor_series.get(code, np.nan)),
-                        "neutral_value": float(neutral_series.get(code, np.nan))
-                        if pd.notna(neutral_series.get(code))
-                        else np.nan,
+                        "raw_value": raw_val,
+                        "neutral_value": neutral_val,
                     }
                 )
 

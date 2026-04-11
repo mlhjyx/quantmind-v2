@@ -9,10 +9,10 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等V4 Phase 2验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
+- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等WF验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 WF OOS 0.6521 / Phase 2.4最佳=1.03(CORE3+dv, P0-3修正, 待WF验证)**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO(E2E融合: IC天花板0.09+Layer2 sim-to-real gap, commit f47349b) → **Phase 2.2 IC加权/LambdaRank** → Phase 3 自动化 → Phase 4 PT重启
+- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索(Sharpe=1.04, 5改善方向) → **WF验证** → Phase 3 自动化 → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -37,6 +37,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 池 | 数量 | 说明 |
 |----|------|------|
 | CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20(WARNING), amihud_20, bp_ratio |
+| Phase 2.4候选配置 | 4 | turnover_mean_20(-1), volatility_20(-1), bp_ratio(+1), dv_ttm(+1) — **Sharpe=1.03** (P0-3修正: RSQR_20有害-0.09, 移除), 待WF验证 |
 | PASS候选 | 32 | FACTOR_TEST_REGISTRY.md中PASS状态因子(含Alpha158六+PEAD-SUE)，待评估入池 |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
@@ -335,6 +336,12 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 27. **结论必须明确（✅/❌/⚠️）不准模糊** — 不接受"大概没问题""应该是对的"。违反→模糊结论掩盖真实问题。
 28. **发现即报告不选择性遗漏** — 执行中发现的任何异常不管是否在任务范围内都必须报告。违反→问题被发现又被埋没。
 
+### 数据完整性类（P0-4, 2026-04-12）
+29. **禁止写 float NaN 到 DB** — 所有写入 factor_values 的代码必须将 NaN 转为 None (SQL NULL)。float NaN 在 PostgreSQL NUMERIC 列中不等于 NULL，导致 `COALESCE(neutral_value, raw_value)` 返回 NaN 而非回退到 raw_value。违反→因子数据静默损坏（RSQR_20事件: 11.5M行NaN未被发现）。
+    > 验证工具: `python scripts/factor_health_check.py <factor_name>`
+30. **中性化后必须重建 Parquet 缓存** — `fast_neutralize_batch` 完成后必须运行 `python scripts/build_backtest_cache.py` 重建缓存。Parquet 缓存不会自动更新。违反→回测使用旧数据（Phase 1.2 SW1迁移后缓存过期2天未发现）。
+    > 入库体系文档: `docs/FACTOR_ONBOARDING_SYSTEM.md`
+
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
@@ -380,7 +387,9 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | mf_divergence独立策略 | IC=-2.27%(非9.1%), 14组回测全负 | GA2证伪 |
 | 同因子换ML模型 | ML Sharpe=0.68 vs 等权0.83, 瓶颈在数据维度 | G1 LightGBM |
 | LightGBM 17因子WF | OOS IC=0.067正但弱, 月度回测Sharpe=0.09, 再次确认ML无效 | Step 6-H |
-| IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效 | v3.5原则16 |
+| IC加权/Lasso等下游优化 | 因子信息量不够时优化下游无效, IC_IR加权Sharpe=0.27(等权0.62), turnover权重最大放大流动性风险 | v3.5原则16 + Phase 2.2 |
+| MVO(riskfolio-lib) | 40股×60日协方差不稳定, 94%失败率fallback等权, Sharpe=0.26 | Phase 2.2 |
+| LambdaRank替代regression | 排名优化Sharpe=0.56+SN(>regression 0.44)但仍<等权0.62, 方向正确但增量不足 | Phase 2.2 |
 | Regime动态beta(RSV) | static b=0.50 Sharpe=0.6287 > dynamic 0.5253 > binary 0.5669 | Step 6-H |
 | Vol-targeting/DD-aware | 无改善或更差, Partial SN是唯一有效Modifier | Step 6-G |
 | 完全Size-neutral(b=1.0) | 损11% Sharpe, 过度惩罚小盘暴露 | Step 6-F |
@@ -393,6 +402,10 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | E2E可微Sharpe Portfolio优化 | val_sharpe=1.26但实盘Sharpe=-0.99, sim-to-real gap 282%. A股交易成本(min佣金¥5/印花税/滑点/隔夜跳空)不可微分 | Phase 2.1 Layer2 |
 | 增加因子提升LightGBM IC | Exp-A(+QTLU+RSQR)=零增量, Exp-B(+11因子)IC从0.09降到0.069(-25%). CORE5是IC天花板 | Phase 2.1 Exp-A/B |
 | 完美预测+MVO vs 等权 | 完美预测下MVO=等权(Sharpe均3.02), portfolio优化在预测完美时无增量 | Phase 2.1 A.8 |
+| Universe filter替代SN | Alpha 100%微盘, 非微盘区间Sharpe全部≈0或为负, 收窄universe毁灭alpha | Phase 2.4 Part 1 |
+| LambdaRank作为等权因子 | CORE5+LR+SN Sharpe=0.48(-27%), LR信号与等权CORE5冲突 | Phase 2.4 Part 2.5 |
+| RSQR_20/QTLU_20单独加CORE5 | 零增量(Sharpe=0.6652不变), 中性化后截面信息被消除 | Phase 2.4 Part 2.2 |
+| RSQR_20加入CORE3+dv | 有害(-0.089 Sharpe), direction=-1与正IC冲突. CORE3+dv=1.03 > CORE3+RSQR+dv=0.95 | P0-3 re-evaluation |
 
 ## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT已暂停+已清仓 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
@@ -510,10 +523,20 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - PortfolioNetwork val_sharpe=1.26→实盘-0.99, 可微Sharpe在A股不可行
   - 7新因子入库(QTLU/RSQR/HVP/IMAX/IMIN/CORD/RESI, 12yr neutralized)
   - 60月窗口比24月提升36%(唯一有效改进)
-- ⬜ **Phase 2.2**: IC加权SignalComposer + LambdaRank（Phase 2.1建议方向）
-- ⬜ **Phase 2.3**: riskfolio-lib Portfolio优化 MVO/RP/BL（baseline对比）
+- ❌ **Phase 2.2**: Gate验证NO-GO — 6方法全败(LambdaRank+SN=0.56最佳, IC加权=0.27, MVO=0.26, 均<基线0.62)
+  - 等权+SN(0.6211)不可超越, portfolio构建层已无优化空间
+  - IC_IR加权反而更差: turnover权重最大→放大流动性风险
+  - MVO 94%失败率(40股×60日协方差不稳定)
+  - 瓶颈确认在信号层(5因子信息量不足), 非portfolio构建层
+- ✅ **Phase 2.3**: 市值诊断 — 无SN=纯微盘91.5%, Alpha 100%微盘, 因子真alpha但微盘放大3-4x (2026-04-11)
+- ✅ **Phase 2.4**: Research Exploration — 36实验5改善方向, **最佳Sharpe=1.04** (CORE3+RSQR_20+dv_ttm) (2026-04-12)
+  - dv_ttm(股息率)关键突破: +30% Sharpe, MDD -19.5%
+  - Top-40 > Top-20 (+37%), 季度 > 月度 (+25%)
+  - 已关闭: universe filter(Alpha=微盘), LambdaRank因子(冲突), RSQR/QTLU单独加入(零增量)
+  - **多重测试风险**: 所有优化同一OOS(2020-2026), 必须WF验证
+- ⬜ **WF验证**: CORE3+RSQR+dv 5-fold Walk-Forward (OOS Sharpe目标>0.72) + 多维组合交叉验证
 - ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
-- ⬜ **Phase 4**: PT重启（前提: OOS Sharpe > 0.6521 + MDD < 40%）
+- ⬜ **Phase 4**: PT重启（前提: WF OOS Sharpe > 0.6521 + MDD < 40%）
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
