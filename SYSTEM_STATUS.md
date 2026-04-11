@@ -1,8 +1,37 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H 更新 (2026-04-10)
+> **日期**: 2026-04-09 (初版) + Step 6-H 更新 (2026-04-10) + Phase 2.1 更新 (2026-04-11)
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.4 Phase 2.1 E2E Fusion 结果 (2026-04-11, commit f47349b)
+
+**状态: NO-GO**
+
+### 实验结果
+| 实验 | 因子数 | OOS IC | ICIR | 判定 |
+|------|--------|--------|------|------|
+| Exp-C (CORE5) | 5 | **0.0912** | 1.06 | 最佳 |
+| Exp-A (+QTLU+RSQR) | 7 | 0.0912 | 1.06 | =Exp-C, 零增量 |
+| Exp-B (+Tier2+NB) | 16 | 0.0687 | 0.74 | 比CORE5差25% |
+
+- 完美预测上界: Sharpe=3.02 (GO gate), MVO=等权(完美预测下无差异)
+- Layer 2 PortfolioNetwork: val_sharpe=1.26, 实盘Sharpe=-0.99 (sim-to-real gap 282%)
+- 60月LightGBM窗口比24月提升36% (IC 0.067→0.0912, 唯一有效改进)
+
+### 新增因子 (factor_values)
+7个因子已入库(12yr, 100% neutralized): QTLU_20, RSQR_20, high_vol_price_ratio_20, IMAX_20, IMIN_20, CORD_20, RESI_20
+
+### 新增引擎
+- `backend/engines/portfolio_network.py`: PortfolioMLP + PortfolioLayer + sharpe_loss (已测试, 但实盘无效)
+
+### 结论
+- IC天花板≈0.09, CORE5最优, 更多因子=更多噪声
+- 可微分Sharpe Loss在A股不可行 (真实交易成本不可微分)
+- 瓶颈100%在预测质量, 非portfolio构建
+- 下一步: Phase 2.2 IC加权/LambdaRank
 
 ---
 

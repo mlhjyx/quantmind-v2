@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等V4 Phase 2验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 inner 0.68 / SN WF OOS 0.6521**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅完成(841s→14.6s) → ~~Phase 1.2~~ ✅完成(Alpha158六因子+行业动量+北向V2+PEAD+SW1中性化迁移) → **Phase 2 信号框架**(融合E2E主攻: LightGBM预测层+Portfolio Network权重层 + IC加权/MVO baseline) → Phase 3 自动化(因子生命周期+Rolling WF) → Phase 4 PT重启
+- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO(E2E融合: IC天花板0.09+Layer2 sim-to-real gap, commit f47349b) → **Phase 2.2 IC加权/LambdaRank** → Phase 3 自动化 → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -41,10 +41,10 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
-| LGBM特征集 | 63 | 全部factor_values因子(48核心+15北向, DB自动发现) |
+| LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
 ### 因子存储
-- **factor_values**: 501M行(12年扩展后), TimescaleDB hypertable ~53GB
+- **factor_values**: ~590M行(12年扩展+7新因子Phase2.1), TimescaleDB hypertable
 - **factor_ic_history**: IC唯一入库点(铁律11), 未入库IC视为不存在
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
 - **minute_bars**: 139M行(Step 6-B已统一code格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
@@ -338,7 +338,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=88，排除重复验证+CANCELLED）
+- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=84，87条-2 CANCELLED #70/#72 - 1重复 #65 = 84）
 - 与现有Active因子 corr < 0.7, 选股月收益 corr < 0.3
 - 中性化后IC必须验证（原始IC和中性化IC并列展示）
 - 因子预处理顺序: **去极值(MAD 5σ) → 填充(行业中位数) → 中性化(行业+市值WLS) → z-score**（不可变）
@@ -390,6 +390,9 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | RD-Agent集成 | Docker硬依赖+Windows bug+Claude不支持, 三重阻断 | 阶段0调研(2026-04-10) |
 | Qlib数据层/回测引擎迁移 | .bin格式需双份数据, 回测无PMS/涨跌停/历史税率, 迁移=倒退 | 阶段0调研(2026-04-10) |
 | predict-then-optimize两阶段独立策略 | IC正但Sharpe≈0: 问题在portfolio构建层(排名→Top-N等权丢失alpha)不在预测层; LightGBM预测能力保留为融合系统层1 | G1+Step 6-H两次验证 |
+| E2E可微Sharpe Portfolio优化 | val_sharpe=1.26但实盘Sharpe=-0.99, sim-to-real gap 282%. A股交易成本(min佣金¥5/印花税/滑点/隔夜跳空)不可微分 | Phase 2.1 Layer2 |
+| 增加因子提升LightGBM IC | Exp-A(+QTLU+RSQR)=零增量, Exp-B(+11因子)IC从0.09降到0.069(-25%). CORE5是IC天花板 | Phase 2.1 Exp-A/B |
+| 完美预测+MVO vs 等权 | 完美预测下MVO=等权(Sharpe均3.02), portfolio优化在预测完美时无增量 | Phase 2.1 A.8 |
 
 ## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT已暂停+已清仓 2026-04-10）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
@@ -502,11 +505,15 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ✅ 阶段0: Qlib + RD-Agent 技术调研完成 → 路线C(混合): 自建核心 + Alpha158因子借鉴 + riskfolio-lib (2026-04-10)
 - ✅ **Phase 1.1**: 回测Phase A优化（841s→14.6s, groupby+bisect替代O(N×M)全表扫描, 2026-04-10）
 - ✅ **Phase 1.2**: 新信号维度（Alpha158六因子6/6 PASS + 行业动量2/2 PASS + 北向V2 15因子 + PEAD方向修正为-1 + SW1中性化迁移53因子, 2026-04-11）
-- ⬜ **Phase 2.1**: 融合E2E（LightGBM预测层+Portfolio Network权重层, loss=-Sharpe, 详见V4附录A）
-- ⬜ **Phase 2.2**: IC加权SignalComposer（baseline对比）
+- ❌ **Phase 2.1**: 融合E2E NO-GO（IC天花板0.09, Layer2 sim-to-real gap 282%, commit f47349b, 2026-04-11）
+  - Exp-C(CORE5) IC=0.0912最佳, Exp-A(7因子)=零增量, Exp-B(16因子)=IC降25%
+  - PortfolioNetwork val_sharpe=1.26→实盘-0.99, 可微Sharpe在A股不可行
+  - 7新因子入库(QTLU/RSQR/HVP/IMAX/IMIN/CORD/RESI, 12yr neutralized)
+  - 60月窗口比24月提升36%(唯一有效改进)
+- ⬜ **Phase 2.2**: IC加权SignalComposer + LambdaRank（Phase 2.1建议方向）
 - ⬜ **Phase 2.3**: riskfolio-lib Portfolio优化 MVO/RP/BL（baseline对比）
 - ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
-- ⬜ **Phase 4**: PT重启（前提: E2E OOS Sharpe > 0.6336 + MDD < 40%）
+- ⬜ **Phase 4**: PT重启（前提: OOS Sharpe > 0.6521 + MDD < 40%）
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
