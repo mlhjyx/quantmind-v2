@@ -42,6 +42,14 @@ FACTOR_DIRECTION = {
     "relative_volume_20": -1,  # 相对成交量, 方向-1: 低异常放量好
     "dv_ttm": 1,  # 股息率TTM, 方向+1: 高股息好
     "turnover_surge_ratio": -1,  # 换手率突增比, 方向-1: 低突增好
+    # ---- Phase 2.1 E2E因子 ----
+    "high_vol_price_ratio_20": -1,  # 高波动日价偏高=庄家出货
+    "IMAX_20": -1,   # 极端正收益=彩票偏好被高估
+    "IMIN_20": 1,    # 深跌后均值回归
+    "QTLU_20": -1,   # 上行偏度=过度乐观
+    "CORD_20": -1,   # 强上行趋势=反转
+    "RSQR_20": -1,   # 低R²=特质风险=散户溢价
+    "RESI_20": 1,    # 正alpha=近期跑赢
 }
 
 
