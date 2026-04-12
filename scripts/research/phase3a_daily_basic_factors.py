@@ -89,7 +89,7 @@ def compute_factors(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
             fdf = pd.DataFrame({
                 "code": df["code"],
                 "trade_date": df["trade_date"],
-                "raw_value": values,
+                "raw_value": pd.to_numeric(values, errors="coerce"),
             })
             # 铁律29: NaN → None (在写入时处理)
             # 移除完全无效的行
