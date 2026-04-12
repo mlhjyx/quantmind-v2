@@ -18,6 +18,7 @@
 
 import argparse
 import gc
+import io
 import sys
 import time
 from pathlib import Path
@@ -25,7 +26,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import psycopg2
-from psycopg2.extras import execute_values
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
@@ -104,46 +104,43 @@ def compute_factors(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 def write_factor_batch(conn, factor_name: str, df: pd.DataFrame) -> int:
-    """写入factor_values表，返回写入行数。
-
-    使用ON CONFLICT DO UPDATE更新raw_value。
-    """
+    """写入factor_values表 — COPY+UPSERT，比execute_values快10-50x。"""
     if df.empty:
         return 0
 
+    # 铁律29: 过滤NaN/Inf
+    valid = df["raw_value"].notna() & np.isfinite(df["raw_value"])
+    df = df[valid]
+    if df.empty:
+        return 0
+
+    # Clip to NUMERIC(16,6) range
+    MAX_ABS = 9_999_999_999.0
+    df = df.copy()
+    df["raw_value"] = df["raw_value"].clip(-MAX_ABS, MAX_ABS)
+
     cur = conn.cursor()
-    total_written = 0
+    cur.execute("DROP TABLE IF EXISTS _db_staging")
+    cur.execute("""CREATE TEMP TABLE _db_staging (
+        code VARCHAR, trade_date DATE, factor_name VARCHAR, raw_value DOUBLE PRECISION
+    )""")
 
-    # 分批写入
-    for i in range(0, len(df), BATCH_SIZE):
-        batch = df.iloc[i:i + BATCH_SIZE]
-        values = []
-        for _, row in batch.iterrows():
-            rv = row["raw_value"]
-            # 铁律29: 确保无NaN
-            if rv is None or (isinstance(rv, float) and (np.isnan(rv) or np.isinf(rv))):
-                continue
-            values.append((
-                row["code"],
-                row["trade_date"],
-                factor_name,
-                float(rv),
-            ))
+    buf = io.StringIO()
+    for code, td, rv in zip(df["code"], df["trade_date"], df["raw_value"], strict=False):
+        buf.write(f"{code}\t{td}\t{factor_name}\t{float(rv)}\n")
+    buf.seek(0)
+    cur.copy_from(buf, "_db_staging", columns=("code", "trade_date", "factor_name", "raw_value"))
 
-        if values:
-            execute_values(
-                cur,
-                """INSERT INTO factor_values (code, trade_date, factor_name, raw_value)
-                   VALUES %s
-                   ON CONFLICT (code, trade_date, factor_name)
-                   DO UPDATE SET raw_value = EXCLUDED.raw_value""",
-                values,
-                page_size=BATCH_SIZE,
-            )
-            total_written += len(values)
+    cur.execute("""
+        INSERT INTO factor_values (code, trade_date, factor_name, raw_value)
+        SELECT code, trade_date, factor_name, raw_value FROM _db_staging
+        ON CONFLICT (code, trade_date, factor_name)
+        DO UPDATE SET raw_value = EXCLUDED.raw_value
+    """)
 
+    total = len(df)
     conn.commit()
-    return total_written
+    return total
 
 
 def main():
