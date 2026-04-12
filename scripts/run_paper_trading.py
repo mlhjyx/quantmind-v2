@@ -257,9 +257,9 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool, executio
         # Step 5: 读信号
         signal_svc = SignalService()
         signal_date = get_prev_trading_day(conn, exec_date)
-        latest = signal_svc.get_latest_signals(conn=conn, strategy_id=settings.PAPER_STRATEGY_ID, signal_date=signal_date)
-        hedged_target = latest.get("target_weights", {})
-        is_rebalance = latest.get("is_rebalance", False)
+        signals_list = signal_svc.get_latest_signals(conn=conn, strategy_id=settings.PAPER_STRATEGY_ID, signal_date=signal_date)
+        hedged_target = {s["code"]: s["target_weight"] for s in signals_list}
+        is_rebalance = any(s["action"] == "rebalance" for s in signals_list) if signals_list else False
         logger.info("[Step5] 信号日=%s, 目标=%d只, rebalance=%s", signal_date, len(hedged_target), is_rebalance)
 
         # Step 5.5: 数据拉取(如需)
@@ -294,14 +294,20 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool, executio
         logger.info("[Step5.9] 熔断: L%s", cb.get("level", 0))
 
         # Step 6: 执行调仓
-        exec_svc = ExecutionService(conn)
+        exec_svc = ExecutionService()
         exec_result = None
 
         if is_rebalance and hedged_target:
-            exec_svc.process_pending_orders(conn, exec_date, execution_mode=exec_mode)
-            exec_result = exec_svc.execute_rebalance(
-                conn=conn, target_weights=hedged_target,
+            exec_svc.process_pending_orders(
+                conn=conn, strategy_id=settings.PAPER_STRATEGY_ID,
+                exec_date=exec_date, price_data=price_data_t,
+                initial_capital=settings.PAPER_INITIAL_CAPITAL,
                 cb_level=cb.get("level", 0),
+            )
+            exec_result = exec_svc.execute_rebalance(
+                conn=conn, strategy_id=settings.PAPER_STRATEGY_ID,
+                exec_date=exec_date, target_weights=hedged_target,
+                cb_level=cb.get("level", 0), position_multiplier=0.5,
                 price_data=price_data_t,
                 initial_capital=settings.PAPER_INITIAL_CAPITAL,
                 signal_date=signal_date, execution_mode=exec_mode,
