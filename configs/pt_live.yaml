@@ -4,11 +4,12 @@
 strategy:
   name: equal_weight_top20
   factors:
+    # CORE3+dv_ttm (WF OOS Sharpe=0.8659, MDD=-13.91%, 2026-04-12 PASS)
+    # 变更: CORE5→CORE3+dv_ttm, 去掉reversal_20和amihud_20, 加入dv_ttm
     - {name: turnover_mean_20, direction: -1}
     - {name: volatility_20, direction: -1}
-    - {name: reversal_20, direction: 1}
-    - {name: amihud_20, direction: 1}
     - {name: bp_ratio, direction: 1}
+    - {name: dv_ttm, direction: 1}
   compose: equal_weight
   top_n: 20
   rebalance_freq: monthly

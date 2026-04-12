@@ -1,8 +1,94 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H 更新 (2026-04-10) + Phase 2.1 更新 (2026-04-11)
+> **日期**: 2026-04-09 (初版) + Step 6-H 更新 (2026-04-10) + Phase 2.1 更新 (2026-04-11) + Phase 2.4 更新 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12)
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.2 Phase 2.4 Research Exploration (2026-04-12)
+
+**状态: 完成 — 5个独立改善方向发现, 最佳Sharpe=1.04**
+
+### 核心发现 (36个实验, 22个超基线)
+| Rank | Method | Sharpe | MDD | vs Base(0.67) |
+|------|--------|--------|-----|---------------|
+| 1 | CORE3+RSQR_20+dv_ttm | **1.0417** | -26.11% | +56.6% |
+| 2 | Top-40 (CORE5+SN) | 0.9097 | -31.04% | +36.7% |
+| 3 | CORE5+dv_ttm | 0.8660 | -19.53% | +30.2% |
+| 4 | Quarterly rebalance | 0.8302 | -25.97% | +24.8% |
+| 5 | SN b=0.30 | 0.7895 | -47.24% | +18.7% |
+
+### 关键结论
+1. **Alpha 100%来自微盘** — 非微盘区间Sharpe≈0, universe filter方向关闭
+2. **dv_ttm(股息率)是关键增量因子** — 加入即+30% Sharpe, 大幅降MDD
+3. **CORE3+RSQR+dv首次突破Sharpe 1.0** — 去amihud/reversal, 换RSQR/dv_ttm
+4. **Top-20次优** — Top-25~40分散更好(Sharpe +25-37%)
+5. **季度调仓优于月度** — 减少交易成本, Sharpe +25%
+6. **Composite IC=0.113, IR=1.15, t=44.65** — 信号极强且稳定
+
+### 已关闭方向
+- Universe filter替代SN → 失败(alpha全在微盘)
+- LambdaRank作为因子 → 信号冲突(-27%)
+- RSQR_20/QTLU_20单独加入 → 零增量
+
+### WF验证结果 (2026-04-12)
+| Config | OOS Sharpe | OOS MDD | Overfit | Stability | Verdict |
+|--------|-----------|---------|---------|-----------|---------|
+| BASELINE CORE5+SN | 0.6521 | -30.23% | - | - | - |
+| **CORE3+dv+SN Top20 Monthly** | **0.8659** | **-13.91%** | **0.84** | **STABLE** | **PASS ✅** |
+| CORE5+dv+SN Top20 Monthly | 0.6992 | -13.26% | 0.80 | STABLE | MARGINAL ⚠️ |
+| CORE3+dv+SN Top25 Quarterly | 0.7034 | -17.18% | 0.01 | UNSTABLE | MARGINAL ⚠️ |
+
+**P0修正**: RSQR_20有害(-0.089 Sharpe), 移除。最终配置: CORE3+dv_ttm (4因子)。
+
+### PT配置更新 (2026-04-12)
+- pt_live.yaml: CORE5→CORE3+dv_ttm (4因子+方向)
+- signal_engine.py: PAPER_TRADING_CONFIG 更新
+- parquet_cache.py: CORE_FACTORS 更新
+- .env: PT_SIZE_NEUTRAL_BETA=0.50 新增
+- 验证: config_guard双向通过, dv_ttm DB 11.7M行/neutral_value 11.6M有效
+
+### 下一步
+1. ~~WF验证~~ ✅ PASS
+2. ~~PT配置更新~~ ✅ 完成
+3. Phase 3: 自动化(Rolling WF + IC监控)
+4. Phase 4: PT重启(health_check + dry-run)
+
+详见: `docs/research-kb/findings/phase24-exploration-results.md`
+
+---
+
+## §0.3 Phase 2.3 前置：策略市值暴露诊断 (2026-04-11)
+
+**状态: 完成**
+
+### 核心发现
+| 指标 | 无SN | SN b=0.50 |
+|------|------|-----------|
+| Top-20 中位数市值 | 32.3亿 (微盘) | 3,593亿 (大盘) |
+| 微盘(<100亿)占比 | 91.5% | 42.0% |
+| 大盘(>500亿)占比 | 1.5% | 58.0% |
+| 小中盘(100-500亿)占比 | 7.0% | **0.0%** |
+
+### 结论
+1. **无SN = 纯微盘策略** (91.5%<100亿), SN b=0.50 = barbell结构 (58%大盘+42%微盘, 0%中间)
+2. **CSI300是最差基准** (corr=0.077), 全A等权最匹配 (corr=0.334)
+3. **IC对基准不敏感** — Spearman Rank IC是基准无关的(数学证明), 历史IC研究结论不受影响
+4. **因子是真alpha但微盘放大IC 3-4倍** — 所有因子在中盘/大盘仍显著(t>2.5)
+5. **amihud在中盘IC≈0** (0.007, t=3.0勉强) — 如收窄universe到中盘需考虑替换
+6. **bp_ratio最稳健** — 跨市值衰减最小(-58%)
+7. **SN过度矫正** — 从P25%直接推到P99.8%, 应考虑universe filter替代
+
+### 数据质量修正
+- `models/astock.py:322` 注释"万元"已修正为"元" (DataPipeline已转换)
+
+### 后续建议
+- 收窄universe到中盘(100-500亿) — 所有因子中盘IC显著
+- SN beta如保留应降到0.15-0.30, 或改用universe filter
+- 基准改用全A等权
+
+详见: `docs/research-kb/findings/phase23-mcap-diagnostic.md`
 
 ---
 
@@ -31,7 +117,8 @@
 - IC天花板≈0.09, CORE5最优, 更多因子=更多噪声
 - 可微分Sharpe Loss在A股不可行 (真实交易成本不可微分)
 - 瓶颈100%在预测质量, 非portfolio构建
-- 下一步: Phase 2.2 IC加权/LambdaRank
+- Phase 2.2 Gate验证: NO-GO — 6方法全败(LambdaRank+SN=0.56最佳, IC加权=0.27, MVO=0.26, 均<基线0.62)
+- 下一步: Phase 3 自动化(因子生命周期监控+Rolling WF)
 
 ---
 

@@ -92,11 +92,11 @@ def _build_paper_trading_config() -> SignalConfig:
 
     return SignalConfig(
         factor_names=[
+            # CORE3+dv_ttm (WF OOS Sharpe=0.8659, 2026-04-12 PASS)
             "turnover_mean_20",
             "volatility_20",
-            "reversal_20",
-            "amihud_20",
             "bp_ratio",
+            "dv_ttm",
         ],
         top_n=settings.PT_TOP_N,
         weight_method="equal",

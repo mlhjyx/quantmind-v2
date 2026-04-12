@@ -9,10 +9,10 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT已暂停+已清仓(2026-04-10, 等WF验证后重启), Sharpe基线=**5yr 0.6095 (regression_test.py) / 12yr 0.5309 / SN b=0.50 WF OOS 0.6521 / Phase 2.4最佳=1.03(CORE3+dv, P0-3修正, 待WF验证)**
+- **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT配置已更新CORE3+dv_ttm(2026-04-12 WF PASS), Sharpe基线=**WF OOS 0.8659 (CORE3+dv_ttm+SN050, +33% vs CORE5 baseline 0.6521, MDD -13.91%)**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索(Sharpe=1.04, 5改善方向) → **WF验证** → Phase 3 自动化 → Phase 4 PT重启
+- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → **Phase 3 自动化** → Phase 4 PT重启
 - **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
 
 ## 技术栈（实际使用，非设计文档）
@@ -36,8 +36,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 ### 因子池状态
 | 池 | 数量 | 说明 |
 |----|------|------|
-| CORE (Active, PT在用) | 5 | turnover_mean_20, volatility_20, reversal_20(WARNING), amihud_20, bp_ratio |
-| Phase 2.4候选配置 | 4 | turnover_mean_20(-1), volatility_20(-1), bp_ratio(+1), dv_ttm(+1) — **Sharpe=1.03** (P0-3修正: RSQR_20有害-0.09, 移除), 待WF验证 |
+| CORE (Active, PT在用) | 4 | turnover_mean_20(-1), volatility_20(-1), bp_ratio(+1), dv_ttm(+1) — **WF OOS Sharpe=0.8659, MDD=-13.91%** (2026-04-12 PASS) |
+| CORE5 (前任, 回测基线) | 5 | turnover_mean_20, volatility_20, reversal_20, amihud_20, bp_ratio — regression_test基线对照用 |
 | PASS候选 | 32 | FACTOR_TEST_REGISTRY.md中PASS状态因子(含Alpha158六+PEAD-SUE)，待评估入池 |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
@@ -407,17 +407,17 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | RSQR_20/QTLU_20单独加CORE5 | 零增量(Sharpe=0.6652不变), 中性化后截面信息被消除 | Phase 2.4 Part 2.2 |
 | RSQR_20加入CORE3+dv | 有害(-0.089 Sharpe), direction=-1与正IC冲突. CORE3+dv=1.03 > CORE3+RSQR+dv=0.95 | P0-3 re-evaluation |
 
-## 策略配置（v1.2→Top-20已部署，Step 0→6-H完成 PT已暂停+已清仓 2026-04-10）
-# 基线演进: 1.24(虚高)→0.94(Phase 1加固, 5年)→0.6095(Step 5, 5年regression)→0.5309(Step 6-D, 真实12年)
+## 策略配置（CORE3+dv_ttm WF PASS, PT配置已更新 2026-04-12）
+# 基线演进: 1.24(虚高)→0.94(Phase 1加固)→0.6095(5yr regression)→0.5309(12yr)→0.6521(SN WF OOS)→**0.8659(CORE3+dv_ttm WF OOS)**
 # 配置来源: configs/pt_live.yaml (Step 4-B, 铁律15要求YAML驱动)
 # 回测入口: python scripts/run_backtest.py --config configs/pt_live.yaml
 
 ```
-因子: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio
+因子: turnover_mean_20(-1) / volatility_20(-1) / bp_ratio(+1) / dv_ttm(+1)  [CORE3+dv_ttm, 2026-04-12 WF PASS]
 合成: 等权平均
 选股: Top 20 (PT_TOP_N=20)
 调仓: 月度（月末最后交易日）
-Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap), Step 6-H验证)
+Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap), Step 6-H验证, .env PT_SIZE_NEUTRAL_BETA=0.50)
 约束: 行业上限=无(PT_INDUSTRY_CAP=1.0), 换手率上限 50%, 100股整手(floor), 日均成交额≥5000万(20日均)
 排除: 北交所BJ股 + ST + 停牌 + 新股(list<60天)
 
@@ -445,18 +445,15 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 成本: 佣金万0.854(国金实际, min 5元) + 印花税(2023-08-28前0.1%,后0.05%) + 过户费0.001% + 三因素滑点(spread+impact+overnight_gap)
 ```
 
-**因子健康状态（2026-04-05检查）:**
-- turnover_mean_20: ✅ active (IC=-0.091, direction=-1, 方向正确)
-- volatility_20: ✅ active (IC=-0.114, direction=-1, 方向正确)
-- bp_ratio: ✅ active (IC=+0.107, direction=+1, 方向正确)
-- amihud_20: ✅ active (IC=+0.041, direction=+1, 方向正确)
-- reversal_20: **⚠️ WARNING（IC方向反转观察中）**
-  - 月度IC: 24月中22月为正，2月为负，非持续反转
-  - 根因: momentum regime下反转逻辑暂时减弱
-  - 处理: 保留Active，等权框架下不单独降权
-  - 恢复条件: 连续3月IC_adjusted>0.01自动确认
+**因子健康状态（2026-04-12 PT配置更新后）:**
+- turnover_mean_20: ✅ active (IC=-0.091, direction=-1)
+- volatility_20: ✅ active (IC=-0.114, direction=-1)
+- bp_ratio: ✅ active (IC=+0.107, direction=+1)
+- dv_ttm: ✅ **NEW active** (股息率, direction=+1, DB 11.7M行, neutral_value 11.6M有效)
+- amihud_20: 降级→CORE5基线保留 (仍在factor_values, 不参与PT信号)
+- reversal_20: 降级→CORE5基线保留 (IC方向反转问题, 不参与PT信号)
 
-**PT状态**: 已暂停+已清仓 (2026-04-10)。原因: 等权Top-N框架触到天花板(11实验1成功), V4 Phase 2 E2E验证后重启。重启前提: E2E OOS Sharpe > 等权基线(0.6336) + MDD < 40%。
+**PT状态**: 已暂停+已清仓 (2026-04-10), **配置已更新为CORE3+dv_ttm** (2026-04-12)。WF OOS Sharpe=0.8659 > 基线0.6521 ✅, MDD=-13.91% < 40% ✅。重启前: health_check + regression_test + 首日dry-run确认。
 
 ## 文档查阅索引
 
@@ -529,14 +526,16 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - MVO 94%失败率(40股×60日协方差不稳定)
   - 瓶颈确认在信号层(5因子信息量不足), 非portfolio构建层
 - ✅ **Phase 2.3**: 市值诊断 — 无SN=纯微盘91.5%, Alpha 100%微盘, 因子真alpha但微盘放大3-4x (2026-04-11)
-- ✅ **Phase 2.4**: Research Exploration — 36实验5改善方向, **最佳Sharpe=1.04** (CORE3+RSQR_20+dv_ttm) (2026-04-12)
+- ✅ **Phase 2.4**: Research Exploration — 36实验5改善方向, **最佳Sharpe=1.04** (CORE3+dv_ttm) (2026-04-12)
   - dv_ttm(股息率)关键突破: +30% Sharpe, MDD -19.5%
-  - Top-40 > Top-20 (+37%), 季度 > 月度 (+25%)
+  - P0修正: RSQR_20有害(-0.089), 移除; 最终配置4因子CORE3+dv_ttm
   - 已关闭: universe filter(Alpha=微盘), LambdaRank因子(冲突), RSQR/QTLU单独加入(零增量)
-  - **多重测试风险**: 所有优化同一OOS(2020-2026), 必须WF验证
-- ⬜ **WF验证**: CORE3+RSQR+dv 5-fold Walk-Forward (OOS Sharpe目标>0.72) + 多维组合交叉验证
+- ✅ **WF验证**: CORE3+dv_ttm+SN050 5-fold WF OOS **Sharpe=0.8659, MDD=-13.91%** PASS (2026-04-12)
+  - 0 negative folds, overfit_ratio=0.84, STABLE
+  - Config 2(CORE5+dv) MARGINAL 0.6992, Config 3(CORE3+dv Top25 Quarterly) MARGINAL 0.7034
+- ✅ **PT配置更新**: CORE5→CORE3+dv_ttm, pt_live.yaml+signal_engine+parquet_cache+.env全部更新 (2026-04-12)
 - ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
-- ⬜ **Phase 4**: PT重启（前提: WF OOS Sharpe > 0.6521 + MDD < 40%）
+- ⬜ **Phase 4**: PT重启（前提: health_check + dry-run确认 + 首日监控）
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)

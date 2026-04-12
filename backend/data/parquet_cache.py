@@ -27,13 +27,12 @@ logger = structlog.get_logger(__name__)
 
 CACHE_DIR = Path("cache/backtest")
 
-# 5核心因子(与PT配置一致)
+# 4核心因子(CORE3+dv_ttm, 与PT配置一致, 2026-04-12 WF PASS更新)
 CORE_FACTORS = (
     "turnover_mean_20",
     "volatility_20",
-    "reversal_20",
-    "amihud_20",
     "bp_ratio",
+    "dv_ttm",
 )
 
 # price_data SQL — 与run_backtest.py load_price_data()完全一致

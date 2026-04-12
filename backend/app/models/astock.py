@@ -319,7 +319,7 @@ class DailyBasic(Base):
     total_mv: Mapped[Decimal | None] = mapped_column(
         Numeric(16, 2),
         nullable=True,
-        comment="总市值（万元，不是元！跨表计算注意单位）",
+        comment="总市值（元, DataPipeline已将Tushare万元×10000转换为元）",
     )
     circ_mv: Mapped[Decimal | None] = mapped_column(
         Numeric(16, 2),
