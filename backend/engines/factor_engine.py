@@ -1808,7 +1808,13 @@ def compute_batch_factors(
     write: bool = True,
     factor_names: list[str] | None = None,
 ) -> dict:
-    """批量计算因子并逐日写入。
+    """[DEPRECATED S2 F52] 批量计算因子并逐日写入.
+
+    ⚠️ 此函数内部 (line ~2001) 直接 INSERT INTO factor_values, 绕过 DataPipeline,
+    违反铁律 17. 仅被 `scripts/archive/calc_factors.py` 调用 (dead code).
+
+    请使用 `compute_daily_factors()` + `save_daily_factors()` 组合 (走 DataPipeline).
+    见 docs/audit/S2_consistency.md F52.
 
     高效模式: 一次加载全量数据 → 计算滚动因子 → 逐日预处理+写入。
 
@@ -1824,8 +1830,17 @@ def compute_batch_factors(
         dict with stats (total_rows, elapsed, etc.)
     """
     import time
+    import warnings
 
     from psycopg2.extras import execute_values
+
+    warnings.warn(
+        "compute_batch_factors is DEPRECATED (S2 F52, 2026-04-15). "
+        "Direct INSERT bypasses DataPipeline (violates Iron Law 17). "
+        "Use compute_daily_factors() + save_daily_factors() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     from app.services.price_utils import _get_sync_conn
 

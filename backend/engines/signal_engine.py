@@ -55,31 +55,29 @@ FACTOR_DIRECTION = {
 
 @dataclass
 class SignalConfig:
-    """信号生成配置。"""
+    """信号生成配置。
+
+    S2 F40 fix (2026-04-15): default 值已对齐生产 PT (CORE3+dv_ttm + monthly + no industry cap + SN=0.50).
+    任何未显式传参的 `SignalConfig()` 调用将拿到与 `PAPER_TRADING_CONFIG` 等价的默认值.
+    """
 
     top_n: int = 20
     weight_method: str = "equal"  # 'equal' or 'score_weighted'
-    industry_cap: float = 0.25  # 单行业上限25%
-    rebalance_freq: str = "biweekly"  # 'weekly', 'biweekly', 'monthly'
+    industry_cap: float = 1.0  # 1.0=无约束 (原 0.25 已不匹配生产 PT)
+    rebalance_freq: str = "monthly"  # 'weekly', 'biweekly', 'monthly' — 原 biweekly 已过期
     turnover_cap: float = 0.50  # 单次换手率上限50%
     cash_buffer: float = 0.03  # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
-    size_neutral_beta: float = 0.0  # 0.0=关闭, 0.50=Step 6-G验证最优
+    size_neutral_beta: float = 0.50  # Step 6-H 验证, WF OOS Sharpe 0.8659 依赖此值
     regime_mode: str = "vol_regime"  # 'vol_regime'（启发式）或 'hmm_regime'（HMM）
     factor_names: list[str] = field(
         default_factory=lambda: [
-            # P0诊断后去冗余: 17→8个独立因子
-            # 删除: momentum_5/10/20 (方向反, 与reversal完全冗余 corr=-1.0)
-            # 删除: reversal_5/10 (只留20), volatility_60 (与vol20 corr=0.73)
-            # 删除: volume_std_20 (弱IC), high_low_range_20 (与vol20 corr=0.90)
-            # 删除: price_volume_corr_20 (信息重叠)
-            "turnover_mean_20",  # IC=4.55%, 核心Alpha, 4/5年>3%
-            "turnover_std_20",  # IC=3.90%, 4/5年>3%
-            "volatility_20",  # IC=3.27%, 3/5年>3%
-            "reversal_20",  # IC=2.48%, 反转效应
-            "amihud_20",  # IC=2.80%, 流动性维度独立
-            "bp_ratio",  # IC=2.64%, 价值维度
-            "ln_market_cap",  # IC=1.51%, 规模维度
-            "ep_ratio",  # IC=1.30%, 价值维度(与bp corr=0.33, 独立)
+            # CORE3+dv_ttm (WF OOS Sharpe=0.8659, 2026-04-12 PASS)
+            # 历史: 原 8 因子 default (turnover_std/reversal/amihud/ln_mcap/ep_ratio 等) 已在
+            # Phase 2.4 WF 验证中全部淘汰. 详见 docs/audit/S2_consistency.md F40.
+            "turnover_mean_20",
+            "volatility_20",
+            "bp_ratio",
+            "dv_ttm",
         ]
     )
 

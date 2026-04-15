@@ -10,8 +10,8 @@
 
 | # | 主题 | 状态 | 启动 | 完成 | 报告 |
 |---|---|---|---|---|---|
-| **S1** | 三角对齐（文档 / 代码 / DB） | 🟡 进行中 | 2026-04-15 | — | [S1_three_way_alignment.md](S1_three_way_alignment.md) |
-| S2 | 一致性专项（PT ↔ 回测 ↔ 研究） | ⬜ 待开始 | — | — | — |
+| **S1** | 三角对齐（文档 / 代码 / DB） | ✅ 完成 | 2026-04-15 | 2026-04-15 | [S1_three_way_alignment.md](S1_three_way_alignment.md) |
+| **S2** | 一致性专项（PT ↔ 回测 ↔ 研究） | ✅ 静态完成 | 2026-04-15 | 2026-04-15 | [S2_consistency.md](S2_consistency.md) |
 | S3 | 韧性与抗断（静默失败 / 错误恢复 / 监控） | ⬜ 待开始 | — | — | — |
 | S4 | 动态基线验证（regression / pytest / diagnosis） | ⬜ 待开始 | — | — | — |
 | S5 | 边界 + 血缘（时区 / QMT / 并发 / 生命周期） | ⬜ 待开始 | — | — | — |
@@ -21,17 +21,18 @@
 
 ## 📊 累计发现计数
 
-| 分级 | 数量 | 已处理 | 未处理 |
-|---|---|---|---|
-| 🔴 P0 | 6 | **2** | 4 |
-| 🟠 P1 | 10 | **6** (doc fixes) | 4 |
-| 🟡 P2 | 6 | **1** | 5 |
-| **合计** | **22** | **9** | **13** |
+| 分级 | S1 | S2 新增 | 总计 | 已处理 | 未处理 |
+|---|---|---|---|---|---|
+| 🔴 P0 | 6 | 3 (F51/F60/F62) | 9 | **4** (F32 闭 + F41 闭 + F62 改 default + F51/F60 加 DEPRECATED) | 5 |
+| 🟠 P1 | 10 | 6 (F50/F52/F54/F55/F57/F58/F63/F65) | **16** | **8** (S1 doc fixes 6 + F52 guard + F65 fix + F40 合并) | 8 |
+| 🟡 P2 | 6 | 2 (F56/F64) | 8 | **2** | 6 |
+| ✅ 关闭/修正 | — | F17 部分关闭 + F64 PASS | — | — | — |
+| **合计** | **22** | **11** | **33** | **14** | **19** |
 
-> 仅基于 S1 静态广扫 + S1 cleanup pass. S2-S6 会继续累加。
+> S1 静态广扫 + S1 cleanup pass + S2 一致性专项（静态 + 4 快修）已完成。
 
 **S1 cleanup pass 处理** (2026-04-15 夜):
-- ✅ F32 (token leak): 5 源码位置清洗 + 用户 rotate 4 组 key (**ZHIPU 待补**)
+- ✅ F32 (token leak): 5 源码位置清洗 + 用户 rotate 所有 key (含 ZHIPU revoke)
 - ✅ F41 (V12_CONFIG): 已删除 + 加 tombstone 注释
 - ✅ F38 (stale comment "基线5因子"): 随 V12_CONFIG 删除一并解决
 - ✅ F1 (DEV_FOREX/NOTIFICATIONS 索引补齐)
@@ -42,18 +43,30 @@
 - ✅ F18 注释补充 (async 遗留在 mining/backtest_service)
 - ✅ F2 (archive 131 → 126)
 
+**S2 快修 pass 处理** (2026-04-15 夜):
+- ✅ F62 (PT_SIZE_NEUTRAL_BETA default 0.0 → 0.50)
+- ✅ F15/F65 (硬编码 DB 密码 fallback 改为 placeholder + raise)
+- ✅ F40 (SignalConfig default 对齐 PT CORE3+dv_ttm + monthly + SN=0.50)
+- ✅ F52 (compute_batch_factors DeprecationWarning + 注释)
+- ✅ F51/F60 (factor_onboarding IC 函数 DEPRECATED warning + 注释, 中期重构留给 S2b)
+- ✅ F17 部分关闭 (PT 生产路径 save_daily_factors 走 DataPipeline, factor_engine:2001 是 dead code)
+- ✅ F64 (成本模型 backtest/pt_live/broker 三处对齐 PASS 验证)
+
 ---
 
 ## 🚨 P0 开放行动看板（按严重性降序）
 
 | ID | 主题 | 负责人 | 状态 | Source |
 |---|---|---|---|---|
-| **F32** | API Token 泄漏 — **主线已清洗 + 4 key rotate 完成** | 用户 | 🟡 **ZHIPU_API_KEY 待补 rotate** | S1 |
-| **F16** | Service 层 20+ 处 `.commit()` 违反"Service 不 commit"铁律 | — | ⬜ 待修（规模大，S3 处理）| S1 |
-| **F17** | `factor_onboarding.py:538` + `factor_engine.py:2001` 绕过 DataPipeline 直接 INSERT | — | ⬜ 待修（S2 处理）| S1 |
-| **F31** | `factor_engine.py:2001` Engine 层直接读写 DB | — | ⬜ 长期重构 | S1 |
+| **F32** | API Token 泄漏 | 用户 | ✅ **全线关闭** 2026-04-15 | S1 |
 | **F41** | `V12_CONFIG` 含 INVALIDATED 因子 | — | ✅ **2026-04-15 已删除** | S1 |
+| **F62** | `PT_SIZE_NEUTRAL_BETA` default=0.0 静默降级 | — | ✅ **2026-04-15 default→0.50** | S2 |
+| **F16** | Service 层 20+ 处 `.commit()` 违反铁律 | — | ⬜ 待修（S3 规模化处理）| S1 |
+| **F17** | factor_onboarding 绕过 DataPipeline + 中性化不完整 | — | 🟡 DEPRECATED 告警加上, 中期重构转 S2b | S1/S2 |
+| **F31** | `factor_engine.py` Engine 层读写 DB（2034 行巨石） | — | ⬜ 长期重构（F43 一起） | S1/S2 |
 | **F45** | `config_guard` 不检查 SN/top_n/industry_cap | — | ⬜ S6 合并做 | S1 |
+| **F51/F53/F60** | factor_onboarding IC 违反铁律 19 + 前瞻偏差 | — | 🟡 DEPRECATED 告警加上, 中期 S2b 重构 | S2 |
+| **F63** | 前端 API 覆盖缺口（12 vs 21） | — | ⬜ S5 前端契约深扫 | S2 |
 
 ---
 

@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     )
 
     # --- 数据库 ---
-    DATABASE_URL: str = "postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2"
+    # S1 F15 / S2 F65 (2026-04-15): default 含占位密码 "quantmind", 实际生产必须由 .env 覆盖.
+    # 如果 .env 缺失, Settings() 会用本默认值 (可能连到本地开发数据库但密码弱).
+    DATABASE_URL: str = "postgresql+asyncpg://xin:REPLACE_WITH_ENV@localhost:5432/quantmind_v2"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # --- 数据源 ---
@@ -34,7 +36,11 @@ class Settings(BaseSettings):
     # --- Paper Trading 核心参数 ---
     PT_TOP_N: int = 20  # was 15, changed 2026-04-04, backtest X-D Sharpe 1.15
     PT_INDUSTRY_CAP: float = 1.0  # was 0.25, changed 2026-04-04, removing constraint +0.09 Sharpe
-    PT_SIZE_NEUTRAL_BETA: float = 0.0  # 0.0=关闭, 0.50=Step 6-H验证最优. .env设置覆盖
+    # S2 F62 fix (2026-04-15): default 从 0.0 改为 0.50.
+    # 原因: 当前 PT CORE3+dv_ttm WF OOS Sharpe=0.8659 强依赖 Size-Neutral b=0.50 (Step 6-H 验证).
+    # 如果 .env 意外缺失 PT_SIZE_NEUTRAL_BETA, 旧 default 0.0 会静默降级到无 SN (-27% Sharpe).
+    # 需显式关闭 SN 请在 .env 写 PT_SIZE_NEUTRAL_BETA=0.0
+    PT_SIZE_NEUTRAL_BETA: float = 0.50
 
     # --- PMS 阶梯利润保护 ---
     PMS_ENABLED: bool = True

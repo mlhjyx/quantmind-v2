@@ -62,11 +62,17 @@ class FactorOnboardingService:
 
         Args:
             db_url: PostgreSQL 连接字符串。None 时从环境变量读取。
+
+        Raises:
+            RuntimeError: 当 db_url 未传且 DATABASE_URL 环境变量也未设置时.
+                S2 F65 (2026-04-15): 不再 fallback 到硬编码的弱密码默认值.
         """
-        self._db_url = db_url or os.environ.get(
-            "DATABASE_URL",
-            "postgresql://quantmind:quantmind@localhost:5432/quantmind",
-        )
+        self._db_url = db_url or os.environ.get("DATABASE_URL")
+        if not self._db_url:
+            raise RuntimeError(
+                "FactorOnboardingService: DATABASE_URL env var not set. "
+                "Check backend/.env or pass db_url explicitly."
+            )
 
     # ------------------------------------------------------------------
     # 主入口
@@ -570,7 +576,20 @@ class FactorOnboardingService:
         adj_df: pd.DataFrame,
         trading_dates: list[date],
     ) -> pd.DataFrame:
-        """计算多期 forward return。
+        """[DEPRECATED S2 F60] 计算多期 forward return.
+
+        ⚠️ 此函数违反铁律 19 并引入前瞻偏差:
+        1. 用 raw return 而非相对 CSI300 的超额收益 (铁律 19 要求超额)
+        2. 用 T 日因子 vs T+h 价格, 缺 T+1 入场延迟 (A 股 T+1 制度)
+
+        正确实现见 `backend/engines/ic_calculator.compute_forward_excess_returns`
+        及 `backend/engines/factor_profiler.py:120-124`.
+
+        本函数仍被 FactorOnboardingService._compute_ic_series 调用, 写入
+        factor_ic_history 的 IC 数字与 fast_ic_recompute (合规路径) 不一致.
+
+        修复计划: S2b / S3 专项重构, 改为调用 ic_calculator 模块.
+        详见 docs/audit/S2_consistency.md F51/F53/F60.
 
         Args:
             adj_df: [code, trade_date, adj_close]。
@@ -579,6 +598,14 @@ class FactorOnboardingService:
         Returns:
             DataFrame with columns [code, trade_date, fwd_1d, fwd_5d, fwd_10d, fwd_20d]。
         """
+        import warnings
+        warnings.warn(
+            "FactorOnboardingService._compute_forward_returns is DEPRECATED "
+            "(S2 F60, 2026-04-15). Uses raw return without T+1 delay or CSI300 excess, "
+            "violating Iron Law 19. Use ic_calculator.compute_forward_excess_returns instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         pivot = adj_df.pivot(index="trade_date", columns="code", values="adj_close")
         pivot = pivot.sort_index()
 
@@ -607,7 +634,16 @@ class FactorOnboardingService:
         fwd_ret_df: pd.DataFrame,
         factor_name: str,
     ) -> pd.DataFrame:
-        """按交易日计算 Rank IC（Spearman 相关系数）。
+        """[DEPRECATED S2 F51/F53] 按交易日计算 Rank IC (Spearman).
+
+        ⚠️ 此函数违反铁律 19:
+        - 用 _compute_forward_returns 的 raw return (非超额), 见 F60
+        - 写入的 IC 与 fast_ic_recompute (ic_calculator 合规路径) 口径不一致
+        - factor_ic_history 同时存在两种 IC 数字, 监控/告警无法区分
+
+        正确实现见 `backend/engines/ic_calculator.compute_ic_series`.
+
+        修复计划: S2b / S3 专项重构. 详见 docs/audit/S2_consistency.md F51.
 
         Args:
             factor_values_df: [code, trade_date, neutral_value]。
@@ -618,6 +654,14 @@ class FactorOnboardingService:
             DataFrame with columns [trade_date, ic_1d, ic_5d, ic_10d, ic_20d,
                                      ic_abs_1d, ic_abs_5d, ic_ma20, ic_ma60, decay_level]。
         """
+        import warnings
+        warnings.warn(
+            "FactorOnboardingService._compute_ic_series is DEPRECATED "
+            "(S2 F51/F53, 2026-04-15). Violates Iron Law 19 (raw return not excess). "
+            "Use ic_calculator.compute_ic_series instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         merged = factor_values_df[["code", "trade_date", "neutral_value"]].merge(
             fwd_ret_df, on=["code", "trade_date"], how="inner"
         )
