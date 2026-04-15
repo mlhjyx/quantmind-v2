@@ -63,7 +63,15 @@ export async function fetchNotificationParams(): Promise<NotificationParam[]> {
 export async function saveNotificationParams(
   params: NotificationParam[],
 ): Promise<void> {
-  await apiClient.post("/params/batch", { params });
+  // F63 fix (Phase D D3b 2026-04-16): backend has no /params/batch.
+  // Loop PUT /params/{key} sequentially using existing /api/params/{key:path} endpoint.
+  // 注: backend params.py:115 PUT 接受 UpdateParamRequest { value, reason, changed_by? }
+  for (const p of params) {
+    await apiClient.put(`/params/${p.key}`, {
+      value: p.value,
+      reason: "notification settings update from /system page",
+    });
+  }
 }
 
 export async function testNotification(webhook_url: string): Promise<{ success: boolean; message: string }> {
