@@ -125,12 +125,13 @@ class PMSEngine:
         cur = conn.cursor()
 
         # 从position_snapshot获取当前持仓股票和股数
+        # 2026-04-15修复: 'paper'→'live' 对齐 execution_service/daily_reconciliation/pt_qmt_state
         cur.execute(
             """SELECT code, quantity FROM position_snapshot
-            WHERE strategy_id = %s AND execution_mode = 'paper'
+            WHERE strategy_id = %s AND execution_mode = 'live'
               AND trade_date = (
                 SELECT MAX(trade_date) FROM position_snapshot
-                WHERE strategy_id = %s AND execution_mode = 'paper'
+                WHERE strategy_id = %s AND execution_mode = 'live'
               )
             AND quantity > 0""",
             (strategy_id, strategy_id),
@@ -147,7 +148,7 @@ class PMSEngine:
             cur.execute(
                 """SELECT fill_price, quantity FROM trade_log
                 WHERE code = %s AND strategy_id = %s
-                  AND direction = 'buy' AND execution_mode = 'paper'
+                  AND direction = 'buy' AND execution_mode = 'live'
                 ORDER BY trade_date DESC""",
                 (code, strategy_id),
             )
@@ -190,12 +191,12 @@ class PMSEngine:
             cur.execute(
                 """SELECT MIN(trade_date) FROM trade_log
                 WHERE code = %s AND direction = 'buy'
-                  AND execution_mode = 'paper'
+                  AND execution_mode = 'live'
                   AND trade_date >= (
                     SELECT COALESCE(MAX(trade_date), '1970-01-01')
                     FROM trade_log
                     WHERE code = %s AND direction = 'sell'
-                      AND execution_mode = 'paper'
+                      AND execution_mode = 'live'
                   )""",
                 (code, code),
             )
@@ -342,7 +343,7 @@ class PMSEngine:
              pms_level_triggered, trigger_date, trigger_price, status)
             VALUES (%s,
                     (SELECT MIN(trade_date) FROM trade_log
-                     WHERE code = %s AND direction = 'buy' AND execution_mode = 'paper'),
+                     WHERE code = %s AND direction = 'buy' AND execution_mode = 'live'),
                     %s, %s, %s, %s, %s, %s, %s, %s, 'triggered')""",
             (
                 signal.code,
@@ -375,7 +376,7 @@ class PMSEngine:
         cur = conn.cursor()
         latest_date_sql = """
             SELECT MAX(trade_date) FROM position_snapshot
-            WHERE strategy_id = %s AND execution_mode = 'paper'
+            WHERE strategy_id = %s AND execution_mode = 'live'
         """
         cur.execute(latest_date_sql, (strategy_id,))
         row = cur.fetchone()
@@ -388,7 +389,7 @@ class PMSEngine:
             cur.execute(
                 """DELETE FROM position_snapshot
                 WHERE code = %s AND trade_date = %s
-                  AND strategy_id = %s AND execution_mode = 'paper'""",
+                  AND strategy_id = %s AND execution_mode = 'live'""",
                 (code, latest_date, strategy_id),
             )
             logger.info("[PMS] position_snapshot已更新: 删除 %s @ %s", code, latest_date)

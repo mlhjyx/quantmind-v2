@@ -23,27 +23,54 @@ def save_qmt_state(
     qmt_nav_data: dict | None,
     benchmark_close: float | None,
 ) -> None:
-    """用QMT实际持仓写入position_snapshot和performance_series。"""
+    """用QMT实际持仓写入position_snapshot和performance_series。
+
+    2026-04-15修复: execution_mode 从 'paper' 改为 'live', 对齐
+    execution_service._save_live_fills 和 daily_reconciliation.write_live_snapshot。
+    avg_cost 从 trade_log 加权均值计算(原硬编码 0 导致 PMS check_protection 静默跳过)。
+    """
     cur = conn.cursor()
     strategy_id = settings.PAPER_STRATEGY_ID
+
+    # 从 trade_log 批量查询加权平均成本 (P0 修复: 原硬编码 avg_cost=0 导致 PMS 全部跳过)
+    avg_costs: dict[str, float] = {}
+    if qmt_positions:
+        codes = list(qmt_positions.keys())
+        placeholders = ",".join(["%s"] * len(codes))
+        cur.execute(
+            f"""SELECT code,
+                       SUM(fill_price * quantity) / NULLIF(SUM(quantity), 0) AS avg_cost
+                FROM trade_log
+                WHERE strategy_id = %s AND execution_mode = 'live'
+                  AND direction = 'buy' AND code IN ({placeholders})
+                GROUP BY code""",
+            [strategy_id, *codes],
+        )
+        avg_costs = {r[0]: float(r[1]) for r in cur.fetchall() if r[1] is not None}
 
     # 1. position_snapshot: 删除当日旧数据 + 写入QMT持仓 (原子操作)
     cur.execute("SAVEPOINT snapshot_update")
     try:
         cur.execute(
-            "DELETE FROM position_snapshot WHERE trade_date = %s AND execution_mode = 'paper' AND strategy_id = %s",
+            "DELETE FROM position_snapshot WHERE trade_date = %s AND execution_mode = 'live' AND strategy_id = %s",
             (trade_date, strategy_id),
         )
         for code, qty in qmt_positions.items():
             price = today_close.get(code, 0)
             mv = qty * price
             weight = mv / nav if nav > 0 else 0
+            avg_cost = avg_costs.get(code)
+            unrealized_pnl = (mv - avg_cost * qty) if avg_cost else 0
             cur.execute(
                 """INSERT INTO position_snapshot
                    (code, trade_date, strategy_id, market, quantity, avg_cost,
                     market_value, weight, unrealized_pnl, holding_days, execution_mode)
-                   VALUES (%s, %s, %s, 'astock', %s, 0, %s, %s, 0, 0, 'paper')""",
-                (code, trade_date, strategy_id, qty, round(mv, 2), round(weight, 4)),
+                   VALUES (%s, %s, %s, 'astock', %s, %s, %s, %s, %s, 0, 'live')""",
+                (
+                    code, trade_date, strategy_id, qty,
+                    round(avg_cost, 4) if avg_cost else None,
+                    round(mv, 2), round(weight, 4), round(unrealized_pnl, 2),
+                ),
             )
         cur.execute("RELEASE SAVEPOINT snapshot_update")
     except Exception:
@@ -59,7 +86,7 @@ def save_qmt_state(
 
     cur.execute(
         "SELECT COALESCE(MAX(nav), %s) FROM performance_series "
-        "WHERE execution_mode = 'paper' AND strategy_id = %s",
+        "WHERE execution_mode = 'live' AND strategy_id = %s",
         (settings.PAPER_INITIAL_CAPITAL, strategy_id),
     )
     peak_nav = float(cur.fetchone()[0])
@@ -76,7 +103,7 @@ def save_qmt_state(
            (trade_date, strategy_id, market, nav, daily_return, cumulative_return,
             drawdown, cash_ratio, cash, position_count, turnover,
             benchmark_nav, excess_return, execution_mode)
-           VALUES (%s, %s, 'astock', %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, 'paper')
+           VALUES (%s, %s, 'astock', %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, 'live')
            ON CONFLICT (trade_date, strategy_id, execution_mode)
            DO UPDATE SET nav=EXCLUDED.nav, daily_return=EXCLUDED.daily_return,
               cumulative_return=EXCLUDED.cumulative_return, drawdown=EXCLUDED.drawdown,
