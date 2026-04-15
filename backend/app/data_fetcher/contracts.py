@@ -198,6 +198,30 @@ FACTOR_VALUES = TableContract(
     skip_unit_conversion=True,  # z-score无量纲，跳过单位转换
 )
 
+# S2b (2026-04-15): 新增 FACTOR_IC_HISTORY Contract, 支持 factor_onboarding
+# 走 DataPipeline 入库 (铁律 17). 所有 IC 数字必须由 ic_calculator 计算 (铁律 19).
+# 多 horizon (1d/5d/10d/20d) + 派生 (abs/ma20/ma60/decay_level) schema 对齐
+# 原 factor_onboarding.py _upsert_ic_history 写入的列.
+FACTOR_IC_HISTORY = TableContract(
+    table_name="factor_ic_history",
+    pk_columns=("factor_name", "trade_date"),
+    columns={
+        "factor_name": ColumnSpec("str", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False),
+        "ic_1d": ColumnSpec("float"),
+        "ic_5d": ColumnSpec("float"),
+        "ic_10d": ColumnSpec("float"),
+        "ic_20d": ColumnSpec("float"),
+        "ic_abs_1d": ColumnSpec("float"),
+        "ic_abs_5d": ColumnSpec("float"),
+        "ic_ma20": ColumnSpec("float"),
+        "ic_ma60": ColumnSpec("float"),
+        "decay_level": ColumnSpec("str"),
+    },
+    fk_filter_col=None,  # factor_name 是因子标识, 不是 symbols.code
+    skip_unit_conversion=True,  # IC 是无量纲 Spearman 相关系数
+)
+
 NORTHBOUND_HOLDINGS = TableContract(
     table_name="northbound_holdings",
     pk_columns=("code", "trade_date"),
@@ -307,6 +331,7 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
         MONEYFLOW_DAILY,
         INDEX_DAILY,
         FACTOR_VALUES,
+        FACTOR_IC_HISTORY,
         NORTHBOUND_HOLDINGS,
         SYMBOLS,
         EARNINGS_ANNOUNCEMENTS,

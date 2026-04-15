@@ -1,16 +1,18 @@
-"""因子入库 Celery 任务 — 将审批通过的 GP 候选因子异步入库。
+"""因子入库 Celery 任务 — 将审批通过的 GP 候选因子入库。
 
-每个 task 用 asyncio.run() 包装 async 逻辑（DEV_BACKEND.md 标准写法）。
-入库完成后更新 approval_queue.onboarding_status（若列存在）并记录日志。
+[S2b Refactor 2026-04-15]
+FactorOnboardingService 已从 async(asyncpg) 转为 sync(psycopg2), 对齐 CLAUDE.md
+DEV_BACKEND §3.1 "主 sync psycopg2" 标准, 并关闭 F18 async 遗留。
+本 task 直接 sync 调用, 不再需要 asyncio.run 包装。
 
 设计文档:
   - docs/GP_CLOSED_LOOP_DESIGN.md §6.2: 人工审批后的处理
   - docs/DEV_BACKEND.md §4.12.3: Celery Task 模板
+  - docs/audit/S2b_factor_onboarding_refactor.md: 本次重构记录
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Any
@@ -30,14 +32,13 @@ logger = logging.getLogger("celery.onboarding_tasks")
     time_limit=720,  # 12 分钟硬超时
 )
 def onboard_factor(self, approval_queue_id: int) -> dict[str, Any]:
-    """因子入库 Celery 任务。
+    """因子入库 Celery 任务 (sync, 直接调用 FactorOnboardingService)。
 
-    asyncio.run() 包装：在 Celery prefork Worker 中安全运行 async 代码。
     入库步骤：
       1. 读 approval_queue → 验证 status='approved'
       2. 写 factor_registry（upsert）
-      3. FactorDSL 计算历史因子值 → 写 factor_values
-      4. 计算 Rank IC → 写 factor_ic_history
+      3. FactorDSL 计算历史因子值 → DataPipeline → factor_values (铁律 17)
+      4. ic_calculator 计算多 horizon IC → DataPipeline → factor_ic_history (铁律 19)
       5. 更新 factor_registry gate 统计字段
 
     Args:
@@ -62,7 +63,11 @@ def onboard_factor(self, approval_queue_id: int) -> dict[str, Any]:
     start = time.monotonic()
 
     try:
-        result = asyncio.run(_onboard_factor_async(approval_queue_id))
+        from app.services.factor_onboarding import FactorOnboardingService
+
+        service = FactorOnboardingService()
+        result = service.onboard_factor(approval_queue_id)
+
         elapsed = time.monotonic() - start
         logger.info(
             "因子入库任务完成",
@@ -122,18 +127,3 @@ def onboard_factor(self, approval_queue_id: int) -> dict[str, Any]:
                 "gate_t": None,
                 "error": f"MaxRetriesExceeded: {error_msg}",
             }
-
-
-async def _onboard_factor_async(approval_queue_id: int) -> dict[str, Any]:
-    """因子入库异步主逻辑（在 asyncio.run 中执行）。
-
-    Args:
-        approval_queue_id: approval_queue 主键。
-
-    Returns:
-        入库结果摘要。
-    """
-    from app.services.factor_onboarding import FactorOnboardingService
-
-    service = FactorOnboardingService()
-    return await service.onboard_factor(approval_queue_id)
