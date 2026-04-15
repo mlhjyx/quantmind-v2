@@ -27,22 +27,28 @@ def save_qmt_state(
     cur = conn.cursor()
     strategy_id = settings.PAPER_STRATEGY_ID
 
-    # 1. position_snapshot: 删除当日旧数据 + 写入QMT持仓
-    cur.execute(
-        "DELETE FROM position_snapshot WHERE trade_date = %s AND execution_mode = 'paper' AND strategy_id = %s",
-        (trade_date, strategy_id),
-    )
-    for code, qty in qmt_positions.items():
-        price = today_close.get(code, 0)
-        mv = qty * price
-        weight = mv / nav if nav > 0 else 0
+    # 1. position_snapshot: 删除当日旧数据 + 写入QMT持仓 (原子操作)
+    cur.execute("SAVEPOINT snapshot_update")
+    try:
         cur.execute(
-            """INSERT INTO position_snapshot
-               (code, trade_date, strategy_id, market, quantity, avg_cost,
-                market_value, weight, unrealized_pnl, holding_days, execution_mode)
-               VALUES (%s, %s, %s, 'astock', %s, 0, %s, %s, 0, 0, 'paper')""",
-            (code, trade_date, strategy_id, qty, round(mv, 2), round(weight, 4)),
+            "DELETE FROM position_snapshot WHERE trade_date = %s AND execution_mode = 'paper' AND strategy_id = %s",
+            (trade_date, strategy_id),
         )
+        for code, qty in qmt_positions.items():
+            price = today_close.get(code, 0)
+            mv = qty * price
+            weight = mv / nav if nav > 0 else 0
+            cur.execute(
+                """INSERT INTO position_snapshot
+                   (code, trade_date, strategy_id, market, quantity, avg_cost,
+                    market_value, weight, unrealized_pnl, holding_days, execution_mode)
+                   VALUES (%s, %s, %s, 'astock', %s, 0, %s, %s, 0, 0, 'paper')""",
+                (code, trade_date, strategy_id, qty, round(mv, 2), round(weight, 4)),
+            )
+        cur.execute("RELEASE SAVEPOINT snapshot_update")
+    except Exception:
+        cur.execute("ROLLBACK TO SAVEPOINT snapshot_update")
+        raise
 
     # 2. performance_series: UPSERT
     # DB中的numeric字段返回Decimal, 统一cast为float避免混合类型运算

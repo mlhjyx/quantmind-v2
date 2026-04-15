@@ -219,7 +219,7 @@ class ExecutionService:
                     source="execution_service",
                 )
             except Exception:
-                pass
+                logger.warning("[ExecutionService] StreamBus publish失败", exc_info=True)
 
         return result
 
@@ -265,8 +265,12 @@ class ExecutionService:
 
         if is_rebalance and hedged_target:
             # 构建参考价dict（T日close优先，xtdata实时价在adapter内获取）
-            day_data = price_data[price_data["trade_date"] == exec_date]
             prices: dict[str, float] = {}
+            if price_data is not None and not price_data.empty and "trade_date" in price_data.columns:
+                day_data = price_data[price_data["trade_date"] == exec_date]
+            else:
+                day_data = pd.DataFrame()
+                logger.warning("[ExecutionService] price_data为空或缺少trade_date列，将依赖xtdata实时价")
             if not day_data.empty:
                 for _, row in day_data.iterrows():
                     # 优先用close（更接近T+1开盘），fallback到open
@@ -336,7 +340,7 @@ class ExecutionService:
                     source="execution_service",
                 )
             except Exception:
-                pass
+                logger.warning("[ExecutionService] StreamBus publish失败", exc_info=True)
 
         return result
 

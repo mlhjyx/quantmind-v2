@@ -86,7 +86,7 @@ def log_step(conn, task_name: str, status: str, error: str = None, result: dict 
 def load_today_prices(trade_date: date, conn) -> pd.DataFrame:
     """加载当日价格数据。"""
     return pd.read_sql(
-        """SELECT k.code, k.open, k.high, k.low, k.close, k.pre_close, k.volume, k.amount,
+        """SELECT k.code, k.trade_date, k.open, k.high, k.low, k.close, k.pre_close, k.volume, k.amount,
                   db.turnover_rate
            FROM klines_daily k
            LEFT JOIN daily_basic db ON k.code = db.code AND k.trade_date = db.trade_date
@@ -113,7 +113,7 @@ def _get_notif_service() -> NotificationService:
 # ════════════════════════════════════════════════════════════
 
 
-def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_factors: bool):
+def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_factors: bool, force_rebalance: bool = False):
     """T日信号生成编排: 健康检查→拉数据→NAV→风控→因子→信号→影子→通知。"""
     logger.info("=" * 60)
     logger.info("[SIGNAL PHASE] T日=%s", trade_date)
@@ -198,6 +198,19 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
             universe=universe, industry=industry,
             config=PAPER_TRADING_CONFIG, dry_run=dry_run,
         )
+        if force_rebalance and not signal_result.is_rebalance:
+            signal_result.is_rebalance = True
+            if not dry_run:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE signals SET action='rebalance' "
+                    "WHERE trade_date=%s AND strategy_id=%s AND execution_mode='paper'",
+                    (trade_date, settings.PAPER_STRATEGY_ID),
+                )
+                conn.commit()
+                logger.info("[Step3] --force-rebalance: 已更新%d条信号为rebalance", cur.rowcount)
+            else:
+                logger.info("[Step3] --force-rebalance: dry-run模式，跳过DB更新")
         logger.info("[Step3] 信号: %d只目标, rebalance=%s",
                      len(signal_result.target_weights), signal_result.is_rebalance)
 
@@ -282,6 +295,17 @@ def run_execute_phase(exec_date: date, dry_run: bool, skip_fetch: bool, executio
 
         # Step 5.8: 开盘跳空预检
         price_data_t = load_today_prices(exec_date, conn)
+
+        # Step 5.8.1: 价格数据校验 (2026-04-14新增)
+        if price_data_t.empty:
+            if exec_mode == "live":
+                logger.warning("[Step5.8] price_data为空，live模式继续(依赖QMT实时价)")
+            else:
+                logger.error("[Step5.8] price_data为空，paper模式中止执行")
+                if not dry_run:
+                    log_step(conn, f"execute_phase_{exec_mode}", "failed", "price_data为空")
+                return
+
         check_opening_gap(exec_date, price_data_t, conn, notif_svc, dry_run)
 
         # Step 5.9: 熔断检查
@@ -343,6 +367,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--skip-factors", action="store_true")
+    parser.add_argument("--force-rebalance", action="store_true", help="Force rebalance regardless of schedule")
     parser.add_argument("--execution-mode", choices=["paper", "live"], default=None)
     args = parser.parse_args()
 
@@ -353,7 +378,7 @@ def main():
     trade_date = datetime.strptime(args.date, "%Y-%m-%d").date() if args.date else date.today()
 
     if args.phase == "signal":
-        run_signal_phase(trade_date, args.dry_run, args.skip_fetch, args.skip_factors)
+        run_signal_phase(trade_date, args.dry_run, args.skip_fetch, args.skip_factors, args.force_rebalance)
     elif args.phase == "execute":
         exec_mode = args.execution_mode or settings.EXECUTION_MODE
         run_execute_phase(trade_date, args.dry_run, args.skip_fetch, execution_mode=exec_mode)

@@ -1390,7 +1390,7 @@ def check_circuit_breaker_sync(
         rolling_5d_loss = r5 - 1
 
     rolling_20d_loss = None
-    if len(rows) >= 5:
+    if len(rows) >= 20:
         r20 = 1.0
         for r in rows[:20]:
             r20 *= (1 + r[2])

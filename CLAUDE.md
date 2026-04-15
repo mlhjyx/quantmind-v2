@@ -38,7 +38,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 |----|------|------|
 | CORE (Active, PT在用) | 4 | turnover_mean_20(-1), volatility_20(-1), bp_ratio(+1), dv_ttm(+1) — **WF OOS Sharpe=0.8659, MDD=-13.91%** (2026-04-12 PASS) |
 | CORE5 (前任, 回测基线) | 5 | turnover_mean_20, volatility_20, reversal_20, amihud_20, bp_ratio — regression_test基线对照用 |
-| PASS候选 | 32 | FACTOR_TEST_REGISTRY.md中PASS状态因子(含Alpha158六+PEAD-SUE)，待评估入池 |
+| PASS候选 | 32+16 | FACTOR_TEST_REGISTRY.md中PASS状态因子(含Alpha158六+PEAD-SUE) + 16微结构因子(Phase 3E neutral IC PASS+noise ROBUST, 但WF等权加入FAIL) |
 | INVALIDATED | 1 | mf_divergence (IC=-2.27%, 非9.1%, v3.4证伪) |
 | DEPRECATED | 5 | momentum_5/momentum_10/momentum_60/volatility_60/turnover_std_20 |
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
@@ -406,6 +406,9 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 | LambdaRank作为等权因子 | CORE5+LR+SN Sharpe=0.48(-27%), LR信号与等权CORE5冲突 | Phase 2.4 Part 2.5 |
 | RSQR_20/QTLU_20单独加CORE5 | 零增量(Sharpe=0.6652不变), 中性化后截面信息被消除 | Phase 2.4 Part 2.2 |
 | RSQR_20加入CORE3+dv | 有害(-0.089 Sharpe), direction=-1与正IC冲突. CORE3+dv=1.03 > CORE3+RSQR+dv=0.95 | P0-3 re-evaluation |
+| 第5因子加入CORE3+dv_ttm | 8个P1候选全FAIL: 最佳price_volume_corr_20 OOS=0.7737(-0.092), 最差rsrs_raw_18=0.5993(-0.267). 加第5因子稀释信号质量, 4因子=等权上限 | Phase 3B WF (2026-04-13) |
+| Phase 3D LightGBM ML Synthesis | 4实验全FAIL: A-REG(11因子)=0.54最优, B-REG(33因子)=0.30, A-LR=0.14~0.28不可复现, B-LR=0.04. 全部大幅落后基线0.87. 更多因子=更差. ML仅学CORE4非线性变体,无新alpha. **ML预测层CLOSED** | Phase 3D (2026-04-14) |
+| Phase 3E微结构因子等权加入 | 17因子IC筛选16/17 PASS, 噪声16/16 ROBUST, CORE4相关性全独立. 但WF 0/6 PASS: 最佳+vol_autocorr(0.5755,-0.034), 最差+skewness(0.4115,-0.198). 真alpha但等权框架无法利用, 4因子=等权上限(与Phase 3B一致) | Phase 3E-II (2026-04-15) |
 
 ## 策略配置（CORE3+dv_ttm WF PASS, PT配置已更新 2026-04-12）
 # 基线演进: 1.24(虚高)→0.94(Phase 1加固)→0.6095(5yr regression)→0.5309(12yr)→0.6521(SN WF OOS)→**0.8659(CORE3+dv_ttm WF OOS)**
@@ -534,6 +537,18 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - 0 negative folds, overfit_ratio=0.84, STABLE
   - Config 2(CORE5+dv) MARGINAL 0.6992, Config 3(CORE3+dv Top25 Quarterly) MARGINAL 0.7034
 - ✅ **PT配置更新**: CORE5→CORE3+dv_ttm, pt_live.yaml+signal_engine+parquet_cache+.env全部更新 (2026-04-12)
+- ✅ **Phase 3B**: 因子特征分析+P1评估 — 32因子画像, 8 P1候选WF全FAIL, **CORE3+dv_ttm确认为等权框架alpha上限** (2026-04-13)
+  - 报告修正: mf_divergence移除(INVALIDATED), momentum镜像移除, ic_1d bug修复, kbar_kup outlier修复
+  - PIT调查: 基础因子正确(ann_date), 衍生计算(diff/ranking)有bias, 已记录修复方案
+  - WF结果: 最佳price_volume_corr_20 OOS=0.7737(-0.092), 最差rsrs_raw_18=0.5993(-0.267), 加第5因子=稀释信号
+- ❌ **Phase 3D**: ML Synthesis NO-GO — 4实验全FAIL, A-REG(11因子)=0.54最优但远低于基线0.87, B-REG(33因子)=0.30更差, LambdaRank不可复现, **ML预测层CLOSED** (2026-04-14)
+  - 修复3个Bug: amount列缺失(致命,500bps→正常滑点), SN尺度不匹配, 全局quantile标签
+  - 第5次独立验证ML无法超越等权(G1/6-H/2.1/2.2/3D)
+  - 报告: docs/research-kb/findings/phase3d-ml-synthesis.md
+- ❌ **Phase 3E-II**: 微结构因子验证 — 16/17 neutral IC PASS + 16/16 noise ROBUST + CORE4独立, 但WF 0/6 PASS (2026-04-15)
+  - Track 1 PT加固 + Track 3 全链路诊断: 0 FAIL / 36 PASS / 8 WARN, 6个P0/P1修复
+  - Track 2 因子验证: 真alpha(IC 0.05-0.10, 负衰减, 噪声稳健), 但等权5因子全降低Sharpe
+  - 结论: 4因子=等权框架alpha上限(Phase 3B+3E双重确认), 微结构因子保留为PASS候选
 - ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
 - ⬜ **Phase 4**: PT重启（前提: health_check + dry-run确认 + 首日监控）
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md

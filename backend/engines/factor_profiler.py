@@ -117,11 +117,11 @@ def _load_shared_data(conn):
 
     fwd_excess = {}
     for h in HORIZONS:
-        entry = close_pivot.shift(-1)
-        exit_p = close_pivot.shift(-h)
+        entry = close_pivot.shift(-1)          # Buy at T+1 close
+        exit_p = close_pivot.shift(-(1 + h))   # Sell at T+1+h close (hold h days)
         stock_ret = exit_p / entry - 1
         csi_entry = csi_close.shift(-1)
-        csi_exit = csi_close.shift(-h)
+        csi_exit = csi_close.shift(-(1 + h))
         idx_ret = csi_exit / csi_entry - 1
         fwd_excess[h] = stock_ret.sub(idx_ret, axis=0)
 

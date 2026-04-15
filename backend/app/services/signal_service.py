@@ -237,7 +237,7 @@ class SignalService:
                 source="signal_service",
             )
         except Exception:
-            pass  # publish失败不影响主流程
+            logger.warning("[SignalService] StreamBus publish失败", exc_info=True)
 
         return SignalResult(
             target_weights=hedged_target,

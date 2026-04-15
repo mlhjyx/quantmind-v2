@@ -47,6 +47,7 @@ WITH latest_adj AS (
         code,
         adj_factor AS latest_adj_factor
     FROM klines_daily
+    WHERE adj_factor IS NOT NULL AND adj_factor > 0
     ORDER BY code, trade_date DESC
 )
 SELECT code, latest_adj_factor FROM latest_adj
@@ -59,6 +60,7 @@ WITH latest_adj AS (
         code,
         adj_factor AS latest_adj_factor
     FROM klines_daily
+    WHERE adj_factor IS NOT NULL AND adj_factor > 0
     ORDER BY code, trade_date DESC
 )
 SELECT

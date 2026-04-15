@@ -67,36 +67,90 @@ def check_data_freshness(conn, trade_date: date) -> tuple[bool, str]:
 
 
 def check_factor_nan(conn, trade_date: date) -> tuple[bool, str]:
-    """因子NaN抽样检查: 最近一日10只股票。"""
+    """CORE因子NaN检查: 检查CORE4因子的neutral_value是否正常。"""
+    # CORE4因子列表 (与pt_live.yaml保持一致)
+    CORE_FACTORS = ("turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm")
     try:
         cur = conn.cursor()
         # 找最近有因子数据的日期
         cur.execute(
             """SELECT MAX(trade_date) FROM factor_values
-               WHERE trade_date <= %s""",
-            (trade_date,),
+               WHERE trade_date <= %s AND factor_name = %s""",
+            (trade_date, CORE_FACTORS[0]),
         )
         latest_factor_date = cur.fetchone()[0]
         if latest_factor_date is None:
-            return False, "factor_values表为空"
+            return False, "factor_values表无CORE因子数据"
 
-        # 抽样10只
+        # 检查CORE因子的neutral_value覆盖率
         cur.execute(
-            """SELECT code, factor_name, zscore
+            """SELECT factor_name, COUNT(*) as total,
+                      COUNT(CASE WHEN neutral_value IS NULL THEN 1 END) as null_cnt
                FROM factor_values
-               WHERE trade_date = %s
-               ORDER BY RANDOM() LIMIT 50""",
-            (latest_factor_date,),
+               WHERE trade_date = %s AND factor_name IN %s
+               GROUP BY factor_name ORDER BY factor_name""",
+            (latest_factor_date, CORE_FACTORS),
         )
         rows = cur.fetchall()
-        nan_count = sum(1 for r in rows if r[2] is None)
+        if not rows:
+            return False, f"date={latest_factor_date}, CORE因子无数据"
 
-        if nan_count == 0:
-            return True, f"date={latest_factor_date}, 抽样50行无NaN"
-        elif nan_count < 5:
-            return True, f"date={latest_factor_date}, {nan_count}/50 NaN(可接受)"
-        else:
-            return False, f"date={latest_factor_date}, {nan_count}/50 NaN(过多)"
+        issues = []
+        for name, total, null_cnt in rows:
+            null_pct = null_cnt / total * 100 if total > 0 else 100
+            if null_pct > 10:
+                issues.append(f"{name}: {null_cnt}/{total} NULL({null_pct:.0f}%)")
+
+        found = [r[0] for r in rows]
+        missing = [f for f in CORE_FACTORS if f not in found]
+        if missing:
+            issues.append(f"缺失因子: {','.join(missing)}")
+
+        if issues:
+            return False, f"date={latest_factor_date}, {'; '.join(issues)}"
+        return True, f"date={latest_factor_date}, CORE4因子neutral_value正常({len(rows)}因子)"
+    except Exception as e:
+        return False, str(e)
+
+
+def check_stock_status(conn, trade_date: date) -> tuple[bool, str]:
+    """stock_status_daily新鲜度+覆盖率检查。
+
+    2026-04-14新增: ST漏洞事件暴露stock_status_daily数据缺失导致ST过滤失效。
+    """
+    try:
+        cur = conn.cursor()
+        # 获取最近有status数据的交易日
+        cur.execute(
+            """SELECT MAX(trade_date) FROM stock_status_daily WHERE trade_date <= %s""",
+            (trade_date,),
+        )
+        max_status_date = cur.fetchone()[0]
+        if max_status_date is None:
+            return False, "stock_status_daily表为空"
+
+        # 获取上一交易日
+        cur.execute(
+            """SELECT MAX(trade_date) FROM trading_calendar
+               WHERE market = 'astock' AND is_trading_day = TRUE
+                 AND trade_date < %s""",
+            (trade_date,),
+        )
+        prev_trading_day = cur.fetchone()[0]
+
+        if prev_trading_day and max_status_date < prev_trading_day:
+            return False, f"数据滞后: status最新={max_status_date}, 期望>={prev_trading_day}"
+
+        # 检查覆盖率: stock_status行数应>=4000(A股正常5000+)
+        cur.execute(
+            "SELECT COUNT(*) FROM stock_status_daily WHERE trade_date = %s",
+            (max_status_date,),
+        )
+        count = cur.fetchone()[0]
+        if count < 4000:
+            return False, f"date={max_status_date}, 仅{count}行(<4000, 覆盖率不足)"
+
+        return True, f"date={max_status_date}, {count}行"
     except Exception as e:
         return False, str(e)
 
@@ -193,6 +247,7 @@ def run_health_check(
         ("postgresql_ok", check_postgresql, (conn,)),
         ("redis_ok", check_redis, ()),
         ("data_fresh", check_data_freshness, (conn, trade_date)),
+        ("stock_status_ok", check_stock_status, (conn, trade_date)),
         ("factor_nan_ok", check_factor_nan, (conn, trade_date)),
         ("disk_ok", check_disk_space, ()),
         ("celery_ok", check_celery, ()),

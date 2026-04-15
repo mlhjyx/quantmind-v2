@@ -253,8 +253,13 @@ class DataPipeline:
         columns = [c for c in contract.columns if c in df.columns]
         sql = self._build_upsert_sql(contract, columns)
 
-        # DataFrame → list of tuples
-        records = list(df[columns].itertuples(index=False, name=None))
+        # DataFrame → list of tuples, NaN→None for psycopg2 (铁律29)
+        # float64列中pd.where(other=None)无法存储None(被转回NaN),
+        # 因此在tuple化时显式转换
+        records = [
+            tuple(None if pd.isna(v) else v for v in row)
+            for row in df[columns].itertuples(index=False, name=None)
+        ]
 
         try:
             with self.conn.cursor() as cur:
