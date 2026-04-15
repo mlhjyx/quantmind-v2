@@ -101,7 +101,7 @@ quantmind-v2/
 │       │   ├── execution_service.py
 │       │   ├── risk_control_service.py
 │       │   ├── factor_onboarding.py  # 因子入库pipeline
-│       │   ├── factor_repository.py  # ⭐ Phase C C2 (2026-04-16): 因子计算数据加载层 (load_daily/load_bulk*/load_pead*), Engine 不再读 DB
+│       │   ├── factor_repository.py  # ⭐ Phase C C2 (2026-04-16): 因子计算数据加载层 (load_daily/load_bulk*/load_pead*), Engine 不再读 DB. **load_forward_returns DEPRECATED (Phase D D1 2026-04-16, 走 ic_calculator.compute_forward_excess_returns 铁律 19)**
 │       │   ├── factor_compute_service.py  # ⭐ Phase C C3 (2026-04-16): 因子计算编排层 (compute_daily/compute_batch/save_daily), compute_batch 走 DataPipeline 铁律 17 合规
 │       │   ├── config_loader.py      # ⭐ Step 4-B: YAML策略配置加载
 │       │   ├── pt_data_service.py    # ⭐ Step 6-A: PT并行数据拉取
