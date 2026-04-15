@@ -22,7 +22,16 @@ logger = logging.getLogger("paper_trading")
 
 
 def _ensure_shadow_portfolio_table(conn) -> None:
-    """确保shadow_portfolio表存在（幂等）。"""
+    """确保shadow_portfolio表存在（幂等）。
+
+    .. note:: **铁律 32 Class C 例外** (Phase D D2 audited 2026-04-16)
+
+       本函数内部 ``conn.commit()`` 是 idempotent DDL bootstrap 例外:
+       ``CREATE TABLE IF NOT EXISTS`` + ``CREATE INDEX IF NOT EXISTS`` 必须 commit
+       才能让后续 SELECT/INSERT 看到表/索引. DDL 语句天然事务隔离, 与业务事务解耦.
+
+       详见 ``docs/audit/F16_service_commit_audit.md`` §Class C exceptions.
+    """
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS shadow_portfolio (
@@ -40,7 +49,7 @@ def _ensure_shadow_portfolio_table(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_shadow_portfolio_date
             ON shadow_portfolio(trade_date);
     """)
-    conn.commit()
+    conn.commit()  # noqa: F16-classC — idempotent DDL bootstrap, see docstring
 
 
 def _select_fold_model(trade_date: date) -> str:
@@ -106,7 +115,10 @@ def _get_lgbm_scored_universe(
         return None, SHADOW_TOP_N
 
     df_wide = df_factors.pivot_table(
-        index="code", columns="factor_name", values="neutral_value", aggfunc="first",
+        index="code",
+        columns="factor_name",
+        values="neutral_value",
+        aggfunc="first",
     ).reset_index()
     df_wide.columns.name = None
 
@@ -151,7 +163,12 @@ def _write_shadow_portfolio(
     conn,
     dry_run: bool,
 ) -> None:
-    """将Top-N写入shadow_portfolio表。"""
+    """将Top-N写入shadow_portfolio表。
+
+    铁律 32: 不在 Service 内 commit, 由调用方 (`generate_shadow_lgbm_*` ←
+    `scripts/run_paper_trading.py`) 管理事务. Phase D D2b-2 (2026-04-16) 删除原
+    line 183 的 ``conn.commit()``.
+    """
     top_codes = df_top["code"].tolist()
     logger.info("[SHADOW] %s Top-%d: %s", strategy_name, top_n, ",".join(top_codes))
 
@@ -175,12 +192,16 @@ def _write_shadow_portfolio(
                        rebalance_date = EXCLUDED.rebalance_date,
                        created_at = NOW()""",
                 (
-                    strategy_name, trade_date, rebalance_date,
-                    row["code"], float(row["predicted_score"]),
-                    float(row["weight"]), int(row["rank_in_portfolio"]),
+                    strategy_name,
+                    trade_date,
+                    rebalance_date,
+                    row["code"],
+                    float(row["predicted_score"]),
+                    float(row["weight"]),
+                    int(row["rank_in_portfolio"]),
                 ),
             )
-        conn.commit()
+        # 铁律 32 (Phase D D2b-2): commit 由调用方管理 (run_paper_trading.py 顶层)
         logger.info("[SHADOW] 写入shadow_portfolio(%s): %d行", strategy_name, len(df_top))
 
 
