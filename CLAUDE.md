@@ -44,11 +44,13 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
 | LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
-### 因子存储
-- **factor_values**: ~590M行(12年扩展+7新因子Phase2.1), TimescaleDB hypertable
-- **factor_ic_history**: IC唯一入库点(铁律11), 未入库IC视为不存在
+### 因子存储 (2026-04-15 S1 audit 实测)
+- **factor_values**: **816,408,002 行** (155 GB, TimescaleDB hypertable 151 chunks)
+- **factor_ic_history**: 133,125 行, IC唯一入库点(铁律11), 未入库IC视为不存在
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
-- **minute_bars**: 139M行(Step 6-B已统一code格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
+- **minute_bars**: **190,885,634 行** (21 GB, Step 6-B 已统一 code 格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
+- **klines_daily**: 11,721,768 行 (4 GB, TimescaleDB hypertable 51 chunks)
+- **daily_basic**: 11,507,171 行 (3 GB)
 
 ### 因子评估流程
 1. 经济机制假设(铁律13/14) → 2. IC计算+入库(铁律11) → 3. 画像(factor_profiler, 5维) → 4. 模板匹配(T1-T15) → 5. Gate G1-G8+BH-FDR → 6. 回测验证(paired bootstrap p<0.05)
@@ -71,7 +73,7 @@ quantmind-v2/
 ├── LESSONS_LEARNED.md           ← 经验教训（49条, LL-001~052）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
-│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 45张+代码动态建表17张=DB实际62张）
+│   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 47张+代码动态建表26张=DB实际73张, 2026-04-15 S1 audit 实测）
 │   ├── QUANTMIND_V2_DESIGN_V5.md   ← ⚠️历史设计(被ROADMAP_V3替代，仅局部参考)
 │   ├── IMPLEMENTATION_MASTER.md    ← 已归档至docs/archive/
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
@@ -81,7 +83,9 @@ quantmind-v2/
 │   ├── DEV_FRONTEND_UI.md          ← 前端设计
 │   ├── DEV_SCHEDULER.md            ← 调度设计(A股T1-T17/外汇FX1-FX11)
 │   ├── DEV_PARAM_CONFIG.md         ← 参数配置(220+可配置参数)
-│   ├── DEV_AI_EVOLUTION.md         ← AI闭环设计(4Agent+Pipeline)
+│   ├── DEV_AI_EVOLUTION.md         ← AI闭环设计(4Agent+Pipeline, 0% 实现)
+│   ├── DEV_FOREX.md                ← Forex 外汇交易模块设计
+│   ├── DEV_NOTIFICATIONS.md        ← 通知系统设计
 │   ├── GP_CLOSED_LOOP_DESIGN.md    ← GP最小闭环(FactorDSL+WarmStart)
 │   ├── RISK_CONTROL_SERVICE_DESIGN.md ← 风控(L1-L4状态机)
 │   └── TUSHARE_DATA_SOURCE_CHECKLIST.md ← ⭐ 数据源接入必读
@@ -92,7 +96,7 @@ quantmind-v2/
 │       ├── api/                 # API路由
 │       ├── core/                # 核心基础设施
 │       │   └── stream_bus.py    # Redis Streams统一数据总线
-│       ├── services/            # ⭐ 业务逻辑层（sync）
+│       ├── services/            # ⭐ 业务逻辑层（主 sync psycopg2, 遗留 async: mining/backtest_service, S1 audit F18）
 │       │   ├── signal_service.py
 │       │   ├── execution_service.py
 │       │   ├── risk_control_service.py
@@ -160,12 +164,12 @@ quantmind-v2/
 │   ├── data_quality_check.py    # 数据巡检
 │   ├── approve_l4.py            # L4熔断恢复CLI(紧急)
 │   ├── cancel_stale_orders.py   # QMT紧急撤单(紧急)
-│   ├── archive/                 # 131个归档脚本(审计完成, README.md有说明)
+│   ├── archive/                 # 126个归档脚本(零生产引用, S1 audit F13 验证可删除)
 │   └── research/                # 研究脚本(验证/回测实验)
 ├── cache/                       # Parquet缓存（profiler/中性化用）
 ├── docs/research-kb/            # 研究知识库（failed/findings/decisions）
 ├── .claude/skills/              # 7个自定义skills(factor-discovery/research/overnight/db-safety/performance/research-kb/omc-reference)
-└── backend/tests/               # 2076+个测试（90个test文件）
+└── backend/tests/               # 98 个 test 文件（真实 pytest 通过数待 S4 动态验证填回）
 ```
 
 ## 编码规则（强制）

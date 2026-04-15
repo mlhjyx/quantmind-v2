@@ -109,27 +109,10 @@ def _build_paper_trading_config() -> SignalConfig:
 
 PAPER_TRADING_CONFIG = _build_paper_trading_config()
 
-
-# v1.2候选配置: 6因子 = 基线5 + mf_momentum_divergence (资金流维度)
-# 不替换v1.1(PAPER_TRADING_CONFIG)，v1.1继续Paper Trading跑
-# mf_momentum_divergence IC=9.1%，与基线5因子正交（资金流-价格背离维度）
-V12_CONFIG = SignalConfig(
-    factor_names=[
-        # 基线5因子（与PAPER_TRADING_CONFIG一致）
-        "turnover_mean_20",
-        "volatility_20",
-        "reversal_20",
-        "amihud_20",
-        "bp_ratio",
-        # v1.2新增: 资金流维度
-        "mf_momentum_divergence",
-    ],
-    top_n=15,
-    weight_method="equal",
-    rebalance_freq="monthly",
-    industry_cap=0.25,
-    turnover_cap=0.50,
-)
+# 注: V12_CONFIG 于 2026-04-15 删除 (S1 audit F41).
+# 原因: mf_momentum_divergence 已被 v3.4 证伪 (IC=-2.27% 非 9.1%, INVALIDATED),
+# V12_CONFIG 的注释基于已否决的虚假 IC 数据, 且当前生产 PT 走 PAPER_TRADING_CONFIG,
+# V12_CONFIG 无任何生产/研究引用 (grep 确认). 详见 docs/audit/S1_three_way_alignment.md F41.
 
 
 class SignalComposer:

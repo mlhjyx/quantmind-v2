@@ -166,8 +166,8 @@ fallback_providers:
 
 环境变量 `~/.hermes/.env` 添加：
 ```bash
-DEEPSEEK_API_KEY=sk-c82b724999a8423f8c3b8a4a057f475b          # https://platform.deepseek.com/api_keys
-ZHIPU_API_KEY=7e0d8aca72314bd79f1d4652ff2e9949.wMPLqPdLgJIquN2n                # https://open.bigmodel.cn (GLM-5)
+DEEPSEEK_API_KEY=sk-xxx          # https://platform.deepseek.com/api_keys
+ZHIPU_API_KEY=your_zhipu_api_key_here                # https://open.bigmodel.cn (GLM-5)
 ```
 
 成本对比：

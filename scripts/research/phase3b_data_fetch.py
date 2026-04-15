@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -42,10 +43,19 @@ import psycopg2.extras
 import tushare as ts
 
 # ────────────────────────────────────────────────────────────
-# 配置
+# 配置 (从环境变量读取，避免 secret 硬编码 — 铁律: 秘密不入源码)
 # ────────────────────────────────────────────────────────────
-TUSHARE_TOKEN = "ecc9cc7ad4c50a5f06b8cc168d01b5830374c544c99a0c18a526dd23"
-DB_DSN = "dbname=quantmind_v2 user=xin password=quantmind host=localhost"
+TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "")
+if not TUSHARE_TOKEN:
+    raise RuntimeError("TUSHARE_TOKEN 环境变量未设置，请在 backend/.env 中配置")
+
+_DB_USER = os.environ.get("PGUSER", "xin")
+_DB_PASS = os.environ.get("PGPASSWORD", "")
+_DB_HOST = os.environ.get("PGHOST", "localhost")
+_DB_NAME = os.environ.get("PGDATABASE", "quantmind_v2")
+if not _DB_PASS:
+    raise RuntimeError("PGPASSWORD 环境变量未设置")
+DB_DSN = f"dbname={_DB_NAME} user={_DB_USER} password={_DB_PASS} host={_DB_HOST}"
 BATCH_SIZE = 5000
 REPORT_PATH = Path("cache/phase3b_fetch_report.json")
 CHECKPOINT_DIR = Path("cache/phase3b_checkpoints")

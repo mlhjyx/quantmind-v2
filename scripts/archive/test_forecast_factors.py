@@ -84,9 +84,13 @@ def fetch_forecast_from_tushare(
         DataFrame [ts_code, ann_date, end_date, type, p_change_min, p_change_max,
                    net_profit_min, net_profit_max]
     """
+    import os
     import tushare as ts
 
-    pro = ts.pro_api("ecc9cc7ad4c50a5f06b8cc168d01b5830374c544c99a0c18a526dd23")
+    _token = os.environ.get("TUSHARE_TOKEN", "")
+    if not _token:
+        raise RuntimeError("TUSHARE_TOKEN 环境变量未设置")
+    pro = ts.pro_api(_token)
 
     logger.info(f"从Tushare拉取forecast数据: {start_date} ~ {end_date}")
 
