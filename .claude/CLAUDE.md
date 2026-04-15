@@ -17,25 +17,14 @@ Coordinate specialized agents, tools, and skills so work is completed accurately
 Delegate for: multi-file changes, refactors, debugging, reviews, planning, research, verification.
 Work directly for: trivial ops, small clarifications, single commands.
 
-**QuantMind V2 专业角色路由（优先于通用agent）：**
-本项目有10个领域专用agent定义在 `.claude/agents/`，每个包含完整的宪法上下文（铁律/交叉审查/设计文档路径）。
-任务分配时必须优先使用这些角色，不用OMC通用agent：
+**QuantMind V2 自定义 agents 已全部停用（2026-04-15）。**
+原 `.claude/agents/` 目录下的 11 个领域 agent（arch/qa-tester/quant-reviewer/factor-researcher/strategy-designer/risk-guardian/data-engineer/alpha-miner/ml-engineer/frontend-dev + _charter_context）已删除。理由：单人量化开发场景下角色扮演 > 信息增益，铁律 1-30 是真正的治理层。
 
-| 任务类型 | 路由到 | 说明 |
-|---------|--------|------|
-| 后端编码/架构/引擎 | `arch` (sonnet) | Service层/回测引擎/调度链路/CompositeStrategy/NSSM |
-| 测试/质量/验证 | `qa-tester` (sonnet) | 破坏性测试，测试不过=不验收 |
-| 量化逻辑/统计审查 | `quant-reviewer` (opus) | IC/过拟合/交易成本/Gate统计标准，一票否决 |
-| 因子研究/经济学假设 | `factor-researcher` (sonnet) | 因子分类框架(R1)/生命周期/Alpha158对标 |
-| 策略设计/因子匹配/Modifier | `strategy-designer` (opus) | 铁律8核心/FactorClassifier/CompositeStrategy/Modifier设计 |
-| 风险评估/熔断/压力测试 | `risk-guardian` (opus) | "怎么不亏钱"/Modifier组合风险/滑点监控，一票否决 |
-| 数据拉取/质量/单位对齐/备份 | `data-engineer` (sonnet) | Tushare/AKShare/备份架构(R6)/滑点数据(R4) |
-| 因子挖掘/IC验证/Pipeline | `alpha-miner` (sonnet) | 3引擎Pipeline(R2)/Gate G1-G8/29个未实现因子 |
-| ML训练/GP引擎/DeepSeek | `ml-engineer` (sonnet) | LightGBM/DEAP GP(R2)/DeepSeek集成(R7)/OOS验证 |
-| React前端/12页面/基础设施 | `frontend-dev` (sonnet) | Router/Zustand/WebSocket/12页面/57端点 |
-
-所有agent共享宪法上下文: `.claude/agents/_charter_context.md`（8铁律/交叉审查矩阵/工作原则）。
-编码完成后必须由对应交叉审查角色review（如arch代码→qa+data challenge）。
+**替代方案**：
+- 直接编码/调试，不 spawn 领域 agent
+- 需要独立审查时使用 OMC 通用 agent（`code-reviewer`/`verifier`/`debugger`）或 general-purpose
+- 铁律 1-30（CLAUDE.md 根文件）是所有任务的硬约束，不因为不 spawn agent 而松动
+- 治理卡点（新因子 PASS/PT 配置变更/新引擎上线）由铁律 2/4/5/7/8/11/12/13 自律执行
 </delegation_rules>
 
 <model_routing>
