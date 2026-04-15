@@ -476,7 +476,9 @@ class NotificationService:
             cb_level: 熔断等级(0=正常)。
         """
         cb_text = f"L{cb_level}" if cb_level > 0 else "正常"
-        level_emoji = "\U0001f534" if cb_level >= 2 else ("\U0001f7e1" if cb_level > 0 else "\U0001f7e2")
+        level_emoji = (
+            "\U0001f534" if cb_level >= 2 else ("\U0001f7e1" if cb_level > 0 else "\U0001f7e2")
+        )
 
         content = (
             f"### {level_emoji} 执行确认 {exec_date}\n\n"
@@ -519,7 +521,12 @@ class NotificationService:
         if not should_dispatch:
             return
 
-        level_emoji = {"P0": "\U0001f534", "P1": "\U0001f7e1", "P2": "\U0001f535", "P3": "\u26aa"}.get(level, "\u26aa")
+        level_emoji = {
+            "P0": "\U0001f534",
+            "P1": "\U0001f7e1",
+            "P2": "\U0001f535",
+            "P3": "\u26aa",
+        }.get(level, "\u26aa")
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dingtalk_content = f"{level_emoji} **[{level}]** {title}\n\n{content}\n\n---\n*{now_str}*"
 
@@ -548,6 +555,19 @@ def send_alert(
 
     内部通过钉钉直接发送 + 写DB（如有conn）。
     不走async NotificationService，避免脚本中创建事件循环。
+
+    .. note:: **铁律 32 Class C 例外** (Phase D D2 audited 2026-04-16)
+
+       本函数内部 ``conn.commit()`` (line ~575) 是 **leaf utility 例外**:
+
+       * 16 个调用方 (services + scripts + tests, 详见
+         ``docs/audit/F16_service_commit_audit.md`` §send_alert callers),
+         推 commit 到全部调用方违反 DRY 且增加每个 caller 的事务负担
+       * 函数已有 ``try/except + rollback`` 自管事务, 不破坏调用方事务原子性
+       * 写 DB 是 fire-and-forget 通知日志, 与业务事务解耦是合理设计
+       * 同模块 ``send_daily_report`` 同样是 Class C 例外, 保持模式一致
+
+       新代码不要再仿造此模式. 标准 Service 函数应遵循铁律 32 由调用方管理 commit.
 
     Args:
         level: 告警级别 'P0'/'P1'/'P2'。
@@ -584,7 +604,7 @@ def send_alert(
         title=f"[{level}] {title}",
         content=md,
         secret=secret,
-        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, 'DINGTALK_KEYWORD') else "",
+        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, "DINGTALK_KEYWORD") else "",
     )
 
 
@@ -605,6 +625,15 @@ def send_daily_report(
     conn: Any = None,
 ) -> bool:
     """同步每日报告（兼容旧版接口，给pipeline脚本用）。
+
+    .. note:: **铁律 32 Class C 例外** (Phase D D2 audited 2026-04-16)
+
+       本函数内部 ``conn.commit()`` (line ~670) 是 leaf utility 例外, 与
+       ``send_alert`` 同模式 (fire-and-forget 通知日志, 写 DB 与业务事务解耦).
+       详见 ``docs/audit/F16_service_commit_audit.md``.
+
+       **本函数 0 个外部调用方** (Phase D D2 grep 实测), 可能是 dead code;
+       Phase E 验证后可能整体删除. 在删除前保持 Class C 例外一致性.
 
     Args:
         trade_date: 交易日期。
@@ -679,7 +708,7 @@ def send_daily_report(
         title=f"Paper {trade_date} {daily_return:+.2%}",
         content=content,
         secret=secret,
-        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, 'DINGTALK_KEYWORD') else "",
+        keyword=settings.DINGTALK_KEYWORD if hasattr(settings, "DINGTALK_KEYWORD") else "",
     )
 
 
