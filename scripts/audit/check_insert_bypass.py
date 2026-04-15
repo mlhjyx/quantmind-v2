@@ -5,6 +5,9 @@
     python scripts/audit/check_insert_bypass.py          # 仅扫描 backend/app + backend/engines
     python scripts/audit/check_insert_bypass.py --all    # 含 scripts/ 和 backend/scripts/
     python scripts/audit/check_insert_bypass.py --json   # JSON 输出
+    python scripts/audit/check_insert_bypass.py --baseline scripts/audit/insert_bypass_baseline.json
+                                                          # pre-commit 模式: 只拒新增违规,
+                                                          # baseline 中的已知债务不阻断
 
 铁律 17 原文:
     "数据入库必须通过 DataPipeline — 禁止直接 INSERT INTO 生产表.
@@ -16,9 +19,14 @@ S3 F86 背景:
     生产 INSERT 路径绕过 DataPipeline 的 fillna(None). S3 要求此脚本作为
     pre-commit 或 CI 门禁, 防止 F66 类问题复发.
 
+Phase B M1 (2026-04-15) 接入 pre-commit:
+    `scripts/git_hooks/pre-commit` 调用本脚本 `--baseline insert_bypass_baseline.json`.
+    baseline 冻结 3 条已知债务 (fetch_base_data ×2 + factor_engine 文档字符串误报 ×1),
+    新增违规 → 阻断 commit. 安装: `bash scripts/install_git_hooks.sh`.
+
 退出码:
-    0 = 无违规
-    1 = 有违规 (阻断 commit)
+    0 = 无违规, 或仅有 baseline 已知债务
+    1 = 有新增违规 (阻断 commit)
 """
 from __future__ import annotations
 
@@ -73,6 +81,56 @@ def _is_research(rel_path: str) -> bool:
     return any(w in rel_path for w in RESEARCH_SOFT_WHITELIST)
 
 
+def _load_baseline(path: Path) -> list[dict]:
+    """加载 baseline JSON, 返回已知债务 entry 列表。
+
+    Baseline 格式:
+        {
+          "version": 1,
+          "generated_at": "YYYY-MM-DD",
+          "known_debt": [
+            {
+              "file": "backend/app/.../xxx.py",
+              "code_prefix": "INSERT INTO ...",  # 匹配 code.strip() 前缀
+              "ticket": "F86 long-term refactor",
+              "rationale": "..."
+            },
+            ...
+          ]
+        }
+
+    匹配规则: violation.file == entry.file AND violation.code.strip().startswith(entry.code_prefix)
+    行号不参与匹配 (代码编辑会导致行号漂移)。
+    """
+    if not path.exists():
+        print(
+            f"[warning] baseline 文件不存在: {path} (将视为空 baseline)",
+            file=sys.stderr,
+        )
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("known_debt", [])
+    except Exception as e:
+        print(f"[warning] baseline 加载失败: {e}", file=sys.stderr)
+        return []
+
+
+def _is_baselined(violation: dict, baseline: list[dict]) -> bool:
+    """判断违规是否匹配 baseline 中的已知债务 entry。"""
+    v_file = violation["file"]
+    v_code_stripped = violation["code"].strip()
+    for entry in baseline:
+        if entry.get("file") != v_file:
+            continue
+        prefix = entry.get("code_prefix", "")
+        if not prefix:
+            continue
+        if v_code_stripped.startswith(prefix):
+            return True
+    return False
+
+
 def scan_file(py_path: Path, pattern: re.Pattern) -> list[tuple[int, str]]:
     """扫描单个 .py 文件, 返回 [(line_num, code), ...]。"""
     violations: list[tuple[int, str]] = []
@@ -98,6 +156,12 @@ def main() -> int:
         help="含 scripts/ 和 backend/scripts/ (默认仅扫生产代码)",
     )
     parser.add_argument("--json", action="store_true", help="JSON 输出")
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="baseline JSON 文件, 忽略其中登记的已知债务 (pre-commit 模式)",
+    )
     args = parser.parse_args()
 
     tables_alt = "|".join(PRODUCTION_TABLES)
@@ -130,32 +194,49 @@ def main() -> int:
                 else:
                     prod_violations.append(item)
 
+    # Baseline 拆分: 已知债务 vs 新增违规
+    baseline = _load_baseline(args.baseline) if args.baseline else []
+    new_violations: list[dict] = []
+    known_debt: list[dict] = []
+    for v in prod_violations:
+        if _is_baselined(v, baseline):
+            known_debt.append(v)
+        else:
+            new_violations.append(v)
+
     if args.json:
         print(
             json.dumps(
                 {
-                    "production_violations": prod_violations,
+                    "new_violations": new_violations,
+                    "known_debt": known_debt,
                     "research_soft_hits": research_hits,
-                    "exit_code": 1 if prod_violations else 0,
+                    "exit_code": 1 if new_violations else 0,
                 },
                 ensure_ascii=False,
                 indent=2,
             )
         )
     else:
-        if prod_violations:
+        if new_violations:
             print(
-                f"❌ 铁律 17 违规 (生产代码直接 INSERT 生产表): "
-                f"{len(prod_violations)} 处",
+                f"❌ 铁律 17 新增违规 (阻断 commit): {len(new_violations)} 处",
                 flush=True,
             )
-            for v in prod_violations:
+            for v in new_violations:
                 print(f"  {v['file']}:{v['line']}  {v['code']}")
             print(
                 "\n修复: 使用 DataPipeline.ingest(df, Contract) 替代。\n"
                 "见 backend/app/data_fetcher/pipeline.py + contracts.py。\n"
-                "参考 CLAUDE.md 铁律 17 + S1 F17 + S3 F86。"
+                "参考 CLAUDE.md 铁律 17 + S1 F17 + S3 F86。\n"
+                "紧急绕过: git commit --no-verify (仅在你确定违规是误报时)。"
             )
+        elif known_debt:
+            print(
+                f"✅ 无新增违规 (baseline 中有 {len(known_debt)} 条已知债务, 不阻断 commit)"
+            )
+            for v in known_debt:
+                print(f"  [known_debt] {v['file']}:{v['line']}  {v['code'][:80]}")
         else:
             print("✅ 生产代码无违规: 所有 INSERT 生产表都走 DataPipeline。")
 
@@ -168,7 +249,7 @@ def main() -> int:
             if len(research_hits) > 10:
                 print(f"  ... 共 {len(research_hits)} 处, 使用 --json 查看完整列表")
 
-    return 1 if prod_violations else 0
+    return 1 if new_violations else 0
 
 
 if __name__ == "__main__":

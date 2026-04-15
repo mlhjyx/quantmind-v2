@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# QuantMind V2 git pre-commit hook
+#
+# 强制检查:
+#   - 铁律 17: 数据入库必须通过 DataPipeline (检查新增 INSERT INTO 生产表)
+#
+# 安装:
+#   bash scripts/install_git_hooks.sh
+#
+# 紧急绕过 (仅当你确定违规是误报或紧急修复):
+#   git commit --no-verify
+#
+# 铁律参考:
+#   CLAUDE.md §铁律 17 (数据入库必须通过 DataPipeline)
+#   scripts/audit/check_insert_bypass.py (扫描器)
+#   scripts/audit/insert_bypass_baseline.json (baseline, 冻结已知债务)
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# ── Check 1: 铁律 17 (DataPipeline 入库强制) ────────────────────────────
+SCRIPT="scripts/audit/check_insert_bypass.py"
+BASELINE="scripts/audit/insert_bypass_baseline.json"
+
+if [ ! -f "$SCRIPT" ]; then
+    echo "[pre-commit] 警告: $SCRIPT 不存在, 跳过铁律 17 检查" >&2
+else
+    # 只在 staged 文件中有 .py 改动时才跑 (快速路径, 避免每次文档 commit 都扫描)
+    STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)
+    if [ -n "$STAGED_PY" ]; then
+        if [ -f "$BASELINE" ]; then
+            python "$SCRIPT" --baseline "$BASELINE"
+        else
+            python "$SCRIPT"
+        fi
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            echo ""
+            echo "❌ commit 被拒: 违反铁律 17 (数据入库必须通过 DataPipeline)"
+            echo ""
+            echo "修复方案:"
+            echo "  1. 改用 DataPipeline.ingest(df, Contract) — 见 backend/app/data_fetcher/pipeline.py"
+            echo "  2. 如果这是已知债务, 加入 scripts/audit/insert_bypass_baseline.json"
+            echo "  3. 紧急绕过 (仅限误报/紧急修复): git commit --no-verify"
+            echo ""
+            exit 1
+        fi
+    fi
+fi
+
+exit 0

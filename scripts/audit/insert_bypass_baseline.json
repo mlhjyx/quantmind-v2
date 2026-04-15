@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-15",
+  "rationale": "S2b 之后 factor_onboarding 2 条违规已根治. 剩余 3 条作为已知债务冻结, 新增违规必须阻断 commit. 本 baseline 由 scripts/git_hooks/pre-commit 使用.",
+  "long_term_closure_plan": {
+    "fetch_base_data": "F86 剩余部分: 重构 fetch_base_data.py 走 DataPipeline(conn).ingest(df, KLINES_DAILY/DAILY_BASIC). 独立 PR.",
+    "factor_engine": "F31 长期重构: factor_engine.py 2034 行拆分到 engines/factor/ + services/factor_*.py. 2016 行的 INSERT 在 docstring 里 (扫描器正则误报), 随 F31 拆分一起删除."
+  },
+  "known_debt": [
+    {
+      "file": "backend/app/data_fetcher/fetch_base_data.py",
+      "line_at_baseline": 327,
+      "code_prefix": "INSERT INTO klines_daily",
+      "ticket": "F86 long-term refactor",
+      "rationale": "klines_daily 拉取路径需要迁移到 DataPipeline(conn).ingest(df, KLINES_DAILY). 独立 PR 处理.",
+      "owner": "TBD",
+      "deadline": "TBD"
+    },
+    {
+      "file": "backend/app/data_fetcher/fetch_base_data.py",
+      "line_at_baseline": 412,
+      "code_prefix": "INSERT INTO daily_basic",
+      "ticket": "F86 long-term refactor",
+      "rationale": "daily_basic 拉取路径需要迁移到 DataPipeline(conn).ingest(df, DAILY_BASIC). 独立 PR 处理.",
+      "owner": "TBD",
+      "deadline": "TBD"
+    },
+    {
+      "file": "backend/engines/factor_engine.py",
+      "line_at_baseline": 2016,
+      "code_prefix": "\"\"\"INSERT INTO factor_values",
+      "ticket": "F31 long-term refactor (dead code in docstring)",
+      "rationale": "factor_engine.py:2016 的 INSERT 是 docstring 里的示例代码 (扫描器正则无法区分 docstring vs 真实代码), 在 F31 拆分时会随函数删除一起清除.",
+      "owner": "TBD",
+      "deadline": "TBD"
+    }
+  ]
+}

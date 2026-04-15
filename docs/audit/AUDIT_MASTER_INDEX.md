@@ -40,6 +40,7 @@
 - ✅ **F53 (P0)**: factor_onboarding IC 写入已走统一口径 (T+1 / CSI300 超额 / Spearman), 不再有"双口径 IC 写入 factor_ic_history"风险
 - ✅ **F60 (P0)**: `_compute_forward_returns` raw return 函数**彻底删除**, 前瞻收益改用 `ic_calculator.compute_forward_excess_returns` (含 T+1 入场 + CSI300 超额)
 - ✅ **F86 (P1) factor_onboarding 部分**: `check_insert_bypass.py` 扫描结果 5 → 3 (factor_onboarding 2 条违规消失, 剩余 fetch_base_data ×2 + factor_engine ×1 转长期重构)
+- ✅ **F86 (P1) 全闭环 Phase B M1 (2026-04-15 夜)**: `check_insert_bypass.py --baseline` + `scripts/audit/insert_bypass_baseline.json` (3 条已知债务冻结) + `scripts/git_hooks/pre-commit` 安装到 `.git/hooks/pre-commit` + `scripts/install_git_hooks.sh` 入库安装器。**实测拦截**: 故意加一个 `INSERT INTO factor_values` 到 `_test_hook_fake.py`, `git commit` 被拒 (exit 1), 错误消息含铁律 17 来源 + 修复方案 + `--no-verify` 紧急绕过。F86 从 "短期闭环" 升级为 "代码级强制护栏"
 - ✅ **F18 部分 (async 遗留)**: factor_onboarding / onboarding_tasks / test_factor_onboarding 全转 sync psycopg2, 剩余 mining/backtest_service 独立处理
 
 **S2b 规模**:
