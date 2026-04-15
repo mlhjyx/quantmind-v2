@@ -66,8 +66,7 @@ def check_opening_gap(
             if total_w > 0:
                 gap_map = df.set_index("code")["gap"].to_dict()
                 portfolio_gap = (
-                    sum(weights.get(code, 0) * gap_map.get(code, 0) for code in weights)
-                    / total_w
+                    sum(weights.get(code, 0) * gap_map.get(code, 0) for code in weights) / total_w
                 )
                 logger.info(
                     "[Monitor] 组合加权跳空=%+.2f%% (阈值>%.0f%%告P0)",
@@ -83,8 +82,13 @@ def check_opening_gap(
                     logger.error("[Monitor] P0 %s", msg)
                     if not dry_run:
                         notif_svc.send_sync(
-                            conn, "P0", "risk", f"组合跳空P0 {exec_date}", msg,
+                            conn,
+                            "P0",
+                            "risk",
+                            f"组合跳空P0 {exec_date}",
+                            msg,
                         )
-                        conn.commit()
+                        # 铁律 32 (Phase D D2b-3): 删除冗余 commit. notif_svc.send_sync 内部
+                        # 是 Class C 例外, 自管事务. 顶层 run_paper_trading.py 已 autocommit=True.
     except Exception as e:
         logger.warning("[Monitor] 组合跳空计算失败: %s", e)

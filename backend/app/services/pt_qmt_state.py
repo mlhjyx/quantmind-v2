@@ -28,6 +28,53 @@ def save_qmt_state(
     2026-04-15修复: execution_mode 从 'paper' 改为 'live', 对齐
     execution_service._save_live_fills 和 daily_reconciliation.write_live_snapshot。
     avg_cost 从 trade_log 加权均值计算(原硬编码 0 导致 PMS check_protection 静默跳过)。
+
+    .. note:: **铁律 32 Class C 例外** (Phase D D2b-4 audited 2026-04-16)
+
+       本函数使用 ``SAVEPOINT snapshot_update`` (line 52/80/82) 实现 position_snapshot
+       DELETE + INSERT 原子操作. ``SAVEPOINT`` 必须在事务模式下执行, 在 autocommit=True
+       下 psycopg2 抛 ``NoActiveSqlTransaction``.
+
+       因此本函数 **局部切回 autocommit=False**, 自管事务 (commit/rollback), 完成后
+       恢复调用方原 autocommit 状态. 这是合理的 Class C 例外 (技术约束驱动).
+
+       详见 ``docs/audit/F16_service_commit_audit.md``.
+    """
+    # 局部 tx 模式 (SAVEPOINT 需要), 函数末尾 finally 恢复
+    prev_autocommit = conn.autocommit
+    conn.autocommit = False
+    try:
+        _save_qmt_state_impl(
+            conn,
+            trade_date,
+            qmt_positions,
+            today_close,
+            nav,
+            prev_nav,
+            qmt_nav_data,
+            benchmark_close,
+        )
+        conn.commit()  # noqa: F16-classC — local tx for SAVEPOINT (see docstring)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.autocommit = prev_autocommit
+
+
+def _save_qmt_state_impl(
+    conn,
+    trade_date: date,
+    qmt_positions: dict[str, int],
+    today_close: dict[str, float],
+    nav: float,
+    prev_nav: float,
+    qmt_nav_data: dict | None,
+    benchmark_close: float | None,
+) -> None:
+    """save_qmt_state 实际实现 (autocommit=False 上下文已就位).
+
+    保留 SAVEPOINT 原子语义, commit/rollback 由外层 wrapper 管理.
     """
     cur = conn.cursor()
     strategy_id = settings.PAPER_STRATEGY_ID
@@ -67,9 +114,14 @@ def save_qmt_state(
                     market_value, weight, unrealized_pnl, holding_days, execution_mode)
                    VALUES (%s, %s, %s, 'astock', %s, %s, %s, %s, %s, 0, 'live')""",
                 (
-                    code, trade_date, strategy_id, qty,
+                    code,
+                    trade_date,
+                    strategy_id,
+                    qty,
                     round(avg_cost, 4) if avg_cost else None,
-                    round(mv, 2), round(weight, 4), round(unrealized_pnl, 2),
+                    round(mv, 2),
+                    round(weight, 4),
+                    round(unrealized_pnl, 2),
                 ),
             )
         cur.execute("RELEASE SAVEPOINT snapshot_update")
@@ -111,11 +163,19 @@ def save_qmt_state(
               position_count=EXCLUDED.position_count, benchmark_nav=EXCLUDED.benchmark_nav,
               excess_return=EXCLUDED.excess_return""",
         (
-            trade_date, strategy_id,
-            round(nav, 2), round(daily_return, 6), round(cumulative_return, 6),
-            round(drawdown, 6), round(cash_ratio, 4), round(qmt_cash, 2),
-            position_count, benchmark_nav, round(daily_return, 6),
+            trade_date,
+            strategy_id,
+            round(nav, 2),
+            round(daily_return, 6),
+            round(cumulative_return, 6),
+            round(drawdown, 6),
+            round(cash_ratio, 4),
+            round(qmt_cash, 2),
+            position_count,
+            benchmark_nav,
+            round(daily_return, 6),
         ),
     )
-    conn.commit()
+    # 铁律 32 (Phase D D2b-4): 不在此处 commit. 外层 save_qmt_state wrapper 在 try/except
+    # 中 commit/rollback (因为本函数依赖 SAVEPOINT, 必须运行在 autocommit=False 的局部 tx).
     logger.info("[QMT] 状态已写入DB: %d只持仓, NAV=¥%s", position_count, f"{nav:,.0f}")

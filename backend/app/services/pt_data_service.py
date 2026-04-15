@@ -110,8 +110,11 @@ def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> d
     results["elapsed"] = round(time.time() - t0, 1)
     logger.info(
         "[Data] 拉取完成: klines=%d, basic=%d, index=%d, status=%d (%.1fs)",
-        results["klines_rows"], results["basic_rows"], results["index_rows"],
-        results["status_rows"], results["elapsed"],
+        results["klines_rows"],
+        results["basic_rows"],
+        results["index_rows"],
+        results["status_rows"],
+        results["elapsed"],
     )
 
     if own_conn:
@@ -138,9 +141,7 @@ def update_stock_status_daily(trade_date: date, conn) -> int:
     cur = conn.cursor()
 
     # 检查是否已存在
-    cur.execute(
-        "SELECT COUNT(*) FROM stock_status_daily WHERE trade_date = %s", (trade_date,)
-    )
+    cur.execute("SELECT COUNT(*) FROM stock_status_daily WHERE trade_date = %s", (trade_date,))
     existing = cur.fetchone()[0]
     if existing > 0:
         logger.info("[Status] %s 已存在 %d 行，跳过", trade_date, existing)
@@ -183,9 +184,7 @@ def _incremental_from_previous(cur, conn, trade_date: date, prev_date: date) -> 
     ST状态日内不变(namechange是按时间段的)，停牌由当天volume=0判断。
     """
     # 获取当天所有klines的code+volume
-    cur.execute(
-        "SELECT code, volume FROM klines_daily WHERE trade_date = %s", (trade_date,)
-    )
+    cur.execute("SELECT code, volume FROM klines_daily WHERE trade_date = %s", (trade_date,))
     today_klines = {row[0]: row[1] for row in cur.fetchall()}
 
     # 获取前一天的status
@@ -232,12 +231,16 @@ def _incremental_from_previous(cur, conn, trade_date: date, prev_date: date) -> 
             records,
             page_size=5000,
         )
-        conn.commit()
+        # 铁律 32 (Phase D D2b-5): commit 由调用方管理 (run_paper_trading.run_signal_phase
+        # 顶层 conn.autocommit=True, execute_values 在 autocommit 模式下逐批自动提交).
 
     st_count = sum(1 for r in records if r[2])
     logger.info(
         "[Status] %s 增量更新: %d行 (从%s复制, %d ST, %d 停牌)",
-        trade_date, len(records), prev_date, st_count,
+        trade_date,
+        len(records),
+        prev_date,
+        st_count,
         sum(1 for r in records if r[3]),
     )
     return len(records)
@@ -253,8 +256,10 @@ def _full_build_single_day(cur, conn, trade_date: date) -> int:
     all_nc = []
     for offset in range(0, 200000, 10000):
         df = api.query(
-            "namechange", fields="ts_code,name,start_date,end_date",
-            limit=10000, offset=offset,
+            "namechange",
+            fields="ts_code,name,start_date,end_date",
+            limit=10000,
+            offset=offset,
         )
         if df is None or df.empty:
             break
@@ -287,12 +292,18 @@ def _full_build_single_day(cur, conn, trade_date: date) -> int:
         list_dt = sym[0] if sym else None
         delist_dt = sym[1] if sym else None
         board = (sym[2] if sym else None) or _infer_board(code)
-        records.append((
-            code, trade_date, is_st(code, trade_date),
-            volume is not None and int(volume) == 0,
-            list_dt is not None and 0 <= (trade_date - list_dt).days < 60,
-            board, list_dt, delist_dt,
-        ))
+        records.append(
+            (
+                code,
+                trade_date,
+                is_st(code, trade_date),
+                volume is not None and int(volume) == 0,
+                list_dt is not None and 0 <= (trade_date - list_dt).days < 60,
+                board,
+                list_dt,
+                delist_dt,
+            )
+        )
 
     if records:
         execute_values(
@@ -306,7 +317,7 @@ def _full_build_single_day(cur, conn, trade_date: date) -> int:
             records,
             page_size=5000,
         )
-        conn.commit()
+        # 铁律 32 (Phase D D2b-5): commit 由调用方管理 (autocommit 模式).
 
     logger.info("[Status] %s 全量构建: %d行", trade_date, len(records))
     return len(records)
