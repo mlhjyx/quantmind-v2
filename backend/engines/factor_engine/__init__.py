@@ -1,3 +1,8 @@
+# ruff: noqa: F401
+# F401 disabled file-level: this __init__.py intentionally re-exports symbols from
+# sub-modules (_constants / calculators / alpha158 / preprocess) to preserve the
+# public API for 25 downstream import sites. Ruff can't distinguish intent-to-reexport
+# from genuine unused imports in a package __init__, so we suppress the check.
 """因子计算引擎 — Phase 0 规则版因子管道。
 
 流程: 读取行情 → 计算原始因子值 → 预处理(MAD→fill→neutralize→zscore) → 批量写入
@@ -6,7 +11,22 @@
 1. 预处理顺序不可调换: MAD去极值 → 缺失值填充 → 中性化 → 标准化
 2. 按日期批量写入(单事务)
 3. IC使用超额收益(vs CSI300)
+
+Phase C C1 (2026-04-16) 拆分说明:
+    原 backend/engines/factor_engine.py (2049 行) 按 铁律 31 拆分为 package:
+    - `_constants.py`  — direction 字典 / 元数据 (pure data)
+    - `calculators.py` — 30 个 calc_* 纯函数 (无 IO)
+    - `alpha158.py`    — Alpha158 helpers (_alpha158_rolling + 3 wide-format)
+    - `preprocess.py`  — preprocess_mad/fill/neutralize/zscore/pipeline + calc_ic
+    - `__init__.py`    — 本文件, 兼容层 re-export + 未拆分的 IO/编排/lambda 注册表
+
+    C2 (未执行) 将搬家 load_* → factor_repository + calc_pead_q1 纯化
+    C3 (未执行) 将搬家 compute_* → factor_compute_service + F86 known_debt 关闭
+
+见: docs/audit/PHASE_C_F31_PREP.md
 """
+
+from __future__ import annotations
 
 from datetime import date
 
@@ -14,425 +34,74 @@ import numpy as np
 import pandas as pd
 import structlog
 
+# ============================================================
+# Re-export from sub-modules (C1 移出部分)
+# ============================================================
+from engines.factor_engine._constants import (
+    ALPHA158_FACTOR_DIRECTION,
+    FUNDAMENTAL_ALL_FEATURES,
+    FUNDAMENTAL_DELTA_FEATURES,
+    FUNDAMENTAL_DELTA_META,
+    FUNDAMENTAL_FACTOR_DIRECTION,
+    FUNDAMENTAL_TIME_FEATURES,
+    FUNDAMENTAL_TIME_META,
+    LGBM_V2_BASELINE_FACTORS,
+    PEAD_FACTOR_DIRECTION,
+    PHASE21_FACTOR_DIRECTION,
+    RESERVE_FACTOR_DIRECTION,
+)
+from engines.factor_engine.alpha158 import (
+    _alpha158_rolling,
+    calc_alpha158_rsqr_resi,
+    calc_alpha158_simple_four,
+    calc_high_vol_price_ratio_wide,
+)
+from engines.factor_engine.calculators import (
+    calc_amihud,
+    calc_beta_market,
+    calc_bp_ratio,
+    calc_chmom,
+    calc_ep_ratio,
+    calc_gain_loss_ratio,
+    calc_hl_range,
+    calc_kbar_kmid,
+    calc_kbar_ksft,
+    calc_kbar_kup,
+    calc_large_order_ratio,
+    calc_ln_mcap,
+    calc_maxret,
+    calc_mf_divergence,
+    calc_momentum,
+    calc_money_flow_strength,
+    calc_price_level,
+    calc_pv_corr,
+    calc_relative_volume,
+    calc_reversal,
+    calc_rsrs_raw,
+    calc_stoch_rsv,
+    calc_turnover_mean,
+    calc_turnover_stability,
+    calc_turnover_std,
+    calc_turnover_surge_ratio,
+    calc_up_days_ratio,
+    calc_volatility,
+    calc_volume_std,
+    calc_vwap_bias,
+)
+from engines.factor_engine.preprocess import (
+    calc_ic,
+    preprocess_fill,
+    preprocess_mad,
+    preprocess_neutralize,
+    preprocess_pipeline,
+    preprocess_zscore,
+)
+
 logger = structlog.get_logger(__name__)
 
 
 # ============================================================
-# Phase 0 因子定义 (6 core → Week 6 扩展到 18)
-# ============================================================
-
-def calc_momentum(close_adj: pd.Series, window: int) -> pd.Series:
-    """动量因子: N日收益率。
-
-    Args:
-        close_adj: 前复权收盘价, MultiIndex=(code, trade_date) 或按code分组后的Series
-        window: 回看窗口(5/10/20)
-
-    Returns:
-        pd.Series: 动量值
-    """
-    return close_adj.pct_change(window)
-
-
-def calc_reversal(close_adj: pd.Series, window: int) -> pd.Series:
-    """反转因子: -1 × N日收益率（取反，近期跌多的排前面）。"""
-    return -close_adj.pct_change(window)
-
-
-def calc_volatility(close_adj: pd.Series, window: int) -> pd.Series:
-    """波动率因子: N日收益率的滚动标准差。"""
-    returns = close_adj.pct_change(1)
-    return returns.rolling(window, min_periods=max(window // 2, 5)).std()
-
-
-def calc_volume_std(volume: pd.Series, window: int) -> pd.Series:
-    """成交量波动率: N日volume的滚动标准差。"""
-    return volume.rolling(window, min_periods=max(window // 2, 5)).std()
-
-
-def calc_turnover_mean(turnover_rate: pd.Series, window: int) -> pd.Series:
-    """换手率均值: N日turnover_rate的滚动均值。"""
-    return turnover_rate.rolling(window, min_periods=max(window // 2, 5)).mean()
-
-
-def calc_turnover_std(turnover_rate: pd.Series, window: int) -> pd.Series:
-    """换手率波动: N日turnover_rate的滚动标准差。"""
-    return turnover_rate.rolling(window, min_periods=max(window // 2, 5)).std()
-
-
-def calc_turnover_stability(turnover_rate: pd.Series, window: int) -> pd.Series:
-    """日频换手率稳定性因子: N日换手率的滚动标准差。
-
-    经济学假设: 换手率稳定的股票筹码结构稳定，机构持仓为主；
-    换手率波动大的股票散户交易活跃，信息噪声大。
-
-    与turnover_mean_20的区别: turnover_mean测均值水平，turnover_stability测波动性，
-    捕获不同维度的换手率信息。
-
-    方向: -1（低波动性 = 稳定 = 好）
-    来源: 国盛证券2024-2025量化策略展望(minute_turn_std IR=2.64的日频近似)
-
-    Args:
-        turnover_rate: 换手率序列, 已按code分组
-        window: 滚动窗口(默认20)
-
-    Returns:
-        pd.Series: 换手率稳定性因子值(标准差)
-    """
-    return turnover_rate.rolling(window, min_periods=max(window // 2, 5)).std()
-
-
-def calc_amihud(
-    close_adj: pd.Series, volume: pd.Series, amount: pd.Series, window: int
-) -> pd.Series:
-    """Amihud非流动性因子: mean(|return| / amount)。
-
-    注意: amount单位是千元(klines_daily), 不影响截面排序（常数倍不改变排名）。
-    """
-    ret = close_adj.pct_change(1).abs()
-    illiq = ret / (amount + 1e-12)
-    return illiq.rolling(window, min_periods=max(window // 2, 5)).mean()
-
-
-def calc_ln_mcap(total_mv: pd.Series) -> pd.Series:
-    """对数市值: ln(total_mv)。total_mv单位万元(daily_basic)。"""
-    return np.log(total_mv + 1e-12)
-
-
-def calc_bp_ratio(pb: pd.Series) -> pd.Series:
-    """账面市值比: 1/pb。pb=0时返回NaN。"""
-    return 1.0 / pb.replace(0, np.nan)
-
-
-def calc_ep_ratio(pe: pd.Series) -> pd.Series:
-    """盈利收益率: 1/pe_ttm。pe_ttm=0时返回NaN。"""
-    return 1.0 / pe.replace(0, np.nan)
-
-
-def calc_pv_corr(close_adj: pd.Series, volume: pd.Series, window: int) -> pd.Series:
-    """价量相关性: N日close与volume的滚动相关系数。"""
-    return close_adj.rolling(window, min_periods=max(window // 2, 5)).corr(volume)
-
-
-def calc_hl_range(
-    high_adj: pd.Series, low_adj: pd.Series, window: int
-) -> pd.Series:
-    """振幅因子: N日平均(high-low)/low。"""
-    daily_range = (high_adj - low_adj) / (low_adj + 1e-12)
-    return daily_range.rolling(window, min_periods=max(window // 2, 5)).mean()
-
-
-def calc_price_level(close: pd.Series) -> pd.Series:
-    """价格水平因子: -ln(close)。用原始close（非复权），反映价格分层偏好。"""
-    return -np.log(close.clip(lower=1e-12))
-
-
-def calc_relative_volume(volume: pd.Series, window: int) -> pd.Series:
-    """相对成交量: volume_today / mean(volume, Nd)。"""
-    vol_ma = volume.rolling(window, min_periods=max(window // 2, 5)).mean()
-    return volume / (vol_ma + 1e-12)
-
-
-def calc_turnover_surge_ratio(turnover_rate: pd.Series) -> pd.Series:
-    """换手率突增比: mean(turnover_rate, 5d) / mean(turnover_rate, 20d)。"""
-    ma5 = turnover_rate.rolling(5, min_periods=3).mean()
-    ma20 = turnover_rate.rolling(20, min_periods=10).mean()
-    return ma5 / (ma20 + 1e-12)
-
-
-# ============================================================
-# ML特征计算函数 (Sprint 1.4b LightGBM特征池)
-# ============================================================
-
-# --- KBAR系列 (来自OHLC) ---
-
-def calc_kbar_kmid(open_: pd.Series, close: pd.Series) -> pd.Series:
-    """K线实体方向: (close - open) / open。
-
-    正值=阳线, 负值=阴线, 绝对值反映实体大小。
-
-    Args:
-        open_: 开盘价 (已按code分组)
-        close: 收盘价 (已按code分组)
-
-    Returns:
-        pd.Series: K线实体方向因子值
-    """
-    return (close - open_) / (open_ + 1e-12)
-
-
-def calc_kbar_ksft(open_: pd.Series, high: pd.Series,
-                   low: pd.Series, close: pd.Series) -> pd.Series:
-    """收盘位置偏移: (2*close - high - low) / open。
-
-    衡量收盘价在当日价格区间中的偏移程度。
-    正值=偏向高位收盘, 负值=偏向低位收盘。
-
-    Args:
-        open_: 开盘价
-        high: 最高价
-        low: 最低价
-        close: 收盘价
-
-    Returns:
-        pd.Series: 收盘位置偏移因子值
-    """
-    return (2 * close - high - low) / (open_ + 1e-12)
-
-
-def calc_kbar_kup(open_: pd.Series, high: pd.Series,
-                  close: pd.Series) -> pd.Series:
-    """上影线比例: (high - max(open, close)) / open。
-
-    衡量上方抛压强度, 值越大说明上方卖压越重。
-
-    Args:
-        open_: 开盘价
-        high: 最高价
-        close: 收盘价
-
-    Returns:
-        pd.Series: 上影线比例因子值
-    """
-    body_top = np.maximum(open_, close)
-    return (high - body_top) / (open_ + 1e-12)
-
-
-# --- 资金流系列 (来自moneyflow_daily) ---
-
-def calc_mf_divergence(
-    close_adj: pd.Series, net_mf_amount: pd.Series, window: int = 20
-) -> pd.Series:
-    """资金流背离: close与net_mf_amount的滚动相关性取反。
-
-    IC=9.1%全项目最强（Sprint 1.3确认）。
-    当价格涨但净资金流出(负相关)时, 因子值为正, 预示反转。
-
-    Args:
-        close_adj: 前复权收盘价 (已按code分组)
-        net_mf_amount: 净资金流入金额 (万元, moneyflow_daily)
-        window: 滚动窗口
-
-    Returns:
-        pd.Series: 资金流背离因子值
-    """
-    return -close_adj.rolling(window, min_periods=max(window // 2, 5)).corr(net_mf_amount)
-
-
-def calc_large_order_ratio(
-    buy_lg_amount: pd.Series, buy_elg_amount: pd.Series,
-    buy_md_amount: pd.Series, buy_sm_amount: pd.Series,
-) -> pd.Series:
-    """主力资金占比: (大单+超大单买入) / 全部买入。
-
-    衡量主力资金参与程度, 高值表示机构主导。
-    所有金额字段来自 moneyflow_daily，单位统一为万元，比值无量纲。
-
-    Args:
-        buy_lg_amount: 大单买入金额 (万元, moneyflow_daily)
-        buy_elg_amount: 超大单买入金额 (万元, moneyflow_daily)
-        buy_md_amount: 中单买入金额 (万元, moneyflow_daily)
-        buy_sm_amount: 小单买入金额 (万元, moneyflow_daily)
-
-    Returns:
-        pd.Series: 主力资金占比因子值
-    """
-    large = buy_lg_amount + buy_elg_amount
-    total = large + buy_md_amount + buy_sm_amount
-    return large / (total + 1e-12)
-
-
-def calc_money_flow_strength(
-    net_mf_amount: pd.Series, total_mv: pd.Series,
-) -> pd.Series:
-    """净资金流入强度: net_mf_amount / total_mv。
-
-    单位审计: net_mf_amount=万元(moneyflow_daily), total_mv=万元(daily_basic),
-    比值无量纲，单位一致无需转换。
-
-    Args:
-        net_mf_amount: 净资金流入金额 (万元, moneyflow_daily)
-        total_mv: 总市值 (万元, daily_basic)
-
-    Returns:
-        pd.Series: 净资金流入强度因子值
-    """
-    return net_mf_amount / (total_mv + 1e-12)
-
-
-# --- 动量衍生 ---
-
-def calc_maxret(close_adj: pd.Series, window: int = 20) -> pd.Series:
-    """过去N日最大单日涨幅。
-
-    彩票股效应: 最大单日收益越高, 后续越容易回调。
-
-    Args:
-        close_adj: 前复权收盘价 (已按code分组)
-        window: 回看窗口
-
-    Returns:
-        pd.Series: 最大单日收益因子值
-    """
-    daily_ret = close_adj.pct_change(1)
-    return daily_ret.rolling(window, min_periods=max(window // 2, 5)).max()
-
-
-def calc_chmom(close_adj: pd.Series, long_window: int = 60,
-               short_window: int = 20) -> pd.Series:
-    """动量变化(change in momentum): momentum_long - momentum_short。
-
-    原文用120-20, 因数据只有120天lookback, 用60-20替代。
-    正值=近期(20日)收益低于长期(60日)均速, 动量减速/反转信号。
-
-    Args:
-        close_adj: 前复权收盘价 (已按code分组)
-        long_window: 长期窗口
-        short_window: 短期窗口
-
-    Returns:
-        pd.Series: 动量变化因子值
-    """
-    mom_long = close_adj.pct_change(long_window)
-    mom_short = close_adj.pct_change(short_window)
-    return mom_long - mom_short
-
-
-def calc_up_days_ratio(close_adj: pd.Series, window: int = 20) -> pd.Series:
-    """上涨天数占比(Alpha158 CNTP): count(return>0, N days) / N。
-
-    衡量近期上涨频率, 值越高说明上涨天数越多。
-
-    Args:
-        close_adj: 前复权收盘价 (已按code分组)
-        window: 回看窗口
-
-    Returns:
-        pd.Series: 上涨天数占比因子值
-    """
-    daily_ret = close_adj.pct_change(1)
-    up_flag = (daily_ret > 0).astype(float)
-    return up_flag.rolling(window, min_periods=max(window // 2, 5)).mean()
-
-
-# --- VWAP / RSRS (Sprint 1.6 Gate通过, Reserve池) ---
-
-def calc_vwap_bias(
-    close: pd.Series, amount: pd.Series, volume: pd.Series, window: int = 1
-) -> pd.Series:
-    """VWAP偏差因子: (close - VWAP) / VWAP。
-
-    VWAP = amount(元) / (volume(手) × 100) = 元/股
-    Step 3-A后DB统一存元，不再需要千元×10的换算。
-
-    方向: -1（低偏差更好，收盘价低于VWAP暗示卖压已释放）
-    极值保护: clip(-1.0, 1.0)
-
-    Args:
-        close: 收盘价（未复权，元/股）
-        amount: 成交额（元, Step 3-A后DB统一单位）
-        volume: 成交量（手, 1手=100股）
-        window: 窗口（默认1，当日VWAP偏差，无rolling）
-
-    Returns:
-        pd.Series: VWAP偏差因子值
-    """
-    # 零成交量保护: volume=0时VWAP无意义
-    safe_volume = volume.replace(0, np.nan)
-    vwap = amount / (safe_volume * 100)  # 元 / (手×100) = 元/股
-    bias = (close - vwap) / (vwap.abs() + 1e-12)
-    return bias.clip(-1.0, 1.0)
-
-
-def calc_rsrs_raw(
-    high: pd.Series, low: pd.Series, window: int = 18
-) -> pd.Series:
-    """RSRS阻力支撑因子: OLS(high ~ low)斜率的高效实现。
-
-    公式: Cov(high, low, N) / Var(low, N)
-    等价于 rolling OLS回归 high = alpha + beta × low 中的beta。
-
-    使用未复权价格（high/low同比例复权，斜率不受影响）。
-    方向: -1
-
-    Args:
-        high: 最高价
-        low: 最低价
-        window: 滚动窗口（默认18）
-
-    Returns:
-        pd.Series: RSRS斜率因子值
-    """
-    min_periods = max(window // 2, 9)
-    cov_hl = high.rolling(window, min_periods=min_periods).cov(low)
-    var_l = low.rolling(window, min_periods=min_periods).var()
-    return cov_hl / (var_l + 1e-12)
-
-
-# --- 技术指标 ---
-
-def calc_beta_market(
-    stock_ret: pd.Series, index_ret: pd.Series, window: int = 20
-) -> pd.Series:
-    """个股对沪深300的滚动Beta。
-
-    Beta = Cov(stock, index) / Var(index)。
-
-    Args:
-        stock_ret: 个股日收益率 (已按code分组)
-        index_ret: 沪深300日收益率 (与stock_ret等长, 已对齐)
-        window: 滚动窗口
-
-    Returns:
-        pd.Series: Beta因子值
-    """
-    cov = stock_ret.rolling(window, min_periods=max(window // 2, 5)).cov(index_ret)
-    var = index_ret.rolling(window, min_periods=max(window // 2, 5)).var()
-    return cov / (var + 1e-12)
-
-
-def calc_stoch_rsv(close: pd.Series, high: pd.Series,
-                   low: pd.Series, window: int = 20) -> pd.Series:
-    """随机值RSV: (close - min(low,N)) / (max(high,N) - min(low,N))。
-
-    超买超卖指标, 0-1之间, >0.8为超买, <0.2为超卖。
-
-    Args:
-        close: 收盘价 (已按code分组)
-        high: 最高价
-        low: 最低价
-        window: 回看窗口
-
-    Returns:
-        pd.Series: RSV因子值 (0-1)
-    """
-    low_min = low.rolling(window, min_periods=max(window // 2, 5)).min()
-    high_max = high.rolling(window, min_periods=max(window // 2, 5)).max()
-    return (close - low_min) / (high_max - low_min + 1e-12)
-
-
-def calc_gain_loss_ratio(close_adj: pd.Series, window: int = 20) -> pd.Series:
-    """盈亏比(类RSI): sum(positive_ret) / (sum(positive_ret) + |sum(negative_ret)|)。
-
-    0-1之间, >0.5表示涨多跌少, <0.5表示跌多涨少。
-
-    Args:
-        close_adj: 前复权收盘价 (已按code分组)
-        window: 回看窗口
-
-    Returns:
-        pd.Series: 盈亏比因子值 (0-1)
-    """
-    daily_ret = close_adj.pct_change(1)
-    gains = daily_ret.clip(lower=0)
-    losses = (-daily_ret).clip(lower=0)
-    sum_gains = gains.rolling(window, min_periods=max(window // 2, 5)).sum()
-    sum_losses = losses.rolling(window, min_periods=max(window // 2, 5)).sum()
-    return sum_gains / (sum_gains + sum_losses + 1e-12)
-
-
-# ============================================================
-# 因子注册表
+# 因子注册表 (lambda 封装 calc_*, 未迁移到 submodule 以避免循环导入)
 # ============================================================
 
 # Phase 0 Week 3: 5 core factors (momentum_20 deprecated per factor评级报告)
@@ -528,24 +197,10 @@ RESERVE_FACTORS = {
     # turnover_stability_20 移至DEPRECATED (corr(turnover_mean_20)=0.904)
 }
 
-# Reserve因子方向映射
-RESERVE_FACTOR_DIRECTION = {
-    "vwap_bias_1d": -1,   # 低偏差更好（收盘价低于VWAP）
-    "rsrs_raw_18": -1,    # Sprint 1.6确认方向
-}
-
 # ============================================================
-# Alpha158因子 (Qlib导入, corr<0.7 vs现有因子)
+# Alpha158因子注册表 (lambda 封装, 移植自原文件 550-605 行)
 # 计算逻辑在 engines/alpha158_factors.py, 这里用lambda封装
 # ============================================================
-
-def _alpha158_rolling(df, op_name, window):
-    """Alpha158滚动因子的统一计算入口。"""
-    from engines.alpha158_factors import compute_rolling
-    result = compute_rolling(df)
-    key = f"{op_name}{window}"
-    return result.get(key, pd.Series(dtype=float))
-
 
 # 4个RANKING因子（月度调仓）
 ALPHA158_RANKING = {
@@ -559,8 +214,10 @@ ALPHA158_RANKING = {
         )
     ),
     "a158_cord30": lambda df: df.groupby("code", group_keys=False).apply(
-        lambda g: (g["close"] / g["close"].shift(1) - 1).rolling(30, min_periods=30).corr(
-            np.log(g["volume"] / g["volume"].shift(1).replace(0, np.nan) + 1)
+        lambda g: (
+            (g["close"] / g["close"].shift(1) - 1)
+            .rolling(30, min_periods=30)
+            .corr(np.log(g["volume"] / g["volume"].shift(1).replace(0, np.nan) + 1))
         )
     ),
     "a158_vstd30": lambda df: df.groupby("code", group_keys=False).apply(
@@ -573,7 +230,11 @@ ALPHA158_FAST_RANKING = {
     "a158_rank5": lambda df: df.groupby("code", group_keys=False).apply(
         lambda g: (
             (g["close"] - g["close"].rolling(5, min_periods=5).min())
-            / (g["close"].rolling(5, min_periods=5).max() - g["close"].rolling(5, min_periods=5).min() + 1e-12)
+            / (
+                g["close"].rolling(5, min_periods=5).max()
+                - g["close"].rolling(5, min_periods=5).min()
+                + 1e-12
+            )
         )
     ),
     "a158_corr5": lambda df: df.groupby("code", group_keys=False).apply(
@@ -592,17 +253,6 @@ ALPHA158_FAST_RANKING = {
 
 ALPHA158_FACTORS = {**ALPHA158_RANKING, **ALPHA158_FAST_RANKING}
 
-# Alpha158因子方向 (IC方向)
-ALPHA158_FACTOR_DIRECTION = {
-    "a158_std60": -1,      # 低波动好
-    "a158_vsump60": -1,    # 量能下降好
-    "a158_cord30": -1,     # 量价负相关好
-    "a158_vstd30": 1,      # 交易稳定性
-    "a158_rank5": -1,      # 低位好（反转）
-    "a158_corr5": -1,      # 价量负相关好
-    "a158_vsump5": -1,     # 短期量能下降好
-    "a158_vma5": 1,        # 近期放量好
-}
 
 # ============================================================
 # PEAD因子 (Post-Earnings Announcement Drift, Q1季报限定)
@@ -610,6 +260,9 @@ ALPHA158_FACTOR_DIRECTION = {
 # 验证: Q1季报 spread=+1.19%, t=8.42, 最优窗口+7天
 # H1/Q3/Y方向反转，禁止使用
 # ============================================================
+# NOTE (Phase C C1): calc_pead_q1 has internal cur.execute (DB IO). Stays here
+# until Phase C C2 splits to factor_repository.load_pead_announcements +
+# pure engines/factor_engine/pead.py
 
 
 def calc_pead_q1(trade_date, conn=None) -> pd.Series:
@@ -628,6 +281,7 @@ def calc_pead_q1(trade_date, conn=None) -> pd.Series:
     close_conn = conn is None
     if conn is None:
         from app.services.db import get_sync_conn
+
         conn = get_sync_conn()
 
     if isinstance(trade_date, str):
@@ -667,11 +321,6 @@ def calc_pead_q1(trade_date, conn=None) -> pd.Series:
     return pd.Series(data, name="pead_q1")
 
 
-# PEAD因子方向和分类
-PEAD_FACTOR_DIRECTION = {
-    "pead_q1": 1,  # 正surprise → 正drift (Q1季报限定)
-}
-
 # ============================================================
 # ML特征注册表 (Sprint 1.4b LightGBM 50+特征池)
 # ============================================================
@@ -685,9 +334,7 @@ ML_FEATURES_KLINE = {
     "kbar_ksft": lambda df: calc_kbar_ksft(df["open"], df["high"], df["low"], df["close"]),
     "kbar_kup": lambda df: calc_kbar_kup(df["open"], df["high"], df["close"]),
     # 动量衍生
-    "maxret_20": lambda df: df.groupby("code")["adj_close"].transform(
-        lambda x: calc_maxret(x, 20)
-    ),
+    "maxret_20": lambda df: df.groupby("code")["adj_close"].transform(lambda x: calc_maxret(x, 20)),
     "chmom_60_20": lambda df: df.groupby("code")["adj_close"].transform(
         lambda x: calc_chmom(x, 60, 20)
     ),
@@ -709,20 +356,21 @@ ML_FEATURES_MONEYFLOW = {
         lambda g: calc_mf_divergence(g["adj_close"], g["net_mf_amount"].astype(float), 20)
     ),
     "large_order_ratio": lambda df: calc_large_order_ratio(
-        df["buy_lg_amount"].astype(float), df["buy_elg_amount"].astype(float),
-        df["buy_md_amount"].astype(float), df["buy_sm_amount"].astype(float),
+        df["buy_lg_amount"].astype(float),
+        df["buy_elg_amount"].astype(float),
+        df["buy_md_amount"].astype(float),
+        df["buy_sm_amount"].astype(float),
     ),
     "money_flow_strength": lambda df: calc_money_flow_strength(
-        df["net_mf_amount"].astype(float), df["total_mv"],
+        df["net_mf_amount"].astype(float),
+        df["total_mv"],
     ),
 }
 
 # --- 需要index_daily数据的ML特征 ---
 ML_FEATURES_INDEX = {
     "beta_market_20": lambda df: df.groupby("code", group_keys=False).apply(
-        lambda g: calc_beta_market(
-            g["adj_close"].pct_change(1), g["index_ret"], 20
-        )
+        lambda g: calc_beta_market(g["adj_close"].pct_change(1), g["index_ret"], 20)
     ),
 }
 
@@ -734,193 +382,10 @@ LIGHTGBM_FEATURE_SET = {**PHASE0_FULL_FACTORS, **ML_FEATURES, **ALPHA158_FACTORS
 
 
 # ============================================================
-# 基本面Delta特征 (Sprint 1.5 — 北大2025+国信金工共识: 变化率>水平值)
+# 基本面 PIT 数据加载 (Sprint 1.5)
 # ============================================================
-# 注意: 基本面因子依赖financial_indicators表(PIT), 不走kline lambda模式。
-# 通过 load_fundamental_pit_data() 单独加载, 返回 (code -> value) 字典。
-
-# 因子名 → (方向, clip范围, 说明)
-FUNDAMENTAL_DELTA_META = {
-    "roe_delta":            (1,  (-2.0, 5.0),   "ROE环比变化率"),
-    "revenue_growth_yoy":   (1,  (-2.0, 5.0),   "营收同比增速(直接取字段)"),
-    "gross_margin_delta":   (1,  (-100, 100),    "毛利率环比变化(百分点)"),
-    "eps_acceleration":     (1,  (-2.0, 5.0),    "EPS增速差分(加速度)"),
-    "debt_change":          (-1, (-100, 100),    "资产负债率变化(负=减杠杆=好)"),
-    "net_margin_delta":     (1,  (-100, 100),    "净利润率环比变化(百分点)"),
-}
-
-# 时间特征
-FUNDAMENTAL_TIME_META = {
-    "days_since_announcement": (-1, (0, 365),  "距最近公告日天数(越近越好)"),
-    "reporting_season_flag":   (1,  (0, 1),    "财报季标志(4/8/10月=1)"),
-}
-
-# 合并: 全部8个基本面+时间因子名
-FUNDAMENTAL_DELTA_FEATURES = list(FUNDAMENTAL_DELTA_META.keys())
-FUNDAMENTAL_TIME_FEATURES = list(FUNDAMENTAL_TIME_META.keys())
-FUNDAMENTAL_ALL_FEATURES = FUNDAMENTAL_DELTA_FEATURES + FUNDAMENTAL_TIME_FEATURES
-
-# LightGBM v2特征集 = 5基线 + 6delta + 2时间 = 13个
-LGBM_V2_BASELINE_FACTORS = [
-    "turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio",
-]
-
-# 因子方向映射(用于信号合成)
-FUNDAMENTAL_FACTOR_DIRECTION = {
-    k: v[0] for k, v in {**FUNDAMENTAL_DELTA_META, **FUNDAMENTAL_TIME_META}.items()
-}
-
-# ============================================================
-# Phase 2.1 E2E因子 (wide-format批量计算, 非lambda模式)
-# ============================================================
-
-
-def calc_high_vol_price_ratio_wide(
-    close_wide: pd.DataFrame,
-    open_wide: pd.DataFrame,
-    high_wide: pd.DataFrame,
-    low_wide: pd.DataFrame,
-    window: int = 20,
-    top_k: int = 4,
-) -> pd.DataFrame:
-    """高位放量因子 — 高波动日均价/全窗口均价。
-
-    经济学假设(铁律13): 高波动日价格偏高→庄家出货信号,
-    ratio>1表示放量时价格偏高(利空), direction=-1。
-
-    来源: scripts/research/phase2_signal_feasibility.py compute_24_high_vol_price()
-    验证: IC=-0.077, t=-17.85, max_corr=0.443(独立)
-
-    Args:
-        close_wide: (trade_date × code) 收盘价
-        open_wide: (trade_date × code) 开盘价
-        high_wide: (trade_date × code) 最高价
-        low_wide: (trade_date × code) 最低价
-        window: 滚动窗口(默认20日)
-        top_k: 取波动最高的天数(默认4=top 20%)
-
-    Returns:
-        DataFrame (trade_date × code), NaN for insufficient window
-    """
-    # 日内波动率
-    intravol_wide = (high_wide - low_wide) / (open_wide + 1e-12)
-
-    close_arr = close_wide.values
-    intravol_arr = intravol_wide.values
-    n_dates, n_codes = close_arr.shape
-
-    result = np.full((n_dates, n_codes), np.nan)
-
-    for i in range(window - 1, n_dates):
-        c_win = close_arr[i - window + 1 : i + 1]  # (window, n_codes)
-        v_win = intravol_arr[i - window + 1 : i + 1]
-
-        # 按intravol降序排名, 取top_k天
-        v_ranks = np.argsort(np.argsort(-v_win, axis=0), axis=0)
-        top_v_mask = v_ranks < top_k
-
-        c_mean_all = np.nanmean(c_win, axis=0)
-        c_top_v = np.where(top_v_mask, c_win, np.nan)
-        c_mean_top_v = np.nanmean(c_top_v, axis=0)
-        result[i] = c_mean_top_v / (c_mean_all + 1e-12)
-
-    return pd.DataFrame(result, index=close_wide.index, columns=close_wide.columns)
-
-
-def calc_alpha158_simple_four(
-    daily_ret: pd.DataFrame,
-    price_wide: pd.DataFrame,
-    window: int = 20,
-) -> dict[str, pd.DataFrame]:
-    """Alpha158简单四因子 — IMAX/IMIN/QTLU/CORD。
-
-    来源: scripts/research/phase12_alpha158_six.py compute_simple_four()
-
-    Args:
-        daily_ret: (trade_date × code) 日收益率
-        price_wide: (trade_date × code) 收盘价(用于CORD)
-        window: 滚动窗口(默认20日)
-
-    Returns:
-        dict: {factor_name: DataFrame(trade_date × code)}
-    """
-    results = {}
-
-    # IMAX_20: 窗口内最大日收益率
-    results["IMAX_20"] = daily_ret.rolling(window, min_periods=window).max()
-
-    # IMIN_20: 窗口内最小日收益率
-    results["IMIN_20"] = daily_ret.rolling(window, min_periods=window).min()
-
-    # QTLU_20: 窗口内收益率75th分位
-    results["QTLU_20"] = daily_ret.rolling(window, min_periods=window).quantile(0.75)
-
-    # CORD_20: corr(close, time_index) over rolling window
-    time_idx = pd.Series(
-        np.arange(len(price_wide), dtype=float), index=price_wide.index
-    )
-    results["CORD_20"] = price_wide.rolling(window, min_periods=window).corr(time_idx)
-
-    return results
-
-
-def calc_alpha158_rsqr_resi(
-    daily_ret: pd.DataFrame,
-    market_ret: pd.Series,
-    window: int = 20,
-) -> dict[str, pd.DataFrame]:
-    """Alpha158 RSQR/RESI — 向量化rolling OLS。
-
-    RSQR_20 = corr(stock_ret, market_ret)² (R²)
-    RESI_20 = alpha = mean(y) - beta × mean(x) (OLS截距)
-
-    来源: scripts/research/phase12_alpha158_six.py compute_rsqr_resi()
-
-    Args:
-        daily_ret: (trade_date × code) 个股日收益率
-        market_ret: (trade_date,) 市场日收益率(CSI300)
-        window: 滚动窗口(默认20日)
-
-    Returns:
-        dict: {"RSQR_20": DataFrame, "RESI_20": DataFrame}
-    """
-    # 对齐市场收益到stock日期
-    mkt = market_ret.reindex(daily_ret.index)
-
-    # RSQR_20 = corr(stock_ret, market_ret)²
-    rolling_corr = daily_ret.rolling(window, min_periods=window).corr(mkt)
-    rsqr = rolling_corr ** 2
-
-    # RESI_20 = alpha = mean(y) - beta × mean(x)
-    rolling_mean_y = daily_ret.rolling(window, min_periods=window).mean()
-    rolling_mean_x = mkt.rolling(window, min_periods=window).mean()
-
-    # cov(x,y) = E[xy] - E[x]E[y]
-    xy = daily_ret.multiply(mkt, axis=0)
-    rolling_mean_xy = xy.rolling(window, min_periods=window).mean()
-    rolling_cov_xy = rolling_mean_xy - rolling_mean_y.multiply(rolling_mean_x, axis=0)
-
-    # var(x) = E[x²] - E[x]²
-    x2 = mkt ** 2
-    rolling_mean_x2 = x2.rolling(window, min_periods=window).mean()
-    rolling_var_x = rolling_mean_x2 - rolling_mean_x ** 2
-
-    beta = rolling_cov_xy.div(rolling_var_x.replace(0, np.nan), axis=0)
-    resi = rolling_mean_y - beta.multiply(rolling_mean_x, axis=0)
-
-    return {"RSQR_20": rsqr, "RESI_20": resi}
-
-
-# Phase 2.1因子方向映射
-PHASE21_FACTOR_DIRECTION = {
-    "high_vol_price_ratio_20": -1,  # 高波动日价偏高=利空
-    "IMAX_20": -1,   # 极端正收益=彩票偏好被高估
-    "IMIN_20": 1,    # 深跌后均值回归
-    "QTLU_20": -1,   # 上行偏度=过度乐观
-    "CORD_20": -1,   # 强上行趋势=反转
-    "RSQR_20": -1,   # 低R²=特质风险=散户溢价
-    "RESI_20": 1,    # 正alpha=近期跑赢
-}
+# NOTE (Phase C C1): contains pd.read_sql via load_financial_pit helper.
+# Stays here until Phase C C2 splits to factor_repository.
 
 
 def load_fundamental_pit_data(
@@ -969,7 +434,11 @@ def load_fundamental_pit_data(
 
         # 1. roe_delta: (当期ROE - 上期ROE) / abs(上期ROE + 1e-8)
         if prev is not None:
-            roe_col = "roe_dt" if pd.notna(latest.get("roe_dt")) and pd.notna(prev.get("roe_dt")) else "roe"
+            roe_col = (
+                "roe_dt"
+                if pd.notna(latest.get("roe_dt")) and pd.notna(prev.get("roe_dt"))
+                else "roe"
+            )
             roe_curr = latest.get(roe_col)
             roe_prev = prev.get(roe_col)
             if pd.notna(roe_curr) and pd.notna(roe_prev):
@@ -1013,6 +482,7 @@ def load_fundamental_pit_data(
         if pd.notna(ann_date):
             if isinstance(ann_date, str):
                 from datetime import datetime as _dt
+
                 ann_date = _dt.strptime(ann_date, "%Y-%m-%d").date()
             elif hasattr(ann_date, "date"):
                 ann_date = ann_date.date()
@@ -1050,202 +520,10 @@ def load_fundamental_pit_data(
 
 
 # ============================================================
-# 预处理管道 (CLAUDE.md 强制顺序: MAD → fill → neutralize → zscore)
-# ============================================================
-
-def preprocess_mad(series: pd.Series, n_mad: float = 5.0) -> pd.Series:
-    """Step 1: MAD去极值。
-
-    将超出 median ± n_mad × MAD 的值截断到边界。
-
-    Args:
-        series: 单因子截面值 (一个trade_date的全部股票)
-        n_mad: MAD倍数, 默认5倍
-
-    Returns:
-        去极值后的Series
-    """
-    median = series.median()
-    mad = (series - median).abs().median()
-    if mad < 1e-12:
-        return series
-    upper = median + n_mad * mad
-    lower = median - n_mad * mad
-    return series.clip(lower=lower, upper=upper)
-
-
-def preprocess_fill(
-    series: pd.Series,
-    industry: pd.Series,
-) -> pd.Series:
-    """Step 2: 缺失值填充。
-
-    先用行业中位数填充, 再用0填充剩余。
-
-    Args:
-        series: 单因子截面值
-        industry: 对应的行业分类
-
-    Returns:
-        填充后的Series (无NaN)
-    """
-    # 行业中位数填充
-    industry_median = series.groupby(industry).transform("median")
-    filled = series.fillna(industry_median)
-    # 剩余NaN用0填充
-    filled = filled.fillna(0.0)
-    return filled
-
-
-def preprocess_neutralize(
-    series: pd.Series,
-    ln_mcap: pd.Series,
-    industry: pd.Series,
-) -> pd.Series:
-    """Step 3: WLS中性化 — 加权最小二乘回归掉市值 + 行业。
-
-    模型: factor = alpha + beta1 × ln_mcap + Σ(beta_i × industry_dummy) + residual
-    权重: w_i = √market_cap_i = √exp(ln_mcap_i)（大市值股票权重更高）
-    WLS变换: 用 √w_i 乘以 X 和 y，转化为等价的OLS问题后 lstsq 求解。
-    残差: 用原始(未加权)的 y - X @ beta 计算，保留经济含义。
-
-    设计文档: DESIGN_V5 §4.4 — WLS(√market_cap加权)回归。
-
-    Args:
-        series: 单因子截面值 (已去极值+填充)
-        ln_mcap: 对数市值（ln(流通市值)）
-        industry: 行业分类
-
-    Returns:
-        中性化后的残差 Series，无效样本保持 NaN
-    """
-    valid_mask = series.notna() & ln_mcap.notna() & industry.notna()
-    if valid_mask.sum() < 30:
-        logger.warning("中性化样本不足30，跳过中性化")
-        return series
-
-    y = series[valid_mask].values
-    mcap_vals = ln_mcap[valid_mask].values
-
-    # 构建设计矩阵 X: [intercept, ln_mcap, industry_dummies]
-    mcap_col = mcap_vals.reshape(-1, 1)
-    ind_dummies = pd.get_dummies(industry[valid_mask], drop_first=True).values
-    x_mat = np.column_stack([np.ones(len(y)), mcap_col, ind_dummies])  # noqa: N806
-
-    # WLS权重: w_i = √market_cap = √exp(ln_mcap)
-    # WLS → OLS变换: 用 √w_i 乘以 X 和 y
-    weights = np.sqrt(np.exp(mcap_vals))          # w_i = √market_cap
-    w_sqrt = np.sqrt(weights)                      # √w_i = market_cap^(1/4)
-    # 归一化避免数值溢出 (不影响回归结果)
-    w_sqrt = w_sqrt / w_sqrt.mean()
-
-    xw = x_mat * w_sqrt[:, np.newaxis]
-    yw = y * w_sqrt
-
-    try:
-        # WLS: beta = (X'WX)^-1 X'Wy，等价OLS on (Xw, yw)
-        beta = np.linalg.lstsq(xw, yw, rcond=None)[0]
-        # 残差使用原始空间（非加权），保留经济含义
-        residual = y - x_mat @ beta
-
-        result = series.copy()
-        result[valid_mask] = residual
-        result[~valid_mask] = np.nan
-        return result
-    except np.linalg.LinAlgError:
-        logger.warning("WLS中性化回归失败(矩阵奇异)，返回原值")
-        return series
-
-
-def preprocess_zscore(series: pd.Series) -> pd.Series:
-    """Step 4: zscore标准化。
-
-    (x - mean) / std, 标准差为0时返回全0。
-    """
-    mean = series.mean()
-    std = series.std()
-    if std < 1e-12:
-        return pd.Series(0.0, index=series.index)
-    return (series - mean) / std
-
-
-def preprocess_pipeline(
-    factor_series: pd.Series,
-    ln_mcap: pd.Series,
-    industry: pd.Series,
-) -> tuple[pd.Series, pd.Series]:
-    """完整预处理管道。
-
-    返回 (raw_value, neutral_value)。
-    neutral_value = 经过 MAD→fill→neutralize(WLS)→zscore→clip(±3) 全部5步处理后的值。
-
-    步骤:
-      1. MAD去极值 (5σ)
-      2. 缺失值填充 (行业中位数→0)
-      3. WLS中性化 (行业+市值加权回归，w=√market_cap)
-      4. zscore标准化
-      5. clip(±3): 截断|z|>3的极端值 (DESIGN_V5 §4.4)
-
-    Args:
-        factor_series: 原始因子截面值
-        ln_mcap: 对数市值
-        industry: 行业分类
-
-    Returns:
-        (raw_value, neutral_value) 两个Series
-    """
-    raw = factor_series.copy()
-
-    # Step 1: MAD去极值 (5σ)
-    step1 = preprocess_mad(raw)
-    # Step 2: 缺失值填充
-    step2 = preprocess_fill(step1, industry)
-    # Step 3: WLS中性化 (行业+市值加权回归)
-    step3 = preprocess_neutralize(step2, ln_mcap, industry)
-    # Step 4: zscore
-    step4 = preprocess_zscore(step3)
-    # Step 5: clip ±3σ (截断zscore极端值)
-    step5 = step4.clip(lower=-3.0, upper=3.0)
-
-    return raw, step5
-
-
-# ============================================================
-# IC计算
-# ============================================================
-
-def calc_ic(
-    factor_values: pd.Series,
-    forward_returns: pd.Series,
-    method: str = "spearman",
-) -> float:
-    """计算单日单因子的IC (Information Coefficient)。
-
-    Args:
-        factor_values: 因子截面值 (index=code)
-        forward_returns: 前向超额收益 (index=code)
-        method: 'spearman'(rank IC) 或 'pearson'
-
-    Returns:
-        IC值 (float)
-    """
-    # 对齐index
-    common = factor_values.dropna().index.intersection(forward_returns.dropna().index)
-    if len(common) < 30:
-        return np.nan
-
-    f = factor_values.loc[common]
-    r = forward_returns.loc[common]
-
-    if method == "spearman":
-        return f.rank().corr(r.rank())
-    else:
-        return f.corr(r)
-
-
-# ============================================================
 # 数据加载 (读取行情 + daily_basic, 计算adj_close)
+# NOTE (Phase C C1): Data loaders stay here until C2 moves to factor_repository.
 # ============================================================
+
 
 def load_daily_data(
     trade_date: date,
@@ -1342,7 +620,8 @@ def load_forward_returns(
         future_date_df = pd.read_sql(
             """SELECT DISTINCT trade_date FROM klines_daily
                WHERE trade_date > %s ORDER BY trade_date LIMIT %s""",
-            conn, params=(trade_date, horizon),
+            conn,
+            params=(trade_date, horizon),
         )
         if future_date_df.empty:
             return pd.Series(dtype=float)
@@ -1384,7 +663,8 @@ def load_forward_returns(
         JOIN future f ON b.code = f.code
         """
         df = pd.read_sql(
-            sql, conn,
+            sql,
+            conn,
             params=(trade_date, future_date, future_date, trade_date),
         )
         return df.set_index("code")["excess_return"]
@@ -1396,6 +676,7 @@ def load_forward_returns(
 # ============================================================
 # 因子写入
 # ============================================================
+
 
 def save_daily_factors(
     trade_date: date,
@@ -1455,6 +736,7 @@ def save_daily_factors(
 # ============================================================
 # 主流程: 单日因子计算
 # ============================================================
+
 
 def compute_daily_factors(
     trade_date: date,
@@ -1521,21 +803,21 @@ def compute_daily_factors(
             raw_today.index = today_codes
 
             # 预处理
-            raw_val, neutral_val = preprocess_pipeline(
-                raw_today, today_ln_mcap, today_industry
-            )
+            raw_val, neutral_val = preprocess_pipeline(raw_today, today_ln_mcap, today_industry)
 
             # 组装结果
             for code in today_codes:
                 rv = raw_val.get(code, np.nan)
                 nv = neutral_val.get(code, np.nan)
-                all_results.append({
-                    "code": code,
-                    "factor_name": factor_name,
-                    "raw_value": rv,
-                    "neutral_value": nv,
-                    "zscore": nv,  # neutral_value已经是zscore
-                })
+                all_results.append(
+                    {
+                        "code": code,
+                        "factor_name": factor_name,
+                        "raw_value": rv,
+                        "neutral_value": nv,
+                        "zscore": nv,  # neutral_value已经是zscore
+                    }
+                )
         except Exception as e:
             logger.error(f"[{trade_date}] 因子 {factor_name} 计算失败: {e}")
             continue
@@ -1550,6 +832,7 @@ def compute_daily_factors(
 # ============================================================
 # 批量计算: 一次加载全量数据, 逐日计算+写入
 # ============================================================
+
 
 def load_bulk_data(
     start_date: date,
@@ -1618,8 +901,9 @@ def load_bulk_data(
         """
         logger.info(f"批量加载数据: {start_date} → {end_date} (+120天回看)")
         df = pd.read_sql(sql, conn, params=(start_date, end_date))
-        logger.info(f"数据加载完成: {len(df)}行, {df['code'].nunique()}股, "
-                     f"{df['trade_date'].nunique()}天")
+        logger.info(
+            f"数据加载完成: {len(df)}行, {df['code'].nunique()}股, {df['trade_date'].nunique()}天"
+        )
         return df
     finally:
         if close_conn:
@@ -1629,6 +913,7 @@ def load_bulk_data(
 # ============================================================
 # ML特征数据加载 (moneyflow + index)
 # ============================================================
+
 
 def load_bulk_moneyflow(
     start_date: date,
@@ -1774,12 +1059,16 @@ def load_bulk_data_with_extras(
         mf = load_bulk_moneyflow(start_date, end_date, conn=conn)
         if not mf.empty:
             df = df.merge(mf, on=["code", "trade_date"], how="left")
-            logger.info(f"合并资金流数据: moneyflow匹配率 "
-                        f"{df['net_mf_amount'].notna().mean():.1%}")
+            logger.info(f"合并资金流数据: moneyflow匹配率 {df['net_mf_amount'].notna().mean():.1%}")
         else:
             logger.warning("资金流数据为空, moneyflow因子将全为NaN")
-            for col in ["buy_sm_amount", "buy_md_amount", "buy_lg_amount",
-                        "buy_elg_amount", "net_mf_amount"]:
+            for col in [
+                "buy_sm_amount",
+                "buy_md_amount",
+                "buy_lg_amount",
+                "buy_elg_amount",
+                "net_mf_amount",
+            ]:
                 df[col] = np.nan
 
         # 3. 指数收益率
@@ -1788,8 +1077,7 @@ def load_bulk_data_with_extras(
             idx_ret_df = idx_ret.reset_index()
             idx_ret_df.columns = ["trade_date", "index_ret"]
             df = df.merge(idx_ret_df, on="trade_date", how="left")
-            logger.info(f"合并指数收益率: index_ret匹配率 "
-                        f"{df['index_ret'].notna().mean():.1%}")
+            logger.info(f"合并指数收益率: index_ret匹配率 {df['index_ret'].notna().mean():.1%}")
         else:
             logger.warning("指数收益率为空, beta因子将全为NaN")
             df["index_ret"] = np.nan
@@ -1866,8 +1154,7 @@ def compute_batch_factors(
         use_fundamental = True
     elif factor_set == "lgbm_v2":
         # 5基线 + 6delta + 2时间 = 13个
-        factors = {k: v for k, v in PHASE0_CORE_FACTORS.items()
-                   if k in LGBM_V2_BASELINE_FACTORS}
+        factors = {k: v for k, v in PHASE0_CORE_FACTORS.items() if k in LGBM_V2_BASELINE_FACTORS}
         # reversal_20 在 PHASE0_FULL_FACTORS 中
         if "reversal_20" not in factors:
             factors["reversal_20"] = PHASE0_FULL_FACTORS.get("reversal_20")
@@ -1883,8 +1170,14 @@ def compute_batch_factors(
         factors = {k: v for k, v in factors.items() if k in factor_names}
         if not factors:
             logger.warning(f"指定的因子名 {factor_names} 在 {factor_set} 集中均未找到")
-            return {"total_rows": 0, "elapsed": 0, "dates": 0,
-                    "load_time": 0, "calc_time": 0, "total_time": 0}
+            return {
+                "total_rows": 0,
+                "elapsed": 0,
+                "dates": 0,
+                "load_time": 0,
+                "calc_time": 0,
+                "total_time": 0,
+            }
         # 仅当实际需要moneyflow/index因子时才加载额外数据
         _mf_and_idx = set(ML_FEATURES_MONEYFLOW) | set(ML_FEATURES_INDEX)
         use_extras = use_extras and bool(set(factors) & _mf_and_idx)
@@ -1892,9 +1185,11 @@ def compute_batch_factors(
     # 字符串→date转换（命令行调用时传入str）
     if isinstance(start_date, str):
         from datetime import datetime as _dt
+
         start_date = _dt.strptime(start_date, "%Y-%m-%d").date()
     if isinstance(end_date, str):
         from datetime import datetime as _dt
+
         end_date = _dt.strptime(end_date, "%Y-%m-%d").date()
 
     if conn is None:
@@ -1909,14 +1204,26 @@ def compute_batch_factors(
         else:
             df = load_bulk_data(start_date, end_date, conn=conn)
         if df.empty:
-            return {"total_rows": 0, "elapsed": 0, "dates": 0,
-                    "load_time": 0, "calc_time": 0, "total_time": 0}
+            return {
+                "total_rows": 0,
+                "elapsed": 0,
+                "dates": 0,
+                "load_time": 0,
+                "calc_time": 0,
+                "total_time": 0,
+            }
     else:
         # fundamental-only模式: 仍需kline数据获取交易日列表和截面信息
         df = load_bulk_data(start_date, end_date, conn=conn)
         if df.empty:
-            return {"total_rows": 0, "elapsed": 0, "dates": 0,
-                    "load_time": 0, "calc_time": 0, "total_time": 0}
+            return {
+                "total_rows": 0,
+                "elapsed": 0,
+                "dates": 0,
+                "load_time": 0,
+                "calc_time": 0,
+                "total_time": 0,
+            }
 
     t_load = time.time() - t0
 
@@ -1932,15 +1239,17 @@ def compute_batch_factors(
     t_calc = time.time() - t0 - t_load
 
     # 3. 获取计算范围内的交易日
-    all_dates = sorted(df.loc[
-        (df["trade_date"] >= start_date) &
-        (df["trade_date"] <= end_date),
-        "trade_date"
-    ].unique())
+    all_dates = sorted(
+        df.loc[
+            (df["trade_date"] >= start_date) & (df["trade_date"] <= end_date), "trade_date"
+        ].unique()
+    )
 
     n_fund = len(FUNDAMENTAL_ALL_FEATURES) if use_fundamental else 0
-    logger.info(f"逐日预处理+写入: {len(all_dates)}个交易日"
-                f"{f' (含{n_fund}个基本面因子)' if use_fundamental else ''}")
+    logger.info(
+        f"逐日预处理+写入: {len(all_dates)}个交易日"
+        f"{f' (含{n_fund}个基本面因子)' if use_fundamental else ''}"
+    )
 
     total_rows = 0
     for i, td in enumerate(all_dates):
@@ -1954,9 +1263,7 @@ def compute_batch_factors(
         today_codes = df.loc[today_mask, "code"].values
         today_industry = df.loc[today_mask, "industry_sw1"].fillna("其他")
         today_industry.index = today_codes
-        today_ln_mcap = df.loc[today_mask, "total_mv"].apply(
-            lambda x: np.log(x + 1e-12)
-        )
+        today_ln_mcap = df.loc[today_mask, "total_mv"].apply(lambda x: np.log(x + 1e-12))
         today_ln_mcap.index = today_codes
 
         def _safe(v):
@@ -1972,17 +1279,21 @@ def compute_batch_factors(
             raw_today = factor_raw[fname][today_mask].copy()
             raw_today.index = today_codes
 
-            raw_val, neutral_val = preprocess_pipeline(
-                raw_today, today_ln_mcap, today_industry
-            )
+            raw_val, neutral_val = preprocess_pipeline(raw_today, today_ln_mcap, today_industry)
 
             for code in today_codes:
                 rv = raw_val.get(code, np.nan)
                 nv = neutral_val.get(code, np.nan)
-                day_rows.append((
-                    code, td_date, fname,
-                    _safe(rv), _safe(nv), _safe(nv),
-                ))
+                day_rows.append(
+                    (
+                        code,
+                        td_date,
+                        fname,
+                        _safe(rv),
+                        _safe(nv),
+                        _safe(nv),
+                    )
+                )
 
         # 基本面delta因子 (PIT加载, 逐日计算)
         if use_fundamental:
@@ -2001,10 +1312,16 @@ def compute_batch_factors(
                     for code in today_codes:
                         rv = raw_val.get(code, np.nan)
                         nv = neutral_val.get(code, np.nan)
-                        day_rows.append((
-                            code, td_date, fname,
-                            _safe(rv), _safe(nv), _safe(nv),
-                        ))
+                        day_rows.append(
+                            (
+                                code,
+                                td_date,
+                                fname,
+                                _safe(rv),
+                                _safe(nv),
+                                _safe(nv),
+                            )
+                        )
             except Exception as e:
                 logger.error(f"[{td_date}] 基本面因子计算失败: {e}")
 
@@ -2029,7 +1346,7 @@ def compute_batch_factors(
         if (i + 1) % 50 == 0 or i == 0 or i == len(all_dates) - 1:
             elapsed = time.time() - t0
             logger.info(
-                f"  [{i+1}/{len(all_dates)}] {td_date} | "
+                f"  [{i + 1}/{len(all_dates)}] {td_date} | "
                 f"{len(day_rows)}行 | 累计{total_rows}行 | "
                 f"{elapsed:.0f}s"
             )

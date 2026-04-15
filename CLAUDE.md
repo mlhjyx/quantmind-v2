@@ -123,7 +123,12 @@ quantmind-v2/
 ├── backend/data/                # ⭐ Step 5新增: Data层(本地缓存/快照, 无业务逻辑)
 │   └── parquet_cache.py         # BacktestDataCache 按年分区Parquet缓存
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
-│   ├── factor_engine.py         # 因子计算
+│   ├── factor_engine/           # ⭐ Phase C C1 (2026-04-16) 拆分: 铁律 31 纯计算分层
+│   │   ├── __init__.py          #   shim re-export + 未迁移 IO (compute/load/save, C2/C3 处理)
+│   │   ├── _constants.py        #   direction 字典 + FUNDAMENTAL_*_META (pure data)
+│   │   ├── calculators.py       #   30 个 calc_* 纯函数 (无 IO, 可单测)
+│   │   ├── alpha158.py          #   Alpha158 helpers + wide-format 复合因子
+│   │   └── preprocess.py        #   preprocess_mad/fill/neutralize/zscore/pipeline + calc_ic
 │   ├── factor_profiler.py       # 因子画像V2（48+15因子, 12章节报告）
 │   ├── fast_neutralize.py       # 批量中性化（Parquet写入, 17.5min/15因子）
 │   ├── backtest/                # ⭐ Step 4-A: 回测引擎8模块拆分
@@ -351,6 +356,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 > 这 5 条铁律是 S1-S4 审计 54 条 findings 里 P0/P1 集中爆发的根因抽象。前 30 条铁律主要由因子研究教训驱动, 基础设施类教训欠账在本轮补齐 (铁律总数 30→35)。
 
 31. **Engine 层纯计算** — `backend/engines/**` 下所有模块不允许读写 DB, 不允许 HTTP/Redis 调用, 不允许读写本地文件（Parquet 缓存除外）。输入/输出必须是 DataFrame/dict/原生 Python 类型。数据必须在入库时通过 DataPipeline 验证和标准化, Engine 只负责纯计算。违反→分层崩塌, 纯计算与 IO 耦合导致无法单测 + 重构不敢动（F31 factor_engine.py 2034 行教训 + 审计 F43 配套问题）。
+    > **Phase C C1 落地 (2026-04-16)**: `backend/engines/factor_engine.py` → `backend/engines/factor_engine/` package. 30 个 calc_* 纯函数迁至 `calculators.py`, preprocess 管道迁至 `preprocess.py`, Alpha158 helpers 迁至 `alpha158.py`, direction/metadata 迁至 `_constants.py`. 剩余 load_*/save_*/compute_*/calc_pead_q1/load_fundamental_pit_data 暂留 `__init__.py`, 由 Phase C C2 (factor_repository) + C3 (factor_compute_service + F86 known_debt 闭环) 完成. 见 docs/audit/PHASE_C_F31_PREP.md.
     > 铁律 14 "回测引擎不做数据清洗" 是本条在回测引擎维度的特例, 本条覆盖所有 Engine 模块。
 
 32. **Service 不 commit** — Service 层所有函数不允许调用 `conn.commit()` / `cur.execute("COMMIT")`。事务边界由调用方（Router / Celery task）管理。Service 发现错误必须 raise, 由调用方决定 rollback 或 retry。违反→事务边界错乱, partial write 风险 + 失败后 DB 状态不可预测（F16 Service 层 20+ 处违规, 等着 partial write 事故）。
