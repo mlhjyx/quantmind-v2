@@ -73,6 +73,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402", "B023", "B007", "SIM102", "UP031"]
 "scripts/_*.py" = ["E402", "E701"]
+# 研究脚本: 一次性实验代码, 放宽风格约束 (zip strict/unused var/try-except-pass)
+"scripts/research/*.py" = ["E402", "B023", "B007", "B905", "F841", "SIM102", "SIM105", "UP031"]
+"scripts/system_diagnosis.py" = ["E402", "SIM105"]
 "backend/scripts/*.py" = ["E402", "E701"]
 "backend/app/tasks/*.py" = ["E402"]
 "backend/services/*.py" = ["E402"]

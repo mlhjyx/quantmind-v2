@@ -65,3 +65,23 @@ models/*.db
 .claude/worktrees/
 .omc/
 models/*.csv
+
+# Research intermediate caches (large, regeneratable)
+cache/phase3a_ic_quickscreen.csv
+cache/phase3b/
+cache/phase3b_*
+cache/phase3e/
+cache/phase3e_ml/
+cache/phase22/
+cache/phase23/
+cache/phase24/
+cache/phase24_audit/
+cache/minute_bars/
+cache/ml/*.txt
+cache/backtest_profile_*.prof
+cache/diagnosis_report.json
+cache/optimization_validation.txt
+catboost_info/
+
+# Temp files
+_write_plan.py
