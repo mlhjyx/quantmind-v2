@@ -535,7 +535,7 @@ Hermes进入项目目录时自动加载此文件，知道去哪里找信息。
     学完后给我一个总结，并把关键信息写入你的MEMORY.md。
 
 Hermes：[read_file .hermes.md]
-        [read_file CLAUDE.md]          → 学习30条铁律
+        [read_file CLAUDE.md]          → 学习35条铁律
         [read_file SYSTEM_STATUS.md]    → 学习当前PT状态
         [read_file docs/FACTOR_ONBOARDING_SYSTEM.md] → 学习9步入库流程
         [read_file docs/QUANTMIND_PHASE3_ROADMAP.md] → 学习Phase 3计划
@@ -545,7 +545,7 @@ Hermes：[read_file .hermes.md]
         
         我已完整阅读。总结：
         - 系统运行CORE3+dv_ttm配置，OOS Sharpe=0.8659
-        - 铁律30条，最关键：29(禁NaN) 30(中性化后重建缓存)
+        - 铁律35条，最关键：29(禁NaN) 30(中性化后重建缓存) 31(Engine纯计算) 33(禁silent failure) 34(配置SSoT)
         - Phase 3进行中，3A完成(241因子)，3B数据拉取中
         - PT已重启，4因子等权+SN b=0.50+Top-20+月度
         ...

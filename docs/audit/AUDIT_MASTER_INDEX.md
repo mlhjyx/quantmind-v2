@@ -135,7 +135,7 @@ scripts/audit/
 
 ## 🔗 相关文档
 
-- `CLAUDE.md` — 项目入口 + 30 条铁律
+- `CLAUDE.md` — 项目入口 + 35 条铁律 (S1-S4 审计后新增 31-35 工程基础设施类)
 - `SYSTEM_STATUS.md` — 系统现状全景
 - `FACTOR_TEST_REGISTRY.md` — 因子测试注册表（累积测试数 M）
 - `LESSONS_LEARNED.md` — 49 条经验教训

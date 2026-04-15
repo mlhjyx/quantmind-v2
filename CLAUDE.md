@@ -286,7 +286,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### 数据与回测类
 7. **IC/回测前确认数据地基** — universe与回测对齐+无前瞻偏差+数据质量检查（IC偏差教训）
-8. **ML实验必须OOS验证** — 训练/验证/测试三段分离，OOS Sharpe < 基线不上线（DSR教训）
+8. **任何策略改动必须OOS验证** — ML训练/验证/测试三段分离; 非ML策略/因子/参数改动必须walk-forward或时间序列holdout, paired bootstrap p<0.05硬门槛。IS(in-sample)好看不算证据。违反→连续5次"IS强OOS崩"教训: DSR / G1 LightGBM / Phase 2.1 融合E2E(val_sharpe=1.26→实盘-0.99) / Phase 3D ML Synthesis / Phase 3E微结构等权加入(16/16 noise ROBUST但WF 0/6 PASS)
 
 ### 系统安全类
 9. **重数据任务串行执行** — 最多2个重数据Python进程并发，违反→PG OOM崩溃（2026-04-03事件）
@@ -330,7 +330,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### 工程纪律类（Step 6-H后, 2026-04-10）
 21. **先搜索开源方案再自建** — 任何新功能开发前先花半天搜索成熟开源实现（Qlib/RD-Agent/alphalens等）。自建引擎90%功能已被Qlib覆盖的教训。违反→重复造轮子浪费数月。
-22. **文档跟随代码** — 每次代码变更后必须同步更新受影响的文档（CLAUDE.md/SYSTEM_STATUS.md/DEV_*.md）。不留过时信息。违反→文档与代码不一致导致错误决策（5yr/12yr Sharpe混淆教训）。
+22. **文档跟随代码（可执行标准）** — (a) 代码 PR 必须同时更新受影响的 CLAUDE.md / SYSTEM_STATUS.md / DEV_*.md, 或在 commit message 声明 `NO_DOC_IMPACT`; (b) `docs/` 下 30 天未更新但对应代码 git log 有变动的文件应定期扫描标 STALE; (c) 引用已删除文件/函数/表的链接必须在同一次 commit 修复; (d) 数字类声明(行数/测试数/表数)变更时同步更新 CLAUDE.md。违反→文档与代码不一致导致错误决策（5yr/12yr Sharpe 混淆 + S1 审计 10+ 条文档腐烂 findings: F1/F2/F10/F14/F28/F29 等）。
 23. **每个任务独立可执行** — 不允许任务依赖未实现的模块。如果存在依赖，先实现依赖或拆分为独立可执行的子任务。违反→依赖死锁导致整个功能链条卡住（11份设计文档80%未实现的根因）。
 24. **设计不超过2页** — 超过2页的设计文档说明范围太大，需要拆分为可独立交付的子模块。每个子模块的设计必须包含MVP定义和验收标准。违反→过度设计无法落地（DEV_AI_EVOLUTION 0%实现教训）。
 
@@ -345,6 +345,28 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     > 验证工具: `python scripts/factor_health_check.py <factor_name>`
 30. **中性化后必须重建 Parquet 缓存** — `fast_neutralize_batch` 完成后必须运行 `python scripts/build_backtest_cache.py` 重建缓存。Parquet 缓存不会自动更新。违反→回测使用旧数据（Phase 1.2 SW1迁移后缓存过期2天未发现）。
     > 入库体系文档: `docs/FACTOR_ONBOARDING_SYSTEM.md`
+
+### 工程基础设施类（S1-S4 审计沉淀, 2026-04-15）
+
+> 这 5 条铁律是 S1-S4 审计 54 条 findings 里 P0/P1 集中爆发的根因抽象。前 30 条铁律主要由因子研究教训驱动, 基础设施类教训欠账在本轮补齐 (铁律总数 30→35)。
+
+31. **Engine 层纯计算** — `backend/engines/**` 下所有模块不允许读写 DB, 不允许 HTTP/Redis 调用, 不允许读写本地文件（Parquet 缓存除外）。输入/输出必须是 DataFrame/dict/原生 Python 类型。数据必须在入库时通过 DataPipeline 验证和标准化, Engine 只负责纯计算。违反→分层崩塌, 纯计算与 IO 耦合导致无法单测 + 重构不敢动（F31 factor_engine.py 2034 行教训 + 审计 F43 配套问题）。
+    > 铁律 14 "回测引擎不做数据清洗" 是本条在回测引擎维度的特例, 本条覆盖所有 Engine 模块。
+
+32. **Service 不 commit** — Service 层所有函数不允许调用 `conn.commit()` / `cur.execute("COMMIT")`。事务边界由调用方（Router / Celery task）管理。Service 发现错误必须 raise, 由调用方决定 rollback 或 retry。违反→事务边界错乱, partial write 风险 + 失败后 DB 状态不可预测（F16 Service 层 20+ 处违规, 等着 partial write 事故）。
+    > 检测: `grep -rn "\.commit()" backend/app/services/ | grep -v test_`
+
+33. **禁止 silent failure** — 所有 `except Exception: pass` / `except Exception: return default` 必须满足:
+    - (a) 日志层面: `logger.error(...)` 或 `logger.warning(..., exc_info=True)`, 不允许裸 `pass`
+    - (b) 生产链路（PT 执行 / 数据入库 / 信号生成 / 风控）: **fail-safe**（拒绝动作, 如 F76 无 tick 就拒单）或 **fail-loud**（raise）, 禁止静默返回 default
+    - (c) 读路径 API fallback 允许, 但必须有 `logger.warning`
+    - (d) 静默 pass 必须附 `# silent_ok: <具体原因>` 注释, 说明为什么吃掉异常是安全的
+    违反→可观测性崩塌, 生产事故根因无法追溯（F76 涨停保护可能 silently bypass / F77 撤单查询失败被归类成超时 / F78-F81 共 6 处 silent swallow 教训）。
+
+34. **配置 single source of truth** — 每个可配置参数（SN_beta / top_n / industry_cap / factor_list / rebalance_freq / commission / slippage_model）必须有唯一权威来源, 其他地方只能读不能独立设置默认值。`config_guard` 启动时必须检查 `.env` + `configs/pt_live.yaml` + Python 常量（如 `signal_engine.PAPER_TRADING_CONFIG`）三处对齐, 不一致必须 RAISE, **不允许只报 warning**。违反→配置漂移静默降级（F45 config_guard 缺检查 / F62 SN default=0.0 / F40 SignalConfig 默认漂移 教训）。
+    > 扩展: 铁律 15 "回测可复现" 是本条在回测维度的对偶, 本条覆盖 PT 生产配置。
+
+35. **Secrets 环境变量唯一** — 源码禁止出现 API key / 数据库密码 / token 的 fallback 默认值（包括占位符、弱密码、测试值、注释掉的旧值）。必须 `os.environ.get + 未设置 raise`。`.env` 禁止提交（`.gitignore` 必须包含）。定期 `git log -p | grep -iE "key|token|password|secret"` 扫描历史泄漏, 发现必须 rotate。违反→秘密泄漏用户需 rotate 所有 key + 历史 commit 永久污染（F32 API token 源码泄漏 5 处 + F15/F65 硬编码 DB 密码 教训）。
 
 ## 因子审批硬标准
 
