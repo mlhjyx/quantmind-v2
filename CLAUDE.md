@@ -458,13 +458,13 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   5年基线(`regression_test.py`, 2021-01~2025-12): Sharpe=0.6095, MDD=-50.75%, 1212天
     - 来源: cache/baseline/nav_5yr.parquet + metrics_5yr.json
     - 用途: CI回归固定锚点, max_diff=0 验收铁律15可复现
-  12年真实基线(Step 6-D, 2014-01~2026-04): **Sharpe=0.5309, MDD=-56.37%**, 2980天
-    - 来源: cache/baseline/nav_12yr.parquet + metrics_12yr.json (2026-04-09 首次真跑)
-    - 此前文档误把5yr 0.6095写成12yr, 实际12yr 0.5309 更差
-    - 年化13.06%, 总收益347.9%, NAV 1M→4.48M
-    - 2014-2016强(Sharpe 1.17-1.44), 2017-2018弱(-0.39/-0.73), 2021爆赚(3.48)
-    - 逐年Sharpe mean=0.79 ± 1.20, 负年份: 2017/2018/2022/2023 (4/12年)
-    - WF 5-fold OOS (仅覆盖 2021-02~2026-04): chain-link Sharpe=0.6336, std=1.52 UNSTABLE
+  12年真实基线(Phase B M2 重建, 2014-01~2026-04-14): **Sharpe=0.3594, MDD=-63.44%**, 2984天
+    - 来源: cache/baseline/{nav_12yr,metrics_12yr,factor_data_12yr,price_data_12yr,benchmark_12yr}.parquet
+    - Phase B M2 (2026-04-15) bootstrap: build_12yr_baseline.py 首次保存 aggregated 输入 parquets, regression_test --years 12 可复现验证 max_diff=0
+    - 年化6.28%, 总收益110.59%, NAV 1M→2.11M, 3947 trades
+    - **⚠️ 历史值漂移**: Step 6-D (2026-04-09) 首跑时记录 Sharpe=0.5309 / MDD=-56.37% / Annual 13.06% / Total 347.9% / 4617 trades (来自当时的 cache/backtest/* 快照)
+    - **漂移原因**: cache/backtest/YEAR/*.parquet 于 2026-04-15 15:20 被 build_backtest_cache.py 重建 (F66 NaN 清理后 + 新增数据增量), Step 6-D 时代的 cache 已被覆盖不可复现. 这不是代码 bug, 是数据快照漂移: 5yr 用独立冻结的 factor_data_5yr.parquet 未动 (max_diff=0), 12yr 以前每次从 cache/backtest/* 重读所以漂移. M2 保存 factor_data_12yr.parquet 等 aggregated 快照后已修复此缺口.
+    - WF 5-fold OOS (仅覆盖 2021-02~2026-04): chain-link Sharpe=0.6336, std=1.52 UNSTABLE (历史值, 未随 M2 重算)
     - 结论: regime-dependent, 小盘牛/熊市杀, 非alpha强策略 (FF3归因见 cache/baseline/ff3_attribution.json)
   SN b=0.50 inner (Step 6-H, 2014-01~2026-04): **Sharpe=0.68, MDD=-39.35%**
     - 来源: cache/baseline/wf_sn050_result.json

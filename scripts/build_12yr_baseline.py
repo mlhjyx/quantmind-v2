@@ -2,12 +2,22 @@
 """构建 12 年 in-sample 基线 (2014-2025).
 
 Step 6-D Fix 6: 提供 WF OOS 对照的全样本基线。
+Phase B M2 (2026-04-15): 扩展保存 regression_test 需要的聚合 parquets, 支持 F75.
+
 输出文件 (cache/baseline/):
-  - nav_12yr.parquet      — 全样本 NAV 时序
-  - metrics_12yr.json     — 汇总指标 (与 5yr 基线同格式)
+  - nav_12yr.parquet           — 全样本 NAV 时序 (回测结果)
+  - metrics_12yr.json          — 汇总指标 (与 5yr 基线同格式)
+  - factor_data_12yr.parquet   — [M2 新增] 聚合因子 DataFrame (regression_test --years 12 用)
+  - price_data_12yr.parquet    — [M2 新增] 聚合价格 DataFrame
+  - benchmark_12yr.parquet     — [M2 新增] 聚合基准 DataFrame
 
 用法:
     python scripts/build_12yr_baseline.py
+
+说明:
+  这是 "一次性 bootstrap" 脚本. 生成的 factor_data_12yr / price_data_12yr 成为
+  regression_test 的**冻结输入**, 之后不应被覆盖 (除非有意识重建基线 + git commit 提升版本).
+  生成时会 REWRITE nav_12yr.parquet + metrics_12yr.json (确保与输入一致).
 """
 
 from __future__ import annotations
@@ -140,6 +150,20 @@ def main():
     metrics_path = BASELINE_DIR / "metrics_12yr.json"
     metrics_path.write_text(json.dumps(metrics, indent=2, ensure_ascii=False))
     print(f"[Save] Metrics → {metrics_path}")
+
+    # [Phase B M2] Save aggregated inputs for regression_test --years 12
+    # 这些 parquets 是 regression_test 的冻结输入, 保证铁律 15 (回测可复现)
+    factor_data_path = BASELINE_DIR / "factor_data_12yr.parquet"
+    price_data_path = BASELINE_DIR / "price_data_12yr.parquet"
+    benchmark_path = BASELINE_DIR / "benchmark_12yr.parquet"
+
+    factor_df.to_parquet(factor_data_path)
+    price_df.to_parquet(price_data_path)
+    bench_df.to_parquet(benchmark_path)
+
+    print(f"[Save] factor_data_12yr → {factor_data_path} ({factor_df.shape})")
+    print(f"[Save] price_data_12yr  → {price_data_path} ({price_df.shape})")
+    print(f"[Save] benchmark_12yr   → {benchmark_path} ({bench_df.shape})")
 
     print("\n=== 12yr In-Sample Baseline ===")
     print(f"  Sharpe:        {metrics['sharpe']}")

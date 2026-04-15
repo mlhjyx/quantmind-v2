@@ -1,19 +1,19 @@
 {
-  "sharpe": 0.5309,
-  "mdd_pct": -56.37,
-  "annual_return_pct": 13.06,
-  "sortino": 0.6445,
-  "total_return_pct": 347.92,
-  "total_trades": 4617,
+  "sharpe": 0.3594,
+  "mdd_pct": -63.44,
+  "annual_return_pct": 6.28,
+  "sortino": 0.4128,
+  "total_return_pct": 110.59,
+  "total_trades": 3947,
   "nav_start": 1000000.0,
-  "nav_end": 4479226.607666443,
-  "trading_days": 2980,
-  "years_covered": 12.21,
+  "nav_end": 2105903.179828847,
+  "trading_days": 2984,
+  "years_covered": 12.23,
   "date_range": [
     "2014-01-02",
-    "2026-04-08"
+    "2026-04-14"
   ],
-  "elapsed_sec": 328.0,
+  "elapsed_sec": 16.0,
   "config": {
     "factors": [
       "turnover_mean_20",
