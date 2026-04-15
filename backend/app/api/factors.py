@@ -640,8 +640,12 @@ async def get_factor_report(
                         "data_points": len(valid),
                     }
                     continue
-        except Exception:
-            pass
+        except Exception as e:
+            # S3 F81 修复: IC decay 计算失败记录可追溯
+            logger.warning(
+                "[factors] ic_decay fwd=%s 计算失败 factor=%s err=%s",
+                fwd, name, e, exc_info=True,
+            )
         ic_decay[f"{fwd}d"] = {"ic_mean": None, "ic_std": None, "ic_ir": None, "data_points": 0}
 
     # 计算高级指标
@@ -663,8 +667,12 @@ async def get_factor_report(
         gate_row = await svc.get_factor_gate_fields(name)
         if isinstance(gate_row, dict):
             gate_info = gate_row
-    except Exception:
-        pass
+    except Exception as e:
+        # S3 F81 修复: gate_info 读取失败记录可追溯
+        logger.warning(
+            "[factors] gate_info 读取失败 factor=%s err=%s",
+            name, e, exc_info=True,
+        )
     gate_score = _calc_gate_score(gate_info)
 
     # 相关性: 从factor_ic_history计算当前因子与其他Active因子的IC相关

@@ -7,12 +7,18 @@
 4. 下单失败 → PendingOrder
 5. 空目标不执行
 6. 全部卖出场景
+
+S3 F76 修复 (2026-04-15): `_check_buy_protection` 改为 fail-safe —
+无 xtdata tick 时拒单. 测试层使用 autouse fixture 注入健康 tick
+mock, 保持原有测试语义. 要显式测试 fail-safe 的测试请用 monkeypatch
+覆盖 _get_realtime_tick 返回 None.
 """
 
 import threading
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from engines.qmt_execution_adapter import (
     LOT_SIZE,
     QMTExecutionAdapter,
@@ -21,6 +27,27 @@ from engines.qmt_execution_adapter import (
 from engines.qmt_execution_adapter import (
     _WaitTracker as _OrderTracker,  # renamed in v2
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_realtime_tick():
+    """自动 mock _get_realtime_tick 返回健康 tick, 让 F76 fail-safe 不误触发。
+
+    S3 F76: _check_buy_protection 现在拒绝无 tick 的订单. 测试默认注入
+    一个"非涨停非跳空"的 tick, 让现有 order 逻辑测试继续工作.
+    """
+    def _fake_tick(qmt_code: str) -> dict:
+        return {
+            "lastPrice": 10.0,    # 非零, 有效
+            "lastClose": 10.0,    # 同 lastPrice → 无跳空
+            "open": 10.0,
+            "askVol": [1000],     # 非空 → 非封板
+        }
+    with patch(
+        "engines.qmt_execution_adapter._get_realtime_tick",
+        side_effect=_fake_tick,
+    ):
+        yield
 
 
 def _make_mock_broker(

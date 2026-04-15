@@ -184,7 +184,8 @@ def trigger_pms_check() -> dict[str, Any]:
                     source="pms_engine",
                 )
             except Exception:
-                pass
+                # S3 F79 修复: 加 logger.warning, publish 失败不阻塞但必须可追溯
+                logger.warning("[pms] StreamBus publish 失败", exc_info=True)
 
         conn.commit()
         return {

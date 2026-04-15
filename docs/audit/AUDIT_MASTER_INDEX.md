@@ -21,13 +21,13 @@
 
 ## 📊 累计发现计数
 
-| 分级 | S1 | S2 新增 | S4 新增 | **S3 新增** | 总计 | 已处理 | 未处理 |
+| 分级 | S1 | S2 新增 | S4 新增 | S3 新增 | 总计 | 已处理 | 未处理 |
 |---|---|---|---|---|---|---|---|
-| 🔴 P0 | 6 | 3 (F51/F60/F62) | 1 (F72) | **2** (F76/F77) | **12** | **5** (含 F72 闭环) | **7** |
-| 🟠 P1 | 10 | 8 (F50/F52/F54/F55/F57/F58/F63/F65) | 3 (F66/F71/F74) | **4** (F78/F82/F85/F86) | **25** | **9** (含 F66 闭环) | **16** |
-| 🟡 P2 | 6 | 2 (F56/F64) | 6 (F67/F68/F69/F70/F73/F75) | **3** (F79/F80/F81) | **17** | **3** (含 F73 闭环) | **14** |
-| ✅ 关闭/修正 | — | F17 部分关闭 + F64 PASS | F66/F72/F73 闭环 | — | — | — | — |
-| **合计** | **22** | **13** | **10** | **9** | **54** | **17** | **37** |
+| 🔴 P0 | 6 | 3 (F51/F60/F62) | 1 (F72) | 2 (F76/F77) | **12** | **7** (+F76/F77) | **5** |
+| 🟠 P1 | 10 | 8 (F50/F52/F54/F55/F57/F58/F63/F65) | 3 (F66/F71/F74) | 4 (F78/F82/F85/F86) | **25** | **12** (+F78/F82/F86 short) | **13** |
+| 🟡 P2 | 6 | 2 (F56/F64) | 6 (F67/F68/F69/F70/F73/F75) | 3 (F79/F80/F81) | **17** | **5** (+F79/F81) | **12** |
+| ✅ 关闭/修正 | — | F17 部分关闭 + F64 PASS | F66/F72/F73 闭环 | **F76/F77/F78/F79/F81/F82/F86 short-term 闭环** | — | — | — |
+| **合计** | **22** | **13** | **10** | **9** | **54** | **24** | **30** |
 
 > S1 静态广扫 + S1 cleanup pass + S2 一致性专项（静态 + 4 快修）+ S4 动态基线验证 + S3 韧性静态审计已完成。
 
@@ -46,7 +46,18 @@
 - ✅ DataPipeline 本身合规 — `pipeline.py` 做完整的 rename→列对齐→单位转换→值域验证→FK→Upsert→fillna(None)
 
 **S3 未做的动态部分** (建议转 S3b/S5 故障注入):
-- Redis 断线时 PT 链路实际行为, PG 连接池耗尽, Celery worker kill -9 + beat 重启, QMT 断线时 _get_realtime_tick 真实 silent bypass 演示
+- Redis 断线时 PT 链路实际行为, PG 连接池耗尽, Celery worker kill -9 + beat 重启
+
+**S3 tail fixes — 7 条 finding 单 session 闭环** (2026-04-15):
+- ✅ **F76 (P0)**: `_get_realtime_tick` 加 logger.error + `_check_buy_protection` 改 fail-safe (无 tick→拒单). 验证: test_qmt_execution_adapter 14/14 PASS (was 11/3), test 加 autouse fixture 注入健康 tick mock
+- ✅ **F77 (P0)**: 撤单确认 `query_orders` 异常加 logger.error 区分 "查询失败" vs "真实超时"
+- ✅ **F78 (P1)**: daily_pipeline health_check stream publish 加 logger.warning(exc_info=True)
+- ✅ **F82 (P1)**: celery_app.py worker_concurrency=4→1 + docstring 顶部加 Windows 生产 `--pool=solo` 警告
+- ✅ **F86 (P1) short-term**: 新建 `scripts/audit/check_insert_bypass.py` 铁律 17 lint 脚本 (实测扫出 5 处生产违规 + 12 处研究软豁免). **中期重构 4 条生产路径转 S2b** (fetch_base_data ×2 + factor_onboarding ×2)
+- ✅ **F79 (P2)**: pms.py stream publish 加 logger.warning
+- ✅ **F81 (P2)**: factors.py API 2 处 silent fallback 加 logger.warning
+
+S3b 未做但已识别: F80 (realtime_data_service nav=0 fallback, 需前端协议) / F85 (rollback 覆盖率 15%, 规模化重构). 转 S5 或长期重构队列。
 
 **S4 基线验证关键结果** (2026-04-15 夜):
 - ✅ **regression_test 5yr PASS**: max_diff=0.0, Sharpe 0.6095=0.6095, MDD -50.75%=-50.75%, 1212 days (铁律 15 验证, F66 前后两次独立复测完全一致)
@@ -97,8 +108,8 @@
 | **F41** | `V12_CONFIG` 含 INVALIDATED 因子 | — | ✅ **2026-04-15 已删除** | S1 |
 | **F62** | `PT_SIZE_NEUTRAL_BETA` default=0.0 静默降级 | — | ✅ **2026-04-15 default→0.50** | S2 |
 | **F72** | test_opening_gap_check 9 errors (Step 6-A refactor 遗留) | — | ✅ **2026-04-15 机械修复** | S4 |
-| **F76** | `_get_realtime_tick` silent swallow → 涨停保护可能 bypass | — | ⬜ S3b 方案 A fail-safe (~45 min) | S3 |
-| **F77** | 撤单确认 silent swallow → "查询失败" 归类成 "超时" | — | ⬜ S3b 加 logger.error 区分 (~15 min) | S3 |
+| **F76** | `_get_realtime_tick` silent swallow → 涨停保护可能 bypass | — | ✅ **2026-04-15 S3b fail-safe, 14/14 test PASS** | S3 |
+| **F77** | 撤单确认 silent swallow → "查询失败" 归类成 "超时" | — | ✅ **2026-04-15 S3b logger.error 区分** | S3 |
 | **F16** | Service 层 20+ 处 `.commit()` 违反铁律 | — | ⬜ 待修（S3 F85 配对扫出）| S1 |
 | **F17** | factor_onboarding 绕过 DataPipeline + 中性化不完整 | — | 🟡 DEPRECATED 告警加上, 中期重构转 S2b | S1/S2 |
 | **F31** | `factor_engine.py` Engine 层读写 DB（2034 行巨石） | — | ⬜ 长期重构（F43 一起） | S1/S2 |

@@ -89,7 +89,10 @@ def daily_health_check_task(self) -> dict:
                 source="daily_pipeline",
             )
         except Exception:
-            pass
+            # S3 F78 修复: 加 logger.warning, publish 失败不阻塞但必须可追溯
+            logger.warning(
+                "[daily_pipeline] health_check StreamBus publish 失败", exc_info=True
+            )
 
         return result
     except Exception as exc:

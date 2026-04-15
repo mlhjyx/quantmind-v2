@@ -3,6 +3,13 @@
 Broker/Backend 均使用 Redis，配置从 app.config.settings 读取。
 Sprint 1.0: 创建框架 + 任务定义。
 Sprint 1.1: 激活 Beat 调度，替换 crontab。
+
+⚠️ Windows 生产环境 (S3 F82):
+  必须以 `--pool=solo --concurrency=1` 启动 (Windows 不支持 fork/prefork)。
+  不要直接 `celery worker -A app.tasks.celery_app`, 使用 Servy 管理的
+  QuantMind-Celery 服务 (见 scripts/service_manager.ps1)。
+  真正并发需按 docs/research/R6_production_architecture.md §3.2 启动多个
+  solo worker 实例 + 不同 queue, 而非调高 worker_concurrency。
 """
 
 import sys
@@ -43,8 +50,9 @@ celery_app.conf.update(
     ],
     # 结果过期: 24 小时
     result_expires=86400,
-    # Worker 并发: Mac M1 Pro 单机，prefork 4 进程足够
-    worker_concurrency=4,
+    # Worker 并发: Windows 生产 solo×1 (CLI --pool=solo --concurrency=1 覆盖此值)
+    # 此 default 仅在未传 --pool 时生效, 对齐 Windows 实际运行 (S3 F82 修复)
+    worker_concurrency=1,
     worker_prefetch_multiplier=1,
     # Beat 调度表（Sprint 1.1 激活）
     # beat_schedule 从 beat_schedule.py 导入，见下方 conf.update

@@ -83,14 +83,24 @@ def is_final_status(status: int) -> bool:
 # ════════════════════════════════════════════════════════════
 
 def _get_realtime_tick(qmt_code: str) -> dict | None:
-    """通过xtdata获取实时行情快照。"""
+    """通过xtdata获取实时行情快照。
+
+    失败模式日志化 (S3 F76 修复):
+    - xtdata 抛异常 → logger.error + return None (caller 决定 fail-safe)
+    - xtdata 返回空 dict → return None (正常路径)
+    - ⚠️ caller 必须 treat None 为 "无法确认安全", 不应继续流程
+    """
     try:
         from xtquant import xtdata
         ticks = xtdata.get_full_tick([qmt_code])
         if isinstance(ticks, dict) and qmt_code in ticks:
             return ticks[qmt_code]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(
+            "[QMTAdapter] _get_realtime_tick 失败 qmt_code=%s err=%s — "
+            "调用方应 fail-safe 拒绝相关订单",
+            qmt_code, e, exc_info=True,
+        )
     return None
 
 
@@ -672,8 +682,14 @@ class QMTExecutionAdapter:
                     if o.get("order_id") == order_id and is_final_status(o.get("order_status", 0)):
                         logger.info(f"[QMTAdapter] 撤单确认: {code} status={o['order_status']}")
                         return True
-            except Exception:
-                pass
+            except Exception as e:
+                # S3 F77 修复: 区分 "查询失败" vs "撤单超时未确认"
+                logger.error(
+                    "[QMTAdapter] query_orders 查询失败 (撤单确认阶段) code=%s order_id=%s err=%s — "
+                    "非 QMT 超时, 可能是查询通道挂了",
+                    code, order_id, e, exc_info=True,
+                )
+                # 继续 fall-through 到 "超时未确认" 分支 (行为不变, 但日志可追溯)
 
         logger.warning(f"[QMTAdapter] 撤单超时未确认: {code} order_id={order_id}")
         return False
@@ -681,14 +697,30 @@ class QMTExecutionAdapter:
     # ── 保护检查 ──
 
     def _check_buy_protection(self, code: str, ref_price: float) -> tuple[bool, str]:
-        """涨停+跳空检查。返回(skip, reason)。"""
+        """涨停+跳空检查。返回(skip, reason)。
+
+        Fail-safe 默认 (S3 F76 修复): 无 tick 或 lastPrice/lastClose 无效 →
+        拒绝下单而非放行, 避免 xtdata 断线时 silently bypass 涨停保护。
+        """
         tick = _get_realtime_tick(_to_qmt_code(code))
-        if not tick or tick.get("lastPrice", 0) <= 0:
-            return False, ""
+        if not tick:
+            logger.warning(
+                "[QMTAdapter] %s fail-safe 拒单: xtdata tick 不可用", code
+            )
+            return True, "xtdata_unavailable_failsafe"
+        if tick.get("lastPrice", 0) <= 0:
+            logger.warning(
+                "[QMTAdapter] %s fail-safe 拒单: lastPrice 无效=%s",
+                code, tick.get("lastPrice"),
+            )
+            return True, "lastPrice_invalid_failsafe"
 
         last_close = tick.get("lastClose", 0)
         if last_close <= 0:
-            return False, ""
+            logger.warning(
+                "[QMTAdapter] %s fail-safe 拒单: lastClose 无效=%s", code, last_close
+            )
+            return True, "lastClose_invalid_failsafe"
 
         # 涨停检测
         limit_pct = 0.20 if code.startswith(("688", "920", "3")) else 0.10
