@@ -1,20 +1,19 @@
 """开盘跳空预检单元测试。
 
-测试 _check_opening_gap 的告警逻辑：
+测试 pt_monitor_service.check_opening_gap 的告警逻辑:
 - 单股跳空 >5% → P1告警
 - 组合跳空 >3% → P0告警
 - dry-run不发通知
+
+Note: Step 6-A 重构后, 该函数从 scripts/run_paper_trading.py:_check_opening_gap
+迁移到 backend/app/services/pt_monitor_service.py:check_opening_gap (移除下划线前缀)。
+修复: S4 F72 (2026-04-15)
 """
 
-import sys
 from datetime import date
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
-
-# 确保scripts目录可导入
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 
 def _make_price_data(
@@ -43,9 +42,9 @@ class TestOpeningGapCheck:
 
     def setup_method(self):
         """导入被测函数（每次测试前重新导入避免mock污染）。"""
-        # 延迟导入，避免依赖整个scripts模块
-        import run_paper_trading as rpt
-        self.check_opening_gap = rpt._check_opening_gap
+        # Step 6-A 重构后: pt_monitor_service.check_opening_gap (见 S4 F72)
+        from app.services.pt_monitor_service import check_opening_gap
+        self.check_opening_gap = check_opening_gap
 
     def _make_conn(self, position_rows=None):
         """创建mock conn，fetchall返回持仓数据。"""

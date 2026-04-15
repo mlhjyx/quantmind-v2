@@ -1,0 +1,10 @@
+Baseline NAV: 1212 days, 1000000.00 -> 1856659.90
+
+[Run 1] Running backtest...
+  Elapsed: 12s
+  max_diff: 0.0
+  max_pct_diff: 0.0%
+  days_above_0.001%: 0
+  Sharpe: baseline=0.6095, current=0.6095
+
+Results saved to D:\quantmind-v2\cache\baseline\regression_result.json

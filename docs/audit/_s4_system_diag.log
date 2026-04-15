@@ -1,0 +1,71 @@
+
+============================================================
+QuantMind V2 全链路诊断 — 2026-04-15
+============================================================
+
+[Layer: data]
+  ✅ [data] klines_vs_status_coverage: 最近10天全部>=95%
+  ✅ [data] freshness_klines_daily: 最新=2026-04-15
+  ✅ [data] freshness_daily_basic: 最新=2026-04-15
+  ✅ [data] freshness_stock_status_daily: 最新=2026-04-15
+  ✅ [data] freshness_index_daily_300: 最新=2026-04-15
+  ✅ [data] factor_fresh_turnover_mean_20: 最新=2026-04-15
+  ✅ [data] factor_fresh_volatility_20: 最新=2026-04-15
+  ✅ [data] factor_fresh_bp_ratio: 最新=2026-04-15
+  ✅ [data] factor_fresh_dv_ttm: 最新=2026-04-15
+  ⚠️ [data] float_nan_others: 非CORE因子float NaN(少量): reversal_5:11; a158_vma5:2; a158_rank5:2; a158_corr5:2; price_volume_corr_20:11
+  ✅ [data] adj_factor_zero: 无adj_factor=0
+  ✅ [data] parquet_cache_factors: 因子一致: {'turnover_mean_20', 'volatility_20', 'bp_ratio', 'dv_ttm'}
+  ✅ [data] parquet_cache_freshness: build=2026-04-15
+  ✅ [data] factor_coverage_turnover_mean_20: date=2026-04-14, 5492行
+  ✅ [data] factor_coverage_volatility_20: date=2026-04-14, 5492行
+  ✅ [data] factor_coverage_bp_ratio: date=2026-04-14, 5492行
+  ✅ [data] factor_coverage_dv_ttm: date=2026-04-14, 5492行
+D:\quantmind-v2\scripts\run_backtest.py:83: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(
+
+[Layer: signal]
+  ✅ [signal] universe_size: 4764只
+  ✅ [signal] no_bj_in_universe: 无BJ股
+  ✅ [signal] no_st_in_universe: 无ST股
+  ✅ [signal] config_factors_match: 一致: {'turnover_mean_20', 'volatility_20', 'bp_ratio', 'dv_ttm'}
+  ✅ [signal] latest_signals: date=2026-04-15, 20只
+
+[Layer: execution]
+  ✅ [execution] position_snapshot: date=2026-04-15, 22只, 权重和=0.940
+  ⚠️ [execution] orphaned_pending_orders: 查询异常(表可能不存在): relation "pending_orders" does not exist
+LINE 2:             SELECT COUNT(*) FROM pending_orders
+                                         ^
+
+  ✅ [execution] performance_series: 7天, 2026-04-02~2026-04-15
+  ✅ [execution] circuit_breaker: L0 (updated=2026-04-15 17:15:22.444607+08:00)
+
+[Layer: infra]
+  ✅ [infra] redis: 连接正常, 内存1.9MB
+  ⚠️ [infra] redis_portfolio_ttl: portfolio:current无TTL(QMT停止后数据永不过期)
+  ✅ [infra] stream_generated: qm:signal:generated 长度=28
+  ⚠️ [infra] stream_completed: qm:execution:completed 长度=0(可能从未发送)
+  ✅ [infra] disk_space: 734.5GB
+  ⚠️ [infra] log_fastapi-stdout.log: 最后更新148分钟前(>1小时)
+  ⚠️ [infra] log_celery-stdout.log: 最后更新150分钟前(>1小时)
+  ✅ [infra] pg_connections: 4个活跃连接
+
+[Layer: config]
+  ✅ [config] env_PT_TOP_N: PT_TOP_N=20
+  ✅ [config] env_PT_SIZE_NEUTRAL_BETA: PT_SIZE_NEUTRAL_BETA=0.50
+  ✅ [config] yaml_schema: 所有必须section存在
+  ✅ [config] yaml_factor_directions: 4个因子direction均为±1
+  ⚠️ [config] hardcoded_factors: 因子列表硬编码在: ['backend/data/parquet_cache.py', 'scripts/health_check.py']
+
+[Layer: silent]
+  ✅ [silent] recent_health_fails: 最近5次健康检查全PASS
+  ✅ [silent] recent_notifications: 最近7天11条通知
+  ✅ [silent] exception_swallowing: 无发现
+  ✅ [silent] snapshot_atomicity: OK
+  ✅ [silent] rolling_20d_threshold: 阈值=20
+
+============================================================
+诊断完成: 44项 — 37 PASS, 7 WARN, 0 FAIL (794.9s)
+============================================================
+
+报告已保存: cache\diagnosis_report.json

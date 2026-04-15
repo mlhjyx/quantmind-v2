@@ -1,0 +1,319 @@
+........F..F.......F.F.................................................. [  3%]
+........................................................................ [  6%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+................F...........................................FF.......... [ 17%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+............................................F........................... [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+...............FFFF..................................................... [ 48%]
+........................................................................ [ 51%]
+.........................................F.F............................ [ 54%]
+........................................................................ [ 58%]
+....................................................F................... [ 61%]
+........................................................................ [ 65%]
+.......EEEEEEEEE.................................................F.F.... [ 68%]
+.................................F...................F.................. [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........F......................X........................................ [ 82%]
+........................................................................ [ 85%]
+........................................................................ [ 89%]
+....................................................F................... [ 92%]
+........................................................FFFF............ [ 96%]
+.......................FF.F.FF.....FF................................... [ 99%]
+...........                                                              [100%]
+============================== warnings summary ===============================
+backend\tests\test_ml_engine.py:259
+  D:\quantmind-v2\backend\tests\test_ml_engine.py:259: PytestUnknownMarkWarning: Unknown pytest.mark.slow - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.slow
+
+backend/tests/test_daily_pipeline.py::TestHealthCheckWritesRedis::test_health_check_writes_result_to_redis
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:2133: RuntimeWarning: coroutine '_async_signal' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_daily_risk_check.py::TestDailyRiskCheck::test_l3_triggers_p0_alert
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:2133: RuntimeWarning: coroutine '_async_health_check' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_e2e_full_chain.py::test_signal_service_dry_run_returns_result
+backend/tests/test_e2e_full_chain.py::test_full_chain_factor_to_signal
+  D:\quantmind-v2\backend\engines\beta_hedge.py:37: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    perf_df = pd.read_sql(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:1312: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df = pd.read_sql(sql, conn, params=(trade_date, lookback_days, trade_date))
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:446: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "amihud_20": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:522: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "vwap_bias_1d": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:525: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "rsrs_raw_18": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:552: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_std60": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:555: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_vsump60": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:561: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_cord30": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:566: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_vstd30": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:573: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_rank5": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:579: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_corr5": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:582: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_vsump5": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_determinism.py::test_factor_determinism
+backend/tests/test_factor_determinism.py::test_factor_determinism
+  D:\quantmind-v2\backend\engines\factor_engine.py:588: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+    "a158_vma5": lambda df: df.groupby("code", group_keys=False).apply(
+
+backend/tests/test_factor_engine_unit.py::TestPriceVolumeFactors::test_calc_amihud_all_nan_input
+  D:\quantmind-v2\backend\engines\factor_engine.py:92: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+    ret = close_adj.pct_change(1).abs()
+
+backend/tests/test_factor_engine_unit.py::TestEdgeCases::test_all_nan_momentum
+  D:\quantmind-v2\backend\engines\factor_engine.py:34: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+    return close_adj.pct_change(window)
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\backend\engines\factor_analyzer.py:257: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    stock_ret = pd.read_sql(
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\backend\engines\factor_analyzer.py:270: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    bench_ret = pd.read_sql(
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\backend\engines\factor_analyzer.py:242: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    return pd.read_sql(
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\backend\engines\factor_analyzer.py:541: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df = pd.read_sql(
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\backend\engines\factor_analyzer.py:218: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df = pd.read_sql(
+
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_dry_run_normal_date
+backend/tests/test_factor_health_daily.py::TestFactorHealthIntegration::test_db_write_scheduler_task_log
+  D:\quantmind-v2\scripts\factor_health_daily.py:445: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    ic_df = pd.read_sql(
+
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_returns_success
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_factor_registry_insert_called
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_factor_values_written
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_gate_update_called
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_duplicate_factor_name_no_error
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_duplicate_factor_name_no_error
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_upsert_registry_called_with_on_conflict
+  D:\quantmind-v2\backend\app\services\factor_onboarding.py:212: DeprecationWarning: FactorOnboardingService._compute_forward_returns is DEPRECATED (S2 F60, 2026-04-15). Uses raw return without T+1 delay or CSI300 excess, violating Iron Law 19. Use ic_calculator.compute_forward_excess_returns instead.
+    fwd_ret_df = self._compute_forward_returns(adj_returns_df, trading_dates)
+
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_returns_success
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_factor_registry_insert_called
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_factor_values_written
+backend/tests/test_factor_onboarding.py::TestOnboardHappyPath::test_happy_path_gate_update_called
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_duplicate_factor_name_no_error
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_duplicate_factor_name_no_error
+backend/tests/test_factor_onboarding.py::TestOnboardIdempotent::test_upsert_registry_called_with_on_conflict
+  D:\quantmind-v2\backend\app\services\factor_onboarding.py:214: DeprecationWarning: FactorOnboardingService._compute_ic_series is DEPRECATED (S2 F51/F53, 2026-04-15). Violates Iron Law 19 (raw return not excess). Use ic_calculator.compute_ic_series instead.
+    ic_df = self._compute_ic_series(factor_values_df, fwd_ret_df, factor_name)
+
+backend/tests/test_gp_engine.py::TestEvolve::test_stats_run_id_matches
+backend/tests/test_gp_engine.py::TestEvolve::test_stats_run_id_matches
+backend/tests/test_gp_engine.py::TestEvolve::test_stats_run_id_matches
+backend/tests/test_gp_engine.py::TestCompareWarmVsRandom::test_warm_start_avg_fitness_vs_pure_random
+backend/tests/test_gp_engine.py::TestCompareWarmVsRandom::test_warm_start_avg_fitness_vs_pure_random
+backend/tests/test_gp_engine.py::TestTimeoutMechanism::test_normal_run_no_timeout
+backend/tests/test_gp_engine.py::TestTimeoutMechanism::test_normal_run_no_timeout
+backend/tests/test_gp_engine.py::TestTimeoutMechanism::test_normal_run_no_timeout
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\pandas\core\nanops.py:1632: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+    return spearmanr(a, b)[0]
+
+backend/tests/test_gp_pipeline.py::TestMarkRunFailed::test_mark_run_failed_db_unavailable_no_crash
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:2133: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_gp_pipeline.py::TestMarkRunFailed::test_mark_run_failed_db_unavailable_no_crash
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\unittest\mock.py:2133: RuntimeWarning: coroutine '_mark_run_failed' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_gp_pipeline.py: 13 warnings
+  D:\quantmind-v2\backend\engines\mining\factor_dsl.py:355: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+    return child_vals[0].pct_change(periods=w)
+
+backend/tests/test_gp_pipeline.py: 10 warnings
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\pandas\core\window\rolling.py:611: RuntimeWarning: All-NaN slice encountered
+    return func(x, start, end, min_periods, *numba_args)
+
+backend/tests/test_gp_pipeline.py::TestDingTalkNotification::test_dingtalk_notification_network_error_no_crash
+  D:\quantmind-v2\backend\engines\mining\pipeline_utils.py:377: RuntimeWarning: coroutine 'send_markdown' was never awaited
+    dingtalk.send_markdown(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_hybrid_backtest.py::TestPhaseASignal::test_compute_rebalance_dates_monthly
+  D:\quantmind-v2\backend\tests\test_hybrid_backtest.py:56: RuntimeWarning: coroutine '_run_gp_mining_async' was never awaited
+    ret = rng.normal(0.001, 0.02)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_hybrid_backtest.py::TestPhaseASignal::test_compute_rebalance_dates_monthly
+  D:\quantmind-v2\backend\tests\test_hybrid_backtest.py:56: RuntimeWarning: coroutine '_mark_run_failed' was never awaited
+    ret = rng.normal(0.001, 0.02)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+backend/tests/test_ml_engine.py::TestDataLoading::test_load_f1_features
+backend/tests/test_ml_explainer.py::TestOOSThreeSplitValidation::test_generate_folds_returns_nonempty
+backend/tests/test_ml_explainer.py::TestOOSThreeSplitValidation::test_folds_no_train_val_overlap
+backend/tests/test_ml_explainer.py::TestOOSThreeSplitValidation::test_folds_no_valid_test_overlap
+backend/tests/test_ml_explainer.py::TestOOSThreeSplitValidation::test_expanding_folds_train_start_fixed
+  D:\quantmind-v2\backend\engines\ml_engine.py:585: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df = pd.read_sql(sql, conn, params=(self.config.data_start, self.config.data_end))
+
+backend/tests/test_ml_engine.py::TestDataLoading::test_load_f1_features
+  D:\quantmind-v2\backend\engines\ml_engine.py:732: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df_long = pd.read_sql(sql_factors, conn, params=params)
+
+backend/tests/test_ml_engine.py::TestDataLoading::test_load_f1_features
+  D:\quantmind-v2\backend\engines\ml_engine.py:811: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    df_target = pd.read_sql(
+
+backend/tests/test_pbo.py::TestPBOEdgeCases::test_timepoints_equal_partitions
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\numpy\_core\_methods.py:219: RuntimeWarning: Degrees of freedom <= 0 for slice
+    ret = _var(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+
+backend/tests/test_pbo.py::TestPBOEdgeCases::test_timepoints_equal_partitions
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\numpy\_core\_methods.py:208: RuntimeWarning: invalid value encountered in divide
+    ret = um.true_divide(
+
+backend/tests/test_quantstats_wrapper.py: 12 warnings
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\seaborn\categorical.py:700: PendingDeprecationWarning: vert: bool will be deprecated in a future version. Use orientation: {'vertical', 'horizontal'} instead.
+    artists = ax.bxp(**boxplot_kws)
+
+backend/tests/test_quantstats_wrapper.py::TestGenerateHtmlReport::test_report_with_benchmark
+  C:\Users\hd\AppData\Local\Programs\Python\Python311\Lib\site-packages\quantstats\reports.py:1719: FutureWarning: Calling float on a single element Series is deprecated and will raise a TypeError in the future. Use float(ser.iloc[0]) instead
+    metrics[col] = metrics[col].astype(float).round(2)
+
+backend/tests/test_quick_backtester.py::TestExtremeBoundary::test_all_same_factor_values_no_crash
+  D:\quantmind-v2\backend\engines\mining\quick_backtester.py:501: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+    ic, _ = sp_stats.spearmanr(f_vals, f_rets)
+
+backend/tests/test_service_smoke.py::TestExecutionService::test_execute_rebalance_l2_pause_no_fills
+  D:\quantmind-v2\backend\engines\paper_broker.py:76: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    pos_df = pd.read_sql(
+
+backend/tests/test_service_smoke.py::TestExecutionService::test_execute_rebalance_l2_pause_no_fills
+  D:\quantmind-v2\backend\engines\paper_broker.py:91: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+    perf = pd.read_sql(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED backend/tests/test_a3_a5_a7_a10.py::TestA5VolumeCap::test_sell_exceeds_cap_truncated
+FAILED backend/tests/test_a3_a5_a7_a10.py::TestA5VolumeCap::test_daily_amount_yuan_helper
+FAILED backend/tests/test_a4_a6.py::TestA4UnitConsistency::test_vwap_bias_unit_conversion
+FAILED backend/tests/test_a4_a6.py::TestA4UnitConsistency::test_slippage_daily_amount_conversion
+FAILED backend/tests/test_can_trade_board.py::TestCanTradeST::test_st_5pct_limit_up
+FAILED backend/tests/test_composite_strategy.py::TestRegimeModifierFallback::test_hmm_success_risk_on
+FAILED backend/tests/test_composite_strategy.py::TestRegimeModifierFallback::test_hmm_success_risk_off
+FAILED backend/tests/test_e2e_full_chain.py::test_paper_trading_update_nav_sync_writes_db
+FAILED backend/tests/test_factor_onboarding.py::TestNeutralizeWithIndustry::test_zscore_neutralization_industry_mean_near_zero
+FAILED backend/tests/test_factor_onboarding.py::TestNeutralizeWithIndustry::test_zscore_neutralization_cross_section_std_near_one
+FAILED backend/tests/test_factor_onboarding.py::TestNeutralizeWithIndustry::test_zscore_neutralization_mean_near_zero
+FAILED backend/tests/test_factor_onboarding.py::TestBoundaryConditions::test_compute_factor_values_below_min_stocks_skips_date
+FAILED backend/tests/test_gp_pipeline.py::TestRunGPMiningAsync::test_empty_market_data_returns_failed
+FAILED backend/tests/test_gp_pipeline.py::TestDingTalkNotification::test_dingtalk_notification_called_with_correct_args
+FAILED backend/tests/test_mining_engines.py::TestBruteForceRun::test_ic_series_computation
+FAILED backend/tests/test_pead_factor.py::TestPeadQ1::test_basic_signal - Key...
+FAILED backend/tests/test_pead_factor.py::TestPeadQ1::test_latest_only - KeyE...
+FAILED backend/tests/test_pg_backup.py::TestCleanupOldBackups::test_keeps_recent_files
+FAILED backend/tests/test_phase_b_infra.py::TestHealthCheck::test_health_check_all_pass
+FAILED backend/tests/test_qmt_connection_manager.py::TestQMTConnectionManagerPaperMode::test_paper_mode_disabled
+FAILED backend/tests/test_sprint123_apis.py::test_execution_algo_config_no_data
+FAILED backend/tests/test_turnover_stability.py::TestTurnoverStabilityRegistration::test_registered_in_reserve_factors
+FAILED backend/tests/test_turnover_stability.py::TestTurnoverStabilityRegistration::test_direction_is_negative_one
+FAILED backend/tests/test_turnover_stability.py::TestTurnoverStabilityRegistration::test_reserve_lambda_callable
+FAILED backend/tests/test_turnover_stability.py::TestTurnoverStabilityIntegration::test_reserve_lambda_with_dataframe
+FAILED backend/tests/test_vwap_rsrs.py::TestCalcVwapBias::test_basic_calculation
+FAILED backend/tests/test_vwap_rsrs.py::TestCalcVwapBias::test_negative_bias
+FAILED backend/tests/test_vwap_rsrs.py::TestCalcVwapBias::test_clip_lower - a...
+FAILED backend/tests/test_vwap_rsrs.py::TestCalcVwapBias::test_unit_conversion
+FAILED backend/tests/test_vwap_rsrs.py::TestCalcVwapBias::test_multiple_rows
+FAILED backend/tests/test_vwap_rsrs_pipeline.py::TestVwapBias::test_basic_calculation
+FAILED backend/tests/test_vwap_rsrs_pipeline.py::TestVwapBias::test_unit_conversion_x10
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_no_large_gaps_no_alert
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_single_stock_gap_over_5pct_sends_p1
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_single_stock_gap_negative_over_5pct_sends_p1
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_dry_run_no_notification
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_portfolio_gap_over_3pct_sends_p0
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_portfolio_gap_under_3pct_no_p0
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_empty_price_data_skips_gracefully
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_custom_threshold
+ERROR backend/tests/test_opening_gap_check.py::TestOpeningGapCheck::test_p0_commits_transaction
+32 failed, 2057 passed, 1 skipped, 1 xpassed, 130 warnings, 9 errors in 5730.46s (1:35:30)

@@ -558,7 +558,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
 
 📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
-📊 测试: 2115 tests / 98 test files (Step 5新增48测试)
+📊 测试: 2100 tests collected / 98 test files (S4 2026-04-15 实测: 2066 pass 含 F72 修复 / 32 fail 全为历史债-post-refactor+deprecated因子+F51-F60 DEPRECATED路径 / 1 skipped / 1 xpassed, pass 率 98.4%, 核心回测/信号/DataPipeline路径 0 回归)
 ---
 
 ## 文件归属规则（防腐）
