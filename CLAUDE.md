@@ -365,6 +365,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 34. **配置 single source of truth** — 每个可配置参数（SN_beta / top_n / industry_cap / factor_list / rebalance_freq / commission / slippage_model）必须有唯一权威来源, 其他地方只能读不能独立设置默认值。`config_guard` 启动时必须检查 `.env` + `configs/pt_live.yaml` + Python 常量（如 `signal_engine.PAPER_TRADING_CONFIG`）三处对齐, 不一致必须 RAISE, **不允许只报 warning**。违反→配置漂移静默降级（F45 config_guard 缺检查 / F62 SN default=0.0 / F40 SignalConfig 默认漂移 教训）。
     > 扩展: 铁律 15 "回测可复现" 是本条在回测维度的对偶, 本条覆盖 PT 生产配置。
+    > **已落地 (2026-04-15 Phase B M3)**: `backend/engines/config_guard.py::check_config_alignment()` + `ConfigDriftError` 硬校验 6 参数 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq / factor_list), PT 启动 (`run_paper_trading.py` Step 0.5) + `health_check.py` 双路径集成, 24 单测 + 5 把尺子全绿. F45 关闭.
 
 35. **Secrets 环境变量唯一** — 源码禁止出现 API key / 数据库密码 / token 的 fallback 默认值（包括占位符、弱密码、测试值、注释掉的旧值）。必须 `os.environ.get + 未设置 raise`。`.env` 禁止提交（`.gitignore` 必须包含）。定期 `git log -p | grep -iE "key|token|password|secret"` 扫描历史泄漏, 发现必须 rotate。违反→秘密泄漏用户需 rotate 所有 key + 历史 commit 永久污染（F32 API token 源码泄漏 5 处 + F15/F65 硬编码 DB 密码 教训）。
 

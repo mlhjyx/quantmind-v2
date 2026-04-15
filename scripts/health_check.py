@@ -201,6 +201,29 @@ def check_celery() -> tuple[bool, str]:
         return True, f"SKIP(Celery检查异常: {e})"
 
 
+def check_config_drift() -> tuple[bool, str]:
+    """铁律 34: .env / pt_live.yaml / PAPER_TRADING_CONFIG 三源对齐硬校验.
+
+    覆盖: top_n / industry_cap / size_neutral_beta / turnover_cap /
+    rebalance_freq / factor_list. 任何漂移 → FAIL + 打印漂移详情.
+    """
+    try:
+        from engines.config_guard import ConfigDriftError, check_config_alignment
+    except Exception as e:
+        return False, f"config_guard 导入失败: {e}"
+    try:
+        check_config_alignment()
+        return True, "6 params aligned (.env/yaml/python)"
+    except ConfigDriftError as e:
+        # 压缩到单行, 避免多行污染 health_check 输出格式
+        msg = str(e).replace("\n", " | ")
+        return False, msg
+    except FileNotFoundError as e:
+        return False, f"YAML 未找到: {e}"
+    except Exception as e:
+        return False, f"未预期异常: {e}"
+
+
 def check_qmt_connection() -> tuple[bool, str]:
     """miniQMT连接检查（仅EXECUTION_MODE=live时调用）。"""
     try:
@@ -251,6 +274,7 @@ def run_health_check(
         ("factor_nan_ok", check_factor_nan, (conn, trade_date)),
         ("disk_ok", check_disk_space, ()),
         ("celery_ok", check_celery, ()),
+        ("config_drift_ok", check_config_drift, ()),  # 铁律 34 (Phase B M3)
     ]
 
     for name, func, args in checks:

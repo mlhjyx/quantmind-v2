@@ -4,13 +4,22 @@
 - LL-010: run_backtest.py默认8因子 vs Paper Trading 5因子，导致Sharpe误诊
 - LL-013: IC分析用错误基线因子集，导致v1.2升级被错误推荐
 
+铁律 34 落地 (2026-04-15 Phase B M3):
+- `check_config_alignment()` 在 PT 启动前校验 .env / pt_live.yaml / PAPER_TRADING_CONFIG
+  三处关键参数对齐, 任何漂移 RAISE `ConfigDriftError` (不允许只报 warning)
+- 配对项: top_n / industry_cap / size_neutral_beta / turnover_cap / factor_list /
+  rebalance_freq. `.env` 不覆盖 factor_list / freq / turnover_cap 时仅做 yaml↔python 对比
+- F45 / F62 / F40 / F82 防复发
+
 BH-FDR校正（研究报告#2）:
 - 累积测试总数M从FACTOR_TEST_REGISTRY.md自动读取
 - 校正后阈值 = alpha * k / M（Benjamini-Hochberg步进法）
 
 用法:
-    from engines.config_guard import assert_baseline_config, print_config_header
-    from engines.config_guard import get_cumulative_test_count, bh_fdr_adjusted_threshold
+    from engines.config_guard import (
+        assert_baseline_config, print_config_header, check_config_alignment,
+        ConfigDriftError, get_cumulative_test_count, bh_fdr_adjusted_threshold,
+    )
 
     # 脚本开头打印当前配置（人工核对）
     print_config_header()
@@ -18,12 +27,16 @@ BH-FDR校正（研究报告#2）:
     # 如果脚本自定义了因子列表，检查是否与基线一致
     assert_baseline_config(my_factor_list, config_source="my_script.py")
 
+    # PT 启动前三源对齐硬校验 (铁律 34)
+    check_config_alignment()  # 不一致 → RAISE
+
     # BH-FDR校正
     M = get_cumulative_test_count()  # 从FACTOR_TEST_REGISTRY.md读取
     threshold = bh_fdr_adjusted_threshold(alpha=0.05)
 """
 
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -120,6 +133,203 @@ def assert_baseline_config(
         missing,
     )
     return False
+
+
+# ---------------------------------------------------------------------------
+# 三源配置对齐硬校验 (铁律 34, Phase B M3)
+# ---------------------------------------------------------------------------
+
+# pt_live.yaml 相对项目根目录的默认路径
+_DEFAULT_PT_YAML = "configs/pt_live.yaml"
+
+# 浮点比较容差 (避免 0.50 vs 0.5 等表示差异导致假漂移)
+_FLOAT_TOL = 1e-9
+
+
+class ConfigDriftError(RuntimeError):
+    """铁律 34: 配置 single source of truth 违反.
+
+    `.env` / `pt_live.yaml` / `PAPER_TRADING_CONFIG` 三源之间任何一项
+    关键参数不一致都会抛此异常. PT 启动时 fail-loud, 不允许静默降级
+    (参考 F45 / F62 / F40 教训).
+
+    Attributes:
+        drifts: 漂移列表, 每项为
+            `{"param": str, "sources": {src_name: value, ...}}`
+    """
+
+    def __init__(self, drifts: list[dict[str, Any]]):
+        self.drifts = drifts
+        lines = [
+            f"配置 single source of truth 违反 (铁律 34): {len(drifts)} 项漂移",
+        ]
+        for d in drifts:
+            param = d["param"]
+            srcs = "; ".join(f"{k}={v!r}" for k, v in d["sources"].items())
+            lines.append(f"  - {param}: {srcs}")
+        lines.append(
+            "修复: 把三处 (.env / pt_live.yaml / signal_engine.py) 对齐到同一值. "
+            "YAML 是 factor_list / rebalance_freq / turnover_cap 的权威来源, "
+            ".env 是 top_n / industry_cap / size_neutral_beta 的权威来源."
+        )
+        super().__init__("\n".join(lines))
+
+
+def _values_equal(a: Any, b: Any) -> bool:
+    """通用相等比较, 数值走浮点容差, 其他走 `==`."""
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(float(a) - float(b)) < _FLOAT_TOL
+    return a == b
+
+
+def _load_pt_yaml(yaml_path: Path | str) -> dict[str, Any]:
+    """加载 pt_live.yaml 并抽出策略段 (strategy).
+
+    Raises:
+        FileNotFoundError: yaml 文件不存在.
+        ValueError: yaml 文件格式不是 dict 或缺少 strategy 段.
+    """
+    import yaml
+
+    path = Path(yaml_path)
+    if not path.is_absolute():
+        project_root = Path(__file__).resolve().parent.parent.parent
+        path = project_root / path
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"pt_live.yaml 未找到: {path}. "
+            "check_config_alignment 需要 YAML 作为权威源."
+        )
+
+    with path.open(encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    if not isinstance(config, dict):
+        raise ValueError(f"pt_live.yaml 顶层不是 dict: {path}")
+
+    strategy = config.get("strategy")
+    if not isinstance(strategy, dict):
+        raise ValueError(f"pt_live.yaml 缺少 'strategy' 段: {path}")
+
+    return strategy
+
+
+def check_config_alignment(
+    *,
+    yaml_path: Path | str | None = None,
+    env_settings: Any | None = None,
+    python_config: Any | None = None,
+) -> None:
+    """校验 .env / pt_live.yaml / PAPER_TRADING_CONFIG 三源参数对齐 (铁律 34).
+
+    检查项:
+
+    | 参数               | .env                   | yaml                            | python (SignalConfig) |
+    |--------------------|------------------------|---------------------------------|-----------------------|
+    | top_n              | PT_TOP_N               | strategy.top_n                  | top_n                 |
+    | industry_cap       | PT_INDUSTRY_CAP        | strategy.industry_cap           | industry_cap          |
+    | size_neutral_beta  | PT_SIZE_NEUTRAL_BETA   | strategy.size_neutral_beta      | size_neutral_beta     |
+    | turnover_cap       | —                      | strategy.turnover_cap           | turnover_cap          |
+    | rebalance_freq     | —                      | strategy.rebalance_freq         | rebalance_freq        |
+    | factor_list (set)  | —                      | strategy.factors[].name         | factor_names (sorted) |
+
+    任一项不一致 → 收集所有漂移 → 抛 `ConfigDriftError`.
+    **不允许只报 warning** — 铁律 34 要求 fail-loud, 避免静默降级重演 F62.
+
+    Args:
+        yaml_path: pt_live.yaml 路径. None 使用默认 `configs/pt_live.yaml` (项目根目录).
+        env_settings: 注入的 pydantic Settings (测试用). None 时动态 `from app.config import settings`.
+        python_config: 注入的 SignalConfig/类似对象 (测试用). None 时使用
+            `engines.signal_engine.PAPER_TRADING_CONFIG`.
+
+    Raises:
+        ConfigDriftError: 任何一项三源不一致.
+        FileNotFoundError: pt_live.yaml 不存在.
+        ValueError: pt_live.yaml 格式损坏.
+    """
+    # 1. 加载三个源
+    if env_settings is None:
+        from app.config import settings as env_settings  # type: ignore[no-redef]
+
+    if python_config is None:
+        python_config = PAPER_TRADING_CONFIG
+
+    yaml_strategy = _load_pt_yaml(yaml_path if yaml_path is not None else _DEFAULT_PT_YAML)
+
+    drifts: list[dict[str, Any]] = []
+
+    # 2. 三源对齐的参数 (.env + yaml + python)
+    triple_params = [
+        ("top_n", "PT_TOP_N", "top_n"),
+        ("industry_cap", "PT_INDUSTRY_CAP", "industry_cap"),
+        ("size_neutral_beta", "PT_SIZE_NEUTRAL_BETA", "size_neutral_beta"),
+    ]
+    for param_name, env_key, yaml_key in triple_params:
+        env_val = getattr(env_settings, env_key, None)
+        yaml_val = yaml_strategy.get(yaml_key)
+        py_val = getattr(python_config, param_name, None)
+
+        if not (_values_equal(env_val, yaml_val) and _values_equal(yaml_val, py_val)):
+            drifts.append(
+                {
+                    "param": param_name,
+                    "sources": {
+                        ".env": env_val,
+                        "pt_live.yaml": yaml_val,
+                        "python": py_val,
+                    },
+                }
+            )
+
+    # 3. 仅 yaml ↔ python 对齐的参数 (.env 不表达)
+    yaml_only_params = [
+        ("turnover_cap", "turnover_cap"),
+        ("rebalance_freq", "rebalance_freq"),
+    ]
+    for param_name, yaml_key in yaml_only_params:
+        yaml_val = yaml_strategy.get(yaml_key)
+        py_val = getattr(python_config, param_name, None)
+        if not _values_equal(yaml_val, py_val):
+            drifts.append(
+                {
+                    "param": param_name,
+                    "sources": {
+                        "pt_live.yaml": yaml_val,
+                        "python": py_val,
+                    },
+                }
+            )
+
+    # 4. factor_list: yaml 为 list[{name, direction}], python 为 list[str]
+    yaml_factors_raw = yaml_strategy.get("factors") or []
+    yaml_factor_names = tuple(
+        sorted(f["name"] for f in yaml_factors_raw if isinstance(f, dict) and "name" in f)
+    )
+    py_factor_names = tuple(sorted(getattr(python_config, "factor_names", []) or []))
+    if yaml_factor_names != py_factor_names:
+        drifts.append(
+            {
+                "param": "factor_list",
+                "sources": {
+                    "pt_live.yaml": list(yaml_factor_names),
+                    "python": list(py_factor_names),
+                },
+            }
+        )
+
+    # 5. 任何漂移即 RAISE (铁律 34)
+    if drifts:
+        logger.error(
+            "[config_guard] check_config_alignment FAILED: %d drift(s)",
+            len(drifts),
+        )
+        raise ConfigDriftError(drifts)
+
+    logger.info(
+        "[config_guard] check_config_alignment PASS: %d params aligned across 3 sources",
+        len(triple_params) + len(yaml_only_params) + 1,
+    )
 
 
 # ---------------------------------------------------------------------------

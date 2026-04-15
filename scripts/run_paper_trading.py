@@ -135,10 +135,25 @@ def run_signal_phase(trade_date: date, dry_run: bool, skip_fetch: bool, skip_fac
                 log_step(conn, "signal_phase", "failed", "健康预检失败")
             sys.exit(1)
 
-        # Step 0.5: 配置守卫
-        from engines.config_guard import assert_baseline_config
+        # Step 0.5: 配置守卫 (铁律 34)
+        # 先硬校验 .env / pt_live.yaml / PAPER_TRADING_CONFIG 三源对齐,
+        # 任何漂移 RAISE ConfigDriftError (不允许静默降级, 防复发 F45/F62/F40)
+        from engines.config_guard import (
+            ConfigDriftError,
+            assert_baseline_config,
+            check_config_alignment,
+        )
+        try:
+            check_config_alignment()
+        except ConfigDriftError as e:
+            logger.error("[Step0.5] ConfigDriftError (铁律 34 违反):\n%s", e)
+            if not dry_run:
+                log_step(conn, "signal_phase", "failed", f"ConfigDriftError: {e}")
+            sys.exit(1)
+
+        # 兼容性: 保留旧的 factor-only 校验 (warning-level, 防止 factors 被外部脚本篡改)
         if not assert_baseline_config(PAPER_TRADING_CONFIG.factor_names, "run_paper_trading.py"):
-            logger.error("[Step0.5] 配置漂移!")
+            logger.error("[Step0.5] 因子集漂移!")
             sys.exit(1)
 
         # Step 1: 数据拉取(委托pt_data_service)
