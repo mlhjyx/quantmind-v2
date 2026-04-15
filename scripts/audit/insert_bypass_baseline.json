@@ -1,7 +1,7 @@
 {
-  "version": 2,
+  "version": 3,
   "generated_at": "2026-04-16",
-  "rationale": "Phase C C1 (2026-04-16): factor_engine.py 拆分为 factor_engine/ package. compute_batch_factors (含 INSERT 违规) 搬到 __init__.py:1276 行 (文件路径变更, 代码内容未变). factor_engine.py:2016 entry 移除, 替换为 factor_engine/__init__.py:1276. 剩余 3 条已知债务: fetch_base_data ×2 + factor_engine/__init__.py ×1, 新增违规必须阻断 commit. 本 baseline 由 scripts/git_hooks/pre-commit 使用.",
+  "rationale": "Phase C C2 (2026-04-16): load_* 全部搬家到 backend/app/services/factor_repository.py, calc_pead_q1 拆为 factor_repository.load_pead_announcements + engines/factor_engine/pead.calc_pead_q1_from_announcements. __init__.py 缩小至 ~815 行, compute_batch_factors 的 INSERT 现在位于 __init__.py:798 (原 C1 时为 1276, 仅行号漂移, 代码未变). 剩余 3 条已知债务: fetch_base_data ×2 + factor_engine/__init__.py ×1, 新增违规必须阻断 commit.",
   "long_term_closure_plan": {
     "fetch_base_data": "F86 剩余部分: 重构 fetch_base_data.py 走 DataPipeline(conn).ingest(df, KLINES_DAILY/DAILY_BASIC). 独立 PR.",
     "factor_engine": "F31 C3 milestone: factor_engine/__init__.py compute_batch_factors 改走 DataPipeline.ingest(FACTOR_VALUES) — 独立 session 执行 (prep 文档 §Milestone C3). 完成后本 baseline entry 将被删除."
@@ -27,10 +27,10 @@
     },
     {
       "file": "backend/engines/factor_engine/__init__.py",
-      "line_at_baseline": 1276,
+      "line_at_baseline": 798,
       "code_prefix": "\"\"\"INSERT INTO factor_values",
       "ticket": "F31 C3 milestone — compute_batch_factors pending DataPipeline migration",
-      "rationale": "compute_batch_factors 的 INSERT 是真实代码 (execute_values 接收的 SQL 字符串, 非 docstring). Phase C C1 只搬家纯计算 + preprocess, compute_batch_factors 整体搬到新 package __init__.py 暂未改造. C3 milestone 将改走 DataPipeline.ingest(FACTOR_VALUES) 后本 entry 删除, known_debt 从 3 → 2.",
+      "rationale": "compute_batch_factors 的 INSERT 是真实代码 (execute_values 接收的 SQL 字符串, 非 docstring). Phase C C1/C2 未触碰 compute_* 函数内容. C3 milestone 将改走 DataPipeline.ingest(FACTOR_VALUES) 后本 entry 删除, known_debt 从 3 → 2.",
       "owner": "TBD",
       "deadline": "Phase C C3"
     }
