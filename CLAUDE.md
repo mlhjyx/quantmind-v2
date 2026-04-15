@@ -102,6 +102,7 @@ quantmind-v2/
 │       │   ├── risk_control_service.py
 │       │   ├── factor_onboarding.py  # 因子入库pipeline
 │       │   ├── factor_repository.py  # ⭐ Phase C C2 (2026-04-16): 因子计算数据加载层 (load_daily/load_bulk*/load_pead*), Engine 不再读 DB
+│       │   ├── factor_compute_service.py  # ⭐ Phase C C3 (2026-04-16): 因子计算编排层 (compute_daily/compute_batch/save_daily), compute_batch 走 DataPipeline 铁律 17 合规
 │       │   ├── config_loader.py      # ⭐ Step 4-B: YAML策略配置加载
 │       │   ├── pt_data_service.py    # ⭐ Step 6-A: PT并行数据拉取
 │       │   ├── pt_monitor_service.py # ⭐ Step 6-A: PT开盘跳空检测
@@ -358,7 +359,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 > 这 5 条铁律是 S1-S4 审计 54 条 findings 里 P0/P1 集中爆发的根因抽象。前 30 条铁律主要由因子研究教训驱动, 基础设施类教训欠账在本轮补齐 (铁律总数 30→35)。
 
 31. **Engine 层纯计算** — `backend/engines/**` 下所有模块不允许读写 DB, 不允许 HTTP/Redis 调用, 不允许读写本地文件（Parquet 缓存除外）。输入/输出必须是 DataFrame/dict/原生 Python 类型。数据必须在入库时通过 DataPipeline 验证和标准化, Engine 只负责纯计算。违反→分层崩塌, 纯计算与 IO 耦合导致无法单测 + 重构不敢动（F31 factor_engine.py 2034 行教训 + 审计 F43 配套问题）。
-    > **Phase C C1+C2 落地 (2026-04-16)**: `backend/engines/factor_engine.py` → `backend/engines/factor_engine/` package. C1: 30 个 calc_* 纯函数迁至 `calculators.py`, preprocess 管道迁至 `preprocess.py`, Alpha158 helpers 迁至 `alpha158.py`, direction/metadata 迁至 `_constants.py`. C2: load_* 8 个数据加载函数搬家到 `backend/app/services/factor_repository.py` (Service 层, 集中 DB 读取), calc_pead_q1 拆为 `factor_repository.load_pead_announcements` (DB) + `factor_engine/pead.calc_pead_q1_from_announcements` (纯函数), `__init__.py` 的 `calc_pead_q1(trade_date, conn=None)` wrapper 保留旧签名保证 25 调用方零改动. 剩余 save_daily_factors / compute_daily_factors / compute_batch_factors 暂留 `__init__.py`, 由 Phase C C3 (factor_compute_service + F86 known_debt 闭环) 完成. 见 docs/audit/PHASE_C_F31_PREP.md.
+    > **Phase C C1+C2+C3 全部完成 (2026-04-16)**: `backend/engines/factor_engine.py` → `backend/engines/factor_engine/` package. C1: 30 个 calc_* 纯函数迁至 `calculators.py`, preprocess 管道迁至 `preprocess.py`, Alpha158 helpers 迁至 `alpha158.py`, direction/metadata 迁至 `_constants.py`. C2: load_* 8 个数据加载函数搬家到 `backend/app/services/factor_repository.py`, calc_pead_q1 拆为 `factor_repository.load_pead_announcements` (DB) + `factor_engine/pead.calc_pead_q1_from_announcements` (纯函数). **C3: `save_daily_factors` / `compute_daily_factors` / `compute_batch_factors` 搬家到 `backend/app/services/factor_compute_service.py`, compute_batch_factors 内部原 `execute_values(INSERT INTO factor_values)` + `conn.commit()` 改走 `DataPipeline.ingest(FACTOR_VALUES)`, 关闭 F86 最后一条 factor_engine known_debt (铁律 17), `check_insert_bypass --baseline` 从 3→2**. `__init__.py` 从 2049 → 416 行 (−80%), 25 个调用方零改动. 见 docs/audit/PHASE_C_F31_PREP.md.
     > 铁律 14 "回测引擎不做数据清洗" 是本条在回测引擎维度的特例, 本条覆盖所有 Engine 模块。
 
 32. **Service 不 commit** — Service 层所有函数不允许调用 `conn.commit()` / `cur.execute("COMMIT")`。事务边界由调用方（Router / Celery task）管理。Service 发现错误必须 raise, 由调用方决定 rollback 或 retry。违反→事务边界错乱, partial write 风险 + 失败后 DB 状态不可预测（F16 Service 层 20+ 处违规, 等着 partial write 事故）。
