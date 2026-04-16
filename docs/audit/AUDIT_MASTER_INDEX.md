@@ -38,9 +38,10 @@
 | ✅ 关闭/修正 | — | F17 部分关闭 + F64 PASS | F66/F72/F73 闭环 | F76/F77/F78/F79/F81/F82/F86 short-term 闭环 | — | — | — |
 | **S2b 根治** | — | — | — | — | — | **F17/F51/F53/F60/F86 (factor_onboarding 部分) — 5 条** | — |
 | **Phase B M1-M3** | — | — | — | — | — | **F86 (hook) + F75 (12yr) + F45 (config_guard) — 3 条** | — |
-| **合计** | **22** | **13** | **10** | **9** | **54** | **32** | **22** |
+| **Phase E** | — | — | — | — | — | **F71 (config) + F74 (3/11 fix) + dead code cleanup — 3 条** | — |
+| **合计** | **22** | **13** | **10** | **9** | **54** | **35** | **19** |
 
-> S1 静态广扫 + S1 cleanup pass + S2 一致性专项（静态 + 4 快修）+ S4 动态基线验证 + S3 韧性静态审计 + **S2b factor_onboarding 彻底重构** + **Phase B M1-M3 (F86/F75/F45)** + **Phase C C0-C3 (F31)** + **Phase D D1+D2+D3 (IC 路径统一 + F16 + F63)** 全部完成。counter 维度的 "P0 未处理" 持续为 0. 看板维度: **F31 ✅ + F16 ✅ + F63 ✅, P0 看板 ⬜ 全部清零 (3→0)**. F63 audit 产出 22 P2 backlog 留 Phase E (BacktestRunner/FactorLibrary/SystemSettings/Pipeline/agent 5 cluster).
+> S1-S4 审计 + S2b 根治 + Phase B/C/D/E 全部完成. P0 counter 未处理 = 0, P0 看板 ⬜ = 0. Closed **35/54** (65%). Phase E 关闭 F71 (config SSoT) + F74 (3/11 fix) + dead code (-344 行). 剩余 19 open = P1 8 (F18/F50/F54/F55/F57/F58/F74残余/F85) + P2 11 (F56/F67/F68/F69/F70/F80 等).
 
 **S2b 根治 (2026-04-15 夜, 继 S3 tail fix / 铁律扩展 / commit dfcb473 之后)**:
 - ✅ **F17 (P0)**: factor_onboarding 2 条生产 INSERT → DataPipeline.ingest + FACTOR_VALUES/FACTOR_IC_HISTORY contracts (新增 FACTOR_IC_HISTORY Contract, DB schema 100% 对齐验证)
