@@ -54,7 +54,7 @@ def save_qmt_state(
             qmt_nav_data,
             benchmark_close,
         )
-        conn.commit()  # noqa: F16-classC — local tx for SAVEPOINT (see docstring)
+        conn.commit()  # F16-classC — local tx for SAVEPOINT (see docstring)
     except Exception:
         conn.rollback()
         raise

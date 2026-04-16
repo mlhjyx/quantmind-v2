@@ -11,7 +11,6 @@ DESIGN_V5 §8.1 定义的4级熔断状态机:
 
 from __future__ import annotations
 
-import contextlib
 import enum
 import json
 from dataclasses import dataclass
@@ -1196,7 +1195,7 @@ def _ensure_cb_tables_sync(conn: Any) -> None:
     # 铁律 32 Class C 例外 (Phase D D2b-6 audited 2026-04-16): idempotent DDL bootstrap.
     # CREATE TABLE/INDEX IF NOT EXISTS 必须 commit 才能让后续 SELECT/INSERT 看到结构.
     # 在 autocommit=True 的调用栈下此 commit 是 no-op (psycopg2 spec).
-    conn.commit()  # noqa: F16-classC — idempotent DDL bootstrap
+    conn.commit()  # F16-classC — idempotent DDL bootstrap
 
 
 def _load_cb_state_sync(conn: Any, strategy_id: str) -> dict[str, Any] | None:
@@ -1627,129 +1626,6 @@ def check_circuit_breaker_sync(
     }
 
 
-def create_l4_approval_sync(conn: Any, strategy_id: str, reason: str) -> int | None:
-    """L4触发时自动创建审批请求（如果还没有pending的）。
-
-    写入approval_queue表，并关联到circuit_breaker_state。
-    人工通过脚本approve后，下次check_circuit_breaker_sync会检测到并恢复。
-
-    .. warning:: **TODO Phase E (suspected dead code)** —
-       Phase D D2a F16 audit (2026-04-16) 在全项目 grep 中**零调用方**.
-       L4 审批链路是否真有 caller? 检查路径:
-       (a) ``scripts/approve_l4.py`` 是否调用此函数?
-       (b) ``backend/app/api/approval.py`` 是否走此路径?
-       (c) Celery beat / Daily risk check 是否触发?
-       验证后决定: 整体删除函数, 或补全调用链.
-
-    Args:
-        conn: psycopg2同步连接。
-        strategy_id: 策略UUID字符串。
-        reason: L4触发原因。
-
-    Returns:
-        审批ID，如果已存在pending审批则返回None。
-    """
-    cur = conn.cursor()
-
-    # 检查是否已有pending审批
-    cur.execute(
-        """SELECT id FROM approval_queue
-           WHERE approval_type = 'circuit_breaker_l4_recovery'
-             AND reference_id = %s AND status = 'pending'
-           LIMIT 1""",
-        (strategy_id,),
-    )
-    existing = cur.fetchone()
-    if existing:
-        logger.info("[L4] 审批请求已存在: %s", existing[0])
-        return None
-
-    # 创建审批请求
-    try:
-        cur.execute(
-            """INSERT INTO approval_queue
-                   (approval_type, reference_id, payload, submitted_by, notes, status)
-               VALUES
-                   ('circuit_breaker_l4_recovery', %s, '{}'::jsonb, 'system', %s, 'pending')
-               RETURNING id""",
-            (strategy_id, f"L4自动创建: {reason}"),
-        )
-        approval_row = cur.fetchone()
-        if approval_row:
-            approval_id = approval_row[0]
-            # 关联到circuit_breaker_state
-            cur.execute(
-                """UPDATE circuit_breaker_state
-                   SET approval_id = %s, updated_at = NOW()
-                   WHERE strategy_id = %s AND execution_mode = 'paper'""",
-                (str(approval_id), strategy_id),
-            )
-            # 铁律 32 (Phase D D2b-6): commit 由调用方管理 (autocommit 模式).
-            logger.info("[L4] 审批请求已创建: %s", approval_id)
-
-            from app.config import settings as app_settings
-            from app.services.notification_service import send_alert
-
-            send_alert(
-                "P0",
-                "L4审批请求已创建",
-                f"策略{strategy_id}触发L4熔断，需人工审批。\n原因: {reason}\n"
-                f"审批ID: {approval_id}\n"
-                f"恢复命令: python scripts/approve_l4.py --approval-id {approval_id}",
-                app_settings.DINGTALK_WEBHOOK_URL,
-                app_settings.DINGTALK_SECRET,
-                conn,
-            )
-            return approval_id
-    except Exception as e:
-        logger.error("[L4] 创建审批请求失败: %s", e)
-        with contextlib.suppress(Exception):
-            conn.rollback()
-    return None
-
-
-def run_daily_risk_check_sync(
-    holdings: dict[str, int],
-    cash: float,
-    nav: float,
-    today_close: dict[str, float],
-) -> list[str]:
-    """风控日检（同步版，risk评审blocking要求#2）。
-
-    检查: 单股权重/现金比例/持仓数量。
-    返回异常列表（空=全部正常）。
-
-    Args:
-        holdings: 当前持仓 {code: shares}。
-        cash: 当前现金。
-        nav: 当前净值。
-        today_close: 当日收盘价 {code: price}。
-
-    Returns:
-        异常警告列表。
-    """
-    warnings: list[str] = []
-
-    # 单股最大权重 > 15%
-    if holdings and nav > 0:
-        max_weight = max(
-            shares * today_close.get(code, 0) / nav for code, shares in holdings.items()
-        )
-        if max_weight > 0.15:
-            warnings.append(f"单股权重超限: {max_weight:.1%} > 15%")
-
-    # 现金比例异常
-    cash_ratio = cash / nav if nav > 0 else 1
-    if cash_ratio > 0.15:
-        warnings.append(f"现金比例过高: {cash_ratio:.1%}")
-    elif cash_ratio < 0.005 and holdings:
-        warnings.append(f"现金比例过低: {cash_ratio:.1%}")
-
-    # 持仓数量异常
-    pos_count = len(holdings)
-    if pos_count < 15 and pos_count > 0:
-        warnings.append(f"持仓不足: {pos_count}只 < 15")
-    elif pos_count > 25:
-        warnings.append(f"持仓过多: {pos_count}只 > 25")
-
-    return warnings
+# create_l4_approval_sync + run_daily_risk_check_sync 已删除 (Phase E-3 2026-04-16)
+# Phase D D2a F16 audit 确认零调用方 (dead code), Phase E-3 验证后删除.
+# L4 审批走 scripts/approve_l4.py (手动 CLI), 不走本 Service.

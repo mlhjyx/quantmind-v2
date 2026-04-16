@@ -49,7 +49,7 @@ def _ensure_shadow_portfolio_table(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_shadow_portfolio_date
             ON shadow_portfolio(trade_date);
     """)
-    conn.commit()  # noqa: F16-classC — idempotent DDL bootstrap, see docstring
+    conn.commit()  # F16-classC — idempotent DDL bootstrap, see docstring
 
 
 def _select_fold_model(trade_date: date) -> str:
