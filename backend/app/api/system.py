@@ -43,9 +43,7 @@ _DATASOURCE_TABLE_CONFIG: list[dict[str, str]] = [
 # ---------------------------------------------------------------------------
 
 
-async def _query_datasource(
-    session: AsyncSession, table: str, date_col: str
-) -> dict[str, Any]:
+async def _query_datasource(session: AsyncSession, table: str, date_col: str) -> dict[str, Any]:
     """查询单张表的最新日期和行数。
 
     Args:
@@ -317,19 +315,10 @@ async def get_system_health(
     disk_result = _check_disk()
     memory_result = _check_memory()
 
-    all_ok = (
-        pg_result["ok"]
-        and redis_result["ok"]
-        and disk_result["ok"]
-        and memory_result["ok"]
-    )
+    all_ok = pg_result["ok"] and redis_result["ok"] and disk_result["ok"] and memory_result["ok"]
     # Celery worker 不在线不算整体失败（可能是开发环境），但 degraded
     overall_status = (
-        "ok"
-        if all_ok and celery_result.get("ok")
-        else "degraded"
-        if all_ok
-        else "critical"
+        "ok" if all_ok and celery_result.get("ok") else "degraded" if all_ok else "critical"
     )
 
     return {
@@ -371,3 +360,40 @@ async def get_scheduler_status() -> dict[str, Any]:
         "task_count": len(tasks),
         "tasks": tasks,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/system/test-notification  — F63-P2-6: 测试通知 webhook
+# ---------------------------------------------------------------------------
+
+
+@router.post("/test-notification", summary="测试通知 webhook")
+async def test_notification(
+    payload: dict[str, str],
+) -> dict[str, Any]:
+    """向指定 webhook URL 发送测试消息。
+
+    Args:
+        payload: {"webhook_url": "https://..."}.
+
+    Returns:
+        {"success": bool, "message": str}
+    """
+    import httpx
+
+    webhook_url = payload.get("webhook_url", "").strip()
+    if not webhook_url:
+        return {"success": False, "message": "webhook_url 不能为空"}
+
+    test_msg = {
+        "msgtype": "text",
+        "text": {"content": "[QuantMind] 通知测试 — 如果你看到这条消息说明 webhook 配置正确"},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(webhook_url, json=test_msg)
+        if resp.status_code == 200:
+            return {"success": True, "message": "测试消息已发送"}
+        return {"success": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:
+        return {"success": False, "message": f"发送失败: {exc}"}

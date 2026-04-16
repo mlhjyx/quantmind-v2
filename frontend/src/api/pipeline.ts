@@ -107,12 +107,14 @@ export async function pausePipeline(): Promise<void> {
 }
 
 export async function getPipelineHistory(): Promise<PipelineRun[]> {
-  const res = await apiClient.get<PipelineRun[]>("/pipeline/history");
+  // F63-P2-9: /pipeline/history → /pipeline/runs (backend endpoint)
+  const res = await apiClient.get<PipelineRun[]>("/pipeline/runs");
   return res.data;
 }
 
 export async function getPendingApprovals(): Promise<ApprovalItem[]> {
-  const res = await apiClient.get<ApprovalItem[]>("/pipeline/pending");
+  // F63-P2-10: /pipeline/pending → /approval/queue (backend endpoint)
+  const res = await apiClient.get<ApprovalItem[]>("/approval/queue");
   return res.data;
 }
 

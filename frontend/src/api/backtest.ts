@@ -130,8 +130,19 @@ export async function runBacktest(payload: RunBacktestPayload): Promise<{ run_id
 }
 
 export async function getBacktestProgress(runId: string): Promise<BacktestProgress> {
-  const res = await apiClient.get<BacktestProgress>(`/backtest/${runId}/progress`);
-  return res.data;
+  // F63-P2-1: /backtest/{id}/progress → adapt from /backtest/{id} (BacktestStatusResponse)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await apiClient.get<any>(`/backtest/${runId}`);
+  const d = res.data;
+  return {
+    run_id: d.run_id,
+    status: d.status,
+    progress: d.progress != null ? d.progress * 100 : (d.status === "completed" ? 100 : 0),
+    elapsed_seconds: 0,
+    estimated_remaining_seconds: null,
+    current_window: undefined,
+    logs: [],
+  };
 }
 
 export async function getBacktestResult(runId: string): Promise<BacktestResult> {

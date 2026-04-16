@@ -21,6 +21,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -198,10 +199,7 @@ async def get_factor_correlation(
     for name in factor_names:
         ic_df = await svc.get_factor_ic(name, start_date, end_date, forward_days=20)
         if not ic_df.empty:
-            values = [
-                float(v) for v in ic_df["ic_value"].tolist()
-                if v is not None
-            ]
+            values = [float(v) for v in ic_df["ic_value"].tolist() if v is not None]
             if values:
                 ic_map[name] = values
 
@@ -627,12 +625,12 @@ async def get_factor_report(
         try:
             fwd_df = await svc.get_factor_ic(name, start_date, end_date, forward_days=fwd)
             if not fwd_df.empty:
-                valid = [
-                    float(v) for v in fwd_df["ic_value"].tolist() if v is not None
-                ]
+                valid = [float(v) for v in fwd_df["ic_value"].tolist() if v is not None]
                 if valid:
                     fwd_mean = sum(valid) / len(valid)
-                    fwd_std = (sum((x - fwd_mean) ** 2 for x in valid) / max(len(valid) - 1, 1)) ** 0.5
+                    fwd_std = (
+                        sum((x - fwd_mean) ** 2 for x in valid) / max(len(valid) - 1, 1)
+                    ) ** 0.5
                     ic_decay[f"{fwd}d"] = {
                         "ic_mean": fwd_mean,
                         "ic_std": fwd_std,
@@ -644,17 +642,20 @@ async def get_factor_report(
             # S3 F81 修复: IC decay 计算失败记录可追溯
             logger.warning(
                 "[factors] ic_decay fwd=%s 计算失败 factor=%s err=%s",
-                fwd, name, e, exc_info=True,
+                fwd,
+                name,
+                e,
+                exc_info=True,
             )
         ic_decay[f"{fwd}d"] = {"ic_mean": None, "ic_std": None, "ic_ir": None, "data_points": 0}
 
     # 计算高级指标
     t_stat = _calc_t_stat(stats)
-    ic_values = [
-        float(row["ic_value"])
-        for _, row in ic_df.iterrows()
-        if row["ic_value"] is not None
-    ] if not ic_df.empty else []
+    ic_values = (
+        [float(row["ic_value"]) for _, row in ic_df.iterrows() if row["ic_value"] is not None]
+        if not ic_df.empty
+        else []
+    )
 
     fdr_t = _calc_fdr_t_stat(t_stat, m_tests=69)
     nw_t = _calc_newey_west_t(ic_values)
@@ -671,7 +672,9 @@ async def get_factor_report(
         # S3 F81 修复: gate_info 读取失败记录可追溯
         logger.warning(
             "[factors] gate_info 读取失败 factor=%s err=%s",
-            name, e, exc_info=True,
+            name,
+            e,
+            exc_info=True,
         )
     gate_score = _calc_gate_score(gate_info)
 
@@ -682,21 +685,20 @@ async def get_factor_report(
         other_names = [f["factor_name"] for f in all_factors if f["factor_name"] != name]
         if ic_values and other_names:
             from scipy import stats as sp_stats
+
             for other in other_names:
                 other_df = await svc.get_factor_ic(other, start_date, end_date, forward_days=20)
                 if not other_df.empty:
-                    other_vals = [
-                        float(v) for v in other_df["ic_value"].tolist() if v is not None
-                    ]
+                    other_vals = [float(v) for v in other_df["ic_value"].tolist() if v is not None]
                     min_len = min(len(ic_values), len(other_vals))
                     if min_len >= 10:
-                        corr, _ = sp_stats.spearmanr(
-                            ic_values[-min_len:], other_vals[-min_len:]
+                        corr, _ = sp_stats.spearmanr(ic_values[-min_len:], other_vals[-min_len:])
+                        correlations.append(
+                            {
+                                "name": other,
+                                "corr": round(float(corr), 4) if corr is not None else 0.0,
+                            }
                         )
-                        correlations.append({
-                            "name": other,
-                            "corr": round(float(corr), 4) if corr is not None else 0.0,
-                        })
     except Exception as exc:
         logger.warning("因子相关性计算失败: %s", exc)
 
@@ -993,7 +995,11 @@ def _recommend_rebalance_freq(ic_decay: dict[str, Any]) -> str | None:
 
     for key in ["1d", "5d", "10d", "20d"]:
         entry = ic_decay.get(key, {})
-        if isinstance(entry, dict) and entry.get("ic_mean") is not None and entry.get("data_points", 0) > 0:
+        if (
+            isinstance(entry, dict)
+            and entry.get("ic_mean") is not None
+            and entry.get("data_points", 0) > 0
+        ):
             ic_abs = abs(float(entry["ic_mean"]))
             if ic_abs > best_ic:
                 best_ic = ic_abs
@@ -1003,3 +1009,35 @@ def _recommend_rebalance_freq(ic_decay: dict[str, Any]) -> str | None:
         return None
 
     return freq_map.get(best_key, "月度")
+
+
+# ---------------------------------------------------------------------------
+# POST /api/factors/{name}/archive  — F63-P2-3: 归档因子
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{name}/archive", summary="归档因子")
+async def archive_factor(
+    name: str,
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """将因子状态设为 archived。
+
+    Args:
+        name: 因子名称。
+
+    Returns:
+        {"status": "archived", "factor_name": name}
+    """
+    result = await session.execute(
+        text(
+            "UPDATE factor_registry SET status = 'archived', updated_at = NOW() "
+            "WHERE factor_name = :name AND status != 'archived'"
+        ),
+        {"name": name},
+    )
+    if result.rowcount == 0:  # type: ignore[union-attr]
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"因子 {name} 不存在或已归档")
+    return {"status": "archived", "factor_name": name}
