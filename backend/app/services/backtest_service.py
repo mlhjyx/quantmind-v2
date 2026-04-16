@@ -16,6 +16,9 @@ FastAPI Depends注入模式:
         session: AsyncSession = Depends(get_async_session),
     ) -> BacktestService:
         return BacktestService(session)
+
+铁律 32: Service 内部不 commit/rollback。事务由 get_db() 上下文管理器自动管理
+    (成功→commit, 异常→rollback)。F18 Phase E (2026-04-16) 移除冗余 commit。
 """
 
 import uuid
@@ -81,7 +84,7 @@ class BacktestService:
                 "market": market,
             },
         )
-        await self._session.commit()
+        # 铁律 32: 不在 Service 内 commit, get_db() 自动管理事务
 
         # 提交Celery任务
         try:
@@ -99,7 +102,6 @@ class BacktestService:
                 text("UPDATE backtest_run SET celery_task_id = :task_id WHERE run_id = :run_id"),
                 {"task_id": task.id, "run_id": run_id},
             )
-            await self._session.commit()
             logger.info(
                 f"[BacktestService] 回测任务已提交: "
                 f"run_id={run_id}, strategy={strategy_id}, task_id={task.id}"
@@ -113,7 +115,6 @@ class BacktestService:
                 ),
                 {"msg": str(exc), "run_id": run_id},
             )
-            await self._session.commit()
             logger.error(f"[BacktestService] Celery任务提交失败: {exc}", exc_info=True)
             raise
 
@@ -314,7 +315,7 @@ class BacktestService:
             ),
             {"run_id": run_id},
         )
-        await self._session.commit()
+        # 铁律 32: 不 commit, get_db() 自动管理
         logger.info(f"[BacktestService] 回测已取消: {run_id}")
         return True
 

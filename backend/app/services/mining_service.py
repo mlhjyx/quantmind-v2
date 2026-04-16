@@ -12,6 +12,9 @@ Celery 任务在 asyncio.run() 内调用（DEV_BACKEND.md 规范）。
   - MiningService → DB（pipeline_runs / approval_queue 读写）
   - MiningService → FactorGatePipeline（evaluate端点）
   - 不直接调用其他 Service
+
+铁律 32: Service 内部不 commit/rollback。事务由 get_db() 上下文管理器自动管理
+    (成功→commit, 异常→rollback)。F18 Phase E (2026-04-16) 移除冗余 commit/rollback。
 """
 
 from __future__ import annotations
@@ -112,10 +115,10 @@ class MiningService:
                     "config": json.dumps({**config, "celery_task_id": task_id}),
                 },
             )
-            await self._session.commit()
+            pass  # 铁律 32: 不 commit, get_db() 自动管理
         except Exception as exc:
             logger.warning("pipeline_runs 写入失败，继续提交任务", error=str(exc))
-            await self._session.rollback()
+            await self._session.rollback()  # SQLAlchemy 要求失败后 rollback 才能继续使用 session
 
         # 提交 Celery 任务（懒导入避免循环依赖）
         try:
@@ -143,7 +146,7 @@ class MiningService:
                 ),
                 {"err": f"Celery提交失败: {exc}", "run_id": run_id},
             )
-            await self._session.commit()
+            # 铁律 32: 不 commit, get_db() 自动管理
 
         return {"task_id": task_id, "run_id": run_id, "status": "submitted"}
 
@@ -335,10 +338,10 @@ class MiningService:
                 ),
                 {"run_id": detail["run_id"]},
             )
-            await self._session.commit()
+            # 铁律 32: 不 commit, get_db() 自动管理
         except Exception as exc:
             logger.warning("取消状态写入失败", error=str(exc))
-            await self._session.rollback()
+            await self._session.rollback()  # SQLAlchemy 要求失败后 rollback
 
         return {
             "task_id": task_id,
