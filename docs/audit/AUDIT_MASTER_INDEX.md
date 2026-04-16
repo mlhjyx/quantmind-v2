@@ -33,16 +33,17 @@
 | 分级 | S1 | S2 新增 | S4 新增 | S3 新增 | 总计 | 已处理 | 未处理 |
 |---|---|---|---|---|---|---|---|
 | 🔴 P0 | 6 | 3 (F51/F60/F62) | 1 (F72) | 2 (F76/F77) | **12** | **12** (+F45 Phase B M3 关闭) | **0** |
-| 🟠 P1 | 10 | 8 (F50/F52/F54/F55/F57/F58/F63/F65) | 3 (F66/F71/F74) | 4 (F78/F82/F85/F86) | **25** | **20** (+Phase E Wave 1-5) | **5** |
+| 🟠 P1 | 10 | 8 (F50/F52/F54/F55/F57/F58/F63/F65) | 3 (F66/F71/F74) | 4 (F78/F82/F85/F86) | **25** | **21** (+F18 Phase E Wave 4) | **4** |
 | 🟡 P2 | 6 | 2 (F56/F64) | 6 (F67/F68/F69/F70/F73/F75) | 3 (F79/F80/F81) | **17** | **10** (+Phase E Wave 1) | **7** |
 | ✅ 关闭/修正 | — | F17 部分关闭 + F64 PASS | F66/F72/F73 闭环 | F76/F77/F78/F79/F81/F82/F86 short-term 闭环 | — | — | — |
 | **S2b 根治** | — | — | — | — | — | **F17/F51/F53/F60/F86 (factor_onboarding 部分) — 5 条** | — |
 | **Phase B M1-M3** | — | — | — | — | — | **F86 (hook) + F75 (12yr) + F45 (config_guard) — 3 条** | — |
 | **Phase E prev** | — | — | — | — | — | **F71 (config) + F74 (3/11 fix) + dead code cleanup — 3 条** | — |
-| **Phase E Wave 1-5** | — | — | — | — | — | **+12 条: F50/F54/F55/F56/F57/F58/F67/F68/F70/F74(8→0)/F80/F85 — 本 session** | — |
-| **合计** | **22** | **13** | **10** | **9** | **54** | **47** | **7** |
+| **Phase E Wave 1-5** | — | — | — | — | — | **+12 条: F50/F54/F55/F56/F57/F58/F67/F68/F70/F74(8→0)/F80/F85** | — |
+| **Phase E Wave 4** | — | — | — | — | — | **F18 (commit 移除, 铁律 32 落地, async 保留 long-term)** | — |
+| **合计** | **22** | **13** | **10** | **9** | **54** | **48** | **6** |
 
-> S1-S4 审计 + S2b 根治 + Phase B/C/D/E 全部完成. P0 counter 未处理 = 0, P0 看板 ⬜ = 0. Closed **47/54** (87%). Phase E 本 session 关闭 12 条 (35→47). 剩余 7 open = P1 1 (F18 async→sync) + P2 6 (F69 观察 + ~5 S1-era minor).
+> S1-S4 审计 + S2b 根治 + Phase B/C/D/E 全部完成. P0 counter 未处理 = 0, P0 看板 ⬜ = 0. Closed **48/54** (89%). Phase E 本 session 关闭 13 条 (35→48). 剩余 6 open = P2 only (F69 观察 + ~5 S1-era minor). **P1 全部清零。**
 
 **S2b 根治 (2026-04-15 夜, 继 S3 tail fix / 铁律扩展 / commit dfcb473 之后)**:
 - ✅ **F17 (P0)**: factor_onboarding 2 条生产 INSERT → DataPipeline.ingest + FACTOR_VALUES/FACTOR_IC_HISTORY contracts (新增 FACTOR_IC_HISTORY Contract, DB schema 100% 对齐验证)
