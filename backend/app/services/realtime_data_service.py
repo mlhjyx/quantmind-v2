@@ -43,9 +43,17 @@ def _get_cached(key: str, fetch_fn: Any, ttl: float) -> Any:
 # xtdata helpers (import on demand)
 # ---------------------------------------------------------------------------
 
+
 def _ensure_xtquant_path() -> None:
     """确保xtquant路径在sys.path中。"""
-    _xt = Path(__file__).resolve().parent.parent.parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+    _xt = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / ".venv"
+        / "Lib"
+        / "site-packages"
+        / "Lib"
+        / "site-packages"
+    )
     if _xt.exists() and str(_xt) not in sys.path:
         sys.path.append(str(_xt))
 
@@ -77,6 +85,7 @@ def _get_realtime_ticks(codes: list[str]) -> dict[str, dict[str, Any]]:
     _ensure_xtquant_path()
     try:
         from xtquant import xtdata
+
         qmt_codes = [_to_qmt_code(c) for c in codes]
         ticks = xtdata.get_full_tick(qmt_codes)
         if not isinstance(ticks, dict):
@@ -103,6 +112,7 @@ def _is_market_open() -> bool:
 # ---------------------------------------------------------------------------
 # RealtimeDataService
 # ---------------------------------------------------------------------------
+
 
 class RealtimeDataService:
     """统一实时数据服务。"""
@@ -141,7 +151,9 @@ class RealtimeDataService:
         for code in signal_targets:
             if code not in all_codes:
                 all_codes.append(code)
-        realtime_prices = _get_realtime_ticks(all_codes) if _is_market_open() or is_connected else {}
+        realtime_prices = (
+            _get_realtime_ticks(all_codes) if _is_market_open() or is_connected else {}
+        )
 
         # 3. 股票名称和行业
         names = self._get_stock_names(all_codes)
@@ -190,24 +202,26 @@ class RealtimeDataService:
             else:
                 drift_status = "normal"
 
-            positions.append({
-                "code": code,
-                "name": names.get(code, code),
-                "shares": shares,
-                "available": available,
-                "cost_price": round(cost_price, 3),
-                "last_price": round(last_price, 3),
-                "prev_close": round(prev_close, 3),
-                "market_value": round(market_value, 0),
-                "pnl": round(pnl, 0),
-                "pnl_pct": round(pnl_pct, 2),
-                "daily_return": round(daily_return, 2),
-                "weight": 0,  # filled after totals
-                "target_shares": target_shares,
-                "drift_pct": round(drift_pct, 1),
-                "drift_status": drift_status,
-                "industry": industries.get(code, ""),
-            })
+            positions.append(
+                {
+                    "code": code,
+                    "name": names.get(code, code),
+                    "shares": shares,
+                    "available": available,
+                    "cost_price": round(cost_price, 3),
+                    "last_price": round(last_price, 3),
+                    "prev_close": round(prev_close, 3),
+                    "market_value": round(market_value, 0),
+                    "pnl": round(pnl, 0),
+                    "pnl_pct": round(pnl_pct, 2),
+                    "daily_return": round(daily_return, 2),
+                    "weight": 0,  # filled after totals
+                    "target_shares": target_shares,
+                    "drift_pct": round(drift_pct, 1),
+                    "drift_status": drift_status,
+                    "industry": industries.get(code, ""),
+                }
+            )
 
             total_market_value += market_value
             total_cost += cost_value
@@ -228,13 +242,17 @@ class RealtimeDataService:
                 tick = realtime_prices.get(code, {})
                 est_price = tick.get("lastPrice", 0)
                 target_shares = signal.get("target_shares", 0)
-                missing.append({
-                    "code": code,
-                    "name": names.get(code, code),
-                    "target_shares": target_shares,
-                    "estimated_cost": round(target_shares * est_price, 0) if est_price > 0 else 0,
-                    "drift_status": "missing",
-                })
+                missing.append(
+                    {
+                        "code": code,
+                        "name": names.get(code, code),
+                        "target_shares": target_shares,
+                        "estimated_cost": round(target_shares * est_price, 0)
+                        if est_price > 0
+                        else 0,
+                        "drift_status": "missing",
+                    }
+                )
 
         # 7. 行业分布
         industry_alloc: dict[str, float] = {}
@@ -291,6 +309,7 @@ class RealtimeDataService:
         result_indices: dict[str, dict[str, Any]] = {}
         try:
             from xtquant import xtdata
+
             qmt_codes = list(indices.keys())
             ticks = xtdata.get_full_tick(qmt_codes)
             if isinstance(ticks, dict):
@@ -299,7 +318,9 @@ class RealtimeDataService:
                     if tick and isinstance(tick, dict) and tick.get("lastPrice", 0) > 0:
                         last_price = tick["lastPrice"]
                         prev_close = tick.get("lastClose", last_price)
-                        change_pct = (last_price - prev_close) / prev_close * 100 if prev_close > 0 else 0
+                        change_pct = (
+                            (last_price - prev_close) / prev_close * 100 if prev_close > 0 else 0
+                        )
                         result_indices[qmt_code] = {
                             "name": name,
                             "price": round(last_price, 2),
@@ -428,7 +449,7 @@ class RealtimeDataService:
                         "market_value": nav * (1 - cash_ratio),
                     }
             except Exception:
-                pass
+                logger.error("DB资产查询也失败, 返回零值fallback", exc_info=True)
         return {"total_asset": 0, "cash": 0, "frozen_cash": 0, "market_value": 0}
 
     def _get_signal_targets(self) -> dict[str, dict[str, Any]]:
@@ -440,7 +461,8 @@ class RealtimeDataService:
             if not sid:
                 return {}
             cur = self._conn.cursor()
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT code, target_weight
                 FROM signals
                 WHERE strategy_id = %s AND execution_mode = 'live'
@@ -448,7 +470,9 @@ class RealtimeDataService:
                     SELECT MAX(trade_date) FROM signals
                     WHERE strategy_id = %s AND execution_mode = 'live'
                   )
-            """, (sid, sid))
+            """,
+                (sid, sid),
+            )
 
             # 计算target_shares需要总资产
             asset = self._get_qmt_asset()
@@ -473,7 +497,9 @@ class RealtimeDataService:
     def _get_stock_names(self, codes: list[str]) -> dict[str, str]:
         """批量查询股票名称。"""
         if not self._conn or not codes:
-            logger.debug("_get_stock_names跳过", has_conn=self._conn is not None, codes_count=len(codes))
+            logger.debug(
+                "_get_stock_names跳过", has_conn=self._conn is not None, codes_count=len(codes)
+            )
             return {}
         try:
             cur = self._conn.cursor()

@@ -134,11 +134,12 @@ class QMTDataService:
                     if code and vol > 0:
                         pos_dict[code] = str(vol)
 
-            # 写入Redis Hash
+            # 写入Redis Hash (F68: 加 TTL 防止 QMT 停止后数据永不过期)
             pipe = r.pipeline()
             pipe.delete(CACHE_PORTFOLIO_CURRENT)
             if pos_dict:
                 pipe.hset(CACHE_PORTFOLIO_CURRENT, mapping=pos_dict)
+            pipe.expire(CACHE_PORTFOLIO_CURRENT, 180)  # 3min TTL, 同步间隔60s
             pipe.execute()
 
             # 查询资产
@@ -228,7 +229,7 @@ class QMTDataService:
         if not self._connect_qmt():
             logger.warning("QMT未连接，服务将以退避模式重试连接")
             retry_delay = 30  # 初始30秒
-            max_delay = 300   # 最大5分钟
+            max_delay = 300  # 最大5分钟
             retry_count = 0
             while self._running:
                 # 等待（可被信号中断）

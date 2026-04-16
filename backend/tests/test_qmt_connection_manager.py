@@ -25,6 +25,8 @@ class TestQMTConnectionManagerPaperMode:
         mgr = QMTConnectionManager()
         with patch("app.services.qmt_connection_manager.settings") as mock_settings:
             mock_settings.EXECUTION_MODE = "paper"
+            mock_settings.QMT_PATH = ""
+            mock_settings.QMT_ACCOUNT_ID = ""
             mgr._initialized = False
             mgr.__init__()  # type: ignore[misc]
             mgr.startup()
@@ -111,7 +113,12 @@ class TestQMTConnectionManagerLiveMode:
             health = mgr.health_check()
 
         required_keys = {
-            "execution_mode", "state", "account_id", "qmt_path",
-            "connected_at", "last_error", "is_healthy",
+            "execution_mode",
+            "state",
+            "account_id",
+            "qmt_path",
+            "connected_at",
+            "last_error",
+            "is_healthy",
         }
         assert required_keys.issubset(health.keys())

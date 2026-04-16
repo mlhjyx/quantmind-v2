@@ -23,12 +23,34 @@ class TestA4UnitConsistency:
         """Amihud排名不受amount缩放影响（千元 vs 元 vs 万元）。"""
         from engines.factor_engine import calc_amihud
 
-        close = pd.Series([10.0, 10.1, 10.3, 9.8, 10.5, 10.2, 10.7, 10.4, 10.6, 10.8,
-                           11.0, 10.9, 11.2, 11.1, 11.3, 11.5, 11.4, 11.6, 11.8, 11.7])
+        close = pd.Series(
+            [
+                10.0,
+                10.1,
+                10.3,
+                9.8,
+                10.5,
+                10.2,
+                10.7,
+                10.4,
+                10.6,
+                10.8,
+                11.0,
+                10.9,
+                11.2,
+                11.1,
+                11.3,
+                11.5,
+                11.4,
+                11.6,
+                11.8,
+                11.7,
+            ]
+        )
         volume = pd.Series([1000] * 20)
         amount_qian = pd.Series([100.0] * 20)  # 千元
-        amount_yuan = amount_qian * 1000        # 元
-        amount_wan = amount_qian / 10           # 万元
+        amount_yuan = amount_qian * 1000  # 元
+        amount_wan = amount_qian / 10  # 万元
 
         amihud_qian = calc_amihud(close, volume, amount_qian, 10)
         amihud_yuan = calc_amihud(close, volume, amount_yuan, 10)
@@ -43,13 +65,13 @@ class TestA4UnitConsistency:
         pd.testing.assert_series_equal(rank_qian, rank_wan, check_names=False)
 
     def test_vwap_bias_unit_conversion(self):
-        """VWAP = amount*10/volume 验证千元→元/股单位正确。"""
+        """VWAP = amount(元) / (volume(手)*100) 验证Step 3-A后单位正确。"""
         from engines.factor_engine import calc_vwap_bias
 
-        # amount=100千元=100,000元, volume=1000手=100,000股
-        # VWAP = 100*10/1000 = 1.0 元/股
+        # amount=100,000元, volume=1000手=100,000股
+        # VWAP = 100,000 / (1000*100) = 1.0 元/股
         close = pd.Series([1.05])
-        amount = pd.Series([100.0])   # 千元
+        amount = pd.Series([100_000.0])  # 元 (Step 3-A 标准化后)
         volume = pd.Series([1000.0])  # 手
 
         bias = calc_vwap_bias(close, amount, volume, 1)
@@ -60,7 +82,7 @@ class TestA4UnitConsistency:
         """net_mf_amount和total_mv同为万元, 比值无量纲。"""
         from engines.factor_engine import calc_money_flow_strength
 
-        net_mf = pd.Series([100.0, 200.0, -50.0])   # 万元
+        net_mf = pd.Series([100.0, 200.0, -50.0])  # 万元
         total_mv = pd.Series([10000.0, 20000.0, 5000.0])  # 万元
 
         mfs = calc_money_flow_strength(net_mf, total_mv)
@@ -69,15 +91,14 @@ class TestA4UnitConsistency:
         assert abs(float(mfs.iloc[2]) - (-0.01)) < 1e-6
 
     def test_slippage_daily_amount_conversion(self):
-        """SimBroker._daily_amount_yuan 千元→元转换。"""
+        """SimBroker._daily_amount_yuan: Step 3-A后amount已是元, 直接返回。"""
         from engines.backtest_engine import BacktestConfig, SimBroker
 
         broker = SimBroker(BacktestConfig())
-        # 1e5 千元 = 1e8 元 (< 1e9阈值, 应转换)
-        row = pd.Series({"amount": 1e5})
+        # Step 3-A 标准化后 amount 已经是元, _daily_amount_yuan 直接返回
+        row = pd.Series({"amount": 1e8})
         assert broker._daily_amount_yuan(row) == 1e8
 
-        # 已是元的大值 (>= 1e9, 不转换)
         row2 = pd.Series({"amount": 2e9})
         assert broker._daily_amount_yuan(row2) == 2e9
 
@@ -88,13 +109,17 @@ class TestA4UnitConsistency:
         config = BacktestConfig(slippage_mode="volume_impact")
         broker = SimBroker(config)
         # total_mv=50000万元=5e8元 (< 1e10, 应转换)
-        row = pd.Series({
-            "open": 10.0, "close": 10.0, "pre_close": 10.0,
-            "amount": 1e6,  # 千元→1e9元
-            "volume": 1e7,
-            "total_mv": 50000,  # 万元→5e8元
-            "turnover_rate": 5.0,
-        })
+        row = pd.Series(
+            {
+                "open": 10.0,
+                "close": 10.0,
+                "pre_close": 10.0,
+                "amount": 1e6,  # 千元→1e9元
+                "volume": 1e7,
+                "total_mv": 50000,  # 万元→5e8元
+                "turnover_rate": 5.0,
+            }
+        )
         slippage = broker.calc_slippage(10.0, 100000.0, row, "buy")
         # 应该返回正数滑点
         assert slippage > 0
@@ -199,14 +224,18 @@ class TestA6FactorsCorrelationEndpoint:
             {"factor_name": "f2", "status": "active"},
         ]
 
-        ic_data_f1 = pd.DataFrame({
-            "trade_date": pd.date_range("2024-01-01", periods=30),
-            "ic_value": np.random.randn(30) * 0.05,
-        })
-        ic_data_f2 = pd.DataFrame({
-            "trade_date": pd.date_range("2024-01-01", periods=30),
-            "ic_value": np.random.randn(30) * 0.05,
-        })
+        ic_data_f1 = pd.DataFrame(
+            {
+                "trade_date": pd.date_range("2024-01-01", periods=30),
+                "ic_value": np.random.randn(30) * 0.05,
+            }
+        )
+        ic_data_f2 = pd.DataFrame(
+            {
+                "trade_date": pd.date_range("2024-01-01", periods=30),
+                "ic_value": np.random.randn(30) * 0.05,
+            }
+        )
 
         async def mock_get_ic(name, start, end, forward_days=20):
             return ic_data_f1 if name == "f1" else ic_data_f2
@@ -237,9 +266,7 @@ class TestA6BacktestNavEndpoint:
         from app.api.backtest import _safe_query
 
         mock_session = AsyncMock()
-        mock_session.execute.side_effect = Exception(
-            'relation "backtest_daily_nav" does not exist'
-        )
+        mock_session.execute.side_effect = Exception('relation "backtest_daily_nav" does not exist')
 
         result = await _safe_query(
             mock_session,

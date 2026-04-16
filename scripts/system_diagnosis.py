@@ -432,22 +432,7 @@ def diag_execution(conn, result: DiagResult, trade_date: date):
         conn.rollback()
         result.add(layer, "position_snapshot", "WARN", f"查询异常: {e}")
 
-    # 3.2 Orphaned pending orders
-    try:
-        cur.execute("""
-            SELECT COUNT(*) FROM pending_orders
-            WHERE status = 'pending' AND created_at < NOW() - INTERVAL '2 days'
-        """)
-        orphaned = cur.fetchone()[0]
-        if orphaned > 0:
-            result.add(
-                layer, "orphaned_pending_orders", "WARN", f"{orphaned}个过期pending订单(>2天)"
-            )
-        else:
-            result.add(layer, "orphaned_pending_orders", "PASS", "无过期pending订单")
-    except Exception as e:
-        conn.rollback()
-        result.add(layer, "orphaned_pending_orders", "WARN", f"查询异常(表可能不存在): {e}")
+    # 3.2 Orphaned pending orders — F67: pending_orders 表在 DDL 中不存在, 已移除检查 (Phase E 2026-04-16)
 
     # 3.3 Performance series continuity
     try:
@@ -563,7 +548,11 @@ def diag_infra(conn, result: DiagResult):
     else:
         result.add(layer, "disk_space", "PASS", f"{free_gb:.1f}GB")
 
-    # 4.3 Log freshness
+    # 4.3 Log freshness (F70: 非活跃时段不误报)
+    import datetime as _dt
+
+    _now = _dt.datetime.now()
+    _is_inactive = _now.weekday() >= 5 or _now.hour >= 18 or _now.hour < 8  # 周末/非交易时段
     log_dir = Path("logs")
     if log_dir.exists():
         for log_name in ["fastapi-stdout.log", "celery-stdout.log"]:
@@ -572,9 +561,20 @@ def diag_infra(conn, result: DiagResult):
                 age_sec = time.time() - log_path.stat().st_mtime
                 age_min = age_sec / 60
                 if age_min > 60:
-                    result.add(
-                        layer, f"log_{log_name}", "WARN", f"最后更新{age_min:.0f}分钟前(>1小时)"
-                    )
+                    if _is_inactive:
+                        result.add(
+                            layer,
+                            f"log_{log_name}",
+                            "PASS",
+                            f"最后更新{age_min:.0f}分钟前(非活跃时段,忽略)",
+                        )
+                    else:
+                        result.add(
+                            layer,
+                            f"log_{log_name}",
+                            "WARN",
+                            f"最后更新{age_min:.0f}分钟前(>1小时)",
+                        )
                 else:
                     result.add(layer, f"log_{log_name}", "PASS", f"最后更新{age_min:.0f}分钟前")
             else:

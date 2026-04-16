@@ -160,8 +160,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         required_fields=["close", "volume"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "ts_corr(close / delay(close, 1) - 1, "
-            "volume / (ts_mean(volume, {w}) + 1e-10), {w})"
+            "ts_corr(close / delay(close, 1) - 1, volume / (ts_mean(volume, {w}) + 1e-10), {w})"
         ),
         academic_support=4,
     ),
@@ -177,8 +176,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         required_fields=["close"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "ts_std(close / delay(close, 1) - 1 - "
-            "ts_mean(close / delay(close, 1) - 1, {w}), {w})"
+            "ts_std(close / delay(close, 1) - 1 - ts_mean(close / delay(close, 1) - 1, {w}), {w})"
         ),
         academic_support=5,
     ),
@@ -221,9 +219,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="positive",
         required_fields=["close"],
         windows=(5, 10, 20),
-        expr_template=(
-            "ts_mean((close / delay(close, 1) - 1 > 0) * 1.0, {w})"
-        ),
+        expr_template=("ts_mean((close / delay(close, 1) - 1 > 0) * 1.0, {w})"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -238,8 +234,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         required_fields=["close", "high", "low"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "(close - ts_min(low, {w})) / "
-            "(ts_max(high, {w}) - ts_min(low, {w}) + 1e-10)"
+            "(close - ts_min(low, {w})) / (ts_max(high, {w}) - ts_min(low, {w}) + 1e-10)"
         ),
         academic_support=3,
     ),
@@ -248,15 +243,13 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日价格趋势强度代理（Alpha158 BETA）",
         economic_rationale=(
-            "价格趋势斜率捕捉趋势强度。"
-            "趋势市中正向，震荡市中反转，与波动率组合形成条件信号。"
+            "价格趋势斜率捕捉趋势强度。趋势市中正向，震荡市中反转，与波动率组合形成条件信号。"
         ),
         direction="positive",
         required_fields=["close"],
         windows=WINDOWS_MID,
         expr_template=(
-            "(ts_mean(close, {w} // 2) - ts_mean(close, {w})) / "
-            "(ts_std(close, {w}) + 1e-10)"
+            "(ts_mean(close, {w} // 2) - ts_mean(close, {w})) / (ts_std(close, {w}) + 1e-10)"
         ),
         academic_support=3,
     ),
@@ -265,8 +258,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日收盘价与成交量的Rank相关（Alpha158 CORD）",
         economic_rationale=(
-            "量价Rank相关：正相关代表上涨放量（趋势延续），"
-            "负相关代表上涨缩量（动量衰减预警）。"
+            "量价Rank相关：正相关代表上涨放量（趋势延续），负相关代表上涨缩量（动量衰减预警）。"
         ),
         direction="negative",
         required_fields=["close", "volume"],
@@ -282,8 +274,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日上涨下跌天数差（Alpha158 CNTD）",
         economic_rationale=(
-            "上涨天数-下跌天数净值衡量多空博弈方向性。"
-            "与CNTP互补：CNTP是占比，CNTD是绝对差异。"
+            "上涨天数-下跌天数净值衡量多空博弈方向性。与CNTP互补：CNTP是占比，CNTD是绝对差异。"
         ),
         direction="positive",
         required_fields=["close"],
@@ -299,8 +290,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日振幅均值（市场参与度）",
         economic_rationale=(
-            "振幅衡量日内波动幅度。"
-            "持续小振幅后往往伴随方向性突破（布林带收缩效应）。"
+            "振幅衡量日内波动幅度。持续小振幅后往往伴随方向性突破（布林带收缩效应）。"
         ),
         direction="negative",
         required_fields=["high", "low", "close"],
@@ -327,15 +317,12 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日VWAP偏离度（价格偏离均衡反向）",
         economic_rationale=(
-            "VWAP代表当日成交均价，close高于VWAP代表收盘前追涨。"
-            "偏离越大均值回归概率越高。"
+            "VWAP代表当日成交均价，close高于VWAP代表收盘前追涨。偏离越大均值回归概率越高。"
         ),
         direction="negative",
         required_fields=["close", "amount", "volume"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "ts_mean(close / (amount / (volume + 1e-10) + 1e-10) - 1, {w})"
-        ),
+        expr_template=("ts_mean(close / (amount / (volume + 1e-10) + 1e-10) - 1, {w})"),
         academic_support=4,
     ),
     FactorTemplate(
@@ -343,8 +330,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="{w}日隔夜跳空均值（信息不对称）",
         economic_rationale=(
-            "隔夜跳空反映盘后信息的单边定价。"
-            "持续正跳空代表盘后利好消息积累，短期正向动量。"
+            "隔夜跳空反映盘后信息的单边定价。持续正跳空代表盘后利好消息积累，短期正向动量。"
         ),
         direction="positive",
         required_fields=["open", "close"],
@@ -378,8 +364,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         required_fields=["close"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "ts_max(close / delay(close, 1) - 1, {w}) - "
-            "ts_min(close / delay(close, 1) - 1, {w})"
+            "ts_max(close / delay(close, 1) - 1, {w}) - ts_min(close / delay(close, 1) - 1, {w})"
         ),
         academic_support=3,
     ),
@@ -397,7 +382,6 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         expr_template="ts_rank(close, {w})",
         academic_support=3,
     ),
-
     # ============================================================
     # 类别②：流动性类（DESIGN_V5 §4.2 类别②）
     # ============================================================
@@ -406,16 +390,14 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="liquidity",
         description="{w}日 Amihud 非流动性指标",
         economic_rationale=(
-            "每单位成交额的绝对收益：流动性溢价。"
-            "Amihud (2002)，A股小市值股票此效应尤显著。"
+            "每单位成交额的绝对收益：流动性溢价。Amihud (2002)，A股小市值股票此效应尤显著。"
         ),
         direction="positive",
         required_fields=["close", "amount"],  # amount: 千元(klines_daily)
         windows=(5, 10, 20),
         expr_template=(
             # amount/1e4 将千元转为千万元级别缩放，不影响截面排序
-            "ts_mean(abs(close / delay(close, 1) - 1) / "
-            "(amount / 1e4 + 1e-10), {w})"
+            "ts_mean(abs(close / delay(close, 1) - 1) / (amount / 1e4 + 1e-10), {w})"
         ),
         academic_support=4,
     ),
@@ -438,8 +420,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="liquidity",
         description="{w}日换手率波动率（流动性不稳定性）",
         economic_rationale=(
-            "换手率波动大代表资金进出不稳定，信号噪音高。"
-            "与均值换手率互补，捕捉流动性的二阶矩特征。"
+            "换手率波动大代表资金进出不稳定，信号噪音高。与均值换手率互补，捕捉流动性的二阶矩特征。"
         ),
         direction="negative",
         required_fields=["turnover_rate"],
@@ -452,8 +433,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="liquidity",
         description="{w}日相对成交量比（情绪高峰反向）",
         economic_rationale=(
-            "近期成交量 / 长期均量衡量相对活跃度。"
-            "突然放量通常是情绪高峰，随后价格均值回归。"
+            "近期成交量 / 长期均量衡量相对活跃度。突然放量通常是情绪高峰，随后价格均值回归。"
         ),
         direction="negative",
         required_fields=["volume"],
@@ -472,9 +452,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="negative",
         required_fields=["amount"],
         windows=(5, 10, 20),
-        expr_template=(
-            "ts_std(amount, {w}) / (ts_mean(amount, {w}) + 1e-10)"
-        ),
+        expr_template=("ts_std(amount, {w}) / (ts_mean(amount, {w}) + 1e-10)"),
         academic_support=4,
     ),
     FactorTemplate(
@@ -502,12 +480,9 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="positive",
         required_fields=["volume"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "ts_mean(volume, {w}) / (ts_mean(volume, {w} * 3) + 1e-10)"
-        ),
+        expr_template=("ts_mean(volume, {w}) / (ts_mean(volume, {w} * 3) + 1e-10)"),
         academic_support=3,
     ),
-
     # ============================================================
     # 类别③：资金流向类（DESIGN_V5 §4.2 类别③ — 全部未实现）
     # 单位说明: buy_lg_amount等来自moneyflow_daily(万元),
@@ -519,16 +494,12 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="flow",
         description="{w}日大单净流入占比（聪明钱方向）",
         economic_rationale=(
-            "大单代表机构/知情交易者的方向判断。"
-            "大单净流入表明机构建仓，未来价格被机构推动上涨。"
+            "大单代表机构/知情交易者的方向判断。大单净流入表明机构建仓，未来价格被机构推动上涨。"
         ),
         direction="positive",
         required_fields=["buy_lg_amount", "sell_lg_amount", "amount"],
         windows=(5, 10, 20),
-        expr_template=(
-            "ts_mean((buy_lg_amount - sell_lg_amount) / "
-            "(amount + 1e-10), {w})"
-        ),
+        expr_template=("ts_mean((buy_lg_amount - sell_lg_amount) / (amount + 1e-10), {w})"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -543,8 +514,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         required_fields=["buy_lg_amount", "sell_lg_amount", "amount"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "delta(ts_mean((buy_lg_amount - sell_lg_amount) / "
-            "(amount + 1e-10), {w}), {w})"
+            "delta(ts_mean((buy_lg_amount - sell_lg_amount) / (amount + 1e-10), {w}), {w})"
         ),
         academic_support=3,
     ),
@@ -553,16 +523,12 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="flow",
         description="{w}日中单净流入占比（游资方向）",
         economic_rationale=(
-            "中单（游资/中型散户）与大单方向对比。"
-            "大单买+中单卖 = 机构接散户筹码，强正向信号。"
+            "中单（游资/中型散户）与大单方向对比。大单买+中单卖 = 机构接散户筹码，强正向信号。"
         ),
         direction="positive",
         required_fields=["buy_md_amount", "sell_md_amount", "amount"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "ts_mean((buy_md_amount - sell_md_amount) / "
-            "(amount + 1e-10), {w})"
-        ),
+        expr_template=("ts_mean((buy_md_amount - sell_md_amount) / (amount + 1e-10), {w})"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -576,9 +542,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="positive",
         required_fields=["margin_balance"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "margin_balance / (delay(margin_balance, {w}) + 1e-10) - 1"
-        ),
+        expr_template=("margin_balance / (delay(margin_balance, {w}) + 1e-10) - 1"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -609,7 +573,6 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         expr_template="winner_rate",
         academic_support=3,
     ),
-
     # ============================================================
     # 类别④：基本面价值类（DESIGN_V5 §4.2 类别④）
     # ============================================================
@@ -618,8 +581,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="盈利收益率 1/PE_TTM（价值效应）",
         economic_rationale=(
-            "E/P高的股票被市场低估，未来存在价值回归。"
-            "Basu (1977) PE效应，Fama-French价值因子核心。"
+            "E/P高的股票被市场低估，未来存在价值回归。Basu (1977) PE效应，Fama-French价值因子核心。"
         ),
         direction="positive",
         required_fields=["pe_ttm"],
@@ -632,8 +594,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="账面市值比 1/PB（价值效应）",
         economic_rationale=(
-            "B/P高代表市值低于净资产，存在安全边际。"
-            "Fama-French HML因子核心，A股验证有效。"
+            "B/P高代表市值低于净资产，存在安全边际。Fama-French HML因子核心，A股验证有效。"
         ),
         direction="positive",
         required_fields=["pb"],
@@ -646,8 +607,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="股息率TTM（现金流价值）",
         economic_rationale=(
-            "高股息代表公司现金流充沛且分配意愿强。"
-            "是价值因子的稳健代理，在低利率环境中Alpha更强。"
+            "高股息代表公司现金流充沛且分配意愿强。是价值因子的稳健代理，在低利率环境中Alpha更强。"
         ),
         direction="positive",
         required_fields=["dv_ttm"],
@@ -674,8 +634,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="毛利率（定价能力/竞争壁垒）",
         economic_rationale=(
-            "高毛利率代表产品定价能力强，竞争护城河宽。"
-            "Novy-Marx (2013) 盈利能力因子，与BP正交。"
+            "高毛利率代表产品定价能力强，竞争护城河宽。Novy-Marx (2013) 盈利能力因子，与BP正交。"
         ),
         direction="positive",
         required_fields=["grossprofit_margin"],
@@ -688,8 +647,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="总资产收益率TTM（资产利用效率）",
         economic_rationale=(
-            "ROA衡量全部资产的创利效率，剔除财务杠杆影响。"
-            "与ROE互补：ROA高+ROE高=真正高质量企业。"
+            "ROA衡量全部资产的创利效率，剔除财务杠杆影响。与ROE互补：ROA高+ROE高=真正高质量企业。"
         ),
         direction="positive",
         required_fields=["roa"],
@@ -702,8 +660,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="fundamental",
         description="{w}期ROE稳定性（盈利质量稳健性）",
         economic_rationale=(
-            "ROE时序标准差衡量盈利稳定性：波动小的高ROE更可持续，"
-            "波动大的高ROE可能是一次性事件。"
+            "ROE时序标准差衡量盈利稳定性：波动小的高ROE更可持续，波动大的高ROE可能是一次性事件。"
         ),
         direction="positive",
         required_fields=["roe"],
@@ -711,7 +668,6 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         expr_template="roe / (ts_std(roe, {w}) + 1e-10)",
         academic_support=3,
     ),
-
     # ============================================================
     # 类别⑤：跨数据源组合（R2研究推荐，A股独特优势）
     # ============================================================
@@ -726,10 +682,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="positive",
         required_fields=["close", "turnover_rate"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "rank(close / delay(close, {w}) - 1) * "
-            "rank(ts_mean(turnover_rate, {w}))"
-        ),
+        expr_template=("rank(close / delay(close, {w}) - 1) * rank(ts_mean(turnover_rate, {w}))"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -737,15 +690,13 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="cross_source",
         description="{w}日波动率调整收益（信息比率代理）",
         economic_rationale=(
-            "每单位波动风险的收益：Sharpe比率的时序版本。"
-            "高信息比率的股票更可能获得持续Alpha。"
+            "每单位波动风险的收益：Sharpe比率的时序版本。高信息比率的股票更可能获得持续Alpha。"
         ),
         direction="positive",
         required_fields=["close"],
         windows=WINDOWS_SHORT,
         expr_template=(
-            "(close / delay(close, {w}) - 1) / "
-            "(ts_std(close / delay(close, 1) - 1, {w}) + 1e-10)"
+            "(close / delay(close, {w}) - 1) / (ts_std(close / delay(close, 1) - 1, {w}) + 1e-10)"
         ),
         academic_support=3,
     ),
@@ -760,9 +711,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="negative",
         required_fields=["high", "close"],
         windows=(5, 10),
-        expr_template=(
-            "ts_mean((high / delay(close, 1) - 1 > 0.095) * 1.0, {w})"
-        ),
+        expr_template=("ts_mean((high / delay(close, 1) - 1 > 0.095) * 1.0, {w})"),
         academic_support=3,
     ),
     FactorTemplate(
@@ -770,8 +719,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         category="price_volume",
         description="价格对数水平（低价股效应）",
         economic_rationale=(
-            "低价股吸引散户投机（彩票效应），被高估。"
-            "A股低价股溢价陷阱显著，股价越低未来收益越差。"
+            "低价股吸引散户投机（彩票效应），被高估。A股低价股溢价陷阱显著，股价越低未来收益越差。"
         ),
         direction="positive",
         required_fields=["close"],
@@ -790,9 +738,7 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="negative",
         required_fields=["volume"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "ts_max(volume, {w}) / (ts_sum(volume, {w}) + 1e-10)"
-        ),
+        expr_template=("ts_max(volume, {w}) / (ts_sum(volume, {w}) + 1e-10)"),
         academic_support=2,
     ),
     FactorTemplate(
@@ -806,16 +752,12 @@ FACTOR_TEMPLATES: list[FactorTemplate] = [
         direction="negative",
         required_fields=["amount"],
         windows=WINDOWS_SHORT,
-        expr_template=(
-            "ts_mean(amount, {w}) / (ts_mean(amount, {w} * 4) + 1e-10)"
-        ),
+        expr_template=("ts_mean(amount, {w}) / (ts_mean(amount, {w} * 4) + 1e-10)"),
         academic_support=3,
     ),
 ]
 
-assert len(FACTOR_TEMPLATES) >= 40, (
-    f"模板数量不足: {len(FACTOR_TEMPLATES)}，要求 >= 40"
-)
+assert len(FACTOR_TEMPLATES) >= 40, f"模板数量不足: {len(FACTOR_TEMPLATES)}，要求 >= 40"
 
 
 # ---------------------------------------------------------------------------
@@ -914,9 +856,7 @@ class BruteForceEngine:
                 if factor_values is None:
                     continue
 
-                ic_series = self._compute_ic_series(
-                    factor_values, forward_returns
-                )
+                ic_series = self._compute_ic_series(factor_values, forward_returns)
                 if len(ic_series) < self.min_ic_periods:
                     continue
 
@@ -925,7 +865,7 @@ class BruteForceEngine:
                 n = len(ic_series)
                 if cand.ic_std > 0:
                     cand.ic_ir = cand.ic_mean / cand.ic_std
-                    cand.t_stat = cand.ic_mean / (cand.ic_std / (n ** 0.5))
+                    cand.t_stat = cand.ic_mean / (cand.ic_std / (n**0.5))
                 else:
                     cand.ic_ir = 0.0
                     cand.t_stat = 0.0
@@ -933,9 +873,7 @@ class BruteForceEngine:
                 cand.passed_g1 = abs(cand.ic_mean) >= self.g1_ic_threshold
 
                 if active_factors is not None and cand.passed_g1:
-                    max_corr = self._check_correlation(
-                        factor_values, active_factors
-                    )
+                    max_corr = self._check_correlation(factor_values, active_factors)
                     cand.max_corr_with_active = max_corr
                     cand.passed_g2 = max_corr < self.g2_corr_threshold
                 else:
@@ -1005,9 +943,7 @@ class BruteForceEngine:
             logger.debug("因子 %s 计算异常", cand.name, exc_info=True)
             return None
 
-    def _eval_expression_panel(
-        self, expr: str, data: pd.DataFrame
-    ) -> pd.Series:
+    def _eval_expression_panel(self, expr: str, data: pd.DataFrame) -> pd.Series:
         """在面板数据（MultiIndex date, symbol_id）上执行因子表达式"""
         results: list[pd.Series] = []
 
@@ -1019,9 +955,7 @@ class BruteForceEngine:
                 if isinstance(val, pd.Series):
                     results.append(val)
                 elif isinstance(val, (float, int, np.floating, np.integer)):
-                    results.append(
-                        pd.Series(float(val), index=grp_sorted.index)
-                    )
+                    results.append(pd.Series(float(val), index=grp_sorted.index))
             except Exception:
                 continue
 
@@ -1067,15 +1001,11 @@ class BruteForceEngine:
                 "zscore": lambda x: (x - x.mean()) / (x.std() + 1e-10),
                 "cs_zscore": lambda x: (x - x.mean()) / (x.std() + 1e-10),
                 "log": lambda x: np.log(
-                    x.clip(lower=1e-10)
-                    if hasattr(x, "clip")
-                    else max(float(x), 1e-10)
+                    x.clip(lower=1e-10) if hasattr(x, "clip") else max(float(x), 1e-10)
                 ),
                 "sign": lambda x: np.sign(x),
                 "pow": lambda x, n: np.power(x, n),
-                "if_else": lambda c, x, y: pd.Series(
-                    np.where(c, x, y), index=c.index
-                ),
+                "if_else": lambda c, x, y: pd.Series(np.where(c, x, y), index=c.index),
             }
         )
         return ns
@@ -1084,11 +1014,34 @@ class BruteForceEngine:
     def _get_required_fields(expr: str) -> set[str]:
         """从表达式中提取所需的数据字段名"""
         operator_names = {
-            "ts_mean", "ts_std", "ts_corr", "ts_rank", "ts_max", "ts_min",
-            "ts_sum", "delay", "delta", "rank", "zscore", "cs_rank",
-            "cs_zscore", "log", "sign", "pow", "if_else",
-            "abs", "min", "max", "sum", "len", "float", "int", "bool",
-            "np", "pd", "math",
+            "ts_mean",
+            "ts_std",
+            "ts_corr",
+            "ts_rank",
+            "ts_max",
+            "ts_min",
+            "ts_sum",
+            "delay",
+            "delta",
+            "rank",
+            "zscore",
+            "cs_rank",
+            "cs_zscore",
+            "log",
+            "sign",
+            "pow",
+            "if_else",
+            "abs",
+            "min",
+            "max",
+            "sum",
+            "len",
+            "float",
+            "int",
+            "bool",
+            "np",
+            "pd",
+            "math",
         }
         try:
             tree = ast.parse(expr, mode="eval")
@@ -1109,7 +1062,14 @@ class BruteForceEngine:
         factor_values: pd.Series,
         forward_returns: pd.Series | pd.DataFrame,
     ) -> pd.Series:
-        """计算截面 Spearman rank IC 序列"""
+        """计算截面 Spearman rank IC 序列
+
+        .. deprecated:: Phase E F56 (2026-04-16)
+            铁律 19 要求所有 IC 计算走 ``engines.ic_calculator``.
+            本方法使用 raw return (非超额收益) 且无中性化, 与生产 IC 口径不一致.
+            GP 管道重启前必须迁移到 ``ic_calculator.compute_ic_series``.
+        """
+        # TODO(F56): 铁律19要求走ic_calculator, GP管道重启前必须迁移
         fwd = (
             forward_returns.iloc[:, 0]
             if isinstance(forward_returns, pd.DataFrame)
@@ -1129,9 +1089,7 @@ class BruteForceEngine:
 
             aligned = grp_f.align(grp_r, join="inner")[0]
             ret_aligned = grp_r.reindex(aligned.index)
-            valid = (~grp_f.reindex(aligned.index).isna()) & (
-                ~ret_aligned.isna()
-            )
+            valid = (~grp_f.reindex(aligned.index).isna()) & (~ret_aligned.isna())
             if valid.sum() < 10:
                 continue
 

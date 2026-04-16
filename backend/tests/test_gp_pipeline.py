@@ -17,9 +17,17 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# F74/F18: Windows asyncio event loop hang — GP pipeline async tests freeze on IOCP.
+# Root cause: pytest-asyncio + Windows ProactorEventLoop. F18 async→sync 迁移后移除此 skip.
+_SKIP_WIN_ASYNC = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="F74: Windows asyncio IOCP hang, 待 F18 async→sync 迁移后移除",
+)
 
 # ---------------------------------------------------------------------------
 # 导入守卫（Celery / asyncpg 可能未安装）
@@ -33,6 +41,7 @@ try:
         run_bruteforce_mining,
         run_gp_mining,
     )
+
     _TASKS_AVAILABLE = True
 except ImportError:
     _TASKS_AVAILABLE = False
@@ -233,6 +242,7 @@ class TestWriteResultsToDB:
 # ---------------------------------------------------------------------------
 
 
+@_SKIP_WIN_ASYNC
 class TestRunGPMiningAsync:
     """_run_gp_mining_async 的核心逻辑路径。"""
 
@@ -274,12 +284,14 @@ class TestRunGPMiningAsync:
         # 非空市场数据
         n = 50
         rng = np.random.default_rng(0)
-        market_data = pd.DataFrame({
-            "close": rng.uniform(5, 100, n),
-            "volume": rng.uniform(1e6, 5e7, n),
-            "pb": rng.uniform(0.5, 8.0, n),
-            "turnover_rate": rng.uniform(0.001, 0.05, n),
-        })
+        market_data = pd.DataFrame(
+            {
+                "close": rng.uniform(5, 100, n),
+                "volume": rng.uniform(1e6, 5e7, n),
+                "pb": rng.uniform(0.5, 8.0, n),
+                "turnover_rate": rng.uniform(0.001, 0.05, n),
+            }
+        )
         forward_returns = pd.Series(rng.normal(0, 0.02, n))
 
         with (
@@ -315,6 +327,7 @@ class TestRunGPMiningAsync:
 # ---------------------------------------------------------------------------
 
 
+@_SKIP_WIN_ASYNC
 class TestDingTalkNotification:
     """钉钉通知格式和调用验证。"""
 
@@ -325,12 +338,14 @@ class TestDingTalkNotification:
 
         n = 50
         rng = np.random.default_rng(1)
-        market_data = pd.DataFrame({
-            "close": rng.uniform(5, 100, n),
-            "volume": rng.uniform(1e6, 5e7, n),
-            "pb": rng.uniform(0.5, 8.0, n),
-            "turnover_rate": rng.uniform(0.001, 0.05, n),
-        })
+        market_data = pd.DataFrame(
+            {
+                "close": rng.uniform(5, 100, n),
+                "volume": rng.uniform(1e6, 5e7, n),
+                "pb": rng.uniform(0.5, 8.0, n),
+                "turnover_rate": rng.uniform(0.001, 0.05, n),
+            }
+        )
         forward_returns = pd.Series(rng.normal(0, 0.02, n))
 
         mock_gp_results = []
@@ -373,10 +388,12 @@ class TestDingTalkNotification:
                 "scripts.run_gp_pipeline._send_dingtalk_notification",
             ) as mock_notify,
         ):
-            result = asyncio.run(_run_gp_mining_async(
-                run_id="gp_notify_test",
-                config={"generations": 5, "population": 10, "islands": 1},
-            ))
+            result = asyncio.run(
+                _run_gp_mining_async(
+                    run_id="gp_notify_test",
+                    config={"generations": 5, "population": 10, "islands": 1},
+                )
+            )
 
         # 钉钉通知应被调用
         mock_notify.assert_called_once()
@@ -450,7 +467,8 @@ class TestRunGPMiningTask:
             patch(
                 "asyncio.run",
                 side_effect=[RuntimeError("GP内部错误"), None],
-            ),pytest.raises(RuntimeError, match="GP内部错误")
+            ),
+            pytest.raises(RuntimeError, match="GP内部错误"),
         ):
             run_gp_mining.__wrapped__(
                 run_id="gp_exc_test",

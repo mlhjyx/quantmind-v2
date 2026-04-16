@@ -22,6 +22,7 @@ from engines.backtest_engine import (
 # Fixtures
 # ============================================================
 
+
 @pytest.fixture
 def base_config() -> BacktestConfig:
     return BacktestConfig(
@@ -43,7 +44,7 @@ def _make_row(**kwargs) -> pd.Series:
         "pre_close": 10.0,
         "volume": 1_000_000,
         "turnover_rate": 5.0,
-        "amount": 100_000,  # 千元 → 1亿元
+        "amount": 10_000_000,  # 元 (Step 3-A 标准化后, 1千万元)
         "open": 10.0,
         "trade_date": date(2024, 1, 2),
     }
@@ -54,6 +55,7 @@ def _make_row(**kwargs) -> pd.Series:
 # ============================================================
 # A3: turnover_rate NULL 修复
 # ============================================================
+
 
 class TestA3TurnoverNullFix:
     """A3: turnover_rate 为 NULL/NaN 时不误判为封板。"""
@@ -86,14 +88,16 @@ class TestA3TurnoverNullFix:
 
     def test_turnover_missing_key_not_blocked(self, broker):
         """行情行中完全没有 turnover_rate 键 → 默认999 → 不封板。"""
-        row = pd.Series({"close": 10.0, "pre_close": 10.0, "volume": 500_000,
-                         "amount": 100_000, "open": 10.0})
+        row = pd.Series(
+            {"close": 10.0, "pre_close": 10.0, "volume": 500_000, "amount": 100_000, "open": 10.0}
+        )
         assert broker.can_trade("600519.SH", "buy", row) is True
 
 
 # ============================================================
 # A5: 成交量约束（volume cap）
 # ============================================================
+
 
 class TestA5VolumeCap:
     """A5: 单笔成交额不超过当日成交额的 volume_cap_pct。"""
@@ -116,8 +120,7 @@ class TestA5VolumeCap:
         fill = broker.execute_buy("000001.SZ", 500_000, row)
         if fill is not None:
             # 成交金额应≤ 10万元 * (1 + epsilon)
-            assert fill.amount <= 110_000, \
-                f"超过cap的买入应被截断，实际成交={fill.amount:.0f}元"
+            assert fill.amount <= 110_000, f"超过cap的买入应被截断，实际成交={fill.amount:.0f}元"
 
     def test_sell_exceeds_cap_truncated(self, base_config):
         """大额卖出超过10%成交额上限 → 截断股数。"""
@@ -125,18 +128,24 @@ class TestA5VolumeCap:
         broker.holdings["000001.SZ"] = 100_000  # 持有10万股
         broker.cash = 0
 
-        # daily_amount=1_000千元=100万元, cap=10%=10万元 → max_shares=10000
-        row = _make_row(amount=1_000, open=10.0)
+        # daily_amount=1_000_000元(100万元), cap=10%=10万元 → max_shares=10000
+        row = _make_row(amount=1_000_000, open=10.0)
         fill = broker.execute_sell("000001.SZ", 50_000, row)  # 试图卖5万股
         if fill is not None:
-            assert fill.shares <= 10_100, \
-                f"超过cap的卖出应被截断, 实际={fill.shares}股"
+            assert fill.shares <= 10_100, f"超过cap的卖出应被截断, 实际={fill.shares}股"
 
     def test_missing_amount_skips_cap(self, broker):
         """daily_amount 数据缺失 → 跳过 volume cap 检查。"""
-        row = pd.Series({"close": 10.0, "pre_close": 10.0, "volume": 500_000,
-                         "turnover_rate": 5.0, "open": 10.0,
-                         "trade_date": date(2024, 1, 2)})
+        row = pd.Series(
+            {
+                "close": 10.0,
+                "pre_close": 10.0,
+                "volume": 500_000,
+                "turnover_rate": 5.0,
+                "open": 10.0,
+                "trade_date": date(2024, 1, 2),
+            }
+        )
         # 无 amount 字段，应正常执行不报错
         fill = broker.execute_buy("000001.SZ", 500_000, row)
         # 不因缺少amount而崩溃，fill可能为None(资金不足)或正常
@@ -158,9 +167,9 @@ class TestA5VolumeCap:
             assert fill.amount > 100_000  # 不被截断（资金允许范围内）
 
     def test_daily_amount_yuan_helper(self, broker):
-        """_daily_amount_yuan: 千元→元转换正确。"""
-        row_qian = _make_row(amount=1_000)   # 千元 → 100万元
-        assert abs(broker._daily_amount_yuan(row_qian) - 1_000_000) < 1
+        """_daily_amount_yuan: Step 3-A后amount已是元, 直接返回。"""
+        row_yuan = _make_row(amount=1_000_000)  # 100万元
+        assert abs(broker._daily_amount_yuan(row_yuan) - 1_000_000) < 1
 
         row_none = pd.Series({"close": 10.0})
         assert broker._daily_amount_yuan(row_none) == 0.0
@@ -169,6 +178,7 @@ class TestA5VolumeCap:
 # ============================================================
 # A7: unrealized_pnl / avg_cost 写入
 # ============================================================
+
 
 class TestA7UnrealizedPnl:
     """A7: update_nav_sync 正确计算并写入 avg_cost / unrealized_pnl。"""
@@ -180,8 +190,8 @@ class TestA7UnrealizedPnl:
         conn.cursor.return_value = cur
         # fetchone 默认返回 (初始资金,) 作为 prev_nav/peak_nav
         cur.fetchone.side_effect = [
-            None,              # prev_nav (无历史)
-            (1_000_000.0,),    # peak_nav
+            None,  # prev_nav (无历史)
+            (1_000_000.0,),  # peak_nav
         ]
         return conn, cur
 
@@ -206,8 +216,9 @@ class TestA7UnrealizedPnl:
         )
 
         # 检查 INSERT 调用中包含 avg_cost 和 unrealized_pnl
-        insert_calls = [c for c in cur.execute.call_args_list
-                        if "INSERT INTO position_snapshot" in str(c)]
+        insert_calls = [
+            c for c in cur.execute.call_args_list if "INSERT INTO position_snapshot" in str(c)
+        ]
         assert len(insert_calls) == 1
 
         # 参数中应包含 avg_cost=10.0 和 unrealized_pnl=(12000-10000)=2000
@@ -234,8 +245,9 @@ class TestA7UnrealizedPnl:
             # avg_costs 未传入 → 向后兼容
         )
 
-        insert_calls = [c for c in cur.execute.call_args_list
-                        if "INSERT INTO position_snapshot" in str(c)]
+        insert_calls = [
+            c for c in cur.execute.call_args_list if "INSERT INTO position_snapshot" in str(c)
+        ]
         assert len(insert_calls) == 1
         args = insert_calls[0][0][1]
         # avg_cost 和 unrealized_pnl 应为 None
@@ -262,8 +274,9 @@ class TestA7UnrealizedPnl:
             avg_costs=avg_costs,
         )
 
-        insert_calls = [c for c in cur.execute.call_args_list
-                        if "INSERT INTO position_snapshot" in str(c)]
+        insert_calls = [
+            c for c in cur.execute.call_args_list if "INSERT INTO position_snapshot" in str(c)
+        ]
         args = insert_calls[0][0][1]
         # avg_cost=0 → 跳过，写入 None
         none_count = sum(1 for a in args if a is None)
@@ -274,11 +287,22 @@ class TestA7UnrealizedPnl:
 # A10: 回测确定性排序
 # ============================================================
 
+
 def _build_determinism_data() -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """构造标准回测数据（相同输入两次运行应产生相同结果）。"""
     dates = [date(2024, 1, d) for d in range(2, 20) if date(2024, 1, d).weekday() < 5]
-    codes = ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ",
-             "300001.SZ", "300002.SZ", "600001.SH", "600002.SH", "600003.SH"]
+    codes = [
+        "000001.SZ",
+        "000002.SZ",
+        "000003.SZ",
+        "000004.SZ",
+        "000005.SZ",
+        "300001.SZ",
+        "300002.SZ",
+        "600001.SH",
+        "600002.SH",
+        "600003.SH",
+    ]
 
     np.random.seed(777)
     rows = []
@@ -286,26 +310,30 @@ def _build_determinism_data() -> tuple[dict, pd.DataFrame, pd.DataFrame]:
         for code in codes:
             pre_close = 10.0 + np.random.uniform(-1, 1)
             close = pre_close * (1 + np.random.uniform(-0.05, 0.05))
-            rows.append({
-                "code": code,
-                "trade_date": d,
-                "open": pre_close * 1.001,
-                "close": close,
-                "pre_close": pre_close,
-                "volume": int(np.random.uniform(500_000, 2_000_000)),
-                "amount": float(np.random.uniform(5_000, 50_000)),  # 千元
-                "turnover_rate": float(np.random.uniform(1, 10)),
-                "total_mv": float(np.random.uniform(10_000, 100_000)),
-                "volatility_20": float(np.random.uniform(20, 40)),
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "trade_date": d,
+                    "open": pre_close * 1.001,
+                    "close": close,
+                    "pre_close": pre_close,
+                    "volume": int(np.random.uniform(500_000, 2_000_000)),
+                    "amount": float(np.random.uniform(5_000, 50_000)),  # 千元
+                    "turnover_rate": float(np.random.uniform(1, 10)),
+                    "total_mv": float(np.random.uniform(10_000, 100_000)),
+                    "volatility_20": float(np.random.uniform(20, 40)),
+                }
+            )
 
     price_data = pd.DataFrame(rows)
 
     benchmark_dates = dates
-    benchmark = pd.DataFrame({
-        "trade_date": benchmark_dates,
-        "close": [100.0 + i * 0.2 for i in range(len(benchmark_dates))],
-    })
+    benchmark = pd.DataFrame(
+        {
+            "trade_date": benchmark_dates,
+            "close": [100.0 + i * 0.2 for i in range(len(benchmark_dates))],
+        }
+    )
 
     # 信号: 每次调仓买等权
     signal_dates = dates[::5]
@@ -339,8 +367,9 @@ class TestA10Determinism:
         result2 = engine2.run(target, price_data.copy(), benchmark.copy())
 
         # 交易记录应完全一致
-        assert len(result1.trades) == len(result2.trades), \
+        assert len(result1.trades) == len(result2.trades), (
             f"两次运行交易数量不同: {len(result1.trades)} vs {len(result2.trades)}"
+        )
 
         # 每笔交易的关键字段一致
         for i, (t1, t2) in enumerate(zip(result1.trades, result2.trades, strict=False)):
@@ -367,16 +396,19 @@ class TestA10Determinism:
 
         assert len(r1.daily_nav) == len(r2.daily_nav)
         for d in r1.daily_nav.index:
-            assert abs(r1.daily_nav[d] - r2.daily_nav[d]) < 1e-6, \
+            assert abs(r1.daily_nav[d] - r2.daily_nav[d]) < 1e-6, (
                 f"{d}: NAV不一致 {r1.daily_nav[d]} vs {r2.daily_nav[d]}"
+            )
 
     def test_price_data_sort_is_stable(self):
         """相同 (trade_date, code) 的行在 sort 后顺序稳定。"""
-        df = pd.DataFrame([
-            {"trade_date": date(2024, 1, 2), "code": "000001.SZ", "close": 10.0, "seq": 1},
-            {"trade_date": date(2024, 1, 2), "code": "000001.SZ", "close": 10.0, "seq": 2},
-            {"trade_date": date(2024, 1, 2), "code": "000002.SZ", "close": 11.0, "seq": 3},
-        ])
+        df = pd.DataFrame(
+            [
+                {"trade_date": date(2024, 1, 2), "code": "000001.SZ", "close": 10.0, "seq": 1},
+                {"trade_date": date(2024, 1, 2), "code": "000001.SZ", "close": 10.0, "seq": 2},
+                {"trade_date": date(2024, 1, 2), "code": "000002.SZ", "close": 11.0, "seq": 3},
+            ]
+        )
         sorted_df = df.sort_values(["trade_date", "code"], kind="mergesort")
         # 相同(date, code)的行应保持插入顺序
         same_rows = sorted_df[sorted_df["code"] == "000001.SZ"]["seq"].tolist()

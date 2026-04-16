@@ -31,6 +31,7 @@ import pg_backup  # noqa: E402  (scripts/pg_backup.py)
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def tmp_backup_dirs(tmp_path):
     """用临时目录替换备份根目录。"""
@@ -62,8 +63,8 @@ def _make_dump_file(daily_dir: Path, date_str: str, size_bytes: int = 200 * 1024
 # run_backup
 # ---------------------------------------------------------------------------
 
-class TestRunBackup:
 
+class TestRunBackup:
     def test_success(self, tmp_backup_dirs):
         """pg_dump 成功，返回备份路径。"""
         daily = tmp_backup_dirs["daily"]
@@ -99,7 +100,10 @@ class TestRunBackup:
         mock_result.returncode = 1
         mock_result.stderr = "FATAL: database not found"
 
-        with patch("subprocess.run", return_value=mock_result), patch.object(pg_backup, "send_alert"):
+        with (
+            patch("subprocess.run", return_value=mock_result),
+            patch.object(pg_backup, "send_alert"),
+        ):
             result = pg_backup.run_backup(dry_run=False)
 
         assert result is None
@@ -108,8 +112,12 @@ class TestRunBackup:
         """pg_dump 超时，返回 None 并告警。"""
         import subprocess
 
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pg_dump", timeout=1800)), \
-             patch.object(pg_backup, "send_alert") as mock_alert:
+        with (
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pg_dump", timeout=1800)
+            ),
+            patch.object(pg_backup, "send_alert") as mock_alert,
+        ):
             result = pg_backup.run_backup(dry_run=False)
 
         assert result is None
@@ -127,8 +135,10 @@ class TestRunBackup:
             r.stderr = ""
             return r
 
-        with patch("subprocess.run", side_effect=fake_run_small), \
-             patch.object(pg_backup, "send_alert") as mock_alert:
+        with (
+            patch("subprocess.run", side_effect=fake_run_small),
+            patch.object(pg_backup, "send_alert") as mock_alert,
+        ):
             result = pg_backup.run_backup(dry_run=False)
 
         # 应该仍然返回文件路径（告警但不中断）
@@ -142,8 +152,8 @@ class TestRunBackup:
 # cleanup_old_backups
 # ---------------------------------------------------------------------------
 
-class TestCleanupOldBackups:
 
+class TestCleanupOldBackups:
     def test_deletes_old_files(self, tmp_backup_dirs):
         """超过7天的备份文件被删除。"""
         daily = tmp_backup_dirs["daily"]
@@ -171,8 +181,9 @@ class TestCleanupOldBackups:
         """近期备份不被删除。"""
         daily = tmp_backup_dirs["daily"]
 
-        # 创建3天前的备份
-        recent_file = daily / "quantmind_v2_20260325.dump"
+        # 创建3天前的备份 (文件名用动态日期, 避免时间流逝导致误删)
+        recent_date = (datetime.now() - timedelta(days=3)).strftime("%Y%m%d")
+        recent_file = daily / f"quantmind_v2_{recent_date}.dump"
         recent_file.write_bytes(b"recent")
         recent_mtime = (datetime.now() - timedelta(days=3)).timestamp()
         os.utime(recent_file, (recent_mtime, recent_mtime))
@@ -204,8 +215,8 @@ class TestCleanupOldBackups:
 # maybe_copy_monthly
 # ---------------------------------------------------------------------------
 
-class TestMaybeCopyMonthly:
 
+class TestMaybeCopyMonthly:
     def test_copies_on_month_start(self, tmp_backup_dirs):
         """月初（1号）时复制到 monthly/。"""
         daily = tmp_backup_dirs["daily"]
@@ -256,8 +267,8 @@ class TestMaybeCopyMonthly:
 # verify_backup
 # ---------------------------------------------------------------------------
 
-class TestVerifyBackup:
 
+class TestVerifyBackup:
     def test_passes_with_sufficient_tables(self, tmp_backup_dirs):
         """pg_restore --list 返回足够的TABLE条目时验证通过。"""
         daily = tmp_backup_dirs["daily"]
@@ -267,11 +278,11 @@ class TestVerifyBackup:
         # 构造有43个TABLE条目的 pg_restore --list 输出
         lines = ["; Archive created at 2026-03-28"]
         for i in range(43):
-            lines.append(f"{1000+i}; 2200 {16000+i} TABLE public table_{i} xin")
+            lines.append(f"{1000 + i}; 2200 {16000 + i} TABLE public table_{i} xin")
         for i in range(43):
-            lines.append(f"{2000+i}; 2200 {17000+i} TABLE DATA public table_{i} xin")
+            lines.append(f"{2000 + i}; 2200 {17000 + i} TABLE DATA public table_{i} xin")
         for i in range(50):
-            lines.append(f"{3000+i}; 2200 {18000+i} INDEX public idx_{i} xin")
+            lines.append(f"{3000 + i}; 2200 {18000 + i} INDEX public idx_{i} xin")
         mock_output = "\n".join(lines)
 
         mock_result = MagicMock()
@@ -293,7 +304,7 @@ class TestVerifyBackup:
         # 只有20个TABLE
         lines = ["; Archive"]
         for i in range(20):
-            lines.append(f"{1000+i}; 2200 {16000+i} TABLE public table_{i} xin")
+            lines.append(f"{1000 + i}; 2200 {16000 + i} TABLE public table_{i} xin")
         mock_output = "\n".join(lines)
 
         mock_result = MagicMock()
@@ -335,7 +346,9 @@ class TestVerifyBackup:
         dump_file = daily / "quantmind_v2_20260328.dump"
         dump_file.write_bytes(b"x" * (150 * 1024 * 1024))
 
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pg_restore", timeout=120)):
+        with patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="pg_restore", timeout=120)
+        ):
             ok = pg_backup.verify_backup()
 
         assert ok is False
@@ -345,25 +358,29 @@ class TestVerifyBackup:
 # export_parquet_snapshots
 # ---------------------------------------------------------------------------
 
-class TestExportParquetSnapshots:
 
+class TestExportParquetSnapshots:
     def test_exports_both_tables(self, tmp_backup_dirs):
         """成功导出 klines_daily 和 factor_values。"""
         import pandas as pd
 
         parquet_dir = tmp_backup_dirs["parquet"]
         mock_conn = MagicMock()
-        mock_df_klines = pd.DataFrame({
-            "trade_date": ["2026-03-28"] * 100,
-            "symbol_id": list(range(100)),
-            "close": [10.0] * 100,
-        })
-        mock_df_fv = pd.DataFrame({
-            "trade_date": ["2026-03-28"] * 50,
-            "symbol_id": list(range(50)),
-            "factor_name": ["turnover_mean_20"] * 50,
-            "value": [0.01] * 50,
-        })
+        mock_df_klines = pd.DataFrame(
+            {
+                "trade_date": ["2026-03-28"] * 100,
+                "symbol_id": list(range(100)),
+                "close": [10.0] * 100,
+            }
+        )
+        mock_df_fv = pd.DataFrame(
+            {
+                "trade_date": ["2026-03-28"] * 50,
+                "symbol_id": list(range(50)),
+                "factor_name": ["turnover_mean_20"] * 50,
+                "value": [0.01] * 50,
+            }
+        )
 
         def fake_to_parquet(path, **kwargs):
             # 写入stub文件使 stat() 可以成功
@@ -373,7 +390,9 @@ class TestExportParquetSnapshots:
             patch.dict("sys.modules", {"psycopg2": MagicMock()}),
             patch("psycopg2.connect", return_value=mock_conn),
             patch("pandas.read_sql", side_effect=[mock_df_klines, mock_df_fv]),
-            patch.object(pd.DataFrame, "to_parquet", side_effect=fake_to_parquet) as mock_to_parquet,
+            patch.object(
+                pd.DataFrame, "to_parquet", side_effect=fake_to_parquet
+            ) as mock_to_parquet,
         ):
             result = pg_backup.export_parquet_snapshots()
 
@@ -386,8 +405,10 @@ class TestExportParquetSnapshots:
 
     def test_handles_missing_psycopg2(self, tmp_backup_dirs):
         """缺少 psycopg2 时优雅退出返回 False。"""
-        with patch.dict("sys.modules", {"psycopg2": None}), \
-             patch("builtins.__import__", side_effect=ImportError("No module named 'psycopg2'")):
+        with (
+            patch.dict("sys.modules", {"psycopg2": None}),
+            patch("builtins.__import__", side_effect=ImportError("No module named 'psycopg2'")),
+        ):
             result = pg_backup.export_parquet_snapshots()
         # ImportError 应被捕获，返回 False 不崩溃
         assert result is False
