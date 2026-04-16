@@ -51,13 +51,11 @@ logging.basicConfig(
 logger = logging.getLogger("ic_monitor")
 
 # ── 配置 ──────────────────────────────────────────────────
-CORE_FACTORS = ["turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm"]
-CORE_DIRECTIONS = {
-    "turnover_mean_20": -1,
-    "volatility_20": -1,
-    "bp_ratio": +1,
-    "dv_ttm": +1,
-}
+# F71 fix (Phase E 2026-04-16): 从 PAPER_TRADING_CONFIG + FACTOR_DIRECTION 读取, 不再硬编码
+from engines.signal_engine import FACTOR_DIRECTION, PAPER_TRADING_CONFIG
+
+CORE_FACTORS = list(PAPER_TRADING_CONFIG.factor_names)
+CORE_DIRECTIONS = {f: FACTOR_DIRECTION.get(f, 1) for f in CORE_FACTORS}
 
 # 告警阈值
 L1_RATIO = 0.70  # recent/baseline < 0.70 → L1 观察

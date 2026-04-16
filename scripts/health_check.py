@@ -68,8 +68,10 @@ def check_data_freshness(conn, trade_date: date) -> tuple[bool, str]:
 
 def check_factor_nan(conn, trade_date: date) -> tuple[bool, str]:
     """CORE因子NaN检查: 检查CORE4因子的neutral_value是否正常。"""
-    # CORE4因子列表 (与pt_live.yaml保持一致)
-    CORE_FACTORS = ("turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm")
+    # F71 fix (Phase E 2026-04-16): 从 PAPER_TRADING_CONFIG 读取, 不再硬编码
+    from engines.signal_engine import PAPER_TRADING_CONFIG
+
+    CORE_FACTORS = tuple(PAPER_TRADING_CONFIG.factor_names)
     try:
         cur = conn.cursor()
         # 找最近有因子数据的日期
@@ -172,6 +174,7 @@ def check_redis() -> tuple[bool, str]:
     """Redis连接测试。"""
     try:
         import redis
+
         r = redis.Redis.from_url(
             os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
             socket_connect_timeout=3,
@@ -190,6 +193,7 @@ def check_celery() -> tuple[bool, str]:
     """检查Celery worker是否在线（可选，未启动不阻断）。"""
     try:
         from app.tasks.celery_app import celery_app
+
         inspector = celery_app.control.inspect(timeout=3)
         active = inspector.active_queues()
         if active:
@@ -288,6 +292,7 @@ def run_health_check(
     # QMT连接检查（仅EXECUTION_MODE=live时）
     try:
         from app.config import settings
+
         if settings.EXECUTION_MODE == "live":
             qmt_ok, qmt_msg = check_qmt_connection()
             results["qmt_ok"] = qmt_ok

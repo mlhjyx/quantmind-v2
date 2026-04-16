@@ -22,18 +22,15 @@ from pathlib import Path
 
 import pandas as pd
 import structlog
+from engines.signal_engine import PAPER_TRADING_CONFIG
 
 logger = structlog.get_logger(__name__)
 
 CACHE_DIR = Path("cache/backtest")
 
-# 4核心因子(CORE3+dv_ttm, 与PT配置一致, 2026-04-12 WF PASS更新)
-CORE_FACTORS = (
-    "turnover_mean_20",
-    "volatility_20",
-    "bp_ratio",
-    "dv_ttm",
-)
+# F71 fix (Phase E 2026-04-16): 从 PAPER_TRADING_CONFIG 读取, 不再硬编码.
+# 铁律 34: 配置 single source of truth — pt_live.yaml → signal_engine.PAPER_TRADING_CONFIG.
+CORE_FACTORS = tuple(PAPER_TRADING_CONFIG.factor_names)
 
 # price_data SQL — 与run_backtest.py load_price_data()完全一致
 PRICE_SQL = """
@@ -118,9 +115,7 @@ class BacktestDataCache:
             price_df.to_parquet(yr_dir / "price_data.parquet", index=False)
 
             # Factor data
-            factor_df = pd.read_sql(
-                FACTOR_SQL, conn, params=(factors, yr_start, yr_end)
-            )
+            factor_df = pd.read_sql(FACTOR_SQL, conn, params=(factors, yr_start, yr_end))
             if not factor_df.empty and "trade_date" in factor_df.columns:
                 factor_df["trade_date"] = pd.to_datetime(factor_df["trade_date"]).dt.date
             factor_df.to_parquet(yr_dir / "factor_data.parquet", index=False)
@@ -140,7 +135,11 @@ class BacktestDataCache:
             }
             logger.info(
                 "%d: price=%d, factor=%d, bench=%d (%.1fs)",
-                year, len(price_df), len(factor_df), len(bench_df), elapsed,
+                year,
+                len(price_df),
+                len(factor_df),
+                len(bench_df),
+                elapsed,
             )
 
         # Write meta
@@ -177,9 +176,7 @@ class BacktestDataCache:
         for year in range(start.year, end.year + 1):
             yr_dir = self.cache_dir / str(year)
             if not yr_dir.exists():
-                raise FileNotFoundError(
-                    f"缓存不存在: {yr_dir}。请先运行 build_backtest_cache.py"
-                )
+                raise FileNotFoundError(f"缓存不存在: {yr_dir}。请先运行 build_backtest_cache.py")
 
             price_parts.append(pd.read_parquet(yr_dir / "price_data.parquet"))
             factor_parts.append(pd.read_parquet(yr_dir / "factor_data.parquet"))
@@ -201,7 +198,9 @@ class BacktestDataCache:
 
         logger.info(
             "Cache loaded: price=%d, factor=%d, bench=%d (%d years)",
-            len(price), len(factor), len(bench),
+            len(price),
+            len(factor),
+            len(bench),
             end.year - start.year + 1,
         )
 
