@@ -1,6 +1,6 @@
 # QuantMind V2 — AI 闭环进化设计文档
 
-> **版本**: 2.0 | **日期**: 2026-04-16
+> **版本**: 2.1 | **日期**: 2026-04-16
 > **状态**: DESIGN (基于 28 个失败方向 + 213 次因子测试 + 3 篇 2025 前沿论文实证校准)
 > **前版**: V1.0 (2026-03-19, 1064 行, 4-Agent + Pipeline 全自动闭环) → 本版精简重构
 > **路线图**: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §Phase 3
@@ -43,6 +43,183 @@ A 股传统多因子超额收益 2020-2025 从 8% 降至 3%。CORE4 因子（换
 │  已有: ic_monitor + rolling_wf + pt_daily_summary + health_check │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 二-A、闭环编排 — Orchestrator + 事件总线
+
+> 本节是四层之间的"连线"，没有它四层就是孤岛。
+
+### 完整闭环数据流
+
+```
+❶ 数据层 (每天16:15)
+   ↓ klines / daily_basic / factor_values 更新
+❷ 监控层 (每天17:30-20:00, Layer 1)
+   ↓ 事件: factor_decay / strategy_degraded / regime_changed / data_anomaly
+❸ 决策层 (Orchestrator, 事件驱动 + 6h 心跳)
+   ↓ 任务: start_discovery / pause_strategy / trigger_rebalance / retire_factor
+❹ 发现层 (Layer 2, 按需)
+   ↓ 候选: new_factor_candidate / new_strategy_candidate
+❺ 评估层 (自动, 快速→完整两级)
+   ↓ 结果: candidate_approved / candidate_rejected (含诊断)
+❻ 部署层 (审批门控)
+   ↓ 变更: factor_activated / strategy_deployed / weights_updated
+❼ 执行层 (每天09:31/16:30, 已有)
+   ↓ 绩效: performance_series 更新
+❽ 知识层 (每次❹/❺完成)
+   ↓ 更新: trajectory_saved / blacklist_updated / M_incremented
+   ↓
+❷ 监控层 ←── 绩效数据回到监控，闭环完成
+```
+
+### Orchestrator 状态机
+
+```python
+class AILoopOrchestrator:
+    """AI 闭环编排器 — 连接 8 个组件的中枢神经。
+    
+    运行方式: Celery Beat 每 6 小时心跳 + Redis Streams 实时事件响应。
+    """
+    
+    STATES = {
+        'MONITORING',              # 默认: 持续监控, 等待事件
+        'DISCOVERY_RUNNING',       # 因子/策略发现进行中 (Layer 2 活跃)
+        'EVALUATION_PENDING',      # 候选等待评估 (Layer 2→5 传递)
+        'APPROVAL_PENDING',        # 评估通过, 等待人确认 (L1/L2)
+        'DEPLOYING',               # 部署中 (写配置/激活因子)
+        'COOLDOWN',                # 部署后冷却期 (7 天观察新配置)
+    }
+```
+
+### 事件→动作映射 (状态转换规则)
+
+| 当前状态 | 收到事件 | 动作 | 下一状态 |
+|---|---|---|---|
+| MONITORING | `factor_decay` | 查 Feature Map 受影响策略 → 启动定向发现 | DISCOVERY_RUNNING |
+| MONITORING | `strategy_degraded` | 降权至 0.5x → 启动替代策略搜索 | DISCOVERY_RUNNING |
+| MONITORING | `regime_changed` | 检查条件因子池 → 激活/停用匹配因子 | DEPLOYING |
+| MONITORING | `data_anomaly` | 暂停受影响策略 → P1 通知 | MONITORING |
+| MONITORING | `heartbeat_6h` | 检查 Feature Map 空格 → 有空则启动探索性发现 | DISCOVERY_RUNNING 或 MONITORING |
+| DISCOVERY_RUNNING | `discovery_complete` | 候选送入评估层 | EVALUATION_PENDING |
+| DISCOVERY_RUNNING | `discovery_failed` | 更新知识库 + 切换搜索方向 (UCB1) | MONITORING |
+| DISCOVERY_RUNNING | `discovery_timeout` (72h) | 记录超时 + 通知 | MONITORING |
+| EVALUATION_PENDING | `candidate_approved` | 进入审批队列 | APPROVAL_PENDING (L1) 或 DEPLOYING (L2+) |
+| EVALUATION_PENDING | `candidate_rejected` | 失败定位 → 知识库 → 可能触发 retry (≤3 次) | DISCOVERY_RUNNING 或 MONITORING |
+| APPROVAL_PENDING | `approval_granted` | 执行部署 | DEPLOYING |
+| APPROVAL_PENDING | `approval_rejected` | 记录原因 → 知识库 | MONITORING |
+| APPROVAL_PENDING | `approval_timeout` (14 天) | 自动拒绝 + 记录 | MONITORING |
+| DEPLOYING | `deployment_complete` | 进入冷却期 (7 天) | COOLDOWN |
+| DEPLOYING | `deployment_failed` | 回滚 + P1 通知 | MONITORING |
+| COOLDOWN | `cooldown_expired` | 检查新配置表现 → 正常 | MONITORING |
+| COOLDOWN | `strategy_degraded` (冷却期内) | 回滚到上一配置 + 记录 | MONITORING |
+
+**并发控制**: 同一时间最多 1 个 DISCOVERY_RUNNING 周期 (32GB RAM 限制)。如果监控检测到多个事件，按优先级排队: `data_anomaly` > `strategy_degraded` > `factor_decay` > `heartbeat`。
+
+### 事件总线 (Redis Streams)
+
+基于已有 `StreamBus` 模块 (`backend/app/core/stream_bus.py`)，新增 AI 命名空间:
+
+```
+qm:ai:monitoring       # 监控层 → 决策层 (factor_decay / strategy_degraded / regime_changed)
+qm:ai:orchestrator     # 决策层内部状态变更 (state_transition / heartbeat)
+qm:ai:discovery        # 发现层 → 评估层 (new_candidate / discovery_failed)
+qm:ai:evaluation       # 评估层 → 部署层 (candidate_approved / candidate_rejected)
+qm:ai:deployment       # 部署层 → 监控层 (factor_activated / strategy_deployed / rollback)
+qm:ai:knowledge        # 知识层广播 (trajectory_saved / blacklist_updated)
+```
+
+消息格式 (与现有 StreamBus 一致):
+```json
+{
+  "event_type": "factor_decay",
+  "source": "ic_monitor",
+  "timestamp": "2026-04-16T20:00:00+08:00",
+  "payload": {
+    "factor_name": "turnover_mean_20",
+    "ic_ma20": 0.031,
+    "ic_ma60": 0.065,
+    "decay_ratio": 0.48,
+    "affected_strategies": ["S1_monthly_ranking"]
+  }
+}
+```
+
+### 自动化矩阵 (每步 × 每 Level)
+
+| 步骤 | L0 全手动 | L1 半自动 | L2 大部分自动 | L3 全自动 |
+|---|---|---|---|---|
+| ❷ 监控检测 | 自动 | 自动 | 自动 | 自动 |
+| ❸ 决定是否发现 | 人触发 | **自动** | 自动 | 自动 |
+| ❹ 因子发现执行 | 人触发 | **自动** | 自动 | 自动 |
+| ❺ 评估回测 | 人触发 | **自动** | 自动 | 自动 |
+| ❻a 因子入库 | 人确认 | **人确认** | 自动 (过 Gate 即入) | 自动 |
+| ❻b 策略部署 PT | 人确认 | **人确认** | **人确认** | 自动 |
+| ❻c 策略部署 Live | 人确认 | 人确认 | 人确认 | **人确认 (始终)** |
+| ❻d 资本重分配 | 人确认 | **人确认** | 自动 (限幅±10%) | 自动 (限幅±20%) |
+| ❻e 因子淘汰 | 人确认 | **自动** (满足条件) | 自动 | 自动 |
+| ❽ 知识库更新 | 自动 | 自动 | 自动 | 自动 |
+
+**默认 L1**: 监控+发现+评估全自动，因子入库+策略部署需人确认。这是**安全且高效**的平衡点。
+
+### 边界情况处理
+
+| 场景 | 检测方式 | 处理 | 通知 |
+|---|---|---|---|
+| 发现 3 月无产出 | Orchestrator 计数 | 自动切换搜索方向 (UCB1) + 扩展数据源 | P2 通知 |
+| 所有策略同时衰退 | 监控层全策略 Sharpe 检查 | Regime shift → 降仓至 50% → 全面诊断 | **P0 通知** |
+| LLM API 不可用 | Agent 调用超时/错误 | 降级到 GP-only 模式 | P1 通知 |
+| 因子 NaN 数据 | factor_health_check | 暂停该因子 → 触发数据修复 | P1 通知 |
+| 回测引擎崩溃 | Eval Agent 异常捕获 | 重试 1 次 → 失败标记 error | P1 通知 |
+| 审批队列超时 | Orchestrator 7/14 天计时 | 7 天提醒 → 14 天自动拒绝 + 记录 | P2 提醒 |
+| 32GB OOM (并发过多) | 进程内存监控 | 排队等待, 不并行发现+回测 | P1 通知 |
+| 部署后新策略表现差 | COOLDOWN 7 天监控 | 自动回滚到上一配置 | P1 通知 |
+
+### 三级 Fallback (安全网)
+
+```
+AI 策略异常 (Sharpe < -0.5 或 MDD > 40%)
+  → 自动回退到上次确认的规则策略 (CORE4 等权 + SN 0.50)
+  
+规则策略也异常 (连续 5 日亏损 > 3%)
+  → 清仓 + 停止所有自动交易
+  
+清仓后
+  → P0 告警 (DingTalk + 日志) + 等待人工介入
+```
+
+### 回测引擎接口需求 (对齐 DEV_BACKTEST_ENGINE.md)
+
+AI 闭环需要回测引擎提供两种模式:
+
+| 模式 | 用途 | 时间范围 | 成本模型 | 速度 | 当前状态 |
+|---|---|---|---|---|---|
+| **快速回测** | ❺ 内循环淘汰 80% 弱候选 | 1 年 | 简化 (固定滑点) | ~1s | **需新增** |
+| **完整 WF** | ❺ 外循环最终验证 Top 20% | 5-12 年 | 全成本 (三因素) | 15-75s | ✅ 已有 |
+
+快速回测入口 (待实现):
+```python
+def run_quick_backtest(config: dict, years: int = 1) -> dict:
+    """轻量回测: 1年, 简化成本, 返回 {sharpe, mdd, annual_return, turnover}"""
+    # 复用 BacktestEngine 但跳过 WF / 跳过详细交易记录
+```
+
+批量模式 (待实现):
+```python
+def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
+    """串行跑 N 个策略, 尊重 32GB 内存约束"""
+    # 每个策略独立加载/释放数据, 避免 OOM
+```
+
+### Orchestrator 实现位置
+
+```
+backend/app/services/ai_loop_orchestrator.py    # 状态机 + 事件处理
+backend/app/tasks/ai_loop_tasks.py              # Celery Beat 心跳 + 事件消费
+configs/ai_loop.yaml                            # Orchestrator 配置 (Level/超时/阈值)
+```
+
+调度: Celery Beat 新增 `ai-loop-heartbeat` 每 6 小时。实时事件通过 Redis Streams 消费。
 
 ---
 
