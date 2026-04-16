@@ -305,7 +305,7 @@ async def test_execution_algo_config_no_data():
     app.dependency_overrides.clear()
     assert resp.status_code == 200
     data = resp.json()
-    assert data["top_n"] == 15
+    assert data["top_n"] == 20  # F74 fix: PT_TOP_N changed 15→20 (Phase 2.4)
     assert data["rebalance_freq"] == "monthly"
     assert data["cash_buffer"] == 0.03
 

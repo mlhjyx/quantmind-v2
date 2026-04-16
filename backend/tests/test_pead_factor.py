@@ -26,8 +26,9 @@ class TestPeadQ1:
         conn = self._mock_conn(rows)
         result = calc_pead_q1(date(2025, 4, 25), conn=conn)
         assert len(result) == 2
-        assert result["000001"] == 0.25
-        assert result["600519"] == -0.10
+        # F74 fix: Phase C C2 pead 返回带后缀 ts_code (与 DB earnings_announcements.ts_code 一致)
+        assert result["000001.SZ"] == 0.25
+        assert result["600519.SH"] == -0.10
 
     def test_window_constraint(self):
         """SQL查询包含7天窗口约束。"""
@@ -52,7 +53,7 @@ class TestPeadQ1:
         conn = self._mock_conn(rows)
         result = calc_pead_q1(date(2025, 4, 25), conn=conn)
         assert len(result) == 1
-        assert result["000001"] == 0.30  # 取最近
+        assert result["000001.SZ"] == 0.30  # F74 fix: 带后缀 ts_code
 
     def test_no_data(self):
         """无Q1季报记录返回空Series。"""
