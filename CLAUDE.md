@@ -123,14 +123,18 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a (2026-04-17) Wave 1 完结 7/7 + Wave 2 开幕 (Data Framework 基础)
+├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a + 2.1b (2026-04-18) Wave 1 完结 7/7 + Wave 2 MVP 2.1b 3/3 (Baostock/QMT/Tushare concrete)
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
 │   │   ├── interface.py         #     DataSource/DataContract/DataAccessLayer/FactorCacheProtocol (MVP 1.1)
 │   │   ├── access_layer.py      #     ⭐ MVP 1.2a: PlatformDataAccessLayer (read_factor/ohlc/fundamentals/registry) + DALError
 │   │   ├── cache_coherency.py   #     ⭐ MVP 2.1a: CacheCoherencyPolicy + MaxDateChecker + TTLGuard + check_stale (铁律 30 显式契约)
-│   │   └── base_source.py       #     ⭐ MVP 2.1a: BaseDataSource Template method + ContractViolation (MVP 2.1b 3 fetcher 继承)
+│   │   ├── base_source.py       #     ⭐ MVP 2.1a: BaseDataSource Template method + ContractViolation
+│   │   └── sources/             #     ⭐ MVP 2.1b (2026-04-18): 3 concrete fetcher 继承 BaseDataSource
+│   │       ├── baostock_source.py  #       BaostockDataSource + MINUTE_BARS_DATA_CONTRACT + code 格式 SH/SZ/BJ
+│   │       ├── qmt_source.py       #       QMTDataSource + 3 DataContract (positions/assets/ticks), Redis sink 特殊 (不走 DataPipeline)
+│   │       └── tushare_source.py   #       TushareDataSource + 3 DataContract (klines_daily/daily_basic/moneyflow), RAW 单位留 DataPipeline 转
 │   ├── factor/                  #   #2 Factor Framework
 │   │   ├── interface.py         #     FactorRegistry/OnboardingPipeline/LifecycleMonitor (MVP 1.1, MVP 1.3a 扩展 FactorMeta 18 字段)
 │   │   ├── registry.py          #     ⭐ MVP 1.3b+1.3c: DBFactorRegistry full concrete (get_direction + register G9/G10 + get_active + update_status + novelty_check + _default_ast_jaccard)
@@ -675,14 +679,14 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.4** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 1733 行): 12 Framework + 6 升维 + 16 MVP (26-35 周)
 - 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅ **+ wiring 补全** — `app/core/platform_bootstrap.py` 挂 FastAPI/PT/Celery 3 入口, 铁律 10 全链路验证) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
-- 🟡 **Wave 2 开幕** (2026-04-17 MVP 2.1a ✅, 2026-04-18 铁律 10b 全面落地 + MVP 2.1b 设计稿): Data Framework 基础 (Cache Coherency + BaseDataSource + ADR-006). MVP 2.1 拆 3 sub-MVP: **2.1a ✅** / **2.1b 设计稿 ✅** (5-7 天 impl 待下 session) / 2.1c DAL 完整版 + 16 处 SQL 迁移 (5-7 天). **铁律 10b 全面落地** (2026-04-18): Wave 1+2a retrospective smoke 5/5 覆盖 (1.2/1.3b/1.3c/1.4/2.1a) + `config/hooks/pre-push` 本地门禁 (双向验证 pass) + `docs/SETUP_DEV.md` 新环境 bootstrap.
-- ⬜ **Wave 2 剩余** (4-5 周): MVP 2.1b + 2.1c + 2.2 Data Lineage + 2.3 Backtest/Parity
+- 🟡 **Wave 2 进行中** (2026-04-17 MVP 2.1a ✅, 2026-04-18 铁律 10b 落地 + **MVP 2.1b 3/3 完整交付**): Data Framework 基础. MVP 2.1 拆 3 sub-MVP: **2.1a ✅** (Cache Coherency + BaseDataSource + ADR-006) / **2.1b ✅ 3 sub-commit** (Baostock/QMT/Tushare concrete, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write) / **2.1c 待启动** (DAL 完整版 + FactorCache + 16 处 SQL 迁移 + 老 3 fetcher 删除 + klines adj_factor/stk_limit orchestrator + DataContract/TableContract 收敛, 5-7 天). **铁律 10b 全面落地**: Wave 1+2a+2.1b retrospective smoke 8/8 覆盖 + `config/hooks/pre-push` 本地门禁 + `docs/SETUP_DEV.md`.
+- ⬜ **Wave 2 剩余** (3-4 周): MVP 2.1c + 2.2 Data Lineage + 2.3 Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2600+ tests collected / 100+ test files (2026-04-18 实测: 全量 pytest 24 fail = baseline [铁律 40] / 2594 pass, regression max_diff=0 Sharpe 0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 20 PASS** (16.58s, Wave 1+2a 5/5 MVP live 覆盖: 1.2 feature_flag/1.3b Layer1/1.3c lifecycle/1.4 knowledge/2.1a cache_coherency + 7 脚本 import + 3 FastAPI/Celery 入口 + 2 daemon ast.parse) + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
+📊 测试: 2600+ tests collected / 100+ test files (2026-04-18 实测: regression max_diff=0 Sharpe=0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 23 total** (22 PASS + 1 SKIP tushare token env 缺, 21.3s: Wave 1+2a+2.1b 8/8 MVP live 覆盖: 1.2/1.3b/1.3c/1.4/2.1a + **2.1b baostock 贵州茅台真网络 / 2.1b qmt import+contract / 2.1b tushare token skip**) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
 ---
 
 ## 文件归属规则（防腐）
