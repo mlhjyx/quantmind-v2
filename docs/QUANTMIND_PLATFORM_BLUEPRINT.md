@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.2)
+# QuantMind Platform Blueprint (QPB v1.3)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 加 Framework #11 ROF + U6 → **v1.2 用户决议 4 主+4 副 open questions**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → **v1.3 P0 补丁 (依赖循环/event hooks/AI 示例/时间现实化/DR)**
 > **作者**: Architect pass (Opus)
-> **状态**: 草案 v1.2 (4 主决策已敲定), 每个 Wave 完成后回填实际产出
+> **状态**: 草案 v1.3 (12 Framework + 6 升维 + 15 MVP), 每个 Wave 完成后回填实际产出
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -39,7 +39,7 @@
 ### 解决策略
 
 **从规则补丁 → 架构改造**:
-1. **11 个统一框架**: 把散点组织成契约化 Platform 能力 (含 Framework #11 Resource Orchestration)
+1. **12 个统一框架**: 把散点组织成契约化 Platform 能力 (含 #11 Resource Orchestration + #12 Backup & DR)
 2. **6 个升维原则**: 改变 "系统能力" 本身 (含 U6 Resource Awareness)
 3. **Platform/Application 分层**: 让新能力可独立演进不污染生产
 
@@ -98,11 +98,11 @@
 │  │ FW (#4)     │                                              │
 │  └─────────────┘                                              │
 │                                                                │
-│  Wave 4 (可观测 + 归因 + 生产就绪):                               │
-│  ┌─────────────┐  ┌─────────────┐                            │
-│  │Observability│  │ CI/CD + Test│                            │
-│  │  (#7)       │  │  (#9)       │                            │
-│  └─────────────┘  └─────────────┘                            │
+│  Wave 4 (可观测 + 归因 + DR + 生产就绪):                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
+│  │Observability│  │ CI/CD + Test│  │ Backup & DR │           │
+│  │  (#7)       │  │  (#9)       │  │  (#12) v1.3 │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘           │
 │                                                                │
 │  Cross-cutting (贯穿所有框架的升维能力):                         │
 │  💎 Research-Production Parity    (U1, Wave 2)                 │
@@ -169,14 +169,116 @@ from quantmind.platform import (
     # Resource Orchestration (#11) + U6
     ResourceManager, ResourceProfile, Priority,
     requires_resources, AdmissionController, BudgetGuard,
+
+    # Backup & Disaster Recovery (#12, v1.3)
+    BackupManager, DisasterRecoveryRunner, BackupResult, RestoreResult,
 )
 ```
 
 ---
 
-## Part 2 · 11 Core Frameworks (Platform)
+## Part 2 · 12 Core Frameworks (Platform)
 
 > **格式**: 每个 Framework 1 页，含 (目标 / 接口 / MVP 范围 / 成本 / 依赖 / 成功指标)
+
+### Application Usage Patterns (v1.3 新增, AI Agent/App 调用示例)
+
+> **问题**: 原 Blueprint 多次说 "AI 闭环 V2.1 是 Application 调 Platform SDK", 但无具体代码示例. v1.3 补.
+
+#### Pattern A: 因子研究 Application (AI Agent 或人工研究)
+```python
+from backend.platform import (
+    FactorRegistry, FactorOnboardingPipeline, EvaluationPipeline,
+    BacktestRunner, BacktestMode, ExperimentRegistry, requires_resources, Priority,
+)
+
+@requires_resources(ram_gb=4, exclusive_pools=["heavy_data"],
+                    priority=Priority.RESEARCH_ACTIVE)
+def research_new_factor(hypothesis: str, factor_spec: FactorSpec):
+    # 1. 查重 (防重复踩坑, 铁律 12 G9 + 知识库)
+    similar = ExperimentRegistry().search_similar(hypothesis)
+    if similar: return f"已做过类似实验: {similar[0].verdict}"
+
+    # 2. 注册因子 (强制 onboarding, 铁律 17)
+    factor_id = FactorRegistry().register(factor_spec)
+
+    # 3. 走 Onboarding 一条龙 (compute + neutralize + IC + G_robust)
+    result = FactorOnboardingPipeline().onboard(factor_spec)
+
+    # 4. 评估 Gate (铁律 4/5/12/13/19/20)
+    verdict = EvaluationPipeline().evaluate_factor(factor_spec.name)
+    if not verdict.passed: return verdict.blockers
+
+    # 5. 快速回测 (U1 Parity 保证同一 SignalPipeline 用在 research/PT)
+    bt = BacktestRunner().run(mode=BacktestMode.QUICK_1Y, config={"factors": [factor_spec.name]})
+
+    # 6. 记入实验库 (铁律 38 Blueprint 长期记忆 + 知识沉淀)
+    ExperimentRegistry().complete(factor_id, {"bt": bt, "verdict": verdict}, "success")
+```
+
+#### Pattern B: AI 闭环 Idea Agent (V2.1 §4.2)
+```python
+from backend.platform import FactorRegistry, FailedDirectionDB
+
+class IdeaAgent:
+    def generate_hypothesis(self, market_context: dict) -> Hypothesis:
+        # 先问知识库: 这方向做过吗?
+        failed = FailedDirectionDB().check_similar(self.current_direction)
+        if failed: return Hypothesis.switch_direction(failed)
+
+        # 基于当前 factor pool + regime 生成
+        active_factors = FactorRegistry().get_active()
+        return self._llm_generate(active_factors, market_context)
+```
+
+#### Pattern C: PaperTrading Application (当前 PT 重构后)
+```python
+from backend.platform import (
+    Strategy, StrategyRegistry, SignalPipeline, OrderRouter,
+    EventBus, MetricExporter, ConfigSchema,
+)
+
+class MonthlyRankingStrategy(Strategy):
+    """S1 策略 (CORE3+dv_ttm), 现 PT 的重构版."""
+    strategy_id = "S1_monthly_ranking"
+    factor_pool = ["turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm"]
+    rebalance_freq = RebalanceFreq.MONTHLY
+
+    def generate_signals(self, ctx: StrategyContext) -> list[Signal]:
+        # 读因子值通过 Platform DAL (禁止裸 SQL, 铁律 17)
+        signals = SignalPipeline().compose(self.factor_pool, ctx.trade_date)
+        # event_bus 预埋 (MVP 3.3 后激活)
+        EventBus().publish("signal.generated", {"strategy": self.strategy_id, "count": len(signals)})
+        return signals
+
+# 调度 (Task Scheduler / Celery Beat)
+def daily_signal_task():
+    for strategy in StrategyRegistry().get_live():
+        orders = OrderRouter().route(strategy.generate_signals(ctx))
+```
+
+#### Pattern D: GP Mining Application (当前 GP, AlphaZero 升级版)
+```python
+from backend.platform import (
+    FactorRegistry, FactorOnboardingPipeline, EvaluationPipeline,
+    requires_resources, Priority, ExperimentRegistry,
+)
+
+@requires_resources(ram_gb=16, cpu_cores=7, exclusive_pools=["heavy_data"],
+                    priority=Priority.GP_MINING)
+def gp_weekly_mining():
+    # GP 生成候选 → 走统一 Onboarding + Eval 路径
+    for candidate in gp_engine.evolve():
+        # G9 Gate 去重 (铁律 12), G10 经济机制 (铁律 13)
+        if not FactorRegistry().novelty_check(candidate): continue
+        result = FactorOnboardingPipeline().onboard(candidate)
+        verdict = EvaluationPipeline().evaluate_factor(candidate.name)
+        ExperimentRegistry().complete(candidate.id, result, verdict.summary())
+```
+
+**这 4 个 Pattern 覆盖**: Research (人工/AI) / AI Agent / PT 生产 / GP 挖掘. 其他 Application (Forex / AI 闭环 Factor/Strategy/Eval Agent) 模式类似, 由对应 MVP 落地时补充示例到各自设计文档.
+
+---
 
 ### Framework #1: Data Framework
 
@@ -593,6 +695,66 @@ reservations:                     # 时间窗口保留
 
 ---
 
+### Framework #12: Backup & Disaster Recovery (v1.3 新增)
+
+**目标**: 生产数据 (PG 159GB factor_values + klines + ...) 损坏时的恢复能力. 定义 RPO/RTO SLO, 自动备份 + 定期演练.
+
+**问题背景** (v1.3 新增原因):
+- 35 条 → 41 条铁律里 **0 条涉及 DR**
+- `pg_backup.py` 存在但**调度状态未验证**
+- 单机单 PG, 无 replica, 无 offsite
+- RPO/RTO 从未定义
+- `docs/SOP_DISASTER_RECOVERY.md` (272 行) 未链入 Blueprint, 20+ 天未更新
+
+**核心接口:**
+```python
+class BackupManager:
+    """自动备份 + 验证 + 恢复."""
+    def full_backup(self, target: Path) -> BackupResult
+    def wal_incremental(self) -> BackupResult
+    def restore(self, backup: Path, target_db: str) -> RestoreResult
+    def verify_integrity(self, backup: Path) -> VerifyResult
+    # 每周 auto: 恢复到 quantmind_v2_test 库 + run regression_test
+
+class DisasterRecoveryRunner:
+    """DR 演练编排."""
+    def quarterly_drill(self) -> DrillResult
+    # 随机杀场景 (数据目录损坏 / PG 进程 kill / disk full), 测 RTO
+```
+
+**SLO 定义:**
+| 维度 | 目标 |
+|---|---|
+| RPO (Recovery Point Objective) | ≤ 6h (最近 WAL 增量) |
+| RTO (Recovery Time Objective) | ≤ 4h (全量恢复) |
+| Backup Frequency | 全量每日 02:00 + WAL 增量 6h |
+| Verification Frequency | 每周一次自动恢复 + regression test |
+| Offsite Replication | 至少 1 份 (外置 HDD / 云) |
+| Drill Frequency | 每季度一次手动演练 |
+
+**MVP 范围 (MVP 4.4):**
+- `pg_backup.py` 接入 Task Scheduler, 每日 02:00 全量
+- WAL archiving 开启 (PG `archive_mode=on`, `archive_command`)
+- 每周恢复验证脚本 `scripts/backup_verify.py`
+- Offsite 备份 (外置 HDD 或 S3-compatible)
+- Runbook 更新 + 链入 Blueprint
+- 首次 DR 演练 (记录 actual RTO)
+
+**Application 使用示例:**
+```python
+# Celery Beat 自动触发 (不需 Application 手动调)
+from backend.platform.backup import BackupManager
+
+mgr = BackupManager()
+result = mgr.full_backup(Path("D:/backups/pg_2026_04_17"))
+assert result.size_gb > 100  # 159GB 预期
+assert mgr.verify_integrity(result.path).passed
+```
+
+**成本**: 1-2 周 | **依赖**: 无 (可并行 Wave 4 其他 MVP) | **成功指标**: 随机杀 PG 数据目录, 4h 内恢复完整 | **关联铁律**: 10 (基础设施改动全链路验证), 29 (数据完整性)
+
+---
+
 ## Part 3 · 6 升维建议 (Cross-Cutting)
 
 ### 💎 U1: Research-Production Parity
@@ -770,32 +932,38 @@ class ExperimentRegistry:
 ### 总览时间线
 
 ```
-Wave 1 (4-5 周): 架构基础
- ├─ MVP 1.1: Platform 目录重组 + SDK 骨架   (3 天)
- ├─ MVP 1.2: Config Management (#8)         (3-5 天)
- ├─ MVP 1.3: Factor Framework (#2)          (3-5 天, 已有基础)
- └─ MVP 1.4: Knowledge Registry MVP (#10)   (3 天, 轻量先启动)
+Wave 1 (5-7 周): 架构基础
+ ├─ MVP 1.1:  Platform 目录重组 + SDK 骨架        (3 天)
+ ├─ MVP 1.2:  Config Management (#8)              (3-5 天)
+ ├─ MVP 1.2a: DAL Minimal (read-only, Wave 2 前置) (3-5 天)  ← v1.3 新增
+ ├─ MVP 1.3:  Factor Framework (#2)               (1.5-2 周, 现实化)
+ └─ MVP 1.4:  Knowledge Registry MVP (#10)        (3 天)
 
-Wave 2 (5-6 周): 数据 + 研究生产打通
- ├─ MVP 2.1: Data Framework (#1)            (1-2 周)
- ├─ MVP 2.2: Data Lineage (U3)              (1 周, 配合 #1)
- └─ MVP 2.3: Backtest Framework + U1 Parity (#5) (1.5-2 周)
+Wave 2 (7-9 周): 数据 + 研究生产打通
+ ├─ MVP 2.1:  Data Framework (#1) 完整版          (2-3 周, 现实化)
+ ├─ MVP 2.2:  Data Lineage (U3)                   (1-1.5 周)
+ └─ MVP 2.3:  Backtest Framework + U1 Parity (#5) (3-4 周, 现实化)
 
-Wave 3 (8-10 周): 资源调度 + PEAD 前置 + 多策略 + 事件驱动
+Wave 3 (10-13 周): 资源调度 + PEAD 前置 + 多策略 + 事件驱动
  ├─ MVP 3.0:  Resource Orchestration (#11, U6)        (1-2 周) ┐
  ├─ MVP 3.0a: PEAD 前置 (PIT + PMS v2 + cost H0-v2)    (3 周)    ├─ 并行
- ├─ MVP 3.1:  Strategy Framework (#3)                  (2-3 周)
- ├─ MVP 3.2:  Signal & Execution (#6)                  (1-2 周)
- ├─ MVP 3.3:  Event Sourcing (U2) + outbox/snapshot/ver (2-3 周, 并行)
- └─ MVP 3.4:  Evaluation Gate (#4)                     (1 周)
+ ├─ MVP 3.1:  Strategy Framework (#3)                  (3-4 周, 现实化)
+ ├─ MVP 3.2:  Signal & Execution (#6) + event hooks    (2 周)
+ ├─ MVP 3.3:  Event Sourcing (U2) + outbox/snapshot/ver (3-4 周, 并行)
+ └─ MVP 3.4:  Evaluation Gate (#4)                     (1-1.5 周)
 
-Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
- ├─ MVP 4.1: Observability (#7)             (1-2 周)
- ├─ MVP 4.2: Performance Attribution (U5)   (1-2 周)
- └─ MVP 4.3: CI/CD (#9)                     (1-2 周, 并行)
+Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
+ ├─ MVP 4.1:  Observability (#7)             (1-2 周)
+ ├─ MVP 4.2:  Performance Attribution (U5)   (1-2 周)
+ ├─ MVP 4.3:  CI/CD (#9)                     (1-2 周, 并行)
+ └─ MVP 4.4:  Backup & DR (#12)              (1-2 周, 并行)  ← v1.3 新增
 
-总计: 20-26 周 (5-6.5 月) — v1.2 加 MVP 3.0a PEAD 前置
+总计: 26-35 周 (6.5-8.75 月)
 ```
+
+> **v1.3 时间估算改动**: 原 20-26 周过度乐观 (基于 "单个 MVP 3-5 天" 的不现实假设).
+> 参考业界 sim-to-real parity 实施 (Uber Michelangelo / Netflix Metaflow) 需数个季度,
+> 多策略框架搭建 (Two Sigma / Citadel) 均为季度级工程. 现实化后更可执行.
 
 ### MVP 详细定义
 
@@ -830,8 +998,23 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 - **范围**: factor_registry 回填 101 因子, _constants.py DIRECTION 启动 load from DB, factor_onboarding 变强制, lifecycle monitor 集成（本轮 MVP A 基础）
 - **产物**: `FactorRegistry`, `FactorOnboardingPipeline`, `FactorLifecycleMonitor` 可用
 - **验收**: DB registry = factor_values.DISTINCT (101 = 101); 新因子不 register → DataPipeline 拒写
-- **耗时**: 3-5 天 (已完成 ~30%)
+- **耗时**: 1.5-2 周 (v1.3 现实化: 原 3-5 天过度乐观, 实际含 registry 回填 + _constants 改造 + onboarding 强制化 + lifecycle 集成四块)
+- **依赖**: MVP 1.2 Config + **MVP 1.2a DAL Minimal** (铁律 17: registry 读 DB 必走 DAL)
 - **设计文档**: `docs/mvp/MVP_1_3_factor_framework.md`
+
+**MVP 1.2a: DAL Minimal (v1.3 新增, Wave 1→2 衔接层)**
+
+- **问题**: MVP 1.3 Factor Framework 要回填 101 因子到 `factor_registry`, 要读 `factor_values.DISTINCT` — 但完整 Data Framework (#1) 在 Wave 2. 直接裸 SQL 违反铁律 17. 不提前做 DAL 就会死锁.
+- **范围**: 最小 Read-Only DAL:
+  - `backend.platform.data.DataAccessLayer` (read_factor / read_ohlc / read_registry)
+  - 只读路径, 不含 DataSource / DataContract 抽象 (留给 MVP 2.1)
+  - FactorCache 接入 (已有, 不重写)
+  - Write 路径继续用现有 `DataPipeline` (不改)
+- **产物**: `DataAccessLayer` read API 可用, MVP 1.3 / 1.4 不用裸 SQL
+- **验收**: `grep -rn "SELECT.*FROM factor_values" backend/platform/` = 0 (Platform 层内部不许裸 SQL); `read_factor("turnover_mean_20", start, end)` 返回正确
+- **耗时**: 3-5 天
+- **依赖**: MVP 1.1
+- **升级路径**: MVP 2.1 Data Framework 完整版落地后, DAL Minimal 吸收进完整 Framework (API 接口不变, 内部实现扩展)
 
 **MVP 1.4: Knowledge Registry MVP (#10)**
 
@@ -843,11 +1026,12 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 
 #### Wave 2 详细
 
-**MVP 2.1: Data Framework (#1)**
+**MVP 2.1: Data Framework (#1) 完整版**
 
-- **范围**: DataSource 抽象 + 3 个实现 (Tushare/Baostock/QMT), DataContract 扩展全 10 表, DataAccessLayer 统一读入口, Cache Coherency Protocol
+- **范围**: DataSource 抽象 + 3 个实现 (Tushare/Baostock/QMT), DataContract 扩展全 10 表, DataAccessLayer **完整版** (扩展 MVP 1.2a Minimal 版), Cache Coherency Protocol
 - **验收**: 13 处直连 SQL 清零, grep 验证; FactorCache 自动失效检测 test PASS
-- **耗时**: 1.5-2 周
+- **耗时**: 2-3 周 (v1.3 现实化: 原 1.5-2 周过度乐观, 含 3 个 fetcher 抽象 + 13 处迁移 + cache coherency 工程复杂度)
+- **依赖**: MVP 1.2a DAL Minimal
 - **设计文档**: `docs/mvp/MVP_2_1_data_framework.md`
 
 **MVP 2.2: Data Lineage (U3)**
@@ -861,7 +1045,8 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 
 - **范围**: BacktestMode enum, BacktestRunner 统一入口, QUICK_1Y 模式新增, backtest_run DB 表自动记录, SignalPipeline offline/online 同构
 - **验收**: 研究脚本全部改用 BacktestRunner, regression_test max_diff=0
-- **耗时**: 1.5-2 周
+- **耗时**: 3-4 周 (v1.3 现实化: **sim-to-real parity 是 MLOps 圣杯**, Uber/Airbnb/Netflix 均为季度级工程, 原 1.5-2 周不现实. 单是保证 research/PT 代码 bit-identical 就需要全链路 trace + 校验层)
+- **风险**: 此 MVP 是 Phase 2.1 sim-to-real gap 282% 的根因解决方案, 如做不彻底则 Wave 3 策略验证全部白做. 建议分 2 阶段: Phase 1 "同构架构" (2 周) + Phase 2 "实盘锚点对齐" (1-2 周)
 - **设计文档**: `docs/mvp/MVP_2_3_backtest_parity.md`
 
 #### Wave 3 详细
@@ -882,23 +1067,35 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 
 **MVP 3.1: Strategy Framework (#3)**
 
-- **范围**: Strategy 基类 + Registry, 当前 PT 重构为 S1 MonthlyRanking, 引入 S2 (PEAD 或 Minute, 待选), CapitalAllocator 等权
+- **范围**: Strategy 基类 + Registry, 当前 PT 重构为 S1 MonthlyRanking, 引入 S2 (PEAD Event-driven, v1.2 已决策), CapitalAllocator 等权
 - **验收**: PT 跑 S1+S2 两策略同时, 独立 NAV/订单, 互不干扰
-- **耗时**: 2-3 周
+- **耗时**: 3-4 周 (v1.3 现实化: 含 strategy isolation / capital allocation / risk isolation / 两策略并跑验证, 原 2-3 周低估)
+- **依赖**: MVP 3.0 ROF + MVP 3.0a PEAD 前置 + MVP 2.3 BacktestRunner
 - **设计文档**: `docs/mvp/MVP_3_1_strategy_framework.md`
 
-**MVP 3.2: Signal & Execution (#6)**
+**MVP 3.2: Signal & Execution (#6) + Event Hooks 预埋**
 
 - **范围**: SignalPipeline 收编 hardcoded config, OrderIdempotencyGuard, ExecutionAuditTrail
-- **验收**: 重复下单 test 自动过滤, 任意 fill 可追溯到 signal/strategy/factor
-- **耗时**: 1-2 周
+- **v1.3 新增 Event Hooks 预埋 (避免 MVP 3.3 回来改 3.2)**:
+  - 所有写操作 (signal.generated / order.placed / order.filled / order.rejected / pms.triggered)
+    必须调用 `event_bus.publish(event_type, payload)` 占位
+  - MVP 3.3 前 event_bus 是 no-op 实现 (只 log 不持久化)
+  - MVP 3.3 后 event_bus 激活 outbox pattern 写 PG + 发 Redis
+- **验收**: 重复下单 test 自动过滤, 任意 fill 可追溯到 signal/strategy/factor; 所有写路径有 event_bus.publish() 调用点 (grep 验证)
+- **耗时**: 2 周 (v1.3: 含 event hooks 预埋工作量)
+- **依赖**: MVP 3.1 Strategy Framework
 - **设计文档**: `docs/mvp/MVP_3_2_signal_execution.md`
 
-**MVP 3.3: Event Sourcing (U2)**
+**MVP 3.3: Event Sourcing (U2) + outbox/snapshot/versioning**
 
 - **范围**: 9 种核心事件发布方 + 消费方, Materialized View 投影, Event Replay 工具
-- **验收**: 重放过去 30 天事件 → 当前状态 bit-identical
-- **耗时**: 2-3 周 (与 3.1 并行)
+- **v1.2 决议必配 3 工程组件**:
+  - Outbox pattern: 业务写 PG 时同事务写 `event_outbox` 表, 单独 worker 发 Redis + 存 `event_log` PG 表
+  - Snapshot policy: 每月每策略 state snapshot, 重放从最近 snapshot 开始
+  - Event versioning: 每事件带 `schema_version`, upgrader 至少 N-1 版本向下兼容
+- **验收**: 重放过去 30 天事件 → 当前状态 bit-identical; outbox 表 consumer 7 天内清空 (v1.2 副决策 3a)
+- **耗时**: 3-4 周 (v1.3 现实化: 3 工程组件齐全, event sourcing 工程复杂度高)
+- **依赖**: MVP 3.2 event hooks 已预埋; 与 MVP 3.1 并行可能 (策略层不干扰)
 - **设计文档**: `docs/mvp/MVP_3_3_event_sourcing.md`
 
 **MVP 3.4: Evaluation Gate (#4)**
@@ -924,12 +1121,32 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 - **耗时**: 1-2 周
 - **设计文档**: `docs/mvp/MVP_4_2_attribution.md`
 
-**MVP 4.3: CI/CD (#9)**
+**MVP 4.3: CI/CD (#9) — 3 层防线 (v1.2 决议)**
 
-- **范围**: pre-commit hook, CI pipeline, 32 fail 测试修复, coverage gate 80%, smoke test suite
-- **验收**: git push 自动跑测试, 0 fail, 部署后 smoke PASS
+- **范围**:
+  - Layer 1 pre-commit: ruff check + ruff format + 快测 (<30s, 仅改动模块)
+  - Layer 2 pre-push: regression_test --years 5 (max_diff=0 硬门)
+  - Layer 3 Celery Beat 03:00 daily full pytest (2100 tests), 失败 DingTalk P1 告警, **不 block PT** (v1.2 副决策 4a)
+  - 32 fail 测试修复, coverage gate 80%, smoke test suite
+- **验收**: git push 自动跑测试, 0 fail, 部署后 smoke PASS, 铁律 40 "测试债务不得增长" 落地
 - **耗时**: 1-2 周 (与 4.1 并行)
 - **设计文档**: `docs/mvp/MVP_4_3_ci_cd.md`
+
+**MVP 4.4: Backup & Disaster Recovery (Framework #12, v1.3 新增)**
+
+- **问题**: 35 条 → 41 条铁律里 0 条涉及 DR, 159GB DB 若损坏无恢复流程, `pg_backup.py` 存在未验证调度, RPO/RTO 未定义.
+- **范围**:
+  - **Backup Automation**: `pg_backup.py` 接入 Task Scheduler, 每日 02:00 全量 + 6h WAL 增量
+  - **Backup Verification**: 每周自动恢复一次到 `quantmind_v2_test` 库验证完整性
+  - **RPO/RTO 定义**: RPO ≤ 6h (WAL), RTO ≤ 4h (全量恢复)
+  - **Offsite Replication**: 本地 NVMe → 外置 HDD / 云备份 (至少其一, 防本地灾难)
+  - **Runbook**: `docs/SOP_DISASTER_RECOVERY.md` 对照实际流程更新 + 链入 Blueprint
+  - **DR Drill**: 每季度一次演练, 确认 RTO 达标
+- **产物**: `backend.platform.backup` SDK + 自动化 + Runbook
+- **验收**: 随机杀 PG 数据目录, 4h 内恢复完整 (含最近 6h 数据)
+- **耗时**: 1-2 周
+- **依赖**: 无 (可并行 4.1/4.2/4.3)
+- **设计文档**: `docs/mvp/MVP_4_4_backup_dr.md`
 
 ### 依赖图
 
@@ -1234,9 +1451,18 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - Wave 3 从 7-9 周 → 8-10 周
   - 总体 19-24 周 → 20-26 周
   - Part 8 Open Questions → Decisions (已决议)
+- 2026-04-17 v1.3 P0 补丁 (用户要求严谨复审: "Blueprint 是给我看的"):
+  - **依赖循环**: Wave 1 加 MVP 1.2a DAL Minimal (Factor Framework 不再裸 SQL 违反铁律 17)
+  - **MVP 3.2/3.3 耦合**: MVP 3.2 必须预埋 `event_bus.publish()` 占位, MVP 3.3 前 no-op, 避免回头改 3.2
+  - **AI Agent SDK 示例**: Part 2 顶部新增 4 Pattern (Research/AI Agent/PT/GP) 代码示例, 原 "AI 闭环是 Application" 从口号变可执行
+  - **MVP 时间估算现实化**: MVP 1.3 / 2.1 / 2.3 / 3.1 / 3.3 全部扩展 (参考 Uber/Netflix MLOps 季度级), Wave 3 8-10→10-13 周, Wave 4 3-4→4-6 周
+  - **DR 零覆盖**: 新增 **Framework #12 Backup & Disaster Recovery** + MVP 4.4, 定义 RPO≤6h / RTO≤4h / 季度演练
+  - Framework 数: 11 → 12, MVP 数: 14 → 16 (含 1.2a / 4.4)
+  - 总体 20-26 周 → 26-35 周 (现实化)
+  - 配套铁律 v2 (CLAUDE.md 35 → 40 条全局原则) 同步落地
 
 ---
 
-**END of QuantMind Platform Blueprint v1.2**
+**END of QuantMind Platform Blueprint v1.3**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。
