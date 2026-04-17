@@ -67,25 +67,62 @@ class FactorSpec:
 
 @dataclass(frozen=True)
 class FactorMeta:
-    """因子注册后的完整元数据 (DB factor_registry 一行).
+    """因子注册后的完整元数据 (对齐 live PG factor_registry 18 字段).
+
+    MVP 1.3a: 字段对齐 DB (之前设计与 DB 有 6 处 drift, MVP 1.3a 修正):
+      - 新增 `pool` (生命周期池, 替代原 FactorSpec.pool, MVP 1.3a ALTER TABLE 加)
+      - 新增 `expression/code_content/source/lookback_days/gate_*` (DB 原有, interface 补)
+      - 字段名对齐 DB: `registered_at` → `created_at`, `ic_mean` → `gate_ic`
 
     Args:
       factor_id: UUID 主键
-      spec: 原始 FactorSpec
-      status: 当前生命周期状态
-      registered_at: 注册时间 (ISO string)
-      updated_at: 最后状态变更时间
-      ic_mean: 历史 IC 均值 (neutral, T+1 excess, spearman)
-      ic_decay_ratio: 最近 IC 衰减比 (近 3 月 / 历史均值)
+      name: 因子名 (从 FactorSpec 提升到 Meta 顶层, 消费方常用)
+      category: 细分类 (risk / liquidity / fundamental / microstructure / ...)
+      direction: +1 / -1 (IC 符号预期)
+      expression: 计算表达式 (FactorDSL / Python 引用)
+      code_content: 代码实现 (若有, GP 生成的因子)
+      hypothesis: 经济机制假设 (铁律 13 必填)
+      source: 来源标识 (builtin / gp / llm / manual)
+      lookback_days: 计算所需历史窗口 (默认 60)
+      status: 生命周期状态
+      pool: 生命周期池 (CORE/PASS/CANDIDATE/INVALIDATED/DEPRECATED/LEGACY)
+      gate_ic: 历史 IC 均值 (neutral, T+1 excess, spearman, 铁律 19)
+      gate_ir: IC / IC std (信息比率)
+      gate_mono: 单调性 (decile monotone 得分)
+      gate_t: t 统计量 (Harvey Liu Zhu t>2.5 硬下限检查)
+      ic_decay_ratio: 近期 IC / 历史 IC 绝对值比 (lifecycle <0.5 → WARNING)
+      created_at: DB 记录创建时间 (ISO)
+      updated_at: 最后更新时间
     """
 
     factor_id: UUID
-    spec: FactorSpec
+    name: str
+    category: str
+    direction: int
+    expression: str | None
+    code_content: str | None
+    hypothesis: str | None
+    source: str
+    lookback_days: int | None
     status: FactorStatus
-    registered_at: str
-    updated_at: str
-    ic_mean: float | None
+    pool: str
+    gate_ic: float | None
+    gate_ir: float | None
+    gate_mono: float | None
+    gate_t: float | None
     ic_decay_ratio: float | None
+    created_at: str
+    updated_at: str
+
+    @property
+    def registered_at(self) -> str:
+        """向后兼容 alias — 老代码用 `.registered_at`, DB 真实字段是 `created_at`."""
+        return self.created_at
+
+    @property
+    def ic_mean(self) -> float | None:
+        """向后兼容 alias — 老代码用 `.ic_mean`, DB 真实字段是 `gate_ic`."""
+        return self.gate_ic
 
 
 @dataclass(frozen=True)

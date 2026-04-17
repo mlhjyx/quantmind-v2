@@ -282,7 +282,12 @@ class PlatformDataAccessLayer(DataAccessLayer):
         status_filter: str | None = None,
         pool_filter: str | None = None,
     ) -> pd.DataFrame:
-        """读 factor_registry 表 (供 MVP 1.3 FactorRegistry 使用)."""
+        """读 factor_registry 表 (MVP 1.3a 对齐 live PG 18 字段 schema).
+
+        返 DataFrame 列对齐 DB: id, name, category, direction, expression,
+        code_content, hypothesis, source, lookback_days, status, pool, gate_ic,
+        gate_ir, gate_mono, gate_t, ic_decay_ratio, created_at, updated_at.
+        """
         where_clauses: list[str] = []
         params: list[Any] = []
         if status_filter is not None:
@@ -294,8 +299,10 @@ class PlatformDataAccessLayer(DataAccessLayer):
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         sql = (
-            f"SELECT name, direction, pool, status, category, hypothesis, "
-            f"       ic_mean, ic_decay_ratio, registered_at, updated_at "
+            f"SELECT id, name, category, direction, expression, code_content, "
+            f"       hypothesis, source, lookback_days, status, pool, "
+            f"       gate_ic, gate_ir, gate_mono, gate_t, ic_decay_ratio, "
+            f"       created_at, updated_at "
             f"FROM factor_registry {where_sql} "
             f"ORDER BY name"
         )
@@ -305,8 +312,10 @@ class PlatformDataAccessLayer(DataAccessLayer):
                 cur.execute(sql, tuple(params))
                 rows = cur.fetchall()
             columns = [
-                "name", "direction", "pool", "status", "category", "hypothesis",
-                "ic_mean", "ic_decay_ratio", "registered_at", "updated_at",
+                "id", "name", "category", "direction", "expression", "code_content",
+                "hypothesis", "source", "lookback_days", "status", "pool",
+                "gate_ic", "gate_ir", "gate_mono", "gate_t", "ic_decay_ratio",
+                "created_at", "updated_at",
             ]
             if not rows:
                 return pd.DataFrame(columns=columns)

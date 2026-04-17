@@ -66,15 +66,23 @@ def sqlite_factory():
             PRIMARY KEY (code, trade_date)
         );
         CREATE TABLE factor_registry (
+            id TEXT,
             name TEXT PRIMARY KEY,
-            direction INTEGER,
-            pool TEXT,
-            status TEXT,
             category TEXT,
+            direction INTEGER,
+            expression TEXT,
+            code_content TEXT,
             hypothesis TEXT,
-            ic_mean REAL,
+            source TEXT,
+            lookback_days INTEGER,
+            status TEXT,
+            pool TEXT,
+            gate_ic REAL,
+            gate_ir REAL,
+            gate_mono REAL,
+            gate_t REAL,
             ic_decay_ratio REAL,
-            registered_at TEXT,
+            created_at TEXT,
             updated_at TEXT
         );
         """
@@ -115,18 +123,24 @@ def sqlite_factory():
         ],
     )
     cur.executemany(
-        "INSERT INTO factor_registry(name, direction, pool, status, category, "
-        "hypothesis, ic_mean, ic_decay_ratio, registered_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO factor_registry(id, name, category, direction, expression, "
+        "code_content, hypothesis, source, lookback_days, status, pool, "
+        "gate_ic, gate_ir, gate_mono, gate_t, ic_decay_ratio, "
+        "created_at, updated_at) VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            ("turnover_mean_20", -1, "CORE", "active", "量价", "hypothesis_1",
-             -0.091, 0.85, "2024-01-01", "2024-01-01"),
-            ("bp_ratio", 1, "CORE", "active", "基本面", "value_anomaly",
-             0.107, 0.92, "2024-01-01", "2024-01-01"),
-            ("reversal_20", -1, "CORE5_baseline", "warning", "量价", "reversion",
-             -0.05, 0.43, "2024-01-01", "2024-01-01"),
-            ("mf_divergence", 1, "INVALIDATED", "deprecated", "资金流", "bogus",
-             -0.022, 0.0, "2024-01-01", "2024-01-01"),
+            ("uuid-1", "turnover_mean_20", "liquidity", -1, "expr_1",
+             None, "hypothesis_1", "builtin", 60, "active", "CORE",
+             -0.091, -0.9, None, -30.0, 0.85, "2024-01-01", "2024-01-01"),
+            ("uuid-2", "bp_ratio", "fundamental", 1, "inv(pb)",
+             None, "value_anomaly", "builtin", 60, "active", "CORE",
+             0.107, 0.9, None, 28.0, 0.92, "2024-01-01", "2024-01-01"),
+            ("uuid-3", "reversal_20", "momentum", -1, "expr_3",
+             None, "reversion", "builtin", 60, "warning", "CORE5_baseline",
+             -0.05, -0.4, None, -12.0, 0.43, "2024-01-01", "2024-01-01"),
+            ("uuid-4", "mf_divergence", "moneyflow", 1, "expr_4",
+             None, "bogus", "gp", 60, "deprecated", "INVALIDATED",
+             -0.022, -0.2, None, -3.0, 0.0, "2024-01-01", "2024-01-01"),
         ],
     )
     db.commit()
@@ -302,9 +316,12 @@ def test_read_registry_all(sqlite_factory) -> None:
     dal = PlatformDataAccessLayer(conn_factory=sqlite_factory, paramstyle="?")
     df = dal.read_registry()
     assert len(df) == 4
+    # MVP 1.3a: 对齐 live PG 18 字段
     assert list(df.columns) == [
-        "name", "direction", "pool", "status", "category", "hypothesis",
-        "ic_mean", "ic_decay_ratio", "registered_at", "updated_at",
+        "id", "name", "category", "direction", "expression", "code_content",
+        "hypothesis", "source", "lookback_days", "status", "pool",
+        "gate_ic", "gate_ir", "gate_mono", "gate_t", "ic_decay_ratio",
+        "created_at", "updated_at",
     ]
 
 

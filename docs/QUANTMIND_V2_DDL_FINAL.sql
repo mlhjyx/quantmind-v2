@@ -245,22 +245,28 @@ CREATE INDEX idx_index_comp_date ON index_components(trade_date, index_code);
 CREATE TABLE factor_registry (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            VARCHAR(50) NOT NULL UNIQUE,
-    category        VARCHAR(30) NOT NULL,              -- price_volume/liquidity/money_flow/fundamental/size
+    category        VARCHAR(30) NOT NULL,              -- price_volume/liquidity/money_flow/fundamental/size/microstructure/phase21/...
     direction       SMALLINT NOT NULL DEFAULT 1,       -- 1=正向 -1=反向
     expression      TEXT,
     code_content    TEXT,
     hypothesis      TEXT,
-    source          VARCHAR(20) DEFAULT 'builtin',     -- builtin/gp/llm/brute/manual
+    source          VARCHAR(20) DEFAULT 'builtin',     -- builtin/gp/llm/brute/manual/legacy
     lookback_days   INT DEFAULT 60,
-    status          VARCHAR(20) DEFAULT 'active',      -- candidate/active/warning/critical/retired
+    status          VARCHAR(20) DEFAULT 'active',      -- candidate/active/warning/critical/retired/deprecated
     gate_ic         DECIMAL(8,4),
     gate_ir         DECIMAL(8,4),
     gate_mono       DECIMAL(8,4),
     gate_t          DECIMAL(8,4),
+    pool            VARCHAR(30) NOT NULL DEFAULT 'CANDIDATE',  -- MVP 1.3a: CORE/CORE5_baseline/PASS/CANDIDATE/LEGACY/INVALIDATED/DEPRECATED
+    ic_decay_ratio  DECIMAL(6,4),                      -- MVP 1.3a: 近期IC/历史IC绝对值比 (factor_lifecycle 衰减判定, <0.5 → WARNING)
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
-COMMENT ON TABLE factor_registry IS '因子注册表。状态机: candidate→active→warning→critical→retired';
+CREATE INDEX IF NOT EXISTS idx_factor_registry_pool ON factor_registry (pool);
+CREATE INDEX IF NOT EXISTS idx_factor_registry_status ON factor_registry (status);
+COMMENT ON TABLE factor_registry IS '因子注册表。状态机: candidate→active→warning→critical→retired/deprecated。MVP 1.3a 加 pool + ic_decay_ratio (ALTER TABLE migration 幂等, see backend/migrations/factor_registry_v2.sql)';
+COMMENT ON COLUMN factor_registry.pool IS 'MVP 1.3a 生命周期池';
+COMMENT ON COLUMN factor_registry.ic_decay_ratio IS 'MVP 1.3a 近期IC衰减比 (lifecycle 用)';
 
 CREATE TABLE factor_values (
     code            VARCHAR(10) NOT NULL,
