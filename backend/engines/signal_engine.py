@@ -438,44 +438,37 @@ def get_rebalance_dates(
     Returns:
         list of signal dates (Fridays)
     """
+    # MVP 2.1c 铁律 31: SELECT DISTINCT trade_date 迁至 DAL.read_calendar.
+    # conn 参数保留向后兼容 (30+ 调用方签名不变), 但本函数内部改由 DAL 管理连接.
+    del conn
     from app.services.price_utils import _get_sync_conn
+    from backend.platform.data.access_layer import PlatformDataAccessLayer
 
-    close_conn = conn is None
-    if conn is None:
-        conn = _get_sync_conn()
+    dal = PlatformDataAccessLayer(
+        conn_factory=_get_sync_conn, paramstyle="%s",
+    )
+    all_dates = dal.read_calendar(start=start_date, end=end_date)
 
-    try:
-        all_dates = pd.read_sql(
-            """SELECT DISTINCT trade_date FROM klines_daily
-               WHERE trade_date BETWEEN %s AND %s
-               ORDER BY trade_date""",
-            conn,
-            params=(start_date, end_date),
-        )["trade_date"].tolist()
+    if not all_dates:
+        return []
 
-        if not all_dates:
-            return []
+    # 按周分组
+    date_series = pd.Series(all_dates)
 
-        # 按周分组
-        date_series = pd.Series(all_dates)
+    if freq == "weekly":
+        # 每周最后一个交易日
+        weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
+        return sorted(weeks.tolist())
 
-        if freq == "weekly":
-            # 每周最后一个交易日
-            weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
-            return sorted(weeks.tolist())
+    elif freq == "biweekly":
+        # 每两周最后一个交易日
+        weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
+        return sorted(weeks.iloc[::2].tolist())
 
-        elif freq == "biweekly":
-            # 每两周最后一个交易日
-            weeks = date_series.groupby(date_series.apply(lambda d: d.isocalendar()[:2])).last()
-            return sorted(weeks.iloc[::2].tolist())
+    elif freq == "monthly":
+        # 每月最后一个交易日
+        months = date_series.groupby(date_series.apply(lambda d: (d.year, d.month))).last()
+        return sorted(months.tolist())
 
-        elif freq == "monthly":
-            # 每月最后一个交易日
-            months = date_series.groupby(date_series.apply(lambda d: (d.year, d.month))).last()
-            return sorted(months.tolist())
-
-        else:
-            raise ValueError(f"Unknown freq: {freq}")
-    finally:
-        if close_conn:
-            conn.close()
+    else:
+        raise ValueError(f"Unknown freq: {freq}")

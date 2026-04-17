@@ -56,6 +56,10 @@ class UnsupportedField(DALError):  # noqa: N818 — 同上
     """fields 含非 daily_basic / factor_registry 白名单字段."""
 
 
+class UnsupportedTable(DALError):  # noqa: N818 — 同上
+    """table 不在 freshness / reconcile 白名单 (MVP 2.1c)."""
+
+
 # ---------- DB / Cache 鸭子类型 (不强制 Protocol, 减耦合) ----------
 
 
@@ -71,6 +75,19 @@ class _DBConnection(Protocol):
 _FACTOR_VALUE_COLUMNS = frozenset({"raw_value", "neutral_value", "zscore"})
 _DAILY_BASIC_FIELDS = frozenset(
     {"pe_ttm", "pb", "ps_ttm", "dv_ttm", "total_mv", "circ_mv", "turnover_rate"}
+)
+# MVP 2.1c: read_freshness / read_reconcile_counts 允许查询的表白名单
+# 仅 Platform 负责的时间序列事实表, 排除 config / registry / metadata
+_FRESHNESS_TABLES = frozenset(
+    {
+        "klines_daily",
+        "daily_basic",
+        "moneyflow_daily",
+        "factor_values",
+        "index_daily",
+        "minute_bars",
+        "stock_status_daily",
+    }
 )
 
 
@@ -89,6 +106,24 @@ def _conn_cursor(conn: _DBConnection) -> Any:
 
 def _as_list(values: tuple | list) -> list:
     return list(values) if not isinstance(values, list) else values
+
+
+def _coerce_date(v: Any) -> date | None:
+    """强制转换成 date. 兼容 psycopg2 (已返 date) / sqlite (返 str) / datetime.
+
+    返 None 若 v 是 None. 其他异常 bubble up (静默转换 = 铁律 33 silent failure).
+    """
+    if v is None:
+        return None
+    if isinstance(v, date) and not hasattr(v, "hour"):
+        # pure date (non-datetime)
+        return v
+    if hasattr(v, "date") and callable(v.date):
+        # datetime-like
+        return v.date()
+    if isinstance(v, str):
+        return date.fromisoformat(v)
+    raise TypeError(f"cannot coerce {type(v).__name__} to date: {v!r}")
 
 
 # ---------- PlatformDataAccessLayer ----------
@@ -323,10 +358,273 @@ class PlatformDataAccessLayer(DataAccessLayer):
         finally:
             conn.close()
 
+    # ════════════════════════════════════════════════════════════════
+    # MVP 2.1c 扩展: 7 新方法 (SQL 迁移消费方统一入口)
+    # ════════════════════════════════════════════════════════════════
+
+    # ---------- read_calendar ----------
+
+    def read_calendar(
+        self,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[date]:
+        """读交易日历 (distinct trade_date from klines_daily).
+
+        消费方 (MVP 2.1c A/B 级迁移): compute_factor_ic / fetch_base_data /
+        services.factor_repository / engines.signal_engine.
+        """
+        where_clauses: list[str] = []
+        params: list[Any] = []
+        if start is not None:
+            where_clauses.append(f"trade_date >= {self._ph}")
+            params.append(start)
+        if end is not None:
+            where_clauses.append(f"trade_date <= {self._ph}")
+            params.append(end)
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+        sql = (
+            f"SELECT DISTINCT trade_date FROM klines_daily {where_sql} "
+            f"ORDER BY trade_date"
+        )
+        conn = self._conn_factory()
+        try:
+            with _conn_cursor(conn) as cur:
+                cur.execute(sql, tuple(params))
+                rows = cur.fetchall()
+            out: list[date] = []
+            for r in rows:
+                coerced = _coerce_date(r[0])
+                if coerced is not None:
+                    out.append(coerced)
+            return out
+        finally:
+            conn.close()
+
+    # ---------- read_universe ----------
+
+    def read_universe(self, as_of: date) -> list[str]:
+        """读 as_of 日有效 A 股 universe (未退市 + 已上市).
+
+        排除: list_status='D' (已退市) + list_date > as_of (未上市).
+        不排除 BJ / ST / 停牌 (调用方按策略自行过滤).
+
+        消费方: services.data_orchestrator / engines.ml_engine.
+        """
+        sql = (
+            f"SELECT code FROM symbols "
+            f"WHERE market = 'astock' "
+            f"  AND list_status != 'D' "
+            f"  AND (list_date IS NULL OR list_date <= {self._ph}) "
+            f"  AND (delist_date IS NULL OR delist_date > {self._ph}) "
+            f"ORDER BY code"
+        )
+        conn = self._conn_factory()
+        try:
+            with _conn_cursor(conn) as cur:
+                cur.execute(sql, (as_of, as_of))
+                rows = cur.fetchall()
+            return [r[0] for r in rows]
+        finally:
+            conn.close()
+
+    # ---------- read_stock_status ----------
+
+    def read_stock_status(
+        self,
+        codes: list[str],
+        as_of: date,
+    ) -> pd.DataFrame:
+        """读 as_of 日的股票状态快照 (ST/停牌/新股).
+
+        消费方: services.pt_data_service / engines.factor_analyzer.
+        """
+        columns = [
+            "code", "is_st", "is_suspended", "is_new_stock",
+            "board", "list_date", "delist_date",
+        ]
+        if not codes:
+            return pd.DataFrame(columns=columns)
+        code_list = _as_list(codes)
+        placeholders = ", ".join([self._ph] * len(code_list))
+        sql = (
+            f"SELECT code, is_st, is_suspended, is_new_stock, "
+            f"       board, list_date, delist_date "
+            f"FROM stock_status_daily "
+            f"WHERE code IN ({placeholders}) AND trade_date = {self._ph} "
+            f"ORDER BY code"
+        )
+        conn = self._conn_factory()
+        try:
+            with _conn_cursor(conn) as cur:
+                cur.execute(sql, (*code_list, as_of))
+                rows = cur.fetchall()
+            if not rows:
+                return pd.DataFrame(columns=columns)
+            return pd.DataFrame(rows, columns=columns)
+        finally:
+            conn.close()
+
+    # ---------- read_factor_names ----------
+
+    def read_factor_names(self, source: str = "registry") -> list[str]:
+        """读 factor_name 去重列表 (默认从 factor_registry 快路径).
+
+        Args:
+          source: "registry" (默认, 走 factor_registry, 快 <1ms, 287 行全注册表) /
+                  "values" (走 factor_values DISTINCT, 慢 ~100s on 816M rows,
+                  返实际有数据的因子名).
+
+        消费方: compute_factor_ic / engines.ml_engine / engines.factor_analyzer /
+        engines.factor_profiler. 生产 ML 训练 / IC 全量计算默认走 registry 快路径,
+        仅需要"确有数据"的场景 (如 factor_profiler 画像) 显式传 source='values'.
+
+        Raises:
+          ValueError: source 非 "registry" / "values".
+        """
+        if source == "registry":
+            sql = "SELECT DISTINCT name FROM factor_registry ORDER BY name"
+        elif source == "values":
+            sql = (
+                "SELECT DISTINCT factor_name FROM factor_values "
+                "ORDER BY factor_name"
+            )
+        else:
+            raise ValueError(
+                f"source must be 'registry' or 'values', got {source!r}"
+            )
+        conn = self._conn_factory()
+        try:
+            with _conn_cursor(conn) as cur:
+                cur.execute(sql)
+                rows = cur.fetchall()
+            return [r[0] for r in rows]
+        finally:
+            conn.close()
+
+    # ---------- read_freshness ----------
+
+    def read_freshness(self, tables: list[str]) -> dict[str, date | None]:
+        """读多个表的 MAX(trade_date) 作为新鲜度探针.
+
+        消费方: services.data_orchestrator L3 data freshness check.
+
+        Raises:
+          UnsupportedTable: tables 含非白名单表.
+        """
+        if not tables:
+            return {}
+        bad = [t for t in tables if t not in _FRESHNESS_TABLES]
+        if bad:
+            raise UnsupportedTable(
+                f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}"
+            )
+        out: dict[str, date | None] = {}
+        conn = self._conn_factory()
+        try:
+            for t in tables:
+                # 表名走白名单非参数, 不注入风险 (已 frozenset 验证)
+                sql = f"SELECT MAX(trade_date) FROM {t}"  # noqa: S608
+                with _conn_cursor(conn) as cur:
+                    cur.execute(sql)
+                    row = cur.fetchone()
+                raw = row[0] if row else None
+                out[t] = _coerce_date(raw)
+            return out
+        finally:
+            conn.close()
+
+    # ---------- read_reconcile_counts ----------
+
+    def read_reconcile_counts(
+        self,
+        tables: list[str],
+        as_of: date,
+    ) -> dict[str, int]:
+        """读多个表在 as_of 日的 COUNT(*) 用于跨表对齐检查.
+
+        消费方: services.data_orchestrator L3 reconcile check.
+
+        Raises:
+          UnsupportedTable: tables 含非白名单表.
+        """
+        if not tables:
+            return {}
+        bad = [t for t in tables if t not in _FRESHNESS_TABLES]
+        if bad:
+            raise UnsupportedTable(
+                f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}"
+            )
+        out: dict[str, int] = {}
+        conn = self._conn_factory()
+        try:
+            for t in tables:
+                sql = f"SELECT COUNT(*) FROM {t} WHERE trade_date = {self._ph}"  # noqa: S608
+                with _conn_cursor(conn) as cur:
+                    cur.execute(sql, (as_of,))
+                    row = cur.fetchone()
+                out[t] = int(row[0]) if row and row[0] is not None else 0
+            return out
+        finally:
+            conn.close()
+
+    # ---------- read_pead_announcements ----------
+
+    def read_pead_announcements(
+        self,
+        trade_date: date,
+        lookback_days: int = 7,
+    ) -> pd.DataFrame:
+        """读 trade_date 附近 lookback_days 天窗口的 Q1 财报公告 (PEAD 因子用).
+
+        消费方 (MVP 2.1c B 级迁移): services.factor_repository.load_pead_announcements
+        (原函数将改为 thin wrapper 调本方法).
+
+        Args:
+          trade_date: 基准日
+          lookback_days: 回看窗口 (默认 7 天, 公告后信号衰减)
+
+        Returns:
+          DataFrame with columns ['ts_code', 'eps_surprise_pct', 'ann_td'],
+          按 (ts_code, trade_date DESC) 排序. 无数据返回空 DataFrame (列名保留).
+
+        Filters:
+          - report_type='Q1'
+          - trade_date <= <trade_date> AND trade_date >= <trade_date> - lookback_days
+          - eps_surprise_pct IS NOT NULL AND ABS(eps_surprise_pct) < 10
+        """
+        columns = ["ts_code", "eps_surprise_pct", "ann_td"]
+        # 日期窗口在 Python 层计算, 避免 PG-specific INTERVAL (sqlite 兼容)
+        from datetime import timedelta as _td
+        since = trade_date - _td(days=lookback_days)
+        # 对齐 services/factor_repository.load_pead_announcements 原 SQL:
+        # 输出列名 ann_td 是 trade_date 的 alias (非 DB 原生字段 ann_date)
+        sql = (
+            f"SELECT ea.ts_code, ea.eps_surprise_pct, "
+            f"       ea.trade_date AS ann_td "
+            f"FROM earnings_announcements ea "
+            f"WHERE ea.report_type = 'Q1' "
+            f"  AND ea.trade_date BETWEEN {self._ph} AND {self._ph} "
+            f"  AND ea.eps_surprise_pct IS NOT NULL "
+            f"  AND ABS(ea.eps_surprise_pct) < 10 "
+            f"ORDER BY ea.ts_code, ea.trade_date DESC"
+        )
+        conn = self._conn_factory()
+        try:
+            with _conn_cursor(conn) as cur:
+                cur.execute(sql, (since, trade_date))
+                rows = cur.fetchall()
+            if not rows:
+                return pd.DataFrame(columns=columns)
+            return pd.DataFrame(rows, columns=columns)
+        finally:
+            conn.close()
+
 
 __all__ = [
     "PlatformDataAccessLayer",
     "DALError",
     "UnsupportedColumn",
     "UnsupportedField",
+    "UnsupportedTable",
 ]
