@@ -280,11 +280,16 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ---
 
-## 铁律（违反即停）
+## 铁律（违反即停, 40 条全局原则, v2 2026-04-17）
+
+> **全局性要求**: 每条铁律必须是"永恒原则", 而不是"某阶段后失效"的临时规则.
+> **测试**: 10 年后此条仍成立? "是, 只是实现方式变了" → 保留. "否, 某阶段后不适用" → 不该是铁律 (应入 Blueprint).
+>
+> **历史编号保持不变** (防止其他文档引用漂移). 合并/删除条目以 DEPRECATED 占位保留.
 
 ### 工作原则类
 1. **不靠猜测做技术判断** — 外部API/数据接口必须先读官方文档确认
-2. **下结论前验代码** — grep/read代码验证，不信文档不信记忆（LL-019）
+2. **[DEPRECATED, 合并入 25]** ~~下结论前验代码~~ — 已并入铁律 25 的作用域定义
 3. **不自行决定范围外改动** — 先报告建议和理由，等确认后再执行
 
 ### 因子研究类
@@ -294,10 +299,10 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### 数据与回测类
 7. **IC/回测前确认数据地基** — universe与回测对齐+无前瞻偏差+数据质量检查（IC偏差教训）
-8. **任何策略改动必须OOS验证** — ML训练/验证/测试三段分离; 非ML策略/因子/参数改动必须walk-forward或时间序列holdout, paired bootstrap p<0.05硬门槛。IS(in-sample)好看不算证据。违反→连续5次"IS强OOS崩"教训: DSR / G1 LightGBM / Phase 2.1 融合E2E(val_sharpe=1.26→实盘-0.99) / Phase 3D ML Synthesis / Phase 3E微结构等权加入(16/16 noise ROBUST但WF 0/6 PASS)
+8. **任何策略改动必须OOS验证** — ML训练/验证/测试三段分离; 非ML策略/因子/参数改动必须walk-forward或时间序列holdout, paired bootstrap p<0.05硬门槛。IS(in-sample)好看不算证据。违反→"IS强OOS崩"反复发生 (详细教训见 `LESSONS_LEARNED.md`).
 
 ### 系统安全类
-9. **重数据任务串行执行** — 最多2个重数据Python进程并发，违反→PG OOM崩溃（2026-04-03事件）
+9. **所有资源密集任务必须经资源仲裁** — 全局原则: 禁止裸并发消耗共享资源 (RAM/GPU/DB连接/API quota). 实现方式 (ROF Framework #11 或人工判断) 是实施细节. 当前环境约束: 32GB RAM → 重数据 Python 进程 max 2 并发. 违反→PG OOM崩溃（2026-04-03事件）
 10. **基础设施改动后全链路验证** — PASS才能上线，不跳过验证直接部署（清明改造教训）
 11. **IC必须有可追溯的入库记录** — factor_ic_history表无记录的IC视为不存在，不可用于决策（mf_divergence"IC=9.1%"实为-2.27%教训）
 
@@ -310,11 +315,11 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ### 重构原则类（Step 6-B, 2026-04-09）
 14. **回测引擎不做数据清洗** — 数据必须在入库时通过 DataPipeline 验证和标准化。回测引擎不猜单位、不推断ST、不计算adj_close。DataFeed 提供什么就用什么。违反→数据契约被冲破，回测不可复现。
 15. **任何回测结果必须可复现** — 每次回测必须记录 `(config_yaml_hash, git_commit)` 到 backtest_run 表。`regression_test.py` 能验证同一输入产出完全相同的 NAV (max_diff=0)。违反→策略迭代失去基准比对能力。
-16. **信号路径唯一** — 所有回测/研究/PT 必须走 `SignalComposer → PortfolioBuilder → BacktestEngine`。禁止编写独立的简化信号生成或回测框架。违反→PT 与回测结果不一致(原历史问题: `load_factor_values`/`vectorized_signal` 各读各的字段)。
+16. **信号路径唯一且契约化** — 全局原则: 生产/回测/研究必走**同一信号路径契约**, 禁止绕路的简化信号/回测代码. 具体路径随策略架构演进 (当前单策略: SignalComposer → PortfolioBuilder → BacktestEngine; 未来多策略: Strategy → SignalPipeline → OrderRouter). 违反→PT 与回测结果不一致 (原历史问题: `load_factor_values`/`vectorized_signal` 各读各的字段).
 17. **数据入库必须通过 DataPipeline** — 禁止直接 `INSERT INTO` 生产表。`DataPipeline.ingest(df, Contract)` 负责 rename → 列对齐 → 单位转换 → 值域验证 → FK 过滤 → Upsert。违反→重新引入单位混乱/code 格式不一致等历史技术债。
 
 ### 成本对齐
-18. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认H0验证通过（理论成本vs QMT实盘误差<5bps）
+18. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认 H0 验证通过 (理论成本 vs QMT 实盘误差 <5bps). **周期性复核**: 每季度重跑 H0 验证 (成本会 drift: 券商费率 / 印花税调整 / 滑点模型失效), 误差 >5bps 需重新校准 + 全部现有回测重跑. 违反→成本失真导致策略 sim-to-real gap.
 
 ### IC 口径统一（Step 6-E, 2026-04-09）
 19. **IC 定义全项目统一** — 所有 IC 计算必须走 `backend/engines/ic_calculator.py` 共享模块:
@@ -338,25 +343,25 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### 工程纪律类（Step 6-H后, 2026-04-10）
 21. **先搜索开源方案再自建** — 任何新功能开发前先花半天搜索成熟开源实现（Qlib/RD-Agent/alphalens等）。自建引擎90%功能已被Qlib覆盖的教训。违反→重复造轮子浪费数月。
-22. **文档跟随代码（可执行标准）** — (a) 代码 PR 必须同时更新受影响的 CLAUDE.md / SYSTEM_STATUS.md / DEV_*.md, 或在 commit message 声明 `NO_DOC_IMPACT`; (b) `docs/` 下 30 天未更新但对应代码 git log 有变动的文件应定期扫描标 STALE; (c) 引用已删除文件/函数/表的链接必须在同一次 commit 修复; (d) 数字类声明(行数/测试数/表数)变更时同步更新 CLAUDE.md。违反→文档与代码不一致导致错误决策（5yr/12yr Sharpe 混淆 + S1 审计 10+ 条文档腐烂 findings: F1/F2/F10/F14/F28/F29 等）。
+22. **文档跟随代码** — 全局原则: 代码变更必须同步受影响文档 (CLAUDE.md / SYSTEM_STATUS.md / DEV_*.md / Blueprint). 具体要求: (a) 代码 PR 必须同时更新, 或在 commit message 声明 `NO_DOC_IMPACT`; (b) 引用已删除文件/函数/表的链接必须在同一次 commit 修复; (c) 数字类声明 (行数/测试数/表数) 变更时同步更新. 执行机制: CI 强制 (未来) + 人工自律 (现在). 违反→文档与代码不一致导致错误决策 (5yr/12yr Sharpe 混淆 + S1 审计 10+ 条文档腐烂).
 23. **每个任务独立可执行** — 不允许任务依赖未实现的模块。如果存在依赖，先实现依赖或拆分为独立可执行的子任务。违反→依赖死锁导致整个功能链条卡住（11份设计文档80%未实现的根因）。
-24. **设计不超过2页** — 超过2页的设计文档说明范围太大，需要拆分为可独立交付的子模块。每个子模块的设计必须包含MVP定义和验收标准。违反→过度设计无法落地（DEV_AI_EVOLUTION 0%实现教训）。
+24. **设计文档必须按抽象层级聚焦** — 全局原则: 单个设计文档只覆盖一个抽象层级, 不同层级不混在一个文档. 层级规模经验 (非硬门, 但超出需警觉): MVP 级 ≤ 2 页 / Framework 级 ≤ 5 页 / Platform Blueprint 不限页数但必须含 TOC + 章节索引 + Quickstart ≤ 2 页. 每个设计必须含验收标准. 违反→过度设计无法落地 (DEV_AI_EVOLUTION 705 行 0% 实现教训).
 
-### CC执行纪律类（2026-04-10）
-25. **不靠记忆靠代码** — 每个判断必须有当前代码证据（文件路径+行号+实际内容）。违反→基于错误前提做出错误修改。
-26. **验证不可跳过不可敷衍** — 验证=读完整代码+理解上下文+交叉对比+明确结论，跳过=任务失败。违反→P0 SN未生效就是验证缺失的直接后果。
-27. **结论必须明确（✅/❌/⚠️）不准模糊** — 不接受"大概没问题""应该是对的"。违反→模糊结论掩盖真实问题。
-28. **发现即报告不选择性遗漏** — 执行中发现的任何异常不管是否在任务范围内都必须报告。违反→问题被发现又被埋没。
+### CC执行纪律类
+25. **代码变更前必读当前代码验证 (含铁律 2 合并)** — 全局原则: 任何修改/新建/删除代码的操作前, 必须读目标代码的**当前实际内容** (文件路径+行号+实际内容), 不依赖记忆或文档. 关键 claim (引用具体行数/语义) 决策前至少 1 次代码验证. 架构讨论可凭 Blueprint+memory 推理, 但做出**代码变更决策**前仍须验证. 违反→基于过期记忆改代码 (LL-019 + 本 session 多次自报"3085 行" 实际 1218 行的教训).
+26. **验证不可跳过不可敷衍** — 验证=读完整代码+理解上下文+交叉对比+明确结论, 跳过=任务失败. 违反→P0 SN未生效就是验证缺失的直接后果.
+27. **结论必须明确（✅/❌/⚠️）不准模糊** — 不接受"大概没问题""应该是对的". 违反→模糊结论掩盖真实问题.
+28. **发现即报告不选择性遗漏** — 执行中发现的任何异常不管是否在任务范围内都必须报告. 违反→问题被发现又被埋没.
 
 ### 数据完整性类（P0-4, 2026-04-12）
 29. **禁止写 float NaN 到 DB** — 所有写入 factor_values 的代码必须将 NaN 转为 None (SQL NULL)。float NaN 在 PostgreSQL NUMERIC 列中不等于 NULL，导致 `COALESCE(neutral_value, raw_value)` 返回 NaN 而非回退到 raw_value。违反→因子数据静默损坏（RSQR_20事件: 11.5M行NaN未被发现）。
     > 验证工具: `python scripts/factor_health_check.py <factor_name>`
-30. **中性化后必须重建 Parquet 缓存** — `fast_neutralize_batch` 完成后必须运行 `python scripts/build_backtest_cache.py` 重建缓存。Parquet 缓存不会自动更新。违反→回测使用旧数据（Phase 1.2 SW1迁移后缓存过期2天未发现）。
+30. **缓存一致性必须保证** — 全局原则: 源数据 (DB factor_values / klines_daily / 其他) 变更后, 下游所有缓存 (Parquet / Redis / 内存) 必须在**下一个交易日内生效**, 否则视为数据过期. 实现路径 (DAL Cache Coherency Protocol 自动 / 手动 `build_backtest_cache.py` 重建) 是细节, 原则是"缓存不得与源脱节". 违反→回测使用旧数据 (Phase 1.2 SW1迁移后缓存过期2天未发现).
     > 入库体系文档: `docs/FACTOR_ONBOARDING_SYSTEM.md`
 
 ### 工程基础设施类（S1-S4 审计沉淀, 2026-04-15）
 
-> 这 5 条铁律是 S1-S4 审计 54 条 findings 里 P0/P1 集中爆发的根因抽象。前 30 条铁律主要由因子研究教训驱动, 基础设施类教训欠账在本轮补齐 (铁律总数 30→35)。
+> 这 5 条铁律是 S1-S4 审计 54 条 findings 里 P0/P1 集中爆发的根因抽象。前 30 条铁律主要由因子研究教训驱动, 基础设施类教训欠账在 S 轮补齐 (铁律总数 30→35)。**2026-04-17 v2 扩展**: 加实施者纪律类 4 条 (36-39) + 补漏 2 条 (40-41), 总数 35→40. 另铁律 2 DEPRECATED 合并入 25.
 
 31. **Engine 层纯计算** — `backend/engines/**` 下所有模块不允许读写 DB, 不允许 HTTP/Redis 调用, 不允许读写本地文件（Parquet 缓存除外）。输入/输出必须是 DataFrame/dict/原生 Python 类型。数据必须在入库时通过 DataPipeline 验证和标准化, Engine 只负责纯计算。违反→分层崩塌, 纯计算与 IO 耦合导致无法单测 + 重构不敢动（F31 factor_engine.py 2034 行教训 + 审计 F43 配套问题）。
     > **Phase C C1+C2+C3 全部完成 (2026-04-16)**: `backend/engines/factor_engine.py` → `backend/engines/factor_engine/` package. C1: 30 个 calc_* 纯函数迁至 `calculators.py`, preprocess 管道迁至 `preprocess.py`, Alpha158 helpers 迁至 `alpha158.py`, direction/metadata 迁至 `_constants.py`. C2: load_* 8 个数据加载函数搬家到 `backend/app/services/factor_repository.py`, calc_pead_q1 拆为 `factor_repository.load_pead_announcements` (DB) + `factor_engine/pead.calc_pead_q1_from_announcements` (纯函数). **C3: `save_daily_factors` / `compute_daily_factors` / `compute_batch_factors` 搬家到 `backend/app/services/factor_compute_service.py`, compute_batch_factors 内部原 `execute_values(INSERT INTO factor_values)` + `conn.commit()` 改走 `DataPipeline.ingest(FACTOR_VALUES)`, 关闭 F86 最后一条 factor_engine known_debt (铁律 17), `check_insert_bypass --baseline` 从 3→2**. `__init__.py` 从 2049 → 416 行 (−80%), 25 个调用方零改动. 见 docs/audit/PHASE_C_F31_PREP.md.
@@ -377,6 +382,30 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     > **已落地 (2026-04-15 Phase B M3)**: `backend/engines/config_guard.py::check_config_alignment()` + `ConfigDriftError` 硬校验 6 参数 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq / factor_list), PT 启动 (`run_paper_trading.py` Step 0.5) + `health_check.py` 双路径集成, 24 单测 + 5 把尺子全绿. F45 关闭.
 
 35. **Secrets 环境变量唯一** — 源码禁止出现 API key / 数据库密码 / token 的 fallback 默认值（包括占位符、弱密码、测试值、注释掉的旧值）。必须 `os.environ.get + 未设置 raise`。`.env` 禁止提交（`.gitignore` 必须包含）。定期 `git log -p | grep -iE "key|token|password|secret"` 扫描历史泄漏, 发现必须 rotate。违反→秘密泄漏用户需 rotate 所有 key + 历史 commit 永久污染（F32 API token 源码泄漏 5 处 + F15/F65 硬编码 DB 密码 教训）。
+
+### 实施者纪律类（2026-04-17 新增, 给自己定下的全局规则）
+
+36. **代码变更前必核 precondition** — 全局原则: 所有代码变更前必显式核对 3 项: (a) 依赖模块已交付 (不是"有设计"); (b) 老路径保留 + regression 锚点在 (max_diff=0); (c) 测试/验证数据可获得. 任一 failed → 拆分任务 / 补依赖 / 回滚, 不硬上. 违反→依赖链整体崩 (11 份设计文档 80% 未实现的根因).
+
+37. **Session 关闭前必写 handoff** — 全局原则: 每个 session 关闭前必更新 `memory/project_sprint_state.md` 顶部, 记录: 已完成 / 未完成 / 下 session 入口 / Git 状态 (commits ahead + working tree 状态) / 阻塞项 / 待决策. 违反→跨 session 工作凭空消失, 后续 session 无法恢复上下文.
+
+38. **Platform Blueprint 是唯一长期架构记忆** — 全局原则: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (QPB) 是跨 session 的架构真相源. (a) 任何违反 Blueprint 的实施决策 → 先写 ADR (入 Blueprint Part X 或 `docs/adr/`), 再执行; (b) 新 Session 开始必读: Blueprint Part 0 + 当前 Sprint 对应 Part 4 MVP + `memory/project_sprint_state.md`; (c) 每 Wave 完成必 bump version + 回填实际 vs 预期差异. Blueprint 过时即事故源. 违反→跨 session 实施漂移, 后 session 看不见前 session 判断.
+
+39. **双模式思维 — 架构/实施切换必须显式声明** — 全局原则: 工作分两种模式, 心态不同:
+    - **架构模式** (设计/评估/推理): 允许基于 Blueprint + memory + 综合判断, 不强制每句话 grep. 决策**关键 claim** 前验证 1 次 (铁律 25 的最小粒度).
+    - **实施模式** (代码变更): 100% 遵守铁律 25, 改什么就读什么.
+    - 切换模式时必须显式声明 (如: "进入实施模式, 开始修改 X 文件").
+    违反→架构时陷入冗余 grep 秀 / 实施时凭印象改代码 (本 session 多次靠记忆说"3085 行"实际 1218 行的教训).
+
+40. **测试债务不得增长** — 全局原则: 新代码变更不能让 `pytest` fail 数增加. 历史 fail (如当前 32 DEPRECATED 路径遗留) 允许暂不修, 但**新增 fail 禁止合入**. 每次 pre-push 前必 diff `pytest` 结果, fail 数 ↑ 则阻断. 违反→测试债务无底线累积 (S4 审计 32 fail 全是"历史债", 再累积会吞噬核心路径信心).
+
+41. **时间与时区统一** — 全局原则:
+    - 所有 timestamp **内部存储必须 UTC**, 展示层再转 Asia/Shanghai
+    - 所有 timestamp 必须带 timezone, 禁止 naive datetime
+    - 交易日判断必须走 `TradingDayProvider` (或 `trading_calendar` 统一接口), 禁止散落 `date` 字符串比较
+    - 日期常量定义必须标注是**自然日**还是**交易日**
+    - 测试中 `freeze_time` 必须用 UTC 值
+    违反→Phase 2.1 sim-to-real gap 根因之一 + timezone bug 反复踩 (如 T+1 判定错在 UTC/CST 切换日).
 
 ## 因子审批硬标准
 
