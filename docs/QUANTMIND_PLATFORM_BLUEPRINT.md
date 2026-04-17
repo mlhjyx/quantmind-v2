@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.3)
+# QuantMind Platform Blueprint (QPB v1.4)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → **v1.3 P0 补丁 (依赖循环/event hooks/AI 示例/时间现实化/DR)**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → **v1.4 Cold Start Ready (Quickstart + Platform-App 分工 + 铁律 3 类 Mapping + Migration 时刻表 + 反膨胀规则 + 测试 4 层)**
 > **作者**: Architect pass (Opus)
-> **状态**: 草案 v1.3 (12 Framework + 6 升维 + 15 MVP), 每个 Wave 完成后回填实际产出
+> **状态**: 草案 v1.4 (12 Framework + 6 升维 + 16 MVP, 26-35 周), **Wave 1 开工就绪**
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -52,6 +52,95 @@
 | 禁破坏 PT | 新路径上线前老路径保留, regression_test max_diff=0 (铁律 15) |
 | 开源优先 | 自建前先搜开源方案 (铁律 21), 列出 alternatives 对比 |
 | 事故爆炸半径局限 | 新零件出 bug 只影响自身, 不污染其他模块 |
+
+### 何时**不**做 Framework (反膨胀规则, v1.4 新增)
+
+Blueprint 已经从 10 → 11 → 12 Framework. 必须有明确规则**防止我自己无限膨胀**.
+
+**新增 Framework 的 3 条 precondition (必须全满足):**
+1. **多 Application 消费**: 至少 2 个 Application 真实需要这个能力 (不是"未来可能"). 单 Application 用 → 留在 App 层.
+2. **契约稳定**: 能用 ≤ 5 个接口方法定义清楚, 不会每 Wave 都需要破坏性改签名.
+3. **有运维价值**: 能带来跨 App 共享的工程价值 (复用/隔离/审计/监控), 不只是"代码放这里整齐".
+
+**不满足任一 → 拒绝, 留在 Application 层或合并进现有 Framework**.
+
+**扩展 (加 Framework 方法) 更容易合理**, 因为:
+- 相同 Framework 新增方法 = 非破坏性
+- 新加 Framework = 增加 SDK surface / 增加依赖 / 增加测试矩阵, 成本高
+
+**当前 12 Framework 封顶规则** (v1.4 起): 除非有新架构 insight 且满足上 3 条, 否则**禁止扩充到 13**. 需扩时必先写 ADR 入 Blueprint.
+
+---
+
+## 🚀 Quickstart — Cold Start 必读 (v1.4 新增, ≤ 2 页)
+
+> **给未来 session 的我**: 冷启动时不要读 1600 行全文, 只读这一节就够.
+> 具体章节按需跳转 (Part 4 MVP 列表 / Part 2 Framework 详细 / Part 5 铁律 Mapping / Part 8 决策记录).
+
+### 我是谁, 在做什么?
+
+QuantMind V2: 单人量化系统, 2026-04-17 起进入平台化阶段, 目标 **6.5-8.75 月**完成从"脚本堆" → "Core Platform + Applications" 改造.
+
+### 现在是 Wave 几?
+
+读 `memory/project_sprint_state.md` 顶部, 看最新 "本 session 完成" 段标注的当前 Wave 和 MVP.
+
+### 下一个 MVP 是什么?
+
+**默认串行路径**:
+```
+Wave 1: MVP 1.1 → 1.2 → 1.2a → 1.3 → 1.4  (5-7 周)
+Wave 2: MVP 2.1 → 2.2 → 2.3               (7-9 周)
+Wave 3: MVP 3.0/3.0a 并行 → 3.1 → 3.2 → 3.3 并行 → 3.4  (10-13 周)
+Wave 4: MVP 4.1/4.2/4.3/4.4 并行           (4-6 周)
+```
+
+**每个 MVP 开工前必读** (铁律 36 precondition):
+1. 本 MVP 的 `docs/mvp/MVP_X_Y_*.md` 设计稿 (若没有, 先 plan 模式写)
+2. Blueprint Part 2 对应 Framework
+3. Blueprint Part 4 对应 MVP 详细定义
+
+### 最重要的 5 个铁律
+
+> 铁律共 40 条 (CLAUDE.md). 冷启动只记这 5 条:
+
+- **铁律 38** (最高): Blueprint (QPB) 是你唯一长期架构记忆, 实施漂移必须先写 ADR 入 Blueprint
+- **铁律 39**: 架构模式 vs 实施模式切换必显式声明
+- **铁律 37**: Session 关闭前必写 handoff (不然工作丢)
+- **铁律 25**: 代码变更前必读当前代码验证 (防凭印象改)
+- **铁律 36**: 代码变更前必核 precondition (依赖/锚点/数据)
+
+### 禁忌 Top 5
+
+- ❌ big-bang 切换 (老代码不保留直接换)
+- ❌ 跳过 regression_test max_diff=0 (铁律 15 硬门)
+- ❌ 绕过 Platform SDK 裸访问 DB/Redis (铁律 17)
+- ❌ 提前做 AI 闭环 (Wave 3 才做, 提前=必 0% 实现, 历史教训)
+- ❌ 扩充到 13 Framework (反膨胀规则, 必先写 ADR)
+
+### 已决议不再讨论的 4+4 开放问题
+
+见 `memory/project_platform_decisions.md`. **不要重开讨论**:
+- Platform 包名 `backend.platform`
+- Wave 3 第 2 策略 PEAD (+ 3 周前置 PIT/PMS v2/cost H0-v2)
+- Event Sourcing StreamBus+PG (+ outbox/snapshot/versioning)
+- CI 3 层本地 (pre-commit + pre-push regression + daily full)
+
+### Application 调 Platform SDK 的 4 个 Pattern
+
+见 Part 2 顶部 "Application Usage Patterns". cold start 想写代码先看那里 4 个示例.
+
+### 紧急情况查询
+
+| 情况 | 去哪看 |
+|---|---|
+| 要实施 MVP X.Y | Part 4 (MVP 详细) |
+| 要加/修改 Framework | Part 2 (Framework 设计) |
+| 判断是否违反铁律 | CLAUDE.md (40 条铁律) + Part 5 Mapping |
+| 遇到用户之前决议 | `memory/project_platform_decisions.md` |
+| 遇到硬件/资源 | `memory/reference_hardware.md` |
+| 前 session 状态 | `memory/project_sprint_state.md` |
+| 不确定这是 Platform 还是 App | Part 1 "Platform-App 分工原则" |
 
 ---
 
@@ -134,6 +223,56 @@ Application → Platform SDK → Platform internals
 ❌ Platform 反向依赖 Application
 ❌ 跨 Framework 互相 import (通过 Event Bus 协作)
 ```
+
+### Platform vs Application 分工原则 (v1.4 新增, 单人扮两角的心态切换标准)
+
+> **问题**: 我一个人既写 Platform 也写 Application, 很容易混淆 "这段代码该放哪". 没有明确分工原则 → Platform 塞业务逻辑 / App 直连 DB, 分层立刻腐化.
+
+#### 判定代码属 Platform 还是 Application
+
+**属 Platform 的 4 个特征** (须全部满足):
+1. **多 App 共享** — 至少 2 个 Application 需要或将需要此能力
+2. **业务无关** — 不含具体策略逻辑 / 不含特定因子计算规则
+3. **接口稳定** — 改变此代码行为会影响 ≥ 2 个 App (所以要契约化)
+4. **有契约化价值** — 值得写 `interface.py` + 单测 + 版本化
+
+**属 Application 的特征** (满足任一):
+- 只为 1 个策略 / 1 个 Agent / 1 个研究 phase 用
+- 含具体业务判断 (如"CORE3+dv_ttm 选股规则")
+- 实验性 / 快糙狠 / 用完就删
+
+**判定流程图**:
+```
+写代码前问自己:
+  Q1: 至少 2 个 App 会用? → No → App 层
+  Q2: 包含具体策略/因子逻辑? → Yes → App 层
+  Q3: 接口会经常改签名? → Yes → App 层 (还没稳定)
+  Q4: 以上全过 → Platform 层
+```
+
+#### 双角色心态切换
+
+| 我在做什么 | 心态 | 关键 |
+|---|---|---|
+| 写 Platform 代码 | **平台工程师** | 契约化 + 单测 100% + 版本化 + 拒绝业务泄漏 + SDK 稳定至上 |
+| 写 Application 代码 | **业务工程师** | 快速迭代 + 业务逻辑清晰 + 通过 SDK 消费 Platform + 可以糙但不可破坏 Platform |
+| Platform 影响 Application | **切换到业务视角** review | 改动 SDK 前想 "这会打破哪些 App?" |
+| Application 需要新能力 | **切换到平台视角** 评估 | "加到 Platform 还是留在 App?" 走上面 Q1-Q4 |
+
+#### 红线 (不可违反)
+
+- **Platform 代码含 `if strategy_id == "S1"` / `if factor_name == "xxx"`** → 业务泄漏, 立即回滚
+- **Application 直接 `from backend.platform.data.interface import DataAccessLayer` + 自实现 subclass** → 绕开 Platform 控制, 拒绝合入
+- **Platform Framework 相互 import** → 必须通过 Event Bus, 违反立即重构
+
+#### 不确定时的默认
+
+**"不确定就放 Application"** — 因为:
+- Application → Platform 的**提升 (promotion)** 成本低 (加接口 + 测试)
+- Platform → Application 的**降级 (demotion)** 成本高 (接口废弃 / App 迁移)
+- 过早 Platform 化是 YAGNI 陷阱
+
+---
 
 ### Platform SDK 导出面
 
@@ -538,14 +677,37 @@ Deployment:
   - 自动 rollback on smoke fail
 ```
 
-**MVP 范围:**
+### 测试策略 4 层 (v1.4 新增, 防 32 fail 再累积)
+
+当前测试基础只有"写 unit test + 手跑 regression_test"2 层, 不够. 必须分 4 层 + 各自 coverage gate.
+
+| 层 | 范围 | 运行时机 | Gate | 典型 |
+|---|---|---|---|---|
+| **L1 Unit** | 单函数 / 单类 纯逻辑, 无 IO | pre-commit (<30s) | coverage ≥ 80% (核心模块) | `test_factor_lifecycle.py` (26 tests) |
+| **L2 Integration** | Framework 内部多组件协作 | pre-push (<2 min) | coverage ≥ 70% | FactorRegistry 读 DB → 返回 active 因子列表 |
+| **L3 Contract** | Framework ↔ Framework 接口契约 | CI daily | 覆盖所有 Platform SDK public API | SignalPipeline.generate() 返回 schema 验证 |
+| **L4 E2E** | Application 端到端 | CI weekly (or 关键 PR) | 覆盖"黄金路径" (PT 日流程 / GP 周流程) | 启动→信号→订单→回测 NAV 比对锚点 |
+
+**新增测试必须声明所属层** (test file 顶部 docstring):
+```python
+"""L1 unit test for FactorLifecycle pure rules."""
+```
+
+**Coverage gate 分层** (MVP 4.3 落地):
+- L1 核心路径 (铁律强制的): 80%+ 覆盖
+- L2 Framework 内部: 70%+
+- L3 SDK API: 100% 覆盖 (每个 public 方法至少 1 contract test)
+- L4 Golden paths: 手工列出 5-10 条, 必须全绿
+
+### MVP 范围 (4.3 落地):
 - 修复 32 个 fail 测试 (S4 audit 列表: F51-F60 DEPRECATED路径)
 - 引入 pre-commit hook
-- 建立 CI pipeline (本地 pre-push hook 或 GitHub Actions)
-- coverage 工具 (pytest-cov) + 核心路径 80% gate
+- 建立 CI pipeline (3 层: pre-commit + pre-push + daily Beat)
+- coverage 工具 (pytest-cov) + 分层 gate
+- 新增 L3 Contract test (SDK public API) + L4 E2E (黄金路径)
 - smoke test suite (回测 1 年 + 信号生成 + PT dry-run)
 
-**成本**: 1-2 周 | **依赖**: 无 | **成功指标**: 0 fail 测试, 部署后自动 smoke | **关联铁律**: 22/25/26/27
+**成本**: 1-2 周 | **依赖**: 无 | **成功指标**: 0 fail 测试, 部署后自动 smoke, L3 SDK coverage 100% | **关联铁律**: 22/25/26/27/40
 
 ---
 
@@ -1178,44 +1340,76 @@ MVP 1.1 (Platform Skeleton)
 
 ---
 
-## Part 5 · 铁律 Mapping
+## Part 5 · 铁律 Mapping (v1.4 重做, 分 3 类)
 
-> 每条铁律应有至少一个 Framework 兑现，否则是"纸上规则"
+> **v1.4 修订**: 原 Mapping 让所有铁律看起来都"被自动执行", 实际一半是文化条款.
+> 现在分 3 类: **代码强制** (真硬门) / **文化约束** (靠自律) / **演进中** (未来代码化).
+> 铁律以 CLAUDE.md v2 (40 条) 为准.
 
-| 铁律 | 兑现 Framework | 兑现机制 |
+### 类型 A: 代码强制 (真硬门, 违反 = 编译/启动/CI 失败)
+
+| 铁律 | 兑现 Framework / 机制 | 强制点 |
 |---|---|---|
-| 1-3 工作原则 | #9 CI/CD + #10 Knowledge | pre-commit 强制 + ADR 记录 |
-| 4 生产基线+中性化 | #4 Eval Gate | VerdictObject 必含 neutralized IC |
-| 5 paired bootstrap | #4 Eval Gate | Pipeline 自动跑 bootstrap |
-| 6 策略匹配 | #3 Strategy Framework | Strategy.freq 强类型声明 |
-| 7 数据地基 | #1 Data Framework | DataAccessLayer 禁裸访问 |
-| 8 OOS 验证 | #5 Backtest Framework | WF mode 是默认 |
-| 9 重数据串行 | #11 ROF (主) + #5 BatchExecutor | ResourceManager `heavy_data` pool capacity=2 强制 + U6 声明式资源需求 |
-| 10 全链路验证 | #9 CI/CD smoke test | 部署后自动 smoke |
-| 11 IC 入库 | #2 Factor Framework | Onboarding Pipeline 必走 |
-| 12 G9 Novelty | #4 Eval Gate | Verdict 含 novelty_score |
-| 13 G10 Economic | #2 Factor Registry | hypothesis 字段必填 |
+| 9 资源仲裁 | #11 ROF | `ResourceManager.request()` 拒绝超限 |
+| 11 IC 入库 | #2 Factor Onboarding | Pipeline 必走, 不入库 raise |
 | 14 回测不清洗 | #1 Data Framework | DataPipeline 唯一清洗点 |
-| 15 回测可复现 | #5 Backtest Registry + U3 Lineage | config_hash + git_commit 绑定 |
-| 16 信号路径唯一 | #6 Signal Framework | SignalPipeline 唯一入口 |
-| 17 DataPipeline 入库 | #1 Data Framework | DAL 封装 |
-| 18 成本对齐 | #7 Attribution + #4 Eval | 每日成本归因 + 实盘校验 |
-| 19 IC 口径统一 | #4 Eval Gate | Pipeline 内置 ic_calculator |
-| 20 G_robust | #4 Eval Gate | Pipeline 含 noise robustness |
-| 21 开源优先 | #10 ADR | 每个 Framework 设计记录 alternatives |
-| 22 文档跟随 | #9 CI/CD + #10 Knowledge | PR 强制更新 doc hash |
-| 23 独立可执行 | 全部 MVP | 本 Blueprint 拆分保证 |
-| 24 设计≤2页 | 全部 MVP | 本 Blueprint 模板保证 |
-| 25-28 CC 执行纪律 | #9 CI/CD | pre-commit + review bot |
-| 29 禁 NaN 写 DB | #1 Data Framework | DataPipeline 校验 |
-| 30 中性化后重建 cache | #1 Cache Coherency | 自动失效 |
-| 31 Engine 纯计算 | 目录重组 + Linter 规则 | import check |
-| 32 Service 不 commit | #6 Signal + ADR | 静态扫描规则 |
-| 33 禁 silent failure | #7 Observability + linter | fail-loud 包装器 |
-| 34 Config SSOT | #8 Config Management | Pydantic Schema |
-| 35 Secrets env var | #8 Config + secret scanner | CI 扫描 |
+| 15 回测可复现 | #5 BacktestRegistry + U3 Lineage | config_hash + git_commit 绑定 + regression_test max_diff=0 |
+| 17 DataPipeline 入库 | #1 Data Framework | DAL 封装 + 直连 SQL 被 Layer 3 CI 扫描 fail |
+| 19 IC 口径统一 | #4 Eval Gate | Pipeline 内置 ic_calculator 唯一实例 |
+| 29 禁 NaN 写 DB | #1 Data Framework | DataPipeline 校验 raise |
+| 30 缓存一致性 | #1 Cache Coherency Protocol | DAL 自动 invalidate |
+| 31 Engine 纯计算 | Linter rule | `backend/engines/**` 禁 DB/HTTP import |
+| 32 Service 不 commit | Linter rule | grep `.commit()` 扫描 |
+| 33 禁 silent failure | Linter rule + #7 Observability | `except Exception: pass` 必带 `# silent_ok:` |
+| 34 Config SSOT | #8 Config Management | Pydantic Schema, 不对齐 raise |
+| 35 Secrets env var | #8 Config + secret scanner | CI 扫描 + `os.environ.get` 未设置 raise |
+| 40 测试债务不增长 | #9 Layer 2 pre-push | diff pytest 结果 fail++ → 阻断 push |
 
-**产出**: 每条铁律从"人工 review" → "自动执行"
+### 类型 B: 文化约束 (靠自律, 无代码强制, 但仍是铁律)
+
+| 铁律 | 依靠机制 |
+|---|---|
+| 1 不靠猜测 | 我的判断力 + session handoff 留证据 |
+| 3 不范围外改动 | 我的自律 + 用户 review |
+| 25 代码变更前必读 (含原 2) | 我的自律 + session handoff 留证据 |
+| 26 验证不可跳过 | 我的自律 |
+| 27 结论明确 (✅/❌/⚠️) | 我的自律 |
+| 28 发现即报告 | 我的自律 |
+| 36 precondition check | 我的自律 + MVP 设计文档前置检查 |
+| 37 Session handoff | 我的自律 + CLAUDE.md 启动提示 |
+| 38 Blueprint 是长期记忆 | 我的自律 + cold start 读 Quickstart |
+| 39 双模式思维 | 我的自律 + 显式声明模式切换 |
+
+### 类型 C: 演进中 (现在文化, 落地后升级为代码强制)
+
+| 铁律 | 现状 | 落地后 (对应 MVP) |
+|---|---|---|
+| 4 生产基线+中性化 | IC 报告人工检查 | MVP 3.4 EvaluationPipeline 必含 neutralized IC |
+| 5 paired bootstrap | 人工跑 | MVP 3.4 Pipeline 自动跑 + Verdict.passed 硬门 |
+| 6 策略匹配 | 人工判断 | MVP 3.1 Strategy.freq 强类型声明 |
+| 7 数据地基 | 人工 check | MVP 2.1 DAL + MVP 2.2 Lineage |
+| 8 OOS 验证 | 人工 WF | MVP 2.3 BacktestMode.WF_5FOLD 默认 |
+| 10 全链路验证 | 人工 smoke | MVP 4.3 部署后自动 smoke |
+| 12 G9 Novelty | 人工 AST check | MVP 3.4 Pipeline 含 novelty_score |
+| 13 G10 Economic | 人工填 hypothesis | MVP 1.3 Registry 强制 hypothesis 字段 |
+| 16 信号路径唯一 | 铁律说"禁止绕路" | MVP 3.1+3.2 Strategy → SignalPipeline 契约化 |
+| 18 成本对齐 | 人工 H0 一次 | MVP 4.2 Attribution 每日成本归因 + 季度 H0 复核 |
+| 20 G_robust | 人工跑 noise test | MVP 3.4 Pipeline 含 G_robust |
+| 21 开源优先 | 人工调研 | MVP 1.4 ADR 每个 Framework 列 alternatives |
+| 22 文档跟随代码 | 人工更新 | MVP 4.3 Layer 2 pre-push 扫描 doc hash |
+| 23 独立可执行 | Blueprint MVP 拆分 | 持续维持, 由设计纪律保证 |
+| 24 设计按层级聚焦 | Blueprint 模板 | 持续维持 |
+| 41 时间时区统一 | 散在代码 | MVP 2.1 TradingDayProvider + timezone-aware datetime 规范 |
+
+### 执行分布 (v1.4 诚实数据)
+
+- **代码强制**: 14 条 (35%) — 这些是真硬门
+- **文化约束**: 10 条 (25%) — 这些靠我自律, 代码查不到
+- **演进中**: 16 条 (40%) — 4 Wave 落地后 6-10 条升级为代码强制
+
+**4 Wave 完成后预期**: 代码强制 24 条 (60%) / 文化约束 10 条 (25%) / 演进中 6 条 (15%).
+
+**产出**: 把"假硬门"幻觉消除, 我实施时清楚哪些真被代码拦截, 哪些是自律.
 
 ---
 
@@ -1333,6 +1527,39 @@ Phase C: 关键 App 切换到新框架 (PT/GP 之一先切)
 Phase D: 全部 App 切换, 老代码标 @deprecated
 Phase E: 老代码删除 (至少 2 周稳定期后)
 ```
+
+### Migration 时刻表 (v1.4 新增, 防共存期无限延长)
+
+> **问题**: 没有明确 deprecated → 删除的时刻表, 老代码会变成**永久僵尸**, Platform-App 分层腐化.
+
+**每个 MVP 的迁移有 5 个里程碑, 必须记录时间点**:
+
+| 里程碑 | 定义 | 最大滞留 |
+|---|---|---|
+| **M1 Platform 可用** | Framework SDK 落地, 可单测通过 | 基准 |
+| **M2 First App 切换** | 至少 1 个 Application 迁到新路径 | M1 + 2 周 |
+| **M3 All Apps 切换** | 所有 Application 迁到新路径 | M2 + 2 周 |
+| **M4 老代码 @deprecated** | 标 deprecation warning, 运行不中断 | M3 + 1 周 |
+| **M5 老代码删除** | 从 repo 彻底移除 | M4 + 4 周 (2 周稳定期 + 2 周缓冲) |
+
+**超期处理**:
+- M2 超 2 周未切换 → 评估: 是 Platform 设计问题? App 无意愿? 用户决策 (cancel MVP 或扩时间)
+- M5 超 4 周仍未删除 → **阻塞下一个 MVP**, 先处理欠债 (避免僵尸代码积累)
+
+**迁移追踪**:
+每个 MVP 的设计文档 (`docs/mvp/MVP_X_Y_*.md`) 必须有 Migration Schedule 章节:
+```markdown
+## Migration Schedule
+| 里程碑 | 目标日期 | 实际日期 | 状态 |
+|---|---|---|---|
+| M1 Platform 可用 | YYYY-MM-DD | - | ⬜ |
+| M2 First App 切换 | YYYY-MM-DD | - | ⬜ |
+| M3 All Apps 切换 | YYYY-MM-DD | - | ⬜ |
+| M4 老代码 @deprecated | YYYY-MM-DD | - | ⬜ |
+| M5 老代码删除 | YYYY-MM-DD | - | ⬜ |
+```
+
+**每 Wave 结束 retro 必查**: 本 Wave 所有 MVP 的 M3 是否达标. 未达标者 → Wave + 1 前置清债.
 
 ### 禁忌
 
@@ -1460,9 +1687,42 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - Framework 数: 11 → 12, MVP 数: 14 → 16 (含 1.2a / 4.4)
   - 总体 20-26 周 → 26-35 周 (现实化)
   - 配套铁律 v2 (CLAUDE.md 35 → 40 条全局原则) 同步落地
+- 2026-04-17 v1.4 Cold Start Ready (Wave 1 开工前最后一版):
+  - **Quickstart ≤ 2 页** (Part 0 后): cold start 必读, 不用 1600 行全文
+  - **反膨胀规则** (Part 0 末): 新增 Framework 的 3 条 precondition, 当前 12 Framework 封顶
+  - **Platform-App 分工原则** (Part 1): 判定流程图 + 双角色心态切换 + 红线 + "不确定就放 App" 默认
+  - **铁律 Mapping 重做** (Part 5): 40 条分 3 类 (代码强制 14 / 文化约束 10 / 演进中 16), 消除"假硬门"幻觉
+  - **Migration 时刻表** (Part 9): 5 里程碑 (M1-M5) 最大滞留天数, 超期阻塞下一 MVP
+  - **测试策略 4 层** (Framework #9): L1 Unit / L2 Integration / L3 Contract / L4 E2E + 分层 coverage gate
+  - **Backlog** (Part 11): 10 项 nice-to-have 收录, 遇到再补
+  - 配套铁律补 41 条 (补 40-41 测试债 + timezone) 同步落地
 
 ---
 
-**END of QuantMind Platform Blueprint v1.3**
+## Part 11 · Backlog (v1.4 新增, 不紧迫但记录)
+
+> 前版本 P2 分类出的 16 项, 经"cold start 生存力"筛后保留 10 项到 Backlog. 实施中遇到时 JIT 补, 不提前做.
+
+| # | 项 | 何时触发补 |
+|---|---|---|
+| B1 | 每 Framework NFR 量化 (latency / availability / throughput) | 对应 MVP 实施时 |
+| B2 | 成功指标 (Part 7) 分 Platform 成熟度 vs 业务效果 两表 | Wave 4 验收前 |
+| B3 | Platform SDK 版本化 (semver / deprecation policy) | MVP 2.1 完成后 |
+| B4 | Platform Secrets 注入规范 (Vault/env 细节) | Framework #8 实施中 |
+| B5 | Platform 成本模型归属 (LLM budget tracking owner) | AI 闭环 Application 启动前 |
+| B6 | Framework `.health()` endpoint 规范 | MVP 4.1 Observability 实施中 |
+| B7 | Feature 生命周期标签 (`@experimental/@stable/@deprecated`) | MVP 2.1 发布第 1 个 stable API 前 |
+| B8 | Framework 成功评估的 outcome vs output 客观标准 | Wave 4 结束前 |
+| B9 | Trade-off 文档化 (选 X 不选 Y 的长期影响) | 重大决策时写 ADR, 不需专门补 |
+| B10 | Distributed tracing (OpenTelemetry correlation_id) | MVP 4.1 Observability 实施中 |
+
+**Backlog 处理规则**:
+- 实施时自然遇到需求 → 补上 (JIT)
+- Wave 结束 retro 检查 → 有 1 项确实缺失阻塞实施 → 升 P1 补
+- 永远不要"提前把 Backlog 全做"(违反铁律 24 "过度设计")
+
+---
+
+**END of QuantMind Platform Blueprint v1.4**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。
