@@ -236,12 +236,19 @@ def _make_mock_ic_df(n_days: int = 30) -> pd.DataFrame:
 def _patch_all_onboard_deps(svc, market_df=None, fv_df=None, ic_df=None, fv_written=100, ic_written=30):
     """返回一组 patch context managers 覆盖 _onboard_inner 所有外部依赖.
 
-    被 patch 的方法: _load_market_data / _load_industry_map / _load_csi300 /
+    被 patch 的方法: _upsert_factor_registry (MVP 1.3c: 走 Platform register) /
+    _load_market_data / _load_industry_map / _load_csi300 /
     _compute_factor_values / _compute_ic_multi_horizon / _upsert_factor_values /
     _upsert_ic_history
 
+    MVP 1.3c (2026-04-18): 加 _upsert_factor_registry mock — 改造后该方法开新 conn
+    走 Platform DBFactorRegistry.register (G9+G10 硬门), 老 test 不测 Platform
+    内部逻辑 (内部由 test_factor_registry.py + test_factor_onboarding_gates.py 覆盖).
+    这里统一 mock 返回固定 UUID, 专注测 _onboard_inner 编排行为.
+
     只保留 cursor + fetchone 相关的 DB 调用走真 mock conn (SELECT aq_row /
-    INSERT RETURNING id / UPDATE gate).
+    UPDATE gate). 注意: INSERT factor_registry 已移到 Platform 路径 (MVP 1.3c),
+    不再在 service 层 conn 上执行.
     """
     market_df = market_df if market_df is not None else _make_market_df(n_stocks=50, n_days=30)
     fv_df = fv_df if fv_df is not None else _make_fv_df(n_stocks=50, n_days=30)
@@ -259,6 +266,7 @@ def _patch_all_onboard_deps(svc, market_df=None, fv_df=None, ic_df=None, fv_writ
         patch.object(svc, "_compute_ic_multi_horizon", return_value=ic_df),
         patch.object(svc, "_upsert_factor_values", return_value=fv_written),
         patch.object(svc, "_upsert_ic_history", return_value=ic_written),
+        patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),  # MVP 1.3c
     ]
 
 
@@ -283,6 +291,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -292,8 +301,8 @@ class TestOnboardHappyPath:
         assert result["factor_values_written"] == 100
         assert result["ic_rows_written"] == 30
 
-    def test_happy_path_factor_registry_fetchone_called_twice(self):
-        """cursor.fetchone 至少调用两次: 1次查 approval_queue + 1次 upsert factor_registry."""
+    def test_happy_path_factor_registry_fetchone_called_once(self):
+        """cursor.fetchone 调用 1 次: SELECT approval_queue. MVP 1.3c: INSERT factor_registry 移到 Platform 新 conn."""
         svc = _make_svc()
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
@@ -305,10 +314,12 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
-        assert conn._test_cursor.fetchone.call_count == 2
+        # MVP 1.3c: INSERT factor_registry 移到 Platform 新 conn, svc 层 fetchone 只 1 次 (SELECT aq_row)
+        assert conn._test_cursor.fetchone.call_count == 1
 
     def test_happy_path_factor_values_written_count(self):
         """_upsert_factor_values 返回值写进 result['factor_values_written']."""
@@ -323,6 +334,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[4],
             patch.object(svc, "_upsert_factor_values", return_value=42) as mock_fv,
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -342,11 +354,12 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
-        # SELECT approval_queue + INSERT factor_registry + UPDATE gate = 3+
-        assert conn._test_cursor.execute.call_count >= 3
+        # MVP 1.3c: INSERT factor_registry 已移到 Platform 新 conn, svc 层只 SELECT + UPDATE = 2
+        assert conn._test_cursor.execute.call_count >= 2
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +432,11 @@ class TestOnboardEmptyMarketData:
         svc = _make_svc()
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
-        with patch.object(svc, "_load_market_data", return_value=pd.DataFrame()):
+        # MVP 1.3c: 需 mock _upsert_factor_registry (Platform register 走新 conn)
+        with (
+            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
+            patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
+        ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
         assert result["success"] is False
@@ -434,6 +451,7 @@ class TestOnboardEmptyMarketData:
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
         with (
+            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
             patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
             patch.object(svc, "_upsert_factor_values") as mock_fv,
             patch.object(svc, "_upsert_ic_history") as mock_ic,
@@ -449,6 +467,7 @@ class TestOnboardEmptyMarketData:
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
         with (
+            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
             patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
             patch("app.services.factor_onboarding.logger") as mock_logger,
         ):
@@ -457,15 +476,19 @@ class TestOnboardEmptyMarketData:
         mock_logger.warning.assert_called()
 
     def test_empty_market_data_registry_id_still_returned(self):
-        """空行情时 registry_id 仍然写入 (Step 2 在 Step 3 之前)."""
+        """空行情时 registry_id 仍然写入 (Step 2 在 Step 3 之前).
+
+        MVP 1.3c: registry_id 现在由 Platform DBFactorRegistry.register 返回
+        (走新 conn). 这里 mock _upsert_factor_registry 模拟 Platform 返 UUID.
+        """
         svc = _make_svc()
         expected_registry_id = "bbbbbbbb-1111-1111-1111-000000000002"
-        conn = _make_sync_conn(
-            aq_row=_approved_aq_row(),
-            registry_id=expected_registry_id,
-        )
+        conn = _make_sync_conn(aq_row=_approved_aq_row())
 
-        with patch.object(svc, "_load_market_data", return_value=pd.DataFrame()):
+        with (
+            patch.object(svc, "_upsert_factor_registry", return_value=expected_registry_id),
+            patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
+        ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
         assert result["registry_id"] == expected_registry_id
@@ -492,6 +515,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             result1 = svc._onboard_inner(conn1, approval_queue_id=1)
 
@@ -504,6 +528,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             result2 = svc._onboard_inner(conn2, approval_queue_id=2)
 
@@ -524,6 +549,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[4],
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 

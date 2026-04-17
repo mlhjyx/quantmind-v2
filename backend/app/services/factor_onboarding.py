@@ -155,7 +155,7 @@ class FactorOnboardingService:
             if row is None:
                 raise ValueError(f"approval_queue_id={approval_queue_id} 不存在")
             colnames = [desc[0] for desc in cur.description]
-            aq_row = dict(zip(colnames, row))
+            aq_row = dict(zip(colnames, row, strict=False))
 
         if aq_row["status"] != "approved":
             raise ValueError(
@@ -273,7 +273,7 @@ class FactorOnboardingService:
         }
 
     # ------------------------------------------------------------------
-    # Step 2: factor_registry upsert
+    # Step 2: factor_registry upsert (MVP 1.3c: 走 Platform DBFactorRegistry.register)
     # ------------------------------------------------------------------
 
     def _upsert_factor_registry(
@@ -285,28 +285,69 @@ class FactorOnboardingService:
         run_id: str,
         sharpe_1y: float | None,
     ) -> str:
-        """写入或更新 factor_registry, 返回 registry_id (UUID string)."""
-        hypothesis = gate_result.get("hypothesis") or f"GP自动挖掘: {factor_expr[:100]}"
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO factor_registry
-                    (name, category, direction, expression, hypothesis,
-                     source, status, created_at, updated_at)
-                VALUES
-                    (%s, 'alpha', 'auto', %s, %s,
-                     'gp', 'new', NOW(), NOW())
-                ON CONFLICT (name) DO UPDATE
-                    SET expression = EXCLUDED.expression,
-                        hypothesis  = EXCLUDED.hypothesis,
-                        source      = EXCLUDED.source,
-                        updated_at  = NOW()
-                RETURNING id
-                """,
-                (factor_name, factor_expr, hypothesis),
+        """写入或幂等获取 factor_registry 的 registry_id.
+
+        MVP 1.3c (2026-04-18) 改造: 不再裸 INSERT, 走 Platform DBFactorRegistry.register.
+          - G10 hypothesis 强制非空 + 禁占位符 (铁律 13)
+          - G9 AST Jaccard > 0.7 拒绝近似因子 (铁律 12)
+          - 已注册因子 (DuplicateFactor) 幂等返回现有 id (不重复 INSERT/UPDATE)
+
+        Raises:
+            OnboardingBlocked: G9/G10 失败 (hypothesis 占位 / AST 太近似).
+                调用方 (Celery onboarding_task) 负责记录到 approval_queue 审计.
+        """
+        from backend.platform.data.access_layer import PlatformDataAccessLayer
+        from backend.platform.factor.interface import FactorSpec
+        from backend.platform.factor.registry import (
+            DBFactorRegistry,
+            DuplicateFactor,
+        )
+
+        # Platform Registry 需要独立 conn_factory (每次新开短连接, 不复用 Service 的 conn)
+        def _new_conn() -> psycopg2.extensions.connection:
+            c = psycopg2.connect(self._db_url)
+            c.autocommit = True
+            return c
+
+        dal = PlatformDataAccessLayer(_new_conn)
+        registry = DBFactorRegistry(dal=dal, conn_factory=_new_conn)
+
+        hypothesis = (gate_result.get("hypothesis") or "").strip()
+        direction = int(gate_result.get("direction", 1))
+        category = str(gate_result.get("category") or "alpha")
+        author = str(gate_result.get("source") or "gp")
+
+        spec = FactorSpec(
+            name=factor_name,
+            hypothesis=hypothesis,  # 空 / GP占位 会被 G10 拒 (铁律 13)
+            expression=factor_expr,
+            direction=direction,
+            category=category,
+            pool="CANDIDATE",  # 新因子进 CANDIDATE, L2 人工晋升到 ACTIVE
+            author=author,
+        )
+
+        try:
+            new_id = registry.register(spec)
+            logger.info(
+                "factor_registry INSERT via Platform register: "
+                "factor_name=%s, id=%s, run_id=%s",
+                factor_name, new_id, run_id,
             )
-            row = cur.fetchone()
-            return str(row[0])
+            return str(new_id)
+        except DuplicateFactor:
+            # 幂等: 已注册 → 返现有 id (保 onboarding 可重跑)
+            existing = dal.read_registry()
+            row = existing[existing["name"] == factor_name]
+            if row.empty:
+                raise
+            existing_id = str(row.iloc[0]["id"])
+            logger.info(
+                "factor %s already in registry, returning existing id=%s (idempotent)",
+                factor_name, existing_id,
+            )
+            del sharpe_1y  # sharpe_1y 已在调用方 gate_result 中; MVP 1.3c 不用于 register
+            return existing_id
 
     # ------------------------------------------------------------------
     # Step 3: 行情数据加载

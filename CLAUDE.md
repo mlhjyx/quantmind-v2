@@ -122,7 +122,7 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.3b (2026-04-17/18) Wave 1: Platform SDK 骨架 + concrete 实现
+├── backend/platform/            # ⭐ MVP 1.1-1.3c (2026-04-17/18) Wave 1 完结: Platform SDK 骨架 + concrete 实现
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
@@ -130,7 +130,8 @@ quantmind-v2/
 │   │   └── access_layer.py      #     ⭐ MVP 1.2a: PlatformDataAccessLayer (read_factor/ohlc/fundamentals/registry) + DALError
 │   ├── factor/                  #   #2 Factor Framework
 │   │   ├── interface.py         #     FactorRegistry/OnboardingPipeline/LifecycleMonitor (MVP 1.1, MVP 1.3a 扩展 FactorMeta 18 字段)
-│   │   └── registry.py          #     ⭐ MVP 1.3b: DBFactorRegistry (get_direction + TTL 60min cache + RLock) + StubLifecycleMonitor
+│   │   ├── registry.py          #     ⭐ MVP 1.3b+1.3c: DBFactorRegistry full concrete (get_direction + register G9/G10 + get_active + update_status + novelty_check + _default_ast_jaccard)
+│   │   └── lifecycle.py         #     ⭐ MVP 1.3c: PlatformLifecycleMonitor (纯规则 copy, 不 import engines, CRITICAL 不落 DB 改 critical_alert 事件)
 │   ├── strategy/interface.py    #   #3 Strategy: Strategy(ABC)/Registry/CapitalAllocator
 │   ├── signal/interface.py      #   #6 Signal/Exec: SignalPipeline/OrderRouter/AuditTrail
 │   ├── backtest/interface.py    #   #5 Backtest: BacktestRunner/Registry/BatchExecutor
@@ -200,9 +201,10 @@ quantmind-v2/
 │   ├── data_quality_check.py    # 数据巡检
 │   ├── approve_l4.py            # L4熔断恢复CLI(紧急)
 │   ├── cancel_stale_orders.py   # QMT紧急撤单(紧急)
-│   ├── registry/                # ⭐ MVP 1.3a+1.3b Platform Registry 工具
+│   ├── registry/                # ⭐ MVP 1.3a+1.3b+1.3c Platform Registry 工具
 │   │   ├── backfill_factor_registry.py   # MVP 1.3a: 3 层合并, 回填 287 行 (dry-run 默认)
-│   │   └── audit_direction_conflicts.py  # MVP 1.3b: direction 冲突审计 (dry-run + --apply + --rollback)
+│   │   ├── audit_direction_conflicts.py  # MVP 1.3b: direction 冲突审计 (dry-run + --apply + --rollback)
+│   │   └── register_feature_flags.py     # MVP 1.3c: FeatureFlag 注册/list/disable (use_db_direction=True 已 apply)
 │   ├── archive/                 # 126个归档脚本(零生产引用, S1 audit F13 验证可删除)
 │   └── research/                # 研究脚本(验证/回测实验)
 ├── cache/                       # Parquet缓存（profiler/中性化用）
@@ -659,14 +661,14 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行): 10 Framework + 5 升维 + 4 Wave × 14 MVP (18-23 周)
-- ⬜ **Wave 1** (4-5 周): Platform Skeleton (MVP 1.1) + Config (1.2) + Factor Framework (1.3) + Knowledge (1.4)
+- 🟢 **Wave 1 完结** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) → **Wave 1 下一步 MVP 1.4 Knowledge Registry**
 - ⬜ **Wave 2** (5-6 周): Data Framework + Data Lineage + Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2100 tests collected / 98 test files (S4 2026-04-15 实测: 2066 pass 含 F72 修复 / 32 fail 全为历史债-post-refactor+deprecated因子+F51-F60 DEPRECATED路径 / 1 skipped / 1 xpassed, pass 率 98.4%, 核心回测/信号/DataPipeline路径 0 回归) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)**
+📊 测试: 2100+ tests collected / 100+ test files (2026-04-17 MVP 1.3c 后实测: MVP 1.1-1.3c 锚点 298 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 34 fail 全为历史债-post-refactor+deprecated路径, Platform 新增 0 fail) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)** + **MVP 1.3c 新增 21+12+6 = 39 tests PASS (lifecycle/registry 扩展/onboarding gates)**
 ---
 
 ## 文件归属规则（防腐）
