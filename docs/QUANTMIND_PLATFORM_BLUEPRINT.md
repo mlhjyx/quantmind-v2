@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.0)
+# QuantMind Platform Blueprint (QPB v1.1)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17
+> **创建**: 2026-04-17 (v1.0), 2026-04-17 (v1.1 加 Framework #11 ROF + U6 Resource Awareness)
 > **作者**: Architect pass (Opus)
-> **状态**: 草案 v1.0，每个 Wave 完成后回填实际产出
+> **状态**: 草案 v1.1，每个 Wave 完成后回填实际产出
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -39,8 +39,8 @@
 ### 解决策略
 
 **从规则补丁 → 架构改造**:
-1. **10 个统一框架**: 把散点组织成契约化 Platform 能力
-2. **5 个升维原则**: 改变 "系统能力" 本身
+1. **11 个统一框架**: 把散点组织成契约化 Platform 能力 (含 Framework #11 Resource Orchestration)
+2. **6 个升维原则**: 改变 "系统能力" 本身 (含 U6 Resource Awareness)
 3. **Platform/Application 分层**: 让新能力可独立演进不污染生产
 
 ### 核心原则
@@ -76,27 +76,41 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  Layer 3: QuantMind Core Platform (QCP)                       │
 │                                                                │
+│  Wave 1 (架构基础):                                              │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Data FW     │  │ Factor FW   │  │ Strategy FW │  ← Wave 1  │
-│  │ (#1)        │  │ (#2)        │  │ (#3)        │           │
+│  │ Factor FW   │  │ Config Mgmt │  │ Knowledge   │           │
+│  │ (#2)        │  │ (#8)        │  │ (#10)       │           │
 │  └─────────────┘  └─────────────┘  └─────────────┘           │
+│                                                                │
+│  Wave 2 (数据 + 研究生产打通):                                    │
+│  ┌─────────────┐  ┌─────────────┐                            │
+│  │ Data FW     │  │ Backtest FW │                            │
+│  │ (#1)        │  │ (#5)        │                            │
+│  └─────────────┘  └─────────────┘                            │
+│                                                                │
+│  Wave 3 (资源调度 + 多策略 + 事件驱动):                           │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │ Signal/Exec │  │ Backtest FW │  │ Eval Gate   │  ← Wave 2  │
-│  │ FW (#6)     │  │ (#5)        │  │ FW (#4)     │           │
+│  │ Resource    │  │ Strategy FW │  │ Signal/Exec │           │
+│  │ Orch (#11)  │  │ (#3)        │  │ FW (#6)     │           │
 │  └─────────────┘  └─────────────┘  └─────────────┘           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│  │Observability│  │ Config Mgmt │  │ CI/CD + Test│  ← Wave 3  │
-│  │  (#7)       │  │  (#8)       │  │  (#9)       │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘           │
-│  ┌─────────────────────────────────────────────┐              │
-│  │ Knowledge & Experiment Registry (#10)        │  ← Wave 3  │
-│  └─────────────────────────────────────────────┘              │
+│  ┌─────────────┐                                              │
+│  │ Eval Gate   │                                              │
+│  │ FW (#4)     │                                              │
+│  └─────────────┘                                              │
+│                                                                │
+│  Wave 4 (可观测 + 归因 + 生产就绪):                               │
+│  ┌─────────────┐  ┌─────────────┐                            │
+│  │Observability│  │ CI/CD + Test│                            │
+│  │  (#7)       │  │  (#9)       │                            │
+│  └─────────────┘  └─────────────┘                            │
 │                                                                │
 │  Cross-cutting (贯穿所有框架的升维能力):                         │
-│  💎 Research-Production Parity    (U1)                        │
-│  💎 Event Sourcing / Audit Trail  (U2)                        │
-│  💎 Data Lineage                  (U3)                        │
-│  💎 Performance Attribution       (U5)                        │
+│  💎 Research-Production Parity    (U1, Wave 2)                 │
+│  💎 Event Sourcing / Audit Trail  (U2, Wave 3)                 │
+│  💎 Data Lineage                  (U3, Wave 2)                 │
+│  💎 Platform/Application 分层     (U4, Wave 1 起)              │
+│  💎 Performance Attribution       (U5, Wave 4)                 │
+│  💎 Resource Awareness            (U6, Wave 3)                 │
 │                                                                │
 │         ↓ 依赖 Layer 2                                          │
 └──────────────────────────────────────────────────────────────┘
@@ -151,12 +165,16 @@ from quantmind.platform import (
 
     # Knowledge
     ExperimentRegistry, FailedDirectionDB, ADR,
+
+    # Resource Orchestration (#11) + U6
+    ResourceManager, ResourceProfile, Priority,
+    requires_resources, AdmissionController, BudgetGuard,
 )
 ```
 
 ---
 
-## Part 2 · 10 Core Frameworks (Platform)
+## Part 2 · 11 Core Frameworks (Platform)
 
 > **格式**: 每个 Framework 1 页，含 (目标 / 接口 / MVP 范围 / 成本 / 依赖 / 成功指标)
 
@@ -460,7 +478,122 @@ class ADRRegistry:
 
 ---
 
-## Part 3 · 5 升维建议 (Cross-Cutting)
+### Framework #11: Resource Orchestration Framework (ROF)
+
+**目标**: 7 类资源统一调度 (CPU/GPU/RAM/DB/API/时间窗口/锁), 替代铁律 9 的人工判断。multi-strategy 上线前必须就位。
+
+**7 类资源:**
+
+| 类 | 实例 | 当前管理 |
+|---|---|---|
+| 计算 | 12C/24T CPU + 12GB VRAM + 32GB RAM + NVMe IO | 铁律 9 人工 (只覆盖 RAM) |
+| DB | PG max_connections=100 + shared_buffers=2GB + 锁 | 凭经验 |
+| API 配额 | Tushare rate / QMT 连接 / DingTalk / LLM budget | 重试 + 无上限 |
+| 时间窗口 | 盘前/盘中/盘后 + 交易日 + 节假日 | Task Scheduler cron 错开 |
+| 人工干预 | L1/L2/L3/L4 审批 QPM + 告警疲劳预算 | 无 |
+| 储存 | DB 159GB / Parquet 20GB cap / 日志 | 部分 (FactorCache cap) |
+| 并发/锁 | 文件锁 / DDL 锁 / 服务生命周期 | 局部 (FactorCache msvcrt) |
+
+**核心接口:**
+```python
+from enum import Enum
+
+class Priority(Enum):
+    PT_CRITICAL = 1         # 09:31 执行, 不可抢占
+    PT_SUPPORT = 2          # 盘前/盘后健康检查
+    PRODUCTION_BATCH = 3    # 日度数据 pipeline
+    GP_MINING = 5
+    RESEARCH_ACTIVE = 7
+    RESEARCH_BACKGROUND = 9
+
+@dataclass
+class ResourceProfile:
+    ram_gb: float
+    vram_gb: float = 0
+    cpu_cores: int = 1           # 物理核数 (SMT 不额外提供真实并发)
+    db_connections: int = 1
+    api_quotas: dict[str, int] = field(default_factory=dict)
+    exclusive_pools: list[str] = field(default_factory=list)
+    time_windows: list[TimeWindow] = field(default_factory=list)
+    estimated_duration_sec: int = 60
+    priority: Priority = Priority.RESEARCH_ACTIVE
+
+class ResourceManager:
+    """全局资源状态 + 准入控制 + 超限防御."""
+    def request(self, profile: ResourceProfile, timeout_sec: int = 300) -> Allocation
+    def release(self, alloc: Allocation) -> None
+    def current_usage(self) -> ResourceSnapshot
+    def preempt(self, low_priority_alloc: Allocation, reason: str) -> bool
+    def emit_metrics(self) -> None  # Prometheus
+
+# 使用: decorator 风格
+@requires_resources(ram_gb=4, cpu_cores=2,
+                    exclusive_pools=["heavy_data"],
+                    priority=Priority.GP_MINING)
+def run_gp_mining(...):
+    ...
+```
+
+**5 大能力:**
+- **Inventory**: 全局资源实时状态 API
+- **Admission**: 任务启动前 `can_admit()` 检查, 不足→排队/拒绝
+- **Preemption**: 高优抢占低优 (研究让路 PT)
+- **Budget Enforcement**: 运行中超限→kill + 告警
+- **Graceful Degradation**: OOM 逼近自动降低并发 / 暂停低优任务
+
+**资源池示例 (基于 R9-9900X3D 12C/24T + 32GB + RTX 5070 12GB):**
+```yaml
+# configs/resource_pools.yaml
+pools:
+  heavy_data:                     # 替代铁律 9 人工判断
+    capacity: 2                   # 最多 2 并发
+    per_task_ram_gb: 4
+  gpu_exclusive:                  # GPU 独占 (无 MPS/MIG 支持)
+    capacity: 1
+    vram_gb: 12
+  cpu_light:                      # 轻任务池, SMT 可到 20
+    capacity: 20
+    per_task_ram_gb: 0.5
+  cpu_heavy:                      # 重 CPU (回测/GP), 物理核上限
+    capacity: 10                  # 留 2 核给 OS + services
+    per_task_ram_gb: 3
+  db_ddl:                         # DDL 互斥 (ALTER/CREATE INDEX)
+    capacity: 1
+    time_windows: [["17:00", "09:00"]]   # 禁盘中
+  api_tushare:                    # rate limit
+    rate_per_min: 500
+  api_llm:                        # 月度预算
+    budget_usd_per_month: 100
+
+reservations:                     # 时间窗口保留
+  - pools: [pt_executor]
+    times: [["09:30", "09:40"]]   # PT 执行独占, 其他让路
+  - pools: [db_ddl]
+    times: [["09:30", "15:10"]]   # 盘中禁 DDL
+```
+
+**MVP 范围 (MVP 3.0, 1-2 周):**
+- Phase 1: Inventory 观测 (Prometheus metric, 不拦截) — 3 天
+- Phase 2: Admission control (单机锁) — 1 周
+- Phase 3: Preemption + Budget Enforcement — 1-2 周 (可延后)
+- Phase 4: 集成 Celery queue 分层 — 3-5 天
+
+**集成:**
+- Celery: `heavy` queue concurrency=2, `light` queue concurrency=20
+- Windows Task Scheduler: 入口脚本加 `@requires_resources` gate
+- StreamBus: `qm:resource:admitted/rejected/preempted/exhausted`
+
+**开源参考 (铁律 21):**
+- Airflow resource pools (借鉴 API 设计)
+- Slurm (优先级 + 抢占经验)
+- Ray (过重, 不采用)
+- asyncio.Semaphore (过简, 只单进程内)
+
+**成本**: 1-2 周 (Phase 1+2) | **依赖**: #7 Observability (metric), #8 Config (pool 定义) | **成功指标**: OOM 事件 0 (6 月内); 铁律 9 从"人工判断"升级为系统强制 | **关联铁律**: 9/18/28/33
+
+---
+
+## Part 3 · 6 升维建议 (Cross-Cutting)
 
 ### 💎 U1: Research-Production Parity
 
@@ -595,6 +728,43 @@ if residual > threshold: flag("regime shift or model drift")
 
 ---
 
+### 💎 U6: Resource Awareness
+
+**核心**: 所有执行路径声明资源消耗, 系统全局感知 + 准入控制 + 优雅降级
+
+**关键设计**:
+```python
+# Platform SDK 所有耗资源接口默认含 ResourceProfile
+class BacktestRunner:
+    def run(self, mode: BacktestMode, config: BacktestConfig,
+            profile: ResourceProfile | None = None) -> BacktestResult
+    # profile=None 时自动推断: QUICK_1Y → 0.5GB, FULL_12Y → 4GB
+
+class FactorOnboardingPipeline:
+    def onboard(self, spec: FactorSpec,
+                profile: ResourceProfile | None = None) -> OnboardResult
+
+class ExperimentRegistry:
+    def start(self, hypothesis: str, config: dict,
+              profile: ResourceProfile | None = None) -> ExperimentID
+```
+
+**行为**:
+1. 任何进入 Platform 的操作都经过 ResourceManager 准入
+2. 资源不足 → 排队 / 拒绝 / 降级 (精确到 MVP 而不是全局停摆)
+3. 高优任务可抢占 (PT 执行 09:31 必然拿到资源)
+4. 运行中超预算 → kill + 告警 (防失控消耗)
+
+**解决什么**:
+- 铁律 9 "人工判断并发数" 升级为代码强制
+- 2026-04-03 OOM 类事件可以从架构层避免
+- multi-strategy 上线后的资源冲突自动仲裁
+- AI 闭环并发跑 N 实验不撞资源
+
+**落地 Wave**: Wave 3 开头 (MVP 3.0, 先于 Strategy Framework 落地)
+
+---
+
 ## Part 4 · PR/MVP 拆分 + 推进路径
 
 ### 总览时间线
@@ -611,18 +781,19 @@ Wave 2 (5-6 周): 数据 + 研究生产打通
  ├─ MVP 2.2: Data Lineage (U3)              (1 周, 配合 #1)
  └─ MVP 2.3: Backtest Framework + U1 Parity (#5) (1.5-2 周)
 
-Wave 3 (6-8 周): 多策略 + 事件驱动
- ├─ MVP 3.1: Strategy Framework (#3)        (2-3 周)
- ├─ MVP 3.2: Signal & Execution (#6)        (1-2 周)
- ├─ MVP 3.3: Event Sourcing (U2)            (2-3 周, 并行)
- └─ MVP 3.4: Evaluation Gate (#4)           (1 周)
+Wave 3 (7-9 周): 资源调度 + 多策略 + 事件驱动
+ ├─ MVP 3.0: Resource Orchestration (#11, U6)  (1-2 周)  ← Strategy 前置
+ ├─ MVP 3.1: Strategy Framework (#3)            (2-3 周)
+ ├─ MVP 3.2: Signal & Execution (#6)            (1-2 周)
+ ├─ MVP 3.3: Event Sourcing (U2)                (2-3 周, 并行)
+ └─ MVP 3.4: Evaluation Gate (#4)               (1 周)
 
 Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
  ├─ MVP 4.1: Observability (#7)             (1-2 周)
  ├─ MVP 4.2: Performance Attribution (U5)   (1-2 周)
  └─ MVP 4.3: CI/CD (#9)                     (1-2 周, 并行)
 
-总计: 18-23 周 (4.5-5.5 月)
+总计: 19-24 周 (4.75-6 月)
 ```
 
 ### MVP 详细定义
@@ -693,6 +864,20 @@ Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
 - **设计文档**: `docs/mvp/MVP_2_3_backtest_parity.md`
 
 #### Wave 3 详细
+
+**MVP 3.0: Resource Orchestration Framework (#11) + U6 Resource Awareness**
+
+- **范围**: ResourceManager (7 类资源) + `@requires_resources` 装饰器 + `configs/resource_pools.yaml` + 5 预置池 (heavy_data/gpu_exclusive/cpu_light/cpu_heavy/db_ddl) + Admission Control + Prometheus metric exporter
+- **Phase 1**: Inventory 观测 (不拦截, 仅上报) — 3 天
+- **Phase 2**: Admission control (单机锁, 不足→排队/timeout) — 1 周
+- **Phase 3 (可延后)**: Preemption + Budget Enforcement → 1-2 周
+- **集成**: Celery `heavy`/`light` queue 分层 + Task Scheduler 入口脚本 gate
+- **产物**: `quantmind.platform.resource` 可用, 铁律 9 从"人工"升级"代码强制"
+- **验收**: 并发启动 3 个 heavy_data 任务 → 第 3 个排队; 超 ram_gb → kill + 告警; Prometheus `/metrics` 暴露 7 类 pool 状态
+- **耗时**: 1-2 周 (Phase 1+2 必做, Phase 3 可 Wave 4 再做)
+- **依赖**: #7 Observability (Wave 4 前可先用日志替代 Prometheus), #8 Config
+- **设计文档**: `docs/mvp/MVP_3_0_resource_orchestration.md`
+- **硬件基础**: R9-9900X3D 12C/24T + RTX 5070 12GB + 32GB DDR5, 见 memory/reference_hardware.md
 
 **MVP 3.1: Strategy Framework (#3)**
 
@@ -787,7 +972,7 @@ MVP 1.1 (Platform Skeleton)
 | 6 策略匹配 | #3 Strategy Framework | Strategy.freq 强类型声明 |
 | 7 数据地基 | #1 Data Framework | DataAccessLayer 禁裸访问 |
 | 8 OOS 验证 | #5 Backtest Framework | WF mode 是默认 |
-| 9 重数据串行 | #5 BatchExecutor | 执行器内置并发控制 |
+| 9 重数据串行 | #11 ROF (主) + #5 BatchExecutor | ResourceManager `heavy_data` pool capacity=2 强制 + U6 声明式资源需求 |
 | 10 全链路验证 | #9 CI/CD smoke test | 部署后自动 smoke |
 | 11 IC 入库 | #2 Factor Framework | Onboarding Pipeline 必走 |
 | 12 G9 Novelty | #4 Eval Gate | Verdict 含 novelty_score |
@@ -860,6 +1045,9 @@ MVP 1.1 (Platform Skeleton)
 | 监控脚本分散 | 6 个 | 统一 Observability |
 | 告警去重率 | 无 | ≥ 80% |
 | 配置不一致检测 | 6 参数 | 全 Schema |
+| 资源冲突管控 | 铁律 9 人工判断 | ROF 代码强制 + 准入控制 |
+| OOM 事件 | 历史 1 次 (2026-04-03) | 0 次 (ROF 启用后 6 月内) |
+| 可观测资源池数 | 0 | 7 类 (CPU/GPU/RAM/DB/API/时间/锁) |
 | AI 闭环 0% 实现 | 0% | SDK 就绪 + 1 个 Agent MVP |
 
 ### 业务指标 (不是本 Blueprint 直接目标, 但是验证成效)
@@ -1017,9 +1205,14 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
 ## 变更记录
 
 - 2026-04-17 v1.0 初稿 (架构 pass, Opus)
+- 2026-04-17 v1.1 新增 Framework #11 Resource Orchestration + U6 Resource Awareness + MVP 3.0 (用户提出资源调度盲点, 扩展到 7 类资源)
+  - 硬件规格澄清: R9-9900X3D 12C/24T (SMT)
+  - Wave 3 从 6-8 周 → 7-9 周
+  - 总体 18-23 周 → 19-24 周
+  - 铁律 9 从"人工判断"升级为 ROF 代码强制
 
 ---
 
-**END of QuantMind Platform Blueprint v1.0**
+**END of QuantMind Platform Blueprint v1.1**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。
