@@ -1,8 +1,8 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~30% — notification_service(706行)+templates(387行)+throttler(111行)已实现多渠道通知框架, 但完整通知系统(邮件/微信/告警升级)未实现。
-> 仍有价值: 通知分级设计思路、多渠道路由逻辑
-> 已过时/被替代: 邮件/微信/告警升级等高级功能设计未启动
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16 更新)**
+> 实现状态: ~35% — notification_service+templates+throttler已实现。后端5个API端点已有(list/unread-count/read/detail/test)。notifications表已建(541行数据)。
+> **前端**: DEV_FRONTEND_UI.md §十三 定义了 Toast/铃铛/通知中心/分级/偏好, 前端页面待审计数据绑定状态。
+> 未实现: 邮件/微信推送、告警升级链、WebSocket实时推送(/ws/notifications)
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §13**
 
 # QuantMind V2 — 通知告警详细开发文档
 

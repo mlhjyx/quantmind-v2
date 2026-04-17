@@ -1,8 +1,9 @@
-> **⚠️ 文档状态: DESIGNED_NOT_VERIFIED (2026-04-10)**
-> 实现状态: ~40% — 24个页面文件已创建(超过设计的12个), 含Dashboard/Execution/Portfolio/FactorLab/Backtest/Mining/Strategy/Risk/PMS等。但部分页面功能不完整, 重构窗口内暂停开发。
-> 仍有价值: 页面布局规范、组件设计、数据流定义
-> 已过时/被替代: 后端 API 接口在 Step 6 重构后可能有变化, 前端需重新对齐
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+> **文档状态: DESIGN_VALID_CODE_PARTIAL (2026-04-16 更新)**
+> 实现状态: ~45% — 24个页面文件已创建, 53个共享组件, 12个API客户端。后端96个API端点已实现(远超设计的57个)。
+> **仍有价值**: §一UI风格/技术栈 ✅ / §十组件规范 ✅ / §十一实时更新策略 ✅ / §十二空状态/加载态 ✅ / §十三通知系统 ✅ / §十四 Figma改进清单 ✅
+> **需对齐**: §七API汇总(设计48端点 vs 实际96端点) / §二~§四页面功能(需审计数据绑定) / AI助手面板后端(0% 实现)
+> **决策D2 (2026-04-16)**: PROGRESSIVE — 12页面保留 + AI助手保留(上下文copilot) + 补运维操作功能(日志/服务管理/配置编辑)
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §12**
 
 # QuantMind V2 — 前端 UI 详细开发文档
 

@@ -1,8 +1,8 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~55% — Gate/Profiler/IC完整。GP引擎(1263行)+暴力枚举(1167行)+DeepSeek客户端(396行)+3个Agent(idea/factor/eval)+Pipeline编排器(1208行)已实现, 但未形成端到端自动闭环。
-> 仍有价值: 因子预处理流程、Gate 评估框架、IC 定义规范、GP算子集设计
-> 已过时/被替代: 如采用 RD-Agent 则GP/LLM挖掘部分被替代
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16 更新)**
+> 实现状态: ~55% — Gate/Profiler/IC完整。GP引擎+Pipeline编排器已实现, 但未形成端到端自动闭环。
+> **Phase C (2026-04-16)**: factor_engine.py 已拆分为 `backend/engines/factor_engine/` 包 (calculators/preprocess/alpha158/pead/_constants), 数据加载移至 `factor_repository.py`, 编排移至 `factor_compute_service.py`。本文档中引用 factor_engine 单文件的部分已过时。
+> 已过时/被替代: RD-Agent→路线C决策不集成(2026-04-10); LLM自由生成→证伪(IC=0.006); 决策D6: GP先闭环+LLM prompt改造并行
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §4+§11**
 
 # QuantMind V2 — 因子挖掘系统 详细开发文档
 

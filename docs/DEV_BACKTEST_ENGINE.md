@@ -1,8 +1,8 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~40% — Step 4-A 完成8模块拆分，Hybrid 架构已实现。V4 Phase 1.1 已完成（841s→14.6s）。
-> 仍有价值: §3 Hybrid架构设计、§4 接口定义、SignalComposer/PortfolioBuilder 已实现部分
-> 已过时/被替代: Rust加速→Archived; VectorizedBacktester设计→Archived（实际瓶颈在Phase A数据索引，非Phase B事件循环）
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+> **文档状态: MOSTLY_IMPLEMENTED (2026-04-16 更新)**
+> 实现状态: ~70% — Step 4-A 8模块拆分 + Step 4-B YAML配置驱动 + Step 5 Parquet缓存 + Step 6-D WF/12年跑通 + Phase 1.1 性能优化(841s→14.6s) 全部完成。
+> **§0 是实际代码结构(优先读), §一~§十是原始设计(部分过时)**
+> 已过时/被替代: Rust加速→不存在(纯Python); VectorizedBacktester→Archived; §五实现计划→全部完成
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §6**
 
 # QuantMind V2 — 回测引擎详细开发文档
 
@@ -144,13 +144,16 @@ python scripts/run_backtest.py --config configs/pt_live.yaml
 
 ## 一、概述
 
+> **⚠️ §一~§十 是 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
+> **已过时的关键点**: Rust 引擎(从未实现, 纯 Python) / VectorizedBacktester(Archived) / §五实现计划(全部完成) / §九待办(全部完成)
+
 回测引擎是 QuantMind V2 的核心基础设施，负责将因子信号转化为模拟交易，验证策略有效性。本文档覆盖：
 
-- 后端引擎架构（Hybrid 模式）
-- 前端交互页面（5 个页面）
-- 数据库表结构（6 张新表）
-- 全部已确认决策（34 项）
-- 三步渐进实现计划
+- 后端引擎架构（Hybrid 模式） — **✅ 已实现 (backend/engines/backtest/ 8模块)**
+- 前端交互页面（5 个页面） — **🔧 页面已创建, 数据绑定待审计**
+- 数据库表结构（6 张新表） — **✅ 已建表**
+- 全部已确认决策（34 项） — **✅ 大部分已落地, Rust 相关决策作废**
+- 三步渐进实现计划 — **✅ 全部完成 (Step 1+2+3, Rust 3b Archived)**
 
 ---
 
@@ -1611,7 +1614,7 @@ CREATE TABLE backtest_wf_windows (
 | 通知系统(NotificationService) | 回测完成/失败→NotificationService | backtest.complete/failed模板 |
 | 调度系统(DEV_SCHEDULER.md) | Celery Beat可配置定期回测 | astock_backtest_task |
 | 前端(DEV_FRONTEND_UI.md) | 5个页面通过API+WS交互 | §七 API清单 |
-| 外汇回测(Phase 2) | 独立Python引擎，不复用Rust | 共用WF/DSR/PBO框架 |
+| 外汇回测(Phase 2, ⏳DEFERRED) | 独立Python引擎(纯事件驱动) | 共用WF/DSR/PBO框架 |
 
 ---
 

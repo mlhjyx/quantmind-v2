@@ -1,8 +1,8 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~25% — 220 参数中约50个在用。Step 4-B YAML 配置驱动已实现核心参数。
-> 仍有价值: 参数命名规范、配置分层原则
-> 已过时/被替代: 未实现功能的参数定义无意义，实际参数以 configs/*.yaml 为准
-> 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+> **文档状态: DESIGN_OVERSIZED (2026-04-16 更新)**
+> 实现状态: ~25% — 设计220参数, 实际在用约50个。决策D5: 裁剪至50核心+30高价值待实现。
+> **实际参数权威来源**: `.env` + `configs/pt_live.yaml` + `backend/app/config.py` (铁律34 single source of truth)
+> **config_guard**: `backend/engines/config_guard.py` 启动时校验6参数三源对齐, 不一致 RAISE (2026-04-15 Phase B M3 落地)
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §14**
 
 # QuantMind V2 — 参数可配置性系统 详细开发文档
 

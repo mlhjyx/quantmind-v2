@@ -1,10 +1,10 @@
 # GP最小闭环设计文档
 
-> **版本**: 1.0 | **日期**: 2026-03-28
-> **状态**: 设计完成，待Sprint 1.16-1.17实施
-> **关联**: IMPLEMENTATION_MASTER §1.3 Step 2 / DEV_FACTOR_MINING Engine 4 / R2技术选型
-> **战略定位**: 三步走Step 2 — 用最低成本验证"因子进化→筛选→回测→反馈"闭环可行性
-> **核心原则**: GP-first不上LLM（零成本、确定性高、可复现）
+> **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新)
+> **状态**: 🔧 PARTIAL (~40%) — GP引擎+FactorDSL+WarmStart已实现, Pipeline编排器8节点状态机已实现(超本文档4组件设计), 但端到端自动闭环未打通
+> **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py
+> **决策D6 (2026-04-16)**: GP先完善闭环(DSL→IC自动评估→Gate自动→入库) → LLM prompt改造(AlphaAgent范式) → 轨迹进化融合
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §11**
 
 ---
 
