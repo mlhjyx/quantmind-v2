@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.1)
+# QuantMind Platform Blueprint (QPB v1.2)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 (v1.0), 2026-04-17 (v1.1 加 Framework #11 ROF + U6 Resource Awareness)
+> **创建**: 2026-04-17 v1.0 → v1.1 加 Framework #11 ROF + U6 → **v1.2 用户决议 4 主+4 副 open questions**
 > **作者**: Architect pass (Opus)
-> **状态**: 草案 v1.1，每个 Wave 完成后回填实际产出
+> **状态**: 草案 v1.2 (4 主决策已敲定), 每个 Wave 完成后回填实际产出
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -781,19 +781,20 @@ Wave 2 (5-6 周): 数据 + 研究生产打通
  ├─ MVP 2.2: Data Lineage (U3)              (1 周, 配合 #1)
  └─ MVP 2.3: Backtest Framework + U1 Parity (#5) (1.5-2 周)
 
-Wave 3 (7-9 周): 资源调度 + 多策略 + 事件驱动
- ├─ MVP 3.0: Resource Orchestration (#11, U6)  (1-2 周)  ← Strategy 前置
- ├─ MVP 3.1: Strategy Framework (#3)            (2-3 周)
- ├─ MVP 3.2: Signal & Execution (#6)            (1-2 周)
- ├─ MVP 3.3: Event Sourcing (U2)                (2-3 周, 并行)
- └─ MVP 3.4: Evaluation Gate (#4)               (1 周)
+Wave 3 (8-10 周): 资源调度 + PEAD 前置 + 多策略 + 事件驱动
+ ├─ MVP 3.0:  Resource Orchestration (#11, U6)        (1-2 周) ┐
+ ├─ MVP 3.0a: PEAD 前置 (PIT + PMS v2 + cost H0-v2)    (3 周)    ├─ 并行
+ ├─ MVP 3.1:  Strategy Framework (#3)                  (2-3 周)
+ ├─ MVP 3.2:  Signal & Execution (#6)                  (1-2 周)
+ ├─ MVP 3.3:  Event Sourcing (U2) + outbox/snapshot/ver (2-3 周, 并行)
+ └─ MVP 3.4:  Evaluation Gate (#4)                     (1 周)
 
 Wave 4 (3-4 周): 可观测 + 归因 + 生产就绪
  ├─ MVP 4.1: Observability (#7)             (1-2 周)
  ├─ MVP 4.2: Performance Attribution (U5)   (1-2 周)
  └─ MVP 4.3: CI/CD (#9)                     (1-2 周, 并行)
 
-总计: 19-24 周 (4.75-6 月)
+总计: 20-26 周 (5-6.5 月) — v1.2 加 MVP 3.0a PEAD 前置
 ```
 
 ### MVP 详细定义
@@ -1062,31 +1063,45 @@ MVP 1.1 (Platform Skeleton)
 
 ---
 
-## Part 8 · Open Questions (待本 session 或下 session 决策)
+## Part 8 · Decisions (已决议 2026-04-17)
 
-1. **Platform 包名**: `quantmind.platform` vs `backend.quantmind_core` vs 其他？
-   - 建议: `quantmind.platform` (清晰), 但改 import 路径需全局 refactor, 可在 MVP 1.1 决定
+> **4 主决策 + 4 副决策 已由用户敲定, 不再讨论**. 见 memory/project_platform_decisions.md.
 
-2. **Wave 2 MVP 2.3 Backtest Parity 合并路径**:
-   - 是先做 Backtest Framework 壳, 再加 Parity; 还是两者同时做?
-   - 建议: 合并 (两者对 SignalPipeline 接口同构要求一致)
+### 主决策
 
-3. **Wave 3 MVP 3.1 第 2 个策略选择**:
-   - 候选 A: PEAD Event-driven (基本面, 业绩驱动, 门槛高)
-   - 候选 B: Minute Intraday (10 因子全 ROBUST, 但 WF 0/6 PASS)
-   - 建议: A (新增长维度 vs B 是挤压同一 Alpha)
+| # | 问题 | **决策** | 理由 |
+|---|---|---|---|
+| 1 | Platform 包名 | **`backend.platform`** | 不开源, 作 backend/app + backend/engines 平级, 零 import 路径改动, 避免 `quantmind` namespace 引入工程债 |
+| 2 | Wave 3 第 2 策略 | **PEAD Event-driven** (+3 周前置) | 正交维度 (基本面+事件), 破 4 因子等权天花板 (Phase 3E-II 证伪). 前置必做: PIT bias 修复 / PMS v2 设计 / cost model H0-v2 验证 |
+| 3 | Event Sourcing 存储 | **StreamBus + PG** (配套 3 组件) | 不引 EventStoreDB. **必配**: outbox pattern (事务原子性) + snapshot policy (每月/每策略) + event versioning |
+| 4 | CI 平台 | **3 层本地** | Layer 1 pre-commit (ruff + 快测, <30s) / Layer 2 pre-push (regression_test max_diff=0) / Layer 3 每日 03:00 full pytest (Celery Beat). 不引 GitHub Actions |
 
-4. **Observability 技术栈**:
-   - Prometheus + Grafana 本地装, 还是走云方案 (Datadog/Grafana Cloud)?
-   - 建议: 本地 (成本 0, 延迟低, 符合单人开发规模)
+### 副决策 (因修正引入)
 
-5. **Event Sourcing 存储引擎**:
-   - Redis Streams (现有) + PG append-only 足够？还是引入专用 EventStore?
-   - 建议: 先用现有 StreamBus + PG, 50M events 以下性能 OK
+- **1a**: `backend.platform` vs `backend.core` → **`platform`** (明确定位)
+- **2a**: PEAD 3 前置项 (PIT/PMS v2/cost) → **并行做**, 不是串行
+- **3a**: `event_outbox` 表保留多久 → **7 天** (消费完即清)
+- **4a**: Layer 3 full pytest 失败 → **告警但不 block PT** (避免告警→PT停摆死锁)
 
-6. **CI 平台**:
-   - GitHub Actions (需推 repo) vs 本地 Git hook vs 自建 runner?
-   - 建议: 先本地 pre-commit + pre-push, 后扩 GitHub Actions
+### 约束 (来自用户)
+
+- **不开源**: 保持私有, 不做 `pip install namespace 化`
+- **单机单人**: 不引入多人协作工具 (GitHub Actions / EventStoreDB / Gitea 等一律不装)
+
+### 对其他 Framework 设计的影响
+
+- **Framework #1 Data**: DAL 路径用 `backend.platform.data`
+- **Framework #3 Strategy**: 支持 event-driven 策略, 不只 monthly ranking (PEAD 是第一个非-ranking case)
+- **Framework #7 Observability**: CI Layer 3 告警走 MetricExporter
+- **Framework #9 Test & CI/CD**: 3 层防线规范写入 MVP 4.3
+
+### 新增 MVP (Wave 3 前置)
+
+**MVP 3.0a: PEAD 前置工程 (并行 3 周)**
+- PIT bias 修复 (衍生因子 diff/ranking 严格 PIT)
+- PMS v2 设计 (event-driven 短持仓兼容规则)
+- Cost model H0-v2 (event-driven 专用回测↔实盘对齐)
+- 位于 MVP 3.1 Strategy Framework 前置, 与 MVP 3.0 ROF 并行
 
 ---
 
@@ -1210,9 +1225,18 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - Wave 3 从 6-8 周 → 7-9 周
   - 总体 18-23 周 → 19-24 周
   - 铁律 9 从"人工判断"升级为 ROF 代码强制
+- 2026-04-17 v1.2 用户决议 4 主 + 4 副 open questions (思维严谨复审后)
+  - **Q1 包名**: `quantmind.platform` ❌ → **`backend.platform`** (不开源, 平级 app/engines)
+  - **Q2 第 2 策略**: PEAD ✅ 但加 3 周前置 (PIT + PMS v2 + cost H0-v2)
+  - **Q3 Event Sourcing**: StreamBus+PG ✅ 配套 outbox + snapshot + versioning
+  - **Q4 CI**: 单层 pre-commit ❌ → **3 层防线** (pre-commit + pre-push regression + 每日 full pytest)
+  - 新增 MVP 3.0a PEAD 前置 (并行 3 周)
+  - Wave 3 从 7-9 周 → 8-10 周
+  - 总体 19-24 周 → 20-26 周
+  - Part 8 Open Questions → Decisions (已决议)
 
 ---
 
-**END of QuantMind Platform Blueprint v1.1**
+**END of QuantMind Platform Blueprint v1.2**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。
