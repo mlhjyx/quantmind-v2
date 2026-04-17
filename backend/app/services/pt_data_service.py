@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 
 import pandas as pd
-from psycopg2.extras import execute_values
 
 from app.data_fetcher.data_loader import get_sync_conn, upsert_daily_basic, upsert_klines_daily
 
@@ -220,19 +219,8 @@ def _incremental_from_previous(cur, conn, trade_date: date, prev_date: date) -> 
         records.append((code, trade_date, is_st, is_suspended, is_new, board, list_dt, delist_dt))
 
     if records:
-        execute_values(
-            cur,
-            """INSERT INTO stock_status_daily
-               (code, trade_date, is_st, is_suspended, is_new_stock, board, list_date, delist_date)
-               VALUES %s
-               ON CONFLICT (code, trade_date) DO UPDATE SET
-                 is_st = EXCLUDED.is_st, is_suspended = EXCLUDED.is_suspended,
-                 is_new_stock = EXCLUDED.is_new_stock, board = EXCLUDED.board""",
-            records,
-            page_size=5000,
-        )
-        # 铁律 32 (Phase D D2b-5): commit 由调用方管理 (run_paper_trading.run_signal_phase
-        # 顶层 conn.autocommit=True, execute_values 在 autocommit 模式下逐批自动提交).
+        # MVP 2.1c Sub2: execute_values → DataPipeline.ingest (铁律 17, STOCK_STATUS_DAILY Contract)
+        _ingest_stock_status(conn, records)
 
     st_count = sum(1 for r in records if r[2])
     logger.info(
@@ -244,6 +232,31 @@ def _incremental_from_previous(cur, conn, trade_date: date, prev_date: date) -> 
         sum(1 for r in records if r[3]),
     )
     return len(records)
+
+
+def _ingest_stock_status(conn, records: list[tuple]) -> None:
+    """统一 stock_status_daily 写路径 → DataPipeline.ingest (铁律 17).
+
+    records tuples: (code, trade_date, is_st, is_suspended, is_new_stock,
+                     board, list_date, delist_date)
+    """
+    from app.data_fetcher.contracts import STOCK_STATUS_DAILY
+    from app.data_fetcher.pipeline import DataPipeline
+
+    df = pd.DataFrame(
+        records,
+        columns=[
+            "code", "trade_date", "is_st", "is_suspended", "is_new_stock",
+            "board", "list_date", "delist_date",
+        ],
+    )
+    pipeline = DataPipeline(conn)
+    result = pipeline.ingest(df, STOCK_STATUS_DAILY)
+    if result.rejected_rows > 0:
+        logger.warning(
+            "[Status] DataPipeline 拒绝 %d 行: %s",
+            result.rejected_rows, result.reject_reasons,
+        )
 
 
 def _full_build_single_day(cur, conn, trade_date: date) -> int:
@@ -306,18 +319,8 @@ def _full_build_single_day(cur, conn, trade_date: date) -> int:
         )
 
     if records:
-        execute_values(
-            cur,
-            """INSERT INTO stock_status_daily
-               (code, trade_date, is_st, is_suspended, is_new_stock, board, list_date, delist_date)
-               VALUES %s
-               ON CONFLICT (code, trade_date) DO UPDATE SET
-                 is_st = EXCLUDED.is_st, is_suspended = EXCLUDED.is_suspended,
-                 is_new_stock = EXCLUDED.is_new_stock, board = EXCLUDED.board""",
-            records,
-            page_size=5000,
-        )
-        # 铁律 32 (Phase D D2b-5): commit 由调用方管理 (autocommit 模式).
+        # MVP 2.1c Sub2: 统一走 DataPipeline (与 _incremental_from_previous 一致)
+        _ingest_stock_status(conn, records)
 
     logger.info("[Status] %s 全量构建: %d行", trade_date, len(records))
     return len(records)

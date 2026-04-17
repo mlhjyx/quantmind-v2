@@ -177,32 +177,35 @@ def _write_shadow_portfolio(
         next_td = get_next_trading_day(conn, trade_date)
         rebalance_date = next_td if next_td else trade_date
 
-        cur = conn.cursor()
-        for _, row in df_top.iterrows():
-            cur.execute(
-                """INSERT INTO shadow_portfolio
-                       (strategy_name, trade_date, rebalance_date,
-                        symbol_code, predicted_score, weight, rank_in_portfolio)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (strategy_name, trade_date, symbol_code)
-                   DO UPDATE SET
-                       predicted_score = EXCLUDED.predicted_score,
-                       weight = EXCLUDED.weight,
-                       rank_in_portfolio = EXCLUDED.rank_in_portfolio,
-                       rebalance_date = EXCLUDED.rebalance_date,
-                       created_at = NOW()""",
-                (
-                    strategy_name,
-                    trade_date,
-                    rebalance_date,
-                    row["code"],
-                    float(row["predicted_score"]),
-                    float(row["weight"]),
-                    int(row["rank_in_portfolio"]),
-                ),
+        # MVP 2.1c Sub2: INSERT ... ON CONFLICT → DataPipeline.ingest (铁律 17).
+        # 设计调整: created_at 由 DB DEFAULT NOW() 管理 (首次 INSERT 时写入),
+        # 原 ON CONFLICT DO UPDATE 的 `created_at = NOW()` 语义从"最后更新"改为
+        # "首次创建", 更符合时间戳语义. 其他字段 UPDATE 行为不变.
+        from app.data_fetcher.contracts import SHADOW_PORTFOLIO
+        from app.data_fetcher.pipeline import DataPipeline
+
+        records = pd.DataFrame({
+            "strategy_name": strategy_name,
+            "trade_date": trade_date,
+            "rebalance_date": rebalance_date,
+            "symbol_code": df_top["code"].astype(str),
+            "predicted_score": df_top["predicted_score"].astype(float),
+            "weight": df_top["weight"].astype(float),
+            "rank_in_portfolio": df_top["rank_in_portfolio"].astype(int),
+        })
+        pipeline = DataPipeline(conn)
+        result = pipeline.ingest(records, SHADOW_PORTFOLIO)
+        if result.rejected_rows > 0:
+            logger.warning(
+                "[SHADOW] DataPipeline 拒绝 %d 行 (%s): %s",
+                result.rejected_rows, strategy_name, result.reject_reasons,
             )
-        # 铁律 32 (Phase D D2b-2): commit 由调用方管理 (run_paper_trading.py 顶层)
-        logger.info("[SHADOW] 写入shadow_portfolio(%s): %d行", strategy_name, len(df_top))
+        # 铁律 32 (Phase D D2b-2): commit 由 DataPipeline._upsert 内部 commit
+        # (DataPipeline 管连接生命周期, Service 层不干预). 调用方仍用 autocommit 模式.
+        logger.info(
+            "[SHADOW] 写入shadow_portfolio(%s): %d 行 (DataPipeline)",
+            strategy_name, result.upserted_rows,
+        )
 
 
 def generate_shadow_lgbm_signals(trade_date: date, conn, dry_run: bool = False) -> None:

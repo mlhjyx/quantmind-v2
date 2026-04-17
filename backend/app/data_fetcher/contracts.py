@@ -319,6 +319,27 @@ STOCK_STATUS_DAILY = TableContract(
 )
 
 
+# MVP 2.1c Sub2 (2026-04-18): shadow_portfolio 表 DataPipeline 迁移.
+# 原 services/shadow_portfolio.py 逐行 INSERT ... ON CONFLICT, 改走 pipeline.ingest.
+# PK 用 (strategy_name, trade_date, symbol_code) UNIQUE 约束 (id SERIAL 由 DB 自增).
+# created_at 由 DB DEFAULT NOW() 管理, Contract 不列 (避 DataPipeline 无法传 NOW() 表达式).
+SHADOW_PORTFOLIO = TableContract(
+    table_name="shadow_portfolio",
+    pk_columns=("strategy_name", "trade_date", "symbol_code"),
+    columns={
+        "strategy_name": ColumnSpec("str", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False),
+        "rebalance_date": ColumnSpec("date", nullable=False),
+        "symbol_code": ColumnSpec("str", nullable=False),
+        "predicted_score": ColumnSpec("float"),
+        "weight": ColumnSpec("float", nullable=False, min_val=0.0, max_val=1.0),
+        "rank_in_portfolio": ColumnSpec("int", min_val=1),
+    },
+    fk_filter_col=None,  # symbol_code 格式由调用方对齐, 不强制 FK
+    skip_unit_conversion=True,
+)
+
+
 # ════════════════════════════════════════════════════════════
 # Contract注册表 — 按table_name查找
 # ════════════════════════════════════════════════════════════
@@ -337,6 +358,7 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
         EARNINGS_ANNOUNCEMENTS,
         STOCK_STATUS_DAILY,
         MINUTE_BARS,
+        SHADOW_PORTFOLIO,
     ]
 }
 
