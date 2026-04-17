@@ -19,7 +19,11 @@ from .interface import (
 )
 from .sources import (
     MINUTE_BARS_DATA_CONTRACT,
+    QMT_ASSETS_CONTRACT,
+    QMT_POSITIONS_CONTRACT,
+    QMT_TICKS_CONTRACT,
     BaostockDataSource,
+    QMTDataSource,
 )
 
 __all__ = [
@@ -40,4 +44,9 @@ __all__ = [
     # MVP 2.1b (concrete fetchers, Sub-commit 1)
     "BaostockDataSource",
     "MINUTE_BARS_DATA_CONTRACT",
+    # MVP 2.1b (concrete fetchers, Sub-commit 2)
+    "QMTDataSource",
+    "QMT_POSITIONS_CONTRACT",
+    "QMT_ASSETS_CONTRACT",
+    "QMT_TICKS_CONTRACT",
 ]
