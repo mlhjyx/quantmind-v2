@@ -53,6 +53,50 @@ FACTOR_DIRECTION = {
 }
 
 
+# ============================================================
+# MVP 1.3b: Direction DB 化 — 3 层 fallback
+# ============================================================
+# 默认 FeatureFlag `use_db_direction` = False → 走 FACTOR_DIRECTION hardcoded
+# (regression max_diff=0 锚点稳定). 切 True 后走 FactorRegistry + in-memory cache.
+# DB 挂或 cache miss → fallback hardcoded (永远兜底).
+#
+# 调用方 (PT / FastAPI / test) 通过 `init_platform_dependencies(registry, flag_db)`
+# 注入 DBFactorRegistry + DBFeatureFlag 实例. 未注入时 _get_direction 直接走 hardcoded.
+
+_PLATFORM_REGISTRY = None  # type: ignore[var-annotated]  # DBFactorRegistry | None
+_PLATFORM_FLAG_DB = None   # type: ignore[var-annotated]  # DBFeatureFlag | None
+_USE_DB_DIRECTION_FLAG_NAME = "use_db_direction"
+
+
+def init_platform_dependencies(registry=None, flag_db=None) -> None:
+    """PT / FastAPI 启动时注入 Platform 单例. 允许 None (保向后兼容)."""
+    global _PLATFORM_REGISTRY, _PLATFORM_FLAG_DB
+    _PLATFORM_REGISTRY = registry
+    _PLATFORM_FLAG_DB = flag_db
+
+
+def _get_direction(fname: str) -> int:
+    """3 层 fallback 读 direction.
+
+    Layer 0: FeatureFlag `use_db_direction` 未开或未注入 → hardcoded (默认)
+    Layer 1: Flag 开 + Registry 有 → DB + cache (新路径)
+    Layer 3: 任一 Layer 1 异常 → hardcoded (兜底, logger.warning)
+    """
+    if _PLATFORM_FLAG_DB is not None and _PLATFORM_REGISTRY is not None:
+        try:
+            if _PLATFORM_FLAG_DB.is_enabled(_USE_DB_DIRECTION_FLAG_NAME):
+                try:
+                    return _PLATFORM_REGISTRY.get_direction(fname)
+                except Exception as e:
+                    logger.warning(
+                        f"[signal_engine] DB direction lookup failed for {fname}: {e}. "
+                        f"Fallback to hardcoded."
+                    )
+        except Exception:  # silent_ok: FlagNotFound / DB transient → hardcoded fallback
+            pass
+    return FACTOR_DIRECTION.get(fname, 1)
+
+
 @dataclass
 class SignalConfig:
     """信号生成配置。
@@ -158,9 +202,10 @@ class SignalComposer:
 
         pivot = pivot[available]
 
-        # 方向调整
+        # 方向调整 — MVP 1.3b: 3 层 fallback (cache → DB → hardcoded).
+        # FeatureFlag `use_db_direction` 默认 False → 走 hardcoded (老路径, regression max_diff=0 锚点)
         for fname in available:
-            direction = FACTOR_DIRECTION.get(fname, 1)
+            direction = _get_direction(fname)
             if direction == -1:
                 pivot[fname] = -pivot[fname]
 

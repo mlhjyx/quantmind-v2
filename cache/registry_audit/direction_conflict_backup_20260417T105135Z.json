@@ -1,0 +1,11 @@
+{
+  "timestamp_utc": "20260417T105135Z",
+  "action": "direction_fix",
+  "conflicts": [
+    {
+      "name": "reversal_20",
+      "db": -1,
+      "hardcoded": 1
+    }
+  ]
+}
