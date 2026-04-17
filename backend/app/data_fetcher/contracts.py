@@ -49,7 +49,7 @@ UNIT_CONVERSIONS: dict[tuple[SourceUnit, DBUnit], float] = {
 class ColumnSpec:
     """单列schema定义。"""
 
-    dtype: str  # "float", "int", "str", "bool", "date"
+    dtype: str  # "float" | "int" | "str" | "bool" | "date" | "uuid" | "jsonb" (MVP 2.2)
     nullable: bool = True
     source_unit: SourceUnit | None = None  # Tushare原始单位
     db_unit: DBUnit | None = None  # DB存储单位
@@ -82,7 +82,9 @@ class TableContract:
 # ════════════════════════════════════════════════════════════
 
 # --- helpers ---
-_price_col = ColumnSpec("float", nullable=True, source_unit=SourceUnit.YUAN, db_unit=DBUnit.YUAN, min_val=0)
+_price_col = ColumnSpec(
+    "float", nullable=True, source_unit=SourceUnit.YUAN, db_unit=DBUnit.YUAN, min_val=0
+)
 
 
 KLINES_DAILY = TableContract(
@@ -97,9 +99,17 @@ KLINES_DAILY = TableContract(
         "close": _price_col,
         "pre_close": _price_col,
         "change": ColumnSpec("float"),
-        "pct_change": ColumnSpec("float", source_unit=SourceUnit.PCT_X100, db_unit=DBUnit.PCT_X100, min_val=-30, max_val=30),
+        "pct_change": ColumnSpec(
+            "float",
+            source_unit=SourceUnit.PCT_X100,
+            db_unit=DBUnit.PCT_X100,
+            min_val=-30,
+            max_val=30,
+        ),
         "volume": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU, min_val=0),
-        "amount": ColumnSpec("float", source_unit=SourceUnit.QIAN_YUAN, db_unit=DBUnit.YUAN, min_val=0),
+        "amount": ColumnSpec(
+            "float", source_unit=SourceUnit.QIAN_YUAN, db_unit=DBUnit.YUAN, min_val=0
+        ),
         "turnover_rate": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
         "adj_factor": ColumnSpec("float", min_val=0),
         "is_suspended": ColumnSpec("bool"),
@@ -130,8 +140,12 @@ DAILY_BASIC = TableContract(
         "total_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
         "float_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
         "free_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
-        "total_mv": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN, min_val=0),
-        "circ_mv": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN, min_val=0),
+        "total_mv": ColumnSpec(
+            "float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN, min_val=0
+        ),
+        "circ_mv": ColumnSpec(
+            "float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN, min_val=0
+        ),
     },
     rename_map={"ts_code": "code"},
 )
@@ -157,7 +171,9 @@ MONEYFLOW_DAILY = TableContract(
         "buy_elg_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
         "buy_elg_amount": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
         "sell_elg_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
-        "sell_elg_amount": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
+        "sell_elg_amount": ColumnSpec(
+            "float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN
+        ),
         "net_mf_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
         "net_mf_amount": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
     },
@@ -177,7 +193,9 @@ INDEX_DAILY = TableContract(
         "pre_close": _price_col,
         "pct_change": ColumnSpec("float", source_unit=SourceUnit.PCT_X100, db_unit=DBUnit.PCT_X100),
         "volume": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU, min_val=0),
-        "amount": ColumnSpec("float", source_unit=SourceUnit.QIAN_YUAN, db_unit=DBUnit.YUAN, min_val=0),
+        "amount": ColumnSpec(
+            "float", source_unit=SourceUnit.QIAN_YUAN, db_unit=DBUnit.YUAN, min_val=0
+        ),
     },
     rename_map={"ts_code": "index_code", "vol": "volume", "pct_chg": "pct_change"},
     fk_filter_col=None,  # index codes不在symbols表
@@ -192,7 +210,9 @@ FACTOR_VALUES = TableContract(
         "factor_name": ColumnSpec("str", nullable=False),
         "raw_value": ColumnSpec("float"),
         "neutral_value": ColumnSpec("float"),
-        "zscore": ColumnSpec("float", source_unit=SourceUnit.DIMENSIONLESS, db_unit=DBUnit.DIMENSIONLESS),
+        "zscore": ColumnSpec(
+            "float", source_unit=SourceUnit.DIMENSIONLESS, db_unit=DBUnit.DIMENSIONLESS
+        ),
     },
     fk_filter_col=None,
     skip_unit_conversion=True,  # z-score无量纲，跳过单位转换
@@ -366,6 +386,8 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
 def get_contract(table_name: str) -> TableContract:
     """按表名获取Contract。未注册的表raise KeyError。"""
     if table_name not in CONTRACT_REGISTRY:
-        raise KeyError(f"No contract registered for table '{table_name}'. "
-                       f"Available: {list(CONTRACT_REGISTRY.keys())}")
+        raise KeyError(
+            f"No contract registered for table '{table_name}'. "
+            f"Available: {list(CONTRACT_REGISTRY.keys())}"
+        )
     return CONTRACT_REGISTRY[table_name]

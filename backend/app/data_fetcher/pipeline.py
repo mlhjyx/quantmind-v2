@@ -11,20 +11,54 @@ Contract定义在contracts.py中。
 
 from __future__ import annotations
 
+import uuid as _uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import structlog
-from psycopg2.extras import execute_values
+from psycopg2.extras import Json, execute_values, register_uuid
 
 if TYPE_CHECKING:
     import psycopg2.extensions
 
 from app.data_fetcher.contracts import TableContract
 
+# MVP 2.2: 模块级幂等注册, 让 psycopg2 自动转换 uuid.UUID ↔ PG UUID
+# (置于所有 import 之后, 避免 ruff E402 "Module level import not at top of file")
+register_uuid()
+
 logger = structlog.get_logger(__name__)
+
+
+def _is_null(v) -> bool:
+    """安全 null 判定 (MVP 2.2).
+
+    原 pipeline 用 `pd.isna(v)`, 对 dict/list 非 scalar 输入会 TypeError.
+    本 helper 白名单短路: None → True, 容器/UUID/str → False, 其他 fallback pd.isna.
+    """
+    if v is None:
+        return True
+    if isinstance(v, (dict, list, str, _uuid.UUID)):
+        return False
+    try:
+        return bool(pd.isna(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def _prepare_cell(v, dtype: str):
+    """_upsert tuple 构造前的 type-aware null 处理 + JSON wrap (MVP 2.2).
+
+    - jsonb: 用 psycopg2 `Json(...)` adapter 包装 dict/list → JSONB 字面量
+    - uuid / text / 其他: 直通 (register_uuid 已注册 UUID 适配器)
+    """
+    if _is_null(v):
+        return None
+    if dtype == "jsonb":
+        return Json(v)
+    return v
 
 
 @dataclass
@@ -245,7 +279,9 @@ class DataPipeline:
             df = df[valid_mask].copy()
             logger.warning(
                 "[sanity] %s 拒绝 %d 行 | %s",
-                table_name, (~valid_mask).sum(), reject_reasons,
+                table_name,
+                (~valid_mask).sum(),
+                reject_reasons,
             )
         return df, reject_reasons
 
@@ -301,11 +337,60 @@ class DataPipeline:
                         reject_reasons[f"{col_name}_above_{spec.max_val}"] = int(above_count)
                         valid_mask &= ~above
 
+            # MVP 2.2: UUID 验证 (accept UUID | str, normalize → uuid.UUID; 非法 str → reject)
+            elif spec.dtype == "uuid":
+
+                def _try_uuid_strict(v):
+                    """Return (valid, normalized_value)."""
+                    if _is_null(v):
+                        return True, None
+                    if isinstance(v, _uuid.UUID):
+                        return True, v
+                    if isinstance(v, str):
+                        try:
+                            return True, _uuid.UUID(v)
+                        except (ValueError, AttributeError):
+                            return False, None
+                    return False, None
+
+                results = col.apply(_try_uuid_strict)
+                invalid_mask = results.apply(lambda t: not t[0])
+                df[col_name] = results.apply(lambda t: t[1])
+                if invalid_mask.any():
+                    reject_reasons[f"invalid_uuid_{col_name}"] = int(invalid_mask.sum())
+                    valid_mask &= ~invalid_mask
+
+            # MVP 2.2: JSONB 验证 (accept dict | list | None; 其他 reject)
+            elif spec.dtype == "jsonb":
+
+                def _try_jsonb_strict(v):
+                    if _is_null(v):
+                        return True, None
+                    if isinstance(v, (dict, list)):
+                        return True, v
+                    return False, None
+
+                results = col.apply(_try_jsonb_strict)
+                invalid_mask = results.apply(lambda t: not t[0])
+                df[col_name] = results.apply(lambda t: t[1])
+                if invalid_mask.any():
+                    reject_reasons[f"invalid_jsonb_{col_name}"] = int(invalid_mask.sum())
+                    valid_mask &= ~invalid_mask
+
         # 应用mask
         valid_df = df[valid_mask].reset_index(drop=True)
 
-        # NaN → None (psycopg2需要Python None不是numpy NaN)
-        valid_df = valid_df.where(pd.notna(valid_df), other=None)
+        # MVP 2.2: NaN → None 收紧到仅 numeric 列
+        # (原全 df where(pd.notna, None) 在 object 列含 dict/list 时崩 vectorize)
+        numeric_cols = [
+            c
+            for c, s in contract.columns.items()
+            if s.dtype in ("float", "int") and c in valid_df.columns
+        ]
+        if numeric_cols:
+            valid_df[numeric_cols] = valid_df[numeric_cols].where(
+                pd.notna(valid_df[numeric_cols]), other=None
+            )
 
         return valid_df, reject_reasons
 
@@ -346,11 +431,13 @@ class DataPipeline:
         columns = [c for c in contract.columns if c in df.columns]
         sql = self._build_upsert_sql(contract, columns)
 
-        # DataFrame → list of tuples, NaN→None for psycopg2 (铁律29)
-        # float64列中pd.where(other=None)无法存储None(被转回NaN),
-        # 因此在tuple化时显式转换
+        # DataFrame → list of tuples, type-aware 处理 (MVP 2.2)
+        # - numeric NaN → None (psycopg2 需 Python None 不是 numpy NaN, 铁律 29)
+        # - jsonb dict/list → Json(...) wrap
+        # - uuid UUID 实例 → 直通 (register_uuid 已注册 adapter)
+        type_map = {c: contract.columns[c].dtype for c in columns}
         records = [
-            tuple(None if pd.isna(v) else v for v in row)
+            tuple(_prepare_cell(v, type_map[c]) for c, v in zip(columns, row, strict=True))
             for row in df[columns].itertuples(index=False, name=None)
         ]
 
