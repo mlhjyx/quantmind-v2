@@ -86,3 +86,14 @@ catboost_info/
 
 # Temp files
 _write_plan.py
+
+# OMC state (runtime, noisy)
+.omc/
+**/.omc/
+
+# TypeScript build info (auto-generated)
+**/tsconfig.tsbuildinfo
+
+# FactorCache parquet storage (DATA_SYSTEM_V1 P0-2, reproducible from DB)
+cache/factor_values/
+cache/backtest/cache_meta.json

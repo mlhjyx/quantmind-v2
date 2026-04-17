@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd D:/quantmind-v2/backend && python -c \\\"\\nfrom datetime import date\\nfrom engines.modifiers.northbound_modifier import NorthboundModifier\\nfrom engines.base_strategy import StrategyConte...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"C:\\Users\\hd\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\pandas\\core\\ops\\array_ops.py\", line 218, in _na_arithmetic_op\r\n    result = func(left, right)\r\n             ^^^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\hd\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\pandas\\core\\computation\\expressions.py\", line 242, in evaluate\r\n    return _evaluate(op, op_str, a, b)  # type: ignore[misc]\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  F...",
-  "timestamp": "2026-04-07T21:11:57.532Z",
-  "retry_count": 1
-}
