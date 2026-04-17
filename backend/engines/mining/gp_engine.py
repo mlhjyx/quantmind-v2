@@ -92,6 +92,12 @@ class GPConfig:
     quick_gate_t_threshold: float = 2.0     # GP快速筛选t统计量下限
     # 并行
     n_workers: int = 1                  # 评估并行进程数（1=串行）
+    # NEW: 关联变异 (AlphaZero 10x效率)
+    correlated_mutation: bool = True    # True=结构感知变异, False=原始随机变异
+    # NEW: 灾难算法 (AlphaZero 多样性保护)
+    catastrophe_interval: int = 10     # 每N代检测多样性
+    catastrophe_diversity_threshold: float = 0.3  # 多样性<此值触发灾难
+    catastrophe_survival_ratio: float = 0.2       # 灾难时保留Top-20%
 
 
 @dataclass
@@ -126,6 +132,9 @@ class GPRunStats:
     n_generations_completed: int = 0
     per_island_best: dict[int, float] = field(default_factory=dict)
     timeout: bool = False
+    # NEW: catastrophe tracking
+    catastrophe_count: int = 0
+    catastrophe_generations: list[int] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -663,16 +672,22 @@ class GPEngine:
         return ind1, ind2
 
     def _mutate_op(self, ind: creator.Individual) -> tuple[creator.Individual,]:
-        """DEAP变异算子（含黑名单检查，§6.5）。"""
+        """DEAP变异算子（含黑名单检查，§6.5 + AlphaZero关联变异）。"""
         tree = _get_tree(ind)
         blacklist = (
             self.previous_run.blacklisted_hashes
             if self.previous_run
             else set()
         )
+        # 选择变异策略: 关联变异(结构感知) vs 原始随机变异
+        mutate_fn = (
+            self.dsl.correlated_mutate
+            if self.config.correlated_mutation
+            else lambda t: self.dsl.mutate(t, mutation_rate=self.config.mutation_prob)
+        )
         # 最多重试3次，避免变异出黑名单结构
         for _ in range(3):
-            mutated = self.dsl.mutate(tree, mutation_rate=self.config.mutation_prob)
+            mutated = mutate_fn(tree)
             if not blacklist or mutated.to_ast_hash() not in blacklist:
                 break
         ind[0] = mutated
@@ -896,6 +911,21 @@ class GPEngine:
                 islands = self._migrate(islands)
                 logger.debug("第%d代: 岛屿迁移完成", gen)
 
+            # NEW: 灾难算法 — 多样性低于阈值时重置种群 (AlphaZero)
+            if (self.config.catastrophe_interval > 0
+                    and gen % self.config.catastrophe_interval == 0):
+                for island_id, pop in enumerate(islands):
+                    triggered = self._check_and_apply_catastrophe(
+                        pop, gen, island_id, stats
+                    )
+                    if triggered:
+                        # 重新评估灾难后的新个体
+                        self._evaluate_population(
+                            pop, market_data, forward_returns,
+                            generation=gen, island_id=island_id,
+                        )
+                        stats.total_evaluated += len(pop)
+
             gen_completed = gen
 
             # 日志
@@ -957,12 +987,10 @@ class GPEngine:
             if random.random() < self.config.mutation_prob:
                 self.toolbox.mutate(ind)
 
-        # 评估未计算fitness的个体
-        invalid_inds = [ind for ind in offspring if not ind.fitness.valid]
-        for ind in invalid_inds:
-            ind.fitness.values = self._evaluate_individual(
-                ind, market_data, forward_returns, generation, island_id
-            )
+        # 评估未计算fitness的个体 (2026-04-17c 并行化, 复用 _evaluate_population)
+        self._evaluate_population(
+            offspring, market_data, forward_returns, generation, island_id
+        )
 
         # 精英保留（取当前代和父代各50%的最好个体）
         pop[:] = tools.selBest(pop + offspring, len(pop))
@@ -976,12 +1004,40 @@ class GPEngine:
         generation: int,
         island_id: int,
     ) -> None:
-        """批量评估种群（原地修改fitness）。"""
+        """批量评估种群 (并行 + 原地修改 fitness).
+
+        2026-04-17c 并行化: 用 ThreadPoolExecutor 并发评估个体.
+        - pandas ops (rolling/groupby/pct_change) 内部释放 GIL, thread pool 有效
+        - 避开 ProcessPool 的 Windows pickle 开销 (market_data 1.3M 行)
+        - 小 batch (< 20) 走串行, 避开线程启动开销
+        """
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+
         invalid_inds = [ind for ind in pop if not ind.fitness.valid]
-        for ind in invalid_inds:
-            ind.fitness.values = self._evaluate_individual(
-                ind, market_data, forward_returns, generation, island_id
-            )
+        if not invalid_inds:
+            return
+
+        # 小批量 或 单线程环境 → 串行
+        n_threads = int(os.environ.get("QM_GP_THREADS", "0")) or max(1, (os.cpu_count() or 4) - 1)
+        if len(invalid_inds) < 20 or n_threads <= 1:
+            for ind in invalid_inds:
+                ind.fitness.values = self._evaluate_individual(
+                    ind, market_data, forward_returns, generation, island_id
+                )
+            return
+
+        # 并行评估
+        with ThreadPoolExecutor(max_workers=n_threads) as pool:
+            futures = [
+                pool.submit(
+                    self._evaluate_individual,
+                    ind, market_data, forward_returns, generation, island_id,
+                )
+                for ind in invalid_inds
+            ]
+            for ind, fut in zip(invalid_inds, futures):
+                ind.fitness.values = fut.result()
 
     def _evaluate_individual(
         self,
@@ -1026,6 +1082,67 @@ class GPEngine:
                 pop[idx] = deepcopy(immigrant)
 
         return islands
+
+    def _check_and_apply_catastrophe(
+        self,
+        pop: list[creator.Individual],
+        generation: int,
+        island_id: int,
+        run_stats: GPRunStats,
+    ) -> bool:
+        """灾难算法: 检测种群多样性, 低于阈值时重置 (AlphaZero)。
+
+        多样性 = unique AST hashes / population size。
+        触发时: 保留Top-K (survival_ratio), 剩余用random_tree替换。
+
+        Returns:
+            True if catastrophe was triggered.
+        """
+        if not pop:
+            return False
+
+        # 计算多样性
+        hashes = set()
+        for ind in pop:
+            tree = _get_tree(ind)
+            hashes.add(tree.to_ast_hash())
+
+        diversity = len(hashes) / len(pop)
+
+        if diversity >= self.config.catastrophe_diversity_threshold:
+            return False
+
+        # 触发灾难
+        n_survive = max(1, int(len(pop) * self.config.catastrophe_survival_ratio))
+
+        # 按fitness排序, 保留Top-K
+        sorted_pop = sorted(
+            pop,
+            key=lambda ind: ind.fitness.values[0] if ind.fitness.valid else -999.0,
+            reverse=True,
+        )
+        survivors = sorted_pop[:n_survive]
+
+        # 用随机树替换剩余
+        for i in range(len(pop)):
+            if i < n_survive:
+                pop[i] = deepcopy(survivors[i])
+            else:
+                new_tree = self.dsl.random_tree()
+                ind = creator.Individual([new_tree])
+                pop[i] = ind
+
+        run_stats.catastrophe_count += 1
+        run_stats.catastrophe_generations.append(generation)
+
+        logger.info(
+            "灾难触发: island=%d, gen=%d, diversity=%.2f<%.2f, "
+            "保留%d/%d, 重新生成%d个体",
+            island_id, generation, diversity,
+            self.config.catastrophe_diversity_threshold,
+            n_survive, len(pop), len(pop) - n_survive,
+        )
+        return True
 
     def _make_stats(self) -> tools.Statistics:
         """创建DEAP统计工具。"""

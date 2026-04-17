@@ -37,10 +37,21 @@ class OpType(Enum):
     """算子类型。"""
     UNARY = "unary"           # 单目: f(x) → y
     BINARY = "binary"         # 双目: f(x, y) → z
+    TERNARY = "ternary"       # 三目: f(cond, x, y) → z  [NEW: FactorMiner ifelse]
     TS = "ts"                 # 时序: f(x, window) → y
     TS_BINARY = "ts_binary"   # 时序双目: f(x, y, window) → z
     CS = "cs"                 # 截面: f(x) → rank/zscore
     TERMINAL = "terminal"     # 终端: 数据字段或常数
+
+
+class DimType(Enum):
+    """量纲类型 — 用于过滤无经济意义的表达式 (AlphaZero量纲约束)。"""
+    PRICE = "price"           # 元: open, high, low, close, vwap
+    VOLUME = "volume"         # 手: volume
+    AMOUNT = "amount"         # 元(成交额): amount, buy_lg_amount, ...
+    RATIO = "ratio"           # 无量纲: returns, turnover_rate, pe_ttm, pb, ...
+    MARKET_CAP = "market_cap" # 元(大数): total_mv, circ_mv
+    UNKNOWN = "unknown"       # 经运算后无法追踪
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +71,12 @@ TS_OPS: dict[str, dict[str, Any]] = {
     "delay":    {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
     "delta":    {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
     "ts_pct":   {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
+    # NEW: AlphaZero/FactorMiner operators
+    "ts_slope":         {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性回归斜率
+    "ts_rsquare":       {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性回归R²
+    "ts_decay_linear":  {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性衰减加权mean
+    "ts_argmax":        {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 最大值位置/window
+    "ts_argmin":        {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 最小值位置/window
 }
 
 # 时序双目算子
@@ -93,6 +110,13 @@ BINARY_OPS: dict[str, dict[str, Any]] = {
     "div": {"args": 2, "type": OpType.BINARY},   # 安全除法
     "max": {"args": 2, "type": OpType.BINARY},
     "min": {"args": 2, "type": OpType.BINARY},
+    # NEW: AlphaZero power operator
+    "power": {"args": 2, "type": OpType.BINARY},  # x^n (n=child2, 常用0.5/2/3)
+}
+
+# 三目算子 (NEW: FactorMiner ifelse)
+TERNARY_OPS: dict[str, dict[str, Any]] = {
+    "ifelse": {"args": 3, "type": OpType.TERNARY},  # if(cond>0, x, y)
 }
 
 # 所有算子合并（便于查找）
@@ -102,6 +126,7 @@ ALL_OPS: dict[str, dict[str, Any]] = {
     **CS_OPS,
     **UNARY_OPS,
     **BINARY_OPS,
+    **TERNARY_OPS,
 }
 
 # 终端节点（数据字段）
@@ -156,6 +181,158 @@ DIMENSION_RULES: dict[str, Any] = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# 量纲类型映射 (AlphaZero 正则化进化核心机制)
+# ---------------------------------------------------------------------------
+
+TERMINAL_DIM: dict[str, DimType] = {
+    # 价格类 (元/股)
+    "open": DimType.PRICE, "high": DimType.PRICE,
+    "low": DimType.PRICE, "close": DimType.PRICE, "vwap": DimType.PRICE,
+    # 成交量 (手)
+    "volume": DimType.VOLUME,
+    # 成交额 (元)
+    "amount": DimType.AMOUNT,
+    "buy_lg_amount": DimType.AMOUNT, "sell_lg_amount": DimType.AMOUNT,
+    "net_lg_amount": DimType.AMOUNT,
+    "buy_md_amount": DimType.AMOUNT, "sell_md_amount": DimType.AMOUNT,
+    "net_md_amount": DimType.AMOUNT,
+    # 市值 (元, 大数)
+    "total_mv": DimType.MARKET_CAP, "circ_mv": DimType.MARKET_CAP,
+    # 无量纲比率
+    "returns": DimType.RATIO, "turnover_rate": DimType.RATIO,
+    "pe_ttm": DimType.RATIO, "pb": DimType.RATIO, "ps_ttm": DimType.RATIO,
+    "high_low": DimType.RATIO, "close_open": DimType.RATIO,
+}
+
+# 同量纲终端分组 (用于关联变异的字段替换)
+DIM_GROUPS: dict[DimType, list[str]] = {}
+for _term, _dim in TERMINAL_DIM.items():
+    DIM_GROUPS.setdefault(_dim, []).append(_term)
+
+
+def infer_dimension(node: ExprNode) -> DimType:
+    """推断表达式树的输出量纲。
+
+    规则:
+    - 终端: 查 TERMINAL_DIM
+    - ts_*/delay/delta: 保持输入量纲
+    - cs_rank/cs_zscore/cs_demean: → RATIO
+    - ts_corr/ts_cov: → RATIO
+    - log/sqrt: 仅接受 RATIO → RATIO
+    - abs/neg/sign: 保持输入量纲
+    - add/sub: 同量纲 → 同量纲, 否则 UNKNOWN
+    - div: 同量纲 → RATIO, 否则 UNKNOWN
+    - mul/power: → UNKNOWN (新量纲无法追踪)
+    - ts_slope/ts_rsquare/ts_argmax/ts_argmin/ts_decay_linear: → RATIO
+    - ifelse: 取 then-branch 量纲
+    """
+    op = node.op
+
+    if op == "const":
+        return DimType.RATIO
+
+    if not node.children:
+        return TERMINAL_DIM.get(op, DimType.UNKNOWN)
+
+    child_dims = [infer_dimension(c) for c in node.children]
+
+    # 截面算子 → RATIO
+    if op in ("cs_rank", "cs_zscore", "cs_demean"):
+        return DimType.RATIO
+
+    # 时序相关/协方差 → RATIO
+    if op in ("ts_corr", "ts_cov"):
+        return DimType.RATIO
+
+    # 回归/位置类 → RATIO
+    if op in ("ts_slope", "ts_rsquare", "ts_argmax", "ts_argmin"):
+        return DimType.RATIO
+
+    # 时序单目: 保持输入量纲
+    if op in ("ts_mean", "ts_std", "ts_max", "ts_min", "ts_sum",
+              "ts_rank", "ts_skew", "ts_kurt", "ts_decay_linear",
+              "delay", "delta", "ts_pct"):
+        return child_dims[0]
+
+    # abs/neg: 保持量纲
+    if op in ("abs", "neg"):
+        return child_dims[0]
+
+    # sign → RATIO
+    if op == "sign":
+        return DimType.RATIO
+
+    # log/sqrt: 仅RATIO有意义
+    if op in ("log", "sqrt", "inv"):
+        return DimType.RATIO
+
+    # add/sub: 同量纲 → 同量纲
+    if op in ("add", "sub"):
+        if child_dims[0] == child_dims[1]:
+            return child_dims[0]
+        return DimType.UNKNOWN
+
+    # div: 同量纲 → RATIO
+    if op == "div":
+        if child_dims[0] == child_dims[1]:
+            return DimType.RATIO
+        # 不同量纲的div也可能有意义 (如 amount/volume → price)
+        return DimType.UNKNOWN
+
+    # mul/power → UNKNOWN
+    if op in ("mul", "power"):
+        return DimType.UNKNOWN
+
+    # ifelse: 取 then-branch 量纲
+    if op == "ifelse" and len(child_dims) >= 2:
+        return child_dims[1]
+
+    return DimType.UNKNOWN
+
+
+def check_dimensional_validity(node: ExprNode) -> tuple[bool, str]:
+    """检查表达式的量纲合规性 (AlphaZero核心过滤机制)。
+
+    Returns:
+        (is_valid, reason)
+    """
+    for n in node.all_nodes():
+        if not n.children:
+            continue
+
+        op = n.op
+        child_dims = [infer_dimension(c) for c in n.children]
+
+        # 规则1: add/sub 必须同量纲
+        if op in ("add", "sub"):
+            if len(child_dims) >= 2 and child_dims[0] != child_dims[1]:
+                if child_dims[0] != DimType.UNKNOWN and child_dims[1] != DimType.UNKNOWN:
+                    return False, (
+                        f"{op}({child_dims[0].value}, {child_dims[1].value}): "
+                        f"不同量纲相加减无意义"
+                    )
+
+        # 规则2: log/sqrt 仅接受 RATIO
+        if op in ("log", "sqrt"):
+            if child_dims[0] not in (DimType.RATIO, DimType.UNKNOWN):
+                return False, (
+                    f"{op}({child_dims[0].value}): "
+                    f"对有量纲数据取log/sqrt无意义"
+                )
+
+        # 规则3: 同类型相乘无经济意义 (price*price / volume*volume)
+        if op == "mul":
+            if (len(child_dims) >= 2
+                    and child_dims[0] == child_dims[1]
+                    and child_dims[0] in (DimType.PRICE, DimType.VOLUME, DimType.MARKET_CAP)):
+                return False, (
+                    f"mul({child_dims[0].value}, {child_dims[1].value}): "
+                    f"同类型相乘无经济意义"
+                )
+
+    return True, "OK"
+
 
 # ---------------------------------------------------------------------------
 # 表达式树节点
@@ -207,6 +384,8 @@ class ExprNode:
             return f"{self.op}({child_strs[0]})"
         elif op_type == OpType.BINARY:
             return f"{self.op}({child_strs[0]}, {child_strs[1]})"
+        elif op_type == OpType.TERNARY:
+            return f"{self.op}({', '.join(child_strs)})"
         else:
             args_str = ", ".join(child_strs)
             return f"{self.op}({args_str})"
@@ -354,6 +533,79 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
     if op == "ts_pct":
         return child_vals[0].pct_change(periods=w)
 
+    # NEW: ts_slope — 线性回归斜率 (OLS, FactorMiner)
+    if op == "ts_slope":
+        def _slope(s):
+            x = np.arange(len(s), dtype=float)
+            mask = np.isfinite(s.values)
+            if mask.sum() < max(3, w // 2):
+                return np.nan
+            xm = x[mask]
+            ym = s.values[mask].astype(float)
+            mx, my = xm.mean(), ym.mean()
+            denom = ((xm - mx) ** 2).sum()
+            if denom < 1e-15:
+                return np.nan
+            return ((xm - mx) * (ym - my)).sum() / denom
+        return child_vals[0].rolling(w, min_periods=max(3, w // 2)).apply(_slope, raw=False)
+
+    # NEW: ts_rsquare — 线性回归R² (FactorMiner)
+    if op == "ts_rsquare":
+        def _rsquare(s):
+            x = np.arange(len(s), dtype=float)
+            mask = np.isfinite(s.values)
+            if mask.sum() < max(3, w // 2):
+                return np.nan
+            xm = x[mask]
+            ym = s.values[mask].astype(float)
+            mx, my = xm.mean(), ym.mean()
+            ss_tot = ((ym - my) ** 2).sum()
+            if ss_tot < 1e-15:
+                return np.nan
+            denom = ((xm - mx) ** 2).sum()
+            if denom < 1e-15:
+                return np.nan
+            slope = ((xm - mx) * (ym - my)).sum() / denom
+            intercept = my - slope * mx
+            ss_res = ((ym - (slope * xm + intercept)) ** 2).sum()
+            return 1.0 - ss_res / ss_tot
+        return child_vals[0].rolling(w, min_periods=max(3, w // 2)).apply(_rsquare, raw=False)
+
+    # NEW: ts_decay_linear — 线性衰减加权mean (AlphaZero)
+    if op == "ts_decay_linear":
+        def _decay(arr):
+            n = len(arr)
+            mask = np.isfinite(arr)
+            if mask.sum() < max(1, n // 2):
+                return np.nan
+            wt = np.arange(1, n + 1, dtype=float)
+            wt[~mask] = 0.0
+            wt_sum = wt.sum()
+            if wt_sum < 1e-15:
+                return np.nan
+            return np.nansum(np.where(mask, arr, 0.0) * wt) / wt_sum
+        return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_decay, raw=True)
+
+    # NEW: ts_argmax — 最大值位置/window (Alpha158, 归一化到[0,1])
+    if op == "ts_argmax":
+        def _argmax(s):
+            vals = s.values
+            mask = np.isfinite(vals)
+            if mask.sum() < max(1, w // 2):
+                return np.nan
+            return float(np.nanargmax(vals)) / (len(vals) - 1) if len(vals) > 1 else 0.5
+        return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_argmax, raw=False)
+
+    # NEW: ts_argmin — 最小值位置/window (Alpha158, 归一化到[0,1])
+    if op == "ts_argmin":
+        def _argmin(s):
+            vals = s.values
+            mask = np.isfinite(vals)
+            if mask.sum() < max(1, w // 2):
+                return np.nan
+            return float(np.nanargmin(vals)) / (len(vals) - 1) if len(vals) > 1 else 0.5
+        return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_argmin, raw=False)
+
     # 时序双目算子
     if op == "ts_corr":
         return child_vals[0].rolling(w, min_periods=max(1, w // 2)).corr(child_vals[1])
@@ -402,6 +654,20 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
     if op == "min":
         return pd.concat([child_vals[0], child_vals[1]], axis=1).min(axis=1)
 
+    # NEW: power — x^n (AlphaZero)
+    if op == "power":
+        # child[1] 作为指数, 通常为常数(0.5/2/3)或另一个表达式
+        base = child_vals[0].abs().clip(lower=1e-10)
+        exp = child_vals[1].clip(-3, 3)  # 限制指数范围防止溢出
+        return base.pow(exp)
+
+    # NEW: ifelse — if(cond>0, x, y) (FactorMiner)
+    if op == "ifelse":
+        if len(child_vals) >= 3:
+            cond = child_vals[0]
+            return child_vals[1].where(cond > 0, child_vals[2])
+        raise ValueError("ifelse需要3个参数")
+
     raise ValueError(f"未知算子: {op}")
 
 
@@ -437,7 +703,7 @@ class FactorDSL:
     # ----------------------------------------------------------------
 
     def random_tree(self, max_depth: int | None = None, current_depth: int = 0) -> ExprNode:
-        """随机生成合法表达式树（grow方法：随机混合内部节点和叶节点）。
+        """随机生成合法表达式树（grow方法 + 量纲约束重试）。
 
         Args:
             max_depth: 最大深度，None使用实例配置。
@@ -446,6 +712,19 @@ class FactorDSL:
         Returns:
             ExprNode: 合法的表达式树。
         """
+        # 顶层调用 (current_depth==0) 加量纲重试
+        if current_depth == 0:
+            for _ in range(10):
+                tree = self._random_tree_once(max_depth, 0)
+                dim_ok, _ = check_dimensional_validity(tree)
+                if dim_ok:
+                    return tree
+            # 10次失败 → 返回安全的简单树
+            return self._random_terminal()
+        return self._random_tree_once(max_depth, current_depth)
+
+    def _random_tree_once(self, max_depth: int | None = None, current_depth: int = 0) -> ExprNode:
+        """单次随机树生成 (无量纲重试)。"""
         eff_depth = max_depth if max_depth is not None else self.max_depth
 
         # 强制叶节点的情况：已到最大深度
@@ -474,6 +753,7 @@ class FactorDSL:
             (list(CS_OPS.keys()), 2),
             (list(UNARY_OPS.keys()), 2),
             (list(BINARY_OPS.keys()), 2),
+            (list(TERNARY_OPS.keys()), 1),  # ifelse低权重
         ]
         weighted_ops: list[str] = []
         for ops, weight in op_pools:
@@ -692,6 +972,11 @@ class FactorDSL:
                 if op_type in (OpType.TS, OpType.TS_BINARY) and (node.window is None or node.window <= 0):
                     return False, f"时序算子 {node.op} 缺少有效窗口参数"
 
+        # 量纲约束检查 (AlphaZero正则化进化)
+        dim_ok, dim_reason = check_dimensional_validity(tree)
+        if not dim_ok:
+            return False, f"量纲违规: {dim_reason}"
+
         return True, "OK"
 
     # ----------------------------------------------------------------
@@ -798,40 +1083,48 @@ class FactorDSL:
         tree_a: ExprNode,
         tree_b: ExprNode,
     ) -> tuple[ExprNode, ExprNode]:
-        """子树交叉（标准GP交叉算子）。
+        """子树交叉（标准GP交叉算子 + 量纲约束重试）。
 
         随机选择两个树中的内部节点，交换对应子树。
+        量纲不合规时最多重试5次。
 
         Returns:
             (child_a, child_b): 交叉后的两个后代（深拷贝）。
         """
-        a = tree_a.clone()
-        b = tree_b.clone()
+        for _ in range(5):
+            a = tree_a.clone()
+            b = tree_b.clone()
 
-        nodes_a = [n for n in a.all_nodes() if n.children]
-        nodes_b = [n for n in b.all_nodes() if n.children]
+            nodes_a = [n for n in a.all_nodes() if n.children]
+            nodes_b = [n for n in b.all_nodes() if n.children]
 
-        if not nodes_a or not nodes_b:
-            return a, b
+            if not nodes_a or not nodes_b:
+                return a, b
 
-        na = self._rng.choice(nodes_a)
-        nb = self._rng.choice(nodes_b)
+            na = self._rng.choice(nodes_a)
+            nb = self._rng.choice(nodes_b)
 
-        idx_a = self._rng.randrange(len(na.children))
-        idx_b = self._rng.randrange(len(nb.children))
+            idx_a = self._rng.randrange(len(na.children))
+            idx_b = self._rng.randrange(len(nb.children))
 
-        # 检查交换后深度约束
-        subtree_a = na.children[idx_a]
-        subtree_b = nb.children[idx_b]
+            subtree_a = na.children[idx_a]
+            subtree_b = nb.children[idx_b]
 
-        na.children[idx_a] = subtree_b
-        nb.children[idx_b] = subtree_a
+            na.children[idx_a] = subtree_b
+            nb.children[idx_b] = subtree_a
 
-        # 验证深度
-        if a.depth() > self.max_depth or b.depth() > self.max_depth:
-            return tree_a.clone(), tree_b.clone()
+            # 验证深度
+            if a.depth() > self.max_depth or b.depth() > self.max_depth:
+                continue
 
-        return a, b
+            # 验证量纲
+            dim_ok_a, _ = check_dimensional_validity(a)
+            dim_ok_b, _ = check_dimensional_validity(b)
+            if dim_ok_a and dim_ok_b:
+                return a, b
+
+        # 重试失败 → 返回原树clone
+        return tree_a.clone(), tree_b.clone()
 
     def mutate(self, tree: ExprNode, mutation_rate: float = 0.3) -> ExprNode:
         """树变异（随机选一种变异策略）。
@@ -876,6 +1169,99 @@ class FactorDSL:
                 result = ExprNode(op=wrapper, children=[result])
 
         # 确保变异后仍合法
+        if result.depth() > self.max_depth or result.node_count() > self.max_nodes:
+            return tree.clone()
+
+        return result
+
+    def correlated_mutate(self, tree: ExprNode, max_retries: int = 5) -> ExprNode:
+        """关联变异 — 结构感知, 保持父代有效子树 (AlphaZero 10x效率)。
+
+        策略:
+          50% — 子树保留变异: 保留一侧子树, 只变异另一侧
+          20% — 窗口邻域变异: window ±1 级 (5→10, 20→10或60)
+          20% — 同量纲字段替换: 只在同DimType终端间替换
+          10% — 外层包裹: 添加cs_rank/ts_rank外层
+
+        含量纲检查: 变异结果不合规时重试, 最多max_retries次后回退原树。
+        """
+        for _attempt in range(max_retries):
+            result = self._correlated_mutate_once(tree)
+            dim_ok, _ = check_dimensional_validity(result)
+            if dim_ok:
+                return result
+        # 所有重试失败, 返回原树clone
+        return tree.clone()
+
+    def _correlated_mutate_once(self, tree: ExprNode) -> ExprNode:
+        """单次关联变异 (内部方法)。"""
+        result = tree.clone()
+        r = self._rng.random()
+
+        if r < 0.50:
+            # 子树保留变异: 选一个双目节点, 保留一侧, 另一侧随机重生
+            binary_nodes = [
+                n for n in result.all_nodes()
+                if len(n.children) >= 2
+            ]
+            if binary_nodes:
+                node = self._rng.choice(binary_nodes)
+                # 随机选要替换的子树侧
+                side = self._rng.randrange(len(node.children))
+                remaining_depth = self.max_depth - node.depth()
+                if remaining_depth > 0:
+                    node.children[side] = self.random_tree(
+                        max_depth=max(2, remaining_depth), current_depth=0
+                    )
+            else:
+                # fallback: 普通子树替换
+                result = self._random_subtree_replace(result)
+
+        elif r < 0.70:
+            # 窗口邻域变异: 只移动±1级, 非完全随机
+            ts_nodes = [
+                n for n in result.all_nodes()
+                if n.op in TS_OPS or n.op in TS_BINARY_OPS
+            ]
+            if ts_nodes:
+                node = self._rng.choice(ts_nodes)
+                op_info = ALL_OPS.get(node.op, {})
+                valid_windows = sorted(op_info.get("windows", [5, 10, 20]))
+                if node.window in valid_windows:
+                    idx = valid_windows.index(node.window)
+                    # 邻域: ±1 步
+                    neighbors = []
+                    if idx > 0:
+                        neighbors.append(valid_windows[idx - 1])
+                    if idx < len(valid_windows) - 1:
+                        neighbors.append(valid_windows[idx + 1])
+                    if neighbors:
+                        node.window = self._rng.choice(neighbors)
+
+        elif r < 0.90:
+            # 同量纲字段替换: 只在同DimType终端间替换
+            terminals = [
+                n for n in result.all_nodes()
+                if n.is_terminal() and n.op in TERMINAL_DIM
+            ]
+            if terminals:
+                node = self._rng.choice(terminals)
+                dim = TERMINAL_DIM[node.op]
+                candidates = [
+                    t for t in DIM_GROUPS.get(dim, [])
+                    if t != node.op
+                ]
+                if candidates:
+                    node.op = self._rng.choice(candidates)
+
+        else:
+            # 外层包裹
+            if result.depth() < self.max_depth:
+                wrapper = self._rng.choice(["cs_rank", "neg", "ts_rank"])
+                window = 20 if wrapper == "ts_rank" else None
+                result = ExprNode(op=wrapper, children=[result], window=window)
+
+        # 合法性检查
         if result.depth() > self.max_depth or result.node_count() > self.max_nodes:
             return tree.clone()
 

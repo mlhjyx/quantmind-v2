@@ -25,25 +25,36 @@ logger = structlog.get_logger(__name__)
 
 
 async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFrame:
-    """从 PG 加载行情数据（最近 lookback_days 日）。
+    """从 PG 加载行情数据 (klines + daily_basic + moneyflow + derived).
 
-    列: trade_date, code, open, high, low, close, volume(手), amount(千元, klines_daily),
-        turnover_rate(%, daily_basic), returns
+    扩展列 (2026-04-17b, 修复 GP 字段缺失导致卡死):
+      基础: trade_date, code, open, high, low, close, volume(手), amount(千元)
+      daily_basic: turnover_rate, pb, pe, pe_ttm, ps, ps_ttm, total_mv, circ_mv
+      moneyflow_daily:
+        buy_sm_amount, sell_sm_amount, buy_md_amount, sell_md_amount,
+        buy_lg_amount, sell_lg_amount, buy_elg_amount, sell_elg_amount, net_mf_amount
+      derived:
+        net_lg_amount = buy_lg_amount - sell_lg_amount
+        net_md_amount = buy_md_amount - sell_md_amount
+        vwap = amount / volume (元/手)
+        close_open = (close - open) / open
+        high_low = (high - low) / close
+        returns = close.pct_change() groupby(code)
 
     Args:
-        db_url: PostgreSQL 连接字符串。
-        lookback_days: 回看天数，默认 365（1年，GP 快速回测用）。
+        db_url: PostgreSQL 连接字符串.
+        lookback_days: 回看天数, 默认 365.
 
     Returns:
-        行情宽表 DataFrame。加载失败时返回空 DataFrame。
+        行情宽表 DataFrame. 加载失败返回空 DataFrame.
     """
-    from datetime import date
+    from datetime import date, timedelta
 
     import asyncpg
 
     try:
         conn = await asyncpg.connect(db_url)
-        cutoff = date.today().replace(year=date.today().year - 1)
+        cutoff = date.today() - timedelta(days=lookback_days)
         rows = await conn.fetch(
             """
             SELECT
@@ -55,12 +66,35 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
                 k.close,
                 k.volume,
                 k.amount,
-                k.turnover_rate
+                k.turnover_rate AS k_turnover_rate,
+                -- daily_basic
+                db.turnover_rate AS turnover_rate,
+                db.pb,
+                db.pe,
+                db.pe_ttm,
+                db.ps,
+                db.ps_ttm,
+                db.total_mv,
+                db.circ_mv,
+                -- moneyflow
+                mf.buy_sm_amount,
+                mf.sell_sm_amount,
+                mf.buy_md_amount,
+                mf.sell_md_amount,
+                mf.buy_lg_amount,
+                mf.sell_lg_amount,
+                mf.buy_elg_amount,
+                mf.sell_elg_amount,
+                mf.net_mf_amount
             FROM klines_daily k
             JOIN symbols s ON k.code = s.code
+            LEFT JOIN daily_basic db
+              ON db.code = k.code AND db.trade_date = k.trade_date
+            LEFT JOIN moneyflow_daily mf
+              ON mf.code = k.code AND mf.trade_date = k.trade_date
             WHERE k.trade_date >= $1
               AND s.market = 'astock'
-              AND s.is_active = true
+              AND (s.board IS NULL OR s.board != 'bse')
             ORDER BY k.trade_date, k.code
             """,
             cutoff,
@@ -74,23 +108,57 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
         df = pd.DataFrame(
             rows,
             columns=[
-                "trade_date",
-                "code",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "amount",
-                "turnover_rate",
+                "trade_date", "code",
+                "open", "high", "low", "close", "volume", "amount",
+                "k_turnover_rate",
+                "turnover_rate", "pb", "pe", "pe_ttm", "ps", "ps_ttm",
+                "total_mv", "circ_mv",
+                "buy_sm_amount", "sell_sm_amount",
+                "buy_md_amount", "sell_md_amount",
+                "buy_lg_amount", "sell_lg_amount",
+                "buy_elg_amount", "sell_elg_amount",
+                "net_mf_amount",
             ],
         )
 
-        # 计算 returns（当日收益率，用于 amihud 等因子）
+        # turnover_rate fallback: daily_basic missing → klines
+        df["turnover_rate"] = df["turnover_rate"].fillna(df["k_turnover_rate"])
+        df = df.drop(columns=["k_turnover_rate"])
+
+        # 数值类型转换 (asyncpg 可能返回 Decimal)
+        numeric_cols = [
+            "open", "high", "low", "close", "volume", "amount",
+            "turnover_rate", "pb", "pe", "pe_ttm", "ps", "ps_ttm",
+            "total_mv", "circ_mv",
+            "buy_sm_amount", "sell_sm_amount",
+            "buy_md_amount", "sell_md_amount",
+            "buy_lg_amount", "sell_lg_amount",
+            "buy_elg_amount", "sell_elg_amount",
+            "net_mf_amount",
+        ]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # 派生字段
+        df["net_lg_amount"] = df["buy_lg_amount"].fillna(0) - df["sell_lg_amount"].fillna(0)
+        df["net_md_amount"] = df["buy_md_amount"].fillna(0) - df["sell_md_amount"].fillna(0)
+        # vwap 元/股: amount 单位=元, volume 单位=手(100股) → amount / (volume * 100)
+        df["vwap"] = (df["amount"] / (df["volume"].replace(0, pd.NA) * 100.0)).astype("float64")
+        df["close_open"] = ((df["close"] - df["open"]) / df["open"].replace(0, pd.NA)).astype("float64")
+        df["high_low"] = ((df["high"] - df["low"]) / df["close"].replace(0, pd.NA)).astype("float64")
+
+        # 计算 returns (当日收益率, 用于 amihud 等因子)
         df = df.sort_values(["code", "trade_date"], kind="mergesort")
         df["returns"] = df.groupby("code")["close"].pct_change()
 
-        logger.info("行情数据加载完成", rows=len(df), codes=df["code"].nunique())
+        logger.info(
+            "行情数据加载完成",
+            rows=len(df), codes=df["code"].nunique(),
+            columns=len(df.columns),
+            basic_coverage=float((df["pb"].notna()).mean()),
+            moneyflow_coverage=float((df["buy_lg_amount"].notna()).mean()),
+        )
         return df
 
     except Exception as exc:

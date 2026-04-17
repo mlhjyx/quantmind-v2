@@ -137,8 +137,8 @@ class TestOperatorCount:
     """验证算子总数 == 28（设计规格）。"""
 
     def test_ts_ops_count(self) -> None:
-        """时序算子: 11个。"""
-        assert len(TS_OPS) == 11, f"TS_OPS 数量={len(TS_OPS)}, 期望11"
+        """时序算子: 16个 (含5新增: slope/rsquare/decay_linear/argmax/argmin)。"""
+        assert len(TS_OPS) == 16, f"TS_OPS 数量={len(TS_OPS)}, 期望16"
 
     def test_ts_binary_ops_count(self) -> None:
         """时序双目算子: 2个。"""
@@ -153,8 +153,8 @@ class TestOperatorCount:
         assert len(UNARY_OPS) == 6
 
     def test_binary_ops_count(self) -> None:
-        """双目数学算子: 6个。"""
-        assert len(BINARY_OPS) == 6
+        """双目数学算子: 7个 (含1新增: power)。"""
+        assert len(BINARY_OPS) == 7
 
     def test_total_ops_at_least_28(self) -> None:
         """总算子数 >= 28（设计规格）。"""
