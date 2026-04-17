@@ -266,9 +266,13 @@ def test_frameworks_do_not_cross_import() -> None:
 
 
 def test_platform_import_has_no_side_effects() -> None:
-    """import backend.platform 不得访问 DB / Redis / 文件系统.
+    """import backend.platform 不得触发 DB / Redis 连接 (IO 副作用).
 
     通过子进程验证 — 父进程环境可能已加载过依赖.
+
+    MVP 1.1 v1.0 曾禁 pandas 加载, MVP 1.2a 起放宽: Platform DAL 返回 DataFrame
+    是一等公民设计, pandas 必加载 (纯 module 加载, 非 IO 副作用). 只禁真正 IO 类
+    依赖 (DB 驱动 / Redis 客户端 / ORM).
     """
     import subprocess
     import sys
@@ -279,7 +283,7 @@ def test_platform_import_has_no_side_effects() -> None:
             "-c",
             "import backend.platform; "
             "import sys; "
-            "forbidden = ['psycopg2', 'redis', 'sqlalchemy', 'pandas']; "
+            "forbidden = ['psycopg2', 'redis', 'sqlalchemy']; "
             "loaded = [m for m in forbidden if m in sys.modules]; "
             "print('LOADED:' + ','.join(loaded))",
         ],
@@ -288,11 +292,10 @@ def test_platform_import_has_no_side_effects() -> None:
         cwd=str(PLATFORM_ROOT.parent.parent),
     )
     assert result.returncode == 0, f"import 失败: {result.stderr}"
-    # 允许空 (不加载任何 IO 依赖)
     assert "LOADED:" in result.stdout
     loaded_str = result.stdout.strip().split("LOADED:")[-1].strip()
     loaded_modules = [m for m in loaded_str.split(",") if m]
     assert not loaded_modules, (
         f"Platform import 触发了 IO 依赖加载: {loaded_modules}. "
-        f"Platform 骨架应 0 副作用."
+        f"Platform 应通过依赖注入接收 conn, 不自持 DB / Redis 客户端."
     )

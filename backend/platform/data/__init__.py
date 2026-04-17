@@ -1,7 +1,14 @@
 """Framework #1 Data — Platform SDK sub-package.
 
-Re-exports public interfaces. See `interface.py` for contracts.
+MVP 1.1 (2026-04-18): abstract interfaces (DataSource/DataContract/DataAccessLayer/FactorCacheProtocol).
+MVP 1.2a (2026-04-18): concrete `PlatformDataAccessLayer` read-only (4 方法).
 """
+from backend.platform.data.access_layer import (
+    DALError,
+    PlatformDataAccessLayer,
+    UnsupportedColumn,
+    UnsupportedField,
+)
 from backend.platform.data.interface import (
     DataAccessLayer,
     DataContract,
@@ -11,9 +18,15 @@ from backend.platform.data.interface import (
 )
 
 __all__ = [
+    # Abstract interfaces (MVP 1.1)
     "DataSource",
     "DataContract",
     "DataAccessLayer",
     "FactorCacheProtocol",
     "ValidationResult",
+    # Concrete (MVP 1.2a)
+    "PlatformDataAccessLayer",
+    "DALError",
+    "UnsupportedColumn",
+    "UnsupportedField",
 ]

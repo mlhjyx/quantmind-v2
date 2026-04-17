@@ -172,6 +172,33 @@ class DataAccessLayer(ABC):
 
         Raises:
           PITViolation: 若字段无 ann_date (lookahead bias)
+
+        Implementation Note:
+          MVP 1.2a minimal: 仅读 daily_basic 最新快照 (无真 PIT, 因 daily_basic
+          是日频计算非报表数据, 无 ann_date). MVP 2.1 扩展为 financial_ind PIT.
+        """
+
+    @abstractmethod
+    def read_registry(
+        self,
+        status_filter: str | None = None,
+        pool_filter: str | None = None,
+    ) -> pd.DataFrame:
+        """读 factor_registry 表 (MVP 1.2a 新增, 供 MVP 1.3 FactorRegistry 使用).
+
+        Args:
+          status_filter: "active" / "warning" / "deprecated" / "candidate" 等,
+            None 表示不过滤.
+          pool_filter: "CORE" / "PASS" / "CANDIDATE" 等, None 表示不过滤.
+
+        Returns:
+          DataFrame(columns=[name, direction, pool, status, category, hypothesis,
+                              ic_mean, ic_decay_ratio, registered_at, updated_at])
+          无匹配返回空 DataFrame.
+
+        Implementation Note:
+          MVP 1.2a: 纯 read-only SQL, 不做 novelty / lifecycle 联动.
+          MVP 1.3 FactorRegistry.get_active() 内部调本方法, 配合 registry 回填.
         """
 
 
