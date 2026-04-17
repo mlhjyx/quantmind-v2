@@ -60,4 +60,25 @@ CELERY_BEAT_SCHEDULE: dict = {
         },
     },
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
+
+    # ── T日 17:40 数据质量报告 (DATA_SYSTEM_V1 P1-2) ──
+    "daily-quality-report": {
+        "task": "daily_pipeline.data_quality_report",
+        "schedule": crontab(hour=17, minute=40, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1200,  # 20min 内未执行则过期
+        },
+    },
+    # ── 周五 19:00 因子生命周期状态转换 (Phase 3 MVP A) ──
+    # DEV_AI_EVOLUTION V2.1 §3.1: active↔warning / warning→critical
+    # 避开 17:40 质量报告 + 20:00 ic_monitor + 22:00 gp-weekly-mining (周日)
+    "factor-lifecycle-weekly": {
+        "task": "daily_pipeline.factor_lifecycle",
+        "schedule": crontab(hour=19, minute=0, day_of_week="5"),  # 5=周五
+        "options": {
+            "queue": "default",
+            "expires": 3600,
+        },
+    },
 }

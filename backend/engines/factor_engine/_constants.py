@@ -87,3 +87,19 @@ LGBM_V2_BASELINE_FACTORS: list[str] = [
     "amihud_20",
     "bp_ratio",
 ]
+
+# ============================================================
+# 分钟级日频特征方向 (minute_feature_engine, 10 factors)
+# ============================================================
+MINUTE_FACTOR_DIRECTION: dict[str, int] = {
+    "high_freq_volatility_20": -1,     # 低波动好 (反转效应)
+    "volume_concentration_20": -1,     # 低集中=均匀成交=好
+    "volume_autocorr_20": -1,          # 低自相关=信息混合快
+    "smart_money_ratio_20": 1,         # 尾盘>开盘=机构主导
+    "opening_volume_share_20": 1,      # 2026-04-17b neutral IC=+0.0013 (弱, 方向修正 -1→+1)
+    "closing_trend_strength_20": 1,    # 2026-04-17b neutral IC=+0.0069 (弱, 方向修正 -1→+1)
+    "vwap_deviation_20": 1,            # 2026-04-17b neutral IC=+0.0509 (真反转, 方向修正 -1→+1)
+    "order_flow_imbalance_20": -1,     # IC验证: 净卖出→次日反弹 (反转效应, t=-8.24)
+    "intraday_momentum_20": -1,        # 负=日内反转=次日反转
+    "volume_price_divergence_20": 1,   # IC验证: 正背离(|ret|↑vol↓)→次日好 (t=+25.39)
+}

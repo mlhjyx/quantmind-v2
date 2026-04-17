@@ -1,8 +1,67 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H 更新 (2026-04-10) + Phase 2.1 更新 (2026-04-11) + Phase 2.4 更新 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12)
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)**
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.0 平台化阶段启动 (2026-04-17, Opus 架构 pass) ⭐
+
+**状态: 蓝图落盘, Wave 1 待启动**
+
+### 本次交付
+
+- **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行)
+  - 10 Core Frameworks (Data/Factor/Strategy/Signal/Backtest/Eval/Observability/Config/CI/Knowledge)
+  - 5 升维原则 (Research-Production Parity / Event Sourcing / Data Lineage / Platform-App 分层 / Performance Attribution)
+  - Platform/Application 分层架构
+  - 4 Waves × 14 MVP 推进路径 (18-23 周)
+  - 铁律 35 条 → Framework 兑现矩阵
+
+- **Phase 3 MVP A 因子生命周期** (DEV_AI_EVOLUTION V2.1 §3.1 落地)
+  - `backend/engines/factor_lifecycle.py` 纯规则 engine (铁律 31)
+  - `scripts/factor_lifecycle_monitor.py` orchestration (铁律 32/33)
+  - `backend/tests/test_factor_lifecycle.py` 26/26 PASS
+  - Celery task `daily_pipeline.factor_lifecycle` + schedule `factor-lifecycle-weekly` (周五 19:00)
+  - Dry-run 检测 `reversal_20: active → warning (ratio=0.43)` 真实衰减
+
+- **P2 SQL 迁移方案** (`reports/p2_migration_plan.md`): 13 production 文件优先级 + 风险评估 + 迁移代码示例
+
+- **Tech debt 清理**: `MINUTE_FACTOR_DIRECTION` 合并到 `_constants.py` 唯一真相源, `minute_feature_engine.py` re-export (30/30 tests PASS)
+
+- **MVP 1.1 设计稿** (`docs/mvp/MVP_1_1_platform_skeleton.md`): Wave 1 首发, 3 天交付目标
+
+### 核心判断
+
+**从规则补丁 (35 铁律仍持续出事故) → 架构改造 (10 Framework 契约化)**
+
+- 根因: 因子元数据散 5+ 处 / 数据无契约 / 单策略框架触顶 / 研究生产不同构
+- 策略: 每个 MVP ≤ 2 页设计 + 2-3 周交付 (铁律 23/24)
+- 禁忌: big-bang 切换 / 跳 regression_test / 提前动 AI 闭环
+
+### 发现问题 (待后续 MVP 解决)
+
+- `factor_registry` 只有 5 行 (CORE5 旧), 实际 101 因子 — onboarding 不强制
+- `dv_ttm` (PT 生产配置) 不在 registry
+- `factor_profiler.py` L556/L908 N² DB loop 性能瓶颈
+- 32 测试历史债未修
+- 6 监控脚本碎片化无统一 Observability
+
+### Wave 1 待办 (GP 完成后启动)
+
+1. 重启 `QuantMind-CeleryBeat` 激活 factor_lifecycle 调度 (5 min)
+2. MVP 1.1 Platform Skeleton (3 天, 设计稿已就绪)
+3. MVP 1.2 Config Management (3-5 天, plan 模式对齐后写设计)
+4. MVP 1.3 Factor Framework (3-5 天)
+5. MVP 1.4 Knowledge Registry (3 天)
+
+### 开放决策
+
+- Platform 包名: `quantmind.platform` (建议) vs `backend.quantmind_core`
+- Wave 3 第 2 策略: PEAD Event-driven (建议) vs Minute Intraday
+- Event Sourcing 存储: StreamBus+PG (建议) vs EventStoreDB
+- CI 平台: 本地 pre-commit (建议) vs GitHub Actions
 
 ---
 

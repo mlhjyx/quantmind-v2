@@ -460,3 +460,142 @@ async def _async_execute(exec_date: date) -> dict:
     run_execute_phase(exec_date, dry_run=False, skip_fetch=False)
 
     return {"phase": "execute", "exec_date": str(exec_date)}
+
+
+# ════════════════════════════════════════════════════════════
+# T日 17:40 — 数据质量报告 (DATA_SYSTEM_V1 P1-2)
+# ════════════════════════════════════════════════════════════
+
+
+@celery_app.task(
+    bind=True,
+    name="daily_pipeline.data_quality_report",
+    acks_late=True,
+    max_retries=1,
+    default_retry_delay=300,
+    time_limit=900,
+)
+def data_quality_report_task(self, trade_date_str: str | None = None) -> dict:
+    """T日 17:40 数据质量日报.
+
+    触发: Celery Beat daily-quality-report (17:40 work days)
+    内容: L1 ingest + L2 factor_raw/neutral + L3 reconcile + freshness
+    输出: logs/quality_report_{date}.json + StreamBus 告警 (WARN/FAIL)
+    铁律对齐: DATA_SYSTEM_V1 §8.1 + 铁律 29 (NaN 检测) + 铁律 20 (质量)
+
+    非交易日快速跳过.
+    """
+    from engines.trading_day_checker import TradingDayChecker
+
+    td = (
+        datetime.strptime(trade_date_str, "%Y-%m-%d").date()
+        if trade_date_str else date.today()
+    )
+    checker = TradingDayChecker()
+    is_td, reason = checker.is_trading_day(td)
+    if not is_td:
+        logger.info(f"[QualityReport] 非交易日({reason}), 跳过")
+        return {"status": "skipped", "reason": reason, "trade_date": str(td)}
+
+    from app.core.stream_bus import get_stream_bus
+    from app.services.data_orchestrator import DataOrchestrator
+
+    DEFAULT_FACTORS = [
+        "turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm",
+        "high_freq_volatility_20", "volume_concentration_20", "volume_autocorr_20",
+        "smart_money_ratio_20", "opening_volume_share_20", "closing_trend_strength_20",
+        "vwap_deviation_20", "order_flow_imbalance_20", "intraday_momentum_20",
+        "volume_price_divergence_20",
+    ]
+    DEFAULT_L1 = ["klines_daily", "daily_basic", "moneyflow_daily",
+                  "minute_bars", "index_daily", "symbols"]
+
+    orch = DataOrchestrator("2021-01-01", "2025-12-31")
+    t0 = time.time()
+    report = orch.run_daily_quality(trade_date=td, factor_names=DEFAULT_FACTORS)
+    report["freshness"] = orch.check_freshness(DEFAULT_L1)
+    report["elapsed_sec"] = round(time.time() - t0, 1)
+
+    # 持久化
+    import json
+    from pathlib import Path
+
+    out_dir = Path(__file__).resolve().parent.parent.parent.parent / "logs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"quality_report_{td}.json"
+    out_path.write_text(
+        json.dumps(report, indent=2, default=str), encoding="utf-8",
+    )
+
+    # 告警
+    if report["overall"] in ("WARN", "FAIL"):
+        try:
+            bus = get_stream_bus()
+            bus.publish_sync(
+                "qm:quality:alert",
+                {
+                    "level": report["overall"],
+                    "trade_date": str(td),
+                    "failures": report["failures"],
+                    "warnings": report["warnings"],
+                },
+                source="quality_report_beat",
+            )
+        except Exception as e:  # silent_ok: 告警失败不阻塞
+            logger.warning(f"[QualityReport] 告警广播失败: {e}")
+
+    logger.info(
+        f"[QualityReport] trade_date={td} overall={report['overall']} "
+        f"elapsed={report['elapsed_sec']}s warnings={len(report['warnings'])} "
+        f"failures={len(report['failures'])} out={out_path.name}"
+    )
+    return {
+        "status": "ok",
+        "trade_date": str(td),
+        "overall": report["overall"],
+        "warnings": len(report["warnings"]),
+        "failures": len(report["failures"]),
+        "output": str(out_path),
+    }
+
+
+@celery_app.task(
+    bind=True,
+    name="daily_pipeline.factor_lifecycle",
+    acks_late=True,
+    max_retries=1,
+    default_retry_delay=300,
+    time_limit=600,
+)
+def factor_lifecycle_task(self) -> dict:
+    """因子生命周期自动状态转换 (Phase 3 MVP A).
+
+    触发: Celery Beat factor-lifecycle-weekly (周五 19:00 工作日)
+    规则: DEV_AI_EVOLUTION V2.1 §3.1
+        active ↔ warning  (|IC_MA20|/|IC_MA60| < 0.8 / ≥ 0.8)
+        warning → critical (ratio < 0.5 持续 20 天)
+    L2 critical → retired 需人确认, 本 task 不自动执行.
+    铁律 23/24: 独立可执行 MVP. 铁律 32: task 负责 commit.
+    """
+    import sys
+    from pathlib import Path
+
+    # 复用 scripts/factor_lifecycle_monitor.py 的 run() 函数 (纯 Python 调用)
+    # __file__ = backend/app/tasks/daily_pipeline.py → parents[3] = quantmind-v2 root
+    project_root = Path(__file__).resolve().parents[3]
+    scripts_dir = project_root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+
+    from factor_lifecycle_monitor import run as run_lifecycle
+
+    try:
+        result = run_lifecycle(dry_run=False, factor_filter=None)
+        logger.info(
+            f"[FactorLifecycle] checked={result['checked']} "
+            f"no_data={result['no_data']} transitions={len(result['transitions'])}"
+        )
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.exception(f"[FactorLifecycle] 失败: {e}")
+        raise

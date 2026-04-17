@@ -74,7 +74,7 @@ quantmind-v2/
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 47张+代码动态建表26张=DB实际73张, 2026-04-15 S1 audit 实测）
-│   ├── QUANTMIND_V2_DESIGN_V5.md   ← ⚠️历史设计(被ROADMAP_V3替代，仅局部参考)
+│   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md ← ⭐ 唯一设计真相源 (791行, 2026-04-16)
 │   ├── IMPLEMENTATION_MASTER.md    ← 已归档至docs/archive/
 │   ├── archive/TEAM_CHARTER_V3.3.md ← 团队运营参考（已归档）
 │   ├── DEV_BACKEND.md              ← 后端设计(分层/数据流/协同矩阵)
@@ -498,6 +498,9 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 | 你要做什么 | 读这个 |
 |-----------|--------|
+| **系统总设计/架构全景** | **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md** ⭐ (唯一设计真相源, 791行, 16章节) |
+| **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.0, 10 Framework + 5 升维 + 4 Wave, 2026-04-17) |
+| MVP 设计文档 (Wave 1+) | `docs/mvp/MVP_*.md` (每个 MVP ≤ 2 页, 铁律 24) |
 | 了解系统现状/模块怎么对接 | **SYSTEM_STATUS.md** ⭐ |
 | 建数据库表 | docs/QUANTMIND_V2_DDL_FINAL.sql ⭐ |
 | 接入数据源 | docs/TUSHARE_DATA_SOURCE_CHECKLIST.md ⭐ |
@@ -508,11 +511,12 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | 写调度任务 | docs/DEV_SCHEDULER.md |
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
 | 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
-| 查设计决策 | V3 附录F（从DESIGN_DECISIONS+TECH_DECISIONS合并） |
+| 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 705行) |
+| 写外汇模块(⏳) | docs/DEV_FOREX.md (682行, DEFERRED) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (19条目: 8 failed + 6 findings + 5 decisions) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
-| 路线图/全面状态/决策历史 | docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8) |
+| 路线图(历史, 已归档) | docs/archive/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8, 被Blueprint替代) |
 
 ## 当前进度
 
@@ -585,12 +589,24 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - Track 1 PT加固 + Track 3 全链路诊断: 0 FAIL / 36 PASS / 8 WARN, 6个P0/P1修复
   - Track 2 因子验证: 真alpha(IC 0.05-0.10, 负衰减, 噪声稳健), 但等权5因子全降低Sharpe
   - 结论: 4因子=等权框架alpha上限(Phase 3B+3E双重确认), 微结构因子保留为PASS候选
-- ⬜ **Phase 3**: 简版AI闭环（因子生命周期自动化 + Rolling WF + IC监控告警）
+- 🟡 **Phase 3 MVP A**: 因子生命周期自动化落地 (2026-04-17)
+  - `backend/engines/factor_lifecycle.py` 纯规则 + 26/26 tests PASS
+  - `scripts/factor_lifecycle_monitor.py` + Celery task + 周五 19:00 调度
+  - Dry-run 检测 `reversal_20: active→warning` (ratio=0.43, 真实衰减)
+  - 待 GP 完成后重启 beat 激活 + MVP B/C (Rolling WF 周度 + IC 监控告警) 后续
 - ⬜ **Phase 4**: PT重启（前提: health_check + dry-run确认 + 首日监控）
-- 详见 docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+- 详见 docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §16
 
-📋 路线图: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md` (v3.8 + 第四部分重构记录)
-📊 测试: 2100 tests collected / 98 test files (S4 2026-04-15 实测: 2066 pass 含 F72 修复 / 32 fail 全为历史债-post-refactor+deprecated因子+F51-F60 DEPRECATED路径 / 1 skipped / 1 xpassed, pass 率 98.4%, 核心回测/信号/DataPipeline路径 0 回归)
+### 平台化主线 (下阶段, 2026-04-17 启动)
+- ⭐ **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行): 10 Framework + 5 升维 + 4 Wave × 14 MVP (18-23 周)
+- ⬜ **Wave 1** (4-5 周): Platform Skeleton (MVP 1.1) + Config (1.2) + Factor Framework (1.3) + Knowledge (1.4)
+- ⬜ **Wave 2** (5-6 周): Data Framework + Data Lineage + Backtest/Parity
+- ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
+- ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
+- **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
+
+📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
+📊 测试: 2100 tests collected / 98 test files (S4 2026-04-15 实测: 2066 pass 含 F72 修复 / 32 fail 全为历史债-post-refactor+deprecated因子+F51-F60 DEPRECATED路径 / 1 skipped / 1 xpassed, pass 率 98.4%, 核心回测/信号/DataPipeline路径 0 回归) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)**
 ---
 
 ## 文件归属规则（防腐）
@@ -613,11 +629,13 @@ CLAUDE.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / py
 - 因子池状态以FACTOR_TEST_REGISTRY.md为唯一真相源
 
 ### 文档层级（固定）
-- **总设计**: `docs/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md`
+- **总设计 (当前真相)**: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` ⭐
+- **平台化蓝图 (未来 6 月主线)**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` ⭐ (QPB v1.0)
+- **MVP 设计**: `docs/mvp/MVP_*.md` (每个 ≤ 2 页, 铁律 24)
 - **系统现状**: `SYSTEM_STATUS.md`
 - **入口导航**: `CLAUDE.md`（本文件）
 - **Schema定义**: `docs/QUANTMIND_V2_DDL_FINAL.sql`
-- DESIGN_V5只做局部参考，不是当前总设计
+- DESIGN_V5/ROADMAP_V3 已归档至 docs/archive/, SYSTEM_BLUEPRINT 是当前总设计 + PLATFORM_BLUEPRINT 是演进规划
 
 ## 执行标准流程
 
