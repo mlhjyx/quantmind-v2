@@ -122,12 +122,14 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.4 (2026-04-17) Wave 1 正式完结 7/7: Platform SDK + 3 Framework concrete (Factor/Config/Knowledge) + DAL
+├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a (2026-04-17) Wave 1 完结 7/7 + Wave 2 开幕 (Data Framework 基础)
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
 │   │   ├── interface.py         #     DataSource/DataContract/DataAccessLayer/FactorCacheProtocol (MVP 1.1)
-│   │   └── access_layer.py      #     ⭐ MVP 1.2a: PlatformDataAccessLayer (read_factor/ohlc/fundamentals/registry) + DALError
+│   │   ├── access_layer.py      #     ⭐ MVP 1.2a: PlatformDataAccessLayer (read_factor/ohlc/fundamentals/registry) + DALError
+│   │   ├── cache_coherency.py   #     ⭐ MVP 2.1a: CacheCoherencyPolicy + MaxDateChecker + TTLGuard + check_stale (铁律 30 显式契约)
+│   │   └── base_source.py       #     ⭐ MVP 2.1a: BaseDataSource Template method + ContractViolation (MVP 2.1b 3 fetcher 继承)
 │   ├── factor/                  #   #2 Factor Framework
 │   │   ├── interface.py         #     FactorRegistry/OnboardingPipeline/LifecycleMonitor (MVP 1.1, MVP 1.3a 扩展 FactorMeta 18 字段)
 │   │   ├── registry.py          #     ⭐ MVP 1.3b+1.3c: DBFactorRegistry full concrete (get_direction + register G9/G10 + get_active + update_status + novelty_check + _default_ast_jaccard)
@@ -668,14 +670,15 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行): 10 Framework + 5 升维 + 4 Wave × 14 MVP (18-23 周)
-- 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)** → **下一步 Wave 2 Data Framework (MVP 2.1 完整版)**
-- ⬜ **Wave 2** (5-6 周): Data Framework + Data Lineage + Backtest/Parity
+- 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
+- 🟡 **Wave 2 开幕** (2026-04-17 MVP 2.1a 已交付): Data Framework 基础 (Cache Coherency 协议 + BaseDataSource + ADR-006). MVP 2.1 拆 3 sub-MVP: **2.1a ✅** (本次) / 2.1b 3 concrete fetcher (5-7 天) / 2.1c DAL 完整版 + 16 处 SQL 迁移 (5-7 天)
+- ⬜ **Wave 2 剩余** (4-5 周): MVP 2.1b + 2.1c + 2.2 Data Lineage + 2.3 Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2500+ tests collected / 100+ test files (2026-04-17 MVP 1.4 后实测: MVP 1.1-1.4 锚点 336 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 比对 MVP 1.3c 24 fail 基线, MVP 1.4 新增 0 fail) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)** + **MVP 1.3c 新增 21+12+6 = 39 tests PASS** + **MVP 1.4 新增 13+10+10+5 = 38 tests PASS (knowledge: experiments/failed/adrs/migration)**
+📊 测试: 2600+ tests collected / 100+ test files (2026-04-17 MVP 2.1a 后实测: MVP 1.1-2.1a 锚点 365 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 24 fail, MVP 2.1a 新增 0 fail 铁律 40 PASS) + **Phase 3 MVP A 新增 26 tests PASS** + **MVP 1.3c 新增 39 tests PASS** + **MVP 1.4 新增 38 tests PASS (knowledge)** + **MVP 2.1a 新增 19+10=29 tests PASS (cache_coherency/base_source)**
 ---
 
 ## 文件归属规则（防腐）
