@@ -578,6 +578,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | 了解系统现状/模块怎么对接 | **SYSTEM_STATUS.md** ⭐ |
 | 建数据库表 | docs/QUANTMIND_V2_DDL_FINAL.sql ⭐ |
 | 接入数据源 | docs/TUSHARE_DATA_SOURCE_CHECKLIST.md ⭐ |
+| **新环境 bootstrap** (`.pth` + Servy + hooks) | **docs/SETUP_DEV.md** ⭐ (铁律 10b + MVP 1.1b 沉淀) |
 | 写后端Service/理解分层 | docs/DEV_BACKEND.md (§3分层/§4数据流/§5协同矩阵) |
 | 写回测引擎/理解Hybrid架构 | docs/DEV_BACKTEST_ENGINE.md (§3Hybrid/§4接口) |
 | 写因子计算 | docs/DEV_FACTOR_MINING.md |
