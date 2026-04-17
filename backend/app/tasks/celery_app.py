@@ -62,3 +62,11 @@ celery_app.conf.update(
 from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE  # noqa: E402
 
 celery_app.conf.beat_schedule = CELERY_BEAT_SCHEDULE
+
+
+# MVP 1.3b wiring: Worker 启动时注入 Platform DBFactorRegistry + DBFeatureFlag 到
+# signal_engine (backtest_tasks / onboarding_tasks 生成信号时走 Layer 1 DB 路径).
+# 幂等 + fail-safe (失败自动回 Layer 0 hardcoded, 3 层 fallback 保底).
+from app.core.platform_bootstrap import bootstrap_platform_deps  # noqa: E402
+
+bootstrap_platform_deps()

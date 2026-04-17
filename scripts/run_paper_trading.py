@@ -484,6 +484,12 @@ def main():
     parser.add_argument("--execution-mode", choices=["paper", "live"], default=None)
     args = parser.parse_args()
 
+    # MVP 1.3b wiring: Platform DBFactorRegistry + DBFeatureFlag → signal_engine.
+    # 幂等 + fail-safe (失败自动回 Layer 0 hardcoded, 3 层 fallback 保底).
+    from app.core.platform_bootstrap import bootstrap_platform_deps
+
+    bootstrap_platform_deps()
+
     if not settings.PAPER_STRATEGY_ID:
         logger.error("PAPER_STRATEGY_ID未配置!")
         sys.exit(1)

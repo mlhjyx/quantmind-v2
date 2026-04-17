@@ -95,7 +95,8 @@ quantmind-v2/
 │       ├── config.py            # pydantic-settings
 │       ├── api/                 # API路由
 │       ├── core/                # 核心基础设施
-│       │   └── stream_bus.py    # Redis Streams统一数据总线
+│       │   ├── stream_bus.py    # Redis Streams统一数据总线
+│       │   └── platform_bootstrap.py  # ⭐ MVP 1.3b wiring 补全 (2026-04-17): bootstrap_platform_deps() 注入 DBFactorRegistry+DBFeatureFlag 到 signal_engine (3 入口: FastAPI lifespan / run_paper_trading main() / celery_app worker 启动), 幂等+fail-safe (失败自动回 Layer 0 hardcoded, 铁律 33 read-path 允许)
 │       ├── services/            # ⭐ 业务逻辑层（主 sync psycopg2, 遗留 async: mining/backtest_service, S1 audit F18）
 │       │   ├── signal_service.py
 │       │   ├── execution_service.py
@@ -670,7 +671,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行): 10 Framework + 5 升维 + 4 Wave × 14 MVP (18-23 周)
-- 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
+- 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅ **+ wiring 补全** — `app/core/platform_bootstrap.py` 挂 FastAPI/PT/Celery 3 入口, 铁律 10 全链路验证) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
 - 🟡 **Wave 2 开幕** (2026-04-17 MVP 2.1a 已交付): Data Framework 基础 (Cache Coherency 协议 + BaseDataSource + ADR-006). MVP 2.1 拆 3 sub-MVP: **2.1a ✅** (本次) / 2.1b 3 concrete fetcher (5-7 天) / 2.1c DAL 完整版 + 16 处 SQL 迁移 (5-7 天)
 - ⬜ **Wave 2 剩余** (4-5 周): MVP 2.1b + 2.1c + 2.2 Data Lineage + 2.3 Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
@@ -678,7 +679,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2600+ tests collected / 100+ test files (2026-04-17 MVP 2.1a 后实测: MVP 1.1-2.1a 锚点 365 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 24 fail, MVP 2.1a 新增 0 fail 铁律 40 PASS) + **Phase 3 MVP A 新增 26 tests PASS** + **MVP 1.3c 新增 39 tests PASS** + **MVP 1.4 新增 38 tests PASS (knowledge)** + **MVP 2.1a 新增 19+10=29 tests PASS (cache_coherency/base_source)**
+📊 测试: 2600+ tests collected / 100+ test files (2026-04-17 MVP 1.3b wiring 补全后实测: anchor subset 218 PASS [bootstrap+direction+registry+flag+onboarding+DAL+cache_coherency+base_source] / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 24 fail, 铁律 40 PASS) + **Phase 3 MVP A 新增 26 tests PASS** + **MVP 1.3c 新增 39 tests PASS** + **MVP 1.4 新增 38 tests PASS (knowledge)** + **MVP 2.1a 新增 19+10=29 tests PASS (cache_coherency/base_source)** + **MVP 1.3b wiring 补全新增 6 tests PASS (platform_bootstrap)**
 ---
 
 ## 文件归属规则（防腐）

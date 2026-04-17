@@ -37,6 +37,11 @@ from app.websocket import socket_app
 async def lifespan(app: FastAPI):
     """启动时初始化资源，关闭时释放连接池。"""
     configure_logging()
+    # MVP 1.3b wiring: 注入 Platform DBFactorRegistry + DBFeatureFlag 到 signal_engine.
+    # 幂等 + fail-safe (失败自动回 Layer 0 hardcoded, 3 层 fallback 保底).
+    from app.core.platform_bootstrap import bootstrap_platform_deps
+
+    bootstrap_platform_deps()
     qmt_manager.startup()
     # 初始化 StreamBus（预热连接）
     from app.core.stream_bus import close_stream_bus, get_stream_bus
