@@ -97,3 +97,11 @@ _write_plan.py
 # FactorCache parquet storage (DATA_SYSTEM_V1 P0-2, reproducible from DB)
 cache/factor_values/
 cache/backtest/cache_meta.json
+
+# Training outputs (regeneratable from training scripts, ML CLOSED per CLAUDE.md)
+models/lgbm_walkforward/*.txt
+models/lgbm_phase21/
+models/lgbm_phase22/
+models/all_astock_codes.txt
+backend/models/lgbm_phase21/
+backend/models/lgbm_phase22/
