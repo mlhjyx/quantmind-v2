@@ -1157,6 +1157,11 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 
 **MVP 1.3: Factor Framework (#2)**
 
+⚠️ **实施中拆分为 3 子 MVP** (2026-04-17/18 实施 hindsight, 降风险):
+- MVP 1.3a ✅ Registry Schema + 回填 (1 天, commit 3a6c200): ALTER TABLE pool/ic_decay_ratio + 回填 287 行 (3 层合并: DB/hardcoded/factor_values distinct) + FactorMeta 18 字段对齐 + MVP 1.2a DAL drift 修复
+- MVP 1.3b ✅ Direction DB 化 (1 天, commit a030586): audit_direction_conflicts 审计 + 修 reversal_20 conflict + DBFactorRegistry.get_direction (TTL 60min + RLock) + signal_engine 3 层 fallback + FeatureFlag use_db_direction 默认 off 灰度
+- MVP 1.3c ⏳ Onboarding 强制化 + Lifecycle 迁移 (3-4 天, 待启动): DataPipeline 拒写未注册 + 4 个 Gate (G9/G10/bootstrap/BH-FDR) + factor_lifecycle 迁 Platform + Celery Beat + FeatureFlag 切 on + 删 _constants.py direction dicts
+
 - **范围**: factor_registry 回填 101 因子, _constants.py DIRECTION 启动 load from DB, factor_onboarding 变强制, lifecycle monitor 集成（本轮 MVP A 基础）
 - **产物**: `FactorRegistry`, `FactorOnboardingPipeline`, `FactorLifecycleMonitor` 可用
 - **验收**: DB registry = factor_values.DISTINCT (101 = 101); 新因子不 register → DataPipeline 拒写

@@ -122,21 +122,34 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1 (2026-04-18) Wave 1: Platform SDK 骨架 (12 Framework × interface.py 纯契约)
+├── backend/platform/            # ⭐ MVP 1.1-1.3b (2026-04-17/18) Wave 1: Platform SDK 骨架 + concrete 实现
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
-│   ├── data/interface.py        #   #1 Data: DataSource/DataContract/DataAccessLayer/FactorCacheProtocol
-│   ├── factor/interface.py      #   #2 Factor: FactorRegistry/OnboardingPipeline/LifecycleMonitor
+│   ├── data/                    #   #1 Data Framework
+│   │   ├── interface.py         #     DataSource/DataContract/DataAccessLayer/FactorCacheProtocol (MVP 1.1)
+│   │   └── access_layer.py      #     ⭐ MVP 1.2a: PlatformDataAccessLayer (read_factor/ohlc/fundamentals/registry) + DALError
+│   ├── factor/                  #   #2 Factor Framework
+│   │   ├── interface.py         #     FactorRegistry/OnboardingPipeline/LifecycleMonitor (MVP 1.1, MVP 1.3a 扩展 FactorMeta 18 字段)
+│   │   └── registry.py          #     ⭐ MVP 1.3b: DBFactorRegistry (get_direction + TTL 60min cache + RLock) + StubLifecycleMonitor
 │   ├── strategy/interface.py    #   #3 Strategy: Strategy(ABC)/Registry/CapitalAllocator
 │   ├── signal/interface.py      #   #6 Signal/Exec: SignalPipeline/OrderRouter/AuditTrail
 │   ├── backtest/interface.py    #   #5 Backtest: BacktestRunner/Registry/BatchExecutor
 │   ├── eval/interface.py        #   #4 Eval: EvaluationPipeline/StrategyEvaluator/GateResult
 │   ├── observability/interface.py # #7 Observability: MetricExporter/AlertRouter/EventBus
-│   ├── config/interface.py      #   #8 Config: ConfigSchema/Loader/Auditor/FeatureFlag
+│   ├── config/                  #   #8 Config Management
+│   │   ├── interface.py         #     ConfigSchema/Loader/Auditor/FeatureFlag abstract (MVP 1.1)
+│   │   ├── schema.py            #     ⭐ MVP 1.2: 7 Pydantic + RootConfigSchema + PlatformConfigSchema (60+ 字段)
+│   │   ├── loader.py            #     ⭐ MVP 1.2: PlatformConfigLoader (env>yaml>default 三层合并)
+│   │   ├── auditor.py           #     ⭐ MVP 1.2: PlatformConfigAuditor (check_alignment Schema 驱动 + dump_on_startup) + ConfigDriftError
+│   │   └── feature_flag.py      #     ⭐ MVP 1.2: DBFeatureFlag (binary + removal_date 过期守护) + FlagNotFound/Expired
 │   ├── ci/interface.py          #   #9 CI/Test: TestRunner/CoverageGate/SmokeTestSuite
 │   ├── knowledge/interface.py   #   #10 Knowledge: ExperimentRegistry/FailedDirectionDB/ADRRegistry
 │   ├── resource/interface.py    #   #11 Resource (ROF, U6): ResourceManager/AdmissionController/BudgetGuard
 │   └── backup/interface.py      #   #12 Backup & DR: BackupManager/DisasterRecoveryRunner
+├── backend/migrations/          # ⭐ SQL migration 集中 (MVP 1.2 + 1.3a 新增, 幂等 + rollback 配对)
+│   ├── feature_flags.sql        #   MVP 1.2: feature_flags 表 + trigger 维护 updated_at
+│   ├── factor_registry_v2.sql   #   MVP 1.3a: ALTER factor_registry ADD pool + ic_decay_ratio + 2 索引
+│   └── factor_registry_v2_rollback.sql  # MVP 1.3a emergency rollback
 ├── backend/data/                # ⭐ Step 5新增: Data层(本地缓存/快照, 无业务逻辑)
 │   └── parquet_cache.py         # BacktestDataCache 按年分区Parquet缓存
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
@@ -187,6 +200,9 @@ quantmind-v2/
 │   ├── data_quality_check.py    # 数据巡检
 │   ├── approve_l4.py            # L4熔断恢复CLI(紧急)
 │   ├── cancel_stale_orders.py   # QMT紧急撤单(紧急)
+│   ├── registry/                # ⭐ MVP 1.3a+1.3b Platform Registry 工具
+│   │   ├── backfill_factor_registry.py   # MVP 1.3a: 3 层合并, 回填 287 行 (dry-run 默认)
+│   │   └── audit_direction_conflicts.py  # MVP 1.3b: direction 冲突审计 (dry-run + --apply + --rollback)
 │   ├── archive/                 # 126个归档脚本(零生产引用, S1 audit F13 验证可删除)
 │   └── research/                # 研究脚本(验证/回测实验)
 ├── cache/                       # Parquet缓存（profiler/中性化用）
