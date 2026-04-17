@@ -347,6 +347,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ### 系统安全类
 9. **所有资源密集任务必须经资源仲裁** — 全局原则: 禁止裸并发消耗共享资源 (RAM/GPU/DB连接/API quota). 实现方式 (ROF Framework #11 或人工判断) 是实施细节. 当前环境约束: 32GB RAM → 重数据 Python 进程 max 2 并发. 违反→PG OOM崩溃（2026-04-03事件）
 10. **基础设施改动后全链路验证** — PASS才能上线，不跳过验证直接部署（清明改造教训）
+    > **10b 生产入口真启动验证** (MVP 1.1b Shadow Fix 2026-04-17 沉淀): 单测 CWD=project root 永远绿不等于生产可用. 任何新 MVP (尤其 Platform / 生产入口 / Servy 管理服务) 必须补 smoke 测试 (`backend/tests/smoke/`): subprocess 从生产启动路径真启动一次, 捕 import-time / top-level 执行错误. 违反→MVP 1.1-2.1a 账面交付 7/7 但 FastAPI/PT/Celery 重启即炸 1 周 (stdlib `platform` shadow 潜伏) 的教训. 新 MVP 交付硬门: `pytest -m smoke` 必须全绿.
 11. **IC必须有可追溯的入库记录** — factor_ic_history表无记录的IC视为不存在，不可用于决策（mf_divergence"IC=9.1%"实为-2.27%教训）
 
 ### 因子质量类
