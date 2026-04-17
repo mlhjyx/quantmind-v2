@@ -1,0 +1,193 @@
+{
+  "run_date": "2026-04-17 04:25:57",
+  "factors": [
+    "high_freq_volatility_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "opening_volume_share_20",
+    "closing_trend_strength_20",
+    "vwap_deviation_20",
+    "order_flow_imbalance_20",
+    "intraday_momentum_20",
+    "volume_price_divergence_20"
+  ],
+  "horizon": 20,
+  "noise_pcts": [
+    0.05,
+    0.2
+  ],
+  "results": {
+    "high_freq_volatility_20": {
+      "clean_ic_mean": -0.088858,
+      "clean_ic_ir": -0.7813,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": -0.088679,
+          "retention": 0.9979855499786174,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": -0.086732,
+          "retention": 0.9760741857795584,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.7
+    },
+    "volume_concentration_20": {
+      "clean_ic_mean": -0.009315,
+      "clean_ic_ir": -0.0782,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": -0.009366,
+          "retention": 1.0054750402576489,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": -0.009756,
+          "retention": 1.0473429951690822,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 18.8
+    },
+    "volume_autocorr_20": {
+      "clean_ic_mean": -0.093405,
+      "clean_ic_ir": -0.8608,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": -0.09325,
+          "retention": 0.9983405599271987,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": -0.091576,
+          "retention": 0.9804186071409454,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.9
+    },
+    "smart_money_ratio_20": {
+      "clean_ic_mean": 0.055412,
+      "clean_ic_ir": 0.7066,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": 0.055293,
+          "retention": 0.9978524507326932,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": 0.053983,
+          "retention": 0.974211362159821,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.5
+    },
+    "opening_volume_share_20": {
+      "clean_ic_mean": 0.001322,
+      "clean_ic_ir": 0.0194,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": 0.001325,
+          "retention": 1.002269288956127,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": 0.001191,
+          "retention": 0.9009077155824508,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.1
+    },
+    "closing_trend_strength_20": {
+      "clean_ic_mean": 0.006945,
+      "clean_ic_ir": 0.1526,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": 0.006939,
+          "retention": 0.9991360691144708,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": 0.006749,
+          "retention": 0.9717782577393809,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.6
+    },
+    "vwap_deviation_20": {
+      "clean_ic_mean": 0.05094,
+      "clean_ic_ir": 0.4047,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": 0.050895,
+          "retention": 0.9991166077738517,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": 0.04969,
+          "retention": 0.9754613270514331,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.7
+    },
+    "order_flow_imbalance_20": {
+      "clean_ic_mean": -0.022796,
+      "clean_ic_ir": -0.2676,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": -0.022776,
+          "retention": 0.9991226530970346,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": -0.022474,
+          "retention": 0.9858747148622565,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.6
+    },
+    "intraday_momentum_20": {
+      "clean_ic_mean": -0.028468,
+      "clean_ic_ir": -0.3773,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": -0.028375,
+          "retention": 0.9967331740902066,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": -0.027958,
+          "retention": 0.9820851482366165,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.7
+    },
+    "volume_price_divergence_20": {
+      "clean_ic_mean": 0.071096,
+      "clean_ic_ir": 0.7,
+      "noise_tests": {
+        "noise_5pct": {
+          "noisy_ic_mean": 0.070977,
+          "retention": 0.9983262068189489,
+          "fragile_at_20pct": false
+        },
+        "noise_20pct": {
+          "noisy_ic_mean": 0.069575,
+          "retention": 0.9786063913581635,
+          "fragile_at_20pct": false
+        }
+      },
+      "elapsed_sec": 17.9
+    }
+  },
+  "elapsed_sec": 192.8
+}
