@@ -122,6 +122,21 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
+├── backend/platform/            # ⭐ MVP 1.1 (2026-04-18) Wave 1: Platform SDK 骨架 (12 Framework × interface.py 纯契约)
+│   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
+│   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
+│   ├── data/interface.py        #   #1 Data: DataSource/DataContract/DataAccessLayer/FactorCacheProtocol
+│   ├── factor/interface.py      #   #2 Factor: FactorRegistry/OnboardingPipeline/LifecycleMonitor
+│   ├── strategy/interface.py    #   #3 Strategy: Strategy(ABC)/Registry/CapitalAllocator
+│   ├── signal/interface.py      #   #6 Signal/Exec: SignalPipeline/OrderRouter/AuditTrail
+│   ├── backtest/interface.py    #   #5 Backtest: BacktestRunner/Registry/BatchExecutor
+│   ├── eval/interface.py        #   #4 Eval: EvaluationPipeline/StrategyEvaluator/GateResult
+│   ├── observability/interface.py # #7 Observability: MetricExporter/AlertRouter/EventBus
+│   ├── config/interface.py      #   #8 Config: ConfigSchema/Loader/Auditor/FeatureFlag
+│   ├── ci/interface.py          #   #9 CI/Test: TestRunner/CoverageGate/SmokeTestSuite
+│   ├── knowledge/interface.py   #   #10 Knowledge: ExperimentRegistry/FailedDirectionDB/ADRRegistry
+│   ├── resource/interface.py    #   #11 Resource (ROF, U6): ResourceManager/AdmissionController/BudgetGuard
+│   └── backup/interface.py      #   #12 Backup & DR: BackupManager/DisasterRecoveryRunner
 ├── backend/data/                # ⭐ Step 5新增: Data层(本地缓存/快照, 无业务逻辑)
 │   └── parquet_cache.py         # BacktestDataCache 按年分区Parquet缓存
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
