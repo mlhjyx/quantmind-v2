@@ -7,7 +7,7 @@
 交付顺序 (2026-04-18 session D1 决策):
   - Sub-commit 1 ✅: BaostockDataSource (最低风险, Template 验证)
   - Sub-commit 2 ✅: QMTDataSource (Redis sink 特殊路径)
-  - Sub-commit 3 ⏳: TushareDataSource (生产 PT dual-write)
+  - Sub-commit 3 ✅: TushareDataSource (生产 PT dual-write)
 """
 from .baostock_source import (
     MINUTE_BARS_DATA_CONTRACT,
@@ -19,6 +19,12 @@ from .qmt_source import (
     QMT_TICKS_CONTRACT,
     QMTDataSource,
 )
+from .tushare_source import (
+    DAILY_BASIC_DATA_CONTRACT,
+    KLINES_DAILY_DATA_CONTRACT,
+    MONEYFLOW_DATA_CONTRACT,
+    TushareDataSource,
+)
 
 __all__ = [
     "BaostockDataSource",
@@ -27,4 +33,8 @@ __all__ = [
     "QMT_POSITIONS_CONTRACT",
     "QMT_ASSETS_CONTRACT",
     "QMT_TICKS_CONTRACT",
+    "TushareDataSource",
+    "KLINES_DAILY_DATA_CONTRACT",
+    "DAILY_BASIC_DATA_CONTRACT",
+    "MONEYFLOW_DATA_CONTRACT",
 ]

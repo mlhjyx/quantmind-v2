@@ -18,12 +18,16 @@ from .interface import (
     ValidationResult,
 )
 from .sources import (
+    DAILY_BASIC_DATA_CONTRACT,
+    KLINES_DAILY_DATA_CONTRACT,
     MINUTE_BARS_DATA_CONTRACT,
+    MONEYFLOW_DATA_CONTRACT,
     QMT_ASSETS_CONTRACT,
     QMT_POSITIONS_CONTRACT,
     QMT_TICKS_CONTRACT,
     BaostockDataSource,
     QMTDataSource,
+    TushareDataSource,
 )
 
 __all__ = [
@@ -49,4 +53,9 @@ __all__ = [
     "QMT_POSITIONS_CONTRACT",
     "QMT_ASSETS_CONTRACT",
     "QMT_TICKS_CONTRACT",
+    # MVP 2.1b (concrete fetchers, Sub-commit 3)
+    "TushareDataSource",
+    "KLINES_DAILY_DATA_CONTRACT",
+    "DAILY_BASIC_DATA_CONTRACT",
+    "MONEYFLOW_DATA_CONTRACT",
 ]
