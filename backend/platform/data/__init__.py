@@ -9,12 +9,17 @@ from .access_layer import (
     UnsupportedColumn,
     UnsupportedField,
 )
+from .base_source import BaseDataSource, ContractViolation
 from .interface import (
     DataAccessLayer,
     DataContract,
     DataSource,
     FactorCacheProtocol,
     ValidationResult,
+)
+from .sources import (
+    MINUTE_BARS_DATA_CONTRACT,
+    BaostockDataSource,
 )
 
 __all__ = [
@@ -29,4 +34,10 @@ __all__ = [
     "DALError",
     "UnsupportedColumn",
     "UnsupportedField",
+    # MVP 2.1a (Template base)
+    "BaseDataSource",
+    "ContractViolation",
+    # MVP 2.1b (concrete fetchers, Sub-commit 1)
+    "BaostockDataSource",
+    "MINUTE_BARS_DATA_CONTRACT",
 ]
