@@ -1,0 +1,27 @@
+#!/bin/sh
+# 铁律 10b 守门: push 前 `pytest -m smoke` 全绿
+# 启用: git config core.hooksPath config/hooks
+# 禁用: git config --unset core.hooksPath
+# 紧急绕过: git push --no-verify (需在 commit message 声明违规原因)
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+# 优先使用 .venv Python (Windows/Unix 兼容)
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+else
+    PY="python"
+fi
+
+echo "[pre-push] 铁律 10b: pytest -m smoke (生产入口真启动验证) — $PY"
+if ! "$PY" -m pytest backend/tests/smoke/ -m smoke --tb=line -q --timeout=60; then
+    echo ""
+    echo "[pre-push] smoke failed — push 被阻断."
+    echo "[pre-push] 铁律 10b 要求 push 前 smoke 全绿. 修复后重 push."
+    echo "[pre-push] 紧急绕过 (违反铁律, 需在 commit message 声明原因): git push --no-verify"
+    exit 1
+fi
+echo "[pre-push] smoke green, 放行 push."

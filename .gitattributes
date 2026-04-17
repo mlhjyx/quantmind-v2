@@ -1,0 +1,3 @@
+# Shell scripts must be LF-terminated to work on Unix shell (Git Bash on Windows counts).
+# Without this, git autocrlf=true on Windows clones breaks the hook ("bad interpreter: No such file").
+config/hooks/pre-push text eol=lf
