@@ -122,7 +122,7 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.3c (2026-04-17/18) Wave 1 完结: Platform SDK 骨架 + concrete 实现
+├── backend/platform/            # ⭐ MVP 1.1-1.4 (2026-04-17) Wave 1 正式完结 7/7: Platform SDK + 3 Framework concrete (Factor/Config/Knowledge) + DAL
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
@@ -144,13 +144,17 @@ quantmind-v2/
 │   │   ├── auditor.py           #     ⭐ MVP 1.2: PlatformConfigAuditor (check_alignment Schema 驱动 + dump_on_startup) + ConfigDriftError
 │   │   └── feature_flag.py      #     ⭐ MVP 1.2: DBFeatureFlag (binary + removal_date 过期守护) + FlagNotFound/Expired
 │   ├── ci/interface.py          #   #9 CI/Test: TestRunner/CoverageGate/SmokeTestSuite
-│   ├── knowledge/interface.py   #   #10 Knowledge: ExperimentRegistry/FailedDirectionDB/ADRRegistry
+│   ├── knowledge/               #   #10 Knowledge Registry
+│   │   ├── interface.py         #     ExperimentRegistry/FailedDirectionDB/ADRRegistry (MVP 1.1)
+│   │   └── registry.py          #     ⭐ MVP 1.4: DBExperimentRegistry + DBFailedDirectionDB + DBADRRegistry full concrete
 │   ├── resource/interface.py    #   #11 Resource (ROF, U6): ResourceManager/AdmissionController/BudgetGuard
 │   └── backup/interface.py      #   #12 Backup & DR: BackupManager/DisasterRecoveryRunner
-├── backend/migrations/          # ⭐ SQL migration 集中 (MVP 1.2 + 1.3a 新增, 幂等 + rollback 配对)
+├── backend/migrations/          # ⭐ SQL migration 集中 (MVP 1.2 + 1.3a + 1.4 新增, 幂等 + rollback 配对)
 │   ├── feature_flags.sql        #   MVP 1.2: feature_flags 表 + trigger 维护 updated_at
 │   ├── factor_registry_v2.sql   #   MVP 1.3a: ALTER factor_registry ADD pool + ic_decay_ratio + 2 索引
-│   └── factor_registry_v2_rollback.sql  # MVP 1.3a emergency rollback
+│   ├── factor_registry_v2_rollback.sql  # MVP 1.3a emergency rollback
+│   ├── knowledge_registry.sql   #   ⭐ MVP 1.4: platform_experiments + failed_directions + adr_records + 10 索引 + trigger
+│   └── knowledge_registry_rollback.sql  # MVP 1.4 emergency rollback
 ├── backend/data/                # ⭐ Step 5新增: Data层(本地缓存/快照, 无业务逻辑)
 │   └── parquet_cache.py         # BacktestDataCache 按年分区Parquet缓存
 ├── backend/engines/             # ⭐ 核心计算引擎（纯计算无IO）
@@ -205,6 +209,9 @@ quantmind-v2/
 │   │   ├── backfill_factor_registry.py   # MVP 1.3a: 3 层合并, 回填 287 行 (dry-run 默认)
 │   │   ├── audit_direction_conflicts.py  # MVP 1.3b: direction 冲突审计 (dry-run + --apply + --rollback)
 │   │   └── register_feature_flags.py     # MVP 1.3c: FeatureFlag 注册/list/disable (use_db_direction=True 已 apply)
+│   ├── knowledge/               # ⭐ MVP 1.4 Knowledge migration (一次性迁移 markdown → DB)
+│   │   ├── migrate_research_kb.py  # CLAUDE.md L474 表格 + docs/research-kb/ → failed_directions/platform_experiments
+│   │   └── register_adrs.py        # docs/adr/ADR-*.md frontmatter → adr_records
 │   ├── archive/                 # 126个归档脚本(零生产引用, S1 audit F13 验证可删除)
 │   └── research/                # 研究脚本(验证/回测实验)
 ├── cache/                       # Parquet缓存（profiler/中性化用）
@@ -661,14 +668,14 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行): 10 Framework + 5 升维 + 4 Wave × 14 MVP (18-23 周)
-- 🟢 **Wave 1 完结** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) → **Wave 1 下一步 MVP 1.4 Knowledge Registry**
+- 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)** → **下一步 Wave 2 Data Framework (MVP 2.1 完整版)**
 - ⬜ **Wave 2** (5-6 周): Data Framework + Data Lineage + Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2100+ tests collected / 100+ test files (2026-04-17 MVP 1.3c 后实测: MVP 1.1-1.3c 锚点 298 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 34 fail 全为历史债-post-refactor+deprecated路径, Platform 新增 0 fail) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)** + **MVP 1.3c 新增 21+12+6 = 39 tests PASS (lifecycle/registry 扩展/onboarding gates)**
+📊 测试: 2500+ tests collected / 100+ test files (2026-04-17 MVP 1.4 后实测: MVP 1.1-1.4 锚点 336 PASS / 无回归 / ruff clean, regression max_diff=0 Sharpe 0.6095; 全量 pytest baseline 比对 MVP 1.3c 24 fail 基线, MVP 1.4 新增 0 fail) + **Phase 3 MVP A 新增 26 tests PASS (factor_lifecycle)** + **MVP 1.3c 新增 21+12+6 = 39 tests PASS** + **MVP 1.4 新增 13+10+10+5 = 38 tests PASS (knowledge: experiments/failed/adrs/migration)**
 ---
 
 ## 文件归属规则（防腐）
