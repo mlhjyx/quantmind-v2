@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 """Phase 2.1: 7因子批量计算 + 入库 + 中性化 + IC验证。
 
+NOTE (P2-1 DATA_SYSTEM_V1 2026-04-17): 新研究工作请优先使用 DataOrchestrator:
+    orch = DataOrchestrator(start, end)
+    orch.neutralize_factors(factor_list, incremental=True, validate=True)
+本脚本保留为 Phase 2.1 历史重现 + 含计算入库 (不只中性化), 不强制迁移.
+
+
 因子列表:
   1. high_vol_price_ratio_20 (HVP) — 高位放量因子, IC=-0.077, direction=-1
   2. IMAX_20 — 窗口内最大日收益率, direction=-1

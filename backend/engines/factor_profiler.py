@@ -206,16 +206,33 @@ def profile_factor(
         conn = _get_conn()
     t0 = time.time()
 
-    # 加载因子值（中性化后，含universe过滤）
-    fv = pd.read_sql(
-        "SELECT f.code, f.trade_date, f.neutral_value "
-        "FROM factor_values f JOIN symbols s ON f.code = s.code "
-        "WHERE f.factor_name=%s AND f.trade_date BETWEEN %s AND %s "
-        "AND f.neutral_value IS NOT NULL AND s.list_status='L' "
-        "AND s.name NOT LIKE '%%ST%%'",
-        conn,
-        params=(factor_name, START_DATE, END_DATE),
+    # 加载因子值 (中性化后) — P1-4 迁移到 FactorCache (DATA_SYSTEM_V1)
+    # Universe 过滤 (L/ST) 在 Parquet 后通过 symbols lookup 完成
+    from datetime import datetime as _dt
+
+    try:
+        from data.factor_cache import FactorCache
+    except ModuleNotFoundError:
+        from backend.data.factor_cache import FactorCache
+
+    cache = FactorCache()
+    start_d = _dt.strptime(START_DATE, "%Y-%m-%d").date() if isinstance(START_DATE, str) else START_DATE
+    end_d = _dt.strptime(END_DATE, "%Y-%m-%d").date() if isinstance(END_DATE, str) else END_DATE
+    _fv_raw = cache.load(
+        factor_name, column="neutral_value",
+        start=start_d, end=end_d, conn=conn,
     )
+    if _fv_raw.empty:
+        fv = _fv_raw.rename(columns={"value": "neutral_value"})
+    else:
+        # Universe: list_status='L' AND name NOT LIKE '%ST%'
+        symbols_df = pd.read_sql(
+            "SELECT code FROM symbols WHERE list_status='L' AND name NOT LIKE '%%ST%%'",
+            conn,
+        )
+        valid_codes = set(symbols_df["code"])
+        fv = _fv_raw[_fv_raw["code"].isin(valid_codes)].rename(columns={"value": "neutral_value"})
+        fv = fv.reset_index(drop=True)
     if fv.empty:
         logger.warning("%s: 无数据", factor_name)
         if close_conn:

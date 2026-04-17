@@ -1,0 +1,445 @@
+version: "1.0"
+last_updated: "2026-04-17"
+description: >
+  QuantMind V2 数据资产目录 (DATA_SYSTEM_V1 §8.1).
+  登记核心表 L1-L4 的 schema / owner / freshness SLA / depends_on / downstream.
+  P1-1 阶段: 20+ 资产. P2-4 扩展到 73 张全表.
+
+# ============================================================
+# L1 — 原始外部数据 (每交易日 16:15 拉取)
+# ============================================================
+assets:
+  - name: klines_daily
+    layer: L1
+    source: tushare
+    pk: [code, trade_date]
+    columns:
+      - {name: open, type: decimal, unit: 元}
+      - {name: high, type: decimal, unit: 元}
+      - {name: low, type: decimal, unit: 元}
+      - {name: close, type: decimal, unit: 元}
+      - {name: adj_close, type: decimal, unit: 元, note: 前复权价格}
+      - {name: volume, type: bigint, unit: 手}
+      - {name: amount, type: decimal, unit: 元}
+    freshness_sla_hours: 18
+    size_gb: 4
+    ingest: scripts/fetch_daily.py
+    contract: FACTOR_VALUES_KLINES
+    depends_on: []
+    downstream: [factor_values, backtest_data_cache, fast_neutralize, ic_calculator]
+    quality_thresholds:
+      max_nan_rate: 0.01
+      row_count_min: 5000  # 至少覆盖主 universe
+    hypertable: true
+
+  - name: minute_bars
+    layer: L1
+    source: baostock
+    pk: [code, trade_time]
+    columns:
+      - {name: open, type: decimal, unit: 元}
+      - {name: high, type: decimal, unit: 元}
+      - {name: low, type: decimal, unit: 元}
+      - {name: close, type: decimal, unit: 元}
+      - {name: volume, type: bigint, unit: 手}
+      - {name: amount, type: decimal, unit: 元}
+      - {name: minute_of_day, type: smallint, note: 0-47 按5min步进}
+    freshness_sla_hours: 19
+    size_gb: 21
+    row_count: 190885634
+    ingest: scripts/fetch_minute_bars.py
+    contract: MINUTE_BARS
+    depends_on: []
+    downstream: [minute_feature_engine, factor_values.minute_*]
+
+  - name: daily_basic
+    layer: L1
+    source: tushare
+    pk: [code, trade_date]
+    columns:
+      - {name: turnover_rate, type: decimal, unit: ratio}
+      - {name: pb, type: decimal}
+      - {name: pe_ttm, type: decimal}
+      - {name: dv_ttm, type: decimal, unit: ratio, note: 股息率TTM}
+      - {name: total_mv, type: decimal, unit: 元, note: 总市值}
+      - {name: circ_mv, type: decimal, unit: 元, note: 流通市值}
+    freshness_sla_hours: 18
+    ingest: scripts/fetch_daily.py
+    contract: DAILY_BASIC
+    downstream: [factor_values, fast_neutralize (market_cap/industry_neutralize), dv_ttm]
+
+  - name: moneyflow_daily
+    layer: L1
+    source: tushare
+    pk: [code, trade_date]
+    columns:
+      - {name: buy_lg_amount, type: decimal, unit: 元}
+      - {name: sell_lg_amount, type: decimal, unit: 元}
+      - {name: net_mf_amount, type: decimal, unit: 元}
+    freshness_sla_hours: 18
+    ingest: scripts/fetch_daily.py
+    contract: MONEYFLOW_DAILY
+    downstream: [factor_values.moneyflow_*]
+
+  - name: symbols
+    layer: L1
+    source: tushare
+    pk: [code]
+    columns:
+      - {name: market, type: varchar, values: [astock, forex]}
+      - {name: board, type: varchar, values: [main, chi, sti, bse, null]}
+      - {name: industry_sw1, type: varchar, note: 申万一级行业}
+      - {name: list_date, type: date}
+    freshness_sla_hours: 24
+    ingest: scripts/fetch_symbols.py
+    contract: SYMBOLS
+    downstream: [Universe, fast_neutralize, backtest]
+
+  - name: stock_status_daily
+    layer: L1
+    source: derived (tushare + exchange)
+    pk: [code, trade_date]
+    columns:
+      - {name: is_st, type: boolean}
+      - {name: is_suspended, type: boolean}
+      - {name: limit_status, type: varchar, values: [none, up, down]}
+    freshness_sla_hours: 18
+    ingest: backend/app/data_fetcher/stock_status.py
+    contract: STOCK_STATUS_DAILY
+    downstream: [Universe, backtest validators]
+
+  - name: announcements
+    layer: L1
+    source: tushare
+    pk: [code, ann_date]
+    columns:
+      - {name: ann_date, type: date, note: 公告披露日, PIT入场日}
+      - {name: end_date, type: date, note: 财报期}
+      - {name: surprise_std, type: decimal, note: 标准化盈利惊喜}
+    freshness_sla_hours: 24
+    ingest: scripts/fetch_announcements.py
+    downstream: [factor_values.PEAD, factor_repository.load_pead_announcements]
+
+  - name: index_daily
+    layer: L1
+    source: tushare
+    pk: [index_code, trade_date]
+    columns:
+      - {name: open, type: decimal}
+      - {name: high, type: decimal}
+      - {name: low, type: decimal}
+      - {name: close, type: decimal}
+    freshness_sla_hours: 18
+    ingest: scripts/fetch_daily.py
+    downstream: [ic_calculator (benchmark CSI300), backtest.benchmark_df]
+
+# ============================================================
+# L2 — 因子 raw_value (每交易日 16:30 计算)
+# ============================================================
+  - name: factor_values_raw
+    layer: L2
+    parent_table: factor_values
+    column: raw_value
+    pk: [code, trade_date, factor_name]
+    columns:
+      - {name: raw_value, type: decimal(16,6), note: 原始因子值}
+    freshness_sla_hours: 18.5
+    size_gb: 155
+    row_count: 816408002
+    compute: backend/app/services/factor_compute_service.py
+    contract: FACTOR_VALUES
+    depends_on: [klines_daily, daily_basic, minute_bars]
+    downstream: [factor_values_neutral, factor_ic_history, factor_profile]
+    quality_thresholds:
+      max_nan_rate: 0.05
+      min_coverage: 0.90
+    hypertable: true
+
+  - name: factor_compute_version
+    layer: L2
+    source: migration
+    pk: [factor_name, version]
+    columns:
+      - {name: compute_commit, type: varchar(40), note: git commit SHA}
+      - {name: compute_start, type: date}
+      - {name: compute_end, type: date, nullable: true}
+      - {name: algorithm_desc, type: text}
+    freshness_sla_hours: 9999  # 手动维护
+    ingest: backend/migrations/factor_compute_version.sql
+    downstream: [backtest (血缘追溯), factor_onboarding]
+
+  - name: pipeline_runs
+    layer: L2
+    source: infrastructure
+    pk: [asset_name, trade_date, completed_at]
+    columns:
+      - {name: row_count, type: bigint}
+      - {name: status, type: varchar, values: [running, success, failed]}
+      - {name: rejected_reasons, type: jsonb}
+    freshness_sla_hours: 24
+    downstream: [DataOrchestrator.last_success]
+
+# ============================================================
+# L3 — 因子 neutral_value (每交易日 17:00-17:30)
+# ============================================================
+  - name: factor_values_neutral
+    layer: L3
+    parent_table: factor_values
+    column: neutral_value
+    pk: [code, trade_date, factor_name]
+    columns:
+      - {name: neutral_value, type: decimal(16,6), note: 行业+市值WLS中性化后}
+    freshness_sla_hours: 19
+    compute: backend/engines/fast_neutralize.py
+    contract: FACTOR_VALUES
+    depends_on:
+      - factor_values_raw
+      - symbols.industry_sw1
+      - daily_basic.total_mv
+    downstream: [factor_ic_history, signals, backtest, factor_profile]
+    quality_thresholds:
+      max_nan_rate: 0.05
+      max_mean_drift: 0.1
+      std_range: [0.5, 2.0]
+      max_extreme_rate: 0.02
+
+# ============================================================
+# L4 — 分析结果 (按需/每日)
+# ============================================================
+  - name: factor_ic_history
+    layer: L4
+    source: derived
+    pk: [factor_name, trade_date]
+    columns:
+      - {name: ic_1d, type: decimal}
+      - {name: ic_5d, type: decimal}
+      - {name: ic_10d, type: decimal}
+      - {name: ic_20d, type: decimal}
+      - {name: ic_ma20, type: decimal}
+      - {name: ic_ma60, type: decimal}
+      - {name: decay_level, type: varchar, values: [normal, warning, critical]}
+    freshness_sla_hours: 20
+    row_count: 133125
+    compute: backend/engines/ic_calculator.py
+    contract: FACTOR_IC_HISTORY
+    depends_on: [factor_values_neutral, klines_daily, index_daily]
+    downstream: [factor_profile, monitor_factor_ic.py]
+    iron_laws: [11]  # IC 唯一入库点
+
+  - name: factor_profile
+    layer: L4
+    source: derived
+    pk: [factor_name, profile_date]
+    columns:
+      - {name: sharpe_ratio, type: decimal}
+      - {name: hit_rate, type: decimal}
+      - {name: ic_stability, type: decimal}
+      - {name: recommendation_template, type: varchar}
+      - {name: regime_sensitivity, type: decimal}
+    freshness_sla_hours: 48
+    compute: backend/engines/factor_profiler.py
+    depends_on: [factor_ic_history, factor_values_neutral]
+    downstream: [factor_registry]
+
+  - name: factor_registry
+    layer: L4
+    source: derived
+    pk: [factor_name]
+    columns:
+      - {name: status, type: varchar, values: [active, deprecated, invalidated]}
+      - {name: direction, type: smallint, values: [-1, 1]}
+      - {name: economic_mechanism, type: text, iron_laws: [13]}
+    freshness_sla_hours: 9999  # 手动更新
+    downstream: [signal_engine (PT选股), pt_live.yaml]
+
+  - name: backtest_run
+    layer: L4
+    source: infrastructure
+    pk: [run_id]
+    columns:
+      - {name: config_yaml_hash, type: varchar, note: 可复现锚点}
+      - {name: git_commit, type: varchar}
+      - {name: sharpe, type: decimal}
+      - {name: mdd, type: decimal}
+      - {name: total_return, type: decimal}
+    freshness_sla_hours: 168  # 按需
+    compute: backend/engines/backtest/
+    iron_laws: [15]  # 可复现
+
+  - name: backtest_metrics
+    layer: L4
+    source: derived
+    pk: [run_id, metric_name]
+    columns:
+      - {name: metric_value, type: decimal}
+      - {name: metric_kind, type: varchar, values: [summary, monthly, yearly, bootstrap]}
+    depends_on: [backtest_run]
+    downstream: [前端 /backtests 页面]
+
+# ============================================================
+# 支持表 (L3.5) — 状态/事件
+# ============================================================
+  - name: position_snapshot
+    layer: L3.5
+    source: qmt_data_service
+    pk: [snapshot_time, code]
+    columns:
+      - {name: holdings, type: bigint, unit: 手}
+      - {name: cost_price, type: decimal}
+      - {name: current_price, type: decimal}
+    freshness_sla_minutes: 5
+    downstream: [PMS, signal_engine, risk_control]
+
+  - name: qmt_asset_snapshot
+    layer: L3.5
+    source: qmt_data_service
+    pk: [snapshot_time]
+    columns:
+      - {name: total_asset, type: decimal}
+      - {name: cash_balance, type: decimal}
+      - {name: frozen, type: decimal}
+    freshness_sla_minutes: 1
+    downstream: [前端 /dashboard, 风控]
+
+  - name: pms_triggers
+    layer: L4
+    source: PMS
+    pk: [code, trigger_time]
+    columns:
+      - {name: level, type: varchar, values: [L1, L2, L3]}
+      - {name: gain_pct, type: decimal}
+      - {name: drawdown_pct, type: decimal}
+      - {name: action, type: varchar, values: [sell_all, partial_sell, monitor]}
+    freshness_sla_hours: 24
+    compute: backend/app/services/pms_service.py
+    downstream: [StreamBus qm:pms:protection_triggered]
+
+  - name: northbound_holdings
+    layer: L1
+    source: tushare
+    pk: [code, trade_date]
+    columns:
+      - {name: nb_ratio, type: decimal}
+      - {name: nb_hold_vol, type: bigint}
+      - {name: nb_hold_amount, type: decimal}
+    freshness_sla_hours: 18
+    ingest: scripts/fetch_northbound.py
+    contract: NORTHBOUND_HOLDINGS
+    downstream: [factor_values.nb_*]
+
+  - name: earnings_announcements
+    layer: L1
+    source: tushare
+    pk: [code, ann_date]
+    columns:
+      - {name: surprise, type: decimal, note: 盈利惊喜 EPS 实际 - 预期}
+      - {name: surprise_std, type: decimal, note: 标准化}
+    freshness_sla_hours: 24
+    ingest: scripts/fetch_announcements.py
+    contract: EARNINGS_ANNOUNCEMENTS
+    downstream: [factor_values.PEAD, factor_repository.load_pead_announcements]
+
+# ============================================================
+# 依赖拓扑 summary (供快速查询)
+# ============================================================
+topology:
+  L0_to_L1:
+    - tushare → klines_daily, daily_basic, moneyflow_daily, northbound_holdings, symbols, announcements, index_daily
+    - baostock → minute_bars
+    - exchange → stock_status_daily (derived)
+  L1_to_L2:
+    - klines_daily + daily_basic + moneyflow_daily + minute_bars → factor_values.raw_value
+  L2_to_L3:
+    - factor_values.raw_value + symbols.industry_sw1 + daily_basic.total_mv → factor_values.neutral_value
+  L3_to_L4:
+    - factor_values.neutral_value + klines_daily + index_daily → factor_ic_history
+    - factor_ic_history → factor_profile → factor_registry
+    - factor_values.neutral_value + backtest config → backtest_run + backtest_metrics
+
+# ============================================================
+# P2-4 扩展: 剩余 DB 表 (compact entries, 2026-04-17 S1 audit 实测 74 张)
+# ============================================================
+
+extended_catalog:
+  # --- L1 (financial fundamentals via Tushare) ---
+  - {name: balance_sheet, layer: L1, size_mb: 230, source: tushare, pk: [code, end_date], downstream: [factor_values.fundamental]}
+  - {name: cash_flow, layer: L1, size_mb: 222, source: tushare, pk: [code, end_date], downstream: [factor_values.fundamental]}
+  - {name: financial_indicators, layer: L1, size_mb: 121, source: tushare, pk: [code, end_date], downstream: [factor_values.roa/roe/grossmargin]}
+  - {name: fina_indicator, layer: L1, size_mb: 48, source: tushare, pk: [code, end_date], downstream: [backtest fundamental]}
+  - {name: holder_number, layer: L1, size_mb: 85, source: tushare, pk: [code, end_date], downstream: [factor_values.shareholder_*]}
+  - {name: forecast, layer: L1, size_mb: 50, source: tushare, pk: [code, ann_date, forecast_period], downstream: [factor_values.earnings_revision]}
+  - {name: express, layer: L1, size_mb: 5, source: tushare, pk: [code, end_date], downstream: [PEAD signal]}
+  - {name: margin_detail, layer: L1, size_mb: 902, source: tushare, pk: [code, trade_date], downstream: [factor_values.margin_*]}
+  - {name: margin_data, layer: L1, size_mb: 22, source: tushare, pk: [trade_date], downstream: [market regime]}
+  - {name: top_list, layer: L1, size_mb: 43, source: tushare, pk: [code, trade_date], downstream: [factor_values.top_list_*]}
+  - {name: index_components, layer: L1, size_kb: 5552, source: tushare, pk: [index_code, code], downstream: [Universe CSI300/500]}
+  - {name: trading_calendar, layer: L1, size_kb: 640, source: tushare, pk: [cal_date, exchange], downstream: [all scheduler]}
+  - {name: sw_industry_mapping, layer: L1, size_kb: 24, source: derived, pk: [code], downstream: [fast_neutralize industry SW1]}
+  - {name: bs_operation_data, layer: L1, size_mb: 11, source: baostock, downstream: [factor_values.operation_*]}
+  - {name: bs_growth_data, layer: L1, size_kb: 200, source: baostock, downstream: [factor_values.growth_*]}
+  - {name: bs_balance_data, layer: L1, size_kb: 8, source: baostock, downstream: []}
+  - {name: bs_cash_flow_data, layer: L1, size_kb: 8, source: baostock, downstream: []}
+  - {name: bs_dupont_data, layer: L1, size_kb: 8, source: baostock, downstream: [factor_values.dupont_*]}
+  - {name: chip_distribution, layer: L1, size_kb: 8, source: tushare, downstream: [factor_values.chip_*]}
+  - {name: forex_bars, layer: L1, size_kb: 8, source: baostock, pk: [pair, trade_time], downstream: [forex (DEFERRED)]}
+  - {name: forex_events, layer: L1, size_kb: 16, source: tushare, downstream: [forex]}
+  - {name: forex_swap_rates, layer: L1, size_kb: 8, source: tushare, downstream: [forex]}
+
+  # --- L3.5 / L4 产出 ---
+  - {name: universe_daily, layer: L2, size_kb: 8, source: derived, pk: [trade_date, code], downstream: [Universe class]}
+  - {name: factor_lifecycle, layer: L4, size_kb: 32, source: derived, pk: [factor_name], downstream: [factor_registry]}
+  - {name: factor_evaluation, layer: L4, size_kb: 24, source: derived, downstream: [factor_profile]}
+  - {name: factor_health_log, layer: L4, size_kb: 48, source: scripts/factor_health_check.py, downstream: [monitor]}
+  - {name: factor_mining_task, layer: L4, size_kb: 16, source: GP, downstream: [mining orchestrator]}
+  - {name: mining_knowledge, layer: L4, size_kb: 48, source: GP, downstream: [factor_dsl seeds]}
+  - {name: modifier_signals, layer: L4, size_kb: 1056, source: signal_engine, downstream: [PT SN/Modifier]}
+  - {name: shadow_portfolio, layer: L4, size_kb: 56, source: shadow_portfolio.py, downstream: [PT diagnostics]}
+
+  # --- L5 execution / system state ---
+  - {name: signals, layer: L5, size_kb: 128, source: signal_engine, downstream: [execution]}
+  - {name: trade_log, layer: L5, size_kb: 72, source: execution_service, downstream: [audit]}
+  - {name: backtest_trades, layer: L5, size_kb: 104, source: backtest, downstream: [analytics]}
+  - {name: backtest_holdings, layer: L5, size_kb: 8, source: backtest}
+  - {name: backtest_daily_nav, layer: L5, size_kb: 64, source: backtest, downstream: [前端]}
+  - {name: backtest_wf_windows, layer: L5, size_kb: 16, source: walk_forward}
+  - {name: performance_series, layer: L5, size_kb: 56, source: monitor}
+  - {name: position_monitor, layer: L5, size_kb: 8, source: PMS}
+  - {name: intraday_monitor_log, layer: L5, size_kb: 32, source: intraday_monitor}
+  - {name: execution_audit_log, layer: L5, size_kb: 80, source: execution}
+  - {name: operation_audit_log, layer: L5, size_kb: 24, source: admin}
+  - {name: circuit_breaker_state, layer: L5, size_kb: 48, source: risk_control}
+  - {name: circuit_breaker_log, layer: L5, size_kb: 24, source: risk_control}
+  - {name: health_checks, layer: L5, size_kb: 184, source: health_check.py}
+
+  # --- config / metadata ---
+  - {name: strategy, size_kb: 64, source: admin, pk: [strategy_id]}
+  - {name: strategy_configs, size_kb: 64, source: admin, downstream: [YAML fallback]}
+  - {name: ai_parameters, size_kb: 24, source: AI agents}
+  - {name: model_registry, size_kb: 16, source: ml_engine, downstream: [LightGBM artifacts]}
+  - {name: experiments, size_kb: 16, source: research}
+  - {name: notifications, size_kb: 240, source: notification_service}
+  - {name: notification_preferences, size_kb: 16, source: admin}
+  - {name: scheduler_task_log, size_kb: 384, source: Task Scheduler}
+  - {name: param_change_log, size_kb: 16, source: admin}
+  - {name: approval_queue, size_kb: 16, source: admin}
+  - {name: gp_approval_queue, size_kb: 40, source: GP}
+  - {name: agent_decision_log, size_kb: 16, source: AI agents}
+  - {name: pipeline_run, size_kb: 16, source: mining orchestrator, note: singular name, 与 pipeline_runs 并存}
+
+# ============================================================
+# 铁律对齐索引
+# ============================================================
+iron_laws_index:
+  4: 中性化后IC必须并列展示 → factor_values_neutral + factor_values_raw
+  7: 数据地基一致 → Universe类 + stock_status_daily
+  11: IC必须入库 → factor_ic_history
+  14: 回测引擎不清洗 → L1 入库时完成, DataPipeline
+  15: 回测可复现 → backtest_run + factor_compute_version
+  16: 信号路径唯一 → 所有消费走 DataOrchestrator
+  17: 入库走 DataPipeline → 所有 contract.py 登记表
+  19: IC 口径统一 → ic_calculator.compute_forward_excess_returns
+  20: 因子鲁棒性 → G_robust (scripts/research/noise_robustness.py)
+  29: 不写 float NaN → DataPipeline + factor_compute_service
+  31: Engine 纯计算 → factor_engine/ 不含 IO
+  32: Service 不 commit → services/ 层事务由调用方管理
+  34: 配置 SSoT → config_guard

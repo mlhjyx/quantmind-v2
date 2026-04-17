@@ -1,6 +1,11 @@
 """Phase 3E-II Track 2.1: Neutralize 17 PASS microstructure factors.
 
 Uses fast_neutralize_batch with date range 2019-01-01 ~ 2026-04-13.
+
+DEPRECATED (P2-1 DATA_SYSTEM_V1 2026-04-17): 新代码请用 DataOrchestrator:
+    orch = DataOrchestrator(start, end)
+    orch.neutralize_factors(factor_list, incremental=True, validate=True)
+本脚本保留供 Phase 3E-II 历史复现.
 """
 import sys
 import time

@@ -115,8 +115,16 @@ class DataPipeline:
         if not contract.skip_unit_conversion:
             df = self._convert_units(df, contract)
 
+        # 3.5 P1-3: L1 sanity check (仅 L1 核心表, 不影响 L2/L3)
+        sanity_rejects: dict[str, int] = {}
+        if contract.table_name in ("klines_daily", "daily_basic", "moneyflow_daily", "minute_bars"):
+            df, sanity_rejects = self._sanity_check_l1(df, contract.table_name)
+
         # 4. 验证
         df, reject_reasons = self._validate(df, contract)
+        # merge sanity reasons
+        for k, v in sanity_rejects.items():
+            reject_reasons[k] = reject_reasons.get(k, 0) + v
         rejected = total - len(df)
 
         if df.empty:
@@ -155,6 +163,91 @@ class DataPipeline:
             if factor is not None and col_name in df.columns:
                 df[col_name] = pd.to_numeric(df[col_name], errors="coerce") * factor
         return df
+
+    # ─── L1 Sanity Check (P1-3) ──────────────────────────────
+
+    def _sanity_check_l1(
+        self, df: pd.DataFrame, table_name: str
+    ) -> tuple[pd.DataFrame, dict[str, int]]:
+        """L1 入库 sanity check (DATA_SYSTEM_V1 P1-3).
+
+        拒绝明显错误数据, 保留 good rows.
+
+        规则:
+          - 价格合理性: close>0, high>=max(open,close), low<=min(open,close), high>=low
+          - 量合理性: volume>=0, amount>=0
+          - 异常波动: |close/open - 1| < 0.5 (A股单日最大 ±20%, 超 50% 必 bug)
+
+        Returns:
+            (df_valid, {reason: count})
+        """
+        if df.empty:
+            return df, {}
+
+        reject_reasons: dict[str, int] = {}
+        valid_mask = pd.Series(True, index=df.index)
+
+        # 辅助: 安全 coerce 数值
+        def _num(col: str) -> pd.Series | None:
+            if col not in df.columns:
+                return None
+            return pd.to_numeric(df[col], errors="coerce")
+
+        # ── 价格合理性 ──
+        close = _num("close")
+        open_ = _num("open")
+        high = _num("high")
+        low = _num("low")
+        if close is not None:
+            bad = (close <= 0).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_close_le_zero"] = int(bad.sum())
+                valid_mask &= ~bad
+        if high is not None and low is not None:
+            bad = (high < low).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_high_lt_low"] = int(bad.sum())
+                valid_mask &= ~bad
+        if high is not None and open_ is not None and close is not None:
+            bad = (high < pd.concat([open_, close], axis=1).max(axis=1)).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_high_lt_open_close"] = int(bad.sum())
+                valid_mask &= ~bad
+        if low is not None and open_ is not None and close is not None:
+            bad = (low > pd.concat([open_, close], axis=1).min(axis=1)).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_low_gt_open_close"] = int(bad.sum())
+                valid_mask &= ~bad
+
+        # ── 量/金额合理性 ──
+        volume = _num("volume")
+        amount = _num("amount")
+        if volume is not None:
+            bad = (volume < 0).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_volume_negative"] = int(bad.sum())
+                valid_mask &= ~bad
+        if amount is not None:
+            bad = (amount < 0).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_amount_negative"] = int(bad.sum())
+                valid_mask &= ~bad
+
+        # ── 异常波动 (日 K 才检查) ──
+        if table_name == "klines_daily" and close is not None and open_ is not None:
+            ret = (close / open_ - 1).abs()
+            bad = (ret > 0.5).fillna(False)
+            if bad.any():
+                reject_reasons["sanity_abnormal_return_gt_50pct"] = int(bad.sum())
+                valid_mask &= ~bad
+
+        if not valid_mask.all():
+            df = df[valid_mask].copy()
+            logger.warning(
+                "[sanity] %s 拒绝 %d 行 | %s",
+                table_name, (~valid_mask).sum(), reject_reasons,
+            )
+        return df, reject_reasons
 
     # ─── 验证 ──────────────────────────────────────────────
 

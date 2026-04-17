@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """一次性迁移脚本: 使用SW1(29组)重新计算所有factor_values.neutral_value。
 
+DEPRECATED (P2-1 DATA_SYSTEM_V1 2026-04-17): SW1 迁移已完成 (2026-04-11).
+本脚本为历史一次性工具, 不再 active. 新中性化统一走:
+    orch = DataOrchestrator(start, end)
+    orch.neutralize_factors(factor_list, incremental=True, validate=True)
+
+
 背景: 原中性化使用industry_sw1(实际存SW2二级行业, 110组), 其中22组<10只导致WLS不稳定。
 迁移到SW1一级行业(29组), 所有组≥11只。
 

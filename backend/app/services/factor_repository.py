@@ -666,3 +666,107 @@ def load_fundamental_pit_data(
             logger.debug(f"  {name}: {len(s)}只, mean={s.mean():.4f}")
 
     return results
+
+
+# ============================================================
+# 共享上下文加载 (DataOrchestrator 用, 中性化/IC评估/profiler共享)
+# ============================================================
+
+
+def load_shared_context(
+    start_date: date | str,
+    end_date: date | str,
+    conn=None,
+    include_benchmark: bool = True,
+    benchmark_code: str = "000300.SH",
+) -> dict:
+    """加载中性化/评估所需的共享数据 — 行业(SW1) + 市值 + 可选基准。
+
+    轻量版: 只查 symbols.industry_sw1 + daily_basic.total_mv + index_daily,
+    不加载 OHLCV/adj_close (中性化不需要)。多因子/多步骤共享同一份数据。
+
+    Args:
+        start_date: 开始日期
+        end_date: 结束日期
+        conn: psycopg2 连接 (None 自动创建)
+        include_benchmark: 是否加载基准数据 (IC评估需要)
+        benchmark_code: 基准指数代码
+
+    Returns:
+        dict: {
+            'ind_dict': dict[code, sw1_industry],  # SW1一级行业映射
+            'mv_lookup': pd.Series MultiIndex(code, trade_date) → total_mv,
+            'benchmark_df': pd.DataFrame(trade_date, close) | None,
+            'start_date': str, 'end_date': str,
+            'n_stocks': int, 'n_mv_rows': int,
+        }
+    """
+    from app.services.industry_utils import apply_sw2_to_sw1
+    from app.services.price_utils import _get_sync_conn
+
+    close_conn = conn is None
+    if conn is None:
+        conn = _get_sync_conn()
+
+    try:
+        cur = conn.cursor()
+        sd = str(start_date)
+        ed = str(end_date)
+
+        # 1. 行业映射 (SW2 → SW1, 29组)
+        cur.execute(
+            "SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'"
+        )
+        ind_dict_sw2 = {
+            r[0]: r[1] if r[1] and r[1] != "nan" else "其他"
+            for r in cur.fetchall()
+        }
+        ind_dict = apply_sw2_to_sw1(ind_dict_sw2, conn)
+        if isinstance(ind_dict, pd.Series):
+            ind_dict = ind_dict.to_dict()
+
+        # 2. 市值 (total_mv)
+        cur.execute(
+            "SELECT code, trade_date, total_mv FROM daily_basic "
+            "WHERE trade_date BETWEEN %s AND %s AND total_mv IS NOT NULL",
+            (sd, ed),
+        )
+        mv_rows = cur.fetchall()
+        mv_df = pd.DataFrame(mv_rows, columns=["code", "trade_date", "total_mv"])
+        mv_df["total_mv"] = mv_df["total_mv"].astype(float)
+        mv_lookup = mv_df.set_index(["code", "trade_date"])["total_mv"]
+
+        # 3. 基准 (可选)
+        benchmark_df = None
+        if include_benchmark:
+            cur.execute(
+                "SELECT trade_date, close FROM index_daily "
+                "WHERE index_code = %s AND trade_date BETWEEN %s AND %s "
+                "ORDER BY trade_date",
+                (benchmark_code, sd, ed),
+            )
+            bm_rows = cur.fetchall()
+            if bm_rows:
+                benchmark_df = pd.DataFrame(bm_rows, columns=["trade_date", "close"])
+                benchmark_df["trade_date"] = pd.to_datetime(
+                    benchmark_df["trade_date"]
+                ).dt.date
+
+        logger.info(
+            "共享上下文加载: %d行业, %d市值行, benchmark=%s",
+            len(ind_dict), len(mv_df),
+            f"{len(benchmark_df)}行" if benchmark_df is not None else "未加载",
+        )
+
+        return {
+            "ind_dict": ind_dict,
+            "mv_lookup": mv_lookup,
+            "benchmark_df": benchmark_df,
+            "start_date": sd,
+            "end_date": ed,
+            "n_stocks": len(ind_dict),
+            "n_mv_rows": len(mv_df),
+        }
+    finally:
+        if close_conn:
+            conn.close()

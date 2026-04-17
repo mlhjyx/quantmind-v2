@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Phase 3B Task 1: Neutralize 32 significant factors (|t|>2.5).
 
+DEPRECATED (P2-1 DATA_SYSTEM_V1 2026-04-17): 新代码请用 DataOrchestrator:
+    orch = DataOrchestrator(start, end)
+    orch.neutralize_factors(factor_list, incremental=True, validate=True)
+本脚本保留供 Phase 3B 历史复现.
+
+
 Serial processing to respect memory constraints (铁律9).
 Pipeline per factor: MAD(5σ) → WLS(industry+mcap) → z-score clip(±3)
 
