@@ -87,6 +87,9 @@ known-first-party = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "smoke: production invocation smoke tests (subprocess-launch, may need live DB/Redis). Run with `pytest -m smoke`.",
+]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
