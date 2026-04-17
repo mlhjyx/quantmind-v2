@@ -21,8 +21,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from backend.platform._types import Order, Signal
-    from backend.platform.strategy.interface import Strategy, StrategyContext
+    from .._types import Order, Signal
+    from ..strategy.interface import Strategy, StrategyContext
 
 
 @dataclass(frozen=True)

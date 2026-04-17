@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 from psycopg2.extras import execute_values
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.data_fetcher.tushare_api import TushareAPI  # noqa: E402
 

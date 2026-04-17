@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 from engines.ic_calculator import compute_factor_ic_full  # noqa: E402
 from engines.minute_feature_engine import (  # noqa: E402

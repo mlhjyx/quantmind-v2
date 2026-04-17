@@ -1,5 +1,5 @@
 """Framework #3 Strategy — Platform SDK sub-package."""
-from backend.platform.strategy.interface import (
+from .interface import (
     CapitalAllocator,
     RebalanceFreq,
     Strategy,

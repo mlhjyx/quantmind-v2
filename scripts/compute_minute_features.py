@@ -31,7 +31,7 @@ import pandas as pd
 
 # 设置路径
 sys.path.insert(0, str(Path(__file__).resolve().parents[0] / "research"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
 
 from engines.minute_feature_engine import (  # noqa: E402
     _DAILY_KEYS,

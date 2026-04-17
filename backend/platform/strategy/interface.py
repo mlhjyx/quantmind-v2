@@ -20,7 +20,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from backend.platform._types import Signal
+    from .._types import Signal
 
 
 class RebalanceFreq(Enum):

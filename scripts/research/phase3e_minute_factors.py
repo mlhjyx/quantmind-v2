@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 from minute_data_loader import MinuteDataCache  # noqa: E402
 

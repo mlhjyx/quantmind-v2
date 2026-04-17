@@ -22,8 +22,8 @@ Platform 绝不 import `backend.app.*` / `backend.data.*` / `backend.engines.*`
 Usage (生产, 含 register):
     from backend.data.factor_cache import FactorCache
     from backend.app.services.db import get_sync_conn
-    from backend.platform.data.access_layer import PlatformDataAccessLayer
-    from backend.platform.factor.registry import DBFactorRegistry
+    from ..data.access_layer import PlatformDataAccessLayer
+    from .registry import DBFactorRegistry
 
     dal = PlatformDataAccessLayer(conn_factory=get_sync_conn, factor_cache=FactorCache())
     registry = DBFactorRegistry(dal, conn_factory=get_sync_conn)
@@ -38,7 +38,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
-from backend.platform.factor.interface import (
+from .interface import (
     FactorLifecycleMonitor,
     FactorMeta,
     FactorRegistry,
@@ -48,7 +48,7 @@ from backend.platform.factor.interface import (
 )
 
 if TYPE_CHECKING:
-    from backend.platform.data.interface import DataAccessLayer
+    from ..data.interface import DataAccessLayer
 
 
 # ---------- 错误类型 ----------

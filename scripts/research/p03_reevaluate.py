@@ -11,7 +11,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-sys.path.insert(0, "D:/quantmind-v2/backend")
+sys.path.append("D:/quantmind-v2/backend")
 sys.path.insert(0, "D:/quantmind-v2/scripts/research")
 os.chdir("D:/quantmind-v2/backend")
 

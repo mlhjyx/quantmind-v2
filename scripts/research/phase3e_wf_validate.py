@@ -27,7 +27,7 @@ if sys.platform == "win32":
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 logging.basicConfig(
     level=logging.INFO,

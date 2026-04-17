@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import psycopg2
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 PASS_17 = [
     "a158_cord30", "a158_vsump60", "amihud_20", "bp_ratio", "dv_ttm",

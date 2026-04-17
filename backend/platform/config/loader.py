@@ -28,8 +28,8 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from backend.platform.config.interface import ConfigLoader, ConfigSchema
-from backend.platform.config.schema import RootConfigSchema
+from .interface import ConfigLoader, ConfigSchema
+from .schema import RootConfigSchema
 
 _DEFAULT_YAML_PATH = "configs/pt_live.yaml"
 

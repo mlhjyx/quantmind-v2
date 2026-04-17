@@ -1,5 +1,5 @@
 """Framework #9 CI/CD & Test — Platform SDK sub-package."""
-from backend.platform.ci.interface import (
+from .interface import (
     CoverageGate,
     SmokeTestSuite,
     TestRunner,

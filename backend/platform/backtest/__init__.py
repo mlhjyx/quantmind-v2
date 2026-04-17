@@ -1,5 +1,5 @@
 """Framework #5 Backtest — Platform SDK sub-package."""
-from backend.platform.backtest.interface import (
+from .interface import (
     BacktestConfig,
     BacktestRegistry,
     BacktestResult,

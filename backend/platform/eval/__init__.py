@@ -1,5 +1,5 @@
 """Framework #4 Evaluation Gate — Platform SDK sub-package."""
-from backend.platform.eval.interface import (
+from .interface import (
     EvaluationPipeline,
     GateResult,
     StrategyEvaluator,

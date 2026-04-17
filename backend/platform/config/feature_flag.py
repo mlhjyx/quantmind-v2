@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from datetime import date
 from typing import Any, Protocol
 
-from backend.platform.config.interface import FeatureFlag
+from .interface import FeatureFlag
 
 
 class _DBConnection(Protocol):
@@ -59,7 +59,7 @@ class DBFeatureFlag(FeatureFlag):
 
     Usage (生产):
         from backend.app.services.db import get_sync_conn
-        from backend.platform.config.feature_flag import DBFeatureFlag
+        from .feature_flag import DBFeatureFlag
         flag = DBFeatureFlag(get_sync_conn)
         if flag.is_enabled("new_pt_logic"):
             ...

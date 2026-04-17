@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 # Reuse phase3d infrastructure
 from engines.backtest.config import BacktestConfig  # noqa: E402

@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 
 # 添加项目路径
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 logging.basicConfig(
     level=logging.INFO,

@@ -3,24 +3,24 @@
 MVP 1.1 (2026-04-18): abstract interfaces (ConfigSchema/Loader/Auditor/FeatureFlag).
 MVP 1.2 (2026-04-18): concrete 实现 (Pydantic Schema / YAML+env Loader / Auditor / DB FeatureFlag).
 """
-from backend.platform.config.auditor import (
+from .auditor import (
     ConfigDriftError,
     ConfigDriftReport,
     PlatformConfigAuditor,
 )
-from backend.platform.config.feature_flag import (
+from .feature_flag import (
     DBFeatureFlag,
     FlagExpired,
     FlagNotFound,
 )
-from backend.platform.config.interface import (
+from .interface import (
     ConfigAuditor,
     ConfigLoader,
     ConfigSchema,
     FeatureFlag,
 )
-from backend.platform.config.loader import PlatformConfigLoader
-from backend.platform.config.schema import (
+from .loader import PlatformConfigLoader
+from .schema import (
     BacktestConfigSchema,
     CostConfigSchema,
     DatabaseConfigSchema,

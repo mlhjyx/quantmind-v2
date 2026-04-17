@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 from engines.backtest.config import BacktestConfig  # noqa: E402
 from engines.backtest.engine import SimpleBacktester  # noqa: E402

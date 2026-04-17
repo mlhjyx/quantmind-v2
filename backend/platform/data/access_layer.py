@@ -12,7 +12,7 @@ Platform 唯一 read 入口. 所有 Application / Engine / MVP 1.3+ Factor Frame
 Usage (生产):
     from backend.data.factor_cache import FactorCache
     from backend.app.services.db import get_sync_conn
-    from backend.platform.data.access_layer import PlatformDataAccessLayer
+    from .access_layer import PlatformDataAccessLayer
 
     dal = PlatformDataAccessLayer(
         conn_factory=get_sync_conn,
@@ -39,7 +39,7 @@ from typing import Any, Protocol
 
 import pandas as pd
 
-from backend.platform.data.interface import DataAccessLayer
+from .interface import DataAccessLayer
 
 # ---------- 错误类型 ----------
 

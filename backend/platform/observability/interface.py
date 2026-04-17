@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from backend.platform._types import Severity
+from .._types import Severity
 
 
 @dataclass(frozen=True)

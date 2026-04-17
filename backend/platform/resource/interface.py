@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from backend.platform._types import Priority, ResourceProfile
+from .._types import Priority, ResourceProfile
 
 
 @dataclass(frozen=True)

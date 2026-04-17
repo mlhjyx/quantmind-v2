@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 from engines.backtest.config import BacktestConfig  # noqa: E402
 from engines.vectorized_signal import compute_rebalance_dates  # noqa: E402

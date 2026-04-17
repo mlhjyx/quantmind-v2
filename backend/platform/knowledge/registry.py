@@ -16,7 +16,7 @@ DBADRRegistry         — adr_records 表 + API (register / supersede / get_by_i
 
 Usage:
     from backend.app.services.db import get_sync_conn
-    from backend.platform.knowledge.registry import (
+    from .registry import (
         DBExperimentRegistry, DBFailedDirectionDB, DBADRRegistry,
     )
 
@@ -31,7 +31,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from backend.platform.knowledge.interface import (
+from .interface import (
     ADRRecord,
     ADRRegistry,
     ExperimentRecord,

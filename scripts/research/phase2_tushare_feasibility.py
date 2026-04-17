@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 import tushare as ts
 from dotenv import load_dotenv

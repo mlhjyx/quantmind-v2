@@ -10,7 +10,7 @@ DEPRECATED (P2-1 DATA_SYSTEM_V1 2026-04-17): 新代码请用 DataOrchestrator:
 import sys
 import time
 
-sys.path.insert(0, "backend")
+sys.path.append("backend")
 
 from engines.fast_neutralize import fast_neutralize_batch
 

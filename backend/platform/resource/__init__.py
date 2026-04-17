@@ -1,5 +1,5 @@
 """Framework #11 Resource Orchestration — Platform SDK sub-package."""
-from backend.platform.resource.interface import (
+from .interface import (
     AdmissionController,
     AdmissionResult,
     BudgetGuard,

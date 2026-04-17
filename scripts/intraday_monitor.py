@@ -23,7 +23,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 # xtquant双层嵌套路径修复（append不insert，避免其旧numpy覆盖venv版本）
 _venv = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"

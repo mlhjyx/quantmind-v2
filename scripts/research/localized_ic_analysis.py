@@ -7,7 +7,7 @@ Morgan Stanley quant: "Localize research - reconstruct factors for different sto
 
 import sys
 
-sys.path.insert(0, "backend")
+sys.path.append("backend")
 
 import warnings
 

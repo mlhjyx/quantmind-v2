@@ -28,7 +28,7 @@ from pathlib import Path
 
 # 项目根目录加入sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.append(str(PROJECT_ROOT / "backend"))
 
 # ── 配置（可通过环境变量覆盖）────────────────────────────
 BACKUP_ROOT = PROJECT_ROOT / "backups"

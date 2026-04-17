@@ -22,7 +22,7 @@ import pandas as pd
 import psycopg2
 from scipy import stats
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 DB_CONN = "dbname=quantmind_v2 user=xin password=quantmind host=localhost"
 

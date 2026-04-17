@@ -26,7 +26,7 @@ from pathlib import Path
 import baostock as bs
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.data_fetcher.contracts import MINUTE_BARS
 from app.data_fetcher.data_loader import get_sync_conn

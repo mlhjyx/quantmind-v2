@@ -24,7 +24,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 logging.disable(logging.DEBUG)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 import structlog
 

@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.stdout.reconfigure(line_buffering=True)
-sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(__import__('pathlib').Path(__file__).resolve().parents[2] / "backend"))
 
 import numpy as np
 import pandas as pd

@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 from engines.ic_calculator import (
     compute_forward_excess_returns,

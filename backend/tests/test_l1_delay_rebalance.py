@@ -17,7 +17,7 @@ from pathlib import Path
 import psycopg2
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
 DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"

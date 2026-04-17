@@ -20,8 +20,8 @@
   - 33: 禁 silent failure (异常向上 raise, 调用方决定)
 
 Usage:
-    from backend.platform.factor.registry import DBFactorRegistry
-    from backend.platform.factor.lifecycle import PlatformLifecycleMonitor
+    from .registry import DBFactorRegistry
+    from .lifecycle import PlatformLifecycleMonitor
 
     def ic_reader(factor_name: str, lookback: int) -> list[dict]:
         # 调用方提供: 查 factor_ic_history 返 tail [{"trade_date","ic_ma20","ic_ma60"},...]
@@ -36,14 +36,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from backend.platform.factor.interface import (
+from .interface import (
     FactorLifecycleMonitor,
     FactorStatus,
     TransitionDecision,
 )
 
 if TYPE_CHECKING:
-    from backend.platform.factor.interface import FactorRegistry
+    from .interface import FactorRegistry
 
 
 # ---------- 纯规则常量 (对齐 DEV_AI_EVOLUTION V2.1 §3.1) ----------

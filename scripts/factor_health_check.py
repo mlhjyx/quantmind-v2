@@ -13,7 +13,7 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "backend"))
 os.chdir(os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from dotenv import load_dotenv

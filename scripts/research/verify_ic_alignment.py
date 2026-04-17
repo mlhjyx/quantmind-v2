@@ -16,7 +16,7 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 import numpy as np
 import pandas as pd

@@ -1,5 +1,5 @@
 """Framework #10 Knowledge Registry — Platform SDK sub-package."""
-from backend.platform.knowledge.interface import (
+from .interface import (
     ADRRecord,
     ADRRegistry,
     ExperimentRecord,

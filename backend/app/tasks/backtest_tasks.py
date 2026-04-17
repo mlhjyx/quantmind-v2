@@ -22,7 +22,7 @@ import pandas as pd
 # Celery worker 可能缺少 backend/ 在 sys.path 中，导致 engines 模块不可用
 _backend_dir = str(Path(__file__).resolve().parent.parent.parent)
 if _backend_dir not in sys.path:
-    sys.path.insert(0, _backend_dir)
+    sys.path.append(_backend_dir)
 
 from app.tasks.celery_app import celery_app
 

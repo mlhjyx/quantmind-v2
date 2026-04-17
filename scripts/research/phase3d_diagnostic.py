@@ -19,7 +19,7 @@ import pandas as pd
 from scipy import stats as sp_stats
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.append(str(PROJECT_ROOT / "backend"))
 sys.path.insert(0, str(PROJECT_ROOT))
 
 CACHE_DIR = Path("cache/ml")

@@ -13,7 +13,7 @@
   - 33: 禁 silent failure (is_stale 返 bool + CacheCoherencyError 显式 raise)
 
 使用示例:
-    from backend.platform.data.cache_coherency import (
+    from .cache_coherency import (
         CacheCoherencyPolicy, MaxDateChecker, TTLGuard,
     )
 

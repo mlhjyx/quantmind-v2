@@ -24,7 +24,7 @@ if sys.platform == "win32":
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.services.price_utils import _get_sync_conn  # noqa: E402
 

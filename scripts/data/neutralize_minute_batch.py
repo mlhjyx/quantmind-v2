@@ -21,7 +21,7 @@ from pathlib import Path
 
 # 确保 app 可导入
 REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "backend"))
+sys.path.append(str(REPO_ROOT / "backend"))
 
 logging.basicConfig(
     level=logging.INFO,

@@ -37,7 +37,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "backend"))
+sys.path.append(str(ROOT / "backend"))
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402

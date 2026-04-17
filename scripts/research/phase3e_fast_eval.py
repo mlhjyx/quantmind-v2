@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 from engines.factor_engine import preprocess_pipeline
 from engines.ic_calculator import (

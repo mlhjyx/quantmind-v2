@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 # ── 路径设置 ──
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.services.db import get_sync_conn
 

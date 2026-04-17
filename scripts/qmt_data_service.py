@@ -24,7 +24,7 @@ from pathlib import Path
 
 # 项目路径设置
 _project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_project_root / "backend"))
+sys.path.append(str(_project_root / "backend"))
 
 from app.config import settings  # noqa: E402
 from app.core.stream_bus import (  # noqa: E402

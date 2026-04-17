@@ -23,7 +23,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATUS_MD = PROJECT_ROOT / "SYSTEM_STATUS.md"

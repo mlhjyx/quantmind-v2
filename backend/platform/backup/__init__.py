@@ -1,5 +1,5 @@
 """Framework #12 Backup & Disaster Recovery — Platform SDK sub-package."""
-from backend.platform.backup.interface import (
+from .interface import (
     BackupManager,
     BackupResult,
     DisasterRecoveryRunner,

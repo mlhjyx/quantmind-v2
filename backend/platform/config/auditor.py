@@ -23,8 +23,8 @@ from typing import Any
 
 import yaml
 
-from backend.platform.config.interface import ConfigAuditor
-from backend.platform.config.schema import RootConfigSchema
+from .interface import ConfigAuditor
+from .schema import RootConfigSchema
 
 _DEFAULT_YAML_PATH = "configs/pt_live.yaml"
 _DEFAULT_LOG_DIR = "logs"

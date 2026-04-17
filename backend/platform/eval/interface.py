@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from backend.platform._types import Verdict
+from .._types import Verdict
 
 
 @dataclass(frozen=True)

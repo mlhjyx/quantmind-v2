@@ -1,5 +1,5 @@
 """Framework #2 Factor — Platform SDK sub-package."""
-from backend.platform.factor.interface import (
+from .interface import (
     FactorLifecycleMonitor,
     FactorMeta,
     FactorOnboardingPipeline,

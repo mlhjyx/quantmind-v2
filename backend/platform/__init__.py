@@ -21,7 +21,7 @@ Applications (PT / GP / Research / AI 闭环 / Forex) 必须通过本 SDK 消费
 
 实施状态: v1.0 骨架 (MVP 1.1, 2026-04-18), 所有 interface 抛 NotImplementedError.
 """
-from backend.platform._types import (
+from ._types import (
     BacktestMode,
     Order,
     Priority,
@@ -30,44 +30,44 @@ from backend.platform._types import (
     Signal,
     Verdict,
 )
-from backend.platform.backtest.interface import (
+from .backtest.interface import (
     BacktestConfig,
     BacktestRegistry,
     BacktestResult,
     BacktestRunner,
     BatchBacktestExecutor,
 )
-from backend.platform.backup.interface import (
+from .backup.interface import (
     BackupManager,
     BackupResult,
     DisasterRecoveryRunner,
     RestoreResult,
 )
-from backend.platform.ci.interface import (
+from .ci.interface import (
     CoverageGate,
     SmokeTestSuite,
     TestRunner,
     TestSummary,
 )
-from backend.platform.config.interface import (
+from .config.interface import (
     ConfigAuditor,
     ConfigLoader,
     ConfigSchema,
     FeatureFlag,
 )
-from backend.platform.data.interface import (
+from .data.interface import (
     DataAccessLayer,
     DataContract,
     DataSource,
     FactorCacheProtocol,
     ValidationResult,
 )
-from backend.platform.eval.interface import (
+from .eval.interface import (
     EvaluationPipeline,
     GateResult,
     StrategyEvaluator,
 )
-from backend.platform.factor.interface import (
+from .factor.interface import (
     FactorLifecycleMonitor,
     FactorMeta,
     FactorOnboardingPipeline,
@@ -77,7 +77,7 @@ from backend.platform.factor.interface import (
     OnboardResult,
     TransitionDecision,
 )
-from backend.platform.knowledge.interface import (
+from .knowledge.interface import (
     ADRRecord,
     ADRRegistry,
     ExperimentRecord,
@@ -85,14 +85,14 @@ from backend.platform.knowledge.interface import (
     FailedDirectionDB,
     FailedDirectionRecord,
 )
-from backend.platform.observability.interface import (
+from .observability.interface import (
     Alert,
     AlertRouter,
     EventBus,
     Metric,
     MetricExporter,
 )
-from backend.platform.resource.interface import (
+from .resource.interface import (
     AdmissionController,
     AdmissionResult,
     BudgetGuard,
@@ -100,13 +100,13 @@ from backend.platform.resource.interface import (
     ResourceSnapshot,
     requires_resources,
 )
-from backend.platform.signal.interface import (
+from .signal.interface import (
     AuditChain,
     ExecutionAuditTrail,
     OrderRouter,
     SignalPipeline,
 )
-from backend.platform.strategy.interface import (
+from .strategy.interface import (
     CapitalAllocator,
     RebalanceFreq,
     Strategy,

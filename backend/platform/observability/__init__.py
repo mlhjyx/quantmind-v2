@@ -1,5 +1,5 @@
 """Framework #7 Observability — Platform SDK sub-package."""
-from backend.platform.observability.interface import (
+from .interface import (
     Alert,
     AlertRouter,
     EventBus,

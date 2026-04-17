@@ -18,7 +18,7 @@ from pathlib import Path
 
 from psycopg2.extras import execute_values
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pandas as pd

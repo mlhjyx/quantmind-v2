@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from backend.platform.config.interface import ConfigSchema
+from .interface import ConfigSchema
 
 # ---------- Strategy ----------
 

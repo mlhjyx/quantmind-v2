@@ -18,7 +18,7 @@ from pathlib import Path
 # 确保 backend/ 在 sys.path 中，使 engines 模块可被 Celery worker 导入
 _backend_dir = str(Path(__file__).resolve().parent.parent.parent)
 if _backend_dir not in sys.path:
-    sys.path.insert(0, _backend_dir)
+    sys.path.append(_backend_dir)
 
 from celery import Celery
 

@@ -1,5 +1,5 @@
 """Framework #6 Signal & Execution — Platform SDK sub-package."""
-from backend.platform.signal.interface import (
+from .interface import (
     AuditChain,
     ExecutionAuditTrail,
     OrderRouter,

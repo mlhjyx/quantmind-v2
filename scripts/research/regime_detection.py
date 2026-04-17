@@ -35,7 +35,7 @@ from pathlib import Path
 
 logging.disable(logging.DEBUG)
 warnings.filterwarnings("ignore")
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent / "backend"))
 
 import structlog
 

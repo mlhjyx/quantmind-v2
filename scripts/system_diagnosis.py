@@ -21,7 +21,7 @@ from pathlib import Path
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.config import settings
 from app.services.price_utils import _get_sync_conn

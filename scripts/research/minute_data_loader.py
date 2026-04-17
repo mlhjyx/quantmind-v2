@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 # 设置backend路径以使用get_sync_conn
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(Path(__file__).resolve().parents[2] / "backend"))
 
 CACHE_DIR = Path("cache/minute_bars")
 
