@@ -98,7 +98,7 @@ def get_latest_perf_date(conn) -> date | None:
     cur = conn.cursor()
     cur.execute(
         """SELECT MAX(trade_date) FROM performance_series
-           WHERE execution_mode = 'paper'"""
+           WHERE execution_mode IN ('paper', 'live')"""
     )
     row = cur.fetchone()
     cur.close()
@@ -110,7 +110,7 @@ def get_latest_signal_date(conn) -> date | None:
     cur = conn.cursor()
     cur.execute(
         """SELECT MAX(trade_date) FROM signals
-           WHERE execution_mode = 'paper'"""
+           WHERE execution_mode IN ('paper', 'live')"""
     )
     row = cur.fetchone()
     cur.close()

@@ -42,14 +42,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# v1.1 Active因子列表
-ACTIVE_FACTORS = [
-    "turnover_mean_20",
-    "volatility_20",
-    "reversal_20",
-    "amihud_20",
-    "bp_ratio",
-]
+# Active因子列表: 从PT配置动态读取 (铁律34 single source of truth)
+try:
+    from engines.signal_engine import PAPER_TRADING_CONFIG
+    ACTIVE_FACTORS = list(PAPER_TRADING_CONFIG.factor_names)
+except ImportError:
+    # fallback: CORE3+dv_ttm (2026-04-12 WF PASS配置)
+    ACTIVE_FACTORS = [
+        "turnover_mean_20",
+        "volatility_20",
+        "bp_ratio",
+        "dv_ttm",
+    ]
 
 
 # ============================================================

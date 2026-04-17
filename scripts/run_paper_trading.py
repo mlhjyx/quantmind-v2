@@ -115,6 +115,25 @@ def _get_notif_service() -> NotificationService:
     return NotificationService(session=None)
 
 
+_HEARTBEAT_FILE = Path(__file__).resolve().parent.parent / "logs" / "pt_heartbeat.json"
+
+
+def _write_heartbeat(trade_date: date, phase: str) -> None:
+    """写入心跳文件供 pt_watchdog 检测。Step 6-A 拆分时遗漏, 2026-04-16 补回。"""
+    try:
+        _HEARTBEAT_FILE.write_text(
+            json.dumps({
+                "trade_date": str(trade_date),
+                "completed_at": datetime.now().isoformat(),
+                "phase": phase,
+                "status": "ok",
+            }),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        logger.warning("[Heartbeat] 写入失败: %s", e)
+
+
 # ════════════════════════════════════════════════════════════
 # Signal Phase — T日盘后 16:30
 # ════════════════════════════════════════════════════════════
@@ -285,6 +304,7 @@ def run_signal_phase(
         # Step 5: 收尾
         if not dry_run:
             log_step(conn, "signal_phase", "success")
+            _write_heartbeat(trade_date, "signal")
 
         elapsed = time.time() - t_total
         logger.info("[SIGNAL PHASE] 完成: %.0fs", elapsed)
@@ -433,6 +453,7 @@ def run_execute_phase(
 
         if not dry_run:
             log_step(conn, f"execute_phase_{exec_mode}", "success")
+            _write_heartbeat(exec_date, "execute")
 
         elapsed = time.time() - t_total
         logger.info("[EXECUTE PHASE] 完成: %.0fs", elapsed)
