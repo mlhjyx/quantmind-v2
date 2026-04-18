@@ -105,32 +105,47 @@ class PlatformBacktestRunner(BacktestRunner):
 
 **包而不改**: `run_hybrid_backtest` 内部逻辑不动, 仅 wrap 成 OO 接口, 降低 blast radius.
 
-### D3. `backtest_run` DB 表 + TableContract (ColumnSpec 扩 TEXT[] / DECIMAL[])
+### D3. `backtest_run` ALTER 扩展 + 字段名映射 (⚠️ **ADR-007 修订**, v1.1)
+
+**重要修订** (2026-04-18 Session 7 PR A 实施前 P0 发现): 原设计稿 D3 的 `CREATE TABLE` 方案基于错误 precondition (未查 DB 实表). 实测发现:
+- `backtest_run` 表**已存在** + **7 行研究历史** (from `docs/QUANTMIND_V2_DDL_FINAL.sql`)
+- 4 张 FK 依赖表: `backtest_daily_nav` / `backtest_holdings` / `backtest_trades` / `backtest_wf_windows` (0 行但 FK 绑死)
+
+详见 **ADR-007 `docs/adr/ADR-007-mvp-2-3-backtest-run-alter-strategy.md`**. 本章节修订对齐 ADR-007 方案 A.
+
+**修订后 migration (ALTER ADD 3 列)**:
 
 ```sql
--- backend/migrations/backtest_run.sql
-CREATE TABLE IF NOT EXISTS backtest_run (
-    run_id          UUID         PRIMARY KEY,
-    config_hash     VARCHAR(64)  NOT NULL,
-    git_commit      VARCHAR(40),
-    mode            VARCHAR(16)  NOT NULL,
-    config          JSONB        NOT NULL,
-    factor_pool     TEXT[]       NOT NULL,         -- 因子列表 (ColumnSpec 扩 text_array)
-    metrics         JSONB        NOT NULL,
-    extra_decimals  NUMERIC[] ,                    -- 可选扩展指标 (ColumnSpec 扩 decimal_array)
-    lineage_id      UUID         REFERENCES data_lineage(lineage_id),  -- MVP 2.2 集成
-    started_at      TIMESTAMPTZ  NOT NULL,
-    finished_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    artifact_json   JSONB                          -- {nav: "path", holdings: "path", ...}
-);
+-- backend/migrations/backtest_run.sql (沿用老表)
+ALTER TABLE backtest_run
+    ADD COLUMN IF NOT EXISTS mode VARCHAR(16),                           -- BacktestMode enum
+    ADD COLUMN IF NOT EXISTS lineage_id UUID REFERENCES data_lineage(lineage_id),  -- MVP 2.2 U3
+    ADD COLUMN IF NOT EXISTS extra_decimals NUMERIC[];                    -- ColumnSpec decimal_array
 
-CREATE INDEX idx_backtest_config_hash ON backtest_run (config_hash);
-CREATE INDEX idx_backtest_started_at ON backtest_run (started_at DESC);
+ALTER TABLE backtest_run
+    ADD CONSTRAINT chk_backtest_run_mode
+    CHECK (mode IS NULL OR mode IN ('quick_1y','full_5y','full_12y','wf_5fold','live_pt'));
 ```
 
-**ColumnSpec 扩 2 类型 (吸收 MVP 2.1c Sub1 3b/4 遗留)**:
-- `text_array` → `ColumnSpec("text_array")` 映射 PG `TEXT[]`, 用 `psycopg2.extensions.AsIs` wrap list
-- `decimal_array` → 同上映射 `NUMERIC[]`
+**字段名映射表** (SDK 写入时透明转换, `PlatformBacktestRunner._hash_to_column` 等):
+
+| 设计稿 concept | 老表实际列名 | 备注 |
+|---|---|---|
+| `config_hash` | `config_yaml_hash VARCHAR(64)` | 沿用老名, 写 sha256 of sorted JSON |
+| `factor_pool` | `factor_list TEXT[]` | 沿用老名 |
+| `config` | `config_json JSONB` | 沿用老名 |
+| `metrics.sharpe` | `sharpe_ratio NUMERIC(8,4)` | 独立 DECIMAL 列 (而非 JSONB) |
+| `metrics.<other>` | `max_drawdown / annual_return / calmar_ratio / sortino_ratio / information_ratio / beta / win_rate / profit_loss_ratio / annual_turnover / ...` | 独立 DECIMAL 列 |
+| `mode` | `mode` | **NEW** |
+| `lineage_id` | `lineage_id` | **NEW** |
+| `extra_decimals` | `extra_decimals NUMERIC[]` | **NEW** (未来 metric 扩展) |
+| `artifact_json` | 老表**无此列** | Sub1 不加; 走 `error_message TEXT` + artifact 路径未来评估 |
+
+**ColumnSpec 扩 2 类型 (仍需要, for extra_decimals + factor_list 写)**:
+- `text_array` → Python list[str] 直通, psycopg2 原生适配 PG `TEXT[]` (不需 AsIs wrap)
+- `decimal_array` → Python list[int|float|Decimal] 直通, psycopg2 原生适配 PG `NUMERIC[]`
+
+**Tech debt 记录 (入 ADR-007 Follow-up)**: 字段名映射 (config_hash/factor_pool/config vs 老表) 是永久 tech debt, 未来 MVP 3.x Clean-up PR 可选 `RENAME COLUMN` 对齐.
 
 ### D4. U1 Parity 核心 (Sub3)
 
@@ -257,3 +272,9 @@ def _compute_config_hash(config: BacktestConfig) -> str:
 
 - 2026-04-18 v1.0 设计稿落盘 (Session 5 末), 等 plan approval + 实施.
   后续 Session 开工先跑 `docs/mvp/MVP_2_3_backtest_parity.md` precondition checklist.
+- 2026-04-18 v1.1 D3 ADR-007 修订 (Session 7 PR A 实施中 P0 发现):
+  - **触发**: PR A migration `CREATE TABLE IF NOT EXISTS` 跑时 transaction aborted, `\d backtest_run` 实测发现老表已存在 + 7 行数据 + 4 张 FK 依赖表 (`backtest_daily_nav` / `holdings` / `trades` / `wf_windows`).
+  - **根因**: 设计稿 v1.0 Session 5 末凭印象写 schema, 未 `\d backtest_run` 查实表 (LL-055 同源, 铁律 36 precondition 漏查).
+  - **决策**: ADR-007 方案 A — ALTER TABLE ADD COLUMN IF NOT EXISTS 3 列 (`mode` + `lineage_id` + `extra_decimals`) + 沿用老 schema + 字段名映射 tech debt 记入 ADR Follow-up.
+  - **影响**: D3 章节重写 (migration SQL + 字段映射表), 硬门 #1 从 "CREATE + 2 索引" → "ALTER 幂等 + 保 7 行历史"; 其他章节 (D1/D2/D4/D5/D6) 不受影响.
+  - **实测验证**: 本次修订后 migration 跑 ALTER × 2 (幂等) + rollback + re-apply, 7 行数据全程保留, 3 列全加验证.

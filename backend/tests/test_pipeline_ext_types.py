@@ -1,17 +1,20 @@
 """MVP 2.2 · DataPipeline ColumnSpec 扩 UUID + JSONB 类型验证 + 记录准备.
+MVP 2.3 Sub1 · 扩 text_array + decimal_array (backtest_run 表配套, 见 migrations/backtest_run.sql).
 
 单测不依赖 DB — 只覆盖 `_validate` 逻辑层 + `_is_null` / `_prepare_cell` helper.
-DB 端到端 round-trip 留 live smoke (test_mvp_2_2_lineage_live).
+DB 端到端 round-trip 留 live smoke (test_mvp_2_2_lineage_live + test_mvp_2_3_backtest_live PR B).
 
 铁律:
   - 29 (禁 NaN 写 DB) + 33 (fail-safe 对 invalid input raise 进 reject_reasons 不 silent swallow)
-  - 17 (DataPipeline 唯一入库点) + 38 (对齐 MVP 2.2 Blueprint)
+  - 17 (DataPipeline 唯一入库点) + 38 (对齐 MVP 2.2/2.3 Blueprint)
 """
 
 from __future__ import annotations
 
+import decimal
 import uuid
 
+import numpy as np
 import pandas as pd
 from psycopg2.extras import Json
 
@@ -211,3 +214,170 @@ def test_prepare_cell_json_wraps_jsonb_dtype():
     assert _prepare_cell(u, "uuid") is u
     # float 直通
     assert _prepare_cell(1.5, "float") == 1.5
+
+
+# ════════════════════════════════════════════════════════════
+# MVP 2.3 Sub1 · text_array / decimal_array 验证 (11 tests)
+# ════════════════════════════════════════════════════════════
+
+
+def _text_array_contract() -> TableContract:
+    """Contract with int PK + nullable text_array."""
+    return TableContract(
+        table_name="_test_text_array_tbl",
+        pk_columns=("id",),
+        columns={
+            "id": ColumnSpec("int", nullable=False),
+            "tags": ColumnSpec("text_array", nullable=True),
+        },
+        fk_filter_col=None,
+        skip_unit_conversion=True,
+    )
+
+
+def _decimal_array_contract() -> TableContract:
+    """Contract with int PK + nullable decimal_array."""
+    return TableContract(
+        table_name="_test_decimal_array_tbl",
+        pk_columns=("id",),
+        columns={
+            "id": ColumnSpec("int", nullable=False),
+            "metrics": ColumnSpec("decimal_array", nullable=True),
+        },
+        fk_filter_col=None,
+        skip_unit_conversion=True,
+    )
+
+
+# ── text_array (5 tests) ────────────────────────────────────
+
+
+def test_text_array_accepts_list_of_str():
+    """输入 list[str] → 直通, 0 reject."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([{"id": 1, "tags": ["alpha", "beta", "gamma"]}])
+    valid_df, rejects = pipe._validate(df, _text_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+    assert valid_df["tags"].iloc[0] == ["alpha", "beta", "gamma"]
+
+
+def test_text_array_accepts_none_when_nullable():
+    """nullable=True 列 None → 直通为 None, 0 reject."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([{"id": 1, "tags": None}])
+    valid_df, rejects = pipe._validate(df, _text_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+    assert valid_df["tags"].iloc[0] is None
+
+
+def test_text_array_accepts_empty_list():
+    """空 list 合法 (PG ARRAY[]::TEXT[] 允许)."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([{"id": 1, "tags": []}])
+    valid_df, rejects = pipe._validate(df, _text_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+    assert valid_df["tags"].iloc[0] == []
+
+
+def test_text_array_rejects_non_list():
+    """输入 str / dict → reject, reason='invalid_text_array_tags'."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "tags": "alpha"},   # str 非 list
+        {"id": 2, "tags": {"a": 1}},  # dict 非 list
+    ])
+    valid_df, rejects = pipe._validate(df, _text_array_contract())
+    assert len(valid_df) == 0
+    assert rejects == {"invalid_text_array_tags": 2}
+
+
+def test_text_array_rejects_list_with_non_str():
+    """list 含 int/None/mixed → reject."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "tags": ["alpha", 123]},       # 含 int
+        {"id": 2, "tags": ["x", None]},          # 含 None
+        {"id": 3, "tags": [1, 2, 3]},            # 纯 int list
+    ])
+    valid_df, rejects = pipe._validate(df, _text_array_contract())
+    assert len(valid_df) == 0
+    assert rejects == {"invalid_text_array_tags": 3}
+
+
+# ── decimal_array (5 tests) ─────────────────────────────────
+
+
+def test_decimal_array_accepts_mixed_numeric():
+    """int/float/Decimal 混合 list → 直通."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "metrics": [1, 2.5, decimal.Decimal("3.14159")]},
+    ])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+    assert valid_df["metrics"].iloc[0] == [1, 2.5, decimal.Decimal("3.14159")]
+
+
+def test_decimal_array_accepts_numpy_scalars():
+    """numpy.int64 / numpy.float64 合法 (有 .item() method)."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "metrics": [np.int64(42), np.float64(3.14)]},
+    ])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+
+
+def test_decimal_array_accepts_none_when_nullable():
+    """nullable=True 列 None → 直通."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([{"id": 1, "metrics": None}])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 1
+    assert rejects == {}
+    assert valid_df["metrics"].iloc[0] is None
+
+
+def test_decimal_array_rejects_nan_and_inf():
+    """NaN / inf 元素 → reject (铁律 29 防 NaN 写 DB)."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "metrics": [1.0, float("nan"), 3.0]},
+        {"id": 2, "metrics": [1.0, float("inf")]},
+    ])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 0
+    assert rejects == {"invalid_decimal_array_metrics": 2}
+
+
+def test_decimal_array_rejects_bool_and_str():
+    """bool (int 子类) / str 元素 → reject."""
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "metrics": [True, False]},         # bool 排除
+        {"id": 2, "metrics": ["1.5", "2.5"]},        # str 排除
+        {"id": 3, "metrics": "1,2,3"},               # 非 list 排除
+    ])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 0
+    assert rejects == {"invalid_decimal_array_metrics": 3}
+
+
+# ── _prepare_cell array 直通 (1 test) ─────────────────────
+
+
+def test_prepare_cell_array_types_passthrough():
+    """text_array / decimal_array: Python list 不被 Json/AsIs 包装, 直通给 psycopg2 原生 adapter."""
+    # None 分支
+    assert _prepare_cell(None, "text_array") is None
+    assert _prepare_cell(None, "decimal_array") is None
+    # list 直通 (不变形)
+    tags = ["alpha", "beta"]
+    assert _prepare_cell(tags, "text_array") is tags
+    nums = [1, 2.5, decimal.Decimal("3.14")]
+    assert _prepare_cell(nums, "decimal_array") is nums
