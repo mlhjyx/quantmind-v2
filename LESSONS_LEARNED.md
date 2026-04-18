@@ -1062,3 +1062,54 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 5. **PT 状态断言多维核对 (LL-054 延伸)**: 未来 PT 状态声明必核 holdings / signal_latest_date / scheduler_task_log / pt_watchdog heartbeat 4 维, 任一 stale = 状态未知.
 
 **执行状态**: ✅ PR #4 `7365731` merged (Bug A + Bug B fix + 7 unit test). Session 6 末手动修复 PT 已续上 (signals 04-14~04-17 各 20 行, klines/stock_status 到 04-17). pt_watchdog 04-19 20:00 再跑应 heartbeat_date=04-17 + perf_latest=04-17 正常. 本 LL entry 单独 PR #5 入册.
+
+---
+
+## LL-059: 代码 PR 9 步 AI 闭环 workflow — 用户 0 接触 (Session 7 PR A 沉淀, 2026-04-18→19)
+
+**事件**: Session 7 开场 MVP 2.3 Sub1 PR A (PR #11, backtest_run ALTER migration + ColumnSpec 扩 array + ADR-007) 执行过程中, 用户多次澄清理念 ("审查审核自己调用相关代码审查", "形成一个闭环", "不由我来审查", "这个需要记住, 不要每次来询问和我来提醒"). 本 LL 沉淀 Session 7 PR A 实战提炼的**代码 PR 9 步 AI 闭环 workflow**, 作为后续所有代码 PR 的默认模式.
+
+**根因 — 铁律 42 原文需要修订**:
+- 铁律 42 (Session 6 LL-055 触发诞生) 原文 "必须走 PR + 用户 merge". 当时想法: AI 自审不可靠 → 人审 buffer.
+- Session 7 PR A 实证: **双 reviewer agent 并行 (code-reviewer + database-reviewer) 真能当 reviewer**, 识别 4 P1 HIGH findings (2 代码 correctness + 2 DB idempotency/index), 与人审价值等价.
+- "用户 merge" 条款造成 AI 每次做完都要询问/等待, 与 Auto mode + 单人项目 0 接触目标矛盾.
+- **结论**: 铁律 42 升级 — "用户 merge" → "AI 自 merge (reviewer agents 全 APPROVE + 硬门全绿)".
+
+**改进措施 — 9 步 AI 闭环**:
+
+1. **Plan 模式**: `EnterPlanMode` → Explore agent 读代码 + precondition → 写 plan file → `AskUserQuestion` clarify-only (只问 choice-between-approaches, 不问 "approve 吗") → `ExitPlanMode`. 用户明确问题才问, 不空转.
+2. **铁律 25/36 precondition 含 DB 实测**: 不只读文档/interface.py, 还要 `\d table_name` / row count / FK / existing constraints. Session 7 PR A 就是靠 DB 实测发现 `backtest_run` 已存在 (设计稿凭印象 = LL-055 同源).
+3. **铁律 42 PR 拆分**: ADR-first (铁律 38) / migration (最小边界) / code+tests+docs (合逻辑单元) 3 个 commit. + 可选 fix commit (保审查历史, 不 amend).
+4. **硬门全跑**: unit (`.venv/Scripts/python.exe` ≠ 系统 `python`, 必 .venv 因 `.pth` 在 .venv) + ruff + regression max_diff=0 + smoke (marker `smoke and not live_tushare`) + full pytest (≤ 24 fail baseline) + DB 幂等 2 次 + rollback 验证.
+5. **独立 reviewer agents 并行审**: `code-reviewer` (python + docs 通用) + `database-reviewer` (SQL migration) 并行 spawn. 按需补 `python-reviewer` / `security-reviewer` / `typescript-reviewer`. **必不自审** (superpowers "Never self-approve in the same active context") — 自审必漏自己盲区.
+6. **P1 findings 全修 merge 前**: reviewer P1 = 真 bug / 架构缺陷 / 幂等性 gap, 必修. P2/P3 视情况 (推后续 PR 或 MVP 3.x cleanup 可接受). 新 fix commit (不 amend, 保审查历史轨迹).
+7. **`gh pr comment`** 记 fix 证据: 每个 P1 fix source/location/rationale + re-verify 数字 (unit / ruff / DB round-trip) + 残留 non-blocking findings 推后处理方案.
+8. **pre-push hook smoke green 本地守门**: `config/hooks/pre-push` 强制 push 前 `pytest -m smoke` 绿, 阻断 smoke fail push.
+9. **AI 自 merge + cleanup**: reviewer agents 全 APPROVE (或 P1 已修) + 硬门全绿 → `gh pr merge <N> --rebase --delete-branch` → `git checkout main && git fetch origin && git reset --hard origin/main`. **不询问用户**, 自动推进.
+
+**Break 闭环的唯一合法场景 (回询问用户)**:
+- reviewer agent 报 **P0 BLOCKER** 且语义决策 AI 无法判断修法 (如 "该用方案 A 还是 B")
+- 硬门 fail 且与本 commit 改动有因果关系 (非环境问题 — 环境问题 AI 自己定位修)
+- Plan 阶段 `AskUserQuestion` clarify (ExitPlanMode 是 approval, 不 break)
+
+**不 break 闭环的场景** (默认 yes, 不问):
+- "commit 吗" / "merge 吗" / "push 吗" — 默认 yes
+- "需要跑 review 吗" — 默认必跑
+- "reviewer 给 APPROVE_WITH_COMMENTS, 是否接受" — 修 P1 后自 merge
+- "要不要加这个 test" — 覆盖度不够就加
+- "发现老 schema 冲突, 选方案 A/B/C?" — 如果 AI 能做技术判断 (blast radius / 数据安全 / tech debt 三维权衡) 就自决 + 写 ADR, 不问
+
+**持久化** (跨 session 生效):
+- `C:/Users/hd/.claude/projects/D--quantmind-v2/memory/feedback_code_pr_workflow.md` — 用户级 memory
+- `memory/MEMORY.md` 索引
+- CLAUDE.md 铁律 42 修订 (引用本 LL 全流程)
+- 本 LL 条目
+
+**Session 7 PR A 实证数据点**:
+- PR #11 (4 commits: 8255ce6 ADR-007 + 99c9f23 migration + 6025bad code+tests+docs + a0e01db fix): 3-4 小时工程量
+- reviewer agents: 2 并行 spawn, 165s + 89s, 识别 4 P1 + 5 P2/P3
+- P1 全修 + re-verify: ~15 分钟
+- 硬门 (unit 24 / ruff / regression 0 / smoke 25 / pytest 24 / DB 5 步): 全绿
+- 用户接触点: 0 (除了 plan 模式 clarify 3 问 + 授权继续). 实际 merge/push/cleanup 全 AI 自主.
+
+**执行状态**: ✅ Session 7 PR A (`a0e01db` merged 到 origin/main) 实战验证本 workflow. 后续所有代码 PR 默认遵循, 不征求用户确认. 本 LL + CLAUDE.md 铁律 42 修订 + memory 持久化 **本 PR 完成沉淀**.

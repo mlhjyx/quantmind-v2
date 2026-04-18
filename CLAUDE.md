@@ -458,8 +458,8 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 42. **PR 分级审查制 (Auto mode 缓冲层)** — 全局原则: AI-heavy + 真金白银生产环境下 main 直 push 是危险默认, 必须有"暂停 + revisit" buffer. 分级:
     - **允许 AI 请求用户直接 push main**: `docs/**` + `memory/**` + `adr/**` + 根目录 markdown (CHANGELOG / LESSONS_LEARNED / SYSTEM_STATUS / FACTOR_TEST_REGISTRY) — 纯文档零代码风险
-    - **必须走 PR (feature branch + 自审 + 用户 merge)**: `backend/**` (代码 + tests + migrations) + `scripts/**` (执行/调度脚本) + `configs/**` + `frontend/**` + CLAUDE.md (核心治理) + `.env*` + `pyproject.toml` + `requirements*.txt` + `config/hooks/**` + `.github/**` (CI)
-    - **PR 流程 (单人项目, 不需独立 reviewer)**: feature branch (e.g. `feat/mvp-2-1c-sub3`) → push branch → `gh pr create` → 自审 (commit list + diff 关键 hunk + smoke/regression/pytest 数字) → 用户 merge (`gh pr merge --squash` 或 `--rebase`) → 删 branch
+    - **必须走 PR (feature branch + 独立 reviewer agents 审 + AI 自 merge)**: `backend/**` (代码 + tests + migrations) + `scripts/**` (执行/调度脚本) + `configs/**` + `frontend/**` + CLAUDE.md (核心治理) + `.env*` + `pyproject.toml` + `requirements*.txt` + `config/hooks/**` + `.github/**` (CI)
+    - **PR 流程 (Session 7 升级, LL-059 详细 9 步)**: feature branch (e.g. `feat/mvp-2-1c-sub3`) → push branch → `gh pr create` → **独立 reviewer agents 并行审** (code-reviewer + database-reviewer + 按需 python/security/typescript-reviewer) → P1 findings 全修 + fix commit (不 amend 保历史) → `gh pr comment` 记 fix 证据 → pre-push smoke green 守门 → **AI 自 merge** (`gh pr merge --rebase --delete-branch` + `git fetch origin && git reset --hard origin/main`). **用户 0 接触** (except plan 模式 clarify-only 问题).
     - **PR description 必须含**: (a) 改动文件分类 (代码/测试/文档/配置); (b) 验证证据 (smoke 数字 + regression max_diff + pytest fail 数 vs 24 baseline); (c) 关联 MVP / Sprint / 设计稿; (d) 风险 + 回滚方案
     - **Bootstrap 例外**: 引入本铁律的 commit 自身 (改 CLAUDE.md) 是 grandfather 例外, 直 push 允许. 之后所有 commit 严格遵循.
     - **Claude Code v4.7 默认行为已配合**: AI 调 `git push origin main` 默认被 hardcoded git safety 拒绝, 需用户手动 push 或开 PR. 本铁律是把 default 升级为显式分类制度.
