@@ -8,6 +8,7 @@ from .interface import (
     BatchBacktestExecutor,
 )
 from .loaders import BacktestCacheLoader, ParquetBaselineLoader
+from .memory_registry import InMemoryBacktestRegistry
 
 __all__ = [
     "BacktestCacheLoader",
@@ -16,5 +17,6 @@ __all__ = [
     "BacktestResult",
     "BacktestRunner",
     "BatchBacktestExecutor",
+    "InMemoryBacktestRegistry",
     "ParquetBaselineLoader",
 ]
