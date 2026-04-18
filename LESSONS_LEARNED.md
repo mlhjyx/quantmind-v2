@@ -1035,3 +1035,30 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 **额外发现 (副产物, Session 7 待办)**: 调查时发现 04-17 周五 PT signal Task LastRunResult=0 但 signals 表 0 records (signal_latest_date 仍 04-16). app.log 04-17 16:30:21~25 显示 **5 个进程同时启动**反复 "日志系统已配置" + QMT 连接失败. 怀疑 acquire_lock 抢锁 silent skip 早退. **PT 实际 04-16 后已断 2 天未生成 signal**. 与本 LL 解耦, Session 7 深入调查 `scheduler_task_log` 表 + acquire_lock 实现.
 
 **执行状态**: ✅ MVP 2.1c v1.3 update 加 18 Task 实测列表 + 修 v1.2 错误断言. CLAUDE.md L83 "pt_data_service 104 行" → "337 行" 修. LL-057 入册. PT 04-17 failure 进 Session 7 待办 (Sub3 main 不阻塞).
+
+---
+
+## LL-058: PT 链路 silent ingest failure + over-strict health check 双层 bug 致 4 天断（Session 6 末, 2026-04-18）
+
+**事件**: Session 6 末用户截图 pt_watchdog 04-18 20:00 钉钉告警 "signal_latest_date=2026-04-16, 绩效数据缺失 1523 交易日". Session 6 前断言 "PT 04-02~04-17 连续运行" (CLAUDE.md L573) 基于 holdings 未清仓 (LL-054 同源), 未核 signal 链路. 实测 `signals` 表仅 04-14/15/16 各 20 行, **04-17 周五 0 records**. `scheduler_task_log` `signal_phase` 04-17 16:30:17 "failed 健康预检失败" + 04-13 17:15 前一次 fail. 用户 04-17 23:15/17/20 手动 retry 3 次全失败.
+
+**根因链** (Bug A + Bug B 双层):
+1. **Bug A** (`pt_data_service.py::fetch_daily_data` L100-105 silent swallow): 04-16 `update_stock_status_daily()` 抛异常, catch 只 `logger.error` + `status_rows=0`, **不 raise**. fetch_daily_data 正常返回, signal_phase Step 1 以为成功继续.
+2. 04-16 `stock_status_daily` 缺失 (实测 MAX=04-15).
+3. **Bug B** (`health_check.py::check_stock_status` L143-144 hard fail): 04-17 Step 0 health check 要求 `stock_status >= 04-16`, 实测 04-15. `return False` → signal_phase `sys.exit(1)`.
+4. 04-17 周五 + 04-18 周六 PT signal 链路全断. 用户 pt_watchdog 20:00 钉钉告警才暴露.
+
+**根因**:
+1. **silent swallow (Bug A)**: 铁律 33 fail-loud 违反. silent error 让上层以为成功, 下游 (health check) 才暴露, 但相差 1 天延迟. 真实事故发生 → 暴露点 gap = 数据已损坏 1 天.
+2. **over-strict health check (Bug B)**: 1 天滞后 hard fail = 单点故障放大. stock_status 临时缺 1 天应 self-heal 或降级 warning, 不应 block 整 signal.
+3. Session 6 前 "PT 连续运行" 断言只看 holdings 不看 signal (LL-054 同源: 状态断言不实测多维).
+4. 与 LL-055 (handoff 凭印象) / LL-056 (smoke ≠ dual-write) / LL-057 (head truncate) 同源 — **"AI 不严谨实测 → 凭部分 evidence 跳结论"**.
+
+**改进措施**:
+1. **Bug A 修 (fail-loud)**: `pt_data_service.py::fetch_daily_data` L100-105 catch 加 `raise`. 传 → signal_phase except → `log_step("signal_phase", "failed", ...)` → scheduler_task_log + pt_watchdog 20:00 钉钉告警. 不再静默 1 天延迟暴露.
+2. **Bug B 修 (tolerant)**: `health_check.py::check_stock_status` 从 hard fail 改分级: 滞后 ≤ 2 交易日 warning pass (不阻塞 signal), > 2 交易日 hard fail. 避免单日临时缺失就 block 整链路.
+3. **7 new unit test** (`backend/tests/test_pt_data_service_fail_loud.py`): Bug A inspect source 验证 `raise` + FAIL-LOUD marker. Bug B 6 scenarios (no lag / lag 1 / lag 2 / lag 3 / empty / signature).
+4. **Session 6 末手动修复 step** (已完成): `update_stock_status_daily(date(2026,4,16), conn)` 补 5491 行 + `python scripts/run_paper_trading.py signal --date 2026-04-17` 71s SUCCESS → signals+klines+stock_status 全续到 04-17 → PT 04-20 周一 09:31 execute 可正常跑.
+5. **PT 状态断言多维核对 (LL-054 延伸)**: 未来 PT 状态声明必核 holdings / signal_latest_date / scheduler_task_log / pt_watchdog heartbeat 4 维, 任一 stale = 状态未知.
+
+**执行状态**: ✅ PR #4 `7365731` merged (Bug A + Bug B fix + 7 unit test). Session 6 末手动修复 PT 已续上 (signals 04-14~04-17 各 20 行, klines/stock_status 到 04-17). pt_watchdog 04-19 20:00 再跑应 heartbeat_date=04-17 + perf_latest=04-17 正常. 本 LL entry 单独 PR #5 入册.
