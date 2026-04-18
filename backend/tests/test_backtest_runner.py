@@ -387,3 +387,78 @@ def test_run_end_to_end_mock_integration():
     # lineage_id 回填 BacktestResult
     assert result.lineage_id == expected_lineage_id
     assert result.sharpe == 1.2  # 来自 fake perf
+
+
+# ─── engine_artifacts 传递 (PR C2, 3 tests) ───────────────
+
+
+def test_result_default_engine_artifacts_is_none():
+    """BacktestResult 默认 engine_artifacts=None (向后兼容 18 调用方)."""
+    r = BacktestResult(
+        run_id=uuid4(),
+        config_hash="h",
+        git_commit="g",
+        sharpe=1.0,
+        annual_return=0.1,
+        max_drawdown=-0.05,
+        total_return=0.5,
+        trades_count=10,
+        metrics={},
+    )
+    assert r.engine_artifacts is None
+    assert r.lineage_id is None
+
+
+def test_run_cache_miss_populates_engine_artifacts():
+    """PR C2: cache-miss 真跑 → result.engine_artifacts 含 engine_result + price_data."""
+    registry = MagicMock()
+    registry.get_by_hash.return_value = None
+    registry.log_run.return_value = uuid4()
+
+    fake_price_data = MagicMock(name="price_data")
+    fake_factor_df = MagicMock(name="factor_df")
+    data_loader = MagicMock(return_value=(fake_factor_df, fake_price_data, None))
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+    )
+
+    fake_engine_result_obj = _fake_engine_result()
+    with patch(
+        "backend.platform.backtest.runner.run_hybrid_backtest",
+        return_value=fake_engine_result_obj,
+    ):
+        result = runner.run(BacktestMode.QUICK_1Y, _make_config())
+
+    # engine_artifacts 必含 engine_result + price_data (消费者取 daily_nav)
+    assert result.engine_artifacts is not None
+    assert result.engine_artifacts["engine_result"] is fake_engine_result_obj
+    assert result.engine_artifacts["price_data"] is fake_price_data
+
+
+def test_cache_hit_no_engine_artifacts():
+    """Cache-hit 走 DB round-trip, engine_artifacts 恒 None (DBBacktestRegistry 不落 Series).
+
+    这是本 PR C2 架构的关键契约 — DB 不持久化 pandas Series, 消费者必须知情.
+    """
+    cached = BacktestResult(
+        run_id=uuid4(),
+        config_hash="cached_hash",
+        git_commit="abc123",
+        sharpe=1.0,
+        annual_return=0.1,
+        max_drawdown=-0.05,
+        total_return=0.5,
+        trades_count=10,
+        metrics={},
+        # engine_artifacts 默认 None 不显式传
+    )
+    registry = MagicMock()
+    registry.get_by_hash.return_value = cached
+
+    runner = PlatformBacktestRunner(registry=registry, data_loader=MagicMock())
+    result = runner.run(BacktestMode.FULL_5Y, _make_config())
+
+    assert result is cached
+    assert result.engine_artifacts is None
