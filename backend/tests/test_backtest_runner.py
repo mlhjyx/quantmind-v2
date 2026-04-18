@@ -272,9 +272,10 @@ def test_resolve_directions_none_provider_emits_userwarning():
 
 
 def test_build_engine_config_maps_cost_model_full():
-    """cost_model='full' → historical_stamp_tax=True."""
+    """cost_model='full' → historical_stamp_tax=True. PR C3: instance method (fallback path)."""
     cfg = _make_config(cost_model="full", capital="2000000.0", benchmark="csi300", top_n=25)
-    engine_cfg = PlatformBacktestRunner._build_engine_config(cfg)
+    runner = PlatformBacktestRunner(registry=MagicMock())  # no builder → fallback
+    engine_cfg = runner._build_engine_config(cfg)
     assert engine_cfg.historical_stamp_tax is True
     assert engine_cfg.initial_capital == 2_000_000.0
     assert engine_cfg.benchmark_code == "000300.SH"
@@ -282,9 +283,10 @@ def test_build_engine_config_maps_cost_model_full():
 
 
 def test_build_engine_config_maps_cost_model_simplified():
-    """cost_model='simplified' → historical_stamp_tax=False."""
+    """cost_model='simplified' → historical_stamp_tax=False. PR C3: instance method (fallback path)."""
     cfg = _make_config(cost_model="simplified", benchmark="none")
-    engine_cfg = PlatformBacktestRunner._build_engine_config(cfg)
+    runner = PlatformBacktestRunner(registry=MagicMock())  # no builder → fallback
+    engine_cfg = runner._build_engine_config(cfg)
     assert engine_cfg.historical_stamp_tax is False
     assert engine_cfg.benchmark_code == ""
 
@@ -447,6 +449,126 @@ def test_run_cache_miss_populates_engine_artifacts():
 
     # replace(lineage_id=...) 必保 engine_artifacts 字段 (PR C2 review P2)
     assert result.lineage_id == expected_lineage_id
+
+
+def test_build_engine_config_uses_injected_builder():
+    """PR C3: engine_config_builder 注入时优先走 builder, 跳 fallback (生产 YAML 全字段路径)."""
+    builder_calls: list[BacktestConfig] = []
+
+    def _fake_builder(platform_cfg):
+        builder_calls.append(platform_cfg)
+        return "FAKE_ENGINE_CONFIG"
+
+    cfg = _make_config(capital="9999999.99")  # IEEE 754 陷阱 — 若 fallback 触发会精度丢失
+    runner = PlatformBacktestRunner(registry=MagicMock(), engine_config_builder=_fake_builder)
+    engine_cfg = runner._build_engine_config(cfg)
+
+    assert engine_cfg == "FAKE_ENGINE_CONFIG"
+    assert len(builder_calls) == 1 and builder_calls[0] is cfg
+
+
+def test_build_engine_config_fallback_when_no_builder():
+    """PR C3: engine_config_builder=None 走 fallback 基础 5 字段映射 (PR B 原行为保)."""
+    cfg = _make_config(cost_model="full", capital="1500000.0", top_n=30, benchmark="csi300")
+    runner = PlatformBacktestRunner(registry=MagicMock())  # 无 builder
+    engine_cfg = runner._build_engine_config(cfg)
+
+    assert engine_cfg.initial_capital == 1_500_000.0
+    assert engine_cfg.top_n == 30
+    assert engine_cfg.benchmark_code == "000300.SH"
+    assert engine_cfg.historical_stamp_tax is True
+
+
+def test_build_signal_config_uses_injected_builder():
+    """PR C3: signal_config_builder 注入 → 优先走 (生产路径完整 SignalConfig)."""
+    builder_calls: list[BacktestConfig] = []
+
+    def _fake_builder(platform_cfg):
+        builder_calls.append(platform_cfg)
+        return SimpleNamespace(size_neutral_beta=0.75, factor_names=["x", "y"])
+
+    cfg = _make_config(size_neutral_beta=0.30)  # builder 应盖过 config 的 0.30 用自己 0.75
+    runner = PlatformBacktestRunner(registry=MagicMock(), signal_config_builder=_fake_builder)
+    sig_cfg = runner._build_signal_config(cfg)
+
+    assert sig_cfg.size_neutral_beta == 0.75
+    assert sig_cfg.factor_names == ["x", "y"]
+    assert builder_calls[0] is cfg
+
+
+def test_build_signal_config_fallback_uses_platform_size_neutral_beta():
+    """PR C3: signal_config_builder=None fallback 走 SimpleNamespace 带 config.size_neutral_beta.
+
+    关键: 消除 PR B SN=0 bug — 不传 signal_config 给 engine → engine 内部 _sn_beta_from_cfg=0.0.
+    """
+    cfg = _make_config(size_neutral_beta=0.65)
+    runner = PlatformBacktestRunner(registry=MagicMock())  # 无 builder
+    sig_cfg = runner._build_signal_config(cfg)
+
+    assert sig_cfg.size_neutral_beta == 0.65
+
+
+def test_run_passes_signal_config_to_engine():
+    """PR C3: run() 必传 signal_config 到 run_hybrid_backtest, 修 PR B SN=0 bug."""
+    registry = MagicMock()
+    registry.get_by_hash.return_value = None
+    registry.log_run.return_value = uuid4()
+
+    data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+    )
+
+    cfg = _make_config(size_neutral_beta=0.50)  # 默认 fallback 应传 0.50 到 engine
+    with patch(
+        "backend.platform.backtest.runner.run_hybrid_backtest",
+        return_value=_fake_engine_result(),
+    ) as mock_engine:
+        runner.run(BacktestMode.QUICK_1Y, cfg)
+
+    # verify signal_config kwarg 传给 engine (PR B 原来根本不传)
+    kwargs = mock_engine.call_args.kwargs
+    assert "signal_config" in kwargs
+    assert kwargs["signal_config"].size_neutral_beta == 0.50
+
+
+def test_run_uses_injected_engine_config_builder_end_to_end():
+    """PR C3: run() 用 engine_config_builder 注入时 engine 收到的是 builder 返的 config, 非 fallback."""
+    registry = MagicMock()
+    registry.get_by_hash.return_value = None
+    registry.log_run.return_value = uuid4()
+
+    # 注入 builder 构造带 PMS enabled 的 Engine config (模拟 YAML 驱动全字段)
+    from engines.backtest.config import BacktestConfig as ECfg
+    from engines.backtest.config import PMSConfig as EPms
+
+    injected_engine_cfg = ECfg(
+        initial_capital=2_000_000.0,
+        top_n=15,
+        rebalance_freq="weekly",
+        pms=EPms(enabled=True),  # 关键: fallback 构造 PMS 默认 enabled=False, 这里必 True
+    )
+
+    data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+        engine_config_builder=lambda _cfg: injected_engine_cfg,
+    )
+
+    with patch(
+        "backend.platform.backtest.runner.run_hybrid_backtest",
+        return_value=_fake_engine_result(),
+    ) as mock_engine:
+        runner.run(BacktestMode.FULL_5Y, _make_config())
+
+    # Engine 收到的 config 是 builder 返的对象 (identity check), 非 fallback 重新构造
+    kwargs = mock_engine.call_args.kwargs
+    assert kwargs["config"] is injected_engine_cfg
+    assert kwargs["config"].pms.enabled is True  # PMS 未被 fallback 默认 disabled
 
 
 def test_engine_artifacts_shallow_copied_in_post_init():
