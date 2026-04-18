@@ -1013,3 +1013,25 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 5. **非交易日 SKIP**: `backfill` 检测 (old=0 new=0) 自动 SKIP 不计 fail, 修 exit code 逻辑
 
 **执行状态**: ✅ `scripts/dual_write_check.py` 修 (+67/-14 行) + `backend/tests/test_dual_write_check.py` 新增 11 unit test (全绿) + `docs/ops/DUAL_WRITE_RUNBOOK.md` 加硬门细则 + backfill equivalence 章节 + MVP 2.1c 设计稿 v1.1 update (drift 发现 + Sub3 main 2026-04-20 unblocked). **Backfill 最终: 19 PASS / 0 FAIL / 9 SKIP**, 硬门 #1 达成. Sub3 main 下周一 2026-04-20 可启动.
+
+---
+
+## LL-057: head/tail truncate 隐藏关键 evidence + 多步骤实测必查全输出（Session 6 末, 2026-04-18）
+
+**事件**: Session 6 末用户问 "PT 每日 signal 怎么自动跑". 我用 `powershell Get-ScheduledTask | head -25` 列出 8 个 Task, 断言 "QuantMind_DailySignal 不存在 / setup_task_scheduler 设计 13 个但实际 8 个 / 9 个 missing". 用户截图 pt_watchdog 钉钉告警 + 提供反证, 我重跑 `Out-String -Width 200` 不 truncate, 实测**18 个 Task** 全注册 (12/13 设计的全在, 仅 QuantMind_GPPipeline 缺), 包括我说"不存在"的 QuantMind_DailySignal Ready + QuantMind_PT_Watchdog Ready. **6 处错误断言全是 truncate 误导**.
+
+**根因**:
+1. **head/tail 截断作 verify**: 我习惯 `head -25` 限输出 (token 经济), 但当输出 > 25 行时, **truncate 把后面的 evidence 全埋了**, 我看到截断后的"完整"列表却以为是真实全集
+2. **没核 truncate 是否完全**: PowerShell `Format-Table` 默认按 console width auto-truncate 列, 我没 `Out-String -Width 200` 强制完整输出
+3. **凭部分 evidence 跳到结论**: 看到 "8 Task" 就断言"design 13 vs actual 8 = 5 missing", 没核每一个名字是否在/不在
+4. 与 LL-055 (handoff 凭印象) / LL-054 (PT 状态凭文档抄) 同源 — **不严谨实测的不同表现**
+
+**改进措施**:
+1. **verify 类查询禁 head 截断** (本 LL 核心): 跑 `Get-ScheduledTask | Out-String -Width 200` 强制完整 / `schtasks /query /fo csv /nh` 全列 / 必要时 `--no-truncate` flag. 任何 verify 类查询 head 不超过预期 max 数量 + 10 buffer.
+2. **断言"X 不存在"前必跑精确查询**: `Get-ScheduledTask -TaskName "X" -ErrorAction SilentlyContinue` 单点查 (而非依赖 filter 列表), 返 None 才说不存在
+3. **多步 verify 序列**: 当 verify 输出 ≥ 20 项, 自动用 `wc -l` / `Measure-Object` 数 row count 二次确认, 与 head 输出对齐
+4. **报告 evidence 时标 "snapshot or truncated"**: 给用户 list 时明示是否完整, 让用户能判断是否需要 deeper query
+
+**额外发现 (副产物, Session 7 待办)**: 调查时发现 04-17 周五 PT signal Task LastRunResult=0 但 signals 表 0 records (signal_latest_date 仍 04-16). app.log 04-17 16:30:21~25 显示 **5 个进程同时启动**反复 "日志系统已配置" + QMT 连接失败. 怀疑 acquire_lock 抢锁 silent skip 早退. **PT 实际 04-16 后已断 2 天未生成 signal**. 与本 LL 解耦, Session 7 深入调查 `scheduler_task_log` 表 + acquire_lock 实现.
+
+**执行状态**: ✅ MVP 2.1c v1.3 update 加 18 Task 实测列表 + 修 v1.2 错误断言. CLAUDE.md L83 "pt_data_service 104 行" → "337 行" 修. LL-057 入册. PT 04-17 failure 进 Session 7 待办 (Sub3 main 不阻塞).
