@@ -34,9 +34,18 @@ structlog.configure(
 )
 logging.getLogger().setLevel(logging.ERROR)
 
-from engines.backtest_engine import BacktestConfig, PMSConfig, run_hybrid_backtest  # noqa: E402
+from datetime import date  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from engines.backtest.config import BacktestConfig as EngineBacktestConfig  # noqa: E402
+from engines.backtest.config import PMSConfig  # noqa: E402
 from engines.metrics import calc_max_drawdown, calc_sharpe  # noqa: E402
 from engines.slippage_model import SlippageConfig  # noqa: E402
+
+from backend.platform._types import BacktestMode  # noqa: E402
+from backend.platform.backtest import BacktestConfig as PlatformCfg  # noqa: E402
+from backend.platform.backtest import InMemoryBacktestRegistry  # noqa: E402
+from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
 
@@ -53,6 +62,18 @@ CORE5_DIRECTIONS = {
 def run_backtest(years: int = 5):
     """从 baseline Parquet 加载数据, 跑回测, 返回 daily_nav Series.
 
+    MVP 2.3 Sub1 PR C4 迁 Platform SDK (原直调 run_hybrid_backtest):
+      - `PlatformBacktestRunner` + `InMemoryBacktestRegistry` (恒 cache miss 强制真跑)
+      - `BacktestMode.LIVE_PT` 借 ad-hoc 语义 (不 override start/end + 不 cache)
+      - `direction_provider=lambda pool: CORE5_DIRECTIONS` 固定 direction (CI 锚点)
+      - `engine_config_builder` 注入完整 Engine BacktestConfig (SlippageConfig/PMS/historical 税)
+      - `signal_config_builder` 注入 SN=0 (CORE5 基线无 SN modifier)
+      - closure data_loader 从 `cache/baseline/*.parquet` 加载 (CI 冻结锚点, 不走 DB)
+      - 从 `result.engine_artifacts["engine_result"].daily_nav` 取 NAV 做 max_diff=0 比对
+
+    **铁律 15 硬门**: 迁移必保 `max_diff=0 Sharpe=0.6095` (5yr) + `Sharpe=0.3594` (12yr)
+    与老直调 `run_hybrid_backtest` 路径 bit-identical, CI regression 锚点不得漂移.
+
     Args:
         years: 5 或 12, 决定加载 factor_data_{years}yr.parquet 等基线文件。
     """
@@ -66,7 +87,8 @@ def run_backtest(years: int = 5):
     if bench_path.exists():
         bench_df = pd.read_parquet(bench_path)
 
-    config = BacktestConfig(
+    # Engine BacktestConfig — 保持与迁前 CORE5 regression 锚点完全一致字段
+    engine_cfg = EngineBacktestConfig(
         initial_capital=1_000_000,
         top_n=20,
         rebalance_freq="monthly",
@@ -76,12 +98,55 @@ def run_backtest(years: int = 5):
         pms=PMSConfig(enabled=True, exec_mode="same_close"),
     )
 
-    # 12yr 传 benchmark_df 以对齐 build_12yr_baseline.py 的调用方式
-    if bench_df is not None:
-        result = run_hybrid_backtest(factor_df, CORE5_DIRECTIONS, price_data, config, bench_df)
-    else:
-        result = run_hybrid_backtest(factor_df, CORE5_DIRECTIONS, price_data, config)
-    return result.daily_nav
+    # Platform BacktestConfig — 核心字段; Engine config 走 builder 注入保全 14 字段
+    # (size_neutral_beta=0.0 CORE5 基线无 SN, 关联铁律 15 + Phase B M2 baseline 冻结参数)
+    trading_days = sorted(price_data["trade_date"].unique())
+    start_date, end_date = trading_days[0], trading_days[-1]
+    # 若 parquet 回读 trade_date 是 pd.Timestamp, 转 datetime.date 对齐 Platform dataclass 签名
+    if not isinstance(start_date, date):
+        start_date = pd.Timestamp(start_date).date()
+        end_date = pd.Timestamp(end_date).date()
+
+    platform_cfg = PlatformCfg(
+        start=start_date,
+        end=end_date,
+        universe="all_a",
+        factor_pool=tuple(CORE5_DIRECTIONS.keys()),
+        rebalance_freq="monthly",
+        top_n=20,
+        industry_cap=1.0,
+        size_neutral_beta=0.0,
+        cost_model="full",  # historical_stamp_tax=True
+        capital="1000000",
+        benchmark="csi300" if bench_df is not None else "none",
+        extra={},
+    )
+
+    # closure data_loader: 从 baseline parquet (已加载) 返回, 对齐原直调路径
+    def _baseline_loader(_platform_cfg, _start, _end):
+        return factor_df, price_data, bench_df
+
+    runner = PlatformBacktestRunner(
+        registry=InMemoryBacktestRegistry(),
+        data_loader=_baseline_loader,
+        conn=None,  # CORE5 基线 size_neutral_beta=0, 无需 DB ln_mcap
+        direction_provider=lambda pool: {n: CORE5_DIRECTIONS[n] for n in pool},
+        engine_config_builder=lambda _p: engine_cfg,  # 完整 Engine config 14 字段
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
+    )
+
+    # LIVE_PT mode: 不 override start/end + 不 cache, 配 InMem get_by_hash 恒 None 双重真跑
+    # (TODO mvp-2.3-sub3: 评估 AD_HOC mode 替代 LIVE_PT 借用)
+    result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+
+    # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞 {engine_result, price_data}
+    if result.engine_artifacts is None:
+        raise RuntimeError(
+            "engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run), "
+            "regression_test 依赖 daily_nav 做 max_diff=0 比对"
+        )
+    engine_result = result.engine_artifacts["engine_result"]
+    return engine_result.daily_nav
 
 
 def compare_nav(baseline_nav: pd.Series, current_nav: pd.Series) -> dict:
