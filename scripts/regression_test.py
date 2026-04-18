@@ -34,7 +34,6 @@ structlog.configure(
 )
 logging.getLogger().setLevel(logging.ERROR)
 
-from datetime import date  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 from engines.backtest.config import BacktestConfig as EngineBacktestConfig  # noqa: E402
@@ -43,8 +42,11 @@ from engines.metrics import calc_max_drawdown, calc_sharpe  # noqa: E402
 from engines.slippage_model import SlippageConfig  # noqa: E402
 
 from backend.platform._types import BacktestMode  # noqa: E402
-from backend.platform.backtest import BacktestConfig as PlatformCfg  # noqa: E402
-from backend.platform.backtest import InMemoryBacktestRegistry  # noqa: E402
+from backend.platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
+from backend.platform.backtest import (  # noqa: E402
+    InMemoryBacktestRegistry,
+    ParquetBaselineLoader,
+)
 from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
@@ -78,14 +80,12 @@ def run_backtest(years: int = 5):
         years: 5 或 12, 决定加载 factor_data_{years}yr.parquet 等基线文件。
     """
     suffix = f"{years}yr"
-    factor_df = pd.read_parquet(BASELINE_DIR / f"factor_data_{suffix}.parquet")
+    # PR C4 review LOW-1 fix: 用 SDK `ParquetBaselineLoader` 替闭包, 消除 closure 与
+    # loader 逻辑重复 (后者设计目的就是 baseline 冻结锚点, 见 backend/platform/backtest/loaders.py).
+    # 仍需 manual pd.read_parquet 加载 price_data 取 trading_days 构 Platform config.start/end
+    # (Loader 协议 (config, start, end) → 3 个 df, 数据仅在 Loader 调用时读; 外部构 config 需先知
+    # start/end, 鸡生蛋问题 — 折中 manual 读 price_data 一次取 date 范围, 再 Loader 正式读 3 个).
     price_data = pd.read_parquet(BASELINE_DIR / f"price_data_{suffix}.parquet")
-
-    # 12yr 基线额外需要 benchmark (build_12yr_baseline.py 用 bench_df 计算 excess return)
-    bench_df = None
-    bench_path = BASELINE_DIR / f"benchmark_{suffix}.parquet"
-    if bench_path.exists():
-        bench_df = pd.read_parquet(bench_path)
 
     # Engine BacktestConfig — 保持与迁前 CORE5 regression 锚点完全一致字段
     engine_cfg = EngineBacktestConfig(
@@ -98,38 +98,49 @@ def run_backtest(years: int = 5):
         pms=PMSConfig(enabled=True, exec_mode="same_close"),
     )
 
-    # Platform BacktestConfig — 核心字段; Engine config 走 builder 注入保全 14 字段
-    # (size_neutral_beta=0.0 CORE5 基线无 SN, 关联铁律 15 + Phase B M2 baseline 冻结参数)
+    # Platform BacktestConfig 构造前需拿到 start/end (benchmark 是否存在决定 benchmark 字段).
+    # PR C4 review M1 fix (python-reviewer blocking): 原 `isinstance(start_date, date)` 是死分支
+    # —— pd.Timestamp 继承自 datetime.datetime 继承自 datetime.date, isinstance 永 True →
+    # conversion block 永不触发 → Timestamp 传入 Platform config → str(Timestamp) 为
+    # "2021-01-04 00:00:00" ≠ str(date)="2021-01-04" → json.dumps default=str 产不同 sha256
+    # config_hash, 破坏铁律 15 可复现锚点. 改无条件 .date() 强制转 datetime.date.
     trading_days = sorted(price_data["trade_date"].unique())
-    start_date, end_date = trading_days[0], trading_days[-1]
-    # 若 parquet 回读 trade_date 是 pd.Timestamp, 转 datetime.date 对齐 Platform dataclass 签名
-    if not isinstance(start_date, date):
-        start_date = pd.Timestamp(start_date).date()
-        end_date = pd.Timestamp(end_date).date()
+    start_date = pd.Timestamp(trading_days[0]).date()
+    end_date = pd.Timestamp(trading_days[-1]).date()
 
-    platform_cfg = PlatformCfg(
+    # PR C4 review M2 fix (python-reviewer): factor_pool tuple 顺序依赖 CORE5_DIRECTIONS
+    # dict insertion order (Python 3.7+ 保证), 若未来有人 refactor 调字母序 →
+    # config_hash 变 → 破坏铁律 15. sorted() 显式排序消除未来 footgun.
+    factor_pool = tuple(sorted(CORE5_DIRECTIONS.keys()))
+
+    # PR C4 review LOW-1 fix: ParquetBaselineLoader 读 factor/price/bench 3 个 parquet,
+    # benchmark 可选 (不存返 None). Loader 协议: __call__(config, start, end) → 3 tuple.
+    loader = ParquetBaselineLoader(baseline_dir=BASELINE_DIR, years=years)
+    # Benchmark 是否存在只影响 Platform BacktestConfig.benchmark 字段字符串选择,
+    # Loader 本身自动跳过不存在的 bench.
+    bench_path = BASELINE_DIR / f"benchmark_{suffix}.parquet"
+    has_benchmark = bench_path.exists()
+
+    platform_cfg = PlatformBacktestConfig(
         start=start_date,
         end=end_date,
         universe="all_a",
-        factor_pool=tuple(CORE5_DIRECTIONS.keys()),
+        factor_pool=factor_pool,
         rebalance_freq="monthly",
         top_n=20,
         industry_cap=1.0,
         size_neutral_beta=0.0,
         cost_model="full",  # historical_stamp_tax=True
         capital="1000000",
-        benchmark="csi300" if bench_df is not None else "none",
+        benchmark="csi300" if has_benchmark else "none",
         extra={},
     )
 
-    # closure data_loader: 从 baseline parquet (已加载) 返回, 对齐原直调路径
-    def _baseline_loader(_platform_cfg, _start, _end):
-        return factor_df, price_data, bench_df
-
     runner = PlatformBacktestRunner(
         registry=InMemoryBacktestRegistry(),
-        data_loader=_baseline_loader,
+        data_loader=loader,
         conn=None,  # CORE5 基线 size_neutral_beta=0, 无需 DB ln_mcap
+        # pool 永远 = tuple(sorted(CORE5_DIRECTIONS.keys())) (见 factor_pool 构造), KeyError 不可达
         direction_provider=lambda pool: {n: CORE5_DIRECTIONS[n] for n in pool},
         engine_config_builder=lambda _p: engine_cfg,  # 完整 Engine config 14 字段
         signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
