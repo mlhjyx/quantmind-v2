@@ -70,11 +70,14 @@ def main():
     data = cache.load(start, end)
     factor_df = data["factor_data"]
     price_data = data["price_data"]
-    benchmark = data.get("benchmark")
+    # PR C4 review M4 fix (python-reviewer): 恢复 fail-fast 语义.
+    # 12yr profile 场景 benchmark 必存在 (build_12yr_baseline 产), 丢失 = cache 契约破坏 →
+    # KeyError 立即暴露, 不 silent None 污染 excess_return 分析.
+    benchmark = data["benchmark"]
     load_time = time.time() - t0
     print(
         f"数据加载: factor={len(factor_df)}行, price={len(price_data)}行, "
-        f"benchmark={len(benchmark) if benchmark is not None else 0}行 ({load_time:.1f}s)"
+        f"benchmark={len(benchmark)}行 ({load_time:.1f}s)"
     )
 
     # --- 构造 Platform SDK 组件 ---
@@ -86,7 +89,9 @@ def main():
         start=start,
         end=end,
         universe="all_a",
-        factor_pool=tuple(directions.keys()),
+        # PR C4 review M2 fix: sorted() 显式排序消除 dict insertion order 对 config_hash
+        # 的隐式依赖 (铁律 15 hash 稳定).
+        factor_pool=tuple(sorted(directions.keys())),
         rebalance_freq=cfg["strategy"].get("rebalance_freq", "monthly"),
         top_n=int(cfg["strategy"].get("top_n", 20)),
         industry_cap=float(cfg["strategy"].get("industry_cap", 1.0)),
