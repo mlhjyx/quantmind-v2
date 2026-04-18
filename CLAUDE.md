@@ -327,7 +327,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ---
 
-## 铁律（违反即停, 40 条全局原则, v2 2026-04-17）
+## 铁律（违反即停, 42 条全局原则, v3 2026-04-18）
 
 > **全局性要求**: 每条铁律必须是"永恒原则", 而不是"某阶段后失效"的临时规则.
 > **测试**: 10 年后此条仍成立? "是, 只是实现方式变了" → 保留. "否, 某阶段后不适用" → 不该是铁律 (应入 Blueprint).
@@ -455,6 +455,15 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - 日期常量定义必须标注是**自然日**还是**交易日**
     - 测试中 `freeze_time` 必须用 UTC 值
     违反→Phase 2.1 sim-to-real gap 根因之一 + timezone bug 反复踩 (如 T+1 判定错在 UTC/CST 切换日).
+
+42. **PR 分级审查制 (Auto mode 缓冲层)** — 全局原则: AI-heavy + 真金白银生产环境下 main 直 push 是危险默认, 必须有"暂停 + revisit" buffer. 分级:
+    - **允许 AI 请求用户直接 push main**: `docs/**` + `memory/**` + `adr/**` + 根目录 markdown (CHANGELOG / LESSONS_LEARNED / SYSTEM_STATUS / FACTOR_TEST_REGISTRY) — 纯文档零代码风险
+    - **必须走 PR (feature branch + 自审 + 用户 merge)**: `backend/**` (代码 + tests + migrations) + `scripts/**` (执行/调度脚本) + `configs/**` + `frontend/**` + CLAUDE.md (核心治理) + `.env*` + `pyproject.toml` + `requirements*.txt` + `config/hooks/**` + `.github/**` (CI)
+    - **PR 流程 (单人项目, 不需独立 reviewer)**: feature branch (e.g. `feat/mvp-2-1c-sub3`) → push branch → `gh pr create` → 自审 (commit list + diff 关键 hunk + smoke/regression/pytest 数字) → 用户 merge (`gh pr merge --squash` 或 `--rebase`) → 删 branch
+    - **PR description 必须含**: (a) 改动文件分类 (代码/测试/文档/配置); (b) 验证证据 (smoke 数字 + regression max_diff + pytest fail 数 vs 24 baseline); (c) 关联 MVP / Sprint / 设计稿; (d) 风险 + 回滚方案
+    - **Bootstrap 例外**: 引入本铁律的 commit 自身 (改 CLAUDE.md) 是 grandfather 例外, 直 push 允许. 之后所有 commit 严格遵循.
+    - **Claude Code v4.7 默认行为已配合**: AI 调 `git push origin main` 默认被 hardcoded git safety 拒绝, 需用户手动 push 或开 PR. 本铁律是把 default 升级为显式分类制度.
+    违反→AI Auto mode 凭印象改代码 + 直 push 累积事故. 本铁律由 Session 6 开场 "2 ahead 腐烂数字" 事件 (LL-055) 触发, 与 LL-051 (开源优先) / LL-054 (PT 状态实测) 同源 — "AI 高速产出 + 单人无审查" 的 governance gap.
 
 ## 因子审批硬标准
 
