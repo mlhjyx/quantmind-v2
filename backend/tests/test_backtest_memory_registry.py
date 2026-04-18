@@ -16,6 +16,8 @@ from __future__ import annotations
 from datetime import date
 from uuid import uuid4
 
+import pytest
+
 from backend.platform._types import BacktestMode
 from backend.platform.backtest.interface import BacktestConfig, BacktestResult
 from backend.platform.backtest.memory_registry import InMemoryBacktestRegistry
@@ -149,6 +151,18 @@ def test_max_history_none_disables_trim():
     for i in range(50):
         reg.log_run(_make_config(), _make_result(f"r{i}"), artifact_paths={})
     assert len(reg) == 50
+
+
+def test_max_history_zero_raises_value_error():
+    """PR C2 review P1 fix: max_history=0 → ValueError (原 list[-0:] 等同 list[0:] 返全量是 Python 坑)."""
+    with pytest.raises(ValueError, match="max_history must be positive or None"):
+        InMemoryBacktestRegistry(max_history=0)
+
+
+def test_max_history_negative_raises_value_error():
+    """max_history<0 → ValueError (同 0 坑防御)."""
+    with pytest.raises(ValueError, match="max_history must be positive or None"):
+        InMemoryBacktestRegistry(max_history=-5)
 
 
 def test_clear_empties_internal_list():

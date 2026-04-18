@@ -81,6 +81,17 @@ class BacktestResult:
                   **永不持久化** — DBBacktestRegistry 只落 metrics DECIMAL 列.
                   ``field(compare=False, repr=False)`` 防 __eq__/repr 被大 pandas 对象污染.
                   MVP 2.3 PR C2 新增 (2026-04-19), 老 18 调用方默认 None 向后兼容.
+
+                  **序列化禁忌** (reviewer P2): 本字段含 pandas Series/DataFrame
+                  (非 JSON-safe), 任何 ``dataclasses.asdict(result)`` / 推送到
+                  JSON 序列化管道必 raise TypeError. 生产路径只该用 ``result.metrics``
+                  (dict[str, float/int]) 和 DECIMAL 列. 消费者如需持久化 NAV, 走独立
+                  parquet 落盘, 不借 artifacts 链路.
+
+                  **浅拷贝隔离** (reviewer P1): ``__post_init__`` 对入参 dict 做
+                  ``dict(...)`` 浅拷贝, 防消费者 ``result.engine_artifacts["engine_result"] = None``
+                  污染 Runner 内部引用 (frozen=True 只防重新赋 ``result.engine_artifacts=...``,
+                  不防 dict 内容修改). 内部 pandas 对象仍共享, 调用方不得原地 mutate.
     """
 
     run_id: UUID
@@ -94,6 +105,18 @@ class BacktestResult:
     metrics: dict[str, Any]
     lineage_id: UUID | None = None
     engine_artifacts: dict[str, Any] | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Shallow-copy engine_artifacts dict 防消费者 mutation 污染内部引用 (PR C2 review P1).
+
+        frozen=True 只防 ``result.engine_artifacts = None`` 重新赋值, 不防
+        ``result.engine_artifacts["key"] = value`` 原地修改. 浅拷贝外层 dict 隔离消费者
+        对 Runner 内部引用的无意 mutation. ``engine_result`` / ``price_data`` 自身仍
+        共享 (成本/收益不划算深拷贝), 消费者契约是"只读".
+        """
+        if self.engine_artifacts is not None:
+            # frozen=True 阻止 self.engine_artifacts = ..., 用 object.__setattr__ 绕.
+            object.__setattr__(self, "engine_artifacts", dict(self.engine_artifacts))
 
 
 class BacktestRunner(ABC):
@@ -131,18 +154,36 @@ class BacktestRegistry(ABC):
         config: BacktestConfig,
         result: BacktestResult,
         artifact_paths: dict[str, str],
+        *,
+        mode: Any | None = None,
+        elapsed_sec: int | None = None,
+        lineage: Any | None = None,
+        perf: Any | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> UUID | None:
         """记录一次运行.
+
+        PR C2 review P1 fix: 抽象契约扩 keyword-only args 对齐 PR B 以来 Runner 实际
+        调用模式. 原 3-arg abstract + concretes 扩签名导致 ``# type: ignore[override]``
+        散落 (见 DBBacktestRegistry + InMemoryBacktestRegistry), 两处都绕过 mypy LSP
+        检查. 修正抽象签名后 concretes 无需 ``type: ignore``.
 
         Args:
           config: 回测配置
           result: 结果指标
-          artifact_paths: parquet / json 文件路径 (nav / holdings / metrics)
+          artifact_paths: parquet / json 文件路径 (nav / holdings / metrics, 当前 PR B 暂不处理)
+          mode: BacktestMode (QUICK_1Y / FULL_5Y / ...) — 记录 backtest_run.mode 列
+          elapsed_sec: 回测耗时 (秒), registry 落 DB elapsed_sec 列
+          lineage: MVP 2.2 U3 血缘记录 (Lineage dataclass), DBBacktestRegistry 写 data_lineage
+                   表并回填 lineage_id; InMem 忽略
+          perf: engines.metrics.PerformanceReport (DECIMAL 列源头); InMem 忽略
+          start_date / end_date: 实际回测窗口 (mode override 后的最终日期)
 
         Returns:
           lineage_id (UUID) 若 lineage 传入且 write 成功; None 若 lineage=None
-          或 lineage 写入失败 (fail-safe, backtest_run 行仍落盘).
-          MVP 2.3 PR B review P1-D 修订, 匹配实际 concrete 返回值语义.
+          或 lineage 写入失败 (fail-safe, backtest_run 行仍落盘), 或 InMem concrete.
+          MVP 2.3 PR B review P1-D + PR C2 review P1 修订.
         """
 
     @abstractmethod
