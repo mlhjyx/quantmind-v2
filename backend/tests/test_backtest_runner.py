@@ -410,10 +410,15 @@ def test_result_default_engine_artifacts_is_none():
 
 
 def test_run_cache_miss_populates_engine_artifacts():
-    """PR C2: cache-miss 真跑 → result.engine_artifacts 含 engine_result + price_data."""
+    """PR C2: cache-miss 真跑 → result.engine_artifacts 含 engine_result + price_data.
+
+    PR C2 review P2 fix: 同时断言 lineage_id 回填成功, 验证 ``replace(platform_result,
+    lineage_id=...)`` 不破坏 engine_artifacts 字段 (frozen dataclass replace 应保所有字段).
+    """
     registry = MagicMock()
     registry.get_by_hash.return_value = None
-    registry.log_run.return_value = uuid4()
+    expected_lineage_id = uuid4()
+    registry.log_run.return_value = expected_lineage_id
 
     fake_price_data = MagicMock(name="price_data")
     fake_factor_df = MagicMock(name="factor_df")
@@ -432,9 +437,43 @@ def test_run_cache_miss_populates_engine_artifacts():
         result = runner.run(BacktestMode.QUICK_1Y, _make_config())
 
     # engine_artifacts 必含 engine_result + price_data (消费者取 daily_nav)
+    # identity (`is`) 断言: runner 不得 copy/wrap engine_result 或 price_data,
+    # 消费者走 generate_report(result, price_data) 依赖对象身份.
+    # BacktestResult.__post_init__ 浅拷贝外层 dict (防消费者污染), 但 values
+    # 仍是同对象引用 (review P1 契约: 外 dict 隔离 + 内对象共享只读).
     assert result.engine_artifacts is not None
     assert result.engine_artifacts["engine_result"] is fake_engine_result_obj
     assert result.engine_artifacts["price_data"] is fake_price_data
+
+    # replace(lineage_id=...) 必保 engine_artifacts 字段 (PR C2 review P2)
+    assert result.lineage_id == expected_lineage_id
+
+
+def test_engine_artifacts_shallow_copied_in_post_init():
+    """PR C2 review P1 fix: __post_init__ 浅拷贝外层 dict 隔离消费者 mutation.
+
+    场景: Runner 内部持 artifacts_dict 引用, result 构造时浅拷贝. 消费者
+    ``result.engine_artifacts["engine_result"] = None`` 不应污染 Runner 原引用.
+    (frozen=True 只防 ``result.engine_artifacts = ...`` 重新赋值.)
+    """
+    src = {"engine_result": "A", "price_data": "B"}
+    r = BacktestResult(
+        run_id=uuid4(),
+        config_hash="h",
+        git_commit="g",
+        sharpe=1.0,
+        annual_return=0.1,
+        max_drawdown=-0.05,
+        total_return=0.5,
+        trades_count=10,
+        metrics={},
+        engine_artifacts=src,
+    )
+    # 消费者污染外层 dict
+    r.engine_artifacts["engine_result"] = "POISONED"
+    # 源 dict 不受影响 (浅拷贝隔离)
+    assert src["engine_result"] == "A"
+    assert src["price_data"] == "B"
 
 
 def test_cache_hit_no_engine_artifacts():

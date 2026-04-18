@@ -93,7 +93,7 @@ class DBBacktestRegistry(BacktestRegistry):
 
     # ─── log_run (铁律 17 DataPipeline 入库) ────────────────────
 
-    def log_run(  # type: ignore[override]
+    def log_run(
         self,
         config: BacktestConfig,
         result: BacktestResult,
@@ -108,10 +108,13 @@ class DBBacktestRegistry(BacktestRegistry):
     ) -> UUID | None:
         """写一行到 backtest_run, 返回 lineage_id (MVP 2.2 U3 集成).
 
-        扩展签名 (vs abstract L114-120):
-          - 加 mode/elapsed_sec/lineage/perf/start_date/end_date kwargs
-          - artifact_paths 保留以兼容 abstract, 当前 unused (留 PR C/Sub2 处理)
-          - 走 Python duck typing, concrete 扩签名不破坏 LSP (调用方 Runner 按 concrete 调)
+        PR C2 review P1 fix: abstract BacktestRegistry.log_run 已扩 keyword-only args
+        (interface.py), concrete 签名现在完全对齐 abstract, 无需 ``# type: ignore[override]``.
+        原 PR B 注释 "concrete 扩签名不破坏 LSP" 废弃.
+
+        签名对齐点:
+          - 加 mode/elapsed_sec/lineage/perf/start_date/end_date kwargs (现 abstract 也有)
+          - artifact_paths 保留, 当前 PR B 暂 unused (留 PR C/Sub2 处理)
 
         映射 (ADR-007):
           - result.config_hash → row["config_yaml_hash"]
