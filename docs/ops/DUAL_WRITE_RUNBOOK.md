@@ -279,7 +279,7 @@ print(f'Tushare RAW 新 (千元): {row[\"amount\"]}, 转元: {row[\"amount\"]*10
 
 - 老 fetcher 当日未跑, 或 Celery Beat 被 Servy 停了
 - 查 Servy: `D:\tools\Servy\servy-cli.exe status | findstr QuantMind`
-- 手动触发: `cd backend && ..\.venv\Scripts\python.exe -m app.data_fetcher.fetch_base_data`
+- 手动触发 (Sub3.2 后): `fetch_base_data.py` 已删除 (MVP 2.1c Sub3 main, 2026-04-18). 生产路径: Windows Task `QuantMind_DailySignal` 16:30 → `run_paper_trading.py signal` → `pt_data_service.fetch_daily_data()` (新路径走 DataPipeline ✅)
 
 ---
 
