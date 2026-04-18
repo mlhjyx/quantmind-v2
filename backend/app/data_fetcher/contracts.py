@@ -360,6 +360,71 @@ SHADOW_PORTFOLIO = TableContract(
 )
 
 
+# MVP 2.3 Sub1 PR B (2026-04-18): backtest_run 表走 DataPipeline 迁移 (ADR-007 沿用老表策略).
+# 老表 (docs/QUANTMIND_V2_DDL_FINAL.sql) 7 行历史 + 4 FK 依赖表 (backtest_daily_nav / backtest_holdings
+# / backtest_trades / backtest_wf_windows) 保留. PR A (`a0e01db`) ALTER ADD 3 新列 (mode / lineage_id /
+# extra_decimals) + CHECK + FK + partial index. 本 Contract 映射全 32 列 (不含 created_at —
+# DB DEFAULT NOW() 管理, 遵循 SHADOW_PORTFOLIO pattern L345).
+#
+# 字段名映射 (ADR-007 tech debt, MVP 3.x Clean-up RENAME):
+#   - Platform concept `config_hash` ↔ 老表列 `config_yaml_hash`
+#   - Platform concept `factor_pool` ↔ 老表列 `factor_list` (走 text_array ColumnSpec)
+#   - Platform concept `config` ↔ 老表列 `config_json`
+#   - Platform concept `metrics.sharpe` ↔ 老表列 `sharpe_ratio` (独立 DECIMAL 列, 非 JSONB 聚合)
+BACKTEST_RUN = TableContract(
+    table_name="backtest_run",
+    pk_columns=("run_id",),
+    columns={
+        # PK + metadata
+        "run_id": ColumnSpec("uuid", nullable=False),
+        "strategy_id": ColumnSpec("uuid"),  # FK → strategy(id), nullable (研究脚本无 strategy 绑定)
+        "name": ColumnSpec("str"),
+        "status": ColumnSpec("str"),  # pending / running / success / failed
+        # 配置
+        "config_json": ColumnSpec("jsonb", nullable=False),
+        "factor_list": ColumnSpec("text_array", nullable=False),
+        # 复现锚点 (铁律 15)
+        "config_yaml_hash": ColumnSpec("str"),
+        "git_commit": ColumnSpec("str"),
+        # 核心指标 (engines/metrics.py PerformanceReport 映射, 非 JSONB 聚合)
+        "annual_return": ColumnSpec("float"),
+        "sharpe_ratio": ColumnSpec("float"),
+        "max_drawdown": ColumnSpec("float"),
+        "excess_return": ColumnSpec("float"),
+        "calmar_ratio": ColumnSpec("float"),
+        "sortino_ratio": ColumnSpec("float"),
+        "information_ratio": ColumnSpec("float"),
+        "beta": ColumnSpec("float"),
+        "win_rate": ColumnSpec("float"),
+        "profit_loss_ratio": ColumnSpec("float"),
+        "annual_turnover": ColumnSpec("float"),
+        "total_trades": ColumnSpec("int"),
+        "max_consecutive_loss_days": ColumnSpec("int"),
+        # 可信度指标 (Bootstrap CI)
+        "sharpe_ci_lower": ColumnSpec("float"),
+        "sharpe_ci_upper": ColumnSpec("float"),
+        # 跳空 + 仓位偏差
+        "avg_overnight_gap": ColumnSpec("float"),
+        "position_deviation": ColumnSpec("float"),
+        # JSONB 扩展
+        "cost_sensitivity_json": ColumnSpec("jsonb"),
+        "annual_breakdown_json": ColumnSpec("jsonb"),
+        "market_state_json": ColumnSpec("jsonb"),
+        # 运行元数据
+        "start_date": ColumnSpec("date"),
+        "end_date": ColumnSpec("date"),
+        "elapsed_sec": ColumnSpec("int"),
+        "error_message": ColumnSpec("str"),
+        # PR A ALTER ADD 3 新列 (MVP 2.3)
+        "mode": ColumnSpec("str"),  # BacktestMode enum value (chk_backtest_run_mode CHECK 容忍 NULL)
+        "lineage_id": ColumnSpec("uuid"),  # FK → data_lineage(lineage_id), MVP 2.2 U3 追溯
+        "extra_decimals": ColumnSpec("decimal_array"),  # 未来 metric 扩展预留 (decimal_array 直通)
+    },
+    fk_filter_col=None,  # run_id 客户端 uuid4 生成, 不走 symbols FK
+    skip_unit_conversion=True,  # 配置 / 指标 / 血缘无单位转换
+)
+
+
 # ════════════════════════════════════════════════════════════
 # Contract注册表 — 按table_name查找
 # ════════════════════════════════════════════════════════════
@@ -379,6 +444,7 @@ CONTRACT_REGISTRY: dict[str, TableContract] = {
         STOCK_STATUS_DAILY,
         MINUTE_BARS,
         SHADOW_PORTFOLIO,
+        BACKTEST_RUN,
     ]
 }
 
