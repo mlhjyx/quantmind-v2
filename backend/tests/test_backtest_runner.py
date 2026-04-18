@@ -194,7 +194,11 @@ def test_cache_miss_runs_engine():
     registry.log_run.return_value = uuid4()  # lineage_id
 
     data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
-    runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader)
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),  # PR C1: 避免 fallback warn
+    )
 
     with patch(
         "backend.platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
@@ -211,7 +215,11 @@ def test_live_pt_does_not_check_cache():
     """LIVE_PT 每次强制 re-run, 不调 get_by_hash."""
     registry = MagicMock()
     data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
-    runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader)
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+    )
 
     registry.log_run.return_value = uuid4()
     with patch(
@@ -227,9 +235,40 @@ def test_live_pt_does_not_check_cache():
 
 
 def test_factor_directions_placeholder_all_positive():
-    """PR B placeholder: 所有因子统一 +1 direction."""
+    """PR B placeholder staticmethod: 所有因子统一 +1 direction (不安全 fallback)."""
     dirs = PlatformBacktestRunner._factor_directions(("a", "b", "c"))
     assert dirs == {"a": 1, "b": 1, "c": 1}
+
+
+def test_resolve_directions_uses_provider_when_given():
+    """PR C1: direction_provider 注入时优先走 provider (生产路径)."""
+    provider_calls: list[tuple[str, ...]] = []
+
+    def _fake_provider(pool):
+        provider_calls.append(pool)
+        return {"turnover_mean_20": -1, "bp_ratio": 1}
+
+    runner = PlatformBacktestRunner(registry=MagicMock(), direction_provider=_fake_provider)
+    dirs = runner._resolve_directions(("turnover_mean_20", "bp_ratio"))
+
+    assert dirs == {"turnover_mean_20": -1, "bp_ratio": 1}
+    assert provider_calls == [("turnover_mean_20", "bp_ratio")]
+
+
+def test_resolve_directions_none_provider_emits_userwarning():
+    """PR C1: direction_provider=None 走 placeholder + UserWarning (显式 warn, 非 silent)."""
+    import warnings as _w
+
+    runner = PlatformBacktestRunner(registry=MagicMock(), direction_provider=None)
+    with _w.catch_warnings(record=True) as captured:
+        _w.simplefilter("always")
+        dirs = runner._resolve_directions(("turnover_mean_20", "bp_ratio"))
+
+    assert dirs == {"turnover_mean_20": 1, "bp_ratio": 1}
+    assert any(
+        issubclass(w.category, UserWarning) and "direction_provider=None" in str(w.message)
+        for w in captured
+    ), "必须 emit UserWarning 提示 placeholder 风险"
 
 
 def test_build_engine_config_maps_cost_model_full():
@@ -320,7 +359,12 @@ def test_run_end_to_end_mock_integration():
     registry.log_run.return_value = expected_lineage_id
 
     data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
-    runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader, conn="fake_conn")
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        conn="fake_conn",
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+    )
 
     with patch(
         "backend.platform.backtest.runner.run_hybrid_backtest",
