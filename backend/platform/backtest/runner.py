@@ -17,6 +17,8 @@ import calendar
 import hashlib
 import json
 import subprocess
+import warnings
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -47,13 +49,18 @@ _MODE_TO_YEARS: dict[BacktestMode, int | None] = {
 
 
 class PlatformBacktestRunner(BacktestRunner):
-    """BacktestRunner concrete (MVP 2.3 PR B).
+    """BacktestRunner concrete (MVP 2.3 PR B + PR C1).
 
     Args:
       registry: BacktestRegistry 实例 (DBBacktestRegistry 或 mock).
       data_loader: 可选 callable(config, start, end) -> (factor_df, price_data, bench_df).
-                   留 PR C 迁 scripts 时注入 DAL 或 parquet 加载; PR B 默认 None, 走 engine 调用方自备数据.
+                   PR C1 提供参考实现 `loaders.ParquetBaselineLoader` /
+                   `loaders.BacktestCacheLoader`. 调用方也可传任意符合签名的 callable.
       conn: psycopg2 连接 (传给 engine size-neutral 需要 ln_mcap). 可 None (non-SN backtest).
+      direction_provider: 可选 callable(factor_pool) -> {name: direction}. PR C1 新增,
+                   替代 PR B placeholder (all +1). 若 None, 保留 placeholder 行为但
+                   emit UserWarning (铁律 27: 模糊结论不可接受, 显式 warn 让调用方知情).
+                   生产路径必须注入 (e.g. DBFactorRegistry.get_direction 包装 lambda).
     """
 
     def __init__(
@@ -61,10 +68,12 @@ class PlatformBacktestRunner(BacktestRunner):
         registry: BacktestRegistry,
         data_loader: Any | None = None,
         conn: Any | None = None,
+        direction_provider: Callable[[tuple[str, ...]], dict[str, int]] | None = None,
     ) -> None:
         self._registry = registry
         self._data_loader = data_loader
         self._conn = conn
+        self._direction_provider = direction_provider
 
     # ─── 公共入口 (BacktestRunner.run abstract 实现) ──────────
 
@@ -103,7 +112,7 @@ class PlatformBacktestRunner(BacktestRunner):
         factor_df, price_data, bench_df = self._data_loader(config, start_date, end_date)
 
         # Engine 运行 (包而不改 run_hybrid_backtest)
-        directions = self._factor_directions(config.factor_pool)
+        directions = self._resolve_directions(config.factor_pool)
         engine_config = self._build_engine_config(config)
 
         started_at = datetime.now(UTC)
@@ -197,15 +206,32 @@ class PlatformBacktestRunner(BacktestRunner):
         start_date = date(target_year, target_month, min(end_date.day, last_day_of_target_month))
         return start_date, end_date
 
+    def _resolve_directions(self, factor_pool: tuple[str, ...]) -> dict[str, int]:
+        """解析 factor direction. PR C1: 优先走 `direction_provider`, 否则 placeholder + warn.
+
+        生产路径 direction_provider 必传 (e.g. lambda pool: {n: dal_registry.get_direction(n) for n in pool}).
+        若 None → UserWarning + 全 +1 placeholder (PR B 行为保留, 仅测试/快速迭代场景).
+        """
+        if self._direction_provider is not None:
+            return dict(self._direction_provider(factor_pool))
+        warnings.warn(
+            "PlatformBacktestRunner.direction_provider=None — 所有因子 direction 退回 +1 "
+            "placeholder. CORE 因子 (turnover_mean_20/volatility_20 = -1) 会信号反向 → "
+            "负 alpha 静默产生. 生产路径必须注入 direction_provider (铁律 19/34).",
+            UserWarning,
+            stacklevel=3,
+        )
+        return self._factor_directions(factor_pool)
+
     @staticmethod
     def _factor_directions(factor_pool: tuple[str, ...]) -> dict[str, int]:
-        """Placeholder: 真实实现走 DAL.read_registry(status='active') 查 direction.
+        """Placeholder: 全 +1 (不安全). 仅在 direction_provider=None 时走.
 
         **WARNING (PR B review P1)**: 本方法仅在 `data_loader` 被注入后才会被调用
         (run() L93 守护). 若未来修改 run() 跳过 data_loader 检查, 本 placeholder
         会返所有因子 +1, 导致 CORE 因子方向错误 (turnover_mean_20/volatility_20
         正确方向为 -1) → 信号反向 → 负 alpha 静默产生.
-        PR C 迁 scripts 时必走 DAL.read_registry 替换此 placeholder.
+        PR C1 已加 direction_provider kwarg 让调用方注入正确 direction.
         """
         return dict.fromkeys(factor_pool, 1)
 

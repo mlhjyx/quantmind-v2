@@ -64,6 +64,13 @@ def run_hybrid_backtest(
 
     DEV_BACKTEST_ENGINE §3.1 Hybrid架构统一入口。
 
+    ⚠️ **SOFT DEPRECATED (MVP 2.3 Sub1 PR C1, 2026-04-19)**:
+    新代码 (scripts / services / PT) 优先走 `backend.platform.backtest.PlatformBacktestRunner`
+    (铁律 15 config_hash 自动记录 + 铁律 17 DataPipeline 入库 + MVP 2.2 U3 lineage + cache hit).
+    本函数保留为纯 engine 入口 (regression_test / profile_backtest / 老回归路径仍用), 不走
+    runtime DeprecationWarning 避免污染 regression_test max_diff=0 (铁律 15) 校验. PR C2
+    会迁 run_backtest.py / profile_backtest.py 到 SDK.
+
     Args:
         factor_df: 因子长表 (code, trade_date, factor_name, raw_value)
         directions: {factor_name: direction} (+1正向, -1反向)
