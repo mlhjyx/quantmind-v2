@@ -970,3 +970,22 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 4. **Session 关闭前必核 PT 状态** (补铁律 37 延伸): Session 结束前 handoff 必含 `python -c "from redis import Redis; r=Redis(); print(r.hgetall('portfolio:nav'))"` 实测截图
 
 **执行状态**: ✅ CLAUDE.md L565-581 已写实测时间线 (commit `f37694b`, 2026-04-18). LL-052 结语未同步修改 (保留原文避免重复校订, 本 LL-054 作为"LL-052 运行时状态已过期"的声明). Session 6 平台化 scripts/platform_state_audit.py 待建.
+
+---
+
+## LL-055: handoff 数字凭印象写, 跨 session 累积腐烂 + PR governance 诞生（Session 6 开场, 2026-04-18）
+
+**事件**: Session 5 末 `memory/project_sprint_state.md` 顶部 frontmatter description 写 "20 commits / 2 commits ahead of origin", L106 "main branch, 2 commits ahead of origin (push 过 18 个)". Session 6 开场用户问 "接下来做什么?" 我推荐 #1 = push 2 commits. 实测 `git status`: **"up to date with origin/main"**, 0 ahead. handoff 数字是腐烂, push 任务本不存在. 同时连带发现 sprint_state L98 的 planning gap (`docs/mvp/MVP_2_1c_*.md` 不存在) 是真实存在的.
+
+**根因**:
+1. handoff 写完后 commit + push 是两步, push 之间 Claude 写 handoff 时 commits 仍是 ahead, push 后 ahead 变 0 但 handoff 没回写
+2. 铁律 22 "文档跟随代码" 没覆盖**手写 handoff 数字** (memory file 不在 git working tree, post-commit hook 看不到)
+3. 跨 session 状态同步靠"抄", 与 LL-054 (PT 状态腐烂 8 天) 同源
+4. AI 高速产出 + 单人无审查 = 累积腐烂无人发现
+
+**改进措施**:
+1. **handoff 数字必实测** (Session 6 即生效): 写 "X commits ahead" 必前 `git status` + `git log --oneline origin/main..HEAD` 实测, 禁凭印象 / 抄上 session
+2. **PR 分级审查制 (新铁律 42)**: AI 提议高风险代码改动必走 PR (feature branch + 自审 + 用户 merge), 给跨 session 状态一个"暂停 + revisit" buffer. 文档/memory 类允许直 push (低风险)
+3. **Session 关闭前 git status 必核** (补铁律 37 延伸): Session 结束前 handoff 必含 `git status` 实测输出 + `git log --oneline origin/main..HEAD` 验证 ahead 数
+
+**执行状态**: ✅ Session 6 开场已修 sprint_state 5 处 ("2 ahead" → "0 ahead" + planning gap closed, 见 sprint_state L3/L10/L63/L98/L105). 铁律 42 (PR 分级) 本 commit 落地 (CLAUDE.md L459-466). PR workflow Session 6+ 实施 (高风险代码改动开 feature branch + PR; 文档类继续直 push 例外).
