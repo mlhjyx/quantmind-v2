@@ -290,7 +290,7 @@ backend/app/data_fetcher/
 │                          NORTHBOUND_HOLDINGS/SYMBOLS/EARNINGS_ANNOUNCEMENTS/
 │                          STOCK_STATUS_DAILY/MINUTE_BARS)
 ├── pipeline.py           DataPipeline.ingest(df, contract)  [铁律 17 唯一入库]
-├── tushare_client.py     (fetch_base_data.py 使用)
+├── tushare_client.py     (TushareDataSource / pt_data_service 使用; fetch_base_data.py 已删 MVP 2.1c Sub3.2)
 ├── tushare_fetcher.py    (日增量)
 └── data_loader.py        (通用 upsert, 已被 DataPipeline 覆盖)
 ```
