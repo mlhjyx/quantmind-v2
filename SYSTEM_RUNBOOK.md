@@ -328,18 +328,29 @@ python scripts/run_backtest.py --config configs/backtest_12yr.yaml
 
 预期: Sharpe=0.6095, MDD=-50.75%, 耗时 80s, max_diff=0.0 vs `cache/baseline/nav_5yr.parquet`
 
-### 7.3 拉取分钟数据 (Step 6-B 后的正确路径)
+### 7.3 拉取分钟数据 (MVP 2.1c Sub3.3 后: BaostockDataSource SDK)
 
-```bash
-python scripts/fetch_minute_bars.py --start 2026-01-01 --end 2026-04-09
-# 分片并行:
-python scripts/fetch_minute_bars.py --shard 0 --total-shards 4
-python scripts/fetch_minute_bars.py --shard 1 --total-shards 4
-python scripts/fetch_minute_bars.py --shard 2 --total-shards 4
-python scripts/fetch_minute_bars.py --shard 3 --total-shards 4
+`scripts/fetch_minute_bars.py` 已删 (MVP 2.1c Sub3.3, 2026-04-18). 用 `BaostockDataSource` SDK 替代:
+
+```python
+# 走 Platform DataSource 新路径 (铁律 17 DataPipeline 唯一入库)
+from datetime import date
+from backend.platform.data.sources.baostock_source import (
+    BaostockDataSource, MINUTE_BARS_DATA_CONTRACT,
+)
+from backend.app.data_fetcher.data_loader import get_sync_conn
+from backend.app.data_fetcher.pipeline import DataPipeline
+
+src = BaostockDataSource(end=date(2026, 4, 9))
+df = src.fetch(MINUTE_BARS_DATA_CONTRACT, since=date(2026, 1, 1))
+# ingest → DB
+conn = get_sync_conn()
+DataPipeline(conn).ingest(df, MINUTE_BARS_DATA_CONTRACT)
 ```
 
-(走 DataPipeline.ingest(MINUTE_BARS), code 字段自动带后缀)
+**分片并行**: 按 code range 分区调用多次 fetch, 或按 trade_date range 分片 (每 shard 一进程).
+
+原 `fetch_minute_bars.py` 是手动周/月跑脚本 (最后一次 minute_bars 更新 2026-04-13). 若需每日 schedule, 可在 `scripts/setup_task_scheduler.ps1` 加新 Task (Wave 3 PEAD 前置再定).
 
 ### 7.4 数据库备份
 

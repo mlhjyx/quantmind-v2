@@ -202,7 +202,7 @@ quantmind-v2/
 ├── scripts/
 │   ├── run_paper_trading.py     # ⭐ PT主脚本(345行编排器, Step 6-A拆分后)
 │   ├── run_backtest.py          # ⭐ 回测脚本(345行, Step 4-B改造为YAML驱动: --config configs/pt_live.yaml)
-│   ├── fetch_minute_bars.py     # ⭐ Step 6-B: Baostock 5分钟拉取(走DataPipeline)
+│   # fetch_minute_bars.py 已删 MVP 2.1c Sub3.3 (2026-04-18), 用 BaostockDataSource SDK 替代. 参考 SYSTEM_RUNBOOK §7.3
 │   ├── build_backtest_cache.py  # Step 5: 构建Parquet缓存
 │   ├── qmt_data_service.py      # QMT数据同步→Redis(Servy常驻)
 │   ├── health_check.py          # 盘前健康检查

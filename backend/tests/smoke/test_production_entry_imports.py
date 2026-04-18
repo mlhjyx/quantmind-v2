@@ -30,7 +30,7 @@ CRITICAL_SCRIPTS = [
     "scripts/health_check.py",
     "scripts/regression_test.py",
     "scripts/monitor_factor_ic.py",
-    "scripts/fetch_minute_bars.py",
+    # fetch_minute_bars.py 已删 MVP 2.1c Sub3.3 (2026-04-18), 改用 BaostockDataSource SDK
     "scripts/factor_health_check.py",
 ]
 
