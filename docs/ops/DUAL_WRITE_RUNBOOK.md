@@ -2,8 +2,8 @@
 
 > **适用**: 2026-04-20 (周一) ~ 2026-04-25 (周五) 5 交易日 dual-write 窗口
 > **目标**: 确认新 `TushareDataSource` (cf86447 扩 3 API) 与老 `fetch_base_data.py` 产出 100% 一致, 满足 MVP 2.1c Sub3 main (删老 fetcher) 启动 3 硬门之一
-> **执行者**: 用户本地手动 (Claude 无 TUSHARE_TOKEN, 不能代跑)
-> **耗时**: 每日 1-2 分钟
+> **执行模式**: 🤖 **默认 Celery Beat 自动跑** (每工作日 15:20, `app.tasks.dual_write_tasks.run_dual_write_check`), 用户仅需: (a) Step 0 一次性配 TUSHARE_TOKEN, (b) 周五 04-25 查 `--status` 确认 5/5 PASS. 手动运行命令仅诊断时使用.
+> **耗时**: 配置一次 5min + 每周五查一次 --status 1min (原日跑 2min × 5 改为 0min)
 
 ---
 
@@ -17,7 +17,38 @@
 
 ---
 
-## 📅 每日操作 (盘后 15:10+)
+## 🤖 自动化架构 (默认, 已激活)
+
+| 组件 | 内容 |
+|---|---|
+| 触发 | Celery Beat `crontab(hour=15, minute=20, day_of_week="1-5")` |
+| 执行 | `app.tasks.dual_write_tasks.run_dual_write_check` Celery task |
+| 内部 | subprocess 调 `scripts/dual_write_check.py` (复用既有代码, 无重复) |
+| 交易日过滤 | task 内 `_is_trading_day()` 查 `trading_calendar` 表, 节假日自动跳过 |
+| PASS 日志 | `logger.info "[dual_write_check] 2026-04-20 PASS old=5490 new=5490"` |
+| FAIL 日志 | `logger.error "[dual_write_check] 2026-04-20 FAIL ..."` |
+| FAIL 告警 | StreamBus 广播 `qm:dual_write:fail_alert` 事件 (payload 含 date/status/exit/codes_only_in_X/stderr_snippet) |
+| ERROR (TOKEN 缺) | `logger.warning` 不告警 (环境问题, 非数据问题) |
+
+**查看自动执行日志**:
+```powershell
+# Celery worker 日志 (Servy 管理)
+Get-Content D:\quantmind-v2\logs\celery-stdout.log -Tail 50 | Select-String "dual_write"
+```
+
+**查看 StreamBus FAIL 告警**:
+```powershell
+& "D:\Redis\redis-cli.exe" XRANGE qm:dual_write:fail_alert - + COUNT 10
+```
+
+**服务依赖** (Servy 管理, 自动运行):
+- ✅ `QuantMind-CeleryBeat` — 调度触发 (15:20)
+- ✅ `QuantMind-Celery` — worker 执行
+- ✅ Redis (broker/backend)
+
+---
+
+## 📅 用户操作 (极简版)
 
 ### Step 0: 一次性初始配置 (周一 04-20 前做)
 
@@ -39,47 +70,36 @@ print('Tushare OK, 交易日:', len(df), '条')
 "
 ```
 
-### Step 1: 每日盘后 15:10+ 跑 dual-write check
+### Step 1: 确认 Celery Beat 服务运行 (一次性)
+
+```powershell
+# Servy 4 服务应全部 Running
+D:\tools\Servy\servy-cli.exe status | Select-String "QuantMind"
+
+# 期待输出含:
+#   QuantMind-CeleryBeat    Running
+#   QuantMind-Celery        Running
+#   (其他 FastAPI / QMTData)
+```
+
+### Step 2: 每周/窗口结束查 5 日进度 (推荐做法)
 
 ```powershell
 cd D:\quantmind-v2
-
-# 跑当日对齐检查 (默认 today)
-.\.venv\Scripts\python.exe scripts\dual_write_check.py
-
-# 输出示例 (PASS):
-# {
-#   "status": "PASS",
-#   "old_rows": 5491,
-#   "new_rows": 5491,
-#   "row_count_match": true,
-#   "codes_only_in_old": 0,
-#   "codes_only_in_new": 0,
-#   "all_columns_match": true,
-#   "columns": {...}
-# }
-```
-
-**exit code 含义**:
-- `0` = PASS (本日合格, 进度 +1)
-- `1` = FAIL (任一列 mismatch, 看 report 定位)
-- `2` = ERROR (如 TUSHARE_TOKEN 未配 / 老 fetcher 当日未跑 / DB 连接失败)
-
-### Step 2: 检查 5 日窗口进度
-
-```powershell
 .\.venv\Scripts\python.exe scripts\dual_write_check.py --status
 
-# 输出示例:
+# 期待输出 (04-25 周五收盘后):
 # Dual-write 窗口进度 (state: cache/dual_write_state.json):
 #   2026-04-20 ✅ PASS  old=5491 new=5491 checked=2026-04-20T15:22:03
 #   2026-04-21 ✅ PASS  old=5489 new=5489 checked=2026-04-21T15:18:47
-#   2026-04-22 ❌ FAIL  old=5490 new=5488 checked=2026-04-22T15:25:11
+#   2026-04-22 ✅ PASS  old=5490 new=5490 checked=2026-04-22T15:25:11
+#   2026-04-23 ✅ PASS  old=5488 new=5488 checked=2026-04-23T15:21:34
+#   2026-04-25 ✅ PASS  old=5492 new=5492 checked=2026-04-25T15:20:55
 #
-# 窗口合格天数: 2 / 5 (MVP 2.1c Sub3 启动硬门之一)
+# 窗口合格天数: 5 / 5 (MVP 2.1c Sub3 启动硬门之一)
 ```
 
-### Step 3: 跑 regression (硬门 #2, 每天 1 次累积)
+### Step 3: 跑 regression (硬门 #2, 每天 1 次累积, 手动)
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\regression_test.py --years 5
@@ -89,6 +109,41 @@ cd D:\quantmind-v2
 #   max_diff: 0.0
 #   Sharpe: baseline=0.6095, current=0.6095
 # 只要 max_diff=0 即 PASS, 累积 3 天 = 硬门 #2 达标
+```
+
+---
+
+## 🔧 手动命令 (诊断 / 补跑, 非日常)
+
+**何时手动**: 自动跑 FAIL / Celery 宕机 / 补跑某历史日期 / 凭证诊断.
+
+```powershell
+cd D:\quantmind-v2
+
+# A. 手动触发今日对齐 (自动跑一次, 相当于 task 内部 subprocess)
+.\.venv\Scripts\python.exe scripts\dual_write_check.py
+
+# B. 指定日期补跑
+.\.venv\Scripts\python.exe scripts\dual_write_check.py --date 2026-04-21
+
+# C. 回溯整个窗口 (便于观察连续变化)
+.\.venv\Scripts\python.exe scripts\dual_write_check.py --backfill 2026-04-20 2026-04-25
+
+# exit code: 0=PASS / 1=FAIL / 2=ERROR
+```
+
+**输出 JSON 示例 (PASS)**:
+```
+{
+  "status": "PASS",
+  "old_rows": 5491,
+  "new_rows": 5491,
+  "row_count_match": true,
+  "codes_only_in_old": 0,
+  "codes_only_in_new": 0,
+  "all_columns_match": true,
+  "columns": {...}
+}
 ```
 
 ---

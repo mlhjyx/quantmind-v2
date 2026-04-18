@@ -47,6 +47,7 @@ celery_app.conf.update(
         "app.tasks.mining_tasks",
         "app.tasks.onboarding_tasks",
         "app.tasks.backtest_tasks",
+        "app.tasks.dual_write_tasks",
     ],
     # 结果过期: 24 小时
     result_expires=86400,

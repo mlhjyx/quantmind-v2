@@ -81,4 +81,17 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,
         },
     },
+    # ── 工作日 T日 15:20 dual-write 对齐检查 (MVP 2.1c Sub3 窗口硬门自动化) ──
+    # 时机: 老 fetcher 15:10-15:30 入库完成后, 15:20 对比新老路径
+    # task 内部再核对 trading_calendar 过滤节假日
+    # FAIL → logger.error + StreamBus qm:dual_write:fail_alert
+    # 窗口 5 日到期 (2026-04-25) 后, 用户 `scripts/dual_write_check.py --status` 看 5/5
+    "dual-write-check-daily": {
+        "task": "app.tasks.dual_write_tasks.run_dual_write_check",
+        "schedule": crontab(hour=15, minute=20, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1800,  # 30 min 过期
+        },
+    },
 }
