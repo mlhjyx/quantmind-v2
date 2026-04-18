@@ -108,9 +108,40 @@ def test_unsupported_contract_raises_value_error() -> None:
 # ============================================================
 
 
+def _adj_frame(ts_codes: list[str], td: str, factors: list[float] | None = None) -> pd.DataFrame:
+    """构造 Tushare adj_factor endpoint 样板."""
+    return pd.DataFrame(
+        {
+            "ts_code": ts_codes,
+            "trade_date": [td] * len(ts_codes),
+            "adj_factor": factors or [1.5] * len(ts_codes),
+        }
+    )
+
+
+def _stk_limit_frame(
+    ts_codes: list[str], td: str, up: list[float] | None = None, down: list[float] | None = None
+) -> pd.DataFrame:
+    """构造 Tushare stk_limit endpoint 样板."""
+    return pd.DataFrame(
+        {
+            "ts_code": ts_codes,
+            "trade_date": [td] * len(ts_codes),
+            "up_limit": up or [11.0] * len(ts_codes),
+            "down_limit": down or [9.0] * len(ts_codes),
+        }
+    )
+
+
 def test_fetch_klines_daily_single_day() -> None:
+    """MVP 2.1c Sub3-prep: 单日 klines 走 3 API 合并, 全绿."""
+    td = "20260415"
     responses = {
-        ("daily", "20260415"): _klines_frame(["600519.SH", "000001.SZ"], "20260415"),
+        ("daily", td): _klines_frame(["600519.SH", "000001.SZ"], td),
+        ("adj_factor", td): _adj_frame(["600519.SH", "000001.SZ"], td, [2.5, 1.2]),
+        ("stk_limit", td): _stk_limit_frame(
+            ["600519.SH", "000001.SZ"], td, [11.22, 13.22], [9.18, 10.82]
+        ),
     }
     client = _FakeTushareClient(responses=responses)
     src = TushareDataSource(client=client, end=date(2026, 4, 15))
@@ -118,25 +149,32 @@ def test_fetch_klines_daily_single_day() -> None:
 
     assert len(df) == 2
     assert set(df["ts_code"]) == {"600519.SH", "000001.SZ"}
-    # 列对齐 contract.schema
+    # 列对齐 contract.schema (14 列, 含 3 新字段)
     assert set(df.columns) == set(KLINES_DAILY_DATA_CONTRACT.schema.keys())
     # 单位 RAW (千元 未转换, vol 手未转换)
     assert df.iloc[0]["amount"] == 5100.0
     assert df.iloc[0]["vol"] == 5000
-    assert len(client.query_calls) == 1
+    # 3 新字段合并生效
+    row_600519 = df[df["ts_code"] == "600519.SH"].iloc[0]
+    assert row_600519["adj_factor"] == 2.5
+    assert row_600519["up_limit"] == 11.22
+    assert row_600519["down_limit"] == 9.18
+    # 1 天 × 3 API = 3 次 query
+    assert len(client.query_calls) == 3
 
 
 def test_fetch_klines_daily_multi_day() -> None:
-    responses = {
-        ("daily", "20260413"): _klines_frame(["600519.SH"], "20260413"),
-        ("daily", "20260414"): _klines_frame(["600519.SH"], "20260414"),
-        ("daily", "20260415"): _klines_frame(["600519.SH"], "20260415"),
-    }
+    """MVP 2.1c Sub3-prep: 3 天 klines × 3 API = 9 次 query."""
+    responses = {}
+    for td in ("20260413", "20260414", "20260415"):
+        responses[("daily", td)] = _klines_frame(["600519.SH"], td)
+        responses[("adj_factor", td)] = _adj_frame(["600519.SH"], td)
+        responses[("stk_limit", td)] = _stk_limit_frame(["600519.SH"], td)
     client = _FakeTushareClient(responses=responses)
     src = TushareDataSource(client=client, end=date(2026, 4, 15))
     df = src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 13))
     assert len(df) == 3  # 3 天
-    assert len(client.query_calls) == 3
+    assert len(client.query_calls) == 9  # 3 天 × 3 API
 
 
 def test_fetch_klines_empty_result_returns_schema_frame() -> None:
@@ -259,6 +297,128 @@ def test_check_value_ranges_klines_abnormal_pct_chg() -> None:
     )
     issues = src._check_value_ranges(df, KLINES_DAILY_DATA_CONTRACT)
     assert any("pct_chg" in msg and "30.5" in msg for msg in issues)
+
+
+# ============================================================
+# MVP 2.1c Sub3-prep — 3 API merge 扩展 (5 新 unit + 1 value_range)
+# ============================================================
+
+
+def test_klines_merge_adj_and_limit_missing_apis_use_fallbacks() -> None:
+    """MVP 2.1c Sub3-prep: daily 有 / adj_factor + stk_limit 全空 → fallback (1.0 + None)."""
+    td = "20260415"
+    responses = {
+        ("daily", td): _klines_frame(["600519.SH"], td),
+        # adj_factor & stk_limit 全不提供 (fake client 返回空 DataFrame)
+    }
+    client = _FakeTushareClient(responses=responses)
+    src = TushareDataSource(client=client, end=date(2026, 4, 15))
+    df = src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 15))
+    assert len(df) == 1
+    row = df.iloc[0]
+    # adj_factor 空 API → fallback 1.0 (对齐老 fetcher)
+    assert row["adj_factor"] == 1.0
+    # stk_limit 空 API → None
+    assert pd.isna(row["up_limit"])
+    assert pd.isna(row["down_limit"])
+    # 当日 3 次 query (daily + adj_factor + stk_limit 都被调 1 次)
+    assert len(client.query_calls) == 3
+
+
+def test_klines_merge_adj_factor_partial_fills_na_with_one() -> None:
+    """adj_factor API 覆盖部分 ts_code (left merge 后缺失行 fillna 1.0, 对齐老 fetcher)."""
+    td = "20260415"
+    responses = {
+        ("daily", td): _klines_frame(["600519.SH", "000001.SZ"], td),
+        ("adj_factor", td): _adj_frame(["600519.SH"], td, [3.7]),  # 只覆盖 600519
+        ("stk_limit", td): _stk_limit_frame(["600519.SH", "000001.SZ"], td),
+    }
+    client = _FakeTushareClient(responses=responses)
+    src = TushareDataSource(client=client, end=date(2026, 4, 15))
+    df = src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 15))
+    assert len(df) == 2  # daily 2 行全保留 (left merge)
+    row_600519 = df[df["ts_code"] == "600519.SH"].iloc[0]
+    row_000001 = df[df["ts_code"] == "000001.SZ"].iloc[0]
+    assert row_600519["adj_factor"] == 3.7
+    # 000001.SZ 不在 adj_factor, merge 后 NA → fillna(1.0)
+    assert row_000001["adj_factor"] == 1.0
+
+
+def test_klines_daily_api_empty_skips_day_no_downstream_queries() -> None:
+    """daily API 当日空 (如周末 / 交易中断), 不应调 adj_factor / stk_limit."""
+    # 日期 4/13 (周一, 假装 daily 返空), 4/14 有数据
+    td_empty = "20260413"
+    td_ok = "20260414"
+    responses = {
+        # 4/13 无 daily (responses 不含 → fake client 返 empty)
+        ("daily", td_ok): _klines_frame(["600519.SH"], td_ok),
+        ("adj_factor", td_ok): _adj_frame(["600519.SH"], td_ok),
+        ("stk_limit", td_ok): _stk_limit_frame(["600519.SH"], td_ok),
+    }
+    client = _FakeTushareClient(responses=responses)
+    src = TushareDataSource(client=client, end=date(2026, 4, 14))
+    df = src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 13))
+    assert len(df) == 1  # 仅 4/14 有数据
+    assert df.iloc[0]["trade_date"] == td_ok
+    # Query 次数: 4/13 daily (1) + 4/14 daily/adj/stk (3) = 4
+    # 关键: 4/13 daily 空后不应再调 adj/stk
+    calls_by_date: dict[str, list[str]] = {}
+    for c in client.query_calls:
+        calls_by_date.setdefault(c.get("trade_date", ""), []).append(c["api"])
+    assert calls_by_date[td_empty] == ["daily"], (
+        f"4/13 daily 空后不应调 adj/stk, 实际: {calls_by_date[td_empty]}"
+    )
+    assert set(calls_by_date[td_ok]) == {"daily", "adj_factor", "stk_limit"}
+
+
+def test_klines_adj_factor_api_raises_propagates() -> None:
+    """adj_factor API 异常 → RuntimeError 含 'Tushare adj_factor 查询'."""
+    td = "20260415"
+    responses = {
+        ("daily", td): _klines_frame(["600519.SH"], td),
+    }
+    # daily 能返回, adj_factor 调时 raise (通过 raise_on_api)
+    client = _FakeTushareClient(responses=responses, raise_on_api="adj_factor")
+    src = TushareDataSource(client=client, end=date(2026, 4, 15))
+    with pytest.raises(RuntimeError, match=r"Tushare adj_factor 查询"):
+        src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 15))
+
+
+def test_klines_stk_limit_api_raises_propagates() -> None:
+    """stk_limit API 异常 → RuntimeError 含 'Tushare stk_limit 查询'."""
+    td = "20260415"
+    responses = {
+        ("daily", td): _klines_frame(["600519.SH"], td),
+        ("adj_factor", td): _adj_frame(["600519.SH"], td),
+    }
+    client = _FakeTushareClient(responses=responses, raise_on_api="stk_limit")
+    src = TushareDataSource(client=client, end=date(2026, 4, 15))
+    with pytest.raises(RuntimeError, match=r"Tushare stk_limit 查询"):
+        src.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 15))
+
+
+def test_check_value_ranges_klines_negative_adj_factor() -> None:
+    """MVP 2.1c Sub3-prep: adj_factor <= 0 检测."""
+    client = _FakeTushareClient()
+    src = TushareDataSource(client=client)
+    df = pd.DataFrame(
+        {
+            "ts_code": ["600519.SH", "000001.SZ"],
+            "open": [10.0, 10.0],
+            "high": [10.5, 10.5],
+            "low": [9.9, 9.9],
+            "close": [10.2, 10.2],
+            "pre_close": [10.0, 10.0],
+            "vol": [1000, 1000],
+            "amount": [10000.0, 10000.0],
+            "pct_chg": [2.0, 2.0],
+            "adj_factor": [-0.5, 1.0],  # 负值 + 正常值
+            "up_limit": [11.0, 11.0],
+            "down_limit": [9.0, 9.0],
+        }
+    )
+    issues = src._check_value_ranges(df, KLINES_DAILY_DATA_CONTRACT)
+    assert any("adj_factor" in m and "<= 0" in m for m in issues), issues
 
 
 def test_check_value_ranges_daily_basic_negative_mv() -> None:

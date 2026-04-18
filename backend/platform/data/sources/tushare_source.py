@@ -1,7 +1,7 @@
-"""MVP 2.1b Sub-commit 3 — TushareDataSource: Tushare Platform fetcher (最高风险, dual-write).
+"""MVP 2.1b Sub3 + 2.1c Sub3-prep — TushareDataSource: Tushare Platform fetcher.
 
 继承 `BaseDataSource` (MVP 2.1a) Template, contract.name dispatch 3 路径:
-  - `klines_daily`: ts.daily() 每日 K 线 (仅 base, 不含 adj_factor / stk_limit)
+  - `klines_daily`: ts.daily() + ts.adj_factor() + ts.stk_limit() 3 API 合并 (MVP 2.1c Sub3-prep)
   - `daily_basic`: ts.daily_basic() 每日基本面
   - `moneyflow`: ts.moneyflow() 资金流
 
@@ -13,22 +13,26 @@
   - 这与 MVP 2.1a base_source.py docstring "单位已归一" 略有偏差 — 为 MVP 2.1b dual-write
     与老 `BaseDataFetcher` 输出对齐, MVP 2.1c 删老后再收敛口径
 
-**MVP 2.1b 限制**:
-  - `klines_daily` 仅 base daily, **不合并** adj_factor / stk_limit (老 fetcher 合并 3 API)
-  - 真要换到生产需补 adj_factor / stk_limit DataSource 或留 MVP 2.1c orchestrator
-  - 本 MVP 交付 **契约合规能力** (走 DataSource 接口 + validate), 不切流生产
-  - dual-write 退出前提: MVP 2.1c 扩 orchestrator + regression max_diff=0 × 3 次
+**MVP 2.1c Sub3-prep (2026-04-19) 解除限制**:
+  - `klines_daily` 扩 3 字段 (adj_factor / up_limit / down_limit), 合并 3 API 与老 fetcher pattern
+    对齐 (fetch_base_data.py::fetch_klines_daily L251-290)
+  - Fallback 语义 (与老 fetcher 严格一致):
+    - adj_factor API 当日空 → 默认 1.0 (不复权)
+    - stk_limit API 当日空 → up_limit/down_limit = None
+  - 为下周一 (2026-04-20) dual-write 窗口 5 交易日新老 100% md5 对齐提供 precondition
+  - Sub3 main (删老 fetcher) 仍等窗口 2026-04-25 验收后做
 
 与老 `backend/app/data_fetcher/fetch_base_data.py` dual-write:
-  - 本类: fetch_raw + validate
+  - 本类: fetch_raw (3 API 合并) + validate
   - 老脚本: Celery daily_pipeline 继续走 `BaseDataFetcher.run_all` async path
-  - MVP 2.1c 后删老脚本
+  - MVP 2.1c Sub3 main 后删老脚本
 
 Usage:
     api = TushareAPI()  # 或 mock client
     source = TushareDataSource(client=api, end=date.today())
     df = source.fetch(KLINES_DAILY_DATA_CONTRACT, since=date(2026, 4, 10))
-    # DataFrame schema 对齐 contract.schema (ts_code/trade_date/open/.../vol/amount)
+    # DataFrame schema 对齐 contract.schema (14 列: ts_code/trade_date/open/.../vol/amount
+    # + adj_factor/up_limit/down_limit)
     # 走 DataPipeline.ingest(df, KLINES_DAILY TableContract) 完成归一+入库
 """
 from __future__ import annotations
@@ -49,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 KLINES_DAILY_DATA_CONTRACT = DataContract(
     name="klines_daily",
-    version="v1",
+    version="v2",  # MVP 2.1c Sub3-prep (2026-04-19): +3 字段 (adj_factor/up_limit/down_limit)
     schema={
         # RAW Tushare 字段 (ts_code/vol/pct_chg 由 DataPipeline rename)
         "ts_code": "str",
@@ -63,6 +67,10 @@ KLINES_DAILY_DATA_CONTRACT = DataContract(
         "pct_chg": "float64 %×100",
         "vol": "int64 手",
         "amount": "float64 千元",
+        # MVP 2.1c Sub3-prep: 合 ts.adj_factor + ts.stk_limit 3 API
+        "adj_factor": "float64",
+        "up_limit": "float64 元",
+        "down_limit": "float64 元",
     },
     primary_key=("ts_code", "trade_date"),
     source="tushare",
@@ -73,6 +81,9 @@ KLINES_DAILY_DATA_CONTRACT = DataContract(
         "close": "元",
         "vol": "手",
         "amount": "千元",  # RAW, DataPipeline 转 元
+        "adj_factor": "无量纲",
+        "up_limit": "元",
+        "down_limit": "元",
     },
 )
 
@@ -218,8 +229,114 @@ class TushareDataSource(BaseDataSource):
                 f"TushareDataSource 不支持 contract={name!r}, "
                 f"支持: {sorted(_CONTRACT_API_MAP)}"
             )
+        # MVP 2.1c Sub3-prep: klines_daily 特殊走 3 API 合并路径
+        if name == "klines_daily":
+            return self._fetch_klines_merged(since, contract)
         api_name, fields = _CONTRACT_API_MAP[name]
         return self._fetch_daily_range(api_name, fields, since, contract)
+
+    # ---------- klines_daily 3 API merge (MVP 2.1c Sub3-prep) ----------
+
+    def _fetch_klines_merged(
+        self, since: date, contract: DataContract
+    ) -> pd.DataFrame:
+        """合并 ts.daily + ts.adj_factor + ts.stk_limit 3 API, 与老 fetcher pattern 对齐.
+
+        老 fetcher 参考: backend/app/data_fetcher/fetch_base_data.py::fetch_klines_daily
+          L251-290 (按日迭代 + 3 API + left merge + fallback).
+
+        Fallback 规则 (严格复制老逻辑):
+          - df_adj 空 → df["adj_factor"] = 1.0 (不复权)
+          - df_limit 空 → df["up_limit"] = None, df["down_limit"] = None
+          - df_daily 空 (当日无交易) → 整日跳过, 不产任何行
+        """
+        end = self._end or date.today()
+        if since > end:
+            raise ValueError(f"since={since} > end={end}")
+
+        daily_fields = _CONTRACT_API_MAP["klines_daily"][1]
+        adj_fields = "ts_code,trade_date,adj_factor"
+        lim_fields = "ts_code,trade_date,up_limit,down_limit"
+
+        frames: list[pd.DataFrame] = []
+        d = since
+        day_count = 0
+        while d <= end:
+            td_str = d.strftime("%Y%m%d")
+
+            # 1. base daily (必有, 空则跳过本日)
+            try:
+                df_d = self._client.query("daily", trade_date=td_str, fields=daily_fields)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Tushare daily 查询 trade_date={td_str} 失败: {e}"
+                ) from e
+
+            if df_d is None or df_d.empty:
+                d += timedelta(days=1)
+                day_count += 1
+                continue
+
+            # 2. adj_factor (可空 → fallback 1.0)
+            try:
+                df_adj = self._client.query(
+                    "adj_factor", trade_date=td_str, fields=adj_fields
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Tushare adj_factor 查询 trade_date={td_str} 失败: {e}"
+                ) from e
+
+            if df_adj is not None and not df_adj.empty:
+                df_d = df_d.merge(
+                    df_adj[["ts_code", "adj_factor"]], on="ts_code", how="left"
+                )
+                # left merge 个别 ts_code 缺 adj_factor → fallna 1.0
+                df_d["adj_factor"] = df_d["adj_factor"].fillna(1.0)
+            else:
+                df_d["adj_factor"] = 1.0
+
+            # 3. stk_limit (可空 → fallback None)
+            try:
+                df_lim = self._client.query(
+                    "stk_limit", trade_date=td_str, fields=lim_fields
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Tushare stk_limit 查询 trade_date={td_str} 失败: {e}"
+                ) from e
+
+            if df_lim is not None and not df_lim.empty:
+                df_d = df_d.merge(
+                    df_lim[["ts_code", "up_limit", "down_limit"]],
+                    on="ts_code",
+                    how="left",
+                )
+            else:
+                df_d["up_limit"] = None
+                df_d["down_limit"] = None
+
+            frames.append(df_d)
+            d += timedelta(days=1)
+            day_count += 1
+
+        logger.info(
+            "TushareDataSource.klines_daily 合 3 API 拉取 %d 日, %d 帧 (since=%s, end=%s)",
+            day_count,
+            len(frames),
+            since,
+            end,
+        )
+
+        if not frames:
+            return pd.DataFrame(columns=list(contract.schema.keys()))
+
+        df = pd.concat(frames, ignore_index=True)
+        cols = list(contract.schema.keys())
+        for c in cols:
+            if c not in df.columns:
+                df[c] = None
+        return df[cols]
 
     # ---------- 内部: 日期范围迭代 ----------
 
@@ -267,6 +384,44 @@ class TushareDataSource(BaseDataSource):
                 df[c] = None
         return df[cols]
 
+    # ---------- _check_nan_ratio override (MVP 2.1c Sub3-prep) ----------
+
+    _NAN_TOLERANT_COLS: dict[str, frozenset[str]] = {
+        # up_limit/down_limit fallback 为 None (stk_limit API 当日空时), 100% NaN 合法
+        "klines_daily": frozenset({"up_limit", "down_limit"}),
+    }
+
+    def _check_nan_ratio(
+        self, df: pd.DataFrame, contract: DataContract
+    ) -> list[str]:
+        """Override: 跳过 fallback 允许高 NaN 的列 (e.g. klines_daily up/down_limit)."""
+        tolerant = self._NAN_TOLERANT_COLS.get(contract.name, frozenset())
+        if not tolerant:
+            return super()._check_nan_ratio(df, contract)
+
+        # 复用父类逻辑, 但跳过 tolerant cols
+        issues: list[str] = []
+        if df.empty:
+            return issues
+        pk_cols = set(contract.primary_key)
+        total = len(df)
+        for col in contract.schema:
+            if col not in df.columns:
+                continue
+            if col in tolerant:
+                continue  # fallback 允许高 NaN
+            n_nan = int(df[col].isna().sum())
+            if col in pk_cols and n_nan > 0:
+                issues.append(f"[nan] PK column {col!r} has {n_nan} NaN values (not allowed)")
+            else:
+                ratio = n_nan / total
+                if ratio > self._nan_ratio_threshold:
+                    issues.append(
+                        f"[nan] column {col!r} NaN ratio {ratio:.2%} > "
+                        f"threshold {self._nan_ratio_threshold:.2%}"
+                    )
+        return issues
+
     # ---------- _check_value_ranges override ----------
 
     def _check_value_ranges(
@@ -299,6 +454,20 @@ class TushareDataSource(BaseDataSource):
                 n = int(bad.sum())
                 if n > 0:
                     issues.append(f"[range] pct_chg 列 {n} 行 |%| > 30.5 (超出涨跌停合理幅度)")
+            # MVP 2.1c Sub3-prep: 3 新字段值域
+            if "adj_factor" in df.columns:
+                bad = df["adj_factor"].notna() & (df["adj_factor"] <= 0)
+                n = int(bad.sum())
+                if n > 0:
+                    issues.append(
+                        f"[range] adj_factor 列 {n} 行 <= 0 (复权因子必须正)"
+                    )
+            for col in ("up_limit", "down_limit"):
+                if col in df.columns:
+                    bad = df[col].notna() & (df[col] < 0)
+                    n = int(bad.sum())
+                    if n > 0:
+                        issues.append(f"[range] {col} 列 {n} 行 < 0 (价格不可负)")
         elif name == "daily_basic":
             if "close" in df.columns:
                 bad = df["close"].notna() & (df["close"] < 0)
