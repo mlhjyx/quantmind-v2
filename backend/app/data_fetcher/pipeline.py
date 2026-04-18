@@ -51,15 +51,17 @@ def _is_null(v) -> bool:
 
 
 def _prepare_cell(v, dtype: str):
-    """_upsert tuple 构造前的 type-aware null 处理 + JSON wrap (MVP 2.2).
+    """_upsert tuple 构造前的 type-aware null 处理 + JSON wrap (MVP 2.2) + array 直通 (MVP 2.3).
 
     - jsonb: 用 psycopg2 `Json(...)` adapter 包装 dict/list → JSONB 字面量
+    - text_array / decimal_array: Python list 直通, psycopg2 原生适配到 PG TEXT[] / NUMERIC[]
     - uuid / text / 其他: 直通 (register_uuid 已注册 UUID 适配器)
     """
     if _is_null(v):
         return None
     if dtype == "jsonb":
         return Json(v)
+    # text_array / decimal_array: list 直通 (psycopg2 自动适配 PG ARRAY)
     return v
 
 
@@ -423,6 +425,55 @@ class DataPipeline:
                 df[col_name] = results.apply(lambda t: t[1])
                 if invalid_mask.any():
                     reject_reasons[f"invalid_jsonb_{col_name}"] = int(invalid_mask.sum())
+                    valid_mask &= ~invalid_mask
+
+            # MVP 2.3: text_array 验证 (accept list[str] | None; 其他 reject)
+            # psycopg2 原生适配 Python list[str] → PG TEXT[], _prepare_cell 不拦截
+            elif spec.dtype == "text_array":
+
+                def _try_text_array_strict(v):
+                    if _is_null(v):
+                        return True, None
+                    if isinstance(v, list) and all(isinstance(x, str) for x in v):
+                        return True, v
+                    return False, None
+
+                results = col.apply(_try_text_array_strict)
+                invalid_mask = results.apply(lambda t: not t[0])
+                df[col_name] = results.apply(lambda t: t[1])
+                if invalid_mask.any():
+                    reject_reasons[f"invalid_text_array_{col_name}"] = int(invalid_mask.sum())
+                    valid_mask &= ~invalid_mask
+
+            # MVP 2.3: decimal_array 验证 (accept list[int|float|Decimal|np.number] | None; NaN 元素 reject)
+            # psycopg2 原生适配 Python list[Decimal] → PG NUMERIC[]; int/float 也可 (PG 自动 cast)
+            elif spec.dtype == "decimal_array":
+                import decimal as _decimal_mod
+
+                def _try_decimal_array_strict(v):
+                    if _is_null(v):
+                        return True, None
+                    if not isinstance(v, list):
+                        return False, None
+                    for x in v:
+                        if isinstance(x, bool):  # bool 是 int 子类, 明确排除
+                            return False, None
+                        if isinstance(x, (int, float, _decimal_mod.Decimal)):
+                            # 数值 NaN / inf 拒绝 (铁律 29 防 NaN 进 DB)
+                            if isinstance(x, float) and (pd.isna(x) or np.isinf(x)):
+                                return False, None
+                            continue
+                        if hasattr(x, "item") and not isinstance(x, (str, bytes)):
+                            # numpy scalar 接受 (np.int64 / np.float64)
+                            continue
+                        return False, None
+                    return True, v
+
+                results = col.apply(_try_decimal_array_strict)
+                invalid_mask = results.apply(lambda t: not t[0])
+                df[col_name] = results.apply(lambda t: t[1])
+                if invalid_mask.any():
+                    reject_reasons[f"invalid_decimal_array_{col_name}"] = int(invalid_mask.sum())
                     valid_mask &= ~invalid_mask
 
         # 应用mask

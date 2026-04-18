@@ -49,7 +49,7 @@ UNIT_CONVERSIONS: dict[tuple[SourceUnit, DBUnit], float] = {
 class ColumnSpec:
     """单列schema定义。"""
 
-    dtype: str  # "float" | "int" | "str" | "bool" | "date" | "uuid" | "jsonb" (MVP 2.2)
+    dtype: str  # "float" | "int" | "str" | "bool" | "date" | "uuid" | "jsonb" (MVP 2.2) | "text_array" | "decimal_array" (MVP 2.3)
     nullable: bool = True
     source_unit: SourceUnit | None = None  # Tushare原始单位
     db_unit: DBUnit | None = None  # DB存储单位
