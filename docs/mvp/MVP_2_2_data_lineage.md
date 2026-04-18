@@ -223,7 +223,7 @@ lineages = get_lineage_for_row("factor_values",
 
 ## 下一步 (MVP 2.2 后)
 
-- **MVP 2.1c Sub3** (dual-write 2026-04-25 窗口后): 老 3 fetcher 退役 + klines orchestrator + **触发 ADR-0009 收敛实施评估**
+- **MVP 2.1c Sub3** ✅ **完整交付 2026-04-18 (Session 6 末)**: 老 3 fetcher 退役 + qmt 改壳 + dual_write 退役, backfill 19/19 PASS 硬门达成 + **触发 ADR-0009 收敛实施评估** (Wave 2 完结 Blueprint v1.5 bump 时统一整理)
 - **MVP 2.3 Backtest Parity**: BacktestMode + BacktestRunner + backtest_run DB 表 (此表要用 UUID+JSONB+TEXT[]+DECIMAL[], **届时扩余下 ColumnSpec 类型**)
 - **MVP 3.4 Eval Gate**: factor_profile 56 字段 Contract (届时扩 TEXT[])
 - **Wave 3 Event Sourcing (MVP 3.3)**: lineage 与 event_log outbox 集成, snapshot 触发 lineage chain 追溯

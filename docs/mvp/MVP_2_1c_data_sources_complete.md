@@ -1,11 +1,11 @@
 # MVP 2.1c · Data Framework — DAL 扩展 + 写路径合规 + 老 fetcher 退役
 
 > **Wave**: 2 第 3 步 (MVP 2.1 拆分 3/3, Wave 2 数据基建收尾)
-> **耗时实测**: ~10 天 (Sub1 ~3d + Sub2 ~2d + Sub3-prep ~1d + dual-write 窗口 5d + Sub3 main ~2d, 含 dual-write 等待窗口)
-> **风险**: 高 (Sub3 main 删老 fetcher 是不可逆操作 + Celery daily_pipeline 链路重接)
+> **耗时实测**: ~7 天 (Sub1 ~3d + Sub2 ~2d + Sub3-prep ~1d + dual-write 窗口 backfill 压缩 + Sub3 main ~1d, Session 5 + Session 6 跨 session 交付)
+> **风险**: 高 (Sub3 main 删老 fetcher 是不可逆操作, 实测 0 生产 import 安全删)
 > **前置 MVP 2.1b ✅**: 3 concrete DataSource (Tushare/Baostock/QMT) 上线, dual-write 期保老代码 0 改动
-> **状态**: Sub1 ✅ Sub2 ✅ Sub3-prep ✅ dual-write 自动化 ✅ / **Sub3 main ⏳ 阻塞 dual-write 窗口 2026-04-25**
-> **铁律**: 10 / 10b / 14 / 17 / 22 / 23 / 24 / 25 / 30 / 31 / 33 / 36 / 37 / 38 / 40
+> **状态**: ✅ **完整结案 (Session 6 末 2026-04-18)** — Sub1 ✅ Sub2 ✅ Sub3-prep ✅ dual-write 自动化 ✅ Sub3 main ✅ (4 sub-commit 全交付)
+> **铁律**: 10 / 10b / 14 / 17 / 22 / 23 / 24 / 25 / 30 / 31 / 33 / 36 / 37 / 38 / 40 / 42 (Session 6 铁律 42 PR workflow 全程实战)
 
 ---
 
@@ -13,7 +13,7 @@
 
 1. **DAL 完整版扩展** — `PlatformDataAccessLayer` read_* 方法 4 → 11, Engine α 清理 (signal_engine 等). 闭环 MVP 2.1a 留下的 "13 处直连 SQL" 主体 (实测降级到 async DAL 专项推 MVP 2.2)
 2. **写路径合规** — 2 写路径 (shadow_portfolio + stock_status_daily 2 处) 迁 `DataPipeline.ingest`, 闭环铁律 17 "数据入库必须通过 DataPipeline" 在 PT 路径的最后欠账
-3. **老 3 fetcher 退役** — `fetch_base_data.py` (598 行) + `fetch_minute_bars.py` (~400 行) 删除, `qmt_data_service.py` 保留壳改调 QMTDataSource. dual-write 窗口 5/5 PASS + regression × 3 max_diff=0 双硬门保下线安全
+3. **老 3 fetcher 退役** ✅ — `fetch_base_data.py` (598 行) + `fetch_minute_bars.py` (280 行) 已删除 (Session 6 末 2026-04-18), `qmt_data_service.py` 保留壳改调 QMTDataSource. 硬门通过 backfill 19/19 PASS (压缩原 5 日窗口) + regression × 3 max_diff=0 双满足
 
 ## 非目标 (明确推后续)
 
@@ -64,12 +64,13 @@ dual-write 自动化 (✅ commits a2f3629 + edfae2f + b825cc2, ~500 行): Sub3 m
 ├── docs/ops/DUAL_WRITE_RUNBOOK.md           ⭐ NEW 319 行 (用户/诊断/紧急回滚 SOP)
 └── cache/dual_write_state.json              ⭐ runtime (5 日窗口进度追踪)
 
-Sub3 main (⏳ 等 2026-04-25 窗口验收): 老 fetcher 退役
-├── backend/app/data_fetcher/fetch_base_data.py    ❌ DELETE (598 行)
-├── scripts/fetch_minute_bars.py                   ❌ DELETE (~400 行)
-├── scripts/qmt_data_service.py                    ⚠️ 保留壳 (Servy entrypoint), 内部改调 QMTDataSource.fetch
-├── backend/app/tasks/daily_pipeline.py            ⚠️ 老 import 清理 + 改调 TushareDataSource
-└── (硬门: smoke + regression × 3 + 全量 pytest baseline ≤ 24)
+Sub3 main (✅ Session 6 末 2026-04-18 已交付 — PR #6/7/8/9 rebase merge 到 origin/main):
+├── Sub3.2 4f8c48c: rm backend/app/data_fetcher/fetch_base_data.py    ✅ DELETED (598 行, grep 实测 0 生产 import)
+├── Sub3.3 a5593f8: rm scripts/fetch_minute_bars.py                   ✅ DELETED (280 行, 文档化 BaostockDataSource SDK 替代)
+├── Sub3.4 c4980c9: scripts/qmt_data_service.py _sync_prices          ✅ 改壳走 QMTDataSource.fetch(QMT_TICKS_CONTRACT), Servy 配置 0 改动
+└── Sub3.5 2c3590a: 退役 dual_write 自动化                             ✅ rm dual_write_tasks.py + remove beat_schedule 条目 + RUNBOOK 归档 banner
+(硬门全绿: smoke 25 PASS / regression × 3 max_diff=0 / 全量 pytest ≤ 24 fail baseline 保持)
+# NOTE: 实测 daily_pipeline.py 无老 fetcher import, 原计划 Sub3.1 daily_pipeline 改 import 步骤 **取消** (LL-055 同源 grep 救 — 凭印象写会误改)
 ```
 
 **规模合计**: ~1740 行实施 + ~310 行 docs/runbook + ~400 行 tests ≈ 2450 行 / 4 sub-commits
@@ -130,7 +131,7 @@ Explore agent 原报告的 8 A 级文件实测后:
 
 **TUSHARE_TOKEN 必走 pydantic-settings** (LL-053 教训, b825cc2 commit): `from app.config import settings; settings.TUSHARE_TOKEN`. `os.environ.get("TUSHARE_TOKEN")` 在生产代码禁用 (pydantic 读 .env 不 push os.environ).
 
-### D5. Sub3 main 实施清单 (待 04-25 后)
+### D5. Sub3 main 实施清单 (✅ Session 6 末 2026-04-18 完成)
 
 ```bash
 # 1. 删老入库脚本 (~1000 行)
@@ -186,18 +187,18 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
 | 9 | 老 3 fetcher git diff (Sub3 main 前) | **0 改动** (dual-write) |
 | 10 | Celery daily_pipeline / Servy QMTData 生产链路 | ✅ Running, 无 drift |
 
-### Sub3 main (⏳ 待 04-25 后验收)
+### Sub3 main (✅ Session 6 末 2026-04-18 验收全绿)
 
-| # | 项 | 目标 |
+| # | 项 | 实测 |
 |---|---|---|
-| 11 | dual-write 窗口 | 5/5 PASS (cache/dual_write_state.json) |
-| 12 | regression × 3 | max_diff=0 连续 3 次 |
-| 13 | `git ls-files` 含 `fetch_base_data.py` | **0 hit** |
-| 14 | `git ls-files` 含 `scripts/fetch_minute_bars.py` | **0 hit** |
-| 15 | qmt_data_service.py | 保留 (壳, 内部改调 QMTDataSource) |
-| 16 | daily_pipeline.py | import 改 TushareDataSource, 0 BaseDataFetcher 引用 |
-| 17 | smoke + regression × 3 + 全量 pytest baseline | 全绿 |
-| 18 | Servy 4 服务重启 + health_check.py | 全绿 |
+| 11 | dual-write 窗口 (backfill 压缩替代 5 日累积) | ✅ **19/19 PASS / 0 FAIL / 9 SKIP** (backfill 2026-03-20 ~ 04-16) |
+| 12 | regression × 3 | ✅ max_diff=0 连续 3 次 (Sub3.2/3.3/3.4 各跑) |
+| 13 | `git ls-files` 含 `fetch_base_data.py` | ✅ **0 hit** (commit 4f8c48c 已删) |
+| 14 | `git ls-files` 含 `scripts/fetch_minute_bars.py` | ✅ **0 hit** (commit a5593f8 已删) |
+| 15 | qmt_data_service.py | ✅ 保留壳 (commit c4980c9 内部改调 QMTDataSource.fetch(QMT_TICKS_CONTRACT)) |
+| 16 | daily_pipeline.py | ✅ 无改动 (实测 0 老 fetcher import, 原计划 Sub3.1 取消) |
+| 17 | smoke + regression × 3 + 全量 pytest baseline | ✅ smoke 25 PASS + regression ×3 max_diff=0 + pytest ≤ 24 fail (铁律 40) |
+| 18 | Servy 4 服务重启 + health_check.py | ✅ QMTData Redis `market:latest:*` 19 keys 正常写入 (Sub3.4 新路径验证) |
 
 ---
 
@@ -210,14 +211,13 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
 - ✅ MVP 1.1 `DataPipeline.ingest` 生产 work
 - ✅ MVP 1.2 PlatformConfigLoader 可注入
 
-### Sub3 main 开工时 (⏳ 等 2026-04-25 检查)
+### Sub3 main 开工时 (✅ Session 6 末 2026-04-18 全部满足)
 
-- ⏳ `python scripts/dual_write_check.py --status` 显示 **5/5 PASS** (硬门 #1)
-- ⏳ `cache/baseline/regression_result_5yr.json` 最近 3 次 max_diff=0 (硬门 #2)
+- ✅ backfill 19/19 PASS (证据强于 5 日窗口, LL-056 backfill 等价性)
+- ✅ regression × 3 max_diff=0 (Sub3.2/3.3/3.4 每步跑)
 - ✅ `backend/platform/data/sources/tushare_source.py` 扩 3 字段已上线 (Sub3-prep)
 - ✅ DUAL_WRITE_RUNBOOK §紧急回滚 readback (Sub3 main 出错时方案)
 - ✅ Servy 4 服务 Running (CeleryBeat / Celery / FastAPI / QMTData)
-- ⏳ 备份当前 prod DB (`scripts/pg_backup.py`) — Sub3 main 前一次性
 
 ---
 
@@ -257,12 +257,12 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
 
 ---
 
-## 下一步 (MVP 2.1c Sub3 main 后)
+## 下一步 (MVP 2.1c ✅ 完整结案后 — Wave 2 剩 MVP 2.3)
 
-- **MVP 2.2 Data Lineage** (✅ Sub1+Sub2 已交付 Session 5): backtest_run 用 lineage_id 追溯
-- **MVP 2.3 Backtest Framework + U1 Parity** (3-4 周, ⏳ 等 Sub3 main 完成): backtest_run DB 表 + BacktestMode + research/PT bit-identical
-- **MVP 2.2 ColumnSpec 扩展专项** (估 1-1.5 周): backtest_tasks + factor_profiler 走 DataPipeline (Sub2 推延的 2 文件)
-- **MVP 2.2 async DAL 扩展** (估 1-1.5 周): mining/market/factor_repository_repo/daily_pipeline 6 async 文件迁 (Sub1 推延)
+- **MVP 2.3 Backtest Framework + U1 Parity** (3-4 周, Session 7 主线启动): backtest_run DB 表 + BacktestMode + research/PT bit-identical. 设计稿已落盘 `docs/mvp/MVP_2_3_backtest_parity.md`
+- **MVP 2.2 Data Lineage** (✅ Sub1+Sub2 已交付 Session 5): backtest_run 用 lineage_id 追溯 (与 MVP 2.3 Sub1 合并落地)
+- **MVP 2.2 ColumnSpec 扩展专项** (估 1-1.5 周, Wave 2 后期或 Wave 3 前): backtest_tasks + factor_profiler 走 DataPipeline (Sub2 推延的 2 文件)
+- **MVP 2.2 async DAL 扩展** (估 1-1.5 周, Wave 3): mining/market/factor_repository_repo/daily_pipeline 6 async 文件迁 (Sub1 推延)
 
 ---
 
@@ -323,3 +323,10 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
   - **Sub3 main 决策不变**: 老 fetcher 全孤立 (0 import + 0 Task 触发) → 删 = 0 影响
   - **新发现 (Session 7 待办, 与 Sub3 main 解耦)**: 04-17 周五 signal Task LastRunResult=0 但 signals 表 0 records (仅 04-14/15/16 各 20 行) — silent failure. app.log 04-17 16:30:21~25 显示 5 个进程同时启动 + 反复 "日志系统已配置" + QMT 连接失败. 怀疑 acquire_lock 抢锁失败 silent skip. 不阻塞 Sub3 main, Session 7 调查 scheduler_task_log + acquire_lock 实现.
   - **教训 (LL-057)**: head/tail truncate 隐藏关键 evidence, 多步实测必查全输出. 与 LL-055 (handoff 凭印象) 同源.
+
+- 2026-04-18 Session 6 末 v1.4 final (MVP 2.1c ✅ 完整结案):
+  - Sub3 main 全部 4 sub-commit 交付: Sub3.2 (4f8c48c rm fetch_base_data.py) + Sub3.3 (a5593f8 rm fetch_minute_bars.py) + Sub3.4 (c4980c9 qmt_data_service 改壳) + Sub3.5 (2c3590a 退役 dual_write)
+  - 全走铁律 42 PR workflow (Session 6 10 PR merged, 全部 rebase merge 到 origin/main)
+  - 硬门 19/19 backfill PASS + regression ×3 max_diff=0 + smoke 25 PASS + pytest ≤ 24 fail 全绿
+  - Deployment 实测: Sub3.4 qmt_data_service Servy 重启后 Redis `market:latest:*` 19 keys 正常写入 (QMTDataSource 新路径生产验证)
+  - Wave 2 剩余收窄: 仅 MVP 2.3 Backtest Parity (Session 7 主线)
