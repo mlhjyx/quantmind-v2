@@ -91,12 +91,15 @@ class BacktestMode(Enum):
     - FULL_5Y: 标准 5 年全量回测
     - FULL_12Y: 12 年长周期回测 (含多个 regime)
     - WF_5FOLD: 5-fold Walk-Forward 严格 OOS 验证 (铁律 8)
+    - LIVE_PT: PT 实盘路径回测 (MVP 2.3 Sub3 U1 Parity, 对齐 signal_engine.SignalComposer).
+               不走 config_hash cache, 每次强制 re-run (实盘需实时信号).
     """
 
     QUICK_1Y = "quick_1y"
     FULL_5Y = "full_5y"
     FULL_12Y = "full_12y"
     WF_5FOLD = "wf_5fold"
+    LIVE_PT = "live_pt"
 
 
 class Severity(Enum):
