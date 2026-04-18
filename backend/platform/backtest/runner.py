@@ -69,11 +69,29 @@ class PlatformBacktestRunner(BacktestRunner):
         data_loader: Any | None = None,
         conn: Any | None = None,
         direction_provider: Callable[[tuple[str, ...]], Mapping[str, int]] | None = None,
+        engine_config_builder: Callable[[BacktestConfig], Any] | None = None,
+        signal_config_builder: Callable[[BacktestConfig], Any] | None = None,
     ) -> None:
+        """PR C3 扩 2 kwargs 让调用方注入完整 Engine + Signal config (YAML 驱动场景).
+
+        Args:
+          engine_config_builder: 可选 callable(platform_config) -> EngineBacktestConfig.
+                   PR C3 新增, 让调用方 (e.g. run_backtest.py) 注入完整 Engine config
+                   (含 slippage_config / pms / commission / stamp_tax / turnover_cap /
+                   volume_cap_pct 等 14 字段). None 走 PR B fallback 基础映射 (5 字段).
+                   生产路径 (pt_live.yaml 驱动) 必注入, 否则 PMS 失效 / slippage 默认失配.
+          signal_config_builder: 可选 callable(platform_config) -> signal_config obj.
+                   返回对象须有 `size_neutral_beta` 属性 (hasattr 检查).
+                   `run_hybrid_backtest` 内部从 signal_config 读 SN beta (L99-101),
+                   不读 config.size_neutral_beta. None → fallback 用 SimpleNamespace
+                   带 platform_config.size_neutral_beta (PR B 原行为 SN=0 bug 修复).
+        """
         self._registry = registry
         self._data_loader = data_loader
         self._conn = conn
         self._direction_provider = direction_provider
+        self._engine_config_builder = engine_config_builder
+        self._signal_config_builder = signal_config_builder
 
     # ─── 公共入口 (BacktestRunner.run abstract 实现) ──────────
 
@@ -114,6 +132,7 @@ class PlatformBacktestRunner(BacktestRunner):
         # Engine 运行 (包而不改 run_hybrid_backtest)
         directions = self._resolve_directions(config.factor_pool)
         engine_config = self._build_engine_config(config)
+        signal_config = self._build_signal_config(config)  # PR C3: 传 SN beta 到 engine
 
         started_at = datetime.now(UTC)
         engine_result = run_hybrid_backtest(
@@ -122,6 +141,7 @@ class PlatformBacktestRunner(BacktestRunner):
             price_data=price_data,
             config=engine_config,
             benchmark_data=bench_df,
+            signal_config=signal_config,  # PR C3: 让 engine 读 size_neutral_beta (原 PR B SN=0 bug)
             conn=self._conn,
         )
         elapsed_sec = int((datetime.now(UTC) - started_at).total_seconds())
@@ -242,20 +262,31 @@ class PlatformBacktestRunner(BacktestRunner):
         """
         return dict.fromkeys(factor_pool, 1)
 
-    @staticmethod
-    def _build_engine_config(config: BacktestConfig) -> Any:
+    def _build_engine_config(self, config: BacktestConfig) -> Any:
         """Platform BacktestConfig → Engine BacktestConfig 映射 (ADR-007 tech debt 之一).
 
-        映射点:
+        PR C3 改 staticmethod → instance method 支持 `engine_config_builder` 注入:
+          - 若 `self._engine_config_builder` 注入 → 优先走注入 (生产路径 YAML 全字段完整)
+          - 否则 fallback PR B 基础 5 字段映射 (保 backward compat, 测试 / 极简场景用)
+
+        Fallback 映射点 (PR B 原行为):
           - capital (Decimal str) → initial_capital (float, 走 Decimal 中转保精度, 金融铁律)
           - top_n → top_n (直传)
           - rebalance_freq → rebalance_freq (直传, daily/weekly/monthly)
           - benchmark ("csi300"/"none") → benchmark_code ("000300.SH"/"")
-          - cost_model ("simplified"/"full") → slippage_config / historical_stamp_tax
+          - cost_model ("simplified"/"full") → historical_stamp_tax
+
+        **⚠️ Fallback 缺 14-5=9 字段** (slippage_config / pms / commission_rate /
+        stamp_tax_rate / transfer_fee_rate / lot_size / turnover_cap / volume_cap_pct
+        / slippage_bps 走 Engine 默认值). 生产 YAML 驱动 (pt_live.yaml PMS enabled /
+        slippage_config 自定义) 必走 engine_config_builder 注入路径.
 
         PR B review P1 fix: `float(config.capital)` 对 "9999999.99" IEEE 754 精度丢失,
         走 `Decimal` 中转 (金融金额规则: CLAUDE.md 编码规则 "金融金额用 Decimal").
         """
+        if self._engine_config_builder is not None:
+            return self._engine_config_builder(config)
+
         bench_code = "000300.SH" if config.benchmark == "csi300" else ""
         historical_tax = config.cost_model == "full"
 
@@ -266,6 +297,27 @@ class PlatformBacktestRunner(BacktestRunner):
             benchmark_code=bench_code,
             historical_stamp_tax=historical_tax,
         )
+
+    def _build_signal_config(self, config: BacktestConfig) -> Any:
+        """Platform BacktestConfig → signal_config 对象 (传给 run_hybrid_backtest).
+
+        PR C3 新增. `run_hybrid_backtest` 内部 L99-101 `hasattr(signal_config,
+        "size_neutral_beta")` 读 SN beta — 若不传 signal_config → SN=0 (PR B bug).
+
+        两条路径:
+          1. 若 `self._signal_config_builder` 注入 → 优先走注入 (生产路径 SignalConfig
+             完整字段, factor_names / industry_cap / turnover_cap / cash_buffer 等).
+             当前 run_hybrid_backtest 只读 size_neutral_beta 单字段, 其他字段保留未来
+             engine 扩展可用.
+          2. Fallback: 返 SimpleNamespace(size_neutral_beta=config.size_neutral_beta).
+             最小可用 — 让 engine 读对 Platform config.size_neutral_beta, 消除 PR B SN=0 bug.
+        """
+        if self._signal_config_builder is not None:
+            return self._signal_config_builder(config)
+        # Fallback: 最小 signal_config 仅带 SN beta (消除 PR B bug)
+        from types import SimpleNamespace
+
+        return SimpleNamespace(size_neutral_beta=config.size_neutral_beta)
 
     def _build_lineage(
         self,
