@@ -282,3 +282,44 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
   - **硬门 #1 达成**: 19 > 5 要求, 证据更强 (含除权除息 / 月末 / 清明假期前后多场景)
   - **Sub3 main precondition 满足**: 下周一 2026-04-20 可启动 (不需等 Celery Beat 04-25)
   - 本次修复 commits + PR: 详 LL-056 + 本 MVP 对应 feature branch PR
+
+- 2026-04-18 Session 6 末 v1.2 update (Sub3 main 真实范围实测修正 — 防 LL-055 同源凭印象):
+  - **Session 6 末 grep 实测发现** Sub3 main 原计划 "Sub3.1 daily_pipeline.py 改 import + 调 TushareDataSource" **基于错误假设**:
+    - `daily_pipeline.py` 全文 0 matches for `fetch_base_data` / `BaseDataFetcher` / `fetch_minute_bars` (实测 grep)
+    - daily_pipeline 的 6 task (health_check / pms_check / signal / execute / data_quality / factor_lifecycle) 全不 import 老 fetcher
+  - **真实生产数据流揭晓** (SYSTEM_RUNBOOK + DEV_BACKEND + SCHEDULING_LAYOUT 三处对齐):
+    - **每日 16:15 Windows Task** → `pt_data_service.fetch_daily_data()` 并行 klines/basic/index 拉取走 DataPipeline ✅ **已合规, 不动**
+    - **每日 16:35 Windows Task QuantMind_DailyMoneyflow** → `scripts/pull_moneyflow.py` (独立, **不在 Sub3 main 范围**)
+    - 老 `fetch_base_data.py` 是**一次性历史 bootstrap** (docstring L12 "cd backend && python -m app.data_fetcher.fetch_base_data"), **0 生产引用**
+    - `scripts/fetch_minute_bars.py` 是**手动周/月跑** (实测 minute_bars 最新 04-13, 落后 3 天), 不日更
+    - `scripts/qmt_data_service.py` Servy 常驻, xtdata 调用点 L173-175
+  - **修正后 Sub3 main 5 sub-step**:
+    1. **Sub3.1**: ~~daily_pipeline.py 改 import~~ → **删除此步** (无 import 关系)
+    2. **Sub3.2**: `rm backend/app/data_fetcher/fetch_base_data.py` (598 行, 安全, 无生产引用)
+    3. **Sub3.3**: `rm scripts/fetch_minute_bars.py` (280 行) + **文档化** BaostockDataSource SDK 替代命令 (用户后续手动用 SDK 拉 minute_bars, 保守不新建 schedule)
+    4. **Sub3.4**: `scripts/qmt_data_service.py` 保留壳 (Servy entrypoint), L173-175 改调 `QMTDataSource.fetch` (其他业务逻辑不动)
+    5. **Sub3.5**: 退役 dual_write 自动化 (`rm backend/app/tasks/dual_write_tasks.py` + remove `beat_schedule.py` dual_write_check 条目 + RUNBOOK 标历史归档)
+    6. **Sub3.6**: 更新 5+ docs 引用 (CLAUDE.md / SYSTEM_STATUS / SYSTEM_RUNBOOK / MVP_2_1b / DUAL_WRITE_RUNBOOK 提到老 3 fetcher 的地方)
+  - **完全不动**: `pt_data_service.py` (生产路径已合规) + `scripts/pull_moneyflow.py` (独立 Windows Task)
+  - **minute_bars 决策**: 保守不新建每日 schedule. 现有手动周/月模式延续, 用 BaostockDataSource SDK 替代脚本. 未来 Wave 3 PEAD 等需要 minute 数据时再决定 daily schedule (避免提前优化, YAGNI)
+  - **教训 (LL-055 同源)**: handoff 实施清单写之前必 grep 验证 import 关系, 不凭印象抄.
+
+- 2026-04-18 Session 6 末 v1.3 update (Task Scheduler 实测全列表 — head 截断教训 LL-057):
+  - **首轮 grep 8 个 Task 是 head -25 截断结果**, 实测全部 **18 个 Task** 注册:
+    - QM-* prefix 7 个 (DailyBackup/HealthCheck/ICMonitor/LogRotate/PTDailySummary/RollingWF/SmokeTest-Disabled)
+    - QuantMind_* prefix 11 个 (DailySignal/DailyExecute/DailyExecuteAfterData/DailyMoneyflow/DataQualityCheck/DailyReconciliation/FactorHealthDaily/IntradayMonitor/PT_Watchdog/MiniQMT_AutoStart-Running/CancelStaleOrders-Disabled)
+    - 唯一缺: QuantMind_GPPipeline (设计但未注册)
+  - **修正 v1.2 错误断言**: ~~"setup_task_scheduler 设计 13 / 实际 8 / 9 missing"~~ → 实际 12/13 都在, 仅缺 GPPipeline
+  - **真实 PT 自动化生产链路** (实测 18 Task + Get-ScheduledTaskInfo LastRun):
+    * 16:30 QuantMind_DailySignal → `run_paper_trading.py signal` (内部 Step 1 调 pt_data_service.fetch_daily_data 走 DataPipeline ✅)
+    * 16:35 QuantMind_DailyMoneyflow → `pull_moneyflow.py`
+    * 16:40 QuantMind_DataQualityCheck
+    * 17:05 QuantMind_DailyExecuteAfterData → SimBroker 模式
+    * 17:30 QuantMind_FactorHealthDaily
+    * 17:35 QM-PTDailySummary
+    * 20:00 QuantMind_PT_Watchdog (实测 04-18 20:00:01 Result=1, 你钉钉告警源头)
+    * 09:31 QuantMind_DailyExecute (T+1 QMT 模式)
+  - **`pt_data_service.py` 实测 337 行** (CLAUDE.md L83 "104 行"是过期数字, 同步修)
+  - **Sub3 main 决策不变**: 老 fetcher 全孤立 (0 import + 0 Task 触发) → 删 = 0 影响
+  - **新发现 (Session 7 待办, 与 Sub3 main 解耦)**: 04-17 周五 signal Task LastRunResult=0 但 signals 表 0 records (仅 04-14/15/16 各 20 行) — silent failure. app.log 04-17 16:30:21~25 显示 5 个进程同时启动 + 反复 "日志系统已配置" + QMT 连接失败. 怀疑 acquire_lock 抢锁失败 silent skip. 不阻塞 Sub3 main, Session 7 调查 scheduler_task_log + acquire_lock 实现.
+  - **教训 (LL-057)**: head/tail truncate 隐藏关键 evidence, 多步实测必查全输出. 与 LL-055 (handoff 凭印象) 同源.
