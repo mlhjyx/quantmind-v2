@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -73,6 +73,14 @@ class BacktestResult:
       lineage_id: data_lineage.lineage_id FK (MVP 2.3 U3 追溯, nullable 向后兼容).
                   DBBacktestRegistry.log_run 通过 DataPipeline.ingest(lineage=...)
                   自动生成 + 回填. 老 17 调用方默认 None 不受影响.
+      engine_artifacts: 瞬态 dict, cache-miss 真跑时由 PlatformBacktestRunner 注入
+                  ``{"engine_result": <engines.backtest.types.BacktestResult>,
+                   "price_data": <pd.DataFrame>}``. cache-hit (DB round-trip) 永远 None.
+                  消费者 (e.g. ``scripts/run_backtest.py``) 从中取 daily_nav / trades
+                  走 ``engines.metrics.generate_report`` 出完整报告.
+                  **永不持久化** — DBBacktestRegistry 只落 metrics DECIMAL 列.
+                  ``field(compare=False, repr=False)`` 防 __eq__/repr 被大 pandas 对象污染.
+                  MVP 2.3 PR C2 新增 (2026-04-19), 老 18 调用方默认 None 向后兼容.
     """
 
     run_id: UUID
@@ -85,6 +93,7 @@ class BacktestResult:
     trades_count: int
     metrics: dict[str, Any]
     lineage_id: UUID | None = None
+    engine_artifacts: dict[str, Any] | None = field(default=None, compare=False, repr=False)
 
 
 class BacktestRunner(ABC):

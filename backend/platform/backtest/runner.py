@@ -133,6 +133,9 @@ class PlatformBacktestRunner(BacktestRunner):
         lineage = self._build_lineage(config, git_commit, mode, config_hash, start_date, end_date)
 
         # 构造 Platform BacktestResult (lineage_id 待 registry 回填)
+        # PR C2: engine_artifacts 瞬态 dict 带 engine_result + price_data, 供消费者 (scripts/
+        # run_backtest.py etc.) 走 engines.metrics.generate_report 出完整报告. DBBacktestRegistry
+        # 只落 metrics DECIMAL 列, 不持久化 artifacts (pandas Series 太大 + 不该进 DB).
         run_id = uuid4()
         platform_result = BacktestResult(
             run_id=run_id,
@@ -145,6 +148,10 @@ class PlatformBacktestRunner(BacktestRunner):
             trades_count=int(perf.total_trades),
             metrics=perf.to_dict(),
             # lineage_id=None (registry.log_run 回填)
+            engine_artifacts={
+                "engine_result": engine_result,
+                "price_data": price_data,
+            },
         )
 
         # Registry 写入 + lineage_id 回填
