@@ -929,3 +929,44 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 4. 修复：config.py添加`PT_SIZE_NEUTRAL_BETA`，.env设置0.50，`_build_paper_trading_config()`传入
 
 **执行状态**: 已修复(config.py+signal_engine.py+config_guard.py)，.env受保护需用户手动添加。PT暂停中待全部门槛满足后重启。
+
+---
+
+## LL-053: pydantic-settings 读 .env 不 push os.environ — 生产代码读 token 必须 settings.X（Session 5, 2026-04-18）
+
+**事件**: Session 5 末 Sub3-prep dual-write 监控脚本落地后, `scripts/dual_write_check.py` 用 `os.environ.get("TUSHARE_TOKEN")` 读 token, Servy 重启 Celery worker 场景下读不到 token, 整脚本走 exit=2 ERROR 分支. `backend/tests/smoke/test_mvp_2_1b_tushare_live.py` 同样 bug. 用户一句 "Step 0 这个我不是设置了吗? 在 .env 里面" 戳破.
+
+**根因**: `app/config.py` 的 `class Settings(BaseSettings)` 通过 `env_file="backend/.env"` 读配置, pydantic-settings 只填充 **Settings 对象属性**, **不 push 到 os.environ**. 所以:
+- `settings.TUSHARE_TOKEN` ✅ 有值
+- `os.environ.get("TUSHARE_TOKEN")` ❌ None
+- `os.environ["TUSHARE_TOKEN"]` ❌ KeyError
+
+旧代码 (`scripts/archive/fetch_earnings.py` 等) 依赖 Servy service.xml 把 token push 到 process env, 但新代码 subprocess 启动 (Celery / 本地 CLI / pytest subprocess) 时这条链路不存在.
+
+**改进措施**:
+1. 生产代码读任何 `.env` 配置必须走 `from app.config import settings; settings.X`, 禁止 `os.environ.get("X")` fallback default
+2. 归档脚本 (`scripts/archive/*` / `scripts/research/*`) 用 `os.environ` 不强制修 (非生产链路), 但新写代码必须 settings
+3. 生产路径 grep 审计 (完成本 session, 2026-04-18): `trading_day_checker.py` / `tushare_api.py` / 3 个 archive pull_* / `dual_write_check.py` / smoke / DUAL_WRITE_RUNBOOK 全 SSOT 对齐 `settings.TUSHARE_TOKEN`
+4. 铁律 34 (配置 SSOT) 覆盖本条 — 写在铁律 34 的延伸
+
+**执行状态**: ✅ 已修复 (commit `b825cc2`). 生产链路全走 `settings.TUSHARE_TOKEN`. 研究/归档 3 处 `os.environ` 已确认非生产链路, 保留不改.
+
+---
+
+## LL-054: PT 状态必须实测 DB+Redis, 文档腐烂 8 天未被发现（Session 5, 2026-04-18）
+
+**事件**: Session 5 末用户问 "pt 状态, 你核实过吗?" 促使实测. CLAUDE.md L573 原写 "PT 已暂停+清仓 2026-04-10" (且 LL-052 执行状态也写 "PT 暂停中"). 实测 Redis `portfolio:nav` + DB `position_snapshot`: PT 从未清仓, **连续持仓自 2026-04-02 起**, 到 2026-04-17 为 19 股 NAV ¥1,008,299 (+0.83%). **8 天文档腐烂从未被捕获**.
+
+**根因**:
+1. Session 间状态同步靠"抄", 不靠实测 — 前 session 写 "PT 暂停" 后, 后续 session 默认继承, 无人验证
+2. 铁律 22 "文档跟随代码" 对 PT 状态这类**运行时状态**没有强制核实机制
+3. LL-052 "PT 暂停中待全部门槛满足后重启" 结语当时是对的 (2026-04-10), 但后续 PT 恢复运行 (4-02 ~ 4-17 连续持仓) 没有同步更新 LL-052 或 CLAUDE.md L573
+4. PT 状态散在 3 处 (CLAUDE.md L573 / LL-052 执行状态 / memory/project_qmt_live.md), 任一处更新另两处没跟
+
+**改进措施**:
+1. **PT 状态断言必须实测** (核心原则): 任何 "PT 暂停/重启/清仓/调仓" 陈述前必核 Redis `HGETALL portfolio:nav` + DB `SELECT * FROM position_snapshot ORDER BY date DESC LIMIT 7`, 禁止从 LESSONS_LEARNED / 旧 session memory / CLAUDE.md 历史文本抄
+2. **PT 状态 SSOT**: 选定 CLAUDE.md L565-581 为 PT 状态唯一真相源, 其他文档只能 reference 不能 restate
+3. **全局 audit 脚本**: Session 6 提议建 `scripts/platform_state_audit.py` 周度跑一次, 比较 Redis/DB 实测 vs CLAUDE.md 断言, drift 告警
+4. **Session 关闭前必核 PT 状态** (补铁律 37 延伸): Session 结束前 handoff 必含 `python -c "from redis import Redis; r=Redis(); print(r.hgetall('portfolio:nav'))"` 实测截图
+
+**执行状态**: ✅ CLAUDE.md L565-581 已写实测时间线 (commit `f37694b`, 2026-04-18). LL-052 结语未同步修改 (保留原文避免重复校订, 本 LL-054 作为"LL-052 运行时状态已过期"的声明). Session 6 平台化 scripts/platform_state_audit.py 待建.

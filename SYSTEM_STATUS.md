@@ -6,62 +6,57 @@
 
 ---
 
-## §0.0 平台化阶段启动 (2026-04-17, Opus 架构 pass) ⭐
+## §0.0 平台化阶段 (2026-04-17 启动, Session 5 末 2026-04-18 Wave 2 进行中) ⭐
 
-**状态: 蓝图落盘, Wave 1 待启动**
+**状态: Wave 1 完结 7/7 + Wave 2 进行中 (Session 5 超产双交付)**
 
-### 本次交付
+### 蓝图 (Blueprint v1.4)
 
-- **Platform Blueprint v1.0** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 3085 行)
-  - 10 Core Frameworks (Data/Factor/Strategy/Signal/Backtest/Eval/Observability/Config/CI/Knowledge)
-  - 5 升维原则 (Research-Production Parity / Event Sourcing / Data Lineage / Platform-App 分层 / Performance Attribution)
+- **Platform Blueprint v1.4** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 1733 行, Cold Start Ready)
+  - 12 Core Frameworks (含 Resource Orchestration #11 + Backup & DR #12)
+  - 6 升维原则 (U1 Parity / U2 Event Sourcing / U3 Lineage / U4 Platform-App / U5 Attribution / U6 Resource Awareness)
   - Platform/Application 分层架构
-  - 4 Waves × 14 MVP 推进路径 (18-23 周)
-  - 铁律 35 条 → Framework 兑现矩阵
+  - 4 Waves × 16 MVP 推进路径 (26-35 周)
+  - 40 条铁律 → Framework 兑现矩阵
+  - Quickstart (≤2 页) + 反膨胀规则 + 测试 4 层
 
-- **Phase 3 MVP A 因子生命周期** (DEV_AI_EVOLUTION V2.1 §3.1 落地)
-  - `backend/engines/factor_lifecycle.py` 纯规则 engine (铁律 31)
-  - `scripts/factor_lifecycle_monitor.py` orchestration (铁律 32/33)
-  - `backend/tests/test_factor_lifecycle.py` 26/26 PASS
-  - Celery task `daily_pipeline.factor_lifecycle` + schedule `factor-lifecycle-weekly` (周五 19:00)
-  - Dry-run 检测 `reversal_20: active → warning (ratio=0.43)` 真实衰减
+### Wave 1 完结 (2026-04-17) 7/7
 
-- **P2 SQL 迁移方案** (`reports/p2_migration_plan.md`): 13 production 文件优先级 + 风险评估 + 迁移代码示例
+1. MVP 1.1 Platform Skeleton ✅ (骨架 + bootstrap)
+2. MVP 1.2 Config Management ✅ (7 Pydantic Schema + Auditor + FeatureFlag)
+3. MVP 1.2a DAL Minimal ✅ (PlatformDataAccessLayer)
+4. MVP 1.3a Registry Backfill ✅ (factor_registry 287 行回填)
+5. MVP 1.3b Direction DB Switch ✅ + wiring 补全 (铁律 10b 3 入口挂载)
+6. MVP 1.3c Factor Framework 收尾 ✅ (PlatformLifecycleMonitor 纯规则 copy)
+7. MVP 1.4 Knowledge Registry ✅ (3 concrete + 5 ADR + 39+25+5 行入库)
 
-- **Tech debt 清理**: `MINUTE_FACTOR_DIRECTION` 合并到 `_constants.py` 唯一真相源, `minute_feature_engine.py` re-export (30/30 tests PASS)
+### Wave 2 进行中 (Session 5 末 2026-04-18)
 
-- **MVP 1.1 设计稿** (`docs/mvp/MVP_1_1_platform_skeleton.md`): Wave 1 首发, 3 天交付目标
+- **MVP 2.1a** Cache Coherency ✅ (CacheCoherencyPolicy + BaseDataSource + ADR-006)
+- **MVP 2.1b** 3 concrete fetcher ✅ 3/3 (Baostock/QMT/Tushare, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write)
+- **MVP 2.1c** Sub1+Sub2+Sub3-prep ✅ (DAL 扩 7 方法 + Engine α + SHADOW_PORTFOLIO Contract + TushareDataSource 合 3 API +adj_factor/up_limit/down_limit). **Sub3 main 阻塞 dual-write 窗口 2026-04-25**
+- **MVP 2.2 Data Lineage (U3)** ✅ Sub1+Sub2 (data_lineage 表 UUID PK + JSONB GIN + Lineage dataclass + DataPipeline 埋点 + FactorCompute 集成 + 13 unit + 1 live smoke)
+- **Wave 2 预备**: dual-write 监控脚本 (`scripts/dual_write_check.py`) + Celery Beat 自动化 (每工作日 15:20) + StreamBus 告警 + DUAL_WRITE_RUNBOOK + MVP 2.3 设计稿 + 开源调研 (5 候选自建决策)
 
-### 核心判断
+### Wave 2 剩余 (~3-4 周)
 
-**从规则补丁 (35 铁律仍持续出事故) → 架构改造 (10 Framework 契约化)**
+- MVP 2.1c Sub3 main (2026-04-25 窗口后): rm 老 3 fetcher (fetch_base_data / fetch_minute_bars / qmt_data_service 壳替换)
+- MVP 2.3 Backtest/Parity (3-4 周): PlatformBacktestRunner wrap + backtest_run DB 表 + config_hash + U1 Parity SignalPipeline 统一
 
-- 根因: 因子元数据散 5+ 处 / 数据无契约 / 单策略框架触顶 / 研究生产不同构
-- 策略: 每个 MVP ≤ 2 页设计 + 2-3 周交付 (铁律 23/24)
-- 禁忌: big-bang 切换 / 跳 regression_test / 提前动 AI 闭环
+### Session 5 末附带产出
 
-### 发现问题 (待后续 MVP 解决)
+- **dv_ttm warning** (铁律 20 自动衰减): IC_MA20/IC_MA60=0.517 < 0.8, lifecycle 补跑落 DB. PT 生产仍含 dv_ttm, 下周五 04-25 19:00 Beat 再评估
+- **reversal_20 warning** (CORE5 基线非 PT): ratio=0.430, 不影响生产
+- **PT 状态修正** (铁律 22 违规修复): CLAUDE.md L573 原 "PT 暂停清仓 2026-04-10" 错误, 实测 PT 从未清仓 (4-02→4-17 连续持仓, NAV ¥1,008K +0.83%), 8 天腐烂已修
+- **全局文档审查** (10+ 项腐烂修复): QPB v1.0→v1.4 ×4 / Wave 0→Wave 2 / 11→12 Framework / 4 决策已定 / smoke 数字 / 89 commits → 2 ahead 实测
 
-- `factor_registry` 只有 5 行 (CORE5 旧), 实际 101 因子 — onboarding 不强制
-- `dv_ttm` (PT 生产配置) 不在 registry
-- `factor_profiler.py` L556/L908 N² DB loop 性能瓶颈
-- 32 测试历史债未修
-- 6 监控脚本碎片化无统一 Observability
+### 4 主决策已定 (2026-04-17, 不重开讨论)
 
-### Wave 1 待办 (GP 完成后启动)
-
-1. 重启 `QuantMind-CeleryBeat` 激活 factor_lifecycle 调度 (5 min)
-2. MVP 1.1 Platform Skeleton (3 天, 设计稿已就绪)
-3. MVP 1.2 Config Management (3-5 天, plan 模式对齐后写设计)
-4. MVP 1.3 Factor Framework (3-5 天)
-5. MVP 1.4 Knowledge Registry (3 天)
-
-### 开放决策
-
-- Platform 包名: `quantmind.platform` (建议) vs `backend.quantmind_core`
-- Wave 3 第 2 策略: PEAD Event-driven (建议) vs Minute Intraday
-- Event Sourcing 存储: StreamBus+PG (建议) vs EventStoreDB
-- CI 平台: 本地 pre-commit (建议) vs GitHub Actions
+见 `memory/project_platform_decisions.md`:
+1. Platform 包名: **`backend.platform`** (非 `quantmind.*` namespace, 项目不开源)
+2. Wave 3 第 2 策略: **PEAD Event-driven** (+3 周前置 PIT/PMS v2/cost)
+3. Event Sourcing 存储: **StreamBus + PG** (配 outbox + snapshot + versioning)
+4. CI 平台: **3 层本地** (pre-commit + pre-push + daily full pytest)
 
 ---
 

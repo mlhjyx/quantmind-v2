@@ -70,7 +70,7 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
 quantmind-v2/
 ├── CLAUDE.md                    ← 本文件
 ├── SYSTEM_STATUS.md             ← ⭐ 系统现状全景（重构前体检产出）
-├── LESSONS_LEARNED.md           ← 经验教训（49条, LL-001~052）
+├── LESSONS_LEARNED.md           ← 经验教训（51条, LL-001~054）
 ├── FACTOR_TEST_REGISTRY.md      ← 因子测试注册表（74条）
 ├── docs/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql  ← ⭐ 建表来源（DDL 47张+代码动态建表26张=DB实际73张, 2026-04-15 S1 audit 实测）
@@ -589,7 +589,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | 你要做什么 | 读这个 |
 |-----------|--------|
 | **系统总设计/架构全景** | **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md** ⭐ (唯一设计真相源, 791行, 16章节) |
-| **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.0, 10 Framework + 5 升维 + 4 Wave, 2026-04-17) |
+| **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.4, 12 Framework + 6 升维 + 4 Wave, 2026-04-17) |
 | MVP 设计文档 (Wave 1+) | `docs/mvp/MVP_*.md` (每个 MVP ≤ 2 页, 铁律 24) |
 | 了解系统现状/模块怎么对接 | **SYSTEM_STATUS.md** ⭐ |
 | 建数据库表 | docs/QUANTMIND_V2_DDL_FINAL.sql ⭐ |
@@ -698,7 +698,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2700+ tests collected / 100+ test files (Session 5 末 2026-04-19 实测: full pytest **2691 pass / 24 fail** [+6 Sub3-prep tushare, 铁律 40 baseline 保持], regression max_diff=0 Sharpe=0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 25 PASS + 2 SKIP** (Wave 1+2a+2.1b+2.2 Sub1+Sub2 覆盖) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **MVP 2.1c Sub1+Sub2+Sub3-prep 36 新 unit** (DAL 21 + Pipeline Contract 9 + Sub3-prep tushare 6) + **MVP 2.2 Sub1+Sub2 25 新 unit** + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
+📊 测试: 2747 tests collected / 100+ test files (Session 5 末 2026-04-18 实测: full pytest **2691 pass / 24 fail** [+19 new (Sub3-prep tushare 6 + MVP 2.2 lineage 13), 铁律 40 baseline 保持], regression max_diff=0 Sharpe=0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 26 total / pre-push 25 PASS + 1 deselected (live_tushare)** (Wave 1+2a+2.1b+2.2 Sub1+Sub2 覆盖) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **MVP 2.1c Sub1+Sub2+Sub3-prep 36 新 unit** (DAL 21 + Pipeline Contract 9 + Sub3-prep tushare 6) + **MVP 2.2 Sub1+Sub2 25 新 unit** + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
 ---
 
 ## 文件归属规则（防腐）
@@ -722,7 +722,7 @@ CLAUDE.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / py
 
 ### 文档层级（固定）
 - **总设计 (当前真相)**: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` ⭐
-- **平台化蓝图 (未来 6 月主线)**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` ⭐ (QPB v1.0)
+- **平台化蓝图 (未来 6 月主线)**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` ⭐ (QPB v1.4)
 - **MVP 设计**: `docs/mvp/MVP_*.md` (每个 ≤ 2 页, 铁律 24)
 - **系统现状**: `SYSTEM_STATUS.md`
 - **入口导航**: `CLAUDE.md`（本文件）
