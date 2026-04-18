@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -77,14 +78,31 @@ class PlatformBacktestRunner(BacktestRunner):
         Args:
           engine_config_builder: 可选 callable(platform_config) -> EngineBacktestConfig.
                    PR C3 新增, 让调用方 (e.g. run_backtest.py) 注入完整 Engine config
-                   (含 slippage_config / pms / commission / stamp_tax / turnover_cap /
-                   volume_cap_pct 等 14 字段). None 走 PR B fallback 基础映射 (5 字段).
-                   生产路径 (pt_live.yaml 驱动) 必注入, 否则 PMS 失效 / slippage 默认失配.
+                   (EngineBacktestConfig 共 **14 字段**: initial_capital / top_n /
+                   rebalance_freq / slippage_bps / slippage_mode / slippage_config /
+                   commission_rate / stamp_tax_rate / historical_stamp_tax /
+                   transfer_fee_rate / lot_size / turnover_cap / benchmark_code /
+                   volume_cap_pct / pms). None 走 PR B fallback 基础 5 字段映射,
+                   silent 丢 9 字段默认值 — 生产路径 (pt_live.yaml 驱动) 必注入,
+                   否则 PMS 失效 / slippage 默认失配.
+
+                   **⚠️ Type 注解 tech debt**: 当前 Callable[[BacktestConfig], Any],
+                   Any 过宽 mypy 不检 return. 应改 Protocol 或 Any 加 TODO. 未来
+                   PR 重构时评估. 当前 accept debt.
+
           signal_config_builder: 可选 callable(platform_config) -> signal_config obj.
                    返回对象须有 `size_neutral_beta` 属性 (hasattr 检查).
                    `run_hybrid_backtest` 内部从 signal_config 读 SN beta (L99-101),
                    不读 config.size_neutral_beta. None → fallback 用 SimpleNamespace
                    带 platform_config.size_neutral_beta (PR B 原行为 SN=0 bug 修复).
+                   SignalConfig 完整 **8 字段** (factor_names / top_n / weight_method /
+                   rebalance_freq / industry_cap / turnover_cap / cash_buffer /
+                   size_neutral_beta) — fallback 仅带 size_neutral_beta 1 字段, 其他
+                   engine 当前未读 (未来 engine 扩展时需同步扩 fallback).
+
+                   **对称性 (PR C3 review HIGH)**: 与 `direction_provider=None` 同步
+                   emit UserWarning (铁律 33 禁 silent failure, fallback 生产路径
+                   应被 caller 显式消费).
         """
         self._registry = registry
         self._data_loader = data_loader
@@ -311,12 +329,21 @@ class PlatformBacktestRunner(BacktestRunner):
              engine 扩展可用.
           2. Fallback: 返 SimpleNamespace(size_neutral_beta=config.size_neutral_beta).
              最小可用 — 让 engine 读对 Platform config.size_neutral_beta, 消除 PR B SN=0 bug.
+             **PR C3 review HIGH fix**: emit UserWarning 对称 `_resolve_directions` 的
+             `direction_provider=None` 设计 (铁律 33 禁 silent failure — 生产路径
+             fallback 应被 caller 显式知情).
         """
         if self._signal_config_builder is not None:
             return self._signal_config_builder(config)
-        # Fallback: 最小 signal_config 仅带 SN beta (消除 PR B bug)
-        from types import SimpleNamespace
-
+        warnings.warn(
+            "PlatformBacktestRunner.signal_config_builder=None — fallback "
+            "SimpleNamespace(size_neutral_beta=config.size_neutral_beta). SignalConfig 其他 "
+            "7 字段 (factor_names / industry_cap / turnover_cap / cash_buffer / ...) 未传, "
+            "engine 读默认值. 生产路径 (pt_live.yaml 驱动) 必注入 signal_config_builder "
+            "(铁律 33/34).",
+            UserWarning,
+            stacklevel=3,
+        )
         return SimpleNamespace(size_neutral_beta=config.size_neutral_beta)
 
     def _build_lineage(

@@ -198,6 +198,7 @@ def test_cache_miss_runs_engine():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),  # PR C1: 避免 fallback warn
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
     )
 
     with patch(
@@ -219,6 +220,7 @@ def test_live_pt_does_not_check_cache():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
     )
 
     registry.log_run.return_value = uuid4()
@@ -366,6 +368,7 @@ def test_run_end_to_end_mock_integration():
         data_loader=data_loader,
         conn="fake_conn",
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
     )
 
     with patch(
@@ -429,6 +432,7 @@ def test_run_cache_miss_populates_engine_artifacts():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
     )
 
     fake_engine_result_obj = _fake_engine_result()
@@ -496,20 +500,51 @@ def test_build_signal_config_uses_injected_builder():
     assert builder_calls[0] is cfg
 
 
-def test_build_signal_config_fallback_uses_platform_size_neutral_beta():
+@pytest.mark.parametrize("beta", [0.0, 0.30, 0.50, 0.65, 1.0])
+def test_build_signal_config_fallback_uses_platform_size_neutral_beta(beta: float):
     """PR C3: signal_config_builder=None fallback 走 SimpleNamespace 带 config.size_neutral_beta.
 
     关键: 消除 PR B SN=0 bug — 不传 signal_config 给 engine → engine 内部 _sn_beta_from_cfg=0.0.
-    """
-    cfg = _make_config(size_neutral_beta=0.65)
-    runner = PlatformBacktestRunner(registry=MagicMock())  # 无 builder
-    sig_cfg = runner._build_signal_config(cfg)
 
-    assert sig_cfg.size_neutral_beta == 0.65
+    PR C3 review M7/M8 fix: 参数化 0.0 / 0.30 / 0.50 / 0.65 / 1.0 覆盖边界值.
+      - 0.0: 验证 fallback 保 legitimate zero (区分 "用户显式 SN 关" vs "PR B 漏传 bug")
+      - 1.0: 完全 size-neutral 上界
+    """
+    import warnings as _w
+
+    cfg = _make_config(size_neutral_beta=beta)
+    runner = PlatformBacktestRunner(registry=MagicMock())  # 无 builder → fallback
+    # 本测试关注 return value; UserWarning 另测覆盖, 此处显式 filter 防 pytest warn capture 噪声
+    with _w.catch_warnings():
+        _w.simplefilter("ignore", UserWarning)
+        sig_cfg = runner._build_signal_config(cfg)
+
+    assert sig_cfg.size_neutral_beta == beta
+
+
+def test_build_signal_config_none_provider_emits_userwarning():
+    """PR C3 review HIGH fix: signal_config_builder=None fallback emit UserWarning
+    对称 direction_provider=None (铁律 33 禁 silent failure).
+    """
+    import warnings as _w
+
+    cfg = _make_config(size_neutral_beta=0.50)
+    runner = PlatformBacktestRunner(registry=MagicMock(), signal_config_builder=None)
+    with _w.catch_warnings(record=True) as captured:
+        _w.simplefilter("always")
+        sig_cfg = runner._build_signal_config(cfg)
+
+    assert sig_cfg.size_neutral_beta == 0.50
+    assert any(
+        issubclass(w.category, UserWarning) and "signal_config_builder=None" in str(w.message)
+        for w in captured
+    ), "必须 emit UserWarning 提示 fallback 风险 (对称 direction_provider=None)"
 
 
 def test_run_passes_signal_config_to_engine():
     """PR C3: run() 必传 signal_config 到 run_hybrid_backtest, 修 PR B SN=0 bug."""
+    import warnings as _w
+
     registry = MagicMock()
     registry.get_by_hash.return_value = None
     registry.log_run.return_value = uuid4()
@@ -522,10 +557,14 @@ def test_run_passes_signal_config_to_engine():
     )
 
     cfg = _make_config(size_neutral_beta=0.50)  # 默认 fallback 应传 0.50 到 engine
-    with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest",
-        return_value=_fake_engine_result(),
-    ) as mock_engine:
+    with (
+        patch(
+            "backend.platform.backtest.runner.run_hybrid_backtest",
+            return_value=_fake_engine_result(),
+        ) as mock_engine,
+        _w.catch_warnings(),  # 本测试关注 kwargs 不关注 fallback UserWarning
+    ):
+        _w.simplefilter("ignore", UserWarning)
         runner.run(BacktestMode.QUICK_1Y, cfg)
 
     # verify signal_config kwarg 传给 engine (PR B 原来根本不传)
@@ -536,6 +575,8 @@ def test_run_passes_signal_config_to_engine():
 
 def test_run_uses_injected_engine_config_builder_end_to_end():
     """PR C3: run() 用 engine_config_builder 注入时 engine 收到的是 builder 返的 config, 非 fallback."""
+    import warnings as _w
+
     registry = MagicMock()
     registry.get_by_hash.return_value = None
     registry.log_run.return_value = uuid4()
@@ -559,16 +600,66 @@ def test_run_uses_injected_engine_config_builder_end_to_end():
         engine_config_builder=lambda _cfg: injected_engine_cfg,
     )
 
+    with (
+        patch(
+            "backend.platform.backtest.runner.run_hybrid_backtest",
+            return_value=_fake_engine_result(),
+        ) as mock_engine,
+        _w.catch_warnings(),  # signal_config_builder=None 会 warn; 本测试 verify engine_config
+    ):
+        _w.simplefilter("ignore", UserWarning)
+        runner.run(BacktestMode.FULL_5Y, _make_config())
+
+    # Engine 收到的 config 是 builder 返的对象 (identity check — PR C3 review M5/M6 fix:
+    # `is` 故意用 identity, 验证 Runner 不 copy/replace 注入的 config, caller 依赖 PMS/
+    # slippage 等字段按构造原样透传). 若未来 _build_engine_config 改 dataclasses.replace 等
+    # 语义等价变更, 此 identity 断言会误 break — 届时改 field-level 断言.
+    kwargs = mock_engine.call_args.kwargs
+    assert kwargs["config"] is injected_engine_cfg
+    assert kwargs["config"].pms.enabled is True  # PMS 未被 fallback 默认 disabled
+
+
+def test_run_uses_both_builders_end_to_end():
+    """PR C3 review M8 fix: engine + signal builder 同时注入场景 (生产 run_backtest.py 实际走此路).
+
+    验证 2 builder 都被 Runner 调用, 且 engine 收到 2 个 config 对象. 单 builder 场景已覆盖,
+    本测试补 dual injection integration gap.
+    """
+    registry = MagicMock()
+    registry.get_by_hash.return_value = None
+    registry.log_run.return_value = uuid4()
+
+    from engines.backtest.config import BacktestConfig as ECfg
+
+    injected_engine_cfg = ECfg(initial_capital=3_000_000.0, top_n=25, rebalance_freq="monthly")
+    injected_signal_cfg = SimpleNamespace(
+        size_neutral_beta=0.80, factor_names=["bp_ratio"], industry_cap=0.25
+    )
+
+    data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
+    runner = PlatformBacktestRunner(
+        registry=registry,
+        data_loader=data_loader,
+        direction_provider=lambda pool: dict.fromkeys(pool, 1),
+        engine_config_builder=lambda _c: injected_engine_cfg,
+        signal_config_builder=lambda _c: injected_signal_cfg,
+    )
+
+    # 无需 catch_warnings — 2 builder 都注入 → fallback path 全 bypass, 无 UserWarning
     with patch(
         "backend.platform.backtest.runner.run_hybrid_backtest",
         return_value=_fake_engine_result(),
     ) as mock_engine:
         runner.run(BacktestMode.FULL_5Y, _make_config())
 
-    # Engine 收到的 config 是 builder 返的对象 (identity check), 非 fallback 重新构造
     kwargs = mock_engine.call_args.kwargs
+    # Engine config (identity, PR C3 review M5: 验 Runner 不 wrap injected config)
     assert kwargs["config"] is injected_engine_cfg
-    assert kwargs["config"].pms.enabled is True  # PMS 未被 fallback 默认 disabled
+    assert kwargs["config"].initial_capital == 3_000_000.0
+    # Signal config (identity + extra field preserved for future engine 扩展)
+    assert kwargs["signal_config"] is injected_signal_cfg
+    assert kwargs["signal_config"].size_neutral_beta == 0.80
+    assert kwargs["signal_config"].industry_cap == 0.25  # SignalConfig 扩字段保留
 
 
 def test_engine_artifacts_shallow_copied_in_post_init():
