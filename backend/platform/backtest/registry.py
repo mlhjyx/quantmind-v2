@@ -18,20 +18,22 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import pandas as pd
 
+# app.data_fetcher.pipeline 提供 lineage gateway helpers (make_lineage_ref / write_lineage_with_outputs),
+# 避 Platform backtest → Platform data 跨 framework 违规 (test_platform_skeleton 硬门, PR B review fix).
+from app.data_fetcher.pipeline import make_lineage_ref, write_lineage_with_outputs
 from backend.platform._types import BacktestMode
 
 from .interface import BacktestConfig, BacktestRegistry, BacktestResult
 
 if TYPE_CHECKING:
     from datetime import date
-
-    from backend.platform.data.lineage import Lineage
 
 
 # SELECT 字段顺序 (get_by_hash / list_recent 重构 BacktestResult 用)
@@ -99,11 +101,11 @@ class DBBacktestRegistry(BacktestRegistry):
         *,
         mode: BacktestMode | None = None,
         elapsed_sec: int | None = None,
-        lineage: Lineage | None = None,
+        lineage: Any | None = None,
         perf: Any | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
-    ) -> UUID:
+    ) -> UUID | None:
         """写一行到 backtest_run, 返回 lineage_id (MVP 2.2 U3 集成).
 
         扩展签名 (vs abstract L114-120):
@@ -118,11 +120,17 @@ class DBBacktestRegistry(BacktestRegistry):
           - perf.sharpe_ratio → row["sharpe_ratio"] (独立 DECIMAL)
 
         Returns:
-          lineage_id (UUID from data_lineage), 由 DataPipeline.ingest 自动生成 + 回填.
+          lineage_id: UUID 若 lineage 传入 + enriched write 成功;
+                      None 若 lineage=None 或 write 被 fail-safe 吞掉 (backtest_run 仍落盘).
+
+        PR B review P1-A/B/D fix:
+          - P1-B: 预构 enriched_lineage (含 backtest_run run_id 的 output LineageRef), 手动 write.
+                  pipeline.ingest(lineage=None) 避免内部 _record_lineage 双写导致 enriched 版被
+                  ON CONFLICT DO NOTHING 静默 drop. U3 lineage outputs 链路才真正保存.
+          - P1-A: 若 lineage + both pipeline/conn 都配置, assert conn 身份一致 (同 txn 保 FK).
+          - P1-D: return 类型 UUID | None, 对齐 abstract + 实际语义.
         """
         del artifact_paths  # PR B 不处理, 推 PR C/Sub2
-
-        import json
 
         from app.data_fetcher.contracts import BACKTEST_RUN
 
@@ -159,23 +167,37 @@ class DBBacktestRegistry(BacktestRegistry):
 
         df = pd.DataFrame([row])
 
-        # 预先 write_lineage: DataPipeline._record_lineage 在 _upsert 之后跑, 但 backtest_run.lineage_id
-        # FK 在 INSERT 时立即检查 (非 DEFERRABLE). 若 data_lineage 行不先存在 → FK violation.
-        # 同 txn 内先 write 再 ingest, FK 查命中, DataPipeline._record_lineage 会 ON CONFLICT DO NOTHING.
+        # PR B review P1-B fix: 预构 enriched lineage (含 backtest_run.run_id 的 output LineageRef),
+        # 手动 write_lineage, 然后 pipeline.ingest(lineage=None) 避免内部 _record_lineage 双写.
+        # 原方案 (pre-emptive write + pipeline 带 lineage) 因 ON CONFLICT DO NOTHING 导致 enriched
+        # 版被 drop, U3 lineage outputs 链路不完整.
+        returned_lineage_id: UUID | None = None
         if lineage is not None:
-            from backend.platform.data.lineage import write_lineage as _write_lineage
+            # P1-A guard: 若 pipeline + conn 都显式配置, assert 同一 conn 对象 (同 txn 保 FK)
+            if self._pipeline is not None and self._conn is not None:
+                assert self.pipeline.conn is self._conn, (
+                    "DBBacktestRegistry.log_run: pipeline.conn must be same object as self.conn "
+                    "to guarantee lineage FK ordering within one transaction"
+                )
 
-            _write_lineage(lineage, self.conn)
+            # P1-B fix: 走 app.data_fetcher.pipeline.write_lineage_with_outputs 追加 backtest_run 输出
+            # 引用, 绕过 Platform 跨 framework import 违规 (test_platform_skeleton 硬门).
+            returned_lineage_id = write_lineage_with_outputs(
+                lineage,
+                [make_lineage_ref("backtest_run", {"run_id": str(result.run_id)})],
+                self.conn,
+            )
 
-        ingest_result = self.pipeline.ingest(df, BACKTEST_RUN, lineage=lineage)
+        # 不传 lineage 给 pipeline.ingest, 避免 _record_lineage 再写一次 (ON CONFLICT DO NOTHING 会
+        # drop 我们刚写的 enriched 版). pipeline 本身 ingest df 即可.
+        ingest_result = self.pipeline.ingest(df, BACKTEST_RUN, lineage=None)
 
         if ingest_result.upserted_rows == 0:
             raise RuntimeError(
                 f"DBBacktestRegistry.log_run: 0 rows upserted "
                 f"(rejected={ingest_result.rejected_rows}, reasons={ingest_result.reject_reasons})"
             )
-        # lineage_id 由 DataPipeline.ingest 自动生成 + 回填 IngestResult.lineage_id
-        return ingest_result.lineage_id
+        return returned_lineage_id
 
     @staticmethod
     def _perf_to_columns(perf: Any) -> dict[str, Any]:
