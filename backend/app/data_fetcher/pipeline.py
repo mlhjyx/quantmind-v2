@@ -11,6 +11,7 @@ Contract定义在contracts.py中。
 
 from __future__ import annotations
 
+import decimal as _decimal_mod
 import uuid as _uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -445,10 +446,9 @@ class DataPipeline:
                     reject_reasons[f"invalid_text_array_{col_name}"] = int(invalid_mask.sum())
                     valid_mask &= ~invalid_mask
 
-            # MVP 2.3: decimal_array 验证 (accept list[int|float|Decimal|np.number] | None; NaN 元素 reject)
+            # MVP 2.3: decimal_array 验证 (accept list[int|float|Decimal|np.number] | None; NaN/inf 元素 reject)
             # psycopg2 原生适配 Python list[Decimal] → PG NUMERIC[]; int/float 也可 (PG 自动 cast)
             elif spec.dtype == "decimal_array":
-                import decimal as _decimal_mod
 
                 def _try_decimal_array_strict(v):
                     if _is_null(v):
@@ -460,7 +460,11 @@ class DataPipeline:
                             return False, None
                         if isinstance(x, (int, float, _decimal_mod.Decimal)):
                             # 数值 NaN / inf 拒绝 (铁律 29 防 NaN 进 DB)
+                            # PR A review fix: Decimal('nan')/'inf'/'snan' 走 is_finite() 覆盖
+                            # (原只查 isinstance(float) 会漏 Decimal 特殊值)
                             if isinstance(x, float) and (pd.isna(x) or np.isinf(x)):
+                                return False, None
+                            if isinstance(x, _decimal_mod.Decimal) and not x.is_finite():
                                 return False, None
                             continue
                         if hasattr(x, "item") and not isinstance(x, (str, bytes)):

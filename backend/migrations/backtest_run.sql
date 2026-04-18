@@ -42,10 +42,12 @@ BEGIN
     END IF;
 END $$;
 
--- 1-3. ALTER ADD 3 列 (IF NOT EXISTS 幂等)
+-- 1-3. ALTER ADD 3 列 (IF NOT EXISTS 幂等, FK 另外独立守护)
+-- PR A review fix (database-reviewer P1#1): lineage_id 不在此处 inline REFERENCES,
+-- 避免 "部分状态下 column 已存在 + FK 丢失" 的 idempotency gap. FK 通过独立命名约束 + DO $ 守护.
 ALTER TABLE backtest_run
     ADD COLUMN IF NOT EXISTS mode VARCHAR(16),
-    ADD COLUMN IF NOT EXISTS lineage_id UUID REFERENCES data_lineage(lineage_id),
+    ADD COLUMN IF NOT EXISTS lineage_id UUID,
     ADD COLUMN IF NOT EXISTS extra_decimals NUMERIC[];
 
 -- 4. mode CHECK 约束 (独立 ADD, 约束名 UNIQUE 检查确保幂等)
@@ -61,6 +63,26 @@ BEGIN
             CHECK (mode IS NULL OR mode IN ('quick_1y', 'full_5y', 'full_12y', 'wf_5fold', 'live_pt'));
     END IF;
 END $$;
+
+-- 5. lineage_id FK 约束 (独立命名 + DO $ 守护, 独立幂等; review fix database-reviewer P1#1)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'backtest_run_lineage_id_fkey'
+          AND conrelid = 'backtest_run'::regclass
+    ) THEN
+        ALTER TABLE backtest_run
+            ADD CONSTRAINT backtest_run_lineage_id_fkey
+            FOREIGN KEY (lineage_id) REFERENCES data_lineage(lineage_id);
+    END IF;
+END $$;
+
+-- 6. lineage_id 索引 (partial, WHERE IS NOT NULL; review fix database-reviewer P1#2)
+-- 项目铁律 "index FK", 防止未来 backtest_run 膨胀 (WF sweep 1000+ rows) + ON DELETE cascade 扫描性能
+CREATE INDEX IF NOT EXISTS idx_backtest_run_lineage_id
+    ON backtest_run (lineage_id)
+    WHERE lineage_id IS NOT NULL;
 
 -- 注释 (COMMENT ON COLUMN 幂等, 相同列多次 COMMENT 会覆盖)
 COMMENT ON COLUMN backtest_run.mode           IS
