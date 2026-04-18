@@ -115,8 +115,8 @@ def test_backtest_cache_loader_returns_data_when_valid():
     }
 
     loader = BacktestCacheLoader()
-    # Patch `from data.parquet_cache import BacktestDataCache` inside __call__.
-    with patch("data.parquet_cache.BacktestDataCache", return_value=mock_cache):
+    # Patch module-level `_BacktestDataCache` alias (PR C1 review P1-a: patch where used).
+    with patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
         factor_df, price_df, bench_df = loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
 
     assert factor_df is fake_factor
@@ -132,7 +132,7 @@ def test_backtest_cache_loader_raises_when_invalid():
 
     loader = BacktestCacheLoader()
     with (
-        patch("data.parquet_cache.BacktestDataCache", return_value=mock_cache),
+        patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache),
         pytest.raises(ValueError, match="BacktestDataCache invalid"),
     ):
         loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
@@ -152,7 +152,7 @@ def test_backtest_cache_loader_benchmark_optional():
     }
 
     loader = BacktestCacheLoader()
-    with patch("data.parquet_cache.BacktestDataCache", return_value=mock_cache):
+    with patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
         factor_df, price_df, bench_df = loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
 
     assert bench_df is None

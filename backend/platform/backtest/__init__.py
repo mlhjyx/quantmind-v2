@@ -7,11 +7,14 @@ from .interface import (
     BacktestRunner,
     BatchBacktestExecutor,
 )
+from .loaders import BacktestCacheLoader, ParquetBaselineLoader
 
 __all__ = [
-    "BacktestRunner",
-    "BacktestRegistry",
-    "BatchBacktestExecutor",
+    "BacktestCacheLoader",
     "BacktestConfig",
+    "BacktestRegistry",
     "BacktestResult",
+    "BacktestRunner",
+    "BatchBacktestExecutor",
+    "ParquetBaselineLoader",
 ]
