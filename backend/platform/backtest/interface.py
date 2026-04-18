@@ -11,6 +11,7 @@
 实施时机:
   - MVP 2.3 Backtest Framework + U1 Parity: BacktestRunner + BacktestRegistry
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
