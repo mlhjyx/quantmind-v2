@@ -113,9 +113,10 @@ ALTER TABLE backtest_run
 
 ## Follow-up
 
-- [ ] 更新 `docs/mvp/MVP_2_3_backtest_parity.md` D3 章节 (v1.0 → v1.1)
-- [ ] PR A commit message 引用本 ADR
-- [ ] MVP 2.3 Sub1 PR B (PlatformBacktestRunner) SDK 实现 `_hash_to_column` / `_factor_to_column` / metrics 映射
+- [x] 更新 `docs/mvp/MVP_2_3_backtest_parity.md` D3 章节 (v1.0 → v1.1) — 本 PR 已做
+- [x] PR A commit message 引用本 ADR — 本 PR 已做
+- [ ] **MVP 2.3 Sub1 PR B** (PlatformBacktestRunner) SDK 实现 `_hash_to_column` / `_factor_to_column` / metrics 映射
+- [ ] **评估 `artifact_json JSONB` 是否需要 Sub2 migration 补加** (原设计 `{nav: "path", holdings: "path", ...}`, Sub1 未加, 本 PR review 发现 code-reviewer P2). 如 PR B 需写 artifact 路径, 补 migration; 否则走 `error_message TEXT` 或推 MVP 3.x.
 - [ ] 未来 MVP 3.x Clean-up backlog: `ALTER TABLE backtest_run RENAME COLUMN config_yaml_hash TO config_hash` 等
 
 ## 关联

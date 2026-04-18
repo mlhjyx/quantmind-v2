@@ -355,6 +355,24 @@ def test_decimal_array_rejects_nan_and_inf():
     assert rejects == {"invalid_decimal_array_metrics": 2}
 
 
+def test_decimal_array_rejects_decimal_nan_and_inf():
+    """Decimal('nan') / Decimal('inf') / Decimal('snan') → reject (铁律 29).
+
+    PR A review fix: 原 guard 只查 isinstance(float) + pd.isna/np.isinf, 漏了 Decimal 特殊值.
+    用 Decimal.is_finite() 覆盖 nan/inf/snan 3 种异常 Decimal.
+    """
+    pipe = DataPipeline(conn=None)
+    df = pd.DataFrame([
+        {"id": 1, "metrics": [decimal.Decimal("nan")]},
+        {"id": 2, "metrics": [decimal.Decimal("inf")]},
+        {"id": 3, "metrics": [decimal.Decimal("snan")]},
+        {"id": 4, "metrics": [decimal.Decimal("1.5"), decimal.Decimal("-inf")]},  # 混合正常 + 异常
+    ])
+    valid_df, rejects = pipe._validate(df, _decimal_array_contract())
+    assert len(valid_df) == 0
+    assert rejects == {"invalid_decimal_array_metrics": 4}
+
+
 def test_decimal_array_rejects_bool_and_str():
     """bool (int 子类) / str 元素 → reject."""
     pipe = DataPipeline(conn=None)

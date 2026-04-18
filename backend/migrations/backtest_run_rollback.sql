@@ -8,6 +8,13 @@
 
 BEGIN;
 
+-- PR A review fix (database-reviewer P1#1 + P3#5): 显式 DROP 命名 FK + index, 与 forward migration 对称.
+-- DROP COLUMN 本会自动级联 drop FK, 但命名后显式 drop 让 rollback 更可审计.
+DROP INDEX IF EXISTS idx_backtest_run_lineage_id;
+
+ALTER TABLE backtest_run
+    DROP CONSTRAINT IF EXISTS backtest_run_lineage_id_fkey;
+
 ALTER TABLE backtest_run
     DROP CONSTRAINT IF EXISTS chk_backtest_run_mode;
 
@@ -18,7 +25,7 @@ ALTER TABLE backtest_run
 
 DO $$
 BEGIN
-    RAISE NOTICE 'backtest_run rolled back (3 columns + mode CHECK dropped, 老表 core schema 保留)';
+    RAISE NOTICE 'backtest_run rolled back (3 columns + mode CHECK + FK + index dropped, 老表 core schema 保留)';
 END $$;
 
 COMMIT;
