@@ -6,9 +6,9 @@
 
 ---
 
-## §0.0 平台化阶段 (2026-04-17 启动, Session 5 末 2026-04-18 Wave 2 进行中) ⭐
+## §0.0 平台化阶段 (2026-04-17 启动, Session 6 末 2026-04-18 MVP 2.1c 完整结案) ⭐
 
-**状态: Wave 1 完结 7/7 + Wave 2 进行中 (Session 5 超产双交付)**
+**状态: Wave 1 完结 7/7 + Wave 2 MVP 2.1+2.2 全部完结, 剩 MVP 2.3 Backtest Parity**
 
 ### 蓝图 (Blueprint v1.4)
 
@@ -30,18 +30,20 @@
 6. MVP 1.3c Factor Framework 收尾 ✅ (PlatformLifecycleMonitor 纯规则 copy)
 7. MVP 1.4 Knowledge Registry ✅ (3 concrete + 5 ADR + 39+25+5 行入库)
 
-### Wave 2 进行中 (Session 5 末 2026-04-18)
+### Wave 2 进行中 (Session 6 末 2026-04-18, MVP 2.1c 完整结案)
 
 - **MVP 2.1a** Cache Coherency ✅ (CacheCoherencyPolicy + BaseDataSource + ADR-006)
-- **MVP 2.1b** 3 concrete fetcher ✅ 3/3 (Baostock/QMT/Tushare, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write)
-- **MVP 2.1c** Sub1+Sub2+Sub3-prep ✅ (DAL 扩 7 方法 + Engine α + SHADOW_PORTFOLIO Contract + TushareDataSource 合 3 API +adj_factor/up_limit/down_limit). **Sub3 main 阻塞 dual-write 窗口 2026-04-25**
+- **MVP 2.1b** 3 concrete fetcher ✅ 3/3 (Baostock/QMT/Tushare, ~1270 行 Platform + 55 unit + 3 live smoke)
+- **MVP 2.1c** ✅ **全部 3 Sub + Sub3 main 4 sub-commits 完整交付** (Session 6 末 2026-04-18):
+  - Sub1 ✅ DAL 扩 7 方法 + Engine α (signal_engine)
+  - Sub2 ✅ C 级写路径 + SHADOW_PORTFOLIO Contract
+  - Sub3-prep ✅ TushareDataSource 合 3 API (+adj_factor/up_limit/down_limit)
+  - **Sub3 main** ✅ (10 PR Session 6): Sub3.2 rm fetch_base_data.py (598 行) / Sub3.3 rm fetch_minute_bars.py (280 行) / Sub3.4 qmt_data_service 改壳走 QMTDataSource / Sub3.5 退役 dual_write 自动化
 - **MVP 2.2 Data Lineage (U3)** ✅ Sub1+Sub2 (data_lineage 表 UUID PK + JSONB GIN + Lineage dataclass + DataPipeline 埋点 + FactorCompute 集成 + 13 unit + 1 live smoke)
-- **Wave 2 预备**: dual-write 监控脚本 (`scripts/dual_write_check.py`) + Celery Beat 自动化 (每工作日 15:20) + StreamBus 告警 + DUAL_WRITE_RUNBOOK + MVP 2.3 设计稿 + 开源调研 (5 候选自建决策)
 
 ### Wave 2 剩余 (~3-4 周)
 
-- MVP 2.1c Sub3 main (2026-04-25 窗口后): rm 老 3 fetcher (fetch_base_data / fetch_minute_bars / qmt_data_service 壳替换)
-- MVP 2.3 Backtest/Parity (3-4 周): PlatformBacktestRunner wrap + backtest_run DB 表 + config_hash + U1 Parity SignalPipeline 统一
+- MVP 2.3 Backtest/Parity (3-4 周, MLOps 圣杯): PlatformBacktestRunner wrap + backtest_run DB 表 + config_hash + U1 Parity SignalPipeline 统一. 设计稿已落盘 `docs/mvp/MVP_2_3_backtest_parity.md`
 
 ### Session 5 末附带产出
 

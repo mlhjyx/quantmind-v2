@@ -1,13 +1,13 @@
-# QuantMind Platform Blueprint (QPB v1.4)
+# QuantMind Platform Blueprint (QPB v1.5)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → **v1.4 Cold Start Ready (Quickstart + Platform-App 分工 + 铁律 3 类 Mapping + Migration 时刻表 + 反膨胀规则 + 测试 4 层)**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → **v1.5 Wave 2 Data 层完结 (MVP 2.1 + 2.2 交付, 老 3 fetcher 全退役, 铁律 40→42 同步)**
 > **作者**: Architect pass (Opus)
-> **状态**: 草案 v1.4 (12 Framework + 6 升维 + 16 MVP, 26-35 周), **Wave 1 开工就绪**
+> **状态**: v1.5 (12 Framework + 6 升维 + 16 MVP, 26-35 周), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity)**
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
->   - `CLAUDE.md` (35 条铁律，本蓝图所有框架必须兑现)
+>   - `CLAUDE.md` (42 条铁律，本蓝图所有框架必须兑现)
 
 ---
 
@@ -136,7 +136,7 @@ Wave 4: MVP 4.1/4.2/4.3/4.4 并行           (4-6 周)
 |---|---|
 | 要实施 MVP X.Y | Part 4 (MVP 详细) |
 | 要加/修改 Framework | Part 2 (Framework 设计) |
-| 判断是否违反铁律 | CLAUDE.md (40 条铁律) + Part 5 Mapping |
+| 判断是否违反铁律 | CLAUDE.md (42 条铁律) + Part 5 Mapping |
 | 遇到用户之前决议 | `memory/project_platform_decisions.md` |
 | 遇到硬件/资源 | `memory/reference_hardware.md` |
 | 前 session 状态 | `memory/project_sprint_state.md` |
@@ -1701,6 +1701,16 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - **测试策略 4 层** (Framework #9): L1 Unit / L2 Integration / L3 Contract / L4 E2E + 分层 coverage gate
   - **Backlog** (Part 11): 10 项 nice-to-have 收录, 遇到再补
   - 配套铁律补 41 条 (补 40-41 测试债 + timezone) 同步落地
+- 2026-04-18 v1.5 Wave 2 Data 层完结 (Session 5+6 超产收束):
+  - **Wave 2 MVP 2.1 完整交付**: 2.1a Cache Coherency ✅ + 2.1b 3 concrete DataSource ✅ + **2.1c 全部 4 sub-commit ✅** (Sub1 DAL 扩 7 方法 / Sub2 C 级写路径 / Sub3-prep TushareDataSource 合 3 API / Sub3 main 4 sub: rm fetch_base_data 598 行 + rm fetch_minute_bars 280 行 + qmt_data_service 改壳走 QMTDataSource + 退役 dual_write 自动化)
+  - **Wave 2 MVP 2.2 Data Lineage (U3) ✅ Sub1+Sub2**: data_lineage 表 UUID PK + JSONB GIN + DataPipeline 埋点 + FactorCompute 集成
+  - **老 3 fetcher 全部退役**: dual-write 窗口通过 backfill 19/19 PASS 压缩 (LL-056), Sub3 main 不需等 Celery Beat 累积. `pt_data_service` / 3 DataSource 全 Platform 合规
+  - **铁律 40 → 42 同步** (Session 6 governance 升级):
+    - 铁律 41 时间与时区统一 (v1.4 落地)
+    - **铁律 42 PR 分级审查制** (LL-055 触发, Auto mode + 单人 AI-heavy 缓冲层): 文档类直 push 允许, 代码/配置/CI 必走 feature branch + gh PR + 自审 + 用户 merge
+  - **LL-055/056/057/058 入册** (Session 6 4 条新教训, 同源 "AI 不严谨实测 → 凭部分 evidence 跳结论"): handoff 数字腐烂 / smoke ≠ dual-write / head 截断 / PT silent ingest 双层 bug
+  - **Wave 2 剩余收窄**: 仅 MVP 2.3 Backtest Parity (3-4 周 MLOps 圣杯, 设计稿已落盘 `docs/mvp/MVP_2_3_backtest_parity.md`)
+  - **时间修正**: 原估 Wave 2 "5-6 周" → 实际 Data 层耗 ~2 周 (Session 5-6, 超产节奏), MVP 2.3 3-4 周后 Wave 2 收尾 (总 5-6 周对齐原估)
 
 ---
 
@@ -1728,6 +1738,6 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
 
 ---
 
-**END of QuantMind Platform Blueprint v1.4**
+**END of QuantMind Platform Blueprint v1.5**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。

@@ -123,7 +123,7 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a/b/c(Sub1+Sub2) + 2.2 Sub1+Sub2 (2026-04-19) Wave 1 完结 7/7 + Wave 2 进行中
+├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a/b/c (Sub1+Sub2+Sub3 all) + 2.2 Sub1+Sub2 (2026-04-18) Wave 1 完结 7/7 + MVP 2.1c ✅ 完整结案, Wave 2 剩 MVP 2.3
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
@@ -700,8 +700,8 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.4** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 1733 行): 12 Framework + 6 升维 + 16 MVP (26-35 周)
 - 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅ **+ wiring 补全** — `app/core/platform_bootstrap.py` 挂 FastAPI/PT/Celery 3 入口, 铁律 10 全链路验证) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
-- 🟡 **Wave 2 进行中** (Session 5 2026-04-19): Data Framework 基础 + Data Lineage + Sub3 窗口预备. **2.1a ✅** (Cache Coherency + BaseDataSource + ADR-006) / **2.1b ✅ 3/3** (Baostock/QMT/Tushare concrete, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write) / **2.1c 2/3 ✅ + Sub3-prep ✅** (Sub1 DAL 扩 7 方法 + Engine α / Sub2 C 级写路径 + SHADOW_PORTFOLIO Contract / **Sub3-prep cf86447 TushareDataSource 合 3 API (KLINES +3 字段 adj_factor/up_limit/down_limit)** + 6 new unit; **Sub3 main 阻塞 dual-write 窗口 2026-04-25**) / **MVP 2.2 Data Lineage (U3) ✅ Sub1+Sub2 全交付** (Sub1 ColumnSpec 扩 UUID/JSONB + ADR-0009 + 设计稿 235 行; Sub2 data_lineage 表 + Lineage dataclass + DataPipeline 埋点 + FactorCompute 集成 + 13 new unit + 1 live smoke). **铁律 10b 全面落地**: smoke Wave 1+2a+2.1b+2.2 全覆盖 + `config/hooks/pre-push` 本地门禁 + `docs/SETUP_DEV.md`. **Session 5 新产**: `scripts/dual_write_check.py` (Sub3 窗口硬门自动化) + `docs/mvp/MVP_2_3_backtest_parity.md` 设计稿 (Wave 2 大块工程预备).
-- ⬜ **Wave 2 剩余** (~3-4 周): MVP 2.1c Sub3 main (dual-write 窗口 2026-04-25 到期后删老 fetcher) + 2.3 Backtest/Parity (3-4 周 MLOps 圣杯)
+- 🟡 **Wave 2 进行中** (Session 6 末 2026-04-18): Data Framework 基础 + Data Lineage + **MVP 2.1c 完整结案**. **2.1a ✅** (Cache Coherency + BaseDataSource + ADR-006) / **2.1b ✅ 3/3** (Baostock/QMT/Tushare concrete, ~1270 行 Platform + 55 unit + 3 live smoke) / **2.1c ✅ 完整交付** (Sub1 DAL 扩 7 方法 + Engine α / Sub2 C 级写路径 + SHADOW_PORTFOLIO Contract / Sub3-prep TushareDataSource 合 3 API +adj_factor/up_limit/down_limit / **Sub3 main Session 6 末交付**: Sub3.2 rm fetch_base_data.py 598 行 + Sub3.3 rm fetch_minute_bars.py 280 行 + Sub3.4 qmt_data_service 改壳走 QMTDataSource + Sub3.5 退役 dual_write 自动化) / **MVP 2.2 Data Lineage (U3) ✅ Sub1+Sub2 全交付** (data_lineage 表 UUID PK + JSONB GIN + Lineage dataclass + DataPipeline 埋点 + FactorCompute 集成 + 13 new unit + 1 live smoke). **铁律 10b 全面落地**: smoke Wave 1+2a+2.1b+2.2 全覆盖 + `config/hooks/pre-push` 本地门禁 + `docs/SETUP_DEV.md`. **Session 6 governance 升级**: 铁律 42 PR 分级审查制 + 10 PR Session 6 全走 PR workflow + LL-055/056/057/058 入册.
+- ⬜ **Wave 2 剩余** (~3-4 周): MVP 2.3 Backtest/Parity (3-4 周 MLOps 圣杯, 设计稿已落盘 `docs/mvp/MVP_2_3_backtest_parity.md`)
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
