@@ -47,7 +47,8 @@ celery_app.conf.update(
         "app.tasks.mining_tasks",
         "app.tasks.onboarding_tasks",
         "app.tasks.backtest_tasks",
-        "app.tasks.dual_write_tasks",
+        # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
+        # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],
     # 结果过期: 24 小时
     result_expires=86400,

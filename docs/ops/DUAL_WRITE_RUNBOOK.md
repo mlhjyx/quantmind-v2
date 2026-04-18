@@ -1,5 +1,17 @@
 # Dual-write 窗口操作手册 (MVP 2.1c Sub3 启动硬门自动化)
 
+> ⚠️ **已退役 2026-04-18** (MVP 2.1c Sub3.5): dual-write 自动化整体停用.
+> - `backend/app/tasks/dual_write_tasks.py`: 已删除
+> - `backend/app/tasks/beat_schedule.py` `dual-write-check-daily` 条目: 已删除
+> - `backend/app/tasks/celery_app.py` imports 列表: 已清理
+> - `scripts/dual_write_check.py`: **保留** (供历史回溯 + 未来 dual-write 场景可复用)
+> - 本 Runbook: **历史归档**, 记录 Session 5-6 backfill 19/19 PASS 达成硬门 #1 + LL-056/057 教训
+>
+> 退役原因: 老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt_data_service 直 xtdata) 已全部
+> 通过 MVP 2.1c Sub3.2-3.4 删除或改壳, 新路径 `pt_data_service` / `TushareDataSource` /
+> `BaostockDataSource` / `QMTDataSource` 已生产, 无需再 dual-write 监控.
+
+
 > **适用**: 2026-04-20 (周一) ~ 2026-04-25 (周五) 5 交易日 dual-write 窗口
 > **目标**: 确认新 `TushareDataSource` (cf86447 扩 3 API) 与老 `fetch_base_data.py` 产出 100% 一致, 满足 MVP 2.1c Sub3 main (删老 fetcher) 启动 3 硬门之一
 > **执行模式**: 🤖 **默认 Celery Beat 自动跑** (每工作日 15:20, `app.tasks.dual_write_tasks.run_dual_write_check`), 用户仅需: (a) Step 0 一次性配 TUSHARE_TOKEN, (b) 周五 04-25 查 `--status` 确认 5/5 PASS. 手动运行命令仅诊断时使用.
