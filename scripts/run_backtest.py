@@ -202,6 +202,12 @@ def run_with_yaml(config_path: str):
     bt_config_engine = to_backtest_config(cfg)
     sig_config = to_signal_config(cfg)
     directions = get_directions(cfg)
+    # PR C3 review L1 fix: empty directions 早暴露 (pre-existing 问题被迁移顺便修)
+    if not directions:
+        raise ValueError(
+            f"YAML 配置 {config_path} strategy.factors 为空 — 无因子无法跑回测. "
+            f"检查 YAML `strategy.factors` 列表非空."
+        )
     start_str, end_str = get_data_range(cfg)
     start = datetime.strptime(start_str, "%Y-%m-%d").date()
     end = datetime.strptime(end_str, "%Y-%m-%d").date()
@@ -263,7 +269,9 @@ def run_with_yaml(config_path: str):
         finally:
             _conn.close()
 
-    # Runner conn (SN 加载 ln_mcap pivot 需 DB, 独立于 loader closure — 生命周期更清晰)
+    # Runner conn: engine 内 size_neutral 加载 ln_mcap pivot 要 DB. 独立于 loader closure
+    # (后者 DB fallback 用完就 close, 生命周期不重叠, 共享会 cursor 争用). PR C3 review M4
+    # 显式注释: 未来 refactor 不要误合为一 (双调用者重叠生命周期不安全).
     runner_conn = _get_sync_conn()
     try:
         # Platform BacktestConfig — 核心字段对齐 PR B 设计, 完整 Engine/Signal config 走 builder
@@ -300,9 +308,12 @@ def run_with_yaml(config_path: str):
 
         logger.info("运行回测 (Platform SDK)...")
         t1 = time.time()
-        # LIVE_PT mode: 不 override config.start/end + 不 cache 语义匹配 ad-hoc
-        # (InMemoryBacktestRegistry 也恒返 None, 双重强制真跑)
+        # TODO(mvp-2.3-sub3): BacktestMode.AD_HOC 目前未实现, 借 LIVE_PT 语义
+        # (不 override config.start/end + 跳过 cache 强制真跑). 配 InMemoryBacktestRegistry
+        # get_by_hash 恒 None 双重保真跑. Sub3 真 LIVE_PT 实盘实现时, 评估新 AD_HOC mode
+        # 替代借用避免语义混淆.
         result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+        t_engine_done = time.time()  # PR C3 review M2 fix: 精准测 engine 耗时, 排除 report
 
         # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞; LIVE_PT 强制 always re-run
         # 配 InMemory get_by_hash 恒 None, artifacts 永不为 None.
@@ -318,7 +329,12 @@ def run_with_yaml(config_path: str):
         print_report(report)
 
         elapsed = time.time() - t0
-        logger.info("回测完成, 总耗时 %.0fs (信号+执行 %.0fs)", elapsed, time.time() - t1)
+        logger.info(
+            "回测完成, 总耗时 %.0fs (信号+执行 %.0fs, 报告 %.0fs)",
+            elapsed,
+            t_engine_done - t1,  # 纯 engine 时间 (不含 generate_report + print_report)
+            time.time() - t_engine_done,
+        )
     finally:
         runner_conn.close()
 
