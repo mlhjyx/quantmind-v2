@@ -122,20 +122,31 @@ class DBBacktestRegistry(BacktestRegistry):
         """
         del artifact_paths  # PR B 不处理, 推 PR C/Sub2
 
+        import json
+
         from app.data_fetcher.contracts import BACKTEST_RUN
+
+        # asdict(config) 含 date 字段, psycopg2.extras.Json 不支持原生 date,
+        # 走 json.dumps(default=str) round-trip 转为 JSON-safe dict (date → ISO str).
+        config_dict = json.loads(json.dumps(asdict(config), default=str))
+
+        # lineage_id: 预置到 row (DataPipeline._record_lineage 在 _upsert 后跑, 不会 inject FK 列).
+        # Lineage dataclass 已 default_factory=uuid4, 构造时就有 id, 直接 pre-set 即可让 FK 建立.
+        row_lineage_id = lineage.lineage_id if lineage is not None else None
 
         row: dict[str, Any] = {
             # PK + metadata
             "run_id": result.run_id,
             "status": "success",
             # 配置 (字段名映射)
-            "config_json": asdict(config),
+            "config_json": config_dict,
             "factor_list": list(config.factor_pool),
             # 复现锚
             "config_yaml_hash": result.config_hash,
             "git_commit": result.git_commit or None,
             # PR A 新列
             "mode": mode.value if mode is not None else None,
+            "lineage_id": row_lineage_id,  # 预置 FK, 避免 NULL
             # 运行元
             "elapsed_sec": elapsed_sec,
             "start_date": start_date,
@@ -147,6 +158,15 @@ class DBBacktestRegistry(BacktestRegistry):
             row.update(self._perf_to_columns(perf))
 
         df = pd.DataFrame([row])
+
+        # 预先 write_lineage: DataPipeline._record_lineage 在 _upsert 之后跑, 但 backtest_run.lineage_id
+        # FK 在 INSERT 时立即检查 (非 DEFERRABLE). 若 data_lineage 行不先存在 → FK violation.
+        # 同 txn 内先 write 再 ingest, FK 查命中, DataPipeline._record_lineage 会 ON CONFLICT DO NOTHING.
+        if lineage is not None:
+            from backend.platform.data.lineage import write_lineage as _write_lineage
+
+            _write_lineage(lineage, self.conn)
+
         ingest_result = self.pipeline.ingest(df, BACKTEST_RUN, lineage=lineage)
 
         if ingest_result.upserted_rows == 0:
