@@ -96,13 +96,20 @@ def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> d
                 logger.error("[Data] %s拉取失败: %s", name, e)
 
     # klines拉取完成后，增量更新stock_status_daily（依赖klines的volume字段）
+    # 铁律 33 fail-loud: stock_status 更新失败是关键数据链路断点, 不允许 silent swallow.
+    # 2026-04-18 LL-058 教训: 04-16 silent error swallow 导致 04-17 health check 失败 +
+    # PT 链路断 4 天. 改为 raise 让 signal_phase catch + log_step("signal_phase", "failed", ...)
+    # + pt_watchdog 20:00 钉钉告警, 不再静默.
     if results["klines_rows"] > 0:
         try:
             status_rows = update_stock_status_daily(trade_date, conn)
             results["status_rows"] = status_rows
         except Exception as e:
-            logger.error("[Data] stock_status_daily更新失败: %s", e)
+            logger.error(
+                "[Data] stock_status_daily 更新失败 (FAIL-LOUD 铁律 33): %s", e
+            )
             results["status_rows"] = 0
+            raise  # 传播到 signal_phase except → scheduler_task_log "failed"
     else:
         results["status_rows"] = 0
 
