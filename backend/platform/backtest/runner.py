@@ -13,21 +13,27 @@
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import json
 import subprocess
 from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any
+from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
+from engines.backtest.config import BacktestConfig as EngineBacktestConfig
+from engines.backtest.runner import run_hybrid_backtest
+
+# app.data_fetcher.pipeline 提供 lineage gateway helpers (make_lineage / make_lineage_ref /
+# make_code_ref) 避免 Platform backtest → Platform data 跨 framework 违规
+# (test_platform_skeleton.test_frameworks_do_not_cross_import 硬门).
+# app 层允许 import platform (方向正确), Platform 通过 app helpers 间接访问其他 Platform framework.
+from app.data_fetcher.pipeline import make_code_ref, make_lineage, make_lineage_ref
 from backend.platform._types import BacktestMode
 
 from .interface import BacktestConfig, BacktestRegistry, BacktestResult, BacktestRunner
-
-if TYPE_CHECKING:
-    from backend.platform.data.lineage import Lineage
-
 
 # ─── Mode → 时间窗口映射 ────────────────────────────────────────
 
@@ -99,8 +105,6 @@ class PlatformBacktestRunner(BacktestRunner):
         # Engine 运行 (包而不改 run_hybrid_backtest)
         directions = self._factor_directions(config.factor_pool)
         engine_config = self._build_engine_config(config)
-
-        from engines.backtest.runner import run_hybrid_backtest
 
         started_at = datetime.now(UTC)
         engine_result = run_hybrid_backtest(
@@ -175,21 +179,33 @@ class PlatformBacktestRunner(BacktestRunner):
 
     @staticmethod
     def _apply_mode(config: BacktestConfig, mode: BacktestMode) -> tuple[date, date]:
-        """Mode → start/end 窗口映射. QUICK/FULL 基于 config.end 倒推, WF/LIVE 原样."""
+        """Mode → start/end 窗口映射. QUICK/FULL 基于 config.end 倒推, WF/LIVE 原样.
+
+        PR B review P1 fix: 原 `min(day, 28)` 对 29/30/31 月全错 (只防 Feb leap year),
+        用 `calendar.monthrange` 精准取目标月最后一天 (铁律 15 复现: 同 hash 必同窗口).
+        """
         years = _MODE_TO_YEARS.get(mode)
         if years is None:
             # WF_5FOLD / LIVE_PT: 原样沿用 config.start/end
             return config.start, config.end
 
         end_date = config.end
-        start_date = date(end_date.year - years, end_date.month, min(end_date.day, 28))
+        target_year = end_date.year - years
+        target_month = end_date.month
+        # 目标月最后一天 (闰年/31-day-month 等情况精准处理)
+        last_day_of_target_month = calendar.monthrange(target_year, target_month)[1]
+        start_date = date(target_year, target_month, min(end_date.day, last_day_of_target_month))
         return start_date, end_date
 
     @staticmethod
     def _factor_directions(factor_pool: tuple[str, ...]) -> dict[str, int]:
         """Placeholder: 真实实现走 DAL.read_registry(status='active') 查 direction.
 
-        PR B 占位返 +1 (等 PR C 迁 scripts 时走 DAL).
+        **WARNING (PR B review P1)**: 本方法仅在 `data_loader` 被注入后才会被调用
+        (run() L93 守护). 若未来修改 run() 跳过 data_loader 检查, 本 placeholder
+        会返所有因子 +1, 导致 CORE 因子方向错误 (turnover_mean_20/volatility_20
+        正确方向为 -1) → 信号反向 → 负 alpha 静默产生.
+        PR C 迁 scripts 时必走 DAL.read_registry 替换此 placeholder.
         """
         return dict.fromkeys(factor_pool, 1)
 
@@ -198,19 +214,20 @@ class PlatformBacktestRunner(BacktestRunner):
         """Platform BacktestConfig → Engine BacktestConfig 映射 (ADR-007 tech debt 之一).
 
         映射点:
-          - capital (Decimal str) → initial_capital (float)
+          - capital (Decimal str) → initial_capital (float, 走 Decimal 中转保精度, 金融铁律)
           - top_n → top_n (直传)
           - rebalance_freq → rebalance_freq (直传, daily/weekly/monthly)
           - benchmark ("csi300"/"none") → benchmark_code ("000300.SH"/"")
           - cost_model ("simplified"/"full") → slippage_config / historical_stamp_tax
-        """
-        from engines.backtest.config import BacktestConfig as EngineBacktestConfig
 
+        PR B review P1 fix: `float(config.capital)` 对 "9999999.99" IEEE 754 精度丢失,
+        走 `Decimal` 中转 (金融金额规则: CLAUDE.md 编码规则 "金融金额用 Decimal").
+        """
         bench_code = "000300.SH" if config.benchmark == "csi300" else ""
         historical_tax = config.cost_model == "full"
 
         return EngineBacktestConfig(
-            initial_capital=float(config.capital),
+            initial_capital=float(Decimal(config.capital)),
             top_n=config.top_n,
             rebalance_freq=config.rebalance_freq,
             benchmark_code=bench_code,
@@ -225,32 +242,33 @@ class PlatformBacktestRunner(BacktestRunner):
         config_hash: str,
         start_date: date,
         end_date: date,
-    ) -> Lineage:
+    ) -> Any:
         """构造 MVP 2.2 U3 血缘记录 (inputs + code + params).
 
-        outputs 由 DataPipeline.ingest 自动补 (run_id PK).
-        """
-        from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
+        outputs 由 DBBacktestRegistry 在 log_run 时追加 (含 backtest_run.run_id).
 
-        inputs: list[LineageRef] = [
-            LineageRef(
-                table="factor_values",
-                pk_values={
+        走 app.data_fetcher.pipeline 的 lineage gateway helpers 避免跨 framework import 违规
+        (PR B review fix).
+        """
+        inputs = [
+            make_lineage_ref(
+                "factor_values",
+                {
                     "factor_pool": list(config.factor_pool),
                     "start": str(start_date),
                     "end": str(end_date),
                 },
             ),
-            LineageRef(
-                table="klines_daily",
-                pk_values={"start": str(start_date), "end": str(end_date)},
+            make_lineage_ref(
+                "klines_daily",
+                {"start": str(start_date), "end": str(end_date)},
             ),
         ]
         if config.benchmark and config.benchmark != "none":
             inputs.append(
-                LineageRef(
-                    table="index_daily",
-                    pk_values={
+                make_lineage_ref(
+                    "index_daily",
+                    {
                         "benchmark": config.benchmark,
                         "start": str(start_date),
                         "end": str(end_date),
@@ -258,9 +276,9 @@ class PlatformBacktestRunner(BacktestRunner):
                 )
             )
 
-        return Lineage(
+        return make_lineage(
             inputs=inputs,
-            code=CodeRef(
+            code=make_code_ref(
                 git_commit=git_commit or "",
                 module="backend.platform.backtest.runner",
                 function="PlatformBacktestRunner.run",

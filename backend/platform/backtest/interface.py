@@ -122,7 +122,7 @@ class BacktestRegistry(ABC):
         config: BacktestConfig,
         result: BacktestResult,
         artifact_paths: dict[str, str],
-    ) -> UUID:
+    ) -> UUID | None:
         """记录一次运行.
 
         Args:
@@ -131,7 +131,9 @@ class BacktestRegistry(ABC):
           artifact_paths: parquet / json 文件路径 (nav / holdings / metrics)
 
         Returns:
-          run_id
+          lineage_id (UUID) 若 lineage 传入且 write 成功; None 若 lineage=None
+          或 lineage 写入失败 (fail-safe, backtest_run 行仍落盘).
+          MVP 2.3 PR B review P1-D 修订, 匹配实际 concrete 返回值语义.
         """
 
     @abstractmethod

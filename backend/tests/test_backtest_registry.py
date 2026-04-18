@@ -120,7 +120,8 @@ def test_log_run_maps_fields_to_legacy_columns():
         end_date=date(2025, 12, 31),
     )
 
-    assert returned == expected_lineage_id
+    # PR B P1-D fix: lineage=None → log_run 返 None (不走 write_lineage 路径)
+    assert returned is None
 
     # 检查 ingest 被调用 + df 内容
     pipeline.ingest.assert_called_once()
@@ -140,39 +141,111 @@ def test_log_run_maps_fields_to_legacy_columns():
     assert row["lineage_id"] is None  # 本 test 没传 lineage, 应 None
 
 
-def test_log_run_passes_lineage_to_pipeline_ingest():
-    """Runner 传入的 Lineage 必须一路传到 pipeline.ingest(lineage=...).
+def test_log_run_writes_enriched_lineage_and_not_via_pipeline():
+    """PR B P1-B fix: 走 app.data_fetcher.pipeline.write_lineage_with_outputs 追加 backtest_run 输出,
+    pipeline.ingest(lineage=None) 避双写.
 
-    注: log_run 会先调 write_lineage (FK 顺序保障), 故用真 Lineage dataclass + mock conn.
+    验证:
+      - write_lineage_with_outputs 被调 1 次, 传入原 lineage + output_refs 含 backtest_run.run_id
+      - pipeline.ingest 被调时 lineage kwarg = None (避免 _record_lineage 双写 + drop enriched 版)
+      - log_run 返回 write_lineage_with_outputs 的 UUID
     """
     from unittest.mock import patch
 
     from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
 
     pipeline = MagicMock()
-    pipeline.ingest.return_value = _make_ingest_result()
-    registry = DBBacktestRegistry(pipeline=pipeline, conn=MagicMock())
+    pipeline.ingest.return_value = _make_ingest_result(lineage_id=None)
+    pipeline.conn = MagicMock()
+    registry = DBBacktestRegistry(pipeline=pipeline, conn=pipeline.conn)
 
     real_lineage = Lineage(
         inputs=[LineageRef(table="factor_values", pk_values={"f": "bp_ratio"})],
         code=CodeRef(git_commit="abc", module="test"),
         params={"mode": "quick_1y"},
     )
+    result = _make_result()
+    expected_lineage_id = real_lineage.lineage_id
 
-    # Mock write_lineage 避免真 DB 调用
-    with patch("backend.platform.data.lineage.write_lineage", return_value=real_lineage.lineage_id):
-        registry.log_run(
+    # Mock registry module 内 import 的 write_lineage_with_outputs
+    with patch(
+        "backend.platform.backtest.registry.write_lineage_with_outputs",
+        return_value=expected_lineage_id,
+    ) as mock_gw:
+        returned = registry.log_run(
             config=_make_config(),
-            result=_make_result(),
+            result=result,
             artifact_paths={},
             mode=BacktestMode.QUICK_1Y,
             lineage=real_lineage,
             perf=_fake_perf(),
         )
 
-    # pipeline.ingest(df, contract, lineage=...) kwarg 验证
+    # 1. write_lineage_with_outputs 调 1 次, 传原 lineage + backtest_run output ref
+    mock_gw.assert_called_once()
+    args = mock_gw.call_args.args
+    assert args[0] is real_lineage  # 原 lineage 直传 (helper 内部 replace 追加 outputs)
+    output_refs = args[1]
+    assert len(output_refs) == 1
+    # output_refs[0] 由 make_lineage_ref(table='backtest_run', run_id=...) 构造
+    bt_ref = output_refs[0]
+    assert bt_ref.table == "backtest_run"
+    assert bt_ref.pk_values["run_id"] == str(result.run_id)
+
+    # 2. pipeline.ingest 调时 lineage=None (避双写)
     kwargs = pipeline.ingest.call_args.kwargs
-    assert kwargs["lineage"] is real_lineage
+    assert kwargs["lineage"] is None, "pipeline.ingest must not trigger _record_lineage"
+
+    # 3. log_run 返 helper 返回的 lineage_id
+    assert returned == expected_lineage_id
+
+
+def test_log_run_without_lineage_returns_none():
+    """lineage=None 时 log_run 返 None (P1-D: return 类型 UUID | None)."""
+    pipeline = MagicMock()
+    pipeline.ingest.return_value = _make_ingest_result()
+    registry = DBBacktestRegistry(pipeline=pipeline)
+
+    returned = registry.log_run(
+        config=_make_config(),
+        result=_make_result(),
+        artifact_paths={},
+        mode=BacktestMode.QUICK_1Y,
+        lineage=None,
+        perf=_fake_perf(),
+    )
+    assert returned is None
+
+
+def test_log_run_pipeline_conn_identity_assert():
+    """P1-A: 若 pipeline+conn 都显式设置, 必同一 conn 对象 (否则 assert fail)."""
+    from unittest.mock import patch
+
+    from backend.platform.data.lineage import CodeRef, Lineage
+
+    pipeline = MagicMock()
+    pipeline.ingest.return_value = _make_ingest_result()
+    pipeline.conn = MagicMock()  # 对象 A
+    conn_b = MagicMock()  # 对象 B (不同)
+    registry = DBBacktestRegistry(pipeline=pipeline, conn=conn_b)
+
+    lineage = Lineage(
+        inputs=[],
+        code=CodeRef(git_commit="x", module="test"),
+        params={},
+    )
+    with (
+        patch("backend.platform.backtest.registry.write_lineage_with_outputs"),
+        pytest.raises(AssertionError, match="same object"),
+    ):
+        registry.log_run(
+            config=_make_config(),
+            result=_make_result(),
+            artifact_paths={},
+            mode=BacktestMode.QUICK_1Y,
+            lineage=lineage,
+            perf=_fake_perf(),
+        )
 
 
 def test_log_run_zero_upserted_raises_fail_loud():

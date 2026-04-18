@@ -196,7 +196,9 @@ def test_cache_miss_runs_engine():
     data_loader = MagicMock(return_value=(MagicMock(), MagicMock(), None))
     runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader)
 
-    with patch("engines.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()):
+    with patch(
+        "backend.platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+    ):
         result = runner.run(BacktestMode.QUICK_1Y, _make_config())
 
     assert result.sharpe == 1.2
@@ -212,7 +214,9 @@ def test_live_pt_does_not_check_cache():
     runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader)
 
     registry.log_run.return_value = uuid4()
-    with patch("engines.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()):
+    with patch(
+        "backend.platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+    ):
         runner.run(BacktestMode.LIVE_PT, _make_config())
 
     registry.get_by_hash.assert_not_called()  # LIVE_PT 跳过 cache 查
@@ -319,7 +323,8 @@ def test_run_end_to_end_mock_integration():
     runner = PlatformBacktestRunner(registry=registry, data_loader=data_loader, conn="fake_conn")
 
     with patch(
-        "engines.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+        "backend.platform.backtest.runner.run_hybrid_backtest",
+        return_value=_fake_engine_result(),
     ) as mock_engine:
         result = runner.run(BacktestMode.FULL_5Y, _make_config())
 
