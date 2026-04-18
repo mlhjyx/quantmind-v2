@@ -7,7 +7,10 @@
 4. 连接状态: 通过StreamBus广播 qm:qmt:status
 
 架构: 复用 MiniQMTBroker + QMTExecutionAdapter，不重写。
-约束: 本文件是唯一允许 import xtquant 的生产入口。
+
+MVP 2.1c Sub3.4 (2026-04-18): `_sync_prices` 走 `QMTDataSource.fetch(QMT_TICKS_CONTRACT)`
+(Platform DataSource), 不再本脚本直接 import xtquant. xtquant 通过 QMTDataSource lazy import
+间接使用 (仍需 ensure_xtquant_path 先设 path). Servy 服务配置 0 改动, 入口/行为保持.
 
 用法:
     python scripts/qmt_data_service.py
@@ -159,40 +162,51 @@ class QMTDataService:
             return None
 
     def _sync_prices(self, codes: list[str]) -> None:
-        """同步持仓股票实时价格到Redis缓存。"""
+        """同步持仓股票实时价格到Redis缓存。
+
+        MVP 2.1c Sub3.4 (2026-04-18): 走 Platform QMTDataSource (MVP 2.1b) 替代直接 import xtquant.
+        QMTDataSource 内部 lazy import xtquant, 本 method 不再直接 `from xtquant import xtdata`.
+        ensure_xtquant_path() 仍需调用 (lazy import 触发前 path setup).
+        """
         if not codes:
             return
 
         r = self._get_redis()
 
         try:
-            ensure_xtquant_path()
-            from xtquant import xtdata
+            ensure_xtquant_path()  # QMTDataSource lazy import xtquant, 需要 path 先 setup
+            from datetime import date as _date
 
-            # 转换为QMT格式代码 (000001.SZ → 000001.SZ)
-            # xtdata.get_full_tick 接受QMT格式
-            qmt_codes = codes
-            ticks = xtdata.get_full_tick(qmt_codes)
+            from backend.platform.data.sources.qmt_source import (
+                QMT_TICKS_CONTRACT,
+                QMTDataSource,
+            )
+
+            source = QMTDataSource(broker=self._broker, codes=list(codes))
+            df = source.fetch(QMT_TICKS_CONTRACT, since=_date.today())
 
             pipe = r.pipeline()
             synced = 0
-            for code, tick_data in ticks.items():
-                if tick_data and hasattr(tick_data, "lastPrice") and tick_data.lastPrice > 0:
-                    price_info = json.dumps(
-                        {
-                            "price": tick_data.lastPrice,
-                            "high": getattr(tick_data, "high", 0),
-                            "low": getattr(tick_data, "low", 0),
-                            "volume": getattr(tick_data, "volume", 0),
-                            "updated_at": datetime.now(UTC).isoformat(),
-                        }
-                    )
-                    pipe.setex(f"{CACHE_MARKET_PREFIX}{code}", TICK_TTL_SEC, price_info)
-                    synced += 1
+            for _, row in df.iterrows():
+                updated = row["updated_at"]
+                updated_iso = (
+                    updated.isoformat() if hasattr(updated, "isoformat") else str(updated)
+                )
+                price_info = json.dumps(
+                    {
+                        "price": float(row["last_price"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "volume": int(row["volume"]),
+                        "updated_at": updated_iso,
+                    }
+                )
+                pipe.setex(f"{CACHE_MARKET_PREFIX}{row['code']}", TICK_TTL_SEC, price_info)
+                synced += 1
             pipe.execute()
-            logger.debug("价格同步完成: %d/%d", synced, len(codes))
+            logger.debug("价格同步完成 (via QMTDataSource): %d/%d", synced, len(codes))
         except Exception:
-            logger.warning("价格同步失败", exc_info=True)
+            logger.warning("价格同步失败 (via QMTDataSource)", exc_info=True)
 
     def _run_sync_loop(self) -> None:
         """主同步循环。"""
