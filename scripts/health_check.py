@@ -119,6 +119,10 @@ def check_stock_status(conn, trade_date: date) -> tuple[bool, str]:
     """stock_status_daily新鲜度+覆盖率检查。
 
     2026-04-14新增: ST漏洞事件暴露stock_status_daily数据缺失导致ST过滤失效。
+    2026-04-18 LL-058: 滞后 ≤ 2 交易日降级 warning (不阻塞 signal_phase),
+    > 2 交易日才 hard fail. 避免 pt_data_service silent swallow 导致单日缺失就
+    block 整 PT 链路. fail-loud 监控由 pt_data_service.fetch_daily_data raise +
+    scheduler_task_log + pt_watchdog 20:00 告警负责.
     """
     try:
         cur = conn.cursor()
@@ -141,7 +145,24 @@ def check_stock_status(conn, trade_date: date) -> tuple[bool, str]:
         prev_trading_day = cur.fetchone()[0]
 
         if prev_trading_day and max_status_date < prev_trading_day:
-            return False, f"数据滞后: status最新={max_status_date}, 期望>={prev_trading_day}"
+            # 计算滞后交易日数
+            cur.execute(
+                """SELECT COUNT(*) FROM trading_calendar
+                   WHERE market='astock' AND is_trading_day=TRUE
+                     AND trade_date > %s AND trade_date <= %s""",
+                (max_status_date, prev_trading_day),
+            )
+            lag_days = cur.fetchone()[0]
+            if lag_days > 2:
+                return False, (
+                    f"数据严重滞后: status最新={max_status_date}, "
+                    f"期望>={prev_trading_day}, 滞后{lag_days}交易日 (>2)"
+                )
+            # ≤ 2 交易日: warning but pass (避免 block 整 signal)
+            return True, (
+                f"WARN status滞后{lag_days}交易日 (最新={max_status_date}, "
+                f"期望>={prev_trading_day}, 允许 ≤ 2 天)"
+            )
 
         # 检查覆盖率: stock_status行数应>=4000(A股正常5000+)
         cur.execute(
