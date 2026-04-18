@@ -233,3 +233,12 @@ lineages = get_lineage_for_row("factor_values",
 ## 变更记录
 
 - 2026-04-18 v1.0 设计稿落盘, 等 plan approval + 实施.
+- 2026-04-19 v1.1 **Sub1 + Sub2 已交付** (commits `42fbd1d` + `5ace7df`):
+  - Sub1: ColumnSpec 扩 UUID/JSONB + ADR-0009 + 设计稿 (235 行) + 12 unit PASS
+  - Sub2: data_lineage 表 (UUID PK + JSONB GIN) + backend/platform/data/lineage.py (236 行
+    含 3 dataclass + 3 DB API) + DataPipeline.ingest `lineage` 参数 (向后兼容 13 调用方零改动)
+    + factor_compute_service 集成 factor_compute_version 多数票 commit
+    + 13 unit + 1 live smoke 全 PASS
+  - 硬门: regression max_diff=0 Sharpe=0.6095 / 全量 pytest 2685 pass 24 fail baseline /
+    smoke 25 PASS + 2 SKIP / ruff clean
+  - Sub3 (本次 commit): CLAUDE.md / handoff / 本变更记录 bump

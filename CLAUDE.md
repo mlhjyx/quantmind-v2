@@ -123,7 +123,7 @@ quantmind-v2/
 │           ├── tushare_fetcher.py
 │           ├── tushare_client.py
 │           └── data_loader.py
-├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a/b/c(Sub1+Sub2) + 2.2 Sub1 (2026-04-18) Wave 1 完结 7/7 + Wave 2 进行中
+├── backend/platform/            # ⭐ MVP 1.1-1.4 + 2.1a/b/c(Sub1+Sub2) + 2.2 Sub1+Sub2 (2026-04-19) Wave 1 完结 7/7 + Wave 2 进行中
 │   ├── __init__.py              #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
 │   ├── _types.py                #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
 │   ├── data/                    #   #1 Data Framework
@@ -679,14 +679,14 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 ### 平台化主线 (下阶段, 2026-04-17 启动)
 - ⭐ **Platform Blueprint v1.4** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 1733 行): 12 Framework + 6 升维 + 16 MVP (26-35 周)
 - 🟢 **Wave 1 正式完结 7/7** (2026-04-17 已交付): Platform Skeleton (MVP 1.1 ✅) + Config (1.2 ✅) + DAL (1.2a ✅) + Registry 回填 (1.3a ✅) + Direction DB 化 (1.3b ✅ **+ wiring 补全** — `app/core/platform_bootstrap.py` 挂 FastAPI/PT/Celery 3 入口, 铁律 10 全链路验证) + Factor Framework 收尾 (1.3c ✅) + **Knowledge Registry (1.4 ✅, 3 concrete + 5 ADR + 39+25+5 行入库)**
-- 🟡 **Wave 2 进行中** (Session 4 2026-04-18 末): Data Framework 基础 + Data Lineage 启动. **2.1a ✅** (Cache Coherency + BaseDataSource + ADR-006) / **2.1b ✅ 3/3** (Baostock/QMT/Tushare concrete, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write) / **2.1c 2/3 ✅** (Sub1 DAL 扩 7 方法 + Engine α / Sub2 C 级写路径 DataPipeline 迁移 + SHADOW_PORTFOLIO Contract; **Sub3 老 3 fetcher 退役阻塞 dual-write 窗口 2026-04-25**) / **MVP 2.2 Data Lineage (U3) Sub1 ✅** (ColumnSpec 扩 UUID/JSONB pipeline.py + ADR-0009 延迟收敛决议 + 设计稿 235 行 `docs/mvp/MVP_2_2_data_lineage.md`, Sub2 主体 data_lineage 表 + Lineage dataclass + 埋点 + FactorCompute 集成待做). **铁律 10b 全面落地**: smoke Wave 1+2a+2.1b+2.2 Sub1 覆盖 + `config/hooks/pre-push` 本地门禁 + `docs/SETUP_DEV.md`.
-- ⬜ **Wave 2 剩余** (~2 周): MVP 2.1c Sub3 (dual-write 窗口过后) + MVP 2.2 Sub2 (Lineage 主体) + 2.3 Backtest/Parity
+- 🟡 **Wave 2 进行中** (Session 5 2026-04-19): Data Framework 基础 + Data Lineage. **2.1a ✅** (Cache Coherency + BaseDataSource + ADR-006) / **2.1b ✅ 3/3** (Baostock/QMT/Tushare concrete, ~1270 行 Platform + 55 unit + 3 live smoke, 老 3 fetcher 0 改动 dual-write) / **2.1c 2/3 ✅** (Sub1 DAL 扩 7 方法 + Engine α / Sub2 C 级写路径 DataPipeline 迁移 + SHADOW_PORTFOLIO Contract; **Sub3 老 3 fetcher 退役阻塞 dual-write 窗口 2026-04-25**) / **MVP 2.2 Data Lineage (U3) ✅ Sub1+Sub2 全交付** (Sub1 ColumnSpec 扩 UUID/JSONB pipeline.py + ADR-0009 延迟收敛决议 + 设计稿 235 行; Sub2 data_lineage 表 UUID PK + JSONB GIN + `backend/platform/data/lineage.py` 3 dataclass + 3 DB API + DataPipeline.ingest `lineage` 参数 + FactorCompute 集成 factor_compute_version + 13 new unit + 1 live smoke). **铁律 10b 全面落地**: smoke Wave 1+2a+2.1b+2.2 全覆盖 + `config/hooks/pre-push` 本地门禁 + `docs/SETUP_DEV.md`.
+- ⬜ **Wave 2 剩余** (~2 周): MVP 2.1c Sub3 (dual-write 窗口过后) + 2.3 Backtest/Parity
 - ⬜ **Wave 3** (6-8 周): Strategy Framework + Signal/Exec + Event Sourcing + Eval Gate
 - ⬜ **Wave 4** (3-4 周): Observability + Performance Attribution + CI/CD
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
-📊 测试: 2700+ tests collected / 100+ test files (Session 4 2026-04-18 实测: full pytest **2672 pass / 24 fail** [铁律 40 保持], regression max_diff=0 Sharpe=0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 24 PASS + 2 SKIP** (25.9s, Wave 1+2a+2.1b+2.2 Sub1 覆盖: 1.2/1.3b/1.3c/1.4/2.1a + **2.1b baostock 贵州茅台真网络 / 2.1b qmt import+contract / 2.1b tushare token skip / 2.1c DAL live / 2.1c C 级 live**) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **MVP 2.1c 30 新 unit** (DAL 21 + Pipeline Contract 9) + **MVP 2.2 Sub1 12 新 unit** (uuid 5 + jsonb 5 + helpers 2) + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
+📊 测试: 2700+ tests collected / 100+ test files (Session 5 2026-04-19 实测: full pytest **2685 pass / 24 fail** [+13 Sub2, 铁律 40 baseline 保持], regression max_diff=0 Sharpe=0.6095 [铁律 15], ruff clean) + **铁律 10b smoke 25 PASS + 2 SKIP** (Wave 1+2a+2.1b+2.2 Sub1+Sub2 覆盖: 1.2/1.3b/1.3c/1.4/2.1a + **2.1b baostock 贵州茅台真网络 / 2.1b qmt import+contract / 2.1b tushare token skip / 2.1c DAL live / 2.1c C 级 live / 2.2 lineage live**) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **MVP 2.1c 30 新 unit** (DAL 21 + Pipeline Contract 9) + **MVP 2.2 Sub1+Sub2 25 新 unit** (Sub1 uuid 5 + jsonb 5 + helpers 2; Sub2 dataclass 3 + 序列化 3 + DB API 3 + containment 1 + chain 1 + pipeline 2) + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
 ---
 
 ## 文件归属规则（防腐）
