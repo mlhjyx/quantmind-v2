@@ -69,6 +69,9 @@ class BacktestResult:
       total_return: 总收益
       trades_count: 成交笔数
       metrics: 扩展指标 (Sortino / Calmar / IR / WF stats)
+      lineage_id: data_lineage.lineage_id FK (MVP 2.3 U3 追溯, nullable 向后兼容).
+                  DBBacktestRegistry.log_run 通过 DataPipeline.ingest(lineage=...)
+                  自动生成 + 回填. 老 17 调用方默认 None 不受影响.
     """
 
     run_id: UUID
@@ -80,6 +83,7 @@ class BacktestResult:
     total_return: float
     trades_count: int
     metrics: dict[str, Any]
+    lineage_id: UUID | None = None
 
 
 class BacktestRunner(ABC):
