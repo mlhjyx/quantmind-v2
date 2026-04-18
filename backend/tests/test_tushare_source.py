@@ -280,6 +280,7 @@ def test_check_value_ranges_klines_negative_price() -> None:
 
 
 def test_check_value_ranges_klines_abnormal_pct_chg() -> None:
+    """阈值 Session 5 末放宽 30.5 → 1100 (覆盖新股首日 +1000%+, 过滤真 bug)."""
     client = _FakeTushareClient()
     src = TushareDataSource(client=client)
     df = pd.DataFrame(
@@ -292,11 +293,11 @@ def test_check_value_ranges_klines_abnormal_pct_chg() -> None:
             "pre_close": [10.0],
             "vol": [1000],
             "amount": [10000.0],
-            "pct_chg": [50.0],  # 异常
+            "pct_chg": [1500.0],  # 异常 (15x, 超过新股首日极限)
         }
     )
     issues = src._check_value_ranges(df, KLINES_DAILY_DATA_CONTRACT)
-    assert any("pct_chg" in msg and "30.5" in msg for msg in issues)
+    assert any("pct_chg" in msg and "1100" in msg for msg in issues)
 
 
 # ============================================================

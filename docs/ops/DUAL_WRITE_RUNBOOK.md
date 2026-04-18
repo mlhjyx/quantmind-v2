@@ -50,25 +50,29 @@ Get-Content D:\quantmind-v2\logs\celery-stdout.log -Tail 50 | Select-String "dua
 
 ## 📅 用户操作 (极简版)
 
-### Step 0: 一次性初始配置 (周一 04-20 前做)
+### Step 0: 确认 backend/.env TUSHARE_TOKEN 已配 (应已存在)
+
+TUSHARE_TOKEN 通过 **pydantic-settings 从 `backend/.env` 读**, 不走 `os.environ`.
+如果之前 PT / Tushare 能跑, 说明 token 已配好.
 
 ```powershell
-# Windows PowerShell
-# 1. 配置 Tushare token (永久环境变量, Windows 用户级)
-# 方法 A: 通过 GUI — Win+R → sysdm.cpl → 高级 → 环境变量
-# 方法 B: PowerShell 临时 (每个 session 重设)
-$env:TUSHARE_TOKEN = "你的 tushare token"
-
-# 2. 验证 token 可用 (快速 ping)
 cd D:\quantmind-v2
+
+# 1. 验证 settings 能读到 token (权威检查)
 .\.venv\Scripts\python.exe -c "
-import os
-assert os.environ.get('TUSHARE_TOKEN'), 'token 未配'
+from app.config import settings
+assert settings.TUSHARE_TOKEN, 'backend/.env TUSHARE_TOKEN 未配或为空'
+print(f'OK settings.TUSHARE_TOKEN len={len(settings.TUSHARE_TOKEN)}')"
+
+# 2. 验证真 Tushare API 可调 (ping)
+.\.venv\Scripts\python.exe -c "
 from app.data_fetcher.tushare_api import TushareAPI
 df = TushareAPI().query('trade_cal', start_date='20260401', end_date='20260401')
-print('Tushare OK, 交易日:', len(df), '条')
-"
+print('Tushare OK, 交易日:', len(df), '条')"
 ```
+
+**如果你之前没手动配** `$env:TUSHARE_TOKEN` (PowerShell 环境变量), **没关系** — pydantic
+读 `backend/.env` 即可. 系统 env 变量仅在覆盖场景用.
 
 ### Step 1: 确认 Celery Beat 服务运行 (一次性)
 

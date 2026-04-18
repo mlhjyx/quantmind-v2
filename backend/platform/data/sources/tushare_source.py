@@ -448,12 +448,15 @@ class TushareDataSource(BaseDataSource):
                     n = int(bad.sum())
                     if n > 0:
                         issues.append(f"[range] {col} 列 {n} 行 < 0")
-            # pct_chg 合理范围 (A 股主板 ±10%, ST ±5%, 创业板 ±20%, 北交所 ±30% — 宽松 ±30.5)
+            # pct_chg 合理范围 (A 股主板 ±10%, ST ±5%, 创业板 ±20%, 北交所 ±30%,
+            # 新股首日无涨跌停限制, 历史最大 +1000%+; 宽松 ±1100 覆盖极端新股 + 过滤真 bug)
             if "pct_chg" in df.columns:
-                bad = df["pct_chg"].notna() & (df["pct_chg"].abs() > 30.5)
+                bad = df["pct_chg"].notna() & (df["pct_chg"].abs() > 1100)
                 n = int(bad.sum())
                 if n > 0:
-                    issues.append(f"[range] pct_chg 列 {n} 行 |%| > 30.5 (超出涨跌停合理幅度)")
+                    issues.append(
+                        f"[range] pct_chg 列 {n} 行 |%| > 1100 (超 10x 新股极限, 疑 bug)"
+                    )
             # MVP 2.1c Sub3-prep: 3 新字段值域
             if "adj_factor" in df.columns:
                 bad = df["adj_factor"].notna() & (df["adj_factor"] <= 0)

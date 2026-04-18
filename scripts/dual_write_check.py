@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -45,6 +44,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(PROJECT_ROOT / "backend"))
 
+from app.config import settings  # noqa: E402 — pydantic Settings 自动读 backend/.env
 from app.data_fetcher.data_loader import get_sync_conn  # noqa: E402
 
 logging.basicConfig(
@@ -282,8 +282,12 @@ def print_state() -> int:
 
 
 def check_one(trade_date: date) -> dict:
-    if not os.environ.get("TUSHARE_TOKEN"):
-        return {"status": "ERROR", "error": "TUSHARE_TOKEN not set"}
+    # pydantic Settings 从 backend/.env 读 TUSHARE_TOKEN (不走 os.environ)
+    if not settings.TUSHARE_TOKEN:
+        return {
+            "status": "ERROR",
+            "error": "TUSHARE_TOKEN not set in backend/.env or settings.TUSHARE_TOKEN empty",
+        }
     conn = get_sync_conn()
     try:
         old = load_old_path(conn, trade_date)

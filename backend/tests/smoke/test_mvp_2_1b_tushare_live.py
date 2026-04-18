@@ -1,13 +1,15 @@
 """MVP 2.1b Sub-commit 3 — TushareDataSource 生产入口真启动 smoke (铁律 10b).
 
-subprocess + 真 TUSHARE_TOKEN (env) + 查 1 个最近交易日 klines_daily.
-无 TUSHARE_TOKEN 环境变量 → pytest.skip (CI 常见).
+subprocess + TUSHARE_TOKEN (settings pydantic 从 backend/.env 读) + 查 1 个最近交易日 klines_daily.
+无 backend/.env TUSHARE_TOKEN → pytest.skip (CI 常见).
 
 真端到端 dual-write 对比验证 留 MVP 2.1c 前置 (regression max_diff=0 × 3 次 + 数据 diff 100%).
+
+[Session 5 末修正]: 原 os.environ.get('TUSHARE_TOKEN') 读不到 backend/.env 中的 token
+(pydantic-settings 只填 settings 对象, 不 push os.environ), 改用 settings.TUSHARE_TOKEN.
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,9 +19,10 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 _SMOKE_CODE = """
-import os
-if not os.environ.get('TUSHARE_TOKEN'):
-    print('SKIP: TUSHARE_TOKEN not set')
+# pydantic Settings 自动读 backend/.env TUSHARE_TOKEN
+from app.config import settings
+if not settings.TUSHARE_TOKEN:
+    print('SKIP: TUSHARE_TOKEN not set in backend/.env')
     import sys
     sys.exit(2)
 
@@ -78,9 +81,16 @@ print(
 
 @pytest.mark.smoke
 def test_tushare_live_klines_fetch() -> None:
-    """Live Tushare klines_daily fetch + validate PASS (需 TUSHARE_TOKEN)."""
-    if not os.environ.get("TUSHARE_TOKEN"):
-        pytest.skip("TUSHARE_TOKEN 未配置 (CI / 新环境), 跳过")
+    """Live Tushare klines_daily fetch + validate PASS (需 backend/.env TUSHARE_TOKEN)."""
+    # 外层 skip 判断走 settings (与 subprocess 内部一致)
+    import sys as _sys
+    from pathlib import Path as _Path
+    _backend = _Path(__file__).resolve().parents[2]
+    if str(_backend) not in _sys.path:
+        _sys.path.append(str(_backend))
+    from app.config import settings as _settings
+    if not _settings.TUSHARE_TOKEN:
+        pytest.skip("TUSHARE_TOKEN 未配置于 backend/.env (CI / 新环境), 跳过")
     result = subprocess.run(
         [sys.executable, "-c", _SMOKE_CODE],
         cwd=str(PROJECT_ROOT),
