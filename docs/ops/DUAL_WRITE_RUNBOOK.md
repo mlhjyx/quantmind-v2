@@ -77,13 +77,14 @@ print('Tushare OK, 交易日:', len(df), '条')"
 ### Step 1: 确认 Celery Beat 服务运行 (一次性)
 
 ```powershell
-# Servy 4 服务应全部 Running
-D:\tools\Servy\servy-cli.exe status | Select-String "QuantMind"
+# Servy CLI 要求 --name 参数, 逐个检查
+D:\tools\Servy\servy-cli.exe status --name="QuantMind-CeleryBeat" --quiet
+D:\tools\Servy\servy-cli.exe status --name="QuantMind-Celery" --quiet
+D:\tools\Servy\servy-cli.exe status --name="QuantMind-FastAPI" --quiet
+D:\tools\Servy\servy-cli.exe status --name="QuantMind-QMTData" --quiet
 
-# 期待输出含:
-#   QuantMind-CeleryBeat    Running
-#   QuantMind-Celery        Running
-#   (其他 FastAPI / QMTData)
+# 每条期待: "Service status: Running"
+# 若 Stopped, 启动: ... start --name="..."
 ```
 
 ### Step 2: 每周/窗口结束查 5 日进度 (推荐做法)

@@ -45,8 +45,8 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
 ### 因子存储 (2026-04-15 S1 audit 实测)
-- **factor_values**: **816,408,002 行** (155 GB, TimescaleDB hypertable 151 chunks)
-- **factor_ic_history**: 133,125 行, IC唯一入库点(铁律11), 未入库IC视为不存在
+- **factor_values**: **839,425,275 行** (~158 GB est, TimescaleDB hypertable 151+ chunks) — 2026-04-18 Session 5 实测 (+23M vs S1 审计 816M baseline, 1 周新数据)
+- **factor_ic_history**: **144,795 行** (Session 5 实测 +11K vs S1 133K), IC唯一入库点(铁律11), 未入库IC视为不存在
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
 - **minute_bars**: **190,885,634 行** (21 GB, Step 6-B 已统一 code 格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
 - **klines_daily**: 11,721,768 行 (4 GB, TimescaleDB hypertable 51 chunks)
@@ -562,13 +562,14 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 成本: 佣金万0.854(国金实际, min 5元) + 印花税(2023-08-28前0.1%,后0.05%) + 过户费0.001% + 三因素滑点(spread+impact+overnight_gap)
 ```
 
-**因子健康状态（2026-04-12 PT配置更新后）:**
+**因子健康状态（2026-04-18 Session 5 factor_lifecycle 补跑后实测）:**
 - turnover_mean_20: ✅ active (IC=-0.091, direction=-1)
 - volatility_20: ✅ active (IC=-0.114, direction=-1)
 - bp_ratio: ✅ active (IC=+0.107, direction=+1)
-- dv_ttm: ✅ **NEW active** (股息率, direction=+1, DB 11.7M行, neutral_value 11.6M有效)
+- dv_ttm: ⚠️ **active → warning** (Session 5 lifecycle 补跑, |IC_MA20|/|IC_MA60|=0.517 < 0.8 阈值).
+  **PT 生产配置仍包含此因子**, 可能关联本周 -10.2% 回撤 (4-13 ~ 4-17). 下周五 19:00 lifecycle 再评估, 如持续 warning 考虑 CORE3 only (去 dv_ttm) 或加新因子
 - amihud_20: 降级→CORE5基线保留 (仍在factor_values, 不参与PT信号)
-- reversal_20: 降级→CORE5基线保留 (IC方向反转问题, 不参与PT信号)
+- reversal_20: ⚠️ **active → warning** (Session 5 lifecycle 补跑, ratio=0.430 < 0.8, Session 4 handoff 预测 "待 beat 激活落库", 今天补跑 DB 状态更新. 不参与 PT 信号, 仅 CORE5 基线保留, 不影响生产)
 
 **PT状态 (2026-04-18 实测核实, 修正历史错误记录)**: **活跃运行** (连续持仓至少自 2026-04-02 起, 从未清仓). 时间线:
   - 2026-04-02 ~ 04-13: 9 → 17 股持仓, MV ¥954K → ¥1,001K

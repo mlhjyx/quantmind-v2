@@ -38,10 +38,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _is_trading_day(td: date) -> bool:
-    """查 trading_calendar 判断是否 A 股交易日 (节假日过滤).
+    """查 trading_calendar 判断是否 A 股交易日.
 
-    回退: DB 不可达 → 按 weekday 粗判 (周一-周五 True). 节假日 False positive 可容忍
-    (task 内部 subprocess 跑 old fetcher 查空, 自动 SKIP/ERROR 不告警).
+    DB 可达 → 权威结果 (节假日精确过滤).
+    DB 不可达 → 保守 **False** (宁可不跑也不误报 FAIL 告警). 原 weekday 粗判
+    在节假日会 false positive (如 5-1 周三 True 但休市), 导致 subprocess
+    跑空数据 → ERROR, 用户看 --status 误以为窗口累积对了.
     """
     try:
         from app.data_fetcher.data_loader import get_sync_conn
@@ -58,11 +60,19 @@ def _is_trading_day(td: date) -> bool:
             cur.close()
             if row is not None:
                 return bool(row[0])
+            # DB 有表但无该日记录: 保守 False (日历可能过期未回填)
+            logger.warning(
+                "[dual_write_check] trading_calendar 无 %s 记录, 保守视为非交易日", td
+            )
+            return False
         finally:
             conn.close()
-    except Exception as e:  # silent_ok: DB 故障回退 weekday 粗判
-        logger.warning("[dual_write_check] trading_calendar 查询失败, 回退 weekday: %s", e)
-    return td.weekday() < 5  # 0-4 = 周一-周五
+    except Exception as e:  # silent_ok: DB 故障保守返 False 防误跑
+        logger.error(
+            "[dual_write_check] trading_calendar 查询失败, 保守视为非交易日 (避免节假日误跑): %s",
+            e,
+        )
+        return False
 
 
 @celery_app.task(

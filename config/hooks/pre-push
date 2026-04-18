@@ -16,8 +16,10 @@ else
     PY="python"
 fi
 
-echo "[pre-push] 铁律 10b: pytest -m smoke (生产入口真启动验证) — $PY"
-if ! "$PY" -m pytest backend/tests/smoke/ -m smoke --tb=line -q --timeout=60; then
+echo "[pre-push] 铁律 10b: pytest -m 'smoke and not live_tushare' (生产入口真启动验证, 跳网络) — $PY"
+# 跳 live_tushare: 真调 Tushare API 可能限流 / 网络抖动, 不应阻塞 push
+# 手动完整 smoke (含 Tushare live): `pytest -m smoke`
+if ! "$PY" -m pytest backend/tests/smoke/ -m "smoke and not live_tushare" --tb=line -q --timeout=60; then
     echo ""
     echo "[pre-push] smoke failed — push 被阻断."
     echo "[pre-push] 铁律 10b 要求 push 前 smoke 全绿. 修复后重 push."

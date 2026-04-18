@@ -80,8 +80,13 @@ print(
 
 
 @pytest.mark.smoke
+@pytest.mark.live_tushare
 def test_tushare_live_klines_fetch() -> None:
-    """Live Tushare klines_daily fetch + validate PASS (需 backend/.env TUSHARE_TOKEN)."""
+    """Live Tushare klines_daily fetch + validate PASS (需 backend/.env TUSHARE_TOKEN).
+
+    `live_tushare` marker 让 pre-push 跳过 (`-m "smoke and not live_tushare"`),
+    避免 Tushare 限流 / 网络抖动阻塞 push. 完整 smoke 仍跑 (`pytest -m smoke`).
+    """
     # 外层 skip 判断走 settings (与 subprocess 内部一致)
     import sys as _sys
     from pathlib import Path as _Path
