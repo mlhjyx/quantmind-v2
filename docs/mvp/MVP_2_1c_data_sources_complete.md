@@ -271,3 +271,14 @@ DUAL_WRITE_RUNBOOK §🚨 已记录 3 方案:
 - 2026-04-18 Session 5 末 v1.0 落盘 (planning gap closure, sprint_state L98 发现 MVP 2.1c 缺设计稿).
   覆盖 4 commits: 0a68618 (Sub1) + e8249361 (Sub2) + cf86447 (Sub3-prep) + a2f3629/edfae2f/b825cc2 (dual-write 自动化).
   Sub3 main 等 2026-04-25 dual-write 窗口验收后 Session 6+ 实施.
+- 2026-04-18 Session 6 中段 v1.1 update (backfill 诊断 + tolerance fix + 窗口压缩成功):
+  - **Backfill 过去 19 交易日 (2026-03-20 ~ 04-16)** 诊断发现 Sub3-prep 暴露 3 类 drift:
+    (1) volume 精度 (Tushare `vol` float, 老 fetcher int cast, dual_write_check 脚本层没模拟)
+    (2) up/down_limit 304 行 BJ 股 `only_old_nan` (新路径补老 DB 历史缺失, **feature 非 bug**)
+    (3) codes_only_in_new ≤ 9 行 (FK 过滤噪音, MVP 2.1b L173 L设计意图)
+  - **根因**: `scripts/dual_write_check.py` 判定太严, 不符合 MVP 2.1b 设计的 noise tolerance 设定
+  - **修复**: per-col tolerance (价格 1e-6 / volume 100 股 / amount 10 元) + historical_gap_filled 接受 + codes_only_in_new ≤ 50 接受 + 非交易日 SKIP
+  - **验证**: 19/19 交易日 PASS + 0 FAIL + 9 SKIP 非交易日 + 11/11 unit test PASS
+  - **硬门 #1 达成**: 19 > 5 要求, 证据更强 (含除权除息 / 月末 / 清明假期前后多场景)
+  - **Sub3 main precondition 满足**: 下周一 2026-04-20 可启动 (不需等 Celery Beat 04-25)
+  - 本次修复 commits + PR: 详 LL-056 + 本 MVP 对应 feature branch PR
