@@ -168,8 +168,19 @@ def load_benchmark(start_date, end_date, conn) -> pd.DataFrame:
 
 
 def run_with_yaml(config_path: str):
-    """YAML配置驱动的回测(推荐路径)。"""
-    from engines.backtest.runner import run_hybrid_backtest
+    """YAML配置驱动的回测 — MVP 2.3 Sub1 PR C3 迁 Platform SDK.
+
+    走 PlatformBacktestRunner + InMemoryBacktestRegistry + LIVE_PT mode (ad-hoc
+    场景借 LIVE_PT 不 override start/end + 不 cache 语义, Sub3 真 LIVE_PT 实现评估新
+    AD_HOC mode 替代).
+
+    数据加载: closure cache 优先 + DB fallback (保原 run_with_yaml 行为).
+    Engine/Signal config: 走 builder callable 注入 Runner 完整 YAML 14+8 字段
+    (消除 PR B SN=0 bug + PMS 失效 bug — Runner fallback 只映 5 字段).
+    消费者从 `result.engine_artifacts` 取 engine_result / price_data 走 generate_report.
+
+    关联铁律 15 (config_hash 复现) / 16 (信号路径唯一 SignalComposer) / 34 (配置 SSOT YAML).
+    """
     from engines.metrics import generate_report, print_report
 
     from app.services.config_loader import (
@@ -180,9 +191,15 @@ def run_with_yaml(config_path: str):
         to_backtest_config,
         to_signal_config,
     )
+    from backend.platform._types import BacktestMode
+    from backend.platform.backtest import BacktestConfig as PlatformCfg
+    from backend.platform.backtest import InMemoryBacktestRegistry
+    from backend.platform.backtest.runner import PlatformBacktestRunner
 
     cfg = load_config(config_path)
-    bt_config = to_backtest_config(cfg)
+    # Engine BacktestConfig / SignalConfig 从 YAML 全字段构造 (14/8 字段), 走 builder 注入
+    # Runner → 避绕 PR B fallback 只映 5 字段导致 SN=0 + PMS 失效 bug.
+    bt_config_engine = to_backtest_config(cfg)
     sig_config = to_signal_config(cfg)
     directions = get_directions(cfg)
     start_str, end_str = get_data_range(cfg)
@@ -191,64 +208,119 @@ def run_with_yaml(config_path: str):
     c_hash = config_hash(cfg)
 
     logger.info(
-        "Config: %s (hash=%s), %s~%s, top_n=%d, %d factors",
+        "Config: %s (hash=%s), %s~%s, top_n=%d, %d factors [Platform SDK]",
         Path(config_path).name,
         c_hash,
         start,
         end,
-        bt_config.top_n,
+        bt_config_engine.top_n,
         len(directions),
     )
 
     t0 = time.time()
 
-    # 加载数据: Parquet缓存优先, DB回退
-    from data.parquet_cache import BacktestDataCache
+    # 数据加载 closure: cache 优先, DB fallback — 作为 Runner.data_loader 注入.
+    # PR C1 BacktestCacheLoader 对 invalid cache 直接 raise, 不匹配本场景 "cache miss → DB"
+    # 回退策略, 因此本处用 closure 显式组合 (单次使用, 不值新建通用 loader 类).
+    def _cache_or_db_loader(_platform_cfg, _start, _end):
+        from data.parquet_cache import BacktestDataCache
 
-    cache = BacktestDataCache()
-    if cache.is_valid(start, end):
-        logger.info("从Parquet缓存加载数据...")
-        data = cache.load(start, end)
-        factor_df = data["factor_data"]
-        price_data = data["price_data"]
-        benchmark = data["benchmark"]
-        logger.info(
-            "缓存加载: factor=%d行, price=%d行, benchmark=%d行 (%.1fs)",
-            len(factor_df), len(price_data), len(benchmark), time.time() - t0,
-        )
-    else:
+        cache = BacktestDataCache()
+        if cache.is_valid(_start, _end):
+            logger.info("从Parquet缓存加载数据...")
+            data = cache.load(_start, _end)
+            factor_df = data["factor_data"]
+            price_data = data["price_data"]
+            benchmark = data.get("benchmark")  # 可选 (老 parquet 可能无)
+            logger.info(
+                "缓存加载: factor=%d行, price=%d行, benchmark=%s",
+                len(factor_df),
+                len(price_data),
+                f"{len(benchmark)}行" if benchmark is not None else "无",
+            )
+            return factor_df, price_data, benchmark
+
         logger.info("缓存不可用, 从DB加载...")
-        conn = _get_sync_conn()
-        factor_df = pd.read_sql(
-            """SELECT code, trade_date, factor_name,
-                      COALESCE(neutral_value, raw_value) as raw_value
-               FROM factor_values
-               WHERE factor_name IN %s AND trade_date BETWEEN %s AND %s""",
-            conn,
-            params=(tuple(directions.keys()), start, end),
+        _conn = _get_sync_conn()
+        try:
+            factor_df = pd.read_sql(
+                """SELECT code, trade_date, factor_name,
+                          COALESCE(neutral_value, raw_value) as raw_value
+                   FROM factor_values
+                   WHERE factor_name IN %s AND trade_date BETWEEN %s AND %s""",
+                _conn,
+                params=(tuple(directions.keys()), _start, _end),
+            )
+            price_data = load_price_data(_start, _end, _conn)
+            benchmark = load_benchmark(_start, _end, _conn)
+            logger.info(
+                "DB加载: factor=%d行, price=%d行, benchmark=%d行",
+                len(factor_df),
+                len(price_data),
+                len(benchmark),
+            )
+            return factor_df, price_data, benchmark
+        finally:
+            _conn.close()
+
+    # Runner conn (SN 加载 ln_mcap pivot 需 DB, 独立于 loader closure — 生命周期更清晰)
+    runner_conn = _get_sync_conn()
+    try:
+        # Platform BacktestConfig — 核心字段对齐 PR B 设计, 完整 Engine/Signal config 走 builder
+        strategy_cfg = cfg.get("strategy", {})
+        backtest_cfg = cfg.get("backtest", {})
+        execution_cfg = cfg.get("execution", {})
+        stamp_tax_mode = execution_cfg.get("costs", {}).get("stamp_tax", "historical")
+
+        platform_cfg = PlatformCfg(
+            start=start,
+            end=end,
+            universe="all_a",  # YAML universe 节是排除开关集, 非 universe 名, 给 Platform placeholder
+            factor_pool=tuple(directions.keys()),
+            rebalance_freq=strategy_cfg.get("rebalance_freq", "monthly"),
+            top_n=int(strategy_cfg.get("top_n", 20)),
+            industry_cap=float(strategy_cfg.get("industry_cap", 1.0)),
+            size_neutral_beta=float(strategy_cfg.get("size_neutral_beta", 0.0)),
+            cost_model="full" if stamp_tax_mode == "historical" else "simplified",
+            capital=str(backtest_cfg.get("initial_capital", 1_000_000)),
+            benchmark="csi300"
+            if backtest_cfg.get("benchmark") == "000300.SH"
+            else "none",
+            extra={},
         )
-        price_data = load_price_data(start, end, conn)
-        benchmark = load_benchmark(start, end, conn)
-        conn.close()
-        logger.info(
-            "DB加载: factor=%d行, price=%d行, benchmark=%d行 (%.0fs)",
-            len(factor_df), len(price_data), len(benchmark), time.time() - t0,
+
+        runner = PlatformBacktestRunner(
+            registry=InMemoryBacktestRegistry(),
+            data_loader=_cache_or_db_loader,
+            conn=runner_conn,
+            direction_provider=lambda pool: {n: directions[n] for n in pool},
+            engine_config_builder=lambda _p: bt_config_engine,  # 完整 14 字段 Engine config
+            signal_config_builder=lambda _p: sig_config,  # 完整 8 字段 SignalConfig
         )
 
-    # 运行回测(统一信号路径)
-    logger.info("运行回测...")
-    t1 = time.time()
-    result = run_hybrid_backtest(
-        factor_df, directions, price_data, bt_config, benchmark,
-        signal_config=sig_config,
-    )
+        logger.info("运行回测 (Platform SDK)...")
+        t1 = time.time()
+        # LIVE_PT mode: 不 override config.start/end + 不 cache 语义匹配 ad-hoc
+        # (InMemoryBacktestRegistry 也恒返 None, 双重强制真跑)
+        result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
 
-    # 报告
-    report = generate_report(result, price_data)
-    print_report(report)
+        # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞; LIVE_PT 强制 always re-run
+        # 配 InMemory get_by_hash 恒 None, artifacts 永不为 None.
+        if result.engine_artifacts is None:
+            raise RuntimeError(
+                "engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run), "
+                "Runner 可能未走 cache-miss 路径. 检查 PlatformBacktestRunner.run() 实现."
+            )
+        engine_result = result.engine_artifacts["engine_result"]
+        price_data_for_report = result.engine_artifacts["price_data"]
 
-    elapsed = time.time() - t0
-    logger.info("回测完成, 总耗时 %.0fs (信号+执行 %.0fs)", elapsed, time.time() - t1)
+        report = generate_report(engine_result, price_data_for_report)
+        print_report(report)
+
+        elapsed = time.time() - t0
+        logger.info("回测完成, 总耗时 %.0fs (信号+执行 %.0fs)", elapsed, time.time() - t1)
+    finally:
+        runner_conn.close()
 
 
 def run_with_args(args):
