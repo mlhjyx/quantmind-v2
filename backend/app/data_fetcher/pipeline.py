@@ -23,6 +23,8 @@ from psycopg2.extras import Json, execute_values, register_uuid
 if TYPE_CHECKING:
     import psycopg2.extensions
 
+    from backend.platform.data.lineage import Lineage
+
 from app.data_fetcher.contracts import TableContract
 
 # MVP 2.2: 模块级幂等注册, 让 psycopg2 自动转换 uuid.UUID ↔ PG UUID
@@ -61,9 +63,36 @@ def _prepare_cell(v, dtype: str):
     return v
 
 
+def _to_jsonable_scalar(v):
+    """PK 单值的 JSON safe 归一化 (MVP 2.2 Sub2 内部).
+
+    UUID→str / date/datetime→isoformat / numpy scalar→python scalar / 其他直通.
+    """
+    if v is None:
+        return None
+    if isinstance(v, _uuid.UUID):
+        return str(v)
+    if hasattr(v, "isoformat"):
+        try:
+            return v.isoformat()
+        except TypeError:
+            pass
+    # numpy scalar 归一
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        try:
+            return v.item()
+        except (ValueError, AttributeError):
+            pass
+    return v
+
+
 @dataclass
 class IngestResult:
-    """入库结果。"""
+    """入库结果。
+
+    MVP 2.2 Sub2: `lineage_id` 字段追加, 默认 None (不传 lineage 时保持向后兼容).
+    传入 Lineage 时, DataPipeline.ingest 自动补 outputs + write_lineage + 回填本字段.
+    """
 
     table: str
     total_rows: int
@@ -71,6 +100,7 @@ class IngestResult:
     rejected_rows: int
     upserted_rows: int
     reject_reasons: dict[str, int] = field(default_factory=dict)
+    lineage_id: _uuid.UUID | None = None
 
     @property
     def success(self) -> bool:
@@ -109,7 +139,12 @@ class DataPipeline:
 
     # ─── 主入口 ────────────────────────────────────────────
 
-    def ingest(self, df: pd.DataFrame, contract: TableContract) -> IngestResult:
+    def ingest(
+        self,
+        df: pd.DataFrame,
+        contract: TableContract,
+        lineage: Lineage | None = None,
+    ) -> IngestResult:
         """验证 + 单位转换 + Upsert。
 
         Steps:
@@ -119,6 +154,13 @@ class DataPipeline:
         4. 逐列验证 (PK非空, 值域, inf/NaN→None)
         5. FK过滤 (symbols.code)
         6. Upsert (ON CONFLICT DO UPDATE)
+        7. (MVP 2.2 Sub2) lineage 传入 → 自动补 outputs 引用 + write_lineage + 回填 lineage_id
+
+        Args:
+            df: 输入数据
+            contract: 表契约
+            lineage: 可选血缘对象. None 保持向后兼容 (零改动其他调用方).
+                     传入时自动从 upsert 后的 valid_df 提取 PK 列为 outputs LineageRef.
         """
         if df.empty:
             return IngestResult(contract.table_name, 0, 0, 0, 0)
@@ -179,6 +221,11 @@ class DataPipeline:
         # 6. Upsert
         upserted = self._upsert(df, contract)
 
+        # 7. MVP 2.2 Sub2: lineage 埋点 (传入才执行, 不传保持向后兼容)
+        lineage_id: _uuid.UUID | None = None
+        if lineage is not None and upserted > 0:
+            lineage_id = self._record_lineage(lineage, df, contract)
+
         return IngestResult(
             table=contract.table_name,
             total_rows=total,
@@ -186,6 +233,7 @@ class DataPipeline:
             rejected_rows=rejected,
             upserted_rows=upserted,
             reject_reasons=reject_reasons,
+            lineage_id=lineage_id,
         )
 
     # ─── 单位转换 ──────────────────────────────────────────
@@ -454,3 +502,68 @@ class DataPipeline:
         except Exception:
             self.conn.rollback()
             raise
+
+    # ─── Lineage 埋点 (MVP 2.2 Sub2) ───────────────────────
+
+    def _record_lineage(
+        self,
+        lineage: Lineage,
+        valid_df: pd.DataFrame,
+        contract: TableContract,
+    ) -> _uuid.UUID | None:
+        """从 valid_df 提取 PK 列, 补到 lineage.outputs, 落 data_lineage 表.
+
+        策略:
+          - 只取每批 valid_df 的 distinct PK 组合 (防同列重复记录)
+          - 若 outputs 已有手动传入的 LineageRef, 不覆盖, 末尾 append 自动补的
+          - write_lineage 走 Platform primitive, 独立事务内此函数已 post-upsert commit
+
+        Returns:
+            lineage_id on success, None on failure (fail-loud logged, 不 raise 破坏上游).
+        """
+        try:
+            # Lineage dataclass frozen=True 不能直接改 outputs, 需重建
+            # Import 延迟 (避免 Platform 初始化循环)
+            from backend.platform.data.lineage import (
+                Lineage as _LineageCls,
+            )
+            from backend.platform.data.lineage import (
+                LineageRef,
+                write_lineage,
+            )
+
+            pk_cols = [c for c in contract.pk_columns if c in valid_df.columns]
+            if pk_cols:
+                # 取 distinct PK 组合作为 outputs (防每行一条)
+                pk_df = valid_df[pk_cols].drop_duplicates()
+                auto_outputs = [
+                    LineageRef(
+                        table=contract.table_name,
+                        pk_values={k: _to_jsonable_scalar(v) for k, v in row.items()},
+                    )
+                    for row in pk_df.to_dict(orient="records")
+                ]
+            else:
+                auto_outputs = [
+                    LineageRef(table=contract.table_name, pk_values={})
+                ]
+
+            merged_outputs = list(lineage.outputs) + auto_outputs
+            enriched = _LineageCls(
+                lineage_id=lineage.lineage_id,
+                inputs=lineage.inputs,
+                code=lineage.code,
+                params=lineage.params,
+                timestamp=lineage.timestamp,
+                parent_lineage_ids=lineage.parent_lineage_ids,
+                outputs=merged_outputs,
+                schema_version=lineage.schema_version,
+            )
+            lid = write_lineage(enriched, self.conn)
+            self.conn.commit()
+            return lid
+        except Exception as e:  # fail-loud, 不阻塞主路径 upsert 已 committed
+            logger.error(
+                "lineage 埋点失败 (main upsert 已落盘, 不回滚): %s", e, exc_info=True
+            )
+            return None

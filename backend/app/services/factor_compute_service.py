@@ -63,6 +63,8 @@ def save_daily_factors(
     trade_date: date,
     factor_df: pd.DataFrame,
     conn=None,
+    *,
+    with_lineage: bool = True,
 ) -> int:
     """按日期批量写入因子值(通过 DataPipeline, 单事务).
 
@@ -70,10 +72,15 @@ def save_daily_factors(
     Pipeline 自动处理: inf/NaN→None + 验证 + upsert.
     factor_values 跳过单位转换 (skip_unit_conversion=True).
 
+    [MVP 2.2 Sub2] `with_lineage=True` 时自动构 Lineage (code=当前 HEAD commit +
+    module, params 含 factor_name distinct + compute_version map), DataPipeline.ingest
+    自动补 outputs + write_lineage. 失败降级为纯 upsert, 主流程不受影响.
+
     Args:
         trade_date: 交易日期
         factor_df: DataFrame with columns [code, factor_name, raw_value, neutral_value, zscore]
         conn: psycopg2 连接
+        with_lineage: 是否记录血缘 (默认 True, 测试场景可 False 跳过)
 
     Returns:
         写入行数
@@ -91,7 +98,8 @@ def save_daily_factors(
             df["trade_date"] = trade_date
 
         pipeline = DataPipeline(conn)
-        result = pipeline.ingest(df, FACTOR_VALUES)
+        lineage = _build_factor_lineage(df, trade_date, conn) if with_lineage else None
+        result = pipeline.ingest(df, FACTOR_VALUES, lineage=lineage)
 
         if result.rejected_rows > 0:
             logger.warning(
@@ -102,7 +110,12 @@ def save_daily_factors(
                 result.reject_reasons,
             )
 
-        logger.info("[%s] 写入因子 %d 行", trade_date, result.upserted_rows)
+        logger.info(
+            "[%s] 写入因子 %d 行%s",
+            trade_date,
+            result.upserted_rows,
+            f" lineage={result.lineage_id}" if result.lineage_id else "",
+        )
         return result.upserted_rows
     except Exception:
         conn.rollback()
@@ -110,6 +123,70 @@ def save_daily_factors(
     finally:
         if close_conn:
             conn.close()
+
+
+def _build_factor_lineage(df: pd.DataFrame, trade_date: date, conn):
+    """构造本批 factor_values 写入的 Lineage (MVP 2.2 Sub2).
+
+    策略:
+      - code.git_commit: 查多数 factor 在 factor_compute_version 的 active compute_commit;
+        找不到 → 为空字符串 "" (不 raise, 埋点失败降级)
+      - params.factor_versions: {factor_name: version} map (复用 factor_compute_version 表)
+      - inputs: 不展开 (单日全 universe 源引用量太大), 仅挂一条 placeholder,
+        后续 MVP 2.3 Parity 扩展到逐因子源追溯
+      - outputs: 由 DataPipeline._record_lineage 自动补 (df PK distinct)
+
+    Returns:
+        Lineage | None (失败返 None, 上层 with_lineage=True 但失败时不 raise)
+    """
+    try:
+        from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
+
+        factor_names = df["factor_name"].dropna().astype(str).unique().tolist()
+        version_map: dict[str, int] = {}
+        commit_counter: dict[str, int] = {}
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT factor_name, version, compute_commit "
+                "FROM factor_compute_version "
+                "WHERE factor_name = ANY(%s) AND compute_end IS NULL",
+                (factor_names,),
+            )
+            for fname, ver, commit in cur.fetchall():
+                version_map[fname] = int(ver)
+                key = (commit or "").strip()
+                if key:
+                    commit_counter[key] = commit_counter.get(key, 0) + 1
+
+        # 多数票 commit (同 batch 多因子共用时代表 commit; 若不一致取最多票)
+        majority_commit = ""
+        if commit_counter:
+            majority_commit = max(commit_counter.items(), key=lambda kv: kv[1])[0]
+
+        code = CodeRef(
+            git_commit=majority_commit,
+            module="backend.app.services.factor_compute_service",
+            function="save_daily_factors",
+        )
+        # source placeholder: trade_date 上游 klines_daily/daily_basic (不逐因子展开)
+        inputs = [
+            LineageRef(
+                table="klines_daily",
+                pk_values={"trade_date": trade_date.isoformat()},
+            )
+        ]
+        return Lineage(
+            inputs=inputs,
+            code=code,
+            params={
+                "trade_date": trade_date.isoformat(),
+                "factor_count": len(factor_names),
+                "factor_versions": version_map,
+            },
+        )
+    except Exception as e:  # silent_ok: lineage 构造失败不阻塞主入库
+        logger.warning("lineage 构造失败, 本批跳过埋点: %s", e)
+        return None
 
 
 # ============================================================
