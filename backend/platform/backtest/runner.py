@@ -18,7 +18,7 @@ import hashlib
 import json
 import subprocess
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -68,7 +68,7 @@ class PlatformBacktestRunner(BacktestRunner):
         registry: BacktestRegistry,
         data_loader: Any | None = None,
         conn: Any | None = None,
-        direction_provider: Callable[[tuple[str, ...]], dict[str, int]] | None = None,
+        direction_provider: Callable[[tuple[str, ...]], Mapping[str, int]] | None = None,
     ) -> None:
         self._registry = registry
         self._data_loader = data_loader
