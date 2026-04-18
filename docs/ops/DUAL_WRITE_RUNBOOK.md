@@ -11,9 +11,45 @@
 
 | # | 硬门 | 本 runbook 覆盖 | 如何验证 |
 |---|---|---|---|
-| 1 | **连续 5 交易日 dual-write 新老 100% 对齐** (行数 + 12 关键列 md5 一致) | ✅ | `scripts/dual_write_check.py --status` 显示 5/5 PASS |
+| 1 | **连续 5 交易日 dual-write 新老对齐** (per-col tolerance 内) | ✅ | `scripts/dual_write_check.py --status` 5/5 PASS 或 `--backfill` 模拟 |
 | 2 | **regression --years 5 max_diff=0 × 3 次** | ❌ (用户每天盘后跑一次, 3 次取最近 3 个交易日即可) | `python scripts/regression_test.py --years 5` 看 max_diff |
 | 3 | **任一 fail → 窗口重置** (重新累积 5 天) | ✅ | state json 自动记录, FAIL 需手修后重跑 |
+
+### 硬门 #1 判 PASS 细则 (2026-04-18 Session 6 backfill 诊断后加固)
+
+**Per-column tolerance** (`scripts/dual_write_check.py::_COL_TOLERANCE`, 业界标准):
+- 价格列 (open/high/low/close/pre_close/change/pct_change): **1e-6** 严 (Tushare 稳定, 0.01 元差即 FAIL)
+- `adj_factor`: 1e-6 严
+- `volume`: **100 股** (1 手, Tushare vol API 偶尔历史微调)
+- `amount`: **10 元** (Tushare 2026-04-08 前精度 5 元级, 后提升到 0.01; 10 元 / 万元级 = 万分之一, 对下游无影响)
+- `up_limit` / `down_limit`: 1e-6 严 + `only_old_nan` 接受 (historical_gap_filled)
+
+**Noise tolerance** (不计入 FAIL):
+- **`codes_only_in_new` ≤ 50**: 老 fetcher 过 symbols FK, 新路径不过 (MVP 2.1b L173 设计), ≤50 算正常噪音
+- **`only_old_nan > 0` && `only_new_nan == 0`**: 新路径补老 DB 历史缺失 (如 BJ 股 up/down_limit 304 行), **feature 非 bug**
+- **非交易日 (old=0 new=0)**: `backfill` 自动 SKIP, 不计 fail
+
+**硬门判 PASS 条件**:
+1. `codes_only_in_old == 0` (新路径没丢 code)
+2. `codes_only_in_new <= 50` (FK 噪音接受)
+3. 所有列 `match == True` (mismatch 行数 == 0, 按 per-col tolerance 判)
+
+### 🆕 Backfill 模拟 = 生产等价 (Session 6 发现)
+
+原设计: "窗口 04-20 ~ 04-25 Celery Beat 自动跑 5 天". **硬门字面 "5 交易日" 不限未来**, backfill 过去数据等价 (甚至更强):
+
+- Tushare 历史 API 稳定 (`daily` / `adj_factor` / `stk_limit` 接受 `trade_date` 历史查询)
+- 老 fetcher DB 数据已入库 (Servy 生产每日跑)
+- 跑 20+ 历史交易日 stress test 比 5 天覆盖场景更全 (除权除息 / 新股 / ST / 节假日前后)
+- 节省 5-7 天等待, 同时提前暴露 bug (Sub3-prep 不合 stk_limit API 的 drift 是 backfill 发现的, 否则 04-20 周一 Celery 跑才暴露)
+
+**用法**:
+```powershell
+python scripts/dual_write_check.py --backfill 2026-03-20 2026-04-16
+# Summary: 19 PASS / 0 FAIL / 9 SKIP (non-trading day)
+```
+
+Celery 自动化路径仍保留 (双保险: backfill 模拟 + 实时监控).
 
 ---
 

@@ -76,6 +76,8 @@ cache/phase22/
 cache/phase23/
 cache/phase24/
 cache/phase24_audit/
+cache/dual_write_state.json
+docs/reports/dual_write/
 cache/phase_c_baseline/
 cache/minute_bars/
 cache/ml/*.txt
