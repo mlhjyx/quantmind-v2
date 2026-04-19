@@ -13,6 +13,7 @@ dependencies = [
 
     # === 数据库 ===
     "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",   # 同步 psycopg2 (sync Service 层 + scripts/research)
     "sqlalchemy[asyncio]>=2.0.35",
     "alembic>=1.13.0",
     "redis>=5.1.0",
@@ -20,9 +21,13 @@ dependencies = [
     # === 任务队列 ===
     "celery[redis]>=5.4.0",
 
+    # === WebSocket (FastAPI 实时订阅) ===
+    "python-socketio>=5.11.0",
+
     # === 数据获取 ===
     "tushare>=1.4.0",
     "akshare>=1.14.0",
+    "baostock>=0.9.1",          # 5min 分钟线数据源 (BaostockDataSource)
 
     # === 数据处理 ===
     "pandas>=2.2.0",
@@ -46,6 +51,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
+    "pytest-timeout>=2.3.0",     # smoke/regression 单测超时守门
     "ruff>=0.6.0",
     "ipython>=8.0.0",
 ]

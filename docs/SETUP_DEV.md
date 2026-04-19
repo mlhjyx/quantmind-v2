@@ -11,20 +11,34 @@
 ### 1. `.venv/.../quantmind_v2_project_root.pth` (手建, 非 git)
 
 MVP 1.1b Shadow Fix 依赖此文件让 `from backend.platform.X` 作为 namespace package 可解析.
+**Session 12 (2026-04-19) 修正**: 必须**两行** — 项目根 + `backend/` — 因代码双 import 风格并存
+(`from app / engines / ...` 无前缀 + `from backend.platform / backend.app.X` 带前缀).
 
-**Windows**:
+**Windows (两行)**:
 ```powershell
-# .venv 建好后 (python -m venv .venv + 激活)
-"D:\quantmind-v2" | Out-File -FilePath .venv\Lib\site-packages\quantmind_v2_project_root.pth -Encoding ASCII
+# .venv 建好后 (python -m venv .venv + pip install -e ".[dev]")
+@"
+D:\quantmind-v2
+D:\quantmind-v2\backend
+"@ | Out-File -FilePath .venv\Lib\site-packages\quantmind_v2_project_root.pth -Encoding ASCII
 ```
 
 **验证**:
 ```bash
-.venv/Scripts/python.exe -c "import sys; print([p for p in sys.path if 'quantmind-v2' in p.lower()])"
-# 期望: 包含 D:\quantmind-v2
+.venv/Scripts/python.exe -c "
+import app; import backend.platform._types
+import alembic; assert 'site-packages' in alembic.__file__, f'alembic shadow! {alembic.__file__}'
+print('pth OK (alembic resolve:', alembic.__file__, ')')
+"
+# 期望: "pth OK (alembic resolve: ...\\site-packages\\alembic\\__init__.py )"
+# alembic 必须 resolve 到 pip site-packages 而非 backend/alembic/ (migration 目录, 无 __init__.py).
+# pip alembic (regular package) 优先级 > backend/alembic/ (namespace), 正常无 shadow.
+# 若未来有人给 backend/alembic/ 加 __init__.py, 此校验炸, 需立即 rename migration 目录.
 ```
 
-**没有此文件 → 炸点**: `ModuleNotFoundError: No module named 'backend'` / `No module named 'app'`.
+**没有此文件 (或只单行) → 炸点**:
+- `ModuleNotFoundError: No module named 'app'` (smoke `test_fastapi_app_import` 炸)
+- `ModuleNotFoundError: No module named 'backend'` (smoke `test_production_entry_imports` 炸)
 
 ---
 
@@ -64,6 +78,29 @@ D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMin
 - Redis 5.0.14.1
 - 建库/建表: `docs/QUANTMIND_V2_DDL_FINAL.sql` + `backend/migrations/*.sql` (幂等)
 - `.env`: 不入 git, 从上一环境拷贝 (DATABASE_URL / REDIS_URL / API keys / PT_* / PMS_* / SN_*)
+
+---
+
+### 4b. xtquant SDK (非 pip, miniQMT 私有)
+
+xtquant 是国金证券 miniQMT 的 Python SDK, **不在 PyPI**. 必须从 miniQMT 安装目录手动复制.
+
+**标准位置** (按 `backend/app/core/xtquant_path.py:24` 契约):
+```
+.venv/Lib/site-packages/Lib/site-packages/xtquant/
+```
+
+**为何双层嵌套**: miniQMT SDK 原始发布结构如此, `ensure_xtquant_path()` 用 `append`
+(不是 `insert`) 加入 sys.path, 避免 xtquant 旧 numpy 覆盖项目 numpy.
+
+**获取方式**:
+- miniQMT 客户端默认装在 `D:/国金证券QMT交易端/bin.x64/...` 附近, 找 `xtquant/` 子目录
+- 或从 Servy 正在运行的 QMTData 服务 `tasklist /v` 查进程 path 反推
+
+**缺失 → 炸点**:
+- `ModuleNotFoundError: No module named 'xtquant'` 仅影响 `scripts/qmt_data_service.py`
+  (QMTData 服务启动). smoke / regression / 其他 scripts 不依赖.
+- **Servy QMTData 服务下次重启前必须就位**, 否则 fail-loud.
 
 ---
 
