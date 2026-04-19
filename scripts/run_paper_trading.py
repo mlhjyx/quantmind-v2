@@ -221,9 +221,12 @@ def run_signal_phase(
                 nav += qmt_nav_data.get("cash", 0) if qmt_nav_data else 0
 
             cur = conn.cursor()
+            # ADR-008 D2: performance_series 读按 settings.EXECUTION_MODE 动态
+            # (Session 10 P1-c 根因: live 模式此处读 'paper' 永远 empty → prev_nav
+            #  fallback 到 PAPER_INITIAL_CAPITAL → NAV daily_return/drawdown 字段全错)
             cur.execute(
-                "SELECT nav FROM performance_series WHERE execution_mode='paper' AND strategy_id=%s ORDER BY trade_date DESC LIMIT 1",
-                (settings.PAPER_STRATEGY_ID,),
+                "SELECT nav FROM performance_series WHERE execution_mode=%s AND strategy_id=%s ORDER BY trade_date DESC LIMIT 1",
+                (settings.EXECUTION_MODE, settings.PAPER_STRATEGY_ID),
             )
             r = cur.fetchone()
             prev_nav = float(r[0]) if r else settings.PAPER_INITIAL_CAPITAL
@@ -278,6 +281,7 @@ def run_signal_phase(
             signal_result.is_rebalance = True
             if not dry_run:
                 cur = conn.cursor()
+                # ADR-008 D3-KEEP: signals 表跨模式共享, UPDATE WHERE 固定 'paper'
                 cur.execute(
                     "UPDATE signals SET action='rebalance' "
                     "WHERE trade_date=%s AND strategy_id=%s AND execution_mode='paper'",
