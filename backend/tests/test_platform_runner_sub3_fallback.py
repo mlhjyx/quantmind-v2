@@ -168,12 +168,22 @@ class TestFallbackFullFieldMapping:
         assert engine_cfg.turnover_cap == 0.99
 
     def test_fallback_capital_decimal_precision_preserved(self) -> None:
-        """Platform capital (Decimal str) → Engine initial_capital (float Decimal 中转保精度)."""
+        """Platform capital (Decimal str) → Engine initial_capital (float Decimal 中转保精度).
+
+        review P3-D 修: 原用 "99999.99" IEEE 754 能精确表示, 不足以触发精度边界.
+        改用 "9999999.99" (7 位整数 + 2 位小数) — PR B review P1 fix 点名的大金额场景,
+        float("9999999.99") 直接转会 9999999.99 (可能), 但 PR B 教训是 `float(str)` 有
+        边界精度丢失, 统一走 Decimal 中转保险.
+        """
+        from decimal import Decimal
+
         runner = PlatformBacktestRunner(registry=MagicMock(), engine_config_builder=None)
-        cfg = _make_config(capital="99999.99")
+        cfg = _make_config(capital="9999999.99")
         engine_cfg = runner._build_engine_config(cfg)
 
-        assert engine_cfg.initial_capital == 99999.99
+        # 走 float(Decimal("9999999.99")) 路径, 对齐 PR B review P1 fix
+        expected = float(Decimal("9999999.99"))
+        assert engine_cfg.initial_capital == expected
 
     def test_fallback_platform_universe_filter_not_propagated(self) -> None:
         """UniverseFilter 是 Platform 独有字段 (engines BacktestConfig 无对应), fallback 不传.

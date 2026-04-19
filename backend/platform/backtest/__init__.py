@@ -6,6 +6,9 @@ from .interface import (
     BacktestResult,
     BacktestRunner,
     BatchBacktestExecutor,
+    PMSConfig,
+    SlippageConfig,
+    UniverseFilter,
 )
 from .loaders import BacktestCacheLoader, ParquetBaselineLoader
 from .memory_registry import InMemoryBacktestRegistry
@@ -19,4 +22,7 @@ __all__ = [
     "BatchBacktestExecutor",
     "InMemoryBacktestRegistry",
     "ParquetBaselineLoader",
+    "PMSConfig",
+    "SlippageConfig",
+    "UniverseFilter",
 ]

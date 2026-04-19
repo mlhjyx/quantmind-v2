@@ -10,6 +10,7 @@ Phase 0: 等权Top-N信号合成。
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import structlog
@@ -142,7 +143,12 @@ class SignalConfig:
     cash_buffer: float = 0.03  # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
     size_neutral_beta: float = 0.50  # Step 6-H 验证, WF OOS Sharpe 0.8659 依赖此值
     regime_mode: str = "vol_regime"  # 'vol_regime'（启发式）或 'hmm_regime'（HMM）
-    # Sub3 C2: sentinel None → __post_init__ 回退 _PT_FACTOR_NAMES_DEFAULT 消除 SSOT drift
+    # Sub3 C2: sentinel None → __post_init__ 回退 _PT_FACTOR_NAMES_DEFAULT 消除 SSOT drift.
+    #
+    # review P2-E accept debt: `list[str] | None` type hint 对 mypy --strict 会传染 50+
+    # 调用方 (访问 `cfg.factor_names[i]` 时报 None-check missing). 实际上 __post_init__ 保证
+    # 构造后 factor_names 一定是 list[str], None 只是瞬态 sentinel. 改 list[str] 需更新 50+
+    # 调用点, 工程量不值. 本 MVP accept debt, 未来统一 mypy --strict 切换时处理.
     factor_names: list[str] | None = None
 
     def __post_init__(self) -> None:
@@ -158,7 +164,7 @@ class SignalConfig:
 # _PT_FACTOR_NAMES_DEFAULT (铁律 33 非静默: logger.warning 暴露).
 #
 # 其他字段仍从 .env 读 (top_n / industry_cap / size_neutral_beta 是 .env 权威字段, PT 可配置).
-def _load_pt_yaml_strategy() -> dict:
+def _load_pt_yaml_strategy() -> dict[str, Any]:
     """直接读取 configs/pt_live.yaml 的 strategy 段. 独立 helper 避免 side effect.
 
     Sub3 C2 review fix (自测): 原走 `from app.services.config_loader import load_config`
@@ -167,7 +173,12 @@ def _load_pt_yaml_strategy() -> dict:
     改直接 `yaml.safe_load` 绕开 app.services 整体 import.
 
     Returns:
-        strategy 段 dict (空 dict 若文件缺失 / 格式异常, 让调用方 fallback).
+        strategy 段 dict. 调用方通过 try/except 处理错误 (fail-safe fallback).
+
+    Raises:
+        FileNotFoundError: pt_live.yaml 文件缺失.
+        ValueError: YAML 顶层或 strategy 段不是 dict.
+        yaml.YAMLError: YAML 格式错误.
     """
     import yaml
 
@@ -188,6 +199,8 @@ def _load_pt_yaml_strategy() -> dict:
 
 def _build_paper_trading_config() -> SignalConfig:
     """从 YAML + .env 构建 PT 配置 (YAML 权威 for factor/freq/turnover, .env 权威 for top_n/industry/SN)."""
+    import yaml
+
     from app.config import settings
 
     # Sub3 C2: YAML 权威字段 (factor_names / rebalance_freq / turnover_cap)
@@ -202,7 +215,9 @@ def _build_paper_trading_config() -> SignalConfig:
             raise ValueError("pt_live.yaml strategy.factors 为空或格式不符 (expect list[{name, direction}])")
         rebalance_freq = str(strategy.get("rebalance_freq", "monthly"))
         turnover_cap = float(strategy.get("turnover_cap", 0.50))
-    except Exception as e:  # noqa: BLE001 — fail-safe fallback to hardcoded (铁律 33: warn non-silent)
+    except (FileNotFoundError, ValueError, yaml.YAMLError, KeyError) as e:
+        # review P2-C 修: 原 `except Exception` 过宽会吞编程错误 (AttributeError/TypeError).
+        # 精准 catch YAML/文件/schema 错误, fail-safe fallback hardcoded (铁律 33 非静默 warn).
         logger.warning(
             "[signal_engine] _build_paper_trading_config YAML load failed, "
             "fallback hardcoded CORE3+dv_ttm (auditor 仍会审 drift): %s",
