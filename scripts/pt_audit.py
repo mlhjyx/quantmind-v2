@@ -34,12 +34,14 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import logging
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import psycopg2
@@ -62,13 +64,20 @@ logging.basicConfig(
 logger = logging.getLogger("pt_audit")
 
 # 常量
-CHECK_LIST = ["st_leak", "mode_mismatch", "turnover_abnormal",
-              "rebalance_date_mismatch", "db_drift"]
+CHECK_LIST: tuple[str, ...] = (
+    "st_leak", "mode_mismatch", "turnover_abnormal",
+    "rebalance_date_mismatch", "db_drift",
+)
 TURNOVER_THRESHOLD_DEFAULT = 0.30
 REBAL_TURNOVER_THRESHOLD = 0.01  # 非月末换手 > 1% 报警
 DEFAULT_STRATEGY_ID = os.environ.get(
     "PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
 )
+
+# Severity ordering (P0 最严重 → 0) + exit code mapping (P0 → 1)
+# Reviewer P1 提点: 原分散两处 dict, 不一致. 统一提取为模块级常量.
+_LEVEL_SEVERITY: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2}
+_LEVEL_EXIT_CODE: dict[str, int] = {"P0": 1, "P1": 2, "P2": 3}
 
 
 @dataclass
@@ -121,17 +130,34 @@ def _is_month_last_trading_day(
 ) -> bool:
     """True if trade_date is the last trading day in its month (astock).
 
-    实现: 同月后续无 is_trading_day=true 日期.
+    实现: 同月后续无 is_trading_day=true 日期. DATE_TRUNC 简化 3 参数 → 2.
+
+    边界: 若 trading_calendar 缺本月全部行 (未来月未入库), 返 True 假阳性.
+    加 logger.warning surface (reviewer P2 database 提点).
     """
+    # precondition: 本月有 trading_calendar 行
+    cur.execute(
+        """SELECT COUNT(*) FROM trading_calendar
+           WHERE market = 'astock' AND is_trading_day = true
+             AND DATE_TRUNC('month', trade_date) = DATE_TRUNC('month', %s::date)""",
+        (trade_date,),
+    )
+    month_rows = cur.fetchone()[0]
+    if month_rows == 0:
+        logger.warning(
+            "[rebalance] trading_calendar 本月无 trading days (trade_date=%s), "
+            "_is_month_last 假阳性 — 返 True 但请核查 calendar 入库",
+            trade_date,
+        )
+        return True
     cur.execute(
         """SELECT NOT EXISTS (
                SELECT 1 FROM trading_calendar
                WHERE market = 'astock' AND is_trading_day = true
                  AND trade_date > %s
-                 AND EXTRACT(MONTH FROM trade_date) = EXTRACT(MONTH FROM %s::date)
-                 AND EXTRACT(YEAR FROM trade_date) = EXTRACT(YEAR FROM %s::date)
+                 AND DATE_TRUNC('month', trade_date) = DATE_TRUNC('month', %s::date)
            )""",
-        (trade_date, trade_date, trade_date),
+        (trade_date, trade_date),
     )
     return bool(cur.fetchone()[0])
 
@@ -168,10 +194,14 @@ def _latest_live_nav(
 # ─── C5 helper: reconstruct_positions (复用 D2-c 逻辑, dynamic import) ──
 
 
-def _load_reconstruct_positions():
+def _load_reconstruct_positions() -> Callable[
+    [psycopg2.extensions.cursor, str, date, date], dict[str, dict]
+]:
     """Dynamic import ``reconstruct_positions`` from scripts/repair/ (非 package).
 
     避免重复造 (铁律 23). 见 scripts/repair/restore_snapshot_20260417.py.
+
+    Reviewer P1 提点: assert 在生产代码会被 ``-O`` flag 去除 → 改显式 if/raise.
     """
     repo = Path(__file__).resolve().parent.parent
     spec_path = repo / "scripts" / "repair" / "restore_snapshot_20260417.py"
@@ -179,7 +209,11 @@ def _load_reconstruct_positions():
     if module_name in sys.modules:
         return sys.modules[module_name].reconstruct_positions
     spec = importlib.util.spec_from_file_location(module_name, spec_path)
-    assert spec is not None and spec.loader is not None, f"Cannot load {spec_path}"
+    if spec is None or spec.loader is None:
+        raise ImportError(
+            f"Cannot load module spec from {spec_path}. "
+            "File may have been archived — C5 db_drift requires D2-c script."
+        )
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
@@ -197,8 +231,10 @@ def check_st_leak(
     保守策略: `is_st=NULL` (status_date lag) 不告警, T+1 status 入库后 re-audit.
     """
     cur = conn.cursor()
+    # GROUP BY 已保证 1 row/code, DISTINCT 冗余已删 (reviewer P1 提点).
+    # 前提: stock_status_daily PK=(code, trade_date) 保证 LEFT JOIN 1-to-1.
     cur.execute(
-        """SELECT DISTINCT t.code, SUM(t.quantity), SUM(t.fill_price * t.quantity)
+        """SELECT t.code, SUM(t.quantity), SUM(t.fill_price * t.quantity)
            FROM trade_log t
            LEFT JOIN stock_status_daily ss
              ON t.code = ss.code AND ss.trade_date = t.trade_date
@@ -307,6 +343,11 @@ def check_rebalance_date_mismatch(
         return []
     nav = _latest_live_nav(cur, strategy_id, trade_date)
     if nav <= 0:
+        # 铁律 33(c): 读路径 fallback 必须 logger.warning (reviewer P1 一致提点, 对齐 C3)
+        logger.warning(
+            "[rebalance] NAV unavailable for strategy_id=%s @ %s, skipping C4",
+            strategy_id, trade_date,
+        )
         return []
     ratio = turnover_value / nav
     if ratio <= REBAL_TURNOVER_THRESHOLD:
@@ -393,9 +434,11 @@ def send_aggregated_alert(findings: list[Finding], audit_date: date) -> None:
     if not webhook:
         logger.warning("DINGTALK_WEBHOOK_URL 未配置, 跳过告警 (发 stdout)")
         return
-    # 顶级 level = max(finding levels)  (P0 > P1 > P2)
-    level_order = {"P0": 0, "P1": 1, "P2": 2}
-    top_level = min((f.level for f in findings), key=lambda x: level_order.get(x, 99))
+    # 顶级 level = max(finding levels)  (P0 > P1 > P2)  — 用模块常量 (reviewer P1 提点)
+    top_level = min(
+        (f.level for f in findings),
+        key=lambda x: _LEVEL_SEVERITY.get(x, 99),
+    )
     lines = [f"[{top_level}] pt_audit {audit_date} — {len(findings)} findings:"]
     for f in findings:
         lines.append(f"  [{f.level}] {f.check}: {f.title}")
@@ -424,41 +467,51 @@ def run_audit(
     conn = get_sync_conn()
     all_findings: list[Finding] = []
     try:
-        checks = only_checks or CHECK_LIST
-        logger.info(f"[audit] date={audit_date} sid={strategy_id[:8]}... checks={checks}")
+        checks = only_checks or list(CHECK_LIST)
+        logger.info(
+            "[audit] date=%s sid=%s... checks=%s",
+            audit_date, strategy_id[:8], checks,
+        )
+        # 构建 check_fn dict (reviewer P2 提点): functools.partial 消除 if-name 分支
+        dispatch: dict[str, Callable] = {}
         for name in checks:
             if name not in _CHECK_FUNCS:
-                logger.warning(f"[audit] unknown check '{name}', skip")
+                logger.warning("[audit] unknown check '%s', skip", name)
                 continue
             func = _CHECK_FUNCS[name]
+            if name == "turnover_abnormal":
+                dispatch[name] = functools.partial(func, threshold=turnover_threshold)
+            else:
+                dispatch[name] = func
+
+        for name, fn in dispatch.items():
             try:
-                if name == "turnover_abnormal":
-                    res = func(conn, strategy_id, audit_date, threshold=turnover_threshold)
-                else:
-                    res = func(conn, strategy_id, audit_date)
+                res = fn(conn, strategy_id, audit_date)
                 if res:
                     all_findings.extend(res)
                     for f in res:
-                        logger.warning(f"  [{f.level}] {f.check}: {f.title}")
+                        logger.warning("  [%s] %s: %s", f.level, f.check, f.title)
                 else:
-                    logger.info(f"  [{name}] PASS")
+                    logger.info("  [%s] PASS", name)
             except Exception:
-                logger.exception(f"[audit] check '{name}' raised (continuing)")
+                logger.exception("[audit] check '%s' raised (continuing)", name)
         if alert:
             send_aggregated_alert(all_findings, audit_date)
     finally:
         conn.close()
-    # exit code
+    # exit code — 用模块常量 (reviewer P1 提点)
     if not all_findings:
         return (0, [])
-    level_order = {"P0": 1, "P1": 2, "P2": 3}
-    top_code = min(level_order.get(f.level, 99) for f in all_findings)
+    top_code = min(_LEVEL_EXIT_CODE.get(f.level, 99) for f in all_findings)
     return (top_code, all_findings)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="PR-C Session 16: pt_audit 5-check guard + DingTalk",
+        description=(
+            "QuantMind PT audit: 5-check post-trade guard "
+            "(ST leak / mode mismatch / turnover / rebalance date / db drift)."
+        ),
     )
     parser.add_argument(
         "--audit-date",
@@ -497,11 +550,9 @@ def main() -> None:
         alert=args.alert,
     )
     if findings:
-        logger.warning(f"[audit] 完成: {len(findings)} findings, exit={exit_code}")
+        logger.warning("[audit] 完成: %d findings, exit=%d", len(findings), exit_code)
     else:
-        logger.info(f"[audit] 完成: 0 findings (all pass), exit={exit_code}")
-    # silence unused import warning for timedelta (may be used by future checks)
-    _ = timedelta
+        logger.info("[audit] 完成: 0 findings (all pass), exit=%d", exit_code)
     sys.exit(exit_code)
 
 
