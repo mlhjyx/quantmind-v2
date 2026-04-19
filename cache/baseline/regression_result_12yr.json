@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-19 03:49:57",
+  "timestamp": "2026-04-19 15:59:30",
   "years": 12,
   "baseline_file": "D:\\quantmind-v2\\cache\\baseline\\nav_12yr.parquet",
   "run1": {
@@ -15,9 +15,7 @@
     "sharpe_baseline": 0.3594,
     "sharpe_current": 0.3594,
     "mdd_baseline": -63.44,
-    "mdd_current": -63.44,
-    "deterministic": true,
-    "run2_max_diff": 0.0
+    "mdd_current": -63.44
   },
-  "elapsed_sec": 18.0
+  "elapsed_sec": 21.0
 }

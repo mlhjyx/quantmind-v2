@@ -12,6 +12,8 @@
   Top-N:   20, 月度调仓, industry_cap=1.0, volume_impact 滑点, PMS v1.0
   Universe: exclude BJ/ST/suspended/new_stock (通过 build_exclusion_map)
 
+MVP 2.3 Sub2 (2026-04-19): 迁 Platform SDK, 每 fold 走 PlatformBacktestRunner.
+
 输出:
   cache/baseline/wf_oos_result.json   — 每折指标 + 汇总
   cache/baseline/wf_oos_nav.parquet   — 每折 NAV + chain-link NAV 曲线
@@ -27,6 +29,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 logging.disable(logging.DEBUG)
 
@@ -42,11 +45,16 @@ logging.getLogger().setLevel(logging.WARNING)
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from engines.backtest import BacktestConfig, PMSConfig  # noqa: E402
-from engines.backtest.runner import run_hybrid_backtest  # noqa: E402
+from engines.backtest.config import BacktestConfig as EngineBacktestConfig  # noqa: E402
+from engines.backtest.config import PMSConfig  # noqa: E402
 from engines.metrics import calc_max_drawdown, calc_sharpe, calc_sortino  # noqa: E402
 from engines.slippage_model import SlippageConfig  # noqa: E402
 from engines.walk_forward import WalkForwardEngine, WFConfig  # noqa: E402
+
+from backend.platform._types import BacktestMode  # noqa: E402
+from backend.platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
+from backend.platform.backtest import InMemoryBacktestRegistry  # noqa: E402
+from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "backtest"
@@ -110,9 +118,9 @@ def run_fold(
     factor_df: pd.DataFrame,
     price_df: pd.DataFrame,
     bench_df: pd.DataFrame,
-    config: BacktestConfig,
+    engine_cfg: EngineBacktestConfig,
 ) -> dict:
-    """在单折 test 期上跑 run_hybrid_backtest。
+    """在单折 test 期上走 PlatformBacktestRunner (MVP 2.3 Sub2 迁).
 
     等权策略忽略 train_dates. 为了避免因子 lookback 溢出, 我们给 factor_df 多
     留 FACTOR_LOOKBACK_DAYS 天历史 (仅因子, 不影响 price/bench)。
@@ -146,14 +154,38 @@ def run_fold(
         f"price={len(fold_price):,} factor={len(fold_factor):,}"
     )
 
-    t0 = time.time()
-    result = run_hybrid_backtest(
-        factor_df=fold_factor,
-        directions=DIRECTIONS,
-        price_data=fold_price,
-        config=config,
-        benchmark_data=fold_bench,
+    # Platform BacktestConfig — per-fold start/end, factor_pool sorted
+    platform_cfg = PlatformBacktestConfig(
+        start=pd.Timestamp(test_start).date(),
+        end=pd.Timestamp(test_end).date(),
+        universe="all_a",
+        factor_pool=tuple(sorted(DIRECTIONS.keys())),
+        rebalance_freq="monthly",
+        top_n=20,
+        industry_cap=1.0,
+        size_neutral_beta=0.0,
+        cost_model="full",
+        capital="1000000",
+        benchmark="csi300",
+        extra={"fold_idx": fold_idx},  # config_hash 含 fold_idx 防折间 cache 冲突
     )
+
+    runner = PlatformBacktestRunner(
+        registry=InMemoryBacktestRegistry(),
+        data_loader=lambda _c, _s, _e: (fold_factor, fold_price, fold_bench),
+        conn=None,
+        direction_provider=lambda pool: {n: DIRECTIONS[n] for n in pool},
+        engine_config_builder=lambda _p: engine_cfg,
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
+    )
+
+    t0 = time.time()
+    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    if platform_result.engine_artifacts is None:
+        raise RuntimeError(
+            f"engine_artifacts=None (fold={fold_idx}) — LIVE_PT 应强制真跑"
+        )
+    result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 
     # 只保留 test 期内 NAV (run_hybrid_backtest 会产出 test 期的完整 NAV,
@@ -244,8 +276,8 @@ def main():
     for i, (tr, te) in enumerate(splits):
         print(f"    Fold {i}: train[{tr[0]}..{tr[-1]}] ({len(tr)}d) → test[{te[0]}..{te[-1]}] ({len(te)}d)")
 
-    # 3. 逐折跑回测
-    bt_config = BacktestConfig(
+    # 3. 逐折跑回测 (Platform Runner 注入 engine_cfg)
+    engine_cfg = EngineBacktestConfig(
         initial_capital=1_000_000,
         top_n=20,
         rebalance_freq="monthly",
@@ -266,7 +298,7 @@ def main():
             factor_df=factor_df,
             price_df=price_df,
             bench_df=bench_df,
-            config=bt_config,
+            engine_cfg=engine_cfg,
         )
         fold_results.append(r)
         print(

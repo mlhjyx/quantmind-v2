@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Step 6-D Part 1: 2014-2026 逐年度回测 (填补 WF 盲区).
 
-每个自然年度单独跑 run_hybrid_backtest, 配置跟 WF 一致:
+每个自然年度单独跑 PlatformBacktestRunner (原直调 run_hybrid_backtest, MVP 2.3 Sub2 迁).
+配置跟 WF 一致:
   5 因子等权 / Top-20 / monthly / volume_impact / historical stamp tax / PMS v1.0
   Universe: exclude BJ/ST/suspended/new_stock
 
@@ -12,6 +13,11 @@
 
 用法:
     python scripts/yearly_breakdown_backtest.py
+
+迁移说明 (MVP 2.3 Sub2):
+  - 每年度独立 PlatformBacktestRunner.run(LIVE_PT), 每次 cache miss 真跑
+  - engine_config_builder 注入完整 Engine BacktestConfig 保 PMS/historical 税不漂
+  - 从 result.engine_artifacts["engine_result"] 取 daily_nav/trades
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 logging.disable(logging.DEBUG)
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
@@ -36,8 +43,8 @@ logging.getLogger().setLevel(logging.WARNING)
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from engines.backtest import BacktestConfig, PMSConfig  # noqa: E402
-from engines.backtest.runner import run_hybrid_backtest  # noqa: E402
+from engines.backtest.config import BacktestConfig as EngineBacktestConfig  # noqa: E402
+from engines.backtest.config import PMSConfig  # noqa: E402
 from engines.metrics import (  # noqa: E402
     calc_calmar,
     calc_max_drawdown,
@@ -45,6 +52,11 @@ from engines.metrics import (  # noqa: E402
     calc_sortino,
 )
 from engines.slippage_model import SlippageConfig  # noqa: E402
+
+from backend.platform._types import BacktestMode  # noqa: E402
+from backend.platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
+from backend.platform.backtest import InMemoryBacktestRegistry  # noqa: E402
+from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "backtest"
@@ -95,8 +107,8 @@ def monthly_win_rate(nav: pd.Series) -> float:
     return float((monthly > 0).sum() / len(monthly))
 
 
-def run_year(year: int, config: BacktestConfig) -> dict:
-    """跑一个自然年度。"""
+def run_year(year: int, engine_cfg: EngineBacktestConfig) -> dict:
+    """跑一个自然年度 (Platform SDK)。"""
     print(f"[Year {year}] loading...")
     factor_df, price_df, bench_df = load_year_data(year)
 
@@ -114,8 +126,39 @@ def run_year(year: int, config: BacktestConfig) -> dict:
         print(f"  WARNING: no price data for {year}")
         return None
 
+    # Platform BacktestConfig — 每年独立 start/end, factor_pool sorted 保 config_hash 稳定
+    trading_days = sorted(price_df["trade_date"].unique())
+    platform_cfg = PlatformBacktestConfig(
+        start=pd.Timestamp(trading_days[0]).date(),
+        end=pd.Timestamp(trading_days[-1]).date(),
+        universe="all_a",
+        factor_pool=tuple(sorted(DIRECTIONS.keys())),
+        rebalance_freq="monthly",
+        top_n=20,
+        industry_cap=1.0,
+        size_neutral_beta=0.0,
+        cost_model="full",
+        capital="1000000",
+        benchmark="csi300",
+        extra={},
+    )
+
+    runner = PlatformBacktestRunner(
+        registry=InMemoryBacktestRegistry(),
+        data_loader=lambda _c, _s, _e: (factor_df, price_df, bench_df),
+        conn=None,
+        direction_provider=lambda pool: {n: DIRECTIONS[n] for n in pool},
+        engine_config_builder=lambda _p: engine_cfg,
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
+    )
+
     t0 = time.time()
-    result = run_hybrid_backtest(factor_df, DIRECTIONS, price_df, config, bench_df)
+    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    if platform_result.engine_artifacts is None:
+        raise RuntimeError(
+            f"engine_artifacts=None (year={year}) — LIVE_PT 应强制真跑"
+        )
+    result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 
     nav = result.daily_nav
@@ -161,7 +204,8 @@ def run_year(year: int, config: BacktestConfig) -> dict:
 def main():
     BASELINE_DIR.mkdir(parents=True, exist_ok=True)
 
-    config = BacktestConfig(
+    # Engine BacktestConfig — 注入 Platform Runner 的 engine_config_builder
+    engine_cfg = EngineBacktestConfig(
         initial_capital=1_000_000,
         top_n=20,
         rebalance_freq="monthly",
@@ -177,7 +221,7 @@ def main():
     results = []
     total_t0 = time.time()
     for year in years:
-        r = run_year(year, config)
+        r = run_year(year, engine_cfg)
         if r is None:
             continue
         results.append(r)
