@@ -44,7 +44,7 @@ from app.services.execution_service import ExecutionService
 from app.services.notification_service import NotificationService
 from app.services.pt_data_service import fetch_daily_data
 from app.services.pt_monitor_service import check_opening_gap
-from app.services.pt_qmt_state import save_qmt_state
+from app.services.pt_qmt_state import QMTEmptyPositionsError, save_qmt_state
 from app.services.risk_control_service import check_circuit_breaker_sync
 from app.services.shadow_portfolio import (
     generate_shadow_lgbm_inertia,
@@ -243,6 +243,10 @@ def run_signal_phase(
                     qmt_nav_data,
                     benchmark_close,
                 )
+        except QMTEmptyPositionsError:
+            # D2-a: fail-loud 不被"不影响信号"吞, 上浮到 L316 outer except → log_step + sys.exit(1)
+            logger.error("[Step1.5] FAIL-LOUD: QMT 持仓蒸发检测触发, 中止 signal_phase")
+            raise
         except Exception as e:
             logger.warning("[Step1.5] NAV更新失败(不影响信号): %s", e)
 
