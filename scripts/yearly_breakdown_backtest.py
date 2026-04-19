@@ -107,8 +107,12 @@ def monthly_win_rate(nav: pd.Series) -> float:
     return float((monthly > 0).sum() / len(monthly))
 
 
-def run_year(year: int, engine_cfg: EngineBacktestConfig) -> dict:
-    """跑一个自然年度 (Platform SDK)。"""
+def run_year(year: int, engine_cfg: EngineBacktestConfig) -> dict | None:
+    """跑一个自然年度 (Platform SDK)。
+
+    review P2-C (python-reviewer): annotation 改 `dict | None` 匹配 2 处 early-return None
+    (price_df.empty / returns 长度不足), 调用方 `if r is None: continue` 已守.
+    """
     print(f"[Year {year}] loading...")
     factor_df, price_df, bench_df = load_year_data(year)
 
