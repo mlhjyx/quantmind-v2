@@ -32,7 +32,7 @@ class TestBaseBrokerABC:
 
     def test_paper_broker_is_base_broker(self) -> None:
         """PaperBroker是BaseBroker子类。"""
-        broker = PaperBroker(strategy_id="test", initial_capital=1_000_000)
+        broker = PaperBroker(strategy_id="test", execution_mode="paper", initial_capital=1_000_000)
         assert isinstance(broker, BaseBroker)
 
     def test_mini_qmt_broker_is_base_broker(self) -> None:
@@ -93,17 +93,17 @@ class TestPaperBrokerInterface:
 
     def test_get_positions_before_load(self) -> None:
         """load_state前返回空dict。"""
-        broker = PaperBroker(strategy_id="test")
+        broker = PaperBroker(strategy_id="test", execution_mode="paper")
         assert broker.get_positions() == {}
 
     def test_get_cash_before_load(self) -> None:
         """load_state前返回初始资金。"""
-        broker = PaperBroker(strategy_id="test", initial_capital=500_000)
+        broker = PaperBroker(strategy_id="test", execution_mode="paper", initial_capital=500_000)
         assert broker.get_cash() == 500_000.0
 
     def test_get_total_value_before_load(self) -> None:
         """load_state前返回初始资金。"""
-        broker = PaperBroker(strategy_id="test", initial_capital=500_000)
+        broker = PaperBroker(strategy_id="test", execution_mode="paper", initial_capital=500_000)
         assert broker.get_total_value({}) == 500_000.0
 
 

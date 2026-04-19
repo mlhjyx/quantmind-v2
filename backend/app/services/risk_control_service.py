@@ -22,6 +22,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.repositories.risk_repository import RiskRepository
 from app.services.notification_service import NotificationService
 
@@ -1209,13 +1210,14 @@ def _load_cb_state_sync(conn: Any, strategy_id: str) -> dict[str, Any] | None:
         状态字典，无记录时返回None。
     """
     cur = conn.cursor()
+    # ADR-008 D2: circuit_breaker_state 读按 settings.EXECUTION_MODE 动态 (live/paper 物理隔离)
     cur.execute(
         """SELECT current_level, entered_date, trigger_reason,
                   recovery_streak_days, recovery_streak_return,
                   position_multiplier, approval_id
            FROM circuit_breaker_state
-           WHERE strategy_id = %s AND execution_mode = 'paper'""",
-        (strategy_id,),
+           WHERE strategy_id = %s AND execution_mode = %s""",
+        (strategy_id, settings.EXECUTION_MODE),
     )
     row = cur.fetchone()
     if not row:
@@ -1260,13 +1262,14 @@ def _upsert_cb_state_sync(
         approval_id: L4审批ID（可选）。
     """
     cur = conn.cursor()
+    # ADR-008 D2: circuit_breaker_state 写按 settings.EXECUTION_MODE 动态
     cur.execute(
         """INSERT INTO circuit_breaker_state
                (strategy_id, execution_mode, current_level,
                 entered_at, entered_date, trigger_reason, trigger_metrics,
                 recovery_streak_days, recovery_streak_return,
                 position_multiplier, approval_id, updated_at)
-           VALUES (%s, 'paper', %s, NOW(), %s, %s, %s::jsonb,
+           VALUES (%s, %s, %s, NOW(), %s, %s, %s::jsonb,
                    %s, %s, %s, %s, NOW())
            ON CONFLICT (strategy_id, execution_mode)
            DO UPDATE SET
@@ -1286,6 +1289,7 @@ def _upsert_cb_state_sync(
                 updated_at = NOW()""",
         (
             strategy_id,
+            settings.EXECUTION_MODE,
             level,
             entered_date,
             reason,
@@ -1323,13 +1327,15 @@ def _insert_cb_log_sync(
         metrics: 指标快照（可选）。
     """
     cur = conn.cursor()
+    # ADR-008 D2: circuit_breaker_log 写按 settings.EXECUTION_MODE 动态
     cur.execute(
         """INSERT INTO circuit_breaker_log
                (strategy_id, execution_mode, trade_date,
                 prev_level, new_level, transition_type, reason, metrics)
-           VALUES (%s, 'paper', %s, %s, %s, %s, %s, %s::jsonb)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)""",
         (
             strategy_id,
+            settings.EXECUTION_MODE,
             trade_date,
             prev_level,
             new_level,
@@ -1374,13 +1380,15 @@ def check_circuit_breaker_sync(
     _ensure_cb_tables_sync(conn)
 
     # ── 1. 读取performance_series获取指标 ──
+    # ADR-008 D2: performance_series 读按 settings.EXECUTION_MODE 动态
+    # (Session 10 P0-α 根因: live 模式此处读 'paper' 永远 empty → L0 "首次运行" 熔断裸奔)
     cur = conn.cursor()
     cur.execute(
         """SELECT trade_date, nav::float, daily_return::float
            FROM performance_series
-           WHERE strategy_id = %s AND execution_mode = 'paper'
+           WHERE strategy_id = %s AND execution_mode = %s
            ORDER BY trade_date DESC LIMIT 20""",
-        (strategy_id,),
+        (strategy_id, settings.EXECUTION_MODE),
     )
     rows = cur.fetchall()
     if not rows:

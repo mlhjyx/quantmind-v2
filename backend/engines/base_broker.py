@@ -74,7 +74,14 @@ def get_broker(mode: str, **kwargs) -> BaseBroker:
 
         strategy_id = kwargs.get("strategy_id", "")
         initial_capital = kwargs.get("initial_capital", 1_000_000.0)
-        return PaperBroker(strategy_id=strategy_id, initial_capital=initial_capital)
+        # ADR-008 D2: execution_mode 必传 (铁律 31 Engine 层不 import app.config).
+        # 工厂 mode="paper" 默认 execution_mode='paper' (向后兼容), live 调用方需显式传 execution_mode="live".
+        execution_mode = kwargs.get("execution_mode", "paper")
+        return PaperBroker(
+            strategy_id=strategy_id,
+            execution_mode=execution_mode,
+            initial_capital=initial_capital,
+        )
     elif mode == "live":
         from engines.broker_qmt import MiniQMTBroker
 

@@ -53,11 +53,13 @@ def check_opening_gap(
     # 组合加权平均跳空
     try:
         cur = conn.cursor()
+        # ADR-008 D2: position_snapshot 读按 settings.EXECUTION_MODE 动态
+        # (Session 10 P1-a 根因: live 模式此处读 'paper' → total_w=0 组合跳空检测静默失效)
         cur.execute(
             """SELECT code, weight FROM position_snapshot
-               WHERE strategy_id = %s AND execution_mode = 'paper'
+               WHERE strategy_id = %s AND execution_mode = %s
                ORDER BY trade_date DESC, weight DESC LIMIT 50""",
-            (settings.PAPER_STRATEGY_ID,),
+            (settings.PAPER_STRATEGY_ID, settings.EXECUTION_MODE),
         )
         rows = cur.fetchall()
         if rows:
