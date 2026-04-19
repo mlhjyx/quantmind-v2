@@ -52,8 +52,16 @@ def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
     Step 6-C 修复: 之前只过滤 volume>0, 导致 BJ 股全部进入信号。
     现在正确 JOIN stock_status_daily + symbols 做完整过滤。
 
-    2026-04-14 修复: LEFT JOIN stock_status_daily 当日缺失时 COALESCE(NULL,false)=false
-    导致ST股漏入信号(688184.SH ST帕瓦事件)。改为回退到最近有效日期，缺失时保守排除。
+    PR-B 修复 (2026-04-20, ADR-008 阶段 2, 关闭 Session 10 P0-ε):
+      根因: 2026-04-14 "fix" 用 INNER JOIN + status_date 回退 →
+            status_date lag 时 (live PT 16:30 预检失败, pt_data_service 未及时
+            入 stock_status_daily), 用旧状态过滤. 688184.SH 4-14 已是 ST 但
+            status_date=4-13 记录 is_st=false → 错买 → 4-15 更新后错卖.
+      修法: LEFT JOIN + ss.trade_date = k.trade_date (correlated 实际日) +
+            COALESCE(is_st/is_suspended/is_new_stock, TRUE) = false
+            (缺记录保守当 ST/停牌/新股排除, 铁律 33 fail-safe 精神).
+      backward compat: historical backtest status_date==trade_date,
+            语义完全等价 → regression max_diff=0 保持.
 
     调用方: run_paper_trading.py Step 3
     """
@@ -83,19 +91,19 @@ def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
     df = pd.read_sql(
         """SELECT DISTINCT k.code
            FROM klines_daily k
-           INNER JOIN stock_status_daily ss
-             ON k.code = ss.code AND ss.trade_date = %s
+           LEFT JOIN stock_status_daily ss
+             ON k.code = ss.code AND ss.trade_date = k.trade_date
            LEFT JOIN symbols s ON k.code = s.code
            WHERE k.trade_date = %s
              AND k.volume > 0
-             AND ss.is_st = false
-             AND ss.is_suspended = false
-             AND ss.is_new_stock = false
+             AND COALESCE(ss.is_st, TRUE) = false
+             AND COALESCE(ss.is_suspended, TRUE) = false
+             AND COALESCE(ss.is_new_stock, TRUE) = false
              AND COALESCE(ss.board, '') != 'bse'
              AND k.code NOT LIKE '%%.BJ'
              AND COALESCE(s.list_status, 'L') = 'L'""",
         conn,
-        params=(status_date, trade_date),
+        params=(trade_date,),
     )
     codes = set(df["code"].tolist())
     if min_avg_amount > 0:
