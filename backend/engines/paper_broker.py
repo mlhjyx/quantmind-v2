@@ -10,6 +10,7 @@ from datetime import UTC, date
 import pandas as pd
 import structlog
 
+from app.config import settings
 from engines.backtest_engine import BacktestConfig, Fill, PendingOrder, SimBroker
 from engines.base_broker import BaseBroker
 
@@ -57,8 +58,8 @@ class PaperBroker(BaseBroker):
         cur.execute(
             """SELECT MAX(trade_date)
                FROM position_snapshot
-               WHERE strategy_id = %s AND execution_mode = 'paper'""",
-            (self.strategy_id,),
+               WHERE strategy_id = %s AND execution_mode = %s""",
+            (self.strategy_id, settings.EXECUTION_MODE),
         )
         row = cur.fetchone()
         last_date = row[0] if row else None
@@ -77,9 +78,9 @@ class PaperBroker(BaseBroker):
                 """SELECT code, quantity, market_value
                    FROM position_snapshot
                    WHERE strategy_id = %s AND trade_date = %s
-                     AND execution_mode = 'paper'""",
+                     AND execution_mode = %s""",
                 conn,
-                params=(self.strategy_id, last_date),
+                params=(self.strategy_id, last_date, settings.EXECUTION_MODE),
             )
 
             holdings = {}
@@ -92,9 +93,9 @@ class PaperBroker(BaseBroker):
                 """SELECT nav, cash, cash_ratio
                    FROM performance_series
                    WHERE strategy_id = %s AND trade_date = %s
-                     AND execution_mode = 'paper'""",
+                     AND execution_mode = %s""",
                 conn,
-                params=(self.strategy_id, last_date),
+                params=(self.strategy_id, last_date, settings.EXECUTION_MODE),
             )
 
             if not perf.empty:
@@ -114,8 +115,8 @@ class PaperBroker(BaseBroker):
             cur.execute(
                 """SELECT MAX(trade_date)
                    FROM trade_log
-                   WHERE strategy_id = %s AND execution_mode = 'paper'""",
-                (self.strategy_id,),
+                   WHERE strategy_id = %s AND execution_mode = %s""",
+                (self.strategy_id, settings.EXECUTION_MODE),
             )
             rebal_row = cur.fetchone()
 
@@ -447,7 +448,7 @@ class PaperBroker(BaseBroker):
                        (code, trade_date, strategy_id, direction, quantity,
                         fill_price, slippage_bps, commission, stamp_tax,
                         total_cost, execution_mode, executed_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper', %s)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT DO NOTHING""",
                     (
                         fill.code,
@@ -460,6 +461,7 @@ class PaperBroker(BaseBroker):
                         float(fill.commission),
                         float(fill.tax),
                         float(fill.total_cost),
+                        settings.EXECUTION_MODE,
                         now_utc,
                     ),
                 )
@@ -497,7 +499,7 @@ class PaperBroker(BaseBroker):
                        (code, trade_date, strategy_id, direction, quantity,
                         fill_price, slippage_bps, commission, stamp_tax,
                         total_cost, execution_mode, executed_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper', %s)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT DO NOTHING""",
                     (
                         fill.code,
@@ -510,6 +512,7 @@ class PaperBroker(BaseBroker):
                         float(fill.commission),
                         float(fill.tax),
                         float(fill.total_cost),
+                        settings.EXECUTION_MODE,
                         now_utc,
                     ),
                 )
@@ -519,8 +522,8 @@ class PaperBroker(BaseBroker):
             cur.execute(
                 """DELETE FROM position_snapshot
                    WHERE trade_date = %s AND strategy_id = %s
-                     AND execution_mode = 'paper'""",
-                (trade_date, self.strategy_id),
+                     AND execution_mode = %s""",
+                (trade_date, self.strategy_id, settings.EXECUTION_MODE),
             )
 
             nav = self.broker.get_portfolio_value(today_close)
@@ -532,8 +535,8 @@ class PaperBroker(BaseBroker):
                     """INSERT INTO position_snapshot
                        (code, trade_date, strategy_id, quantity, market_value,
                         weight, execution_mode)
-                       VALUES (%s, %s, %s, %s, %s, %s, 'paper')""",
-                    (code, trade_date, self.strategy_id, shares, mv, weight),
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (code, trade_date, self.strategy_id, shares, mv, weight, settings.EXECUTION_MODE),
                 )
 
             # ── 3. performance_series ──
@@ -543,10 +546,10 @@ class PaperBroker(BaseBroker):
             # 计算日收益率（从DB读前一日NAV，防止重跑时self.state指向错误日期）
             cur.execute(
                 """SELECT nav FROM performance_series
-                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                   WHERE strategy_id = %s AND execution_mode = %s
                      AND trade_date < %s
                    ORDER BY trade_date DESC LIMIT 1""",
-                (self.strategy_id, trade_date),
+                (self.strategy_id, settings.EXECUTION_MODE, trade_date),
             )
             prev_row = cur.fetchone()
             prev_nav = float(prev_row[0]) if prev_row else self.initial_capital
@@ -560,9 +563,9 @@ class PaperBroker(BaseBroker):
             cur.execute(
                 """SELECT COALESCE(MAX(nav), %s)
                    FROM performance_series
-                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                   WHERE strategy_id = %s AND execution_mode = %s
                      AND trade_date <= %s""",
-                (self.initial_capital, self.strategy_id, trade_date),
+                (self.initial_capital, self.strategy_id, settings.EXECUTION_MODE, trade_date),
             )
             peak_nav = float(cur.fetchone()[0])
             peak_nav = max(peak_nav, nav, self.initial_capital)
@@ -571,9 +574,9 @@ class PaperBroker(BaseBroker):
             # 基准NAV
             cur.execute(
                 """SELECT nav FROM performance_series
-                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                   WHERE strategy_id = %s AND execution_mode = %s
                    ORDER BY trade_date ASC LIMIT 1""",
-                (self.strategy_id,),
+                (self.strategy_id, settings.EXECUTION_MODE),
             )
             first_row = cur.fetchone()
             if first_row:
@@ -600,7 +603,7 @@ class PaperBroker(BaseBroker):
                    (trade_date, strategy_id, nav, daily_return, cumulative_return,
                     drawdown, cash_ratio, cash, position_count, turnover,
                     benchmark_nav, execution_mode)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'paper')
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (trade_date, strategy_id, execution_mode) DO UPDATE SET
                     nav=EXCLUDED.nav, daily_return=EXCLUDED.daily_return,
                     cumulative_return=EXCLUDED.cumulative_return,
@@ -620,6 +623,7 @@ class PaperBroker(BaseBroker):
                     position_count,
                     turnover,
                     bench_nav_val,
+                    settings.EXECUTION_MODE,
                 ),
             )
 
