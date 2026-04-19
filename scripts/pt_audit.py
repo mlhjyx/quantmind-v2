@@ -46,6 +46,7 @@ from pathlib import Path
 
 import psycopg2
 import psycopg2.extensions
+import psycopg2.extras
 
 # .env 加载 (standalone pattern, 对齐 restore_snapshot_20260417.py)
 _BACKEND = Path(__file__).resolve().parent.parent / "backend"
@@ -62,6 +63,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("pt_audit")
+
+# FileHandler (Stage 4): 对齐 scheduler 脚本风格, logs/pt_audit.log
+_LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "pt_audit.log"
+if not any(isinstance(_h, logging.FileHandler) for _h in logger.handlers):
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _fh = logging.FileHandler(_LOG_FILE, encoding="utf-8")
+        _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        logger.addHandler(_fh)
+    except OSError as _e:
+        # silent_ok: logs/ 目录不可写不应阻断审计主流程 (stdout 仍可用)
+        logger.warning("[log] FileHandler setup failed: %s", _e)
 
 # 常量
 CHECK_LIST: tuple[str, ...] = (
@@ -109,6 +122,66 @@ def get_sync_conn() -> psycopg2.extensions.connection:
     conn = psycopg2.connect(url)
     conn.autocommit = True
     return conn
+
+
+def _is_trading_day(
+    conn: psycopg2.extensions.connection, d: date,
+) -> bool:
+    """Check trading_calendar (astock). 复用 daily_reconciliation.py:40-46 模式.
+
+    未入库日期 → False (保守). 复用 standalone script pattern (CLAUDE.md L622).
+    """
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT is_trading_day FROM trading_calendar "
+        "WHERE market = 'astock' AND trade_date = %s",
+        (d,),
+    )
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def _write_scheduler_log(
+    conn: psycopg2.extensions.connection,
+    audit_date: date,
+    strategy_id: str,
+    status: str,
+    exit_code: int,
+    findings: list[Finding],
+) -> None:
+    """Write scheduler_task_log row. Silent-ok on failure (铁律 33(c) read-path fallback).
+
+    仿 daily_reconciliation.py:408-424 模式. status: 'success' / 'alert' / 'skipped'.
+    """
+    try:
+        result_json = {
+            "audit_date": str(audit_date),
+            "strategy_id": strategy_id,
+            "checks_run": list(CHECK_LIST),
+            "findings_count": len(findings),
+            "exit_code": exit_code,
+            "findings": [
+                {
+                    "check": f.check,
+                    "level": f.level,
+                    "title": f.title,
+                    "detail": f.detail,
+                }
+                for f in findings
+            ],
+        }
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO scheduler_task_log
+               (task_name, market, schedule_time, start_time, status, result_json)
+               VALUES ('pt_audit', 'astock', NOW(), NOW(), %s, %s)""",
+            (status, psycopg2.extras.Json(result_json)),
+        )
+        # autocommit=True on pt_audit conn, .commit() is harmless no-op
+        conn.commit()
+    except Exception as e:
+        # silent_ok: scheduler_task_log 失败不阻审计主流程, findings 已 stdout/DingTalk
+        logger.warning("[scheduler_task_log] write failed: %s", e)
 
 
 def _prev_trading_day(
@@ -467,6 +540,12 @@ def run_audit(
     conn = get_sync_conn()
     all_findings: list[Finding] = []
     try:
+        # Stage 4: 非交易日 guard — 跳过审计, 写 skipped log (monitoring 可见)
+        if not _is_trading_day(conn, audit_date):
+            logger.info("[audit] %s 非交易日, 跳过 (Stage 4 guard)", audit_date)
+            _write_scheduler_log(conn, audit_date, strategy_id, "skipped", 0, [])
+            return (0, [])
+
         checks = only_checks or list(CHECK_LIST)
         logger.info(
             "[audit] date=%s sid=%s... checks=%s",
@@ -497,13 +576,19 @@ def run_audit(
                 logger.exception("[audit] check '%s' raised (continuing)", name)
         if alert:
             send_aggregated_alert(all_findings, audit_date)
+
+        # Stage 4: 写 scheduler_task_log (status=success/alert 基于 findings)
+        if not all_findings:
+            _write_scheduler_log(conn, audit_date, strategy_id, "success", 0, [])
+            exit_code_final = 0
+        else:
+            exit_code_final = min(_LEVEL_EXIT_CODE.get(f.level, 99) for f in all_findings)
+            _write_scheduler_log(
+                conn, audit_date, strategy_id, "alert", exit_code_final, all_findings,
+            )
     finally:
         conn.close()
-    # exit code — 用模块常量 (reviewer P1 提点)
-    if not all_findings:
-        return (0, [])
-    top_code = min(_LEVEL_EXIT_CODE.get(f.level, 99) for f in all_findings)
-    return (top_code, all_findings)
+    return (exit_code_final if all_findings else 0, all_findings)
 
 
 def main() -> None:
