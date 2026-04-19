@@ -190,10 +190,43 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 
 ## Follow-up
 
-- [ ] **阶段 1** (今晚): schtasks disable 3 任务 ✅ + CLAUDE.md L639-648 -10.2% 误读修正 PR
-- [ ] **阶段 2 PR-A** (下周): execution_mode 动态化 (契约 D2), 5 核心文件 + 20 单测 + regression
-- [ ] **阶段 2 PR-B** (下周): ST LEFT JOIN + COALESCE + regression 验证
+- [x] **阶段 1** (2026-04-19 Session 10): schtasks disable 3 任务 + CLAUDE.md L639-648 -10.2% 误读修正 PR
+- [x] **阶段 2 PR-A** (2026-04-19 Session 11 PR #23 `ece3e70`): execution_mode 动态化 (契约 D2), 5 核心文件 + 单测 + regression
+- [x] **阶段 2 D2-a** (2026-04-19 Session 13 PR #25 `9ced069`): `save_qmt_state` L1 fail-loud 守卫 (`_assert_positions_not_evaporated`), 防 QMT 断连蒸发 snapshot
+- [x] **阶段 2 PR-B** (2026-04-19 Session 14 PR #26 `6e1f050`): `load_universe` ST LEFT JOIN + COALESCE conservative, 关闭 P0-ε 688184.SH ST race
+- [x] **阶段 2 D2-b** (2026-04-20 Session 15, 诊断闭合): P1-b 4-17 snapshot 蒸发根因定位 — `save_qmt_state` 在 D2-a 合并前无守卫 → **已被 D2-a 根除**, 不需新 code change. 详见下节 "D2-b 诊断结论".
+- [ ] **阶段 2 D2-c** (2026-04-20 Session 15): 手工补 4-17 snapshot (独立 PR + 执行分离)
 - [ ] **阶段 2 PR-C** (下周): pt_audit.py 5 检测 (ST 漏 / mode 错位 / 换手异常 / rebalance 日不符 / QMT drift)
 - [ ] **阶段 3 PR-D** (下下周): DDL strategy.execution_mode + 现有 strategy_id 迁移拆分
 - [ ] **阶段 4** (下下周末): 验证全套 + 重启 Servy live + 盯开盘 + audit guard 观察首周
 - [ ] 注册 ADR-008 → `python scripts/knowledge/register_adrs.py --apply`
+
+## D2-b 诊断结论 (2026-04-20 Session 15)
+
+**问题**: Session 10 handoff 记 P1-b — 4-17 `position_snapshot` live 行 0, QMT 真实 19 股. 起初假设根因是 `daily_reconciliation` 未兜住, 实际 DB probe 推翻该假设.
+
+### 时序还原 (2026-04-17)
+
+| 时刻 | 事件 | 结果 |
+|---|---|---|
+| 09:31 | schtasks `DailyExecute` → QMT 20 单成交 | `trade_log` 写 20 行 live (10 buy + 10 sell) |
+| 15:40 | schtasks `DailyReconciliation` (延迟 30min) | `write_live_snapshot` DELETE + INSERT **19 行 live** ✅ (`scheduler_task_log` `qmt_stocks=19 db_stocks=19 mismatches=0`) |
+| 16:30 或 20:58 | `save_qmt_state` 被 signal_phase / 手工重跑调用, QMTClient 读 Redis `portfolio:current` 返空 (Servy QMTData cache stale 或 xtquant 断连) | `_save_qmt_state_impl` **DELETE live rows + INSERT 0 行** → 19 蒸发 ❌ |
+
+### 根因 (与 P1-b 假设吻合)
+
+`save_qmt_state` 在 **Session 13 D2-a 合并前**无 fail-loud 守卫, 允许"前日 ≥1 持仓 + 今日 QMT 返 0" silent DELETE + INSERT 0. 这不是 `daily_reconciliation` 的问题 — `write_live_snapshot` 当日 15:40 正确写入了 19 行, 是后续 `save_qmt_state` 不对称读写覆盖了它.
+
+### 修复 (已完成, 无需新 code)
+
+PR #25 (Session 13 D2-a) 在 `_save_qmt_state_impl` 首行添加:
+
+```python
+_assert_positions_not_evaporated(cur, trade_date, strategy_id, qmt_positions)
+```
+
+当 `qmt_positions` 空 + 前一交易日 live `quantity > 0` 行数 ≥ 1 → `raise QMTEmptyPositionsError`. PT 主流程 `run_paper_trading.py:246` 差异化 `except` 放行此异常到 outer log_step → `sys.exit`, 拒绝 DELETE. **同类 bug 不再能复现**.
+
+### 遗留: D2-c 一次性数据修复
+
+4-17 live snapshot 仍需手工补. 由独立 PR 提交 `scripts/repair/restore_snapshot_20260417.py` (reconstruction = 4-16 snapshot + 4-17 trade_log), dry-run → 用户批准 → apply. 详见该 PR.
