@@ -22,10 +22,95 @@ from uuid import UUID
 
 from .._types import BacktestMode
 
+# ────────────────────────────────────────────────────────────────
+# MVP 2.3 Sub3 C1: 嵌套 value object (frozen=True, Platform 自含镜像)
+#
+# 设计决策 (Plan agent review): Platform 保持自足, 不 import engines 嵌套类型.
+# - engines.slippage_model.SlippageConfig 已 frozen=True, 但仍镜像防 engines 改字段
+#   破坏 Platform config_hash 稳定性 (铁律 15 锚).
+# - engines.backtest.config.PMSConfig 是 `@dataclass` 非 frozen + `list[tuple]` tiers,
+#   直接 import 会破 Platform frozen/hashable. 镜像用 `tuple[tuple[...]]`.
+# - UniverseFilter 新独占字段 (engines 无对应, pt_live.yaml `universe` 段驱动).
+#
+# Runner 层 (`_build_engine_config`, C4) 负责 Platform 嵌套 → engines 嵌套转换.
+# ────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class UniverseFilter:
+    """股票池过滤规则 (Platform 独有, engines 通过 price_data 列驱动).
+
+    Args:
+      exclude_st: 排除 ST/*ST 股 (stock_status_daily.is_st=true)
+      exclude_bj: 排除北交所股 (symbols.board='bse')
+      exclude_suspended: 排除停牌股 (stock_status_daily.is_suspended=true)
+      min_listing_days: 最小上市天数 (days_since_ipo >= min_listing_days), 60 = 新股过滤
+    """
+
+    exclude_st: bool = True
+    exclude_bj: bool = True
+    exclude_suspended: bool = True
+    min_listing_days: int = 60
+
+
+@dataclass(frozen=True)
+class SlippageConfig:
+    """三因素滑点配置 (镜像 `engines.slippage_model.SlippageConfig`, frozen + hashable).
+
+    字段默认值严格对齐 engines 侧 (R4 研究结论). C4 Runner fallback 负责 Platform
+    SlippageConfig → engines SlippageConfig 字段对字段转换.
+
+    Args:
+      Y_large / Y_mid / Y_small: 市值分档冲击乘数 (Bouchaud 2018)
+      sell_penalty: 卖出方向冲击惩罚倍数
+      base_bps: 旧版固定基础滑点 (bps), tiered 模式下被覆盖
+      base_bps_large / base_bps_mid / base_bps_small: 市值分档 bid-ask spread (bps)
+      gap_penalty_factor: 隔夜跳空惩罚系数 (0-1, 默认 0.5 只承受一半跳空)
+    """
+
+    Y_large: float = 0.8
+    Y_mid: float = 1.0
+    Y_small: float = 1.5
+    sell_penalty: float = 1.2
+    base_bps: float = 5.0
+    base_bps_large: float = 3.0
+    base_bps_mid: float = 5.0
+    base_bps_small: float = 8.0
+    gap_penalty_factor: float = 0.5
+
+
+@dataclass(frozen=True)
+class PMSConfig:
+    """利润保护配置 (镜像 `engines.backtest.config.PMSConfig`, frozen + hashable).
+
+    engines 版本用 `list[tuple[float, float]]` tiers, Platform 改用
+    `tuple[tuple[float, float], ...]` 保 frozen/hashable. C4 Runner fallback
+    转换为 engines list 供 engine 使用.
+
+    Args:
+      enabled: 是否启用 PMS
+      tiers: (pnl_threshold, trailing_stop) 元组序列, 按 pnl 从高到低排列
+             默认 ((0.30, 0.15), (0.20, 0.12), (0.10, 0.10)): 3 层阶梯
+      exec_mode: "next_open" (T+1 开盘卖, 保守) | "same_close" (当日收盘卖, 乐观)
+    """
+
+    enabled: bool = False
+    tiers: tuple[tuple[float, float], ...] = (
+        (0.30, 0.15),
+        (0.20, 0.12),
+        (0.10, 0.10),
+    )
+    exec_mode: str = "next_open"
+
 
 @dataclass(frozen=True)
 class BacktestConfig:
     """回测配置 — 可序列化, hash 稳定 (用于 regression_test 锚点).
+
+    MVP 2.3 Sub3 C1 扩 12 字段 + 3 嵌套 value object, 消除 Sub1 PR C3 `engine_config_builder`
+    callable 绕 5-field fallback 的技术债. 默认值严格对齐 `engines.backtest.config.BacktestConfig`
+    保 17 现有调用方 0 break. 新字段加入 config_hash 会破历史 cache, 但 LIVE_PT 不 cache
+    + regression_test 守 `max_diff=0` 双保险.
 
     Args:
       start: 回测起始日
@@ -37,9 +122,21 @@ class BacktestConfig:
       industry_cap: 行业权重上限 (1.0 = 无限制)
       size_neutral_beta: SN modifier 系数 (0.50 = partial SN)
       cost_model: "simplified" / "full" (full 含印花税历史 + 三因素滑点)
-      capital: 初始资本 (Decimal, 序列化为字符串)
+      capital: 初始资本 (Decimal 序列化字符串)
       benchmark: 基准 ("csi300" / "none")
       extra: 扩展参数 (FUTURE-PROOF)
+      turnover_cap: 单次换手率上限 (Sub3 C1)
+      commission_rate: 佣金费率 (Sub3 C1, 默认国金万 0.854)
+      stamp_tax_rate: 印花税率 (Sub3 C1, 默认千 0.5, historical_stamp_tax=True 覆盖)
+      historical_stamp_tax: 启用历史税率 (Sub3 C1, 2023-08-28 前 0.1%, 后 0.05%)
+      transfer_fee_rate: 过户费率 (Sub3 C1, 默认万 0.1)
+      slippage_bps: 基础滑点 (bps, fixed 模式用) (Sub3 C1)
+      slippage_mode: "volume_impact" | "fixed" (Sub3 C1)
+      volume_cap_pct: 单笔成交额上限占当日成交额比例 (Sub3 C1)
+      lot_size: A 股最小交易单位 (100 股) (Sub3 C1)
+      universe_filter: 股票池过滤规则 (Sub3 C1, ST/BJ/suspended/new-stock)
+      slippage_config: 三因素滑点配置 (Sub3 C1, 镜像 engines SlippageConfig)
+      pms_config: 利润保护配置 (Sub3 C1, 镜像 engines PMSConfig)
     """
 
     start: date
@@ -54,6 +151,19 @@ class BacktestConfig:
     capital: str
     benchmark: str
     extra: dict[str, Any]
+    # ── Sub3 C1 扩字段 (对齐 engines.backtest.config.BacktestConfig 默认值) ──
+    turnover_cap: float = 0.50
+    commission_rate: float = 0.0000854
+    stamp_tax_rate: float = 0.0005
+    historical_stamp_tax: bool = True
+    transfer_fee_rate: float = 0.00001
+    slippage_bps: float = 10.0
+    slippage_mode: str = "volume_impact"
+    volume_cap_pct: float = 0.10
+    lot_size: int = 100
+    universe_filter: UniverseFilter = field(default_factory=UniverseFilter)
+    slippage_config: SlippageConfig = field(default_factory=SlippageConfig)
+    pms_config: PMSConfig = field(default_factory=PMSConfig)
 
 
 @dataclass(frozen=True)
