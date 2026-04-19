@@ -161,8 +161,11 @@ class SignalService:
 
         # ── Beta监控（只记录，不缩放权重）──
         # 对应 script L1190-1196
+        # ADR-008 D2: beta 读 performance_series 按 settings.EXECUTION_MODE 命名空间隔离
         beta = calc_portfolio_beta(
-            trade_date, strategy_id, lookback_days=60, conn=conn,
+            trade_date, strategy_id,
+            execution_mode=settings.EXECUTION_MODE,
+            lookback_days=60, conn=conn,
         )
         hedged_target = target  # 不缩放，直接使用原始权重
         logger.info(

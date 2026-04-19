@@ -16,17 +16,19 @@ logger = structlog.get_logger(__name__)
 def calc_portfolio_beta(
     trade_date: date,
     strategy_id: str,
+    execution_mode: str,
     lookback_days: int = 60,
     conn=None,
 ) -> float:
     """计算组合相对沪深300的Rolling Beta。
 
-    从performance_series读取Paper Trading历史NAV，
+    从performance_series读取历史NAV（按 execution_mode 命名空间隔离, ADR-008 D2），
     从index_daily读取CSI300收盘价，计算OLS Beta。
 
     Args:
         trade_date: 当前交易日
         strategy_id: 策略UUID
+        execution_mode: 'paper' 或 'live' (ADR-008 D2, 显式传递 > 隐式全局, 铁律 34)
         lookback_days: 回看窗口（默认60交易日）
         conn: psycopg2连接
 
@@ -37,12 +39,12 @@ def calc_portfolio_beta(
     perf_df = pd.read_sql(
         """SELECT trade_date, nav
            FROM performance_series
-           WHERE strategy_id = %s AND execution_mode = 'paper'
+           WHERE strategy_id = %s AND execution_mode = %s
              AND trade_date <= %s
            ORDER BY trade_date DESC
            LIMIT %s""",
         conn,
-        params=(strategy_id, trade_date, lookback_days + 1),
+        params=(strategy_id, execution_mode, trade_date, lookback_days + 1),
     )
 
     if len(perf_df) < 20:
