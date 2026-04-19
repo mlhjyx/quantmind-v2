@@ -13,7 +13,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
 - **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → **Phase 3 自动化** → Phase 4 PT重启
-- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → T+1 09:31执行 → 15:10对账
+- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → **17:35 pt_audit 主动守门** → T+1 09:31执行 → 15:10对账. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**.
 
 ## 技术栈（实际使用，非设计文档）
 
@@ -582,10 +582,11 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 **PT 状态 (2026-04-19 Session 10 末, 修正 Session 5 记录错误 + 暂停实盘)**:
 
-**当前状态**: ⏸️ **暂停 live 模式** (2026-04-19 Session 10 末, 等 ADR-008 命名空间契约 + 熔断修复交付后重启).
-  - `schtasks /disable QuantMind_DailyExecute` (09:31 live) ✅
-  - `schtasks /disable QuantMind_DailySignal` (16:30 signal) ✅
-  - `schtasks /disable QuantMind_DailyExecuteAfterData` (17:05 paper 污染源) ✅
+**当前状态** (2026-04-20 Session 17 末, Stage 4 分层重启 schtasks 进行中):
+  - `QuantMind_DailyExecute` (09:31 live) — 仍 disabled, 等 Stage 4.2 Session 18+ 评估 reenable
+  - `QuantMind_DailySignal` (16:30 signal) — **reenabled Stage 4 Session 17** (PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护, DB 写路径不触 QMT)
+  - `QuantMind_DailyExecuteAfterData` (17:05 paper 污染源) — **永久废除 Stage 4 Session 17** (从 setup_task_scheduler.ps1 源头删除, P0-δ 不再能复现)
+  - `QuantMind_PTAudit` (17:35) — **新增 Stage 4 Session 17** (5-check 主动守门 + 聚合钉钉 + scheduler_task_log)
   - QMT Data Service + PT_Watchdog 等只读任务保留
 
 **本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
@@ -616,11 +617,11 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | **α** | **熔断 L1-L4 live 彻底失效** | `risk_control_service` hardcoded 读 `execution_mode='paper'`, live 模式永远返 L0 "首次运行" | 真金 ¥1M 2 周无熔断保护, 本周 +0.5% 是运气 | ADR-008 阶段 2 PR-A |
 | β | execution_mode 读写不对称 | 写 'live' 读 'paper' (paper_broker/signal_service/pt_monitor hardcoded) | load_state 永远 empty → 每日当首次建仓 | 同上 |
 | γ | 每日换仓 | P0-β 表象 (不是 dv_ttm 衰减) | 换手 3× NAV, 成本放大 | P0-β 修后自愈 |
-| δ | 17:05 paper 污染 | `DailyExecuteAfterData` 无 `--execution-mode` 默认 paper, 向 live strategy_id 写 20 行 paper trade_log | 成本分析污染 | 已 disable (今晚) |
-| ε | ST 过滤漏 688184.SH | `load_universe` INNER JOIN race condition (status_date 覆盖率不全) | 4-14 买 → 4-15 卖, 双向成本 | ADR-008 阶段 2 PR-B |
-| P1-a | 组合跳空检测 live 失效 | `pt_monitor_service:57-58` hardcoded 'paper' | 单股告警 OK, 组合告警 silently 0 | ADR-008 阶段 2 PR-A |
-| P1-b | position_snapshot 4-17 缺失 | 16:30 signal_phase 预检失败, 20:58 重跑时 QMTClient 读 0 持仓 → save_qmt_state 写 0 持仓 | DB 状态滞后, QMT 真实持仓正确 | ADR-008 阶段 2 前手工补录 |
-| P1-c | save_qmt_state daily_return / drawdown 字段错 | prev_nav 查询 `execution_mode='paper'` 永远 empty → fallback 到 initial_capital | DB daily_return 4-15/16/17 与 NAV 手工算不一致 | P0-β 修后自愈 (阶段 2 PR-A) |
+| δ | 17:05 paper 污染 | `DailyExecuteAfterData` 无 `--execution-mode` 默认 paper, 向 live strategy_id 写 20 行 paper trade_log | 成本分析污染 | **永久废除 Stage 4 Session 17** (setup ps1 删除 + schtasks /delete) |
+| ε | ST 过滤漏 688184.SH | `load_universe` INNER JOIN race condition (status_date 覆盖率不全) | 4-14 买 → 4-15 卖, 双向成本 | ADR-008 阶段 2 PR-B (Session 14 PR #26) |
+| P1-a | 组合跳空检测 live 失效 | `pt_monitor_service:57-58` hardcoded 'paper' | 单股告警 OK, 组合告警 silently 0 | ADR-008 阶段 2 PR-A (Session 11 PR #23) |
+| P1-b | position_snapshot 4-17 缺失 | 16:30 signal_phase 预检失败, 20:58 重跑时 QMTClient 读 0 持仓 → save_qmt_state 写 0 持仓 | DB 状态滞后, QMT 真实持仓正确 | D2-a guard (Session 13 PR #25) + D2-c 补录 24 rows (Session 15 PR #27) |
+| P1-c | save_qmt_state daily_return / drawdown 字段错 | prev_nav 查询 `execution_mode='paper'` 永远 empty → fallback 到 initial_capital | DB daily_return 4-15/16/17 与 NAV 手工算不一致 | P0-β 修后自愈 (PR-A) |
 
 详见 `docs/adr/ADR-008-execution-mode-namespace-contract.md` + Session 10 memory handoff.
 
