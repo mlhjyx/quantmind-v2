@@ -7,8 +7,9 @@ Phase 0: 等权Top-N信号合成。
 - 行业约束(单行业≤25%)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import structlog
@@ -97,11 +98,39 @@ def _get_direction(fname: str) -> int:
     return FACTOR_DIRECTION.get(fname, 1)
 
 
+# MVP 2.3 Sub3 C2: CORE3+dv_ttm hardcoded fallback 常量 (SSOT drift 消除).
+#
+# 用途:
+#   1. SignalConfig.factor_names=None sentinel 回退 (50+ 老调用方 0 break)
+#   2. _build_paper_trading_config YAML load 失败时的 fail-safe
+#
+# 权威: `configs/pt_live.yaml:strategy.factors` (auditor.py L96-98 注释明定).
+# 本常量仅作 sentinel 回退值, auditor.check_config_alignment 会审 yaml ↔ python 对齐
+# 检出 drift 抛 ConfigDriftError (铁律 34). 若 yaml 改了因子, 更新此常量 + pt_live.yaml
+# 对齐即可, drift 被 auditor 硬拦截.
+_PT_FACTOR_NAMES_DEFAULT: tuple[str, ...] = (
+    "turnover_mean_20",
+    "volatility_20",
+    "bp_ratio",
+    "dv_ttm",
+)
+
+
 @dataclass
 class SignalConfig:
-    """信号生成配置。
+    """信号生成配置.
 
-    S2 F40 fix (2026-04-15): default 值已对齐生产 PT (CORE3+dv_ttm + monthly + no industry cap + SN=0.50).
+    Sub3 C2 change (2026-04-19): `factor_names` 改 sentinel `None` + `__post_init__` 回退
+    到 `_PT_FACTOR_NAMES_DEFAULT` (CORE3+dv_ttm). 动机:
+
+      - 消除 hardcoded `default_factory` 与 `_build_paper_trading_config` 的双份 SSOT 源
+      - 兼容 50+ 老调用方 `SignalConfig()` 无参构造 (行为保持 CORE3+dv_ttm)
+      - 硬拦截放 `auditor.check_config_alignment` (铁律 34), 不放 dataclass 侧
+
+    其他字段保持旧行为 — `rebalance_freq` / `turnover_cap` 默认仍匹配 PT 生产值 (monthly / 0.50),
+    避免破 50+ 调用方. PT 生产路径通过 `_build_paper_trading_config()` 从 YAML 读覆盖.
+
+    S2 F40 fix (2026-04-15): 默认值已对齐生产 PT (CORE3+dv_ttm + monthly + no industry cap + SN=0.50).
     任何未显式传参的 `SignalConfig()` 调用将拿到与 `PAPER_TRADING_CONFIG` 等价的默认值.
     """
 
@@ -113,38 +142,83 @@ class SignalConfig:
     cash_buffer: float = 0.03  # 现金缓冲3%: 目标权重总和 = 1 - cash_buffer
     size_neutral_beta: float = 0.50  # Step 6-H 验证, WF OOS Sharpe 0.8659 依赖此值
     regime_mode: str = "vol_regime"  # 'vol_regime'（启发式）或 'hmm_regime'（HMM）
-    factor_names: list[str] = field(
-        default_factory=lambda: [
-            # CORE3+dv_ttm (WF OOS Sharpe=0.8659, 2026-04-12 PASS)
-            # 历史: 原 8 因子 default (turnover_std/reversal/amihud/ln_mcap/ep_ratio 等) 已在
-            # Phase 2.4 WF 验证中全部淘汰. 详见 docs/audit/S2_consistency.md F40.
-            "turnover_mean_20",
-            "volatility_20",
-            "bp_ratio",
-            "dv_ttm",
-        ]
-    )
+    # Sub3 C2: sentinel None → __post_init__ 回退 _PT_FACTOR_NAMES_DEFAULT 消除 SSOT drift
+    factor_names: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        """Sub3 C2: factor_names=None 回退 CORE3+dv_ttm (50+ 老调用方 0 break)."""
+        if self.factor_names is None:
+            self.factor_names = list(_PT_FACTOR_NAMES_DEFAULT)
 
 
-# Route A配置: 5因子等权 + 月频
-# top_n / industry_cap 从 .env 读取（可配置），其余锁定
+# Route A配置: CORE3+dv_ttm 等权 + 月频
+# Sub3 C2 change (2026-04-19): `_build_paper_trading_config` 改从 `configs/pt_live.yaml` 读
+# factor_names / rebalance_freq / turnover_cap 取代 hardcoded 副本 (auditor.py L96-98 注释明定
+# "YAML 是 factor_list / rebalance_freq / turnover_cap 权威"). YAML 加载失败 fail-safe 回退
+# _PT_FACTOR_NAMES_DEFAULT (铁律 33 非静默: logger.warning 暴露).
+#
+# 其他字段仍从 .env 读 (top_n / industry_cap / size_neutral_beta 是 .env 权威字段, PT 可配置).
+def _load_pt_yaml_strategy() -> dict:
+    """直接读取 configs/pt_live.yaml 的 strategy 段. 独立 helper 避免 side effect.
+
+    Sub3 C2 review fix (自测): 原走 `from app.services.config_loader import load_config`
+    会触发 `app.services.__init__.py` import chain → sqlalchemy 等 IO 依赖加载,
+    破 `test_platform_import_has_no_side_effects` (Platform 入口纯度守门).
+    改直接 `yaml.safe_load` 绕开 app.services 整体 import.
+
+    Returns:
+        strategy 段 dict (空 dict 若文件缺失 / 格式异常, 让调用方 fallback).
+    """
+    import yaml
+
+    # 项目根 = backend/engines/signal_engine.py 向上 3 层
+    project_root = Path(__file__).resolve().parent.parent.parent
+    yaml_path = project_root / "configs" / "pt_live.yaml"
+    if not yaml_path.exists():
+        raise FileNotFoundError(f"pt_live.yaml not found: {yaml_path}")
+    with yaml_path.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError(f"pt_live.yaml 顶层不是 dict: {yaml_path}")
+    strategy = cfg.get("strategy", {})
+    if not isinstance(strategy, dict):
+        raise ValueError(f"pt_live.yaml strategy 段不是 dict: {yaml_path}")
+    return strategy
+
+
 def _build_paper_trading_config() -> SignalConfig:
-    """从 .env 构建PT配置，支持热部署（改.env+重启服务即生效）。"""
+    """从 YAML + .env 构建 PT 配置 (YAML 权威 for factor/freq/turnover, .env 权威 for top_n/industry/SN)."""
     from app.config import settings
 
+    # Sub3 C2: YAML 权威字段 (factor_names / rebalance_freq / turnover_cap)
+    factor_names: list[str]
+    rebalance_freq: str
+    turnover_cap: float
+    try:
+        strategy = _load_pt_yaml_strategy()
+        factors_raw = strategy.get("factors", [])
+        factor_names = [f["name"] for f in factors_raw if isinstance(f, dict) and "name" in f]
+        if not factor_names:
+            raise ValueError("pt_live.yaml strategy.factors 为空或格式不符 (expect list[{name, direction}])")
+        rebalance_freq = str(strategy.get("rebalance_freq", "monthly"))
+        turnover_cap = float(strategy.get("turnover_cap", 0.50))
+    except Exception as e:  # noqa: BLE001 — fail-safe fallback to hardcoded (铁律 33: warn non-silent)
+        logger.warning(
+            "[signal_engine] _build_paper_trading_config YAML load failed, "
+            "fallback hardcoded CORE3+dv_ttm (auditor 仍会审 drift): %s",
+            e,
+        )
+        factor_names = list(_PT_FACTOR_NAMES_DEFAULT)
+        rebalance_freq = "monthly"
+        turnover_cap = 0.50
+
     return SignalConfig(
-        factor_names=[
-            # CORE3+dv_ttm (WF OOS Sharpe=0.8659, 2026-04-12 PASS)
-            "turnover_mean_20",
-            "volatility_20",
-            "bp_ratio",
-            "dv_ttm",
-        ],
+        factor_names=factor_names,
         top_n=settings.PT_TOP_N,
         weight_method="equal",
-        rebalance_freq="monthly",
+        rebalance_freq=rebalance_freq,
         industry_cap=settings.PT_INDUSTRY_CAP,
-        turnover_cap=0.50,
+        turnover_cap=turnover_cap,
         size_neutral_beta=settings.PT_SIZE_NEUTRAL_BETA,
     )
 
