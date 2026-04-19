@@ -331,12 +331,14 @@ class PlatformBacktestRunner(BacktestRunner):
             exec_mode=config.pms_config.exec_mode,
         )
 
-        # Sub1 兼容: cost_model=full 覆盖 historical_stamp_tax (保持 Sub1 行为)
-        historical_tax = (
-            config.historical_stamp_tax if config.cost_model != "full" else True
-        )
-        if config.cost_model == "simplified":
+        # Sub1 兼容: cost_model 三分支显式 if/elif/else (review P2-A 修: 原两步 ternary 难读).
+        # full → 强制 True; simplified → 强制 False; 其他 → 透传 Platform 字段值.
+        if config.cost_model == "full":
+            historical_tax = True
+        elif config.cost_model == "simplified":
             historical_tax = False
+        else:
+            historical_tax = config.historical_stamp_tax
 
         bench_code = "000300.SH" if config.benchmark == "csi300" else ""
 

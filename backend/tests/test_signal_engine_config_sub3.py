@@ -83,6 +83,11 @@ class TestSignalConfigSentinel:
 class TestBuildPaperTradingConfigYamlAuthority:
     """Sub3 C2: _build_paper_trading_config 改从 pt_live.yaml 读 factor_names /
     rebalance_freq / turnover_cap. top_n / industry_cap / size_neutral_beta 仍从 .env.
+
+    Note (review P2-D): 这些测试 **re-invoke** ``_build_paper_trading_config()`` 函数,
+    不测试 module-level ``PAPER_TRADING_CONFIG`` 常量 (该常量在 module import 时已计算).
+    ``patch.object(signal_engine, "_load_pt_yaml_strategy", ...)`` 在 import 后注入
+    mock, 对 module-level 常量无影响, 但直接调用函数会走新 mock.
     """
 
     def test_pt_config_matches_yaml_production(self) -> None:
@@ -176,6 +181,10 @@ class TestBuildPaperTradingConfigYamlAuthority:
             PT_SIZE_NEUTRAL_BETA=0.77,
         )
 
+        # review P2-B note: patch("app.config.settings") 依赖 `_build_paper_trading_config`
+        # 内部用 `from app.config import settings` (函数体内 lazy import, 每次调用重新 resolve).
+        # 若未来重构为 module-level import, 本 patch target 会静默失效. 保持 lazy import
+        # 或改 patch("engines.signal_engine.settings") (若改 module-level).
         with (
             patch.object(signal_engine, "_load_pt_yaml_strategy", side_effect=_yaml_strategy),
             patch("app.config.settings", fake_settings),
