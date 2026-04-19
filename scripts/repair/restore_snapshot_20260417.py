@@ -21,6 +21,15 @@ Session 10 P1-b 根因链:
     4 precondition fail-loud + tx atomic 保证, 等效风控
   33 fail-loud: precondition 失败 raise, 拒绝 silent skip
   15 可复现: reconstruction 从 frozen data 确定性计算, 可单测
+
+回滚 (已 --apply 后如需 undo, 必含 execution_mode + strategy_id 过滤):
+
+    DELETE FROM position_snapshot
+    WHERE trade_date = '2026-04-17'
+      AND execution_mode = 'live'
+      AND strategy_id = '28fc37e5-2d32-4ada-92e0-41c11a5103d0';
+
+(缺 execution_mode 过滤将误删 paper 命名空间, 缺 strategy_id 误删其他策略.)
 """
 
 from __future__ import annotations
@@ -31,9 +40,17 @@ import os
 import sys
 from datetime import date
 from pathlib import Path
+from typing import TypedDict
 
 import psycopg2
 import psycopg2.extensions
+
+
+class _PositionEntry(TypedDict):
+    """Typed structure for reconstruct_positions entries. qty=int, avg_cost=float."""
+
+    qty: int
+    avg_cost: float
 
 # .env 加载 DATABASE_URL / PAPER_STRATEGY_ID
 _BACKEND = Path(__file__).resolve().parent.parent.parent / "backend"
@@ -64,19 +81,20 @@ class PreconditionError(RuntimeError):
 
 
 def get_sync_conn():
-    """Return psycopg2 connection with autocommit=False (本脚本需显式 tx)."""
+    """Return psycopg2 connection with autocommit=False (本脚本需显式 tx).
+
+    铁律 35: DATABASE_URL 未设置 → RAISE (不允许硬编码 fallback credential).
+    通常 .env loader 已 populate DATABASE_URL. 缺失即真配置错误 → fail-loud.
+    """
     url = os.environ.get("DATABASE_URL")
-    if url and url.startswith("postgresql+asyncpg://"):
-        url = "postgresql://" + url[len("postgresql+asyncpg://") :]
-    if url:
-        conn = psycopg2.connect(url)
-    else:
-        conn = psycopg2.connect(
-            dbname="quantmind_v2",
-            user="xin",
-            password="quantmind",
-            host="localhost",
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL not set. Configure backend/.env or export env var "
+            "before running this script (铁律 35 禁硬编码 credential)."
         )
+    if url.startswith("postgresql+asyncpg://"):
+        url = "postgresql://" + url[len("postgresql+asyncpg://") :]
+    conn = psycopg2.connect(url)
     conn.autocommit = False
     return conn
 
@@ -87,12 +105,14 @@ def assert_preconditions(
     repair_date: date,
     ref_date: date,
 ) -> None:
-    """4 项 precondition 守卫 — 任一失败 raise PreconditionError (铁律 33).
+    """3 upfront precondition 守卫 — 任一失败 raise PreconditionError (铁律 33).
 
     1. target_count == 0   (防重复 apply)
     2. baseline_count >= 1 (必需 4-16 snapshot 作 ground truth)
     3. fills_count >= 1    (必需 4-17 trade_log 作 transition)
-    4. klines 覆盖重算 codes = 100%
+
+    第 4 项 (klines 100% 覆盖) 在 fetch_closes 中守卫 (mid-execution guard),
+    因 codes 需 reconstruct_positions 之后才知. fetch_closes 亦 raise PreconditionError.
     """
     cur.execute(
         """SELECT COUNT(*) FROM position_snapshot
@@ -142,8 +162,12 @@ def reconstruct_positions(
     strategy_id: str,
     repair_date: date,
     ref_date: date,
-) -> dict[str, dict[str, float]]:
+) -> dict[str, _PositionEntry]:
     """从 ref_date snapshot + repair_date trade_log 重算 repair_date 持仓.
+
+    假设: ref_date snapshot 的 ``avg_cost`` 是真正的 all-time 加权均价 (由
+    ``daily_reconciliation.write_live_snapshot`` 写入, 从 trade_log live buy 历史
+    加权得出). 本函数只 incremental 叠加 repair_date 当日 fills, 保持该不变量.
 
     Returns:
         {code: {'qty': int, 'avg_cost': float}} 仅含 qty > 0 的 codes.
@@ -153,8 +177,9 @@ def reconstruct_positions(
            WHERE trade_date = %s AND execution_mode = 'live' AND strategy_id = %s""",
         (ref_date, strategy_id),
     )
-    positions: dict[str, dict[str, float]] = {
-        r[0]: {"qty": int(r[1]), "avg_cost": float(r[2] or 0)} for r in cur.fetchall()
+    positions: dict[str, _PositionEntry] = {
+        r[0]: _PositionEntry(qty=int(r[1]), avg_cost=float(r[2] or 0))
+        for r in cur.fetchall()
     }
 
     cur.execute(
@@ -166,19 +191,28 @@ def reconstruct_positions(
     for code, direction, qty, price in cur.fetchall():
         qty = int(qty)
         price = float(price)
-        pos = positions.setdefault(code, {"qty": 0, "avg_cost": 0.0})
+        pos = positions.setdefault(code, _PositionEntry(qty=0, avg_cost=0.0))
         prev_qty = pos["qty"]
         prev_cost = pos["avg_cost"]
         if direction == "buy":
             new_qty = prev_qty + qty
-            new_cost = (prev_qty * prev_cost + qty * price) / new_qty if new_qty > 0 else 0
+            new_cost = (prev_qty * prev_cost + qty * price) / new_qty if new_qty > 0 else 0.0
             pos["qty"] = new_qty
             pos["avg_cost"] = new_cost
         elif direction == "sell":
             new_qty = prev_qty - qty
+            if new_qty < 0:
+                # 数据完整性异常 — 卖出量超持仓. 不 silent drop, fail-loud warning.
+                logger.warning(
+                    "[reconstruction] %s sell qty=%d > prev_qty=%d (oversell) → 视为全平 qty=0. "
+                    "数据完整性问题, 需审查 trade_log vs snapshot 一致性.",
+                    code, qty, prev_qty,
+                )
+                new_qty = 0
             pos["qty"] = new_qty
             pos["avg_cost"] = prev_cost if new_qty > 0 else 0.0
-        # silent_ok: unknown direction (非 buy/sell) 不改 position (已铁律 33 校验 direction 非空)
+        # silent_ok: unknown direction (非 buy/sell) 不改 position — trade_log DDL CHECK
+        # 约束 direction IN ('buy','sell'), 本分支数据上不可达
 
     return {c: v for c, v in positions.items() if v["qty"] > 0}
 

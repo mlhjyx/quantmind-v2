@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
-import inspect
 import os
 import sys
 import uuid
@@ -131,14 +130,22 @@ def _seed_snapshot(conn, sid, td, code, qty, avg_cost=10.0):
     conn.commit()
 
 
-def _seed_fill(conn, sid, td, code, direction, qty, price):
+def _seed_fill(conn, sid, td, code, direction, qty, price, executed_at=None):
+    """Seed trade_log fill. 显式 executed_at 保证 ORDER BY 确定性 (P2 修).
+
+    如 executed_at=None, 用 ``td 09:32:00`` (合理市场时间) 保底. 测试需区分
+    同日多 fill 时, 显式传不同时间戳.
+    """
+    from datetime import datetime, time
+    if executed_at is None:
+        executed_at = datetime.combine(td, time(9, 32, 0))
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO trade_log
            (code, trade_date, strategy_id, market, direction, quantity, fill_price,
-            commission, stamp_tax, swap_cost, total_cost, execution_mode)
-           VALUES (%s, %s, %s, 'astock', %s, %s, %s, 5.0, 0.0, 0.0, 5.0, 'live')""",
-        (code, td, sid, direction, qty, price),
+            commission, stamp_tax, swap_cost, total_cost, execution_mode, executed_at)
+           VALUES (%s, %s, %s, 'astock', %s, %s, %s, 5.0, 0.0, 0.0, 5.0, 'live', %s)""",
+        (code, td, sid, direction, qty, price, executed_at),
     )
     conn.commit()
 
@@ -158,9 +165,20 @@ def _seed_kline(conn, td, code, close):
 class _ConnNoCloseProxy:
     """Proxy forwarding all attrs to real psycopg2 conn but no-op close().
 
-    psycopg2 connection.close is read-only, can't monkey-patch. We need to
-    share a single conn between fixture (for seeds + teardown) and
-    ``mod.run()`` (which calls conn.close()) — proxy allows sharing.
+    psycopg2 connection.close 是 read-only method 不可 monkey-patch. 需要在
+    fixture (seeds + teardown) 和 ``mod.run()`` (conn.close() 调用) 间共享同
+    一连接, proxy 允许共享.
+
+    设计决策:
+      - ``__init__`` 用 ``object.__setattr__`` bootstrap ``_conn`` 绕过自定义
+        ``__setattr__`` (否则会无限递归或找不到 ``_conn``).
+      - ``__getattr__`` 拦截属性读 (只在 proxy 本身没该属性时触发), 委托 ``_conn``.
+      - ``__setattr__`` 委托所有写 (含 ``autocommit``, ``rollback`` 调用 return
+        等) 到 ``_conn`` — 必要, 因为 ``mod.get_sync_conn`` 会设
+        ``conn.autocommit = False``, 去掉 ``__setattr__`` 会把 autocommit 挂在
+        proxy 上而非真 conn, 导致 tx 语义错乱.
+      - ``close()`` 是唯一 override 的方法 — no-op 让 ``mod.run()`` finally
+        段不真关闭 fixture conn, teardown 才是真正的 close 点.
     """
 
     def __init__(self, conn):
@@ -323,10 +341,14 @@ def test_apply_is_idempotent_via_precondition_guard(
     assert rc2 == 1, "第 2 次 apply 应 precondition fail (target 已有行)"
 
 
-def test_source_has_session_15_marker():
-    """源码 inspect: 确保 D2-c / Session 15 标记保留 (防未来误删)."""
-    src = inspect.getsource(mod)
-    assert "D2-c" in src, "源码 docstring 必须含 'D2-c' 定位 Session 15 修复"
-    assert "Session 15" in src, "源码必须含 'Session 15' 时序标记"
-    assert "PreconditionError" in src, "fail-loud 异常类必须保留"
-    assert "REPAIR_DATE = date(2026, 4, 17)" in src, "修复日期硬编码 (铁律 36 不可动态)"
+def test_module_constants_and_contract():
+    """模块属性契约 (防未来误改): REPAIR_DATE / REF_DATE hardcoded + PreconditionError 存在.
+
+    属性级断言 比源码文本搜索稳健 (legitimate refactor 不触发 false fail).
+    """
+    assert date(2026, 4, 17) == mod.REPAIR_DATE, "REPAIR_DATE 必须硬编码 4-17 (铁律 36 one-shot)"
+    assert date(2026, 4, 16) == mod.REF_DATE, "REF_DATE 必须硬编码 4-16 (baseline 前一交易日)"
+    assert hasattr(mod, "PreconditionError"), "fail-loud 异常类必须保留"
+    assert issubclass(mod.PreconditionError, RuntimeError), "PreconditionError 必须继承 RuntimeError"
+    # D2-c Session 15 标记仅作 docstring header 存在性验证 (非强断言)
+    assert mod.__doc__ and "D2-c" in mod.__doc__, "module docstring 必须含 D2-c 定位"
