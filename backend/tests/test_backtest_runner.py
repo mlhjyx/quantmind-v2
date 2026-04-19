@@ -522,9 +522,14 @@ def test_build_signal_config_fallback_uses_platform_size_neutral_beta(beta: floa
     assert sig_cfg.size_neutral_beta == beta
 
 
-def test_build_signal_config_none_provider_emits_userwarning():
-    """PR C3 review HIGH fix: signal_config_builder=None fallback emit UserWarning
-    对称 direction_provider=None (铁律 33 禁 silent failure).
+def test_build_signal_config_none_provider_no_warning_fallback_complete():
+    """Sub3 C4 (2026-04-19): signal_config_builder=None fallback 不发 UserWarning.
+
+    理由: `run_hybrid_backtest` 当前只读 signal_config.size_neutral_beta (L99-101).
+    fallback `SimpleNamespace(size_neutral_beta=config.size_neutral_beta)` 已完整覆盖
+    engine 消费面, 无 silent bug 风险. 去 PR C3 过度保守的 warning 降噪.
+
+    direction_provider=None 的 UserWarning 保留 (CORE 因子全 +1 placeholder 是真 silent bug).
     """
     import warnings as _w
 
@@ -534,11 +539,16 @@ def test_build_signal_config_none_provider_emits_userwarning():
         _w.simplefilter("always")
         sig_cfg = runner._build_signal_config(cfg)
 
+    # Fallback 返 SimpleNamespace 带 size_neutral_beta 值
     assert sig_cfg.size_neutral_beta == 0.50
-    assert any(
-        issubclass(w.category, UserWarning) and "signal_config_builder=None" in str(w.message)
-        for w in captured
-    ), "必须 emit UserWarning 提示 fallback 风险 (对称 direction_provider=None)"
+    # Sub3 C4: 去 signal_config_builder=None 的 UserWarning (降噪)
+    signal_config_warnings = [
+        w for w in captured
+        if issubclass(w.category, UserWarning) and "signal_config_builder=None" in str(w.message)
+    ]
+    assert not signal_config_warnings, (
+        f"Sub3 C4 已去 signal_config_builder=None UserWarning, 不应有: {signal_config_warnings}"
+    )
 
 
 def test_run_passes_signal_config_to_engine():
