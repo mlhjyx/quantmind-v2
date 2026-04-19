@@ -27,7 +27,9 @@ from typing import Any
 from uuid import uuid4
 
 from engines.backtest.config import BacktestConfig as EngineBacktestConfig
+from engines.backtest.config import PMSConfig as EnginePMSConfig
 from engines.backtest.runner import run_hybrid_backtest
+from engines.slippage_model import SlippageConfig as EngineSlippageConfig
 
 # app.data_fetcher.pipeline 提供 lineage gateway helpers (make_lineage / make_lineage_ref /
 # make_code_ref) 避免 Platform backtest → Platform data 跨 framework 违规
@@ -281,69 +283,101 @@ class PlatformBacktestRunner(BacktestRunner):
         return dict.fromkeys(factor_pool, 1)
 
     def _build_engine_config(self, config: BacktestConfig) -> Any:
-        """Platform BacktestConfig → Engine BacktestConfig 映射 (ADR-007 tech debt 之一).
+        """Platform BacktestConfig → Engine BacktestConfig 映射.
 
-        PR C3 改 staticmethod → instance method 支持 `engine_config_builder` 注入:
-          - 若 `self._engine_config_builder` 注入 → 优先走注入 (生产路径 YAML 全字段完整)
-          - 否则 fallback PR B 基础 5 字段映射 (保 backward compat, 测试 / 极简场景用)
+        Sub3 C4 升级 (2026-04-19): C1 扩 Platform BacktestConfig 字段 (+ UniverseFilter /
+        SlippageConfig / PMSConfig 嵌套) 后, fallback 由 **5 字段 → 14 字段全映射**, 消除
+        PR B/C3 fallback 依赖 Engine 默认值的技术债. 生产 YAML 驱动 scripts 仍可用
+        `engine_config_builder` 显式注入 override.
 
-        Fallback 映射点 (PR B 原行为):
-          - capital (Decimal str) → initial_capital (float, 走 Decimal 中转保精度, 金融铁律)
-          - top_n → top_n (直传)
-          - rebalance_freq → rebalance_freq (直传, daily/weekly/monthly)
+        映射点 (14 字段):
+          - capital (Decimal str) → initial_capital (float, Decimal 中转保精度, 金融铁律)
+          - top_n / rebalance_freq → 直传
           - benchmark ("csi300"/"none") → benchmark_code ("000300.SH"/"")
-          - cost_model ("simplified"/"full") → historical_stamp_tax
+          - cost_model ("simplified"/"full") → historical_stamp_tax (Sub1 兼容)
+          - Sub3 C1 新字段直传: turnover_cap / commission_rate / stamp_tax_rate /
+            historical_stamp_tax (若 explicit) / transfer_fee_rate / slippage_bps /
+            slippage_mode / volume_cap_pct / lot_size
+          - Platform SlippageConfig (frozen mirror) → engines SlippageConfig (frozen, 字段 1:1)
+          - Platform PMSConfig (frozen, tiers tuple-of-tuple) → engines PMSConfig
+            (@dataclass, tiers list[tuple])
 
-        **⚠️ Fallback 缺 14-5=9 字段** (slippage_config / pms / commission_rate /
-        stamp_tax_rate / transfer_fee_rate / lot_size / turnover_cap / volume_cap_pct
-        / slippage_bps 走 Engine 默认值). 生产 YAML 驱动 (pt_live.yaml PMS enabled /
-        slippage_config 自定义) 必走 engine_config_builder 注入路径.
+        **向后兼容**: Platform BacktestConfig Sub1 调用方 (无 Sub3 新字段) 走字段默认值, 等价
+        于 engines 老 default. 新字段 override (e.g. universe_filter / PMS enabled) 生效.
 
         PR B review P1 fix: `float(config.capital)` 对 "9999999.99" IEEE 754 精度丢失,
-        走 `Decimal` 中转 (金融金额规则: CLAUDE.md 编码规则 "金融金额用 Decimal").
+        走 `Decimal` 中转 (金融金额规则).
         """
         if self._engine_config_builder is not None:
             return self._engine_config_builder(config)
 
+        # Platform → engines SlippageConfig (字段 1:1 mirror, Sub3 C1 对齐)
+        engine_slippage = EngineSlippageConfig(
+            Y_large=config.slippage_config.Y_large,
+            Y_mid=config.slippage_config.Y_mid,
+            Y_small=config.slippage_config.Y_small,
+            sell_penalty=config.slippage_config.sell_penalty,
+            base_bps=config.slippage_config.base_bps,
+            base_bps_large=config.slippage_config.base_bps_large,
+            base_bps_mid=config.slippage_config.base_bps_mid,
+            base_bps_small=config.slippage_config.base_bps_small,
+            gap_penalty_factor=config.slippage_config.gap_penalty_factor,
+        )
+
+        # Platform → engines PMSConfig (tiers tuple-of-tuple → list[tuple] for engines 非 frozen)
+        engine_pms = EnginePMSConfig(
+            enabled=config.pms_config.enabled,
+            tiers=[tuple(t) for t in config.pms_config.tiers],
+            exec_mode=config.pms_config.exec_mode,
+        )
+
+        # Sub1 兼容: cost_model=full 覆盖 historical_stamp_tax (保持 Sub1 行为)
+        historical_tax = (
+            config.historical_stamp_tax if config.cost_model != "full" else True
+        )
+        if config.cost_model == "simplified":
+            historical_tax = False
+
         bench_code = "000300.SH" if config.benchmark == "csi300" else ""
-        historical_tax = config.cost_model == "full"
 
         return EngineBacktestConfig(
             initial_capital=float(Decimal(config.capital)),
             top_n=config.top_n,
             rebalance_freq=config.rebalance_freq,
-            benchmark_code=bench_code,
+            slippage_bps=config.slippage_bps,
+            slippage_mode=config.slippage_mode,
+            slippage_config=engine_slippage,
+            commission_rate=config.commission_rate,
+            stamp_tax_rate=config.stamp_tax_rate,
             historical_stamp_tax=historical_tax,
+            transfer_fee_rate=config.transfer_fee_rate,
+            lot_size=config.lot_size,
+            turnover_cap=config.turnover_cap,
+            benchmark_code=bench_code,
+            volume_cap_pct=config.volume_cap_pct,
+            pms=engine_pms,
         )
 
     def _build_signal_config(self, config: BacktestConfig) -> Any:
         """Platform BacktestConfig → signal_config 对象 (传给 run_hybrid_backtest).
 
-        PR C3 新增. `run_hybrid_backtest` 内部 L99-101 `hasattr(signal_config,
-        "size_neutral_beta")` 读 SN beta — 若不传 signal_config → SN=0 (PR B bug).
+        PR C3 新增 + Sub3 C4 精简 (2026-04-19): 去 UserWarning.
 
         两条路径:
           1. 若 `self._signal_config_builder` 注入 → 优先走注入 (生产路径 SignalConfig
-             完整字段, factor_names / industry_cap / turnover_cap / cash_buffer 等).
-             当前 run_hybrid_backtest 只读 size_neutral_beta 单字段, 其他字段保留未来
-             engine 扩展可用.
+             完整字段). 3 生产 scripts (run_backtest/regression_test/profile_backtest)
+             均走此路径.
           2. Fallback: 返 SimpleNamespace(size_neutral_beta=config.size_neutral_beta).
-             最小可用 — 让 engine 读对 Platform config.size_neutral_beta, 消除 PR B SN=0 bug.
-             **PR C3 review HIGH fix**: emit UserWarning 对称 `_resolve_directions` 的
-             `direction_provider=None` 设计 (铁律 33 禁 silent failure — 生产路径
-             fallback 应被 caller 显式知情).
+             `run_hybrid_backtest` L99-101 仅 `hasattr(signal_config, "size_neutral_beta")`
+             读 SN beta, 其他字段 engine 当前未读. 因此 1-field fallback **完整覆盖** engine
+             当前消费面, 无 silent bug 风险 — 去 PR C3 设的 UserWarning (降低噪音).
+
+        Sub3 C4 决策: 去 warning 理由 — fallback 带 Platform.size_neutral_beta 值已覆盖
+        engine 全部消费, 未来 engine 如扩读 signal_config 其他字段, 同步扩此 fallback 即可.
+        direction_provider=None 的 warning 保留 (CORE 因子全 +1 placeholder 是真 silent bug).
         """
         if self._signal_config_builder is not None:
             return self._signal_config_builder(config)
-        warnings.warn(
-            "PlatformBacktestRunner.signal_config_builder=None — fallback "
-            "SimpleNamespace(size_neutral_beta=config.size_neutral_beta). SignalConfig 其他 "
-            "7 字段 (factor_names / industry_cap / turnover_cap / cash_buffer / ...) 未传, "
-            "engine 读默认值. 生产路径 (pt_live.yaml 驱动) 必注入 signal_config_builder "
-            "(铁律 33/34).",
-            UserWarning,
-            stacklevel=3,
-        )
         return SimpleNamespace(size_neutral_beta=config.size_neutral_beta)
 
     def _build_lineage(
