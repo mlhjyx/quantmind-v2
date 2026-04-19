@@ -142,13 +142,15 @@ def test_oneshot_script_pre_main_imports(script: str) -> None:
     script_path = PROJECT_ROOT / script
     assert script_path.exists()
 
+    # review P2-A (两 reviewer 共识): 用 re.split `^def main\b` (MULTILINE) 防未来 script
+    # 含 `def main_helper` / 注释里 `# def main` 导致误分割, 范式更健壮.
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            f"import pathlib; "
+            f"import pathlib, re; "
             f"src = pathlib.Path(r'{script_path}').read_text(encoding='utf-8'); "
-            f"head = src.split('def main', 1)[0]; "
+            f"head = re.split(r'^def main\\b', src, maxsplit=1, flags=re.MULTILINE)[0]; "
             f"exec(compile(head, r'{script_path}', 'exec'), "
             f"{{'__name__': '__test__', '__file__': r'{script_path}'}}); "
             f"print('pre-main OK')",
