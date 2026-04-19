@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -46,7 +46,7 @@ def load_factor_values(trade_date, conn) -> pd.DataFrame:
     )
 
 
-def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
+def load_universe(trade_date: date, conn, min_avg_amount: float = 0.0) -> set[str]:
     """加载 Universe（排除 ST/新股/停牌/BJ/退市/低流动性）。
 
     Step 6-C 修复: 之前只过滤 volume>0, 导致 BJ 股全部进入信号。
@@ -62,32 +62,14 @@ def load_universe(trade_date, conn, min_avg_amount: float = 0.0) -> set[str]:
             (缺记录保守当 ST/停牌/新股排除, 铁律 33 fail-safe 精神).
       backward compat: historical backtest status_date==trade_date,
             语义完全等价 → regression max_diff=0 保持.
+      移除: 原 status_date 预计算 + 回退 + warning log 已删 (3 reviewer 一致 P1:
+            新 COALESCE(TRUE) 保守排除已完全守门, 原 status_date 查询是 dead
+            code + misleading warning. live 路径 stock_status_daily 未入
+            当日行时, LEFT JOIN 使所有 code 被 COALESCE 排除 → universe 空
+            → 下游信号失败 (铁律 33 fail-loud, 优于 silent lag bug).
 
     调用方: run_paper_trading.py Step 3
     """
-    import logging
-    _logger = logging.getLogger("load_universe")
-
-    # Step 1: 获取 stock_status_daily 最近可用日期（防止数据缺失导致ST过滤失效）
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT MAX(trade_date) FROM stock_status_daily WHERE trade_date <= %s",
-        (trade_date,),
-    )
-    row = cur.fetchone()
-    status_date = row[0] if row and row[0] else None
-    cur.close()
-
-    if status_date is None:
-        _logger.error("[load_universe] stock_status_daily 无数据! trade_date=%s, 返回空universe", trade_date)
-        return set()
-
-    if status_date != trade_date:
-        _logger.warning(
-            "[load_universe] stock_status_daily 数据滞后! 请求=%s, 实际使用=%s (差%d天)",
-            trade_date, status_date, (trade_date - status_date).days,
-        )
-
     df = pd.read_sql(
         """SELECT DISTINCT k.code
            FROM klines_daily k
