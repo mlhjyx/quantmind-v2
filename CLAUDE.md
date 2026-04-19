@@ -576,22 +576,59 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - volatility_20: ✅ active (IC=-0.114, direction=-1)
 - bp_ratio: ✅ active (IC=+0.107, direction=+1)
 - dv_ttm: ⚠️ **active → warning** (Session 5 lifecycle 补跑, |IC_MA20|/|IC_MA60|=0.517 < 0.8 阈值).
-  **PT 生产配置仍包含此因子**, 可能关联本周 -10.2% 回撤 (4-13 ~ 4-17). 下周五 19:00 lifecycle 再评估, 如持续 warning 考虑 CORE3 only (去 dv_ttm) 或加新因子
+  **PT 生产配置仍包含此因子**. 下周五 19:00 lifecycle 再评估, 如持续 warning 考虑 CORE3 only (去 dv_ttm) 或加新因子. ~~"可能关联本周 -10.2% 回撤"~~ Session 10 证伪 — 本周 NAV 实际 +0.5%, 见下方 PT 状态更新.
 - amihud_20: 降级→CORE5基线保留 (仍在factor_values, 不参与PT信号)
 - reversal_20: ⚠️ **active → warning** (Session 5 lifecycle 补跑, ratio=0.430 < 0.8, Session 4 handoff 预测 "待 beat 激活落库", 今天补跑 DB 状态更新. 不参与 PT 信号, 仅 CORE5 基线保留, 不影响生产)
 
-**PT状态 (2026-04-18 实测核实, 修正历史错误记录)**: **活跃运行** (连续持仓至少自 2026-04-02 起, 从未清仓). 时间线:
-  - 2026-04-02 ~ 04-13: 9 → 17 股持仓, MV ¥954K → ¥1,001K
-  - **2026-04-14 (周二) 月度调仓**: 17 → 21 股, 36 笔交易 (4-11 周末后首个交易日执行)
-  - 04-15/16/17: 22/22/19 股, 每日 8-20 笔调仓 (涨跌停/停牌换股)
-  - **当前 (Redis portfolio:nav 2026-04-18 15:30 北京)**: 19 股, NAV ¥1,008,299 (+0.83% vs ¥1M), cash ¥110,613 (11%), market_value ¥897,686
-  - 周内最大回撤: 4-13 ¥1,001K → 4-17 ¥899K = **-10.2%** (周六部分恢复)
+**PT 状态 (2026-04-19 Session 10 末, 修正 Session 5 记录错误 + 暂停实盘)**:
 
-配置 **CORE3+dv_ttm Top-20 月度 + SN b=0.50** (pt_live.yaml + .env 一致), PMS 启用 (L1/L2/L3 = 30%/15%, 20%/12%, 10%/10%).
+**当前状态**: ⏸️ **暂停 live 模式** (2026-04-19 Session 10 末, 等 ADR-008 命名空间契约 + 熔断修复交付后重启).
+  - `schtasks /disable QuantMind_DailyExecute` (09:31 live) ✅
+  - `schtasks /disable QuantMind_DailySignal` (16:30 signal) ✅
+  - `schtasks /disable QuantMind_DailyExecuteAfterData` (17:05 paper 污染源) ✅
+  - QMT Data Service + PT_Watchdog 等只读任务保留
 
-实盘有效样本 ~2 周 (4-02 ~ 4-17), 不足以评估 live Sharpe vs WF OOS 理论基准 0.8659. WF OOS MDD=-13.91%, 实盘周内 -10.2% 尚在范围内.
+**本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
 
-⚠️ 旧记录 "PT 已暂停+已清仓 (2026-04-10)" 完全错误 (Session 5 实测修正). 历史铁律 22 违规, 未来更新 PT 状态必须实测 DB + Redis.
+| 日 | NAV | 真实 daily_return (手工算) | DB daily_return 字段 ⚠️ | DB drawdown ⚠️ |
+|---|---|---|---|---|
+| 4-13 | ¥1,003,313 | N/A (周起点) | +0.35% | 0 |
+| 4-14 调仓 | ¥1,002,113 | **-0.12%** ✓ | -0.12% | -0.12% |
+| 4-15 | ¥1,001,187 | **-0.09%** | +0.12% ✗ | -0.21% |
+| 4-16 | ¥1,003,401 | **+0.22%** | +0.34% ✗ | 0 |
+| 4-17 | ¥1,008,299 | **+0.49%** | +0.83% ✗ | -0.17% ✗ |
+
+**周净变化**: 4-13 → 4-17 NAV +0.497% (涨). 最大真实单日 dd -0.12% (4-14 调仓). 建仓期回撤 4-02~4-03 -3.1% 已恢复. 自 4-02 建仓 989K → 4-17 1,008K = **+1.9%** 实盘累计.
+
+⚠️ **新发现 P1-c `save_qmt_state` daily_return / drawdown 字段 bug**: DB 字段值 (4-15/16/17 三天) 与 NAV 手工 pct_change 不匹配. 根因推测: `run_paper_trading.py:225` `SELECT nav FROM performance_series WHERE execution_mode='paper'` → paper 命名空间永远 empty → `prev_nav` fallback 到 `PAPER_INITIAL_CAPITAL=1,000,000` 而非前一日真实 NAV. 即 P0-β 命名空间根因的**又一个症状**. 阶段 2 PR-A 修 paper→live 动态后自愈. drawdown 字段同理 (peak_nav 算法也读 execution_mode='live' 但 prev_nav 来源污染传导).
+
+**Session 5 "-10.2%" 误读根因** (铁律 22/25 违反): 混淆 `market_value` (持仓市值) 与 `nav`. 4-14 卖 10 只 BJ 股 → cash 从 0% 升 11% → mv 降 10%, 但 NAV 没跌. 未来更新 PT 状态必须实测 `performance_series` + Redis + QMT 三源, 不凭印象.
+
+**时间线** (保留):
+  - 2026-04-02 ~ 04-13: 9 → 17 股持仓
+  - 2026-04-14 调仓 17 → 21 股 36 笔 (清 10 只 BJ 遗留 + 补新 top)
+  - 04-15/16/17: 22/22/19 股, 每日 8-20 笔换仓 (**每日换仓非预期, Session 10 定位为 P0-β 根因, 见下**)
+
+**Session 10 发现的致命 bug (live 裸奔 2 周, 今晚已止血暂停)**:
+
+| P0 | 问题 | 根因 | 影响 | 修复 |
+|---|---|---|---|---|
+| **α** | **熔断 L1-L4 live 彻底失效** | `risk_control_service` hardcoded 读 `execution_mode='paper'`, live 模式永远返 L0 "首次运行" | 真金 ¥1M 2 周无熔断保护, 本周 +0.5% 是运气 | ADR-008 阶段 2 PR-A |
+| β | execution_mode 读写不对称 | 写 'live' 读 'paper' (paper_broker/signal_service/pt_monitor hardcoded) | load_state 永远 empty → 每日当首次建仓 | 同上 |
+| γ | 每日换仓 | P0-β 表象 (不是 dv_ttm 衰减) | 换手 3× NAV, 成本放大 | P0-β 修后自愈 |
+| δ | 17:05 paper 污染 | `DailyExecuteAfterData` 无 `--execution-mode` 默认 paper, 向 live strategy_id 写 20 行 paper trade_log | 成本分析污染 | 已 disable (今晚) |
+| ε | ST 过滤漏 688184.SH | `load_universe` INNER JOIN race condition (status_date 覆盖率不全) | 4-14 买 → 4-15 卖, 双向成本 | ADR-008 阶段 2 PR-B |
+| P1-a | 组合跳空检测 live 失效 | `pt_monitor_service:57-58` hardcoded 'paper' | 单股告警 OK, 组合告警 silently 0 | ADR-008 阶段 2 PR-A |
+| P1-b | position_snapshot 4-17 缺失 | 16:30 signal_phase 预检失败, 20:58 重跑时 QMTClient 读 0 持仓 → save_qmt_state 写 0 持仓 | DB 状态滞后, QMT 真实持仓正确 | ADR-008 阶段 2 前手工补录 |
+| P1-c | save_qmt_state daily_return / drawdown 字段错 | prev_nav 查询 `execution_mode='paper'` 永远 empty → fallback 到 initial_capital | DB daily_return 4-15/16/17 与 NAV 手工算不一致 | P0-β 修后自愈 (阶段 2 PR-A) |
+
+详见 `docs/adr/ADR-008-execution-mode-namespace-contract.md` + Session 10 memory handoff.
+
+**QMT vs DB 4-16 对账** (Session 10 实测): QMT 真实 19 股 (NAV ¥1,008,299 cash ¥110,624), DB 4-16 snapshot 22 股. 差异源自 4-17 执行了 20 笔 QMT 真实下单 (8 新买 + 11 卖 + 3 加减仓), snapshot 未写入 (P1-b).
+
+配置 **CORE3+dv_ttm Top-20 月度 + SN b=0.50** (pt_live.yaml + .env 一致).
+
+⚠️ 旧记录 "PT 已暂停+已清仓 (2026-04-10)" 错误 (Session 5 修正). Session 5 "-10.2% 回撤" 也错误 (Session 10 修正). 两次铁律 22/25 违反, **未来更新 PT 状态前必须实测 `performance_series` + Redis + QMT**, 不凭 Redis portfolio:current 的 market_value 反推.
 
 ## 文档查阅索引
 

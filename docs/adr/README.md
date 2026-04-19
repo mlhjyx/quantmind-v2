@@ -13,6 +13,10 @@
 | [ADR-003](ADR-003-event-sourcing-streambus.md) | Event Sourcing StreamBus + PG (非 EventStoreDB) | accepted | 22, 38 |
 | [ADR-004](ADR-004-ci-3-layer-local.md) | CI 3 层本地 (pre-commit + pre-push + daily full) | accepted | 22, 40 |
 | [ADR-005](ADR-005-critical-not-db-event.md) | MVP 1.3c CRITICAL 不落 DB 走 critical_alert 事件 | accepted | 33 |
+| [ADR-006](ADR-006-data-framework-3-fetcher-strategy.md) | Data Framework 3 fetcher 策略 | accepted | — |
+| [ADR-007](ADR-007-mvp-2-3-backtest-run-alter-strategy.md) | MVP 2.3 Sub1 沿用老 backtest_run schema | accepted | 15, 17, 22, 25, 36, 38 |
+| [ADR-008](ADR-008-execution-mode-namespace-contract.md) | execution_mode 命名空间契约 (live/paper 物理隔离) | accepted | 25, 33, 34, 36, 39 |
+| [ADR-0009](ADR-0009-datacontract-tablecontract-convergence.md) | DataContract/TableContract convergence | accepted | — |
 
 ## 模板
 
