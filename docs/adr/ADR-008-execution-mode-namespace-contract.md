@@ -195,10 +195,14 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 - [x] **阶段 2 D2-a** (2026-04-19 Session 13 PR #25 `9ced069`): `save_qmt_state` L1 fail-loud 守卫 (`_assert_positions_not_evaporated`), 防 QMT 断连蒸发 snapshot
 - [x] **阶段 2 PR-B** (2026-04-19 Session 14 PR #26 `6e1f050`): `load_universe` ST LEFT JOIN + COALESCE conservative, 关闭 P0-ε 688184.SH ST race
 - [x] **阶段 2 D2-b** (2026-04-20 Session 15, 诊断闭合): P1-b 4-17 snapshot 蒸发根因定位 — `save_qmt_state` 在 D2-a 合并前无守卫 → **已被 D2-a 根除**, 不需新 code change. 详见下节 "D2-b 诊断结论".
-- [ ] **阶段 2 D2-c** (2026-04-20 Session 15): 手工补 4-17 snapshot (独立 PR + 执行分离)
-- [ ] **阶段 2 PR-C** (下周): pt_audit.py 5 检测 (ST 漏 / mode 错位 / 换手异常 / rebalance 日不符 / QMT drift)
-- [ ] **阶段 3 PR-D** (下下周): DDL strategy.execution_mode + 现有 strategy_id 迁移拆分
-- [ ] **阶段 4** (下下周末): 验证全套 + 重启 Servy live + 盯开盘 + audit guard 观察首周
+- [x] **阶段 2 D2-c** (2026-04-20 Session 15 PR #27 `337fd1c`): 手工补 4-17 snapshot — `scripts/repair/restore_snapshot_20260417.py` + 8 tests, DB apply 24 rows (reconstruct = 4-16 snapshot + 4-17 trade_log fills). C5 pass 证实 snapshot 正确.
+- [x] **阶段 2 PR-C** (2026-04-20 Session 16 PR #28 `96c7fe0`): `scripts/pt_audit.py` 5 主动 check (C1 st_leak P0 / C2 mode_mismatch P1 / C3 turnover_abnormal P1 / C4 rebalance_date P2 / C5 db_drift P1) + aggregated DingTalk alert + 10 tests. dry-run 4-17 验证: C3 68.4% P1 + C4 非月末 P2 捕获 Session 10 P0-γ 每日换仓.
+- [x] **阶段 4 Session 17** (2026-04-20): 分层重启 schtasks
+  - [x] `pt_audit` schtasks 上线 (`QuantMind_PTAudit` 17:35 + 非交易日 guard + `scheduler_task_log` 持久化 + `logs/pt_audit.log` FileHandler)
+  - [x] `QuantMind_DailySignal` (16:30) **reenable** — PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护 (DB 写路径不触 QMT)
+  - [x] `QuantMind_DailyExecuteAfterData` (17:05) **永久废除** — P0-δ paper 污染源, 从 `scripts/setup_task_scheduler.ps1` 源头删除. 业务由 `DailyReconciliation` 15:10 + `DailySignal` 16:30 替代. 手工 `schtasks /delete /tn QuantMind_DailyExecuteAfterData /f`.
+  - [ ] `QuantMind_DailyExecute` (09:31 live) reenable — 等 Stage 4.2 (Session 18+) 首周 pt_audit + dry-run 无异常后
+- [ ] **阶段 3 PR-D** (Session 19+): DDL strategy.execution_mode + CHECK + 现有 strategy_id=`28fc37e5` 迁移拆分为 `live_strat` + `paper_strat` + FK 打通 trade_log/position_snapshot/performance_series/circuit_breaker_state
 - [ ] 注册 ADR-008 → `python scripts/knowledge/register_adrs.py --apply`
 
 ## D2-b 诊断结论 (2026-04-20 Session 15)
