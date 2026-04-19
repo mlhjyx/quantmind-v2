@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import inspect
 import os
 import sys
 import uuid
@@ -50,10 +51,19 @@ if _PG_URL and _PG_URL.startswith("postgresql+asyncpg://"):
 
 # scripts/ 不是 package, 动态 import run_backtest
 def _load_load_universe():
-    """Dynamic import `load_universe` from scripts/run_backtest.py (非 package 路径)."""
+    """Dynamic import `load_universe` from scripts/run_backtest.py (非 package 路径).
+
+    用 distinct module name `run_backtest_test_shim` 防 sys.modules 冲突.
+    注册 sys.modules + assert spec.loader 非 None (Python-reviewer P2 hardening).
+    """
     spec_path = _REPO / "scripts" / "run_backtest.py"
-    spec = importlib.util.spec_from_file_location("run_backtest", spec_path)
+    module_name = "run_backtest_test_shim"
+    if module_name in sys.modules:
+        return sys.modules[module_name].load_universe
+    spec = importlib.util.spec_from_file_location(module_name, spec_path)
+    assert spec is not None and spec.loader is not None, f"Cannot load {spec_path}"
     module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module  # 防重复 exec 顶层 side-effect
     spec.loader.exec_module(module)
     return module.load_universe
 
@@ -92,13 +102,14 @@ def seeded_universe(sync_conn, test_prefix):
     """插入测试专属 code 到 klines_daily + stock_status_daily + symbols, 测试后清理.
 
     仿 test_pt_qmt_state.py:80-108 isolated_strategy 模式.
-    返回 (trade_date, dict[code, config]).
+    返回 3-tuple: (trade_date: date, _seed: callable, test_prefix: str).
+    `created_codes` 是内部 cleanup 实现细节, 不暴露给 caller.
     """
     today = date(2099, 1, 15)  # 远未来日, 无真实数据冲突
     cur = sync_conn.cursor()
     created_codes: list[str] = []
 
-    def _seed(code: str, ss_config: dict | None, board: str | None = None):
+    def _seed(code: str, ss_config: dict[str, bool] | None, board: str | None = None) -> None:
         """Insert one test code. ss_config=None → 无 stock_status_daily 行 (missing 场景).
         ss_config={'is_st': True/False, 'is_suspended': ..., 'is_new_stock': ...}.
         """
@@ -137,7 +148,7 @@ def seeded_universe(sync_conn, test_prefix):
         created_codes.append(code)
 
     try:
-        yield today, _seed, test_prefix, created_codes
+        yield today, _seed, test_prefix
     finally:
         for code in created_codes:
             # silent_ok: 测试 cleanup (铁律 33)
@@ -163,7 +174,7 @@ def test_excludes_ss_missing_row_conservative(sync_conn, seeded_universe):
 
     回归: 4-14 "fix" 之前的 LEFT JOIN + COALESCE(is_st, false) 宽松漏过 bug.
     """
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}01.SH"
     _seed(code, ss_config=None)  # 不插 stock_status_daily
 
@@ -173,7 +184,7 @@ def test_excludes_ss_missing_row_conservative(sync_conn, seeded_universe):
 
 def test_includes_when_all_flags_false(sync_conn, seeded_universe):
     """happy path: ss 行 is_st=false/is_suspended=false/is_new_stock=false → 包含."""
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}02.SH"
     _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
           board="main")
@@ -184,7 +195,7 @@ def test_includes_when_all_flags_false(sync_conn, seeded_universe):
 
 def test_excludes_ss_is_st_true(sync_conn, seeded_universe):
     """P0-ε 回归: 688184 场景 — is_st=true → 排除."""
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}03.SH"
     _seed(code, ss_config={"is_st": True, "is_suspended": False, "is_new_stock": False},
           board="main")
@@ -199,7 +210,7 @@ def test_excludes_ss_is_st_true(sync_conn, seeded_universe):
 )
 def test_excludes_single_flag_true(sync_conn, seeded_universe, flag_name):
     """单独 is_suspended=true 或 is_new_stock=true → 排除."""
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}04.SH"
     cfg = {"is_st": False, "is_suspended": False, "is_new_stock": False}
     cfg[flag_name] = True
@@ -215,7 +226,7 @@ def test_uses_actual_trade_date_not_status_date_lag(sync_conn, seeded_universe):
     旧 INNER JOIN + status_date 回退: 如 status_date=昨日, 用昨日 is_st=false → 漏过.
     新 LEFT JOIN + ss.trade_date=k.trade_date: 走今日 is_st=true → 正确排除.
     """
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}05.SH"
     cur = sync_conn.cursor()
     yesterday = today - timedelta(days=1)
@@ -240,7 +251,7 @@ def test_uses_actual_trade_date_not_status_date_lag(sync_conn, seeded_universe):
 
 def test_excludes_bse_board(sync_conn, seeded_universe):
     """board='bse' → 排除 (backward compat)."""
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}06.SH"
     _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
           board="bse")
@@ -251,7 +262,7 @@ def test_excludes_bse_board(sync_conn, seeded_universe):
 
 def test_excludes_bj_suffix(sync_conn, seeded_universe):
     """code LIKE '%%.BJ' → 排除 (backward compat)."""
-    today, _seed, prefix, _ = seeded_universe
+    today, _seed, prefix = seeded_universe
     code = f"{prefix}07.BJ"
     _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
           board="main")
@@ -262,8 +273,6 @@ def test_excludes_bj_suffix(sync_conn, seeded_universe):
 
 def test_source_contains_pr_b_marker():
     """源码 inspection: run_backtest.py 含 PR-B 关键特征 (防未来误删)."""
-    import inspect
-
     src = inspect.getsource(load_universe)
     assert "LEFT JOIN stock_status_daily" in src, "必须是 LEFT JOIN (非 INNER JOIN)"
     assert "ss.trade_date = k.trade_date" in src, "必须 k.trade_date correlated"
