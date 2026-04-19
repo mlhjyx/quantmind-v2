@@ -1,6 +1,12 @@
 """QMT↔DB状态同步 — 从run_paper_trading.py提取(Step 6-A)。
 
 将QMT实际持仓写入position_snapshot和performance_series。
+
+L1 Fail-Loud (D2-a, 2026-04-19): Session 10 发现 P1-b bug — QMT 断连/数据竞态
+时 QMTClient 返 0 持仓, ``save_qmt_state`` 无校验直接 DELETE + INSERT 0 行覆盖真实
+snapshot. 铁律 33 要求 production path fail-loud, 故在写前校验:
+"前一交易日 live snapshot ≥ 1 持仓 + 今日 QMT 返 0 → RAISE ``QMTEmptyPositionsError``".
+caller (``run_paper_trading.py:246``) 差异化 except 放行此异常到 outer log_step + sys.exit.
 """
 
 from __future__ import annotations
@@ -11,6 +17,48 @@ from datetime import date
 from app.config import settings
 
 logger = logging.getLogger("paper_trading")
+
+
+class QMTEmptyPositionsError(RuntimeError):
+    """FAIL-LOUD: QMT 返 0 持仓但前一交易日有记录 — 疑似 QMT 断连/数据竞态.
+
+    D2-a L1 guard (2026-04-19, 回应 Session 10 P1-b).
+    """
+
+
+def _assert_positions_not_evaporated(
+    cur, trade_date: date, strategy_id, qmt_positions: dict[str, int]
+) -> None:
+    """L1 fail-loud: 前一交易日有 live 持仓 + 今日 QMT 返 0 → RAISE.
+
+    只在 ``qmt_positions`` 为空时查 DB. prev snapshot 无行 (fresh start) 或 prev 行
+    全部 ``quantity=0`` 时放行 — 仅当"历史非空且今日空"触发.
+    """
+    if qmt_positions:
+        return
+    cur.execute(
+        """SELECT MAX(trade_date) FROM position_snapshot
+           WHERE strategy_id = %s AND execution_mode = 'live' AND trade_date < %s""",
+        (strategy_id, trade_date),
+    )
+    row = cur.fetchone()
+    prev_date = row[0] if row else None
+    if prev_date is None:
+        return  # fresh start, 无历史
+    cur.execute(
+        """SELECT COUNT(*) FROM position_snapshot
+           WHERE strategy_id = %s AND execution_mode = 'live'
+             AND trade_date = %s AND quantity > 0""",
+        (strategy_id, prev_date),
+    )
+    prev_count = cur.fetchone()[0]
+    if prev_count >= 1:
+        raise QMTEmptyPositionsError(
+            f"FAIL-LOUD: QMT 返 0 持仓但 {prev_date} 有 {prev_count} 只 live 持仓. "
+            f"疑似 QMT 断连/数据竞态. trade_date={trade_date} strategy_id={strategy_id}. "
+            f"手工排查: (1) Servy QMTData status; (2) redis portfolio:current; "
+            f"(3) xtquant 连接; 确认后手工补 position_snapshot 或等下一交易日."
+        )
 
 
 def save_qmt_state(
@@ -78,6 +126,9 @@ def _save_qmt_state_impl(
     """
     cur = conn.cursor()
     strategy_id = settings.PAPER_STRATEGY_ID
+
+    # D2-a L1 fail-loud (Session 10 P1-b 回应, 铁律 33): 前日 ≥1 持仓 + 今日空 → RAISE
+    _assert_positions_not_evaporated(cur, trade_date, strategy_id, qmt_positions)
 
     # 从 trade_log 批量查询加权平均成本 (P0 修复: 原硬编码 avg_cost=0 导致 PMS 全部跳过)
     avg_costs: dict[str, float] = {}
