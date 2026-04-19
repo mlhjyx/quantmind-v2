@@ -266,6 +266,7 @@ class SignalService:
             信号记录列表，每条含code/target_weight/action/rank。
         """
         cur = conn.cursor()
+        # ADR-008 D3-KEEP: signals 表跨模式共享, execution_mode 保持 hardcoded 'paper' (前端 UI + 分析工具契约)
         cur.execute(
             """SELECT code, target_weight, action, rank
                FROM signals
@@ -289,16 +290,19 @@ class SignalService:
     # ──────────────────────────────────────────────
 
     def _load_prev_weights(self, conn, strategy_id: str) -> dict[str, float]:
-        """读取最新持仓权重。对应 script L1174-1185。"""
+        """读取最新持仓权重。对应 script L1174-1185。
+
+        ADR-008 D2: position_snapshot 读取按 settings.EXECUTION_MODE 动态 (live/paper 物理隔离).
+        """
         cur = conn.cursor()
         cur.execute(
             """SELECT code, weight FROM position_snapshot
-               WHERE strategy_id = %s AND execution_mode = 'paper'
+               WHERE strategy_id = %s AND execution_mode = %s
                  AND trade_date = (
                    SELECT MAX(trade_date) FROM position_snapshot
-                   WHERE strategy_id = %s AND execution_mode = 'paper'
+                   WHERE strategy_id = %s AND execution_mode = %s
                  )""",
-            (strategy_id, strategy_id),
+            (strategy_id, settings.EXECUTION_MODE, strategy_id, settings.EXECUTION_MODE),
         )
         return {r[0]: float(r[1] or 0) for r in cur.fetchall()}
 
@@ -420,6 +424,7 @@ class SignalService:
         不commit，由调用方管理事务。
         """
         cur = conn.cursor()
+        # ADR-008 D3-KEEP: signals 表跨模式共享, 写入固定 'paper' (前端 UI 读该命名空间作为信号档案)
         # 清除当日旧信号（幂等）
         cur.execute(
             """DELETE FROM signals
