@@ -43,6 +43,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
+from typing import Literal
 
 import psycopg2
 import psycopg2.extensions
@@ -129,32 +130,51 @@ def _is_trading_day(
 ) -> bool:
     """Check trading_calendar (astock). 复用 daily_reconciliation.py:40-46 模式.
 
-    未入库日期 → False (保守). 复用 standalone script pattern (CLAUDE.md L622).
+    row 不存在 (calendar 未入库) → False + logger.warning (可观测区分于 is_trading_day=False)
+    row 存在 is_trading_day=False → False (周末 / 节假日, 静默)
+    复用 standalone script pattern (CLAUDE.md L622).
+
+    Reviewer P1 (code): row is None 需 warning 区分 "calendar 未入" vs "is_trading_day=False",
+    避免 DBA 误 TRUNCATE trading_calendar 导致 pt_audit 静默长期失效.
+    Reviewer P1 (python): cursor with-context 管理.
     """
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT is_trading_day FROM trading_calendar "
-        "WHERE market = 'astock' AND trade_date = %s",
-        (d,),
-    )
-    row = cur.fetchone()
-    return bool(row and row[0])
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT is_trading_day FROM trading_calendar "
+            "WHERE market = 'astock' AND trade_date = %s",
+            (d,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        logger.warning(
+            "[audit] %s 不在 trading_calendar, 按非交易日保守跳过 (check calendar 入库)",
+            d,
+        )
+        return False
+    return bool(row[0])
 
 
 def _write_scheduler_log(
     conn: psycopg2.extensions.connection,
     audit_date: date,
     strategy_id: str,
-    status: str,
+    status: Literal["success", "alert", "skipped"],
     exit_code: int,
     findings: list[Finding],
 ) -> None:
     """Write scheduler_task_log row. Silent-ok on failure (铁律 33(c) read-path fallback).
 
     仿 daily_reconciliation.py:408-424 模式. status: 'success' / 'alert' / 'skipped'.
+
+    Reviewer P2 fixes:
+      - status 用 Literal 3-enum (原 str 过松)
+      - result_json 加 "schema_version": 1 防未来 schema drift (database reviewer P2)
+      - 去 conn.commit() (autocommit=True 冗余, code+database reviewer 一致)
+      - cursor with-context (python reviewer P1)
     """
     try:
         result_json = {
+            "schema_version": 1,
             "audit_date": str(audit_date),
             "strategy_id": strategy_id,
             "checks_run": list(CHECK_LIST),
@@ -170,15 +190,14 @@ def _write_scheduler_log(
                 for f in findings
             ],
         }
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO scheduler_task_log
-               (task_name, market, schedule_time, start_time, status, result_json)
-               VALUES ('pt_audit', 'astock', NOW(), NOW(), %s, %s)""",
-            (status, psycopg2.extras.Json(result_json)),
-        )
-        # autocommit=True on pt_audit conn, .commit() is harmless no-op
-        conn.commit()
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, status, result_json)
+                   VALUES ('pt_audit', 'astock', NOW(), NOW(), %s, %s)""",
+                (status, psycopg2.extras.Json(result_json)),
+            )
+        # autocommit=True on pt_audit conn (get_sync_conn L110), INSERT 立即 commit, 无需 conn.commit()
     except Exception as e:
         # silent_ok: scheduler_task_log 失败不阻审计主流程, findings 已 stdout/DingTalk
         logger.warning("[scheduler_task_log] write failed: %s", e)
@@ -539,6 +558,7 @@ def run_audit(
     """
     conn = get_sync_conn()
     all_findings: list[Finding] = []
+    exit_code_final: int = 0  # Reviewer P1 (code+python): 避免 send_aggregated_alert raise 时 UnboundLocalError
     try:
         # Stage 4: 非交易日 guard — 跳过审计, 写 skipped log (monitoring 可见)
         if not _is_trading_day(conn, audit_date):
@@ -580,7 +600,6 @@ def run_audit(
         # Stage 4: 写 scheduler_task_log (status=success/alert 基于 findings)
         if not all_findings:
             _write_scheduler_log(conn, audit_date, strategy_id, "success", 0, [])
-            exit_code_final = 0
         else:
             exit_code_final = min(_LEVEL_EXIT_CODE.get(f.level, 99) for f in all_findings)
             _write_scheduler_log(
@@ -588,7 +607,8 @@ def run_audit(
             )
     finally:
         conn.close()
-    return (exit_code_final if all_findings else 0, all_findings)
+    # Reviewer P2-A: simplify return (exit_code_final 已 0 初始化 + 若 findings 重新赋值)
+    return (exit_code_final, all_findings)
 
 
 def main() -> None:

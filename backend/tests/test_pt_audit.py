@@ -378,18 +378,21 @@ def test_module_constants_and_contract():
 def _query_scheduler_log(
     conn: psycopg2.extensions.connection, sid: str,
 ) -> list[dict]:
-    """Return pt_audit scheduler_task_log rows for this sid (test helper)."""
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT status, result_json FROM scheduler_task_log
-           WHERE task_name = 'pt_audit'
-             AND result_json->>'strategy_id' = %s
-           ORDER BY created_at ASC""",
-        (sid,),
-    )
-    rows = []
-    for status, result_json in cur.fetchall():
-        rows.append({"status": status, "result_json": result_json})
+    """Return pt_audit scheduler_task_log rows for this sid (test helper).
+
+    Reviewer P2 (python): cursor with-context.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT status, result_json FROM scheduler_task_log
+               WHERE task_name = 'pt_audit'
+                 AND result_json->>'strategy_id' = %s
+               ORDER BY created_at ASC""",
+            (sid,),
+        )
+        rows = []
+        for status, result_json in cur.fetchall():
+            rows.append({"status": status, "result_json": result_json})
     return rows
 
 
@@ -456,14 +459,17 @@ def test_run_audit_writes_scheduler_task_log_on_findings(sync_conn, isolated_str
         strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
     )
     # top level = P1 (C3) → exit_code=2; C4 P2 同 findings 列表但非 top
+    # Reviewer P2 (python): tighten >= 2 (C3 turnover + C4 非月末 both trigger precisely)
     assert exit_code == 2
-    assert len(findings) >= 1  # 至少 C3, 可能还有 C4
+    assert len(findings) >= 2, f"expected C3 + C4 both trigger (>=2), got {len(findings)}: {findings}"
 
     logs = _query_scheduler_log(sync_conn, sid)
     assert len(logs) == 1, f"expected 1 alert log, got {logs}"
     assert logs[0]["status"] == "alert"
     assert logs[0]["result_json"]["exit_code"] == 2
-    assert logs[0]["result_json"]["findings_count"] >= 1
+    assert logs[0]["result_json"]["findings_count"] >= 2
+    # Reviewer P2 (database): result_json 含 schema_version 防未来 drift
+    assert logs[0]["result_json"]["schema_version"] == 1
     # 验证 findings 结构 (check / level / title / detail 都入 JSON)
     first = logs[0]["result_json"]["findings"][0]
     assert "check" in first
