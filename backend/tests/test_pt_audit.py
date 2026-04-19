@@ -130,6 +130,13 @@ def isolated_strategy(sync_conn):
                 "DELETE FROM trading_calendar WHERE trade_date BETWEEN %s AND %s",
                 (date(2099, 4, 1), date(2099, 4, 30)),
             )
+        # Stage 4: 清理 pt_audit 写入的 scheduler_task_log 行 (按 sid 隔离)
+        with contextlib.suppress(Exception):
+            cur.execute(
+                "DELETE FROM scheduler_task_log "
+                "WHERE task_name = 'pt_audit' AND result_json->>'strategy_id' = %s",
+                (sid,),
+            )
         with contextlib.suppress(Exception):
             cur.execute("DELETE FROM strategy WHERE id = %s", (sid,))
 
@@ -358,5 +365,108 @@ def test_module_constants_and_contract():
     assert callable(mod.check_db_drift)
     assert callable(mod.run_audit)
     assert callable(mod.send_aggregated_alert)
+    # Stage 4 contract: 新 helpers 暴露供测试 + monitoring
+    assert callable(mod._is_trading_day)
+    assert callable(mod._write_scheduler_log)
     assert mod.TURNOVER_THRESHOLD_DEFAULT == 0.30
     assert mod.REBAL_TURNOVER_THRESHOLD == 0.01
+
+
+# ─── Stage 4 Tests ───────────────────────────────────────────────
+
+
+def _query_scheduler_log(
+    conn: psycopg2.extensions.connection, sid: str,
+) -> list[dict]:
+    """Return pt_audit scheduler_task_log rows for this sid (test helper)."""
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT status, result_json FROM scheduler_task_log
+           WHERE task_name = 'pt_audit'
+             AND result_json->>'strategy_id' = %s
+           ORDER BY created_at ASC""",
+        (sid,),
+    )
+    rows = []
+    for status, result_json in cur.fetchall():
+        rows.append({"status": status, "result_json": result_json})
+    return rows
+
+
+def test_run_audit_skips_non_trading_day(sync_conn, isolated_strategy):
+    """Stage 4 guard: 非交易日 → exit 0, skipped log row, 无 check 执行."""
+    sid, _audit_date, _ref_date = isolated_strategy
+    # fixture 种的 4-15 是 trading_day, 用 4-17 (fixture 未种) 且强制 is_trading_day=false
+    non_td = date(2099, 4, 17)
+    cur = sync_conn.cursor()
+    cur.execute(
+        """INSERT INTO trading_calendar (trade_date, market, is_trading_day, is_half_day)
+           VALUES (%s, 'astock', false, false) ON CONFLICT DO NOTHING""",
+        (non_td,),
+    )
+    try:
+        exit_code, findings = mod.run_audit(
+            strategy_id=sid, audit_date=non_td, only_checks=None, alert=False,
+        )
+        assert exit_code == 0
+        assert findings == []
+        logs = _query_scheduler_log(sync_conn, sid)
+        assert len(logs) == 1, f"expected 1 skipped log row, got {logs}"
+        assert logs[0]["status"] == "skipped"
+        assert logs[0]["result_json"]["exit_code"] == 0
+        assert logs[0]["result_json"]["findings_count"] == 0
+    finally:
+        with contextlib.suppress(Exception):
+            cur.execute("DELETE FROM trading_calendar WHERE trade_date = %s", (non_td,))
+
+
+def test_run_audit_writes_scheduler_task_log_on_success(sync_conn, isolated_strategy):
+    """Stage 4: 全部 check pass → 1 row status='success' + result_json 完整."""
+    sid, _fixture_audit, _fixture_ref = isolated_strategy
+    audit_date = date(2099, 4, 30)  # 月末 (C4 skip)
+    ref_date = date(2099, 4, 16)
+    _seed_snapshot(sync_conn, sid, ref_date, "TA020.SH", 200, 10.0)
+    _seed_perf(sync_conn, sid, audit_date, nav=100000.0)
+    _seed_trade_log(sync_conn, sid, audit_date, "TA020.SH", "buy", 200, 10.0)
+    _seed_snapshot(sync_conn, sid, audit_date, "TA020.SH", 400, 10.0)
+
+    exit_code, findings = mod.run_audit(
+        strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
+    )
+    assert exit_code == 0
+    assert findings == []
+
+    logs = _query_scheduler_log(sync_conn, sid)
+    assert len(logs) == 1, f"expected 1 success log, got {logs}"
+    assert logs[0]["status"] == "success"
+    assert logs[0]["result_json"]["exit_code"] == 0
+    assert logs[0]["result_json"]["findings_count"] == 0
+    assert set(logs[0]["result_json"]["checks_run"]) == set(mod.CHECK_LIST)
+
+
+def test_run_audit_writes_scheduler_task_log_on_findings(sync_conn, isolated_strategy):
+    """Stage 4: C3 触发 → status='alert' + findings 入 result_json + exit_code=2 (P1)."""
+    sid, audit_date, _ = isolated_strategy  # fixture audit_date = 2099-04-15 (非月末)
+    _seed_perf(sync_conn, sid, audit_date, nav=100000.0)
+    # turnover = 4000 * 10 = 40000 / 100000 = 0.40 > 0.30 → C3 P1 trigger
+    # 且非月末 + 40% > 1% → C4 P2 也 trigger
+    _seed_trade_log(sync_conn, sid, audit_date, "TA021.SH", "buy", 4000, 10.0)
+
+    exit_code, findings = mod.run_audit(
+        strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
+    )
+    # top level = P1 (C3) → exit_code=2; C4 P2 同 findings 列表但非 top
+    assert exit_code == 2
+    assert len(findings) >= 1  # 至少 C3, 可能还有 C4
+
+    logs = _query_scheduler_log(sync_conn, sid)
+    assert len(logs) == 1, f"expected 1 alert log, got {logs}"
+    assert logs[0]["status"] == "alert"
+    assert logs[0]["result_json"]["exit_code"] == 2
+    assert logs[0]["result_json"]["findings_count"] >= 1
+    # 验证 findings 结构 (check / level / title / detail 都入 JSON)
+    first = logs[0]["result_json"]["findings"][0]
+    assert "check" in first
+    assert "level" in first
+    assert "title" in first
+    assert "detail" in first
