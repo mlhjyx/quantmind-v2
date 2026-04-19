@@ -11,8 +11,13 @@
 #   T日 16:40  QuantMind_DataQualityCheck        数据质量巡检(全表时效+行数验证)
 #   T+1 09:31  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
 #   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
-#   T+1 17:05  QuantMind_DailyExecuteAfterData   SimBroker执行(收盘数据可用后)
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
+#   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
+#
+# 废除历史:
+#   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
+#     原因: ADR-008 P0-δ paper 污染源 (无 --execution-mode 参数默认落 paper 命名空间)
+#     替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
 
 $PythonExe = "D:\quantmind-v2\.venv\Scripts\python.exe"
 $ProjectRoot = "D:\quantmind-v2"
@@ -117,30 +122,10 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31)" -ForegroundColor Green
 
-# ── 5. QuantMind_DailyExecuteAfterData: 每日17:05 ────────
-$execAfterAction = New-ScheduledTaskAction `
-    -Execute $PythonExe `
-    -Argument "$ProjectRoot\scripts\run_paper_trading.py execute" `
-    -WorkingDirectory $ProjectRoot
-
-$execAfterTrigger = New-ScheduledTaskTrigger -Daily -At "17:05"
-
-$execAfterSettings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-    -StartWhenAvailable `
-    -DontStopOnIdleEnd `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries
-
-Register-ScheduledTask `
-    -TaskName "QuantMind_DailyExecuteAfterData" `
-    -Description "QuantMind V2: SimBroker模式T+1日17:05执行(收盘数据可用后)" `
-    -Action $execAfterAction `
-    -Trigger $execAfterTrigger `
-    -Settings $execAfterSettings `
-    -Force
-
-Write-Host "[OK] QuantMind_DailyExecuteAfterData registered (daily 17:05)" -ForegroundColor Green
+# ── 5. [已废除 Session 17 Stage 4] QuantMind_DailyExecuteAfterData (17:05) ────────
+# 废除原因: ADR-008 P0-δ paper 污染源 (原 --Argument "... execute" 无 --execution-mode 默认 paper)
+# 替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
+# 手工清理 (已跑的机器需执行): schtasks /delete /tn "QuantMind_DailyExecuteAfterData" /f
 
 # ── 6. QuantMind_DailyMoneyflow: 每日16:35 ───────────────
 $mfAction = New-ScheduledTaskAction `
@@ -271,6 +256,34 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_FactorHealthDaily registered (daily 17:30)" -ForegroundColor Green
 
+# ── 10b. QuantMind_PTAudit: 每日17:35 (Stage 4 主动守门) ─────
+# C1 st_leak (P0) / C2 mode_mismatch (P1) / C3 turnover_abnormal (P1)
+# C4 rebalance_date_mismatch (P2) / C5 db_drift (P1)
+# 依赖链: DailySignal 16:30 → save_qmt_state ~17:00 → pt_audit 17:35 对齐 (C5 可查当日 snapshot)
+$auditAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\pt_audit.py --alert" `
+    -WorkingDirectory $ProjectRoot
+
+$auditTrigger = New-ScheduledTaskTrigger -Daily -At "17:35"
+
+$auditSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_PTAudit" `
+    -Description "QuantMind V2: pt_audit 5-check post-trade guard + DingTalk aggregated alert (Stage 4 Session 17)" `
+    -Action $auditAction `
+    -Trigger $auditTrigger `
+    -Settings $auditSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_PTAudit registered (daily 17:35)" -ForegroundColor Green
+
 # ── 11. QuantMind_PT_Watchdog: 每日20:00 ─────────────
 $wdAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
@@ -347,5 +360,5 @@ Register-ScheduledTask `
 Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "Task Scheduler setup complete (13 tasks). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (13 tasks; Stage 4: -DailyExecuteAfterData +PTAudit). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
