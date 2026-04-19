@@ -1,19 +1,48 @@
-"""PT 本周 -10.2% 回撤根因调查 (Session 10, 2026-04-19).
+"""PT 本周回撤根因调查 (Session 10, 2026-04-19).
 
 只读查询, 不改任何数据. 直接用 psycopg2, 不走 backend imports 防 shadow.
+DATABASE_URL 从 env / backend/.env 读 (铁律 35 源码不硬编码密码).
+
+用法:
+    .venv/Scripts/python.exe scripts/research/investigate_pt_drawdown.py
 """
 
-import psycopg2
-import pandas as pd
+import os
+import warnings
+from pathlib import Path
 
-PG = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
-STRAT = "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
+import pandas as pd
+import psycopg2
+
+# 压 pandas 对 raw psycopg2 的 UserWarning (pandas >= 2.0 推荐 SQLAlchemy, 对一次性调查脚本不引入)
+warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+
+# 从 backend/.env 或环境读 DATABASE_URL (铁律 35)
+_ENV = Path(__file__).resolve().parents[2] / "backend" / ".env"
+if _ENV.exists():
+    for _line in _ENV.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+PG = os.environ.get("DATABASE_URL")
+if not PG:
+    raise RuntimeError(
+        "DATABASE_URL not set; backend/.env 也读不到. "
+        "source backend/.env 或显式设 DATABASE_URL env var."
+    )
+# asyncpg URL → psycopg2 格式
+if PG.startswith("postgresql+asyncpg://"):
+    PG = "postgresql://" + PG[len("postgresql+asyncpg://") :]
+
+STRAT = os.environ.get("PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0")
 
 conn = psycopg2.connect(PG)
 conn.autocommit = True
 
 
-def section(t):
+def section(t: str) -> None:
     print("\n" + "=" * 80)
     print(f"[{t}]")
     print("=" * 80)

@@ -590,15 +590,17 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 **本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
 
-| 日 | NAV | 日收益 | 累计 | drawdown |
+| 日 | NAV | 真实 daily_return (手工算) | DB daily_return 字段 ⚠️ | DB drawdown ⚠️ |
 |---|---|---|---|---|
-| 4-13 | ¥1,003,313 | +0.35% | +0.33% | 0 |
-| 4-14 调仓 | ¥1,002,113 | -0.12% | +0.21% | -0.12% |
-| 4-15 | ¥1,001,187 | +0.12% | +0.12% | -0.21% |
-| 4-16 | ¥1,003,401 | +0.34% | +0.34% | 0 |
-| 4-17 | ¥1,008,299 | +0.83% | +0.83% | -0.17% |
+| 4-13 | ¥1,003,313 | N/A (周起点) | +0.35% | 0 |
+| 4-14 调仓 | ¥1,002,113 | **-0.12%** ✓ | -0.12% | -0.12% |
+| 4-15 | ¥1,001,187 | **-0.09%** | +0.12% ✗ | -0.21% |
+| 4-16 | ¥1,003,401 | **+0.22%** | +0.34% ✗ | 0 |
+| 4-17 | ¥1,008,299 | **+0.49%** | +0.83% ✗ | -0.17% ✗ |
 
-**本周 +0.5% (涨), 非回撤**. 最大单日 dd -0.21%. 建仓期真实回撤在 4-02~4-03 (-3.1%) 已恢复. 自 4-02 建仓 989K → 4-17 1,008K = **+1.9%** 实盘累计.
+**周净变化**: 4-13 → 4-17 NAV +0.497% (涨). 最大真实单日 dd -0.12% (4-14 调仓). 建仓期回撤 4-02~4-03 -3.1% 已恢复. 自 4-02 建仓 989K → 4-17 1,008K = **+1.9%** 实盘累计.
+
+⚠️ **新发现 P1-c `save_qmt_state` daily_return / drawdown 字段 bug**: DB 字段值 (4-15/16/17 三天) 与 NAV 手工 pct_change 不匹配. 根因推测: `run_paper_trading.py:225` `SELECT nav FROM performance_series WHERE execution_mode='paper'` → paper 命名空间永远 empty → `prev_nav` fallback 到 `PAPER_INITIAL_CAPITAL=1,000,000` 而非前一日真实 NAV. 即 P0-β 命名空间根因的**又一个症状**. 阶段 2 PR-A 修 paper→live 动态后自愈. drawdown 字段同理 (peak_nav 算法也读 execution_mode='live' 但 prev_nav 来源污染传导).
 
 **Session 5 "-10.2%" 误读根因** (铁律 22/25 违反): 混淆 `market_value` (持仓市值) 与 `nav`. 4-14 卖 10 只 BJ 股 → cash 从 0% 升 11% → mv 降 10%, 但 NAV 没跌. 未来更新 PT 状态必须实测 `performance_series` + Redis + QMT 三源, 不凭印象.
 
@@ -618,6 +620,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | ε | ST 过滤漏 688184.SH | `load_universe` INNER JOIN race condition (status_date 覆盖率不全) | 4-14 买 → 4-15 卖, 双向成本 | ADR-008 阶段 2 PR-B |
 | P1-a | 组合跳空检测 live 失效 | `pt_monitor_service:57-58` hardcoded 'paper' | 单股告警 OK, 组合告警 silently 0 | ADR-008 阶段 2 PR-A |
 | P1-b | position_snapshot 4-17 缺失 | 16:30 signal_phase 预检失败, 20:58 重跑时 QMTClient 读 0 持仓 → save_qmt_state 写 0 持仓 | DB 状态滞后, QMT 真实持仓正确 | ADR-008 阶段 2 前手工补录 |
+| P1-c | save_qmt_state daily_return / drawdown 字段错 | prev_nav 查询 `execution_mode='paper'` 永远 empty → fallback 到 initial_capital | DB daily_return 4-15/16/17 与 NAV 手工算不一致 | P0-β 修后自愈 (阶段 2 PR-A) |
 
 详见 `docs/adr/ADR-008-execution-mode-namespace-contract.md` + Session 10 memory handoff.
 
