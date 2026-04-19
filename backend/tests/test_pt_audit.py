@@ -135,10 +135,18 @@ def isolated_strategy(sync_conn):
 
 
 def _seed_trade_log(
-    conn, sid, td, code, direction, qty, price, execution_mode="live",
-    executed_at=None,
-):
+    conn: psycopg2.extensions.connection,
+    sid: str,
+    td: date,
+    code: str,
+    direction: str,
+    qty: int,
+    price: float,
+    execution_mode: str = "live",
+    executed_at: datetime | None = None,
+) -> None:
     if executed_at is None:
+        # 铁律 41 waiver: trade_log.executed_at 是 TIMESTAMPTZ 但测试数据无真实时区语义
         executed_at = datetime.combine(td, time(9, 32))
     cur = conn.cursor()
     cur.execute(
@@ -150,7 +158,9 @@ def _seed_trade_log(
     )
 
 
-def _seed_st_status(conn, td, code, is_st):
+def _seed_st_status(
+    conn: psycopg2.extensions.connection, td: date, code: str, is_st: bool,
+) -> None:
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO stock_status_daily
@@ -161,7 +171,9 @@ def _seed_st_status(conn, td, code, is_st):
     )
 
 
-def _seed_perf(conn, sid, td, nav):
+def _seed_perf(
+    conn: psycopg2.extensions.connection, sid: str, td: date, nav: float,
+) -> None:
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO performance_series
@@ -173,7 +185,14 @@ def _seed_perf(conn, sid, td, nav):
     )
 
 
-def _seed_snapshot(conn, sid, td, code, qty, avg_cost=10.0):
+def _seed_snapshot(
+    conn: psycopg2.extensions.connection,
+    sid: str,
+    td: date,
+    code: str,
+    qty: int,
+    avg_cost: float = 10.0,
+) -> None:
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO position_snapshot
@@ -184,7 +203,9 @@ def _seed_snapshot(conn, sid, td, code, qty, avg_cost=10.0):
     )
 
 
-def _seed_kline(conn, td, code, close):
+def _seed_kline(
+    conn: psycopg2.extensions.connection, td: date, code: str, close: float,
+) -> None:
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO klines_daily (code, trade_date, open, high, low, close,
@@ -267,15 +288,16 @@ def test_check_rebalance_date_detects_non_month_end(sync_conn, isolated_strategy
 
 
 def test_check_db_drift_reconstructs_and_diffs(sync_conn, isolated_strategy):
-    """C5: seed yesterday 1 code + today 1 new buy → expected=2, snapshot=1 → drift."""
+    """C5: seed yesterday 1 code + today 1 new buy → expected=2, snapshot=1 → drift.
+
+    Reviewer P2-5: reconstruct_positions 只读 position_snapshot + trade_log, 不读 klines,
+    故本测试不 seed klines (原 seed 是 dead fixture).
+    """
     sid, audit_date, ref_date = isolated_strategy
     # Yesterday snapshot: 1 code
     _seed_snapshot(sync_conn, sid, ref_date, "TA008.SH", 100, 10.0)
     # Today: 1 new buy of TA009.SH
     _seed_trade_log(sync_conn, sid, audit_date, "TA009.SH", "buy", 50, 12.0)
-    # Today klines (expected for reconstruct but not strictly needed here)
-    _seed_kline(sync_conn, audit_date, "TA008.SH", 10.0)
-    _seed_kline(sync_conn, audit_date, "TA009.SH", 12.0)
     # Today snapshot: only TA008.SH (missing TA009 = drift)
     _seed_snapshot(sync_conn, sid, audit_date, "TA008.SH", 100, 10.0)
 
@@ -285,19 +307,35 @@ def test_check_db_drift_reconstructs_and_diffs(sync_conn, isolated_strategy):
     assert "TA009.SH" in findings[0].detail["missing_from_snapshot"]
 
 
+def test_check_db_drift_skips_when_no_prev_snapshot(sync_conn, isolated_strategy):
+    """C5 boundary: prev_date 存在 but 无 live snapshot → reconstruct 空 expected.
+
+    Reviewer P1-5 补强: 防 Integration test green path 巧合 pass.
+    expected_codes={}, actual_codes={} → 相等 → pass.
+    """
+    sid, audit_date, _ = isolated_strategy
+    # 不 seed 任何 yesterday snapshot / today fills / today snapshot
+    findings = mod.check_db_drift(sync_conn, sid, audit_date)
+    assert findings == [], "empty expected + empty actual 应 pass"
+
+
 def test_integration_no_findings_green_path(sync_conn, isolated_strategy, monkeypatch):
-    """Integration: 月末 + 正常换手 + live only + 无 ST + 无 drift → all pass, exit=0."""
-    sid, _, ref_date = isolated_strategy
+    """Integration: 月末 + 正常换手 + live only + 无 ST + 无 drift → all pass, exit=0.
+
+    Reviewer P1-5 提点: seed ref_date snapshot + today snapshot 确保 C5
+    真正 reconstruct → match (非空 expected vs 非空 actual), 非巧合空集合 match.
+    """
+    sid, _fixture_audit, _fixture_ref = isolated_strategy
     audit_date = date(2099, 4, 30)  # 月末最后交易日
-    # 种月末 calendar (fixture 已种)
+    ref_date = date(2099, 4, 16)  # 前一交易日 (fixture 已种 calendar)
+    # Yesterday snapshot 1 code (reconstruct 起点, 非空 expected 确保 C5 真跑 reconstruct)
+    _seed_snapshot(sync_conn, sid, ref_date, "TA010.SH", 200, 10.0)
     _seed_perf(sync_conn, sid, audit_date, nav=100000.0)
-    # turnover 2% < 30% threshold (C3) < 1% would trigger C4 but 月末不触发
-    _seed_trade_log(sync_conn, sid, audit_date, "TA010.SH", "buy", 200, 10.0)  # 2000/100000 = 2%
+    # turnover 2% < 30% (C3 pass), 月末 (C4 skip 因月末)
+    _seed_trade_log(sync_conn, sid, audit_date, "TA010.SH", "buy", 200, 10.0)  # +200 shares, qty=400
     # 无 ST status → C1 pass (保守 FALSE)
-    # 无前日 snapshot → C5 skip? prev_date 是 ref_date (fixture 2099-04-14)
-    # 为 pass C5: 今日 fill 1 code, 今日 snapshot 同 1 code
-    _seed_kline(sync_conn, audit_date, "TA010.SH", 10.0)
-    _seed_snapshot(sync_conn, sid, audit_date, "TA010.SH", 200, 10.0)
+    # Today snapshot: qty=400 (reconstruct 期望 = 200+200)
+    _seed_snapshot(sync_conn, sid, audit_date, "TA010.SH", 400, 10.0)
 
     exit_code, findings = mod.run_audit(
         strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
