@@ -392,7 +392,7 @@ class TestPaperBrokerReturnTuple:
         # 构造价格数据（A涨停封板）
         price_data = _make_price_data(codes, [td], limit_up_codes={td: ["A"]})
 
-        broker = PaperBroker(strategy_id="test_strategy", initial_capital=1_000_000)
+        broker = PaperBroker(strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000)
         # 手动初始化状态（跳过DB load）
         broker.broker = SimBroker(BacktestConfig(initial_capital=1_000_000))
         broker.broker.cash = 1_000_000
@@ -427,7 +427,7 @@ class TestPaperBrokerReturnTuple:
         codes = ["A"]
         price_data = _make_price_data(codes, [td])  # A正常交易
 
-        broker = PaperBroker(strategy_id="test_strategy", initial_capital=1_000_000)
+        broker = PaperBroker(strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000)
         broker.broker = SimBroker(BacktestConfig(initial_capital=1_000_000))
         broker.broker.cash = 500_000
         broker.broker.holdings = {}

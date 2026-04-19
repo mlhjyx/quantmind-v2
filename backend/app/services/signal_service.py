@@ -193,8 +193,10 @@ class SignalService:
 
         # ── 判断是否调仓日 ──
         # 对应 script L1247-1252
+        # ADR-008 D2: execution_mode 显式传入 (铁律 31 Engine 层不 import app.config)
         paper_broker = PaperBroker(
             strategy_id=strategy_id,
+            execution_mode=settings.EXECUTION_MODE,
             initial_capital=settings.PAPER_INITIAL_CAPITAL,
         )
         paper_broker.load_state(conn)

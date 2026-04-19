@@ -153,8 +153,10 @@ class ExecutionService:
         # ── paper模式（现有路径，保持不变） ──
 
         # 加载Broker状态
+        # ADR-008 D2: execution_mode 显式传入 (铁律 31)
         paper_broker = PaperBroker(
             strategy_id=strategy_id,
+            execution_mode=execution_mode,
             initial_capital=initial_capital,
         )
         paper_broker.load_state(conn)

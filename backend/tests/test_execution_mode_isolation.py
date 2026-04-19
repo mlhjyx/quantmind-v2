@@ -54,10 +54,8 @@ if _ENV.exists():
             _k, _, _v = _line.partition("=")
             os.environ.setdefault(_k.strip(), _v.strip())
 
-_PG_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
-)
-if _PG_URL.startswith("postgresql+asyncpg://"):
+_PG_URL = os.environ.get("DATABASE_URL")
+if _PG_URL and _PG_URL.startswith("postgresql+asyncpg://"):
     _PG_URL = "postgresql://" + _PG_URL[len("postgresql+asyncpg://") :]
 
 
@@ -66,7 +64,12 @@ if _PG_URL.startswith("postgresql+asyncpg://"):
 
 @pytest.fixture
 def sync_conn():
-    """psycopg2 同步连接, autocommit=True (生产 Service 路径契约一致)."""
+    """psycopg2 同步连接, autocommit=True (生产 Service 路径契约一致).
+
+    铁律 35: 禁止源码硬编码 DATABASE_URL fallback. backend/.env 未配置时 skip.
+    """
+    if not _PG_URL:
+        pytest.skip("DATABASE_URL not set (backend/.env 未配置) — skipping integration tests")
     conn = psycopg2.connect(_PG_URL)
     conn.autocommit = True
     try:
@@ -164,7 +167,7 @@ def _seed_trade(conn, sid, td, code, direction, qty, mode_):
 
 
 def test_paper_broker_load_state_reads_own_mode(sync_conn, isolated_strategy, mode):
-    """PaperBroker.load_state 按 settings.EXECUTION_MODE 读 position_snapshot."""
+    """PaperBroker.load_state 按 execution_mode 参数读 position_snapshot (铁律 31 显式注入)."""
     from engines.paper_broker import PaperBroker
 
     sid = isolated_strategy
@@ -175,7 +178,7 @@ def test_paper_broker_load_state_reads_own_mode(sync_conn, isolated_strategy, mo
     _seed_performance(sync_conn, sid, td, 1_000_000.0, "paper")
     _seed_performance(sync_conn, sid, td, 2_000_000.0, "live")
 
-    broker = PaperBroker(strategy_id=sid)
+    broker = PaperBroker(strategy_id=sid, execution_mode=mode)
     state = broker.load_state(sync_conn)
 
     if mode == "paper":
@@ -186,11 +189,9 @@ def test_paper_broker_load_state_reads_own_mode(sync_conn, isolated_strategy, mo
         assert state.nav == pytest.approx(2_000_000.0)
 
 
-def test_paper_broker_cross_mode_isolation(sync_conn, isolated_strategy, monkeypatch):
+def test_paper_broker_cross_mode_isolation(sync_conn, isolated_strategy):
     """paper 模式 load_state 看不到 live 数据, 反之亦然 (同 strategy_id)."""
-    from engines.paper_broker import PaperBroker  # noqa: I001
-
-    from app.config import settings
+    from engines.paper_broker import PaperBroker
 
     sid = isolated_strategy
     td = date(2024, 1, 3)
@@ -198,14 +199,12 @@ def test_paper_broker_cross_mode_isolation(sync_conn, isolated_strategy, monkeyp
     _seed_performance(sync_conn, sid, td, 3_000_000.0, "live")
 
     # paper 模式: live 命名空间数据不可见 → holdings empty
-    monkeypatch.setattr(settings, "EXECUTION_MODE", "paper")
-    broker = PaperBroker(strategy_id=sid)
+    broker = PaperBroker(strategy_id=sid, execution_mode="paper")
     paper_state = broker.load_state(sync_conn)
     assert paper_state.holdings == {}
 
     # live 模式: 看得到 live 数据
-    monkeypatch.setattr(settings, "EXECUTION_MODE", "live")
-    broker2 = PaperBroker(strategy_id=sid)
+    broker2 = PaperBroker(strategy_id=sid, execution_mode="live")
     live_state = broker2.load_state(sync_conn)
     assert live_state.holdings == {"000002.SZ": 500}
     assert live_state.nav == pytest.approx(3_000_000.0)
@@ -459,19 +458,26 @@ def test_beta_hedge_signature_requires_execution_mode():
 
 
 def test_d3_signal_service_signals_table_stays_paper():
-    """signal_service.py 的 3 处 signals 表操作保持 hardcoded 'paper'."""
+    """signal_service.py 的 3 处 signals 表操作保持 hardcoded 'paper'.
+
+    regex 用 re.DOTALL + 限距懒惰匹配 (300 字符内), 防 refactor 跨函数假阳性
+    (code reviewer P1 + python reviewer P3 合并守门).
+    """
     src = (_BACKEND / "app" / "services" / "signal_service.py").read_text(encoding="utf-8")
-    # get_latest_signals SELECT signals WHERE 'paper' (懒惰匹配允许中间含其他 =)
+    # get_latest_signals SELECT signals WHERE 'paper'
     assert re.search(
-        r"FROM signals\s+WHERE[\s\S]*?execution_mode\s*=\s*'paper'", src
+        r"FROM signals\s+WHERE.{0,200}?execution_mode\s*=\s*'paper'",
+        src, re.DOTALL,
     ), "D3 破契约: signal_service.py get_latest_signals 必须保留 execution_mode='paper'"
-    # _write_signals DELETE signals WHERE 'paper'
+    # _write_signals DELETE signals WHERE 'paper' (限 200 字符内)
     assert re.search(
-        r"DELETE FROM signals\s+WHERE[\s\S]*?execution_mode\s*=\s*'paper'", src
+        r"DELETE FROM signals\s+WHERE.{0,200}?execution_mode\s*=\s*'paper'",
+        src, re.DOTALL,
     ), "D3 破契约: signal_service.py _write_signals DELETE 必须保留 'paper'"
-    # _write_signals INSERT signals VALUES 'paper'
+    # _write_signals INSERT signals VALUES 'paper' (限 500 字符内, INSERT 字段列表较长)
     assert re.search(
-        r"INSERT INTO signals[\s\S]*?VALUES[\s\S]*?'paper'", src
+        r"INSERT INTO signals.{0,500}?VALUES.{0,300}?'paper'",
+        src, re.DOTALL,
     ), "D3 破契约: signal_service.py _write_signals INSERT VALUES 必须保留 'paper'"
 
 
@@ -479,7 +485,8 @@ def test_d3_run_paper_trading_signals_update_stays_paper():
     """run_paper_trading.py --force-rebalance UPDATE signals 保持 hardcoded 'paper'."""
     src = (_REPO / "scripts" / "run_paper_trading.py").read_text(encoding="utf-8")
     assert re.search(
-        r"UPDATE signals[\s\S]{0,200}execution_mode\s*=\s*'paper'", src
+        r"UPDATE signals.{0,300}?execution_mode\s*=\s*'paper'",
+        src, re.DOTALL,
     ), "D3 破契约: run_paper_trading.py L287 UPDATE signals 必须保留 'paper'"
 
 
@@ -487,11 +494,12 @@ def test_d3_run_paper_trading_signals_update_stays_paper():
 
 
 def test_d2_run_paper_trading_prev_nav_parametric():
-    """run_paper_trading.py L225 prev_nav SELECT 不再 hardcoded 'paper'."""
+    """run_paper_trading.py L225 prev_nav SELECT 不再 hardcoded 'paper' (re.DOTALL 支持多行)."""
     src = (_REPO / "scripts" / "run_paper_trading.py").read_text(encoding="utf-8")
-    # prev_nav 查询必须用 %s 参数化
+    # prev_nav 查询必须用 %s 参数化 (允许多行格式化)
     assert re.search(
-        r"SELECT nav FROM performance_series WHERE execution_mode=%s", src
+        r"SELECT nav FROM performance_series\s+WHERE.{0,100}?execution_mode\s*=\s*%s",
+        src, re.DOTALL,
     ), "D2 破契约: run_paper_trading L225 prev_nav 必须参数化 execution_mode=%s"
 
 

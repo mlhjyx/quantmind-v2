@@ -5,6 +5,7 @@ Phase 1 实盘: 替换为指数期货/ETF融券真实对冲。
 """
 
 from datetime import date
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ logger = structlog.get_logger(__name__)
 def calc_portfolio_beta(
     trade_date: date,
     strategy_id: str,
-    execution_mode: str,
+    execution_mode: Literal["paper", "live"],
     lookback_days: int = 60,
     conn=None,
 ) -> float:
