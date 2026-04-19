@@ -85,7 +85,13 @@ def isolated_strategy(sync_conn):
             cur.execute("DELETE FROM strategy WHERE id = %s", (sid,))
 
 
-def _seed_prev_position(conn, sid, td, code, qty):
+def _seed_prev_position(
+    conn: psycopg2.extensions.connection,
+    sid: str,
+    td: date,
+    code: str,
+    qty: int,
+) -> None:
     """种一行 prev position_snapshot (execution_mode='live')."""
     cur = conn.cursor()
     cur.execute(
@@ -221,6 +227,38 @@ def test_no_raise_when_today_has_positions(sync_conn, isolated_strategy, monkeyp
         (sid, today),
     )
     assert cur.fetchone()[0] == 3
+
+
+def test_fail_loud_across_weekend_gap_evaporation(
+    sync_conn, isolated_strategy, monkeypatch
+):
+    """prev=周五 (2026-04-17) + today=周一 (2026-04-20) + 今日 {} → RAISE.
+
+    覆盖 `MAX(trade_date) < %s` 跨周末查找路径下的 evaporation 真 raise.
+    test_no_raise_across_weekend_gap (下方) 用 today 非空验证 early-return,
+    本测试用 today 空验证 SQL 跨周末 prev_date 后仍触发 fail-loud.
+    """
+    from app.services.pt_qmt_state import QMTEmptyPositionsError, save_qmt_state
+
+    sid = isolated_strategy
+    _monkey_strategy(monkeypatch, sid)
+    friday = date(2026, 4, 17)
+    monday = date(2026, 4, 20)
+
+    for i in range(3):
+        _seed_prev_position(sync_conn, sid, friday, f"00000{i}.SZ", 100)
+
+    with pytest.raises(QMTEmptyPositionsError, match=r"FAIL-LOUD.*3 只 live"):
+        save_qmt_state(
+            sync_conn,
+            monday,
+            qmt_positions={},
+            today_close={},
+            nav=1_000_000.0,
+            prev_nav=1_000_000.0,
+            qmt_nav_data={"cash": 1_000_000},
+            benchmark_close=None,
+        )
 
 
 def test_no_raise_across_weekend_gap(sync_conn, isolated_strategy, monkeypatch):

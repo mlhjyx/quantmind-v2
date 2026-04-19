@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+import psycopg2.extensions
+
 from app.config import settings
 
 logger = logging.getLogger("paper_trading")
@@ -27,7 +29,10 @@ class QMTEmptyPositionsError(RuntimeError):
 
 
 def _assert_positions_not_evaporated(
-    cur, trade_date: date, strategy_id, qmt_positions: dict[str, int]
+    cur: psycopg2.extensions.cursor,
+    trade_date: date,
+    strategy_id: str,
+    qmt_positions: dict[str, int],
 ) -> None:
     """L1 fail-loud: 前一交易日有 live 持仓 + 今日 QMT 返 0 → RAISE.
 
