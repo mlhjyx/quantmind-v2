@@ -3,6 +3,7 @@
 
 Step 6-D Fix 6: 提供 WF OOS 对照的全样本基线。
 Phase B M2 (2026-04-15): 扩展保存 regression_test 需要的聚合 parquets, 支持 F75.
+MVP 2.3 Sub2 (2026-04-19): 迁 Platform SDK (原直调 run_hybrid_backtest).
 
 输出文件 (cache/baseline/):
   - nav_12yr.parquet           — 全样本 NAV 时序 (回测结果)
@@ -18,6 +19,13 @@ Phase B M2 (2026-04-15): 扩展保存 regression_test 需要的聚合 parquets, 
   这是 "一次性 bootstrap" 脚本. 生成的 factor_data_12yr / price_data_12yr 成为
   regression_test 的**冻结输入**, 之后不应被覆盖 (除非有意识重建基线 + git commit 提升版本).
   生成时会 REWRITE nav_12yr.parquet + metrics_12yr.json (确保与输入一致).
+
+迁移说明 (MVP 2.3 Sub2):
+  - 走 `PlatformBacktestRunner` + `InMemoryBacktestRegistry` + `LIVE_PT` mode
+    (借 ad-hoc 语义: 不 override start/end + 不 cache)
+  - `engine_config_builder` 注入完整 Engine BacktestConfig (SlippageConfig/PMS/historical 税)
+  - `data_loader` closure 提供已加载的 factor/price/bench (保留 parquet cache 逻辑)
+  - 从 `result.engine_artifacts["engine_result"]` 取 daily_nav/trades (铁律 15 锚点不漂)
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 logging.disable(logging.DEBUG)
 
@@ -41,10 +50,15 @@ structlog.configure(
 logging.getLogger().setLevel(logging.WARNING)
 
 import pandas as pd  # noqa: E402
-from engines.backtest import BacktestConfig, PMSConfig  # noqa: E402
-from engines.backtest.runner import run_hybrid_backtest  # noqa: E402
+from engines.backtest.config import BacktestConfig as EngineBacktestConfig  # noqa: E402
+from engines.backtest.config import PMSConfig  # noqa: E402
 from engines.metrics import calc_max_drawdown, calc_sharpe, calc_sortino  # noqa: E402
 from engines.slippage_model import SlippageConfig  # noqa: E402
+
+from backend.platform._types import BacktestMode  # noqa: E402
+from backend.platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
+from backend.platform.backtest import InMemoryBacktestRegistry  # noqa: E402
+from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "backtest"
@@ -88,7 +102,8 @@ def main():
 
     factor_df, price_df, bench_df = load_12yr_parquet_cache()
 
-    config = BacktestConfig(
+    # Engine BacktestConfig — 与迁前完全对齐 (铁律 15 锚点)
+    engine_cfg = EngineBacktestConfig(
         initial_capital=1_000_000,
         top_n=20,
         rebalance_freq="monthly",
@@ -98,9 +113,45 @@ def main():
         pms=PMSConfig(enabled=True, exec_mode="same_close"),
     )
 
+    # Platform BacktestConfig — 构 config_hash 稳定 (sorted factor_pool + datetime.date)
+    trading_days = sorted(price_df["trade_date"].unique())
+    start_date = pd.Timestamp(trading_days[0]).date()
+    end_date = pd.Timestamp(trading_days[-1]).date()
+    factor_pool = tuple(sorted(DIRECTIONS.keys()))
+
+    platform_cfg = PlatformBacktestConfig(
+        start=start_date,
+        end=end_date,
+        universe="all_a",
+        factor_pool=factor_pool,
+        rebalance_freq="monthly",
+        top_n=20,
+        industry_cap=1.0,
+        size_neutral_beta=0.0,
+        cost_model="full",  # historical_stamp_tax=True
+        capital="1000000",
+        benchmark="csi300",
+        extra={},
+    )
+
+    runner = PlatformBacktestRunner(
+        registry=InMemoryBacktestRegistry(),
+        data_loader=lambda _c, _s, _e: (factor_df, price_df, bench_df),
+        conn=None,  # size_neutral_beta=0, 无需 DB ln_mcap
+        direction_provider=lambda pool: {n: DIRECTIONS[n] for n in pool},
+        engine_config_builder=lambda _p: engine_cfg,
+        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),
+    )
+
     print("\n[Backtest] 跑 12 年全样本 in-sample...")
     t0 = time.time()
-    result = run_hybrid_backtest(factor_df, DIRECTIONS, price_df, config, bench_df)
+    # LIVE_PT: 不 override start/end + 不 cache (InMem get_by_hash 恒 None 双重真跑)
+    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    if platform_result.engine_artifacts is None:
+        raise RuntimeError(
+            "engine_artifacts=None — LIVE_PT 应强制真跑, 产出 {engine_result, price_data}"
+        )
+    result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
     print(f"  耗时: {elapsed:.0f}s")
 

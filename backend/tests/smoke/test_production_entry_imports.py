@@ -40,6 +40,14 @@ DAEMON_SCRIPTS = [
     "scripts/pt_watchdog.py",
 ]
 
+# One-shot bootstrap 脚本 (无 argparse, 立即跑 main()) — subprocess exec pre-main
+# 只验证 imports + 常量 (不触发业务逻辑). MVP 2.3 Sub2 迁 Platform SDK 后新增覆盖面.
+ONESHOT_SCRIPTS = [
+    "scripts/build_12yr_baseline.py",
+    "scripts/yearly_breakdown_backtest.py",
+    "scripts/wf_equal_weight_oos.py",
+]
+
 
 @pytest.mark.smoke
 @pytest.mark.parametrize("script", CRITICAL_SCRIPTS)
@@ -120,3 +128,53 @@ def test_daemon_script_ast_parse(script: str) -> None:
             f"{script} AST parse failed:\n"
             f"stderr[:1500]:\n{result.stderr[:1500]}"
         )
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize("script", ONESHOT_SCRIPTS)
+def test_oneshot_script_pre_main_imports(script: str) -> None:
+    """One-shot bootstrap 脚本 — subprocess exec pre-main imports (MVP 2.3 Sub2).
+
+    这些脚本无 argparse --help (立即跑 main() 触发 12 年回测, 太慢).
+    本测试只 exec 文件的 pre-`def main` 部分 (imports + 常量 + helper 函数定义),
+    验证 Platform SDK 迁移后 top-level imports 能成功解析.
+    """
+    script_path = PROJECT_ROOT / script
+    assert script_path.exists()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import pathlib; "
+            f"src = pathlib.Path(r'{script_path}').read_text(encoding='utf-8'); "
+            f"head = src.split('def main', 1)[0]; "
+            f"exec(compile(head, r'{script_path}', 'exec'), "
+            f"{{'__name__': '__test__', '__file__': r'{script_path}'}}); "
+            f"print('pre-main OK')",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0 or "pre-main OK" not in result.stdout:
+        pytest.fail(
+            f"{script} pre-main exec failed:\n"
+            f"stderr[:1500]:\n{result.stderr[:1500]}"
+        )
+
+    # Shadow check (铁律 10b)
+    shadow_signatures = (
+        "No module named 'backend'",
+        "Unable to import required dependencies",
+        "platform' has no attribute",
+    )
+    for sig in shadow_signatures:
+        if sig in result.stderr:
+            pytest.fail(
+                f"{script} stderr 含 shadow 特征 {sig!r}:\n"
+                f"stderr[:1500]:\n{result.stderr[:1500]}"
+            )
