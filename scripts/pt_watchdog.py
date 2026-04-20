@@ -118,14 +118,20 @@ def get_latest_signal_date(conn) -> date | None:
 
 
 def get_perf_gap_days(conn) -> int:
-    """计算performance_series最新日期距今的交易日天数。"""
+    """计算performance_series最新日期距今的交易日天数。
+
+    F21 修 (2026-04-20 Session 20→21): 原 `WHERE execution_mode = 'paper'` 与
+    ``get_latest_perf_date`` (L100-101) 的 ``IN ('paper', 'live')`` 读取不对称,
+    paper namespace 0 行时 fallback 至 '2020-01-01' 致 gap=1524 假警, 20:00
+    钉钉误报 "PT链路异常" (Session 10 P0-β 第 3 残留).
+    """
     cur = conn.cursor()
     cur.execute(
         """SELECT COUNT(*) FROM trading_calendar
            WHERE market = 'astock' AND is_trading_day = TRUE
              AND trade_date > (
                 SELECT COALESCE(MAX(trade_date), '2020-01-01')
-                FROM performance_series WHERE execution_mode = 'paper'
+                FROM performance_series WHERE execution_mode IN ('paper', 'live')
              )
              AND trade_date <= CURRENT_DATE"""
     )
