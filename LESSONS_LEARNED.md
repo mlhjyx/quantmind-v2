@@ -1176,3 +1176,110 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 - Session 20 handoff 明确 F18 撤回事实 + 证据链
 
 **执行状态**: ✅ F18 撤回已写 Session 20 handoff frontmatter description + Session 20 cutover section (117 行) + LL-060 本条. CLAUDE.md PT 状态 section 待 Session 20 "可以, 需思考全面" 触发时同步更新 (含 Session 20 cutover note).
+
+## LL-061: 无 git PR 纯运维 cutover 变体 — LL-059 9 步简化模板 (Session 20 `.env` 切换 2026-04-20)
+
+**事件**: Session 20 (2026-04-20 17:47) 执行 `.env:17 EXECUTION_MODE=paper→live` cutover. `.env` 在 `.gitignore` 无法走 git PR, 但仍是真金生产环境下 P0 配置变更 (读写命名空间翻转). 需要一个既保 LL-059 核心风控精神, 又适配无 git 变更的简化 workflow.
+
+**根因 — LL-059 原 9 步隐含 "有 git tracked 文件"**:
+- LL-059 每步围绕 commit / push / PR / reviewer agents / self-merge 展开, 前提是**改动在 repo 内**
+- Session 20 cutover 唯一代码变更 (`.env:17`) 是非 tracked 文件, 走不了这套
+- 但 cutover 改变 runtime 语义 (settings.EXECUTION_MODE 全链路读写方向翻转), 影响 P0 生产, 不能"因非 git 就跳过守门"
+
+**改进措施 — 9 步变体 (适配纯运维 cutover)**:
+
+| LL-059 原步 | Session 20 cutover 变体 |
+|---|---|
+| 1. Plan 模式 | ✅ 保留 — precondition check, 发现 F18 撤回 (铁律 25 自律) |
+| 2. 铁律 25/36 precondition 含 DB 实测 | ✅ 保留 — `.env` 当前值 + settings.EXECUTION_MODE 代码扫描 + 相关契约测试 grep |
+| 3. 铁律 42 PR 拆分 | ❌ 跳过 — 无 git 变更 |
+| 4. 硬门全跑 (unit/ruff/regression/smoke/pytest) | ⚠️ 简化 — `/health` 端点返 `{"execution_mode":"live"}` 作 smoke test 等价物; manual FastAPI 启动日志查异常 |
+| 5. 独立 reviewer agents 并行 | ❌ 跳过 — 无代码可 review |
+| 6. P1 findings 全修 | ❌ N/A |
+| 7. `gh pr comment` 记 fix 证据 | ⚠️ 替代 — 入 handoff + ADR Production Cutover 章节 |
+| 8. pre-push hook smoke green | ❌ N/A |
+| 9. AI 自 merge + cleanup | ⚠️ 替代 — **(a)** user approve 切换决策; **(b)** `cp .env .env.bak.${DATE}-${NAME}` 备份 (必须!); **(c)** sed -i 改目标行; **(d)** Servy restart 相关服务; **(e)** `curl` 验证 runtime effective; **(f)** 日志审查 10 min 无 post-restart error; **(g)** 配套文档改 (入 git 走 PR 或 直推 per 铁律 42) 下一 session 前 commit |
+
+**新增步骤 (无 git 特有)**:
+- **步 0 备份**: 改任何非 tracked 生产配置前, `cp <file> <file>.bak.${YYYYMMDD}-${tag}` — 本 bak 文件留本地 (也不入 git), 用于急回滚
+- **步 10 回滚路径验证**: (a) 测试 `cp <bak> <file>` + Servy restart + `/health` 读期望回退值; (b) 历史 live namespace 数据保留 (铁律: 回滚不清数据, 只切读写方向)
+
+**Session 20 实测执行证据**:
+- 17:47:12 `cp backend/.env backend/.env.bak.20260420-session20-cutover` (1109 bytes)
+- 17:47:25 `sed -i 's/^EXECUTION_MODE=paper$/EXECUTION_MODE=live/' backend/.env`
+- 17:48:55 `powershell scripts/service_manager.ps1 restart all` (4 服务新 PID)
+- 17:49:10 `curl /health` → `{"status":"ok","execution_mode":"live"}` ✓
+- 日志审查 10 min 无 post-restart 异常 (Uvicorn Windows multi-worker race 预存噪声 + QMT 重连成功)
+- 关联 git PR 后续 (PR #31) 含 docs + F21 修 + test
+
+**Break 简化闭环的唯一合法场景**:
+- 切换影响面 > 单表/单 service (如涉及多 upstream 系统联动) → 升级到完整 git-tracked PR 路径 (加 script + test + reviewer)
+- 回滚路径不可逆 (如 DDL / 数据删除) → 禁用本模板, 强制完整 PR + 额外 DB 备份
+
+**Session 20 user 接触统计**: 1 (approve 今晚切换决策). 对比 LL-059 full code PR user 接触 0, 本 cutover 变体多 1 (因生产风险需 user 明示 approve). 这是安全设计而非 overhead.
+
+**持久化**:
+- 本 LL 条目 (cross-session 参考)
+- Session 20 ADR-008 Production Cutover 章节 (docs/adr/, Session 20 Cutover context specific)
+- CLAUDE.md 铁律 42 未来可 refine (当前条款只覆盖"git-tracked 文件类别 → PR 必须性", 无"非 tracked 运维变更"类别, 属铁律漏项)
+
+**执行状态**: ✅ Session 20 cutover 实战验证本变体. 未来 `.env` 类 / `settings.json` 类 / Servy 配置类 / schtasks 定义类 (通过 `.ps1` 改写, 其本身 tracked) 运维变更参考此 LL.
+
+## LL-062: 手工 bootstrap 提前验证 — F14 自愈不等 19h schtasks 回归 (Session 20 2026-04-20)
+
+**事件**: Session 20 cutover 17:47 完成后, F14 (circuit_breaker_state live 0 rows) 按 ADR-008 计划等明日 4-21 16:30 schtasks 触发 `signal_phase` 自动写入 live L0 首行自愈 (19h 等待窗口). User 20:20 质疑 "今天不能验证吗? 同样都是收盘后", 引发重新评估.
+
+**根因 — "等 schtasks 自动触发" 是约定非技术限制**:
+- 最初回答"等明日 16:30 schtasks" 隐含假设 = 只有 schtasks 才能触发验证
+- 实际: F14 自愈本质 = 调用 `_upsert_cb_state_sync(level=0)` 写 live 首行, 这是**普通 service 层函数**可手工调
+- schtasks 触发 signal_phase 只是其中**一种**调用路径 (还含 integration 层 load_universe / compute_signals / save_qmt_state / publish_stream 等副作用)
+- 单点验证 F14 自愈 (只写 cb_state live 首行) **不需要**整 signal_phase 跑
+
+**改进措施 — 手工 bootstrap 提前验证模板 (4 步)**:
+
+**步 1 — 识别可单点验证的自愈目标**:
+- 某 finding 的"自愈路径"是否由**纯 service 层函数**写单表? (非整链路 side effect)
+- 如是: 可手工 bootstrap; 否则: 等 schtasks 完整触发
+
+**步 2 — 写 one-shot script (非 git tracked)**:
+- 位置: `D:/quantmind-v2/_tmp_<purpose>_<sessionID>.py` (project root, 跑后删除)
+- 铁律 10b 防护: **CWD = project root + `sys.path.append("backend")` 不用 insert** (防 stdlib platform shadow)
+- 内容: load `.env` → import service 层函数 → 调用写入 → commit → 读回 verify
+
+**步 3 — 执行 + 双重验证**:
+- Script 自身 `[PASS]` 输出
+- DB 直查确认 `SELECT * FROM <table> WHERE <namespace>=<expected>` 符合预期
+- 关联 Redis / 其他缓存同步 (如适用)
+
+**步 4 — 清理**:
+- `rm _tmp_<purpose>_<sessionID>.py`
+- handoff 记录 "手工 bootstrap 完成 + schtasks 次日 upsert refresh 回归"
+- 下次 schtasks 触发时**仍会跑一次** (upsert 幂等), 作为独立 regression 验证, 两个 "proof" 叠加更稳
+
+**Session 20 F14 实测**:
+- Script: `_tmp_bootstrap_cb_state_live_session20.py` (调 `_upsert_cb_state_sync(level=0, reason='Session 20 cutover bootstrap — F14 self-heal verification')`)
+- 20:38:04 COMMIT OK
+- DB 终态: paper L0 @16:30:24 + **live L0 @20:38:04** ✓
+- 明日 4-21 16:30 schtasks signal_phase 仅 upsert refresh (entered_at 保留, level=0 不变), 17:35 pt_audit C4 check 直接 PASS
+- 19h 自愈窗口从"等 schtasks"缩到"一次 bootstrap 立即"
+
+**价值**:
+- **时间价值**: 19h 压缩到 15 min (Session 内闭环, 不跨 session)
+- **attribution 价值**: 今晚 bootstrap 成功 = cutover 代码路径+ ADR-008 D2 动态写入正确, 明日若 schtasks 仍失败 = 独立其他问题 (非 cutover), attribution 矩阵更清晰
+- **心理价值**: user 不用等 19h 才知道 cutover 是否真生效
+
+**不适用场景**:
+- 自愈路径依赖**实时数据/时间窗口** (如只有盘中能触发 `load_positions()` 返回真实值)
+- 写入需**上游 event** 先到 (如依赖 stream bus 某事件触发)
+- 副作用复杂 (如同时需 publish 多 stream + write 多表, 单点手工写会破坏 invariant)
+
+**Session 20 user 接触**: 2 次
+- "今天不能验证吗? 同样都是收盘后" — 触发重评估
+- "可以开始" — approve bootstrap
+
+**持久化**:
+- 本 LL 条目
+- 未来 F15/F16/F19/F20 等 finding 自愈路径评估是否适用本模板
+- Session 20 ADR-008 Production Cutover 章节引用
+
+**执行状态**: ✅ Session 20 F14 实战. 模板生效.
