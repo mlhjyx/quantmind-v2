@@ -1113,3 +1113,66 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 - 用户接触点: 0 (除了 plan 模式 clarify 3 问 + 授权继续). 实际 merge/push/cleanup 全 AI 自主.
 
 **执行状态**: ✅ Session 7 PR A (`a0e01db` merged 到 origin/main) 实战验证本 workflow. 后续所有代码 PR 默认遵循, 不征求用户确认. 本 LL + CLAUDE.md 铁律 42 修订 + memory 持久化 **本 PR 完成沉淀**.
+
+## LL-060: grep-only 扫描 = 铁律 25 自律失败, F18 误报根因 (Session 19→20, 2026-04-20)
+
+**事件**: Session 19 盘后 3 轮扫描第 3 轮在 `backend/app/services/signal_service.py:278/436` 发现 hardcoded `'paper'`, 直接列为 **Finding 18 (P1 bug)** "PR-A 遗漏 2 处 prev_weights 查询". 写入 `memory/project_sprint_state.md` + Session 19 handoff + CLAUDE.md PT 状态 section. Session 20 cutover 开场 precondition check 时, 按铁律 25 正式读目标代码**含上下文注释**, 才发现:
+
+```python
+# signal_service.py L274 (F18 误报点 L278 的上一行)
+# ADR-008 D3-KEEP: signals 表跨模式共享, execution_mode 保持 hardcoded 'paper'
+# (前端 UI + 分析工具契约)
+```
+
+以及 L432 同样 D3-KEEP 注释, 以及 `backend/tests/test_execution_mode_isolation.py:471/479` 明确 assert 该 hardcode 必须保留. **F18 从来不是 bug, 是 ADR-008 有意设计 (D3-KEEP)**. Session 20 正式撤回 F18, findings 总数 18→17.
+
+**根因 — grep-first → 结论-second 的认知短路**:
+- Session 19 执行 `grep -n "'paper'" backend/app/services/signal_service.py` → 返 L278/L436 → 大脑自动填充 "硬编 = Session 10 P0-β 变种 = PR-A 遗漏 = bug"
+- **未读目标行上下文** (前 3 行 + 后 3 行), 未读相邻函数注释, 未搜已有 D3-KEEP 契约文档
+- 铁律 25 原文: "任何修改/新建/删除代码的操作前, 必须读目标代码的**当前实际内容**", Session 19 扫描虽然不是代码变更但**最终目标是触发 PR 代码变更**, 属于铁律 25 覆盖范围. "代码变更决策前必验证" 原文已涵盖此类场景.
+- 铁律 25 补充条款 "改什么就读什么" 不够精确. 应加: **"读什么"** 包含目标行 + 上下文注释 + 相邻同表/同命名空间函数 + 已有契约测试. 仅 grep 返行号不算"读代码".
+
+**影响 (好 + 坏)**:
+- 好: Session 20 cutover 执行前 precondition 发现, 未导致 PR #31 误改代码
+- 坏: Session 19 handoff + frontmatter description + CLAUDE.md PT 状态 section 均写入 "F18 P1 bug", 污染 3 个文档. 需 Session 20 追写撤回
+- 坏: 若 Session 19 未做 precondition check 直接写 PR 改 L278/L436 去掉 'paper', **会 break D3-KEEP 契约**, 前端 UI 信号页面显示错乱, `test_execution_mode_isolation.py:471/479` 2 个断言 fail, 测试债务+1, 触发铁律 40 baseline 违反
+- **二阶教训**: scan → finding → handoff write-through 链路无硬门, 中间发现错误难撤回. 铁律 28 "发现即报告" 的反面: 报告前必须验证, 否则成为"假 P0/P1 噪声"
+
+**改进措施 (3 条)**:
+
+1. **"Scan 发现 hardcoded 常量" 的 3 步验证流程** (before 下 finding 判定):
+   - a. Read 目标行 ±5 行上下文注释
+   - b. `grep "D3-KEEP\|契约\|hardcoded\|KEEP\|namespace" 同文件 + 相邻同逻辑文件`
+   - c. `grep "test.*isolation\|test.*contract" backend/tests/` 看是否有对应契约断言
+   任一发现 "D3-KEEP / 契约保留 / 测试强制硬编" 证据 → **降级为"已验证 by design"**, 不列 finding
+
+2. **Finding 写入 handoff 前的 Quality Gate**:
+   - P0 finding 必含至少 3 个证据 (代码行 + 上下文注释 + 测试引用 or DB 实测 or 历史 ADR 反推), 缺一不列
+   - P1 finding 必含至少 2 个证据
+   - 证据采集由 grep + Read 双工具完成, 不可单 grep
+
+3. **"撤回" 协议 (误报后补救)**:
+   - 撤回语 明确 "Finding X 撤回, 根因: 我违反铁律 25" (Session 20 已实施)
+   - 所有污染文档列出 (memory + handoff + CLAUDE.md 等), 追写修正
+   - 在 LL 写入新条目作警示 (本 LL-060)
+   - findings 总数调整 (18→17)
+   - 不删除历史 Finding X, 用 strikethrough + 撤回注
+
+**Session 19 违反铁律 25 的技术栈症状**:
+
+| Session | 违反 | 代价 |
+|---|---|---|
+| Session 5 (2026-04-18) | PT 状态凭印象, 把 4-13→4-17 "NAV +0.5%" 记成 "-10.2% 回撤" (混淆 market_value vs nav) | Session 10 花 30 min 用 psql 手工算 5 天 pct_change 撤回, 污染 CLAUDE.md L606 永久警示条目 |
+| Session 5 (2026-04-18) | "PT 已暂停+已清仓 2026-04-10" (实测 Redis portfolio:current 有 19 股持仓, 明显未清) | LL-054 入册 |
+| Session 7 (2026-04-18) | "3085 行 factor_engine.py" 实际 1218 行 (LL-055 根因之一) | 铁律 42 诞生 |
+| **Session 19 (2026-04-20)** | **F18 scan grep-only 未读 D3-KEEP 注释** | **本 LL-060** |
+
+累计 4 次同源违反, 都是"AI 高速产出 + 单人无 pair" governance gap. 铁律 25 看似老生常谈但**每次 session 高压下都有新变体**.
+
+**持久化**:
+- 本 LL 条目 (警示后续)
+- CLAUDE.md 铁律 25 补充条款 (读什么的细化) — 未来适时合入
+- `memory/feedback_scan_verification.md` 新 feedback memory (Session 20 写入)
+- Session 20 handoff 明确 F18 撤回事实 + 证据链
+
+**执行状态**: ✅ F18 撤回已写 Session 20 handoff frontmatter description + Session 20 cutover section (117 行) + LL-060 本条. CLAUDE.md PT 状态 section 待 Session 20 "可以, 需思考全面" 触发时同步更新 (含 Session 20 cutover note).

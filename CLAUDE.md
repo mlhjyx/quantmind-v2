@@ -582,12 +582,17 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 **PT 状态 (2026-04-19 Session 10 末, 修正 Session 5 记录错误 + 暂停实盘)**:
 
-**当前状态** (2026-04-20 Session 17 末, Stage 4 分层重启 schtasks 进行中):
-  - `QuantMind_DailyExecute` (09:31 live) — 仍 disabled, 等 Stage 4.2 Session 18+ 评估 reenable
+**当前状态** (2026-04-20 Session 20 末, execution_mode=live 生产 cutover 完成):
+  - **`.env:17 EXECUTION_MODE=paper→live`** (Session 20 17:47 sed + Servy restart 4 服务, `/health` 返 `{"execution_mode":"live"}`). F17 根因消除. 备份 `backend/.env.bak.20260420-session20-cutover`
+  - **F14 已自愈 (Session 20 20:38 手工 bootstrap)**: `_tmp_bootstrap_cb_state_live_session20.py` 调 `_upsert_cb_state_sync(level=0)` 写 live L0 首行 (trigger_reason='Session 20 cutover bootstrap — F14 self-heal verification'). 当前 cb_state: paper L0 @16:30:24 + live L0 @20:38:04. 4-21 16:30 schtasks 仅 upsert refresh (level=0 不变), 17:35 pt_audit C4 check → PASS
+  - **F18 撤回**: Session 19 误报, `signal_service.py:278/436` hardcoded 'paper' 是 **ADR-008 D3-KEEP 有意设计** (signals 表跨模式共享, `test_execution_mode_isolation.py:471/479` 强制契约). 详见 LL-060
+  - `QuantMind_DailyExecute` (09:31 live) — 仍 disabled, 等 Stage 4.2 Session 22+ 评估 reenable (依赖 F14 自愈 + Session 21 F19 phantom 清理)
   - `QuantMind_DailySignal` (16:30 signal) — **reenabled Stage 4 Session 17** (PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护, DB 写路径不触 QMT)
   - `QuantMind_DailyExecuteAfterData` (17:05 paper 污染源) — **永久废除 Stage 4 Session 17** (从 setup_task_scheduler.ps1 源头删除, P0-δ 不再能复现)
-  - `QuantMind_PTAudit` (17:35) — **新增 Stage 4 Session 17** (5-check 主动守门 + 聚合钉钉 + scheduler_task_log)
+  - `QuantMind_PTAudit` (17:35) — **新增 Stage 4 Session 17** (5-check 主动守门 + 聚合钉钉 + scheduler_task_log). 4-20 首次自动跑 exit=2 P1 alert, 捕获 F19 5 phantom 码 (db_drift 24 vs snapshot 19)
   - QMT Data Service + PT_Watchdog 等只读任务保留
+  - **findings 累计 19** (Session 19 18 - F18 + F21 + F22 + F23 候选撤回 = 19). 下 Session 21 优先级: F21 pt_watchdog L128 修 + reenable → F15 moneyflow silent failure 根因 → F19 phantom DELETE + F20 trade_log 完整性 → F16 LGBM shadow
+  - **Session 20 末 Redis 实测 NAV = ¥1,010,376.08** (20:21:53, cash=¥110,624 + 持仓 19). DB `performance_series` 4-20 live = ¥1,007,775 (16:30 signal_phase 签到快照), 差 +¥2,601 = **QMT 盘后结算时点差** (非 bug, 符合历史模式). **PT 状态取值源协议**: 实时 NAV → Redis; 历史日 NAV → DB perf_series; QMT 对账 → `query_asset` 直连
 
 **本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
 
