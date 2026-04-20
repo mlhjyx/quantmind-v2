@@ -83,12 +83,18 @@ QMT_ASSETS_CONTRACT = DataContract(
 
 QMT_TICKS_CONTRACT = DataContract(
     name="qmt_ticks",
-    version="v1",
+    # v2 (2026-04-20 Session 18): 盘中 live 事故修复 — 从 schema 移除 high/low.
+    # 根因: xtquant get_full_tick 返回的 tick 对象, high/low 是"tick 级字段" (当前笔),
+    #   在未订阅盘中订阅 (xtdata.subscribe_quote) 时 default 0, 非日 OHLC. MVP 2.1b
+    #   强制 >=0.01 range 校验是过度设计, 盘中持仓股 last_price>0 但 high=low=0 合法,
+    #   每分钟 ContractViolation raise → Redis market:latest:* 自 MVP 2.1c 起 0 keys.
+    # 下游 qmt_client.get_price/get_prices 只读 price 字段, grep 全项目 0 消费者用 high/low.
+    # 即 high/low 是僵尸字段 — 写入无人读. 正确方式: 移除 (非放宽阈值掩盖).
+    # 日内 OHLC 若未来需要, 应走独立 contract (day kline / intraday aggregated), 与 tick 解耦.
+    version="v2",
     schema={
         "code": "str",
         "last_price": "float64 元",
-        "high": "float64 元",
-        "low": "float64 元",
         "volume": "int64 股",
         "updated_at": "datetime",
     },
@@ -96,8 +102,6 @@ QMT_TICKS_CONTRACT = DataContract(
     source="qmt",
     unit_convention={
         "last_price": "元",
-        "high": "元",
-        "low": "元",
         "volume": "股",
     },
 )
@@ -225,7 +229,8 @@ class QMTDataSource(BaseDataSource):
                 raise RuntimeError(f"broker.get_positions 失败: {e}") from e
             codes = list(pos_map.keys()) if pos_map else []
 
-        cols = ["code", "last_price", "high", "low", "volume", "updated_at"]
+        # v2: schema 删 high/low (详见 QMT_TICKS_CONTRACT 注释)
+        cols = ["code", "last_price", "volume", "updated_at"]
         if not codes:
             return pd.DataFrame(columns=cols)
 
@@ -254,8 +259,6 @@ class QMTDataSource(BaseDataSource):
                 {
                     "code": code,
                     "last_price": float(last),
-                    "high": float(_tick_attr(tick, "high", 0.0) or 0.0),
-                    "low": float(_tick_attr(tick, "low", 0.0) or 0.0),
                     "volume": int(_tick_attr(tick, "volume", 0) or 0),
                     "updated_at": updated_at,
                 }
@@ -298,12 +301,13 @@ class QMTDataSource(BaseDataSource):
                     if n > 0:
                         issues.append(f"[range] {col} 列 {n} 行 < 0 (资产不可负)")
         elif name == "qmt_ticks":
-            for col in ("last_price", "high", "low"):
-                if col in df.columns:
-                    bad = df[col].notna() & (df[col] < 0.01)
-                    n = int(bad.sum())
-                    if n > 0:
-                        issues.append(f"[range] {col} 列 {n} 行 < 0.01 (A 股最小跳价 0.01)")
+            # v2: 只 check last_price (tick 层活跃行情必须 >=0.01 A 股最小跳价) + volume >=0
+            # high/low 字段已从 contract 移除 (tick 层无日 OHLC 语义, 详见 QMT_TICKS_CONTRACT 注释)
+            if "last_price" in df.columns:
+                bad = df["last_price"].notna() & (df["last_price"] < 0.01)
+                n = int(bad.sum())
+                if n > 0:
+                    issues.append(f"[range] last_price 列 {n} 行 < 0.01 (A 股最小跳价 0.01)")
             if "volume" in df.columns:
                 bad = df["volume"].notna() & (df["volume"] < 0)
                 n = int(bad.sum())
