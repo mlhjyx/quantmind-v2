@@ -61,13 +61,11 @@ class _DummyBroker:
 src = QMTDataSource(broker=_DummyBroker())
 bad_tick_df = pd.DataFrame({
     'code': ['600519.SH'],
-    'last_price': [0.005],
-    'high': [0.005],
-    'low': [0.005],
+    'last_price': [0.005],  # 低于 A 股最小跳价 0.01
     'volume': [100],
-})
+})  # v2 (2026-04-20 Session 18): schema 已删 high/low, 测试数据同步不含
 issues = src._check_value_ranges(bad_tick_df, QMT_TICKS_CONTRACT)
-assert any('0.01' in m for m in issues), f'min tick check failed: {issues}'
+assert any('last_price' in m and '0.01' in m for m in issues), f'min tick check failed: {issues}'
 
 
 # 4. 正常 fetch positions (空 list → empty df, validate PASS)
