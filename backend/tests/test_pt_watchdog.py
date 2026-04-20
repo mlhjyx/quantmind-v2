@@ -66,6 +66,10 @@ def _call_with_mock_conn(fn, return_value: tuple | None = (0,)) -> str:
     fn(mock_conn)
 
     assert mock_cur.execute.called, f"{fn.__name__} 未调用 cursor.execute"
+    # Contract: cursor 资源必须 close (防 connection leak) — code-reviewer MEDIUM #2
+    assert mock_cur.close.called, (
+        f"{fn.__name__} 未调用 cursor.close(), 违反 psycopg2 资源管理契约"
+    )
     call_args = mock_cur.execute.call_args
     return call_args[0][0]
 
