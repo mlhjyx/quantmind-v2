@@ -84,13 +84,26 @@ QMT_ASSETS_CONTRACT = DataContract(
 QMT_TICKS_CONTRACT = DataContract(
     name="qmt_ticks",
     # v2 (2026-04-20 Session 18): 盘中 live 事故修复 — 从 schema 移除 high/low.
-    # 根因: xtquant get_full_tick 返回的 tick 对象, high/low 是"tick 级字段" (当前笔),
-    #   在未订阅盘中订阅 (xtdata.subscribe_quote) 时 default 0, 非日 OHLC. MVP 2.1b
-    #   强制 >=0.01 range 校验是过度设计, 盘中持仓股 last_price>0 但 high=low=0 合法,
-    #   每分钟 ContractViolation raise → Redis market:latest:* 自 MVP 2.1c 起 0 keys.
-    # 下游 qmt_client.get_price/get_prices 只读 price 字段, grep 全项目 0 消费者用 high/low.
-    # 即 high/low 是僵尸字段 — 写入无人读. 正确方式: 移除 (非放宽阈值掩盖).
-    # 日内 OHLC 若未来需要, 应走独立 contract (day kline / intraday aggregated), 与 tick 解耦.
+    #
+    # 根因 (user 2026-04-20 提供 QMT 官方文档 dict.thinktrader.net 修正诊断):
+    #   xtquant.xtdata.get_full_tick() 返回的 tick dict 按官方文档 high/low 本应是
+    #   "Day's highest/lowest price" (日级 OHLC, 非 tick 级). 但盘中实测 19 只持仓
+    #   lastPrice>0 而 high=low=0 — 推断为未调用 xtdata.subscribe_whole_quote 订阅
+    #   行情时 xtquant 只填充基础字段 (lastPrice/volume/askPrice/bidPrice),
+    #   high/low/open 依赖订阅 push 更新, snapshot 调用可能返 0.
+    #
+    # MVP 2.1b contract v1 (e537c8a 2026-04-18) 强制 high/low>=0.01 range 校验,
+    # 盘中 lastPrice>0 but high=low=0 合法场景 → ContractViolation 每 60s raise,
+    # Redis market:latest:* 自 2026-04-03 MVP 2.1c Sub3.4 切换起 0 keys 至 2026-04-20
+    # 开盘 09:20 stderr 刷屏才暴露 (非盘/停牌 lastPrice<=0 被 L251 filter 绕过).
+    #
+    # 下游消费者分析 (grep 全项目 "market:latest"):
+    #   qmt_client.get_price/get_prices L66-93 只读 `price` 字段. 0 消费者用 high/low.
+    #   即 high/low 是僵尸字段 — 17 天 0 keys 生产无人察觉, 证明业务不依赖.
+    #
+    # 修复: 从 schema 移除 (非放宽阈值掩盖). 未来若需日 OHLC, 应走独立 contract
+    # + xtdata.subscribe_whole_quote 订阅 push 或改用 xtdata.get_market_data 日 K API,
+    # 与 tick snapshot 解耦 (本 contract 定位是活跃行情实时 price snapshot).
     version="v2",
     schema={
         "code": "str",
