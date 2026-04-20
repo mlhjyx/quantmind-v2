@@ -212,6 +212,7 @@ def test_fetch_ticks_with_explicit_codes(monkeypatch) -> None:
     _install_fake_xtquant(
         monkeypatch,
         ticks_map={
+            # mock tick 对象仍含 high/low 属性 (真实 xtquant 返回), 但 fetcher (v2) 不再读
             "600519.SH": SimpleNamespace(lastPrice=1650.5, high=1660.0, low=1640.0, volume=12000),
             "000001.SZ": SimpleNamespace(lastPrice=10.5, high=10.8, low=10.3, volume=5000000),
         },
@@ -219,15 +220,38 @@ def test_fetch_ticks_with_explicit_codes(monkeypatch) -> None:
     src = QMTDataSource(broker=_FakeBroker(), codes=["600519.SH", "000001.SZ"])
     df = src.fetch(QMT_TICKS_CONTRACT, since=date.today())
     assert len(df) == 2
+    # v2: schema 删 high/low, 只剩 4 列 (详见 QMT_TICKS_CONTRACT 注释)
     assert set(df.columns) == {
         "code",
         "last_price",
-        "high",
-        "low",
         "volume",
         "updated_at",
     }
     assert set(df["code"]) == {"600519.SH", "000001.SZ"}
+
+
+def test_fetch_ticks_passes_when_high_low_zero_session_18_live_regression(monkeypatch) -> None:
+    """Regression for Session 18 2026-04-20 开盘事故.
+
+    真实场景: 生产 19 只持仓股 lastPrice>0 但 tick.high=tick.low=0 (xtquant 未订阅
+    盘中订阅时默认行为). v1 contract 强制 high/low>=0.01 → ContractViolation 每 60s
+    raise, Redis market:latest:* 自 2026-04-03 MVP 2.1c 切换起 0 keys 至 2026-04-20
+    开盘 2:30 min 事故发现. v2 删除 high/low 后该场景必须通过.
+    """
+    _install_fake_xtquant(
+        monkeypatch,
+        ticks_map={
+            "600028.SH": SimpleNamespace(lastPrice=6.45, high=0.0, low=0.0, volume=100_000),
+            "600900.SH": SimpleNamespace(lastPrice=28.30, high=0.0, low=0.0, volume=50_000),
+        },
+    )
+    src = QMTDataSource(broker=_FakeBroker(), codes=["600028.SH", "600900.SH"])
+    df = src.fetch(QMT_TICKS_CONTRACT, since=date.today())  # 不应 raise ContractViolation
+    assert len(df) == 2
+    assert set(df["code"]) == {"600028.SH", "600900.SH"}
+    # v2 columns 无 high/low
+    assert "high" not in df.columns
+    assert "low" not in df.columns
 
 
 def test_fetch_ticks_filters_halted_stocks(monkeypatch) -> None:
@@ -288,19 +312,32 @@ def test_check_value_ranges_positions_negative_volume() -> None:
     assert any("volume" in msg and "< 0" in msg for msg in issues)
 
 
-def test_check_value_ranges_ticks_below_min_tick() -> None:
+def test_check_value_ranges_ticks_last_price_below_min_tick() -> None:
+    """v2: 仅 check last_price 最小跳价 0.01 (high/low 已从 schema 移除)."""
     src = QMTDataSource(broker=_FakeBroker())
     df = pd.DataFrame(
         {
             "code": ["600519.SH"],
             "last_price": [0.005],  # 低于 A 股最小跳价 0.01
-            "high": [0.005],
-            "low": [0.005],
             "volume": [100],
         }
     )
     issues = src._check_value_ranges(df, QMT_TICKS_CONTRACT)
-    assert any("0.01" in msg for msg in issues)
+    assert any("last_price" in msg and "0.01" in msg for msg in issues)
+
+
+def test_check_value_ranges_ticks_valid_passes() -> None:
+    """v2: last_price>=0.01 + volume>=0 (无 high/low) → 0 issues."""
+    src = QMTDataSource(broker=_FakeBroker())
+    df = pd.DataFrame(
+        {
+            "code": ["600028.SH"],
+            "last_price": [6.45],
+            "volume": [100_000],
+        }
+    )
+    issues = src._check_value_ranges(df, QMT_TICKS_CONTRACT)
+    assert issues == []
 
 
 def test_check_value_ranges_assets_negative_total() -> None:
