@@ -193,7 +193,8 @@ class QMTDataService:
                     updated.isoformat() if hasattr(updated, "isoformat") else str(updated)
                 )
                 # v2 (2026-04-20 Session 18): 盘中 live 事故修复 — 不再写 high/low 到 Redis.
-                # 根因: QMT_TICKS_CONTRACT v2 已移除 high/low (tick 层无日 OHLC 语义).
+                # 根因: QMT_TICKS_CONTRACT v2 移除 high/low (xtquant snapshot 未订阅时返 0,
+                # 详见 qmt_source.py QMT_TICKS_CONTRACT 注释).
                 # 下游 qmt_client.get_price/get_prices 只读 price 字段, 无消费者用 high/low.
                 price_info = json.dumps(
                     {
