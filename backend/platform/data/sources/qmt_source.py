@@ -315,7 +315,7 @@ class QMTDataSource(BaseDataSource):
                         issues.append(f"[range] {col} 列 {n} 行 < 0 (资产不可负)")
         elif name == "qmt_ticks":
             # v2: 只 check last_price (tick 层活跃行情必须 >=0.01 A 股最小跳价) + volume >=0
-            # high/low 字段已从 contract 移除 (tick 层无日 OHLC 语义, 详见 QMT_TICKS_CONTRACT 注释)
+            # high/low 字段已从 contract 移除 (未订阅时 snapshot 返 0, 详见 QMT_TICKS_CONTRACT 注释)
             if "last_price" in df.columns:
                 bad = df["last_price"].notna() & (df["last_price"] < 0.01)
                 n = int(bad.sum())
