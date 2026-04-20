@@ -124,6 +124,12 @@ def get_perf_gap_days(conn) -> int:
     ``get_latest_perf_date`` (L100-101) 的 ``IN ('paper', 'live')`` 读取不对称,
     paper namespace 0 行时 fallback 至 '2020-01-01' 致 gap=1524 假警, 20:00
     钉钉误报 "PT链路异常" (Session 10 P0-β 第 3 残留).
+
+    Note (caller precondition): 调用方 ``check_performance_series`` (L201-204)
+    先调 ``get_latest_perf_date`` 并在返 None 时 ``report.fail`` 早 return,
+    本函数只在 perf_series 非空时调用. 若独立调用 0 行 DB, COALESCE fallback
+    '2020-01-01' 仍产生 gap≈1524 假警 — 未来新调用方必须先验证 perf_series
+    非空 (铁律 33 fail-loud).
     """
     cur = conn.cursor()
     cur.execute(
