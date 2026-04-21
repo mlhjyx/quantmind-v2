@@ -1,6 +1,24 @@
 """PMS Engine — 阶梯利润保护系统 v1.0。
 
-三层阶梯保护规则（满足任一层即触发卖出）:
+.. warning::
+   **DEPRECATED per ADR-010 (Session 21 2026-04-21)**
+
+   PMS v1.0 5 重失效 (F27-F31):
+     - position_monitor 表建库 0 行 (核心输出表全空)
+     - StreamBus qm:pms:protection_triggered 发布 0 消费者 (只告警不卖)
+     - sync_positions 读 T-1 snapshot 非实时 QMT (滞后 1 日)
+     - hardcoded execution_mode='live' 对 paper 老持仓盲
+     - daily_pipeline + api/pms 重复 publish 逻辑
+
+   并入 **Wave 3 MVP 3.1 Risk Framework** 统一重构:
+     - 规则逻辑 (L1/L2/L3 阈值) 迁入 backend/platform/risk/rules/pms.py
+     - 执行路径改走 PlatformRiskEngine._execute_sell 直调 broker
+     - 输出统一 risk_event_log 单表
+
+   Celery Beat pms-daily-check 已停 (beat_schedule.py Session 21).
+   本文件代码保留供参考, Risk Framework 批 2 迁入完成后删除.
+
+三层阶梯保护规则（满足任一层即触发卖出, 原设计保留）:
 - 层级1: 浮盈>30% 且 从最高点回撤>15%
 - 层级2: 浮盈>20% 且 从最高点回撤>12%
 - 层级3: 浮盈>10% 且 从最高点回撤>10%
