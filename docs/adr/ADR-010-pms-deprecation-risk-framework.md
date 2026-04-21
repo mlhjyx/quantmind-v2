@@ -129,7 +129,7 @@ SELECT add_retention_policy('risk_event_log', INTERVAL '90 days');
 
 **顺序调整**: emergency_stock_alert.py **必须先建再停 PMS Beat**, 否则过渡期间零个股告警裸奔. 原顺序颠倒是 review findings.
 
-1. **(新首位)** 过渡期补 emergency 个股止损告警 — 新建 `scripts/emergency_stock_alert.py` + schtasks 注册 (每 5min Redis 扫所有持仓, 单股当日跌 >8% 钉钉推, 持仓读 QMT 实时). **部署验证可触发后**, 再进下一步
+1. **(新首位)** 过渡期补 emergency 个股止损告警 — ~~新建 `scripts/emergency_stock_alert.py` + schtasks 注册~~ **方案 Y 扩 `scripts/intraday_monitor.py` 加 `ALERT_EMERGENCY_STOCK = -0.08` 规则** (PR #32-a, 本 Session 21 下午实施, commit TBD). 理由: intraday_monitor 已是 schtasks + QMT 实时源 + 钉钉告警 + intraday_monitor_log 基础设施, 新加 emergency 规则是同系统不同阈值, 归属一致. 避免新建脚本 (铁律 23 不重复造轮子). 数据源: Redis `market:latest:{code}` current + klines_daily prev_close. Dedup: Redis 24h TTL 同股同日限 1 次. 未来 Risk Framework MVP 3.1 批 2 整体迁移
 2. 停 Celery Beat `pms-daily-check` 调度 (`beat_schedule.py` L54-61 删除 block)
 3. `pms_engine.py` + `daily_pipeline.py:pms_check` + `api/pms.py` 加头部注释 `"DEPRECATED per ADR-010, pending Risk Framework MVP 3.1"`
 4. 删除 `api/pms.py:170-188` 重复 publish 逻辑 (F31), 留 API GET 端点返回数据 (前端 /pms 页面暂不改)
