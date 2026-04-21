@@ -34,8 +34,9 @@ import argparse
 import logging
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -420,7 +421,9 @@ def main() -> int:
         # 假日无新 klines + forward returns 不变, 重算产出相同 IC (idempotent upsert)
         # 浪费 DB IO + compute + 掩盖真实监控噪音. --force 可覆盖.
         if not args.force:
-            today = date.today()
+            # 铁律 41: 用 Asia/Shanghai 避免 date.today() 在 UTC 服务器 18:00 CST
+            # 解析为前一日 (reviewer P2.1). 中国无 DST, offset 稳定 +08:00.
+            today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
             if not is_trading_day(conn, today):
                 logger.info("[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", today)
                 return 0

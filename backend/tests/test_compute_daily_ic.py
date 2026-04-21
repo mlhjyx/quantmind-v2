@@ -415,7 +415,9 @@ class TestHolidayGuard:
 
         assert rc == 0, "非交易日应 exit 0 (成功 skip)"
         assert not compute_called, "非交易日不应调 compute_and_ingest"
-        fake_conn.close.assert_called_once(), "conn 必须 close (铁律 32 finally)"
+        # reviewer P2.2 修: `assert_called_once(), "msg"` 原是 tuple 表达式, 消息永不
+        # 触发. 现独立行, 失败时 AssertionError 自带 "Called 0 times" 信息.
+        fake_conn.close.assert_called_once()
 
     def test_trading_day_proceeds(self, monkeypatch):
         """交易日 → main 调 compute_and_ingest 正常执行."""
@@ -449,12 +451,14 @@ class TestHolidayGuard:
         monkeypatch.setattr(cdi, "get_sync_conn", lambda: fake_conn)
 
         # is_trading_day 返 False (理应 skip), 但 --force 应覆盖
-        is_trading_day_called = []
-        monkeypatch.setattr(
-            cdi,
-            "is_trading_day",
-            lambda conn, d: (is_trading_day_called.append(True), False)[1],
-        )
+        is_trading_day_called: list[bool] = []
+
+        # reviewer P3 采纳: lambda 内 tuple-index 副作用 trick 晦涩, 改 named function
+        def mock_is_trading_day(conn, d):
+            is_trading_day_called.append(True)
+            return False
+
+        monkeypatch.setattr(cdi, "is_trading_day", mock_is_trading_day)
 
         compute_called = []
         monkeypatch.setattr(
