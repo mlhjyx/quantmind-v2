@@ -320,24 +320,35 @@ class DataPipeline:
     ) -> dict[str, float]:
         """校验列 NULL 率是否超 ColumnSpec.null_ratio_max.
 
-        超阈值 → logger.error (fail-loud) + 返回 {col: ratio} 填 IngestResult.
+        超阈值 → logger.warning / logger.error (分级 fail-loud) +
+        返回 {col: ratio} 填 IngestResult.
+
+        分级策略 (reviewer P1 采纳): 避免 5% 略超即同 100% NULL 同等严重
+        导致运维告警疲劳.
+          - ratio ≤ 2× threshold (轻度漂移): logger.warning
+          - ratio > 2× threshold 或 > 0.50 (明显异常): logger.error
 
         不 raise, 不 drop rows: Tushare 端某列 100% NULL 时, 其他列可能正常,
         raise 会阻断全批入库导致连锁效应 (下游因子计算缺数据). 由调用方
         (data_quality_report / 钉钉) 基于 warnings dict 决策处置.
 
+        Note (reviewer P2 采纳): df 已经过 step 5 FK 过滤, 本 check 的 denominator
+        是 post-FK 行数 (实际将 upsert 的行), 而非 Tushare 原始批次. 这更能反映
+        "入库到的脏数据比例", 但调用方 (IngestResult.total_rows 对比) 须知 ratio
+        分母 ≠ total_rows.
+
         Background (F22, Session 20 发现, Session 21 落地):
         - daily_basic.dv_ttm 历史 0% NULL, 2026-04-15 漂移到 31.7%, 4-20 升 100%
         - pe_ttm 历史 0% NULL, 4-15 升到 26.9% 后持平
         - DataPipeline 之前无 NULL 率校验, 脏数据 silent 入库 5 天才被 data_quality_report 识别
-        - 本 fix 在 ingest 时即 logger.error 暴露, 16:40 巡检之外多一道门
+        - 本 fix 在 ingest 时即 logger 暴露, 16:40 巡检之外多一道门
 
         Returns:
             {col_name: actual_ratio} 仅超阈值列. 空 dict = 全列正常.
         """
-        warnings: dict[str, float] = {}
+        ratio_warnings: dict[str, float] = {}
         if df.empty:
-            return warnings
+            return ratio_warnings
         total = len(df)
         for col_name, spec in contract.columns.items():
             if spec.null_ratio_max is None or col_name not in df.columns:
@@ -345,17 +356,22 @@ class DataPipeline:
             null_count = int(df[col_name].isna().sum())
             ratio = null_count / total
             if ratio > spec.null_ratio_max:
-                warnings[col_name] = round(ratio, 4)
-                logger.error(
+                rounded = round(ratio, 4)
+                ratio_warnings[col_name] = rounded
+                # 分级日志: 轻度漂移 warning, 明显异常 error (reviewer P1 采纳)
+                is_severe = ratio > spec.null_ratio_max * 2 or ratio > 0.50
+                log_fn = logger.error if is_severe else logger.warning
+                log_fn(
                     "[pipeline] null_ratio_exceeded (F22 铁律33 fail-loud)",
                     table=contract.table_name,
                     column=col_name,
-                    null_ratio=round(ratio, 4),
+                    null_ratio=rounded,
                     threshold=spec.null_ratio_max,
+                    severity="severe" if is_severe else "drift",
                     null_count=null_count,
                     total_rows=total,
                 )
-        return warnings
+        return ratio_warnings
 
     # ─── L1 Sanity Check (P1-3) ──────────────────────────────
 

@@ -61,6 +61,17 @@ class ColumnSpec:
     # 下游 (data_quality_report / 钉钉) 按 warning 处置, DataPipeline 只负责暴露问题.
     null_ratio_max: float | None = None
 
+    def __post_init__(self) -> None:
+        """Domain validation (reviewer P3 采纳).
+
+        null_ratio_max ∈ [0.0, 1.0] 或 None. 超界值 (如 1.5 或 -0.1) 在 import
+        时即 raise, 避免 mis-configuration 拖到 ingest 运行时才爆.
+        """
+        if self.null_ratio_max is not None and not (0.0 <= self.null_ratio_max <= 1.0):
+            raise ValueError(
+                f"null_ratio_max must be in [0.0, 1.0], got {self.null_ratio_max}"
+            )
+
     @property
     def conversion_factor(self) -> float | None:
         """计算单位转换乘数。None=不需要转换。"""
