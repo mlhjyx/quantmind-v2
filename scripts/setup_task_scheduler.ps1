@@ -14,6 +14,7 @@
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
 #   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
 #   T日 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
+#   T日 18:15  QuantMind_IcRolling               ic_ma20/60 rolling 刷新 (Session 22 Part 8, Mon-Fri, factor_lifecycle 周五依赖)
 #
 # 废除历史:
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
@@ -315,6 +316,41 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_DailyIC registered (Mon-Fri 18:00)" -ForegroundColor Green
 
+# ── 10d. QuantMind_IcRolling: Mon-Fri 18:15 (Session 22 Part 8 — factor_lifecycle 依赖刷新) ─
+# ic_ma20/ic_ma60 rolling 刷新 factor_ic_history (pandas rolling 窗口 20/60, min_periods 5/10)
+# PR #43 (`09b5e92`) 已交付 scripts/compute_ic_rolling.py, 本条仅 wire schtask
+# 时段选择: 18:00 DailyIC 实测 1-2min 内跑完 (CORE 30-day incremental), 18:15 留 13 min buffer
+#   充分 (Session 22 Part 7 实测 113 factors 全量重算仅 1.6s). 19:00 Celery Beat
+#   factor-lifecycle-weekly Friday 触发前 45 min 缓冲, 确保 lifecycle 读到最新 ic_ma20/60.
+# 周六\日 skip (Mon-Fri): rolling 纯幂等重算, 节假日跑也无害但浪费 schtask 资源 + 误告警
+#   rolling 不依赖当日 forward return (区别 DailyIC), 但 ic_20d 由 DailyIC 产出 → Mon-Fri 对齐
+# 数据链路: 18:00 DailyIC 写 ic_5d/10d/20d → 18:15 IcRolling 读 ic_20d 回算 ic_ma20/60
+# 无 --core: default 读 factor_registry WHERE status IN ('active','warning') 282 factors,
+#   其中实有 ic_20d 的 113 factors 进入 rolling, 余下 skip (内部逻辑已保证)
+$irAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\compute_ic_rolling.py" `
+    -WorkingDirectory $ProjectRoot
+
+$irTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "18:15"
+
+$irSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+    -RestartCount 1 `
+    -RestartInterval (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_IcRolling" `
+    -Description "QuantMind V2: ic_ma20/ic_ma60 rolling refresh (factor_lifecycle dependency, Mon-Fri 18:15, Session 22 Part 8)" `
+    -Action $irAction `
+    -Trigger $irTrigger `
+    -Settings $irSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_IcRolling registered (Mon-Fri 18:15)" -ForegroundColor Green
+
 # ── 11. QuantMind_PT_Watchdog: 每日20:00 ─────────────
 $wdAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
@@ -391,5 +427,5 @@ Register-ScheduledTask `
 Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "Task Scheduler setup complete (14 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (15 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
