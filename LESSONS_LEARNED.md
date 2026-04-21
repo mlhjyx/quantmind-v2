@@ -1306,7 +1306,7 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
    - b. 告警链路有消费者吗? (grep XREAD = 0 → 红灯)
    - c. 触发条件下代码路径能走完吗? (entry_price=0 → silently skip → 红灯)
 
-2. **Dead code 月度 audit**: 每月执行 `SELECT COUNT(*)` 扫所有"设计要写"的表, 识别"建库 0 行"的死码候选. 2026-04-21 实测至少 1 张: position_monitor (PMS). 待扫: experiments / agent_decision_log / pipeline_run / mining_knowledge 等 24 张空表 (见 SYSTEM_STATUS.md L452).
+2. **Dead code 月度 audit**: 每月执行 `SELECT COUNT(*)` 扫所有"设计要写"的表, 识别"建库 0 行"的死码候选. **inaugural 2026-04-21 已跑** → `docs/audit/dead_code_2026_04.md` (25 empty / 79 total, 2 confirmed dead [position_monitor / circuit_breaker_log] + 19 future anchor + 4 需调查). 下次 2026-05-21.
 
 3. **新 smoke 硬门候选 (铁律 10b 延伸)**: 任何"会触发动作"的功能 (下单 / 告警 / 写入), 生产 smoke 必须包含**模拟触发 + 验证端到端 side effect**. 只验证"调用不抛异常" ≠ 验证 "触发后正确动作". PMS 这类"被动等待触发"的代码特别危险, 未来 MVP 验收标准需要强制包含"触发后核心表有行"断言 (MVP 3.1 已在验收标准第 3 条固化).
 
