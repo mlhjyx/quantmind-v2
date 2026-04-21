@@ -59,10 +59,20 @@
 **风险提示**:
 - `chip_distribution` (8 KB) — comment 明言"数据质量存疑, Phase 0 不依赖筹码类因子". Phase 1 复活或 DROP 待决
 
-### Category C — 需调查 (4)
+### Category C — 需调查 (4, 本 audit 已完成 2/4 调查)
 
-- `universe_daily` (8 KB) — 推测被 `stock_status_daily` 替代, 但无 DDL/service 明示. **action**: grep service + migration 确认后决定保/删
-- `mining_knowledge` (48 KB) — comment 描述 GP 去重, 但 GP 实际是否写入? **action**: grep `INSERT INTO mining_knowledge`
+**已调查 (2)**:
+
+- `universe_daily` (8 KB) — **升级为 Category A 死码** (2026-04-21 调查):
+  - `grep "INSERT INTO universe_daily|TRUNCATE|COPY"` 全 repo = **0 生产写入**
+  - 仅 `backend/app/models/signal.py:27` ORM 定义 + `backend/tests/test_phase_b_infra.py:24` 测试引用
+  - **结论**: ORM schema 存在但无写入路径 = pure orphan. 可安全 DROP (附带删 ORM 定义). 建议 **Session 23+** 与 ADR-010 其他 DROP 批次合并 PR
+- `mining_knowledge` (48 KB) — **确认 Category B 保留**:
+  - 2 生产 INSERT: `backend/app/api/pipeline.py:552` + `backend/engines/mining/pipeline_orchestrator.py:1010`
+  - 代码存在但未激活 (GP closed-loop 0% 实现, Wave 3+ 规划). 保留为 future anchor
+
+**待调查 (2, 延至 2026-05 月审)**:
+
 - `notification_preferences` (16 KB) — DEV_NOTIFICATIONS.md 设计存在, 实际 service 未启. **action**: 决定 Wave 4 MVP 4.1 Observability 启用或 DROP
 - `chip_distribution` (8 KB) — comment "Phase 0 不依赖, 数据质量存疑". **action**: Phase X+ 评估再决定
 

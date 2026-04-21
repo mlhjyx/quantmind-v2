@@ -6,19 +6,23 @@
 
 ---
 
-## §0.0 平台化阶段 (2026-04-17 启动, Session 6 末 2026-04-18 MVP 2.1c 完整结案) ⭐
+## §0.0 平台化阶段 (2026-04-17 启动, Session 21 下午 2026-04-21 QPB v1.6 bump) ⭐
 
-**状态: Wave 1 完结 7/7 + Wave 2 MVP 2.1+2.2 全部完结, 剩 MVP 2.3 Backtest Parity**
+**状态: Wave 1 完结 7/7 + Wave 2 Data 层完结 (剩 MVP 2.3) + Wave 3 MVP 3.1 Risk Framework 新增 (ADR-010, 本 Session)**
 
-### 蓝图 (Blueprint v1.4)
+### 蓝图 (Blueprint v1.6, 2026-04-21 Wave 3 MVP 重排)
 
-- **Platform Blueprint v1.4** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`, 1733 行, Cold Start Ready)
+- **Platform Blueprint v1.6** (`docs/QUANTMIND_PLATFORM_BLUEPRINT.md`)
   - 12 Core Frameworks (含 Resource Orchestration #11 + Backup & DR #12)
   - 6 升维原则 (U1 Parity / U2 Event Sourcing / U3 Lineage / U4 Platform-App / U5 Attribution / U6 Resource Awareness)
   - Platform/Application 分层架构
-  - 4 Waves × 16 MVP 推进路径 (26-35 周)
-  - 40 条铁律 → Framework 兑现矩阵
+  - 4 Waves × **17 MVP** 推进路径 (27.5-37 周, v1.6 bump: MVP 3.1 Risk Framework 新增, 原 3.1-3.4 → 3.2-3.5)
+  - 42 条铁律 → Framework 兑现矩阵
   - Quickstart (≤2 页) + 反膨胀规则 + 测试 4 层
+- **v1.6 关键变化** (ADR-010 PMS Deprecation 驱动):
+  - **MVP 3.1 Risk Framework (新)**: 1.5-2 周 → 2.5-3.5 周 (v1.1 review 修正), 统一 5 监控系统 (intraday/PMS/risk_control/pt_audit/pt_watchdog)
+  - PMS v1.0 标记 DEPRECATED-PENDING-RISK-FRAMEWORK (5 重失效 F27-F31 实证)
+  - 原 MVP 3.0a PEAD 前置从 "PIT+PMS v2+cost" → "PIT+cost H0-v2" (PMS v2 被 Risk Framework 替代)
 
 ### Wave 1 完结 (2026-04-17) 7/7
 
