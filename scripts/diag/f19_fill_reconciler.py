@@ -30,7 +30,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -149,7 +149,13 @@ def load_trade_log(conn: psycopg2.extensions.connection, target_date: date) -> l
 
 
 def reconcile(target_date: date, output_path: Path | None = None) -> dict:
-    """QMT 实际成交 vs trade_log 入库, 生成 reconciliation 报告."""
+    """QMT 实际成交 vs trade_log 入库, 生成 reconciliation 报告.
+
+    **⚠️ 已知局限 (reviewer P2)**: 聚合按 `code` (非 `(code, direction)`). QMT 成交回报
+    日志行不含 direction 字段, 需交叉 order 记录才能恢复. 对 F19 原始 4-17 incident 无
+    影响 (每 code 单方向), 但**若某日同码有 buy + sell**, 会被合计抵消或双记. 复用本工具
+    到混合方向日前需先补 direction 关联逻辑 (来源: place_order audit 或 strategy_id).
+    """
     print(f"[reconciler] {target_date}: 扫 QMT stderr log...")
     qmt_orders = parse_qmt_fills(QMT_STDERR_LOG, target_date)
     print(f"[reconciler]   QMT: {len(qmt_orders)} 个 order_id 有 fill callback")
@@ -220,7 +226,8 @@ def reconcile(target_date: date, output_path: Path | None = None) -> dict:
 
     report = {
         "trade_date": target_date.isoformat(),
-        "generated_at": datetime.now().isoformat(),
+        # 铁律 41: timestamp 必须 UTC + timezone (reviewer P3 采纳)
+        "generated_at": datetime.now(tz=UTC).isoformat(),
         "total_qmt_orders": len(qmt_orders),
         "total_db_rows": len(db_trades),
         "total_volume_loss_qmt_minus_db": total_loss,
@@ -251,14 +258,20 @@ def reconcile(target_date: date, output_path: Path | None = None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--date", type=str, help="单日 YYYY-MM-DD (default=2026-04-17)")
-    parser.add_argument(
+    # reviewer P2 采纳: --date / --date-range 互斥 (argparse 显式), 避免 silent ignore
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--date", type=str,
+        help="单日 YYYY-MM-DD (default=today; F19 原始事件日 = 2026-04-17)",
+    )
+    mode_group.add_argument(
         "--date-range", nargs=2, metavar=("START", "END"),
-        help="日期范围 start end (YYYY-MM-DD)",
+        help="日期范围 start end (YYYY-MM-DD). 多日时 --output 被忽略, "
+             "每日各自写 docs/audit/f19_reconciliation_{date}.json",
     )
     parser.add_argument(
         "--output", type=str,
-        help="JSON 输出路径 (default=docs/audit/f19_reconciliation_{date}.json)",
+        help="JSON 输出路径 (仅单日模式生效; default=docs/audit/f19_reconciliation_{date}.json)",
     )
     args = parser.parse_args()
 
@@ -270,8 +283,16 @@ def main() -> int:
         while d <= end_d:
             dates.append(d)
             d = date.fromordinal(d.toordinal() + 1)
+        # reviewer P2 采纳: 多日 + --output 组合明确告警, 非 silent ignore
+        if args.output:
+            print(
+                f"[reconciler] WARNING: --output {args.output} 在 --date-range 模式下被忽略. "
+                "每日将写 docs/audit/f19_reconciliation_{date}.json",
+                file=sys.stderr,
+            )
     else:
-        d_str = args.date or "2026-04-17"
+        # reviewer P2 采纳: default 从 "2026-04-17 硬编码" → today (footgun 消除)
+        d_str = args.date or date.today().isoformat()
         dates = [date.fromisoformat(d_str)]
 
     total_loss = 0
