@@ -1,16 +1,22 @@
 """fast_ic_recompute.py 迁移回归测试 (Session 23 Part 1 铁律合规重构).
 
-历史版本 (PR #43 之前) 走 `execute_values("INSERT INTO factor_ic_history ... ON
-CONFLICT")` 直接裸 INSERT + Service 层 `conn.commit()`, 违反铁律 17 + 32.
+历史版本 (重构前) 走 `execute_values("INSERT INTO factor_ic_history (factor_name,
+trade_date, ic_1d, ic_5d, ic_10d, ic_20d) ... ON CONFLICT ... DO UPDATE SET
+ic_1d=..., ic_5d=..., ...")` + Service 层 `conn.commit()`, 违反铁律 17 + 32.
 
-本 Session 23 重构: `upsert_ic_history` → `ingest_ic_history` 走 DataPipeline.ingest,
-main() 统一 commit/rollback.
+本 Session 23 重构: `upsert_ic_history` → `upsert_ic_history_partial` **铁律 17 例外**
+(对齐 compute_ic_rolling.py PR #43 模式):
+- 手工 partial-column UPSERT 仅 SET 4 列 (ic_5d/ic_10d/ic_20d/ic_abs_5d)
+- 保护 ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level 不被 NULL 覆盖 (compute_ic_rolling
+  + factor_decay 写入的数据)
+- 不走 DataPipeline.ingest (reviewer CRITICAL P1 PR #45: 会 NULL 化其他列)
+- main() 统一 commit/rollback (铁律 32)
 
 覆盖:
-- 铁律 17 合规验证: 无 INSERT INTO factor_ic_history 裸 SQL, 走 DataPipeline
-- 铁律 32 合规: ingest_ic_history 不 commit, dry_run=True 不入库
+- 铁律 17 例外 scope: SQL 只 SET 4 列 (ic_5d/10d/20d/ic_abs_5d), 不 SET 保护列
+- 铁律 32 合规: upsert_ic_history_partial 不 commit
 - 铁律 19 一致: HORIZONS = (5, 10, 20), CORE_FACTORS 对齐 compute_daily_ic
-- ic_abs_5d 派生列 (对齐 compute_daily_ic scope, 不写 ic_ma20/60)
+- ic_abs_5d 由 records 派生 (对齐 compute_daily_ic scope)
 
 不覆盖:
 - 真实 DB end-to-end (走 ad-hoc 运行或 smoke)
@@ -57,10 +63,10 @@ class TestConstants:
         assert 1 not in fir.HORIZONS
 
 
-# ────────── ingest_ic_history 铁律 17 合规 ──────────
+# ────────── upsert_ic_history_partial 铁律 17 例外 ──────────
 
 
-class TestIngestIcHistory:
+class TestUpsertIcHistoryPartial:
     def _make_ic_df(self, n_rows: int = 5) -> pd.DataFrame:
         return pd.DataFrame(
             {
@@ -71,111 +77,176 @@ class TestIngestIcHistory:
             }
         )
 
-    def test_dry_run_short_circuits_without_pipeline_call(self):
-        """dry_run=True → 返回 len(ic_df) 不调 pipeline.ingest (铁律 32)."""
-        mock_pipeline = MagicMock()
+    def test_dry_run_short_circuits_without_cursor(self):
+        """dry_run=True → 返回 len(ic_df) 不开 cursor (铁律 32)."""
+        mock_conn = MagicMock()
         ic_df = self._make_ic_df(5)
 
-        rows = fir.ingest_ic_history(mock_pipeline, "foo", ic_df, dry_run=True)
+        rows = fir.upsert_ic_history_partial(mock_conn, "foo", ic_df, dry_run=True)
 
         assert rows == 5
-        mock_pipeline.ingest.assert_not_called()
+        mock_conn.cursor.assert_not_called()
 
     def test_empty_df_returns_zero(self):
-        mock_pipeline = MagicMock()
-        empty = pd.DataFrame(columns=["trade_date", "ic_5d", "ic_10d", "ic_20d"])
-        assert fir.ingest_ic_history(mock_pipeline, "foo", empty, dry_run=False) == 0
-        mock_pipeline.ingest.assert_not_called()
-
-    def test_ingest_path_uses_factor_ic_history_contract(self):
-        """铁律 17: 走 DataPipeline.ingest(df, FACTOR_IC_HISTORY), 不裸 INSERT."""
-        from app.data_fetcher.contracts import FACTOR_IC_HISTORY
-
-        mock_pipeline = MagicMock()
-        mock_result = MagicMock()
-        mock_result.upserted_rows = 5
-        mock_result.rejected_rows = 0
-        mock_result.reject_reasons = {}
-        mock_result.null_ratio_warnings = {}
-        mock_pipeline.ingest.return_value = mock_result
-
-        ic_df = self._make_ic_df(5)
-        rows = fir.ingest_ic_history(mock_pipeline, "bp_ratio", ic_df, dry_run=False)
-
-        assert rows == 5
-        mock_pipeline.ingest.assert_called_once()
-        call_args = mock_pipeline.ingest.call_args
-        df_passed, contract_passed = call_args[0]
-        # contract 必须是 FACTOR_IC_HISTORY (不是其他 contract)
-        assert contract_passed is FACTOR_IC_HISTORY
-        # factor_name 被注入 df
-        assert "factor_name" in df_passed.columns
-        assert (df_passed["factor_name"] == "bp_ratio").all()
-
-    def test_derives_ic_abs_5d_not_ic_abs_1d(self):
-        """派生列对齐 compute_daily_ic scope: 只派生 ic_abs_5d (HORIZONS 无 1)."""
-        mock_pipeline = MagicMock()
-        mock_result = MagicMock()
-        mock_result.upserted_rows = 5
-        mock_result.rejected_rows = 0
-        mock_result.reject_reasons = {}
-        mock_result.null_ratio_warnings = {}
-        mock_pipeline.ingest.return_value = mock_result
-
-        ic_df = self._make_ic_df(5)
-        fir.ingest_ic_history(mock_pipeline, "foo", ic_df, dry_run=False)
-
-        df_passed = mock_pipeline.ingest.call_args[0][0]
-        # ic_abs_5d 必须存在且为 ic_5d 的 abs
-        assert "ic_abs_5d" in df_passed.columns
-        assert (df_passed["ic_abs_5d"] == df_passed["ic_5d"].abs()).all()
-        # ic_abs_1d 不应手工派生 (HORIZONS 无 1), 由 DataPipeline auto-fill None
-        assert "ic_abs_1d" not in df_passed.columns
-
-    def test_ingest_does_not_commit(self):
-        """铁律 32: ingest_ic_history 不调 conn.commit (调用方 main() 管理)."""
-        mock_pipeline = MagicMock()
         mock_conn = MagicMock()
-        mock_pipeline.conn = mock_conn
-        mock_result = MagicMock()
-        mock_result.upserted_rows = 5
-        mock_result.rejected_rows = 0
-        mock_result.reject_reasons = {}
-        mock_result.null_ratio_warnings = {}
-        mock_pipeline.ingest.return_value = mock_result
+        empty = pd.DataFrame(columns=["trade_date", "ic_5d", "ic_10d", "ic_20d"])
+        assert fir.upsert_ic_history_partial(mock_conn, "foo", empty, dry_run=False) == 0
+        mock_conn.cursor.assert_not_called()
+
+    def test_sql_protects_ic_1d_ic_ma_and_decay_columns(self):
+        """**铁律 17 例外核心契约**: SQL 只 SET ic_5d/10d/20d/ic_abs_5d,
+
+        不可触 ic_1d / ic_abs_1d / ic_ma20 / ic_ma60 / decay_level (保护
+        compute_ic_rolling + factor_decay 写入的数据).
+
+        reviewer CRITICAL P1 PR #45: 初版走 DataPipeline 会 NULL 化这 5 列,
+        修正为手工 partial UPSERT.
+        """
+        from unittest.mock import patch
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
         ic_df = self._make_ic_df(5)
-        fir.ingest_ic_history(mock_pipeline, "foo", ic_df, dry_run=False)
+
+        with patch("fast_ic_recompute.execute_values") as mock_ev:
+            fir.upsert_ic_history_partial(mock_conn, "bp_ratio", ic_df, dry_run=False)
+
+        mock_ev.assert_called_once()
+        sql = mock_ev.call_args[0][1]
+
+        # SET 必须只含这 4 列
+        assert "ic_5d = EXCLUDED.ic_5d" in sql
+        assert "ic_10d = EXCLUDED.ic_10d" in sql
+        assert "ic_20d = EXCLUDED.ic_20d" in sql
+        assert "ic_abs_5d = EXCLUDED.ic_abs_5d" in sql
+
+        # 关键保护: 这 5 列**不得**出现在 DO UPDATE SET 子句
+        # (ic_1d 列存在于 INSERT 但不在 SET; 检查 SET 段内)
+        set_clause_start = sql.find("DO UPDATE SET")
+        assert set_clause_start > 0, "必须有 ON CONFLICT DO UPDATE SET 子句"
+        set_clause = sql[set_clause_start:]
+
+        assert "ic_1d = EXCLUDED" not in set_clause, (
+            "铁律 17 例外违规: ic_1d 不得出现在 SET 子句 (保护 compute_daily_ic 历史数据)"
+        )
+        assert "ic_abs_1d" not in set_clause, "ic_abs_1d 不得出现在 SET 子句"
+        assert "ic_ma20 = EXCLUDED" not in set_clause, (
+            "铁律 17 例外违规: ic_ma20 不得出现在 SET 子句 (保护 compute_ic_rolling PR #43 的回填)"
+        )
+        assert "ic_ma60 = EXCLUDED" not in set_clause, (
+            "铁律 17 例外违规: ic_ma60 不得出现在 SET 子句 (保护 compute_ic_rolling PR #43 的回填)"
+        )
+        assert "decay_level = EXCLUDED" not in set_clause, (
+            "铁律 17 例外违规: decay_level 不得出现在 SET 子句 (保护 factor_decay 写入)"
+        )
+
+    def test_records_include_ic_abs_5d_derived_from_ic_5d(self):
+        """ic_abs_5d 从 ic_5d 派生 abs() (对齐 compute_daily_ic scope)."""
+        from unittest.mock import patch
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        # 负 ic_5d 测试 abs 派生
+        ic_df = pd.DataFrame(
+            {
+                "trade_date": [date(2024, 1, 1)],
+                "ic_5d": [-0.03],
+                "ic_10d": [0.04],
+                "ic_20d": [0.05],
+            }
+        )
+
+        with patch("fast_ic_recompute.execute_values") as mock_ev:
+            fir.upsert_ic_history_partial(mock_conn, "foo", ic_df, dry_run=False)
+
+        records = mock_ev.call_args[0][2]
+        assert len(records) == 1
+        # record tuple: (factor_name, trade_date, ic_5d, ic_10d, ic_20d, ic_abs_5d)
+        assert records[0][0] == "foo"
+        assert records[0][2] == -0.03  # ic_5d 保持负值
+        assert records[0][5] == 0.03  # ic_abs_5d 是 |ic_5d|
+
+    def test_nan_values_convert_to_none(self):
+        """铁律 29: NaN → None, ic_abs_5d 基于 ic_5d 也正确处理."""
+        from unittest.mock import patch
+
+        import numpy as np
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        ic_df = pd.DataFrame(
+            {
+                "trade_date": [date(2024, 1, 1)],
+                "ic_5d": [np.nan],
+                "ic_10d": [0.01],
+                "ic_20d": [np.nan],
+            }
+        )
+
+        with patch("fast_ic_recompute.execute_values") as mock_ev:
+            fir.upsert_ic_history_partial(mock_conn, "foo", ic_df, dry_run=False)
+
+        records = mock_ev.call_args[0][2]
+        # (factor_name, trade_date, ic_5d, ic_10d, ic_20d, ic_abs_5d)
+        assert records[0][2] is None  # ic_5d NaN → None
+        assert records[0][3] == 0.01  # ic_10d 保持
+        assert records[0][4] is None  # ic_20d NaN → None
+        assert records[0][5] is None  # ic_abs_5d 基于 None ic_5d → None
+
+    def test_does_not_commit(self):
+        """铁律 32: upsert_ic_history_partial 不调 conn.commit (调用方 main() 管理)."""
+        from unittest.mock import patch
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        ic_df = self._make_ic_df(5)
+        with patch("fast_ic_recompute.execute_values"):
+            fir.upsert_ic_history_partial(mock_conn, "foo", ic_df, dry_run=False)
 
         mock_conn.commit.assert_not_called()
         mock_conn.rollback.assert_not_called()
 
 
-# ────────── 源码 AST-level 铁律 17 守护 ──────────
+# ────────── 源码 level 铁律 17 例外守护 ──────────
 
 
 class TestIronLawCompliance:
-    """source-code level 守护: 防止未来 reviewer 误引入裸 INSERT."""
+    """source-code level 守护: 防止未来 reviewer 回退到 DataPipeline (会 NULL 化其他列)."""
 
-    def test_no_raw_insert_into_factor_ic_history(self):
-        """铁律 17: 源码不得含 `INSERT INTO factor_ic_history`."""
+    def test_no_datapipeline_ingest_for_factor_ic_history(self):
+        """铁律 17 例外: 本脚本**不得**调 DataPipeline.ingest 写 factor_ic_history.
+
+        reviewer CRITICAL P1 PR #45 根因: DataPipeline.ingest 会补缺失 nullable
+        列为 None + DO UPDATE SET non_pk = EXCLUDED, NULL 化 ic_ma20/60/decay_level
+        等保护列. 对齐 compute_ic_rolling.py 同样绕过.
+        """
         src = (SCRIPTS_DIR / "fast_ic_recompute.py").read_text(encoding="utf-8")
-        # 允许 docstring / comment 解释, 但不允许实际 SQL literal
-        # 粗略检查: 不含 "INSERT INTO factor_ic_history"
-        assert "INSERT INTO factor_ic_history" not in src, (
-            "铁律 17 违规: fast_ic_recompute.py 不得裸 INSERT INTO factor_ic_history, "
-            "必须走 DataPipeline.ingest(df, FACTOR_IC_HISTORY)"
+        # 允许 docstring 引用 "DataPipeline" 解释为什么不用, 但不得有实际调用
+        assert "DataPipeline(conn=" not in src, (
+            "铁律 17 例外违规: 不得实例化 DataPipeline (会 NULL 化保护列)"
+        )
+        assert "pipeline.ingest(" not in src, (
+            "铁律 17 例外违规: 不得调 pipeline.ingest (会 NULL 化保护列)"
         )
 
-    def test_no_execute_values_import(self):
-        """历史 `from psycopg2.extras import execute_values` 已移除 (铁律 17 副产物)."""
-        src = (SCRIPTS_DIR / "fast_ic_recompute.py").read_text(encoding="utf-8")
-        assert "from psycopg2.extras import execute_values" not in src
-
-    def test_no_service_commit_in_ingest_function(self):
-        """铁律 32: ingest_ic_history 函数体不得含 conn.commit."""
+    def test_no_service_commit_in_upsert_function(self):
+        """铁律 32: upsert_ic_history_partial 函数体不得含 conn.commit."""
         import inspect
 
-        src = inspect.getsource(fir.ingest_ic_history)
+        src = inspect.getsource(fir.upsert_ic_history_partial)
         assert "conn.commit" not in src
-        assert "pipeline.conn.commit" not in src
+
+    def test_sql_set_clause_scope_documented(self):
+        """docstring 必须含'铁律 17 例外'字样 (防后续误撤消保护)."""
+        src = (SCRIPTS_DIR / "fast_ic_recompute.py").read_text(encoding="utf-8")
+        assert "铁律 17 例外" in src, (
+            "fast_ic_recompute 必须显式声明铁律 17 例外, 说明为什么不走 DataPipeline"
+        )
