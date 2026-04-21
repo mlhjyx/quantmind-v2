@@ -224,9 +224,14 @@ def run_signal_phase(
             # ADR-008 D2: performance_series 读按 settings.EXECUTION_MODE 动态
             # (Session 10 P1-c 根因: live 模式此处读 'paper' 永远 empty → prev_nav
             #  fallback 到 PAPER_INITIAL_CAPITAL → NAV daily_return/drawdown 字段全错)
+            # Session 21 P1-c 二段根因 (2026-04-21): 缺 `AND trade_date < %s` 过滤,
+            # 16:30 signal_phase 跑时 15:40 reconciliation 已写当日行, LIMIT 1 读到今日 self
+            # → prev_nav = nav → daily_return = (nav/nav - 1) = 0. 修复: 明确排除今日.
             cur.execute(
-                "SELECT nav FROM performance_series WHERE execution_mode=%s AND strategy_id=%s ORDER BY trade_date DESC LIMIT 1",
-                (settings.EXECUTION_MODE, settings.PAPER_STRATEGY_ID),
+                "SELECT nav FROM performance_series "
+                "WHERE execution_mode=%s AND strategy_id=%s AND trade_date < %s "
+                "ORDER BY trade_date DESC LIMIT 1",
+                (settings.EXECUTION_MODE, settings.PAPER_STRATEGY_ID, trade_date),
             )
             r = cur.fetchone()
             prev_nav = float(r[0]) if r else settings.PAPER_INITIAL_CAPITAL
