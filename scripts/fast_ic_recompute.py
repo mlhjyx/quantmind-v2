@@ -8,14 +8,26 @@ engines.ic_calculator (vectorized) 完成相同任务, 预期 5-10 分钟/全因
   - 一次性加载 12 年 price + benchmark (复用)
   - 预计算 forward excess return (共享全因子)
   - 按因子循环, 从 Parquet 缓存或 DB 加载, 调 compute_ic_series
-  - DataPipeline.ingest 写 factor_ic_history (铁律 17: 不裸 INSERT)
+  - 手工 partial-column UPSERT 写 factor_ic_history (铁律 17 **例外**, 见下)
 
-**Session 23 Part 1 铁律合规重构** (Session 22 Part 7 debt 关闭):
-  - 铁律 17: upsert_ic_history 裸 INSERT + ON CONFLICT → DataPipeline.ingest(df,
-    FACTOR_IC_HISTORY) 统一入库契约
+**铁律 17 例外声明** (对齐 compute_ic_rolling.py L16-21 模式):
+  本脚本写 factor_ic_history **仅 4 列** (ic_5d / ic_10d / ic_20d / ic_abs_5d),
+  不能走 DataPipeline.ingest: 其 "补缺失 nullable 列为 None + UPDATE SET
+  non_pk = EXCLUDED" 行为会把 ic_1d / ic_abs_1d / ic_ma20 / ic_ma60 / decay_level
+  全 NULL 化, **摧毁 compute_ic_rolling (PR #43) 回填的 142,990 rows ic_ma20/60
+  数据 + factor_decay 写的 decay_level 数据**. 用手工 UPDATE SQL + execute_values
+  明确 SET 仅 4 列, 保护其他列既有数据.
+
+  Code reviewer CRITICAL P1 (PR #45): DataPipeline 的 partial-column 破坏性在
+  compute_ic_rolling (PR #43) 已识别并绕过; 本 PR 初版误走 DataPipeline 会重新
+  引入该 bug, 已按 reviewer 意见修正为手工 SQL.
+
+**Session 23 Part 1 重构** (Session 22 Part 7 debt 关闭):
+  - 铁律 17 例外合规: 手工 UPSERT 仅 SET 4 列 (保护 ic_ma20/60/decay_level/ic_1d/ic_abs_1d)
   - 铁律 32: Service 层 conn.commit() 移到 main() orchestration
   - 铁律 19: HORIZONS = (5,10,20) 去掉 horizon=1 (ic_calculator entry==exit
     退化 NaN), 对齐 compute_daily_ic (PR #37 reviewer P2 采纳)
+  - CORE_FACTORS 对齐 PT live (CORE4 = CORE3+dv_ttm, 2026-04-12 WF PASS)
   - 派生 ic_abs_5d (对齐 compute_daily_ic scope); 不写 ic_ma20/60 (由
     compute_ic_rolling 独立脚本管理, 铁律 11 Phase 2 分工)
 
@@ -25,13 +37,13 @@ engines.ic_calculator (vectorized) 完成相同任务, 预期 5-10 分钟/全因
   - 直接写 factor_ic_history 替代旧 "raw_return IC"
 
 输出:
-  - DB: factor_ic_history DataPipeline upsert
+  - DB: factor_ic_history 手工 partial-column UPSERT
   - stdout: 每因子汇总
 
 用法:
     python scripts/fast_ic_recompute.py             # 12 年全因子
     python scripts/fast_ic_recompute.py --factor bp_ratio  # 单因子
-    python scripts/fast_ic_recompute.py --core      # 仅 CORE 5
+    python scripts/fast_ic_recompute.py --core      # 仅 CORE 4 (CORE_FACTORS)
     python scripts/fast_ic_recompute.py --dry-run   # 不写 DB
 """
 
@@ -41,6 +53,7 @@ import argparse
 import logging
 import sys
 import time
+import traceback
 from pathlib import Path
 
 logging.disable(logging.DEBUG)
@@ -61,9 +74,8 @@ from engines.ic_calculator import (  # noqa: E402
     compute_forward_excess_returns,
     compute_ic_series,
 )
+from psycopg2.extras import execute_values  # noqa: E402
 
-from app.data_fetcher.contracts import FACTOR_IC_HISTORY  # noqa: E402
-from app.data_fetcher.pipeline import DataPipeline  # noqa: E402
 from app.services.db import get_sync_conn  # noqa: E402
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "backtest"
@@ -162,22 +174,24 @@ def compute_multi_horizon_ic(
     return result.reset_index()
 
 
-def ingest_ic_history(
-    pipeline: DataPipeline, factor_name: str, ic_df: pd.DataFrame, dry_run: bool
-) -> int:
-    """走 DataPipeline.ingest(FACTOR_IC_HISTORY) 写 factor_ic_history (铁律 17).
+def upsert_ic_history_partial(conn, factor_name: str, ic_df: pd.DataFrame, dry_run: bool) -> int:
+    """手工 partial-column UPSERT factor_ic_history (铁律 17 **例外**).
 
-    Session 23 Part 1 重构: 替换原 `upsert_ic_history` 裸 `INSERT ... ON CONFLICT`.
-    铁律 32 transaction boundary: 本函数不 commit, 由 main() 管理.
+    **铁律 17 例外声明**: 本函数不走 DataPipeline.ingest (会 NULL 化 ic_1d /
+    ic_abs_1d / ic_ma20 / ic_ma60 / decay_level 破坏既有数据, 对齐 compute_ic_rolling
+    PR #43 同样绕过). SQL 显式 SET 仅 4 列 (ic_5d / ic_10d / ic_20d / ic_abs_5d),
+    ON CONFLICT DO UPDATE 保护其他列.
+
+    **铁律 32 transaction boundary**: 本函数不 commit, 调用方 main() 管理.
 
     Args:
-        pipeline: 复用的 DataPipeline 实例 (避免每 factor 重建 conn)
+        conn: psycopg2 sync connection (caller 负责生命周期)
         factor_name: 因子名
-        ic_df: [trade_date, ic_5d, ic_10d, ic_20d, ic_abs_5d] (HORIZONS 对齐)
+        ic_df: [trade_date, ic_5d, ic_10d, ic_20d] (HORIZONS 对齐, ic_abs_5d 派生自 ic_5d)
         dry_run: True 时返回 "would-write" 行数不入库
 
     Returns:
-        upserted_rows (dry_run 下返回 len(ic_df))
+        处理行数 (dry_run 下返回 len(ic_df); 实 apply 下返回 len(records))
     """
     if ic_df.empty:
         return 0
@@ -185,21 +199,29 @@ def ingest_ic_history(
         print(f"  [DRY-RUN] {factor_name}: 将写入 {len(ic_df)} 行")
         return len(ic_df)
 
-    df = ic_df.copy()
-    df["factor_name"] = factor_name
-    # ic_abs_5d 派生列 (对齐 compute_daily_ic PR #37 scope; ic_abs_1d 不派生, HORIZONS 无 1)
-    if "ic_5d" in df.columns:
-        df["ic_abs_5d"] = df["ic_5d"].abs()
+    records = []
+    for _, row in ic_df.iterrows():
+        ic_5d = float(row["ic_5d"]) if pd.notna(row["ic_5d"]) else None
+        ic_10d = float(row["ic_10d"]) if pd.notna(row["ic_10d"]) else None
+        ic_20d = float(row["ic_20d"]) if pd.notna(row["ic_20d"]) else None
+        ic_abs_5d = abs(ic_5d) if ic_5d is not None else None
+        records.append((factor_name, row["trade_date"], ic_5d, ic_10d, ic_20d, ic_abs_5d))
 
-    result = pipeline.ingest(df, FACTOR_IC_HISTORY)
-    if result.rejected_rows > 0:
-        print(
-            f"  [WARN] {factor_name}: rejected={result.rejected_rows} "
-            f"reasons={result.reject_reasons}"
-        )
-    if result.null_ratio_warnings:
-        print(f"  [WARN] {factor_name}: null_ratio_warnings={result.null_ratio_warnings}")
-    return result.upserted_rows
+    # 铁律 17 例外: 显式 SET 仅 4 列, 保护 ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level
+    # 不被 NULL 覆盖 (对齐 compute_ic_rolling.py PR #43 L220-231 模式).
+    sql = """
+        INSERT INTO factor_ic_history
+            (factor_name, trade_date, ic_5d, ic_10d, ic_20d, ic_abs_5d)
+        VALUES %s
+        ON CONFLICT (factor_name, trade_date) DO UPDATE SET
+            ic_5d = EXCLUDED.ic_5d,
+            ic_10d = EXCLUDED.ic_10d,
+            ic_20d = EXCLUDED.ic_20d,
+            ic_abs_5d = EXCLUDED.ic_abs_5d
+    """
+    with conn.cursor() as cur:
+        execute_values(cur, sql, records, page_size=5000)
+    return len(records)
 
 
 def main():
@@ -211,26 +233,34 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    price_df, bench_df = load_price_bench()
-
-    # 一次性预计算所有 horizon 的 fwd_rets (cache 避免因子循环重复 pivot)
-    print(f"[Precompute] forward excess returns for horizons {HORIZONS}...")
-    t0 = time.time()
-    fwd_rets_cache = {
-        h: compute_forward_excess_returns(price_df, bench_df, horizon=h, price_col="adj_close")
-        for h in HORIZONS
-    }
-    print(f"  fwd_rets 4 horizons cached ({time.time() - t0:.1f}s)")
-
-    conn = get_sync_conn()
-    # 铁律 17 合规: 所有 factor_ic_history 写入走 DataPipeline.ingest.
-    # 铁律 32 合规: pipeline 实例接 conn, 但**不 commit**, 由本 main() 在
-    # 循环结束后统一 commit (或异常 rollback).
-    pipeline = DataPipeline(conn=conn)
-    results = []
+    # reviewer P1-HIGH (python) 采纳: total_t0 / factor_list / conn 必须在 try 外初始化,
+    # 避免 load_price_bench / fwd_rets_cache 预计算阶段抛异常时 finally 块读 undefined.
+    total_t0 = time.time()
+    factor_list: list[str] = []
+    results: list[dict] = []
     total_upserted = 0
+    conn = None
 
     try:
+        price_df, bench_df = load_price_bench()
+
+        # 一次性预计算所有 horizon 的 fwd_rets (cache 避免因子循环重复 pivot)
+        print(f"[Precompute] forward excess returns for horizons {HORIZONS}...")
+        t_pre = time.time()
+        fwd_rets_cache = {
+            h: compute_forward_excess_returns(price_df, bench_df, horizon=h, price_col="adj_close")
+            for h in HORIZONS
+        }
+        # reviewer P2-MEDIUM 采纳: 硬编码 "4 horizons" 改 dynamic (HORIZONS=[5,10,20] 后为 3)
+        print(f"  fwd_rets {len(HORIZONS)} horizons cached ({time.time() - t_pre:.1f}s)")
+
+        conn = get_sync_conn()
+        # 铁律 17 例外 (见 upsert_ic_history_partial docstring): 手工 partial-column
+        # UPDATE SQL 仅 SET 4 列, 保护 ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level.
+        # 不走 DataPipeline (其 ON CONFLICT DO UPDATE SET non_pk=EXCLUDED 会 NULL 化,
+        # reviewer CRITICAL P1 PR #45 识别并修正).
+        # 铁律 32: main() orchestration 管理 commit/rollback.
+
         # 决定因子列表
         if args.factor:
             factor_list = [args.factor]
@@ -249,7 +279,6 @@ def main():
         print(f"[IC口径] {IC_CALCULATOR_ID} v{IC_CALCULATOR_VERSION}")
         print(f"[Horizons] {HORIZONS}")
 
-        total_t0 = time.time()
         for i, f in enumerate(factor_list):
             t0 = time.time()
             factor_df = load_factor(f, conn)
@@ -270,7 +299,7 @@ def main():
                 ir = mean / std if std > 0 else 0.0
                 n_days = int(len(ic_20d))
 
-                rows = ingest_ic_history(pipeline, f, ic_df, args.dry_run)
+                rows = upsert_ic_history_partial(conn, f, ic_df, args.dry_run)
                 total_upserted += rows
                 elapsed = time.time() - t0
                 print(
@@ -283,12 +312,11 @@ def main():
             except Exception as e:
                 # 铁律 33 fail-loud: 单因子异常不阻断全 batch (其他因子可继续),
                 # 但 log error 保留现场. 对齐 compute_daily_ic per-factor try/except 模式.
-                import traceback
-
+                # reviewer P2 (python) 采纳: import traceback 移到文件顶部避免 except 块 import.
                 traceback.print_exc()
                 print(f"  [{i + 1}/{len(factor_list)}] {f}: ERROR {str(e)[:80]}")
 
-        # 铁律 32 transaction boundary: main() orchestration 管理 commit/rollback.
+        # 铁律 32 transaction boundary: main() orchestration 统一 commit/rollback.
         if not args.dry_run and total_upserted > 0:
             conn.commit()
             print(f"\n[commit] {total_upserted} 行 across {len(results)} 因子")
@@ -296,11 +324,13 @@ def main():
             print(f"\n[DRY-RUN] 跳过 commit, 本应写 {total_upserted} 行")
 
     except Exception:
-        conn.rollback()
-        print("\n[ERROR] main loop 异常, rollback 全部因子 (铁律 32+33)")
+        if conn is not None:
+            conn.rollback()
+            print("\n[ERROR] main loop 异常, rollback 全部因子 (铁律 32+33)")
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
     total_elapsed = time.time() - total_t0
     print(f"\n总耗时: {total_elapsed:.0f}s ({total_elapsed / 60:.1f} min)")
