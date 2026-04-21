@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""盘中风控监控 — 每5分钟检查组合市值，日内跌幅告警。
+"""盘中风控监控 — 每5分钟检查组合市值 + 单股急跌，日内告警。
 
 通过miniQMT实时查询持仓市值，与昨日收盘市值比较计算日内涨跌幅。
 告警规则:
-  跌>3%: P1钉钉告警
-  跌>5%: P0钉钉告警
-  跌>8%: P0告警 + 日志标记"建议减仓"
+  组合跌>3%: P1钉钉告警
+  组合跌>5%: P0钉钉告警
+  组合跌>8%: P0告警 + 日志标记"建议减仓"
+  单股跌>8%: P1钉钉告警 (ADR-010 过渡期保护, 每股每日限1次)
   QMT断连: P0告警
-  单股跌停: P1记录
 
 调度: 交易日 09:35-15:00，每5分钟（Task Scheduler重复触发）。
 非交易日/非交易时间自动跳过。
+
+ADR-010 过渡期 (Risk Framework MVP 3.1 落地前):
+  单股急跌规则是临时保险丝, 走 Redis market:latest + klines_daily 前日 close 自算
+  pnl, 与 Risk Framework MVP 3.1 批 2 迁移后的 PortfolioDropXpct 规则合并.
 
 用法:
     python scripts/intraday_monitor.py
@@ -37,10 +41,11 @@ from app.config import settings
 logger = structlog.get_logger("intraday_monitor")
 
 # ── 告警阈值 ──
-ALERT_P1_THRESHOLD = -0.03   # 跌3%
-ALERT_P0_THRESHOLD = -0.05   # 跌5%
-ALERT_P0_REDUCE    = -0.08   # 跌8% 建议减仓
+ALERT_P1_THRESHOLD = -0.03   # 组合跌3%
+ALERT_P0_THRESHOLD = -0.05   # 组合跌5%
+ALERT_P0_REDUCE    = -0.08   # 组合跌8% 建议减仓
 LIMIT_DOWN_PCT     = -0.095  # 单股接近跌停
+ALERT_EMERGENCY_STOCK = -0.08  # 单股当日跌>8% P1 告警 (ADR-010 过渡期, Risk Framework MVP 3.1 前)
 
 
 def is_trading_hours(now: datetime | None = None) -> bool:
@@ -150,6 +155,84 @@ def send_alert(level: str, title: str, content: str) -> None:
         logger.error(f"告警发送失败: {e}")
 
 
+# ── ADR-010 过渡期: 单股急跌检测 helpers ──
+
+def _get_prev_close(code: str) -> float | None:
+    """从 klines_daily 查单股前一交易日收盘价。"""
+    import psycopg2
+    try:
+        conn = psycopg2.connect(
+            dbname="quantmind_v2", user="xin",
+            password="quantmind", host="localhost",
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT close FROM klines_daily
+               WHERE code = %s AND trade_date < %s
+               ORDER BY trade_date DESC LIMIT 1""",
+            (code, date.today()),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return float(row[0]) if row and row[0] else None
+    except Exception as e:
+        logger.warning(f"_get_prev_close failed for {code}: {e}")
+        return None
+
+
+def _get_current_price(code: str) -> float | None:
+    """从 Redis market:latest:{code} 读当前价。"""
+    try:
+        import redis
+        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        raw = r.get(f"market:latest:{code}")
+        if not raw:
+            return None
+        data = json.loads(raw)
+        # MVP 2.1c Sub3 contract v2 用 price, 旧格式兼容 last_price
+        price = float(data.get("price") or data.get("last_price") or 0)
+        return price if price > 0 else None
+    except Exception as e:
+        logger.warning(f"_get_current_price failed for {code}: {e}")
+        return None
+
+
+def _compute_stock_daily_pnl(code: str) -> float | None:
+    """单股当日涨跌幅 = (current - prev_close) / prev_close. 任一数据缺失返 None."""
+    current = _get_current_price(code)
+    if current is None:
+        return None
+    prev_close = _get_prev_close(code)
+    if prev_close is None or prev_close <= 0:
+        return None
+    return (current - prev_close) / prev_close
+
+
+def _emergency_dedup_key(code: str) -> str:
+    """Redis key 用于同股同日 emergency 告警 dedup."""
+    return f"intraday_alerted:emergency:{code}:{date.today().isoformat()}"
+
+
+def _already_alerted_emergency(code: str) -> bool:
+    """查 Redis 是否同股同日已告警 (24h TTL). fail-safe: 异常返 False (宁重复不漏报)."""
+    try:
+        import redis
+        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        return r.exists(_emergency_dedup_key(code)) > 0
+    except Exception:
+        return False  # silent_ok: Redis 失败时允许告警, 保告警覆盖优先于去重
+
+
+def _mark_alerted_emergency(code: str) -> None:
+    """标记同股同日已告警 (TTL 86400s 自动清)."""
+    try:
+        import redis
+        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        r.setex(_emergency_dedup_key(code), 86400, "1")
+    except Exception as e:
+        logger.warning(f"_mark_alerted_emergency failed for {code}: {e}")
+
+
 def save_monitor_log(
     total_mv: float | None,
     prev_mv: float | None,
@@ -240,15 +323,32 @@ def run_monitor(force: bool = False) -> None:
         send_alert("P1", f"组合下跌 {now.strftime('%H:%M')}",
                     f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}")
 
-    # 5. 单股跌停检测
+    # 5. 单股急跌检测 (ADR-010 过渡期保险丝, 阈值 -8%, 每股每日限 1 次)
+    emergency_stocks = []
     for pos in positions:
-        pos.get("stock_code", "")
-        mv = pos.get("market_value", 0)
-        # 简单检测: 如果持仓市值=0且有持股，可能跌停
-        vol = pos.get("volume", 0)
-        if vol > 0 and mv > 0:
-            # 通过可卖数量判断: can_use_volume=0可能是T+1限制或停牌
-            pass  # 详细跌停检测需要实时行情，暂记录持仓
+        code = pos.get("stock_code", "")
+        if not code or pos.get("volume", 0) <= 0:
+            continue
+        stock_pnl = _compute_stock_daily_pnl(code)
+        if stock_pnl is None or stock_pnl > ALERT_EMERGENCY_STOCK:
+            continue
+        if _already_alerted_emergency(code):
+            continue
+        emergency_stocks.append({"code": code, "pnl_pct": stock_pnl})
+        _mark_alerted_emergency(code)
+
+    if emergency_stocks:
+        # 组合已 P0 保持 P0 不降级; 否则本规则升级到 P1
+        if alert_level is None:
+            alert_level = "P1"
+        lines = [f"  {s['code']}: {s['pnl_pct']:+.2%}" for s in emergency_stocks]
+        summary = f"单股急跌 {len(emergency_stocks)} 只 (阈值 {ALERT_EMERGENCY_STOCK:+.0%}):\n" + "\n".join(lines)
+        alerts.append(summary)
+        send_alert(
+            "P1",
+            f"单股急跌 {now.strftime('%H:%M')}",
+            f"ADR-010 过渡期保险丝触发:\n{summary}\n建议: 人工查证基本面, 必要时减仓",
+        )
 
     # 6. 写入监控日志
     save_monitor_log(total_mv, prev_mv, pnl_pct, alert_level, alerts)
