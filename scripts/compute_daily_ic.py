@@ -27,6 +27,7 @@ Cron (Session 22+):
     Windows Task Scheduler daily Mon-Fri 18:00 (after 17:40 quality_report,
     before 20:00 ic_monitor, 留 1h buffer 给周五 19:00 factor_lifecycle).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,6 +61,7 @@ from engines.ic_calculator import (  # noqa: E402
 from app.data_fetcher.contracts import FACTOR_IC_HISTORY  # noqa: E402
 from app.data_fetcher.pipeline import DataPipeline  # noqa: E402
 from app.services.db import get_sync_conn  # noqa: E402
+from app.services.trading_calendar import is_trading_day  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +236,10 @@ def compute_and_ingest(
     t0 = time.time()
     logger.info(
         "[daily_ic] 窗口 [%s, %s], price_end=%s, horizons=%s",
-        start_date, end_date, price_end, HORIZONS,
+        start_date,
+        end_date,
+        price_end,
+        HORIZONS,
     )
     logger.info("[daily_ic] IC 口径: %s v%s", IC_CALCULATOR_ID, IC_CALCULATOR_VERSION)
 
@@ -245,7 +250,9 @@ def compute_and_ingest(
     if not factors:
         logger.warning("[daily_ic] 无 active factor, 退出")
         return {
-            "processed_factors": 0, "total_rows": 0, "elapsed_sec": 0.0,
+            "processed_factors": 0,
+            "total_rows": 0,
+            "elapsed_sec": 0.0,
             "factor_summary": [],
         }
 
@@ -275,7 +282,9 @@ def compute_and_ingest(
         try:
             factor_df = _load_factor(conn, fname, start_date, end_date)
             if factor_df.empty:
-                logger.info("[daily_ic] [%d/%d] %s: SKIP (no factor_values)", i, len(factors), fname)
+                logger.info(
+                    "[daily_ic] [%d/%d] %s: SKIP (no factor_values)", i, len(factors), fname
+                )
                 factor_summary.append({"factor": fname, "rows": 0, "status": "no_data"})
                 continue
             ic_df = _compute_factor_ic(factor_df, fwd_rets_by_horizon)
@@ -288,34 +297,53 @@ def compute_and_ingest(
             # 快速摘要 (最新一行). reviewer P2 采纳: 提出 f-string 到局部变量避免 logger 内部 lazy eval 问题.
             latest = ic_df.iloc[-1]
             latest_ic_20d_str = (
-                f"{latest['ic_20d']:.4f}" if "ic_20d" in ic_df.columns and pd.notna(latest["ic_20d"])
+                f"{latest['ic_20d']:.4f}"
+                if "ic_20d" in ic_df.columns and pd.notna(latest["ic_20d"])
                 else "NaN"
             )
             logger.info(
                 "[daily_ic] [%d/%d] %s: rows=%d latest ic_20d=%s (%.2fs)",
-                i, len(factors), fname, len(ic_df), latest_ic_20d_str, time.time() - t_f,
+                i,
+                len(factors),
+                fname,
+                len(ic_df),
+                latest_ic_20d_str,
+                time.time() - t_f,
             )
             latest_ic_20d_val = (
                 float(latest["ic_20d"])
-                if "ic_20d" in ic_df.columns and pd.notna(latest["ic_20d"]) else None
+                if "ic_20d" in ic_df.columns and pd.notna(latest["ic_20d"])
+                else None
             )
-            factor_summary.append({
-                "factor": fname, "rows": len(ic_df),
-                "latest_ic_20d": latest_ic_20d_val, "status": "ok",
-            })
+            factor_summary.append(
+                {
+                    "factor": fname,
+                    "rows": len(ic_df),
+                    "latest_ic_20d": latest_ic_20d_val,
+                    "status": "ok",
+                }
+            )
         except Exception as e:
             # 铁律 33 fail-loud: 单因子异常记 error + 继续下一因子 (不阻断全 batch)
             logger.error(
-                "[daily_ic] [%d/%d] %s: ERROR %s", i, len(factors), fname, str(e)[:200],
+                "[daily_ic] [%d/%d] %s: ERROR %s",
+                i,
+                len(factors),
+                fname,
+                str(e)[:200],
                 exc_info=True,
             )
-            factor_summary.append({"factor": fname, "rows": 0, "status": "error", "error": str(e)[:200]})
+            factor_summary.append(
+                {"factor": fname, "rows": 0, "status": "error", "error": str(e)[:200]}
+            )
 
     if not all_ic_frames:
         logger.warning("[daily_ic] 0 因子可入库, 退出")
         return {
-            "processed_factors": 0, "total_rows": 0,
-            "elapsed_sec": time.time() - t0, "factor_summary": factor_summary,
+            "processed_factors": 0,
+            "total_rows": 0,
+            "elapsed_sec": time.time() - t0,
+            "factor_summary": factor_summary,
         }
 
     combined = pd.concat(all_ic_frames, ignore_index=True)
@@ -330,7 +358,10 @@ def compute_and_ingest(
         total_rows = result.upserted_rows
         logger.info(
             "[daily_ic] ingest: total=%d valid=%d upserted=%d rejected=%d",
-            result.total_rows, result.valid_rows, result.upserted_rows, result.rejected_rows,
+            result.total_rows,
+            result.valid_rows,
+            result.upserted_rows,
+            result.rejected_rows,
         )
         if result.rejected_rows > 0:
             logger.warning("[daily_ic]   reject_reasons=%s", result.reject_reasons)
@@ -361,6 +392,14 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true", help="不入库, 仅报告")
     parser.add_argument("--verbose", action="store_true", help="详细日志")
+    # PR #40 P2.2 follow-up (Session 22 Part 4): A 股节假日 (5/1 劳动节 / 国庆 / 春节)
+    # schtask Mon-Fri 触发会在假日当天空跑. is_trading_day guard 提前退出.
+    # trading_calendar.is_trading_day 多层 fallback (本地 DB → Tushare API → 启发式).
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="覆盖 is_trading_day guard (default: 非交易日提前 exit 0). 手动 backfill 用.",
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -376,14 +415,29 @@ def main() -> int:
     # Transaction boundary (铁律 32): script 作为 caller 管理 conn + commit + close
     conn = get_sync_conn()
     try:
+        # Holiday guard (PR #40 P2.2 follow-up): A 股非交易日提前 exit 0.
+        # schtask Mon-Fri 会在 5/1 劳动节 / 国庆 / 春节 等法定假日空跑 (~15 days/year);
+        # 假日无新 klines + forward returns 不变, 重算产出相同 IC (idempotent upsert)
+        # 浪费 DB IO + compute + 掩盖真实监控噪音. --force 可覆盖.
+        if not args.force:
+            today = date.today()
+            if not is_trading_day(conn, today):
+                logger.info("[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", today)
+                return 0
+
         result = compute_and_ingest(
-            conn=conn, days=args.days, factors=factors, dry_run=args.dry_run,
+            conn=conn,
+            days=args.days,
+            factors=factors,
+            dry_run=args.dry_run,
         )
         if not args.dry_run:
             conn.commit()
         logger.info(
             "[daily_ic] 结果: processed=%d total_rows=%d %.1fs",
-            result["processed_factors"], result["total_rows"], result["elapsed_sec"],
+            result["processed_factors"],
+            result["total_rows"],
+            result["elapsed_sec"],
         )
         return 0 if result["processed_factors"] > 0 else 1
     except Exception:
