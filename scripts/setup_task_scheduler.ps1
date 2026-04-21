@@ -322,11 +322,14 @@ Write-Host "[OK] QuantMind_DailyIC registered (Mon-Fri 18:00)" -ForegroundColor 
 # 时段选择: 18:00 DailyIC 实测 1-2min 内跑完 (CORE 30-day incremental), 18:15 留 13 min buffer
 #   充分 (Session 22 Part 7 实测 113 factors 全量重算仅 1.6s). 19:00 Celery Beat
 #   factor-lifecycle-weekly Friday 触发前 45 min 缓冲, 确保 lifecycle 读到最新 ic_ma20/60.
-# 周六\日 skip (Mon-Fri): rolling 纯幂等重算, 节假日跑也无害但浪费 schtask 资源 + 误告警
+# 周六/日 skip (Mon-Fri): rolling 纯幂等重算, 节假日跑也无害但浪费 schtask 资源 + 误告警
 #   rolling 不依赖当日 forward return (区别 DailyIC), 但 ic_20d 由 DailyIC 产出 → Mon-Fri 对齐
 # 数据链路: 18:00 DailyIC 写 ic_5d/10d/20d → 18:15 IcRolling 读 ic_20d 回算 ic_ma20/60
 # 无 --core: default 读 factor_registry WHERE status IN ('active','warning') 282 factors,
 #   其中实有 ic_20d 的 113 factors 进入 rolling, 余下 skip (内部逻辑已保证)
+# reviewer MEDIUM 采纳: 删 RestartCount/RestartInterval (脚本幂等+0.7-1.6s, 失败下次周
+# 期自愈 > 5min retry), 加 DontStopOnIdleEnd + AllowStartIfOnBatteries (对齐全文件
+# 其他 14 section 一致性)
 $irAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\compute_ic_rolling.py" `
@@ -336,9 +339,9 @@ $irTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesd
 
 $irSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-    -RestartCount 1 `
-    -RestartInterval (New-TimeSpan -Minutes 5) `
     -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries
 
 Register-ScheduledTask `
