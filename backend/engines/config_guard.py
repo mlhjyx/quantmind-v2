@@ -300,13 +300,13 @@ def assert_execution_mode_integrity(
                 return
 
         try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT COUNT(*), MAX(trade_date) FROM trade_log "
-                "WHERE execution_mode = 'live' AND trade_date >= %s",
-                (cutoff,),
-            )
-            row = cur.fetchone()
+            with conn.cursor() as cur:  # review MEDIUM 采纳: cursor 走 context manager, 防 fetch error 时 cur 泄漏
+                cur.execute(
+                    "SELECT COUNT(*), MAX(trade_date) FROM trade_log "
+                    "WHERE execution_mode = 'live' AND trade_date >= %s",
+                    (cutoff,),
+                )
+                row = cur.fetchone()
             cnt = int(row[0]) if row else 0
             max_d = row[1] if row else None
             if cnt > 0:

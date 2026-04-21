@@ -45,12 +45,34 @@ class TestModeValidation:
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (0, None)
-        mock_conn.cursor.return_value = mock_cur
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         assert_execution_mode_integrity(mode="paper", conn=mock_conn)
 
     def test_live_mode_no_db_touch(self):
         """mode='live' 不触 DB (conn=None 也 OK)."""
         assert_execution_mode_integrity(mode="live", conn=None)
+
+    def test_mode_none_reads_settings_live(self, monkeypatch):
+        """mode=None → settings.EXECUTION_MODE='live' (review MEDIUM 采纳: 生产默认路径覆盖)."""
+        from app import config as app_config
+        monkeypatch.setattr(app_config.settings, "EXECUTION_MODE", "live")
+        mock_conn = MagicMock()
+        # live 路径不碰 DB → cursor 不应被调用
+        assert_execution_mode_integrity(mode=None, conn=mock_conn)
+        mock_conn.cursor.assert_not_called()
+
+    def test_mode_none_reads_settings_paper(self, monkeypatch):
+        """mode=None → settings.EXECUTION_MODE='paper' + 无 live trade_log."""
+        from app import config as app_config
+        monkeypatch.setattr(app_config.settings, "EXECUTION_MODE", "paper")
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (0, None)
+        # psycopg2 cursor as context manager
+        mock_conn.cursor.return_value.__enter__ = lambda self: mock_cur
+        mock_conn.cursor.return_value.__exit__ = lambda *args: None
+        assert_execution_mode_integrity(mode=None, conn=mock_conn)
+        mock_conn.cursor.assert_called()
 
 
 class TestPaperLiveTradeDetection:
@@ -71,7 +93,7 @@ class TestPaperLiveTradeDetection:
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (36, "2026-04-17")
-        mock_conn.cursor.return_value = mock_cur
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn)
 
@@ -93,7 +115,7 @@ class TestPaperLiveTradeDetection:
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (0, None)
-        mock_conn.cursor.return_value = mock_cur
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn)
 
@@ -118,7 +140,7 @@ class TestSqlQueryShape:
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (0, None)
-        mock_conn.cursor.return_value = mock_cur
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn, recent_days=7)
 
@@ -134,7 +156,7 @@ class TestSqlQueryShape:
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (0, None)
-        mock_conn.cursor.return_value = mock_cur
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn, recent_days=30)
 
