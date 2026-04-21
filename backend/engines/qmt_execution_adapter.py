@@ -67,7 +67,14 @@ QMT_STATUS: dict[int, tuple[str, str]] = {
     52: ("pending", "部成待撤"),
     53: ("final", "部撤"),
     54: ("final", "已撤"),
-    55: ("final", "部成"),
+    # ⚠️ F19 根因修复 (ADR-011, 2026-04-21 Session 22): 55 "部成" 是 **pending**
+    # (部分成交, 剩余未成), 不是 final. 原 ("final", "部成") 会让 _FillCollector.on_order
+    # 在首个部成回调提前 event.set(), 吞掉后续成交回调 → trade_log 只录首 fill →
+    # 4-17 6 码 / 9663 股丢失. 3 call sites 影响 (全部变得更保守更正确):
+    #   L304 on_order: 55 不再提前触发 done, 等真正终态 (53/54/56/57)
+    #   L544 _cleanup_pending_orders: 部成委托会被清理 (原 silently 留着)
+    #   L682 _cancel_and_confirm: 部成不再误判 "撤单确认", 继续等 53/54
+    55: ("pending", "部成"),
     56: ("final", "已成"),
     57: ("final", "废单"),
 }
