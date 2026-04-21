@@ -55,6 +55,11 @@ class ColumnSpec:
     db_unit: DBUnit | None = None  # DB存储单位
     min_val: float | None = None
     max_val: float | None = None
+    # F22 (Session 21): NULL 率阈值 (0.0-1.0). None=不校验. 超阈值 DataPipeline
+    # logger.error (fail-loud 铁律 33) + 写 IngestResult.null_ratio_warnings, 不 raise 不 drop.
+    # 场景: Tushare API 端数据漂移 (e.g. daily_basic.dv_ttm 4-15 起从 0% → 31% → 100% NULL),
+    # 下游 (data_quality_report / 钉钉) 按 warning 处置, DataPipeline 只负责暴露问题.
+    null_ratio_max: float | None = None
 
     @property
     def conversion_factor(self) -> float | None:
@@ -131,12 +136,16 @@ DAILY_BASIC = TableContract(
         "turnover_rate_f": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
         "volume_ratio": ColumnSpec("float", min_val=0),
         "pe": ColumnSpec("float"),
-        "pe_ttm": ColumnSpec("float"),
+        # F22: pe_ttm null_ratio_max=0.05 — 历史 0% NULL, 4-15 drift 到 26.9% 是 Tushare API 端异常, 5% 阈值保留正常数据缺失容差
+        "pe_ttm": ColumnSpec("float", null_ratio_max=0.05),
         "pb": ColumnSpec("float"),
         "ps": ColumnSpec("float"),
         "ps_ttm": ColumnSpec("float"),
         "dv_ratio": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
-        "dv_ttm": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
+        # F22: dv_ttm null_ratio_max=0.05 — 历史 0% NULL, 4-15→4-20 drift 31.7%→100% 是 Tushare 端漂移
+        "dv_ttm": ColumnSpec(
+            "float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT, null_ratio_max=0.05
+        ),
         "total_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
         "float_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
         "free_share": ColumnSpec("float", source_unit=SourceUnit.WAN_GU, db_unit=DBUnit.WAN_GU),
