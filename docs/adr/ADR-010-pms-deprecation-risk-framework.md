@@ -101,7 +101,16 @@ CREATE TABLE risk_event_log (
 );
 CREATE INDEX ON risk_event_log (strategy_id, execution_mode, triggered_at DESC);
 CREATE INDEX ON risk_event_log (rule_id, triggered_at DESC);
+
+-- TimescaleDB hypertable + 90 天 retention (v1.1 review)
+SELECT create_hypertable('risk_event_log', 'triggered_at', chunk_time_interval => INTERVAL '1 month');
+SELECT add_retention_policy('risk_event_log', INTERVAL '90 days');
 ```
+
+**Retention / governance 策略** (v1.1 review 新增):
+- **90 天保留**: 与 event_outbox 7 天 / log_rotate 7 天平衡, 触发事件需足够回溯但不无限累积
+- **仅触发写入**: 非触发 evaluations 不 log, 避免 55 次/日 × 11 规则 × 252 日 = 152,460 行/年空 row 爆表
+- **context_snapshot 单行 ~5-10KB** (20+ positions 快照), 预计 ~1000 触发 rows/年 ≈ ~10MB/年, 90 天 ~2.5MB 活跃区, 可忽略
 
 ### D5 — 迁移 11 条规则到 Risk Framework
 
@@ -116,13 +125,15 @@ CREATE INDEX ON risk_event_log (rule_id, triggered_at DESC);
 | intraday_monitor | QMT 断连 | `qmt_disconnect` | 批 2 |
 | risk_control | L1-L4 circuit breaker (4 规则) | `cb_l1` ... `cb_l4` | 批 3 (风险最高) |
 
-### D6 — PMS 死码今日处置 (Session 22 PR)
+### D6 — PMS 死码今日处置 (Session 22 PR, v1.1 review 调顺序)
 
-1. 停 Celery Beat `pms-daily-check` 调度 (`beat_schedule.py` L54-61 删除 block)
-2. `pms_engine.py` + `daily_pipeline.py:pms_check` + `api/pms.py` 加头部注释 `"DEPRECATED per ADR-010, pending Risk Framework MVP 3.1"`
-3. 删除 `api/pms.py:170-188` 重复 publish 逻辑 (F31), 留 API GET 端点返回数据 (前端 /pms 页面暂不改)
-4. SYSTEM_STATUS.md 标记 PMS DEPRECATED-PENDING-RISK-FRAMEWORK
-5. 过渡期补 emergency 个股止损告警 (新 `scripts/emergency_stock_alert.py`, 每 5min Redis 扫所有持仓, 单股当日跌 >8% 钉钉推)
+**顺序调整**: emergency_stock_alert.py **必须先建再停 PMS Beat**, 否则过渡期间零个股告警裸奔. 原顺序颠倒是 review findings.
+
+1. **(新首位)** 过渡期补 emergency 个股止损告警 — 新建 `scripts/emergency_stock_alert.py` + schtasks 注册 (每 5min Redis 扫所有持仓, 单股当日跌 >8% 钉钉推, 持仓读 QMT 实时). **部署验证可触发后**, 再进下一步
+2. 停 Celery Beat `pms-daily-check` 调度 (`beat_schedule.py` L54-61 删除 block)
+3. `pms_engine.py` + `daily_pipeline.py:pms_check` + `api/pms.py` 加头部注释 `"DEPRECATED per ADR-010, pending Risk Framework MVP 3.1"`
+4. 删除 `api/pms.py:170-188` 重复 publish 逻辑 (F31), 留 API GET 端点返回数据 (前端 /pms 页面暂不改)
+5. SYSTEM_STATUS.md 标记 PMS DEPRECATED-PENDING-RISK-FRAMEWORK
 
 ### D7 — 不推进事项 (明确排除)
 
@@ -143,8 +154,14 @@ CREATE INDEX ON risk_event_log (rule_id, triggered_at DESC);
 
 ### Negative
 
-- PMS 个股 trailing stop 空窗 1.5-2 周 (Risk Framework 批 1 完成前)
-- **风险缓解**: CORE3+dv_ttm 月度调仓策略很少出现"浮盈 30% 急跌 15%"场景; intraday 组合跌 3% 钉钉是第一道; emergency_stock_alert (单股跌 8%) 作第二道
+- **过渡期 1.5-3 周 (v1.1 review 修正, 原 1.5-2 周): zero automated sell capability** — 所有过渡期保护 (intraday_monitor + emergency_stock_alert + 盘后三检) 均是**钉钉 alert-only**, 需人工登录 QMT 手动卖. 人工响应延迟最坏 3-5 分钟, 机器不开钉钉则无响应. 2022-风格单日组合 -8% 场景无自动止损
+- **风险缓解** (真金风险评估):
+  - CORE3+dv_ttm 月度调仓策略**单股** PMS 阈值 (浮盈 30% 急跌 15%) 场景罕见, 对**组合**级 intraday_monitor 3/5/8% 钉钉依赖度高
+  - emergency_stock_alert (单股跌 8%) 作个股级第二道防线
+  - 用户必开钉钉 + 保持 QMT 客户端就绪
+  - 过渡期建议不做大额调仓 (新开仓 = 新保护盲区)
+  - 如 Wave 3 启动 delay 超预期, Session 25+ 再评估是否补方案 A (最小 consumer) 作紧急止血
+- PMS 死码留 ≥2 月期间 (MVP 3.1 批 1 完成前删 pms_engine + 稳定 2 周后删 position_monitor), 代码 import path 仍存在, 未来 session 需警惕**不要** re-enable 这些代码. 加头部 `DEPRECATED per ADR-010` 注释防误触
 
 ### Neutral
 

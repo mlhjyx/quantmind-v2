@@ -1,9 +1,9 @@
 # MVP 3.1 · Risk Framework
 
 > **Wave**: 3 第 1 步 (Wave 3 启动 MVP, 所有其他 Wave 3 MVP 前置)
-> **耗时**: 1.5-2 周 (3 批次分阶段落地)
+> **耗时**: **2.5-3.5 周** (3 批次分阶段 + 批 3 feasibility spike 前置, v1.1 review 修正: 批 3 async→sync 重写 CB 1030 行 状态机低估)
 > **依赖**: MVP 1.1 Platform Skeleton ✅ / MVP 2.1 Data Framework ✅ / ADR-010 PMS Deprecation ✅
-> **风险**: 中-高 (批 3 触碰熔断真金路径, 最后做)
+> **风险**: 中-高 (批 3 触碰熔断真金路径, async→sync 重写; 过渡期零自动卖 1.5-3 周)
 > **Scope 原则**: 统一规则引擎 + 实时数据源 + 直接执行 + 单表事件日志 (不做风控策略优化, 不动 PMS 阈值参数本身)
 > **铁律**: 22 / 23 / 24 / 31 / 33 / 34 / 36 / 38 / 40
 
@@ -23,9 +23,16 @@
 - ❌ 前端 /pms 页面改造 → 迁入完成后统一 /risk dashboard (Wave 4)
 - ❌ Risk Engine 内循环调度优化 → MVP 3.0 Resource Orchestration 后评估
 
-## 实施结构 (3 批分批落地)
+## 实施结构 (批 0 feasibility spike + 3 批分批落地)
 
 ```
+批 0 (1-2h, 批 1 前必做): 批 3 CB 状态机 feasibility spike
+├── 目的: 验证 RiskRule/RiskContext 抽象能否干净映射 CB L1-L4 状态机
+│   (cross-invocation state / L4 human approval / de-escalation timers)
+├── 产出: 伪代码 sketch CBL1Rule..CBL4Rule 如何承载现有 risk_control_service 状态
+├── 若不 fit → 立即调整 RiskRule interface, 不等批 1 上线再发现 (避免 split-brain)
+└── 文档: docs/adr/ADR-010-addendum-cb-feasibility.md (如需)
+
 批 1 (~1 周): Framework core + PMS L1/L2/L3 迁入
 ├── backend/platform/risk/                       ⭐ NEW
 │   ├── __init__.py                               统一导出
@@ -49,13 +56,15 @@
 ├── scripts/intraday_monitor.py                   ⚠️ 改走 RiskEngine (保留 5min schtasks 触发)
 └── backend/tests/test_risk_rules_intraday.py     ~8 unit
 
-批 3 (~0.5 周): circuit breaker L1-L4 迁入 (末位, 风险最高)
+批 3 (~1-1.5 周): circuit breaker L1-L4 迁入 (末位, 风险最高, v1.1 review 修正)
 ├── backend/platform/risk/rules/circuit_breaker.py  CBL1Rule / CBL2Rule / CBL3Rule / CBL4Rule
-├── backend/app/services/risk_control_service.py    ⚠️ check_circuit_breaker_sync 改走 RiskEngine
-└── backend/tests/test_risk_rules_cb.py             ~12 unit (含 L4 recovery 路径)
+├── backend/app/services/risk_control_service.py    ⚠️ **async SQLAlchemy → sync psycopg2 迁移**
+│                                                      (1030 行状态机, 含 approval_queue + L4 recovery + de-escalation timers)
+├── backend/app/services/risk_repository.py         ⚠️ AsyncSession → sync psycopg2 Repository
+└── backend/tests/test_risk_rules_cb.py             ~15 unit (含 L4 approval + recovery + async→sync regression)
 ```
 
-**规模预估**: ~400 行 platform + ~150 行 migration/rules + ~100 行 service 改造 + ~350 行 tests ≈ 1000 行, 1.5-2 周工程
+**规模预估**: ~400 行 platform + ~200 行 migration/rules + ~400 行 CB async→sync 重写 + ~450 行 tests ≈ **~1500 行, 2.5-3.5 周** (v1.1 review 修正: 原 ~1000 行 / 1.5-2 周 低估了批 3 async migration 量)
 
 ---
 
@@ -92,7 +101,7 @@ class RiskRule(ABC):
         """强制实现 rule_id + severity + action."""
 ```
 
-### D3. `PositionSource` 优先级 (F28 根治)
+### D3. `PositionSource` 优先级 (F28 **部分**改进, 非完全根治)
 
 ```python
 # platform/risk/engine.py
@@ -104,7 +113,12 @@ def _load_positions(self) -> list[Position]:
         return self._fallback.load()      # DBPositionSource (读当前 live snapshot)
 ```
 
-**关键**: 不再读 T-1 snapshot. Redis 60s 同步, 当日新开仓 max 1 分钟延迟进 Risk Engine 视野.
+**F28 改进** (不是根治, v1.1 review 澄清):
+- **Redis primary 60s 刷新**: 对"月度调仓 + 月度 trailing stop"足够, 但对"3 分钟急跌 15% flash-crash stop-loss"仍有 60s 延迟
+- **DBPositionSource fallback gap**: `position_snapshot` 在 16:30 signal_phase 写入, 所以 **09:31-16:30 之间若 Redis 挂**, DB fallback 返回**昨日** snapshot = 同 PMS v1 的 T-1 盲区. 此窗口需告警
+- 真实时 tick-level (单笔成交推送) 是 Wave 4 Observability + Event Sourcing 后的增强, 本 MVP 不做
+
+**peak_prices 计算**: Engine 在 `build_context()` 时查 `klines_daily` SELECT MAX(close) WHERE code AND trade_date >= entry_date (hardcoded execution_mode='live' → Risk Engine 动态 settings.EXECUTION_MODE). 迁自 pms_engine.py:174 get_peak_prices, 保持同语义.
 
 ### D4. 直接执行 (F27 根治)
 
@@ -125,7 +139,17 @@ def execute(self, events: list[RiskEvent]) -> None:
             self._alert_dingding(event)
 ```
 
+**Broker wiring (v1.1 review 明示)**: `self._broker` 在 `live` 模式注入 `execution_ops.py` 的 QMT sell 路径 (复用 execution_service._save_live_fills 等现成 fill 记录逻辑); `paper` 模式注入 `paper_broker.py`. Engine 不直 import xtquant (铁律 "xtquant 唯一生产入口" QMT Data Service).
+
 **废除 StreamBus `qm:pms:protection_triggered`** — publish 无 consumer 的 dead stream. ADR-003 Event Sourcing 专注 signal/trade 事件, 不扩 risk 事件 (risk 是同步决策, 异步 stream 反而增加延迟).
+
+### D6. `risk_event_log` retention + governance (v1.1 review 新增)
+
+ADR-010 D4 schema 基础上补:
+- **Retention**: 保留 **90 天** (与 event_outbox 7 天 / log_rotate 7 天平衡), 之后 DELETE. 每日 log_rotate cron 做
+- **TimescaleDB hypertable**: 按 `triggered_at` 月度 partition, chunk 自动 drop 超 90 天
+- **日志策略**: 仅触发事件写入 (非触发 evaluations 不 log, 避免爆表). Dry-run / backtest 模式下 writer 可关, 只进 logger
+- **单行大小**: context_snapshot JSONB ~5-10KB (20+ positions + prices + portfolio state), 预计 ~1000 rows/年 (主要 intraday 组合跌 3/5/8% + PMS L1-L3 + CB 触发合计)
 
 ### D5. execution_mode 命名空间 (ADR-008 对齐, F29 根治)
 
@@ -152,11 +176,16 @@ def execute(self, events: list[RiskEvent]) -> None:
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
+| **批 3 CB async→sync 迁移低估** (v1.1 review P1) | 批 3 卡住, 批 1-2 已上线 split-brain | **批 0 feasibility spike 1-2h** 预验 RiskRule/RiskContext 能否承载 CB 状态机; 批 3 重估 1-1.5 周, 总 2.5-3.5 周 |
 | 批 3 circuit breaker 改动误伤真金路径 | 熔断失灵 = 灾难 | 批 3 最后做, 先验证批 1-2 稳定运行 2 周 |
-| QMTPositionSource Redis 失联, fallback DB 也陈旧 | Risk Engine 看不到实时 | DBPositionSource 读 position_snapshot 当日 live (比 PMS v1 的 T-1 已改进, 但仍可能延迟), 失联时 P0 钉钉 |
+| **过渡期零自动卖 1.5-3 周** (v1.1 review P1) | intraday_monitor + emergency_stock_alert + 盘后三检全是 alert-only, 人工响应延迟 3-5 min | `emergency_stock_alert.py` 必须**先建**再停 PMS Beat (ADR-010 D6 调顺序); 过渡期间尽量不做大额调仓, 机器必开钉钉 |
+| QMTPositionSource Redis 60s 延迟 | flash-crash 场景 stop-loss 仍可能滞后 | Redis primary 对月度策略足够; 未来 Wave 4 可加 tick-level event stream; 当前窗口接受 60s 延迟 |
+| QMTPositionSource Redis 失联, DB fallback 09:31-16:30 仍 T-1 | 日内股票价格信息缺失 | 15 min 内 Redis 不恢复 → P0 钉钉人工介入; 此窗口 Risk Engine 视为"无可信实时数据" |
 | RiskEngine execute 调 broker, broker 超时不响应 | 卡住 Engine 循环 | timeout 5s + 失败重试 1 次, 再失败 P0 钉钉人工介入 |
 | 批 1 迁入后老 position_monitor 表 0 行 (同 PMS v1 盲区) | 同样无验证 | live smoke **强制模拟触发**, 验证 risk_event_log 端到端有行 (验收标准第 3 条) |
+| `risk_event_log` JSONB context_snapshot 膨胀 (v1.1 review) | 单表无限增长吞磁盘 | 90 天 TimescaleDB partition retention + 仅触发事件写入 (非 evaluations) |
 | Wave 2 MVP 2.3 U1 Parity 未完结即启动 Wave 3 | 依赖破, 回归风险 | Session 22 开始前先确认 MVP 2.3 Sub3 已完结, 文档标记 |
+| pt_audit / pt_watchdog 定位 (v1.1 review 隐藏风险) | 强耦合进 RiskEngine 可能破坏原独立性 | **不** 迁入 RiskRule, 保持独立 schtasks. 改为 `risk_event_log` 的**下游消费者** (read-only 对账), 不 block 其告警路径 |
 
 ---
 

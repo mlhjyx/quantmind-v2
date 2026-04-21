@@ -91,7 +91,7 @@ QuantMind V2: 单人量化系统, 2026-04-17 起进入平台化阶段, 目标 **
 ```
 Wave 1: MVP 1.1 → 1.2 → 1.2a → 1.3 → 1.4  (5-7 周)
 Wave 2: MVP 2.1 → 2.2 → 2.3               (7-9 周)
-Wave 3: MVP 3.0/3.0a 并行 → 3.1 → 3.2 → 3.3 并行 → 3.4  (10-13 周)
+Wave 3: MVP 3.0/3.0a 并行 → 3.1 Risk Framework (新) → 3.2 Strategy → 3.3 Signal-Exec → 3.4 Event Sourcing 并行 → 3.5 Eval Gate  (11.5-15 周, v1.6 重排)
 Wave 4: MVP 4.1/4.2/4.3/4.4 并行           (4-6 周)
 ```
 
@@ -122,7 +122,7 @@ Wave 4: MVP 4.1/4.2/4.3/4.4 并行           (4-6 周)
 
 见 `memory/project_platform_decisions.md`. **不要重开讨论**:
 - Platform 包名 `backend.platform`
-- Wave 3 第 2 策略 PEAD (+ 3 周前置 PIT/PMS v2/cost H0-v2)
+- Wave 3 第 2 策略 PEAD (+ 2 周前置 PIT/cost H0-v2; v1.6 后"PMS v2" 已被 Risk Framework MVP 3.1 替代, 从前置移除)
 - Event Sourcing StreamBus+PG (+ outbox/snapshot/versioning)
 - CI 3 层本地 (pre-commit + pre-push regression + daily full)
 
@@ -1250,7 +1250,7 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 - **验收**: PT 跑 S1+S2 两策略同时, 独立 NAV/订单, 互不干扰
 - **耗时**: 3-4 周 (v1.3 现实化: 含 strategy isolation / capital allocation / risk isolation / 两策略并跑验证, 原 2-3 周低估)
 - **依赖**: MVP 3.0 ROF + MVP 3.0a PEAD 前置 + **MVP 3.1 Risk Framework** + MVP 2.3 BacktestRunner
-- **设计文档**: `docs/mvp/MVP_3_2_strategy_framework.md`
+- **设计文档**: `docs/mvp/MVP_3_2_strategy_framework.md` (未创建, Wave 3 第 2 MVP 启动前 plan)
 
 **MVP 3.3: Signal & Execution (#6) + Event Hooks 预埋** (原 MVP 3.2)
 
@@ -1264,7 +1264,7 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 - **验收**: 重复下单 test 自动过滤, 任意 fill 可追溯到 signal/strategy/factor; 所有写路径有 event_bus.publish() 调用点 (grep 验证)
 - **耗时**: 2 周 (v1.3: 含 event hooks 预埋工作量)
 - **依赖**: MVP 3.2 Strategy Framework + **MVP 3.1 Risk Framework** (execute 路径 broker 复用)
-- **设计文档**: `docs/mvp/MVP_3_3_signal_execution.md`
+- **设计文档**: `docs/mvp/MVP_3_3_signal_execution.md` (未创建, Wave 3 第 3 MVP 启动前 plan)
 
 **MVP 3.4: Event Sourcing (U2) + outbox/snapshot/versioning** (原 MVP 3.3)
 
@@ -1276,14 +1276,14 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 - **验收**: 重放过去 30 天事件 → 当前状态 bit-identical; outbox 表 consumer 7 天内清空 (v1.2 副决策 3a)
 - **耗时**: 3-4 周 (v1.3 现实化: 3 工程组件齐全, event sourcing 工程复杂度高)
 - **依赖**: MVP 3.3 event hooks 已预埋; 与 MVP 3.2 并行可能 (策略层不干扰)
-- **设计文档**: `docs/mvp/MVP_3_4_event_sourcing.md`
+- **设计文档**: `docs/mvp/MVP_3_4_event_sourcing.md` (未创建, Wave 3 第 4 MVP 启动前 plan)
 
 **MVP 3.5: Evaluation Gate (#4)** (原 MVP 3.4)
 
 - **范围**: EvaluationPipeline 合并 batch_gate 逻辑, BH-FDR 自动化, VerdictObject schema
 - **验收**: 新因子一命令 Verdict 返回, M 自动递增
 - **耗时**: 1 周
-- **设计文档**: `docs/mvp/MVP_3_5_eval_gate.md`
+- **设计文档**: `docs/mvp/MVP_3_5_eval_gate.md` (未创建, Wave 3 第 5 MVP 启动前 plan)
 
 #### Wave 4 详细
 

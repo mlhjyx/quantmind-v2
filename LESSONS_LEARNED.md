@@ -1332,3 +1332,49 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 - 未来 CLAUDE.md 铁律候选 "Dead code audit 月度"
 
 **执行状态**: ✅ Session 21 文档化. 实施 Session 22 (PR #32 死码处置) 和 Wave 3 MVP 3.1 Risk Framework.
+
+---
+
+## LL-064: 架构级文档 direct push 前必须独立 reviewer (2026-04-21)
+
+**事件**: Session 21 下午 PMS 深查 + Wave 3 Risk Framework 规划决议后, 6 份文档 (ADR-010 + MVP 3.1 + QPB v1.6 + SYSTEM_STATUS + LESSONS_LEARNED + memory 多处) 直接 commit + push 到 main (`13fdf13`), **未经 reviewer agents 审**. User 反问"gh 用了吗? 分级审查这些用不了吗?" 触发 post-hoc reviewer (architect + critic 并行 Opus), 发现 **6 项 P1 + 4 项 P2 + 5 项隐藏风险**:
+
+- P1#1: QPB Quickstart path L94 未随 Wave 3 MVP 重排更新 (内部矛盾 → 违反铁律 22)
+- P1#2: risk_control_service.py 是 async SQLAlchemy 不是 sync psycopg2, 批 3 async→sync 重写 1030 行 CB 状态机, 0.5 周估算严重低估
+- P1#3: 过渡期"3 道防线"全是 alert-only, zero automated sell — ADR Consequences Negative 未明示, emergency_stock_alert.py 顺序颠倒 (应先建再停 Beat)
+- P1#4: 批 3 CB 无回滚路径, 如批 1-2 上线后 CB 无法干净映射到 RiskRule → split-brain (需批 0 feasibility spike 前置)
+- P1#5: risk_event_log JSONB 无 TTL/partition/retention governance
+- P1#6: Blueprint 引用不存在的 MVP 3.2-3.5 文件名 (铁律 22 违反)
+
+**根因**: 铁律 42 字面条款"docs/** + memory/** + 根目录 md 允许 direct push" 降低流程开销是**对**的, 但这针对的是 typo fix / 小章节补充等低风险编辑. 本 Session 的 ADR-010 (重排 Wave 3 路线图 + 5 监控系统架构决议) + QPB v1.6 (总蓝图修订 + MVP 编号 shift) + MVP 3.1 spec (锁 1.5-2 周工程范围) 属于**架构宪章级**决策, 实质重要性远超普通文档. 跳过 reviewer = 走了流程允许的路但绕过了质量门.
+
+Ironically 这和刚写完的 LL-063 "假装健康的死码比真坏的更危险" 是**同模式 mirror**: LL-063 说"表面运行 ≠ 真跑", LL-064 是"走流程允许 ≠ 质量已守". 铁律设的字面条款 ≠ 铁律的底层意图.
+
+**改进措施**:
+
+1. **新铁律候选**: 架构级文档 (ADR / MVP spec / Blueprint / CLAUDE.md 铁律 / 决策 memo) 在 direct push 前必须走独立 reviewer agent 审, 即使铁律 42 字面允许. 识别标准 (任一命中即架构级):
+   - 影响已有 MVP 编号 / Wave 路线图 / Framework 数量
+   - 锁定跨 session 实施范围 (≥1 周工程)
+   - 建立新 interface / 新表 schema / 新 API 契约
+   - 改动铁律条款或 Blueprint Part 0/1/2
+
+2. **Post-hoc reviewer 流程** (本 Session 已验证可行): `oh-my-claudecode:architect` + `oh-my-claudecode:critic` 并行 Opus, 每个 ≤500 words 报告. Architect 审架构一致性, Critic 挑战假设 / 隐藏风险. 若 P1 blocking → 新 commit fix (不 amend 保历史); P2 non-blocking → 记录 accept. ~20-30 min 完成.
+
+3. **Pre-hoc 更好**: 下次 spawn reviewer 应在 commit **之前** (仍 direct push, 但 reviewer 先过目), 而非 push 后 retrofit. 避免已推文档在未修版本被其他 session 拉走.
+
+4. **Review 要覆盖 "隐藏风险"**: Critic agent 这次挖出 5 项 Consequences 漏项 (过渡期 alert-only / PEAD 风险 gap / broker wiring 未指定 / QMT 60s 延迟 framing / pt_audit 定位), 这些都是单侧决策人 (我) 难自省的. 独立 eye 价值在此.
+
+**Session 21 user 接触**: 1 次反问触发
+- "gh 用了吗? 分级审查这些用不了吗?" — 敏锐发现流程 gap
+
+**持久化**:
+- 本 LL 条目
+- ADR-010 / MVP 3.1 / QPB 三份文档已打 "v1.1 review" 标签修复 P1 6 项
+- 未来 CLAUDE.md 铁律候选 (等 2-3 个此类教训后固化为硬铁律)
+
+**对比 LL-063**:
+- LL-063: 代码层"假装健康的死码" (PMS 5 重失效)
+- LL-064: 流程层"走流程允许绕过质量门"
+- 共同根因: 识别"形式合规 vs 实质安全"边界的能力
+
+**执行状态**: ✅ Session 21 post-hoc reviewer 已跑, P1 6 项全部修, 待第二次 commit push.
