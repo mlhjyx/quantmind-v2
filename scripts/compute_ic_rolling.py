@@ -42,6 +42,7 @@ import argparse
 import logging
 import sys
 import time
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -176,18 +177,40 @@ def compute_rolling(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _to_nullable(v: float | None) -> float | None:
-    """NaN → None (DB NULL). 铁律 29."""
+def _to_nullable(v: object) -> float | None:
+    """NaN / None / pd.NA → None (DB NULL). 铁律 29.
+
+    Accepts: float / int / numpy.float64 / Decimal / pd.NA / None.
+    reviewer P1 (python-reviewer) 采纳: 旧注解 `float | None` 误导静态分析认为调用方
+    已转 float. 改 `object` 反映真实契约 — 调用方可传任意数值类型, helper 内部统一
+    `pd.isna` 判 null + `float()` 转换.
+    """
     if v is None or pd.isna(v):
         return None
-    return float(v)
+    return float(v)  # type: ignore[arg-type]
+
+
+def _approx_eq(a: float | None, b: float | None) -> bool:
+    """精度 DB_PRECISION (6 位小数) 内相等. 幂等比较专用.
+
+    reviewer P2 (python-reviewer) 采纳: `new == cur` 浮点 == 理论上有精度陷阱 (rolling
+    mean 可能产生 round(6) 不能完全消除的噪声, 导致每次重跑都判不等产生无效 UPDATE).
+    用 round(DB_PRECISION) 归一后再比.
+    """
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return round(a, DB_PRECISION) == round(b, DB_PRECISION)
 
 
 def diff_updates(computed: pd.DataFrame) -> list[tuple[str, date, float | None, float | None]]:
     """对比 new vs current → 仅返回需 UPDATE 的行 (幂等).
 
     输入需含 ic_ma20/ic_ma60 (当前值) + ic_ma20_new/ic_ma60_new (计算值).
-    Skip: 两列都 NaN 或两列都相等 (精度 DB_PRECISION 内).
+    Skip 条件:
+    - 两列都 NaN 且现值都 NULL (常见: rolling 尾部 min_periods 未满)
+    - 两列值在 DB_PRECISION 精度内相等 (幂等, 避免 round 噪声触发无效 UPDATE)
     """
     updates: list[tuple[str, date, float | None, float | None]] = []
     if computed.empty:
@@ -199,12 +222,10 @@ def diff_updates(computed: pd.DataFrame) -> list[tuple[str, date, float | None, 
         cur20 = _to_nullable(row.ic_ma20)
         cur60 = _to_nullable(row.ic_ma60)
 
-        # 两列都 NaN 且现值都 NULL → skip (常见: rolling 尾部前几行 min_periods 未满)
         if new20 is None and new60 is None and cur20 is None and cur60 is None:
             continue
 
-        # 完全相等 (考虑 None == None, float == float 精度已 round 到 6) → skip
-        if new20 == cur20 and new60 == cur60:
+        if _approx_eq(new20, cur20) and _approx_eq(new60, cur60):
             continue
 
         updates.append((row.factor_name, row.trade_date, new20, new60))
@@ -218,6 +239,13 @@ def apply_updates(
     """批量 UPDATE factor_ic_history. 调用方 commit (铁律 32).
 
     SQL 仅 SET ic_ma20/ic_ma60 两列, 不触 ic_5d/10d/20d/ic_abs_5d/decay_level.
+
+    reviewer P1 (code+python) 采纳: psycopg2.extras.execute_values 在 multi-batch
+    (len(updates) > page_size) 场景下 cur.rowcount 只返回最后 batch 的数量
+    (官方文档明确). 这里**手动分批**累积 total, 确保返回真实总行数.
+
+    LL-034 注: SQL cast `::numeric` / `::date` 在 raw psycopg2 VALUES 子句中是标准
+    PostgreSQL 语法, LL-034 禁令范围是 SQLAlchemy text() 场景, 本脚本不受影响.
     """
     if not updates:
         return 0
@@ -228,9 +256,14 @@ def apply_updates(
         WHERE f.factor_name = v.factor_name
           AND f.trade_date = v.trade_date::date
     """
+    total = 0
     with conn.cursor() as cur:
-        psycopg2.extras.execute_values(cur, sql, updates, page_size=BATCH_SIZE)
-        return cur.rowcount
+        for i in range(0, len(updates), BATCH_SIZE):
+            batch = updates[i : i + BATCH_SIZE]
+            psycopg2.extras.execute_values(cur, sql, batch, page_size=BATCH_SIZE)
+            if cur.rowcount > 0:
+                total += cur.rowcount
+    return total
 
 
 def compute_and_update(
@@ -241,8 +274,18 @@ def compute_and_update(
 ) -> dict:
     """核心: 加载 ic_20d → rolling → diff → UPDATE.
 
+    Args:
+        factors: **None → 走 factor_registry 查询 active/warning**.
+                 **空 list `[]` → 无因子不处理** (不降级到 registry 查询).
+                 非空 list → 精确使用该列表 (覆盖 registry).
+        all_factors: True → 读 factor_ic_history 所有有 ic_20d 的 factors (含 retired).
+                     仅在 factors is None 时生效.
+        dry_run: True 不入库, 仅报告 planned_updates.
+
     Returns: {processed_factors, total_ic20d_rows, planned_updates, applied_updates,
               elapsed_sec, factor_summary}
+
+    reviewer P2 (python-reviewer) 采纳: `factors=None` 与 `factors=[]` 语义区分显式化.
     """
     t0 = time.time()
     target_factors = _fetch_target_factors(conn, factors, all_factors)
@@ -269,14 +312,11 @@ def compute_and_update(
     updates = diff_updates(computed)
     logger.info("[ic_rolling] planned updates: %d 行 (幂等 diff 后)", len(updates))
 
-    # per-factor summary
+    # per-factor summary (reviewer P3 采纳: Counter 替代手动字典 +1 累积)
     summary: list[dict] = []
     if not computed.empty:
-        grouped = computed.groupby("factor_name")
-        updates_by_factor: dict[str, int] = {}
-        for u in updates:
-            updates_by_factor[u[0]] = updates_by_factor.get(u[0], 0) + 1
-        for fname, g in grouped:
+        updates_by_factor = Counter(u[0] for u in updates)
+        for fname, g in computed.groupby("factor_name"):
             latest = g.iloc[-1]
             summary.append(
                 {
@@ -352,7 +392,10 @@ def main() -> int:
             conn.commit()
             logger.info("[ic_rolling] commit %d 行", result["applied_updates"])
         logger.info("结果: %s", result)
-        return 0
+        # reviewer P2 (code-reviewer) 采纳: align compute_daily_ic.py exit code —
+        # 无 target factor 时返回 1, 便于 schtask 监控发现异常 (registry 被清空 /
+        # DB 连接异常导致空查询等).
+        return 0 if result["processed_factors"] > 0 else 1
     except Exception:
         conn.rollback()
         logger.exception("[ic_rolling] 执行失败, rollback")
