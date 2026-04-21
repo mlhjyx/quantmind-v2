@@ -80,7 +80,12 @@ def is_trading_day_today() -> bool:
 
 
 def get_prev_close_mv() -> float | None:
-    """获取昨日收盘总市值(从performance_series)。"""
+    """获取昨日收盘总市值(从performance_series).
+
+    Session 21 P1-c 同类 bug fix: 加 `AND trade_date < %s` 过滤,
+    防 15:40 DailyReconciliation 写当日行后本函数读到今日 self,
+    被当成"昨收" → 日内 pnl_pct=0. 对齐 run_paper_trading.py:230 + daily_reconciliation.py:206.
+    """
     import psycopg2
     try:
         conn = psycopg2.connect(
@@ -88,13 +93,15 @@ def get_prev_close_mv() -> float | None:
             password="quantmind", host="localhost",
         )
         cur = conn.cursor()
+        today = date.today()
         # 先尝试live模式，fallback到paper
         for mode in ["live", "paper"]:
             cur.execute(
                 """SELECT nav FROM performance_series
                    WHERE strategy_id = %s AND execution_mode = %s
+                     AND trade_date < %s
                    ORDER BY trade_date DESC LIMIT 1""",
-                (settings.PAPER_STRATEGY_ID, mode),
+                (settings.PAPER_STRATEGY_ID, mode, today),
             )
             row = cur.fetchone()
             if row and row[0]:
