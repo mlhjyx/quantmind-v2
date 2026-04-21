@@ -36,13 +36,15 @@ def _mock_realtime_tick():
     S3 F76: _check_buy_protection 现在拒绝无 tick 的订单. 测试默认注入
     一个"非涨停非跳空"的 tick, 让现有 order 逻辑测试继续工作.
     """
+
     def _fake_tick(qmt_code: str) -> dict:
         return {
-            "lastPrice": 10.0,    # 非零, 有效
-            "lastClose": 10.0,    # 同 lastPrice → 无跳空
+            "lastPrice": 10.0,  # 非零, 有效
+            "lastClose": 10.0,  # 同 lastPrice → 无跳空
             "open": 10.0,
-            "askVol": [1000],     # 非空 → 非封板
+            "askVol": [1000],  # 非空 → 非封板
         }
+
     with patch(
         "engines.qmt_execution_adapter._get_realtime_tick",
         side_effect=_fake_tick,
@@ -86,16 +88,21 @@ class TestFillCollector:
         """成交回调设置event。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=1, code="000001.SZ", direction="buy",
-            volume=100, price=10.0,
+            order_id=1,
+            code="000001.SZ",
+            direction="buy",
+            volume=100,
+            price=10.0,
         )
         collector.register(tracker)
-        collector.on_trade({
-            "order_id": 1,
-            "traded_volume": 100,
-            "traded_price": 10.05,
-            "traded_amount": 1005.0,
-        })
+        collector.on_trade(
+            {
+                "order_id": 1,
+                "traded_volume": 100,
+                "traded_price": 10.05,
+                "traded_amount": 1005.0,
+            }
+        )
         assert tracker.is_done
         assert tracker.filled_volume == 100
         assert tracker.filled_price == 10.05
@@ -105,16 +112,21 @@ class TestFillCollector:
         """部分成交不触发done。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=2, code="000001.SZ", direction="buy",
-            volume=200, price=10.0,
+            order_id=2,
+            code="000001.SZ",
+            direction="buy",
+            volume=200,
+            price=10.0,
         )
         collector.register(tracker)
-        collector.on_trade({
-            "order_id": 2,
-            "traded_volume": 100,
-            "traded_price": 10.0,
-            "traded_amount": 1000.0,
-        })
+        collector.on_trade(
+            {
+                "order_id": 2,
+                "traded_volume": 100,
+                "traded_price": 10.0,
+                "traded_amount": 1000.0,
+            }
+        )
         assert not tracker.is_done
         assert tracker.filled_volume == 100
 
@@ -122,15 +134,20 @@ class TestFillCollector:
         """废单回调标记error。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=3, code="000001.SZ", direction="buy",
-            volume=100, price=10.0,
+            order_id=3,
+            code="000001.SZ",
+            direction="buy",
+            volume=100,
+            price=10.0,
         )
         collector.register(tracker)
-        collector.on_order({
-            "order_id": 3,
-            "order_status": 57,  # REJECTED
-            "order_remark": "资金不足",
-        })
+        collector.on_order(
+            {
+                "order_id": 3,
+                "order_status": 57,  # REJECTED
+                "order_remark": "资金不足",
+            }
+        )
         assert tracker.is_done
         assert "废单" in tracker.error
 
@@ -138,14 +155,19 @@ class TestFillCollector:
         """下单失败回调。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=4, code="000001.SZ", direction="buy",
-            volume=100, price=10.0,
+            order_id=4,
+            code="000001.SZ",
+            direction="buy",
+            volume=100,
+            price=10.0,
         )
         collector.register(tracker)
-        collector.on_error({
-            "order_id": 4,
-            "error_msg": "连接断开",
-        })
+        collector.on_error(
+            {
+                "order_id": 4,
+                "error_msg": "连接断开",
+            }
+        )
         assert tracker.is_done
         assert "下单失败" in tracker.error
 
@@ -166,7 +188,10 @@ class TestQMTExecutionAdapter:
         broker = _make_mock_broker()
         adapter = QMTExecutionAdapter(broker)
         fills, pending = adapter.execute_rebalance(
-            {}, date(2026, 3, 29), {}, signal_date=date(2026, 3, 28),
+            {},
+            date(2026, 3, 29),
+            {},
+            signal_date=date(2026, 3, 28),
         )
         assert fills == []
         assert pending == []
@@ -180,9 +205,15 @@ class TestQMTExecutionAdapter:
         def place_and_fill(code, direction, volume, price, price_type="limit", remark=""):
             oid = 1
             # 模拟回调线程立即成交
-            threading.Timer(0.01, lambda: _trigger_fill(
-                adapter, oid, volume, price,
-            )).start()
+            threading.Timer(
+                0.01,
+                lambda: _trigger_fill(
+                    adapter,
+                    oid,
+                    volume,
+                    price,
+                ),
+            ).start()
             return oid
 
         broker.place_order.side_effect = place_and_fill
@@ -272,7 +303,6 @@ class TestQMTExecutionAdapter:
         assert all(d == "sell" for d in call_directions)
         assert len(pending) == 0  # 卖出失败不产生pending
 
-
     def test_partial_fill_then_cancel(self) -> None:
         """部分成交后超时 → 撤单 + 返回部分成交的Fill。"""
         broker = _make_mock_broker(total_asset=100_000.0, cash=100_000.0)
@@ -281,12 +311,17 @@ class TestQMTExecutionAdapter:
         def place_and_partial(code, direction, volume, price, price_type="limit", remark=""):
             oid = 10
             # 模拟50%成交（100/200），不触发done
-            threading.Timer(0.01, lambda: adapter._collector.on_trade({
-                "order_id": oid,
-                "traded_volume": volume // 2,
-                "traded_price": price,
-                "traded_amount": (volume // 2) * price,
-            })).start()
+            threading.Timer(
+                0.01,
+                lambda: adapter._collector.on_trade(
+                    {
+                        "order_id": oid,
+                        "traded_volume": volume // 2,
+                        "traded_price": price,
+                        "traded_amount": (volume // 2) * price,
+                    }
+                ),
+            ).start()
             return oid
 
         def mock_cancel(order_id):
@@ -299,6 +334,7 @@ class TestQMTExecutionAdapter:
 
         # 用极短超时（避免测试慢）
         import engines.qmt_execution_adapter as mod
+
         orig_timeout = mod.ORDER_TIMEOUT_SEC
         mod.ORDER_TIMEOUT_SEC = 0.5
         try:
@@ -322,20 +358,28 @@ class TestQMTExecutionAdapter:
         """并发on_trade回调正确累积filled_volume（P0-2验证）。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=5, code="000001.SZ", direction="buy",
-            volume=300, price=10.0,
+            order_id=5,
+            code="000001.SZ",
+            direction="buy",
+            volume=300,
+            price=10.0,
         )
         collector.register(tracker)
 
         # 模拟3个并发成交回调，各100股
         threads = []
         for i in range(3):
-            t = threading.Thread(target=collector.on_trade, args=({
-                "order_id": 5,
-                "traded_volume": 100,
-                "traded_price": 10.0 + i * 0.01,
-                "traded_amount": 100 * (10.0 + i * 0.01),
-            },))
+            t = threading.Thread(
+                target=collector.on_trade,
+                args=(
+                    {
+                        "order_id": 5,
+                        "traded_volume": 100,
+                        "traded_price": 10.0 + i * 0.01,
+                        "traded_amount": 100 * (10.0 + i * 0.01),
+                    },
+                ),
+            )
             threads.append(t)
 
         for t in threads:
@@ -368,23 +412,30 @@ class TestQMTExecutionAdapter:
         """部撤(status=50)不设error，部分成交仍返回Fill。"""
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=6, code="000001.SZ", direction="buy",
-            volume=200, price=10.0,
+            order_id=6,
+            code="000001.SZ",
+            direction="buy",
+            volume=200,
+            price=10.0,
         )
         collector.register(tracker)
 
         # 先收到100股成交
-        collector.on_trade({
-            "order_id": 6,
-            "traded_volume": 100,
-            "traded_price": 10.05,
-            "traded_amount": 1005.0,
-        })
+        collector.on_trade(
+            {
+                "order_id": 6,
+                "traded_volume": 100,
+                "traded_price": 10.05,
+                "traded_amount": 1005.0,
+            }
+        )
         # 再收到部撤通知
-        collector.on_order({
-            "order_id": 6,
-            "order_status": 53,  # 部撤 (50=已报/pending, 53=部撤/final)
-        })
+        collector.on_order(
+            {
+                "order_id": 6,
+                "order_status": 53,  # 部撤 (50=已报/pending, 53=部撤/final)
+            }
+        )
 
         assert tracker.is_done
         assert tracker.error is None  # 部撤不设error
@@ -399,17 +450,22 @@ class TestQMTExecutionAdapter:
         """
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=100, code="002441.SZ", direction="buy",
-            volume=4800, price=10.15,
+            order_id=100,
+            code="002441.SZ",
+            direction="buy",
+            volume=4800,
+            price=10.15,
         )
         collector.register(tracker)
 
         # QMT 推送 "部成" 回报 (实盘首个部成回调)
-        collector.on_order({
-            "order_id": 100,
-            "order_status": 55,  # 部成 — 修复后应为 pending
-            "stock_code": "002441.SZ",
-        })
+        collector.on_order(
+            {
+                "order_id": 100,
+                "order_status": 55,  # 部成 — 修复后应为 pending
+                "stock_code": "002441.SZ",
+            }
+        )
 
         # 关键断言: 55 不应提前结束等待
         assert not tracker.is_done, "status=55 部成是 pending, 不应触发 done"
@@ -432,79 +488,145 @@ class TestQMTExecutionAdapter:
         """
         collector = _FillCollector()
         tracker = _OrderTracker(
-            order_id=1090520685, code="002441.SZ", direction="buy",
-            volume=4800, price=10.15,
+            order_id=1090520685,
+            code="002441.SZ",
+            direction="buy",
+            volume=4800,
+            price=10.15,
         )
         collector.register(tracker)
 
         # 序列 1: 首笔成交 1200 股
-        collector.on_trade({
-            "order_id": 1090520685,
-            "traded_volume": 1200,
-            "traded_price": 10.15,
-            "traded_amount": 12180.0,
-        })
+        collector.on_trade(
+            {
+                "order_id": 1090520685,
+                "traded_volume": 1200,
+                "traded_price": 10.15,
+                "traded_amount": 12180.0,
+            }
+        )
         assert not tracker.is_done, "首笔 1200/4800 不应 done"
         assert tracker.filled_volume == 1200
 
         # 序列 2: QMT 推送 "部成" 回报 (原 bug 在此提前退出)
-        collector.on_order({
-            "order_id": 1090520685,
-            "order_status": 55,  # 部成 — 修复后 pending, 不提前触发 done
-            "stock_code": "002441.SZ",
-        })
+        collector.on_order(
+            {
+                "order_id": 1090520685,
+                "order_status": 55,  # 部成 — 修复后 pending, 不提前触发 done
+                "stock_code": "002441.SZ",
+            }
+        )
         assert not tracker.is_done, "on_order(55) 不应提前触发 done (F19 根因)"
         assert not tracker.event.is_set(), "on_order(55) 不应 event.set()"
 
         # 序列 3: 第二笔成交 3600 股 (原 bug 下此回调仍会累加但 wait() 已退出)
-        collector.on_trade({
-            "order_id": 1090520685,
-            "traded_volume": 3600,
-            "traded_price": 10.14,
-            "traded_amount": 36504.0,
-        })
-        # 累计 4800 == volume → on_trade 自己触发 done (L290-292)
+        collector.on_trade(
+            {
+                "order_id": 1090520685,
+                "traded_volume": 3600,
+                "traded_price": 10.14,
+                "traded_amount": 36504.0,
+            }
+        )
+        # 累计 4800 == volume → on_trade 自己触发 done (filled_volume >= volume 分支)
         assert tracker.is_done, "累计 4800 股应触发 done"
         assert tracker.filled_volume == 4800
-        assert tracker.event.is_set()
+        assert tracker.event.is_set(), "完整聚合后 event 应 set (wait() 放行)"
 
-    def test_on_order_terminal_statuses_still_trigger_done(self) -> None:
-        """确认修复未误伤: 53/54/56/57 仍然是 final, on_order 仍触发 done."""
-        terminal_cases = [
+    @pytest.mark.parametrize(
+        "status_code,label,expected_error_substr",
+        [
             (53, "部撤", None),
             (54, "已撤", None),
             (56, "已成", None),
             (57, "废单", "废单"),  # status=57 还会设 error
-        ]
-        for status_code, label, expected_error_substr in terminal_cases:
-            collector = _FillCollector()
-            tracker = _OrderTracker(
-                order_id=200 + status_code, code="000001.SZ",
-                direction="buy", volume=100, price=10.0,
-            )
-            collector.register(tracker)
+        ],
+    )
+    def test_on_order_terminal_statuses_still_trigger_done(
+        self,
+        status_code: int,
+        label: str,
+        expected_error_substr: str | None,
+    ) -> None:
+        """确认修复未误伤: 53/54/56/57 仍然是 final, on_order 仍触发 done."""
+        collector = _FillCollector()
+        tracker = _OrderTracker(
+            order_id=200 + status_code,
+            code="000001.SZ",
+            direction="buy",
+            volume=100,
+            price=10.0,
+        )
+        collector.register(tracker)
 
-            collector.on_order({
+        collector.on_order(
+            {
                 "order_id": 200 + status_code,
                 "order_status": status_code,
                 "order_remark": "资金不足" if status_code == 57 else "",
-            })
+            }
+        )
 
-            assert tracker.is_done, f"status={status_code}({label}) 应触发 done"
-            assert tracker.event.is_set(), f"status={status_code} 应 event.set()"
-            if expected_error_substr:
-                assert expected_error_substr in (tracker.error or ""), \
-                    f"status={status_code} 应设 error 含 '{expected_error_substr}'"
-            else:
-                assert tracker.error is None, \
-                    f"status={status_code}({label}) 不应设 error"
+        assert tracker.is_done, f"status={status_code}({label}) 应触发 done"
+        assert tracker.event.is_set(), f"status={status_code}({label}) 应 event.set()"
+        if expected_error_substr:
+            assert expected_error_substr in (tracker.error or ""), (
+                f"status={status_code} 应设 error 含 '{expected_error_substr}'"
+            )
+        else:
+            assert tracker.error is None, f"status={status_code}({label}) 不应设 error"
+
+    @pytest.mark.parametrize(
+        "status_code,label",
+        [
+            (48, "未报"),
+            (49, "待报"),
+            (50, "已报"),
+            (51, "已报待撤"),
+            (52, "部成待撤"),
+            # 55 (部成) 已由 test_on_order_status_55_partial_fill_stays_pending 专项覆盖
+        ],
+    )
+    def test_on_order_pending_statuses_do_not_trigger_done(
+        self,
+        status_code: int,
+        label: str,
+    ) -> None:
+        """QMT pending 状态码回归: 48/49/50/51/52 不应提前触发 done.
+
+        与 status=55 的 F19 专项测试互补, 防止未来 dict 改动再次把 pending
+        错标 final. 52 "部成待撤" 特别重要 — 语义与 55 最相近, 最易混淆.
+        """
+        collector = _FillCollector()
+        tracker = _OrderTracker(
+            order_id=300 + status_code,
+            code="000001.SZ",
+            direction="buy",
+            volume=100,
+            price=10.0,
+        )
+        collector.register(tracker)
+
+        collector.on_order(
+            {
+                "order_id": 300 + status_code,
+                "order_status": status_code,
+                "stock_code": "000001.SZ",
+            }
+        )
+
+        assert not tracker.is_done, f"status={status_code}({label}) 是 pending, 不应触发 done"
+        assert not tracker.event.is_set(), f"status={status_code}({label}) 不应 event.set()"
+        assert tracker.error is None, f"status={status_code}({label}) 不应设 error"
 
 
 def _trigger_fill(adapter: QMTExecutionAdapter, order_id: int, volume: int, price: float) -> None:
     """辅助：触发adapter的collector成交回调。"""
-    adapter._collector.on_trade({
-        "order_id": order_id,
-        "traded_volume": volume,
-        "traded_price": price,
-        "traded_amount": volume * price,
-    })
+    adapter._collector.on_trade(
+        {
+            "order_id": order_id,
+            "traded_volume": volume,
+            "traded_price": price,
+            "traded_amount": volume * price,
+        }
+    )
