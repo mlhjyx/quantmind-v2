@@ -1,9 +1,11 @@
 # F19 根因调查: 5 position 4-17 EOD → 4-20 open 蒸发
 
-**Date**: 2026-04-21 (Session 21 加时)
-**Status**: ⚠️ 根因未完全确定, 需 QMT `query_history_trades` 直查 4-18/4-20 补证
-**Owner**: Session 22 跟进
-**Related**: ADR-008 L287-289, Session 20 pt_audit 17:35 P1 alert, F20 trade_log 完整性
+> ⚠️ **本文档 Session 21 加时 Part 1 初版**. Part 3 经 `qmt-data-stderr.log` 深扫 + `scripts/diag/f19_fill_reconciler.py` 实证, 4 候选根因**全部证伪**, 真根因定为 `qmt_execution_adapter.py:70 QMT_STATUS[55]=final` 一字节 bug. 覆盖结论见 **[ADR-011](../adr/ADR-011-qmt-api-utilization-roadmap.md)**.
+
+**Date**: 2026-04-21 (Session 21 加时 Part 1, 后被 Part 3 覆盖)
+**Status**: ✅ 已定案 — 见 ADR-011 (真因: QMT 55 部成误认 final + 聚合漏)
+**Owner**: Session 22 F19/F20 fix PR
+**Related**: [ADR-011](../adr/ADR-011-qmt-api-utilization-roadmap.md), ADR-008 L287-289, F20 合并关闭
 
 ## 初版认知 (Session 20 末)
 

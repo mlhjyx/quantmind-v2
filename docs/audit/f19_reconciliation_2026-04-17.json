@@ -1,0 +1,741 @@
+{
+  "trade_date": "2026-04-17",
+  "generated_at": "2026-04-21T21:25:00.491918",
+  "total_qmt_orders": 25,
+  "total_db_rows": 20,
+  "total_volume_loss_qmt_minus_db": 9663,
+  "codes_with_discrepancy": 6,
+  "code_diff": [
+    {
+      "code": "000507.SZ",
+      "qmt_total_volume": 9200,
+      "qmt_fill_count": 1,
+      "db_total_volume": 9200,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520721",
+          "fill_count": 1,
+          "total_volume": 9200,
+          "final_status": 56,
+          "final_traded": 9200,
+          "final_total": 9200,
+          "avg_price": 5.31,
+          "first_ts": "2026-04-17 09:31:18",
+          "last_ts": "2026-04-17 09:31:18"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "000507.SZ",
+          "direction": "buy",
+          "quantity": 9200,
+          "order_qty": null,
+          "fill_price": 5.31,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "002441.SZ",
+      "qmt_total_volume": 4800,
+      "qmt_fill_count": 2,
+      "db_total_volume": 1200,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 3600,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090520685",
+          "fill_count": 2,
+          "total_volume": 4800,
+          "final_status": 56,
+          "final_traded": 4800,
+          "final_total": 4800,
+          "avg_price": 10.1425,
+          "first_ts": "2026-04-17 09:31:10",
+          "last_ts": "2026-04-17 09:31:10"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "002441.SZ",
+          "direction": "sell",
+          "quantity": 1200,
+          "order_qty": null,
+          "fill_price": 10.15,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "002623.SZ",
+      "qmt_total_volume": 100,
+      "qmt_fill_count": 1,
+      "db_total_volume": 100,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520696",
+          "fill_count": 1,
+          "total_volume": 100,
+          "final_status": 56,
+          "final_traded": 100,
+          "final_total": 100,
+          "avg_price": 22.3,
+          "first_ts": "2026-04-17 09:31:12",
+          "last_ts": "2026-04-17 09:31:12"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "002623.SZ",
+          "direction": "sell",
+          "quantity": 100,
+          "order_qty": null,
+          "fill_price": 22.3,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "300833.SZ",
+      "qmt_total_volume": 1400,
+      "qmt_fill_count": 2,
+      "db_total_volume": 500,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 900,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090520697",
+          "fill_count": 2,
+          "total_volume": 1400,
+          "final_status": 56,
+          "final_traded": 1400,
+          "final_total": 1400,
+          "avg_price": 33.7414,
+          "first_ts": "2026-04-17 09:31:12",
+          "last_ts": "2026-04-17 09:31:12"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "300833.SZ",
+          "direction": "sell",
+          "quantity": 500,
+          "order_qty": null,
+          "fill_price": 33.78,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "301581.SZ",
+      "qmt_total_volume": 1000,
+      "qmt_fill_count": 1,
+      "db_total_volume": 1000,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520706",
+          "fill_count": 1,
+          "total_volume": 1000,
+          "final_status": 56,
+          "final_traded": 1000,
+          "final_total": 1000,
+          "avg_price": 45.9,
+          "first_ts": "2026-04-17 09:31:15",
+          "last_ts": "2026-04-17 09:31:15"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "301581.SZ",
+          "direction": "sell",
+          "quantity": 1000,
+          "order_qty": null,
+          "fill_price": 45.9,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "600028.SH",
+      "qmt_total_volume": 200,
+      "qmt_fill_count": 1,
+      "db_total_volume": 200,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520749",
+          "fill_count": 1,
+          "total_volume": 200,
+          "final_status": 56,
+          "final_traded": 200,
+          "final_total": 200,
+          "avg_price": 5.66,
+          "first_ts": "2026-04-17 09:31:22",
+          "last_ts": "2026-04-17 09:31:22"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "600028.SH",
+          "direction": "buy",
+          "quantity": 200,
+          "order_qty": null,
+          "fill_price": 5.66,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "600051.SH",
+      "qmt_total_volume": 6600,
+      "qmt_fill_count": 1,
+      "db_total_volume": 6600,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520656",
+          "fill_count": 1,
+          "total_volume": 6600,
+          "final_status": 56,
+          "final_traded": 6600,
+          "final_total": 6600,
+          "avg_price": 7.39,
+          "first_ts": "2026-04-17 09:31:06",
+          "last_ts": "2026-04-17 09:31:06"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "600051.SH",
+          "direction": "sell",
+          "quantity": 6600,
+          "order_qty": null,
+          "fill_price": 7.39,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "600067.SH",
+      "qmt_total_volume": 11800,
+      "qmt_fill_count": 1,
+      "db_total_volume": 11800,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520658",
+          "fill_count": 1,
+          "total_volume": 11800,
+          "final_status": 56,
+          "final_traded": 11800,
+          "final_total": 11800,
+          "avg_price": 4.12,
+          "first_ts": "2026-04-17 09:31:06",
+          "last_ts": "2026-04-17 09:31:06"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "600067.SH",
+          "direction": "sell",
+          "quantity": 11800,
+          "order_qty": null,
+          "fill_price": 4.12,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "600938.SH",
+      "qmt_total_volume": 1300,
+      "qmt_fill_count": 1,
+      "db_total_volume": 1300,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520726",
+          "fill_count": 1,
+          "total_volume": 1300,
+          "final_status": 56,
+          "final_traded": 1300,
+          "final_total": 1300,
+          "avg_price": 36.87,
+          "first_ts": "2026-04-17 09:31:18",
+          "last_ts": "2026-04-17 09:31:18"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "600938.SH",
+          "direction": "buy",
+          "quantity": 1300,
+          "order_qty": null,
+          "fill_price": 36.87,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "600941.SH",
+      "qmt_total_volume": 500,
+      "qmt_fill_count": 1,
+      "db_total_volume": 500,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520728",
+          "fill_count": 1,
+          "total_volume": 500,
+          "final_status": 56,
+          "final_traded": 500,
+          "final_total": 500,
+          "avg_price": 93.39,
+          "first_ts": "2026-04-17 09:31:19",
+          "last_ts": "2026-04-17 09:31:19"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "600941.SH",
+          "direction": "buy",
+          "quantity": 500,
+          "order_qty": null,
+          "fill_price": 93.39,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "601065.SH",
+      "qmt_total_volume": 5800,
+      "qmt_fill_count": 1,
+      "db_total_volume": 5800,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520659",
+          "fill_count": 1,
+          "total_volume": 5800,
+          "final_status": 56,
+          "final_traded": 5800,
+          "final_total": 5800,
+          "avg_price": 8.39,
+          "first_ts": "2026-04-17 09:31:07",
+          "last_ts": "2026-04-17 09:31:07"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "601065.SH",
+          "direction": "sell",
+          "quantity": 5800,
+          "order_qty": null,
+          "fill_price": 8.39,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "601088.SH",
+      "qmt_total_volume": 1000,
+      "qmt_fill_count": 1,
+      "db_total_volume": 1000,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520733",
+          "fill_count": 1,
+          "total_volume": 1000,
+          "final_status": 56,
+          "final_traded": 1000,
+          "final_total": 1000,
+          "avg_price": 45.65,
+          "first_ts": "2026-04-17 09:31:19",
+          "last_ts": "2026-04-17 09:31:19"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "601088.SH",
+          "direction": "buy",
+          "quantity": 1000,
+          "order_qty": null,
+          "fill_price": 45.65,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "601398.SH",
+      "qmt_total_volume": 6500,
+      "qmt_fill_count": 1,
+      "db_total_volume": 6500,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520723",
+          "fill_count": 1,
+          "total_volume": 6500,
+          "final_status": 56,
+          "final_traded": 6500,
+          "final_total": 6500,
+          "avg_price": 7.45,
+          "first_ts": "2026-04-17 09:31:18",
+          "last_ts": "2026-04-17 09:31:18"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "601398.SH",
+          "direction": "buy",
+          "quantity": 6500,
+          "order_qty": null,
+          "fill_price": 7.45,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "601857.SH",
+      "qmt_total_volume": 100,
+      "qmt_fill_count": 1,
+      "db_total_volume": 100,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520747",
+          "fill_count": 1,
+          "total_volume": 100,
+          "final_status": 56,
+          "final_traded": 100,
+          "final_total": 100,
+          "avg_price": 11.65,
+          "first_ts": "2026-04-17 09:31:22",
+          "last_ts": "2026-04-17 09:31:22"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "601857.SH",
+          "direction": "buy",
+          "quantity": 100,
+          "order_qty": null,
+          "fill_price": 11.65,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "601988.SH",
+      "qmt_total_volume": 8500,
+      "qmt_fill_count": 1,
+      "db_total_volume": 8500,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520720",
+          "fill_count": 1,
+          "total_volume": 8500,
+          "final_status": 56,
+          "final_traded": 8500,
+          "final_total": 8500,
+          "avg_price": 5.76,
+          "first_ts": "2026-04-17 09:31:17",
+          "last_ts": "2026-04-17 09:31:17"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "601988.SH",
+          "direction": "buy",
+          "quantity": 8500,
+          "order_qty": null,
+          "fill_price": 5.76,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "603035.SH",
+      "qmt_total_volume": 3400,
+      "qmt_fill_count": 1,
+      "db_total_volume": 3400,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520662",
+          "fill_count": 1,
+          "total_volume": 3400,
+          "final_status": 56,
+          "final_traded": 3400,
+          "final_total": 3400,
+          "avg_price": 14.4,
+          "first_ts": "2026-04-17 09:31:07",
+          "last_ts": "2026-04-17 09:31:07"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "603035.SH",
+          "direction": "sell",
+          "quantity": 3400,
+          "order_qty": null,
+          "fill_price": 14.4,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "603167.SH",
+      "qmt_total_volume": 5300,
+      "qmt_fill_count": 1,
+      "db_total_volume": 5300,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520668",
+          "fill_count": 1,
+          "total_volume": 5300,
+          "final_status": 56,
+          "final_traded": 5300,
+          "final_total": 5300,
+          "avg_price": 9.26,
+          "first_ts": "2026-04-17 09:31:07",
+          "last_ts": "2026-04-17 09:31:07"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "603167.SH",
+          "direction": "sell",
+          "quantity": 5300,
+          "order_qty": null,
+          "fill_price": 9.26,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "688041.SH",
+      "qmt_total_volume": 0,
+      "qmt_fill_count": 0,
+      "db_total_volume": 0,
+      "db_row_count": 0,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520735",
+          "fill_count": 0,
+          "total_volume": 0,
+          "final_status": 57,
+          "final_traded": 0,
+          "final_total": 100,
+          "avg_price": null,
+          "first_ts": null,
+          "last_ts": null
+        },
+        {
+          "order_id": "1090520779",
+          "fill_count": 0,
+          "total_volume": 0,
+          "final_status": 57,
+          "final_traded": 0,
+          "final_total": 100,
+          "avg_price": null,
+          "first_ts": null,
+          "last_ts": null
+        },
+        {
+          "order_id": "1090520906",
+          "fill_count": 0,
+          "total_volume": 0,
+          "final_status": 57,
+          "final_traded": 0,
+          "final_total": 100,
+          "avg_price": null,
+          "first_ts": null,
+          "last_ts": null
+        }
+      ],
+      "db_rows": []
+    },
+    {
+      "code": "688121.SH",
+      "qmt_total_volume": 4500,
+      "qmt_fill_count": 3,
+      "db_total_volume": 33,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 4467,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090520708",
+          "fill_count": 3,
+          "total_volume": 4500,
+          "final_status": 56,
+          "final_traded": 4500,
+          "final_total": 4500,
+          "avg_price": 10.8976,
+          "first_ts": "2026-04-17 09:31:15",
+          "last_ts": "2026-04-17 09:31:15"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "688121.SH",
+          "direction": "buy",
+          "quantity": 33,
+          "order_qty": null,
+          "fill_price": 10.88,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "688211.SH",
+      "qmt_total_volume": 1400,
+      "qmt_fill_count": 1,
+      "db_total_volume": 1400,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 0,
+      "verdict": "EQUAL",
+      "qmt_orders": [
+        {
+          "order_id": "1090520730",
+          "fill_count": 1,
+          "total_volume": 1400,
+          "final_status": 56,
+          "final_traded": 1400,
+          "final_total": 1400,
+          "avg_price": 32.89,
+          "first_ts": "2026-04-17 09:31:19",
+          "last_ts": "2026-04-17 09:31:19"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "688211.SH",
+          "direction": "buy",
+          "quantity": 1400,
+          "order_qty": null,
+          "fill_price": 32.89,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "688739.SH",
+      "qmt_total_volume": 1900,
+      "qmt_fill_count": 3,
+      "db_total_volume": 1329,
+      "db_row_count": 1,
+      "diff_qmt_minus_db": 571,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090520670",
+          "fill_count": 3,
+          "total_volume": 1900,
+          "final_status": 56,
+          "final_traded": 1900,
+          "final_total": 1900,
+          "avg_price": 24.6436,
+          "first_ts": "2026-04-17 09:31:08",
+          "last_ts": "2026-04-17 09:31:08"
+        }
+      ],
+      "db_rows": [
+        {
+          "code": "688739.SH",
+          "direction": "sell",
+          "quantity": 1329,
+          "order_qty": null,
+          "fill_price": 24.65,
+          "executed_at": "2026-04-17T09:32:06.985880+08:00"
+        }
+      ]
+    },
+    {
+      "code": "920212.BJ",
+      "qmt_total_volume": 60,
+      "qmt_fill_count": 1,
+      "db_total_volume": 0,
+      "db_row_count": 0,
+      "diff_qmt_minus_db": 60,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090532020",
+          "fill_count": 1,
+          "total_volume": 60,
+          "final_status": 56,
+          "final_traded": 60,
+          "final_total": 60,
+          "avg_price": 11.72,
+          "first_ts": "2026-04-17 12:14:53",
+          "last_ts": "2026-04-17 12:14:53"
+        }
+      ],
+      "db_rows": []
+    },
+    {
+      "code": "920950.BJ",
+      "qmt_total_volume": 65,
+      "qmt_fill_count": 1,
+      "db_total_volume": 0,
+      "db_row_count": 0,
+      "diff_qmt_minus_db": 65,
+      "verdict": "DB_LEAKS_QMT",
+      "qmt_orders": [
+        {
+          "order_id": "1090532021",
+          "fill_count": 1,
+          "total_volume": 65,
+          "final_status": 56,
+          "final_traded": 65,
+          "final_total": 65,
+          "avg_price": 15.63,
+          "first_ts": "2026-04-17 13:10:03",
+          "last_ts": "2026-04-17 13:10:03"
+        }
+      ],
+      "db_rows": []
+    }
+  ]
+}
