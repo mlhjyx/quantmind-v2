@@ -15,11 +15,12 @@ Fix (铁律 33 fail-loud):
 """
 from __future__ import annotations
 
-import logging
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
+from app.data_fetcher import pipeline as pipeline_mod
 from app.data_fetcher.contracts import (
     DAILY_BASIC,
     ColumnSpec,
@@ -51,6 +52,26 @@ class TestColumnSpecSchema:
         assert spec.min_val == 0
         assert spec.max_val == 100
         assert spec.null_ratio_max == 0.10
+
+    def test_null_ratio_max_domain_lower_boundary(self):
+        """null_ratio_max=0.0 合法 (reviewer P3 域校验)."""
+        spec = ColumnSpec("float", null_ratio_max=0.0)
+        assert spec.null_ratio_max == 0.0
+
+    def test_null_ratio_max_domain_upper_boundary(self):
+        """null_ratio_max=1.0 合法 (100% NULL 总是 OK)."""
+        spec = ColumnSpec("float", null_ratio_max=1.0)
+        assert spec.null_ratio_max == 1.0
+
+    def test_null_ratio_max_exceeds_upper_raises(self):
+        """null_ratio_max=1.5 → ValueError (reviewer P3 域校验, import 时即 fail-fast)."""
+        with pytest.raises(ValueError, match=r"null_ratio_max must be in"):
+            ColumnSpec("float", null_ratio_max=1.5)
+
+    def test_null_ratio_max_negative_raises(self):
+        """null_ratio_max=-0.1 → ValueError (负值无意义)."""
+        with pytest.raises(ValueError, match=r"null_ratio_max must be in"):
+            ColumnSpec("float", null_ratio_max=-0.1)
 
 
 class TestIngestResultSchema:
@@ -145,19 +166,72 @@ class TestCheckNullRatio:
         warnings = pipeline._check_null_ratio(df, contract)
         assert warnings == {}
 
-    def test_exceeds_threshold_logs_error_and_warns(self, caplog):
-        """NULL 率 = 30% > 阈值 5% → logger.error + warning 填充."""
+    def test_exceeds_threshold_logs_severe_and_warns(self, monkeypatch):
+        """NULL 率 = 30% (>2× threshold 5%) → logger.error severity=severe + warning 填充.
+
+        reviewer P2/P3 采纳: structlog 不走 stdlib caplog, 改 monkeypatch 直接拦截
+        cg_module.logger.error 捕获调用 (test_config_guard_execution_mode.py 同模式).
+        """
+        calls: list[tuple[str, dict]] = []
+        real_error = pipeline_mod.logger.error
+
+        def capture(msg, *args, **kwargs):
+            calls.append((msg, kwargs))
+            return real_error(msg, *args, **kwargs)
+
+        monkeypatch.setattr(pipeline_mod.logger, "error", capture)
+
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(0.05)
-        # 10 行, 3 NULL (30%)
+        # 10 行, 3 NULL (30% > 2×5% → severe)
         df = pd.DataFrame({
             "code": [f"c{i}" for i in range(10)],
             "value": [1.0] * 7 + [None] * 3,
         })
-        with caplog.at_level(logging.ERROR):
-            warnings = pipeline._check_null_ratio(df, contract)
+        warnings = pipeline._check_null_ratio(df, contract)
         assert "value" in warnings
-        assert warnings["value"] == 0.30
+        assert warnings["value"] == pytest.approx(0.30, abs=1e-4)
+        # 铁律 33 fail-loud 实证: logger.error 实际被调用 (非 no-op)
+        assert len(calls) == 1, f"预期 1 次 error 调用, 实际 {len(calls)}"
+        msg, kwargs = calls[0]
+        assert "null_ratio_exceeded" in msg
+        assert kwargs["column"] == "value"
+        assert kwargs["severity"] == "severe"
+
+    def test_mild_drift_logs_warning_not_error(self, monkeypatch):
+        """NULL 率 = 7% (轻度超 5%, 未到 2×) → logger.warning + severity='drift'.
+
+        reviewer P1 采纳: 避免 5% 略超即同 100% NULL 同等严重 → 分级告警.
+        """
+        warn_calls: list[tuple[str, dict]] = []
+        error_calls: list[tuple[str, dict]] = []
+        real_warning = pipeline_mod.logger.warning
+        real_error = pipeline_mod.logger.error
+
+        def cap_warn(msg, *args, **kwargs):
+            warn_calls.append((msg, kwargs))
+            return real_warning(msg, *args, **kwargs)
+
+        def cap_err(msg, *args, **kwargs):
+            error_calls.append((msg, kwargs))
+            return real_error(msg, *args, **kwargs)
+
+        monkeypatch.setattr(pipeline_mod.logger, "warning", cap_warn)
+        monkeypatch.setattr(pipeline_mod.logger, "error", cap_err)
+
+        pipeline = DataPipeline(conn=MagicMock())
+        contract = _fake_contract(0.05)
+        # 100 行, 7 NULL = 7% (> 5%, < 10% = 2×threshold)
+        df = pd.DataFrame({
+            "code": [f"c{i}" for i in range(100)],
+            "value": [1.0] * 93 + [None] * 7,
+        })
+        warnings = pipeline._check_null_ratio(df, contract)
+        assert warnings["value"] == pytest.approx(0.07, abs=1e-4)
+        # drift 级: warning 1 次, error 0 次
+        assert len(warn_calls) == 1
+        assert len(error_calls) == 0
+        assert warn_calls[0][1]["severity"] == "drift"
 
     def test_no_threshold_never_warns(self):
         """null_ratio_max=None 时, 即使 100% NULL 也不触发 warning."""
@@ -214,8 +288,8 @@ class TestCheckNullRatio:
         })
         warnings = pipeline._check_null_ratio(df, contract)
         assert set(warnings.keys()) == {"a", "b"}
-        assert warnings["a"] == 0.30
-        assert warnings["b"] == 0.15
+        assert warnings["a"] == pytest.approx(0.30, abs=1e-4)
+        assert warnings["b"] == pytest.approx(0.15, abs=1e-4)
 
 
 # ════════════════════════════════════════════════════════════
@@ -243,7 +317,7 @@ class TestIngestIntegration:
         })
         result = pipeline.ingest(df, DAILY_BASIC)
         assert "dv_ttm" in result.null_ratio_warnings
-        assert result.null_ratio_warnings["dv_ttm"] == 0.30
+        assert result.null_ratio_warnings["dv_ttm"] == pytest.approx(0.30, abs=1e-4)
         assert "pe_ttm" not in result.null_ratio_warnings  # pe_ttm 0% NULL 不触发
 
     def test_ingest_empty_warnings_when_healthy(self, monkeypatch):
