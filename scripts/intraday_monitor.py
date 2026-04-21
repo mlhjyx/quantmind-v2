@@ -24,6 +24,7 @@ ADR-010 过渡期 (Risk Framework MVP 3.1 落地前):
 import json
 import os
 import sys
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
@@ -157,52 +158,93 @@ def send_alert(level: str, title: str, content: str) -> None:
 
 # ── ADR-010 过渡期: 单股急跌检测 helpers ──
 
-def _get_prev_close(code: str) -> float | None:
-    """从 klines_daily 查单股前一交易日收盘价。"""
+def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
+    """批量查 prev_close (1 query 替代 N): review P1 MEDIUM 优化.
+
+    Returns:
+        {code: prev_close} — 无数据的 code 不在返回里.
+    """
+    if not codes:
+        return {}
     import psycopg2
     try:
-        conn = psycopg2.connect(
+        with closing(psycopg2.connect(
             dbname="quantmind_v2", user="xin",
             password="quantmind", host="localhost",
-        )
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT close FROM klines_daily
-               WHERE code = %s AND trade_date < %s
-               ORDER BY trade_date DESC LIMIT 1""",
-            (code, date.today()),
-        )
-        row = cur.fetchone()
-        conn.close()
+        )) as conn, conn.cursor() as cur:
+            # 对每个 code 取最近 trade_date < today 的 close (DISTINCT ON PG 语法)
+            cur.execute(
+                """SELECT DISTINCT ON (code) code, close
+                       FROM klines_daily
+                       WHERE code = ANY(%s) AND trade_date < %s
+                       ORDER BY code, trade_date DESC""",
+                (codes, date.today()),
+            )
+            rows = cur.fetchall()
+        return {row[0]: float(row[1]) for row in rows if row[1] is not None}
+    except Exception as e:
+        logger.warning(f"_get_prev_closes_batch failed: {e}")
+        return {}
+
+
+def _get_prev_close(code: str) -> float | None:
+    """从 klines_daily 查单股前一交易日收盘价 (review P1 HIGH 修: try/finally close)."""
+    import psycopg2
+    try:
+        with closing(psycopg2.connect(
+            dbname="quantmind_v2", user="xin",
+            password="quantmind", host="localhost",
+        )) as conn, conn.cursor() as cur:
+            cur.execute(
+                """SELECT close FROM klines_daily
+                       WHERE code = %s AND trade_date < %s
+                       ORDER BY trade_date DESC LIMIT 1""",
+                (code, date.today()),
+            )
+            row = cur.fetchone()
         return float(row[0]) if row and row[0] else None
     except Exception as e:
         logger.warning(f"_get_prev_close failed for {code}: {e}")
         return None
 
 
-def _get_current_price(code: str) -> float | None:
-    """从 Redis market:latest:{code} 读当前价。"""
+def _get_current_price(code: str, r=None) -> float | None:
+    """从 Redis market:latest:{code} 读当前价.
+
+    Args:
+        code: 股票 code
+        r: 可选复用的 redis client (review P1 reuse 优化). None 则内部 new 一个.
+    """
     try:
-        import redis
-        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        if r is None:
+            import redis
+            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         raw = r.get(f"market:latest:{code}")
         if not raw:
             return None
         data = json.loads(raw)
         # MVP 2.1c Sub3 contract v2 用 price, 旧格式兼容 last_price
-        price = float(data.get("price") or data.get("last_price") or 0)
+        price_raw = data.get("price") if data.get("price") is not None else data.get("last_price")
+        price = float(price_raw) if price_raw is not None else 0.0
         return price if price > 0 else None
     except Exception as e:
         logger.warning(f"_get_current_price failed for {code}: {e}")
         return None
 
 
-def _compute_stock_daily_pnl(code: str) -> float | None:
-    """单股当日涨跌幅 = (current - prev_close) / prev_close. 任一数据缺失返 None."""
-    current = _get_current_price(code)
+def _compute_stock_daily_pnl(code: str, r=None, prev_close: float | None = None) -> float | None:
+    """单股当日涨跌幅 = (current - prev_close) / prev_close. 任一数据缺失返 None.
+
+    Args:
+        code: 股票 code
+        r: 可选复用的 redis client (review P1 reuse 优化)
+        prev_close: 可选预先 batch 查好的前日 close (review P1 MEDIUM 优化, 避免 N 次 DB)
+    """
+    current = _get_current_price(code, r=r)
     if current is None:
         return None
-    prev_close = _get_prev_close(code)
+    if prev_close is None:
+        prev_close = _get_prev_close(code)
     if prev_close is None or prev_close <= 0:
         return None
     return (current - prev_close) / prev_close
@@ -213,21 +255,31 @@ def _emergency_dedup_key(code: str) -> str:
     return f"intraday_alerted:emergency:{code}:{date.today().isoformat()}"
 
 
-def _already_alerted_emergency(code: str) -> bool:
-    """查 Redis 是否同股同日已告警 (24h TTL). fail-safe: 异常返 False (宁重复不漏报)."""
+def _already_alerted_emergency(code: str, r=None) -> bool:
+    """查 Redis 是否同股同日已告警 (24h TTL). fail-safe: 异常返 False (宁重复不漏报).
+
+    Args:
+        r: 可选复用的 redis client (review P1 reuse 优化)
+    """
     try:
-        import redis
-        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        if r is None:
+            import redis
+            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         return r.exists(_emergency_dedup_key(code)) > 0
     except Exception:
         return False  # silent_ok: Redis 失败时允许告警, 保告警覆盖优先于去重
 
 
-def _mark_alerted_emergency(code: str) -> None:
-    """标记同股同日已告警 (TTL 86400s 自动清)."""
+def _mark_alerted_emergency(code: str, r=None) -> None:
+    """标记同股同日已告警 (TTL 86400s 自动清).
+
+    Args:
+        r: 可选复用的 redis client (review P1 reuse 优化)
+    """
     try:
-        import redis
-        r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+        if r is None:
+            import redis
+            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         r.setex(_emergency_dedup_key(code), 86400, "1")
     except Exception as e:
         logger.warning(f"_mark_alerted_emergency failed for {code}: {e}")
@@ -324,18 +376,28 @@ def run_monitor(force: bool = False) -> None:
                     f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}")
 
     # 5. 单股急跌检测 (ADR-010 过渡期保险丝, 阈值 -8%, 每股每日限 1 次)
-    emergency_stocks = []
+    # review P1 优化: 单 Redis client + 批量 prev_close, 避免 N×3 Redis + N DB
+    emergency_stocks: list[dict] = []
+    valid_codes = [p.get("stock_code", "") for p in positions if p.get("stock_code") and p.get("volume", 0) > 0]
+    prev_closes = _get_prev_closes_batch(valid_codes)  # 1 DB query 替代 N
+    try:
+        import redis as _redis_mod
+        redis_client = _redis_mod.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+    except Exception as e:
+        logger.warning(f"Redis client init failed, fallback per-call: {e}")
+        redis_client = None  # 降级: helpers 会自己 new (fail-safe)
+
     for pos in positions:
         code = pos.get("stock_code", "")
         if not code or pos.get("volume", 0) <= 0:
             continue
-        stock_pnl = _compute_stock_daily_pnl(code)
+        stock_pnl = _compute_stock_daily_pnl(code, r=redis_client, prev_close=prev_closes.get(code))
         if stock_pnl is None or stock_pnl > ALERT_EMERGENCY_STOCK:
             continue
-        if _already_alerted_emergency(code):
+        if _already_alerted_emergency(code, r=redis_client):
             continue
         emergency_stocks.append({"code": code, "pnl_pct": stock_pnl})
-        _mark_alerted_emergency(code)
+        _mark_alerted_emergency(code, r=redis_client)
 
     if emergency_stocks:
         # 组合已 P0 保持 P0 不降级; 否则本规则升级到 P1
