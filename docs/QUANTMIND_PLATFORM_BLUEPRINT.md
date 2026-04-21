@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.5)
+# QuantMind Platform Blueprint (QPB v1.6)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → **v1.5 Wave 2 Data 层完结 (MVP 2.1 + 2.2 交付, 老 3 fetcher 全退役, 铁律 40→42 同步)**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → **v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation), 原 MVP 3.1/3.2/3.3/3.4 → 3.2/3.3/3.4/3.5**
 > **作者**: Architect pass (Opus)
-> **状态**: v1.5 (12 Framework + 6 升维 + 16 MVP, 26-35 周), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity)**
+> **状态**: v1.6 (12 Framework + 6 升维 + **17 MVP**, 27.5-37 周), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity)**
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -1106,13 +1106,14 @@ Wave 2 (7-9 周): 数据 + 研究生产打通
  ├─ MVP 2.2:  Data Lineage (U3)                   (1-1.5 周)
  └─ MVP 2.3:  Backtest Framework + U1 Parity (#5) (3-4 周, 现实化)
 
-Wave 3 (10-13 周): 资源调度 + PEAD 前置 + 多策略 + 事件驱动
+Wave 3 (11.5-15 周): 资源调度 + PEAD 前置 + Risk + 多策略 + 事件驱动
  ├─ MVP 3.0:  Resource Orchestration (#11, U6)        (1-2 周) ┐
- ├─ MVP 3.0a: PEAD 前置 (PIT + PMS v2 + cost H0-v2)    (3 周)    ├─ 并行
- ├─ MVP 3.1:  Strategy Framework (#3)                  (3-4 周, 现实化)
- ├─ MVP 3.2:  Signal & Execution (#6) + event hooks    (2 周)
- ├─ MVP 3.3:  Event Sourcing (U2) + outbox/snapshot/ver (3-4 周, 并行)
- └─ MVP 3.4:  Evaluation Gate (#4)                     (1-1.5 周)
+ ├─ MVP 3.0a: PEAD 前置 (PIT + cost H0-v2, 不含老 PMS v2)  (2 周) ├─ 并行
+ ├─ MVP 3.1:  Risk Framework (新, ADR-010)             (1.5-2 周) ← 新增, Wave 3 启动 MVP
+ ├─ MVP 3.2:  Strategy Framework (#3) (原 3.1)          (3-4 周)
+ ├─ MVP 3.3:  Signal & Execution (#6) + event hooks (原 3.2)  (2 周)
+ ├─ MVP 3.4:  Event Sourcing (U2) + outbox/snapshot/ver (原 3.3) (3-4 周, 并行)
+ └─ MVP 3.5:  Evaluation Gate (#4) (原 3.4)             (1-1.5 周)
 
 Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
  ├─ MVP 4.1:  Observability (#7)             (1-2 周)
@@ -1232,28 +1233,40 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 - **设计文档**: `docs/mvp/MVP_3_0_resource_orchestration.md`
 - **硬件基础**: R9-9900X3D 12C/24T + RTX 5070 12GB + 32GB DDR5, 见 memory/reference_hardware.md
 
-**MVP 3.1: Strategy Framework (#3)**
+**MVP 3.1: Risk Framework (新增, ADR-010)**
+
+- **背景**: Session 21 (2026-04-21) 发现 PMS v1.0 整体死码 5 重失效 (F27-F31) + 5 个监控系统碎片化 (intraday_monitor / PMS / risk_control / pt_audit / pt_watchdog 互不通信). 方案 D+ 决议: 不修 PMS 死码, 统一重构为 Risk Framework, 作为所有 Wave 3 MVP 的前置
+- **范围**: `backend/platform/risk/` — RiskRule abstract + PlatformRiskEngine + PositionSource (QMT 实时 primary / DB fallback) + risk_event_log 单表 + 11 条规则迁移 (PMS L1-L3 + intraday 组合 3/5/8% + QMT 断连 + CB L1-L4)
+- **3 批分阶段**: 批 1 Framework core + PMS 迁入 (~1 周) → 批 2 intraday 迁入 (~0.5 周) → 批 3 circuit breaker 迁入 (~0.5 周, 末位风险最高)
+- **验收**: `SELECT COUNT FROM risk_event_log WHERE rule_id LIKE 'pms_%'` 有非触发 dry-run 证据 (live smoke 强制模拟触发); 批 2 完成 intraday_monitor 走 RiskEngine; 批 3 完成 risk_control_service deprecated
+- **耗时**: 1.5-2 周 (3 批合计 ~1000 行)
+- **依赖**: MVP 1.1 Platform Skeleton + MVP 2.1 Data Framework + ADR-010
+- **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (已完成)
+- **过渡期保护**: intraday_monitor 组合告警 + emergency_stock_alert.py (单股跌 >8% 钉钉, ADR-010 D6 过渡脚本) + 盘后三检 (reconciliation / pt_audit / pt_watchdog)
+
+**MVP 3.2: Strategy Framework (#3)** (原 MVP 3.1)
 
 - **范围**: Strategy 基类 + Registry, 当前 PT 重构为 S1 MonthlyRanking, 引入 S2 (PEAD Event-driven, v1.2 已决策), CapitalAllocator 等权
 - **验收**: PT 跑 S1+S2 两策略同时, 独立 NAV/订单, 互不干扰
 - **耗时**: 3-4 周 (v1.3 现实化: 含 strategy isolation / capital allocation / risk isolation / 两策略并跑验证, 原 2-3 周低估)
-- **依赖**: MVP 3.0 ROF + MVP 3.0a PEAD 前置 + MVP 2.3 BacktestRunner
-- **设计文档**: `docs/mvp/MVP_3_1_strategy_framework.md`
+- **依赖**: MVP 3.0 ROF + MVP 3.0a PEAD 前置 + **MVP 3.1 Risk Framework** + MVP 2.3 BacktestRunner
+- **设计文档**: `docs/mvp/MVP_3_2_strategy_framework.md`
 
-**MVP 3.2: Signal & Execution (#6) + Event Hooks 预埋**
+**MVP 3.3: Signal & Execution (#6) + Event Hooks 预埋** (原 MVP 3.2)
 
 - **范围**: SignalPipeline 收编 hardcoded config, OrderIdempotencyGuard, ExecutionAuditTrail
-- **v1.3 新增 Event Hooks 预埋 (避免 MVP 3.3 回来改 3.2)**:
-  - 所有写操作 (signal.generated / order.placed / order.filled / order.rejected / pms.triggered)
+- **v1.3 新增 Event Hooks 预埋 (避免 MVP 3.4 回来改 3.3)**:
+  - 所有写操作 (signal.generated / order.placed / order.filled / order.rejected / risk.triggered)
     必须调用 `event_bus.publish(event_type, payload)` 占位
-  - MVP 3.3 前 event_bus 是 no-op 实现 (只 log 不持久化)
-  - MVP 3.3 后 event_bus 激活 outbox pattern 写 PG + 发 Redis
+  - MVP 3.4 前 event_bus 是 no-op 实现 (只 log 不持久化)
+  - MVP 3.4 后 event_bus 激活 outbox pattern 写 PG + 发 Redis
+- **v1.6 更新**: `pms.triggered` → `risk.triggered` (对齐 Risk Framework `risk_event_log`)
 - **验收**: 重复下单 test 自动过滤, 任意 fill 可追溯到 signal/strategy/factor; 所有写路径有 event_bus.publish() 调用点 (grep 验证)
 - **耗时**: 2 周 (v1.3: 含 event hooks 预埋工作量)
-- **依赖**: MVP 3.1 Strategy Framework
-- **设计文档**: `docs/mvp/MVP_3_2_signal_execution.md`
+- **依赖**: MVP 3.2 Strategy Framework + **MVP 3.1 Risk Framework** (execute 路径 broker 复用)
+- **设计文档**: `docs/mvp/MVP_3_3_signal_execution.md`
 
-**MVP 3.3: Event Sourcing (U2) + outbox/snapshot/versioning**
+**MVP 3.4: Event Sourcing (U2) + outbox/snapshot/versioning** (原 MVP 3.3)
 
 - **范围**: 9 种核心事件发布方 + 消费方, Materialized View 投影, Event Replay 工具
 - **v1.2 决议必配 3 工程组件**:
@@ -1262,15 +1275,15 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
   - Event versioning: 每事件带 `schema_version`, upgrader 至少 N-1 版本向下兼容
 - **验收**: 重放过去 30 天事件 → 当前状态 bit-identical; outbox 表 consumer 7 天内清空 (v1.2 副决策 3a)
 - **耗时**: 3-4 周 (v1.3 现实化: 3 工程组件齐全, event sourcing 工程复杂度高)
-- **依赖**: MVP 3.2 event hooks 已预埋; 与 MVP 3.1 并行可能 (策略层不干扰)
-- **设计文档**: `docs/mvp/MVP_3_3_event_sourcing.md`
+- **依赖**: MVP 3.3 event hooks 已预埋; 与 MVP 3.2 并行可能 (策略层不干扰)
+- **设计文档**: `docs/mvp/MVP_3_4_event_sourcing.md`
 
-**MVP 3.4: Evaluation Gate (#4)**
+**MVP 3.5: Evaluation Gate (#4)** (原 MVP 3.4)
 
 - **范围**: EvaluationPipeline 合并 batch_gate 逻辑, BH-FDR 自动化, VerdictObject schema
 - **验收**: 新因子一命令 Verdict 返回, M 自动递增
 - **耗时**: 1 周
-- **设计文档**: `docs/mvp/MVP_3_4_eval_gate.md`
+- **设计文档**: `docs/mvp/MVP_3_5_eval_gate.md`
 
 #### Wave 4 详细
 
@@ -1330,12 +1343,15 @@ MVP 1.1 (Platform Skeleton)
                         MVP 2.3 (Backtest + Parity)
                              │
                              ↓
-                        MVP 3.1 (Strategy) ──→ MVP 3.2 (Signal/Exec)
-                             │                       │
-                             ├── MVP 3.3 (Event Sourcing, 并行)
+                        MVP 3.1 (Risk Framework, ADR-010 新增)
                              │
                              ↓
-                        MVP 3.4 (Eval Gate)
+                        MVP 3.2 (Strategy) ──→ MVP 3.3 (Signal/Exec)
+                             │                       │
+                             ├── MVP 3.4 (Event Sourcing, 并行)
+                             │
+                             ↓
+                        MVP 3.5 (Eval Gate)
                              │
                              ↓
                         MVP 4.1 (Observability) ─┐

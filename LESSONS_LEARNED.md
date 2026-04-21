@@ -1283,3 +1283,52 @@ Phase 0的8个P0 bug不是随机的。它们集中暴露了一个系统性问题
 - Session 20 ADR-008 Production Cutover 章节引用
 
 **执行状态**: ✅ Session 20 F14 实战. 模板生效.
+
+---
+
+## LL-063: 假装健康的死码比真坏的更危险 (2026-04-21)
+
+**事件**: Session 21 深查 PMS (Profit-Maximizing Stop) v1.0 状态, 发现整体死码 5 重失效 (F27-F31):
+- `position_monitor` 建库至今 **0 行** (核心输出表全空)
+- StreamBus `qm:pms:protection_triggered` 发布 **0 消费者** (只告警不卖)
+- `sync_positions` 读 **T-1 snapshot** 非实时 QMT (滞后 1 日)
+- hardcoded `'live'` 对 paper 老持仓保护盲 (~10+ 股 entry_price=0 静默 skip)
+- `daily_pipeline.py:226` + `api/pms.py:175` 两处重复 publish 逻辑 (DRY 违反)
+
+但 Celery Beat `pms-daily-check` 每日 14:30 跑出 `"[PMS] 同步持仓:24只股票"` + 5 条 phantom WARN, **日志看起来运行正常**. 真金 cutover 18h 零 PMS 保护, 靠 intraday_monitor 组合告警 + 盘后 reconciliation 三检运气守住.
+
+**根因**: 设计意图 (个股阶梯 trailing stop 自动卖) 在实现时只做 publish 半成品, 没人补 consumer, 没人验证 position_monitor 是否有数据. 代码看起来在跑 = "单测通过 + Beat 调度成功" 假象, 但**端到端核心路径从未真正触发过**. 建库至 2026-04-21 的 7 个月里, 位置保护这道墙是空的.
+
+**改进措施**:
+
+1. **三问法识别"表面运行"**:
+   - a. 核心输出表有行吗? (position_monitor = 0 行 → 红灯)
+   - b. 告警链路有消费者吗? (grep XREAD = 0 → 红灯)
+   - c. 触发条件下代码路径能走完吗? (entry_price=0 → silently skip → 红灯)
+
+2. **Dead code 月度 audit**: 每月执行 `SELECT COUNT(*)` 扫所有"设计要写"的表, 识别"建库 0 行"的死码候选. 2026-04-21 实测至少 1 张: position_monitor (PMS). 待扫: experiments / agent_decision_log / pipeline_run / mining_knowledge 等 24 张空表 (见 SYSTEM_STATUS.md L452).
+
+3. **新 smoke 硬门候选 (铁律 10b 延伸)**: 任何"会触发动作"的功能 (下单 / 告警 / 写入), 生产 smoke 必须包含**模拟触发 + 验证端到端 side effect**. 只验证"调用不抛异常" ≠ 验证 "触发后正确动作". PMS 这类"被动等待触发"的代码特别危险, 未来 MVP 验收标准需要强制包含"触发后核心表有行"断言 (MVP 3.1 已在验收标准第 3 条固化).
+
+4. **架构整合优先于 patch**: 当发现死码有多重 bug (PMS 5 重), 不要逐个 patch 堆技术债. 正确做法是评估是否重构. Session 21 决策走方案 D+ (并入 Wave 3 Risk Framework 重构, 不修 PMS) 而非方案 A (补 consumer) / B (PMS v2 单模块) / C (废 PMS 扩 intraday), 因为 PMS 多重 bug + 架构碎片 (5 监控系统互不通信) 只能通过统一重构根治.
+
+**价值**:
+- 真金 cutover 后 18h 发现 PMS 零保护事实 (否则继续假跑数月)
+- 避免在死码上投入 1 天 patch 工作 (方案 A 仅解 F27), 直接进 Wave 3 Risk Framework 重构 (方案 D+)
+- 推动 Session 21 ADR-010 + MVP 3.1 规划落地
+- 固化"表面运行 ≠ 真跑"的 mental model, 未来验收标准升级
+
+**Session 21 user 接触**: 5 次关键触发点
+- "盘中监控有吗? 你核查了吗?" — 触发 schtasks + Redis + DB 全量盘中状态核
+- "pms 呢? 昨天已经完整的运行了一遍了，发现问题了吗?" — 触发 PMS 深度核 (之前误以为 'live 已修, 功能完整')
+- "哪里来的 24 只股票?" — 触发 sync_positions MAX(trade_date) 逻辑核, 发现 T-1 滞后 bug (F28)
+- "直接 pms 为什么设计你知道吗?" — 触发设计初衷回顾 ("盘中无监控 → 14:30 实时卖锁利润"), 对比现实 publish-only
+- "你的建议是什么? 需思考全面, 我需要质量" — 触发方案 A/B/C + 新方案 D+ 架构对比, 最终决定 D+
+
+**持久化**:
+- 本 LL 条目
+- ADR-010 PMS Deprecation + Risk Framework Migration (引用本 LL)
+- MVP 3.1 Risk Framework 验收标准第 3 条 ("core 输出表非触发 dry-run 证据")
+- 未来 CLAUDE.md 铁律候选 "Dead code audit 月度"
+
+**执行状态**: ✅ Session 21 文档化. 实施 Session 22 (PR #32 死码处置) 和 Wave 3 MVP 3.1 Risk Framework.

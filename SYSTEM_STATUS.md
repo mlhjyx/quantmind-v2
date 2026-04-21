@@ -642,8 +642,10 @@ run_paper_trading.py
 
 ### Celery Beat调度（正常运行 ✅）
 CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
-- PMS 14:30阶梯利润保护检查 (工作日, 最近触发: 2026-04-10 14:30)
+- PMS 14:30阶梯利润保护检查 (工作日, 最近触发: 2026-04-10 14:30) ⚠️ **DEPRECATED-PENDING-RISK-FRAMEWORK** (Session 21 2026-04-21 ADR-010): PMS v1.0 5 重失效 (F27-F31) — position_monitor 建库 0 行, StreamBus 发布无消费者, 读 T-1 snapshot 非实时 QMT, hardcoded 'live' 对 paper 老持仓盲, 两处重复 publish 逻辑. **Session 22 PR #32 将停 Beat 调度 + 加 deprecated 注释**. 并入 Wave 3 MVP 3.1 Risk Framework 重构 (1.5-2 周, `docs/mvp/MVP_3_1_risk_framework.md`). 过渡期由 intraday_monitor (组合跌 3/5/8%) + emergency_stock_alert (单股跌 >8%) + 盘后三检守护
 - GP因子挖掘(周日22:00, 最近触发: 2026-04-05 22:00)
+- daily-quality-report 17:40 (F7/F8: 4-17 起 KeyError unregistered, 4-21 11:35 Servy 整体重启后 worker reload, 验证点在今晚 17:40)
+- factor-lifecycle-weekly 周五 19:00 (F7/F8 同, 4-24 19:00 首验)
 - 其他Beat定时任务
 
 > ⚠️ 审计时 (04-02) 误判为 Stopped, 实际 stderr 日志显示 04-03 17:32 首次启动后持续运行。历史记录: 04-07→04-09 有短暂中断 (PT暂停期间), 04-09 17:34 自动恢复。
