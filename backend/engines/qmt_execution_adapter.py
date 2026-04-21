@@ -71,9 +71,9 @@ QMT_STATUS: dict[int, tuple[str, str]] = {
     # (部分成交, 剩余未成), 不是 final. 原 ("final", "部成") 会让 _FillCollector.on_order
     # 在首个部成回调提前 event.set(), 吞掉后续成交回调 → trade_log 只录首 fill →
     # 4-17 6 码 / 9663 股丢失. 3 call sites 影响 (全部变得更保守更正确):
-    #   L304 on_order: 55 不再提前触发 done, 等真正终态 (53/54/56/57)
-    #   L544 _cleanup_pending_orders: 部成委托会被清理 (原 silently 留着)
-    #   L682 _cancel_and_confirm: 部成不再误判 "撤单确认", 继续等 53/54
+    #   on_order: 55 不再提前触发 done, 等真正终态 (53/54/56/57)
+    #   _cleanup_pending_orders: 55 被 is_final_status=True 误排除在清理外, 修复后纳入撤单清理
+    #   _cancel_and_confirm: 55 不再被误判为 "撤单确认" (部成 ≠ 撤单), 继续等 53/54
     55: ("pending", "部成"),
     56: ("final", "已成"),
     57: ("final", "废单"),
@@ -89,6 +89,7 @@ def is_final_status(status: int) -> bool:
 # 工具函数
 # ════════════════════════════════════════════════════════════
 
+
 def _get_realtime_tick(qmt_code: str) -> dict | None:
     """通过xtdata获取实时行情快照。
 
@@ -99,6 +100,7 @@ def _get_realtime_tick(qmt_code: str) -> dict | None:
     """
     try:
         from xtquant import xtdata
+
         ticks = xtdata.get_full_tick([qmt_code])
         if isinstance(ticks, dict) and qmt_code in ticks:
             return ticks[qmt_code]
@@ -106,7 +108,9 @@ def _get_realtime_tick(qmt_code: str) -> dict | None:
         logger.error(
             "[QMTAdapter] _get_realtime_tick 失败 qmt_code=%s err=%s — "
             "调用方应 fail-safe 拒绝相关订单",
-            qmt_code, e, exc_info=True,
+            qmt_code,
+            e,
+            exc_info=True,
         )
     return None
 
@@ -134,6 +138,7 @@ def _from_qmt_code(qmt_code: str) -> str:
 # ════════════════════════════════════════════════════════════
 # 安全层8: 审计日志
 # ════════════════════════════════════════════════════════════
+
 
 def _audit_log(
     conn: Any | None,
@@ -168,9 +173,11 @@ def _audit_log(
 # 安全层1: OrderTracker 订单去重
 # ════════════════════════════════════════════════════════════
 
+
 @dataclass
 class _OrderRecord:
     """单只股票的订单追踪记录。"""
+
     code: str
     attempts: int = 0
     total_ordered_qty: int = 0
@@ -255,9 +262,11 @@ class OrderTracker:
 # 回调收集器（安全层4集成）
 # ════════════════════════════════════════════════════════════
 
+
 @dataclass
 class _WaitTracker:
     """单笔订单等待器。"""
+
     order_id: int
     code: str
     direction: str
@@ -335,6 +344,7 @@ class _FillCollector:
 # 主适配器（8层安全全部集成）
 # ════════════════════════════════════════════════════════════
 
+
 class QMTExecutionAdapter:
     """QMT执行适配器 v2 — 8层安全架构。"""
 
@@ -367,8 +377,8 @@ class QMTExecutionAdapter:
 
         # ── 查询持仓+资产（含可卖数量）──
         raw_pos_list = self._broker.query_positions()
-        current_positions: dict[str, int] = {}   # code → total shares
-        available_to_sell: dict[str, int] = {}    # code → can_use_volume
+        current_positions: dict[str, int] = {}  # code → total shares
+        available_to_sell: dict[str, int] = {}  # code → can_use_volume
         for p in raw_pos_list:
             code = _from_qmt_code(p.get("stock_code", ""))
             if code and p.get("market_value", 0) > 0:
@@ -440,7 +450,12 @@ class QMTExecutionAdapter:
         for code, shares, price in sell_orders:
             ref_price = self._get_best_price(code, price)
             fill = self._safe_place_and_wait(
-                code, "sell", shares, ref_price, exec_date, PRICE_TOLERANCE_SELL,
+                code,
+                "sell",
+                shares,
+                ref_price,
+                exec_date,
+                PRICE_TOLERANCE_SELL,
             )
             if fill:
                 fills.append(fill)
@@ -469,12 +484,23 @@ class QMTExecutionAdapter:
             if order_amount > avail * FUND_SAFETY_RATIO:
                 skipped.append((code, f"资金不足: need={order_amount:.0f} avail={avail:.0f}"))
                 logger.warning(f"[QMTAdapter] {code} 资金不足，跳过")
-                _audit_log(self._audit_conn, exec_date, "skip_fund", code, available_cash=avail,
-                           detail=f"need={order_amount:.0f}")
+                _audit_log(
+                    self._audit_conn,
+                    exec_date,
+                    "skip_fund",
+                    code,
+                    available_cash=avail,
+                    detail=f"need={order_amount:.0f}",
+                )
                 continue
 
             fill = self._safe_place_and_wait(
-                code, "buy", shares, ref_price, exec_date, PRICE_TOLERANCE_BUY,
+                code,
+                "buy",
+                shares,
+                ref_price,
+                exec_date,
+                PRICE_TOLERANCE_BUY,
             )
             if fill:
                 fills.append(fill)
@@ -510,8 +536,14 @@ class QMTExecutionAdapter:
                     continue
 
                 fill = self._safe_place_and_wait(
-                    code, "buy", shares, ref_price, exec_date, tol,
-                    price_type=p_type, timeout=RETRY_TIMEOUT_SEC,
+                    code,
+                    "buy",
+                    shares,
+                    ref_price,
+                    exec_date,
+                    tol,
+                    price_type=p_type,
+                    timeout=RETRY_TIMEOUT_SEC,
                 )
                 if fill:
                     fills.append(fill)
@@ -522,19 +554,27 @@ class QMTExecutionAdapter:
 
         # ── 最终失败 → PendingOrder ──
         for code, shares, ref_price, weight in buy_failed:
-            pending.append(PendingOrder(
-                code=code, signal_date=signal_date or exec_date,
-                exec_date=exec_date, target_weight=weight,
-                original_score=shares * ref_price,
-            ))
+            pending.append(
+                PendingOrder(
+                    code=code,
+                    signal_date=signal_date or exec_date,
+                    exec_date=exec_date,
+                    target_weight=weight,
+                    original_score=shares * ref_price,
+                )
+            )
             logger.warning(f"[QMTAdapter] 买入最终失败: {code} {shares}股")
 
         if skipped:
             logger.info(f"[QMTAdapter] 跳过{len(skipped)}只: {skipped}")
 
         self._collector.unregister_all()
-        _audit_log(self._audit_conn, exec_date, "finish",
-                   detail=f"fills={len(fills)} pending={len(pending)} skipped={len(skipped)}")
+        _audit_log(
+            self._audit_conn,
+            exec_date,
+            "finish",
+            detail=f"fills={len(fills)} pending={len(pending)} skipped={len(skipped)}",
+        )
 
         logger.info(
             f"[QMTAdapter] 调仓完成: {len(fills)}笔成交, "
@@ -554,8 +594,13 @@ class QMTExecutionAdapter:
             logger.warning(f"[QMTAdapter] 清理{len(pending)}笔残留委托")
             for o in pending:
                 self._broker.cancel_order(o["order_id"])
-                _audit_log(self._audit_conn, exec_date, "cleanup_cancel",
-                           _from_qmt_code(o.get("stock_code", "")), o["order_id"])
+                _audit_log(
+                    self._audit_conn,
+                    exec_date,
+                    "cleanup_cancel",
+                    _from_qmt_code(o.get("stock_code", "")),
+                    o["order_id"],
+                )
             time.sleep(3)
         except Exception as e:
             logger.warning(f"[QMTAdapter] 清理残留委托失败: {e}")
@@ -584,8 +629,11 @@ class QMTExecutionAdapter:
 
         # 计算下单价格
         if price_type == "limit" and tolerance > 0:
-            order_price = round(price * (1 + tolerance), 2) if direction == "buy" \
+            order_price = (
+                round(price * (1 + tolerance), 2)
+                if direction == "buy"
                 else round(price * (1 - tolerance), 2)
+            )
         elif price_type == "limit":
             order_price = price
         else:
@@ -593,25 +641,42 @@ class QMTExecutionAdapter:
 
         # 下单
         order_id = self._broker.place_order(
-            code=_to_qmt_code(code), direction=direction, volume=volume,
-            price=order_price, price_type=price_type, remark=f"rebal_{exec_date}",
+            code=_to_qmt_code(code),
+            direction=direction,
+            volume=volume,
+            price=order_price,
+            price_type=price_type,
+            remark=f"rebal_{exec_date}",
         )
 
         if order_id < 0:
             logger.error(f"[QMTAdapter] 下单失败: {code} {direction} {volume}股")
             self._order_tracker.record_fail(code)
-            _audit_log(self._audit_conn, exec_date, "place_fail", code, quantity=volume, price=order_price)
+            _audit_log(
+                self._audit_conn, exec_date, "place_fail", code, quantity=volume, price=order_price
+            )
             return None
 
         # 安全层1: 记录下单
         self._order_tracker.record_order(code, order_id, volume, order_price)
-        _audit_log(self._audit_conn, exec_date, "place_order", code, order_id, volume, order_price,
-                   available_cash=self._broker.get_cash())
+        _audit_log(
+            self._audit_conn,
+            exec_date,
+            "place_order",
+            code,
+            order_id,
+            volume,
+            order_price,
+            available_cash=self._broker.get_cash(),
+        )
 
         # 注册等待器
         tracker = _WaitTracker(
-            order_id=order_id, code=code, direction=direction,
-            volume=volume, price=price,
+            order_id=order_id,
+            code=code,
+            direction=direction,
+            volume=volume,
+            price=price,
         )
         self._collector.register(tracker)
 
@@ -632,8 +697,16 @@ class QMTExecutionAdapter:
         # 记录结果
         if filled_volume > 0:
             self._order_tracker.record_fill(code, filled_volume, filled_amount)
-            _audit_log(self._audit_conn, exec_date, "fill", code, order_id,
-                       filled_volume, filled_price, detail=f"of {volume}")
+            _audit_log(
+                self._audit_conn,
+                exec_date,
+                "fill",
+                code,
+                order_id,
+                filled_volume,
+                filled_price,
+                detail=f"of {volume}",
+            )
 
             # 构建Fill
             amount = filled_price * filled_volume
@@ -656,9 +729,15 @@ class QMTExecutionAdapter:
                 logger.info(f"[QMTAdapter] 部分成交: {code} {direction} {filled_volume}/{volume}股")
 
             return Fill(
-                code=code, trade_date=exec_date, direction=direction,
-                price=filled_price, shares=filled_volume, amount=amount,
-                commission=commission, tax=tax, slippage=slippage_bps,
+                code=code,
+                trade_date=exec_date,
+                direction=direction,
+                price=filled_price,
+                shares=filled_volume,
+                amount=amount,
+                commission=commission,
+                tax=tax,
+                slippage=slippage_bps,
                 total_cost=total_cost,
             )
 
@@ -669,7 +748,9 @@ class QMTExecutionAdapter:
             logger.warning(f"[QMTAdapter] 超时未成交: {code} order_id={order_id}")
 
         self._order_tracker.record_cancel(code)
-        _audit_log(self._audit_conn, exec_date, "timeout", code, order_id, detail=error or "timeout")
+        _audit_log(
+            self._audit_conn, exec_date, "timeout", code, order_id, detail=error or "timeout"
+        )
         return None
 
     # ── 安全层2: 撤单确认 ──
@@ -694,7 +775,10 @@ class QMTExecutionAdapter:
                 logger.error(
                     "[QMTAdapter] query_orders 查询失败 (撤单确认阶段) code=%s order_id=%s err=%s — "
                     "非 QMT 超时, 可能是查询通道挂了",
-                    code, order_id, e, exc_info=True,
+                    code,
+                    order_id,
+                    e,
+                    exc_info=True,
                 )
                 # 继续 fall-through 到 "超时未确认" 分支 (行为不变, 但日志可追溯)
 
@@ -711,22 +795,19 @@ class QMTExecutionAdapter:
         """
         tick = _get_realtime_tick(_to_qmt_code(code))
         if not tick:
-            logger.warning(
-                "[QMTAdapter] %s fail-safe 拒单: xtdata tick 不可用", code
-            )
+            logger.warning("[QMTAdapter] %s fail-safe 拒单: xtdata tick 不可用", code)
             return True, "xtdata_unavailable_failsafe"
         if tick.get("lastPrice", 0) <= 0:
             logger.warning(
                 "[QMTAdapter] %s fail-safe 拒单: lastPrice 无效=%s",
-                code, tick.get("lastPrice"),
+                code,
+                tick.get("lastPrice"),
             )
             return True, "lastPrice_invalid_failsafe"
 
         last_close = tick.get("lastClose", 0)
         if last_close <= 0:
-            logger.warning(
-                "[QMTAdapter] %s fail-safe 拒单: lastClose 无效=%s", code, last_close
-            )
+            logger.warning("[QMTAdapter] %s fail-safe 拒单: lastClose 无效=%s", code, last_close)
             return True, "lastClose_invalid_failsafe"
 
         # 涨停检测
@@ -758,6 +839,7 @@ class QMTExecutionAdapter:
     def cleanup(self) -> None:
         """清理回调注册。"""
         import contextlib
+
         self._collector.unregister_all()
         with contextlib.suppress(ValueError, AttributeError):
             self._broker._trade_callbacks.remove(self._on_trade)
