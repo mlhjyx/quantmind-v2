@@ -6,6 +6,45 @@
 
 ---
 
+## §0.-1 Session 22/23 铁律 11+17 每日 IC 全链完工 ⭐ (2026-04-21→04-22 跨日)
+
+**里程碑 (Session 23 Part 1+2 2026-04-22 02:30 实战 rehearsal GO)**:
+
+### 3 脚本分工 (列级协同, 互不覆盖)
+| 脚本 | 写入列 | 触发 | 入库路径 |
+|------|-------|------|---------|
+| `scripts/compute_daily_ic.py` | `ic_5d / ic_10d / ic_20d / ic_abs_5d` | **schtask Mon-Fri 18:00** (PR #40) | DataPipeline.ingest(FACTOR_IC_HISTORY) ✅ 铁律 17 |
+| `scripts/compute_ic_rolling.py` | `ic_ma20 / ic_ma60` | **schtask Mon-Fri 18:15** (PR #44) | **手工 partial UPSERT** 只 SET 2 列 (铁律 17 例外, LL-066) |
+| `scripts/fast_ic_recompute.py` | `ic_5d / ic_10d / ic_20d / ic_abs_5d` | ad-hoc 12 年全量重算 | **手工 partial UPSERT** 只 SET 4 列 (铁律 17 例外, PR #45) |
+
+### 铁律合规
+- **铁律 11** (IC 可追溯入库): 每日自动写入, `factor_ic_history` 不再有 gap
+- **铁律 17**: 整列写走 DataPipeline, subset 列写手工 partial UPSERT (例外条款已入 CLAUDE.md)
+- **铁律 19** (IC 统一): HORIZONS = (5,10,20), 三脚本全用 `engines.ic_calculator`
+- **铁律 32** (Service 不 commit): 3 脚本 main() 统一 commit/rollback
+- **铁律 33** (fail-loud): per-factor try/except + 单因子异常 log + continue
+
+### factor_ic_history 当前状态 (Session 23 Part 2 实测, 2026-04-22 01:35)
+- **Total rows**: 145,874 (vs §2 table 57,711 是 2026-04-06 前的 stale 数字, **本 section 为准**)
+- **ic_ma20 rows**: 142,990 (80% coverage, PR #43 回填后)
+- **113 factors** with ic_20d, **83 factors** with valid ic_ma20 (min_periods=5 限制)
+- **max trade_date**: 2026-04-21 (ic_5d/10d), 2026-03-23 (ic_20d, T+20 forward return 约束)
+
+### 实战 rehearsal (Session 23 Part 2, 02:30 跨日)
+- `schtasks /Run QuantMind_DailyIC` → **80 rows upserted / 1.5s / LastTaskResult=0** ✓
+- `schtasks /Run QuantMind_IcRolling` → **3 applied updates / 0.8s / LastTaskResult=0** ✓
+- 协作验证: DailyIC 写新 ic_20d → IcRolling rolling 覆盖 → 3 rows ic_ma 微调
+- **18:00 真实首跑预期等同 rehearsal**, 零意外
+
+### 同日其他成果 (Session 21 加时 + 22 + 23 累计)
+- **28 commits / 16 PR merged** (PR #31~#45, 单 session 历史纪录)
+- F19/F20 根因消灭 (PR #39 QMT_STATUS[55] final→pending 1 字节修复) + 9538 股 trade_log backfill (PR #41)
+- PMS 死码处置 ADR-010 + PR #34 停 Beat (并入 Wave 3 MVP 3.1 Risk Framework)
+- F22 DataPipeline NULL ratio guard (PR #36, 铁律 33)
+- LL-059~067 共 9 条入册 (含 **LL-066 DataPipeline subset-column 破坏性** + **LL-067 reviewer agent 救场**)
+
+---
+
 ## §0.0 平台化阶段 (2026-04-17 启动, Session 21 下午 2026-04-21 QPB v1.6 bump) ⭐
 
 **状态: Wave 1 完结 7/7 + Wave 2 Data 层完结 (剩 MVP 2.3) + Wave 3 MVP 3.1 Risk Framework 新增 (ADR-010, 本 Session)**

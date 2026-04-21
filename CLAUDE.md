@@ -13,7 +13,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
 - **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → **Phase 3 自动化** → Phase 4 PT重启
-- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → **17:35 pt_audit 主动守门** → T+1 09:31执行 → 15:10对账. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**.
+- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → **17:35 pt_audit 主动守门** → **18:00 DailyIC (每日增量 IC 入库 CORE 4, Session 22 Part 2)** → **18:15 IcRolling (ic_ma20/60 rolling 刷新, Session 22 Part 8)** → 周五 19:00 factor-lifecycle Beat → T+1 09:31执行 → 15:10对账. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**. **铁律 11 + 17 每日 IC 全链完工** (Session 23 Part 1+2): 3 脚本分工 (compute_daily_ic / compute_ic_rolling / fast_ic_recompute) + 2 schtask wire + 实战 rehearsal 验证 GO.
 
 ## 技术栈（实际使用，非设计文档）
 
@@ -366,6 +366,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 15. **任何回测结果必须可复现** — 每次回测必须记录 `(config_yaml_hash, git_commit)` 到 backtest_run 表。`regression_test.py` 能验证同一输入产出完全相同的 NAV (max_diff=0)。违反→策略迭代失去基准比对能力。
 16. **信号路径唯一且契约化** — 全局原则: 生产/回测/研究必走**同一信号路径契约**, 禁止绕路的简化信号/回测代码. 具体路径随策略架构演进 (当前单策略: SignalComposer → PortfolioBuilder → BacktestEngine; 未来多策略: Strategy → SignalPipeline → OrderRouter). 违反→PT 与回测结果不一致 (原历史问题: `load_factor_values`/`vectorized_signal` 各读各的字段).
 17. **数据入库必须通过 DataPipeline** — 禁止直接 `INSERT INTO` 生产表。`DataPipeline.ingest(df, Contract)` 负责 rename → 列对齐 → 单位转换 → 值域验证 → FK 过滤 → Upsert。违反→重新引入单位混乱/code 格式不一致等历史技术债。
+    > **例外条款 (Session 23 Part 1 LL-066 沉淀)**: 多 writer 共享表 (如 `factor_ic_history`: compute_daily_ic 写 ic_5d/10d/20d, compute_ic_rolling 写 ic_ma20/60, factor_decay 写 decay_level) 的 **subset-column UPSERT** 不得走 `DataPipeline.ingest`. 原因: pipeline Step 2 补缺失 nullable 列为 None + Step 6 `ON CONFLICT DO UPDATE SET non_pk = EXCLUDED` 会把其他 writer 写的列 NULL 化 (cascading data destruction). 必手工 partial UPSERT, 显式 `SET` 仅本 writer 写的列, docstring 显式"**铁律 17 例外声明**". 实例: `scripts/compute_ic_rolling.py::apply_updates` (PR #43, 只 SET ic_ma20/ic_ma60) / `scripts/fast_ic_recompute.py::upsert_ic_history_partial` (PR #45, 只 SET ic_5d/10d/20d/ic_abs_5d). 新增 writer 前必 check: "我是否只写 contract 的 subset? 是 → partial UPSERT, 否 → DataPipeline".
 
 ### 成本对齐
 18. **回测成本实现必须与实盘对齐** — 新策略正式评估前必须确认 H0 验证通过 (理论成本 vs QMT 实盘误差 <5bps). **周期性复核**: 每季度重跑 H0 验证 (成本会 drift: 券商费率 / 印花税调整 / 滑点模型失效), 误差 >5bps 需重新校准 + 全部现有回测重跑. 违反→成本失真导致策略 sim-to-real gap.
@@ -738,6 +739,17 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - Dry-run 检测 `reversal_20: active→warning` (ratio=0.43, 真实衰减)
   - 待 GP 完成后重启 beat 激活 + MVP B/C (Rolling WF 周度 + IC 监控告警) 后续
 - ⬜ **Phase 4**: PT重启（前提: health_check + dry-run确认 + 首日监控）
+- 🟢 **Session 21+22+23 铁律 11/17 全链完工** (2026-04-21 → 04-22 跨日, 28 commits / 16 PR #31~#45)
+  - **Phase 1 每日增量 IC**: PR #37 `compute_daily_ic.py` (DataPipeline, HORIZONS=5/10/20, 铁律 17/32/19 合规) + PR #40 schtask Mon-Fri 18:00 + PR #42 holiday guard (ZoneInfo Asia/Shanghai)
+  - **Phase 2 Rolling MA**: PR #43 `compute_ic_rolling.py` (铁律 17 **例外**: 手工 partial UPSERT 只 SET ic_ma20/60, 保护 ic_5d/10d/20d) + PR #44 schtask Mon-Fri 18:15 + 本地 register NextRun 验证
+  - **Phase 3 历史重算**: PR #45 `fast_ic_recompute.py` (铁律 17 **例外**: 手工 partial UPSERT 只 SET ic_5d/10d/20d/ic_abs_5d, 保护 ic_ma20/60/decay_level, **reviewer CRITICAL 防数据破坏 bug**)
+  - **实战 rehearsal GO** (Session 23 Part 2, 02:30): `schtasks /Run DailyIC` (80 rows upserted 1.5s) → `schtasks /Run IcRolling` (3 updates 0.8s), schtask → Python → DB → rolling → DB 整链路生产级验证
+  - **F19/F20 根因消灭 + 历史 backfill**: PR #39 QMT_STATUS[55] final→pending 1 字节修复 + PR #41 9538 股 trade_log backfill + verify 100% 匹配 QMT
+  - **PMS 死码处置**: ADR-010 PMS 并入 Wave 3 MVP 3.1 Risk Framework + PR #34 停 Beat + 去重 (daily_pipeline + api/pms 两处)
+  - **F22 NULL ratio guard**: PR #36 DataPipeline ColumnSpec.null_ratio_max + daily_basic.dv_ttm/pe_ttm=0.05 (铁律 33 fail-loud)
+  - **新 LL 入册**: LL-059 (9 步闭环), LL-060 (Scan 验证 3 步), LL-061/062 (cutover + bootstrap), LL-063 (假装健康死码), LL-064 (走流程允许绕过), LL-065 (AI summary 数字反证), **LL-066 (DataPipeline subset-column 破坏性)**, **LL-067 (reviewer agent 救场)**
+  - **LL-059 9 步闭环连续 10 次实战** (PR #31/#32/#33/#34/#35/#40/#42/#43/#44/#45 全 AI 自主 merge, user ≤ 5 次接触)
+  - **铁律 17 例外条款** (LL-066 沉淀) 已补入 CLAUDE.md 铁律 17 段, 未来 subset-column writer 必 check
 - 详见 docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §16
 
 ### 平台化主线 (下阶段, 2026-04-17 启动)

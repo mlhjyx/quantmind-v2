@@ -1436,3 +1436,129 @@ DB grep factor_ic_history:
 - 本 LL 条目 (LL-065)
 - `memory/feedback_no_time_limits.md` 新建
 - 铁律候选: "Summary 数字行动前校验" (等 2-3 个类似教训固化铁律 43)
+
+---
+
+## LL-066: DataPipeline.ingest 对 subset-column 写入有破坏性, 只写部分列必手工 partial UPSERT (Session 22 Part 7 + Session 23 Part 1, 2026-04-22)
+
+**事件**: 今日两次独立 PR 落地 factor_ic_history 写入路径, 两次踩到同一陷阱:
+
+### 踩坑 1: compute_ic_rolling.py (PR #43, Session 22 Part 7)
+
+初版设计走 `DataPipeline.ingest(FACTOR_IC_HISTORY)`. 分析时发现 pipeline 逻辑:
+- Step 2 (pipeline.py:241-246): **补缺失 nullable 列为 `None`**
+- Step 6 (pipeline.py:646): `ON CONFLICT DO UPDATE SET {col}=EXCLUDED.{col} for all non-pk cols`
+
+脚本只提供 `[factor_name, trade_date, ic_ma20, ic_ma60]` 4 列, pipeline 会填 `ic_5d/ic_10d/ic_20d/ic_abs_5d/decay_level = None` → UPDATE SET 全 NULL → **摧毁 compute_daily_ic 刚写的 ic_5d/10d/20d 数据**.
+
+修复: 手工 UPDATE SQL + `execute_values`, 显式 `SET ic_ma20=EXCLUDED.ic_ma20, ic_ma60=EXCLUDED.ic_ma60` 仅 2 列. docstring 显式"铁律 17 例外"声明.
+
+### 踩坑 2: fast_ic_recompute.py (PR #45, Session 23 Part 1)
+
+我**忘记** Part 7 教训 (跨 session 遗忘), 初版 PR #45 再次设计走 DataPipeline.ingest + 派生 ic_abs_5d, 认为"只要自己提供 ic_5d/10d/20d/ic_abs_5d 4 列, contract 会正确 UPSERT". 提交 PR 后, reviewer (code-reviewer agent) 识别到:
+
+- 此路径会把 `ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level` 5 列填 None → SET EXCLUDED → **摧毁 PR #43 刚回填的 142,990 rows ic_ma20/60 + factor_decay 的 decay_level 数据**
+- 与 PR #43 同源陷阱, compute_ic_rolling.py docstring L16-21 已显式警告
+
+若未修则首次 apply → factor_lifecycle 周五评估全部变 warning (ic_ma20/60 均 NULL) → 假 alert 风暴 + 最坏触发 PT direction 翻转决策.
+
+修复: 对齐 PR #43 模式, 手工 UPSERT 显式 `SET ic_5d/ic_10d/ic_20d/ic_abs_5d=EXCLUDED.*` 仅 4 列, docstring"铁律 17 例外" + 引用 reviewer CRITICAL finding.
+
+### 根因
+
+`DataPipeline.ingest` 契约设计假设 **"输入 df 包含所有 contract 列" 或 "缺失列的语义 = 显式设为 NULL"**. 现实业务场景 (columnar incremental write, e.g. 今天 compute_daily_ic 只写 ic_5d/10d/20d, 明天 compute_ic_rolling 只写 ic_ma20/60, 后天 factor_decay 只写 decay_level) 违反此假设 → subset write 会 **cascading NULL 化** 其他 writer 的数据.
+
+### 规则 (铁律 17 例外条款)
+
+写入 factor_ic_history (以及其他多 writer 共享表) 时:
+- **若 df 含 contract 所有列** → 走 DataPipeline.ingest 正确
+- **若 df 只含 subset** → 必**手工 partial UPSERT**:
+  ```sql
+  INSERT INTO {table} ({subset_cols}) VALUES %s
+  ON CONFLICT ({pk}) DO UPDATE SET
+      {col1} = EXCLUDED.{col1},  -- 仅列出 subset_cols 的每一列
+      {col2} = EXCLUDED.{col2}
+  ```
+- docstring 必含 `**铁律 17 例外声明**`, 说明为什么不走 DataPipeline + 保护哪些列
+
+**实例参考**:
+- `scripts/compute_ic_rolling.py::apply_updates` (PR #43)
+- `scripts/fast_ic_recompute.py::upsert_ic_history_partial` (PR #45)
+
+### 改进措施
+
+1. **测试守护**: 新增 source-code level 契约测试 `test_sql_protects_*_columns` 断言 SET 子句不含保护列 (PR #45 `backend/tests/test_fast_ic_recompute.py::test_sql_protects_ic_1d_ic_ma_and_decay_columns`)
+2. **铁律 17 条款补充**: CLAUDE.md 铁律 17 加例外注释, 未来 reviewer 看到 DataPipeline.ingest + 明显 subset df → 警觉触发
+3. **DataPipeline 本体增强** (长期, 不本 Session): 支持可选 `update_columns` 参数, 限制 `DO UPDATE SET` 范围
+
+### 对比
+
+同类模式**"框架假设 vs 业务场景错配"**. DataPipeline 设计假设是 "整行写", 但多 writer 共享表天然是"列级分工". 框架无原罪, 但使用者必理解假设.
+
+**Session 23 user 接触**: 0 次 (reviewer agent 识别 CRITICAL, AI 自采纳修正, user 只做 merge approval)
+
+---
+
+## LL-067: Reviewer agent 是 AI 自循环 PR 流程的真正第二把尺子, high-risk 写入 PR 必 spawn (Session 23 Part 1, 2026-04-22)
+
+**事件**: PR #45 初版设计, 我 (AI) 完整走完:
+- 铁律 36 precondition (读源码 + 对比 compute_daily_ic / compute_ic_rolling 三文件)
+- 40 unit tests 自写全绿
+- ruff + check_insert_bypass "生产无违规" ✅
+- 12 年全量 --core --dry-run 实跑 IC 值与历史一致
+
+**所有内部验证都通过**. 但 code-reviewer agent 独立审查**第一轮就识别 CRITICAL 数据破坏 bug** — DataPipeline 会 NULL 化 142,990 rows ic_ma20/60.
+
+我的 40 tests 没覆盖这个场景 (没有 mock 全列 contract + 验证 SET 子句), 因为"不知道自己不知道"—设计者天然对自己设计盲区. Reviewer 用不同视角 (审查 DataPipeline 源码 + 对比历史 PR #43 同源绕过) 补位.
+
+### 救场 impact
+
+若未被 reviewer 发现:
+- PR merged → 某次手动 `python scripts/fast_ic_recompute.py --core` 触发 → 142K rows ic_ma20/60 全 NULL + decay_level 全 NULL
+- 周五 19:00 factor-lifecycle Beat 读 ic_ma20/60 全 NULL → 所有因子判 warning (因为 ratio 计算 ÷0)
+- 钉钉假 alert 风暴
+- 最坏: 我跨 session 看到 alert → 误 "dv_ttm 衰减" → 手动 flip `pt_live.yaml` direction → **真金损失**
+
+### 规则
+
+**所有涉及生产数据写入 / SQL mutation / transaction boundary / 铁律例外路径的 PR, 必 spawn ≥1 reviewer agent, 即使 AI 自评认为设计正确**. 特别:
+- DataPipeline.ingest 路径新增
+- Service 层 conn.commit 修改
+- ON CONFLICT / UPSERT / DELETE SQL
+- 生产数据 backfill / migration
+- .env / config 改动
+
+**反例** (适合 AI 自循环无 reviewer):
+- 纯 docs 更新 (CLAUDE.md / memory / README)
+- ADR-only commit
+- 测试新增 (不改生产代码)
+- Type hint / docstring / ruff format-only
+
+### 数据支撑
+
+Session 22 Part 7 (PR #43): 2 reviewer (code + python) 8 findings 全采纳, 其中 P1 rowcount multi-batch bug 是**psycopg2 官方文档明确**的 bug, 我设计时未读 docs. Reviewer 指出后立修.
+
+Session 23 Part 1 (PR #45): 2 reviewer 发现 1 CRITICAL (数据破坏) + 1 P1 (NameError) + 3 P2 + 1 P3. CRITICAL 是跨 session 遗忘 (LL-066).
+
+两 PR 共 14 reviewer findings, 全采纳修复, 无 1 项是"pedantic style" — 都是**真实 bug / 维护性缺陷**. Reviewer agent 的 precision/recall 比我自 review 明显高.
+
+### 改进措施
+
+1. **LL-059 9 步闭环硬门**: "spawn reviewer" 从可选变**必选** for high-risk PR 分类. 分类逻辑落文档 (本 LL § "规则" 段已定).
+2. **Reviewer 分层**:
+   - **code-reviewer**: 架构 + 逻辑 + 铁律合规 (必选 for 所有 code PR)
+   - **python-reviewer** (or 语言相关): 语言 idiom + Pythonic + PEP 8 (subset 列/SQL/transaction 场景选加)
+   - **database-reviewer**: SQL / schema / transaction (纯 SQL PR 必选)
+   - **security-reviewer**: 认证 / 授权 / secrets / injection (涉及这些必选)
+3. **反向确认**: 若我自评"小 PR 不需要 reviewer", 至少 spawn 1 general code-reviewer 二次确认判断. 否则 LL-067 自证自循环盲区.
+
+### 对比
+
+LL-051 (开源优先) / LL-055 (AI Auto mode 风险) / LL-060 (单 grep 证据不足) / LL-067 (本): 都是 **AI 自循环失效的不同切面**. 共同根因: **AI 无法给自己提供 "我不知道我不知道" 的搜索范围**, 需外部 eye.
+
+**Session 23 user 接触**: 1 次 (merge 确认 "可以")
+
+**持久化**:
+- 本 LL 条目 (LL-067)
+- CLAUDE.md 铁律 42 PR 分级审查补充"high-risk classification → reviewer 必选"
+- 下次 LL-068/069 同类教训后考虑固化为铁律 43
