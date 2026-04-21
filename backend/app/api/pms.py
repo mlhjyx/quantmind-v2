@@ -151,9 +151,12 @@ def trigger_pms_check() -> dict[str, Any]:
 
         sell_signals = engine.check_all_positions(positions, peak_prices, current_prices)
 
+        # ADR-010 F31 去重 (Session 21 2026-04-21): 原此处有重复 StreamBus publish 块,
+        # 与 daily_pipeline.py:pms_check 重复. PMS v1 整体 DEPRECATED per ADR-010,
+        # publish 无消费者 (F27). 手工 trigger 仅做 record_trigger + 返回 triggers 列表.
+        # Risk Framework MVP 3.1 批 2 完整迁移时删除本 endpoint.
         triggers = []
         for sig in sell_signals:
-            # 记录触发
             engine.record_trigger(conn, sig, strategy_id, date.today())
             triggers.append(
                 {
@@ -164,28 +167,6 @@ def trigger_pms_check() -> dict[str, Any]:
                     "shares": sig.shares,
                 }
             )
-
-            # StreamBus广播
-            try:
-                from app.core.stream_bus import (
-                    STREAM_PMS_PROTECTION_TRIGGERED,
-                    get_stream_bus,
-                )
-
-                get_stream_bus().publish_sync(
-                    STREAM_PMS_PROTECTION_TRIGGERED,
-                    {
-                        "code": sig.code,
-                        "level": sig.level,
-                        "pnl_pct": sig.unrealized_pnl_pct,
-                        "drawdown_pct": sig.drawdown_from_peak_pct,
-                        "current_price": sig.current_price,
-                    },
-                    source="pms_engine",
-                )
-            except Exception:
-                # S3 F79 修复: 加 logger.warning, publish 失败不阻塞但必须可追溯
-                logger.warning("[pms] StreamBus publish 失败", exc_info=True)
 
         conn.commit()
         return {
