@@ -178,6 +178,7 @@ def run_signal_phase(
         from engines.config_guard import (
             ConfigDriftError,
             assert_baseline_config,
+            assert_execution_mode_integrity,
             check_config_alignment,
         )
 
@@ -187,6 +188,17 @@ def run_signal_phase(
             logger.error("[Step0.5] ConfigDriftError (铁律 34 违反):\n%s", e)
             if not dry_run:
                 log_step(conn, "signal_phase", "failed", f"ConfigDriftError: {e}")
+            sys.exit(1)
+
+        # Session 21 Fix B (F17 防重演): EXECUTION_MODE 语义完整性校验
+        # mode='paper' 但近 7 天有 live trade_log → WARN (可能 .env 僵尸)
+        # mode 非法值 → RAISE. 不 coupling QMT/schtasks (降低 blast radius)
+        try:
+            assert_execution_mode_integrity(conn=conn)
+        except ConfigDriftError as e:
+            logger.error("[Step0.5] EXECUTION_MODE 校验失败:\n%s", e)
+            if not dry_run:
+                log_step(conn, "signal_phase", "failed", f"EXECUTION_MODE drift: {e}")
             sys.exit(1)
 
         # 兼容性: 保留旧的 factor-only 校验 (warning-level, 防止 factors 被外部脚本篡改)

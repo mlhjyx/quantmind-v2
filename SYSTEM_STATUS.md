@@ -336,7 +336,7 @@
 - ⬜ M2 退市检测 hardcoded 20 天
 - ⬜ M3 slippage volume 单位脆弱
 - ⬜ M5 DEV_SCHEDULER.md 与实际偏离
-- ⬜ M7 24 张空表
+- ⬜ M7 25 张空表 (dead_code_2026_04 audit, +1 vs S1 24)
 
 **其他修复 (2026-04-10 遗留清理)**
 - ✅ P0: PT Size-Neutral b=0.50 config 修复 (config.py + signal_engine.py + .env)
@@ -453,7 +453,8 @@
 | financial_indicators | 240,923 | upsert只更新3/16字段 🟡 |
 | earnings_announcements | 207,668 | 2015-04-07 ~ 2026-04-07 |
 
-**空表（24张）**: agent_decision_log, ai_parameters, approval_queue, backtest_holdings, backtest_wf_windows, chip_distribution, circuit_breaker_log, experiments, factor_evaluation, factor_mining_task, forex_bars, forex_events, forex_swap_rates, gp_approval_queue, mining_knowledge, model_registry, notification_preferences, operation_audit_log, param_change_log, pipeline_run, position_monitor, universe_daily
+**空表（25张, Session 21 2026-04-21 dead_code_monthly_audit 实测, +1 vs S1 审计 24）**: agent_decision_log, ai_parameters, approval_queue, backtest_holdings, backtest_wf_windows, bs_balance_data, bs_cash_flow_data, bs_dupont_data, chip_distribution, circuit_breaker_log, experiments, factor_evaluation, factor_mining_task, forex_bars, forex_events, forex_swap_rates, gp_approval_queue, mining_knowledge, model_registry, notification_preferences, operation_audit_log, param_change_log, pipeline_run, position_monitor, universe_daily
+详见 `docs/audit/dead_code_2026_04.md`: 2 确认死码 (position_monitor + circuit_breaker_log ADR-010 路径) / 19 future anchor / 4 需调查 (universe_daily 已升级 Category A 死码).
 
 **其他有数据表**: trading_calendar(4383), health_checks(929), scheduler_task_log(818), notifications(541), sw_industry_mapping(110), margin_data(95398), holder_number(82286), index_components(33600), backtest_daily_nav(224), backtest_trades(204), backtest_run(7), modifier_signals(2341), shadow_portfolio(60), pipeline_runs(4), intraday_monitor_log(3), factor_health_log(5), factor_lifecycle(5), strategy(1), strategy_configs(2), circuit_breaker_state(1)
 
@@ -801,8 +802,8 @@ CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
 ### 14.3 minute_bars用ts_code而非code
 与其他表的code列名不一致(但minute_bars是Baostock拉取的,格式不同)。
 
-### 14.4 24张空表
-62张表中24张完全为空,包括所有forex表(4张)、AI相关表(4张)、GP相关表(2张)。这些是设计预留但从未使用的。
+### 14.4 25张空表 (Session 21 2026-04-21 月审实测)
+79张public表中25张完全为空 (S1 审计记 24, 本 Session 实测 +1 bs_* 3 张减 2 = 25). 包括所有forex表(3张)、AI相关表(2张)、GP相关表(3张)、BS扩展(3张)等. 这些是设计预留但从未使用的, 详见 `docs/audit/dead_code_2026_04.md`.
 
 ---
 
@@ -842,7 +843,7 @@ CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
 | M4 | 缓存基于2020-2025: 12年扩展后失效 | 需重建 |
 | M5 | DEV_SCHEDULER.md说Celery调度但实际用Task Scheduler | 文档与实际严重偏离 |
 | M6 | 两个同名notification_service.py在不同路径 | 混淆 |
-| M7 | 24张空表占用schema空间 | 管理复杂度 |
+| M7 | 25张空表占用schema空间 | 管理复杂度 (详 dead_code_2026_04 audit) |
 
 ### 风险预警（重构可能踩的坑）
 
@@ -886,7 +887,7 @@ CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
 
 3. **backend/wrappers/ 和 backend/services/notification_service.py 是废弃代码吗?** — 无生产引用,但不确定是否有计划使用。
 
-4. **24张空表清理还是保留?** — 如果外汇/AI/GP模块在重构路线图中,保留;如果不在,清理DDL减少复杂度。
+4. **25张空表清理还是保留?** — 如果外汇/AI/GP模块在重构路线图中,保留;如果不在,清理DDL减少复杂度。Session 21 ADR-010 已规划 position_monitor + circuit_breaker_log 在 Risk Framework MVP 3.1 迁移后 DROP.
 
 5. **分钟数据拉取是否继续?** — 36%中断状态。重构后数据管道改变,可能需要重新开始。
 
