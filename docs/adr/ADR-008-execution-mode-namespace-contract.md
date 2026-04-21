@@ -286,7 +286,7 @@ curl http://127.0.0.1:8000/health  # 期望回退 {"execution_mode":"paper"}
 
 **新观察** (cutover 后 F19 副产物):
 - PMS 14:30 日志 5 "无当前价格跳过" (002441/300833/688739/920212/920950) 正是 F19 phantom 5 码, 每日污染 PMS. Session 21 清理更紧迫
-- Session 21 新 Finding 20 候选: 4-17 `trade_log` live 可能不完整 (QMT 20 fills vs trade_log 入库数量待查), 是 F19 phantom 真实根因 (非 `restore_snapshot_20260417.py` 脚本 bug — 脚本 L217 已正确过滤 qty=0)
+- ~~Session 21 新 Finding 20 候选: 4-17 `trade_log` live 可能不完整 (QMT 20 fills vs trade_log 入库数量待查), 是 F19 phantom 真实根因~~ — **Session 21 加时 (2026-04-21) 交叉 SQL+Redis 反证**: 4-17 trade_log live 有 20 rows / 20 codes 完整, reconstruction 正确. F19 根因是 "5 码 4-17 EOD 真实持仓 → 4-20 Redis 19 codes 蒸发 without trade_log", 非 phantom 冗余记录. 详见 `docs/audit/F19_position_vanishing_root_cause.md` 4 候选根因 (QMT 清理碎股/手工桌面操作/Redis sync bug/OTC 事件). Session 22+ QMT `query_history_trades` 直查定案. **F19 不做 DELETE** (销毁历史证据). 关联 LL-065 候选.
 
 ### 误报 F18 撤回 (Session 19 铁律 25 自律失败)
 
