@@ -9,6 +9,7 @@ Session 21 加时: 修复 factor_ic_history 4-07 后 14 天零入库 gap. 本 te
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -36,16 +37,27 @@ class TestConstants:
         )
 
     def test_horizons_match_factor_ic_history_schema(self):
-        """HORIZONS 与 factor_ic_history.ic_{1,5,10,20}d 列对齐."""
-        assert cdi.HORIZONS == (1, 5, 10, 20)
+        """HORIZONS = (5, 10, 20). 不含 1 (ic_calculator horizon=1 退化 entry==exit → 全 0 IC NaN).
+
+        reviewer P2 采纳: 原 (1,5,10,20) 导致 ic_1d 全 NaN + ic_abs_1d 全 NaN 写 DB
+        无意义, 移除 1.
+        """
+        assert cdi.HORIZONS == (5, 10, 20)
 
     def test_benchmark_is_csi300(self):
         """BENCHMARK_CODE 是 CSI300 (铁律 19 默认)."""
         assert cdi.BENCHMARK_CODE == "000300.SH"
 
-    def test_future_buffer_covers_max_horizon(self):
-        """FUTURE_BUFFER_DAYS ≥ max(HORIZONS) + 周末容差."""
-        assert max(cdi.HORIZONS) <= cdi.FUTURE_BUFFER_DAYS
+    def test_future_buffer_covers_max_horizon_with_holiday_margin(self):
+        """FUTURE_BUFFER_DAYS 需含假期余量.
+
+        reviewer P2 采纳: 20 trading days ≈ 28-30 calendar days (含周末); 长假 buffer
+        需 ≥ max(HORIZONS) × 2. 原 =25 仅 1.25× 余量, 长假时 ic_20d 可能缺.
+        """
+        assert max(cdi.HORIZONS) * 2 <= cdi.FUTURE_BUFFER_DAYS, (
+            f"buffer {cdi.FUTURE_BUFFER_DAYS} < max_horizon×2 {max(cdi.HORIZONS)*2}, "
+            "长假期间 ic_20d 可能计算不出"
+        )
 
 
 class TestFetchActiveFactors:
@@ -120,8 +132,7 @@ class TestLoadBenchmark:
 
         sql_arg = mock_cur.execute.call_args[0][0]
         assert "index_code = %s" in sql_arg
-        # 不应是裸 code (=klines_daily 列): 用正则边界而非 substring (index_code 含 code 子串)
-        import re
+        # 不应是裸 code (=klines_daily 列): 用正则边界 (index_code 含 code 子串)
         assert not re.search(r"\bcode\s*=\s*%s", sql_arg), f"SQL 含 klines_daily.code = : {sql_arg}"
 
     def test_empty_benchmark_raises(self):
@@ -164,12 +175,15 @@ class TestComputeFactorIC:
 
         result = cdi._compute_factor_ic(factor_df, fwd)
 
-        # 列结构
-        expected_cols = {"trade_date", "ic_1d", "ic_5d", "ic_10d", "ic_20d", "ic_abs_1d", "ic_abs_5d"}
+        # 列结构 (HORIZONS=5,10,20, 不含 ic_1d/ic_abs_1d)
+        expected_cols = {"trade_date", "ic_5d", "ic_10d", "ic_20d", "ic_abs_5d"}
         assert expected_cols.issubset(set(result.columns))
+        # ic_1d / ic_abs_1d 不应存在 (reviewer P2 采纳)
+        assert "ic_1d" not in result.columns
+        assert "ic_abs_1d" not in result.columns
 
     def test_abs_columns_are_abs_of_ic(self):
-        """ic_abs_{1,5}d = abs(ic_{1,5}d)."""
+        """ic_abs_5d = abs(ic_5d) (HORIZONS 移除 1 后只剩 5d abs)."""
         factor_df = pd.DataFrame({
             "code": ["A", "B", "C", "D", "E"] * 2,
             "trade_date": [date(2026, 4, 1)] * 5 + [date(2026, 4, 2)] * 5,
@@ -188,20 +202,20 @@ class TestComputeFactorIC:
         result = cdi._compute_factor_ic(factor_df, fwd)
 
         # abs 列 = abs(对应 ic). 对齐 index 后比较 (跳过 NaN)
-        aligned = result[["ic_1d", "ic_abs_1d"]].dropna()
+        aligned = result[["ic_5d", "ic_abs_5d"]].dropna()
         if len(aligned) > 0:
-            assert (aligned["ic_abs_1d"] == aligned["ic_1d"].abs()).all()
+            assert (aligned["ic_abs_5d"] == aligned["ic_5d"].abs()).all()
 
 
 class TestMainArgParsing:
     """main() / compute_and_ingest() 参数处理."""
 
-    def test_dry_run_zero_rows(self, monkeypatch):
-        """dry_run=True 不调 pipeline.ingest."""
-        # Mock everything inside compute_and_ingest
+    def test_dry_run_skips_ingest_returns_would_write_count(self, monkeypatch):
+        """dry_run=True 不调 pipeline.ingest, total_rows 返回 "would-write" 行数.
+
+        reviewer P3 采纳: 原 dry_run total_rows=0 语义不明, 改返回预计写入行数.
+        """
         fake_conn = MagicMock()
-        monkeypatch.setattr(cdi, "get_sync_conn", lambda: fake_conn)
-        monkeypatch.setattr(cdi, "_fetch_active_factors", lambda c: ["bp_ratio"])
         monkeypatch.setattr(
             cdi, "_load_prices",
             lambda c, s, e: pd.DataFrame({
@@ -237,18 +251,69 @@ class TestMainArgParsing:
 
         monkeypatch.setattr(cdi, "DataPipeline", MockPipeline)
 
-        result = cdi.compute_and_ingest(days=30, factors=["bp_ratio"], dry_run=True)
+        result = cdi.compute_and_ingest(
+            conn=fake_conn, days=30, factors=["bp_ratio"], dry_run=True,
+        )
 
-        assert result["total_rows"] == 0
+        # dry_run → 不调 ingest + total_rows > 0 (预计写行数, 语义明确)
         assert not pipeline_ingest_called, "dry_run 不应调 ingest"
+        assert result["total_rows"] > 0, "dry_run total_rows 应返回预计写入行数 (非 0)"
 
     def test_no_factors_early_exit(self, monkeypatch):
         """空 factor 列表 → 0 processed, 不加载数据."""
         fake_conn = MagicMock()
-        monkeypatch.setattr(cdi, "get_sync_conn", lambda: fake_conn)
         monkeypatch.setattr(cdi, "_fetch_active_factors", lambda c: [])
 
-        result = cdi.compute_and_ingest(days=30, factors=None, dry_run=False)
+        result = cdi.compute_and_ingest(
+            conn=fake_conn, days=30, factors=None, dry_run=False,
+        )
 
         assert result["processed_factors"] == 0
         assert result["total_rows"] == 0
+
+    def test_per_factor_exception_isolated(self, monkeypatch):
+        """单因子 _compute_factor_ic 异常 → logger.error + 继续下一因子 (非阻断).
+
+        reviewer P2 采纳: 原无 try/except, 一坏则全批死. 铁律 33 fail-loud:
+        单因子异常独立 isolate, 不阻断其他.
+        """
+        fake_conn = MagicMock()
+        monkeypatch.setattr(cdi, "_load_prices", lambda c, s, e: pd.DataFrame({
+            "code": ["A"] * 30, "trade_date": pd.date_range("2026-03-01", periods=30).date,
+            "adj_close": [10.0 + i * 0.1 for i in range(30)],
+        }))
+        monkeypatch.setattr(cdi, "_load_benchmark", lambda c, s, e: pd.DataFrame({
+            "trade_date": pd.date_range("2026-03-01", periods=30).date,
+            "close": [3800.0 + i for i in range(30)],
+        }))
+        # factor A 返常规数据, factor B 强制 raise
+        def mock_load_factor(c, f, s, e):
+            if f == "bad_factor":
+                raise RuntimeError("SIMULATED factor load fail")
+            return pd.DataFrame({
+                "code": ["A"] * 25, "trade_date": pd.date_range("2026-03-01", periods=25).date,
+                "neutral_value": [0.1] * 25,
+            })
+        monkeypatch.setattr(cdi, "_load_factor", mock_load_factor)
+
+        class MockPipeline:
+            def __init__(self, conn):
+                pass
+
+            def ingest(self, df, contract):
+                return MagicMock(
+                    upserted_rows=len(df), total_rows=len(df), valid_rows=len(df),
+                    rejected_rows=0, reject_reasons={}, null_ratio_warnings={},
+                )
+        monkeypatch.setattr(cdi, "DataPipeline", MockPipeline)
+
+        result = cdi.compute_and_ingest(
+            conn=fake_conn, days=30,
+            factors=["good_factor", "bad_factor"], dry_run=False,
+        )
+
+        # 坏 factor 不阻断好 factor
+        assert result["processed_factors"] == 1, "bad_factor 应独立 skip"
+        statuses = {s["factor"]: s["status"] for s in result["factor_summary"]}
+        assert statuses["good_factor"] == "ok"
+        assert statuses["bad_factor"] == "error"
