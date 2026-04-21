@@ -237,6 +237,108 @@ def check_config_alignment(
 
 
 # ---------------------------------------------------------------------------
+# EXECUTION_MODE 语义完整性校验 (铁律 34 延伸, 防 F17 17 天僵尸配置重演)
+# ---------------------------------------------------------------------------
+
+
+def assert_execution_mode_integrity(
+    *,
+    mode: str | None = None,
+    conn: Any | None = None,
+    recent_days: int = 7,
+) -> None:
+    """EXECUTION_MODE 语义完整性校验 (铁律 34 延伸, 防 F17 重演).
+
+    背景 (F17 2026-04-20 Session 19~20): `.env` EXECUTION_MODE=paper 17 天
+    未切 live, 致 settings.EXECUTION_MODE='paper' → risk_control 等动态读写全走
+    paper namespace, cb_state live 0 行. 根因: triple-source config_guard 不
+    覆盖此单源字段, PR-A 合入后无启动守门.
+
+    本函数在 PT 启动前校验 (run_paper_trading Step 0.5 集成):
+    1. mode 必须为 'paper' 或 'live' (Pydantic 已拦, 此处兜底)
+    2. mode='paper' 时, 若 trade_log 最近 N 天存在 live 行 → WARN (可能误切 paper)
+    3. 不 coupling QMT 连接/schtasks 状态 (运维层独立, 避免 blast radius)
+
+    Args:
+        mode: 显式传入 (测试用). None 时走 `settings.EXECUTION_MODE`.
+        conn: psycopg2 连接 (测试注入). None 时走 get_sync_conn().
+        recent_days: 检测 live trade_log 的回溯天数 (默认 7).
+
+    Raises:
+        ConfigDriftError: mode 非 'paper'/'live' (bad config).
+    """
+    if mode is None:
+        from app.config import settings
+        mode = settings.EXECUTION_MODE
+
+    if mode not in ("paper", "live"):
+        # ConfigDriftError 签名: list[dict[{param, sources}]] (MVP 1.2 Platform auditor)
+        raise ConfigDriftError([
+            {
+                "param": "EXECUTION_MODE",
+                "sources": {
+                    ".env:EXECUTION_MODE": mode,
+                    "allowed": "'paper' or 'live'",
+                },
+            }
+        ])
+
+    if mode == "paper":
+        from datetime import date, timedelta
+        cutoff = date.today() - timedelta(days=recent_days)
+        own_conn = False
+        if conn is None:
+            try:
+                from app.services.db import get_sync_conn
+                conn = get_sync_conn()
+                own_conn = True
+            except Exception as e:
+                logger.warning(
+                    "[config_guard.EXECUTION_MODE] DB 连接失败, 跳过 live trade_log 交叉检测: %s",
+                    e,
+                )
+                return
+
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*), MAX(trade_date) FROM trade_log "
+                "WHERE execution_mode = 'live' AND trade_date >= %s",
+                (cutoff,),
+            )
+            row = cur.fetchone()
+            cnt = int(row[0]) if row else 0
+            max_d = row[1] if row else None
+            if cnt > 0:
+                logger.warning(
+                    "[config_guard.EXECUTION_MODE] mode='paper' 但最近 %d 日内有 %d 条 live trade_log "
+                    "(最新 %s). 疑似 F17 误切 paper — 若实际应 live, 改 .env:EXECUTION_MODE=live.",
+                    recent_days, cnt, max_d,
+                )
+            else:
+                logger.info(
+                    "[config_guard.EXECUTION_MODE] mode='paper' 校验通过 (近 %d 日无 live trade_log)",
+                    recent_days,
+                )
+        except Exception as e:
+            logger.warning(
+                "[config_guard.EXECUTION_MODE] live trade_log 交叉检测异常 (非阻塞): %s", e,
+            )
+        finally:
+            if own_conn and conn is not None:
+                import contextlib
+                with contextlib.suppress(Exception):
+                    conn.close()  # silent_ok: close 失败不影响校验结果
+    else:
+        # mode == 'live'
+        logger.info(
+            "[config_guard.EXECUTION_MODE] mode='live' — 真金模式, "
+            "若 schtasks QuantMind_DailyExecute Enabled, 09:31 将真实下单. "
+            "请确认 QMT 连接 + 资金就位.",
+        )
+
+
+# ---------------------------------------------------------------------------
 # BH-FDR 多重检验校正
 # ---------------------------------------------------------------------------
 
