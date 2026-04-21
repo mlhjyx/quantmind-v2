@@ -1378,3 +1378,61 @@ Ironically 这和刚写完的 LL-063 "假装健康的死码比真坏的更危险
 - 共同根因: 识别"形式合规 vs 实质安全"边界的能力
 
 **执行状态**: ✅ Session 21 post-hoc reviewer 已跑, P1 6 项全部修, 待第二次 commit push.
+
+---
+
+## LL-065: AI /compact summary 嵌入数字在行动前必须反向验证 (Session 21 加时, 2026-04-21)
+
+**事件**: Session 21 加时 user 清除时间限制后, 我据 `/compact` 阶段 AI 生成的 "Session 22 follow-up 列表" 启动 P1+P2 待办, 执行后发现 **两项均 FALSE ALARM**, 数字无原始数据证据支撑:
+
+### P1 F19 "phantom 5 rows DELETE" 反证
+
+原假设: Session 20 handoff "F19 phantom DELETE" → snapshot 5 码冗余应 DELETE
+
+交叉验证:
+- SQL: `trade_log` 4-17 live 20/20 完整 (10 sell + 10 buy), 推翻 ADR-008 L289 "trade_log 不完整"
+- 5 码 4-17 EOD qty > 0 (3600/900/571/60/65), 与 trade_log fills 对账一致
+- Redis: 4-21 实时 19 positions 不含 5 码 (4-18/19 非交易日自然蒸发)
+- pt_audit `check_db_drift` 语义: drift 来自 `reconstruct(4-17 snapshot + 4-20 fills=0) = 24` vs `actual 4-20 snapshot = 19`, **非 snapshot phantom 冗余, 而是 reconstruct 假设所有 position 变化走 trade_log, 对非交易日蒸发无处理**
+
+DELETE 会销毁**唯一历史证据**, 4 根因候选永久不可查.
+
+### P2 bp_ratio "IC=-0.0355 vs direction=+1 sign conflict" 反证
+
+原假设: Session 22 跟进项 "bp_ratio 20 日 IC=-0.0355 与 direction=+1 方向冲突"
+
+DB grep factor_ic_history:
+- 2977 行 (2014-01-02 → 2026-04-07)
+- `ic_20d` 最近 15 条 non-null (2026-02-10 → 2026-03-10) **全正** (+0.017 → +0.151)
+- `ic_ma60` 最近 non-null (2026-04-02) = **+0.1247** (稳定正)
+- "-0.0355" 不出现在任何列/日期, **AI summary 阶段凭记忆编造**
+
+若启动方向翻转流程, 会改 `pt_live.yaml` direction = -1 干扰 PT, 真金潜在损失.
+
+**根因**: `/compact` 生成 summary 是 AI 高度压缩推论, 为节省 token **会丢失原始数字的数据源锚点**. 下一 session 接 summary 时, 叙述部分 ("做了 X Y Z") 可信, **嵌入数字** (IC=-0.0355 / phantom 5 / MDD=-10.2%) 失去 provenance → 不可当执行依据.
+
+同类模式: LL-063 "假装健康的死码" / LL-064 "走流程允许 ≠ 质量已守". 三者**表面 accessible ≠ 实证 verified**.
+
+**改进措施**:
+
+1. **铁律 25 外延**: AI summary / session handoff / memory 中的具体数字 (IC/Sharpe/相关性/行数/fail 数/坐标) 在采取**真实动作** (DELETE/UPDATE/配置改动/flip flag) 前, 必须:
+   - grep 原始数据源反向验证 (factor_ic_history / trade_log / git log / 实测 SQL)
+   - 数字不符合原始 → 改用真实值 / 标记"估算"
+   - 找不到原始 → 假定数字编造, 撤回动作
+
+2. **Summary 可信度分层**: "方向" (做了什么) > "代号" (F19/pk codes) > "嵌入数字". 嵌入数字 = 提示, 非断言.
+
+3. **跨模式严格度 (铁律 39)**: 实施模式 100% 必核原始数据; 架构模式至少 1 次关键数字验证.
+
+**Session 21 加时产出** (18:20 → ~19:30):
+- F19: `docs/audit/F19_position_vanishing_root_cause.md` 4 根因候选 + ADR-008 L289 反证标记
+- bp_ratio: `docs/audit/bp_ratio_direction_verification.md` FALSE ALARM 关闭 + 顺带发现 IC 入库 14 天 gap (铁律 11 违反, Session 22+ 跟进)
+- F22: **PR #36 merged** (`739104d`), DataPipeline NULL ratio guard 铁律 33 fail-loud + 1 P1 + 4 P2 + 2 P3 reviewer 全采纳 + `.gitignore` `.env.*` 补漏 (铁律 35)
+- 2 commits (c0e07a0 + 739104d) + PR #36 + 本 LL
+
+**Session 21 user 接触**: 1 次 (加时开场"你思考一下"/清除时间限制)
+
+**持久化**:
+- 本 LL 条目 (LL-065)
+- `memory/feedback_no_time_limits.md` 新建
+- 铁律候选: "Summary 数字行动前校验" (等 2-3 个类似教训固化铁律 43)
