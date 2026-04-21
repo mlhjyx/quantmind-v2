@@ -13,6 +13,7 @@
 #   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
 #   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
+#   T+1 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
 #
 # 废除历史:
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
@@ -283,6 +284,36 @@ Register-ScheduledTask `
     -Force
 
 Write-Host "[OK] QuantMind_PTAudit registered (daily 17:35)" -ForegroundColor Green
+
+# ── 10c. QuantMind_DailyIC: Mon-Fri 18:00 (Session 22 Part 2 — 铁律 11 gap 关闭) ─
+# 每日增量 IC 入库 factor_ic_history (CORE 4: turnover_mean_20/volatility_20/bp_ratio/dv_ttm)
+# 30 日 rolling 窗口 upsert, horizons=(5,10,20), 走 DataPipeline 铁律 17 合规
+# 时段选择: 17:35 PTAudit 结束后留 25 min 缓冲; 20:00 PT_Watchdog 前 2h 余地
+# 周六/日 skip (Mon-Fri): A 股非交易日 ic_calculator 无 forward return, 跑了也无效
+# PR #37 (`31af40b`) 已交付 scripts/compute_daily_ic.py, 本条仅 wire schtask
+$dicAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\compute_daily_ic.py --core --days 30" `
+    -WorkingDirectory $ProjectRoot
+
+$dicTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "18:00"
+
+$dicSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_DailyIC" `
+    -Description "QuantMind V2: Daily incremental IC upsert (CORE factors, 30-day rolling, Mon-Fri 18:00, Session 22)" `
+    -Action $dicAction `
+    -Trigger $dicTrigger `
+    -Settings $dicSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_DailyIC registered (Mon-Fri 18:00)" -ForegroundColor Green
 
 # ── 11. QuantMind_PT_Watchdog: 每日20:00 ─────────────
 $wdAction = New-ScheduledTaskAction `
