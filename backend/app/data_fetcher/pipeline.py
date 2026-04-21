@@ -159,6 +159,9 @@ class IngestResult:
     upserted_rows: int
     reject_reasons: dict[str, int] = field(default_factory=dict)
     lineage_id: _uuid.UUID | None = None
+    # F22 (Session 21): 超 ColumnSpec.null_ratio_max 的列 → {col: actual_ratio}.
+    # 空 dict = 全列 NULL 率正常. 钉钉/daily_pipeline 报告可基于此触发告警.
+    null_ratio_warnings: dict[str, float] = field(default_factory=dict)
 
     @property
     def success(self) -> bool:
@@ -276,6 +279,11 @@ class DataPipeline:
         if df.empty:
             return IngestResult(contract.table_name, total, 0, rejected, 0, reject_reasons)
 
+        # 5.5 F22: NULL 率哨兵 (fail-loud 铁律 33). 超 ColumnSpec.null_ratio_max → logger.error
+        #      + 写 IngestResult.null_ratio_warnings. 不 raise, 不 drop rows
+        #      (Tushare API 端漂移时 dv_ttm 100% NULL 但 pb/total_mv 正常, raise 会阻断全批).
+        null_ratio_warnings = self._check_null_ratio(df, contract)
+
         # 6. Upsert
         upserted = self._upsert(df, contract)
 
@@ -292,6 +300,7 @@ class DataPipeline:
             upserted_rows=upserted,
             reject_reasons=reject_reasons,
             lineage_id=lineage_id,
+            null_ratio_warnings=null_ratio_warnings,
         )
 
     # ─── 单位转换 ──────────────────────────────────────────
@@ -303,6 +312,50 @@ class DataPipeline:
             if factor is not None and col_name in df.columns:
                 df[col_name] = pd.to_numeric(df[col_name], errors="coerce") * factor
         return df
+
+    # ─── F22 NULL Ratio Guard (铁律 33 fail-loud) ────────────
+
+    def _check_null_ratio(
+        self, df: pd.DataFrame, contract: TableContract
+    ) -> dict[str, float]:
+        """校验列 NULL 率是否超 ColumnSpec.null_ratio_max.
+
+        超阈值 → logger.error (fail-loud) + 返回 {col: ratio} 填 IngestResult.
+
+        不 raise, 不 drop rows: Tushare 端某列 100% NULL 时, 其他列可能正常,
+        raise 会阻断全批入库导致连锁效应 (下游因子计算缺数据). 由调用方
+        (data_quality_report / 钉钉) 基于 warnings dict 决策处置.
+
+        Background (F22, Session 20 发现, Session 21 落地):
+        - daily_basic.dv_ttm 历史 0% NULL, 2026-04-15 漂移到 31.7%, 4-20 升 100%
+        - pe_ttm 历史 0% NULL, 4-15 升到 26.9% 后持平
+        - DataPipeline 之前无 NULL 率校验, 脏数据 silent 入库 5 天才被 data_quality_report 识别
+        - 本 fix 在 ingest 时即 logger.error 暴露, 16:40 巡检之外多一道门
+
+        Returns:
+            {col_name: actual_ratio} 仅超阈值列. 空 dict = 全列正常.
+        """
+        warnings: dict[str, float] = {}
+        if df.empty:
+            return warnings
+        total = len(df)
+        for col_name, spec in contract.columns.items():
+            if spec.null_ratio_max is None or col_name not in df.columns:
+                continue
+            null_count = int(df[col_name].isna().sum())
+            ratio = null_count / total
+            if ratio > spec.null_ratio_max:
+                warnings[col_name] = round(ratio, 4)
+                logger.error(
+                    "[pipeline] null_ratio_exceeded (F22 铁律33 fail-loud)",
+                    table=contract.table_name,
+                    column=col_name,
+                    null_ratio=round(ratio, 4),
+                    threshold=spec.null_ratio_max,
+                    null_count=null_count,
+                    total_rows=total,
+                )
+        return warnings
 
     # ─── L1 Sanity Check (P1-3) ──────────────────────────────
 
