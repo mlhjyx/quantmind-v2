@@ -191,7 +191,6 @@ def pms_daily_check_task(self) -> dict:
     from engines.trading_day_checker import TradingDayChecker
 
     from app.core.qmt_client import get_qmt_client
-    from app.core.stream_bus import STREAM_PMS_PROTECTION_TRIGGERED, get_stream_bus
     from app.services.pms_engine import PMSEngine
     checker = TradingDayChecker()
     is_td, reason = checker.is_trading_day(date.today())
@@ -226,19 +225,12 @@ def pms_daily_check_task(self) -> dict:
 
         sell_signals = engine.check_all_positions(positions, peak_prices, current_prices)
 
-        bus = get_stream_bus()
+        # ADR-010 F31 去重 (Session 21 2026-04-21, reviewer MEDIUM 采纳):
+        # 原此处有 StreamBus publish, 与 api/pms.py 重复且无消费者 (F27).
+        # PMS v1 整体 DEPRECATED per ADR-010, 仅保留 record_trigger + logger.info
+        # 供调试 (已停 Beat, 手工触发仍能跑但禁生产). Risk Framework MVP 3.1 批 2 迁移时删.
         for sig in sell_signals:
             engine.record_trigger(conn, sig, strategy_id, date.today())
-            bus.publish_sync(
-                STREAM_PMS_PROTECTION_TRIGGERED,
-                {
-                    "code": sig.code,
-                    "level": sig.level,
-                    "pnl_pct": sig.unrealized_pnl_pct,
-                    "drawdown_pct": sig.drawdown_from_peak_pct,
-                },
-                source="pms_engine",
-            )
             logger.info(
                 "[PMS] 触发: %s 层级%d 浮盈=%.1f%% 回撤=%.1f%%",
                 sig.code, sig.level,
