@@ -265,6 +265,36 @@ class TestDiffUpdates:
 # ────────── apply_updates ──────────
 
 
+# ────────── _approx_eq ──────────
+
+
+class TestApproxEq:
+    """reviewer P2 (python-reviewer): 幂等比较需 round(DB_PRECISION) 归一化避免
+    浮点噪声.
+    """
+
+    def test_both_none(self):
+        assert cir._approx_eq(None, None) is True
+
+    def test_one_none_one_value(self):
+        assert cir._approx_eq(None, 0.1) is False
+        assert cir._approx_eq(0.1, None) is False
+
+    def test_equal_at_6_decimals(self):
+        """DB_PRECISION=6, 6 位小数精度内相等."""
+        assert cir._approx_eq(0.1234567, 0.1234568) is True  # 第 7 位不同
+
+    def test_different_at_6_decimals(self):
+        assert cir._approx_eq(0.123456, 0.123457) is False
+
+    def test_zero_equals_negative_zero(self):
+        """0.0 和 -0.0 在浮点意义上相等 (rolling mean 偶尔会产生 -0.0)."""
+        assert cir._approx_eq(0.0, -0.0) is True
+
+
+# ────────── apply_updates ──────────
+
+
 class TestApplyUpdates:
     def test_empty_updates_returns_zero(self):
         mock_conn = MagicMock()
@@ -312,6 +342,61 @@ class TestApplyUpdates:
         assert "trade_date" in sql
         # 行数正确传入
         assert len(rows) == 3
+
+    def test_multi_batch_aggregates_rowcount(self):
+        """reviewer P1 (both) 采纳: execute_values multi-batch rowcount 手动累积.
+
+        psycopg2 官方: multi-batch 时 cur.rowcount 只保留最后 batch, 必须手动分批
+        累积. 模拟 3 batch: BATCH_SIZE=5000, 发 12000 行 → 3 call (5000 / 5000 / 2000).
+        每次 rowcount 值不同, 总和 = 3 次 rowcount 累加.
+        """
+        from unittest.mock import patch
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        # 模拟每批 rowcount 不同 (5000 / 5000 / 2000)
+        mock_cur.rowcount = 2000  # 最后一次 (会被 read-access per call)
+        # 用 PropertyMock 模拟多次读取返回不同值? 简化: 直接 side_effect 每次 call 时变
+        rowcount_values = [5000, 5000, 2000]
+        rowcount_iter = iter(rowcount_values)
+
+        type(mock_cur).rowcount = MagicMock()
+        # 用 side_effect 模拟每次 execute_values 之后 rowcount 不同
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        updates = [("f", date(2024, 1, 1), 0.01, 0.02)] * 12000
+
+        def _ev_side_effect(*args, **kwargs):
+            # 每次 execute_values 调用后更新 rowcount
+            mock_cur.rowcount = next(rowcount_iter)
+
+        with patch(
+            "compute_ic_rolling.psycopg2.extras.execute_values",
+            side_effect=_ev_side_effect,
+        ) as mock_ev:
+            n = cir.apply_updates(mock_conn, updates)
+
+        # 3 batch call
+        assert mock_ev.call_count == 3
+        # total 应累积 = 5000 + 5000 + 2000 = 12000 (不是最后 batch 的 2000)
+        assert n == 12000
+
+    def test_single_batch_rowcount(self):
+        """单 batch (len < BATCH_SIZE) 场景: rowcount 直接返回."""
+        from unittest.mock import patch
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.rowcount = 100
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        updates = [("f", date(2024, 1, 1), 0.01, 0.02)] * 100
+
+        with patch("compute_ic_rolling.psycopg2.extras.execute_values") as mock_ev:
+            n = cir.apply_updates(mock_conn, updates)
+
+        assert mock_ev.call_count == 1
+        assert n == 100
 
 
 # ────────── _fetch_target_factors ──────────
@@ -394,24 +479,9 @@ class TestLoadIc20d:
 
 
 class TestComputeAndUpdate:
-    def _setup_mock_conn(self, factors_rows, ic_rows):
-        """helper: mock conn.cursor 返回两轮 fetchall (factors → ic_20d)."""
-        mock_conn = MagicMock()
-        mock_cur1 = MagicMock()
-        mock_cur1.fetchall.return_value = factors_rows
-        mock_cur2 = MagicMock()
-        mock_cur2.fetchall.return_value = ic_rows
-
-        # cursor() 返回 ctx manager. 第一次 (fetch_target_factors), 第二次 (load_ic_20d).
-        # 注意: 如果 factors 是 explicit, 只会 call 1 次.
-        ctx1 = MagicMock()
-        ctx1.__enter__ = MagicMock(return_value=mock_cur1)
-        ctx1.__exit__ = MagicMock(return_value=False)
-        ctx2 = MagicMock()
-        ctx2.__enter__ = MagicMock(return_value=mock_cur2)
-        ctx2.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.side_effect = [ctx1, ctx2]
-        return mock_conn
+    """reviewer P2 (python-reviewer) 采纳: 删除死代码 _setup_mock_conn (定义后从未调用,
+    误导维护者). 所有测试内联 mock.
+    """
 
     def test_dry_run_no_updates_applied(self):
         """dry_run=True 计算 planned_updates 但不调 apply_updates."""
@@ -443,3 +513,102 @@ class TestComputeAndUpdate:
         assert result["processed_factors"] == 0
         assert result["total_ic20d_rows"] == 0
         assert result["planned_updates"] == 0
+
+    def test_explicit_empty_list_does_not_fall_back_to_registry(self):
+        """reviewer P2 (python-reviewer) 采纳: factors=[] 语义与 factors=None 区分.
+
+        factors=[]: explicit 空列表 → 直接返回, 不查 registry.
+        factors=None: 未提供 → 查 registry.
+        docstring L275-280 明确两者差异, 此测试锁定契约.
+        """
+        mock_conn = MagicMock()
+        # 若测试过程中调到 cursor, 说明错误回落到 registry 查询
+        result = cir.compute_and_update(mock_conn, factors=[], all_factors=False, dry_run=True)
+
+        assert result["processed_factors"] == 0
+        mock_conn.cursor.assert_not_called()
+
+
+# ────────── main() orchestration (commit/rollback 铁律 32) ──────────
+
+
+class TestMainOrchestration:
+    """reviewer P2 (python-reviewer) 采纳: 补 commit / rollback 路径测试.
+
+    main() 是 transaction boundary owner (铁律 32). 之前仅走 dry-run 路径, 漏了
+    commit/rollback 的实际调用验证, 这是最容易出事故的部分.
+    """
+
+    def _make_conn_mock(self, factors_rows, ic_rows, apply_rowcount: int = 0):
+        """mock conn: 支持 fetch_target_factors → load_ic_20d → apply_updates 完整链."""
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        # fetch_target_factors 走 factor_registry 查询; load_ic_20d 读 factor_ic_history
+        # 两次 fetchall 分别返回 factors_rows 和 ic_rows
+        mock_cur.fetchall.side_effect = [factors_rows, ic_rows]
+        mock_cur.rowcount = apply_rowcount
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        return mock_conn
+
+    def test_main_commits_when_updates_applied(self, monkeypatch):
+        """非 dry_run + applied_updates > 0 → 调 commit() 一次."""
+        from unittest.mock import patch
+
+        rows = [("bar", date(2024, 1, i + 1), 0.05, None, None) for i in range(20)]
+        mock_conn = self._make_conn_mock(factors_rows=[("bar",)], ic_rows=rows, apply_rowcount=16)
+        monkeypatch.setattr("compute_ic_rolling.get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(sys, "argv", ["compute_ic_rolling.py"])
+
+        with patch("compute_ic_rolling.psycopg2.extras.execute_values"):
+            exit_code = cir.main()
+
+        assert exit_code == 0
+        mock_conn.commit.assert_called_once()
+        mock_conn.rollback.assert_not_called()
+        mock_conn.close.assert_called_once()
+
+    def test_main_no_commit_when_dry_run(self, monkeypatch):
+        """dry_run=True → 不 commit 不 rollback (只 close)."""
+        rows = [("bar", date(2024, 1, i + 1), 0.05, None, None) for i in range(20)]
+        mock_conn = self._make_conn_mock(factors_rows=[("bar",)], ic_rows=rows)
+        monkeypatch.setattr("compute_ic_rolling.get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(sys, "argv", ["compute_ic_rolling.py", "--dry-run"])
+
+        exit_code = cir.main()
+
+        assert exit_code == 0
+        mock_conn.commit.assert_not_called()
+        mock_conn.rollback.assert_not_called()
+        mock_conn.close.assert_called_once()
+
+    def test_main_rollback_and_raise_on_exception(self, monkeypatch):
+        """compute_and_update raise → rollback + re-raise (铁律 33 fail-loud)."""
+        import pytest as _pytest
+
+        mock_conn = MagicMock()
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("DB broken")
+
+        monkeypatch.setattr("compute_ic_rolling.get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr("compute_ic_rolling.compute_and_update", _boom)
+        monkeypatch.setattr(sys, "argv", ["compute_ic_rolling.py"])
+
+        with _pytest.raises(RuntimeError, match="DB broken"):
+            cir.main()
+
+        mock_conn.rollback.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_conn.close.assert_called_once()
+
+    def test_main_exit_1_when_no_factors(self, monkeypatch):
+        """reviewer P2 (code-reviewer) 采纳: 无 target factor → exit 1 便于 schtask 告警."""
+        mock_conn = self._make_conn_mock(factors_rows=[], ic_rows=[])
+        monkeypatch.setattr("compute_ic_rolling.get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(sys, "argv", ["compute_ic_rolling.py"])
+
+        exit_code = cir.main()
+
+        assert exit_code == 1
+        mock_conn.commit.assert_not_called()
+        mock_conn.close.assert_called_once()
