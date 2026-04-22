@@ -7,8 +7,8 @@
 #   T日 02:00  QM-DailyBackup                   pg_dump备份
 #   T日 16:25  QM-HealthCheck                   健康预检
 #   T日 16:30  QuantMind_DailySignal             数据拉取(klines+basic+index)+因子+信号
-#   T日 16:35  QuantMind_DailyMoneyflow          moneyflow补拉(信号不依赖,但因子挖掘需要)
-#   T日 16:40  QuantMind_DataQualityCheck        数据质量巡检(全表时效+行数验证)
+#   T日 17:30  QuantMind_DailyMoneyflow          moneyflow补拉 (Session 24 shift 16:35→17:30, tushare moneyflow 16:30 前入库未稳定实测 5 retry 全空)
+#   T日 17:45  QuantMind_DataQualityCheck        数据质量巡检 (Session 24 shift 16:40→17:45, 跟 moneyflow 17:30 留 15min buffer)
 #   T+1 09:31  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
 #   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
@@ -129,13 +129,17 @@ Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31)" -ForegroundCol
 # 替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
 # 手工清理 (已跑的机器需执行): schtasks /delete /tn "QuantMind_DailyExecuteAfterData" /f
 
-# ── 6. QuantMind_DailyMoneyflow: 每日16:35 ───────────────
+# ── 6. QuantMind_DailyMoneyflow: 每日17:30 (Session 24 shift 16:35→17:30) ────
+# 时段选择: tushare moneyflow 接口无官方 update time (daily_basic 15-17, daily
+# 15-16). 实测 2026-04-22 16:35 schtask 5 retry × 120s 全空 + DingTalk 告警.
+# docs/archive/PROGRESS.md 历史曾用 17:00 work. 17:30 保守稳妥, 对齐 Tushare
+# 社区经验 17:00+ 稳定窗口.
 $mfAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\pull_moneyflow.py" `
     -WorkingDirectory $ProjectRoot
 
-$mfTrigger = New-ScheduledTaskTrigger -Daily -At "16:35"
+$mfTrigger = New-ScheduledTaskTrigger -Daily -At "17:30"
 
 $mfSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
@@ -152,15 +156,18 @@ Register-ScheduledTask `
     -Settings $mfSettings `
     -Force
 
-Write-Host "[OK] QuantMind_DailyMoneyflow registered (daily 16:35)" -ForegroundColor Green
+Write-Host "[OK] QuantMind_DailyMoneyflow registered (daily 17:30)" -ForegroundColor Green
 
-# ── 7. QuantMind_DataQualityCheck: 每日16:40 ─────────────
+# ── 7. QuantMind_DataQualityCheck: 每日17:45 (Session 24 shift 16:40→17:45) ──
+# 时段选择: moneyflow 17:30 后 15 min buffer 验证, 涵盖 DailySignal(16:30) +
+# DailyMoneyflow(17:30) 全链数据质量. pull_moneyflow 最大 retry 5×120s=10min,
+# 17:30+10min=17:40, 17:45 留 5 min 安全.
 $dqAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\data_quality_check.py" `
     -WorkingDirectory $ProjectRoot
 
-$dqTrigger = New-ScheduledTaskTrigger -Daily -At "16:40"
+$dqTrigger = New-ScheduledTaskTrigger -Daily -At "17:45"
 
 $dqSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
@@ -177,7 +184,7 @@ Register-ScheduledTask `
     -Settings $dqSettings `
     -Force
 
-Write-Host "[OK] QuantMind_DataQualityCheck registered (daily 16:40)" -ForegroundColor Green
+Write-Host "[OK] QuantMind_DataQualityCheck registered (daily 17:45)" -ForegroundColor Green
 
 # ── 8. QuantMind_IntradayMonitor: 09:35起每5分钟 ─────────
 $imAction = New-ScheduledTaskAction `
