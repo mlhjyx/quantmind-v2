@@ -286,7 +286,7 @@ def main() -> None:
 
     # 最近日期（当天或昨天）需要重试，Tushare可能延迟入库
     MAX_RETRY = 5
-    RETRY_WAIT = 120  # 2分钟（17:00→17:02→17:04→17:06→17:08）
+    RETRY_WAIT = 120  # 2分钟（17:30→17:32→17:34→17:36→17:38, Session 24 shift 后对齐新调度）
 
     for i, td in enumerate(trading_dates):
         t0 = time.time()
