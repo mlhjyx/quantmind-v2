@@ -134,6 +134,9 @@ Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31)" -ForegroundCol
 # 15-16). 实测 2026-04-22 16:35 schtask 5 retry × 120s 全空 + DingTalk 告警.
 # docs/archive/PROGRESS.md 历史曾用 17:00 work. 17:30 保守稳妥, 对齐 Tushare
 # 社区经验 17:00+ 稳定窗口.
+# reviewer MEDIUM 采纳: 与 Section 10 FactorHealthDaily 同 17:30 触发, 表无交集
+# (moneyflow_daily 写 vs factor_ic_history/factor_registry 读), 无锁无并发风险.
+# 两 Python 进程 ~200MB + 2 DB conn, 32GB RAM 无压力.
 $mfAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\pull_moneyflow.py" `

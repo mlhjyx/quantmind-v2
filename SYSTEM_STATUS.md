@@ -672,17 +672,17 @@ run_paper_trading.py
 | QuantMind_DailyBackup | Ready | 02:00 | 🟡 与QM-DailyBackup重复 |
 | QuantMind_DailyExecute | Ready | 09:31 | QMT执行 |
 | QuantMind_DailyExecuteAfterData | **Disabled** | 17:05 | SimBroker执行(已禁用) |
-| QuantMind_DailyMoneyflow | Ready | 17:00 | moneyflow拉取 |
+| QuantMind_DailyMoneyflow | Ready | 17:30 | moneyflow拉取 (Session 24 shift 16:35→17:30, tushare 延迟实测) |
 | QuantMind_DailyReconciliation | Ready | 15:10 | 收盘对账 |
-| QuantMind_DailySignal | Ready | 17:15 | 🟡 NextRun显示03-25(过期?) |
-| QuantMind_DataQualityCheck | Ready | 16:40 | 数据巡检 |
+| QuantMind_DailySignal | Ready | 16:30 | 数据拉取+因子+信号 (Session 17 Stage 4 reenable, 非 17:15) |
+| QuantMind_DataQualityCheck | Ready | 17:45 | 数据巡检 (Session 24 shift 16:40→17:45, 跟 moneyflow 17:30 后 15min buffer) |
 | QuantMind_FactorHealthDaily | Ready | 17:30 | 因子健康检查 |
 | QuantMind_IntradayMonitor | Ready | 09:35 | 盘中监控 |
 | QuantMind_MiniQMT_AutoStart | Ready | - | QMT自启动 |
 | QuantMind_PTWatchdog | Ready | 20:00 | PT心跳监控 |
 
 > 🟡 两个备份任务重复: QM-DailyBackup和QuantMind_DailyBackup
-> 🟡 QuantMind_DailySignal的NextRun显示3月25日,可能触发条件有问题
+> ~~🟡 QuantMind_DailySignal的NextRun显示3月25日~~ (Session 17 已 reenable, Session 24 同步更新 L677, 实际 16:30 每日触发)
 
 ### Celery Beat调度（正常运行 ✅）
 CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
