@@ -160,8 +160,98 @@ async def _async_health_check() -> dict:
 
 
 # ════════════════════════════════════════════════════════════
-# T日 14:30 — PMS利润保护检查
+# T日 14:30 — Risk Framework 日检 (MVP 3.1 批 1 Session 29)
+# 替代老 pms_check, 走 PlatformRiskEngine + PMSRule (ADR-010 D3)
 # ════════════════════════════════════════════════════════════
+
+
+@celery_app.task(
+    bind=True,
+    name="daily_pipeline.risk_check",
+    acks_late=True,
+    max_retries=1,
+    default_retry_delay=60,
+    time_limit=300,
+)
+def risk_daily_check_task(self) -> dict:
+    """Risk Framework 日检 (MVP 3.1 批 1 PR 3, 2026-04-24 Session 29).
+
+    Celery Beat risk-daily-check 14:30 Mon-Fri 触发. 非交易日自动跳过.
+    走 PlatformRiskEngine + PMSRule (替代老 pms_engine.check_protection).
+
+    批 1 行为保持 v1 语义: LoggingSellBroker 仅 log 不实盘卖, 批 2 接真 broker.
+    risk_event_log 仍完整记录触发上下文 (risk_wiring.LoggingSellBroker + engine._log_event).
+
+    关联铁律: 22 (doc 跟随代码) / 24 (单一职责) / 33 (fail-loud) / 34 (Config SSOT)
+
+    Returns:
+        执行摘要: {status, checked, triggered, signals}
+    """
+    from engines.trading_day_checker import TradingDayChecker
+
+    checker = TradingDayChecker()
+    is_td, reason = checker.is_trading_day(date.today())
+    if not is_td:
+        logger.info("[Risk] 非交易日(%s), 跳过", reason)
+        return {"status": "skipped", "reason": reason}
+
+    if not settings.PMS_ENABLED:
+        # PMS_ENABLED=False 时整个 Risk Framework 关闭 (批 2 intraday 独立 flag 再加)
+        logger.info("[Risk] PMS_ENABLED=False, 跳过")
+        return {"status": "disabled"}
+
+    strategy_id = getattr(settings, "PAPER_STRATEGY_ID", "")
+    if not strategy_id:
+        logger.error("[Risk] PAPER_STRATEGY_ID 未配置")
+        return {"status": "error", "message": "PAPER_STRATEGY_ID未配置"}
+
+    execution_mode = getattr(settings, "EXECUTION_MODE", "paper")
+
+    from app.services.risk_wiring import build_risk_engine
+
+    try:
+        engine = build_risk_engine()
+        context = engine.build_context(
+            strategy_id=strategy_id, execution_mode=execution_mode
+        )
+        if not context.positions:
+            logger.info("[Risk] 无持仓, 跳过")
+            return {
+                "status": "ok",
+                "checked": 0,
+                "triggered": 0,
+                "execution_mode": execution_mode,
+            }
+
+        results = engine.run(context)
+        engine.execute(results, context)
+
+        summary = {
+            "status": "ok",
+            "checked": len(context.positions),
+            "triggered": len(results),
+            "execution_mode": execution_mode,
+            "signals": [
+                {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
+                for r in results
+            ],
+        }
+        logger.info(
+            "[Risk] 日检完成: checked=%d triggered=%d mode=%s",
+            summary["checked"], summary["triggered"], execution_mode,
+        )
+        return summary
+
+    except Exception as exc:
+        logger.error("[Risk] 日检异常: %s", exc, exc_info=True)
+        raise self.retry(exc=exc) from exc
+
+
+# ════════════════════════════════════════════════════════════
+# DEPRECATED: 老 pms_check (ADR-010 Session 21 已停 Beat, MVP 3.1 批 1 新 risk_check 替代)
+# 保留 1 sprint 供紧急回滚, 批 3 CB adapter 完成后 + pms_engine.py 一并物理删除
+# ════════════════════════════════════════════════════════════
+
 
 @celery_app.task(
     bind=True,
@@ -172,13 +262,14 @@ async def _async_health_check() -> dict:
     time_limit=300,
 )
 def pms_daily_check_task(self) -> dict:
-    """PMS阶梯利润保护检查。
+    """PMS阶梯利润保护检查 [DEPRECATED per ADR-010].
 
     .. warning::
-       **DEPRECATED per ADR-010 (Session 21 2026-04-21)**
+       **DEPRECATED per ADR-010 (Session 21 2026-04-21) — MVP 3.1 批 1 Session 29 新任务替代**
 
        Celery Beat pms-daily-check 调度已停 (beat_schedule.py Session 21).
        本 task function 保留仅供参考, 手工触发 (task queue 直发) 仍能跑但**禁止**生产使用.
+       新生产任务 = `daily_pipeline.risk_check` (走 PlatformRiskEngine + PMSRule).
        并入 Wave 3 MVP 3.1 Risk Framework (backend/platform/risk/rules/pms.py).
 
     14:30执行，检查所有持仓是否触发利润保护。
