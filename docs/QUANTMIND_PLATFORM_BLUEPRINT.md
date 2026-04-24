@@ -1,9 +1,11 @@
-# QuantMind Platform Blueprint (QPB v1.7)
+# QuantMind Platform Blueprint (QPB v1.8)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → **v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 + audit_orphan_factors drift gate**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → **v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (批 1+2+3 全 merged, PR #55+#57+#58+#59+#60+#61, 6 PR / 2575 行 / 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 98%, 生产激活 Celery Beat 5 entries, 首次真生产触发 2026-04-27 Monday 09:00 intraday + 14:30 daily)**
 > **作者**: Architect pass (Opus)
-> **状态**: v1.7 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周 [批 3 adapter 省 0.5 周]), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity) + Wave 3 MVP 3.1 批 0 ✅ feasibility spike (方案 C Hybrid)**
+> **状态**: v1.8 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周), **Wave 1 ✅ 完结 7/7 + Wave 2 ✅ 完结 (Data + Lineage + Backtest Parity) + Wave 3 1/5 完结 (MVP 3.1 Risk Framework ✅)**
+>
+> **v1.8 验证证据** (gh 实测 2026-04-24): MVP 3.1 merged PR = #54 (spike) + #55/#57/#58 (批 1) + #59/#60 (批 2) + #61 (批 3). PR #56 是 factor-health hotfix 与 MVP 3.1 无关. Servy `QuantMind-Celery` PID 27408 + `QuantMind-CeleryBeat` PID 39248 restart 后 5 schedule entries active.
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -1240,17 +1242,17 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 
 - **背景**: Session 21 (2026-04-21) 发现 PMS v1.0 整体死码 5 重失效 (F27-F31) + 5 个监控系统碎片化 (intraday_monitor / PMS / risk_control / pt_audit / pt_watchdog 互不通信). 方案 D+ 决议: 不修 PMS 死码, 统一重构为 Risk Framework, 作为所有 Wave 3 MVP 的前置
 - **范围**: `backend/platform/risk/` — RiskRule abstract + PlatformRiskEngine + PositionSource (QMT 实时 primary / DB fallback) + risk_event_log 单表 + 11 条规则迁移 (PMS L1-L3 + intraday 组合 3/5/8% + QMT 断连 + CB L1-L4)
-- **4 阶段分批** (v1.7 批 0 已完成):
-  - **批 0 ✅ Feasibility spike** (Session 27 2026-04-24, PR #54): 验证 circuit_breaker 迁 Risk Framework 可行性. 发现 4 处 RiskRule 契约与 CB 状态机冲突 (跨调用状态 / L4 approval_queue / 级联 action / `check_circuit_breaker_sync` dict 签名). **决议方案 C Hybrid adapter**: `CircuitBreakerRule(RiskRule)` 内部调 `check_circuit_breaker_sync` + 前后快照 diff, 仅在状态变化时 emit RuleResult. 省批 3 async rewrite ~500 行 → adapter ~200 行 (≈0.5-0.7 周). 产出 ADR-010 addendum (`docs/adr/ADR-010-addendum-cb-feasibility.md`).
-  - **批 1 Framework core + PMS L1-L3 迁入** (~1 周, Session 28+ 启动)
-  - **批 2 intraday_monitor 迁入** (~0.5 周)
-  - **批 3 circuit_breaker adapter 迁入** (~0.5-0.7 周, 方案 C Hybrid, 非 async rewrite)
-- **验收**: `SELECT COUNT FROM risk_event_log WHERE rule_id LIKE 'pms_%'` 有非触发 dry-run 证据 (live smoke 强制模拟触发); 批 2 完成 intraday_monitor 走 RiskEngine; 批 3 完成 risk_control_service deprecated; `check_circuit_breaker_sync` 保留 (不 deprecate) 作 adapter 内部实现
-- **耗时**: 2-2.7 周 (v1.7 修订: 批 0 spike 已省出, 批 3 adapter 节省 ~0.5 周 vs 原 async rewrite 估算)
+- **4 阶段分批** (v1.8 **全部完成 ✅** Session 28-30 2026-04-24):
+  - **批 0 ✅ Feasibility spike** (Session 27 2026-04-24, PR #54): 验证 circuit_breaker 迁 Risk Framework 可行性. 发现 4 处 RiskRule 契约与 CB 状态机冲突 (跨调用状态 / L4 approval_queue / 级联 action / `check_circuit_breaker_sync` dict 签名). **决议方案 C Hybrid adapter**: `CircuitBreakerRule(RiskRule)` 内部调 `check_circuit_breaker_sync` + 前后快照 diff, 仅在状态变化时 emit RuleResult. 省批 3 async rewrite ~500 行 → adapter ~200 行. 产出 ADR-010 addendum (`docs/adr/ADR-010-addendum-cb-feasibility.md`).
+  - **批 1 ✅ Framework core + PMSRule** (Session 28 2026-04-24, PR #55+#57+#58): `risk_event_log` migration + RiskRule ABC/RiskContext/RuleResult + PlatformRiskEngine + PMSRule L1/L2/L3 迁入 + `daily_pipeline.py::risk_daily_check_task` Celery Beat 14:30 wire + L4 subprocess smoke. 17 + 20 + 12 = 49 tests.
+  - **批 2 ✅ intraday 4 rules + Beat 5min** (Session 29-30 2026-04-24, PR #59+#60): `IntradayPortfolioDrop3/5/8Pct` + `QMTDisconnectRule` + Celery Beat `*/5 9-14 * * 1-5` (**72 trigger/日**) + Redis 24h TTL dedup fail-open + `_load_prev_close_nav` (ZoneInfo Asia/Shanghai 铁律 41). **P1 HIGH 捕获**: `mark_alerted` 顺序 bug (原在 execute 前调, 修为 execute 成功后 mark, 防永久抑制告警). 30 + 8 = 38 tests.
+  - **批 3 ✅ CircuitBreaker Hybrid adapter** (Session 30 2026-04-24, PR #61): `CircuitBreakerRule` 方案 C ~200 行包老 `check_circuit_breaker_sync` 1640 行 sync API, **铁律 31 例外声明** (ADR-010 addendum 接受), prev_level 读 pre-snapshot + sync API 推 new_level + diff transition 仅 level 变化返 RuleResult, rule_id 动态 `cb_escalate_l{N}` / `cb_recover_l{N}`. **P1 HIGH 捕获**: `_TrackedConnection` 连接泄漏 (原 `with` 只 commit/rollback 不 close, 修为显式 `conn=factory(); try/finally conn.close()`). 21 tests.
+- **验收 ✅** (Session 30 末 2026-04-24): 累计 2575 行 / 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 (98%). Celery Beat 5 schedule entries active (含 `risk-daily-check` 14:30 + `intraday-risk-check` `*/5 9-14`). 首次真生产触发窗口 **2026-04-27 Monday 09:00 intraday + 14:30 daily**. 生产 CB 老触发 (signal_phase) 与新 adapter 并存 (Sunset gate 前不动).
+- **实际耗时**: **~0.5 天** (v1.8 实测: 批 0+1+2+3 同日 Session 27-30 连续交付, 原 2-2.7 周估算显著高估; 方案 C Hybrid adapter 省力 + 模式对齐批 1 PMSRule + LL-059 9 步闭环 40+ 次沉淀带来效率跃升)
 - **依赖**: MVP 1.1 Platform Skeleton + MVP 2.1 Data Framework + ADR-010 + **ADR-010 addendum (v1.7)**
-- **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (已完成) + `docs/adr/ADR-010-addendum-cb-feasibility.md` (v1.7 新增)
+- **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (批 1) + `docs/mvp/MVP_3_1_batch_2_plan.md` + `docs/mvp/MVP_3_1_batch_3_cb_wrapper.md` + `docs/adr/ADR-010-addendum-cb-feasibility.md`
 - **过渡期保护**: intraday_monitor 组合告警 + emergency_stock_alert.py (单股跌 >8% 钉钉, ADR-010 D6 过渡脚本) + 盘后三检 (reconciliation / pt_audit / pt_watchdog)
-- **Sunset gate** (ADR-010 addendum): 方案 C adapter 在 3 条件同时满足时升级为纯 Risk Framework 实现 — (1) MVP 3.4 Event Sourcing 上线替代 `cb_state` 表; (2) 多策略 → L4 approval_queue 改多行; (3) 其他 RiskRule 积累 > 5 条需要跨调用状态共享需求
+- **Sunset gate** (ADR-010 addendum, Session 30 确认 A+B+C 条件): (A 必) adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 真事件 (非 smoke); (B 必) 1 次 L4 审批完整跑通 (`approve_l4.py` → `approval_queue` → `cb_recover_l0` event → signal_engine multiplier=1.0); (C 或) Wave 4 Observability MVP 4.x 启动, `/risk` dashboard 统一可视化. 满足后启动批 3b inline 重审消例外 + 老表 DROP
 
 **MVP 3.2: Strategy Framework (#3)** (原 MVP 3.1)
 
@@ -1750,6 +1752,15 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - **Blueprint 变更**: MVP 3.1 定义增强 (批 0 ✅ / 批 3 adapter 模式 / 耗时修订) + Part 5 铁律 43 登记 (Type C 演进中) + Framework #1 Data Ops 工具追加 audit_orphan_factors.
   - **铁律数**: 42 → 43 条全局原则.
   - **总耗时**: 27.5-37 周 → 27-36.5 周 (批 3 adapter 省 0.5 周).
+- **2026-04-24 v1.8 Session 28-30 收束 (MVP 3.1 Risk Framework 正式完结)**:
+  - **批 1 ✅** (Session 28, PR #55+#57+#58): risk_event_log migration + RiskRule ABC + PlatformRiskEngine + PMSRule L1/L2/L3 + daily_pipeline Celery Beat 14:30 wire.
+  - **批 2 ✅** (Session 29-30, PR #59+#60): IntradayPortfolioDrop3/5/8Pct + QMTDisconnectRule + Celery Beat `*/5 9-14` (72 trigger/日) + Redis 24h TTL dedup fail-open. **P1 HIGH 修 `mark_alerted` 顺序** 防永久抑制告警.
+  - **批 3 ✅** (Session 30, PR #61): CircuitBreakerRule Hybrid adapter (铁律 31 例外 ADR-010 addendum 方案 C), rule_id 动态 `cb_escalate_l{N}` / `cb_recover_l{N}`. **P1 HIGH 修 `_TrackedConnection` 连接泄漏** (psycopg2 `with` 只 commit/rollback 不 close, 改显式 try/finally).
+  - **验收数字 (gh 实测)**: MVP 3.1 = 6 PR merged (#55/#57/#58/#59/#60/#61) + 1 spike PR (#54). 2575 行 / 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 (98%). LL-059 9 步闭环第 33-40 次 (40+ 次累计).
+  - **生产激活**: Servy `QuantMind-Celery` PID 27408 + `QuantMind-CeleryBeat` PID 39248 restart 后 5 schedule entries active. 首次真生产触发窗口 **2026-04-27 Monday 09:00 intraday + 14:30 daily**.
+  - **实际耗时**: ~0.5 天 (v1.8 实测 Session 27-30 同日连续交付, 原 2-2.7 周估算显著高估).
+  - **Wave 3 进度**: 0/5 → **1/5** (MVP 3.1 ✅).
+  - **Blueprint 变更**: MVP 3.1 定义批 1/2/3 全 ✅ + 实际耗时修订 + Sunset gate A+B+C 条件落盘 + 版本状态行 Wave 3 1/5.
 
 ---
 
