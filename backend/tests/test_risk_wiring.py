@@ -318,6 +318,20 @@ class TestIntradayAlertDedup:
         # 不 raise = PASS
         dedup.mark_alerted("rule_x", "strat_a", "paper")
 
+    def test_key_uses_china_timezone_not_os_local(self):
+        """reviewer P2 采纳 (code): 铁律 41 timezone — dedup key 日期用北京时间.
+
+        锚定契约: key 日期部分是 Asia/Shanghai, 防 OS 时区漂移致日边界错.
+        """
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        key = IntradayAlertDedup._build_key("r", "s", "paper")
+        today_cn = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        assert today_cn in key, f"key {key} does not contain China tz date {today_cn}"
+
 
 class TestLoadPrevCloseNav:
     def test_returns_nav_when_row_exists(self):
