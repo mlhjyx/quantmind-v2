@@ -451,7 +451,7 @@ Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
 # (inline 重审消铁律 31 例外 + DROP 老 circuit_breaker_state/log 表).
 # 时段选择: 周日 04:00 低峰, 1/week 频次足够 (Sunset Gate 天粒度判定, 条件 A 最早
 #   2026-05-24 满足 = adapter live 2026-04-24 + 30日). 避开 02:00 QM-DailyBackup
-#   + 06:00 QM-LogRotate, 独立窗口无资源竞争.
+#   + 06:00 QM-LogRotate + Sat 02:00 GPPipeline (4h max, 22h gap), 独立窗口无资源竞争.
 # 脚本硬化: scripts/monitor_mvp_3_1_sunset.py (PR #64 交付, 铁律 43 4项硬化:
 #   PG statement_timeout=30s / FileHandler delay=True (stdout-only 实际豁免) /
 #   boot stderr probe / 顶层 try/except exit=2). 钉钉 notifications 表去重

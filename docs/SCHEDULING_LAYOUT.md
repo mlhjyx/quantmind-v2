@@ -2,6 +2,20 @@
 
 > **F57/F58 Phase E (2026-04-16)**: 完整调度链路文档，版本控制 Windows Task Scheduler 配置。
 > **更新规则**: 增删调度任务时同步更新本文件 (铁律 22)。
+>
+> ⚠️ **STALE WARNING (Session 32 PR #65 2026-04-24)**: 本文件自 2026-04-16 后多次落后于
+> `scripts/setup_task_scheduler.ps1` (canonical source of truth). 已知漂移 (未在本 PR 修复,
+> Session 32+ 独立 PR 清理):
+>   - **时间漂移**: DailyMoneyflow 16:35→**17:30** (Session 24), DataQualityCheck 16:40→**18:30** (Session 26),
+>     DailySignal 17:15 stale→**16:30** (Session 17)
+>   - **已废除**: DailyExecuteAfterData 17:05 (Session 17 Stage 4, ADR-008 P0-δ 污染源)
+>   - **缺失**: PTAudit 17:35 (Session 17) / DailyIC 18:00 Mon-Fri (Session 22 Part 2) /
+>     IcRolling 18:15 Mon-Fri (Session 22 Part 8)
+>   - **可疑**: QM-RollingWF 02:00 / QM-ICMonitor 20:00 / QM-PTDailySummary 17:35 在 setup_task_scheduler.ps1
+>     找不到 register, 疑已停用未同步
+>
+> 对齐核心来源以 `scripts/setup_task_scheduler.ps1` 为准, 并参考 CLAUDE.md L16 调度链路描述.
+> 本 PR #65 仅增量同步本次新增的 `QuantMind_MVP31SunsetMonitor`, 全量 reconcile 留 Session 32+.
 
 ---
 
@@ -25,6 +39,7 @@
 20:00  [TS] QM-ICMonitor           → ic_monitor.py (weekly)
 20:00  [TS] QuantMind_PT_Watchdog  → pt_watchdog.py (daily)
 22:00  [CB] gp-weekly-mining       → mining_tasks.run_gp_mining (Celery Beat, Sunday)
+04:00  [TS] QuantMind_MVP31SunsetMonitor → monitor_mvp_3_1_sunset.py (Session 32, Weekly Sunday)
 ```
 
 **图例**: `[TS]` = Windows Task Scheduler, `[CB]` = Celery Beat
@@ -33,7 +48,7 @@
 
 ## 完整任务清单
 
-### Windows Task Scheduler — Active (16)
+### Windows Task Scheduler — Active (17, 含 Session 32 新增 MVP31SunsetMonitor; 注: 此计数自 Session 17 起已累积漂移, 见顶部 STALE WARNING)
 
 | 任务名 | 时间 | 频率 | 脚本 | 用途 | 依赖 |
 |--------|------|------|------|------|------|
@@ -53,6 +68,7 @@
 | QM-ICMonitor | 20:00 | Weekly | `scripts/ic_monitor.py` | IC监控告警 | PostgreSQL |
 | QuantMind_PT_Watchdog | 20:00 | Daily | `scripts/pt_watchdog.py` | PT心跳监控 | PostgreSQL |
 | QuantMind_MiniQMT_AutoStart | Logon | On logon | `XtMiniQmt.exe` | QMT客户端自启 | 无 |
+| QuantMind_MVP31SunsetMonitor | 04:00 | Weekly (Sun) | `scripts/monitor_mvp_3_1_sunset.py` | MVP 3.1 Sunset Gate A+B+C 周监控 (ADR-010 addendum Follow-up #5, Session 32 wire) | PostgreSQL |
 
 ### Windows Task Scheduler — Disabled (2)
 
@@ -85,6 +101,9 @@
 2. ~~重复任务 QuantMind_PTWatchdog (weekly)~~ — 已删除 (2026-04-16)
 3. ~~GP 双触发 QuantMind_GPPipeline (TS)~~ — 已删除 (2026-04-16), 保留 Celery Beat gp-weekly-mining
 4. **非交易日**: 大部分任务内部有交易日判断 (非交易日快速退出), 但 TS 层面没有节假日过滤
+5. **Session 32+ TODO**: 全量 reconcile 本文件 vs `scripts/setup_task_scheduler.ps1` (canonical),
+   清理 10+ 行漂移项 (时间漂移 3 / 已废除 1 / 缺失 3 / 可疑停用 3). 见顶部 STALE WARNING.
+   本 PR #65 仅增量同步 MVP31SunsetMonitor 保持 PR surgical.
 
 ---
 
