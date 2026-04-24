@@ -71,6 +71,8 @@ class TestVwapBias:
     def test_zero_volume_returns_nan(self) -> None:
         """零成交量时VWAP无意义，应返回NaN。"""
         close = pd.Series([10.0, 20.0, 30.0])
+        # amount=元 (post-Step 3-A, reviewer PR #50 LOW 补注释).
+        # 本 test 只查 NaN 行为非具体值, 单位无关 PASS.
         amount = pd.Series([100.0, 0.0, 200.0])
         volume = pd.Series([50.0, 0.0, 100.0])
 
@@ -81,10 +83,15 @@ class TestVwapBias:
         assert not np.isnan(result.iloc[2]), "正常成交不应为NaN"
 
     def test_clip_extreme_values(self) -> None:
-        """极端偏差应被clip到[-1.0, 1.0]。"""
-        # VWAP = 10*10/100 = 1.0, close=100 → bias=(100-1)/1=99 → clip→1.0
+        """极端偏差应被 clip 到 [-1.0, 1.0].
+
+        post-Step 3-A: VWAP = 10 / (100 × 100) = 0.001 元/股 (reviewer PR #50 LOW
+        注释修正, 原"VWAP=10*10/100=1.0" 沿用 pre-Step 3-A 公式). close=100 → bias
+        = (100-0.001)/0.001 ≈ 99998 → clip → 1.0. close=0.001 → bias ≈ 0, clip
+        bound check 仍过. 断言仅验 clip 边界 [-1, 1], 故 PASS 与 VWAP 绝对值无关.
+        """
         close = pd.Series([100.0, 0.001])
-        amount = pd.Series([10.0, 10.0])
+        amount = pd.Series([10.0, 10.0])  # 元
         volume = pd.Series([100.0, 100.0])
 
         result = calc_vwap_bias(close, amount, volume)
@@ -108,9 +115,7 @@ class TestRsrsRaw:
 
         # 最后一个值（足够窗口后）应接近1.5
         last_valid = result.dropna().iloc[-1]
-        assert abs(last_valid - 1.5) < 0.15, (
-            f"RSRS斜率应接近1.5, 实际={last_valid:.4f}"
-        )
+        assert abs(last_valid - 1.5) < 0.15, f"RSRS斜率应接近1.5, 实际={last_valid:.4f}"
 
     def test_window_insufficient_returns_nan(self) -> None:
         """窗口不足min_periods=9时应返回NaN。"""
@@ -143,9 +148,7 @@ class TestRsrsRaw:
         result = calc_rsrs_raw(high, low, window=18)
 
         last_valid = result.dropna().iloc[-1]
-        assert abs(last_valid - 1.0) < 0.01, (
-            f"恒定价差时斜率应≈1.0, 实际={last_valid:.4f}"
-        )
+        assert abs(last_valid - 1.0) < 0.01, f"恒定价差时斜率应≈1.0, 实际={last_valid:.4f}"
 
 
 class TestReserveRegistration:

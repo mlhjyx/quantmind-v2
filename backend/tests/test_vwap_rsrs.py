@@ -6,13 +6,19 @@ from engines.factor_engine import calc_rsrs_raw, calc_vwap_bias
 
 
 class TestCalcVwapBias:
-    """calc_vwap_bias: (close - VWAP) / VWAP, VWAP = amount*10/volume."""
+    """calc_vwap_bias: (close - VWAP) / VWAP, VWAP = amount / (volume * 100).
+
+    Session 26 修 (2026-04-24, reviewer PR #50 MED): 原 docstring "VWAP = amount*10/volume"
+    假设 amount=千元 (pre-Step 3-A); 重构后 DB 统一存元, 公式改为
+    `amount / (volume*100)` (calculators.py:342). test amount 全部 ×1000
+    (千元→元) 对齐新公式. test_vwap_rsrs_pipeline.py 同问题已在前 commit 修.
+    """
 
     def test_basic_calculation(self):
-        """VWAP = 1000*10/100 = 100, close=105, bias = 5/100 = 0.05."""
+        """VWAP = 1_000_000 / (100*100) = 100, close=105, bias = 5/100 = 0.05."""
         close = pd.Series([105.0])
-        amount = pd.Series([1000.0])   # 千元
-        volume = pd.Series([100.0])    # 手
+        amount = pd.Series([1_000_000.0])  # 元 (post-Step 3-A, 原 1000 千元)
+        volume = pd.Series([100.0])  # 手
         result = calc_vwap_bias(close, amount, volume, window=1)
         expected = 0.05
         assert abs(result.iloc[0] - expected) < 1e-6
@@ -20,7 +26,7 @@ class TestCalcVwapBias:
     def test_negative_bias(self):
         """close < VWAP → negative bias."""
         close = pd.Series([95.0])
-        amount = pd.Series([1000.0])
+        amount = pd.Series([1_000_000.0])  # 元, VWAP=100
         volume = pd.Series([100.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         expected = -0.05
@@ -29,7 +35,7 @@ class TestCalcVwapBias:
     def test_clip_upper(self):
         """Extreme positive bias clipped to 1.0."""
         close = pd.Series([300.0])
-        amount = pd.Series([1000.0])  # VWAP=100
+        amount = pd.Series([1_000_000.0])  # 元, VWAP=100
         volume = pd.Series([100.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         assert result.iloc[0] == 1.0
@@ -42,7 +48,7 @@ class TestCalcVwapBias:
         values stay in [-1, 1] range.
         """
         close = pd.Series([0.001])
-        amount = pd.Series([1000.0])  # VWAP=100
+        amount = pd.Series([1_000_000.0])  # 元, VWAP=100
         volume = pd.Series([100.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         assert result.iloc[0] >= -1.0
@@ -51,20 +57,19 @@ class TestCalcVwapBias:
     def test_zero_volume_nan(self):
         """volume=0 → NaN (no VWAP possible)."""
         close = pd.Series([100.0])
-        amount = pd.Series([1000.0])
+        amount = pd.Series([1_000_000.0])  # 元
         volume = pd.Series([0.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         assert pd.isna(result.iloc[0])
 
     def test_unit_conversion(self):
-        """Verify amount(千元)*10/volume(手) = 元/股.
+        """Verify Step 3-A unit: amount(元) / (volume(手) × 100) = 元/股.
 
-        amount=500千元 = 500,000元, volume=50手 = 5000股
-        VWAP = 500,000/5,000 = 100元/股
-        Using formula: 500*10/50 = 100 ✓
+        amount=500_000 元, volume=50 手=5000 股
+        VWAP = 500_000 / (50 × 100) = 100 元/股
         """
         close = pd.Series([110.0])
-        amount = pd.Series([500.0])
+        amount = pd.Series([500_000.0])  # 元 (原 500 千元)
         volume = pd.Series([50.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         vwap = 100.0
@@ -72,9 +77,10 @@ class TestCalcVwapBias:
         assert abs(result.iloc[0] - expected) < 1e-6
 
     def test_multiple_rows(self):
-        """Multiple data points."""
+        """Multiple data points, VWAP=100/105/95."""
         close = pd.Series([100.0, 105.0, 95.0])
-        amount = pd.Series([1000.0, 1050.0, 950.0])  # VWAP=100,105,95
+        # 元 (原 [1000, 1050, 950] 千元)
+        amount = pd.Series([1_000_000.0, 1_050_000.0, 950_000.0])
         volume = pd.Series([100.0, 100.0, 100.0])
         result = calc_vwap_bias(close, amount, volume, window=1)
         assert abs(result.iloc[0]) < 1e-6  # close == VWAP
