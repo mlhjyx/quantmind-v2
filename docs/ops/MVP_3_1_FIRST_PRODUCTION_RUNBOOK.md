@@ -1,7 +1,8 @@
 # MVP 3.1 Risk Framework 首次真生产触发 Runbook (2026-04-27 Monday)
 
 > **Session 33 交付 (2026-04-24)**: Monday 4-27 首次真生产触发 5 checkpoint 观察清单 + 钉钉/DB/Log 三源验证脚本.
-> **背景**: Session 28-30 merged 批 1+2+3 (PR #55-#61), Session 31 merged PR #64 Sunset monitor + PR #63 P0 CB column drift 修复, Session 32 merged PR #65-#68 (schtask wire + shadow prevention).
+> **Session 34 加固 (2026-04-25 02:00)**: MVP 3.2 批 4 multi-strategy wiring (PR #72) + Sunset monitor PG auth 修复 (PR #73) + Celery worker restart 02:08:07 载入新代码 + dry-run 全绿 (`status=ok, strategies_count=1, triggered=0`).
+> **背景**: Session 28-30 merged 批 1+2+3 (PR #55-#61), Session 31 merged PR #64 Sunset monitor + PR #63 P0 CB column drift 修复, Session 32 merged PR #65-#68 (schtask wire + shadow prevention), Session 33 merged PR #69-#72 (MVP 3.2 Strategy Framework 全 4 批), Session 34 merged PR #73 (Sunset PG auth).
 
 ---
 
@@ -56,6 +57,69 @@ Get-Content -Tail 30 D:\quantmind-v2\logs\monitor_mvp_3_1_sunset.log
 ### 异常处理
 - LastResult 非 0 → 查 log stderr → 根据 error 分诊
 - 钉钉发了 → check `notifications` 表 category='mvp_3_1_sunset_gate' 是否误 emit (Session 31 P2 dedup bug)
+
+---
+
+## MVP 3.2 批 4 payload schema (Session 33 PR #72, Session 34 worker restart 后生效)
+
+批 4 后 `risk_daily_check_task` + `intraday_risk_check_task` 返回结构变化 (多策略迭代).
+Session 34 dry-run 02:05 验证 (`--force-trading-day`) 实测 schema:
+
+### `risk_daily_check_task` (14:30) 返回 JSON
+```json
+{
+  "status": "ok",
+  "execution_mode": "live",
+  "strategies": [{
+    "strategy_id": "28fc37e5-2d32-4ada-92e0-41c11a5103d0",
+    "status": "ok",
+    "checked": 0,
+    "triggered": 0
+  }],
+  "strategies_count": 1,
+  "total_checked": 0,
+  "total_triggered": 0
+}
+```
+
+### `intraday_risk_check_task` (09:00-14:55 */5) 返回 JSON
+```json
+{
+  "status": "ok",
+  "execution_mode": "live",
+  "strategies": [{
+    "strategy_id": "28fc37e5-2d32-4ada-92e0-41c11a5103d0",
+    "status": "ok",
+    "prev_close_nav": 1012178.08,
+    "portfolio_nav": 1012178.08,
+    "positions_count": 0,
+    "triggered": 0,
+    "alerted": 0,
+    "dedup_skipped": 0,
+    "signals": []
+  }],
+  "strategies_count": 1,
+  "total_triggered": 0,
+  "total_alerted": 0,
+  "total_dedup_skipped": 0
+}
+```
+
+### Monday 观察时日志 grep 模式 (新)
+```bash
+# Celery log 抓 per-strategy 状态
+grep -E "strategies_count|total_triggered|strategy_id" D:\quantmind-v2\logs\celery-stdout.log
+
+# 预期 Monday:
+#   strategies_count: 1  (S1 only, S2 Tuesday+ 人工激活)
+#   total_triggered: 0   (除非真 -3% drop, 否则 0)
+#   strategies[0].strategy_id: 28fc37e5-...  (S1 UUID)
+```
+
+### Fail-safe 语义 (批 4)
+- DB 挂 / registry 异常 / get_live() empty → fallback `[S1MonthlyRanking()]`
+- 单 strategy 挂 → 其他 strategy 继续跑 (per-strategy isolation)
+- 全 strategy 挂 → raise retry (daily) / RuntimeError (intraday) 保 Celery max_retries 语义
 
 ---
 
