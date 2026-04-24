@@ -57,8 +57,13 @@ _SIGNAL_ENGINE_DIRECTION: dict[str, int] = {
     "ep_ratio": 1,
     "price_volume_corr_20": -1,
     "high_low_range_20": -1,
-    "mf_momentum_divergence": -1,  # INVALIDATED (IC=-2.27%)
-    "earnings_surprise_car": 1,
+    # Session 27 Task B 清理 (2026-04-24): 2 条 orphan (mf_momentum_divergence +
+    # earnings_surprise_car) 从 _HARDCODED_DIRECTIONS 删除. 原因:
+    #   - mf_momentum_divergence: INVALIDATED (IC=-2.27% 非 9.1%, failed_directions 已记)
+    #     + 已从 factor_registry DELETE (migration cleanup_orphan_factors_session27.sql)
+    #   - earnings_surprise_car: ghost factor (signal_engine.FACTOR_DIRECTION 有
+    #     direction 但无 calc_*), registry 已改 status=deprecated + pool=DEPRECATED
+    # _POOL_INVALIDATED 保留 mf_momentum_divergence (防未来 LLM 重名复用, 铁律 12).
     "price_level_factor": -1,
     "relative_volume_20": -1,
     "dv_ttm": 1,  # CORE (新加 2026-04-12)
@@ -81,8 +86,28 @@ _POOL_INVALIDATED: frozenset[str] = frozenset(
 )
 _POOL_DEPRECATED: frozenset[str] = frozenset(
     {
+        # Phase 6-F 废弃动量/波动系列 (CLAUDE.md §因子池状态):
         "momentum_5", "momentum_10", "momentum_60",
         "volatility_60", "turnover_std_20",
+        # Session 27 Task B 清理 (2026-04-24): factor_values 0 行 orphan, registry
+        # UPDATE status=deprecated + pool=DEPRECATED (migration
+        # cleanup_orphan_factors_session27.sql). 加入本 set 防 backfill 重跑
+        # 走 Layer2 hardcoded direction 路径将 pool 从 DEPRECATED revert 回 PASS.
+        # 注: mf_momentum_divergence 已 DELETE (类别 A INVALIDATED), 本 set 仍保留名字作
+        # 重命名防护 + _POOL_INVALIDATED 双重保险; earnings_surprise_car 类 ghost 无 calc;
+        # 8 个 fundamental factors (pead_q1+roe_delta+...) 有 calc 但 factor_set='core'
+        # 生产调度不含, 未来 Phase X 重启 fundamental pipeline 时从本 set 移除即可.
+        "mf_momentum_divergence",        # INVALIDATED ghost (类别 A, DELETE)
+        "earnings_surprise_car",         # ghost (signal_engine FACTOR_DIRECTION 有 dir 无 calc)
+        "pead_q1",                       # PEAD 有 calc (pead.py) 但无 daily pipeline
+        "eps_acceleration",              # FUNDAMENTAL_DELTA_META 有 meta + load_fundamental_pit_data 计算
+        "gross_margin_delta",            # 同上
+        "net_margin_delta",              # 同上
+        "revenue_growth_yoy",            # 同上
+        "roe_delta",                     # 同上
+        "debt_change",                   # 同上
+        "days_since_announcement",       # FUNDAMENTAL_TIME_META 有 meta + load_fundamental_pit_data 计算
+        "reporting_season_flag",         # 同上
     }
 )  # CLAUDE.md §因子池状态
 
