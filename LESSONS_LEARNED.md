@@ -1655,3 +1655,122 @@ def main() -> int:
 - 本 LL 条目 (LL-068)
 - PR #47 merge at `e094e39`
 - 候选铁律 43 (Session 27+ 再 1-2 次同类应用后固化)
+
+---
+
+## LL-069: Integration dry-run 是必要保险层 — mock 单测无法捕数据层/import-time drift (Session 31+32, 2026-04-24)
+
+### 触发事件 (2 次印证, 同周内)
+
+**事件 A: PR #63 CB adapter column drift (Session 31)**
+- MVP 3.1 批 3 PR #61 CircuitBreakerRule Hybrid adapter merged, `SELECT level FROM circuit_breaker_state`
+- 但 DDL 实际列名 `current_level` (非 `level`). 2 opus reviewer 漏审 (unit test 走 mock conn, 返 hardcoded dict 不触 SQL execute)
+- adapter 内部 `except Exception: return 0` silent 吞 UndefinedColumn → `prev_level` 永远返 0 → escalate 每日重复 emit + recovery 永 missed
+- **Sunset Gate 条件 B 被锁死** (L4 审批永不能触发 cb_recover event)
+- Session 31 dry-run 实测 (非单测) 捕获: integration conn 真 execute SQL → UndefinedColumn stacktrace
+- 修复 PR #63: SQL `level → current_level` + 窄化 except 铁律 33 合规 + 3 regression guards (文本锚定 + UndefinedColumn fail-loud + ConnectionError fail-loud)
+
+**事件 B: PR #67 pt_daily_summary platform shadow (Session 32)**
+- MVP "Phase 3 自动化" 2026-04-16 delivered `scripts/pt_daily_summary.py` + schtask 17:35
+- `sys.path.insert(0, str(BACKEND_DIR))` → `backend/platform/` shadow stdlib `platform`
+- sqlalchemy → pandas `platform.python_implementation()` circular → AttributeError → exit=1
+- **8 天 silent-fail**, schtask LastResult=1 循环, 无 alert, 无监控
+- 症状隐匿 3 重: (1) schtask LastResult 非零无 alert 链路 (2) PTAudit 同时段 17:35 掩盖"17:35 有东西跑"的观察 (3) script stderr 不推钉钉
+- Session 32 post-merge SCHEDULING_LAYOUT reconcile 主动实测 → dry-run 捕获 stacktrace → 根因
+- 修复 PR #67: `insert(0)` → `append + guard` (对齐 compute_ic_rolling/compute_daily_ic 已知好 pattern)
+
+### 教训核心
+
+**Mock 单测永远绿, 生产 integration 才见真章**. 2 个事件共性:
+- unit test 走 mock conn / 假 path → 不触 DB execute / 不触 import 链
+- 生产真启动 integration 路径 → SQL schema drift / sys.path order 触发真实 AttributeError
+
+### 对应铁律基线
+
+- **铁律 10b** 生产入口真启动验证 (已有): subprocess 从生产启动路径真启动一次, 捕 import-time + top-level 执行错
+- **LL-069 扩展**: 真启动验证不只是 import 能过, 还必须 **真走 1 次生产数据路径** (DB query + import chain 全跑通), 返 exit=0 + 产出 expected artifact (日报 / event row / alert)
+
+### 预防措施 (Session 32+ 落地)
+
+1. **schtask LastResult 监控**: 当前 schtask LastResult 非零**无 alert 链路** (事件 B 8 天未察觉的直接原因). 候选铁律 43 扩展项 (e): schtask 驱动 Python 脚本必 wrap 顶层 `sys.exit(code)` 外加 stderr + 调 PT_Watchdog-like 监控发钉钉. Session 33+ 考虑.
+2. **真启动 dry-run 作为 PR 硬门**: high-risk write-path PR (CB 状态机 / schtask 新脚本 / Platform DAL) reviewer 后 merge 前必补 1 次真启动 dry-run. PR #63/#67 都是 post-merge 发现, 若 pre-merge 补 dry-run 可更早拦截.
+3. **sys.path.insert(0, backend) 硬禁**: 候选铁律 44 — 所有生产 Python 脚本 `sys.path` 操作禁 `insert(0, backend_dir)`, 改 `append + guard` pattern. Session 32 PR #67+#68 已把所有 7 个 production scripts 迁移完成.
+
+### 数据支撑
+
+- PR #63 dry-run 捕 UndefinedColumn 时间: Session 31 2026-04-24 (PR #61 merged 同日)
+- PR #67 dry-run 捕 AttributeError 时间: Session 32 2026-04-24 (script delivered 2026-04-16, **8 天延迟**)
+- Mock 单测数量: PR #61 16 tests / PR #67 0 tests (script 纯脚本无单测), 都"绿"
+- 生产证据: PR #61 dry-run status=ok checked=0 实测 / PR #67 dry-run exit=0 NAV ¥1,012,178 真实日报产出
+
+### 持久化
+
+- 本 LL 条目 (LL-069)
+- PR #63 merge at `61ed678` + PR #67 merge at `6a777be`
+- Sprint state Session 31 + 32 均记
+- 候选铁律 43 扩展 (e) schtask 失败告警 + 候选铁律 44 sys.path.insert(0) 禁用 (Session 33+ 观察 1-2 次再应用后固化)
+
+---
+
+## LL-070: backend/platform/ 命名 shadow stdlib platform — sys.path.insert(0) 是 latent 地雷 (Session 32, 2026-04-24)
+
+### 具体 pattern
+
+**危险 pattern** (11 scripts 曾存在):
+```python
+BACKEND_DIR = PROJECT_ROOT / "backend"
+sys.path.insert(0, str(BACKEND_DIR))  # ← 把 backend 塞 sys.path 首位
+```
+
+**后果**: Python 按 sys.path 顺序找模块. `backend/` 首位 → `import platform` → 命中 `backend/platform/` (项目 Platform 包) 而非 stdlib `platform`. 若 `backend/platform/__init__.py` 又 transitively import pandas/sqlalchemy 会触发循环 import:
+```
+AttributeError: partially initialized module 'platform' has no attribute
+'python_implementation' (most likely due to a circular import)
+```
+
+### 为什么是 latent (8 天未爆)
+
+Shadow 只在**特定 import 链**触发:
+- `sqlalchemy.ext.asyncio` → `sqlalchemy/util/compat.py` → `import platform` → `platform.python_implementation()` (pandas 下游)
+- 普通 `psycopg2` direct 路径不触
+
+11 scripts 中仅 `pt_daily_summary.py` 路径命中 shadow (因其调 `from app.services.db import get_sync_conn` 带 sqlalchemy asyncio ext 链). 其余 10 scripts 同 pattern 但运气避开.
+
+### 安全 pattern (推荐)
+
+```python
+BACKEND_DIR = PROJECT_ROOT / "backend"
+# .venv/.pth 已把 backend 加入 sys.path. 不用 insert(0) 避免与 stdlib `platform`
+# 冲突 (铁律 10b shadow fix: backend/platform/ 会 shadow stdlib platform).
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
+```
+
+**关键变化**:
+- `insert(0, ...)` → `append(...)`: append 把 backend 放 sys.path 末尾, stdlib 优先
+- 加 `if ... not in sys.path` guard: 幂等, 防重复 import 重复 append
+
+### 已迁移 scripts (Session 32)
+
+- PR #67: `pt_daily_summary.py` (唯一 broken, 8 天 silent-fail 根因)
+- PR #68 批量预防: `factor_lifecycle_monitor.py` / `rolling_wf.py` / `ic_monitor.py` / `run_gp_pipeline.py` / `compute_factor_phase21.py` / `bayesian_slippage_calibration.py` (6 scripts)
+- 已有好 pattern 保持: `compute_ic_rolling.py` / `compute_daily_ic.py`
+
+### 不在 scope (天然 SAFE)
+
+4 scripts 用 `insert(0, scripts/) + append(backend)` 模式, backend 不在 sys.path 首位:
+- `run_paper_trading.py` / `factor_health_daily.py` / `fix_st_cleanup_20260414.py` / `compute_minute_features.py`
+
+研究脚本 `scripts/research/**` 按 CLAUDE.md 研究脚本豁免, 不做硬化.
+
+### 候选铁律 44 (Session 33+ 观察)
+
+"生产 Python 脚本 (schtask/Celery Beat 驱动) **禁止** `sys.path.insert(0, BACKEND_DIR)`, 必须 `append + guard`. 研究脚本豁免. 自动检查工具: 未来 CI 可加 ruff custom rule 或 pre-commit grep 扫描."
+
+Session 33+ 再 1 次同类事件 (若 scripts/research/ 迁 production) 即可固化铁律 44.
+
+### 持久化
+
+- 本 LL 条目 (LL-070)
+- PR #67 merge `6a777be` (pt_daily_summary fix) + PR #68 merge `e7ce25b` (6 scripts 预防)
+- 候选铁律 44 tracking
