@@ -46,8 +46,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import psycopg2
+
+# China timezone for local-date → UTC boundary conversion (database P1 fix)
+# adapter_live 是 CN 自然日 2026-04-24, 中国 00:00 CST = 前一日 16:00 UTC,
+# 若用 UTC midnight 作下界会漏 4-23T16:00-24:00 UTC 窗口的真事件 (8h 盲区).
+_CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -177,12 +183,18 @@ def check_condition_a(
     days_elapsed = (today - adapter_live).days
     days_satisfied = days_elapsed >= CONDITION_A_DAYS_THRESHOLD
 
+    # database P1 采纳: CST midnight → UTC (原裸 UTC midnight 漏 8h 盲区)
+    # database P3 采纳: triggered_at 替 created_at, 对齐既有 (rule_id, triggered_at DESC)
+    # 索引 ix_risk_event_rule_time, 避免 scan bloat 未来增长
+    lower_bound_utc = datetime.combine(
+        adapter_live, datetime.min.time(), tzinfo=_CHINA_TZ
+    ).astimezone(UTC)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT count(*), max(created_at) FROM risk_event_log
+            """SELECT count(*), max(triggered_at) FROM risk_event_log
                WHERE rule_id LIKE 'cb\\_%%' ESCAPE '\\'
-                 AND created_at >= %s""",
-            (datetime.combine(adapter_live, datetime.min.time(), tzinfo=UTC),),
+                 AND triggered_at >= %s""",
+            (lower_bound_utc,),
         )
         row = cur.fetchone()
         events_count = int(row[0]) if row else 0
@@ -233,9 +245,13 @@ def check_condition_b(conn: Any) -> ConditionResult:
         l4_approved_count = int(row[0]) if row else 0
         latest_approval = row[1] if row and row[1] else None
 
-        # B.2: cb_recover_l0 event count (任何 recovery 事件均计)
+        # B.2: cb_recover_l0 event count
+        # database P2-1 采纳 注释消歧义: 严格 L4→L0 完整 recovery 语义 (非任意 recovery).
+        # ADR-010 addendum 条件 B 要求 "L4 审批完整跑通" 即人工 approve 后完全恢复到
+        # normal state L0, 其他 cb_recover_l{1/2/3} (部分降级) 不计本条件 (属 A 范围).
+        # database P3 采纳: triggered_at 替 created_at 对齐 ix_risk_event_rule_time 索引
         cur.execute(
-            """SELECT count(*), max(created_at) FROM risk_event_log
+            """SELECT count(*), max(triggered_at) FROM risk_event_log
                WHERE rule_id = 'cb_recover_l0'"""
         )
         row = cur.fetchone()
@@ -289,8 +305,12 @@ def check_condition_c(conn: Any) -> ConditionResult:
     flag_enabled = False
     flag_exists = False
     with conn.cursor() as cur:
+        # database P2-2 采纳: MVP 1.2 DBFeatureFlag 过期守护 — removal_date <= NOW()
+        # 视为已移除, 即便 enabled=True 也不再生效. 防止过期 flag 错误激活批 3b.
         cur.execute(
-            "SELECT enabled FROM feature_flags WHERE name = %s",
+            """SELECT enabled FROM feature_flags
+               WHERE name = %s
+                 AND (removal_date IS NULL OR removal_date > NOW())""",
             (WAVE_4_FEATURE_FLAG,),
         )
         row = cur.fetchone()
@@ -384,7 +404,13 @@ def record_dingtalk_alert(
     content: str,
     category: str = DINGTALK_CATEGORY,
 ) -> None:
-    """写 notifications 表 (钉钉发送单独处理, 这里仅 audit trail)."""
+    """写 notifications 表 (钉钉发送单独处理, 这里仅 audit trail).
+
+    **铁律 32 合规**: 本函数 *不* commit, 事务边界由调用方 (main) 管理, 确保
+    should_send_dingtalk 检查 + INSERT + commit 原子化一个事务, 消除
+    check-then-insert TOCTOU (两 process 同时首次触发时只一个真 INSERT).
+    """
+    _ = report  # reserved: 未来可 序列化 report.to_dict() 进 detail 列
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO notifications
@@ -392,7 +418,6 @@ def record_dingtalk_alert(
                VALUES (%s, %s, %s, %s, %s, %s, %s)""",
             ("P1", category, "platform", title, content, False, False),
         )
-    conn.commit()
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────
@@ -433,33 +458,44 @@ def main() -> int:
     logger.info("监控启动")
 
     try:
+        # code P2 采纳 (铁律 32 + TOCTOU 消): build_report / should_send / record_alert
+        # 同一 conn 同一事务, 原子性避免 check-then-insert window. 连接管理统一
+        # explicit try/finally close (P3 pattern 统一, 不用 psycopg2 with 因其 __exit__
+        # 只 commit/rollback 不 close, 对齐 CircuitBreakerRule PR #63 fix pattern).
         conn = _connect_db()
         try:
             report = build_report(conn)
+
+            if args.json:
+                print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                print(format_text_report(report))
+
+            logger.info(
+                "监控完成: any_satisfied=%s days_live=%d",
+                report.any_satisfied,
+                report.days_since_activation,
+            )
+
+            # 钉钉告警 (首次条件达成时, 同一 conn 原子去重 + insert)
+            if (
+                not args.no_dingtalk
+                and report.any_satisfied
+                and should_send_dingtalk(conn, report)
+            ):
+                title = (
+                    f"MVP 3.1 Sunset Gate 可启动批 3b "
+                    f"({report.days_since_activation}日)"
+                )
+                content = format_text_report(report)
+                record_dingtalk_alert(conn, report, title, content)
+                conn.commit()  # 铁律 32 caller-owned commit
+                logger.warning(
+                    "告警已写 notifications 表 "
+                    "(钉钉 webhook 发送由下游 notifier 异步处理)"
+                )
         finally:
             conn.close()
-
-        if args.json:
-            print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
-        else:
-            print(format_text_report(report))
-
-        logger.info(
-            "监控完成: any_satisfied=%s days_live=%d",
-            report.any_satisfied,
-            report.days_since_activation,
-        )
-
-        # 钉钉告警 (首次条件达成时)
-        if not args.no_dingtalk and report.any_satisfied:
-            with _connect_db() as conn:
-                if should_send_dingtalk(conn, report):
-                    title = f"MVP 3.1 Sunset Gate 可启动批 3b ({report.days_since_activation}日)"
-                    content = format_text_report(report)
-                    record_dingtalk_alert(conn, report, title, content)
-                    logger.warning(
-                        "告警已写 notifications 表 (钉钉 webhook 发送由下游 notifier 异步处理)"
-                    )
 
         # exit code: 0=未到, 1=可启动批 3b, 2=error
         return 1 if report.any_satisfied else 0
