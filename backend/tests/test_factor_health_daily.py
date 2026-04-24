@@ -230,8 +230,16 @@ class TestFactorHealthIntegration:
             assert result["overall_status"] in ("healthy", "warning", "critical")
             # 确认5个因子都有检查结果
             assert len(result["factors"]) >= 1
-        # 告警被 mock 拦截 (或未触发, 视 2026-03-19 数据而定), 不会真发钉钉
-        _ = mock_send_alert  # 存在即可, overall=warning 时会调一次
+            # reviewer P0-1 采纳: 真 assertion 防 mock 路径失效 silent bypass.
+            # overall=warning/critical → mock 必被调 (send_alert 是触发路径唯一通道).
+            # healthy → mock 不被调.
+            if result["overall_status"] in ("warning", "critical"):
+                assert mock_send_alert.called, (
+                    "overall=warning/critical 但 send_alert mock 未捕获调用 — "
+                    "mock path 失效, 钉钉可能被真发"
+                )
+            else:
+                mock_send_alert.assert_not_called()
 
     @patch("factor_health_daily.send_alert")
     def test_db_write_scheduler_task_log(self, mock_send_alert) -> None:
@@ -268,7 +276,11 @@ class TestFactorHealthIntegration:
 
         # 运行非dry-run（会真实写入 scheduler_task_log; send_alert 已 mock, 不发钉钉）
         result = run_factor_health_daily(date(2026, 3, 19), dry_run=False)
-        _ = mock_send_alert
+        # reviewer P0-1 同理: 条件性 mock assertion
+        if result.get("overall_status") in ("warning", "critical"):
+            assert mock_send_alert.called, "mock path 失效"
+        else:
+            mock_send_alert.assert_not_called()
 
         if "factors" not in result:
             pytest.skip("运行未成功")

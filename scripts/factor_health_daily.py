@@ -525,8 +525,9 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
         # ── 发送钉钉告警（warning/critical时）──
         if overall in ("warning", "critical"):
             alert_level = "P0" if overall == "critical" else "P1"
-            # 构建告警摘要 (2 源合并: 日频 status + 衰减 level)
-            problem_factors = []
+            # 构建告警摘要 (2 源合并 + 去重: reviewer P1-1 采纳)
+            problem_factors: list[str] = []
+            seen_factors: set[str] = set()
             # 源 1: FactorAnalyzer.daily_health_check 逐因子 status
             for fname in ACTIVE_FACTORS:
                 fh = health["factors"].get(fname, {})
@@ -535,13 +536,32 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                     daily_ic = fh.get("daily_ic")
                     ic_str = f"{daily_ic:.4f}" if daily_ic is not None else "N/A"
                     problem_factors.append(f"{fname}({fstatus}, IC={ic_str})")
-            # 源 2: check_all_factors_decay L1/L2/L3 (原漏, 导致 overall=warning 但"异常因子"空)
+                    seen_factors.add(fname)
+            # 源 2: check_all_factors_decay L1/L2/L3 (原漏, reviewer P1-2: ic_ma20 格式化)
+            # reviewer P3-2: DecayLevel enum 比 hardcoded string (防未来 value 漂移)
+            decay_values = {DecayLevel.L1.value, DecayLevel.L2.value, DecayLevel.L3.value}
             for dr_dict in health.get("decay_results", []):
-                if dr_dict.get("decay_level") in ("L1", "L2", "L3"):
-                    problem_factors.append(
-                        f"{dr_dict['factor_name']}(decay_{dr_dict['decay_level']}, "
-                        f"MA20={dr_dict.get('ic_ma20')})"
-                    )
+                if dr_dict.get("decay_level") not in decay_values:
+                    continue
+                fname = dr_dict["factor_name"]
+                if fname in seen_factors:
+                    continue  # 已由源 1 记录, 避免重复
+                ic_ma20_val = dr_dict.get("ic_ma20")
+                ic_ma20_str = f"{ic_ma20_val:.4f}" if ic_ma20_val is not None else "N/A"
+                problem_factors.append(
+                    f"{fname}(decay_{dr_dict['decay_level']}, MA20={ic_ma20_str})"
+                )
+                seen_factors.add(fname)
+            # reviewer P3-1 采纳: fallback 命中 → 逻辑 gap, logger.error 可追溯
+            if not problem_factors:
+                logger.error(
+                    "[FactorHealth] overall=%s 但 problem_factors 空 — "
+                    "源 1 (daily status) + 源 2 (decay L1/L2/L3) 均未产出, 逻辑 gap 待排查. "
+                    "factors=%s, decay_results=%s",
+                    overall,
+                    list(health.get("factors", {}).keys()),
+                    [d.get("factor_name") for d in health.get("decay_results", [])],
+                )
             alert_msg = (
                 f"因子健康状态: {overall.upper()}\n"
                 f"异常因子: {', '.join(problem_factors) if problem_factors else '(无具体列表)'}\n"
