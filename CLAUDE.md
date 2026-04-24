@@ -466,6 +466,30 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - **Claude Code v4.7 默认行为已配合**: AI 调 `git push origin main` 默认被 hardcoded git safety 拒绝, 需用户手动 push 或开 PR. 本铁律是把 default 升级为显式分类制度.
     违反→AI Auto mode 凭印象改代码 + 直 push 累积事故. 本铁律由 Session 6 开场 "2 ahead 腐烂数字" 事件 (LL-055) 触发, 与 LL-051 (开源优先) / LL-054 (PT 状态实测) 同源 — "AI 高速产出 + 单人无审查" 的 governance gap.
 
+43. **schtask Python 脚本 fail-loud 硬化标准** — 全局原则: 所有**由 Task Scheduler 触发** (非交互式后台定时) 的 Python 脚本必须符合 4 项清单, 防 DB 慢 query / cold-cache / Windows 文件锁 / silent swallow 导致 schtask hang 无告警. 本铁律由 Session 26 LL-068 "DataQualityCheck 4-22/4-23 连 2 天 hang" 三维根因触发, 经 5 个生产 script (data_quality_check / pt_watchdog / compute_daily_ic / compute_ic_rolling / fast_ic_recompute) 实战验证后固化.
+
+    **4 项硬化清单 (每个 schtask script 必具)**:
+    - **(a) PG `statement_timeout` 硬超时**: `psycopg2.connect(..., options="-c statement_timeout=60000")` 或 conn 获取后立即 `SET statement_timeout = %s` (参数化, 铁律 33 fail-loud). 值: daily 增量脚本 60s, 12年全量批量脚本 5min (300_000ms). 默认 `statement_timeout=0` 无上限, query hang 只能被 schtask `ExecutionTimeLimit` kill.
+    - **(b) `logging.FileHandler(..., delay=True)`**: Windows 进程 kill 后文件锁延迟释放, 下一 process FileHandler open 可 silent 失败 0-log (Session 26 4-23 DataQualityCheck 0-log 根因). `delay=True` lazy open 降低 zombie 锁冲突率.
+    - **(c) `main()` 首行 boot stderr probe**: `print(f"[script] boot {datetime.now().isoformat()} pid={os.getpid()}", flush=True, file=sys.stderr)`. 即便 logger 初始化失败, schtask stderr 仍有启动证据. `os` / `datetime` 必 module-top import (不在 `main()` 局部, reviewer 采纳).
+    - **(d) `main()` 顶层 try/except → stderr + exit(2)**: `except Exception as e: print(f"[script] FATAL: ...", file=sys.stderr); traceback.print_exc(); ...; return 2`. schtask LastResult 非零触发 schtask 告警链 + 钉钉通知. `contextlib.suppress(Exception)` 包 logger.critical 兜底 (铁律 33-d silent_ok).
+
+    **合规 script 清单** (Session 26 末):
+    - `scripts/data_quality_check.py` (PR #47)
+    - `scripts/pt_watchdog.py` (PR #49)
+    - `scripts/compute_daily_ic.py` (PR #49)
+    - `scripts/compute_ic_rolling.py` (PR #51)
+    - `scripts/fast_ic_recompute.py` (PR #51)
+
+    **未合规 candidates** (Session 27+ 陆续迁): `scripts/pull_moneyflow.py`, `scripts/pull_klines.py`, `scripts/factor_lifecycle_monitor.py`.
+
+    **反例** (不适用):
+    - 交互式 CLI (一次性 ad-hoc run, 有人看 stderr)
+    - 内部 helper module (非 schtask 入口, main() 由外部驱动)
+    - 非 DB 脚本 (纯 file 处理, 无 conn timeout 需求)
+
+    违反→schtask hang 无告警, 真生产事故被掩盖 (Session 26 LL-068 事件 2 天滞后掩盖). 本铁律是对铁律 33 (fail-loud) 在 schtask 场景的具体化.
+
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
