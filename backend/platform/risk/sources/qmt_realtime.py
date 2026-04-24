@@ -49,9 +49,11 @@ class QMTPositionSource(PositionSource):
 
         shares_dict = self._reader.get_positions()
         if not shares_dict:
-            # 区分"空仓" vs "Redis 读失败": get_positions 失败内部 log + return {}.
-            # 两场景在上层都需告警 + fallback. 空仓 rare (PT 全清后), fallback 读 DB 同样应空.
-            raise PositionSourceError("QMT Redis portfolio:current returned empty dict")
+            # reviewer P1-1 采纳: 区分"合法空仓" vs "Redis 读失败".
+            # is_connected=True 已确认 QMT Data Service 正常, 此时空 dict = 真空仓
+            # (PT 全清 / 新 strategy 未建仓), 返 [] 非 raise. 避免合法状态炸调用方.
+            # Redis 断连由 is_connected() 捕获在前.
+            return []
 
         codes = list(shares_dict.keys())
         with self._conn_factory() as conn:

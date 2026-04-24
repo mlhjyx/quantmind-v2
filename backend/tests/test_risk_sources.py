@@ -81,15 +81,15 @@ class TestQMTPositionSource:
         with pytest.raises(PositionSourceError, match="disconnected"):
             source.load(strategy_id="x", execution_mode="paper")
 
-    def test_empty_portfolio_raises(self):
-        """get_positions 返 {} (Redis 读失败内部吞成 {}) → raise."""
+    def test_empty_portfolio_returns_empty_list(self):
+        """reviewer P1-1 采纳: is_connected=True + 空 dict = 合法空仓, 返 [] 非 raise."""
         reader = MagicMock()
         reader.is_connected.return_value = True
         reader.get_positions.return_value = {}
 
         source = QMTPositionSource(reader=reader, conn_factory=lambda: _mock_conn_with_rows([]))
-        with pytest.raises(PositionSourceError, match="empty dict"):
-            source.load(strategy_id="x", execution_mode="paper")
+        positions = source.load(strategy_id="x", execution_mode="paper")
+        assert positions == []
 
     def test_success_returns_enriched_positions(self):
         reader = MagicMock()

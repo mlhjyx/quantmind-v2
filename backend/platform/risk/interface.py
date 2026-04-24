@@ -50,7 +50,7 @@ class RiskContext:
     """
 
     strategy_id: str
-    execution_mode: str
+    execution_mode: Literal["paper", "live"]  # reviewer P3-2 采纳: mypy 提前捕错值
     timestamp: datetime
     positions: tuple[Position, ...]
     portfolio_nav: float
@@ -128,6 +128,25 @@ class RiskRule(ABC):
     rule_id: str
     severity: Severity
     action: Literal["sell", "alert_only", "bypass"]
+
+    def root_rule_id_for(self, triggered_rule_id: str) -> str:
+        """Declare ownership of a triggered_rule_id.
+
+        reviewer P1-3 采纳: 原实现把 "pms_l1→pms" 映射硬编码在 engine._root_rule_id
+        函数, 批 2/3 每加新规则都需改中心函数. 改用方法可被子类覆盖, 扩展点属于
+        Rule 本身而非 Engine.
+
+        Semantic (v2, fixes reviewer fix edge case):
+          - Return `self.rule_id` if this rule owns (produces) the triggered_rule_id.
+          - Return `triggered_rule_id` unchanged (passthrough) if NOT owned.
+        _root_rule_id_via_rules looks for `transformed != triggered_id AND
+        transformed == rule.rule_id` to identify ownership (not just equality,
+        which would match every rule due to default passthrough).
+
+        默认实现 passthrough (rule 不声明拥有 triggered_id). 子类 PMSRule 覆盖
+        返 "pms" 当 triggered_id 符合 pms_l{N} pattern, 否则 passthrough.
+        """
+        return triggered_rule_id
 
     @abstractmethod
     def evaluate(self, context: RiskContext) -> list[RuleResult]:

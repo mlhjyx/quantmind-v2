@@ -123,8 +123,12 @@ class PlatformRiskEngine:
 
     @property
     def registered_rules(self) -> list[str]:
-        """当前已注册 rule_id 列表 (only 测试用, 不保证顺序稳定)."""
+        """当前已注册 rule_id 列表 (按注册顺序, Python 3.7+ dict 保序)."""
         return list(self._rules.keys())
+
+    def _resolve_rule_for(self, triggered_rule_id: str) -> RiskRule | None:
+        """根据 RuleResult.rule_id 反查 root RiskRule (delegate _root_rule_id_via_rules)."""
+        return _root_rule_id_via_rules(triggered_rule_id, self._rules)
 
     # ---------- Context 构建 ----------
 
@@ -207,12 +211,13 @@ class PlatformRiskEngine:
         return all_results
 
     def execute(self, results: list[RuleResult], context: RiskContext) -> None:
-        """分发 action: sell/alert_only/bypass + log + notify."""
+        """分发 action: sell/alert_only/bypass + log + notify.
+
+        reviewer P1-3 采纳: `_root_rule_id` hardcoded pms_l 反查改为 rule 层方法.
+        """
         for result in results:
-            rule = self._rules.get(_root_rule_id(result.rule_id))
+            rule = self._resolve_rule_for(result.rule_id)
             if rule is None:
-                # 例: RuleResult.rule_id="pms_l1" 基础规则是 "pms"
-                # 找不到 root 则降级 warning, 不阻塞其他 result
                 logger.warning(
                     "[risk-engine] RuleResult.rule_id=%s root rule not found, skipping",
                     result.rule_id,
@@ -282,6 +287,9 @@ class PlatformRiskEngine:
             "metrics": result.metrics,
         }
 
+        # reviewer P0-1 采纳: 删 explicit conn.commit(). 依赖 psycopg2 `with conn:`
+        # context manager __exit__ 正常退出时 auto-commit, 异常时 rollback. 对齐
+        # knowledge/registry.py 模式, 事务边界由 conn_factory 契约持有方管理.
         try:
             with self._conn_factory() as conn, conn.cursor() as cur:
                 cur.execute(
@@ -302,7 +310,6 @@ class PlatformRiskEngine:
                         json.dumps(action_result, default=str),
                     ),
                 )
-                conn.commit()
         except Exception as e:  # noqa: BLE001 — log 失败不阻塞主路径
             logger.error(
                 "[risk-engine] risk_event_log INSERT failed rule=%s: %s: %s",
@@ -328,16 +335,24 @@ class PlatformRiskEngine:
         self._notifier.send(title=title, text=text, severity=rule.severity.value)
 
 
-def _root_rule_id(triggered_rule_id: str) -> str:
-    """从 RuleResult.rule_id 反推 root RiskRule.rule_id.
+# reviewer P1-3 采纳: module-level `_root_rule_id` hardcoded pms_l 反查已废.
+# 新设计: RiskRule.root_rule_id_for 方法 + _root_rule_id_via_rules 枚举调度.
+def _root_rule_id_via_rules(
+    triggered_rule_id: str, rules: dict[str, RiskRule]
+) -> RiskRule | None:
+    """遍历注册 rules 寻找 triggered_rule_id 的 root rule.
 
-    约定: PMSRule.rule_id="pms", 触发时 RuleResult.rule_id="pms_l1"/"pms_l2"/"pms_l3".
-    其他规则 rule_id 与 RuleResult.rule_id 一致 (如 "intraday_portfolio_drop_5pct").
-
-    算法: 找 "_" 分隔第一段, 若匹配已注册则用, 否则 fallback 用完整 id.
-    (未来扩展更严格的 rule_id 映射需 rule base class 增字段.)
+    算法 (v2, fixes ownership edge case):
+        1. 直接 hit: triggered_rule_id ∈ rules → 该 rule
+        2. 反查: 逐个 rule 调 `transformed = rule.root_rule_id_for(triggered_id)`;
+           ownership 条件: transformed != triggered_id AND transformed == rule.rule_id.
+           (默认 passthrough 返 triggered_id 不变, 不会被误判为 owner.)
+        3. 都不中: None (execute 会 warning skip)
     """
-    # Special case: pms_l{N} → pms
-    if triggered_rule_id.startswith("pms_l") and triggered_rule_id[5:].isdigit():
-        return "pms"
-    return triggered_rule_id
+    if triggered_rule_id in rules:
+        return rules[triggered_rule_id]
+    for rule in rules.values():
+        transformed = rule.root_rule_id_for(triggered_rule_id)
+        if transformed != triggered_rule_id and transformed == rule.rule_id:
+            return rule
+    return None

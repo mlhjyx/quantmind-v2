@@ -30,6 +30,10 @@ class PriceReader(Protocol):
 def load_entry_prices(conn, strategy_id: str, execution_mode: str, codes: list[str]) -> dict[str, float]:
     """从 trade_log 加权平均买入成本.
 
+    reviewer P1-2 采纳: 过滤"最近一次卖出之后的买入" (与 load_peak_prices entry_date
+    语义对齐). 原实现加全历史 buy 导致场景错: 股 A 4-01 买 100 / 4-10 卖 100 / 4-15
+    重买 100 → 加权 entry_price 吃入 4-01 的旧价, 使 unrealized_pnl 虚高, PMS 误卖.
+
     Args:
         conn: psycopg2 connection (调用方管理事务, 本函数不 commit).
         strategy_id: 策略 UUID.
@@ -48,8 +52,13 @@ def load_entry_prices(conn, strategy_id: str, execution_mode: str, codes: list[s
                 """SELECT fill_price, quantity FROM trade_log
                 WHERE code = %s AND strategy_id = %s
                   AND direction = 'buy' AND execution_mode = %s
+                  AND trade_date >= (
+                    SELECT COALESCE(MAX(trade_date), '1970-01-01') FROM trade_log
+                    WHERE code = %s AND strategy_id = %s
+                      AND direction = 'sell' AND execution_mode = %s
+                  )
                 ORDER BY trade_date DESC""",
-                (code, strategy_id, execution_mode),
+                (code, strategy_id, execution_mode, code, strategy_id, execution_mode),
             )
             buys = cur.fetchall()
             if not buys:
