@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 from backend.platform._types import Signal
@@ -106,16 +106,20 @@ class S2PEADEvent(Strategy):
     """
 
     # ─── Class attrs (required by Strategy ABC) ─────────────────
-    strategy_id = str(_S2_STRATEGY_UUID)
-    name = "s2_pead_event"
-    factor_pool: list[str] = []  # 不依赖 factor_registry 因子, 直接消费 announcements
-    rebalance_freq = RebalanceFreq.EVENT
-    status = StrategyStatus.DRY_RUN
-    description = (
+    # reviewer LOW (PR #70): ClassVar 显式声明防子类/instance shadow, 避免 class-level
+    # mutable default 陷阱 (若未来 append 会污染所有 instance).
+    strategy_id: ClassVar[str] = str(_S2_STRATEGY_UUID)
+    name: ClassVar[str] = "s2_pead_event"
+    # 用 tuple (immutable) 而非 list 防误改; register() 时转 list 兼容 JSONB
+    factor_pool: ClassVar[list[str]] = []  # 不依赖 factor_registry 因子, 直接消费 announcements
+    rebalance_freq: ClassVar[RebalanceFreq] = RebalanceFreq.EVENT
+    status: ClassVar[StrategyStatus] = StrategyStatus.DRY_RUN
+    description: ClassVar[str] = (
         "PEAD Event-driven Strategy — f_ann_date+1 买入 Top-5 eps_surprise_pct>=Q threshold, "
         "持仓 30 日 sell. DRY_RUN 默认, 7 日观察后手工 update_status 升 LIVE."
     )
-    config: dict[str, Any] = {}
+    # 重命名为 default_config 避免与 __init__ 形参 config 混淆 (reviewer LOW)
+    default_config: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, config: S2PEADConfig | None = None) -> None:
         self._config = config or S2PEADConfig()
@@ -186,38 +190,55 @@ class S2PEADEvent(Strategy):
             return signals
 
         # Step 3: Filter + clip + sort candidates
-        filtered = [
-            c for c in candidates
-            if c.get("code") in ctx.universe  # 过滤 BJ/ST/停牌 (已在 universe)
-            and c.get("code") not in current_positions  # 已持仓 skip 避免重复
-            and c.get("eps_surprise_pct") is not None
-            and float(c["eps_surprise_pct"]) >= self._config.eps_surprise_threshold
-        ]
-        # Clip + sort desc
-        for c in filtered:
-            c["eps_surprise_pct_clipped"] = min(
-                float(c["eps_surprise_pct"]), self._config.eps_surprise_cap
-            )
-        filtered.sort(key=lambda c: c["eps_surprise_pct_clipped"], reverse=True)
+        # reviewer LOW (PR #70): universe → set for O(1) lookup (scale-safe)
+        universe_set = set(ctx.universe)
+
+        # reviewer MEDIUM (PR #70): 不修改 caller 的 dict, 用新 list of tuples
+        # (code, raw_pct, clipped_pct, trigger_date). float() 失败 per-candidate skip
+        # 避免整 generate_signals crash (铁律 33 fail-safe per candidate).
+        enriched: list[tuple[str, float, float, Any]] = []
+        for c in candidates:
+            code = c.get("code")
+            if code is None or code not in universe_set or code in current_positions:
+                continue
+            raw_val = c.get("eps_surprise_pct")
+            if raw_val is None:
+                continue
+            try:
+                raw_pct = float(raw_val)
+            except (ValueError, TypeError):
+                _logger.warning(
+                    "S2 skip candidate code=%s: eps_surprise_pct non-numeric (%r)",
+                    code,
+                    raw_val,
+                )
+                continue
+            if raw_pct < self._config.eps_surprise_threshold:
+                continue
+            clipped = min(raw_pct, self._config.eps_surprise_cap)
+            enriched.append((code, raw_pct, clipped, c.get("trigger_date", ctx.trade_date)))
+
+        # Sort desc by clipped score (stable sort preserves input order for ties)
+        enriched.sort(key=lambda t: t[2], reverse=True)
 
         # Step 4: Top-N 取新建仓 (受 available_slots 限制)
-        picks = filtered[:new_buy_slots]
+        picks = enriched[:new_buy_slots]
 
         # Step 5: 等权分配 target_weight = 1 / max_concurrent_positions (稳定每股敞口)
         weight_per_position = 1.0 / self._config.max_concurrent_positions
-        for c in picks:
+        for code, raw_pct, clipped, trigger_date in picks:
             signals.append(
                 Signal(
                     strategy_id=self.strategy_id,
-                    code=c["code"],
+                    code=code,
                     target_weight=weight_per_position,
-                    score=c["eps_surprise_pct_clipped"],
+                    score=clipped,
                     trade_date=ctx.trade_date,
                     metadata={
                         "action": "buy_pead",
-                        "eps_surprise_pct_raw": float(c["eps_surprise_pct"]),
-                        "eps_surprise_pct_clipped": c["eps_surprise_pct_clipped"],
-                        "trigger_date": str(c.get("trigger_date", ctx.trade_date)),
+                        "eps_surprise_pct_raw": raw_pct,
+                        "eps_surprise_pct_clipped": clipped,
+                        "trigger_date": str(trigger_date),
                     },
                 )
             )

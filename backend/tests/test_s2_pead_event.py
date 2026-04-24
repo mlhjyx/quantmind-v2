@@ -348,6 +348,39 @@ def test_validate_signals_filters_buy_not_in_universe():
     assert validated == [buy_valid]
 
 
+# ─── Fail-safe per candidate: non-numeric eps_surprise_pct ───────────
+
+def test_non_numeric_eps_surprise_pct_skipped_per_candidate():
+    """reviewer MEDIUM (PR #70) fix: 坏数据不 crash 整个 generate_signals."""
+    s2 = S2PEADEvent()
+    candidates = [
+        {"code": "600001.SH", "eps_surprise_pct": "not-a-number"},  # 坏数据
+        {"code": "600002.SH", "eps_surprise_pct": 0.5},  # 正常
+    ]
+    ctx = _mk_ctx(
+        universe=["600001.SH", "600002.SH"],
+        pead_candidates=candidates,
+    )
+    signals = s2.generate_signals(ctx)
+    # 只有 1 个 signal (坏数据 silent skip + log warning, 好数据正常产出)
+    assert len(signals) == 1
+    assert signals[0].code == "600002.SH"
+
+
+def test_candidate_dict_not_mutated_by_generate_signals():
+    """reviewer MEDIUM (PR #70) fix: caller's dict 不被 side-effect 塞 key."""
+    s2 = S2PEADEvent()
+    candidates = [
+        {"code": "600519.SH", "eps_surprise_pct": 458.0},
+    ]
+    # Snapshot 原 keys
+    original_keys = set(candidates[0].keys())
+    ctx = _mk_ctx(universe=["600519.SH"], pead_candidates=candidates)
+    s2.generate_signals(ctx)
+    # 原 dict 不应被塞 'eps_surprise_pct_clipped' 或其他 new key
+    assert set(candidates[0].keys()) == original_keys
+
+
 # ─── _find_expired_positions edge cases ───────────────────────────────
 
 def test_find_expired_missing_holding_days_treats_as_zero():
