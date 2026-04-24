@@ -17,7 +17,6 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
 """
 
 import argparse
-import contextlib
 import os
 import sys
 import time
@@ -252,7 +251,9 @@ def _check_trading_day_or_skip() -> bool:
     """Return True if A-stock today is trading day (or unknown → proceed).
 
     铁律 33-d silent_ok: trading_calendar 缺失/连接失败时 degrade 为无差别拉取,
-    后续 _run() 若真遇 DB 故障会 raise 由 main() 顶层兜底.
+    后续 _run() 若真遇 DB 故障会 raise 由 main() 顶层兜底. Reviewer P2 采纳:
+    异常 path 加 stderr 诊断 log, print-only 脚本的 logger.warning 等价物 — 避免
+    DB outage silently swallowed 使 FATAL 误归因为下游错误.
     """
     try:
         conn = _get_sync_conn()
@@ -269,131 +270,142 @@ def _check_trading_day_or_skip() -> bool:
             conn.close()
         # row=None → unknown (fail-open, proceed), row[0]=False → skip
         return row is None or bool(row[0])
-    except Exception:
-        # silent_ok: 见 docstring (铁律 33-d).
+    except Exception as e:
+        # silent_ok: trading_calendar 不可用时 degrade 为无差别拉取 (铁律 33-d).
+        # stderr 诊断痕迹便于事后 root cause.
+        print(
+            f"[pull_moneyflow] trading_calendar check failed, proceeding: "
+            f"{type(e).__name__}: {e}",
+            file=sys.stderr,
+            flush=True,
+        )
         return True
 
 
-def _run() -> int:
-    """主流程 (铁律 43 pattern: 顶层 try/except 由 main 包裹)."""
-    parser = argparse.ArgumentParser(description="拉取moneyflow数据")
-    parser.add_argument("--start", type=str, default=None, help="起始日期YYYYMMDD")
-    parser.add_argument("--end", type=str, default=DEFAULT_END, help="结束日期YYYYMMDD")
-    parser.add_argument("--verify", action="store_true", help="仅验证")
-    parser.add_argument("--recent", action="store_true", help="仅拉最近1个月")
-    args = parser.parse_args()
+def _run(args: argparse.Namespace) -> int:
+    """主流程 (铁律 43 pattern + reviewer P2 采纳: 接 parsed args, main 负责 parse).
 
+    single try/except/finally 保证 conn close (reviewer P1 采纳: 原 3 处 close
+    happy-path 异常时 leak). 顶层 try/except 由 main 包裹.
+    """
     conn = _get_sync_conn()
     _apply_statement_timeout(conn)
+    try:
+        if args.verify:
+            verify(conn)
+            return 0
 
-    if args.verify:
-        verify(conn)
-        conn.close()
-        return 0
+        # 添加列注释
+        add_column_comments(conn)
 
-    # 添加列注释
-    add_column_comments(conn)
-
-    # 确定起始日期
-    if args.recent:
-        start_date = (date.today() - timedelta(days=35)).strftime("%Y%m%d")
-        end_date = args.end
-        print(f"[模式] 仅拉最近1个月: {start_date} ~ {end_date}")
-    elif args.start:
-        start_date = args.start
-        end_date = args.end
-    else:
-        # 断点续传
-        max_date = get_max_trade_date(conn)
-        if max_date:
-            # 从max_date的下一天开始
-            next_day = datetime.strptime(max_date, "%Y%m%d") + timedelta(days=1)
-            start_date = next_day.strftime("%Y%m%d")
-            print(f"[断点续传] DB最新日期={max_date}, 从{start_date}开始")
+        # 确定起始日期
+        if args.recent:
+            start_date = (date.today() - timedelta(days=35)).strftime("%Y%m%d")
+            end_date = args.end
+            print(f"[模式] 仅拉最近1个月: {start_date} ~ {end_date}")
+        elif args.start:
+            start_date = args.start
+            end_date = args.end
         else:
-            start_date = DEFAULT_START
-        end_date = args.end
+            # 断点续传
+            max_date = get_max_trade_date(conn)
+            if max_date:
+                # 从max_date的下一天开始
+                next_day = datetime.strptime(max_date, "%Y%m%d") + timedelta(days=1)
+                start_date = next_day.strftime("%Y%m%d")
+                print(f"[断点续传] DB最新日期={max_date}, 从{start_date}开始")
+            else:
+                start_date = DEFAULT_START
+            end_date = args.end
 
-    if start_date > end_date:
-        print(f"[完成] 起始日期{start_date} > 结束日期{end_date}，无需拉取")
-        verify(conn)
-        conn.close()
-        return 0
+        if start_date > end_date:
+            print(f"[完成] 起始日期{start_date} > 结束日期{end_date}，无需拉取")
+            verify(conn)
+            return 0
 
-    # 获取交易日列表
-    print(f"[准备] 获取交易日历 {start_date} ~ {end_date}")
-    trading_dates = get_trading_dates(start_date, end_date)
-    print(f"[准备] 共 {len(trading_dates)} 个交易日待拉取")
+        # 获取交易日列表
+        print(f"[准备] 获取交易日历 {start_date} ~ {end_date}")
+        trading_dates = get_trading_dates(start_date, end_date)
+        print(f"[准备] 共 {len(trading_dates)} 个交易日待拉取")
 
-    # 获取合法代码集合
-    valid_codes = get_valid_codes(conn)
-    print(f"[准备] symbols表共 {len(valid_codes)} 个代码")
+        # 获取合法代码集合
+        valid_codes = get_valid_codes(conn)
+        print(f"[准备] symbols表共 {len(valid_codes)} 个代码")
 
-    total_rows = 0
-    failed_dates = []
+        total_rows = 0
+        failed_dates = []
 
-    # 最近日期（当天或昨天）需要重试，Tushare可能延迟入库
-    MAX_RETRY = 5
-    RETRY_WAIT = 120  # 2分钟（17:30→17:32→17:34→17:36→17:38, Session 24 shift 后对齐新调度）
+        # 最近日期（当天或昨天）需要重试，Tushare可能延迟入库
+        MAX_RETRY = 5
+        RETRY_WAIT = 120  # 2分钟（17:30→17:32→17:34→17:36→17:38, Session 24 shift 后对齐新调度）
 
-    for i, td in enumerate(trading_dates):
-        t0 = time.time()
-        df = fetch_moneyflow_by_date(td)
+        for i, td in enumerate(trading_dates):
+            t0 = time.time()
+            df = fetch_moneyflow_by_date(td)
 
-        # 对最近日期(今天/昨天)的空数据做重试
-        is_recent = td >= (date.today() - timedelta(days=1)).strftime("%Y%m%d")
-        if df.empty and is_recent:
-            for attempt in range(1, MAX_RETRY + 1):
-                print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据，重试 {attempt}/{MAX_RETRY}（等待{RETRY_WAIT}s）")
-                time.sleep(RETRY_WAIT)
-                df = fetch_moneyflow_by_date(td)
-                if not df.empty:
-                    break
-            if df.empty:
-                print(f"  [{i+1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警")
-                failed_dates.append(td)
-                try:
-                    from app.services.dispatchers.dingtalk import send_markdown_sync
-                    send_markdown_sync(
-                        title=f"moneyflow数据延迟 {td}",
-                        text=f"**[P0] moneyflow_daily** {td} 数据经{MAX_RETRY}次重试(间隔{RETRY_WAIT}s)仍为空\n\nTushare可能延迟入库，请手动检查",
-                    )
-                except Exception:
-                    print("  [告警] DingTalk发送失败")
+            # 对最近日期(今天/昨天)的空数据做重试
+            is_recent = td >= (date.today() - timedelta(days=1)).strftime("%Y%m%d")
+            if df.empty and is_recent:
+                for attempt in range(1, MAX_RETRY + 1):
+                    print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据，重试 {attempt}/{MAX_RETRY}（等待{RETRY_WAIT}s）")
+                    time.sleep(RETRY_WAIT)
+                    df = fetch_moneyflow_by_date(td)
+                    if not df.empty:
+                        break
+                if df.empty:
+                    print(f"  [{i+1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警")
+                    failed_dates.append(td)
+                    try:
+                        from app.services.dispatchers.dingtalk import send_markdown_sync
+                        send_markdown_sync(
+                            title=f"moneyflow数据延迟 {td}",
+                            text=f"**[P0] moneyflow_daily** {td} 数据经{MAX_RETRY}次重试(间隔{RETRY_WAIT}s)仍为空\n\nTushare可能延迟入库，请手动检查",
+                        )
+                    except Exception as dt_exc:
+                        # silent_ok: DingTalk 失败不阻塞主数据写入 (铁律 33-d).
+                        # reviewer P1 采纳: 原 bare pass 缺 silent_ok 注释 + 丢异常详情.
+                        print(f"  [告警] DingTalk发送失败: {type(dt_exc).__name__}: {dt_exc}")
+                    continue
+            elif df.empty:
+                print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")
+                time.sleep(0.35)
                 continue
-        elif df.empty:
-            print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")
-            time.sleep(0.35)
-            continue
 
-        rows = upsert_moneyflow(conn, df, valid_codes)
-        elapsed = time.time() - t0
-        total_rows += rows
-        print(f"  [{i+1}/{len(trading_dates)}] {td} — {rows:,} 行 ({elapsed:.1f}s)")
+            rows = upsert_moneyflow(conn, df, valid_codes)
+            elapsed = time.time() - t0
+            total_rows += rows
+            print(f"  [{i+1}/{len(trading_dates)}] {td} — {rows:,} 行 ({elapsed:.1f}s)")
 
-        # 限速: 200次/分钟 → 0.35s间隔
-        sleep_time = max(0.35 - elapsed, 0)
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+            # 限速: 200次/分钟 → 0.35s间隔
+            sleep_time = max(0.35 - elapsed, 0)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
-    print(f"\n[完成] 共写入 {total_rows:,} 行")
-    if failed_dates:
-        print(f"[警告] 失败日期: {failed_dates}")
+        print(f"\n[完成] 共写入 {total_rows:,} 行")
+        if failed_dates:
+            print(f"[警告] 失败日期: {failed_dates}")
 
-    # 验证
-    verify(conn)
-    conn.close()
-    return 0
+        # 验证
+        verify(conn)
+        return 0
+    finally:
+        # reviewer P1 采纳: single-point close 防异常 path 泄漏 conn (原 3 处
+        # happy-path close 异常时 leak). 对齐 compute_daily_ic._run pattern.
+        conn.close()
 
 
 def main() -> int:
-    """Script entry: boot probe + trading_calendar guard + _run wrapper.
+    """Script entry: boot probe + argparse + trading_calendar guard + _run wrapper.
 
     铁律 43 pattern (LL-068 扩散第 6 个 schtask script):
       (a) SET statement_timeout = 60s in _run() + _check_trading_day_or_skip()
       (b) print-only 豁免 (铁律 43-b, 无 logger FileHandler)
-      (c) boot stderr probe (下方)
+      (c) boot stderr probe (下方, 先于 argparse 防 --help / invalid args 时丢失探针)
       (d) 顶层 try/except → FATAL + exit(2) (下方)
+
+    Reviewer python-P2 采纳: argparse 从 _run() 移入 main, _run(args) 接 Namespace.
+    好处: (1) _run 可单测 (不 monkeypatch sys.argv); (2) 对齐 compute_daily_ic.py
+    _run(args: argparse.Namespace) 已合规 pattern; (3) main 是唯一 CLI 边界.
     """
     print(
         f"[pull_moneyflow] boot {datetime.now().isoformat()} pid={os.getpid()}",
@@ -401,18 +413,23 @@ def main() -> int:
         file=sys.stderr,
     )
     try:
+        parser = argparse.ArgumentParser(description="拉取moneyflow数据")
+        parser.add_argument("--start", type=str, default=None, help="起始日期YYYYMMDD")
+        parser.add_argument("--end", type=str, default=DEFAULT_END, help="结束日期YYYYMMDD")
+        parser.add_argument("--verify", action="store_true", help="仅验证")
+        parser.add_argument("--recent", action="store_true", help="仅拉最近1个月")
+        args = parser.parse_args()
+
         if not _check_trading_day_or_skip():
             print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取", flush=True)
             return 0
-        return _run()
+        return _run(args)
     except Exception as e:
+        # reviewer P1 采纳: 删除 contextlib.suppress(Exception): pass dead block
+        # (原为对齐 compute_daily_ic pattern, 但本脚本 print-only 无 logger 要兜底).
         msg = f"[pull_moneyflow] FATAL: {type(e).__name__}: {e}"
         print(msg, flush=True, file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        # silent_ok: 最外层兜底, print-only 无 logger 可写 (铁律 33-d).
-        # contextlib 保留以对齐 compute_daily_ic.main() pattern.
-        with contextlib.suppress(Exception):
-            pass
         return 2
 
 

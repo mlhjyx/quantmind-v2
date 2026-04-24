@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -40,7 +41,11 @@ class TestStatementTimeout:
         assert pmf.STATEMENT_TIMEOUT_MS == 60_000
 
     def test_apply_statement_timeout_uses_parametrize(self):
-        """SET statement_timeout 必须走 %s 参数化 (对齐 compute_daily_ic/pt_watchdog)."""
+        """SET statement_timeout 必须走 %s 参数化 (对齐 compute_daily_ic/pt_watchdog).
+
+        Reviewer python-P3 采纳: 拆分 parametrize-style 校验 vs 值校验 (后者已由
+        test_constant_60s 覆盖), 值改变时 error 更易定位.
+        """
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -48,9 +53,11 @@ class TestStatementTimeout:
 
         pmf._apply_statement_timeout(mock_conn)
 
-        mock_cursor.execute.assert_called_once_with(
-            "SET statement_timeout = %s", (60_000,)
-        )
+        mock_cursor.execute.assert_called_once()
+        call_args = mock_cursor.execute.call_args
+        assert call_args[0][0] == "SET statement_timeout = %s", "参数化 SQL 必须含 %s"
+        assert isinstance(call_args[0][1], tuple), "第 2 参数必须 tuple (参数化契约)"
+        assert isinstance(call_args[0][1][0], int), "tuple[0] 必须 int"
 
 
 class TestCheckTradingDay:
@@ -92,14 +99,23 @@ class TestCheckTradingDay:
         assert pmf._check_trading_day_or_skip() is True
         mock_conn.close.assert_called_once()
 
-    def test_db_failure_returns_true_silent_ok(self, monkeypatch):
-        """_get_sync_conn raise → silent_ok degrade 为 True 不阻塞拉取 (铁律 33-d)."""
+    def test_db_failure_returns_true_silent_ok(self, monkeypatch, capsys):
+        """_get_sync_conn raise → silent_ok degrade 为 True 不阻塞拉取 (铁律 33-d).
+
+        Reviewer python-P2 采纳: 异常 path 必写 stderr 诊断痕迹, 避免 DB outage
+        silently swallowed 使下游 FATAL 误归因.
+        """
         def _boom():
             raise RuntimeError("DB not reachable")
 
         monkeypatch.setattr(pmf, "_get_sync_conn", _boom)
 
         assert pmf._check_trading_day_or_skip() is True
+
+        captured = capsys.readouterr()
+        assert "trading_calendar check failed" in captured.err
+        assert "RuntimeError" in captured.err
+        assert "DB not reachable" in captured.err
 
 
 class TestMainBootProbe:
@@ -127,7 +143,7 @@ class TestMainExitOnException:
         """_run raise → main 捕获 + FATAL + return 2 (schtask LastResult=2 告警)."""
         monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: True)
 
-        def _boom():
+        def _boom(args):  # 接 args (reviewer python-P2 采纳 _run(args) 签名)
             raise ValueError("pipeline broken")
 
         monkeypatch.setattr(pmf, "_run", _boom)
@@ -153,26 +169,85 @@ class TestMainExitOnException:
         assert "非交易日" in captured.out
 
     def test_exit_delegates_to_run_return_code(self, monkeypatch):
-        """交易日路径 → main 返 _run() 的 return code (0 success)."""
+        """交易日路径 → main 返 _run(args) 的 return code (0 success).
+
+        Reviewer python-P2 采纳: _run 签名变 (args: argparse.Namespace).
+        """
         monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: True)
-        monkeypatch.setattr(pmf, "_run", lambda: 0)
+        monkeypatch.setattr(pmf, "_run", lambda args: 0)
         monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py"])
 
         assert pmf.main() == 0
 
 
 class TestRunReturnContract:
-    """_run() 必须返 int (main wrapper 契约依赖)."""
+    """_run(args) 必须返 int + 保证 conn close (main wrapper 契约依赖).
+
+    Reviewer python-P2 采纳: _run 接 parsed args, 测试直接构造 Namespace
+    (不 monkeypatch sys.argv, 更直接 + 不 brittle).
+    """
+
+    def _make_args(self, **overrides):
+        """Default argparse.Namespace for pull_moneyflow CLI."""
+        import argparse
+        defaults = {"start": None, "end": pmf.DEFAULT_END, "verify": False, "recent": False}
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
 
     def test_verify_mode_returns_0(self, monkeypatch):
-        """--verify 路径: verify(conn) + close → return 0."""
+        """--verify 路径: verify(conn) + finally close → return 0."""
         mock_conn = MagicMock()
         monkeypatch.setattr(pmf, "_get_sync_conn", lambda: mock_conn)
         monkeypatch.setattr(pmf, "_apply_statement_timeout", lambda c: None)
         monkeypatch.setattr(pmf, "verify", lambda c: None)
-        monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py", "--verify"])
 
-        rc = pmf._run()
+        rc = pmf._run(self._make_args(verify=True))
 
         assert rc == 0
+        mock_conn.close.assert_called_once()
+
+    def test_close_in_finally_on_exception(self, monkeypatch):
+        """Reviewer P1 采纳: 任何异常 path conn 必 finally close 防泄漏.
+
+        原 3 处 happy-path close 异常时漏 close (add_column_comments /
+        upsert_moneyflow / verify etc. raise 时 leak). single try/finally 修复.
+        """
+        mock_conn = MagicMock()
+        monkeypatch.setattr(pmf, "_get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(pmf, "_apply_statement_timeout", lambda c: None)
+
+        def _verify_boom(_):
+            raise RuntimeError("verify broken")
+
+        monkeypatch.setattr(pmf, "verify", _verify_boom)
+
+        import pytest as _pt
+
+        with _pt.raises(RuntimeError, match="verify broken"):
+            pmf._run(self._make_args(verify=True))
+
+        # 即便 verify() raise, conn.close() 仍被 finally 保证调用一次.
+        mock_conn.close.assert_called_once()
+
+    def test_early_exit_when_start_after_end_returns_0(self, monkeypatch):
+        """Reviewer P2 采纳: 原 3 处 return 0 早退路径, 本 test 覆盖 L321
+        (start_date > end_date → 已完成 + verify + close + return 0).
+
+        模拟: DB MAX(trade_date) = 今天 → 下一天 > --end=今天 → 早退.
+        """
+        today_yyyymmdd = date.today().strftime("%Y%m%d")
+
+        mock_conn = MagicMock()
+        monkeypatch.setattr(pmf, "_get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(pmf, "_apply_statement_timeout", lambda c: None)
+        monkeypatch.setattr(pmf, "add_column_comments", lambda c: None)
+        # MAX(trade_date) = 今天 → start_date = 今天 + 1 > end_date (今天)
+        monkeypatch.setattr(pmf, "get_max_trade_date", lambda c: today_yyyymmdd)
+        verify_calls = []
+        monkeypatch.setattr(pmf, "verify", lambda c: verify_calls.append(c))
+
+        rc = pmf._run(self._make_args(end=today_yyyymmdd))
+
+        assert rc == 0
+        assert len(verify_calls) == 1, "早退 path 也调 verify() 确认 DB 完备性"
         mock_conn.close.assert_called_once()
