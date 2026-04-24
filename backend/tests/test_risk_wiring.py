@@ -191,5 +191,182 @@ def test_dingding_notifier_matches_notifier_protocol():
         notifier.send(title="t", text="x", severity="p1")
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# MVP 3.1 批 2 PR 2 (Session 30) — Intraday factory + Dedup + NAV helper
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildIntradayRiskEngine:
+    @patch("app.services.risk_wiring.get_qmt_client")
+    @patch("app.services.risk_wiring.get_sync_conn")
+    def test_factory_registers_4_intraday_rules(
+        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
+    ):
+        """批 2 factory 注册 4 条 intraday 规则 (不含 PMS)."""
+        mock_get_qmt.return_value = MagicMock()
+        mock_get_conn.return_value = MagicMock()
+
+        from app.services.risk_wiring import build_intraday_risk_engine
+
+        engine = build_intraday_risk_engine()
+        assert engine.registered_rules == [
+            "intraday_portfolio_drop_3pct",
+            "intraday_portfolio_drop_5pct",
+            "intraday_portfolio_drop_8pct",
+            "qmt_disconnect",
+        ]
+
+    @patch("app.services.risk_wiring.get_qmt_client")
+    @patch("app.services.risk_wiring.get_sync_conn")
+    def test_intraday_factory_does_not_include_pms(
+        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
+    ):
+        """intraday engine 不注册 PMSRule (PMS 归批 1 daily 14:30 专属, 避双告警)."""
+        mock_get_qmt.return_value = MagicMock()
+        mock_get_conn.return_value = MagicMock()
+
+        from app.services.risk_wiring import build_intraday_risk_engine
+
+        engine = build_intraday_risk_engine()
+        assert "pms" not in engine.registered_rules
+
+    @patch("app.services.risk_wiring.get_qmt_client")
+    @patch("app.services.risk_wiring.get_sync_conn")
+    def test_intraday_factory_accepts_extra_rules(
+        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
+    ):
+        """extra_rules 为批 3 CB adapter 铺路."""
+        mock_get_qmt.return_value = MagicMock()
+        mock_get_conn.return_value = MagicMock()
+
+        from app.services.risk_wiring import build_intraday_risk_engine
+        from backend.platform._types import Severity
+        from backend.platform.risk import RiskRule
+
+        class _TestExtra(RiskRule):
+            rule_id = "test_extra_intraday"
+            severity = Severity.P2
+            action = "alert_only"
+
+            def evaluate(self, context):
+                return []
+
+        engine = build_intraday_risk_engine(extra_rules=[_TestExtra()])
+        assert "test_extra_intraday" in engine.registered_rules
+        assert len(engine.registered_rules) == 5  # 4 + 1 extra
+
+
+class TestIntradayAlertDedup:
+    def _mock_redis(self, exists_return=False):
+        redis_mock = MagicMock()
+        redis_mock.exists.return_value = exists_return
+        return redis_mock
+
+    def test_first_call_should_alert(self):
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        redis_mock = self._mock_redis(exists_return=False)
+        dedup = IntradayAlertDedup(redis_client=redis_mock)
+        assert dedup.should_alert("rule_x", "strat_a", "paper") is True
+
+    def test_second_call_blocked_by_dedup(self):
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        redis_mock = self._mock_redis(exists_return=True)
+        dedup = IntradayAlertDedup(redis_client=redis_mock)
+        assert dedup.should_alert("rule_x", "strat_a", "paper") is False
+
+    def test_mark_alerted_calls_setex(self):
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        redis_mock = self._mock_redis()
+        dedup = IntradayAlertDedup(redis_client=redis_mock)
+        dedup.mark_alerted("rule_x", "strat_a", "paper")
+        assert redis_mock.setex.called
+        call_args = redis_mock.setex.call_args
+        assert call_args[0][1] == 86400  # TTL 24h
+        assert "rule_x" in call_args[0][0]  # key 含 rule_id
+        assert "strat_a" in call_args[0][0]  # key 含 strategy_id
+        assert "paper" in call_args[0][0]  # key 含 execution_mode
+
+    def test_key_isolation_by_rule_strategy_mode(self):
+        """不同 rule/strategy/mode 组合 key 不共用."""
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        k1 = IntradayAlertDedup._build_key("r1", "s1", "paper")
+        k2 = IntradayAlertDedup._build_key("r2", "s1", "paper")
+        k3 = IntradayAlertDedup._build_key("r1", "s2", "paper")
+        k4 = IntradayAlertDedup._build_key("r1", "s1", "live")
+        assert len({k1, k2, k3, k4}) == 4
+
+    def test_should_alert_fail_open_on_redis_error(self):
+        """Redis 异常 fail-open (宁可误告警不漏告警)."""
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        redis_mock = MagicMock()
+        redis_mock.exists.side_effect = RuntimeError("Redis down")
+        dedup = IntradayAlertDedup(redis_client=redis_mock)
+        assert dedup.should_alert("rule_x", "strat_a", "paper") is True
+
+    def test_mark_alerted_silent_on_redis_error(self):
+        """Redis 异常 dedup mark 失败 silent (不阻塞主路径)."""
+        from app.services.risk_wiring import IntradayAlertDedup
+
+        redis_mock = MagicMock()
+        redis_mock.setex.side_effect = RuntimeError("Redis down")
+        dedup = IntradayAlertDedup(redis_client=redis_mock)
+        # 不 raise = PASS
+        dedup.mark_alerted("rule_x", "strat_a", "paper")
+
+
+class TestLoadPrevCloseNav:
+    def test_returns_nav_when_row_exists(self):
+        from app.services.risk_wiring import _load_prev_close_nav
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (987654.32,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        result = _load_prev_close_nav(mock_conn, "strat_a", "paper")
+        assert result == 987654.32
+
+    def test_returns_none_when_no_row(self):
+        from app.services.risk_wiring import _load_prev_close_nav
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = None
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        result = _load_prev_close_nav(mock_conn, "strat_a", "paper")
+        assert result is None
+
+    def test_returns_none_when_nav_is_zero(self):
+        """NAV <= 0 异常数据 → None (intraday drop rules silent skip)."""
+        from app.services.risk_wiring import _load_prev_close_nav
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (0.0,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        result = _load_prev_close_nav(mock_conn, "strat_a", "paper")
+        assert result is None
+
+    def test_returns_none_on_db_error(self):
+        """DB 异常 fallback None (读路径 fallback 允许, 铁律 33-c)."""
+        from app.services.risk_wiring import _load_prev_close_nav
+
+        mock_conn = MagicMock()
+        mock_conn.cursor.side_effect = RuntimeError("DB timeout")
+
+        result = _load_prev_close_nav(mock_conn, "strat_a", "paper")
+        assert result is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
