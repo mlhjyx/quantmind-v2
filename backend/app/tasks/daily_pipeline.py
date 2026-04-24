@@ -221,10 +221,13 @@ def risk_daily_check_task(self) -> dict:
 
     execution_mode = settings.EXECUTION_MODE
 
-    from app.services.risk_wiring import build_risk_engine
+    # MVP 3.1 批 3 (Session 30 末): CircuitBreakerRule Hybrid adapter 注入 daily engine
+    # ADR-010 addendum 方案 C — 包 risk_control_service.check_circuit_breaker_sync
+    # 14:30 评估 PMS + CB (两 rule 并列, CB 仅在 level 变化时返 RuleResult)
+    from app.services.risk_wiring import build_circuit_breaker_rule, build_risk_engine
 
     try:
-        engine = build_risk_engine()
+        engine = build_risk_engine(extra_rules=[build_circuit_breaker_rule()])
         context = engine.build_context(
             strategy_id=strategy_id, execution_mode=execution_mode
         )

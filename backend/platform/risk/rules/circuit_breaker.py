@@ -1,0 +1,165 @@
+"""CircuitBreakerRule — 薄 Hybrid adapter 包老 risk_control_service 接入 Platform Risk Engine.
+
+MVP 3.1 批 3 (Session 30 末). ADR-010 addendum 方案 C 明确决策: 不重写 1640 行
+`risk_control_service.py` async state machine (批 0 spike 识别 4 大冲突), 仅新增
+~200 行 adapter, 调 sync API `check_circuit_breaker_sync` (L1349), diff pre/post snapshot
+推导 transition, 仅在 level 变化时返 RuleResult 入 `risk_event_log` 统一审计.
+
+⚠️ **铁律 31 例外声明** (ADR-010 addendum Decision §Positive):
+  标准铁律 31 要求 `backend/platform/**` 纯计算, 不 IO. 本模块是 Hybrid adapter
+  特例 — `evaluate` 调 `check_circuit_breaker_sync` 内部 DB commit + 通知, 违反
+  纯计算原则. 接受理由: 重写 1640 行 async → sync 风险 >> 违反 P31 代价. Sunset
+  gate (A+B+C 满足后批 3b inline 重审) 消此例外.
+
+对齐批 1 PMSRule 设计模式:
+  - 单类多 rule_id (RuleResult.rule_id 动态 `cb_escalate_l{N}` / `cb_recover_l{N}`)
+  - `root_rule_id_for` 反查 root `"circuit_breaker"`
+  - action='alert_only' (CB 通过 signal_engine get_position_multiplier 影响下游
+    sizing, Risk Engine 仅记事件 + 钉钉, 非 Engine 调 broker)
+
+关联铁律: 24 (单一职责 adapter) / 31 **例外** / 33 (fail-loud level 变化入 log) /
+          34 (initial_capital SSOT) / 36 (precondition 1640 行核查已完成 Session 27)
+"""
+from __future__ import annotations
+
+import contextlib
+from typing import Any, Literal
+
+from backend.platform._types import Severity
+
+from ..interface import RiskContext, RiskRule, RuleResult
+
+
+class CircuitBreakerRule(RiskRule):
+    """Hybrid adapter — 包 `risk_control_service.check_circuit_breaker_sync` 接入 Engine.
+
+    调用签名 (实测 risk_control_service.py:1349):
+        check_circuit_breaker_sync(conn, strategy_id, exec_date, initial_capital)
+        -> {"level": 0-4, "action": str, "reason": str,
+            "position_multiplier": float, "recovery_info": str}
+
+    Evaluate 流程:
+      1. 读 prev_level 从 `circuit_breaker_state` 表 (pre-snapshot)
+      2. 调 sync API (触发 state 评估 + DB upsert + 可能的 async NotificationService)
+      3. 读 new_level = result["level"] (post-snapshot, sync API 返)
+      4. 若 prev == new: return [] (no event, 铁律 33 只真事件入 log)
+      5. 若 new > prev: rule_id=f"cb_escalate_l{new}" severity=P0 (L≥3) 否则 P1
+      6. 若 new < prev: rule_id=f"cb_recover_l{new}" severity=P2
+
+    Invariants:
+      - rule_id = "circuit_breaker" (RuleResult.rule_id 动态按 transition)
+      - severity = Severity.P1 (class 默认, RuleResult 按 level 动态调整未来版本)
+      - action = "alert_only" (Engine 不调 broker, CB 通过 signal_engine 下游影响)
+
+    关联铁律: 31 例外 / 33 fail-loud 只真事件入 log / 41 tz-aware via datetime
+    """
+
+    rule_id: str = "circuit_breaker"
+    severity: Severity = Severity.P1
+    action: Literal["sell", "alert_only", "bypass"] = "alert_only"
+
+    def __init__(self, conn_factory: Any, initial_capital: float) -> None:
+        """注入 conn_factory + 初始资金 (DI).
+
+        Args:
+            conn_factory: callable → psycopg2 conn (调用方管理事务).
+            initial_capital: PAPER_INITIAL_CAPITAL (settings, 铁律 34 SSOT).
+        """
+        self._conn_factory = conn_factory
+        self._initial_capital = initial_capital
+
+    def root_rule_id_for(self, triggered_rule_id: str) -> str:
+        """CB transition rule_id 反查 root `"circuit_breaker"`.
+
+        Semantic (v2 passthrough 模式, 对齐 batch 1 PMSRule):
+          - `cb_escalate_l{N}` / `cb_recover_l{N}` pattern → 返 self.rule_id
+          - 其他 triggered_id → passthrough (不声明所有权)
+        """
+        if triggered_rule_id.startswith(("cb_escalate_l", "cb_recover_l")):
+            suffix = triggered_rule_id.rsplit("_l", 1)[-1]
+            if suffix.isdigit():
+                return self.rule_id
+        return triggered_rule_id
+
+    def evaluate(self, context: RiskContext) -> list[RuleResult]:
+        """调 sync API 并 diff pre/post snapshot, 仅 level 变化时返 RuleResult."""
+        # 延迟 import 避免 Platform → App 循环依赖 (铁律 31 例外附带设计, adapter
+        # 归 Platform namespace 但依赖 App service).
+        from app.services.risk_control_service import check_circuit_breaker_sync
+
+        with self._conn_factory() as conn:
+            prev_level = self._read_current_level(
+                conn, context.strategy_id, context.execution_mode
+            )
+            cb_result = check_circuit_breaker_sync(
+                conn,
+                context.strategy_id,
+                context.timestamp.date(),
+                self._initial_capital,
+            )
+
+        new_level = int(cb_result["level"])
+        if new_level == prev_level:
+            return []
+
+        if new_level > prev_level:
+            transition = "escalate"
+            # L3/L4 = P0 (降仓/停交易, 影响真金), L1/L2 = P1 (暂停1日)
+            triggered_severity = Severity.P0 if new_level >= 3 else Severity.P1
+        else:
+            transition = "recover"
+            # Recovery 是好消息, P2 info-level
+            triggered_severity = Severity.P2
+
+        return [
+            RuleResult(
+                rule_id=f"cb_{transition}_l{new_level}",
+                code="",  # 组合级 CB, 非单股
+                shares=0,  # alert_only 不下单
+                reason=(
+                    f"CircuitBreaker {transition} L{prev_level}→L{new_level}: "
+                    f"{cb_result.get('reason', 'no reason provided')} "
+                    f"(action={cb_result.get('action')}, "
+                    f"position_multiplier={cb_result.get('position_multiplier')})"
+                ),
+                metrics={
+                    "prev_level": prev_level,
+                    "new_level": new_level,
+                    "transition_type": 1.0 if transition == "escalate" else -1.0,
+                    "position_multiplier": float(
+                        cb_result.get("position_multiplier", 1.0)
+                    ),
+                    "severity_numeric": float(triggered_severity.value != "p0")
+                    + float(triggered_severity.value != "p1") * 2.0,
+                },
+            )
+        ]
+
+    @staticmethod
+    def _read_current_level(
+        conn: Any, strategy_id: str, execution_mode: str
+    ) -> int:
+        """读 circuit_breaker_state 当前 level (pre-snapshot). 首次运行 / 无行返 0.
+
+        Note: 本查询若 circuit_breaker_state 表不存在会 raise — check_circuit_breaker_sync
+        内部 `_ensure_cb_tables_sync` 会建表, 但本 pre-snapshot 发生在 sync API 之前.
+        首次 adapter 运行时表可能不存在 → fallback 到 0 (NORMAL), 符合 CB 状态机
+        "首次运行 = 未熔断" 语义.
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT level FROM circuit_breaker_state
+                    WHERE strategy_id = %s AND execution_mode = %s
+                    ORDER BY entered_date DESC
+                    LIMIT 1""",
+                    (strategy_id, execution_mode),
+                )
+                row = cur.fetchone()
+                return int(row[0]) if row else 0
+        except Exception:  # noqa: BLE001  # silent_ok: 表不存在 → 首次运行, L0
+            # 回滚 cursor 状态 (PG 异常后 conn 进 aborted 状态, 需 rollback)
+            # silent_ok: rollback 失败 conn 已坏, 无可挽回 — ruff 建议 contextlib.suppress
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            return 0
