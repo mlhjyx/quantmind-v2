@@ -1,14 +1,15 @@
 """L1 unit tests for backend/platform/risk/rules/intraday.py (MVP 3.1 批 2 PR 1).
 
-覆盖 20 tests:
-  - IntradayPortfolioDropRule 基类 skip 条件 (prev_close_nav=None / <=0 / nav<=0)
-  - 3/5/8% 阈值边界 (正好触发 / 边界内 / 远超)
+覆盖 28 tests (reviewer 采纳 后 +3):
+  - IntradayPortfolioDropRule 基类 skip 条件 (prev_close_nav=None / <=0 / nav<=0 / NaN)
+  - 3/5/8% 阈值边界 (正好触发 / 边界内 / 远超) + drop_pct metric 断言对称
   - rule_id / severity / action / threshold 契约
   - QMTDisconnectRule connected/disconnected
-  - RuleResult metrics schema
+  - RuleResult metrics schema + type (int vs float)
 """
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
@@ -69,19 +70,49 @@ class TestIntradayPortfolioDropSkipConditions:
         ctx = _make_context(portfolio_nav=0.0, prev_close_nav=1_000_000.0)
         assert rule.evaluate(ctx) == []
 
+    def test_skip_when_portfolio_nav_negative(self):
+        """portfolio_nav < 0 异常 (margin 账户 / 数据错) → silent skip.
+        reviewer P2 采纳 code: 显式锚定负值行为契约.
+        """
+        rule = IntradayPortfolioDrop3PctRule()
+        ctx = _make_context(portfolio_nav=-50_000.0, prev_close_nav=1_000_000.0)
+        assert rule.evaluate(ctx) == []
+
+    def test_skip_when_prev_close_nav_nan(self):
+        """prev_close_nav = NaN → silent skip (reviewer P1 采纳 code: math.isfinite guard).
+
+        无 guard 的话 NaN <= 0 = False → 进入 drop_pct 计算 → NaN > -threshold = False
+        → spurious trigger + json.dumps(NaN) 违反 RFC 7159.
+        """
+        rule = IntradayPortfolioDrop3PctRule()
+        ctx = _make_context(portfolio_nav=900_000.0, prev_close_nav=math.nan)
+        assert rule.evaluate(ctx) == []
+
+    def test_skip_when_portfolio_nav_nan(self):
+        """portfolio_nav = NaN → silent skip (同上 NaN guard)."""
+        rule = IntradayPortfolioDrop3PctRule()
+        ctx = _make_context(portfolio_nav=math.nan, prev_close_nav=1_000_000.0)
+        assert rule.evaluate(ctx) == []
+
+    def test_skip_when_prev_close_nav_inf(self):
+        """prev_close_nav = inf → silent skip (math.isfinite 同防)."""
+        rule = IntradayPortfolioDrop3PctRule()
+        ctx = _make_context(portfolio_nav=900_000.0, prev_close_nav=math.inf)
+        assert rule.evaluate(ctx) == []
+
 
 # ---------- 3% 阈值触发边界 ----------
 
 
 class TestIntradayPortfolioDrop3Pct:
     def test_trigger_at_exact_3pct(self):
-        """跌 exactly 3% → 触发."""
+        """跌 exactly 3% → 触发. reviewer P3 采纳 python: tolerance rel=1e-9 替 abs=1e-6."""
         rule = IntradayPortfolioDrop3PctRule()
         ctx = _make_context(portfolio_nav=970_000.0, prev_close_nav=1_000_000.0)
         results = rule.evaluate(ctx)
         assert len(results) == 1
         assert results[0].rule_id == "intraday_portfolio_drop_3pct"
-        assert results[0].metrics["drop_pct"] == pytest.approx(-0.03, abs=1e-6)
+        assert results[0].metrics["drop_pct"] == pytest.approx(-0.03, rel=1e-9)
 
     def test_not_trigger_at_2_99pct(self):
         """跌 2.99% 未达阈值 → []."""
@@ -109,9 +140,12 @@ class TestIntradayPortfolioDrop3Pct:
 
 class TestIntradayPortfolioDrop5Pct:
     def test_trigger_at_5pct(self):
+        """reviewer P3 采纳 python: 对称 3% 类断言 drop_pct metric."""
         rule = IntradayPortfolioDrop5PctRule()
         ctx = _make_context(portfolio_nav=950_000.0, prev_close_nav=1_000_000.0)
-        assert len(rule.evaluate(ctx)) == 1
+        results = rule.evaluate(ctx)
+        assert len(results) == 1
+        assert results[0].metrics["drop_pct"] == pytest.approx(-0.05, rel=1e-9)
 
     def test_not_trigger_at_4_99pct(self):
         rule = IntradayPortfolioDrop5PctRule()
@@ -126,7 +160,9 @@ class TestIntradayPortfolioDrop8Pct:
     def test_trigger_at_8pct(self):
         rule = IntradayPortfolioDrop8PctRule()
         ctx = _make_context(portfolio_nav=920_000.0, prev_close_nav=1_000_000.0)
-        assert len(rule.evaluate(ctx)) == 1
+        results = rule.evaluate(ctx)
+        assert len(results) == 1
+        assert results[0].metrics["drop_pct"] == pytest.approx(-0.08, rel=1e-9)
 
     def test_not_trigger_at_7_99pct(self):
         rule = IntradayPortfolioDrop8PctRule()
@@ -182,12 +218,15 @@ class TestIntradayRuleResultSchema:
         assert required <= set(result.metrics.keys())
 
     def test_reason_human_readable(self):
-        """reason 含 drop_pct + nav + threshold 便于钉钉告警回溯."""
+        """reason 含 drop_pct + nav + threshold 便于钉钉告警回溯.
+
+        reviewer P3 采纳 code: threshold format 统一 :.2%, 断言适配 "5.00%" 而非 "5%".
+        """
         rule = IntradayPortfolioDrop5PctRule()
         ctx = _make_context(portfolio_nav=940_000.0, prev_close_nav=1_000_000.0)
         result = rule.evaluate(ctx)[0]
-        assert "6.00%" in result.reason or "-6" in result.reason
-        assert "5%" in result.reason  # threshold
+        assert "-6.00%" in result.reason
+        assert "-5.00%" in result.reason  # threshold with :.2% format
         assert "nav=940000" in result.reason
 
     def test_code_empty_for_portfolio_level(self):
@@ -202,6 +241,13 @@ class TestIntradayRuleResultSchema:
         ctx = _make_context(portfolio_nav=910_000.0, prev_close_nav=1_000_000.0)
         result = rule.evaluate(ctx)[0]
         assert result.shares == 0
+
+    def test_positions_count_is_int_not_float(self):
+        """reviewer P2 采纳 python: len() 返 int 不 cast float (metrics 锚定类型)."""
+        rule = IntradayPortfolioDrop8PctRule()
+        ctx = _make_context(portfolio_nav=910_000.0, prev_close_nav=1_000_000.0)
+        result = rule.evaluate(ctx)[0]
+        assert isinstance(result.metrics["positions_count"], int)
 
 
 # ---------- QMTDisconnectRule ----------
@@ -241,7 +287,9 @@ class TestQMTDisconnectRule:
         result = rule.evaluate(ctx)[0]
         assert "checked_at_timestamp" in result.metrics
         assert result.metrics["portfolio_nav_at_disconnect"] == 987_654.0
-        assert result.metrics["positions_count_at_disconnect"] == 0.0
+        # reviewer P2 采纳 python: positions_count 应 int 非 float
+        assert result.metrics["positions_count_at_disconnect"] == 0
+        assert isinstance(result.metrics["positions_count_at_disconnect"], int)
 
 
 # ---------- Frozen context invariant ----------
