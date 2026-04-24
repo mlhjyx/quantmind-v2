@@ -97,8 +97,11 @@ class TestCoreContractsConfigured:
 class TestExtendedContractsConfigured:
     """Session 26 follow-up (LL-068 扩散): 7 个 trade_date 列 Contract 配 guard.
 
-    不含: SYMBOLS (list_date/delist_date 业务语义允许未来),
-          EARNINGS_ANNOUNCEMENTS (ann_date 可能合法 preannouncement).
+    不含 (业务语义允许合法未来日期, 非 sentinel 风险):
+    - SYMBOLS (list_date/delist_date 未来上市/退市合法)
+    - EARNINGS_ANNOUNCEMENTS (ann_date 可能合法 preannouncement)
+    - BACKTEST_RUN (start_date/end_date 可能含 forward-looking 研究配置窗口,
+      reviewer code-LOW-2)
     """
 
     @pytest.mark.parametrize(
@@ -112,6 +115,17 @@ class TestExtendedContractsConfigured:
             (STOCK_STATUS_DAILY, "trade_date"),
             (SHADOW_PORTFOLIO, "trade_date"),
             (SHADOW_PORTFOLIO, "rebalance_date"),
+        ],
+        # reviewer python-P3: 显式 ids 可读 (否则 pytest auto-id 用 contract0/1/2... 无法追溯)
+        ids=[
+            "INDEX_DAILY.trade_date",
+            "FACTOR_VALUES.trade_date",
+            "FACTOR_IC_HISTORY.trade_date",
+            "NORTHBOUND_HOLDINGS.trade_date",
+            "MINUTE_BARS.trade_date",
+            "STOCK_STATUS_DAILY.trade_date",
+            "SHADOW_PORTFOLIO.trade_date",
+            "SHADOW_PORTFOLIO.rebalance_date",
         ],
     )
     def test_trade_date_max_future_days_configured(self, contract, col):

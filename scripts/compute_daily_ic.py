@@ -31,9 +31,12 @@ Cron (Session 22+):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
+import os
 import sys
 import time
+import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -395,11 +398,15 @@ def _run(args: argparse.Namespace) -> int:
 
     # Transaction boundary (铁律 32): script 作为 caller 管理 conn + commit + close
     conn = get_sync_conn()
-    # LL-068 扩散: session-level statement_timeout 60s, 防 cold-cache / lock hang
-    # 被 schtask 5min ExecutionTimeLimit kill (data_quality_check 4-22/4-23 事故同类).
-    with conn.cursor() as _cur_timeout:
-        _cur_timeout.execute("SET statement_timeout = 60000")
     try:
+        # reviewer code-MED-2: SET cursor 移 try 内部, 防 SET raise 时 conn leak
+        # (finally 只在 try 进入后 close conn, SET 若在 try 外 raise 会跳过 close).
+        # reviewer python-P1: parametrize %s 替 f-string, 风格对齐 pt_watchdog.
+        # reviewer python-P3: 变量名 _cur_timeout 下划线误导 (local 非 private 非 unused).
+        # LL-068 扩散: session-level statement_timeout 60s, 防 cold-cache / lock hang
+        # 被 schtask 5min ExecutionTimeLimit kill (data_quality_check 4-22/4-23 同类).
+        with conn.cursor() as cur_timeout:
+            cur_timeout.execute("SET statement_timeout = %s", (60_000,))
         # Holiday guard (PR #40 P2.2 follow-up): A 股非交易日提前 exit 0.
         if not args.force:
             # 铁律 41: 用 Asia/Shanghai 避免 date.today() 在 UTC 服务器 18:00 CST
@@ -438,11 +445,9 @@ def main() -> int:
     Session 26 LL-068 pattern 扩散: boot stderr probe + 顶层 try/except → exit(2)
     fail-loud (防 logger 失败 / schtask 无任何告警痕迹).
     """
-    # Fail-loud boot 探针
-    import os as _os
-
+    # Fail-loud boot 探针 (reviewer python-P2: os 已 module-top import, 删局部 import)
     print(
-        f"[compute_daily_ic] boot {datetime.now().isoformat()} pid={_os.getpid()}",
+        f"[compute_daily_ic] boot {datetime.now().isoformat()} pid={os.getpid()}",
         flush=True,
         file=sys.stderr,
     )
@@ -473,13 +478,10 @@ def main() -> int:
     except Exception as e:
         msg = f"[compute_daily_ic] FATAL: {type(e).__name__}: {e}"
         print(msg, flush=True, file=sys.stderr)
-        import traceback as _tb
-
-        _tb.print_exc(file=sys.stderr)
-        # silent_ok: 最外层兜底, logger 可能未初始化成功
-        import contextlib as _cl
-
-        with _cl.suppress(Exception):
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, logger 可能未初始化成功 (铁律 33-d).
+        # reviewer python-P2: traceback / contextlib 已 module-top import, 删局部.
+        with contextlib.suppress(Exception):
             logger.critical(msg, exc_info=True)
         return 2
 
