@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-# ─── sys.path + .env bootstrap (PR #XX fix: schtask PG auth, Session 33) ────
+# ─── sys.path + .env bootstrap (PR #73 fix: schtask PG auth, Session 33) ────
 # schtask 执行时 CWD=project root 但不 auto-load .env → _connect_db FATAL
 # "fe_sendauth: no password supplied" (4-24 21:47/21:49 2 次 CRITICAL 重现).
 # 修复: 对齐 compute_daily_ic.py (line 44-54) 模式, load_dotenv + get_sync_conn.
@@ -85,7 +85,7 @@ PG_STATEMENT_TIMEOUT_MS = 30_000
 # notifications category (去重查询用)
 DINGTALK_CATEGORY = "mvp_3_1_sunset_gate"
 
-# DB_DSN 常量已移除 (PR #XX fix): 改用 get_sync_conn() 走项目 SSOT DSN (settings.
+# DB_DSN 常量已移除 (PR #73 fix): 改用 get_sync_conn() 走项目 SSOT DSN (settings.
 # DATABASE_URL). 原 default "dbname=quantmind_v2 user=xin host=127.0.0.1" 缺 password,
 # schtask 跑 SCRAM-SHA-256 auth PG 直接 FATAL. 对齐 compute_daily_ic.py 模式.
 
@@ -172,7 +172,7 @@ class SunsetReport:
 def _connect_db() -> Any:
     """Connect PG via shared get_sync_conn + SET statement_timeout (铁律 43 a).
 
-    PR #XX fix (Session 33): 原 psycopg2.connect(DB_DSN) 依赖裸 DSN 默认无 password
+    PR #73 fix (Session 33): 原 psycopg2.connect(DB_DSN) 依赖裸 DSN 默认无 password
     schtask 跑 SCRAM-SHA-256 auth 直接 "fe_sendauth: no password supplied" FATAL.
     改走 get_sync_conn() 复用 settings.DATABASE_URL (SSOT, 铁律 34) 保证 schtask
     与 FastAPI/Celery/其他 schtask 脚本 (compute_daily_ic) 共用同一认证路径.
