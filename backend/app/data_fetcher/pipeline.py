@@ -315,9 +315,7 @@ class DataPipeline:
 
     # ─── F22 NULL Ratio Guard (铁律 33 fail-loud) ────────────
 
-    def _check_null_ratio(
-        self, df: pd.DataFrame, contract: TableContract
-    ) -> dict[str, float]:
+    def _check_null_ratio(self, df: pd.DataFrame, contract: TableContract) -> dict[str, float]:
         """校验列 NULL 率是否超 ColumnSpec.null_ratio_max.
 
         超阈值 → logger.warning / logger.error (分级 fail-loud) +
@@ -511,6 +509,28 @@ class DataPipeline:
                     if above_count > 0:
                         reject_reasons[f"{col_name}_above_{spec.max_val}"] = int(above_count)
                         valid_mask &= ~above
+
+            # Session 26 (2026-04-24): date 列未来日期守护 (ColumnSpec.max_future_days).
+            # 背景: test_pt_audit fixture 用 date(2099,4,30) 泄漏到生产 klines_daily,
+            # 让 MAX(trade_date)=2099 掩盖 4-20+ 真实滞后 2 天 (LL-068). 走 DataPipeline
+            # 的路径从此被 root-level guard 拦截 (铁律 17 + 33 fail-loud).
+            elif spec.dtype == "date" and spec.max_future_days is not None:
+                import datetime as _dt  # 局部 import 避全文件 name shadow
+
+                cutoff = _dt.date.today() + _dt.timedelta(days=spec.max_future_days)
+                # pandas date col 可能是 datetime / date / str, 统一 coerce
+                date_series = pd.to_datetime(col, errors="coerce").dt.date
+                # default-arg binding 避 B023 late-binding (lambda apply 同步安全, 显式绑定防未来重构)
+                future_mask = date_series.apply(
+                    lambda d, _cutoff=cutoff: d is not None and d > _cutoff
+                )
+                future_mask = future_mask.fillna(False).astype(bool)
+                future_count = int(future_mask.sum())
+                if future_count > 0:
+                    reject_reasons[f"{col_name}_future_gt_today+{spec.max_future_days}d"] = (
+                        future_count
+                    )
+                    valid_mask &= ~future_mask
 
             # MVP 2.2: UUID 验证 (accept UUID | str, normalize → uuid.UUID; 非法 str → reject)
             elif spec.dtype == "uuid":

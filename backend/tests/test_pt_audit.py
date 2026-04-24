@@ -115,15 +115,17 @@ def isolated_strategy(sync_conn):
         for tbl in ("trade_log", "position_snapshot", "performance_series"):
             with contextlib.suppress(Exception):
                 cur.execute(f"DELETE FROM {tbl} WHERE strategy_id = %s", (sid,))  # noqa: S608
+        # Session 26 (2026-04-24) LL-068: 原 teardown 用 `trade_date BETWEEN ref_date AND audit_date`
+        # 窗口, 某 test override audit_date=date(2099,4,30) 时 row 泄漏 (seed 在窗口外).
+        # 修为 `trade_date >= '2099-01-01'` — 2099 年任意日期的 TA* test row 全清, 无法再泄漏.
+        # 仍保留 `code LIKE 'TA%%'` 隔离真实生产数据 (TA* 是 test fixture 命名约定).
         with contextlib.suppress(Exception):
             cur.execute(
-                "DELETE FROM stock_status_daily WHERE trade_date BETWEEN %s AND %s AND code LIKE 'TA%%'",
-                (ref_date, audit_date),
+                "DELETE FROM stock_status_daily WHERE trade_date >= '2099-01-01' AND code LIKE 'TA%%'",
             )
         with contextlib.suppress(Exception):
             cur.execute(
-                "DELETE FROM klines_daily WHERE trade_date BETWEEN %s AND %s AND code LIKE 'TA%%'",
-                (ref_date, audit_date),
+                "DELETE FROM klines_daily WHERE trade_date >= '2099-01-01' AND code LIKE 'TA%%'",
             )
         with contextlib.suppress(Exception):
             cur.execute(
@@ -166,7 +168,10 @@ def _seed_trade_log(
 
 
 def _seed_st_status(
-    conn: psycopg2.extensions.connection, td: date, code: str, is_st: bool,
+    conn: psycopg2.extensions.connection,
+    td: date,
+    code: str,
+    is_st: bool,
 ) -> None:
     cur = conn.cursor()
     cur.execute(
@@ -179,7 +184,10 @@ def _seed_st_status(
 
 
 def _seed_perf(
-    conn: psycopg2.extensions.connection, sid: str, td: date, nav: float,
+    conn: psycopg2.extensions.connection,
+    sid: str,
+    td: date,
+    nav: float,
 ) -> None:
     cur = conn.cursor()
     cur.execute(
@@ -210,17 +218,9 @@ def _seed_snapshot(
     )
 
 
-def _seed_kline(
-    conn: psycopg2.extensions.connection, td: date, code: str, close: float,
-) -> None:
-    cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO klines_daily (code, trade_date, open, high, low, close,
-                                     pre_close, volume, amount, adj_factor)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, 1000, 10000, 1.0)
-           ON CONFLICT DO NOTHING""",
-        (code, td, close, close, close, close, close),
-    )
+# Session 26 (2026-04-24) LL-068: 原 `_seed_kline` 在 PR-C (b520334) 初版被调用于
+# test_check_db_drift, reviewer P2-5 (96c7fe0) 指出 reconstruct_positions 不读 klines
+# → 移除调用但遗留 dead fn + 生产 DB row (TA010.SH @ 2099-04-30) 泄漏. 本 PR 彻底删除.
 
 
 # ─── Tests ───────────────────────────────────────────────────────
@@ -253,7 +253,9 @@ def test_check_mode_mismatch_detects_mixed(sync_conn, isolated_strategy):
     """C2: 同 day 同 sid 既 paper 又 live → P1 finding."""
     sid, audit_date, _ = isolated_strategy
     _seed_trade_log(sync_conn, sid, audit_date, "TA003.SH", "buy", 100, 10.0, execution_mode="live")
-    _seed_trade_log(sync_conn, sid, audit_date, "TA004.SH", "buy", 100, 10.0, execution_mode="paper")
+    _seed_trade_log(
+        sync_conn, sid, audit_date, "TA004.SH", "buy", 100, 10.0, execution_mode="paper"
+    )
 
     findings = mod.check_mode_mismatch(sync_conn, sid, audit_date)
     assert len(findings) == 1
@@ -339,13 +341,18 @@ def test_integration_no_findings_green_path(sync_conn, isolated_strategy, monkey
     _seed_snapshot(sync_conn, sid, ref_date, "TA010.SH", 200, 10.0)
     _seed_perf(sync_conn, sid, audit_date, nav=100000.0)
     # turnover 2% < 30% (C3 pass), 月末 (C4 skip 因月末)
-    _seed_trade_log(sync_conn, sid, audit_date, "TA010.SH", "buy", 200, 10.0)  # +200 shares, qty=400
+    _seed_trade_log(
+        sync_conn, sid, audit_date, "TA010.SH", "buy", 200, 10.0
+    )  # +200 shares, qty=400
     # 无 ST status → C1 pass (保守 FALSE)
     # Today snapshot: qty=400 (reconstruct 期望 = 200+200)
     _seed_snapshot(sync_conn, sid, audit_date, "TA010.SH", 400, 10.0)
 
     exit_code, findings = mod.run_audit(
-        strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
+        strategy_id=sid,
+        audit_date=audit_date,
+        only_checks=None,
+        alert=False,
     )
     assert exit_code == 0, f"Expected clean pass, got {len(findings)} findings: {findings}"
     assert findings == []
@@ -355,8 +362,11 @@ def test_module_constants_and_contract():
     """模块契约: CHECK_LIST 长度 5 + 5 check_* 函数存在 (防未来误删)."""
     assert len(mod.CHECK_LIST) == 5
     assert set(mod.CHECK_LIST) == {
-        "st_leak", "mode_mismatch", "turnover_abnormal",
-        "rebalance_date_mismatch", "db_drift",
+        "st_leak",
+        "mode_mismatch",
+        "turnover_abnormal",
+        "rebalance_date_mismatch",
+        "db_drift",
     }
     assert callable(mod.check_st_leak)
     assert callable(mod.check_mode_mismatch)
@@ -376,7 +386,8 @@ def test_module_constants_and_contract():
 
 
 def _query_scheduler_log(
-    conn: psycopg2.extensions.connection, sid: str,
+    conn: psycopg2.extensions.connection,
+    sid: str,
 ) -> list[dict]:
     """Return pt_audit scheduler_task_log rows for this sid (test helper).
 
@@ -409,7 +420,10 @@ def test_run_audit_skips_non_trading_day(sync_conn, isolated_strategy):
     )
     try:
         exit_code, findings = mod.run_audit(
-            strategy_id=sid, audit_date=non_td, only_checks=None, alert=False,
+            strategy_id=sid,
+            audit_date=non_td,
+            only_checks=None,
+            alert=False,
         )
         assert exit_code == 0
         assert findings == []
@@ -434,7 +448,10 @@ def test_run_audit_writes_scheduler_task_log_on_success(sync_conn, isolated_stra
     _seed_snapshot(sync_conn, sid, audit_date, "TA020.SH", 400, 10.0)
 
     exit_code, findings = mod.run_audit(
-        strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
+        strategy_id=sid,
+        audit_date=audit_date,
+        only_checks=None,
+        alert=False,
     )
     assert exit_code == 0
     assert findings == []
@@ -456,12 +473,17 @@ def test_run_audit_writes_scheduler_task_log_on_findings(sync_conn, isolated_str
     _seed_trade_log(sync_conn, sid, audit_date, "TA021.SH", "buy", 4000, 10.0)
 
     exit_code, findings = mod.run_audit(
-        strategy_id=sid, audit_date=audit_date, only_checks=None, alert=False,
+        strategy_id=sid,
+        audit_date=audit_date,
+        only_checks=None,
+        alert=False,
     )
     # top level = P1 (C3) → exit_code=2; C4 P2 同 findings 列表但非 top
     # Reviewer P2 (python): tighten >= 2 (C3 turnover + C4 非月末 both trigger precisely)
     assert exit_code == 2
-    assert len(findings) >= 2, f"expected C3 + C4 both trigger (>=2), got {len(findings)}: {findings}"
+    assert len(findings) >= 2, (
+        f"expected C3 + C4 both trigger (>=2), got {len(findings)}: {findings}"
+    )
 
     logs = _query_scheduler_log(sync_conn, sid)
     assert len(logs) == 1, f"expected 1 alert log, got {logs}"

@@ -61,16 +61,29 @@ class ColumnSpec:
     # 下游 (data_quality_report / 钉钉) 按 warning 处置, DataPipeline 只负责暴露问题.
     null_ratio_max: float | None = None
 
+    # Session 26 (2026-04-24): date 列未来日期守护. None=不校验. 值=N → trade_date
+    # > today+N 天的 row 被 reject (fail-loud 铁律 33).
+    # 场景: test_pt_audit fixture 用 date(2099,4,30) 作 sentinel, teardown 窗口太窄
+    # 泄漏到生产 DB, 导致 `MAX(trade_date)=2099` 掩盖 4-20+ klines 真实滞后 2 天.
+    # 仅对 dtype='date' 列有效. 建议值 7 (覆盖 A 股最长假 + 调休 buffer).
+    max_future_days: int | None = None
+
     def __post_init__(self) -> None:
         """Domain validation (reviewer P3 采纳).
 
         null_ratio_max ∈ [0.0, 1.0] 或 None. 超界值 (如 1.5 或 -0.1) 在 import
         时即 raise, 避免 mis-configuration 拖到 ingest 运行时才爆.
+        max_future_days > 0 或 None (负值/零无意义).
         """
         if self.null_ratio_max is not None and not (0.0 <= self.null_ratio_max <= 1.0):
-            raise ValueError(
-                f"null_ratio_max must be in [0.0, 1.0], got {self.null_ratio_max}"
-            )
+            raise ValueError(f"null_ratio_max must be in [0.0, 1.0], got {self.null_ratio_max}")
+        if self.max_future_days is not None:
+            if self.dtype != "date":
+                raise ValueError(
+                    f"max_future_days only valid for dtype='date', got dtype={self.dtype!r}"
+                )
+            if self.max_future_days <= 0:
+                raise ValueError(f"max_future_days must be > 0, got {self.max_future_days}")
 
     @property
     def conversion_factor(self) -> float | None:
@@ -108,7 +121,7 @@ KLINES_DAILY = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
         "open": _price_col,
         "high": _price_col,
         "low": _price_col,
@@ -141,7 +154,7 @@ DAILY_BASIC = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
         "close": _price_col,
         "turnover_rate": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
         "turnover_rate_f": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
@@ -175,7 +188,7 @@ MONEYFLOW_DAILY = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
         "buy_sm_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
         "buy_sm_amount": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
         "sell_sm_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
@@ -436,7 +449,9 @@ BACKTEST_RUN = TableContract(
         "elapsed_sec": ColumnSpec("int"),
         "error_message": ColumnSpec("str"),
         # PR A ALTER ADD 3 新列 (MVP 2.3)
-        "mode": ColumnSpec("str"),  # BacktestMode enum value (chk_backtest_run_mode CHECK 容忍 NULL)
+        "mode": ColumnSpec(
+            "str"
+        ),  # BacktestMode enum value (chk_backtest_run_mode CHECK 容忍 NULL)
         "lineage_id": ColumnSpec("uuid"),  # FK → data_lineage(lineage_id), MVP 2.2 U3 追溯
         "extra_decimals": ColumnSpec("decimal_array"),  # 未来 metric 扩展预留 (decimal_array 直通)
     },
