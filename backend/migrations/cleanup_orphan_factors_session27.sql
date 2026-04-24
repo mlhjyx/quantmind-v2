@@ -61,10 +61,18 @@ WHERE name IN (
 -- ── 验证 ──────────────────────────────────────────────────────
 -- 预期: UPDATE 10 rows, DELETE 1 row. 后 factor_registry 286 条 (287-1).
 -- 预期: status IN ('active', 'warning') 过滤少 10 (实际 11 - pead_q1 本已 warning).
+--
+-- Reviewer P1 (database): 838M 行 hypertable 冷 cache 扫描 >120s 会使本事务持
+-- factor_registry ROW EXCLUSIVE 锁过久, 与 18:00 DailyIC / 18:15 IcRolling 调度
+-- 窗口可能发生锁等待. 对策:
+--   (a) SET LOCAL statement_timeout 120s 上限, 超时 abort 事务由调用方重试
+--   (b) RAISE EXCEPTION 替 WARNING — orphan>0 直接 ROLLBACK 整个事务 (fail-loud,
+--       防 idempotent 幻觉: 若 orphan 残留, migration 应视为未完成需人工介入)
 DO $$
 DECLARE
     remaining_orphan INT;
 BEGIN
+    SET LOCAL statement_timeout = '120s';
     -- orphan = 在 factor_registry 但 factor_values 无数据的 non-deprecated 行
     SELECT COUNT(*)
     INTO remaining_orphan
@@ -74,10 +82,13 @@ BEGIN
           SELECT 1 FROM (SELECT DISTINCT factor_name FROM factor_values) fv
           WHERE fv.factor_name = fr.name
       );
-    -- 预期 = 0 (清理成功)
     RAISE NOTICE 'Post-cleanup orphan count (active/warning but no factor_values): %', remaining_orphan;
     IF remaining_orphan > 0 THEN
-        RAISE WARNING 'Still % orphan factor(s) remain — investigate!', remaining_orphan;
+        -- reviewer P1/P3 (database) 采纳: EXCEPTION 触发整事务 ROLLBACK, 而非仅打 WARNING
+        RAISE EXCEPTION 'Migration incomplete: % orphan factor(s) remain in active/warning status. '
+                        'Expected 0. Inspect with: '
+                        'python scripts/audit/audit_orphan_factors.py --only-active',
+                        remaining_orphan;
     END IF;
 END $$;
 

@@ -24,7 +24,15 @@ import argparse
 import json
 import os
 import sys
+import traceback
 from pathlib import Path
+
+# Reviewer P2 (python + database) 采纳: 提 const 对齐项目风格 (pull_moneyflow.py
+# STATEMENT_TIMEOUT_MS = 60_000 / fast_ic_recompute 300_000). audit 属"batch 性
+# 读扫描"而非每日增量, 300s (5 min) 对齐铁律 43-a batch tier. factor_values
+# 839M 行 hypertable 冷 cache 全扫实测 30-60s, 180s→300s 给 CI runner 预热不足
+# 的场景额外 safety margin, 绝大多数 warm-cache 实际 <5s 不受影响.
+_STATEMENT_TIMEOUT_MS = 300_000
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
@@ -40,14 +48,16 @@ import psycopg2  # noqa: E402
 
 
 def _get_conn() -> psycopg2.extensions.connection:
-    """Load DATABASE_URL + return psycopg2 conn with 180s timeout (cold cache safety).
+    """Load DATABASE_URL + return psycopg2 conn with _STATEMENT_TIMEOUT_MS.
 
     SELECT DISTINCT factor_name 在 factor_values hypertable (839M rows, 151 chunks)
     冷 cache 首次扫 30-60s. 实测 Session 27 连续 audit 第二次因 psql 连接 churn
-    evict shared_buffers 可达 >120s. 180s 对 warm 场景 >30x 余量.
+    evict shared_buffers 可达 >120s. 300s 对 warm 场景 >60x 余量 + CI 冷 cache 兜底.
     """
     url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
-    return psycopg2.connect(url, options="-c statement_timeout=180000")
+    return psycopg2.connect(
+        url, options=f"-c statement_timeout={_STATEMENT_TIMEOUT_MS}"
+    )
 
 
 def find_orphans(conn, only_active: bool = False) -> list[dict]:
@@ -63,11 +73,12 @@ def find_orphans(conn, only_active: bool = False) -> list[dict]:
             "SELECT name, status, pool, direction, category, updated_at::date "
             "FROM factor_registry "
         )
-        params: tuple = ()
         if only_active:
             sql += "WHERE status IN ('active', 'warning') "
         sql += "ORDER BY name"
-        cur.execute(sql, params)
+        # Reviewer P3 (python) 采纳: 删空 params 占位, 此查询无用户参数.
+        # only_active 影响 SQL 结构 (可静态拼接), 非参数绑定 → 无注入面.
+        cur.execute(sql)
         cols = ["name", "status", "pool", "direction", "category", "updated_at"]
         registry = [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
@@ -121,7 +132,11 @@ def main() -> int:
         finally:
             conn.close()
     except Exception as e:
-        print(f"[audit] FATAL: {type(e).__name__}: {e}", file=sys.stderr)
+        # Reviewer P1 (python) 采纳: 补完整 traceback 对齐 compute_daily_ic/
+        # pull_moneyflow main() pattern. CI `--strict` 失败时 ad-hoc 调试
+        # 需要 psycopg2 OperationalError 深层嵌套, 仅摘要不够.
+        print(f"[audit] FATAL: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
         return 2
 
     if args.json:
