@@ -32,6 +32,8 @@ CRITICAL_SCRIPTS = [
     "scripts/monitor_factor_ic.py",
     # fetch_minute_bars.py 已删 MVP 2.1c Sub3.3 (2026-04-18), 改用 BaostockDataSource SDK
     "scripts/factor_health_check.py",
+    # Session 27 Task A: 铁律 43 硬化后加入 smoke (main() 返 int + argparse --help OK)
+    "scripts/pull_moneyflow.py",
 ]
 
 # Daemon 脚本 (无 --help) — 走 ast.parse 仅验证语法 + import-free parse

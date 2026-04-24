@@ -17,8 +17,11 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
 """
 
 import argparse
+import contextlib
+import os
 import sys
 import time
+import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -34,6 +37,12 @@ from app.services.price_utils import _get_sync_conn
 
 pro = ts.pro_api(settings.TUSHARE_TOKEN)
 
+# 铁律 43-a: session-level statement_timeout 硬超时防 cold-cache / lock hang
+# 被 schtask ExecutionTimeLimit kill. pull_moneyflow 每日 DB query 含
+# SELECT MAX(trade_date) + verify() COUNT(*) (cold cache 可达 10-17s),
+# 60s 对 warm 场景 >60x 余量, cold 场景仍有 3-4x 余量.
+STATEMENT_TIMEOUT_MS = 60_000
+
 # Tushare moneyflow 字段
 MF_FIELDS = [
     "ts_code", "trade_date",
@@ -46,6 +55,17 @@ MF_FIELDS = [
 
 DEFAULT_START = "20210101"
 DEFAULT_END = date.today().strftime("%Y%m%d")
+
+
+def _apply_statement_timeout(conn: psycopg2.extensions.connection) -> None:
+    """Apply session-level statement_timeout (铁律 43-a).
+
+    SET (non-LOCAL) 是 session-wide, 跨后续 commit/rollback 持续有效.
+    Reviewer alignment: 与 compute_daily_ic / compute_ic_rolling / pt_watchdog
+    同 pattern (parametrize %s 防 SQL injection, 即便常量 int).
+    """
+    with conn.cursor() as cur:
+        cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
 
 
 def get_trading_dates(start: str, end: str) -> list[str]:
@@ -228,7 +248,34 @@ def verify(conn: psycopg2.extensions.connection) -> None:
                 print(f"  {r[0]}: 特大单买={r[1]}, 特大单卖={r[2]}, 净流入={r[3]}")
 
 
-def main() -> None:
+def _check_trading_day_or_skip() -> bool:
+    """Return True if A-stock today is trading day (or unknown → proceed).
+
+    铁律 33-d silent_ok: trading_calendar 缺失/连接失败时 degrade 为无差别拉取,
+    后续 _run() 若真遇 DB 故障会 raise 由 main() 顶层兜底.
+    """
+    try:
+        conn = _get_sync_conn()
+        _apply_statement_timeout(conn)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT is_trading_day FROM trading_calendar
+                       WHERE market = 'astock' AND trade_date = %s""",
+                    (date.today(),),
+                )
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        # row=None → unknown (fail-open, proceed), row[0]=False → skip
+        return row is None or bool(row[0])
+    except Exception:
+        # silent_ok: 见 docstring (铁律 33-d).
+        return True
+
+
+def _run() -> int:
+    """主流程 (铁律 43 pattern: 顶层 try/except 由 main 包裹)."""
     parser = argparse.ArgumentParser(description="拉取moneyflow数据")
     parser.add_argument("--start", type=str, default=None, help="起始日期YYYYMMDD")
     parser.add_argument("--end", type=str, default=DEFAULT_END, help="结束日期YYYYMMDD")
@@ -237,11 +284,12 @@ def main() -> None:
     args = parser.parse_args()
 
     conn = _get_sync_conn()
+    _apply_statement_timeout(conn)
 
     if args.verify:
         verify(conn)
         conn.close()
-        return
+        return 0
 
     # 添加列注释
     add_column_comments(conn)
@@ -270,7 +318,7 @@ def main() -> None:
         print(f"[完成] 起始日期{start_date} > 结束日期{end_date}，无需拉取")
         verify(conn)
         conn.close()
-        return
+        return 0
 
     # 获取交易日列表
     print(f"[准备] 获取交易日历 {start_date} ~ {end_date}")
@@ -335,23 +383,38 @@ def main() -> None:
     # 验证
     verify(conn)
     conn.close()
+    return 0
+
+
+def main() -> int:
+    """Script entry: boot probe + trading_calendar guard + _run wrapper.
+
+    铁律 43 pattern (LL-068 扩散第 6 个 schtask script):
+      (a) SET statement_timeout = 60s in _run() + _check_trading_day_or_skip()
+      (b) print-only 豁免 (铁律 43-b, 无 logger FileHandler)
+      (c) boot stderr probe (下方)
+      (d) 顶层 try/except → FATAL + exit(2) (下方)
+    """
+    print(
+        f"[pull_moneyflow] boot {datetime.now().isoformat()} pid={os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+    try:
+        if not _check_trading_day_or_skip():
+            print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取", flush=True)
+            return 0
+        return _run()
+    except Exception as e:
+        msg = f"[pull_moneyflow] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, print-only 无 logger 可写 (铁律 33-d).
+        # contextlib 保留以对齐 compute_daily_ic.main() pattern.
+        with contextlib.suppress(Exception):
+            pass
+        return 2
 
 
 if __name__ == "__main__":
-    # 交易日历检查（非交易日跳过，DailyBackup除外）
-    try:
-        conn_check = _get_sync_conn()
-        cur_check = conn_check.cursor()
-        cur_check.execute(
-            """SELECT is_trading_day FROM trading_calendar
-               WHERE market = 'astock' AND trade_date = %s""",
-            (date.today(),),
-        )
-        row_check = cur_check.fetchone()
-        conn_check.close()
-        if row_check and not row_check[0]:
-            print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取")
-            sys.exit(0)
-    except Exception:
-        pass  # trading_calendar不可用时不阻塞
-    main()
+    sys.exit(main())

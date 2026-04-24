@@ -474,14 +474,22 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - **(c) `main()` 首行 boot stderr probe**: `print(f"[script] boot {datetime.now().isoformat()} pid={os.getpid()}", flush=True, file=sys.stderr)`. 即便 logger 初始化失败, schtask stderr 仍有启动证据. `os` / `datetime` 必 module-top import (不在 `main()` 局部, reviewer 采纳).
     - **(d) `main()` 顶层 try/except → stderr + exit(2)**: `except Exception as e: print(f"[script] FATAL: ...", file=sys.stderr); traceback.print_exc(); ...; return 2`. schtask LastResult 非零触发 schtask 告警链 + 钉钉通知. `contextlib.suppress(Exception)` 包 logger.critical 兜底 (铁律 33-d silent_ok).
 
-    **合规 script 清单** (Session 26 末):
+    **合规 script 清单** (Session 27 Task A 末):
     - `scripts/data_quality_check.py` (PR #47)
     - `scripts/pt_watchdog.py` (PR #49)
     - `scripts/compute_daily_ic.py` (PR #49)
     - `scripts/compute_ic_rolling.py` (PR #51)
     - `scripts/fast_ic_recompute.py` (PR #51)
+    - `scripts/pull_moneyflow.py` (PR #52, Session 27 Task A)
 
-    **未合规 candidates** (Session 27+ 陆续迁): `scripts/pull_moneyflow.py`, `scripts/pull_klines.py`, `scripts/factor_lifecycle_monitor.py`.
+    **未合规 candidates** (Session 28+): 暂无其他 schtask 驱动的 Python 脚本待迁.
+    非 schtask scope (不适用铁律 43):
+    - `scripts/factor_lifecycle_monitor.py` — Celery Beat 周五 19:00 触发
+      (`beat_schedule.py:73`), Celery 有自己的 retry/ack/soft_time_limit 契约,
+      另评 (Session 28+ 考虑 Celery task 硬化铁律, 独立于铁律 43).
+    - ~~`scripts/pull_klines.py`~~ — 文件不存在 (Session 27 Task A precondition
+      核实). klines 由 `run_paper_trading.py signal` (16:30 DailySignal) 内置
+      Tushare client 拉取, 非独立 schtask 脚本.
 
     **反例** (不适用):
     - 交互式 CLI (一次性 ad-hoc run, 有人看 stderr)
