@@ -68,6 +68,25 @@ class PMSRule(RiskRule):
             raise ValueError(
                 f"PMSRule levels must be sorted by min_gain DESC, got {self._levels!r}"
             )
+        # reviewer P2-4 采纳: max_drawdown 同向单调 (L1 >= L2 >= L3).
+        # 配错如 L1(dd=0.05) L2(dd=0.15) → L2 更难触发 (要求更大回撤), 语义颠倒.
+        if not all(
+            self._levels[i].max_drawdown >= self._levels[i + 1].max_drawdown
+            for i in range(len(self._levels) - 1)
+        ):
+            raise ValueError(
+                f"PMSRule levels must be sorted by max_drawdown DESC, got {self._levels!r}"
+            )
+
+    def root_rule_id_for(self, triggered_rule_id: str) -> str:
+        """reviewer P1-3 配套: PMSRule 触发 RuleResult.rule_id='pms_l{N}', 反查 root='pms'.
+
+        非 pms_l{N} pattern 走 passthrough (不声明拥有此 triggered_id), 对齐 interface.py
+        新语义 (v2) — 避免 PMSRule 被误判为所有 unknown 触发 id 的 owner.
+        """
+        if triggered_rule_id.startswith("pms_l") and triggered_rule_id[5:].isdigit():
+            return "pms"
+        return triggered_rule_id
 
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         """检查每个 position 是否触发阶梯保护.

@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.platform._types import Severity
-from backend.platform.risk.engine import PlatformRiskEngine, _root_rule_id
+from backend.platform.risk.engine import PlatformRiskEngine, _root_rule_id_via_rules
 from backend.platform.risk.interface import (
     Position,
     PositionSourceError,
@@ -281,6 +281,41 @@ class TestEngineExecute:
         broker.sell.assert_not_called()
         notifier.send.assert_called_once()
 
+    def test_bypass_action_logs_but_no_broker_no_notify(self):
+        """reviewer P2-2 采纳: bypass action 仅 log risk_event_log, 不调 broker 不 notify."""
+
+        class _BypassRule(RiskRule):
+            rule_id = "test_bypass"
+            severity = Severity.INFO
+            action = "bypass"
+
+            def evaluate(self, context):
+                return []
+
+        broker = MagicMock()
+        notifier = MagicMock()
+        mock_conn = _mock_conn()
+
+        engine = PlatformRiskEngine(
+            primary_source=MagicMock(), fallback_source=MagicMock(),
+            broker=broker, notifier=notifier,
+            price_reader=MagicMock(), conn_factory=_conn_factory(mock_conn),
+        )
+        engine.register(_BypassRule())
+
+        result = RuleResult(
+            rule_id="test_bypass", code="000001.SZ", shares=0,
+            reason="bypass test", metrics={},
+        )
+        engine.execute([result], _ctx())
+
+        broker.sell.assert_not_called()
+        notifier.send.assert_not_called()
+        # risk_event_log 仍 INSERT (审计必需)
+        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+        assert mock_cursor.execute.called
+        assert "INSERT INTO risk_event_log" in mock_cursor.execute.call_args[0][0]
+
     def test_broker_failure_not_raising_logs(self):
         """broker.sell raise 不阻塞其他 result (log + action_result['status']='sell_failed')."""
         broker = MagicMock()
@@ -310,17 +345,48 @@ class TestEngineExecute:
 
 
 class TestRootRuleIdMapping:
-    """_root_rule_id 反查约定."""
+    """_root_rule_id_via_rules 反查约定 (reviewer P1-3 重构后)."""
 
-    @pytest.mark.parametrize(
-        ("triggered_id", "expected_root"),
-        [
-            ("pms_l1", "pms"),
-            ("pms_l2", "pms"),
-            ("pms_l3", "pms"),
-            ("intraday_portfolio_drop_5pct", "intraday_portfolio_drop_5pct"),
-            ("cb_l2", "cb_l2"),  # 批 3 adapter 保留原 id
-        ],
-    )
-    def test_pms_l_prefix_reverse(self, triggered_id: str, expected_root: str):
-        assert _root_rule_id(triggered_id) == expected_root
+    class _PMSLikeRule(RiskRule):
+        """Mock PMSRule that maps pms_l* back to 'pms'."""
+
+        rule_id = "pms"
+        severity = Severity.P1
+        action = "sell"
+
+        def evaluate(self, context):
+            return []
+
+        def root_rule_id_for(self, triggered_rule_id: str) -> str:
+            if triggered_rule_id.startswith("pms_l") and triggered_rule_id[5:].isdigit():
+                return "pms"
+            # 新语义: passthrough (rule 不声明拥有此 triggered_id)
+            return triggered_rule_id
+
+    class _SimpleRule(RiskRule):
+        """Mock 简单规则, 触发 rule_id == registered rule_id."""
+
+        rule_id = "intraday_portfolio_drop_5pct"
+        severity = Severity.P1
+        action = "alert_only"
+
+        def evaluate(self, context):
+            return []
+
+    def test_direct_hit(self):
+        rules = {"intraday_portfolio_drop_5pct": self._SimpleRule()}
+        r = _root_rule_id_via_rules("intraday_portfolio_drop_5pct", rules)
+        assert r is not None
+        assert r.rule_id == "intraday_portfolio_drop_5pct"
+
+    def test_pms_l_reverse_via_method(self):
+        rules = {"pms": self._PMSLikeRule()}
+        for triggered in ("pms_l1", "pms_l2", "pms_l3"):
+            r = _root_rule_id_via_rules(triggered, rules)
+            assert r is not None, f"{triggered}: not resolved"
+            assert r.rule_id == "pms"
+
+    def test_unknown_returns_none(self):
+        rules = {"pms": self._PMSLikeRule()}
+        r = _root_rule_id_via_rules("unknown_rule_xyz", rules)
+        assert r is None
