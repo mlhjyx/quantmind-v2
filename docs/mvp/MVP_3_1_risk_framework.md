@@ -1,9 +1,10 @@
 # MVP 3.1 · Risk Framework
 
 > **Wave**: 3 第 1 步 (Wave 3 启动 MVP, 所有其他 Wave 3 MVP 前置)
-> **耗时**: **2.5-3.5 周** (3 批次分阶段 + 批 3 feasibility spike 前置, v1.1 review 修正: 批 3 async→sync 重写 CB 1030 行 状态机低估)
-> **依赖**: MVP 1.1 Platform Skeleton ✅ / MVP 2.1 Data Framework ✅ / ADR-010 PMS Deprecation ✅
-> **风险**: 中-高 (批 3 触碰熔断真金路径, async→sync 重写; 过渡期零自动卖 1.5-3 周)
+> **耗时**: **2-2.7 周** (批 0 spike 完成 Session 27 2026-04-24: CB 方案 C adapter 复用
+> `check_circuit_breaker_sync`, 批 3 从 1030 行 async→sync 重写 → ~200 行 wrapper, 总耗时下修)
+> **依赖**: MVP 1.1 Platform Skeleton ✅ / MVP 2.1 Data Framework ✅ / ADR-010 PMS Deprecation ✅ / **ADR-010 addendum CB feasibility ✅**
+> **风险**: 中 (批 3 adapter 不触老状态机核心 1030 行; 过渡期零自动卖 1.5-3 周)
 > **Scope 原则**: 统一规则引擎 + 实时数据源 + 直接执行 + 单表事件日志 (不做风控策略优化, 不动 PMS 阈值参数本身)
 > **铁律**: 22 / 23 / 24 / 31 / 33 / 34 / 36 / 38 / 40
 
@@ -26,12 +27,13 @@
 ## 实施结构 (批 0 feasibility spike + 3 批分批落地)
 
 ```
-批 0 (1-2h, 批 1 前必做): 批 3 CB 状态机 feasibility spike
-├── 目的: 验证 RiskRule/RiskContext 抽象能否干净映射 CB L1-L4 状态机
-│   (cross-invocation state / L4 human approval / de-escalation timers)
-├── 产出: 伪代码 sketch CBL1Rule..CBL4Rule 如何承载现有 risk_control_service 状态
-├── 若不 fit → 立即调整 RiskRule interface, 不等批 1 上线再发现 (避免 split-brain)
-└── 文档: docs/adr/ADR-010-addendum-cb-feasibility.md (如需)
+批 0 ✅ 完成 (Session 27 2026-04-24): 批 3 CB 状态机 feasibility spike
+├── 结论: 现 RiskRule/RiskContext 抽象**不适合**直接承载 CB L1-L4 完整状态机
+│   (cross-invocation state / L4 human approval / action 非"sell" / 双向 escalate-recover)
+├── 决策: **方案 C — Hybrid wrapper** CircuitBreakerRule 薄 adapter 复用
+│   check_circuit_breaker_sync (L1349, 现成 sync API) → 不重写 1030 行 async 状态机
+├── 影响: 批 3 工作量 ~500 行 → **~200 行**, 耗时 1-1.5 周 → **0.5-0.7 周**
+└── 文档: docs/adr/ADR-010-addendum-cb-feasibility.md ✅
 
 批 1 (~1 周): Framework core + PMS L1/L2/L3 迁入
 ├── backend/platform/risk/                       ⭐ NEW
@@ -56,15 +58,15 @@
 ├── scripts/intraday_monitor.py                   ⚠️ 改走 RiskEngine (保留 5min schtasks 触发)
 └── backend/tests/test_risk_rules_intraday.py     ~8 unit
 
-批 3 (~1-1.5 周): circuit breaker L1-L4 迁入 (末位, 风险最高, v1.1 review 修正)
-├── backend/platform/risk/rules/circuit_breaker.py  CBL1Rule / CBL2Rule / CBL3Rule / CBL4Rule
-├── backend/app/services/risk_control_service.py    ⚠️ **async SQLAlchemy → sync psycopg2 迁移**
-│                                                      (1030 行状态机, 含 approval_queue + L4 recovery + de-escalation timers)
-├── backend/app/services/risk_repository.py         ⚠️ AsyncSession → sync psycopg2 Repository
-└── backend/tests/test_risk_rules_cb.py             ~15 unit (含 L4 approval + recovery + async→sync regression)
+批 3 (~0.5-0.7 周, 批 0 spike 后下修): circuit_breaker **adapter** 接入 Risk Engine
+├── backend/platform/risk/rules/circuit_breaker_adapter.py  CircuitBreakerRule (薄 wrapper,
+│                                                            1 rule 统一 L1-L4 状态变更事件)
+├── ⚠️ **不**重写 risk_control_service.py (1030 行 async 保留, adapter 调现成 check_circuit_breaker_sync)
+├── backend/tests/test_risk_rules_cb_adapter.py     ~8 unit (wrapper + 4 level transition + risk_event_log 格式)
+└── 批 3 末尾若 CB 运行稳定, 可二次重构把 wrapper inline + drop 老 service (batch 3b, Wave 4+)
 ```
 
-**规模预估**: ~400 行 platform + ~200 行 migration/rules + ~400 行 CB async→sync 重写 + ~450 行 tests ≈ **~1500 行, 2.5-3.5 周** (v1.1 review 修正: 原 ~1000 行 / 1.5-2 周 低估了批 3 async migration 量)
+**规模预估**: ~400 行 platform + ~200 行 migration/rules + **~200 行 CB adapter + tests** + ~450 行 其他 tests ≈ **~1250 行, 2-2.7 周** (批 0 spike 修正: 方案 C adapter 节省 ~300 行 async→sync 重写)
 
 ---
 
@@ -165,7 +167,10 @@ ADR-010 D4 schema 基础上补:
 - ✅ **live smoke** `test_mvp_3_1_risk_live.py`: 模拟 L1 触发 → QMT sell order → risk_event_log 写入 → 钉钉发送, 端到端 side effect 全验证
 - ✅ 批 1 完成后: `SELECT COUNT(*) FROM risk_event_log WHERE rule_id LIKE 'pms_%'` **必须有非触发 dry-run 证据** (单测 + live smoke 模拟触发至少 1 行)
 - ✅ 批 2 完成后: `intraday_monitor.py` 走 RiskEngine, 老告警函数加 `@deprecated`
-- ✅ 批 3 完成后: `risk_control_service.check_circuit_breaker_sync` deprecated, circuit_breaker_log 停止写入
+- ✅ 批 3 完成后: `CircuitBreakerRule` adapter 接入 RiskEngine, CB 状态变更事件入
+  `risk_event_log` (单 rule_id `cb_state_change`); `check_circuit_breaker_sync` **保留**
+  (方案 C adapter 调, 非 deprecated); circuit_breaker_state 表保留, circuit_breaker_log
+  记录通过 adapter 映射进 risk_event_log
 - ✅ **regression**: `pytest -m smoke` 全绿, baseline fail count 不增加 (铁律 40)
 - ✅ **文档**: SYSTEM_STATUS.md 更新 Risk Framework 状态, DEV_BACKEND.md §监控架构章节重写, CLAUDE.md 铁律如有新增 (如"Dead code 识别")
 - ✅ **PMS 死码清理**: `pms_engine.py` + `daily_pipeline.py:pms_check` + `api/pms.py` 迁入后删除 (保留 1 sprint 供回滚, 完成后永久 drop)
@@ -176,7 +181,7 @@ ADR-010 D4 schema 基础上补:
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| **批 3 CB async→sync 迁移低估** (v1.1 review P1) | 批 3 卡住, 批 1-2 已上线 split-brain | **批 0 feasibility spike 1-2h** 预验 RiskRule/RiskContext 能否承载 CB 状态机; 批 3 重估 1-1.5 周, 总 2.5-3.5 周 |
+| ~~**批 3 CB async→sync 迁移低估**~~ (批 0 spike 2026-04-24 已消除) | ~~批 3 卡住, 批 1-2 已上线 split-brain~~ | 批 0 spike 决策**方案 C Hybrid wrapper**: adapter 复用 check_circuit_breaker_sync, 不重写 1030 行 async. 批 3 重估 **0.5-0.7 周**, 总 **2-2.7 周**, split-brain 风险消除 (ADR-010-addendum) |
 | 批 3 circuit breaker 改动误伤真金路径 | 熔断失灵 = 灾难 | 批 3 最后做, 先验证批 1-2 稳定运行 2 周 |
 | **过渡期零自动卖 1.5-3 周** (v1.1 review P1) | intraday_monitor + emergency_stock_alert + 盘后三检全是 alert-only, 人工响应延迟 3-5 min | `emergency_stock_alert.py` 必须**先建**再停 PMS Beat (ADR-010 D6 调顺序); 过渡期间尽量不做大额调仓, 机器必开钉钉 |
 | QMTPositionSource Redis 60s 延迟 | flash-crash 场景 stop-loss 仍可能滞后 | Redis primary 对月度策略足够; 未来 Wave 4 可加 tick-level event stream; 当前窗口接受 60s 延迟 |
