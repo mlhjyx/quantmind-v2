@@ -138,11 +138,14 @@ Logon 触发
    - 建议: 实测 15:40 工作正常且对 T+0 settlement 延迟更合理 → 更新 ps1 + CLAUDE.md 对齐 15:40
    - 工作量: 小 PR (setup_task_scheduler.ps1 + CLAUDE.md 2 处 diff)
 
-3. **QM-PTDailySummary + QuantMind_PTAudit 同 17:35 时段重复**
-   - 2 任务同时触发, `QM-PTDailySummary` LastResult=1 (非 0 退出) 可能 PTAudit 已取代
-   - 历史: Session 17 Stage 4 引入 PTAudit 作为 "5-check 主动守门", PTDailySummary 是 Session 17 前的老日报任务
-   - 建议: 实测 `QM-PTDailySummary` 有无生产消费方 (前端 / 邮件告警), 若无 → disable + 独立 PR 清理 ps1/setup (ps1 实际并未 register 这条, 是历史遗留 schtask)
-   - 工作量: 独立 PR (调查消费方 + disable/delete + 归档)
+3. ~~**QM-PTDailySummary + QuantMind_PTAudit 同 17:35 时段重复**~~ **✅ RECLASSIFIED + FIX DEPLOYED (Session 32 PR #67 2026-04-24)**
+   - **实测根因**: 不是"重复", 是 `pt_daily_summary.py` 自 2026-04-16 delivery 起 **8 天 silent-fail** (17:35 LastResult=1 循环), 铁律 10b **MVP 1.1b Shadow Fix 遗漏**:
+     `sys.path.insert(0, BACKEND_DIR)` 导致 `backend/platform/` shadow stdlib `platform`,
+     sqlalchemy → pandas 链路触发 `AttributeError: partially initialized module 'platform'
+     has no attribute 'python_implementation'` → exit=1 silent
+   - **功能互补非重复**: PTAudit (negative alert, PASS 静默) + PTDailySummary (positive 日报, 每日推 NAV/PnL/持仓) 是不同用户侧价值
+   - **修复**: `sys.path.insert(0)` → `if str(BACKEND_DIR) not in sys.path: sys.path.append(...)` (对齐 compute_ic_rolling.py / compute_daily_ic.py 已知好 pattern), dry-run 实测 exit=0 NAV ¥1,012,178 +0.00% 19 持仓 报告正确产出
+   - **11 script 同 pattern 扫描** (sys.path.insert(0) + Session 32 smoke 全覆盖): 仅 pt_daily_summary 实际 broken, 其余 10 (run_paper_trading/factor_health_daily/rolling_wf/ic_monitor/factor_lifecycle_monitor/run_gp_pipeline/compute_minute_features/compute_factor_phase21/bayesian_slippage_calibration/fix_st_cleanup_20260414) 因未触发 sqlalchemy ext.asyncio 路径 shadow 不激活. 预防建议: Session 33+ 独立 PR 统一 pattern 到 `append + guard` 防未来新增 import 触发 shadow
 
 4. ~~**QuantMind_GPPipeline ps1 残留 register 代码 (latent bug)**~~ **✅ CLOSED (Session 32 PR #66 2026-04-24)**
    - ~~Session 16 (2026-04-16) 已 `schtasks /delete` 删除活任务 (避 Celery Beat gp-weekly-mining 双触发)~~
