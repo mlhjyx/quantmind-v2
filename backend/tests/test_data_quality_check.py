@@ -31,24 +31,28 @@ import data_quality_check as dqc  # noqa: E402
 
 
 class TestConstants:
-    """模块常量合约."""
+    """模块常量合约. reviewer P3-2: 用 relational 断言而非 tautology,
+    测试"值的意图" (e.g. ≥ cold-scan-17s safety 下限) 而非 copy 当前数字."""
 
-    def test_statement_timeout_60s(self):
-        """statement_timeout 60s = cold scan 17s × 3.5 safety."""
-        assert dqc.STATEMENT_TIMEOUT_MS == 60_000
+    def test_statement_timeout_exceeds_cold_scan_safety(self):
+        """statement_timeout 须 ≥ 30s (cold scan 实测 17s, safety ≥ 1.75x)."""
+        assert dqc.STATEMENT_TIMEOUT_MS >= 30_000
 
-    def test_connect_timeout_30s(self):
-        assert dqc.CONNECT_TIMEOUT_S == 30
+    def test_connect_timeout_exceeds_network_jitter(self):
+        """connect_timeout 须 ≥ 15s (容忍 Windows DNS/TCP 建立抖动)."""
+        assert dqc.CONNECT_TIMEOUT_S >= 15
 
-    def test_future_guard_7days(self):
-        """cutoff = today + 7d, 足够 cover A 股长假 (国庆 7 天) 的 schedule slack."""
-        assert dqc.FUTURE_DATE_GUARD_DAYS == 7
+    def test_future_guard_covers_longest_holiday(self):
+        """cutoff = today + ≥7d 覆盖 A 股最长假 (国庆 7 天 + 1 天调休 buffer)."""
+        assert dqc.FUTURE_DATE_GUARD_DAYS >= 7
 
-    def test_row_tolerance_8pct(self):
-        assert dqc.ROW_TOLERANCE == 0.08
+    def test_row_tolerance_bounded(self):
+        """moneyflow 天然少 klines ~5-6%, 容差须 ≥5% 但 ≤15% 防漏检."""
+        assert 0.05 <= dqc.ROW_TOLERANCE <= 0.15
 
-    def test_null_threshold_5pct(self):
-        assert dqc.NULL_THRESHOLD == 0.05
+    def test_null_threshold_bounded(self):
+        """NULL 比例阈值 ≤10% (超过则数据质量已劣化到应阻断)."""
+        assert 0 < dqc.NULL_THRESHOLD <= 0.10
 
 
 class TestGetConnection:
@@ -167,9 +171,7 @@ class TestCheckLatestDatesFutureGuard:
             (date(2026, 4, 23),),  # daily_basic max OK
             (date(2026, 4, 23),),  # moneyflow max OK
         ]
-        alerts = dqc.check_latest_dates(
-            cur, date(2026, 4, 23), date(2026, 4, 24)
-        )
+        alerts = dqc.check_latest_dates(cur, date(2026, 4, 23), date(2026, 4, 24))
         # klines 应有 lag alert (P0 因为 lag>1)
         klines_alerts = [a for a in alerts if "klines_daily" in a]
         assert len(klines_alerts) == 1
@@ -183,9 +185,7 @@ class TestCheckLatestDatesFutureGuard:
             (date(2026, 4, 23),),  # daily_basic
             (date(2026, 4, 23),),  # moneyflow
         ]
-        alerts = dqc.check_latest_dates(
-            cur, date(2026, 4, 23), date(2026, 4, 24)
-        )
+        alerts = dqc.check_latest_dates(cur, date(2026, 4, 23), date(2026, 4, 24))
         assert any("表为空" in a for a in alerts)
 
 
@@ -223,9 +223,7 @@ class TestRunChecksExitCodes:
             mock_conn.return_value.cursor.return_value = cur
             with (
                 patch.object(dqc, "check_future_dates", return_value=[]),
-                patch.object(
-                    dqc, "check_row_counts", return_value=["row alert"]
-                ),
+                patch.object(dqc, "check_row_counts", return_value=["row alert"]),
                 patch.object(dqc, "check_null_ratios", return_value=[]),
                 patch.object(dqc, "check_latest_dates", return_value=[]),
                 patch.object(dqc, "send_dingtalk_alert"),
@@ -233,8 +231,17 @@ class TestRunChecksExitCodes:
                 rc = dqc.run_checks(self._mock_args(dry_run=True))
         assert rc == 1
 
-    def test_per_step_exception_does_not_abort(self):
-        """铁律 33: 单步异常不阻塞后续 check, 转 P0 alert 继续."""
+    def test_per_step_exception_does_not_abort(self, capsys):
+        """铁律 33: 单步异常不阻塞后续 check, 转 P0 alert 继续.
+
+        reviewer LOW-2: 除 exit=1 外, 还必须 assert P0 alert msg 被正确
+        格式化 (否则 run_checks 静默吞掉异常转成 exit=0 也能 pass 本测试).
+        """
+        captured_alerts: list[list[str]] = []
+
+        def _capture(alerts, *_, **__):
+            captured_alerts.append(list(alerts))
+
         with patch.object(dqc, "get_connection") as mock_conn:
             cur = MagicMock()
             cur.fetchone.side_effect = [(date(2026, 4, 23),)]
@@ -245,18 +252,21 @@ class TestRunChecksExitCodes:
                     "check_future_dates",
                     side_effect=RuntimeError("simulated"),
                 ),
-                patch.object(
-                    dqc, "check_row_counts", return_value=[]
-                ) as row_check,
+                patch.object(dqc, "check_row_counts", return_value=[]) as row_check,
                 patch.object(dqc, "check_null_ratios", return_value=[]),
                 patch.object(dqc, "check_latest_dates", return_value=[]),
-                patch.object(dqc, "send_dingtalk_alert"),
+                patch.object(dqc, "send_dingtalk_alert", side_effect=_capture),
             ):
                 rc = dqc.run_checks(self._mock_args(dry_run=True))
             # 后续 step 仍被调用
             row_check.assert_called_once()
         # 异常转 alert → exit=1
         assert rc == 1
+        # P0 alert msg 内容断言 (铁律 33 fail-loud 可观测性契约)
+        assert captured_alerts, "send_dingtalk_alert 未被调用"
+        p0_alerts = [a for a in captured_alerts[0] if "[P0]" in a and "future_dates" in a]
+        assert len(p0_alerts) == 1, f"期望 1 条 future_dates P0 alert, 实际 {captured_alerts[0]}"
+        assert "simulated" in p0_alerts[0]
 
 
 class TestMainFailLoud:
@@ -292,14 +302,14 @@ class TestMainFailLoud:
 
 
 def psycopg2_timeout_error() -> Exception:
-    """模拟 PG statement_timeout 触发的 QueryCanceled."""
-    import psycopg2.errors
+    """模拟 PG statement_timeout 触发的 QueryCanceled.
 
-    try:
-        # psycopg2 的 QueryCanceled 构造方式随版本变化; 退回通用 Exception
-        return psycopg2.errors.QueryCanceled("canceling statement due to statement timeout")
-    except Exception:
-        return RuntimeError("statement timeout")
+    reviewer P2-3: 不再 try/except fallback 到 RuntimeError (会 mask 未来
+    psycopg2 API 变化). 如果构造失败, pytest 直接 error 暴露问题.
+    """
+    from psycopg2.errors import QueryCanceled
+
+    return QueryCanceled("canceling statement due to statement timeout")
 
 
 if __name__ == "__main__":

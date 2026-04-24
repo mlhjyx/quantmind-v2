@@ -35,14 +35,6 @@ from pathlib import Path
 
 import psycopg2
 
-# Fail-loud 早期探针 (logger 未初始化时的最后兜底 — 即使 logging FileHandler
-# open 失败, schtask stderr 仍可捕获此行)
-print(
-    f"[data_quality_check] boot {datetime.now().isoformat()} pid={__import__('os').getpid()}",
-    flush=True,
-    file=sys.stderr,
-)
-
 # ── 项目路径 ──
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT / "backend"))
@@ -106,9 +98,7 @@ def get_connection(
     )
 
 
-def get_latest_trading_day(
-    cur: psycopg2.extensions.cursor, ref_date: date | None = None
-) -> date:
+def get_latest_trading_day(cur: psycopg2.extensions.cursor, ref_date: date | None = None) -> date:
     """获取 <= ref_date 的最近交易日."""
     if ref_date is None:
         ref_date = date.today()
@@ -124,9 +114,7 @@ def get_latest_trading_day(
     return row[0]
 
 
-def check_future_dates(
-    cur: psycopg2.extensions.cursor, today: date
-) -> list[str]:
+def check_future_dates(cur: psycopg2.extensions.cursor, today: date) -> list[str]:
     """检测任何表的 MAX(trade_date) > today+N 天 (脏数据/未来日期守护).
 
     背景: 2026-04-20 至今, klines_daily 有 1 row `TA010.SH @ 2099-04-30`
@@ -152,9 +140,7 @@ def check_future_dates(
     return alerts
 
 
-def check_row_counts(
-    cur: psycopg2.extensions.cursor, trade_date: date
-) -> list[str]:
+def check_row_counts(cur: psycopg2.extensions.cursor, trade_date: date) -> list[str]:
     """检查各表当日行数一致性. 返回告警消息列表."""
     alerts: list[str] = []
     counts: dict[str, int] = {}
@@ -196,9 +182,7 @@ def check_row_counts(
     return alerts
 
 
-def check_null_ratios(
-    cur: psycopg2.extensions.cursor, trade_date: date
-) -> list[str]:
+def check_null_ratios(cur: psycopg2.extensions.cursor, trade_date: date) -> list[str]:
     """检查关键字段 NULL 比例. 返回告警消息列表."""
     alerts: list[str] = []
 
@@ -269,8 +253,7 @@ def check_latest_dates(
             lag = cur.fetchone()[0]
             level = "P0" if lag > MAX_DATE_LAG else "P1"
             alerts.append(
-                f"[{level}] {table} 最新日期={max_date}，"
-                f"预期={expected_date}，滞后{lag}个交易日"
+                f"[{level}] {table} 最新日期={max_date}，预期={expected_date}，滞后{lag}个交易日"
             )
         else:
             logger.info("%s 最新日期=%s OK", table, max_date)
@@ -278,9 +261,7 @@ def check_latest_dates(
     return alerts
 
 
-def send_dingtalk_alert(
-    alerts: list[str], trade_date: date, dry_run: bool = False
-) -> None:
+def send_dingtalk_alert(alerts: list[str], trade_date: date, dry_run: bool = False) -> None:
     """通过钉钉发送告警."""
     webhook_url = settings.DINGTALK_WEBHOOK_URL
     if not webhook_url:
@@ -315,15 +296,18 @@ def send_dingtalk_alert(
 def write_db_alert(
     conn: psycopg2.extensions.connection, alerts: list[str], trade_date: date
 ) -> None:
-    """将告警写入 notifications 表. Script 级事务管理 (铁律 32 例外 — 非 service)."""
+    """将告警写入 notifications 表. Script 级事务管理 (铁律 32 例外 — 非 service).
+
+    reviewer P2-2: cursor 用 with 块自动 close, 防异常路径泄漏.
+    """
     try:
-        cur = conn.cursor()
-        content = "\n".join(f"- {a}" for a in alerts)
-        cur.execute(
-            """INSERT INTO notifications (level, category, market, title, content)
-               VALUES (%s, %s, %s, %s, %s)""",
-            ("P1", "pipeline", "astock", f"数据质量告警 {trade_date}", content),
-        )
+        with conn.cursor() as cur:
+            content = "\n".join(f"- {a}" for a in alerts)
+            cur.execute(
+                """INSERT INTO notifications (level, category, market, title, content)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                ("P1", "pipeline", "astock", f"数据质量告警 {trade_date}", content),
+            )
         conn.commit()
         logger.info("告警已写入 notifications 表")
     except Exception as e:
@@ -336,16 +320,19 @@ def run_checks(args: argparse.Namespace) -> int:
     logger.info("=" * 60)
     logger.info("数据质量巡检开始 (statement_timeout=%ds)", STATEMENT_TIMEOUT_MS // 1000)
 
-    conn = get_connection()
-    cur = conn.cursor()
+    # reviewer P1-3: 连接/游标/exit_code 在 try 外 init, 防 get_connection / cursor
+    # raise 时 finally 里 close() 触发 NameError (铁律 33 fail-loud 反面教训)
+    conn: psycopg2.extensions.connection | None = None
+    cur: psycopg2.extensions.cursor | None = None
+    exit_code = 2  # 默认异常退出码, normal 路径会覆盖为 0 / 1
     today = date.today()
 
     try:
+        conn = get_connection()
+        cur = conn.cursor()
         # 确定检查日期
         check_date = (
-            date.fromisoformat(args.date)
-            if args.date
-            else get_latest_trading_day(cur, today)
+            date.fromisoformat(args.date) if args.date else get_latest_trading_day(cur, today)
         )
         logger.info("检查日期: %s (today=%s)", check_date, today)
 
@@ -362,9 +349,7 @@ def run_checks(args: argparse.Namespace) -> int:
             try:
                 step_alerts = step_fn()
                 all_alerts.extend(step_alerts)
-                logger.info(
-                    "← %s 完成, %d 项告警", step_name, len(step_alerts)
-                )
+                logger.info("← %s 完成, %d 项告警", step_name, len(step_alerts))
             except Exception as e:
                 logger.error("✗ %s 异常: %s", step_name, e, exc_info=True)
                 all_alerts.append(f"[P0] 检查步骤 {step_name} 异常: {e}")
@@ -388,8 +373,10 @@ def run_checks(args: argparse.Namespace) -> int:
             exit_code = 0
 
     finally:
-        cur.close()
-        conn.close()
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
     logger.info("数据质量巡检完成 exit_code=%d", exit_code)
     logger.info("=" * 60)
@@ -398,13 +385,16 @@ def run_checks(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """CLI entrypoint. 铁律 33 fail-loud: 顶层 try/except → stderr + exit(2)."""
+    # Fail-loud 早期探针 (schtask stderr 捕获最早的启动证据).
+    # reviewer P1-2: 移到 main() 首行而非 module-level, 防 import 副作用污染测试.
+    print(
+        f"[data_quality_check] boot {datetime.now().isoformat()} pid={__import__('os').getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser(description="数据质量自动巡检")
-    parser.add_argument(
-        "--date", type=str, help="指定检查日期 YYYY-MM-DD（默认最近交易日）"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="试运行，不发钉钉不写 DB"
-    )
+    parser.add_argument("--date", type=str, help="指定检查日期 YYYY-MM-DD（默认最近交易日）")
+    parser.add_argument("--dry-run", action="store_true", help="试运行，不发钉钉不写 DB")
     args = parser.parse_args()
 
     try:
