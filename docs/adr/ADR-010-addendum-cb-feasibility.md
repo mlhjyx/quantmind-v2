@@ -242,6 +242,14 @@ return {
    - **条件 C** (或): Wave 4 Observability 启动, 统一 /risk dashboard 有 CB 可视化替代 /risk_control 老 API
    - 满足 A+B+C 其一后启动批 3b (wrapper inline), 否则延续并存. 避免 PMS 死码覆辙
      (F30 position_monitor 0 行 10 个月未发现).
+   - **✅ 监控脚本 delivered** (Session 31 2026-04-24 PR #64, `scripts/monitor_mvp_3_1_sunset.py`):
+     3 条件自动 probe (铁律 43 4 项硬化合规: statement_timeout=30s / stdout stderr boot probe /
+     顶层 try/except exit=2 / notifications 表去重). PR #63 dry-run 修复 P0 `SELECT level →
+     current_level` CB column drift 证明 integration dry-run 是必要保险层 (LL-069 候选).
+   - **✅ 监控 schtask wired** (Session 32 2026-04-24 PR #65, `QuantMind_MVP31SunsetMonitor`
+     Weekly Sunday 04:00, NextRun 2026-04-26): 低峰 1/week 频次 (Sunset Gate 天粒度判定, 条件 A
+     最早 2026-05-24 满足), 避开 02:00 DailyBackup / 06:00 LogRotate / Sat 02:00 GPPipeline
+     时段. ExecutionTimeLimit 5 min, 3 DB query 实测 <1s, safety 300x.
 6. **批 3b 明确化** (reviewer P3-2): 批 3b 归属 **QPB v1.6 Wave 4 Observability MVP
    4.x "Risk Framework L2 整合" 子任务**, 非 "无限延期 Wave 4+". 本 ADR addendum
    flag 此 backlog 项, QPB 下次 bump 时同步进 Wave 4 MVP 细化.
