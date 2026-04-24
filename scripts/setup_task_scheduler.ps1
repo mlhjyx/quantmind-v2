@@ -15,6 +15,7 @@
 #   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
 #   T日 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
 #   T日 18:15  QuantMind_IcRolling               ic_ma20/60 rolling 刷新 (Session 22 Part 8, Mon-Fri, factor_lifecycle 周五依赖)
+#   周日 04:00  QuantMind_MVP31SunsetMonitor      MVP 3.1 Sunset Gate A+B+C 周监控 (Session 32 wire, ADR-010 addendum Follow-up #5)
 #
 # 废除历史:
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
@@ -444,6 +445,42 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
 
+# ── 14. QuantMind_MVP31SunsetMonitor: 周日04:00 (Session 32 — ADR-010 addendum Follow-up #5) ──
+# MVP 3.1 Risk Framework 批 3 adapter live 后 Sunset Gate A+B+C 周监控.
+# 满足任一条件 (A 30日+真事件 / B L4审批跑通 / C Wave 4 启动) 发钉钉推荐启动批 3b
+# (inline 重审消铁律 31 例外 + DROP 老 circuit_breaker_state/log 表).
+# 时段选择: 周日 04:00 低峰, 1/week 频次足够 (Sunset Gate 天粒度判定, 条件 A 最早
+#   2026-05-24 满足 = adapter live 2026-04-24 + 30日). 避开 02:00 QM-DailyBackup
+#   + 06:00 QM-LogRotate, 独立窗口无资源竞争.
+# 脚本硬化: scripts/monitor_mvp_3_1_sunset.py (PR #64 交付, 铁律 43 4项硬化:
+#   PG statement_timeout=30s / FileHandler delay=True (stdout-only 实际豁免) /
+#   boot stderr probe / 顶层 try/except exit=2). 钉钉 notifications 表去重
+#   (category='mvp_3_1_sunset_gate') 防重复告警.
+# exit code: 0=未到 sunset / 1=可启动 批 3b / 2=error (铁律 43 d)
+$sunsetAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\monitor_mvp_3_1_sunset.py" `
+    -WorkingDirectory $ProjectRoot
+
+$sunsetTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At "04:00"
+
+$sunsetSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_MVP31SunsetMonitor" `
+    -Description "QuantMind V2: MVP 3.1 Sunset Gate A+B+C weekly monitor (Session 32, ADR-010 addendum Follow-up #5)" `
+    -Action $sunsetAction `
+    -Trigger $sunsetTrigger `
+    -Settings $sunsetSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_MVP31SunsetMonitor registered (weekly Sunday 04:00)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete (15 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (16 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32: +MVP31SunsetMonitor). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
