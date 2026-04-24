@@ -36,6 +36,11 @@ class TestColumnSpecMaxFutureDays:
         spec = ColumnSpec("date", nullable=False)
         assert spec.max_future_days is None
 
+    def test_explicit_none_does_not_raise(self):
+        """dtype='date' + max_future_days=None 显式传 None, 不 raise (python-P3-2)."""
+        spec = ColumnSpec("date", nullable=False, max_future_days=None)
+        assert spec.max_future_days is None
+
     def test_field_can_be_set(self):
         spec = ColumnSpec("date", nullable=False, max_future_days=7)
         assert spec.max_future_days == 7
@@ -59,23 +64,27 @@ class TestColumnSpecMaxFutureDays:
 
 
 class TestCoreContractsConfigured:
-    """3 core contracts trade_date 列配 max_future_days=7."""
+    """3 core contracts trade_date 列配 max_future_days=10.
+
+    reviewer db-LOW-1: 7→10 防国庆 Golden Week (7d) + 调休 2-3d 边界误杀.
+    测试用 >= 10 断言而非 == 10, 允许未来调整不破测试 (铁律 40 spirit).
+    """
 
     def test_klines_daily(self):
         spec = KLINES_DAILY.columns["trade_date"]
         assert spec.dtype == "date"
         assert spec.nullable is False
-        assert spec.max_future_days == 7
+        assert spec.max_future_days is not None and spec.max_future_days >= 10
 
     def test_daily_basic(self):
         spec = DAILY_BASIC.columns["trade_date"]
         assert spec.dtype == "date"
-        assert spec.max_future_days == 7
+        assert spec.max_future_days is not None and spec.max_future_days >= 10
 
     def test_moneyflow_daily(self):
         spec = MONEYFLOW_DAILY.columns["trade_date"]
         assert spec.dtype == "date"
-        assert spec.max_future_days == 7
+        assert spec.max_future_days is not None and spec.max_future_days >= 10
 
 
 class TestDataPipelineRejectsFutureDates:
@@ -174,6 +183,52 @@ class TestDataPipelineRejectsFutureDates:
         )
         valid_df, reasons = pipeline._validate(df, relaxed)
         assert len(valid_df) == 1
+        assert not any("future" in k for k in reasons)
+
+    def test_mixed_valid_future_and_nat(self):
+        """混合 row: past-valid + future-reject + NaT-safe (全 reviewer MEDIUM NaT 担忧)."""
+        today = date.today()
+        pipeline = self._make_pipeline()
+        contract = self._toy_contract(max_future_days=7)
+        df = pd.DataFrame(
+            {
+                "code": ["A.SH", "B.SH", "C.SH"],
+                "trade_date": [today, date(2099, 4, 30), None],
+                "close": [10.0, 20.0, 30.0],
+            }
+        )
+        valid_df, reasons = pipeline._validate(df, contract)
+        # past-valid row 保留; future reject; None (nullable=False) 被 null reject
+        assert len(valid_df) == 1
+        assert valid_df.iloc[0]["code"] == "A.SH"
+        # 同时有 future reject 和 null reject
+        assert any("future" in k for k in reasons)
+
+    def test_unparseable_date_string_coerced_safe(self):
+        """str 非法日期 → NaT, 不 raise TypeError (reviewer code-MED-1)."""
+        today = date.today()
+        pipeline = self._make_pipeline()
+        # 宽松 contract 允 nullable trade_date 聚焦 NaT 行为
+        relaxed = TableContract(
+            table_name="_test_toy_nat",
+            pk_columns=("code", "trade_date"),
+            columns={
+                "code": ColumnSpec("str", nullable=False),
+                "trade_date": ColumnSpec("date", nullable=True, max_future_days=7),
+                "close": ColumnSpec("float"),
+            },
+            skip_unit_conversion=True,
+        )
+        df = pd.DataFrame(
+            {
+                "code": ["A.SH", "B.SH"],
+                "trade_date": [today, "not-a-valid-date"],
+                "close": [10.0, 20.0],
+            }
+        )
+        # 不 raise 即成功; NaT 被 fillna(False) 处理, 非 future 不 reject
+        valid_df, reasons = pipeline._validate(df, relaxed)
+        # NaT row 未被 future guard reject (被视为非 future)
         assert not any("future" in k for k in reasons)
 
     def test_klines_daily_contract_rejects_2099(self):

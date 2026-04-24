@@ -48,6 +48,13 @@ _PG_URL = os.environ.get("DATABASE_URL")
 if _PG_URL and _PG_URL.startswith("postgresql+asyncpg://"):
     _PG_URL = "postgresql://" + _PG_URL[len("postgresql+asyncpg://") :]
 
+# Session 26 (2026-04-24) LL-068: test fixture 用 "远未来" sentinel dates 隔离真实数据.
+# 2099 年 A 股仍可运营但此时项目早已下线, 无冲突风险. TA* 是 test ticker prefix 命名约定
+# (A 股真实 ticker 6xxxxx.SH / 0/3xxxxx.SZ / 8/4xxxxx.BJ, 0 TA 前缀).
+# 常量化防 teardown SQL 和 fixture audit_date 漂移 (reviewer python-P3-1 + code-MED-2).
+_TEST_SENTINEL_YEAR = 2099
+_TEST_TICKER_PREFIX = "TA"
+
 
 def _load_mod():
     """Dynamic import ``scripts/pt_audit.py`` (非 package)."""
@@ -117,20 +124,24 @@ def isolated_strategy(sync_conn):
                 cur.execute(f"DELETE FROM {tbl} WHERE strategy_id = %s", (sid,))  # noqa: S608
         # Session 26 (2026-04-24) LL-068: 原 teardown 用 `trade_date BETWEEN ref_date AND audit_date`
         # 窗口, 某 test override audit_date=date(2099,4,30) 时 row 泄漏 (seed 在窗口外).
-        # 修为 `trade_date >= '2099-01-01'` — 2099 年任意日期的 TA* test row 全清, 无法再泄漏.
-        # 仍保留 `code LIKE 'TA%%'` 隔离真实生产数据 (TA* 是 test fixture 命名约定).
+        # 修为 `trade_date >= _TEST_SENTINEL_YEAR-01-01` — 该 sentinel 年全年 TA* row 全清.
+        # 保留 `code LIKE 'TA%%'` 隔离生产 (A 股 0 TA 前缀, 见 _TEST_TICKER_PREFIX 注释).
+        _sentinel_cutoff = date(_TEST_SENTINEL_YEAR, 1, 1)
+        _like_pattern = f"{_TEST_TICKER_PREFIX}%%"
         with contextlib.suppress(Exception):
             cur.execute(
-                "DELETE FROM stock_status_daily WHERE trade_date >= '2099-01-01' AND code LIKE 'TA%%'",
+                "DELETE FROM stock_status_daily WHERE trade_date >= %s AND code LIKE %s",
+                (_sentinel_cutoff, _like_pattern),
             )
         with contextlib.suppress(Exception):
             cur.execute(
-                "DELETE FROM klines_daily WHERE trade_date >= '2099-01-01' AND code LIKE 'TA%%'",
+                "DELETE FROM klines_daily WHERE trade_date >= %s AND code LIKE %s",
+                (_sentinel_cutoff, _like_pattern),
             )
         with contextlib.suppress(Exception):
             cur.execute(
-                "DELETE FROM trading_calendar WHERE trade_date BETWEEN %s AND %s",
-                (date(2099, 4, 1), date(2099, 4, 30)),
+                "DELETE FROM trading_calendar WHERE trade_date >= %s",
+                (_sentinel_cutoff,),
             )
         # Stage 4: 清理 pt_audit 写入的 scheduler_task_log 行 (按 sid 隔离)
         with contextlib.suppress(Exception):

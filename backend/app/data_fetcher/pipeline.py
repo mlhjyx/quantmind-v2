@@ -11,6 +11,7 @@ Contract定义在contracts.py中。
 
 from __future__ import annotations
 
+import datetime as _dt
 import decimal as _decimal_mod
 import uuid as _uuid
 from dataclasses import dataclass, field
@@ -514,17 +515,17 @@ class DataPipeline:
             # 背景: test_pt_audit fixture 用 date(2099,4,30) 泄漏到生产 klines_daily,
             # 让 MAX(trade_date)=2099 掩盖 4-20+ 真实滞后 2 天 (LL-068). 走 DataPipeline
             # 的路径从此被 root-level guard 拦截 (铁律 17 + 33 fail-loud).
-            elif spec.dtype == "date" and spec.max_future_days is not None:
-                import datetime as _dt  # 局部 import 避全文件 name shadow
-
+            #
+            # reviewer code-HIGH: 改 `if` 独立 guard, 不依赖前面 elif chain 形式 (虽 dtype
+            #   mutex 当前安全, 防未来 refactor 加入新 'date' 前置 branch 让 guard 死掉).
+            # reviewer python-P2-1 + code-MED-1: vectorized `(series > Timestamp).fillna(False)`
+            #   替 .apply(lambda), NaT 比较自动 False (无 TypeError), 10-100x 速度.
+            if spec.dtype == "date" and spec.max_future_days is not None:
                 cutoff = _dt.date.today() + _dt.timedelta(days=spec.max_future_days)
-                # pandas date col 可能是 datetime / date / str, 统一 coerce
-                date_series = pd.to_datetime(col, errors="coerce").dt.date
-                # default-arg binding 避 B023 late-binding (lambda apply 同步安全, 显式绑定防未来重构)
-                future_mask = date_series.apply(
-                    lambda d, _cutoff=cutoff: d is not None and d > _cutoff
-                )
-                future_mask = future_mask.fillna(False).astype(bool)
+                cutoff_ts = pd.Timestamp(cutoff)
+                # pd.to_datetime 统一 coerce (date/datetime/str), NaT 比较返 False 自动 safe
+                dt_series = pd.to_datetime(col, errors="coerce")
+                future_mask = (dt_series > cutoff_ts).fillna(False)
                 future_count = int(future_mask.sum())
                 if future_count > 0:
                     reject_reasons[f"{col_name}_future_gt_today+{spec.max_future_days}d"] = (

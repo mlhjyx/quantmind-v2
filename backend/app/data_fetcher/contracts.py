@@ -65,7 +65,8 @@ class ColumnSpec:
     # > today+N 天的 row 被 reject (fail-loud 铁律 33).
     # 场景: test_pt_audit fixture 用 date(2099,4,30) 作 sentinel, teardown 窗口太窄
     # 泄漏到生产 DB, 导致 `MAX(trade_date)=2099` 掩盖 4-20+ klines 真实滞后 2 天.
-    # 仅对 dtype='date' 列有效. 建议值 7 (覆盖 A 股最长假 + 调休 buffer).
+    # 仅对 dtype='date' 列有效. 建议值 10 (A 股国庆 Golden Week 7 天 + 调休 2-3 天 buffer,
+    # reviewer db-LOW-1: 7 对 Oct-1 周二年份可能 Oct-9 首交易日边界误杀).
     max_future_days: int | None = None
 
     def __post_init__(self) -> None:
@@ -121,7 +122,7 @@ KLINES_DAILY = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "open": _price_col,
         "high": _price_col,
         "low": _price_col,
@@ -154,7 +155,7 @@ DAILY_BASIC = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "close": _price_col,
         "turnover_rate": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
         "turnover_rate_f": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
@@ -188,7 +189,7 @@ MONEYFLOW_DAILY = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False, max_future_days=7),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "buy_sm_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),
         "buy_sm_amount": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
         "sell_sm_vol": ColumnSpec("int", source_unit=SourceUnit.SHOU, db_unit=DBUnit.SHOU),

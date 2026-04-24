@@ -27,24 +27,33 @@ sys.path.append(str(PROJECT_ROOT / "backend"))
 from app.config import settings  # noqa: E402
 
 # 已知含 trade_date 列的业务表 (从 contracts.py + DDL 抽取).
-# 排除 trading_calendar — 该表 by design 存年内 pre-populated 未来交易日 (合法 future dates,
-# 非脏数据). 若需扫 calendar 用 --tables trading_calendar 手工指定.
+# 排除:
+#   - trading_calendar: by design 存年内 pre-populated 未来交易日 (合法 future dates).
+#   - factor_values: 839M 行 TimescaleDB hypertable, 60s statement_timeout 下 cold-cache
+#     扫描可能超时 (reviewer db-MED-2). 如需扫用 `--tables factor_values` 手工指定.
+# 若需扫 calendar/factor_values 用 --tables 手工指定.
 DEFAULT_TABLES = (
     "klines_daily",
     "daily_basic",
     "moneyflow_daily",
+    "minute_bars",  # reviewer db-LOW-2 补
+    "earnings_announcements",  # reviewer db-LOW-2 补
     "factor_ic_history",
     "stock_status_daily",
     "trade_log",
     "position_snapshot",
     "performance_series",
     "index_daily",
-    "factor_values",
 )
 
 
 def scan_table(cur, table: str, cutoff: date) -> list[tuple[date, int]]:
-    """返 [(trade_date, count), ...] for trade_date > cutoff."""
+    """返 [(trade_date, count), ...] for trade_date > cutoff.
+
+    noqa S608: table 名来自 CLI --tables or DEFAULT_TABLES whitelist (operator-only
+    audit tool, 无 user-facing API 路径), psycopg2 不支持参数化表名 (PG syntax).
+    调用方已在 main() information_schema 存在性检查 table/column.
+    """
     cur.execute(
         f"SELECT trade_date, COUNT(*) FROM {table} WHERE trade_date > %s "  # noqa: S608
         "GROUP BY trade_date ORDER BY trade_date",
@@ -106,8 +115,9 @@ def main() -> int:
             any_dirty = True
             total = sum(n for _, n in rows)
             print(f"  ⚠ {tbl}: {total} future rows")
-            for d, n in rows:
-                print(f"      {d}: {n} rows")
+            # td 替代 `d` 避 shadow module-level `date` import (reviewer python-P3-4)
+            for td, n in rows:
+                print(f"      {td}: {n} rows")
     finally:
         cur.close()
         conn.close()
