@@ -52,10 +52,22 @@ CELERY_BEAT_SCHEDULE: dict = {
     # daily-signal: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailySignal 16:30触发
     # ── [已停止] pms-daily-check: DEPRECATED per ADR-010 (Session 21 2026-04-21) ──
     # PMS v1.0 整体死码 (F27-F31 5 重失效), 并入 Wave 3 MVP 3.1 Risk Framework 重构.
-    # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值, PR #32 ADR-010 D6 Part 1)
-    # + 盘后 daily_reconciliation + pt_audit + pt_watchdog 三检.
-    # 代码保留见 daily_pipeline.pms_check / pms_engine.py 但不再调度触发.
-    # Risk Framework MVP 3.1 批 2 完整迁移后删除本 task function.
+    # 老 task function (daily_pipeline.pms_check) 保留 1 sprint 供紧急回滚,
+    # 批 3 CB adapter 完成后与 pms_engine.py 一并物理删除.
+    # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值).
+
+    # ── T日 14:30 Risk Framework 日检 (MVP 3.1 批 1 PR 3, Session 29 2026-04-24) ──
+    # 替代老 pms-daily-check, 走 PlatformRiskEngine + PMSRule (ADR-010 D3).
+    # 批 1 行为保持 v1 语义 (LoggingSellBroker 仅记录不实盘卖), 批 2 接真 broker.
+    # risk_event_log 完整记录触发上下文 (session 28 PR #55 migration).
+    "risk-daily-check": {
+        "task": "daily_pipeline.risk_check",
+        "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1200,  # 20min 内未执行则过期 (市场 15:00 收盘窗口对齐)
+        },
+    },
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
 
     # ── T日 17:40 数据质量报告 (DATA_SYSTEM_V1 P1-2) ──
