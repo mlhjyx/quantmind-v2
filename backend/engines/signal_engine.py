@@ -37,8 +37,14 @@ FACTOR_DIRECTION = {
     "ep_ratio": 1,  # 高E/P好
     "price_volume_corr_20": -1,  # 低价量相关好
     "high_low_range_20": -1,  # 低振幅好
-    "mf_momentum_divergence": -1,  # 资金流动量背离: 值越负=背离越大→信号越强
-    "earnings_surprise_car": 1,  # PEAD盈利惊喜CAR: 正惊喜→正漂移, 方向+1
+    # Session 27 Task B 清理 (2026-04-24): 删 mf_momentum_divergence +
+    # earnings_surprise_car 两条 hardcoded direction. 原因:
+    #   - mf_momentum_divergence: INVALIDATED (v3.4 IC=-2.27%), PT 从未使用
+    #     (PAPER_TRADING_CONFIG.factor_names 是 CORE3+dv_ttm), factor_registry
+    #     DELETE 配套 migration cleanup_orphan_factors_session27.sql
+    #   - earnings_surprise_car: ghost (有 direction 无 calc_*, factor_values 空)
+    # 本 dict 是 _get_direction fallback 源 (Layer 0), 删除后若 future 代码 query
+    # 这两个名字, fallback 为 1 (default). grep 确认无 active code path 引用.
     # ---- v1.2 新增因子 ----
     "price_level_factor": -1,  # -ln(close), 方向-1: 低价股偏好（因子本身已取负，direction再取反→选低价）
     "relative_volume_20": -1,  # 相对成交量, 方向-1: 低异常放量好
