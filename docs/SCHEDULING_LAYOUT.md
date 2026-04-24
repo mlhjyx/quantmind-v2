@@ -144,11 +144,11 @@ Logon 触发
    - 建议: 实测 `QM-PTDailySummary` 有无生产消费方 (前端 / 邮件告警), 若无 → disable + 独立 PR 清理 ps1/setup (ps1 实际并未 register 这条, 是历史遗留 schtask)
    - 工作量: 独立 PR (调查消费方 + disable/delete + 归档)
 
-4. **QuantMind_GPPipeline ps1 残留 register 代码 (latent bug)**
-   - Session 16 (2026-04-16) 已 `schtasks /delete` 删除活任务 (避 Celery Beat gp-weekly-mining 双触发)
-   - 但 `scripts/setup_task_scheduler.ps1` L397-420 **仍有 Register-ScheduledTask 代码**, 下次 rerun 会复活
-   - 建议: 独立 PR 从 ps1 删除 Section 12 + 头注 "废除历史" 区加记录
-   - 工作量: 小 PR (~40 行删除 + 1 行头注记录)
+4. ~~**QuantMind_GPPipeline ps1 残留 register 代码 (latent bug)**~~ **✅ CLOSED (Session 32 PR #66 2026-04-24)**
+   - ~~Session 16 (2026-04-16) 已 `schtasks /delete` 删除活任务 (避 Celery Beat gp-weekly-mining 双触发)~~
+   - ~~但 `scripts/setup_task_scheduler.ps1` L397-420 **仍有 Register-ScheduledTask 代码**, 下次 rerun 会复活~~
+   - **修复**: `scripts/setup_task_scheduler.ps1` Section 12 Register 代码块 (~26 行) 删除, 废除历史区补记录,
+     Section 14 GPPipeline 冲突避让注释更新指向 Celery Beat gp-weekly-mining Sun 22:00. 同时下一次 rerun setup_task_scheduler.ps1 不会复活双触发.
 
 5. **非交易日**: 大部分任务内部有交易日判断 (非交易日快速退出), 但 TS 层面没有节假日过滤 (历史已知)
 
