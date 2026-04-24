@@ -8,7 +8,7 @@
 #   T日 16:25  QM-HealthCheck                   健康预检
 #   T日 16:30  QuantMind_DailySignal             数据拉取(klines+basic+index)+因子+信号
 #   T日 17:30  QuantMind_DailyMoneyflow          moneyflow补拉 (Session 24 shift 16:35→17:30, tushare moneyflow 16:30 前入库未稳定实测 5 retry 全空)
-#   T日 17:45  QuantMind_DataQualityCheck        数据质量巡检 (Session 24 shift 16:40→17:45, 跟 moneyflow 17:30 留 15min buffer)
+#   T日 18:30  QuantMind_DataQualityCheck        数据质量巡检 (Session 26 shift 17:45→18:30, 避开 17:30-18:15 dense window, cold-scan hang 事故后硬化)
 #   T+1 09:31  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
 #   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
@@ -161,19 +161,24 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_DailyMoneyflow registered (daily 17:30)" -ForegroundColor Green
 
-# ── 7. QuantMind_DataQualityCheck: 每日17:45 (Session 24 shift 16:40→17:45) ──
-# 时段选择: moneyflow 17:30 后 15 min buffer 验证, 涵盖 DailySignal(16:30) +
-# DailyMoneyflow(17:30) 全链数据质量. pull_moneyflow 最大 retry 5×120s=10min,
-# 17:30+10min=17:40, 17:45 留 5 min 安全.
+# ── 7. QuantMind_DataQualityCheck: 每日18:30 (Session 26 shift 17:45→18:30) ──
+# 时段选择: 避开 17:30-18:15 dense window (moneyflow/factor_health 17:30 + pt_audit 17:35 +
+# daily_ic 18:00 + ic_rolling 18:15 = 5 task). 4-22/4-23 连 2 天 hang 事故根因为 17:45
+# 冷启动 COUNT SQL 被并发 query 驱逐索引 out of shared_buffers → cold scan 17s → 超过
+# PG statement_timeout=0 无上限 → schtask 5min kill. Session 26 fix 已硬化脚本 (60s
+# timeout + per-step probe + future-date guard), 本 schtask 配合打散到 18:30 留 15min
+# buffer 给 IcRolling 18:15 完成 + PG shared_buffers 稳定.
+# ExecutionTimeLimit 5 → 10 min 增容: 未来 DB 增长 (目前 839M factor_values 行) 冷扫可能变慢,
+# 10min 对 shared_buffers 冷况 safety 3x (60s statement_timeout × 3 checks × 3 tables).
 $dqAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\data_quality_check.py" `
     -WorkingDirectory $ProjectRoot
 
-$dqTrigger = New-ScheduledTaskTrigger -Daily -At "17:45"
+$dqTrigger = New-ScheduledTaskTrigger -Daily -At "18:30"
 
 $dqSettings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
     -StartWhenAvailable `
     -DontStopOnIdleEnd `
     -AllowStartIfOnBatteries `
@@ -181,13 +186,13 @@ $dqSettings = New-ScheduledTaskSettingsSet `
 
 Register-ScheduledTask `
     -TaskName "QuantMind_DataQualityCheck" `
-    -Description "QuantMind V2: Data freshness and quality validation" `
+    -Description "QuantMind V2: Data freshness and quality validation (Session 26 hardened)" `
     -Action $dqAction `
     -Trigger $dqTrigger `
     -Settings $dqSettings `
     -Force
 
-Write-Host "[OK] QuantMind_DataQualityCheck registered (daily 17:45)" -ForegroundColor Green
+Write-Host "[OK] QuantMind_DataQualityCheck registered (daily 18:30)" -ForegroundColor Green
 
 # ── 8. QuantMind_IntradayMonitor: 09:35起每5分钟 ─────────
 $imAction = New-ScheduledTaskAction `
