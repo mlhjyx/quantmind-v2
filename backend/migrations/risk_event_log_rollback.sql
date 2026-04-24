@@ -8,6 +8,7 @@
 -- TimescaleDB hypertable DROP TABLE 自动清理 chunks + retention policy,
 -- 无需手动 remove_retention_policy.
 
+-- Indexes 由 DROP TABLE CASCADE 自动清理, 此处显式声明便于 grep (对齐 feature_flags_rollback 风格)
 DROP INDEX IF EXISTS ix_risk_event_strategy_time;
 DROP INDEX IF EXISTS ix_risk_event_rule_time;
 
