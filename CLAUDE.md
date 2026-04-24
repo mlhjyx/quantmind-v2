@@ -13,7 +13,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
 - **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → **Phase 3 自动化** → Phase 4 PT重启
-- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:00-17:30收尾(moneyflow/巡检/衰减) → **17:35 pt_audit 主动守门** → **18:00 DailyIC (每日增量 IC 入库 CORE 4, Session 22 Part 2)** → **18:15 IcRolling (ic_ma20/60 rolling 刷新, Session 22 Part 8)** → 周五 19:00 factor-lifecycle Beat → T+1 09:31执行 → 15:10对账. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**. **铁律 11 + 17 每日 IC 全链完工** (Session 23 Part 1+2): 3 脚本分工 (compute_daily_ic / compute_ic_rolling / fast_ic_recompute) + 2 schtask wire + 实战 rehearsal 验证 GO.
+- **调度链路**: 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:30 moneyflow+factor_health → **17:35 pt_audit 主动守门** → **18:00 DailyIC (每日增量 IC 入库 CORE 4, Session 22 Part 2)** → **18:15 IcRolling (ic_ma20/60 rolling 刷新, Session 22 Part 8)** → **18:30 DataQualityCheck (Session 26 shift 17:45→18:30, 避 dense window + 脚本硬化)** → 周五 19:00 factor-lifecycle Beat → T+1 09:31执行 → 15:10对账. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**. **铁律 11 + 17 每日 IC 全链完工** (Session 23 Part 1+2): 3 脚本分工 (compute_daily_ic / compute_ic_rolling / fast_ic_recompute) + 2 schtask wire + 实战 rehearsal 验证 GO.
 
 ## 技术栈（实际使用，非设计文档）
 
