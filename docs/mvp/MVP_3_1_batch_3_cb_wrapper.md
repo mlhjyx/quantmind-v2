@@ -15,7 +15,7 @@
 2. `backend/platform/risk/rules/__init__.py`: 导出 `CircuitBreakerRule` (+1 export)
 3. `backend/app/services/risk_wiring.py`: `build_circuit_breaker_rule()` factory (+~30 行)
 4. `backend/app/tasks/daily_pipeline.py`: `risk_daily_check_task` 注入 CB via `extra_rules` (+~5 行 delta)
-5. `backend/tests/test_risk_rules_circuit_breaker.py`: 19 L1 unit tests
+5. `backend/tests/test_risk_rules_circuit_breaker.py`: 21 L1 unit tests (reviewer 采纳 后 +2)
 6. `backend/tests/smoke/test_mvp_3_1_batch_3_live.py`: 1 L4 smoke (铁律 10b)
 7. 本设计文档 `docs/mvp/MVP_3_1_batch_3_cb_wrapper.md`
 

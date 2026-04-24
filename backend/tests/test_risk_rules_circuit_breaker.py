@@ -1,14 +1,18 @@
 """L1 unit tests for backend/platform/risk/rules/circuit_breaker.py (MVP 3.1 批 3).
 
-覆盖 20 tests:
-  - 4 escalate transitions (L0→L1/L2/L3/L4)
+覆盖 21 tests (reviewer P3 采纳 +1 after fix):
+  - 4 escalate transitions (L0→L1/L2, L1→L3, L2→L4)
   - 3 recover transitions (L1→L0, L3→L2, L4→L0)
-  - No-change (prev == new → return [])
-  - severity 分级 (L3/L4 = P0, L1/L2 = P1, recover = P2)
+  - No-change (prev == new → return []) × 2
+  - severity 分级 reason (L4 escalate / recover, 2 tests)
   - rule_id 动态 cb_escalate_l{N} / cb_recover_l{N}
-  - root_rule_id_for passthrough + ownership
-  - _read_current_level: row exists / no row / DB error (fallback L0)
-  - Class contract (rule_id / severity / action)
+  - root_rule_id_for passthrough + ownership × 3
+  - _read_current_level: row at L0 / row at L3 / no row / DB error fallback × 4
+  - Class contract (rule_id / severity / action) × 2
+
+reviewer P2-4 修 (python): `_make_rule_with_mocks(prev_level)` 原 `if prev_level else None`
+将 0 吞成 None (走 no-row 分支), L0 真实 state 测不到. 改 `is not None` 显式语义.
+新加 test_returns_zero_when_row_is_explicitly_l0 覆盖此分支 (+1 test = 21 total).
 """
 from __future__ import annotations
 
@@ -33,22 +37,26 @@ def _make_context(strategy_id: str = "strat_a", execution_mode: str = "paper") -
     )
 
 
-def _make_rule_with_mocks(prev_level: int, cb_result: dict):
+def _make_rule_with_mocks(prev_level: int | None, cb_result: dict):
     """Factory: CircuitBreakerRule with mocked conn_factory + check_circuit_breaker_sync.
 
-    prev_level: `_read_current_level` 返的 pre-snapshot level
-    cb_result: check_circuit_breaker_sync 返的 dict (含 new level)
+    reviewer P2-4 采纳 (python + code MEDIUM): 原 `if prev_level else None` 将 0 吞成
+    None (走 no-row 分支) — 显式 `is not None` 区分真 L0 vs 无 row.
+
+    Args:
+        prev_level: int → fetchone 返 (level,) (含 0 = 真实 L0 state);
+                    None → fetchone 返 None (no-row 首次运行).
+        cb_result: check_circuit_breaker_sync 返的 dict (含 new level).
     """
     mock_cur = MagicMock()
-    mock_cur.fetchone.return_value = (prev_level,) if prev_level else None
+    mock_cur.fetchone.return_value = None if prev_level is None else (prev_level,)
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
     mock_conn.cursor.return_value.__exit__.return_value = False
 
-    # conn_factory as context manager
-    mock_conn_factory = MagicMock()
-    mock_conn_factory.return_value.__enter__.return_value = mock_conn
-    mock_conn_factory.return_value.__exit__.return_value = False
+    # reviewer P1 HIGH 采纳 (code): conn_factory 直返 conn 对象 (非 context manager)
+    # — 对齐 adapter 改为显式 try/finally conn.close() pattern.
+    mock_conn_factory = MagicMock(return_value=mock_conn)
 
     rule = CircuitBreakerRule(
         conn_factory=mock_conn_factory, initial_capital=1_000_000.0
@@ -88,20 +96,23 @@ class TestEscalateTransitions:
                 "recovery_info": "",
             },
         )
+        # reviewer P3-2 采纳 (python) 后 adapter 用 module-level import
+        # `_check_cb_sync`, patch target 改 adapter 本地引用 (not 源 module).
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result_fixture,
         ):
             results = rule.evaluate(_make_context())
         return results
 
     def test_escalate_l0_to_l1(self):
+        """reviewer P2-3 采纳 (python + code MEDIUM): transition_type string 替 float."""
         results = self._run_escalate(prev_level=0, new_level=1)
         assert len(results) == 1
         assert results[0].rule_id == "cb_escalate_l1"
         assert results[0].metrics["prev_level"] == 0
         assert results[0].metrics["new_level"] == 1
-        assert results[0].metrics["transition_type"] == 1.0  # escalate
+        assert results[0].metrics["transition_type"] == "escalate"
 
     def test_escalate_l0_to_l2(self):
         results = self._run_escalate(prev_level=0, new_level=2)
@@ -133,18 +144,21 @@ class TestRecoverTransitions:
                 "recovery_info": "streak 5 days",
             },
         )
+        # reviewer P3-2 采纳 (python) 后 adapter 用 module-level import
+        # `_check_cb_sync`, patch target 改 adapter 本地引用 (not 源 module).
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result_fixture,
         ):
             results = rule.evaluate(_make_context())
         return results
 
     def test_recover_l1_to_l0(self):
+        """reviewer P2-3 采纳 (python + code MEDIUM): transition_type string 替 float."""
         results = self._run_recover(prev_level=1, new_level=0)
         assert len(results) == 1
         assert results[0].rule_id == "cb_recover_l0"
-        assert results[0].metrics["transition_type"] == -1.0  # recover
+        assert results[0].metrics["transition_type"] == "recover"
 
     def test_recover_l3_to_l2(self):
         results = self._run_recover(prev_level=3, new_level=2)
@@ -168,7 +182,7 @@ class TestNoChange:
                       "position_multiplier": 1.0, "recovery_info": ""},
         )
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             assert rule.evaluate(_make_context()) == []
@@ -181,7 +195,7 @@ class TestNoChange:
                       "position_multiplier": 0.5, "recovery_info": "streak 2 days"},
         )
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             assert rule.evaluate(_make_context()) == []
@@ -204,7 +218,7 @@ class TestSeverityMapping:
                       "position_multiplier": 0.0, "recovery_info": ""},
         )
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             result = rule.evaluate(_make_context())[0]
@@ -219,7 +233,7 @@ class TestSeverityMapping:
                       "position_multiplier": 1.0, "recovery_info": "5d streak"},
         )
         with patch(
-            "app.services.risk_control_service.check_circuit_breaker_sync",
+            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             result = rule.evaluate(_make_context())[0]
@@ -264,6 +278,20 @@ class TestReadCurrentLevel:
         level = CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
         assert level == 3
 
+    def test_returns_zero_when_row_is_explicitly_l0(self):
+        """reviewer P3-3 采纳 (python): DB 真返 row[0]=0 (NORMAL state stored) 也返 0.
+
+        防回归: 原 `if prev_level else None` 将真 L0 state 吞成 no-row 分支.
+        """
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (0,)  # 真实 L0 state 存储
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        level = CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
+        assert level == 0
+
     def test_returns_zero_when_no_row(self):
         """首次运行, state 表空 → L0."""
         mock_cur = MagicMock()
@@ -284,6 +312,17 @@ class TestReadCurrentLevel:
         assert level == 0
         # rollback 被调过 (虽可能失败 silent)
         assert mock_conn.rollback.called
+
+
+class TestSeverityNumericMonotonic:
+    """reviewer P2 采纳 (python P2-2 + code MEDIUM): _SEVERITY_NUMERIC dict 单调性锚定."""
+
+    def test_severity_numeric_monotonic(self):
+        """P0 < P1 < P2 (严重 → 不严重), 值随 severity 递增."""
+        from backend.platform.risk.rules.circuit_breaker import _SEVERITY_NUMERIC
+
+        assert _SEVERITY_NUMERIC[Severity.P0] < _SEVERITY_NUMERIC[Severity.P1]
+        assert _SEVERITY_NUMERIC[Severity.P1] < _SEVERITY_NUMERIC[Severity.P2]
 
 
 if __name__ == "__main__":
