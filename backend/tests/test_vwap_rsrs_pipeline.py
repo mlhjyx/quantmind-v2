@@ -28,12 +28,18 @@ class TestVwapBias:
     """VWAP偏差因子测试。"""
 
     def test_basic_calculation(self) -> None:
-        """验证VWAP = amount×10/volume，bias = (close-VWAP)/VWAP。"""
-        # amount=千元, volume=手
-        # VWAP = 500 * 10 / 100 = 50.0 元/股
+        """验证VWAP = amount(元) / (volume(手) × 100)，bias = (close-VWAP)/VWAP。
+
+        Session 26 修 (2026-04-24): 原 test 假设 amount 单位=千元 (×10 换算),
+        但 Step 3-A DB 统一存元后 calc_vwap_bias 改为 `amount / (volume*100)`,
+        test 未跟上成为 baseline 2 new fail (铁律 40). 本次 amount 从 500 千元
+        改 500_000 元 (×1000), 语义等价但单位对齐 post-Step 3-A code.
+        """
+        # amount=元 (post-Step 3-A), volume=手 (1手=100股)
+        # VWAP = 500_000 / (100 × 100) = 50.0 元/股
         close = pd.Series([52.0, 48.0, 50.0])
-        amount = pd.Series([500.0, 500.0, 500.0])  # 千元
-        volume = pd.Series([100.0, 100.0, 100.0])   # 手
+        amount = pd.Series([500_000.0, 500_000.0, 500_000.0])  # 元
+        volume = pd.Series([100.0, 100.0, 100.0])  # 手
 
         result = calc_vwap_bias(close, amount, volume)
 
@@ -45,15 +51,18 @@ class TestVwapBias:
         np.testing.assert_almost_equal(result.iloc[1], -0.04, decimal=4)
         np.testing.assert_almost_equal(result.iloc[2], 0.0, decimal=4)
 
-    def test_unit_conversion_x10(self) -> None:
-        """验证单位换算: 千元×10/手 = 元/股。
+    def test_post_step3a_units(self) -> None:
+        """验证 Step 3-A 后单位契约: amount(元) / (volume(手) × 100) = 元/股。
 
-        amount=1000千元=100万元, volume=200手=20000股
-        VWAP = 1000*10/200 = 50 元/股 ✓ (100万元/2万股=50元)
+        amount=1_000_000元 (100万元), volume=200手=20000股
+        VWAP = 1_000_000 / (200 × 100) = 50 元/股 ✓ (100万元/2万股=50元)
+
+        Session 26 重命名: 原 test_unit_conversion_x10 假设 ×10 换算 (pre-Step 3-A),
+        与代码公式不符导致 fail. 重命名 + 单位对齐元.
         """
         close = pd.Series([55.0])
-        amount = pd.Series([1000.0])  # 千元 = 100万元
-        volume = pd.Series([200.0])   # 手 = 20000股
+        amount = pd.Series([1_000_000.0])  # 元 = 100万元
+        volume = pd.Series([200.0])  # 手 = 20000股
 
         result = calc_vwap_bias(close, amount, volume)
         # VWAP = 50, bias = (55-50)/50 = 0.10
