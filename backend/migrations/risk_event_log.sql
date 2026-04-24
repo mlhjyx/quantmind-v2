@@ -12,27 +12,36 @@
 --   - JSONB context_snapshot 单行 ~5-10KB (20+ positions + prices + portfolio state)
 --     预计 ~1000 触发 rows/年 ≈ ~10MB/年, 90 天 ~2.5MB 活跃区
 --
--- Rollback: risk_event_log_rollback.sql
+-- TimescaleDB 事务语义 (PR #55 reviewer P0 指出):
+--   create_hypertable / add_retention_policy 是 non-transactional catalog ops,
+--   不能包在 BEGIN/COMMIT 内. 采用 partial-transaction pattern:
+--     BEGIN/COMMIT 包 CREATE TABLE (原子); hypertable 转换 + retention 在其外;
+--     末尾 DO block guard 检查三者齐全, 缺失 RAISE EXCEPTION 触发人工 rollback.
+--
+-- Rollback: risk_event_log_rollback.sql (DROP TABLE CASCADE 清理所有 chunks + retention job).
 -- 关联铁律: 22 (文档跟随代码) / 24 (单一职责) / 33 (fail-loud migration) / 38 (Blueprint 真相源)
 
 -- pgcrypto 已由 knowledge_registry.sql 启用 (PG 13+ 内置, CREATE EXTENSION 幂等)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ─────────────────────────────────────────────────────────────
--- risk_event_log — Risk Framework 统一事件日志
+-- Phase 1: CREATE TABLE (原子事务, 失败自动 ROLLBACK)
 -- ─────────────────────────────────────────────────────────────
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS risk_event_log (
     id               UUID NOT NULL DEFAULT gen_random_uuid(),
-    strategy_id      VARCHAR(100) NOT NULL,
+    strategy_id      UUID NOT NULL,                                 -- reviewer P1-1: UUID 对齐 signals/trade_log/position_snapshot (非 VARCHAR)
     execution_mode   VARCHAR(10) NOT NULL
-                     CHECK (execution_mode IN ('paper', 'live')),  -- ADR-008 namespace
+                     CHECK (execution_mode IN ('paper', 'live')),   -- ADR-008 namespace
     rule_id          VARCHAR(50) NOT NULL,                          -- "pms_l1" / "intraday_p3" / "cb_l2"
     severity         VARCHAR(10) NOT NULL
                      CHECK (severity IN ('p0', 'p1', 'p2', 'info')),
     triggered_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    code             VARCHAR(12) NOT NULL DEFAULT '',               -- "" = 组合级 (intraday_portfolio_drop)
-    shares           INTEGER NOT NULL DEFAULT 0,                    -- sell 动作股数, alert_only=0
+    code             VARCHAR(12) NOT NULL DEFAULT '',               -- "" = 组合级 (intraday_portfolio_drop), 批 2 前评估改 sentinel/NULL
+    shares           INTEGER NOT NULL DEFAULT 0
+                     CHECK (shares >= 0),                           -- reviewer P2-1: sell 动作股数 / alert_only=0 / 禁负
     reason           TEXT NOT NULL,                                  -- 人类可读触发原因
     context_snapshot JSONB NOT NULL,                                -- positions + prices + NAV 完整快照
     action_taken     VARCHAR(30) NOT NULL
@@ -41,21 +50,26 @@ CREATE TABLE IF NOT EXISTS risk_event_log (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- PK 含 triggered_at (TimescaleDB hypertable 硬要求: partition 列必在 UNIQUE 索引中)
+    -- reviewer P1-3 建议"UNIQUE INDEX on id" 实测被 TimescaleDB 拒绝 (ERROR: cannot create
+    -- a unique index without the column "triggered_at" used in partitioning). hypertable 设计
+    -- 强制 uniqueness 必含 partition 列, 本设计接受: id 通过 gen_random_uuid() UUID v4
+    -- 全局唯一 (概率意义), 点查需传 triggered_at 时间窗或 strategy_id (有 ix_risk_event_strategy_time).
+    -- 未来 FK 引用若需指 risk_event_log 行, 用 composite FK (id, triggered_at) 或 application-layer
+    -- 同日 triggered_at 窗口 lookup. 本 PR 无 FK 引用需求.
     PRIMARY KEY (id, triggered_at)
 );
 
-CREATE INDEX IF NOT EXISTS ix_risk_event_strategy_time
-    ON risk_event_log (strategy_id, execution_mode, triggered_at DESC);
-
-CREATE INDEX IF NOT EXISTS ix_risk_event_rule_time
-    ON risk_event_log (rule_id, triggered_at DESC);
-
 COMMENT ON TABLE risk_event_log IS
-    'MVP 3.1 Risk Framework — 统一风控事件日志. 替代 position_monitor + intraday_monitor_log + circuit_breaker_log. 对齐 backend/platform/risk/engine.py::PlatformRiskEngine._log_event. 90 天 TimescaleDB retention.';
+    'MVP 3.1 Risk Framework — 统一风控事件日志. 替代 position_monitor + intraday_monitor_log + circuit_breaker_log. 对齐 backend/platform/risk/engine.py::PlatformRiskEngine._log_event (PR 2 创建). 90 天 TimescaleDB retention.';
+
+COMMIT;
 
 -- ─────────────────────────────────────────────────────────────
--- TimescaleDB hypertable + retention (幂等)
+-- Phase 2: Hypertable 转换 + retention (non-transactional, 必在 BEGIN/COMMIT 外)
+-- reviewer P2-5: statement_timeout guard 防 catalog 锁 hang
 -- ─────────────────────────────────────────────────────────────
+
+SET statement_timeout = '60s';
 
 SELECT create_hypertable(
     'risk_event_log', 'triggered_at',
@@ -70,8 +84,21 @@ SELECT add_retention_policy(
     if_not_exists => TRUE
 );
 
+SET statement_timeout = DEFAULT;
+
 -- ─────────────────────────────────────────────────────────────
--- Migration fail-loud guard (铁律 33)
+-- Phase 3: Indexes (reviewer P1-2: 必在 hypertable 转换后, TimescaleDB 自动传播至所有 chunks)
+-- ─────────────────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS ix_risk_event_strategy_time
+    ON risk_event_log (strategy_id, execution_mode, triggered_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_risk_event_rule_time
+    ON risk_event_log (rule_id, triggered_at DESC);
+
+-- ─────────────────────────────────────────────────────────────
+-- Phase 4: Migration fail-loud guard (铁律 33)
+-- verified on TimescaleDB 2.26.0 + pgcrypto 1.3 (Session 28 2026-04-24)
 -- ─────────────────────────────────────────────────────────────
 
 DO $$
@@ -104,7 +131,7 @@ BEGIN
         RAISE EXCEPTION 'risk_event_log hypertable conversion failed';
     END IF;
 
-    -- retention policy 已注册
+    -- retention policy 已注册 (proc_name='policy_retention' verified on TimescaleDB 2.26)
     SELECT COUNT(*) INTO retention_job_count
     FROM timescaledb_information.jobs
     WHERE hypertable_name = 'risk_event_log'

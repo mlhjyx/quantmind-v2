@@ -195,9 +195,9 @@ class PlatformRiskEngine:
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS risk_event_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    strategy_id VARCHAR(100) NOT NULL,
-    execution_mode VARCHAR(10) NOT NULL,        -- ADR-008 namespace
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    strategy_id UUID NOT NULL,                    -- 对齐 signals/trade_log/position_snapshot (非 VARCHAR, reviewer P1-1)
+    execution_mode VARCHAR(10) NOT NULL,          -- ADR-008 namespace
     rule_id VARCHAR(50) NOT NULL,
     severity VARCHAR(10) NOT NULL,
     triggered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
