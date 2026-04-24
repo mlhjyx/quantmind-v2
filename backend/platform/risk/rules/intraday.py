@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import math
 from abc import abstractmethod
 from typing import Literal, Protocol
 
@@ -31,6 +32,10 @@ class QMTConnectionReader(Protocol):
 
     实现必须从 Redis `qm:qmt:status` event stream 读 (批 1 PriceReader 同实例复用),
     避免 5min × 54 次直连 QMT Data Service 放大 API quota 压力 (plan §9).
+
+    Note: 非 `@runtime_checkable` — 避免 isinstance 检查触发 TypeError 被 silent swallow.
+    单测用 `MagicMock(spec=QMTConnectionReader)`, 生产用 duck-typing.
+    (reviewer P2 采纳 python: 文档化避免未来 isinstance guard footgun)
     """
 
     def is_connected(self) -> bool:
@@ -70,6 +75,8 @@ class IntradayPortfolioDropRule(RiskRule):
     """
 
     # Sentinel 占位 (子类覆盖, 本类 abstract via @abstractmethod threshold)
+    # Safe: ABCMeta blocks instantiation of base (未实现 threshold), 此 sentinel
+    # 永不到达 engine.register() (reviewer P3 采纳 code: 明示安全依据)
     rule_id: str = "_intraday_portfolio_drop_abstract_base"
     severity: Severity = Severity.P2  # 占位, 子类覆盖
     action: Literal["sell", "alert_only", "bypass"] = "alert_only"
@@ -77,13 +84,25 @@ class IntradayPortfolioDropRule(RiskRule):
     @property
     @abstractmethod
     def threshold(self) -> float:
-        """子类必覆盖, 返 [0, 1] 跌幅阈值 (e.g. 0.03 = 3%)."""
+        """子类必覆盖, 返 [0, 1] 跌幅阈值 (e.g. 0.03 = 3%).
+
+        reviewer P2 驳回 python: `@property @abstractmethod` (property 外 abstractmethod 内)
+        是 Python 官方 docs/abc.html 推荐顺序. `@abstractmethod @property` 反向会报
+        AttributeError: attribute '__isabstractmethod__' of 'property' objects is not writable
+        (property descriptor 无此 slot). 本顺序正确, reviewer 建议失误.
+        """
 
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         """检查组合级 NAV 跌幅, 触发返 1 RuleResult, 未触发 / 数据缺失返 []."""
-        if context.prev_close_nav is None or context.prev_close_nav <= 0:
+        # reviewer P1 采纳 code: NaN guard 防 float('nan') 跳过 <=0 检查
+        # (NaN <= 0 = False 且 NaN > -threshold = False → 会 spurious trigger + 无效 JSON)
+        if (
+            context.prev_close_nav is None
+            or not math.isfinite(context.prev_close_nav)
+            or context.prev_close_nav <= 0
+        ):
             return []
-        if context.portfolio_nav <= 0:
+        if not math.isfinite(context.portfolio_nav) or context.portfolio_nav <= 0:
             return []
 
         drop_pct = (context.portfolio_nav - context.prev_close_nav) / context.prev_close_nav
@@ -97,7 +116,8 @@ class IntradayPortfolioDropRule(RiskRule):
                 code="",  # 组合级 (对齐 risk_event_log.code DEFAULT '')
                 shares=0,  # alert_only 不下单
                 reason=(
-                    f"Intraday portfolio drop {drop_pct:.2%} <= -{self.threshold:.0%} "
+                    # reviewer P3 采纳 code: threshold format 统一 :.2% 对齐 drop_pct
+                    f"Intraday portfolio drop {drop_pct:.2%} <= -{self.threshold:.2%} "
                     f"(nav={context.portfolio_nav:.2f}, prev_close={context.prev_close_nav:.2f}, "
                     f"positions={len(context.positions)})"
                 ),
@@ -106,7 +126,9 @@ class IntradayPortfolioDropRule(RiskRule):
                     "portfolio_nav": context.portfolio_nav,
                     "prev_close_nav": context.prev_close_nav,
                     "threshold": self.threshold,
-                    "positions_count": float(len(context.positions)),
+                    # reviewer P2 采纳 python: len() 返 int, 不 cast float (metrics dict
+                    # 允许混类型; JSON 序列化层处理)
+                    "positions_count": len(context.positions),
                 },
             )
         ]
@@ -193,7 +215,8 @@ class QMTDisconnectRule(RiskRule):
                 ),
                 metrics={
                     "checked_at_timestamp": context.timestamp.timestamp(),
-                    "positions_count_at_disconnect": float(len(context.positions)),
+                    # reviewer P2 采纳 python: len() → int, 不 cast float
+                    "positions_count_at_disconnect": len(context.positions),
                     "portfolio_nav_at_disconnect": context.portfolio_nav,
                 },
             )
