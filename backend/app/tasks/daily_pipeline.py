@@ -265,6 +265,133 @@ def risk_daily_check_task(self) -> dict:
 
 
 # ════════════════════════════════════════════════════════════
+# T日 09:35-15:00 — Intraday Risk Framework 5min 检查 (MVP 3.1 批 2 PR 2 Session 30)
+# 组合级 3%/5%/8% 跌幅告警 + QMT 断连告警, Celery Beat `intraday-risk-check`
+# ════════════════════════════════════════════════════════════
+
+
+@celery_app.task(
+    bind=True,
+    name="daily_pipeline.intraday_risk_check",
+    acks_late=True,
+    max_retries=0,  # 5min 下次会再跑, 不 retry 积压
+    time_limit=60,  # 5min 周期硬超时 (远小于 crontab 5min 间隔)
+)
+def intraday_risk_check_task(self) -> dict:
+    """Intraday Risk Framework 盘中检查 (MVP 3.1 批 2 PR 2, 2026-04-24 Session 30).
+
+    Celery Beat `intraday-risk-check` 5min cron (09:35-15:00 Mon-Fri, 54 次/日).
+    4 规则评估: IntradayPortfolioDrop{3,5,8}PctRule + QMTDisconnectRule.
+
+    流程:
+        交易日 check → build_intraday_risk_engine → build_context (填 prev_close_nav
+        from performance_series) → run → dedup (Redis 24h TTL 同 rule 同日限 1 次)
+        → execute (log + 钉钉 + risk_event_log)
+
+    Action: 全部 alert_only (批 2 不实盘卖, 批 3 升真 broker 统一).
+
+    铁律: 22 / 33 (fail-silent 读路径 + fail-loud 生产) / 34 / 41
+
+    Returns:
+        执行摘要 dict.
+    """
+    from dataclasses import replace
+
+    from engines.trading_day_checker import TradingDayChecker
+
+    from app.services.db import get_sync_conn
+
+    # 交易日 check (复用批 1 pattern, Layer 3 conn 启用)
+    td_conn = get_sync_conn()
+    try:
+        checker = TradingDayChecker(conn=td_conn)
+        is_td, reason = checker.is_trading_day(date.today())
+    finally:
+        td_conn.close()
+    if not is_td:
+        logger.info("[IntradayRisk] 非交易日(%s), 跳过", reason)
+        return {"status": "skipped", "reason": reason}
+
+    if not settings.PMS_ENABLED:
+        # PMS_ENABLED=False 全 Risk Framework 关 (intraday 批 2 共享 flag, 独立 flag 批 3 评估)
+        logger.info("[IntradayRisk] PMS_ENABLED=False, 跳过")
+        return {"status": "disabled"}
+
+    strategy_id = settings.PAPER_STRATEGY_ID
+    if not strategy_id:
+        logger.error("[IntradayRisk] PAPER_STRATEGY_ID 未配置")
+        return {"status": "error", "message": "PAPER_STRATEGY_ID未配置"}
+
+    execution_mode = settings.EXECUTION_MODE
+
+    from app.services.risk_wiring import (
+        IntradayAlertDedup,
+        _load_prev_close_nav,
+        build_intraday_risk_engine,
+    )
+
+    try:
+        engine = build_intraday_risk_engine()
+
+        # 1. build_context 走批 1 engine 同逻辑 (prev_close_nav=None 占位)
+        context = engine.build_context(
+            strategy_id=strategy_id, execution_mode=execution_mode
+        )
+
+        # 2. 填 prev_close_nav (批 2 新增, intraday drop rules 需要)
+        nav_conn = get_sync_conn()
+        try:
+            prev_close_nav = _load_prev_close_nav(
+                nav_conn, strategy_id, execution_mode
+            )
+        finally:
+            nav_conn.close()
+        context = replace(context, prev_close_nav=prev_close_nav)
+
+        # 3. run rules
+        results = engine.run(context)
+
+        # 4. dedup filter (Redis 24h TTL 防泛滥)
+        dedup = IntradayAlertDedup()
+        to_execute = []
+        skipped = []
+        for r in results:
+            if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
+                to_execute.append(r)
+                dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
+            else:
+                skipped.append(r.rule_id)
+
+        # 5. execute dedup 后结果
+        if to_execute:
+            engine.execute(to_execute, context)
+
+        summary = {
+            "status": "ok",
+            "execution_mode": execution_mode,
+            "prev_close_nav": prev_close_nav,
+            "portfolio_nav": context.portfolio_nav,
+            "positions_count": len(context.positions),
+            "triggered": len(results),
+            "alerted": len(to_execute),
+            "dedup_skipped": len(skipped),
+            "signals": [
+                {"rule_id": r.rule_id, "code": r.code} for r in to_execute
+            ],
+        }
+        logger.info(
+            "[IntradayRisk] 盘中检查完成: triggered=%d alerted=%d dedup_skipped=%d mode=%s",
+            len(results), len(to_execute), len(skipped), execution_mode,
+        )
+        return summary
+
+    except Exception as exc:
+        logger.error("[IntradayRisk] 异常: %s", exc, exc_info=True)
+        # max_retries=0: 5min 下次会再跑, 本次 raise propagate Celery FAILURE → 监控
+        raise
+
+
+# ════════════════════════════════════════════════════════════
 # DEPRECATED: 老 pms_check (ADR-010 Session 21 已停 Beat, MVP 3.1 批 1 新 risk_check 替代)
 # 保留 1 sprint 供紧急回滚, 批 3 CB adapter 完成后 + pms_engine.py 一并物理删除
 # ════════════════════════════════════════════════════════════

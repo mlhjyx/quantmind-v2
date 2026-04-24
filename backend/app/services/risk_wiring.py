@@ -1,11 +1,14 @@
-"""Risk Framework Application wiring — MVP 3.1 批 1 PR 3.
+"""Risk Framework Application wiring — MVP 3.1 批 1/2.
 
 本模块是 Platform/App 边界的 wiring 层 (铁律 31 Engine 纯计算 + 铁律 34 Config SSOT):
   - Platform 层 (backend/platform/risk/) 只定 Protocol + concrete engine/rules
   - Application 层 (本模块) 把 QMTClient / send_alert / PaperBroker 按 DI 注入
 
-daily_pipeline.risk_check 直接调 build_risk_engine(strategy_id, execution_mode)
-获取一个 ready-to-run PlatformRiskEngine.
+工厂函数:
+  - build_risk_engine() (批 1): PMS L1/L2/L3 日检, daily_pipeline.risk_check 14:30
+  - build_intraday_risk_engine() (批 2): + 4 intraday rules (3/5/8% + QMT disconnect),
+    daily_pipeline.intraday_risk_check 5min 盘中
+  - IntradayAlertDedup (批 2): Redis 24h TTL 同 rule_id 同日限 1 次告警防泛滥
 
 关联铁律: 24 (单一职责 wiring) / 31 (App 层允许 IO) / 33 (fail-loud send_alert) /
           34 (.env 配置 single source of truth)
@@ -13,13 +16,20 @@ daily_pipeline.risk_check 直接调 build_risk_engine(strategy_id, execution_mod
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from app.config import settings
 from app.core.qmt_client import get_qmt_client
 from app.services.db import get_sync_conn
 from app.services.notification_service import send_alert
-from backend.platform.risk import PlatformRiskEngine
+from backend.platform.risk import PlatformRiskEngine, RiskRule
+from backend.platform.risk.rules.intraday import (
+    IntradayPortfolioDrop3PctRule,
+    IntradayPortfolioDrop5PctRule,
+    IntradayPortfolioDrop8PctRule,
+    QMTDisconnectRule,
+)
 from backend.platform.risk.rules.pms import PMSRule, PMSThreshold
 from backend.platform.risk.sources import DBPositionSource, QMTPositionSource
 
@@ -156,6 +166,168 @@ def build_risk_engine(
         engine.register(rule)
     logger.info(
         "[risk-wiring] PlatformRiskEngine built, rules=%s",
+        engine.registered_rules,
+    )
+    return engine
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# MVP 3.1 批 2 (Session 30) — Intraday Risk Engine + Dedup + NAV helper
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _load_prev_close_nav(
+    conn, strategy_id: str, execution_mode: str
+) -> float | None:
+    """从 performance_series 读前一交易日 NAV 作 prev_close_nav (intraday rules 用).
+
+    查询: `SELECT nav FROM performance_series WHERE strategy_id=%s AND execution_mode=%s
+           AND trade_date < today ORDER BY trade_date DESC LIMIT 1`
+
+    失败 fallback: 返 None (rule evaluate silent skip per PR 1 guard).
+
+    Args:
+        conn: psycopg2 connection (调用方管理事务).
+        strategy_id: 策略 UUID.
+        execution_mode: 'paper' | 'live' (ADR-008 命名空间).
+
+    Returns:
+        float: 前日 NAV (非当日), None: 数据缺失 / 首日 / 异常.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT nav FROM performance_series
+                WHERE strategy_id = %s AND execution_mode = %s
+                  AND trade_date < CURRENT_DATE
+                ORDER BY trade_date DESC
+                LIMIT 1""",
+                (strategy_id, execution_mode),
+            )
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                nav = float(row[0])
+                if nav > 0:
+                    return nav
+        logger.warning(
+            "[risk-wiring] prev_close_nav 数据缺失 strategy=%s mode=%s",
+            strategy_id, execution_mode,
+        )
+    except Exception as e:  # noqa: BLE001 — 读路径 fallback 允许 (铁律 33-c)
+        logger.error(
+            "[risk-wiring] _load_prev_close_nav 异常 strategy=%s mode=%s: %s: %s",
+            strategy_id, execution_mode, type(e).__name__, e,
+        )
+    return None
+
+
+class IntradayAlertDedup:
+    """Redis 24h TTL dedup — 同 rule_id × 同 strategy × 同 mode × 同日限 1 次告警.
+
+    防泛滥场景 (plan §5):
+      - QMT 持续断连 → 每 5min trigger QMTDisconnectRule → 钉钉 DoS (54 次/日)
+      - 盘中持续深跌 → 3%/5%/8% 可能同日多次进出阈值 → 重复告警
+
+    Key pattern: `qm:risk:dedup:{rule_id}:{strategy_id}:{execution_mode}:{YYYY-MM-DD}`
+    Value: 触发 timestamp (debug 用, 功能上只判存在)
+    TTL: 24h (86400s), 自动清理
+
+    使用方式 (daily_pipeline.intraday_risk_check_task):
+        dedup = IntradayAlertDedup()
+        for result in results:
+            if dedup.should_alert(result.rule_id, strategy_id, execution_mode):
+                engine.execute([result], context)  # log + 钉钉 + risk_event_log
+                dedup.mark_alerted(result.rule_id, strategy_id, execution_mode)
+    """
+
+    _TTL_SECONDS = 86400  # 24h
+
+    def __init__(self, redis_client=None):
+        """Args:
+            redis_client: Optional 注入 (单测), 默认从 settings.REDIS_URL 构造.
+        """
+        if redis_client is None:
+            import redis
+            redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._redis = redis_client
+
+    @staticmethod
+    def _build_key(rule_id: str, strategy_id: str, execution_mode: str) -> str:
+        """dedup key 构造. 按日期自然过期 (24h TTL 覆盖单交易日)."""
+        today = date.today().isoformat()
+        return f"qm:risk:dedup:{rule_id}:{strategy_id}:{execution_mode}:{today}"
+
+    def should_alert(
+        self, rule_id: str, strategy_id: str, execution_mode: str
+    ) -> bool:
+        """判断是否应发告警. True = 未 mark 过 (首次) / Redis 异常 fail-open."""
+        key = self._build_key(rule_id, strategy_id, execution_mode)
+        try:
+            return not self._redis.exists(key)
+        except Exception as e:  # noqa: BLE001 — Redis 失败 fail-open (宁可误告警不漏告警)
+            logger.error(
+                "[risk-wiring] IntradayAlertDedup.should_alert Redis 异常 key=%s: %s: %s "
+                "(fail-open, 允许告警)",
+                key, type(e).__name__, e,
+            )
+            return True
+
+    def mark_alerted(
+        self, rule_id: str, strategy_id: str, execution_mode: str
+    ) -> None:
+        """标记已告警. 失败 silent (dedup 失败不应阻塞主路径, 铁律 33-c)."""
+        key = self._build_key(rule_id, strategy_id, execution_mode)
+        try:
+            import time
+            self._redis.setex(key, self._TTL_SECONDS, str(int(time.time())))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[risk-wiring] IntradayAlertDedup.mark_alerted Redis 异常 key=%s: %s: %s",
+                key, type(e).__name__, e,
+            )
+
+
+def build_intraday_risk_engine(
+    extra_rules: list[RiskRule] | None = None,
+) -> PlatformRiskEngine:
+    """构造 MVP 3.1 批 2 intraday PlatformRiskEngine (4 rules 已注册).
+
+    规则 (ADR-010 D5 迁移表批 2 行):
+      - IntradayPortfolioDrop3PctRule (P2)
+      - IntradayPortfolioDrop5PctRule (P1)
+      - IntradayPortfolioDrop8PctRule (P0)
+      - QMTDisconnectRule (P0, 注入 QMTClient.is_connected)
+
+    调用方 (daily_pipeline.intraday_risk_check_task): build → context → run → dedup → execute.
+
+    Note: **不** 注册 PMSRule (PMS 归批 1 daily 14:30 专属, 避免双告警).
+
+    Args:
+        extra_rules: 可选附加 RiskRule list (批 3 CB adapter 可注入).
+
+    Returns:
+        PlatformRiskEngine, 已 register 4 intraday rules + extra_rules.
+    """
+    qmt_client = get_qmt_client()
+    primary = QMTPositionSource(reader=qmt_client, conn_factory=get_sync_conn)
+    fallback = DBPositionSource(conn_factory=get_sync_conn, price_reader=qmt_client)
+
+    engine = PlatformRiskEngine(
+        primary_source=primary,
+        fallback_source=fallback,
+        broker=LoggingSellBroker(),  # 批 2 仍占位 (所有 intraday rules action='alert_only')
+        notifier=DingTalkRiskNotifier(),
+        price_reader=qmt_client,
+        conn_factory=get_sync_conn,
+    )
+    engine.register(IntradayPortfolioDrop3PctRule())
+    engine.register(IntradayPortfolioDrop5PctRule())
+    engine.register(IntradayPortfolioDrop8PctRule())
+    engine.register(QMTDisconnectRule(qmt_reader=qmt_client))
+    for rule in (extra_rules or []):
+        engine.register(rule)
+    logger.info(
+        "[risk-wiring] Intraday PlatformRiskEngine built, rules=%s",
         engine.registered_rules,
     )
     return engine
