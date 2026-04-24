@@ -88,50 +88,50 @@ class DBStrategyRegistry(StrategyRegistry):
         description = getattr(strategy, "description", "")
 
         conn = self._conn_factory()
-        cur = conn.cursor()
+        # reviewer P1 (code+db, 2026-04-24 PR #69): `with conn.cursor() as cur` 防泄漏
+        with conn.cursor() as cur:
+            # 查是否首次 register (决定 strategy_status_log 是否写首行)
+            cur.execute(
+                "SELECT status FROM strategy_registry WHERE strategy_id = %s",
+                (str(sid),),
+            )
+            existing_row = cur.fetchone()
+            existing_status = existing_row[0] if existing_row else None
 
-        # 查是否首次 register (决定 strategy_status_log 是否写首行)
-        cur.execute(
-            "SELECT status FROM strategy_registry WHERE strategy_id = %s",
-            (str(sid),),
-        )
-        existing_row = cur.fetchone()
-        existing_status = existing_row[0] if existing_row else None
-
-        # Upsert (幂等, 保 status 不动, 交给 update_status 管状态迁移)
-        cur.execute(
-            """
-            INSERT INTO strategy_registry
-                (strategy_id, name, rebalance_freq, status, factor_pool, config, description)
-            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
-            ON CONFLICT (strategy_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                rebalance_freq = EXCLUDED.rebalance_freq,
-                factor_pool = EXCLUDED.factor_pool,
-                config = EXCLUDED.config,
-                description = EXCLUDED.description
-            """,
-            (
-                str(sid),
-                name,
-                rebalance_freq,
-                status_text,
-                json.dumps(factor_pool),
-                json.dumps(config),
-                description,
-            ),
-        )
-
-        # 审计日志: 首次 register 插 log (old_status=NULL)
-        if existing_status is None:
+            # Upsert (幂等, 保 status 不动, 交给 update_status 管状态迁移)
             cur.execute(
                 """
-                INSERT INTO strategy_status_log
-                    (strategy_id, old_status, new_status, reason)
-                VALUES (%s, NULL, %s, %s)
+                INSERT INTO strategy_registry
+                    (strategy_id, name, rebalance_freq, status, factor_pool, config, description)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                ON CONFLICT (strategy_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    rebalance_freq = EXCLUDED.rebalance_freq,
+                    factor_pool = EXCLUDED.factor_pool,
+                    config = EXCLUDED.config,
+                    description = EXCLUDED.description
                 """,
-                (str(sid), status_text, f"initial register via {self.__class__.__name__}"),
+                (
+                    str(sid),
+                    name,
+                    rebalance_freq,
+                    status_text,
+                    json.dumps(factor_pool),
+                    json.dumps(config),
+                    description,
+                ),
             )
+
+            # 审计日志: 首次 register 插 log (old_status=NULL)
+            if existing_status is None:
+                cur.execute(
+                    """
+                    INSERT INTO strategy_status_log
+                        (strategy_id, old_status, new_status, reason)
+                    VALUES (%s, NULL, %s, %s)
+                    """,
+                    (str(sid), status_text, f"initial register via {self.__class__.__name__}"),
+                )
 
         # In-memory cache (无论首次 or 重注)
         self._instances[sid] = strategy
@@ -155,11 +155,12 @@ class DBStrategyRegistry(StrategyRegistry):
             (fail-loud 防 production 静默跳过策略, 铁律 33)
         """
         conn = self._conn_factory()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT strategy_id, name FROM strategy_registry WHERE status = 'live' ORDER BY name"
-        )
-        rows = cur.fetchall()
+        # reviewer P1 cursor context manager
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT strategy_id, name FROM strategy_registry WHERE status = 'live' ORDER BY name"
+            )
+            rows = cur.fetchall()
 
         instances: list[Strategy] = []
         for sid_str, name in rows:
@@ -178,11 +179,13 @@ class DBStrategyRegistry(StrategyRegistry):
         """按 ID 取策略 instance. 若 DB 无或 cache 未 register 则 raise."""
         sid = self._parse_uuid(strategy_id, "strategy_id")
         conn = self._conn_factory()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT 1 FROM strategy_registry WHERE strategy_id = %s", (str(sid),)
-        )
-        if cur.fetchone() is None:
+        # reviewer P1 cursor context manager
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM strategy_registry WHERE strategy_id = %s", (str(sid),)
+            )
+            row = cur.fetchone()
+        if row is None:
             raise StrategyNotFound(f"strategy_id {sid} 不在 strategy_registry DB 表中")
         instance = self._instances.get(sid)
         if instance is None:
@@ -215,37 +218,38 @@ class DBStrategyRegistry(StrategyRegistry):
         )
 
         conn = self._conn_factory()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT status FROM strategy_registry WHERE strategy_id = %s",
-            (str(sid),),
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise StrategyNotFound(
-                f"update_status 失败: strategy_id {sid} 不在 DB. 先调 register()."
+        # reviewer P1 cursor context manager
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM strategy_registry WHERE strategy_id = %s",
+                (str(sid),),
             )
-        old_status_text = row[0]
-        if old_status_text == new_status_text:
-            _logger.info(
-                "update_status no-op: id=%s already at status=%s",
-                sid,
-                new_status_text,
-            )
-            return
+            row = cur.fetchone()
+            if row is None:
+                raise StrategyNotFound(
+                    f"update_status 失败: strategy_id {sid} 不在 DB. 先调 register()."
+                )
+            old_status_text = row[0]
+            if old_status_text == new_status_text:
+                _logger.info(
+                    "update_status no-op: id=%s already at status=%s",
+                    sid,
+                    new_status_text,
+                )
+                return
 
-        cur.execute(
-            "UPDATE strategy_registry SET status = %s WHERE strategy_id = %s",
-            (new_status_text, str(sid)),
-        )
-        cur.execute(
-            """
-            INSERT INTO strategy_status_log
-                (strategy_id, old_status, new_status, reason)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (str(sid), old_status_text, new_status_text, reason.strip()),
-        )
+            cur.execute(
+                "UPDATE strategy_registry SET status = %s WHERE strategy_id = %s",
+                (new_status_text, str(sid)),
+            )
+            cur.execute(
+                """
+                INSERT INTO strategy_status_log
+                    (strategy_id, old_status, new_status, reason)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (str(sid), old_status_text, new_status_text, reason.strip()),
+            )
         _logger.info(
             "strategy status changed: id=%s %s → %s reason=%r",
             sid,

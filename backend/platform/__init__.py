@@ -106,6 +106,7 @@ from .signal.interface import (
     OrderRouter,
     SignalPipeline,
 )
+from .strategy.allocator import EqualWeightAllocator
 from .strategy.interface import (
     CapitalAllocator,
     RebalanceFreq,
@@ -113,6 +114,11 @@ from .strategy.interface import (
     StrategyContext,
     StrategyRegistry,
     StrategyStatus,
+)
+from .strategy.registry import (
+    DBStrategyRegistry,
+    StrategyNotFound,
+    StrategyRegistryIntegrityError,
 )
 
 __all__ = [
@@ -146,6 +152,11 @@ __all__ = [
     "RebalanceFreq",
     "StrategyStatus",
     "StrategyContext",
+    # MVP 3.2 批 1 concretes:
+    "DBStrategyRegistry",
+    "EqualWeightAllocator",
+    "StrategyNotFound",
+    "StrategyRegistryIntegrityError",
     # Framework #4 Eval
     "EvaluationPipeline",
     "StrategyEvaluator",
