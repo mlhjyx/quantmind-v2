@@ -81,7 +81,9 @@ def _configure_logging() -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
-            logging.FileHandler(LOG_DIR / "compute_daily_ic.log", encoding="utf-8"),
+            # Session 26 LL-068 扩散: delay=True 防 Windows zombie 文件锁 (4-23 DataQualityCheck
+            # 0-log 事故根因同类防御).
+            logging.FileHandler(LOG_DIR / "compute_daily_ic.log", encoding="utf-8", delay=True),
             logging.StreamHandler(sys.stderr),
         ],
         force=True,
@@ -379,30 +381,8 @@ def compute_and_ingest(
     }
 
 
-def main() -> int:
-    """Script entry: owns connection lifecycle + transaction (铁律 32)."""
-    _configure_logging()
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--days", type=int, default=30, help="回溯天数 (default 30)")
-    # reviewer P2 采纳: --factors / --core mutually exclusive (原来 if-elif 静默忽略)
-    factor_group = parser.add_mutually_exclusive_group()
-    factor_group.add_argument("--factors", type=str, help="逗号分隔 factor 列表 (覆盖 registry)")
-    factor_group.add_argument(
-        "--core", action="store_true", help=f"仅 {len(CORE_FACTORS)} CORE: {CORE_FACTORS}"
-    )
-    parser.add_argument("--dry-run", action="store_true", help="不入库, 仅报告")
-    parser.add_argument("--verbose", action="store_true", help="详细日志")
-    # PR #40 P2.2 follow-up (Session 22 Part 4): A 股节假日 (5/1 劳动节 / 国庆 / 春节)
-    # schtask Mon-Fri 触发会在假日当天空跑. is_trading_day guard 提前退出.
-    # trading_calendar.is_trading_day 多层 fallback (本地 DB → Tushare API → 启发式).
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="覆盖 is_trading_day guard (default: 非交易日提前 exit 0). 手动 backfill 用.",
-    )
-    args = parser.parse_args()
-
+def _run(args: argparse.Namespace) -> int:
+    """主流程 (顶层 try/except 由 main 包裹, LL-068 pattern 扩散)."""
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -415,11 +395,12 @@ def main() -> int:
 
     # Transaction boundary (铁律 32): script 作为 caller 管理 conn + commit + close
     conn = get_sync_conn()
+    # LL-068 扩散: session-level statement_timeout 60s, 防 cold-cache / lock hang
+    # 被 schtask 5min ExecutionTimeLimit kill (data_quality_check 4-22/4-23 事故同类).
+    with conn.cursor() as _cur_timeout:
+        _cur_timeout.execute("SET statement_timeout = 60000")
     try:
         # Holiday guard (PR #40 P2.2 follow-up): A 股非交易日提前 exit 0.
-        # schtask Mon-Fri 会在 5/1 劳动节 / 国庆 / 春节 等法定假日空跑 (~15 days/year);
-        # 假日无新 klines + forward returns 不变, 重算产出相同 IC (idempotent upsert)
-        # 浪费 DB IO + compute + 掩盖真实监控噪音. --force 可覆盖.
         if not args.force:
             # 铁律 41: 用 Asia/Shanghai 避免 date.today() 在 UTC 服务器 18:00 CST
             # 解析为前一日 (reviewer P2.1). 中国无 DST, offset 稳定 +08:00.
@@ -449,6 +430,58 @@ def main() -> int:
         raise
     finally:
         conn.close()
+
+
+def main() -> int:
+    """Script entry: owns connection lifecycle + transaction (铁律 32).
+
+    Session 26 LL-068 pattern 扩散: boot stderr probe + 顶层 try/except → exit(2)
+    fail-loud (防 logger 失败 / schtask 无任何告警痕迹).
+    """
+    # Fail-loud boot 探针
+    import os as _os
+
+    print(
+        f"[compute_daily_ic] boot {datetime.now().isoformat()} pid={_os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+    _configure_logging()
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--days", type=int, default=30, help="回溯天数 (default 30)")
+    # reviewer P2 采纳: --factors / --core mutually exclusive (原来 if-elif 静默忽略)
+    factor_group = parser.add_mutually_exclusive_group()
+    factor_group.add_argument("--factors", type=str, help="逗号分隔 factor 列表 (覆盖 registry)")
+    factor_group.add_argument(
+        "--core", action="store_true", help=f"仅 {len(CORE_FACTORS)} CORE: {CORE_FACTORS}"
+    )
+    parser.add_argument("--dry-run", action="store_true", help="不入库, 仅报告")
+    parser.add_argument("--verbose", action="store_true", help="详细日志")
+    # PR #40 P2.2 follow-up (Session 22 Part 4): A 股节假日 (5/1 劳动节 / 国庆 / 春节)
+    # schtask Mon-Fri 触发会在假日当天空跑. is_trading_day guard 提前退出.
+    # trading_calendar.is_trading_day 多层 fallback (本地 DB → Tushare API → 启发式).
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="覆盖 is_trading_day guard (default: 非交易日提前 exit 0). 手动 backfill 用.",
+    )
+    args = parser.parse_args()
+
+    try:
+        return _run(args)
+    except Exception as e:
+        msg = f"[compute_daily_ic] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        import traceback as _tb
+
+        _tb.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, logger 可能未初始化成功
+        import contextlib as _cl
+
+        with _cl.suppress(Exception):
+            logger.critical(msg, exc_info=True)
+        return 2
 
 
 if __name__ == "__main__":
