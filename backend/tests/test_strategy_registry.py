@@ -53,7 +53,9 @@ class _FakeStrategy(Strategy):
         return signals
 
 
-def _make_mock_conn_factory(fetchone_queue: list = None, rowcounts: list = None):
+def _make_mock_conn_factory(
+    fetchone_queue: list | None = None, rowcounts: list | None = None
+):
     """Build a mock conn_factory that returns queued SELECT results.
 
     fetchone_queue: sequentially returned from cursor.fetchone()
@@ -62,6 +64,9 @@ def _make_mock_conn_factory(fetchone_queue: list = None, rowcounts: list = None)
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value = cursor
+    # Support `with conn.cursor() as cur:` context manager (reviewer P1 fix)
+    cursor.__enter__ = MagicMock(return_value=cursor)
+    cursor.__exit__ = MagicMock(return_value=False)
     conn.closed = 0
 
     _fetchone_iter = iter(fetchone_queue or [])

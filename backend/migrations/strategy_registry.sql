@@ -44,6 +44,12 @@ COMMENT ON COLUMN strategy_registry.config IS 'JSONB 策略配置: top_n / indus
 CREATE INDEX IF NOT EXISTS idx_strategy_registry_status ON strategy_registry (status);
 CREATE INDEX IF NOT EXISTS idx_strategy_registry_name ON strategy_registry (name);
 
+-- GIN index on factor_pool JSONB array (db-reviewer P2 2026-04-24 PR #69):
+-- 支持未来 lifecycle 查询 "哪些策略用了 factor X" (e.g. factor 退役前 check).
+-- jsonb_path_ops 是 array contains 场景最优索引 (vs jsonb_ops 支持更多但索引大).
+CREATE INDEX IF NOT EXISTS idx_strategy_registry_factor_pool
+    ON strategy_registry USING GIN (factor_pool jsonb_path_ops);
+
 -- 自动维护 updated_at
 CREATE OR REPLACE FUNCTION _strategy_registry_touch_updated_at() RETURNS TRIGGER AS $$
 BEGIN
@@ -61,7 +67,9 @@ CREATE TRIGGER trg_strategy_registry_touch
 
 CREATE TABLE IF NOT EXISTS strategy_status_log (
     id               BIGSERIAL PRIMARY KEY,
-    strategy_id      UUID NOT NULL REFERENCES strategy_registry(strategy_id) ON DELETE CASCADE,
+    -- ON DELETE RESTRICT: 保审计数据 (db-reviewer P1 2026-04-24 PR #69).
+    -- RETIRED status 代替物理 DELETE, 若需物理删除必先手工 clear log.
+    strategy_id      UUID NOT NULL REFERENCES strategy_registry(strategy_id) ON DELETE RESTRICT,
     old_status       TEXT,
     new_status       TEXT NOT NULL,
     reason           TEXT NOT NULL,
@@ -73,6 +81,33 @@ COMMENT ON COLUMN strategy_status_log.old_status IS 'NULL 表示首次 register 
 
 CREATE INDEX IF NOT EXISTS idx_strategy_status_log_strategy_id ON strategy_status_log (strategy_id);
 CREATE INDEX IF NOT EXISTS idx_strategy_status_log_changed_at ON strategy_status_log (changed_at DESC);
+
+-- ── Delta: 2026-04-24 PR #69 reviewer db-reviewer P1 ──────
+-- 历史环境若 CASCADE 已建, 本块将其迁为 RESTRICT (幂等, 已 RESTRICT 则 skip).
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'strategy_status_log'::regclass
+          AND conname = 'strategy_status_log_strategy_id_fkey'
+          AND confdeltype = 'c'  -- CASCADE
+    ) THEN
+        ALTER TABLE strategy_status_log
+            DROP CONSTRAINT strategy_status_log_strategy_id_fkey;
+        ALTER TABLE strategy_status_log
+            ADD CONSTRAINT strategy_status_log_strategy_id_fkey
+            FOREIGN KEY (strategy_id)
+            REFERENCES strategy_registry(strategy_id)
+            ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+-- ── 状态值扩展说明 (db-reviewer P2 文档性) ──────────────
+-- status / rebalance_freq 用 TEXT + CHECK 而非 ENUM. 添加新 status 值时必须:
+--   ALTER TABLE strategy_registry DROP CONSTRAINT strategy_registry_status_check;
+--   ALTER TABLE strategy_registry ADD CONSTRAINT strategy_registry_status_check
+--     CHECK (status IN ('draft','backtest','dry_run','live','paused','retired', '新值'));
+-- (对比 ENUM 的 ALTER TYPE ADD VALUE 更繁琐, 但对齐 feature_flags + factor_registry 现有 schema 风格)
 
 -- ── 验证 (注释, 迁移后手工跑) ──────────────────────────────
 -- SELECT COUNT(*) FROM strategy_registry;  -- 预期 0 rows (首次 migration 后)
