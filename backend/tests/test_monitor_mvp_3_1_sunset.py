@@ -99,6 +99,8 @@ class TestConditionA:
 
     def test_days_eq_30_events_1_satisfied(self):
         """边界: 刚好 30 日 + 1 event → 满足."""
+        # P1 database reviewer 采纳: latest_at 用 UTC 与查询 lower_bound 对齐
+        # (adapter_live CST midnight → UTC 后 4-23T16:00 UTC, 5-20T14:30 UTC 落 range 内)
         conn = self._mock_conn_with_events(
             events_count=1, latest_at=datetime(2026, 5, 20, 14, 30, tzinfo=UTC)
         )
@@ -378,6 +380,33 @@ class TestOutputFormat:
         assert "继续观察" in text
         assert "⏳" in text  # 未达标记
 
+    def test_text_report_renders_satisfied_checkmark(self):
+        """P3 reviewer 采纳: 验 ✅ satisfied branch 覆盖 (原 test 全 False 漏).
+
+        构造 A 满足 mock, 验 format_text_report 含 ✅ 符号 + "启动批 3b" 推荐.
+        """
+
+        def _cr(name: str, satisfied: bool) -> ConditionResult:
+            return ConditionResult(
+                name=name,
+                description=f"test {name}",
+                satisfied=satisfied,
+                details={"test_detail": "value"},
+            )
+
+        report = SunsetReport(
+            generated_at=datetime(2026, 4, 24, 21, 0, tzinfo=UTC),
+            adapter_live_date=ADAPTER_LIVE_DATE,
+            days_since_activation=30,
+            condition_a=_cr("A", True),  # ← satisfied
+            condition_b=_cr("B", False),
+            condition_c=_cr("C", False),
+        )
+        text = format_text_report(report)
+        assert "✅" in text  # satisfied 符号
+        assert "⏳" in text  # 同时 B/C 未达
+        assert "启动批 3b" in text  # recommendation 切换
+
 
 # ═════════════════════════════════════════════════════════════════
 # 铁律 33 fail-loud regression guard
@@ -410,6 +439,21 @@ class TestFailLoud:
 
         with pytest.raises(psycopg2.errors.ConnectionException):
             check_condition_b(mock_conn)
+
+    def test_check_condition_c_raises_on_db_error(self):
+        """P3 reviewer 采纳: condition C 也 fail-loud (铁律 33 规范对称).
+
+        防 feature_flags 表查询异常 silent 返 False 伪装 "Wave 4 未启动".
+        """
+        import psycopg2.errors
+
+        mock_conn = MagicMock()
+        mock_conn.cursor.side_effect = psycopg2.errors.ConnectionException(
+            "feature_flags query failed"
+        )
+
+        with pytest.raises(psycopg2.errors.ConnectionException):
+            check_condition_c(mock_conn)
 
 
 if __name__ == "__main__":
