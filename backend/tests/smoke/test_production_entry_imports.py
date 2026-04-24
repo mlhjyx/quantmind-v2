@@ -13,6 +13,7 @@ MVP 1.1b Shadow Fix 直接动机:
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -63,6 +64,16 @@ def test_script_help_runs(script: str) -> None:
     """
     script_path = PROJECT_ROOT / script
     assert script_path.exists(), f"脚本 {script_path} 不存在, 测试失效"
+
+    # Reviewer P2 采纳 (PR #52): pull_moneyflow module-top `pro = ts.pro_api(TOKEN)`
+    # 依赖 TUSHARE_TOKEN. pydantic-settings 从 backend/.env OR env var 加载,
+    # 任一存在即可. CI 无 .env + 无 env 时 skip (避免 subprocess returncode=1
+    # 误当 shadow bug). 对齐 live_tushare marker 精神.
+    if script == "scripts/pull_moneyflow.py":
+        has_env = bool(os.environ.get("TUSHARE_TOKEN"))
+        has_dotenv = (PROJECT_ROOT / "backend" / ".env").exists()
+        if not (has_env or has_dotenv):
+            pytest.skip("pull_moneyflow smoke 需要 TUSHARE_TOKEN (env 或 backend/.env), 均缺失时 skip")
 
     # 关键: CWD=project root (Servy 配置后的标准启动路径, 铁律 10b)
     # 允许 exit code 0 (正常) 或 2 (argparse error, 但 import 通过)
