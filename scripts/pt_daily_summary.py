@@ -20,9 +20,16 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
-sys.path.insert(0, str(BACKEND_DIR))
+# .venv/.pth 已把 backend 加入 sys.path. 不用 insert(0) 避免与 stdlib `platform`
+# 冲突 (铁律 10b shadow fix: backend/platform/ 会 shadow stdlib platform
+# 当 sqlalchemy/pandas 通过 import platform → 命中 backend/platform 循环导入
+# AttributeError: partially initialized module 'platform' has no attribute
+# 'python_implementation'). 本脚本 17:35 schtask 自 Session 32 前每日 LastResult=1
+# 根因即此 shadow bug, fix 对齐 compute_ic_rolling.py/compute_daily_ic.py 模式.
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
