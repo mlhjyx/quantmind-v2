@@ -93,7 +93,7 @@ Logon 触发
 | 任务名 | ps1 位置 | 删除时间 | 状态 |
 |--------|---------|---------|------|
 | QuantMind_DailyExecuteAfterData | Section 5 (已标注 "[已废除]") | Session 17 Stage 4 (2026-04-19) | ✅ ps1 已清 register, 手工 delete 已执行, ADR-008 P0-δ 污染源消除 |
-| QuantMind_GPPipeline | Section 12 (L397-420, **仍有 Register 代码**) | 2026-04-16 (已知问题区) | ⚠️ Session 32+ TODO: ps1 需清 register 防下次 rerun 复活 |
+| QuantMind_GPPipeline | Section 12 (已标注 "[已废除]") | Session 16 (2026-04-16) 活任务删 + Session 32 PR #66 (2026-04-24) ps1 清 register | ✅ ps1 已清 register (Register 代码块 → 6 行 comment placeholder), Celery Beat `gp-weekly-mining` Sun 22:00 单一 GP 入口, 双触发风险消除 |
 
 ### Celery Beat (5 活跃 + 2 历史)
 
