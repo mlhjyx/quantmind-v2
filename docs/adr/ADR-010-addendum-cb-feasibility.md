@@ -230,8 +230,11 @@ return {
    - adapter 是否包裹 `conn` 事务边界 (铁律 32: check_circuit_breaker_sync 内调
      _upsert_cb_state_sync 会 DB commit, adapter 对 conn 不额外管理)
 4. **ADR-003 事件名同步** (reviewer P2-1): 事件清单加 `risk.triggered` 取代
-   `pms.triggered`, 对齐 QPB v1.6 §1263 L. 本 ADR addendum 不执行 (跨文档 scope),
-   另开小 PR 处理.
+   `pms.triggered`, 对齐 QPB v1.6 §1263 L. ~~本 ADR addendum 不执行 (跨文档 scope),
+   另开小 PR 处理.~~ **✅ CLOSED** (Session 31 2026-04-24 docs 直推 main): ADR-003
+   L11 事件清单 `pms.triggered` → `risk.triggered` + SYSTEM_BLUEPRINT §PMS 和 §StreamBus
+   事件表同步 + 本条目 mark DONE. 2 处保留历史证据 (F27 根因章节 + MVP 3.1 批 1 plan
+   迁移对照). 铁律 42 docs/** + adr/** 分级允许 direct push main.
 5. **Sunset gate** (reviewer P3-1, 精确化 "2 月并存" 条件): risk_control_service.py
    + circuit_breaker_state/log 表 sunset 的硬门 (非单纯时间):
    - **条件 A** (必): 批 3 adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 真事件 (非 dry-run smoke)

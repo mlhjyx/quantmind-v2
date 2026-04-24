@@ -360,7 +360,9 @@ QMT Data Service (scripts/qmt_data_service.py) — 唯一 import xtquant 入口
   L3: 浮盈>10% + 回撤>10% → 卖出
 
 配置: .env PMS_ENABLED + PMS_LEVEL{1,2,3}_GAIN/DRAWDOWN
-触发后: 更新 position_snapshot, 广播 qm:pms:protection_triggered
+触发后: 更新 position_snapshot, 写 risk_event_log (事件名 `risk.triggered`)
+
+⚠️ **post-MVP 3.1** (Session 30 2026-04-24 完结): 上述 pms_engine 路径已 DEPRECATED, PMS L1/L2/L3 保护迁入 Platform Risk Framework (`backend/platform/risk/rules/pms.py`), 走 `PlatformRiskEngine.run()` 14:30 Celery Beat `risk-daily-check`, 事件入 `risk_event_log` 替 老 `position_monitor` 表 + 废原 StreamBus `qm:pms:protection_triggered` 广播 (F27 死码). 老 pms_engine.py 保留不动 (Sunset gate 条件满足后清理).
 ```
 
 ### 8.3 关键模块
@@ -640,9 +642,11 @@ Orchestrator 状态机: 7 状态 + 16 转换规则
 |--------|------|------|
 | qm:signal:generated | 信号生成完成 | ✅ |
 | qm:execution:completed | 执行完成 | ✅ |
-| qm:pms:protection_triggered | PMS 触发 | ✅ |
+| ~~qm:pms:protection_triggered~~ | ~~PMS 触发~~ — **DEPRECATED post-MVP 3.1** (F27 死码, 无 consumer). 改用 `risk_event_log` 表 (PMS/Intraday/CB 三类 RiskRule 统一写入, ADR-010 Risk Framework) | ❌ |
 | qm:qmt:status | QMT 连接状态 | ✅ |
 | qm:data:updated | 数据更新完成 | ✅ |
+
+> **MVP 3.1 Risk Framework** (Session 30 2026-04-24) 事件统一写 `risk_event_log` 表 (event name 语义 `risk.triggered`, ADR-003 Event Sourcing 集成待 Wave 3 MVP 3.4 event_outbox 上线). 不再使用 StreamBus 广播 PMS 专用频道. 未来若需要 pub/sub 风控事件, 走 `risk_event_log → event_outbox → Redis Stream` 统一路径 (MVP 3.4).
 
 ---
 

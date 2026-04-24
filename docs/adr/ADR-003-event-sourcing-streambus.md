@@ -8,7 +8,9 @@ recorded_at: 2026-04-17
 
 ## Context
 
-Wave 3 MVP 3.3 引入 Event Sourcing (U2 升维原则) 实现 9 种核心事件 (signal.generated / order.placed / order.filled / pms.triggered 等) 可持久化 + 可重放 + 可投影到 Materialized View.
+Wave 3 MVP 3.3 引入 Event Sourcing (U2 升维原则) 实现 9 种核心事件 (signal.generated / order.placed / order.filled / **risk.triggered** 等) 可持久化 + 可重放 + 可投影到 Materialized View.
+
+> **2026-04-24 Session 31 更新** (ADR-010 addendum follow-up closure): 原事件名 `pms.triggered` 已对齐 Risk Framework 语义重命名为 `risk.triggered` — MVP 3.1 Risk Framework 正式完结 (批 1+2+3 全 merged, PR #55/#57/#58/#59/#60/#61), PMSRule / IntradayPortfolioDropRule / CircuitBreakerRule 3 类 RiskRule 触发均写 `risk_event_log`, 对应 Event Sourcing 事件名 `risk.triggered`. 原 PMS-specific 事件名 `pms.triggered` + StreamBus 频道 `qm:pms:protection_triggered` 作为 F27 死码随 PMS v1.0 一并 deprecated (ADR-010).
 
 存储选型 2 候选:
 
