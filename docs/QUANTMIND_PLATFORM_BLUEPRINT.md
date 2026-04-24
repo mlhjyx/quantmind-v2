@@ -1,9 +1,9 @@
-# QuantMind Platform Blueprint (QPB v1.6)
+# QuantMind Platform Blueprint (QPB v1.7)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → **v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation), 原 MVP 3.1/3.2/3.3/3.4 → 3.2/3.3/3.4/3.5**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → **v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 + audit_orphan_factors drift gate**
 > **作者**: Architect pass (Opus)
-> **状态**: v1.6 (12 Framework + 6 升维 + **17 MVP**, 27.5-37 周), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity)**
+> **状态**: v1.7 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周 [批 3 adapter 省 0.5 周]), **Wave 1 ✅ 完结 7/7 + Wave 2 数据基建 ✅ 完结 (剩 MVP 2.3 Backtest Parity) + Wave 3 MVP 3.1 批 0 ✅ feasibility spike (方案 C Hybrid)**
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
@@ -445,7 +445,10 @@ class DataAccessLayer:
 - 实现 Cache Coherency Protocol: DB max_date 校对 + TTL + content hash invalidation
 - 13 处直连 SQL 全迁 (P2 审计清单)
 
-**成本**: 1.5-2 周 | **依赖**: 无 (基础框架) | **成功指标**: `grep "SELECT.*FROM factor_values"` 产出 ≤ 3 处 (sanctioned) | **关联铁律**: 17/30/31/34
+**Ops 工具 (v1.7 新增)**:
+- `scripts/audit/audit_orphan_factors.py` — factor_registry vs factor_values SSOT drift CI gate (Session 27 Task B 交付, 首次识别 11 orphan 清理至 0). 支持 `--json` / `--only-active` / `--strict` (CI mode exit 1 on drift). 铁律 11 配套工具, 建议周期性 schtask 纳入 MVP 4.1 Observability.
+
+**成本**: 1.5-2 周 | **依赖**: 无 (基础框架) | **成功指标**: `grep "SELECT.*FROM factor_values"` 产出 ≤ 3 处 (sanctioned) + `audit_orphan_factors --strict` 持续 exit 0 | **关联铁律**: 17/30/31/34/43 (audit script 自身合规)
 
 ---
 
@@ -1237,12 +1240,17 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 
 - **背景**: Session 21 (2026-04-21) 发现 PMS v1.0 整体死码 5 重失效 (F27-F31) + 5 个监控系统碎片化 (intraday_monitor / PMS / risk_control / pt_audit / pt_watchdog 互不通信). 方案 D+ 决议: 不修 PMS 死码, 统一重构为 Risk Framework, 作为所有 Wave 3 MVP 的前置
 - **范围**: `backend/platform/risk/` — RiskRule abstract + PlatformRiskEngine + PositionSource (QMT 实时 primary / DB fallback) + risk_event_log 单表 + 11 条规则迁移 (PMS L1-L3 + intraday 组合 3/5/8% + QMT 断连 + CB L1-L4)
-- **3 批分阶段**: 批 1 Framework core + PMS 迁入 (~1 周) → 批 2 intraday 迁入 (~0.5 周) → 批 3 circuit breaker 迁入 (~0.5 周, 末位风险最高)
-- **验收**: `SELECT COUNT FROM risk_event_log WHERE rule_id LIKE 'pms_%'` 有非触发 dry-run 证据 (live smoke 强制模拟触发); 批 2 完成 intraday_monitor 走 RiskEngine; 批 3 完成 risk_control_service deprecated
-- **耗时**: 1.5-2 周 (3 批合计 ~1000 行)
-- **依赖**: MVP 1.1 Platform Skeleton + MVP 2.1 Data Framework + ADR-010
-- **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (已完成)
+- **4 阶段分批** (v1.7 批 0 已完成):
+  - **批 0 ✅ Feasibility spike** (Session 27 2026-04-24, PR #54): 验证 circuit_breaker 迁 Risk Framework 可行性. 发现 4 处 RiskRule 契约与 CB 状态机冲突 (跨调用状态 / L4 approval_queue / 级联 action / `check_circuit_breaker_sync` dict 签名). **决议方案 C Hybrid adapter**: `CircuitBreakerRule(RiskRule)` 内部调 `check_circuit_breaker_sync` + 前后快照 diff, 仅在状态变化时 emit RuleResult. 省批 3 async rewrite ~500 行 → adapter ~200 行 (≈0.5-0.7 周). 产出 ADR-010 addendum (`docs/adr/ADR-010-addendum-cb-feasibility.md`).
+  - **批 1 Framework core + PMS L1-L3 迁入** (~1 周, Session 28+ 启动)
+  - **批 2 intraday_monitor 迁入** (~0.5 周)
+  - **批 3 circuit_breaker adapter 迁入** (~0.5-0.7 周, 方案 C Hybrid, 非 async rewrite)
+- **验收**: `SELECT COUNT FROM risk_event_log WHERE rule_id LIKE 'pms_%'` 有非触发 dry-run 证据 (live smoke 强制模拟触发); 批 2 完成 intraday_monitor 走 RiskEngine; 批 3 完成 risk_control_service deprecated; `check_circuit_breaker_sync` 保留 (不 deprecate) 作 adapter 内部实现
+- **耗时**: 2-2.7 周 (v1.7 修订: 批 0 spike 已省出, 批 3 adapter 节省 ~0.5 周 vs 原 async rewrite 估算)
+- **依赖**: MVP 1.1 Platform Skeleton + MVP 2.1 Data Framework + ADR-010 + **ADR-010 addendum (v1.7)**
+- **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (已完成) + `docs/adr/ADR-010-addendum-cb-feasibility.md` (v1.7 新增)
 - **过渡期保护**: intraday_monitor 组合告警 + emergency_stock_alert.py (单股跌 >8% 钉钉, ADR-010 D6 过渡脚本) + 盘后三检 (reconciliation / pt_audit / pt_watchdog)
+- **Sunset gate** (ADR-010 addendum): 方案 C adapter 在 3 条件同时满足时升级为纯 Risk Framework 实现 — (1) MVP 3.4 Event Sourcing 上线替代 `cb_state` 表; (2) 多策略 → L4 approval_queue 改多行; (3) 其他 RiskRule 积累 > 5 条需要跨调用状态共享需求
 
 **MVP 3.2: Strategy Framework (#3)** (原 MVP 3.1)
 
@@ -1421,14 +1429,16 @@ MVP 1.1 (Platform Skeleton)
 | 23 独立可执行 | Blueprint MVP 拆分 | 持续维持, 由设计纪律保证 |
 | 24 设计按层级聚焦 | Blueprint 模板 | 持续维持 |
 | 41 时间时区统一 | 散在代码 | MVP 2.1 TradingDayProvider + timezone-aware datetime 规范 |
+| 43 schtask Python 脚本 fail-loud 硬化 (v1.7, Session 26 LL-068 触发) | 单脚本 4 项清单自律 (6 script 已合规) | MVP 4.1 Observability + MVP 4.3 CI Layer 2 静态扫描 schtask-driven entry 自动验证 4 项 |
 
-### 执行分布 (v1.4 诚实数据)
+### 执行分布 (v1.7 诚实数据, 铁律 43 纳入)
 
-- **代码强制**: 14 条 (35%) — 这些是真硬门
-- **文化约束**: 10 条 (25%) — 这些靠我自律, 代码查不到
-- **演进中**: 16 条 (40%) — 4 Wave 落地后 6-10 条升级为代码强制
+- **代码强制**: 14 条 (33%) — 这些是真硬门
+- **文化约束**: 10 条 (23%) — 这些靠我自律, 代码查不到
+- **演进中**: 17 条 (40%) — 4 Wave 落地后 6-10 条升级为代码强制 (含铁律 43)
+- **PR 流程**: 1 条 (铁律 42) — governance 层, 独立统计
 
-**4 Wave 完成后预期**: 代码强制 24 条 (60%) / 文化约束 10 条 (25%) / 演进中 6 条 (15%).
+**4 Wave 完成后预期**: 代码强制 25 条 (58%) / 文化约束 10 条 (23%) / 演进中 7 条 (16%) / governance 1 条 (3%).
 
 **产出**: 把"假硬门"幻觉消除, 我实施时清楚哪些真被代码拦截, 哪些是自律.
 
@@ -1727,6 +1737,19 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - **LL-055/056/057/058 入册** (Session 6 4 条新教训, 同源 "AI 不严谨实测 → 凭部分 evidence 跳结论"): handoff 数字腐烂 / smoke ≠ dual-write / head 截断 / PT silent ingest 双层 bug
   - **Wave 2 剩余收窄**: 仅 MVP 2.3 Backtest Parity (3-4 周 MLOps 圣杯, 设计稿已落盘 `docs/mvp/MVP_2_3_backtest_parity.md`)
   - **时间修正**: 原估 Wave 2 "5-6 周" → 实际 Data 层耗 ~2 周 (Session 5-6, 超产节奏), MVP 2.3 3-4 周后 Wave 2 收尾 (总 5-6 周对齐原估)
+- 2026-04-21 v1.6 Wave 3 MVP 重排 (MVP 3.1 Risk Framework 新增):
+  - **Session 21 PMS 死码深查**: PMS v1.0 整体死码 5 重失效 (F27-F31) + 5 监控系统碎片化 (intraday_monitor / PMS / risk_control / pt_audit / pt_watchdog). ADR-010 方案 D+ 决议统一重构为 **Risk Framework**.
+  - **MVP 3.1 Risk Framework 新增**: 作为 Wave 3 启动 MVP, 所有其他 Wave 3 MVP 前置. 原 MVP 3.1/3.2/3.3/3.4 顺延为 3.2/3.3/3.4/3.5.
+  - **MVP 数量**: 16 → 17, Wave 3 时间 10-13 周 → 11.5-15 周.
+  - **MVP 3.3 事件名**: `pms.triggered` → `risk.triggered` (对齐 Risk Framework `risk_event_log`).
+  - **决策清单**: PMS v2 从 PEAD 前置移除 (被 Risk Framework 替代).
+- 2026-04-24 v1.7 Session 24-27 收束 (MVP 3.1 批 0 + 铁律 43 + audit_orphan_factors):
+  - **Session 26 铁律 43 诞生** (LL-068 触发): DataQualityCheck 4-22/4-23 连 2 天 hang 事件后固化的 schtask Python 脚本 fail-loud 硬化 4 项清单 (PG statement_timeout / FileHandler delay=True / main boot stderr probe / try-except FATAL + exit 2). 6 生产 script 合规 (data_quality_check / pt_watchdog / compute_daily_ic / compute_ic_rolling / fast_ic_recompute / pull_moneyflow).
+  - **Session 27 Task B 完成** (PR #53): factor_registry 11 orphan cleanup (287→286 行, active/warning orphans = 0) + `_POOL_DEPRECATED` 扩 11 名防 backfill revert + 新 `scripts/audit/audit_orphan_factors.py` CI gate (13 单测, set-diff 算法, 冷 cache 300s timeout).
+  - **Session 27 Task C 完成** (PR #54): **MVP 3.1 批 0 feasibility spike** — 4 处 CB 状态机与 RiskRule 契约冲突分析, 决议方案 C Hybrid adapter (vs 方案 D async rewrite). ADR-010 addendum 落盘 (`docs/adr/ADR-010-addendum-cb-feasibility.md`), 附 Sunset gate 3 条件. MVP 3.1 耗时 1.5-2 周 → 2-2.7 周 (批 3 adapter 省 ~0.5 周).
+  - **Blueprint 变更**: MVP 3.1 定义增强 (批 0 ✅ / 批 3 adapter 模式 / 耗时修订) + Part 5 铁律 43 登记 (Type C 演进中) + Framework #1 Data Ops 工具追加 audit_orphan_factors.
+  - **铁律数**: 42 → 43 条全局原则.
+  - **总耗时**: 27.5-37 周 → 27-36.5 周 (批 3 adapter 省 0.5 周).
 
 ---
 
@@ -1754,6 +1777,6 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
 
 ---
 
-**END of QuantMind Platform Blueprint v1.5**
+**END of QuantMind Platform Blueprint v1.7**
 
 下一个 session 开始前务必读本文件的 Part 0 Executive Summary + Part 4 MVP 拆分。
