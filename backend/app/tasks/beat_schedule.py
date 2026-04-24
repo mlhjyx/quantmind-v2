@@ -68,10 +68,12 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 1200,  # 20min 内未执行则过期 (市场 15:00 收盘窗口对齐)
         },
     },
-    # ── T日 09:35-15:00 Intraday Risk 5min 检查 (MVP 3.1 批 2 PR 2, Session 30) ──
+    # ── T日 09:00-14:55 Intraday Risk 5min 检查 (MVP 3.1 批 2 PR 2, Session 30) ──
     # 4 规则盘中循环: IntradayPortfolioDrop{3,5,8}PctRule + QMTDisconnectRule
     # action=alert_only, Redis 24h TTL dedup 同 rule 同日限 1 次告警
-    # 54 次/日 (hour=9-14 */5min = 54 触发 = 9:35, 9:40 ... 14:55, 15:00 市场收盘不含)
+    # 72 次/日 (reviewer P3 采纳 code: minute=*/5 × hour=9-14 = 12 × 6 = 72 触发;
+    # 9:00, 9:05, ..., 14:55. 15:00 市场收盘不含, 午休 11:30-13:00 有触发但 rule
+    # evaluate 照常 return [] 或 silent skip — dedup 仅对实触发 mark).
     # ADR-010 D5 迁移表批 2 行, scripts/intraday_monitor.py 个股 -8% 独立保留 (D7)
     "intraday-risk-check": {
         "task": "daily_pipeline.intraday_risk_check",

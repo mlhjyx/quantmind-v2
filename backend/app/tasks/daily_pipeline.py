@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import replace
 from datetime import date, datetime
 
 import redis
@@ -280,13 +281,15 @@ def risk_daily_check_task(self) -> dict:
 def intraday_risk_check_task(self) -> dict:
     """Intraday Risk Framework 盘中检查 (MVP 3.1 批 2 PR 2, 2026-04-24 Session 30).
 
-    Celery Beat `intraday-risk-check` 5min cron (09:35-15:00 Mon-Fri, 54 次/日).
+    Celery Beat `intraday-risk-check` 5min cron (09:35-15:00 Mon-Fri, 72 次/日).
+    (reviewer P3 采纳 code: `*/5 × 6h (9-14) = 12 × 6 = 72 次`, 原注释 54 算错)
     4 规则评估: IntradayPortfolioDrop{3,5,8}PctRule + QMTDisconnectRule.
 
     流程:
         交易日 check → build_intraday_risk_engine → build_context (填 prev_close_nav
         from performance_series) → run → dedup (Redis 24h TTL 同 rule 同日限 1 次)
-        → execute (log + 钉钉 + risk_event_log)
+        → execute (log + 钉钉 + risk_event_log) → mark_alerted AFTER execute 成功
+        (reviewer P1 采纳 code: 防 execute 失败时 dedup 永久 suppress 当日告警)
 
     Action: 全部 alert_only (批 2 不实盘卖, 批 3 升真 broker 统一).
 
@@ -295,8 +298,6 @@ def intraday_risk_check_task(self) -> dict:
     Returns:
         执行摘要 dict.
     """
-    from dataclasses import replace
-
     from engines.trading_day_checker import TradingDayChecker
 
     from app.services.db import get_sync_conn
@@ -351,20 +352,28 @@ def intraday_risk_check_task(self) -> dict:
         # 3. run rules
         results = engine.run(context)
 
-        # 4. dedup filter (Redis 24h TTL 防泛滥)
+        # 4. dedup filter (Redis 24h TTL 防泛滥) — 仅 should_alert 查询, 不 mark
+        # reviewer P1 采纳 (code HIGH): mark_alerted 必须在 execute 成功**之后**.
+        # 原 bug: mark 在 execute 之前, 若 execute raise (risk_event_log DB 写失败 /
+        # DingTalk timeout), dedup 已 set → 当日后续 5min 周期 should_alert=False →
+        # 告警**永久 suppress** (missed alert, 金融风控场景严重). 修后: execute 失败
+        # → dedup 未 set → 下次周期重试. 成功 → mark (最坏情况 mark 失败致重复告警,
+        # 符合 fail-open 设计).
         dedup = IntradayAlertDedup()
         to_execute = []
         skipped = []
         for r in results:
             if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
                 to_execute.append(r)
-                dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
             else:
                 skipped.append(r.rule_id)
 
         # 5. execute dedup 后结果
         if to_execute:
             engine.execute(to_execute, context)
+            # 6. mark_alerted AFTER successful execute (reviewer P1 HIGH)
+            for r in to_execute:
+                dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
 
         summary = {
             "status": "ok",

@@ -16,8 +16,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+import time
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
+
+import redis
 
 from app.config import settings
 from app.core.qmt_client import get_qmt_client
@@ -34,6 +38,10 @@ from backend.platform.risk.rules.pms import PMSRule, PMSThreshold
 from backend.platform.risk.sources import DBPositionSource, QMTPositionSource
 
 logger = logging.getLogger(__name__)
+
+# reviewer P2 采纳 (code): 铁律 41 timezone 统一 — dedup key + SQL trade_date 对比
+# 均用北京时间 (A 股市场), 防 OS/PG 时区漂移导致日边界错位.
+_CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 
 # ---------- Broker Adapter (批 1: logging-only, 批 2 接真 QMT/Paper) ----------
@@ -131,7 +139,7 @@ def build_pms_thresholds() -> tuple[PMSThreshold, ...]:
 
 
 def build_risk_engine(
-    extra_rules: list | None = None,
+    extra_rules: list[RiskRule] | None = None,
 ) -> PlatformRiskEngine:
     """构造 MVP 3.1 批 1 ready-to-run PlatformRiskEngine (PMSRule 已注册).
 
@@ -177,42 +185,46 @@ def build_risk_engine(
 
 
 def _load_prev_close_nav(
-    conn, strategy_id: str, execution_mode: str
+    conn: Any, strategy_id: str, execution_mode: str
 ) -> float | None:
     """从 performance_series 读前一交易日 NAV 作 prev_close_nav (intraday rules 用).
 
     查询: `SELECT nav FROM performance_series WHERE strategy_id=%s AND execution_mode=%s
-           AND trade_date < today ORDER BY trade_date DESC LIMIT 1`
+           AND trade_date < %s ORDER BY trade_date DESC LIMIT 1`
 
-    失败 fallback: 返 None (rule evaluate silent skip per PR 1 guard).
+    reviewer P2 采纳 (code): 显式传北京时间 today_date 替 SQL `CURRENT_DATE`, 防 PG server
+    timezone 漂移与 Python `date.today()` 日边界错位 (铁律 41 timezone 统一).
+    reviewer P2 采纳 (python): `conn` 加 Any type hint (避 psycopg2 硬依赖).
+    reviewer P3 采纳 (python): warning log 移入 with block 内, 语义更清晰.
 
     Args:
-        conn: psycopg2 connection (调用方管理事务).
+        conn: psycopg2 connection (Any 避免硬类型依赖; 调用方管理事务).
         strategy_id: 策略 UUID.
         execution_mode: 'paper' | 'live' (ADR-008 命名空间).
 
     Returns:
         float: 前日 NAV (非当日), None: 数据缺失 / 首日 / 异常.
     """
+    today_cn = datetime.now(_CHINA_TZ).date()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT nav FROM performance_series
                 WHERE strategy_id = %s AND execution_mode = %s
-                  AND trade_date < CURRENT_DATE
+                  AND trade_date < %s
                 ORDER BY trade_date DESC
                 LIMIT 1""",
-                (strategy_id, execution_mode),
+                (strategy_id, execution_mode, today_cn),
             )
             row = cur.fetchone()
             if row and row[0] is not None:
                 nav = float(row[0])
                 if nav > 0:
                     return nav
-        logger.warning(
-            "[risk-wiring] prev_close_nav 数据缺失 strategy=%s mode=%s",
-            strategy_id, execution_mode,
-        )
+            logger.warning(
+                "[risk-wiring] prev_close_nav 数据缺失 strategy=%s mode=%s today_cn=%s",
+                strategy_id, execution_mode, today_cn,
+            )
     except Exception as e:  # noqa: BLE001 — 读路径 fallback 允许 (铁律 33-c)
         logger.error(
             "[risk-wiring] _load_prev_close_nav 异常 strategy=%s mode=%s: %s: %s",
@@ -242,19 +254,23 @@ class IntradayAlertDedup:
 
     _TTL_SECONDS = 86400  # 24h
 
-    def __init__(self, redis_client=None):
+    def __init__(self, redis_client: redis.Redis | None = None):
         """Args:
             redis_client: Optional 注入 (单测), 默认从 settings.REDIS_URL 构造.
+
+        reviewer P2 采纳 (python): redis_client type hint 明示契约.
         """
         if redis_client is None:
-            import redis
             redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
         self._redis = redis_client
 
     @staticmethod
     def _build_key(rule_id: str, strategy_id: str, execution_mode: str) -> str:
-        """dedup key 构造. 按日期自然过期 (24h TTL 覆盖单交易日)."""
-        today = date.today().isoformat()
+        """dedup key 构造. 按日期自然过期 (24h TTL 覆盖单交易日).
+
+        reviewer P2 采纳 (code): 铁律 41 timezone 显式北京时间, 防 OS-local date drift.
+        """
+        today = datetime.now(_CHINA_TZ).date().isoformat()
         return f"qm:risk:dedup:{rule_id}:{strategy_id}:{execution_mode}:{today}"
 
     def should_alert(
@@ -275,10 +291,12 @@ class IntradayAlertDedup:
     def mark_alerted(
         self, rule_id: str, strategy_id: str, execution_mode: str
     ) -> None:
-        """标记已告警. 失败 silent (dedup 失败不应阻塞主路径, 铁律 33-c)."""
+        """标记已告警. 失败 silent (dedup 失败不应阻塞主路径, 铁律 33-c).
+
+        reviewer P2 采纳 (python): `import time` 已提到模块顶层, 不再 lazy.
+        """
         key = self._build_key(rule_id, strategy_id, execution_mode)
         try:
-            import time
             self._redis.setex(key, self._TTL_SECONDS, str(int(time.time())))
         except Exception as e:  # noqa: BLE001
             logger.warning(

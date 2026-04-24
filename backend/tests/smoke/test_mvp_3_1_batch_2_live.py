@@ -60,8 +60,9 @@ def test_mvp_3_1_batch_2_intraday_imports() -> None:
                 "assert entry['task'] == 'daily_pipeline.intraday_risk_check', "
                 "f\"task mismatch: {entry['task']}\"; "
                 "sched = entry['schedule']; "
-                # crontab minute=*/5 → set {0,5,10,...,55} (12 vals); hour=9-14 → {9,10,11,12,13,14}
-                "assert len(sched.minute) == 12, f'minute count drifted: {len(sched.minute)}'; "
+                # reviewer P2 采纳 python: set equality 替 len 断言, 检测 crontab 展开值漂移
+                "assert sched.minute == {0,5,10,15,20,25,30,35,40,45,50,55}, "
+                "f'minute set drifted: {sched.minute}'; "
                 "assert sched.hour == {9,10,11,12,13,14}, f'hour drifted: {sched.hour}'; "
                 "assert sched.day_of_week == {1,2,3,4,5}, f'day_of_week drifted: {sched.day_of_week}'; "
                 # 5. IntradayAlertDedup key build + TTL 契约
