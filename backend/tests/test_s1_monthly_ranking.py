@@ -12,6 +12,8 @@ import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
+from uuid import UUID  # P3 python-reviewer (PR #71): module-top 取代 test body import
 
 import pandas as pd
 import pytest
@@ -88,7 +90,7 @@ def _mk_ctx(
     if industry_map is None:
         industry_map = _mk_industry_map(universe)
 
-    metadata: dict = {"factor_df": factor_df, "industry_map": industry_map}
+    metadata: dict[str, Any] = {"factor_df": factor_df, "industry_map": industry_map}
     if ln_mcap is not None:
         metadata["ln_mcap"] = ln_mcap
     if prev_holdings is not None:
@@ -141,12 +143,11 @@ def test_s1_class_attrs_required_by_abc():
     assert S1MonthlyRanking.name == "s1_monthly_ranking"
     assert S1MonthlyRanking.rebalance_freq == RebalanceFreq.MONTHLY
     assert S1MonthlyRanking.status == StrategyStatus.LIVE
-    assert S1MonthlyRanking.factor_pool == list(_S1_FACTOR_POOL)
-    # UUID 格式
-    from uuid import UUID
-
-    UUID(S1MonthlyRanking.strategy_id)
-    # UUID 必须复用当前 live PT UUID (铁律 34 SSOT)
+    # P1 python-reviewer (PR #71) 采纳: factor_pool 改 tuple 防 class-level mutation
+    assert S1MonthlyRanking.factor_pool == _S1_FACTOR_POOL
+    assert isinstance(S1MonthlyRanking.factor_pool, tuple)
+    # UUID 格式 + 必须复用当前 live PT UUID (铁律 34 SSOT)
+    UUID(S1MonthlyRanking.strategy_id)  # raises if invalid
     assert S1MonthlyRanking.strategy_id == "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
     assert str(_S1_STRATEGY_UUID) == S1MonthlyRanking.strategy_id
 
@@ -250,21 +251,67 @@ def test_sn_beta_zero_skips_size_neutral():
 
 
 def test_sn_beta_positive_with_ln_mcap_applies_adjustment():
-    """beta>0 + ln_mcap 提供 → scores 被 SN 调整 (小盘被惩罚, 大盘被奖励)."""
-    s1 = S1MonthlyRanking(config=_mk_config(top_n=10, size_neutral_beta=0.50))
+    """beta>0 + ln_mcap 提供 → scores 被 SN 调整 (ordering 与 beta=0 不同).
+
+    P2 code-reviewer (PR #71) 采纳: 原仅验 signals count + weight sum, 未验 SN
+    实际生效 (broken SN silently 返 raw scores 也会 pass). 改加 ordering 对比.
+    """
     universe = [f"{i:06d}.SH" for i in range(600000, 600020)]
-    # ln_mcap: code0 最小 (小盘), code19 最大 (大盘)
+    # ln_mcap: code0 最小 (小盘), code19 最大 (大盘). beta>0 时 SN 惩罚小盘
+    # → 原本 code 序号小 (scores 高 + ln_mcap 小) 的股会被降权, ordering 必变.
     ln_mcap = pd.Series(
         {code: 20.0 + i * 0.5 for i, code in enumerate(universe)},
         dtype=float,
         name="ln_mcap",
     )
+    ctx_with_sn = _mk_ctx(universe=universe, ln_mcap=ln_mcap)
+    s1_sn = S1MonthlyRanking(config=_mk_config(top_n=10, size_neutral_beta=0.50))
+    signals_sn = s1_sn.generate_signals(ctx_with_sn)
+
+    ctx_no_sn = _mk_ctx(universe=universe)  # 无 ln_mcap
+    s1_no_sn = S1MonthlyRanking(config=_mk_config(top_n=10, size_neutral_beta=0.0))
+    signals_no_sn = s1_no_sn.generate_signals(ctx_no_sn)
+
+    # 10 signals each, weight sums normal
+    assert len(signals_sn) == 10
+    assert len(signals_no_sn) == 10
+    assert sum(s.target_weight for s in signals_sn) > 0.9
+    assert sum(s.target_weight for s in signals_no_sn) > 0.9
+    # **ordering 必须不同** — 若 SN 失效会与 beta=0 完全一样, 此 assert 即 guard
+    codes_sn = [s.code for s in signals_sn]
+    codes_no_sn = [s.code for s in signals_no_sn]
+    assert codes_sn != codes_no_sn, (
+        "SN beta=0.50 与 beta=0 产 identical ordering — apply_size_neutral 可能未生效"
+    )
+
+
+def test_sn_beta_positive_with_all_nan_ln_mcap_warns(caplog):
+    """P1 code-reviewer (PR #71) 采纳: ln_mcap 所有值 NaN → apply_size_neutral 静默返原
+    scores (size_neutral.py L126-127 `df.empty` fallback). 此 test guard 确保 wrapper
+    post-SN 检测后 logger.warning 暴露 (铁律 33 fail-loud 非静默).
+    """
+    import logging
+
+    s1 = S1MonthlyRanking(config=_mk_config(top_n=5, size_neutral_beta=0.50))
+    universe = [f"{i:06d}.SH" for i in range(600000, 600015)]
+    # ln_mcap 有 entries 但 reindex 后全 NaN (code 不匹配 universe)
+    disjoint_codes = [f"{i:06d}.SH" for i in range(700000, 700015)]
+    ln_mcap = pd.Series(
+        {code: 20.0 + i * 0.5 for i, code in enumerate(disjoint_codes)},
+        dtype=float,
+        name="ln_mcap",
+    )
     ctx = _mk_ctx(universe=universe, ln_mcap=ln_mcap)
-    signals = s1.generate_signals(ctx)
-    # 不验具体 ordering (apply_size_neutral 细节已有独立测), 只验 10 signals 返回 +
-    # 权重正常
-    assert len(signals) == 10
-    assert sum(s.target_weight for s in signals) > 0.9
+    with caplog.at_level(
+        logging.WARNING, logger="backend.engines.strategies.s1_monthly_ranking"
+    ):
+        signals = s1.generate_signals(ctx)
+    # 5 signals 仍返回 (fallback to raw scores 语义上 OK, 但 warn 暴露 drift)
+    assert len(signals) == 5
+    # Guard: logger.warning 必须暴露 SN 未生效
+    assert any("SN 未生效" in r.message for r in caplog.records), (
+        "post-SN 检测未 warn — apply_size_neutral 静默 fallback 被掩盖"
+    )
 
 
 def test_sn_beta_positive_without_ln_mcap_warns_and_falls_back(caplog):
@@ -375,37 +422,58 @@ def test_repr_contains_key_params():
 # ─── Regression guard: 确保 wrapper 不破坏核心逻辑 ──────────────────
 
 
-def test_s1_output_matches_direct_composer_builder_call():
-    """S1.generate_signals == direct SignalComposer+PortfolioBuilder 等价 (铁律 16).
+@pytest.mark.parametrize("sn_beta", [0.0, 0.50])
+def test_s1_output_matches_direct_composer_builder_call(sn_beta):
+    """S1.generate_signals == direct SignalComposer[+SN]+PortfolioBuilder 等价 (铁律 16).
 
     硬守门: 若未来有人重构 s1_monthly_ranking.py 偏离 compose+SN+build 原路径,
     此 test 立即失败 (regression max_diff=0 锚点依赖此等价性).
+
+    P1 code-reviewer (PR #71) 采纳: 新增 SN=0.50 parametrize variant 覆盖 live PT
+    实际执行路径 (beta=0 只测两步 compose→build, 未覆盖 SN 第三步).
     """
     from engines.signal_engine import PortfolioBuilder, SignalComposer
+    from engines.size_neutral import apply_size_neutral
 
-    cfg = _mk_config(top_n=10, size_neutral_beta=0.0)  # 关 SN 简化对比
+    cfg = _mk_config(top_n=10, size_neutral_beta=sn_beta)
     s1 = S1MonthlyRanking(config=cfg)
 
     universe = [f"{i:06d}.SH" for i in range(600000, 600030)]
     factor_df = _mk_factor_df(universe)
     industry_map = _mk_industry_map(universe)
-
-    ctx = _mk_ctx(
-        universe=universe,
-        factor_df=factor_df,
-        industry_map=industry_map,
+    ln_mcap = (
+        pd.Series(
+            {code: 20.0 + i * 0.5 for i, code in enumerate(universe)},
+            dtype=float,
+            name="ln_mcap",
+        )
+        if sn_beta > 0
+        else None
     )
+
+    ctx_kwargs: dict[str, Any] = {
+        "universe": universe,
+        "factor_df": factor_df,
+        "industry_map": industry_map,
+    }
+    if ln_mcap is not None:
+        ctx_kwargs["ln_mcap"] = ln_mcap
+    ctx = _mk_ctx(**ctx_kwargs)
     s1_signals = s1.generate_signals(ctx)
     s1_codes = [s.code for s in s1_signals]
     s1_weights = {s.code: s.target_weight for s in s1_signals}
 
-    # Direct call
+    # Direct call — 镜像 S1 orchestration (compose → SN → build) 三步
     composer = SignalComposer(cfg)
     builder = PortfolioBuilder(cfg)
     scores = composer.compose(factor_df, universe=set(universe))
+    if sn_beta > 0 and ln_mcap is not None:
+        scores = apply_size_neutral(scores, ln_mcap, sn_beta)
     ind_ser = pd.Series(industry_map, dtype=object)
     direct_target = builder.build(scores=scores, industry=ind_ser)
 
-    assert s1_codes == list(direct_target.keys())
+    assert s1_codes == list(direct_target.keys()), (
+        f"SN beta={sn_beta}: S1 ordering 偏离 direct path"
+    )
     for code, w in direct_target.items():
         assert s1_weights[code] == pytest.approx(float(w), abs=1e-12)

@@ -58,6 +58,10 @@ from engines.signal_engine import (
     SignalConfig,
 )
 
+# P2 code/python-reviewer (PR #71) 采纳: 原 lazy import 内嵌 `generate_signals` 隐藏
+# import errors + 破 smoke 铁律 10b import 时可见性. 移至 module-top.
+from engines.size_neutral import apply_size_neutral
+
 _logger = logging.getLogger(__name__)
 
 
@@ -120,8 +124,13 @@ class S1MonthlyRanking(Strategy):
     # ClassVar 显式声明防子类/instance shadow (对齐 S2 PR #70 reviewer LOW 采纳)
     strategy_id: ClassVar[str] = str(_S1_STRATEGY_UUID)
     name: ClassVar[str] = "s1_monthly_ranking"
-    # tuple → registry.register() 时转 list 兼容 JSONB
-    factor_pool: ClassVar[list[str]] = list(_S1_FACTOR_POOL)
+    # P1 python-reviewer (PR #71) 采纳: factor_pool 原为 mutable list 有 class-level
+    # mutation 风险 (auditor 启动期校验通过后仍可被 runtime 修改). 改 tuple 不可变.
+    # DBStrategyRegistry.register() L76 已 `factor_pool = list(strategy.factor_pool)`
+    # 包装兼容 JSONB, tuple 无影响 (list(tuple)=list).
+    # type: ignore[assignment] — Strategy ABC 声明 `list[str]`, tuple 是 Sequence
+    # 子型语义兼容 (duck typing); 严格 mypy --strict 不启用本项目, 非关键.
+    factor_pool: ClassVar[tuple[str, ...]] = _S1_FACTOR_POOL  # type: ignore[assignment]
     rebalance_freq: ClassVar[RebalanceFreq] = RebalanceFreq.MONTHLY
     status: ClassVar[StrategyStatus] = StrategyStatus.LIVE
     description: ClassVar[str] = (
@@ -215,10 +224,24 @@ class S1MonthlyRanking(Strategy):
                     self._config.size_neutral_beta,
                 )
             else:
-                from engines.size_neutral import apply_size_neutral
+                pre_sn_scores = scores
                 scores = apply_size_neutral(
                     scores, ln_mcap, self._config.size_neutral_beta
                 )
+                # P1 code-reviewer (PR #71) 采纳: apply_size_neutral 对 all-NaN
+                # ln_mcap (reindex 后 dropna df empty) 会 silently return 原 scores
+                # (size_neutral.py L126-127), 违 铁律 33. 此处显式检测并 warn.
+                # `is` 检查: apply_size_neutral 的 empty-df fallback 正是 `return scores`
+                # (原 ref 返回), 因此 `is` 最严格识别 "SN 未生效" 情况.
+                if scores is pre_sn_scores:
+                    _logger.warning(
+                        "S1 generate_signals: size_neutral_beta=%.2f > 0 but SN 未生效 "
+                        "(apply_size_neutral 返原 scores). 可能原因: ln_mcap reindex "
+                        "后 all-NaN (ln_mcap %d entries vs scores %d entries).",
+                        self._config.size_neutral_beta,
+                        len(ln_mcap),
+                        len(scores),
+                    )
 
         # ─── Step 3: Build portfolio (existing PortfolioBuilder, 铁律 16) ─
         # industry_map dict → pd.Series (builder 接 Series + .get fallback "其他")
@@ -240,9 +263,26 @@ class S1MonthlyRanking(Strategy):
             return []
 
         # ─── Step 4: Convert target dict → list[Signal] ────────────
+        # P2 code/python-reviewer (PR #71) 采纳: 原 `scores.loc[code] if code in
+        # scores.index else 0.0` 有 silent dead-branch. Invariant: target.keys() ⊆
+        # scores.index (PortfolioBuilder.build selects from scores). 改 .get() +
+        # logger.error 暴露 invariant 违反 (铁律 33 fail-loud 非静默 0.0).
         signals: list[Signal] = []
+        missing = -1.0  # sentinel for .get() default, 验 invariant
         for code, weight in target.items():
-            code_score = float(scores.loc[code]) if code in scores.index else 0.0
+            raw_score = scores.get(code, missing)
+            if raw_score == missing:
+                # Invariant 违反 — PortfolioBuilder 返 target 有 scores 无此 code
+                _logger.error(
+                    "S1 generate_signals: invariant violation — code=%s in target "
+                    "but not in scores.index (target=%d scores=%d). 回退 score=0.0.",
+                    code,
+                    len(target),
+                    len(scores),
+                )
+                code_score = 0.0
+            else:
+                code_score = float(raw_score)
             signals.append(
                 Signal(
                     strategy_id=self.strategy_id,
