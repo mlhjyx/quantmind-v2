@@ -470,7 +470,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
     **4 项硬化清单 (每个 schtask script 必具)**:
     - **(a) PG `statement_timeout` 硬超时**: `psycopg2.connect(..., options="-c statement_timeout=60000")` 或 conn 获取后立即 `SET statement_timeout = %s` (参数化, 铁律 33 fail-loud). 值: daily 增量脚本 60s, 12年全量批量脚本 5min (300_000ms). 默认 `statement_timeout=0` 无上限, query hang 只能被 schtask `ExecutionTimeLimit` kill.
-    - **(b) `logging.FileHandler(..., delay=True)`**: Windows 进程 kill 后文件锁延迟释放, 下一 process FileHandler open 可 silent 失败 0-log (Session 26 4-23 DataQualityCheck 0-log 根因). `delay=True` lazy open 降低 zombie 锁冲突率.
+    - **(b) `logging.FileHandler(..., delay=True)`** (仅 logger-based 脚本): Windows 进程 kill 后文件锁延迟释放, 下一 process FileHandler open 可 silent 失败 0-log (Session 26 4-23 DataQualityCheck 0-log 根因). `delay=True` lazy open 降低 zombie 锁冲突率. **print-only 脚本 (如 `fast_ic_recompute.py` 用 `print()` + structlog, 无 FileHandler) 豁免本项** — 无 Python logging 层, 无 zombie 锁风险.
     - **(c) `main()` 首行 boot stderr probe**: `print(f"[script] boot {datetime.now().isoformat()} pid={os.getpid()}", flush=True, file=sys.stderr)`. 即便 logger 初始化失败, schtask stderr 仍有启动证据. `os` / `datetime` 必 module-top import (不在 `main()` 局部, reviewer 采纳).
     - **(d) `main()` 顶层 try/except → stderr + exit(2)**: `except Exception as e: print(f"[script] FATAL: ...", file=sys.stderr); traceback.print_exc(); ...; return 2`. schtask LastResult 非零触发 schtask 告警链 + 钉钉通知. `contextlib.suppress(Exception)` 包 logger.critical 兜底 (铁律 33-d silent_ok).
 

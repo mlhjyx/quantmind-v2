@@ -39,10 +39,12 @@ guard — rolling 是纯幂等重算, 节假日跑也无害.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import os
 import sys
 import time
+import traceback
 from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
@@ -81,6 +83,10 @@ DB_PRECISION = 6
 
 # execute_values batch 大小 (psycopg2 默认 100, 提到 5000 减少 round-trip)
 BATCH_SIZE = 5000
+
+# Session 26 LL-068 铁律 43: PG 硬超时常量 (reviewer python-P2 采纳, 对齐 pt_watchdog
+# / data_quality_check). 60s 足够 daily rolling MA query (秒级完成).
+STATEMENT_TIMEOUT_MS = 60_000
 
 
 def _configure_logging() -> None:
@@ -358,8 +364,54 @@ def compute_and_update(
     }
 
 
+def _run(args: argparse.Namespace) -> int:
+    """主流程 (铁律 43-d: 顶层 try/except 由 main 包裹, reviewer code-MED-1 采纳)."""
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    factors: list[str] | None = None
+    if args.core:
+        factors = list(CORE_FACTORS)
+    elif args.factors:
+        factors = [f.strip() for f in args.factors.split(",") if f.strip()]
+
+    conn = get_sync_conn()
+    try:
+        # LL-068 扩散 (铁律 43-a): session-level statement_timeout, 防 cold-cache / lock hang.
+        # reviewer code-LOW-2 采纳: psycopg2 autocommit=False 默认, SET 在当前 implicit
+        # transaction 中, 后续 queries 共享同 transaction 所以 timeout 实际生效 (session GUC).
+        with conn.cursor() as cur_timeout:
+            cur_timeout.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
+        result = compute_and_update(
+            conn,
+            factors=factors,
+            all_factors=args.all_factors,
+            dry_run=args.dry_run,
+        )
+        if not args.dry_run and result["applied_updates"] > 0:
+            conn.commit()
+            logger.info("[ic_rolling] commit %d 行", result["applied_updates"])
+        logger.info("结果: %s", result)
+        # reviewer P2 (code-reviewer) 采纳: align compute_daily_ic.py exit code —
+        # 无 target factor 时返回 1, 便于 schtask 监控发现异常 (registry 被清空 /
+        # DB 连接异常导致空查询等).
+        return 0 if result["processed_factors"] > 0 else 1
+    except Exception:
+        conn.rollback()
+        logger.exception("[ic_rolling] 执行失败, rollback")
+        raise
+    finally:
+        conn.close()
+
+
 def main() -> int:
-    # Session 26 LL-068 扩散: boot stderr probe (schtask 最早启动证据).
+    """Script entry (铁律 43-c boot probe + 43-d 顶层 try/except → exit(2)).
+
+    reviewer code-MED-1 采纳: 原 main() 只 raise 不保证 exit 2 (uncaught raise
+    通常 exit 1) + 无 `FATAL:` stderr 结构化输出, 违反铁律 43-d 契约.
+    拆 `_run` + `main` wrapper 对齐 compute_daily_ic / pt_watchdog.
+    """
+    # Fail-loud boot 探针 (铁律 43-c)
     print(
         f"[compute_ic_rolling] boot {datetime.now().isoformat()} pid={os.getpid()}",
         flush=True,
@@ -382,40 +434,16 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="详细日志")
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    factors: list[str] | None = None
-    if args.core:
-        factors = list(CORE_FACTORS)
-    elif args.factors:
-        factors = [f.strip() for f in args.factors.split(",") if f.strip()]
-
-    conn = get_sync_conn()
     try:
-        # LL-068 扩散: session-level statement_timeout 60s, 防 cold-cache / lock hang.
-        with conn.cursor() as cur_timeout:
-            cur_timeout.execute("SET statement_timeout = %s", (60_000,))
-        result = compute_and_update(
-            conn,
-            factors=factors,
-            all_factors=args.all_factors,
-            dry_run=args.dry_run,
-        )
-        if not args.dry_run and result["applied_updates"] > 0:
-            conn.commit()
-            logger.info("[ic_rolling] commit %d 行", result["applied_updates"])
-        logger.info("结果: %s", result)
-        # reviewer P2 (code-reviewer) 采纳: align compute_daily_ic.py exit code —
-        # 无 target factor 时返回 1, 便于 schtask 监控发现异常 (registry 被清空 /
-        # DB 连接异常导致空查询等).
-        return 0 if result["processed_factors"] > 0 else 1
-    except Exception:
-        conn.rollback()
-        logger.exception("[ic_rolling] 执行失败, rollback")
-        raise
-    finally:
-        conn.close()
+        return _run(args)
+    except Exception as e:
+        msg = f"[compute_ic_rolling] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, logger 可能未初始化成功 (铁律 33-d)
+        with contextlib.suppress(Exception):
+            logger.critical(msg, exc_info=True)
+        return 2
 
 
 if __name__ == "__main__":

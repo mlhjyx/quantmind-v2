@@ -91,6 +91,11 @@ CORE_FACTORS = [
     "dv_ttm",
 ]
 
+# Session 26 LL-068 铁律 43-a: PG 硬超时常量 (reviewer python-P2 采纳 module 常量
+# 对齐 pt_watchdog / data_quality_check). 12yr 全量比 daily script 更宽松: cold-cache
+# 可能几十秒, 5min safety ≥ 10x typical.
+STATEMENT_TIMEOUT_MS = 300_000
+
 # HORIZONS 对齐 compute_daily_ic (PR #37 reviewer P2): 去掉 1, ic_calculator
 # horizon=1 entry==exit 全 0 IC → 写入 factor_ic_history.ic_1d 全 NaN 无意义.
 # factor_ic_history.ic_1d 列保留但本脚本不再写 (由 DataPipeline auto-fill None).
@@ -226,21 +231,11 @@ def upsert_ic_history_partial(conn, factor_name: str, ic_df: pd.DataFrame, dry_r
     return len(records)
 
 
-def main():
-    # Session 26 LL-068 扩散: boot stderr probe (schtask 最早启动证据).
-    print(
-        f"[fast_ic_recompute] boot {datetime.now().isoformat()} pid={os.getpid()}",
-        flush=True,
-        file=sys.stderr,
-    )
+def _run(args: argparse.Namespace) -> int:
+    """主流程 (铁律 43-d: 顶层 try/except 由 main 包裹, reviewer code-MED-2 采纳).
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--factor", type=str)
-    parser.add_argument(
-        "--core", action="store_true", help=f"仅 CORE {len(CORE_FACTORS)}: {CORE_FACTORS}"
-    )
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    返回 exit_code: 0=成功, 1=无处理因子, 2=fatal (由 main() except 处理).
+    """
 
     # reviewer P1-HIGH (python) 采纳: total_t0 / factor_list / conn 必须在 try 外初始化,
     # 避免 load_price_bench / fwd_rets_cache 预计算阶段抛异常时 finally 块读 undefined.
@@ -264,11 +259,12 @@ def main():
         print(f"  fwd_rets {len(HORIZONS)} horizons cached ({time.time() - t_pre:.1f}s)")
 
         conn = get_sync_conn()
-        # Session 26 LL-068 扩散: session-level statement_timeout 5min (12 年全量
-        # per-factor UPSERT ~1-2s 但 cold-cache 可能几十秒, 给 5min safety; 比
-        # daily script 60s 更宽松, 12yr batch 本就 slow run).
+        # LL-068 扩散 (铁律 43-a): session-level statement_timeout, 防 cold-cache /
+        # lock hang. 12yr batch 比 daily 60s 宽松, 300_000ms = 5min safety.
+        # psycopg2 autocommit=False 默认, SET 在当前 implicit transaction 中后续
+        # queries 共享同 transaction 所以 timeout 实际生效 (session GUC).
         with conn.cursor() as cur_timeout:
-            cur_timeout.execute("SET statement_timeout = %s", (300_000,))
+            cur_timeout.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
         # 铁律 17 例外 (见 upsert_ic_history_partial docstring): 手工 partial-column
         # UPDATE SQL 仅 SET 4 列, 保护 ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level.
         # 不走 DataPipeline (其 ON CONFLICT DO UPDATE SET non_pk=EXCLUDED 会 NULL 化,
@@ -359,6 +355,41 @@ def main():
                 f"  {r['factor']:<30} |IR|={abs(r['ir']):5.2f}  IC={r['ic_20d_mean']:+.4f}  n={r['n_days']}"
             )
 
+    # 铁律 43-d: schtask 监控契约 — 无因子处理返 1 (异常检测), 正常 0.
+    return 0 if results else 1
+
+
+def main() -> int:
+    """Script entry (铁律 43-c boot probe + 43-d 顶层 try/except → exit(2)).
+
+    reviewer code-MED-2 采纳: 原 `if __name__: main()` 无 `sys.exit(main())` +
+    内层 `raise` 会 exit 1 (非 exit 2) + 无 `FATAL:` stderr 结构化输出. 拆
+    `_run` + `main` wrapper 对齐 compute_daily_ic / pt_watchdog / compute_ic_rolling.
+    """
+    # Fail-loud boot 探针 (铁律 43-c)
+    print(
+        f"[fast_ic_recompute] boot {datetime.now().isoformat()} pid={os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--factor", type=str)
+    parser.add_argument(
+        "--core", action="store_true", help=f"仅 CORE {len(CORE_FACTORS)}: {CORE_FACTORS}"
+    )
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    try:
+        return _run(args)
+    except Exception as e:
+        msg = f"[fast_ic_recompute] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, print-based 脚本无 logger fallback 需求 (铁律 33-d)
+        return 2
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
