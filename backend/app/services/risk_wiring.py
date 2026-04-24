@@ -28,6 +28,7 @@ from app.core.qmt_client import get_qmt_client
 from app.services.db import get_sync_conn
 from app.services.notification_service import send_alert
 from backend.platform.risk import PlatformRiskEngine, RiskRule
+from backend.platform.risk.rules.circuit_breaker import CircuitBreakerRule
 from backend.platform.risk.rules.intraday import (
     IntradayPortfolioDrop3PctRule,
     IntradayPortfolioDrop5PctRule,
@@ -349,3 +350,28 @@ def build_intraday_risk_engine(
         engine.registered_rules,
     )
     return engine
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# MVP 3.1 批 3 (Session 30 末) — CircuitBreaker Rule Adapter Factory
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def build_circuit_breaker_rule() -> CircuitBreakerRule:
+    """构造 CircuitBreakerRule 实例 (方案 C Hybrid adapter, ADR-010 addendum).
+
+    使用方式 (daily_pipeline.risk_daily_check_task):
+        engine = build_risk_engine(extra_rules=[build_circuit_breaker_rule()])
+        # Engine 顺序 register: PMSRule → CircuitBreakerRule
+        # 14:30 daily 跑时两 rule 并列评估 (PMS 个股级 + CB 组合级)
+
+    **不** 挂批 2 intraday (5min × 72 次/日) — CB 阈值日频语义 + check_circuit_breaker_sync
+    内部 DB commit 频率放大. 批 3b 若需盘中触发, 抽 read-only passive check 分离.
+
+    Returns:
+        CircuitBreakerRule, 注入 get_sync_conn + settings.PAPER_INITIAL_CAPITAL SSOT.
+    """
+    return CircuitBreakerRule(
+        conn_factory=get_sync_conn,
+        initial_capital=settings.PAPER_INITIAL_CAPITAL,
+    )

@@ -2,8 +2,9 @@
 
 批 1 ✅ Session 29: pms.py (PMSRule L1/L2/L3 顺序命中)
 批 2 ✅ Session 30: intraday.py (PortfolioDrop3/5/8 + QMTDisconnect)
-批 3 后续: circuit_breaker_adapter.py (方案 C Hybrid wrapper, ADR-010 addendum)
+批 3 ✅ Session 30 末: circuit_breaker.py (方案 C Hybrid wrapper, ADR-010 addendum)
 """
+from .circuit_breaker import CircuitBreakerRule
 from .intraday import (
     IntradayPortfolioDrop3PctRule,
     IntradayPortfolioDrop5PctRule,
@@ -25,4 +26,6 @@ __all__ = [
     "IntradayPortfolioDrop8PctRule",
     "QMTDisconnectRule",
     "QMTConnectionReader",  # Protocol for DI
+    # 批 3
+    "CircuitBreakerRule",  # Hybrid wrapper adapter (铁律 31 例外)
 ]
