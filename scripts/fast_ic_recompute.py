@@ -51,9 +51,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 logging.disable(logging.DEBUG)
@@ -225,6 +227,13 @@ def upsert_ic_history_partial(conn, factor_name: str, ic_df: pd.DataFrame, dry_r
 
 
 def main():
+    # Session 26 LL-068 扩散: boot stderr probe (schtask 最早启动证据).
+    print(
+        f"[fast_ic_recompute] boot {datetime.now().isoformat()} pid={os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--factor", type=str)
     parser.add_argument(
@@ -255,6 +264,11 @@ def main():
         print(f"  fwd_rets {len(HORIZONS)} horizons cached ({time.time() - t_pre:.1f}s)")
 
         conn = get_sync_conn()
+        # Session 26 LL-068 扩散: session-level statement_timeout 5min (12 年全量
+        # per-factor UPSERT ~1-2s 但 cold-cache 可能几十秒, 给 5min safety; 比
+        # daily script 60s 更宽松, 12yr batch 本就 slow run).
+        with conn.cursor() as cur_timeout:
+            cur_timeout.execute("SET statement_timeout = %s", (300_000,))
         # 铁律 17 例外 (见 upsert_ic_history_partial docstring): 手工 partial-column
         # UPDATE SQL 仅 SET 4 列, 保护 ic_1d/ic_abs_1d/ic_ma20/ic_ma60/decay_level.
         # 不走 DataPipeline (其 ON CONFLICT DO UPDATE SET non_pk=EXCLUDED 会 NULL 化,

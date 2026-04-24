@@ -40,10 +40,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -83,14 +84,18 @@ BATCH_SIZE = 5000
 
 
 def _configure_logging() -> None:
-    """延迟 logging 配置 (避免 pytest collect 阶段副作用, 对齐 compute_daily_ic 模式)."""
+    """延迟 logging 配置 (避免 pytest collect 阶段副作用, 对齐 compute_daily_ic 模式).
+
+    Session 26 LL-068 扩散: FileHandler delay=True 防 Windows 多 process zombie
+    文件锁 (data_quality_check 4-23 0-log 事故同类防御).
+    """
     LOG_DIR.mkdir(exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
-            logging.FileHandler(LOG_DIR / "compute_ic_rolling.log", encoding="utf-8"),
+            logging.FileHandler(LOG_DIR / "compute_ic_rolling.log", encoding="utf-8", delay=True),
             logging.StreamHandler(sys.stderr),
         ],
         force=True,
@@ -354,6 +359,12 @@ def compute_and_update(
 
 
 def main() -> int:
+    # Session 26 LL-068 扩散: boot stderr probe (schtask 最早启动证据).
+    print(
+        f"[compute_ic_rolling] boot {datetime.now().isoformat()} pid={os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
     _configure_logging()
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -382,6 +393,9 @@ def main() -> int:
 
     conn = get_sync_conn()
     try:
+        # LL-068 扩散: session-level statement_timeout 60s, 防 cold-cache / lock hang.
+        with conn.cursor() as cur_timeout:
+            cur_timeout.execute("SET statement_timeout = %s", (60_000,))
         result = compute_and_update(
             conn,
             factors=factors,
