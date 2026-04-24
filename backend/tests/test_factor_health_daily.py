@@ -191,8 +191,13 @@ class TestFactorHealthIntegration:
             "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
         )
 
-    def test_dry_run_normal_date(self) -> None:
-        """场景11: --date 2026-03-19 --dry-run正常运行。"""
+    @patch("factor_health_daily.send_alert")
+    def test_dry_run_normal_date(self, mock_send_alert) -> None:
+        """场景11: --date 2026-03-19 --dry-run正常运行.
+
+        `@patch send_alert` 防 integration test 运行时真发钉钉污染生产告警通道
+        (2026-04-24 事故: test 未 mock → 每次 pytest 全量跑触发 "因子健康warning 2026-03-19" P1).
+        """
         conn = self._get_test_conn()
         try:
             # 确认2026-03-19是交易日且有因子数据
@@ -225,9 +230,15 @@ class TestFactorHealthIntegration:
             assert result["overall_status"] in ("healthy", "warning", "critical")
             # 确认5个因子都有检查结果
             assert len(result["factors"]) >= 1
+        # 告警被 mock 拦截 (或未触发, 视 2026-03-19 数据而定), 不会真发钉钉
+        _ = mock_send_alert  # 存在即可, overall=warning 时会调一次
 
-    def test_db_write_scheduler_task_log(self) -> None:
-        """场景16: 非dry-run写入scheduler_task_log后回滚。"""
+    @patch("factor_health_daily.send_alert")
+    def test_db_write_scheduler_task_log(self, mock_send_alert) -> None:
+        """场景16: 非dry-run写入scheduler_task_log后回滚.
+
+        `@patch send_alert` 与 test_dry_run_normal_date 同理, 防污染生产钉钉.
+        """
         conn = self._get_test_conn()
         try:
             # 检查前置条件
@@ -255,8 +266,9 @@ class TestFactorHealthIntegration:
         finally:
             conn.close()
 
-        # 运行非dry-run（会真实写入）
+        # 运行非dry-run（会真实写入 scheduler_task_log; send_alert 已 mock, 不发钉钉）
         result = run_factor_health_daily(date(2026, 3, 19), dry_run=False)
+        _ = mock_send_alert
 
         if "factors" not in result:
             pytest.skip("运行未成功")
