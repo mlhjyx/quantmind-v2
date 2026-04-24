@@ -30,8 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from monitor_mvp_3_1_sunset import (  # noqa: E402
     ADAPTER_LIVE_DATE,
     CONDITION_A_DAYS_THRESHOLD,
+    PG_STATEMENT_TIMEOUT_MS,
     ConditionResult,
     SunsetReport,
+    _connect_db,
     build_report,
     check_condition_a,
     check_condition_b,
@@ -454,6 +456,51 @@ class TestFailLoud:
 
         with pytest.raises(psycopg2.errors.ConnectionException):
             check_condition_c(mock_conn)
+
+
+# ═════════════════════════════════════════════════════════════════
+# _connect_db — PR #73 fix regression guard (铁律 43 a)
+# ═════════════════════════════════════════════════════════════════
+
+
+class TestConnectDb:
+    """PR #73 review (python-reviewer LOW 采纳): 防 statement_timeout 回归.
+
+    原 _connect_db 只被 main() 间接调用, 无直接单测. PR #73 重构
+    psycopg2.connect(DB_DSN) → get_sync_conn() 后若未来再次重构若漏掉
+    SET statement_timeout (铁律 43 a) 会静默降级为 unlimited query 风险.
+    本 test 锚定 3 不变式 (get_sync_conn 调用 / parametrized SET / commit).
+    """
+
+    def test_connect_db_sets_statement_timeout_and_commits(self, monkeypatch):
+        """_connect_db 必调 get_sync_conn + parametrized SET timeout + commit."""
+        mock_cur = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        call_log = []
+
+        def _fake_get_sync_conn():
+            call_log.append("get_sync_conn")
+            return mock_conn
+
+        monkeypatch.setattr(
+            "monitor_mvp_3_1_sunset.get_sync_conn", _fake_get_sync_conn
+        )
+
+        result = _connect_db()
+
+        # 1. 走项目 SSOT get_sync_conn (不是裸 psycopg2.connect 原 landmine)
+        assert call_log == ["get_sync_conn"]
+        # 2. parametrized SET statement_timeout (铁律 43 a + LL-068 SQL 注入防御)
+        mock_cur.execute.assert_called_once_with(
+            "SET statement_timeout = %s", (PG_STATEMENT_TIMEOUT_MS,)
+        )
+        # 3. commit 关闭事务 (铁律 32 wiring 层管事务)
+        mock_conn.commit.assert_called_once_with()
+        # 4. 返回 conn instance 供 main() 用
+        assert result is mock_conn
 
 
 if __name__ == "__main__":
