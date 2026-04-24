@@ -581,10 +581,13 @@ class TestMainOrchestration:
         mock_conn.rollback.assert_not_called()
         mock_conn.close.assert_called_once()
 
-    def test_main_rollback_and_raise_on_exception(self, monkeypatch):
-        """compute_and_update raise → rollback + re-raise (铁律 33 fail-loud)."""
-        import pytest as _pytest
+    def test_main_rollback_and_exit_2_on_exception(self, monkeypatch, capsys):
+        """compute_and_update raise → _run rollback + raise → main 捕获 return 2.
 
+        Session 26 (PR #51) reviewer code-MED-1 重构: 拆 `_run` + `main` wrapper,
+        main() 顶层 try/except → `FATAL:` stderr + return 2 (铁律 43-d).
+        test 契约 raise → exit 2 (schtask LastResult=2 触发告警).
+        """
         mock_conn = MagicMock()
 
         def _boom(*args, **kwargs):
@@ -594,12 +597,19 @@ class TestMainOrchestration:
         monkeypatch.setattr("compute_ic_rolling.compute_and_update", _boom)
         monkeypatch.setattr(sys, "argv", ["compute_ic_rolling.py"])
 
-        with _pytest.raises(RuntimeError, match="DB broken"):
-            cir.main()
+        # main() 不再 raise, 而是捕获 + return 2 + stderr FATAL.
+        rc = cir.main()
+        assert rc == 2, f"铁律 43-d: fatal exception should return 2, got {rc}"
 
+        # 内层 _run 的 rollback / close 仍被调用 (铁律 32 transaction boundary).
         mock_conn.rollback.assert_called_once()
         mock_conn.commit.assert_not_called()
         mock_conn.close.assert_called_once()
+
+        # stderr 含 FATAL 结构化输出 (铁律 43-d 契约).
+        captured = capsys.readouterr()
+        assert "FATAL" in captured.err
+        assert "DB broken" in captured.err
 
     def test_main_exit_1_when_no_factors(self, monkeypatch):
         """reviewer P2 (code-reviewer) 采纳: 无 target factor → exit 1 便于 schtask 告警."""
