@@ -96,14 +96,15 @@ class TestFindOrphans:
 
         assert orphans == []  # 反向 drift 不报 orphan
 
-    def test_only_active_filter_passed_to_sql(self):
-        """only_active=True 应 emit WHERE status IN (active, warning) SQL (reviewer 检测项).
+    def test_only_active_emits_where_status_in_sql(self):
+        """only_active=True 必须 emit `WHERE status IN` SQL 分支 (非 Python-side filter).
 
-        本 test 间接验证: only_active=True 时 registry mock 返回的行代表 DB 已 filter,
-        find_orphans 结果准确.
+        Reviewer P2 (code + python) 采纳: 原 test 只验 result, 不验 SQL 路径. 若有人
+        删 find_orphans 里 `if only_active` 分支改成 Python-side filter, mock 返同样
+        结果 test 仍绿, 隐性回归. 本 test 断言 cur.execute 第二次调用的 SQL 字符串
+        真含 WHERE status IN — 防御 SQL-path regression.
         """
         fv_names = ["bp_ratio"]
-        # DB-side filter 掉了 deprecated 行, mock 只返 active/warning
         reg_rows = [
             ("bp_ratio", "active", "CORE", 1, "fundamental", date(2026, 1, 1)),
             ("some_warning", "warning", "PASS", 1, "fundamental", date(2026, 1, 1)),
@@ -112,8 +113,39 @@ class TestFindOrphans:
 
         orphans = aof.find_orphans(conn, only_active=True)
 
+        # 结果契约
         assert len(orphans) == 1
         assert orphans[0]["name"] == "some_warning"
+
+        # SQL 路径契约 (reviewer 采纳强化项)
+        mock_cursor = conn.cursor.return_value.__enter__.return_value
+        execute_calls = mock_cursor.execute.call_args_list
+        assert len(execute_calls) == 2, "期望 2 次 SQL (distinct fv + registry)"
+        second_sql = execute_calls[1][0][0]  # call_args[0][0] = first positional = sql string
+        assert "WHERE status IN ('active', 'warning')" in second_sql, (
+            f"only_active=True 未 emit WHERE 过滤, 实际 SQL: {second_sql!r}"
+        )
+
+    def test_only_active_false_omits_where_clause(self):
+        """only_active=False (default) 不应 emit WHERE status IN — 全表 registry."""
+        fv_names = ["bp_ratio"]
+        reg_rows = [
+            ("bp_ratio", "active", "CORE", 1, "fundamental", date(2026, 1, 1)),
+            ("some_deprecated", "deprecated", "DEPRECATED", 1, "fundamental", date(2026, 1, 1)),
+        ]
+        conn = _make_conn(fv_names, reg_rows)
+
+        orphans = aof.find_orphans(conn, only_active=False)
+
+        assert len(orphans) == 1
+        assert orphans[0]["name"] == "some_deprecated"
+
+        mock_cursor = conn.cursor.return_value.__enter__.return_value
+        execute_calls = mock_cursor.execute.call_args_list
+        second_sql = execute_calls[1][0][0]
+        assert "WHERE status IN" not in second_sql, (
+            f"only_active=False 误 emit WHERE, 实际 SQL: {second_sql!r}"
+        )
 
 
 class TestMainExitCodes:
@@ -169,6 +201,10 @@ class TestMainExitCodes:
         captured = capsys.readouterr()
         assert "FATAL" in captured.err
         assert "RuntimeError" in captured.err
+        # Reviewer P1 (python) 采纳: FATAL 必须含完整 traceback 便于 CI/ad-hoc 调试
+        assert "Traceback" in captured.err, (
+            f"FATAL 输出缺 traceback (reviewer P1 contract): {captured.err[:200]}"
+        )
 
 
 class TestBackfillRevertProtection:

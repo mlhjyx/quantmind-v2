@@ -9,10 +9,18 @@
 BEGIN;
 
 -- ── 恢复 mf_momentum_divergence (类别 A) ──────────────────────
--- 依据 Session 27 pre-cleanup DB state (2026-04-24).
--- 若字段与 DDL 不一致 (新增列), 需按 DDL 对齐 — created_at/updated_at 用 NOW()
--- 保守, expression/hypothesis/source/lookback_days 使用 backfill_factor_registry
--- Layer 2 推断值.
+-- DDL 对齐 (Session 27 reviewer P2.1 database 采纳, 2026-04-24 实测
+-- information_schema.columns):
+--   id              uuid    NOT NULL DEFAULT gen_random_uuid()  → 省略可用 default
+--   category        varchar NOT NULL (no default)               → 必填 'moneyflow'
+--   direction       smallint NOT NULL DEFAULT 1                 → 提供 -1
+--   pool            varchar NOT NULL DEFAULT 'CANDIDATE'        → 提供 INVALIDATED
+--   gate_*, code_content, expression, hypothesis, status, ic_decay_ratio → NULL OK
+--   source/lookback_days DEFAULT 'builtin' / 60                 → 提供对齐 backfill
+--   created_at/updated_at DEFAULT now()                         → 提供 NOW() 保守
+--
+-- 依据 Session 27 pre-cleanup DB state. source/hypothesis/lookback_days 使用
+-- backfill_factor_registry Layer 2 推断值 (对齐 _SIGNAL_ENGINE_DIRECTION 推断).
 INSERT INTO factor_registry
     (name, category, direction, expression, hypothesis, source,
      lookback_days, status, pool, created_at, updated_at)
@@ -29,7 +37,15 @@ VALUES (
     NOW(),
     NOW()
 )
-ON CONFLICT (name) DO NOTHING;  -- 若已存在则不覆盖
+-- Reviewer P1 (code) 采纳: ON CONFLICT DO UPDATE 保证多次 rollback/re-apply
+-- 幂等. 原 DO NOTHING 对遗留错状态行静默, 导致 "rollback 表面成功但 status/pool
+-- 仍是错值". UPDATE SET 强制对齐关键字段.
+ON CONFLICT (name) DO UPDATE
+    SET pool = EXCLUDED.pool,
+        status = EXCLUDED.status,
+        direction = EXCLUDED.direction,
+        category = EXCLUDED.category,
+        updated_at = NOW();
 
 -- ── 恢复 10 条 UPDATE (类别 B) ────────────────────────────────
 UPDATE factor_registry

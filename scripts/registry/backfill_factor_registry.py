@@ -89,25 +89,25 @@ _POOL_DEPRECATED: frozenset[str] = frozenset(
         # Phase 6-F 废弃动量/波动系列 (CLAUDE.md §因子池状态):
         "momentum_5", "momentum_10", "momentum_60",
         "volatility_60", "turnover_std_20",
-        # Session 27 Task B 清理 (2026-04-24): factor_values 0 行 orphan, registry
-        # UPDATE status=deprecated + pool=DEPRECATED (migration
-        # cleanup_orphan_factors_session27.sql). 加入本 set 防 backfill 重跑
-        # 走 Layer2 hardcoded direction 路径将 pool 从 DEPRECATED revert 回 PASS.
-        # 注: mf_momentum_divergence 已 DELETE (类别 A INVALIDATED), 本 set 仍保留名字作
-        # 重命名防护 + _POOL_INVALIDATED 双重保险; earnings_surprise_car 类 ghost 无 calc;
-        # 8 个 fundamental factors (pead_q1+roe_delta+...) 有 calc 但 factor_set='core'
-        # 生产调度不含, 未来 Phase X 重启 fundamental pipeline 时从本 set 移除即可.
-        "mf_momentum_divergence",        # INVALIDATED ghost (类别 A, DELETE)
-        "earnings_surprise_car",         # ghost (signal_engine FACTOR_DIRECTION 有 dir 无 calc)
-        "pead_q1",                       # PEAD 有 calc (pead.py) 但无 daily pipeline
-        "eps_acceleration",              # FUNDAMENTAL_DELTA_META 有 meta + load_fundamental_pit_data 计算
-        "gross_margin_delta",            # 同上
-        "net_margin_delta",              # 同上
-        "revenue_growth_yoy",            # 同上
-        "roe_delta",                     # 同上
-        "debt_change",                   # 同上
-        "days_since_announcement",       # FUNDAMENTAL_TIME_META 有 meta + load_fundamental_pit_data 计算
-        "reporting_season_flag",         # 同上
+        # Session 27 Task B 清理 (2026-04-24, migration cleanup_orphan_factors_session27.sql):
+        # factor_values 0 行 orphan, UPDATE status=deprecated + pool=DEPRECATED.
+        # 加入本 set 防 backfill 重跑走 Layer 2 hardcoded direction 路径 revert 回 PASS.
+        # 分类: mf_momentum_divergence = INVALIDATED (DELETE 但保留名字防重名),
+        #       earnings_surprise_car = ghost (signal_engine direction 无 calc),
+        #       pead_q1 + 8 fundamental = 有 calc (load_fundamental_pit_data) 但 daily
+        #       pipeline (factor_set='core') 不调用. 未来 Phase X 重启 fundamental
+        #       时从本 set 移除即可.
+        "mf_momentum_divergence",
+        "earnings_surprise_car",
+        "pead_q1",
+        "eps_acceleration",
+        "gross_margin_delta",
+        "net_margin_delta",
+        "revenue_growth_yoy",
+        "roe_delta",
+        "debt_change",
+        "days_since_announcement",
+        "reporting_season_flag",
     }
 )  # CLAUDE.md §因子池状态
 
