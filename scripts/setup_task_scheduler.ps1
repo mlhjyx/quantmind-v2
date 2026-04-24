@@ -21,6 +21,12 @@
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
 #     原因: ADR-008 P0-δ paper 污染源 (无 --execution-mode 参数默认落 paper 命名空间)
 #     替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
+#   QuantMind_GPPipeline (Sat 02:00) — Session 16 (2026-04-16) 活任务删除, Session 32 (2026-04-24) 同步清 ps1 register
+#     原因: 与 Celery Beat gp-weekly-mining (Sun 22:00) 双触发 (SCHEDULING_LAYOUT.md 已知问题 #4 / Session 16 已解决 #3)
+#     替代: Celery Beat gp-weekly-mining Sunday 22:00 (backend/app/tasks/beat_schedule.py)
+#     清理经过: 活任务 2026-04-16 `schtasks /delete /tn QuantMind_GPPipeline /f` 执行, ps1 register
+#       代码 L397-420 遗留至 2026-04-24 Session 32 发现 (PR #65 general-audit 实测 live 无此 task).
+#       若不清理, 下次 rerun setup_task_scheduler.ps1 会复活双触发.
 
 $PythonExe = "D:\quantmind-v2\.venv\Scripts\python.exe"
 $ProjectRoot = "D:\quantmind-v2"
@@ -395,30 +401,11 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_PT_Watchdog registered (daily 20:00)" -ForegroundColor Green
 
-# ── 12. QuantMind_GPPipeline: 每周六02:00 ────────────
-$gpAction = New-ScheduledTaskAction `
-    -Execute $PythonExe `
-    -Argument "$ProjectRoot\scripts\run_gp_pipeline.py --generations 50 --population 100 --islands 3 --output-dir $ProjectRoot\gp_results" `
-    -WorkingDirectory $ProjectRoot
-
-$gpTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At "02:00"
-
-$gpSettings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 4) `
-    -StartWhenAvailable `
-    -DontStopOnIdleEnd `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries
-
-Register-ScheduledTask `
-    -TaskName "QuantMind_GPPipeline" `
-    -Description "QuantMind V2: GP Factor Mining Pipeline — weekly Saturday 02:00 (max 4h)" `
-    -Action $gpAction `
-    -Trigger $gpTrigger `
-    -Settings $gpSettings `
-    -Force
-
-Write-Host "[OK] QuantMind_GPPipeline registered (Saturday 02:00)" -ForegroundColor Green
+# ── 12. [已废除 Session 16 2026-04-16 + Session 32 清 ps1 Register] QuantMind_GPPipeline ───
+# Sat 02:00 ps1 register 原与 Celery Beat gp-weekly-mining Sun 22:00 双触发. Session 16 活任务
+# schtasks /delete, 保留 Celery Beat 单一 GP 入口 (backend/app/tasks/beat_schedule.py).
+# Session 32 (2026-04-24) PR #66 从 ps1 删除 Register 代码防下次 rerun 复活 (SCHEDULING_LAYOUT.md
+# 已知问题 #4 关闭).
 
 # ── 13. QM-LogRotate: 每日06:00 ─────────────────────
 $lrAction = New-ScheduledTaskAction `
@@ -451,7 +438,8 @@ Write-Host "[OK] QM-LogRotate registered (daily 06:00)" -ForegroundColor Green
 # (inline 重审消铁律 31 例外 + DROP 老 circuit_breaker_state/log 表).
 # 时段选择: 周日 04:00 低峰, 1/week 频次足够 (Sunset Gate 天粒度判定, 条件 A 最早
 #   2026-05-24 满足 = adapter live 2026-04-24 + 30日). 避开 02:00 QM-DailyBackup
-#   + 06:00 QM-LogRotate + Sat 02:00 GPPipeline (4h max, 22h gap), 独立窗口无资源竞争.
+#   + 06:00 QM-LogRotate (GPPipeline Sat 02:00 ps1 task 已废除 Session 32, Celery Beat
+#   gp-weekly-mining Sun 22:00 距本 task 周日 04:00 有 18h gap). 独立窗口无资源竞争.
 # 脚本硬化: scripts/monitor_mvp_3_1_sunset.py (PR #64 交付, 铁律 43 4项硬化:
 #   PG statement_timeout=30s / FileHandler delay=True (stdout-only 实际豁免) /
 #   boot stderr probe / 顶层 try/except exit=2). 钉钉 notifications 表去重
@@ -482,5 +470,5 @@ Register-ScheduledTask `
 Write-Host "[OK] QuantMind_MVP31SunsetMonitor registered (weekly Sunday 04:00)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "Task Scheduler setup complete (16 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32: +MVP31SunsetMonitor). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (15 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
