@@ -66,7 +66,9 @@
 └── 批 3 末尾若 CB 运行稳定, 可二次重构把 wrapper inline + drop 老 service (batch 3b, Wave 4+)
 ```
 
-**规模预估**: ~400 行 platform + ~200 行 migration/rules + **~200 行 CB adapter + tests** + ~450 行 其他 tests ≈ **~1250 行, 2-2.7 周** (批 0 spike 修正: 方案 C adapter 节省 ~300 行 async→sync 重写)
+**规模预估**: ~400 行 platform + ~200 行 migration/rules + **~200 行 CB adapter + tests** + ~450 行 其他 tests ≈ **~1250 行, 2-2.7 周**
+
+**对比 v1.0 原估**: ~1500 行 / 2.5-3.5 周 → -300 行 / -0.5-0.8 周 (批 0 spike 决策方案 C adapter 节省 async→sync 重写)
 
 ---
 
