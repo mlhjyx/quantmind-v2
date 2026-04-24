@@ -14,6 +14,7 @@ Sprint 1.11 Task 5 → Sprint 1.25 重写（修复SQL列名+增加DB检查）。
 import contextlib
 import json
 import logging
+import os
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -89,8 +90,11 @@ def _get_conn():
     from app.services.db import get_sync_conn
 
     conn = get_sync_conn()
+    # reviewer python-P1: parametrize %s 而非 f-string (bandit B608 未来兼容).
+    # psycopg2 autocommit=False 默认, SET 在当前 transaction 中, 后续 queries 共享
+    # 同 transaction 所以 timeout 实际生效 (session GUC 机制).
     with conn.cursor() as cur:
-        cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+        cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
     return conn
 
 
@@ -329,9 +333,9 @@ def main() -> int:
     - boot stderr probe (schtask 最早启动证据, 即使 logger 失败)
     - 顶层 try/except → stderr FATAL + exit(2) 触发 schtask 钉钉告警
     """
-    # Fail-loud boot 探针, reviewer P1-2 pattern (stderr flush=True)
+    # Fail-loud boot 探针 (reviewer python-P2: os 已 module-top import 替原 __import__)
     print(
-        f"[pt_watchdog] boot {datetime.now().isoformat()} pid={__import__('os').getpid()}",
+        f"[pt_watchdog] boot {datetime.now().isoformat()} pid={os.getpid()}",
         flush=True,
         file=sys.stderr,
     )
