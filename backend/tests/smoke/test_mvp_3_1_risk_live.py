@@ -70,6 +70,9 @@ def test_mvp_3_1_risk_framework_imports() -> None:
                 "assert entry['task'] == 'daily_pipeline.risk_check', "
                 "f\"task mismatch: {entry['task']}\"; "
                 "sched = entry['schedule']; "
+                # reviewer P3 采纳: {14}/{30}/{1,2,3,4,5} 是 Python set 字面量 (非 f-string
+                # 插值), celery.schedules.crontab.hour/minute/day_of_week 内部存 set.
+                # 外层字符串非 f-string 所以 `{14}` 直接传 subprocess -c 原样执行.
                 "assert sched.hour == {14}, f'hour drifted: {sched.hour}'; "
                 "assert sched.minute == {30}, f'minute drifted: {sched.minute}'; "
                 "assert sched.day_of_week == {1, 2, 3, 4, 5}, "

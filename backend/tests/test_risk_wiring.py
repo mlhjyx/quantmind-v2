@@ -131,6 +131,46 @@ class TestBuildRiskEngine:
         assert isinstance(engine._broker, LoggingSellBroker)
         assert isinstance(engine._notifier, DingTalkRiskNotifier)
 
+    @patch("app.services.risk_wiring.get_qmt_client")
+    @patch("app.services.risk_wiring.get_sync_conn")
+    def test_factory_accepts_extra_rules(
+        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
+    ):
+        """reviewer P2-1 采纳 (architect): extra_rules 为批 2/3 铺路."""
+        mock_get_qmt.return_value = MagicMock()
+        mock_get_conn.return_value = MagicMock()
+
+        from dataclasses import dataclass
+
+        from app.services.risk_wiring import build_risk_engine
+        from backend.platform._types import Severity
+        from backend.platform.risk import RiskRule
+
+        @dataclass
+        class _DummyRule(RiskRule):
+            rule_id = "dummy_test"
+            severity = Severity.P2
+            action = "alert_only"
+
+            def evaluate(self, context):
+                return []
+
+        engine = build_risk_engine(extra_rules=[_DummyRule()])
+        assert engine.registered_rules == ["pms", "dummy_test"]
+
+    @patch("app.services.risk_wiring.get_qmt_client")
+    @patch("app.services.risk_wiring.get_sync_conn")
+    def test_factory_extra_rules_none_keeps_pms_only(
+        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
+    ):
+        mock_get_qmt.return_value = MagicMock()
+        mock_get_conn.return_value = MagicMock()
+
+        from app.services.risk_wiring import build_risk_engine
+
+        engine = build_risk_engine(extra_rules=None)
+        assert engine.registered_rules == ["pms"]
+
 
 # ---------- PMSRule Protocol contract via risk_wiring ----------
 

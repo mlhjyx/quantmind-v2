@@ -189,8 +189,17 @@ def risk_daily_check_task(self) -> dict:
     """
     from engines.trading_day_checker import TradingDayChecker
 
-    checker = TradingDayChecker()
-    is_td, reason = checker.is_trading_day(date.today())
+    from app.services.db import get_sync_conn
+
+    # reviewer P1-1 采纳 (code-reviewer): TradingDayChecker 无 conn 会降级到 Layer 4
+    # 启发式 (约 7-10 个工作日法定节假日/年会误判为交易日). Risk 检查要求准确交易日
+    # 判断, 传 conn 启用 Layer 3 本地 DB calendar (铁律 33 fail-loud vs silent drift).
+    td_conn = get_sync_conn()
+    try:
+        checker = TradingDayChecker(conn=td_conn)
+        is_td, reason = checker.is_trading_day(date.today())
+    finally:
+        td_conn.close()
     if not is_td:
         logger.info("[Risk] 非交易日(%s), 跳过", reason)
         return {"status": "skipped", "reason": reason}
@@ -200,12 +209,16 @@ def risk_daily_check_task(self) -> dict:
         logger.info("[Risk] PMS_ENABLED=False, 跳过")
         return {"status": "disabled"}
 
-    strategy_id = getattr(settings, "PAPER_STRATEGY_ID", "")
+    # reviewer P2-1 采纳 (code-reviewer): 直 attr access 替 getattr fallback.
+    # PAPER_STRATEGY_ID / EXECUTION_MODE 在 config.py Settings 明确定义 (L34/L70),
+    # 直读 fail-loud 对齐铁律 34 config SSOT (配置漂移时 AttributeError raise 非 silent
+    # fallback 错值, 更利于 config_guard 启动检测).
+    strategy_id = settings.PAPER_STRATEGY_ID
     if not strategy_id:
         logger.error("[Risk] PAPER_STRATEGY_ID 未配置")
         return {"status": "error", "message": "PAPER_STRATEGY_ID未配置"}
 
-    execution_mode = getattr(settings, "EXECUTION_MODE", "paper")
+    execution_mode = settings.EXECUTION_MODE
 
     from app.services.risk_wiring import build_risk_engine
 
@@ -244,6 +257,10 @@ def risk_daily_check_task(self) -> dict:
 
     except Exception as exc:
         logger.error("[Risk] 日检异常: %s", exc, exc_info=True)
+        # reviewer P2-2 采纳 (code-reviewer): max_retries=1 语义说明 — 第 1 次失败
+        # retry (60s 后), 第 2 次失败 raise MaxRetriesExceededError → Celery FAILURE
+        # 状态 → 监控系统 (Flower / celery events) 告警. 对齐金融风控场景: 无限重试
+        # 会掩盖系统性故障, 2 次机会后必须人工介入.
         raise self.retry(exc=exc) from exc
 
 

@@ -120,13 +120,24 @@ def build_pms_thresholds() -> tuple[PMSThreshold, ...]:
     )
 
 
-def build_risk_engine() -> PlatformRiskEngine:
+def build_risk_engine(
+    extra_rules: list | None = None,
+) -> PlatformRiskEngine:
     """构造 MVP 3.1 批 1 ready-to-run PlatformRiskEngine (PMSRule 已注册).
 
     调用方 (daily_pipeline.risk_check): 用返回 engine 调 build_context + run + execute.
 
+    reviewer P2-1 采纳 (architect): `extra_rules` 可选参为批 2/3 铺路.
+      - 批 2 加 IntradayMonitorRule: `build_risk_engine(extra_rules=[IntradayMonitorRule(...)])`
+      - 批 3 加 CircuitBreakerRule adapter 同上
+      - 集成测试可注入 mock rule 绕真 PMSRule 路径
+    不采纳 hardcoded register 改造 (铁律 23 独立可执行, 批 1 最小改动).
+
+    Args:
+        extra_rules: 可选附加 RiskRule list, 在默认 PMSRule 之后顺序 register.
+
     Returns:
-        PlatformRiskEngine, 已 register PMSRule (阈值从 settings 读).
+        PlatformRiskEngine, 已 register PMSRule + extra_rules (阈值从 settings 读).
     """
     qmt_client = get_qmt_client()
     primary = QMTPositionSource(reader=qmt_client, conn_factory=get_sync_conn)
@@ -141,6 +152,8 @@ def build_risk_engine() -> PlatformRiskEngine:
         conn_factory=get_sync_conn,
     )
     engine.register(PMSRule(levels=build_pms_thresholds()))
+    for rule in (extra_rules or []):
+        engine.register(rule)
     logger.info(
         "[risk-wiring] PlatformRiskEngine built, rules=%s",
         engine.registered_rules,
