@@ -303,15 +303,88 @@ class TestReadCurrentLevel:
         level = CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
         assert level == 0
 
-    def test_returns_zero_on_db_error_fallback(self):
-        """表不存在 (首次 adapter 运行前) → fallback L0 + rollback conn."""
+    def test_returns_zero_on_undefined_table_fallback(self):
+        """**Session 31 fix**: 窄 except 后 — UndefinedTable (真"表未建") → silent 0 + rollback.
+
+        原 test `test_returns_zero_on_db_error_fallback` 用通用 RuntimeError 验证 silent
+        fallback, 但 PR #61 bug 证明该行为隐匿 UndefinedColumn (column drift level→
+        current_level). 铁律 33 合规: 仅 UndefinedTable silent_ok (首次运行真语义), 其他
+        异常 fail-loud re-raise.
+        """
+        import psycopg2.errors
+
         mock_conn = MagicMock()
-        mock_conn.cursor.side_effect = RuntimeError("relation does not exist")
+        # psycopg2 异常 __init__ 需 pgcode/msg, 这里用 MagicMock spec 避完整模拟
+        mock_conn.cursor.side_effect = psycopg2.errors.UndefinedTable(
+            "relation \"circuit_breaker_state\" does not exist"
+        )
 
         level = CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
         assert level == 0
         # rollback 被调过 (虽可能失败 silent)
         assert mock_conn.rollback.called
+
+    def test_raises_on_undefined_column_fail_loud(self):
+        """**Session 31 fix + regression guard**: UndefinedColumn → fail-loud re-raise.
+
+        PR #61 原版 `SELECT level` (应为 `current_level`) 遇真 DB 抛 UndefinedColumn,
+        老 except Exception 通吞返 0 silent 隐匿 bug ≥ 2 周未被 2 opus reviewer 发现,
+        直到 Session 31 dry-run 实测 DB 触发暴露. 铁律 33 (b) 生产链路 fail-loud, 防
+        column drift 再次隐匿.
+        """
+        import psycopg2.errors
+
+        mock_conn = MagicMock()
+        mock_conn.cursor.side_effect = psycopg2.errors.UndefinedColumn(
+            "column \"level\" does not exist"
+        )
+
+        with pytest.raises(psycopg2.errors.UndefinedColumn):
+            CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
+        # rollback 失败前被调 (fail-loud 前必 rollback cursor state)
+        assert mock_conn.rollback.called
+
+    def test_raises_on_connection_error_fail_loud(self):
+        """**Session 31 fix**: 连接错 (非 UndefinedTable) → fail-loud re-raise.
+
+        铁律 33 (b) — silent 返 0 会让连接故障伪装成 "L0 未熔动", 调用方误判生产健康.
+        """
+        mock_conn = MagicMock()
+        mock_conn.cursor.side_effect = ConnectionError("PG conn dropped mid-query")
+
+        with pytest.raises(ConnectionError):
+            CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
+        assert mock_conn.rollback.called
+
+    def test_sql_uses_current_level_column_regression_guard(self):
+        """**Session 31 regression guard**: SQL 必含 `current_level`, 不含孤立 `level`.
+
+        PR #61 bug: `SELECT level FROM circuit_breaker_state` — 实际 column 名
+        `current_level` (DDL 权威). 加 SQL 文本锚定测试, 未来 column rename / ORM
+        迁移等情景下 break, 立即暴露 bug.
+        """
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (0,)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_conn.cursor.return_value.__exit__.return_value = False
+
+        CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
+
+        # assert SQL 包含正确 column 名
+        actual_sql = mock_cur.execute.call_args[0][0]
+        assert "current_level" in actual_sql, (
+            f"SQL 应查 current_level column, 实际: {actual_sql!r} — "
+            "防 PR #61 `SELECT level` drift 复发"
+        )
+        # 防误用孤立 "level " (含空格, 排除子串匹配 current_level)
+        import re
+        # SELECT 语句里孤立 level (前后非字母数字/下划线) 且非 current_level 子串
+        # e.g. "SELECT level FROM" match, "SELECT current_level FROM" 不 match
+        isolated_level_pattern = re.compile(r"(?<![\w_])level(?![\w_])")
+        assert not isolated_level_pattern.search(actual_sql), (
+            f"SQL 含孤立 `level` (非 current_level): {actual_sql!r}"
+        )
 
 
 class TestSeverityNumericMonotonic:

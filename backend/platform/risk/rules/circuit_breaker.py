@@ -195,15 +195,29 @@ class CircuitBreakerRule(RiskRule):
     ) -> int:
         """读 circuit_breaker_state 当前 level (pre-snapshot). 首次运行 / 无行返 0.
 
-        Note: 本查询若 circuit_breaker_state 表不存在会 raise — check_circuit_breaker_sync
-        内部 `_ensure_cb_tables_sync` 会建表, 但本 pre-snapshot 发生在 sync API 之前.
-        首次 adapter 运行时表可能不存在 → fallback 到 0 (NORMAL), 符合 CB 状态机
-        "首次运行 = 未熔断" 语义.
+        ⚠️ **Session 31 fix** (dry-run 发现): 原查询 `SELECT level` 拼错, 实际 column
+        名 `current_level` (DDL `docs/QUANTMIND_V2_DDL_FINAL.sql` + 实测 cb_state
+        schema). 配合老 `except Exception: return 0` 吞所有异常, **prev_level 永远
+        silent 返 0** — escalate 路径重复 emit / recover 路径永 missed event. 2 opus
+        reviewer 漏 (PR #61), 因单测 mock cursor 无法捕 column name drift.
+
+        铁律 33 fail-loud 合规窄化 except:
+          - `UndefinedTable` (首次运行表未建) → silent_ok 返 0 (CB 语义 "首次 = 未熔断")
+          - 其他异常 (UndefinedColumn / connection error / ...) → log.error + re-raise
+            (绝不 silent 吞, 防本 bug 再隐匿)
+
+        Note: check_circuit_breaker_sync 内部 `_ensure_cb_tables_sync` 会建表, 但本
+        pre-snapshot 发生在 sync API 之前, 首次 adapter 运行时表可能不存在.
         """
+        import logging  # noqa: PLC0415  # fix: 仅失败路径需 logger, 不污染模块顶
+
+        import psycopg2.errors  # noqa: PLC0415  # fix: narrow UndefinedTable only
+
+        logger = logging.getLogger(__name__)
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT level FROM circuit_breaker_state
+                    """SELECT current_level FROM circuit_breaker_state
                     WHERE strategy_id = %s AND execution_mode = %s
                     ORDER BY entered_date DESC
                     LIMIT 1""",
@@ -211,9 +225,22 @@ class CircuitBreakerRule(RiskRule):
                 )
                 row = cur.fetchone()
                 return int(row[0]) if row else 0
-        except Exception:  # noqa: BLE001  # silent_ok: 表不存在 → 首次运行, L0
-            # 回滚 cursor 状态 (PG 异常后 conn 进 aborted 状态, 需 rollback)
-            # silent_ok: rollback 失败 conn 已坏, 无可挽回 — ruff 建议 contextlib.suppress
+        except psycopg2.errors.UndefinedTable:
+            # silent_ok: 首次运行 cb_state 表未建 (check_circuit_breaker_sync 会建),
+            # 符合 CB 状态机 "首次 = L0 未熔断" 语义. 铁律 33 (d) silent_ok 具体原因.
+            with contextlib.suppress(Exception):
+                conn.rollback()  # silent_ok: rollback 失败 conn 已坏
+            return 0
+        except Exception:
+            # fail-loud: column drift / connection error / 其他 SQL 错 — 绝不吞,
+            # 铁律 33 (b) 生产链路 fail-loud. 本 bug (PR #61 → Session 31 dry-run
+            # 发现) 就是老版本 silent Exception 吞 UndefinedColumn 导致.
             with contextlib.suppress(Exception):
                 conn.rollback()
-            return 0
+            logger.exception(
+                "CircuitBreakerRule._read_current_level 读 cb_state 失败 "
+                "(strategy_id=%s, execution_mode=%s) — 铁律 33 fail-loud, "
+                "非 UndefinedTable 异常不 silent 返 0",
+                strategy_id, execution_mode,
+            )
+            raise
