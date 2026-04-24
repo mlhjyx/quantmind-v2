@@ -46,8 +46,11 @@ import pandas as pd
 import psycopg2
 
 # 确保backend在path中
+# 铁律 10b shadow fix: append 而非 insert(0) 避免 backend/platform/ shadow stdlib
+# platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
 BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
-sys.path.insert(0, str(BACKEND_DIR))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
 ALL_FACTORS = [
     "high_vol_price_ratio_20",

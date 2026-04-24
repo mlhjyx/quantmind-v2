@@ -46,8 +46,10 @@ from typing import Any
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent
 _BACKEND_DIR = _PROJECT_ROOT / "backend"
+# 铁律 10b shadow fix: append 而非 insert(0) 避免 backend/platform/ shadow stdlib
+# platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
 if str(_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_DIR))
+    sys.path.append(str(_BACKEND_DIR))
 
 import structlog  # noqa: E402
 

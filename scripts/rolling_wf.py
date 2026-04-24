@@ -31,7 +31,10 @@ import numpy as np
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
-sys.path.insert(0, str(BACKEND_DIR))
+# 铁律 10b shadow fix: append 而非 insert(0) 避免 backend/platform/ shadow stdlib
+# platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
 from dotenv import load_dotenv
 

@@ -41,8 +41,10 @@ from scipy import optimize
 # 确保能import backend模块
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _BACKEND = os.path.join(_REPO_ROOT, "backend")
+# 铁律 10b shadow fix: append 而非 insert(0) 避免 backend/platform/ shadow stdlib
+# platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
 if _BACKEND not in sys.path:
-    sys.path.insert(0, _BACKEND)
+    sys.path.append(_BACKEND)
 
 logging.basicConfig(
     level=logging.INFO,
