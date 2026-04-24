@@ -20,8 +20,15 @@ import pytest
 
 from app.data_fetcher.contracts import (
     DAILY_BASIC,
+    FACTOR_IC_HISTORY,
+    FACTOR_VALUES,
+    INDEX_DAILY,
     KLINES_DAILY,
+    MINUTE_BARS,
     MONEYFLOW_DAILY,
+    NORTHBOUND_HOLDINGS,
+    SHADOW_PORTFOLIO,
+    STOCK_STATUS_DAILY,
     ColumnSpec,
     TableContract,
 )
@@ -85,6 +92,39 @@ class TestCoreContractsConfigured:
         spec = MONEYFLOW_DAILY.columns["trade_date"]
         assert spec.dtype == "date"
         assert spec.max_future_days is not None and spec.max_future_days >= 10
+
+
+class TestExtendedContractsConfigured:
+    """Session 26 follow-up (LL-068 扩散): 7 个 trade_date 列 Contract 配 guard.
+
+    不含: SYMBOLS (list_date/delist_date 业务语义允许未来),
+          EARNINGS_ANNOUNCEMENTS (ann_date 可能合法 preannouncement).
+    """
+
+    @pytest.mark.parametrize(
+        "contract,col",
+        [
+            (INDEX_DAILY, "trade_date"),
+            (FACTOR_VALUES, "trade_date"),
+            (FACTOR_IC_HISTORY, "trade_date"),
+            (NORTHBOUND_HOLDINGS, "trade_date"),
+            (MINUTE_BARS, "trade_date"),
+            (STOCK_STATUS_DAILY, "trade_date"),
+            (SHADOW_PORTFOLIO, "trade_date"),
+            (SHADOW_PORTFOLIO, "rebalance_date"),
+        ],
+    )
+    def test_trade_date_max_future_days_configured(self, contract, col):
+        spec = contract.columns[col]
+        assert spec.dtype == "date", (
+            f"{contract.table_name}.{col} 非 date 列不应该加 max_future_days"
+        )
+        assert spec.max_future_days is not None, (
+            f"{contract.table_name}.{col} 缺 max_future_days guard"
+        )
+        assert spec.max_future_days >= 10, (
+            f"{contract.table_name}.{col} max_future_days={spec.max_future_days} < 10 (Golden Week 边界风险)"
+        )
 
 
 class TestDataPipelineRejectsFutureDates:

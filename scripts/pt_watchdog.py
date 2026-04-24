@@ -11,23 +11,35 @@
 Sprint 1.11 Task 5 → Sprint 1.25 重写（修复SQL列名+增加DB检查）。
 """
 
+import contextlib
 import json
 import logging
 import sys
+import traceback
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 # 添加项目路径
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
+# Session 26 LL-068 defense-in-depth: FileHandler delay=True 防 Windows zombie 文件锁.
+LOG_DIR = Path("D:/quantmind-v2/logs")
+LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(LOG_DIR / "pt_watchdog.log", encoding="utf-8", delay=True),
+    ],
 )
 logger = logging.getLogger(__name__)
 
-HEARTBEAT_FILE = Path("D:/quantmind-v2/logs/pt_heartbeat.json")
+HEARTBEAT_FILE = LOG_DIR / "pt_heartbeat.json"
+
+# PG 连接硬超时 (铁律 33 fail-loud, LL-068 pattern 扩散)
+STATEMENT_TIMEOUT_MS = 60_000
 
 
 # ---------------------------------------------------------------------------
@@ -69,10 +81,17 @@ class HealthReport:
 
 
 def _get_conn():
-    """获取同步数据库连接。"""
+    """获取同步数据库连接, 注入 session-level statement_timeout (LL-068).
+
+    防 cold-cache / table lock 无限等待, 超时后 PG raise QueryCanceled,
+    main() 顶层 try/except 捕获 exit(2) 触发 schtask 钉钉告警链.
+    """
     from app.services.db import get_sync_conn
 
-    return get_sync_conn()
+    conn = get_sync_conn()
+    with conn.cursor() as cur:
+        cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+    return conn
 
 
 def get_latest_trading_day(conn) -> date | None:
@@ -267,10 +286,10 @@ def run_watchdog() -> HealthReport:
     return report
 
 
-def main() -> int:
-    """入口。返回退出码: 0=正常, 1=异常。"""
+def _run() -> int:
+    """实际执行流程 (主 logic). 顶层 try/except 由 main() 包裹."""
     logger.info("=" * 60)
-    logger.info("PT Watchdog 启动")
+    logger.info("PT Watchdog 启动 (statement_timeout=%ds)", STATEMENT_TIMEOUT_MS // 1000)
     logger.info("=" * 60)
 
     report = run_watchdog()
@@ -303,6 +322,29 @@ def main() -> int:
     else:
         logger.info("PT Watchdog: ALL PASSED")
     return 0
+
+
+def main() -> int:
+    """CLI entrypoint. 铁律 33 fail-loud (LL-068 扩散):
+    - boot stderr probe (schtask 最早启动证据, 即使 logger 失败)
+    - 顶层 try/except → stderr FATAL + exit(2) 触发 schtask 钉钉告警
+    """
+    # Fail-loud boot 探针, reviewer P1-2 pattern (stderr flush=True)
+    print(
+        f"[pt_watchdog] boot {datetime.now().isoformat()} pid={__import__('os').getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+    try:
+        return _run()
+    except Exception as e:
+        msg = f"[pt_watchdog] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, logger 可能未初始化成功
+        with contextlib.suppress(Exception):
+            logger.critical(msg, exc_info=True)
+        return 2
 
 
 if __name__ == "__main__":

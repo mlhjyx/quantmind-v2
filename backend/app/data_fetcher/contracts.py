@@ -219,7 +219,7 @@ INDEX_DAILY = TableContract(
     pk_columns=("index_code", "trade_date"),
     columns={
         "index_code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "open": _price_col,
         "high": _price_col,
         "low": _price_col,
@@ -240,7 +240,7 @@ FACTOR_VALUES = TableContract(
     pk_columns=("code", "trade_date", "factor_name"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "factor_name": ColumnSpec("str", nullable=False),
         "raw_value": ColumnSpec("float"),
         "neutral_value": ColumnSpec("float"),
@@ -261,7 +261,7 @@ FACTOR_IC_HISTORY = TableContract(
     pk_columns=("factor_name", "trade_date"),
     columns={
         "factor_name": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "ic_1d": ColumnSpec("float"),
         "ic_5d": ColumnSpec("float"),
         "ic_10d": ColumnSpec("float"),
@@ -281,7 +281,7 @@ NORTHBOUND_HOLDINGS = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "hold_vol": ColumnSpec("int", source_unit=SourceUnit.GU, db_unit=DBUnit.GU, min_val=0),
         "hold_ratio": ColumnSpec("float", source_unit=SourceUnit.PCT, db_unit=DBUnit.PCT),
         "hold_mv": ColumnSpec("float", source_unit=SourceUnit.WAN_YUAN, db_unit=DBUnit.YUAN),
@@ -337,7 +337,7 @@ MINUTE_BARS = TableContract(
     columns={
         "code": ColumnSpec("str", nullable=False),
         "trade_time": ColumnSpec("str", nullable=False),  # timestamp类型, 用str占位
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "open": _price_col,
         "high": _price_col,
         "low": _price_col,
@@ -360,7 +360,7 @@ STOCK_STATUS_DAILY = TableContract(
     pk_columns=("code", "trade_date"),
     columns={
         "code": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "is_st": ColumnSpec("bool", nullable=False),
         "is_suspended": ColumnSpec("bool", nullable=False),
         "is_new_stock": ColumnSpec("bool", nullable=False),
@@ -382,8 +382,8 @@ SHADOW_PORTFOLIO = TableContract(
     pk_columns=("strategy_name", "trade_date", "symbol_code"),
     columns={
         "strategy_name": ColumnSpec("str", nullable=False),
-        "trade_date": ColumnSpec("date", nullable=False),
-        "rebalance_date": ColumnSpec("date", nullable=False),
+        "trade_date": ColumnSpec("date", nullable=False, max_future_days=10),
+        "rebalance_date": ColumnSpec("date", nullable=False, max_future_days=10),
         "symbol_code": ColumnSpec("str", nullable=False),
         "predicted_score": ColumnSpec("float"),
         "weight": ColumnSpec("float", nullable=False, min_val=0.0, max_val=1.0),
