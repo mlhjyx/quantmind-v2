@@ -23,19 +23,22 @@ def test_happy_path_returns_db_live_strategies():
     """DB 有 S1 status='live' → register + get_live 返 [S1 instance]."""
     from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
-    # Mock conn + cursor for DB registry (register + get_live + commit)
+    # P2-B python-reviewer (PR #72) 采纳: 用文档化 CM pattern (documented in unittest.mock
+    # docs) 替原 manual `cursor.__enter__ = MagicMock(...)`. 原 pattern 依赖 MagicMock
+    # __getattr__ 拦截 dunder, 非文档行为.
+    # `conn.cursor.return_value.__enter__.return_value = cursor` 是官方 CM 模式.
     cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    # register(): 先 SELECT status existing → None (首次), 再 INSERT upsert, 再 INSERT status_log
-    # get_live(): SELECT strategy_id, name WHERE status='live'
     cursor.fetchone = MagicMock(return_value=None)  # register() existing_status lookup
     cursor.fetchall = MagicMock(
         return_value=[(S1MonthlyRanking.strategy_id, "s1_monthly_ranking")]
     )
 
     conn = MagicMock()
-    conn.cursor = MagicMock(return_value=cursor)
+    # `with conn.cursor() as cur:` → __enter__ 返 cursor. conn.cursor() 返 MagicMock
+    # instance, 其 __enter__ 默认 MagicMock (auto-spec), .return_value = cursor 设置
+    # context manager enter value.
+    conn.cursor.return_value.__enter__.return_value = cursor
+    conn.cursor.return_value.__exit__.return_value = False
     conn.commit = MagicMock()
     conn.rollback = MagicMock()
     conn.close = MagicMock()
@@ -108,14 +111,14 @@ def test_fallback_on_empty_live(caplog):
     """DB 返 0 live strategies (S1 status != 'live') → fallback + warning."""
     from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
+    # P2-B python-reviewer 文档化 CM pattern
     cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
     cursor.fetchone = MagicMock(return_value=None)  # register existing_status None
     cursor.fetchall = MagicMock(return_value=[])  # get_live empty
 
     conn = MagicMock()
-    conn.cursor = MagicMock(return_value=cursor)
+    conn.cursor.return_value.__enter__.return_value = cursor
+    conn.cursor.return_value.__exit__.return_value = False
     conn.commit = MagicMock()
     conn.rollback = MagicMock()
     conn.close = MagicMock()
@@ -146,14 +149,14 @@ def test_fallback_on_integrity_error(caplog):
     """
     from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
+    # P2-B python-reviewer 文档化 CM pattern
     cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
     cursor.fetchone = MagicMock(return_value=None)
     # get_live 返 UUID 但 cache 未 register (模拟 register 绕过)
     # 本 test 通过 patch DBStrategyRegistry.get_live 直接抛 IntegrityError
     conn = MagicMock()
-    conn.cursor = MagicMock(return_value=cursor)
+    conn.cursor.return_value.__enter__.return_value = cursor
+    conn.cursor.return_value.__exit__.return_value = False
     conn.commit = MagicMock()
     conn.rollback = MagicMock()
     conn.close = MagicMock()
@@ -183,7 +186,12 @@ def test_fallback_s1_strategy_id_matches_live_pt():
 
     铁律 34 SSOT: S1.strategy_id 与 settings.PAPER_STRATEGY_ID 必须一致 (Monday
     4-27 首次触发 zero 干扰).
+
+    P3 code-reviewer (PR #72) 采纳: 用 S1MonthlyRanking.strategy_id SSOT 替 hardcoded
+    UUID — 若 UUID 迁移此 test fail message 清晰, 非 `"28fc37e5..." != "..."` 含混.
     """
+    from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+
     with patch(
         "app.services.strategy_bootstrap.get_sync_conn",
         side_effect=ConnectionError("force fallback"),
@@ -192,8 +200,7 @@ def test_fallback_s1_strategy_id_matches_live_pt():
 
         result = get_live_strategies_for_risk_check()
 
-    # 当前 PT 真生产 UUID
-    assert result[0].strategy_id == "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
+    assert result[0].strategy_id == S1MonthlyRanking.strategy_id
 
 
 # ─── Return type contract ───────────────────────────────────────

@@ -223,6 +223,22 @@ def risk_daily_check_task(self) -> dict:
     from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
     strategies = get_live_strategies_for_risk_check()
+    # P1 reviewer code (PR #72) 采纳: empty strategies 应显式 warn, 不 silent zero-work.
+    # 理论 bootstrap 保底 [S1MonthlyRanking()] 非空, 但防御深度校验 — Monday 监控可见.
+    if not strategies:
+        logger.warning(
+            "[Risk] get_live_strategies_for_risk_check() 返空 list — 14:30 风控检查 "
+            "零策略执行. 检查 bootstrap fallback / strategy_registry DB 状态.",
+        )
+        return {
+            "status": "ok",
+            "execution_mode": execution_mode,
+            "strategies": [],
+            "strategies_count": 0,
+            "total_checked": 0,
+            "total_triggered": 0,
+        }
+
     per_strategy_results: list[dict] = []
     total_checked = 0
     total_triggered = 0
@@ -370,6 +386,22 @@ def intraday_risk_check_task(self) -> dict:
     from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
     strategies = get_live_strategies_for_risk_check()
+    # P1 reviewer code (PR #72) 采纳: empty strategies 显式 warn (防御深度)
+    if not strategies:
+        logger.warning(
+            "[IntradayRisk] get_live_strategies_for_risk_check() 返空 list — 5min "
+            "盘中检查零策略. 下 5min 周期会再跑一次自愈.",
+        )
+        return {
+            "status": "ok",
+            "execution_mode": execution_mode,
+            "strategies": [],
+            "strategies_count": 0,
+            "total_triggered": 0,
+            "total_alerted": 0,
+            "total_dedup_skipped": 0,
+        }
+
     dedup = IntradayAlertDedup()  # 共享 Redis client, 跨 strategy 复用
 
     per_strategy_results: list[dict] = []

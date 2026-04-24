@@ -37,6 +37,11 @@ from typing import TYPE_CHECKING
 
 from app.services.db import get_sync_conn
 
+# P3-B python-reviewer (PR #72) 采纳: S1MonthlyRanking module-top import 保 fail-safe
+# 契约 (原 lazy import inside try 若未执行到 except 会 NameError 破 fallback).
+# s1_monthly_ranking → signal_engine → app.config chain 实测无循环 (smoke test 已验).
+from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+
 if TYPE_CHECKING:
     from backend.platform.strategy.interface import Strategy
 
@@ -66,9 +71,7 @@ def get_live_strategies_for_risk_check() -> list[Strategy]:
       - 生产链路决策: fail-safe 优先 fail-loud (Monday 真金不能因 registry 异常挂)
       - 异常 root cause logger.error 捕获, Flower / logs 可观测
     """
-    # Lazy import 防循环依赖 (s1_monthly_ranking → signal_engine → app.config → ...)
-    from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
-
+    # S1MonthlyRanking 已在 module-top import (P3-B 采纳, 保 fail-safe 契约).
     conn = None
     try:
         from backend.platform.strategy.registry import DBStrategyRegistry
