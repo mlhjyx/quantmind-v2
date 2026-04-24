@@ -48,7 +48,23 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import psycopg2
+# ─── sys.path + .env bootstrap (PR #XX fix: schtask PG auth, Session 33) ────
+# schtask 执行时 CWD=project root 但不 auto-load .env → _connect_db FATAL
+# "fe_sendauth: no password supplied" (4-24 21:47/21:49 2 次 CRITICAL 重现).
+# 修复: 对齐 compute_daily_ic.py (line 44-54) 模式, load_dotenv + get_sync_conn.
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+BACKEND_DIR = PROJECT_ROOT / "backend"
+# .venv/.pth 已把 backend 加入 sys.path. 不用 insert(0) 避免与 stdlib `platform`
+# 冲突 (铁律 10b shadow fix: backend/platform/ 会 shadow stdlib platform).
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
+
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(BACKEND_DIR / ".env")
+
+from app.services.db import get_sync_conn  # noqa: E402
 
 # China timezone for local-date → UTC boundary conversion (database P1 fix)
 # adapter_live 是 CN 自然日 2026-04-24, 中国 00:00 CST = 前一日 16:00 UTC,
@@ -69,10 +85,9 @@ PG_STATEMENT_TIMEOUT_MS = 30_000
 # notifications category (去重查询用)
 DINGTALK_CATEGORY = "mvp_3_1_sunset_gate"
 
-DB_DSN = os.environ.get(
-    "MVP_3_1_SUNSET_DSN",
-    "dbname=quantmind_v2 user=xin host=127.0.0.1",
-)
+# DB_DSN 常量已移除 (PR #XX fix): 改用 get_sync_conn() 走项目 SSOT DSN (settings.
+# DATABASE_URL). 原 default "dbname=quantmind_v2 user=xin host=127.0.0.1" 缺 password,
+# schtask 跑 SCRAM-SHA-256 auth PG 直接 FATAL. 对齐 compute_daily_ic.py 模式.
 
 # 钉钉 webhook (保留但 default None, 首期仅 log report 不主动告警)
 DINGTALK_WEBHOOK = os.environ.get("DINGTALK_WEBHOOK")
@@ -154,9 +169,15 @@ class SunsetReport:
 # ─── Condition checkers (铁律 33 fail-loud on DB errors) ────────────────────
 
 
-def _connect_db(dsn: str = DB_DSN) -> psycopg2.extensions.connection:
-    """Connect PG with statement_timeout (铁律 43 a, 参数化防注入)."""
-    conn = psycopg2.connect(dsn)
+def _connect_db() -> Any:
+    """Connect PG via shared get_sync_conn + SET statement_timeout (铁律 43 a).
+
+    PR #XX fix (Session 33): 原 psycopg2.connect(DB_DSN) 依赖裸 DSN 默认无 password
+    schtask 跑 SCRAM-SHA-256 auth 直接 "fe_sendauth: no password supplied" FATAL.
+    改走 get_sync_conn() 复用 settings.DATABASE_URL (SSOT, 铁律 34) 保证 schtask
+    与 FastAPI/Celery/其他 schtask 脚本 (compute_daily_ic) 共用同一认证路径.
+    """
+    conn = get_sync_conn()
     with conn.cursor() as cur:
         # parametrized 防 SQL 注入 (reviewer LL-068 沉淀)
         cur.execute("SET statement_timeout = %s", (PG_STATEMENT_TIMEOUT_MS,))
