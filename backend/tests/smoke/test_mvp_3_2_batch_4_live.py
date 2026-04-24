@@ -54,10 +54,13 @@ def test_mvp_3_2_batch_4_multi_strategy_wiring_imports() -> None:
                 "risk_daily_check_task, intraday_risk_check_task; "
                 "assert risk_daily_check_task.name == 'daily_pipeline.risk_check'; "
                 "assert intraday_risk_check_task.name == 'daily_pipeline.intraday_risk_check'; "
-                # 4. S1 strategy 可 import + UUID 稳定
+                # 4. S1 strategy 可 import + UUID 稳定 (SSOT 自验)
+                # P3 code-reviewer (PR #72) 采纳: UUID 对比保留以检测无意 drift,
+                # 但 S1MonthlyRanking 是 SSOT, assert 用 class attr SSOT 对比
                 "from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking; "
-                "assert S1MonthlyRanking.strategy_id == '28fc37e5-2d32-4ada-92e0-41c11a5103d0', "
-                "f'S1 UUID drifted: {S1MonthlyRanking.strategy_id}'; "
+                "_expected_uuid = '28fc37e5-2d32-4ada-92e0-41c11a5103d0'; "
+                "assert S1MonthlyRanking.strategy_id == _expected_uuid, "
+                "f'S1 UUID drifted: {S1MonthlyRanking.strategy_id} (expected {_expected_uuid})'; "
                 # 5. Fallback runtime 可达: force get_sync_conn 抛 ConnectionError.
                 # `-c` 单行无法用 `with` 复合语句, 改 patch.start()/stop() 手动管理.
                 "from unittest.mock import patch; "

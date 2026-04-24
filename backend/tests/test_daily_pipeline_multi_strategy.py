@@ -115,11 +115,16 @@ def test_risk_daily_check_single_strategy_monday_safe():
     **关键 guard**: 批 4 代码在 Monday 与单策略时行为等同今日 (fail-safe fallback).
     """
     from app.tasks.daily_pipeline import risk_daily_check_task
+    from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
-    strategies = [_mk_mock_strategy("28fc37e5-2d32-4ada-92e0-41c11a5103d0")]
-    with _patch_daily_deps(strategies)[0], _patch_daily_deps(strategies)[1], \
-        _patch_daily_deps(strategies)[2], _patch_daily_deps(strategies)[3], \
-        _patch_daily_deps(strategies)[4], \
+    # P3 code-reviewer (PR #72) 采纳: 用 S1MonthlyRanking.strategy_id SSOT 替 hardcoded UUID
+    strategies = [_mk_mock_strategy(S1MonthlyRanking.strategy_id)]
+    # P1 python-reviewer (PR #72) 采纳: 原代码 `_patch_daily_deps(strategies)[0]` 调用 5 次
+    # 创建 5 独立 tuple → 各 patch 来自不同实例, 行为不一致. 改 pre-assign.
+    # P2-A python-reviewer: `app.tasks.daily_pipeline.settings` 是正确 scope
+    # (daily_pipeline L21 `from app.config import settings` module-top import).
+    patches = _patch_daily_deps(strategies)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], \
         patch("app.tasks.daily_pipeline.settings") as mock_settings:
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
@@ -130,7 +135,7 @@ def test_risk_daily_check_single_strategy_monday_safe():
     assert result["status"] == "ok"
     assert result["strategies_count"] == 1
     assert len(result["strategies"]) == 1
-    assert result["strategies"][0]["strategy_id"] == "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
+    assert result["strategies"][0]["strategy_id"] == S1MonthlyRanking.strategy_id
     assert result["strategies"][0]["status"] == "ok"
 
 
