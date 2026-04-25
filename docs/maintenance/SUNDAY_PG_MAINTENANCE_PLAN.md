@@ -4,6 +4,25 @@
 > **目的**: Monday 4-27 09:00 MVP 3.1 真生产首触发前 PG 性能调优 + 磁盘回收
 > **总收益**: ~70-90 GB 磁盘释放 + 真实查询 2-5x 加速
 
+## ✅ 状态更新 (2026-04-26 00:00, Saturday 提前执行)
+
+Phase 1+2 已 **Saturday 23:38-23:56 提前完成**, 不需 Sunday 02:00 再跑:
+
+| Phase | 状态 | 实际结果 |
+|---|---|---|
+| Phase 1 shared_buffers 2→8GB | ✅ DONE | DB restart 23:38 via Windows Service |
+| Phase 2.1 analyze | ✅ DONE | factor_values 6.83% bloat (~14 GB potential) |
+| Phase 2.2 drop_covering | ✅ DONE | DB 263→218 GB (-45 GB), 0.18s |
+| Phase 3 VACUUM FULL | ⏸️ **取消** | 仅 14 GB bloat, 2-4h 表锁性价比低, defer |
+| **Bonus**: idx_fv_factor_date 重建 | ⏳ 跑中 | 修复 Q2 regression, ~10GB, 净 -35GB |
+
+实测加速: Q1 (4 CORE GROUP BY) 9.75s → **5.68s** (1.7x). Q2 待 idx 完成 verify.
+
+**实战教训** (新 LL 候选):
+- TimescaleDB hypertable **不支持** CREATE INDEX CONCURRENTLY, 必须 plain CREATE INDEX
+- pg_ctl restart **不刷新** Windows Service 状态, Servy 依赖 PG Windows Service 时启动失败 — 必走 `Start-Service PostgreSQL16` 而非 `pg_ctl start`
+- drop covering 索引前必看 EXPLAIN production 查询模式, 不能仅看 idx_scan 数字
+
 ## 实测背景 (Session 36 末调研)
 
 - PG 总: **263 GB** (vs 文档 159 GB drift +65%)
