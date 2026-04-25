@@ -37,6 +37,8 @@ from zoneinfo import ZoneInfo
 CST = ZoneInfo("Asia/Shanghai")
 
 ResolveMode = Literal["default", "lookback", "custom"]
+"""Type alias for TimeWindow.mode. **For annotations only — not a runtime Enum**.
+reviewer python-reviewer P3 采纳: 防 callers 误以为可作 runtime value. 用作字符串字面量比对."""
 
 # reviewer code-reviewer P1.2 采纳 (2026-04-26): 显式 __all__ 标注 public API surface,
 # 防 phase 2 schtask scripts 误用 _cst_today 私有函数. 测试可绕 __all__ 直 import (Python 惯例 OK).
@@ -178,7 +180,10 @@ class TimeWindowResolver:
                     f"got {e}"
                 ) from e
 
-            if args.end:
+            # reviewer python-reviewer P2 采纳 (2026-04-26): `--end` 用 `is not None` 跟
+            # `--start` P0 fix rationale 一致, 防 args.end="" 空字符串 silent fall-through
+            # (违反铁律 33). 空字符串现进 strptime → raise ValueError.
+            if args.end is not None:
                 try:
                     end = datetime.strptime(args.end, "%Y%m%d").date()
                 except ValueError as e:

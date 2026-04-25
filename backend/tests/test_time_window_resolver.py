@@ -9,7 +9,8 @@
     - _cst_today: 时区是否 Asia/Shanghai (1 test)
     - 模式优先级: --start 优先于 --lookback-days (1 test)
 
-总 21 tests (reviewer code-reviewer P1.1 采纳: 跟实际数 21 对齐, 4+5+3+4+1+2+2 = 21).
+总 22 tests (reviewer 修复后 = 4 + 6 + 3 + 4 + 1 + 2 + 2 = 22).
+6 = TestResolveCustomMode (5 原 + 1 P0 fix 验证 empty string raise).
 
 测试不依赖 DB / Redis / network — 纯逻辑单测 (铁律 31 Engine 纯计算同方向).
 """
@@ -50,8 +51,12 @@ def _make_args(
 
 class TestTimeWindow:
     def test_window_immutable_frozen(self) -> None:
+        # reviewer python-reviewer P3 采纳: 改 bare Exception → 显式 FrozenInstanceError
+        # (= AttributeError 子类 since Python 3.11). 防测试 setup 异常被 silent 通过.
+        from dataclasses import FrozenInstanceError
+
         w = TimeWindow(date(2026, 4, 1), date(2026, 4, 30), "custom")
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             w.start_date = date(2026, 5, 1)  # type: ignore[misc]
 
     def test_window_validates_start_before_end(self) -> None:
