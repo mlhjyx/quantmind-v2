@@ -246,5 +246,7 @@ class TestOpeningGapCheck:
             dry_run=False,
         )
 
-        # P0发送后应commit
-        conn.commit.assert_called()
+        # P0 发送后**不再** commit. 铁律 32 (Phase D D2b-3) 强制 Service 不显式 commit;
+        # autocommit=True 让每条 SQL 自成事务. notif_svc.send_sync 内部已落 DB.
+        # PR-C 修 CONTRACT_DRIFT (audit §3.3): 测试反转期望.
+        conn.commit.assert_not_called()
