@@ -487,8 +487,17 @@ $svcAction = New-ScheduledTaskAction `
     -Argument "$ProjectRoot\scripts\services_healthcheck.py" `
     -WorkingDirectory $ProjectRoot
 
-# 起点 = 当前时间向后 1 小时取整 (next o'clock), Repetition 每 15min, 持续 indefinite
-$svcStartBoundary = (Get-Date).AddMinutes(15).Date.AddHours(((Get-Date).AddMinutes(15)).Hour + 1)
+# 起点 = 当前时间 + 60min 后截到整点 (next o'clock), Repetition 每 15min, 持续 indefinite.
+# Reviewer code-P1 fix (Session 35): 原 `(Get-Date).AddMinutes(15).Date.AddHours((Get-
+# Date).AddMinutes(15).Hour + 1)` 在 23:47-23:59 时段触发跨日 bug — `now+15min` 跨午夜
+# 后 `.Date` = 次日 0 点, `.Hour` = 0, `+1 = 1`, 起点 = 次日 01:00 (45min gap, 漏首次).
+# 新公式: AddMinutes(60) 强制跨过当前分钟到下一整点, ToString 截 HH:00:00 后 ParseExact
+# 反序列化, 跨日由 AddMinutes 自动处理 ([datetime] 类型支持负数+跨日).
+$svcStartBoundary = [datetime]::ParseExact(
+    (Get-Date).AddMinutes(60).ToString("yyyy-MM-dd HH:00:00"),
+    "yyyy-MM-dd HH:00:00",
+    $null
+)
 $svcTrigger = New-ScheduledTaskTrigger -Once -At $svcStartBoundary `
     -RepetitionInterval (New-TimeSpan -Minutes 15)
 

@@ -35,7 +35,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from services_healthcheck import (  # noqa: E402
     BEAT_HEARTBEAT_MAX_AGE_SECONDS,
     DEDUP_WINDOW_SECONDS,
-    SC_QUERY_TIMEOUT_SECONDS,
     SERVY_SERVICES,
     BeatHeartbeatCheck,
     HealthReport,
@@ -66,60 +65,113 @@ class TestQueryServiceState:
         cp.stderr = stderr
         return cp
 
+    def _mk_popen(self, returncode: int, stdout: str, stderr: str = "", timeout: bool = False):
+        """模拟 Popen + communicate (Session 35 reviewer P2: 改 Popen + kill 后)."""
+        proc = MagicMock()
+        proc.returncode = returncode
+        if timeout:
+            # First communicate raises TimeoutExpired, kill + drain
+            proc.communicate.side_effect = [
+                subprocess.TimeoutExpired(cmd="sc query", timeout=5),
+                (stdout, stderr),  # post-kill drain
+            ]
+        else:
+            proc.communicate.return_value = (stdout, stderr)
+        return proc
+
     def test_running_service(self, monkeypatch):
+        # 真实 sc query 输出: 包含 SERVICE_NAME / TYPE : 10 / STATE : 4 RUNNING / capabilities
         sc_stdout = (
             "SERVICE_NAME: QuantMind-CeleryBeat\n"
             "        TYPE               : 10  WIN32_OWN_PROCESS\n"
             "        STATE              : 4  RUNNING\n"
             "                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)\n"
+            "        WIN32_EXIT_CODE    : 0  (0x0)\n"
         )
-        cp = self._mk_completed_process(0, sc_stdout)
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp)
+        proc = self._mk_popen(0, sc_stdout)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
         r = query_service_state("QuantMind-CeleryBeat")
         assert r.running is True
         assert r.state_text == "RUNNING"
         assert r.name == "QuantMind-CeleryBeat"
 
     def test_stopped_service(self, monkeypatch):
-        sc_stdout = "SERVICE_NAME: QuantMind-CeleryBeat\n        STATE              : 1  STOPPED\n"
-        cp = self._mk_completed_process(0, sc_stdout)
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp)
+        # P1 reviewer fix: 必须包含 TYPE : 10 行 (真实 sc query 输出格式), 验证按行解析
+        # 不被 "TYPE : 10" 行的 ": 10" → ": 1" 子串误判为 STOPPED.
+        sc_stdout = (
+            "SERVICE_NAME: QuantMind-CeleryBeat\n"
+            "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+            "        STATE              : 1  STOPPED\n"
+            "        WIN32_EXIT_CODE    : 0  (0x0)\n"
+        )
+        proc = self._mk_popen(0, sc_stdout)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
         r = query_service_state("QuantMind-CeleryBeat")
         assert r.running is False
         assert r.state_text == "STOPPED"
 
+    def test_running_service_with_type_10_substring_collision(self, monkeypatch):
+        """Reviewer P1 regression guard: TYPE : 10 不能被旧 substring 解析误判 STOPPED.
+
+        旧实现 ``": 1" in stdout`` 在此输入返 STOPPED (TYPE 行包含 ": 10"). 新按行
+        实现先 split STATE 行再判 ": 4", 不被 TYPE 行污染.
+        """
+        sc_stdout = (
+            "SERVICE_NAME: foo\n"
+            "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+            "        STATE              : 4  RUNNING\n"
+        )
+        proc = self._mk_popen(0, sc_stdout)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
+        r = query_service_state("foo")
+        assert r.running is True, "TYPE : 10 子串不应触发 STOPPED 误判"
+        assert r.state_text == "RUNNING"
+
     def test_unknown_state_paused(self, monkeypatch):
-        # State paused (3) — not RUNNING/STOPPED, fallback to UNKNOWN
-        sc_stdout = "SERVICE_NAME: foo\n        STATE              : 7  PAUSED\n"
-        cp = self._mk_completed_process(0, sc_stdout)
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp)
+        # State paused (7) — not RUNNING/STOPPED, fallback to UNKNOWN
+        sc_stdout = (
+            "SERVICE_NAME: foo\n"
+            "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+            "        STATE              : 7  PAUSED\n"
+        )
+        proc = self._mk_popen(0, sc_stdout)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
+        r = query_service_state("foo")
+        assert r.running is False
+        assert r.state_text.startswith("UNKNOWN")
+
+    def test_no_state_line_at_all(self, monkeypatch):
+        """完全没 STATE 行 (sc 输出异常 / unexpected format) — 兜底 UNKNOWN."""
+        sc_stdout = "SERVICE_NAME: foo\n        TYPE               : 10  WIN32_OWN_PROCESS\n"
+        proc = self._mk_popen(0, sc_stdout)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
         r = query_service_state("foo")
         assert r.running is False
         assert r.state_text.startswith("UNKNOWN")
 
     def test_nonzero_returncode_unknown_service(self, monkeypatch):
-        cp = self._mk_completed_process(
-            1060, "", "FAILED 1060: The specified service does not exist"
-        )
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp)
+        proc = self._mk_popen(1060, "", "FAILED 1060: The specified service does not exist")
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
         r = query_service_state("does-not-exist")
         assert r.running is False
         assert r.state_text.startswith("ERROR: rc=1060")
 
-    def test_timeout(self, monkeypatch):
-        def _raise(*a, **kw):
-            raise subprocess.TimeoutExpired(cmd="sc query", timeout=SC_QUERY_TIMEOUT_SECONDS)
-
-        monkeypatch.setattr(subprocess, "run", _raise)
+    def test_timeout_kills_child(self, monkeypatch):
+        """Reviewer P2 fix verify: 超时必须调 proc.kill() 防 sc.exe orphan."""
+        proc = self._mk_popen(0, "", "", timeout=True)
+        kill_called = []
+        proc.kill.side_effect = lambda: kill_called.append(True)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: proc)
         r = query_service_state("foo")
         assert r.running is False
         assert "timeout" in r.state_text
+        assert kill_called == [True], "Popen.kill 必须被调以防止 sc.exe orphan"
 
     def test_oserror(self, monkeypatch):
         def _raise(*a, **kw):
             raise FileNotFoundError("sc.exe not on PATH")
 
-        monkeypatch.setattr(subprocess, "run", _raise)
+        monkeypatch.setattr(subprocess, "Popen", _raise)
         r = query_service_state("foo")
         assert r.running is False
         assert "ERROR:" in r.state_text
@@ -186,14 +238,24 @@ class TestCheckBeatHeartbeat:
 # ═════════════════════════════════════════════════════════════════
 
 
+def _make_running_popen():
+    """Helper: 真实 sc query RUNNING 输出格式 (含 TYPE 行) Popen mock."""
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.communicate.return_value = (
+        "SERVICE_NAME: foo\n"
+        "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+        "        STATE              : 4  RUNNING\n"
+        "        WIN32_EXIT_CODE    : 0  (0x0)\n",
+        "",
+    )
+    return proc
+
+
 class TestBuildReport:
     def test_all_ok(self, monkeypatch, tmp_path):
-        # 4 services RUNNING
-        cp_running = MagicMock()
-        cp_running.returncode = 0
-        cp_running.stdout = "STATE              : 4  RUNNING"
-        cp_running.stderr = ""
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp_running)
+        # 4 services RUNNING (真实 sc 输出格式 含 TYPE 行)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _make_running_popen())
 
         # Beat fresh
         beat_file = tmp_path / "celerybeat-schedule.dat"
@@ -207,17 +269,26 @@ class TestBuildReport:
             assert svc.running
 
     def test_one_service_stopped(self, monkeypatch, tmp_path):
-        def _fake_run(args, **_):
-            cp = MagicMock()
-            cp.returncode = 0
-            cp.stderr = ""
+        def _fake_popen(args, **_):
+            proc = MagicMock()
+            proc.returncode = 0
             if "QuantMind-CeleryBeat" in args:
-                cp.stdout = "STATE              : 1  STOPPED"
+                proc.communicate.return_value = (
+                    "SERVICE_NAME: QuantMind-CeleryBeat\n"
+                    "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+                    "        STATE              : 1  STOPPED\n",
+                    "",
+                )
             else:
-                cp.stdout = "STATE              : 4  RUNNING"
-            return cp
+                proc.communicate.return_value = (
+                    "SERVICE_NAME: foo\n"
+                    "        TYPE               : 10  WIN32_OWN_PROCESS\n"
+                    "        STATE              : 4  RUNNING\n",
+                    "",
+                )
+            return proc
 
-        monkeypatch.setattr(subprocess, "run", _fake_run)
+        monkeypatch.setattr(subprocess, "Popen", _fake_popen)
         beat_file = tmp_path / "celerybeat-schedule.dat"
         beat_file.write_bytes(b"x")
         monkeypatch.setattr("services_healthcheck.BEAT_SCHEDULE_FILE", beat_file)
@@ -226,11 +297,7 @@ class TestBuildReport:
         assert any("QuantMind-CeleryBeat" in f for f in r.failures)
 
     def test_beat_stale_only(self, monkeypatch, tmp_path):
-        cp_running = MagicMock()
-        cp_running.returncode = 0
-        cp_running.stdout = "STATE              : 4  RUNNING"
-        cp_running.stderr = ""
-        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: cp_running)
+        monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: _make_running_popen())
 
         beat_file = tmp_path / "celerybeat-schedule.dat"
         beat_file.write_bytes(b"x")
@@ -334,6 +401,29 @@ class TestShouldAlert:
         send, reason = should_alert(r, state)
         assert send is True
         assert "unparseable" in reason
+
+    def test_naive_isoformat_treated_as_utc(self):
+        """python-reviewer P3 fix: 防御性 last_alert.replace(tzinfo=UTC) 路径覆盖.
+
+        正常运行时 update_state 写 ``datetime.now(UTC).isoformat()`` 永远带 +00:00,
+        本路径仅在状态文件被手工编辑或 cross-version 兼容场景触发. 必须保证不抛
+        TypeError (naive vs aware datetime 减法).
+        """
+        failures = ["service:a=STOPPED"]
+        r = self._mk_report(failures=failures)
+        # ISO 字符串无 tz 后缀 → fromisoformat 返 naive datetime → 走
+        # ``replace(tzinfo=UTC)`` 兜底路径 (services_healthcheck.py L362-363)
+        naive_iso = (datetime.now(UTC) - timedelta(minutes=30)).replace(tzinfo=None).isoformat()
+        assert "+" not in naive_iso, "test fixture must produce naive ISO"
+        state = {
+            "last_status": "degraded",
+            "last_failures": failures,
+            "last_alert_time": naive_iso,
+        }
+        # 30min ago (naive 视为 UTC) → 仍在 1h 窗口 → dedup
+        send, reason = should_alert(r, state)
+        assert send is False
+        assert "dedup" in reason
 
     def test_no_prior_alert_timestamp(self):
         r = self._mk_report(failures=["service:a=STOPPED"])
