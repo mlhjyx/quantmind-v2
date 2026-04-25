@@ -24,7 +24,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from .interface import Strategy, StrategyRegistry, StrategyStatus
+from .interface import RebalanceFreq, Strategy, StrategyRegistry, StrategyStatus
 
 if TYPE_CHECKING:
     import psycopg2.extensions
@@ -74,10 +74,16 @@ class DBStrategyRegistry(StrategyRegistry):
         sid = self._parse_uuid(strategy.strategy_id, "strategy_id")
         name = getattr(strategy, "name", None) or strategy.__class__.__name__
         factor_pool = list(strategy.factor_pool)
-        if not factor_pool:
+        # 铁律 13/14 例外 (Session 36 Sprint 5 sourced from MVP 3.2 batch 4 follow-up):
+        # event-driven 策略 (rebalance_freq=EVENT) 不依赖 factor_registry 因子, 而由 event
+        # source 提供 alpha (e.g. S2PEADEvent 直接消费 earnings_announcements.eps_surprise_pct).
+        # 此类策略 factor_pool=[] 是有意设计, MVP_3_2_strategy_framework.md §批 3 明确:
+        # "不依赖 DEPRECATED `pead_q1` ... 直接消费 earnings_announcements 原始数据".
+        # 仅 ranking/timing 类策略 (MONTHLY/WEEKLY/DAILY/QUARTERLY) 强制 factor_pool 非空.
+        if not factor_pool and strategy.rebalance_freq != RebalanceFreq.EVENT:
             raise ValueError(
                 f"Strategy {name} factor_pool is empty — "
-                "铁律 13/14 要求策略必依赖显式因子清单"
+                "铁律 13/14 要求 ranking/timing 策略必依赖显式因子清单 (event-driven 例外)"
             )
 
         # 序列化 Enum -> text

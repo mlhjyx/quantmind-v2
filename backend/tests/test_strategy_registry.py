@@ -122,13 +122,43 @@ def test_register_idempotent_upsert_no_audit_log_for_existing():
     assert cur.execute.call_count == 2
 
 
-def test_register_raises_on_empty_factor_pool():
+def test_register_raises_on_empty_factor_pool_for_ranking_strategy():
+    """铁律 13/14: ranking/timing 策略 (MONTHLY/WEEKLY/etc.) 必须显式 factor_pool."""
     sid = uuid4()
-    s = _FakeStrategy(strategy_id=str(sid), name="s1", factor_pool=[])
+    s = _FakeStrategy(
+        strategy_id=str(sid),
+        name="s1",
+        factor_pool=[],
+        rebalance_freq=RebalanceFreq.MONTHLY,
+    )
     factory = _make_mock_conn_factory()
     reg = DBStrategyRegistry(conn_factory=factory)
     with pytest.raises(ValueError, match="factor_pool is empty"):
         reg.register(s)
+
+
+def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
+    """铁律 13/14 例外: event-driven 策略由 event source (e.g. earnings_announcements)
+    提供 alpha, factor_pool=[] 是有意设计 (S2PEADEvent), 注册必须接受不抛.
+
+    Sprint 5 (Session 36) MVP 3.2 batch 4 follow-up: S2PEADEvent activation 实测发现
+    register() 拒空 factor_pool, fail-safe 回退 [S1]. 修 register() 加 EVENT 例外条款.
+    """
+    sid = uuid4()
+    s = _FakeStrategy(
+        strategy_id=str(sid),
+        name="s2_pead_event",
+        factor_pool=[],
+        rebalance_freq=RebalanceFreq.EVENT,
+    )
+    factory = _make_mock_conn_factory()
+    # SELECT 返 0 row (新 strategy) → INSERT 路径
+    factory._cursor.fetchone.return_value = None
+    reg = DBStrategyRegistry(conn_factory=factory)
+    reg.register(s)  # 不应抛 ValueError
+    cur = factory._cursor
+    # 验证 INSERT 实际执行 (SELECT + INSERT registry + INSERT audit)
+    assert cur.execute.call_count >= 2
 
 
 def test_register_raises_on_invalid_uuid():

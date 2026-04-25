@@ -85,11 +85,13 @@ def get_live_strategies_for_risk_check() -> list[Strategy]:
         # 首次 register (DB 空): INSERT status='live' (S1.status ClassVar) + status_log.
         registry.register(S1MonthlyRanking())
 
-        # TODO (Tuesday 4-28+ post-Monday observation): register S2PEADEvent() 激活
-        # dual-running. S2.status=DRY_RUN, get_live() filter 自动排除. 代码无改动仅
-        # uncomment 下 2 行 + 明日 Monday 观察干净后执行:
-        # from backend.engines.strategies.s2_pead_event import S2PEADEvent
-        # registry.register(S2PEADEvent())
+        # MVP 3.2 batch 4 follow-up (Session 36, 2026-04-25 Sprint 5 activation):
+        # 注册 S2PEADEvent 进 strategy_registry. S2.status=DRY_RUN, get_live() filter
+        # 自动排除 → 不影响 S1 信号生成 + 不触发真单. Monday 4-27 真生产 0 干扰.
+        # 升 LIVE 路径 (未来 Wave 3 后期或 MVP 3.2.1):
+        #   registry.update_status('a5b27c3f-8e94-4d1a-b0c7-e6f2a9b45d10', 'live', reason='...')
+        from backend.engines.strategies.s2_pead_event import S2PEADEvent
+        registry.register(S2PEADEvent())
 
         # 铁律 32: wiring 层 commit 关闭事务 (Service register 内部不 commit)
         conn.commit()
