@@ -166,8 +166,8 @@ def apply_adrs(adrs: list[ParsedADR], dry_run: bool) -> int:
         logger.info("[DRY-RUN] 跳过写 adr_records (%d 条)", len(adrs))
         return 0
     from app.services.db import get_sync_conn
-    from backend.platform.knowledge.interface import ADRRecord
-    from backend.platform.knowledge.registry import DBADRRegistry
+    from backend.qm_platform.knowledge.interface import ADRRecord
+    from backend.qm_platform.knowledge.registry import DBADRRegistry
 
     registry = DBADRRegistry(conn_factory=get_sync_conn)
     count = 0

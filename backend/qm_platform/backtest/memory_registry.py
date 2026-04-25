@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from backend.platform._types import BacktestMode
+from backend.qm_platform._types import BacktestMode
 
 from .interface import BacktestConfig, BacktestRegistry, BacktestResult
 

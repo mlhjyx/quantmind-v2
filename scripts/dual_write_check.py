@@ -133,7 +133,7 @@ def load_new_path(trade_date: date) -> pd.DataFrame:
     """
     # 延迟 import 避免 TUSHARE_TOKEN 缺失时模块级崩溃
     from app.data_fetcher.tushare_api import TushareAPI
-    from backend.platform.data.sources.tushare_source import (
+    from backend.qm_platform.data.sources.tushare_source import (
         KLINES_DAILY_DATA_CONTRACT,
         TushareDataSource,
     )

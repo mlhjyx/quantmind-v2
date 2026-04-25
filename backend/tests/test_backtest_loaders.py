@@ -1,6 +1,6 @@
 """MVP 2.3 Sub1 PR C1 · 内建 data_loader 参考实现单测.
 
-覆盖 `backend.platform.backtest.loaders`:
+覆盖 `backend.qm_platform.backtest.loaders`:
   - ParquetBaselineLoader: 3 文件齐 / benchmark 缺失 / factor 或 price 缺失 FileNotFoundError
   - BacktestCacheLoader: is_valid True / is_valid False → ValueError
 """
@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from backend.platform.backtest.interface import BacktestConfig
-from backend.platform.backtest.loaders import BacktestCacheLoader, ParquetBaselineLoader
+from backend.qm_platform.backtest.interface import BacktestConfig
+from backend.qm_platform.backtest.loaders import BacktestCacheLoader, ParquetBaselineLoader
 
 # ─── Fixtures ──────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ def test_backtest_cache_loader_returns_data_when_valid():
 
     loader = BacktestCacheLoader()
     # Patch module-level `_BacktestDataCache` alias (PR C1 review P1-a: patch where used).
-    with patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
+    with patch("backend.qm_platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
         factor_df, price_df, bench_df = loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
 
     assert factor_df is fake_factor
@@ -132,7 +132,7 @@ def test_backtest_cache_loader_raises_when_invalid():
 
     loader = BacktestCacheLoader()
     with (
-        patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache),
+        patch("backend.qm_platform.backtest.loaders._BacktestDataCache", return_value=mock_cache),
         pytest.raises(ValueError, match="BacktestDataCache invalid"),
     ):
         loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
@@ -152,7 +152,7 @@ def test_backtest_cache_loader_benchmark_optional():
     }
 
     loader = BacktestCacheLoader()
-    with patch("backend.platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
+    with patch("backend.qm_platform.backtest.loaders._BacktestDataCache", return_value=mock_cache):
         factor_df, price_df, bench_df = loader(_fake_config(), date(2021, 1, 1), date(2025, 12, 31))
 
     assert bench_df is None

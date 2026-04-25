@@ -28,7 +28,7 @@ if not settings.TUSHARE_TOKEN:
 
 from datetime import date, timedelta
 from app.data_fetcher.tushare_api import TushareAPI
-from backend.platform.data.sources.tushare_source import (
+from backend.qm_platform.data.sources.tushare_source import (
     TushareDataSource,
     KLINES_DAILY_DATA_CONTRACT,
 )

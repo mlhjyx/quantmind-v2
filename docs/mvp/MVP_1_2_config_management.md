@@ -149,7 +149,7 @@ API:
 
 | # | 项 | 实测 |
 |---|---|---|
-| 1 | `from backend.platform.config import ...` | 23 符号无 ImportError |
+| 1 | `from backend.qm_platform.config import ...` | 23 符号无 ImportError |
 | 2 | MVP 1.2 tests (schema + auditor + feature_flag) | **53 PASS** (0.30s) |
 | 3 | 老 `test_config_guard.py` (shim 等价) | **24 PASS** |
 | 4 | `test_platform_skeleton` (MVP 1.1 锚点) | **65 PASS** |

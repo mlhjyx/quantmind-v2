@@ -21,13 +21,13 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock
 
-from backend.platform.backtest.interface import (
+from backend.qm_platform.backtest.interface import (
     BacktestConfig,
     PMSConfig,
     SlippageConfig,
     UniverseFilter,
 )
-from backend.platform.backtest.runner import PlatformBacktestRunner
+from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
 
 def _make_config(**overrides) -> BacktestConfig:

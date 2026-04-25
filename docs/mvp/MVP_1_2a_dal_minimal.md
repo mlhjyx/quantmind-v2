@@ -68,7 +68,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
 ```python
 from backend.data.factor_cache import FactorCache
 from backend.app.services.db import get_sync_conn
-from backend.platform.data import PlatformDataAccessLayer
+from backend.qm_platform.data import PlatformDataAccessLayer
 
 dal = PlatformDataAccessLayer(conn_factory=get_sync_conn, factor_cache=FactorCache())
 ```
@@ -89,7 +89,7 @@ Platform 代码 0 处 import `backend.app.*` / `backend.data.*` (AST 扫描验�
 
 | # | 项 | 实测 |
 |---|---|---|
-| 1 | `from backend.platform.data import PlatformDataAccessLayer` | 无 ImportError |
+| 1 | `from backend.qm_platform.data import PlatformDataAccessLayer` | 无 ImportError |
 | 2 | `pytest test_platform_dal.py` | **21/21 PASS** (0.08s) |
 | 3 | MVP 1.1 锚点 (test_platform_skeleton) | **65/65 PASS** |
 | 4 | MVP 1.2 锚点 (schema+auditor+flag+guard) | **77/77 PASS** |

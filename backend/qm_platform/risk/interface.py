@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol
 
-from backend.platform._types import Severity
+from backend.qm_platform._types import Severity
 
 # ---------- Value Objects (frozen, 不可变) ----------
 

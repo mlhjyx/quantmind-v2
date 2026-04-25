@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
-from backend.platform.data.cache_coherency import (
+from backend.qm_platform.data.cache_coherency import (
     CacheCoherencyPolicy,
     MaxDateChecker,
     TTLGuard,

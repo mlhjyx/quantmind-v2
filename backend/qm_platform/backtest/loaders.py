@@ -13,7 +13,7 @@ bench_df)` callable. PR B 未提供参考实现, PR C1 补 2 个开箱即用 loa
   - 14 (engine 不做数据清洗) / 15 (config_hash 复现) / 31 (Platform 纯计算 — loader 不触 DB/HTTP)
 
 设计原则 (PR C1):
-  - Loader 不跨 Platform framework import (无 `backend.platform.data.*`), 避免触发
+  - Loader 不跨 Platform framework import (无 `backend.qm_platform.data.*`), 避免触发
     `test_frameworks_do_not_cross_import` 硬门.
   - Loader 只做数据装配 (Parquet → DataFrame), 不做 fallback, 不做单位转换
     (铁律 17 DataPipeline 统一管道). 文件缺失显式 FileNotFoundError raise.

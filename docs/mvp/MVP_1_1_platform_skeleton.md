@@ -13,7 +13,7 @@
 
 1. 建立 `backend/platform/` 包结构, 作为 QuantMind Core Platform (QCP) 的代码根
 2. 定义 **12 个 Framework** 的对外接口 (Python ABC), 签名 + docstring
-3. 实现 Platform SDK 统一导出面 (`from backend.platform import *`)
+3. 实现 Platform SDK 统一导出面 (`from backend.qm_platform import *`)
 4. 单测验证 import 通过 + 接口调用 raise NotImplementedError + 严格隔离老代码
 5. 不动任何老代码, 不影响 PT
 
@@ -87,7 +87,7 @@ backend/tests/
 
 | # | 项 | 期望 | 实测 |
 |---|---|---|---|
-| 1 | `from backend.platform import *` | 无 ImportError | ✅ 67 符号全导出 |
+| 1 | `from backend.qm_platform import *` | 无 ImportError | ✅ 67 符号全导出 |
 | 2 | `pytest backend/tests/test_platform_skeleton.py` | PASS | ✅ **65 passed in 0.15s** |
 | 3 | `ruff check backend/platform/ backend/tests/test_platform_skeleton.py` | 0 violations | ✅ All checks passed |
 | 4 | 老代码 git diff | 为空 | ✅ `git status`: 只有 backend/platform/ + test 新增 |
@@ -123,11 +123,11 @@ backend/tests/
 ## 参考
 
 - **主蓝图**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` Part 1 (Platform/Application 分层) + Part 2 (12 Framework 设计) + Part 4 (MVP 拆分)
-- **决策**: `memory/project_platform_decisions.md` Q1 (包名 `backend.platform`)
+- **决策**: `memory/project_platform_decisions.md` Q1 (包名 `backend.qm_platform`)
 - **铁律**: `CLAUDE.md` §铁律 (全局 40 条, 本 MVP 关联 15/17/22/23/24/25/28/31/33/34/36/37/38/39/40)
 
 ## 变更记录
 
 - 2026-04-17 v1.0 初稿 (10 Framework, `backend/quantmind/platform/`)
-- 2026-04-18 **v1.1 对齐 Blueprint v1.4** — 升级到 **12 Framework** (+#11 Resource + #12 Backup & DR), 包名改为 `backend.platform` (platform_decisions Q1), SDK 导出 67 符号
+- 2026-04-18 **v1.1 对齐 Blueprint v1.4** — 升级到 **12 Framework** (+#11 Resource + #12 Backup & DR), 包名改为 `backend.qm_platform` (platform_decisions Q1), SDK 导出 67 符号
 - 2026-04-18 v1.1 实施完成 — 65 tests PASS, ruff clean, 老代码 0 改动

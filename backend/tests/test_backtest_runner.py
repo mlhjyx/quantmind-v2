@@ -23,9 +23,9 @@ from uuid import uuid4
 
 import pytest
 
-from backend.platform._types import BacktestMode
-from backend.platform.backtest.interface import BacktestConfig, BacktestResult
-from backend.platform.backtest.runner import PlatformBacktestRunner
+from backend.qm_platform._types import BacktestMode
+from backend.qm_platform.backtest.interface import BacktestConfig, BacktestResult
+from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
 # ─── Fixtures ──────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ def test_cache_miss_runs_engine():
     )
 
     with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
     ):
         result = runner.run(BacktestMode.QUICK_1Y, _make_config())
 
@@ -225,7 +225,7 @@ def test_live_pt_does_not_check_cache():
 
     registry.log_run.return_value = uuid4()
     with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
     ):
         runner.run(BacktestMode.LIVE_PT, _make_config())
 
@@ -327,7 +327,7 @@ def test_build_lineage_structure():
 
     # code 正确
     assert lineage.code.git_commit == "abc1234"
-    assert lineage.code.module == "backend.platform.backtest.runner"
+    assert lineage.code.module == "backend.qm_platform.backtest.runner"
 
     # params 含核心信息
     assert lineage.params["mode"] == "full_5y"
@@ -372,7 +372,7 @@ def test_run_end_to_end_mock_integration():
     )
 
     with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest",
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest",
         return_value=_fake_engine_result(),
     ) as mock_engine:
         result = runner.run(BacktestMode.FULL_5Y, _make_config())
@@ -437,7 +437,7 @@ def test_run_cache_miss_populates_engine_artifacts():
 
     fake_engine_result_obj = _fake_engine_result()
     with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest",
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest",
         return_value=fake_engine_result_obj,
     ):
         result = runner.run(BacktestMode.QUICK_1Y, _make_config())
@@ -569,7 +569,7 @@ def test_run_passes_signal_config_to_engine():
     cfg = _make_config(size_neutral_beta=0.50)  # 默认 fallback 应传 0.50 到 engine
     with (
         patch(
-            "backend.platform.backtest.runner.run_hybrid_backtest",
+            "backend.qm_platform.backtest.runner.run_hybrid_backtest",
             return_value=_fake_engine_result(),
         ) as mock_engine,
         _w.catch_warnings(),  # 本测试关注 kwargs 不关注 fallback UserWarning
@@ -612,7 +612,7 @@ def test_run_uses_injected_engine_config_builder_end_to_end():
 
     with (
         patch(
-            "backend.platform.backtest.runner.run_hybrid_backtest",
+            "backend.qm_platform.backtest.runner.run_hybrid_backtest",
             return_value=_fake_engine_result(),
         ) as mock_engine,
         _w.catch_warnings(),  # signal_config_builder=None 会 warn; 本测试 verify engine_config
@@ -657,7 +657,7 @@ def test_run_uses_both_builders_end_to_end():
 
     # 无需 catch_warnings — 2 builder 都注入 → fallback path 全 bypass, 无 UserWarning
     with patch(
-        "backend.platform.backtest.runner.run_hybrid_backtest",
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest",
         return_value=_fake_engine_result(),
     ) as mock_engine:
         runner.run(BacktestMode.FULL_5Y, _make_config())

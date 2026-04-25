@@ -10,9 +10,9 @@
 
 ### 1. `.venv/.../quantmind_v2_project_root.pth` (手建, 非 git)
 
-MVP 1.1b Shadow Fix 依赖此文件让 `from backend.platform.X` 作为 namespace package 可解析.
+MVP 1.1b Shadow Fix 依赖此文件让 `from backend.qm_platform.X` 作为 namespace package 可解析.
 **Session 12 (2026-04-19) 修正**: 必须**两行** — 项目根 + `backend/` — 因代码双 import 风格并存
-(`from app / engines / ...` 无前缀 + `from backend.platform / backend.app.X` 带前缀).
+(`from app / engines / ...` 无前缀 + `from backend.qm_platform / backend.app.X` 带前缀).
 
 **Windows (两行)**:
 ```powershell
@@ -26,7 +26,7 @@ D:\quantmind-v2\backend
 **验证**:
 ```bash
 .venv/Scripts/python.exe -c "
-import app; import backend.platform._types
+import app; import backend.qm_platform._types
 import alembic; assert 'site-packages' in alembic.__file__, f'alembic shadow! {alembic.__file__}'
 print('pth OK (alembic resolve:', alembic.__file__, ')')
 "
@@ -68,7 +68,7 @@ D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMin
 D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMind-QMTData.json --config=json
 ```
 
-**CWD 不是项目根 → 炸点**: stdlib `platform` 被 `backend/platform/` shadow, FastAPI/PT/Celery 重启即 `AttributeError: module 'platform' has no attribute 'system'`. QMTData 服务 CWD 保留 `backend/` 是例外 (它不 import numpy/uvicorn/celery, 无 shadow 风险).
+**CWD 注意 (历史 shadow 风险已根除 Session 36 PR-E1)**: 原 `backend/platform/` 命名 shadow stdlib `platform`, 在 multiprocessing.spawn 子进程触发 numpy import 失败. PR-E1 (Session 36 2026-04-25) 重命名为 `backend/qm_platform/` 永久消除根因. CWD 不再是炸点, 但建议仍按上面 servy json 配置项目根 CWD 以保 \`from backend.qm_platform.X\` namespace 解析稳定.
 
 ---
 
@@ -122,7 +122,7 @@ xtquant 是国金证券 miniQMT 的 Python SDK, **不在 PyPI**. 必须从 miniQ
 
 ```bash
 # 1. Python 路径 OK
-.venv/Scripts/python.exe -c "from backend.platform.data.access_layer import PlatformDataAccessLayer; print('import ok')"
+.venv/Scripts/python.exe -c "from backend.qm_platform.data.access_layer import PlatformDataAccessLayer; print('import ok')"
 
 # 2. 全 smoke 套件 (铁律 10b)
 .venv/Scripts/python.exe -m pytest backend/tests/smoke/ -m smoke -v

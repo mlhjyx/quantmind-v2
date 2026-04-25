@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 
 from backend.engines.strategies.s2_pead_event import S2PEADConfig, S2PEADEvent
-from backend.platform.strategy.interface import (
+from backend.qm_platform.strategy.interface import (
     RebalanceFreq,
     StrategyContext,
     StrategyStatus,
@@ -311,7 +311,7 @@ def test_config_max_concurrent_override():
 def test_validate_signals_passes_sell_regardless_of_universe():
     s2 = S2PEADEvent()
     ctx = _mk_ctx(universe=[])  # empty universe (已退市不在今日 universe)
-    from backend.platform._types import Signal
+    from backend.qm_platform._types import Signal
     sell = Signal(
         strategy_id=s2.strategy_id,
         code="600519.SH",
@@ -327,7 +327,7 @@ def test_validate_signals_passes_sell_regardless_of_universe():
 def test_validate_signals_filters_buy_not_in_universe():
     s2 = S2PEADEvent()
     ctx = _mk_ctx(universe=["600519.SH"])  # only 600519 valid
-    from backend.platform._types import Signal
+    from backend.qm_platform._types import Signal
     buy_valid = Signal(
         strategy_id=s2.strategy_id,
         code="600519.SH",

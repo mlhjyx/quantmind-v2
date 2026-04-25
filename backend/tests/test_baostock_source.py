@@ -12,8 +12,8 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from backend.platform.data.base_source import ContractViolation
-from backend.platform.data.sources.baostock_source import (
+from backend.qm_platform.data.base_source import ContractViolation
+from backend.qm_platform.data.sources.baostock_source import (
     MINUTE_BARS_DATA_CONTRACT,
     BaostockDataSource,
     _to_bs_code,

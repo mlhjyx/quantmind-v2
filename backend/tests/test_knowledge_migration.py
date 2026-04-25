@@ -16,7 +16,7 @@ def test_parse_frontmatter_yaml() -> None:
 
     text = """---
 adr_id: ADR-001
-title: Platform 包名 backend.platform
+title: Platform 包名 backend.qm_platform
 status: accepted
 related_ironlaws: [38, 22]
 recorded_at: 2026-04-17
@@ -28,7 +28,7 @@ Some context.
 
 ## Decision
 
-Use backend.platform.
+Use backend.qm_platform.
 
 ## Consequences
 
@@ -39,7 +39,7 @@ OK.
     assert meta["status"] == "accepted"
     assert meta["related_ironlaws"] == [38, 22]
     assert "## Context" in body
-    assert "backend.platform" in body
+    assert "backend.qm_platform" in body
 
 
 def test_extract_adr_section() -> None:

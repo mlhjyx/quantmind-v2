@@ -26,7 +26,7 @@ _SMOKE_CODE = """
 from datetime import date, timedelta
 
 from app.services.db import get_sync_conn
-from backend.platform.data.access_layer import (
+from backend.qm_platform.data.access_layer import (
     PlatformDataAccessLayer, UnsupportedTable,
 )
 

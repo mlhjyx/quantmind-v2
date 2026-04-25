@@ -7,8 +7,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from backend.platform.data.base_source import BaseDataSource, ContractViolation
-from backend.platform.data.interface import DataContract
+from backend.qm_platform.data.base_source import BaseDataSource, ContractViolation
+from backend.qm_platform.data.interface import DataContract
 
 # ---------- Fixtures ----------
 

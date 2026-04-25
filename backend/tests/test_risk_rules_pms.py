@@ -14,9 +14,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from backend.platform._types import Severity
-from backend.platform.risk.interface import Position, RiskContext
-from backend.platform.risk.rules.pms import PMSRule, PMSThreshold
+from backend.qm_platform._types import Severity
+from backend.qm_platform.risk.interface import Position, RiskContext
+from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold
 
 
 def _make_context(positions: list[Position]) -> RiskContext:

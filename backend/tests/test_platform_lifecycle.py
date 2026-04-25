@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform.factor.interface import FactorStatus, TransitionDecision
-from backend.platform.factor.lifecycle import (
+from backend.qm_platform.factor.interface import FactorStatus, TransitionDecision
+from backend.qm_platform.factor.lifecycle import (
     CRITICAL_PERSISTENCE_DAYS,
     CRITICAL_RATIO,
     MIN_ABS_IC_MA60,
@@ -289,7 +289,7 @@ def test_import_lifecycle_no_engines_import() -> None:
     主 AST 扫描在 test_platform_skeleton::test_platform_strict_isolation 覆盖.
     本测试做运行时 smoke: 通过 __module__ 反查 lifecycle 依赖的符号来源.
     """
-    import backend.platform.factor.lifecycle as lc
+    import backend.qm_platform.factor.lifecycle as lc
 
     src_names = {v.__module__ for v in vars(lc).values() if hasattr(v, "__module__")}
     for mod in src_names:

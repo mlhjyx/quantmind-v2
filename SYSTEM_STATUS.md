@@ -98,7 +98,7 @@
 ### 4 主决策已定 (2026-04-17, 不重开讨论)
 
 见 `memory/project_platform_decisions.md`:
-1. Platform 包名: **`backend.platform`** (非 `quantmind.*` namespace, 项目不开源)
+1. Platform 包名: **`backend.qm_platform`** (非 `quantmind.*` namespace, 项目不开源)
 2. Wave 3 第 2 策略: **PEAD Event-driven** (+3 周前置 PIT/PMS v2/cost)
 3. Event Sourcing 存储: **StreamBus + PG** (配 outbox + snapshot + versioning)
 4. CI 平台: **3 层本地** (pre-commit + pre-push + daily full pytest)

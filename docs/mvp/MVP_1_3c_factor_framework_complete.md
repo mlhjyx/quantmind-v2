@@ -136,9 +136,9 @@ class PlatformLifecycleMonitor(FactorLifecycleMonitor):
 # 旧: _upsert_factor_registry 裸 INSERT INTO
 # 新: 走 DBFactorRegistry.register (G9+G10 自动)
 def _upsert_factor_registry(self, conn, factor_name, factor_expr, gate_result, ...) -> str:
-    from backend.platform.factor.interface import FactorSpec
-    from backend.platform.factor.registry import DBFactorRegistry, OnboardingBlocked
-    from backend.platform.data.access_layer import PlatformDataAccessLayer
+    from backend.qm_platform.factor.interface import FactorSpec
+    from backend.qm_platform.factor.registry import DBFactorRegistry, OnboardingBlocked
+    from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
 
     dal = PlatformDataAccessLayer(lambda: conn)  # 复用 Service 层传入 conn
     registry = DBFactorRegistry(dal)

@@ -43,7 +43,7 @@ from app.services.db import get_sync_conn
 from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
 if TYPE_CHECKING:
-    from backend.platform.strategy.interface import Strategy
+    from backend.qm_platform.strategy.interface import Strategy
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def get_live_strategies_for_risk_check() -> list[Strategy]:
     # S1MonthlyRanking 已在 module-top import (P3-B 采纳, 保 fail-safe 契约).
     conn = None
     try:
-        from backend.platform.strategy.registry import DBStrategyRegistry
+        from backend.qm_platform.strategy.registry import DBStrategyRegistry
 
         conn = get_sync_conn()
         # conn_factory 返 captured conn, 保证 register() 所有 cursor 操作共享同一事务

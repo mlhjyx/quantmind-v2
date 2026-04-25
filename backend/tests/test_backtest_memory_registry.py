@@ -18,9 +18,9 @@ from uuid import uuid4
 
 import pytest
 
-from backend.platform._types import BacktestMode
-from backend.platform.backtest.interface import BacktestConfig, BacktestResult
-from backend.platform.backtest.memory_registry import InMemoryBacktestRegistry
+from backend.qm_platform._types import BacktestMode
+from backend.qm_platform.backtest.interface import BacktestConfig, BacktestResult
+from backend.qm_platform.backtest.memory_registry import InMemoryBacktestRegistry
 
 # ─── Fixtures ──────────────────────────────────────────────
 

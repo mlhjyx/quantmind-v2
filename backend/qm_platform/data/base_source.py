@@ -4,7 +4,7 @@
 validation 逻辑由本类公共 helpers 处理 (DRY).
 
 关联 MVP 1.1:
-  - 继承 `backend.platform.data.interface.DataSource` (ABC)
+  - 继承 `backend.qm_platform.data.interface.DataSource` (ABC)
   - 返 `ValidationResult` (MVP 1.1 dataclass)
   - 消费 `DataContract` (MVP 1.1 dataclass)
 

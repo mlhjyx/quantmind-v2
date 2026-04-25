@@ -23,7 +23,7 @@
 ```
 D:\quantmind-v2
 ```
-该文件让 `backend` 作为 namespace package 可解析, `from backend.platform.X` 可用.
+该文件让 `backend` 作为 namespace package 可解析, `from backend.qm_platform.X` 可用.
 **新环境需手动创建** (或未来 pyproject.toml 后处理钩子自动建).
 
 ## 重新导入 (改完配置)

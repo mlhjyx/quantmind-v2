@@ -23,7 +23,7 @@ def test_platform_strategy_batch_1_imports_clean():
     code = (
         "import sys, platform as _stdlib_platform; "
         "_ = _stdlib_platform.python_implementation(); "
-        "from backend.platform.strategy import ("
+        "from backend.qm_platform.strategy import ("
         "  DBStrategyRegistry, EqualWeightAllocator, StrategyNotFound,"
         "  StrategyRegistryIntegrityError, RebalanceFreq, StrategyStatus"
         "); "

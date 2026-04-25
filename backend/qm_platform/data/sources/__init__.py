@@ -1,6 +1,6 @@
 """MVP 2.1b (Wave 2) — Concrete DataSource implementations.
 
-3 fetcher 继承 `backend.platform.data.base_source.BaseDataSource`, 只实现 `_fetch_raw`.
+3 fetcher 继承 `backend.qm_platform.data.base_source.BaseDataSource`, 只实现 `_fetch_raw`.
 老 `scripts/fetch_minute_bars.py` / `scripts/qmt_data_service.py` /
 `backend/app/data_fetcher/fetch_base_data.py` 在 dual-write 期保留, 直到 MVP 2.1c 收尾.
 

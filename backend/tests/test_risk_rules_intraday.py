@@ -16,9 +16,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform._types import Severity
-from backend.platform.risk import RiskContext
-from backend.platform.risk.rules.intraday import (
+from backend.qm_platform._types import Severity
+from backend.qm_platform.risk import RiskContext
+from backend.qm_platform.risk.rules.intraday import (
     IntradayPortfolioDrop3PctRule,
     IntradayPortfolioDrop5PctRule,
     IntradayPortfolioDrop8PctRule,

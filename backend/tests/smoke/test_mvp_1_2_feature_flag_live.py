@@ -30,7 +30,7 @@ def test_feature_flag_live_db_crud() -> None:
         "configure_logging()\n"
         "ok = bootstrap_platform_deps()\n"
         "assert ok is True, 'bootstrap failed'\n"
-        "from backend.platform.config.feature_flag import DBFeatureFlag, FlagNotFound\n"
+        "from backend.qm_platform.config.feature_flag import DBFeatureFlag, FlagNotFound\n"
         "from app.services.db import get_sync_conn\n"
         "flag = DBFeatureFlag(conn_factory=get_sync_conn)\n"
         "assert flag.is_enabled('use_db_direction') is True, 'use_db_direction not enabled'\n"

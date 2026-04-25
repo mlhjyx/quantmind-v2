@@ -72,7 +72,7 @@ def _get_conn():
 
 def cmd_list() -> None:
     """列 feature_flags 当前所有行."""
-    from backend.platform.config.feature_flag import DBFeatureFlag
+    from backend.qm_platform.config.feature_flag import DBFeatureFlag
 
     flag_db = DBFeatureFlag(_get_conn)
     rows = flag_db.list_all()
@@ -90,7 +90,7 @@ def cmd_list() -> None:
 
 def cmd_apply(dry_run: bool, disable: bool) -> None:
     """注册 MVP 1.3c flags. dry_run=True 时只打印不写 DB."""
-    from backend.platform.config.feature_flag import DBFeatureFlag
+    from backend.qm_platform.config.feature_flag import DBFeatureFlag
 
     if dry_run:
         logger.info("[DRY-RUN] 将注册 %d flags:", len(FLAGS_TO_REGISTER))

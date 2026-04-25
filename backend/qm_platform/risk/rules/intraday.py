@@ -20,7 +20,7 @@ import math
 from abc import abstractmethod
 from typing import Literal, Protocol
 
-from backend.platform._types import Severity
+from backend.qm_platform._types import Severity
 
 from ..interface import RiskContext, RiskRule, RuleResult
 

@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform.knowledge.interface import FailedDirectionRecord
-from backend.platform.knowledge.registry import (
+from backend.qm_platform.knowledge.interface import FailedDirectionRecord
+from backend.qm_platform.knowledge.registry import (
     DBFailedDirectionDB,
     WriteNotConfigured,
 )

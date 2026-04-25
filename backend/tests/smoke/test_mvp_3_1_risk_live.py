@@ -1,7 +1,7 @@
 """Smoke: MVP 3.1 批 1 Risk Framework 生产入口真启动验证 (铁律 10b).
 
 验证链路 (subprocess 隔离, 避母进程 import 污染):
-  1. `backend.platform.risk` (engine + interface + sources + rules) 可 import
+  1. `backend.qm_platform.risk` (engine + interface + sources + rules) 可 import
   2. `app.services.risk_wiring` 可 import (wiring 层 DI 契约)
   3. `app.tasks.daily_pipeline.risk_daily_check_task` Celery task 已注册
   4. `app.tasks.beat_schedule.risk-daily-check` schedule 已注册
@@ -37,7 +37,7 @@ def test_mvp_3_1_risk_framework_imports() -> None:
             "-c",
             (
                 # MVP 1.1b LL-052 shadow 修复: 预热 stdlib platform 入 sys.modules 再
-                # 添加 backend/ 到 sys.path. 否则 backend.platform 会劫持后续 pandas/structlog
+                # 添加 backend/ 到 sys.path. 否则 backend.qm_platform 会劫持后续 pandas/structlog
                 # 间接 `import platform` 调用 (AttributeError: python_implementation).
                 "import platform as _stdlib_platform; "
                 "_stdlib_platform.python_implementation(); "
@@ -45,12 +45,12 @@ def test_mvp_3_1_risk_framework_imports() -> None:
                 f"sys.path.insert(0, r'{project_root / 'backend'}'); "
                 f"sys.path.insert(0, r'{project_root}'); "
                 # 1. Platform risk 核心导出
-                "from backend.platform.risk import ("
+                "from backend.qm_platform.risk import ("
                 "PlatformRiskEngine, Position, PositionSource, "
                 "PositionSourceError, RiskContext, RiskRule, RuleResult"
                 "); "
-                "from backend.platform.risk.rules.pms import PMSRule, PMSThreshold; "
-                "from backend.platform.risk.sources import ("
+                "from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold; "
+                "from backend.qm_platform.risk.sources import ("
                 "QMTPositionSource, DBPositionSource"
                 "); "
                 # 2. App wiring 层

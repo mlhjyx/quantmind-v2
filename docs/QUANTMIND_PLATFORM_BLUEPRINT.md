@@ -123,7 +123,7 @@ Wave 4: MVP 4.1/4.2/4.3/4.4 并行           (4-6 周)
 ### 已决议不再讨论的 4+4 开放问题
 
 见 `memory/project_platform_decisions.md`. **不要重开讨论**:
-- Platform 包名 `backend.platform`
+- Platform 包名 `backend.qm_platform`
 - Wave 3 第 2 策略 PEAD (+ 2 周前置 PIT/cost H0-v2; v1.6 后"PMS v2" 已被 Risk Framework MVP 3.1 替代, 从前置移除)
 - Event Sourcing StreamBus+PG (+ outbox/snapshot/versioning)
 - CI 3 层本地 (pre-commit + pre-push regression + daily full)
@@ -264,7 +264,7 @@ Application → Platform SDK → Platform internals
 #### 红线 (不可违反)
 
 - **Platform 代码含 `if strategy_id == "S1"` / `if factor_name == "xxx"`** → 业务泄漏, 立即回滚
-- **Application 直接 `from backend.platform.data.interface import DataAccessLayer` + 自实现 subclass** → 绕开 Platform 控制, 拒绝合入
+- **Application 直接 `from backend.qm_platform.data.interface import DataAccessLayer` + 自实现 subclass** → 绕开 Platform 控制, 拒绝合入
 - **Platform Framework 相互 import** → 必须通过 Event Bus, 违反立即重构
 
 #### 不确定时的默认
@@ -328,7 +328,7 @@ from quantmind.platform import (
 
 #### Pattern A: 因子研究 Application (AI Agent 或人工研究)
 ```python
-from backend.platform import (
+from backend.qm_platform import (
     FactorRegistry, FactorOnboardingPipeline, EvaluationPipeline,
     BacktestRunner, BacktestMode, ExperimentRegistry, requires_resources, Priority,
 )
@@ -359,7 +359,7 @@ def research_new_factor(hypothesis: str, factor_spec: FactorSpec):
 
 #### Pattern B: AI 闭环 Idea Agent (V2.1 §4.2)
 ```python
-from backend.platform import FactorRegistry, FailedDirectionDB
+from backend.qm_platform import FactorRegistry, FailedDirectionDB
 
 class IdeaAgent:
     def generate_hypothesis(self, market_context: dict) -> Hypothesis:
@@ -374,7 +374,7 @@ class IdeaAgent:
 
 #### Pattern C: PaperTrading Application (当前 PT 重构后)
 ```python
-from backend.platform import (
+from backend.qm_platform import (
     Strategy, StrategyRegistry, SignalPipeline, OrderRouter,
     EventBus, MetricExporter, ConfigSchema,
 )
@@ -400,7 +400,7 @@ def daily_signal_task():
 
 #### Pattern D: GP Mining Application (当前 GP, AlphaZero 升级版)
 ```python
-from backend.platform import (
+from backend.qm_platform import (
     FactorRegistry, FactorOnboardingPipeline, EvaluationPipeline,
     requires_resources, Priority, ExperimentRegistry,
 )
@@ -910,7 +910,7 @@ class DisasterRecoveryRunner:
 **Application 使用示例:**
 ```python
 # Celery Beat 自动触发 (不需 Application 手动调)
-from backend.platform.backup import BackupManager
+from backend.qm_platform.backup import BackupManager
 
 mgr = BackupManager()
 result = mgr.full_backup(Path("D:/backups/pg_2026_04_17"))
@@ -1179,7 +1179,7 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
 
 - **问题**: MVP 1.3 Factor Framework 要回填 101 因子到 `factor_registry`, 要读 `factor_values.DISTINCT` — 但完整 Data Framework (#1) 在 Wave 2. 直接裸 SQL 违反铁律 17. 不提前做 DAL 就会死锁.
 - **范围**: 最小 Read-Only DAL:
-  - `backend.platform.data.DataAccessLayer` (read_factor / read_ohlc / read_registry)
+  - `backend.qm_platform.data.DataAccessLayer` (read_factor / read_ohlc / read_registry)
   - 只读路径, 不含 DataSource / DataContract 抽象 (留给 MVP 2.1)
   - FactorCache 接入 (已有, 不重写)
   - Write 路径继续用现有 `DataPipeline` (不改)
@@ -1332,7 +1332,7 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
   - **Offsite Replication**: 本地 NVMe → 外置 HDD / 云备份 (至少其一, 防本地灾难)
   - **Runbook**: `docs/SOP_DISASTER_RECOVERY.md` 对照实际流程更新 + 链入 Blueprint
   - **DR Drill**: 每季度一次演练, 确认 RTO 达标
-- **产物**: `backend.platform.backup` SDK + 自动化 + Runbook
+- **产物**: `backend.qm_platform.backup` SDK + 自动化 + Runbook
 - **验收**: 随机杀 PG 数据目录, 4h 内恢复完整 (含最近 6h 数据)
 - **耗时**: 1-2 周
 - **依赖**: 无 (可并行 4.1/4.2/4.3)
@@ -1515,14 +1515,14 @@ MVP 1.1 (Platform Skeleton)
 
 | # | 问题 | **决策** | 理由 |
 |---|---|---|---|
-| 1 | Platform 包名 | **`backend.platform`** | 不开源, 作 backend/app + backend/engines 平级, 零 import 路径改动, 避免 `quantmind` namespace 引入工程债 |
+| 1 | Platform 包名 | **`backend.qm_platform`** | 不开源, 作 backend/app + backend/engines 平级, 零 import 路径改动, 避免 `quantmind` namespace 引入工程债 |
 | 2 | Wave 3 第 2 策略 | **PEAD Event-driven** (+3 周前置) | 正交维度 (基本面+事件), 破 4 因子等权天花板 (Phase 3E-II 证伪). 前置必做: PIT bias 修复 / PMS v2 设计 / cost model H0-v2 验证 |
 | 3 | Event Sourcing 存储 | **StreamBus + PG** (配套 3 组件) | 不引 EventStoreDB. **必配**: outbox pattern (事务原子性) + snapshot policy (每月/每策略) + event versioning |
 | 4 | CI 平台 | **3 层本地** | Layer 1 pre-commit (ruff + 快测, <30s) / Layer 2 pre-push (regression_test max_diff=0) / Layer 3 每日 03:00 full pytest (Celery Beat). 不引 GitHub Actions |
 
 ### 副决策 (因修正引入)
 
-- **1a**: `backend.platform` vs `backend.core` → **`platform`** (明确定位)
+- **1a**: `backend.qm_platform` vs `backend.core` → **`platform`** (明确定位)
 - **2a**: PEAD 3 前置项 (PIT/PMS v2/cost) → **并行做**, 不是串行
 - **3a**: `event_outbox` 表保留多久 → **7 天** (消费完即清)
 - **4a**: Layer 3 full pytest 失败 → **告警但不 block PT** (避免告警→PT停摆死锁)
@@ -1534,7 +1534,7 @@ MVP 1.1 (Platform Skeleton)
 
 ### 对其他 Framework 设计的影响
 
-- **Framework #1 Data**: DAL 路径用 `backend.platform.data`
+- **Framework #1 Data**: DAL 路径用 `backend.qm_platform.data`
 - **Framework #3 Strategy**: 支持 event-driven 策略, 不只 monthly ranking (PEAD 是第一个非-ranking case)
 - **Framework #7 Observability**: CI Layer 3 告警走 MetricExporter
 - **Framework #9 Test & CI/CD**: 3 层防线规范写入 MVP 4.3
@@ -1703,7 +1703,7 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - 总体 18-23 周 → 19-24 周
   - 铁律 9 从"人工判断"升级为 ROF 代码强制
 - 2026-04-17 v1.2 用户决议 4 主 + 4 副 open questions (思维严谨复审后)
-  - **Q1 包名**: `quantmind.platform` ❌ → **`backend.platform`** (不开源, 平级 app/engines)
+  - **Q1 包名**: `quantmind.platform` ❌ → **`backend.qm_platform`** (不开源, 平级 app/engines)
   - **Q2 第 2 策略**: PEAD ✅ 但加 3 周前置 (PIT + PMS v2 + cost H0-v2)
   - **Q3 Event Sourcing**: StreamBus+PG ✅ 配套 outbox + snapshot + versioning
   - **Q4 CI**: 单层 pre-commit ❌ → **3 层防线** (pre-commit + pre-push regression + 每日 full pytest)

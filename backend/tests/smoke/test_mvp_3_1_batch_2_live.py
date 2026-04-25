@@ -1,7 +1,7 @@
 """Smoke: MVP 3.1 批 2 Intraday Risk Framework 生产入口真启动验证 (铁律 10b).
 
 验证链路 (subprocess 隔离, 避母进程 import 污染):
-  1. `backend.platform.risk.rules.intraday` 4 规则 + Protocol 可 import
+  1. `backend.qm_platform.risk.rules.intraday` 4 规则 + Protocol 可 import
   2. `app.services.risk_wiring` 批 2 扩展 (build_intraday_risk_engine / IntradayAlertDedup / _load_prev_close_nav) 可 import
   3. `app.tasks.daily_pipeline.intraday_risk_check_task` Celery task 已注册
   4. `app.tasks.beat_schedule.intraday-risk-check` schedule 已注册 (5min cron, hour=9-14, MoFr)
@@ -36,7 +36,7 @@ def test_mvp_3_1_batch_2_intraday_imports() -> None:
                 f"sys.path.insert(0, r'{project_root / 'backend'}'); "
                 f"sys.path.insert(0, r'{project_root}'); "
                 # 1. Platform intraday rules 核心导出
-                "from backend.platform.risk.rules.intraday import ("
+                "from backend.qm_platform.risk.rules.intraday import ("
                 "IntradayPortfolioDropRule, "
                 "IntradayPortfolioDrop3PctRule, "
                 "IntradayPortfolioDrop5PctRule, "

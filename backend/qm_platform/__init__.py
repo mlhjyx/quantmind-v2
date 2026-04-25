@@ -4,18 +4,18 @@ Applications (PT / GP / Research / AI 闭环 / Forex) 必须通过本 SDK 消费
 禁止 Application 跨 Framework import / 裸访问 Infrastructure.
 
 组织:
-  - Framework #1 Data         → backend.platform.data
-  - Framework #2 Factor       → backend.platform.factor
-  - Framework #3 Strategy     → backend.platform.strategy
-  - Framework #4 Eval         → backend.platform.eval
-  - Framework #5 Backtest     → backend.platform.backtest
-  - Framework #6 Signal/Exec  → backend.platform.signal
-  - Framework #7 Observability→ backend.platform.observability
-  - Framework #8 Config       → backend.platform.config
-  - Framework #9 CI/Test      → backend.platform.ci
-  - Framework #10 Knowledge   → backend.platform.knowledge
-  - Framework #11 Resource    → backend.platform.resource
-  - Framework #12 Backup & DR → backend.platform.backup
+  - Framework #1 Data         → backend.qm_platform.data
+  - Framework #2 Factor       → backend.qm_platform.factor
+  - Framework #3 Strategy     → backend.qm_platform.strategy
+  - Framework #4 Eval         → backend.qm_platform.eval
+  - Framework #5 Backtest     → backend.qm_platform.backtest
+  - Framework #6 Signal/Exec  → backend.qm_platform.signal
+  - Framework #7 Observability→ backend.qm_platform.observability
+  - Framework #8 Config       → backend.qm_platform.config
+  - Framework #9 CI/Test      → backend.qm_platform.ci
+  - Framework #10 Knowledge   → backend.qm_platform.knowledge
+  - Framework #11 Resource    → backend.qm_platform.resource
+  - Framework #12 Backup & DR → backend.qm_platform.backup
 
 详见 docs/QUANTMIND_PLATFORM_BLUEPRINT.md Part 2.
 

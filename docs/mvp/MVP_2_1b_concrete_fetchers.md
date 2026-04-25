@@ -134,7 +134,7 @@ CI 无网络时 baostock/tushare smoke 走 mark skip. QMT smoke 只在 Servy QMT
 - ✅ MVP 1.1 `DataContract` 9 张表 schema 已定义 (`backend/app/data_fetcher/contracts.py`)
 - ✅ MVP 1.1 `DataPipeline.ingest` 生产 work (铁律 17)
 - ✅ 3 老 fetcher 生产中 (BaseDataFetcher / fetch_minute_bars / QMTDataService)
-- ✅ Platform stdlib shadow 根治 (MVP 1.1b), 本 MVP 可 safely `import backend.platform.data.sources.*`
+- ✅ Platform stdlib shadow 根治 (MVP 1.1b), 本 MVP 可 safely `import backend.qm_platform.data.sources.*`
 - ✅ 铁律 10b pre-push hook 启用, 新 smoke 自动守门 (配 `git config core.hooksPath config/hooks`)
 
 ---
@@ -157,7 +157,7 @@ CI 无网络时 baostock/tushare smoke 走 mark skip. QMT smoke 只在 Servy QMT
 |---|---|---|---|
 | R1 | Tushare 重构破坏生产 PT (最大风险) | 中 | dual-write + regression max_diff=0 连续 3 次门槛, 失败回滚 commit 即可 |
 | R2 | `_check_value_ranges` 在 3 fetcher 分别 override 出现规则漂移 | 中 | ADR-006 附录记录每 fetcher 的 override 规则, 代码 review 对齐 |
-| R3 | QMT xtquant path shadow 复发 (backend.platform 组名问题) | 低 | MVP 1.1b 已根治 + smoke 守门, xtquant path `ensure_xtquant_path()` 用 append 非 insert |
+| R3 | QMT xtquant path shadow 复发 (backend.qm_platform 组名问题) | 低 | MVP 1.1b 已根治 + smoke 守门, xtquant path `ensure_xtquant_path()` 用 append 非 insert |
 | R4 | live smoke 在 CI/新机器环境因 token/网络 false negative | 中 | pytest.skip with 明确 env var check, CI 只跑不依赖外部 token 的 smoke |
 | R5 | 铁律 40 新增 fail (3 unit test 文件出错) | 低 | TDD: 先写 1 fetcher 跑通再写下一个, 每次 anchor pytest |
 | R6 | Contract dispatch logic 在 TushareDataSource 过度复杂 | 中 | D1 明确: contract.name str match, 3 内部 method, 不搞 registry pattern (YAGNI) |

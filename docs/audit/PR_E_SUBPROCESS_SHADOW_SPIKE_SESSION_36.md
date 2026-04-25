@@ -37,8 +37,8 @@ File "D:\quantmind-v2\backend\platform\__init__.py" line 33, in <module>
 - 跨进程 + 进程内一致
 
 **缺点**:
-- **Blast radius: 82 Python 文件** import `backend.platform`
-- 1 个边缘 case: `backend/tests/smoke/test_mvp_3_2_batch_1_live.py` 用 `from platform.` (相对导入, 应纠正为 `from backend.platform.`)
+- **Blast radius: 82 Python 文件** import `backend.qm_platform`
+- 1 个边缘 case: `backend/tests/smoke/test_mvp_3_2_batch_1_live.py` 用 `from platform.` (相对导入, 应纠正为 `from backend.qm_platform.`)
 - 还需更新: `pyproject.toml` 包路径 / `.venv/Lib/site-packages/quantmind.pth` (.pth 文件指向 backend, 重命名 sub-package 不影响 .pth 但需验证)
 - Migration risk: 漏改某处 → ImportError
 
@@ -82,7 +82,7 @@ File "D:\quantmind-v2\backend\platform\__init__.py" line 33, in <module>
    ```
 3. **PR 阶段**: 如果 POC pytest 通过 (新 baseline ≤ 5 fail), 提交 PR-E1 with 完整 diff
 4. **Reviewer 阶段**: 至少 2 reviewer (code + python), 关注:
-   - import 路径 100% 覆盖 (无残留 `backend.platform` 字符串)
+   - import 路径 100% 覆盖 (无残留 `backend.qm_platform` 字符串)
    - .pth 文件 / pyproject.toml 包路径配置
    - worktree 测试 + 主 repo regression 测试
 5. **Merge + 监控阶段**: GP weekly Sun 22:00 应改产生真 mined factor (而非 silent fail)

@@ -161,11 +161,11 @@ def test_fallback_on_integrity_error(caplog):
     conn.rollback = MagicMock()
     conn.close = MagicMock()
 
-    from backend.platform.strategy.registry import StrategyRegistryIntegrityError
+    from backend.qm_platform.strategy.registry import StrategyRegistryIntegrityError
 
     with patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn), \
         patch(
-            "backend.platform.strategy.registry.DBStrategyRegistry.get_live",
+            "backend.qm_platform.strategy.registry.DBStrategyRegistry.get_live",
             side_effect=StrategyRegistryIntegrityError("cache miss"),
         ), \
         caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"):

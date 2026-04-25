@@ -294,9 +294,9 @@ class FactorOnboardingService:
             OnboardingBlocked: G9/G10 失败 (hypothesis 占位 / AST 太近似).
                 调用方 (Celery onboarding_task) 负责记录到 approval_queue 审计.
         """
-        from backend.platform.data.access_layer import PlatformDataAccessLayer
-        from backend.platform.factor.interface import FactorSpec
-        from backend.platform.factor.registry import (
+        from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
+        from backend.qm_platform.factor.interface import FactorSpec
+        from backend.qm_platform.factor.registry import (
             DBFactorRegistry,
             DuplicateFactor,
         )

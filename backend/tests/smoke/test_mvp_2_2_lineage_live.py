@@ -29,7 +29,7 @@ import pandas as pd
 from app.data_fetcher.contracts import FACTOR_VALUES
 from app.data_fetcher.pipeline import DataPipeline
 from app.services.db import get_sync_conn
-from backend.platform.data.lineage import (
+from backend.qm_platform.data.lineage import (
     CodeRef,
     Lineage,
     LineageRef,

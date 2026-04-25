@@ -537,7 +537,7 @@ def get_rebalance_dates(
     # conn 参数保留向后兼容 (30+ 调用方签名不变), 但本函数内部改由 DAL 管理连接.
     del conn
     from app.services.price_utils import _get_sync_conn
-    from backend.platform.data.access_layer import PlatformDataAccessLayer
+    from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
 
     dal = PlatformDataAccessLayer(
         conn_factory=_get_sync_conn, paramstyle="%s",

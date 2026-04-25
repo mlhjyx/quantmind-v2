@@ -21,9 +21,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.platform._types import Severity
-from backend.platform.risk import RiskContext
-from backend.platform.risk.rules.circuit_breaker import CircuitBreakerRule
+from backend.qm_platform._types import Severity
+from backend.qm_platform.risk import RiskContext
+from backend.qm_platform.risk.rules.circuit_breaker import CircuitBreakerRule
 
 
 def _make_context(strategy_id: str = "strat_a", execution_mode: str = "paper") -> RiskContext:
@@ -99,7 +99,7 @@ class TestEscalateTransitions:
         # reviewer P3-2 采纳 (python) 后 adapter 用 module-level import
         # `_check_cb_sync`, patch target 改 adapter 本地引用 (not 源 module).
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result_fixture,
         ):
             results = rule.evaluate(_make_context())
@@ -147,7 +147,7 @@ class TestRecoverTransitions:
         # reviewer P3-2 采纳 (python) 后 adapter 用 module-level import
         # `_check_cb_sync`, patch target 改 adapter 本地引用 (not 源 module).
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result_fixture,
         ):
             results = rule.evaluate(_make_context())
@@ -182,7 +182,7 @@ class TestNoChange:
                       "position_multiplier": 1.0, "recovery_info": ""},
         )
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             assert rule.evaluate(_make_context()) == []
@@ -195,7 +195,7 @@ class TestNoChange:
                       "position_multiplier": 0.5, "recovery_info": "streak 2 days"},
         )
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             assert rule.evaluate(_make_context()) == []
@@ -218,7 +218,7 @@ class TestSeverityMapping:
                       "position_multiplier": 0.0, "recovery_info": ""},
         )
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             result = rule.evaluate(_make_context())[0]
@@ -233,7 +233,7 @@ class TestSeverityMapping:
                       "position_multiplier": 1.0, "recovery_info": "5d streak"},
         )
         with patch(
-            "backend.platform.risk.rules.circuit_breaker._check_cb_sync",
+            "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
             return_value=cb_result,
         ):
             result = rule.evaluate(_make_context())[0]
@@ -392,7 +392,7 @@ class TestSeverityNumericMonotonic:
 
     def test_severity_numeric_monotonic(self):
         """P0 < P1 < P2 (严重 → 不严重), 值随 severity 递增."""
-        from backend.platform.risk.rules.circuit_breaker import _SEVERITY_NUMERIC
+        from backend.qm_platform.risk.rules.circuit_breaker import _SEVERITY_NUMERIC
 
         assert _SEVERITY_NUMERIC[Severity.P0] < _SEVERITY_NUMERIC[Severity.P1]
         assert _SEVERITY_NUMERIC[Severity.P1] < _SEVERITY_NUMERIC[Severity.P2]

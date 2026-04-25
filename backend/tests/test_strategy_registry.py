@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from backend.platform.strategy import (
+from backend.qm_platform.strategy import (
     DBStrategyRegistry,
     EqualWeightAllocator,
     RebalanceFreq,
