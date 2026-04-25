@@ -29,7 +29,7 @@ T 日 (每日)
 09:00-14:55 [CB] intraday-risk-check → risk Framework 批 2 (MVP 3.1, Mon-Fri */5 9-14, 72 trigger/日)
 09:35  [TS] QuantMind_IntradayMonitor → intraday_monitor.py (每5min 09:35-15:00)
 14:30  [CB] risk-daily-check       → daily_pipeline 14:30 (MVP 3.1 批 1+3, PMSRule + CircuitBreakerRule)
-15:40  [TS] QuantMind_DailyReconciliation → daily_reconciliation.py (⚠️ ps1 写 15:10 live 是 15:40, 见 Known #2)
+15:40  [TS] QuantMind_DailyReconciliation → daily_reconciliation.py (Session 36 PR-DRECON: ps1 align 15:40)
 16:25  [TS] QM-HealthCheck         → health_check.py
 16:30  [TS] QuantMind_DailySignal  → run_paper_trading.py signal
 17:30  [TS] QuantMind_DailyMoneyflow → pull_moneyflow.py (Session 24 shift 16:35→17:30)
@@ -129,14 +129,10 @@ Logon 触发
    - 阻塞项: Stage 4.2 独立评估门 (含 dry-run + 首日监控计划)
    - 目标 Session: Session 35+ 评估, 非紧急
 
-2. **QuantMind_DailyReconciliation 时间漂移 ps1=15:10 vs live=15:40 (30 min)**
-   - ps1 `$reconTrigger = New-ScheduledTaskTrigger -Daily -At "15:10"` (L232)
-   - CLAUDE.md L16 调度链路: "15:10对账"
-   - Task Scheduler live NextRun: 2026/4/25 15:40:00
-   - 根因推测: 某次 Session 手工 `schtasks /change` 未同步 ps1 (无 session handoff 记录)
-   - 影响: ps1 rerun 会 reset 回 15:10, 手工 15:40 配置会丢失
-   - 建议: 实测 15:40 工作正常且对 T+0 settlement 延迟更合理 → 更新 ps1 + CLAUDE.md 对齐 15:40
-   - 工作量: 小 PR (setup_task_scheduler.ps1 + CLAUDE.md 2 处 diff)
+2. ~~**QuantMind_DailyReconciliation 时间漂移 ps1=15:10 vs live=15:40 (30 min)**~~ **✅ RESOLVED (Session 36 PR-DRECON 2026-04-25)**
+   - **触发**: Session 36 16:21 `setup_task_scheduler.ps1` rerun (注册 ServicesHealthCheck) 无意 reset live 回 15:10, 暴露漂移
+   - **修复**: ps1 L13/24/137/234/240 + CLAUDE.md L16 + 本文件全部统一 15:40 (T+0 settlement 延迟更合理)
+   - **后续**: 用户/admin rerun `setup_task_scheduler.ps1` (live 已被 PR 之前的 16:21 ps1 reset 回 15:10, 需再 rerun 才能 align 到新 15:40)
 
 3. ~~**QM-PTDailySummary + QuantMind_PTAudit 同 17:35 时段重复**~~ **✅ RECLASSIFIED + FIX DEPLOYED (Session 32 PR #67 2026-04-24)**
    - **实测根因**: 不是"重复", 是 `pt_daily_summary.py` 自 2026-04-16 delivery 起 **8 天 silent-fail** (17:35 LastResult=1 循环), 铁律 10b **MVP 1.1b Shadow Fix 遗漏**:
