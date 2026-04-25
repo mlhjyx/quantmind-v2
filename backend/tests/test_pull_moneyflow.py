@@ -117,6 +117,56 @@ class TestCheckTradingDay:
         assert "RuntimeError" in captured.err
         assert "DB not reachable" in captured.err
 
+    def test_target_date_param_used_instead_of_today(self, monkeypatch):
+        """LL-076: target_date 参数传入时, SELECT 用该日期而非 today (周末手工 backfill 不被误 skip).
+
+        Session 36 末: 修 main() 从 args.start 解析 check_date 传入, 防 周末跑
+        `--start 20260424` 被 today (Saturday=non-trading) silent skip. schtask
+        daily auto run 不传 --start 仍走 today 语义不变.
+        """
+        from datetime import date as _date
+
+        captured_args: list = []
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (True,)
+
+        def _capture_execute(sql, params):
+            captured_args.append(params)
+
+        mock_cursor.execute.side_effect = _capture_execute
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value.__exit__.return_value = False
+        monkeypatch.setattr(pmf, "_get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(pmf, "_apply_statement_timeout", lambda c: None)
+
+        target = _date(2026, 4, 24)  # Friday — was being silent skipped 2026-04-25 Saturday
+        assert pmf._check_trading_day_or_skip(target_date=target) is True
+        # 验证 SELECT 实际用 target_date 不是 today
+        assert captured_args[-1] == (target,)
+
+    def test_target_date_default_none_uses_today(self, monkeypatch):
+        """LL-076 backward-compat: target_date=None (default) 仍走 today 语义."""
+        from datetime import date as _date
+
+        captured_args: list = []
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (True,)
+
+        def _capture_execute(sql, params):
+            captured_args.append(params)
+
+        mock_cursor.execute.side_effect = _capture_execute
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_conn.cursor.return_value.__exit__.return_value = False
+        monkeypatch.setattr(pmf, "_get_sync_conn", lambda: mock_conn)
+        monkeypatch.setattr(pmf, "_apply_statement_timeout", lambda c: None)
+
+        assert pmf._check_trading_day_or_skip() is True  # 不传 target_date
+        # 验证 SELECT 用 today
+        assert captured_args[-1] == (_date.today(),)
+
 
 class TestMainBootProbe:
     """铁律 43-c: main() 首行 boot stderr probe."""
@@ -124,7 +174,7 @@ class TestMainBootProbe:
     def test_boot_probe_to_stderr(self, monkeypatch, capsys):
         """main() 无论后续成败, boot probe 必写 stderr 含 pid + timestamp."""
         # 让 _check_trading_day_or_skip 返 False 使 main 尽早退出, 只验 boot probe.
-        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: False)
+        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda target_date=None: False)
         monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py"])
 
         rc = pmf.main()
@@ -141,7 +191,7 @@ class TestMainExitOnException:
 
     def test_exit_2_on_run_exception(self, monkeypatch, capsys):
         """_run raise → main 捕获 + FATAL + return 2 (schtask LastResult=2 告警)."""
-        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: True)
+        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda target_date=None: True)
 
         def _boom(args):  # 接 args (reviewer python-P2 采纳 _run(args) 签名)
             raise ValueError("pipeline broken")
@@ -159,7 +209,7 @@ class TestMainExitOnException:
 
     def test_exit_0_on_non_trading_day(self, monkeypatch, capsys):
         """非交易日 → main 返 0 + 打印跳过消息 (不触发告警)."""
-        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: False)
+        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda target_date=None: False)
         monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py"])
 
         rc = pmf.main()
@@ -173,7 +223,7 @@ class TestMainExitOnException:
 
         Reviewer python-P2 采纳: _run 签名变 (args: argparse.Namespace).
         """
-        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda: True)
+        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda target_date=None: True)
         monkeypatch.setattr(pmf, "_run", lambda args: 0)
         monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py"])
 
