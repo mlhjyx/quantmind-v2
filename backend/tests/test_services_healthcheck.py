@@ -42,6 +42,7 @@ from services_healthcheck import (  # noqa: E402
     BeatHeartbeatCheck,
     HealthReport,
     ServiceCheck,
+    _to_cst_display,
     build_report,
     check_beat_heartbeat,
     load_state,
@@ -52,6 +53,50 @@ from services_healthcheck import (  # noqa: E402
     should_alert,
     update_state,
 )
+
+
+# ═════════════════════════════════════════════════════════════════
+# _to_cst_display — 铁律 41 时区展示层 (Session 36 末 user 反馈)
+# ═════════════════════════════════════════════════════════════════
+
+class TestToCstDisplay:
+    """_to_cst_display: UTC ISO → Asia/Shanghai 展示格式 (LL-074 钉钉告警友好化)."""
+
+    def test_utc_to_cst_8h_offset(self):
+        """UTC 14:45 → CST 22:45 (UTC+8)."""
+        utc_iso = "2026-04-25T14:45:02.315821+00:00"
+        cst = _to_cst_display(utc_iso)
+        assert cst == "2026-04-25 22:45:02 CST"
+
+    def test_utc_midnight_to_cst_8am_next_day(self):
+        """UTC 2026-04-26T00:00 → CST 2026-04-26 08:00 (跨日检查)."""
+        utc_iso = "2026-04-26T00:00:00+00:00"
+        cst = _to_cst_display(utc_iso)
+        assert cst == "2026-04-26 08:00:00 CST"
+
+    def test_utc_late_pm_crosses_to_next_day_cst(self):
+        """UTC 2026-04-25T20:30 → CST 2026-04-26 04:30 (跨日)."""
+        utc_iso = "2026-04-25T20:30:00+00:00"
+        cst = _to_cst_display(utc_iso)
+        assert cst == "2026-04-26 04:30:00 CST"
+
+    def test_naive_iso_treated_as_utc(self):
+        """无 tz suffix 的 ISO 字符串按 UTC 处理 (fail-safe)."""
+        cst = _to_cst_display("2026-04-25T14:45:02")
+        assert cst == "2026-04-25 22:45:02 CST"
+
+    def test_none_returns_na(self):
+        """None 输入 → 'N/A' (不抛异常, 防 alert 完全 broken)."""
+        assert _to_cst_display(None) == "N/A"
+
+    def test_empty_string_returns_na(self):
+        """空字符串 → 'N/A'."""
+        assert _to_cst_display("") == "N/A"
+
+    def test_invalid_format_returns_raw_fallback(self):
+        """invalid ISO format → 返原始字符串 (fallback 不抛, 防 alert broken)."""
+        garbage = "not-an-iso-string"
+        assert _to_cst_display(garbage) == garbage
 
 # ═════════════════════════════════════════════════════════════════
 # query_service_state — sc query stdout parse
