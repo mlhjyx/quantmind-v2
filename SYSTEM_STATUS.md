@@ -670,7 +670,7 @@ run_paper_trading.py
 | QM-SmokeTest | **Disabled** | 00:05 | 冒烟测试(已禁用) |
 | QuantMind_CancelStaleOrders | Ready | 09:05 | QMT撤单 |
 | QuantMind_DailyBackup | Ready | 02:00 | 🟡 与QM-DailyBackup重复 |
-| QuantMind_DailyExecute | Ready | 09:31 | QMT执行 |
+| QuantMind_DailyExecute | **Disabled** | 09:31 | QMT live执行 (Session 10 P0-α 后暂停, Session 36 PR-DEXEC governance 修复 ps1 silent 复活, 等 Stage 4.2 评估 reenable, 见 SCHEDULING_LAYOUT.md Known #1) |
 | QuantMind_DailyExecuteAfterData | **Disabled** | 17:05 | SimBroker执行(已禁用) |
 | QuantMind_DailyMoneyflow | Ready | 17:30 | moneyflow拉取 (Session 24 shift 16:35→17:30, tushare 延迟实测) |
 | QuantMind_DailyReconciliation | Ready | 15:40 | 收盘对账 (Session 36 PR-DRECON align) |
