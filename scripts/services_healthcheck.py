@@ -61,13 +61,20 @@ import subprocess
 import sys
 import traceback
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # 铁律 41: 内部存储 UTC, 展示层转 Asia/Shanghai. 用于 DingTalk 告警显示.
-_CST_TZ = ZoneInfo("Asia/Shanghai")
+# PR #91 reviewer LOW 采纳: Windows 系统 IANA tz 数据缺失时 ZoneInfo 会 raise
+# ZoneInfoNotFoundError 在 module load 时炸. 兜底改用 fixed UTC+8 offset (Asia/Shanghai
+# 全年无 DST, fixed offset 等价于 ZoneInfo 数据). 防 future 部署 Windows 无 tzdata
+# pip install (LL-074 健康监控不可在依赖 tzdata 上 hang 整脚本).
+try:
+    _CST_TZ: Any = ZoneInfo("Asia/Shanghai")
+except ZoneInfoNotFoundError:
+    _CST_TZ = timezone(timedelta(hours=8), name="CST")  # fixed UTC+8 fallback
 
 
 def _to_cst_display(utc_iso: str | None) -> str:
