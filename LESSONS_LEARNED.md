@@ -2001,3 +2001,120 @@ LL-074 已提候选铁律 44, LL-077 是同模式补强证据. Session 37+ 1 次
 - 22:49 Beat 恢复 PID 35040, schedule.dat 24s fresh ✓
 - 候选铁律 44 (LL-074 已提) 同模式补强
 - worker restart 协议加 SCHEDULING_LAYOUT.md / RUNBOOK 更新 (Session 37+)
+
+---
+
+## LL-078: TimescaleDB hypertable 不支持 CREATE INDEX CONCURRENTLY (Session 36 末加时, 2026-04-25 23:53)
+
+### 现象
+
+Saturday 23:53 跑 `CREATE INDEX CONCURRENTLY idx_fv_factor_date ON public.factor_values (factor_name, trade_date)` (factor_values 是 TimescaleDB hypertable) 立刻报错:
+
+```
+ERROR:  hypertables do not support concurrent index creation
+```
+
+### 根因
+
+TimescaleDB hypertable 通过 chunk fanout 管理 152 子表, CONCURRENTLY 在 PG 层是单表 lock-free 算法, 不能跨 chunk 协调. TimescaleDB 文档明确不支持.
+
+### 教训
+
+**TimescaleDB hypertable 索引创建只能 plain CREATE INDEX**, 接受 chunk-level 锁 (写入新 chunk 不阻塞, 但 backfill/UPDATE 旧 chunk 期间会等). 实测 152 chunks × 200M 行 plain CREATE INDEX 单 worker ~30-60 min, 多 PG worker 并行可缩短.
+
+### 应用规则
+
+- TimescaleDB 表上索引变更必须 schedule 到 **写入低峰窗** (Saturday 凌晨 / Sunday 凌晨)
+- 不能依赖 CONCURRENTLY 来"在线"加索引
+- 替代: TimescaleDB 14+ 有 `CREATE INDEX ... ON ONLY` 单 chunk 模式 (高级用法)
+
+### 持久化
+
+- 本 LL 条目 (LL-078)
+- 后续: 检查 timescaledb 升级是否支持 CONCURRENTLY (官方未来 roadmap)
+
+---
+
+## LL-079: pg_ctl restart 不刷新 Windows Service 状态 — Servy 依赖 PostgreSQL16 启动失败 (Session 36 末加时, 2026-04-26 00:00)
+
+### 现象
+
+Saturday 23:38 用 `pg_ctl restart -D D:\pgdata16` 重启 PG (升 shared_buffers 8GB), 之后 Servy `start QuantMind-FastAPI` 报 `Failed to start service`.
+
+### 根因
+
+PG 安装为 Windows Service `PostgreSQL16`, 但 `pg_ctl restart`是 PG 命令层操作, **不通过 Windows Service Control Manager**. 结果:
+- `postgres.exe` 进程实际运行 (psql 连得通, port 5432 active)
+- Windows Service `PostgreSQL16` 状态显示 **Stopped** (SCM 视角)
+
+Servy `QuantMind-FastAPI` 配置 `ServiceDependencies: Redis; PostgreSQL16` — Servy 在启动 FastAPI 前**通过 Windows SCM 检查依赖服务 Running**. SCM 看 PG=Stopped → 依赖检查失败 → FastAPI 启不起来.
+
+### 教训
+
+**PG (Windows Service 模式) 必须通过 Windows Service 启停**, 不能用 pg_ctl. 错误用 pg_ctl 后修复:
+
+```powershell
+# 1. 停 standalone PG
+pg_ctl stop -D D:\pgdata16 -m fast
+
+# 2. 启 Windows Service (会自动加载 postgresql.auto.conf 含 shared_buffers=8GB)
+Start-Service PostgreSQL16
+
+# 3. 验证
+Get-Service PostgreSQL16   # 应 Running
+psql -c "SHOW shared_buffers"  # 应反映新值
+```
+
+### 应用规则
+
+- PG 改 shared_buffers (需 restart) 必走 `Stop-Service PostgreSQL16; Start-Service PostgreSQL16` (PowerShell) 或 `sc stop/start PostgreSQL16` (CMD)
+- pg_ctl restart **仅用于** PG 非 Windows Service 模式 (开发/测试)
+- 维护脚本 (`sunday_pg_maintenance.ps1`) 必更新此协议
+
+### 持久化
+
+- 本 LL 条目 (LL-079)
+- `scripts/maintenance/sunday_pg_maintenance.ps1` 改用 Stop-Service/Start-Service (Session 37+ 修正)
+- LL-074 / LL-077 同模式延伸: Servy 依赖链 + Windows Service 状态分裂坑
+
+---
+
+## LL-080: drop covering 索引前必看 EXPLAIN 真实查询 — pg_stat_user_indexes idx_scan 数字误导 (Session 36 末加时, 2026-04-26 00:00)
+
+### 现象
+
+Saturday 23:50 实测 `idx_fv_factor_date_covering` 5y idx_scan=10K (vs idx_fv_date_factor 506M), 判定"极度浪费"立即 DROP. DB 263→218 GB ✅. 但 Q2 (1 因子 1 年 bulk SELECT) 从 2.35s → 5.5s **regression 2.3x slower**.
+
+### 根因
+
+EXPLAIN 实测发现 PG planner 对 Q2 模式 (`WHERE date BETWEEN AND factor_name = X`) 走 covering 不多 (idx_scan 数字小), 但**用了 idx_scan + index-only-scan 取列值**. drop covering 后 PG fallback 到 `idx_fv_date_factor` (序为 date,factor) Bitmap + Parallel Seq Scan filter — 慢 2-3x.
+
+`idx_scan` 字段只统计 **传统 Index Scan**, 不计 **Index-Only Scan** 全部 share. 因此单看 idx_scan 数字会低估 covering 价值.
+
+### 教训
+
+**drop 大索引前必跑生产代表性查询 EXPLAIN**, 不能只看 pg_stat_user_indexes idx_scan:
+
+```sql
+-- ❌ 误判工具
+SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname = '<idx>'
+
+-- ✅ 真实判断
+EXPLAIN (ANALYZE, BUFFERS) SELECT ... -- 各 production 查询模式跑一遍
+-- 看 plan 是否提到 <idx>, 是 Index Scan / Index-Only Scan / Bitmap?
+```
+
+### 应用规则
+
+- DROP 索引前 checklist:
+  - [ ] pg_stat_user_indexes idx_scan + idx_tup_read + idx_tup_fetch 全看
+  - [ ] EXPLAIN (ANALYZE, BUFFERS) 至少 5 个 production 查询模式
+  - [ ] 测试 DROP 后 plan 退化情况 (若 fallback 到 Seq Scan, 重建小索引补偿)
+- covering INCLUDE 索引特殊: 大但提供 index-only-scan, idx_scan 数字不反映其价值
+- 修复模式: drop 大 covering → CREATE INDEX (factor_name, trade_date) 无 INCLUDE → 通常 5-10x 小 + 80% 加速
+
+### 持久化
+
+- 本 LL 条目 (LL-080)
+- 实战修复: idx_fv_factor_date 重建中 (Saturday 23:56 启动, ~30-60 min)
+- 后续 PG 维护脚本 (`sunday_pg_vacuum.ps1` analyze phase) 加 EXPLAIN 模板
