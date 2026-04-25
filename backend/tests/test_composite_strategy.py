@@ -665,11 +665,27 @@ class TestCompositeDecisionCompleteness:
 
         assert "core告警" in decision.warnings
 
-    def test_satellites_logged_but_not_used(self, capsys) -> None:
-        """设置satellites时产生警告，但当前仅运行core+modifiers。"""
+    def test_satellites_logged_but_not_used(self, monkeypatch) -> None:
+        """设置satellites时产生警告，但当前仅运行core+modifiers。
+
+        FLAKY fix (Session 36): 原用 capsys 捕 structlog stdout 输出, 但 structlog
+        的 PrintLoggerFactory 配置可被 conftest/其他 test 全局重定向 (state leak,
+        本 test 单跑 PASS 全套 FAIL). 改用 monkeypatch spy logger.warning 直接观测,
+        不依赖 stdout 流配置.
+        """
+        from engines.strategies import composite as composite_mod
+
+        captured_warnings: list[str] = []
+        monkeypatch.setattr(
+            composite_mod.logger,
+            "warning",
+            lambda msg, *args, **kwargs: captured_warnings.append(msg),
+        )
+
         core = _make_mock_core()
         satellite = MagicMock()
-        # structlog输出到stdout/stderr，验证警告消息存在
         CompositeStrategy(core=core, satellites=[satellite])
-        captured = capsys.readouterr()
-        assert "satellites" in captured.out.lower() or "phase b" in captured.out.lower()
+
+        assert any(
+            "satellites" in w.lower() or "phase b" in w.lower() for w in captured_warnings
+        ), f"expected satellites/Phase B warning, captured: {captured_warnings}"
