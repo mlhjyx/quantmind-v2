@@ -527,6 +527,12 @@ class TestRegimeModifierFallback:
         mock_detector = MagicMock()
         mock_result = MagicMock()
         mock_result.state = "risk_on"
+        # PR-C2 (Session 36): production `regime_modifier.py:124` 返
+        # `result.scale, result.state, f"hmm({result.source})"`, line 93
+        # 用 `f"...{scale:.2f}..."` 格式化. MagicMock 默认 `__format__` 不支持 `.2f`
+        # → TypeError. 必须显式赋 float scale + str source.
+        mock_result.scale = 1.0
+        mock_result.source = "expanding"
         mock_detector.fit_predict.return_value = mock_result
         mock_hmm_cls.return_value = mock_detector
 
@@ -557,6 +563,9 @@ class TestRegimeModifierFallback:
         mock_detector = MagicMock()
         mock_result = MagicMock()
         mock_result.state = "risk_off"
+        # PR-C2 (Session 36): 同上 — 显式赋 float scale + str source.
+        mock_result.scale = 0.3
+        mock_result.source = "expanding"
         mock_detector.fit_predict.return_value = mock_result
         mock_hmm_cls.return_value = mock_detector
 
