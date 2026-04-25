@@ -15,7 +15,9 @@
 """
 from __future__ import annotations
 
-# Platform shadow fix: stdlib platform 必先 import 再加 scripts path
+# PR-E1 (Session 36 2026-04-25) 后包名 backend/platform/ 已重命名 qm_platform/,
+# 原 shadow 根因消除. 此 alias + python_implementation() probe 现仅守 hypothetical
+# `scripts/platform.py` 同名文件 shadow (该 dir 由 sys.path.insert(0,...) 加在前面).
 import platform as _stdlib_platform  # noqa: I001
 import sys
 from datetime import UTC, date, datetime

@@ -536,7 +536,7 @@ def pms_daily_check_task(self) -> dict:
        Celery Beat pms-daily-check 调度已停 (beat_schedule.py Session 21).
        本 task function 保留仅供参考, 手工触发 (task queue 直发) 仍能跑但**禁止**生产使用.
        新生产任务 = `daily_pipeline.risk_check` (走 PlatformRiskEngine + PMSRule).
-       并入 Wave 3 MVP 3.1 Risk Framework (backend/platform/risk/rules/pms.py).
+       并入 Wave 3 MVP 3.1 Risk Framework (backend/qm_platform/risk/rules/pms.py).
 
     14:30执行，检查所有持仓是否触发利润保护。
     非交易日自动跳过。
