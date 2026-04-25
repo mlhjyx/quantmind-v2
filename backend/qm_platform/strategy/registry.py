@@ -80,10 +80,13 @@ class DBStrategyRegistry(StrategyRegistry):
         # 此类策略 factor_pool=[] 是有意设计, MVP_3_2_strategy_framework.md §批 3 明确:
         # "不依赖 DEPRECATED `pead_q1` ... 直接消费 earnings_announcements 原始数据".
         # 仅 ranking/timing 类策略 (MONTHLY/WEEKLY/DAILY/QUARTERLY) 强制 factor_pool 非空.
+        # 注意 (PR #87 LOW reviewer): 仅 EVENT 例外, 不可扩至 MONTHLY/WEEKLY/DAILY/QUARTERLY,
+        # 防止 ranking 策略 typo 漏检 factor_pool 配置. 未来若新增 freq 值需重审本条款.
         if not factor_pool and strategy.rebalance_freq != RebalanceFreq.EVENT:
             raise ValueError(
                 f"Strategy {name} factor_pool is empty — "
-                "铁律 13/14 要求 ranking/timing 策略必依赖显式因子清单 (event-driven 例外)"
+                "铁律 13/14 要求 ranking/timing 策略必依赖显式因子清单. "
+                "仅 rebalance_freq=EVENT 且通过非 factor_registry 数据源提供 alpha 的策略可空."
             )
 
         # 序列化 Enum -> text
