@@ -16,6 +16,7 @@
 #   T日 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
 #   T日 18:15  QuantMind_IcRolling               ic_ma20/60 rolling 刷新 (Session 22 Part 8, Mon-Fri, factor_lifecycle 周五依赖)
 #   周日 04:00  QuantMind_MVP31SunsetMonitor      MVP 3.1 Sunset Gate A+B+C 周监控 (Session 32 wire, ADR-010 addendum Follow-up #5)
+#   每 15min   QuantMind_ServicesHealthCheck     4 Servy 服务 + CeleryBeat 心跳监控 (Session 35 wire, LL-074 fix)
 #
 # 废除历史:
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
@@ -469,6 +470,45 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_MVP31SunsetMonitor registered (weekly Sunday 04:00)" -ForegroundColor Green
 
+# ── 15. QuantMind_ServicesHealthCheck: 每 15min 24/7 (Session 35 — LL-074) ──
+# 4 Servy 服务 (FastAPI/Celery/CeleryBeat/QMTData) + celerybeat-schedule.dat
+# 心跳新鲜度 (10min stale 阈值) 监控. PT_Watchdog 1/日 (20:00) 检测频次远不够 —
+# Session 34 抓出 CeleryBeat 04-24 19:26 → 04-25 02:20 静默死亡 ~7h 0 logs 0 检测,
+# Monday 4-27 09:00 首次生产触发 + 14:30 risk-daily-check 全 missed 风险.
+# 本任务 1/15min = 96/日, 检测延迟 ≤ 15min, 钉钉 dedup 1h 防 spam.
+# 时段选择: 24/7 (含周末), Beat 凌晨死亡也要 15min 内告警, 不限交易日.
+# 不开 PG conn (核心设计): PG 挂时本脚本仍能告警, 不被 PG 拖死.
+# 脚本硬化: scripts/services_healthcheck.py (铁律 43:
+#   (a) N/A 无 PG conn (b) FileHandler delay=True (c) boot stderr probe
+#   (d) 顶层 try/except → exit 2). file-based dedup (logs/services_healthcheck_state.json).
+# exit code: 0=ok / 1=degraded(已发或 dedup) / 2=fatal (铁律 43 d)
+$svcAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\services_healthcheck.py" `
+    -WorkingDirectory $ProjectRoot
+
+# 起点 = 当前时间向后 1 小时取整 (next o'clock), Repetition 每 15min, 持续 indefinite
+$svcStartBoundary = (Get-Date).AddMinutes(15).Date.AddHours(((Get-Date).AddMinutes(15)).Hour + 1)
+$svcTrigger = New-ScheduledTaskTrigger -Once -At $svcStartBoundary `
+    -RepetitionInterval (New-TimeSpan -Minutes 15)
+
+$svcSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 2) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_ServicesHealthCheck" `
+    -Description "QuantMind V2: Servy 4 services + CeleryBeat heartbeat 15min monitor (Session 35, LL-074 fix)" `
+    -Action $svcAction `
+    -Trigger $svcTrigger `
+    -Settings $svcSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_ServicesHealthCheck registered (every 15min, 24/7)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete (15 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (16 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register; Session 35: +ServicesHealthCheck). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"
