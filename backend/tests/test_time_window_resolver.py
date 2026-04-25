@@ -9,7 +9,7 @@
     - _cst_today: 时区是否 Asia/Shanghai (1 test)
     - 模式优先级: --start 优先于 --lookback-days (1 test)
 
-总 17 tests.
+总 21 tests (reviewer code-reviewer P1.1 采纳: 跟实际数 21 对齐, 4+5+3+4+1+2+2 = 21).
 
 测试不依赖 DB / Redis / network — 纯逻辑单测 (铁律 31 Engine 纯计算同方向).
 """
@@ -104,6 +104,17 @@ class TestResolveCustomMode:
     def test_start_after_end_raises(self) -> None:
         args = _make_args(start="20260415", end="20260401")
         with pytest.raises(ValueError, match="start_date.*>.*end_date"):
+            TimeWindowResolver.resolve(args)
+
+    def test_empty_string_start_raises_not_silent_fallthrough(self) -> None:
+        """reviewer code-reviewer P0 采纳: args.start='' 应 raise (走 fail-loud) 而非
+        silent fall-through 到 lookback/default 模式 (违反铁律 33).
+
+        修复: `if args.start:` → `if args.start is not None:`. 空字符串现在进入
+        strptime 路径 → raise ValueError ('' 不是合法 YYYYMMDD).
+        """
+        args = _make_args(start="")
+        with pytest.raises(ValueError, match="--start.*格式错"):
             TimeWindowResolver.resolve(args)
 
 

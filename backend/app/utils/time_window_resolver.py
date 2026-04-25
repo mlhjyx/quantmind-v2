@@ -38,6 +38,10 @@ CST = ZoneInfo("Asia/Shanghai")
 
 ResolveMode = Literal["default", "lookback", "custom"]
 
+# reviewer code-reviewer P1.2 采纳 (2026-04-26): 显式 __all__ 标注 public API surface,
+# 防 phase 2 schtask scripts 误用 _cst_today 私有函数. 测试可绕 __all__ 直 import (Python 惯例 OK).
+__all__ = ["CST", "ResolveMode", "TimeWindow", "TimeWindowResolver"]
+
 
 @dataclass(frozen=True)
 class TimeWindow:
@@ -162,7 +166,10 @@ class TimeWindowResolver:
         today = _cst_today()
 
         # 模式 1: --start 显式指定 (custom)
-        if args.start:
+        # reviewer code-reviewer P0 采纳 (2026-04-26): `if args.start:` 会让 args.start=""
+        # 空字符串 silent fall-through 到 lookback/default 模式, 违反铁律 33 fail-loud.
+        # 改 `is not None` 后, 空字符串 → strptime raise ValueError (走 fail-loud 路径).
+        if args.start is not None:
             try:
                 start = datetime.strptime(args.start, "%Y%m%d").date()
             except ValueError as e:
