@@ -46,8 +46,6 @@ def _install_fake_factor_dsl() -> None:
                 return day_data["close"]  # 默认返回 close
 
         class _FakeFactorDSL:
-            # Session 35 PR-B: 实际 FactorDSL 方法名 from_string (非 parse).
-            # 见 docs/audit/PYTEST_BASELINE_DRIFT_SESSION_35_36.md.
             def from_string(self, expr: str) -> _FakeExprNode:
                 return _FakeExprNode()
 
@@ -890,7 +888,6 @@ class TestBoundaryConditions:
                 raise RuntimeError("DSL 计算失败")
 
         class _FailingFactorDSL:
-            # Session 35 PR-B: 同 _FakeFactorDSL, 实际方法名 from_string.
             def from_string(self, expr: str) -> _FailingExprNode:
                 return _FailingExprNode()
 

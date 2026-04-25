@@ -513,10 +513,7 @@ class FactorOnboardingService:
         from engines.mining.factor_dsl import FactorDSL  # type: ignore[import]
         from engines.neutralizer import FactorNeutralizer
 
-        # Session 35 PR-B fix: FactorDSL.parse() 不存在, 实际方法名为 from_string().
-        # Dormant bug: onboarding_tasks 不在 Beat schedule 故未触发, 但 4 unit test
-        # 长期 fail (test_factor_onboarding.py: TestNeutralizeWithIndustry x3 +
-        # TestBoundaryConditions x1). 详见 docs/audit/PYTEST_BASELINE_DRIFT_SESSION_35_36.md.
+        # FactorDSL public API is from_string(), not parse() — see factor_dsl.py:915.
         dsl = FactorDSL()
         expr_node = dsl.from_string(factor_expr)
         neutralizer = FactorNeutralizer()
