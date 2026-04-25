@@ -494,13 +494,20 @@ def test_d3_run_paper_trading_signals_update_stays_paper():
 
 
 def test_d2_run_paper_trading_prev_nav_parametric():
-    """run_paper_trading.py L225 prev_nav SELECT 不再 hardcoded 'paper' (re.DOTALL 支持多行)."""
+    """run_paper_trading.py prev_nav SELECT 不再 hardcoded 'paper' (re.DOTALL 支持多行).
+
+    PR-C CONTRACT_DRIFT 修: Session 21 PR #33 P1-c 二段根因修后, prev_nav SQL
+    在 ``execution_mode = %s`` 之后追加了 ``AND trade_date < %s`` (防 16:30
+    signal_phase 读到 15:40 reconciliation 当日 self), WHERE 子句变长 (注释 + 多行
+    格式化). regex 容许窗 100→500 字符匹配新 SQL.
+    """
     src = (_REPO / "scripts" / "run_paper_trading.py").read_text(encoding="utf-8")
-    # prev_nav 查询必须用 %s 参数化 (允许多行格式化)
+    # prev_nav 查询必须用 %s 参数化. 跨字符串拼接 (`"...series " "WHERE..."`)
+    # → SELECT 与 WHERE 之间会有 quote/whitespace/newline, 用 .{0,50}? 覆盖.
     assert re.search(
-        r"SELECT nav FROM performance_series\s+WHERE.{0,100}?execution_mode\s*=\s*%s",
+        r"SELECT nav FROM performance_series.{0,50}?WHERE.{0,500}?execution_mode\s*=\s*%s",
         src, re.DOTALL,
-    ), "D2 破契约: run_paper_trading L225 prev_nav 必须参数化 execution_mode=%s"
+    ), "D2 破契约: run_paper_trading prev_nav 必须参数化 execution_mode=%s"
 
 
 # ─── D4 SAST 守门: paper UI/分析工具保留 hardcoded 'paper' ──────────

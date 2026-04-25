@@ -177,40 +177,73 @@ class TestHealthCheck:
     """B6: health_check.py 逻辑测试。"""
 
     def test_health_check_all_pass(self):
-        """mock全部正常返回all_pass=True。"""
+        """mock全部正常返回all_pass=True.
+
+        PR-C CONTRACT_DRIFT 修 (audit §3.3): production health_check 自 baseline
+        新增 stock_status_ok / config_drift_ok / qmt_ok 3 检查项 + factor_nan
+        改用 fetchall 校验 CORE_FACTORS NULL 比例. 测试 mock 同步:
+        - fetchone side_effect 从 3 → 6 entries (data_fresh 2 + stock_status 3 +
+          factor_nan 1)
+        - fetchall 改返 (factor_name, total, null_cnt) 三元组, total=5000, null=0
+        - 新 patch check_qmt_connection / check_config_drift
+        """
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        # check_postgresql only calls execute("SELECT 1"), no fetchone
-        # data_freshness: fetchone for prev_trading_day, fetchone for max klines
-        # factor_nan: fetchone for max factor date
+        # 动态加载 CORE_FACTORS, 防 factor pool 演进锁死测试
+        from engines.signal_engine import PAPER_TRADING_CONFIG
+
+        core_factors = tuple(PAPER_TRADING_CONFIG.factor_names)
+
+        # fetchone 调用顺序 (run_health_check 执行序):
+        #   1. data_fresh.prev_trading_day
+        #   2. data_fresh.max_klines_date
+        #   3. stock_status.max_status_date
+        #   4. stock_status.prev_trading_day (== #3 → skip lag check)
+        #   5. stock_status.count (>= 4000)
+        #   6. factor_nan.latest_factor_date
+        td = date(2026, 3, 27)
         mock_cursor.fetchone.side_effect = [
-            (date(2026, 3, 27),),          # prev trading day
-            (date(2026, 3, 27),),          # max klines date
-            (date(2026, 3, 27),),          # max factor date
+            (td,),       # data_fresh: prev trading day
+            (td,),       # data_fresh: max klines date
+            (td,),       # stock_status: max_status_date
+            (td,),       # stock_status: prev_trading_day (equal → no lag)
+            (5000,),     # stock_status: count
+            (td,),       # factor_nan: latest_factor_date
         ]
+        # factor_nan 用 fetchall 取 (factor_name, total, null_cnt). null_cnt=0 → pass
         mock_cursor.fetchall.return_value = [
-            ("000001", "turnover_mean_20", 0.5),
-            ("000002", "volatility_20", -0.3),
+            (name, 5000, 0) for name in core_factors
         ]
 
         from scripts.health_check import run_health_check
         with patch("scripts.health_check.check_redis", return_value=(True, "OK")), \
              patch("scripts.health_check.check_celery", return_value=(True, "SKIP")), \
-             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")):
+             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")), \
+             patch(
+                 "scripts.health_check.check_qmt_connection",
+                 return_value=(True, "已连接, 总资产=0"),
+             ), \
+             patch(
+                 "scripts.health_check.check_config_drift",
+                 return_value=(True, "6 params aligned"),
+             ):
             results = run_health_check(
                 trade_date=date(2026, 3, 28),
                 conn=mock_conn,
                 write_db=False,
             )
 
-        assert results["all_pass"] is True
+        assert results["all_pass"] is True, f"all_pass=False, results={results}"
         assert results["postgresql_ok"] is True
         assert results["data_fresh"] is True
         assert results["factor_nan_ok"] is True
+        assert results["stock_status_ok"] is True
+        assert results["config_drift_ok"] is True
+        assert results["qmt_ok"] is True
 
     def test_health_check_pg_fail(self):
         """mock PG断连返回all_pass=False。"""
