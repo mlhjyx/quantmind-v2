@@ -48,7 +48,13 @@ def _get_price_limit(code: str, symbols_info: pd.DataFrame | None = None) -> flo
     """
     if symbols_info is not None and code in symbols_info.index:
         try:
-            pl = float(symbols_info.loc[code, "price_limit"])
+            raw = symbols_info.loc[code, "price_limit"]
+            # Guard duplicate-index lookup returning Series (reviewer MEDIUM):
+            # 若 symbols_info.index 有重复 code, .loc 返 Series 而非标量.
+            # 取首条 + 显式 float, 异常则 fallback. NaN 走 pl > 0 兜底.
+            if isinstance(raw, pd.Series):
+                raw = raw.iloc[0] if len(raw) else 0.0
+            pl = float(raw)
         except (KeyError, ValueError, TypeError):
             pl = 0.0
         if pl > 0:
