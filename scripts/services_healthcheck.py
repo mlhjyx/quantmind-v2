@@ -1,0 +1,541 @@
+"""ServicesHealthCheck — 4 Servy 服务 + CeleryBeat 心跳 15min 频次监控 (LL-074 fix).
+
+Session 34 (2026-04-25 02:20 UTC) 抓出 CeleryBeat 在 04-24 19:26 → 04-25 02:20
+**静默死亡 ~7h 0 stderr 0 Event 0 检测**, 若 Monday 4-27 09:00 首次生产触发前
+再次发生, MVP 3.1 Risk Framework intraday-risk-check `*/5 9-14 * * 1-5` 72/日 +
+risk-daily-check 14:30 全 missed → 真金 ¥1M 0 熔断保护.
+
+PT_Watchdog 1/日 (20:00) 检测频次远不够 (Beat 凌晨死亡 → 20:00 = 17h 静默 gap).
+
+## 检查项
+
+| # | 项目 | 阈值 | 失败行为 |
+|---|------|------|---------|
+| 1 | QuantMind-FastAPI 服务 | RUNNING | fail (告警) |
+| 2 | QuantMind-Celery 服务 | RUNNING | fail (告警) |
+| 3 | QuantMind-CeleryBeat 服务 | RUNNING | fail (P0 告警, 阻断 Risk Framework) |
+| 4 | QuantMind-QMTData 服务 | RUNNING | fail (告警) |
+| 5 | celerybeat-schedule.dat 心跳新鲜度 | ≤ 10min | fail (Beat zombie 进程未真跑 schedule) |
+
+## 调度 (LL-074 fix)
+
+- **schtask `QuantMind_ServicesHealthCheck`**: 每 15min, 24/7
+- 触发: `New-ScheduledTaskTrigger -Once + RepetitionInterval 15min RepetitionDuration unlimited`
+- 96 次/日, 每次 < 1s (subprocess + file stat), 0 PG conn 占用
+
+## 告警去重 (file-based, 不依赖 PG)
+
+- 状态文件: `logs/services_healthcheck_state.json`
+- 仅在 **状态转移 (ok→degraded) OR failures set 变化** 时发钉钉
+- 1h 内重复 failures 集合 silent (防 spam, schtask 96/日 × 钉钉无配额)
+- 注意: PG 挂时本脚本仍能告警 (核心 LL-074 修复价值)
+
+## Exit code (铁律 43 d)
+
+- 0: 全 ok
+- 1: warn (degraded 但 dedup window 内)
+- 2: error (top-level except OR fatal)
+
+## 关联铁律
+
+- 铁律 33 fail-loud: 顶层 except → stderr + exit 2 (silent_ok 仅 logger 兜底)
+- 铁律 42: scripts/** 必 PR (本 PR 走 LL-059 9 步闭环)
+- 铁律 43 (a) PG statement_timeout — **N/A** 本脚本不开 PG conn (核心设计: PG 挂时仍告警)
+  (b) FileHandler delay=True ✓
+  (c) boot stderr probe ✓
+  (d) main() 顶层 try/except → stderr + exit 2 ✓
+
+## LL-074
+
+CeleryBeat silent death 0 logs detection gap. 本脚本是 Monday 4-27 首次真生产触发
+前的最后一道防线 — 1h 内 SLA 检测窗口对比之前 17h.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import logging
+import os
+import subprocess
+import sys
+import traceback
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+# ─── sys.path + .env bootstrap (对齐 monitor_mvp_3_1_sunset.py PR #73 模式) ──
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+BACKEND_DIR = PROJECT_ROOT / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
+
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(BACKEND_DIR / ".env")
+
+# ─── Constants ──────────────────────────────────────────────────────────────
+
+SERVY_SERVICES: tuple[str, ...] = (
+    "QuantMind-FastAPI",
+    "QuantMind-Celery",
+    "QuantMind-CeleryBeat",
+    "QuantMind-QMTData",
+)
+
+# CeleryBeat PersistentScheduler dump file. 5min cycle 默认, 10min = 2x cycle 阈值.
+BEAT_SCHEDULE_FILE = PROJECT_ROOT / "celerybeat-schedule.dat"
+BEAT_HEARTBEAT_MAX_AGE_SECONDS = 10 * 60  # 10 min
+
+# 服务 state 文件 (告警 dedup, 1h 窗口)
+STATE_FILE = PROJECT_ROOT / "logs" / "services_healthcheck_state.json"
+DEDUP_WINDOW_SECONDS = 60 * 60  # 1h
+
+# 子进程超时 (sc query 通常 < 100ms, 5s 充裕)
+SC_QUERY_TIMEOUT_SECONDS = 5
+
+# 钉钉 category (匹配 monitor_mvp_3_1_sunset.py 模式, 留 future PG dedup hook)
+DINGTALK_CATEGORY = "services_healthcheck"
+
+# ─── Logger ─────────────────────────────────────────────────────────────────
+
+LOG_DIR = PROJECT_ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "services_healthcheck.log"
+
+# 铁律 43 b: FileHandler delay=True 防 Windows zombie 文件锁 (LL-068 pattern)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(LOG_FILE, encoding="utf-8", delay=True),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+
+# ─── Data classes ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class ServiceCheck:
+    """Single Servy service status (sc query output 解析)."""
+
+    name: str
+    running: bool
+    state_text: str  # "RUNNING" | "STOPPED" | "UNKNOWN" | "ERROR: <reason>"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class BeatHeartbeatCheck:
+    """CeleryBeat PersistentScheduler dump file freshness."""
+
+    file_exists: bool
+    age_seconds: float | None
+    last_write_iso: str | None
+    fresh: bool  # age <= BEAT_HEARTBEAT_MAX_AGE_SECONDS
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class HealthReport:
+    """聚合健康报告."""
+
+    timestamp_utc: str
+    services: list[ServiceCheck] = field(default_factory=list)
+    beat_heartbeat: BeatHeartbeatCheck | None = None
+    failures: list[str] = field(default_factory=list)
+
+    @property
+    def status(self) -> str:
+        return "ok" if not self.failures else "degraded"
+
+    def to_dict(self) -> dict[str, Any]:
+        d = {
+            "timestamp_utc": self.timestamp_utc,
+            "status": self.status,
+            "services": [s.to_dict() for s in self.services],
+            "beat_heartbeat": (self.beat_heartbeat.to_dict() if self.beat_heartbeat else None),
+            "failures": self.failures,
+        }
+        return d
+
+
+# ─── Service status check ──────────────────────────────────────────────────
+
+
+def query_service_state(name: str) -> ServiceCheck:
+    """调 Windows ``sc query <name>`` 解析服务状态.
+
+    Args:
+        name: Servy 服务名 (e.g., "QuantMind-CeleryBeat")
+
+    Returns:
+        ServiceCheck dataclass. ``running`` True 仅当 sc query 返 "STATE : 4 RUNNING".
+
+    Note:
+        - 不 raise: subprocess 失败 / timeout / 未安装均归类 ERROR (铁律 33 fail-loud
+          上层报告, 但本函数对单服务不阻断其他检查)
+        - 返回 state_text 包含原始 stdout 末段供 debug
+    """
+    try:
+        result = subprocess.run(
+            ["sc", "query", name],
+            capture_output=True,
+            text=True,
+            timeout=SC_QUERY_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return ServiceCheck(name=name, running=False, state_text="ERROR: sc query timeout")
+    except OSError as e:  # FileNotFoundError if sc.exe missing
+        return ServiceCheck(name=name, running=False, state_text=f"ERROR: {e}")
+
+    if result.returncode != 0:
+        # sc query exits non-zero if service unknown OR access denied
+        stderr_tail = (result.stderr or "").strip()[-100:] or "(empty stderr)"
+        return ServiceCheck(
+            name=name,
+            running=False,
+            state_text=f"ERROR: rc={result.returncode} stderr={stderr_tail}",
+        )
+
+    stdout = result.stdout or ""
+    # sc query 输出格式 (中英 Windows 不同, 但 STATE : 4 RUNNING 数字稳定):
+    #   STATE              : 4  RUNNING
+    #   STATE              : 1  STOPPED
+    if "STATE" in stdout and "RUNNING" in stdout and ": 4" in stdout:
+        return ServiceCheck(name=name, running=True, state_text="RUNNING")
+    if "STATE" in stdout and "STOPPED" in stdout and ": 1" in stdout:
+        return ServiceCheck(name=name, running=False, state_text="STOPPED")
+    # Pause / Start pending / etc.
+    return ServiceCheck(name=name, running=False, state_text=f"UNKNOWN: {stdout.strip()[-80:]}")
+
+
+# ─── Beat heartbeat check ──────────────────────────────────────────────────
+
+
+def check_beat_heartbeat() -> BeatHeartbeatCheck:
+    """检查 ``celerybeat-schedule.dat`` 文件 LastWriteTime 是否 < 10min stale.
+
+    PersistentScheduler 默认 5min cycle, 10min = 2x cycle 容忍 (Windows fs flush
+    + Beat 偶发 cycle 抖动). > 10min stale 视为 zombie/dead 进程, 即使服务 RUNNING.
+
+    Why dual check: Windows service 状态可能假阳性 — Beat 进程崩溃后 Servy 自动
+    restart 可能成功但 Beat scheduler thread 死锁不写 .dat 文件. 真正的 alive
+    判定需要 .dat freshness.
+
+    Returns:
+        BeatHeartbeatCheck. ``fresh`` False 即 Beat 实质死亡.
+    """
+    if not BEAT_SCHEDULE_FILE.exists():
+        return BeatHeartbeatCheck(
+            file_exists=False, age_seconds=None, last_write_iso=None, fresh=False
+        )
+
+    try:
+        stat = BEAT_SCHEDULE_FILE.stat()
+    except OSError as e:
+        logger.warning("无法 stat %s: %s", BEAT_SCHEDULE_FILE, e)
+        return BeatHeartbeatCheck(
+            file_exists=True, age_seconds=None, last_write_iso=None, fresh=False
+        )
+
+    last_write = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+    now = datetime.now(UTC)
+    age = (now - last_write).total_seconds()
+    return BeatHeartbeatCheck(
+        file_exists=True,
+        age_seconds=age,
+        last_write_iso=last_write.isoformat(),
+        fresh=age <= BEAT_HEARTBEAT_MAX_AGE_SECONDS,
+    )
+
+
+# ─── Report build ──────────────────────────────────────────────────────────
+
+
+def build_report() -> HealthReport:
+    """运行全部 checks 聚合 HealthReport."""
+    services = [query_service_state(name) for name in SERVY_SERVICES]
+    beat = check_beat_heartbeat()
+
+    failures: list[str] = []
+    for svc in services:
+        if not svc.running:
+            failures.append(f"service:{svc.name}={svc.state_text}")
+
+    if not beat.file_exists:
+        failures.append(f"beat:schedule.dat missing at {BEAT_SCHEDULE_FILE}")
+    elif not beat.fresh:
+        age_min = (beat.age_seconds or 0) / 60.0
+        failures.append(
+            f"beat:heartbeat stale {age_min:.1f}min "
+            f"(threshold {BEAT_HEARTBEAT_MAX_AGE_SECONDS / 60:.0f}min)"
+        )
+
+    return HealthReport(
+        timestamp_utc=datetime.now(UTC).isoformat(),
+        services=services,
+        beat_heartbeat=beat,
+        failures=failures,
+    )
+
+
+# ─── Dedup state ───────────────────────────────────────────────────────────
+
+
+def load_state() -> dict[str, Any]:
+    """读 state 文件. 不存在或损坏返 {}, 不 raise (首次 run 必须能跑)."""
+    if not STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("state 文件读取失败 (将视为首次 run): %s", e)
+        return {}
+
+
+def save_state(state: dict[str, Any]) -> None:
+    """写 state 文件. 失败仅 log warn 不 raise (告警是核心, dedup 是 nice-to-have)."""
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as e:
+        logger.warning("state 文件写入失败 (告警仍发, dedup 失效): %s", e)
+
+
+def should_alert(report: HealthReport, state: dict[str, Any]) -> tuple[bool, str]:
+    """判定是否发钉钉.
+
+    规则:
+    - 当前 ok: 不发. 但若上次是 degraded → 发 "recovery" 通知 (one-shot)
+    - 当前 degraded:
+      - 上次 ok → 发 (transition ok→degraded)
+      - 上次也 degraded:
+        - failures set 变化 → 发 (escalation/change)
+        - failures 相同:
+          - 距上次发送 > 1h → 发 (re-alert, 防首条 miss)
+          - 距上次 ≤ 1h → silent (dedup)
+
+    Returns:
+        (should_send, reason): bool + 触发原因 (用于 log + 钉钉 body context)
+    """
+    last_status = state.get("last_status")
+    last_failures = sorted(state.get("last_failures") or [])
+    last_alert_iso = state.get("last_alert_time")
+    current_failures = sorted(report.failures)
+
+    # Recovery transition
+    if report.status == "ok":
+        if last_status == "degraded":
+            return True, "recovery (degraded → ok)"
+        return False, "still ok"
+
+    # Currently degraded
+    if last_status != "degraded":
+        return True, "transition (ok → degraded)"
+
+    if current_failures != last_failures:
+        return True, "failures changed (escalation)"
+
+    # Same failures, check dedup window
+    if last_alert_iso is None:
+        return True, "no prior alert timestamp"
+
+    try:
+        last_alert = datetime.fromisoformat(last_alert_iso)
+    except ValueError:
+        return True, "prior alert timestamp unparseable"
+
+    if last_alert.tzinfo is None:
+        last_alert = last_alert.replace(tzinfo=UTC)
+
+    elapsed = (datetime.now(UTC) - last_alert).total_seconds()
+    if elapsed > DEDUP_WINDOW_SECONDS:
+        return True, f"re-alert after {elapsed / 60:.0f}min (>1h dedup window)"
+
+    return False, f"dedup ({elapsed / 60:.0f}min < 60min, same failures)"
+
+
+def update_state(report: HealthReport, sent_alert: bool) -> dict[str, Any]:
+    """构造下一次的 state dict (caller 调 save_state 持久化)."""
+    state: dict[str, Any] = {
+        "last_status": report.status,
+        "last_failures": list(report.failures),
+        "last_check_time": report.timestamp_utc,
+    }
+    if sent_alert:
+        state["last_alert_time"] = report.timestamp_utc
+    return state
+
+
+# ─── Alert ─────────────────────────────────────────────────────────────────
+
+
+def send_alert(report: HealthReport, reason: str) -> bool:
+    """发钉钉 P0 告警.
+
+    Returns:
+        True 钉钉返成功, False 失败 (但不 raise — 告警失败不阻断脚本退出码)
+    """
+    try:
+        from app.config import settings
+        from app.services.dispatchers.dingtalk import send_markdown_sync
+    except ImportError as e:
+        logger.error("无法导入钉钉模块: %s (可能 backend 未在 sys.path)", e)
+        return False
+
+    if not settings.DINGTALK_WEBHOOK_URL:
+        logger.warning("DINGTALK_WEBHOOK_URL 未配置, 仅 log 不发送")
+        return False
+
+    # 构造 markdown body
+    if report.status == "ok":
+        title = "✅ Services Recovered"
+        emoji = "✅"
+    else:
+        title = "🚨 Services Health DEGRADED (LL-074)"
+        emoji = "🚨"
+
+    services_lines = []
+    for svc in report.services:
+        ok_mark = "✅" if svc.running else "❌"
+        services_lines.append(f"- {ok_mark} **{svc.name}**: {svc.state_text}")
+
+    beat = report.beat_heartbeat
+    if beat:
+        if beat.fresh:
+            beat_line = (
+                f"- ✅ **CeleryBeat heartbeat**: "
+                f"{(beat.age_seconds or 0) / 60:.1f}min ago (last write: "
+                f"{beat.last_write_iso})"
+            )
+        elif not beat.file_exists:
+            beat_line = "- ❌ **CeleryBeat heartbeat**: schedule.dat MISSING"
+        else:
+            beat_line = (
+                f"- ❌ **CeleryBeat heartbeat**: STALE "
+                f"{(beat.age_seconds or 0) / 60:.1f}min "
+                f"(threshold {BEAT_HEARTBEAT_MAX_AGE_SECONDS / 60:.0f}min, "
+                f"last write: {beat.last_write_iso})"
+            )
+    else:
+        beat_line = "- ⚠️ **CeleryBeat heartbeat**: not checked"
+
+    failures_text = "\n".join(f"- {f}" for f in report.failures) if report.failures else "无"
+
+    content = (
+        f"## {emoji} {title}\n\n"
+        f"**触发原因**: {reason}\n\n"
+        f"**时间 (UTC)**: {report.timestamp_utc}\n\n"
+        f"### 服务状态\n{chr(10).join(services_lines)}\n\n"
+        f"### Beat 心跳\n{beat_line}\n\n"
+        f"### 失败项 ({len(report.failures)})\n{failures_text}\n\n"
+        f"> 来源: services_healthcheck (LL-074, Session 35)\n"
+        f"> Monday 4-27 首次生产触发前最后防线"
+    )
+
+    try:
+        ok = send_markdown_sync(
+            webhook_url=settings.DINGTALK_WEBHOOK_URL,
+            title=f"[P0] {title}",
+            content=content,
+            secret=settings.DINGTALK_SECRET,
+            keyword=settings.DINGTALK_KEYWORD,
+        )
+    except Exception as e:
+        logger.error("钉钉发送异常: %s", e)
+        return False
+
+    if ok:
+        logger.info("钉钉告警发送成功: %s", title)
+    else:
+        logger.warning("钉钉发送返回失败 (webhook 可能未配置或被限流)")
+    return bool(ok)
+
+
+# ─── Main flow ─────────────────────────────────────────────────────────────
+
+
+def _run() -> int:
+    """主 logic. 顶层 try/except 由 main() 包裹.
+
+    Returns:
+        0: ok
+        1: degraded but in dedup window (no alert sent)
+        2: degraded + alert sent (or fatal — covered by main())
+    """
+    logger.info("=" * 60)
+    logger.info("ServicesHealthCheck 启动 (LL-074, Session 35)")
+    logger.info("=" * 60)
+
+    report = build_report()
+
+    # Log report summary
+    logger.info("Status: %s", report.status)
+    for svc in report.services:
+        level = logging.INFO if svc.running else logging.ERROR
+        logger.log(level, "  %s: %s", svc.name, svc.state_text)
+    if report.beat_heartbeat:
+        b = report.beat_heartbeat
+        if b.file_exists and b.fresh:
+            logger.info("  Beat heartbeat: %.1fmin ago (fresh)", (b.age_seconds or 0) / 60)
+        elif b.file_exists:
+            logger.error("  Beat heartbeat: %.1fmin ago (STALE)", (b.age_seconds or 0) / 60)
+        else:
+            logger.error("  Beat heartbeat: schedule.dat MISSING")
+
+    state = load_state()
+    should_send, reason = should_alert(report, state)
+    logger.info("Alert decision: send=%s reason=%s", should_send, reason)
+
+    sent = False
+    if should_send:
+        sent = send_alert(report, reason)
+
+    new_state = update_state(report, sent_alert=sent)
+    save_state(new_state)
+
+    if report.status == "ok":
+        logger.info("ServicesHealthCheck: ALL OK")
+        return 0
+    if not should_send:
+        logger.warning("ServicesHealthCheck: DEGRADED (silent dedup): %s", report.failures)
+        return 1
+    logger.error("ServicesHealthCheck: DEGRADED + ALERTED: %s", report.failures)
+    return 1  # not 2: 2 is reserved for fatal exceptions (铁律 43 d)
+
+
+def main() -> int:
+    """CLI entrypoint. 铁律 43 (b)(c)(d):
+    - boot stderr probe (schtask 最早启动证据)
+    - 顶层 try/except → stderr FATAL + exit(2) 触发 schtask 钉钉告警链
+    """
+    print(
+        f"[services_healthcheck] boot {datetime.now().isoformat()} pid={os.getpid()}",
+        flush=True,
+        file=sys.stderr,
+    )
+    try:
+        return _run()
+    except Exception as e:
+        msg = f"[services_healthcheck] FATAL: {type(e).__name__}: {e}"
+        print(msg, flush=True, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # silent_ok: 最外层兜底, logger 可能未初始化成功
+        with contextlib.suppress(Exception):
+            logger.critical(msg, exc_info=True)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
