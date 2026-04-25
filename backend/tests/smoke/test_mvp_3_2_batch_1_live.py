@@ -1,7 +1,7 @@
 """MVP 3.2 Strategy Framework 批 1 — 铁律 10b subprocess smoke test.
 
 subprocess 从生产启动路径真启动, 验证:
-- `from platform.strategy import DBStrategyRegistry, EqualWeightAllocator` 不炸
+- `from backend.qm_platform.strategy import DBStrategyRegistry, EqualWeightAllocator` 不炸
 - DDL migration 幂等 (可重跑不报错)
 """
 from __future__ import annotations

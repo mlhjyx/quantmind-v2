@@ -3,8 +3,10 @@
 不 spawn uvicorn 服务器 (太重), 但以与生产相同的方式 (`CWD=project root, python -c
 'import app.main'`) 触发完整 import 链, 包括 uvicorn.main 的 stdlib `platform` 导入.
 
-今日 FastAPI 启动炸即在此处 — uvicorn.main:6 `import platform`, 命中 backend/platform/
-shadow, __init__.py 的 `from backend.qm_platform._types` 因 `backend` 非 package 崩.
+历史炸点 (Session 7 MVP 1.1b 期间, 此 smoke 加入触发因): uvicorn.main:6 `import platform`
+命中当时的 `backend/platform/` shadow → numpy partial-init AttributeError. PR-E1
+(Session 36 2026-04-25) 把 `backend/platform/` 重命名为 `backend/qm_platform/` 永久消
+除 shadow 根因, 本 smoke 现作为 regression guard.
 
 运行: `pytest backend/tests/smoke/test_fastapi_app_import.py -v -m smoke`
 """
@@ -47,9 +49,10 @@ def test_fastapi_app_imports_from_project_root() -> None:
 
 @pytest.mark.smoke
 def test_stdlib_platform_wins_over_backend_platform() -> None:
-    """subprocess 验证 stdlib `platform.system()` 可用, 不被 backend/platform shadow.
+    """subprocess 验证 stdlib `platform.system()` 可用, 不被任何子目录 shadow.
 
-    今日核心症状: `import platform; platform.system()` → AttributeError.
+    历史核心症状 (PR-E1 Session 36 修复前): `import platform; platform.system()` →
+    AttributeError 因 `backend/platform/` 包名与 stdlib 冲突. 现 regression guard.
     """
     result = subprocess.run(
         [

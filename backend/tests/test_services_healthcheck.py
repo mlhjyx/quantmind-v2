@@ -20,6 +20,9 @@
 from __future__ import annotations
 
 import json
+
+# PR-E1 后 backend/platform/ → qm_platform/, 根因消除. alias 现仅守 scripts/platform.py
+# 同名 shadow (sys.path.insert(0, ...) 把 scripts/ 加在前面所致).
 import platform as _stdlib_platform  # noqa: I001
 import subprocess
 import sys

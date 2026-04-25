@@ -11,7 +11,7 @@
      - daily_pipeline + api/pms 重复 publish 逻辑
 
    并入 **Wave 3 MVP 3.1 Risk Framework** 统一重构:
-     - 规则逻辑 (L1/L2/L3 阈值) 迁入 backend/platform/risk/rules/pms.py
+     - 规则逻辑 (L1/L2/L3 阈值) 迁入 backend/qm_platform/risk/rules/pms.py
      - 执行路径改走 PlatformRiskEngine._execute_sell 直调 broker
      - 输出统一 risk_event_log 单表
 
