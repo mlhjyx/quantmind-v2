@@ -188,9 +188,7 @@ class FactorOnboardingService:
 
         # ── Step 3: 加载行情数据, 计算因子值 ───────────────────────────
         end_date = date.today()
-        start_date = end_date - timedelta(
-            days=DEFAULT_LOOKBACK_YEARS * 365 + LOOKBACK_BUFFER_DAYS
-        )
+        start_date = end_date - timedelta(days=DEFAULT_LOOKBACK_YEARS * 365 + LOOKBACK_BUFFER_DAYS)
 
         market_data = self._load_market_data(conn, start_date, end_date)
         if market_data.empty:
@@ -330,9 +328,10 @@ class FactorOnboardingService:
         try:
             new_id = registry.register(spec)
             logger.info(
-                "factor_registry INSERT via Platform register: "
-                "factor_name=%s, id=%s, run_id=%s",
-                factor_name, new_id, run_id,
+                "factor_registry INSERT via Platform register: factor_name=%s, id=%s, run_id=%s",
+                factor_name,
+                new_id,
+                run_id,
             )
             return str(new_id)
         except DuplicateFactor:
@@ -344,7 +343,8 @@ class FactorOnboardingService:
             existing_id = str(row.iloc[0]["id"])
             logger.info(
                 "factor %s already in registry, returning existing id=%s (idempotent)",
-                factor_name, existing_id,
+                factor_name,
+                existing_id,
             )
             del sharpe_1y  # sharpe_1y 已在调用方 gate_result 中; MVP 1.3c 不用于 register
             return existing_id
@@ -513,8 +513,12 @@ class FactorOnboardingService:
         from engines.mining.factor_dsl import FactorDSL  # type: ignore[import]
         from engines.neutralizer import FactorNeutralizer
 
+        # Session 35 PR-B fix: FactorDSL.parse() 不存在, 实际方法名为 from_string().
+        # Dormant bug: onboarding_tasks 不在 Beat schedule 故未触发, 但 4 unit test
+        # 长期 fail (test_factor_onboarding.py: TestNeutralizeWithIndustry x3 +
+        # TestBoundaryConditions x1). 详见 docs/audit/PYTEST_BASELINE_DRIFT_SESSION_35_36.md.
         dsl = FactorDSL()
-        expr_node = dsl.parse(factor_expr)
+        expr_node = dsl.from_string(factor_expr)
         neutralizer = FactorNeutralizer()
 
         # 构建 industry Series
@@ -557,7 +561,9 @@ class FactorOnboardingService:
             for code in valid.index:
                 # 铁律 29: 不写 float NaN (DataPipeline 会二次保护, 但我们这里主动转 None)
                 raw_val = factor_series.get(code, np.nan)
-                raw_val = None if (isinstance(raw_val, float) and np.isnan(raw_val)) else float(raw_val)
+                raw_val = (
+                    None if (isinstance(raw_val, float) and np.isnan(raw_val)) else float(raw_val)
+                )
 
                 neutral_val = neutral_series.get(code)
                 if neutral_val is not None and pd.notna(neutral_val):
@@ -690,8 +696,7 @@ class FactorOnboardingService:
 
         if benchmark_df.empty:
             logger.error(
-                "CSI300 基准为空, IC 计算无法进行 (铁律 19 超额收益不可计算): "
-                "factor_name=%s",
+                "CSI300 基准为空, IC 计算无法进行 (铁律 19 超额收益不可计算): factor_name=%s",
                 factor_name,
             )
             return pd.DataFrame()

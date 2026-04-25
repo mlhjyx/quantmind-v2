@@ -46,7 +46,9 @@ def _install_fake_factor_dsl() -> None:
                 return day_data["close"]  # 默认返回 close
 
         class _FakeFactorDSL:
-            def parse(self, expr: str) -> _FakeExprNode:
+            # Session 35 PR-B: 实际 FactorDSL 方法名 from_string (非 parse).
+            # 见 docs/audit/PYTEST_BASELINE_DRIFT_SESSION_35_36.md.
+            def from_string(self, expr: str) -> _FakeExprNode:
                 return _FakeExprNode()
 
         dsl_mod.FactorDSL = _FakeFactorDSL  # type: ignore[attr-defined]
@@ -233,7 +235,9 @@ def _make_mock_ic_df(n_days: int = 30) -> pd.DataFrame:
     )
 
 
-def _patch_all_onboard_deps(svc, market_df=None, fv_df=None, ic_df=None, fv_written=100, ic_written=30):
+def _patch_all_onboard_deps(
+    svc, market_df=None, fv_df=None, ic_df=None, fv_written=100, ic_written=30
+):
     """返回一组 patch context managers 覆盖 _onboard_inner 所有外部依赖.
 
     被 patch 的方法: _upsert_factor_registry (MVP 1.3c: 走 Platform register) /
@@ -266,7 +270,9 @@ def _patch_all_onboard_deps(svc, market_df=None, fv_df=None, ic_df=None, fv_writ
         patch.object(svc, "_compute_ic_multi_horizon", return_value=ic_df),
         patch.object(svc, "_upsert_factor_values", return_value=fv_written),
         patch.object(svc, "_upsert_ic_history", return_value=ic_written),
-        patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),  # MVP 1.3c
+        patch.object(
+            svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
+        ),  # MVP 1.3c
     ]
 
 
@@ -434,7 +440,9 @@ class TestOnboardEmptyMarketData:
 
         # MVP 1.3c: 需 mock _upsert_factor_registry (Platform register 走新 conn)
         with (
-            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
+            patch.object(
+                svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
+            ),
             patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
@@ -451,7 +459,9 @@ class TestOnboardEmptyMarketData:
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
         with (
-            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
+            patch.object(
+                svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
+            ),
             patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
             patch.object(svc, "_upsert_factor_values") as mock_fv,
             patch.object(svc, "_upsert_ic_history") as mock_ic,
@@ -467,7 +477,9 @@ class TestOnboardEmptyMarketData:
         conn = _make_sync_conn(aq_row=_approved_aq_row())
 
         with (
-            patch.object(svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"),
+            patch.object(
+                svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
+            ),
             patch.object(svc, "_load_market_data", return_value=pd.DataFrame()),
             patch("app.services.factor_onboarding.logger") as mock_logger,
         ):
@@ -740,15 +752,11 @@ class TestNeutralizeWithIndustry:
 
         raw_industry_means = result_df.groupby("industry")["raw_value"].mean()
         raw_spread = raw_industry_means.max() - raw_industry_means.min()
-        assert raw_spread > 10.0, (
-            f"原始值行业间差距 {raw_spread:.2f} 应 > 10 (行业A~50 vs 行业C~5)"
-        )
+        assert raw_spread > 10.0, f"原始值行业间差距 {raw_spread:.2f} 应 > 10 (行业A~50 vs 行业C~5)"
 
         neutral_industry_means = result_df.groupby("industry")["neutral_value"].mean()
         for industry, mean_val in neutral_industry_means.items():
-            assert abs(mean_val) < 1.5, (
-                f"行业 {industry} 中性化后均值 {mean_val:.4f} 仍过大"
-            )
+            assert abs(mean_val) < 1.5, f"行业 {industry} 中性化后均值 {mean_val:.4f} 仍过大"
 
     def test_zscore_neutralization_cross_section_std_near_one(self):
         """截面 zscore 后, neutral_value 标准差应接近 1.0."""
@@ -782,9 +790,7 @@ class TestNeutralizeWithIndustry:
 
         for dt, group in result_df.groupby("trade_date"):
             mean_val = group["neutral_value"].mean()
-            assert abs(mean_val) < 1e-6, (
-                f"date={dt} 截面 neutral_value mean={mean_val:.2e}, 应为 0"
-            )
+            assert abs(mean_val) < 1e-6, f"date={dt} 截面 neutral_value mean={mean_val:.2e}, 应为 0"
 
 
 # ---------------------------------------------------------------------------
@@ -884,7 +890,8 @@ class TestBoundaryConditions:
                 raise RuntimeError("DSL 计算失败")
 
         class _FailingFactorDSL:
-            def parse(self, expr: str) -> _FailingExprNode:
+            # Session 35 PR-B: 同 _FakeFactorDSL, 实际方法名 from_string.
+            def from_string(self, expr: str) -> _FailingExprNode:
                 return _FailingExprNode()
 
         failing_mod.FactorDSL = _FailingFactorDSL  # type: ignore[attr-defined]
