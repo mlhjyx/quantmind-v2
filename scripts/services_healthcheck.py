@@ -186,38 +186,57 @@ def query_service_state(name: str) -> ServiceCheck:
           上层报告, 但本函数对单服务不阻断其他检查)
         - 返回 state_text 包含原始 stdout 末段供 debug
     """
+    # 用 Popen 而非 subprocess.run, 因为 Windows 的 subprocess.run(timeout=...) 抛
+    # TimeoutExpired 后**不杀子进程** — sc.exe 会变成 orphan 累积 (reviewer P2 fix).
+    proc = None
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(  # noqa: S603 (name 来自 SERVY_SERVICES 常量, shell=False)
             ["sc", "query", name],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=SC_QUERY_TIMEOUT_SECONDS,
-            check=False,
         )
-    except subprocess.TimeoutExpired:
-        return ServiceCheck(name=name, running=False, state_text="ERROR: sc query timeout")
+        try:
+            stdout, stderr = proc.communicate(timeout=SC_QUERY_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            with contextlib.suppress(Exception):
+                proc.communicate(timeout=2)  # silent_ok: drain after kill, 仅清理 pipe
+            return ServiceCheck(name=name, running=False, state_text="ERROR: sc query timeout")
+        returncode = proc.returncode
     except OSError as e:  # FileNotFoundError if sc.exe missing
         return ServiceCheck(name=name, running=False, state_text=f"ERROR: {e}")
 
-    if result.returncode != 0:
+    if returncode != 0:
         # sc query exits non-zero if service unknown OR access denied
-        stderr_tail = (result.stderr or "").strip()[-100:] or "(empty stderr)"
+        stderr_tail = (stderr or "").strip()[-100:] or "(empty stderr)"
         return ServiceCheck(
             name=name,
             running=False,
-            state_text=f"ERROR: rc={result.returncode} stderr={stderr_tail}",
+            state_text=f"ERROR: rc={returncode} stderr={stderr_tail}",
         )
 
-    stdout = result.stdout or ""
-    # sc query 输出格式 (中英 Windows 不同, 但 STATE : 4 RUNNING 数字稳定):
-    #   STATE              : 4  RUNNING
-    #   STATE              : 1  STOPPED
-    if "STATE" in stdout and "RUNNING" in stdout and ": 4" in stdout:
-        return ServiceCheck(name=name, running=True, state_text="RUNNING")
-    if "STATE" in stdout and "STOPPED" in stdout and ": 1" in stdout:
-        return ServiceCheck(name=name, running=False, state_text="STOPPED")
-    # Pause / Start pending / etc.
-    return ServiceCheck(name=name, running=False, state_text=f"UNKNOWN: {stdout.strip()[-80:]}")
+    # 按行解析 STATE 字段 (reviewer P1 fix): 原 substring 全文匹配会被
+    # ``TYPE : 10  WIN32_OWN_PROCESS`` 行内 ": 10" → ": 1" 子串误命中 STOPPED 分支,
+    # 真实 sc query 输出格式包含 SERVICE_NAME / TYPE / STATE / WIN32_EXIT_CODE 4+ 行.
+    # sc query 数字态稳定 (中英 locale 不影响数字, 但 RUNNING/STOPPED 字符串中文是
+    # "正在运行"/"已停止" — 故仅靠数字 ": 4" / ": 1" 不够, 需要 STATE 字段+数字组合).
+    stdout_text = stdout or ""
+    for line in stdout_text.splitlines():
+        if "STATE" not in line:
+            continue
+        # 只在 STATE 行里判 ": 4" / ": 1" 数字态 (locale-stable):
+        # `STATE              : 4  RUNNING` / `STATE              : 1  STOPPED`
+        if ": 4" in line:
+            return ServiceCheck(name=name, running=True, state_text="RUNNING")
+        if ": 1" in line:
+            return ServiceCheck(name=name, running=False, state_text="STOPPED")
+        # Pause / Start pending / etc. — 状态码非 1/4
+        return ServiceCheck(name=name, running=False, state_text=f"UNKNOWN: {line.strip()[-80:]}")
+    # 完全没找到 STATE 行 (sc 输出异常)
+    return ServiceCheck(
+        name=name, running=False, state_text=f"UNKNOWN: {stdout_text.strip()[-80:]}"
+    )
 
 
 # ─── Beat heartbeat check ──────────────────────────────────────────────────
@@ -309,7 +328,9 @@ def save_state(state: dict[str, Any]) -> None:
     try:
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-    except OSError as e:
+    except OSError as e:  # silent_ok: dedup state 丢失可接受, 告警是 critical path
+        # (next run 不知 dedup, 1 次 false-positive 告警 vs 永久失去 dedup ratchet
+        # 选前者). reviewer python-P2 标注 fix.
         logger.warning("state 文件写入失败 (告警仍发, dedup 失效): %s", e)
 
 
@@ -452,7 +473,10 @@ def send_alert(report: HealthReport, reason: str) -> bool:
             secret=settings.DINGTALK_SECRET,
             keyword=settings.DINGTALK_KEYWORD,
         )
-    except Exception as e:
+    except Exception as e:  # silent_ok: alert send failure 不阻断 schtask exit-code
+        # 路径 — logger.error 持久化原因, 下次 run 仍重试 (见 should_alert dedup
+        # window: last_alert_time 仅在 sent=True 时写入, send 失败下次仍命中
+        # "no prior alert timestamp" 路径强制重试)
         logger.error("钉钉发送异常: %s", e)
         return False
 
@@ -470,9 +494,14 @@ def _run() -> int:
     """主 logic. 顶层 try/except 由 main() 包裹.
 
     Returns:
-        0: ok
-        1: degraded but in dedup window (no alert sent)
-        2: degraded + alert sent (or fatal — covered by main())
+        0: 全部 ok (recovery transition 已发送时仍返 0 因为目前状态是 ok)
+        1: degraded (含 alert 已发 + dedup window 内 silent 两种, schtask 见非 0)
+        2: 仅 main() 顶层 except 路径返回 — 未捕获 fatal exception (铁律 43 d)
+
+    Note:
+        原 docstring 误标 "2 = degraded + alert sent" 与代码 `return 1` 实现冲突
+        (reviewer python-P1 fix Session 35). 实际 schtask LastResult 任意非 0 都
+        触发钉钉告警链, 故 1 vs 2 区分仅给上层包装脚本判断 "可恢复 vs unrecoverable".
     """
     logger.info("=" * 60)
     logger.info("ServicesHealthCheck 启动 (LL-074, Session 35)")
