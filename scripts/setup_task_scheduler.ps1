@@ -122,6 +122,11 @@ $execSettings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries
 
+# Session 36 PR-DEXEC reviewer MEDIUM 修复: pre-Register state probe, 防 operator-enabled 被覆写.
+# 若 pre-Register state=Ready, 视为 Stage 4.2 解锁后 operator 主动 Enable, 保留不动.
+# 若 pre-Register state=Disabled / 任务不存在, 维持 Disabled 默认 (governance bug 修复主路径).
+$preRegisterState = (Get-ScheduledTask -TaskName "QuantMind_DailyExecute" -ErrorAction SilentlyContinue).State
+
 Register-ScheduledTask `
     -TaskName "QuantMind_DailyExecute" `
     -Description "QuantMind V2: T+1 09:31 miniQMT live执行(QMT未连接时跳过). Stage 4.2 评估前默认 Disabled." `
@@ -133,9 +138,13 @@ Register-ScheduledTask `
 # Session 36 PR-DEXEC (2026-04-25): Stage 4.2 评估前默认 Disabled, 防 ps1 rerun silent 复活.
 # 与 PR-DRECON (15:10/15:40 漂移修复) 同 governance pattern: ps1 + live 状态对齐文档意图.
 # 解锁 reenable: 见 SCHEDULING_LAYOUT.md Known #1 Stage 4.2 评估 checklist.
-Disable-ScheduledTask -TaskName "QuantMind_DailyExecute" | Out-Null
-
-Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31, Disabled — 等 Stage 4.2 评估)" -ForegroundColor Yellow
+# reviewer LOW 修复: -ErrorAction Stop 防 Register 部分失败时 Disable 静默吞错 (铁律 33 fail-loud).
+if ($preRegisterState -eq "Ready") {
+    Write-Host "[WARN] QuantMind_DailyExecute registered (daily 09:31) — kept Enabled (operator-set State=Ready preserved, Stage 4.2 unlock detected)" -ForegroundColor Cyan
+} else {
+    Disable-ScheduledTask -TaskName "QuantMind_DailyExecute" -ErrorAction Stop | Out-Null
+    Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31, Disabled — 等 Stage 4.2 评估)" -ForegroundColor Yellow
+}
 
 # ── 5. [已废除 Session 17 Stage 4] QuantMind_DailyExecuteAfterData (17:05) ────────
 # 废除原因: ADR-008 P0-δ paper 污染源 (原 --Argument "... execute" 无 --execution-mode 默认 paper)

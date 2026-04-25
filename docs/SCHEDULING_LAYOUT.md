@@ -151,7 +151,13 @@ Logon 触发
      has no attribute 'python_implementation'` → exit=1 silent
    - **功能互补非重复**: PTAudit (negative alert, PASS 静默) + PTDailySummary (positive 日报, 每日推 NAV/PnL/持仓) 是不同用户侧价值
    - **修复**: `sys.path.insert(0)` → `if str(BACKEND_DIR) not in sys.path: sys.path.append(...)` (对齐 compute_ic_rolling.py / compute_daily_ic.py 已知好 pattern), dry-run 实测 exit=0 NAV ¥1,012,178 +0.00% 19 持仓 报告正确产出
-   - **11 script 同 pattern 扫描** (sys.path.insert(0) + Session 32 smoke 全覆盖): 仅 pt_daily_summary 实际 broken, 其余 10 (run_paper_trading/factor_health_daily/rolling_wf/ic_monitor/factor_lifecycle_monitor/run_gp_pipeline/compute_minute_features/compute_factor_phase21/bayesian_slippage_calibration/fix_st_cleanup_20260414) 因未触发 sqlalchemy ext.asyncio 路径 shadow 不激活. 预防建议: Session 33+ 独立 PR 统一 pattern 到 `append + guard` 防未来新增 import 触发 shadow
+   - **11 script 同 pattern 扫描** (sys.path.insert(0) + Session 32 smoke 全覆盖): 仅 pt_daily_summary 实际 broken, 其余 10 (run_paper_trading/factor_health_daily/rolling_wf/ic_monitor/factor_lifecycle_monitor/run_gp_pipeline/compute_minute_features/compute_factor_phase21/bayesian_slippage_calibration/fix_st_cleanup_20260414) 因未触发 sqlalchemy ext.asyncio 路径 shadow 不激活.
+   - **Session 36 (2026-04-25) 预防性 cleanup 关闭决策**: 实测分析关闭原 Session 33+ 计划:
+     - 6/10 (rolling_wf/ic_monitor/factor_lifecycle_monitor/run_gp_pipeline/compute_factor_phase21/bayesian_slippage_calibration) 已改用 `sys.path.append + guard`, 安全.
+     - 4/10 (run_paper_trading/factor_health_daily/compute_minute_features/fix_st_cleanup_20260414) 仍用 `sys.path.insert(0, str(Path.parent))` 即 scripts/ at sys.path[0].
+     - **关键**: `sys.path.insert(0, str(scripts/))` 与 LL-070 不同模式. LL-070 是 `insert(0, str(backend/))` + backend 内有 `platform/` 包 → `import platform` 命中 `backend.platform` 而非 stdlib. scripts/ 目录**无任何 stdlib 命名冲突** (实测 `ls scripts/*.py | grep -E "^(platform|json|datetime|os|sys|...)\.py$"` = 0 hits), 此 pattern **不触发 LL-070 shadow**.
+     - **冗余但安全**: schtask 调用 `python scripts/X.py` 时 Python 自动 prepend scripts/ 到 `sys.path[0]`, 这 4 行 insert 实际是 no-op. 改 append 收益是 defense-in-depth, 风险是潜在 sibling imports (e.g. run_paper_trading `from health_check import ...`) 在非常规调用方式下断裂.
+     - **关闭理由**: 当前 0 触发 + 改动有破坏风险 + 真触发条件 (scripts/ 引入 stdlib name 冲突) 极低概率. 留给未来若实际 trigger 再修.
 
 4. ~~**QuantMind_GPPipeline ps1 残留 register 代码 (latent bug)**~~ **✅ CLOSED (Session 32 PR #66 2026-04-24)**
    - ~~Session 16 (2026-04-16) 已 `schtasks /delete` 删除活任务 (避 Celery Beat gp-weekly-mining 双触发)~~
