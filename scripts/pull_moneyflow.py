@@ -247,14 +247,20 @@ def verify(conn: psycopg2.extensions.connection) -> None:
                 print(f"  {r[0]}: 特大单买={r[1]}, 特大单卖={r[2]}, 净流入={r[3]}")
 
 
-def _check_trading_day_or_skip() -> bool:
-    """Return True if A-stock today is trading day (or unknown → proceed).
+def _check_trading_day_or_skip(target_date: date | None = None) -> bool:
+    """Return True if A-stock target_date is trading day (or unknown → proceed).
+
+    Args:
+        target_date: 校验日期, 默认 None = 今天 (schtask daily auto run 语义).
+            手工 backfill (--start YYYYMMDD) 时调用方应传该日期, 避免周末误 skip.
+            LL-076 (Session 36 末): 修 main() 用 args.start 解析后的 date 而非 today.
 
     铁律 33-d silent_ok: trading_calendar 缺失/连接失败时 degrade 为无差别拉取,
     后续 _run() 若真遇 DB 故障会 raise 由 main() 顶层兜底. Reviewer P2 采纳:
     异常 path 加 stderr 诊断 log, print-only 脚本的 logger.warning 等价物 — 避免
     DB outage silently swallowed 使 FATAL 误归因为下游错误.
     """
+    check_date = target_date or date.today()
     try:
         conn = _get_sync_conn()
         _apply_statement_timeout(conn)
@@ -263,7 +269,7 @@ def _check_trading_day_or_skip() -> bool:
                 cur.execute(
                     """SELECT is_trading_day FROM trading_calendar
                        WHERE market = 'astock' AND trade_date = %s""",
-                    (date.today(),),
+                    (check_date,),
                 )
                 row = cur.fetchone()
         finally:
@@ -420,7 +426,17 @@ def main() -> int:
         parser.add_argument("--recent", action="store_true", help="仅拉最近1个月")
         args = parser.parse_args()
 
-        if not _check_trading_day_or_skip():
+        # LL-076 (Session 36 末): 手工 backfill (--start YYYYMMDD) 时校验该日期是否
+        # 交易日, 而非检查 today (周末手工 backfill 历史 trading day 被 silent skip 的
+        # bug). schtask daily auto run 不传 --start, 仍走 today 语义不变.
+        check_date: date | None = None
+        if args.start:
+            try:
+                check_date = datetime.strptime(args.start, "%Y%m%d").date()
+            except ValueError:
+                # invalid format, let downstream _run() raise 真实错误
+                check_date = None
+        if not _check_trading_day_or_skip(check_date):
             print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取", flush=True)
             return 0
         return _run(args)
