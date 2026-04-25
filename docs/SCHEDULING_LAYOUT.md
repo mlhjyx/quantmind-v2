@@ -86,7 +86,7 @@ Logon 触发
 |--------|------|------|
 | QM-SmokeTest | `scripts/smoke_test.py` | 一次性测试, 已完成 |
 | QuantMind_CancelStaleOrders | `scripts/cancel_stale_orders.py` | 紧急撤单, 手动触发 |
-| QuantMind_DailyExecute | `scripts/run_paper_trading.py execute --execution-mode live` | Session 10 P0-α 熔断 live 失效事件后暂停 (CLAUDE.md L549). 等 Stage 4.2 评估 reenable, 依赖 F14 自愈 + F19 phantom 清理 |
+| QuantMind_DailyExecute | `scripts/run_paper_trading.py execute --execution-mode live` | Session 10 P0-α 熔断 live 失效事件后暂停 (CLAUDE.md L549). 等 Stage 4.2 评估 reenable, 依赖 F14 自愈 + F19 phantom 清理. **Session 36 PR-DEXEC**: ps1 加 `Disable-ScheduledTask` 紧跟 Register 防 rerun silent 复活 (实测 04/19 LastResult=0 Sunday 内部跳过, 但 ps1 rerun 后 State=Ready, 下个交易日真金触发风险) |
 
 ### 已删除历史 (ps1 残留 register 待清理)
 
@@ -123,11 +123,21 @@ Logon 触发
 
 ### 当前开放 (Session 32+ 待解决)
 
-1. **QuantMind_DailyExecute Disabled 待 reenable**
-   - 状态: Disabled (Session 10 P0-α 熔断 live 失效事件后暂停)
-   - 依赖: F14 自愈完成 (Session 20 ✅) + F19 phantom trade_log 清理 (Session 22 Part 3 ✅)
-   - 阻塞项: Stage 4.2 独立评估门 (含 dry-run + 首日监控计划)
-   - 目标 Session: Session 35+ 评估, 非紧急
+1. **QuantMind_DailyExecute 默认 Disabled (Session 36 governance bug 修复)**
+   - **状态**: Disabled (Session 10 P0-α 熔断 live 失效事件后暂停)
+   - **Session 36 (2026-04-25) governance 修复 PR-DEXEC**:
+     - 实测发现 ps1 L110-133 `Register-ScheduledTask` 后**未** Disable, 每次 rerun (如 Session 36 16:21 注册 ServicesHealthCheck) silent 复活为 Ready 状态. 与 PR-DRECON 15:10/15:40 漂移同 pattern.
+     - 04/19 LastRun LastResult=0 (Sunday 内部 trading_calendar 跳过, 看似无害). 但下个交易日 (周一 04/27 09:31) 会真触发 `--execution-mode live` miniQMT 真金下单, 违反"暂停"意图.
+     - 修复: ps1 加 `Disable-ScheduledTask` 紧跟 Register, rerun 后保持 Disabled (默认安全).
+   - **解锁 reenable Stage 4.2 评估 checklist** (用户决策门, 全部满足才允许 enable):
+     - [x] F14 自愈完成 (Session 20 ✅, cb_state live L0 bootstrap)
+     - [x] F19 phantom trade_log 清理 (Session 22 Part 3 ✅, 9538 股 backfill verify 100% match QMT)
+     - [x] EXECUTION_MODE=live cutover (Session 20 ✅)
+     - [x] PR-A 动态 execution_mode (Session 17 ✅, signal_engine + risk_control_service)
+     - [ ] Stage 4.2 dry-run plan (含首日监控计划 + rollback trigger 标准 + 钉钉告警链路)
+     - [ ] 用户显式 "go-live" 决策 (memory/feedback 记录)
+   - **解锁后操作**: `Enable-ScheduledTask -TaskName QuantMind_DailyExecute` + ps1 删除 `Disable-ScheduledTask` 行 + 本 Known #1 关闭
+   - **目标 Session**: 待用户决策, 非紧急
 
 2. ~~**QuantMind_DailyReconciliation 时间漂移 ps1=15:10 vs live=15:40 (30 min)**~~ **✅ RESOLVED (Session 36 PR-DRECON 2026-04-25)**
    - **触发**: Session 36 16:21 `setup_task_scheduler.ps1` rerun (注册 ServicesHealthCheck) 无意 reset live 回 15:10, 暴露漂移
