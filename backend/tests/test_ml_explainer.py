@@ -14,10 +14,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from engines.ml_engine import (
+# Skip module if shap optional dependency missing — ML layer closed Phase 3D.
+pytest.importorskip("shap", reason="ML predictor closed Phase 3D, shap optional")
+
+from engines.ml_engine import (  # noqa: E402
     MLConfig,
     WalkForwardTrainer,
     _build_rank_groups,
