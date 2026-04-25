@@ -143,6 +143,9 @@ def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
 
     Sprint 5 (Session 36) MVP 3.2 batch 4 follow-up: S2PEADEvent activation 实测发现
     register() 拒空 factor_pool, fail-safe 回退 [S1]. 修 register() 加 EVENT 例外条款.
+
+    PR #87 reviewer HIGH+MEDIUM 采纳: 验证 SQL INSERT 路径完整 (SELECT + INSERT registry +
+    INSERT status_log) 而非仅"不抛", 镜像 test_register_first_time_inserts_row_and_audit_log.
     """
     sid = uuid4()
     s = _FakeStrategy(
@@ -151,14 +154,21 @@ def test_register_accepts_empty_factor_pool_for_event_driven_strategy():
         factor_pool=[],
         rebalance_freq=RebalanceFreq.EVENT,
     )
-    factory = _make_mock_conn_factory()
-    # SELECT 返 0 row (新 strategy) → INSERT 路径
-    factory._cursor.fetchone.return_value = None
+    # fetchone 返 None (新 strategy, 走 INSERT 路径). 显式 queue 防 _make_mock_conn_factory
+    # 默认行为变更.
+    factory = _make_mock_conn_factory(fetchone_queue=[None])
     reg = DBStrategyRegistry(conn_factory=factory)
     reg.register(s)  # 不应抛 ValueError
+
     cur = factory._cursor
-    # 验证 INSERT 实际执行 (SELECT + INSERT registry + INSERT audit)
-    assert cur.execute.call_count >= 2
+    # 3 execute: SELECT existing + INSERT registry + INSERT status_log (audit row)
+    assert cur.execute.call_count == 3
+    calls_sql = [str(c.args[0]).strip() for c in cur.execute.call_args_list]
+    assert "SELECT status FROM strategy_registry" in calls_sql[0]
+    assert "INSERT INTO strategy_registry" in calls_sql[1]
+    assert "INSERT INTO strategy_status_log" in calls_sql[2]
+    # cache 也要填入
+    assert reg._instances[sid] is s
 
 
 def test_register_raises_on_invalid_uuid():

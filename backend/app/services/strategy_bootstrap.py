@@ -37,10 +37,12 @@ from typing import TYPE_CHECKING
 
 from app.services.db import get_sync_conn
 
-# P3-B python-reviewer (PR #72) 采纳: S1MonthlyRanking module-top import 保 fail-safe
+# P3-B python-reviewer (PR #72) 采纳: S1/S2 module-top import 保 fail-safe
 # 契约 (原 lazy import inside try 若未执行到 except 会 NameError 破 fallback).
 # s1_monthly_ranking → signal_engine → app.config chain 实测无循环 (smoke test 已验).
+# Sprint 5 PR #87 reviewer HIGH 采纳: S2 同 S1 module-top, 对齐 P3-B 模式.
 from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+from backend.engines.strategies.s2_pead_event import S2PEADEvent
 
 if TYPE_CHECKING:
     from backend.qm_platform.strategy.interface import Strategy
@@ -90,7 +92,7 @@ def get_live_strategies_for_risk_check() -> list[Strategy]:
         # 自动排除 → 不影响 S1 信号生成 + 不触发真单. Monday 4-27 真生产 0 干扰.
         # 升 LIVE 路径 (未来 Wave 3 后期或 MVP 3.2.1):
         #   registry.update_status('a5b27c3f-8e94-4d1a-b0c7-e6f2a9b45d10', 'live', reason='...')
-        from backend.engines.strategies.s2_pead_event import S2PEADEvent
+        # S2PEADEvent module-top import 保 fail-safe 契约 (P3-B 模式).
         registry.register(S2PEADEvent())
 
         # 铁律 32: wiring 层 commit 关闭事务 (Service register 内部不 commit)
