@@ -229,6 +229,26 @@ class TestMainExitOnException:
 
         assert pmf.main() == 0
 
+    def test_invalid_start_format_warns_to_stderr(self, monkeypatch, capsys):
+        """LL-076 PR #90 reviewer MEDIUM: --start 格式 invalid 必写 stderr 警告.
+
+        防 周末手工 backfill 用户看到 "非交易日跳过" 误以为是日期错而非 format 错
+        (铁律 33 silent_ok 必带诊断 log).
+        """
+        # 让 _run 不真跑 (假装 today 是交易日, format 错时 fallback)
+        monkeypatch.setattr(pmf, "_check_trading_day_or_skip", lambda target_date=None: True)
+        monkeypatch.setattr(pmf, "_run", lambda args: 0)
+        monkeypatch.setattr(sys, "argv", ["pull_moneyflow.py", "--start", "2026/04/24"])
+
+        rc = pmf.main()
+
+        assert rc == 0  # _run 假返 0
+        captured = capsys.readouterr()
+        # stderr 必含 invalid format 警告
+        assert "invalid" in captured.err.lower()
+        assert "2026/04/24" in captured.err
+        assert "YYYYMMDD" in captured.err
+
 
 class TestRunReturnContract:
     """_run(args) 必须返 int + 保证 conn close (main wrapper 契约依赖).
