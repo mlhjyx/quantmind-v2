@@ -10,7 +10,7 @@
 #   T日 17:30  QuantMind_DailyMoneyflow          moneyflow补拉 (Session 24 shift 16:35→17:30, tushare moneyflow 16:30 前入库未稳定实测 5 retry 全空)
 #   T日 18:30  QuantMind_DataQualityCheck        数据质量巡检 (Session 26 shift 17:45→18:30, 避开 17:30-18:15 dense window, cold-scan hang 事故后硬化)
 #   T+1 09:31  QuantMind_DailyExecute            miniQMT执行; SimBroker无数据时跳过
-#   T+1 15:10  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate
+#   T+1 15:40  QuantMind_DailyReconciliation      QMT vs DB对账 + fill_rate (Session 36 PR-DRECON: 15:10→15:40 align T+0 settle delay)
 #   T+1 17:30  QuantMind_FactorHealthDaily        因子衰减3级检测
 #   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
 #   T日 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
@@ -21,7 +21,7 @@
 # 废除历史:
 #   QuantMind_DailyExecuteAfterData (17:05) — Session 17 Stage 4 永久废除
 #     原因: ADR-008 P0-δ paper 污染源 (无 --execution-mode 参数默认落 paper 命名空间)
-#     替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
+#     替代: DailyReconciliation 15:40 + DailySignal 16:30 已覆盖盘后数据链路
 #   QuantMind_GPPipeline (Sat 02:00) — Session 16 (2026-04-16) 活任务删除, Session 32 (2026-04-24) 同步清 ps1 register
 #     原因: 与 Celery Beat gp-weekly-mining (Sun 22:00) 双触发 (SCHEDULING_LAYOUT.md 已知问题 #4 / Session 16 已解决 #3)
 #     替代: Celery Beat gp-weekly-mining Sunday 22:00 (backend/app/tasks/beat_schedule.py)
@@ -134,7 +134,7 @@ Write-Host "[OK] QuantMind_DailyExecute registered (daily 09:31)" -ForegroundCol
 
 # ── 5. [已废除 Session 17 Stage 4] QuantMind_DailyExecuteAfterData (17:05) ────────
 # 废除原因: ADR-008 P0-δ paper 污染源 (原 --Argument "... execute" 无 --execution-mode 默认 paper)
-# 替代: DailyReconciliation 15:10 + DailySignal 16:30 已覆盖盘后数据链路
+# 替代: DailyReconciliation 15:40 + DailySignal 16:30 已覆盖盘后数据链路
 # 手工清理 (已跑的机器需执行): schtasks /delete /tn "QuantMind_DailyExecuteAfterData" /f
 
 # ── 6. QuantMind_DailyMoneyflow: 每日17:30 (Session 24 shift 16:35→17:30) ────
@@ -231,13 +231,13 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_IntradayMonitor registered (09:35, every 5min)" -ForegroundColor Green
 
-# ── 9. QuantMind_DailyReconciliation: 15:10 ──────────────
+# ── 9. QuantMind_DailyReconciliation: 15:40 ──────────────
 $reconAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "$ProjectRoot\scripts\daily_reconciliation.py" `
     -WorkingDirectory $ProjectRoot
 
-$reconTrigger = New-ScheduledTaskTrigger -Daily -At "15:10"
+$reconTrigger = New-ScheduledTaskTrigger -Daily -At "15:40"
 
 $reconSettings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
@@ -254,7 +254,7 @@ Register-ScheduledTask `
     -Settings $reconSettings `
     -Force
 
-Write-Host "[OK] QuantMind_DailyReconciliation registered (daily 15:10)" -ForegroundColor Green
+Write-Host "[OK] QuantMind_DailyReconciliation registered (daily 15:40)" -ForegroundColor Green
 
 # ── 10. QuantMind_FactorHealthDaily: 每日17:30 ───────────
 $fhAction = New-ScheduledTaskAction `
