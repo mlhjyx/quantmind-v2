@@ -221,7 +221,7 @@ class RootConfigSchema(BaseModel):
 
 
 class PlatformConfigSchema(ConfigSchema):
-    """`backend.platform.config.interface.ConfigSchema` 的 concrete 实现.
+    """`backend.qm_platform.config.interface.ConfigSchema` 的 concrete 实现.
 
     持有 Pydantic RootConfigSchema 类型引用, 提供 `get_schema()` / `validate()`
     对接 MVP 1.1 abstract.

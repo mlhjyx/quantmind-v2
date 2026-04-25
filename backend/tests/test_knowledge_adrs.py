@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform.knowledge.interface import ADRRecord
-from backend.platform.knowledge.registry import (
+from backend.qm_platform.knowledge.interface import ADRRecord
+from backend.qm_platform.knowledge.registry import (
     ADRNotFound,
     DBADRRegistry,
     WriteNotConfigured,
@@ -31,10 +31,10 @@ def _make_record(
 ) -> ADRRecord:
     return ADRRecord(
         adr_id=adr_id,
-        title="Platform 包名 backend.platform",
+        title="Platform 包名 backend.qm_platform",
         status="accepted",
         context="Wave 1 启动前决策包名",
-        decision="采用 backend.platform (不加 quantmind namespace)",
+        decision="采用 backend.qm_platform (不加 quantmind namespace)",
         consequences="短路径, Python 命名空间隔离足够",
         related_ironlaws=related_ironlaws or [38],
         recorded_at="2026-04-17T10:00:00Z",
@@ -101,7 +101,7 @@ def test_get_by_id_success() -> None:
     factory, _, cursor = _make_conn_factory()
     cursor.fetchone.return_value = (
         "ADR-001",
-        "Platform 包名 backend.platform",
+        "Platform 包名 backend.qm_platform",
         "accepted",
         "context",
         "decision",

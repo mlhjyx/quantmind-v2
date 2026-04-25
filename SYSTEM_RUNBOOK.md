@@ -335,7 +335,7 @@ python scripts/run_backtest.py --config configs/backtest_12yr.yaml
 ```python
 # 走 Platform DataSource 新路径 (铁律 17 DataPipeline 唯一入库)
 from datetime import date
-from backend.platform.data.sources.baostock_source import (
+from backend.qm_platform.data.sources.baostock_source import (
     BaostockDataSource, MINUTE_BARS_DATA_CONTRACT,
 )
 from backend.app.data_fetcher.data_loader import get_sync_conn

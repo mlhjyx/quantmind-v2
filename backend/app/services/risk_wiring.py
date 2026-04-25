@@ -27,16 +27,16 @@ from app.config import settings
 from app.core.qmt_client import get_qmt_client
 from app.services.db import get_sync_conn
 from app.services.notification_service import send_alert
-from backend.platform.risk import PlatformRiskEngine, RiskRule
-from backend.platform.risk.rules.circuit_breaker import CircuitBreakerRule
-from backend.platform.risk.rules.intraday import (
+from backend.qm_platform.risk import PlatformRiskEngine, RiskRule
+from backend.qm_platform.risk.rules.circuit_breaker import CircuitBreakerRule
+from backend.qm_platform.risk.rules.intraday import (
     IntradayPortfolioDrop3PctRule,
     IntradayPortfolioDrop5PctRule,
     IntradayPortfolioDrop8PctRule,
     QMTDisconnectRule,
 )
-from backend.platform.risk.rules.pms import PMSRule, PMSThreshold
-from backend.platform.risk.sources import DBPositionSource, QMTPositionSource
+from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold
+from backend.qm_platform.risk.sources import DBPositionSource, QMTPositionSource
 
 logger = logging.getLogger(__name__)
 

@@ -50,9 +50,9 @@ def bootstrap_platform_deps(force: bool = False) -> bool:
         from app.services.db import get_sync_conn
 
         # Platform 模块用完整路径 (保 MVP 1.1 严格隔离一致性)
-        from backend.platform.config.feature_flag import DBFeatureFlag
-        from backend.platform.data.access_layer import PlatformDataAccessLayer
-        from backend.platform.factor.registry import DBFactorRegistry
+        from backend.qm_platform.config.feature_flag import DBFeatureFlag
+        from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
+        from backend.qm_platform.factor.registry import DBFactorRegistry
 
         dal = PlatformDataAccessLayer(conn_factory=get_sync_conn)
         registry = DBFactorRegistry(dal=dal, conn_factory=get_sync_conn)

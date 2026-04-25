@@ -10,9 +10,9 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from backend.platform.data.base_source import ContractViolation
-from backend.platform.data.interface import DataContract
-from backend.platform.data.sources.tushare_source import (
+from backend.qm_platform.data.base_source import ContractViolation
+from backend.qm_platform.data.interface import DataContract
+from backend.qm_platform.data.sources.tushare_source import (
     DAILY_BASIC_DATA_CONTRACT,
     KLINES_DAILY_DATA_CONTRACT,
     MONEYFLOW_DATA_CONTRACT,

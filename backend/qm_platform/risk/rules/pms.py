@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.platform._types import Severity
+from backend.qm_platform._types import Severity
 
 from ..interface import RiskContext, RiskRule, RuleResult
 

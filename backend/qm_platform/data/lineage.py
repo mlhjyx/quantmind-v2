@@ -22,7 +22,7 @@
   - 36: 代码变更前必核 precondition — factor_compute_version 已存, 不改表结构
 
 Usage (典型 FactorCompute 集成):
-    from backend.platform.data.lineage import Lineage, LineageRef, CodeRef, write_lineage
+    from backend.qm_platform.data.lineage import Lineage, LineageRef, CodeRef, write_lineage
 
     lineage = Lineage(
         inputs=[LineageRef(table="klines_daily", pk_values={"code": "...", "trade_date": ...})],

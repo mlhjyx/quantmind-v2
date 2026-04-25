@@ -45,8 +45,8 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 from uuid import UUID
 
-from backend.platform._types import Signal
-from backend.platform.strategy.interface import (
+from backend.qm_platform._types import Signal
+from backend.qm_platform.strategy.interface import (
     RebalanceFreq,
     Strategy,
     StrategyContext,

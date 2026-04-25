@@ -22,9 +22,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from backend.platform._types import BacktestMode
-from backend.platform.backtest.interface import BacktestConfig, BacktestResult
-from backend.platform.backtest.registry import DBBacktestRegistry
+from backend.qm_platform._types import BacktestMode
+from backend.qm_platform.backtest.interface import BacktestConfig, BacktestResult
+from backend.qm_platform.backtest.registry import DBBacktestRegistry
 
 # ─── Fixtures ──────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ def test_log_run_writes_enriched_lineage_and_not_via_pipeline():
     """
     from unittest.mock import patch
 
-    from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
+    from backend.qm_platform.data.lineage import CodeRef, Lineage, LineageRef
 
     pipeline = MagicMock()
     pipeline.ingest.return_value = _make_ingest_result(lineage_id=None)
@@ -169,7 +169,7 @@ def test_log_run_writes_enriched_lineage_and_not_via_pipeline():
 
     # Mock registry module 内 import 的 write_lineage_with_outputs
     with patch(
-        "backend.platform.backtest.registry.write_lineage_with_outputs",
+        "backend.qm_platform.backtest.registry.write_lineage_with_outputs",
         return_value=expected_lineage_id,
     ) as mock_gw:
         returned = registry.log_run(
@@ -221,7 +221,7 @@ def test_log_run_pipeline_conn_identity_assert():
     """P1-A: 若 pipeline+conn 都显式设置, 必同一 conn 对象 (否则 assert fail)."""
     from unittest.mock import patch
 
-    from backend.platform.data.lineage import CodeRef, Lineage
+    from backend.qm_platform.data.lineage import CodeRef, Lineage
 
     pipeline = MagicMock()
     pipeline.ingest.return_value = _make_ingest_result()
@@ -235,7 +235,7 @@ def test_log_run_pipeline_conn_identity_assert():
         params={},
     )
     with (
-        patch("backend.platform.backtest.registry.write_lineage_with_outputs"),
+        patch("backend.qm_platform.backtest.registry.write_lineage_with_outputs"),
         pytest.raises(AssertionError, match="same object"),
     ):
         registry.log_run(

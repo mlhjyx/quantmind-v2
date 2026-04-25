@@ -16,7 +16,7 @@ from datetime import date
 
 import pytest
 
-from backend.platform.data.access_layer import (
+from backend.qm_platform.data.access_layer import (
     PlatformDataAccessLayer,
     UnsupportedTable,
 )

@@ -25,7 +25,7 @@ from psycopg2.extras import Json, execute_values, register_uuid
 if TYPE_CHECKING:
     import psycopg2.extensions
 
-    from backend.platform.data.lineage import Lineage
+    from backend.qm_platform.data.lineage import Lineage
 
 from app.data_fetcher.contracts import TableContract
 
@@ -57,8 +57,8 @@ def _is_null(v) -> bool:
 # ────────────────────────────────────────────────────────────
 # Platform backtest/runner/registry 需要构造 Lineage + 调 write_lineage, 但 test_platform_skeleton
 # `test_frameworks_do_not_cross_import` 禁止 Platform framework 间 runtime import
-# (backtest/* → data/lineage.py 算违规). 本模块 (app.data_fetcher) 不在 `backend.platform.` 下,
-# 允许 import `backend.platform.data.lineage`. 提供 lineage gateway helpers, 让 backtest/*
+# (backtest/* → data/lineage.py 算违规). 本模块 (app.data_fetcher) 不在 `backend.qm_platform.` 下,
+# 允许 import `backend.qm_platform.data.lineage`. 提供 lineage gateway helpers, 让 backtest/*
 # import `app.data_fetcher.pipeline.*` (允许 app → platform 方向) 绕过 cross-framework 检查.
 
 
@@ -69,7 +69,7 @@ def make_lineage(
     parent_lineage_ids: list | None = None,
 ):
     """构造 Lineage dataclass (Platform backtest 通道)."""
-    from backend.platform.data.lineage import Lineage
+    from backend.qm_platform.data.lineage import Lineage
 
     return Lineage(
         inputs=inputs,
@@ -81,14 +81,14 @@ def make_lineage(
 
 def make_lineage_ref(table: str, pk_values: dict):
     """构造 LineageRef dataclass."""
-    from backend.platform.data.lineage import LineageRef
+    from backend.qm_platform.data.lineage import LineageRef
 
     return LineageRef(table=table, pk_values=pk_values)
 
 
 def make_code_ref(git_commit: str, module: str, function: str | None = None):
     """构造 CodeRef dataclass."""
-    from backend.platform.data.lineage import CodeRef
+    from backend.qm_platform.data.lineage import CodeRef
 
     return CodeRef(git_commit=git_commit, module=module, function=function)
 
@@ -97,11 +97,11 @@ def write_lineage_with_outputs(lineage, output_refs: list, conn) -> _uuid.UUID:
     """替 Lineage outputs 为 (原 outputs + new output_refs), 落 data_lineage, 返 lineage_id.
 
     MVP 2.3 PR B P1-B fix: DBBacktestRegistry 调此 helper 代替直 import
-    `backend.platform.data.lineage.write_lineage` (避免跨 framework 违规).
+    `backend.qm_platform.data.lineage.write_lineage` (避免跨 framework 违规).
     """
     from dataclasses import replace
 
-    from backend.platform.data.lineage import write_lineage
+    from backend.qm_platform.data.lineage import write_lineage
 
     enriched = replace(lineage, outputs=[*lineage.outputs, *output_refs])
     return write_lineage(enriched, conn)
@@ -724,10 +724,10 @@ class DataPipeline:
         try:
             # Lineage dataclass frozen=True 不能直接改 outputs, 需重建
             # Import 延迟 (避免 Platform 初始化循环)
-            from backend.platform.data.lineage import (
+            from backend.qm_platform.data.lineage import (
                 Lineage as _LineageCls,
             )
-            from backend.platform.data.lineage import (
+            from backend.qm_platform.data.lineage import (
                 LineageRef,
                 write_lineage,
             )

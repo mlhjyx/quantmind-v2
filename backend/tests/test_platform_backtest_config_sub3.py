@@ -20,7 +20,7 @@ from datetime import date
 
 import pytest
 
-from backend.platform.backtest.interface import (
+from backend.qm_platform.backtest.interface import (
     BacktestConfig,
     PMSConfig,
     SlippageConfig,
@@ -249,7 +249,7 @@ class TestConfigHashStability:
 
     def test_same_config_same_hash(self) -> None:
         """相同 config 两次构造 → 相同 hash (铁律 15 复现核心)."""
-        from backend.platform.backtest.runner import PlatformBacktestRunner
+        from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
         cfg1 = _make_minimal_config()
         cfg2 = _make_minimal_config()
@@ -259,7 +259,7 @@ class TestConfigHashStability:
 
     def test_nested_override_changes_hash(self) -> None:
         """嵌套字段改变 → config_hash 改变 (新字段纳入 hash, 保灵敏性)."""
-        from backend.platform.backtest.runner import PlatformBacktestRunner
+        from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
         cfg_default = _make_minimal_config()
         cfg_custom_sn = _make_minimal_config(
@@ -271,7 +271,7 @@ class TestConfigHashStability:
 
     def test_scalar_new_field_changes_hash(self) -> None:
         """新 scalar 字段改变 → config_hash 改变."""
-        from backend.platform.backtest.runner import PlatformBacktestRunner
+        from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
         cfg_default = _make_minimal_config()
         cfg_custom = _make_minimal_config(turnover_cap=0.75)

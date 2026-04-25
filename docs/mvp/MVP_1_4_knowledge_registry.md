@@ -167,7 +167,7 @@ def search_similar(self, hypothesis: str, k: int = 5) -> list[ExperimentRecord]:
 
 | ADR | 标题 | 关联铁律 | 来源 |
 |---|---|---|---|
-| **001** | Platform 包名 `backend.platform` | 38 (Blueprint 真相源) | `memory/project_platform_decisions.md` |
+| **001** | Platform 包名 `backend.qm_platform` | 38 (Blueprint 真相源) | `memory/project_platform_decisions.md` |
 | **002** | 第 2 策略: PEAD Event-driven | 38 | 同上 |
 | **003** | Event Sourcing: StreamBus + PG (非 EventStoreDB) | 22, 38 | 同上 |
 | **004** | CI 3 层本地 (pre-commit + pre-push + daily full) | 22, 40 | 同上 |

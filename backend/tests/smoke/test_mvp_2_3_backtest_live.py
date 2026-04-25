@@ -35,10 +35,10 @@ import pandas as pd
 from app.data_fetcher.contracts import BACKTEST_RUN
 from app.data_fetcher.pipeline import DataPipeline
 from app.services.db import get_sync_conn
-from backend.platform._types import BacktestMode
-from backend.platform.backtest.interface import BacktestConfig, BacktestResult
-from backend.platform.backtest.registry import DBBacktestRegistry
-from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
+from backend.qm_platform._types import BacktestMode
+from backend.qm_platform.backtest.interface import BacktestConfig, BacktestResult
+from backend.qm_platform.backtest.registry import DBBacktestRegistry
+from backend.qm_platform.data.lineage import CodeRef, Lineage, LineageRef
 
 # 远古 hash 前缀避免碰撞老 7 行 + 未来真 run
 SMOKE_HASH = "_smoke_mvp_2_3_pr_b_" + uuid4().hex[:16]

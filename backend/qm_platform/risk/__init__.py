@@ -12,9 +12,9 @@
           38 (Blueprint 真相源) / 41 (timezone UTC)
 
 Application 消费示例 (PR 3 daily_pipeline.risk_check):
-    from backend.platform.risk import PlatformRiskEngine
-    from backend.platform.risk.sources import QMTPositionSource, DBPositionSource
-    from backend.platform.risk.rules.pms import PMSRule
+    from backend.qm_platform.risk import PlatformRiskEngine
+    from backend.qm_platform.risk.sources import QMTPositionSource, DBPositionSource
+    from backend.qm_platform.risk.rules.pms import PMSRule
 
     engine = PlatformRiskEngine(
         primary_source=QMTPositionSource(reader=qmt_client),

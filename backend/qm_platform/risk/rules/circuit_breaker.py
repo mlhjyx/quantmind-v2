@@ -32,7 +32,7 @@ from typing import Any, Literal
 # resolution overhead, Platform→psycopg2 依赖边界显式 (铁律 31 例外 wiring 层必要代价)
 import psycopg2.errors
 
-from backend.platform._types import Severity
+from backend.qm_platform._types import Severity
 
 from ..interface import RiskContext, RiskRule, RuleResult
 

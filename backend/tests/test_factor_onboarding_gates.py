@@ -28,7 +28,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.factor_onboarding import FactorOnboardingService  # noqa: E402
-from backend.platform.factor.registry import OnboardingBlocked  # noqa: E402
+from backend.qm_platform.factor.registry import OnboardingBlocked  # noqa: E402
 
 VALID_HYPOTHESIS = (
     "高换手股票短期流动性冲击预期, 截面低换手率因子捕捉未来 20 日反向收益 — 流动性溢价."
@@ -49,7 +49,7 @@ def _mock_platform_register(
 ):
     """构造 Platform register mock + DAL read_registry mock + conn_factory mock.
 
-    同时 patch backend.platform.data.access_layer + backend.platform.factor.registry
+    同时 patch backend.qm_platform.data.access_layer + backend.qm_platform.factor.registry
     的 PlatformDataAccessLayer / DBFactorRegistry 使 onboarding 内的 import 走 mock.
     """
     if read_registry_return is None:
@@ -91,8 +91,8 @@ def test_upsert_registry_success_returns_uuid_string(service: FactorOnboardingSe
         register_return=expected_id
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn):
         result = service._upsert_factor_registry(
             conn=conn,
@@ -129,8 +129,8 @@ def test_upsert_registry_uses_defaults_when_gate_result_sparse(service: FactorOn
         register_return=expected_id
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn):
         service._upsert_factor_registry(
             conn=conn,
@@ -159,8 +159,8 @@ def test_upsert_registry_g10_empty_hypothesis_blocked(service: FactorOnboardingS
         register_side_effect=OnboardingBlocked("G10 失败 (铁律 13): hypothesis 必须非空")
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn), \
          pytest.raises(OnboardingBlocked, match="G10"):
         service._upsert_factor_registry(
@@ -181,8 +181,8 @@ def test_upsert_registry_g10_placeholder_hypothesis_blocked(service: FactorOnboa
         register_side_effect=OnboardingBlocked("G10 失败: 占位符前缀")
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn), \
          pytest.raises(OnboardingBlocked, match="G10"):
         service._upsert_factor_registry(
@@ -207,8 +207,8 @@ def test_upsert_registry_g9_similar_ast_blocked(service: FactorOnboardingService
         register_side_effect=OnboardingBlocked("G9 失败 (铁律 12): AST Jaccard > 0.7")
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn), \
          pytest.raises(OnboardingBlocked, match="G9"):
         service._upsert_factor_registry(
@@ -228,7 +228,7 @@ def test_upsert_registry_g9_similar_ast_blocked(service: FactorOnboardingService
 
 def test_upsert_registry_duplicate_returns_existing_id(service: FactorOnboardingService) -> None:
     """因子已注册 → 幂等返现有 id (不再 INSERT)."""
-    from backend.platform.factor.registry import DuplicateFactor
+    from backend.qm_platform.factor.registry import DuplicateFactor
 
     conn = MagicMock()
     existing_uid = UUID("99999999-9999-9999-9999-999999999999")
@@ -245,8 +245,8 @@ def test_upsert_registry_duplicate_returns_existing_id(service: FactorOnboarding
         read_registry_return=existing_df,
     )
 
-    with patch("backend.platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
-         patch("backend.platform.factor.registry.DBFactorRegistry", registry_cls), \
+    with patch("backend.qm_platform.data.access_layer.PlatformDataAccessLayer", dal_cls), \
+         patch("backend.qm_platform.factor.registry.DBFactorRegistry", registry_cls), \
          patch("app.services.factor_onboarding.psycopg2.connect", return_value=conn):
         result = service._upsert_factor_registry(
             conn=conn,

@@ -43,7 +43,7 @@ def _mk_real_risk_context(positions_count: int = 3, prev_close_nav: float | None
     """
     from datetime import datetime
 
-    from backend.platform.risk.interface import Position, RiskContext
+    from backend.qm_platform.risk.interface import Position, RiskContext
 
     positions = tuple(
         Position(

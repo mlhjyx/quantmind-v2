@@ -31,7 +31,7 @@ from backend.engines.strategies.s1_monthly_ranking import (  # noqa: E402
     S1MonthlyRanking,
     get_s1_factor_pool,
 )
-from backend.platform.strategy.interface import (  # noqa: E402
+from backend.qm_platform.strategy.interface import (  # noqa: E402
     RebalanceFreq,
     StrategyContext,
     StrategyStatus,
@@ -360,7 +360,7 @@ def test_validate_signals_passes_valid_buys():
 def test_validate_signals_drops_non_positive_weight():
     s1 = S1MonthlyRanking()
     ctx = _mk_ctx()
-    from backend.platform._types import Signal
+    from backend.qm_platform._types import Signal
 
     bad_signal = Signal(
         strategy_id=s1.strategy_id,
@@ -377,7 +377,7 @@ def test_validate_signals_drops_non_positive_weight():
 def test_validate_signals_drops_code_not_in_universe():
     s1 = S1MonthlyRanking()
     ctx = _mk_ctx()
-    from backend.platform._types import Signal
+    from backend.qm_platform._types import Signal
 
     bad_signal = Signal(
         strategy_id=s1.strategy_id,

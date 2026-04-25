@@ -64,7 +64,7 @@ Sub3 (~1 周): U1 Parity 实盘对齐
 
 ## 关键设计 (D1-D6)
 
-### D1. `BacktestMode` enum (复用 MVP 1.1 `backend.platform._types.BacktestMode`)
+### D1. `BacktestMode` enum (复用 MVP 1.1 `backend.qm_platform._types.BacktestMode`)
 
 ```python
 class BacktestMode(Enum):

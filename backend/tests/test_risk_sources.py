@@ -12,10 +12,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform.risk.interface import PositionSourceError
-from backend.platform.risk.sources._enricher import build_positions
-from backend.platform.risk.sources.db_snapshot import DBPositionSource
-from backend.platform.risk.sources.qmt_realtime import QMTPositionSource
+from backend.qm_platform.risk.interface import PositionSourceError
+from backend.qm_platform.risk.sources._enricher import build_positions
+from backend.qm_platform.risk.sources.db_snapshot import DBPositionSource
+from backend.qm_platform.risk.sources.qmt_realtime import QMTPositionSource
 
 
 def _mock_conn_with_rows(rows: list[tuple]) -> MagicMock:

@@ -177,7 +177,7 @@ class QMTDataService:
             ensure_xtquant_path()  # QMTDataSource lazy import xtquant, 需要 path 先 setup
             from datetime import date as _date
 
-            from backend.platform.data.sources.qmt_source import (
+            from backend.qm_platform.data.sources.qmt_source import (
                 QMT_TICKS_CONTRACT,
                 QMTDataSource,
             )

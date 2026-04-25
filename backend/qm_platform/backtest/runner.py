@@ -36,7 +36,7 @@ from engines.slippage_model import SlippageConfig as EngineSlippageConfig
 # (test_platform_skeleton.test_frameworks_do_not_cross_import 硬门).
 # app 层允许 import platform (方向正确), Platform 通过 app helpers 间接访问其他 Platform framework.
 from app.data_fetcher.pipeline import make_code_ref, make_lineage, make_lineage_ref
-from backend.platform._types import BacktestMode
+from backend.qm_platform._types import BacktestMode
 
 from .interface import BacktestConfig, BacktestRegistry, BacktestResult, BacktestRunner
 
@@ -428,7 +428,7 @@ class PlatformBacktestRunner(BacktestRunner):
             inputs=inputs,
             code=make_code_ref(
                 git_commit=git_commit or "",
-                module="backend.platform.backtest.runner",
+                module="backend.qm_platform.backtest.runner",
                 function="PlatformBacktestRunner.run",
             ),
             params={

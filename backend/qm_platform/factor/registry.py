@@ -402,11 +402,11 @@ def _float_or_none(v: Any) -> float | None:
 
 
 class StubLifecycleMonitor(FactorLifecycleMonitor):
-    """MVP 1.3b 占位. MVP 1.3c 推荐用 PlatformLifecycleMonitor (backend.platform.factor.lifecycle)."""
+    """MVP 1.3b 占位. MVP 1.3c 推荐用 PlatformLifecycleMonitor (backend.qm_platform.factor.lifecycle)."""
 
     def evaluate_all(self) -> list[TransitionDecision]:
         raise NotImplementedError(
-            "MVP 1.3c: 请用 backend.platform.factor.lifecycle.PlatformLifecycleMonitor"
+            "MVP 1.3c: 请用 backend.qm_platform.factor.lifecycle.PlatformLifecycleMonitor"
         )
 
 

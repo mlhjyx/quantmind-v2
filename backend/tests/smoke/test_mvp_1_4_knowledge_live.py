@@ -33,7 +33,7 @@ def test_knowledge_registry_live_read_path() -> None:
         "configure_logging()\n"
         "ok = bootstrap_platform_deps()\n"
         "assert ok is True, 'bootstrap failed'\n"
-        "from backend.platform.knowledge.registry import (\n"
+        "from backend.qm_platform.knowledge.registry import (\n"
         "    DBExperimentRegistry, DBFailedDirectionDB, DBADRRegistry, ADRNotFound,\n"
         ")\n"
         "from app.services.db import get_sync_conn\n"

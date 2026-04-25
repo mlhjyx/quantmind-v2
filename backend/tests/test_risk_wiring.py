@@ -17,7 +17,7 @@ from app.services.risk_wiring import (
     LoggingSellBroker,
     build_pms_thresholds,
 )
-from backend.platform.risk.rules.pms import PMSThreshold
+from backend.qm_platform.risk.rules.pms import PMSThreshold
 
 # ---------- LoggingSellBroker ----------
 
@@ -143,8 +143,8 @@ class TestBuildRiskEngine:
         from dataclasses import dataclass
 
         from app.services.risk_wiring import build_risk_engine
-        from backend.platform._types import Severity
-        from backend.platform.risk import RiskRule
+        from backend.qm_platform._types import Severity
+        from backend.qm_platform.risk import RiskRule
 
         @dataclass
         class _DummyRule(RiskRule):
@@ -177,14 +177,14 @@ class TestBuildRiskEngine:
 
 def test_logging_sell_broker_matches_broker_protocol():
     """静态检查: LoggingSellBroker.sell 签名符合 engine.BrokerProtocol."""
-    from backend.platform.risk.engine import BrokerProtocol
+    from backend.qm_platform.risk.engine import BrokerProtocol
 
     broker: BrokerProtocol = LoggingSellBroker()  # mypy structural check
     _ = broker.sell(code="x", shares=1, reason="r")
 
 
 def test_dingding_notifier_matches_notifier_protocol():
-    from backend.platform.risk.engine import NotifierProtocol
+    from backend.qm_platform.risk.engine import NotifierProtocol
 
     notifier: NotifierProtocol = DingTalkRiskNotifier()  # mypy structural check
     with patch("app.services.risk_wiring.send_alert"):
@@ -240,8 +240,8 @@ class TestBuildIntradayRiskEngine:
         mock_get_conn.return_value = MagicMock()
 
         from app.services.risk_wiring import build_intraday_risk_engine
-        from backend.platform._types import Severity
-        from backend.platform.risk import RiskRule
+        from backend.qm_platform._types import Severity
+        from backend.qm_platform.risk import RiskRule
 
         class _TestExtra(RiskRule):
             rule_id = "test_extra_intraday"

@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from backend.platform.config.auditor import (
+from backend.qm_platform.config.auditor import (
     ConfigDriftError,
     ConfigDriftReport,
     PlatformConfigAuditor,
     _values_equal,
 )
-from backend.platform.config.loader import PlatformConfigLoader
-from backend.platform.config.schema import RootConfigSchema
+from backend.qm_platform.config.loader import PlatformConfigLoader
+from backend.qm_platform.config.schema import RootConfigSchema
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PT_LIVE_YAML = PROJECT_ROOT / "configs" / "pt_live.yaml"

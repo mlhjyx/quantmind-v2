@@ -28,7 +28,7 @@ import pandas as pd
 # app.data_fetcher.pipeline 提供 lineage gateway helpers (make_lineage_ref / write_lineage_with_outputs),
 # 避 Platform backtest → Platform data 跨 framework 违规 (test_platform_skeleton 硬门, PR B review fix).
 from app.data_fetcher.pipeline import make_lineage_ref, write_lineage_with_outputs
-from backend.platform._types import BacktestMode
+from backend.qm_platform._types import BacktestMode
 
 from .interface import BacktestConfig, BacktestRegistry, BacktestResult
 

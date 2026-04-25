@@ -37,10 +37,10 @@ from app.services.config_loader import (
     to_backtest_config,
     to_signal_config,
 )
-from backend.platform._types import BacktestMode
-from backend.platform.backtest import BacktestConfig as PlatformCfg
-from backend.platform.backtest import InMemoryBacktestRegistry
-from backend.platform.backtest.runner import PlatformBacktestRunner
+from backend.qm_platform._types import BacktestMode
+from backend.qm_platform.backtest import BacktestConfig as PlatformCfg
+from backend.qm_platform.backtest import InMemoryBacktestRegistry
+from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
 
 def main():

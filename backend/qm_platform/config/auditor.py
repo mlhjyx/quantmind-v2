@@ -174,7 +174,7 @@ def _git_commit() -> str:
 
 
 class PlatformConfigAuditor(ConfigAuditor):
-    """`backend.platform.config.interface.ConfigAuditor` 的 concrete 实现.
+    """`backend.qm_platform.config.interface.ConfigAuditor` 的 concrete 实现.
 
     Usage (PT 启动):
         auditor = PlatformConfigAuditor()

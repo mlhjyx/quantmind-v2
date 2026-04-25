@@ -140,7 +140,7 @@ def _build_factor_lineage(df: pd.DataFrame, trade_date: date, conn):
         Lineage | None (失败返 None, 上层 with_lineage=True 但失败时不 raise)
     """
     try:
-        from backend.platform.data.lineage import CodeRef, Lineage, LineageRef
+        from backend.qm_platform.data.lineage import CodeRef, Lineage, LineageRef
 
         factor_names = df["factor_name"].dropna().astype(str).unique().tolist()
         version_map: dict[str, int] = {}

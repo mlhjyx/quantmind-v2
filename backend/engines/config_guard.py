@@ -146,9 +146,9 @@ _DEFAULT_PT_YAML = "configs/pt_live.yaml"
 _FLOAT_TOL = 1e-9
 
 
-# ConfigDriftError 已迁移到 backend.platform.config.auditor (MVP 1.2 Config Management).
+# ConfigDriftError 已迁移到 backend.qm_platform.config.auditor (MVP 1.2 Config Management).
 # 本 alias 保 老 API 兼容 (test_config_guard / run_paper_trading 等 51 处 import).
-from backend.platform.config.auditor import ConfigDriftError  # noqa: E402, F401
+from backend.qm_platform.config.auditor import ConfigDriftError  # noqa: E402, F401
 
 
 def _values_equal(a: Any, b: Any) -> bool:
@@ -200,7 +200,7 @@ def check_config_alignment(
     """校验 .env / pt_live.yaml / PAPER_TRADING_CONFIG 三源参数对齐 (铁律 34).
 
     **MVP 1.2 shim**: 函数签名和 raise 行为保 API 兼容, 实际逻辑走
-    `backend.platform.config.auditor.PlatformConfigAuditor.check_alignment()`.
+    `backend.qm_platform.config.auditor.PlatformConfigAuditor.check_alignment()`.
     扩展新参数只需改 Platform auditor `_TRIPLE_SOURCE_FIELDS`, 不再改这里.
 
     Args:
@@ -212,7 +212,7 @@ def check_config_alignment(
         ConfigDriftError: 任何一项三源不一致 (strict=True).
         FileNotFoundError: pt_live.yaml 不存在.
     """
-    from backend.platform.config.auditor import PlatformConfigAuditor
+    from backend.qm_platform.config.auditor import PlatformConfigAuditor
 
     if env_settings is None:
         from app.config import settings as env_settings  # type: ignore[no-redef]

@@ -13,8 +13,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from backend.platform.data.base_source import ContractViolation
-from backend.platform.data.sources.qmt_source import (
+from backend.qm_platform.data.base_source import ContractViolation
+from backend.qm_platform.data.sources.qmt_source import (
     QMT_ASSETS_CONTRACT,
     QMT_POSITIONS_CONTRACT,
     QMT_TICKS_CONTRACT,
@@ -99,7 +99,7 @@ def test_constructor_rejects_none_broker() -> None:
 
 def test_unsupported_contract_raises_value_error() -> None:
     src = QMTDataSource(broker=_FakeBroker())
-    from backend.platform.data.interface import DataContract
+    from backend.qm_platform.data.interface import DataContract
 
     bogus = DataContract(
         name="unknown",

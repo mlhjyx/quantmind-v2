@@ -8,8 +8,8 @@ from uuid import UUID
 import pandas as pd
 import pytest
 
-from backend.platform.factor.interface import FactorSpec, FactorStatus
-from backend.platform.factor.registry import (
+from backend.qm_platform.factor.interface import FactorSpec, FactorStatus
+from backend.qm_platform.factor.registry import (
     DBFactorRegistry,
     DuplicateFactor,
     FactorNotFound,

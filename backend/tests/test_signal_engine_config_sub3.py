@@ -272,7 +272,7 @@ class TestAuditorIntegrationStillPasses:
         """当前 pt_live.yaml ↔ PAPER_TRADING_CONFIG 对齐, auditor 不 raise."""
         from engines.signal_engine import PAPER_TRADING_CONFIG
 
-        from backend.platform.config.auditor import PlatformConfigAuditor
+        from backend.qm_platform.config.auditor import PlatformConfigAuditor
 
         # 直接走真实 yaml 文件 + 真实 python config (PR 内部只关心不 raise)
         auditor = PlatformConfigAuditor()

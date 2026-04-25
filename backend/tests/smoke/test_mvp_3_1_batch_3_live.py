@@ -1,7 +1,7 @@
 """Smoke: MVP 3.1 批 3 CircuitBreaker Rule Adapter 生产入口真启动验证 (铁律 10b).
 
 验证链路 (subprocess 隔离, 避母进程 import 污染):
-  1. `backend.platform.risk.rules.circuit_breaker.CircuitBreakerRule` 可 import
+  1. `backend.qm_platform.risk.rules.circuit_breaker.CircuitBreakerRule` 可 import
   2. `app.services.risk_wiring.build_circuit_breaker_rule` factory 可 import
   3. CircuitBreakerRule 实例化 (注入 get_sync_conn + PAPER_INITIAL_CAPITAL)
   4. root_rule_id_for 契约 (cb_escalate_l4 → 'circuit_breaker')
@@ -37,7 +37,7 @@ def test_mvp_3_1_batch_3_circuit_breaker_imports() -> None:
                 f"sys.path.insert(0, r'{project_root / 'backend'}'); "
                 f"sys.path.insert(0, r'{project_root}'); "
                 # 1. Platform CB rule 可 import
-                "from backend.platform.risk.rules.circuit_breaker import CircuitBreakerRule; "
+                "from backend.qm_platform.risk.rules.circuit_breaker import CircuitBreakerRule; "
                 # 2. App wiring factory 可 import
                 "from app.services.risk_wiring import build_circuit_breaker_rule; "
                 # 3. Factory 实例化 (注入真 get_sync_conn + settings.PAPER_INITIAL_CAPITAL)
@@ -62,7 +62,7 @@ def test_mvp_3_1_batch_3_circuit_breaker_imports() -> None:
                 "assert 'build_circuit_breaker_rule' in src, "
                 "'risk_daily_check_task 未注入 CB adapter (expected extra_rules=[build_circuit_breaker_rule()])'; "
                 # 6. rules package __all__ 含 CircuitBreakerRule
-                "from backend.platform.risk.rules import CircuitBreakerRule as _CB2; "
+                "from backend.qm_platform.risk.rules import CircuitBreakerRule as _CB2; "
                 "assert _CB2 is CircuitBreakerRule; "
                 "print('OK')"
             ),

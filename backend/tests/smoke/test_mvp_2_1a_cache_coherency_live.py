@@ -33,7 +33,7 @@ def test_cache_coherency_live_max_date_checker() -> None:
         "configure_logging()\n"
         "ok = bootstrap_platform_deps()\n"
         "assert ok is True, 'bootstrap failed'\n"
-        "from backend.platform.data.cache_coherency import (\n"
+        "from backend.qm_platform.data.cache_coherency import (\n"
         "    CacheCoherencyPolicy, MaxDateChecker, check_stale,\n"
         ")\n"
         "from app.services.db import get_sync_conn\n"

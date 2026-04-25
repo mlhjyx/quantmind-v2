@@ -181,10 +181,10 @@ def run_with_yaml(config_path: str):
         to_backtest_config,
         to_signal_config,
     )
-    from backend.platform._types import BacktestMode
-    from backend.platform.backtest import BacktestConfig as PlatformCfg
-    from backend.platform.backtest import InMemoryBacktestRegistry
-    from backend.platform.backtest.runner import PlatformBacktestRunner
+    from backend.qm_platform._types import BacktestMode
+    from backend.qm_platform.backtest import BacktestConfig as PlatformCfg
+    from backend.qm_platform.backtest import InMemoryBacktestRegistry
+    from backend.qm_platform.backtest.runner import PlatformBacktestRunner
 
     cfg = load_config(config_path)
     # Engine BacktestConfig / SignalConfig 从 YAML 全字段构造 (14/8 字段), 走 builder 注入

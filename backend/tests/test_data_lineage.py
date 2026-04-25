@@ -20,7 +20,7 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from backend.platform.data.lineage import (
+from backend.qm_platform.data.lineage import (
     LINEAGE_SCHEMA_VERSION,
     CodeRef,
     Lineage,
@@ -312,7 +312,7 @@ def test_record_lineage_merges_outputs_and_persists(
 
     直接测 helper, 绕开 execute_values (psycopg2-specific, sqlite 不兼容)."""
     # patch write_lineage 走 paramstyle='?' (sqlite)
-    import backend.platform.data.lineage as lineage_mod
+    import backend.qm_platform.data.lineage as lineage_mod
     from app.data_fetcher.contracts import FACTOR_VALUES
     from app.data_fetcher.pipeline import DataPipeline
     orig = lineage_mod.write_lineage

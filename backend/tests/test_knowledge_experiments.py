@@ -6,8 +6,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from backend.platform.knowledge.interface import ExperimentRecord
-from backend.platform.knowledge.registry import (
+from backend.qm_platform.knowledge.interface import ExperimentRecord
+from backend.qm_platform.knowledge.registry import (
     DBExperimentRegistry,
     ExperimentNotFound,
     WriteNotConfigured,

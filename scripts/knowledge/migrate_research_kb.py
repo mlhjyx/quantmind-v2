@@ -255,8 +255,8 @@ def apply_failed_directions(entries: list[FailedDirEntry], dry_run: bool) -> int
         logger.info("[DRY-RUN] 跳过写 failed_directions (%d 条)", len(entries))
         return 0
     from app.services.db import get_sync_conn
-    from backend.platform.knowledge.interface import FailedDirectionRecord
-    from backend.platform.knowledge.registry import DBFailedDirectionDB
+    from backend.qm_platform.knowledge.interface import FailedDirectionRecord
+    from backend.qm_platform.knowledge.registry import DBFailedDirectionDB
 
     db = DBFailedDirectionDB(conn_factory=get_sync_conn)
     count = 0
@@ -281,8 +281,8 @@ def apply_experiments(entries: list[ExperimentEntry], dry_run: bool) -> int:
     from uuid import uuid4
 
     from app.services.db import get_sync_conn
-    from backend.platform.knowledge.interface import ExperimentRecord
-    from backend.platform.knowledge.registry import DBExperimentRegistry
+    from backend.qm_platform.knowledge.interface import ExperimentRecord
+    from backend.qm_platform.knowledge.registry import DBExperimentRegistry
 
     db = DBExperimentRegistry(conn_factory=get_sync_conn)
     count = 0

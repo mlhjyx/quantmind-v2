@@ -4,7 +4,7 @@ subprocess + Redis 探测 (QMTData 服务是否 running) + 若 running 则真 im
 `QMTDataSource` + 构造/校验 contract 可用性.
 
 本 smoke **不建真 QMT 连接** (会占 QMTData daemon 的账号 session). 只验:
-  1. `QMTDataSource` 导入链完整 (backend.platform.data.sources.qmt_source)
+  1. `QMTDataSource` 导入链完整 (backend.qm_platform.data.sources.qmt_source)
   2. 3 DataContract 实例可构造
   3. `_check_value_ranges` 可调用 (核心业务规则链路)
 
@@ -24,13 +24,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 _SMOKE_CODE = """
 # 仅静态 import 路径 + contract 可构造, 不真 connect QMT (避免占 QMTData session)
-from backend.platform.data.sources.qmt_source import (
+from backend.qm_platform.data.sources.qmt_source import (
     QMTDataSource,
     QMT_POSITIONS_CONTRACT,
     QMT_ASSETS_CONTRACT,
     QMT_TICKS_CONTRACT,
 )
-from backend.platform.data.base_source import ContractViolation
+from backend.qm_platform.data.base_source import ContractViolation
 import pandas as pd
 
 

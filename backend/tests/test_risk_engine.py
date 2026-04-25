@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.platform._types import Severity
-from backend.platform.risk.engine import PlatformRiskEngine, _root_rule_id_via_rules
-from backend.platform.risk.interface import (
+from backend.qm_platform._types import Severity
+from backend.qm_platform.risk.engine import PlatformRiskEngine, _root_rule_id_via_rules
+from backend.qm_platform.risk.interface import (
     Position,
     PositionSourceError,
     RiskContext,

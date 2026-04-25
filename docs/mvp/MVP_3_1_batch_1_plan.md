@@ -104,7 +104,7 @@ class RiskContext:
 ```python
 from abc import ABC, abstractmethod
 from typing import Literal
-from backend.platform._types import Severity
+from backend.qm_platform._types import Severity
 
 @dataclass(frozen=True)
 class RuleResult:
@@ -284,9 +284,9 @@ def pms_check():
 ```python
 def pms_check():
     """DEPRECATED name → 改名 risk_check, 保留 alias 1 sprint."""
-    from backend.platform.risk import PlatformRiskEngine
-    from backend.platform.risk.sources import QMTPositionSource, DBPositionSource
-    from backend.platform.risk.rules.pms import PMSRule  # 单类方案
+    from backend.qm_platform.risk import PlatformRiskEngine
+    from backend.qm_platform.risk.sources import QMTPositionSource, DBPositionSource
+    from backend.qm_platform.risk.rules.pms import PMSRule  # 单类方案
     from app.services.execution_ops import get_broker  # 按 execution_mode 返 QMT/paper broker
 
     engine = PlatformRiskEngine(

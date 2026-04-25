@@ -1,6 +1,6 @@
 ---
 adr_id: ADR-001
-title: Platform 包名 `backend.platform` (不加 quantmind namespace)
+title: Platform 包名 `backend.qm_platform` (不加 quantmind namespace)
 status: accepted
 related_ironlaws: [38]
 recorded_at: 2026-04-17
@@ -8,7 +8,7 @@ recorded_at: 2026-04-17
 
 ## Context
 
-Wave 1 启动前的开放问题之一: Platform SDK 包应放在 `backend.platform.*` 还是 `backend.quantmind.platform.*`?
+Wave 1 启动前的开放问题之一: Platform SDK 包应放在 `backend.qm_platform.*` 还是 `backend.quantmind.platform.*`?
 
 项目历史用 "quantmind_v2" 作代码库名, 但 Python 包没使用 `quantmind` 命名空间前缀. 有观点认为未来若项目演化为多个子系统 (backtest/PMS/forex) 需要顶层命名空间隔离.
 
@@ -16,7 +16,7 @@ Wave 1 启动前的开放问题之一: Platform SDK 包应放在 `backend.platfo
 
 ## Decision
 
-采用 **`backend.platform`** 作为 Platform SDK 包根. Framework 子包直接挂在其下:
+采用 **`backend.qm_platform`** 作为 Platform SDK 包根. Framework 子包直接挂在其下:
 
 ```
 backend/platform/
@@ -45,13 +45,13 @@ backend/platform/
 ## Consequences
 
 **正面**:
-- 短路径: `from backend.platform.factor.registry import DBFactorRegistry` (51 字符, 已够深)
+- 短路径: `from backend.qm_platform.factor.registry import DBFactorRegistry` (51 字符, 已够深)
 - Python 已用 `sys.path` + 子模块语义隔离, 无需再加 namespace
 - MVP 1.1 骨架一天搭完, 后续 MVP 不再改动包路径
 
 **负面**:
 - 若未来真有 Q2 项目 (e.g. `quantmind_forex`) 共享 Platform 代码, 需走 pip 发布路径, 非 import 共用
-- `backend.platform` 撞 stdlib `platform` — MVP 1.2 踩过一次坑 (pandas `import platform` 被覆盖). 解法: 所有 `sys.path.insert(0, backend_dir)` 改 `append` 保 stdlib 优先
+- `backend.qm_platform` 撞 stdlib `platform` — MVP 1.2 踩过一次坑 (pandas `import platform` 被覆盖). 解法: 所有 `sys.path.insert(0, backend_dir)` 改 `append` 保 stdlib 优先
 
 ## References
 

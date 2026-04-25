@@ -25,7 +25,7 @@ except Exception as e:
     sys.exit(2)
 
 from datetime import date, timedelta
-from backend.platform.data.sources.baostock_source import (
+from backend.qm_platform.data.sources.baostock_source import (
     BaostockDataSource,
     MINUTE_BARS_DATA_CONTRACT,
 )

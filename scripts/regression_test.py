@@ -41,13 +41,13 @@ from engines.backtest.config import PMSConfig  # noqa: E402
 from engines.metrics import calc_max_drawdown, calc_sharpe  # noqa: E402
 from engines.slippage_model import SlippageConfig  # noqa: E402
 
-from backend.platform._types import BacktestMode  # noqa: E402
-from backend.platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
-from backend.platform.backtest import (  # noqa: E402
+from backend.qm_platform._types import BacktestMode  # noqa: E402
+from backend.qm_platform.backtest import BacktestConfig as PlatformBacktestConfig  # noqa: E402
+from backend.qm_platform.backtest import (  # noqa: E402
     InMemoryBacktestRegistry,
     ParquetBaselineLoader,
 )
-from backend.platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
+from backend.qm_platform.backtest.runner import PlatformBacktestRunner  # noqa: E402
 
 BASELINE_DIR = Path(__file__).resolve().parent.parent / "cache" / "baseline"
 

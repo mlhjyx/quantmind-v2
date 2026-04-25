@@ -4,7 +4,7 @@
 'import app.main'`) 触发完整 import 链, 包括 uvicorn.main 的 stdlib `platform` 导入.
 
 今日 FastAPI 启动炸即在此处 — uvicorn.main:6 `import platform`, 命中 backend/platform/
-shadow, __init__.py 的 `from backend.platform._types` 因 `backend` 非 package 崩.
+shadow, __init__.py 的 `from backend.qm_platform._types` 因 `backend` 非 package 崩.
 
 运行: `pytest backend/tests/smoke/test_fastapi_app_import.py -v -m smoke`
 """
@@ -72,12 +72,12 @@ def test_stdlib_platform_wins_over_backend_platform() -> None:
 
 @pytest.mark.smoke
 def test_backend_platform_namespace_package_accessible() -> None:
-    """subprocess 验证 `from backend.platform.X import Y` 可解析 (项目根在 sys.path)."""
+    """subprocess 验证 `from backend.qm_platform.X import Y` 可解析 (项目根在 sys.path)."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "from backend.platform.config.feature_flag import DBFeatureFlag; "
+            "from backend.qm_platform.config.feature_flag import DBFeatureFlag; "
             "print('DBFeatureFlag:', DBFeatureFlag.__name__)",
         ],
         cwd=str(PROJECT_ROOT),
@@ -89,7 +89,7 @@ def test_backend_platform_namespace_package_accessible() -> None:
     )
     if result.returncode != 0:
         pytest.fail(
-            f"`from backend.platform.X import Y` failed:\n"
+            f"`from backend.qm_platform.X import Y` failed:\n"
             f"stderr[:1500]:\n{result.stderr[:1500]}"
         )
     assert "DBFeatureFlag: DBFeatureFlag" in result.stdout

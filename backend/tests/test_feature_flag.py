@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.platform.config.feature_flag import (
+from backend.qm_platform.config.feature_flag import (
     DBFeatureFlag,
     FlagExpired,
     FlagNotFound,

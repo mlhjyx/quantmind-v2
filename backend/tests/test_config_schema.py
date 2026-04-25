@@ -7,13 +7,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from backend.platform.config.loader import (
+from backend.qm_platform.config.loader import (
     PlatformConfigLoader,
     _apply_env_overrides,
     _cast_env_value,
     _transform_yaml_for_schema,
 )
-from backend.platform.config.schema import (
+from backend.qm_platform.config.schema import (
     BacktestConfigSchema,
     CostConfigSchema,
     DatabaseConfigSchema,

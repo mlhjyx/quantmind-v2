@@ -8,7 +8,7 @@
 
 | ADR | 标题 | 状态 | 关联铁律 |
 |---|---|---|---|
-| [ADR-001](ADR-001-platform-package-name.md) | Platform 包名 `backend.platform` | accepted | 38 |
+| [ADR-001](ADR-001-platform-package-name.md) | Platform 包名 `backend.qm_platform` | accepted | 38 |
 | [ADR-002](ADR-002-pead-as-second-strategy.md) | 第 2 策略 PEAD Event-driven (非 Minute Intraday) | accepted | 38 |
 | [ADR-003](ADR-003-event-sourcing-streambus.md) | Event Sourcing StreamBus + PG (非 EventStoreDB) | accepted | 22, 38 |
 | [ADR-004](ADR-004-ci-3-layer-local.md) | CI 3 层本地 (pre-commit + pre-push + daily full) | accepted | 22, 40 |

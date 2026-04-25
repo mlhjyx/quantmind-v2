@@ -156,7 +156,7 @@ def _apply_env_overrides(base: dict[str, Any], env: dict[str, str]) -> dict[str,
 
 
 class PlatformConfigLoader(ConfigLoader):
-    """`backend.platform.config.interface.ConfigLoader` 的 concrete 实现.
+    """`backend.qm_platform.config.interface.ConfigLoader` 的 concrete 实现.
 
     用法:
         loader = PlatformConfigLoader()

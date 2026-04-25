@@ -1,4 +1,4 @@
-"""MVP 1.1 验收测试: backend.platform 骨架.
+"""MVP 1.1 验收测试: backend.qm_platform 骨架.
 
 验收点:
   1. SDK 全部符号可 import (__all__ ≥ 40, 实际 67)
@@ -7,7 +7,7 @@
   4. 共享类型 dataclass frozen (不可变值对象)
   5. Platform 代码严格隔离老代码 (AST 扫描 import)
   6. Framework 间不互相 import (跨 Framework 必走 EventBus)
-  7. import backend.platform 无 IO 副作用 (不访问 DB / Redis)
+  7. import backend.qm_platform 无 IO 副作用 (不访问 DB / Redis)
 
 执行:
   pytest backend/tests/test_platform_skeleton.py -v
@@ -28,8 +28,8 @@ PLATFORM_ROOT = pathlib.Path(__file__).resolve().parents[1] / "platform"
 
 
 def test_sdk_imports_all_symbols() -> None:
-    """全部 67 个符号可通过 `from backend.platform import ...` 取得."""
-    import backend.platform as platform_pkg
+    """全部 67 个符号可通过 `from backend.qm_platform import ...` 取得."""
+    import backend.qm_platform as platform_pkg
 
     expected_symbols = [
         "ADRRecord", "ADRRegistry", "AdmissionController", "AdmissionResult",
@@ -64,7 +64,7 @@ def test_sdk_imports_all_symbols() -> None:
 
 def test_sdk_all_symbols_complete() -> None:
     """__all__ 至少 40 个符号, 实际 67 (12 Framework × 平均 5)."""
-    from backend.platform import __all__
+    from backend.qm_platform import __all__
 
     assert len(__all__) >= 40
     assert len(__all__) == len(set(__all__)), "__all__ 不允许重复"
@@ -118,7 +118,7 @@ def test_sdk_all_symbols_complete() -> None:
 )
 def test_abstract_classes_cannot_instantiate(abstract_class_name: str) -> None:
     """每个 Framework 的核心 ABC 不可直接实例化 (契约层约束)."""
-    import backend.platform as platform_pkg
+    import backend.qm_platform as platform_pkg
 
     cls = getattr(platform_pkg, abstract_class_name)
     with pytest.raises(TypeError, match="abstract"):
@@ -160,7 +160,7 @@ def test_abstract_classes_cannot_instantiate(abstract_class_name: str) -> None:
 )
 def test_dataclasses_are_frozen(dc_name: str) -> None:
     """所有共享类型 dataclass 必须 frozen (不可变 + 线程安全)."""
-    import backend.platform as platform_pkg
+    import backend.qm_platform as platform_pkg
 
     dc = getattr(platform_pkg, dc_name, None)
     # ConfigDriftReport 未导出在 __init__, 但同文件, 这里按 __all__ 限定.
@@ -225,7 +225,7 @@ def _is_inside_type_checking(tree: ast.AST, target_node: ast.AST) -> bool:
 def test_frameworks_do_not_cross_import() -> None:
     """跨 Framework 通信必须走 EventBus, interface.py 不得 runtime 互相 import.
 
-    允许: backend.platform._types (共享) / 自身 Framework 内部 / TYPE_CHECKING guard 下的类型注解.
+    允许: backend.qm_platform._types (共享) / 自身 Framework 内部 / TYPE_CHECKING guard 下的类型注解.
     """
     framework_names = (
         "data", "factor", "strategy", "signal", "backtest", "eval",
@@ -240,13 +240,13 @@ def test_frameworks_do_not_cross_import() -> None:
             for node in ast.walk(tree):
                 if not (isinstance(node, ast.ImportFrom) and node.module):
                     continue
-                if not node.module.startswith("backend.platform."):
+                if not node.module.startswith("backend.qm_platform."):
                     continue
                 # 允许 _types 共享
-                if node.module == "backend.platform._types":
+                if node.module == "backend.qm_platform._types":
                     continue
                 # 允许自身 Framework 内部
-                if node.module.startswith(f"backend.platform.{fw}"):
+                if node.module.startswith(f"backend.qm_platform.{fw}"):
                     continue
                 # 允许 TYPE_CHECKING guard 内部 (类型注解, runtime 不执行)
                 if _is_inside_type_checking(tree, node):
@@ -266,7 +266,7 @@ def test_frameworks_do_not_cross_import() -> None:
 
 
 def test_platform_import_has_no_side_effects() -> None:
-    """import backend.platform 不得触发 DB / Redis 连接 (IO 副作用).
+    """import backend.qm_platform 不得触发 DB / Redis 连接 (IO 副作用).
 
     通过子进程验证 — 父进程环境可能已加载过依赖.
 
@@ -281,7 +281,7 @@ def test_platform_import_has_no_side_effects() -> None:
         [
             sys.executable,
             "-c",
-            "import backend.platform; "
+            "import backend.qm_platform; "
             "import sys; "
             "forbidden = ['psycopg2', 'redis', 'sqlalchemy']; "
             "loaded = [m for m in forbidden if m in sys.modules]; "
