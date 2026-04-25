@@ -437,7 +437,7 @@ run_paper_trading.py (1734行)
 | QuantMind_DailyMoneyflow | 17:00 | pull_moneyflow.py | ✅ | |
 | QuantMind_DataQualityCheck | 16:40 | data_quality_check.py | ✅ | |
 | QuantMind_FactorHealthDaily | 17:30 | factor_health_daily.py | ✅ | |
-| QuantMind_DailyReconciliation | 15:10 | daily_reconciliation.py | ✅ | |
+| QuantMind_DailyReconciliation | 15:40 | daily_reconciliation.py | ✅ | Session 36 PR-DRECON align |
 | QuantMind_IntradayMonitor | 09:35 | intraday_monitor.py | ✅ | 每5分钟 |
 | QuantMind_CancelStaleOrders | 09:05 | cancel_stale_orders.py | ✅ | |
 | QuantMind_PTWatchdog | 20:00 | pt_watchdog.py | ✅ | |

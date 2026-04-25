@@ -673,7 +673,7 @@ run_paper_trading.py
 | QuantMind_DailyExecute | Ready | 09:31 | QMT执行 |
 | QuantMind_DailyExecuteAfterData | **Disabled** | 17:05 | SimBroker执行(已禁用) |
 | QuantMind_DailyMoneyflow | Ready | 17:30 | moneyflow拉取 (Session 24 shift 16:35→17:30, tushare 延迟实测) |
-| QuantMind_DailyReconciliation | Ready | 15:10 | 收盘对账 |
+| QuantMind_DailyReconciliation | Ready | 15:40 | 收盘对账 (Session 36 PR-DRECON align) |
 | QuantMind_DailySignal | Ready | 16:30 | 数据拉取+因子+信号 (Session 17 Stage 4 reenable, 非 17:15) |
 | QuantMind_DataQualityCheck | Ready | 18:30 | 数据巡检 (Session 26 shift 17:45→18:30, 避 17:30-18:15 dense window, 脚本硬化 statement_timeout=60s + future-date guard + per-step probe) |
 | QuantMind_FactorHealthDaily | Ready | 17:30 | 因子健康检查 |

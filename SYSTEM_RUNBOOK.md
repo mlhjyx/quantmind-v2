@@ -110,7 +110,7 @@ D:\pgsql\bin\psql.exe -U xin -d quantmind_v2 -h 127.0.0.1
 | 09:05 | QuantMind_CancelStaleOrders | `python scripts/cancel_stale_orders.py` | QMT 撤单 |
 | 09:31 | QuantMind_DailyExecute | `python scripts/run_paper_trading.py execute --execution-mode live` | QMT live 执行 |
 | 09:35 | QuantMind_IntradayMonitor | `python scripts/intraday_monitor.py` (每 5 分钟) | 盘中风控 |
-| 15:10 | QuantMind_DailyReconciliation | `python scripts/daily_reconciliation.py` | 收盘对账 + live 持仓快照 + performance_series |
+| 15:40 | QuantMind_DailyReconciliation | `python scripts/daily_reconciliation.py` | 收盘对账 + live 持仓快照 + performance_series (Session 36 PR-DRECON: 15:10→15:40 align T+0 settle) |
 | 16:25 | QM-HealthCheck | `python scripts/health_check.py` | 盘前 → health_checks 表 |
 | 16:40 | QuantMind_DataQualityCheck | `python scripts/data_quality_check.py` | 数据完整性巡检 |
 | 17:00 | QuantMind_DailyMoneyflow | `python scripts/pull_moneyflow.py` | moneyflow 拉取 (内建重试 3×10min) |
