@@ -142,7 +142,7 @@
 
 ```
 16:15 数据拉取 → 16:25 预检 → 16:30 因子+信号 → 17:00-17:30 收尾(moneyflow/巡检/衰减)
-→ T+1 09:31 执行 → 15:10 对账
+→ T+1 09:31 执行 → 15:40 对账
 ```
 
 ---
@@ -332,7 +332,7 @@ QMT Data Service (scripts/qmt_data_service.py) — 唯一 import xtquant 入口
 | T-1 17:00-17:30 | 收尾 (moneyflow/巡检/衰减) | ✅ |
 | T 09:31 | 执行 (run_paper_trading.py) | ✅ |
 | T 14:30 | PMS 阶梯利润保护 (Celery Beat) | ✅ |
-| T 15:10 | 对账 | ✅ |
+| T 15:40 | 对账 | ✅ |
 
 ### 7.4 PT 状态
 - **当前**: 自动运行中 (CORE3+dv_ttm, 配置已更新 2026-04-12)
@@ -617,7 +617,7 @@ Orchestrator 状态机: 7 状态 + 16 转换规则
 | 3 | QM-DailyFactors | 16:30 工作日 | ✅ |
 | 4 | QM-DailySignal | 17:00 工作日 | ✅ |
 | 5 | QM-DailyExecuteAfterData | 09:31 工作日 | ✅ |
-| 6 | QM-DailyReconciliation | 15:10 工作日 | ✅ |
+| 6 | QM-DailyReconciliation | 15:40 工作日 | ✅ |
 | 7 | QM-DailyBackup | 02:00 每日 | ✅ |
 | 8 | QM-Moneyflow | 17:10 工作日 | ✅ |
 | 9 | QM-DataQuality | 17:15 工作日 | ✅ |

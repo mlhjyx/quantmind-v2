@@ -200,7 +200,7 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 - [x] **阶段 4 Session 17** (2026-04-20): 分层重启 schtasks
   - [x] `pt_audit` schtasks 上线 (`QuantMind_PTAudit` 17:35 + 非交易日 guard + `scheduler_task_log` 持久化 + `logs/pt_audit.log` FileHandler)
   - [x] `QuantMind_DailySignal` (16:30) **reenable** — PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护 (DB 写路径不触 QMT)
-  - [x] `QuantMind_DailyExecuteAfterData` (17:05) **永久废除** — P0-δ paper 污染源, 从 `scripts/setup_task_scheduler.ps1` 源头删除. 业务由 `DailyReconciliation` 15:10 + `DailySignal` 16:30 替代. 手工 `schtasks /delete /tn QuantMind_DailyExecuteAfterData /f`.
+  - [x] `QuantMind_DailyExecuteAfterData` (17:05) **永久废除** — P0-δ paper 污染源, 从 `scripts/setup_task_scheduler.ps1` 源头删除. 业务由 `DailyReconciliation` 15:40 + `DailySignal` 16:30 替代. 手工 `schtasks /delete /tn QuantMind_DailyExecuteAfterData /f`.
   - [ ] `QuantMind_DailyExecute` (09:31 live) reenable — 等 Stage 4.2 (Session 18+) 首周 pt_audit + dry-run 无异常后
 - [ ] **阶段 3 PR-D** (Session 19+): DDL strategy.execution_mode + CHECK + 现有 strategy_id=`28fc37e5` 迁移拆分为 `live_strat` + `paper_strat` + FK 打通 trade_log/position_snapshot/performance_series/circuit_breaker_state
 - [ ] 注册 ADR-008 → `python scripts/knowledge/register_adrs.py --apply`

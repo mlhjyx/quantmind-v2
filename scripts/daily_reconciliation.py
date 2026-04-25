@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """收盘对账 — QMT实际持仓 vs DB记录对比。
 
-每个交易日15:10运行，比较QMT模拟盘持仓与position_snapshot。
+每个交易日15:40运行，比较QMT模拟盘持仓与position_snapshot。
 差异超过阈值时发送钉钉告警。同时计算fill_rate毕业指标。
 
 用法:
