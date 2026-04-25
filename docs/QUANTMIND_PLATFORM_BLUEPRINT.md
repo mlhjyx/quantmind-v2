@@ -1,4 +1,4 @@
-# QuantMind Platform Blueprint (QPB v1.8)
+# QuantMind Platform Blueprint (QPB v1.9)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
 > **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → **v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (批 1+2+3 全 merged, PR #55+#57+#58+#59+#60+#61, 6 PR / 2575 行 / 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 98%, 生产激活 Celery Beat 5 entries, 首次真生产触发 2026-04-27 Monday 09:00 intraday + 14:30 daily)**
@@ -1126,8 +1126,21 @@ Wave 4 (4-6 周): 可观测 + 归因 + DR + 生产就绪
  ├─ MVP 4.3:  CI/CD (#9)                     (1-2 周, 并行)
  └─ MVP 4.4:  Backup & DR (#12)              (1-2 周, 并行)  ← v1.3 新增
 
-总计: 26-35 周 (6.5-8.75 月)
+Wave 5 (4-6 周): Operator UI ⭐ v1.9 新增 (ADR-012)
+ ├─ MVP 5.0:  UI 总纲 + 框架选型 + API surface  (1 周)
+ ├─ MVP 5.1:  PT 状态实时面板 (Redis+DB+QMT)    (1-2 周)
+ ├─ MVP 5.2:  IC 监控 + 因子衰减可视化            (3-5 天)
+ ├─ MVP 5.3:  回测结果对比页 (regression+WF+实验) (3-5 天)
+ ├─ MVP 5.4:  风控事件链路追踪 (PMS/CB/intraday) (1 周)
+ └─ MVP 5.5:  调度任务 dashboard (schtask+Beat) (3-5 天)
+
+总计: 30-41 周 (7.5-10.25 月)  ← v1.9: 原 26-35 周 + Wave 5 (4-6 周)
 ```
+
+> **v1.9 新增 Wave 5 背景** (ADR-012 决议 2026-04-26):
+> 24 项目对标分析 (`docs/research/QUANTMIND_LANDSCAPE_ANALYSIS_2026.md`) 后, UI 从原"反面教材"判断
+> 修正为 **必做工程债**. 用户 4-26 明确: 不开源也需要 UI. 启动时机锁定 Wave 4 完结后,
+> 因 Wave 4 Run Record + factor_quality + Observability 是 UI 5.x 数据源前置依赖.
 
 > **v1.3 时间估算改动**: 原 20-26 周过度乐观 (基于 "单个 MVP 3-5 天" 的不现实假设).
 > 参考业界 sim-to-real parity 实施 (Uber Michelangelo / Netflix Metaflow) 需数个季度,
@@ -1761,6 +1774,21 @@ DEV_AI_EVOLUTION V2.1 (705 行) 在本 Blueprint 框架下是:
   - **实际耗时**: ~0.5 天 (v1.8 实测 Session 27-30 同日连续交付, 原 2-2.7 周估算显著高估).
   - **Wave 3 进度**: 0/5 → **1/5** (MVP 3.1 ✅).
   - **Blueprint 变更**: MVP 3.1 定义批 1/2/3 全 ✅ + 实际耗时修订 + Sunset gate A+B+C 条件落盘 + 版本状态行 Wave 3 1/5.
+- **2026-04-26 v1.9 Wave 5 Operator UI 加入 (ADR-012 + ADR-013 配套)**:
+  - **背景**: 24 项目对标分析 (`docs/research/QUANTMIND_LANDSCAPE_ANALYSIS_2026.md`, 645 行) 后, UI 从原"反面教材"判断**修正为必做工程债**. 用户 4-26 明确: 不开源也需要 UI, 现在没做是因为后端 alpha + governance 还在收尾.
+  - **Part 4 总览时间线扩展**: 加 Wave 5 Operator UI (4-6 周), 5 子 MVP (5.0-5.5):
+    - MVP 5.0 UI 总纲 + 框架选型 + API surface (1 周)
+    - MVP 5.1 PT 状态实时面板 (1-2 周, 操作刚需 P0)
+    - MVP 5.2 IC 监控 + 因子衰减可视化 (3-5 天)
+    - MVP 5.3 回测结果对比页 (3-5 天)
+    - MVP 5.4 风控事件链路追踪 (1 周)
+    - MVP 5.5 调度任务 dashboard (3-5 天)
+  - **技术栈** (ADR-012 D3): Vue + ECharts + FastAPI 复用现有 53 组件, **不引 Electron**. Internal-only 单用户 token auth, 不走 OAuth/multi-user.
+  - **启动时机** (ADR-012 D5): Wave 4 Observability 完结后 (~2026 Q3, Week 27-32), 不能在 Wave 3-4 之前启动 (Wave 4 Run Record + factor_quality + Observability 是 UI 5.x 数据源前置).
+  - **总耗时**: 27-36.5 周 → **30-41 周 (7.5-10.25 月)** (+ Wave 5 4-6 周).
+  - **配套 ADR-013 RD-Agent 重评估计划**: Wave 4 完结后启动 4 周时间盒评估 (paper + Docker/Claude PoC + 数据对接 + ADR-014 决议 a/b/c). 跟 Wave 5 启动时机重叠, 建议 MVP 5.1 (PT 状态面板) 优先于评估.
+  - **30 模式可学清单** (LANDSCAPE Part 5): 跨 Wave 3-6+ 的具体借鉴 pattern (data_source_router / time_window_resolver / multi_strategy_ensemble 4 gotcha / sync_run_record / factor_quality_check 等), 配套索引 `memory/project_borrowable_patterns.md`.
+  - **死项目识别**: backtrader (21月停更) / pyfolio (28月) / alphalens (archived) / empyrical (22月) / catalyst (41月) / eiten (45月) — Quantopian 三件套全部停更, **grep 验证 0 命中** (P0 已关闭).
 
 ---
 
