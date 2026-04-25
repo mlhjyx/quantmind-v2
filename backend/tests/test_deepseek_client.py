@@ -85,7 +85,11 @@ class TestModelRouter:
 
 
 class TestDeepSeekClientMock:
-    def test_mock_mode_activates_without_api_key(self) -> None:
+    def test_mock_mode_activates_without_api_key(self, monkeypatch) -> None:
+        # FLAKY fix (Session 36): production deepseek_client.py:199 fallback to
+        # `os.environ.get("DEEPSEEK_API_KEY", "")`. 若先前 test/conftest 设了 env
+        # var (本 test 单跑 PASS, 全套 FAIL = state leak). 显式 delenv 隔离.
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         client = DeepSeekClient(api_key="")
         assert client.mock_mode is True
 
