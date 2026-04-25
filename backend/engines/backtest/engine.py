@@ -167,6 +167,16 @@ class SimpleBacktester:
 
             # ===== PMS: 执行T+1延迟卖出 =====
             if self.config.pms.enabled and pms_pending_sells:
+                # NOTE (Session 36 PR audit §3.3 closure): 7 处 broker.can_trade
+                # 均不传 symbols_info — by design. 当前 PT/回测 universe 通过
+                # `load_universe` 在入口过滤 ST (data_pipeline 层), 故引擎 day loop
+                # 中 ST 永不到达 broker. PriceLimitValidator 用 `_infer_price_limit`
+                # 默认 (主板 10%) 即可. 若未来策略允许 ST (e.g. PEAD on ST), 需:
+                # (a) 引擎构造 symbols_info DataFrame[code, 'price_limit'=0.05 for ST]
+                # (b) 7 处 broker.can_trade(code, dir, row, symbols_info) 全部更新
+                # (c) Universe filter 同步放开 ST
+                # 当前 dormant 路径已在 validators.py + broker.py 完成签名透传, 测试
+                # backend/tests/test_can_trade_board.py::test_st_5pct_limit_up 验证.
                 for code in list(pms_pending_sells):
                     if code not in broker.holdings:
                         pms_pending_sells.remove(code)
