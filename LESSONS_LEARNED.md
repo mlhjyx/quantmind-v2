@@ -1853,3 +1853,151 @@ Session 36+ 1 次同类事件 (其他静默死亡子系统) 即可固化.
 - PR #74 merge `2d0010b` (ServicesHealthCheck 15min 监控)
 - spawn task: pytest baseline drift 24→40 调查 (独立任务, 不堵本 LL)
 - 候选铁律 44 tracking
+
+---
+
+## LL-076: schtask script `_check_trading_day_or_skip` 用 today 而非 args.start — 周末手工 backfill silent skip (Session 36 末, 2026-04-25)
+
+### 触发事件
+
+Session 36 末 pre-Monday audit (2026-04-25 Saturday 22:35) 发现 F25: `moneyflow_daily` 4-24 (Friday 交易日) 缺数据. 手工 backfill 命令 `python scripts/pull_moneyflow.py --start 20260424 --end 20260424` 输出 "**非交易日，跳过moneyflow拉取**" 并 exit 0.
+
+但 4-24 是真交易日 (`klines_daily` / `factor_values` / `position_snapshot` 实测 4-24 全有数据). 用户传 `--start 20260424` 应该 backfill 4-24, 实际被 silent skip.
+
+### 根因
+
+`scripts/pull_moneyflow.py:251` `_check_trading_day_or_skip()` 检查的是 `date.today()` (今天 Saturday 4-25) 而非 `args.start`:
+
+```python
+def _check_trading_day_or_skip() -> bool:
+    cur.execute(
+        "SELECT is_trading_day FROM trading_calendar WHERE trade_date = %s",
+        (date.today(),),  # ← BUG: 应根据上下文用 args.start
+    )
+```
+
+逻辑误解:
+- 函数名暗示 "if today is trading day proceed" — schtask daily auto run 语义没问题
+- 但 `--start YYYYMMDD` 手工 backfill 路径下, 应校验 args.start 是否交易日
+- 周末 (Saturday=非交易日) 跑历史 backfill 被今天 skip 掉
+
+### Workaround (Session 36 紧急 backfill)
+
+inline Python 直调 `_run(args)` 绕过 `_check_trading_day_or_skip`:
+```python
+import argparse
+from pull_moneyflow import _run
+args = argparse.Namespace(start='20260424', end='20260424', verify=False, recent=False)
+_run(args)  # 5179 rows backfilled
+```
+
+### 正式修复 (PR #90)
+
+`_check_trading_day_or_skip(target_date: date | None = None)`:
+- 默认 `target_date=None` → `date.today()` (schtask daily auto run 语义不变)
+- main() 解析 `args.start` (YYYYMMDD) → `datetime.strptime(...).date()` 传入
+- args.start invalid format → stderr WARNING + fallback today (PR #90 reviewer MEDIUM 采纳, 防 silent fallback 用户误以为日期错而非 format 错)
+
+### 教训
+
+#### LL-076-A: 函数命名暗示语义不匹配多用法时, 必显式参数
+
+`_check_trading_day_or_skip()` 名字暗示"今天", 但有两种调用语义:
+- schtask daily: 校验今天 (auto-run 上下文)
+- 手工 backfill: 校验 args 指定日期
+
+应在 API 层显式区分 (加可选参数), 而非靠 caller 来推断.
+
+#### LL-076-B: 周末测试是 schtask script 的盲区
+
+schtask scripts 5 个生产 script (data_quality_check / pt_watchdog / compute_daily_ic / compute_ic_rolling / fast_ic_recompute) 历史所有测试都在工作日跑 (CI / 开发都是平日). 周末手工 backfill 是 silent failure 的高风险窗口. 未来同类 script 的 unit test 必须含 "Saturday/Sunday + --start trading-day" 场景.
+
+#### LL-076-C: 铁律 33 silent_ok 必带 stderr 诊断 — invalid format 也是
+
+`except ValueError: check_date = None` 看似 silent_ok 合理 (fallback 不抛), 但用户视角下游错误信息 "非交易日跳过" 完全误导. silent_ok 必带 stderr 警告让用户知道 fallback 原因 (LL-068 同 pattern: 异常路径必写 stderr 诊断痕迹).
+
+### 候选铁律 (TBD)
+
+> "schtask script 的可选参数路径 (e.g. `--start`, `--target-date`) 不能让 `today()` 隐式接管. 任何"今天"判断逻辑必须在 API 层暴露 `target_date` 参数, 调用方传入或显式 None=today."
+
+Session 37+ 同类 bug 1 次 (其他 schtask script 类似 today/args mismatch) 即可固化.
+
+### 持久化
+
+- 本 LL 条目 (LL-076)
+- PR #90 merge `cdab4bd` (fix code) + `07d03a7` (reviewer MEDIUM 采纳 invalid-format stderr warn)
+- F25 backfill: `inline _run(args)` 5179 rows manual + Session 36 audit doc
+- 候选铁律 tracking
+
+---
+
+## LL-077: Servy 服务依赖配置触发 worker restart 级联 stop Beat — 必有显式 start protocol (Session 36 末, 2026-04-25)
+
+### 触发事件
+
+Session 36 末 22:38 执行 `servy-cli restart --name="QuantMind-Celery"` (worker 内载 Sprint 5 PR #87 strategy_bootstrap 改动). 7 分钟后 (22:45) ServicesHealthCheck (PR #74 LL-074) 钉钉告警:
+
+```
+🚨 Services Health DEGRADED (LL-074)
+触发原因: transition (ok → degraded)
+✅ QuantMind-FastAPI: RUNNING
+✅ QuantMind-Celery: RUNNING
+❌ QuantMind-CeleryBeat: STOPPED
+✅ QuantMind-QMTData: RUNNING
+失败项: service:QuantMind-CeleryBeat=STOPPED
+```
+
+Beat heartbeat 最后写入 22:38:13 — **正好 worker restart 时点**.
+
+### 根因
+
+`CLAUDE.md` L196 servyMan 表显式声明:
+
+| 服务名 | 依赖 |
+|---|---|
+| QuantMind-CeleryBeat | Redis, **QuantMind-Celery** |
+| QuantMind-Celery | Redis |
+
+Servy `restart QuantMind-Celery` 触发**依赖级联**: 依赖 Celery 的 Beat 被 stop. 但 Servy 不自动 start dependent — Beat 永久停留 STOPPED, 直到人工 `servy-cli start --name="QuantMind-CeleryBeat"`.
+
+**Session 33 Part 4 (2026-04-25 02:25)** 也曾抓到 Beat=Stopped, 当时根因未确认; 本次实测同模式 (worker 类操作 + Beat 级联), 强化假设. (LL-074 触发事件本身可能也是同 root cause: 某个 19:26-02:20 间的 worker restart 触发 Beat stop.)
+
+### 修复 (Session 36 末)
+
+1. 立即手工 `servy-cli start --name="QuantMind-CeleryBeat"` → Beat boot 22:49:43, schedule.dat 24s fresh ✓
+2. ServicesHealthCheck 验证恢复 (15min 后下次心跳告 OK transition)
+
+### 教训
+
+#### LL-077-A: 服务依赖配置必有显式 lifecycle protocol
+
+Servy 自动级联 stop dependent (Beat) 但**不自动级联 start**. Worker restart 后 Beat 留 zombie STOPPED 状态. 必有运维 protocol:
+- **要么** 修 Servy config 让依赖关系**对称** (restart Celery → 自动 restart Beat dependency)
+- **要么** 任何 worker restart 后 **必跟** `servy-cli start --name="QuantMind-CeleryBeat"`
+- 当前选择: 后者 + ServicesHealthCheck 监控兜底
+
+#### LL-077-B: ServicesHealthCheck 是 LL-077 的关键防护
+
+PR #74 LL-074 ServicesHealthCheck (15min × 96/日) 7min 内捕获本次事件. 若无此监控, Beat 会静默 STOPPED 直到 PT_Watchdog 20:00 才发现 (17h gap, 跨周末跨 Monday 09:00 风险).
+
+LL-074 的"投资"在 LL-077 立即收回 (Session 35 设计监控 → Session 36 实战救场 1 天内验证). 监控的价值不在它告警了什么 bug, 而在它**能告警** silent 问题.
+
+#### LL-077-C: 操作 + 审计同步是 audit completeness 必要条件
+
+我执行 `servy-cli restart` 时只看到 worker PID 切换 (37904 → 41120) 验证成功, 没**主动** check Beat 状态. 7min 钉钉告警是 ServicesHealthCheck 救场, 否则审计完整性失败 (操作"成功"但 hidden 副作用未发现).
+
+未来高 stake 操作协议: action → 不只 check 直接目标, 还 check 上下游依赖. (类似 PR-DRECON 同模式: ps1 register 后必须 verify state, 不只 verify register 命令 exit 0.)
+
+### 候选铁律 (TBD, vs LL-074 Session 35 候选铁律 44 合并)
+
+> "服务/任务状态变更 (start / stop / restart / register / disable) 后**必 verify 上下游 state**, 不止变更直接目标. 钉钉告警是兜底, 操作时主动 check 是首选."
+
+LL-074 已提候选铁律 44, LL-077 是同模式补强证据. Session 37+ 1 次同模式即可固化.
+
+### 持久化
+
+- 本 LL 条目 (LL-077)
+- 无独立 PR (运维 incident, ServicesHealthCheck 已是 PR #74)
+- 22:49 Beat 恢复 PID 35040, schedule.dat 24s fresh ✓
+- 候选铁律 44 (LL-074 已提) 同模式补强
+- worker restart 协议加 SCHEDULING_LAYOUT.md / RUNBOOK 更新 (Session 37+)
