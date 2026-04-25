@@ -102,9 +102,28 @@ cache/factor_values/
 cache/backtest/cache_meta.json
 
 # Training outputs (regeneratable from training scripts, ML CLOSED per CLAUDE.md)
+models/lgbm_walkforward/
 models/lgbm_walkforward/*.txt
 models/lgbm_phase21/
 models/lgbm_phase22/
 models/all_astock_codes.txt
 backend/models/lgbm_phase21/
 backend/models/lgbm_phase22/
+
+# Session 36 cleanup (NO-GO research artifacts, regeneratable, do not re-commit)
+models/g1_*
+models/ensemble_*
+models/oos_predictions*
+models/dual_model_fusion*
+models/forecast_cache*
+models/*.log
+cache/ml/*
+!cache/ml/phase3d_results.json
+cache/close_pivot.parquet
+cache/neutral_values.parquet
+cache/fwd_excess_*.parquet
+cache/csi*.parquet
+cache/earnings_sue.parquet
+cache/industry_map.parquet
+cache/registry_audit/
+cache/*.json
