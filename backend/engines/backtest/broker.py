@@ -41,8 +41,14 @@ class SimBroker(BaseBroker):
         row: pd.Series,
         symbols_info: pd.DataFrame | None = None,
     ) -> bool:
-        """判断是否可以成交。委托给ValidatorChain，拒绝原因可追溯。"""
-        ok, reason = self._validator.can_trade(code, direction, row)
+        """判断是否可以成交。委托给ValidatorChain，拒绝原因可追溯。
+
+        Session 36 fix (audit §3.3 REAL_BUG_DORMANT closure): symbols_info 之前
+        在 wrapper 接受但内部丢弃, ST 5% price_limit 永远 fallback 主板 10%. 现
+        透传给 ValidatorChain.can_trade(symbols_info=...) → PriceLimitValidator
+        优先用 symbols_info[code, 'price_limit'] 覆盖板块默认值.
+        """
+        ok, reason = self._validator.can_trade(code, direction, row, symbols_info)
         if not ok and reason:
             logger.debug("交易拒绝: %s %s %s — %s", code, direction, row.get("trade_date", "?"), reason)
         return ok

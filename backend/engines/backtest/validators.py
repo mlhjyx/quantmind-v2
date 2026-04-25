@@ -15,8 +15,8 @@ def _infer_price_limit(code: str) -> float:
     - ST股(代码无法判断，需symbols_info): 默认归入主板10%
     - 主板(其余): ±10%
 
-    注意: ST股需要name字段判断，仅靠代码无法识别。
-    当symbols_info可用时应优先使用其price_limit字段。
+    注意: ST股需要 symbols_info[code, 'price_limit'] 覆盖, 仅靠代码无法识别. 调用方
+    应优先用 ``_get_price_limit(code, symbols_info)`` 而非直接调本函数.
     """
     # code统一为带后缀格式(000001.SZ), startswith仍可正确匹配板块
     if code.startswith("68"):
@@ -28,6 +28,34 @@ def _infer_price_limit(code: str) -> float:
     return 0.10  # 主板(含ST fallback — ST需symbols_info.price_limit覆盖)
 
 
+def _get_price_limit(code: str, symbols_info: pd.DataFrame | None = None) -> float:
+    """获取涨跌停幅度, 优先使用 symbols_info[code, 'price_limit'] override.
+
+    Session 36 PR fix (audit §3.3 REAL_BUG_DORMANT closure): production 之前
+    `ValidatorChain.can_trade` 仅 3 参数, broker.py wrapper 接受 symbols_info
+    但内部丢弃, ST 5% price_limit 永远 fallback _infer_price_limit 0.10 主板.
+    本 helper + 新增 symbols_info 参数 contract 修复.
+
+    Args:
+        code: 股票代码 (e.g. "000001.SZ")
+        symbols_info: 可选 DataFrame, index=code, column='price_limit' (decimal frac).
+                      ST 股应在此 DataFrame 中显式给出 0.05.
+
+    Returns:
+        price_limit 小数比例 (e.g. 0.05 for ST, 0.10 for 主板). 优先级:
+        1. symbols_info[code, 'price_limit'] (若 valid float > 0)
+        2. _infer_price_limit(code) fallback
+    """
+    if symbols_info is not None and code in symbols_info.index:
+        try:
+            pl = float(symbols_info.loc[code, "price_limit"])
+        except (KeyError, ValueError, TypeError):
+            pl = 0.0
+        if pl > 0:
+            return pl
+    return _infer_price_limit(code)
+
+
 # ============================================================
 # ValidatorChain — 可组合的交易验证器 (Phase 3)
 # ============================================================
@@ -35,14 +63,26 @@ def _infer_price_limit(code: str) -> float:
 class BaseValidator:
     """交易验证器基类。返回None=通过, 返回str=拒绝原因。"""
 
-    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+    def validate(
+        self,
+        code: str,
+        direction: str,
+        row: pd.Series,
+        symbols_info: pd.DataFrame | None = None,
+    ) -> str | None:
         raise NotImplementedError
 
 
 class SuspensionValidator(BaseValidator):
     """停牌检测: volume=0。"""
 
-    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+    def validate(
+        self,
+        code: str,
+        direction: str,
+        row: pd.Series,
+        symbols_info: pd.DataFrame | None = None,
+    ) -> str | None:
         if row.get("volume", 0) == 0:
             return "停牌(volume=0)"
         return None
@@ -51,7 +91,13 @@ class SuspensionValidator(BaseValidator):
 class DataCompletenessValidator(BaseValidator):
     """数据完整性: close/pre_close不为0。"""
 
-    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+    def validate(
+        self,
+        code: str,
+        direction: str,
+        row: pd.Series,
+        symbols_info: pd.DataFrame | None = None,
+    ) -> str | None:
         close = row.get("close", 0)
         pre_close = row.get("pre_close", 0)
         if close == 0 or pre_close == 0:
@@ -62,7 +108,13 @@ class DataCompletenessValidator(BaseValidator):
 class PriceLimitValidator(BaseValidator):
     """涨跌停封板检测。"""
 
-    def validate(self, code: str, direction: str, row: pd.Series) -> str | None:
+    def validate(
+        self,
+        code: str,
+        direction: str,
+        row: pd.Series,
+        symbols_info: pd.DataFrame | None = None,
+    ) -> str | None:
         close = row.get("close", 0)
         pre_close = row.get("pre_close", 0)
         if close == 0 or pre_close == 0:
@@ -71,7 +123,8 @@ class PriceLimitValidator(BaseValidator):
         up_limit = row.get("up_limit", None)
         down_limit = row.get("down_limit", None)
         if up_limit is None or down_limit is None:
-            price_limit = _infer_price_limit(code)
+            # 优先 symbols_info override (e.g. ST 5%), fallback _infer_price_limit
+            price_limit = _get_price_limit(code, symbols_info)
             up_limit = round(pre_close * (1 + price_limit), 2)
             down_limit = round(pre_close * (1 - price_limit), 2)
 
@@ -95,10 +148,24 @@ class ValidatorChain:
             PriceLimitValidator(),
         ]
 
-    def can_trade(self, code: str, direction: str, row: pd.Series) -> tuple[bool, str | None]:
-        """返回(can_trade, reject_reason)。"""
+    def can_trade(
+        self,
+        code: str,
+        direction: str,
+        row: pd.Series,
+        symbols_info: pd.DataFrame | None = None,
+    ) -> tuple[bool, str | None]:
+        """返回(can_trade, reject_reason)。
+
+        Args:
+            code: 股票代码
+            direction: "buy" | "sell"
+            row: 行情 Series (close/pre_close/volume/turnover_rate/...)
+            symbols_info: 可选 DataFrame, index=code, column='price_limit' 等.
+                ST 股 5% price_limit 必须在此 DataFrame 中提供, 否则 fallback 主板 10%.
+        """
         for v in self.validators:
-            reason = v.validate(code, direction, row)
+            reason = v.validate(code, direction, row, symbols_info)
             if reason:
                 return False, reason
         return True, None
