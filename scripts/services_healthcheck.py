@@ -64,6 +64,34 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+# 铁律 41: 内部存储 UTC, 展示层转 Asia/Shanghai. 用于 DingTalk 告警显示.
+_CST_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _to_cst_display(utc_iso: str | None) -> str:
+    """Convert UTC ISO timestamp to Asia/Shanghai display format.
+
+    Args:
+        utc_iso: UTC ISO 8601 string (e.g. "2026-04-25T14:45:02.315821+00:00") or None
+
+    Returns:
+        Asia/Shanghai display format "YYYY-MM-DD HH:MM:SS CST" or "N/A" for None.
+
+    铁律 41: 时间与时区统一 — 内部 UTC, 展示层 Asia/Shanghai.
+    Session 36 末 user 反馈 LL-074 钉钉告警显示 UTC 不友好, 改 CST.
+    """
+    if not utc_iso:
+        return "N/A"
+    try:
+        dt_utc = datetime.fromisoformat(utc_iso)
+        if dt_utc.tzinfo is None:
+            dt_utc = dt_utc.replace(tzinfo=UTC)
+        dt_cst = dt_utc.astimezone(_CST_TZ)
+        return dt_cst.strftime("%Y-%m-%d %H:%M:%S CST")
+    except (ValueError, TypeError):
+        return utc_iso  # fallback raw 防 alert 完全 broken
 
 # ─── sys.path + .env bootstrap (对齐 monitor_mvp_3_1_sunset.py PR #73 模式) ──
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -438,7 +466,7 @@ def send_alert(report: HealthReport, reason: str) -> bool:
             beat_line = (
                 f"- ✅ **CeleryBeat heartbeat**: "
                 f"{(beat.age_seconds or 0) / 60:.1f}min ago (last write: "
-                f"{beat.last_write_iso})"
+                f"{_to_cst_display(beat.last_write_iso)})"
             )
         elif not beat.file_exists:
             beat_line = "- ❌ **CeleryBeat heartbeat**: schedule.dat MISSING"
@@ -447,7 +475,7 @@ def send_alert(report: HealthReport, reason: str) -> bool:
                 f"- ❌ **CeleryBeat heartbeat**: STALE "
                 f"{(beat.age_seconds or 0) / 60:.1f}min "
                 f"(threshold {BEAT_HEARTBEAT_MAX_AGE_SECONDS / 60:.0f}min, "
-                f"last write: {beat.last_write_iso})"
+                f"last write: {_to_cst_display(beat.last_write_iso)})"
             )
     else:
         beat_line = "- ⚠️ **CeleryBeat heartbeat**: not checked"
@@ -457,7 +485,7 @@ def send_alert(report: HealthReport, reason: str) -> bool:
     content = (
         f"## {emoji} {title}\n\n"
         f"**触发原因**: {reason}\n\n"
-        f"**时间 (UTC)**: {report.timestamp_utc}\n\n"
+        f"**时间**: {_to_cst_display(report.timestamp_utc)}\n\n"
         f"### 服务状态\n{chr(10).join(services_lines)}\n\n"
         f"### Beat 心跳\n{beat_line}\n\n"
         f"### 失败项 ({len(report.failures)})\n{failures_text}\n\n"
