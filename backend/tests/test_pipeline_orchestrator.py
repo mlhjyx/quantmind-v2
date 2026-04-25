@@ -27,6 +27,16 @@ from engines.mining.pipeline_orchestrator import (
     _is_failed,
 )
 
+# DEAP 可选依赖 — GP 模块需要, 仅 TestBlacklistSeedFactors 使用 GPEngine.
+# GP weekly mining (Sun 22:00 Beat) 当前在 audit 中标 SUBPROCESS_SHADOW broken,
+# DEAP 不在 venv 也不在 pyproject. 见 docs/audit/PYTEST_BASELINE_DRIFT_SESSION_35_36.md §3.1.2.
+try:
+    import deap  # noqa: F401
+
+    _DEAP_AVAILABLE = True
+except ImportError:
+    _DEAP_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # Fixtures — 共享测试数据
 # ---------------------------------------------------------------------------
@@ -840,6 +850,7 @@ class TestValidateUnknownOperator:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _DEAP_AVAILABLE, reason="DEAP not installed (GP optional)")
 class TestBlacklistSeedFactors:
     """验证GPEngine warm_start时黑名单中的种子因子被跳过（Sprint 1.18 bugfix）。"""
 
