@@ -434,7 +434,16 @@ def main() -> int:
             try:
                 check_date = datetime.strptime(args.start, "%Y%m%d").date()
             except ValueError:
-                # invalid format, let downstream _run() raise 真实错误
+                # PR #90 reviewer MEDIUM 采纳: invalid format 不能 silent fallback,
+                # 必写 stderr 防周末手工 backfill 时用户误以为是日期不对而非 format
+                # 不对 (铁律 33 silent_ok 必带诊断 log).
+                print(
+                    f"[pull_moneyflow] WARNING: --start '{args.start}' invalid "
+                    f"format (expected YYYYMMDD); trading-day check fallback to "
+                    f"today, 后续 _run() 会 raise 真错误.",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 check_date = None
         if not _check_trading_day_or_skip(check_date):
             print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取", flush=True)
