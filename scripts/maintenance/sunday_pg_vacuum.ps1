@@ -14,7 +14,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\maintenance\sunday_pg_vacuum.ps1 -Phase reindex
 
 param(
-    [ValidateSet("analyze", "vacuum", "reindex", "all")]
+    [ValidateSet("analyze", "drop_covering", "vacuum", "reindex", "all")]
     [string]$Phase = "analyze",
     [switch]$DryRun = $false
 )
@@ -76,6 +76,31 @@ ORDER BY idx_scan DESC
     Write-Host "  - idx_scan = 0: 该索引未用 (可 DROP, 节省空间)"
     Write-Host "  - 多个索引功能重叠: 留 covering, drop 子集"
     Write-Host "`n下一步: vacuum 或 reindex (单独运行)"
+}
+
+# ─── Phase: drop_covering (轻, 释放 45GB) ───────────────────
+if ($Phase -eq "drop_covering" -or $Phase -eq "all") {
+    Write-Host "`n[DROP idx_fv_factor_date_covering] 45GB 收回 (实测 10K scans / 5年, 极度浪费) ..." -ForegroundColor Yellow
+    Write-Host "  实测: 5 MB/scan vs idx_fv_date_factor 0.02 MB/scan (225x 更不划算)"
+    Write-Host "  风险: 极低 (PG planner 几乎不选), DROP 后 query plan 自动 fallback"
+
+    if ($DryRun) {
+        Write-Host "  [DRY-RUN] would: DROP INDEX idx_fv_factor_date_covering" -ForegroundColor Gray
+    } else {
+        $dropStart = Get-Date
+        & $psql -U xin -d quantmind_v2 -h localhost -c "DROP INDEX IF EXISTS public.idx_fv_factor_date_covering" 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Host "[FATAL] DROP failed" -ForegroundColor Red; exit 4 }
+        $dropElapsed = (Get-Date) - $dropStart
+        Write-Host "  ✓ DROP done in $($dropElapsed.TotalSeconds.ToString('F1')) s"
+
+        # 验证 chunk 索引也被 cascade drop
+        $remaining = & $psql -U xin -d quantmind_v2 -h localhost -t -c "SELECT COUNT(*) FROM pg_stat_user_indexes WHERE schemaname='_timescaledb_internal' AND indexrelname LIKE '%idx_fv_factor_date_covering%'"
+        Write-Host "  remaining chunk indexes: $($remaining.Trim()) (应为 0)"
+
+        # DB size 收缩验证
+        $newSize = & $psql -U xin -d quantmind_v2 -h localhost -t -c "SELECT pg_size_pretty(pg_database_size('quantmind_v2'))"
+        Write-Host "  DB size now: $($newSize.Trim()) (期望减 ~45 GB)"
+    }
 }
 
 # ─── Phase: vacuum (heavy, 表锁) ────────────────────────────
