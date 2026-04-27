@@ -33,6 +33,7 @@ import tushare as ts
 
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
+from app.utils.time_window_resolver import TimeWindowResolver  # LL-076 phase 2 标准化
 
 pro = ts.pro_api(settings.TUSHARE_TOKEN)
 
@@ -426,25 +427,27 @@ def main() -> int:
         parser.add_argument("--recent", action="store_true", help="仅拉最近1个月")
         args = parser.parse_args()
 
-        # LL-076 (Session 36 末): 手工 backfill (--start YYYYMMDD) 时校验该日期是否
-        # 交易日, 而非检查 today (周末手工 backfill 历史 trading day 被 silent skip 的
-        # bug). schtask daily auto run 不传 --start, 仍走 today 语义不变.
+        # LL-076 phase 2 (Session 38 加时, 2026-04-27): 替换手工 strptime 为 TimeWindowResolver.
+        # 标准化 4 schtask scripts (compute_daily_ic / pull_moneyflow / ...) 共用抽象 (PR #99 落盘).
+        # check_date = window.start_date 保留 PR #90 LL-076 语义: 用户 --start 时验证 start
+        # 是否交易日 (custom mode start=user_start), 不传 --start 时验证 today (default mode start=today).
+        # pull_moneyflow 不用 --lookback-days (--recent 已等价), 显式 set None 兼容 resolve 接口.
+        args.lookback_days = None
         check_date: date | None = None
-        if args.start:
-            try:
-                check_date = datetime.strptime(args.start, "%Y%m%d").date()
-            except ValueError:
-                # PR #90 reviewer MEDIUM 采纳: invalid format 不能 silent fallback,
-                # 必写 stderr 防周末手工 backfill 时用户误以为是日期不对而非 format
-                # 不对 (铁律 33 silent_ok 必带诊断 log).
-                print(
-                    f"[pull_moneyflow] WARNING: --start '{args.start}' invalid "
-                    f"format (expected YYYYMMDD); trading-day check fallback to "
-                    f"today, 后续 _run() 会 raise 真错误.",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                check_date = None
+        try:
+            window = TimeWindowResolver.resolve(args, default_lookback=0)
+            check_date = window.start_date
+        except ValueError as e:
+            # PR #90 reviewer MEDIUM 采纳保留: invalid format 必写 stderr (铁律 33 silent_ok
+            # 必带诊断 log). TimeWindowResolver.resolve raise ValueError 含 "--start" 或 "--end"
+            # 详细 message, 透传给 user 排查.
+            print(
+                f"[pull_moneyflow] WARNING: TimeWindowResolver 解析失败: {e}; "
+                f"trading-day check fallback to today, 后续 _run() 会 raise 真错误.",
+                file=sys.stderr,
+                flush=True,
+            )
+            check_date = None
         if not _check_trading_day_or_skip(check_date):
             print(f"[{datetime.now()}] 非交易日，跳过moneyflow拉取", flush=True)
             return 0
