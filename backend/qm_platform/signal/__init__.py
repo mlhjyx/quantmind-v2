@@ -5,10 +5,19 @@ from .interface import (
     OrderRouter,
     SignalPipeline,
 )
+from .pipeline import (
+    FactorStaleError,
+    PlatformSignalPipeline,
+    UniverseEmpty,
+)
 
 __all__ = [
     "SignalPipeline",
     "OrderRouter",
     "ExecutionAuditTrail",
     "AuditChain",
+    # MVP 3.3 batch 1
+    "PlatformSignalPipeline",
+    "FactorStaleError",
+    "UniverseEmpty",
 ]
