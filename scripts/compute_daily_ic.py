@@ -49,6 +49,9 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
+# LL-076 phase 2 PR-1: TimeWindowResolver 抽象 (PR #99 phase 1 落盘)
+from app.utils.time_window_resolver import TimeWindow, TimeWindowResolver  # noqa: E402
+
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
@@ -218,6 +221,8 @@ def compute_and_ingest(
     days: int = 30,
     factors: list[str] | None = None,
     dry_run: bool = False,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict[str, object]:
     """核心: 近 N 天滚动窗口 → 所有 active 因子 → factor_ic_history.
 
@@ -226,17 +231,22 @@ def compute_and_ingest(
 
     Args:
         conn: sync psycopg2 connection (caller 负责生命周期)
-        days: 回溯天数 (包含今日). 近 N 天计算 IC.
+        days: 回溯天数 (legacy, 仅当 start_date/end_date 都为 None 时用). 近 N 天计算 IC.
         factors: None 时读 factor_registry active/warning. 否则限定列表.
         dry_run: True 不入库, 仅报告. total_rows 返回 "would-write" 行数.
+        start_date: LL-076 phase 2 PR-1: 显式起始日 (覆盖 days). None 时从 end_date - days 推.
+        end_date: LL-076 phase 2 PR-1: 显式结束日. None 时用 date.today() (legacy 行为).
 
     Returns:
         {processed_factors, total_rows, elapsed_sec, factor_summary}
         dry_run=True 时 total_rows = 预计写入行数 (语义明确化 reviewer P3 采纳).
     """
-    # 窗口边界: 因子 IC 需 T+1..T+horizon 未来价, 所以价格/benchmark 多拉 FUTURE_BUFFER_DAYS
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
+    # 窗口边界 (LL-076 phase 2 PR-1): start_date / end_date 显式优先, 否则 fallback days legacy.
+    # 因子 IC 需 T+1..T+horizon 未来价, 所以价格/benchmark 多拉 FUTURE_BUFFER_DAYS.
+    if end_date is None:
+        end_date = date.today()
+    if start_date is None:
+        start_date = end_date - timedelta(days=days)
     price_end = end_date + timedelta(days=FUTURE_BUFFER_DAYS)
 
     t0 = time.time()
@@ -407,18 +417,30 @@ def _run(args: argparse.Namespace) -> int:
         # 被 schtask 5min ExecutionTimeLimit kill (data_quality_check 4-22/4-23 同类).
         with conn.cursor() as cur_timeout:
             cur_timeout.execute("SET statement_timeout = %s", (60_000,))
+        # LL-076 phase 2 PR-1: TimeWindowResolver 解析 --start / --end / --lookback-days,
+        # 否则 fallback default_lookback=args.days (legacy 行为完全保留).
+        window: TimeWindow = TimeWindowResolver.resolve(args, default_lookback=args.days)
+        logger.info(
+            "[daily_ic] window 解析: mode=%s start=%s end=%s",
+            window.mode,
+            window.start_date,
+            window.end_date,
+        )
+
         # Holiday guard (PR #40 P2.2 follow-up): A 股非交易日提前 exit 0.
+        # LL-076 phase 2: 用 window.end_date 而非 today (custom 模式时 user 可指定历史日 backfill,
+        # holiday guard 应基于 window.end_date 判定. default/lookback 模式 window.end_date == today).
         if not args.force:
-            # 铁律 41: 用 Asia/Shanghai 避免 date.today() 在 UTC 服务器 18:00 CST
-            # 解析为前一日 (reviewer P2.1). 中国无 DST, offset 稳定 +08:00.
-            today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
-            if not is_trading_day(conn, today):
-                logger.info("[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", today)
+            if not is_trading_day(conn, window.end_date):
+                logger.info(
+                    "[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", window.end_date
+                )
                 return 0
 
         result = compute_and_ingest(
             conn=conn,
-            days=args.days,
+            start_date=window.start_date,
+            end_date=window.end_date,
             factors=factors,
             dry_run=args.dry_run,
         )
@@ -454,7 +476,15 @@ def main() -> int:
     _configure_logging()
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--days", type=int, default=30, help="回溯天数 (default 30)")
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="回溯天数 legacy (default 30, 跟 --lookback-days 等价但保留向后兼容)",
+    )
+    # LL-076 phase 2 PR-1: TimeWindowResolver 注入 --start / --end / --lookback-days
+    # 优先级: --start > --lookback-days > --days (legacy fallback)
+    TimeWindowResolver.add_args(parser)
     # reviewer P2 采纳: --factors / --core mutually exclusive (原来 if-elif 静默忽略)
     factor_group = parser.add_mutually_exclusive_group()
     factor_group.add_argument("--factors", type=str, help="逗号分隔 factor 列表 (覆盖 registry)")
