@@ -23,6 +23,7 @@ import sys
 import time
 import traceback
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 if sys.platform == "win32":
@@ -148,36 +149,49 @@ def _build_sdk_strategy_context(
     trade_date: "date",
     factor_df: "pd.DataFrame",
     universe: "set[str]",
-    industry: "pd.Series",
-    capital,
-    ln_mcap=None,
+    industry: "pd.Series | dict[str, str]",
+    capital: "Decimal",
+    ln_mcap: "pd.Series | None" = None,
+    prev_holdings: "dict[str, float] | None" = None,
 ):
-    """构造 SDK StrategyContext for parity dual-run.
+    """构造 SDK StrategyContext for parity dual-run (返 backend.qm_platform.strategy.interface.StrategyContext).
 
-    本函数纯计算 (无 IO), 测试可注入 mock data. ln_mcap 由调用方加载 (signal_service
-    内部 line 145-148 same path), 本函数仅组装.
+    本函数纯计算 (无 IO), 测试可注入 mock data. ln_mcap / prev_holdings 由调用方加载,
+    本函数仅组装. P1 reviewer (PR #110) 采纳: prev_holdings 必传, 否则 PortfolioBuilder
+    turnover_cap 不生效, 致 guaranteed parity diff (legacy 路径加载, SDK 路径默认 None).
 
     Args:
       trade_date: 交易日
       factor_df: 因子宽表 columns=[code, factor_name, neutral_value]
       universe: 可交易股票池 set[str]
-      industry: pd.Series (code → industry_sw1)
-      capital: Decimal 分配资本 (PT 1M)
+      industry: pd.Series 或 dict (code → industry_sw1). pd.Series NaN 自动 dropna 防污染.
+      capital: Decimal 分配资本 (PT 1M). 注意: S1MonthlyRanking 不读 ctx.capital,
+        本字段是 StrategyContext 必填字段, S1 用 PortfolioBuilder 内部 weights (相对值, 非绝对).
       ln_mcap: pd.Series (code → ln(mcap)), None 表示 SN beta=0 不需
+      prev_holdings: dict (code → weight), None 表示无前期持仓 (但应避免, parity 失真).
+        legacy `signal_service._load_prev_weights` 加载 position_snapshot 同源.
 
     Returns:
       backend.qm_platform.strategy.interface.StrategyContext
 
     Raises:
       ImportError: SDK module 缺 (production env 应不发生, 走 caller try/except 兜底)
+      TypeError: industry 非 pd.Series 也非 dict (P2 reviewer 严格类型守卫)
     """
+    import pandas as pd  # noqa: PLC0415 — string forward ref, deferred 防 circular
+
     from backend.qm_platform.strategy.interface import StrategyContext
 
-    # industry pd.Series → dict[str, str] (S1MonthlyRanking metadata 契约)
-    if hasattr(industry, "to_dict"):
-        industry_map = industry.to_dict()
+    # P2 reviewer (PR #110) 采纳: 严格类型守卫, 非 Series 非 dict 必 raise (防 DataFrame 误传).
+    # P2 reviewer NaN guard: pd.Series.to_dict() 会保 NaN, 必 dropna 防污染 industry_map.
+    if isinstance(industry, pd.Series):
+        industry_map = industry.dropna().to_dict()
+    elif isinstance(industry, dict):
+        industry_map = {k: v for k, v in industry.items() if v is not None and not (isinstance(v, float) and pd.isna(v))}
     else:
-        industry_map = dict(industry)
+        raise TypeError(
+            f"industry 必须是 pd.Series 或 dict, got {type(industry).__name__}"
+        )
 
     return StrategyContext(
         trade_date=trade_date,
@@ -188,7 +202,7 @@ def _build_sdk_strategy_context(
             "factor_df": factor_df,
             "industry_map": industry_map,
             "ln_mcap": ln_mcap,
-            "prev_holdings": None,
+            "prev_holdings": prev_holdings,
             # exclude / vol_regime_scale / volatility_map 留 None — S1 内部 default
         },
     )
@@ -206,46 +220,66 @@ def _run_sdk_parity_dryrun(
 
     全 try/except 兜底, 失败仅 logger.warning. 不动 signal_result / 不写 DB.
     1 周 0 parity diff 后 Step 2c 真 cut over 决策依据.
-    """
-    try:
-        from decimal import Decimal
 
+    P1 reviewer (PR #110) 采纳: prev_holdings 加载 via signal_service._load_prev_weights
+    (跟 legacy 路径同源), 防 PortfolioBuilder turnover_cap 不一致致 guaranteed diff.
+    P1 reviewer 采纳: import path 统一用 backend.* (跟其他 SDK imports 一致).
+    P2 reviewer 采纳: parity 加 weight diff check (codes 一致后看 weight 数值).
+    P2 reviewer 采纳: ImportError 不吞 (false-negative parity 防御), 单独 catch.
+    """
+    # SDK module imports — ImportError 必触发外层 except 全 traceback (false-negative 防御)
+    try:
+        from app.services.signal_service import SignalService
         from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
         from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
+    except ImportError as e:
+        logger.warning(
+            "[Step3-SDK-parity] SDK not available, skip dual-run (trade_date=%s): %s",
+            trade_date, e,
+        )
+        return
 
-        # ln_mcap 加载 (镜像 signal_service line 145-148)
+    try:
+        # ln_mcap 加载 (镜像 signal_service:145-148, 失败让外层 except 暴露真 bug)
         ln_mcap = None
         if PAPER_TRADING_CONFIG.size_neutral_beta > 0:
-            try:
-                from engines.size_neutral import load_ln_mcap_for_date
-                ln_mcap = load_ln_mcap_for_date(trade_date, conn)
-            except Exception as e:  # noqa: BLE001 — read-only, log 即可
-                logger.warning("[Step3-SDK-parity] ln_mcap load failed: %s", e)
+            from engines.size_neutral import load_ln_mcap_for_date  # noqa: PLC0415
+            ln_mcap = load_ln_mcap_for_date(trade_date, conn)
+
+        # P1 reviewer 采纳: prev_holdings 加载 via legacy path 防 turnover_cap drift
+        prev_holdings = SignalService()._load_prev_weights(  # noqa: SLF001 — 镜像 legacy 同源
+            conn, settings.PAPER_STRATEGY_ID,
+        )
 
         ctx = _build_sdk_strategy_context(
             trade_date=trade_date,
             factor_df=factor_df,
             universe=universe,
             industry=industry,
+            # P2 reviewer 采纳: capital 注 settings.PAPER_INITIAL_CAPITAL, S1 不读但
+            # StrategyContext 必填. settings 是 float 1M 整数, Decimal 路径精度安全.
             capital=Decimal(str(settings.PAPER_INITIAL_CAPITAL)),
             ln_mcap=ln_mcap,
+            prev_holdings=prev_holdings,
         )
         pipe = PlatformSignalPipeline()
         s1 = S1MonthlyRanking()
         sdk_signals = pipe.generate(s1, ctx)
 
-        # 比对 codes 集合 (target_weight 数值差异由 PortfolioBuilder 保证, codes 是 invariant)
-        sdk_codes = {s.code for s in sdk_signals}
+        # 比对 codes 集合 + weight 数值 (P2 reviewer 采纳: codes 一致不等于真 parity)
+        sdk_weight_map = {s.code: s.target_weight for s in sdk_signals}
+        sdk_codes = set(sdk_weight_map.keys())
         legacy_codes = set(legacy_target_weights.keys())
         parity_diff = sdk_codes.symmetric_difference(legacy_codes)
 
-        sdk_total_w = sum(s.target_weight for s in sdk_signals)
+        sdk_total_w = sum(sdk_weight_map.values())
         legacy_total_w = sum(legacy_target_weights.values())
 
         if parity_diff:
             logger.warning(
-                "[Step3-SDK-parity] DIFF %d codes: sdk=%d legacy=%d total_w_sdk=%.4f "
-                "total_w_legacy=%.4f diff_sample=%s",
+                "[Step3-SDK-parity] DIFF trade_date=%s %d codes: sdk=%d legacy=%d "
+                "total_w_sdk=%.4f total_w_legacy=%.4f diff_sample=%s",
+                trade_date,
                 len(parity_diff),
                 len(sdk_codes),
                 len(legacy_codes),
@@ -254,12 +288,33 @@ def _run_sdk_parity_dryrun(
                 sorted(parity_diff)[:10],
             )
         else:
-            logger.info(
-                "[Step3-SDK-parity] OK codes=%d total_w_sdk=%.4f total_w_legacy=%.4f",
-                len(sdk_codes),
-                sdk_total_w,
-                legacy_total_w,
-            )
+            # P2 reviewer 采纳: codes 一致后再算 weight 数值 max diff
+            common_codes = sdk_codes & legacy_codes
+            weight_diffs = [
+                abs(sdk_weight_map[code] - legacy_target_weights[code])
+                for code in common_codes
+            ]
+            max_w_diff = max(weight_diffs) if weight_diffs else 0.0
+            if max_w_diff > 1e-6:
+                logger.warning(
+                    "[Step3-SDK-parity] codes match but WEIGHT DIFF trade_date=%s "
+                    "codes=%d max_diff=%.6f total_w_sdk=%.4f total_w_legacy=%.4f",
+                    trade_date,
+                    len(common_codes),
+                    max_w_diff,
+                    sdk_total_w,
+                    legacy_total_w,
+                )
+            else:
+                logger.info(
+                    "[Step3-SDK-parity] OK trade_date=%s codes=%d max_w_diff=%.6f "
+                    "total_w_sdk=%.4f total_w_legacy=%.4f",
+                    trade_date,
+                    len(sdk_codes),
+                    max_w_diff,
+                    sdk_total_w,
+                    legacy_total_w,
+                )
     except Exception as e:  # noqa: BLE001 — read-only parity, production 不阻塞
         logger.warning(
             "[Step3-SDK-parity] dual-run failed (production 不影响): %s",
