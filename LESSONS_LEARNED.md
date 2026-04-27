@@ -1931,6 +1931,55 @@ Session 37+ 同类 bug 1 次 (其他 schtask script 类似 today/args mismatch) 
 
 ---
 
+## LL-074 Amendment: ServicesHealthCheck 投资在 zombie 模式无效, PR-X3 闭合 gap (Session 38 实战推翻, 2026-04-27)
+
+### 触发事件 (LL-081 实战实测)
+
+LL-074 (Session 35 2026-04-25 02:20 UTC) 沉淀 "schtask Python 监控 schedule.dat freshness 突破", LL-077 (Session 36 末) 进一步声明 "ServicesHealthCheck 投资 1 天内收回". 但 **Session 38 真生产首日 (2026-04-27) zombie 4h17m 实战推翻一部分**:
+
+ServicesHealthCheck v1.0 (LL-074 投资) 仅监控:
+1. Servy 4 服务 `Running` 状态 ✓
+2. CeleryBeat `schedule.dat` 心跳 (10min 阈值) ✓
+
+漏检的真生产 zombie 模式:
+- QMTData service Servy 报 `Running` 但 Python 内部 hang (xtquant 断连后 query_asset 卡死)
+- Beat schedule.dat 仍 fresh (Beat 进程没死, 只 QMTData hang)
+- → ServicesHealthCheck 周一 13:51-18:08 4h17m 期间 全 ok, 0 钉钉告警
+- → 真盘下午 70min 真金 ¥1M 0 实时价 + Risk Framework 全 silent
+
+### 教训
+
+进程层 alive (Servy `Running`) **是必要不充分条件**. 必须看应用层 freshness:
+- **Redis key updated_at gap** (e.g. portfolio:nav, sync_loop 60s 应持续 refresh)
+- **StreamBus stream last event time** (e.g. qm:qmt:status, 交易时段持续应有 events)
+- **DB last write time** (e.g. risk_event_log 交易日 14:30 必有 evaluate 痕迹)
+
+任一应用层 stale > 阈值即视为 zombie, 即使进程层 alive.
+
+### 修复 (LL-081 PR-X3 #103)
+
+`scripts/services_healthcheck.py` 加:
+- `RedisFreshnessCheck` dataclass + `check_redis_freshness()` function
+- HealthReport.redis_freshness field, build_report 集成 → failures
+- send_alert markdown 加 "Redis Freshness (LL-081 PR-X3)" 段
+- 后续 PR #105 补 trading_hours guard 防非交易时段 stream 噪声
+
+### 应用规则更新
+
+ServicesHealthCheck v2.0 (LL-074 + LL-081) 监控 4 层:
+1. ✓ Servy 4 服务 `Running` (进程层)
+2. ✓ CeleryBeat `schedule.dat` 心跳 (调度层)
+3. ✓ **Redis key freshness** (应用层 portfolio:nav updated_at < 5min)
+4. ✓ **Redis stream freshness** (应用层 qm:qmt:status last event < 30min, 仅交易时段 alertable)
+
+### 持久化
+
+- 本 amendment (LL-074 v2.0)
+- LL-081 主条目 (本文档)
+- PR #103 (LL-081 PR-X3 init) + PR #105 (trading_hours guard follow-up) 全 merged 到 main
+
+---
+
 ## LL-077: Servy 服务依赖配置触发 worker restart 级联 stop Beat — 必有显式 start protocol (Session 36 末, 2026-04-25)
 
 ### 触发事件

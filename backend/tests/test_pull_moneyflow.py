@@ -244,8 +244,9 @@ class TestMainExitOnException:
 
         assert rc == 0  # _run 假返 0
         captured = capsys.readouterr()
-        # stderr 必含 invalid format 警告
-        assert "invalid" in captured.err.lower()
+        # LL-076 phase 2 Session 38: 走 TimeWindowResolver, ValueError message 是中文 "格式错".
+        # 跟 PR #99 phase 1 resolver 一致, 仍覆盖 PR #90 invalid 检测意图 (stderr 必带诊断).
+        assert "格式错" in captured.err  # TimeWindowResolver ValueError 中文 message
         assert "2026/04/24" in captured.err
         assert "YYYYMMDD" in captured.err
 
