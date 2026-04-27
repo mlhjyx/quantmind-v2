@@ -312,3 +312,81 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
         assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
             f"25% skip ratio 应低于 60% 阈值, 实际 logs: {warning_msgs}"
         )
+
+    # ─── reviewer code P1-1 + P1-2 + python P2 采纳: boundary precision tests ───
+
+    def test_boundary_exactly_at_min_positions_no_warn(self, caplog):
+        """total=5 (== MIN_POSITIONS, 条件 strict `> 5`) 全 skip → 不告警.
+
+        boundary 验证: SKIP_RATIO_MIN_POSITIONS=5 持仓数门槛严格大于, total=5 不触发.
+        """
+        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(5)]
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"total=5 边界严格 > 不应告警, 实际 logs: {warning_msgs}"
+        )
+
+    def test_boundary_just_above_min_positions_warns(self, caplog):
+        """total=6 (> MIN_POSITIONS=5) 全 skip → 告警 (ratio 100% > 60%)."""
+        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(6)]
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"total=6 边界严格 > 应告警, 实际 logs: {warning_msgs}"
+        )
+        assert any("6/6" in msg for msg in warning_msgs)
+
+    def test_boundary_ratio_exactly_60_pct_no_warn(self, caplog):
+        """20 持仓 12 skip = 60.0% (== THRESHOLD, strict `>`) → 不告警."""
+        positions = []
+        for i in range(12):
+            positions.append(_pos(code=f"60{i:04d}.SH", current=0.0))  # skip
+        for i in range(12, 20):
+            positions.append(_pos(code=f"60{i:04d}.SH", entry=100.0, peak=110.0, current=105.0))
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"ratio 60.0% 严格 > 不应告警, 实际 logs: {warning_msgs}"
+        )
+
+    def test_boundary_ratio_just_above_60_pct_warns(self, caplog):
+        """20 持仓 13 skip = 65.0% (> THRESHOLD) → 告警."""
+        positions = []
+        for i in range(13):
+            positions.append(_pos(code=f"60{i:04d}.SH", current=0.0))  # skip
+        for i in range(13, 20):
+            positions.append(_pos(code=f"60{i:04d}.SH", entry=100.0, peak=110.0, current=105.0))
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"ratio 65.0% > 60% 应告警, 实际 logs: {warning_msgs}"
+        )
+        assert any("13/20" in msg for msg in warning_msgs)
+
+    def test_empty_portfolio_no_warn_no_crash(self, caplog):
+        """空仓 (total_positions=0) 不告警不 crash (reviewer P2 explicit ZeroDivisionError 防御)."""
+        ctx = _make_context([])
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            results = PMSRule().evaluate(ctx)
+
+        assert results == []
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs)
