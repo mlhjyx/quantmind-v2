@@ -43,6 +43,7 @@ import hashlib
 import json
 import logging
 import math
+from datetime import UTC
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -157,6 +158,10 @@ class PlatformOrderRouter(OrderRouter):
             capital_allocation.values(),
             start=Decimal("0"),
         )
+        # P2 python-reviewer (PR #109) 采纳: audit metadata 暂存, 防 audit record 在
+        # turnover_cap 检查前 fire 致 MVP 3.4 outbox phantom records (route() raise 时
+        # outbox 已写但 caller 重试整批 → 重复 audit).
+        order_audit_meta: list[tuple[int, float]] = []
 
         # P1 reviewer (PR #108) 采纳: 检测 orphan positions (current_positions 中
         # 的 code 未在 signals) 并 warn. caller 契约: 必为 exit 持仓显式发 weight=0
@@ -253,6 +258,8 @@ class PlatformOrderRouter(OrderRouter):
             if side == "BUY":
                 total_buy_value += Decimal(str(quantity)) * Decimal(str(price))
 
+            # P2 python-reviewer (PR #109) 采纳: target_shares 跟 order 一并 stash, 防
+            # audit hook 在 turnover_cap 检查后批量 record 时丢失 target_shares 上下文.
             order = Order(
                 order_id=order_id,
                 strategy_id=sig.strategy_id,
@@ -262,24 +269,9 @@ class PlatformOrderRouter(OrderRouter):
                 trade_date=sig.trade_date,
             )
             orders.append(order)
-
-            # ─── batch 3 audit hook (MVP 3.3 batch 3, 2026-04-27) ─
-            # audit_trail 注入 → record('order.routed', payload). 默认 None 跳过 (backward compat).
-            # 铁律 33 fail-loud: record() 自身错误不被本类吞 (透传给 caller, 真生产应 retry/log).
-            if self._audit_trail is not None:
-                self._audit_trail.record(
-                    "order.routed",
-                    {
-                        "order_id": order.order_id,
-                        "strategy_id": order.strategy_id,
-                        "code": order.code,
-                        "side": order.side,
-                        "quantity": order.quantity,
-                        "trade_date": order.trade_date.isoformat(),
-                        "target_shares": target_shares,
-                        "price": price,
-                    },
-                )
+            # 暂存 (target_shares, price) 以便 turnover_cap 通过后批量 audit record.
+            # 防 audit hook 在 cap 失败时产生 phantom outbox records (MVP 3.4 严重).
+            order_audit_meta.append((target_shares, price))
 
         # ─── turnover_cap 全局检查 (放循环外, 防误中止) ──────────
         # P2 reviewer (PR #108) 采纳: total_capital==0 时显式 warn (铁律 33 fail-loud
@@ -297,6 +289,33 @@ class PlatformOrderRouter(OrderRouter):
                 f"sum(capital) {total_capital} = {total_capital * Decimal(str(turnover_cap))}. "
                 "caller 应削单或跳本次调仓."
             )
+
+        # ─── audit hook (ExecutionAuditTrail DI, MVP 3.3+) ─────────
+        # P2 python-reviewer (PR #109) 采纳: 移到 turnover_cap 检查后批量 record, 防
+        # MVP 3.4 outbox concrete 替换后, route() raise TurnoverCapExceeded 时 phantom
+        # 已 record 但未真下单的 audit entries 污染 outbox.
+        # P2 code-reviewer (PR #109) 采纳: payload 加 recorded_at UTC 时间戳 (铁律 41).
+        # 即便 stub 不写 DB, schema 现在锁定, MVP 3.4 outbox 不需迁移.
+        if self._audit_trail is not None and orders:
+            from datetime import (  # noqa: PLC0415 — local import 防 module-top circular
+                datetime,
+            )
+            recorded_at = datetime.now(UTC).isoformat()
+            for order, (target_shares, price) in zip(orders, order_audit_meta, strict=True):
+                self._audit_trail.record(
+                    "order.routed",
+                    {
+                        "order_id": order.order_id,
+                        "strategy_id": order.strategy_id,
+                        "code": order.code,
+                        "side": order.side,
+                        "quantity": order.quantity,
+                        "trade_date": order.trade_date.isoformat(),
+                        "target_shares": target_shares,
+                        "price": price,
+                        "recorded_at": recorded_at,
+                    },
+                )
 
         _logger.info(
             "route: signals=%d -> orders=%d total_buy_value=%s capital=%s turnover=%.2f%%",

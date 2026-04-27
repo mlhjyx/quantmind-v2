@@ -68,18 +68,37 @@ class TestRecord:
 
     def test_none_event_type_raises(self):
         stub = StubExecutionAuditTrail()
-        with pytest.raises(ValueError, match="event_type 必须是非空"):
-            stub.record(None, {"x": 1})  # type: ignore[arg-type]
+        # P2 reviewer (PR #109) 采纳: type 检查先行, None 走 "必须是 string" 错误消息.
+        with pytest.raises(ValueError, match="event_type 必须是 string"):
+            stub.record(None, {"x": 1})  # type: ignore[arg-type]  # intentional: test runtime guard
 
     def test_non_string_event_type_raises(self):
         stub = StubExecutionAuditTrail()
-        with pytest.raises(ValueError, match="event_type 必须是非空"):
-            stub.record(123, {"x": 1})  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="event_type 必须是 string"):
+            stub.record(123, {"x": 1})  # type: ignore[arg-type]  # intentional: test runtime guard
 
     def test_non_dict_payload_raises(self):
         stub = StubExecutionAuditTrail()
         with pytest.raises(ValueError, match="payload 必须是 dict"):
-            stub.record("test.event", "not a dict")  # type: ignore[arg-type]
+            stub.record("test.event", "not a dict")  # type: ignore[arg-type]  # intentional
+
+    def test_non_json_primitive_payload_raises(self):
+        """P2 python-reviewer (PR #109) 采纳: payload values 必 JSON-primitive 防 MVP 3.4 outbox 炸."""
+        from decimal import Decimal as Dec
+        stub = StubExecutionAuditTrail()
+        with pytest.raises(AssertionError, match="non-JSON-primitive"):
+            stub.record("test.event", {"price": Dec("100.0")})  # Decimal 非 JSON-primitive
+
+    def test_error_level_now_accepted(self):
+        """P2 reviewer (PR #109) 采纳: log_level 拓宽到 ERROR/CRITICAL."""
+        stub = StubExecutionAuditTrail(log_level=logging.ERROR)
+        stub.record("audit.error", {"reason": "test"})
+        assert stub.record_count == 1
+
+    def test_critical_level_accepted(self):
+        stub = StubExecutionAuditTrail(log_level=logging.CRITICAL)
+        stub.record("audit.critical", {"reason": "test"})
+        assert stub.record_count == 1
 
 
 # ─── trace() ─────────────────────────────────────────────────
@@ -91,10 +110,14 @@ class TestTrace:
         with pytest.raises(NotImplementedError, match="MVP 3.4"):
             stub.trace("fill-uuid-1")
 
-    def test_trace_includes_fill_id_in_message(self):
+    def test_trace_message_does_not_leak_fill_id(self):
+        """P1 python-reviewer (PR #109) 采纳: trace() 错误消息不嵌 fill_id 防 PII 泄露."""
         stub = StubExecutionAuditTrail()
-        with pytest.raises(NotImplementedError, match="fill-abc"):
-            stub.trace("fill-abc")
+        with pytest.raises(NotImplementedError) as exc_info:
+            stub.trace("sensitive-fill-id-12345")
+        # 消息稳定 (含 'MVP 3.4'), 不含 fill_id 值 (防 Sentry/log 聚合泄露)
+        assert "MVP 3.4" in str(exc_info.value)
+        assert "sensitive-fill-id-12345" not in str(exc_info.value)
 
 
 # ─── AuditMissing 异常 ────────────────────────────────────────
@@ -174,11 +197,60 @@ class TestRouterAuditHook:
         stub = StubExecutionAuditTrail()
         router = PlatformOrderRouter(audit_trail=stub)
         sig = self._signal(weight=0.10, price=100.0)
-        # current = 1000 = target → delta=0, 跳过
+        # P2 python-reviewer (PR #109) 采纳: 算式注释明确 magic number 来源.
+        # target = capital × weight / price / lot_size × lot_size
+        #        = 1_000_000 × 0.10 / 100 / 100 × 100 = 1000 股 (= current → delta=0)
+        target = int(1_000_000 * 0.10 / 100.0 / 100) * 100  # = 1000
         orders = router.route(
             signals=[sig],
-            current_positions={"600519.SH": 1000},
+            current_positions={"600519.SH": target},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert orders == []
         assert stub.record_count == 0  # 无 Order 无 record
+
+    def test_audit_no_phantom_records_on_turnover_cap_exceeded(self):
+        """P2 python-reviewer (PR #109) 采纳: turnover_cap raise 时 audit 0 records,
+        防 MVP 3.4 outbox phantom records (route() 失败但 outbox 已写)."""
+        from backend.qm_platform.signal.router import TurnoverCapExceeded
+        stub = StubExecutionAuditTrail()
+        router = PlatformOrderRouter(audit_trail=stub)
+        # weight 0.60 > turnover_cap 0.50 → raise TurnoverCapExceeded
+        sig = self._signal(weight=0.60, price=100.0)
+        with pytest.raises(TurnoverCapExceeded):
+            router.route(
+                signals=[sig],
+                current_positions={},
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+                turnover_cap=0.50,
+            )
+        # audit hook 应在 turnover_cap 检查后批量 fire — 此测试验证 0 phantom records
+        assert stub.record_count == 0, (
+            "P2 regression: TurnoverCapExceeded 时不应有 audit records (MVP 3.4 outbox phantom 防御)"
+        )
+
+    def test_audit_payload_has_recorded_at(self, caplog):
+        """P2 code-reviewer (PR #109) 采纳: payload 含 recorded_at UTC 时间戳."""
+        stub = StubExecutionAuditTrail()
+        # spy on record() 检查 payload keys
+        recorded_payloads: list[dict] = []
+        original_record = stub.record
+
+        def spy_record(event_type: str, payload: dict) -> None:
+            recorded_payloads.append(payload)
+            original_record(event_type, payload)
+
+        stub.record = spy_record  # type: ignore[method-assign]
+
+        router = PlatformOrderRouter(audit_trail=stub)
+        sig = self._signal()
+        router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"s1-uuid": Decimal("1000000")},
+        )
+        assert len(recorded_payloads) == 1
+        payload = recorded_payloads[0]
+        assert "recorded_at" in payload, f"payload 缺 recorded_at: {payload}"
+        # ISO UTC format check (含 +00:00 或 Z)
+        recorded_at = payload["recorded_at"]
+        assert "T" in recorded_at, f"recorded_at 不是 ISO format: {recorded_at}"

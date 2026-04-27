@@ -22,12 +22,9 @@ trace() raise NotImplementedError 留 MVP 3.4 Event Sourcing outbox concrete 替
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .interface import AuditChain, ExecutionAuditTrail
-
-if TYPE_CHECKING:
-    pass
 
 _logger = logging.getLogger(__name__)
 
@@ -53,17 +50,23 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
     Usage:
       >>> stub = StubExecutionAuditTrail()
       >>> stub.record('order.routed', {'order_id': 'a1b2', 'strategy_id': 's1'})
-      # logger.info: 'audit.record event=order.routed payload={...}'
+      # logger.info: 'audit.record event=order.routed payload_keys=...'
       >>> stub.trace('fill-uuid-1')
       Traceback (most recent call last):
         ...
-      NotImplementedError: trace() 待 MVP 3.4 Event Sourcing outbox concrete 实施
+      NotImplementedError: StubExecutionAuditTrail.trace() 不实施 — 待 MVP 3.4 ...
     """
 
     def __init__(self, log_level: int = logging.INFO) -> None:
-        if log_level not in (logging.DEBUG, logging.INFO, logging.WARNING):
+        # P2 reviewer (PR #109) 采纳: 拓宽到 5 个标准 logging level (含 ERROR/CRITICAL),
+        # 让 production 系统可选 ERROR 级别让 audit 在 Sentry 等聚合器突出.
+        valid_levels = (
+            logging.DEBUG, logging.INFO, logging.WARNING,
+            logging.ERROR, logging.CRITICAL,
+        )
+        if log_level not in valid_levels:
             raise ValueError(
-                f"log_level 必须是 DEBUG/INFO/WARNING, got {log_level}"
+                f"log_level 必须是标准 logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL), got {log_level}"
             )
         self._log_level = log_level
         # 计数器供 test 验证 record 调用次数 (无副作用 visibility)
@@ -88,7 +91,12 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
 
         铁律 33: fail-loud — event_type 空必 raise (非 silent skip).
         """
-        if not event_type or not isinstance(event_type, str):
+        # P2 reviewer (PR #109) 采纳: type 验证先于 emptiness 验证, 错误消息对 0/None 等真因.
+        if not isinstance(event_type, str):
+            raise ValueError(
+                f"event_type 必须是 string, got {type(event_type).__name__}: {event_type!r}"
+            )
+        if not event_type:
             raise ValueError(
                 f"event_type 必须是非空 string, got {event_type!r}"
             )
@@ -96,6 +104,17 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
             raise ValueError(
                 f"payload 必须是 dict, got {type(payload).__name__}"
             )
+        # P2 python-reviewer (PR #109) 采纳: payload values 必须 JSON-serialisable primitives.
+        # MVP 3.4 outbox concrete 写 DB 时 json.dumps(payload) 会炸非原始类型 (Decimal/date).
+        # __debug__=True (默认) 时 assert; production __debug__=False 跳过 (保性能).
+        # 调用方 (e.g. router.py audit hook) 必预序列化: trade_date.isoformat() 等.
+        assert all(
+            isinstance(v, (str, int, float, bool, type(None)))
+            for v in payload.values()
+        ), (
+            f"payload contains non-JSON-primitive values: "
+            f"{ {k: type(v).__name__ for k, v in payload.items()} }"
+        )
         self._record_count += 1
         _logger.log(
             self._log_level,
@@ -114,8 +133,12 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
 
         铁律 23 独立可执行: 本类 stub 不阻塞 batch 3 完工; 升级路径明确 (replace 类).
         """
+        # P1 python-reviewer (PR #109) 采纳: 不在 exception message 嵌入 fill_id 值
+        # (PII / 审计 ID 风险, 流入 Sentry / 聚合 log). 调用方靠 caller-side 上下文知道哪个 fill_id.
+        # 静默忽略 fill_id 参数 (无日志记录) 是有意 — 让 NotImplementedError 消息稳定可 grep.
+        del fill_id  # silent_ok: 不 log, 防 PII 泄露 (caller 自己有上下文)
         raise NotImplementedError(
-            f"StubExecutionAuditTrail.trace(fill_id={fill_id!r}) 不实施 — "
+            "StubExecutionAuditTrail.trace() 不实施 — "
             "待 MVP 3.4 Event Sourcing outbox concrete (替 stub 类). "
             "interface.py:128 ABC trace() 契约稳定, 替换不破调用方."
         )
