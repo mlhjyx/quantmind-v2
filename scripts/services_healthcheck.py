@@ -59,6 +59,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 import traceback
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
@@ -124,6 +125,13 @@ SERVY_SERVICES: tuple[str, ...] = (
 BEAT_SCHEDULE_FILE = PROJECT_ROOT / "celerybeat-schedule.dat"
 BEAT_HEARTBEAT_MAX_AGE_SECONDS = 10 * 60  # 10 min
 
+# LL-081 PR-X3 (2026-04-27 真生产首日 zombie 4h17m 教训): Redis 应用层 freshness probe.
+# Servy `status=Running` 是必要不充分条件 — service hang 后进程仍在跑 + Servy 看不到,
+# 必看 Redis 关键 key updated_at 跟 stream last event time. 三层任一 stale = zombie.
+PORTFOLIO_NAV_MAX_AGE_SECONDS = 5 * 60  # 5 min, 5x QMTData sync_loop 60s buffer
+QMT_STATUS_STREAM_MAX_AGE_SECONDS = 30 * 60  # 30 min, connect 边沿 publish 长 buffer (zombie 期 21h+ 跨 night 仍能捕获)
+REDIS_PROBE_TIMEOUT_SECONDS = 3  # 短超时, 防 health check 自己 hang on Redis
+
 # 服务 state 文件 (告警 dedup, 1h 窗口)
 STATE_FILE = PROJECT_ROOT / "logs" / "services_healthcheck_state.json"
 DEDUP_WINDOW_SECONDS = 60 * 60  # 1h
@@ -181,12 +189,38 @@ class BeatHeartbeatCheck:
 
 
 @dataclass
+class RedisFreshnessCheck:
+    """Redis 应用层 key freshness probe (LL-081 PR-X3 zombie 兜底防御).
+
+    - portfolio:nav: JSON {updated_at: ISO 8601 UTC}, sync_loop 60s 写
+    - qm:qmt:status: stream, connect 边沿 publish, last event time
+    """
+
+    key: str
+    found: bool  # key 存在
+    age_seconds: float | None  # None = parse 失败 / 不存在
+    threshold_seconds: int
+    reason: str  # 详细描述, 钉钉 markdown 用
+
+    @property
+    def stale(self) -> bool:
+        """stale = key 不存在 OR parse 失败 OR age > threshold (fail-loud)."""
+        if not self.found or self.age_seconds is None:
+            return True
+        return self.age_seconds > self.threshold_seconds
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "stale": self.stale}
+
+
+@dataclass
 class HealthReport:
     """聚合健康报告."""
 
     timestamp_utc: str
     services: list[ServiceCheck] = field(default_factory=list)
     beat_heartbeat: BeatHeartbeatCheck | None = None
+    redis_freshness: list[RedisFreshnessCheck] = field(default_factory=list)  # LL-081 PR-X3
     failures: list[str] = field(default_factory=list)
 
     @property
@@ -199,6 +233,7 @@ class HealthReport:
             "status": self.status,
             "services": [s.to_dict() for s in self.services],
             "beat_heartbeat": (self.beat_heartbeat.to_dict() if self.beat_heartbeat else None),
+            "redis_freshness": [c.to_dict() for c in self.redis_freshness],
             "failures": self.failures,
         }
         return d
@@ -317,10 +352,154 @@ def check_beat_heartbeat() -> BeatHeartbeatCheck:
 # ─── Report build ──────────────────────────────────────────────────────────
 
 
+def check_redis_freshness() -> list[RedisFreshnessCheck]:
+    """LL-081 PR-X3: Redis 应用层 freshness probe (zombie 模式兜底).
+
+    检查 2 关键 keys:
+      1. portfolio:nav (JSON, updated_at 字段) — QMTData sync_loop 60s 写, > 5min 视为 stale
+      2. qm:qmt:status (stream, last event ms timestamp) — connect 边沿 publish, > 30min stale
+
+    Redis 不可达时全 stale (fail-loud). socket_timeout 防本 health check 自己 hang.
+    跟 PR-X1 SETEX heartbeat 协同: PR-X1 修 root cause (TTL), 本 probe 兜底 defense-in-depth.
+    """
+    checks: list[RedisFreshnessCheck] = []
+    try:
+        # backend 已有 redis-py, 跟 qmt_client.py 同协议
+        # sys.path 加 backend/ 让本 script 能 import (跟 send_alert 同模式)
+        if str(BACKEND_DIR) not in sys.path:
+            sys.path.insert(0, str(BACKEND_DIR))
+        import redis  # noqa: PLC0415
+        from app.config import settings  # noqa: PLC0415
+
+        r = redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_timeout=REDIS_PROBE_TIMEOUT_SECONDS,
+        )
+
+        # Check 1: portfolio:nav updated_at
+        try:
+            nav_raw = r.get("portfolio:nav")
+            if not nav_raw:
+                checks.append(
+                    RedisFreshnessCheck(
+                        key="portfolio:nav",
+                        found=False,
+                        age_seconds=None,
+                        threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                        reason="key 不存在 (QMTData 未运行 OR LL-081 SETEX expire)",
+                    )
+                )
+            else:
+                nav_data = json.loads(nav_raw)
+                updated_at = nav_data.get("updated_at")
+                if not updated_at:
+                    checks.append(
+                        RedisFreshnessCheck(
+                            key="portfolio:nav",
+                            found=True,
+                            age_seconds=None,
+                            threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                            reason="updated_at 字段缺失 (schema 异常)",
+                        )
+                    )
+                else:
+                    dt = datetime.fromisoformat(updated_at)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    age = (datetime.now(UTC) - dt).total_seconds()
+                    age_min = age / 60.0
+                    is_stale = age > PORTFOLIO_NAV_MAX_AGE_SECONDS
+                    checks.append(
+                        RedisFreshnessCheck(
+                            key="portfolio:nav",
+                            found=True,
+                            age_seconds=age,
+                            threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                            reason=(
+                                f"age {age_min:.1f}min "
+                                + ("STALE (zombie 风险)" if is_stale else "ok")
+                            ),
+                        )
+                    )
+        except Exception as e:  # noqa: BLE001
+            checks.append(
+                RedisFreshnessCheck(
+                    key="portfolio:nav",
+                    found=False,
+                    age_seconds=None,
+                    threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                    reason=f"probe 异常: {e!s:.80s}",
+                )
+            )
+
+        # Check 2: qm:qmt:status stream last event
+        try:
+            events = r.xrevrange("qm:qmt:status", count=1)
+            if not events:
+                checks.append(
+                    RedisFreshnessCheck(
+                        key="qm:qmt:status",
+                        found=False,
+                        age_seconds=None,
+                        threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
+                        reason="stream 空 (QMT 从未连接)",
+                    )
+                )
+            else:
+                event_id = events[0][0]  # "<ms>-<seq>"
+                ms_str = event_id.split("-")[0]
+                ms = int(ms_str)
+                age = max(0.0, time.time() - ms / 1000)
+                age_min = age / 60.0
+                is_stale = age > QMT_STATUS_STREAM_MAX_AGE_SECONDS
+                checks.append(
+                    RedisFreshnessCheck(
+                        key="qm:qmt:status",
+                        found=True,
+                        age_seconds=age,
+                        threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
+                        reason=(
+                            f"last event {age_min:.1f}min ago "
+                            + ("STALE (zombie 风险)" if is_stale else "ok")
+                        ),
+                    )
+                )
+        except Exception as e:  # noqa: BLE001
+            checks.append(
+                RedisFreshnessCheck(
+                    key="qm:qmt:status",
+                    found=False,
+                    age_seconds=None,
+                    threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
+                    reason=f"probe 异常: {e!s:.80s}",
+                )
+            )
+
+    except Exception as e:  # noqa: BLE001 — Redis 完全不可达 (fail-loud)
+        logger.warning("Redis 完全不可达, freshness probe 全 stale: %s", e)
+        for key, threshold in (
+            ("portfolio:nav", PORTFOLIO_NAV_MAX_AGE_SECONDS),
+            ("qm:qmt:status", QMT_STATUS_STREAM_MAX_AGE_SECONDS),
+        ):
+            checks.append(
+                RedisFreshnessCheck(
+                    key=key,
+                    found=False,
+                    age_seconds=None,
+                    threshold_seconds=threshold,
+                    reason=f"Redis 不可达: {e!s:.80s}",
+                )
+            )
+
+    return checks
+
+
 def build_report() -> HealthReport:
     """运行全部 checks 聚合 HealthReport."""
     services = [query_service_state(name) for name in SERVY_SERVICES]
     beat = check_beat_heartbeat()
+    redis_checks = check_redis_freshness()  # LL-081 PR-X3 兜底
 
     failures: list[str] = []
     for svc in services:
@@ -336,10 +515,16 @@ def build_report() -> HealthReport:
             f"(threshold {BEAT_HEARTBEAT_MAX_AGE_SECONDS / 60:.0f}min)"
         )
 
+    # LL-081 PR-X3: Redis freshness probe (zombie 模式应用层兜底)
+    for rc in redis_checks:
+        if rc.stale:
+            failures.append(f"redis:{rc.key} STALE ({rc.reason})")
+
     return HealthReport(
         timestamp_utc=datetime.now(UTC).isoformat(),
         services=services,
         beat_heartbeat=beat,
+        redis_freshness=redis_checks,
         failures=failures,
     )
 
@@ -487,6 +672,13 @@ def send_alert(report: HealthReport, reason: str) -> bool:
     else:
         beat_line = "- ⚠️ **CeleryBeat heartbeat**: not checked"
 
+    # LL-081 PR-X3: Redis 应用层 freshness probe (zombie 模式兜底告警)
+    redis_lines = []
+    for rc in report.redis_freshness:
+        ok_mark = "✅" if not rc.stale else "❌"
+        redis_lines.append(f"- {ok_mark} **redis:{rc.key}**: {rc.reason}")
+    redis_block = "\n".join(redis_lines) if redis_lines else "- ⚠️ Redis probe 未执行"
+
     failures_text = "\n".join(f"- {f}" for f in report.failures) if report.failures else "无"
 
     content = (
@@ -495,9 +687,10 @@ def send_alert(report: HealthReport, reason: str) -> bool:
         f"**时间**: {_to_cst_display(report.timestamp_utc)}\n\n"
         f"### 服务状态\n{chr(10).join(services_lines)}\n\n"
         f"### Beat 心跳\n{beat_line}\n\n"
+        f"### Redis Freshness (LL-081 PR-X3)\n{redis_block}\n\n"
         f"### 失败项 ({len(report.failures)})\n{failures_text}\n\n"
-        f"> 来源: services_healthcheck (LL-074, Session 35)\n"
-        f"> Monday 4-27 首次生产触发前最后防线"
+        f"> 来源: services_healthcheck (LL-074 + LL-081, Session 38)\n"
+        f"> Monday 4-27 真生产首日 zombie 4h17m 教训, 加 Redis 应用层 freshness probe"
     )
 
     try:
