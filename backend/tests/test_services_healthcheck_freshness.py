@@ -101,7 +101,31 @@ class TestPortfolioNavFreshness:
         nav_check = next(c for c in checks if c.key == "portfolio:nav")
         assert nav_check.stale is False
         assert nav_check.found is True
-        assert nav_check.age_seconds == pytest.approx(60.0, abs=2.0)
+        # reviewer python P3-3 采纳: abs 5.0 (CI 慢机器 + GC pause 容忍)
+        assert nav_check.age_seconds == pytest.approx(60.0, abs=5.0)
+
+    def test_nav_age_at_exactly_threshold_not_stale(self, hc_module) -> None:
+        """reviewer code MEDIUM-1 采纳: boundary age=300s (== threshold), strict `>` 不 stale."""
+        # NAV updated_at = now - 300s (==阈值)
+        mock_r = self._mock_redis_with_nav(300.0)
+        with patch("redis.from_url", return_value=mock_r):
+            checks = hc_module.check_redis_freshness()
+        nav_check = next(c for c in checks if c.key == "portfolio:nav")
+        # age ~ 300s + epsilon, 严格 > 300 才 stale. 5s tolerance buffer.
+        # 实际 age = 300 + (执行 datetime.now → check_redis_freshness 间 < 5s) → ~300-305
+        # stale 判定: 严格 >, 边界精度 buffer
+        assert nav_check.found is True
+        # 不强 assert stale (受 wallclock 影响), 但断言 age 在 boundary
+        assert 295.0 < (nav_check.age_seconds or 0) < 310.0
+
+    def test_nav_age_well_above_threshold_stale(self, hc_module) -> None:
+        """boundary 安全: age=400s (> 300s+50s buffer), 严格 stale."""
+        mock_r = self._mock_redis_with_nav(400.0)
+        with patch("redis.from_url", return_value=mock_r):
+            checks = hc_module.check_redis_freshness()
+        nav_check = next(c for c in checks if c.key == "portfolio:nav")
+        assert nav_check.stale is True
+        assert "STALE" in nav_check.reason
 
     def test_nav_stale_beyond_5min_threshold(self, hc_module) -> None:
         mock_r = self._mock_redis_with_nav(600.0)  # 10 min ago

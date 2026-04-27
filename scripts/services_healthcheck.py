@@ -129,6 +129,9 @@ BEAT_HEARTBEAT_MAX_AGE_SECONDS = 10 * 60  # 10 min
 # Servy `status=Running` 是必要不充分条件 — service hang 后进程仍在跑 + Servy 看不到,
 # 必看 Redis 关键 key updated_at 跟 stream last event time. 三层任一 stale = zombie.
 PORTFOLIO_NAV_MAX_AGE_SECONDS = 5 * 60  # 5 min, 5x QMTData sync_loop 60s buffer
+# reviewer code HIGH-2 采纳 (2026-04-27): 实际 PR-X1 SETEX TTL=180s < 300s, 即 zombie
+# 后 180s 时 r.get() 已返 None → found=False → stale, 比 age 阈值更早触发. 阈值 300s
+# 对 found=True 的 age 计算才生效. 两层兜底: TTL expire (主) + age threshold (副).
 QMT_STATUS_STREAM_MAX_AGE_SECONDS = 30 * 60  # 30 min, connect 边沿 publish 长 buffer (zombie 期 21h+ 跨 night 仍能捕获)
 REDIS_PROBE_TIMEOUT_SECONDS = 3  # 短超时, 防 health check 自己 hang on Redis
 
@@ -363,18 +366,38 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
     跟 PR-X1 SETEX heartbeat 协同: PR-X1 修 root cause (TTL), 本 probe 兜底 defense-in-depth.
     """
     checks: list[RedisFreshnessCheck] = []
+    # reviewer code LOW + python P2-1 采纳: ImportError 跟 ConnectionError 区分 +
+    # sys.path BACKEND_DIR 已 module-top 加 (line 108-109), 函数内 redundant 移除.
+    # ImportError 单独 catch, log 不同消息防误导排查 (Redis 不可达 vs redis-py 缺失).
     try:
-        # backend 已有 redis-py, 跟 qmt_client.py 同协议
-        # sys.path 加 backend/ 让本 script 能 import (跟 send_alert 同模式)
-        if str(BACKEND_DIR) not in sys.path:
-            sys.path.insert(0, str(BACKEND_DIR))
         import redis  # noqa: PLC0415
-        from app.config import settings  # noqa: PLC0415
 
+        from app.config import settings  # noqa: PLC0415
+    except ImportError as e:
+        logger.warning("redis-py 或 app.config 导入失败 (非 Redis 不可达): %s", e)
+        for key, threshold in (
+            ("portfolio:nav", PORTFOLIO_NAV_MAX_AGE_SECONDS),
+            ("qm:qmt:status", QMT_STATUS_STREAM_MAX_AGE_SECONDS),
+        ):
+            checks.append(
+                RedisFreshnessCheck(
+                    key=key,
+                    found=False,
+                    age_seconds=None,
+                    threshold_seconds=threshold,
+                    reason=f"import 失败: {e!s:.80s}",
+                )
+            )
+        return checks
+
+    try:
         r = redis.from_url(
             settings.REDIS_URL,
             decode_responses=True,
             socket_timeout=REDIS_PROBE_TIMEOUT_SECONDS,
+            # reviewer code HIGH-1 采纳: socket_connect_timeout 必设 (socket_timeout 仅
+            # 命令读写超时, 连接建立默认 20-75s, 防 health check 自己 hang on TCP SYN).
+            socket_connect_timeout=REDIS_PROBE_TIMEOUT_SECONDS,
         )
 
         # Check 1: portfolio:nav updated_at
