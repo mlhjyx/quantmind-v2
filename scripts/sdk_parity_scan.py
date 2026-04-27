@@ -16,6 +16,9 @@ Exit code:
   2 — 设置/数据加载错误 (factor_values 无数据等)
 
 无 DB 写: SignalService.generate_signals(dry_run=True) + 不调 save_daily_factors.
+
+# TODO(mvp-3-3-stage3): delete this file once SDK_PARITY_STRICT cut-over is complete
+# (legacy compose path removed, parity check no longer needed).
 """
 from __future__ import annotations
 
@@ -23,10 +26,12 @@ import argparse
 import logging
 import os
 import sys
+import traceback
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -43,6 +48,8 @@ from app.config import settings  # noqa: E402
 from app.services.db import get_sync_conn  # noqa: E402
 from app.services.signal_service import SignalService  # noqa: E402
 from app.services.trading_calendar import is_trading_day  # noqa: E402
+from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking  # noqa: E402
+from backend.qm_platform.signal.pipeline import PlatformSignalPipeline  # noqa: E402
 
 logging.basicConfig(
     level=logging.WARNING,  # 安静模式, 仅 ERROR/WARN 出
@@ -54,11 +61,11 @@ logger = logging.getLogger("sdk_parity_scan")
 # ─── Result types ───────────────────────────────────────────
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParityResult:
-    """单 trade_date scan 结果. status ∈ {OK, DIFF, ERROR}."""
+    """单 trade_date scan 结果. frozen — 写一次读多次, 防 callsite 误改."""
     trade_date: date
-    status: str  # "OK" | "DIFF" | "ERROR"
+    status: Literal["OK", "DIFF", "ERROR"]
     sdk_count: int
     legacy_count: int
     codes_diff_count: int  # symmetric_difference 大小
@@ -114,12 +121,11 @@ def scan_one_date(trade_date: date, conn) -> ParityResult:
         legacy_target_weights = signal_result.target_weights
 
         # SDK 路径 (镜像 _run_sdk_parity_dryrun L240-285)
-        from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
-        from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
-
         ln_mcap = None
         if PAPER_TRADING_CONFIG.size_neutral_beta > 0:
-            from engines.size_neutral import load_ln_mcap_for_date  # noqa: PLC0415
+            from engines.size_neutral import (
+                load_ln_mcap_for_date,  # noqa: PLC0415 — 条件 lazy (gated on size_neutral_beta>0)
+            )
             ln_mcap = load_ln_mcap_for_date(trade_date, conn)
         prev_holdings = signal_svc._load_prev_weights(  # noqa: SLF001 — 镜像 production 同源
             conn, settings.PAPER_STRATEGY_ID,
@@ -190,6 +196,13 @@ def scan_one_date(trade_date: date, conn) -> ParityResult:
             detail=f"PASS codes={len(sdk_codes)} max_w_diff={max_w_diff:.2e}",
         )
     except Exception as e:  # noqa: BLE001 — scan 工具, 单日 fail 不阻其他日
+        # P3 reviewer 采纳: 完整 traceback 打 stderr 协助 debug, ParityResult.detail
+        # 仍存简洁 type+msg 供表格展示.
+        print(
+            f"\n[scan_one_date] {trade_date} traceback:\n"
+            f"{traceback.format_exc()}",
+            file=sys.stderr,
+        )
         return ParityResult(
             trade_date=trade_date,
             status="ERROR",
@@ -219,51 +232,83 @@ def expand_trade_dates(start: date, end: date, conn) -> list[date]:
 
 # ─── CLI ────────────────────────────────────────────────────
 
+# 历史 trade_date floor: factor_values 早期数据不完整, 防 last-N 误穿
+_LAST_N_FLOOR = date(2024, 1, 1)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--start",
-        type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
-        help="起始 trade_date YYYY-MM-DD (含). 与 --end 联用.",
+        type=date.fromisoformat,
+        help="起始 trade_date YYYY-MM-DD (含). 与 --end 联用 (单独使用报错).",
     )
     parser.add_argument(
         "--end",
-        type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
-        help="终止 trade_date YYYY-MM-DD (含). 与 --start 联用.",
+        type=date.fromisoformat,
+        help="终止 trade_date YYYY-MM-DD (含). 与 --start 联用 (单独使用报错).",
     )
     parser.add_argument(
         "--dates",
-        help="逗号分隔 trade_dates: 2026-04-22,2026-04-23 (覆盖 --start/--end).",
+        help="逗号分隔 trade_dates: 2026-04-22,2026-04-23 "
+             "(与 --start/--end 互斥, 同时给报错).",
     )
     parser.add_argument(
         "--last-n",
         type=int,
         default=14,
-        help="无 --start/--end/--dates 时, 跑过去 N 个交易日 (默认 14).",
+        help=f"无 --start/--end/--dates 时, 跑过去 N 个交易日 "
+             f"(默认 14, floor={_LAST_N_FLOOR.isoformat()}: 早期 factor_values 不完整).",
     )
     args = parser.parse_args()
 
-    conn = get_sync_conn()
-    conn.autocommit = True
+    # P2 reviewer 采纳: argparse 互斥 + 部分参数显式守卫
+    if bool(args.start) != bool(args.end):
+        parser.error("--start and --end must be used together")
+    if args.dates and (args.start or args.end):
+        parser.error("--dates and --start/--end are mutually exclusive")
 
+    # P2 reviewer 采纳: try/finally 保连接释放, 短时脚本也走纪律
+    conn = get_sync_conn()
+    try:
+        conn.autocommit = True
+        return _run_scan(args, conn)
+    finally:
+        conn.close()
+
+
+def _run_scan(args: argparse.Namespace, conn) -> int:
+    """Resolve trade_dates → loop scan_one_date → 汇总. main() 提取出来便于 try/finally."""
     # Resolve trade_dates
     if args.dates:
-        dates = [
-            datetime.strptime(d.strip(), "%Y-%m-%d").date()
+        raw_dates = [
+            date.fromisoformat(d.strip())
             for d in args.dates.split(",")
             if d.strip()
         ]
+        # P3 reviewer 采纳: 非交易日不静默走 ERROR (factor_values 必空), 改 stderr 警告 + skip
+        dates = []
+        for d in raw_dates:
+            if is_trading_day(conn, d):
+                dates.append(d)
+            else:
+                print(f"[scan] {d} 非交易日, skip", file=sys.stderr)
     elif args.start and args.end:
         dates = expand_trade_dates(args.start, args.end, conn)
     else:
         # last-N 模式: 从今天往前找 N 个 is_trading_day
         dates = []
         cur = date.today()
-        while len(dates) < args.last_n and cur >= date(2024, 1, 1):
+        while len(dates) < args.last_n and cur >= _LAST_N_FLOOR:
             if is_trading_day(conn, cur):
                 dates.append(cur)
             cur -= timedelta(days=1)
+        if len(dates) < args.last_n:
+            print(
+                f"[scan] last-n={args.last_n} 但仅找到 {len(dates)} 个交易日 "
+                f"(撞 floor {_LAST_N_FLOOR.isoformat()}, 历史扫请用 --start/--end).",
+                file=sys.stderr,
+            )
         dates.reverse()  # 时间正序
 
     if not dates:
@@ -271,6 +316,7 @@ def main() -> int:
         return 2
 
     print(f"[scan] {len(dates)} trade_dates: {dates[0]} ~ {dates[-1]}", file=sys.stderr)
+    # 表格行 → stdout (可 pipe/grep), 操作消息 → stderr (诊断不污染 stdout pipeline)
     print("=" * 80)
     print(f"{'trade_date':<12} {'status':<6} {'sdk':<5} {'legacy':<7} {'max_w_diff':<12} {'detail'}")
     print("-" * 80)
