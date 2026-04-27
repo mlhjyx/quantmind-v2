@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -496,7 +496,8 @@ class TestLL076Phase2TimeWindowResolver:
     """
 
     def test_compute_and_ingest_explicit_start_end_overrides_days(self, monkeypatch):
-        """显式 start_date/end_date 覆盖 days legacy 计算."""
+        """reviewer P3-1 采纳: 实际验证 _load_prices 收到 (start_date, end_date + buffer) 边界,
+        而非仅 signature 契约 — 防 future 改动重新引入无条件 date.today() 覆盖 explicit args."""
         fake_conn = MagicMock()
         load_prices_calls = []
 
@@ -521,20 +522,35 @@ class TestLL076Phase2TimeWindowResolver:
                 }
             ),
         )
-        monkeypatch.setattr(cdi, "_fetch_active_factors", lambda c: [])  # 早退避免实际计算
+        # 让 _fetch_active_factors 返非空, 避免早退跳过 _load_prices 调用
+        monkeypatch.setattr(cdi, "_fetch_active_factors", lambda c: ["bp_ratio"])
+        # mock _compute_factor_ic 返空 DataFrame 避免实际 IC 计算
+        monkeypatch.setattr(
+            cdi, "_compute_factor_ic", lambda *a, **kw: pd.DataFrame()
+        )
+        # mock compute_forward_excess_returns 避免内部 KeyError 'close' (实际函数需完整 OHLC)
+        monkeypatch.setattr(
+            cdi, "compute_forward_excess_returns", lambda *a, **kw: pd.DataFrame()
+        )
 
         cdi.compute_and_ingest(
             conn=fake_conn,
             days=999,  # legacy days 应被 explicit start/end 覆盖
-            factors=None,
+            factors=["bp_ratio"],
             dry_run=True,
             start_date=date(2026, 3, 1),
             end_date=date(2026, 3, 5),
         )
 
-        # _fetch_active_factors 早退, _load_prices 不会调; 但本测试目的是验证
-        # signature 接受 start_date/end_date 不 raise, 且 fallback 不覆盖 explicit.
-        # 实际窗口边界判断走 logger 日志 (本测试重点 = 接口契约).
+        # 实际验证: _load_prices 调用边界 = (start_date, end_date + FUTURE_BUFFER_DAYS)
+        # days=999 被忽略 (explicit start/end 覆盖)
+        assert len(load_prices_calls) == 1, "_load_prices 应被调 1 次"
+        called_start, called_end = load_prices_calls[0]
+        assert called_start == date(2026, 3, 1), f"start 应 = explicit start_date, 实际 {called_start}"
+        expected_price_end = date(2026, 3, 5) + timedelta(days=cdi.FUTURE_BUFFER_DAYS)
+        assert called_end == expected_price_end, (
+            f"end 应 = explicit end_date + FUTURE_BUFFER_DAYS, 实际 {called_end}"
+        )
 
     def test_run_with_start_arg_walks_custom_mode(self, monkeypatch):
         """--start 20260401 → window.mode='custom', 传给 compute_and_ingest 显式日期."""
@@ -561,6 +577,58 @@ class TestLL076Phase2TimeWindowResolver:
         # 验证 compute_and_ingest 收到 explicit start_date / end_date (LL-076 phase 2 fix)
         assert captured_kwargs.get("start_date") == date(2026, 4, 1)
         assert captured_kwargs.get("end_date") == date(2026, 4, 15)
+
+    def test_run_with_start_only_no_end_defaults_to_today(self, monkeypatch):
+        """reviewer P3-2 采纳: --start 20260401 无 --end → end 默认 today (custom 模式 end fallback)."""
+        fake_conn = MagicMock()
+        monkeypatch.setattr(cdi, "get_sync_conn", lambda: fake_conn)
+
+        captured_kwargs = {}
+
+        def mock_compute(**kw):
+            captured_kwargs.update(kw)
+            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+
+        monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
+        monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["compute_daily_ic.py", "--start", "20260401", "--dry-run"],
+        )
+
+        rc = cdi.main()
+        assert rc == 0
+        assert captured_kwargs.get("start_date") == date(2026, 4, 1)
+        # end 应 default 到 today (CST), 验证 != None + 是 date 类型 (具体值随时钟变, 用 type 验)
+        end = captured_kwargs.get("end_date")
+        assert isinstance(end, date)
+        assert end >= date(2026, 4, 1)  # end >= start
+
+    def test_run_with_lookback_days_arg_walks_lookback_mode(self, monkeypatch):
+        """reviewer P3-3 采纳: --lookback-days 14 → window.mode='lookback', start = today - 14d."""
+        fake_conn = MagicMock()
+        monkeypatch.setattr(cdi, "get_sync_conn", lambda: fake_conn)
+
+        captured_kwargs = {}
+
+        def mock_compute(**kw):
+            captured_kwargs.update(kw)
+            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+
+        monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
+        monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["compute_daily_ic.py", "--lookback-days", "14", "--dry-run"],
+        )
+
+        rc = cdi.main()
+        assert rc == 0
+        # window.start_date = today - 14d, end_date = today
+        gap = (captured_kwargs["end_date"] - captured_kwargs["start_date"]).days
+        assert gap == 14, f"--lookback-days 14 应映射为 14 日窗口, 实际 {gap}"
 
     def test_default_lookback_falls_back_to_days(self, monkeypatch):
         """无 --start / --lookback-days → window.mode='default' + default_lookback=args.days (向后兼容)."""
