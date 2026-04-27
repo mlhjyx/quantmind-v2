@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # LL-081 zombie 防御 (2026-04-27 真生产首日教训):
 # 当持仓数 > MIN_POSITIONS 且 skip_ratio > THRESHOLD 时, log P1 warning 触发监控.
 # 单股 skip (entry_price=0 等数据问题) OK, 但 19/19 全 skip 是系统性故障 (QMT 数据失联).
-SKIP_RATIO_ALERT_THRESHOLD: Final[float] = 0.6  # 60% 比例
-SKIP_RATIO_MIN_POSITIONS: Final[int] = 5  # 持仓数上限, ≤ 5 持仓 skip 1-2 不告警避免噪声
+SKIP_RATIO_ALERT_THRESHOLD: Final[float] = 0.6  # 60% 严格大于触发 (>0.6, 即 ≥ 61%)
+SKIP_RATIO_MIN_POSITIONS: Final[int] = 5  # 持仓数门槛: 持仓 ≤ 5 时 skip 视为噪声不告警 (避免 data quality 单股噪声)
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ class PMSRule(RiskRule):
             19/19 silent skip 误报"健康 0 触发". 单股 skip 仍 silent (数据质量问题).
         """
         results: list[RuleResult] = []
-        skipped_invalid_data = 0
+        skipped_invalid_data: int = 0  # reviewer python P3 采纳: 显式 type annot 提示 mypy
         for pos in context.positions:
             if pos.entry_price <= 0 or pos.peak_price <= 0 or pos.current_price <= 0:
                 skipped_invalid_data += 1
@@ -160,7 +160,14 @@ class PMSRule(RiskRule):
         # 单股 / 少股 skip OK (data quality 噪声), 但 > MIN_POSITIONS 持仓且 ratio > THRESHOLD
         # 是系统性故障 — QMT 数据失联 / paper-live 命名空间漂移 / Redis market:latest:* 全过期.
         # logger.warning 触发钉钉监控 + 后续 PR-X3 ServicesHealthCheck 也会兜底捕获.
+        # 与 PR-X1 (qmt_data_service SETEX heartbeat) 协同: PR-X1 修 root cause (TTL),
+        # 本告警保留 defense-in-depth — 即便 TTL 修好, 其他 zombie 通道 (命名空间漂移 /
+        # broker hang on query_positions) 仍可触发本 alert. 不要因 PR-X1 修好就删除本段.
         total_positions = len(context.positions)
+        # reviewer python P2 + code P2-1 采纳: 显式 ZeroDivisionError 防御 (隐式短路求值
+        # 依赖常量语义脆弱, 未来若 SKIP_RATIO_MIN_POSITIONS 改为 0 即 div by 0).
+        if total_positions == 0:
+            return results
         if (
             total_positions > SKIP_RATIO_MIN_POSITIONS
             and skipped_invalid_data / total_positions > SKIP_RATIO_ALERT_THRESHOLD
