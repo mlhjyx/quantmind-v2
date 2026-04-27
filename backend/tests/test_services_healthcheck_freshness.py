@@ -208,3 +208,85 @@ class TestRedisUnreachable:
             assert c.stale is True
             assert c.found is False
             assert "Redis 不可达" in c.reason
+
+
+class TestTradingHoursGuard:
+    """PR-X3 reviewer MEDIUM-2 follow-up: 非交易时段 stream stale 降级 INFO 不告警.
+
+    A 股交易时段: 周一-五 + (09:30-11:30 OR 13:00-15:00) Asia/Shanghai.
+    非交易时段 stream connect 边沿事件必然 stale, 降级 is_failure_alertable=False.
+    """
+
+    def _mock_stream_with_age(self, age_seconds: float):
+        ms = int((time.time() - age_seconds) * 1000)
+        mock_r = MagicMock()
+        mock_r.get.return_value = None  # nav 不重要
+        mock_r.xrevrange.return_value = [(f"{ms}-0", {"status": "connected"})]
+        return mock_r
+
+    def test_is_trading_hours_weekend_returns_false(self, hc_module) -> None:
+        """周六 / 周日 → False (无视时间)."""
+        # weekday() 0=Mon..4=Fri, 5=Sat, 6=Sun
+        with patch.object(hc_module, "datetime") as mock_dt:
+            sat = datetime(2026, 4, 25, 10, 0, tzinfo=hc_module._CST_TZ)  # Sat
+            mock_dt.now.return_value = sat
+            assert hc_module._is_trading_hours_now() is False
+
+    def test_is_trading_hours_weekday_morning_open_true(self, hc_module) -> None:
+        """周一 09:35 (开盘后 5min) → True."""
+        with patch.object(hc_module, "datetime") as mock_dt:
+            mon_morning = datetime(2026, 4, 27, 9, 35, tzinfo=hc_module._CST_TZ)
+            mock_dt.now.return_value = mon_morning
+            assert hc_module._is_trading_hours_now() is True
+
+    def test_is_trading_hours_weekday_lunch_break_false(self, hc_module) -> None:
+        """周一 12:00 (午休) → False (11:30-13:00)."""
+        with patch.object(hc_module, "datetime") as mock_dt:
+            mon_lunch = datetime(2026, 4, 27, 12, 0, tzinfo=hc_module._CST_TZ)
+            mock_dt.now.return_value = mon_lunch
+            assert hc_module._is_trading_hours_now() is False
+
+    def test_is_trading_hours_weekday_after_close_false(self, hc_module) -> None:
+        """周一 19:00 (盘后) → False (15:00 后)."""
+        with patch.object(hc_module, "datetime") as mock_dt:
+            mon_after = datetime(2026, 4, 27, 19, 0, tzinfo=hc_module._CST_TZ)
+            mock_dt.now.return_value = mon_after
+            assert hc_module._is_trading_hours_now() is False
+
+    def test_is_trading_hours_boundary_0930_open(self, hc_module) -> None:
+        """周一 09:30:00 边界 → True (开盘瞬间)."""
+        with patch.object(hc_module, "datetime") as mock_dt:
+            mon_open = datetime(2026, 4, 27, 9, 30, tzinfo=hc_module._CST_TZ)
+            mock_dt.now.return_value = mon_open
+            assert hc_module._is_trading_hours_now() is True
+
+    def test_is_trading_hours_boundary_1500_close(self, hc_module) -> None:
+        """周一 15:00:00 边界 → False (收盘瞬间, < 严格小于)."""
+        with patch.object(hc_module, "datetime") as mock_dt:
+            mon_close = datetime(2026, 4, 27, 15, 0, tzinfo=hc_module._CST_TZ)
+            mock_dt.now.return_value = mon_close
+            assert hc_module._is_trading_hours_now() is False
+
+    def test_stream_stale_non_trading_hours_not_alertable(self, hc_module) -> None:
+        """非交易时段 stream stale → is_failure_alertable=False (INFO 不告警)."""
+        mock_r = self._mock_stream_with_age(3600.0)  # 60min ago
+        with patch("redis.from_url", return_value=mock_r), patch.object(
+            hc_module, "_is_trading_hours_now", return_value=False
+        ):
+            checks = hc_module.check_redis_freshness()
+        stream_check = next(c for c in checks if c.key == "qm:qmt:status")
+        assert stream_check.stale is True
+        assert stream_check.is_failure_alertable is False
+        assert "INFO only" in stream_check.reason
+
+    def test_stream_stale_trading_hours_alertable(self, hc_module) -> None:
+        """交易时段 stream stale → is_failure_alertable=True (P0 告警)."""
+        mock_r = self._mock_stream_with_age(3600.0)  # 60min ago
+        with patch("redis.from_url", return_value=mock_r), patch.object(
+            hc_module, "_is_trading_hours_now", return_value=True
+        ):
+            checks = hc_module.check_redis_freshness()
+        stream_check = next(c for c in checks if c.key == "qm:qmt:status")
+        assert stream_check.stale is True
+        assert stream_check.is_failure_alertable is True
+        assert "INFO only" not in stream_check.reason

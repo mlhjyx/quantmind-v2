@@ -204,6 +204,10 @@ class RedisFreshnessCheck:
     age_seconds: float | None  # None = parse 失败 / 不存在
     threshold_seconds: int
     reason: str  # 详细描述, 钉钉 markdown 用
+    # PR-X3 reviewer code MEDIUM-2 follow-up (2026-04-27): 非交易时段 stream stale 是 expected
+    # (connect 边沿事件不持续), 应 INFO 不入 failures 防噪声告警.
+    # default True 保留 fail-loud 默认行为, check_redis_freshness 显式 set False 降级.
+    is_failure_alertable: bool = True
 
     @property
     def stale(self) -> bool:
@@ -214,6 +218,32 @@ class RedisFreshnessCheck:
 
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "stale": self.stale}
+
+
+def _is_trading_hours_now() -> bool:
+    """A 股交易时段判断 (周一-五 09:30-11:30 + 13:00-15:00, Asia/Shanghai).
+
+    follow-up to PR-X3 reviewer code MEDIUM-2: 非交易时段 stream connect 边沿事件
+    必然 stale, 不应触发告警噪声. 不依赖 PG conn (services_healthcheck 核心设计:
+    PG 挂时仍能告警 LL-074), 用静态 weekday + hour/minute 检查.
+
+    **不含节假日 list** (硬编码 list 跨年脆弱). 法定节假日 weekday 误报风险接受 — 1h
+    dedup window 抑制 spam, 1 次告警可手动检查后 ack.
+
+    Returns:
+        True 仅当 周一-五 + (09:30-11:30 OR 13:00-15:00) 上海时间.
+    """
+    now_cst = datetime.now(_CST_TZ)
+    if now_cst.weekday() >= 5:  # Sat=5, Sun=6
+        return False
+    hm = now_cst.hour * 60 + now_cst.minute
+    morning_open = 9 * 60 + 30
+    morning_close = 11 * 60 + 30
+    afternoon_open = 13 * 60
+    afternoon_close = 15 * 60
+    in_morning = morning_open <= hm < morning_close
+    in_afternoon = afternoon_open <= hm < afternoon_close
+    return in_morning or in_afternoon
 
 
 @dataclass
@@ -457,6 +487,9 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
             )
 
         # Check 2: qm:qmt:status stream last event
+        # PR-X3 reviewer MEDIUM-2 follow-up: 非交易时段 stream stale 是 expected (connect 边沿事件
+        # 不持续), 降级 is_failure_alertable=False 防钉钉噪声 (zombie 仅在交易时段实际危险).
+        is_trading = _is_trading_hours_now()
         try:
             events = r.xrevrange("qm:qmt:status", count=1)
             if not events:
@@ -467,6 +500,7 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                         age_seconds=None,
                         threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
                         reason="stream 空 (QMT 从未连接)",
+                        is_failure_alertable=is_trading,
                     )
                 )
             else:
@@ -476,6 +510,7 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                 age = max(0.0, time.time() - ms / 1000)
                 age_min = age / 60.0
                 is_stale = age > QMT_STATUS_STREAM_MAX_AGE_SECONDS
+                trading_suffix = "" if is_trading else " [非交易时段, INFO only]"
                 checks.append(
                     RedisFreshnessCheck(
                         key="qm:qmt:status",
@@ -485,7 +520,9 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                         reason=(
                             f"last event {age_min:.1f}min ago "
                             + ("STALE (zombie 风险)" if is_stale else "ok")
+                            + trading_suffix
                         ),
+                        is_failure_alertable=is_trading,
                     )
                 )
         except Exception as e:  # noqa: BLE001
@@ -496,6 +533,7 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                     age_seconds=None,
                     threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
                     reason=f"probe 异常: {e!s:.80s}",
+                    is_failure_alertable=is_trading,
                 )
             )
 
@@ -539,8 +577,10 @@ def build_report() -> HealthReport:
         )
 
     # LL-081 PR-X3: Redis freshness probe (zombie 模式应用层兜底)
+    # PR-X3 reviewer MEDIUM-2 follow-up: 仅 alertable stale 入 failures, 非交易时段
+    # stream stale (is_failure_alertable=False) 仍 visible in redis_freshness 但不告警.
     for rc in redis_checks:
-        if rc.stale:
+        if rc.stale and rc.is_failure_alertable:
             failures.append(f"redis:{rc.key} STALE ({rc.reason})")
 
     return HealthReport(
