@@ -2405,3 +2405,127 @@ Session 38+39 单日 (Monday 4-27) 18:00-22:30 累计 **10 PR merged**:
 - **Session 38+39 handoff**: `memory/session_38_handoff_2026_04_27.md` 含 4 part 加时记录
 - **Wave 3 状态**: QPB Blueprint v1.10 (待 bump) MVP 3.3 60% 完成
 - **下 Session 40 入口**: Tuesday 4-28 早间 + MVP 3.3 batch 2 Step 2 (regression 真硬门)
+
+---
+
+## LL-085: 历史多日 batch 验证 > 等 production 单数据点 — 用户挑战驱动 (Session 39 加时, 2026-04-28 00:30)
+
+### 触发场景
+
+Session 39 半夜 PR #111 (Step 2.5 STRICT mode) merged 后, 我提议 "Tuesday 16:30 schtask 跑后看 parity OK 再 flip SDK_PARITY_STRICT=true". 用户立即挑战:
+
+> "为什么要等16:30？而不能提前测试呢？"
+
+一句击中懒惰假设. 16:30 不是物理硬约束, 它只是 production schtask 的下一次自动触发时刻. **历史 trade_dates 的 factor_values 全有数据**, `_run_sdk_parity_dryrun` 是 pure helper, 给定 (trade_date, factor_df, universe, industry, legacy_weights, conn) 就能跑.
+
+### 改方案 — `scripts/sdk_parity_scan.py` 多日批量
+
+30 min 写工具:
+- 复用 production data-loading 链 (`load_factor_values + load_universe + load_industry`)
+- `SignalService.generate_signals(dry_run=True)` 取 legacy weights (无 DB 写)
+- `_build_sdk_strategy_context` + `PlatformSignalPipeline.generate(s1, ctx)` 取 SDK signals
+- 比对 codes (`symmetric_difference`) + weights (`max(abs(a-b))`) → ParityResult
+
+10 min 跑 14 个 trade_dates (4-07 ~ 4-24): **14/14 PASS**, codes=20 各日, max_w_diff=**0.00e+00 全场**.
+
+证据强度: 14 数据点 vs 1 数据点 = **14 倍**, 时间成本 40 min vs 16 hours = **24 倍效率**.
+
+### 根因
+
+我陷入了"production = single authoritative data-point"的错觉. 实际上 production 只是真实数据的最新一帧, **历史数据帧同样是真实数据** — 都从同一 factor_values 表来. 多日扫不是"模拟", 是"批量回放真实数据".
+
+类似的懒惰陷阱:
+- "等明天看一下" → 今天能跑相同测试吗?
+- "下周 stable 后再说" → 今晚多个版本对比有 blocker 吗?
+- "production 跑过才知道" → 历史数据回放等效吗?
+
+### 应用规则
+
+任何"等 X 时刻才能验"的 claim, 先问:
+1. **历史数据是否覆盖此 case?** factor_values / signals / klines_daily 等表通常有 N 年历史
+2. **代码路径能否 dry-run?** SignalService 有 `dry_run=True`, 不写 DB
+3. **batch 工具写多久?** 30-60 min 写一次性脚本 vs 16+ hours 等待
+4. **失败 cost 不对称吗?** Tuesday 16:30 真出 DIFF, 你已经睡了, schtask LastResult≠0 触发钉钉 → 人工值守; 今晚多日扫主动验证, 出 DIFF 立刻调试
+
+**反例** (合理等待场景, 不适用本规则):
+- 等真实交易日盘中数据 (盘后回放 ≠ 实时风险)
+- 等用户行为/外部信号 (无法 retroactive)
+- 等 OS / 第三方服务窗口 (不可控时间)
+
+### 持久化
+
+- 本 LL 条目 (LL-085)
+- 工具: `scripts/sdk_parity_scan.py` (Stage 3.0 cut-over 后 deprecate)
+- 实战: PR #112 14/14 PASS 后当晚 flip STRICT=true (vs 等到 Tuesday 16:30)
+
+---
+
+## LL-086: Windows User env via setx — schtask spawn 自动继承, 不需 Servy 4 服务 restart (Session 39 加时, 2026-04-28 00:35)
+
+### 触发场景
+
+Session 39 PR #112 决议 flip `SDK_PARITY_STRICT=true`. 选项:
+1. 改 `.env` 文件 (但 `run_paper_trading.py` 不调 `python-dotenv.load_dotenv()`, .env 不入 `os.environ`, 仅 pydantic-settings.Settings 读)
+2. 修代码加 `python-dotenv.load_dotenv()` (要 Stage 2.5 改 production code, 风险)
+3. **Windows User env via `setx`** (推荐)
+
+### 关键认知
+
+```powershell
+# write
+setx SDK_PARITY_STRICT true
+# → 写 HKEY_CURRENT_USER\Environment, 持久化跨重启
+
+# verify (registry-level, 必走 PowerShell)
+[Environment]::GetEnvironmentVariable("SDK_PARITY_STRICT", "User")
+# → 'true'
+
+# verify (python sees it in fresh shell)
+.venv\Scripts\python.exe -c "import os; print(os.environ.get('SDK_PARITY_STRICT'))"
+# → 'true'
+
+# rollback
+[Environment]::SetEnvironmentVariable("SDK_PARITY_STRICT", $null, "User")
+# 或 setx SDK_PARITY_STRICT ""
+```
+
+**当前 shell 不见 setx 改动**: setx 只影响**未来**进程. 若想验证, 必走新开 shell (PowerShell 工具每次 spawn 新 PS = 自动新 shell).
+
+### schtask 继承机制
+
+QuantMind_DailySignal 在 `setup_task_scheduler.ps1:85-108` 配置:
+```powershell
+$signalAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\run_paper_trading.py signal" `
+    -WorkingDirectory $ProjectRoot
+# 无 wrapper, 无 -EnvironmentVariables, 无 .ps1 中转
+```
+
+→ 16:30 触发时 Task Scheduler 直接 spawn `python.exe`, 进程继承 **当时** Windows User env. setx 后任意时刻触发的 schtask 都见新 env.
+
+### Servy 不需 restart
+
+`SDK_PARITY_STRICT` 仅 `run_paper_trading.py` (schtask 调用) 读. Servy 4 服务 (FastAPI/Celery/Beat/QMTData) 都不读此 env, **不必 stop/start**.
+
+(对比: `EXECUTION_MODE` 是 `app.config.Settings` 字段, FastAPI/Celery 都读 → 改它必 Servy restart 4 服务. SDK_PARITY_STRICT 是 raw os.environ, scope 窄, 不耦合 Servy.)
+
+### 应用规则
+
+env 改动决策树:
+1. **谁读它?** grep + `app/config.py` Settings + 直接 `os.environ.get` 全找
+2. **schtask 用?** setx + 不需 Servy restart
+3. **Servy 服务用?** Servy stop/start (因 service 进程长生不读新 setx)
+4. **代码 hardcode?** 改代码 + 走 PR
+5. **rollback path 必预先想清楚** (任何 env 改动都要)
+
+避免:
+- 仅改 `.env` 但代码用 raw `os.environ.get` (silent no-op)
+- 改 `.env` 后忘 Servy restart (Settings cached in process memory)
+- 改 setx 后期望当前 shell 立即见 (必新开)
+
+### 持久化
+
+- 本 LL 条目 (LL-086)
+- Session 39 PR #112: STRICT flip 真切换 LIVE 实战
+- 文档: Session 39 handoff 含 verify + rollback PowerShell 命令清单
