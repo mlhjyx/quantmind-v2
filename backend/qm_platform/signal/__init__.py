@@ -1,4 +1,8 @@
 """Framework #6 Signal & Execution — Platform SDK sub-package."""
+from .audit import (
+    AuditMissing,
+    StubExecutionAuditTrail,
+)
 from .interface import (
     AuditChain,
     ExecutionAuditTrail,
@@ -35,4 +39,7 @@ __all__ = [
     "InsufficientCapital",
     "TurnoverCapExceeded",
     "DEFAULT_LOT_SIZE",
+    # MVP 3.3 batch 3
+    "StubExecutionAuditTrail",
+    "AuditMissing",
 ]
