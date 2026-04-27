@@ -4,6 +4,25 @@
 > **Sprint**: Wave 3 3/5 (Session 37+ 起, post MVP 3.2 全 4 批 ✅)
 > **前置**: MVP 3.2 Strategy Framework ✅ (Session 33-36, S1+S2 注册激活) / Signal interface.py ABC 骨架 ✅ (`backend/qm_platform/signal/interface.py` 138 行)
 
+## 进度 (Session 39 加时末 2026-04-28 01:00, 75% 完成)
+
+| Stage | 状态 | PR | 说明 |
+|---|---|---|---|
+| 批 1 (SignalPipeline concrete + S1 wrap) | ✅ | #107 | `PlatformSignalPipeline.compose/generate` + S1 路径 regression max_diff=0 |
+| 批 2 Step 1 (OrderRouter SDK) | ✅ | #108 | `PlatformOrderRouter` 整手 + cash buffer + idempotent order_id sha256 |
+| 批 3 (AuditChain stub + hook) | ✅ | #109 | `StubExecutionAuditTrail` no-op + Router `audit.record('order.routed')` 铁律 33 |
+| **批 2 Step 2** (SDK parity dual-run warn-only) | ✅ | #110 | `_run_sdk_parity_dryrun` read-only SDK vs legacy 比对, 失败仅 logger.warning, production 不阻塞 |
+| **批 2 Step 2.5** (STRICT enforcement mode) | ✅ | #111 | `SignalPathDriftError(RuntimeError)` env-gated raise, `_is_sdk_parity_strict()` + `_STRICT_TRUTHY` frozenset, codes/weight DIFF 双路径 strict raise |
+| **批 2 Step 2.5 verification + flip** | ✅ | #112 | `scripts/sdk_parity_scan.py` multi-date 验证 14/14 historical PASS (max_w_diff=0.00e+00 全场) + STRICT flip 真切换 via `setx SDK_PARITY_STRICT true` (Windows User env) |
+| **批 2 Step 3 (Stage 3.0 真切换)** | ⬜ | TBD | `signal_service.write_signals` 走 SDK Order, 删 legacy compose. 解锁条件 = 1 周连续 STRICT OK (Tuesday 4-28 16:30 ~ Monday 5-04). Session 40+. |
+
+**Step 2.5 设计说明** (原 scope 未含, Session 39 加时新增):
+- 在 Step 2 (warn-only dual-run) 和 Step 3 (真切换) 之间加 STRICT enforcement buffer, 默认 warn-only 兼容现况, env `SDK_PARITY_STRICT=true` 时 DIFF 必 raise → signal_phase fail → 钉钉告警
+- 14 天历史 batch 验证 (LL-085) bit-identical 后 flip env, 比单日 production 16:30 单数据点强 14 倍
+- Windows User env via setx 持久化, schtask 16:30 自动继承, **不需 Servy restart** (LL-086)
+
+**LL 沉淀** (Session 39 全): LL-082 (audit hook 时机) / LL-083 (np.float64 type guard) / LL-084 (Wave 3 实战) / LL-085 (历史多日 batch > 等 production 单数据点) / LL-086 (setx schtask env propagation).
+
 ## Context
 
 **问题**: 当前 PT 的 signal → order 路径**有 ABC 无 concrete**:
