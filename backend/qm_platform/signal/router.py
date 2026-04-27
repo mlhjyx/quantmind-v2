@@ -20,7 +20,7 @@
   - `delta > 0` → BUY Order
   - `delta < 0` → SELL Order
   - `delta == 0` → 跳过 (不生成 0 量单)
-- `order_id` 幂等键: `sha256(strategy_id|trade_date|code|side|target_shares)[:16]`
+- `order_id` 幂等键: `sha256(json([strategy_id, trade_date, code, side, target_shares]))[:16]`
 - `turnover_cap`: 总 buy_value / sum(capital_allocation) ≤ cap, 否则 raise
 
 `cancel_stale(cutoff_seconds=300) -> list[str]`:
@@ -40,20 +40,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
-from collections.abc import Callable
+import math
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from .._types import Order
 from .interface import OrderRouter
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import date
 
-    from .._types import Order, Signal
-
-# Avoid lazy import (P2 reviewer PR #107 carry-over: module-top imports).
-from .._types import Order as _Order  # runtime constructor
+    from .._types import Signal
 
 _logger = logging.getLogger(__name__)
 
@@ -143,10 +143,29 @@ class PlatformOrderRouter(OrderRouter):
         orders: list[Order] = []
         seen_order_ids: set[str] = set()
         total_buy_value: Decimal = Decimal("0")
+        # P2 python-reviewer (PR #108) 采纳: sum() 直接接 .values(), 删冗余生成器.
         total_capital: Decimal = sum(
-            (v for v in capital_allocation.values()),
+            capital_allocation.values(),
             start=Decimal("0"),
         )
+
+        # P1 reviewer (PR #108) 采纳: 检测 orphan positions (current_positions 中
+        # 的 code 未在 signals) 并 warn. caller 契约: 必为 exit 持仓显式发 weight=0
+        # signal, 否则 router 不会自动生成 SELL 订单 (避免 orphan 的 strategy_id 推断歧义).
+        # Step 3 daily_pipeline wire 时由 multi-strategy diff prev_holdings 路径补齐.
+        signal_codes = {sig.code for sig in signals}
+        orphan_positions = {
+            code: qty for code, qty in current_positions.items()
+            if code not in signal_codes and qty > 0
+        }
+        if orphan_positions:
+            _logger.warning(
+                "route: %d orphan positions in current_positions but not in signals "
+                "(no SELL orders will be generated for them). "
+                "caller MUST emit target_weight=0 signals for exits. orphans=%s",
+                len(orphan_positions),
+                sorted(orphan_positions.keys())[:10],  # 限 10 个防 log 爆
+            )
 
         for sig in signals:
             # ─── Validate signal.metadata ──────────────────────
@@ -156,10 +175,25 @@ class PlatformOrderRouter(OrderRouter):
                     f"(strategy_id={sig.strategy_id} code={sig.code}). "
                     "caller 必预注入当日价 (close / 实时 last)."
                 )
-            price = sig.metadata["price"]
-            if not isinstance(price, (int, float)) or price <= 0:
+            # P1 reviewer (PR #108) code+python 采纳: 拆 type guard vs value guard,
+            # 拓宽到 (int, float, Decimal, np.floating-duck-type), 加 NaN/inf 防御.
+            # 原 isinstance(price, (int, float)) 拒 np.float64 (Step 2 wire DAL price 必炸).
+            price_raw = sig.metadata["price"]
+            try:
+                price = float(price_raw)
+            except (TypeError, ValueError) as e:
+                raise TypeError(
+                    f"signal.metadata['price'] 必须可 float() 转换, got {type(price_raw).__name__}: "
+                    f"{price_raw!r} (strategy_id={sig.strategy_id} code={sig.code})."
+                ) from e
+            if math.isnan(price) or math.isinf(price):
                 raise ValueError(
-                    f"signal.metadata['price'] 必须 > 0, got {price!r} "
+                    f"signal.metadata['price'] 不能 NaN/inf, got {price_raw!r} "
+                    f"(strategy_id={sig.strategy_id} code={sig.code})."
+                )
+            if price <= 0:
+                raise ValueError(
+                    f"signal.metadata['price'] 必须 > 0, got {price_raw!r} "
                     f"(strategy_id={sig.strategy_id} code={sig.code})."
                 )
             if sig.target_weight < 0:
@@ -177,8 +211,11 @@ class PlatformOrderRouter(OrderRouter):
             capital = capital_allocation[sig.strategy_id]
 
             # ─── Compute target_shares (整手 round-down, 对齐 paper_broker:359) ─
-            target_value = float(capital) * float(sig.target_weight)
-            raw_shares = target_value / price
+            # P1 code-reviewer (PR #108) 采纳: 保 Decimal 精度直到最终 int() 截位.
+            # 原 float(capital) × float(weight) 违反 CLAUDE.md "金融金额用 Decimal" 规则.
+            # price 来自 metadata float — 不可 Decimal 化, 仅在 / price 时桥到 float.
+            target_value_d = capital * Decimal(str(sig.target_weight))
+            raw_shares = float(target_value_d) / price
             target_shares = int(raw_shares / self._lot_size) * self._lot_size
 
             # ─── Compute delta vs current ─────────────────────
@@ -208,7 +245,7 @@ class PlatformOrderRouter(OrderRouter):
                 total_buy_value += Decimal(str(quantity)) * Decimal(str(price))
 
             orders.append(
-                _Order(
+                Order(
                     order_id=order_id,
                     strategy_id=sig.strategy_id,
                     code=sig.code,
@@ -219,7 +256,16 @@ class PlatformOrderRouter(OrderRouter):
             )
 
         # ─── turnover_cap 全局检查 (放循环外, 防误中止) ──────────
-        if total_capital > 0 and total_buy_value > total_capital * Decimal(str(turnover_cap)):
+        # P2 reviewer (PR #108) 采纳: total_capital==0 时显式 warn (铁律 33 fail-loud
+        # 观测性), 非静默跳过. Step 2+ 评估是否 raise.
+        if total_capital == 0:
+            _logger.warning(
+                "route: total_capital=0 (capital_allocation 全 0 或空), "
+                "turnover_cap 检查跳过. orders=%d total_buy_value=%s",
+                len(orders),
+                total_buy_value,
+            )
+        elif total_buy_value > total_capital * Decimal(str(turnover_cap)):
             raise TurnoverCapExceeded(
                 f"总 BUY value {total_buy_value} 超 turnover_cap {turnover_cap} × "
                 f"sum(capital) {total_capital} = {total_capital * Decimal(str(turnover_cap))}. "
@@ -268,10 +314,18 @@ class PlatformOrderRouter(OrderRouter):
         side: str,
         target_shares: int,
     ) -> str:
-        """sha256(strategy_id|trade_date|code|side|target_shares)[:16] 幂等键.
+        """sha256(json([strategy_id, trade_date, code, side, target_shares]))[:16] 幂等键.
 
         target_shares 而非 quantity 入 hash: 同 target_shares 对应同 order 语义,
         即便 caller 拆分多次 route() (curr_shares 不同 → quantity 不同), order_id 仍稳定.
+
+        P1 python-reviewer (PR #108) 采纳: 用 json.dumps 替代 `|` 分隔 f-string, 防
+        用户可控 strategy_id 含 `|` 造碰撞 (e.g. 'strat|v2' + '|date' vs 'strat' +
+        'v2|date'). json 自然 escape 引号防混淆. ensure_ascii=False 保中文 strategy_id.
         """
-        material = f"{strategy_id}|{trade_date.isoformat()}|{code}|{side}|{target_shares}"
+        material = json.dumps(
+            [strategy_id, trade_date.isoformat(), code, side, target_shares],
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
         return hashlib.sha256(material.encode("utf-8")).hexdigest()[:_ORDER_ID_HEX_LEN]
