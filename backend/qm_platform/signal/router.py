@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from .._types import Signal
+    from .interface import ExecutionAuditTrail
 
 _logger = logging.getLogger(__name__)
 
@@ -98,11 +99,19 @@ class PlatformOrderRouter(OrderRouter):
         self,
         lot_size: int = DEFAULT_LOT_SIZE,
         cancel_callable: Callable[[int], list[str]] | None = None,
+        audit_trail: ExecutionAuditTrail | None = None,
     ) -> None:
+        """Args:
+          lot_size: A 股整手 (默认 100). 测试可注 1.
+          cancel_callable: Step 2 wire QMT 撤单 DI. None → cancel_stale raise NotImplemented.
+          audit_trail: Step 3 (本批) audit hook DI. None → 跳过 record() (backward compat).
+            注入 StubExecutionAuditTrail / DBOutboxAuditTrail (MVP 3.4) 启用 audit chain.
+        """
         if lot_size < 1:
             raise ValueError(f"lot_size 必须 ≥ 1, got {lot_size}")
         self._lot_size = lot_size
         self._cancel_callable = cancel_callable
+        self._audit_trail = audit_trail
 
     @property
     def lot_size(self) -> int:
@@ -244,16 +253,33 @@ class PlatformOrderRouter(OrderRouter):
             if side == "BUY":
                 total_buy_value += Decimal(str(quantity)) * Decimal(str(price))
 
-            orders.append(
-                Order(
-                    order_id=order_id,
-                    strategy_id=sig.strategy_id,
-                    code=sig.code,
-                    side=side,
-                    quantity=quantity,
-                    trade_date=sig.trade_date,
-                )
+            order = Order(
+                order_id=order_id,
+                strategy_id=sig.strategy_id,
+                code=sig.code,
+                side=side,
+                quantity=quantity,
+                trade_date=sig.trade_date,
             )
+            orders.append(order)
+
+            # ─── batch 3 audit hook (MVP 3.3 batch 3, 2026-04-27) ─
+            # audit_trail 注入 → record('order.routed', payload). 默认 None 跳过 (backward compat).
+            # 铁律 33 fail-loud: record() 自身错误不被本类吞 (透传给 caller, 真生产应 retry/log).
+            if self._audit_trail is not None:
+                self._audit_trail.record(
+                    "order.routed",
+                    {
+                        "order_id": order.order_id,
+                        "strategy_id": order.strategy_id,
+                        "code": order.code,
+                        "side": order.side,
+                        "quantity": order.quantity,
+                        "trade_date": order.trade_date.isoformat(),
+                        "target_shares": target_shares,
+                        "price": price,
+                    },
+                )
 
         # ─── turnover_cap 全局检查 (放循环外, 防误中止) ──────────
         # P2 reviewer (PR #108) 采纳: total_capital==0 时显式 warn (铁律 33 fail-loud
