@@ -240,3 +240,75 @@ class TestPMSRuleRuleResultSchema:
         original = replace(pos)  # deep copy via replace
         PMSRule().evaluate(ctx)
         assert ctx.positions[0] == original
+
+
+class TestPMSRuleFailLoudOnHighSkipRatio:
+    """PR-X2 LL-081 真修复: 大比例 skip 必告警 (zombie 模式 fail-loud).
+
+    背景: 4-27 真生产首日 zombie 4h17m, 14:30 risk-daily-check 触发, 19/19 持仓
+    current_price=0 全 silent skip, "risk_event_log 0 events" 是伪健康. 修复后
+    skip 比例 > 60% + 持仓 > 5 → logger.warning P1.
+    """
+
+    def test_warns_when_zombie_pattern_19_of_19_skipped(self, caplog):
+        """LL-081 实战场景: 19 持仓 current_price=0 (Redis market:latest:* 全过期)
+        → logger.warning 触发 (skip ratio = 100% > 60% + 19 > 5).
+        """
+        positions = [
+            _pos(code=f"60{i:04d}.SH", current=0.0)  # current_price=0 全 skip
+            for i in range(19)
+        ]
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            results = PMSRule().evaluate(ctx)
+
+        assert results == []  # 全 skip 无 trigger
+        # 必有 warning log: "PMSRule skip 大比例" + "19/19" + "100%"
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"期望 'PMSRule skip 大比例' warning, 实际 logs: {warning_msgs}"
+        )
+        assert any("19/19" in msg for msg in warning_msgs), (
+            f"期望 ratio 19/19 in log, 实际: {warning_msgs}"
+        )
+
+    def test_no_warn_when_few_positions_single_data_issue(self, caplog):
+        """3 持仓 2 skip (ratio 67% > 60%, 但 total=3 <= 5) → 不告警.
+
+        LL-081 设计: 单股 / 少股 skip 是 data quality 噪声 (e.g. 新建仓 entry_price=0
+        timing race), 不是系统性故障, 避免噪声告警.
+        """
+        positions = [
+            _pos(code="600519.SH", current=0.0),  # skip
+            _pos(code="600028.SH", current=0.0),  # skip
+            _pos(code="600900.SH", current=130.0),  # 正常
+        ]
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"少股 skip 不应告警 (LL-081 设计避噪声), 实际 logs: {warning_msgs}"
+        )
+
+    def test_no_warn_when_skip_ratio_below_threshold(self, caplog):
+        """20 持仓 5 skip (ratio 25% < 60%) → 不告警 (常态数据问题接受)."""
+        positions = []
+        # 5 个 skip
+        for i in range(5):
+            positions.append(_pos(code=f"60{i:04d}.SH", current=0.0))
+        # 15 个正常 (gain 5%, drawdown 5% — 不触发 L3 阈值 gain≥10% + dd≥10%)
+        for i in range(5, 20):
+            positions.append(_pos(code=f"60{i:04d}.SH", entry=100.0, peak=110.0, current=105.0))
+        ctx = _make_context(positions)
+
+        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+            PMSRule().evaluate(ctx)
+
+        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
+            f"25% skip ratio 应低于 60% 阈值, 实际 logs: {warning_msgs}"
+        )

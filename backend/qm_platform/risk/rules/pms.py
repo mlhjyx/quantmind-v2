@@ -15,12 +15,21 @@
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 from backend.qm_platform._types import Severity
 
 from ..interface import RiskContext, RiskRule, RuleResult
+
+logger = logging.getLogger(__name__)
+
+# LL-081 zombie 防御 (2026-04-27 真生产首日教训):
+# 当持仓数 > MIN_POSITIONS 且 skip_ratio > THRESHOLD 时, log P1 warning 触发监控.
+# 单股 skip (entry_price=0 等数据问题) OK, 但 19/19 全 skip 是系统性故障 (QMT 数据失联).
+SKIP_RATIO_ALERT_THRESHOLD: Final[float] = 0.6  # 60% 比例
+SKIP_RATIO_MIN_POSITIONS: Final[int] = 5  # 持仓数上限, ≤ 5 持仓 skip 1-2 不告警避免噪声
 
 
 @dataclass(frozen=True)
@@ -95,10 +104,16 @@ class PMSRule(RiskRule):
             - entry_price <= 0 (未建仓 / 老 paper 命名空间 avg_cost=0)
             - peak_price <= 0 (异常数据)
             - current_price <= 0 (Redis 无价)
+
+        LL-081 fail-loud (2026-04-27 真生产首日教训):
+            大比例 skip (>60% with > 5 持仓) → logger.warning P1, 防 zombie 期间
+            19/19 silent skip 误报"健康 0 触发". 单股 skip 仍 silent (数据质量问题).
         """
         results: list[RuleResult] = []
+        skipped_invalid_data = 0
         for pos in context.positions:
             if pos.entry_price <= 0 or pos.peak_price <= 0 or pos.current_price <= 0:
+                skipped_invalid_data += 1
                 continue
 
             # peak 纳入 current 扩展 (当前价可能更高, 同 pms_engine.check_all_positions L268)
@@ -140,4 +155,22 @@ class PMSRule(RiskRule):
                     },
                 )
             )
+
+        # LL-081 fail-loud: 大比例 skip 必告警 (zombie 期 19/19 silent skip 教训).
+        # 单股 / 少股 skip OK (data quality 噪声), 但 > MIN_POSITIONS 持仓且 ratio > THRESHOLD
+        # 是系统性故障 — QMT 数据失联 / paper-live 命名空间漂移 / Redis market:latest:* 全过期.
+        # logger.warning 触发钉钉监控 + 后续 PR-X3 ServicesHealthCheck 也会兜底捕获.
+        total_positions = len(context.positions)
+        if (
+            total_positions > SKIP_RATIO_MIN_POSITIONS
+            and skipped_invalid_data / total_positions > SKIP_RATIO_ALERT_THRESHOLD
+        ):
+            logger.warning(
+                "PMSRule skip 大比例 %d/%d (%.0f%%) — 疑 QMT 数据失联 / Redis market:latest:* "
+                "全过期 / paper-live 命名空间漂移. (LL-081 zombie 模式 fail-loud).",
+                skipped_invalid_data,
+                total_positions,
+                100 * skipped_invalid_data / total_positions,
+            )
+
         return results
