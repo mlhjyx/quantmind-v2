@@ -243,8 +243,10 @@ def compute_and_ingest(
     """
     # 窗口边界 (LL-076 phase 2 PR-1): start_date / end_date 显式优先, 否则 fallback days legacy.
     # 因子 IC 需 T+1..T+horizon 未来价, 所以价格/benchmark 多拉 FUTURE_BUFFER_DAYS.
+    # reviewer P2-2 采纳: end_date None fallback 用 Asia/Shanghai (铁律 41), 不裸 date.today
+    # 防 UTC 服务器 16:00-23:59 UTC 跨日 bug. 跟 _run 的 _cst_today (via TimeWindowResolver) 一致.
     if end_date is None:
-        end_date = date.today()
+        end_date = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
     if start_date is None:
         start_date = end_date - timedelta(days=days)
     price_end = end_date + timedelta(days=FUTURE_BUFFER_DAYS)
@@ -430,6 +432,8 @@ def _run(args: argparse.Namespace) -> int:
         # Holiday guard (PR #40 P2.2 follow-up): A 股非交易日提前 exit 0.
         # LL-076 phase 2: 用 window.end_date 而非 today (custom 模式时 user 可指定历史日 backfill,
         # holiday guard 应基于 window.end_date 判定. default/lookback 模式 window.end_date == today).
+        # reviewer P2-1 采纳: 铁律 41 由 TimeWindowResolver._cst_today() 履行 (Asia/Shanghai),
+        # 此处 window.end_date 已 CST-aware, 跟移除前的 datetime.now(tz=ZoneInfo("Asia/Shanghai")) 等价.
         if not args.force:
             if not is_trading_day(conn, window.end_date):
                 logger.info(
