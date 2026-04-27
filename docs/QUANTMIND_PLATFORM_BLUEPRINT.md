@@ -1,11 +1,11 @@
-# QuantMind Platform Blueprint (QPB v1.9)
+# QuantMind Platform Blueprint (QPB v1.10)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → **v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (批 1+2+3 全 merged, PR #55+#57+#58+#59+#60+#61, 6 PR / 2575 行 / 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 98%, 生产激活 Celery Beat 5 entries, 首次真生产触发 2026-04-27 Monday 09:00 intraday + 14:30 daily)**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (6 PR) → v1.9 (intermediate stamp) → **v1.10 Session 38-39 (2026-04-27 Monday 18:00-22:30) — MVP 3.3 Signal-Exec 60% 完成 + LL-081 三通道闭合 + LL-076 phase 2 真完结 (单日 10 PR / Wave 3 进 3.x)**
 > **作者**: Architect pass (Opus)
-> **状态**: v1.8 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周), **Wave 1 ✅ 完结 7/7 + Wave 2 ✅ 完结 (Data + Lineage + Backtest Parity) + Wave 3 1/5 完结 (MVP 3.1 Risk Framework ✅)**
+> **状态**: v1.10 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周), **Wave 1 ✅ 完结 7/7 + Wave 2 ✅ 完结 + Wave 3 1.6/5 完结 (MVP 3.1 ✅ + MVP 3.2 ✅ + MVP 3.3 60% — batch 1/2.1/3 ✅, batch 2.2/2.3 待 Step 2/3)**
 >
-> **v1.8 验证证据** (gh 实测 2026-04-24): MVP 3.1 merged PR = #54 (spike) + #55/#57/#58 (批 1) + #59/#60 (批 2) + #61 (批 3). PR #56 是 factor-health hotfix 与 MVP 3.1 无关. Servy `QuantMind-Celery` PID 27408 + `QuantMind-CeleryBeat` PID 39248 restart 后 5 schedule entries active.
+> **v1.10 验证证据** (gh 实测 2026-04-27 22:30 Session 39 末): MVP 3.3 merged PR = **#107 (batch 1 PlatformSignalPipeline) + #108 (batch 2 Step 1 PlatformOrderRouter SDK) + #109 (batch 3 StubExecutionAuditTrail + audit hook)**. 配套修 LL-081 zombie 三通道 (#100/#101/#102/#103/#105) + LL-076 phase 2 (#104/#106). 单日 10 PR merged / 14 commits / ~3000+ 行 / 90+ new tests / 0 regression / pytest baseline 不增 fail. **下 session 真主线**: MVP 3.3 batch 2 Step 2 execution_service signal-side 拆迁 (regression **真硬门** max_diff=0). LL-082 (audit hook 时机) + LL-083 (np.float64 type guard) + LL-084 (Wave 3 实战) 入册. 双 reviewer agent 0 假报抓 8 项 P1 proactive 修.
 > **参考**:
 >   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
 >   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
