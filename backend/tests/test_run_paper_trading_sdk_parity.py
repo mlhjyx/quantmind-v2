@@ -15,6 +15,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 # scripts/ 目录加到 path 防 conftest 顺序导致的 ImportError
 _SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
@@ -188,3 +189,24 @@ class TestS1MetadataContract:
             capital=Decimal("1000000"),
         )
         assert ctx.metadata["prev_holdings"] is None
+
+
+# ─── Stage 2.5 STRICT 模式: SignalPathDriftError 类 ─────────
+
+
+class TestSignalPathDriftError:
+    """Stage 2.5: env SDK_PARITY_STRICT=true 时 DIFF 必 raise."""
+
+    def test_signal_path_drift_error_is_runtime_error(self):
+        from run_paper_trading import SignalPathDriftError
+        assert issubclass(SignalPathDriftError, RuntimeError)
+
+    def test_signal_path_drift_error_can_be_raised(self):
+        from run_paper_trading import SignalPathDriftError
+        with pytest.raises(SignalPathDriftError, match="DIFF"):
+            raise SignalPathDriftError("[Step3-SDK-parity] DIFF test")
+
+    def test_signal_path_drift_error_module_exported(self):
+        """模块 import path 验 (SignalPathDriftError 是 public)."""
+        import run_paper_trading
+        assert hasattr(run_paper_trading, "SignalPathDriftError")
