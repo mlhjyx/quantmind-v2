@@ -53,6 +53,8 @@ CACHE_QMT_STATUS = "qmt:connection_status"  # String: connected/disconnected
 # 同步间隔
 SYNC_INTERVAL_SEC = 60
 TICK_TTL_SEC = 90  # 价格缓存TTL，略大于同步间隔
+QMT_STATUS_TTL_SEC = 180  # LL-081: QMT 连接状态 TTL = 3x sync_loop. 防 zombie 时 key 永不过期 silent failure
+NAV_TTL_SEC = 180  # LL-081: portfolio:nav 同步 TTL, 防 zombie 时 stale NAV data 误导 ops
 
 
 class QMTDataService:
@@ -90,12 +92,13 @@ class QMTDataService:
             logger.info("QMT连接成功: account=%s", account_id)
 
             self._publish_status("connected")
-            self._get_redis().set(CACHE_QMT_STATUS, "connected")
+            # LL-081: SET → SETEX 防 service zombie 后 key 永久卡 "connected" (4-27 真生产首日教训)
+            self._get_redis().setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "connected")
             return True
         except Exception:
             logger.exception("QMT连接失败")
             self._publish_status("connect_failed")
-            self._get_redis().set(CACHE_QMT_STATUS, "disconnected")
+            self._get_redis().setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "disconnected")
             return False
 
     def _disconnect_qmt(self) -> None:
@@ -153,12 +156,23 @@ class QMTDataService:
                 "updated_at": datetime.now(UTC).isoformat(),
                 "position_count": len(pos_dict),
             }
-            r.set(CACHE_PORTFOLIO_NAV, json.dumps(nav_data))
+            r.setex(CACHE_PORTFOLIO_NAV, NAV_TTL_SEC, json.dumps(nav_data))
+
+            # LL-081 heartbeat: sync 成功 refresh QMT 状态 key, 配 SETEX TTL=180s 让 zombie
+            # 时 key 自然 expire (qmt_client.is_connected GET == "connected" 自动 fail-loud → False).
+            # 修复 4-27 真生产首日 4h17m zombie silent failure (PR-X1 PR #N).
+            r.setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "connected")
 
             logger.debug("持仓同步完成: %d只股票", len(pos_dict))
             return pos_dict
         except Exception:
             logger.warning("持仓同步失败", exc_info=True)
+            # LL-081 zombie: sync 失败时主动标 disconnected, 防 connect 边沿 "connected"
+            # SETEX 之后 sync_loop 一直失败但 key TTL 还活着误导 monitoring.
+            try:
+                self._get_redis().setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "disconnected")
+            except Exception:  # silent_ok: Redis 也挂了, 上面 logger.warning 已 record
+                pass
             return None
 
     def _sync_prices(self, codes: list[str]) -> None:
