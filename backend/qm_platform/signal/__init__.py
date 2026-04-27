@@ -6,6 +6,7 @@ from .interface import (
     SignalPipeline,
 )
 from .pipeline import (
+    COMPOSE_STRATEGY_ID,
     FactorStaleError,
     PlatformSignalPipeline,
     UniverseEmpty,
@@ -20,4 +21,5 @@ __all__ = [
     "PlatformSignalPipeline",
     "FactorStaleError",
     "UniverseEmpty",
+    "COMPOSE_STRATEGY_ID",
 ]

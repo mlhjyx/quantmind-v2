@@ -15,22 +15,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _build_smoke_code() -> str:
-    """LL-052 shadow 修复 + sys.path 注入 + import 链."""
+    """LL-052 shadow 修复 + sys.path 注入 + import 链.
+
+    P3-2 reviewer (PR #107) 采纳: 预 compute backend_path 防 f-string 嵌套引号
+    依赖 Python 3.12+ PEP 701. P2-3 reviewer 采纳: 不 import 私有 sentinel,
+    改通过 public API (signal/__init__.py 导出 COMPOSE_STRATEGY_ID) 验证.
+    """
+    backend_path = PROJECT_ROOT / "backend"
+    backend_path_str = str(backend_path)
+    project_root_str = str(PROJECT_ROOT)
     return (
         "import platform as _stdlib_platform; "
         "_stdlib_platform.python_implementation(); "
         "import sys; "
-        f"sys.path.insert(0, r'{PROJECT_ROOT / 'backend'}'); "
-        f"sys.path.insert(0, r'{PROJECT_ROOT}'); "
+        f"sys.path.insert(0, r'{backend_path_str}'); "
+        f"sys.path.insert(0, r'{project_root_str}'); "
         "from backend.qm_platform.signal.pipeline import ("
-        "PlatformSignalPipeline, UniverseEmpty, FactorStaleError, _COMPOSE_STRATEGY_ID"
+        "PlatformSignalPipeline, UniverseEmpty, FactorStaleError"
         "); "
         "from backend.qm_platform.signal import ("
-        "PlatformSignalPipeline as PSP_root, UniverseEmpty as UE_root"
+        "PlatformSignalPipeline as PSP_root, UniverseEmpty as UE_root, "
+        "COMPOSE_STRATEGY_ID"
         "); "
         "assert PlatformSignalPipeline is PSP_root, 'export 不一致 pipeline'; "
         "assert UniverseEmpty is UE_root, 'export 不一致 UniverseEmpty'; "
-        "assert _COMPOSE_STRATEGY_ID == 'compose:factor_pool', 'sentinel 漂移'; "
+        "assert COMPOSE_STRATEGY_ID == 'compose:factor_pool', 'sentinel 漂移'; "
         "from engines.signal_engine import PAPER_TRADING_CONFIG; "
         "pipe = PlatformSignalPipeline(); "
         "assert pipe.base_config is PAPER_TRADING_CONFIG, 'default config 不是 SSOT'; "

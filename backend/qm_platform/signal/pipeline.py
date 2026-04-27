@@ -49,10 +49,11 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Sentinel strategy_id for compose() factor-pool route (no Strategy obj).
-# 与 Strategy.strategy_id (UUID) 命名空间隔离防止混淆 — compose route 不入
-# strategy_registry / position_snapshot, 是研究/回测专用.
-_COMPOSE_STRATEGY_ID = "compose:factor_pool"
+# Public sentinel strategy_id for compose() factor-pool route (no Strategy obj).
+# 与 Strategy.strategy_id (UUID) 命名空间隔离 — compose route 不入 strategy_registry /
+# position_snapshot, 研究/回测专用. P3-1 reviewer (PR #107): public name +__all__ export
+# 消除 underscore 矛盾.
+COMPOSE_STRATEGY_ID = "compose:factor_pool"
 
 # 浮点容忍 — total_weight invariant 检查 (PortfolioBuilder 应保证 ≤ 1.0).
 _TOTAL_WEIGHT_TOLERANCE = 1.0001
@@ -61,7 +62,10 @@ _TOTAL_WEIGHT_TOLERANCE = 1.0001
 class FactorStaleError(RuntimeError):
     """因子数据 stale (DB max_date 落后交易日 > 1).
 
-    本批 1 暂不实施 stale 检测 (调用方负责), 留 SDK ABI 给批 2+ 使用.
+    `SignalPipeline` ABC (`interface.py:71`) 声明 `compose()` 应 raise 此异常.
+    **本批 1 暂未实施 stale 检测** — 调用方目前自负其责, 留 SDK ABI 给批 2+ wire
+    `CacheCoherencyPolicy.check_stale()` 时统一抛. 调用方现写 `except FactorStaleError`
+    handler 是 forward-compatible 的 (本类不会主动 raise, 但 ABI 稳定).
     """
 
 
@@ -85,7 +89,11 @@ class PlatformSignalPipeline(SignalPipeline):
     """
 
     def __init__(self, config: SignalConfig | None = None) -> None:
-        self._base_config = config or PAPER_TRADING_CONFIG
+        # P2 code-reviewer (PR #107) 采纳: `is not None` 显式判 None, 防未来子类
+        # `__bool__` override silently fallback (defensive pattern 对齐 LL-064).
+        self._base_config = (
+            config if config is not None else PAPER_TRADING_CONFIG
+        )
 
     @property
     def base_config(self) -> SignalConfig:
@@ -141,7 +149,9 @@ class PlatformSignalPipeline(SignalPipeline):
         ln_mcap: pd.Series | None = ctx.metadata.get("ln_mcap")
         prev_holdings: dict[str, float] | None = ctx.metadata.get("prev_holdings")
         exclude: set[str] | None = ctx.metadata.get("exclude")
-        vol_regime_scale: float = float(ctx.metadata.get("vol_regime_scale", 1.0))
+        # P2 python-reviewer (PR #107) 采纳: 不 silent float() coerce, 类型违反让
+        # PortfolioBuilder.build 自然 raise (e.g. JSON 反序列化 "1.2" str 漏掉).
+        vol_regime_scale = ctx.metadata.get("vol_regime_scale", 1.0)
         volatility_map: dict[str, float] | None = ctx.metadata.get("volatility_map")
 
         if factor_df.empty:
@@ -150,14 +160,20 @@ class PlatformSignalPipeline(SignalPipeline):
             )
             return []
 
+        # P1-1 reviewer (PR #107) 采纳: `tuple()` 与 SignalConfig.factor_names 字段
+        # 注解 `list[str] | None` 类型不一致 (replace 不调 __post_init__ 转换 list).
+        # 改 list() 保持类型一致, 防 isinstance(list) 检查 / 未来 .append() 误用.
         # SSOT 沿 base_config, 仅覆盖 factor_names (铁律 34).
-        config = replace(self._base_config, factor_names=tuple(factor_pool))
+        config = replace(self._base_config, factor_names=list(factor_pool))
+
+        # P2 python-reviewer (PR #107) 采纳: frozenset 一次构建 + 表达 read-only 意图.
+        universe_frozen: frozenset[str] = frozenset(ctx.universe)
 
         # ─── Step 1: SignalComposer.compose (铁律 16 复用) ────────
         composer = SignalComposer(config)
         scores = composer.compose(
             factor_df=factor_df,
-            universe=set(ctx.universe),
+            universe=set(universe_frozen),
             exclude=exclude,
         )
         if scores.empty:
@@ -204,11 +220,14 @@ class PlatformSignalPipeline(SignalPipeline):
             return []
 
         # ─── Step 4: dict → list[Signal] ─────────────────────────
+        # P1-2 reviewer (PR #107) 采纳: 原 sentinel=-1.0 浮点比较 corrupt 真实 score=-1.0
+        # (silent 替为 0.0 写入 Signal). 改 `code in scores` membership 测试.
         signals: list[Signal] = []
-        sentinel = -1.0  # 防 invariant 违反 (target.keys() ⊆ scores.index)
         for code, weight in target.items():
-            raw_score = scores.get(code, sentinel)
-            if raw_score == sentinel:
+            if code in scores:
+                code_score = float(scores[code])
+            else:
+                # invariant 违反: PortfolioBuilder 返 target 含 scores 无的 code
                 _logger.error(
                     "compose: invariant violation — code=%s in target but not in scores "
                     "(target=%d scores=%d). 回退 score=0.0.",
@@ -217,11 +236,9 @@ class PlatformSignalPipeline(SignalPipeline):
                     len(scores),
                 )
                 code_score = 0.0
-            else:
-                code_score = float(raw_score)
             signals.append(
                 Signal(
-                    strategy_id=_COMPOSE_STRATEGY_ID,
+                    strategy_id=COMPOSE_STRATEGY_ID,
                     code=code,
                     target_weight=float(weight),
                     score=code_score,
@@ -238,7 +255,7 @@ class PlatformSignalPipeline(SignalPipeline):
             "compose: trade_date=%s factors=%d universe=%d scores=%d target=%d total_w=%.4f",
             trade_date,
             len(factor_pool),
-            len(ctx.universe),
+            len(universe_frozen),
             len(scores),
             len(target),
             sum(target.values()),
@@ -256,7 +273,7 @@ class PlatformSignalPipeline(SignalPipeline):
 
         Thin pass-through. Strategy 实现 (e.g. S1MonthlyRanking) 已包含
         SignalComposer + apply_size_neutral + PortfolioBuilder 完整组装链路,
-        Pipeline 不再夹层 — 仅做调用 + log + total_weight invariant 检查.
+        Pipeline 不再夹层 — 仅做 entry log + 调用 + total_weight invariant 检查.
 
         Args:
           strategy: 已注册的 Strategy 实例 (DBStrategyRegistry.register 后).
@@ -268,19 +285,29 @@ class PlatformSignalPipeline(SignalPipeline):
         Raises:
           (透传 strategy.generate_signals 原始异常 — KeyError/DataUnavailable 等)
         """
+        # P2 python-reviewer (PR #107) 采纳: entry log 给 zombie/silent-swallow
+        # 调试留 trace 痕迹 (即便外层 caller 吞异常, schtask debug 仍可见 generate 入口).
+        # P3-3 reviewer 采纳: Strategy ABC 无 `name` 属性, getattr fallback 是 dead branch,
+        # 直用 strategy.strategy_id (子类如 S1 有 ClassVar name 可 log_extra 加 metadata, 不影响 SDK).
+        _logger.debug(
+            "generate: enter strategy_id=%s trade_date=%s universe=%d",
+            strategy.strategy_id,
+            ctx.trade_date,
+            len(ctx.universe),
+        )
         signals = strategy.generate_signals(ctx)
         total = sum(s.target_weight for s in signals)
         if total > _TOTAL_WEIGHT_TOLERANCE:
             _logger.warning(
-                "generate: strategy=%s trade_date=%s total_weight=%.4f > 1.0 "
+                "generate: strategy_id=%s trade_date=%s total_weight=%.4f > 1.0 "
                 "(PortfolioBuilder invariant 违反? 检查 cash_buffer / vol_regime_scale).",
-                getattr(strategy, "name", strategy.strategy_id),
+                strategy.strategy_id,
                 ctx.trade_date,
                 total,
             )
         _logger.info(
-            "generate: strategy=%s trade_date=%s signals=%d total_w=%.4f",
-            getattr(strategy, "name", strategy.strategy_id),
+            "generate: strategy_id=%s trade_date=%s signals=%d total_w=%.4f",
+            strategy.strategy_id,
             ctx.trade_date,
             len(signals),
             total,
