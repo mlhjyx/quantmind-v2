@@ -376,5 +376,233 @@ class TestMultiStrategy:
             turnover_cap=1.0,
         )
         assert len(orders) == 2
-        qty_by_code = {o.quantity for o in orders}
-        assert qty_by_code == {1000, 3000}
+        # P2 python-reviewer (PR #108) 采纳: dict 而非 set, 验 quantity-to-code 映射.
+        qty_by_code = {o.code: o.quantity for o in orders}
+        assert qty_by_code["600519.SH"] == 1000
+        assert qty_by_code["000001.SZ"] == 3000
+
+
+# ─── P1/P2 reviewer (PR #108) 新增 ──────────────────────────
+
+
+class TestPriceTypeFlexibility:
+    """P1 reviewer (PR #108) 采纳: float() coerce 拓宽到 np.float64 / Decimal / int."""
+
+    def test_decimal_price_accepted(self):
+        """Decimal price 不再被 type guard 拒 (Step 2 wire 时 DAL 可能传 Decimal)."""
+        router = PlatformOrderRouter()
+        sig = Signal(
+            strategy_id="s1-uuid",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
+            trade_date=date(2026, 4, 27),
+            metadata={"price": Decimal("100.0")},  # Decimal!
+        )
+        orders = router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"s1-uuid": Decimal("1000000")},
+        )
+        assert len(orders) == 1
+        assert orders[0].quantity == 1000
+
+    def test_int_price_accepted(self):
+        """int price 也接受 (e.g. close == 100 整数)."""
+        router = PlatformOrderRouter()
+        sig = _signal(price=100)  # int 而非 float
+        sig = Signal(
+            strategy_id="s1-uuid", code="600519.SH",
+            target_weight=0.10, score=1.0,
+            trade_date=date(2026, 4, 27),
+            metadata={"price": 100},  # int!
+        )
+        orders = router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"s1-uuid": Decimal("1000000")},
+        )
+        assert len(orders) == 1
+
+    def test_nan_price_raises_value_error(self):
+        """NaN price 必 fail-loud (原 isinstance + > 0 检查会 silent pass)."""
+        router = PlatformOrderRouter()
+        sig = _signal(price=float("nan"))
+        with pytest.raises(ValueError, match="NaN/inf"):
+            router.route(
+                signals=[sig], current_positions={},
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+
+    def test_inf_price_raises_value_error(self):
+        """Infinity price 必 fail-loud."""
+        router = PlatformOrderRouter()
+        sig = _signal(price=float("inf"))
+        with pytest.raises(ValueError, match="NaN/inf"):
+            router.route(
+                signals=[sig], current_positions={},
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+
+    def test_numeric_string_price_accepted(self):
+        """numeric str (e.g. JSON 反序列化漏 cast) 可 float() 转换 — 接受不报错."""
+        router = PlatformOrderRouter()
+        sig = Signal(
+            strategy_id="s1-uuid", code="600519.SH",
+            target_weight=0.10, score=1.0,
+            trade_date=date(2026, 4, 27),
+            metadata={"price": "100.0"},  # str numeric
+        )
+        orders = router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"s1-uuid": Decimal("1000000")},
+        )
+        assert len(orders) == 1
+
+    def test_non_numeric_string_price_raises_type_error(self):
+        """非数值 str price → TypeError 明确诊断 (e.g. corruption / 占位字符串)."""
+        router = PlatformOrderRouter()
+        sig = Signal(
+            strategy_id="s1-uuid", code="600519.SH",
+            target_weight=0.10, score=1.0,
+            trade_date=date(2026, 4, 27),
+            metadata={"price": "abc"},  # 非数值
+        )
+        with pytest.raises(TypeError, match="必须可 float"):
+            router.route(
+                signals=[sig], current_positions={},
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+
+    def test_none_price_raises_type_error(self):
+        """None price → TypeError."""
+        router = PlatformOrderRouter()
+        sig = Signal(
+            strategy_id="s1-uuid", code="600519.SH",
+            target_weight=0.10, score=1.0,
+            trade_date=date(2026, 4, 27),
+            metadata={"price": None},
+        )
+        with pytest.raises(TypeError, match="必须可 float"):
+            router.route(
+                signals=[sig], current_positions={},
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+
+
+class TestOrphanPositionWarning:
+    """P1 code-reviewer (PR #108) 采纳: current_positions 中 code 未在 signals
+    时 router 不自动 SELL, 但必 warn (caller 契约)."""
+
+    def test_orphan_logged_warning(self, caplog):
+        import logging
+        router = PlatformOrderRouter()
+        # signal 只覆盖 600519, 但 current 还有 000001 (orphan)
+        sig = _signal(code="600519.SH", target_weight=0.10, price=100.0)
+        with caplog.at_level(logging.WARNING, logger="backend.qm_platform.signal.router"):
+            router.route(
+                signals=[sig],
+                current_positions={"600519.SH": 500, "000001.SZ": 1000},  # orphan!
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("orphan positions" in r.message for r in warnings), (
+            f"missing orphan warning: {[r.message for r in warnings]}"
+        )
+
+    def test_no_orphan_no_warning(self, caplog):
+        """所有 current_positions 都在 signals → 无 warning."""
+        import logging
+        router = PlatformOrderRouter()
+        sig = _signal(code="600519.SH", target_weight=0.10, price=100.0)
+        with caplog.at_level(logging.WARNING, logger="backend.qm_platform.signal.router"):
+            router.route(
+                signals=[sig],
+                current_positions={"600519.SH": 500},  # 无 orphan
+                capital_allocation={"s1-uuid": Decimal("1000000")},
+            )
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert not any("orphan positions" in r.message for r in warnings)
+
+
+class TestZeroCapital:
+    """P2 python-reviewer (PR #108) 采纳: total_capital==0 不 silent skip turnover check, 必 warn."""
+
+    def test_zero_capital_warning(self, caplog):
+        import logging
+        router = PlatformOrderRouter()
+        sig = _signal(target_weight=0.0, price=100.0)
+        with caplog.at_level(logging.WARNING, logger="backend.qm_platform.signal.router"):
+            # capital=0 + curr 持仓 → SELL only, turnover_cap 检查跳过但应 warn
+            router.route(
+                signals=[sig],
+                current_positions={"600519.SH": 1000},
+                capital_allocation={"s1-uuid": Decimal("0")},
+            )
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("total_capital=0" in r.message for r in warnings), (
+            f"expected total_capital=0 warning, got: {[r.message for r in warnings]}"
+        )
+
+
+class TestOrderIdCollisionResistance:
+    """P1 python-reviewer (PR #108) 采纳: order_id 不再用 `|` 分隔, 防 strategy_id
+    含 `|` 造碰撞."""
+
+    def test_strategy_id_with_pipe_no_collision(self):
+        """strategy_id='s|x' vs 's' + 'x' 字段拼接, 用 json 后 hash 不同."""
+        router = PlatformOrderRouter()
+        sig_a = Signal(
+            strategy_id="strat|v2", code="600519.SH", target_weight=0.10,
+            score=1.0, trade_date=date(2026, 4, 27),
+            metadata={"price": 100.0},
+        )
+        sig_b = Signal(
+            strategy_id="strat", code="v2|600519.SH", target_weight=0.10,
+            score=1.0, trade_date=date(2026, 4, 27),
+            metadata={"price": 100.0},
+        )
+        # 不同 strategy_id + code 必生成不同 order_id (无碰撞)
+        orders_a = router.route(
+            signals=[sig_a], current_positions={},
+            capital_allocation={"strat|v2": Decimal("1000000")},
+        )
+        orders_b = router.route(
+            signals=[sig_b], current_positions={},
+            capital_allocation={"strat": Decimal("1000000")},
+        )
+        assert orders_a[0].order_id != orders_b[0].order_id, (
+            "P1 regression: '|' 分隔 hash 碰撞 — strategy_id+code 拼接应不同"
+        )
+
+    def test_chinese_strategy_id_works(self):
+        """中文 strategy_id (json ensure_ascii=False 保) 可 hash."""
+        router = PlatformOrderRouter()
+        sig = Signal(
+            strategy_id="策略一", code="600519.SH", target_weight=0.10,
+            score=1.0, trade_date=date(2026, 4, 27),
+            metadata={"price": 100.0},
+        )
+        orders = router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"策略一": Decimal("1000000")},
+        )
+        assert len(orders[0].order_id) == 16  # 仍 16 hex
+
+
+class TestDecimalPrecision:
+    """P1 code-reviewer (PR #108) 采纳: capital × target_weight 走 Decimal 路径,
+    不 float() 提前精度损失."""
+
+    def test_decimal_precision_preserved(self):
+        """Decimal × float weight 走 Decimal × Decimal(str(weight)), 精度不损."""
+        router = PlatformOrderRouter(lot_size=1)  # lot=1 显微观察
+        # capital = 99999.99, weight = 0.01 → target_value = 999.9999, /price=100 = 9.99
+        # int(9.99) = 9, * lot_size 1 = 9. 用 Decimal 路径仍 9 (无浮点 noise).
+        sig = _signal(target_weight=0.01, price=100.0)
+        orders = router.route(
+            signals=[sig], current_positions={},
+            capital_allocation={"s1-uuid": Decimal("99999.99")},
+            turnover_cap=1.0,
+        )
+        assert len(orders) == 1
+        # 99999.99 × 0.01 = 999.9999, / 100 = 9.999999, int=9
+        assert orders[0].quantity == 9
