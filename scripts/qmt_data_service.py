@@ -51,10 +51,15 @@ CACHE_MARKET_PREFIX = "market:latest:"  # String per code, TTL=60s
 CACHE_QMT_STATUS = "qmt:connection_status"  # String: connected/disconnected
 
 # 同步间隔
-SYNC_INTERVAL_SEC = 60
-TICK_TTL_SEC = 90  # 价格缓存TTL，略大于同步间隔
-QMT_STATUS_TTL_SEC = 180  # LL-081: QMT 连接状态 TTL = 3x sync_loop. 防 zombie 时 key 永不过期 silent failure
-NAV_TTL_SEC = 180  # LL-081: portfolio:nav 同步 TTL, 防 zombie 时 stale NAV data 误导 ops
+# reviewer python-reviewer P3 采纳: typing.Final[int] 防 const 误改 + mypy 强校验
+from typing import Final  # noqa: E402
+
+SYNC_INTERVAL_SEC: Final[int] = 60
+TICK_TTL_SEC: Final[int] = 90  # 价格缓存TTL，略大于同步间隔
+QMT_STATUS_TTL_SEC: Final[int] = 180  # LL-081: QMT 连接状态 TTL = 3x sync_loop. 防 zombie 时 key 永不过期 silent failure
+NAV_TTL_SEC: Final[int] = 180  # LL-081: portfolio:nav 同步 TTL, 防 zombie 时 stale NAV data 误导 ops
+# reviewer code-reviewer P3-1 采纳 (一致性): pipe.expire(CACHE_PORTFOLIO_CURRENT, 180) 也用 const
+PORTFOLIO_CURRENT_TTL_SEC: Final[int] = 180
 
 
 class QMTDataService:
@@ -119,7 +124,7 @@ class QMTDataService:
             source="qmt_data_service",
         )
 
-    def _sync_positions(self) -> None:
+    def _sync_positions(self) -> dict[str, str] | None:  # reviewer python-reviewer P1: 实际返 dict|None, 修 type
         """同步持仓和资产到Redis缓存。"""
         if not self._broker:
             return
@@ -145,7 +150,7 @@ class QMTDataService:
             pipe.delete(CACHE_PORTFOLIO_CURRENT)
             if pos_dict:
                 pipe.hset(CACHE_PORTFOLIO_CURRENT, mapping=pos_dict)
-            pipe.expire(CACHE_PORTFOLIO_CURRENT, 180)  # 3min TTL, 同步间隔60s
+            pipe.expire(CACHE_PORTFOLIO_CURRENT, PORTFOLIO_CURRENT_TTL_SEC)  # 3min TTL, 同步间隔60s
             pipe.execute()
 
             # 查询资产
@@ -171,8 +176,11 @@ class QMTDataService:
             # SETEX 之后 sync_loop 一直失败但 key TTL 还活着误导 monitoring.
             try:
                 self._get_redis().setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "disconnected")
-            except Exception:  # silent_ok: Redis 也挂了, 上面 logger.warning 已 record
-                pass
+            except Exception:
+                # reviewer python-reviewer P2 采纳: 内 except 加 logger.debug 防 Redis 也挂时
+                # 完全 silent (上面 logger.warning 是 broker 错, 此处是 Redis 错, 不同源).
+                logger.debug("setex disconnected 也失败 (Redis 可能挂)", exc_info=True)
+                pass  # silent_ok: 主 sync_loop 必须能进下一周期重试, 不 cascade fail
             return None
 
     def _sync_prices(self, codes: list[str]) -> None:

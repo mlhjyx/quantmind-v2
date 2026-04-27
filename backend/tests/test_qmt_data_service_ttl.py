@@ -10,12 +10,13 @@ Fix (PR-X1):
     2. _sync_positions 成功末加 setex(CACHE_QMT_STATUS, 180, "connected") heartbeat
     3. _sync_positions 失败时 setex(CACHE_QMT_STATUS, 180, "disconnected")
 
-测试覆盖 (5 tests):
-    - test_constants_match_ll081_spec: TTL 常量配置正确
+测试覆盖 (6 tests):
+    - test_constants_match_ll081_spec: TTL 常量配置正确 + 上下界 (reviewer code P3-2 采纳)
     - test_connect_qmt_success_uses_setex: _connect_qmt 成功 → setex (非 set)
-    - test_connect_qmt_failure_uses_setex: _connect_qmt 失败 → setex disconnected
-    - test_sync_positions_heartbeat: 同步成功 refresh QMT 状态 + NAV TTL
+    - test_connect_qmt_failure_uses_setex_disconnected: _connect_qmt 失败 → setex disconnected
+    - test_sync_positions_success_refreshes_status_and_nav: 同步成功 dual setex (NAV + heartbeat)
     - test_sync_positions_failure_marks_disconnected: 同步失败 standalone setex disconnected
+    - test_sync_positions_failure_silent_ok_on_redis_error: Redis 也挂时不 cascade fail
 """
 from __future__ import annotations
 
@@ -43,9 +44,15 @@ def qmt_module():
 
 @pytest.fixture
 def service(qmt_module):
-    """构造 QMTDataService 实例 with mocked _redis + _broker + _bus."""
+    """构造 QMTDataService 实例 with mocked _redis + _broker + _bus.
+
+    reviewer python-reviewer P2 采纳: spec=redis.Redis 让 mock 强壮 — 测试 set vs setex
+    的 assert_not_called 在 spec 下结构性确保 (typo .ssetex 等会立即 AttributeError).
+    """
+    import redis  # noqa: PLC0415
+
     svc = qmt_module.QMTDataService()
-    svc._redis = MagicMock()  # bypass _get_redis lazy init
+    svc._redis = MagicMock(spec=redis.Redis)  # bypass _get_redis lazy init + spec strict
     svc._broker = MagicMock()
     svc._bus = MagicMock()
     # mock pipeline as context-managerless (本测试不验证 pipeline 内部)
@@ -66,9 +73,14 @@ class TestConstants:
         assert qmt_module.SYNC_INTERVAL_SEC == 60
         assert qmt_module.QMT_STATUS_TTL_SEC == 180
         assert qmt_module.NAV_TTL_SEC == 180
-        # 不变量: TTL > 1 个 sync interval, 否则 sync_loop heartbeat 来不及 refresh
+        assert qmt_module.PORTFOLIO_CURRENT_TTL_SEC == 180
+        # 下界: TTL > 1 个 sync interval, 否则 sync_loop heartbeat 来不及 refresh
         assert qmt_module.QMT_STATUS_TTL_SEC > qmt_module.SYNC_INTERVAL_SEC
         assert qmt_module.NAV_TTL_SEC > qmt_module.SYNC_INTERVAL_SEC
+        # reviewer code-reviewer P3-2 采纳: 上界 — TTL <= 6x SYNC_INTERVAL (= 360s) 防误配过宽
+        # zombie 持续 6 min 是合理监控延迟上限, 配 1h 太宽风险高
+        assert qmt_module.QMT_STATUS_TTL_SEC <= 6 * qmt_module.SYNC_INTERVAL_SEC
+        assert qmt_module.NAV_TTL_SEC <= 6 * qmt_module.SYNC_INTERVAL_SEC
 
 
 # ─────────────────────────────────────────────────────────
