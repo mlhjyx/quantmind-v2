@@ -11,6 +11,13 @@ from .pipeline import (
     PlatformSignalPipeline,
     UniverseEmpty,
 )
+from .router import (
+    DEFAULT_LOT_SIZE,
+    IdempotencyViolation,
+    InsufficientCapital,
+    PlatformOrderRouter,
+    TurnoverCapExceeded,
+)
 
 __all__ = [
     "SignalPipeline",
@@ -22,4 +29,10 @@ __all__ = [
     "FactorStaleError",
     "UniverseEmpty",
     "COMPOSE_STRATEGY_ID",
+    # MVP 3.3 batch 2 Step 1
+    "PlatformOrderRouter",
+    "IdempotencyViolation",
+    "InsufficientCapital",
+    "TurnoverCapExceeded",
+    "DEFAULT_LOT_SIZE",
 ]
