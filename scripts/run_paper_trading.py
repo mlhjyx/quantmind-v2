@@ -208,6 +208,14 @@ def _build_sdk_strategy_context(
     )
 
 
+class SignalPathDriftError(RuntimeError):  # noqa: N818 — 语义优先 (对齐项目 FlagNotFound 惯例)
+    """SDK signal path drift from legacy — STRICT 模式必 raise (production cut-over rollout 守门).
+
+    Stage 2.5 (本批): 默认 warn-only (env SDK_PARITY_STRICT=false), Tuesday 4-28
+    16:30 production parity 确认后 flip true. Stage 3.0 真切换 (删 legacy) 留独立 PR.
+    """
+
+
 def _run_sdk_parity_dryrun(
     trade_date: "date",
     factor_df: "pd.DataFrame",
@@ -275,18 +283,22 @@ def _run_sdk_parity_dryrun(
         sdk_total_w = sum(sdk_weight_map.values())
         legacy_total_w = sum(legacy_target_weights.values())
 
+        # Stage 2.5 STRICT mode (env SDK_PARITY_STRICT=true) — DIFF raise SignalPathDriftError
+        # (Tuesday 16:30 production parity 确认后 flip env true → next 16:30 SDK regression 立即被 production 检测).
+        # 默认 false (warn-only) 兼容当前行为.
+        strict_mode = os.environ.get("SDK_PARITY_STRICT", "false").lower() == "true"
+
         if parity_diff:
-            logger.warning(
-                "[Step3-SDK-parity] DIFF trade_date=%s %d codes: sdk=%d legacy=%d "
-                "total_w_sdk=%.4f total_w_legacy=%.4f diff_sample=%s",
-                trade_date,
-                len(parity_diff),
-                len(sdk_codes),
-                len(legacy_codes),
-                sdk_total_w,
-                legacy_total_w,
-                sorted(parity_diff)[:10],
+            msg = (
+                f"[Step3-SDK-parity] DIFF trade_date={trade_date} {len(parity_diff)} codes: "
+                f"sdk={len(sdk_codes)} legacy={len(legacy_codes)} "
+                f"total_w_sdk={sdk_total_w:.4f} total_w_legacy={legacy_total_w:.4f} "
+                f"diff_sample={sorted(parity_diff)[:10]} strict={strict_mode}"
             )
+            if strict_mode:
+                logger.error(msg)
+                raise SignalPathDriftError(msg)
+            logger.warning(msg)
         else:
             # P2 reviewer 采纳: codes 一致后再算 weight 数值 max diff
             common_codes = sdk_codes & legacy_codes
@@ -296,15 +308,16 @@ def _run_sdk_parity_dryrun(
             ]
             max_w_diff = max(weight_diffs) if weight_diffs else 0.0
             if max_w_diff > 1e-6:
-                logger.warning(
-                    "[Step3-SDK-parity] codes match but WEIGHT DIFF trade_date=%s "
-                    "codes=%d max_diff=%.6f total_w_sdk=%.4f total_w_legacy=%.4f",
-                    trade_date,
-                    len(common_codes),
-                    max_w_diff,
-                    sdk_total_w,
-                    legacy_total_w,
+                msg = (
+                    f"[Step3-SDK-parity] codes match but WEIGHT DIFF trade_date={trade_date} "
+                    f"codes={len(common_codes)} max_diff={max_w_diff:.6f} "
+                    f"total_w_sdk={sdk_total_w:.4f} total_w_legacy={legacy_total_w:.4f} "
+                    f"strict={strict_mode}"
                 )
+                if strict_mode:
+                    logger.error(msg)
+                    raise SignalPathDriftError(msg)
+                logger.warning(msg)
             else:
                 logger.info(
                     "[Step3-SDK-parity] OK trade_date=%s codes=%d max_w_diff=%.6f "
@@ -315,6 +328,10 @@ def _run_sdk_parity_dryrun(
                     sdk_total_w,
                     legacy_total_w,
                 )
+    except SignalPathDriftError:
+        # STRICT mode: parity drift 必透传给 caller (signal_phase fail → 钉钉).
+        # 不被外层 except Exception 吞 (Stage 2.5 守门核心机制).
+        raise
     except Exception as e:  # noqa: BLE001 — read-only parity, production 不阻塞
         logger.warning(
             "[Step3-SDK-parity] dual-run failed (production 不影响): %s",
