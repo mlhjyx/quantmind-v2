@@ -431,12 +431,23 @@ def main() -> int:
         # 标准化 4 schtask scripts (compute_daily_ic / pull_moneyflow / ...) 共用抽象 (PR #99 落盘).
         # check_date = window.start_date 保留 PR #90 LL-076 语义: 用户 --start 时验证 start
         # 是否交易日 (custom mode start=user_start), 不传 --start 时验证 today (default mode start=today).
-        # pull_moneyflow 不用 --lookback-days (--recent 已等价), 显式 set None 兼容 resolve 接口.
-        args.lookback_days = None
+        #
+        # Reviewer python-P2 采纳 (PR #106): 不直接 mutate `args.lookback_days = None` (shared
+        # Namespace 写, 未来加 --lookback-days 会被 silently 覆盖, 铁律 34 config shadow), 改构造
+        # 独立 resolver_ns. pull_moneyflow 不暴露 --lookback-days (--recent 已等价).
+        # Reviewer code-P2 doc clarify: --end argparse default=DEFAULT_END (非 None) → custom 模式
+        # 触发 strptime 而非 fallback today, 行为与原代码一致.
+        resolver_ns = argparse.Namespace(start=args.start, end=args.end, lookback_days=None)
         check_date: date | None = None
         try:
-            window = TimeWindowResolver.resolve(args, default_lookback=0)
+            window = TimeWindowResolver.resolve(resolver_ns, default_lookback=0)
             check_date = window.start_date
+            # Reviewer code-P3 采纳 (PR #106): 暴露 resolver mode 供 schtask 调试 (跟 compute_daily_ic 对齐).
+            print(
+                f"[pull_moneyflow] TimeWindowResolver: mode={window.mode} check_date={check_date}",
+                file=sys.stderr,
+                flush=True,
+            )
         except ValueError as e:
             # PR #90 reviewer MEDIUM 采纳保留: invalid format 必写 stderr (铁律 33 silent_ok
             # 必带诊断 log). TimeWindowResolver.resolve raise ValueError 含 "--start" 或 "--end"
