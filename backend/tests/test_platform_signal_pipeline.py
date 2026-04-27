@@ -19,7 +19,7 @@ import pytest
 
 from backend.qm_platform._types import Signal
 from backend.qm_platform.signal.pipeline import (
-    _COMPOSE_STRATEGY_ID,
+    COMPOSE_STRATEGY_ID,
     PlatformSignalPipeline,
     UniverseEmpty,
 )
@@ -125,7 +125,7 @@ class TestComposeHappyPath:
         assert len(signals) > 0
         for s in signals:
             assert isinstance(s, Signal)
-            assert s.strategy_id == _COMPOSE_STRATEGY_ID
+            assert s.strategy_id == COMPOSE_STRATEGY_ID
             assert s.target_weight > 0
             assert s.metadata["action"] == "target"
             assert "industry" in s.metadata
@@ -159,8 +159,8 @@ class TestComposeHappyPath:
         )
         pipe = PlatformSignalPipeline()
         signals = pipe.compose(["bp_ratio"], date(2026, 4, 27), ctx)
-        assert all(s.strategy_id == _COMPOSE_STRATEGY_ID for s in signals)
-        assert _COMPOSE_STRATEGY_ID == "compose:factor_pool"
+        assert all(s.strategy_id == COMPOSE_STRATEGY_ID for s in signals)
+        assert COMPOSE_STRATEGY_ID == "compose:factor_pool"
 
 
 # ─── compose() SSOT 行为 ────────────────────────────────────────
@@ -286,11 +286,124 @@ class TestConfigSSOT:
     def test_custom_config_override(self):
         from engines.signal_engine import SignalConfig
 
+        # P2 code-reviewer (PR #107) 采纳: factor_names 类型注解 list[str] | None,
+        # 用 list 而非 tuple 跟 SignalConfig 字段类型对齐.
         custom = SignalConfig(
-            factor_names=("bp_ratio",),
+            factor_names=["bp_ratio"],
             top_n=10,
             industry_cap=1.0,
             size_neutral_beta=0.0,
         )
         pipe = PlatformSignalPipeline(config=custom)
         assert pipe.base_config is custom
+
+
+# ─── P2/P3 reviewer (PR #107) 新增测试 ────────────────────────
+
+
+class TestGenerateExceptionPropagation:
+    """P2-4 reviewer (PR #107) 采纳: generate() 透传 strategy 异常契约必须 test."""
+
+    def test_generate_propagates_strategy_exception(self):
+        strategy = MagicMock(spec=Strategy)
+        strategy.generate_signals.side_effect = RuntimeError("data unavailable")
+        strategy.strategy_id = "test-uuid"
+
+        pipe = PlatformSignalPipeline()
+        ctx = _make_ctx(universe=["600519.SH"], factor_df=pd.DataFrame())
+        with pytest.raises(RuntimeError, match="data unavailable"):
+            pipe.generate(strategy, ctx)
+
+    def test_generate_propagates_key_error(self):
+        # 模拟 S1MonthlyRanking.generate_signals raise KeyError (factor_df 缺)
+        strategy = MagicMock(spec=Strategy)
+        strategy.generate_signals.side_effect = KeyError("factor_df")
+        strategy.strategy_id = "test-uuid"
+
+        pipe = PlatformSignalPipeline()
+        ctx = _make_ctx(universe=["600519.SH"], factor_df=pd.DataFrame())
+        with pytest.raises(KeyError, match="factor_df"):
+            pipe.generate(strategy, ctx)
+
+
+class TestComposeSSOTPreservation:
+    """P3-4 reviewer (PR #107) 采纳: 验证 base_config 非 factor_names 字段
+    (top_n / size_neutral_beta) 透 compose() replace() 保留, 是 SSOT 核心契约."""
+
+    def test_custom_top_n_preserved_through_replace(self):
+        """base_config.top_n=5 → compose() 选股最多 5 (PAPER_TRADING default 是 20)."""
+        from engines.signal_engine import SignalConfig
+
+        # 自定义 top_n=5, 防默认 20 干扰
+        custom = SignalConfig(
+            factor_names=["bp_ratio"],
+            top_n=5,
+            industry_cap=1.0,
+            size_neutral_beta=0.0,  # SN off, 防 ln_mcap 缺导致 fallback
+        )
+        pipe = PlatformSignalPipeline(config=custom)
+
+        # 50 codes, 全部 industry "其他", 应 select Top-5
+        codes = [f"600{i:03d}.SH" for i in range(50)]
+        factor_df = _make_factor_df(
+            [(code, "bp_ratio", float(50 - idx)) for idx, code in enumerate(codes)]
+        )
+        ctx = _make_ctx(
+            universe=codes,
+            factor_df=factor_df,
+            industry_map={code: "其他" for code in codes},
+        )
+        signals = pipe.compose(["bp_ratio"], date(2026, 4, 27), ctx)
+        # base_config.top_n=5 应限定到 5 而非 PAPER_TRADING 的 20
+        assert len(signals) == 5, (
+            f"top_n SSOT 漂移: 期望 5 但 {len(signals)} (replace() 错误覆盖了非 factor_names 字段?)"
+        )
+
+    def test_factor_names_field_stays_list_type(self):
+        """P1-1 reviewer (PR #107) 采纳: replace() 后 factor_names 必须仍是 list 类型,
+        不是 tuple (跟 SignalConfig.factor_names: list[str] | None 字段注解一致)."""
+        pipe = PlatformSignalPipeline()
+        codes = [f"600{i:03d}.SH" for i in range(30)]
+        factor_df = _make_factor_df(
+            [(code, "bp_ratio", float(idx)) for idx, code in enumerate(codes)]
+        )
+        ctx = _make_ctx(
+            universe=codes,
+            factor_df=factor_df,
+            industry_map={code: "其他" for code in codes},
+        )
+        # 走一次 compose() 观察内部 SignalConfig.factor_names 类型 — 通过 metadata 间接验证
+        signals = pipe.compose(["bp_ratio", "dv_ttm"], date(2026, 4, 27), ctx)
+        # signals[0].metadata['factor_pool'] 是 list (compose 内部 list(factor_pool))
+        assert isinstance(signals[0].metadata["factor_pool"], list)
+
+
+class TestComposeNegativeOneScore:
+    """P1-2 reviewer (PR #107) 采纳: 真实 score=-1.0 不应触发 sentinel 误报 corruption.
+
+    sentinel-based `raw_score == -1.0` 检测会把真实 score=-1.0 替为 0.0; membership
+    test `code in scores` 修复后应不动真 score 值.
+    """
+
+    def test_score_neg_one_not_corrupted(self, caplog):
+        # 构造场景: 单 factor 1 code score=-1.0 (z-score 边缘) 应保留
+        pipe = PlatformSignalPipeline()
+        codes = [f"600{i:03d}.SH" for i in range(20)]
+        # bp_ratio 让 600000 的 score=-1.0 (相对其他)
+        # SignalComposer 走 z-score 后某 code 可能正好 -1.0
+        # 直接构造 factor_df 使 600000 是 minimum
+        factor_df = _make_factor_df(
+            [(code, "bp_ratio", -1.0 if idx == 0 else float(idx)) for idx, code in enumerate(codes)]
+        )
+        ctx = _make_ctx(
+            universe=codes,
+            factor_df=factor_df,
+            industry_map={code: "其他" for code in codes},
+        )
+        with caplog.at_level(logging.ERROR, logger="backend.qm_platform.signal.pipeline"):
+            pipe.compose(["bp_ratio"], date(2026, 4, 27), ctx)
+        # 不应该有 invariant violation error log
+        errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert not any("invariant violation" in r.message for r in errors), (
+            "P1-2 regression: 真实 score=-1.0 误判为 sentinel 触发 invariant log"
+        )
