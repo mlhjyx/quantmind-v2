@@ -135,6 +135,140 @@ def _write_heartbeat(trade_date: date, phase: str) -> None:
 
 
 # ════════════════════════════════════════════════════════════
+# MVP 3.3 batch 2 Step 2 — SDK Parity Dual-Run (Session 39 末, 2026-04-27)
+# ════════════════════════════════════════════════════════════
+# 目的: signal_phase 调 PlatformSignalPipeline.generate(s1, ctx) parallel run
+# 跟现产 signal_service.generate_signals 比对, 验证 SDK 在 production env 等价.
+# 风险 L: 全 try/except 包裹, 失败仅 logger.warning, 0 production 行为变化.
+# 价值 H: 1 周 0 parity diff 后 → Step 2c (真 cut over) 数据驱动决策.
+# 跟 MVP 2.1c Sub3 dual-write 同模式 (parity-validated migration).
+
+
+def _build_sdk_strategy_context(
+    trade_date: "date",
+    factor_df: "pd.DataFrame",
+    universe: "set[str]",
+    industry: "pd.Series",
+    capital,
+    ln_mcap=None,
+):
+    """构造 SDK StrategyContext for parity dual-run.
+
+    本函数纯计算 (无 IO), 测试可注入 mock data. ln_mcap 由调用方加载 (signal_service
+    内部 line 145-148 same path), 本函数仅组装.
+
+    Args:
+      trade_date: 交易日
+      factor_df: 因子宽表 columns=[code, factor_name, neutral_value]
+      universe: 可交易股票池 set[str]
+      industry: pd.Series (code → industry_sw1)
+      capital: Decimal 分配资本 (PT 1M)
+      ln_mcap: pd.Series (code → ln(mcap)), None 表示 SN beta=0 不需
+
+    Returns:
+      backend.qm_platform.strategy.interface.StrategyContext
+
+    Raises:
+      ImportError: SDK module 缺 (production env 应不发生, 走 caller try/except 兜底)
+    """
+    from backend.qm_platform.strategy.interface import StrategyContext
+
+    # industry pd.Series → dict[str, str] (S1MonthlyRanking metadata 契约)
+    if hasattr(industry, "to_dict"):
+        industry_map = industry.to_dict()
+    else:
+        industry_map = dict(industry)
+
+    return StrategyContext(
+        trade_date=trade_date,
+        capital=capital,
+        universe=list(universe),
+        regime="default",
+        metadata={
+            "factor_df": factor_df,
+            "industry_map": industry_map,
+            "ln_mcap": ln_mcap,
+            "prev_holdings": None,
+            # exclude / vol_regime_scale / volatility_map 留 None — S1 内部 default
+        },
+    )
+
+
+def _run_sdk_parity_dryrun(
+    trade_date: "date",
+    factor_df: "pd.DataFrame",
+    universe: "set[str]",
+    industry: "pd.Series",
+    legacy_target_weights: dict,
+    conn,
+) -> None:
+    """Parallel 调 PlatformSignalPipeline.generate(s1, ctx) + log 比对 vs legacy.
+
+    全 try/except 兜底, 失败仅 logger.warning. 不动 signal_result / 不写 DB.
+    1 周 0 parity diff 后 Step 2c 真 cut over 决策依据.
+    """
+    try:
+        from decimal import Decimal
+
+        from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+        from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
+
+        # ln_mcap 加载 (镜像 signal_service line 145-148)
+        ln_mcap = None
+        if PAPER_TRADING_CONFIG.size_neutral_beta > 0:
+            try:
+                from engines.size_neutral import load_ln_mcap_for_date
+                ln_mcap = load_ln_mcap_for_date(trade_date, conn)
+            except Exception as e:  # noqa: BLE001 — read-only, log 即可
+                logger.warning("[Step3-SDK-parity] ln_mcap load failed: %s", e)
+
+        ctx = _build_sdk_strategy_context(
+            trade_date=trade_date,
+            factor_df=factor_df,
+            universe=universe,
+            industry=industry,
+            capital=Decimal(str(settings.PAPER_INITIAL_CAPITAL)),
+            ln_mcap=ln_mcap,
+        )
+        pipe = PlatformSignalPipeline()
+        s1 = S1MonthlyRanking()
+        sdk_signals = pipe.generate(s1, ctx)
+
+        # 比对 codes 集合 (target_weight 数值差异由 PortfolioBuilder 保证, codes 是 invariant)
+        sdk_codes = {s.code for s in sdk_signals}
+        legacy_codes = set(legacy_target_weights.keys())
+        parity_diff = sdk_codes.symmetric_difference(legacy_codes)
+
+        sdk_total_w = sum(s.target_weight for s in sdk_signals)
+        legacy_total_w = sum(legacy_target_weights.values())
+
+        if parity_diff:
+            logger.warning(
+                "[Step3-SDK-parity] DIFF %d codes: sdk=%d legacy=%d total_w_sdk=%.4f "
+                "total_w_legacy=%.4f diff_sample=%s",
+                len(parity_diff),
+                len(sdk_codes),
+                len(legacy_codes),
+                sdk_total_w,
+                legacy_total_w,
+                sorted(parity_diff)[:10],
+            )
+        else:
+            logger.info(
+                "[Step3-SDK-parity] OK codes=%d total_w_sdk=%.4f total_w_legacy=%.4f",
+                len(sdk_codes),
+                sdk_total_w,
+                legacy_total_w,
+            )
+    except Exception as e:  # noqa: BLE001 — read-only parity, production 不阻塞
+        logger.warning(
+            "[Step3-SDK-parity] dual-run failed (production 不影响): %s",
+            e,
+            exc_info=True,
+        )
+
+
+# ════════════════════════════════════════════════════════════
 # Signal Phase — T日盘后 16:30
 # ════════════════════════════════════════════════════════════
 
@@ -316,6 +450,18 @@ def run_signal_phase(
             "[Step3] 信号: %d只目标, rebalance=%s",
             len(signal_result.target_weights),
             signal_result.is_rebalance,
+        )
+
+        # MVP 3.3 batch 2 Step 2 SDK parity dual-run (read-only, 失败不阻塞).
+        # 验证 PlatformSignalPipeline.generate(s1, ctx) 跟 legacy signal_svc 等价.
+        # 1 周 0 parity diff 后 Step 2c 真 cut over.
+        _run_sdk_parity_dryrun(
+            trade_date=trade_date,
+            factor_df=fv,
+            universe=universe,
+            industry=industry,
+            legacy_target_weights=signal_result.target_weights,
+            conn=conn,
         )
 
         # Step 3.5: 影子选股(可选,失败不阻塞)
