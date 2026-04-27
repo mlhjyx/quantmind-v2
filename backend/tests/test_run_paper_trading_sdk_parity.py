@@ -210,3 +210,147 @@ class TestSignalPathDriftError:
         """模块 import path 验 (SignalPathDriftError 是 public)."""
         import run_paper_trading
         assert hasattr(run_paper_trading, "SignalPathDriftError")
+
+
+# ─── Stage 2.5 STRICT env parsing helper ─────────────────────
+
+
+class TestIsSdkParityStrict:
+    """env SDK_PARITY_STRICT 多 truthy 形式接受 (case-insensitive). reviewer P2 采纳."""
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("true", True),
+            ("True", True),
+            ("TRUE", True),
+            ("1", True),
+            ("yes", True),
+            ("YES", True),
+            ("on", True),
+            ("ON", True),
+            ("  true  ", True),  # strip whitespace
+            ("false", False),
+            ("False", False),
+            ("0", False),
+            ("no", False),
+            ("", False),
+            ("foo", False),
+            ("2", False),  # 仅 1 是 truthy, 防呆
+        ],
+    )
+    def test_env_parsing_truthy_aliases(self, monkeypatch, value, expected):
+        from run_paper_trading import _is_sdk_parity_strict
+        monkeypatch.setenv("SDK_PARITY_STRICT", value)
+        assert _is_sdk_parity_strict() is expected
+
+    def test_env_unset_returns_false(self, monkeypatch):
+        from run_paper_trading import _is_sdk_parity_strict
+        monkeypatch.delenv("SDK_PARITY_STRICT", raising=False)
+        assert _is_sdk_parity_strict() is False
+
+
+# ─── Stage 2.5 STRICT 集成: _run_sdk_parity_dryrun 真 raise 路径 ─────
+
+
+class _FakeSignal:
+    """Mock SDK Signal: 仅需 .code + .target_weight 字段 (镜像真 SDK)."""
+    def __init__(self, code: str, target_weight: float):
+        self.code = code
+        self.target_weight = target_weight
+
+
+class _FakePipeline:
+    """Mock PlatformSignalPipeline: generate(strategy, ctx) → list[_FakeSignal]."""
+    def __init__(self, signals):
+        self._signals = signals
+
+    def generate(self, strategy, ctx):
+        return self._signals
+
+
+def _patch_sdk_imports(monkeypatch, sdk_signals):
+    """Monkeypatch SDK module imports inside `_run_sdk_parity_dryrun`."""
+    import sys
+    import types
+
+    # PlatformSignalPipeline → 返回 _FakePipeline
+    fake_pipeline_mod = types.ModuleType("backend.qm_platform.signal.pipeline")
+    fake_pipeline_mod.PlatformSignalPipeline = lambda: _FakePipeline(sdk_signals)
+    monkeypatch.setitem(sys.modules, "backend.qm_platform.signal.pipeline", fake_pipeline_mod)
+
+    # S1MonthlyRanking → 占位 (pipeline.generate 不真用)
+    fake_s1_mod = types.ModuleType("backend.engines.strategies.s1_monthly_ranking")
+    fake_s1_mod.S1MonthlyRanking = lambda: object()
+    monkeypatch.setitem(sys.modules, "backend.engines.strategies.s1_monthly_ranking", fake_s1_mod)
+
+    # SignalService._load_prev_weights → 空 dict (跟 legacy 一致)
+    fake_ss_mod = types.ModuleType("app.services.signal_service")
+    class _FakeSignalService:
+        def _load_prev_weights(self, conn, strategy_id):
+            return {}
+    fake_ss_mod.SignalService = _FakeSignalService
+    monkeypatch.setitem(sys.modules, "app.services.signal_service", fake_ss_mod)
+
+    # engines.size_neutral.load_ln_mcap_for_date → None (绕 DB)
+    # PAPER_TRADING_CONFIG.size_neutral_beta=0.50, dryrun 会进 ln_mcap load 分支
+    fake_sn_mod = types.ModuleType("engines.size_neutral")
+    fake_sn_mod.load_ln_mcap_for_date = lambda trade_date, conn: None
+    monkeypatch.setitem(sys.modules, "engines.size_neutral", fake_sn_mod)
+
+
+class TestRunSdkParityDryrunStrictRaise:
+    """STRICT 模式下 codes/weight DIFF 必 raise (集成测试, 防 except 吞)."""
+
+    def _common_kwargs(self):
+        return dict(
+            trade_date=date(2026, 4, 27),
+            factor_df=_make_factor_df([("600519.SH", "bp_ratio", 1.0)]),
+            universe={"600519.SH"},
+            industry=pd.Series({"600519.SH": "白酒"}),
+            conn=None,  # SignalService mock 不真用
+        )
+
+    def test_codes_diff_strict_raises(self, monkeypatch):
+        from run_paper_trading import SignalPathDriftError, _run_sdk_parity_dryrun
+        monkeypatch.setenv("SDK_PARITY_STRICT", "true")
+        # SDK = {600519}, legacy = {000001} → symmetric_diff = 2
+        _patch_sdk_imports(monkeypatch, [_FakeSignal("600519.SH", 0.05)])
+        with pytest.raises(SignalPathDriftError, match=r"DIFF.*sdk=1.*legacy=1"):
+            _run_sdk_parity_dryrun(
+                legacy_target_weights={"000001.SZ": 0.05},
+                **self._common_kwargs(),
+            )
+
+    def test_weight_diff_strict_raises(self, monkeypatch):
+        from run_paper_trading import SignalPathDriftError, _run_sdk_parity_dryrun
+        monkeypatch.setenv("SDK_PARITY_STRICT", "true")
+        # codes 一致, weight 差 0.01 (>1e-6 阈值)
+        _patch_sdk_imports(monkeypatch, [_FakeSignal("600519.SH", 0.05)])
+        with pytest.raises(SignalPathDriftError, match="WEIGHT DIFF"):
+            _run_sdk_parity_dryrun(
+                legacy_target_weights={"600519.SH": 0.06},
+                **self._common_kwargs(),
+            )
+
+    def test_warn_only_default_no_raise(self, monkeypatch):
+        """默认 strict_mode=false: codes DIFF 仅 warn, 不 raise (兼容现况)."""
+        from run_paper_trading import _run_sdk_parity_dryrun
+        monkeypatch.delenv("SDK_PARITY_STRICT", raising=False)
+        _patch_sdk_imports(monkeypatch, [_FakeSignal("600519.SH", 0.05)])
+        # 不 raise (warn-only path) — 此 call 必返 None 不抛
+        _run_sdk_parity_dryrun(
+            legacy_target_weights={"000001.SZ": 0.05},
+            **self._common_kwargs(),
+        )
+
+    def test_parity_ok_strict_no_raise(self, monkeypatch):
+        """STRICT 模式 + 真 parity OK: 不 raise (仅 DIFF 路径触发)."""
+        from run_paper_trading import _run_sdk_parity_dryrun
+        monkeypatch.setenv("SDK_PARITY_STRICT", "true")
+        _patch_sdk_imports(monkeypatch, [_FakeSignal("600519.SH", 0.05)])
+        # codes + weight 完全一致 → INFO log, no raise
+        _run_sdk_parity_dryrun(
+            legacy_target_weights={"600519.SH": 0.05},
+            **self._common_kwargs(),
+        )
