@@ -2118,3 +2118,91 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT ... -- 各 production 查询模式跑一遍
 - 本 LL 条目 (LL-080)
 - 实战修复: idx_fv_factor_date 重建中 (Saturday 23:56 启动, ~30-60 min)
 - 后续 PG 维护脚本 (`sunday_pg_vacuum.ps1` analyze phase) 加 EXPLAIN 模板
+
+---
+
+## LL-081: QMT zombie + Redis status 无 TTL 导致 4h+ silent failure (Session 38 真生产首日, 2026-04-27)
+
+### 现象
+
+Monday 4-27 18:00 实测发现: Redis `portfolio:nav` updated_at = 13:50 CST (滞后 4h10m), Servy `QuantMind-QMTData` 报 Running 但内部 zombie. 4-27 09:00-13:50 上午 5h 正常, 13:51-18:08 下午 4h17m zombie. 期间:
+
+- 14:30 risk-daily-check 触发, PMSRule.evaluate 19 持仓 → 19/19 `current_price <= 0` (Redis market:latest:* 已 expire) → 全 `continue` skip → `risk_event_log` 写 0 行 (伪健康)
+- intraday-risk-check */5 9-14 13:55-14:55 共 13 次, QMTDisconnectRule.evaluate 调 `qmt_client.is_connected()` → 返 True (误判) → 0 触发
+- ServicesHealthCheck (LL-074 投资) 只看 Servy `status` Running → 0 钉钉告警
+- **真盘下午 70min 无实时价 + Risk Framework 全程哑火**, 18:08 用户手动 `servy-cli stop/start QuantMind-QMTData` 才恢复
+
+### 根因 (3 个 silent failure 叠加)
+
+**根因 #1** (`scripts/qmt_data_service.py:92-98`): `SET qmt:connection_status connected` 无 TTL (实测 `redis-cli TTL` = -1), 只在 connect 边沿 SET, sync_loop 不 refresh. service hang 后 key 永久卡 "connected" → `qmt_client.is_connected()` (`backend/app/core/qmt_client.py:38-44`) 看 GET == "connected" → 永久 True.
+
+**根因 #2** (`backend/qm_platform/risk/rules/pms.py:101-102`): `if pos.entry_price <= 0 or pos.peak_price <= 0 or pos.current_price <= 0: continue` 完全 silent. zombie 期 19/19 持仓 current_price=0 全 skip 无任何 log/告警 → 14:30 evaluate 看似"健康 0 触发".
+
+**根因 #3** (`scripts/services_healthcheck.py`): 只 probe Servy `status` 进程层, 不看 Redis 应用层 freshness (`portfolio:nav` updated_at gap / `qm:qmt:status` stream last event time). LL-074 投资在本类 zombie 模式无效.
+
+### 教训
+
+1. **Redis status key 必带 TTL + heartbeat refresh** — 边沿 SET 模式 (connect/disconnect 时 SET 一次) 在 service hang 时 silent. 必须 sync_loop 每周期 SETEX(2x sync interval) 让 key 自动 expire 兜底.
+2. **Rule silent skip 大比例 (>50%) 必 fail-loud** — PMSRule 单股 skip OK (e.g. 1 股 entry_price=0 数据问题), 但 19/19 全 skip 是系统性故障, 必 log P1 + 钉钉告警.
+3. **监控必看应用层 freshness 而非进程层 alive** — Servy `status=Running` 是必要不充分条件. 真生产监控必 probe (a) Redis 关键 key updated_at gap, (b) StreamBus 关键 stream last event time, (c) DB 关键表 last write time. 三层任一 stale > 阈值即视为 zombie.
+
+### 应用规则
+
+- **qmt_data_service.py 修复模板** (PR-X1):
+  ```python
+  # 边沿 SET → SETEX with TTL=120s (2x sync_loop 60s)
+  self._get_redis().setex(CACHE_QMT_STATUS, 120, "connected")
+  
+  # sync_loop 每周期 heartbeat refresh
+  def _sync_once(self):
+      try:
+          # ... query_positions / query_asset ...
+          r.setex(CACHE_QMT_STATUS, 120, "connected")  # 周期性 refresh
+      except Exception:
+          r.setex(CACHE_QMT_STATUS, 120, "disconnected")
+  ```
+- **PMSRule 修复模板** (PR-X2):
+  ```python
+  total_positions = len(context.positions)
+  skipped_zero_price = 0
+  for pos in context.positions:
+      if pos.current_price <= 0:
+          skipped_zero_price += 1
+          continue
+      # ... evaluate ...
+  
+  # fail-loud: 大比例 skip 必告警 (60% threshold)
+  if total_positions > 5 and skipped_zero_price / total_positions > 0.6:
+      logger.warning(
+          "PMS skip ratio %d/%d (%.0f%%) suggests QMT data failure",
+          skipped_zero_price, total_positions,
+          100 * skipped_zero_price / total_positions
+      )
+      # 通过 RuleResult.metrics 上报 risk_event_log (而非吞)
+  ```
+- **ServicesHealthCheck 修复模板** (PR-X3):
+  ```python
+  # 加 Redis freshness probe
+  nav_updated_at = json.loads(r.get("portfolio:nav") or "{}").get("updated_at")
+  if nav_updated_at:
+      gap = (datetime.now(UTC) - parse(nav_updated_at)).total_seconds()
+      if gap > 300:  # 5 min
+          alerts.append(f"portfolio:nav stale {gap/60:.0f}min (zombie risk)")
+  
+  # 加 stream freshness probe
+  last_event = r.xrevrange("qm:qmt:status", count=1)
+  if last_event:
+      last_ts_ms = int(last_event[0][0].split('-')[0])
+      gap = time.time() - last_ts_ms / 1000
+      if gap > 600:  # 10 min
+          alerts.append(f"qm:qmt:status stale {gap/60:.0f}min")
+  ```
+
+### 持久化
+
+- 本 LL 条目 (LL-081)
+- **PR-X1**: `scripts/qmt_data_service.py` SET → SETEX + sync_loop heartbeat (Session 38)
+- **PR-X2**: `backend/qm_platform/risk/rules/pms.py` 大比例 skip fail-loud (Session 38)
+- **PR-X3**: `scripts/services_healthcheck.py` Redis + stream freshness probe (Session 38)
+- **LL-074 amendment**: 原 LL-074 "ServicesHealthCheck 投资 1 天内收回" 在本类 zombie 模式不成立, PR-X3 闭合此 gap.
+- **铁律 33 fail-loud 强化**: 边沿 SET + 无 TTL = silent failure 模式之一, future Redis status key 设计必带 TTL + heartbeat.
