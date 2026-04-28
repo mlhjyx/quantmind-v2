@@ -49,6 +49,28 @@ def test_health_report_frozen_immutable():
         r.status = "down"  # type: ignore[misc]
 
 
+def test_health_report_details_is_mapping_proxy_immutable():
+    """reviewer P2 采纳: frozen=True 不防 details 字典 in-place mutation, 必包 MappingProxyType."""
+    r = HealthReport(
+        framework="x",
+        status="ok",
+        details={"latency_ms": 12, "queue": 0},
+    )
+    # 读取仍正常
+    assert r.details["latency_ms"] == 12
+    # 写入必 raise (MappingProxyType 不允许)
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        r.details["injected"] = "bad"  # type: ignore[index]
+
+
+def test_health_report_details_caller_mutation_after_construct_isolated():
+    """caller 修改原 dict 不影响已构造 HealthReport.details (浅拷贝隔离)."""
+    original = {"k": "v"}
+    r = HealthReport(framework="x", status="ok", details=original)
+    original["k"] = "MUTATED"  # caller 改原 dict
+    assert r.details["k"] == "v", "原 dict 修改不应影响 HealthReport (浅拷贝)"
+
+
 # ─────────────────────────── safe_check ───────────────────────────
 
 

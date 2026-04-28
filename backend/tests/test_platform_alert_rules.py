@@ -91,6 +91,33 @@ def test_format_dedup_key_supports_source_severity_top_level():
     assert rule.format_dedup_key(a) == "catchall:x_module:p0"
 
 
+def test_format_dedup_key_top_level_wins_over_details_shadow():
+    """reviewer P1 采纳: details 含 source/severity 时, top-level 永远赢, 防 silent shadow.
+
+    历史: 原代码 ``{**details, "source": ...}`` 顺序让 details 后写覆盖 top-level,
+    若 caller 误塞 ``details={"source": "shadowed"}`` 会 silently 用错 key 破 dedup.
+    """
+    rule = AlertRule(
+        name="x",
+        match_severity=None,
+        match_source=None,
+        channels=("dingtalk",),
+        suppress_minutes=30,
+        dedup_key_template="{source}:{severity}:{factor}",
+    )
+    a = _alert(
+        severity=Severity.P1,
+        source="real_source",
+        details={
+            "source": "MALICIOUS_SHADOW",  # 必须不能覆盖 top-level
+            "severity": "p99",  # 必须不能覆盖 top-level
+            "factor": "dv_ttm",
+        },
+    )
+    key = rule.format_dedup_key(a)
+    assert key == "real_source:p1:dv_ttm", f"top-level shadowed by details, got: {key}"
+
+
 def test_format_dedup_key_missing_placeholder_raises():
     rule = AlertRule(
         name="x",
@@ -141,6 +168,17 @@ def test_engine_match_first_rule_wins():
 def test_engine_match_no_rule_returns_none():
     engine = AlertRulesEngine(rules=())
     assert engine.match(_alert()) is None
+
+
+def test_from_dict_zero_rules_logs_warning(caplog):
+    """reviewer P2 采纳: 加载 0 rules 必 log warn (退化 SSOT 应早提示运维)."""
+    import logging as _logging
+    with caplog.at_level(_logging.WARNING, logger="qm_platform.observability.rules"):
+        engine = AlertRulesEngine.from_dict({"rules": []})
+    assert len(engine.rules) == 0
+    assert any(
+        "0 rules" in rec.message for rec in caplog.records
+    ), f"必 log 0-rules warning, got: {[r.message for r in caplog.records]}"
 
 
 # ─────────────────────────── from_dict schema validation ───────────────────────────
