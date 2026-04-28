@@ -458,12 +458,6 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                 )
             )
 
-        # Check 2: qm:qmt:status stream — REMOVED Session 40 LL-087 (2026-04-28).
-        # Stream 是 transition-only event audit log (qmt_data_service.py:99/106/117 仅
-        # connect/disconnect 触发 publish), 不是 heartbeat. 健康连接长时间无 transition,
-        # 30min threshold 在交易时段照样 false positive (Session 40 10:00 zombie 误报).
-        # portfolio:nav 60s sync 真 heartbeat, 已 cover sync_loop liveness, 一层够.
-
     except Exception as e:  # noqa: BLE001 — Redis 完全不可达 (fail-loud)
         logger.warning("Redis 完全不可达, freshness probe 全 stale: %s", e)
         checks.append(
