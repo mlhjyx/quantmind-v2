@@ -20,7 +20,13 @@
 
 ## Scope (~3-4 周, 4 批交付, 串行)
 
-### 批 1: event_outbox 表 + Outbox 写路径 (~1 周)
+**进度** (Session 41 末 2026-04-28):
+- ✅ 批 1: PR #119 merged main `2a9c01a` (event_outbox 表 + OutboxWriter + B-Tree partial 索引 + 14 tests, EXPLAIN 0.070ms)
+- ✅ 批 2: PR #120 merged main `3358150` (OutboxPublisher 30s Celery beat + SKIP LOCKED + DLQ + 16 tests, 真 DB integration ✓)
+- ⬜ 批 3: OutboxBackedAuditTrail concrete (replace MVP 3.3 stub) — Session 42+
+- ⬜ 批 4: 4 域事件迁 outbox + 7 日 dual-write — Session 43+
+
+### 批 1 ✅: event_outbox 表 + Outbox 写路径 (~1 周)
 
 **交付物**:
 1. `backend/migrations/event_outbox.sql` ⭐ 新 ~40 行
@@ -31,7 +37,7 @@
 3. `backend/qm_platform/observability/__init__.py` ⚠️ MODIFY: 导出 `OutboxWriter`
 4. `backend/tests/test_event_outbox.py` ⭐ 新 ~150 行 ~12 tests (含原子性 + 索引使用)
 
-### 批 2: Outbox Publisher Worker → Redis Streams (~1 周)
+### 批 2 ✅: Outbox Publisher Worker → Redis Streams (~1 周)
 
 **交付物**:
 1. `backend/app/tasks/outbox_publisher.py` ⭐ 新 ~150 行
