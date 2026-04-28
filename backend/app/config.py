@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式），为空则不签名
     DINGTALK_KEYWORD: str = ""  # 自定义关键词（关键词模式），非空时自动追加到消息
 
+    # MVP 4.1 batch 3+ Platform SDK 迁移开关 (默认 True 走 PlatformAlertRouter SDK,
+    # 含 cross-process PG dedup + AlertRulesEngine yaml-driven). caller 设 False 走旧
+    # dingtalk.send_markdown_sync 直调路径 (fallback, 紧急回滚用). 17 scripts 串行迁移
+    # 期间 caller 各自独立切换 (不影响其他 scripts).
+    OBSERVABILITY_USE_PLATFORM_SDK: bool = True
+
     # --- miniQMT ---
     QMT_PATH: str = ""  # miniQMT userdata_mini路径
     QMT_ACCOUNT_ID: str = ""  # 资金账号
