@@ -227,7 +227,7 @@ def test_replay_aggregates_counters_and_writes_json(flm, tmp_path):
     ]
     iter_rows = iter(fake_rows)
 
-    def _fake_replay_one(_conn, _name, _snap):
+    def _fake_replay_one(_conn, _name, _snap, factor_meta=None):
         try:
             return next(iter_rows)
         except StopIteration:
@@ -245,7 +245,8 @@ def test_replay_aggregates_counters_and_writes_json(flm, tmp_path):
 
     report_path = tmp_path / "replay.json"
     with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one):
+         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
+         patch.object(flm, "_load_factor_meta", return_value=None):
         # Use start in past with weeks=2 to get 2 fridays, both <= today
         result = flm.replay(
             start_date=date(2026, 4, 17),  # 2026-04-17 is Friday
@@ -295,7 +296,7 @@ def test_replay_defer_when_p1_reverse_mismatch_present(flm):
     ]
     iter_rows = iter(fake_rows)
 
-    def _fake_replay_one(_conn, _name, _snap):
+    def _fake_replay_one(_conn, _name, _snap, factor_meta=None):
         try:
             return next(iter_rows)
         except StopIteration:
@@ -312,7 +313,8 @@ def test_replay_defer_when_p1_reverse_mismatch_present(flm):
     )
 
     with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one):
+         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
+         patch.object(flm, "_load_factor_meta", return_value=None):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=2)
 
     summary = result["summary"]
@@ -349,7 +351,7 @@ def test_replay_defer_when_mismatch_rate_exceeds_threshold(flm):
     })
     iter_rows = iter(fake_rows)
 
-    def _fake_replay_one(_conn, _name, _snap):
+    def _fake_replay_one(_conn, _name, _snap, factor_meta=None):
         try:
             return next(iter_rows)
         except StopIteration:
@@ -368,7 +370,8 @@ def test_replay_defer_when_mismatch_rate_exceeds_threshold(flm):
     )
 
     with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one):
+         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
+         patch.object(flm, "_load_factor_meta", return_value=None):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=1)
 
     summary = result["summary"]
@@ -381,7 +384,7 @@ def test_replay_skips_factors_with_no_data(flm):
     """_replay_one_factor 返 None → skipped_no_data 累计, 不影响 mismatch_rate 分母."""
     iter_returns = iter([None, None])
 
-    def _fake_replay_one(_conn, _name, _snap):
+    def _fake_replay_one(_conn, _name, _snap, factor_meta=None):
         try:
             return next(iter_returns)
         except StopIteration:
@@ -398,7 +401,8 @@ def test_replay_skips_factors_with_no_data(flm):
     )
 
     with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one):
+         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
+         patch.object(flm, "_load_factor_meta", return_value=None):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=2)
 
     summary = result["summary"]
