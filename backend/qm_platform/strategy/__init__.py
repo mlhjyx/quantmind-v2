@@ -9,7 +9,9 @@ from .interface import (
     StrategyStatus,
 )
 from .registry import (
+    DEFAULT_LIVE_EVAL_FRESHNESS_DAYS,
     DBStrategyRegistry,
+    EvaluationRequired,
     StrategyNotFound,
     StrategyRegistryIntegrityError,
 )
@@ -26,4 +28,7 @@ __all__ = [
     "EqualWeightAllocator",
     "StrategyNotFound",
     "StrategyRegistryIntegrityError",
+    # MVP 3.5.1 LIVE 守门:
+    "EvaluationRequired",
+    "DEFAULT_LIVE_EVAL_FRESHNESS_DAYS",
 ]

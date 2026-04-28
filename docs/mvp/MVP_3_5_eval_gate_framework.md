@@ -80,7 +80,7 @@
 - ❌ **Eval pipeline 历史 replay / regression suite** (留 Wave 4 Observability)
 - ❌ **Multi-factor portfolio gate** (因子组合层 gate, 留 MVP 4.x)
 - ❌ **真金前 Stage 4.2 dry-run 自动化** (S2 LIVE 升级 dry-run 路径, 独立 PR)
-- ❌ **退役 factor_lifecycle.py 散规则** (本 MVP 双路径并存, 退役留 MVP 3.5.1 Sunset Gate)
+- ❌ **退役 factor_lifecycle.py 散规则** (本 MVP 双路径并存, 退役留 Follow-up A 跨 PR, 4 周双路径观察期后)
 
 ## 关键架构决策 (铁律 39 显式)
 
@@ -149,7 +149,8 @@ python scripts/regression_test.py --years 5  # max_diff=0 (铁律 15)
 2. LLM-based G10 V2 (Wave 4 Observability LLM 接入后)
 3. Multi-factor portfolio gate (MVP 4.x)
 4. ADR-013 Eval Gate 契约 V2 (含 G5/G6/G7 + LLM)
-5. Sunset 老 factor_lifecycle 散规则 (4 周双路径 PASS 后, MVP 3.5.1)
+5. **Follow-up A: Sunset 老 factor_lifecycle 散规则** (4 周双路径 PASS + mismatch < 5% 后, 历史回放可加速验证)
+6. **MVP 3.5.1 ✅ DBStrategyRegistry update_status(LIVE) 强制 evaluation_required check** (Session 42 末 2026-04-28 跨 PR follow-up 完结, PR #126: strategy_evaluations 表 + EvaluationRequired + record_evaluation + 30 天 freshness 守门)
 
 ---
 

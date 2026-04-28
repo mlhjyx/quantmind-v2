@@ -251,10 +251,14 @@ def test_get_by_id_raises_when_db_ok_but_cache_missing():
 # ─── update_status() tests ───────────────────────────────────────────
 
 def test_update_status_writes_audit_log():
+    """MVP 3.5.1 (Session 43, 2026-04-28) 后 LIVE 升迁需 strategy_evaluations 守门.
+    用 BACKTEST 作 target 避守门 (本测试只验 audit log SQL 序列, 守门由
+    test_strategy_evaluation_required.py 单独覆盖).
+    """
     sid = uuid4()
     factory = _make_mock_conn_factory(fetchone_queue=[("draft",)])
     reg = DBStrategyRegistry(conn_factory=factory)
-    reg.update_status(str(sid), StrategyStatus.LIVE, reason="manual promote S1 to live")
+    reg.update_status(str(sid), StrategyStatus.BACKTEST, reason="enter backtest")
 
     cur = factory._cursor
     # Expect 3 execute: SELECT status, UPDATE, INSERT log
