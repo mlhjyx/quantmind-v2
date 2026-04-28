@@ -1,5 +1,14 @@
-# MVP 3.3 Batch 2 Stage 3.0 — Real Cutover Plan (Draft, Session 40)
+# MVP 3.3 Batch 2 Stage 3.0 — Real Cutover Plan (✅ EXECUTED Session 40, 2026-04-28)
 
+> **状态**: ✅ **完结 — Stage 3.0 PR #116 + Stage 3.1 cleanup PR #118 (Session 40, 2026-04-28)**.
+>   - 5-day gate 撤销 (用户挑战驱动 + 25 trade_dates bit-identical 实证)
+>   - `signal_service.generate_signals` 内部走 SDK PlatformSignalPipeline.generate(S1, ctx)
+>   - `_run_sdk_parity_dryrun` + `sdk_parity_scan.py` + `_build_sdk_strategy_context` 全删 (-970 行)
+>   - SDK_PARITY_STRICT Windows User env 清理
+>   - 16:30 schtask 真生产首跨 LastResult=0 + max_w_diff=0
+>
+> **以下为原始 plan draft, 历史 reference**:
+>
 > **状态**: PLAN DRAFT (2026-04-28 Session 40 中 ~14:50)
 > **前置**: Step 2.5 STRICT mode live (PR #111 + #112), 1 周连续 STRICT OK 解锁条件
 > **目标 Session**: Session 41+ (earliest Tuesday 5-04 if Tue 4-28 ~ Mon 5-04 全 STRICT OK)

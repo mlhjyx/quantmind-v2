@@ -2455,7 +2455,7 @@ Session 39 半夜 PR #111 (Step 2.5 STRICT mode) merged 后, 我提议 "Tuesday 
 ### 持久化
 
 - 本 LL 条目 (LL-085)
-- 工具: `scripts/sdk_parity_scan.py` (Stage 3.0 cut-over 后 deprecate)
+- 工具: `scripts/sdk_parity_scan.py` (✅ 已删 Stage 3.1 cleanup PR #118 Session 40 2026-04-28; LL 历史 reference)
 - 实战: PR #112 14/14 PASS 后当晚 flip STRICT=true (vs 等到 Tuesday 16:30)
 
 ---

@@ -14,7 +14,8 @@
 | **批 2 Step 2** (SDK parity dual-run warn-only) | ✅ | #110 | `_run_sdk_parity_dryrun` read-only SDK vs legacy 比对, 失败仅 logger.warning, production 不阻塞 |
 | **批 2 Step 2.5** (STRICT enforcement mode) | ✅ | #111 | `SignalPathDriftError(RuntimeError)` env-gated raise, `_is_sdk_parity_strict()` + `_STRICT_TRUTHY` frozenset, codes/weight DIFF 双路径 strict raise |
 | **批 2 Step 2.5 verification + flip** | ✅ | #112 | `scripts/sdk_parity_scan.py` multi-date 验证 14/14 historical PASS (max_w_diff=0.00e+00 全场) + STRICT flip 真切换 via `setx SDK_PARITY_STRICT true` (Windows User env) |
-| **批 2 Step 3 (Stage 3.0 真切换)** | ⬜ | TBD | `signal_service.write_signals` 走 SDK Order, 删 legacy compose. 解锁条件 = 1 周连续 STRICT OK (Tuesday 4-28 16:30 ~ Monday 5-04). Session 40+. |
+| **批 2 Step 3 (Stage 3.0 真切换)** | ✅ | #116 | `signal_service.generate_signals` 内部走 SDK PlatformSignalPipeline.generate(S1, ctx). regression 5yr+12yr max_diff=0 / 4-27 dry-run wrapper bit-identical / 16:30 schtask 真生产 verify LastResult=0 + max_w_diff=0. 5-day gate 撤销 (用户挑战驱动 + 25 trade_dates bit-identical 含调仓日实证). Session 40. |
+| **Stage 3.1 dead code cleanup** | ✅ | #118 | 删 -970 行 SDK parity dual-run dead code (Stage 3.0 后 trivial 0 diff): `_run_sdk_parity_dryrun` + `_build_sdk_strategy_context` + `SignalPathDriftError` + `sdk_parity_scan.py` + 测试. SDK_PARITY_STRICT Windows User env 同步清理. Session 40. |
 
 **Step 2.5 设计说明** (原 scope 未含, Session 39 加时新增):
 - 在 Step 2 (warn-only dual-run) 和 Step 3 (真切换) 之间加 STRICT enforcement buffer, 默认 warn-only 兼容现况, env `SDK_PARITY_STRICT=true` 时 DIFF 必 raise → signal_phase fail → 钉钉告警
