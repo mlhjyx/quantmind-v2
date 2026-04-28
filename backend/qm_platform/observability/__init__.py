@@ -6,6 +6,7 @@ from .interface import (
     Metric,
     MetricExporter,
 )
+from .outbox import OutboxWriter
 
 __all__ = [
     "MetricExporter",
@@ -13,4 +14,5 @@ __all__ = [
     "EventBus",
     "Metric",
     "Alert",
+    "OutboxWriter",
 ]
