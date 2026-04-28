@@ -77,8 +77,8 @@ class TestSignalServiceDualWrite:
         """
         signal_service_path = _BACKEND_DIR / "app" / "services" / "signal_service.py"
         content = signal_service_path.read_text(encoding="utf-8")
-        # 找 batch 4 dual-write 块
-        idx = content.find("MVP 3.4 batch 4 dual-write")
+        # 找 batch 5 sunset 块
+        idx = content.find("MVP 3.4 batch 5 sunset")
         assert idx > 0
         # 块内 200 字符内必含 signal_id payload key
         block = content[idx:idx + 1200]
@@ -87,38 +87,42 @@ class TestSignalServiceDualWrite:
             "(batch 3 audit chain trace() 反向锚点)"
         )
 
-    def test_signal_outbox_failure_silent_warns_design(self) -> None:
-        """source code 静态校验: signal_service.py 含 silent_ok try/except + warn.
+    def test_signal_outbox_is_fail_loud_post_sunset(self) -> None:
+        """MVP 3.4 batch 5 sunset (PR #130 2026-04-28): outbox 不再 silent_ok wrap.
 
-        signal_service 用 structlog (非 stdlib logging), caplog 不易捕获. 改为
-        静态校验设计契约: 必须有 try/except + logger.warning + silent_ok 注释.
+        sunset 完成后 signal_service.py NO LONGER 含 silent_ok warning, 必含
+        batch 5 sunset marker 证明 sunset 已实施 + outbox enqueue 仍存 (fail-loud).
         """
         signal_service_path = _BACKEND_DIR / "app" / "services" / "signal_service.py"
         content = signal_service_path.read_text(encoding="utf-8")
-        # 有 try/except wrapping outbox enqueue
-        assert "outbox enqueue 失败 (dual-write 过渡期 silent_ok)" in content, (
-            "signal_service.py 必须有 outbox 失败 silent warning"
+        # NEGATIVE: silent_ok warning 已删除
+        assert "dual-write 过渡期 silent_ok" not in content, (
+            "signal_service.py 仍存 dual-write silent_ok 注释 — sunset 未完成"
         )
-        # 7 日 dual-write 过渡期 — silent_ok 仅暂时, 批 5 后 fail-loud
-        assert "批 5 后 fail-loud" in content, (
-            "silent_ok 必须标 sunset 路径 (批 5 后 fail-loud), 防永久 silent"
+        # POSITIVE: sunset marker 注释证明 PR #130 实施
+        assert "batch 5 sunset" in content, (
+            "signal_service.py 缺 batch 5 sunset marker (PR #130 实施印记)"
+        )
+        # POSITIVE: outbox enqueue 仍存 (fail-loud 不删, 仅去 silent wrap)
+        assert "OutboxWriter(conn).enqueue(" in content, (
+            "signal_service.py outbox enqueue 不应被删 (sunset 仅去 silent wrap)"
         )
 
     def test_signal_outbox_dry_run_skipped(self) -> None:
-        """dry_run=True 时 _write_signals 不调 + outbox 也跳过 (设计 contract)."""
-        # 检设计: signal_service.py L279 `if not dry_run:` 包裹 _write_signals,
-        # batch 4 outbox enqueue 也在同 `if not dry_run:` 块内 (验 source code).
+        """dry_run=True 时 _write_signals 不调 + outbox 也跳过 (设计 contract).
+
+        MVP 3.4 batch 5 sunset (PR #130): outbox enqueue 仍在 `if not dry_run:` 块内.
+        """
         signal_service_path = _BACKEND_DIR / "app" / "services" / "signal_service.py"
         content = signal_service_path.read_text(encoding="utf-8")
-        # 找 _write_signals 调用后, batch 4 outbox enqueue 必在同 not dry_run 块
-        assert "MVP 3.4 batch 4 dual-write" in content, (
-            "signal_service.py 未发现 batch 4 dual-write 注入点"
+        assert "batch 5 sunset" in content, (
+            "signal_service.py 未发现 batch 5 sunset 注入点"
         )
-        # 块需结构: `if not dry_run:` 后跟 outbox try/except
-        idx = content.find("MVP 3.4 batch 4 dual-write")
-        # 上溯 200 字符内必有 `if not dry_run:`
-        upper = content[max(0, idx - 200):idx]
-        assert "if not dry_run:" in upper, (
+        idx = content.find("batch 5 sunset")
+        # 下溯 1200 字符 (注释段 + if not dry_run: + OutboxWriter import + enqueue 调用)
+        lower = content[idx:idx + 1200]
+        assert "OutboxWriter" in lower, "batch 5 sunset 注释后必有 OutboxWriter enqueue"
+        assert "if not dry_run:" in lower, (
             "outbox enqueue 必在 `if not dry_run:` 块内, 防 dry-run 污染 event_outbox"
         )
 
@@ -155,11 +159,15 @@ class TestExecutionServiceDualWrite:
             "(reviewer P1.2: fills 在 dry_run 下为空保护 outbox enqueue)"
         )
 
-    def test_batch5_sunset_todo_tags_present(self) -> None:
-        """P2.2 reviewer 采纳: silent_ok 必标 TODO(批 5 sunset) 供 grep CI 钩.
+    def test_batch5_sunset_complete_no_silent_ok(self) -> None:
+        """MVP 3.4 batch 5 sunset (PR #130 2026-04-28) 完成契约 — negative assertion.
 
-        防止永久 silent — 批 5 应升 fail-loud + 删老路径. 此 test 防 sunset
-        comment 被静默移除. 3 域文件全须有 sunset 标记.
+        sunset 后 3 域文件 NO LONGER 含:
+          - "TODO(批 5 sunset)" — 标记已实施
+          - "批 5 后 fail-loud" — silent_ok 注释已删
+          - "dual-write 过渡期 silent_ok" — silent warning 已升 fail-loud
+
+        必含 "batch 5 sunset" marker (PR #130 实施印记).
         """
         files = [
             _BACKEND_DIR / "app" / "services" / "signal_service.py",
@@ -168,13 +176,20 @@ class TestExecutionServiceDualWrite:
         ]
         for f in files:
             content = f.read_text(encoding="utf-8")
-            # 至少一种 sunset 标记 (TODO(批5)/批 5 后 fail-loud/批 5 sunset)
-            has_sunset = (
-                "批 5 后 fail-loud" in content
-                or "TODO(批 5 sunset)" in content
-                or "批 5 sunset" in content
+            # NEGATIVE: 旧 sunset TODO 必须删除
+            assert "TODO(批 5 sunset)" not in content, (
+                f"{f.name} 仍存 TODO(批 5 sunset) — sunset 未完成"
             )
-            assert has_sunset, f"{f.name} 缺 batch 5 sunset 标记 (防永久 silent_ok)"
+            assert "批 5 后 fail-loud" not in content, (
+                f"{f.name} 仍存 '批 5 后 fail-loud' silent_ok 注释 — sunset 未完成"
+            )
+            assert "dual-write 过渡期 silent_ok" not in content, (
+                f"{f.name} 仍存 silent_ok warning — sunset 未完成"
+            )
+            # POSITIVE: PR #130 实施印记
+            assert "batch 5 sunset" in content, (
+                f"{f.name} 缺 batch 5 sunset 实施 marker (PR #130)"
+            )
 
     def test_execution_service_has_dual_write_both_paths(self) -> None:
         """source code 静态校验: execution_service.py paper + live 各有 1 outbox 注入."""
@@ -188,8 +203,8 @@ class TestExecutionServiceDualWrite:
         # 两块都在 `if fills:` 内 (空 fill 不写)
         # 简单验: outbox enqueue 出现次数 == 2 (paper + live)
         # 注: 只数 batch 4 注入的, 用 marker
-        assert content.count("MVP 3.4 batch 4 dual-write") == 2, (
-            "execution_service.py 应有 2 个 batch 4 dual-write block (paper + live)"
+        assert content.count("MVP 3.4 batch 5 sunset") == 2, (
+            "execution_service.py 应有 2 个 batch 5 sunset block (paper + live)"
         )
 
 
@@ -205,7 +220,7 @@ class TestRiskEngineDualWrite:
         content = engine_path.read_text(encoding="utf-8")
         # outbox enqueue 必在 risk_event_log INSERT 之后, 但在 with 块退出前
         assert 'aggregate_type="risk"' in content
-        assert "MVP 3.4 batch 4 dual-write" in content
+        assert "MVP 3.4 batch 5 sunset" in content
         # 简单验: outbox 在 INSERT INTO risk_event_log 之后
         idx_insert = content.find("INSERT INTO risk_event_log")
         idx_outbox = content.find('aggregate_type="risk"')
@@ -230,13 +245,26 @@ class TestRiskEngineDualWrite:
         agg_id = f"{code or 'portfolio'}-{rule_id}-{ts.isoformat()}"
         assert agg_id.startswith("portfolio-intraday_portfolio_drop_5pct-")
 
-    def test_risk_outbox_failure_does_not_block_risk_event_log(self) -> None:
-        """outbox 失败 → 仅 log warning, risk_event_log INSERT 已 commit (atomic 保留)."""
-        # source code 静态校验: outbox try/except 在 INSERT 之后, 同 with 块
+    def test_risk_outbox_propagates_to_outer_except_post_sunset(self) -> None:
+        """MVP 3.4 batch 5 sunset (PR #130 2026-04-28): outbox 不再 silent_ok wrap.
+
+        sunset 后 risk/engine.py outbox enqueue NO LONGER 有 inner try/except.
+        失败 propagate 到 outer except → with conn ctx mgr 整 tx rollback (true atomic).
+        """
         engine_path = _BACKEND_DIR / "qm_platform" / "risk" / "engine.py"
         content = engine_path.read_text(encoding="utf-8")
-        # outbox 块必有自己的 try/except + warning log
-        assert "outbox enqueue 失败 (dual-write 过渡期 silent_ok)" in content
+        # NEGATIVE: silent_ok warning 已删除
+        assert "dual-write 过渡期 silent_ok" not in content, (
+            "risk/engine.py 仍存 silent_ok warning — sunset 未完成"
+        )
+        # POSITIVE: sunset marker (PR #130 印记)
+        assert "batch 5 sunset" in content, (
+            "risk/engine.py 缺 batch 5 sunset marker (PR #130)"
+        )
+        # POSITIVE: OutboxWriter 仍存 (sunset 仅去 wrap, 不删调用)
+        assert "OutboxWriter(conn).enqueue(" in content, (
+            "risk/engine.py outbox enqueue 不应被删 (sunset 仅去 silent wrap)"
+        )
 
 
 # ─── 4. (integration) 真 DB end-to-end dual-write ────────────────

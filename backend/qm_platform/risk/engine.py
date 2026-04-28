@@ -321,46 +321,35 @@ class PlatformRiskEngine:
                         json.dumps(action_result, default=str),
                     ),
                 )
-                # MVP 3.4 batch 4 dual-write: outbox event 在 risk_event_log INSERT 后
-                # 同 with 块. 注: best-effort 非真原子 (见上方注释), inner try/except
-                # swallow → with 退出仍 commit risk_event_log 即便 outbox 失败.
+                # MVP 3.4 batch 5 sunset (PR #130 2026-04-28): 删 inner try/except,
+                # outbox 失败 propagate 到 outer except (与 risk_event_log INSERT 失败
+                # 同级别 ERROR log + alert-and-continue, 不再 silent warn).
                 # event_type = rule action (sell_full/alert_only/...) 拼回 "risk.{action}"
                 # stream. aggregate_id = "{code|portfolio}-{rule_id}-{ts}" 单事件唯一.
-                # TODO(批 5 sunset): 老 risk_event_log 直写删除后, 移除 inner try/except
-                # 让 outbox 失败 propagate 到 outer except → 真原子 fail-loud.
-                try:
-                    OutboxWriter(conn).enqueue(
-                        aggregate_type="risk",
-                        aggregate_id=(
+                OutboxWriter(conn).enqueue(
+                    aggregate_type="risk",
+                    aggregate_id=(
+                        f"{result.code or 'portfolio'}-{result.rule_id}-"
+                        f"{context.timestamp.isoformat()}"
+                    ),
+                    event_type=rule.action,
+                    payload={
+                        "risk_id": (
                             f"{result.code or 'portfolio'}-{result.rule_id}-"
                             f"{context.timestamp.isoformat()}"
                         ),
-                        event_type=rule.action,
-                        payload={
-                            "risk_id": (
-                                f"{result.code or 'portfolio'}-{result.rule_id}-"
-                                f"{context.timestamp.isoformat()}"
-                            ),
-                            "strategy_id": context.strategy_id,
-                            "execution_mode": context.execution_mode,
-                            "rule_id": result.rule_id,
-                            "severity": rule.severity.value,
-                            "code": result.code,
-                            "shares": result.shares,
-                            "reason": result.reason,
-                            "action_taken": rule.action,
-                            "action_status": action_result.get("status", "unknown"),
-                            "timestamp": context.timestamp.isoformat(),
-                        },
-                    )
-                except Exception as outbox_exc:  # noqa: BLE001
-                    # outbox 失败不阻塞 risk_event_log INSERT (主审计仍生效).
-                    # 7 日 dual-write 观察期: 退役老 ad-hoc StreamBus 前必须 0 outbox 失败.
-                    logger.warning(
-                        "[risk-engine] outbox enqueue 失败 (dual-write 过渡期 silent_ok) "
-                        "rule=%s exc=%s",
-                        result.rule_id, type(outbox_exc).__name__, exc_info=True,
-                    )
+                        "strategy_id": context.strategy_id,
+                        "execution_mode": context.execution_mode,
+                        "rule_id": result.rule_id,
+                        "severity": rule.severity.value,
+                        "code": result.code,
+                        "shares": result.shares,
+                        "reason": result.reason,
+                        "action_taken": rule.action,
+                        "action_status": action_result.get("status", "unknown"),
+                        "timestamp": context.timestamp.isoformat(),
+                    },
+                )
         except Exception as e:  # noqa: BLE001 — log 失败不阻塞主路径
             logger.error(
                 "[risk-engine] risk_event_log INSERT failed rule=%s: %s: %s",
