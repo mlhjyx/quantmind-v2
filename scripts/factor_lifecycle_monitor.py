@@ -55,14 +55,20 @@ logger = logging.getLogger("factor_lifecycle")
 
 from engines.factor_lifecycle import (  # noqa: E402
     CRITICAL_RATIO,
+    DualPathComparison,
     TransitionDecision,
+    build_lifecycle_context,
+    compare_paths,
     count_days_below_critical,
+    default_lifecycle_pipeline,
     evaluate_transition,
 )
 
 STREAM_NAME = "qm:ai:monitoring"
 EVENT_TYPE = "factor_status_transition"
+DUAL_PATH_EVENT_TYPE = "factor_lifecycle_dual_path_mismatch"
 PERSISTENCE_LOOKBACK_DAYS = 30  # 回溯窗口 (大于持续性阈值 20 天)
+IC_SERIES_LOOKBACK_DAYS = 60  # 新路径 G1 t-stat 取最近 60 日 ic_20d 序列
 
 
 def _get_conn():
@@ -153,6 +159,149 @@ def _apply_transition(conn, decision: TransitionDecision) -> None:
             )
 
 
+# ============================================================================
+# MVP 3.5 batch 2 (Session 42) — 新路径 PlatformEvaluationPipeline 接入
+# ============================================================================
+
+
+def _load_ic_series(conn, factor_name: str, lookback_days: int):
+    """加载因子最近 N 天的 ic_20d 时间序列 (G1 t-stat 用).
+
+    Returns:
+      np.ndarray (升序), 或 None 若无数据. 注: 类型注解略以避 module-level np import
+      (engines/qm_platform 已统一 lazy numpy).
+    """
+    import numpy as np
+
+    sql = """
+        SELECT trade_date, ic_20d
+        FROM factor_ic_history
+        WHERE factor_name = %s
+          AND ic_20d IS NOT NULL
+        ORDER BY trade_date DESC
+        LIMIT %s
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (factor_name, lookback_days))
+        rows = cur.fetchall()
+    if not rows:
+        return None
+    rows.reverse()  # 升序
+    return np.asarray([float(r[1]) for r in rows], dtype=np.float64)
+
+
+def _load_factor_meta(conn, factor_name: str):
+    """加载因子注册表元信息 → FactorMeta (G10 hypothesis 用).
+
+    Returns:
+      FactorMeta or None.
+    """
+    from qm_platform.factor.interface import FactorMeta, FactorStatus
+
+    sql = """
+        SELECT id, name, category, direction, expression, code_content, hypothesis,
+               source, lookback_days, status, pool, gate_ic, gate_ir, gate_mono,
+               gate_t, ic_decay_ratio, created_at, updated_at
+        FROM factor_registry
+        WHERE name = %s
+        LIMIT 1
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (factor_name,))
+        row = cur.fetchone()
+    if row is None:
+        return None
+    try:
+        status_val = FactorStatus(row[9]) if row[9] else FactorStatus.CANDIDATE
+    except ValueError:
+        status_val = FactorStatus.CANDIDATE
+    return FactorMeta(
+        factor_id=row[0],
+        name=row[1],
+        category=row[2] or "unknown",
+        direction=int(row[3]) if row[3] is not None else 1,
+        expression=row[4],
+        code_content=row[5],
+        hypothesis=row[6],
+        source=row[7] or "manual",
+        lookback_days=row[8],
+        status=status_val,
+        pool=row[10] or "CANDIDATE",
+        gate_ic=float(row[11]) if row[11] is not None else None,
+        gate_ir=float(row[12]) if row[12] is not None else None,
+        gate_mono=float(row[13]) if row[13] is not None else None,
+        gate_t=float(row[14]) if row[14] is not None else None,
+        ic_decay_ratio=float(row[15]) if row[15] is not None else None,
+        created_at=str(row[16]) if row[16] is not None else "",
+        updated_at=str(row[17]) if row[17] is not None else "",
+    )
+
+
+def _publish_dual_path_mismatch(comparison: DualPathComparison) -> None:
+    """mismatch 时发事件 qm:ai:monitoring (新路径仅 log, 不阻塞决策)."""
+    from app.core.stream_bus import get_stream_bus
+
+    payload = {
+        "event_type": DUAL_PATH_EVENT_TYPE,
+        "factor_name": comparison.factor_name,
+        "old_label": comparison.old_label,
+        "new_label": comparison.new_label,
+        "new_decision_value": comparison.new_decision_value,
+        "mismatch_summary": comparison.mismatch_summary,
+        "old_decision": (
+            {
+                "from_status": comparison.old_decision.from_status,
+                "to_status": comparison.old_decision.to_status,
+                "reason": comparison.old_decision.reason,
+            }
+            if comparison.old_decision is not None
+            else None
+        ),
+    }
+    bus = get_stream_bus()
+    msg_id = bus.publish_sync(STREAM_NAME, payload, source="factor_lifecycle_monitor")
+    if msg_id:
+        logger.info("  [dual-path] published mismatch %s: %s", STREAM_NAME, msg_id)
+    else:
+        logger.warning("  [dual-path] publish to %s failed (non-blocking)", STREAM_NAME)
+
+
+def _evaluate_new_path(
+    conn,
+    factor_name: str,
+    old_decision: TransitionDecision | None,
+) -> DualPathComparison | None:
+    """新路径评估单因子 + 比对老路径 (batch 2 双路径 4 周观察期).
+
+    新路径仅 log 决策权威仍在老路径. 缺数据 / 异常 fail-soft (返 None, 不影响老路径).
+
+    Returns:
+      DualPathComparison or None (新路径数据不全跳过).
+    """
+    try:
+        ic_series = _load_ic_series(conn, factor_name, IC_SERIES_LOOKBACK_DAYS)
+        if ic_series is None or ic_series.size < 30:
+            # G1 需 ≥ 30 样本, 缺则跳过 (不算 mismatch)
+            return None
+        factor_meta = _load_factor_meta(conn, factor_name)
+        ctx = build_lifecycle_context(
+            factor_name,
+            ic_series=ic_series,
+            factor_meta=factor_meta,
+        )
+        pipeline = default_lifecycle_pipeline(context_loader=lambda _name: ctx)
+        report = pipeline.evaluate_full(factor_name)
+        return compare_paths(factor_name, old_decision, report)
+    except Exception as e:  # noqa: BLE001 — 新路径 fail-soft, 不影响老路径决策
+        logger.warning(
+            "  [dual-path] %s 评估异常 %s: %s (fail-soft, 老路径继续)",
+            factor_name,
+            type(e).__name__,
+            e,
+        )
+        return None
+
+
 def _publish_event(decision: TransitionDecision) -> None:
     """发布 qm:ai:monitoring 事件 (铁律 33: publish 失败 warning 不阻塞)."""
     from app.core.stream_bus import get_stream_bus
@@ -175,18 +324,31 @@ def _publish_event(decision: TransitionDecision) -> None:
         logger.warning("  publish to %s failed (non-blocking)", STREAM_NAME)
 
 
-def run(dry_run: bool = False, factor_filter: str | None = None) -> dict:
-    """主执行逻辑."""
+def run(
+    dry_run: bool = False,
+    factor_filter: str | None = None,
+    compare: bool = False,
+) -> dict:
+    """主执行逻辑.
+
+    Args:
+      dry_run: True 不写 DB / 不发事件.
+      factor_filter: 仅检查指定因子.
+      compare: True 启用 batch 2 新路径双路径比对 (4 周观察期, 老路径仍权威).
+    """
     logger.info("=" * 60)
     logger.info(
-        "[Lifecycle] 开始 (dry_run=%s, filter=%s, critical_ratio=%s)",
+        "[Lifecycle] 开始 (dry_run=%s, filter=%s, compare=%s, critical_ratio=%s)",
         dry_run,
         factor_filter,
+        compare,
         CRITICAL_RATIO,
     )
 
     conn = _get_conn()
     transitions: list[TransitionDecision] = []
+    comparisons: list[DualPathComparison] = []
+    mismatches: list[DualPathComparison] = []
     checked = 0
     no_data = 0
 
@@ -203,6 +365,29 @@ def run(dry_run: bool = False, factor_filter: str | None = None) -> dict:
             checked += 1
 
             decision = _compute_decision(name, status, tail)
+
+            # batch 2 新路径双路径比对 (在老路径决策后, 不影响老路径权威)
+            comparison: DualPathComparison | None = None
+            if compare:
+                comparison = _evaluate_new_path(conn, name, decision)
+                if comparison is not None:
+                    comparisons.append(comparison)
+                    if comparison.consistent:
+                        logger.info(
+                            "  [dual-path] %s: consistent (%s)",
+                            name,
+                            comparison.old_label,
+                        )
+                    else:
+                        logger.warning(
+                            "  [dual-path] %s: MISMATCH %s",
+                            name,
+                            comparison.mismatch_summary,
+                        )
+                        mismatches.append(comparison)
+                        if not dry_run:
+                            _publish_dual_path_mismatch(comparison)
+
             if decision is None:
                 continue
 
@@ -232,12 +417,14 @@ def run(dry_run: bool = False, factor_filter: str | None = None) -> dict:
     finally:
         conn.close()
 
-    logger.info(
-        "[Lifecycle] 完成: 检查=%d, 无数据=%d, 转换=%d",
-        checked,
-        no_data,
-        len(transitions),
+    summary = (
+        f"[Lifecycle] 完成: 检查={checked}, 无数据={no_data}, 转换={len(transitions)}"
     )
+    if compare:
+        summary += (
+            f", dual-path 已比对={len(comparisons)}, mismatch={len(mismatches)}"
+        )
+    logger.info(summary)
     return {
         "checked": checked,
         "no_data": no_data,
@@ -251,6 +438,16 @@ def run(dry_run: bool = False, factor_filter: str | None = None) -> dict:
             }
             for d in transitions
         ],
+        "dual_path_compared": len(comparisons),
+        "dual_path_mismatches": [
+            {
+                "factor": c.factor_name,
+                "old": c.old_label,
+                "new": c.new_label,
+                "summary": c.mismatch_summary,
+            }
+            for c in mismatches
+        ],
     }
 
 
@@ -258,9 +455,19 @@ def main():
     parser = argparse.ArgumentParser(description="因子生命周期自动状态转换 (Phase 3 MVP A)")
     parser.add_argument("--dry-run", action="store_true", help="不写 DB/不发事件")
     parser.add_argument("--factor", type=str, default=None, help="仅检查指定因子")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="启用 batch 2 新路径双路径比对 (PlatformEvaluationPipeline G1+G10), "
+        "老路径决策权威, 新路径仅 log + mismatch 告警",
+    )
     args = parser.parse_args()
 
-    result = run(dry_run=args.dry_run, factor_filter=args.factor)
+    result = run(
+        dry_run=args.dry_run,
+        factor_filter=args.factor,
+        compare=args.compare,
+    )
     logger.info("结果: %s", result)
 
 
