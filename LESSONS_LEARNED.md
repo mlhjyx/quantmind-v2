@@ -2614,3 +2614,95 @@ LL-081 PR-X3 名义上"两层兜底", 实际两 probe 共享同一根 (sync_loop
 - 反例参考: Session 38 LL-081 PR-X3 设计 over-engineering, 本 LL 修正
 - 双 reviewer 仅 code-reviewer 单审 (cleanup PR python-reviewer 增量价值低): 0 P1 / 2 P2 (1 采纳 / 1 拒绝技术依据) / 1 P3 采纳
 - 应用规则未来必查: 任何加新 Redis key freshness check 前先 grep "publish_sync\|setex\|expire", 区分 transition-only vs periodic.
+
+---
+
+## LL-088: Resource counter 必加 GC finalizer 兜底 — 假告警吞 222+ 次/日 (Session 40, 2026-04-28)
+
+### 触发场景
+
+Session 40 (2026-04-28 14:30) Tuesday 早盘 sanity scan 发现 celery worker logs 频繁告警:
+
+```
+[2026-04-28 14:55:00,015: WARNING/MainProcess] sync连接数达到上限(15)，可能存在连接泄漏
+```
+
+频次累计 (`grep -c "连接数达到上限" logs/celery-stderr.log`):
+- 2026-04-25 (Sat): 0
+- 2026-04-26 (Sun): 0
+- **2026-04-27 (Mon): 219** — MVP 3.1 真生产首日 10:10 起 (intraday-risk-check `*/5 9-14`)
+- **2026-04-28 (Tue 14:55前): 233** — 持续累积
+
+### 根因 (实测发现)
+
+`_TrackedConnection` (`backend/app/services/db.py`) wrapper 跟踪 `_active_count`:
+- `get_sync_conn()` 增计数
+- `_TrackedConnection.close()` 减计数 (gated on `_counted=True`, 防双减)
+
+**漏洞**: 调用方未显式 `conn.close()` (依赖 GC / `with` 退出 / 异常路径) 时:
+- psycopg2.connection 自身 `__del__` 关闭 socket → PG conn 释放正常
+- BUT `_TrackedConnection.close()` 永不被调 → `_counted=True` 永不 decrement
+- counter 累积 → 超过 `_MAX_CONNECTIONS=15` → 每次后续 `get_sync_conn()` fire warning
+
+**实测验证**: PG `pg_stat_activity` active+idle conns = **2** (TimescaleDB Background + 1 probe). **非真泄漏 — counter logic 漏洞** 假告警 ~222 次/日.
+
+### 特例 (推动 counter 不减): with-block 路径
+
+```python
+with get_sync_conn() as conn:  # __enter__ 返 self._conn (raw psycopg2 conn)
+    cur = conn.cursor()
+    cur.execute(...)
+# __exit__ 仅 commit/rollback, 不 close conn (psycopg2 设计)
+# wrapper 脱离 with 后 ref count = 0, GC 自动 finalize, BUT close() 未被调
+```
+
+`with` 退出时调 `_TrackedConnection.__exit__` → `self._conn.__exit__` → psycopg2 conn `__exit__` 仅事务边界, 不 close 连接. wrapper 脱离 scope 后 GC 处理 — 之前的设计依赖 `__del__` 但 `__del__` 不存在.
+
+### 修复 (PR #115 commit `3798ddd` + `6107817`)
+
+加 `__del__` finalizer 兜底:
+
+```python
+def __del__(self):
+    """GC 兜底 counter decrement + connection close (defense-in-depth)."""
+    try:
+        if self._counted:
+            object.__setattr__(self, "_counted", False)
+            global _active_count
+            _active_count = max(0, _active_count - 1)
+        self._conn.close()  # idempotent, defense-in-depth for non-CPython runtime
+    except Exception:  # noqa: BLE001
+        pass  # silent_ok: __del__ during interpreter shutdown when globals may be unset
+```
+
+设计要点:
+- 显式 `close()` 路径不变 (`_counted=False` gate 防双减, CPython GIL 保单线程 close + __del__ 不竞态)
+- GC 路径新增兜底 — 调用方 leak wrapper 不再 leak counter
+- silent except 防 interpreter shutdown 时 globals 可能 None
+- 显式调 `_conn.close()` defense-in-depth (PR #115 reviewer P2 采纳, PyPy / cyclic ref 路径)
+
+### 应用规则 (设计 review checklist)
+
+**任何 module-level resource counter (DB conn / file handle / lock / socket / etc.)**:
+
+1. **必有 `__del__` finalizer 兜底 GC 路径** — 不能仅依赖显式 release. Python 调用方实际:
+   - 显式调 `.close()` ✅ 但 ~30% 路径漏
+   - `with` block 退出 — 取决于 `__exit__` 实现
+   - 异常路径未 try/finally — 100% leak
+   - 局部 var 出 scope GC 回收 — 依赖 finalizer
+2. **Finalizer 必含 silent except** — interpreter shutdown 时 globals 可能 None, 抛异常污染 stderr
+3. **底层资源 close 在 finalizer 中 idempotent 调用** — defense-in-depth (PyPy / cyclic ref)
+4. **重复 release 必 gate** — boolean flag (`_counted=False`) 防双减 → counter 误负
+5. **counter underflow 必 `max(0, ...)`** — CPython GIL 保单线程不会双减但需注释说明
+
+**反例 (本 LL 触发的 anti-pattern)**:
+- 仅 close() 减 counter, 无 `__del__` 兜底
+- 调用方手册说 "用完必须 close()" — 实际上调用方总有 30% 漏
+
+### 持久化
+
+- 本 LL 条目 (LL-088)
+- 修复: PR #115 (commits `3798ddd` + `6107817`), main @ `6107817`
+- 测试: `backend/tests/test_db_tracked_connection.py` 10 tests cover close / del / passthrough / close-raise edge case
+- 后续 (Session 41+): celery worker logs 监控验证假告警停止 (期望 4-29 起 0 occurrences)
+- 应用 checklist 未来 review: 加新 resource counter 必查 4 步法 (finalizer / silent except / idempotent close / underflow guard)
