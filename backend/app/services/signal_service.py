@@ -18,9 +18,18 @@ from engines.paper_broker import PaperBroker
 from engines.signal_engine import (
     SignalConfig,
 )
+from engines.size_neutral import load_ln_mcap_for_date
 
 from app.config import settings
 from app.services.notification_service import send_alert
+
+# Stage 3.0 wrapper (Session 40 PR #116 reviewer P2.1 采纳): module-top imports.
+# 原 lazy imports 内嵌 generate_signals() 函数体, 违 PR #71 precedent (s1_monthly_ranking.py:61
+# "原 lazy import 内嵌 ... 隐藏 import errors + 破 smoke 铁律 10b"). 16:30 schtask spawn
+# 时 import 失败 → 假 ModuleNotFoundError runtime fail, smoke 测不到. 提到 module-top.
+from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
+from backend.qm_platform.strategy.interface import StrategyContext as _SDKStrategyContext
 
 logger = structlog.get_logger(__name__)
 
@@ -146,14 +155,10 @@ class SignalService:
         # - regression 5yr+12yr max_diff=0 硬门保证 (铁律 15)
         # - dry_run 路径不变 (SDK call 是 pure compute, 不写 DB; 后续 _write_signals
         #   gated on `if not dry_run`)
-        from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
-        from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
-        from backend.qm_platform.strategy.interface import StrategyContext as _SDKStrategyContext
 
         # ln_mcap 加载 (size_neutral 走 SDK ctx.metadata, 不再 signal_service 内 apply)
         _ln_mcap = None
         if config.size_neutral_beta > 0:
-            from engines.size_neutral import load_ln_mcap_for_date
             _ln_mcap = load_ln_mcap_for_date(trade_date, conn)
 
         # industry pd.Series → dict (SDK industry_map 契约, NaN dropna 防污染)
@@ -169,6 +174,13 @@ class SignalService:
                 f"industry 必须是 pd.Series 或 dict, got {type(industry).__name__}"
             )
 
+        # PR #116 reviewer P2.2 采纳: capital 字段当前 latent — PortfolioBuilder.build 不读
+        # ctx.capital, 25 days bit-identical parity test 已证. 但 StrategyContext.capital
+        # 是 Decimal 字段 + 文档 "策略分配的资本", Wave 3 multi-strategy capital allocation
+        # (MVP 3.4+) 时若读此值, settings.PAPER_INITIAL_CAPITAL 在 EXECUTION_MODE=live 下
+        # 是 paper nominal (¥1M) 不是真 QMT NAV (~¥1.014M). 改用真 NAV 时需读
+        # `performance_series` (latest live row) 或 QMTClient.get_nav(). 当前 latent OK,
+        # Wave 3 multi-strategy 实施前必修.
         _ctx = _SDKStrategyContext(
             trade_date=trade_date,
             capital=Decimal(str(settings.PAPER_INITIAL_CAPITAL)),
