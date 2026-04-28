@@ -279,57 +279,28 @@ class SignalService:
         if not dry_run:
             self._write_signals(conn, strategy_id, trade_date, signals_list)
 
-        # ── MVP 3.4 batch 4 dual-write: outbox 与 signals INSERT 同 caller tx ──
-        # outbox 走 OutboxWriter.enqueue (co-tx 模式, caller commit 时业务+事件原子).
-        # 即使 StreamBus publish 失败 (Redis down), outbox 行已落 DB, publisher
-        # worker (batch 2, 30s beat) 后续保证 publish 到 Redis Stream (at-least-once).
-        # aggregate_id 用 batch-level composite (strategy_id + trade_date), 单次
-        # 信号生成 = 1 outbox 行 (非 per-stock, 对齐 StreamBus 当前粒度).
+        # ── MVP 3.4 batch 5 sunset (PR #130, 2026-04-28): outbox 单源 fail-loud ──
+        # batch 4 dual-write 期老 StreamBus 已退役 (0 production consumer 实测), 改
+        # outbox-only. enqueue 失败 propagate, 调用方 rollback 整 tx (signals INSERT
+        # + outbox 原子). aggregate_id batch-level (strategy_id + trade_date), 单次
+        # 信号生成 = 1 outbox 行. outbox publisher worker 30s beat 路由到 Redis
+        # Stream qm:signal:generated (与原 StreamBus 名一致, 未来 consumers 兼容).
         if not dry_run:
-            try:
-                from qm_platform.observability import OutboxWriter
+            from qm_platform.observability import OutboxWriter
 
-                outbox_writer = OutboxWriter(conn)
-                outbox_writer.enqueue(
-                    aggregate_type="signal",
-                    aggregate_id=f"{strategy_id}-{trade_date}",
-                    event_type="generated",
-                    payload={
-                        "signal_id": f"{strategy_id}-{trade_date}",
-                        "trade_date": str(trade_date),
-                        "strategy_id": strategy_id,
-                        "stock_count": len(signals_list),
-                        "is_rebalance": is_rebalance,
-                        "beta": float(beta) if beta else None,
-                    },
-                )
-            except Exception:
-                # outbox enqueue 失败 → log 但不阻塞主路径 (StreamBus 仍尝试 publish).
-                # 7 日 dual-write 观察期: outbox + StreamBus 比对一致, 退役老路径前
-                # 必须 0 outbox 失败. silent_ok 允许在过渡期, 批 5 后 fail-loud
-                # (sunset: 7 日观察通过 + 老 StreamBus 退役 → 此 silent path 升 raise).
-                logger.warning(
-                    "[SignalService] outbox enqueue 失败 (dual-write 过渡期 silent_ok)",
-                    exc_info=True,
-                )
-
-        # ── StreamBus: 信号生成完成事件 (老路径, 7 日 dual-write 观察期保留) ──
-        try:
-            from app.core.stream_bus import STREAM_SIGNAL_GENERATED, get_stream_bus
-
-            get_stream_bus().publish_sync(
-                STREAM_SIGNAL_GENERATED,
-                {
+            OutboxWriter(conn).enqueue(
+                aggregate_type="signal",
+                aggregate_id=f"{strategy_id}-{trade_date}",
+                event_type="generated",
+                payload={
+                    "signal_id": f"{strategy_id}-{trade_date}",
                     "trade_date": str(trade_date),
                     "strategy_id": strategy_id,
                     "stock_count": len(signals_list),
                     "is_rebalance": is_rebalance,
                     "beta": float(beta) if beta else None,
                 },
-                source="signal_service",
             )
-        except Exception:
-            logger.warning("[SignalService] StreamBus publish失败", exc_info=True)
 
         return SignalResult(
             target_weights=hedged_target,

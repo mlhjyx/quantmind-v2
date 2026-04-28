@@ -204,52 +204,27 @@ class ExecutionService:
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
 
-        # ── MVP 3.4 batch 4 dual-write (paper): outbox 与 paper_broker 持久化同 caller tx ──
-        # paper_broker 写持仓 / trade_log via conn (caller-managed); 加 outbox 同 tx.
-        # aggregate_id batch-level composite (strategy + exec_date + paper).
+        # ── MVP 3.4 batch 5 sunset (PR #130 2026-04-28, paper): outbox 单源 fail-loud ──
+        # batch 4 dual-write 期老 StreamBus 已退役 (0 production consumer 实测).
+        # outbox enqueue 与 paper_broker 持久化同 caller tx, 失败 propagate
+        # rollback 整 tx (持仓 INSERT + trade_log + outbox 原子).
         if fills:
-            try:
-                from qm_platform.observability import OutboxWriter
+            from qm_platform.observability import OutboxWriter
 
-                outbox_writer = OutboxWriter(conn)
-                outbox_writer.enqueue(
-                    aggregate_type="fill",
-                    aggregate_id=f"{strategy_id}-{exec_date}-paper",
-                    event_type="executed",
-                    payload={
-                        "fill_id": f"{strategy_id}-{exec_date}-paper",
-                        "mode": "paper",
-                        "exec_date": str(exec_date),
-                        "strategy_id": strategy_id,
-                        "fill_count": len(fills),
-                        "pending_count": len(new_pending),
-                        "nav": result.nav,
-                    },
-                )
-            except Exception:
-                logger.warning(
-                    "[ExecutionService paper] outbox enqueue 失败 (dual-write 过渡期 silent_ok)",
-                    exc_info=True,
-                )
-
-        # ── StreamBus: 订单执行结果事件 (老路径, 7 日 dual-write 观察期保留) ──
-        if fills:
-            try:
-                from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
-
-                get_stream_bus().publish_sync(
-                    STREAM_EXECUTION_ORDER_FILLED,
-                    {
-                        "mode": "paper",
-                        "exec_date": str(exec_date),
-                        "fill_count": len(fills),
-                        "pending_count": len(new_pending),
-                        "nav": result.nav,
-                    },
-                    source="execution_service",
-                )
-            except Exception:
-                logger.warning("[ExecutionService] StreamBus publish失败", exc_info=True)
+            OutboxWriter(conn).enqueue(
+                aggregate_type="fill",
+                aggregate_id=f"{strategy_id}-{exec_date}-paper",
+                event_type="executed",
+                payload={
+                    "fill_id": f"{strategy_id}-{exec_date}-paper",
+                    "mode": "paper",
+                    "exec_date": str(exec_date),
+                    "strategy_id": strategy_id,
+                    "fill_count": len(fills),
+                    "pending_count": len(new_pending),
+                    "nav": result.nav,
+                },
+            )
 
         return result
 
@@ -353,56 +328,29 @@ class ExecutionService:
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
 
-        # ── MVP 3.4 batch 4 dual-write (live): outbox 与 _save_live_fills 同 caller tx ──
+        # ── MVP 3.4 batch 5 sunset (PR #130 2026-04-28, live): outbox 单源 fail-loud ──
+        # batch 4 dual-write 期老 StreamBus 已退役 (0 production consumer 实测).
         # _save_live_fills 调用方 (run_paper_trading) 持有 conn 并 commit, outbox 同 tx.
-        # PR #122 reviewer P1.2 采纳: dry_run 保护是**隐式**的 (`if not dry_run` 在 L311-324
-        # 跳过 QMT 适配器 → fills 为空 → 此 `if fills:` guard 跳过 outbox enqueue).
-        # 安全性依赖 fills 在 dry_run 下确实为空, 测试加 static check 防 fills 注入式
-        # 测试 path 误污染 event_outbox.
-        # TODO(批 5 sunset): silent_ok try/except + 老 StreamBus 删除时一并升 fail-loud.
+        # PR #122 reviewer P1.2: dry_run 保护是**隐式** (`if not dry_run` L311-324
+        # 跳 QMT 适配器 → fills=[] → 此 `if fills:` guard 跳 outbox). 测试 static
+        # check 防 fills 注入式 path 误污染 event_outbox.
         if fills:
-            try:
-                from qm_platform.observability import OutboxWriter
+            from qm_platform.observability import OutboxWriter
 
-                outbox_writer = OutboxWriter(conn)
-                outbox_writer.enqueue(
-                    aggregate_type="fill",
-                    aggregate_id=f"{strategy_id}-{exec_date}-live",
-                    event_type="executed",
-                    payload={
-                        "fill_id": f"{strategy_id}-{exec_date}-live",
-                        "mode": "live",
-                        "exec_date": str(exec_date),
-                        "strategy_id": strategy_id,
-                        "fill_count": len(fills),
-                        "pending_count": len(new_pending),
-                        "nav": total_value,
-                    },
-                )
-            except Exception:
-                logger.warning(
-                    "[ExecutionService live] outbox enqueue 失败 (dual-write 过渡期 silent_ok)",
-                    exc_info=True,
-                )
-
-        # ── StreamBus: live订单执行结果事件 (老路径, 7 日 dual-write 观察期保留) ──
-        if fills:
-            try:
-                from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
-
-                get_stream_bus().publish_sync(
-                    STREAM_EXECUTION_ORDER_FILLED,
-                    {
-                        "mode": "live",
-                        "exec_date": str(exec_date),
-                        "fill_count": len(fills),
-                        "pending_count": len(new_pending),
-                        "nav": total_value,
-                    },
-                    source="execution_service",
-                )
-            except Exception:
-                logger.warning("[ExecutionService] StreamBus publish失败", exc_info=True)
+            OutboxWriter(conn).enqueue(
+                aggregate_type="fill",
+                aggregate_id=f"{strategy_id}-{exec_date}-live",
+                event_type="executed",
+                payload={
+                    "fill_id": f"{strategy_id}-{exec_date}-live",
+                    "mode": "live",
+                    "exec_date": str(exec_date),
+                    "strategy_id": strategy_id,
+                    "fill_count": len(fills),
+                    "pending_count": len(new_pending),
+                    "nav": total_value,
+                },
+            )
 
         return result
 

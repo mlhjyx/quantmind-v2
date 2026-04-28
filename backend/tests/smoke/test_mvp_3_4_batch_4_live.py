@@ -34,13 +34,13 @@ def _build_smoke_code() -> str:
         # 验 batch 4 注入 marker 文本在 source 中 (静态防 dual-write 被移除)
         "from pathlib import Path; "
         f"signal_path = Path(r'{backend_path_str}') / 'app' / 'services' / 'signal_service.py'; "
-        "assert 'MVP 3.4 batch 4 dual-write' in signal_path.read_text(encoding='utf-8'), "
+        "assert 'MVP 3.4 batch 5 sunset' in signal_path.read_text(encoding='utf-8'), "
         "'signal_service.py batch 4 dual-write marker 丢失'; "
         f"exec_path = Path(r'{backend_path_str}') / 'app' / 'services' / 'execution_service.py'; "
-        "assert exec_path.read_text(encoding='utf-8').count('MVP 3.4 batch 4 dual-write') == 2, "
+        "assert exec_path.read_text(encoding='utf-8').count('MVP 3.4 batch 5 sunset') == 2, "
         "'execution_service.py 应有 2 个 batch 4 dual-write block (paper + live)'; "
         f"risk_path = Path(r'{backend_path_str}') / 'qm_platform' / 'risk' / 'engine.py'; "
-        "assert 'MVP 3.4 batch 4 dual-write' in risk_path.read_text(encoding='utf-8'), "
+        "assert 'MVP 3.4 batch 5 sunset' in risk_path.read_text(encoding='utf-8'), "
         "'risk/engine.py batch 4 dual-write marker 丢失'; "
         "print('OK 4domain_dual_write boot')"
     )
