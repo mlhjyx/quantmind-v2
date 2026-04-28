@@ -373,15 +373,7 @@ def compute_composite_decision(
     if mode == CompositeMode.OFF:
         return old_decision
 
-    # 老路径已 demote → 直接返 (老路径优先权: 含 ic_ma20/60/ratio 实数据,
-    # 而新路径合成只能近似填)
-    if old_decision is not None and old_decision.to_status != FactorStatus.ACTIVE.value:
-        return old_decision
-
-    # 新路径合成只在 active 状态 (warning/critical 已是 demoted)
-    if current_status != FactorStatus.ACTIVE.value:
-        return old_decision  # 可能 None (active→active 无变化)
-
+    # 计算新路径触发集 (G1_ONLY 仅 G1 / STRICT 含 G10)
     failed_gates = extract_failed_gate_names(new_report)
     triggers: set[str] = set()
     if mode == CompositeMode.G1_ONLY:
@@ -393,16 +385,40 @@ def compute_composite_decision(
         if G10_GATE_NAME in failed_gates:
             triggers.add(G10_GATE_NAME)
 
+    # P1.1 fix (reviewer 2026-04-28 PR #128): 老路径 warning→active recovery 路径
+    # 若新路径 triggers 非空 → suppress recovery (因子留在 warning, 不应自动恢复).
+    # 设计意图: ratio 已恢复 (decay 逆转) 但 G1 仍 fail (absolute insignificance) → 保守
+    # 保持 demoted, 防 "ratio 假恢复 + 真无效" 的误恢复.
+    if (
+        old_decision is not None
+        and old_decision.from_status == FactorStatus.WARNING.value
+        and old_decision.to_status == FactorStatus.ACTIVE.value
+        and triggers
+    ):
+        return None  # suppress recovery, factor stays in warning
+
+    # 老路径已 demote (warning/critical) → 直接返 (老路径优先权: 含 ic_ma20/60/ratio 实数据)
+    if old_decision is not None and old_decision.to_status != FactorStatus.ACTIVE.value:
+        return old_decision
+
+    # 新路径合成只在 active 状态 (warning/critical 已是 demoted, 由老路径主导持续性升级)
+    if current_status != FactorStatus.ACTIVE.value:
+        return old_decision  # 可能 None (active→active 无变化, 或 warning→active recovery 无 trigger)
+
     if not triggers:
-        # 新路径未触发, 老路径也无变化 (上面已检) → 透传
+        # 新路径未触发, 老路径也无变化 → 透传
         return old_decision
 
     # 合成 active → warning (新路径检测到 absolute insignificance / hypothesis 缺失)
+    # P2.2 fix (reviewer 2026-04-28 PR #128): 显式 math.isnan 检查 (NaN 截true 但
+    # 比较 False, 原 `if safe_ma60` 真路径 coincidental).
+    import math as _math
+
     safe_ma20 = float(ic_ma20) if ic_ma20 is not None else float("nan")
     safe_ma60 = float(ic_ma60) if ic_ma60 is not None else float("nan")
     safe_ratio = (
         abs(safe_ma20) / abs(safe_ma60)
-        if safe_ma60 and abs(safe_ma60) >= MIN_ABS_IC_MA60
+        if not _math.isnan(safe_ma60) and abs(safe_ma60) >= MIN_ABS_IC_MA60
         else float("nan")
     )
     reason = f"composite_{mode.value} triggered by {sorted(triggers)}"
