@@ -65,6 +65,23 @@ class TestCloseExplicit:
         wrapper.close()
         assert db_module._active_count == 0  # not -1
 
+    def test_close_decrement_even_when_underlying_conn_raises(self, db_module) -> None:
+        """PR #115 reviewer P3 follow-up: 底层 conn.close() 抛异常 (e.g., broken pipe)
+        时, counter 已 decrement (close() 顺序: counter 先减, 再调 self._conn.close()).
+        防 regression 误改顺序导致 broken pipe 后 counter 永不减.
+        """
+        mock_conn = MagicMock()
+        mock_conn.close.side_effect = OSError("broken pipe")
+        wrapper = db_module._TrackedConnection(mock_conn)
+        db_module._active_count = 1
+        with pytest.raises(OSError, match="broken pipe"):
+            wrapper.close()
+        assert db_module._active_count == 0  # 异常前已减 ✓
+        # _counted=False 后续 __del__ 走 no-op gate, 不双减
+        del wrapper
+        gc.collect()
+        assert db_module._active_count == 0
+
 
 # ─── __del__ GC finalizer (Session 40 LL-088) ─────────────────
 
