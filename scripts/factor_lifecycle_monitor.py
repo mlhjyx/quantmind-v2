@@ -67,13 +67,16 @@ logger = logging.getLogger("factor_lifecycle")
 
 from engines.factor_lifecycle import (  # noqa: E402
     CRITICAL_RATIO,
+    CompositeMode,
     DualPathComparison,
     TransitionDecision,
     build_lifecycle_context,
     compare_paths,
+    compute_composite_decision,
     count_days_below_critical,
     default_lifecycle_pipeline,
     evaluate_transition,
+    extract_failed_gate_names,
 )
 
 STREAM_NAME = "qm:ai:monitoring"
@@ -617,6 +620,26 @@ def _replay_one_factor(
     report = pipeline.evaluate_full(factor_name)
     comparison = compare_paths(factor_name, old_decision, report)
 
+    # MVP 3.5 Follow-up B (Session 43): 计算 3 mode 复合决策 demote 标志 (分析用)
+    ic_ma20_val = float(tail[-1]["ic_ma20"]) if tail[-1]["ic_ma20"] is not None else None
+    ic_ma60_val = float(tail[-1]["ic_ma60"]) if tail[-1]["ic_ma60"] is not None else None
+    failed_gates = extract_failed_gate_names(report)
+    composite_demote: dict[str, bool] = {}
+    for mode in (CompositeMode.OFF, CompositeMode.G1_ONLY, CompositeMode.STRICT):
+        decision = compute_composite_decision(
+            factor_name=factor_name,
+            current_status="active",
+            old_decision=old_decision,
+            new_report=report,
+            mode=mode,
+            ic_ma20=ic_ma20_val,
+            ic_ma60=ic_ma60_val,
+        )
+        # demote = decision 存在 AND to_status != active
+        composite_demote[mode.value] = (
+            decision is not None and decision.to_status != "active"
+        )
+
     return {
         "snapshot": snapshot.isoformat(),
         "factor": factor_name,
@@ -629,8 +652,13 @@ def _replay_one_factor(
             if comparison.old_decision is not None
             else None
         ),
-        "ic_ma20": float(tail[-1]["ic_ma20"]) if tail[-1]["ic_ma20"] is not None else None,
-        "ic_ma60": float(tail[-1]["ic_ma60"]) if tail[-1]["ic_ma60"] is not None else None,
+        "ic_ma20": ic_ma20_val,
+        "ic_ma60": ic_ma60_val,
+        # Follow-up B 复合决策 demote 标志 (per mode)
+        "failed_gates": sorted(failed_gates),
+        "composite_demote_off": composite_demote["off"],
+        "composite_demote_g1_only": composite_demote["g1-only"],
+        "composite_demote_strict": composite_demote["strict"],
     }
 
 
@@ -715,6 +743,10 @@ def replay(
             "other": 0,
         }
         per_factor_mismatch: dict[str, int] = {}
+        # MVP 3.5 Follow-up B: 各 composite mode 累计 demote count (分析用)
+        composite_demote_counts: dict[str, int] = {
+            "off": 0, "g1-only": 0, "strict": 0,
+        }
 
         for snapshot in fridays:
             for fname in factor_names:
@@ -750,6 +782,14 @@ def replay(
                 else:
                     mismatch_count += 1
                     per_factor_mismatch[fname] = per_factor_mismatch.get(fname, 0) + 1
+
+                # Follow-up B: 累计 composite demote per mode (分析 OR 复合规则触发率)
+                if row.get("composite_demote_off"):
+                    composite_demote_counts["off"] += 1
+                if row.get("composite_demote_g1_only"):
+                    composite_demote_counts["g1-only"] += 1
+                if row.get("composite_demote_strict"):
+                    composite_demote_counts["strict"] += 1
 
                 details.append(row)
     finally:
@@ -811,6 +851,10 @@ def replay(
         "sunset_threshold": sunset_mismatch_threshold,
         "recommendation": recommendation,
         "reasoning": reasoning,
+        # MVP 3.5 Follow-up B: OR 复合决策 demote 总数 per mode
+        # off = 仅老路径 (生产 baseline) / g1-only = 老 OR G1 fail / strict = 老 OR (G1|G10)
+        # 用于 Phase 2 wire-up 前评估 demote 增长合理性
+        "composite_demote_counts": composite_demote_counts,
     }
 
     logger.info("[Replay] 完成: total=%d mismatch=%d (%.2f%%) → %s",

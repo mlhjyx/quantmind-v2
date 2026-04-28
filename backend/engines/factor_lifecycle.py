@@ -287,6 +287,137 @@ def build_lifecycle_context(
     )
 
 
+# ============================================================================
+# MVP 3.5 Follow-up B (Session 43 2026-04-28) — OR 复合决策规则
+# ============================================================================
+#
+# 来源: PR #127 12 周历史回放发现老/新路径测互补现象 (225 P1 reverse: 老 demote/
+# 新 keep, 新漏掉 decay 信号). 不能 sunset 老路径, 应改 OR 复合 (任一 demote → demote).
+#
+# 设计意图:
+#   - 老路径 evaluate_transition 测 IC decay (regime/crowding 检测)
+#   - 新路径 G1 测 IC 绝对显著性 (Harvey 2016 t > 2.5), G10 测 hypothesis 完整性
+#   - OR 复合: 任一路径判 demote → demote
+#   - 模式分级: off (本 PR 默认, 兼容生产) / g1-only (仅 G1 fail 触发, 防 hypothesis
+#     缺失因子降级) / strict (G1 OR G10 fail 触发)
+#
+# 本 PR 仅交付**纯函数 + replay 分析支持**, 不改生产 run() 行为. Phase 2 单独 PR
+# wire 到 production (要求实战 replay 见 demote count 合理).
+
+
+class CompositeMode(StrEnum):
+    """OR 复合决策模式."""
+
+    OFF = "off"          # 仅老路径 (生产兼容默认)
+    G1_ONLY = "g1-only"  # 老 OR (G1 fail) — 防 G10 hypothesis 缺失批量降级
+    STRICT = "strict"    # 老 OR (G1 OR G10 fail)
+
+
+# Gate names matching qm_platform.eval.gates.{g1_ic_significance,g10_hypothesis}.name
+G1_GATE_NAME = "G1_ic_significance"
+G10_GATE_NAME = "G10_hypothesis"
+
+
+def extract_failed_gate_names(report: Any) -> set[str]:
+    """从 EvaluationReport 提取未通过 Gate 名集合.
+
+    Args:
+      report: qm_platform.eval.EvaluationReport (鸭子类型 — 取 .gate_results).
+        每 GateResult 必有 .gate_name 和 .passed 属性.
+
+    Returns:
+      未通过 Gate 名集合 (e.g. {"G1_ic_significance"}). report=None 或缺
+      gate_results → 空集合 (fail-safe).
+    """
+    if report is None:
+        return set()
+    results = getattr(report, "gate_results", None)
+    if not results:
+        return set()
+    return {r.gate_name for r in results if not getattr(r, "passed", True)}
+
+
+def compute_composite_decision(
+    factor_name: str,
+    current_status: str,
+    old_decision: TransitionDecision | None,
+    new_report: Any,
+    mode: CompositeMode = CompositeMode.OFF,
+    *,
+    ic_ma20: float | None = None,
+    ic_ma60: float | None = None,
+) -> TransitionDecision | None:
+    """OR 复合决策 — 老路径 OR 新路径任一 demote → demote.
+
+    决策语义:
+      - mode=OFF: 直接返 old_decision (老路径权威, 生产 backward-compat)
+      - mode=G1_ONLY: 老 demote OR (G1_ic_significance fail) → 老 demote 时返
+        old_decision; 新路径 G1 fail 但老路径 keep 时合成 active→warning
+        (TransitionDecision reason 标 'composite_g1_only').
+      - mode=STRICT: 老 demote OR (G1 OR G10 fail) → 同上但 G10 也参与触发.
+
+    Args:
+      factor_name: 因子名 (合成决策用).
+      current_status: 当前状态 (active/warning/critical/...). 仅 active 状态新路径
+        可触发 demote (warning/critical 已是 demoted, 由老路径主导持续性升级).
+      old_decision: 老路径输出 (None 或 TransitionDecision).
+      new_report: 新路径 EvaluationReport (取 gate_results).
+      mode: 复合模式.
+      ic_ma20 / ic_ma60: 合成决策时填入 TransitionDecision 字段 (审计/log 用),
+        缺省 NaN. 不参与判定.
+
+    Returns:
+      TransitionDecision (老或合成) 或 None (无变化).
+    """
+    # OFF mode: 透传老决策, 生产兼容
+    if mode == CompositeMode.OFF:
+        return old_decision
+
+    # 老路径已 demote → 直接返 (老路径优先权: 含 ic_ma20/60/ratio 实数据,
+    # 而新路径合成只能近似填)
+    if old_decision is not None and old_decision.to_status != FactorStatus.ACTIVE.value:
+        return old_decision
+
+    # 新路径合成只在 active 状态 (warning/critical 已是 demoted)
+    if current_status != FactorStatus.ACTIVE.value:
+        return old_decision  # 可能 None (active→active 无变化)
+
+    failed_gates = extract_failed_gate_names(new_report)
+    triggers: set[str] = set()
+    if mode == CompositeMode.G1_ONLY:
+        if G1_GATE_NAME in failed_gates:
+            triggers.add(G1_GATE_NAME)
+    elif mode == CompositeMode.STRICT:
+        if G1_GATE_NAME in failed_gates:
+            triggers.add(G1_GATE_NAME)
+        if G10_GATE_NAME in failed_gates:
+            triggers.add(G10_GATE_NAME)
+
+    if not triggers:
+        # 新路径未触发, 老路径也无变化 (上面已检) → 透传
+        return old_decision
+
+    # 合成 active → warning (新路径检测到 absolute insignificance / hypothesis 缺失)
+    safe_ma20 = float(ic_ma20) if ic_ma20 is not None else float("nan")
+    safe_ma60 = float(ic_ma60) if ic_ma60 is not None else float("nan")
+    safe_ratio = (
+        abs(safe_ma20) / abs(safe_ma60)
+        if safe_ma60 and abs(safe_ma60) >= MIN_ABS_IC_MA60
+        else float("nan")
+    )
+    reason = f"composite_{mode.value} triggered by {sorted(triggers)}"
+
+    return TransitionDecision(
+        factor_name=factor_name,
+        from_status=current_status,
+        to_status=FactorStatus.WARNING.value,
+        reason=reason,
+        ic_ma20=safe_ma20,
+        ic_ma60=safe_ma60,
+        ratio=safe_ratio,
+    )
+
+
 def default_lifecycle_pipeline(
     context_loader: Any,
 ) -> PlatformEvaluationPipeline:
