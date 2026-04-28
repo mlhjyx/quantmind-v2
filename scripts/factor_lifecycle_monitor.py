@@ -579,17 +579,22 @@ def _replay_one_factor(
     conn,
     factor_name: str,
     snapshot: date,
+    factor_meta=None,
 ) -> dict | None:
     """单 (factor, snapshot) 回放双路径决策, 返 comparison dict 或 None 若数据不足.
 
     Args:
       conn: psycopg2 connection.
       factor_name: 因子名.
-      snapshot: 回放快照日 (factor_ic_history 取 trade_date <= snapshot).
+      snapshot: 回放快照日 (factor_ic_history 取 trade_date <= snapshot DATE compare —
+        DDL `factor_ic_history.trade_date` 是 DATE 列, psycopg2 直传 Python date 对象,
+        无 timezone 漂移. 若未来改 timestamptz 需重审 (铁律 41).
+      factor_meta: 预加载 FactorMeta (db reviewer P2 fix 2026-04-28 PR #127 — 避 N+1).
+        None 时 fallback 到 _load_factor_meta(conn, name) 旧行为 (保单测兼容).
 
     Returns:
       dict {snapshot, factor, old_label, new_label, new_decision_value, consistent,
-             old_to_status, ratio} 或 None 若 ic_ma 数据不足 / G1 样本 < 30.
+             old_to_status, ic_ma20, ic_ma60} 或 None 若 ic_ma 数据不足 / G1 样本 < 30.
     """
     tail = _load_ic_tail(conn, factor_name, PERSISTENCE_LOOKBACK_DAYS, snapshot_date=snapshot)
     if not tail:
@@ -603,7 +608,8 @@ def _replay_one_factor(
     # 回放固定 current_status='active' (回放上下文不可信 historical status)
     old_decision = _compute_decision(factor_name, "active", tail)
 
-    factor_meta = _load_factor_meta(conn, factor_name)
+    if factor_meta is None:
+        factor_meta = _load_factor_meta(conn, factor_name)
     ctx = build_lifecycle_context(
         factor_name, ic_series=ic_series, factor_meta=factor_meta
     )
@@ -670,30 +676,74 @@ def replay(
 
     conn = _get_conn()
     try:
+        # reviewer (python+db) P2/P3 2026-04-28 PR #127:
+        # - readonly=True: 显式 read-only 防意外 write (replay 是纯查询)
+        # - autocommit=True: 防 ~10K queries 累积 1 个 long-running implicit tx 阻塞 vacuum
+        # - statement_timeout 5s: 单 query slow path 兜底 (铁律 43 spirit, 即便 CLI 非 schtask)
+        try:
+            conn.set_session(readonly=True, autocommit=True)
+        except Exception:  # noqa: BLE001 — mock conn 可能不支持 set_session
+            logger.debug("conn.set_session 失败, mock 或老 driver, fail-soft")
+        try:
+            with conn.cursor() as _cur_init:
+                _cur_init.execute("SET LOCAL statement_timeout = 5000")
+        except Exception:  # noqa: BLE001 — autocommit=True 下 SET LOCAL 可能不持久, mock 也不支持
+            logger.debug("SET statement_timeout 失败, fail-soft")
+
         factors = _load_registry_factors(conn, factor_filter)
         factor_names = [f["name"] for f in factors]
         logger.info("[Replay] %d 因子参与回放", len(factor_names))
+
+        # db reviewer P2 fix: 预加载 factor_meta 字典 (286 因子 1 次 SELECT 替代 286×12 次)
+        factor_meta_cache: dict[str, object] = {}
+        for fname in factor_names:
+            meta = _load_factor_meta(conn, fname)
+            if meta is not None:
+                factor_meta_cache[fname] = meta
+        logger.info("[Replay] 预加载 factor_meta cache: %d entries", len(factor_meta_cache))
 
         details: list[dict] = []
         skipped_no_data = 0
         consistent_count = 0
         mismatch_count = 0
-        # 6-cell label matrix: 老 keep/demote × 新 keep/demote/unknown
+        # 6-cell label matrix + "other" bucket (python reviewer HIGH fix 2026-04-28 PR #127):
+        # 防 compare_paths 未来扩 label 范围 (e.g. 'critical') 静默漏入 schema 外 key.
+        EXPECTED_LABELS = {"keep", "demote", "unknown"}  # noqa: N806
         label_matrix: dict[str, int] = {
             "keep_keep": 0, "keep_demote": 0, "keep_unknown": 0,
             "demote_keep": 0, "demote_demote": 0, "demote_unknown": 0,
+            "other": 0,
         }
         per_factor_mismatch: dict[str, int] = {}
 
         for snapshot in fridays:
             for fname in factor_names:
-                row = _replay_one_factor(conn, fname, snapshot)
+                row = _replay_one_factor(
+                    conn,
+                    fname,
+                    snapshot,
+                    factor_meta=factor_meta_cache.get(fname),
+                )
                 if row is None:
                     skipped_no_data += 1
                     continue
 
-                key = f"{row['old_label']}_{row['new_label']}"
-                label_matrix[key] = label_matrix.get(key, 0) + 1
+                # HIGH fix: validate labels in expected set 防 silently 漏入未知 key
+                old_label = row["old_label"]
+                new_label = row["new_label"]
+                if old_label in EXPECTED_LABELS and new_label in EXPECTED_LABELS:
+                    key = f"{old_label}_{new_label}"
+                    label_matrix[key] += 1
+                else:
+                    label_matrix["other"] += 1
+                    logger.warning(
+                        "[Replay] unexpected label combo old=%s new=%s on %s/%s "
+                        "(routed to 'other' bucket, may indicate compare_paths schema drift)",
+                        old_label,
+                        new_label,
+                        fname,
+                        snapshot,
+                    )
 
                 if row["consistent"]:
                     consistent_count += 1
@@ -823,6 +873,14 @@ def main():
             start = date.fromisoformat(args.replay_from)
         except ValueError as e:
             parser.error(f"--replay-from 格式无效 (需 YYYY-MM-DD): {e}")
+        # python reviewer P2 fix 2026-04-28 PR #127: --weeks <= 0 用 parser.error 包装
+        # (而非让 _generate_replay_fridays raw raise ValueError 给 stderr 不友好 traceback)
+        if args.weeks <= 0:
+            parser.error(f"--weeks 必须 >= 1, got {args.weeks}")
+        if not 0.0 <= args.sunset_threshold <= 1.0:
+            parser.error(
+                f"--sunset-threshold 必须在 [0.0, 1.0], got {args.sunset_threshold}"
+            )
         result = replay(
             start_date=start,
             weeks=args.weeks,
