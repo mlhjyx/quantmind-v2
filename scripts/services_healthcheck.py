@@ -59,7 +59,6 @@ import logging
 import os
 import subprocess
 import sys
-import time
 import traceback
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
@@ -127,12 +126,15 @@ BEAT_HEARTBEAT_MAX_AGE_SECONDS = 10 * 60  # 10 min
 
 # LL-081 PR-X3 (2026-04-27 真生产首日 zombie 4h17m 教训): Redis 应用层 freshness probe.
 # Servy `status=Running` 是必要不充分条件 — service hang 后进程仍在跑 + Servy 看不到,
-# 必看 Redis 关键 key updated_at 跟 stream last event time. 三层任一 stale = zombie.
+# 必看 Redis 关键 key updated_at 是否新鲜.
+# Session 40 2026-04-28 LL-087 修正: 撤销 `qm:qmt:status` stream check (transition-only
+# event audit log 被误用为 heartbeat → 健康连接长时间无 transition 触发 false-positive).
+# `qm:qmt:status` 是 Stream Event Sourcing audit (MVP 3.4), portfolio:nav 60s sync_loop
+# 写才是真 heartbeat. sync_loop 死 → portfolio:nav 不更新 → 5min stale → 告警 (一层够).
 PORTFOLIO_NAV_MAX_AGE_SECONDS = 5 * 60  # 5 min, 5x QMTData sync_loop 60s buffer
 # reviewer code HIGH-2 采纳 (2026-04-27): 实际 PR-X1 SETEX TTL=180s < 300s, 即 zombie
 # 后 180s 时 r.get() 已返 None → found=False → stale, 比 age 阈值更早触发. 阈值 300s
 # 对 found=True 的 age 计算才生效. 两层兜底: TTL expire (主) + age threshold (副).
-QMT_STATUS_STREAM_MAX_AGE_SECONDS = 30 * 60  # 30 min, connect 边沿 publish 长 buffer (zombie 期 21h+ 跨 night 仍能捕获)
 REDIS_PROBE_TIMEOUT_SECONDS = 3  # 短超时, 防 health check 自己 hang on Redis
 
 # 服务 state 文件 (告警 dedup, 1h 窗口)
@@ -195,8 +197,9 @@ class BeatHeartbeatCheck:
 class RedisFreshnessCheck:
     """Redis 应用层 key freshness probe (LL-081 PR-X3 zombie 兜底防御).
 
-    - portfolio:nav: JSON {updated_at: ISO 8601 UTC}, sync_loop 60s 写
-    - qm:qmt:status: stream, connect 边沿 publish, last event time
+    portfolio:nav: JSON {updated_at: ISO 8601 UTC}, qmt_data_service sync_loop 60s 写.
+    sync_loop 死 → nav 不更新 → 5min stale → 告警. (Session 40 LL-087 修正: 撤销
+    qm:qmt:status stream check, 见 module-level 注释.)
     """
 
     key: str
@@ -204,10 +207,6 @@ class RedisFreshnessCheck:
     age_seconds: float | None  # None = parse 失败 / 不存在
     threshold_seconds: int
     reason: str  # 详细描述, 钉钉 markdown 用
-    # PR-X3 reviewer code MEDIUM-2 follow-up (2026-04-27): 非交易时段 stream stale 是 expected
-    # (connect 边沿事件不持续), 应 INFO 不入 failures 防噪声告警.
-    # default True 保留 fail-loud 默认行为, check_redis_freshness 显式 set False 降级.
-    is_failure_alertable: bool = True
 
     @property
     def stale(self) -> bool:
@@ -218,32 +217,6 @@ class RedisFreshnessCheck:
 
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "stale": self.stale}
-
-
-def _is_trading_hours_now() -> bool:
-    """A 股交易时段判断 (周一-五 09:30-11:30 + 13:00-15:00, Asia/Shanghai).
-
-    follow-up to PR-X3 reviewer code MEDIUM-2: 非交易时段 stream connect 边沿事件
-    必然 stale, 不应触发告警噪声. 不依赖 PG conn (services_healthcheck 核心设计:
-    PG 挂时仍能告警 LL-074), 用静态 weekday + hour/minute 检查.
-
-    **不含节假日 list** (硬编码 list 跨年脆弱). 法定节假日 weekday 误报风险接受 — 1h
-    dedup window 抑制 spam, 1 次告警可手动检查后 ack.
-
-    Returns:
-        True 仅当 周一-五 + (09:30-11:30 OR 13:00-15:00) 上海时间.
-    """
-    now_cst = datetime.now(_CST_TZ)
-    if now_cst.weekday() >= 5:  # Sat=5, Sun=6
-        return False
-    hm = now_cst.hour * 60 + now_cst.minute
-    morning_open = 9 * 60 + 30
-    morning_close = 11 * 60 + 30
-    afternoon_open = 13 * 60
-    afternoon_close = 15 * 60
-    in_morning = morning_open <= hm < morning_close
-    in_afternoon = afternoon_open <= hm < afternoon_close
-    return in_morning or in_afternoon
 
 
 @dataclass
@@ -386,13 +359,16 @@ def check_beat_heartbeat() -> BeatHeartbeatCheck:
 
 
 def check_redis_freshness() -> list[RedisFreshnessCheck]:
-    """LL-081 PR-X3: Redis 应用层 freshness probe (zombie 模式兜底).
+    """LL-081 PR-X3 + LL-087 (Session 40): Redis 应用层 freshness probe (zombie 兜底).
 
-    检查 2 关键 keys:
-      1. portfolio:nav (JSON, updated_at 字段) — QMTData sync_loop 60s 写, > 5min 视为 stale
-      2. qm:qmt:status (stream, last event ms timestamp) — connect 边沿 publish, > 30min stale
+    检查 1 关键 key:
+      portfolio:nav (JSON, updated_at 字段) — QMTData sync_loop 60s 写, > 5min 视为 stale
 
-    Redis 不可达时全 stale (fail-loud). socket_timeout 防本 health check 自己 hang.
+    Session 40 LL-087 修正: 原 Check 2 `qm:qmt:status` stream check 撤销 — stream 是
+    transition-only event audit (qmt_data_service.py:99/106/117 仅 connect/disconnect
+    时 publish), 不是 heartbeat, 健康连接长时间无 transition → false-positive 告警.
+
+    Redis 不可达时 fail-loud (stale). socket_timeout 防本 health check 自己 hang.
     跟 PR-X1 SETEX heartbeat 协同: PR-X1 修 root cause (TTL), 本 probe 兜底 defense-in-depth.
     """
     checks: list[RedisFreshnessCheck] = []
@@ -405,19 +381,15 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
         from app.config import settings  # noqa: PLC0415
     except ImportError as e:
         logger.warning("redis-py 或 app.config 导入失败 (非 Redis 不可达): %s", e)
-        for key, threshold in (
-            ("portfolio:nav", PORTFOLIO_NAV_MAX_AGE_SECONDS),
-            ("qm:qmt:status", QMT_STATUS_STREAM_MAX_AGE_SECONDS),
-        ):
-            checks.append(
-                RedisFreshnessCheck(
-                    key=key,
-                    found=False,
-                    age_seconds=None,
-                    threshold_seconds=threshold,
-                    reason=f"import 失败: {e!s:.80s}",
-                )
+        checks.append(
+            RedisFreshnessCheck(
+                key="portfolio:nav",
+                found=False,
+                age_seconds=None,
+                threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                reason=f"import 失败: {e!s:.80s}",
             )
+        )
         return checks
 
     try:
@@ -486,72 +458,23 @@ def check_redis_freshness() -> list[RedisFreshnessCheck]:
                 )
             )
 
-        # Check 2: qm:qmt:status stream last event
-        # PR-X3 reviewer MEDIUM-2 follow-up: 非交易时段 stream stale 是 expected (connect 边沿事件
-        # 不持续), 降级 is_failure_alertable=False 防钉钉噪声 (zombie 仅在交易时段实际危险).
-        is_trading = _is_trading_hours_now()
-        try:
-            events = r.xrevrange("qm:qmt:status", count=1)
-            if not events:
-                checks.append(
-                    RedisFreshnessCheck(
-                        key="qm:qmt:status",
-                        found=False,
-                        age_seconds=None,
-                        threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
-                        reason="stream 空 (QMT 从未连接)",
-                        is_failure_alertable=is_trading,
-                    )
-                )
-            else:
-                event_id = events[0][0]  # "<ms>-<seq>"
-                ms_str = event_id.split("-")[0]
-                ms = int(ms_str)
-                age = max(0.0, time.time() - ms / 1000)
-                age_min = age / 60.0
-                is_stale = age > QMT_STATUS_STREAM_MAX_AGE_SECONDS
-                trading_suffix = "" if is_trading else " [非交易时段, INFO only]"
-                checks.append(
-                    RedisFreshnessCheck(
-                        key="qm:qmt:status",
-                        found=True,
-                        age_seconds=age,
-                        threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
-                        reason=(
-                            f"last event {age_min:.1f}min ago "
-                            + ("STALE (zombie 风险)" if is_stale else "ok")
-                            + trading_suffix
-                        ),
-                        is_failure_alertable=is_trading,
-                    )
-                )
-        except Exception as e:  # noqa: BLE001
-            checks.append(
-                RedisFreshnessCheck(
-                    key="qm:qmt:status",
-                    found=False,
-                    age_seconds=None,
-                    threshold_seconds=QMT_STATUS_STREAM_MAX_AGE_SECONDS,
-                    reason=f"probe 异常: {e!s:.80s}",
-                    is_failure_alertable=is_trading,
-                )
-            )
+        # Check 2: qm:qmt:status stream — REMOVED Session 40 LL-087 (2026-04-28).
+        # Stream 是 transition-only event audit log (qmt_data_service.py:99/106/117 仅
+        # connect/disconnect 触发 publish), 不是 heartbeat. 健康连接长时间无 transition,
+        # 30min threshold 在交易时段照样 false positive (Session 40 10:00 zombie 误报).
+        # portfolio:nav 60s sync 真 heartbeat, 已 cover sync_loop liveness, 一层够.
 
     except Exception as e:  # noqa: BLE001 — Redis 完全不可达 (fail-loud)
         logger.warning("Redis 完全不可达, freshness probe 全 stale: %s", e)
-        for key, threshold in (
-            ("portfolio:nav", PORTFOLIO_NAV_MAX_AGE_SECONDS),
-            ("qm:qmt:status", QMT_STATUS_STREAM_MAX_AGE_SECONDS),
-        ):
-            checks.append(
-                RedisFreshnessCheck(
-                    key=key,
-                    found=False,
-                    age_seconds=None,
-                    threshold_seconds=threshold,
-                    reason=f"Redis 不可达: {e!s:.80s}",
-                )
+        checks.append(
+            RedisFreshnessCheck(
+                key="portfolio:nav",
+                found=False,
+                age_seconds=None,
+                threshold_seconds=PORTFOLIO_NAV_MAX_AGE_SECONDS,
+                reason=f"Redis 不可达: {e!s:.80s}",
             )
+        )
 
     return checks
 
@@ -577,10 +500,10 @@ def build_report() -> HealthReport:
         )
 
     # LL-081 PR-X3: Redis freshness probe (zombie 模式应用层兜底)
-    # PR-X3 reviewer MEDIUM-2 follow-up: 仅 alertable stale 入 failures, 非交易时段
-    # stream stale (is_failure_alertable=False) 仍 visible in redis_freshness 但不告警.
+    # LL-087 (2026-04-28 Session 40): 撤销 qm:qmt:status stream check 后, 不再需要
+    # is_failure_alertable filter (portfolio:nav 是真 heartbeat, stale 必告警).
     for rc in redis_checks:
-        if rc.stale and rc.is_failure_alertable:
+        if rc.stale:
             failures.append(f"redis:{rc.key} STALE ({rc.reason})")
 
     return HealthReport(
