@@ -9,14 +9,13 @@ Service内部不commit，由调用方统一管理事务。
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from decimal import Decimal  # Stage 3.0 wrapper (Session 40): SDK StrategyContext.capital
 
 import pandas as pd
 import structlog
 from engines.beta_hedge import calc_portfolio_beta
 from engines.paper_broker import PaperBroker
 from engines.signal_engine import (
-    PortfolioBuilder,
-    SignalComposer,
     SignalConfig,
 )
 
@@ -131,29 +130,68 @@ class SignalService:
             else:
                 logger.info(f"[SignalService] 因子 {fname} 覆盖率正常: {count}只")
 
-        # ── 信号合成 ──
-        # 对应 script L1164-1172
-        composer = SignalComposer(config)
-        builder = PortfolioBuilder(config)
-
-        scores = composer.compose(factor_df, universe)
-        if scores.empty:
-            raise ValueError("信号合成结果为空(scores为空)")
-
-        # Size-neutral adjustment (beta=0.0 时跳过)
-        if config.size_neutral_beta > 0:
-            from engines.size_neutral import apply_size_neutral, load_ln_mcap_for_date
-            _ln_row = load_ln_mcap_for_date(trade_date, conn)
-            if _ln_row is not None:
-                scores = apply_size_neutral(scores, _ln_row, config.size_neutral_beta)
-
         # ── 读取当前持仓权重 ──
         # 对应 script L1174-1185
         prev_weights = self._load_prev_weights(conn, strategy_id)
 
-        # ── 构建目标持仓 ──
-        # 对应 script L1187-1188
-        target = builder.build(scores, industry, prev_weights, vol_regime_scale=vol_regime_scale)
+        # ── 信号合成 (Stage 3.0 真切换 Session 40 2026-04-28) ──
+        # 替 composer.compose + apply_size_neutral + builder.build 三步 → SDK
+        # PlatformSignalPipeline.generate(strategy, ctx). S1MonthlyRanking 内部仍调相同
+        # 三步 (铁律 16 唯一信号路径), bit-identical 保证 — 25 historical trade_dates
+        # (4-07~4-27 + 10 rebalance month-ends) max_w_diff=0.00e+00 实证.
+        #
+        # 设计 (Stage 3.0 plan 选 C wrapper):
+        # - SDK 替**信号生成核心** (compose+SN+build), 保留**业务包络** (factor coverage
+        #   / beta / industry / overlap / is_rebalance / _write_signals 不动)
+        # - regression 5yr+12yr max_diff=0 硬门保证 (铁律 15)
+        # - dry_run 路径不变 (SDK call 是 pure compute, 不写 DB; 后续 _write_signals
+        #   gated on `if not dry_run`)
+        from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
+        from backend.qm_platform.signal.pipeline import PlatformSignalPipeline
+        from backend.qm_platform.strategy.interface import StrategyContext as _SDKStrategyContext
+
+        # ln_mcap 加载 (size_neutral 走 SDK ctx.metadata, 不再 signal_service 内 apply)
+        _ln_mcap = None
+        if config.size_neutral_beta > 0:
+            from engines.size_neutral import load_ln_mcap_for_date
+            _ln_mcap = load_ln_mcap_for_date(trade_date, conn)
+
+        # industry pd.Series → dict (SDK industry_map 契约, NaN dropna 防污染)
+        if isinstance(industry, pd.Series):
+            _industry_map = industry.dropna().to_dict()
+        elif isinstance(industry, dict):
+            _industry_map = {
+                k: v for k, v in industry.items()
+                if v is not None and not (isinstance(v, float) and pd.isna(v))
+            }
+        else:
+            raise TypeError(
+                f"industry 必须是 pd.Series 或 dict, got {type(industry).__name__}"
+            )
+
+        _ctx = _SDKStrategyContext(
+            trade_date=trade_date,
+            capital=Decimal(str(settings.PAPER_INITIAL_CAPITAL)),
+            universe=list(universe),
+            regime="default",
+            metadata={
+                "factor_df": factor_df,
+                "industry_map": _industry_map,
+                "ln_mcap": _ln_mcap,
+                "prev_holdings": prev_weights,
+                "vol_regime_scale": vol_regime_scale,
+            },
+        )
+        # Strategy hardcoded S1 (生产唯一 LIVE strategy). Future: StrategyRegistry
+        # lookup by strategy_id (Wave 3 multi-strategy MVP 3.4+).
+        _strategy = S1MonthlyRanking(config=config)
+        _sdk_signals = PlatformSignalPipeline(config=config).generate(_strategy, _ctx)
+        if not _sdk_signals:
+            raise ValueError("信号合成结果为空(SDK signals 空)")
+
+        # SDK signals → legacy shape (target dict + scores dict for signals_list 构建)
+        target: dict[str, float] = {s.code: s.target_weight for s in _sdk_signals}
+        scores: dict[str, float] = {s.code: s.score for s in _sdk_signals}
         logger.info(
             f"[SignalService] 目标持仓: {len(target)}只, "
             f"总权重={sum(target.values()):.3f}"
@@ -211,7 +249,10 @@ class SignalService:
             reverse=True,
         )
         for rank, code in enumerate(sorted_codes, 1):
-            score_val = float(scores.get(code, 0)) if not scores.empty else 0
+            # Stage 3.0 (Session 40): scores 从 pandas.Series → dict (SDK signals
+            # 提取). dict.get(code, 0) 同语义, 不再需 `not scores.empty` 兜底
+            # (wrapper 早返 raise on empty SDK signals, 此处 scores 必非空).
+            score_val = float(scores.get(code, 0))
             action = "rebalance" if is_rebalance else "hold"
             signals_list.append({
                 "code": code,
