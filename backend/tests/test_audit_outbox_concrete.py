@@ -240,6 +240,54 @@ class TestTracePayloadMissingKey:
 # ─── 6. trace() happy path ──────────────────────────────────
 
 
+class TestTraceFactorContributionsWarn:
+    """P2 reviewer 采纳: factor_contributions 缺 key 必 warn (vs silent empty dict)."""
+
+    def test_signal_missing_factor_contributions_logs_warning(
+        self, mock_conn, audit_module, caplog
+    ) -> None:
+        import logging
+
+        ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
+        _seq_rows_cursor(mock_conn, [
+            ({"order_id": "ord-1"}, ts),
+            ({"signal_id": "sig-1"}, ts),
+            # signal payload 缺 factor_contributions key
+            ({"strategy_id": "s1"}, ts),
+        ])
+        trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
+        with caplog.at_level(logging.WARNING, logger="qm_platform.signal.audit"):
+            chain = trail.trace("fill-1")
+        # warn message 含 signal_id + strategy_id 便于 audit
+        assert any(
+            "缺 factor_contributions" in r.message for r in caplog.records
+        ), f"未触发 warning: {[r.message for r in caplog.records]}"
+        # 但 chain 仍返回 (空 dict, 不破调用方)
+        assert chain.factor_contributions == {}
+
+    def test_signal_empty_factor_contributions_no_warning(
+        self, mock_conn, audit_module, caplog
+    ) -> None:
+        """key 在但 dict 空 (策略合法零因子) → 不 warn."""
+        import logging
+
+        ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
+        _seq_rows_cursor(mock_conn, [
+            ({"order_id": "ord-1"}, ts),
+            ({"signal_id": "sig-1"}, ts),
+            # key 存但空 dict — 策略意图零 contribution
+            ({"strategy_id": "s1", "factor_contributions": {}}, ts),
+        ])
+        trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
+        with caplog.at_level(logging.WARNING, logger="qm_platform.signal.audit"):
+            chain = trail.trace("fill-1")
+        # 空 dict 是 legal 不该 warn
+        assert not any(
+            "缺 factor_contributions" in r.message for r in caplog.records
+        ), "key 在 + 空 dict 不应 warn"
+        assert chain.factor_contributions == {}
+
+
 class TestTraceHappyPath:
     def test_full_chain_returns_audit_chain(self, mock_conn, audit_module) -> None:
         ts_fill = datetime(2026, 4, 28, 10, 30, tzinfo=UTC)
