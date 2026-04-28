@@ -29,9 +29,10 @@ def _build_smoke_code() -> str:
         f"sys.path.insert(0, r'{backend_path_str}'); "
         f"sys.path.insert(0, r'{project_root_str}'); "
         # 1. SDK 导出符号可 import (核心硬门, 任何 import 错则全部失败)
+        # 注: Channel Protocol 不导出 (设计稿禁 App 自实现 channel 旁路).
         "from qm_platform.observability import ("
-        "    AlertRouter, Alert, AlertDispatchError, "
-        "    PostgresAlertRouter, DingTalkChannel, Channel, FireResult, "
+        "    AlertRouter, Alert, AlertFireResult, AlertDispatchError, "
+        "    PostgresAlertRouter, DingTalkChannel, "
         "    get_alert_router, reset_alert_router, "
         "    OutboxWriter, MetricExporter, EventBus, Metric"
         "); "

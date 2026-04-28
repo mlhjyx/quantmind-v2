@@ -44,10 +44,10 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from .._types import Severity
-from .interface import Alert, AlertRouter
+from .interface import Alert, AlertFireResult, AlertRouter
 
 if TYPE_CHECKING:
     import psycopg2.extensions
@@ -68,7 +68,16 @@ _DEFAULT_SUPPRESS_MINUTES: dict[Severity, int] = {
 }
 _MAX_SUPPRESS_MINUTES = 7 * 24 * 60  # Blueprint #7 7d 上限.
 
-FireResult = Literal["sent", "deduped", "sink_failed"]
+# 完整性硬门 (reviewer MEDIUM#3): 新增 Severity 必同步加 _DEFAULT_SUPPRESS_MINUTES,
+# 否则 module load 即 fail (避免新 severity silent 用 60min 默认值).
+assert set(_DEFAULT_SUPPRESS_MINUTES) == set(Severity), (
+    f"_DEFAULT_SUPPRESS_MINUTES 与 Severity enum 不齐: "
+    f"missing={set(Severity) - set(_DEFAULT_SUPPRESS_MINUTES)} / "
+    f"extra={set(_DEFAULT_SUPPRESS_MINUTES) - set(Severity)}"
+)
+
+# Module-internal alias, 暴露 Platform-level Literal 走 interface.AlertFireResult.
+FireResult = AlertFireResult
 
 
 class AlertDispatchError(RuntimeError):
@@ -219,58 +228,62 @@ class PostgresAlertRouter(AlertRouter):
           ValueError: dedup_key 空 / 超长 / suppress_minutes 越界.
           AlertDispatchError: 全部 channel 失败 (铁律 33 fail-loud).
         """
+        # P3.A reviewer 采纳: 显式 strip 防 " abc" / "abc" 创建独立 dedup row
+        dedup_key = dedup_key.strip() if isinstance(dedup_key, str) else dedup_key
         self._validate(dedup_key, suppress_minutes)
         suppress_min = (
             suppress_minutes
             if suppress_minutes is not None
-            else _DEFAULT_SUPPRESS_MINUTES.get(alert.severity, 60)
+            else _DEFAULT_SUPPRESS_MINUTES[alert.severity]  # 完整性已 module-load assert
         )
         now = self._now_fn()
 
+        # P1.B reviewer 采纳: 不在 `with conn:` 内 raise AlertDispatchError, 防 psycopg2
+        # __exit__ ROLLBACK 撤回 _upsert_dedup 写的 row (文档承诺 sink_failed 仍 persist
+        # 与代码冲突). 改: tx 内只做 DB 操作, raise 移到 with 之后 (tx 已 commit).
         conn = self._conn_factory()
+        deduped = False
+        sent_any = False
+        failures: list[str] = []
         try:
-            try:
-                with conn:  # 自动 commit / rollback
-                    if self._is_deduped(conn, dedup_key, now):
-                        self._increment_dedup_count(conn, dedup_key, alert, now)
-                        logger.info(
-                            "[AlertRouter] deduped key=%s severity=%s source=%s",
-                            dedup_key,
-                            alert.severity.value,
-                            alert.source,
-                        )
-                        return "deduped"
-                    # 发送至所有 channel (短路: 不要求全部成功, 任 1 成功即视为 sent)
+            with conn:  # 自动 commit (无异常) / rollback (有异常)
+                if self._is_deduped(conn, dedup_key, now):
+                    self._increment_dedup_count(conn, dedup_key, alert, now)
+                    deduped = True
+                else:
+                    # 发送至所有 channel (任一成功即视为 sent, 短路后续避免双发)
                     sent_any, failures = self._dispatch(alert)
                     self._upsert_dedup(
                         conn, dedup_key, alert, now, suppress_min, fired=sent_any
                     )
-                    if not sent_any:
-                        logger.error(
-                            "[AlertRouter] sink_failed key=%s failures=%s",
-                            dedup_key,
-                            failures,
-                        )
-                        raise AlertDispatchError(
-                            f"All channels failed for dedup_key={dedup_key!r}: {failures}"
-                        )
-                    logger.info(
-                        "[AlertRouter] sent key=%s severity=%s suppress=%dmin",
-                        dedup_key,
-                        alert.severity.value,
-                        suppress_min,
-                    )
-                    return "sent"
-            finally:
-                conn.close()
-        except AlertDispatchError:
-            raise
-        except Exception:
-            # 非 AlertDispatchError 的异常 (e.g. PG 连接错 / cursor 错) 也要 fail-loud.
-            logger.exception(
-                "[AlertRouter] unexpected fire() exception key=%s", dedup_key
+        finally:
+            conn.close()
+
+        # tx 已 commit (with conn: 已退出), 此处只做日志 + return / raise
+        if deduped:
+            logger.info(
+                "[AlertRouter] deduped key=%s severity=%s source=%s",
+                dedup_key,
+                alert.severity.value,
+                alert.source,
             )
-            raise
+            return "deduped"
+        if not sent_any:
+            logger.error(
+                "[AlertRouter] sink_failed key=%s failures=%s",
+                dedup_key,
+                failures,
+            )
+            raise AlertDispatchError(
+                f"All channels failed for dedup_key={dedup_key!r}: {failures}"
+            )
+        logger.info(
+            "[AlertRouter] sent key=%s severity=%s suppress=%dmin",
+            dedup_key,
+            alert.severity.value,
+            suppress_min,
+        )
+        return "sent"
 
     def alert(self, severity: Severity, payload: dict[str, Any]) -> FireResult:
         """Blueprint Framework #7 字面签名 (alert(severity, payload)).
@@ -310,9 +323,11 @@ class PostgresAlertRouter(AlertRouter):
         """
         if limit <= 0 or limit > 10000:
             raise ValueError(f"limit 必须 1..10000, got {limit}")
+        # P2.A reviewer 采纳: 加 `with conn:` 包 cursor 防 idle-in-transaction 泄露
+        # backend slot. 只读查询 with 块退出时 commit (空 tx) 关闭事务.
         conn = self._conn_factory()
         try:
-            with conn.cursor() as cur:
+            with conn, conn.cursor() as cur:
                 if severity is None:
                     cur.execute(
                         """
@@ -370,14 +385,19 @@ class PostgresAlertRouter(AlertRouter):
 
     @staticmethod
     def _validate(dedup_key: str, suppress_minutes: int | None) -> None:
-        if not isinstance(dedup_key, str) or not dedup_key.strip():
+        if not isinstance(dedup_key, str) or not dedup_key:
             raise ValueError("dedup_key 必须非空字符串")
         if len(dedup_key) > _DEDUP_KEY_MAX_LEN:
             raise ValueError(
                 f"dedup_key 超长 (>{_DEDUP_KEY_MAX_LEN} chars): {len(dedup_key)}"
             )
         if suppress_minutes is not None:
-            if not isinstance(suppress_minutes, int) or suppress_minutes <= 0:
+            # reviewer LOW#2: bool 是 int 子类, 显式 reject 防 fire(suppress_minutes=True) 静默通过
+            if (
+                not isinstance(suppress_minutes, int)
+                or isinstance(suppress_minutes, bool)
+                or suppress_minutes <= 0
+            ):
                 raise ValueError(
                     f"suppress_minutes 必须正整数, got {suppress_minutes!r}"
                 )
@@ -442,10 +462,17 @@ class PostgresAlertRouter(AlertRouter):
     ) -> None:
         """sent 路径: ON CONFLICT 写新 suppress_until + 累加 fire_count.
 
-        注: 即使 fired=False (sink_failed), 也写 row (caller raise + 标记 fire_count
-        反映被尝试). 下次同 dedup_key 在 suppress 窗口内仍 dedup, 防 broken sink 风暴.
+        Reviewer MEDIUM#2 (升级 P1) 采纳: P0 真金告警可用性 > storm 预防.
+        - fired=True  → suppress_until = now + suppress_min (正常 dedup)
+        - fired=False → suppress_until = now (零窗, 不抑制下次重试). row 仍写
+          (审计 fire_count 反映被尝试), 但 transient DingTalk 失败不会闭塞下次
+          P0 重试 (e.g. intraday drop > 8% schtask 5min 后自然下次触发立即重发).
+
+        Storm 防御责任移交调用方 + Wave 5+ 监控: 若同 dedup_key 连续 fail N 次,
+        Application 层应 alert 给运维 (e.g. 监控 fire_count 增长无 last_fired_at
+        实际推进), 而非靠 Platform 层 silent suppress 真金告警.
         """
-        suppress_until = now + timedelta(minutes=suppress_min)
+        suppress_until = now + timedelta(minutes=suppress_min) if fired else now
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -472,7 +499,11 @@ class PostgresAlertRouter(AlertRouter):
             )
 
     def _dispatch(self, alert: Alert) -> tuple[bool, list[str]]:
-        """逐 channel 发送, 收集失败原因. 任一成功即 sent_any=True."""
+        """逐 channel 发送, 任一成功即短路返回. 失败原因 list 用于 fail-loud message.
+
+        Reviewer P2.B 采纳: 短路防多 channel 双发 (e.g. DingTalk + 未来 SMS, 防同 alert
+        重复打扰用户). 当前 batch 1 单 DingTalk channel 行为不变, 短路是 future-proof.
+        """
         sent_any = False
         failures: list[str] = []
         for ch in self._channels:
@@ -487,8 +518,8 @@ class PostgresAlertRouter(AlertRouter):
                 continue
             if ok:
                 sent_any = True
-            else:
-                failures.append(f"{getattr(ch, 'name', '?')}: send returned False")
+                break  # 短路: 任一成功不再尝试后续, 防多 channel 双发
+            failures.append(f"{getattr(ch, 'name', '?')}: send returned False")
         return sent_any, failures
 
 
