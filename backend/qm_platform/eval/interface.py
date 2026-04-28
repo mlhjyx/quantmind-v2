@@ -1,16 +1,19 @@
 """Framework #4 Evaluation Gate — 因子 / 策略评估一键化.
 
-目标: 合并 batch_gate.py / batch_gate_v2.py / 散落 Gate 逻辑为 EvaluationPipeline.
+目标: 合并 `engines/factor_gate.py` (G1-G8 阈值 + GateStatus) + 散落 Gate 逻辑
+为 Platform `EvaluationPipeline` (concrete: `pipeline.PlatformEvaluationPipeline`).
 
 关联铁律:
-  - 5: paired bootstrap p<0.05
-  - 12: G9 Gate 新颖性
-  - 13: G10 Gate 经济机制
-  - 19: IC 定义统一
-  - 20: 噪声鲁棒性 G_robust
+  - 5: paired bootstrap p<0.05 (G3, MVP 3.5 batch 1 新建 utils.paired_bootstrap_pvalue)
+  - 12: G9 Gate AST 新颖性 (复用 MVP 1.3c registry._default_ast_jaccard + novelty_check)
+  - 13: G10 Gate hypothesis 描述 (复用 MVP 1.3c register() G10_HYPOTHESIS_MIN_LEN + G10_FORBIDDEN_PREFIXES)
+  - 19: IC 定义统一 (G1 调 engines/ic_calculator.py)
+  - 20: 噪声鲁棒性 G_robust (留 MVP 3.5 后续批次)
 
 实施时机:
-  - MVP 3.4 Eval Gate Framework
+  - MVP 3.5 batch 1: EvaluationPipeline + 7 Gates concrete (G1/G2/G3/G4/G8/G9/G10)
+  - MVP 3.5 batch 2: factor_lifecycle 集成 (双路径并存 4 周观察)
+  - MVP 3.5 batch 3: Strategy Eval Gate + ADR-013
 """
 from __future__ import annotations
 
