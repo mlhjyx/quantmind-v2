@@ -51,6 +51,19 @@ def _make_old_decision_demote(factor_name="f1") -> TransitionDecision:
     )
 
 
+def _make_old_decision_recovery(factor_name="f1") -> TransitionDecision:
+    """warning → active recovery (P1.2 reviewer 2026-04-28 PR #128)."""
+    return TransitionDecision(
+        factor_name=factor_name,
+        from_status=FactorStatus.WARNING.value,
+        to_status=FactorStatus.ACTIVE.value,
+        reason="ratio>=0.8 (recovery)",
+        ic_ma20=0.05,
+        ic_ma60=0.06,
+        ratio=0.833,
+    )
+
+
 # ─── extract_failed_gate_names (3) ───────────────────────────────────
 
 
@@ -141,7 +154,7 @@ def test_composite_g1_only_returns_none_when_all_pass():
     assert result is None
 
 
-def test_composite_g1_only_priorityreturns_old_when_old_demote_and_g1_fail():
+def test_composite_g1_only_priority_returns_old_when_old_demote_and_g1_fail():
     """G1_ONLY: 老 demote AND G1 fail → 优先返老 (老有真 ic_ma20/60/ratio 数据)."""
     old = _make_old_decision_demote("f1")
     report = _make_report(failed_gates=["G1_ic_significance"])
@@ -326,3 +339,100 @@ def test_composite_handles_none_report():
         mode=CompositeMode.STRICT,
     )
     assert result is None  # 老 None + 0 failed gates → None
+
+
+# ─── P1.1 + P1.2 recovery suppression (reviewer fix 2026-04-28 PR #128) ─────
+
+
+def test_composite_g1_only_suppresses_recovery_when_g1_fails():
+    """warning→active recovery + G1 fail → suppress recovery (返 None, 留 warning).
+
+    设计意图: ratio 已恢复 (decay 逆转) 但 G1 仍 fail (absolute insignificance) →
+    保守保持 demoted, 防 'ratio 假恢复 + 真无效' 误恢复.
+    """
+    recovery = _make_old_decision_recovery("f1")
+    report = _make_report(failed_gates=["G1_ic_significance"])
+    result = compute_composite_decision(
+        factor_name="f1",
+        current_status=FactorStatus.WARNING.value,  # 真实场景: 当前 warning
+        old_decision=recovery,                       # 老路径建议恢复
+        new_report=report,
+        mode=CompositeMode.G1_ONLY,
+    )
+    assert result is None  # recovery 被 G1 fail 抑制
+
+
+def test_composite_g1_only_passes_recovery_through_when_no_trigger():
+    """warning→active recovery + 全 pass → 透传 recovery (老路径 + 新路径都说健康)."""
+    recovery = _make_old_decision_recovery("f1")
+    report = _make_report(failed_gates=[])  # 全 pass
+    result = compute_composite_decision(
+        factor_name="f1",
+        current_status=FactorStatus.WARNING.value,
+        old_decision=recovery,
+        new_report=report,
+        mode=CompositeMode.G1_ONLY,
+    )
+    assert result is recovery  # 双路径同意恢复 → 透传
+
+
+def test_composite_strict_suppresses_recovery_on_g10_fail():
+    """STRICT: warning→active recovery + 仅 G10 fail → 也 suppress (G10 在 STRICT 触发集)."""
+    recovery = _make_old_decision_recovery("f1")
+    report = _make_report(failed_gates=["G10_hypothesis"])
+    result = compute_composite_decision(
+        factor_name="f1",
+        current_status=FactorStatus.WARNING.value,
+        old_decision=recovery,
+        new_report=report,
+        mode=CompositeMode.STRICT,
+    )
+    assert result is None  # STRICT 含 G10, suppress recovery
+
+
+def test_composite_off_passes_recovery_unchanged_even_with_g1_fail():
+    """OFF mode: recovery + G1 fail → 透传 recovery (生产兼容, 不参与 OR 复合)."""
+    recovery = _make_old_decision_recovery("f1")
+    report = _make_report(failed_gates=["G1_ic_significance"])
+    result = compute_composite_decision(
+        factor_name="f1",
+        current_status=FactorStatus.WARNING.value,
+        old_decision=recovery,
+        new_report=report,
+        mode=CompositeMode.OFF,
+    )
+    assert result is recovery  # OFF 不参与, 老路径绝对权威
+
+
+def test_composite_warning_status_with_old_demote_decision_passes_through():
+    """warning 状态 + 老 warning→critical 升级决策 → 透传升级 (老路径主导持续性)."""
+    upgrade = TransitionDecision(
+        factor_name="f1",
+        from_status=FactorStatus.WARNING.value,
+        to_status=FactorStatus.CRITICAL.value,
+        reason="ratio<0.5 持续 20 天",
+        ic_ma20=0.02,
+        ic_ma60=0.06,
+        ratio=0.333,
+    )
+    report = _make_report(failed_gates=["G1_ic_significance"])
+    result = compute_composite_decision(
+        factor_name="f1",
+        current_status=FactorStatus.WARNING.value,
+        old_decision=upgrade,
+        new_report=report,
+        mode=CompositeMode.G1_ONLY,
+    )
+    # 老 decision 已是 demote (warning→critical, to_status != active) → 优先返老
+    assert result is upgrade
+
+
+def test_composite_invalid_mode_string_raises():
+    """CLI / config 误传 'g1_only' (下划线) → CompositeMode 构造时 ValueError.
+
+    (P2.1 reviewer 2026-04-28 PR #128: 文档化 hyphen 边界, 防 typo silent.)
+    """
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="g1_only"):
+        CompositeMode("g1_only")

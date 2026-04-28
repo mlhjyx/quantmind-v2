@@ -608,7 +608,12 @@ def _replay_one_factor(
     if ic_series is None or ic_series.size < 30:
         return None
 
-    # 回放固定 current_status='active' (回放上下文不可信 historical status)
+    # 回放固定 current_status='active' (回放上下文不可信 historical status).
+    # P2.3 reviewer 2026-04-28 PR #128 文档化: factor_registry.status 是当前快照,
+    # 历史状态不可重建. 复合模式 composite_demote_counts 因此低估非-active 因子的
+    # demote (warning/critical 状态下 G1 fail 不会触发新合成 — 由老路径主导持续性升级).
+    # 实证 g1-only=550 / strict=576 是 active-only baseline 的下界, 真实生产含 warning
+    # 因子 G1 fail 通过老路径 warning→critical 升级路径仍能 demote.
     old_decision = _compute_decision(factor_name, "active", tail)
 
     if factor_meta is None:
