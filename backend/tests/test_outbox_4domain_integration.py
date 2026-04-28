@@ -63,31 +63,29 @@ def mock_conn():
 
 
 class TestSignalServiceDualWrite:
-    """signal_service 信号生成 → outbox + StreamBus 双写 (mock conn)."""
+    """signal_service 信号生成 → outbox + StreamBus 双写 (source-static 校验).
 
-    def test_signal_outbox_aggregate_id_format(self) -> None:
-        """outbox aggregate_id 格式 = '{strategy_id}-{trade_date}'."""
-        # smoke-level: 验 batch 4 注入的 aggregate_id 格式不变 (将来 trace 需稳定)
-        strategy_id = "s1_monthly_ranking"
-        trade_date = date(2026, 4, 28)
-        expected = f"{strategy_id}-{trade_date}"
-        assert expected == "s1_monthly_ranking-2026-04-28"
+    P3.2 reviewer 采纳: 删 2 个 tautological string-format / dict-literal 自检 test
+    (无回归价值), 保留 source code 静态 check (catch refactor regressions).
+    """
 
-    def test_signal_outbox_payload_has_signal_id_key(self) -> None:
-        """payload 必含 signal_id key (audit chain 反向 trace 要求, batch 3)."""
-        # 批 3 OutboxBackedAuditTrail.trace() 拿 order.payload['signal_id']
-        # 必须能 match signal.aggregate_id, payload 必须自描述 signal_id key.
-        # 这里仅验设计契约文档化 (实际 enqueue 由 SignalService 内部做)
-        payload_template = {
-            "signal_id": "s1-2026-04-28",
-            "trade_date": "2026-04-28",
-            "strategy_id": "s1",
-            "stock_count": 20,
-            "is_rebalance": True,
-            "beta": 1.0,
-        }
-        assert "signal_id" in payload_template
-        assert payload_template["signal_id"] == "s1-2026-04-28"
+    def test_signal_outbox_payload_includes_signal_id_in_source(self) -> None:
+        """source code 静态校验: signal_service.py outbox payload 含 signal_id key.
+
+        batch 3 OutboxBackedAuditTrail.trace() 反向链需 order.payload['signal_id']
+        match signal aggregate_id. signal_service.py 必含 'signal_id' key 注入.
+        """
+        signal_service_path = _BACKEND_DIR / "app" / "services" / "signal_service.py"
+        content = signal_service_path.read_text(encoding="utf-8")
+        # 找 batch 4 dual-write 块
+        idx = content.find("MVP 3.4 batch 4 dual-write")
+        assert idx > 0
+        # 块内 200 字符内必含 signal_id payload key
+        block = content[idx:idx + 1200]
+        assert '"signal_id"' in block, (
+            "signal_service.py batch 4 outbox payload 必须含 signal_id key "
+            "(batch 3 audit chain trace() 反向锚点)"
+        )
 
     def test_signal_outbox_failure_silent_warns_design(self) -> None:
         """source code 静态校验: signal_service.py 含 silent_ok try/except + warn.
@@ -142,6 +140,41 @@ class TestExecutionServiceDualWrite:
         exec_date = date(2026, 4, 28)
         expected = f"{strategy_id}-{exec_date}-live"
         assert expected == "s1-2026-04-28-live"
+
+    def test_execution_live_dry_run_implicit_guard_documented(self) -> None:
+        """P1.2 reviewer 采纳: live 路径 dry_run 保护是隐式 (fills 为空), 必文档.
+
+        signal_service 用显式 `if not dry_run:` 块, execution_service live 路径
+        依赖 fills 在 dry_run 下为空. 此 test 校验注释存在 + 防 fills 注入式
+        测试路径误污染 event_outbox.
+        """
+        exec_path = _BACKEND_DIR / "app" / "services" / "execution_service.py"
+        content = exec_path.read_text(encoding="utf-8")
+        assert "dry_run 保护是" in content and "隐式" in content, (
+            "execution_service.py live 路径 dry_run 隐式保护必须文档化 "
+            "(reviewer P1.2: fills 在 dry_run 下为空保护 outbox enqueue)"
+        )
+
+    def test_batch5_sunset_todo_tags_present(self) -> None:
+        """P2.2 reviewer 采纳: silent_ok 必标 TODO(批 5 sunset) 供 grep CI 钩.
+
+        防止永久 silent — 批 5 应升 fail-loud + 删老路径. 此 test 防 sunset
+        comment 被静默移除. 3 域文件全须有 sunset 标记.
+        """
+        files = [
+            _BACKEND_DIR / "app" / "services" / "signal_service.py",
+            _BACKEND_DIR / "app" / "services" / "execution_service.py",
+            _BACKEND_DIR / "qm_platform" / "risk" / "engine.py",
+        ]
+        for f in files:
+            content = f.read_text(encoding="utf-8")
+            # 至少一种 sunset 标记 (TODO(批5)/批 5 后 fail-loud/批 5 sunset)
+            has_sunset = (
+                "批 5 后 fail-loud" in content
+                or "TODO(批 5 sunset)" in content
+                or "批 5 sunset" in content
+            )
+            assert has_sunset, f"{f.name} 缺 batch 5 sunset 标记 (防永久 silent_ok)"
 
     def test_execution_service_has_dual_write_both_paths(self) -> None:
         """source code 静态校验: execution_service.py paper + live 各有 1 outbox 注入."""
