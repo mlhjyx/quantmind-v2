@@ -3,6 +3,10 @@
 **批 1 (Session 33 Part 1, 2026-04-24)**: 提供 Strategy 注册表的 DB-backed 实现.
 与 `strategy_registry` + `strategy_status_log` 2 DB 表配对 (backend/migrations/strategy_registry.sql).
 
+**MVP 3.5.1 (Session 43 跨 PR follow-up, 2026-04-28)**: 加 `record_evaluation()` +
+`update_status(LIVE)` 守门. 防止策略未经 PlatformStrategyEvaluator 评估直接升 LIVE.
+配套表 `strategy_evaluations` (backend/migrations/strategy_evaluations.sql).
+
 ## 架构决策
 
 - **In-memory instance cache + DB metadata**: `_instances: dict[UUID, Strategy]` 启动时注入,
@@ -15,21 +19,33 @@
 
 - **铁律 39 显式声明**: DBStrategyRegistry 走 sync psycopg2 (对齐 DBFactorRegistry +
   DBFeatureFlag + DBExperimentRegistry 等既有 Platform concrete 模式).
+
+- **MVP 3.5.1 LIVE 守门**: update_status(strategy_id, LIVE, ...) 必先 record_evaluation(verdict)
+  把 PlatformStrategyEvaluator 输出落 strategy_evaluations 表. 守门读最新行 +
+  freshness check (默认 30 天). 防止跳过评估直接升 LIVE 真金事故.
+  调用顺序: evaluator.evaluate_strategy(sid) → registry.record_evaluation(verdict) →
+  registry.update_status(sid, LIVE, reason).
 """
 from __future__ import annotations
 
 import json
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from .._types import Verdict
 from .interface import RebalanceFreq, Strategy, StrategyRegistry, StrategyStatus
 
 if TYPE_CHECKING:
     import psycopg2.extensions
 
 _logger = logging.getLogger(__name__)
+
+# MVP 3.5.1 default freshness window for "latest evaluation must be within N days
+# before promoting to LIVE". Configurable via DBStrategyRegistry constructor arg.
+DEFAULT_LIVE_EVAL_FRESHNESS_DAYS = 30
 
 
 class StrategyNotFound(KeyError):  # noqa: N818 — 语义优先 (对齐 FactorNotFound)
@@ -38,6 +54,22 @@ class StrategyNotFound(KeyError):  # noqa: N818 — 语义优先 (对齐 FactorN
 
 class StrategyRegistryIntegrityError(RuntimeError):
     """DB 与 in-memory cache 不一致 (e.g. DB live 但 cache 未 register)."""
+
+
+class EvaluationRequired(RuntimeError):  # noqa: N818 — 语义优先 (对齐 StrategyNotFound)
+    """update_status(LIVE) 触发但最近评估缺失/未通过/已过期 (MVP 3.5.1 守门).
+
+    触发条件 (任一):
+      - strategy_evaluations 表无该 strategy_id 记录
+      - 最新行 passed=False (有 blockers)
+      - 最新行 evaluated_at 超出 freshness 窗口 (默认 30 天)
+
+    修复路径:
+      evaluator = PlatformStrategyEvaluator(loader)
+      verdict = evaluator.evaluate_strategy(strategy_id)
+      registry.record_evaluation(verdict)
+      registry.update_status(strategy_id, StrategyStatus.LIVE, reason)
+    """
 
 
 class DBStrategyRegistry(StrategyRegistry):
@@ -53,9 +85,24 @@ class DBStrategyRegistry(StrategyRegistry):
     """
 
     def __init__(
-        self, conn_factory: Callable[[], psycopg2.extensions.connection]
+        self,
+        conn_factory: Callable[[], psycopg2.extensions.connection],
+        *,
+        live_eval_freshness_days: int = DEFAULT_LIVE_EVAL_FRESHNESS_DAYS,
     ) -> None:
+        """初始化.
+
+        Args:
+          conn_factory: psycopg2 connection callable (DI, 对齐 MVP 1.3b DBFactorRegistry).
+          live_eval_freshness_days: MVP 3.5.1 update_status(LIVE) freshness 阈值 (默认 30 天).
+            最新评估超出此窗口视为过期, 拒绝升 LIVE. 必 > 0.
+        """
+        if live_eval_freshness_days <= 0:
+            raise ValueError(
+                f"live_eval_freshness_days 必须 > 0, 实测 {live_eval_freshness_days}"
+            )
         self._conn_factory = conn_factory
+        self._live_eval_freshness_days = live_eval_freshness_days
         # In-memory instance cache (boot-time populated via register())
         self._instances: dict[UUID, Strategy] = {}
 
@@ -213,9 +260,14 @@ class DBStrategyRegistry(StrategyRegistry):
     ) -> None:
         """变更策略状态 + 写 strategy_status_log 审计行.
 
+        **MVP 3.5.1 守门 (2026-04-28)**: 当 new_status == LIVE 且 old_status != LIVE 时,
+        必须 strategy_evaluations 表已有最新 passed=True 行且 evaluated_at 在
+        freshness 窗口内 (默认 30 天). 否则 raise EvaluationRequired (fail-loud).
+
         Raises:
           StrategyNotFound: strategy_id 不在 DB
           ValueError: reason 空 (审计必附原因)
+          EvaluationRequired: 升 LIVE 但缺最新有效评估 (MVP 3.5.1)
         """
         if not reason or not reason.strip():
             raise ValueError("update_status 必须附 reason (审计要求)")
@@ -247,6 +299,16 @@ class DBStrategyRegistry(StrategyRegistry):
                 )
                 return
 
+            # MVP 3.5.1 LIVE 守门: 升 LIVE 必 latest evaluation passed + fresh.
+            # 仅检查 transitions INTO LIVE (old != LIVE), LIVE→其他 status (PAUSE/RETIRE)
+            # 不需要重评估 (反而是降级路径, 评估守门只防止"未评估升 LIVE").
+            if (
+                new_status_text == StrategyStatus.LIVE.value
+                and old_status_text != StrategyStatus.LIVE.value
+            ):
+                # Same cursor + same transaction (调用方 commit 时整体原子)
+                self._assert_eval_passed_for_live(sid, cur)
+
             cur.execute(
                 "UPDATE strategy_registry SET status = %s WHERE strategy_id = %s",
                 (new_status_text, str(sid)),
@@ -266,6 +328,128 @@ class DBStrategyRegistry(StrategyRegistry):
             new_status_text,
             reason,
         )
+
+    # ─── MVP 3.5.1: record_evaluation + LIVE 守门 ──────────────────────
+
+    def record_evaluation(
+        self,
+        verdict: Verdict,
+        *,
+        evaluator_class: str = "PlatformStrategyEvaluator",
+    ) -> None:
+        """记录 Strategy 评估结果到 strategy_evaluations 表 (append-only history).
+
+        调用顺序 (MVP 3.5.1 LIVE 守门约定):
+          verdict = evaluator.evaluate_strategy(strategy_id)
+          registry.record_evaluation(verdict)
+          registry.update_status(strategy_id, StrategyStatus.LIVE, reason)
+
+        Args:
+          verdict: PlatformStrategyEvaluator 输出. verdict.subject 必 = strategy_id (UUID str).
+          evaluator_class: 评估器 class name (审计 + 多评估器并存预留).
+
+        Raises:
+          ValueError: verdict.subject 非 UUID, 或 evaluator_class 空.
+          psycopg2.errors.ForeignKeyViolation: strategy_id 不在 strategy_registry
+            (调用方需先 register()).
+        """
+        if not evaluator_class or not evaluator_class.strip():
+            raise ValueError("evaluator_class 不可为空 (审计要求)")
+        sid = self._parse_uuid(verdict.subject, "verdict.subject")
+        blockers_json = json.dumps(list(verdict.blockers))
+        details_json = json.dumps(dict(verdict.details))
+
+        conn = self._conn_factory()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO strategy_evaluations
+                    (strategy_id, passed, blockers, p_value, details, evaluator_class)
+                VALUES (%s, %s, %s::jsonb, %s, %s::jsonb, %s)
+                """,
+                (
+                    str(sid),
+                    bool(verdict.passed),
+                    blockers_json,
+                    verdict.p_value,
+                    details_json,
+                    evaluator_class.strip(),
+                ),
+            )
+        _logger.info(
+            "strategy evaluation recorded: id=%s passed=%s blockers=%d evaluator=%s",
+            sid,
+            verdict.passed,
+            len(verdict.blockers),
+            evaluator_class,
+        )
+
+    def _assert_eval_passed_for_live(
+        self,
+        sid: UUID,
+        cur: psycopg2.extensions.cursor,
+    ) -> None:
+        """MVP 3.5.1 LIVE 守门 — 检查最新 strategy_evaluations 行.
+
+        语义:
+          - 无任何评估行 → EvaluationRequired (调用方需先 record_evaluation)
+          - 最新 passed=False → EvaluationRequired (修 blockers 后重评估)
+          - 最新 evaluated_at 过期 (> freshness_days) → EvaluationRequired (重评估)
+
+        Args:
+          sid: strategy UUID.
+          cur: 复用 update_status 的 cursor (同 tx, 调用方 commit 整体原子).
+
+        Raises:
+          EvaluationRequired: 任一守门条件失败.
+        """
+        cur.execute(
+            """
+            SELECT passed, blockers, evaluated_at
+            FROM strategy_evaluations
+            WHERE strategy_id = %s
+            ORDER BY evaluated_at DESC, id DESC
+            LIMIT 1
+            """,
+            (str(sid),),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise EvaluationRequired(
+                f"strategy_id {sid} 无 strategy_evaluations 记录, 拒绝升 LIVE. "
+                f"调用方需: evaluator.evaluate_strategy(sid) → "
+                f"registry.record_evaluation(verdict) → registry.update_status(sid, LIVE, reason)."
+            )
+        passed, blockers, evaluated_at = row
+        if not passed:
+            blockers_repr = (
+                json.dumps(blockers) if blockers else "[]"
+            ) if isinstance(blockers, (list, dict)) else str(blockers)
+            raise EvaluationRequired(
+                f"strategy_id {sid} 最新评估未通过 (blockers={blockers_repr}), 拒绝升 LIVE. "
+                f"修复 blockers 后重 evaluate_strategy + record_evaluation."
+            )
+        # Freshness check: evaluated_at 是 timestamptz, psycopg2 返 tz-aware datetime (UTC).
+        # 铁律 41: 内部用 UTC compare, datetime.now(timezone.utc) 对齐.
+        if not isinstance(evaluated_at, datetime):
+            # Defensive: 老 driver / mock 可能返 None / str. fail-loud.
+            raise EvaluationRequired(
+                f"strategy_id {sid} evaluated_at 非 datetime ({type(evaluated_at).__name__}), "
+                f"无法做 freshness check. DB schema / driver 异常."
+            )
+        if evaluated_at.tzinfo is None:
+            # Defensive: 若 driver 返 naive datetime, 当 UTC 处理 (PG timestamptz 应永远 aware,
+            # 这里只是防御 mock / sqlite test fixture).
+            evaluated_at = evaluated_at.replace(tzinfo=UTC)
+        now_utc = datetime.now(UTC)
+        age = now_utc - evaluated_at
+        max_age = timedelta(days=self._live_eval_freshness_days)
+        if age > max_age:
+            raise EvaluationRequired(
+                f"strategy_id {sid} 最新评估已过期 (age={age.days} 天 > "
+                f"{self._live_eval_freshness_days} 天阈值), 拒绝升 LIVE. "
+                f"重 evaluate_strategy + record_evaluation 后重试."
+            )
 
     # ─── Helpers ──────────────────────────────────────────────────────
 
