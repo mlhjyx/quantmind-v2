@@ -20,11 +20,11 @@
 
 ## Scope (~3-4 周, 4 批交付, 串行)
 
-**进度** (Session 41 末 2026-04-28):
+**进度** (Session 41 末 2026-04-28 18:30):
 - ✅ 批 1: PR #119 merged main `2a9c01a` (event_outbox 表 + OutboxWriter + B-Tree partial 索引 + 14 tests, EXPLAIN 0.070ms)
 - ✅ 批 2: PR #120 merged main `3358150` (OutboxPublisher 30s Celery beat + SKIP LOCKED + DLQ + 16 tests, 真 DB integration ✓)
-- ⬜ 批 3: OutboxBackedAuditTrail concrete (replace MVP 3.3 stub) — Session 42+
-- ⬜ 批 4: 4 域事件迁 outbox + 7 日 dual-write — Session 43+
+- ✅ 批 3: PR #121 merged main `4929f39` (OutboxBackedAuditTrail concrete + record + 4 SQL trace + 23 tests, 双模式互补)
+- ⬜ 批 4: 4 域事件迁 outbox + 7 日 dual-write — Session 42+
 
 ### 批 1 ✅: event_outbox 表 + Outbox 写路径 (~1 周)
 
@@ -48,7 +48,7 @@
 3. `backend/tests/test_outbox_publisher.py` ⭐ 新 ~200 行 ~15 tests (并发 SKIP LOCKED + retry + DLQ)
 4. `backend/tests/smoke/test_mvp_3_4_batch_2_live.py` ⭐ 新 (铁律 10b)
 
-### 批 3: ExecutionAuditTrail concrete + AuditChain.trace() 真实现 (~1 周)
+### 批 3 ✅: ExecutionAuditTrail concrete + AuditChain.trace() 真实现 (~1 周)
 
 **交付物**:
 1. `backend/qm_platform/signal/audit.py` ⚠️ REPLACE stub
