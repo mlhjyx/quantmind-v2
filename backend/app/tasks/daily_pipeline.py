@@ -945,11 +945,25 @@ def factor_lifecycle_task(self) -> dict:
 
     from factor_lifecycle_monitor import run as run_lifecycle
 
+    # Phase 2 (PR #129 reviewer P1): 显式声明 composite_mode 防 library default 漂移.
+    # 默认 G1_ONLY 来源 PR #128 实证 (12 周回放 g1-only=550 demotes, 0 hypothesis 噪音).
+    # 实战 dry-run 14 demotes / 0 CORE 受影响.
+    backend_dir = project_root / "backend"
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+    from engines.factor_lifecycle import CompositeMode
+
     try:
-        result = run_lifecycle(dry_run=False, factor_filter=None)
+        result = run_lifecycle(
+            dry_run=False,
+            factor_filter=None,
+            composite_mode=CompositeMode.G1_ONLY,
+        )
         logger.info(
             f"[FactorLifecycle] checked={result['checked']} "
-            f"no_data={result['no_data']} transitions={len(result['transitions'])}"
+            f"no_data={result['no_data']} transitions={len(result['transitions'])} "
+            f"composite={result.get('composite_mode', 'off')} "
+            f"synthesized={len(result.get('composite_synthesized', []))}"
         )
         return {"status": "ok", **result}
     except Exception as e:

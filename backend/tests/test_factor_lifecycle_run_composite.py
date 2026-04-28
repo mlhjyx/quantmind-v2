@@ -197,7 +197,8 @@ def test_run_composite_g1_only_default_when_unspecified(flm):
 
 
 def test_run_result_includes_composite_fields(flm):
-    """result dict 含 composite_mode (字符串) + composite_synthesized (list)."""
+    """result dict 含 composite_mode (字符串) + composite_synthesized (list) +
+    composite_suppressed_recoveries (P2.1 reviewer 2026-04-28 PR #129)."""
     factor_rows = []  # 0 因子, 走 happy path
     tail_rows = []
     conn = _mk_conn(factor_rows, tail_rows)
@@ -212,3 +213,33 @@ def test_run_result_includes_composite_fields(flm):
     assert result["composite_mode"] == "strict"
     assert "composite_synthesized" in result
     assert result["composite_synthesized"] == []
+    assert "composite_suppressed_recoveries" in result
+    assert result["composite_suppressed_recoveries"] == []
+
+
+def test_run_compare_and_composite_share_pipeline_report(flm):
+    """P3.2 reviewer 2026-04-28 PR #129 + P2.2 perf fix: compare=True AND
+    composite_mode=G1_ONLY 时 _evaluate_pipeline_report 仅 1 次 (cache 复用)."""
+    factor_rows = [("f1", "active", datetime(2026, 4, 1))]
+    tail_rows = [(date(2026, 4, 25), 0.06, 0.06)]
+    conn = _mk_conn(factor_rows, tail_rows)
+    fake_report = _mk_report(["G1_ic_significance"])
+
+    with patch.object(flm, "_get_conn", return_value=conn), \
+         patch.object(
+             flm, "_evaluate_pipeline_report", return_value=fake_report,
+         ) as eval_mock, \
+         patch.object(flm, "_publish_event"), \
+         patch.object(flm, "_publish_dual_path_mismatch"):
+        result = flm.run(
+            dry_run=True,
+            factor_filter="f1",
+            compare=True,
+            composite_mode=flm.CompositeMode.G1_ONLY,
+        )
+
+    # 仅 1 次 pipeline evaluate (cache 复用), 即便双 active
+    assert eval_mock.call_count == 1
+    # composite + compare 都该工作: 1 synthesized + 1 mismatch
+    assert len(result["composite_synthesized"]) == 1
+    assert result["dual_path_compared"] >= 1
