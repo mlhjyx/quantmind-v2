@@ -85,6 +85,19 @@ CELERY_BEAT_SCHEDULE: dict = {
     },
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
 
+    # ── 高频 30s — Outbox Publisher (MVP 3.4 batch 2) ──
+    # event_outbox 表 → Redis Streams `qm:{aggregate_type}:{event_type}`.
+    # 周期 30s 高频但 B-Tree partial 索引 cheap (WHERE published_at IS NULL),
+    # 0 backlog 时 SELECT 几 ms 即返. 加锁走 SKIP LOCKED 防多 worker 等待.
+    # 详见 outbox_publisher.py + docs/mvp/MVP_3_4_event_sourcing_outbox.md.
+    "outbox-publisher-tick": {
+        "task": "app.tasks.outbox_publisher.outbox_publisher_tick",
+        "schedule": 30.0,  # Celery 接受 float 秒, 等价 timedelta(seconds=30)
+        "options": {
+            "queue": "default",
+            "expires": 25,  # 25s 内未执行则过期 (30s 周期内必执行或丢)
+        },
+    },
     # ── T日 17:40 数据质量报告 (DATA_SYSTEM_V1 P1-2) ──
     "daily-quality-report": {
         "task": "daily_pipeline.data_quality_report",
