@@ -45,7 +45,11 @@ CREATE TABLE IF NOT EXISTS platform_metrics (
     -- (e.g. counter 多次 increment), 不强制 UNIQUE.
     -- Append-only 写入, no PK / UNIQUE — 避免 hypertable 跨 chunk 唯一性约束开销.
     -- 时间序列重复 row 不视为 bug (counter 多次写 + aggregation in query).
-    CHECK (value = value)  -- NaN 防护 (NaN != NaN, fail CHECK), 铁律 29 防 NaN 入库
+    -- reviewer P1.1 (database-reviewer CRITICAL) 采纳: PG `=`/`!=` 对 DOUBLE PRECISION
+    -- NaN 是 SQL 等价语义 (NaN = NaN → TRUE), 与 IEEE 754 不同. 原 `CHECK (value = value)`
+    -- 在 PG 上对 NaN 永真, 等于无 CHECK. 显式 `value != 'NaN'::float8` 才能拦截 NaN
+    -- (PG 返 FALSE → CHECK violation). 铁律 29 NaN 防御兑现.
+    CHECK (value != 'NaN'::float8)
 );
 
 COMMENT ON TABLE platform_metrics IS
@@ -107,10 +111,11 @@ DECLARE
 BEGIN
     SET LOCAL statement_timeout = '30s';
 
-    -- 核心列存在性
+    -- 核心列存在性 (reviewer P3 采纳: schema='public' 防多 schema 同名 false-positive)
     SELECT COUNT(*) INTO col_count
     FROM information_schema.columns
-    WHERE table_name = 'platform_metrics'
+    WHERE table_schema = 'public'
+      AND table_name = 'platform_metrics'
       AND column_name IN ('name', 'value', 'metric_type', 'labels', 'ts');
     IF col_count < 5 THEN
         RAISE EXCEPTION 'platform_metrics migration incomplete: only % of 5 required columns', col_count;
