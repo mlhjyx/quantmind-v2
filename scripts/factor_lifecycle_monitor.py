@@ -145,8 +145,21 @@ def _compute_decision(
 
 
 def _apply_transition(conn, decision: TransitionDecision) -> None:
-    """写入 factor_registry + 发事件. 调用方负责 commit."""
+    """写入 factor_registry + 发事件. 调用方负责 commit.
+
+    PR #124 reviewer P2 fix: SELECT FOR UPDATE 防并发 lost-update.
+    场景 — Beat weekly 跑期间 manual `--factor X` 同时跑, 两 process 都读 status='active'
+    都计算 →warning 还可接受 (idempotent), 但 active→warning 与 warning→critical 同时跑
+    会 lost-update (后写覆盖前写). 加 FOR UPDATE 串行化, 第二 process 等第一 commit 后再读.
+    """
     with conn.cursor() as cur:
+        # SELECT FOR UPDATE 锁该因子行直至本 tx commit/rollback
+        cur.execute(
+            "SELECT status FROM factor_registry WHERE name = %s FOR UPDATE",
+            (decision.factor_name,),
+        )
+        if cur.fetchone() is None:
+            raise RuntimeError(f"factor {decision.factor_name} 不存在 (FOR UPDATE 锁失败)")
         cur.execute(
             """UPDATE factor_registry
                SET status = %s, updated_at = NOW()
@@ -193,6 +206,9 @@ def _load_ic_series(conn, factor_name: str, lookback_days: int):
 def _load_factor_meta(conn, factor_name: str):
     """加载因子注册表元信息 → FactorMeta (G10 hypothesis 用).
 
+    PR #124 reviewer P1 fix: 用 cur.description 字典访问 (与 _load_registry_factors /
+    _load_ic_tail 一致 pattern), 避免 row[N] positional 索引在 schema 演进时 silently 漂.
+
     Returns:
       FactorMeta or None.
     """
@@ -209,31 +225,41 @@ def _load_factor_meta(conn, factor_name: str):
     with conn.cursor() as cur:
         cur.execute(sql, (factor_name,))
         row = cur.fetchone()
-    if row is None:
-        return None
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+    rec = dict(zip(cols, row, strict=True))
+
     try:
-        status_val = FactorStatus(row[9]) if row[9] else FactorStatus.CANDIDATE
+        status_val = (
+            FactorStatus(rec["status"]) if rec.get("status") else FactorStatus.CANDIDATE
+        )
     except ValueError:
         status_val = FactorStatus.CANDIDATE
+
+    def _opt_float(key: str) -> float | None:
+        v = rec.get(key)
+        return float(v) if v is not None else None
+
     return FactorMeta(
-        factor_id=row[0],
-        name=row[1],
-        category=row[2] or "unknown",
-        direction=int(row[3]) if row[3] is not None else 1,
-        expression=row[4],
-        code_content=row[5],
-        hypothesis=row[6],
-        source=row[7] or "manual",
-        lookback_days=row[8],
+        factor_id=rec["id"],
+        name=rec["name"],
+        category=rec.get("category") or "unknown",
+        direction=int(rec["direction"]) if rec.get("direction") is not None else 1,
+        expression=rec.get("expression"),
+        code_content=rec.get("code_content"),
+        hypothesis=rec.get("hypothesis"),
+        source=rec.get("source") or "manual",
+        lookback_days=rec.get("lookback_days"),
         status=status_val,
-        pool=row[10] or "CANDIDATE",
-        gate_ic=float(row[11]) if row[11] is not None else None,
-        gate_ir=float(row[12]) if row[12] is not None else None,
-        gate_mono=float(row[13]) if row[13] is not None else None,
-        gate_t=float(row[14]) if row[14] is not None else None,
-        ic_decay_ratio=float(row[15]) if row[15] is not None else None,
-        created_at=str(row[16]) if row[16] is not None else "",
-        updated_at=str(row[17]) if row[17] is not None else "",
+        pool=rec.get("pool") or "CANDIDATE",
+        gate_ic=_opt_float("gate_ic"),
+        gate_ir=_opt_float("gate_ir"),
+        gate_mono=_opt_float("gate_mono"),
+        gate_t=_opt_float("gate_t"),
+        ic_decay_ratio=_opt_float("ic_decay_ratio"),
+        created_at=str(rec["created_at"]) if rec.get("created_at") is not None else "",
+        updated_at=str(rec["updated_at"]) if rec.get("updated_at") is not None else "",
     )
 
 
