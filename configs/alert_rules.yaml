@@ -1,0 +1,159 @@
+# MVP 4.1 batch 2.2 — AlertRulesEngine 默认规则集.
+#
+# 用法:
+#   from qm_platform.observability import AlertRulesEngine
+#   engine = AlertRulesEngine.from_yaml("configs/alert_rules.yaml")
+#   rule = engine.match(alert)  # 顺序匹配, 第一个 match 即返
+#
+# 规则匹配语义:
+#   - rules 顺序敏感 (具体规则放前面, 通配放后面)
+#   - match 字段 ALL 满足才匹配 (AND), 缺字段视通配
+#   - dedup_key_template 占位符 {field} 从 alert.details 取值, {source}/{severity} 顶层
+#
+# 17 schtask scripts 迁 SDK (batch 3) 时, caller 走:
+#   rule = engine.match(alert)
+#   router.fire(alert,
+#               dedup_key=rule.format_dedup_key(alert) if rule else <fallback>,
+#               suppress_minutes=rule.suppress_minutes if rule else None)
+#
+# 维护原则:
+#   - 新增源前必加显式规则 (不允许全部走通配 fallback)
+#   - severity 改后必同步本文件
+#   - PR 加规则必含: dedup_key_template 设计 reasoning + 实测 caller 端可生成场景
+
+rules:
+  # ────────────── P0 真金 (PT 生产) ──────────────
+  - name: p0_intraday_portfolio_drop
+    match:
+      severity: p0
+      source: intraday_monitor
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      dedup_key_template: "intraday:portfolio_drop:cb_l{cb_level}"
+
+  - name: p0_data_quality_pre_signal
+    match:
+      severity: p0
+      source: data_quality_check
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      dedup_key_template: "data_quality:{table}:{issue}"
+
+  - name: p0_pt_audit_findings
+    match:
+      severity: p0
+      source: pt_audit
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      dedup_key_template: "pt_audit:{check}:{trade_date}"
+
+  # ────────────── P1 因子 / 健康 ──────────────
+  - name: p1_factor_lifecycle_warning
+    match:
+      severity: p1
+      source: factor_lifecycle_monitor
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "factor_lifecycle:{factor}:{transition}"
+
+  - name: p1_factor_health_decay
+    match:
+      severity: p1
+      source: factor_health_daily
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "factor_health:{factor}:{issue}"
+
+  - name: p1_pt_daily_summary
+    match:
+      severity: p1
+      source: pt_daily_summary
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "pt_daily_summary:{trade_date}"
+
+  - name: p1_pt_watchdog_stale
+    match:
+      severity: p1
+      source: pt_watchdog
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "pt_watchdog:{check}"
+
+  - name: p1_ic_monitor_drop
+    match:
+      severity: p1
+      source: ic_monitor
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "ic_monitor:{factor}:{trade_date}"
+
+  - name: p1_daily_reconciliation_drift
+    match:
+      severity: p1
+      source: daily_reconciliation
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "daily_reconciliation:{trade_date}:{check}"
+
+  # ────────────── P2 研究 / GP / 长任务 ──────────────
+  - name: p2_rolling_wf_regression
+    match:
+      severity: p2
+      source: rolling_wf
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 1440  # 24h, 周度任务 dedup
+      dedup_key_template: "rolling_wf:{check}:weekly"
+
+  - name: p2_gp_pipeline_failed
+    match:
+      severity: p2
+      source: run_gp_pipeline
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 1440
+      dedup_key_template: "gp_pipeline:{phase}:{exception_type}"
+
+  - name: p2_services_healthcheck_degraded
+    match:
+      severity: p2
+      source: services_healthcheck
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "services_healthcheck:{service}:{check}"
+
+  # ────────────── 通配 fallback (按 severity 兜底) ──────────────
+  - name: catchall_p0
+    match:
+      severity: p0
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      dedup_key_template: "catchall:{source}:p0"
+
+  - name: catchall_p1
+    match:
+      severity: p1
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "catchall:{source}:p1"
+
+  - name: catchall_p2
+    match:
+      severity: p2
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "catchall:{source}:p2"
