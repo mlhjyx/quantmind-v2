@@ -20,11 +20,11 @@
 
 ## Scope (~3-4 周, 4 批交付, 串行)
 
-**进度** (Session 41 末 2026-04-28 18:30):
+**进度** (Session 41 末 2026-04-28 19:30, **MVP 3.4 ✅ 全部完结**):
 - ✅ 批 1: PR #119 merged main `2a9c01a` (event_outbox 表 + OutboxWriter + B-Tree partial 索引 + 14 tests, EXPLAIN 0.070ms)
 - ✅ 批 2: PR #120 merged main `3358150` (OutboxPublisher 30s Celery beat + SKIP LOCKED + DLQ + 16 tests, 真 DB integration ✓)
 - ✅ 批 3: PR #121 merged main `4929f39` (OutboxBackedAuditTrail concrete + record + 4 SQL trace + 23 tests, 双模式互补)
-- ⬜ 批 4: 4 域事件迁 outbox + 7 日 dual-write — Session 42+
+- ✅ 批 4: PR #122 merged main `8aa02a9` (3 域 dual-write signal+exec+risk_engine + 17 tests + 5 真 DB integration, 7 日观察期 + 批 5 sunset 标记)
 
 ### 批 1 ✅: event_outbox 表 + Outbox 写路径 (~1 周)
 
@@ -58,7 +58,7 @@
 2. `backend/qm_platform/signal/router.py` ⚠️ MODIFY (~10 行 delta): wire OutboxBackedAuditTrail 替换 stub
 3. `backend/tests/test_audit_outbox_concrete.py` ⭐ 新 ~250 行 ~18 tests (含 trace 整链 + AuditMissing 异常)
 
-### 批 4: 4 域事件迁 outbox + retire ad-hoc Redis publish (~1 周)
+### 批 4 ✅: 4 域事件迁 outbox + retire ad-hoc Redis publish (~1 周)
 
 **交付物**:
 1. `backend/app/services/risk_control_service.py` ⚠️ MODIFY: PMS / circuit_breaker 写路径迁 outbox (替原 ad-hoc StreamBus.publish)
