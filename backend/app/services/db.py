@@ -48,16 +48,22 @@ class _TrackedConnection:
     def close(self):
         if self._counted:
             global _active_count
+            # max(0, ...) 兜底防 counter underflow. CPython GIL 保证 close() 单线程不会
+            # 同时跟 __del__ 双 decrement (设 _counted=False 后 __del__ 走 no-op gate).
             _active_count = max(0, _active_count - 1)
             object.__setattr__(self, "_counted", False)
         self._conn.close()
 
     def __del__(self):
-        """GC 兜底 counter decrement (Session 40 LL-088 fix).
+        """GC 兜底 counter decrement + connection close (Session 40 fix).
 
         调用方未显式 close() 时 (GC / ``with`` 路径 / 异常未 close), GC finalize
-        wrapper → 此处 decrement counter. psycopg2.connection 自身有 __del__ 关闭
-        socket, 此处仅修 counter accuracy 不重复关闭.
+        wrapper → 此处 decrement counter + 主动 close 底层 conn (defense-in-depth).
+
+        关于底层 conn close (PR #115 reviewer P2 采纳): 原设计仅 decrement counter,
+        依赖 psycopg2.connection 自身 __del__ 关闭 socket. 但 PyPy / cyclic ref /
+        非 CPython 运行时 conn.__del__ 可能延迟. 此处显式调 conn.close() 加 defense
+        (psycopg2 close() 在已关闭 conn 上是 idempotent no-op, 安全).
 
         Interpreter shutdown 时 globals 可能 None / __slots__ 属性可能未 init →
         silent_ok try/except 防 finalizer 抛异常污染 stderr.
@@ -67,6 +73,8 @@ class _TrackedConnection:
                 object.__setattr__(self, "_counted", False)
                 global _active_count
                 _active_count = max(0, _active_count - 1)
+            # P2 reviewer 采纳: defense-in-depth 主动 close conn (idempotent)
+            self._conn.close()
         except Exception:  # noqa: BLE001
             pass  # silent_ok: __del__ during interpreter shutdown when globals may be unset
 
