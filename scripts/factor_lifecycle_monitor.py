@@ -353,22 +353,18 @@ def _publish_dual_path_mismatch(comparison: DualPathComparison) -> None:
         logger.warning("  [dual-path] publish to %s failed (non-blocking)", STREAM_NAME)
 
 
-def _evaluate_new_path(
-    conn,
-    factor_name: str,
-    old_decision: TransitionDecision | None,
-) -> DualPathComparison | None:
-    """新路径评估单因子 + 比对老路径 (batch 2 双路径 4 周观察期).
+def _evaluate_pipeline_report(conn, factor_name: str):
+    """跑 PlatformEvaluationPipeline 单因子, 返 EvaluationReport 或 None.
 
-    新路径仅 log 决策权威仍在老路径. 缺数据 / 异常 fail-soft (返 None, 不影响老路径).
+    Phase 2 (Session 43 2026-04-28) 抽出 helper, 共享 batch 2 dual-path + Phase 2
+    composite wire-up. 缺数据 / 异常 fail-soft (返 None, 调用方决定降级).
 
     Returns:
-      DualPathComparison or None (新路径数据不全跳过).
+      qm_platform.eval.EvaluationReport or None.
     """
     try:
         ic_series = _load_ic_series(conn, factor_name, IC_SERIES_LOOKBACK_DAYS)
         if ic_series is None or ic_series.size < 30:
-            # G1 需 ≥ 30 样本, 缺则跳过 (不算 mismatch)
             return None
         factor_meta = _load_factor_meta(conn, factor_name)
         ctx = build_lifecycle_context(
@@ -377,16 +373,34 @@ def _evaluate_new_path(
             factor_meta=factor_meta,
         )
         pipeline = default_lifecycle_pipeline(context_loader=lambda _name: ctx)
-        report = pipeline.evaluate_full(factor_name)
-        return compare_paths(factor_name, old_decision, report)
+        return pipeline.evaluate_full(factor_name)
     except Exception as e:  # noqa: BLE001 — 新路径 fail-soft, 不影响老路径决策
         logger.warning(
-            "  [dual-path] %s 评估异常 %s: %s (fail-soft, 老路径继续)",
+            "  [pipeline] %s 评估异常 %s: %s (fail-soft, 老路径继续)",
             factor_name,
             type(e).__name__,
             e,
         )
         return None
+
+
+def _evaluate_new_path(
+    conn,
+    factor_name: str,
+    old_decision: TransitionDecision | None,
+) -> DualPathComparison | None:
+    """新路径评估单因子 + 比对老路径 (batch 2 双路径 + Phase 2 复合分析).
+
+    新路径仅 log 决策权威仍在老路径 (compare 模式). compose 模式由 run() 直接调
+    _evaluate_pipeline_report + compute_composite_decision.
+
+    Returns:
+      DualPathComparison or None (新路径数据不全跳过).
+    """
+    report = _evaluate_pipeline_report(conn, factor_name)
+    if report is None:
+        return None
+    return compare_paths(factor_name, old_decision, report)
 
 
 def _publish_event(decision: TransitionDecision) -> None:
@@ -415,20 +429,28 @@ def run(
     dry_run: bool = False,
     factor_filter: str | None = None,
     compare: bool = False,
+    composite_mode: CompositeMode = CompositeMode.G1_ONLY,
 ) -> dict:
     """主执行逻辑.
 
     Args:
       dry_run: True 不写 DB / 不发事件.
       factor_filter: 仅检查指定因子.
-      compare: True 启用 batch 2 新路径双路径比对 (4 周观察期, 老路径仍权威).
+      compare: True 启用 batch 2 新路径双路径比对 (mismatch 告警, 老路径仍权威).
+      composite_mode: Phase 2 (Session 43, 2026-04-28) OR 复合决策模式. 默认
+        G1_ONLY — 新路径 G1 IC significance fail 与老路径 OR 合成 demote.
+        OFF = 仅老路径 (Phase 1 兼容). STRICT = 老 OR (G1 OR G10).
+        来源: PR #128 12 周历史回放实证 g1-only=550 demotes (+66% vs OFF=331)
+        信号/噪音比最佳, 0 hypothesis 噪音.
     """
     logger.info("=" * 60)
     logger.info(
-        "[Lifecycle] 开始 (dry_run=%s, filter=%s, compare=%s, critical_ratio=%s)",
+        "[Lifecycle] 开始 (dry_run=%s, filter=%s, compare=%s, composite=%s, "
+        "critical_ratio=%s)",
         dry_run,
         factor_filter,
         compare,
+        composite_mode.value,
         CRITICAL_RATIO,
     )
 
@@ -436,6 +458,7 @@ def run(
     transitions: list[TransitionDecision] = []
     comparisons: list[DualPathComparison] = []
     mismatches: list[DualPathComparison] = []
+    composite_synthesized: list[TransitionDecision] = []
     checked = 0
     no_data = 0
 
@@ -451,12 +474,12 @@ def run(
                 continue
             checked += 1
 
-            decision = _compute_decision(name, status, tail)
+            old_decision = _compute_decision(name, status, tail)
 
             # batch 2 新路径双路径比对 (在老路径决策后, 不影响老路径权威)
             comparison: DualPathComparison | None = None
             if compare:
-                comparison = _evaluate_new_path(conn, name, decision)
+                comparison = _evaluate_new_path(conn, name, old_decision)
                 if comparison is not None:
                     comparisons.append(comparison)
                     if comparison.consistent:
@@ -474,6 +497,40 @@ def run(
                         mismatches.append(comparison)
                         if not dry_run:
                             _publish_dual_path_mismatch(comparison)
+
+            # Phase 2 复合决策: composite_mode != OFF 时合成最终 decision
+            if composite_mode == CompositeMode.OFF:
+                decision = old_decision
+            else:
+                ic_ma20 = (
+                    float(tail[-1]["ic_ma20"])
+                    if tail[-1]["ic_ma20"] is not None
+                    else None
+                )
+                ic_ma60 = (
+                    float(tail[-1]["ic_ma60"])
+                    if tail[-1]["ic_ma60"] is not None
+                    else None
+                )
+                new_report = _evaluate_pipeline_report(conn, name)
+                decision = compute_composite_decision(
+                    factor_name=name,
+                    current_status=status,
+                    old_decision=old_decision,
+                    new_report=new_report,
+                    mode=composite_mode,
+                    ic_ma20=ic_ma20,
+                    ic_ma60=ic_ma60,
+                )
+                # 若合成决策 != 老决策 → 记 synthesized 便于审计 / dry-run preview
+                if decision is not None and decision is not old_decision:
+                    composite_synthesized.append(decision)
+                    logger.info(
+                        "  [composite] %s 合成: %s (老=%s)",
+                        name,
+                        decision.reason,
+                        "demote" if old_decision is not None else "keep",
+                    )
 
             if decision is None:
                 continue
@@ -511,10 +568,15 @@ def run(
         summary += (
             f", dual-path 已比对={len(comparisons)}, mismatch={len(mismatches)}"
         )
+    if composite_mode != CompositeMode.OFF:
+        summary += (
+            f", composite={composite_mode.value} 合成={len(composite_synthesized)}"
+        )
     logger.info(summary)
     return {
         "checked": checked,
         "no_data": no_data,
+        "composite_mode": composite_mode.value,
         "transitions": [
             {
                 "factor": d.factor_name,
@@ -534,6 +596,16 @@ def run(
                 "summary": c.mismatch_summary,
             }
             for c in mismatches
+        ],
+        # Phase 2: 合成 = 由复合规则触发但老路径未提供的 transitions
+        "composite_synthesized": [
+            {
+                "factor": d.factor_name,
+                "from": d.from_status,
+                "to": d.to_status,
+                "reason": d.reason,
+            }
+            for d in composite_synthesized
         ],
     }
 
@@ -623,7 +695,7 @@ def _replay_one_factor(
     )
     pipeline = default_lifecycle_pipeline(context_loader=lambda _n: ctx)
     report = pipeline.evaluate_full(factor_name)
-    comparison = compare_paths(factor_name, old_decision, report)
+    comparison = compare_paths(factor_name, old_decision=old_decision, new_report=report)
 
     # MVP 3.5 Follow-up B (Session 43): 计算 3 mode 复合决策 demote 标志 (分析用)
     ic_ma20_val = float(tail[-1]["ic_ma20"]) if tail[-1]["ic_ma20"] is not None else None
@@ -890,6 +962,14 @@ def main():
         help="启用 batch 2 新路径双路径比对 (PlatformEvaluationPipeline G1+G10), "
         "老路径决策权威, 新路径仅 log + mismatch 告警",
     )
+    parser.add_argument(
+        "--composite-mode",
+        type=str,
+        choices=[m.value for m in CompositeMode],
+        default=CompositeMode.G1_ONLY.value,
+        help="Phase 2 OR 复合决策模式. 默认 g1-only (PR #128 实证 +66% demotes / 0 "
+        "hypothesis 噪音). off=仅老路径 (Phase 1). strict=老 OR (G1 OR G10).",
+    )
     # MVP 3.5 Follow-up A (Session 43, 2026-04-28) — 历史回放
     parser.add_argument(
         "--replay-from",
@@ -944,6 +1024,7 @@ def main():
         dry_run=args.dry_run,
         factor_filter=args.factor,
         compare=args.compare,
+        composite_mode=CompositeMode(args.composite_mode),
     )
     logger.info("结果: %s", result)
 
