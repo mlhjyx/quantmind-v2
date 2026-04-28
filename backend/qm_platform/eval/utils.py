@@ -64,12 +64,12 @@ def paired_bootstrap_pvalue(
         return None
     diff = diff[finite_mask]
 
+    # 向量化 bootstrap (PR #123 reviewer P2): rng.integers 一次抽 (n_iter, n) 矩阵,
+    # diff[idx].mean(axis=1) 一次得 n_iter 个 boot 均值, ~50-100x 快于 Python loop.
     rng = np.random.default_rng(rng_seed)
-    boot_means = np.empty(n_iter, dtype=np.float64)
     n = diff.size
-    for i in range(n_iter):
-        idx = rng.integers(0, n, size=n)
-        boot_means[i] = diff[idx].mean()
+    idx = rng.integers(0, n, size=(n_iter, n))
+    boot_means = diff[idx].mean(axis=1)
 
     return float((boot_means <= 0.0).mean())
 

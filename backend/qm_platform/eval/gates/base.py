@@ -6,7 +6,9 @@ GateContext frozen dataclass, 所有字段 Optional, gates 缺数据返 GateResu
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -15,6 +17,14 @@ from ..interface import GateResult
 
 if TYPE_CHECKING:
     from ...factor.interface import FactorMeta, FactorRegistry
+
+
+_EMPTY_EXTRA: Mapping[str, Any] = MappingProxyType({})
+"""GateContext.extra 默认空只读视图, 防 Gate 间污染共享 dict (PR #123 reviewer P1).
+
+Pipeline `evaluate_full` 同一 ctx 实例顺序传给所有 Gate, 若 extra 是可变 dict 一个 Gate 写
+则下游所有 Gate 看见. 用 MappingProxyType 阻止写, Gate 想加临时数据须自己持有局部 dict.
+"""
 
 
 class GateError(RuntimeError):  # noqa: N818 — 语义优先, 与 Platform OnboardingBlocked 同策略
@@ -44,7 +54,8 @@ class GateContext:
       bh_fdr_m: 累积测试总数 M (G8 必需).
       bh_fdr_p_value: 因子检验 p 值 (G8 必需).
       registry: FactorRegistry 实例 (G9 用 novelty_check 复用 MVP 1.3c).
-      extra: 业务特化扩展 (avoid 字段膨胀).
+      extra: 业务特化扩展只读视图 (避免字段膨胀). 注意: 是 read-only Mapping 不是 dict,
+        Gate 不可写 (Gate 间 ctx 共享, 写会污染下游). 想 mutate 须 dict(ctx.extra) 自持局部.
     """
 
     factor_name: str
@@ -59,7 +70,7 @@ class GateContext:
     bh_fdr_m: int | None = None
     bh_fdr_p_value: float | None = None
     registry: FactorRegistry | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: Mapping[str, Any] = field(default_factory=lambda: _EMPTY_EXTRA)
 
 
 class Gate(ABC):

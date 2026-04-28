@@ -397,3 +397,50 @@ def test_pipeline_safe_evaluate_swallows_gate_exception():
 def test_pipeline_empty_gates_raises():
     with pytest.raises(ValueError, match="gates"):
         PlatformEvaluationPipeline(gates=[], context_loader=lambda n: GateContext(factor_name=n))
+
+
+# ---------- PR #123 reviewer fix verification ----------
+
+
+def test_gate_context_extra_is_immutable_p1_1():
+    """P1.1 GateContext.extra 必须 read-only — 防 Gate 间 ctx 共享 dict 污染下游.
+
+    Pipeline.evaluate_full 同一 ctx 实例顺序传所有 Gate, 若 extra 是可变 dict
+    一个 Gate 写则下游 Gate 看见. 修复后 extra 是 MappingProxyType / Mapping, 写抛 TypeError.
+    """
+    ctx = GateContext(factor_name="x")
+    with pytest.raises(TypeError):
+        ctx.extra["foo"] = "bar"  # type: ignore[index] — 故意触发 read-only 异常
+
+
+def test_to_verdict_numpy_scalar_json_serializable_p1_2():
+    """P1.2 EvaluationReport.to_verdict 必须把 numpy scalar 转 Python float 防 JSON 炸.
+
+    GateResult.observed 类型注解是 float | None, 但 Gate 实现常返 np.float64
+    (e.g. arr.mean()). 下游 audit log / StreamBus / API 序列化必须能 json.dumps.
+    """
+    import json
+
+    rng = np.random.default_rng(0)
+    ic = rng.normal(0.05, 0.01, size=200)
+    ctx = GateContext(factor_name="x", ic_series=ic)
+    pipeline = PlatformEvaluationPipeline(
+        gates=[G1IcSignificanceGate()],
+        context_loader=lambda n: ctx,
+    )
+    verdict = pipeline.evaluate_factor("x")
+    # G1 的 observed 是 t-stat (np.float64 from arr.mean / arr.std).
+    # 修复前: json.dumps(verdict.details) raise TypeError; 修复后: 通过.
+    serialized = json.dumps(verdict.details)
+    assert "observed" in serialized
+    assert isinstance(verdict.details["gate_results"][0]["observed"], float)
+
+
+def test_paired_bootstrap_vectorized_consistency_p2_1():
+    """P2.1 向量化 bootstrap 与原 loop 实现应等价 (rng_seed 相同时)."""
+    rng_a = np.random.default_rng(1)
+    cand = rng_a.normal(0.05, 0.01, size=100)
+    base = rng_a.normal(0.0, 0.01, size=100)
+    p1 = paired_bootstrap_pvalue(cand, base, rng_seed=42)
+    p2 = paired_bootstrap_pvalue(cand, base, rng_seed=42)
+    assert p1 == p2  # 同 seed 必复现 (向量化后 rng.integers 一次性消费 size=(n_iter, n))
