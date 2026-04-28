@@ -218,6 +218,12 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
           ValueError: event_type 格式错 / aggregate_type 不在白名单 (OutboxWriter)
                       / payload 缺 aggregate_id key / payload 不可 JSON 序列化.
           TypeError: payload 不是 dict.
+
+        Performance note:
+          每次 record() 获新 conn + 短 tx + commit. 单线程 < 100 events/s 无瓶颈
+          (psycopg2 conn pool 摊销). 高吞吐调用方 (e.g. bulk order routing 单 tx
+          内 1000+ events) 应改走 OutboxWriter co-tx 模式 (caller 持 conn, 与业务
+          表 INSERT 同 tx commit), 避 per-event tx 开销. 双模式对比见类 docstring.
         """
         if not isinstance(event_type, str):
             raise ValueError(
@@ -256,6 +262,10 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
 
         conn = self._conn_factory()
         try:
+            # P1 reviewer 采纳: 显式声明依赖 _TrackedConnection.__setattr__ 转发
+            # (backend/app/services/db.py:90 docstring 明保 "__setattr__ 透传写属性").
+            # 若未来 wrapper 重构破此契约 → autocommit 默认 True 会触发 OutboxWriter
+            # 单 INSERT 即 commit 而非交给本类 commit() 显式控制.
             conn.autocommit = False
             writer = OutboxWriter(conn)
             # event_subtype 而非全 event_type — outbox 表 event_type 列存 subtype,
@@ -339,10 +349,22 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
                         f"payload keys={sorted(signal_payload.keys())})"
                     )
 
+                # P2 reviewer 采纳: 区分 "key 缺失" (record-quality 退化, warn) vs
+                # "key 在但空 dict" (策略合法零因子, silent). silent fallback 会掩盖
+                # 真实生产 record() 漏写 factor_contributions 的 schema bug.
+                if "factor_contributions" not in signal_payload:
+                    _logger.warning(
+                        "[OutboxBackedAuditTrail.trace] signal event 缺 factor_contributions "
+                        "key (signal_id=%s, strategy_id=%s). 返空 dict 但记录 quality 可疑, "
+                        "检查 signal record() 调用方是否漏传此 key.",
+                        signal_id, strategy_id,
+                    )
                 factor_contributions: dict[str, float] = (
                     signal_payload.get("factor_contributions") or {}
                 )
 
+                # P3.1 reviewer 采纳: created_at 是 NOT NULL 列 (event_outbox.sql DDL),
+                # psycopg2 不会返 None. 移除 `if ts else ""` 死代码 + 简化 reader 阅读.
                 return AuditChain(
                     fill_id=fill_id,
                     order_id=str(order_id),
@@ -350,9 +372,9 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
                     strategy_id=str(strategy_id),
                     factor_contributions=factor_contributions,
                     timestamps={
-                        "fill": fill_created_at.isoformat() if fill_created_at else "",
-                        "order": order_created_at.isoformat() if order_created_at else "",
-                        "signal": signal_created_at.isoformat() if signal_created_at else "",
+                        "fill": fill_created_at.isoformat(),
+                        "order": order_created_at.isoformat(),
+                        "signal": signal_created_at.isoformat(),
                     },
                 )
         finally:
