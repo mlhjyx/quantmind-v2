@@ -290,6 +290,9 @@ class PlatformRiskEngine:
         # reviewer P0-1 采纳: 删 explicit conn.commit(). 依赖 psycopg2 `with conn:`
         # context manager __exit__ 正常退出时 auto-commit, 异常时 rollback. 对齐
         # knowledge/registry.py 模式, 事务边界由 conn_factory 契约持有方管理.
+        # MVP 3.4 batch 4 dual-write: outbox enqueue 在同 `with conn:` 块内 →
+        # outbox + risk_event_log atomic (单 tx commit). publisher worker (batch 2)
+        # 30s 后异步 publish 到 Redis Stream `qm:risk:{rule_id_action}` 替代 ad-hoc.
         try:
             with self._conn_factory() as conn, conn.cursor() as cur:
                 cur.execute(
@@ -310,6 +313,44 @@ class PlatformRiskEngine:
                         json.dumps(action_result, default=str),
                     ),
                 )
+                # MVP 3.4 batch 4 dual-write: outbox event (atomic 同 risk_event_log INSERT)
+                # event_type subtype = rule action (sell_full/alert_only/...) 拼回
+                # "risk.{action}" stream. aggregate_id = "{code}-{rule_id}-{ts}" 唯一.
+                try:
+                    from qm_platform.observability import OutboxWriter  # noqa: PLC0415
+
+                    OutboxWriter(conn).enqueue(
+                        aggregate_type="risk",
+                        aggregate_id=(
+                            f"{result.code or 'portfolio'}-{result.rule_id}-"
+                            f"{context.timestamp.isoformat()}"
+                        ),
+                        event_type=rule.action,
+                        payload={
+                            "risk_id": (
+                                f"{result.code or 'portfolio'}-{result.rule_id}-"
+                                f"{context.timestamp.isoformat()}"
+                            ),
+                            "strategy_id": context.strategy_id,
+                            "execution_mode": context.execution_mode,
+                            "rule_id": result.rule_id,
+                            "severity": rule.severity.value,
+                            "code": result.code,
+                            "shares": result.shares,
+                            "reason": result.reason,
+                            "action_taken": rule.action,
+                            "action_status": action_result.get("status", "unknown"),
+                            "timestamp": context.timestamp.isoformat(),
+                        },
+                    )
+                except Exception as outbox_exc:  # noqa: BLE001
+                    # outbox 失败不阻塞 risk_event_log INSERT (主审计仍生效).
+                    # 7 日 dual-write 观察期: 退役老 ad-hoc StreamBus 前必须 0 outbox 失败.
+                    logger.warning(
+                        "[risk-engine] outbox enqueue 失败 (dual-write 过渡期 silent_ok) "
+                        "rule=%s exc=%s",
+                        result.rule_id, type(outbox_exc).__name__, exc_info=True,
+                    )
         except Exception as e:  # noqa: BLE001 — log 失败不阻塞主路径
             logger.error(
                 "[risk-engine] risk_event_log INSERT failed rule=%s: %s: %s",

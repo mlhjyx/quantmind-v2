@@ -204,7 +204,35 @@ class ExecutionService:
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
 
-        # ── StreamBus: 订单执行结果事件 ──
+        # ── MVP 3.4 batch 4 dual-write (paper): outbox 与 paper_broker 持久化同 caller tx ──
+        # paper_broker 写持仓 / trade_log via conn (caller-managed); 加 outbox 同 tx.
+        # aggregate_id batch-level composite (strategy + exec_date + paper).
+        if fills:
+            try:
+                from qm_platform.observability import OutboxWriter
+
+                outbox_writer = OutboxWriter(conn)
+                outbox_writer.enqueue(
+                    aggregate_type="fill",
+                    aggregate_id=f"{strategy_id}-{exec_date}-paper",
+                    event_type="executed",
+                    payload={
+                        "fill_id": f"{strategy_id}-{exec_date}-paper",
+                        "mode": "paper",
+                        "exec_date": str(exec_date),
+                        "strategy_id": strategy_id,
+                        "fill_count": len(fills),
+                        "pending_count": len(new_pending),
+                        "nav": result.nav,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "[ExecutionService paper] outbox enqueue 失败 (dual-write 过渡期 silent_ok)",
+                    exc_info=True,
+                )
+
+        # ── StreamBus: 订单执行结果事件 (老路径, 7 日 dual-write 观察期保留) ──
         if fills:
             try:
                 from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
@@ -325,7 +353,34 @@ class ExecutionService:
         result.is_rebalance = is_rebalance
         result.cb_level = cb_level
 
-        # ── StreamBus: live订单执行结果事件 ──
+        # ── MVP 3.4 batch 4 dual-write (live): outbox 与 _save_live_fills 同 caller tx ──
+        # _save_live_fills 调用方 (run_paper_trading) 持有 conn 并 commit, outbox 同 tx.
+        if fills:
+            try:
+                from qm_platform.observability import OutboxWriter
+
+                outbox_writer = OutboxWriter(conn)
+                outbox_writer.enqueue(
+                    aggregate_type="fill",
+                    aggregate_id=f"{strategy_id}-{exec_date}-live",
+                    event_type="executed",
+                    payload={
+                        "fill_id": f"{strategy_id}-{exec_date}-live",
+                        "mode": "live",
+                        "exec_date": str(exec_date),
+                        "strategy_id": strategy_id,
+                        "fill_count": len(fills),
+                        "pending_count": len(new_pending),
+                        "nav": total_value,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "[ExecutionService live] outbox enqueue 失败 (dual-write 过渡期 silent_ok)",
+                    exc_info=True,
+                )
+
+        # ── StreamBus: live订单执行结果事件 (老路径, 7 日 dual-write 观察期保留) ──
         if fills:
             try:
                 from app.core.stream_bus import STREAM_EXECUTION_ORDER_FILLED, get_stream_bus
