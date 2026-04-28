@@ -105,9 +105,16 @@ class PostgresMetricExporter(MetricExporter):
         Note: 每次调用 = 1 INSERT (不在内存 aggregate). 查询层 SUM(value) WHERE name=...
         + time range 即 counter 总值. 这避免 counter reset / 进程重启状态丢失问题
         (本地 counter 累计经常因为进程死掉就丢, PG append-only 永不丢).
+
+        reviewer P3 (python) 设计澄清: increment=0 显式 reject. 0 写入是 no-op 行
+        (污染 SUM 但不破坏正确性), append-only 表写空 row 浪费. 调用方需 heartbeat 用
+        gauge('x.alive', 1.0) 而非 counter('x.alive', 0).
         """
-        if increment < 0:
-            raise ValueError(f"counter increment 必须 >= 0, got {increment!r}")
+        if increment <= 0:
+            raise ValueError(
+                f"counter increment 必须 > 0 (0 写空 row 污染 SUM, "
+                f"heartbeat 用 gauge), got {increment!r}"
+            )
         self._emit(name, float(increment), "counter", labels)
 
     def histogram(
@@ -153,6 +160,9 @@ class PostgresMetricExporter(MetricExporter):
         if limit <= 0 or limit > 10000:
             raise ValueError(f"limit 必须 1..10000, got {limit}")
 
+        # reviewer P2 (python-reviewer HIGH) 采纳: try/finally 包 conn.close() 防泄漏
+        # 原代码 conn 取出后在 with 块内只调 __exit__ (commit/rollback), 不调 close.
+        # 在 conn pool 工厂下, 任何异常路径会 leak checked-out conn. mirror _emit pattern.
         conn = self._conn_factory()
         try:
             with conn, conn.cursor() as cur:
@@ -209,10 +219,12 @@ class PostgresMetricExporter(MetricExporter):
         """
         self._validate(name, value, metric_type, labels)
         labels_json = json.dumps(labels or {}, ensure_ascii=False)
-        if len(labels_json.encode("utf-8")) > _LABELS_JSON_MAX_BYTES:
+        # reviewer P2 (python-reviewer) 采纳: 错误信息 bytes 而非 chars 防多字节 (中文/特殊字符)
+        # 误导 (e.g. 5KB 中文显示为 1666 chars 实际 4998 bytes)
+        labels_json_bytes = len(labels_json.encode("utf-8"))
+        if labels_json_bytes > _LABELS_JSON_MAX_BYTES:
             raise ValueError(
-                f"labels JSON 超 {_LABELS_JSON_MAX_BYTES} bytes, "
-                f"got {len(labels_json)} chars"
+                f"labels JSON 超 {_LABELS_JSON_MAX_BYTES} bytes, got {labels_json_bytes} bytes"
             )
         ts = self._now_fn()
 

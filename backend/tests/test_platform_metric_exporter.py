@@ -108,10 +108,13 @@ def test_counter_default_increment_is_one(fixed_now):
     assert args[1] == 1.0
 
 
-def test_counter_negative_rejected():
+def test_counter_zero_or_negative_rejected():
+    """reviewer P3 采纳: increment=0 也 reject (heartbeat 应用 gauge, 防 SUM 污染)."""
     exp = _make_exporter()
-    with pytest.raises(ValueError, match="counter increment 必须 >= 0"):
+    with pytest.raises(ValueError, match="counter increment 必须 > 0"):
         exp.counter("orders.filled", -1.0)
+    with pytest.raises(ValueError, match="counter increment 必须 > 0"):
+        exp.counter("orders.filled", 0.0)
 
 
 def test_histogram_inserts_with_histogram_type(fixed_now):
@@ -189,8 +192,22 @@ def test_validate_label_value_non_str_rejected():
 def test_validate_labels_oversized_rejected():
     exp = _make_exporter()
     huge = {"k": "x" * (_LABELS_JSON_MAX_BYTES + 100)}
-    with pytest.raises(ValueError, match="labels JSON 超"):
+    with pytest.raises(ValueError, match="labels JSON 超") as exc_info:
         exp.gauge("x", 1.0, labels=huge)
+    # reviewer P2 采纳: 错误信息报 bytes 而非 chars (多字节字符不误导)
+    assert "bytes" in str(exc_info.value).split("got")[1]
+
+
+def test_validate_labels_oversized_multibyte_reports_bytes():
+    """中文 label value 超 4KB bytes 时 error message 报 bytes 不是 chars (多字节差异)."""
+    exp = _make_exporter()
+    # 中文 char 在 UTF-8 占 3 bytes, 1500 中文字 = ~4500 bytes 超 4KB
+    huge_zh = {"k": "中" * 1500}
+    with pytest.raises(ValueError, match="labels JSON 超") as exc_info:
+        exp.gauge("x", 1.0, labels=huge_zh)
+    err = str(exc_info.value)
+    # bytes 计数应远大于 chars (中文 1 char ≈ 3 bytes)
+    assert " bytes" in err.split("got")[1], f"Error must report bytes, got: {err}"
 
 
 # ─────────────────────────── reraise / fail-loud ───────────────────────────
