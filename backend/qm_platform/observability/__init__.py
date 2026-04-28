@@ -6,6 +6,12 @@ from .alert import (
     get_alert_router,
     reset_alert_router,
 )
+from .health import (
+    HealthReport,
+    HealthStatus,
+    aggregate_status,
+    safe_check,
+)
 from .interface import (
     Alert,
     AlertFireResult,
@@ -21,6 +27,11 @@ from .metric import (
     reset_metric_exporter,
 )
 from .outbox import OutboxWriter
+from .rules import (
+    AlertRule,
+    AlertRuleError,
+    AlertRulesEngine,
+)
 
 # `Channel` Protocol 不导出: 设计稿 (Part 1 line 222-227) 禁 Application 自实现 channel
 # 旁路 Platform. 内部扩展 (e.g. SMS / Slack) 走 Platform 评审, 经 alert.py 直接添加.
@@ -45,4 +56,12 @@ __all__ = [
     "MetricExportError",
     "get_metric_exporter",
     "reset_metric_exporter",
+    # MVP 4.1 batch 2.2 — rules + health
+    "AlertRule",
+    "AlertRuleError",
+    "AlertRulesEngine",
+    "HealthReport",
+    "HealthStatus",
+    "safe_check",
+    "aggregate_status",
 ]
