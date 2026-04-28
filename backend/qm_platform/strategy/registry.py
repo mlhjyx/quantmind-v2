@@ -16,6 +16,11 @@
 
 - **铁律 32 事务边界**: 本类所有 DB 方法**不 commit**, 调用方 (daily_pipeline / FastAPI) 管事务.
   上层 Exception 必须 rollback.
+  **conn_factory 契约 (reviewer P1 2026-04-28 PR #126 强化)**: `_conn_factory()` 必返同一
+  pooled connection 给同一 caller 同一 tx. 否则 record_evaluation INSERT 对后续
+  update_status SELECT 不可见 (READ COMMITTED 隔离). 生产端
+  `app/core/platform_bootstrap.py` 注入 lambda 闭包 pool conn 满足契约;
+  测试端 `_make_mock_conn_factory()` 同样 factory() → 同一 mock conn.
 
 - **铁律 39 显式声明**: DBStrategyRegistry 走 sync psycopg2 (对齐 DBFactorRegistry +
   DBFeatureFlag + DBExperimentRegistry 等既有 Platform concrete 模式).
@@ -339,10 +344,21 @@ class DBStrategyRegistry(StrategyRegistry):
     ) -> None:
         """记录 Strategy 评估结果到 strategy_evaluations 表 (append-only history).
 
+        **conn_factory 契约 (铁律 32 + reviewer P1 2026-04-28 PR #126)**:
+          调 `self._conn_factory()` 必返**同一连接**给本对象后续 record_evaluation /
+          update_status 调用 (同 tx 内). 生产端 `app/core/platform_bootstrap.py`
+          注入的 factory 是 pooled connection lambda — 同 caller 同 tx 复用.
+          否则 record_evaluation 写入对后续 update_status 守门 SELECT 不可见
+          (READ COMMITTED 隔离, 跨 conn 看不到 uncommitted writes).
+
+          Service 不 commit (铁律 32) — 调用方 (FastAPI lifespan / daily_pipeline /
+          CLI) 在 record_evaluation + update_status 之后统一 commit, 整体原子.
+
         调用顺序 (MVP 3.5.1 LIVE 守门约定):
           verdict = evaluator.evaluate_strategy(strategy_id)
           registry.record_evaluation(verdict)
           registry.update_status(strategy_id, StrategyStatus.LIVE, reason)
+          conn.commit()  # caller 统一 commit (铁律 32)
 
         Args:
           verdict: PlatformStrategyEvaluator 输出. verdict.subject 必 = strategy_id (UUID str).
@@ -350,14 +366,18 @@ class DBStrategyRegistry(StrategyRegistry):
 
         Raises:
           ValueError: verdict.subject 非 UUID, 或 evaluator_class 空.
+          TypeError: verdict.details 含非 JSON 序列化对象 (numpy scalar 等) — 调用方应
+            先用 _json_safe 或 default=str fallback (本方法默认 default=str 兜底).
           psycopg2.errors.ForeignKeyViolation: strategy_id 不在 strategy_registry
             (调用方需先 register()).
         """
         if not evaluator_class or not evaluator_class.strip():
             raise ValueError("evaluator_class 不可为空 (审计要求)")
         sid = self._parse_uuid(verdict.subject, "verdict.subject")
-        blockers_json = json.dumps(list(verdict.blockers))
-        details_json = json.dumps(dict(verdict.details))
+        # default=str 兜底: 防 numpy scalar / Decimal / datetime 等非原生 JSON 类型
+        # 通过 (reviewer P2 2026-04-28 — 不依赖调用方做 _json_safe 净化).
+        blockers_json = json.dumps(list(verdict.blockers), default=str)
+        details_json = json.dumps(dict(verdict.details), default=str)
 
         conn = self._conn_factory()
         with conn.cursor() as cur:
@@ -414,29 +434,45 @@ class DBStrategyRegistry(StrategyRegistry):
             (str(sid),),
         )
         row = cur.fetchone()
+        # reviewer P1 2026-04-28: 守门 reject 必 logger.warning (铁律 33 fail-loud
+        # 审计链 — 真金生产策略晋升被拒, 操作员 server-side log 须有迹).
         if row is None:
-            raise EvaluationRequired(
+            msg = (
                 f"strategy_id {sid} 无 strategy_evaluations 记录, 拒绝升 LIVE. "
                 f"调用方需: evaluator.evaluate_strategy(sid) → "
                 f"registry.record_evaluation(verdict) → registry.update_status(sid, LIVE, reason)."
             )
+            _logger.warning("LIVE guard reject: id=%s reason=no_evaluation_record", sid)
+            raise EvaluationRequired(msg)
         passed, blockers, evaluated_at = row
         if not passed:
-            blockers_repr = (
-                json.dumps(blockers) if blockers else "[]"
-            ) if isinstance(blockers, (list, dict)) else str(blockers)
-            raise EvaluationRequired(
+            # reviewer P2 2026-04-28: 用 str() 兜底而非 json.dumps — 防 blockers
+            # 非 JSON-serializable (psycopg2 通常返 list, 但 fail-safe 优先).
+            blockers_repr = str(blockers) if blockers else "[]"
+            msg = (
                 f"strategy_id {sid} 最新评估未通过 (blockers={blockers_repr}), 拒绝升 LIVE. "
                 f"修复 blockers 后重 evaluate_strategy + record_evaluation."
             )
+            _logger.warning(
+                "LIVE guard reject: id=%s reason=verdict_failed blockers=%s",
+                sid,
+                blockers_repr,
+            )
+            raise EvaluationRequired(msg)
         # Freshness check: evaluated_at 是 timestamptz, psycopg2 返 tz-aware datetime (UTC).
         # 铁律 41: 内部用 UTC compare, datetime.now(timezone.utc) 对齐.
         if not isinstance(evaluated_at, datetime):
             # Defensive: 老 driver / mock 可能返 None / str. fail-loud.
-            raise EvaluationRequired(
+            msg = (
                 f"strategy_id {sid} evaluated_at 非 datetime ({type(evaluated_at).__name__}), "
                 f"无法做 freshness check. DB schema / driver 异常."
             )
+            _logger.warning(
+                "LIVE guard reject: id=%s reason=evaluated_at_not_datetime type=%s",
+                sid,
+                type(evaluated_at).__name__,
+            )
+            raise EvaluationRequired(msg)
         if evaluated_at.tzinfo is None:
             # Defensive: 若 driver 返 naive datetime, 当 UTC 处理 (PG timestamptz 应永远 aware,
             # 这里只是防御 mock / sqlite test fixture).
@@ -445,11 +481,18 @@ class DBStrategyRegistry(StrategyRegistry):
         age = now_utc - evaluated_at
         max_age = timedelta(days=self._live_eval_freshness_days)
         if age > max_age:
-            raise EvaluationRequired(
+            msg = (
                 f"strategy_id {sid} 最新评估已过期 (age={age.days} 天 > "
                 f"{self._live_eval_freshness_days} 天阈值), 拒绝升 LIVE. "
                 f"重 evaluate_strategy + record_evaluation 后重试."
             )
+            _logger.warning(
+                "LIVE guard reject: id=%s reason=stale age_days=%d threshold_days=%d",
+                sid,
+                age.days,
+                self._live_eval_freshness_days,
+            )
+            raise EvaluationRequired(msg)
 
     # ─── Helpers ──────────────────────────────────────────────────────
 

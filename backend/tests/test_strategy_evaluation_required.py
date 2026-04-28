@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -33,6 +34,12 @@ def _make_mock_conn_factory(fetchone_queue: list | None = None):
     """Build a mock conn_factory returning a MagicMock with cursor context manager.
 
     fetchone_queue: sequentially returned from cursor.fetchone() each call.
+
+    **Contract mirror (reviewer P1 2026-04-28 PR #126)**: factory() always returns
+    the SAME mock conn instance (镜像生产 pooled-connection 行为, 见 docstring of
+    DBStrategyRegistry.record_evaluation). 这保证 record_evaluation INSERT 与
+    后续 update_status SELECT 共享 cursor / tx, 测试反映生产 caller-managed-tx
+    pattern (铁律 32). 若未来要测真"跨连接"场景需 monkeypatch factory 返不同 conn.
     """
     conn = MagicMock()
     cursor = MagicMock()
@@ -118,12 +125,11 @@ def test_record_evaluation_serializes_blockers_and_details_to_json():
     blockers_json = args[2]
     details_json = args[4]
     # JSON 反序列化校验 — 不依赖具体 key 顺序
-    import json as _json
-    assert _json.loads(blockers_json) == [
+    assert json.loads(blockers_json) == [
         "G1prime_sharpe_bootstrap",
         "G3prime_regression_max_diff",
     ]
-    parsed_details = _json.loads(details_json)
+    parsed_details = json.loads(details_json)
     assert parsed_details["max_diff"] == 0.001
     assert parsed_details["sharpe_observed"] == 0.42
     assert args[5] == "CustomEvaluator"

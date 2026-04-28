@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS strategy_evaluations (
     details          JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     -- 评估器 class name (审计 + 未来支持多评估器并存)
-    evaluator_class  TEXT NOT NULL,
+    -- reviewer P2 2026-04-28 PR #126: DB-level CHECK 防应用层绕过插入空串 (审计无意义).
+    evaluator_class  TEXT NOT NULL CHECK (char_length(trim(evaluator_class)) > 0),
 
     -- 评估时间 (timestamptz, 铁律 41 — UTC 内部存储)
     evaluated_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -45,6 +46,22 @@ COMMENT ON COLUMN strategy_evaluations.evaluated_at IS 'UTC timestamp, 铁律 41
 -- (id DESC 是 evaluated_at 同毫秒 tie-breaker)
 CREATE INDEX IF NOT EXISTS idx_strategy_evaluations_strategy_latest
     ON strategy_evaluations (strategy_id, evaluated_at DESC, id DESC);
+
+-- ── Defensive ALTER (幂等, reviewer P2 2026-04-28 PR #126) ──
+-- 若早期开发环境建表无 evaluator_class CHECK 约束, 升级补加. 已有则 skip.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'strategy_evaluations'::regclass
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid) ILIKE '%char_length%evaluator_class%'
+    ) THEN
+        ALTER TABLE strategy_evaluations
+            ADD CONSTRAINT strategy_evaluations_evaluator_class_nonempty
+            CHECK (char_length(trim(evaluator_class)) > 0);
+    END IF;
+END $$;
 
 -- 验证 (注释, 迁移后手工跑) ─────────────────────────────────────
 -- SELECT COUNT(*) FROM strategy_evaluations;  -- 预期 0 rows (首次 migration 后)
