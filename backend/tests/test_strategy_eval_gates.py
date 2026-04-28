@@ -116,11 +116,16 @@ def test_strategy_g3_max_diff_nonzero_fails():
 
 
 def test_strategy_g3_no_baseline_skips_pass():
-    """全新策略首次部署 → SKIP (PASS, reason=no_baseline)."""
+    """全新策略首次部署 → SKIP (PASS, reason=no_baseline).
+
+    PR #125 reviewer P1 fix: details["warning"] 必须告知 stale flag 风险.
+    """
     ctx = build_strategy_context("S1_new", no_baseline=True)
     result = StrategyG3RegressionGate().evaluate(ctx)
     assert result.passed is True
     assert result.details["reason"] == "no_baseline_first_deployment"
+    assert "warning" in result.details
+    assert "stale flag" in result.details["warning"]
 
 
 def test_strategy_g3_runner_raises_packed_in_result():
