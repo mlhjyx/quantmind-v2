@@ -22,10 +22,15 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 from app.core.stream_bus import get_stream_bus
 from app.tasks.celery_app import celery_app
+
+# Type alias for stream publisher contract: 注意 source 必须 keyword-only
+# (StreamBus.publish_sync 的契约), Callable 类型不强制但 docstring + 测试 assert 守门.
+StreamPublisherCallable = Callable[..., str | None]
 
 logger = logging.getLogger("celery.outbox_publisher")
 
@@ -50,7 +55,11 @@ class OutboxPublisher:
 
     Args:
       conn_factory: Callable 返 psycopg2 connection (默认 get_sync_conn).
-      stream_publisher: Callable(stream_name, data_dict, source) -> msg_id|None.
+      stream_publisher: Callable, 签名 ``(stream_name: str, data: dict, *, source: str) -> str | None``.
+                        ``source`` **必须 keyword-only** (对齐 StreamBus.publish_sync 契约).
+                        测试用 mock 默认接受任何 args, 但 production wiring 强约束此签名;
+                        见 test_outbox_publisher.py::test_single_row_published_marks_published_at
+                        断言 ``call_args.kwargs["source"]`` 守 contract gap.
                         默认走 StreamBus.publish_sync.
       max_retries: terminal DLQ 阈值. 默认 10.
       batch_size: 单次 SELECT LIMIT. 默认 100.
@@ -58,8 +67,8 @@ class OutboxPublisher:
 
     def __init__(
         self,
-        conn_factory=None,
-        stream_publisher=None,
+        conn_factory: Callable[[], Any] | None = None,
+        stream_publisher: StreamPublisherCallable | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         batch_size: int = DEFAULT_BATCH_SIZE,
     ) -> None:
@@ -85,7 +94,13 @@ class OutboxPublisher:
         """扫一批 unpublished events 并 publish.
 
         Returns:
-            summary dict: {selected, published, retried, dlq, errors}.
+            summary dict 5 keys:
+              - selected: SELECT FOR UPDATE 拿到的行数 (0 时 publisher 早退出, 不 commit)
+              - published: 主 publish 成功 (msg_id 非 None) → published_at 写
+              - retried: 主 publish 失败但 retries < max → retries+1, 留待下 tick
+              - dlq: retries 达 max → 入 DLQ + published_at 写 (终结)
+              - publisher_exceptions: stream_publisher 调用 raise (主或 DLQ) 的次数.
+                注意 publish_sync 返 None 不计入此项 (走 retried/dlq 分支).
         """
         conn = self._conn_factory()
         try:
@@ -102,7 +117,7 @@ class OutboxPublisher:
         published = 0
         retried = 0
         dlq = 0
-        errors = 0
+        publisher_exceptions = 0
 
         with conn.cursor() as cur:
             # SKIP LOCKED 多 worker 并发安全; ORDER BY created_at 保 FIFO
@@ -119,6 +134,17 @@ class OutboxPublisher:
             )
             rows = cur.fetchall()
             selected = len(rows)
+
+            # P2.7 reviewer 采纳: 0 backlog 是 steady-state 常态, 跳过 commit 减 1 round-trip.
+            # 30s tick × 24h × 0 backlog = 2880 空 commit/日, partial 索引 cheap 但仍可省.
+            if selected == 0:
+                return {
+                    "selected": 0,
+                    "published": 0,
+                    "retried": 0,
+                    "dlq": 0,
+                    "publisher_exceptions": 0,
+                }
 
             for row in rows:
                 event_id, aggregate_type, aggregate_id, event_type, payload, retries = row
@@ -169,11 +195,14 @@ class OutboxPublisher:
                                 },
                                 source="outbox_publisher_dlq",
                             )
-                        except Exception:
+                        except Exception as dlq_exc:
+                            # P1.3 reviewer 采纳: DLQ publish 异常计入 publisher_exceptions
+                            # (原代码只 log + silently 漏计 → 监控 summary 看不到 DLQ 坏掉)
+                            publisher_exceptions += 1
                             logger.exception(
                                 "[outbox_publisher] DLQ publish 也失败 event_id=%s "
-                                "(行仍会标 published_at 防 zombie 重试)",
-                                event_id,
+                                "dlq_exc=%s (行仍会标 published_at 防 zombie 重试)",
+                                event_id, type(dlq_exc).__name__,
                             )
                         cur.execute(
                             """UPDATE event_outbox
@@ -199,7 +228,7 @@ class OutboxPublisher:
                         )
 
                 if publish_exc is not None:
-                    errors += 1
+                    publisher_exceptions += 1
 
         conn.commit()
 
@@ -208,7 +237,7 @@ class OutboxPublisher:
             "published": published,
             "retried": retried,
             "dlq": dlq,
-            "errors": errors,
+            "publisher_exceptions": publisher_exceptions,
         }
 
 
@@ -229,12 +258,20 @@ def outbox_publisher_tick(self) -> dict[str, Any]:
     """Outbox publisher beat task — 每 30s 扫 batch publish.
 
     设计:
-      - max_retries=0: 30s 周期 ≪ Celery retry 间隔, 重扫成本低. retry 反致积压.
+      - max_retries=0: event_outbox 是状态机, 重扫成本低 (partial 索引 0.070ms 实测),
+        Celery retry 在此场景无意义 (下 tick 自动重扫覆盖同等语义, 还少 1 次重派开销).
       - acks_late=True: worker crash 后 Celery 重派发, 至少一次语义 (consumer 必幂等).
-      - time_limit=60: 30s 周期内必 finish, 否则 worker 积压.
+      - time_limit=60: 30s 周期内通常完成. 实际 tick 耗时分布:
+          * 0 backlog (steady-state): 几 ms (B-Tree partial 索引立即返空)
+          * 100 events backlog: ~3-5s (publish 主导, 每 event Redis XADD ~30ms)
+          * 异常长 tick (26-60s): 触发 expires=25s gap zone — 下个 beat 触发的
+            queued task 已过期被丢弃, 实际 publisher 60s gap 才下次扫描. 接受此风险:
+            (a) outbox 是 at-least-once, 60s gap 不丢数据只延迟; (b) 60s+ tick 暗示
+            publisher / Redis / DB 异常, 应触发告警而非靠 retry 自愈.
+      - expires=25 (beat entry): 配合 30s 周期, 防 worker busy 时 task 堆积.
 
     Returns:
-        summary dict (见 OutboxPublisher.publish_batch).
+        summary dict (见 OutboxPublisher.publish_batch) + elapsed_s.
     """
     t0 = time.time()
     try:
@@ -244,9 +281,9 @@ def outbox_publisher_tick(self) -> dict[str, Any]:
         if summary["selected"] > 0:
             logger.info(
                 "[outbox_publisher] tick: selected=%d published=%d retried=%d dlq=%d "
-                "errors=%d elapsed=%.3fs",
+                "publisher_exceptions=%d elapsed=%.3fs",
                 summary["selected"], summary["published"], summary["retried"],
-                summary["dlq"], summary["errors"], elapsed,
+                summary["dlq"], summary["publisher_exceptions"], elapsed,
             )
         else:
             logger.debug("[outbox_publisher] tick: 0 unpublished events (%.3fs)", elapsed)

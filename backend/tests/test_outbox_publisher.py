@@ -81,7 +81,8 @@ class TestPublishHappyPath:
         result = pub.publish_batch()
 
         assert result == {
-            "selected": 1, "published": 1, "retried": 0, "dlq": 0, "errors": 0,
+            "selected": 1, "published": 1, "retried": 0, "dlq": 0,
+            "publisher_exceptions": 0,
         }
         # publish_sync 调一次, stream 名拼接正确
         stream_pub.assert_called_once()
@@ -90,6 +91,11 @@ class TestPublishHappyPath:
         assert call_data["event_id"] == str(row[0])
         assert call_data["aggregate_id"] == "sig-1"
         assert call_data["payload"] == {"k": "v"}
+        # P1.2 reviewer 采纳: source 必须 keyword-only (StreamBus.publish_sync 契约).
+        # 守此 contract gap 防 production wiring 改 callable wrapper 时 silently 丢 source.
+        assert stream_pub.call_args.kwargs.get("source") == "outbox_publisher", (
+            "source 必须 keyword-only 传, 用 positional 会破 StreamBus contract"
+        )
 
         # UPDATE published_at = NOW() 写一次
         update_calls = [
@@ -150,10 +156,14 @@ class TestBatchPublish:
             "qm:fill:executed",
         ]
 
-    def test_empty_batch_no_publish_no_commit(
+    def test_empty_batch_skips_commit(
         self, mock_conn, publisher_module
     ) -> None:
-        """0 unpublished rows: publisher 不 publish 但仍 commit (空 tx, 显式且安全)."""
+        """P2.7 reviewer 采纳: 0 unpublished rows → 早退出, 不 commit (省 round-trip).
+
+        Steady-state (0 backlog) 是 publisher 常态 (30s × 24h = 2880 ticks/日),
+        每次空 commit 走 PG 来回是无谓开销.
+        """
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = []
 
@@ -165,10 +175,12 @@ class TestBatchPublish:
         result = pub.publish_batch()
 
         assert result == {
-            "selected": 0, "published": 0, "retried": 0, "dlq": 0, "errors": 0,
+            "selected": 0, "published": 0, "retried": 0, "dlq": 0,
+            "publisher_exceptions": 0,
         }
         stream_pub.assert_not_called()
-        mock_conn.commit.assert_called_once()  # commit 仍调 (空 tx safe)
+        # 空 batch 早退出 → commit 不应被调 (P2.7 优化)
+        mock_conn.commit.assert_not_called()
 
 
 # ─── 3. 失败重试: publish 返 None ─────────────────────────────
@@ -205,7 +217,13 @@ class TestRetryOnFailure:
     def test_publish_exception_caught_as_failure(
         self, mock_conn, publisher_module
     ) -> None:
-        """publisher 直接 raise (非 StreamBus 默认行为) → 视为失败计 errors+retries."""
+        """publisher 直接 raise (非 StreamBus 默认行为) → 视为失败计 publisher_exceptions+retried.
+
+        P1.4 reviewer 采纳: counter 重命名 errors → publisher_exceptions
+        语义明确: 仅计 stream_publisher 调 raise 的次数, publish_sync 返 None
+        不计入 (走 retried/dlq 分支). 监控告警可基于此区分 "Redis API 不通"
+        vs "publish 静默失败" 两类问题.
+        """
         row = _row(retries=0)
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = [row]
@@ -218,7 +236,7 @@ class TestRetryOnFailure:
         )
         result = pub.publish_batch()
 
-        assert result["errors"] == 1
+        assert result["publisher_exceptions"] == 1
         assert result["retried"] == 1
         assert result["published"] == 0
 
@@ -268,7 +286,12 @@ class TestDLQTermination:
     def test_dlq_publish_also_fails_still_marks_published(
         self, mock_conn, publisher_module
     ) -> None:
-        """DLQ publish 自己失败 → 行仍标 published_at 防 zombie 永久重试."""
+        """DLQ publish 自己失败 → 行仍标 published_at 防 zombie 永久重试.
+
+        P1.3 reviewer 采纳: DLQ publish 异常必须计入 publisher_exceptions counter
+        (原代码只 log 不计 → 监控 summary 看不到 DLQ 自身坏掉, 静默失败盲区).
+        本 case: 主 publish 返 None (未 raise) + DLQ publish raise → 计 1 次异常.
+        """
         row = _row(retries=9)
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = [row]
@@ -282,6 +305,10 @@ class TestDLQTermination:
         result = pub.publish_batch()
 
         assert result["dlq"] == 1
+        # P1.3 新增 assertion: DLQ publish 异常被计入 publisher_exceptions
+        assert result["publisher_exceptions"] == 1, (
+            "DLQ publish raise 必须计入 publisher_exceptions (监控可见 DLQ 自身 broken)"
+        )
         # 行仍标 published_at (UPDATE 调用了)
         update_calls = [
             c for c in cur.execute.call_args_list
@@ -344,7 +371,8 @@ class TestTickTask:
         """outbox_publisher_tick 入口: 调 OutboxPublisher.publish_batch 并返 summary+elapsed."""
         # monkey patch OutboxPublisher 走 mock
         fake_summary = {
-            "selected": 5, "published": 4, "retried": 1, "dlq": 0, "errors": 0,
+            "selected": 5, "published": 4, "retried": 1, "dlq": 0,
+            "publisher_exceptions": 0,
         }
         fake_publisher = MagicMock()
         fake_publisher.publish_batch.return_value = fake_summary
