@@ -32,6 +32,7 @@ import logging
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -388,16 +389,24 @@ def _evaluate_new_path(
     conn,
     factor_name: str,
     old_decision: TransitionDecision | None,
+    cached_report: Any = None,
 ) -> DualPathComparison | None:
-    """新路径评估单因子 + 比对老路径 (batch 2 双路径 + Phase 2 复合分析).
+    """新路径评估单因子 + 比对老路径 (batch 2 双路径比对 mode only).
 
-    新路径仅 log 决策权威仍在老路径 (compare 模式). compose 模式由 run() 直接调
-    _evaluate_pipeline_report + compute_composite_decision.
+    composite 模式走 run() 直接调用 _evaluate_pipeline_report + compute_composite_decision,
+    不经此函数 (P3.1 reviewer 2026-04-28 PR #129 docstring 修正).
+
+    Args:
+      conn: psycopg2 connection.
+      factor_name: 因子名.
+      old_decision: 老路径输出 (compare_paths 用).
+      cached_report: 已 evaluate 过的 report (P2.2 reviewer 2026-04-28 PR #129
+        cache, --compare + composite 双 active 时复用避双 evaluate).
 
     Returns:
       DualPathComparison or None (新路径数据不全跳过).
     """
-    report = _evaluate_pipeline_report(conn, factor_name)
+    report = cached_report if cached_report is not None else _evaluate_pipeline_report(conn, factor_name)
     if report is None:
         return None
     return compare_paths(factor_name, old_decision, report)
@@ -459,6 +468,8 @@ def run(
     comparisons: list[DualPathComparison] = []
     mismatches: list[DualPathComparison] = []
     composite_synthesized: list[TransitionDecision] = []
+    # P2.1 reviewer 2026-04-28 PR #129: 老 recovery 被 composite suppress 入审计列表
+    composite_suppressed_recoveries: list[TransitionDecision] = []
     checked = 0
     no_data = 0
 
@@ -476,10 +487,19 @@ def run(
 
             old_decision = _compute_decision(name, status, tail)
 
+            # P2.2 reviewer 2026-04-28 PR #129: cache pipeline report 给 compare +
+            # composite 双 active 复用 (避免每因子双 evaluate). 仅在需要时 lazy 跑.
+            cached_report = None
+            need_pipeline = compare or composite_mode != CompositeMode.OFF
+            if need_pipeline:
+                cached_report = _evaluate_pipeline_report(conn, name)
+
             # batch 2 新路径双路径比对 (在老路径决策后, 不影响老路径权威)
             comparison: DualPathComparison | None = None
             if compare:
-                comparison = _evaluate_new_path(conn, name, old_decision)
+                comparison = _evaluate_new_path(
+                    conn, name, old_decision, cached_report=cached_report
+                )
                 if comparison is not None:
                     comparisons.append(comparison)
                     if comparison.consistent:
@@ -512,17 +532,16 @@ def run(
                     if tail[-1]["ic_ma60"] is not None
                     else None
                 )
-                new_report = _evaluate_pipeline_report(conn, name)
                 decision = compute_composite_decision(
                     factor_name=name,
                     current_status=status,
                     old_decision=old_decision,
-                    new_report=new_report,
+                    new_report=cached_report,
                     mode=composite_mode,
                     ic_ma20=ic_ma20,
                     ic_ma60=ic_ma60,
                 )
-                # 若合成决策 != 老决策 → 记 synthesized 便于审计 / dry-run preview
+                # 合成决策 != 老决策 → 记 synthesized
                 if decision is not None and decision is not old_decision:
                     composite_synthesized.append(decision)
                     logger.info(
@@ -530,6 +549,21 @@ def run(
                         name,
                         decision.reason,
                         "demote" if old_decision is not None else "keep",
+                    )
+                # P2.1 reviewer fix: 老 recovery 被 composite suppress (decision=None,
+                # old_decision 是 warning→active recovery) → 入 suppressed_recoveries 审计
+                elif (
+                    decision is None
+                    and old_decision is not None
+                    and old_decision.from_status == "warning"
+                    and old_decision.to_status == "active"
+                ):
+                    composite_suppressed_recoveries.append(old_decision)
+                    logger.warning(
+                        "  [composite] %s recovery suppressed: 老路径建议 warning→active "
+                        "但 %s mode 触发 (新路径 G1/G10 fail), 留 warning",
+                        name,
+                        composite_mode.value,
                     )
 
             if decision is None:
@@ -570,7 +604,8 @@ def run(
         )
     if composite_mode != CompositeMode.OFF:
         summary += (
-            f", composite={composite_mode.value} 合成={len(composite_synthesized)}"
+            f", composite={composite_mode.value} 合成={len(composite_synthesized)} "
+            f"recovery_suppressed={len(composite_suppressed_recoveries)}"
         )
     logger.info(summary)
     return {
@@ -606,6 +641,18 @@ def run(
                 "reason": d.reason,
             }
             for d in composite_synthesized
+        ],
+        # P2.1 reviewer 2026-04-28: 老 recovery 被新路径 G1/G10 fail suppress 审计
+        "composite_suppressed_recoveries": [
+            {
+                "factor": d.factor_name,
+                "from": d.from_status,
+                "to": d.to_status,  # "active" — 被 suppress 的目标
+                "reason": d.reason,
+                "ic_ma20": d.ic_ma20,
+                "ic_ma60": d.ic_ma60,
+            }
+            for d in composite_suppressed_recoveries
         ],
     }
 
