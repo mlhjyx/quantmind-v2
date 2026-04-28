@@ -8,12 +8,15 @@
 -- Cleanup strategy: 单独 cleanup task 删除 suppress_until < now() - 30d (留 30d audit).
 
 CREATE TABLE IF NOT EXISTS alert_dedup (
-    dedup_key       TEXT PRIMARY KEY,
-    severity        TEXT NOT NULL,
+    dedup_key       TEXT PRIMARY KEY
+                        CHECK (char_length(dedup_key) BETWEEN 1 AND 512),
+    severity        TEXT NOT NULL
+                        CHECK (severity IN ('p0', 'p1', 'p2', 'info')),
     source          TEXT NOT NULL,
     last_fired_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     suppress_until  TIMESTAMP WITH TIME ZONE NOT NULL,
-    fire_count      BIGINT NOT NULL DEFAULT 1,
+    fire_count      BIGINT NOT NULL DEFAULT 1
+                        CHECK (fire_count >= 1),
     last_title      TEXT,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

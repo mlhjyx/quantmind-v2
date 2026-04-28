@@ -13,9 +13,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from .._types import Severity
+
+# fire() 返回值. 与 alert.py FireResult 对齐 (语义清晰 vs bool).
+AlertFireResult = Literal["sent", "deduped", "sink_failed"]
 
 
 @dataclass(frozen=True)
@@ -83,8 +86,26 @@ class AlertRouter(ABC):
     """
 
     @abstractmethod
-    def fire(self, alert: Alert) -> None:
+    def fire(
+        self,
+        alert: Alert,
+        *,
+        dedup_key: str,
+        suppress_minutes: int | None = None,
+    ) -> AlertFireResult:
         """发送告警.
+
+        Args:
+          alert: Alert dataclass.
+          dedup_key: caller 显式 dedup 键 (e.g. "factor_lifecycle:dv_ttm:warning").
+                     非空, 实施可能限长 (PostgresAlertRouter ≤ 512). 显式 > 隐式,
+                     避免 title 微小变化导致 dedup miss.
+          suppress_minutes: dedup 窗口分钟数. None → severity 驱动默认值 (实施决定).
+
+        Returns:
+          "sent" — 实际发送至少 1 channel 成功
+          "deduped" — 在 suppress 窗口内被抑制 (fire_count 累加)
+          "sink_failed" — 全部 channel 失败 (实施同时 raise AlertDispatchError)
 
         Raises:
           AlertDispatchError: 所有 channel 都失败 (fail-loud, 铁律 33)

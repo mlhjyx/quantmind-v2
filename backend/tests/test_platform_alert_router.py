@@ -204,21 +204,43 @@ def test_dedup_naive_datetime_treated_as_expired(alert_p1, fixed_now):
 # ─────────────────────────── dispatch / fail-loud ───────────────────────────
 
 
-def test_all_channels_failed_raises_dispatch_error(alert_p1):
+def test_all_channels_failed_raises_dispatch_error(alert_p1, fixed_now):
+    """sink_failed: row persist (审计 fire_count) 但 suppress_until=now (零窗, P0 真金可重试)."""
     conn, cur = _mock_conn()
     ch1 = _make_channel(name="dingtalk_a", send_returns=False)
     ch2 = _make_channel(name="dingtalk_b", send_returns=False)
-    router = _make_router(channels=[ch1, ch2], conn=conn)
+    router = _make_router(channels=[ch1, ch2], conn=conn, now=fixed_now)
 
     with pytest.raises(AlertDispatchError, match="All channels failed"):
         router.fire(alert_p1, dedup_key="k")
 
-    # row 仍 persist (UPSERT 调用过, fire_count++ 反映尝试)
+    # row 仍 persist (UPSERT 调用过, fire_count++ 反映尝试) — 审计用
     upsert_calls = [
         call for call in cur.execute.call_args_list
         if "INSERT INTO alert_dedup" in call.args[0] and "ON CONFLICT" in call.args[0]
     ]
     assert len(upsert_calls) == 1
+    # reviewer MEDIUM#2 升 P1 采纳: sink_failed → suppress_until = now (零窗, 不抑制重试)
+    last_fired_at = upsert_calls[0].args[1][3]
+    suppress_until = upsert_calls[0].args[1][4]
+    assert last_fired_at == fixed_now
+    assert suppress_until == fixed_now, (
+        "sink_failed 不抑制下次重试 (P0 真金可用性 > storm 防御)"
+    )
+
+
+def test_sink_failed_does_not_suppress_next_retry(alert_p1, fixed_now):
+    """sink_failed 后下次同 dedup_key fire (mock 模拟过期 row) 必能再 dispatch."""
+    conn, cur = _mock_conn()
+    # mock _is_deduped 第二次时 row exists 但 suppress_until == now (已到期)
+    cur.fetchone.return_value = (fixed_now,)  # suppress_until == now → expired
+    ch_ok = _make_channel(send_returns=True)
+    router = _make_router(channels=[ch_ok], conn=conn, now=fixed_now)
+
+    result = router.fire(alert_p1, dedup_key="k")
+
+    assert result == "sent", "suppress_until == now 应被视为已过期, 允许重试"
+    ch_ok.send.assert_called_once()
 
 
 def test_one_channel_success_returns_sent(alert_p1):
@@ -396,6 +418,38 @@ def test_get_history_skips_unknown_severity_row(fixed_now):
 
 
 # ─────────────────────────── 时区 / 防御 ───────────────────────────
+
+
+def test_dedup_key_whitespace_stripped(alert_p1, fixed_now):
+    """reviewer P3.A 采纳: ' abc ' / 'abc' 必视为同 dedup_key (避免独立 row)."""
+    conn, cur = _mock_conn()
+    ch = _make_channel(send_returns=True)
+    router = _make_router(channels=[ch], conn=conn, now=fixed_now)
+
+    router.fire(alert_p1, dedup_key="  factor:dv:warn  ")
+
+    upsert_call = next(
+        c for c in cur.execute.call_args_list
+        if "INSERT INTO alert_dedup" in c.args[0]
+    )
+    persisted_key = upsert_call.args[1][0]
+    assert persisted_key == "factor:dv:warn", "dedup_key 应被 strip 后入库"
+
+
+def test_suppress_minutes_bool_rejected(alert_p1):
+    """reviewer LOW#2 采纳: bool 是 int 子类, fire(suppress_minutes=True) 必 reject."""
+    router = _make_router()
+    with pytest.raises(ValueError, match="必须正整数"):
+        router.fire(alert_p1, dedup_key="k", suppress_minutes=True)
+    with pytest.raises(ValueError, match="必须正整数"):
+        router.fire(alert_p1, dedup_key="k", suppress_minutes=False)
+
+
+def test_default_suppress_minutes_completeness():
+    """reviewer MEDIUM#3 采纳: _DEFAULT_SUPPRESS_MINUTES 必齐全 Severity enum."""
+    assert set(_DEFAULT_SUPPRESS_MINUTES.keys()) == set(Severity), (
+        "新增 Severity 必同步 _DEFAULT_SUPPRESS_MINUTES, 否则 module load assert 触发"
+    )
 
 
 def test_now_uses_utc_tzaware(alert_p1):
