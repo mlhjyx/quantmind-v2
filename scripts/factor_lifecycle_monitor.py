@@ -15,6 +15,10 @@ L2 需人确认 (本脚本不执行):
     python scripts/factor_lifecycle_monitor.py --dry-run    # 不写 DB/不发事件
     python scripts/factor_lifecycle_monitor.py --factor turnover_mean_20  # 指定因子
 
+    # MVP 3.5 Follow-up A 历史回放 (跨 PR follow-up Session 43, 2026-04-28):
+    python scripts/factor_lifecycle_monitor.py --replay-from 2026-01-01 --weeks 12 \
+        --report-out logs/lifecycle_replay.json
+
 铁律 23/24: 独立可执行, 单 MVP.
 铁律 32: Service 不 commit → 本脚本 (orchestration) 负责 commit.
 铁律 33: 异常 fail-loud (发现层报告, 不 silent swallow).
@@ -23,8 +27,10 @@ L2 需人确认 (本脚本不执行):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,6 +40,12 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 # platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
+# MVP 3.5 Follow-up A (Session 43 2026-04-28): qm_platform.backtest.memory_registry
+# 用 `backend.qm_platform._types` prefix, 需 PROJECT_ROOT 在 path. CLI 直跑
+# (`python scripts/factor_lifecycle_monitor.py`) sys.path[0] 是 SCRIPT_DIR, 缺
+# PROJECT_ROOT. Celery Beat 路径 setup 不同, append 兜底 CLI 模式.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -96,19 +108,43 @@ def _load_registry_factors(conn, factor_filter: str | None = None) -> list[dict]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
 
-def _load_ic_tail(conn, factor_name: str, lookback_days: int) -> list[dict]:
-    """加载因子最近 N 个有 ic_ma20/ic_ma60 的记录 (按 trade_date 升序)."""
-    sql = """
-        SELECT trade_date, ic_ma20, ic_ma60
-        FROM factor_ic_history
-        WHERE factor_name = %s
-          AND ic_ma20 IS NOT NULL
-          AND ic_ma60 IS NOT NULL
-        ORDER BY trade_date DESC
-        LIMIT %s
+def _load_ic_tail(
+    conn,
+    factor_name: str,
+    lookback_days: int,
+    snapshot_date: date | None = None,
+) -> list[dict]:
+    """加载因子最近 N 个有 ic_ma20/ic_ma60 的记录 (按 trade_date 升序).
+
+    Args:
+      snapshot_date: None → 今天为锚点 (生产 Beat 用法).
+        非 None → trade_date <= snapshot_date 为锚点 (历史回放, MVP 3.5 Follow-up A).
     """
+    if snapshot_date is None:
+        sql = """
+            SELECT trade_date, ic_ma20, ic_ma60
+            FROM factor_ic_history
+            WHERE factor_name = %s
+              AND ic_ma20 IS NOT NULL
+              AND ic_ma60 IS NOT NULL
+            ORDER BY trade_date DESC
+            LIMIT %s
+        """
+        params: tuple = (factor_name, lookback_days)
+    else:
+        sql = """
+            SELECT trade_date, ic_ma20, ic_ma60
+            FROM factor_ic_history
+            WHERE factor_name = %s
+              AND trade_date <= %s
+              AND ic_ma20 IS NOT NULL
+              AND ic_ma60 IS NOT NULL
+            ORDER BY trade_date DESC
+            LIMIT %s
+        """
+        params = (factor_name, snapshot_date, lookback_days)
     with conn.cursor() as cur:
-        cur.execute(sql, (factor_name, lookback_days))
+        cur.execute(sql, params)
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
     rows.reverse()  # 升序
@@ -177,8 +213,17 @@ def _apply_transition(conn, decision: TransitionDecision) -> None:
 # ============================================================================
 
 
-def _load_ic_series(conn, factor_name: str, lookback_days: int):
+def _load_ic_series(
+    conn,
+    factor_name: str,
+    lookback_days: int,
+    snapshot_date: date | None = None,
+):
     """加载因子最近 N 天的 ic_20d 时间序列 (G1 t-stat 用).
+
+    Args:
+      snapshot_date: None → 今天为锚点. 非 None → trade_date <= snapshot_date 为锚点
+        (历史回放, MVP 3.5 Follow-up A).
 
     Returns:
       np.ndarray (升序), 或 None 若无数据. 注: 类型注解略以避 module-level np import
@@ -186,16 +231,29 @@ def _load_ic_series(conn, factor_name: str, lookback_days: int):
     """
     import numpy as np
 
-    sql = """
-        SELECT trade_date, ic_20d
-        FROM factor_ic_history
-        WHERE factor_name = %s
-          AND ic_20d IS NOT NULL
-        ORDER BY trade_date DESC
-        LIMIT %s
-    """
+    if snapshot_date is None:
+        sql = """
+            SELECT trade_date, ic_20d
+            FROM factor_ic_history
+            WHERE factor_name = %s
+              AND ic_20d IS NOT NULL
+            ORDER BY trade_date DESC
+            LIMIT %s
+        """
+        params: tuple = (factor_name, lookback_days)
+    else:
+        sql = """
+            SELECT trade_date, ic_20d
+            FROM factor_ic_history
+            WHERE factor_name = %s
+              AND trade_date <= %s
+              AND ic_20d IS NOT NULL
+            ORDER BY trade_date DESC
+            LIMIT %s
+        """
+        params = (factor_name, snapshot_date, lookback_days)
     with conn.cursor() as cur:
-        cur.execute(sql, (factor_name, lookback_days))
+        cur.execute(sql, params)
         rows = cur.fetchall()
     if not rows:
         return None
@@ -477,6 +535,252 @@ def run(
     }
 
 
+# ============================================================================
+# MVP 3.5 Follow-up A (Session 43, 2026-04-28) — 历史回放加速 4 周观察期
+# ============================================================================
+#
+# 设计意图:
+#   - 不等 4 周生产观察 (Friday 19:00 weekly), 用 factor_ic_history 历史数据 N 周
+#     回放双路径 (老 evaluate_transition / 新 PlatformEvaluationPipeline G1+G10)
+#   - 输出 mismatch_rate / by_label_matrix / per_factor_breakdown / recommendation
+#   - mismatch < 5% AND 无 P1 反向 mismatch (老 demote / 新 keep) → 推荐 SUNSET
+#   - 否则推荐 DEFER (留生产观察期 + 重审 rule alignment)
+#
+# 限制:
+#   - factor_registry.status 是当前 state, 无 history. 回放固定 current_status='active'
+#     (老/新路径同输入, 比对 rule 一致性 vs 历史复现). 文档化为已知缺口.
+#   - factor_meta.hypothesis 取当前快照 (变更频率低, 影响 G10 边际)
+#   - 无 days_below_critical 持续性回放 (active→warning 即可 demote, warning→critical
+#     需 20 天连续, 回放 active starting 状态下不会 cascade)
+
+
+def _generate_replay_fridays(start_date: date, weeks: int) -> list[date]:
+    """生成回放快照日 (Friday) 列表, 从 start_date 起向后 weeks 周, clamped to today.
+
+    Friday 选择对齐 Beat schedule (factor-lifecycle Beat 周五 19:00 触发).
+    """
+    if weeks <= 0:
+        raise ValueError(f"weeks 必须 > 0, got {weeks}")
+    fridays: list[date] = []
+    today = date.today()
+    d = start_date
+    # Advance to first Friday on or after start_date
+    while d.weekday() != 4:  # Mon=0, Fri=4
+        d += timedelta(days=1)
+    for _ in range(weeks):
+        if d > today:
+            break
+        fridays.append(d)
+        d += timedelta(days=7)
+    return fridays
+
+
+def _replay_one_factor(
+    conn,
+    factor_name: str,
+    snapshot: date,
+) -> dict | None:
+    """单 (factor, snapshot) 回放双路径决策, 返 comparison dict 或 None 若数据不足.
+
+    Args:
+      conn: psycopg2 connection.
+      factor_name: 因子名.
+      snapshot: 回放快照日 (factor_ic_history 取 trade_date <= snapshot).
+
+    Returns:
+      dict {snapshot, factor, old_label, new_label, new_decision_value, consistent,
+             old_to_status, ratio} 或 None 若 ic_ma 数据不足 / G1 样本 < 30.
+    """
+    tail = _load_ic_tail(conn, factor_name, PERSISTENCE_LOOKBACK_DAYS, snapshot_date=snapshot)
+    if not tail:
+        return None
+    ic_series = _load_ic_series(
+        conn, factor_name, IC_SERIES_LOOKBACK_DAYS, snapshot_date=snapshot
+    )
+    if ic_series is None or ic_series.size < 30:
+        return None
+
+    # 回放固定 current_status='active' (回放上下文不可信 historical status)
+    old_decision = _compute_decision(factor_name, "active", tail)
+
+    factor_meta = _load_factor_meta(conn, factor_name)
+    ctx = build_lifecycle_context(
+        factor_name, ic_series=ic_series, factor_meta=factor_meta
+    )
+    pipeline = default_lifecycle_pipeline(context_loader=lambda _n: ctx)
+    report = pipeline.evaluate_full(factor_name)
+    comparison = compare_paths(factor_name, old_decision, report)
+
+    return {
+        "snapshot": snapshot.isoformat(),
+        "factor": factor_name,
+        "old_label": comparison.old_label,
+        "new_label": comparison.new_label,
+        "new_decision_value": comparison.new_decision_value,
+        "consistent": comparison.consistent,
+        "old_to_status": (
+            comparison.old_decision.to_status
+            if comparison.old_decision is not None
+            else None
+        ),
+        "ic_ma20": float(tail[-1]["ic_ma20"]) if tail[-1]["ic_ma20"] is not None else None,
+        "ic_ma60": float(tail[-1]["ic_ma60"]) if tail[-1]["ic_ma60"] is not None else None,
+    }
+
+
+def replay(
+    start_date: date,
+    weeks: int = 12,
+    factor_filter: str | None = None,
+    report_out: str | None = None,
+    sunset_mismatch_threshold: float = 0.05,
+) -> dict:
+    """历史回放老/新路径 N 周, 输出 mismatch 统计 + sunset 推荐.
+
+    Args:
+      start_date: 回放起始日 (会前进到首个 Friday).
+      weeks: 回放周数, 默认 12 (4 周观察期 3 倍 statistical power).
+      factor_filter: 仅回放指定因子 (None = 全因子).
+      report_out: JSON 报告路径, None 则不写文件.
+      sunset_mismatch_threshold: SUNSET 推荐阈值, 默认 0.05 (5%).
+
+    Returns:
+      summary dict + details list.
+    """
+    logger.info("=" * 60)
+    logger.info(
+        "[Replay] 开始 start=%s weeks=%d factor_filter=%s threshold=%.2f%%",
+        start_date,
+        weeks,
+        factor_filter,
+        sunset_mismatch_threshold * 100,
+    )
+
+    fridays = _generate_replay_fridays(start_date, weeks)
+    if not fridays:
+        logger.warning("[Replay] 无可用 Friday 快照 (start > today?)")
+        return {"summary": {"total_evaluations": 0, "recommendation": "NO_DATA"}}
+
+    logger.info(
+        "[Replay] %d Friday 快照: %s ~ %s",
+        len(fridays),
+        fridays[0],
+        fridays[-1],
+    )
+
+    conn = _get_conn()
+    try:
+        factors = _load_registry_factors(conn, factor_filter)
+        factor_names = [f["name"] for f in factors]
+        logger.info("[Replay] %d 因子参与回放", len(factor_names))
+
+        details: list[dict] = []
+        skipped_no_data = 0
+        consistent_count = 0
+        mismatch_count = 0
+        # 6-cell label matrix: 老 keep/demote × 新 keep/demote/unknown
+        label_matrix: dict[str, int] = {
+            "keep_keep": 0, "keep_demote": 0, "keep_unknown": 0,
+            "demote_keep": 0, "demote_demote": 0, "demote_unknown": 0,
+        }
+        per_factor_mismatch: dict[str, int] = {}
+
+        for snapshot in fridays:
+            for fname in factor_names:
+                row = _replay_one_factor(conn, fname, snapshot)
+                if row is None:
+                    skipped_no_data += 1
+                    continue
+
+                key = f"{row['old_label']}_{row['new_label']}"
+                label_matrix[key] = label_matrix.get(key, 0) + 1
+
+                if row["consistent"]:
+                    consistent_count += 1
+                else:
+                    mismatch_count += 1
+                    per_factor_mismatch[fname] = per_factor_mismatch.get(fname, 0) + 1
+
+                details.append(row)
+    finally:
+        conn.close()
+
+    total = consistent_count + mismatch_count
+    mismatch_rate = mismatch_count / total if total > 0 else 0.0
+
+    # P1 反向 mismatch: 老 demote (factor 衰减) 但新 keep (significant) — 老路径捕获新路径漏掉的 decay
+    p1_old_demote_new_keep = label_matrix.get("demote_keep", 0)
+    # P2 正向 mismatch: 老 keep 但新 demote — 新路径更严, 可接受
+    p2_old_keep_new_demote = label_matrix.get("keep_demote", 0)
+    # 不可下定论: unknown — 数据不足, 不算 mismatch 实质
+    unknown_count = (
+        label_matrix.get("keep_unknown", 0) + label_matrix.get("demote_unknown", 0)
+    )
+
+    if total == 0:
+        recommendation = "NO_DATA"
+        reasoning = "0 evaluations completed (data missing or factor_filter too narrow)"
+    elif mismatch_rate < sunset_mismatch_threshold and p1_old_demote_new_keep == 0:
+        recommendation = "SUNSET"
+        reasoning = (
+            f"mismatch_rate={mismatch_rate:.2%} < {sunset_mismatch_threshold:.2%} "
+            f"threshold AND 0 P1 reverse mismatches (老 demote / 新 keep). "
+            f"新路径 G1+G10 可独立替代老 evaluate_transition."
+        )
+    elif p1_old_demote_new_keep > 0:
+        recommendation = "DEFER"
+        reasoning = (
+            f"P1 反向 mismatch={p1_old_demote_new_keep} (老 demote/新 keep) — 新路径漏掉 "
+            f"decay 信号. 不能 sunset 老路径, 考虑改 AND/OR 复合规则 (老 OR 新 → demote)."
+        )
+    else:
+        recommendation = "DEFER"
+        reasoning = (
+            f"mismatch_rate={mismatch_rate:.2%} >= {sunset_mismatch_threshold:.2%} "
+            f"threshold. 留生产观察 + 复审 rule alignment."
+        )
+
+    summary = {
+        "replay_window": {
+            "start": start_date.isoformat(),
+            "weeks": weeks,
+            "fridays_count": len(fridays),
+            "fridays": [f.isoformat() for f in fridays],
+        },
+        "factors_evaluated_count": len(factor_names),
+        "total_evaluations": total,
+        "skipped_no_data": skipped_no_data,
+        "consistent_count": consistent_count,
+        "mismatch_count": mismatch_count,
+        "mismatch_rate": round(mismatch_rate, 6),
+        "by_label_matrix": label_matrix,
+        "per_factor_mismatch": per_factor_mismatch,
+        "p1_reverse_mismatch": p1_old_demote_new_keep,
+        "p2_forward_mismatch": p2_old_keep_new_demote,
+        "unknown_count": unknown_count,
+        "sunset_threshold": sunset_mismatch_threshold,
+        "recommendation": recommendation,
+        "reasoning": reasoning,
+    }
+
+    logger.info("[Replay] 完成: total=%d mismatch=%d (%.2f%%) → %s",
+                total, mismatch_count, mismatch_rate * 100, recommendation)
+    logger.info("[Replay] reasoning: %s", reasoning)
+
+    result = {"summary": summary, "details": details}
+
+    if report_out:
+        out_path = Path(report_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info("[Replay] JSON 报告写入 %s (%d details rows)", out_path, len(details))
+
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="因子生命周期自动状态转换 (Phase 3 MVP A)")
     parser.add_argument("--dry-run", action="store_true", help="不写 DB/不发事件")
@@ -487,7 +791,47 @@ def main():
         help="启用 batch 2 新路径双路径比对 (PlatformEvaluationPipeline G1+G10), "
         "老路径决策权威, 新路径仅 log + mismatch 告警",
     )
+    # MVP 3.5 Follow-up A (Session 43, 2026-04-28) — 历史回放
+    parser.add_argument(
+        "--replay-from",
+        type=str,
+        default=None,
+        help="历史回放起始日期 YYYY-MM-DD. 设置后跳过常规 run, 走 replay 模式.",
+    )
+    parser.add_argument(
+        "--weeks",
+        type=int,
+        default=12,
+        help="回放周数, 默认 12 (4 周生产观察期 3 倍 statistical power)",
+    )
+    parser.add_argument(
+        "--report-out",
+        type=str,
+        default=None,
+        help="JSON 报告输出路径 (replay 模式专用)",
+    )
+    parser.add_argument(
+        "--sunset-threshold",
+        type=float,
+        default=0.05,
+        help="SUNSET 推荐 mismatch_rate 阈值, 默认 0.05",
+    )
     args = parser.parse_args()
+
+    if args.replay_from:
+        try:
+            start = date.fromisoformat(args.replay_from)
+        except ValueError as e:
+            parser.error(f"--replay-from 格式无效 (需 YYYY-MM-DD): {e}")
+        result = replay(
+            start_date=start,
+            weeks=args.weeks,
+            factor_filter=args.factor,
+            report_out=args.report_out,
+            sunset_mismatch_threshold=args.sunset_threshold,
+        )
+        logger.info("Replay summary: %s", result["summary"])
+        return
 
     result = run(
         dry_run=args.dry_run,
