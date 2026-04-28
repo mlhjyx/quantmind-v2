@@ -321,35 +321,47 @@ class PlatformRiskEngine:
                         json.dumps(action_result, default=str),
                     ),
                 )
-                # MVP 3.4 batch 5 sunset (PR #130 2026-04-28): 删 inner try/except,
-                # outbox 失败 propagate 到 outer except (与 risk_event_log INSERT 失败
-                # 同级别 ERROR log + alert-and-continue, 不再 silent warn).
-                # event_type = rule action (sell_full/alert_only/...) 拼回 "risk.{action}"
-                # stream. aggregate_id = "{code|portfolio}-{rule_id}-{ts}" 单事件唯一.
-                OutboxWriter(conn).enqueue(
-                    aggregate_type="risk",
-                    aggregate_id=(
-                        f"{result.code or 'portfolio'}-{result.rule_id}-"
-                        f"{context.timestamp.isoformat()}"
-                    ),
-                    event_type=rule.action,
-                    payload={
-                        "risk_id": (
+                # MVP 3.4 batch 5 sunset (PR #130 2026-04-28, reviewer P1 fix):
+                # narrow try/except 保 risk_event_log INSERT atomicity. risk audit
+                # 是主信源 (铁律 33 fail-loud 优先级), outbox event 是副 (consumers
+                # eventual). 若 outbox 失败 propagate 会 rollback risk_event_log →
+                # audit row 丢失 = 监管风险. 故 outbox 失败 ERROR log + 不阻塞 audit.
+                # 注: 与 batch 4 silent_ok 区别 — log level WARNING→ERROR + 注释明示
+                # priority (audit>event) 非 "过渡期 silent". outbox publisher worker
+                # at-least-once + retry, 单次 enqueue 失败下次 risk 触发会再 enqueue.
+                try:
+                    OutboxWriter(conn).enqueue(
+                        aggregate_type="risk",
+                        aggregate_id=(
                             f"{result.code or 'portfolio'}-{result.rule_id}-"
                             f"{context.timestamp.isoformat()}"
                         ),
-                        "strategy_id": context.strategy_id,
-                        "execution_mode": context.execution_mode,
-                        "rule_id": result.rule_id,
-                        "severity": rule.severity.value,
-                        "code": result.code,
-                        "shares": result.shares,
-                        "reason": result.reason,
-                        "action_taken": rule.action,
-                        "action_status": action_result.get("status", "unknown"),
-                        "timestamp": context.timestamp.isoformat(),
-                    },
-                )
+                        event_type=rule.action,
+                        payload={
+                            "risk_id": (
+                                f"{result.code or 'portfolio'}-{result.rule_id}-"
+                                f"{context.timestamp.isoformat()}"
+                            ),
+                            "strategy_id": context.strategy_id,
+                            "execution_mode": context.execution_mode,
+                            "rule_id": result.rule_id,
+                            "severity": rule.severity.value,
+                            "code": result.code,
+                            "shares": result.shares,
+                            "reason": result.reason,
+                            "action_taken": rule.action,
+                            "action_status": action_result.get("status", "unknown"),
+                            "timestamp": context.timestamp.isoformat(),
+                        },
+                    )
+                except Exception as outbox_exc:  # noqa: BLE001 — audit > event priority
+                    logger.error(
+                        "[risk-engine] outbox enqueue 失败 — risk_event_log 仍 commit "
+                        "(priority: audit>event, 铁律 33 sunset). rule=%s exc=%s",
+                        result.rule_id,
+                        type(outbox_exc).__name__,
+                        exc_info=True,
+                    )
         except Exception as e:  # noqa: BLE001 — log 失败不阻塞主路径
             logger.error(
                 "[risk-engine] risk_event_log INSERT failed rule=%s: %s: %s",

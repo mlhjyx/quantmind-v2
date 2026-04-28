@@ -201,10 +201,13 @@ class TestExecutionServiceDualWrite:
         assert paper_marker in content, "execution_service.py 缺 paper 路径 outbox 注入"
         assert live_marker in content, "execution_service.py 缺 live 路径 outbox 注入"
         # 两块都在 `if fills:` 内 (空 fill 不写)
-        # 简单验: outbox enqueue 出现次数 == 2 (paper + live)
-        # 注: 只数 batch 4 注入的, 用 marker
-        assert content.count("MVP 3.4 batch 5 sunset") == 2, (
-            "execution_service.py 应有 2 个 batch 5 sunset block (paper + live)"
+        # reviewer P3 2026-04-28 PR #130 (smoke 镜像): 独立 paper + live marker
+        # 替代 count==2 (后者 brittle: 任何 sunset 字符串误命中).
+        assert "sunset (PR #130 2026-04-28, paper)" in content, (
+            "execution_service.py paper 路径 batch 5 sunset marker 丢失"
+        )
+        assert "sunset (PR #130 2026-04-28, live)" in content, (
+            "execution_service.py live 路径 batch 5 sunset marker 丢失"
         )
 
 
@@ -245,15 +248,19 @@ class TestRiskEngineDualWrite:
         agg_id = f"{code or 'portfolio'}-{rule_id}-{ts.isoformat()}"
         assert agg_id.startswith("portfolio-intraday_portfolio_drop_5pct-")
 
-    def test_risk_outbox_propagates_to_outer_except_post_sunset(self) -> None:
-        """MVP 3.4 batch 5 sunset (PR #130 2026-04-28): outbox 不再 silent_ok wrap.
+    def test_risk_outbox_audit_priority_post_sunset(self) -> None:
+        """MVP 3.4 batch 5 sunset (PR #130 2026-04-28, reviewer P1 fix):
+        risk audit > outbox event priority — outbox 失败 ERROR log 不阻塞 risk_event_log.
 
-        sunset 后 risk/engine.py outbox enqueue NO LONGER 有 inner try/except.
-        失败 propagate 到 outer except → with conn ctx mgr 整 tx rollback (true atomic).
+        与 signal/exec sunset 不同 (后者 outbox 失败 propagate rollback): risk
+        audit row 是监管追溯主信源, 不能因 outbox 故障丢失. 故 risk path 保留
+        narrow try/except 但 log level WARNING→ERROR (非 silent_ok), 注释明示
+        audit>event priority. outbox publisher worker at-least-once + retry,
+        单次 enqueue 失败下次 risk 触发会再 enqueue.
         """
         engine_path = _BACKEND_DIR / "qm_platform" / "risk" / "engine.py"
         content = engine_path.read_text(encoding="utf-8")
-        # NEGATIVE: silent_ok warning 已删除
+        # NEGATIVE: 老 silent_ok warning 注释已删除
         assert "dual-write 过渡期 silent_ok" not in content, (
             "risk/engine.py 仍存 silent_ok warning — sunset 未完成"
         )
@@ -261,9 +268,17 @@ class TestRiskEngineDualWrite:
         assert "batch 5 sunset" in content, (
             "risk/engine.py 缺 batch 5 sunset marker (PR #130)"
         )
-        # POSITIVE: OutboxWriter 仍存 (sunset 仅去 wrap, 不删调用)
+        # POSITIVE: priority 注释明示 audit > event (reviewer P1)
+        assert "priority: audit>event" in content, (
+            "risk/engine.py 缺 priority audit>event 注释 (reviewer P1 fix)"
+        )
+        # POSITIVE: ERROR level (非 silent warning), narrow try/except 保留 audit
+        assert 'logger.error(' in content, (
+            "risk/engine.py outbox 失败必 ERROR log (非 silent warning)"
+        )
+        # POSITIVE: OutboxWriter 仍调用
         assert "OutboxWriter(conn).enqueue(" in content, (
-            "risk/engine.py outbox enqueue 不应被删 (sunset 仅去 silent wrap)"
+            "risk/engine.py outbox enqueue 不应被删"
         )
 
 
