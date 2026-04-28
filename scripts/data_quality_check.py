@@ -261,24 +261,140 @@ def check_latest_dates(
     return alerts
 
 
+def _max_severity(alerts: list[str]) -> str:
+    """从 alert 字符串列表提取最高 severity (p0 > p1 > p2). 默认 p1."""
+    if any(a.startswith("[P0]") for a in alerts):
+        return "p0"
+    if any(a.startswith("[P1]") for a in alerts):
+        return "p1"
+    if any(a.startswith("[P2]") for a in alerts):
+        return "p2"
+    return "p1"  # 兜底 P1 (现状默认)
+
+
 def send_dingtalk_alert(alerts: list[str], trade_date: date, dry_run: bool = False) -> None:
-    """通过钉钉发送告警."""
+    """通过钉钉发送告警.
+
+    MVP 4.1 batch 3.1 (2026-04-29): 默认走 Platform SDK (PostgresAlertRouter +
+    AlertRulesEngine cross-process PG dedup), 旧 dingtalk.send_markdown_sync 直调
+    保留作 fallback (settings.OBSERVABILITY_USE_PLATFORM_SDK=False 时切回, 紧急回滚用).
+
+    行为对齐: 1 钉钉 per script run (不变, dedup 防同日多次 schtask 空跑风暴).
+    severity 自动从 alerts 文本前缀 "[P0]"/"[P1]"/"[P2]" 提取最高级.
+    """
+    if dry_run:
+        # dry-run 同时 dump 双 path payload 便于静态比对 (迁移信心)
+        title = f"[{_max_severity(alerts).upper()}] 数据质量告警 {trade_date}"
+        content = _build_alert_content(alerts, trade_date)
+        logger.info(
+            "[DRY-RUN] 钉钉消息 (sdk_flag=%s):\nTITLE: %s\nCONTENT:\n%s",
+            settings.OBSERVABILITY_USE_PLATFORM_SDK,
+            title,
+            content,
+        )
+        return
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(alerts, trade_date)
+    else:
+        _send_alert_via_legacy_dingtalk(alerts, trade_date)
+
+
+def _build_alert_content(alerts: list[str], trade_date: date) -> str:
+    """构造钉钉 Markdown 内容 (新旧 path 共享, 行为一致)."""
+    lines = [f"### 数据质量巡检告警 {trade_date}", ""]
+    for i, alert in enumerate(alerts, 1):
+        lines.append(f"{i}. {alert}")
+    lines.append("")
+    lines.append(f"---\n*巡检时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+    return "\n".join(lines)
+
+
+def _send_alert_via_platform_sdk(alerts: list[str], trade_date: date) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine yaml-driven dedup (MVP 4.1 batch 3.1).
+
+    dedup_key=`data_quality:summary:{trade_date}` (同日多次 schtask 空跑 dedup, 5min P0
+    / 30min P1 窗口 — alert_rules.yaml 控制).
+    """
+    from datetime import UTC
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import (
+        Alert,
+        AlertDispatchError,
+        AlertRulesEngine,
+        get_alert_router,
+    )
+
+    severity_value = _max_severity(alerts)
+    severity = Severity(severity_value)
+    title = f"[{severity_value.upper()}] 数据质量告警 {trade_date}"
+    content = _build_alert_content(alerts, trade_date)
+    trade_date_str = str(trade_date)
+
+    # Platform SDK Alert (details 含 trade_date 给 dedup_key_template 用)
+    alert = Alert(
+        title=title,
+        severity=severity,
+        source="data_quality_check",
+        details={
+            "trade_date": trade_date_str,
+            "issue_count": str(len(alerts)),
+            "content": content,
+        },
+        trade_date=trade_date_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    # 加载 yaml rules (AlertRulesEngine SSOT, 铁律 34)
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    try:
+        engine = AlertRulesEngine.from_yaml(rules_path)
+    except Exception as e:
+        # rules yaml 加载失败不应阻断告警 — 降级用默认 dedup_key 仍 fire
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e)
+        engine = None
+
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        # fallback: severity 默认 (router _DEFAULT_SUPPRESS_MINUTES) + 通用 dedup_key
+        dedup_key = f"data_quality:summary:{trade_date_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
+            result,
+            dedup_key,
+            severity_value,
+        )
+    except AlertDispatchError as e:
+        # 全 channel failed — fail-loud (铁律 33), main() 顶层 catch 转 exit_code=2
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(alerts: list[str], trade_date: date) -> None:
+    """旧 path: dingtalk.send_markdown_sync 直调 (fallback, settings flag=False 时走).
+
+    保留作紧急回滚用. 完全行为等价 batch 3.1 前实现 (无 dedup, 每次 fire).
+    """
     webhook_url = settings.DINGTALK_WEBHOOK_URL
     if not webhook_url:
         logger.warning("DINGTALK_WEBHOOK_URL 未配置，跳过钉钉通知")
         return
 
     title = f"[P1] 数据质量告警 {trade_date}"
-    lines = [f"### 数据质量巡检告警 {trade_date}", ""]
-    for i, alert in enumerate(alerts, 1):
-        lines.append(f"{i}. {alert}")
-    lines.append("")
-    lines.append(f"---\n*巡检时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
-    content = "\n".join(lines)
-
-    if dry_run:
-        logger.info("[DRY-RUN] 钉钉消息:\n%s", content)
-        return
+    content = _build_alert_content(alerts, trade_date)
 
     ok = dingtalk.send_markdown_sync(
         webhook_url=webhook_url,
@@ -288,9 +404,9 @@ def send_dingtalk_alert(alerts: list[str], trade_date: date, dry_run: bool = Fal
         keyword=settings.DINGTALK_KEYWORD or "",
     )
     if ok:
-        logger.info("钉钉告警发送成功")
+        logger.info("钉钉告警发送成功 (legacy path)")
     else:
-        logger.error("钉钉告警发送失败")
+        logger.error("钉钉告警发送失败 (legacy path)")
 
 
 def write_db_alert(

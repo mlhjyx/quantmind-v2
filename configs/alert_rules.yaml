@@ -39,7 +39,16 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 5
-      dedup_key_template: "data_quality:{table}:{issue}"
+      dedup_key_template: "data_quality:summary:{trade_date}"
+
+  - name: p1_data_quality_pre_signal
+    match:
+      severity: p1
+      source: data_quality_check
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "data_quality:summary:{trade_date}"
 
   - name: p0_pt_audit_findings
     match:
