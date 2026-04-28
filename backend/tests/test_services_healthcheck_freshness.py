@@ -146,6 +146,34 @@ class TestPortfolioNavFreshness:
         assert nav_check.found is False
         assert "key 不存在" in nav_check.reason
 
+    def test_nav_updated_at_missing_treated_as_stale(self, hc_module) -> None:
+        """reviewer code P2 采纳 (PR #113): nav JSON valid but updated_at field 缺失
+        → found=True / age_seconds=None → stale=True via property (schema 异常 fail-loud).
+        """
+        mock_r = MagicMock()
+        # nav JSON 合法但 updated_at 字段缺失 (schema 异常 / 旧版 nav 数据)
+        mock_r.get.return_value = json.dumps({"cash": 100000, "total_value": 1000000})
+        with patch("redis.from_url", return_value=mock_r):
+            checks = hc_module.check_redis_freshness()
+        nav_check = next(c for c in checks if c.key == "portfolio:nav")
+        assert nav_check.stale is True
+        assert nav_check.found is True  # key 存在但 schema 异常
+        assert nav_check.age_seconds is None
+        assert "updated_at" in nav_check.reason
+
+    def test_nav_invalid_json_treated_as_stale(self, hc_module) -> None:
+        """reviewer code P2 采纳 (PR #113): nav 值不是 valid JSON → except 路径 → stale.
+        防 QMTData 写入 corrupt 数据时 health probe silent skip.
+        """
+        mock_r = MagicMock()
+        mock_r.get.return_value = "not-a-json-{broken"  # corrupt
+        with patch("redis.from_url", return_value=mock_r):
+            checks = hc_module.check_redis_freshness()
+        nav_check = next(c for c in checks if c.key == "portfolio:nav")
+        assert nav_check.stale is True
+        assert nav_check.found is False  # except 路径 mark not found
+        assert "probe 异常" in nav_check.reason
+
 
 # ─────────────────────────────────────────────────────────
 # 3. Redis 完全不可达 → portfolio:nav stale (fail-loud)
