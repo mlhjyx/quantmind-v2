@@ -11,10 +11,26 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from .._types import Verdict
 from .gates.base import Gate, GateContext
 from .interface import EvaluationPipeline, GateResult
+
+
+def _json_safe(value: Any) -> Any:
+    """numpy scalar / 非原生类型 → JSON 可序列化原生 (PR #123 reviewer P1).
+
+    GateResult.observed 类型注解是 float | None, 但 Gate 实现常返 np.float64
+    (e.g. arr.mean()). 下游 audit log / StreamBus / API 序列化会 raise TypeError.
+    None / bool / int / str 直返, float-like 强转 float. 其他不动 (容错).
+    """
+    if value is None or isinstance(value, bool | int | str):
+        return value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
 
 
 class EvaluationDecision(StrEnum):
@@ -48,7 +64,10 @@ class EvaluationReport:
     extra: dict[str, object] = field(default_factory=dict)
 
     def to_verdict(self) -> Verdict:
-        """转 Verdict 对象 (兼容 EvaluationPipeline.evaluate_factor 的返回类型)."""
+        """转 Verdict 对象 (兼容 EvaluationPipeline.evaluate_factor 的返回类型).
+
+        observed / threshold 用 _json_safe 包 (np.float64 → float), 防下游 JSON 序列化炸.
+        """
         blockers = [r.gate_name for r in self.gate_results if not r.passed]
         return Verdict(
             subject=self.candidate_id,
@@ -62,8 +81,8 @@ class EvaluationReport:
                     {
                         "gate": r.gate_name,
                         "passed": r.passed,
-                        "threshold": r.threshold,
-                        "observed": r.observed,
+                        "threshold": _json_safe(r.threshold),
+                        "observed": _json_safe(r.observed),
                         "details": r.details,
                     }
                     for r in self.gate_results
@@ -84,6 +103,9 @@ def _classify_decision(results: list[GateResult]) -> tuple[EvaluationDecision, s
     if all(r.passed for r in results):
         return EvaluationDecision.ACCEPT, "all gates passed"
 
+    # gate_internal_error (Pipeline._safe_evaluate 异常兜底产生) 也归 hard fail —
+    # 设计意图: 基础设施崩溃 (DB timeout / Gate 内部 bug) 时保守 reject 而非 warn,
+    # 避免有 bug 的因子 silently slip 进 active 池. 调用方需 retry 或修 Gate 实现.
     hard_fails = [
         r for r in results
         if not r.passed and r.details.get("reason") != "data_unavailable"
