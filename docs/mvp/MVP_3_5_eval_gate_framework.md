@@ -1,8 +1,13 @@
-# MVP 3.5 Evaluation Gate Framework (因子/策略入池硬门 + G1-G10 自动化)
+# MVP 3.5 Evaluation Gate Framework ✅ 完结 (因子/策略入池硬门 + G1-G10 自动化)
 
-> **ADR**: Platform Blueprint §4.7 / Framework #4 Eval / 铁律 4/5/12/13/19/20 + G1-G10 Gates
-> **Sprint**: Wave 3 5/5 收官 (Session 42+ 起 2026-04-28, post MVP 3.4 Event Sourcing #119-#122 merged)
-> **前置**: MVP 3.4 Event Sourcing ✅ (event_outbox 提供 evaluation 历史 trace) / MVP 1.3c FactorRegistry G9/G10 register() 硬门 ✅ (register raise OnboardingBlocked) / `factor_ic_history` 表 ✅ / `engines/factor_gate.py` G1-G8 阈值已存 ✅ / `engines/ic_calculator.py` 统一 IC 口径已存 ✅
+> **状态**: ✅ **Wave 3 5/5 完结** (Session 42 2026-04-28, 3 批 PR #123/#124/#125 全 merged)
+> **ADR**: Platform Blueprint §4.7 / Framework #4 Eval / 铁律 4/5/12/13/19/20 + G1-G10 Gates / **ADR-014 锁契约**
+> **Sprint**: Wave 3 5/5 完结 (Session 42 2026-04-28 一日完成 3 批)
+> **前置**: MVP 3.4 Event Sourcing ✅ / MVP 1.3c FactorRegistry G9/G10 ✅ / `factor_ic_history` 表 ✅ / `engines/factor_gate.py` G1-G8 ✅ / `engines/ic_calculator.py` ✅
+> **进度**:
+> - ✅ **批 1** PR #123 merged main `543c283`: PlatformEvaluationPipeline + 7 Gates (G1/G2/G3/G4/G8/G9/G10) + utils + 33 unit/1 smoke
+> - ✅ **批 2** PR #124 merged main `039c497`: factor_lifecycle 双路径接入 + 4 周观察期 + 16 unit/1 smoke
+> - ✅ **批 3** PR #125 merged main `977e56a`: Strategy Gates (G1'/G2'/G3') + PlatformStrategyEvaluator + ADR-014 + 17 unit/1 smoke
 
 ## Context
 
