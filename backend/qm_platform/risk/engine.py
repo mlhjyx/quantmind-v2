@@ -23,6 +23,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from qm_platform.observability import OutboxWriter
+
 from .interface import (
     Position,
     PositionSource,
@@ -290,9 +292,15 @@ class PlatformRiskEngine:
         # reviewer P0-1 采纳: 删 explicit conn.commit(). 依赖 psycopg2 `with conn:`
         # context manager __exit__ 正常退出时 auto-commit, 异常时 rollback. 对齐
         # knowledge/registry.py 模式, 事务边界由 conn_factory 契约持有方管理.
-        # MVP 3.4 batch 4 dual-write: outbox enqueue 在同 `with conn:` 块内 →
-        # outbox + risk_event_log atomic (单 tx commit). publisher worker (batch 2)
-        # 30s 后异步 publish 到 Redis Stream `qm:risk:{rule_id_action}` 替代 ad-hoc.
+        #
+        # MVP 3.4 batch 4 dual-write (PR #122 reviewer P1.1 采纳, 注释订正):
+        #   outbox enqueue 在同 `with conn:` 块内执行, 但**外层 inner try/except
+        #   主动 swallow** outbox 失败 → with 块仍正常退出 + auto-commit. 这意味
+        #   risk_event_log 已 commit, outbox 行 absent → 两者**非真原子**.
+        #   设计意图: dual-write 过渡期 outbox 是 best-effort 副路径 (与
+        #   signal_service / execution_service 语义对齐), 主路径 risk_event_log
+        #   不能因 outbox 故障而丢失审计. 批 5 删除老 risk_event_log 直写后,
+        #   outbox 升 fail-loud 走真原子单源.
         try:
             with self._conn_factory() as conn, conn.cursor() as cur:
                 cur.execute(
@@ -313,12 +321,14 @@ class PlatformRiskEngine:
                         json.dumps(action_result, default=str),
                     ),
                 )
-                # MVP 3.4 batch 4 dual-write: outbox event (atomic 同 risk_event_log INSERT)
-                # event_type subtype = rule action (sell_full/alert_only/...) 拼回
-                # "risk.{action}" stream. aggregate_id = "{code}-{rule_id}-{ts}" 唯一.
+                # MVP 3.4 batch 4 dual-write: outbox event 在 risk_event_log INSERT 后
+                # 同 with 块. 注: best-effort 非真原子 (见上方注释), inner try/except
+                # swallow → with 退出仍 commit risk_event_log 即便 outbox 失败.
+                # event_type = rule action (sell_full/alert_only/...) 拼回 "risk.{action}"
+                # stream. aggregate_id = "{code|portfolio}-{rule_id}-{ts}" 单事件唯一.
+                # TODO(批 5 sunset): 老 risk_event_log 直写删除后, 移除 inner try/except
+                # 让 outbox 失败 propagate 到 outer except → 真原子 fail-loud.
                 try:
-                    from qm_platform.observability import OutboxWriter  # noqa: PLC0415
-
                     OutboxWriter(conn).enqueue(
                         aggregate_type="risk",
                         aggregate_id=(

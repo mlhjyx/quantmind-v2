@@ -355,6 +355,11 @@ class ExecutionService:
 
         # ── MVP 3.4 batch 4 dual-write (live): outbox 与 _save_live_fills 同 caller tx ──
         # _save_live_fills 调用方 (run_paper_trading) 持有 conn 并 commit, outbox 同 tx.
+        # PR #122 reviewer P1.2 采纳: dry_run 保护是**隐式**的 (`if not dry_run` 在 L311-324
+        # 跳过 QMT 适配器 → fills 为空 → 此 `if fills:` guard 跳过 outbox enqueue).
+        # 安全性依赖 fills 在 dry_run 下确实为空, 测试加 static check 防 fills 注入式
+        # 测试 path 误污染 event_outbox.
+        # TODO(批 5 sunset): silent_ok try/except + 老 StreamBus 删除时一并升 fail-loud.
         if fills:
             try:
                 from qm_platform.observability import OutboxWriter
