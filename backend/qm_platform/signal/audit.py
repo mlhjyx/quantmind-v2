@@ -1,30 +1,37 @@
-"""Framework #6 Signal — StubExecutionAuditTrail (MVP 3.3 batch 3).
+"""Framework #6 Signal — ExecutionAuditTrail concrete (StubExecutionAuditTrail + OutboxBackedAuditTrail).
 
-ExecutionAuditTrail ABC 的 stub concrete — record() logger-only no-op DB,
-trace() raise NotImplementedError 留 MVP 3.4 Event Sourcing outbox concrete 替换.
+MVP 3.3 batch 3 ✅ Stub: record() logger-only / trace() NotImplementedError.
+MVP 3.4 batch 3 ✅ Concrete: OutboxBackedAuditTrail — outbox 写 + 反向 SQL trace.
 
 ## 设计 (铁律 39 显式)
 
-- **stub 模式**: record() 不写 DB / 不发 event_bus, 仅 logger.info — 让 PlatformOrderRouter
-  audit hook 路径**完整** (record 调用不报错), 但实际持久化等 MVP 3.4 outbox 落地.
-- **trace() 不实施**: ABI 占位 raise NotImplementedError, 调用方收到清晰错误 (铁律 33
-  fail-loud, 非 silent return None / 空 AuditChain). MVP 3.4 outbox concrete 时替换.
-- **DI 兼容性**: 保 ExecutionAuditTrail.record(event_type, payload) 签名稳定, 替换 stub
-  → outbox concrete 时 PlatformOrderRouter.audit_trail 注入路径不破.
+- **stub 模式** (StubExecutionAuditTrail): record() 不写 DB / 不发 event_bus, 仅 logger.info.
+  保留用途: router.py / pipeline.py 单元测试无 DB 依赖时的 dummy 注入.
+- **outbox 模式** (OutboxBackedAuditTrail): record() 走 OutboxWriter.enqueue 写 event_outbox 表,
+  自管短 tx (fire-and-forget audit 模式, **vs** OutboxWriter co-tx 模式由 caller 管 tx).
+  trace(fill_id) 4 sequential SQL queries 反向 JOIN event_outbox 拼 AuditChain.
+- **DI 兼容性**: 两者均实现 ExecutionAuditTrail ABC, PlatformOrderRouter.audit_trail
+  注入任一 concrete 不破调用方.
 
-## 接入点 (后续 MVP)
+## 双模式互补 (重要架构决策)
 
-- MVP 3.3 batch 3 Step 2 (本批): `PlatformOrderRouter` 加 `audit_trail` DI, route() 出
-  Order 时 record('order.routed', {...}). 默认 audit_trail=None 跳过 (backward compat).
-- MVP 3.4 Event Sourcing: 替换 StubExecutionAuditTrail → DBOutboxAuditTrail, record()
-  写 outbox 表 + trace() 反查 audit_chain.
+| 场景 | 工具 | tx 边界 |
+|---|---|---|
+| Service 业务表 + outbox 原子 (signal_service / execution_service) | OutboxWriter (batch 1) | caller 管 tx (调用方 commit) |
+| Router audit hook (无 caller conn) | OutboxBackedAuditTrail (本批) | self 管短 tx (record() 内 commit) |
+
+OutboxBackedAuditTrail 不 replace OutboxWriter, 是补 SDK 层无 conn 调用方的 audit 路径.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .interface import AuditChain, ExecutionAuditTrail
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _logger = logging.getLogger(__name__)
 
@@ -142,3 +149,240 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
             "待 MVP 3.4 Event Sourcing outbox concrete (替 stub 类). "
             "interface.py:128 ABC trace() 契约稳定, 替换不破调用方."
         )
+
+
+# ════════════════════════════════════════════════════════════
+# MVP 3.4 batch 3 — OutboxBackedAuditTrail concrete
+# ════════════════════════════════════════════════════════════
+
+
+class OutboxBackedAuditTrail(ExecutionAuditTrail):
+    """ExecutionAuditTrail concrete — outbox 写 + SQL 反向 trace.
+
+    record() 走 OutboxWriter.enqueue 写 event_outbox 表, 自管短 tx (fire-and-forget audit).
+    trace(fill_id) 4 sequential SQL queries 反向 JOIN event_outbox 拼 AuditChain.
+
+    ## event_type 格式契约 (record 调用方约定)
+
+    event_type 必须为 ``"{aggregate_type}.{event_subtype}"`` 格式:
+      - aggregate_type ∈ {signal, order, fill, risk, portfolio} (OutboxWriter 白名单)
+      - event_subtype: e.g. ``generated``, ``routed``, ``executed``, ``triggered``, ``rebalanced``
+
+    aggregate_id 从 payload 自动提取: ``payload[f"{aggregate_type}_id"]``
+      e.g. event_type=``order.routed`` → ``payload['order_id']`` 必存
+
+    示例:
+      >>> trail = OutboxBackedAuditTrail()
+      >>> trail.record('order.routed', {'order_id': 'ord-1', 'signal_id': 'sig-1', ...})
+      # → INSERT event_outbox(aggregate_type='order', aggregate_id='ord-1',
+      #     event_type='routed', payload=<入参 payload>)
+
+    ## trace(fill_id) 反向链
+
+    fill (aggregate_type='fill', aggregate_id=fill_id)
+      → payload['order_id']
+        → order event (aggregate_type='order', aggregate_id=order_id)
+          → payload['signal_id']
+            → signal event (aggregate_type='signal', aggregate_id=signal_id)
+              → payload['strategy_id'] + payload.get('factor_contributions', {})
+
+    任一环节 0 行 → AuditMissing.
+
+    Args:
+      conn_factory: Callable 返 psycopg2 conn (默认 ``app.services.db.get_sync_conn``).
+                    每个 record() / trace() 调用获新 conn, 用完 close.
+
+    铁律:
+      - 32 (Service 不 commit) 例外: 本类是 SDK 层无 caller conn, 自管短 tx (类似
+        outbox_publisher Celery task), docstring 显式声明.
+      - 33 (fail-loud): event_type 格式 / aggregate_id 缺失 / 链断 全 raise.
+      - 17 (DataPipeline) 例外: 同 outbox.py — outbox 是 audit/event 流非业务 facts.
+    """
+
+    def __init__(self, conn_factory: Callable[[], Any] | None = None) -> None:
+        if conn_factory is None:
+            from app.services.db import get_sync_conn  # noqa: PLC0415
+            conn_factory = get_sync_conn
+        self._conn_factory = conn_factory
+
+    # ─── ExecutionAuditTrail ABC impl ──────────────────────────────
+
+    def record(self, event_type: str, payload: dict[str, Any]) -> None:
+        """记录事件 → outbox 表 + commit (短 tx, fire-and-forget).
+
+        Args:
+          event_type: ``"{aggregate_type}.{event_subtype}"`` 格式.
+          payload: dict, 必含 ``{aggregate_type}_id`` key.
+
+        Raises:
+          ValueError: event_type 格式错 / aggregate_type 不在白名单 (OutboxWriter)
+                      / payload 缺 aggregate_id key / payload 不可 JSON 序列化.
+          TypeError: payload 不是 dict.
+        """
+        if not isinstance(event_type, str):
+            raise ValueError(
+                f"event_type 必须 string, got {type(event_type).__name__}: {event_type!r}"
+            )
+        if "." not in event_type:
+            raise ValueError(
+                f"event_type 必须为 '{{aggregate_type}}.{{subtype}}' 格式, got {event_type!r}. "
+                f"e.g. 'order.routed' / 'signal.generated' / 'fill.executed'."
+            )
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"payload 必须是 dict, got {type(payload).__name__}."
+            )
+
+        aggregate_type, event_subtype = event_type.split(".", 1)
+        if not aggregate_type or not event_subtype:
+            raise ValueError(
+                f"event_type 格式错 (空 aggregate_type 或 subtype): {event_type!r}."
+            )
+
+        agg_id_key = f"{aggregate_type}_id"
+        if agg_id_key not in payload:
+            raise ValueError(
+                f"payload 必含 {agg_id_key!r} key (aggregate_id 反向 trace 锚点). "
+                f"payload keys: {sorted(payload.keys())}."
+            )
+        aggregate_id = str(payload[agg_id_key])
+        if not aggregate_id or not aggregate_id.strip():
+            raise ValueError(
+                f"payload[{agg_id_key!r}] 必须非空字符串, got {payload[agg_id_key]!r}."
+            )
+
+        # Lazy import 防 batch 1 循环依赖 + 让单测可只 mock conn 不需 import outbox
+        from qm_platform.observability import OutboxWriter  # noqa: PLC0415
+
+        conn = self._conn_factory()
+        try:
+            conn.autocommit = False
+            writer = OutboxWriter(conn)
+            # event_subtype 而非全 event_type — outbox 表 event_type 列存 subtype,
+            # aggregate_type 已独立列存. 反向 trace 时拼回 "{type}.{subtype}".
+            writer.enqueue(
+                aggregate_type=aggregate_type,
+                aggregate_id=aggregate_id,
+                event_type=event_subtype,
+                payload=payload,
+            )
+            conn.commit()
+        except Exception:
+            # silent_ok: rollback 失败时 close 也会触发清理
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def trace(self, fill_id: str) -> AuditChain:
+        """反向追溯 fill → order → signal → strategy 链, 返 AuditChain.
+
+        4 sequential queries (1 conn, 不开事务):
+          1. fill event (aggregate_type='fill', aggregate_id=fill_id)
+          2. order event (取 fill.payload['order_id'])
+          3. signal event (取 order.payload['signal_id'])
+          4. strategy / factor_contributions 从 signal.payload
+
+        Args:
+          fill_id: 成交 ID (字符串).
+
+        Returns:
+          AuditChain dataclass (frozen).
+
+        Raises:
+          AuditMissing: 链路任一环节 0 行 (fill / order / signal event 不存在).
+          ValueError: fill_id 空字符串.
+        """
+        if not isinstance(fill_id, str) or not fill_id.strip():
+            raise ValueError(f"fill_id 必须非空 string, got {fill_id!r}.")
+
+        conn = self._conn_factory()
+        try:
+            with conn.cursor() as cur:
+                # 1. fill event
+                fill_row = self._fetch_event_or_raise(
+                    cur, aggregate_type="fill", aggregate_id=fill_id,
+                    raise_msg=f"fill event_id={fill_id} 不存在 (链断点 1: fill)",
+                )
+                fill_payload, fill_created_at = fill_row
+                order_id = fill_payload.get("order_id")
+                if not order_id:
+                    raise AuditMissing(
+                        f"fill payload 缺 order_id (event_id={fill_id}, "
+                        f"payload keys={sorted(fill_payload.keys())})"
+                    )
+
+                # 2. order event
+                order_row = self._fetch_event_or_raise(
+                    cur, aggregate_type="order", aggregate_id=str(order_id),
+                    raise_msg=f"order event_id={order_id} 不存在 (链断点 2: order)",
+                )
+                order_payload, order_created_at = order_row
+                signal_id = order_payload.get("signal_id")
+                if not signal_id:
+                    raise AuditMissing(
+                        f"order payload 缺 signal_id (event_id={order_id}, "
+                        f"payload keys={sorted(order_payload.keys())})"
+                    )
+
+                # 3. signal event
+                signal_row = self._fetch_event_or_raise(
+                    cur, aggregate_type="signal", aggregate_id=str(signal_id),
+                    raise_msg=f"signal event_id={signal_id} 不存在 (链断点 3: signal)",
+                )
+                signal_payload, signal_created_at = signal_row
+                strategy_id = signal_payload.get("strategy_id")
+                if not strategy_id:
+                    raise AuditMissing(
+                        f"signal payload 缺 strategy_id (event_id={signal_id}, "
+                        f"payload keys={sorted(signal_payload.keys())})"
+                    )
+
+                factor_contributions: dict[str, float] = (
+                    signal_payload.get("factor_contributions") or {}
+                )
+
+                return AuditChain(
+                    fill_id=fill_id,
+                    order_id=str(order_id),
+                    signal_trace=signal_payload,
+                    strategy_id=str(strategy_id),
+                    factor_contributions=factor_contributions,
+                    timestamps={
+                        "fill": fill_created_at.isoformat() if fill_created_at else "",
+                        "order": order_created_at.isoformat() if order_created_at else "",
+                        "signal": signal_created_at.isoformat() if signal_created_at else "",
+                    },
+                )
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _fetch_event_or_raise(cur, *, aggregate_type: str, aggregate_id: str,
+                              raise_msg: str):
+        """SELECT payload + created_at WHERE aggregate_type=? AND aggregate_id=?.
+
+        最新一条 (ORDER BY created_at DESC LIMIT 1) — 同 aggregate_id 多事件
+        (e.g. order.routed + order.cancelled) 取最新, 反向 trace 通常关心 latest state.
+
+        Returns:
+          (payload, created_at) tuple.
+
+        Raises:
+          AuditMissing: 0 rows.
+        """
+        cur.execute(
+            """
+            SELECT payload, created_at
+            FROM event_outbox
+            WHERE aggregate_type = %s AND aggregate_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (aggregate_type, aggregate_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise AuditMissing(raise_msg)
+        return row
