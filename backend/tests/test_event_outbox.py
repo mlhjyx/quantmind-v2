@@ -35,9 +35,17 @@ if str(_BACKEND_DIR) not in sys.path:
 
 @pytest.fixture
 def mock_conn():
-    """Mock psycopg2 connection 给单元测试 (无 DB 依赖)."""
+    """Mock psycopg2 connection 给单元测试 (无 DB 依赖).
+
+    Note: PR #119 reviewer P1.2 fix 后 outbox.py 用 ``with conn.cursor() as cur:``
+    上下文管理. 配合 MagicMock 默认 __enter__ 返子 mock 行为, 此 fixture 配置
+    cursor.__enter__.return_value = cursor 让 ``cur`` 与 cursor 同 mock 引用,
+    便于 test 通过 ``mock_conn.cursor.return_value.execute`` 访问 execute calls.
+    """
     conn = MagicMock()
     cursor = MagicMock()
+    cursor.__enter__.return_value = cursor  # with cursor as cur: cur === cursor
+    cursor.__exit__.return_value = False
     conn.cursor.return_value = cursor
     return conn
 
@@ -177,6 +185,24 @@ class TestEventIdHandling:
         )
         assert eid == explicit
 
+    def test_event_id_invalid_str_raises(self, mock_conn, outbox_module) -> None:
+        """PR #119 reviewer P2 采纳: 非法 UUID 字符串 → uuid.UUID() raise ValueError."""
+        writer = outbox_module.OutboxWriter(mock_conn)
+        with pytest.raises(ValueError):
+            writer.enqueue(
+                aggregate_type="signal", aggregate_id="x", event_type="generated",
+                payload={}, event_id="not-a-uuid",
+            )
+
+    def test_event_id_invalid_type_raises(self, mock_conn, outbox_module) -> None:
+        """PR #119 reviewer P3.1 采纳: event_id 非 UUID/str/None → TypeError."""
+        writer = outbox_module.OutboxWriter(mock_conn)
+        with pytest.raises(TypeError, match="event_id"):
+            writer.enqueue(
+                aggregate_type="signal", aggregate_id="x", event_type="generated",
+                payload={}, event_id=42,  # type: ignore[arg-type]
+            )
+
 
 # ─── 4. (integration) tx 边界 + DB schema ─────────────────────
 
@@ -212,16 +238,18 @@ class TestDBIntegration:
             conn.close()
 
     def test_enqueue_then_commit_row_visible(self) -> None:
-        """commit 后行可读, 自动清理."""
+        """commit 后行可读. cleanup 在 finally (PR #119 reviewer P2.2 采纳:
+        assert 失败时 cleanup 也必跑, 防 test 行污染共享 event_outbox 表).
+        """
         from qm_platform.observability import OutboxWriter  # noqa: PLC0415
 
         from app.services.db import get_sync_conn  # noqa: PLC0415
 
         conn = get_sync_conn()
+        test_id = uuid.uuid4()
         try:
             conn.autocommit = False
             writer = OutboxWriter(conn)
-            test_id = uuid.uuid4()
             writer.enqueue(
                 aggregate_type="signal",
                 aggregate_id=f"test-commit-{test_id}",
@@ -241,8 +269,12 @@ class TestDBIntegration:
             assert row[1] == "generated"
             assert row[2] is None, "published_at 默认 NULL"
             assert row[3] == 0, "retries 默认 0"
-            # cleanup
-            cur.execute("DELETE FROM event_outbox WHERE event_id = %s", (str(test_id),))
-            conn.commit()
         finally:
+            # cleanup 必跑 (assert fail 也要清), 防共享表污染
+            try:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM event_outbox WHERE event_id = %s", (str(test_id),))
+                conn.commit()
+            except Exception:  # noqa: BLE001
+                pass  # silent_ok: cleanup 失败不该掩盖 test 主 assert
             conn.close()

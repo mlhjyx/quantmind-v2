@@ -23,11 +23,14 @@ CREATE TABLE IF NOT EXISTS event_outbox (
     retries         INT NOT NULL DEFAULT 0   -- publisher 重试计数 (max_retries=10 → DLQ)
 );
 
--- BRIN partial index 加速 publisher 扫 unpublished events.
--- 表预计高写低读 (publisher 只查 NULL), BRIN 写开销 << B-Tree.
--- 实测要求 (MVP 3.4 batch 2): EXPLAIN ANALYZE 验 BRIN 使用 + retries=0 batch query <50ms.
+-- B-Tree partial index 加速 publisher 扫 unpublished events.
+-- (PR #119 reviewer P1.1 修正: 原 BRIN 设计错 — published_at 非 monotonic,
+--  从 NULL → 后续 UPDATE 写时戳, BRIN 无法 efficient 定位散布的 NULL 行;
+--  partial B-Tree on created_at 可让 publisher "oldest unpublished N rows"
+--  query 走 index, 表 published_at IS NULL 行被 publish 后自动 shrink.)
+-- 实测要求 (MVP 3.4 batch 2): EXPLAIN ANALYZE 验索引使用 + batch query <50ms.
 CREATE INDEX IF NOT EXISTS ix_event_outbox_unpublished
-    ON event_outbox USING BRIN (published_at)
+    ON event_outbox (created_at)
     WHERE published_at IS NULL;
 
 -- aggregate 反向 trace 索引 (MVP 3.4 batch 3 ExecutionAuditTrail.trace 用)
