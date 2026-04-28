@@ -154,6 +154,11 @@ def build_strategy_context(
 
     from types import MappingProxyType
 
+    # PR #125 reviewer P2 note: MappingProxyType 是 shallow freeze — 阻止 key 重赋值
+    # 但 value (numpy array / Callable / dict) 仍可被 mutate.
+    # Gate 实现层面应不持有 ctx.extra 内 mutable value 的引用做 in-place 修改 (e.g.
+    # `ctx.extra["nav_series"] *= 2` 会污染同 ctx 后续 Gate). 当前 3 Strategy Gates 都纯读
+    # 无 mutate, 后续新增 Gate 须遵守此约定.
     return GateContext(
         factor_name=strategy_id,  # 复用 factor_name 字段, Strategy 视角下视为 strategy_id
         extra=MappingProxyType(extra),

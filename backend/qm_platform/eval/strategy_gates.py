@@ -194,7 +194,11 @@ class StrategyG3RegressionGate(Gate):
     threshold = 0.0  # 严格 max_diff = 0
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        # 全新策略无 baseline 例外 (设计稿明确, 可 SKIP)
+        # 全新策略无 baseline 例外 (ADR-014 §4 明确, SKIP 视为 PASS).
+        # PR #125 reviewer P1 警告: no_baseline 是一次性首部署 flag, **必须**在第一次 deploy
+        # 落 baseline parquet 后清除. 调用方若 stale 持有 no_baseline=True 会让 G3' 永远
+        # 无法捕获 regression 漂移. ADR-014 后续 follow-up #1 (DBStrategyRegistry 状态机
+        # check evaluation_required 中间态) 将额外把关.
         if ctx.extra.get("no_baseline"):
             return GateResult(
                 gate_name=self.name,
@@ -205,6 +209,10 @@ class StrategyG3RegressionGate(Gate):
                     "reason": "no_baseline_first_deployment",
                     "ironclad_rule": 15,
                     "note": "全新策略无 baseline → SKIP, 后续 deploy 后必跑 regression",
+                    "warning": (
+                        "no_baseline=True 是一次性首部署 flag, 必须在 baseline 落地后清除. "
+                        "审计 log 检查这条 warning, stale flag 会让 G3' 永远 PASS."
+                    ),
                 },
             )
 
