@@ -14,6 +14,12 @@ from .interface import (
     Metric,
     MetricExporter,
 )
+from .metric import (
+    MetricExportError,
+    PostgresMetricExporter,
+    get_metric_exporter,
+    reset_metric_exporter,
+)
 from .outbox import OutboxWriter
 
 # `Channel` Protocol 不导出: 设计稿 (Part 1 line 222-227) 禁 Application 自实现 channel
@@ -34,4 +40,9 @@ __all__ = [
     "DingTalkChannel",
     "get_alert_router",
     "reset_alert_router",
+    # MVP 4.1 batch 2.1 — metric
+    "PostgresMetricExporter",
+    "MetricExportError",
+    "get_metric_exporter",
+    "reset_metric_exporter",
 ]
