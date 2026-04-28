@@ -82,8 +82,9 @@ class OutboxWriter:
 
         Raises:
           ValueError: aggregate_type 不在白名单 / aggregate_id 空 / event_type 空 /
-                      payload 非 dict / payload 不可 JSON 序列化.
-          TypeError: payload 不是 dict.
+                      payload 不可 JSON 序列化 / event_id 是非法 UUID 字符串
+                      (uuid.UUID() 解析失败).
+          TypeError: payload 不是 dict / event_id 不是 UUID/str/None.
         """
         # 参数校验 (铁律 33 fail-loud, 防 silent corrupt 入库)
         if aggregate_type not in _VALID_AGGREGATE_TYPES:
@@ -125,14 +126,16 @@ class OutboxWriter:
                 f"event_id 必须是 UUID / str / None, got {type(event_id).__name__}."
             )
 
-        # INSERT (铁律 32: 不 commit)
-        cur = self._conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO event_outbox
-                (event_id, aggregate_type, aggregate_id, event_type, payload)
-            VALUES (%s, %s, %s, %s, %s::jsonb)
-            """,
-            (str(resolved_id), aggregate_type, aggregate_id, event_type, payload_json),
-        )
+        # INSERT (铁律 32: 不 commit).
+        # PR #119 reviewer P1.2 采纳: with 包 cursor 防 execute 异常时 cursor leak
+        # (psycopg2 long-lived service conn, cursor 累积到 conn 回收).
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO event_outbox
+                    (event_id, aggregate_type, aggregate_id, event_type, payload)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                """,
+                (str(resolved_id), aggregate_type, aggregate_id, event_type, payload_json),
+            )
         return resolved_id
