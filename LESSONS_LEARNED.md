@@ -2529,3 +2529,88 @@ env 改动决策树:
 - 本 LL 条目 (LL-086)
 - Session 39 PR #112: STRICT flip 真切换 LIVE 实战
 - 文档: Session 39 handoff 含 verify + rollback PowerShell 命令清单
+
+---
+
+## LL-087: Transition-only event audit log ≠ heartbeat — false-positive 告警 + 设计 anti-pattern (Session 40, 2026-04-28 10:00 真生产告警驱动)
+
+### 触发场景
+
+Session 40 Tuesday 早盘 10:00:03 CST 钉钉告警:
+
+```
+🚨 Services Health DEGRADED
+✅ 4 服务全 RUNNING
+✅ Beat heartbeat 0min ago
+✅ redis:portfolio:nav: 0.4min ok
+❌ redis:qm:qmt:status: 650.9min ago STALE (zombie 风险)
+```
+
+实测 QMT 完全健康 (portfolio:nav 3min前 fresh, 19 持仓 ¥1.015M, sync_loop 60s 正常跑).
+**False-positive 告警**.
+
+### 根因 (设计 anti-pattern)
+
+`scripts/services_healthcheck.py:489-538` (LL-081 PR-X3 自加, Session 38) 把 Redis Stream
+`qm:qmt:status` 当作 QMT 健康 heartbeat 检查. 但此 stream 是 **transition-only event audit
+log** — `qmt_data_service.py:99/106/117` 仅在 connect/connect_failed/disconnected 时调
+`_publish_status()` publish event. 健康连接保持连接 = 0 transitions = stream 自然 stale.
+
+LL-081 PR-X3 作者 (Session 38 的本人) 已半意识到此问题, 加 `is_failure_alertable` flag +
+`_is_trading_hours_now()` 在非交易时段降级 INFO 防噪声. 但**交易时段健康 QMT 也不该
+transition** (连着不动) → 30min threshold 在交易时段照样 false positive.
+
+### 概念错配
+
+|  | event 流 (transition-only) | heartbeat 流 (periodic) |
+|---|---|---|
+| 写入触发 | 状态变化 (connect / disconnect / fail) | 周期 (60s sync_loop tick) |
+| 健康场景 | 0 events 完全合理 (稳定连接) | 必有定期 events (≤ tick interval) |
+| 用途 | audit trail / event sourcing | liveness probe |
+| stale 含义 | "无状态变化" (中性, 通常是好事) | "进程死了" (告警) |
+
+LL-081 PR-X3 把第一类当第二类用 → 设计 anti-pattern.
+
+### 修复 (Session 40 PR #113)
+
+撤销 stream check, 仅保留 `portfolio:nav` updated_at age check:
+- portfolio:nav 是 sync_loop 60s 真 heartbeat (`_sync_positions` 调 `query_asset()`
+  成功后才写 nav 含 updated_at)
+- sync_loop 死 → query_asset() throws → except 路径 → nav 不更新 → 5min threshold
+  自然 stale → 告警
+- portfolio:nav 单 probe 已是 strict superset, cover Monday 4-27 LL-081 zombie 4h17m 场景
+- 移除 197 行: stream check block (50) + `_is_trading_hours_now` (24) + `is_failure_alertable`
+  field (3) + 11 obsolete tests + helpers
+
+### 应用规则
+
+**判断 Redis Stream / Kafka / event-sourced log 是不是 heartbeat candidate**:
+
+1. **写入是 periodic 还是 event-driven?** Periodic OK 当 heartbeat, event-driven 必拒.
+2. **健康系统期望事件频率多少?** 健康系统 0 events 期间正常 → 不是 heartbeat.
+3. **如果换更长 threshold 能否避免 false positive?** 不能 — event 频率非时间均匀分布,
+   threshold 调多大都漏抓 / 误报随机交替.
+4. **替代方案:** 找业务侧 periodic 写入的 key (`portfolio:nav` updated_at, `setex` TTL
+   key, 心跳文件 mtime), 或者新加一个独立的 periodic heartbeat publisher.
+
+**反例 (合理 stream-based health 检查)**:
+- 检查 stream 是否**存在** (不查 last event time): event-sourced 系统初始化校验
+- 检查 stream **总长度增长率**: 业务流量监控 (高频系统下变 heartbeat-like)
+- 检查 **特定 event type 比例**: anomaly detection (e.g. failed:total > 0.05)
+
+### Defense-in-depth 真实定义
+
+LL-081 PR-X3 名义上"两层兜底", 实际两 probe 共享同一根 (sync_loop 死). 真 defense-in-depth
+需要 INDEPENDENT failure mode probe. 例:
+- Probe 1: portfolio:nav age (sync_loop liveness) — depends on sync_loop
+- Probe 2: 独立进程直 ping QMT broker — 不 depends on sync_loop, 真独立
+
+本 PR 仅去伪 probe (stream), 真 probe 2 留 future work (超 PR scope).
+
+### 持久化
+
+- 本 LL 条目 (LL-087)
+- 修复: PR #113 (commit `3c00b12` + reviewer fix `950a554`), Session 40 main @ `950a554`
+- 反例参考: Session 38 LL-081 PR-X3 设计 over-engineering, 本 LL 修正
+- 双 reviewer 仅 code-reviewer 单审 (cleanup PR python-reviewer 增量价值低): 0 P1 / 2 P2 (1 采纳 / 1 拒绝技术依据) / 1 P3 采纳
+- 应用规则未来必查: 任何加新 Redis key freshness check 前先 grep "publish_sync\|setex\|expire", 区分 transition-only vs periodic.
