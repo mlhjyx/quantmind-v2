@@ -77,16 +77,20 @@ class AlertRule:
         """从 template 生成实际 dedup_key, 占位符缺失 raise.
 
         Template 解析:
-          - {source} → alert.source
-          - {severity} → alert.severity.value
+          - {source} → alert.source (top-level, 永不被 details 覆盖)
+          - {severity} → alert.severity.value (top-level, 永不被 details 覆盖)
           - {<key>} → alert.details[<key>]
           - 字面 {} 用 {{}} 转义 (Python str.format 标准)
+
+        reviewer P1 采纳: 原代码 ``{**details, "source": ...}`` 顺序让 details 覆盖
+        top-level, 若 caller 误塞 ``details={"source": "shadow"}`` 会 silently 用错误 key
+        破 dedup 正确性. 改: details 先放, top-level 后放, **top-level 永远赢**.
         """
-        # 收集可用变量
+        # details 先放 (低优先级), top-level 后放覆盖之 (高优先级 — 防 details 污染)
         ctx: dict[str, Any] = {
+            **alert.details,
             "source": alert.source,
             "severity": alert.severity.value,
-            **alert.details,
         }
         try:
             return self.dedup_key_template.format(**ctx)
@@ -228,6 +232,16 @@ class AlertRulesEngine:
                     suppress_minutes=sm,
                     dedup_key_template=tpl,
                 )
+            )
+        # reviewer P2 采纳: 0 rules 视为配置异常, log warn (但不 raise — 测试/stub 场景
+        # 仍合法). caller 经 engine.match() 永远返 None → router 走 severity 默认 fallback,
+        # 这退化掉 SSOT 价值, 必须早提示运维.
+        if not rules:
+            logger.warning(
+                "[AlertRulesEngine] 加载 0 rules from %s — 所有 alert 走 router 默认 "
+                "fallback (无 dedup_key_template / severity 默认 suppress). 如非 stub "
+                "场景请检查 yaml.",
+                source_path,
             )
         return cls(rules=tuple(rules))
 

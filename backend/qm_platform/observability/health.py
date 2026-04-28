@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import logging
 import traceback
-from collections.abc import Callable
+import types
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -39,14 +40,29 @@ class HealthReport:
       status: ok / degraded / down
       message: 简短状态描述 (可空, status=ok 时通常空)
       last_check_ts: UTC tz-aware 检查时间戳 (铁律 41)
-      details: 详细上下文 (dict, e.g. {"latency_ms": 12, "queue_depth": 0})
+      details: 详细上下文 (Mapping, e.g. {"latency_ms": 12, "queue_depth": 0}).
+               实际存储为 MappingProxyType 防 frozen=True 不阻止 dict in-place 修改
+               (reviewer P2 采纳: frozen 只防 reassign 不防 mutation, 与"frozen value
+               object" 设计原则冲突).
+
+    Note: 入参 details 接受 dict, __post_init__ 自动包成 MappingProxyType. 调用方
+          getattr 拿到的是不可变 Mapping, ``r.details["k"] = "v"`` 会 raise.
     """
 
     framework: str
     status: HealthStatus
     message: str = ""
     last_check_ts: datetime = field(default_factory=lambda: datetime.now(UTC))
-    details: dict[str, Any] = field(default_factory=dict)
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # reviewer P2 采纳: frozen=True 只防字段 reassign, 不防 self.details["k"]=v 的
+        # in-place mutation. 包 MappingProxyType 让 details 真正不可变.
+        # to_dict() 仍走 dict(self.details) 浅拷贝, 序列化语义不变.
+        if not isinstance(self.details, types.MappingProxyType):
+            object.__setattr__(
+                self, "details", types.MappingProxyType(dict(self.details))
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-friendly 序列化 (FastAPI /health endpoint 用)."""
