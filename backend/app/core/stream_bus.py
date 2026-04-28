@@ -22,8 +22,13 @@ from app.config import settings
 logger = logging.getLogger("stream_bus")
 
 # ── Stream 名称常量 ──────────────────────────────────────
-STREAM_SIGNAL_GENERATED = "qm:signal:generated"
-STREAM_EXECUTION_ORDER_FILLED = "qm:execution:order_filled"
+# MVP 3.4 batch 5 sunset (PR #130 2026-04-28, reviewer P2 fix):
+# STREAM_SIGNAL_GENERATED + STREAM_EXECUTION_ORDER_FILLED 已删除. 老 ad-hoc
+# `bus.publish_sync(STREAM_SIGNAL_GENERATED, ...)` 路径已退役, 改 outbox publisher
+# worker 路由 (qm_platform.observability) 写到 qm:signal:generated /
+# qm:fill:executed (注: outbox aggregate_type='fill' event_type='executed' →
+# stream qm:fill:executed, 与原 STREAM_EXECUTION_ORDER_FILLED 名 qm:execution:order_filled
+# 不同; 0 production consumer 实测 grep, 不破下游).
 STREAM_EXECUTION_ORDER_FAILED = "qm:execution:order_failed"
 STREAM_FACTOR_COMPUTED = "qm:factor:computed"
 STREAM_HEALTH_CHECK_RESULT = "qm:health:check_result"
@@ -35,8 +40,6 @@ STREAM_PMS_PROTECTION_TRIGGERED = "qm:pms:protection_triggered"
 
 # 所有已注册的 Stream（用于管理端点枚举）
 ALL_STREAMS = [
-    STREAM_SIGNAL_GENERATED,
-    STREAM_EXECUTION_ORDER_FILLED,
     STREAM_EXECUTION_ORDER_FAILED,
     STREAM_FACTOR_COMPUTED,
     STREAM_HEALTH_CHECK_RESULT,
