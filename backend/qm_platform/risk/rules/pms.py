@@ -190,15 +190,24 @@ class PMSRule(RiskRule):
             )
             return results
 
-        # P0 批 1 新增: ALL skipped 分支 — 严于原 ratio>60% guard, 覆盖 1<=N<=5 区间
+        # P0 批 1 新增: ALL skipped 分支 — 严于原 ratio>60% guard, 覆盖 1<=N<=5 区间.
+        # reviewer P1 采纳 (oh-my-claudecode): message 简化为单行可扫描 + extra dict
+        # 结构化诊断, 删除 fragile %%s 双 percent (原意 SQL 占位符示意, 但易被
+        # refactor 误读). on-call 14:31 看 Servy log 不必再解析多行中英混排.
+        # TODO(batch-2): inject notifier 直发钉钉 — 当前 logger.error 仅落 Servy log,
+        #   未接 AlertRulesEngine (configs/alert_rules.yaml 缺 backend.qm_platform.risk
+        #   pattern). 临时缓解: LL-074 ServicesHealthCheck Redis freshness probe 兜底
+        #   + 14:30 risk_check audit log 异常计数. 真路径: 见 docs/audit/write_path_*.
         if skipped_invalid_data == total_positions:
             logger.error(
-                "PMSRule: ALL %d positions skipped (entry_price/peak_price/current_price "
-                "<= 0). Likely root cause: QMT 数据失联 / paper-live 命名空间漂移 "
-                "(trade_log WHERE execution_mode=%%s 0 行 → entry_price=0) / Redis "
-                "market:latest:* 全过期. P0 真金风险, 需立即排查. "
-                "(PR-X2 LL-081 bypass 修, 4-29 实测单仓 entry_price=0 silent skip 教训.)",
+                "PMSRule: ALL %d positions skipped (invalid entry/peak/current). "
+                "Suspect namespace drift or QMT data loss. P0 真金风险, 立即排查.",
                 total_positions,
+                extra={
+                    "skipped": skipped_invalid_data,
+                    "total": total_positions,
+                    "alert_class": "ALL_SKIPPED",
+                },
             )
             return results
 
