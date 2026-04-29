@@ -19,6 +19,24 @@ from app.services.risk_wiring import (
 )
 from backend.qm_platform.risk.rules.pms import PMSThreshold
 
+# reviewer 采纳 (code MEDIUM + python MEDIUM): factory 默认 rule list 多处重复, 提取
+# 模块常量. 未来加 rule (e.g. 批 3 ConcentrationRule) 只改 1 处, 不再 N 处同步.
+# 顺序对应 risk_wiring.py:176-190 (build_risk_engine) / :359-366 (build_intraday_risk_engine)
+_DEFAULT_DAILY_RULES: list[str] = [
+    "pms",
+    "single_stock_stoploss",
+    "position_holding_time",
+    "new_position_volatility",
+]
+
+_DEFAULT_INTRADAY_RULES: list[str] = [
+    "intraday_portfolio_drop_3pct",
+    "intraday_portfolio_drop_5pct",
+    "intraday_portfolio_drop_8pct",
+    "qmt_disconnect",
+    "single_stock_stoploss",
+]
+
 # ---------- LoggingSellBroker ----------
 
 
@@ -120,12 +138,7 @@ class TestBuildRiskEngine:
         from app.services.risk_wiring import build_risk_engine
 
         engine = build_risk_engine()
-        assert engine.registered_rules == [
-            "pms",
-            "single_stock_stoploss",
-            "position_holding_time",
-            "new_position_volatility",
-        ]
+        assert engine.registered_rules == _DEFAULT_DAILY_RULES
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
@@ -166,31 +179,25 @@ class TestBuildRiskEngine:
                 return []
 
         engine = build_risk_engine(extra_rules=[_DummyRule()])
-        assert engine.registered_rules == [
-            "pms",
-            "single_stock_stoploss",
-            "position_holding_time",
-            "new_position_volatility",
-            "dummy_test",
-        ]
+        assert engine.registered_rules == [*_DEFAULT_DAILY_RULES, "dummy_test"]
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
-    def test_factory_extra_rules_none_keeps_pms_only(
+    def test_factory_extra_rules_none_keeps_default_rules(
         self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
     ):
+        """reviewer 采纳: 改名 keeps_pms_only → keeps_default_rules.
+
+        Session 44 PR #139/#147/#148 后 factory 默认从 1 → 4 rules, 旧 "pms_only"
+        命名误导 (期望 1 list 实际 4). 新名表达 "extra=None 保持默认全集" 语义.
+        """
         mock_get_qmt.return_value = MagicMock()
         mock_get_conn.return_value = MagicMock()
 
         from app.services.risk_wiring import build_risk_engine
 
         engine = build_risk_engine(extra_rules=None)
-        assert engine.registered_rules == [
-            "pms",
-            "single_stock_stoploss",
-            "position_holding_time",
-            "new_position_volatility",
-        ]
+        assert engine.registered_rules == _DEFAULT_DAILY_RULES
 
 
 # ---------- PMSRule Protocol contract via risk_wiring ----------
@@ -235,13 +242,7 @@ class TestBuildIntradayRiskEngine:
         from app.services.risk_wiring import build_intraday_risk_engine
 
         engine = build_intraday_risk_engine()
-        assert engine.registered_rules == [
-            "intraday_portfolio_drop_3pct",
-            "intraday_portfolio_drop_5pct",
-            "intraday_portfolio_drop_8pct",
-            "qmt_disconnect",
-            "single_stock_stoploss",
-        ]
+        assert engine.registered_rules == _DEFAULT_INTRADAY_RULES
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
@@ -279,10 +280,8 @@ class TestBuildIntradayRiskEngine:
                 return []
 
         engine = build_intraday_risk_engine(extra_rules=[_TestExtra()])
-        assert "test_extra_intraday" in engine.registered_rules
-        # MVP 3.1b Phase 1 (Session 44): intraday factory 现注册 5 条默认 +
-        # extra (4 原 intraday + single_stock_stoploss + 1 extra = 6)
-        assert len(engine.registered_rules) == 6
+        # MVP 3.1b Phase 1 (Session 44): intraday factory 默认 5 + extra = 6
+        assert engine.registered_rules == [*_DEFAULT_INTRADAY_RULES, "test_extra_intraday"]
 
 
 class TestIntradayAlertDedup:
