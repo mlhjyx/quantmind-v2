@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -71,9 +72,7 @@ class TestBuildPositions:
     # Phase 1.5a (Session 44): entry_date contract tests
     def test_entry_date_from_dict(self):
         """entry_dates 提供 → Position.entry_date 填入."""
-        from datetime import date as date_t
-
-        ed = date_t(2026, 4, 15)
+        ed = date(2026, 4, 15)
         result = build_positions(
             shares_dict={"A.SH": 100},
             entry_prices={"A.SH": 10.0},
@@ -90,7 +89,7 @@ class TestBuildPositions:
             entry_prices={"A.SH": 10.0},
             peak_prices={"A.SH": 12.0},
             current_prices={"A.SH": 11.0},
-            entry_dates={"OTHER.SZ": __import__("datetime").date(2026, 1, 1)},
+            entry_dates={"OTHER.SZ": date(2026, 1, 1)},
         )
         assert result[0].entry_date is None
 
@@ -165,9 +164,14 @@ class TestDBPositionSource:
     def test_success_returns_positions(self):
         """position_snapshot 有行 → 拼装 Position 列表.
 
-        Mock fetchall sequence:
-            1st: position_snapshot SELECT → [("600519.SH", 100)]
-            2nd: trade_log buys SELECT (entry_prices) → [] (entry=0)
+        Mock cursor sequence (Phase 1.5a 后):
+            fetchall #1: position_snapshot SELECT → [("600519.SH", 100)]
+            fetchall #2: trade_log buys SELECT (entry_prices) → [] (entry=0)
+            fetchone #1: _resolve_entry_date for load_peak_prices → None (peak skipped)
+            fetchone #2: _resolve_entry_date for load_entry_dates → None (Phase 1.5a)
+
+        MagicMock.fetchone.return_value=None 对所有 fetchone 调用都返 None, 故两次
+        _resolve_entry_date 都视作"无 trade_log buy 记录" → peak/entry_date 都 None.
         """
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -175,7 +179,9 @@ class TestDBPositionSource:
             [("600519.SH", 100)],  # position_snapshot rows
             [],                    # load_entry_prices trade_log buys (empty → entry=0)
         ]
-        mock_cursor.fetchone.return_value = None  # load_peak_prices entry_date None → no peak
+        # P2 reviewer 采纳 (PR #147 fix): 显式注释 fetchone 覆盖 2 次 _resolve_entry_date
+        # (load_peak_prices + load_entry_dates), 防 mock 顺序漂移 silent pass.
+        mock_cursor.fetchone.return_value = None  # _resolve_entry_date: 无 buy → peak/entry_date 都 None
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_conn.cursor.return_value.__exit__.return_value = False
 
@@ -191,3 +197,6 @@ class TestDBPositionSource:
         assert positions[0].code == "600519.SH"
         assert positions[0].shares == 100
         assert positions[0].current_price == 150.0
+        # P2 reviewer 采纳: 显式 entry_date 断言, 防未来 _resolve_entry_date 行为变更
+        # 静默改测试结果. 当前 None 因 trade_log empty (rule 应 skip).
+        assert positions[0].entry_date is None
