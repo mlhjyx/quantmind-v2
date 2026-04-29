@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Protocol
 
 from backend.qm_platform._types import Severity
@@ -27,6 +27,10 @@ class Position:
       entry_price: 加权平均买入成本 (0 表示未能计算, rule 应 skip).
       peak_price: 持仓期间历史最高收盘价. 若 < entry_price, 视为异常 (无亏损 peak), rule 应 skip.
       current_price: Redis `market:latest:{code}` 实时价 (60s 刷新).
+      entry_date: 持仓首日 = MIN(buy.trade_date) since last sell (Phase 1.5a, Session 44).
+        None 表示无 trade_log 记录 (旧持仓 backfill 缺数据 / 未建仓), 依赖 entry_date 的 rule
+        应 skip. 用于 future PositionHoldingTimeRule (持仓 ≥ 30 天 P2 警示) +
+        NewPositionVolatilityRule (新仓 < 7 天高波动 P1).
     """
 
     code: str
@@ -34,6 +38,7 @@ class Position:
     entry_price: float
     peak_price: float
     current_price: float
+    entry_date: date | None = None
 
 
 @dataclass(frozen=True)
