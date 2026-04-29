@@ -120,6 +120,9 @@ rules:
       # script run, summary dedup 与 batch 3.x 一致, 防同日多次空跑风暴.
       dedup_key_template: "pt_watchdog:summary:{trade_date}"
 
+  # reserved: pt_watchdog 当前所有 send_alert 走 _send_alert_via_platform_sdk 固定
+  # Severity.P0 (PT 真金链路异常). 此 P1 规则是 forward-compat 占位, 防未来加 P1
+  # 检测 (e.g. PT 心跳延迟非异常但需观察) 时缺规则. P3 batch 3.4 reviewer 标记.
   - name: p1_pt_watchdog_stale
     match:
       severity: p1
