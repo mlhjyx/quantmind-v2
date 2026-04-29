@@ -15,25 +15,35 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
     python scripts/pull_moneyflow.py --verify                # 仅验证
     python scripts/pull_moneyflow.py --recent                # 仅拉最近1个月（验证用）
 """
+from __future__ import annotations
 
 import argparse
 import os
 import sys
 import time
 import traceback
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT / "backend"))
 
 import pandas as pd
 import psycopg2
 import psycopg2.extras
 import tushare as ts
 
+# MVP 4.1 batch 3.7: AlertDispatchError 顶层 import (铁律 33 fail-loud).
+from qm_platform.observability import AlertDispatchError
+
 from app.config import settings
 from app.services.price_utils import _get_sync_conn
 from app.utils.time_window_resolver import TimeWindowResolver  # LL-076 phase 2 标准化
+
+if TYPE_CHECKING:
+    from qm_platform.observability import AlertRulesEngine
 
 pro = ts.pro_api(settings.TUSHARE_TOKEN)
 
@@ -55,6 +65,109 @@ MF_FIELDS = [
 
 DEFAULT_START = "20210101"
 DEFAULT_END = date.today().strftime("%Y%m%d")
+
+
+# ─── Observability dispatch (MVP 4.1 batch 3.7) ─────────────────────────
+
+
+@lru_cache(maxsize=1)
+def _load_rules_engine_cached():
+    """Inner cached loader: only success cached, raises on yaml load failure.
+
+    P1.2 pattern (batch 3.6 reviewer 沉淀): lru_cache 不缓存 exception, 失败下次
+    call 重试. 防 cold-start yaml 缺失场景永久 silent suppression.
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    return AlertRulesEngine.from_yaml(str(rules_path))
+
+
+def _get_rules_engine() -> AlertRulesEngine | None:
+    """AlertRulesEngine 公共 accessor (lru_cache 防 yaml 多次 reload).
+
+    P1.1 pattern: 显式 return type, 让 caller `if engine is not None` 被 mypy 识别.
+    P1.2 pattern: 失败 None 不缓存 — 下次调用重新尝试 load (yaml 可能恢复).
+    """
+    try:
+        return _load_rules_engine_cached()
+    except Exception as e:  # noqa: BLE001
+        print(f"[Observability] AlertRulesEngine load failed: {e}, fallback")
+        return None
+
+
+def _send_alert_via_platform_sdk(td: str, max_retry: int, retry_wait: int) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.7).
+
+    pull_moneyflow 数据延迟告警: schtask 17:30 触发, MAX_RETRY 次后仍为空时 P0
+    告警 (Tushare 可能延迟入库, 影响下游因子计算).
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 try/except 包裹.
+    """
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    title = f"moneyflow数据延迟 {td}"
+    content = (
+        f"**[P0] moneyflow_daily** {td} 数据经{max_retry}次重试"
+        f"(间隔{retry_wait}s)仍为空\n\nTushare可能延迟入库，请手动检查"
+    )
+    alert = Alert(
+        title=f"[P0] {title}",
+        severity=Severity.P0,  # pull_moneyflow 数据延迟 = P0 (影响下游因子)
+        source="pull_moneyflow",
+        details={
+            "trade_date": today_str,
+            "data_date": td,
+            "max_retry": str(max_retry),
+            "retry_wait_seconds": str(retry_wait),
+            "content": content,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    engine = _get_rules_engine()
+    if engine is not None:
+        rule = engine.match(alert)
+        dedup_key = (
+            rule.format_dedup_key(alert)
+            if rule
+            else f"pull_moneyflow:summary:{today_str}"
+        )
+        suppress_minutes = rule.suppress_minutes if rule else 5
+    else:
+        dedup_key = f"pull_moneyflow:summary:{today_str}"
+        suppress_minutes = 5
+
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _send_alert_via_legacy_dingtalk(td: str, max_retry: int, retry_wait: int) -> None:
+    """legacy 直接调 send_markdown_sync (保留向后兼容路径)."""
+    from app.services.dispatchers.dingtalk import send_markdown_sync
+
+    send_markdown_sync(
+        title=f"moneyflow数据延迟 {td}",
+        text=(
+            f"**[P0] moneyflow_daily** {td} 数据经{max_retry}次重试"
+            f"(间隔{retry_wait}s)仍为空\n\nTushare可能延迟入库，请手动检查"
+        ),
+    )
+
+
+def _send_moneyflow_alert(td: str, max_retry: int, retry_wait: int) -> None:
+    """发 moneyflow 数据延迟告警 (MVP 4.1 batch 3.7 dispatch).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 必传播
+    (铁律 33 fail-loud) — 调用方 try/except 包裹.
+    """
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(td, max_retry, retry_wait)
+    else:
+        _send_alert_via_legacy_dingtalk(td, max_retry, retry_wait)
 
 
 def _apply_statement_timeout(conn: psycopg2.extensions.connection) -> None:
@@ -362,15 +475,18 @@ def _run(args: argparse.Namespace) -> int:
                 if df.empty:
                     print(f"  [{i+1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警")
                     failed_dates.append(td)
+                    # batch 3.7 dispatch (P1.1 模式): AlertDispatchError 单 catch fail-loud,
+                    # 其他 (legacy DingTalk 网络/签名 错) silent_ok 不阻塞主数据写入 (铁律 33-d).
                     try:
-                        from app.services.dispatchers.dingtalk import send_markdown_sync
-                        send_markdown_sync(
-                            title=f"moneyflow数据延迟 {td}",
-                            text=f"**[P0] moneyflow_daily** {td} 数据经{MAX_RETRY}次重试(间隔{RETRY_WAIT}s)仍为空\n\nTushare可能延迟入库，请手动检查",
+                        _send_moneyflow_alert(td, MAX_RETRY, RETRY_WAIT)
+                    except AlertDispatchError as dt_exc:
+                        print(
+                            f"  [告警] AlertDispatchError P0 sink 失败: "
+                            f"{type(dt_exc).__name__}: {dt_exc} "
+                            f"(pull_moneyflow 数据延迟告警, 不阻塞主写入流程)"
                         )
                     except Exception as dt_exc:
-                        # silent_ok: DingTalk 失败不阻塞主数据写入 (铁律 33-d).
-                        # reviewer P1 采纳: 原 bare pass 缺 silent_ok 注释 + 丢异常详情.
+                        # silent_ok: legacy DingTalk send 失败 (网络/签名) 不阻塞主数据写入.
                         print(f"  [告警] DingTalk发送失败: {type(dt_exc).__name__}: {dt_exc}")
                     continue
             elif df.empty:
