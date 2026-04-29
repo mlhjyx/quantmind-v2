@@ -254,11 +254,17 @@ class TestEngineExecute:
             code="600519.SH", shares=100,
             reason="risk:test_sell", timeout=5.0,
         )
-        # risk_event_log INSERT happened
+        # risk_event_log INSERT happened.
+        # MVP 3.4 batch 5 dual-write: same `with conn:` block now writes BOTH
+        # `INSERT INTO risk_event_log` AND `OutboxWriter.enqueue → INSERT INTO event_outbox`
+        # (engine.py:304-369, sunset 期 audit 主信源 + outbox 副). `call_args` returns
+        # last call (event_outbox), 故必须 iterate `call_args_list` 找 risk_event_log.
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
         assert mock_cursor.execute.called
-        sql = mock_cursor.execute.call_args[0][0]
-        assert "INSERT INTO risk_event_log" in sql
+        sqls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        assert any("INSERT INTO risk_event_log" in s for s in sqls), (
+            f"risk_event_log INSERT not found in {len(sqls)} execute calls: {sqls}"
+        )
 
     def test_alert_only_action_no_broker_call(self):
         broker = MagicMock()
@@ -311,10 +317,14 @@ class TestEngineExecute:
 
         broker.sell.assert_not_called()
         notifier.send.assert_not_called()
-        # risk_event_log 仍 INSERT (审计必需)
+        # risk_event_log 仍 INSERT (审计必需). MVP 3.4 batch 5 dual-write 同上 —
+        # iterate call_args_list 防 last call 是 event_outbox 触发误报.
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
         assert mock_cursor.execute.called
-        assert "INSERT INTO risk_event_log" in mock_cursor.execute.call_args[0][0]
+        sqls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        assert any("INSERT INTO risk_event_log" in s for s in sqls), (
+            f"risk_event_log INSERT not found in bypass path: {sqls}"
+        )
 
     def test_broker_failure_not_raising_logs(self):
         """broker.sell raise 不阻塞其他 result (log + action_result['status']='sell_failed')."""
@@ -336,12 +346,21 @@ class TestEngineExecute:
         # 不 raise (内部捕)
         engine.execute([result], _ctx())
 
-        # INSERT 仍发生, action_result 记录 sell_failed
+        # INSERT 仍发生, action_result 记录 sell_failed.
+        # MVP 3.4 batch 5 dual-write: 必须 iterate call_args_list 找 risk_event_log
+        # INSERT call (last call 现在是 event_outbox enqueue, params shape 不同).
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
         assert mock_cursor.execute.called
-        call_args = mock_cursor.execute.call_args[0][1]
-        # call_args[9] is json.dumps(action_result). Verify 'sell_failed' inside.
-        assert "sell_failed" in call_args[9]
+        risk_event_log_calls = [
+            c for c in mock_cursor.execute.call_args_list
+            if "INSERT INTO risk_event_log" in c.args[0]
+        ]
+        assert len(risk_event_log_calls) >= 1, (
+            f"risk_event_log INSERT missing in sell_failed path: "
+            f"{[c.args[0] for c in mock_cursor.execute.call_args_list]}"
+        )
+        # risk_event_log INSERT 的位置参数 [9] 是 json.dumps(action_result)
+        assert "sell_failed" in risk_event_log_calls[0].args[1][9]
 
 
 class TestRootRuleIdMapping:

@@ -103,7 +103,12 @@ class TestBuildRiskEngine:
     def test_factory_registers_pms_rule(
         self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
     ):
-        """build_risk_engine 返 PlatformRiskEngine 已 register 单 PMSRule."""
+        """build_risk_engine 返 PlatformRiskEngine 已 register MVP 3.1b Phase 1+1.5b 4 rule.
+
+        Session 44 (PR #139/#147/#148) 真生产事件 (卓然 -29% / 南玻 -9.75%, PMS 0 触发)
+        驱动: factory 默认从单 PMSRule 扩到 4 条互补规则 — PMS (浮盈 + 回撤) +
+        SingleStockStopLoss (买入即跌) + PositionHoldingTime (长尾) + NewPositionVolatility (早期预警).
+        """
         mock_qmt = MagicMock()
         mock_qmt.is_connected.return_value = True
         mock_qmt.get_positions.return_value = {}
@@ -115,7 +120,12 @@ class TestBuildRiskEngine:
         from app.services.risk_wiring import build_risk_engine
 
         engine = build_risk_engine()
-        assert engine.registered_rules == ["pms"]
+        assert engine.registered_rules == [
+            "pms",
+            "single_stock_stoploss",
+            "position_holding_time",
+            "new_position_volatility",
+        ]
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
@@ -156,7 +166,13 @@ class TestBuildRiskEngine:
                 return []
 
         engine = build_risk_engine(extra_rules=[_DummyRule()])
-        assert engine.registered_rules == ["pms", "dummy_test"]
+        assert engine.registered_rules == [
+            "pms",
+            "single_stock_stoploss",
+            "position_holding_time",
+            "new_position_volatility",
+            "dummy_test",
+        ]
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
@@ -169,7 +185,12 @@ class TestBuildRiskEngine:
         from app.services.risk_wiring import build_risk_engine
 
         engine = build_risk_engine(extra_rules=None)
-        assert engine.registered_rules == ["pms"]
+        assert engine.registered_rules == [
+            "pms",
+            "single_stock_stoploss",
+            "position_holding_time",
+            "new_position_volatility",
+        ]
 
 
 # ---------- PMSRule Protocol contract via risk_wiring ----------
@@ -199,10 +220,15 @@ def test_dingding_notifier_matches_notifier_protocol():
 class TestBuildIntradayRiskEngine:
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
-    def test_factory_registers_4_intraday_rules(
+    def test_factory_registers_intraday_rules(
         self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
     ):
-        """批 2 factory 注册 4 条 intraday 规则 (不含 PMS)."""
+        """批 2 factory 注册 4 条 intraday 规则 + Phase 1 SingleStockStopLoss (intraday 5min 复用).
+
+        Session 44 PR #139: build_intraday_risk_engine 在 4 条原 intraday 后挂
+        SingleStockStopLossRule (与 build_risk_engine 双频, daily 14:30 + intraday 5min).
+        卓然 -29% 真生产事件如果 SingleStockStopLossRule 已上线, intraday 5min 触发 P0.
+        """
         mock_get_qmt.return_value = MagicMock()
         mock_get_conn.return_value = MagicMock()
 
@@ -214,6 +240,7 @@ class TestBuildIntradayRiskEngine:
             "intraday_portfolio_drop_5pct",
             "intraday_portfolio_drop_8pct",
             "qmt_disconnect",
+            "single_stock_stoploss",
         ]
 
     @patch("app.services.risk_wiring.get_qmt_client")
@@ -253,7 +280,9 @@ class TestBuildIntradayRiskEngine:
 
         engine = build_intraday_risk_engine(extra_rules=[_TestExtra()])
         assert "test_extra_intraday" in engine.registered_rules
-        assert len(engine.registered_rules) == 5  # 4 + 1 extra
+        # MVP 3.1b Phase 1 (Session 44): intraday factory 现注册 5 条默认 +
+        # extra (4 原 intraday + single_stock_stoploss + 1 extra = 6)
+        assert len(engine.registered_rules) == 6
 
 
 class TestIntradayAlertDedup:

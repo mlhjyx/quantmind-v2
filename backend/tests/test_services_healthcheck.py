@@ -54,7 +54,6 @@ from services_healthcheck import (  # noqa: E402
     update_state,
 )
 
-
 # ═════════════════════════════════════════════════════════════════
 # _to_cst_display — 铁律 41 时区展示层 (Session 36 末 user 反馈)
 # ═════════════════════════════════════════════════════════════════
@@ -575,6 +574,15 @@ class TestUpdateState:
 
 
 class TestSendAlert:
+    """legacy `_send_alert_via_legacy_dingtalk` path 行为 (OBSERVABILITY_USE_PLATFORM_SDK=False).
+
+    MVP 4.1 batch 1 (PR #131) 引入 SDK path (PostgresAlertRouter) 默认 ON,
+    SDK path 行为不同 (DingTalkChannel webhook 空 → ValueError; 全 channel 失败
+    → AlertDispatchError). 本类专测 legacy fallback 友好降级语义, 必须显式 patch
+    `OBSERVABILITY_USE_PLATFORM_SDK=False` 强制走 legacy. SDK path 行为见
+    `test_data_quality_check_observability.py` + `test_platform_alert_router.py`.
+    """
+
     def test_no_webhook_returns_false_silent(self, monkeypatch, caplog):
         report = HealthReport(
             timestamp_utc=datetime.now(UTC).isoformat(),
@@ -588,11 +596,12 @@ class TestSendAlert:
             failures=["service:foo=STOPPED"],
         )
 
-        # Mock empty settings
+        # Mock empty settings (强制走 legacy path 测 friendly degrade)
         from app import config as _config
 
         fake_settings = MagicMock()
         fake_settings.DINGTALK_WEBHOOK_URL = ""
+        fake_settings.OBSERVABILITY_USE_PLATFORM_SDK = False
         monkeypatch.setattr(_config, "settings", fake_settings)
 
         ok = send_alert(report, "transition")
@@ -613,6 +622,7 @@ class TestSendAlert:
         fake_settings.DINGTALK_WEBHOOK_URL = "https://example.com/hook"
         fake_settings.DINGTALK_SECRET = ""
         fake_settings.DINGTALK_KEYWORD = ""
+        fake_settings.OBSERVABILITY_USE_PLATFORM_SDK = False
         monkeypatch.setattr(_config, "settings", fake_settings)
 
         def _raise(*a, **kw):
@@ -620,7 +630,7 @@ class TestSendAlert:
 
         monkeypatch.setattr(_dt, "send_markdown_sync", _raise)
         ok = send_alert(report, "transition")
-        assert ok is False  # 不抛, 友好降级
+        assert ok is False  # 不抛, 友好降级 (legacy try/except silent_ok)
 
 
 # ═════════════════════════════════════════════════════════════════
