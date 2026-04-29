@@ -71,11 +71,14 @@ DEFAULT_END = date.today().strftime("%Y%m%d")
 
 
 @lru_cache(maxsize=1)
-def _load_rules_engine_cached():
+def _load_rules_engine_cached() -> AlertRulesEngine:
     """Inner cached loader: only success cached, raises on yaml load failure.
 
     P1.2 pattern (batch 3.6 reviewer 沉淀): lru_cache 不缓存 exception, 失败下次
     call 重试. 防 cold-start yaml 缺失场景永久 silent suppression.
+
+    PR #141 P1.1 reviewer 采纳: 显式 return type AlertRulesEngine (success-only,
+    failure 路径走 _get_rules_engine 包裹的 None).
     """
     from qm_platform.observability import AlertRulesEngine
 
@@ -92,7 +95,13 @@ def _get_rules_engine() -> AlertRulesEngine | None:
     try:
         return _load_rules_engine_cached()
     except Exception as e:  # noqa: BLE001
-        print(f"[Observability] AlertRulesEngine load failed: {e}, fallback")
+        # PR #141 P1.2 reviewer 采纳 (铁律 43-c): stderr + flush 防 schtask stdout
+        # buffer 吞失败信号. pull_moneyflow 是 print-only script (无 logger), 沿用
+        # 模块整体 stderr probe 模式.
+        print(
+            f"[Observability] AlertRulesEngine load failed: {e}, fallback",
+            flush=True, file=sys.stderr,
+        )
         return None
 
 
@@ -107,7 +116,11 @@ def _send_alert_via_platform_sdk(td: str, max_retry: int, retry_wait: int) -> No
     from qm_platform._types import Severity
     from qm_platform.observability import Alert, get_alert_router
 
-    today_str = str(date.today())
+    # P1 reviewer 采纳 (PR #141 code-reviewer): trade_date 必须 = td (数据日期),
+    # 非 today_str (脚本运行日期). 否则 backfill 一次跨多日时所有 td 共享 today_str
+    # dedup key, 第二个起 silently 5min suppress drop. 转 YYYYMMDD → YYYY-MM-DD ISO
+    # 与 batch 3.x 其他脚本 details["trade_date"] format 一致.
+    td_iso = f"{td[:4]}-{td[4:6]}-{td[6:8]}" if len(td) == 8 else td
     title = f"moneyflow数据延迟 {td}"
     content = (
         f"**[P0] moneyflow_daily** {td} 数据经{max_retry}次重试"
@@ -118,13 +131,14 @@ def _send_alert_via_platform_sdk(td: str, max_retry: int, retry_wait: int) -> No
         severity=Severity.P0,  # pull_moneyflow 数据延迟 = P0 (影响下游因子)
         source="pull_moneyflow",
         details={
-            "trade_date": today_str,
-            "data_date": td,
+            "trade_date": td_iso,  # P1 fix: 数据日期 (非 today), 防 backfill dedup collision
+            "run_date": str(date.today()),  # 脚本运行日期 (audit only, 不参与 dedup)
+            "data_date": td,  # 原 YYYYMMDD format (向后兼容)
             "max_retry": str(max_retry),
             "retry_wait_seconds": str(retry_wait),
             "content": content,
         },
-        trade_date=today_str,
+        trade_date=td_iso,
         timestamp_utc=datetime.now(UTC).isoformat(),
     )
 
@@ -135,11 +149,11 @@ def _send_alert_via_platform_sdk(td: str, max_retry: int, retry_wait: int) -> No
         dedup_key = (
             rule.format_dedup_key(alert)
             if rule
-            else f"pull_moneyflow:summary:{today_str}"
+            else f"pull_moneyflow:summary:{td_iso}"
         )
         suppress_minutes = rule.suppress_minutes if rule else 5
     else:
-        dedup_key = f"pull_moneyflow:summary:{today_str}"
+        dedup_key = f"pull_moneyflow:summary:{td_iso}"
         suppress_minutes = 5
 
     router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
