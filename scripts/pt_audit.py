@@ -513,35 +513,141 @@ _CHECK_FUNCS = {
 }
 
 
-def send_aggregated_alert(findings: list[Finding], audit_date: date) -> None:
-    """Compose one DingTalk message with all findings. Skip if empty."""
-    if not findings:
-        return
-    try:
-        import httpx  # type: ignore[import-untyped]
-    except ImportError:
-        logger.error("httpx not installed, cannot send DingTalk alert")
-        return
-    webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
-    if not webhook:
-        logger.warning("DINGTALK_WEBHOOK_URL 未配置, 跳过告警 (发 stdout)")
-        return
-    # 顶级 level = max(finding levels)  (P0 > P1 > P2)  — 用模块常量 (reviewer P1 提点)
+def _build_alert_text(findings: list[Finding], audit_date: date) -> tuple[str, str]:
+    """构造钉钉文本 (新旧 path 共享). Returns (top_level, text)."""
     top_level = min(
         (f.level for f in findings),
         key=lambda x: _LEVEL_SEVERITY.get(x, 99),
     )
     lines = [f"[{top_level}] pt_audit {audit_date} — {len(findings)} findings:"]
-    for f in findings:
-        lines.append(f"  [{f.level}] {f.check}: {f.title}")
-    text = "\n".join(lines)
+    lines.extend(f"  [{f.level}] {f.check}: {f.title}" for f in findings)
+    return top_level, "\n".join(lines)
+
+
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.1 pattern, 防重复 yaml I/O)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
+        )
+        return None
+
+
+def _send_alert_via_platform_sdk(
+    findings: list[Finding], audit_date: date
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.2)."""
+    from datetime import UTC
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import (
+        Alert,
+        AlertDispatchError,
+        get_alert_router,
+    )
+
+    top_level, text = _build_alert_text(findings, audit_date)
+    severity_value = top_level.lower()
+    severity = Severity(severity_value)
+    audit_date_str = str(audit_date)
+
+    alert = Alert(
+        title=f"[{top_level}] pt_audit {audit_date_str} — {len(findings)} findings",
+        severity=severity,
+        source="pt_audit",
+        details={
+            "trade_date": audit_date_str,
+            "finding_count": str(len(findings)),
+            "checks": ",".join(sorted({f.check for f in findings})),
+            "content": text,
+        },
+        trade_date=audit_date_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"pt_audit:summary:{audit_date_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s findings=%d",
+            result,
+            dedup_key,
+            severity_value,
+            len(findings),
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(
+    findings: list[Finding], audit_date: date
+) -> None:
+    """旧 path: httpx.post 直调 (fallback, settings flag=False 时走).
+
+    保留作紧急回滚. 完全行为等价 batch 3.2 前实现.
+    """
+    try:
+        import httpx  # type: ignore[import-untyped]
+    except ImportError:
+        logger.error("httpx not installed, cannot send DingTalk alert")
+        return
+
+    # 铁律 34 SSOT: pt_audit 原走 os.environ 直读, 本次迁 settings.DINGTALK_WEBHOOK_URL.
+    # 但 pt_audit standalone 启动 (.env 自加载到 os.environ), settings 读同源, 兼容.
+    webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
+    if not webhook:
+        logger.warning("DINGTALK_WEBHOOK_URL 未配置, 跳过告警 (发 stdout)")
+        return
+
+    top_level, text = _build_alert_text(findings, audit_date)
     try:
         httpx.post(
             webhook, json={"msgtype": "text", "text": {"content": text}}, timeout=10
         )
-        logger.info(f"[DingTalk] {top_level} 聚合告警已发送 ({len(findings)} findings)")
+        logger.info(
+            "[DingTalk legacy] %s 聚合告警已发送 (%d findings)", top_level, len(findings)
+        )
     except Exception as e:
-        logger.error(f"告警发送失败: {e}")
+        logger.error(f"告警发送失败 (legacy path): {e}")
+
+
+def send_aggregated_alert(findings: list[Finding], audit_date: date) -> None:
+    """Compose one DingTalk message with all findings. Skip if empty.
+
+    MVP 4.1 batch 3.2: 默认走 Platform SDK, 老 httpx 直调保留作 fallback
+    (settings.OBSERVABILITY_USE_PLATFORM_SDK=False 紧急回滚用).
+    AlertDispatchError 必传播 (铁律 33 fail-loud, run_audit catch 不混淆 exit_code).
+    """
+    if not findings:
+        return
+
+    # settings 延迟 import (脚本 standalone, 顶部 .env 加载已完成)
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(findings, audit_date)
+    else:
+        _send_alert_via_legacy_dingtalk(findings, audit_date)
 
 
 def run_audit(
@@ -595,7 +701,18 @@ def run_audit(
             except Exception:
                 logger.exception("[audit] check '%s' raised (continuing)", name)
         if alert:
-            send_aggregated_alert(all_findings, audit_date)
+            # batch 3.2 (P1.1 batch 3.1 模式延续): AlertDispatchError 单独 catch,
+            # 防与 audit 逻辑异常 (exit_code 来自 _LEVEL_EXIT_CODE) 混淆.
+            # sink 全 fail 仍走 _write_scheduler_log 留底, exit_code 反映 finding 严重度.
+            try:
+                from qm_platform.observability import AlertDispatchError
+
+                send_aggregated_alert(all_findings, audit_date)
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — 告警未送达, scheduler_log 仍写: %s",
+                    e,
+                )
 
         # Stage 4: 写 scheduler_task_log (status=success/alert 基于 findings)
         if not all_findings:

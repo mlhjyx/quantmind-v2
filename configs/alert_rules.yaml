@@ -57,7 +57,29 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 5
-      dedup_key_template: "pt_audit:{check}:{trade_date}"
+      # batch 3.2: pt_audit aggregates 1 message per audit run (5 checks 合并). dedup_key
+      # 用 summary:{trade_date} 与 batch 3.1 data_quality 模式一致, 防 schtask 风暴.
+      # 旧 {check}:{trade_date} 设计需 5 message 拆, 与 send_aggregated_alert 1 message
+      # 行为不符.
+      dedup_key_template: "pt_audit:summary:{trade_date}"
+
+  - name: p1_pt_audit_findings
+    match:
+      severity: p1
+      source: pt_audit
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      dedup_key_template: "pt_audit:summary:{trade_date}"
+
+  - name: p2_pt_audit_findings
+    match:
+      severity: p2
+      source: pt_audit
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "pt_audit:summary:{trade_date}"
 
   # ────────────── P1 因子 / 健康 ──────────────
   - name: p1_factor_lifecycle_warning
