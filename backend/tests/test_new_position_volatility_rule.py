@@ -143,6 +143,20 @@ def test_skip_when_profitable():
     assert results == []
 
 
+def test_skip_when_entry_date_is_future():
+    """P1 CRITICAL reviewer 采纳 (PR #148): entry_date in future (T+1 settlement
+    anomaly / data corruption) → holding_days < 0, 必须 silent skip 防 false-positive.
+
+    原代码 `if holding_days > 7: continue` 不挡 -2 → 误报真金事故风险.
+    """
+    rule = NewPositionVolatilityRule()
+    today = date(2026, 4, 29)
+    # entry_date=4-30 (今天+1 天, 异常), current 大跌 -10% 但不应触发
+    pos = _pos(entry=10.0, current=8.0, entry_date=today + timedelta(days=1))
+    results = rule.evaluate(_ctx([pos], today=today))
+    assert results == []  # 必须 skip, 即使 loss_pct=-20% 也不该误报
+
+
 # ─── 自定义阈值 ────────────────────────────────────────────────
 
 
