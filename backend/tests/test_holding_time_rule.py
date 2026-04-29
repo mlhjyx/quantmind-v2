@@ -94,6 +94,16 @@ def test_skip_when_shares_zero():
     assert results == []
 
 
+def test_skip_when_entry_date_is_future():
+    """P1 defense reviewer 采纳 (PR #148): future entry_date → holding_days < 0,
+    显式 guard skip (defense-in-depth, 与 NewPositionVolatilityRule 同源)."""
+    rule = PositionHoldingTimeRule()
+    today = date(2026, 4, 29)
+    pos = _pos(entry_date=today + timedelta(days=1))  # +1 天异常
+    results = rule.evaluate(_ctx([pos], today=today))
+    assert results == []
+
+
 # ─── 自定义阈值 ────────────────────────────────────────────────
 
 

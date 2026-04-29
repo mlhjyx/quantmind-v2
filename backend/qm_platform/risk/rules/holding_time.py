@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from typing import Final, Literal
+from zoneinfo import ZoneInfo
 
 from backend.qm_platform._types import Severity
 
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 _DEFAULT_HOLDING_DAYS_THRESHOLD: Final[int] = 30
+
+# P2 reviewer 采纳 (PR #148): timezone 统一 (与 NewPositionVolatilityRule +
+# IntradayAlertDedup 一致), 防 UTC midnight 边界事故.
+_CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 
 class PositionHoldingTimeRule(RiskRule):
@@ -72,7 +77,8 @@ class PositionHoldingTimeRule(RiskRule):
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         """按 (today - entry_date) 计算 holding_days, >= threshold 触发."""
         results: list[RuleResult] = []
-        today = context.timestamp.date()
+        # P2 reviewer 采纳 (PR #148): astimezone CST 防 UTC midnight 边界错位.
+        today = context.timestamp.astimezone(_CHINA_TZ).date()
 
         for pos in context.positions:
             if pos.entry_date is None or pos.shares <= 0:
@@ -80,8 +86,11 @@ class PositionHoldingTimeRule(RiskRule):
                 continue
 
             holding_days = (today - pos.entry_date).days
-            if holding_days < self._threshold_days:
-                # silent_ok: 持仓未达阈值, 正常持仓
+            # P1 defense reviewer 采纳 (PR #148): holding_days < 0 防 future
+            # entry_date 异常 (defense-in-depth, NewPositionVolatilityRule 关键 bug
+            # 同源, 此处 -2 < 30 已正确 skip 但显式 guard 防未来 threshold=0 时漏挡).
+            if holding_days < 0 or holding_days < self._threshold_days:
+                # silent_ok: 异常 (future entry_date) 或持仓未达阈值
                 continue
 
             results.append(

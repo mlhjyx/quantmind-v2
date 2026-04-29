@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 from typing import Final, Literal
+from zoneinfo import ZoneInfo
 
 from backend.qm_platform._types import Severity
 
@@ -40,11 +41,15 @@ logger = logging.getLogger(__name__)
 _DEFAULT_NEW_DAYS_THRESHOLD: Final[int] = 7
 _DEFAULT_LOSS_PCT_THRESHOLD: Final[float] = 0.05  # 5%
 
+# P2 reviewer 采纳 (PR #148): timezone 统一 — 与 IntradayAlertDedup._build_key 一致,
+# 防 UTC midnight context 时 .date() 给前一日期 (CST 边界事故).
+_CHINA_TZ = ZoneInfo("Asia/Shanghai")
+
 
 class NewPositionVolatilityRule(RiskRule):
     """新仓高波动告警 (买入即跌的早期预警, 与 SingleStockStopLoss 互补).
 
-    触发: holding_days <= new_days AND loss_pct <= -loss_pct (符号: 亏损是负数).
+    触发: holding_days <= new_days_threshold AND loss_pct <= -loss_pct_threshold (符号: 亏损是负数).
 
     示例触发场景:
       4-22 entry @ 10.90, 4-23 close 9.79 → holding_days=1, loss_pct=-10.17%
@@ -92,7 +97,9 @@ class NewPositionVolatilityRule(RiskRule):
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         """检查每 position: (新仓 + 亏损 ≥ 阈值) 双条件命中触发."""
         results: list[RuleResult] = []
-        today = context.timestamp.date()
+        # P2 reviewer 采纳 (PR #148): astimezone CST 防 UTC midnight context 边界
+        # 错位. 与 IntradayAlertDedup 同 pattern.
+        today = context.timestamp.astimezone(_CHINA_TZ).date()
 
         for pos in context.positions:
             # silent_ok: skip 路径 (无 entry_date / 已平仓 / 价格异常)
@@ -101,8 +108,12 @@ class NewPositionVolatilityRule(RiskRule):
                 continue
 
             holding_days = (today - pos.entry_date).days
-            if holding_days > self._new_days_threshold:
-                # silent_ok: 已不"新仓" (惯例 7 天后由 SingleStockStopLoss 接管)
+            # P1 CRITICAL reviewer 采纳 (PR #148): holding_days < 0 防 future
+            # entry_date 异常 (T+1 settlement 写入 / data corruption) 触发
+            # false-positive P1. 原代码 `> 7` 不挡 -2 → 误报真金事故风险.
+            if holding_days < 0 or holding_days > self._new_days_threshold:
+                # silent_ok: 异常 (future entry_date) 或已不"新仓" (惯例 7 天后由
+                # SingleStockStopLoss 接管)
                 continue
 
             loss_pct = (pos.current_price - pos.entry_price) / pos.entry_price
