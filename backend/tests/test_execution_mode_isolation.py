@@ -536,3 +536,140 @@ def test_d4_paper_ui_tools_stay_hardcoded(path):
     assert "'paper'" in src or '"paper"' in src, (
         f"D4 破契约: {path.name} 不应被误改 — paper UI/分析工具保留 hardcoded 'paper'"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Risk Framework P0 修批 1 (2026-04-29) — 写路径命名空间 contract tests
+#
+# 4 写入点 mode 来源审计 (诊断 5 docs/audit/write_path_namespace_audit_2026_04_29.md):
+#   ❌ pt_qmt_state.save_qmt_state               — 5 处 hardcoded 'live' (BATCH 2 BUG)
+#   ❌ execution_service._execute_live trade_log INSERT — 1 处 hardcoded 'live' (BATCH 2 BUG)
+#   ✅ risk_control_service._upsert_cb_state_sync — settings.EXECUTION_MODE 动态
+#   ✅ signal_service._write_signals             — hardcoded 'paper' (ADR-008 D3-KEEP 设计意图)
+#
+# 本批不修写路径漂移 (留批 2), 仅加 contract tests 守门:
+#   - 2 个 BATCH 2 BUG 测试 → @pytest.mark.xfail(strict=True), 批 2 修后 XPASS strict
+#     fail 提示删 xfail
+#   - 2 个 PASS 测试 → 反向守门, 防 future refactor 误把 settings 改成 hardcoded
+#
+# 关联铁律: 33 fail-loud / 34 SSOT / 36 precondition
+# ──────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.xfail(
+    reason="BATCH 2 写路径漂移修: pt_qmt_state.save_qmt_state 5 处 hardcoded 'live'. "
+    "Session 15c (2026-04-15) 注释自承 'execution_mode 从 paper 改为 live, 对齐 "
+    "execution_service._save_live_fills', 但应跟 settings.EXECUTION_MODE 而非 hardcode. "
+    "批 2 修复后此测试 XPASS strict, 提示删 xfail.",
+    strict=True,
+)
+def test_save_qmt_state_uses_settings_execution_mode():
+    """Contract: pt_qmt_state.save_qmt_state SQL 必跟 settings.EXECUTION_MODE.
+
+    BATCH 2 BUG: pt_qmt_state.py:147/158/171/197/214 共 5 处 hardcoded 'live'.
+    应替为 settings.EXECUTION_MODE 或函数签名传 mode.
+
+    SAST 检测 (紧 SQL 上下文 regex 防 docstring 误判):
+      - WHERE...execution_mode = 'live' (SQL WHERE 子句 + literal)
+      - VALUES (...,'live',...) (SQL INSERT VALUES literal)
+    """
+    src = (_BACKEND / "app" / "services" / "pt_qmt_state.py").read_text(encoding="utf-8")
+
+    # 紧 SQL 上下文 regex: WHERE ... execution_mode = 'live'
+    # (docstring 不会有 WHERE clause + 紧邻 execution_mode 字段)
+    where_live = re.findall(
+        r"WHERE\b[^']{0,200}?execution_mode\s*=\s*'live'", src, re.DOTALL,
+    )
+    # SQL VALUES (...) 内 'live' literal (docstring 通常不会写 VALUES (..., 'live', ...))
+    values_live = re.findall(r"VALUES\s*\([^)]{0,500}?'live'", src, re.DOTALL)
+
+    total = len(where_live) + len(values_live)
+    assert total == 0, (
+        f"pt_qmt_state.py 仍有 {total} 处 hardcoded 'live' SQL "
+        f"(WHERE: {len(where_live)}, INSERT VALUES: {len(values_live)}). "
+        "BATCH 2 修: 应跟 settings.EXECUTION_MODE."
+    )
+
+
+@pytest.mark.xfail(
+    reason="BATCH 2 写路径漂移修: execution_service._execute_live trade_log INSERT "
+    "hardcoded 'live' (line ~377). 应跟 settings.EXECUTION_MODE 或函数 execution_mode 参数.",
+    strict=True,
+)
+def test_save_live_fills_uses_settings_execution_mode():
+    """Contract: execution_service._execute_live 写 trade_log 必跟 settings/参数.
+
+    BATCH 2 BUG: execution_service.py:377 `VALUES (..., 'live', %s)` hardcoded.
+    应使用 execution_mode 函数参数 (已在签名 L63 `execution_mode: str = 'paper'`).
+    """
+    src = (_BACKEND / "app" / "services" / "execution_service.py").read_text(encoding="utf-8")
+
+    # 紧 SQL 上下文: INSERT INTO trade_log ... VALUES (..., 'live', ...) 全段 SQL
+    # (raw src 不剥 docstring, 用紧 SQL 关键词序列防误判)
+    pattern = re.compile(
+        r"INSERT\s+INTO\s+trade_log.{0,500}?VALUES\s*\([^)]{0,500}?'live'",
+        re.DOTALL,
+    )
+    matches = pattern.findall(src)
+    assert len(matches) == 0, (
+        f"execution_service.py 仍有 {len(matches)} 处 INSERT trade_log VALUES 'live' "
+        "hardcoded. BATCH 2 修: 应用 execution_mode 函数参数."
+    )
+
+
+def test_save_risk_state_uses_settings_execution_mode():
+    """Contract (PASS 守门): risk_control_service._upsert_cb_state_sync 必动态.
+
+    实测确认 (risk_control_service.py:1292): `settings.EXECUTION_MODE` 已动态.
+    本测试守 future refactor 误改回 hardcoded.
+    """
+    src = (_BACKEND / "app" / "services" / "risk_control_service.py").read_text(encoding="utf-8")
+
+    # 必含 settings.EXECUTION_MODE 在 cb_state 写入 SQL 参数
+    # 用 ANCHOR: _upsert_cb_state_sync 函数体
+    upsert_start = src.find("def _upsert_cb_state_sync")
+    assert upsert_start > 0, "_upsert_cb_state_sync 函数定义未找到 (可能已重命名)"
+    next_def = src.find("\ndef ", upsert_start + 1)
+    body = src[upsert_start:next_def] if next_def > 0 else src[upsert_start:]
+
+    assert "settings.EXECUTION_MODE" in body, (
+        "_upsert_cb_state_sync 必用 settings.EXECUTION_MODE 写 cb_state.execution_mode. "
+        "ADR-008 D2 契约, P0 批 1 contract test 守门."
+    )
+
+    # 反向: 函数体内不应有 'live' / 'paper' 字面量作 SQL 参数
+    # (允许 column DEFAULT / docstring)
+    # 简化: VALUES 段 + INSERT 不应直接传 'live' 或 'paper' 作为 execution_mode 参数位
+    # 做法: 检测 `(strategy_id, 'live'` 或 `(strategy_id, 'paper'` 这类硬编码 tuple
+    forbidden_paper = re.search(r"\(\s*strategy_id\s*,\s*['\"]paper['\"]", body)
+    forbidden_live = re.search(r"\(\s*strategy_id\s*,\s*['\"]live['\"]", body)
+    assert not forbidden_paper, (
+        f"_upsert_cb_state_sync 不应 hardcoded 'paper' 作 SQL 参数. 命中: {forbidden_paper.group(0)}"
+    )
+    assert not forbidden_live, (
+        f"_upsert_cb_state_sync 不应 hardcoded 'live' 作 SQL 参数. 命中: {forbidden_live.group(0)}"
+    )
+
+
+def test_write_signals_keeps_paper_per_d3():
+    """Contract (PASS 守门 / D3-KEEP 反向验证): signal_service._write_signals 保留 'paper'.
+
+    ADR-008 D3 设计意图: signals 表跨 paper/live 命名空间共享 (唯一 cross-mode 表),
+    `_write_signals` / `get_latest_signals` / DELETE 均用 hardcoded 'paper'.
+    LL-060 (Session 19) 反证记录: 误判 'paper' 为 BUG 是 D3-KEEP 误诊, 真正契约保留.
+
+    本测试是已有 test_d3_signal_service_signals_table_stays_paper (line 460+) 的
+    P0 批 1 命名规范化 wrapper, 形成 4 contract tests 全集 (用户 spec 要求).
+    """
+    src = (_BACKEND / "app" / "services" / "signal_service.py").read_text(encoding="utf-8")
+
+    # _write_signals INSERT 必含 'paper' 字面量 (D3-KEEP 设计)
+    write_start = src.find("def _write_signals")
+    assert write_start > 0, "_write_signals 函数未找到"
+    next_def = src.find("\n    def ", write_start + 1)
+    body = src[write_start:next_def] if next_def > 0 else src[write_start:write_start + 3000]
+
+    assert "'paper'" in body, (
+        "_write_signals 必保留 hardcoded 'paper' (ADR-008 D3-KEEP, signals 跨模式共享). "
+        "LL-060 反证: 误改成 settings.EXECUTION_MODE 会破契约."
+    )

@@ -42,6 +42,18 @@ async def lifespan(app: FastAPI):
     from app.core.platform_bootstrap import bootstrap_platform_deps
 
     bootstrap_platform_deps()
+
+    # P0 批 1 Fix 2 (2026-04-29): ADR-008 命名空间漂移启动断言.
+    # 若 .env EXECUTION_MODE 与 DB position_snapshot 最近 7d 命名空间不一致, RAISE
+    # NamespaceMismatchError 拒绝启动 (铁律 33 fail-loud).
+    # 历史教训: 4-20 cutover live → 4-29 .env 改回 paper 但持仓数据继续按 live 写,
+    # 14:30 risk_daily_check entry_price=0 silent skip 全部规则 → 真金 -29% 0 alert.
+    # 详见 docs/audit/write_path_namespace_audit_2026_04_29.md.
+    from app.services.db import get_sync_conn
+    from app.services.startup_assertions import run_startup_assertions
+
+    run_startup_assertions(get_sync_conn)
+
     qmt_manager.startup()
     # 初始化 StreamBus（预热连接）
     from app.core.stream_bus import close_stream_bus, get_stream_bus

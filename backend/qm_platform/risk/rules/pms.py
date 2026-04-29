@@ -156,25 +156,61 @@ class PMSRule(RiskRule):
                 )
             )
 
-        # LL-081 fail-loud: 大比例 skip 必告警 (zombie 期 19/19 silent skip 教训).
-        # 单股 / 少股 skip OK (data quality 噪声), 但 > MIN_POSITIONS 持仓且 ratio > THRESHOLD
-        # 是系统性故障 — QMT 数据失联 / paper-live 命名空间漂移 / Redis market:latest:* 全过期.
-        # logger.warning 触发钉钉监控 + 后续 PR-X3 ServicesHealthCheck 也会兜底捕获.
-        # 与 PR-X1 (qmt_data_service SETEX heartbeat) 协同: PR-X1 修 root cause (TTL),
-        # 本告警保留 defense-in-depth — 即便 TTL 修好, 其他 zombie 通道 (命名空间漂移 /
-        # broker hang on query_positions) 仍可触发本 alert. 不要因 PR-X1 修好就删除本段.
+        # ─── 三段 fail-loud guard (P0 修批 1, 2026-04-29 — LL-081 bypass 修复) ───
+        #
+        # 历史 LL-081 (2026-04-27 真生产首日 zombie): 19/19 silent skip 误报"健康".
+        # PR-X2 加 `total_positions > 5 AND skip_ratio > 60%` warn, 但**单仓 / 少仓
+        # 全 skip 完全 bypass** (1 持仓 entry_price=0 命名空间漂移症状不告警).
+        # 4-29 实测: PT 清仓后剩 1 股 (688121 卓然 -29%), .env=paper / 持仓数据 live
+        # 命名空间, daily check 14:30 audit log 1/1 silent skip → 0 trigger / 0 alert.
+        #
+        # P0 批 1 升级: 三段判定按严重度递增分级:
+        #   1. total == 0      → WARNING "0 positions, source loading may have failed"
+        #                        (合法清仓 noise vs source 失败的灰色区, 让运维有 visibility,
+        #                         不 raise 防误杀合法清仓)
+        #   2. skipped == total → ERROR "ALL ... skipped" (系统性故障, 必发钉钉 P0)
+        #                         覆盖单仓 1/1 + 少仓 N/N (N <= 5) 直至大仓全 skip
+        #   3. total > 5 AND ratio > 60% → WARNING (原 LL-081 部分 skip 退化告警)
+        #
+        # ⚠️ 本告警仅本规则纯计算层日志, 钉钉发送依赖 logger 接 NotificationHandler
+        # (engine 层在 _notify 已发, 但本三段是 evaluate() 内 fail-loud 不走 _notify
+        # 调用链). 若需直接钉钉, 需在 wiring 层 inject notifier 或 attach 日志 handler.
+        # 当前实施: logger.error/warning + Servy log 收集 + LL-074 ServicesHealthCheck
+        # 兜底监控 (Redis freshness probe). future: notifier injection 提案进批 2.
         total_positions = len(context.positions)
-        # reviewer python P2 + code P2-1 采纳: 显式 ZeroDivisionError 防御 (隐式短路求值
-        # 依赖常量语义脆弱, 未来若 SKIP_RATIO_MIN_POSITIONS 改为 0 即 div by 0).
+
+        # reviewer python P2 + code P2-1 采纳 (LL-081 PR-X2): 显式 ZeroDivisionError 防御
         if total_positions == 0:
+            # 合法清仓 / source load failed — 升 WARNING 让运维可见, 不 raise
+            # (daily 1/日 + intraday 72/日 噪声可接受, 防误判合法清仓为故障)
+            logger.warning(
+                "PMSRule: 0 positions in context, source loading may have failed "
+                "(or legitimate empty portfolio after full liquidation). "
+                "Check QMTPositionSource / DBPositionSource / Redis portfolio:current."
+            )
             return results
+
+        # P0 批 1 新增: ALL skipped 分支 — 严于原 ratio>60% guard, 覆盖 1<=N<=5 区间
+        if skipped_invalid_data == total_positions:
+            logger.error(
+                "PMSRule: ALL %d positions skipped (entry_price/peak_price/current_price "
+                "<= 0). Likely root cause: QMT 数据失联 / paper-live 命名空间漂移 "
+                "(trade_log WHERE execution_mode=%%s 0 行 → entry_price=0) / Redis "
+                "market:latest:* 全过期. P0 真金风险, 需立即排查. "
+                "(PR-X2 LL-081 bypass 修, 4-29 实测单仓 entry_price=0 silent skip 教训.)",
+                total_positions,
+            )
+            return results
+
+        # 原 LL-081 PR-X2 ratio guard 退化为 partial skip 路径 (1 < skipped < total
+        # AND total > 5 AND ratio > 60% — 大盘部分 skip 但非全军覆没).
         if (
             total_positions > SKIP_RATIO_MIN_POSITIONS
             and skipped_invalid_data / total_positions > SKIP_RATIO_ALERT_THRESHOLD
         ):
             logger.warning(
                 "PMSRule skip 大比例 %d/%d (%.0f%%) — 疑 QMT 数据失联 / Redis market:latest:* "
-                "全过期 / paper-live 命名空间漂移. (LL-081 zombie 模式 fail-loud).",
+                "全过期 / paper-live 命名空间漂移. (LL-081 zombie 模式 fail-loud, partial).",
                 skipped_invalid_data,
                 total_positions,
                 100 * skipped_invalid_data / total_positions,
