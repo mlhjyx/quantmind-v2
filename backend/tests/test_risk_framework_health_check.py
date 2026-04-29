@@ -41,12 +41,14 @@ def _mk_conn(status_counts: dict, last_success: datetime | None):
 
 
 def test_missing_returns_p0_finding():
-    """窗口 0 runs → P0 missing finding."""
+    """窗口 0 runs → P0 missing finding (固定 now at 盘后 16:00 CST = 08:00 UTC,
+    避开 earliest_check_utc_hour 误判)."""
     conn = _mk_conn({}, last_success=None)
     spec = EXPECTED_SCHEDULE["risk_daily_check"]
+    after_market = datetime(2026, 4, 29, 8, 0, tzinfo=UTC)  # 16:00 CST
     findings = _check_task(
         conn, "risk_daily_check", spec,
-        datetime.now(UTC), window_hours=24,
+        after_market, window_hours=24,
     )
     assert len(findings) == 1
     assert findings[0].severity == "P0"
@@ -142,3 +144,35 @@ def test_naive_last_success_handled():
     )
     # 期望不 raise + 结果合理 (1 success / 5min ago, max_gap 25h → 不 stale)
     assert all(f.kind != "stale" for f in findings)
+
+
+def test_too_early_skip_missing_intraday():
+    """P2 reviewer 采纳 (PR #145): now_utc 早于 earliest_check_utc_hour 时,
+    intraday 0 runs 不应误报 P0 missing.
+
+    intraday earliest_check_utc_hour=2 (10:00 CST). now=01:00 UTC = 09:00 CST,
+    Beat 09:00 刚启, 0 row 是正常的 — 不应报 missing.
+    """
+    early_now = datetime(2026, 4, 29, 1, 0, tzinfo=UTC)  # 01:00 UTC
+    conn = _mk_conn({}, last_success=None)
+    spec = EXPECTED_SCHEDULE["intraday_risk_check"]
+    findings = _check_task(
+        conn, "intraday_risk_check", spec,
+        early_now, window_hours=24,
+    )
+    # 不应报 missing (too_early), 也不应 under_count (total=0 + too_early)
+    assert not any(f.kind == "missing" for f in findings)
+    assert not any(f.kind == "under_count" for f in findings)
+
+
+def test_normal_hour_reports_missing_intraday():
+    """too_early guard 不阻碍正常时段的 missing 检测."""
+    normal_now = datetime(2026, 4, 29, 8, 0, tzinfo=UTC)  # 16:00 CST, 盘后
+    conn = _mk_conn({}, last_success=None)
+    spec = EXPECTED_SCHEDULE["intraday_risk_check"]
+    findings = _check_task(
+        conn, "intraday_risk_check", spec,
+        normal_now, window_hours=24,
+    )
+    # 期望: 正常时段 0 row → P0 missing 应报
+    assert any(f.severity == "P0" and f.kind == "missing" for f in findings)
