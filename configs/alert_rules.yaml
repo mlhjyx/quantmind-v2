@@ -164,7 +164,10 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 1440  # 24h, 健康播报 daily 1 次足够
-      dedup_key_template: "monitor_factor_ic:summary:{trade_date}"
+      # P2.1 reviewer 采纳: 不能与 P0/P1 共享 summary 键 — INFO 1440min suppress 会
+      # 毒化同日 P0 retired 告警 (dedup 命中 INFO 已写的 row, 真金 P0 silent 24h).
+      # 用独立 health 命名空间隔离, P0/P1 走 summary 命名空间.
+      dedup_key_template: "monitor_factor_ic:health:{trade_date}"
 
   - name: p1_daily_reconciliation_drift
     match:

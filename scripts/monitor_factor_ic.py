@@ -35,7 +35,7 @@ from scipy import stats
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 # Platform SDK 顶层 import (batch 3.1/3.2/3.3 模式延续).
-from qm_platform.observability import AlertDispatchError
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 from app.services.price_utils import _get_sync_conn
 
@@ -467,9 +467,14 @@ def _send_alert_via_platform_sdk(report: str, transitions: list[dict]) -> None:
     from qm_platform.observability import Alert, get_alert_router
 
     # transitions 严重度推导 (active→retired = P0, →warning = P1, 其余 INFO)
+    # P1 reviewer 采纳: 实际键是 `to_status` (evaluate_transitions line 271/286/296/310),
+    # 不是 new_state/to. 旧代码 silently 退化所有 transitions 为 INFO + 24h dedup =
+    # P0 retired 被静默吞掉. 同时保留 new_state/to 兼容 (caller 也许传 dict 用别名).
     severity_value = "info"
     for t in transitions:
-        new_st = (t.get("new_state") or t.get("to") or "").lower()
+        new_st = (
+            t.get("to_status") or t.get("new_state") or t.get("to") or ""
+        ).lower()
         if new_st == "retired":
             severity_value = "p0"
             break

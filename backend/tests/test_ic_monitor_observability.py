@@ -124,6 +124,26 @@ def test_sdk_path_dispatch_error_propagates():
 # ─────────────────────────── lru_cache ───────────────────────────
 
 
+def test_send_dingtalk_caller_catches_alert_dispatch_error():
+    """P3 reviewer 采纳: AlertDispatchError 必由 _send_dingtalk 调用方 catch.
+
+    run_ic_monitor line 227 应 try/except, 测试验证 _send_dingtalk 自身仍 raise.
+    覆盖 batch 3.1 P1.1 模式 — 防意外 silent swallow.
+    """
+    from app.config import settings as app_settings
+
+    with (
+        patch.object(app_settings, "OBSERVABILITY_USE_PLATFORM_SDK", True),
+        patch.object(
+            im_mod,
+            "_send_alert_via_platform_sdk",
+            side_effect=AlertDispatchError("sink failed"),
+        ),
+        pytest.raises(AlertDispatchError, match="sink failed"),
+    ):
+        im_mod._send_dingtalk("title", "content", "P0", alerts=[_alert("P0")])
+
+
 def test_get_rules_engine_caches_result():
     im_mod._get_rules_engine.cache_clear()
     with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_from_yaml:
