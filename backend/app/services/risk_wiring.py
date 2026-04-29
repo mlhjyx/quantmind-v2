@@ -36,6 +36,7 @@ from backend.qm_platform.risk.rules.intraday import (
     QMTDisconnectRule,
 )
 from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold
+from backend.qm_platform.risk.rules.single_stock import SingleStockStopLossRule
 from backend.qm_platform.risk.sources import DBPositionSource, QMTPositionSource
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,12 @@ def build_risk_engine(
         conn_factory=get_sync_conn,
     )
     engine.register(PMSRule(levels=build_pms_thresholds()))
+    # MVP 3.1b Phase 1 (Session 44, 2026-04-29): 单股止损规则补全 (PMS 互补).
+    # PMS 保护"涨完回撤" (浮盈 ≥ 10/20/30% AND 回撤 ≥ 10/12/15%),
+    # SingleStockStopLossRule 保护"买入即跌" (loss ≥ 10/15/20/25%).
+    # 真生产事件: 卓然股份 -29% / 南玻 -9.75% PMS 0 触发 (无浮盈), 缺单股层规则.
+    # 默认 action='alert_only' (不自动 sell, 钉钉告警 + 用户决策).
+    engine.register(SingleStockStopLossRule())
     for rule in (extra_rules or []):
         engine.register(rule)
     logger.info(
@@ -343,6 +350,10 @@ def build_intraday_risk_engine(
     engine.register(IntradayPortfolioDrop5PctRule())
     engine.register(IntradayPortfolioDrop8PctRule())
     engine.register(QMTDisconnectRule(qmt_reader=qmt_client))
+    # MVP 3.1b Phase 1 (Session 44): 单股止损规则补全 (intraday 5min 高频复用).
+    # 与 build_risk_engine (daily 14:30) 双频检查 — 任一频率触发都告警.
+    # 卓然 -29% 真生产事件如果 SingleStockStopLossRule 已上线 → intraday 5min 必触发 P0.
+    engine.register(SingleStockStopLossRule())
     for rule in (extra_rules or []):
         engine.register(rule)
     logger.info(
