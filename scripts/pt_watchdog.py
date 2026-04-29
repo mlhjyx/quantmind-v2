@@ -196,11 +196,8 @@ def _send_alert_via_platform_sdk(title: str, content: str) -> None:
     from datetime import UTC, datetime
 
     from qm_platform._types import Severity
-    from qm_platform.observability import (
-        Alert,
-        AlertDispatchError,
-        get_alert_router,
-    )
+    from qm_platform.observability import Alert, get_alert_router
+    # AlertDispatchError 已 module-level top-import (line 29), 不重复 (P2.1 reviewer)
 
     today_str = str(date.today())
     full_content = f"## ⚠️ {title}\n\n{content}\n\n> 来源: pt_watchdog"

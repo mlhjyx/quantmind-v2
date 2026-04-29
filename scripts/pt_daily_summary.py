@@ -147,15 +147,20 @@ def _get_pms_triggers(conn, trade_date: date) -> list[dict]:
 
 
 def _get_circuit_breaker(conn) -> dict:
-    """获取熔断状态。"""
+    """获取熔断状态。
+
+    P2.2 batch 3.4 reviewer 顺修: 原 hardcoded execution_mode='paper' 在 Session 20
+    cutover 后 silent 永远返 cb_level=0 (live 模式 row 不查). 改读 settings.EXECUTION_MODE
+    动态适配 paper/live, 与 _get_latest_perf_date 模式一致.
+    """
     from app.config import settings
 
     cur = conn.cursor()
     cur.execute(
         """SELECT current_level, trigger_reason
            FROM circuit_breaker_state
-           WHERE strategy_id = %s AND execution_mode = 'paper'""",
-        (settings.PAPER_STRATEGY_ID,),
+           WHERE strategy_id = %s AND execution_mode = %s""",
+        (settings.PAPER_STRATEGY_ID, settings.EXECUTION_MODE),
     )
     row = cur.fetchone()
     if not row:
