@@ -12,19 +12,22 @@
   - POST /api/approval/queue/{id}/reject      (reject_queue_item)
   - POST /api/approval/queue/{id}/hold        (hold_queue_item)
 
-测试矩阵 (each endpoint × 3 cases = 18 unit tests):
-1. 无 X-Admin-Token header → 401
-2. 错 X-Admin-Token (不匹配 settings.ADMIN_TOKEN) → 401
-3. 对 X-Admin-Token + dependency_overrides bypass business → 200/4xx (auth 通过, business 决定)
+测试矩阵:
+- 6 endpoints × (no token + wrong token + correct token) = 18
+- + 4 ADMIN_TOKEN 未配置 500 (1 risk + 3 approval)
+- 总 22 unit tests
 
 Note:
-- _verify_admin_token settings.ADMIN_TOKEN=None 路径返 500, 用 monkeypatch 验证
 - 沿用 plain `!=` compare (D2.2 Finding 标 P2 timing attack), 留批 2 P2 单独修
+- 2026-04-30 reviewer 采纳: shared `verify_admin_token` 在 app.core.auth (DRY P1)
+- reviewer 采纳: uuid fixture per-test (P2) + _override_approval_db_with_mock 改 fixture (P2)
+- reviewer 采纳: MagicMock for mock_result (sync result chain, P2)
+- reviewer 采纳: approval 加对称 unconfigured 500 测试 (P2)
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -34,15 +37,23 @@ from app.config import settings
 from app.main import app
 
 # ────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Helpers / Fixtures
 # ────────────────────────────────────────────────────────────────────────────
 
 VALID_TOKEN = "test-admin-token-for-unit-tests"
+DUMMY_QUEUE_ITEM_ID = 1  # 整数, fixture 不必要
 
-# Test fixtures: dummy IDs (不真打 DB, dependency_overrides 拦截 service)
-DUMMY_STRATEGY_ID = str(uuid4())
-DUMMY_APPROVAL_ID = str(uuid4())
-DUMMY_QUEUE_ITEM_ID = 1
+
+@pytest.fixture
+def dummy_strategy_id() -> str:
+    """每测试 fresh UUID, 防 module-level 跨测试相同 (reviewer P2 采纳)."""
+    return str(uuid4())
+
+
+@pytest.fixture
+def dummy_approval_id() -> str:
+    """每测试 fresh UUID."""
+    return str(uuid4())
 
 
 @pytest.fixture
@@ -66,6 +77,28 @@ def _cleanup_overrides():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def mock_approval_db():
+    """Patch approval._get_db 返 mock session, 让 _get_queue_item.scalar_one_or_none() 返 None
+    → endpoint raise HTTPException 404. auth 通过的真实证据 = 不返 401, 业务返 404 OK.
+
+    防 reject/hold/approve 测试真打 PG (sync TestClient + async asyncpg event loop bleed).
+
+    reviewer P2 采纳:
+    - 改成 fixture (原 helper function 模式 fragile)
+    - mock_result 用 MagicMock (CursorResult 是 sync, 非 awaitable; AsyncMock 是 mock_session)
+    """
+    from app.api.approval import _get_db
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    app.dependency_overrides[_get_db] = lambda: mock_session
+    yield  # cleanup handled by autouse _cleanup_overrides
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # risk.py: l4-recovery
 # ────────────────────────────────────────────────────────────────────────────
@@ -74,25 +107,25 @@ def _cleanup_overrides():
 class TestRiskL4RecoveryAdminGate:
     """POST /api/risk/l4-recovery/{strategy_id} admin gate."""
 
-    def test_no_token_returns_401(self, client_with_token):
+    def test_no_token_returns_401(self, client_with_token, dummy_strategy_id):
         """无 X-Admin-Token header → 401."""
         resp = client_with_token.post(
-            f"/api/risk/l4-recovery/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/l4-recovery/{dummy_strategy_id}?execution_mode=paper",
             json={"reviewer_note": "test"},
         )
         assert resp.status_code == 401
         assert "无效的Admin Token" in resp.json()["detail"]
 
-    def test_wrong_token_returns_401(self, client_with_token):
+    def test_wrong_token_returns_401(self, client_with_token, dummy_strategy_id):
         """错 X-Admin-Token → 401."""
         resp = client_with_token.post(
-            f"/api/risk/l4-recovery/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/l4-recovery/{dummy_strategy_id}?execution_mode=paper",
             json={"reviewer_note": "test"},
             headers={"X-Admin-Token": "wrong-token"},
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
+    def test_correct_token_passes_auth(self, client_with_token, dummy_strategy_id):
         """对 X-Admin-Token + bypass business → auth 通过 (业务返 200)."""
         from app.api.risk import _get_risk_service
 
@@ -101,17 +134,16 @@ class TestRiskL4RecoveryAdminGate:
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
 
         resp = client_with_token.post(
-            f"/api/risk/l4-recovery/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/l4-recovery/{dummy_strategy_id}?execution_mode=paper",
             json={"reviewer_note": "test"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
-        # auth 通过 (非 401)
         assert resp.status_code == 200, f"auth 应通过 但返 {resp.status_code}: {resp.text}"
 
-    def test_admin_token_unconfigured_returns_500(self, client_no_token):
+    def test_admin_token_unconfigured_returns_500(self, client_no_token, dummy_strategy_id):
         """settings.ADMIN_TOKEN='' 未配置 → 500."""
         resp = client_no_token.post(
-            f"/api/risk/l4-recovery/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/l4-recovery/{dummy_strategy_id}?execution_mode=paper",
             json={"reviewer_note": "test"},
             headers={"X-Admin-Token": "any-token"},
         )
@@ -127,30 +159,30 @@ class TestRiskL4RecoveryAdminGate:
 class TestRiskL4ApproveAdminGate:
     """POST /api/risk/l4-approve/{approval_id} admin gate."""
 
-    def test_no_token_returns_401(self, client_with_token):
+    def test_no_token_returns_401(self, client_with_token, dummy_approval_id):
         resp = client_with_token.post(
-            f"/api/risk/l4-approve/{DUMMY_APPROVAL_ID}",
+            f"/api/risk/l4-approve/{dummy_approval_id}",
             json={"approved": True, "reviewer_note": "ok"},
         )
         assert resp.status_code == 401
 
-    def test_wrong_token_returns_401(self, client_with_token):
+    def test_wrong_token_returns_401(self, client_with_token, dummy_approval_id):
         resp = client_with_token.post(
-            f"/api/risk/l4-approve/{DUMMY_APPROVAL_ID}",
+            f"/api/risk/l4-approve/{dummy_approval_id}",
             json={"approved": True, "reviewer_note": "ok"},
             headers={"X-Admin-Token": "wrong"},
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
+    def test_correct_token_passes_auth(self, client_with_token, dummy_approval_id):
         from app.api.risk import _get_risk_service
 
         mock_svc = AsyncMock()
-        mock_svc.approve_l4_recovery = AsyncMock(return_value=None)  # rejected path
+        mock_svc.approve_l4_recovery = AsyncMock(return_value=None)
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
 
         resp = client_with_token.post(
-            f"/api/risk/l4-approve/{DUMMY_APPROVAL_ID}",
+            f"/api/risk/l4-approve/{dummy_approval_id}",
             json={"approved": False, "reviewer_note": "test"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
@@ -165,22 +197,22 @@ class TestRiskL4ApproveAdminGate:
 class TestRiskForceResetAdminGate:
     """POST /api/risk/force-reset/{strategy_id} admin gate."""
 
-    def test_no_token_returns_401(self, client_with_token):
+    def test_no_token_returns_401(self, client_with_token, dummy_strategy_id):
         resp = client_with_token.post(
-            f"/api/risk/force-reset/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/force-reset/{dummy_strategy_id}?execution_mode=paper",
             json={"reason": "test"},
         )
         assert resp.status_code == 401
 
-    def test_wrong_token_returns_401(self, client_with_token):
+    def test_wrong_token_returns_401(self, client_with_token, dummy_strategy_id):
         resp = client_with_token.post(
-            f"/api/risk/force-reset/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/force-reset/{dummy_strategy_id}?execution_mode=paper",
             json={"reason": "test"},
             headers={"X-Admin-Token": "wrong"},
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
+    def test_correct_token_passes_auth(self, client_with_token, dummy_strategy_id):
         from app.api.risk import _get_risk_service
 
         mock_state = type(
@@ -198,7 +230,7 @@ class TestRiskForceResetAdminGate:
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
 
         resp = client_with_token.post(
-            f"/api/risk/force-reset/{DUMMY_STRATEGY_ID}?execution_mode=paper",
+            f"/api/risk/force-reset/{dummy_strategy_id}?execution_mode=paper",
             json={"reason": "紧急运维"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
@@ -208,29 +240,6 @@ class TestRiskForceResetAdminGate:
 # ────────────────────────────────────────────────────────────────────────────
 # approval.py: queue/{id}/approve
 # ────────────────────────────────────────────────────────────────────────────
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# Helper: approval `test_correct_token_passes_auth` 共享 mock session bypass
-# 避免真打 DB 触发 sync TestClient + async asyncpg event loop bleed (跨测试 flake).
-# auth 通过的真实证据 = 不返 401 (business 因 mock session 失败返 5xx 均算 auth pass).
-# ────────────────────────────────────────────────────────────────────────────
-
-
-def _override_approval_db_with_mock():
-    """Patch _get_db 返 mock session, 让 _get_queue_item.scalar_one_or_none() 返 None
-    → endpoint raise HTTPException 404. auth 通过的真实证据 = 不返 401, 业务返 404 OK.
-    防 reject/hold/approve 测试真打 PG (sync TestClient + async asyncpg event loop bleed).
-    """
-    from app.api.approval import _get_db
-
-    # Mock result chain: session.execute() → result; result.scalar_one_or_none() → None
-    mock_result = AsyncMock()
-    mock_result.scalar_one_or_none = lambda: None  # 同步 method 不能 AsyncMock
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=mock_result)
-    app.dependency_overrides[_get_db] = lambda: mock_session
 
 
 class TestApprovalApproveAdminGate:
@@ -251,16 +260,24 @@ class TestApprovalApproveAdminGate:
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
-        """对 token → auth 通过 (mock session bypass 防 PG event loop bleed)."""
-        _override_approval_db_with_mock()
+    def test_correct_token_passes_auth(self, client_with_token, mock_approval_db):
+        """对 token → auth 通过, mock session.scalar_one_or_none()=None → 业务 raise 404."""
         resp = client_with_token.post(
             f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/approve",
             json={"reviewer_notes": "ok"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
-        # auth 通过 (≠401); business 因 mock session.execute raise → 500
+        # auth 通过 (≠401); business 因 mock scalar_one_or_none()=None → _get_queue_item 404
         assert resp.status_code != 401, f"auth 应通过 但返 401: {resp.text}"
+
+    def test_admin_token_unconfigured_returns_500(self, client_no_token):
+        resp = client_no_token.post(
+            f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/approve",
+            json={"reviewer_notes": "ok"},
+            headers={"X-Admin-Token": "any-token"},
+        )
+        assert resp.status_code == 500
+        assert "ADMIN_TOKEN未配置" in resp.json()["detail"]
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -286,14 +303,22 @@ class TestApprovalRejectAdminGate:
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
-        _override_approval_db_with_mock()
+    def test_correct_token_passes_auth(self, client_with_token, mock_approval_db):
         resp = client_with_token.post(
             f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/reject",
             json={"rejection_reason": "test"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
         assert resp.status_code != 401, f"auth 应通过 但返 401: {resp.text}"
+
+    def test_admin_token_unconfigured_returns_500(self, client_no_token):
+        resp = client_no_token.post(
+            f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/reject",
+            json={"rejection_reason": "test"},
+            headers={"X-Admin-Token": "any-token"},
+        )
+        assert resp.status_code == 500
+        assert "ADMIN_TOKEN未配置" in resp.json()["detail"]
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -319,11 +344,19 @@ class TestApprovalHoldAdminGate:
         )
         assert resp.status_code == 401
 
-    def test_correct_token_passes_auth(self, client_with_token):
-        _override_approval_db_with_mock()
+    def test_correct_token_passes_auth(self, client_with_token, mock_approval_db):
         resp = client_with_token.post(
             f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/hold",
             json={"reviewer_notes": "test"},
             headers={"X-Admin-Token": VALID_TOKEN},
         )
         assert resp.status_code != 401, f"auth 应通过 但返 401: {resp.text}"
+
+    def test_admin_token_unconfigured_returns_500(self, client_no_token):
+        resp = client_no_token.post(
+            f"/api/approval/queue/{DUMMY_QUEUE_ITEM_ID}/hold",
+            json={"reviewer_notes": "test"},
+            headers={"X-Admin-Token": "any-token"},
+        )
+        assert resp.status_code == 500
+        assert "ADMIN_TOKEN未配置" in resp.json()["detail"]

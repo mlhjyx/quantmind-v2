@@ -4,8 +4,9 @@
 **Branch**: fix/governance-cleanup-batch-1-7
 **Base**: main @ d2280b0 (batch 1.5 reviewer 3 MEDIUM merged)
 **Scope**: 3 类治理债清理 (类 A 4 留 fail 中 3 项 + 类 B Finding E P1 6 endpoints + 类 C Finding D blame 实测)
-**ETA**: 2-3h
+**ETA**: 2-3h (实际 ~3h, 含 reviewer fix)
 **真金风险**: 0 (LIVE_TRADING_DISABLED=True / paper mode / Beat schedule 风控仍 paused)
+**reviewer 决议**: 2 reviewer (code + python) 共 2 HIGH + 5 MEDIUM + 3 LOW, 采纳 6 项 (2 HIGH 全采 + 4 MEDIUM 采)
 
 ---
 
@@ -204,8 +205,56 @@ git log --all -p backend/engines/broker_qmt.py | grep -E "^\+.*def (sell|buy)\("
 
 ---
 
-## 10. PR merge 后的 next step
+## 10. Reviewer 决议 (2 reviewer 并行)
+
+### code-reviewer (oh-my-claudecode) — COMMENT (no blocking)
+- **HIGH 1**: DRY violation `_verify_admin_token` 复制 3 次 — ✅ **采纳** (提取 app/core/auth.py)
+- MEDIUM 1: ADMIN_TOKEN default="" 铁律 35 tension — ❌ pre-existing 留批 2
+- MEDIUM 2: assert != 401 改 specific code — ❌ 沿用 robust (mock 路径不预测)
+- MEDIUM 3: cleanup 不一致 (autouse vs try/finally) — ❌ pre-existing pattern, 不 scope creep
+- LOW 1: 测试 count 描述歧义 — ❌ 实际 22 (升级后)
+
+### python-reviewer (everything-claude-code) — BLOCK on 2 HIGH
+- **HIGH 1**: DRY violation (同上) — ✅ **采纳** (app/core/auth.py)
+- **HIGH 2**: return type `str` → `None` (不 leak token) — ✅ **采纳**
+- **MEDIUM 3**: module-level uuid4() — ✅ **采纳** (改 fixture per-test)
+- **MEDIUM 4**: `_override_approval_db_with_mock` → fixture — ✅ **采纳**
+- **MEDIUM 5**: AsyncMock vs MagicMock for mock_result — ✅ **采纳** (CursorResult sync)
+- **MEDIUM 6**: approval 缺 unconfigured 500 测试 — ✅ **采纳** (加 3 个对称测试)
+- LOW 1: ADMIN_TOKEN type — ❌ pre-existing 留批 2
+- LOW 2: 401 vs 422 顺序不确定 — ❌ 已 documented 不改
+- LOW 3: AsyncMock import 用法说明 — ❌ 非 issue
+
+### Reviewer fix 总结 (5 文件修改 + 1 新增)
+1. **新增**: `backend/app/core/auth.py` — `verify_admin_token` 单一来源 (HIGH 1)
+2. **修改**: `risk.py` — 删本地 _verify_admin_token, 改 import + Depends `_: None` (HIGH 1+2)
+3. **修改**: `approval.py` — 同上 + 删 settings import (HIGH 1+2)
+4. **修改**: `test_admin_gate_risk_approval.py` — uuid4 fixture / mock_approval_db fixture / MagicMock / 加 3 unconfigured 500 (MEDIUM 3-6)
+5. **修改**: `test_risk_control.py` — 改 import `verify_admin_token` from app.core.auth + lambda: None (HIGH 1+2)
+
+### Test count 升级 19 → 22 (+ 3 对称 unconfigured 500)
+
+| Class | Tests |
+|-------|-------|
+| TestRiskL4RecoveryAdminGate | 4 (含 unconfigured) |
+| TestRiskL4ApproveAdminGate | 3 |
+| TestRiskForceResetAdminGate | 3 |
+| TestApprovalApproveAdminGate | **4** (+ unconfigured) |
+| TestApprovalRejectAdminGate | **4** (+ unconfigured) |
+| TestApprovalHoldAdminGate | **4** (+ unconfigured) |
+| **总计** | **22** |
+
+### Reviewer fix 验证
+
+- ruff check: ✅ All checks passed (5 修改文件 + 1 新增)
+- 22 admin gate + 7 risk_control TestRiskAPI = 29 PASS / 0.17s
+
+---
+
+## 11. PR merge 后的 next step
 
 1. **撤 setx** (批 2 完成后): `[System.Environment]::SetEnvironmentVariable('SKIP_NAMESPACE_ASSERT', $null, 'Machine')` (D2.3 临时修, 批 2 P3 startup_assertions 改用 settings 后撤)
 2. **启批 2** (12 子任务, ETA ~1 周, 见 §8 决议)
-3. **可选**: 全方位 13 维审计剩余 9 维 (D2~D2.3 已覆盖 4/13)
+3. **批 2 P2 secrets.compare_digest**: 现仅需改 `app/core/auth.py` 单一文件 (DRY 提取后)
+4. **批 2 execution_ops.py 一并迁**: 删本地 `_verify_admin_token` 改用 `app.core.auth.verify_admin_token` (本 PR scope 不动)
+5. **可选**: 全方位 13 维审计剩余 9 维 (D2~D2.3 已覆盖 4/13)
