@@ -29,6 +29,20 @@ from qm_platform.observability import (  # noqa: E402
     AlertDispatchError,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clear_lru_cache():
+    """Clear _get_rules_engine cache between tests (防 mock pollution).
+
+    reviewer P2 引入 lru_cache 后, 测试间共享 process-level cache 导致 mock 污染
+    (test A mock from_yaml 返 rule, test B mock from_yaml 返 None 但 cache 命中
+    test A 的 rule). 显式 clear 隔离每个 test.
+    """
+    dq_mod._get_rules_engine.cache_clear()
+    yield
+    dq_mod._get_rules_engine.cache_clear()
+
+
 # ─────────────────────────── _max_severity ───────────────────────────
 
 
@@ -49,6 +63,12 @@ def test_max_severity_p2_only():
 def test_max_severity_default_p1_when_no_prefix():
     """无 [PX] 前缀时默认 p1 (兜底, 现状行为)."""
     assert dq_mod._max_severity(["plain message"]) == "p1"
+
+
+def test_max_severity_empty_list_rejected():
+    """reviewer P2 采纳: 空列表 reject, 防 silent p1 误导."""
+    with pytest.raises(ValueError, match="empty alerts list"):
+        dq_mod._max_severity([])
 
 
 # ─────────────────────────── send_dingtalk_alert dispatch ───────────────────────────
@@ -205,6 +225,92 @@ def test_legacy_path_calls_dingtalk_send_markdown_sync():
     assert kwargs["webhook_url"] == "https://oapi.test"
     assert "数据质量巡检告警" in kwargs["content"]
     assert "[P1]" in kwargs["title"]
+
+
+def test_legacy_path_uses_p0_title_when_alerts_contain_p0():
+    """reviewer P1.2 采纳: legacy path 不再 hardcode [P1], 走 _max_severity 自动提取.
+
+    Bug 修: 原 hardcoded `[P1]` 让 P0 alerts silent 标 P1 屏蔽运维 (flag 回滚后真发钉钉).
+    """
+    with (
+        patch.object(dq_mod.settings, "DINGTALK_WEBHOOK_URL", "https://oapi.test"),
+        patch.object(dq_mod.dingtalk, "send_markdown_sync", return_value=True) as mock_send,
+    ):
+        dq_mod._send_alert_via_legacy_dingtalk(
+            ["[P0] critical issue", "[P1] minor"], date(2026, 4, 29)
+        )
+
+    title = mock_send.call_args.kwargs["title"]
+    assert "[P0]" in title, f"P0 alerts 必标 [P0] title (P1.2 fix), got: {title}"
+
+
+def test_build_alert_content_uses_utc_timestamp():
+    """reviewer P2 采纳: 内容时间戳 UTC tz-aware (铁律 41), 显式标 ' UTC'."""
+    content = dq_mod._build_alert_content(["[P1] x"], date(2026, 4, 29))
+    assert " UTC" in content, f"巡检时间必含 UTC 标识 (铁律 41), got: {content}"
+
+
+def test_get_rules_engine_caches_result():
+    """reviewer P2 采纳: lru_cache 防 17 scripts 每次 fire 重复 yaml I/O."""
+    # 清缓存
+    dq_mod._get_rules_engine.cache_clear()
+
+    with patch(
+        "qm_platform.observability.AlertRulesEngine.from_yaml"
+    ) as mock_from_yaml:
+        mock_from_yaml.return_value = MagicMock()
+
+        # 多次调用
+        engine1 = dq_mod._get_rules_engine()
+        engine2 = dq_mod._get_rules_engine()
+        engine3 = dq_mod._get_rules_engine()
+
+        # from_yaml 仅调一次 (cache hit)
+        assert mock_from_yaml.call_count == 1
+        assert engine1 is engine2 is engine3
+
+
+# ─────────────────────────── run_checks AlertDispatchError 集成 (P1.1) ───────────────────────────
+
+
+def test_run_checks_alert_dispatch_error_does_not_block_db_write_or_exit_code_1(
+    tmp_path,
+):
+    """reviewer P1.1 采纳: AlertDispatchError 单 catch, write_db_alert 仍走, exit_code=1."""
+    from argparse import Namespace
+
+    args = Namespace(date="2026-04-29", dry_run=False)
+
+    # mock 全链路
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+
+    with (
+        patch.object(dq_mod, "get_connection", return_value=mock_conn),
+        patch.object(dq_mod, "send_dingtalk_alert") as mock_send,
+        patch.object(dq_mod, "write_db_alert") as mock_write_db,
+        patch.object(
+            dq_mod, "check_future_dates", return_value=["[P0] critical"]
+        ),
+        patch.object(dq_mod, "check_row_counts", return_value=[]),
+        patch.object(dq_mod, "check_null_ratios", return_value=[]),
+        patch.object(dq_mod, "check_latest_dates", return_value=[]),
+    ):
+        # send_dingtalk_alert raise AlertDispatchError
+        mock_send.side_effect = AlertDispatchError("All channels failed")
+
+        exit_code = dq_mod.run_checks(args)
+
+    # P1.1 验证三点:
+    # 1. AlertDispatchError 被 catch (run_checks 不传播 exit=2)
+    assert exit_code == 1, (
+        f"exit_code=1 反映'发现 issue'与脚本异常 (=2) 区分, got: {exit_code}"
+    )
+    # 2. write_db_alert 仍调用 (审计留底)
+    mock_write_db.assert_called_once()
+    # 3. send_dingtalk_alert 被尝试
+    mock_send.assert_called_once()
 
 
 # ─────────────────────────── _build_alert_content (shared) ───────────────────────────
