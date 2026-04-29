@@ -27,10 +27,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import logging
 import sys
 import traceback
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import psycopg2
@@ -38,6 +39,10 @@ import psycopg2
 # ── 项目路径 ──
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT / "backend"))
+
+# Platform SDK lazy import (top-level for static analysis + reviewer P3 DX, batch 3.1).
+# AlertDispatchError 必 top-level 暴露给 run_checks except 子句静态可见.
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.services.dispatchers import dingtalk  # noqa: E402
@@ -262,14 +267,37 @@ def check_latest_dates(
 
 
 def _max_severity(alerts: list[str]) -> str:
-    """从 alert 字符串列表提取最高 severity (p0 > p1 > p2). 默认 p1."""
+    """从 alert 字符串列表提取最高 severity (p0 > p1 > p2). 默认 p1.
+
+    reviewer P2 采纳: 显式 reject 空列表 (caller 应预筛, 空列表语义不清).
+    """
+    if not alerts:
+        raise ValueError("_max_severity called with empty alerts list")
     if any(a.startswith("[P0]") for a in alerts):
         return "p0"
     if any(a.startswith("[P1]") for a in alerts):
         return "p1"
     if any(a.startswith("[P2]") for a in alerts):
         return "p2"
-    return "p1"  # 兜底 P1 (现状默认)
+    return "p1"  # 无前缀兜底 P1 (现状默认行为)
+
+
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (reviewer P2 采纳: 防 17 scripts 每次 fire 重复 I/O).
+
+    Process-level cache. yaml 加载失败返 None 不 raise (告警比 rules 重要, fail-loud
+    交给 router.fire).
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    try:
+        return AlertRulesEngine.from_yaml(PROJECT_ROOT / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
+        )
+        return None
 
 
 def send_dingtalk_alert(alerts: list[str], trade_date: date, dry_run: bool = False) -> None:
@@ -301,12 +329,17 @@ def send_dingtalk_alert(alerts: list[str], trade_date: date, dry_run: bool = Fal
 
 
 def _build_alert_content(alerts: list[str], trade_date: date) -> str:
-    """构造钉钉 Markdown 内容 (新旧 path 共享, 行为一致)."""
+    """构造钉钉 Markdown 内容 (新旧 path 共享, 行为一致).
+
+    reviewer P2 采纳: datetime.now() naive 改为 UTC tz-aware (铁律 41).
+    Display 层显式标 ' UTC' 防 caller 误以为本地时间.
+    """
     lines = [f"### 数据质量巡检告警 {trade_date}", ""]
-    for i, alert in enumerate(alerts, 1):
-        lines.append(f"{i}. {alert}")
+    lines.extend(f"{i}. {alert}" for i, alert in enumerate(alerts, 1))
     lines.append("")
-    lines.append(f"---\n*巡检时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+    lines.append(
+        f"---\n*巡检时间: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC*"
+    )
     return "\n".join(lines)
 
 
@@ -316,15 +349,8 @@ def _send_alert_via_platform_sdk(alerts: list[str], trade_date: date) -> None:
     dedup_key=`data_quality:summary:{trade_date}` (同日多次 schtask 空跑 dedup, 5min P0
     / 30min P1 窗口 — alert_rules.yaml 控制).
     """
-    from datetime import UTC
-
     from qm_platform._types import Severity
-    from qm_platform.observability import (
-        Alert,
-        AlertDispatchError,
-        AlertRulesEngine,
-        get_alert_router,
-    )
+    from qm_platform.observability import Alert, get_alert_router
 
     severity_value = _max_severity(alerts)
     severity = Severity(severity_value)
@@ -346,15 +372,8 @@ def _send_alert_via_platform_sdk(alerts: list[str], trade_date: date) -> None:
         timestamp_utc=datetime.now(UTC).isoformat(),
     )
 
-    # 加载 yaml rules (AlertRulesEngine SSOT, 铁律 34)
-    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
-    try:
-        engine = AlertRulesEngine.from_yaml(rules_path)
-    except Exception as e:
-        # rules yaml 加载失败不应阻断告警 — 降级用默认 dedup_key 仍 fire
-        logger.warning("[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e)
-        engine = None
-
+    # reviewer P2 采纳: 用 cached engine 防多次 I/O (17 scripts 共享 process-level cache)
+    engine = _get_rules_engine()
     rule = engine.match(alert) if engine else None
     if rule:
         dedup_key = rule.format_dedup_key(alert)
@@ -378,7 +397,8 @@ def _send_alert_via_platform_sdk(alerts: list[str], trade_date: date) -> None:
             severity_value,
         )
     except AlertDispatchError as e:
-        # 全 channel failed — fail-loud (铁律 33), main() 顶层 catch 转 exit_code=2
+        # 全 channel failed — fail-loud (铁律 33). caller (run_checks) 必 except
+        # AlertDispatchError 显式分类 (vs 通用 Exception, 防 exit_code 语义混淆)
         logger.error("[Observability] AlertRouter sink_failed: %s", e)
         raise
 
@@ -387,13 +407,18 @@ def _send_alert_via_legacy_dingtalk(alerts: list[str], trade_date: date) -> None
     """旧 path: dingtalk.send_markdown_sync 直调 (fallback, settings flag=False 时走).
 
     保留作紧急回滚用. 完全行为等价 batch 3.1 前实现 (无 dedup, 每次 fire).
+
+    reviewer P1 采纳: 旧版 hardcode `[P1]` 实为 bug (P0 alerts silent 标 P1 屏蔽运维),
+    legacy path 也用 _max_severity 自动提取 (与 SDK path 行为一致, 防 flag 回滚后 P0
+    被错标 P1).
     """
     webhook_url = settings.DINGTALK_WEBHOOK_URL
     if not webhook_url:
         logger.warning("DINGTALK_WEBHOOK_URL 未配置，跳过钉钉通知")
         return
 
-    title = f"[P1] 数据质量告警 {trade_date}"
+    severity_value = _max_severity(alerts)
+    title = f"[{severity_value.upper()}] 数据质量告警 {trade_date}"
     content = _build_alert_content(alerts, trade_date)
 
     ok = dingtalk.send_markdown_sync(
@@ -476,10 +501,19 @@ def run_checks(args: argparse.Namespace) -> int:
             for alert in all_alerts:
                 logger.warning("  - %s", alert)
 
-            # 发送钉钉告警
-            send_dingtalk_alert(all_alerts, check_date, dry_run=args.dry_run)
+            # 发送钉钉告警 — reviewer P1.1 采纳: AlertDispatchError 单独 catch, 防与
+            # check 逻辑异常 (exit_code=2) 混淆. 即便 sink 全 fail, 仍走 write_db_alert
+            # (审计留底) + exit_code=1 (语义: 发现 issue). schtask LastResult=1 正确反映
+            # "数据有 issue 但脚本本身正常", 与 LastResult=2 (脚本异常) 区分.
+            try:
+                send_dingtalk_alert(all_alerts, check_date, dry_run=args.dry_run)
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — alert 未送达, 写 DB 留底: %s",
+                    e,
+                )
 
-            # 写 DB
+            # 写 DB (无论 alert 是否送达, 审计必留)
             if not args.dry_run:
                 write_db_alert(conn, all_alerts, check_date)
 
