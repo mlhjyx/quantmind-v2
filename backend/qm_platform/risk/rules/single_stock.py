@@ -42,7 +42,9 @@ class StopLossThreshold:
       level: 1/2/3/4 档号 (1 最宽 -10%, 4 最严 -25%)
       max_loss_pct: 最大亏损阈 (e.g. 0.10 = -10%)
       severity: P2/P1/P0 告警级
-      action: alert_only (默认) / sell (-25% 档 future flag)
+      action: 'alert_only' = 钉钉告警仅, 'sell' = 该档 sell-eligible
+              (实际是否真 sell 还要 auto_sell_l4=True flag 配合).
+              PR #139 reviewer P2 采纳: action 字段语义化, 任意档可声明 'sell'.
     """
 
     level: int
@@ -52,11 +54,18 @@ class StopLossThreshold:
 
 
 # 默认 4 档阈值 (与 PMSRule 三档对称, 阈值升序: L1 最宽 → L4 最严)
+#
+# action 语义 (reviewer P2 采纳, PR #139 fix):
+#   - 'alert_only': 钉钉告警 + risk_event_log (默认, 即使 auto_sell_l4=True 也不卖)
+#   - 'sell':       声明该档"sell-eligible" — 仅当 auto_sell_l4=True 时才真正 sell
+#                   (auto_sell_l4=False 时仍降级为 alert_only)
+# L4 默认 action='sell' (sell-eligible) 以保留 auto_sell_l4=True 的语义入口;
+# 自定义 levels 可让任意档 (e.g. L3) 声明 action='sell' 配合 flag 启用.
 _DEFAULT_LEVELS: Final[tuple[StopLossThreshold, ...]] = (
     StopLossThreshold(level=1, max_loss_pct=0.10, severity=Severity.P2, action="alert_only"),
     StopLossThreshold(level=2, max_loss_pct=0.15, severity=Severity.P1, action="alert_only"),
     StopLossThreshold(level=3, max_loss_pct=0.20, severity=Severity.P0, action="alert_only"),
-    StopLossThreshold(level=4, max_loss_pct=0.25, severity=Severity.P0, action="alert_only"),
+    StopLossThreshold(level=4, max_loss_pct=0.25, severity=Severity.P0, action="sell"),
 )
 
 
@@ -105,6 +114,11 @@ class SingleStockStopLossRule(RiskRule):
                 f"got {self._levels!r}"
             )
         self._auto_sell_l4 = auto_sell_l4
+        # P3 reviewer 采纳 (PR #139 fix): 预计算反序 levels (L4→L1) 避免每次 evaluate
+        # 重复 sorted() 调用. levels 不可变 (frozen tuple) → 反序结果也不可变.
+        self._levels_desc: tuple[StopLossThreshold, ...] = tuple(
+            sorted(self._levels, key=lambda lvl: lvl.max_loss_pct, reverse=True)
+        )
 
     def root_rule_id_for(self, triggered_rule_id: str) -> str:
         """反查 root rule_id: single_stock_stoploss_l{N} → single_stock_stoploss.
@@ -119,8 +133,6 @@ class SingleStockStopLossRule(RiskRule):
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         """检查每个 position 单股止损阈值. 反序 (L4 先) 命中即返."""
         results: list[RuleResult] = []
-        # 反序: L4 (-25%) 最严先查, 命中即 break, 不会被 L1 覆盖
-        levels_desc = sorted(self._levels, key=lambda l: l.max_loss_pct, reverse=True)
 
         for pos in context.positions:
             if pos.entry_price <= 0 or pos.current_price <= 0 or pos.shares <= 0:
@@ -129,18 +141,24 @@ class SingleStockStopLossRule(RiskRule):
             loss_pct = (pos.current_price - pos.entry_price) / pos.entry_price
             # loss_pct < 0 表示亏损, abs(loss_pct) >= threshold 触发
             # 等价: loss_pct <= -threshold (注意符号)
+            # 反序遍历: L4 (-25%) 最严先查, 命中即 break, 不会被 L1 覆盖
             triggered_level: StopLossThreshold | None = None
-            for lvl in levels_desc:
+            for lvl in self._levels_desc:
                 if loss_pct <= -lvl.max_loss_pct:
                     triggered_level = lvl
                     break
 
             if triggered_level is None:
+                # silent_ok: profitable position, no stop-loss action needed
+                # (loss_pct 不到任何档阈值 — 包含浮盈与轻度亏损, 均不应告警)
                 continue
 
-            # auto_sell_l4 flag override L4 档 action
-            effective_action = triggered_level.action
-            if triggered_level.level == 4 and self._auto_sell_l4:
+            # P2 reviewer 采纳 (PR #139 fix): action 字段语义化, 不再 hardcode level==4.
+            # 默认 alert_only; 仅当 (a) auto_sell_l4=True AND (b) 该档 action='sell'
+            # 时才真正 sell. 任意 levels 配置 action='sell' 的档都受 flag 控制 (e.g.
+            # 自定义 L3 'sell' 也可激活), L4 仅是默认 sell-eligible 入口.
+            effective_action: Literal["alert_only", "sell"] = "alert_only"
+            if self._auto_sell_l4 and triggered_level.action == "sell":
                 effective_action = "sell"
 
             # alert_only 时 shares=0 (不卖); sell 时填全部 shares

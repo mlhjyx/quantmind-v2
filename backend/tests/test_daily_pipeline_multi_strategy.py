@@ -382,3 +382,100 @@ def test_intraday_risk_check_dual_strategy_dedup_isolated():
     strategy_ids = [s["strategy_id"] for s in result["strategies"]]
     assert "s1-uuid" in strategy_ids
     assert "s2-uuid" in strategy_ids
+
+
+# ─── PR #139 reviewer P1: daily dedup integration ─────────────────
+
+
+def _mk_engine_with_results(rule_ids: list[str], positions_count: int = 3):
+    """Engine 变体: run() 返指定 rule_id RuleResults, 供 dedup 路径覆盖."""
+    from backend.qm_platform.risk.interface import RuleResult
+
+    context = _mk_real_risk_context(positions_count=positions_count)
+    engine = MagicMock()
+    engine.build_context = MagicMock(return_value=context)
+    engine.run = MagicMock(
+        return_value=[
+            RuleResult(
+                rule_id=rid, code="600000.SH", shares=0,
+                reason=f"test {rid}", metrics={},
+            )
+            for rid in rule_ids
+        ]
+    )
+    engine.execute = MagicMock()
+    engine.registered_rules = ["pms", "circuit_breaker", "single_stock_stoploss"]
+    return engine
+
+
+def test_risk_daily_check_dedup_allows_first_alert():
+    """PR #139 P1 — daily dedup 首次告警 should_alert=True 路径放行 + mark_alerted 后调."""
+    from app.tasks.daily_pipeline import risk_daily_check_task
+
+    s1 = _mk_mock_strategy("s1-uuid")
+    engine = _mk_engine_with_results(["pms_l1", "single_stock_stoploss_l4"])
+
+    dedup_mock = MagicMock()
+    dedup_mock.should_alert = MagicMock(return_value=True)
+    dedup_mock.mark_alerted = MagicMock()
+
+    with patch(
+            "engines.trading_day_checker.TradingDayChecker",
+            return_value=_mk_trading_day_mock(),
+        ), \
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        patch(
+            "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
+            return_value=[s1],
+        ), \
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
+        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        mock_settings.PMS_ENABLED = True
+        mock_settings.EXECUTION_MODE = "live"
+        result = risk_daily_check_task.run()
+
+    assert result["status"] == "ok"
+    assert result["total_triggered"] == 2
+    assert result["total_alerted"] == 2
+    assert result["total_dedup_skipped"] == 0
+    assert engine.execute.call_count == 1
+    assert dedup_mock.mark_alerted.call_count == 2  # 每 RuleResult 一次
+
+
+def test_risk_daily_check_dedup_skips_already_alerted():
+    """PR #139 P1 — daily dedup intraday 已告警 should_alert=False 时跳过 execute."""
+    from app.tasks.daily_pipeline import risk_daily_check_task
+
+    s1 = _mk_mock_strategy("s1-uuid")
+    engine = _mk_engine_with_results(["single_stock_stoploss_l4"])
+
+    dedup_mock = MagicMock()
+    dedup_mock.should_alert = MagicMock(return_value=False)  # intraday 已告警
+    dedup_mock.mark_alerted = MagicMock()
+
+    with patch(
+            "engines.trading_day_checker.TradingDayChecker",
+            return_value=_mk_trading_day_mock(),
+        ), \
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        patch(
+            "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
+            return_value=[s1],
+        ), \
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
+        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        mock_settings.PMS_ENABLED = True
+        mock_settings.EXECUTION_MODE = "live"
+        result = risk_daily_check_task.run()
+
+    assert result["status"] == "ok"
+    assert result["total_triggered"] == 1
+    assert result["total_alerted"] == 0  # 全 dedup
+    assert result["total_dedup_skipped"] == 1
+    # execute 不应被调 (no to_execute)
+    engine.execute.assert_not_called()
+    dedup_mock.mark_alerted.assert_not_called()
