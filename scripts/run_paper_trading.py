@@ -462,8 +462,10 @@ def run_execute_phase(
             # P0 批 1 Fix 3 (2026-04-29): position_multiplier 必从 cb dict 取, 非 hardcoded 0.5.
             # check_circuit_breaker_sync 返 CB_POSITION_MULTIPLIER[level] = {0:1.0, 1:1.0,
             # 2:1.0, 3:0.5, 4:0.0}. 原 hardcoded 0.5 仅 L3 偶然命中, L0/L1/L2 应 1.0 实际
-            # 传 0.5 (持仓被错误降仓), L4 应 0.0 实际 0.5 (本应停止下单变成减半). fallback
-            # 1.0 防 cb dict missing key (silent_ok normal mode 默认行为).
+            # 传 0.5 (持仓被错误降仓), L4 应 0.0 实际 0.5 (本应停止下单变成减半).
+            # reviewer P2 采纳 (everything-claude-code): fallback 1.0 实际 unreachable
+            # (risk_control_service.py:1626-1632 永远在 return dict 中含 'position_multiplier'
+            # key), 防御性 belt only. 保留以防 future refactor 简化 CB 返回结构.
             exec_result = exec_svc.execute_rebalance(
                 conn=conn,
                 strategy_id=settings.PAPER_STRATEGY_ID,

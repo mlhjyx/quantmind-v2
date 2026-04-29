@@ -44,15 +44,24 @@ async def lifespan(app: FastAPI):
     bootstrap_platform_deps()
 
     # P0 批 1 Fix 2 (2026-04-29): ADR-008 命名空间漂移启动断言.
-    # 若 .env EXECUTION_MODE 与 DB position_snapshot 最近 7d 命名空间不一致, RAISE
+    # 若 .env EXECUTION_MODE 与 DB position_snapshot 最近 30d 命名空间不一致, RAISE
     # NamespaceMismatchError 拒绝启动 (铁律 33 fail-loud).
     # 历史教训: 4-20 cutover live → 4-29 .env 改回 paper 但持仓数据继续按 live 写,
     # 14:30 risk_daily_check entry_price=0 silent skip 全部规则 → 真金 -29% 0 alert.
     # 详见 docs/audit/write_path_namespace_audit_2026_04_29.md.
+    #
+    # reviewer P0 采纳 (oh-my-claudecode/code-reviewer): 包 try/except 防 engine
+    # 泄漏 — raise 时 yield 后 cleanup 不执行, SQLAlchemy async engine 池累积导致
+    # Servy 重启循环 PG max_connections 耗尽. 显式 dispose 后再 re-raise.
     from app.services.db import get_sync_conn
     from app.services.startup_assertions import run_startup_assertions
 
-    run_startup_assertions(get_sync_conn)
+    try:
+        run_startup_assertions(get_sync_conn)
+    except Exception:
+        # 启动断言失败 → 显式 dispose engine 防连接池泄漏 (P0 reviewer fix)
+        await engine.dispose()
+        raise
 
     qmt_manager.startup()
     # 初始化 StreamBus（预热连接）

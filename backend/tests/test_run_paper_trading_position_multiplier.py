@@ -32,19 +32,33 @@ def test_script_exists():
 
 
 def test_step5_9_execute_rebalance_consumes_cb_position_multiplier():
-    """Step 5.9 execute_rebalance 必从 cb dict 取 position_multiplier, 非 hardcoded."""
+    """Step 5.9 execute_rebalance 必从 cb dict 取 position_multiplier, 非 hardcoded.
+
+    reviewer P2-2 采纳 (oh-my-claudecode): SAST regex 覆盖 intermediate variable
+    extraction pattern (e.g. `mult = cb.get(...); ... position_multiplier=mult`).
+    防 future refactor 抽局部变量绕过此 SAST 守门 (false negative).
+    """
     src = _SCRIPT.read_text(encoding="utf-8")
 
-    # 必含 cb.get("position_multiplier" 或 cb["position_multiplier"] 调用
-    pattern = re.compile(
+    # Pattern A: 直接 kwarg 调用 — position_multiplier=cb.get("position_multiplier", ...)
+    direct = re.compile(
         r'position_multiplier\s*=\s*cb(?:\.get\(\s*[\'"]position_multiplier[\'"]'
         r'|\[\s*[\'"]position_multiplier[\'"]\])'
     )
-    matches = pattern.findall(src)
-    assert len(matches) >= 1, (
+    # Pattern B: 文件任意位置含 cb.get("position_multiplier" 或 cb["position_multiplier"]
+    # (intermediate variable extraction 也会引这种调用, 至少 1 次必出现)
+    indirect = re.compile(
+        r'cb(?:\.get\(\s*[\'"]position_multiplier[\'"]'
+        r'|\[\s*[\'"]position_multiplier[\'"]\])'
+    )
+
+    direct_matches = direct.findall(src)
+    indirect_matches = indirect.findall(src)
+    total = len(direct_matches) + len(indirect_matches)
+    assert total >= 1, (
         "run_paper_trading.py 必从 cb dict 读 position_multiplier "
-        "(cb.get('position_multiplier', 1.0) 或 cb['position_multiplier']). "
-        f"实测找到 {len(matches)} 处. 详见 PROJECT_DIAGNOSTIC_REPORT.md F-A6."
+        "(直接 kwarg 或 intermediate variable 抽取). 详见 Fix 3 spec / "
+        "PROJECT_DIAGNOSTIC_REPORT.md F-A6."
     )
 
 
