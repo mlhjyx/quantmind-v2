@@ -1004,12 +1004,13 @@ class TestRiskAPI:
         _verify_admin_token (本测试关注 business logic 非 auth, 独立 TestAdminGate 验证 auth).
         """
         approval_id = uuid.uuid4()
-        from app.api.risk import _get_risk_service, _verify_admin_token
+        from app.api.risk import _get_risk_service
+        from app.core.auth import verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.request_l4_recovery = AsyncMock(return_value=approval_id)
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
-        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
+        app.dependency_overrides[verify_admin_token] = lambda: None
 
         try:
             resp = await api_client.post(
@@ -1030,14 +1031,15 @@ class TestRiskAPI:
 
         2026-04-30 治理债清理: 加 admin gate dependency_overrides bypass.
         """
-        from app.api.risk import _get_risk_service, _verify_admin_token
+        from app.api.risk import _get_risk_service
+        from app.core.auth import verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.request_l4_recovery = AsyncMock(
             side_effect=ValueError("策略当前不是L4_STOPPED状态")
         )
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
-        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
+        app.dependency_overrides[verify_admin_token] = lambda: None
 
         try:
             resp = await api_client.post(
@@ -1060,12 +1062,13 @@ class TestRiskAPI:
         """
         mock_state = self._make_mock_state(CircuitBreakerLevel.NORMAL)
 
-        from app.api.risk import _get_risk_service, _verify_admin_token
+        from app.api.risk import _get_risk_service
+        from app.core.auth import verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.force_reset = AsyncMock(return_value=mock_state)
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
-        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
+        app.dependency_overrides[verify_admin_token] = lambda: None
 
         try:
             resp = await api_client.post(
@@ -1089,9 +1092,9 @@ class TestRiskAPI:
         2026-04-30 治理债清理: 加 admin gate dependency_overrides bypass (auth 先于 body 验证,
         若无 bypass 会 401 而非 422).
         """
-        from app.api.risk import _verify_admin_token
+        from app.core.auth import verify_admin_token
 
-        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
+        app.dependency_overrides[verify_admin_token] = lambda: None
         try:
             resp = await api_client.post(
                 f"/api/risk/force-reset/{STRATEGY_ID}?execution_mode=paper",
