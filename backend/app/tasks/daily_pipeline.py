@@ -14,7 +14,7 @@ import json
 import logging
 import time
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import redis
 
@@ -36,6 +36,71 @@ def _get_redis_client() -> redis.Redis:
 def _health_check_key(d: date) -> str:
     """生成health_check Redis key。"""
     return HEALTH_CHECK_KEY_TEMPLATE.format(date=d.isoformat())
+
+
+# ════════════════════════════════════════════════════════════
+# scheduler_task_log helper (Phase 2 Step C, Session 44 2026-04-29)
+#
+# 动机: Session 44 实测 risk_daily_check + intraday_risk_check **缺 scheduler_task_log
+# 写入** — Beat 调度且 Celery worker 已收到, 但 audit log 0 行 → 无法事后审计
+# "今天 14:30 风控真的跑了吗", 与 dead-Beat 无法区分.
+#
+# 与 risk_event_log 的区别:
+#   - risk_event_log: 仅当 rule.evaluate 命中 (RuleResult 非空) 时写, 0 命中 = 0 行
+#   - scheduler_task_log: 每次 task 跑完都写 (proof of life), 含 0 命中
+#
+# 镜像 scripts/pt_audit.py:_write_scheduler_task_log pattern (silent_ok 失败).
+# 铁律: 33(c) 读路径 audit 失败 fail-silent + logger.warning, 不阻塞主流程.
+# ════════════════════════════════════════════════════════════
+
+
+def _write_scheduler_log_safe(
+    task_name: str,
+    start_time: datetime,
+    status: str,
+    result_json: dict | None,
+) -> None:
+    """Best-effort scheduler_task_log INSERT (silent_ok on failure).
+
+    主路径已完成 (rules evaluated + alerts fired), audit 写失败仅 warning, 不 raise.
+    与 pt_audit.py:_write_scheduler_task_log 同 pattern (PR #134/135 已沉淀).
+
+    Args:
+        task_name: Beat schedule entry name (e.g. "risk_daily_check")
+        start_time: task 进入 timestamp (UTC, 上游捕获)
+        status: 'success' | 'skipped' | 'disabled' | 'error' | 'retry'
+        result_json: task summary dict (or {"error": str} on exception)
+    """
+    import psycopg2.extras
+
+    from app.services.db import get_sync_conn
+
+    end_time = datetime.now(UTC)
+    duration_sec = int((end_time - start_time).total_seconds())
+    try:
+        with get_sync_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, end_time,
+                    duration_sec, status, result_json)
+                   VALUES (%s, 'astock', %s, %s, %s, %s, %s, %s)""",
+                (
+                    task_name,
+                    start_time,  # schedule_time 用 start (Beat 触发时刻 ≈ task 进入)
+                    start_time,
+                    end_time,
+                    duration_sec,
+                    status,
+                    psycopg2.extras.Json(result_json or {}),
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        # silent_ok: scheduler_task_log 失败不阻断主流程 audit / risk action
+        # 已完成. 上层 logger.error 仍捕获故障 trace.
+        logger.warning(
+            "[scheduler_task_log] write failed task=%s: %s: %s",
+            task_name, type(e).__name__, e,
+        )
 
 
 # ════════════════════════════════════════════════════════════
@@ -192,173 +257,205 @@ def risk_daily_check_task(self) -> dict:
 
     from app.services.db import get_sync_conn
 
-    # reviewer P1-1 采纳 (code-reviewer): TradingDayChecker 无 conn 会降级到 Layer 4
-    # 启发式 (约 7-10 个工作日法定节假日/年会误判为交易日). Risk 检查要求准确交易日
-    # 判断, 传 conn 启用 Layer 3 本地 DB calendar (铁律 33 fail-loud vs silent drift).
-    td_conn = get_sync_conn()
+    # Phase 2 Step C (Session 44): scheduler_task_log audit 包络 — 每次 task 进入都
+    # 必写一行, 含 0 命中 / skipped / disabled / error, 防 dead-Beat 与 0-trigger
+    # 不可区分. try/finally 确保所有路径 (含 raise self.retry) 都写一行.
+    _audit_start = datetime.now(UTC)
+    _audit_status = "error"  # default if exception escapes try
+    _audit_summary: dict = {}
     try:
-        checker = TradingDayChecker(conn=td_conn)
-        is_td, reason = checker.is_trading_day(date.today())
-    finally:
-        td_conn.close()
-    if not is_td:
-        logger.info("[Risk] 非交易日(%s), 跳过", reason)
-        return {"status": "skipped", "reason": reason}
-
-    if not settings.PMS_ENABLED:
-        # PMS_ENABLED=False 时整个 Risk Framework 关闭 (批 2 intraday 独立 flag 再加)
-        logger.info("[Risk] PMS_ENABLED=False, 跳过")
-        return {"status": "disabled"}
-
-    execution_mode = settings.EXECUTION_MODE
-
-    # MVP 3.2 批 4: 多策略 iteration via strategy_registry.get_live() + fail-safe
-    # fallback. S1 固定 LIVE, 未来 S2 注册后自动加入迭代 (代码零改动).
-    # Fail-safe: registry 挂 / empty → [S1MonthlyRanking()] legacy path, Monday 4-27
-    # zero production 干扰.
-    # MVP 3.1 批 3 (Session 30 末): CircuitBreakerRule Hybrid adapter 注入 daily engine
-    # ADR-010 addendum 方案 C — 包 risk_control_service.check_circuit_breaker_sync
-    # 14:30 评估 PMS + CB (两 rule 并列, CB 仅在 level 变化时返 RuleResult)
-    #
-    # P1 reviewer 采纳 (PR #139 fix): daily 14:30 与 intraday */5 9-14 共享 dedup,
-    # 防同 (rule_id, strategy, mode, date) 双告警 (尤其 future auto_sell_l4=True 时
-    # intraday 已发卖单, daily 不应再发第二次). dedup 失败 fail-open 允许告警.
-    from app.services.risk_wiring import (
-        IntradayAlertDedup,
-        build_circuit_breaker_rule,
-        build_risk_engine,
-    )
-    from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
-
-    strategies = get_live_strategies_for_risk_check()
-    # P1 reviewer code (PR #72) 采纳: empty strategies 应显式 warn, 不 silent zero-work.
-    # 理论 bootstrap 保底 [S1MonthlyRanking()] 非空, 但防御深度校验 — Monday 监控可见.
-    if not strategies:
-        logger.warning(
-            "[Risk] get_live_strategies_for_risk_check() 返空 list — 14:30 风控检查 "
-            "零策略执行. 检查 bootstrap fallback / strategy_registry DB 状态.",
-        )
-        return {
-            "status": "ok",
-            "execution_mode": execution_mode,
-            "strategies": [],
-            "strategies_count": 0,
-            "total_checked": 0,
-            "total_triggered": 0,
-        }
-
-    # P1 reviewer 采纳 (PR #139 fix): dedup 共享 intraday 同一 Redis key namespace —
-    # 同 (rule_id, strategy, mode, date) 跨 daily/intraday 仅允许 1 次告警.
-    dedup = IntradayAlertDedup()
-
-    per_strategy_results: list[dict] = []
-    total_checked = 0
-    total_triggered = 0
-    total_alerted = 0
-    total_dedup_skipped = 0
-    all_errored = True  # 若所有 strategy 都异常 → raise retry (Monday 安全兜底)
-
-    for strategy in strategies:
-        strategy_id = strategy.strategy_id
+        # reviewer P1-1 采纳 (code-reviewer): TradingDayChecker 无 conn 会降级到 Layer 4
+        # 启发式 (约 7-10 个工作日法定节假日/年会误判为交易日). Risk 检查要求准确交易日
+        # 判断, 传 conn 启用 Layer 3 本地 DB calendar (铁律 33 fail-loud vs silent drift).
+        td_conn = get_sync_conn()
         try:
-            engine = build_risk_engine(extra_rules=[build_circuit_breaker_rule()])
-            context = engine.build_context(
-                strategy_id=strategy_id, execution_mode=execution_mode
+            checker = TradingDayChecker(conn=td_conn)
+            is_td, reason = checker.is_trading_day(date.today())
+        finally:
+            td_conn.close()
+        if not is_td:
+            logger.info("[Risk] 非交易日(%s), 跳过", reason)
+            _audit_summary = {"status": "skipped", "reason": reason}
+            _audit_status = "skipped"
+            return _audit_summary
+
+        if not settings.PMS_ENABLED:
+            # PMS_ENABLED=False 时整个 Risk Framework 关闭 (批 2 intraday 独立 flag 再加)
+            logger.info("[Risk] PMS_ENABLED=False, 跳过")
+            _audit_summary = {"status": "disabled"}
+            _audit_status = "disabled"
+            return _audit_summary
+
+        execution_mode = settings.EXECUTION_MODE
+
+        # MVP 3.2 批 4: 多策略 iteration via strategy_registry.get_live() + fail-safe
+        # fallback. S1 固定 LIVE, 未来 S2 注册后自动加入迭代 (代码零改动).
+        # Fail-safe: registry 挂 / empty → [S1MonthlyRanking()] legacy path, Monday 4-27
+        # zero production 干扰.
+        # MVP 3.1 批 3 (Session 30 末): CircuitBreakerRule Hybrid adapter 注入 daily engine
+        # ADR-010 addendum 方案 C — 包 risk_control_service.check_circuit_breaker_sync
+        # 14:30 评估 PMS + CB (两 rule 并列, CB 仅在 level 变化时返 RuleResult)
+        #
+        # P1 reviewer 采纳 (PR #139 fix): daily 14:30 与 intraday */5 9-14 共享 dedup,
+        # 防同 (rule_id, strategy, mode, date) 双告警 (尤其 future auto_sell_l4=True 时
+        # intraday 已发卖单, daily 不应再发第二次). dedup 失败 fail-open 允许告警.
+        from app.services.risk_wiring import (
+            IntradayAlertDedup,
+            build_circuit_breaker_rule,
+            build_risk_engine,
+        )
+        from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
+
+        strategies = get_live_strategies_for_risk_check()
+        # P1 reviewer code (PR #72) 采纳: empty strategies 应显式 warn, 不 silent zero-work.
+        # 理论 bootstrap 保底 [S1MonthlyRanking()] 非空, 但防御深度校验 — Monday 监控可见.
+        if not strategies:
+            logger.warning(
+                "[Risk] get_live_strategies_for_risk_check() 返空 list — 14:30 风控检查 "
+                "零策略执行. 检查 bootstrap fallback / strategy_registry DB 状态.",
             )
-            if not context.positions:
-                logger.info("[Risk] strategy=%s 无持仓, 跳过", strategy_id)
+            _audit_summary = {
+                "status": "ok",
+                "execution_mode": execution_mode,
+                "strategies": [],
+                "strategies_count": 0,
+                "total_checked": 0,
+                "total_triggered": 0,
+            }
+            _audit_status = "success"
+            return _audit_summary
+
+        # P1 reviewer 采纳 (PR #139 fix): dedup 共享 intraday 同一 Redis key namespace —
+        # 同 (rule_id, strategy, mode, date) 跨 daily/intraday 仅允许 1 次告警.
+        dedup = IntradayAlertDedup()
+
+        per_strategy_results: list[dict] = []
+        total_checked = 0
+        total_triggered = 0
+        total_alerted = 0
+        total_dedup_skipped = 0
+        all_errored = True  # 若所有 strategy 都异常 → raise retry (Monday 安全兜底)
+
+        for strategy in strategies:
+            strategy_id = strategy.strategy_id
+            try:
+                engine = build_risk_engine(extra_rules=[build_circuit_breaker_rule()])
+                context = engine.build_context(
+                    strategy_id=strategy_id, execution_mode=execution_mode
+                )
+                if not context.positions:
+                    logger.info("[Risk] strategy=%s 无持仓, 跳过", strategy_id)
+                    per_strategy_results.append({
+                        "strategy_id": strategy_id,
+                        "status": "ok",
+                        "checked": 0,
+                        "triggered": 0,
+                    })
+                    all_errored = False
+                    continue
+
+                results = engine.run(context)
+
+                # dedup gate (镜像 intraday_risk_check_task pattern, PR #60 reviewer P1):
+                # 仅 should_alert 查询, mark 在 execute 成功后, 防 execute 失败永久 suppress.
+                to_execute = []
+                skipped = []
+                for r in results:
+                    if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
+                        to_execute.append(r)
+                    else:
+                        skipped.append(r.rule_id)
+
+                if to_execute:
+                    engine.execute(to_execute, context)
+                    # mark_alerted AFTER successful execute (PR #60 reviewer P1 HIGH)
+                    for r in to_execute:
+                        dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
+
                 per_strategy_results.append({
                     "strategy_id": strategy_id,
                     "status": "ok",
-                    "checked": 0,
-                    "triggered": 0,
+                    "checked": len(context.positions),
+                    "triggered": len(results),
+                    "alerted": len(to_execute),
+                    "dedup_skipped": len(skipped),
+                    "signals": [
+                        {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
+                        for r in to_execute
+                    ],
+                    "dedup_skipped_rules": skipped,
                 })
+                total_checked += len(context.positions)
+                total_triggered += len(results)
+                total_alerted += len(to_execute)
+                total_dedup_skipped += len(skipped)
                 all_errored = False
-                continue
+                logger.info(
+                    "[Risk] strategy=%s 日检完成: checked=%d triggered=%d alerted=%d "
+                    "dedup_skipped=%d",
+                    strategy_id, len(context.positions), len(results),
+                    len(to_execute), len(skipped),
+                )
 
-            results = engine.run(context)
+            except Exception as exc:
+                # per-strategy 异常: log + 继续 (other strategies 不受影响). 若所有都异常
+                # 最后 raise retry (all_errored guard).
+                logger.error(
+                    "[Risk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
+                )
+                per_strategy_results.append({
+                    "strategy_id": strategy_id,
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
 
-            # dedup gate (镜像 intraday_risk_check_task pattern, PR #60 reviewer P1):
-            # 仅 should_alert 查询, mark 在 execute 成功后, 防 execute 失败永久 suppress.
-            to_execute = []
-            skipped = []
-            for r in results:
-                if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
-                    to_execute.append(r)
-                else:
-                    skipped.append(r.rule_id)
-
-            if to_execute:
-                engine.execute(to_execute, context)
-                # mark_alerted AFTER successful execute (PR #60 reviewer P1 HIGH)
-                for r in to_execute:
-                    dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
-
-            per_strategy_results.append({
-                "strategy_id": strategy_id,
-                "status": "ok",
-                "checked": len(context.positions),
-                "triggered": len(results),
-                "alerted": len(to_execute),
-                "dedup_skipped": len(skipped),
-                "signals": [
-                    {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
-                    for r in to_execute
-                ],
-                "dedup_skipped_rules": skipped,
-            })
-            total_checked += len(context.positions)
-            total_triggered += len(results)
-            total_alerted += len(to_execute)
-            total_dedup_skipped += len(skipped)
-            all_errored = False
-            logger.info(
-                "[Risk] strategy=%s 日检完成: checked=%d triggered=%d alerted=%d "
-                "dedup_skipped=%d",
-                strategy_id, len(context.positions), len(results),
-                len(to_execute), len(skipped),
+        # 全 strategy 异常 → Celery retry (对齐原 max_retries=1 语义). Monday 安全兜底:
+        # 若 batch 4 代码引入的新 code path 全挂, Celery retry 给 1 次机会 + 失败告警.
+        if all_errored and strategies:
+            first_err = next(
+                (s for s in per_strategy_results if s.get("status") == "error"), None
             )
+            err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
+            exc = RuntimeError(f"All {len(strategies)} strategies failed: {err_msg}")
+            logger.error("[Risk] 所有策略全挂, Celery retry: %s", exc)
+            _audit_summary = {
+                "status": "retry",
+                "error": str(exc),
+                "strategies_failed": len(strategies),
+            }
+            _audit_status = "retry"
+            raise self.retry(exc=exc)
 
-        except Exception as exc:
-            # per-strategy 异常: log + 继续 (other strategies 不受影响). 若所有都异常
-            # 最后 raise retry (all_errored guard).
-            logger.error(
-                "[Risk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
-            )
-            per_strategy_results.append({
-                "strategy_id": strategy_id,
-                "status": "error",
-                "error": f"{type(exc).__name__}: {exc}",
-            })
-
-    # 全 strategy 异常 → Celery retry (对齐原 max_retries=1 语义). Monday 安全兜底:
-    # 若 batch 4 代码引入的新 code path 全挂, Celery retry 给 1 次机会 + 失败告警.
-    if all_errored and strategies:
-        first_err = next(
-            (s for s in per_strategy_results if s.get("status") == "error"), None
+        _audit_summary = {
+            "status": "ok",
+            "execution_mode": execution_mode,
+            "strategies": per_strategy_results,
+            "strategies_count": len(strategies),
+            "total_checked": total_checked,
+            "total_triggered": total_triggered,
+            "total_alerted": total_alerted,
+            "total_dedup_skipped": total_dedup_skipped,
+        }
+        _audit_status = "success"
+        logger.info(
+            "[Risk] 日检完成: strategies=%d total_checked=%d total_triggered=%d "
+            "total_alerted=%d total_dedup_skipped=%d mode=%s",
+            len(strategies), total_checked, total_triggered,
+            total_alerted, total_dedup_skipped, execution_mode,
         )
-        err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
-        exc = RuntimeError(f"All {len(strategies)} strategies failed: {err_msg}")
-        logger.error("[Risk] 所有策略全挂, Celery retry: %s", exc)
-        raise self.retry(exc=exc)
-
-    summary = {
-        "status": "ok",
-        "execution_mode": execution_mode,
-        "strategies": per_strategy_results,
-        "strategies_count": len(strategies),
-        "total_checked": total_checked,
-        "total_triggered": total_triggered,
-        "total_alerted": total_alerted,
-        "total_dedup_skipped": total_dedup_skipped,
-    }
-    logger.info(
-        "[Risk] 日检完成: strategies=%d total_checked=%d total_triggered=%d "
-        "total_alerted=%d total_dedup_skipped=%d mode=%s",
-        len(strategies), total_checked, total_triggered,
-        total_alerted, total_dedup_skipped, execution_mode,
-    )
-    return summary
+        return _audit_summary
+    except Exception as e:
+        # try 内未被显式 set 状态 → 记 error (Celery 异常通过 raise self.retry 上面已 set)
+        if _audit_status == "error":
+            _audit_summary = {
+                "status": "error",
+                "error": f"{type(e).__name__}: {e}",
+            }
+        raise
+    finally:
+        _write_scheduler_log_safe(
+            "risk_daily_check", _audit_start, _audit_status, _audit_summary,
+        )
 
 
 # ════════════════════════════════════════════════════════════
@@ -398,159 +495,189 @@ def intraday_risk_check_task(self) -> dict:
 
     from app.services.db import get_sync_conn
 
-    # 交易日 check (复用批 1 pattern, Layer 3 conn 启用)
-    td_conn = get_sync_conn()
+    # Phase 2 Step C (Session 44): scheduler_task_log audit 包络 — intraday 5min cron
+    # 72 次/日, 缺 audit 等于 dead-Beat 不可区分. 镜像 risk_daily_check pattern.
+    _audit_start = datetime.now(UTC)
+    _audit_status = "error"
+    _audit_summary: dict = {}
     try:
-        checker = TradingDayChecker(conn=td_conn)
-        is_td, reason = checker.is_trading_day(date.today())
-    finally:
-        td_conn.close()
-    if not is_td:
-        logger.info("[IntradayRisk] 非交易日(%s), 跳过", reason)
-        return {"status": "skipped", "reason": reason}
+        # 交易日 check (复用批 1 pattern, Layer 3 conn 启用)
+        td_conn = get_sync_conn()
+        try:
+            checker = TradingDayChecker(conn=td_conn)
+            is_td, reason = checker.is_trading_day(date.today())
+        finally:
+            td_conn.close()
+        if not is_td:
+            logger.info("[IntradayRisk] 非交易日(%s), 跳过", reason)
+            _audit_summary = {"status": "skipped", "reason": reason}
+            _audit_status = "skipped"
+            return _audit_summary
 
-    if not settings.PMS_ENABLED:
-        # PMS_ENABLED=False 全 Risk Framework 关 (intraday 批 2 共享 flag, 独立 flag 批 3 评估)
-        logger.info("[IntradayRisk] PMS_ENABLED=False, 跳过")
-        return {"status": "disabled"}
+        if not settings.PMS_ENABLED:
+            # PMS_ENABLED=False 全 Risk Framework 关 (intraday 批 2 共享 flag, 独立 flag 批 3 评估)
+            logger.info("[IntradayRisk] PMS_ENABLED=False, 跳过")
+            _audit_summary = {"status": "disabled"}
+            _audit_status = "disabled"
+            return _audit_summary
 
-    execution_mode = settings.EXECUTION_MODE
+        execution_mode = settings.EXECUTION_MODE
 
-    # MVP 3.2 批 4: 多策略 iteration. Dedup 天然 per-strategy (key 含 strategy_id),
-    # 各 strategy 独立告警频控无交叉污染.
-    from app.services.risk_wiring import (
-        IntradayAlertDedup,
-        _load_prev_close_nav,
-        build_intraday_risk_engine,
-    )
-    from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
-
-    strategies = get_live_strategies_for_risk_check()
-    # P1 reviewer code (PR #72) 采纳: empty strategies 显式 warn (防御深度)
-    if not strategies:
-        logger.warning(
-            "[IntradayRisk] get_live_strategies_for_risk_check() 返空 list — 5min "
-            "盘中检查零策略. 下 5min 周期会再跑一次自愈.",
+        # MVP 3.2 批 4: 多策略 iteration. Dedup 天然 per-strategy (key 含 strategy_id),
+        # 各 strategy 独立告警频控无交叉污染.
+        from app.services.risk_wiring import (
+            IntradayAlertDedup,
+            _load_prev_close_nav,
+            build_intraday_risk_engine,
         )
-        return {
+        from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
+
+        strategies = get_live_strategies_for_risk_check()
+        # P1 reviewer code (PR #72) 采纳: empty strategies 显式 warn (防御深度)
+        if not strategies:
+            logger.warning(
+                "[IntradayRisk] get_live_strategies_for_risk_check() 返空 list — 5min "
+                "盘中检查零策略. 下 5min 周期会再跑一次自愈.",
+            )
+            _audit_summary = {
+                "status": "ok",
+                "execution_mode": execution_mode,
+                "strategies": [],
+                "strategies_count": 0,
+                "total_triggered": 0,
+                "total_alerted": 0,
+                "total_dedup_skipped": 0,
+            }
+            _audit_status = "success"
+            return _audit_summary
+
+        dedup = IntradayAlertDedup()  # 共享 Redis client, 跨 strategy 复用
+
+        per_strategy_results: list[dict] = []
+        total_triggered = 0
+        total_alerted = 0
+        total_dedup_skipped = 0
+        all_errored = True
+
+        for strategy in strategies:
+            strategy_id = strategy.strategy_id
+            try:
+                engine = build_intraday_risk_engine()
+
+                # 1. build_context 走批 1 engine 同逻辑 (prev_close_nav=None 占位)
+                context = engine.build_context(
+                    strategy_id=strategy_id, execution_mode=execution_mode
+                )
+
+                # 2. 填 prev_close_nav (批 2 新增, intraday drop rules 需要, per-strategy)
+                nav_conn = get_sync_conn()
+                try:
+                    prev_close_nav = _load_prev_close_nav(
+                        nav_conn, strategy_id, execution_mode
+                    )
+                finally:
+                    nav_conn.close()
+                context = replace(context, prev_close_nav=prev_close_nav)
+
+                # 3. run rules
+                results = engine.run(context)
+
+                # 4. dedup filter (Redis 24h TTL 防泛滥) — 仅 should_alert 查询, 不 mark
+                # reviewer P1 采纳 (code HIGH, PR #60): mark_alerted 必须在 execute 成功
+                # **之后** 防 execute 失败永久 suppress 告警.
+                to_execute = []
+                skipped = []
+                for r in results:
+                    if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
+                        to_execute.append(r)
+                    else:
+                        skipped.append(r.rule_id)
+
+                # 5. execute dedup 后结果
+                if to_execute:
+                    engine.execute(to_execute, context)
+                    # 6. mark_alerted AFTER successful execute (reviewer P1 HIGH)
+                    for r in to_execute:
+                        dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
+
+                per_strategy_results.append({
+                    "strategy_id": strategy_id,
+                    "status": "ok",
+                    "prev_close_nav": prev_close_nav,
+                    "portfolio_nav": context.portfolio_nav,
+                    "positions_count": len(context.positions),
+                    "triggered": len(results),
+                    "alerted": len(to_execute),
+                    "dedup_skipped": len(skipped),
+                    "signals": [
+                        {"rule_id": r.rule_id, "code": r.code} for r in to_execute
+                    ],
+                })
+                total_triggered += len(results)
+                total_alerted += len(to_execute)
+                total_dedup_skipped += len(skipped)
+                all_errored = False
+                logger.info(
+                    "[IntradayRisk] strategy=%s 盘中完成: triggered=%d alerted=%d "
+                    "dedup_skipped=%d",
+                    strategy_id, len(results), len(to_execute), len(skipped),
+                )
+
+            except Exception as exc:
+                # per-strategy 异常: log + 继续. max_retries=0 不 retry, 下 5min 会再跑.
+                logger.error(
+                    "[IntradayRisk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
+                )
+                per_strategy_results.append({
+                    "strategy_id": strategy_id,
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+
+        # 全 strategy 异常 + 有 strategies → raise propagate Celery FAILURE → 监控告警
+        # (max_retries=0, 不 retry, 下 5min 周期会自然再跑一次)
+        if all_errored and strategies:
+            first_err = next(
+                (s for s in per_strategy_results if s.get("status") == "error"), None
+            )
+            err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
+            _audit_summary = {
+                "status": "error",
+                "error": err_msg,
+                "strategies_failed": len(strategies),
+            }
+            _audit_status = "error"
+            raise RuntimeError(
+                f"[IntradayRisk] All {len(strategies)} strategies failed: {err_msg}"
+            )
+
+        _audit_summary = {
             "status": "ok",
             "execution_mode": execution_mode,
-            "strategies": [],
-            "strategies_count": 0,
-            "total_triggered": 0,
-            "total_alerted": 0,
-            "total_dedup_skipped": 0,
+            "strategies": per_strategy_results,
+            "strategies_count": len(strategies),
+            "total_triggered": total_triggered,
+            "total_alerted": total_alerted,
+            "total_dedup_skipped": total_dedup_skipped,
         }
-
-    dedup = IntradayAlertDedup()  # 共享 Redis client, 跨 strategy 复用
-
-    per_strategy_results: list[dict] = []
-    total_triggered = 0
-    total_alerted = 0
-    total_dedup_skipped = 0
-    all_errored = True
-
-    for strategy in strategies:
-        strategy_id = strategy.strategy_id
-        try:
-            engine = build_intraday_risk_engine()
-
-            # 1. build_context 走批 1 engine 同逻辑 (prev_close_nav=None 占位)
-            context = engine.build_context(
-                strategy_id=strategy_id, execution_mode=execution_mode
-            )
-
-            # 2. 填 prev_close_nav (批 2 新增, intraday drop rules 需要, per-strategy)
-            nav_conn = get_sync_conn()
-            try:
-                prev_close_nav = _load_prev_close_nav(
-                    nav_conn, strategy_id, execution_mode
-                )
-            finally:
-                nav_conn.close()
-            context = replace(context, prev_close_nav=prev_close_nav)
-
-            # 3. run rules
-            results = engine.run(context)
-
-            # 4. dedup filter (Redis 24h TTL 防泛滥) — 仅 should_alert 查询, 不 mark
-            # reviewer P1 采纳 (code HIGH, PR #60): mark_alerted 必须在 execute 成功
-            # **之后** 防 execute 失败永久 suppress 告警.
-            to_execute = []
-            skipped = []
-            for r in results:
-                if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
-                    to_execute.append(r)
-                else:
-                    skipped.append(r.rule_id)
-
-            # 5. execute dedup 后结果
-            if to_execute:
-                engine.execute(to_execute, context)
-                # 6. mark_alerted AFTER successful execute (reviewer P1 HIGH)
-                for r in to_execute:
-                    dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
-
-            per_strategy_results.append({
-                "strategy_id": strategy_id,
-                "status": "ok",
-                "prev_close_nav": prev_close_nav,
-                "portfolio_nav": context.portfolio_nav,
-                "positions_count": len(context.positions),
-                "triggered": len(results),
-                "alerted": len(to_execute),
-                "dedup_skipped": len(skipped),
-                "signals": [
-                    {"rule_id": r.rule_id, "code": r.code} for r in to_execute
-                ],
-            })
-            total_triggered += len(results)
-            total_alerted += len(to_execute)
-            total_dedup_skipped += len(skipped)
-            all_errored = False
-            logger.info(
-                "[IntradayRisk] strategy=%s 盘中完成: triggered=%d alerted=%d "
-                "dedup_skipped=%d",
-                strategy_id, len(results), len(to_execute), len(skipped),
-            )
-
-        except Exception as exc:
-            # per-strategy 异常: log + 继续. max_retries=0 不 retry, 下 5min 会再跑.
-            logger.error(
-                "[IntradayRisk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
-            )
-            per_strategy_results.append({
-                "strategy_id": strategy_id,
+        _audit_status = "success"
+        logger.info(
+            "[IntradayRisk] 盘中完成: strategies=%d total_triggered=%d total_alerted=%d "
+            "total_dedup_skipped=%d mode=%s",
+            len(strategies), total_triggered, total_alerted, total_dedup_skipped, execution_mode,
+        )
+        return _audit_summary
+    except Exception as e:
+        if _audit_status == "error" and not _audit_summary:
+            _audit_summary = {
                 "status": "error",
-                "error": f"{type(exc).__name__}: {exc}",
-            })
-
-    # 全 strategy 异常 + 有 strategies → raise propagate Celery FAILURE → 监控告警
-    # (max_retries=0, 不 retry, 下 5min 周期会自然再跑一次)
-    if all_errored and strategies:
-        first_err = next(
-            (s for s in per_strategy_results if s.get("status") == "error"), None
+                "error": f"{type(e).__name__}: {e}",
+            }
+        raise
+    finally:
+        _write_scheduler_log_safe(
+            "intraday_risk_check", _audit_start, _audit_status, _audit_summary,
         )
-        err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
-        raise RuntimeError(
-            f"[IntradayRisk] All {len(strategies)} strategies failed: {err_msg}"
-        )
-
-    summary = {
-        "status": "ok",
-        "execution_mode": execution_mode,
-        "strategies": per_strategy_results,
-        "strategies_count": len(strategies),
-        "total_triggered": total_triggered,
-        "total_alerted": total_alerted,
-        "total_dedup_skipped": total_dedup_skipped,
-    }
-    logger.info(
-        "[IntradayRisk] 盘中完成: strategies=%d total_triggered=%d total_alerted=%d "
-        "total_dedup_skipped=%d mode=%s",
-        len(strategies), total_triggered, total_alerted, total_dedup_skipped, execution_mode,
-    )
-    return summary
 
 
 # ════════════════════════════════════════════════════════════
