@@ -12,6 +12,7 @@ Sprint 1.11 Task 5 → Sprint 1.25 重写（修复SQL列名+增加DB检查）。
 """
 
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -23,6 +24,9 @@ from pathlib import Path
 
 # 添加项目路径
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+
+# Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 # Session 26 LL-068 defense-in-depth: FileHandler delay=True 防 Windows zombie 文件锁.
 LOG_DIR = Path("D:/quantmind-v2/logs")
@@ -174,8 +178,74 @@ def get_perf_gap_days(conn) -> int:
 # ---------------------------------------------------------------------------
 
 
-def send_alert(title: str, content: str) -> None:
-    """通过钉钉发送P0告警（直接调用sync发送器，不依赖NotificationService）。"""
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.x pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(title: str, content: str) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.4)."""
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import (
+        Alert,
+        AlertDispatchError,
+        get_alert_router,
+    )
+
+    today_str = str(date.today())
+    full_content = f"## ⚠️ {title}\n\n{content}\n\n> 来源: pt_watchdog"
+    alert = Alert(
+        title=f"[P0] {title}",
+        severity=Severity.P0,  # pt_watchdog 全 P0 (PT 链路异常 = 真金风险)
+        source="pt_watchdog",
+        details={
+            "trade_date": today_str,
+            "check": title,
+            "content": full_content,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"pt_watchdog:summary:{today_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s title=%s",
+            result,
+            dedup_key,
+            title,
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(title: str, content: str) -> None:
+    """旧 path: dingtalk dispatcher 直调 (fallback, settings flag=False 时走)."""
     try:
         from app.config import settings
         from app.services.dispatchers.dingtalk import send_markdown_sync
@@ -188,11 +258,25 @@ def send_alert(title: str, content: str) -> None:
             keyword=settings.DINGTALK_KEYWORD,
         )
         if ok:
-            logger.info("钉钉告警已发送: %s", title)
+            logger.info("钉钉告警已发送: %s (legacy)", title)
         else:
-            logger.warning("钉钉发送返回失败（webhook可能未配置）")
+            logger.warning("钉钉发送返回失败 (legacy, webhook 可能未配置)")
     except Exception as e:
-        logger.error("钉钉告警发送异常: %s (原始: %s — %s)", e, title, content)
+        logger.error("钉钉告警发送异常 (legacy): %s (原始: %s — %s)", e, title, content)
+
+
+def send_alert(title: str, content: str) -> None:
+    """通过钉钉发送 P0 告警 (MVP 4.1 batch 3.4 dispatch).
+
+    默认走 PlatformAlertRouter, 旧 dingtalk 直调路径保留作 fallback.
+    AlertDispatchError 必传播 (caller catch).
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(title, content)
+    else:
+        _send_alert_via_legacy_dingtalk(title, content)
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +401,15 @@ def _run() -> int:
             f"**警告({len(report.warnings)}):**\n{warn_text}\n\n"
             f"**详情:**\n{detail_text}"
         )
-        send_alert("PT链路异常", alert_content)
+        # batch 3.4 (P1.1 batch 3.1 模式): AlertDispatchError 单 catch.
+        # PT 链路异常本身就是 P0 真金风险, sink 失败不应 swallow exit_code=1 信号.
+        try:
+            send_alert("PT链路异常", alert_content)
+        except AlertDispatchError as e:
+            logger.error(
+                "[Observability] AlertDispatchError — 告警未送达, exit_code=1 仍反映 PT 异常: %s",
+                e,
+            )
         logger.error("PT Watchdog: FAILED")
         return 1
 
