@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import os
 import sys
 import traceback
 from datetime import datetime
@@ -257,7 +258,7 @@ def main() -> int:
 
     print(
         f"[emergency_close] boot {datetime.now().isoformat()} "
-        f"pid={__import__('os').getpid()} dry_run={not args.execute}",
+        f"pid={os.getpid()} dry_run={not args.execute}",
         flush=True,
         file=sys.stderr,
     )
@@ -292,6 +293,16 @@ def main() -> int:
         return 1
 
     print("\n🚀 Confirmation OK. Submitting sell orders...\n")
+    # P2 reviewer 采纳 (PR #139 fix): hard stderr audit (铁律 43-b 防 FileHandler
+    # zombie 锁导致 logger.warning 写不出). schtask LastResult / 审计员调查能直接看
+    # 到 bypass 时戳 + pid, 不依赖 file logger.
+    print(
+        f"[AUDIT] _execute_sells invoked at {datetime.now().isoformat()} "
+        f"pid={os.getpid()} sellable_count={len(sellable)} "
+        f"confirm_yes={args.confirm_yes}",
+        file=sys.stderr,
+        flush=True,
+    )
     summary = _execute_sells(broker, sellable)
 
     print("\n" + "=" * 80)

@@ -219,7 +219,15 @@ def risk_daily_check_task(self) -> dict:
     # MVP 3.1 批 3 (Session 30 末): CircuitBreakerRule Hybrid adapter 注入 daily engine
     # ADR-010 addendum 方案 C — 包 risk_control_service.check_circuit_breaker_sync
     # 14:30 评估 PMS + CB (两 rule 并列, CB 仅在 level 变化时返 RuleResult)
-    from app.services.risk_wiring import build_circuit_breaker_rule, build_risk_engine
+    #
+    # P1 reviewer 采纳 (PR #139 fix): daily 14:30 与 intraday */5 9-14 共享 dedup,
+    # 防同 (rule_id, strategy, mode, date) 双告警 (尤其 future auto_sell_l4=True 时
+    # intraday 已发卖单, daily 不应再发第二次). dedup 失败 fail-open 允许告警.
+    from app.services.risk_wiring import (
+        IntradayAlertDedup,
+        build_circuit_breaker_rule,
+        build_risk_engine,
+    )
     from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
     strategies = get_live_strategies_for_risk_check()
@@ -239,9 +247,15 @@ def risk_daily_check_task(self) -> dict:
             "total_triggered": 0,
         }
 
+    # P1 reviewer 采纳 (PR #139 fix): dedup 共享 intraday 同一 Redis key namespace —
+    # 同 (rule_id, strategy, mode, date) 跨 daily/intraday 仅允许 1 次告警.
+    dedup = IntradayAlertDedup()
+
     per_strategy_results: list[dict] = []
     total_checked = 0
     total_triggered = 0
+    total_alerted = 0
+    total_dedup_skipped = 0
     all_errored = True  # 若所有 strategy 都异常 → raise retry (Monday 安全兜底)
 
     for strategy in strategies:
@@ -263,24 +277,46 @@ def risk_daily_check_task(self) -> dict:
                 continue
 
             results = engine.run(context)
-            engine.execute(results, context)
+
+            # dedup gate (镜像 intraday_risk_check_task pattern, PR #60 reviewer P1):
+            # 仅 should_alert 查询, mark 在 execute 成功后, 防 execute 失败永久 suppress.
+            to_execute = []
+            skipped = []
+            for r in results:
+                if dedup.should_alert(r.rule_id, strategy_id, execution_mode):
+                    to_execute.append(r)
+                else:
+                    skipped.append(r.rule_id)
+
+            if to_execute:
+                engine.execute(to_execute, context)
+                # mark_alerted AFTER successful execute (PR #60 reviewer P1 HIGH)
+                for r in to_execute:
+                    dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
 
             per_strategy_results.append({
                 "strategy_id": strategy_id,
                 "status": "ok",
                 "checked": len(context.positions),
                 "triggered": len(results),
+                "alerted": len(to_execute),
+                "dedup_skipped": len(skipped),
                 "signals": [
                     {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
-                    for r in results
+                    for r in to_execute
                 ],
+                "dedup_skipped_rules": skipped,
             })
             total_checked += len(context.positions)
             total_triggered += len(results)
+            total_alerted += len(to_execute)
+            total_dedup_skipped += len(skipped)
             all_errored = False
             logger.info(
-                "[Risk] strategy=%s 日检完成: checked=%d triggered=%d",
+                "[Risk] strategy=%s 日检完成: checked=%d triggered=%d alerted=%d "
+                "dedup_skipped=%d",
                 strategy_id, len(context.positions), len(results),
+                len(to_execute), len(skipped),
             )
 
         except Exception as exc:
@@ -313,10 +349,14 @@ def risk_daily_check_task(self) -> dict:
         "strategies_count": len(strategies),
         "total_checked": total_checked,
         "total_triggered": total_triggered,
+        "total_alerted": total_alerted,
+        "total_dedup_skipped": total_dedup_skipped,
     }
     logger.info(
-        "[Risk] 日检完成: strategies=%d total_checked=%d total_triggered=%d mode=%s",
-        len(strategies), total_checked, total_triggered, execution_mode,
+        "[Risk] 日检完成: strategies=%d total_checked=%d total_triggered=%d "
+        "total_alerted=%d total_dedup_skipped=%d mode=%s",
+        len(strategies), total_checked, total_triggered,
+        total_alerted, total_dedup_skipped, execution_mode,
     )
     return summary
 
