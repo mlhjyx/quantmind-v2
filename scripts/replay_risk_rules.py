@@ -39,11 +39,14 @@ import argparse
 import csv
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT / "backend"))
+
+# P3.2 reviewer 采纳: 命名常量替原 magic 99 sentinel.
+_UNKNOWN_SEVERITY_P: int = -1  # severity_level_p int 反查 sentinel
 
 
 @dataclass
@@ -111,6 +114,11 @@ def _load_snapshots(
     Returns:
         dict 按 (trade_date, strategy_id) 分组, 值 = list of position dicts.
         每 position dict: {code, shares, avg_cost, current_price}
+
+    P2.2 reviewer 采纳: Decimal → float 显式精度损失声明.
+      avg_cost / close 来自 NUMERIC, psycopg2 返 Decimal. 转 float 用于 Position
+      契约 (rule 字段是 float). 精度损失对回放 audit (4 位小数表) 无影响,
+      但**禁止用于交易执行** — 执行需 Decimal 精度 (CLAUDE.md 编码规则).
     """
     cur = conn.cursor()
     sql_parts = ["""
@@ -150,8 +158,12 @@ def _load_snapshots(
     return grouped
 
 
-def _count_actual_alerts(conn, start: date, end: date, mode: str) -> int:
-    """实际 risk_event_log 同窗口告警条数 (对比用)."""
+def _count_actual_alerts(conn, start: date, end: date, mode: str) -> int | None:
+    """实际 risk_event_log 同窗口告警条数 (对比用).
+
+    P1.1 reviewer 采纳: 返 int | None (而非 -1 sentinel) — 防 type signature
+    撒谎导致下游 gap 算术错误. None = 查询失败 / 表不存在 / Phase 2 audit 修复前.
+    """
     cur = conn.cursor()
     try:
         # 字段名: triggered_at (实测 schema 2026-04-29, NOT event_time)
@@ -164,7 +176,7 @@ def _count_actual_alerts(conn, start: date, end: date, mode: str) -> int:
     except Exception as e:
         # 表可能不存在或字段不一致 (Phase 2 修复 audit log 之前)
         print(f"  [warn] risk_event_log query 失败: {e}", file=sys.stderr)
-        return -1
+        return None
     finally:
         cur.close()
 
@@ -181,6 +193,11 @@ def _replay(
     sev_p_to_str = {0: "P0", 1: "P1", 2: "P2", 3: "INFO"}
 
     for (td, sid), pos_list in sorted(grouped.items()):
+        # P1.2 reviewer 采纳: 一次性建 code → pos dict, 防 next() StopIteration crash
+        # + 消三次 O(n) 重扫. 若 rule 返回 r.code 不在 pos_list (mock / 格式漂移),
+        # warn 并 skip (而非 silent crash).
+        pos_by_code = {p["code"]: p for p in pos_list}
+
         positions = tuple(
             Position(
                 code=p["code"],
@@ -195,18 +212,30 @@ def _replay(
         ctx = RiskContext(
             strategy_id=sid,
             execution_mode=mode,
-            timestamp=datetime.combine(td, datetime.min.time()),
+            # P3.1 reviewer 采纳: tz-aware UTC datetime 对齐 RiskContext 契约 (铁律 41).
+            # 历史 trade_date 概念是自然日, 用 UTC midnight 占位 — rule 不读 timestamp,
+            # 仅审计层引用. 未来 rule 用 timestamp 时 tz-aware 必正确 (无 silent drift).
+            timestamp=datetime.combine(td, datetime.min.time(), tzinfo=UTC),
             positions=positions,
             portfolio_nav=sum(p["shares"] * p["current_price"] for p in pos_list),
             prev_close_nav=None,
         )
         results = rule.evaluate(ctx)
         for r in results:
-            entry = next(p["avg_cost"] for p in pos_list if p["code"] == r.code)
-            current = next(p["current_price"] for p in pos_list if p["code"] == r.code)
-            shares = next(p["shares"] for p in pos_list if p["code"] == r.code)
-            loss_pct = (current - entry) / entry
-            sev_p = int(r.metrics.get("severity_level_p", 99))
+            pos = pos_by_code.get(r.code)
+            if pos is None:
+                # P1.2 guard: rule 产了不在 input pos_list 的 code (理论上 SingleStock
+                # 不会, 但防 mock / 未来 rule 变 / 格式漂移).
+                print(
+                    f"  [warn] rule returned unknown code {r.code!r} not in pos_list, "
+                    f"skipping (date={td})",
+                    file=sys.stderr,
+                )
+                continue
+            # P2.1 reviewer 采纳: loss_pct 直读 r.metrics (rule 自己的判断), 不重算 —
+            # 防未来 rule 改变分母 (e.g. VWAP basis) 时 audit 与 rule 静默背离.
+            loss_pct = float(r.metrics.get("loss_pct", 0.0))
+            sev_p = int(r.metrics.get("severity_level_p", _UNKNOWN_SEVERITY_P))
             triggers.append(TriggerRow(
                 trade_date=td,
                 strategy_id=sid,
@@ -214,9 +243,9 @@ def _replay(
                 code=r.code,
                 rule_id=r.rule_id,
                 loss_pct=loss_pct,
-                entry_price=entry,
-                current_price=current,
-                shares=shares,
+                entry_price=pos["avg_cost"],
+                current_price=pos["current_price"],
+                shares=pos["shares"],
                 severity=sev_p_to_str.get(sev_p, "?"),
             ))
     return triggers
@@ -224,10 +253,14 @@ def _replay(
 
 def _print_summary(
     triggers: list[TriggerRow],
-    actual_alerts: int,
+    actual_alerts: int | None,
     start: date, end: date, mode: str,
 ) -> None:
-    """stdout 友好打印."""
+    """stdout 友好打印.
+
+    P1.1 reviewer 采纳: actual_alerts 类型从 int 改 int | None, gap 算术
+    必须先 None-check 防 -1 sentinel 误算.
+    """
     print("\n" + "=" * 80)
     print("  Risk Rules Historical Replay — SingleStockStopLossRule")
     print(f"  Window: {start} .. {end} ({mode} mode)")
@@ -246,11 +279,12 @@ def _print_summary(
     for rid, cnt in sorted(by_level.items()):
         print(f"    {rid:35} {cnt:>4}")
 
-    # 实际 vs 回放对比
-    print(f"\n  Actual risk_event_log in window: {actual_alerts}")
-    if actual_alerts == -1:
+    # 实际 vs 回放对比 (P1.1: None 显式 check 防错算)
+    if actual_alerts is None:
+        print("\n  Actual risk_event_log in window: ?")
         print("  → 表查询失败 (Phase 2 audit log 修复前 expected)")
     else:
+        print(f"\n  Actual risk_event_log in window: {actual_alerts}")
         gap = len(triggers) - actual_alerts
         if gap > 0:
             print(f"  → ⚠️  GAP: {gap} 个告警**应触发但未记录** (Phase 2 audit 修复前 expected)")
@@ -293,7 +327,17 @@ def _write_csv(path: Path, triggers: list[TriggerRow]) -> None:
 
 def main() -> int:
     args = _build_arg_parser().parse_args()
-    codes = args.codes.split(",") if args.codes else None
+    # P2.3 reviewer 采纳: 输入 strip 防 "688121.SH, 000012.SZ" (空格) silent 0-match —
+    # 尤其 CI gate `--assert-min-triggers 1` 时静默 fail 误导.
+    codes: list[str] | None = None
+    if args.codes:
+        codes = [c.strip() for c in args.codes.split(",") if c.strip()]
+        bad_suffix = [c for c in codes if not c.endswith((".SH", ".SZ", ".BJ"))]
+        if bad_suffix:
+            print(
+                f"  [warn] --codes 含可疑无后缀码 (期望 .SH/.SZ/.BJ): {bad_suffix}",
+                file=sys.stderr,
+            )
 
     # 延迟 import (单测可不依赖 SDK + 加快错参 fail-fast)
     from app.services.db import get_sync_conn
