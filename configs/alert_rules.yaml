@@ -22,7 +22,11 @@
 #   - PR 加规则必含: dedup_key_template 设计 reasoning + 实测 caller 端可生成场景
 
 rules:
-  # ────────────── P0 真金 (PT 生产) ──────────────
+  # ────────────── P0/P1 真金 intraday_monitor (5min schtask, batch 3.8) ──────────────
+  # batch 3.8 设计: yaml match 只看 (severity, source), 不能区分 kind (qmt_disconnect /
+  # portfolio_drop / emergency_stock_batch / generic). intraday_monitor SDK 路径在代码
+  # 端构造 dedup_key (kind-aware), yaml 仅提供 suppress_minutes — yaml template 占位
+  # 不实际使用 (rule.format_dedup_key 不被调用).
   - name: p0_intraday_portfolio_drop
     match:
       severity: p0
@@ -30,7 +34,20 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 5
-      dedup_key_template: "intraday:portfolio_drop:cb_l{cb_level}"
+      # template 仅作 yaml 一致性占位, 实际 dedup_key 由 intraday_monitor 代码端按
+      # kind 构造: portfolio_drop → "intraday:portfolio_drop:cb_l{cb_level}",
+      # qmt_disconnect → "intraday:qmt_disconnect:{trade_date}", etc.
+      dedup_key_template: "intraday:{kind}:{trade_date}"
+
+  - name: p1_intraday_alerts
+    match:
+      severity: p1
+      source: intraday_monitor
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 30
+      # P1 同上 (代码端 kind-aware dedup_key, yaml 仅 suppress).
+      dedup_key_template: "intraday:{kind}:{trade_date}"
 
   - name: p0_data_quality_pre_signal
     match:

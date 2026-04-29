@@ -20,24 +20,34 @@ ADR-010 过渡期 (Risk Framework MVP 3.1 落地前):
     python scripts/intraday_monitor.py
     python scripts/intraday_monitor.py --force   # 忽略交易时间检查
 """
+from __future__ import annotations
 
 import json
 import os
 import sys
 from contextlib import closing
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT / "backend"))
 
 # xtquant双层嵌套路径修复（append不insert，避免其旧numpy覆盖venv版本）
-_venv = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+_venv = PROJECT_ROOT / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
 if _venv.exists() and str(_venv) not in sys.path:
     sys.path.append(str(_venv))
 
 import structlog
 
+# MVP 4.1 batch 3.8: AlertDispatchError 顶层 import (铁律 33 fail-loud).
+from qm_platform.observability import AlertDispatchError
+
 from app.config import settings
+
+if TYPE_CHECKING:
+    from qm_platform.observability import AlertRulesEngine
 
 logger = structlog.get_logger("intraday_monitor")
 
@@ -148,9 +158,106 @@ def query_qmt_positions() -> tuple[float, list[dict]] | None:
         return None
 
 
-def send_alert(level: str, title: str, content: str) -> None:
-    """发送钉钉告警（直接HTTP调用，不依赖Service层）。"""
+@lru_cache(maxsize=1)
+def _load_rules_engine_cached() -> AlertRulesEngine:
+    """Inner cached loader: only success cached, raises on yaml load failure.
+
+    P1.2 pattern (batch 3.6 + PR #141 P1.1 reviewer 沉淀): lru_cache 不缓存 exception,
+    显式 return type. 失败下次 call 重试, 防 cold-start yaml 缺失永久 silent suppression.
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    return AlertRulesEngine.from_yaml(str(rules_path))
+
+
+def _get_rules_engine() -> AlertRulesEngine | None:
+    """AlertRulesEngine 公共 accessor, 失败 None 不缓存."""
+    try:
+        return _load_rules_engine_cached()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Observability] AlertRulesEngine load failed: {e}, fallback")
+        return None
+
+
+def _send_alert_via_platform_sdk(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "generic",
+    details_extra: dict | None = None,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.8).
+
+    intraday_monitor 5 call sites with kind 区分:
+      - kind="qmt_disconnect": QMT 断连 P0
+      - kind="portfolio_drop": 组合 P0/P1 (cb_level 1/2/3 in details_extra)
+      - kind="emergency_stock_batch": 单股急跌聚合 P1
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 (顶层 send_alert) try/except 包裹.
+
+    设计: yaml match 只看 (severity, source), 不能区分 kind. intraday_monitor
+    SDK 路径在代码端构造 dedup_key (kind-aware), yaml 仅提供 suppress_minutes,
+    避免 portfolio rule cb_level template 对 qmt/emergency 缺 placeholder raise.
+    """
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    severity = Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+
+    details: dict[str, str] = {
+        "trade_date": today_str,
+        "kind": kind,
+        "content": content,
+    }
+    if details_extra:
+        # 转 str 以兼容 dedup_key_template 占位符 (template format() 必字符串)
+        for k, v in details_extra.items():
+            details[k] = str(v) if not isinstance(v, str) else v
+
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="intraday_monitor",
+        details=details,
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    engine = _get_rules_engine()
+
+    # batch 3.8 设计: dedup_key 在代码端按 kind 构造, 不调 rule.format_dedup_key
+    # (yaml 模板 cb_l{cb_level} 对 qmt_disconnect / emergency_stock_batch 缺 placeholder
+    # 会 raise AlertRuleError). yaml 仅提供 suppress_minutes.
+    if kind == "emergency_stock_batch":
+        dedup_key = f"intraday:emergency_stock_batch:{today_str}"
+    elif kind == "emergency_stock":
+        # per-code dedup (legacy 单股 kind, 历史保留兼容)
+        code = details.get("code", "unknown")
+        dedup_key = f"intraday:emergency_stock:{code}:{today_str}"
+    elif kind == "portfolio_drop":
+        cb_level = details.get("cb_level", "0")
+        dedup_key = f"intraday:portfolio_drop:cb_l{cb_level}"
+    elif kind == "qmt_disconnect":
+        dedup_key = f"intraday:qmt_disconnect:{today_str}"
+    else:
+        dedup_key = f"intraday:{kind}:{today_str}"
+
+    if engine is not None:
+        rule = engine.match(alert)
+        suppress_minutes = rule.suppress_minutes if rule else 5
+    else:
+        suppress_minutes = 5
+
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _send_alert_via_legacy_dingtalk(level: str, title: str, content: str) -> None:
+    """legacy 直接 httpx.post (保留向后兼容路径)."""
     import httpx
+
     webhook = settings.DINGTALK_WEBHOOK_URL
     if not webhook:
         logger.warning("DINGTALK_WEBHOOK_URL未配置，跳过告警")
@@ -159,6 +266,42 @@ def send_alert(level: str, title: str, content: str) -> None:
         text = f"[{level}] {title}\n{content}"
         resp = httpx.post(webhook, json={"msgtype": "text", "text": {"content": text}}, timeout=10)
         logger.info(f"[DingTalk] {level} 告警已发送: {resp.status_code}")
+    except Exception as e:
+        logger.error(f"告警发送失败: {e}")
+
+
+def send_alert(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "generic",
+    details_extra: dict | None = None,
+) -> None:
+    """发送钉钉告警 (MVP 4.1 batch 3.8 dispatch).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 顶层
+    catch (intraday_monitor 不阻塞 monitor 主流程, 下次 5min 重试).
+
+    Args:
+        level: P0/P1/P2/INFO (case-insensitive)
+        title: 钉钉 markdown title
+        content: markdown body
+        kind: 告警类别 (qmt_disconnect/portfolio_drop/emergency_stock_batch/generic),
+              SDK path 用于 dedup_key 区分; legacy path 忽略
+        details_extra: 额外字段 (cb_level for portfolio_drop / code for emergency_stock),
+                       SDK path 进 alert.details; legacy path 忽略
+    """
+    try:
+        if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+            _send_alert_via_platform_sdk(level, title, content, kind, details_extra)
+        else:
+            _send_alert_via_legacy_dingtalk(level, title, content)
+    except AlertDispatchError as e:
+        # P0/P1 sink failed — log+continue (intraday_monitor 不阻塞 monitor 主流程)
+        logger.error(
+            f"[Observability] AlertDispatchError sink failed: {e} "
+            f"(intraday_monitor 5min 重试, 不阻断主监控流程)"
+        )
     except Exception as e:
         logger.error(f"告警发送失败: {e}")
 
@@ -349,8 +492,11 @@ def run_monitor(force: bool = False) -> None:
     if result is None:
         alerts.append("QMT连接失败")
         alert_level = "P0"
-        send_alert("P0", f"QMT断连 {now.strftime('%H:%M')}",
-                    "盘中监控: miniQMT连接失败, 无法获取实时市值")
+        send_alert(
+            "P0", f"QMT断连 {now.strftime('%H:%M')}",
+            "盘中监控: miniQMT连接失败, 无法获取实时市值",
+            kind="qmt_disconnect",
+        )
         save_monitor_log(None, prev_mv, None, alert_level, alerts)
         return
 
@@ -367,20 +513,32 @@ def run_monitor(force: bool = False) -> None:
         alert_level = "P0"
         msg = f"组合日内跌{pnl_pct:.2%}, 建议减仓50%"
         alerts.append(msg)
-        send_alert("P0", f"组合暴跌 {now.strftime('%H:%M')}",
-                    f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}")
+        send_alert(
+            "P0", f"组合暴跌 {now.strftime('%H:%M')}",
+            f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
+            kind="portfolio_drop",
+            details_extra={"cb_level": 3, "pnl_pct": f"{pnl_pct:.4f}"},
+        )
     elif pnl_pct <= ALERT_P0_THRESHOLD:
         alert_level = "P0"
         msg = f"组合日内跌{pnl_pct:.2%}"
         alerts.append(msg)
-        send_alert("P0", f"组合大跌 {now.strftime('%H:%M')}",
-                    f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}")
+        send_alert(
+            "P0", f"组合大跌 {now.strftime('%H:%M')}",
+            f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
+            kind="portfolio_drop",
+            details_extra={"cb_level": 2, "pnl_pct": f"{pnl_pct:.4f}"},
+        )
     elif pnl_pct <= ALERT_P1_THRESHOLD:
         alert_level = "P1"
         msg = f"组合日内跌{pnl_pct:.2%}"
         alerts.append(msg)
-        send_alert("P1", f"组合下跌 {now.strftime('%H:%M')}",
-                    f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}")
+        send_alert(
+            "P1", f"组合下跌 {now.strftime('%H:%M')}",
+            f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
+            kind="portfolio_drop",
+            details_extra={"cb_level": 1, "pnl_pct": f"{pnl_pct:.4f}"},
+        )
 
     # 5. 单股急跌检测 (ADR-010 过渡期保险丝, 阈值 -8%, 每股每日限 1 次)
     # review P1 优化: 单 Redis client + 批量 prev_close, 避免 N×3 Redis + N DB
@@ -413,10 +571,19 @@ def run_monitor(force: bool = False) -> None:
         lines = [f"  {s['code']}: {s['pnl_pct']:+.2%}" for s in emergency_stocks]
         summary = f"单股急跌 {len(emergency_stocks)} 只 (阈值 {ALERT_EMERGENCY_STOCK:+.0%}):\n" + "\n".join(lines)
         alerts.append(summary)
+        # batch 3.8: 单股急跌单次 alert 聚合 N 只 (Redis dedup 已在外层 loop 防同股
+        # 多次 — 见 _already_alerted_emergency / _mark_alerted_emergency).
+        # SDK path 用 emergency_stock_batch kind, summary dedup 防同 schtask cycle 多次发.
+        codes_str = ",".join(s["code"] for s in emergency_stocks)
         send_alert(
             "P1",
             f"单股急跌 {now.strftime('%H:%M')}",
             f"ADR-010 过渡期保险丝触发:\n{summary}\n建议: 人工查证基本面, 必要时减仓",
+            kind="emergency_stock_batch",
+            details_extra={
+                "stock_count": len(emergency_stocks),
+                "codes": codes_str,
+            },
         )
 
     # 6. 写入监控日志
