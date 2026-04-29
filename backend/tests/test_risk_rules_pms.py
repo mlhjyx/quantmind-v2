@@ -250,9 +250,13 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
     skip 比例 > 60% + 持仓 > 5 → logger.warning P1.
     """
 
-    def test_warns_when_zombie_pattern_19_of_19_skipped(self, caplog):
-        """LL-081 实战场景: 19 持仓 current_price=0 (Redis market:latest:* 全过期)
-        → logger.warning 触发 (skip ratio = 100% > 60% + 19 > 5).
+    def test_errors_when_all_19_positions_skipped_zombie_pattern(self, caplog):
+        """P0 修批 1 (LL-081 guard 升级 ALL skipped → ERROR):
+        19/19 全 skip = 系统性故障, 升 ERROR (原 WARNING). 走 ALL_SKIPPED 分支
+        而非原 ratio>60% 分支 (skipped == total 优先匹配).
+
+        历史: PR-X2 仅 logger.warning, 但 1 持仓 100% skip 在 >5 守门下 silent
+        bypass. 改 skipped == total → ERROR + 必发钉钉 (notifier 注入版).
         """
         positions = [
             _pos(code=f"60{i:04d}.SH", current=0.0)  # current_price=0 全 skip
@@ -260,17 +264,17 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
         ]
         ctx = _make_context(positions)
 
-        with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
+        with caplog.at_level("ERROR", logger="backend.qm_platform.risk.rules.pms"):
             results = PMSRule().evaluate(ctx)
 
         assert results == []  # 全 skip 无 trigger
-        # 必有 warning log: "PMSRule skip 大比例" + "19/19" + "100%"
-        warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
-        assert any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
-            f"期望 'PMSRule skip 大比例' warning, 实际 logs: {warning_msgs}"
+        # 必有 ERROR log: "ALL ... positions skipped" + "19" + 触及 message
+        error_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        assert any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
+            f"期望 'ALL ... skipped' ERROR, 实际 logs: {error_msgs}"
         )
-        assert any("19/19" in msg for msg in warning_msgs), (
-            f"期望 ratio 19/19 in log, 实际: {warning_msgs}"
+        assert any("19" in msg for msg in error_msgs), (
+            f"期望 count 19 in log, 实际: {error_msgs}"
         )
 
     def test_no_warn_when_few_positions_single_data_issue(self, caplog):
@@ -315,25 +319,40 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
 
     # ─── reviewer code P1-1 + P1-2 + python P2 采纳: boundary precision tests ───
 
-    def test_boundary_exactly_at_min_positions_no_warn(self, caplog):
-        """total=5 (== MIN_POSITIONS, 条件 strict `> 5`) 全 skip → 不告警.
+    def test_boundary_partial_skip_at_5_total_no_warn(self, caplog):
+        """total=5 (== MIN_POSITIONS, 条件 strict `> 5`) PARTIAL skip → 不告警.
 
-        boundary 验证: SKIP_RATIO_MIN_POSITIONS=5 持仓数门槛严格大于, total=5 不触发.
+        P0 批 1 改造 (2026-04-29): 原 5/5 全 skip 测试已被新 ALL_SKIPPED 分支吞,
+        改为 PARTIAL (4 skip + 1 valid) 测试 partial > 60% guard 在 total=5 的边界:
+        ratio 80% > 60% BUT total=5 NOT > 5 严格 → 不命中 partial guard, 不告警.
         """
-        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(5)]
+        # 4 skip + 1 valid = 5 total, 不命中 ALL_SKIPPED, 也不命中 partial guard (total 不 > 5)
+        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(4)]
+        positions.append(_pos(code="600999.SH", entry=100.0, peak=110.0, current=105.0))
         ctx = _make_context(positions)
 
         with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
             PMSRule().evaluate(ctx)
 
         warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        error_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
         assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
-            f"total=5 边界严格 > 不应告警, 实际 logs: {warning_msgs}"
+            f"total=5 边界严格 > 不应触 partial guard, 实际 WARNING: {warning_msgs}"
+        )
+        # 也不应命中 ALL_SKIPPED (4 skip < 5 total)
+        assert not any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
+            f"4/5 partial 不应命中 ALL_SKIPPED, 实际 ERROR: {error_msgs}"
         )
 
-    def test_boundary_just_above_min_positions_warns(self, caplog):
-        """total=6 (> MIN_POSITIONS=5) 全 skip → 告警 (ratio 100% > 60%)."""
-        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(6)]
+    def test_boundary_partial_skip_at_6_total_warns(self, caplog):
+        """total=6 (> MIN_POSITIONS=5) PARTIAL skip 67% > 60% → 告警 (partial guard).
+
+        P0 批 1 改造: 原 6/6 全 skip 现走 ALL_SKIPPED ERROR, 此 boundary test 改为
+        PARTIAL (4 skip + 2 valid = 6 total, ratio 66.7%) 测试 partial > 60% guard 命中.
+        """
+        positions = [_pos(code=f"60{i:04d}.SH", current=0.0) for i in range(4)]
+        positions.append(_pos(code="600998.SH", entry=100.0, peak=110.0, current=105.0))
+        positions.append(_pos(code="600999.SH", entry=100.0, peak=110.0, current=105.0))
         ctx = _make_context(positions)
 
         with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
@@ -341,9 +360,9 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
 
         warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
         assert any("PMSRule skip 大比例" in msg for msg in warning_msgs), (
-            f"total=6 边界严格 > 应告警, 实际 logs: {warning_msgs}"
+            f"total=6 边界严格 > 5 + ratio 67% > 60% 应告警, 实际 logs: {warning_msgs}"
         )
-        assert any("6/6" in msg for msg in warning_msgs)
+        assert any("4/6" in msg for msg in warning_msgs)
 
     def test_boundary_ratio_exactly_60_pct_no_warn(self, caplog):
         """20 持仓 12 skip = 60.0% (== THRESHOLD, strict `>`) → 不告警."""
@@ -380,13 +399,74 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
         )
         assert any("13/20" in msg for msg in warning_msgs)
 
-    def test_empty_portfolio_no_warn_no_crash(self, caplog):
-        """空仓 (total_positions=0) 不告警不 crash (reviewer P2 explicit ZeroDivisionError 防御)."""
+    def test_empty_portfolio_warns_about_zero_positions(self, caplog):
+        """P0 修批 1: 空仓 (total_positions=0) 走新 WARNING 分支 (原静默 return).
+
+        语义升级: 0 positions 在 daily/intraday risk_check 上下文中可能是合法清仓,
+        也可能是 source 加载失败. 升 logger.warning (不 raise) 让运维有 visibility,
+        合法清仓时 noise 可接受 (1 次/日 daily check + 72 次/日 intraday).
+
+        既不应触发 'PMSRule skip 大比例' (原 LL-081 ratio>60% guard),
+        也不应触发 'ALL ... skipped' (新 ALL_SKIPPED 分支), 不 crash.
+        """
         ctx = _make_context([])
 
         with caplog.at_level("WARNING", logger="backend.qm_platform.risk.rules.pms"):
             results = PMSRule().evaluate(ctx)
 
         assert results == []
+        all_msgs = [r.message for r in caplog.records]
+        # 新 WARNING: "0 positions" 提示
         warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
-        assert not any("PMSRule skip 大比例" in msg for msg in warning_msgs)
+        assert any("0 positions" in msg for msg in warning_msgs), (
+            f"期望 '0 positions' WARNING, 实际 logs: {all_msgs}"
+        )
+        # 不命中老 ratio guard
+        assert not any("PMSRule skip 大比例" in msg for msg in all_msgs)
+        # 不命中新 ALL_SKIPPED 分支 (skipped=0 != total=0 — total=0 优先早退)
+        error_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        assert not any("ALL" in msg and "skipped" in msg for msg in error_msgs)
+
+    # ─── P0 批 1 新增: ALL_SKIPPED 分支 (单仓 + 双仓 LL-081 bypass 修复) ───
+
+    def test_errors_when_single_position_all_skipped(self, caplog):
+        """P0 修批 1 (LL-081 bypass 修): 1 持仓 entry_price=0 → ERROR + 钉钉 P0.
+
+        实战场景 (4-29 实测): PT 全清仓后剩 1 股 (688121 卓然 -29%), .env=paper
+        但持仓数据 live 命名空间 → enricher.load_entry_prices('paper') 0 行 →
+        entry_price=0.0 → silent skip. 原 LL-081 guard `total_positions > 5`
+        不命中 (1 不 > 5), 完全 silent. 修复: skipped == total → ERROR.
+        """
+        # 1 持仓 entry_price=0 (命名空间漂移典型症状)
+        pos = _pos(code="688121.SH", entry=0.0, peak=0.0, current=10.89)
+        ctx = _make_context([pos])
+
+        with caplog.at_level("ERROR", logger="backend.qm_platform.risk.rules.pms"):
+            results = PMSRule().evaluate(ctx)
+
+        assert results == []
+        error_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        assert any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
+            f"1 持仓全 skip 必触 ERROR (LL-081 bypass 修), 实际 logs: {error_msgs}"
+        )
+        assert any("1" in msg for msg in error_msgs), (
+            f"期望 count 1 in log, 实际: {error_msgs}"
+        )
+
+    def test_errors_when_two_positions_all_skipped(self, caplog):
+        """P0 修批 1: 2 持仓全 skip → ERROR (覆盖 1 < total <= 5 区间, 原 guard miss)."""
+        positions = [
+            _pos(code="600519.SH", entry=0.0),
+            _pos(code="600028.SH", current=0.0),
+        ]
+        ctx = _make_context(positions)
+
+        with caplog.at_level("ERROR", logger="backend.qm_platform.risk.rules.pms"):
+            results = PMSRule().evaluate(ctx)
+
+        assert results == []
+        error_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        assert any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
+            f"2 持仓全 skip 必触 ERROR, 实际 logs: {error_msgs}"
+        )
+        assert any("2" in msg for msg in error_msgs)
