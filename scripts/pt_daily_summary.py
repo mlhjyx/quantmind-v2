@@ -12,6 +12,7 @@ Phase 3 自动化 (2026-04-16): 每日 17:35 由 Task Scheduler 触发。
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import sys
 from datetime import date, datetime
@@ -30,6 +31,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
 from dotenv import load_dotenv  # noqa: E402
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
@@ -231,8 +233,64 @@ def _format_report(trade_date: date, data: dict) -> str:
     return "\n".join(lines)
 
 
-def _send_dingtalk(title: str, content: str) -> bool:
-    """发送 DingTalk。"""
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.x pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    try:
+        return AlertRulesEngine.from_yaml(PROJECT_ROOT / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(title: str, content: str, trade_date: date) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.4)."""
+    from datetime import UTC
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    trade_date_str = str(trade_date)
+    alert = Alert(
+        title=f"[P1] {title}",
+        severity=Severity.P1,  # PT 日报固定 P1 (信息播报, 非紧急)
+        source="pt_daily_summary",
+        details={
+            "trade_date": trade_date_str,
+            "content": content,
+        },
+        trade_date=trade_date_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"pt_daily_summary:{trade_date_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s", result, dedup_key
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(title: str, content: str) -> bool:
+    """旧 path: dingtalk dispatcher 直调 (fallback, settings flag=False 时走)."""
     try:
         from app.config import settings
         from app.services.dispatchers.dingtalk import send_markdown_sync
@@ -251,8 +309,23 @@ def _send_dingtalk(title: str, content: str) -> bool:
             keyword=keyword,
         )
     except Exception as e:
-        logger.error("[DingTalk] 发送失败: %s", e)
+        logger.error("[DingTalk] 发送失败 (legacy): %s", e)
         return False
+
+
+def _send_dingtalk(title: str, content: str, trade_date: date | None = None) -> bool:
+    """发送 DingTalk (MVP 4.1 batch 3.4 dispatch).
+
+    默认走 PlatformAlertRouter, 旧 dingtalk 直调路径保留作 fallback.
+    AlertDispatchError 必传播 (caller catch).
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        td = trade_date or date.today()
+        _send_alert_via_platform_sdk(title, content, td)
+        return True
+    return _send_alert_via_legacy_dingtalk(title, content)
 
 
 def run_daily_summary(trade_date: date, dry_run: bool = False) -> dict:
@@ -281,8 +354,14 @@ def run_daily_summary(trade_date: date, dry_run: bool = False) -> dict:
         if not dry_run:
             nav = data["nav_info"]
             ret_str = f"{nav['daily_return']:+.2%}" if nav else "N/A"
-            _send_dingtalk(f"PT日报 {trade_date} {ret_str}", report)
-            logger.info("[DingTalk] 日报已发送")
+            # batch 3.4 (P1.1 模式): AlertDispatchError 单 catch
+            try:
+                _send_dingtalk(f"PT日报 {trade_date} {ret_str}", report, trade_date)
+                logger.info("[DingTalk] 日报已发送")
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — 日报未送达, 主流程继续: %s", e
+                )
         else:
             logger.info("[DRY-RUN] 不发送 DingTalk")
 

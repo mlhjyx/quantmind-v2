@@ -109,6 +109,17 @@ rules:
       suppress_minutes: 60
       dedup_key_template: "pt_daily_summary:{trade_date}"
 
+  - name: p0_pt_watchdog_stale
+    match:
+      severity: p0
+      source: pt_watchdog
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.4: pt_watchdog send_alert 全 P0 (PT 真金链路异常). 1 message per
+      # script run, summary dedup 与 batch 3.x 一致, 防同日多次空跑风暴.
+      dedup_key_template: "pt_watchdog:summary:{trade_date}"
+
   - name: p1_pt_watchdog_stale
     match:
       severity: p1
@@ -116,7 +127,7 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 30
-      dedup_key_template: "pt_watchdog:{check}"
+      dedup_key_template: "pt_watchdog:summary:{trade_date}"
 
   - name: p0_ic_monitor_reversal
     match:
