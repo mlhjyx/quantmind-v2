@@ -62,9 +62,13 @@ import sys
 import traceback
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+if TYPE_CHECKING:
+    from qm_platform.observability import AlertRulesEngine
 
 # 铁律 41: 内部存储 UTC, 展示层转 Asia/Shanghai. 用于 DingTalk 告警显示.
 # PR #91 reviewer LOW 采纳: Windows 系统 IANA tz 数据缺失时 ZoneInfo 会 raise
@@ -112,9 +116,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(BACKEND_DIR / ".env")
 
 # MVP 4.1 batch 3.6: AlertDispatchError 顶层 import (避免 try-import 包裹掩盖 bug,
-# 铁律 33 fail-loud).
-from functools import lru_cache  # noqa: E402
-
+# 铁律 33 fail-loud). P2.1 reviewer 采纳: lru_cache 已移至 stdlib 块 (line 65).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 # ─── Constants ──────────────────────────────────────────────────────────────
@@ -670,16 +672,28 @@ def _build_alert_body(report: HealthReport, reason: str) -> tuple[str, str]:
 
 
 @lru_cache(maxsize=1)
-def _get_rules_engine():
-    """AlertRulesEngine 单例 (lru_cache 防 yaml 多次 reload).
+def _load_rules_engine_cached():
+    """Inner cached loader: only success cached, raises on yaml load failure.
 
-    cache_clear 入口供单测使用 (避免 cross-test pollution).
+    P1.2 reviewer 采纳: lru_cache 不缓存 exception (Python lang spec). 失败时
+    异常向上传播, 不会被 memoize, 下次 call 重试. 防 cold-start yaml 缺失场景下
+    永久 silent suppression (None 被缓存 → 进程生命周期内告警全 fail).
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    return AlertRulesEngine.from_yaml(str(rules_path))
+
+
+def _get_rules_engine() -> AlertRulesEngine | None:
+    """AlertRulesEngine 公共 accessor (lru_cache 防 yaml 多次 reload).
+
+    P1.1 reviewer 采纳: 显式 return type, 让 caller `if engine is not None` guard
+    可被 mypy 识别.
+    P1.2 reviewer 采纳: 失败 None 不缓存 — 下次调用重新尝试 load (yaml 可能恢复).
     """
     try:
-        from qm_platform.observability import AlertRulesEngine
-
-        rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
-        return AlertRulesEngine.from_yaml(str(rules_path))
+        return _load_rules_engine_cached()
     except Exception as e:  # noqa: BLE001
         logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
         return None

@@ -19,11 +19,15 @@ from qm_platform.observability import Alert, AlertDispatchError  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _clear_lru_caches():
-    rwf_mod._get_rules_engine.cache_clear()
-    svc_mod._get_rules_engine.cache_clear()
+    """P1.2 reviewer 采纳后: cache 在 _load_rules_engine_cached (非 _get_rules_engine).
+
+    autouse 是唯一 clear 入口, 防 cross-test pollution + 防失败 None 误以为缓存命中.
+    """
+    rwf_mod._load_rules_engine_cached.cache_clear()
+    svc_mod._load_rules_engine_cached.cache_clear()
     yield
-    rwf_mod._get_rules_engine.cache_clear()
-    svc_mod._get_rules_engine.cache_clear()
+    rwf_mod._load_rules_engine_cached.cache_clear()
+    svc_mod._load_rules_engine_cached.cache_clear()
 
 
 # ─────────────────────────── rolling_wf ───────────────────────────
@@ -124,7 +128,7 @@ def test_rwf_sdk_dispatch_error_propagates():
 
 
 def test_rwf_get_rules_engine_caches():
-    rwf_mod._get_rules_engine.cache_clear()
+    rwf_mod._load_rules_engine_cached.cache_clear()
     with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_fy:
         mock_fy.return_value = MagicMock()
         rwf_mod._get_rules_engine()
@@ -132,19 +136,48 @@ def test_rwf_get_rules_engine_caches():
         assert mock_fy.call_count == 1
 
 
+def test_rwf_get_rules_engine_does_not_cache_failure():
+    """P1.2 regression: yaml load 失败时 None 不被缓存, 下次 call 重新尝试 load.
+
+    防 cold-start yaml 缺失场景下永久 silent suppression (None 缓存 → 进程内告警全 fail).
+    """
+    rwf_mod._load_rules_engine_cached.cache_clear()
+    with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_fy:
+        mock_fy.side_effect = [
+            FileNotFoundError("yaml missing"),
+            MagicMock(),  # 第二次成功
+        ]
+        first = rwf_mod._get_rules_engine()
+        second = rwf_mod._get_rules_engine()
+        assert first is None
+        assert second is not None
+        assert mock_fy.call_count == 2
+
+
 # ─────────────────────────── services_healthcheck ───────────────────────────
 
 
 def _make_health_report(status: str = "degraded", failures=None):
-    """构造 HealthReport mock (避免触发真 sc/Redis 调用)."""
-    report = MagicMock(spec=svc_mod.HealthReport)
-    report.status = status
-    report.failures = failures or ["QuantMind-CeleryBeat: STOPPED"]
-    report.timestamp_utc = "2026-04-29T03:00:00+00:00"
-    report.services = []
-    report.beat_heartbeat = None
-    report.redis_freshness = []
-    return report
+    """构造 HealthReport instance (避免触发真 sc/Redis 调用).
+
+    P2.4 reviewer 部分采纳: 用真 HealthReport instance (非 MagicMock spec_set).
+    HealthReport 是 @dataclass, MagicMock(spec_set=HealthReport) 不识别 dataclass
+    field 为可写 attribute (导致 'Mock object has no attribute failures'). 用真
+    instance 同样满足 reviewer 意图: attribute typo (e.g. report.failure) 立即
+    raise AttributeError, 不会 silent MagicMock fallback.
+
+    Note: HealthReport.status 是 @property (failures 派生), status 入参用 failures
+    控制: status='ok' → failures=[]; status='degraded' → failures=至少 1 项.
+    """
+    if failures is None:
+        failures = [] if status == "ok" else ["QuantMind-CeleryBeat: STOPPED"]
+    return svc_mod.HealthReport(
+        timestamp_utc="2026-04-29T03:00:00+00:00",
+        services=[],
+        beat_heartbeat=None,
+        redis_freshness=[],
+        failures=list(failures),
+    )
 
 
 def test_svc_send_alert_sdk_path_when_flag_true():
@@ -241,12 +274,27 @@ def test_svc_sdk_dispatch_error_propagates():
 
 
 def test_svc_get_rules_engine_caches():
-    svc_mod._get_rules_engine.cache_clear()
+    svc_mod._load_rules_engine_cached.cache_clear()
     with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_fy:
         mock_fy.return_value = MagicMock()
         svc_mod._get_rules_engine()
         svc_mod._get_rules_engine()
         assert mock_fy.call_count == 1
+
+
+def test_svc_get_rules_engine_does_not_cache_failure():
+    """P1.2 regression: services_healthcheck yaml load 失败 None 不缓存."""
+    svc_mod._load_rules_engine_cached.cache_clear()
+    with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_fy:
+        mock_fy.side_effect = [
+            FileNotFoundError("yaml missing"),
+            MagicMock(),
+        ]
+        first = svc_mod._get_rules_engine()
+        second = svc_mod._get_rules_engine()
+        assert first is None
+        assert second is not None
+        assert mock_fy.call_count == 2
 
 
 def test_svc_build_alert_body_renders_failures():
