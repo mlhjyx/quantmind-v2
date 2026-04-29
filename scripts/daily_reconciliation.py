@@ -309,7 +309,9 @@ def _send_alert_via_platform_sdk(level: str, title: str, content: str) -> None:
     from qm_platform._types import Severity
     from qm_platform.observability import Alert, get_alert_router
 
-    severity_value = level.lower()
+    # P2.1 reviewer 采纳: 与 factor_health_daily 一致防 unknown level (e.g. 'WARN')
+    # 触发 ValueError → schtask FATAL. 显式 fallback 'p1' 安全.
+    severity_value = level.lower() if level.lower() in {"p0", "p1", "p2", "info"} else "p1"
     severity = Severity(severity_value)
     today_str = str(date.today())
 

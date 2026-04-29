@@ -354,15 +354,34 @@ def _send_alert_via_platform_sdk(
 
 
 def _send_alert_unified(
-    level: str, title: str, content: str, trade_date: date, conn
+    level: str,
+    title: str,
+    content: str,
+    trade_date: date,
+    conn,  # noqa: ANN001 — psycopg2.extensions.connection (避免顶部硬依赖)
 ) -> None:
     """dispatch SDK vs legacy notification_service.send_alert.
 
+    P2.3 reviewer 采纳: conn 仅 legacy path 用 (notification_service.send_alert 写
+    notifications 表). SDK path 忽略 conn (Platform SDK 自管 PG dedup 表). conn 保留
+    向后兼容签名, 不加显式类型注解 (避免顶部 import psycopg2 拉慢 module load —
+    factor_health_daily standalone schtask 启动敏感).
+
     settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 必传播.
+
+    Raises:
+        ValueError: legacy path conn=None (notification_service 需 conn 写 DB)
     """
     if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        # SDK path: conn 不需要 (Platform SDK 自管 PG dedup), 直接忽略
         _send_alert_via_platform_sdk(level, title, content, trade_date)
     else:
+        # legacy path: conn 必须非 None (写 notifications 表)
+        if conn is None:
+            raise ValueError(
+                "legacy notification_service.send_alert path requires conn (写 notifications 表). "
+                "切回 SDK path: settings.OBSERVABILITY_USE_PLATFORM_SDK=True"
+            )
         _legacy_send_alert(
             level, title, content,
             settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
