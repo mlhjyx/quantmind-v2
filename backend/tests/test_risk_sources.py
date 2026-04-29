@@ -68,6 +68,43 @@ class TestBuildPositions:
         )
         assert result[0].current_price == 0.0
 
+    # Phase 1.5a (Session 44): entry_date contract tests
+    def test_entry_date_from_dict(self):
+        """entry_dates 提供 → Position.entry_date 填入."""
+        from datetime import date as date_t
+
+        ed = date_t(2026, 4, 15)
+        result = build_positions(
+            shares_dict={"A.SH": 100},
+            entry_prices={"A.SH": 10.0},
+            peak_prices={"A.SH": 12.0},
+            current_prices={"A.SH": 11.0},
+            entry_dates={"A.SH": ed},
+        )
+        assert result[0].entry_date == ed
+
+    def test_entry_date_missing_in_dict_returns_none(self):
+        """entry_dates 缺该 code → Position.entry_date=None (rule 应 skip)."""
+        result = build_positions(
+            shares_dict={"A.SH": 100},
+            entry_prices={"A.SH": 10.0},
+            peak_prices={"A.SH": 12.0},
+            current_prices={"A.SH": 11.0},
+            entry_dates={"OTHER.SZ": __import__("datetime").date(2026, 1, 1)},
+        )
+        assert result[0].entry_date is None
+
+    def test_entry_date_param_omitted_returns_none(self):
+        """entry_dates 参数省略 (旧调用方) → 全部 Position.entry_date=None 向后兼容."""
+        result = build_positions(
+            shares_dict={"A.SH": 100, "B.SZ": 200},
+            entry_prices={"A.SH": 10.0, "B.SZ": 20.0},
+            peak_prices={"A.SH": 12.0, "B.SZ": 22.0},
+            current_prices={"A.SH": 11.0, "B.SZ": 21.0},
+            # entry_dates omitted → defaults to None
+        )
+        assert all(p.entry_date is None for p in result)
+
 
 # ---------- QMTPositionSource ----------
 

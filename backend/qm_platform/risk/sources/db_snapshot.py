@@ -10,7 +10,13 @@ Primary / fallback 区别只在 shares 来源, 价格+peak+entry 从 DB 共享.
 from __future__ import annotations
 
 from ..interface import Position, PositionSource, PositionSourceError
-from ._enricher import PriceReader, build_positions, load_entry_prices, load_peak_prices
+from ._enricher import (
+    PriceReader,
+    build_positions,
+    load_entry_dates,
+    load_entry_prices,
+    load_peak_prices,
+)
 
 
 class DBPositionSource(PositionSource):
@@ -52,6 +58,12 @@ class DBPositionSource(PositionSource):
             codes = list(shares_dict.keys())
             entry_prices = load_entry_prices(conn, strategy_id, execution_mode, codes)
             peak_prices = load_peak_prices(conn, strategy_id, execution_mode, codes)
+            # Phase 1.5a (Session 44): entry_date 用于 future PositionHoldingTimeRule
+            # + NewPositionVolatilityRule. 不影响现有 PMS / SingleStockStopLoss.
+            entry_dates = load_entry_dates(conn, strategy_id, execution_mode, codes)
 
         current_prices = self._price_reader.get_prices(codes)
-        return build_positions(shares_dict, entry_prices, peak_prices, current_prices)
+        return build_positions(
+            shares_dict, entry_prices, peak_prices, current_prices,
+            entry_dates=entry_dates,
+        )
