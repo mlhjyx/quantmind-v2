@@ -308,6 +308,15 @@ class TestBuildReport:
         beat_file = tmp_path / "celerybeat-schedule.dat"
         beat_file.write_bytes(b"x")
         monkeypatch.setattr("services_healthcheck.BEAT_SCHEDULE_FILE", beat_file)
+
+        # LL-081 PR-X3: build_report 调 check_redis_freshness() 真打 Redis,
+        # PT 暂停期 portfolio:nav stale → degraded. 单元测试不依赖外部 Redis 状态,
+        # patch 返空列表 = "无 Redis check"; freshness 路径独立 by tests/test_check_redis_freshness*.
+        # 2026-04-30 治理债清理 (LL-XXX audit 一阶概括必须实测纠错): batch_1.5 STATUS_REPORT
+        # 描述此 fail 为 "env-flake (PT 暂停 → Redis stale)" 真因符合, 修法采纳 prompt Q3 (a)
+        # monkey-patch check_redis_freshness 返 [].
+        monkeypatch.setattr("services_healthcheck.check_redis_freshness", lambda: [])
+
         r = build_report()
         assert r.status == "ok"
         assert r.failures == []

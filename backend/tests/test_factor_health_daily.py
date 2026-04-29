@@ -191,12 +191,20 @@ class TestFactorHealthIntegration:
             "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
         )
 
-    @patch("factor_health_daily.send_alert")
+    @patch("factor_health_daily._send_alert_unified")
     def test_dry_run_normal_date(self, mock_send_alert) -> None:
         """场景11: --date 2026-03-19 --dry-run正常运行.
 
-        `@patch send_alert` 防 integration test 运行时真发钉钉污染生产告警通道
+        `@patch _send_alert_unified` 防 integration test 运行时真发钉钉污染生产告警通道
         (2026-04-24 事故: test 未 mock → 每次 pytest 全量跑触发 "因子健康warning 2026-03-19" P1).
+
+        2026-04-30 治理债清理 (LL-XXX audit 一阶概括必须实测纠错 第 N 次):
+        - batch_1.5 STATUS_REPORT 误判此 fail 为 "scheduler_task_log 状态依赖"
+        - 第 1 轮实测纠错: 真因 = mock target 错 (script L48 重命名 send_alert→_legacy_send_alert)
+        - 第 2 轮实测纠错: 改成 _legacy_send_alert 后 mock.called=False, 因 settings.OBSERVABILITY_USE_PLATFORM_SDK=True
+          script 真走 _send_alert_via_platform_sdk (Platform SDK), legacy 永不调用
+        - 终极修法: patch dispatch 入口 _send_alert_unified (无论内部 SDK or legacy 均被截), 沿用 batch_1.5
+          4 项挑战 #1 同质修法 (mock 范围扩到不依赖 path 选择)
         """
         conn = self._get_test_conn()
         try:
@@ -241,11 +249,12 @@ class TestFactorHealthIntegration:
             else:
                 mock_send_alert.assert_not_called()
 
-    @patch("factor_health_daily.send_alert")
+    @patch("factor_health_daily._send_alert_unified")
     def test_db_write_scheduler_task_log(self, mock_send_alert) -> None:
         """场景16: 非dry-run写入scheduler_task_log后回滚.
 
-        `@patch send_alert` 与 test_dry_run_normal_date 同理, 防污染生产钉钉.
+        `@patch _send_alert_unified` 与 test_dry_run_normal_date 同理, 防污染生产钉钉.
+        2026-04-30 治理债清理 mock target 修正 (见 test_dry_run_normal_date docstring 完整故事).
         """
         conn = self._get_test_conn()
         try:
