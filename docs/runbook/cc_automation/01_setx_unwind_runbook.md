@@ -28,7 +28,9 @@ D2.3 修复 FastAPI 启动失败 (`NamespaceMismatchError`) 的临时手段:
 
 ## 2. 真金 0 风险确认 (前置, 不通过立即 STOP)
 
-**所有命令以 PowerShell 5.1 在 Windows 11 主机执行** (项目标准, .venv Python 通过 `.venv\Scripts\python.exe` 调).
+**所有命令以 PowerShell 7.6+ (user 默认 `pwsh`, 实测 7.6.1) 或兼容 Windows PowerShell 5.1 (`powershell.exe`, 系统自带 5.1.26100.8115) 在 Windows 11 主机执行** — 本 runbook 用的命令 (`Start-Sleep` / `[Environment]::SetEnvironmentVariable` / `& 'path'` / `Select-String` / 等) 在两版本均兼容. .venv Python 通过 `.venv\Scripts\python.exe` 调.
+
+> 2026-04-30 实测纠错: 原写 "PowerShell 5.1" 是基于"Windows 项目默认"假设, 实测 user 装 PowerShell 7.6.1 为默认. LL-XXX (audit 一阶概括必须实测纠错): 写 runbook 时假设 shell 版本应实测 `powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"` + `pwsh -NoProfile ...`, 不凭 "Windows 默认" 印象.
 
 | # | 检查 | 命令 (PowerShell) | 期望 |
 |---|------|------|------|
