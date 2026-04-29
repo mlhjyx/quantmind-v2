@@ -22,8 +22,14 @@ def _clear_lru_cache():
     mfi_mod._get_rules_engine.cache_clear()
 
 
-def _transition(factor="bp_ratio", new_state="warning"):
-    return {"factor_name": factor, "new_state": new_state, "old_state": "active"}
+def _transition(factor="bp_ratio", to_status="warning"):
+    """P1 reviewer 采纳: 实际键是 to_status (evaluate_transitions line 271/286/296/310)."""
+    return {
+        "factor_name": factor,
+        "to_status": to_status,
+        "from_status": "active",
+        "reason": "test",
+    }
 
 
 # ─────────────────────────── send_dingtalk dispatch ───────────────────────────
@@ -70,7 +76,7 @@ def test_sdk_severity_p0_when_retired_transition():
     ):
         mfi_mod._send_alert_via_platform_sdk(
             "report",
-            [_transition(new_state="warning"), _transition(new_state="retired")],
+            [_transition(to_status="warning"), _transition(to_status="retired")],
         )
 
     fired_alert: Alert = mock_router.fire.call_args.args[0]
@@ -87,10 +93,40 @@ def test_sdk_severity_p1_when_only_warning():
         patch("qm_platform.observability.get_alert_router", return_value=mock_router),
         patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
     ):
-        mfi_mod._send_alert_via_platform_sdk("report", [_transition(new_state="warning")])
+        mfi_mod._send_alert_via_platform_sdk("report", [_transition(to_status="warning")])
 
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P1
+
+
+def test_sdk_severity_real_evaluate_transitions_dict_format():
+    """P1 reviewer 真 bug regression: evaluate_transitions 实际产 to_status, 不是 new_state."""
+    mock_router = MagicMock()
+    mock_router.fire = MagicMock(return_value="sent")
+    mock_engine = MagicMock()
+    mock_engine.match = MagicMock(return_value=None)
+
+    # 模拟 evaluate_transitions line 286 实际产物 (确切键名)
+    real_transitions = [
+        {
+            "factor_name": "bp_ratio",
+            "from_status": "warning",
+            "to_status": "retired",
+            "reason": "consecutive_negative_ic_6m",
+        }
+    ]
+
+    with (
+        patch("qm_platform.observability.get_alert_router", return_value=mock_router),
+        patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
+    ):
+        mfi_mod._send_alert_via_platform_sdk("report", real_transitions)
+
+    fired_alert: Alert = mock_router.fire.call_args.args[0]
+    # 旧代码 read t.get("new_state") 返 None → INFO. 修后 read to_status → P0.
+    assert fired_alert.severity == Severity.P0, (
+        f"evaluate_transitions to_status='retired' must yield P0, got {fired_alert.severity}"
+    )
 
 
 def test_sdk_severity_info_when_no_transitions():
@@ -137,7 +173,7 @@ def test_sdk_dispatch_error_propagates():
         patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
         pytest.raises(AlertDispatchError, match="sink failed"),
     ):
-        mfi_mod._send_alert_via_platform_sdk("report", [_transition(new_state="retired")])
+        mfi_mod._send_alert_via_platform_sdk("report", [_transition(to_status="retired")])
 
 
 # ─────────────────────────── legacy path ───────────────────────────
@@ -148,6 +184,26 @@ def test_legacy_no_webhook_skips():
 
     with patch.object(app_settings, "DINGTALK_WEBHOOK_URL", ""):
         mfi_mod._send_alert_via_legacy_dingtalk("report", [])  # silent skip
+
+
+def test_send_dingtalk_caller_catches_alert_dispatch_error():
+    """P3 reviewer 采纳: AlertDispatchError 必由 send_dingtalk 调用方 catch.
+
+    main() line 605-610 应 try/except, 测试验证 send_dingtalk 自身仍 raise (不 swallow),
+    caller 责任 catch. 覆盖 batch 3.1 P1.1 模式 — 防意外 silent swallow.
+    """
+    from app.config import settings as app_settings
+
+    with (
+        patch.object(app_settings, "OBSERVABILITY_USE_PLATFORM_SDK", True),
+        patch.object(
+            mfi_mod,
+            "_send_alert_via_platform_sdk",
+            side_effect=AlertDispatchError("sink failed"),
+        ),
+        pytest.raises(AlertDispatchError, match="sink failed"),
+    ):
+        mfi_mod.send_dingtalk("report", [_transition(to_status="retired")])
 
 
 def test_get_rules_engine_caches_result():
