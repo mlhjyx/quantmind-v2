@@ -24,6 +24,7 @@ import logging
 import sys
 import time
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +40,10 @@ if str(BACKEND_DIR) not in sys.path:
 from dotenv import load_dotenv
 
 load_dotenv(BACKEND_DIR / ".env")
+
+# MVP 4.1 batch 3.6: AlertDispatchError 顶层 import (避免 try-import 包裹掩盖 bug,
+# 铁律 33 fail-loud).
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -198,8 +203,83 @@ def _classify_result(wf_result: dict) -> dict:
     }
 
 
-def _send_dingtalk(title: str, content: str, level: str = "P1") -> bool:
-    """发送 DingTalk 告警。"""
+@lru_cache(maxsize=1)
+def _get_rules_engine():
+    """AlertRulesEngine 单例 (lru_cache 防 yaml 多次 reload).
+
+    cache_clear 入口供单测使用 (避免 cross-test pollution).
+    """
+    try:
+        from qm_platform.observability import AlertRulesEngine
+
+        rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+        return AlertRulesEngine.from_yaml(str(rules_path))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(title: str, content: str, level: str = "P1") -> bool:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.6).
+
+    rolling_wf 月度告警 (1st of month 02:00). level 取自 _classify_result —
+    "P1" (ALERT >30% Sharpe 下降) 或 "WARN" (15-30% 下降). Severity 映射:
+      P1 → Severity.P1, WARN → Severity.P2 (less severe), 其他 → fallback p1.
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 try/except 包裹.
+
+    Returns:
+      True 钉钉接受; False channel 返 False (例如 webhook 未配置 + sink_failed).
+    """
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    # level 映射 → Severity. P2.1 reviewer 模式: unknown level fallback p1.
+    level_norm = level.lower() if level else "p1"
+    if level_norm == "warn":
+        severity = Severity.P2
+    elif level_norm in {"p0", "p1", "p2", "info"}:
+        severity = Severity(level_norm)
+    else:
+        severity = Severity.P1
+
+    today_str = str(date.today())
+    full_content = f"## 📊 {title}\n\n{content}\n\n> 来源: rolling_wf"
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="rolling_wf",
+        details={
+            "trade_date": today_str,
+            "level": level,
+            "content": full_content,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    engine = _get_rules_engine()
+    if engine is not None:
+        rule = engine.match(alert)
+        dedup_key = (
+            rule.format_dedup_key(alert)
+            if rule
+            else f"rolling_wf:summary:{today_str}"
+        )
+        suppress_minutes = rule.suppress_minutes if rule else 1440
+    else:
+        dedup_key = f"rolling_wf:summary:{today_str}"
+        suppress_minutes = 1440
+
+    result = router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+    return result == "sent"
+
+
+def _send_alert_via_legacy_dingtalk(title: str, content: str, level: str = "P1") -> bool:
+    """legacy 直接调 send_markdown_sync (保留向后兼容路径)。"""
     try:
         from app.config import settings
         from app.services.dispatchers.dingtalk import send_markdown_sync
@@ -220,6 +300,19 @@ def _send_dingtalk(title: str, content: str, level: str = "P1") -> bool:
     except Exception as e:
         logger.error("[DingTalk] 发送失败: %s", e)
         return False
+
+
+def _send_dingtalk(title: str, content: str, level: str = "P1") -> bool:
+    """发送 DingTalk 告警 (MVP 4.1 batch 3.6 dispatch).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 必传播
+    (铁律 33 fail-loud), legacy ImportError/连接失败 仍 swallow 返 False.
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        return _send_alert_via_platform_sdk(title, content, level)
+    return _send_alert_via_legacy_dingtalk(title, content, level)
 
 
 def run_rolling_wf(dry_run: bool = False, skip_wf: bool = False, force: bool = False) -> dict:
@@ -273,7 +366,18 @@ def run_rolling_wf(dry_run: bool = False, skip_wf: bool = False, force: bool = F
             f"Fold 详情:\n{fold_lines}\n\n"
             f"> 基线: WF OOS Sharpe={BASELINE_SHARPE} (2026-04-12)"
         )
-        _send_dingtalk(f"Rolling WF {classification['label']}", content, classification["level"])
+        # batch 3.6 dispatch (P1.1 模式: AlertDispatchError 单 catch, fail-loud).
+        try:
+            _send_dingtalk(
+                f"Rolling WF {classification['label']}",
+                content,
+                classification["level"],
+            )
+        except AlertDispatchError as e:
+            logger.error(
+                "[Observability] AlertDispatchError 月度告警 sink 失败: %s "
+                "(rolling_wf 月度任务, 非紧急, 不阻断 schtask)", e,
+            )
 
     return {
         "status": "success",

@@ -223,15 +223,53 @@ rules:
       suppress_minutes: 30
       dedup_key_template: "daily_reconciliation:summary:{trade_date}"
 
+  # ────────────── P0 / P1 / P2 services_healthcheck (LL-074 + LL-081) ──────────────
+  - name: p0_services_healthcheck_critical
+    match:
+      severity: p0
+      source: services_healthcheck
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.6: services_healthcheck 自带 file-state dedup
+      # (logs/services_healthcheck_state.json), PG 层只防 cross-process 重复触发.
+      # status (ok / degraded) 进 dedup_key 让状态转移 (degraded → ok recovery /
+      # ok → degraded transition) 不被 5min suppress 阻塞 — 状态机告警与 batch
+      # 3.x summary 模式略偏离, 因 services_healthcheck 是状态机类告警 (非 daily
+      # summary), 状态转移信号必须保留. trade_date 防同日重复, status 防同状态再 fire.
+      dedup_key_template: "services_healthcheck:{status}:{trade_date}"
+
+  # legacy 保留 P2 fallback (degraded 但 script-level dedup window 内 silent 补发)
+  - name: p2_services_healthcheck_degraded
+    match:
+      severity: p2
+      source: services_healthcheck
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "services_healthcheck:{status}:{trade_date}"
+
   # ────────────── P2 研究 / GP / 长任务 ──────────────
+  - name: p1_rolling_wf_regression
+    match:
+      severity: p1
+      source: rolling_wf
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 1440  # 24h, 月度任务 (1st of month 02:00) dedup 24h 安全
+      # batch 3.6: rolling_wf 1st of month 02:00 触发, 1 message per run
+      # (P1=ALERT >30% Sharpe 下降 / WARN=15-30% 下降 → SDK Severity.P2).
+      # summary:{trade_date} 与 batch 3.x 模式一致.
+      dedup_key_template: "rolling_wf:summary:{trade_date}"
+
   - name: p2_rolling_wf_regression
     match:
       severity: p2
       source: rolling_wf
     action:
       channels: [dingtalk]
-      suppress_minutes: 1440  # 24h, 周度任务 dedup
-      dedup_key_template: "rolling_wf:{check}:weekly"
+      suppress_minutes: 1440  # 24h, 月度任务 dedup
+      dedup_key_template: "rolling_wf:summary:{trade_date}"
 
   - name: p2_gp_pipeline_failed
     match:
@@ -241,15 +279,6 @@ rules:
       channels: [dingtalk]
       suppress_minutes: 1440
       dedup_key_template: "gp_pipeline:{phase}:{exception_type}"
-
-  - name: p2_services_healthcheck_degraded
-    match:
-      severity: p2
-      source: services_healthcheck
-    action:
-      channels: [dingtalk]
-      suppress_minutes: 60
-      dedup_key_template: "services_healthcheck:{service}:{check}"
 
   # ────────────── 通配 fallback (按 severity 兜底) ──────────────
   - name: catchall_p0

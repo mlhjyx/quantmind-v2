@@ -61,7 +61,7 @@ import subprocess
 import sys
 import traceback
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -110,6 +110,12 @@ if str(BACKEND_DIR) not in sys.path:
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
+
+# MVP 4.1 batch 3.6: AlertDispatchError 顶层 import (避免 try-import 包裹掩盖 bug,
+# 铁律 33 fail-loud).
+from functools import lru_cache  # noqa: E402
+
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -602,24 +608,12 @@ def update_state(report: HealthReport, sent_alert: bool) -> dict[str, Any]:
 # ─── Alert ─────────────────────────────────────────────────────────────────
 
 
-def send_alert(report: HealthReport, reason: str) -> bool:
-    """发钉钉 P0 告警.
+def _build_alert_body(report: HealthReport, reason: str) -> tuple[str, str]:
+    """构造钉钉 markdown body. 提取为公共函数 (SDK + legacy 共用).
 
     Returns:
-        True 钉钉返成功, False 失败 (但不 raise — 告警失败不阻断脚本退出码)
+        (title, content) — title 用于 [P0] prefix, content 是 markdown body.
     """
-    try:
-        from app.config import settings
-        from app.services.dispatchers.dingtalk import send_markdown_sync
-    except ImportError as e:
-        logger.error("无法导入钉钉模块: %s (可能 backend 未在 sys.path)", e)
-        return False
-
-    if not settings.DINGTALK_WEBHOOK_URL:
-        logger.warning("DINGTALK_WEBHOOK_URL 未配置, 仅 log 不发送")
-        return False
-
-    # 构造 markdown body
     if report.status == "ok":
         title = "✅ Services Recovered"
         emoji = "✅"
@@ -672,6 +666,93 @@ def send_alert(report: HealthReport, reason: str) -> bool:
         f"> 来源: services_healthcheck (LL-074 + LL-081, Session 38)\n"
         f"> Monday 4-27 真生产首日 zombie 4h17m 教训, 加 Redis 应用层 freshness probe"
     )
+    return title, content
+
+
+@lru_cache(maxsize=1)
+def _get_rules_engine():
+    """AlertRulesEngine 单例 (lru_cache 防 yaml 多次 reload).
+
+    cache_clear 入口供单测使用 (避免 cross-test pollution).
+    """
+    try:
+        from qm_platform.observability import AlertRulesEngine
+
+        rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+        return AlertRulesEngine.from_yaml(str(rules_path))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(report: HealthReport, reason: str) -> bool:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.6).
+
+    services_healthcheck 全 P0 (Beat/Servy 服务死亡 = MVP 3.1 Risk Framework 失效).
+    dedup_key 含 report.status 区分状态转移 (degraded → ok recovery 不被同日
+    transition alert dedup 阻塞).
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 try/except 包裹.
+
+    Returns:
+      True 钉钉接受; False channel 返 False (例如 webhook 未配置 + sink_failed).
+    """
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    title, body = _build_alert_body(report, reason)
+    today_str = str(date.today())
+    alert = Alert(
+        title=f"[P0] {title}",
+        severity=Severity.P0,  # services_healthcheck 全 P0 (Beat/Servy 死 = 风控失效)
+        source="services_healthcheck",
+        details={
+            "trade_date": today_str,
+            "status": report.status,
+            "reason": reason,
+            "failure_count": str(len(report.failures)),
+            "content": body,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    engine = _get_rules_engine()
+    if engine is not None:
+        rule = engine.match(alert)
+        # batch 3.6 dedup 设计: status 进 dedup_key 防 transition (degraded ↔ ok)
+        # 5min 内的状态转移信号被 PG dedup 阻塞. yaml 默认 template 已含 {status}.
+        dedup_key = (
+            rule.format_dedup_key(alert)
+            if rule
+            else f"services_healthcheck:{report.status}:{today_str}"
+        )
+        suppress_minutes = rule.suppress_minutes if rule else 5
+    else:
+        dedup_key = f"services_healthcheck:{report.status}:{today_str}"
+        suppress_minutes = 5
+
+    result = router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+    return result == "sent"
+
+
+def _send_alert_via_legacy_dingtalk(report: HealthReport, reason: str) -> bool:
+    """legacy 直接调 send_markdown_sync (保留向后兼容路径)。"""
+    try:
+        from app.config import settings
+        from app.services.dispatchers.dingtalk import send_markdown_sync
+    except ImportError as e:
+        logger.error("无法导入钉钉模块: %s (可能 backend 未在 sys.path)", e)
+        return False
+
+    if not settings.DINGTALK_WEBHOOK_URL:
+        logger.warning("DINGTALK_WEBHOOK_URL 未配置, 仅 log 不发送")
+        return False
+
+    title, content = _build_alert_body(report, reason)
 
     try:
         ok = send_markdown_sync(
@@ -693,6 +774,25 @@ def send_alert(report: HealthReport, reason: str) -> bool:
     else:
         logger.warning("钉钉发送返回失败 (webhook 可能未配置或被限流)")
     return bool(ok)
+
+
+def send_alert(report: HealthReport, reason: str) -> bool:
+    """发钉钉 P0 告警 (MVP 4.1 batch 3.6 dispatch).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 必传播
+    (铁律 33 fail-loud) — 调用方 _run() 已 try/except 包裹.
+
+    Returns:
+        True 钉钉返成功, False 失败 (但不 raise — 告警失败不阻断脚本退出码)
+
+    Raises:
+        AlertDispatchError: SDK path channel 全 sink_failed (channels 全部不可用).
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        return _send_alert_via_platform_sdk(report, reason)
+    return _send_alert_via_legacy_dingtalk(report, reason)
 
 
 # ─── Main flow ─────────────────────────────────────────────────────────────
@@ -737,7 +837,16 @@ def _run() -> int:
 
     sent = False
     if should_send:
-        sent = send_alert(report, reason)
+        # batch 3.6 dispatch (P1.1 模式: AlertDispatchError 单 catch, fail-loud).
+        try:
+            sent = send_alert(report, reason)
+        except AlertDispatchError as e:
+            logger.error(
+                "[Observability] AlertDispatchError P0 sink 失败: %s "
+                "(services_healthcheck Beat 死亡告警关键, 状态文件标记 sent=False "
+                "下次 schtask 重试)", e,
+            )
+            sent = False
 
     new_state = update_state(report, sent_alert=sent)
     save_state(new_state)
