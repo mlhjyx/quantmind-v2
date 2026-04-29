@@ -108,11 +108,14 @@ def _pg_env() -> dict:
 
 
 @lru_cache(maxsize=1)
-def _load_rules_engine_cached():
+def _load_rules_engine_cached() -> AlertRulesEngine:
     """Inner cached loader: only success cached, raises on yaml load failure.
 
     P1.2 pattern (batch 3.6 reviewer 沉淀): lru_cache 不缓存 exception, 失败下次
     call 重试. 防 cold-start yaml 缺失场景永久 silent suppression.
+
+    PR #141 P1.1 reviewer 采纳: 显式 return type AlertRulesEngine (success-only,
+    failure 路径走 _get_rules_engine 包裹的 None).
     """
     from qm_platform.observability import AlertRulesEngine
 

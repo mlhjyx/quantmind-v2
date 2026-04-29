@@ -81,6 +81,42 @@ def test_pmf_sdk_p0_severity_and_dedup():
     )
 
 
+def test_pmf_sdk_dedup_keys_distinct_per_data_date():
+    """P1 regression (PR #141 code-reviewer): 不同 td (data date) → 不同 dedup_key.
+
+    防 backfill 一次跨多日 (e.g. 20260428 + 20260429) 时所有 td 共享 today_str
+    dedup key, 第二个起 silently 5min suppress drop. 修复后 trade_date=td_iso
+    (非 today), 每个 data date 独立 suppress window.
+    """
+    mock_router = MagicMock()
+    mock_router.fire = MagicMock(return_value="sent")
+    mock_engine = MagicMock()
+    mock_engine.match = MagicMock(return_value=None)
+
+    with (
+        patch("qm_platform.observability.get_alert_router", return_value=mock_router),
+        patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
+    ):
+        pmf_mod._send_alert_via_platform_sdk("20260428", 5, 120)
+        pmf_mod._send_alert_via_platform_sdk("20260429", 5, 120)
+
+    assert mock_router.fire.call_count == 2
+    dedup_28 = mock_router.fire.call_args_list[0].kwargs["dedup_key"]
+    dedup_29 = mock_router.fire.call_args_list[1].kwargs["dedup_key"]
+    assert dedup_28 != dedup_29, "P1: backfill 跨日 dedup collision"
+    assert "2026-04-28" in dedup_28
+    assert "2026-04-29" in dedup_29
+
+    # alert.details["trade_date"] 必 = data date (非 today_str)
+    alert_28: Alert = mock_router.fire.call_args_list[0].args[0]
+    alert_29: Alert = mock_router.fire.call_args_list[1].args[0]
+    assert alert_28.details["trade_date"] == "2026-04-28"
+    assert alert_29.details["trade_date"] == "2026-04-29"
+    # data_date 保留 YYYYMMDD format (向后兼容)
+    assert alert_28.details["data_date"] == "20260428"
+    assert alert_29.details["data_date"] == "20260429"
+
+
 def test_pmf_sdk_dispatch_error_propagates():
     mock_router = MagicMock()
     mock_router.fire = MagicMock(side_effect=AlertDispatchError("sink failed"))
