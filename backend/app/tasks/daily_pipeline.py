@@ -668,7 +668,11 @@ def intraday_risk_check_task(self) -> dict:
         )
         return _audit_summary
     except Exception as e:
-        if _audit_status == "error" and not _audit_summary:
+        # P2 reviewer 采纳 (PR #144 fix): 与 risk_daily_check 对称, 移除 `and not
+        # _audit_summary` guard. all_errored RuntimeError 路径已在 raise 前 set
+        # 完整 _audit_summary, 此处覆盖等价 (同 error type/msg). 保符号一致防未来
+        # 新增 error path 时 silent skip audit log.
+        if _audit_status == "error":
             _audit_summary = {
                 "status": "error",
                 "error": f"{type(e).__name__}: {e}",
