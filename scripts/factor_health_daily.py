@@ -31,6 +31,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
+import functools  # noqa: E402
+
 import numpy as np
 import pandas as pd
 from engines.factor_analyzer import FactorAnalyzer
@@ -39,9 +42,10 @@ from engines.factor_decay import (
     check_all_factors_decay,
 )
 from engines.signal_engine import PAPER_TRADING_CONFIG
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 from app.config import settings
-from app.services.notification_service import send_alert
+from app.services.notification_service import send_alert as _legacy_send_alert
 from app.services.price_utils import _get_sync_conn
 
 # ── 日志配置 ──
@@ -283,6 +287,86 @@ def check_and_update_lifecycle(
             )
 
     return transitions
+
+
+# ─────────────────────────── MVP 4.1 batch 3.5 Observability dispatch ───────────────────────────
+
+
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.x pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(
+    level: str, title: str, content: str, trade_date: date
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine."""
+    from datetime import UTC
+    from datetime import datetime as _datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    severity_value = level.lower() if level.lower() in {"p0", "p1", "p2", "info"} else "p1"
+    severity = Severity(severity_value)
+    trade_date_str = str(trade_date)
+
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="factor_health_daily",
+        details={"trade_date": trade_date_str, "content": content},
+        trade_date=trade_date_str,
+        timestamp_utc=_datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"factor_health:summary:{trade_date_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
+            result, dedup_key, severity_value,
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_unified(
+    level: str, title: str, content: str, trade_date: date, conn
+) -> None:
+    """dispatch SDK vs legacy notification_service.send_alert.
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 必传播.
+    """
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(level, title, content, trade_date)
+    else:
+        _legacy_send_alert(
+            level, title, content,
+            settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+        )
 
 
 def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
@@ -567,11 +651,14 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                 f"异常因子: {', '.join(problem_factors) if problem_factors else '(无具体列表)'}\n"
                 f"高相关对: {len(high_corr_pairs)}对"
             )
+            # batch 3.5 dispatch (P1.1 模式: AlertDispatchError 单 catch)
             try:
-                send_alert(
+                _send_alert_unified(
                     alert_level, f"因子健康{overall} {trade_date}", alert_msg,
-                    settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+                    trade_date, conn,
                 )
+            except AlertDispatchError as e:
+                logger.error("[Observability] AlertDispatchError — 因子健康告警未送达: %s", e)
             except Exception as e:
                 logger.warning(f"[DingTalk] 因子健康告警发送失败: {e}")
 

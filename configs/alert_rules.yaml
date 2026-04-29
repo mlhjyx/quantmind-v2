@@ -91,6 +91,17 @@ rules:
       suppress_minutes: 30
       dedup_key_template: "factor_lifecycle:{factor}:{transition}"
 
+  - name: p0_factor_health_decay
+    match:
+      severity: p0
+      source: factor_health_daily
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.5: factor_health_daily 1 message per run (overall status 聚合).
+      # summary:{trade_date} 与 batch 3.x 一致.
+      dedup_key_template: "factor_health:summary:{trade_date}"
+
   - name: p1_factor_health_decay
     match:
       severity: p1
@@ -98,7 +109,16 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 60
-      dedup_key_template: "factor_health:{factor}:{issue}"
+      dedup_key_template: "factor_health:summary:{trade_date}"
+
+  - name: p2_factor_health_decay
+    match:
+      severity: p2
+      source: factor_health_daily
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "factor_health:summary:{trade_date}"
 
   - name: p1_pt_daily_summary
     match:
@@ -183,6 +203,17 @@ rules:
       # 用独立 health 命名空间隔离, P0/P1 走 summary 命名空间.
       dedup_key_template: "monitor_factor_ic:health:{trade_date}"
 
+  - name: p0_daily_reconciliation_drift
+    match:
+      severity: p0
+      source: daily_reconciliation
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.5: daily_reconciliation 1 message per run, 3 callers (QMT 失败 P0
+      # / 严重差异 P0 / 一般差异 P1) 共享 summary 键, 防同日多次空跑风暴.
+      dedup_key_template: "daily_reconciliation:summary:{trade_date}"
+
   - name: p1_daily_reconciliation_drift
     match:
       severity: p1
@@ -190,7 +221,7 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 30
-      dedup_key_template: "daily_reconciliation:{trade_date}:{check}"
+      dedup_key_template: "daily_reconciliation:summary:{trade_date}"
 
   # ────────────── P2 研究 / GP / 长任务 ──────────────
   - name: p2_rolling_wf_regression

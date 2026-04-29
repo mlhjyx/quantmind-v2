@@ -9,6 +9,7 @@
     python scripts/daily_reconciliation.py --date 2026-04-02
 """
 
+import functools
 import json
 import os
 import sys
@@ -19,6 +20,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 import psycopg2
 import structlog
+
+# Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 from app.config import settings
 
@@ -285,8 +289,66 @@ def calc_fill_rate(conn, d: date) -> dict:
     }
 
 
-def send_alert(conn, level: str, title: str, content: str) -> None:
-    """发送钉钉告警（直接HTTP调用）。"""
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.x pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(level: str, title: str, content: str) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.5)."""
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    severity_value = level.lower()
+    severity = Severity(severity_value)
+    today_str = str(date.today())
+
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="daily_reconciliation",
+        details={"trade_date": today_str, "content": content},
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"daily_reconciliation:summary:{today_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
+            result, dedup_key, severity_value,
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(level: str, title: str, content: str) -> None:
+    """旧 path: httpx.post 直调 (fallback, settings flag=False 时走)."""
     import httpx
     webhook = settings.DINGTALK_WEBHOOK_URL
     if not webhook:
@@ -295,9 +357,22 @@ def send_alert(conn, level: str, title: str, content: str) -> None:
     try:
         text = f"[{level}] {title}\n{content}"
         httpx.post(webhook, json={"msgtype": "text", "text": {"content": text}}, timeout=10)
-        logger.info(f"[DingTalk] {level} 告警已发送")
+        logger.info(f"[DingTalk legacy] {level} 告警已发送")
     except Exception as e:
-        logger.error(f"告警发送失败: {e}")
+        logger.error(f"告警发送失败 (legacy): {e}")
+
+
+def send_alert(conn, level: str, title: str, content: str) -> None:
+    """发送钉钉告警 (MVP 4.1 batch 3.5 dispatch).
+
+    默认走 PlatformAlertRouter, 旧 httpx 直调路径保留作 fallback.
+    AlertDispatchError 必传播 (caller catch). conn 参数保留向后兼容 (旧 path 未用,
+    但调用方签名不变).
+    """
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(level, title, content)
+    else:
+        _send_alert_via_legacy_dingtalk(level, title, content)
 
 
 def run_reconciliation(recon_date: date) -> None:
@@ -314,7 +389,14 @@ def run_reconciliation(recon_date: date) -> None:
         # 1. QMT持仓（统一转6位代码）
         qmt_pos_raw = query_qmt_positions()
         if qmt_pos_raw is None:
-            send_alert(conn, "P0", f"对账失败 {recon_date}", "无法连接QMT获取持仓")
+            # batch 3.5 (P1.1 模式): AlertDispatchError 单 catch
+            try:
+                send_alert(conn, "P0", f"对账失败 {recon_date}", "无法连接QMT获取持仓")
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — 告警未送达, 主流程退出仍 reflect QMT 失败: %s",
+                    e,
+                )
             return
         qmt_pos = {_strip_suffix(k): v for k, v in qmt_pos_raw.items()}
 
@@ -388,20 +470,23 @@ def run_reconciliation(recon_date: date) -> None:
             f"差异={len(mismatches)}只, fill_rate={fill_stats.get('fill_rate')}"
         )
 
-        # 7. 告警
+        # 7. 告警 (batch 3.5 P1.1 模式: AlertDispatchError 单 catch, 不阻断对账主流程)
         significant = [m for m in mismatches if m["diff_pct"] > STOCK_DIFF_THRESHOLD]
-        if total_diff > TOTAL_MV_DIFF_THRESHOLD:
-            send_alert(
-                conn, "P0", f"对账严重差异 {recon_date}",
-                f"QMT={qmt_total}股 vs DB={db_total}股, 差异={total_diff:.1%}\n"
-                f"差异股票: {json.dumps(significant[:5], ensure_ascii=False)}",
-            )
-        elif significant:
-            send_alert(
-                conn, "P1", f"对账差异 {recon_date}",
-                f"{len(significant)}只股票持仓不一致\n"
-                f"{json.dumps(significant[:5], ensure_ascii=False)}",
-            )
+        try:
+            if total_diff > TOTAL_MV_DIFF_THRESHOLD:
+                send_alert(
+                    conn, "P0", f"对账严重差异 {recon_date}",
+                    f"QMT={qmt_total}股 vs DB={db_total}股, 差异={total_diff:.1%}\n"
+                    f"差异股票: {json.dumps(significant[:5], ensure_ascii=False)}",
+                )
+            elif significant:
+                send_alert(
+                    conn, "P1", f"对账差异 {recon_date}",
+                    f"{len(significant)}只股票持仓不一致\n"
+                    f"{json.dumps(significant[:5], ensure_ascii=False)}",
+                )
+        except AlertDispatchError as e:
+            logger.error("[Observability] AlertDispatchError — 对账告警未送达: %s", e)
         else:
             logger.info("[Reconciliation] 对账一致 ✓")
 
