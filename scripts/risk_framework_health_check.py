@@ -72,20 +72,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── 期望 schedule 契约 (与 beat_schedule.py 对齐) ──
+#
+# P2 reviewer (PR #145): SSOT-TODO 铁律 34 — 此处 hardcoded 与 backend/app/tasks/
+# beat_schedule.py 第二份 SSOT, 若 cron 变更 (e.g. 收盘时间 14:55→15:00) 需手工同步.
+# 不直接 import beat_schedule (会拉 Celery app 初始化副作用 + scripts/ 不应依赖
+# Celery 模块, 本 script 设计就是脱离 Celery 监控). 维护契约: beat_schedule.py
+# 改动 PR 必更新本 EXPECTED_SCHEDULE + 同步 PR commit message 注明.
+#
 # 每条 (task_name, expected_count_per_trading_day, max_gap_minutes)
 # - max_gap_minutes: 自上次 success 到 now 的最大允许 gap, 超过即 stale
+# - earliest_check_utc_hour: 当日最早可检查时刻 (UTC), 防 schtask 在 Beat 首发前
+#   误报 missing (e.g. intraday Beat 09:35 CST = 01:35 UTC, 检查不能早于 02:00 UTC)
 EXPECTED_SCHEDULE = {
     "risk_daily_check": {
         "expected_per_day": 1,
         "max_gap_minutes": 60 * 24 + 60,  # 1 day + 1h tolerance (next day 14:30)
-        "trigger_time": "14:30",
+        "trigger_time": "14:30 CST",
+        # 14:30 CST = 06:30 UTC, 检查器 schtask 设计 15:30 CST = 07:30 UTC
+        "earliest_check_utc_hour": 6,  # 14:00 CST 后才检查
         "severity_on_missing": "P0",
     },
     "intraday_risk_check": {
         "expected_per_day": 72,  # 5min cron × 6h (09:00-14:55)
         "min_per_day": 60,  # 容忍 12 cycle gap (1h restart window)
         "max_gap_minutes": 30,  # 盘中 gap >30min 即 stale (5min cron 应高频)
-        "trigger_time": "*/5 9-14",
+        "trigger_time": "*/5 9-14 CST",
+        # 09:00 CST = 01:00 UTC, 检查不能早于 ~10:00 CST = 02:00 UTC
+        # (P2 reviewer 采纳: 防 Mon-am 09:30 检查时 0 cycle 误报 missing)
+        "earliest_check_utc_hour": 2,
         "severity_on_missing": "P0",
     },
 }
@@ -168,8 +182,16 @@ def _check_task(
     cur.close()
 
     # 1. Missing — 期望 N+ runs, 实测 0 (P0)
+    # P2 reviewer 采纳 (PR #145): earliest_check_utc_hour guard 防 Beat 首发前误报
+    # (e.g. Mon-am 09:30 CST = 01:30 UTC, intraday Beat 09:00 CST 才刚启, 检查器
+    # 跑早了 → 0 row → 误报 P0). 跳过 missing 检查若当前 UTC 早于 earliest.
+    earliest_hour = spec.get("earliest_check_utc_hour")
+    too_early = (
+        earliest_hour is not None and now_utc.hour < earliest_hour
+    )
+
     expected_min = spec.get("min_per_day") or spec.get("expected_per_day", 1)
-    if total_runs == 0:
+    if total_runs == 0 and not too_early:
         findings.append(Finding(
             severity=spec["severity_on_missing"],
             task_name=task_name,
@@ -213,8 +235,12 @@ def _check_task(
             ))
 
     # 4. Under-count — intraday 期望 72×/日, 但只跑 50× → P1
+    # P2 reviewer 采纳: too_early 同样 skip under_count 防早跑误报
     min_runs = spec.get("min_per_day")
-    if min_runs and total_runs > 0 and total_runs < min_runs:
+    if (
+        min_runs and total_runs > 0
+        and total_runs < min_runs and not too_early
+    ):
         findings.append(Finding(
             severity="P1",
             task_name=task_name,
@@ -256,20 +282,33 @@ def _print_summary(
     print("=" * 80 + "\n")
 
 
-def _send_dingtalk(findings: list[Finding], today: date, force: bool) -> None:
-    """钉钉 P0/P1 告警 (经 notification_service.send_sync)."""
-    from app.services.db import get_sync_conn
+def _send_dingtalk(
+    findings: list[Finding], today: date, force: bool,
+    statement_timeout_ms: int = 60_000,
+) -> None:
+    """钉钉 P0/P1 告警 (经 notification_service.send_sync).
+
+    P1 reviewer 采纳 (PR #145 fix #2): 接受 statement_timeout_ms 参数 +
+    apply 到 notification 连接, 不裸开 conn (铁律 43-a). 防 send_sync 内 INSERT
+    notifications 卡死时无超时保护.
+    """
     from app.services.notification_service import get_notification_service
 
     p0_count = sum(1 for f in findings if f.severity == "P0")
     p1_count = sum(1 for f in findings if f.severity == "P1")
 
-    if force or p0_count > 0:
+    # P1 reviewer 采纳 (PR #145 fix #1): 重排条件 — 原 `if force: level=P0` 吃掉了
+    # `elif force: level=P3` (永远 unreachable 死代码). 修: force+0 findings 先判,
+    # 进 P3 测试通道 (不入库, 仅钉钉 INFO).
+    if not findings and force:
+        level = "P3"  # force 测试通道, 0 finding 不入库 (notifications 表只 P0/P1/P2)
+    elif p0_count > 0:
         level = "P0"
     elif p1_count > 0:
         level = "P1"
     elif force:
-        level = "P3"  # force 测试通道, 0 finding 走 P3 (不入库)
+        # force=True + has findings 路径: 已被 p0/p1 分支处理, 这里防御性兜底
+        level = "P0"
     else:
         return  # no findings, no force → no send
 
@@ -302,14 +341,17 @@ def _send_dingtalk(findings: list[Finding], today: date, force: bool) -> None:
         )
         content = "\n".join(content_lines)
 
-    conn = get_sync_conn()
+    # P1 reviewer 采纳 (PR #145 fix #2): 走 _open_conn 应用 statement_timeout (铁律 43-a)
+    # 防 notifications INSERT 卡死时无超时. 主 conn 已关 (在 main() finally), 这里只能
+    # 开新 conn — 用同 helper 保契约对齐.
+    conn = _open_conn(statement_timeout_ms)
     try:
         svc = get_notification_service()
         svc.send_sync(
             conn=conn, level=level, category="risk",
             title=title, content=content, force=force,
         )
-        conn.commit()
+        conn.commit()  # script 是事务持有方, send_sync 内不 commit (铁律 32)
         logger.info("[risk-health] DingTalk %s sent: %s", level, title)
     finally:
         conn.close()
@@ -349,7 +391,10 @@ def main() -> int:
 
         if not args.no_alert and (all_findings or args.force_trigger):
             try:
-                _send_dingtalk(all_findings, today, args.force_trigger)
+                _send_dingtalk(
+                    all_findings, today, args.force_trigger,
+                    statement_timeout_ms=args.statement_timeout_ms,
+                )
             except Exception as e:  # noqa: BLE001
                 # silent_ok: DingTalk 失败不阻 stdout report (CI 模式仍能消费)
                 logger.error(
