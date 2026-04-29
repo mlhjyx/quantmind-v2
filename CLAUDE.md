@@ -806,6 +806,16 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 📊 测试: 2800+ tests collected / 100+ test files (Session 9 末 Sub2 PR #20 post-merge 2026-04-19 实测: full pytest **2864 pass / 24 fail** [+50 new cumulative Session 9 含 Sub3 47 + Sub2 3, 铁律 40 baseline 保持], regression 5yr max_diff=0 Sharpe=0.6095 + 12yr max_diff=0 Sharpe=0.3594 [铁律 15], ruff Sub2 文件 clean) + **铁律 10b smoke 29 total / pre-push 28 PASS + 1 deselected (live_tushare)** (Wave 1+2+2.3 Sub1+Sub3+Sub2 全覆盖, +3 oneshot_script_pre_main_imports) + **MVP 2.1b 55 新 unit** (Baostock 17 + QMT 15 + Tushare 23) + **MVP 2.1c Sub1+Sub2+Sub3-prep 36 新 unit** (DAL 21 + Pipeline Contract 9 + Sub3-prep tushare 6) + **MVP 2.2 Sub1+Sub2 25 新 unit** + **MVP 2.3 Sub1 PR B+C1+C2+C3 新 unit 合计**: Runner 32 + Registry 9 + Loaders 7 + MemoryRegistry 11 = 59 (PR C3 +8 cumulative: builder 4 + signal_config fallback 4) + **Phase 3 MVP A 26 + MVP 1.3c 39 + MVP 1.4 38 + MVP 2.1a 29 + bootstrap 6 tests**
 ---
 
+## CC 自动化操作
+
+`docs/runbook/cc_automation/` 集中存放可触发的 CC ops runbook (e.g. 撤 setx / Servy 全重启 / DB 命名空间修复 / 等). 索引见 [`docs/runbook/cc_automation/00_INDEX.md`](docs/runbook/cc_automation/00_INDEX.md).
+
+**触发模式**: user 一句话 → CC 加载对应 runbook → 自主执行 (前置检查 + 真金 0 风险确认 + 验证清单 + 失败回滚) → STATUS_REPORT 归档. user 0 手工操作.
+
+跟 `docs/audit/` (一次性诊断) / `docs/adr/` (架构决议) / `docs/mvp/` (功能设计) 区分: runbook 是**可重复触发**的运维资产.
+
+---
+
 ## 文件归属规则（防腐）
 
 ### 根目录只允许以下文件
