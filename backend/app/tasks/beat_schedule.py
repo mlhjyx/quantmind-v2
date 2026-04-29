@@ -56,33 +56,32 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 批 3 CB adapter 完成后与 pms_engine.py 一并物理删除.
     # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值).
 
-    # ── T日 14:30 Risk Framework 日检 (MVP 3.1 批 1 PR 3, Session 29 2026-04-24) ──
-    # 替代老 pms-daily-check, 走 PlatformRiskEngine + PMSRule (ADR-010 D3).
-    # 批 1 行为保持 v1 语义 (LoggingSellBroker 仅记录不实盘卖), 批 2 接真 broker.
-    # risk_event_log 完整记录触发上下文 (session 28 PR #55 migration).
-    "risk-daily-check": {
-        "task": "daily_pipeline.risk_check",
-        "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
-        "options": {
-            "queue": "default",
-            "expires": 1200,  # 20min 内未执行则过期 (市场 15:00 收盘窗口对齐)
-        },
-    },
-    # ── T日 09:00-14:55 Intraday Risk 5min 检查 (MVP 3.1 批 2 PR 2, Session 30) ──
-    # 4 规则盘中循环: IntradayPortfolioDrop{3,5,8}PctRule + QMTDisconnectRule
-    # action=alert_only, Redis 24h TTL dedup 同 rule 同日限 1 次告警
-    # 72 次/日 (reviewer P3 采纳 code: minute=*/5 × hour=9-14 = 12 × 6 = 72 触发;
-    # 9:00, 9:05, ..., 14:55. 15:00 市场收盘不含, 午休 11:30-13:00 有触发但 rule
-    # evaluate 照常 return [] 或 silent skip — dedup 仅对实触发 mark).
-    # ADR-010 D5 迁移表批 2 行, scripts/intraday_monitor.py 个股 -8% 独立保留 (D7)
-    "intraday-risk-check": {
-        "task": "daily_pipeline.intraday_risk_check",
-        "schedule": crontab(minute="*/5", hour="9-14", day_of_week="1-5"),
-        "options": {
-            "queue": "default",
-            "expires": 240,  # 4min 内未执行则过期 (防积压, 5min 周期内必执行或弃)
-        },
-    },
+    # ── [PAUSE T1_SPRINT_2026_04_29] risk-daily-check 暂停 ──
+    # 撤销见: docs/audit/link_paused_2026_04_29.md
+    # 暂停理由: T1 sprint 期间 .env=paper / DB 全 live 命名空间漂移持续, 14:30 Beat
+    # 触发后 entry_price=0 silent skip 全规则 + LL-081 三段 guard 触 ALL_SKIPPED ERROR
+    # → 钉钉每日刷屏. 真金保护已转挂 LIVE_TRADING_DISABLED=true (broker 层),
+    # Beat 暂停后避免误告警噪音, 启动断言 (D 层) + 数据链 (C 层) 仍保留漂移可见.
+    # 还原前置: T1.4 完成 / 批 2 写路径漂移修 / .env 改 live 收敛
+    # "risk-daily-check": {
+    #     "task": "daily_pipeline.risk_check",
+    #     "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
+    #     "options": {
+    #         "queue": "default",
+    #         "expires": 1200,
+    #     },
+    # },
+    # ── [PAUSE T1_SPRINT_2026_04_29] intraday-risk-check 暂停 ──
+    # 撤销见: docs/audit/link_paused_2026_04_29.md
+    # 同 risk-daily-check 理由, 5min 高频 72 次/日 钉钉刷屏更甚.
+    # "intraday-risk-check": {
+    #     "task": "daily_pipeline.intraday_risk_check",
+    #     "schedule": crontab(minute="*/5", hour="9-14", day_of_week="1-5"),
+    #     "options": {
+    #         "queue": "default",
+    #         "expires": 240,
+    #     },
+    # },
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
 
     # ── 高频 30s — Outbox Publisher (MVP 3.4 batch 2) ──
