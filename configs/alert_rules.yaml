@@ -223,6 +223,30 @@ rules:
       suppress_minutes: 30
       dedup_key_template: "daily_reconciliation:summary:{trade_date}"
 
+  # ────────────── P0 数据/备份链路 (batch 3.7) ──────────────
+  - name: p0_pull_moneyflow_data_delay
+    match:
+      severity: p0
+      source: pull_moneyflow
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.7: pull_moneyflow 17:30 schtask, MAX_RETRY 次后空数据 P0 告警.
+      # 1 schtask run 内可能多日数据 (catch-up backfill), 但同 trade_date 重试集中
+      # → summary:{trade_date} 防同日重复告警轰炸.
+      dedup_key_template: "pull_moneyflow:summary:{trade_date}"
+
+  - name: p0_pg_backup_failed
+    match:
+      severity: p0
+      source: pg_backup
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.7: pg_backup 4 callers (timeout / dump fail / file missing / size
+      # 偏小) 共享 summary 键. DR 链路 P0, suppress 5min 防同次 backup 多次告警.
+      dedup_key_template: "pg_backup:summary:{trade_date}"
+
   # ────────────── P0 services_healthcheck (LL-074 + LL-081) ──────────────
   # batch 3.6 code-reviewer P2.1 采纳: 删除 p2_services_healthcheck_degraded 死规则
   # (services_healthcheck SDK 路径 hardcoded Severity.P0, 无 P2 fire path 永远不匹配).

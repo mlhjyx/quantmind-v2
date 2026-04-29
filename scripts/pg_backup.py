@@ -16,6 +16,7 @@
     python scripts/pg_backup.py --parquet-only  # 只导出Parquet快照
     python scripts/pg_backup.py --skip-parquet  # 跳过Parquet快照
 """
+from __future__ import annotations
 
 import argparse
 import logging
@@ -23,12 +24,20 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # 项目根目录加入sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT / "backend"))
+
+# MVP 4.1 batch 3.7: AlertDispatchError 顶层 import (铁律 33 fail-loud).
+from qm_platform.observability import AlertDispatchError  # noqa: E402
+
+if TYPE_CHECKING:
+    from qm_platform.observability import AlertRulesEngine
 
 # ── 配置（可通过环境变量覆盖）────────────────────────────
 BACKUP_ROOT = PROJECT_ROOT / "backups"
@@ -98,12 +107,99 @@ def _pg_env() -> dict:
     return env
 
 
-def send_alert(title: str, content: str) -> None:
-    """尽力而为的告警，不因告警失败阻塞备份流程。"""
+@lru_cache(maxsize=1)
+def _load_rules_engine_cached():
+    """Inner cached loader: only success cached, raises on yaml load failure.
+
+    P1.2 pattern (batch 3.6 reviewer 沉淀): lru_cache 不缓存 exception, 失败下次
+    call 重试. 防 cold-start yaml 缺失场景永久 silent suppression.
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    return AlertRulesEngine.from_yaml(str(rules_path))
+
+
+def _get_rules_engine() -> AlertRulesEngine | None:
+    """AlertRulesEngine 公共 accessor (lru_cache 防 yaml 多次 reload).
+
+    P1.1 pattern: 显式 return type, 让 caller `if engine is not None` 被 mypy 识别.
+    P1.2 pattern: 失败 None 不缓存 — 下次调用重新尝试 load.
+    """
     try:
-        from app.services.notification_service import send_alert as _send
-        _send("P0", title, content, category="system")
+        return _load_rules_engine_cached()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Observability] AlertRulesEngine load failed: {e}, fallback")
+        return None
+
+
+def _send_alert_via_platform_sdk(title: str, content: str) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.7).
+
+    pg_backup P0 告警 (备份失败 = DR 链路异常). AlertDispatchError 必传播
+    (铁律 33). 调用方 send_alert 包裹.
+    """
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    alert = Alert(
+        title=f"[P0] {title}",
+        severity=Severity.P0,  # pg_backup 全 P0 (备份失败 = DR 链路风险)
+        source="pg_backup",
+        details={
+            "trade_date": today_str,
+            "content": content,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    engine = _get_rules_engine()
+    if engine is not None:
+        rule = engine.match(alert)
+        dedup_key = (
+            rule.format_dedup_key(alert)
+            if rule
+            else f"pg_backup:summary:{today_str}"
+        )
+        suppress_minutes = rule.suppress_minutes if rule else 5
+    else:
+        dedup_key = f"pg_backup:summary:{today_str}"
+        suppress_minutes = 5
+
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _send_alert_via_legacy_notification(title: str, content: str) -> None:
+    """legacy 走 notification_service.send_alert (写 notifications 表).
+
+    向后兼容路径, OBSERVABILITY_USE_PLATFORM_SDK=False 时走此分支.
+    """
+    from app.services.notification_service import send_alert as _send
+
+    _send("P0", title, content, category="system")
+
+
+def send_alert(title: str, content: str) -> None:
+    """尽力而为的告警，不因告警失败阻塞备份流程 (MVP 4.1 batch 3.7 dispatch).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 单
+    catch (P0 sink failure log+continue, 备份流程不阻塞), 其他 except 仍兜底.
+    """
+    from app.config import settings
+
+    try:
+        if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+            _send_alert_via_platform_sdk(title, content)
+        else:
+            _send_alert_via_legacy_notification(title, content)
+    except AlertDispatchError as e:
+        # P0 sink failed — log+continue (备份脚本不能因告警失败而中断)
+        logger.warning(f"[Observability] AlertDispatchError P0 sink failed: {e}")
     except Exception as e:
+        # 其他 (legacy notification_service / DB / 网络) 失败 silent_ok
         logger.warning(f"告警发送失败(不影响备份): {e}")
 
 
