@@ -20,6 +20,7 @@ Sprint 1.5 — 因子生命周期管理基础设施。
 """
 
 import argparse
+import functools
 import json
 import logging
 import sys
@@ -32,6 +33,9 @@ from scipy import stats
 
 # 项目路径
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+
+# Platform SDK 顶层 import (batch 3.1/3.2/3.3 模式延续).
+from qm_platform.observability import AlertDispatchError
 
 from app.services.price_utils import _get_sync_conn
 
@@ -442,30 +446,106 @@ def generate_report(
 # 钉钉通知
 # ============================================================
 
-def send_dingtalk(report: str, transitions: list[dict]) -> None:
-    """发送钉钉通知（需配置webhook）。"""
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.1/3.2/3.3 pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
     try:
-        import os
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
+        return None
+
+
+def _send_alert_via_platform_sdk(report: str, transitions: list[dict]) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.3)."""
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    # transitions 严重度推导 (active→retired = P0, →warning = P1, 其余 INFO)
+    severity_value = "info"
+    for t in transitions:
+        new_st = (t.get("new_state") or t.get("to") or "").lower()
+        if new_st == "retired":
+            severity_value = "p0"
+            break
+        if new_st == "warning":
+            severity_value = "p1"
+    severity = Severity(severity_value)
+
+    today_str = str(date.today())
+    title = (
+        f"Factor Alert: {len(transitions)} transition(s)"
+        if transitions
+        else "Factor Health: All OK"
+    )
+
+    factors_str = ",".join(sorted({t.get("factor_name", "") for t in transitions}))
+    alert = Alert(
+        title=f"[{severity_value.upper()}] {title}",
+        severity=severity,
+        source="monitor_factor_ic",
+        details={
+            "trade_date": today_str,
+            "transition_count": str(len(transitions)),
+            "factors": factors_str,
+            "report": report,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"monitor_factor_ic:summary:{today_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s transitions=%d",
+            result,
+            dedup_key,
+            severity_value,
+            len(transitions),
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(report: str, transitions: list[dict]) -> None:
+    """旧 path: urllib.request 直调 (fallback, settings flag=False 时走)."""
+    try:
         import urllib.request
 
-        from dotenv import load_dotenv
+        from app.config import settings
 
-        env_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
-        load_dotenv(env_path)
-
-        webhook_url = os.getenv("DINGTALK_WEBHOOK_URL")
-        keyword = os.getenv("DINGTALK_KEYWORD", "xin")
+        webhook_url = settings.DINGTALK_WEBHOOK_URL
+        keyword = getattr(settings, "DINGTALK_KEYWORD", "xin") or "xin"
 
         if not webhook_url:
             logger.warning("DINGTALK_WEBHOOK_URL not configured, skipping notification.")
             return
 
-        # 构造消息
-        if transitions:
-            title = f"{keyword} Factor Alert: {len(transitions)} transition(s)"
-        else:
-            title = f"{keyword} Factor Health: All OK"
-
+        title = (
+            f"{keyword} Factor Alert: {len(transitions)} transition(s)"
+            if transitions
+            else f"{keyword} Factor Health: All OK"
+        )
         payload = {
             "msgtype": "markdown",
             "markdown": {
@@ -482,12 +562,26 @@ def send_dingtalk(report: str, transitions: list[dict]) -> None:
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
             if result.get("errcode") == 0:
-                logger.info("DingTalk notification sent successfully.")
+                logger.info("DingTalk notification sent successfully (legacy).")
             else:
                 logger.warning("DingTalk API error: %s", result)
 
     except Exception as e:
-        logger.error("Failed to send DingTalk notification: %s", e)
+        logger.error("Failed to send DingTalk notification (legacy): %s", e)
+
+
+def send_dingtalk(report: str, transitions: list[dict]) -> None:
+    """发送钉钉通知 (MVP 4.1 batch 3.3 dispatch).
+
+    默认走 PlatformAlertRouter (cross-process PG dedup), 旧 urllib 直调保留 fallback.
+    AlertDispatchError 必传播 (caller main 层 catch).
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(report, transitions)
+    else:
+        _send_alert_via_legacy_dingtalk(report, transitions)
 
 
 # ============================================================
@@ -601,9 +695,14 @@ def main():
         report = generate_report(lifecycle_df, monthly_ic_dict, transitions)
         print(report)
 
-        # 9. 钉钉通知
+        # 9. 钉钉通知 (batch 3.3 P1.1 模式: AlertDispatchError 单 catch)
         if args.dingtalk:
-            send_dingtalk(report, transitions)
+            try:
+                send_dingtalk(report, transitions)
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e
+                )
     finally:
         conn.close()
     logger.info("Done.")

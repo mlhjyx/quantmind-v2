@@ -18,6 +18,7 @@ Phase 3 自动化 (2026-04-16): 每周日 20:00 由 Task Scheduler 触发。
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import sys
 from datetime import date, timedelta
@@ -33,7 +34,9 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
+# Platform SDK 顶层 import (batch 3.1/3.2 模式延续, 防 import-in-try NameError).
 from dotenv import load_dotenv
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
@@ -146,8 +149,82 @@ def _classify_level(factor_name: str, baseline_ic: float, recent_ic: float, dire
         }
 
 
-def _send_dingtalk(title: str, content: str, level: str = "P1") -> bool:
-    """发送 DingTalk 告警。"""
+@functools.lru_cache(maxsize=1)
+def _get_rules_engine():
+    """Cached AlertRulesEngine load (batch 3.1/3.2 pattern)."""
+    from qm_platform.observability import AlertRulesEngine
+
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
+        )
+        return None
+
+
+def _send_alert_via_platform_sdk(
+    title: str, content: str, level: str, alerts: list[dict]
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.3)."""
+    from datetime import UTC, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import (
+        Alert,
+        AlertDispatchError,
+        get_alert_router,
+    )
+
+    severity_value = level.lower()
+    severity = Severity(severity_value)
+    today_str = str(date.today())
+
+    factors_str = ",".join(sorted({a.get("factor", "") for a in alerts if a.get("factor")}))
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="ic_monitor",
+        details={
+            "trade_date": today_str,
+            "alert_count": str(len(alerts)),
+            "factors": factors_str,
+            "content": content,
+        },
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    engine = _get_rules_engine()
+    rule = engine.match(alert) if engine else None
+    if rule:
+        dedup_key = rule.format_dedup_key(alert)
+        suppress_minutes = rule.suppress_minutes
+    else:
+        dedup_key = f"ic_monitor:summary:{today_str}"
+        suppress_minutes = None
+
+    router = get_alert_router()
+    try:
+        result = router.fire(
+            alert,
+            dedup_key=dedup_key,
+            suppress_minutes=suppress_minutes,
+        )
+        logger.info(
+            "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
+            result,
+            dedup_key,
+            severity_value,
+        )
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertRouter sink_failed: %s", e)
+        raise
+
+
+def _send_alert_via_legacy_dingtalk(title: str, content: str, level: str) -> bool:
+    """旧 path: dingtalk dispatcher 直调 (fallback, settings flag=False 时走)."""
     try:
         from app.config import settings
         from app.services.dispatchers.dingtalk import send_markdown_sync
@@ -168,6 +245,22 @@ def _send_dingtalk(title: str, content: str, level: str = "P1") -> bool:
     except Exception as e:
         logger.error("[DingTalk] 发送失败: %s", e)
         return False
+
+
+def _send_dingtalk(
+    title: str, content: str, level: str = "P1", alerts: list[dict] | None = None
+) -> bool:
+    """发送告警 (MVP 4.1 batch 3.3 dispatch).
+
+    默认走 PlatformAlertRouter (settings.OBSERVABILITY_USE_PLATFORM_SDK=True),
+    旧 dingtalk 直调路径保留作 fallback. AlertDispatchError 必传播.
+    """
+    from app.config import settings
+
+    if settings.OBSERVABILITY_USE_PLATFORM_SDK:
+        _send_alert_via_platform_sdk(title, content, level, alerts or [])
+        return True
+    return _send_alert_via_legacy_dingtalk(title, content, level)
 
 
 def run_ic_monitor(recent_months: int = 3, dry_run: bool = False) -> dict:
@@ -224,8 +317,16 @@ def run_ic_monitor(recent_months: int = 3, dry_run: bool = False) -> dict:
                 + "\n".join(f"- {line}" for line in alert_lines)
                 + f"\n\n> 检查范围: 最近 {recent_months} 个月 vs 全量基线"
             )
-            _send_dingtalk(f"IC 衰减告警 {date.today()}", content, max_level)
-            logger.info("[Alert] 发送 %s 告警: %d 条", max_level, len(alerts))
+            # batch 3.3 (P1.1 batch 3.1 模式延续): AlertDispatchError 单独 catch
+            try:
+                _send_dingtalk(
+                    f"IC 衰减告警 {date.today()}", content, max_level, alerts=alerts
+                )
+                logger.info("[Alert] 发送 %s 告警: %d 条", max_level, len(alerts))
+            except AlertDispatchError as e:
+                logger.error(
+                    "[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e
+                )
         elif alerts:
             logger.info("[DRY-RUN] 有 %d 条告警, 但 dry-run 不发送", len(alerts))
         else:

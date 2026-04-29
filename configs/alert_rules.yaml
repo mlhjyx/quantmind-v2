@@ -118,6 +118,17 @@ rules:
       suppress_minutes: 30
       dedup_key_template: "pt_watchdog:{check}"
 
+  - name: p0_ic_monitor_reversal
+    match:
+      severity: p0
+      source: ic_monitor
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.3: ic_monitor 1 message per run (multiple factor alerts 聚合).
+      # summary:{trade_date} 与 batch 3.1/3.2 模式一致, 防同日多次空跑风暴.
+      dedup_key_template: "ic_monitor:summary:{trade_date}"
+
   - name: p1_ic_monitor_drop
     match:
       severity: p1
@@ -125,7 +136,35 @@ rules:
     action:
       channels: [dingtalk]
       suppress_minutes: 60
-      dedup_key_template: "ic_monitor:{factor}:{trade_date}"
+      dedup_key_template: "ic_monitor:summary:{trade_date}"
+
+  - name: p0_monitor_factor_ic_retired
+    match:
+      severity: p0
+      source: monitor_factor_ic
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 5
+      # batch 3.3: 因子生命周期 (retired = P0 严重衰减) 1 message per run.
+      dedup_key_template: "monitor_factor_ic:summary:{trade_date}"
+
+  - name: p1_monitor_factor_ic_warning
+    match:
+      severity: p1
+      source: monitor_factor_ic
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 60
+      dedup_key_template: "monitor_factor_ic:summary:{trade_date}"
+
+  - name: info_monitor_factor_ic_health
+    match:
+      severity: info
+      source: monitor_factor_ic
+    action:
+      channels: [dingtalk]
+      suppress_minutes: 1440  # 24h, 健康播报 daily 1 次足够
+      dedup_key_template: "monitor_factor_ic:summary:{trade_date}"
 
   - name: p1_daily_reconciliation_drift
     match:
