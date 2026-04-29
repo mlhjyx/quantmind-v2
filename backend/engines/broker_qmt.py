@@ -495,8 +495,12 @@ class MiniQMTBroker(BaseBroker):
 
         # 真金保护 (T1 sprint link-pause, 2026-04-29): cancel 也是真金行为, 同 place_order 守门.
         # 撤销: docs/audit/link_paused_2026_04_29.md
+        # reviewer P2 (oh-my-claudecode:code-reviewer) 采纳: code 字段语义是"stock code",
+        # cancel_order 传 order_id 会让审计 trail 写"股票: 12345678"误导. 加 order_id= 前缀.
         from app.security.live_trading_guard import assert_live_trading_allowed
-        assert_live_trading_allowed(operation="cancel_order", code=str(order_id))
+        assert_live_trading_allowed(
+            operation="cancel_order", code=f"order_id={order_id}"
+        )
 
         logger.info(f"[QMT] 撤单: order_id={order_id}")
 
