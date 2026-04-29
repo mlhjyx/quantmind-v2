@@ -223,7 +223,9 @@ rules:
       suppress_minutes: 30
       dedup_key_template: "daily_reconciliation:summary:{trade_date}"
 
-  # ────────────── P0 / P1 / P2 services_healthcheck (LL-074 + LL-081) ──────────────
+  # ────────────── P0 services_healthcheck (LL-074 + LL-081) ──────────────
+  # batch 3.6 code-reviewer P2.1 采纳: 删除 p2_services_healthcheck_degraded 死规则
+  # (services_healthcheck SDK 路径 hardcoded Severity.P0, 无 P2 fire path 永远不匹配).
   - name: p0_services_healthcheck_critical
     match:
       severity: p0
@@ -239,17 +241,9 @@ rules:
       # summary), 状态转移信号必须保留. trade_date 防同日重复, status 防同状态再 fire.
       dedup_key_template: "services_healthcheck:{status}:{trade_date}"
 
-  # legacy 保留 P2 fallback (degraded 但 script-level dedup window 内 silent 补发)
-  - name: p2_services_healthcheck_degraded
-    match:
-      severity: p2
-      source: services_healthcheck
-    action:
-      channels: [dingtalk]
-      suppress_minutes: 60
-      dedup_key_template: "services_healthcheck:{status}:{trade_date}"
-
-  # ────────────── P2 研究 / GP / 长任务 ──────────────
+  # ────────────── P1 / P2 rolling_wf (月度策略验证) ──────────────
+  # batch 3.6 code-reviewer P2.3 采纳: rolling_wf P1+P2 规则提至独立 section
+  # (避免与 P2 研究/GP 区混淆).
   - name: p1_rolling_wf_regression
     match:
       severity: p1
@@ -271,6 +265,7 @@ rules:
       suppress_minutes: 1440  # 24h, 月度任务 dedup
       dedup_key_template: "rolling_wf:summary:{trade_date}"
 
+  # ────────────── P2 研究 / GP / 长任务 ──────────────
   - name: p2_gp_pipeline_failed
     match:
       severity: p2

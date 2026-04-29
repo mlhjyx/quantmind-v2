@@ -23,11 +23,15 @@ import json
 import logging
 import sys
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from qm_platform.observability import AlertRulesEngine
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -204,16 +208,28 @@ def _classify_result(wf_result: dict) -> dict:
 
 
 @lru_cache(maxsize=1)
-def _get_rules_engine():
-    """AlertRulesEngine 单例 (lru_cache 防 yaml 多次 reload).
+def _load_rules_engine_cached():
+    """Inner cached loader: only success cached, raises on yaml load failure.
 
-    cache_clear 入口供单测使用 (避免 cross-test pollution).
+    P1.2 reviewer 采纳: lru_cache 不缓存 exception (Python lang spec). 失败时
+    异常向上传播, 不会被 memoize, 下次 call 重试. 防 cold-start yaml 缺失场景下
+    永久 silent suppression (None 被缓存 → 进程生命周期内告警全 fail).
+    """
+    from qm_platform.observability import AlertRulesEngine
+
+    rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
+    return AlertRulesEngine.from_yaml(str(rules_path))
+
+
+def _get_rules_engine() -> AlertRulesEngine | None:
+    """AlertRulesEngine 公共 accessor (lru_cache 防 yaml 多次 reload).
+
+    P1.1 reviewer 采纳: 显式 return type, 让 caller `if engine is not None` guard
+    可被 mypy 识别.
+    P1.2 reviewer 采纳: 失败 None 不缓存 — 下次调用重新尝试 load (yaml 可能恢复).
     """
     try:
-        from qm_platform.observability import AlertRulesEngine
-
-        rules_path = PROJECT_ROOT / "configs" / "alert_rules.yaml"
-        return AlertRulesEngine.from_yaml(str(rules_path))
+        return _load_rules_engine_cached()
     except Exception as e:  # noqa: BLE001
         logger.warning("[Observability] AlertRulesEngine load failed: %s, fallback", e)
         return None
@@ -226,13 +242,14 @@ def _send_alert_via_platform_sdk(title: str, content: str, level: str = "P1") ->
     "P1" (ALERT >30% Sharpe 下降) 或 "WARN" (15-30% 下降). Severity 映射:
       P1 → Severity.P1, WARN → Severity.P2 (less severe), 其他 → fallback p1.
 
-    AlertDispatchError 必传播 (铁律 33). 调用方 try/except 包裹.
+    AlertDispatchError 从本 SDK fn 向上传播 (铁律 33 fail-loud). 调用方 (run_rolling_wf)
+    catch 后 log+continue (月度非紧急告警, 不阻断 schtask exit code) — code-reviewer
+    P1 反馈采纳: SDK 层 fail-loud + 调用方层 graceful 是分层契约, 不是契约违反.
 
     Returns:
       True 钉钉接受; False channel 返 False (例如 webhook 未配置 + sink_failed).
     """
-    from datetime import UTC, datetime
-
+    # P3.1 reviewer 采纳: UTC + datetime 已 module-top 导入, 不在函数内 redundant import.
     from qm_platform._types import Severity
     from qm_platform.observability import Alert, get_alert_router
 

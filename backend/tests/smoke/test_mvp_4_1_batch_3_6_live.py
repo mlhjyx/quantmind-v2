@@ -41,7 +41,8 @@ def _build_smoke_code() -> str:
         "engine = AlertRulesEngine.from_yaml(yaml_path); "
         "rule_names = {r.name for r in engine.rules}; "
         "assert 'p0_services_healthcheck_critical' in rule_names; "
-        "assert 'p2_services_healthcheck_degraded' in rule_names; "
+        # batch 3.6 code-reviewer P2.1: p2_services_healthcheck_degraded 删 (dead rule, SDK 永远 P0)
+        "assert 'p2_services_healthcheck_degraded' not in rule_names; "
         "assert 'p1_rolling_wf_regression' in rule_names; "
         "assert 'p2_rolling_wf_regression' in rule_names; "
         # 4. 静态 marker
