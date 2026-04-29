@@ -29,12 +29,14 @@ from app.services.db import get_sync_conn
 from app.services.notification_service import send_alert
 from backend.qm_platform.risk import PlatformRiskEngine, RiskRule
 from backend.qm_platform.risk.rules.circuit_breaker import CircuitBreakerRule
+from backend.qm_platform.risk.rules.holding_time import PositionHoldingTimeRule
 from backend.qm_platform.risk.rules.intraday import (
     IntradayPortfolioDrop3PctRule,
     IntradayPortfolioDrop5PctRule,
     IntradayPortfolioDrop8PctRule,
     QMTDisconnectRule,
 )
+from backend.qm_platform.risk.rules.new_position import NewPositionVolatilityRule
 from backend.qm_platform.risk.rules.pms import PMSRule, PMSThreshold
 from backend.qm_platform.risk.rules.single_stock import SingleStockStopLossRule
 from backend.qm_platform.risk.sources import DBPositionSource, QMTPositionSource
@@ -178,6 +180,14 @@ def build_risk_engine(
     # 真生产事件: 卓然股份 -29% / 南玻 -9.75% PMS 0 触发 (无浮盈), 缺单股层规则.
     # 默认 action='alert_only' (不自动 sell, 钉钉告警 + 用户决策).
     engine.register(SingleStockStopLossRule())
+    # MVP 3.1b Phase 1.5b (Session 44): 时间维度补全 — 与 P&L 维度互补.
+    #   - PositionHoldingTimeRule (P2): holding_days >= 30 天告警 (长尾持仓 review)
+    #   - NewPositionVolatilityRule (P1): holding_days <= 7 天 + |loss| > 5% 告警
+    #     (买入即跌的早期预警, 比 SingleStock L1 -10% 提前)
+    # 两规则依赖 Phase 1.5a Position.entry_date (PR #147), entry_date is None
+    # silent skip (旧持仓 backfill 缺数据).
+    engine.register(PositionHoldingTimeRule())
+    engine.register(NewPositionVolatilityRule())
     for rule in (extra_rules or []):
         engine.register(rule)
     logger.info(
