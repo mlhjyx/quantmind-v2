@@ -15,6 +15,7 @@
 #   T+1 17:35  QuantMind_PTAudit                 pt_audit 5-check 主动守门 (Stage 4 Session 17)
 #   T日 18:00  QuantMind_DailyIC                 每日增量 IC 入库 (CORE, Session 22 Part 2, Mon-Fri)
 #   T日 18:15  QuantMind_IcRolling               ic_ma20/60 rolling 刷新 (Session 22 Part 8, Mon-Fri, factor_lifecycle 周五依赖)
+#   T日 18:45  QuantMind_RiskFrameworkHealth     Risk Framework Beat dead-man's-switch (Session 44 Step E, Mon-Fri, PR #145)
 #   周日 04:00  QuantMind_MVP31SunsetMonitor      MVP 3.1 Sunset Gate A+B+C 周监控 (Session 32 wire, ADR-010 addendum Follow-up #5)
 #   每 15min   QuantMind_ServicesHealthCheck     4 Servy 服务 + CeleryBeat 心跳监控 (Session 35 wire, LL-074 fix)
 #
@@ -390,6 +391,43 @@ Register-ScheduledTask `
     -Force
 
 Write-Host "[OK] QuantMind_IcRolling registered (Mon-Fri 18:15)" -ForegroundColor Green
+
+# ── 10e. QuantMind_RiskFrameworkHealth: Mon-Fri 18:45 (Session 44 Step E — Beat dead-man's-switch) ─
+# 消费 Phase 2 PR #144 写入的 scheduler_task_log → 检测 Beat / Celery worker silent 挂掉.
+# 4 类 finding (per task): missing P0 / errored P1 / stale P1 / under_count P1 → DingTalk.
+# **不走 Celery Beat — 要监控 Celery 自己挂的场景, 不能依赖被监控对象** (设计核心约束).
+# 时段选择:
+#   - 18:15 IcRolling 实测 0.7-1.6s (Mon-Fri), 15 min 缓冲足够
+#   - 19:00 Friday Celery Beat factor-lifecycle-weekly 前 15 min 余地
+#   - 14:30 risk_daily_check + */5 9-14 intraday 全部已跑完 (4h+ buffer)
+# Mon-Fri 仅: 周末非交易日 risk task 自动 skipped, monitor 检查无意义 (only false-positive 风险)
+# 脚本 earliest_check_utc_hour: risk_daily=6 (14:00 CST), intraday=2 (10:00 CST)
+#   18:45 CST = 10:45 UTC, 远超两个阈值, 无 too-early 误报
+# ExecutionTimeLimit 5 min: 脚本实测 < 2s, 主体是 2 SQL queries + 1 optional DingTalk
+# PR #145 (`c560580`+`1b2ee0a`) 已交付 scripts/risk_framework_health_check.py, 本条仅 wire schtask
+$rfhAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\risk_framework_health_check.py" `
+    -WorkingDirectory $ProjectRoot
+
+$rfhTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "18:45"
+
+$rfhSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_RiskFrameworkHealth" `
+    -Description "QuantMind V2: Risk Framework Beat dead-man's-switch — scheduler_task_log audit 消费 + DingTalk P0/P1 (Mon-Fri 18:45, Session 44 Step E, PR #145)" `
+    -Action $rfhAction `
+    -Trigger $rfhTrigger `
+    -Settings $rfhSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_RiskFrameworkHealth registered (Mon-Fri 18:45)" -ForegroundColor Green
 
 # ── 11. QuantMind_PT_Watchdog: 每日20:00 ─────────────
 $wdAction = New-ScheduledTaskAction `
