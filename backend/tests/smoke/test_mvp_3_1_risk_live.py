@@ -21,6 +21,10 @@ import pytest
 
 
 @pytest.mark.smoke
+@pytest.mark.skip(
+    reason="T1 sprint link-pause (2026-04-29): risk-daily-check Beat 暂停, "
+    "见 docs/audit/link_paused_2026_04_29.md. 还原后取消 skip."
+)
 def test_mvp_3_1_risk_framework_imports() -> None:
     """Platform risk + wiring + Celery task 链路 subprocess import 不炸.
 

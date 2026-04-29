@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # --- 执行模式 ---
     EXECUTION_MODE: Literal["paper", "live"] = "paper"
 
+    # --- 真金硬开关 (T1 sprint link-pause, 2026-04-29) ---
+    # 默认 True (fail-secure): MiniQMTBroker.place_order / cancel_order 直 raise
+    # LiveTradingDisabledError. paper_broker 物理隔离不受影响 (guard 只挂 MiniQMTBroker).
+    # 双因素 OVERRIDE bypass:
+    #   LIVE_TRADING_FORCE_OVERRIDE=1
+    #   LIVE_TRADING_OVERRIDE_REASON='<明确原因>'
+    # 缺一者拒绝 + DingTalk P0 + audit log.
+    # 撤销: docs/audit/link_paused_2026_04_29.md (T1.4 完成 / 批 2 写路径漂移修后).
+    LIVE_TRADING_DISABLED: bool = True
+
     # --- Paper Trading 核心参数 ---
     PT_TOP_N: int = 20  # was 15, changed 2026-04-04, backtest X-D Sharpe 1.15
     PT_INDUSTRY_CAP: float = 1.0  # was 0.25, changed 2026-04-04, removing constraint +0.09 Sharpe

@@ -404,8 +404,16 @@ class MiniQMTBroker(BaseBroker):
         Raises:
             RuntimeError: 未连接
             ValueError: 参数不合法
+            LiveTradingDisabledError: 真金保护激活 (T1 sprint link-pause).
+                双因素 OVERRIDE 才允许 bypass. 见 backend/app/security/live_trading_guard.py
         """
         self._ensure_connected()
+
+        # 真金保护 (T1 sprint link-pause, 2026-04-29): 默认 LIVE_TRADING_DISABLED=true
+        # 阻断真实 xtquant.order_stock. 双因素 OVERRIDE 才允许 bypass + 审计 + 钉钉 P0.
+        # 撤销: docs/audit/link_paused_2026_04_29.md
+        from app.security.live_trading_guard import assert_live_trading_allowed
+        assert_live_trading_allowed(operation="place_order", code=code)
 
         from xtquant import xtconstant
 
@@ -478,8 +486,17 @@ class MiniQMTBroker(BaseBroker):
 
         Returns:
             True=撤单请求已提交，False=撤单失败
+
+        Raises:
+            LiveTradingDisabledError: 真金保护激活 (T1 sprint link-pause).
+                双因素 OVERRIDE 才允许 bypass. 见 backend/app/security/live_trading_guard.py
         """
         self._ensure_connected()
+
+        # 真金保护 (T1 sprint link-pause, 2026-04-29): cancel 也是真金行为, 同 place_order 守门.
+        # 撤销: docs/audit/link_paused_2026_04_29.md
+        from app.security.live_trading_guard import assert_live_trading_allowed
+        assert_live_trading_allowed(operation="cancel_order", code=str(order_id))
 
         logger.info(f"[QMT] 撤单: order_id={order_id}")
 

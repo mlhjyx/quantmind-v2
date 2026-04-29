@@ -21,6 +21,10 @@ import pytest
 
 
 @pytest.mark.smoke
+@pytest.mark.skip(
+    reason="T1 sprint link-pause (2026-04-29): intraday-risk-check Beat 暂停, "
+    "见 docs/audit/link_paused_2026_04_29.md. 还原后取消 skip."
+)
 def test_mvp_3_1_batch_2_intraday_imports() -> None:
     """Platform intraday + wiring + Celery task + Beat schedule subprocess import 不炸."""
     project_root = Path(__file__).resolve().parents[3]
