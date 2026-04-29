@@ -998,13 +998,18 @@ class TestRiskAPI:
 
     @pytest.mark.asyncio
     async def test_l4_recovery_request_success(self, api_client: AsyncClient):
-        """POST /api/risk/l4-recovery/{id} 成功时返回approval_id。"""
+        """POST /api/risk/l4-recovery/{id} 成功时返回approval_id。
+
+        2026-04-30 治理债清理 (Finding E P1): 加 admin gate 后 dependency_overrides bypass
+        _verify_admin_token (本测试关注 business logic 非 auth, 独立 TestAdminGate 验证 auth).
+        """
         approval_id = uuid.uuid4()
-        from app.api.risk import _get_risk_service
+        from app.api.risk import _get_risk_service, _verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.request_l4_recovery = AsyncMock(return_value=approval_id)
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
+        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
 
         try:
             resp = await api_client.post(
@@ -1021,14 +1026,18 @@ class TestRiskAPI:
 
     @pytest.mark.asyncio
     async def test_l4_recovery_request_not_in_l4(self, api_client: AsyncClient):
-        """POST /api/risk/l4-recovery/{id} 不在L4状态时返回400。"""
-        from app.api.risk import _get_risk_service
+        """POST /api/risk/l4-recovery/{id} 不在L4状态时返回400。
+
+        2026-04-30 治理债清理: 加 admin gate dependency_overrides bypass.
+        """
+        from app.api.risk import _get_risk_service, _verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.request_l4_recovery = AsyncMock(
             side_effect=ValueError("策略当前不是L4_STOPPED状态")
         )
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
+        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
 
         try:
             resp = await api_client.post(
@@ -1045,14 +1054,18 @@ class TestRiskAPI:
 
     @pytest.mark.asyncio
     async def test_force_reset_api(self, api_client: AsyncClient):
-        """POST /api/risk/force-reset/{id} 成功重置。"""
+        """POST /api/risk/force-reset/{id} 成功重置。
+
+        2026-04-30 治理债清理: 加 admin gate dependency_overrides bypass.
+        """
         mock_state = self._make_mock_state(CircuitBreakerLevel.NORMAL)
 
-        from app.api.risk import _get_risk_service
+        from app.api.risk import _get_risk_service, _verify_admin_token
 
         mock_svc = AsyncMock()
         mock_svc.force_reset = AsyncMock(return_value=mock_state)
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
+        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
 
         try:
             resp = await api_client.post(
@@ -1071,9 +1084,19 @@ class TestRiskAPI:
 
     @pytest.mark.asyncio
     async def test_force_reset_missing_reason(self, api_client: AsyncClient):
-        """POST /api/risk/force-reset/{id} 缺少reason返回422。"""
-        resp = await api_client.post(
-            f"/api/risk/force-reset/{STRATEGY_ID}?execution_mode=paper",
-            json={},
-        )
+        """POST /api/risk/force-reset/{id} 缺少reason返回422。
+
+        2026-04-30 治理债清理: 加 admin gate dependency_overrides bypass (auth 先于 body 验证,
+        若无 bypass 会 401 而非 422).
+        """
+        from app.api.risk import _verify_admin_token
+
+        app.dependency_overrides[_verify_admin_token] = lambda: "test-token"
+        try:
+            resp = await api_client.post(
+                f"/api/risk/force-reset/{STRATEGY_ID}?execution_mode=paper",
+                json={},
+            )
+        finally:
+            app.dependency_overrides.clear()
         assert resp.status_code == 422  # Pydantic validation error

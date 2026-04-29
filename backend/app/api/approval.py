@@ -29,12 +29,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.db import get_db
 from app.models.approval_queue import GPApprovalQueue
 
@@ -50,6 +51,26 @@ router = APIRouter(prefix="/api/approval", tags=["approval"])
 
 def _get_db(session: AsyncSession = Depends(get_db)) -> AsyncSession:
     return session
+
+
+def _verify_admin_token(
+    x_admin_token: str = Header(alias="X-Admin-Token", default=""),
+) -> str:
+    """验证 Admin Token (沿用 execution_ops.py:69-77 + risk.py:_verify_admin_token 模式).
+
+    2026-04-30 治理债清理 (Finding E P1, batch 1.7): GP factor approve / reject / hold
+    3 endpoint 真改 gp_approval_queue 状态影响因子入库, 必须 admin 守门防匿名调用.
+
+    Note:
+        - 沿用 plain `!=` compare (D2.2 Finding 标 P2 timing attack), 留批 2 P2 单独修
+          (改 secrets.compare_digest), 本批不动 _verify_admin_token 实现
+        - settings.ADMIN_TOKEN 未配置 → 500 (生产前置必须配)
+    """
+    if not settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN未配置")
+    if x_admin_token != settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="无效的Admin Token")
+    return x_admin_token
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +281,7 @@ async def approve_queue_item(
     item_id: int,
     body: ApprovalActionRequest,
     session: AsyncSession = Depends(_get_db),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """批准因子进入因子库。
 
@@ -290,6 +312,7 @@ async def reject_queue_item(
     item_id: int,
     body: ApprovalActionRequest,
     session: AsyncSession = Depends(_get_db),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """拒绝因子，记录拒绝原因。
 
@@ -320,6 +343,7 @@ async def hold_queue_item(
     item_id: int,
     body: ApprovalActionRequest,
     session: AsyncSession = Depends(_get_db),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """暂缓审批，需要更多数据或分析后再决定。
 

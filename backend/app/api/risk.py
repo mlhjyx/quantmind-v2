@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,26 @@ def _get_risk_service(
     """通过 Depends 注入 RiskControlService。"""
     notification_svc = NotificationService(session)
     return RiskControlService(session, notification_svc)
+
+
+def _verify_admin_token(
+    x_admin_token: str = Header(alias="X-Admin-Token", default=""),
+) -> str:
+    """验证 Admin Token (沿用 execution_ops.py:69-77 模式).
+
+    2026-04-30 治理债清理 (Finding E P1, batch 1.7): l4-recovery / l4-approve / force-reset
+    3 endpoint 真改 risk_control_state DB 状态, 必须 admin 守门防匿名调用.
+
+    Note:
+        - 沿用 plain `!=` compare (D2.2 Finding 标 P2 timing attack), 留批 2 P2 单独修
+          (改 secrets.compare_digest), 本批不动 _verify_admin_token 实现
+        - settings.ADMIN_TOKEN 未配置 → 500 (生产前置必须配)
+    """
+    if not settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN未配置")
+    if x_admin_token != settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="无效的Admin Token")
+    return x_admin_token
 
 
 def _parse_uuid(value: str, label: str = "ID") -> UUID:
@@ -191,6 +211,7 @@ async def request_l4_recovery(
     body: L4RecoveryRequest,
     execution_mode: str = Query(default="paper", description="paper 或 live"),
     svc: RiskControlService = Depends(_get_risk_service),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """发起L4人工审批恢复请求。
 
@@ -224,6 +245,7 @@ async def approve_l4_recovery(
     approval_id: str,
     body: L4ApproveRequest,
     svc: RiskControlService = Depends(_get_risk_service),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """审批L4恢复请求。
 
@@ -258,6 +280,7 @@ async def force_reset(
     body: ForceResetRequest,
     execution_mode: str = Query(default="paper", description="paper 或 live"),
     svc: RiskControlService = Depends(_get_risk_service),
+    _: str = Depends(_verify_admin_token),
 ) -> dict[str, Any]:
     """强制重置到NORMAL状态(运维用)。
 
