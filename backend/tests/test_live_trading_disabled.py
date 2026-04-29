@@ -210,6 +210,52 @@ class TestBrokerQmtGuardSAST:
         )
 
 
+class TestAllXtquantOrderCallsGuarded:
+    """SAST 防 future-bypass: 所有 _trader.order_stock / cancel_order_stock 调用文件
+    必含 assert_live_trading_allowed.
+
+    reviewer P2-1 (oh-my-claudecode:security-reviewer) 采纳: 防批 2 引入 QMTSellBroker
+    (替换 LoggingSellBroker stub) 时 copy-paste broker_qmt 但忘加 guard, 真金 bypass.
+    """
+
+    def test_all_trader_order_calls_have_guard(self):
+        """全 backend/engines/ + backend/app/ + scripts/ 下所有调 _trader.order_stock /
+        _trader.cancel_order_stock 的文件必含 assert_live_trading_allowed.
+        """
+        scan_dirs = [
+            _BACKEND_DIR / "engines",
+            _BACKEND_DIR / "app",
+            _BACKEND_DIR.parent / "scripts",
+        ]
+        # 排除自身 (test) + 已知例外 (no-op)
+        excluded_filenames = {"test_live_trading_disabled.py"}
+
+        violations: list[str] = []
+        for base in scan_dirs:
+            if not base.exists():
+                continue
+            for py_file in base.rglob("*.py"):
+                if py_file.name in excluded_filenames:
+                    continue
+                # 跳过 archive / __pycache__
+                if "archive" in py_file.parts or "__pycache__" in py_file.parts:
+                    continue
+                src = py_file.read_text(encoding="utf-8")
+                has_order_stock = (
+                    "_trader.order_stock(" in src
+                    or "_trader.cancel_order_stock(" in src
+                )
+                if has_order_stock and "assert_live_trading_allowed" not in src:
+                    violations.append(str(py_file.relative_to(_BACKEND_DIR.parent)))
+
+        assert not violations, (
+            "Future-bypass 风险: 以下文件调 _trader.order_stock / cancel_order_stock "
+            "但未调 assert_live_trading_allowed (LIVE_TRADING_DISABLED guard).\n"
+            "新加 QMT broker 实现必加 guard (sec-reviewer P2-1 采纳, T1 sprint link-pause).\n"
+            f"违规: {violations}"
+        )
+
+
 class TestBeatRiskTasksPaused:
     """Beat schedule 必不再含 risk-daily-check / intraday-risk-check (T1 暂停)."""
 

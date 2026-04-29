@@ -11,7 +11,7 @@
 
 | # | 改动 | 文件 | 还原前置 | 还原命令 |
 |---|---|---|---|---|
-| **A** | LIVE_TRADING_DISABLED 真金硬开关 (config + exceptions + guard + broker_qmt 双因素 OVERRIDE) | 5 文件 (新建 3 / 改 2) | 批 2 写路径漂移修 + 批 2 LoggingSellBroker→QMTSellBroker + .env=live | 见下 §A |
+| **A** | LIVE_TRADING_DISABLED 真金硬开关 (config + exceptions + guard + broker_qmt 双因素 OVERRIDE) | 6 文件 (新建 3 / 改 3) | 批 2 写路径漂移修 + 批 2 LoggingSellBroker→QMTSellBroker + .env=live | 见下 §A |
 | **B** | Celery Beat `risk-daily-check` (14:30 工作日) 注释 | beat_schedule.py | T1.4 完成 / 漂移修 / 想恢复钉钉告警 | 见下 §B |
 | **C** | Celery Beat `intraday-risk-check` (`*/5` 9-14 工作日) 注释 | beat_schedule.py | 同 §B | 见下 §C |
 | **D** | 2 smoke skip (`test_mvp_3_1_risk_framework_imports` + `test_mvp_3_1_batch_2_intraday_imports`) | 2 smoke 文件 | §B + §C 还原后同步 | 见下 §D |
@@ -168,7 +168,7 @@ grep -rn "T1 sprint link-pause" backend/tests/smoke/
 
 ---
 
-## 测试覆盖 (13 unit + 2 SAST + 1 settings + Beat 验证 = 13 tests)
+## 测试覆盖 (13 tests 覆盖 7 场景)
 
 | 测试 | 目的 |
 |---|---|

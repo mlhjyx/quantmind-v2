@@ -109,15 +109,20 @@ def assert_live_trading_allowed(
     )
 
     # DingTalk P0 推送
+    # reviewer P2 (oh-my-claudecode:security-reviewer) 采纳: override_reason / script
+    # 来自 env / sys.argv, 直接嵌 DingTalk markdown 的 backtick 内有 backtick 注入风险
+    # (` 折断 code span → 误导性告警内容). sanitize backtick → 单引号 + 限长.
+    safe_reason = override_reason.replace("`", "'")[:200]
+    safe_script = script.replace("`", "'")[:100]
     try:
         title = f"⚠️ LIVE_TRADING_FORCE_OVERRIDE active ({operation})"
         content = (
             f"**真金保护 OVERRIDE 触发**\n\n"
             f"- 操作: `{operation}`\n"
             f"- 股票: `{code or 'N/A'}`\n"
-            f"- 原因: `{override_reason}`\n"
+            f"- 原因: `{safe_reason}`\n"
             f"- 时间(UTC): `{timestamp}`\n"
-            f"- 脚本: `{script}`\n"
+            f"- 脚本: `{safe_script}`\n"
             f"- EXECUTION_MODE: `{settings.EXECUTION_MODE}`\n"
             f"- LIVE_TRADING_DISABLED: `{settings.LIVE_TRADING_DISABLED}`\n"
         )
@@ -128,9 +133,11 @@ def assert_live_trading_allowed(
             webhook_url=settings.DINGTALK_WEBHOOK_URL,
             secret=settings.DINGTALK_SECRET,
         )
-    except Exception:  # silent_ok: 钉钉发送失败不阻断 OVERRIDE bypass
-        # 防 DingTalk 不可达时连紧急清仓也卡死. audit log 已写,
-        # DingTalk fail 是次要 channel. 沿用铁律 33-d silent_ok.
+    except (OSError, RuntimeError, ValueError, TimeoutError):
+        # silent_ok: 钉钉发送失败不阻断 OVERRIDE bypass.
+        # reviewer P2 采纳: narrow exception types (网络/格式/超时) 而非裸 Exception,
+        # 让 AttributeError 等真 config bug 浮出. 防 DingTalk 不可达时连紧急清仓也卡死.
+        # audit log 已写, DingTalk fail 是次要 channel. 沿用铁律 33-d silent_ok.
         logger.exception(
             "[live-trading-guard] DingTalk P0 推送失败 (不阻断 bypass, audit 已写)"
         )
