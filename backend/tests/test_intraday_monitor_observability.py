@@ -98,7 +98,11 @@ def test_sdk_portfolio_drop_dedup_includes_cb_level():
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P0
     assert fired_alert.details["cb_level"] == "3"  # 转 str
-    assert mock_router.fire.call_args.kwargs["dedup_key"] == "intraday:portfolio_drop:cb_l3"
+    dedup_key = mock_router.fire.call_args.kwargs["dedup_key"]
+    # PR #142 code-reviewer P1: dedup_key 必含 trade_date 后缀防跨日 silent suppress
+    assert dedup_key.startswith("intraday:portfolio_drop:cb_l3:")
+    from datetime import date
+    assert str(date.today()) in dedup_key
 
 
 def test_sdk_portfolio_drop_levels_distinct_dedup():
@@ -114,8 +118,30 @@ def test_sdk_portfolio_drop_levels_distinct_dedup():
         im_mod._send_alert_via_platform_sdk("P0", "组合暴跌", "msg", "portfolio_drop", {"cb_level": 3})
 
     keys = [c.kwargs["dedup_key"] for c in mock_router.fire.call_args_list]
-    assert keys[0] == "intraday:portfolio_drop:cb_l2"
-    assert keys[1] == "intraday:portfolio_drop:cb_l3"
+    assert keys[0].startswith("intraday:portfolio_drop:cb_l2:")
+    assert keys[1].startswith("intraday:portfolio_drop:cb_l3:")
+    assert keys[0] != keys[1]
+
+
+def test_sdk_portfolio_drop_without_cb_level_raises_value_error():
+    """PR #142 python-reviewer P1.2 regression: portfolio_drop 必填 cb_level.
+
+    防 silent cb_l0 fallback 把 cb_l1/2/3 三真级别 dedup 进 phantom bucket.
+    """
+    mock_router = MagicMock()
+    mock_engine = MagicMock()
+    mock_engine.match = MagicMock(return_value=None)
+
+    p1, p2 = _setup_router_mock(mock_router, mock_engine)
+    with p1, p2, pytest.raises(ValueError, match="portfolio_drop.*cb_level"):
+        im_mod._send_alert_via_platform_sdk(
+            "P0", "组合大跌", "msg", "portfolio_drop", None,
+        )
+
+    with p1, p2, pytest.raises(ValueError, match="portfolio_drop.*cb_level"):
+        im_mod._send_alert_via_platform_sdk(
+            "P0", "组合大跌", "msg", "portfolio_drop", {"pnl_pct": "-0.05"},  # cb_level missing
+        )
 
 
 def test_sdk_emergency_stock_batch_dedup_key():

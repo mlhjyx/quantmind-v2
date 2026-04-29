@@ -185,13 +185,13 @@ def _send_alert_via_platform_sdk(
     title: str,
     content: str,
     kind: str = "generic",
-    details_extra: dict | None = None,
+    details_extra: dict[str, object] | None = None,
 ) -> None:
     """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.8).
 
     intraday_monitor 5 call sites with kind 区分:
       - kind="qmt_disconnect": QMT 断连 P0
-      - kind="portfolio_drop": 组合 P0/P1 (cb_level 1/2/3 in details_extra)
+      - kind="portfolio_drop": 组合 P0/P1 (cb_level 1/2/3 in details_extra, **必填**)
       - kind="emergency_stock_batch": 单股急跌聚合 P1
 
     AlertDispatchError 必传播 (铁律 33). 调用方 (顶层 send_alert) try/except 包裹.
@@ -199,12 +199,25 @@ def _send_alert_via_platform_sdk(
     设计: yaml match 只看 (severity, source), 不能区分 kind. intraday_monitor
     SDK 路径在代码端构造 dedup_key (kind-aware), yaml 仅提供 suppress_minutes,
     避免 portfolio rule cb_level template 对 qmt/emergency 缺 placeholder raise.
+
+    Raises:
+        ValueError: kind="portfolio_drop" 必须 details_extra 含 cb_level (PR #142
+            python-reviewer P1.2: 防 silent cb_l0 fallback 把 3 真级别 dedup 进
+            phantom bucket).
     """
     from qm_platform._types import Severity
     from qm_platform.observability import Alert, get_alert_router
 
     today_str = str(date.today())
     severity = Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+
+    # PR #142 python-reviewer P1.2 采纳: portfolio_drop 必须 details_extra 含 cb_level
+    if kind == "portfolio_drop":
+        if details_extra is None or "cb_level" not in details_extra:
+            raise ValueError(
+                "kind='portfolio_drop' requires details_extra with 'cb_level' "
+                "(防 silent cb_l0 fallback 把 cb_l1/2/3 三真级别 dedup 进 phantom bucket)"
+            )
 
     details: dict[str, str] = {
         "trade_date": today_str,
@@ -231,15 +244,22 @@ def _send_alert_via_platform_sdk(
     # batch 3.8 设计: dedup_key 在代码端按 kind 构造, 不调 rule.format_dedup_key
     # (yaml 模板 cb_l{cb_level} 对 qmt_disconnect / emergency_stock_batch 缺 placeholder
     # 会 raise AlertRuleError). yaml 仅提供 suppress_minutes.
+    # PR #142 code-reviewer P1 采纳: 所有 kind dedup_key 必须含 trade_date 后缀,
+    # 防 alert_dedup 表跨日 silent suppress 次日新告警 (P0 portfolio_drop 真金风险).
+    # PR #142 code-reviewer P2.1 采纳: emergency_stock_batch 加 5min bucket, 防
+    # 09:05 cycle 后, 09:35 cycle 新一批受害股 silenced 在 30min P1 suppress 窗内.
+    now_dt = datetime.now()
+    minute_bucket = now_dt.strftime("%H%M")[:3] + "0"  # '0905'/'0935' → '0900'/'0930'
     if kind == "emergency_stock_batch":
-        dedup_key = f"intraday:emergency_stock_batch:{today_str}"
+        dedup_key = f"intraday:emergency_stock_batch:{today_str}:{minute_bucket}"
     elif kind == "emergency_stock":
-        # per-code dedup (legacy 单股 kind, 历史保留兼容)
+        # per-code dedup (legacy 单股 kind, 当前 run_monitor 不直接用, SDK 路径走
+        # emergency_stock_batch 聚合; 此分支保留供 future 单股直接 fire 路径).
         code = details.get("code", "unknown")
         dedup_key = f"intraday:emergency_stock:{code}:{today_str}"
     elif kind == "portfolio_drop":
-        cb_level = details.get("cb_level", "0")
-        dedup_key = f"intraday:portfolio_drop:cb_l{cb_level}"
+        cb_level = details["cb_level"]  # 上方 ValueError guard 保证此处不为空
+        dedup_key = f"intraday:portfolio_drop:cb_l{cb_level}:{today_str}"
     elif kind == "qmt_disconnect":
         dedup_key = f"intraday:qmt_disconnect:{today_str}"
     else:
@@ -275,12 +295,15 @@ def send_alert(
     title: str,
     content: str,
     kind: str = "generic",
-    details_extra: dict | None = None,
+    details_extra: dict[str, object] | None = None,
 ) -> None:
     """发送钉钉告警 (MVP 4.1 batch 3.8 dispatch).
 
     settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换. AlertDispatchError 顶层
     catch (intraday_monitor 不阻塞 monitor 主流程, 下次 5min 重试).
+
+    PR #142 python-reviewer P1.1 采纳: details_extra 类型从 bare `dict` 改
+    `dict[str, object] | None`, 防 mypy silent widen.
 
     Args:
         level: P0/P1/P2/INFO (case-insensitive)
@@ -303,7 +326,10 @@ def send_alert(
             f"(intraday_monitor 5min 重试, 不阻断主监控流程)"
         )
     except Exception as e:
-        logger.error(f"告警发送失败: {e}")
+        # PR #142 python-reviewer P2.3 采纳: 加 exc_info=True 让 traceback 浮现
+        # (legacy path 已自带 except, 此处 outer catch 是 SDK ValueError / 配置错
+        # 等剩余路径; 不让根因 silent swallow). 铁律 33-a 一致.
+        logger.error(f"告警发送失败: {e}", exc_info=True)
 
 
 # ── ADR-010 过渡期: 单股急跌检测 helpers ──
