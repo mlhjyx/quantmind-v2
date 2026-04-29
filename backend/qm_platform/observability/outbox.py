@@ -24,9 +24,15 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import psycopg2.extensions
+if TYPE_CHECKING:
+    # 仅供类型注解 (`__init__(self, conn: psycopg2.extensions.connection)`).
+    # 配合 `from __future__ import annotations` (PEP 563) — 注解 runtime 是字符串,
+    # 不需 runtime import psycopg2. 移到 TYPE_CHECKING block 后, `import backend.qm_platform`
+    # 不再触发 psycopg2 加载, 修复 test_platform_skeleton.test_platform_import_has_no_side_effects
+    # (Platform 不持具体 DB 客户端契约, MVP 4.1 batch 1 PR #119 引入的架构债).
+    import psycopg2.extensions
 
 # Aggregate type 白名单 (防 typo 散乱). MVP 3.4 batch 4 4 域全迁 outbox.
 # 新增 aggregate_type 必加此白名单 + 文档说明 (config_guard 启动期可校验, future hook).

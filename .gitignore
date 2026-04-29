@@ -67,6 +67,11 @@ models/*.db
 .omc/
 models/*.csv
 
+# 批 1.5 决议 (2026-04-29): 根目录 STATUS_REPORT.md 是 ad-hoc working file,
+# 历次 PR 反复 overwrite (批 1 / 链路停止 / 批 1.5 ...). 永久归档到
+# docs/audit/STATUS_REPORT_<YYYY_MM_DD>_<sprint_id>.md, 禁根目录 commit.
+STATUS_REPORT.md
+
 # Research intermediate caches (large, regeneratable)
 cache/phase3a_ic_quickscreen.csv
 cache/phase3b/
