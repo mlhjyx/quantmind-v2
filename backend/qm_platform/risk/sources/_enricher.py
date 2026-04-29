@@ -118,6 +118,15 @@ def load_entry_dates(
 
     Returns:
         {code: entry_date}, 缺失码不在 dict (调用方 fallback Position.entry_date=None).
+
+    TODO(Phase 1.5b reviewer P2): 当 source.load() 同时调用 load_peak_prices
+    + load_entry_dates 时, _resolve_entry_date 对每 code 执行 2 次相同的
+    correlated trade_log 子查询 (40 SQL/20 codes/72 cycles/day = 5760/day).
+    重构方向: 引入 batched `load_enrichment(conn, sid, mode, codes) -> dict[code,
+    {entry_price, peak_price, entry_date}]` 单次 trade_log + klines_daily JOIN,
+    halve query count. 当前 N+1 与 load_entry_prices/load_peak_prices 历史 pattern
+    一致, Phase 1.5a 不引入新债, 但 Phase 1.5b 真上线前必批量化以保证盘中
+    72×/日 不增 DB 压力.
     """
     if not codes:
         return {}
