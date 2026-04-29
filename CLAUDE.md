@@ -692,6 +692,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (19条目: 8 failed + 6 findings + 5 decisions) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
+| **CC 自动化操作 (runbook)** | **`docs/runbook/cc_automation/00_INDEX.md`** ⭐ (撤 setx / Servy 重启 / 等 ops runbook) |
 | 路线图(历史, 已归档) | docs/archive/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8, 被Blueprint替代) |
 
 ## 当前进度

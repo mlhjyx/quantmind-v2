@@ -3,7 +3,7 @@
 **Date**: 2026-04-30
 **Branch**: chore/runbook-init
 **Base**: main @ 3572881 (PR #152 治理债清理 batch 1.7 merged)
-**Scope**: 1 PR 创建 `docs/runbook/cc_automation/` 目录 + INDEX + 撤 setx runbook + CLAUDE.md 引用
+**Scope**: 1 PR 创建 `docs/runbook/cc_automation/` 目录 + INDEX + 撤 setx runbook + CLAUDE.md 引用 (内容文件 3 + STATUS_REPORT 1 = 4 文件改动)
 **ETA**: 30-45 min (实际 ~30 min, 纯文档 PR)
 **真金风险**: 0 (0 业务代码改 / 0 .env 改 / 0 服务重启)
 
@@ -106,7 +106,7 @@
 
 | 硬门 | 结果 | 证据 |
 |------|------|------|
-| 改动 scope | ✅ 3 文件 | git diff stat: CLAUDE.md +10 / 2 新增 untracked |
+| 改动 scope | ✅ 4 文件 (3 内容 + 1 STATUS_REPORT) | git diff stat: CLAUDE.md +10 / 3 新增 (含本 STATUS_REPORT) |
 | ruff | ✅ N/A | 无 .py 改动 |
 | pre-push smoke | (push 时验) | bash hook 强制 55 PASS (沿用上 PR) |
 | 0 业务代码改 | ✅ | git diff main --stat 仅 CLAUDE.md 1 文件 + 2 新 docs |
