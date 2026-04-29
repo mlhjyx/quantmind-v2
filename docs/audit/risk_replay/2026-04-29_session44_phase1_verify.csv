@@ -1,0 +1,4 @@
+trade_date,strategy_id,execution_mode,code,rule_id,loss_pct,entry_price,current_price,shares,severity
+2026-04-23,28fc37e5-2d32-4ada-92e0-41c11a5103d0,live,688121.SH,single_stock_stoploss_l1,-0.101662,10.897900,9.790000,4500,P2
+2026-04-28,28fc37e5-2d32-4ada-92e0-41c11a5103d0,live,000012.SZ,single_stock_stoploss_l1,-0.108407,4.520000,4.030000,10700,P2
+2026-04-28,28fc37e5-2d32-4ada-92e0-41c11a5103d0,live,688121.SH,single_stock_stoploss_l1,-0.114508,10.897900,9.650000,4500,P2
