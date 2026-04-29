@@ -188,18 +188,26 @@ def test_sdk_path_dispatch_error_propagates():
 
 
 def test_legacy_path_no_webhook_skips():
-    with patch.dict("os.environ", {"DINGTALK_WEBHOOK_URL": ""}, clear=False):
-        # 不抛异常即 PASS (legacy silent skip 行为, 与旧版一致)
+    """webhook 未配置 silent skip (与旧版一致)."""
+    from app.config import settings as app_settings
+
+    with patch.object(app_settings, "DINGTALK_WEBHOOK_URL", ""):
+        # 不抛异常即 PASS (legacy silent skip 行为)
         pa_mod._send_alert_via_legacy_dingtalk([_finding("P1")], date(2026, 4, 29))
 
 
 def test_legacy_path_calls_httpx_post():
-    """legacy path 用 httpx.post 直调 (pt_audit 历史 pattern, 不走 dingtalk dispatcher)."""
+    """legacy path 用 httpx.post 直调 (pt_audit 历史 pattern, 不走 dingtalk dispatcher).
+
+    P2.1 reviewer 采纳后: webhook 从 settings.DINGTALK_WEBHOOK_URL 读 (vs 旧 os.environ).
+    """
+    from app.config import settings as app_settings
+
     fake_httpx = MagicMock()
     fake_httpx.post = MagicMock()
 
     with (
-        patch.dict("os.environ", {"DINGTALK_WEBHOOK_URL": "https://oapi.test"}, clear=False),
+        patch.object(app_settings, "DINGTALK_WEBHOOK_URL", "https://oapi.test"),
         patch.dict("sys.modules", {"httpx": fake_httpx}),
     ):
         pa_mod._send_alert_via_legacy_dingtalk(
@@ -216,6 +224,53 @@ def test_legacy_path_calls_httpx_post():
 
 
 # ─────────────────────────── _get_rules_engine cache ───────────────────────────
+
+
+def test_run_audit_alert_dispatch_error_does_not_block_scheduler_log_or_exit_code(
+    tmp_path,
+):
+    """reviewer P3.1 采纳: run_audit AlertDispatchError integration test.
+
+    模式 P1.1 batch 3.1 一致: AlertDispatchError 不阻断 _write_scheduler_log + exit_code
+    反映 finding 严重度 (而非 sink 失败). schtask LastResult 仍能反映 issue 严重度.
+    """
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=None)
+
+    fake_findings = [_finding("P0", "st_leak", "ST stock leak detected")]
+
+    with (
+        patch.object(pa_mod, "get_sync_conn", return_value=mock_conn),
+        patch.object(pa_mod, "_is_trading_day", return_value=True),
+        patch.object(pa_mod, "send_aggregated_alert") as mock_send,
+        patch.object(pa_mod, "_write_scheduler_log") as mock_write_log,
+        patch.object(pa_mod, "_CHECK_FUNCS", {"st_leak": lambda *args: fake_findings}),
+    ):
+        # send_aggregated_alert raise AlertDispatchError
+        mock_send.side_effect = AlertDispatchError("All channels failed")
+
+        exit_code, findings = pa_mod.run_audit(
+            strategy_id="test_sid",
+            audit_date=date(2026, 4, 29),
+            alert=True,
+        )
+
+    # P3.1 验证三点:
+    # 1. AlertDispatchError 被 catch (exit_code 反映 P0 finding 严重度, 不传播)
+    assert exit_code == 1, (
+        f"exit_code=1 反映 P0 finding 严重度 (vs sink 失败 exit=2 混淆), got: {exit_code}"
+    )
+    # 2. _write_scheduler_log 仍调用 (审计留底)
+    mock_write_log.assert_called_once()
+    write_log_args = mock_write_log.call_args.args
+    assert write_log_args[3] == "alert"  # status
+    # 3. send_aggregated_alert 被尝试
+    mock_send.assert_called_once()
+    # 4. findings 正确返回
+    assert len(findings) == 1
+    assert findings[0].level == "P0"
 
 
 def test_get_rules_engine_caches_result():

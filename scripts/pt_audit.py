@@ -77,6 +77,11 @@ if not any(isinstance(_h, logging.FileHandler) for _h in logger.handlers):
         # silent_ok: logs/ 目录不可写不应阻断审计主流程 (stdout 仍可用)
         logger.warning("[log] FileHandler setup failed: %s", _e)
 
+# Platform SDK 顶层 import (P2.2 reviewer 采纳, batch 3.1 模式延续):
+# AlertDispatchError 必 module-level 暴露给 run_audit except 子句静态可见 +
+# 防 import 自身 raise (e.g. qm_platform 缺) 时 except 子句无法 bind NameError.
+from qm_platform.observability import AlertDispatchError  # noqa: E402
+
 # 常量
 CHECK_LIST: tuple[str, ...] = (
     "st_leak", "mode_mismatch", "turnover_abnormal",
@@ -612,9 +617,11 @@ def _send_alert_via_legacy_dingtalk(
         logger.error("httpx not installed, cannot send DingTalk alert")
         return
 
-    # 铁律 34 SSOT: pt_audit 原走 os.environ 直读, 本次迁 settings.DINGTALK_WEBHOOK_URL.
-    # 但 pt_audit standalone 启动 (.env 自加载到 os.environ), settings 读同源, 兼容.
-    webhook = os.environ.get("DINGTALK_WEBHOOK_URL", "")
+    # 铁律 34 SSOT: 走 settings.DINGTALK_WEBHOOK_URL (P2.1 reviewer 采纳).
+    # 原 os.environ.get 直读是 SSOT 漂移, settings 读同源 .env 但保持 SDK path 一致性,
+    # 防 .env 字段重命名时 legacy path silent 失效 (SDK path 走 settings 自动适配).
+    from app.config import settings
+    webhook = settings.DINGTALK_WEBHOOK_URL
     if not webhook:
         logger.warning("DINGTALK_WEBHOOK_URL 未配置, 跳过告警 (发 stdout)")
         return
@@ -704,9 +711,13 @@ def run_audit(
             # batch 3.2 (P1.1 batch 3.1 模式延续): AlertDispatchError 单独 catch,
             # 防与 audit 逻辑异常 (exit_code 来自 _LEVEL_EXIT_CODE) 混淆.
             # sink 全 fail 仍走 _write_scheduler_log 留底, exit_code 反映 finding 严重度.
+            # 设计选择 (vs reviewer P2.3 建议 exit=2): 与 batch 3.1 P1.1 共识一致 —
+            # exit_code 应反映"发现 issue 严重度", 不混入 sink 健康. schtask LastResult
+            # 与 sink 状态分别审计 (sink 健康由 batch 4 EventBus + Observability 监控).
+            #
+            # P2.2 reviewer 采纳: AlertDispatchError 已 module-level top-import (line ~74),
+            # 不再 lazy import (防 import 自身 raise 时 except 子句无法 bind).
             try:
-                from qm_platform.observability import AlertDispatchError
-
                 send_aggregated_alert(all_findings, audit_date)
             except AlertDispatchError as e:
                 logger.error(
