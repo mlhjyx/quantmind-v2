@@ -525,11 +525,11 @@ L4 修订 v2 不新增 Tier 0 债, 仅扩 T0-15 修法范围 (LL-081 v2 cover fa
 
 | 第 | 来源 | 假设 | 实测 |
 |---|---|---|---|
-| 23 (LL-093 候选) | 本 spike Q4 推断 stale Redis cache 是 DB 4-28 stale 源 | Redis cache stale → DailySignal 读 stale → 写 DB 4-28 | 实测 portfolio:current 0 keys (cache 完全不存在), 真因 QMTClient fallback 路径直读 DB self-referential |
+| 23 (LL-091 候选) | 本 spike Q4 推断 stale Redis cache 是 DB 4-28 stale 源 | Redis cache stale → DailySignal 读 stale → 写 DB 4-28 | 实测 portfolio:current 0 keys (cache 完全不存在), 真因 QMTClient fallback 路径直读 DB self-referential |
 
 **复用规则 (LL #23 沿用)**: 任何 "推断" 必明示 "基于 N 项前提推论, 推论=不实测", 应留 P3-FOLLOWUP 标 + 真实测验证. 第 23 次同质 LL.
 
-(LL-093 入册 LESSONS_LEARNED.md 走 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步阶段, 本 PR 仅 spike report 内追加修订记录.)
+(LL-091 入册 LESSONS_LEARNED.md 走 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步阶段, 本 PR 仅 spike report 内追加修订记录.)
 
 ## 修订关联 v2
 
@@ -542,7 +542,7 @@ L4 修订 v2 不新增 Tier 0 债, 仅扩 T0-15 修法范围 (LL-081 v2 cover fa
 ## 下一步
 
 本 PR `chore/d3a-step4-correction-l4-rev` merge 后:
-- LL-093 入册留 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步
+- LL-091 入册留 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步
 - LL-081 v2 候选铁律 + ADR-021 设计阶段加 fallback 触发 cover (留批 2 P0 修)
 - DB 4-28 stale snapshot 清 + cb_state live reset 留 PT 重启 gate (user 授权)
 
