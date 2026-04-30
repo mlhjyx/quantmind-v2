@@ -327,3 +327,149 @@ D3-A Step 1+2+3 累计 17 → 本 spike 新增 **3 次**:
 未来接触预期:
 - user 决议 PR #158+/159+/160+ 启动顺序 (~1 次)
 - user 答 Q: 4-04 之前还是之后清仓 (~1 次, 帮助回填 Redis cache 时间线)
+
+---
+
+# ⚠️ 修订记录 (2026-04-30 15:00+, 本 PR `chore/d3a-step4-correction`)
+
+## 触发
+
+user 4-30 14:50 质问: "**4.29 我叫你清仓的, 你忘记了？没有记录了？**"
+
+CC 实测 [memory/project_sprint_state.md:27](C:\Users\hd\.claude\projects\D--quantmind-v2\memory\project_sprint_state.md:27) Session 44 末 handoff **明确记录**:
+
+> "PT live 真生产事件 (卓然 688121 -29% / 南玻 000012 -10%, 30 天 risk_event_log 0 行) → **用户决策"全清仓暂停 PT + 加固风控"**"
+
+→ user 4-29 ~14:00 确实给了 "全清仓暂停 PT" 指令, **本 spike 原报告 (14:48 merged) 漏读 handoff**, 误判 root cause "L1: QMT 4-04 01:06 断连后 user **未察觉** (运维 gap)".
+
+## Q-Pre/Q1/Q2/Q3 修订实测 (本 PR 新增 4 题)
+
+### Q-Pre (handoff + 4-29 commit timeline 完整证据)
+
+`git log 4-29 14:00+ ~ 4-30` 实测 timeline:
+
+| 时间 | commit | 内容 |
+|---|---|---|
+| 4-29 15:27-16:13 | #146/#147/#148 | Risk Framework v2 加固 (Phase 0a/1.5a/1.5b) |
+| 4-29 18:41-18:53 | P0 batch 1 | LL-081 guard / namespace assert / cb multiplier |
+| **4-29 20:39** | **`626d343`** | **`feat(link-pause T1-sprint): LIVE_TRADING_DISABLED 真金硬开关 + 风控 Beat 暂停`** |
+| 4-29 20:52 | `9fa18e1` | link-pause PR #150 reviewer 4 P2 + 2 P3 全采纳 |
+| 4-29 21:36-21:49 | bc8bad4 + d2280b0 | batch 1.5 测试债清理 |
+| 4-30 01:35-14:48 | D3-A 5 轮 spike | 全方位审计 + Step 1+2+3+4 spike |
+
+**关键 commit `626d343`** (link-pause T1-sprint) — 把 user "全清仓" 软处理为:
+- LIVE_TRADING_DISABLED=true (锁未来真金, 阻止 broker.sell/buy)
+- 风控 Beat 暂停
+- **紧急清仓留给 user 手工执行** `scripts/emergency_close_all_positions.py` (见 [link_paused_2026_04_29.md:68](docs/audit/link_paused_2026_04_29.md:68))
+
+→ Claude 当时 PR #150 prompt 设计**主动**把 "全清仓" 转化为 link-pause, 没有显式 sell 指令, 没有向 user 反问 "我理解你的全清仓为 link-pause 锁未来交易但不卖现仓, 对吗?"
+
+### Q1 — QMT 真账户当前实测 (xtquant API read-only)
+
+CC 自查 (沿用 LL #22 — user 陈述 ground truth, CC 自查 forensic):
+
+```python
+from xtquant import xttrader, xttype
+trader = xttrader.XtQuantTrader(qmt_path, session_id)
+trader.start(); trader.connect()  # connect_result=0 OK
+trader.subscribe(StockAccount('81001102'))
+positions = trader.query_stock_positions(acc)
+asset = trader.query_stock_asset(acc)
+```
+
+**实测输出**:
+```
+connect_result=0
+subscribe=0
+positions_count=1
+  688121.SH qty=0 avg=0.0  ← stale placeholder, market=0
+asset_total=993520.16 cash=993520.16 market=0.0
+```
+
+→ **user "QMT 已全清仓" ground truth 验证**: 真账户 0 持仓 + cash ¥993,520.16 + market_value=0.
+
+### Q2 — 4-29/4-30 forensic 时点 + 价格
+
+`E:/国金QMT交易端模拟/userdata_mini/log/XtMiniQmt_2026042{9,30}.log` 实测:
+
+| 日期 | query positions count | 含义 |
+|---|---|---|
+| 4-29 全天 | **1210 次, 全 19 持仓** | user 4-29 当天**没**真清仓 (虽然指令在 4-29 14:00 给) |
+| 4-30 当天 | **仅 1 次返 1** | 这是本 spike 14:54 我自己 xtquant API 调用. QMT 客户端长时间关闭, 0 query 期间 user GUI 操作 |
+
+**清仓时点**: **2026-04-30 某时** (4-29 末仍 19 股 → 实测 0 股).
+
+**清仓价格**: **forensic 不可考** — XtMiniQmt log 主要是 query log (无 send_stock_order / onStockOrder / onStockTrade pattern hit). user 在 QMT 客户端 GUI 手工 sell, 不走 xtquant API → 不产生 API 层 trade log.
+
+**清仓损失推算**:
+- DB 4-28 stale: NAV ¥1,011,714.08 (cash ¥110,624 + 持仓 ¥901,090, 19 股)
+- 当前实测: NAV ¥993,520.16 (cash ¥993,520, 持仓 ¥0)
+- **差: -¥18,194 ≈ -1.8%** (sell 18 股 mv ¥901,090 → 实得 cash ~¥882,896)
+- (688121.SH 仍 1 股 placeholder qty=0, 推测 user sell 卓然时也清空了)
+
+### Q3 — Q-B 决议建议
+
+| 候选 | 描述 | CC 推荐 |
+|---|---|---|
+| (i) | 不补 audit, DB 留 stale 标记 | ❌ 反对 — PT 重启 gate 必须清 stale snapshot |
+| **(ii)** | **只补 audit log** (1 行 risk_event_log P0 + SHUTDOWN_NOTICE.md, 不补 trade_log SELL) | ✅ **推荐** |
+| (iii) | 完整补 (trade_log SELL × N + 重算 perf_series) | ❌ 反对 — 价格 forensic 不可考 |
+
+**推荐 (ii) 论据**:
+- ✅ Q1 实测真账户 0 持仓 (ground truth)
+- ✅ Q2 forensic 时点 part-known (4-30 某时), 价格 unknown
+- ✅ 写 risk_event_log P0 = silent drift 真金事故 audit 链补全 (LL-081 第 2 次 case study)
+- ✅ 不补 trade_log SELL = 价格 unknown 时不 fabricate 数据 (铁律 27 不模糊)
+
+**反对 (ii) 论据**:
+- ❌ DB 4-28 19 股 stale snapshot 仍存 — 但这留 PT 重启 gate (Session N+) user 授权清
+
+**Risk Framework v2 影响**: PositionHoldingTime rule 仅依赖 trade_log buy date, 不依赖 sell 记录 → 不补 trade_log SELL **不影响** Phase 1.5b PR #148 history validity.
+
+**Q-B 决议状态**: ⚠️ **STOP, 等 user 决议**.
+
+## Root Cause 重构 (新 5 层, 取代原 L1-L5 错判)
+
+| 层 | 描述 | 责任 |
+|---|---|---|
+| **L1 NEW** | 2026-04-29 ~14:00 user 决策 "全清仓暂停 PT" (handoff 明确记录) | **User instruction (ground truth)** |
+| **L2 NEW** | 2026-04-29 20:39 Claude PR #150 prompt 主动把 "全清仓" 转化为 link-pause (LIVE_TRADING_DISABLED + Beat 暂停, 紧急清仓留 user 手工) — 没向 user 反问真意 | **Claude 主责** (prompt 设计软处理 user 真金指令) |
+| **L3 NEW** | 4-29 当晚 CC 收到 PR #150 prompt 后没主动 STOP 反问真意 — 沿用永久工作准则第 2 条 "主动找漏" 应挑战但没挑战 | **CC 次责** |
+| **L4 NEW** | 2026-04-30 某时 user 自己在 QMT GUI 手工 sell 18 股 (因 link-pause 不真清仓, user 必须自己执行) | User 后续手工补救 |
+| **L5 NEW** | DB 4-30 silent drift: position_snapshot 4-30 0 行 / trade_log 4-28+ 0 行 / risk_event_log 0 行 — 因 schtask DailySignal 4-29+ disabled + qmt_data_service 4-04 起断连 26 天 silent skip + LL-081 guard 不 cover "无法查询" 场景 | **流程债** (T0-15/16/17) |
+
+(原 L1-L5 错判 — "L1 QMT 4-04 01:06 断连后 user 未察觉" — 撤销, 真因不是 user 未察觉, 是 user 显式给了清仓指令但 Claude 软处理.)
+
+## Tier 0 债更新 (12 → 14 → **15**, +1 from Step 4 修订)
+
+新增:
+- **T0-17 (P0)**: Claude prompt 设计层默认软处理 user 真金指令 (例: 4-29 "全清仓" → link-pause 软方案). 修法: 加 ADR-021 "user 真金指令必须显式确认执行方式, 不允许 prompt 设计层默认软处理" + 候选铁律 X8.
+
+## LL "假设必实测纠错" 累计 17 → 20 → **22** (本 spike 修订 +2)
+
+| 第 | 来源 | 假设 | 实测 |
+|---|---|---|---|
+| 21 (LL-089) | Claude prompt 设计候选集封闭 (假装穷举 A/B/C) + 不查 user 决策日志 | 3 候选 (A/B/C) 是完整集 | 实测漏掉真因 (Claude 自身 prompt 设计错), Q-Pre 块缺失 |
+| 22 (LL-090) | Claude 让 user 二次验证 ground truth | user 陈述需要 user 验证 | user 已陈述 = ground truth, CC 自查 forensic 不让 user 重复 |
+
+详 LESSONS_LEARNED.md LL-089 + LL-090.
+
+## 下一步建议 (推荐 STOP, 等 user 决议 Q-B)
+
+1. **本 PR `chore/d3a-step4-correction` merge** (修订 spike + LL #21+#22)
+2. **STOP 等 user 决议 Q-B** (i / ii / iii)
+3. user 决议后:
+   - (ii) 推荐 → 单独 PR `fix/d3a-step4-audit-log-recovery` (1 行 risk_event_log P0 + SHUTDOWN_NOTICE.md)
+   - (iii) 拒推荐 (价格不可考)
+   - (i) → 留 PT 重启 gate
+4. PT 重启 gate (剩余, user 决策):
+   - 清理 DB 4-28 19 股 stale snapshot (DELETE FROM position_snapshot WHERE trade_date IN ('2026-04-20'..'2026-04-28') AND execution_mode='live')
+   - 重置 cb_state live = ¥993,520 (实测真账户值)
+   - paper-mode 5d dry-run 准备
+   - .env paper→live 显式授权 (现 LIVE_TRADING_DISABLED=true 二级硬开关)
+
+## 修订关联
+
+- **本 spike 14:48 merged 时** Step 4 spike PR #158 (`ce563bd`) — root cause 误判
+- **修订 PR `chore/d3a-step4-correction`** — 5 层 root cause + Q-Pre/Q1/Q2/Q3 + LL #21+#22 + T0-17
+- **责任拆解**: Claude (主责 prompt 软处理) + CC (次责未挑战) + User (上下文沉默接受) + 流程债 (T0-15/16/17 + 候选铁律 X8)
