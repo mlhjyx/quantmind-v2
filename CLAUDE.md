@@ -327,7 +327,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ---
 
-## 铁律（违反即停, 42 条全局原则, v3 2026-04-18）
+## 铁律（违反即停, 44 条全局原则, v4 2026-04-30）
 
 > **全局性要求**: 每条铁律必须是"永恒原则", 而不是"某阶段后失效"的临时规则.
 > **测试**: 10 年后此条仍成立? "是, 只是实现方式变了" → 保留. "否, 某阶段后不适用" → 不该是铁律 (应入 Blueprint).
@@ -497,6 +497,14 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
     - 非 DB 脚本 (纯 file 处理, 无 conn timeout 需求)
 
     违反→schtask hang 无告警, 真生产事故被掩盖 (Session 26 LL-068 事件 2 天滞后掩盖). 本铁律是对铁律 33 (fail-loud) 在 schtask 场景的具体化.
+
+44. **Beat schedule / config 注释 ≠ 真停服, 必显式 restart (X9)** — 全局原则: 注释 Beat schedule entry / cron / Servy config / .env 等运行时配置文件 **不等于服务真停**. 任何 schedule / config 类改动后必显式重启服务才生效:
+    - **Celery Beat schedule** 改动: 必 `Servy restart QuantMind-CeleryBeat` (PR #150 link-pause 注释 risk-daily-check / intraday-risk-check 4-29 20:39 commit, 但 Beat process 4-29 14:07 启动后未 restart, 4-29 20:39 → 4-30 15:35:51 持续运行旧 schedule cache → 73 次 intraday_risk_check error 实测) — Session 45 D3-A Step 5 spike 实测发现.
+    - **schtask** enable/disable: 必 `schtasks /Change /Enable` 或 `Disable` 显式 + 验证 `Get-ScheduledTask` State.
+    - **Servy config** 改 (ServiceDependencies / RecoveryAction / 等): 必 `Servy stop → start` 完整 cycle, 不仅 reload.
+    - **schedule 类 PR 必含 post-merge ops checklist**: PR description 列出 (a) 改了哪些 schedule entry / config (b) post-merge 必跑的 ops 命令 (c) 验证命令 (d) rollback 命令.
+
+    违反→ schedule 改动 N 小时/天后才被发现实际未生效 (PR #150 case: 36h 间 73 次 intraday_risk_check error spam DingTalk + 风控未真停). 本铁律由 Session 45 D3-A Step 5 spike F-D3A-NEW-6 + T0-18 P1 触发. **关联 LL-097** (本铁律的 spike 沉淀, sweep 入 LESSONS_LEARNED.md).
 
 ## 因子审批硬标准
 
