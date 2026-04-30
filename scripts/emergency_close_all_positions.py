@@ -305,6 +305,27 @@ def main() -> int:
     )
     summary = _execute_sells(broker, sellable)
 
+    # T0-19 post-execution audit hook (Phase 2 PR #168, design Q8)
+    # 沿用铁律 33 fail-loud: hook 失败 stderr + log, 不阻 sells 完成.
+    try:
+        from app.services.t0_19_audit import _collect_chat_authorization, write_post_close_audit
+
+        audit_summary = write_post_close_audit(
+            broker=broker,
+            sells_summary=summary,
+            log_file=LOG_FILE,
+            chat_authorization=_collect_chat_authorization(args),
+            dry_run_audit=False,
+        )
+        logger.info("[T0-19 audit] complete: %s", audit_summary)
+        print(f"\n✅ T0-19 audit hook complete: trade_log+{audit_summary['trade_log_inserted']} "
+              f"risk_event_log_id={audit_summary['risk_event_log_id'][:8]} "
+              f"perf_series=4-29 cb_state.nav={audit_summary['cb_state_reset_to_nav']:,.2f}",
+              flush=True)
+    except Exception as hook_err:
+        logger.error("[T0-19 audit hook] FAILED: %s", hook_err, exc_info=True)
+        print(f"\n⚠️  T0-19 audit hook FAILED: {hook_err}", file=sys.stderr, flush=True)
+
     print("\n" + "=" * 80)
     print("  Execution Summary")
     print("=" * 80)
