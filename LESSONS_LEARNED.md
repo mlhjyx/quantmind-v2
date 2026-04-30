@@ -2839,3 +2839,53 @@ def __del__(self):
 - 修复: PR #166 (本 PR) 入册 LESSONS_LEARNED.md + SHUTDOWN_NOTICE_2026_04_30.md §11 v3 修订段引用
 - forensic 5 类源 checklist 固化: (a) 项目 logs/ + (b) git log + (c) DB 4 表 + (d) Redis Streams + (e) QMT 3 子类 log. 必入 D3 整合 PR / 批 2 spike prompt template
 - 关联: D3-C F-D3C-13 (P0 真金) + STATUS_REPORT_D3_C + d3_6_monitoring_alerts F-D3C-13 详细证据
+
+## LL-094: risk_event_log CHECK constraint allowed values 必先 pg_get_constraintdef 实测 (T0-19 Phase 1 收尾, 2026-04-30 17:30)
+
+**事件**: D3-A Step 5 (PR #160) Q2(c) 设计 SQL 模板用 `action_taken='manual_audit_recovery'` INSERT risk_event_log P0 audit row, **被 PG CHECK constraint 拒**:
+
+```
+ERROR: new row for relation "_hyper_9_208_chunk" violates check constraint
+       "risk_event_log_action_taken_check"
+DETAIL: Failing row contains (..., manual_audit_recovery, ...).
+```
+
+实测 `pg_get_constraintdef`:
+```
+risk_event_log_action_taken_check:
+  CHECK (action_taken IN ('sell', 'alert_only', 'bypass'))
+```
+
+→ 改用 `action_taken='alert_only'` (silent drift audit 仅 alert 不 action) → INSERT 成功 (id=67beea84-e235-4f77-b924-a9915dc31fb2).
+
+**根因**: Claude Phase 1 design 阶段假设 action_taken 是 free-form text, 没先查 CHECK enum. PG 拒后才回查实测.
+
+**复用规则 (任何 SQL INSERT 含 CHECK 字段前必先实测)**:
+1. **目标表 CHECK constraint enum 必先 pg_get_constraintdef**:
+   ```sql
+   SELECT conname, pg_get_constraintdef(c.oid)
+   FROM pg_constraint c
+   JOIN pg_class t ON c.conrelid = t.oid
+   WHERE t.relname = '<table>' AND c.contype = 'c';
+   ```
+2. **不假设 enum 含义**: 'sell'/'alert_only'/'bypass' 是 ops 决策语义 (action 真发 vs 仅 alert vs 故意 bypass), 不是 audit category. T0-19 emergency_close audit row 用 'sell' 贴真清仓语义.
+3. **任何文档 / spike prompt 设计 INSERT SQL 模板时必标 "CHECK enum 已实测 ✅" + cite pg_get_constraintdef 输出**, 否则视为推论 (沿用 LL-091 复用规则)
+4. **CI / 验证脚本 layer**: scripts/audit/check_alembic_sync.py 候选扩 — 启动期 `pg_get_constraintdef` 全 audit 表 + grep 代码 INSERT SQL 字串匹配 enum 值
+
+**实战 case**:
+- ❌ D3-A Step 5 PR #160 SQL 模板 'manual_audit_recovery' 被拒 (踩坑)
+- ✅ Phase 1 §1 Q3 实测确认 'sell'/'alert_only'/'bypass' 3 enum
+- ✅ T0-19 Phase 2 audit row 用 'sell' (emergency_close 真清仓), 区别于 PR #161 id=67beea84 用 'alert_only' (silent drift 仅 alert)
+
+**关联 LL**: 与 LL-091 (推断必标 P3-FOLLOWUP) 同源 — 都是 "假设 → 实测推翻" 第 N 次. 但本 LL 范围特定 (CHECK constraint), 复用规则更具体可操作.
+
+**实战次数**: 累计 26 次同质 LL (LL-091/092/093/094 同源 D3 系列假设必实测).
+
+### 持久化
+
+- 本 LL 条目 (LL-094)
+- 触发 case: PR #160 D3-A Step 5 Q2(c) 'manual_audit_recovery' 被拒
+- 验证 case: PR #161 ID=67beea84 INSERT 成功 (用 'alert_only')
+- Phase 1 sweep 入册: PR #167 (本 PR) 收尾 commit
+- 沿用扩展: 任何 SQL INSERT 含 CHECK 字段前 `pg_get_constraintdef` 实测 + 标 "CHECK enum 已实测 ✅"
+- 候选扩 scripts/audit/check_alembic_sync.py 加 CHECK enum 全 audit (Wave 5+)
