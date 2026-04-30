@@ -153,6 +153,21 @@ ADR-015 ~ ADR-020 共 6 项 gap 留待后续 ADR 写作时按需 lazy assignment
 
 本 PR 是 "文档跟随代码" 治理债的反向产物 — 不是代码先变, 而是铁律治理本身腐烂. 沿用铁律 X5 (文档单源化) 修治理. 自洽.
 
+### 3.6 ADR 编号系统历史决议保留 (Step 6.2.5b-1 沉淀, 沿用 PR #175 §6 主题 F F.5)
+
+ADR 编号系统当前状态 (历史决议保留, **不 rename**):
+
+| ADR 编号 | 历史漂移 | 决议 | 论据 |
+|---|---|---|---|
+| **ADR-0009** | 4 位数字 (其他全 3 位) | 维持现状 | sprint period 多文档已用 ADR-0009 (本 ADR §4.4 + IRONLAWS.md / 多 audit / research / mvp docs). rename = 引用漂移. 治理价值 < rename 风险. |
+| **ADR-010 双 ADR** | 重复编号 010 | 维持现状 | 文件名后缀区分 scope (addendum-cb-feasibility + pms-deprecation-risk-framework). 双 ADR 独立决议. |
+| **ADR-015 ~ ADR-020** | 6 项 gap | 维持现状 (lazy assignment) | gap 不影响 ADR-021 + 后续 ADR 顺序占用. 0 风险. |
+| **ADR-021** | sprint period 预占 | 已落地 (PR #174) | 本 ADR. |
+
+**修订时点候选** (Wave 5+ 远期, 0 PR commitment): 治理价值显著上升时重评 rename 风险.
+
+**防未来 sprint 重提 rename**: 本 §3.6 + IRONLAWS.md §21.1 是 SSOT 历史决议保留声明, 任何后续 PR / sprint 提议 rename 必须先撤销本子段 + 更新所有引用文档.
+
 ---
 
 ## §4 关联
