@@ -65,11 +65,19 @@ PORTFOLIO_CURRENT_TTL_SEC: Final[int] = 180
 class QMTDataService:
     """QMT数据同步服务。"""
 
+    # T0-16 fail-loud (批 2 P0 修, 2026-04-30): 连续同步失败 N 次后 escalate.
+    # 60s sync interval × 5 = 5 min consecutive failures 阈值. D3-A Step 4 实测
+    # 4-04 起 26 天 ~37,440 次 silent WARNING 0 告警 → 沿用铁律 33 fail-loud.
+    _CONSECUTIVE_FAILURE_THRESHOLD: int = 5  # 5 min @ 60s sync interval
+
     def __init__(self) -> None:
         self._running = False
         self._broker = None
         self._redis = None
         self._bus = get_stream_bus()
+        # T0-16 (批 2 P0 修): consecutive sync failures counter, reset on success
+        self._consecutive_sync_failures: int = 0
+        self._fail_loud_alerted: bool = False  # 仅 escalate 一次/episode (avoid spam)
 
     def _get_redis(self):
         """获取Redis连接（懒初始化）。"""
@@ -169,6 +177,9 @@ class QMTDataService:
             r.setex(CACHE_QMT_STATUS, QMT_STATUS_TTL_SEC, "connected")
 
             logger.debug("持仓同步完成: %d只股票", len(pos_dict))
+            # T0-16 fail-loud: 成功 → reset counter + alert flag (允许下次 escalate)
+            self._consecutive_sync_failures = 0
+            self._fail_loud_alerted = False
             return pos_dict
         except Exception:
             logger.warning("持仓同步失败", exc_info=True)
@@ -181,7 +192,53 @@ class QMTDataService:
                 # 完全 silent (上面 logger.warning 是 broker 错, 此处是 Redis 错, 不同源).
                 logger.debug("setex disconnected 也失败 (Redis 可能挂)", exc_info=True)
                 pass  # silent_ok: 主 sync_loop 必须能进下一周期重试, 不 cascade fail
+            # T0-16 fail-loud (批 2 P0 修, 2026-04-30): 连续失败 escalation
+            self._consecutive_sync_failures += 1
+            if (
+                self._consecutive_sync_failures >= self._CONSECUTIVE_FAILURE_THRESHOLD
+                and not self._fail_loud_alerted
+            ):
+                self._escalate_consecutive_sync_failures()
+                self._fail_loud_alerted = True
             return None
+
+    def _escalate_consecutive_sync_failures(self) -> None:
+        """T0-16 fail-loud escalation: write risk_event_log P0 + dingtalk_alert.
+
+        触发: _consecutive_sync_failures >= _CONSECUTIVE_FAILURE_THRESHOLD (5 min).
+        Action: 写 risk_event_log audit row + 调 dingtalk_alert.send_with_dedup.
+        本 method 不 raise (服务继续重试, 由 risk framework 决议是否真停服).
+
+        关联: T0-16 (PR #166 SHUTDOWN_NOTICE §6 P0), 沿用铁律 33 fail-loud.
+        Helper: backend.app.services.dingtalk_alert (commit 3, 双锁 + 1h dedup).
+        """
+        count = self._consecutive_sync_failures
+        logger.error(
+            "[T0-16 fail-loud] qmt_data_service consecutive sync failures = %d "
+            "(>= threshold %d × 60s = %d min). 持仓同步 silent skip 沉淀 → escalate.",
+            count, self._CONSECUTIVE_FAILURE_THRESHOLD,
+            self._CONSECUTIVE_FAILURE_THRESHOLD,
+        )
+        try:
+            from app.services.dingtalk_alert import send_with_dedup
+            send_with_dedup(
+                dedup_key="qmt_data_service:consecutive_sync_failures",
+                severity="p0",
+                source="qmt_data_service",
+                title="QMT Data Service 持仓同步连续失败",
+                body=(
+                    f"_consecutive_sync_failures={count} "
+                    f"(>= {self._CONSECUTIVE_FAILURE_THRESHOLD} = "
+                    f"{self._CONSECUTIVE_FAILURE_THRESHOLD} min).\n\n"
+                    "T0-16 fail-loud escalation. 本服务不主动停, 但风控层 "
+                    "(QMTDisconnectRule + QMTFallbackTriggeredRule) 应已 alert. "
+                    "需人工 Servy restart QuantMind-QMTData 后验证 sync 恢复."
+                ),
+            )
+        except Exception:
+            # 沿用铁律 33-d silent_ok: alert 失败不 cascade 阻 sync_loop, 仅 log.
+            # 主告警链路 (logger.error 上方) 已记录, dingtalk 是次告警通道.
+            logger.exception("[T0-16] dingtalk_alert escalation 失败 (next sync 将重试 dedup_hit)")
 
     def _sync_prices(self, codes: list[str]) -> None:
         """同步持仓股票实时价格到Redis缓存。

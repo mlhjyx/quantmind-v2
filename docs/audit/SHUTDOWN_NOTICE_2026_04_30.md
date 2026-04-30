@@ -141,15 +141,16 @@ grep -oE "code=[0-9]{6}\.(SH|SZ)" logs/emergency_close_20260429_104354.log | sor
 
 ---
 
-## §6 Tier 0 债清单 v3 (16 → 17, +1 from PR #165 D3-C F-D3C-13)
+## §6 Tier 0 债清单 v4 (批 2 P0 修 PR #170 落地后)
 
-| ID | 描述 | 严重度 | 来源 |
+| ID | 描述 | 严重度 | 状态 |
 |---|---|---|---|
-| T0-15 | LL-081 guard 不 cover QMT 断连场景 / fallback 触发, 真金 silent drift 漏检 (修法范围扩 D3-A Step 4 修订 v2) | **P0** | D3-A Step 4 spike F-D3A-NEW-3 + 修订 v2 |
-| T0-16 | qmt_data_service 26 天连续 silent skip 持仓同步失败, 0 告警 (~37,440 次 silent WARNING, 铁律 33 严重违反) | **P0** | D3-A Step 4 spike F-D3A-NEW-4 |
-| ~~T0-17~~ | ~~Claude prompt 设计层默认软处理 user 真金指令 (4-29 "全清仓"→link-pause)~~ — **v3 修订**: PR #150 link-pause 是补丁不是替代清仓, 清仓 4-29 10:43 已完成. **撤销 T0-17** | ~~P0~~ | D3-A Step 4 修订 v1 (已撤销 by PR #166 v3 修订) |
-| T0-18 | 注释 Beat schedule 后必 Servy restart 才生效 — 候选铁律 X9 | **P1** | D3-A Step 5 spike F-D3A-NEW-6 |
-| **T0-19 (新)** | **emergency_close_all_positions.py 实战清仓后没自动刷新 DB position_snapshot / cb_state / performance_series + 没自动入 trade_log + 没自动入 risk_event_log audit. 修法**: post-execution DB sync hook + 触发 reconciliation + 写 risk_event_log 真金事故 audit | **P1** | **D3-C F-D3C-13 + F-D3C-25** (PR #165) |
+| ~~T0-15~~ | LL-081 guard 不 cover QMT 断连场景 / fallback 触发 | ~~P0~~ → ✅ | **PR #170 落地** (QMTFallbackTriggeredRule + 6 unit tests, qmt_fallback.py) |
+| ~~T0-16~~ | qmt_data_service 26 天连续 silent skip (~37,440 次 silent WARNING) | ~~P0~~ → ✅ | **PR #170 落地** (5 min 阈值 + dingtalk_alert escalate, 7 unit tests) |
+| ~~T0-17~~ | ~~Claude prompt 软处理 user 真金指令~~ | ~~P0~~ | **v3 撤销** (PR #166: PR #150 是补丁不是替代清仓) |
+| ~~T0-18~~ | Beat schedule 注释后必 Servy restart 才生效 — 铁律 X9 | ~~P1~~ → ✅ | **PR #170 落地** (CLAUDE.md 铁律 44 inline + LL-097 入册) |
+| ~~T0-19~~ | emergency_close 实战清仓后没自动刷新 DB / 没入 audit | ~~P1~~ | **v3 撤销** (PR #168: 业务代码 + 21 unit tests merged) |
+| ~~F-D3A-1~~ | 3 missing migrations (alert_dedup / platform_metrics / strategy_evaluations) | ~~P0~~ → ✅ | **PR #170 落地** (psql -f raw SQL apply, 3 表 EXISTS verifier 0 exit) |
 
 **Tier 0 总数**: 16 (含原 T0-1~T0-14) - 1 (T0-17 撤销) + 1 (T0-19 新) = **16** (净不变, 但 P0 数 4→3, P1 数 +1).
 
