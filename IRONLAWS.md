@@ -827,7 +827,12 @@ ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
 - **v3.0.2** (2026-04-30, Step 6.2.5b-2 PR #177): hook 实施 + 文档修补
   - §18 X10 stress test 实绩段修补 5→8 次 (加 PR #175/#176/#177 三项)
   - (基础设施补) config/hooks/pre-push 加 X10 cutover-bias 守门 (软门转硬门, 沿用 §18 hard pattern 清单)
-- **v3.x+** (Step 6.2.5+): 候选 X1/X3/X4/X5 promote / Tier 重新 calibration / 等
+- **v3.0.3** (2026-05-01, Step 6.3b PR Step 6.3b): CLAUDE.md 重构 + audit 沉淀
+  - CLAUDE.md 全文件温和精简 (Path C, 813→~509 行, -37%): 目录结构 / 已知失败方向 / 策略配置 / 当前进度 4 段大幅精简, 详细历史→ SYSTEM_STATUS / docs/audit / SHUTDOWN_NOTICE
+  - **ADR-021 §4.5 "~150 行" target 实测推翻** (LL "假设必实测" 沉淀): SSOT 现实约束下 ~150 行不可达 (STOP-1 + STOP-2 双触发), Path C 折中 ~509 行落地. 详 [Step 6.3b STATUS_REPORT](docs/audit/STATUS_REPORT_2026_05_01_step6_3b.md) §3
+  - **PROJECT_FULL_AUDIT line 89 数字漂移 audit 沉淀** (沿用 Step 6.3a §2.2 + 本 PR WI 3 D71 决议选项 c): line 89 写 "剩 11 项 (T0-1 ~ T0-12 + T0-14)" 实测 = 9 项待修 (T0-4/5/6/7/8/9/10/12/14). 差 2 项源 = T0-1/2/3 在 line 81 标 "🟡 部分修" 但 line 89 整体 enumerate 时未减除. **PR #172 PROJECT_FULL_AUDIT 文件保持锁定** (历史 audit 时点真实记录), 修补走本条 v3.0.3 entry + Step 6.3a STATUS_REPORT §2 实测 audit log 链.
+  - X10 stress test 实绩段累计第 9 次 (Step 6.3a) → 第 10 次 (本 PR Step 6.3b): 末尾 0 forward-progress offer
+- **v3.x+** (Step 6.2.5+ / Step 7+): 候选 X1/X3/X4/X5 promote / Tier 重新 calibration / 等
 
 ---
 
