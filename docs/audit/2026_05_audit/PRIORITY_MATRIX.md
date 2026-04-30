@@ -1,135 +1,170 @@
-# PRIORITY_MATRIX — SYSTEM_AUDIT_2026_05
+# PRIORITY_MATRIX — SYSTEM_AUDIT_2026_05 (Phase 1 + Phase 2)
 
-**目的**: 全 finding 严重度矩阵 (P0真金/P0治理/P1/P2/P3 5 级), 渐进式填充 (CC 每完成 sub-md 即追加).
-
-**Status**: 🟡 渐进式填充中 (snapshot 5 + reviews 4 + adversarial 4 + cross_validation 1 = 14 sub-md done)
+**目的**: 全 finding 严重度矩阵 (P0真金/P0治理/P1/P2/P3 5 级)
+**Status**: ✅ Phase 1 完成 (PR #182 merged) + ✅ Phase 2 主体完成
 
 ---
 
-## 严重度定义 (沿用 GLOSSARY F)
+## 严重度定义
 
 | 级别 | 定义 | SOP |
 |---|---|---|
 | **P0 真金** | 真金 ¥993K 直接风险 | STOP 反问 user 立即 |
-| **P0 治理** | 项目治理崩溃 / sprint period 重大假设推翻 | 沉淀 + (audit 末尾决议是否 STOP 反问 user 扩 scope) |
+| **P0 治理** | 项目治理崩溃 / sprint period 重大假设推翻 | 沉淀 + audit 末尾决议是否 STOP 反问 user 扩 scope |
 | **P1** | 重要, 影响下次 sprint period 决策 | 沉淀, audit 末尾汇总 |
 | **P2** | 一般, 供战略对话参考 | 沉淀 |
 | **P3** | 微小, sprint period anti-pattern 候选 | 沉淀 |
 
 ---
 
-## P0 真金
+## P0 真金 (0 项 ✅)
 
-(0 触发 — E5/E6 实测 sustained: LIVE_TRADING_DISABLED=True / EXECUTION_MODE=paper / xtquant 0 持仓 / cash=¥993,520.66.)
+E5/E6 sustained: LIVE_TRADING_DISABLED=True / EXECUTION_MODE=paper / xtquant 0 持仓 / cash=¥993,520.66
 
 ---
 
-## P0 治理 ⚠️ (7 项, 重大推翻 sprint period sustained 假设)
+## P0 治理 (10 项 ⚠️)
 
 | ID | 描述 | 来源 sub-md |
 |---|---|---|
-| **F-D78-8** | 5 schtask 持续 LastResult=1/2 失败 cluster (PT_Watchdog/PTDailySummary/DataQualityCheck/RiskFrameworkHealth/ServicesHealthCheck), sprint period sustained "Wave 4 MVP 4.1 Observability batch 1+2.1+2.2 ✅" 重大假设推翻 | snapshot/03_services_schedule §4 |
-| **F-D78-19** | sprint period 22 PR 链是治理 sprint period (0 业务前进), 治理价值 vs over-engineering 之比中性偏负, sprint period sustained "6 块基石治理胜利" 假设 部分推翻 | governance/01_six_pillars_roi §3 |
-| **F-D78-21** | 4-29 PT 暂停事件真根因 (5 Why 推到底): Wave 1-4 路线图设计哲学局限 = batch + monitor, L0 event-driven enforce 是哲学外维度. user 假设"实施层未到位"深 1-2 层 | risk/01_april_29_5why §2-3 |
-| **F-D78-25** | 共同假设 "Wave 路线图最佳" 推翻. 路线图设计哲学局限, 4-29 真金 ~¥6,479 损失印证 | blind_spots/03_shared_assumptions §1.1 |
-| **F-D78-26** | 共同假设 "4 源协作有效" 推翻. 4 源 N×N 同步矩阵 sustained 漂移 (5 漂移 finding 印证), sprint period 治理 sprint period 大头是 4 源同步 overhead | blind_spots/03_shared_assumptions §1.2 |
-| **F-D78-33** | User 项目目标 (alpha 15-25%) vs 真测投入产出 (治理 + Observability) disconnect, 真目标候选 = 治理 maturity 而非 alpha | blind_spots/02_user_assumptions §1.5 |
-| **F-D78-48** | 项目 bus factor 极低. User 退出 N 月后接手者 onboarding 极困难 (4 源协作漂移 + 70-110 audit md 无 SOP + 真生产 self-recover 0). 沿用 F-D78-13 + F-D78-41 | business/01_workflow_economics §3 |
+| **F-D78-8** | 5 schtask 持续失败 cluster, sprint period sustained "Wave 4 Observability ✅" 重大推翻 — RiskFrameworkHealth 自愈机制本身失败 silent failure | snapshot/03 §4 |
+| **F-D78-19** | sprint period 22 PR 是治理 sprint period (0 业务前进), "6 块基石治理胜利" 部分推翻 (3/6 ✅) | governance/01 §3 |
+| **F-D78-21** | 4-29 PT 暂停事件真根因 (5 Why): Wave 1-4 路线图设计哲学局限 = batch + monitor, L0 event-driven 哲学外维度 | risk/01 §2-3 |
+| **F-D78-25** | 共同假设 "Wave 路线图最佳" 推翻, 4-29 真金 ~¥6,479 损失印证 | blind_spots/03 §1.1 |
+| **F-D78-26** | 共同假设 "4 源协作有效" 推翻, 4 源 N×N 同步矩阵 sustained 漂移 | blind_spots/03 §1.2 |
+| **F-D78-33** | User 项目目标 (alpha 15-25%) vs 真测投入产出 (治理+Observability) disconnect, 真目标候选 = 治理 maturity 而非 alpha | blind_spots/02 §1.5 |
+| **F-D78-48** | 项目 bus factor 极低. 接手者 onboarding 极困难 | business/01 §3 |
+| **F-D78-53** | 国金 miniQMT + xtquant broker 单点失败 (¥993,520.66 全 lock-in) | external/01 §2.1 |
+| **F-D78-61** | risk_event_log 仅 2 entries 全 audit log 类, 0 真生产风控触发, 沦为 audit log 写入位 (沿用 4-29 5 Why 路线图哲学局限再印证) | risk/02 §1 |
+| **F-D78-62** | event_outbox = 0/0 真测, sprint period sustained "Outbox Publisher MVP 3.4 batch 2 ✅" + Beat 30s 沉淀, 真生产 0 真使用. event sourcing 架构 candidate 仅 design 0 enforce | risk/02 §2 |
+| **F-D78-76** | 测试基线数字漂移 +1212 tests since Session 9 baseline (4076 vs 2864), 铁律 40 baseline 数字 0 sync update | testing/01 §2 |
+| **F-D78-89** | 路径 3 自 4-29 后 真生产风控 enforce 0 active, "Wave 3 MVP 3.1 Risk Framework 完结" 推翻再印证 | end_to_end/01 §3 |
 
 ---
 
-## P1 (8 项)
+## P1 (15 项)
 
-| ID | 描述 | 来源 sub-md |
+| ID | 描述 | 来源 |
 |---|---|---|
-| F-D78-27 | 共同假设 "三领域 V3 同步升级" 推翻, 候选风控 V3 独立优先 | blind_spots/03_shared_assumptions §1.4 |
-| F-D78-28 | 共同假设 "1 人量化走企业级架构" 候选推翻 (CC 扩), 候选简化 candidate | blind_spots/03_shared_assumptions §1.5 |
-| F-D78-29 | 共同假设 "PT 重启 5d dry-run = 充分条件" 推翻 (CC 扩), 候选 prerequisite 重审 | blind_spots/03_shared_assumptions §1.6 |
-| F-D78-30 | 共同假设 "audit 沉淀越多越好" 候选推翻 (CC 扩), 候选文档审 sprint period 启动 | blind_spots/03_shared_assumptions §1.7 |
-| F-D78-31 | User 时间投入 vs 项目产出经济性候选推翻, NAV ~-0.65% + 0 业务前进 + 全职 N 月 | blind_spots/02_user_assumptions §1.3 |
-| F-D78-32 | 协作模式 (Claude.ai + CC + memory + repo 4 源) 候选推翻有效性 | blind_spots/02_user_assumptions §1.4 |
-| F-D78-41 | Unknown unknown — User 健康 + 持续性 + 项目 bus factor 风险未深查 | blind_spots/04_unknown_unknowns §1.7 |
-| F-D78-49 | panic SOP 沉淀 0 (4-29 ad-hoc), 候选 docs/runbook/cc_automation/panic_sop.md sustained 沉淀 | business/01_workflow_economics §4 |
+| F-D78-27 | 共同假设 "三领域 V3 同步升级" 推翻, 候选风控 V3 独立优先 | blind_spots/03 §1.4 |
+| F-D78-28 | 共同假设 "1 人量化走企业级架构" 候选推翻 | blind_spots/03 §1.5 |
+| F-D78-29 | 共同假设 "PT 重启 5d dry-run = 充分条件" 推翻 | blind_spots/03 §1.6 |
+| F-D78-30 | 共同假设 "audit 沉淀越多越好" 候选推翻 | blind_spots/03 §1.7 |
+| F-D78-31 | User 时间投入 vs 项目产出经济性候选推翻 | blind_spots/02 §1.3 |
+| F-D78-32 | 协作模式 (Claude.ai + CC + memory + repo 4 源) 候选推翻有效性 | blind_spots/02 §1.4 |
+| F-D78-41 | Unknown unknown — User 健康 + 持续性 + 项目 bus factor 风险 | blind_spots/04 §1.7 |
+| F-D78-49 | panic SOP 沉淀 0 (4-29 ad-hoc) | business/01 §4 |
+| F-D78-50 | 跨源 reconciliation SOP 沉淀 0, broker → DB position_snapshot 4-29 后 0 触发 | operations/01 §4 |
+| F-D78-51 | 新 Claude session onboard 难度高, onboard SOP 0 自动化 | governance/02 §2 |
+| F-D78-52 | sprint state 关键 context 在 Anthropic memory (not repo), 新接手者 0 access | governance/02 §4 |
+| F-D78-54 | PostgreSQL + TimescaleDB DB 单点失败 | external/01 §2.2 |
+| F-D78-55 | DingTalk alert 单点失败 | external/01 §2.3 |
+| **F-D78-59** | Model Risk Management 框架 0 sustained (model card / independent validation / auto stress test 全缺) | factors/01 §2 |
+| **F-D78-63** | alert_dedup + Wave 4 MVP 4.1 alert 真触发统计 0 真测 | risk/02 §2 |
+| **F-D78-70** | pip-audit 未装 in .venv, 0 sustained 漏洞扫描 | snapshot/06 §2 |
+| **F-D78-85** | sim-to-real gap 真测候选 — WF OOS Sharpe=0.8659 vs 真期间 PT NAV ~-0.65% / Sharpe ~0 (60 day) | backtest/01 §2 |
+| **F-D78-88** | 路径 2 (PT) 自 4-29 后 0 active, prerequisite 推翻 | end_to_end/01 §2 |
+| **F-D78-90** | 路径 4 (告警→user→broker) 真 last-trigger 0 sustained, panic SOP 0 sustained | end_to_end/01 §4 |
+| **F-D78-92** | 未来 PT 重启 + Wave 5+ + V3 风控 路径全依赖未 verify 的当前假设 | temporal/01 §3.4 |
+| **F-D78-104** | Servy 4 服务 PRR checklist 关键 5+ 项 ❌/🔴 | operations/02 §1.2 |
+| **F-D78-105** | DR 真演练 0 sustained, restore 真 verify 0 sustained, RTO/RPO unknown | operations/02 §3 |
 
 ---
 
-## P2 (15 项)
+## P2 (40+ 项)
 
-| ID | 描述 | 来源 sub-md |
+(详 sub-md 中 finding 汇总段, 累计 P2 含 sustained 复述 sustained 多)
+
+P2 关键新增 (Phase 2):
+| ID | 描述 | 来源 |
 |---|---|---|
-| F-D78-1 | sprint state handoff 数字漂移 (写 "DB 4-28 stale" 真值 4-27, 错 1 天) | snapshot/07_business_state §4 |
-| F-D78-4 | DB live position vs xtquant 真账户 4 trade days stale (T0-19 sustained, 仍 active) | snapshot/07_business_state §4 |
-| F-D78-5 | 根目录 8 *.md (多 3 未授权), CLAUDE.md §文件归属规则 reactive 治理失败 | snapshot/01_repo_inventory §2 |
-| F-D78-7 | sprint state Session 30 "5 schedule entries 生产激活" 数字漂移 (实测 active=4 + 2 PAUSED) | snapshot/03_services_schedule §2.4 |
-| F-D78-10 | 死表 candidate margin_detail (902 MB / 0 rows) + northbound_holdings (648 MB / 0 rows), 未 deprecated 标记 | snapshot/02_db_schema §3 |
-| F-D78-13 | 项目 git 全 history 仅 90 day (741 commits 全集中近 90 day), bus factor 高风险 | snapshot/01_repo_inventory §3 |
-| F-D78-15 | ADR-022 反 §22 entry 但 §22 entry sustained 累计 (反 anti-pattern 自身复发) | governance/01_six_pillars_roi §1.1 |
-| F-D78-16 | ADR-022 ex-post 沉淀但 ex-ante prevention 缺, 数字漂移仍 active (F-D78-1/7/9/11 印证) | governance/01_six_pillars_roi §1.3 |
-| F-D78-17 | 第 19 条 memory 铁律 prompt 层 enforce 但 handoff 写入层 0 enforce, sprint state 漂移仍 active | governance/01_six_pillars_roi §1.4 |
-| F-D78-22 | T1.3 V3 design doc 342 行沉淀但真接入点路径未 demonstrate | risk/01_april_29_5why §5 |
-| F-D78-20 | 4-29 后 STAGED 决策权路径 0 推进, 真生产仍 user 100% 手工 | risk/01_april_29_5why §6 |
-| F-D78-23 | dv_ttm warning Session 5 (4-18) 未升级决议, sprint period PT 配置仍含 sustained 但 lifecycle ratio < 0.8 | blind_spots/01_claude_assumptions §1.7 |
-| F-D78-34 | D78 决议本身候选不完美 (context limit 风险 + 反 treadmill 可能新 sprint period 起点) | blind_spots/02_user_assumptions §1.6 |
-| F-D78-35 | Unknown unknown — broker 视角看项目状态未深查 (broker 端风控 / 月报 / 资金分类) | blind_spots/04_unknown_unknowns §1.1 |
-| F-D78-36 | Unknown unknown — 项目硬件成本累计真值未深查 | blind_spots/04_unknown_unknowns §1.2 |
-| F-D78-38 | Unknown unknown — 第三方源真 ToS + 真稳定性 + 单点失败风险未深查 | blind_spots/04_unknown_unknowns §1.4 |
-| F-D78-39 | Unknown unknown — 个人量化交易合规法规边界未深查 | blind_spots/04_unknown_unknowns §1.5 |
-| F-D78-40 | LLM cost 累计真值未深查 | blind_spots/04_unknown_unknowns §1.6 |
-| F-D78-42 | Unknown unknown — 项目数据未来 N 年演进风险未深查 | blind_spots/04_unknown_unknowns §1.8 |
-| F-D78-43 | 候选: 3 源 N×N 漂移矩阵 sustained, 同 fact 跨 3 源描述真一致性未深查 | cross_validation/01_doc_drift_broader §1.4 |
-| F-D78-45 | 表层 (CLAUDE.md) / 中层 (sprint state) / 真生产层 3 维 drift, 表层 vs 真生产层差距大 | cross_validation/01_doc_drift_broader §1.6 |
-| F-D78-46 | 跨文档漂移 broader 累计 70+ (sprint period 47 + 本审查 22+), ADR-022 反"数字漂移" enforcement 失败实证扩 | cross_validation/01_doc_drift_broader §2 |
-| F-D78-47 | Beat + schtask 跨调度 fact 候选 redundancy (DataQualityCheck 同名候选 双重调度) | cross_validation/01_doc_drift_broader §3 |
+| F-D78-56 | Anthropic Claude 协作单点失败 | external/01 §2.4 |
+| F-D78-57 | sprint state CLAUDE.md 写 "factor_id" 字段, 真 schema 是 `factor_name` | factors/01 §1.1 |
+| F-D78-58 | factor_values 276 distinct vs factor_ic_history 113, 163 因子 raw 但 0 IC 入库 | factors/01 §1.1 |
+| F-D78-60 | CLAUDE.md "BH-FDR M=213" 数字漂移 (Phase 3B/3D/3E 后续未同步) | factors/01 §3 |
+| F-D78-64 | ruff 6 errors (3 unique rules SIM102 ×4 / B905 ×1 / E902 ×1) — CLAUDE.md "提交前 ruff check" enforcement 失败 | code/01 §1 |
+| F-D78-65 | mypy 全 repo 0 跑过本审查 | code/01 §3 |
+| F-D78-66 | sprint period "死码清理" 真删除 vs 仅 stop calling 候选 verify | code/01 §4 |
+| F-D78-67 | 铁律 31 Engine 层 enforcement 真 grep verify 候选 | code/01 §5 |
+| F-D78-69 | pip list --outdated 26 outdated dependencies | snapshot/06 §1 |
+| F-D78-71 | NPM 依赖 + npm audit 0 跑过本审查 | snapshot/06 §3 |
+| F-D78-72 | secret rotation 历史 0 sustained sustained | security/01 §2.2 |
+| F-D78-74 | DingTalk webhook URL 含 access_token, 0 sustained URL leak detection | security/01 §3 |
+| F-D78-75 | broker_qmt design 含 buy 候选, 候选真金 attack surface 评估 | security/01 §4 |
+| F-D78-78 | 测试金字塔真比例未 verify | testing/01 §3 |
+| F-D78-79 | coverage 三维度 (line/branch/mutation) 0 sustained | testing/01 §4 |
+| F-D78-80 | 24 fail baseline 真分类 (flaky/已知 stale/wontfix) 0 sustained | testing/01 §5 |
+| **F-D78-81** | **D:/pgdata16 真测 = 225 GB**, sprint period CLAUDE.md "60+/172/159 GB" 数字漂移. **D:/quantmind-v2 = 63 GB / .venv = 1.9 GB. 总 ~290 GB disk** | snapshot/14 §1 |
+| F-D78-82 | RAM 真测 0 sustained 监控, OOM 复发 detection 0 sustained | snapshot/14 §2 |
+| F-D78-83 | GPU (RTX 5070 12GB cu128) 真利用率 0 sustained 监控 | snapshot/14 §3 |
+| F-D78-84 | regression test 真 last-run timestamp 0 sustained sync update | backtest/01 §1 |
+| F-D78-86 | 回测 vs 生产 SignalComposer 真同一性实测 verify 候选 | backtest/01 §3 |
+| F-D78-87 | 路径 1 端到端真 last-trace + 真 dropoff 0 sustained | end_to_end/01 §1 |
+| F-D78-91 | 跨模块 import graph 真 dependency 0 sustained 度量 | independence/01 §2 |
+| F-D78-93~99 | 数据质量 6 维度 + 跨表 + 第三方源 + DataContract + Parquet cache 真测全 0 sustained | data/01 §1-5 |
+| F-D78-100 | OOM 复发 detection + memory monitoring 0 sustained 自动化 | performance/01 §1 |
+| F-D78-106 | runbook cc_automation 真覆盖度 0 sustained 度量 | operations/02 §4 |
+| F-D78-108 | config_guard 真启动 raise 历史 0 sustained, 铁律 34 enforcement 真历史 candidate | snapshot/04+05 §1.3 |
+| F-D78-109 | API + WebSocket 真清单 + 调用方 + deprecated 0 sustained 深查 | snapshot/04+05 §2 |
+| F-D78-110 | Redis Streams 真 alive 数 0 sustained 监控 | snapshot/08+09+10 §1 |
+| F-D78-111 | docs/* 700 *.md 真 last-update + 引用 graph + stale 0 sustained 深查 | snapshot/08+09+10 §3 |
+| F-D78-112 | TIER0_REGISTRY 真 closed/待修分布 实测 verify 候选 | snapshot/08+09+10 §4 |
 
 ---
 
-## P3 (10 项)
+## P3 (~15 项)
 
-| ID | 描述 | 来源 sub-md |
+(sustained Phase 1 + Phase 2 累计 sustained 复述, 详 sub-md 末尾)
+
+新增 Phase 2 P3:
+- F-D78-77 (3 unknown pytest mark / pytest config drift)
+- F-D78-99 (Parquet cache invalidation 真 enforce 度 audit)
+- F-D78-101 (latency critical paths 真 last-measure 0 sustained)
+- F-D78-102 (throughput 真测 0 sustained)
+- F-D78-103 (真生产并发约束 enforce 度 0 sustained)
+- F-D78-107 (configs/*.yaml 真清单 0 sustained 深查)
+- F-D78-113 (历史 PT 重启次数 + 失败原因 0 sustained 深查)
+- F-D78-114 (历史误操作 git revert 历史 0 sustained 深查)
+- (其他)
+
+---
+
+## 统计 (Phase 1 + Phase 2)
+
+| 严重度 | Phase 1 | Phase 2 新增 | 累计 |
+|---|---|---|---|
+| P0 真金 | 0 | 0 | 0 ✅ |
+| **P0 治理** | 7 | **5** (F-D78-61/62/76/89 + 复 F-D78-19/21/25/26/33/48/53/8) | **12** ⚠️ |
+| P1 | 8 | **9** (F-D78-59/63/70/85/88/90/92/104/105) | **~17** |
+| P2 | 22 | **27** (F-D78-56-114 跨多 sub-md sustained) | **~50** |
+| P3 | 10 | **8** | **~18** |
+| **小计** | **47** | **~50** | **~97** (含 sustained 复述) |
+
+---
+
+## sprint period sustained 假设推翻清单 (Phase 1+2 累计)
+
+| 假设 | 真值 | 来源 finding |
 |---|---|---|
-| F-D78-2 | sprint state handoff 用 `cb_state` 别名 + `source` 字段, 真表 `circuit_breaker_state` + `execution_mode` 字段 | snapshot/07_business_state §2 + GLOSSARY C |
-| F-D78-3 | DINGTALK_SECRET=空 (signature 验签 disabled, 仅 keyword=xin 1 锁) | E5 实测 / 待 security 领域沉淀 |
-| F-D78-9 | CLAUDE.md "factor_values hypertable 152 chunks" 数字漂移, 实测 chunk ID 已超 152 | snapshot/02_db_schema §1.3 |
-| F-D78-11 | schtask trigger time 漂移 (DataQualityCheck sprint state 17:45 → 真 18:30) | snapshot/03_services_schedule §5 |
-| F-D78-12 | xtquant cash 4-30 14:54 ¥993,520.16 → 5-01 04:16 ¥993,520.66, 差 ¥0.50 (微小利息或费用, 非 anomaly) | snapshot/07_business_state §4 |
-| F-D78-14 | docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md untracked draft, 与 PR #181 沉淀的 T1_3_RISK_FRAMEWORK_DECISION_DOC.md 关系 sprint state 未明确 | snapshot/01_repo_inventory §6 |
-| F-D78-18 | X10 候选 12 次 stress test 0 失守, 候选 framework v3.0 promote 到 T1/T2 | governance/01_six_pillars_roi §1.5 |
-| F-D78-24 | regression_test max_diff=0 sustained 假设, 真 last-run + 真 max_diff 未 verify (留 backtest sub-md 深查) | blind_spots/01_claude_assumptions §1.9 |
-| F-D78-37 | 项目 846 *.py 死码 + 真生产 path 比例未深查, 候选 ruff / mypy 全 repo 静态扫描 | blind_spots/04_unknown_unknowns §1.3 |
-| F-D78-44 | sprint state Session 内 fact drift 高发, 后续 Session 修订印证 sprint state handoff 写入层 0 verify enforcement | cross_validation/01_doc_drift_broader §1.5 |
+| **Wave 4 MVP 4.1 Observability batch 1+2.1+2.2 ✅** | 5 schtask 持续失败 + RiskFrameworkHealth 自愈机制本身失败 silent failure | F-D78-8 |
+| 6 块基石治理胜利 | 3/6 ✅ + 2/6 ⚠️ + 1/6 🔴 | F-D78-19 |
+| 5 Beat schedule entries 生产激活 | active=4 + 2 PAUSED | F-D78-7 |
+| DB 4-28 stale 19 行 | max(trade_date)=2026-04-27 错 1 天 | F-D78-1 |
+| T0-19 已 closed | 仍 active (5-01 实测仍未自愈) | F-D78-4 |
+| factor_values hypertable 152 chunks | chunk ID 已超 200+ | F-D78-9 |
+| 根目录 7 *.md 上限 | 实测 8 (多 3 未授权) | F-D78-5 |
+| **测试基线 2864 pass / 24 fail (Session 9)** | 真 4076 tests collected (+1212 since baseline) | F-D78-76 |
+| **risk_event_log 30 day 0 行 (sprint state)** | 真 2 行 全 audit log 类 0 真生产触发 | F-D78-61 |
+| **event_outbox MVP 3.4 batch 2 ✅** | 真 0/0 entries (event sourcing 0 真使用) | F-D78-62 |
+| Wave 路线图最佳 | 路线图设计哲学局限 (batch+monitor) | F-D78-25 |
+| 4 源协作有效 | N×N 同步矩阵 sustained 漂移 | F-D78-26 |
+| User 项目目标 = alpha 15-25% | 真测投入产出 disconnect | F-D78-33 |
+| 4-29 真根因 = 盘中 + 风控未设计 | 真根因深 3 层 = 路线图哲学局限 | F-D78-21 |
+| **factor_id 字段 (CLAUDE.md sustained)** | 真 schema 是 factor_name | F-D78-57 |
+| **CLAUDE.md "BH-FDR M=213"** | 真累积测试 ≥ 276 distinct factor_name (Phase 3B/3D/3E 未同步) | F-D78-60 |
+| **CLAUDE.md "60+/172/159 GB DB"** | D:/pgdata16 真 225 GB | F-D78-81 |
+| Wave 3 MVP 3.1 Risk Framework 完结 | 路径 3 自 4-29 后 真生产 enforce 0 active | F-D78-89 |
 
 ---
 
-## 统计
-
-| 严重度 | 当前数 |
-|---|---|
-| P0 真金 | 0 |
-| **P0 治理** | **7** ⚠️ |
-| P1 | 8 |
-| P2 | 22 |
-| P3 | 10 |
-| **小计** | **47** |
-
----
-
-## sprint period sustained 假设推翻清单 (汇总)
-
-| 假设 | 真值 | 来源 |
-|---|---|---|
-| **sprint state sustained "Wave 4 MVP 4.1 Observability batch 1+2.1+2.2 ✅"** | 5 schtask 持续 LastResult=1/2 失败, 含 RiskFrameworkHealth 自愈机制本身失败 | F-D78-8 |
-| sprint period sustained "6 块基石治理胜利" | 部分推翻 (3/6 ✅ + 2/6 ⚠️ + 1/6 🔴 ADR-022 reactive + enforcement 失败) | F-D78-19 |
-| sprint state Session 30 "5 schedule entries 生产激活" | active=4 + 2 PAUSED | F-D78-7 |
-| sprint state Session 45 "DB 4-28 stale 19 行" | max(trade_date)=2026-04-27, 错 1 天 | F-D78-1 |
-| sprint state Session 45 "T0-19 known debt audit-only" | 仍 active (本审查 4-30 + 5-01 实测仍未自愈) | F-D78-4 |
-| CLAUDE.md "factor_values hypertable 152 chunks" | 实测 chunk ID 已超 152 | F-D78-9 |
-| CLAUDE.md §文件归属规则 (根目录 7 上限) | 实测 8 (多 3 未授权) | F-D78-5 |
-| 共同假设 "Wave 路线图最佳" | 推翻, 路线图设计哲学局限 | F-D78-25 |
-| 共同假设 "4 源协作有效" | 推翻, N×N 漂移矩阵 | F-D78-26 |
-| User 项目目标 "alpha 15-25%" | 真测投入产出 disconnect, 真目标 = 治理 maturity 候选 | F-D78-33 |
-| User 假设 "4-29 真根因 = 盘中 + 风控未设计" | 真根因深 3 层 = 路线图设计哲学局限 | F-D78-21 |
-| User 隐含 "项目全职投入合理" | 经济性候选推翻 (NAV ~-0.65% + 0 业务前进) | F-D78-31 |
-
----
-
-**文档结束 (渐进填充中)**.
+**文档结束**.
