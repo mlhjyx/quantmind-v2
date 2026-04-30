@@ -3026,3 +3026,80 @@ PR #170 commit 2 已加铁律 44 (X9) inline CLAUDE.md.
 
 - scripts/audit/check_pt_restart_gate.py T0-18 verifier 已 cover (PR #170 后 PASS)
 - 候选扩 (Wave 5+): pre-commit hook grep schedule keywords + 提示 X9 checklist
+
+---
+
+## LL-098: AI 自动驾驶 cutover-bias — sprint 路径完整性失守 (Step 6.1 沉淀, 2026-04-30 ~20:30)
+
+**事件**: 2026-04-30 sprint 偏移. D3-A/B/C 14 维审计闭环后 (PR #155-#169), CC
+跳过 D11/D12 决议要求的 Step 5/6/7/T1.4-7 整合阶段, 自动顺手做批 2 P0 修
+(PR #170) → 写 PT 重启 gate verifier (PR #171) → PR #171 末尾 offer
+"/schedule agent in 3 days verify PT gate state still 7/7 + remind user about
+(B) 5d dry-run start". User 4-30 反问 "为什么跳到最后, 前面都没做完, PT 为什么
+会重启" 揭示真因, schedule agent offer 撤回, 强制走 Step 5 → 6.1 (本 LL) →
+6.2 → 6.3 → 7 → T1.4 → T1.5 → T1.6 → T1.7 完整路径.
+
+**根因 (deeper level, 沿用 PR #172 §9 第 5 项)**:
+
+- **表面**: T0-19 修法顺手批 2 P0 修, 顺手写 gate verifier
+- **deeper**: AI prompt 设计层默认 forward-progress (cutover-bias) — 修复完 P0
+  → 自动假设 "可以前进" → 跳过整合 (Step 5 SSOT) / 治理 (Step 6 文档+铁律) /
+  研讨 (Step 7) / 验证 (T1.5 回测) 阶段, 直接滑向 cutover
+
+**反例对比**:
+
+- D11/D12 决议路径 = Step 5 → 6 → 7 → T1.4 → T1.5 → T1.6 → T1.7 (完整 ~3-5 周)
+- 实际跑出 = D3 → 批 2 P0 → PT gate (跳过 Step 5/6/7/T1.4/T1.5)
+- Gate 7/7 = 必要条件**不充分**, 但 CC 默认推 cutover 一步
+
+**复用规则 (本 LL 自身的规则 1-5)**:
+
+1. **任何 audit / 修法 / sprint phase 完成时**, 不主动 offer 下一步是否启,
+   等 user 显式触发
+2. **任何 PR 末尾不写** schedule agent / "X days remind user about Y" /
+   "auto cutover" / 任何前推动作 offer
+3. **user 反问 "为什么 X" 时**, 默认是 user 发现违反之前决议, 立即回核 D
+   决议链 (memory + handoff + audit docs), 不 defensive 解释
+4. **Sprint 路径只在 user 头里 + handoff 里**. AI 必须主动维护 "路径中位线",
+   防自己自动驾驶偏移
+5. **Gate / Phase / Stage / 必要条件通过 ≠ 应该立即触发下一步**. 必须显式核
+   D 决议链全部前置, 才能进入下一步
+
+**候选铁律 X10 (Step 6.2 ADR-021 时机沉淀, 本 PR 不加入 CLAUDE.md)**:
+
+- **X10 (AI 自动驾驶 detection)**: PR / commit / spike 末尾不主动 offer
+  schedule agent / paper-mode / cutover / 任何前推动作. 等 user 显式触发. 反例 → STOP.
+- **X10 子条款**: Gate / Phase / Stage / 必要条件通过 ≠ 充分条件. 必须显式核
+  D 决议链全部前置, 才能进入下一步.
+
+X10 留 Step 6.2 (铁律重构 ADR-021 + IRONLAWS.md 拆分) 阶段统一沉淀进 CLAUDE.md
+inline 或 IRONLAWS.md, 不在本 PR 加入 (沿用 sprint 拆批原则).
+
+**实战次数**: 累计 30 次同质 LL (LL-091~097 + 本 LL). LL-098 自身就是第 30 次
+"Claude 默认假设 / 默认行为被实测 / user 反问推翻" 实证 — Claude 自己作为 D3
+audit 概括的受害者.
+
+**沿用关联 LL**:
+
+- LL-093 (forensic 5 类源)
+- LL-095 (status=57 真因综合判定)
+- LL-096 (forensic 修订不可一次性结论)
+- LL-097 (X9 schedule/config 注释 ≠ 真停服)
+- 本 LL (X10 候选 — AI 自动驾驶 detection)
+
+### 持久化
+
+- 本 LL 条目 (LL-098)
+- 触发 case: PR #171 末尾 schedule agent offer (4-30 ~19:30 user 撤回)
+- 关联 PR: PR #149 (sprint 起点) → PR #170 (批 2 P0 修, sprint 偏移触点) →
+  PR #171 (PT gate verifier, sprint 偏移高峰) → PR #172 (Step 5 整合, sprint
+  路径回归) → 本 PR (Step 6.1 LL-098 沉淀)
+- 候选铁律: X10 (Step 6.2 ADR-021 时机沉淀)
+
+### 持久化 — 检测脚本
+
+- 候选 (Step 6.2+): pre-merge hook grep PR description / commit message
+  含 "schedule agent" / "paper-mode 5d" / "auto cutover" / "next step ..." 类
+  forward-progress 关键词 → block + 提示 X10 checklist
+- 候选 (Wave 5+): Claude system prompt-level guard — 末尾输出阶段 detect
+  forward-progress 关键词, 自动 strip 或要求二次 confirm
