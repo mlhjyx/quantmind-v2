@@ -2889,3 +2889,96 @@ risk_event_log_action_taken_check:
 - Phase 1 sweep 入册: PR #167 (本 PR) 收尾 commit
 - 沿用扩展: 任何 SQL INSERT 含 CHECK 字段前 `pg_get_constraintdef` 实测 + 标 "CHECK enum 已实测 ✅"
 - 候选扩 scripts/audit/check_alembic_sync.py 加 CHECK enum 全 audit (Wave 5+)
+
+## LL-095: emergency_close status=57 cancel 真因综合判定 — 不假设单一原因 (D3 整合 v4 narrative, 2026-04-30 18:30+)
+
+**事件**: PR #168 Phase 2 实测 `logs/emergency_close_20260429_104354.log` 发现 18 orders placed 中 1 笔 cancel:
+
+```
+2026-04-29 10:43:57,400 [INFO] [QMT] 下单: 688121.SH sell 4500股 @0.000 type=market
+2026-04-29 10:43:57,506 [ERROR] [QMT] 下单失败: order_id=1090551149,
+    error_id=-61, error_msg=最优五档即时成交剩余撤销卖出 [SH688121]
+    [251005][证券可用数量不足]
+2026-04-29 10:43:57,506 [INFO] [QMT] 委托回报: order_id=1090551149,
+    code=688121.SH, status=57, traded=0/4500
+```
+
+CC 单方面假设 "T+1 当日买入限制" 触发 cancel — 实测 position_snapshot 显示 [688121.SH](https://github.com) 4500 股自 4-20 起持仓 ≥ 9 天, T+1 应早已解除. **假设错**.
+
+User 4-30 confirm 真因: **跌停撮合规则**. 卓然 4-29 跌停 (-29% 量级), `MARKET_SH_CONVERT_5_CANCEL` (xtconstant 42, 最优五档即时成交剩余撤销) 撮合规则下跌停板**无买盘对手方**, broker 视可用数量=0 → cancel.
+
+**根因**: error_id=-61 "证券可用数量不足" 真因**多元**, 不可单一假设. 至少 4 维度 cover:
+1. **市场行情**: 跌停 / 涨停 / 停牌 (本 case 命中跌停)
+2. **broker 撮合规则**: 最优五档即时成交剩余撤销 vs 限价 vs 市价 vs 集合竞价 (本 case 五档撮合规则下跌停 cancel)
+3. **持仓时间**: T+1 当日买入限制 (本 case 排除, ≥ 9 天持仓)
+4. **持仓状态**: 质押 / 司法冻结 / 风险警示 lockup (本 case 排除)
+
+**复用规则 (任何 emergency_close / live trade cancel 解释)**:
+1. **status=57 (cancel) 必查 4 维度**: market state + broker rule + holding age + position state
+2. **error_id=-61 不假设单一原因**: "证券可用数量不足"是症状, 真因需 broker statement / market log / 行情数据综合
+3. **audit hook 仅 backfill status=56 fills**: 失败单不 fabricate (沿用铁律 27, T0-19 Phase 2 已实现 ✅)
+4. **narrative 写真因前必 user confirm 或 broker statement 实测**: 不可 CC 单方面推断
+
+**实战 case (4-29 [688121.SH](https://github.com))**:
+- ❌ CC 假设 T+1 → 实测 4-20+ 持仓推翻
+- ❌ CC 假设 broker bug → 4 维度排查后 user confirm 跌停 + 五档撮合
+- ✅ 真因 user confirm: 跌停 (1) + 最优五档撤销 (2)
+- ✅ T0-19 Phase 2 audit hook **正确处理**: 仅 17 fills backfill, 不 fabricate 1 失败单
+
+**实战次数**: 累计 27 次同质 LL (LL-091~094 + 本 LL).
+
+### 持久化
+
+- 本 LL 条目 (LL-095)
+- 触发 case: PR #168 Phase 2 test_parse_real_log_17_fills_not_18 实测 + user 4-30 confirm 跌停真因
+- 关联 PR: PR #166 v3 → **PR #169 v4 narrative 修订** (17+1 hybrid 定论)
+- 沿用扩展: emergency_close hook 设计 / 真金 audit 描述必含 4 维度排查 checklist
+- 关联代码: `scripts/emergency_close_all_positions.py` 用 `MARKET_SH_CONVERT_5_CANCEL` (xtconstant 42) + `MARKET_SZ_CONVERT_5_CANCEL` (47); `backend/engines/broker_qmt.py` 注释 "最优五档即时成交剩余撤销"
+
+## LL-096: forensic 类 spike 修订不可一次性结论 — 必留"未确认尾巴" (D3 整合 v4 narrative, 2026-04-30 18:30+)
+
+**事件**: D3-A Step 4 narrative 4 轮修订:
+
+| 版本 | PR | 主张 | 推翻原因 |
+|---|---|---|---|
+| **v1** | #158 | "user 未察觉 + L1 QMT 4-04 断连后运维 gap" | user 4-30 14:50 质问 "4.29 我叫你清仓的, 你忘记了?" |
+| **v1 修订** | #159 | "user 4-29 ~14:00 决策 + Claude 软处理 link-pause + user 4-30 GUI sell 18 股" | D3-C F-D3C-13 实测 logs/emergency_close_20260429_104354.log |
+| **v2** | #163 | (L4 因果链精化, L1-L3 narrative 主体不变) | (L4 仍成立) |
+| **v3** | #166 | "CC 4-29 emergency_close 18 股全 status=56" | PR #168 实测 17 fills + 1 cancel |
+| **v4** | #169 (本 PR) | "17 CC 4-29 + 1 user 4-30 GUI sell hybrid + 跌停撮合真因" | (本 PR 定论) |
+
+4 轮修订 50 小时 (4-30 13:30 PR #158 → 18:30 PR #169) 暴露 forensic 类 spike 单次结论易漏:
+- v1: 漏 user 决策日志 (handoff)
+- v1 修订: 漏 logs/emergency_close_*.log
+- v3: 漏 status=57 / error_id=-61 / 跌停撮合 / broker side 上下文
+
+**根因**: forensic 类 spike 默认"结论性表述", 不留 P3-FOLLOWUP 标. 沿用 LL-091 (推论必标 P3-FOLLOWUP) + LL-093 (forensic 5 类源) 加强:
+
+**复用规则 (forensic 类 spike 修订防过度修正)**:
+1. **结论必加 v_N 修订标记**: 每次 narrative 重大修订 bump version (v1 → v2 → v3 → v4), 不简单覆盖, 保留历史层叠 archive
+2. **forensic 4 维度自检 checklist**:
+   - (a) **5 类源** (LL-093): 项目 logs/ + git log + DB 4 表 + Redis Streams + QMT 3 子类 log
+   - (b) **市场行情**: 跌停 / 涨停 / 停牌 / 集合竞价
+   - (c) **broker 撮合规则**: 最优五档 / 限价 / 市价 / 集合
+   - (d) **市场参与者状态**: 持仓时间 / 质押 / 司法冻结 / 风险警示
+3. **未确认尾巴标识**: 任何"由 X 推断, 但 broker 端未 confirm" 段必加 "[P3-FOLLOWUP: user/broker confirm 后定]" 标
+4. **修订门槛**: 修订前必 user confirm 或 broker statement 实测, 不 CC 单方面推断 (沿用 LL-091)
+
+**实战 case (D3-A Step 4 narrative 4 轮修订)**:
+- v1 → v2 (P3-FOLLOWUP missing): 推断 stale Redis cache 是 DB stale 源 → D3-B Q5.1 实测 0 keys 推翻
+- v3 → v4 (broker side 漏): 假设 18 全 status=56 → PR #168 实测 17+1 推翻
+- v4 (本 PR): 加 4 维度 checklist + user confirm 跌停撮合, 留 "[P3-FOLLOWUP]" 标记如下次发现新维度
+
+**实战次数**: 累计 28 次同质 LL (LL-091~095 + 本 LL, D3 系列假设必实测全部 28 次同源).
+
+### 持久化
+
+- 本 LL 条目 (LL-096)
+- 触发 case: D3-A Step 4 narrative 4 轮修订暴露 forensic 类 spike 单次结论风险
+- 关联 PR: PR #158/159/163/166/169 (4 轮 narrative)
+- 沿用扩展: 任何 forensic / spike / status_report PR 必含
+  (a) v_N 修订标记
+  (b) 4 维度 self-check (5 类源 + 市场行情 + broker 撮合 + 持仓状态)
+  (c) [P3-FOLLOWUP] 标记未确认尾巴
+- 关联其他 LL: LL-091 (P3-FOLLOWUP 推论必标) + LL-093 (forensic 5 类源) + LL-095 (status=57 真因综合判定)
+- 入 spike prompt template / 批 2 / D3-D / Phase 3+
