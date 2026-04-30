@@ -202,9 +202,11 @@ ADR 编号系统当前状态 (历史决议保留, **不 rename**):
 
 ### 4.5 后续步骤 (留 Step 6.2.5+, 本 PR 不预设)
 
+> **Step 6.4 G1 撤销** (2026-05-01, [ADR-022](ADR-022-sprint-treadmill-revocation.md) §2.1 #1): 本节 §4.5 "Step 6.3 全文件 ~150 行 重构" target 实测推翻 (Step 6.3b STOP-1+STOP-2 双触发 — SSOT 现实约束下不可达). 实际 Path C ~509 行落地 (PR #179). **本节仅作 Step 6.2 时点历史快照保留**, 后续步骤实际走 Step 6.2.5a/b-1/b-2 (PR #175-#177) + Step 6.3a (PR #178) + Step 6.3b (PR #179) + Step 6.4 G1 (本 PR).
+
 - Step 6.2.5: X10 工程化候选评估 (检测脚本 / pre-merge hook / Claude system prompt-level guard)
 - Step 6.2.5: narrower 起点链 audit + (可选) X1/X3/X4/X5 promote
-- Step 6.3: 6+1 文档 SSOT 整合 + 11 项 Tier 0 enumerate + CLAUDE.md 全文件 ~150 行 重构
+- Step 6.3: 6+1 文档 SSOT 整合 + 11 项 Tier 0 enumerate + CLAUDE.md 全文件 ~150 行 重构 <!-- ADR-022 §2.1 #1 撤销, 实际 Path C ~509 行 -->
 
 **注**: 沿用 LL-098 stress test 第 5 次, ADR-021 § 4.5 不 offer 启动 Step 6.2.5/6.3/Step 7. 等 user 显式触发.
 

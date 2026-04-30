@@ -207,7 +207,7 @@ PROJECT_FULL_AUDIT line 89: `**剩 11 项 (T0-1 ~ T0-12 + T0-14)**: 留 Step 6 /
 | 1 | branch name 命中 hard pattern | ✅ 已 cover | ✅ 真有 PR #177 dry-run scenario 1 实测 (`dryrun-pass-test` branch 扫) | **保持 ✅** (实测充分) |
 | 2 | amend commit 引入 hard pattern | ✅ 已 cover | ⚠️ **未实测** (claim "hook scan logic 不区分 amend vs 新 commit" 仅逻辑推理) | **修订 🟡 理论 cover** |
 | 3 | cherry-pick 引入 hard pattern | ✅ 已 cover | ⚠️ **未实测** (claim "cherry-pick 创建新 commit, subject 沿用源 commit subject" 仅逻辑推理) | **修订 🟡 理论 cover** |
-| 4 | merge commit subject 含 hard pattern | ⚠️ 理论 cover | ⚠️ 已诚实标 ⚠️ | **保持 ⚠️ / 🟡** (已诚实) |
+| 4 | merge commit subject 含 hard pattern | ⚠️ 理论 cover | ⚠️ 已诚实标 ⚠️ | **🟡 理论 cover** (与 §4.3 Row 4 决议统一, Step 6.4 G1 修订) |
 
 ### §4.2 D71 判断准确度
 

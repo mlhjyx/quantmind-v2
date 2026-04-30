@@ -291,6 +291,95 @@ quantmind-v2/
 └── README.md
 ```
 
+### §一.1 其他顶层目录 (Step 6.4 G1 扩展, 2026-05-01)
+
+> **背景** (沿用 Step 6.3b §2.2 #P1-1 主动发现): 上述 §一 树仅覆盖 `backend/` 子树, 不含 `backend/platform/` (Wave 1+2+3 平台化框架) / `scripts/` / `configs/` / `frontend/` / `cache/` / `docs/`. Step 6.4 G1 (ADR-022 §2.4 反 "留 Step 7+" 滥用原则) 一次性扩展.
+
+```
+quantmind-v2/
+├── backend/platform/                # ⭐ Wave 1+2+3 Platform 12 Framework + 6 升维
+│   ├── __init__.py                  #   统一导出 67 符号 (12 Framework 对外 API + 共享类型)
+│   ├── _types.py                    #   Signal/Order/Verdict/BacktestMode/Severity/ResourceProfile/Priority
+│   ├── data/                        #   #1 Data Framework (interface / access_layer / cache_coherency / base_source / sources/)
+│   │   └── sources/                 #     baostock_source / qmt_source / tushare_source (MVP 2.1b)
+│   ├── factor/                      #   #2 Factor Framework (interface / registry / lifecycle, MVP 1.3a-c)
+│   ├── strategy/interface.py        #   #3 Strategy: Strategy(ABC)/Registry/CapitalAllocator
+│   ├── signal/interface.py          #   #6 Signal/Exec: SignalPipeline/OrderRouter/AuditTrail
+│   ├── backtest/interface.py        #   #5 Backtest: BacktestRunner/Registry/BatchExecutor (MVP 2.3 Sub1)
+│   ├── eval/interface.py            #   #4 Eval: EvaluationPipeline/StrategyEvaluator/GateResult
+│   ├── observability/               #   #7 Observability (MVP 4.1 batch 1+2.1+2.2)
+│   │   ├── interface.py             #     MetricExporter/AlertRouter/EventBus
+│   │   ├── alert_router.py          #     PostgresAlertRouter (cross-process PG dedup, PR #131)
+│   │   ├── metric_exporter.py       #     PostgresMetricExporter + platform_metrics hypertable (PR #132)
+│   │   └── alert_rules.py           #     AlertRulesEngine yaml-driven routing (PR #133)
+│   ├── config/                      #   #8 Config Management (interface / schema / loader / auditor / feature_flag, MVP 1.2)
+│   ├── ci/interface.py              #   #9 CI/Test: TestRunner/CoverageGate/SmokeTestSuite
+│   ├── knowledge/                   #   #10 Knowledge Registry (interface / registry, MVP 1.4)
+│   ├── resource/interface.py        #   #11 Resource (ROF, U6): ResourceManager/AdmissionController/BudgetGuard
+│   └── backup/interface.py          #   #12 Backup & DR: BackupManager/DisasterRecoveryRunner
+│
+├── scripts/                         # ⭐ 生产 + 运维 + 研究脚本 (~150 脚本)
+│   ├── run_paper_trading.py         #   PT 主脚本 (345 行编排器, Step 6-A 拆分后)
+│   ├── run_backtest.py              #   回测脚本 (345 行, YAML 驱动: --config configs/pt_live.yaml)
+│   ├── build_backtest_cache.py      #   Step 5: 构建 Parquet 缓存
+│   ├── qmt_data_service.py          #   QMT 数据同步 → Redis (Servy 常驻, 唯一 import xtquant 入口)
+│   ├── health_check.py              #   盘前健康检查
+│   ├── monitor_factor_ic.py         #   因子 IC 监控
+│   ├── pt_watchdog.py               #   PT 心跳监控
+│   ├── pg_backup.py                 #   数据库备份
+│   ├── data_quality_check.py        #   数据巡检
+│   ├── approve_l4.py                #   L4 熔断恢复 CLI (紧急)
+│   ├── cancel_stale_orders.py       #   QMT 紧急撤单 (紧急)
+│   ├── compute_daily_ic.py          #   每日增量 IC 入库 (Mon-Fri 18:00, PR #37/#40/#42)
+│   ├── compute_ic_rolling.py        #   ic_ma20/60 rolling 刷新 (Mon-Fri 18:15, PR #43/#44)
+│   ├── fast_ic_recompute.py         #   历史 IC 重算 (PR #45, 铁律 17 例外)
+│   ├── factor_lifecycle_monitor.py  #   因子生命周期监控 (周五 19:00 Beat)
+│   ├── emergency_close_all_positions.py  #   紧急清仓 (4-29 实战, PR #168 加 audit hook)
+│   ├── registry/                    #   ⭐ MVP 1.3a-c Platform Registry 工具 (backfill / audit / register)
+│   ├── knowledge/                   #   ⭐ MVP 1.4 Knowledge migration (research_kb / register_adrs)
+│   ├── archive/                     #   126 个归档脚本 (零生产引用, S1 audit F13)
+│   └── research/                    #   研究脚本 (验证 / 回测实验 / Phase 2-3 探索)
+│
+├── configs/                         # ⭐ Step 4-B 新增: YAML 策略配置
+│   ├── pt_live.yaml                 #   PT 生产配置 (CORE3+dv_ttm Top-20 月度+SN b=0.50)
+│   ├── backtest_12yr.yaml           #   12 年基线回测
+│   ├── backtest_5yr.yaml            #   5 年回测 (历史基线比对用)
+│   └── alert_rules.yaml             #   AlertRulesEngine 默认规则 (15 规则覆盖 17 scripts, PR #133)
+│
+├── config/hooks/                    # Git hooks (pre-push 含 X10 cutover-bias 守门 + 铁律 10b smoke, PR #177)
+│
+├── frontend/                        # React 前端 (35 页面 + 53 共享组件 + Zustand 4 store)
+│   ├── src/
+│   │   ├── api/                     #   API 调用层 (响应格式转换, LL-035)
+│   │   ├── pages/                   #   35 个页面
+│   │   ├── components/              #   53 个共享组件 (?.null-safe 防御)
+│   │   └── store/                   #   Zustand 4 个 store
+│   └── package.json
+│
+├── cache/                           # ⭐ Parquet 缓存 + baseline (regression 锚点)
+│   ├── backtest/                    #   按年分区 Parquet (12 年)
+│   └── baseline/                    #   regression 5yr/12yr 锚点 (max_diff=0)
+│
+├── docs/                            # ⭐ 文档全景
+│   ├── QUANTMIND_V2_DDL_FINAL.sql   #   建表来源
+│   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md  # 当前总设计真相源 (791 行)
+│   ├── QUANTMIND_PLATFORM_BLUEPRINT.md   # 平台化路线图 (QPB v1.16, 12 Framework + 6 升维 + 4 Wave)
+│   ├── DEV_*.md                     #   各域 DEV 设计 (BACKEND / BACKTEST_ENGINE / FACTOR_MINING / FRONTEND_UI / SCHEDULER / 等)
+│   ├── adr/                         #   架构决议 (ADR-001 ~ ADR-022, 含 ADR-021 IRONLAWS v3 + ADR-022 sprint treadmill 反 anti-pattern)
+│   ├── audit/                       #   一次性诊断 + STATUS_REPORT + TIER0_REGISTRY (本 PR WI 9 新建)
+│   ├── mvp/                         #   MVP 设计稿 (≤ 2 页, 铁律 24)
+│   ├── research-kb/                 #   研究知识库 (failed/findings/decisions, 本 PR WI 7 扩)
+│   ├── runbook/cc_automation/       #   CC 可触发 ops runbook
+│   └── archive/                     #   归档文档 (DESIGN_V5 / ROADMAP_V3 / 等)
+│
+├── .claude/skills/                  # 7 个自定义 skills (factor-discovery / research / overnight / db-safety / performance / research-kb / omc-reference)
+│
+├── memory/                          # (Anthropic memory 系统外部, repo 不含; 详 X5 单源化决议 + ADR-022)
+│   └── project_sprint_state.md      #   ⭐ 跨 session SSOT (SessionStart hook 自动注入)
+│
+└── (root MD 5 个): CLAUDE.md / IRONLAWS.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md
+```
+
 ---
 
 ## 二、FastAPI应用结构
