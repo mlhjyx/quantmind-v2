@@ -67,6 +67,12 @@ class Settings(BaseSettings):
 
     # --- 通知 ---
     DINGTALK_WEBHOOK_URL: str = ""
+    # T0-15/16/批 2 (2026-04-30): 钉钉告警全局 default-off 双锁. False 时 dingtalk_alert
+    # helper 不真发请求, 仅写 alert_dedup audit row + log. True 时配合 alert_dedup 1h
+    # 去重才真发. 防 5-5 周一前真生产风暴, 也防 PR #150 36h spam 重演.
+    DINGTALK_ALERTS_ENABLED: bool = False
+    # alert_dedup TTL 默认 60 min (1h, 业界默认 + Q9 决议)
+    DINGTALK_DEDUP_TTL_MIN: int = 60
     DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式），为空则不签名
     DINGTALK_KEYWORD: str = ""  # 自定义关键词（关键词模式），非空时自动追加到消息
 
