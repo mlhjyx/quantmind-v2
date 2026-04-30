@@ -626,7 +626,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - QMT Data Service + PT_Watchdog 等只读任务保留
   - **findings 累计 19** (Session 19 18 - F18 + F21 + F22 + F23 候选撤回 = 19). 下 Session 21 优先级: F21 pt_watchdog L128 修 + reenable → F15 moneyflow silent failure 根因 → F19 phantom DELETE + F20 trade_log 完整性 → F16 LGBM shadow
   - **Session 20 末 Redis 实测 NAV = ¥1,010,376.08** (20:21:53, cash=¥110,624 + 持仓 19). DB `performance_series` 4-20 live = ¥1,007,775 (16:30 signal_phase 签到快照), 差 +¥2,601 = **QMT 盘后结算时点差** (非 bug, 符合历史模式). **PT 状态取值源协议**: 实时 NAV → Redis; 历史日 NAV → DB perf_series; QMT 对账 → `query_asset` 直连
-  - **🔴 Session 45 末 (2026-04-30 14:54) xtquant 真账户实测**: positions=0 / cash=¥993,520.16 / market_value=0 (user 4-29 决策"全清仓暂停 PT", 4-30 GUI 手工 sell 18 股). DB 4-28 19 股 stale snapshot 是历史快照, 真账户已清仓. Audit log: `risk_event_log id=67beea84-e235-4f77-b924-a9915dc31fb2` (P0 ll081_silent_drift_2026_04_29). 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). PT 重启 gate 见 §9 prerequisites (T0-15/16/17/18 + F-D3A-1 + DB stale 清 + paper-mode 5d dry-run + .env paper→live 用户授权).
+  - **🔴 Session 45 末 (2026-04-30 14:54) xtquant 真账户实测**: positions=0 / cash=¥993,520.16 / market_value=0. **清仓 v4 hybrid narrative** (PR #169): 17 股 CC 4-29 10:43:54 emergency_close_all_positions.py 实战 sell + 1 股 (688121.SH 卓然新能 4500 股) 4-29 跌停 cancel (status=57, MARKET_SH_CONVERT_5_CANCEL 撮合规则) → 4-30 user GUI 手工 sell. DB 4-28 19 股 stale snapshot 是历史快照. Audit log: `risk_event_log id=67beea84-e235-4f77-b924-a9915dc31fb2` (P0 ll081_silent_drift_2026_04_29). 详 [SHUTDOWN_NOTICE_2026_04_30 §12 v4 修订](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). PT 重启 gate 见 §9 prerequisites (T0-15/16/18 + F-D3A-1 + DB stale 清 + paper-mode 5d dry-run + .env paper→live 用户授权; **T0-19 已落地 PR #168**).
 
 **本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
 
@@ -666,7 +666,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 **QMT vs DB 4-16 对账** (Session 10 实测): QMT 真实 19 股 (NAV ¥1,008,299 cash ¥110,624), DB 4-16 snapshot 22 股. 差异源自 4-17 执行了 20 笔 QMT 真实下单 (8 新买 + 11 卖 + 3 加减仓), snapshot 未写入 (P1-b).
 
-> ℹ️ **历史快照说明** (2026-04-30 Session 45 D3-B 加注): 上述 4-16 / 4-17 数字是 Session 10 时点真实快照, 自此 user 2026-04-29 决策清仓 + 4-30 GUI 手工 sell 18 股, 真账户当前 0 持仓 + cash ¥993,520.16 (xtquant API 4-30 14:54 实测). 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md).
+> ℹ️ **历史快照说明** (2026-04-30 Session 45 D3-B 加注, PR #169 v4 修订): 上述 4-16 / 4-17 数字是 Session 10 时点真实快照, 自此 user 2026-04-29 决策清仓. **v4 hybrid 真相** (PR #169): 17 股 CC 4-29 10:43:54 emergency_close + 1 股 (688121 卓然新能) 4-29 跌停 cancel → 4-30 user GUI sell. 真账户当前 0 持仓 + cash ¥993,520.16 (xtquant API 4-30 14:54 实测). 详 [SHUTDOWN_NOTICE_2026_04_30 §12 v4](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md).
 
 配置 **CORE3+dv_ttm Top-20 月度 + SN b=0.50** (pt_live.yaml + .env 一致).
 
