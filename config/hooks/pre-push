@@ -1,5 +1,6 @@
 #!/bin/sh
 # 铁律 10b 守门: push 前 `pytest -m smoke` 全绿
+# 铁律 X10 守门 (Step 6.2.5b-2, IRONLAWS.md §18): push 前扫 cutover-bias hard pattern
 # 启用: git config core.hooksPath config/hooks
 # 禁用: git config --unset core.hooksPath
 # 紧急绕过: git push --no-verify (需在 commit message 声明违规原因)
@@ -7,6 +8,55 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
+# === 铁律 X10 (AI 自动驾驶 detection, Step 6.2.5b-2) ===
+# 扫: branch name + 最近 5 commit subject lines (不扫 body, 避审计/讨论 commit 误报)
+# Hard pattern: 沿用 IRONLAWS.md §18 PR #176 修订后清单
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SUBJECTS=$(git log --format='%s' -n 5 HEAD 2>/dev/null || true)
+SCAN_INPUT=$(printf '%s\n%s' "$BRANCH" "$SUBJECTS")
+
+# 选 .venv Python (Unicode-safe pattern 匹配, paper→live / 自动 cutover)
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY_X10=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY_X10=".venv/bin/python"
+else
+    PY_X10="python"
+fi
+
+# Pattern 与 IRONLAWS.md §18 (PR #176 修订后) 双向对齐. Python 脚本读 stdin, 命中输出 X10_HIT:<keys>
+X10_HITS=$(printf '%s' "$SCAN_INPUT" | "$PY_X10" -c "
+import sys
+patterns = [
+    '/schedule agent',
+    'paper-mode 5d',
+    'paper-mode dry-run',
+    'paper→live',
+    'auto cutover',
+    '自动 cutover',
+]
+content = sys.stdin.read()
+hits = [p for p in patterns if p in content]
+if hits:
+    print('X10_HIT:' + '|'.join(hits))
+" 2>/dev/null || echo "")
+
+if echo "$X10_HITS" | grep -q '^X10_HIT:'; then
+    HITS_LIST=$(echo "$X10_HITS" | sed 's/^X10_HIT://')
+    echo ""
+    echo "[pre-push] 铁律 X10 (AI 自动驾驶 detection): hard pattern 命中 — push 被阻断."
+    echo "[pre-push] 命中关键词: $HITS_LIST"
+    echo "[pre-push] 扫描范围: branch name + 最近 5 commit subject lines (不扫 body)"
+    echo "[pre-push] 检测源: IRONLAWS.md §18 hard pattern (PR #176 修订后)"
+    echo "[pre-push] X10 主条款: PR / commit / spike 末尾不主动 offer schedule agent / paper-mode / cutover / 任何前推动作."
+    echo "[pre-push] X10 子条款: Gate / Phase / Stage 通过 ≠ 充分条件, 必须显式核 D 决议链全部前置."
+    echo ""
+    echo "[pre-push] 紧急绕过 (违反 X10, 需在 commit message 声明原因): git push --no-verify"
+    exit 1
+fi
+echo "[pre-push] X10 cutover-bias scan: 0 hard pattern, 放行 X10 守门."
+
+# === 铁律 10b (生产入口真启动验证) ===
 # 优先使用 .venv Python (Windows/Unix 兼容)
 if [ -x ".venv/Scripts/python.exe" ]; then
     PY=".venv/Scripts/python.exe"
