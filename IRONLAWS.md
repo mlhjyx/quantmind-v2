@@ -819,11 +819,14 @@ ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
   - LL backref + ADR backref 标准化
   - 候选 X1/X3/X4/X5 显式列出 (留 Step 6.2.5+ promote)
   - 跳号 X2/X6/X7 + 撤销 X8 历史决议保留
-- **v3.0.1** (2026-04-30, Step 6.2.5b-1 PR): 文档修订 (基于 PR #175 6.2.5a audit 决议)
+- **v3.0.1** (2026-04-30, Step 6.2.5b-1 PR #176): 文档修订 (基于 PR #175 6.2.5a audit 决议)
   - §18 X10 检测脚本候选语义修订 (pre-merge → commit-msg / pre-push extension, Git 原生支持)
   - 铁律 16/25/38/42 LL/ADR backref header 标准化 (沿用 PR #175 §4 D.4 例外建议)
   - §21.1 ADR 编号系统历史决议保留 (沿用 PR #175 §6 主题 F F.5)
   - §23 LL "假设必实测" 双口径计数规则 (新加, 沿用 PR #175 §2 主题 B B.5 决议)
+- **v3.0.2** (2026-04-30, Step 6.2.5b-2 PR #177): hook 实施 + 文档修补
+  - §18 X10 stress test 实绩段修补 5→8 次 (加 PR #175/#176/#177 三项)
+  - (基础设施补) config/hooks/pre-push 加 X10 cutover-bias 守门 (软门转硬门, 沿用 §18 hard pattern 清单)
 - **v3.x+** (Step 6.2.5+): 候选 X1/X3/X4/X5 promote / Tier 重新 calibration / 等
 
 ---
