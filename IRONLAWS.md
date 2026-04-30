@@ -259,6 +259,8 @@ factor_ic_history 表无记录的 IC 视为不存在, 不可用于决策.
 
 **违反 → PT 与回测结果不一致** (原历史问题: `load_factor_values`/`vectorized_signal` 各读各的字段).
 
+**LL backref**: LL-051 (开源优先) / LL-054 (PT 状态实测) — 信号路径分裂的两个早期触发事件.
+
 ---
 
 ### 17. 数据入库必须通过 DataPipeline [T1]
@@ -392,6 +394,8 @@ factor_ic_history 表无记录的 IC 视为不存在, 不可用于决策.
 关键 claim (引用具体行数/语义) 决策前至少 1 次代码验证. 架构讨论可凭 Blueprint+memory 推理, 但做出**代码变更决策**前仍须验证.
 
 **违反 → 基于过期记忆改代码** (LL-019 + 多 session 多次自报 "3085 行" 实际 1218 行的教训).
+
+**LL backref**: LL-019 (代码变更前必读源码).
 
 ---
 
@@ -544,6 +548,8 @@ Blueprint 过时即事故源.
 
 **违反 → 跨 session 实施漂移, 后 session 看不见前 session 判断**.
 
+**ADR backref**: ADR-008 (execution-mode-namespace-contract) — Blueprint 漂移导致跨 session execution_mode 命名空间错乱的实例.
+
 ---
 
 ### 39. 双模式思维 — 架构/实施切换必须显式声明 [T2]
@@ -605,6 +611,8 @@ Blueprint 过时即事故源.
 **违反 → AI Auto mode 凭印象改代码 + 直 push 累积事故**.
 
 本铁律由 Session 6 开场 "2 ahead 腐烂数字" 事件 (LL-055) 触发, 与 LL-051 (开源优先) / LL-054 (PT 状态实测) 同源 — "AI 高速产出 + 单人无审查" 的 governance gap.
+
+**LL backref**: LL-051 / LL-054 / LL-055.
 
 ---
 
@@ -710,8 +718,13 @@ Blueprint 过时即事故源.
 
 #### 检测脚本候选 (Step 6.2.5+)
 
-- pre-merge hook grep PR description / commit message 含 "schedule agent" / "paper-mode 5d" / "auto cutover" / "next step ..." 类 forward-progress 关键词 → block + 提示 X10 checklist
-- Claude system prompt-level guard — 末尾输出阶段 detect forward-progress 关键词, 自动 strip 或要求二次 confirm
+> **修订 (Step 6.2.5b-1, 沿用 PR #175 §1 主题 A 决议 + §7 主动发现 #1)**: Git 原生不支持 `pre-merge` hook (PR #175 实测). 修订为 **commit-msg hook (commit 时阻) 或 pre-push extension (push 时阻)** — Git 原生支持.
+
+- **commit-msg hook 或 pre-push extension** — grep PR description / commit message / branch name 含 cutover-bias **hard pattern** 关键词 → block + 提示 X10 checklist
+  - **硬阻 hard pattern** (减误报): `/schedule agent` / `paper-mode 5d` / `paper-mode dry-run` / `paper→live` / `auto cutover` / `自动 cutover`
+  - **不阻 generic pattern** (工程文档语境合法, 高误报): "next step" / "下一步" / "Step X.Y" 类描述路径词
+  - 误报需绕过: `git commit --no-verify` / `git push --no-verify` + commit message 显式声明违规理由 (沿用铁律 33-d silent_ok 模式)
+- **Claude system prompt-level guard** (Wave 5+ 远期, 依赖 Anthropic API custom system prompt) — 末尾输出阶段 detect forward-progress 关键词, 自动 strip 或要求二次 confirm
 
 **LL backref**: LL-098.
 
@@ -775,17 +788,87 @@ Blueprint 过时即事故源.
 - **docs/adr/**: ADR-0009 (datacontract 收敛, 铁律 17 关联) / ADR-008 (execution-mode-namespace, 铁律 38 关联) / ADR-021 (本铁律重构决议)
 - **CLAUDE.md**: 顶部 v3.0 banner + 铁律段 reference (Step 6.2 PR)
 - **PROJECT_FULL_AUDIT_2026_04_30.md**: §5 7 新铁律 X1-X9 实施扫描 (CLAUDE.md 铁律段 inline) — 本 IRONLAWS.md 是 §5 的拆分产物
-- **PR**: #173 (Step 6.1 LL-098) → 本 PR (Step 6.2 IRONLAWS.md + ADR-021)
+- **PR**: #173 (Step 6.1 LL-098) → #174 (Step 6.2 IRONLAWS.md + ADR-021) → #175 (Step 6.2.5a audit) → 本 PR (Step 6.2.5b-1 文档修订)
+
+### §21.1 ADR 编号系统历史决议保留 (Step 6.2.5b-1, 沿用 PR #175 §6 主题 F F.5)
+
+ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
+
+| ADR 编号 | 状态 | 决议 | 论据 |
+|---|---|---|---|
+| **ADR-0009** (4 位数字, 历史漂移) | 维持现状 | 不 rename | sprint period 多文档已用 ADR-0009 (含 IRONLAWS.md / ADR-021 / 多 audit/research/mvp docs). rename 风险 = 引用漂移. 治理价值 < rename 风险. |
+| **ADR-010 双 ADR** (addendum-cb-feasibility + pms-deprecation-risk-framework) | 维持现状 | 不 rename | 文件名后缀已区分 scope. 双 ADR 各自有独立决议. |
+| **ADR-015 ~ ADR-020 gap** (6 项空缺) | 维持现状 | lazy assignment | gap 不影响 ADR-021 + 后续 ADR 顺序占用. 0 风险. |
+| **ADR-021** (sprint period 预占) | 已落地 (PR #174) | — | 本铁律重构决议. |
+
+**修订时点候选** (Wave 5+ 远期, 0 PR commitment): 如未来 sprint 治理价值显著上升 (e.g. 全文档批量 ADR backref 自动化), 重评 rename 风险.
+
+**防未来 sprint 重提 rename**: 本子段是 SSOT 历史决议保留声明, 任何后续 PR / sprint 提议 rename 必须先撤销本子段 + 更新所有引用文档.
 
 ---
 
 ## §22 版本变更记录
 
 - **v1.0 ~ v3.0** (2024 ~ 2026-04-30): 散落在 CLAUDE.md inline (历史 v1/v2/v3/v4 banner 演进, 沿用 PR #170 至 v4)
-- **v3.0** (2026-04-30, Step 6.2 PR): 本文件创立, 拆分 SSOT 自 CLAUDE.md inline
+- **v3.0** (2026-04-30, Step 6.2 PR #174): 本文件创立, 拆分 SSOT 自 CLAUDE.md inline
   - X10 加入 (LL-098 沉淀)
   - tier 化 (T1/T2/T3)
   - LL backref + ADR backref 标准化
   - 候选 X1/X3/X4/X5 显式列出 (留 Step 6.2.5+ promote)
   - 跳号 X2/X6/X7 + 撤销 X8 历史决议保留
+- **v3.0.1** (2026-04-30, Step 6.2.5b-1 PR): 文档修订 (基于 PR #175 6.2.5a audit 决议)
+  - §18 X10 检测脚本候选语义修订 (pre-merge → commit-msg / pre-push extension, Git 原生支持)
+  - 铁律 16/25/38/42 LL/ADR backref header 标准化 (沿用 PR #175 §4 D.4 例外建议)
+  - §21.1 ADR 编号系统历史决议保留 (沿用 PR #175 §6 主题 F F.5)
+  - §23 LL "假设必实测" 双口径计数规则 (新加, 沿用 PR #175 §2 主题 B B.5 决议)
 - **v3.x+** (Step 6.2.5+): 候选 X1/X3/X4/X5 promote / Tier 重新 calibration / 等
+
+---
+
+## §23 LL "假设必实测" 双口径计数规则 (Step 6.2.5b-1 新加)
+
+> **决议**: 沿用 Step 6.2.5a (PR #175) §2 主题 B B.5 — **永久并存**, 不合并不替代. 双口径在不同语境互补.
+
+### §23.1 narrower 口径 (LL 内文链)
+
+- **范围**: LL-091 ~ (D3-A audit period 起点之后的 sprint internal 链)
+- **起点**: LL-089 = 22 (D3-A audit 14 + Step 4 修订 2)
+- **累加规则**: 严格 LL +1 链式继承 (每新 LL 沉淀 narrower +1)
+- **当前数字**: **30** (LL-098 加入后, 沿用 PR #173 STATUS_REPORT)
+- **用途**: LL 内文 "实战次数" 字段 (e.g. LL-098 内文 "累计 30 次同质 LL")
+
+### §23.2 broader 口径 (PROJECT_FULL_AUDIT scope)
+
+- **范围**: 全 sprint period 累计 "Claude 默认假设/默认行为被实测/user 反问推翻"
+- **起点**: PR #172 PROJECT_FULL_AUDIT §3 declared = 31 (含早期 sprint period 累积非同质)
+- **累加规则**:
+  - **LL 沉淀** = narrower + broader 同步 +1 (e.g. LL-098 加入 → narrower 30 / broader 32)
+  - **audit doc 沉淀 (无 LL)** = broader +1, narrower 不变 (e.g. PR #174 STATUS_REPORT §2 #4 PR #172 §5 X1-X9 inline 假设错 → broader 32 → 33, narrower 不变)
+  - **cross-PR 实证 (审计自身发现)** = broader +1 候选 (待 user 决议是否沉淀 LL), narrower 不变 (e.g. PR #175 §7 #1 Git pre-merge → broader 33 → 34 候选)
+- **当前数字**: **34** (本 PR 沉淀 PR #175 Git pre-merge 实证为 broader +1, 沿用 §23.4 决议 (a))
+- **用途**: audit doc / STATUS_REPORT 引用 (e.g. PR #174 STATUS_REPORT §3 broader 33)
+
+### §23.3 双口径并存论据
+
+- **不合并**: 合并 = 选哪个 canonical, 损失另一个 scope 信息 (narrower 是严格链式, broader 是累积语义, 各有用途)
+- **不替代**: narrower 严格 → broader 累积, 信息损失方向不可逆
+- **替代候选**: 显式语境标识 (沿用 PR #173/#174/#175 STATUS_REPORT §3 双口径并列声明) — 已实施
+
+### §23.4 broader 34 决议 (沿用 PR #175 §8)
+
+✅ **本 PR (Step 6.2.5b-1) 沉淀 broader +1 = 34** (决议 (a)).
+
+**论据**:
+- PR #175 §7 #1 "Git 不支持 pre-merge hook" 是 sprint period 第 6 个数字/假设错实测 (沿用 narrower 计数 PR #172 §5 X1-X9 inline + 等其他 sprint period 实证)
+- 本 PR audit doc + IRONLAWS.md §18 修订是 audit doc 沉淀点, broader +1 合理
+- 不沉淀 LL-099 (沿用 PR #175 §5 主题 E E.3 决议: 编号膨胀风险, audit doc 引用足够)
+- narrower 30 不变 (本 PR 0 新 LL)
+
+### §23.5 后续 PR 累加范围
+
+后续任何 PR 沉淀新实证时:
+- LL 沉淀 → IRONLAWS.md §23.1 narrower +1 + §23.2 broader +1
+- audit doc 沉淀 → IRONLAWS.md §23.2 broader +1
+- 沉淀位置: **IRONLAWS.md §23 + STATUS_REPORT §3 (双口径并列)** + LESSONS_LEARNED.md (如沉淀 LL)
+
+**修订本 §23 不需新 ADR** (本 §23 自身是 SSOT 计数规则, 沿用 ADR-021 §2 拆分原则).
