@@ -2795,3 +2795,47 @@ def __del__(self):
 - 本 LL 条目 (LL-092)
 - 修复: PR #164 (本 PR) 入册 LESSONS_LEARNED.md; D3-C 整合 PR 修 CLAUDE.md L31 + memory frontmatter "10 streams" claim
 - 实测命令固化: `redis-cli KEYS "<pattern>"` + `redis-cli TYPE <key>` + `redis-cli TTL <key>` 必入 D3-C / 批 2 audit checklist (与 LL-091 同源)
+
+## LL-093: forensic 类 spike 必查 5 类源 — D3-A Step 4 spike 漏查 logs/emergency_close_*.log 致 narrative v1+v2 全错 (Session 45 D3-C+v3 修订, 2026-04-30 17:30)
+
+**事件**: D3-A Step 4 spike (PR #158, 4-30 14:48) + 修订 v1 (PR #159, 15:14) + 修订 v2 (PR #163, 16:30) 推断 "user 4-30 GUI 手工 sell 18 股" + "Claude PR #150 软处理 user 真金指令". D3-C STATUS_REPORT (PR #165, ~17:00) F-D3C-13 实测发现:
+
+- `logs/emergency_close_20260429_*.log` 5 文件 (项目本地, **非** XtMiniQmt query log)
+- 4-29 10:43:54 emergency_close_20260429_104354.log 13,992 字节含完整 18 股 sell trace
+- chat-driven `--confirm-yes` flag bypass interactive prompt
+- 18 unique tickers 全 status=56 traded N/N (含 1 partial fill 002623)
+
+→ **CC 4-29 上午 ~10:43 通过 chat 授权用 emergency_close_all_positions.py 实战清仓 18 股**, 不是 4-30 GUI 手工 sell. D3-A Step 4 spike narrative v1+v2 全错.
+
+**根因**: D3-A Step 4 spike forensic 仅查 1 类源 (`E:/国金QMT交易端模拟/userdata_mini/log/XtMiniQmt_*.log` query 路径), 没扩到项目本地 `logs/emergency_close_*.log` order 路径. forensic 类 spike 5 类源缺 1 (项目本地 logs/), 导致 narrative 误判.
+
+**复用规则 (forensic 类 spike 必查 5 类源, 缺 1 即 STOP)**:
+1. **(a) 项目本地 logs/ 全文件** (含 emergency_close_* / pt_audit_* / health_check_* / signal_phase_* / etc, **不仅查通用 stdout/stderr**)
+2. **(b) git commit log 全期** (`git log --all --since=<date>` + grep chat-driven 调用证据 / 关键 keyword)
+3. **(c) DB 表 query**:
+   - `risk_event_log` (新事件 audit)
+   - `scheduler_task_log` (schtask + Celery task 历史)
+   - `trade_log` (真实成交)
+   - `position_snapshot` / `performance_series` (DB state 时间线)
+4. **(d) Redis Streams XRANGE + XLEN** (实测每 stream, 非 sample, 沿用 LL-092)
+5. **(e) QMT 客户端 log 全 3 类**:
+   - XtMiniQmt query log (`E:/国金QMT交易端模拟/userdata_mini/log/`)
+   - xtquant API order/trade log (项目本地 logs/emergency_close_* / logs/qmt-*)
+   - QMT GUI manual operation log (用户手动 sell, 通常在 `userdata/log/Tdx/`)
+
+**实战 case (D3-A Step 4 spike forensic 漏查)**:
+- ❌ v1 (PR #158): 0 forensic, 仅推断 "user 未察觉" (后被 v1 修订推翻)
+- ❌ v1 修订 (PR #159): 仅查 (e) XtMiniQmt query log, 推断 "user 4-30 GUI sell, 价格不可考"
+- ❌ v2 (PR #163): 加 D3-B F-D3B-7 实测推翻 "stale Redis cache" 推论, 但 narrative L1-L4 主体不变
+- ✅ v3 (PR #166 + D3-C F-D3C-13): 查 (a) 项目本地 logs/emergency_close_* → 真因暴露 (CC 4-29 10:43 实战 sell), narrative v1+v2 全推翻
+
+**反思**: forensic 类 spike 必须**先**枚举 5 类源, **再**逐条实测 + 标已查/待查. D3-A Step 4 prompt 设计层默认仅查 (e) XtMiniQmt, 漏 (a) + (b) + (c) + (d). LL-091 (D3-A 推断 stale Redis cache 漏 redis-cli) 是 LL-093 的 (d) 维度同质 case.
+
+**实战次数**: 累计 25 次同质 LL (LL-091/092/093 同源 D3 全方位审计 5 类源覆盖反思).
+
+### 持久化
+
+- 本 LL 条目 (LL-093)
+- 修复: PR #166 (本 PR) 入册 LESSONS_LEARNED.md + SHUTDOWN_NOTICE_2026_04_30.md §11 v3 修订段引用
+- forensic 5 类源 checklist 固化: (a) 项目 logs/ + (b) git log + (c) DB 4 表 + (d) Redis Streams + (e) QMT 3 子类 log. 必入 D3 整合 PR / 批 2 spike prompt template
+- 关联: D3-C F-D3C-13 (P0 真金) + STATUS_REPORT_D3_C + d3_6_monitoring_alerts F-D3C-13 详细证据
