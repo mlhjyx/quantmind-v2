@@ -2706,3 +2706,42 @@ def __del__(self):
 - 测试: `backend/tests/test_db_tracked_connection.py` 10 tests cover close / del / passthrough / close-raise edge case
 - 后续 (Session 41+): celery worker logs 监控验证假告警停止 (期望 4-29 起 0 occurrences)
 - 应用 checklist 未来 review: 加新 resource counter 必查 4 步法 (finalizer / silent except / idempotent close / underflow guard)
+
+## LL-089: Claude spike prompt 候选集封闭 + 不查 user 决策日志 — 漏判真因 (Session 45 加时, 2026-04-30 14:50 user 质问驱动)
+
+**事件**: D3-A Step 4 spike PR #158 (14:48 merged) 误判 root cause "L1 QMT 4-04 01:06 断连后 user **未察觉** (运维 gap)". user 14:50 质问 "4.29 我叫你清仓的, 你忘记了？没有记录了？" 触发回查. 实测 [memory/project_sprint_state.md:27](memory/project_sprint_state.md:27) Session 44 末 handoff **明确记录** "用户决策"全清仓暂停 PT + 加固风控"". CC 漏读 handoff, Claude 当时 PR #150 prompt **主动**把 "全清仓" 转化为 link-pause (commit `626d343` 2026-04-29 20:39, 紧急清仓留 user 手工 `emergency_close_all_positions.py`).
+
+**根因**: Claude spike prompt 设计两层错:
+1. **候选集封闭** — 列 A (silent drift) / B (paper 污染) / C (DB 同步) 假装穷举, 漏 D "Claude 自身 prompt 设计错 (4-29 软处理 user 真金指令)"
+2. **不查 user 决策日志** — Q-Pre 块缺失. 没 grep handoff / project_sprint_state / 4-29 commit timeline 找 user 真实决策原文
+
+**复用规则 (任何 spike prompt 必含)**:
+1. **Q-Pre 块** (前置必做): 查 handoff / `memory/project_sprint_state.md` / 最近 N 天 user 决策日志 / 4-29 commit timeline / docs/audit 历史 STATUS_REPORT
+2. **候选集开放**: 列已知候选 + 1 个 "**unknown / 不在上述任何候选**" (留出 Claude 自身 / 流程债 / 跨 session context 等盲区)
+3. **决议规则不强收敛**: N 项证据 align 但根因解释还有歧义 → STOP, 不下决议. 防止 4 项证据 misleading aligned 但都解释同一表象 (如 Step 4 4 项证据均显示 "DB 静止", 但根因可以是 silent drift OR Claude 软处理 user 指令)
+
+**实战次数**: D3-A 自身 14 次 + Step 4 修订 2 次 (LL-089 + LL-090) = 累计 22 次同质 LL.
+
+## LL-090: Claude 让 user 二次验证 ground truth (D44 减负教训扩展, Session 45 加时, 2026-04-30 15:00)
+
+**事件**: 14:48 Step 4 spike merged 时, user 已明确陈述 "我已经把 QMT 全部清仓" + "不影响 PR #158+ 启动". CC 在 spike 报告 "用户决策点" 段写: "user 何时清仓 QMT? 4-04 之前还是之后? (帮助回填 Redis cache 时间线)" — **让 user 二次验证 ground truth**. user 14:50 质问也部分由此引发.
+
+**根因**: CC 把 user 陈述当作"待验证假设"而非 ground truth. 这是 D44 减负教训 (LL-068+ "user 减负原则") 的反向同质违反: "let user verify" = "user 帮 CC 干活", 不让 user 减负.
+
+**复用规则**:
+1. user 已明确陈述的事实 → **标 ground truth**, 不需 user 二次验证
+2. 所有 forensic 数据 (timestamps / prices / counts / paths) → **CC 自查**:
+   - DB SQL SELECT
+   - 文件系统 grep
+   - xtquant API read-only (Q1.b 实测真账户)
+   - QMT 客户端 log forensic (Q2 4-29/4-30 XtMiniQmt log)
+   - Servy stop/start (Q1.c read-only 重连尝试)
+3. 实在无法 CC 自查 (e.g. user 头脑里的私人记忆) → 标 "**CC 不可考, user 陈述作 ground truth, 真实数据无法重建**", 不让 user 提供, 不影响决议
+4. spike 报告 "用户决策点" 段仅含**真决议问题** (启动顺序 / 优先级 / 风险接受度), **不含** ground truth 验证
+
+**实战 case (Step 4)**:
+- ✅ Q1.b xtquant API 实测: 真账户 0 持仓 + cash ¥993,520.16 (CC 自查, 不让 user 验证)
+- ✅ Q2 4-29/4-30 XtMiniQmt log forensic: 4-29 全天 1210 次 19 持仓 / 4-30 仅 1 次 (CC 自查)
+- ✅ 价格 forensic 不可考 → 标 "user GUI 手工 sell 不走 API, 价格无法重建", 不让 user 提供, 推算损失 -¥18,194 (-1.8%) 由 NAV diff 推
+
+**实战次数**: 累计 22 次同质 LL (LL-089 + LL-090 同 batch).
