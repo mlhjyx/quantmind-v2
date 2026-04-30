@@ -2745,3 +2745,53 @@ def __del__(self):
 - ✅ 价格 forensic 不可考 → 标 "user GUI 手工 sell 不走 API, 价格无法重建", 不让 user 提供, 推算损失 -¥18,194 (-1.8%) 由 NAV diff 推
 
 **实战次数**: 累计 22 次同质 LL (LL-089 + LL-090 同 batch).
+
+## LL-091: 推断必明示 "推论=不实测", 留 P3-FOLLOWUP 真实测验证 — D3-A Step 4 stale Redis cache 推论被 D3-B 0 keys 实测推翻 (Session 45 D3-B, 2026-04-30 17:00)
+
+**事件**: D3-A Step 4 spike PR #158 + 修订 v1 PR #159 推断 "DB 4-28 19 股 stale snapshot = stale Redis cache 写入" (Q4 conclusion + 5-layer L4 + L4 NEW v1 全采用此推论). 推断基础: 2 项前提 (a) qmt_data_service 4-04 起断连 26 天 silent skip → portfolio:current cache 状态推测 stale + (b) DB 4-28 19 股 = DailySignal 4-28 16:30 跑过 → 推 "经 stale Redis cache 写 DB". D3-B PR #162 F-D3B-7 Q5.1 redis-cli 实测: `KEYS "portfolio:*" = 0`. 推翻原推论 — Redis cache **完全不存在** (qmt_data_service 26 天 SET 0 次 → key TTL 自然到期 expired), 真因 QMTClient fallback 路径直读 stale DB position_snapshot 自身 (cache miss → DB self-referential stale loop, Redis 旁路).
+
+**根因**: Step 4 spike report Q4 conclusion 写 "stale Redis cache 写入" 时, **没实测** redis-cli `KEYS "portfolio:*"` / `TYPE` / `TTL`, 仅基于 "qmt_data_service silent skip 26 天" + "DB 4-28 stale" 双前提推断 cache 状态. 缺 P3-FOLLOWUP 标 "本结论是推论, 待 redis-cli 实测验证".
+
+**复用规则 (任何 spike / status_report / finding 含 "推断 / 推测 / 推论" 字样)**:
+1. **明示** "本结论基于 N 项前提推论, 推论 ≠ 实测"
+2. **列前提**: 每项前提附 "(已实测 ✅ / 待实测 ⚠️)" 标
+3. **留 P3-FOLLOWUP 标**: 推论部分单独段落 + ✋ icon + "实测命令: <CLI>" 留待后续 spike / audit 实跑
+4. **决议规则**: 推论部分**不**作为 root cause 主链节点, 仅作辅助证据. 真 root cause 必须**全实测**支撑
+
+**实战 case**:
+- ❌ D3-A Step 4 Q4(c) "DB 4-28 19 股 = stale Redis cache 写入" — 推论, 没实测 redis-cli, 后被 D3-B 推翻 (本 LL)
+- ✅ 修订: 加 "P3-FOLLOWUP: redis-cli KEYS portfolio:* 实测 verify cache 是否存在" 标, 推论段独立, 不作 L4 主链
+- ✅ D3-B Q5.1 实测纠错: redis-cli DBSIZE / KEYS "portfolio:*" / TYPE / TTL 全 4 命令 → 推翻 4 个推论同时
+
+**实战次数**: 累计 23 次同质 LL (LL-089 D3-A 候选集封闭 + LL-090 让 user 验证 ground truth + LL-091 本 LL).
+
+### 持久化
+
+- 本 LL 条目 (LL-091)
+- 修复: PR #163 (`32a1ef1`, D3-A Step 4 spike L4 修订 v2) 加 "L4 修订 v2" 段引 D3-B F-D3B-7 实测; PR #164 (本 PR `chore/d3b-cross-doc-sync`) 入册 LESSONS_LEARNED.md
+- 实测命令固化: `redis-cli DBSIZE` / `redis-cli KEYS "<prefix>:*"` / `redis-cli TYPE <key>` / `redis-cli TTL <key>` 必入 D3-C / 批 2 audit checklist
+
+## LL-092: 文档 N 个 ≠ 实测 N 个 alive — StreamBus "10 streams" claim 实测仅 1/8 alive (Session 45 D3-B, 2026-04-30 17:00)
+
+**事件**: CLAUDE.md L31 + memory frontmatter 长期 claim "Redis Streams `qm:{domain}:{event_type}`, StreamBus 模块" + "10 streams". D3-A Step 1 + Step 5 跨 spike 假设 "8 streams 是 10 streams 子集, sample N 全 alive 推全 alive". D3-B PR #162 F-D3B-6 Q5.1 redis-cli 实测: `KEYS "qm*"` 7 hits + `KEYS "qmt*"` 1 hit, 共 8 streams (非 10). **TYPE + TTL 实测每条**: 仅 `qm:order:routed` TYPE=stream + TTL=-1 alive ✅, 其他 7 个 TYPE=none + TTL=-2 (key 已 expired, KEYS 返回是 ghost). **真 alive 比率 1/8 = 12.5%**.
+
+**根因**: D3-A 系列 spike 对 streams 状态采用 "sample 全 alive 推全 alive" 假设, 没逐条 TYPE + TTL 实测. 文档"10 streams"长期 stale, "8 streams 子集"假设也错误. 真 alive 1/8 严重违反铁律 X5 (文档单源化).
+
+**复用规则 (任何 "文档 N 个 / 实测 ≤ N" 类假设)**:
+1. **逐条实测**: 每条 key / stream / migration / table / endpoint 必单独 TYPE + TTL + state 实测
+2. **不接受 sample 推全**: "sample 5 个全 alive → 推 N 全 alive" 永远错, alive 是 boolean per-instance, 不可统计推论
+3. **alive 比率 < 90% → 文档腐烂红线**: 单源化文档 claim 与实测 alive 比率 diff > 10% 必触发 audit + 修文档
+4. **死 key 处理**: TYPE=none + TTL=-2 是 ghost key (KEYS 返回, 但已 expired), 不 alive, 必标 dead 不 alive
+
+**实战 case**:
+- ❌ D3-A Step 1+5 假设 8 streams 全 alive — sample 推全, 没逐条实测 TYPE/TTL
+- ✅ D3-B Q5.1 实测纠错: 8 streams 逐条 TYPE+TTL → 1 alive (qm:order:routed) + 7 dead (TYPE=none + TTL=-2)
+- ⚠️ 修文档红线触发: F-D3B-6 P1, CLAUDE.md L31 + memory frontmatter "10 streams" claim 待 D3-C 整合 PR 修
+
+**实战次数**: 累计 24 次同质 LL (含本 LL).
+
+### 持久化
+
+- 本 LL 条目 (LL-092)
+- 修复: PR #164 (本 PR) 入册 LESSONS_LEARNED.md; D3-C 整合 PR 修 CLAUDE.md L31 + memory frontmatter "10 streams" claim
+- 实测命令固化: `redis-cli KEYS "<pattern>"` + `redis-cli TYPE <key>` + `redis-cli TTL <key>` 必入 D3-C / 批 2 audit checklist (与 LL-091 同源)

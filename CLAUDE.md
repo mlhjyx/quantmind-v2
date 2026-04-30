@@ -12,7 +12,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **当前**: Phase A-F完成, v3.8路线图, Step 0→6-H重构+研究完成, PT配置已更新CORE3+dv_ttm(2026-04-12 WF PASS), Sharpe基线=**WF OOS 0.8659 (CORE3+dv_ttm+SN050, +33% vs CORE5 baseline 0.6521, MDD -13.91%)**
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层(14:30 Celery Beat检查, v2.0已验证无效不实施)
-- **下一步(V4路线图)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → **Phase 3 自动化** → Phase 4 PT重启
+- **下一步(V4路线图, 已被 Wave 平台化主线替代)**: ~~Phase 1.1~~ ✅ → ~~Phase 1.2~~ ✅ → ~~Phase 2.1~~ ❌NO-GO → ~~Phase 2.2~~ ❌NO-GO → ~~Phase 2.3~~ ✅诊断 → ~~Phase 2.4~~ ✅探索+WF PASS → ~~PT配置更新~~ ✅ → ~~Phase 3 自动化~~ ✅ **(已被 Wave 3 MVP 3.1-3.5 全 ✅ 替代)** → ~~Phase 4 PT重启~~ ⚠️ **(user 2026-04-29 决议"全清仓暂停 PT", 真账户 0 持仓; 重启 gate prerequisite 见 [SHUTDOWN_NOTICE_2026_04_30 §9](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md))**. 当前主线 → **Wave 4 MVP 4.1 Observability 进行中** (batch 1+2.1+2.2 ✅ + 3.x 13/17 ✅, 详 §当前进度 + QPB v1.16).
 - **调度链路**: 09:00-14:55 **intraday-risk-check Celery Beat `*/5 9-14 * * 1-5`** (MVP 3.1 批 2, Session 29-30, 72 trigger/日, IntradayPortfolioDrop3/5/8% + QMTDisconnectRule, Redis 24h TTL dedup fail-open) → **(次日)** T+1 09:31执行 → **14:30 risk-daily-check Celery Beat** (MVP 3.1 批 1+3, Session 28+30, PMSRule L1/L2/L3 + CircuitBreakerRule Hybrid adapter 方案 C) → 15:40对账 → 16:15数据拉取 → 16:25预检 → 16:30因子+信号 → 17:30 moneyflow+factor_health → **17:35 pt_audit 主动守门** → **18:00 DailyIC (每日增量 IC 入库 CORE 4, Session 22 Part 2)** → **18:15 IcRolling (ic_ma20/60 rolling 刷新, Session 22 Part 8)** → **18:30 DataQualityCheck (Session 26 shift 17:45→18:30, 避 dense window + 脚本硬化)** → 周五 19:00 factor-lifecycle Beat → **周日 04:00 MVP31SunsetMonitor (Session 32, ADR-010 addendum Follow-up #5, Sunset Gate A+B+C 周监控)**. **17:05 DailyExecuteAfterData 已永久废除 (Stage 4 Session 17, ADR-008 P0-δ 污染源)**. **铁律 11 + 17 每日 IC 全链完工** (Session 23 Part 1+2): 3 脚本分工 (compute_daily_ic / compute_ic_rolling / fast_ic_recompute) + 2 schtask wire + 实战 rehearsal 验证 GO. **MVP 3.1 Risk Framework 正式完结** (Session 30 2026-04-24, 批 1+2+3 全 merged PR #55/#57/#58/#59/#60/#61 6 PR + 1 spike #54, Celery Beat 5 schedule entries 生产激活, 首次真生产触发 2026-04-27 Monday 09:00 intraday + 14:30 daily).
 
 ## 技术栈（实际使用，非设计文档）
@@ -26,7 +26,7 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | 服务管理 | Servy v7.6 (`D:\tools\Servy`), 替代NSSM |
 | 调度 | Windows Task Scheduler (PT) + Celery Beat (GP) |
 | GPU | PyTorch cu128, RTX 5070 12GB (cupy不支持Blackwell sm_120) |
-| 缓存 | 本地Parquet快照(backend/data/parquet_cache.py按年分区), factor_values 501M行→TimescaleDB hypertable |
+| 缓存 | 本地Parquet快照(backend/data/parquet_cache.py按年分区), factor_values 840M行→TimescaleDB hypertable |
 | 交易 | 国金miniQMT (A股) |
 | Portfolio优化 | riskfolio-lib 7.2.1 (MVO/RP/BL, 阶段2评估) |
 | 向量化回测 | vectorbt 0.28.5 (Numba加速, 待评估快速筛选用) |
@@ -45,12 +45,12 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
 ### 因子存储 (2026-04-15 S1 audit 实测)
-- **factor_values**: **839,425,275 行** (~158 GB est, TimescaleDB hypertable 151+ chunks) — 2026-04-18 Session 5 实测 (+23M vs S1 审计 816M baseline, 1 周新数据)
-- **factor_ic_history**: **144,795 行** (Session 5 实测 +11K vs S1 133K), IC唯一入库点(铁律11), 未入库IC视为不存在
+- **factor_values**: **840,478,083 行** (~172 GB, TimescaleDB hypertable 152 chunks) — 2026-04-30 Session 45 D3-B 实测 (+1.05M vs Session 5 839,425,275 baseline, 自然增长)
+- **factor_ic_history**: **145,894 行** (~36 MB) — 2026-04-30 Session 45 D3-B 实测 (+1099 vs Session 5 144,795 baseline), IC唯一入库点(铁律11), 未入库IC视为不存在
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
-- **minute_bars**: **190,885,634 行** (21 GB, Step 6-B 已统一 code 格式), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
-- **klines_daily**: 11,721,768 行 (4 GB, TimescaleDB hypertable 51 chunks)
-- **daily_basic**: 11,507,171 行 (3 GB)
+- **minute_bars**: **190,885,634 行** (~36 GB) — 2026-04-30 Session 45 D3-B 实测 (Step 6-B 已统一 code 格式, 行数稳定但 size 36GB vs 历史 21GB est), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
+- **klines_daily**: 11,776,616 行 (~4 GB / 3966 MB, TimescaleDB hypertable 53 chunks) — Session 45 D3-B 实测
+- **daily_basic**: 11,681,799 行 (~3.7 GB / 3805 MB) — Session 45 D3-B 实测
 
 ### 因子评估流程
 1. 经济机制假设(铁律13/14) → 2. IC计算+入库(铁律11) → 3. 画像(factor_profiler, 5维) → 4. 模板匹配(T1-T15) → 5. Gate G1-G8+BH-FDR → 6. 回测验证(paired bootstrap p<0.05)
@@ -626,6 +626,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
   - QMT Data Service + PT_Watchdog 等只读任务保留
   - **findings 累计 19** (Session 19 18 - F18 + F21 + F22 + F23 候选撤回 = 19). 下 Session 21 优先级: F21 pt_watchdog L128 修 + reenable → F15 moneyflow silent failure 根因 → F19 phantom DELETE + F20 trade_log 完整性 → F16 LGBM shadow
   - **Session 20 末 Redis 实测 NAV = ¥1,010,376.08** (20:21:53, cash=¥110,624 + 持仓 19). DB `performance_series` 4-20 live = ¥1,007,775 (16:30 signal_phase 签到快照), 差 +¥2,601 = **QMT 盘后结算时点差** (非 bug, 符合历史模式). **PT 状态取值源协议**: 实时 NAV → Redis; 历史日 NAV → DB perf_series; QMT 对账 → `query_asset` 直连
+  - **🔴 Session 45 末 (2026-04-30 14:54) xtquant 真账户实测**: positions=0 / cash=¥993,520.16 / market_value=0 (user 4-29 决策"全清仓暂停 PT", 4-30 GUI 手工 sell 18 股). DB 4-28 19 股 stale snapshot 是历史快照, 真账户已清仓. Audit log: `risk_event_log id=67beea84-e235-4f77-b924-a9915dc31fb2` (P0 ll081_silent_drift_2026_04_29). 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). PT 重启 gate 见 §9 prerequisites (T0-15/16/17/18 + F-D3A-1 + DB stale 清 + paper-mode 5d dry-run + .env paper→live 用户授权).
 
 **本周实测 NAV 曲线 (performance_series, 推翻 Session 5 "-10.2% 回撤" 误读)**:
 
@@ -665,6 +666,8 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 
 **QMT vs DB 4-16 对账** (Session 10 实测): QMT 真实 19 股 (NAV ¥1,008,299 cash ¥110,624), DB 4-16 snapshot 22 股. 差异源自 4-17 执行了 20 笔 QMT 真实下单 (8 新买 + 11 卖 + 3 加减仓), snapshot 未写入 (P1-b).
 
+> ℹ️ **历史快照说明** (2026-04-30 Session 45 D3-B 加注): 上述 4-16 / 4-17 数字是 Session 10 时点真实快照, 自此 user 2026-04-29 决策清仓 + 4-30 GUI 手工 sell 18 股, 真账户当前 0 持仓 + cash ¥993,520.16 (xtquant API 4-30 14:54 实测). 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md).
+
 配置 **CORE3+dv_ttm Top-20 月度 + SN b=0.50** (pt_live.yaml + .env 一致).
 
 ⚠️ 旧记录 "PT 已暂停+已清仓 (2026-04-10)" 错误 (Session 5 修正). Session 5 "-10.2% 回撤" 也错误 (Session 10 修正). 两次铁律 22/25 违反, **未来更新 PT 状态前必须实测 `performance_series` + Redis + QMT**, 不凭 Redis portfolio:current 的 market_value 反推.
@@ -674,7 +677,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 | 你要做什么 | 读这个 |
 |-----------|--------|
 | **系统总设计/架构全景** | **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md** ⭐ (唯一设计真相源, 791行, 16章节) |
-| **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.4, 12 Framework + 6 升维 + 4 Wave, 2026-04-17) |
+| **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.16, 12 Framework + 6 升维 + 4 Wave, 2026-04-17) |
 | MVP 设计文档 (Wave 1+) | `docs/mvp/MVP_*.md` (每个 MVP ≤ 2 页, 铁律 24) |
 | 了解系统现状/模块怎么对接 | **SYSTEM_STATUS.md** ⭐ |
 | 建数据库表 | docs/QUANTMIND_V2_DDL_FINAL.sql ⭐ |
@@ -718,7 +721,7 @@ Modifier: Partial Size-Neutral b=0.50 (adj_score = score - 0.50*zscore(ln_mcap),
 - ✅ Step 4-B: YAML配置驱动 + config_loader + run_backtest改造
 - ✅ Step 5: Parquet缓存系统(`cache/backtest/2014-2026/`, 12年×3文件) + 48新测试
 - ✅ Step 6-A: run_paper_trading.py拆分1734→345行 + 4个pt_* Service
-- ✅ Step 6-B: minute_bars格式统一(139M行) + 7份文档全面更新 + 重构遗留项收尾
+- ✅ Step 6-B: minute_bars格式统一(190M行 实测 Session 45 D3-B) + 7份文档全面更新 + 重构遗留项收尾
 - ✅ Step 6-C: 冒烟测试8/8 + PT重启 + 6 runtime bug修复
 - ✅ Step 6-D: walk_forward.py修复 + 12年首次真跑(Sharpe=0.5309) + WF 5-fold OOS + 逐年度分解 + FF3归因
 - ✅ Step 6-E: IC基础设施修复 (ic_calculator统一口径 + 铁律19) + Alpha衰减归因
@@ -838,7 +841,7 @@ CLAUDE.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_REGISTRY.md / py
 
 ### 文档层级（固定）
 - **总设计 (当前真相)**: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` ⭐
-- **平台化蓝图 (未来 6 月主线)**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` ⭐ (QPB v1.4)
+- **平台化蓝图 (未来 6 月主线)**: `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` ⭐ (QPB v1.16)
 - **MVP 设计**: `docs/mvp/MVP_*.md` (每个 ≤ 2 页, 铁律 24)
 - **系统现状**: `SYSTEM_STATUS.md`
 - **入口导航**: `CLAUDE.md`（本文件）
