@@ -4,12 +4,13 @@
 > IC方法: Spearman rank correlation(zscore, 5日前瞻超额收益 vs 沪深300)
 > 数据范围: 2020-07-01 ~ 2026-03-23 (除特别注明)
 > 维护规则: 新因子测试完成后，必须在此表追加一行，否则BH-FDR的M值失真。
+> **Step 6.4 G1 sediment** (2026-05-01, 沿用 D72 一次性原则): 末次正式注册 2026-04-11. Phase 2.4 / 3B / 3D / 3E (~28 实验) 全 FAIL, 未追加注册表 (因 4 因子 = 等权 alpha 上限 closed, 无 active 状态变更), 详细沉淀 [docs/research-kb/findings/](docs/research-kb/findings/) + [docs/research-kb/failed/](docs/research-kb/failed/). 详见下方 §累积统计 末段.
 
 ---
 
 ## 累积统计
 
-- **累积测试总数 M**: 213 (74原始 + 128 Alpha158批量 + 6 Alpha158用户定义 + 5 PEAD-SUE验证, 2026-04-11)
+- **累积测试总数 M**: 213 (74原始 + 128 Alpha158批量 + 6 Alpha158用户定义 + 5 PEAD-SUE验证, 2026-04-11 末次正式更新)
 - **PASS**: 32 (原23 + 6 Alpha158六因子 + 3 PEAD-SUE)
 - **FAIL**: 34 (原32 + 2 PEAD-SUE弱信号)
 - **CONDITIONAL**: 6
@@ -19,6 +20,23 @@
 - **DEPRECATED**: 5
 - **NOT_TESTED**: 2
 - **CANCELLED**: 2
+
+### Step 6.4 G1 sediment: 2026-04-11 之后未注册的实验 (全 FAIL, 不改 active)
+
+| 阶段 | 实验数 | 结论 | 沉淀位置 |
+|---|---|---|---|
+| Phase 2.4 Research Exploration (2026-04-12) | 36 实验 | dv_ttm 突破因子, 5 改善方向 | docs/research-kb/findings/ + SYSTEM_STATUS §0.2 |
+| **WF 验证** (2026-04-12) | 1 主, 2 副 | CORE3+dv_ttm+SN050 Sharpe=0.8659 PASS, MDD=-13.91% | configs/pt_live.yaml + CLAUDE.md §策略配置 |
+| Phase 3B 因子特征分析 + P1 评估 (2026-04-13) | 8 P1 候选 | **全 FAIL** (CORE3+dv_ttm = 等权 alpha 上限, 加第 5 因子稀释) | docs/research-kb/findings/ + CLAUDE.md §已知失败方向 |
+| Phase 3D LightGBM ML Synthesis (2026-04-14) | 4 实验 | **全 FAIL** (A-REG/B-REG/A-LR/B-LR), **ML 预测层 CLOSED** | docs/research-kb/findings/phase3d-*.md |
+| Phase 3E-II 微结构因子 (2026-04-15) | 16 因子 | 16/17 neutral IC PASS + 16/16 noise ROBUST + CORE4 独立, 但 WF 0/6 PASS (真 alpha, 等权框架无法利用) | docs/research-kb/findings/ |
+
+**M 漂移评估**: 上述 ~28+ 实验未追加注册表 (理由: 全 FAIL + 等权框架 alpha 上限 closed, 4 因子 active 状态不变). 严格 BH-FDR 视角下, 真 M 应含这 28+ 实验, 即真 M ≈ 240. 实际 PT 配置不变 (CORE3+dv_ttm), 不影响生产决策. 留 future 因子研究 PR 决议是否补录 (本 PR 仅 sediment audit log).
+
+**当前 active 因子池** (CORE 4, 沿用 CLAUDE.md §因子系统):
+- turnover_mean_20(-1) / volatility_20(-1) / bp_ratio(+1) / dv_ttm(+1)
+- WF OOS Sharpe=0.8659, MDD=-13.91% (2026-04-12 PASS)
+- 因子健康状态 (Session 5 lifecycle): turnover_mean_20 / volatility_20 / bp_ratio ✅ active, dv_ttm ⚠️ active → warning (ratio=0.517 < 0.8)
 
 ---
 

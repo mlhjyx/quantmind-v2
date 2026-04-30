@@ -78,7 +78,7 @@ quantmind-v2/
 │   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md        # ⭐ 当前总设计真相源
 │   ├── QUANTMIND_PLATFORM_BLUEPRINT.md         # ⭐ 平台化路线图 (QPB v1.16)
 │   ├── DEV_BACKEND.md / DEV_BACKTEST_ENGINE.md / DEV_FACTOR_MINING.md / DEV_FRONTEND_UI.md / DEV_SCHEDULER.md / DEV_PARAM_CONFIG.md / DEV_AI_EVOLUTION.md / DEV_FOREX.md / DEV_NOTIFICATIONS.md
-│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-021)
+│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-022)
 │   ├── audit/                                   # 一次性诊断 / STATUS_REPORT
 │   ├── mvp/                                     # MVP 设计稿 (≤2 页, 铁律 24)
 │   ├── research-kb/                             # 研究知识库 (failed / findings / decisions)
@@ -325,7 +325,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 ## 因子审批硬标准
 
 - t > 2.5 硬性下限（Harvey Liu Zhu 2016）
-- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前M=84，87条-2 CANCELLED #70/#72 - 1重复 #65 = 84）
+- BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数（当前 SSOT 显示 M=213, 2026-04-11 末次更新; Phase 3B/3D/3E 实验未沉淀但全 FAIL 不改 active 状态, 详 [FACTOR_TEST_REGISTRY.md](FACTOR_TEST_REGISTRY.md) §累积统计）
 - 与现有Active因子 corr < 0.7, 选股月收益 corr < 0.3
 - 中性化后IC必须验证（原始IC和中性化IC并列展示）
 - 因子预处理顺序: **去极值(MAD 5σ) → 填充(行业中位数) → 中性化(行业+市值WLS) → z-score**（不可变）
@@ -355,7 +355,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ## 已知失败方向（high-level, 完整列表见 [docs/research-kb/failed/](docs/research-kb/failed/) + [docs/research-kb/decisions/](docs/research-kb/decisions/)）
 
-> 30+ 失败方向已沉淀到 research-kb (8 failed + 6 findings + 5 decisions). 本节仅列**最关键**的方向 (新研究启动前必读), 完整历史 + 详细论据 走 research-kb.
+> 30+ 失败方向已沉淀到 research-kb (8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订). 本节仅列**最关键**的方向 (新研究启动前必读), 完整历史 + 详细论据 走 research-kb.
 
 | 关键失败方向 | 结论 | 来源 |
 |---|---|---|
@@ -398,7 +398,9 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 **PT 状态 (2026-04-30 Session 45 实测真账户)**:
 - xtquant API 4-30 14:54: positions=0 / cash=¥993,520.16 / market_value=0
 - **清仓 v4 hybrid narrative** (PR #169): 17 股 CC 4-29 10:43:54 emergency_close + 1 股 (688121.SH 卓然新能 4500 股) 4-29 跌停 cancel → 4-30 user GUI sell
-- **PT 重启 gate prerequisite**: T0-15/16/18 + F-D3A-1 + DB stale 清 + paper-mode 5d dry-run + .env paper→live 用户授权 (T0-19 已 PR #168 落地)
+- **PT 重启 gate prerequisite** (Step 6.4 G1 实测修订, 沿用 Step 6.3a §2.1 closed status):
+  - ✅ **已 closed (代码层)**: T0-11 (F-D3A-1, PR #170) / T0-15/16/18 (PR #170) / T0-19 (PR #168+#170)
+  - ⏳ **真待办 (运维层)**: DB 4-28 stale snapshot 清 + paper-mode 5d dry-run + .env paper→live 用户授权
 - 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md) + ADR-008 命名空间契约
 
 ## 文档查阅索引
@@ -422,7 +424,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 705行) |
 | 写外汇模块(⏳) | docs/DEV_FOREX.md (682行, DEFERRED) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
-| 研究知识库(防重复失败) | `docs/research-kb/` (19条目: 8 failed + 6 findings + 5 decisions) |
+| 研究知识库(防重复失败) | `docs/research-kb/` (38条目: 8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
 | **CC 自动化操作 (runbook)** | **`docs/runbook/cc_automation/00_INDEX.md`** ⭐ (撤 setx / Servy 重启 / 等 ops runbook) |
 | 路线图(历史, 已归档) | docs/archive/QUANTMIND_V2_FIX_UPGRADE_ROADMAP_V3.md (v3.8, 被Blueprint替代) |

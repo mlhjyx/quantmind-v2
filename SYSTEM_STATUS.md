@@ -1,8 +1,104 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)**
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)**
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-2 Session 24-45 + Step 6.x sprint 治理 sediment ⭐ (2026-04-22 → 2026-05-01)
+
+> **Step 6.4 G1 sediment** (2026-05-01, 沿用 D72 一次性原则): 本段补 Session 24-45 + Step 6.1-6.4 sprint 治理整轮覆盖, 消除 §0.-1 (Session 22/23) → §0.0 (平台化阶段) 之间 ~9 天空白. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` (X5 单源化).
+
+### 核心生产状态 (2026-05-01 实测)
+
+| 维度 | 值 | 来源 |
+|---|---|---|
+| 真账户持仓 | 0 股 (4-29 user 决议清仓) | xtquant API 4-30 14:54 实测 |
+| 真账户 cash | ¥993,520.16 | xtquant API |
+| DB position_snapshot live max trade_date | 2026-04-27 (19 行 stale) | T0-19 known debt, audit-only |
+| circuit_breaker_state.live | level=0, nav=993,520.16 | 4-30 manual bootstrap (PR #170) |
+| LIVE_TRADING_DISABLED | True (默认, .env 未显式覆盖) | live_trading_guard.py:7 |
+| EXECUTION_MODE | paper (broker 层硬阻 sell/buy) | backend/.env:17 |
+| Beat 5 schedule entries | restart 已生效, 全静音 | PR #170 c2 (X9 inline) |
+
+### Wave 3 MVP 3.1 Risk Framework ✅ 完结 (Session 28-30, 2026-04-22~24)
+
+- 6 PR (#54 spike + #55/#57/#58/#59/#60/#61 implement)
+- 65 新 tests / 0 regression / 50 reviewer findings 49 采纳 98%
+- Celery Beat 5 schedule entries 生产激活 (intraday 9-14 `*/5` + risk-daily 14:30 + cb hybrid + sunset 周日 04:00)
+- 首次真生产触发 2026-04-27 Monday 09:00 intraday + 14:30 daily
+- ADR-010 addendum (PMSRule 并入 / CircuitBreakerRule Hybrid adapter 方案 C 接受 铁律 31 例外)
+
+### Wave 3 MVP 3.3 Signal-Exec Framework ✅ 完结 (Session 37-40, 跨 5 sessions)
+
+- ~13 PR 累计: batch 1 PR #107 / batch 2.1 #108 / batch 3 #109 / Step 2 #110 (warn-only) / Step 2.5 #111 (STRICT) / Step 2.5 verification #112 / Stage 3.0 真切换 #116
+- signal_service.generate_signals 内部走 PlatformSignalPipeline.generate(S1, ctx)
+- regression 5yr+12yr max_diff=0 (Sharpe=0.6095/0.3594) / 25 trade_dates bit-identical
+- 5-day gate 撤销 (用户挑战驱动, "为什么要等一周")
+- LL-082~088 入册 (Session 39+40)
+
+### Wave 4 MVP 4.1 Observability 进行中 (Session 43+ 2026-04-28~)
+
+- batch 1 ✅ PR #131 (PostgresAlertRouter cross-process PG dedup + DingTalkChannel + Channel Protocol)
+- batch 2.1 ✅ PR #132 (PostgresMetricExporter + platform_metrics TimescaleDB hypertable + 30d retention)
+- batch 2.2 ✅ PR #133 (AlertRulesEngine yaml-driven + B6 Framework `.health()` + HealthReport frozen)
+- batch 3.x (待开): 17 scripts SDK migration, 进行中
+
+### Risk Framework v2 加固 (Session 44, 2026-04-29)
+
+- 9 PR #143-148 + #139/140/141 (PT live 真生产事件触发: 688121 -29% / 000012 -10%, 30天 risk_event_log 0 行)
+- 加固 5 维度: SingleStockStopLoss (PR #139) + scheduler_task_log audit (PR #144) + Beat dead-man's-switch self-health 18:45 (PR #145+146) + Position.entry_date 契约 (PR #147) + PositionHoldingTime + NewPositionVolatility (PR #148)
+- 用户决策: "全清仓暂停 PT" → emergency_close_all_positions.py 4-29 10:43:54 实战 sell 17 股 + 1 股 4-29 跌停 cancel → 4-30 user GUI 手工 sell
+
+### D3 全方位审计 + Tier 0 enumerate (Session 45, 2026-04-30)
+
+- D3-A 5 PR (#155-161 spike + Step 1-5 落地) — silent drift fail-loud (LL-081)
+- D3-B 跨文档同步 PR + Step4 v2 + 跨文档同步 + D3-C + narrative v3 修订 PR (#155-#166 共 12 PR merged)
+- T0-19 业务代码落地 PR #168 (emergency_close 后自动刷 DB / cb_state / performance_series + audit log + 21 unit tests)
+- narrative v4 hybrid 定论 PR #169 (4-29 emergency_close 17 股 + 1 股 4-30 user GUI sell)
+- T0-15/16/18/19 + F-D3A-1 全 PR #170 落地
+
+### Step 6.1-6.4 sprint 治理基础设施 5 块基石 (Session 45-46 跨日 2026-04-30 → 2026-05-01)
+
+| Step | PR | 落地 |
+|---|---|---|
+| Step 5 | PR #172 | PROJECT_FULL_AUDIT + SNAPSHOT 锁定 |
+| Step 6.1 | PR #173 | LL-098 沉淀 + 8 D2 untracked disposal |
+| Step 6.2 | PR #174 | IRONLAWS.md 拆分 + ADR-021 + CLAUDE.md banner + X10 inline |
+| Step 6.2.5a | PR #175 | 纯 audit 决议 (D-1=A / D-2=A / D-3=A 锁定) |
+| Step 6.2.5b-1 | PR #176 | IRONLAWS v3.0.1 + §21.1 ADR 历史决议保留 + §23 双口径 |
+| Step 6.2.5b-2 | PR #177 | IRONLAWS v3.0.2 + pre-push X10 守门 hook + dry-run 3 场景 |
+| Step 6.3a | PR #178 | 6+1 文档 SSOT 整合 + Tier 0 enumerate 9 项 |
+| Step 6.3b | PR #179 | CLAUDE.md 813→509 重构 (Path C) + IRONLAWS v3.0.3 + 5 层叠加 audit |
+| **Step 6.4 G1** | **本 PR** | 治理债 11 项一次性 cleanup (D72 反 sprint period treadmill anti-pattern) |
+
+### sprint 治理基础设施
+
+- **IRONLAWS.md SSOT** (v3.0.3 → v3.0.4 本 PR): 完整铁律 1-44 + X9/X10 + 候选 X1/X3/X4/X5 + Tier 化 + LL/ADR backref
+- **ADR-021 + (本 PR) ADR-022**: ADR 编号系统 + 集中修订机制 (反 audit log 链膨胀)
+- **第 19 条 memory 铁律**: prompt 不写具体数字, CC 实测决定 (Step 6.2-6.4 G1 累计第 7 次连续 verify)
+- **X10 + LL-098 + pre-push hook**: AI 自动驾驶 detection 软门 + 硬门完整链路 (累计第 11 次 stress test)
+- **§23 双口径计数规则**: narrower (LL 内文链) + broader (PROJECT_FULL_AUDIT scope) 永久并存
+
+### Tier 0 债状态 (Step 6.4 G1 实测)
+
+| 维度 | 数 |
+|---|---|
+| 总 enumerate IDs | 18 (T0-1 ~ T0-19, T0-13 gap) |
+| ✅ closed | 9 (T0-1/2/3/11/15/16/17 撤销/18/19) |
+| 🟡 待修 | 9 (T0-4/5/6/7/8/9/10/12/14) — 详 [TIER0_REGISTRY.md](docs/audit/TIER0_REGISTRY.md) (本 PR WI 9 新建) |
+
+### LL "假设必实测" 累计 (Step 6.4 G1)
+
+- **narrower** (LL 内文链): **30** (Step 6.3b 末)
+- **broader** (PROJECT_FULL_AUDIT scope): **38** (Step 6.3b 末) → 本 PR sediment 待写
+- **LL 总数**: **92** (LESSONS_LEARNED.md `## LL-NNN` 计数, max LL-098)
+
+### PT 重启 gate prerequisite (Step 6.4 G1 修订, 沿用 SHUTDOWN_NOTICE §9.1+§9.2)
+
+- ✅ **代码层债** (无需 PT 重启前再做): T0-11/15/16/18/19 + F-D3A-1 全 PR #168/#170 落地
+- ⏳ **运维层** (PT 重启前必做, user 授权): DB stale snapshot 清 + cb_state reset + paper-mode 5d dry-run + .env paper→live 用户授权
 
 ---
 

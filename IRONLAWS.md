@@ -803,6 +803,7 @@ ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
 | **ADR-010 双 ADR** (addendum-cb-feasibility + pms-deprecation-risk-framework) | 维持现状 | 不 rename | 文件名后缀已区分 scope. 双 ADR 各自有独立决议. |
 | **ADR-015 ~ ADR-020 gap** (6 项空缺) | 维持现状 | lazy assignment | gap 不影响 ADR-021 + 后续 ADR 顺序占用. 0 风险. |
 | **ADR-021** (sprint period 预占) | 已落地 (PR #174) | — | 本铁律重构决议. |
+| **ADR-022** (Step 6.4 G1 落地) | 已落地 (本 PR) | — | Sprint period treadmill 反 anti-pattern + 集中修订机制 (撤销 ADR-021 §4.5 + 修订 PROJECT_FULL_AUDIT line 89 + 终止 §22 audit log 链). |
 
 **修订时点候选** (Wave 5+ 远期, 0 PR commitment): 如未来 sprint 治理价值显著上升 (e.g. 全文档批量 ADR backref 自动化), 重评 rename 风险.
 
@@ -833,6 +834,12 @@ ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
   - **PROJECT_FULL_AUDIT line 89 数字漂移 audit 沉淀** (沿用 Step 6.3a §2.2 + 本 PR WI 3 D71 决议选项 c): line 89 写 "剩 11 项 (T0-1 ~ T0-12 + T0-14)" 实测 = 9 项待修 (T0-4/5/6/7/8/9/10/12/14). 差 2 项源 = T0-1/2/3 在 line 81 标 "🟡 部分修" 但 line 89 整体 enumerate 时未减除. **PR #172 PROJECT_FULL_AUDIT 文件保持锁定** (历史 audit 时点真实记录), 修补走本条 v3.0.3 entry + Step 6.3a STATUS_REPORT §2 实测 audit log 链.
   - X10 stress test 实绩段累计第 9 次 (Step 6.3a) → 第 10 次 (本 PR Step 6.3b): 末尾 0 forward-progress offer
 - **v3.x+** (Step 6.2.5+ / Step 7+): 候选 X1/X3/X4/X5 promote / Tier 重新 calibration / 等
+
+### §22.终止 sprint period audit log 链 (Step 6.4 G1, 2026-05-01)
+
+> **终止决议** (沿用 [ADR-022](docs/adr/ADR-022-sprint-treadmill-revocation.md) §2.3): 本 §22 不再 sediment sprint period 漂移修补 audit. **v3.0.3 (Step 6.3b PR #179) 是末次 audit log entry**. v3.0.4+ 仅记真 SSOT 内容变更 (新铁律 / Tier calibration / 候选 promote 等). 漂移修补走 ADR-022 (或后续 ADR-023+) 集中.
+>
+> **反 anti-pattern 验证**: Step 6.1 → 6.3b 8 PR 累计 4 audit log entries (v3.0/v3.0.1/v3.0.2/v3.0.3) / 1 day, 形成 sprint period treadmill — 单看每条合理, 累计后 §22 治理 audit log 长 + 真核心铁律内容稀释. ADR-022 集中机制终止此 anti-pattern.
 
 ---
 

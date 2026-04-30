@@ -188,17 +188,23 @@ grep -oE "code=[0-9]{6}\.(SH|SZ)" logs/emergency_close_20260429_104354.log | sor
 
 ## §9 PT 重启 gate (剩余 prerequisite)
 
-PT 重启前必修 (user 决策):
+> **Step 6.4 G1 修订** (2026-05-01, 沿用 D72 一次性原则): §6 表格已 ✅ closed status, 本 §9 同步消除内部漂移. 代码层债 T0-15/16/18/19 + F-D3A-1 全 ✅ PR #168/#170 落地. 真剩余 prerequisite 限运维层 (DB / cb_state / dry-run / .env 授权).
 
-- [ ] T0-15 修: LL-081 v2 — 加 "持仓查询连续失败 N 次 / QMTClient fallback 触发 → guard 触发 + risk_event_log + 告警" (修法范围 v2 扩)
-- [ ] T0-16 修: qmt_data_service 改 fail-loud (连续 N min 失败 raise + risk_event_log + 钉钉)
-- ~~T0-17 修: ADR-021 + 候选铁律 X8~~ — **v3 撤销** (PR #150 是补丁不是替代, 不构成 prompt 软处理 user 指令)
-- [ ] T0-18 修: 候选铁律 X9 "schedule / config 注释后必显式重启服务才生效, schedule 类 PR 必含 post-merge ops checklist"
-- [ ] **T0-19 修 (新)**: emergency_close_all_positions.py 加 post-execution DB sync hook (clear position_snapshot 当天 + reset cb_state + write trade_log × N + write risk_event_log P0 audit row) + chat-driven 授权机制加 audit signature
-- [ ] **DB 4-28 19 股 stale snapshot 清理** (本 PR 不做, 留 PT 重启 gate 时 user 授权 DELETE) — T0-19 修后部分自愈
-- [ ] **重置 cb_state live = ¥993,520** (实测真账户值, 留 PT 重启 gate)
-- [ ] paper-mode 5 个交易日 dry-run (沿用 Session 44 末 handoff)
-- [ ] `.env paper→live` 显式授权 (现 LIVE_TRADING_DISABLED=true 二级硬开关)
+### §9.1 ✅ 代码层债 已 closed (无需 PT 重启前再做)
+
+- ✅ T0-11 (F-D3A-1): 3 missing migrations PR #170 落地
+- ✅ T0-15: LL-081 guard 不 cover QMT 断连 — PR #170 c4 (QMTFallbackTriggeredRule + 6 unit tests)
+- ✅ T0-16: qmt_data_service 26 天 silent skip — PR #170 c5 (5 min 阈值 + dingtalk_alert escalate, 7 unit tests)
+- ~~T0-17~~: ~~Claude prompt 软处理 user 真金指令~~ — **v3 撤销** (PR #166: PR #150 是补丁不是替代清仓)
+- ✅ T0-18: Beat schedule 注释式 link-pause 失效 — PR #170 c2 (X9 inline + LL-097 入册)
+- ✅ T0-19: emergency_close 后没自动刷 DB / 没入 audit — PR #168 (业务代码 + 21 unit tests) + PR #170 c6
+
+### §9.2 ⏳ 运维层 prerequisite (PT 重启前必做, user 授权)
+
+- [ ] **DB 4-28 19 股 stale snapshot 清理** (本 PR 不做, 留 PT 重启 gate 时 user 授权 DELETE)
+- [ ] **重置 cb_state live = ¥993,520** (实测真账户值, 留 PT 重启 gate; 注: 当前 cb_state.live nav 已是 993520.16, 触发条件 sustain)
+- [ ] **paper-mode 5 个交易日 dry-run** (沿用 Session 44 末 handoff)
+- [ ] **`.env paper→live` 显式授权** (现 LIVE_TRADING_DISABLED=true 二级硬开关)
 
 **当前生产状态** (本 PR 落地后):
 - 真账户: 0 持仓, ¥993,520.16 cash, fail-secure
