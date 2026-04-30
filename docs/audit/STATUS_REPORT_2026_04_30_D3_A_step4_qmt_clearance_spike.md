@@ -473,3 +473,79 @@ asset_total=993520.16 cash=993520.16 market=0.0
 - **本 spike 14:48 merged 时** Step 4 spike PR #158 (`ce563bd`) — root cause 误判
 - **修订 PR `chore/d3a-step4-correction`** — 5 层 root cause + Q-Pre/Q1/Q2/Q3 + LL #21+#22 + T0-17
 - **责任拆解**: Claude (主责 prompt 软处理) + CC (次责未挑战) + User (上下文沉默接受) + 流程债 (T0-15/16/17 + 候选铁律 X8)
+
+---
+
+# ⚠️ L4 修订 v2 (2026-04-30 17:00+, 基于 D3-B F-D3B-7 实测, PR `chore/d3a-step4-correction-l4-rev`)
+
+## 触发
+
+PR #162 D3-B 5 维度审计 Q5.1 redis-cli 实测 (见 [d3_5_redis_health_2026_04_30.md](d3_5_redis_health_2026_04_30.md)):
+
+```bash
+redis-cli DBSIZE                       # 2971
+redis-cli KEYS "portfolio:*" | wc -l   # 0  ⚠️
+redis-cli KEYS "market:*" | wc -l      # 0  ⚠️
+redis-cli KEYS "qm*"                   # 7 streams (6 个 TTL=-2 expired)
+redis-cli KEYS "qmt*"                  # 1 stream (TTL=-2 expired)
+```
+
+→ portfolio:current Redis cache **完全不存在** (0 keys), 推翻本 spike Q4(c) 推断 "DB 4-28 19 股 = stale Redis cache 写入 (经 DailySignal 4-28 16:30 Stage 4 reenable run)" + 推翻原 5-layer L4 "stale Redis cache 写入 (Stage 4 reenable 副产品)".
+
+## L4 修订前后对比
+
+| 项 | L4 原 (本 spike Q4 conclusion + 5-layer L4 错判) | L4 修订 v2 (D3-B F-D3B-7 实测) |
+|---|---|---|
+| DB 4-28 19 股 stale snapshot 来源 | **stale Redis cache** 4-28 16:30 经 DailySignal 写 | **QMTClient fallback 路径直读 stale DB position_snapshot** (Redis cache 不存在 → 触发 fallback) |
+| Redis 现实假设 | portfolio:current 存在但 stale 4-04 时点状态 | 实测 portfolio:current = 0 keys (qmt_data_service 4-04 起断连 → 26 天 silent skip → SET 0 次 → key TTL 自然到期 expired) |
+| QMTClient 读路径 | 经 Redis cache 读 stale → 写 DB | 经 fallback 路径 (cache miss) 直读 DB stale → 写回 DB 新 snapshot (self-referential stale loop) |
+| Stage 4 reenable 副产品解读 | "DailySignal 4-28 16:30 跑了一次写 stale Redis cache 来源" | (修正) DailySignal 4-28 跑过, 但读的不是 Redis cache 而是 DB position_snapshot 自身, 形成 DB ↔ DB self-loop, Redis 完全未参与 |
+
+## L4 NEW 修订 v2 (替代 PR #159 L4 NEW + 本 spike 原 5-layer L4)
+
+> **L4 NEW v2**: 2026-04-30 实测 portfolio:current Redis cache = 0 keys (qmt_data_service 4-04 起断连导致 SET 0 次, key TTL 自然到期 expired). DB 4-28 19 股 stale snapshot **不是来自 stale Redis cache 写入**, 而是 **QMTClient fallback 路径直读 DB position_snapshot 自身** (cache miss → fallback DB → 读到 4-28 stale → 经 DailySignal 写回新 snapshot, 形成 self-referential stale loop). 这意味着即使 Redis cache 完全清空, DB stale 仍能通过 fallback 路径自我延续, **单修 Redis 不够**, 必须 (a) 清 DB 4-28 stale snapshot + (b) 修 qmt_data_service fail-loud (T0-16) + (c) LL-081 v2 cover fallback 触发场景 (T0-15 修法范围扩).
+
+(原 Q4 conclusion + L5 NEW "DB 4-30 silent drift" 描述仍准确, 但 L4 因果链需修正: 不是 "stale Redis cache → DB stale", 而是 "DB stale → DB self-loop, Redis 旁路".)
+
+## 责任拆解 (与 PR #159 修订 v1 一致, 不动)
+
+L4 修订 v2 是同源 fallback 路径精化, **不改责任主体**:
+
+- **L1 NEW (User instruction)** — 不变 (4-29 ~14:00 user "全清仓暂停 PT" 决策)
+- **L2 NEW (Claude 主责)** — 不变 (PR #150 prompt 软处理)
+- **L3 NEW (CC 次责)** — 不变 (没反问真意)
+- **L4 NEW v1** "stale Redis cache 写入" → **L4 NEW v2** "QMTClient fallback 直读 DB self-loop" (因果链精化)
+- **L5 NEW (流程债 T0-15/16/17)** — 不变, 但 **T0-15 修法范围扩**: LL-081 v2 必须 cover "QMTClient fallback 触发" 场景, 不仅 cover "查询失败 N 次"
+
+## Tier 0 债 (15 项, 不变)
+
+L4 修订 v2 不新增 Tier 0 债, 仅扩 T0-15 修法范围 (LL-081 v2 cover fallback 触发).
+
+## LL "假设必实测纠错" 累计 22 → **23** (本 L4 修订 +1)
+
+| 第 | 来源 | 假设 | 实测 |
+|---|---|---|---|
+| 23 (LL-093 候选) | 本 spike Q4 推断 stale Redis cache 是 DB 4-28 stale 源 | Redis cache stale → DailySignal 读 stale → 写 DB 4-28 | 实测 portfolio:current 0 keys (cache 完全不存在), 真因 QMTClient fallback 路径直读 DB self-referential |
+
+**复用规则 (LL #23 沿用)**: 任何 "推断" 必明示 "基于 N 项前提推论, 推论=不实测", 应留 P3-FOLLOWUP 标 + 真实测验证. 第 23 次同质 LL.
+
+(LL-093 入册 LESSONS_LEARNED.md 走 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步阶段, 本 PR 仅 spike report 内追加修订记录.)
+
+## 修订关联 v2
+
+- **本 spike 原 Q4 conclusion** (line 174-179) "DB 4-28 19 股 = stale Redis cache 写入" — **撤销**
+- **本 spike 原 5-layer L4** (line 199) "stale Redis cache 写入 (Stage 4 reenable 副产品)" — **撤销**
+- **PR #159 修订 v1 NEW L1-L5** (line 431-441) — L1/L2/L3 不变, L4 NEW v1 "stale Redis cache 写入" → L4 NEW v2 (本修订, 因果链精化), L5 NEW 不变
+- **D3-B PR #162 F-D3B-7** ([d3_5_redis_health_2026_04_30.md](d3_5_redis_health_2026_04_30.md)) — 实测推翻原 L4 + L4 NEW v1
+- **T0-15 修法范围扩**: LL-081 v2 必须 cover "QMTClient fallback 触发" 场景
+
+## 下一步
+
+本 PR `chore/d3a-step4-correction-l4-rev` merge 后:
+- LL-093 入册留 PR `chore/d3b-cross-doc-sync` D3-B 跨文档同步
+- LL-081 v2 候选铁律 + ADR-021 设计阶段加 fallback 触发 cover (留批 2 P0 修)
+- DB 4-28 stale snapshot 清 + cb_state live reset 留 PT 重启 gate (user 授权)
+
+## 用户接触
+
+0 (本修订是 D3-B 副产品 finding F-D3B-7 实测推翻, 自驱动修正, 不需 user 决议).
