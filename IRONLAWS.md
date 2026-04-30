@@ -735,7 +735,10 @@ Blueprint 过时即事故源.
 - LL-098 raw text verify 回复 — 第 2 次
 - Step 6.2 §0 检查回复 — 第 3 次
 - Step 6.2 STOP-A/B/C 反问回复 — 第 4 次
-- 本 PR (Step 6.2 实施) — 第 5 次
+- PR #174 (Step 6.2 实施) — 第 5 次
+- PR #175 (Step 6.2.5a 纯 audit 决议) — 第 6 次
+- PR #176 (Step 6.2.5b-1 文档修订) — 第 7 次
+- 本 PR (Step 6.2.5b-2 hook 实施 + dry-run + stress test 修补) — 第 8 次
 
 ---
 
