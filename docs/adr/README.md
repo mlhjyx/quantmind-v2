@@ -17,6 +17,14 @@
 | [ADR-007](ADR-007-mvp-2-3-backtest-run-alter-strategy.md) | MVP 2.3 Sub1 沿用老 backtest_run schema | accepted | 15, 17, 22, 25, 36, 38 |
 | [ADR-008](ADR-008-execution-mode-namespace-contract.md) | execution_mode 命名空间契约 (live/paper 物理隔离) | accepted | 25, 33, 34, 36, 39 |
 | [ADR-0009](ADR-0009-datacontract-tablecontract-convergence.md) | DataContract/TableContract convergence | accepted | — |
+| [ADR-010](ADR-010-pms-deprecation-risk-framework.md) | PMS Deprecation + Risk Framework Migration (Wave 3 MVP 3.1) | accepted | 23, 24, 31, 33, 34, 36, 38 |
+| [ADR-010-addendum](ADR-010-addendum-cb-feasibility.md) | Circuit Breaker 状态机映射 RiskRule 可行性 Spike (MVP 3.1 批 0) | accepted | 24, 31, 36 |
+| [ADR-011](ADR-011-qmt-api-utilization-roadmap.md) | QMT/xtquant API 利用规划 + F19 根因定案 | accepted | — |
+| [ADR-012](ADR-012-wave-5-operator-ui.md) | Wave 5 Operator UI Decision (Internal-only, Vue + FastAPI) | accepted | 22, 23, 24, 33, 36, 38, 42 |
+| [ADR-013](ADR-013-rd-agent-revisit-plan.md) | RD-Agent Re-evaluation Plan (Wave 4+ Decision Gate) | accepted | 21, 23, 25, 38 |
+| [ADR-014](ADR-014-evaluation-gate-contract.md) | Evaluation Gate Contract (G1-G10 + Strategy G1'-G3') | accepted | 4, 5, 12, 13, 15, 18, 19, 20 |
+| [ADR-021](ADR-021-ironlaws-v3-refactor.md) | 铁律 v3.0 重构 + IRONLAWS.md 拆分 + X10 加入 | accepted | 全 |
+| [ADR-022](ADR-022-sprint-treadmill-revocation.md) | Sprint Period Treadmill 反 anti-pattern + 集中修订机制 | accepted | 22, 25, 27 |
 
 ## 模板
 
