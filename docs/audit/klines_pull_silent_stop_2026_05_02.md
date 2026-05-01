@@ -17,7 +17,7 @@ Get-ScheduledTask | Where-Object { $_.TaskName -like '*QuantMind*' -or $_.TaskNa
   Select-Object TaskName, State, LastRunTime, LastTaskResult, NextRunTime
 ```
 
-### A.2 真值 — 24 schtasks (实测 2026-05-02 ~03:30)
+### A.2 真值 — 23 真 QuantMind/QM- schtasks (实测 2026-05-02 ~03:30, `Sqm-Tasks` Microsoft system task 排除)
 
 **Ready (真活)** — 17 个:
 
@@ -76,10 +76,10 @@ Get-ScheduledTask | Where-Object { $_.TaskName -like '*QuantMind*' -or $_.TaskNa
 
 ### B.2 PT pipeline 真 ETL 入口
 
-`backend/app/services/pt_data_service.py:25-96` — `fetch_daily_data(trade_date, conn, skip_fetch)`:
+`backend/app/services/pt_data_service.py:25-100+` — `fetch_daily_data(trade_date, conn, skip_fetch)`:
 
 ```python
-# pt_data_service.py:25-96 (节选)
+# pt_data_service.py:25-96 (节选, 省略 index pipeline DataPipeline.ingest 细节 + stock_status 增量更新)
 def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> dict:
     """并行拉取当日klines+basic+index数据并入库。"""
     api = TushareAPI()
@@ -104,7 +104,7 @@ def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> d
 | line | 用途 | 触发 schtask |
 |---|---|---|
 | `:45` | `from app.services.pt_data_service import fetch_daily_data` | — |
-| `:210-211` | Step 1 (signal_phase): `fetch_result = fetch_daily_data(trade_date, skip_fetch=skip_fetch)` | **`QuantMind_DailySignal` 16:30** |
+| `:211` (含 `:210` 注释 `# Step 1: 数据拉取`) | Step 1 (signal_phase): `fetch_result = fetch_daily_data(trade_date, skip_fetch=skip_fetch)` | **`QuantMind_DailySignal` 16:30** |
 | `:401` | Step 5.5 (execute_phase): `fetch_daily_data(exec_date, skip_fetch=False)` | **`QuantMind_DailyExecute` 09:31** |
 
 → klines/daily_basic 真 daily ETL 触发依赖 PT 2 个 schtask (DailySignal + DailyExecute) 真活. **2 schtask 全 Disabled 4-28/4-29 起 → 真 0 触发, 真不拉**.
