@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     #   LIVE_TRADING_OVERRIDE_REASON='<明确原因>'
     # 缺一者拒绝 + DingTalk P0 + audit log.
     # 撤销: docs/audit/link_paused_2026_04_29.md (T1.4 完成 / 批 2 写路径漂移修后).
+    # Layer 2.5.7 (5-02): backend/.env 加 explicit `LIVE_TRADING_DISABLED=true` 行作
+    # 防御层. 改此 default (True → False) 即静默破红线; .env 显式行确保即使 default
+    # 被改也不静默生效 (pydantic_settings 优先读 .env). 改 default 必走 ADR + user 授权.
     LIVE_TRADING_DISABLED: bool = True
 
     # --- Paper Trading 核心参数 ---
