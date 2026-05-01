@@ -25,6 +25,8 @@
 | [ADR-014](ADR-014-evaluation-gate-contract.md) | Evaluation Gate Contract (G1-G10 + Strategy G1'-G3') | accepted | 4, 5, 12, 13, 15, 18, 19, 20 |
 | [ADR-021](ADR-021-ironlaws-v3-refactor.md) | 铁律 v3.0 重构 + IRONLAWS.md 拆分 + X10 加入 | accepted | 全 |
 | [ADR-022](ADR-022-sprint-treadmill-revocation.md) | Sprint Period Treadmill 反 anti-pattern + 集中修订机制 | accepted | 22, 25, 27 |
+| [ADR-023](ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md) | yaml SSOT vs DB strategy_configs deprecation (PT 生产配置唯一 SSOT) | proposed | 22, 25, 34, 38 |
+| [ADR-024](ADR-024-factor-lifecycle-vs-registry-semantic-separation.md) | factor_lifecycle 与 factor_registry 语义分工显式声明 (生产生命周期 vs 设计审批) | proposed | 22, 25, 38 |
 
 ## 模板
 
