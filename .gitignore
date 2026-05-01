@@ -38,6 +38,7 @@ logs/
 # Backup archives
 *.tar.gz
 *.zip
+*.rar
 
 # Node (frontend)
 node_modules/
