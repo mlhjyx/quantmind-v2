@@ -82,6 +82,8 @@
 | **何时不应该用** | (a) ❌ 不要写"系统当前 286 个因子" — 4-17 后冻结, 不反映 Phase 3B/3D/3E ~28 实验; (b) ❌ active=26 不等同于"生产真用" — 生产真用走 source #9 yaml (4 个); (c) ❌ warning=246 不是 bug 大头 — 是 lifecycle 设计标记, 不影响计算 |
 | **历史 anchor** | 表 created_at MIN=2026-03-28 / MAX=2026-04-17 (3-28~4-17 注册期). 4-17 后冻结的根因 (Phase 2.4/3B/3D/3E 跑实验但不注册) 关联 F-D78-60 [P2] (Layer 2 sprint 处理). |
 
+> **footnote (ADR-024 sediment)**: `registry.active` ∩ `lifecycle.active` = **0** 是设计 (语义不同, **非 drift**) — registry 是设计审批 + Gate G1-G8 SSOT, lifecycle 是生产生命周期 SSOT (yaml 镜像). yaml CORE 4 在 registry 中 status='warning' 是 Gate decay 监控状态机, 不是 stale. 详见 [ADR-024](adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md).
+
 ---
 
 ## 5. factor_lifecycle (total / active / retired)
@@ -94,6 +96,8 @@
 | **何时引用** | (a) Phase 3 MVP A factor_lifecycle.py 周五 19:00 schtask 评估; (b) factor 生命周期管理 (active → warning → retired); (c) PT 真用因子健康度 (4 active 中 dv_ttm Session 5 lifecycle warning, ratio=0.517 < 0.8) |
 | **何时不应该用** | (a) ❌ 不要等同于 "factor_registry status='active' 26" — lifecycle 比 registry active 窄 ~6.5x; (b) ❌ 不要写"系统真有 6 个因子" — 是跟踪子集, 不是因子库; (c) ❌ retired=2 不是"已下线" 真值 — 走 source #4 deprecated=14 |
 | **历史 anchor** | factor_lifecycle.py + Celery 周五 19:00 (Phase 3 MVP A, 2026-04-17 引入, 26/26 tests). 当前 active 4 个: turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm (CORE3+dv_ttm) — 与 source #9 yaml 完全对齐. |
+
+> **footnote (ADR-024 sediment)**: `lifecycle.active` ∩ yaml = **4 完全对齐** — lifecycle 是 yaml 镜像 (4-12 cutover 同日 amihud_20+reversal_20 retired_date / dv_ttm entry_date 同步入). **lifecycle 表无 `ratio` 字段** — 历史 cite "ratio=0.517<0.8" 实际指 [`scripts/monitor_factor_ic.py`](../scripts/monitor_factor_ic.py) 计算的 rolling_ic 指标, 不是 lifecycle 表字段. 详见 [ADR-024](adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md).
 
 ---
 
@@ -159,6 +163,8 @@
 | **何时引用** | ⚠️ **几乎不引用** — 生产 PT 不读此表 (走 yaml). 仅 (a) DB schema 历史 audit; (b) finding 候选 (yaml vs DB drift, 沉淀但本 GLOSSARY 不修) |
 | **何时不应该用** | (a) ❌ **不要作为"PT 真用因子"** — 生产真用 source #9 yaml; (b) ❌ 不要写"系统配置 5 个因子" — yaml 已 cutover 到 4 个 (CORE3+dv_ttm); (c) ❌ 不要 backfill / 同步此表 — 见 §加新 count 流程 (本 GLOSSARY scope 0 改) |
 | **历史 anchor** | strategy_configs v1 + v2 都是 CORE5, 4-12 yaml cutover 到 CORE3+dv_ttm 时未同步 DB strategy_configs (流程债, 候选 finding). 真生产读路径走 [`backend/engines/signal_engine.py:247`](backend/engines/signal_engine.py:247) `PAPER_TRADING_CONFIG = _build_paper_trading_config()`, 不读 DB. |
+
+> **Decision (ADR-023 sediment)**: yaml SSOT, DB strategy_configs 不在生产读路径. 现状保留 + 防御层 (`setup_paper_trading.py` deprecated marker + 前端 banner). 详见 [ADR-023](adr/ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md).
 
 ---
 
@@ -265,6 +271,26 @@
 **防范**:
 - hook canonical 名字加 "_ic" 后缀提示语义 (候选改进, 本 GLOSSARY 不修)
 - 引用 hook 真值时显式 "ic_history subset"
+
+### A.6 lifecycle vs registry SSOT 决议 trap (基于 task 5 真测教训)
+
+错误 framing 模板: "lifecycle 6 行 vs registry 286 行差 4.3x, 哪个 SSOT 不清, 应该解冻 / deprecate 哪个".
+
+**真因**: 两表是不同语义层 SSOT, **不是 drift**:
+- `factor_lifecycle` (6 行) = 生产策略生命周期 SSOT (yaml 真生产因子的运行时跟踪 — entry_date / warning_date / retired_date 时序 + rolling_ic_12m 监控)
+- `factor_registry` (286 行) = 设计审批 + Gate G1-G8 评估 SSOT (历史所有设计过的因子的 hypothesis / expression / Gate 评估 sediment)
+
+字段 0 重叠 (除 status / factor_name 共通名), `lifecycle.active` ∩ `registry.active` = 0 是设计正常.
+
+**类似 task 2 audit 113 vs 213 教训** — 不同语义 metric 不可比, 不可减.
+
+**防范**:
+- 引"PT 真生产用什么因子" → 走 yaml (ADR-023)
+- 引"PT 因子运行时状态" → 走 lifecycle (yaml 镜像)
+- 引"某因子设计依据 / Gate 评估" → 走 registry
+- 不预设 "lifecycle ⊆ registry.active" 直觉假设 — yaml CORE 4 在 registry 中 status='warning' 是设计 (Gate decay 监控状态机, active→warning 正常流)
+- 不预设 "4-17 registry 冻结 = schtask zombie" — 真因是 MVP 1.3a 设计层切换 (commit `3a6c200`) + 后续实验 NO-GO 不形式注册
+- 详见 [ADR-024](adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md)
 
 ---
 

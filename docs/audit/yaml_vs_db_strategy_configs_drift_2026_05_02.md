@@ -279,6 +279,14 @@ cutover commit 改文件: CLAUDE.md (47) + SYSTEM_STATUS.md (91) + pt_live.yaml 
 
 ---
 
+## §H Decision
+
+**沉淀为 [ADR-023: yaml SSOT vs DB strategy_configs deprecation](../adr/ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md)** (2026-05-02, Proposed).
+
+采纳本 audit §B.3 推荐 (d) — 现状保留 + 防御层 (`setup_paper_trading.py` deprecated marker + 前端 banner). 详见 ADR-023 §2.
+
+---
+
 ## §G 文档版本
 
 - **v0.1** (2026-05-02): 初稿, 4 块真测 + 6 候选 root cause + 5 候选 action + 推荐 (d). 0 修代码 / 0 sync DB / 0 deprecate / 0 PR. push branch `audit/yaml-vs-db-strategy-drift-2026-05-02` 等 user review.
