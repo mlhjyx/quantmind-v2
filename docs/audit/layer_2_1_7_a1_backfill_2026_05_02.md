@@ -21,6 +21,8 @@ def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> d
 
 → 真签名: `(trade_date: date, conn=None, skip_fetch: bool = False) -> dict`. 调用方式: 单 date 单调用, 内部 ThreadPoolExecutor max_workers=3 并行 (klines/basic/index).
 
+> **注 (reviewer MEDIUM 采纳)**: 源码 docstring (line 34) 仅列 4 keys, 但真实 returns 还含 `status_rows` (2026-04-14 新增 stock_status incremental update, line 106 添加, docstring 未同步). §C.1 真输出 5 keys 是真值, §A.1 docstring 引用是源码原文 (stale). 候选: 起 sub-task 修源码 docstring (Layer 2.3+ cleanup, 不紧急).
+
 ### A.2 调用环境
 
 ```bash
@@ -51,10 +53,12 @@ df_basic = api.fetch_daily_basic_by_date('20260429') # 5462 rows
 
 ### B.2 预期行数 cross-check
 
-| 数据源 | 4-27 | 4-28 | 4-29 (probe) | 4-30 (post-backfill) |
+注: 4-29/4-30 列格式 `raw / upserted (rejected)` — raw 是 Tushare 真返回行数, upserted 是 DataPipeline 真入库行数 (扣 reject), 详 §C.3.
+
+| 数据源 | 4-27 | 4-28 | 4-29 (probe) raw / upserted | 4-30 (post-backfill) raw / upserted |
 |---|---|---|---|---|
-| klines_daily | 5481 | 5474 | 5462 / 5447 (15 rejected) | — / 5444 (16 rejected) |
-| daily_basic | 5481 | 5474 | 5462 / 5447 (15 rejected) | — / 5444 (16 rejected) |
+| klines_daily | 5481 | 5474 | 5462 / **5447** (15 rejected) | 5460 / **5444** (16 rejected) |
+| daily_basic | 5481 | 5474 | 5462 / **5447** (15 rejected) | 5460 / **5444** (16 rejected) |
 | moneyflow_daily | 5177 | 5170 | 5144 | 5142 |
 
 → klines/daily_basic 真值 ~5444-5447 行, vs moneyflow ~5144 行 (klines ~300 行 higher 是真值, 包含 ST/暂停股 moneyflow 不含). 与历史 pattern 吻合, 反 RC3 (Tushare 无数据) 完全排除.
