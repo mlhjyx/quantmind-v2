@@ -1,0 +1,116 @@
+#!/bin/sh
+# Phase 4.2 sustained Layer 4 Topic 1 A:
+#   pre-commit 验 staged .md 数字 vs canonical 真值 (5 metric: factor count / Tier 0 / LL / D 决议 / 测试 baseline)
+#   minimal scope first pass: warning-only (print canonical + remind cite source + timestamp), 真**0 block** sustained
+#   (Layer 2 candidate: 升级 strict block on mismatch detect)
+# 启用: git config core.hooksPath config/hooks
+# 紧急绕过: git commit --no-verify (需 commit message 声明绕过原因)
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+# Check staged .md files
+STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.md$' || true)
+if [ -z "$STAGED_MD" ]; then
+    # No .md staged, skip
+    exit 0
+fi
+
+# Select Python (consistent with pre-push)
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+else
+    PY="python"
+fi
+
+# Run canonical verify (Python heuristic, sustained pre-push pattern)
+"$PY" -c "
+import sys, pathlib
+
+ROOT = pathlib.Path('.').resolve()
+canonical = {}
+warnings = []
+
+# 1. factor count (DB SQL)
+try:
+    import psycopg2
+    conn = psycopg2.connect(host='localhost', port=5432, dbname='quantmind_v2', user='xin', password='quantmind', connect_timeout=3)
+    cur = conn.cursor()
+    cur.execute('SELECT count(DISTINCT factor_name) FROM factor_ic_history;')
+    canonical['factor_count'] = cur.fetchone()[0]
+    cur.close(); conn.close()
+except Exception as e:
+    warnings.append(f'factor_count DB query skipped: {type(e).__name__}: {e}')
+    canonical['factor_count'] = 'N/A (DB unreachable)'
+
+# 2. Tier 0 数 (grep TIER0_REGISTRY.md)
+try:
+    p = ROOT / 'docs/audit/TIER0_REGISTRY.md'
+    if p.exists():
+        text = p.read_text(encoding='utf-8')
+        # Heuristic: count unique 'T0-N' IDs in markdown (table or section headers)
+        import re
+        ids = set(re.findall(r'T0-\d+', text))
+        canonical['tier0_unique_ids'] = len(ids)
+    else:
+        canonical['tier0_unique_ids'] = 'N/A (file missing)'
+except Exception as e:
+    warnings.append(f'tier0 grep skipped: {type(e).__name__}: {e}')
+    canonical['tier0_unique_ids'] = 'N/A'
+
+# 3. LL 数 (grep LESSONS_LEARNED.md)
+try:
+    p = ROOT / 'LESSONS_LEARNED.md'
+    if p.exists():
+        text = p.read_text(encoding='utf-8')
+        import re
+        # Heuristic: count unique LL-NNN IDs (3-digit)
+        ids = set(re.findall(r'LL-\d{2,3}', text))
+        canonical['ll_unique_ids'] = len(ids)
+    else:
+        canonical['ll_unique_ids'] = 'N/A (file missing)'
+except Exception as e:
+    warnings.append(f'll grep skipped: {type(e).__name__}: {e}')
+    canonical['ll_unique_ids'] = 'N/A'
+
+# 4. D 决议 数 (grep DECISION_LOG.md)
+try:
+    p = ROOT / 'docs/DECISION_LOG.md'
+    if p.exists():
+        text = p.read_text(encoding='utf-8')
+        import re
+        # Count '### D-N' or '### D-{prefix}' headers
+        headers = re.findall(r'^### D-\S+', text, re.MULTILINE)
+        canonical['d_headers'] = len(headers)
+    else:
+        canonical['d_headers'] = 'N/A (file missing)'
+except Exception as e:
+    warnings.append(f'd grep skipped: {type(e).__name__}: {e}')
+    canonical['d_headers'] = 'N/A'
+
+# 5. 测试 baseline (defer to pre-push hook smoke run, 这里仅 cite sprint state baseline)
+canonical['test_baseline'] = '2864 pass / 24 fail (sprint state cite, sustained Session 9 baseline)'
+
+# Print canonical
+print('[pre-commit] 5 metric canonical (sustained Phase 4.2 Layer 4 Topic 1 A minimal scope):')
+for k, v in canonical.items():
+    print(f'  {k}: {v}')
+
+# Warnings (skipped checks)
+if warnings:
+    print('[pre-commit] 警告 (跳过的 check):')
+    for w in warnings:
+        print(f'  - {w}')
+
+# Reminder (warning-only first pass, 0 block)
+print('[pre-commit] 提醒: staged .md 中**任一上述数字** 必 cite source + timestamp (sustained handoff_template.md §3 SOP).')
+print('[pre-commit] Phase 4.2 minimal scope: warning-only, 真**0 block** sustained. (Layer 2 候选: 升级 strict block on mismatch detect)')
+print('[pre-commit] 紧急绕过 (违反 SOP, 需 commit message 声明原因): git commit --no-verify')
+" 2>&1
+
+# Print staged .md count
+STAGED_COUNT=$(echo "$STAGED_MD" | wc -l | tr -d ' ')
+echo "[pre-commit] Staged .md files: $STAGED_COUNT"
+echo "[pre-commit] 放行 (warning-only minimal scope sustained)."
+exit 0

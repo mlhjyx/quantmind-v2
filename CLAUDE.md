@@ -490,6 +490,7 @@ CLAUDE.md / IRONLAWS.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_RE
 - CLAUDE.md中的统计数字（表数/因子数/测试数）变更时同步更新
 - 不确定的数字标注"约"或"截至日期"
 - 因子池状态以FACTOR_TEST_REGISTRY.md为唯一真相源
+- **Sprint state cite SOP** (Phase 4.2 sustained, Layer 4 Topic 1 C): handoff / status report 中**任一数字** 必 cite source + timestamp (SQL query / grep / file path / etc), 走 [`docs/handoff_template.md`](docs/handoff_template.md) §3 cite SOP. 反**凭空数字** anti-pattern (memory #19 broader 47/53+).
 
 ### 文档层级（固定）
 - **总设计 (当前真相)**: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` ⭐
