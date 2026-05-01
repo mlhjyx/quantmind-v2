@@ -243,7 +243,7 @@ memory cite "Phase 3E 微结构 16 因子 ROBUST" 表明 minute_bars 真用过, 
 
 1. **emergency_close_20260429_104354.log 真 fill 数 vs T0-19 audit 期望差异**: PR #168 commit msg 标 "实测发现 17 fills (NOT 18)", 但本 audit 未真测 log 解析后 fill_by_order 真值. 留 sub-task 2.1.1 做.
 2. **PT live 重启 gate prerequisite cite (SHUTDOWN_NOTICE_2026_04_30 §9)**: 本 audit 未跨读 SHUTDOWN_NOTICE. trade_log gap 与 PT 重启 gate 关系未深查.
-3. **`scripts/health_check.py` data_fresh check 真 tolerance 阈值**: 实跑 stderr 标"期望>=2026-04-30", 但脚本内真硬编码逻辑未深读 (是 today / today-2 / today-N 计算?). 留 sub-task 2.1.3.
+3. **`scripts/health_check.py` data_fresh check 真 tolerance 阈值**: 实跑 stderr 标"期望>=2026-04-30", 但脚本内真硬编码逻辑未深读 (是 today / today-2 / today-N 计算?). 留 sub-task **2.1.7 附带验证** (原 2.1.3, 已 CANCELED → 归入 2.1.7 — health_check 真已走 trading_calendar 真 holiday-aware, 真因走 klines pull pipeline).
 4. **`signals` 表写入路径**: 4-15~4-28 8 dates / 20/day, 真写入入口未 grep enumerate (不像 trade_log 走 5 INSERT, signals 真生产 INSERT 路径未 enumerate 是 §B 的 scope 外).
 5. **PR #168 4-30 后 emergency_close 真**未跑过**: 4-30/5-01/5-02 期间 0 emergency_close 真 invoke, 因此 T0-19 hook 真生产真触发能力**仍未实测验证**. 留 sub-task 2.1.1 决议 (是否走 dry-run path 真测).
 
@@ -256,7 +256,7 @@ memory cite "Phase 3E 微结构 16 因子 ROBUST" 表明 minute_bars 真用过, 
 - [x] §C 数据源 stale 真测 (9 表) ✅
 - [x] §C2 schtask LastResult=1 真因 (health_check + data_quality_check 实跑) ✅
 - [x] §D synthesis (3 独立 finding chain + 1 verifier false-positive + 2 silent obs gap) ✅
-- [x] §E 候选 sub-task 6 enumerate + 推荐次序 ✅
+- [x] §E 候选 sub-task 7 enumerate (含 1 CANCELED 2.1.3 + 1 NEW 2.1.7, framing v2 修订后) + 推荐次序 ✅
 - [x] §F transparency (5 未真测项目) ✅
 - [x] 0 修代码 / 0 backfill / 0 dual_write sustained ✅
 - [x] 0 PT 触碰 / 0 .env modifications sustained ✅
@@ -312,7 +312,7 @@ B. **pull script 真生产路径**
    - 真测 vs `pull_moneyflow.py` (4-29/4-30 真拉了) 实现差异
 
 C. **4-29 user 决议链 cross-check**
-   - 真测 `docs/audit/SHUTDOWN_NOTICE_2026_04_30.md` §9 / `docs/audit/link_paused_2026_04_29.md` 真是否 disable klines/daily_basic schtask
+   - 真测 `docs/audit/SHUTDOWN_NOTICE_2026_04_30.md` §9 + `docs/audit/` 目录下 4-29 相关 pause/shutdown 文档 (候选 `STATUS_REPORT_2026_04_29_*` / 任何 `paused_*` / `link_paused_*`, 由 grep 真测目录决议真文件名) 真是否 disable klines/daily_basic schtask
    - 真测 PR #150 commit 626d343 (LL-081 cite "Beat 风控暂停") 真改动范围
    - 真测 schtasks `Disabled` 真状态 vs user 真意 (cite memory: 4-29 user 决议清仓暂停 PT, 但**未必**包含 klines/daily_basic pull)
 
