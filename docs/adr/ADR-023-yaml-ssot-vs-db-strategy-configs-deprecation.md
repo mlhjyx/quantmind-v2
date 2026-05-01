@@ -5,7 +5,7 @@
 > **Authors**: Claude.ai 起草 + CC task 4 audit evidence
 > **Related**:
 > - [docs/audit/yaml_vs_db_strategy_configs_drift_2026_05_02.md](../audit/yaml_vs_db_strategy_configs_drift_2026_05_02.md) (5-02 task 4 真测证据)
-> - [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) (5-02 task 2.5.1 audit, FU-1 真活 + v0.4 metadata patch trigger)
+> - [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) (5-02 task 2.5.1 audit, FU-1 真测 + v0.4 metadata patch trigger)
 > - [docs/FACTOR_COUNT_GLOSSARY.md](../FACTOR_COUNT_GLOSSARY.md) §10 (5-02 task 3, DB strategy_configs ⚠️ stale 标注)
 > - [docs/audit/factor_count_drift_2026_05_01.md](../audit/factor_count_drift_2026_05_01.md) (5-01 task 2, 9+ factor count semantic)
 > - [docs/adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md](ADR-024-factor-lifecycle-vs-registry-semantic-separation.md) (5-02 task 5 配套, 因子治理域 yaml SSOT 系列)
@@ -20,7 +20,7 @@ QuantMind PT 生产策略配置存在双源:
 |---|---|---|
 | `configs/pt_live.yaml` | 4 因子 (CORE3+dv_ttm: turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm) | ✅ 生产读路径 (`backend/engines/signal_engine.py:247`) |
 | DB `strategy_configs.config->'factors'` (latest version) | 5 因子 (CORE5: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio) | ⚠️ stale, 47 天冻结 (5-02 真测) |
-| DB `strategy.factor_config` (jsonb) | 同 5 因子 + **5 参数同 stale** | ⚠️ stale, 同根 |
+| DB `strategy.factor_config` (jsonb) | 同 5 因子 + 真 stale 参数详见下表 (v0.4 修订) | ⚠️ stale, 同根 |
 
 第二字段 `strategy.factor_config` 字段 drift 真测 (v0.4 patch, Layer 2.5.1 真测):
 
