@@ -292,6 +292,14 @@ Date:   Fri Apr 17 18:44:46 2026 +0800
 
 ---
 
+## §H Decision
+
+**沉淀为 [ADR-024: factor_lifecycle 与 factor_registry 语义分工显式声明](../adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md)** (2026-05-02, Proposed).
+
+采纳本 audit §B.3 推荐 (c) — 两表保留 + GLOSSARY footnote (§4 / §5 / §A.6) + ADR 沉淀. 0 caller 改动. 详见 ADR-024 §2.
+
+---
+
 ## §G 文档版本
 
 - **v0.1** (2026-05-02): 初稿, 5 块真测 + 6 SSOT 候选 + 5 冻结根因候选 + 5 action 候选 + 推荐 (c). 0 修代码 / 0 改数据 / 0 解冻 / 0 PR. push branch `audit/factor-registry-lifecycle-2026-05-02` 等 user review.

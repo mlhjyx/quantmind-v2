@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Paper Trading一次性初始化 — 创建策略行+初始状态。
 
+⚠️ DEPRECATED (2026-05-02, ADR-023): yaml SSOT 决议后, configs/pt_live.yaml 是生产
+SSOT, DB strategy_configs / strategy.factor_config 是 setup-time legacy snapshot.
+本脚本 LOCKED_CONFIG 含 stale CORE5 (5 因子) + 其他 stale 参数 (industry_cap=0.25 /
+commission_rate=0.00015), 与 yaml CORE3+dv_ttm 不一致. 重新运行此脚本会重写 DB
+为 stale 数据, 与 yaml 生产真值进一步漂移. 详见:
+  docs/adr/ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md
+
 运行一次即可，会:
 1. INSERT strategy 行
 2. INSERT strategy_configs 版本1
@@ -17,6 +24,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.services.price_utils import _get_sync_conn
+
+DEPRECATED_SINCE = "2026-05-02"
+DEPRECATED_ADR = "ADR-023"
 
 LOCKED_CONFIG = {
     "factors": [
@@ -107,4 +117,21 @@ def main():
 
 
 if __name__ == "__main__":
+    # Fail-loud deprecation guard (ADR-023, 2026-05-02).
+    # yaml (configs/pt_live.yaml) is now the production SSOT — re-running this
+    # script would rewrite DB with stale CORE5 + stale risk params, drifting
+    # further from yaml CORE3+dv_ttm production truth.
+    msg = (
+        f"setup_paper_trading.py is DEPRECATED since {DEPRECATED_SINCE} "
+        f"({DEPRECATED_ADR}). yaml (configs/pt_live.yaml) is the production SSOT. "
+        "DB strategy_configs / strategy.factor_config is a setup-time legacy "
+        "snapshot, NOT to be re-seeded. See "
+        "docs/adr/ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md. "
+        "If you really need to bypass this guard, set "
+        "QM_ALLOW_SETUP_PAPER_TRADING=I_UNDERSTAND_ADR_023 in env."
+    )
+    import os
+    if os.environ.get("QM_ALLOW_SETUP_PAPER_TRADING") != "I_UNDERSTAND_ADR_023":
+        raise DeprecationWarning(msg)
+    print(f"WARNING: bypass guard active — {msg}", file=sys.stderr)
     main()
