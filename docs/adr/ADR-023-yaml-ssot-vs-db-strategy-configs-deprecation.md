@@ -5,6 +5,7 @@
 > **Authors**: Claude.ai 起草 + CC task 4 audit evidence
 > **Related**:
 > - [docs/audit/yaml_vs_db_strategy_configs_drift_2026_05_02.md](../audit/yaml_vs_db_strategy_configs_drift_2026_05_02.md) (5-02 task 4 真测证据)
+> - [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) (5-02 task 2.5.1 audit, FU-1 真测 + v0.4 metadata patch trigger)
 > - [docs/FACTOR_COUNT_GLOSSARY.md](../FACTOR_COUNT_GLOSSARY.md) §10 (5-02 task 3, DB strategy_configs ⚠️ stale 标注)
 > - [docs/audit/factor_count_drift_2026_05_01.md](../audit/factor_count_drift_2026_05_01.md) (5-01 task 2, 9+ factor count semantic)
 > - [docs/adr/ADR-024-factor-lifecycle-vs-registry-semantic-separation.md](ADR-024-factor-lifecycle-vs-registry-semantic-separation.md) (5-02 task 5 配套, 因子治理域 yaml SSOT 系列)
@@ -19,18 +20,21 @@ QuantMind PT 生产策略配置存在双源:
 |---|---|---|
 | `configs/pt_live.yaml` | 4 因子 (CORE3+dv_ttm: turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm) | ✅ 生产读路径 (`backend/engines/signal_engine.py:247`) |
 | DB `strategy_configs.config->'factors'` (latest version) | 5 因子 (CORE5: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio) | ⚠️ stale, 47 天冻结 (5-02 真测) |
-| DB `strategy.factor_config` (jsonb) | 同 5 因子 + **5 参数同 stale** | ⚠️ stale, 同根 |
+| DB `strategy.factor_config` (jsonb) | 同 5 因子 + 真 stale 参数详见下表 (v0.4 修订) | ⚠️ stale, 同根 |
 
-第二字段 `strategy.factor_config` 6 字段全 stale:
+第二字段 `strategy.factor_config` 字段 drift 真测 (v0.4 patch, Layer 2.5.1 真测):
 
-| 字段 | DB 真值 | yaml 真值 | 含义 |
+| 字段 | DB 真值 | yaml 真值 | drift 判定 (5-02 task 2.5.1 真测) |
 |---|---|---|---|
-| factors | 5 (CORE5) | 4 (CORE3+dv_ttm) | 因子列表 |
-| industry_cap | 0.25 | 1.0 | 行业暴露上限 |
-| commission_rate | 0.00015 | 0.0000854 | 佣金率 (差 1.76x) |
-| slippage_bps | 10 | (yaml 真值) | 滑点 |
-| turnover_cap | 0.5 | (yaml 真值) | 换手率上限 |
-| weight_method | equal | (yaml 真值) | 加权方式 |
+| factors | 5 (CORE5) | 4 (CORE3+dv_ttm) | ⚠️ stale |
+| industry_cap | 0.25 | 1.0 | ⚠️ stale |
+| commission_rate | 0.00015 | 0.0000854 | ⚠️ stale (差 1.76x) |
+| slippage_bps | 10.0 (fixed_bps mode) | (volume_impact mode) | ⚠️ mode 不匹配 (不只是值差异) |
+| turnover_cap | 0.5 | 0.5 | ✅ same (本 ADR v0.3 误标, v0.4 修正) |
+| weight_method | "equal" | "equal_weight" (compose) | ✅ 字段名差异等价 (本 ADR v0.3 误标, v0.4 修正) |
+| **🆕 top_n** | **v2=15 / v1=20** | **20** | **⚠️ v2 漂移 (本 ADR v0.3 漏列, v0.4 加)** |
+
+> **v0.4 修订** (2026-05-02 task 2.5.1 真测): 原 v0.3 表标 "6 字段全 stale", 真测后判定: **4 真 stale + 2 字段误标 + 1 字段漏列**. ADR §2 决议 (yaml SSOT + 防御层) 不变 — 0 prod path 真用 stale (FU-1 真测 sustained). 仅元数据修订, 不触发 §2 reversibility (§2.4).
 
 ### 1.2 历史 timeline (5-02 task 4 git 真测)
 
@@ -121,24 +125,25 @@ DB `strategy_configs` + `strategy.factor_config` 是 **legacy snapshot** (setup 
 - **(b) deprecate DB strategy_configs**: 反对. 13 caller 改动 (尤其 `/api/strategies/{id}` 前端展示链), P3 工作量, 0 prod risk 不值得.
 - **(c) 双向同步 yaml ↔ DB**: 反对. race / divergence 风险, 测试覆盖成本高. CC task 4 audit 显式反推荐.
 
-## §4 Stale 字段清单 (本 ADR cover 范围)
+## §4 Stale 字段清单 (本 ADR cover 范围, v0.4 patch)
 
-DB `strategy.factor_config` 6 字段全部 stale, 本 ADR 一次性沉淀:
+DB `strategy.factor_config` 真 stale 字段清单 (v0.4 修订, Layer 2.5.1 真测):
 
 | 字段 | DB stale | yaml | 防误读处理 |
 |---|---|---|---|
 | factors | 5 (CORE5) | 4 (CORE3+dv_ttm) | GLOSSARY §10 footnote ✅ + 前端 banner |
 | industry_cap | 0.25 | 1.0 | 前端 banner + 本 ADR §1 真值表 |
 | commission_rate | 0.00015 | 0.0000854 | 同上 |
-| slippage_bps | 10 | (yaml 真值) | 同上 |
-| turnover_cap | 0.5 | (yaml 真值) | 同上 |
-| weight_method | equal | (yaml 真值) | 同上 |
+| slippage_bps | fixed_bps mode @ 10 | volume_impact mode | 同上 (mode 不一致, 比值差异更深) |
+| **🆕 top_n** | **v2=15 / v1=20** | **20** | **同上 (v0.4 加)** |
+
+> v0.4 修订: 去 turnover_cap 行 (实测 yaml=DB=0.5 same) + 去 weight_method 行 (字段名差异不是值差异) + 加 top_n 行 (strategy_configs v2 漂 yaml=20 vs v2=15). 详见 §1.1 v0.4 修订段.
 
 ## §5 Follow-up
 
 | # | 项 | 优先级 | 归属 |
 |---|---|---|---|
-| FU-1 | 6 字段 caller 深查 — 不限 backtest, 含 `/api/execution/algo-config` 真读字段 + analysis notebooks + report generators | P2 | Layer 2.5 (proposed) sub-task |
+| FU-1 | 6 字段 caller 深查 — ✅ **DONE** (5-02 task 2.5.1 audit, 0 prod path 真用 stale, ADR §2 决议 sustained) | P2→done | [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) |
 | FU-2 | 前端 `/api/strategies/{id}` UI banner 实施 (静态文案, ~30 行 React) | P2 | frontend ticket (随时起) |
 | FU-3 | GLOSSARY §10 footnote 与本 ADR cross-link verify (双向) | P3 | 本 ADR PR 顺手做 |
 | FU-4 | factor_evaluation 表 (5-02 task 3 标 0 行) 启用时机决议 | P3 | Layer 2.5 (proposed) sub-task |
@@ -195,4 +200,5 @@ grep -n "DeprecationWarning\|deprecated" scripts/setup_paper_trading.py
 | 2026-05-02 v0.1 | Claude.ai 起草 + CC task 4 audit evidence | Proposed |
 | 2026-05-02 v0.2 | Claude.ai self-reflection | 10 项修订 (enforce / 防御层 / scope / reversibility / 反 calendar bias) |
 | 2026-05-02 v0.3 | Claude.ai post-task5 reflection | 4 项修订: §1 Related 加 ADR-024 / §1.3 caller 表加 lifecycle+registry 365 行 row / §5 FU-9 加 ADR-024 cross-link / §5 FU-10 加 registry DDL drift fix |
+| 2026-05-02 v0.4 | Claude.ai + CC task 2.5.1 audit | metadata patch (§2 决议不变): §1.1 表 6→7 字段 (修 turnover_cap+weight_method 误标 / 加 top_n / 修 slippage_bps mode 描述 + v0.4 修订段) / §4 stale 清单 5 行同步修订 / §5 FU-1 standdone (cite Layer 2.5.1 audit) / §1 Related 加 audit cross-link / GLOSSARY §10 footnote 同步 |
 | (TBD) | user | Accepted / Rejected / Modified |
