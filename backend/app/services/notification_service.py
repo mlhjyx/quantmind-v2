@@ -608,6 +608,62 @@ def send_alert(
     )
 
 
+class _SyncNotificationFacade:
+    """Sync-only facade for scripts / Celery tasks / sync test code.
+
+    历史 ``get_notification_service()`` 真**从未实现** sustained — 14 callers
+    (risk_framework_health_check / pt_monitor_service / daily_pipeline / 多 tests)
+    sprint period sustained ImportError silent. Layer 1 P0 修 (Week 1, F-D78-235):
+    本 facade 提供 ``send_sync(conn, level, category, title, content, force=False)``,
+    内部走 ``send_alert`` (existing sync). 真不实现 throttling/dedup/template — 留 Layer 2.
+    """
+
+    def send_sync(
+        self,
+        conn: Any,
+        level: str,
+        category: str,
+        title: str,
+        content: str,
+        force: bool = False,
+    ) -> bool:
+        """同步发送告警 (脚本/Celery tasks 用).
+
+        Args:
+            conn: psycopg2 sync 连接 (用于写 notifications 表)
+            level: 'P0'/'P1'/'P2'/'P3'
+            category: 'risk' / 'system' / 'data' / etc (本版仅 audit log, 不影响路由)
+            title: 告警标题
+            content: 告警内容 (markdown)
+            force: 强制发送 flag (本版 sync 路径 always honored, 不区分)
+
+        Returns:
+            DingTalk 发送是否成功 (DB 写入 fire-and-forget).
+        """
+        webhook = getattr(settings, "DINGTALK_WEBHOOK_URL", "") or ""
+        secret = getattr(settings, "DINGTALK_SECRET", "") or ""
+        if level == "P3":
+            level = "P2"  # send_alert level enum 仅支持 P0/P1/P2
+        return send_alert(
+            level=level,
+            title=title,
+            content=content,
+            webhook_url=webhook,
+            secret=secret,
+            conn=conn,
+        )
+
+
+def get_notification_service() -> _SyncNotificationFacade:
+    """工厂函数 — 返回 sync facade.
+
+    历史 14 callers (sustained F-D78-235 cluster) sprint period 真依赖此 factory,
+    Week 1 Layer 1 P0 修. Async (FastAPI handler) 真路径仍走
+    ``NotificationService(session)`` 直 instantiate.
+    """
+    return _SyncNotificationFacade()
+
+
 def send_daily_report(
     trade_date: Any,
     nav: float,
