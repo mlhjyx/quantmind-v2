@@ -165,6 +165,8 @@
 | **历史 anchor** | strategy_configs v1 + v2 都是 CORE5, 4-12 yaml cutover 到 CORE3+dv_ttm 时未同步 DB strategy_configs (流程债, 候选 finding). 真生产读路径走 [`backend/engines/signal_engine.py:247`](backend/engines/signal_engine.py:247) `PAPER_TRADING_CONFIG = _build_paper_trading_config()`, 不读 DB. |
 
 > **Decision (ADR-023 sediment)**: yaml SSOT, DB strategy_configs 不在生产读路径. 现状保留 + 防御层 (`setup_paper_trading.py` deprecated marker + 前端 banner). 详见 [ADR-023](adr/ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md).
+>
+> 🆕 **v0.4 patch sediment** (5-02 task 2.5.1 真测 7 字段 caller): **4 真 stale + 2 误标 + 1 漏 (top_n)**. 0 prod path 真用 stale (FU-1 ✅ DONE), ADR-023 §2 决议 sustained. 详见 [strategy_factor_config_callers_deep_2026_05_02.md](audit/strategy_factor_config_callers_deep_2026_05_02.md).
 
 ---
 
