@@ -183,3 +183,34 @@ git push --no-verify     # 跳 pre-push
 - 紧急 bypass = 单次 commit/push 跳过 hook (不留持久痕迹, 真特殊场景)
 
 routine 用 bypass 而不是 marker = 治理债积累, 月度 audit 时如果发现 commit message 含 bypass cite 但没对应 marker, 需要追溯 bypass 是否合理.
+
+## §10 LiteLLM install 状态 + cascade 依赖说明
+
+### §10.1 install 状态 (S1 sub-task PR #221, 2026-05-03)
+
+| 包 | 来源 | 版本 | 装入时机 |
+|---|---|---|---|
+| `litellm` | PyPI 直接 (pyproject.toml [project].dependencies) | `>=1.83.14` (实测装 1.83.14) | S1 PR #221 |
+| `openai` | LiteLLM cascade | `2.24.0` (LiteLLM 1.83.14 pin) | S1 PR #221 自动 cascade |
+
+cascade 关系: `pip install litellm` 自动装 openai (LiteLLM SDK 内部 import openai 走 OpenAI-compatible providers 真路径).
+
+附带依赖升降级 (LiteLLM 1.83.14 真要求, 实测): `pydantic 2.13.2→2.12.5` / `click 8.3.2→8.1.8` / 新增 `aiohttp / fastuuid / hf-xet / huggingface-hub / jiter / regex / tiktoken / tokenizers / typer / jsonschema` 等。pre-push smoke 55 PASS 验证 0 回归。
+
+### §10.2 跟 deepseek_client.py:222 marker 的关系
+
+- `deepseek_client.py:222` 含 `from openai import OpenAI  # llm-import-allow:S2-deferred-PR-219` (PR #219 sediment)
+- S6 hook 走 `--full` mode 全 repo 扫: `# llm-import-allow:` marker 跳 BLOCK 但 stderr log `ALLOWLIST_HIT`
+- S1 install 后 openai SDK 真在 .venv 里 → marker 行 lazy import **可正常 import** (NOT ImportError)
+- 跟 0 hot path 结论 **0 矛盾**: 即使 import 成功, 0 production scheduler 触达 agents (详 `docs/audit/sprint_1/s8_deepseek_audit.md` §3)
+
+### §10.3 deprecate 触发条件 (S2+ sub-task)
+
+S6 marker (deepseek_client.py:222) 真删除条件: 沿用 `docs/audit/sprint_1/s8_deepseek_audit.md` §6 渐进 deprecate plan + ADR-031 §4.1 硬门 5 项.
+
+### §10.4 关联
+
+- [docs/adr/ADR-031-s2-litellm-router-implementation-path.md](adr/ADR-031-s2-litellm-router-implementation-path.md) — S2 LiteLLMRouter 新建模块决议
+- [docs/audit/sprint_1/s8_deepseek_audit.md](audit/sprint_1/s8_deepseek_audit.md) — 0 hot path 证据链 + 间接 caller table
+- [config/litellm_router.yaml](../config/litellm_router.yaml) — provider config (本 PR 创建, S2 真消费)
+- [backend/tests/test_litellm_install.py](../backend/tests/test_litellm_install.py) — 6 install + config smoke tests
