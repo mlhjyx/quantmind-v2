@@ -40,14 +40,15 @@
 | ADR-028 | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay | committed | PR #216 (5-02), V3 §20.1 #5 + #9 sediment |
 | ADR-029 | L1 实时化 + xtquant subscribe_quote 接入 | reserved | V3 §18.1 row 9 (本 PR sediment, 沿用 ADR-023 真 cite drift # 下移决议, V3 Tier A Sprint 3 真起手时 sediment) |
 | ADR-030 | Layer 4 SOP 沉淀 (governance protocol) | reserved | 4 audit docs (5-01 Phase 4.2 sediment) sustained 下移 (本 PR sediment, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
+| ADR-031 | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | committed | V3 Sprint 1 S8 audit sediment (2026-05-03), user X2=(ii) 决议, 沿用 ADR-020 + ADR-022 + V3 §5.5 真预约 |
 
 ## 真状态分布
 
-- **committed (真 file 真在 docs/adr/)**: 21 个 (ADR-001~014 + ADR-021/022/023/024/027/028)
+- **committed (真 file 真在 docs/adr/)**: 22 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031)
 - **reserved (V3 §18.1 真预约, 0 file 等真起手时 sediment)**: 6 个 (ADR-019/020/025/026/029/030)
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号 sustained)
 
-总 31 # space (含 gap), 真活跃 27 (committed 21 + reserved 6).
+总 32 # space (含 gap), 真活跃 28 (committed 22 + reserved 6).
 
 ## 真 maintenance 规则
 
@@ -74,6 +75,8 @@
 - ADR-026 (Bull/Bear 2-Agent): Tier B 架构决议时 sediment
 - ADR-029 (L1 实时化 + xtquant subscribe_quote): V3 Tier A Sprint 3 真起手时 sediment
 - ADR-030 (Layer 4 SOP): audit Week 2 候选讨论时 sediment
+
+> **新 committed**: ADR-031 (S8 audit, 2026-05-03 PR #220) — S2 LiteLLMRouter implementation path 决议, S2 真起手时引用本 ADR 真渐进 deprecate plan.
 
 ## 历史 N×N 同步漂移 真案例
 
