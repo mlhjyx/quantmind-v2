@@ -38,7 +38,7 @@ V3 Sprint 1 S2 sub-task 真起手前,需决议 LiteLLMRouter 真 implementation 
 1. **ADR-020** (V3 §18.1 row 2 真预约): LiteLLM 是 only path,沿用 4-29 user 决议
 2. **ADR-022** (反 silent overwrite + 集中修订机制): 现 1026 lines GP 闭环 prototype 不能 silent mutation
 3. **user 决议 2 (p1)** (5-02 sprint period): deepseek_client.py 0 logic mutation 直到 S2 sediment + user 显式 deprecate 决议
-4. **V3 §5.5 line 723** 已写 "LiteLLMRouter (新模块) 强制走 LiteLLM" — 设计层就是新建,不是改造
+4. **V3 §5.5 line 728** 已写 "LiteLLMRouter (新模块) 强制走 LiteLLM" — 设计层就是新建,不是改造
 5. **domain 0 重叠** (S8 audit §4 mapping 表): ModelRouter 服务 factor mining (4 任务),LiteLLMRouter 服务 risk control (6 任务),职责正交
 6. **0 hot path 风险** (S8 audit §3 证): deepseek_client 真生产 0 路径触达 (0 scheduler/router/service 引用 agents),渐进 deprecate 0 中断
 

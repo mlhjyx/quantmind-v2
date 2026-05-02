@@ -30,7 +30,7 @@
 
 总 396 lines.
 
-### §2.2 ModelRouter 路由表 (line 65-70 + 138-141)
+### §2.2 ModelRouter 路由表 (line 65-70 TaskType + 134-159 ModelRouter class, route() 方法 line 147-159)
 
 ```python
 class TaskType(StrEnum):
@@ -194,7 +194,7 @@ deepseek_client.py 真 0 caller (factor_agent + idea_agent 全切到 LiteLLMRout
 
 ### §6.1 全 repo grep 主动发现 (沿用 SOP-1)
 
-`grep -rln "deepseek_client\|DeepSeekClient" backend/ scripts/ --include="*.py" | grep -v __pycache__`:
+直接 caller (`grep -rln "deepseek_client\|DeepSeekClient" backend/ scripts/ --include="*.py" | grep -v __pycache__`):
 
 | caller | 类型 | S2 后 path |
 |---|---|---|
@@ -204,7 +204,25 @@ deepseek_client.py 真 0 caller (factor_agent + idea_agent 全切到 LiteLLMRout
 | backend/tests/test_deepseek_client.py | mock 测试 | deprecate 时删 |
 | backend/tests/test_llm_import_block_governance.py | S6 治理测试 | **保留**,删除 deepseek_client.py:222 marker preserve 测试 (那条测试由 S2 PR 同步删) |
 
+间接 caller (引用 agents/engine_selector, 真 deprecate 时一并处理):
+
+| caller | 引用 | 类型 | S2 后 path |
+|---|---|---|---|
+| backend/tests/test_d5_d6_agents_selector.py | `FactorAgent` + `engine_selector` | mock 测试 | deprecate 时删 (跟 agents 同步删) |
+| backend/engines/mining/engine_selector.py | comment line 16 cite agents | 文件本身 | deprecate 时删 (跟 agents 同步删) |
+
 **0 别的潜在 caller** (主动 grep cross-verify 通过)。
+
+### §6.2 deprecate 硬门 grep (扩展, 沿用 reviewer chunked SOP findings)
+
+```bash
+# 主 caller cross-verify
+grep -rln "DeepSeekClient\|ModelRouter" backend/ scripts/ --include="*.py" | grep -v __pycache__
+# 间接 caller cross-verify (agents/selector 真删除前)
+grep -rln "FactorAgent\|IdeaAgent\|engine_selector" backend/ scripts/ --include="*.py" | grep -v __pycache__
+```
+
+两个命令真 0 production 输出 (test 路径除外) 才允许 deprecate PR 起手。
 
 ---
 
