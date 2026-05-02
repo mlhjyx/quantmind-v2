@@ -197,9 +197,9 @@ cascade 关系: `pip install litellm` 自动装 openai (LiteLLM SDK 内部 impor
 
 附带依赖升降级 (LiteLLM 1.83.14 真要求, 实测): `pydantic 2.13.2→2.12.5` / `click 8.3.2→8.1.8` / 新增 `aiohttp / fastuuid / hf-xet / huggingface-hub / jiter / regex / tiktoken / tokenizers / typer / jsonschema` 等。pre-push smoke 55 PASS 验证 0 回归。
 
-### §10.2 跟 deepseek_client.py:222 marker 的关系
+### §10.2 跟 deepseek_client 真 lazy openai import marker 的关系
 
-- `deepseek_client.py:222` 含 `from openai import OpenAI  # llm-import-allow:S2-deferred-PR-219` (PR #219 sediment)
+- `backend/engines/mining/deepseek_client.py` 内 `_get_openai_client` 方法含 `from openai import OpenAI  # llm-import-allow:S2-deferred-PR-219` 行 (PR #219 sediment, 防 line 号漂移用 grep marker 文本而非行号)
 - S6 hook 走 `--full` mode 全 repo 扫: `# llm-import-allow:` marker 跳 BLOCK 但 stderr log `ALLOWLIST_HIT`
 - S1 install 后 openai SDK 真在 .venv 里 → marker 行 lazy import **可正常 import** (NOT ImportError)
 - 跟 0 hot path 结论 **0 矛盾**: 即使 import 成功, 0 production scheduler 触达 agents (详 `docs/audit/sprint_1/s8_deepseek_audit.md` §3)
@@ -213,4 +213,4 @@ S6 marker (deepseek_client.py:222) 真删除条件: 沿用 `docs/audit/sprint_1/
 - [docs/adr/ADR-031-s2-litellm-router-implementation-path.md](adr/ADR-031-s2-litellm-router-implementation-path.md) — S2 LiteLLMRouter 新建模块决议
 - [docs/audit/sprint_1/s8_deepseek_audit.md](audit/sprint_1/s8_deepseek_audit.md) — 0 hot path 证据链 + 间接 caller table
 - [config/litellm_router.yaml](../config/litellm_router.yaml) — provider config (本 PR 创建, S2 真消费)
-- [backend/tests/test_litellm_install.py](../backend/tests/test_litellm_install.py) — 6 install + config smoke tests
+- [backend/tests/test_litellm_install.py](../backend/tests/test_litellm_install.py) — 7 install + config smoke tests

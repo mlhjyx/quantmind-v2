@@ -14,6 +14,7 @@ scope:
 """
 from __future__ import annotations
 
+import re
 from importlib.metadata import PackageNotFoundError, version as pkg_version
 from pathlib import Path
 
@@ -110,16 +111,39 @@ def test_router_config_has_deepseek_and_ollama() -> None:
 
 
 def test_router_config_no_hardcoded_keys() -> None:
-    """敏感数据全走 os.environ/<NAME>, 0 hardcode API key (沿用 SOP)."""
+    """敏感数据全走 os.environ/<NAME>, 0 hardcode API key (沿用 SOP).
+
+    注释行 (`#` 开头, 含 inline `#` 后) 真 placeholder cite 不触发误报
+    (沿用 reviewer Chunk A P1 finding).
+    """
     with ROUTER_CONFIG.open("r", encoding="utf-8") as f:
         text = f.read()
 
-    forbidden_patterns = ["sk-", "Bearer ", "api_key: \"", "api_key: '"]
-    for pattern in forbidden_patterns:
-        assert pattern not in text, (
-            f"router config 含可疑 hardcode pattern '{pattern}'; "
-            "API key 必须走 os.environ/<NAME>"
-        )
+    code_lines = []
+    for raw in text.splitlines():
+        # YAML inline comment cut: 取 # 前真值, 跳整行注释
+        before_hash = raw.split("#", 1)[0]
+        if before_hash.strip():
+            code_lines.append(before_hash)
+    code_only = "\n".join(code_lines)
+
+    real_key_pattern = re.compile(r"sk-[A-Za-z0-9]{10,}")
+    matches = real_key_pattern.findall(code_only)
+    assert not matches, (
+        f"router config 含真 sk-* hardcode key (跳注释扫): {matches}; "
+        "API key 必须走 os.environ/<NAME>"
+    )
+
+    bearer_pattern = re.compile(r"Bearer\s+[A-Za-z0-9\-_.~+/]{16,}")
+    bearer_matches = bearer_pattern.findall(code_only)
+    assert not bearer_matches, f"router config 含 Bearer token hardcode: {bearer_matches}"
+
+    inline_quote_pattern = re.compile(r"api_key:\s*[\"'][^\"']+[\"']")
+    inline_quote_matches = inline_quote_pattern.findall(code_only)
+    assert not inline_quote_matches, (
+        f"router config 含 quoted api_key inline value: {inline_quote_matches}; "
+        "改走 os.environ/<NAME>"
+    )
 
     assert "os.environ/DEEPSEEK_API_KEY" in text, "DeepSeek 缺 env var 引用"
     assert "os.environ/OLLAMA_BASE_URL" in text, "Ollama 缺 env var 引用 (S3 prerequisite)"
@@ -129,16 +153,17 @@ def test_router_config_no_hardcoded_keys() -> None:
     not ROUTER_CONFIG.exists(),
     reason="router config 缺失, 跳过 LiteLLM Router 实例化",
 )
-def test_router_can_initialize_offline() -> None:
+def test_router_can_initialize_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     """LiteLLM Router 真实例化 (set_verbose=False, 0 真 API call).
 
     NOTE: Router 初始化只解析 config + 准备路由表, 不调真 endpoint.
     完整 wrapper logic 在 S2 sub-task scope (本 PR 不消费).
-    """
-    import os
 
-    os.environ.setdefault("DEEPSEEK_API_KEY", "sk-test-placeholder-not-used")
-    os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
+    用 monkeypatch 隔离 env var 改动 (沿用 reviewer Chunk A P2 finding,
+    避免 process-wide env pollution 影响后续 test).
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-placeholder-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
     from litellm import Router
 
