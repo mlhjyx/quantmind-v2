@@ -1687,8 +1687,9 @@ L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 | **ADR-028** | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay | 本设计 §7.1 + §5.4 + §5.5 + §15.5 + §20.1 #5 + #9 sediment (5-02) |
 | **ADR-029** | L1 实时化 + xtquant subscribe_quote 接入 | 本设计 §4 (sustained reserve, 沿用 ADR-023 真主题 # 下移决议体例, V3 Tier A Sprint 3 真起手时 sediment) |
 | **ADR-030** | Layer 4 SOP 沉淀 (governance protocol) | 5-01 Phase 4.2 audit 4 docs sustained candidate (sustained reserve, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
+| **ADR-031** | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | V3 Sprint 1 S8 audit sediment (2026-05-03 PR #220), user X2=(ii) 决议 sustained ADR-020 + ADR-022 + 本设计 §5.5 真预约 (cross-reference, 本 # 主 file 在 docs/adr/, 本 row reference-only) |
 
-> **真 ADR # registry SSOT**: 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) (5-02 sprint period 累计 3 N×N 同步漂移 textbook 案例真根本性处置, sustained SOP-6 LL-105).
+> **真 ADR # registry SSOT**: 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) (5-02 sprint period 累计 3 N×N 同步漂移 textbook 案例真根本性处置 + 5-03 ADR-031 S8 audit sediment, sustained SOP-6 LL-105).
 
 ### §18.2 关联现有 ADR (sustained)
 
