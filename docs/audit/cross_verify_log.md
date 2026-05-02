@@ -96,7 +96,7 @@
 
 - ADR-021 (IRONLAWS v3) sustained
 - ADR-022 (sprint period treadmill 反 anti-pattern) sustained
-- 待写 ADR-027 candidate (Layer 4 SOP 沉淀, Layer 2 sprint Week 4+ 决议)
+- 待写 ADR-030 candidate (Layer 4 SOP 沉淀, sustained user (a-iii) # 下移决议体例. ADR-027 真 file = L4 STAGED 5-02 sprint 真已 commit, 沿用 PR #216. 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) 案例 2)
 - LL "假设必实测" broader 47/53+ sustained
 - F-D78-26 (4 源协作 N×N 漂移 broader 84+) sustained 真根因 reverse path
 - F-D78-260 (D 决议链 0 SSOT registry) sustained 真根因 reverse path

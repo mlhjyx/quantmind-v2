@@ -168,7 +168,7 @@ Phase 4.2 真测 真**3 项 LL 假设必实测真证据加深 sustained sprint p
 3. D1-D71 backfill (sustained Topic 2 B sequencing, ~1-2 day CC cost)
 4. F-D78-? T0-13 gap counting drift root cause (sustained §3.1 candidate)
 5. pre-commit hook upgrade (warning-only → strict block on mismatch detect, sustained protocol_v1.md §2 Topic 1 A minimal scope sustained candidate sequencing)
-6. ADR-027 candidate write (Layer 4 SOP 沉淀, sustained protocol_v1.md §6 关联 ADR sustained candidate)
+6. ADR-030 candidate write (Layer 4 SOP 沉淀, sustained user (a-iii) # 下移决议体例. ADR-027 真 file = L4 STAGED 5-02 sprint 真已 commit, 沿用 PR #216. 详 [docs/adr/REGISTRY.md](../../adr/REGISTRY.md) 案例 2)
 7. F-D78-26 reverse audit (4 源协作 N×N 漂移 broader 84+, sustained Layer 4 SOP 真核 reverse path)
 8. F-D78-260 reverse audit (D 决议链 0 SSOT registry, sustained DECISION_LOG.md sediment 起手 reverse)
 
