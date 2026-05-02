@@ -3108,6 +3108,9 @@ audit 概括的受害者.
 
 ## LL-100: reviewer agent mid-flight kill — chunked re-launch 真闭环 SOP (2026-05-02 sprint, 2 实证)
 
+> **编号说明**: 本 LL 跳过 099 (首次 LL 序列出现 gap, 090~098 sequential 无 gap). 反 ordinal 假设 — LL number 真值是 identifier 不是 ordinal, 099 留 future 真生产 incident sediment 用. 沿用 sparse numbering pattern, 反"必须 sequential"假设.
+
+
 **事件 (2 真生产实证, 跨 5-02 sprint)**:
 
 - **PR #203 (Layer 2.1 reconnaissance, 5-02 ~03:00)**: reviewer agent (oh-my-claudecode:code-reviewer) launched async background review on 278-line audit doc. **status=killed** mid-flight 在 "Findings consolidation" chapter mark 阶段. Partial findings pre-kill (favorable): §A emergency_close log 13992 B exact match / §B f19 backfill line PASS / §B insert_trade dead code claim correct / §C minute_bars F-RECON-3 grep PASS / 0 P0/P1. 未达 internal consistency / arithmetic check / §D F-RECON-2 framing 真值 verify. CC STOP + 反问 user → user Path B 决议 + audit doc framing patch + reviewer chunked retry → 全采纳 P2/P3 → AI self-merge ✅.
