@@ -61,7 +61,7 @@
 | ID | 严重度 | 简述 |
 |---|---|---|
 | F-D78-235 | P0 治理 | risk_framework_health.log ImportError 2d sustained, 真告警通道断 |
-| F-D78-240 | P0 治理 | trade_log 4-17 后 0 行 14d, emergency_close 17 trades + GUI 18 trades 0 入库 |
+| F-D78-240 | P0 治理 | trade_log 4-17 后 0 行 14d, emergency_close 17 trades + GUI **1** trade 0 入库 (真值订正 5-02, 详 [findings/F_D78_240_correction.md](findings/F_D78_240_correction.md), 漂移 -48.6% 35→18, LL-101) |
 | F-D78-241 | P0 治理 | 4 数据源 4 不同 stale, emergency_close + GUI 旁路 dual_write Beat |
 | F-D78-246 | P0 治理 | pytest -m regression 真 0 tests, regression baseline 0 reproducibility 通过 pytest |
 | F-D78-251 | P0 治理 | pip-audit 1 step install / 0 sustained 8 month vs 22 PR + 8 audit + 6 块基石 治理倒挂 |

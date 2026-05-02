@@ -3168,3 +3168,78 @@ audit 概括的受害者.
 - **kill incident sediment 必含**: kill 时点 + partial findings 列表 + 真因候选 + retry 决议 (chunked / accept partial / STOP+反问).
 - **候选 detection** (Step 6.2+): pre-PR-merge hook grep audit doc / PR body 含 "reviewer kill" / "session resume lost" / "agent interrupted" 关键词 → 提示是否需要 LL-100 SOP cite.
 
+---
+
+## LL-101: audit cite 数字必 SQL/git/log 真测 verify before 复用 (2026-05-02 sprint, F-D78-240 真值订正实证)
+
+> **触发 case**: F-D78-240 (P0 治理) cite "emergency_close 17 trades + GUI 18 trades 0 入库 = 35 trades", 5-02 双合并调查 SQL 真测真值 = **18 (17 emergency_close fills + 1 GUI sell)**, 漂移 -48.6%. 详 [docs/audit/2026_05_audit/findings/F_D78_240_correction.md](docs/audit/2026_05_audit/findings/F_D78_240_correction.md).
+
+**事件**:
+
+5-02 sprint user 决议起 sub-task 2.1.1 (trade_log 4-29/4-30 backfill). prerequisite SQL 真测发现 cite "35" 真值 18 — 漂移 48.6% (= (35-18)/35). 真根因 chain (5-02 双合并调查 §1.3 + 本订正 §3 真 trace):
+
+```
+risk/08:40,82 cite "user 4-30 GUI 手工 sell 18 股"
+   (歧义 "18 股": 持仓数 vs trade 笔数, 真值 = 清 1 只 stock)
+        ↓
+F-D78-240 finding (09_emergency_close_real.md:102) 推断 "GUI 18 trades"
+        ↓
+EXECUTIVE_SUMMARY:64 + STATUS_REPORT_2026_05_01_week1:206 沿用错值
+        ↓
+5-02 chat session cite "35" (= 17+18)
+        ↓
+5-02 上轮 CC §1.3 推断 + 本轮 prompt 沿用 cite "35"
+        ↓
+本订正 SQL/log 真测纠错 → 真值 18
+```
+
+**根因 (3 层)**:
+
+- **歧义 source**: 中文 "18 股" 真歧义 (持仓数 vs trade 笔数), audit Phase 1 写 sub-md 时**未明确单位**
+- **下游沿用未 verify**: F-D78-240 → EXECUTIVE_SUMMARY → STATUS_REPORT_week1 → chat → CC, 沿用错值 cite, **真 SQL/log 0 verify before 复用**
+- **N×N 同步漂移**: 多文档同 cite 错值 sustain, 1 错传 N. Sprint 4-26 4-29 5-01 5-02 真**无独立 SQL/log 反向 verify** until 本订正
+
+**复用规则 (本 LL 自身的规则 1-5)**:
+
+1. **audit cite 数字必三源 cross-verify** (before 复用进 PR / chat / 下游 audit md): 单 cite 不够, 必含 (a) 真 source PR/log + (b) SQL/git 真跑 + (c) audit cite 自身 — 三源一致才**真值** verified.
+2. **数字类 cite scope** 含: 笔数 / 行数 / 人数 / 金额 / commit hash / file:line / unique IDs. 任一数字单位 cite **必明确** (如 "18 股" 必显式标 "18 持仓数" or "18 trade 笔数", 不歧义).
+3. **下游沿用 cite** (chat / next audit md / next PR description) 必**真测 spot-check** before sediment, 不直接搬上游 cite. 沿用上游错值不**自动免责**.
+4. **真值订正** (cite vs SQL/log differ ≥ 20%) 必**起 audit md 沉淀** 在 `docs/audit/{YEAR}_{MONTH}_audit/findings/` 下 (反 in-place 改 audit Phase 1 sub-md, sediment 历史可追). audit Phase 1 sub-md 加 reference 不 in-place 改 cite.
+5. **歧义 source 候选** 必加 reference: "如 cite '18 股' 真歧义, 真值 = 清 1 只 stock 4500 股". audit cite 单位真 ambiguous → 必显式 disambiguation note.
+
+**反例 (反 anti-pattern)**:
+
+- ❌ 沿用 cite 不 verify (本 case 4 layer 沿用错值: F-D78-240 → EXECUTIVE_SUMMARY → STATUS_REPORT → chat)
+- ❌ in-place 改 audit Phase 1 sub-md cite (反 sediment 历史不可追). 改法: 加 §订正 reference 段, 真值订正起新 audit md
+- ❌ 单 cite source 直接 sediment (反 三源 cross-verify)
+
+**实战次数**: 累计 1 次同质 incident (F-D78-240 真值订正, 漂移 48.6% (= (35-18)/35)). 5-01 user 修正命题 ("audit cite 数字必交叉 verify") 真**N×N 同步漂移 textbook 案例真证据加深** ✅.
+
+**沿用关联 LL**:
+
+- LL-059 (AI 自主跑 9 步闭环 mode 总纲)
+- LL-091 (推论必明示 + P3-FOLLOWUP 留口)
+- LL-098 (X10 反 forward-progress, sustained: cite 漂移真长期治理债, 沿用错值 = 反 X10 真生产 enforce)
+- LL-100 (reviewer agent kill chunked SOP, 沿用 SOP 验证本 PR reviewer)
+- 本 LL (audit cite 必 SQL/git/log verify SOP)
+
+### 持久化
+
+- 本 LL 条目 (LL-101)
+- 触发 case: F-D78-240 真值订正 (cite "35" 真值 18, 漂移 48.6% (= (35-18)/35)) + N×N 同步漂移 chain trace
+- 关联 audit md: [docs/audit/2026_05_audit/findings/F_D78_240_correction.md](docs/audit/2026_05_audit/findings/F_D78_240_correction.md)
+- 关联 PR: 本 PR (F-D78-240 真值订正 + LL-101 sediment, 0 prod 改 / 0 SQL 写)
+
+### 持久化 — 检测脚本 / SOP
+
+- **三源 cross-verify template** (建议沉淀新 audit md / cite 复用前 header):
+  ```
+  **数字 cite verify** (LL-101 SOP):
+  - source 1 (audit cite): {audit md file:line}
+  - source 2 (真 source): PR # / log file / commit hash
+  - source 3 (SQL/git 真跑): {query / command} → {真值}
+  → verdict: {三源一致 / 漂移 X% / 歧义 source 待 disambiguate}
+  ```
+- **歧义 disambiguation note** (建议加在数字 cite 旁): `"18 股" (= 18 个持仓 vs 18 trade 笔数, 真值 = 清 1 只 stock 4500 股, source: business/02:47)`.
+- **候选 detection** (Step 6.2+): pre-PR-merge hook grep PR body / audit md 含 数字 cite 但**0 SQL/log/PR cross-cite** 关键词 → 提示是否需要 LL-101 三源 verify.
+
