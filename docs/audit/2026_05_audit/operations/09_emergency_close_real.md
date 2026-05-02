@@ -112,4 +112,19 @@ code=688121.SH, status=57, traded=0/4500
 
 ---
 
+## §订正 reference (2026-05-02 sprint sediment)
+
+🔴 **F-D78-240 真值订正** — 详 [docs/audit/2026_05_audit/findings/F_D78_240_correction.md](../findings/F_D78_240_correction.md):
+
+- **本 sub-md §6 line 102 cite** "emergency_close 17 真 trades + 4-30 user GUI sell **18 trades**" → 真值 **17 fills + 1 GUI sell = 18 trades total** (NOT 35)
+- **真根因**: line 102 cite 沿用 [risk/08:40,82](../risk/08_risk_event_log_real_2_entries.md) "18 股" 歧义 source ("18 股" = 持仓数, 真 trade 笔数 = 1)
+- **真自相矛盾发现**: 本 sub-md §5 line 87 cite "17 filled + 1 cancel" 真值 17 fills ✅ 但 line 102 cite "GUI 18 trades" 漂移 — 同 sub-md 真**自相矛盾**
+- **真 source**: [PR #169 narrative v4](https://github.com/mlhjyx/quantmind-v2/pull/169) "17 CC + 1 user GUI" + [logs/emergency_close_20260429_104354.log](../../../../logs/emergency_close_20260429_104354.log) 真读 13992 bytes
+- **触发 LL**: [LESSONS_LEARNED.md LL-101](../../../../LESSONS_LEARNED.md) "audit cite 数字必 SQL/git/log 真测 verify before 复用"
+- **真新 finding 候选**: F-D78-291 (P3 治理) — 本 sub-md 自相矛盾 (line 87 vs line 102), in-place 修法留 future PR 决议
+
+**Phase 1 sub-md 不 in-place 改 cite** (反 sediment 历史不可追), 真值订正 sediment 在 `findings/F_D78_240_correction.md` 单独追溯.
+
+---
+
 **文档结束**.
