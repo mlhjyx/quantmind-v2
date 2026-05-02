@@ -1679,12 +1679,16 @@ L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 |---|---|---|
 | **ADR-019** | V3 vision (5+1 层 + Tier A/B + 借鉴清单) | 4-29 决议 + 本设计 |
 | **ADR-020** | Claude 边界 + LiteLLM 路由 + CI lint | 4-29 决议 |
-| **ADR-023** | L1 实时化 + xtquant subscribe_quote 接入 | 本设计 §4 |
+| **ADR-023** | yaml-ssot-vs-db-strategy-configs-deprecation | 5-02 sprint factor task 5 sediment (NOT V3 设计 § scope, sustained user (a-iii) # 下移决议体例, L1 实时化 主题 → ADR-029 row 9) |
 | **ADR-024** | factor lifecycle vs registry semantic separation | 5-02 sprint factor task sediment (NOT V3 设计 § scope, user (a-iii) 决议 # 下移 sustained ADR-024 真主题 0 改动) |
 | **ADR-025** | RAG vector store 选型 (pgvector + embedding model 决议) | 本设计 §5.4 + §20 #3 (sustained reserve, 等 user 决议) |
 | **ADR-026** | L2 Bull/Bear 2-Agent debate (Tier B) | 本设计 §5.3 (sustained reserve, Tier B 架构决议) |
 | **ADR-027** | L4 STAGED default + 反向决策权论据 + 跌停 fallback | 本设计 §7.1 + §7.2 + §13 #8 + §20.1 #1 + #7 sediment (5-02) |
 | **ADR-028** | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay | 本设计 §7.1 + §5.4 + §5.5 + §15.5 + §20.1 #5 + #9 sediment (5-02) |
+| **ADR-029** | L1 实时化 + xtquant subscribe_quote 接入 | 本设计 §4 (sustained reserve, 沿用 ADR-023 真主题 # 下移决议体例, V3 Tier A Sprint 3 真起手时 sediment) |
+| **ADR-030** | Layer 4 SOP 沉淀 (governance protocol) | 5-01 Phase 4.2 audit 4 docs sustained candidate (sustained reserve, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
+
+> **真 ADR # registry SSOT**: 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) (5-02 sprint period 累计 3 N×N 同步漂移 textbook 案例真根本性处置, sustained SOP-6 LL-105).
 
 ### §18.2 关联现有 ADR (sustained)
 

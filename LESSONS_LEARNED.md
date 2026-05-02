@@ -3418,3 +3418,116 @@ audit row backfill 真 SQL 写真**与真账户操作真不同**:
 
 5-02 sprint close 真**LL-100 chunked SOP 真稳定** (7/7 100% 1-run completion). 真**未来类似 sediment PR 真 reviewer 平均 ≤100s 1-run**, 真**N×N 同步成本真治理路径 cumulative**: SOP-1 (3 源 dedup) + SOP-2 (audit cite 真测) + SOP-3 (CC prompt 留占位) + SOP-4 (跨 system claim 明示) + SOP-5 (audit row backfill 5 condition) = **5 SOP cluster sediment**.
 
+---
+
+## LL-104: Claude.ai 写 prompt 时表格 cite 仅看 1 row 真不够, 必 grep 全表 cross-verify (2026-05-02 sprint close, N×N 同步漂移第 8 次实证)
+
+### Part 1: 触发 case
+
+5-02 sprint close session, Claude.ai 写 v5 apply prompt 真 ADR-024 conflict 处理 (V3 §20.1 设计层决议 10/10 sediment + ADR-027/028 创建).
+
+prompt 真假设: "ADR-024 真预约 = L4 STAGED" (V3 §18.1 row 4 cite). 但**真 ADR-024 file** 已被 5-02 sprint factor task 占用 = factor-lifecycle-vs-registry-semantic-separation (PR # commit 5-02 早期).
+
+**真 prompt 仅看 V3 §18.1 row 4 单点** (ADR-024 cite "L4 STAGED"), 真未交叉 verify row 5/6 真预约:
+- row 5: ADR-025 RAG vector store (V3 §18.1 sustained reserve)
+- row 6: ADR-026 L2 Bull/Bear 2-Agent debate (V3 §18.1 sustained reserve)
+
+CC 真 spot-check 时 grep V3 §18.1 全表 → 真发现 row 5/6 真预约 → STOP 反问 user → user (a-iii) 决议: **# 下移 ADR-027 (STAGED) + ADR-028 (AUTO)**, sustained ADR-025/026 真预约 0 silent overwrite.
+
+### Part 2: 真 N×N 同步漂移 evidence chain
+
+| 实证 # | 触发 | 真冲突源 | 决议 |
+|---|---|---|---|
+| 1-7 | 5-01 sprint period (broader 47/53+) | sprint period sustained N×N 同步漂移 (sprint_state cite / audit md cite / etc) | sustained 5 SOP cluster (SOP-1~5) |
+| **8** | 5-02 sprint close ADR-024 V3 §18.1 row 4 conflict | factor-lifecycle ADR-024 真 file vs V3 §18.1 真预约 STAGED | user (a-iii) 决议 # 下移 → ADR-027/028 (本 LL-104 真触发) |
+| **9** | 5-02 sync session 4 audit docs ADR-027 conflict | PR #216 ADR-027 真 file (L4 STAGED) vs 4 audit docs (5-01 Phase 4.2) 真预约 Layer 4 SOP candidate | user 决议 # 下移 → ADR-030 (sustained LL-105 chain) |
+
+**真根因**: Claude.ai 写 prompt 时**单点 cite 决议** (仅看 V3 §18.1 row 4), 真未**全表 cross-verify** (row 1-6 全 ADR # 真预约). 沿用 5-01 user 修正命题"3 角色协作 (Claude.ai + CC + user) N×N 同步成本 (4 源 N(N-1)/2 = 6 同步路径)".
+
+### Part 3: SOP cluster 关联
+
+- **SOP-1 (3 源 dedup)** — 本 LL 真触发 SOP. Claude.ai prompt cite 真扩展含义: "表格 cite 真**全表 grep cross-verify**, NOT 单 row 决议".
+- SOP-2 (audit cite 数字必 SQL/git/log 真测) — sustained.
+- SOP-3 (Claude.ai 写 CC prompt 留占位 "{{CC 实测决议}}") — sustained.
+- SOP-4 (跨 system claim 明示 source) — sustained.
+- SOP-5 (audit row backfill 真 SQL 写 5 condition) — sustained.
+- 🆕 **SOP-6 (ADR # reservation registry SSOT cross-verify)** — 真 sediment LL-105 (本 LL chain).
+
+### Part 4: 修正机制
+
+**Claude.ai 写 prompt 涉及表格/列表 cite 时**:
+
+1. 必 **grep 全表** before 决议 (例: ADR # cite → grep V3 §18.1 全 6+ row, NOT 仅 row 4)
+2. 任一 row 真 cite 漂移 → STOP 反问 user (沿用 SOP-1 真扩展)
+3. V3 §18.1 类表格真预约 sustained reserve **0 silent overwrite** (沿用 user (a-iii) "# 下移决议体例")
+4. cross-source verify: V3 §18.1 + audit docs candidate + sprint_state cite + LL backlog (沿用 SOP-6 LL-105 sediment)
+
+**真 detection candidate** (P3 backlog): pre-PR-merge hook grep PR body / commit message 含**单点 cite "row N"** 关键词 → 提示是否需要全表 cross-verify.
+
+**真测真值**: 本 LL sediment 后, 5-02 sprint close 累计 N×N 同步漂移**第 8 次实证**已修正机制. 真长期 sustained governance value (沿用 LL-098 X10 第 25+ 次 stress test).
+
+---
+
+## LL-105: ADR # reservation 真预约 4 source cross-verify 必 grep registry SSOT (2026-05-02 sprint close, SOP-6 sediment)
+
+### Part 1: 触发 case
+
+5-02 sync session (post-PR #217 SYSTEM_STATUS sync), CC 主动 grep 4 audit docs 真发现 cite "ADR-027 candidate (Layer 4 SOP 沉淀)" — 真 5-01 Phase 4.2 (PR #193) sediment 真预约.
+
+但**真 ADR-027 file** 已被 PR #216 (5-02) 占用 = L4 STAGED + 反向决策权 + 跌停 fallback (V3 §20.1 #1 + #7 sediment).
+
+**真冲突 pattern**: 跟 ADR-024 conflict (V3 §18.1 row 4) **完全同 textbook 案例** (LL-104 真触发):
+- ADR-024 真 file (factor-lifecycle) vs V3 §18.1 真预约 (L4 STAGED)
+- ADR-027 真 file (L4 STAGED) vs 4 audit docs 真预约 (Layer 4 SOP)
+
+**真根因**: **ADR # reservation 真 source 分散**, 0 single source of truth:
+- **source 1**: V3 §18.1 表格 (V3 risk framework 真预约)
+- **source 2**: audit docs candidate (sprint period audit 中 sediment 的 candidate, 例 4 audit docs 真 ADR-027 candidate)
+- **source 3**: sprint_state cite (sprint period 中 cited 的 candidate)
+- **source 4**: LL backlog (LL sediment 中 candidate 主题)
+
+任一 source 真预约**真未交叉 verify** → silent overwrite (textbook 案例第 8/9 次 N×N 同步漂移).
+
+### Part 2: 修正机制 — REGISTRY.md SSOT 建设
+
+本 PR Part A 真 sediment: `docs/adr/REGISTRY.md` 4 column table sustained 全 ADR # 真状态 (committed / reserved / gap):
+
+| ADR # | 真 file 或主题 | 真状态 | 真 source |
+
+**maintenance 规则**:
+
+1. 新 ADR # reserve 必 **grep 全 docs/ + memory/** before # 决议 (4 source cross-verify)
+2. 新 ADR # reserve 时同步 update [REGISTRY.md](https://github.com/) (1 PR cover, sustained 5-02 sprint close 体例)
+3. 任一 source 真 cite 漂移 → STOP 反问 user (沿用 SOP-1 真扩展)
+4. 现 reserved # 起手时同步 update REGISTRY.md (从 reserved → committed, source PR # 同步)
+
+### Part 3: SOP cluster 扩展
+
+- SOP-1 ~ SOP-5 (5-02 sprint close sediment, sustained 5 SOP)
+- 🆕 **SOP-6: ADR # reservation registry SSOT cross-verify**
+  - **触发**: 新 ADR # reserve / 创建时
+  - **真测**: grep 全 docs/ + memory/ 4 source (V3 §18.1 + audit docs candidate + sprint_state cite + LL backlog)
+  - **决议源**: docs/adr/REGISTRY.md (本 PR Part A sediment)
+  - **silent overwrite 处置**: 沿用 user (a-iii) "# 下移决议体例" (NOT 静默覆盖)
+
+**真完整 6 SOP cluster sediment**: 5-02 sprint close 真 governance milestone (sustained 5 SOP + 本 SOP-6).
+
+### Part 4: 真讽刺自身实证 #4
+
+**真 evidence**: 5-02 sprint period 真 audit folder sediment 5 audit md (PR #209/#210/#211/#212/#213) — 全部 sustained SSOT 治理 (factor count / yaml ssot / lifecycle / WF metric / trade_log audit chain / Step C3 retry verify), 但**真未含 ADR # reservation cross-verify**.
+
+**真讽刺**: SSOT 治理真 sustained 5-02 sprint close 累计 5 SOP, 但**ADR # 治理债真到第 9 次 N×N 同步漂移才真发现** (sync session 4 audit docs ADR-027 conflict).
+
+**真意义**:
+- governance debt 真**长期 sustained**, 真**治理时点 driven by N×N 同步漂移 textbook 案例触发**, NOT proactive
+- 真**未来 governance debt detection** 真 sustained 反**应模式** (CC sync session 主动 grep + 主动发现, NOT 等 user 显式触发)
+- 沿用 LL-098 X10 第 25+ 次 stress test: CC 0 forward-progress action, 但**真主动发现 governance drift** 真 sustained 铁律 28
+
+**真长期 governance value**: 本 SOP-6 sediment 真后 5-02 sprint close **累计 6 SOP cluster + REGISTRY.md SSOT**, 真未来 ADR # 治理债 detection 真 mechanism complete.
+
+---
+
+**真 sustained governance milestone (本 PR sediment 真扩展)**:
+
+5-02 sprint close 真**LL-100 chunked SOP 真稳定** (12/12 100% 1-run completion sustained, post-PR #217). 真**未来类似 sediment PR 真 reviewer 平均 ≤100s 1-run**, 真**N×N 同步成本真治理路径 cumulative**: SOP-1 (3 源 dedup) + SOP-2 (audit cite 真测) + SOP-3 (CC prompt 留占位) + SOP-4 (跨 system claim 明示) + SOP-5 (audit row backfill 5 condition) + **SOP-6 (ADR # reservation registry SSOT cross-verify)** = **6 SOP cluster sediment**. 真完整 governance debt detection mechanism (sustained 5-02 sprint close 真根本性处置).
+

@@ -86,7 +86,7 @@ CC 真核走:
 
 - ADR-021 (IRONLAWS v3) sustained
 - ADR-022 (sprint period treadmill 反 anti-pattern) sustained
-- 待写 ADR-027 candidate (Layer 4 SOP 沉淀, Layer 2 sprint Week 4+ 决议)
+- 待写 ADR-030 candidate (Layer 4 SOP 沉淀, sustained user (a-iii) # 下移决议体例. ADR-027 真 file = L4 STAGED 5-02 sprint 真已 commit, 沿用 PR #216. 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) 案例 2)
 - 铁律 15 (回测可复现, max_diff=0 硬门) sustained
 - 铁律 11 (IC 唯一入库 factor_ic_history) sustained
 
