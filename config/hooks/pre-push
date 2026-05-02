@@ -56,6 +56,19 @@ if echo "$X10_HITS" | grep -q '^X10_HIT:'; then
 fi
 echo "[pre-push] X10 cutover-bias scan: 0 hard pattern, 放行 X10 守门."
 
+# === S6 LLM import block (V3 §5.5 + ADR-020, sustained user 决议 a-vi) ===
+# scope: backend/ + scripts/ Python files (排除 tests/), full mode (defense-in-depth)
+# allowlist marker (`# llm-import-allow:<reason>`) 见 docs/LLM_IMPORT_POLICY.md §9
+if [ -x scripts/check_llm_imports.sh ]; then
+    if ! sh scripts/check_llm_imports.sh --full; then
+        echo ""
+        echo "[pre-push] S6 LLM import block — push 被阻断."
+        echo "[pre-push] 详情见上方 BLOCK message + docs/LLM_IMPORT_POLICY.md"
+        echo "[pre-push] 紧急绕过 (违反 SOP, 需 commit message 声明原因): git push --no-verify"
+        exit 1
+    fi
+fi
+
 # === 铁律 10b (生产入口真启动验证) ===
 # 优先使用 .venv Python (Windows/Unix 兼容)
 if [ -x ".venv/Scripts/python.exe" ]; then

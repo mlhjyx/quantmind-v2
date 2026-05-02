@@ -219,7 +219,7 @@ class DeepSeekClient:
     def _get_openai_client(self, base_url: str) -> Any:
         """懒加载并缓存OpenAI客户端。"""
         try:
-            from openai import OpenAI  # type: ignore[import-untyped]
+            from openai import OpenAI  # type: ignore[import-untyped]  # llm-import-allow:S2-deferred-PR-219  # noqa: I001
         except ImportError as e:
             raise ImportError(
                 "需要安装openai包: pip install openai>=1.0"
