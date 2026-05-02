@@ -8,6 +8,18 @@
 set -e
 cd "$(git rev-parse --show-toplevel)"
 
+# === S6 LLM import block (V3 §5.5 + ADR-020, sustained user 决议 a-vi) ===
+# scope: backend/ + scripts/ Python files (排除 tests/), staged-only mode
+# allowlist marker (`# llm-import-allow:<reason>`) 见 docs/LLM_IMPORT_POLICY.md §9
+if [ -x scripts/check_llm_imports.sh ]; then
+    if ! sh scripts/check_llm_imports.sh --staged; then
+        echo ""
+        echo "[pre-commit] S6 LLM import block — commit 被阻断."
+        echo "[pre-commit] 详情见上方 BLOCK message + docs/LLM_IMPORT_POLICY.md"
+        exit 1
+    fi
+fi
+
 # Check staged .md files
 STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.md$' || true)
 if [ -z "$STAGED_MD" ]; then
