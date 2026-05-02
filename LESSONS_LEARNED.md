@@ -3103,3 +3103,65 @@ audit 概括的受害者.
   forward-progress 关键词 → block + 提示 X10 checklist
 - 候选 (Wave 5+): Claude system prompt-level guard — 末尾输出阶段 detect
   forward-progress 关键词, 自动 strip 或要求二次 confirm
+
+---
+
+## LL-100: reviewer agent mid-flight kill — chunked re-launch 真闭环 SOP (2026-05-02 sprint, 2 实证)
+
+**事件 (2 真生产实证, 跨 5-02 sprint)**:
+
+- **PR #203 (Layer 2.1 reconnaissance, 5-02 ~03:00)**: reviewer agent (oh-my-claudecode:code-reviewer) launched async background review on 278-line audit doc. **status=killed** mid-flight 在 "Findings consolidation" chapter mark 阶段. Partial findings pre-kill (favorable): §A emergency_close log 13992 B exact match / §B f19 backfill line PASS / §B insert_trade dead code claim correct / §C minute_bars F-RECON-3 grep PASS / 0 P0/P1. 未达 internal consistency / arithmetic check / §D F-RECON-2 framing 真值 verify. CC STOP + 反问 user → user Path B 决议 + audit doc framing patch + reviewer chunked retry → 全采纳 P2/P3 → AI self-merge ✅.
+- **PR #207 (Layer 2.1.7 A1.1.B, 5-02 ~14:49)**: reviewer agent launched async background review on 387-line audit doc. **session resume lost in-flight agent** (parent thread compaction后 agent state 丢) at "Findings consolidation" stage (44 JSONL lines, last entry chapter mark). 与 PR #203 案例同 root mechanism. CC re-launched chunked reviewer (≤8 min target, scope 限制为 §H framing v3 / §D forward horizon arithmetic / §E.3 alpha 公式 cite / §G transparency / 内部一致性 5 spot-checks). Re-launched run **真完成** 0 P0/P1 + 1 MEDIUM (off-by-one 5-9→5-8) + 3 LOW, 5/5 spot-check PASS, COMMENT recommendation 全采纳 → AI self-merge ✅.
+
+**根因 (2 真因, 不互斥)**:
+
+- **真因 1 (parent thread STOP 信号 / context budget)**: parent CC 自身因 STOP+反问 user / context compaction / session resume 触发 background agent 中断. 不是 dev infra 异常 (oh-my-claudecode harness 自身 OK).
+- **真因 2 (大 audit doc + 多 spot-check 真耗时)**: reviewer prompt scope 太大 (整 §A~§J 多 grep + 多 read + 多 cross-doc verify) → 真耗时超过 parent thread 间隔 → 高概率被 parent compaction / STOP 触发中断.
+
+**复用规则 (本 LL 自身的规则 1-5)**:
+
+1. **reviewer agent 默认 chunked scope** (≤8 min target): scope 限制为最高风险 claim (3-5 spot-checks max), 不做整 doc full review. 避免 parent thread STOP / compaction 触发中断.
+2. **reviewer kill 后**: 评估 partial findings 完整度 (覆盖率 + P0/P1 命中). 若 partial 0 P0/P1 + 覆盖率 ≥ 50% → 接受 partial + sediment kill incident. 否则 retry 1 次 chunked re-launch (更小 scope).
+3. **retry 仍 kill** (2 次 kill): STOP + 反问 user (是否接受 partial / 升级 scope / dev infra 修).
+4. **reviewer kill ≠ dev infra 异常**: 默认假设是 parent thread 影响 (STOP 信号 / context budget / session resume), 不预设 reviewer harness bug.
+5. **session resume 后 in-flight agent state 丢失** 是 known parent CC 行为. 不是新发现, 不需 dev infra 修.
+
+**反例 (反 anti-pattern)**:
+
+- ❌ kill 后硬 push 接受 0 review 直接 AI self-merge (反 partial review ≠ 完整 review)
+- ❌ kill 后无脑 retry 整 doc full scope (高概率再次 kill, 浪费 token + 时间)
+- ❌ kill 后 user 接触 / 反问 user (CC 自主跑 mode 应自行处理 partial / retry, 0 真生产 risk)
+
+**实战次数**: 累计 2 次同质 incident (PR #203 + PR #207). **2/2 retry 成功率 100%** (chunked re-launch + 全采纳 reviewer findings + AI self-merge). LL-059 自主跑 mode 真生产 0 user 接触 except STOP 触发 / scope 升级.
+
+**沿用关联 LL**:
+
+- LL-059 (AI 自主跑 9 步闭环 mode 总纲)
+- LL-091 (推论必明示 + P3-FOLLOWUP 留口)
+- 本 LL (reviewer kill 真复发 SOP)
+
+### 持久化
+
+- 本 LL 条目 (LL-100)
+- 触发 case 1: PR #203 §J reviewer kill incident sediment (2026-05-02 ~03:00)
+- 触发 case 2: PR #207 reviewer interrupted at "Findings consolidation" stage (2026-05-02 ~14:49) — 不在 audit doc §J 中, 仅 commit message + STATUS_REPORT 沉淀, 本 LL 真补
+- 关联 PR: #203 (Layer 2.1 reconnaissance audit) → #207 (Layer 2.1.7 A1.1.B cascade audit) → 本 PR (LL-100 sediment)
+- LL-059 mode 真闭环 verify: 2/2 incidents 全 0 user 接触 (except STOP+反问 触发自然 disrupt 第一次, 真因 = parent STOP 信号)
+
+### 持久化 — 检测脚本 / SOP
+
+- **chunked scope template** (建议 reviewer prompt header):
+  ```
+  **Tight scope** (≤8 min, focus on highest-risk claims only):
+  1. [highest-risk claim 1 — spot-check single file/line]
+  2. [highest-risk claim 2 — spot-check single grep]
+  3. [highest-risk claim 3 — internal consistency pair]
+  4. [transparency hedging quality]
+  5. [cross-document consistency 1 pair]
+
+  **Don't do**: re-run scripts / query DB / modify code / do full doc review.
+  **Output**: structured table with severity (P0/P1/P2/P3 or PASS) per finding.
+  ```
+- **kill incident sediment 必含**: kill 时点 + partial findings 列表 + 真因候选 + retry 决议 (chunked / accept partial / STOP+反问).
+- **候选 detection** (Step 6.2+): pre-PR-merge hook grep audit doc / PR body 含 "reviewer kill" / "session resume lost" / "agent interrupted" 关键词 → 提示是否需要 LL-100 SOP cite.
+
