@@ -27,6 +27,10 @@
 | [ADR-022](ADR-022-sprint-treadmill-revocation.md) | Sprint Period Treadmill 反 anti-pattern + 集中修订机制 | accepted | 22, 25, 27 |
 | [ADR-023](ADR-023-yaml-ssot-vs-db-strategy-configs-deprecation.md) | yaml SSOT vs DB strategy_configs deprecation (PT 生产配置唯一 SSOT) | proposed | 22, 25, 34, 38 |
 | [ADR-024](ADR-024-factor-lifecycle-vs-registry-semantic-separation.md) | factor_lifecycle 与 factor_registry 语义分工显式声明 (生产生命周期 vs 设计审批) | proposed | 22, 25, 38 |
+| [ADR-027](ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) | L4 STAGED default + 反向决策权论据 + 跌停 fallback (V3 §20.1 #1 + #7 sediment) | proposed | 22, 25, 27, 33, 35 |
+| [ADR-028](ADR-028-auto-mode-v4-pro-rag-and-backtest-replay.md) | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay (V3 §20.1 #5 + #9 sediment) | proposed | 22, 25, 27, 33, 35 |
+
+> **注**: ADR-019/020/025/026 sustained reserve (V3 §18.1 row 1/2/5/6 真预约, 0 file 等 user 决议时创建). ADR-024 真主题 = factor lifecycle (5-02 sprint factor task), V3 §18.1 row 4 真预约 "L4 STAGED" 已 # 下移到 ADR-027 (user a-iii 决议 5-02). 详 [ADR-027 §1.1](ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md).
 
 ## 模板
 

@@ -1,14 +1,14 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-49, §0.-3)**
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)**
 > **基于**: 实际查询数据，非设计文档描述
 
 ---
 
-## §0.-3 5-02 Sprint Close (Session 47-49, 2026-05-01 ~21:50 → 2026-05-02) ⭐
+## §0.-3 5-02 Sprint Close (Session 47-50, 2026-05-01 ~21:50 → 2026-05-02) ⭐
 
-> **5-02 Sprint Close 真闭环**: 11 artifacts (9 PR #206-#214 + 2 memory patch v3+v4.1). main HEAD 推进 `a6a41f4` → `e26874e`. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` 顶部 Session 49 handoff (单源化, 沿用 X5 + ADR-022 §7).
+> **5-02 Sprint Close 真闭环**: 14 artifacts (11 PR #206-#216 含 #208 LL-100 + 3 memory patch v3+v4.1+v5). main HEAD 推进 `a6a41f4` → `1a7dd8b`. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` 顶部 Session 50 handoff (单源化, 沿用 X5 + ADR-022 §7).
 
 ### Session 47 (2026-05-01 ~21:50, PR #192/#193)
 
@@ -30,7 +30,15 @@
 - **PR #214 LL-103 sediment** (LESSONS_LEARNED.md L3248+, +175 lines, ll_unique_ids 93→94): Part 1 SOP-4 (跨 system claim 明示 source) + Part 2 SOP-5 (audit row backfill 真 SQL 写 5 condition) + Part 3 (5-02 milestone). **Claude.ai vs CC 真分离 architecture finding**: 真两 system 真分离 (Claude.ai web user account memory vs CC CLI `~/.claude/*.jsonl`, conversation 真不 cross-sync). user 跨 system claim 真不可 cross-verify by CC. **5-01 N×N 同步漂移命题真证据加深 (第 7 次实证)**.
 - **sprint_state v3 (memory direct, Session 48 sediment)** + **sprint_state v4.1 (memory direct, Session 49 sediment)**: yaml keys 10 → 11 (+ description-archived-session-48). +144 lines (Part B handoff section). LL-100 第 9 次连续 76s APPROVE 0 issues.
 
-### 5-02 Sprint Close 关键 milestone 5
+### Session 50 (2026-05-02, PR #215-#216 + sprint_state v5)
+
+- **PR #215 SYSTEM_STATUS sync** (本 §0.-3 真创建): doc-only PR, +68 / -1 lines, line 4 banner + 新 §0.-3 (覆盖 Session 47-49 当时). LL-100 第 10 次连续 92s APPROVE 0 issues. main HEAD `e26874e` → `56c5362`.
+- **PR #216 V3 §20.1 设计层决议 10/10 + ADR-027/028 sediment + V3 §18.1 ADR-024 真主题修订** (Claude.ai+user 战略对话 sediment, 5-02): V3 doc 1825 lines + ADR-027 (L4 STAGED + 反向决策权 + 跌停 fallback, #1 + #7) + ADR-028 (AUTO + V4-Pro X 阈值 + Risk Memory RAG + backtest replay, #5 + #9) + V3 §18.1 row 4 修订 ("ADR-024 → L4 STAGED" → "ADR-024 → factor lifecycle, NOT V3 § scope") + 新增 row 7/8 (ADR-027/028). LL-100 第 11 次连续 91s APPROVE 0 issues. main HEAD `56c5362` → `1a7dd8b`.
+- **真讽刺自身实证 #3** (SOP-1 第 N+1 次 enforcement): Claude.ai 写 v5 prompt 仅看 V3 §18.1 row 4 (ADR-024 conflict) 真未交叉 verify row 5/6 (ADR-025 RAG / ADR-026 Bull/Bear 真预约) → CC STOP 反问 → user 决议 (a-iii) 真采纳 # 下移 027/028 (NOT 静默覆盖 ADR-025/026 真预约). 真 N×N 同步漂移 textbook 案例第 8 次实证 (sediment 候选 LL-104 P3 backlog).
+- **sprint_state v5 (memory direct, Session 50 sediment)**: yaml keys 11 → 12 (+ description-archived-session-49). +99 lines (Part B handoff section, V3 §20.1 真值 + ADR-024 真主题修订 + Session 50+1 入口). 0 git mutation (memory direct outside git, sustained PR #213/v4.1 体例).
+- **真 12+ artifacts 真完整闭环**: 11 PR (#206-#216 含 #208 LL-100) + 3 memory patch (v3 / v4.1 / v5) = 14 artifacts.
+
+### 5-02 Sprint Close 关键 milestone 6
 
 | # | milestone | 真值 |
 |---|---|---|
@@ -38,7 +46,8 @@
 | 2 | audit chain 17/18 闭环 (94.4%) | 1/18 (4-30 GUI sell) long-tail = portal only out-of-scope CC |
 | 3 | WF 治理债 audit md sediment (PR #210) | 4 治理债 + sim-to-real gap finding (audit F-D78-85 真证据加深) |
 | 4 | Claude.ai vs CC 真分离 finding (LL-103 Part 1) | SOP-4 sediment, N×N 同步漂移第 7 次实证 |
-| 5 | LL-100 chunked SOP 9/9 100% 1-run | 累计 888s / 平均 98.7s / 全 ≤8 min target / 0 kill 0 retry |
+| 5 | LL-100 chunked SOP 11/11 100% 1-run | 累计 1071s / 平均 97.4s / 全 ≤8 min target / 0 kill 0 retry (含 PR #215 第 10 次 92s + PR #216 第 11 次 91s) |
+| 6 | V3 §20.1 设计层决议 10/10 ✅ + ADR-027/028 sediment (PR #216) | Claude.ai+user 战略对话 sediment, 5-02. (F) PT 战略讨论 prerequisite ready |
 
 ### 5 SOP cluster 完整 sediment
 
