@@ -3243,3 +3243,178 @@ EXECUTIVE_SUMMARY:64 + STATUS_REPORT_2026_05_01_week1:206 沿用错值
 - **歧义 disambiguation note** (建议加在数字 cite 旁): `"18 股" (= 18 个持仓 vs 18 trade 笔数, 真值 = 清 1 只 stock 4500 股, source: business/02:47)`.
 - **候选 detection** (Step 6.2+): pre-PR-merge hook grep PR body / audit md 含 数字 cite 但**0 SQL/log/PR cross-cite** 关键词 → 提示是否需要 LL-101 三源 verify.
 
+---
+
+## LL-103: Claude.ai vs CC 真分离 architecture + audit row backfill 真 SQL 写 5 condition 真金 0 风险 SOP (2026-05-02 sprint close, 2 实证)
+
+> **触发 case**:
+> - **Part 1 trigger** (5-02 sprint close, PR #213 Step C3 retry verify §6): user "我跟 CC 说过 4-30 真值" 真**与 CC 89 file session_search 0 match 矛盾** — 真**最可能 user 真说在 Claude.ai (NOT CC)**, 沿用 5-01 user 修正命题 "3 角色协作 (Claude.ai + CC + user) N×N 同步成本".
+> - **Part 2 trigger** (5-02 sprint close, PR #212 Step C2): 第一次破除 5-02 sprint sustained "0 SQL 写" 跨 7 PR (sustained #207/#209/#210/#211/#213/sprint_state v3 memory/9cdaa91 LL-100). trade_log +17 + risk_event_log +1 audit row INSERT, 真金 0 风险 verify.
+>
+> 详 [docs/audit/2026_05_audit/findings/sub_task_2_1_1_step_c3_retry_verify_2026_05_02.md](docs/audit/2026_05_audit/findings/sub_task_2_1_1_step_c3_retry_verify_2026_05_02.md) §5 (Part 1 source) + [docs/audit/2026_05_audit/findings/sub_task_2_1_1_step_c2_backfill_2026_05_02.md](docs/audit/2026_05_audit/findings/sub_task_2_1_1_step_c2_backfill_2026_05_02.md) §6 (Part 2 source).
+
+---
+
+### Part 1: Claude.ai vs CC 真分离 architecture + SOP-4 候选 (5-01 N×N 同步漂移真证据加深)
+
+**事件**:
+
+5-02 sprint close PR #213 Step C3 retry verify CC 真测 4 source (8/9/10/11) 真**0 source 真返完整 4-30 GUI sell fill_price + executed_at**. user 真之前 cite "我跟 CC 说过" 真**与 CC 89 file session_search 0 match 矛盾**.
+
+**根因 (architecture 真分离)**:
+
+**Claude.ai vs CC 真两 system**:
+- **Claude.ai** (web): conversation history 真**user account memory** (Anthropic 服务端, 真存于 user account, 真**user disk 不可见**)
+- **CC** (claude_code CLI): conversation history 真**user disk** `C:\Users\hd\.claude\projects\<project>\*.jsonl` (含 subagents/)
+- 真**两 system 真不 cross-sync** (架构隔离, 真**user 跨 system claim 真不可由 CC 自身 verify**)
+
+**N×N 同步漂移真证据加深**:
+
+5-01 user 修正 audit "1 人 vs 企业级架构" 命题为 **"3 角色协作 (Claude.ai + CC + user) N×N 同步成本"** (4 源 N(N-1)/2 = 6 同步路径). 本 case 真**第 7 次实证** (Claude.ai → CC 真不可 cross-verify by CC 自身).
+
+**复用规则 (本 LL Part 1 SOP-4)**:
+
+1. **user 跨 system claim 必明示 source system**: user 提"我跟 CC 说过" / "我跟 Claude 说过" / "我之前讲过" 等真**必明示 source = Claude.ai / CC / 别的**. 真**0 system source claim 真等价 source 不可考**.
+2. **CC 真测 Source 8 (CC session history 89 files) 不可视为 user Claude.ai conversation 真值 source**: CC `mcp__plugin_oh-my-claudecode_t__session_search` + `mcp__ccd_session_mgmt__search_session_transcripts` 真测 0 match 真**0 推论 user Claude.ai history 真无该 cite**, 真仅 verify CC 自身 history.
+3. **Claude.ai history 真 user portal 自查 only**: CC 真不可访问 Claude.ai conversation history. user 真自查 portal (https://claude.ai) → 真值 cite quote → CC 复用.
+4. **跨 system audit 必含明示 N×N 同步路径 verify**: 真 audit chain 含 user "之前说过" cite 真必含 source system 明示 + 真测 verify (per LL-101 SOP 三源 cross-verify 沿用 + system source 真补 4th 源).
+5. **真 5-01 命题修正 sustained**: "3 角色协作 N×N 同步成本" 真**non-trivial governance debt**, 真**永不 0**, 真治理路径 = 显式 source system + 真测 verify, 沿用 SOP-1 (3 源 dedup) + SOP-2 (audit cite 真测 verify) + SOP-3 (Claude.ai prompt 留占位 CC 真测填入) + 🆕 SOP-4 (跨 system claim 明示 source).
+
+**反例 (反 anti-pattern)**:
+
+- ❌ user "我跟 CC 说过" 真假设 = CC accessible (本 case 真错, 真**最可能 source = Claude.ai**)
+- ❌ CC session history 0 match → 推论 "user 真未说过" (反, 真仅 verify CC 自身 history)
+- ❌ user 跨 system 真值 cite 不明示 source → 真 audit chain 真不可 cross-verify
+
+**实战次数**: 累计 **第 7 次** N×N 同步漂移实证 (5-01 sprint period 1-6 次 sustained sprint state cite, 5-02 close 第 7 次 PR #213 sediment).
+
+**沿用关联 LL**:
+
+- LL-098 (X10 反 forward-progress, sustained: SOP-4 真**user 跨 system claim 真治理路径**, 反 fabricate cite source)
+- LL-100 (chunked SOP, sustained: 5-02 sprint close 7/7 100% 1-run completion 真生效证据)
+- LL-101 (audit cite 必 SQL/git/log verify, sustained: SOP-4 真补 4th 源 system source 明示)
+- 本 LL Part 1 (SOP-4 跨 system claim 明示 source, 沿用 LL-101 三源 + system source 4 源 cross-verify)
+- 本 LL Part 2 (audit row backfill 5 condition SOP, 沿用 LL-101 SQL 真测 + 5 safety gate)
+
+### 持久化 (Part 1)
+
+- 本 LL Part 1 条目 (LL-103 Part 1)
+- 触发 case: PR #213 Step C3 retry verify (sub_task_2_1_1_step_c3_retry_verify_2026_05_02.md §5)
+- N×N 同步漂移真证据 cluster: 5-01 user 命题修正 sustained sprint state cite + SOP-1/2/3/4 cluster
+- 关联 LL: LL-098/100/101
+
+### 持久化 — 检测脚本 / SOP (Part 1)
+
+- **跨 system claim 明示 source template** (建议加 user prompt SOP):
+  ```
+  user prompt 含 "我之前说过 / 我提过 / 之前讲过" 等跨时间 cite:
+  → 必明示 source system: Claude.ai / CC / 别的
+  → CC 真测必 verify 真 source system accessible:
+    - Claude.ai → CC 真不可访问, 走 user portal 真自查 path
+    - CC → CC mcp__plugin_oh-my-claudecode_t__session_search verify
+    - 别的 → 真测决议
+  ```
+- **候选 detection** (Step 6.2+): pre-PR-merge hook grep PR body / audit md 含 user "之前说过" cite 但**0 source system 明示** → 提示是否需要 LL-103 SOP-4 system source 4 源 cross-verify.
+
+---
+
+### Part 2: audit row backfill 真 SQL 写 5 condition 真金 0 风险 SOP (PR #212 Step C2 sediment)
+
+**事件**:
+
+5-02 sprint close PR #212 Step C2 真**第一次破除 sprint sustained "0 SQL 写"** 跨 7 PR (sustained #207/#209/#210/#211/#213/sprint_state v3 memory/9cdaa91 LL-100). 真 SQL 写: trade_log +17 fills (4-29 emergency_close, reject_reason='t0_19_backfill_2026-04-29') + risk_event_log +1 audit row (audit_id `fb2f20d6-...`).
+
+**根因 (真金 0 风险 audit row backfill 5 condition)**:
+
+audit row backfill 真 SQL 写真**与真账户操作真不同**:
+- 真账户操作 (broker.place_order / cancel_order) → 真发单 → 真金风险
+- audit row backfill (trade_log INSERT / risk_event_log INSERT) → audit chain 入库 → **0 真金触碰**
+
+真**5 condition 真金 0 风险 verify** (PR #212 sediment):
+
+1. **LIVE_TRADING_DISABLED=true sustained** (.env unchanged): 真 broker chokepoint guard fail-secure True default, 任何 broker.place_order/cancel_order call 真触发 LiveTradingDisabledError raise.
+2. **hook 真 0 broker import** (grep verify): hook 文件 (e.g. t0_19_audit.py) 真**0 import xtquant / broker_qmt / MiniQMTBroker / place_order / cancel_order / order_stock**, 真 hook 真不触发真发单 path.
+3. **hook 真 0 xtquant import** (grep verify): hook 真**0 trade API call**, 真**仅 read log + INSERT audit row**.
+4. **SQL connection 真走 audit DB** (NOT broker connection): psycopg2 直连 quantmind_v2 (xin user) → audit DB, 真**broker 不走 SQL connection** (broker 走 xtquant SDK chokepoint).
+5. **post-INSERT 6 metric verify + 0 unintended mutation**: pre/post delta 真匹配 expected (e.g. trade_log_4_29 0→17, risk_event_30d 2→3), 真**0 unintended 表 mutation** (e.g. trade_log_4_30 sustained 0).
+
+**复用规则 (本 LL Part 2 SOP-5)**:
+
+1. **audit row backfill 真 SQL 写真**与真账户操作真不同**: audit row 入库 ≠ 真发单, 真**铁律 27 不 fabricate + 铁律 35 secrets 真分离**沿用.
+2. **5 condition 全 PASS 真允许 audit chain backfill SQL 写**: 真**任一 condition 不实 STOP**, 0 例外.
+3. **真**手工 individually call hook function** (NOT main entry write_post_close_audit) 真避免 unintended Step 3+4 mutation: write_post_close_audit 真 4 步合一 (Step 1 trade_log + Step 2 risk_event_log + Step 3 performance_series + Step 4 DELETE position_snapshot + UPDATE cb_state). 真**仅 Step 1+2 in scope**, Step 3+4 真**OUT-OF-SCOPE** per prompt scope (Step 4 真**违反 prompt UPDATE/DELETE 边界**).
+4. **dry_run + REAL INSERT 双阶段**: dry_run 模式真 print SQL plan + 0 INSERT (sanity check), REAL INSERT 真 try/commit/rollback 包络 (任何错误立即 rollback, 0 dirty state).
+5. **post-INSERT verify 6 metric**: pre + post delta 全 SQL spot-check, 真**0 unintended 表 mutation**, 真**audit chain 真闭环 verify**.
+
+**反例 (反 anti-pattern)**:
+
+- ❌ 真账户操作 = audit row backfill (反, 两者真**架构层不同**)
+- ❌ hook 真不 grep verify broker import → 真**风险路径不验证**
+- ❌ call write_post_close_audit main entry 真触发 Step 4 (DELETE/UPDATE) — 真**违反 prompt UPDATE/DELETE 边界**
+- ❌ post-INSERT 0 verify → 真**unintended mutation 不可考**
+
+**实战次数**: 累计 **第 1 次 audit row backfill SQL 写** (5-02 PR #212 Step C2). 真**首次实战**, 真**5 condition 真生效证据**: 17+1 INSERT 全成, 0 unintended mutation, 0 真金触碰.
+
+**沿用关联 LL**:
+
+- LL-066 (DataPipeline subset INSERT 例外, sustained: 真**审计路径不走 DataPipeline** 沿用)
+- LL-101 (audit cite 必 SQL/git/log verify, sustained: 5 condition 真**SQL 真测 verify** 沿用)
+- 本 LL Part 1 (SOP-4 跨 system claim, sustained: 真**audit row backfill 真 cross-verify**)
+- 本 LL Part 2 (SOP-5 5 condition audit row backfill SOP)
+
+### 持久化 (Part 2)
+
+- 本 LL Part 2 条目 (LL-103 Part 2)
+- 触发 case: PR #212 Step C2 (sub_task_2_1_1_step_c2_backfill_2026_05_02.md §6)
+- 5 condition 真**生效证据**: 17+1 INSERT 全成, 0 unintended mutation
+- 关联 LL: LL-066/101 + 本 LL Part 1
+
+### 持久化 — 检测脚本 / SOP (Part 2)
+
+- **5 condition pre-INSERT checklist** (建议作 hook function 真 SOP doc):
+  ```
+  audit row backfill 真 SQL 写 pre-INSERT checklist:
+  [1] LIVE_TRADING_DISABLED=true sustained (.env unchanged)
+  [2] hook 真 grep verify 0 broker import (xtquant/broker_qmt/MiniQMTBroker/place_order/cancel_order/order_stock)
+  [3] hook 真 grep verify 0 xtquant import
+  [4] SQL connection 真走 audit DB (psycopg2 直连 quantmind_v2, NOT broker)
+  [5] post-INSERT verify 6 metric (pre/post delta 全 PASS, 0 unintended mutation)
+  → 5/5 全 PASS 真允许 audit chain SQL 写; 任一不实 STOP.
+  ```
+- **真**手工 individually call hook** template (NOT main entry):
+  ```python
+  # NOT call write_post_close_audit (会触发 Step 3+4 unintended mutation)
+  # 真**手工 individually call** Step 1+2 only:
+  inserted = _backfill_trade_log(conn, fills_by_order, trade_date, strategy_id, dry_run=False)
+  audit_id = _write_risk_event_log_audit(conn, sells_summary, ..., dry_run=False)
+  conn.commit()
+  ```
+- **候选 detection** (Step 6.2+): pre-PR-merge hook grep audit md / PR body 含 audit row backfill 真 SQL 写 cite 但**0 5 condition checklist** → 提示是否需要 LL-103 SOP-5 verify.
+
+---
+
+### Part 3: 关联 + 5-02 sprint close milestone
+
+**关联 LL chain (5-02 sprint close 7 PR + 1 memory + 1 commit cumulative)**:
+
+| LL | 触发 PR | sediment 真证据 |
+|---|---|---|
+| LL-098 (X10 反 forward-progress) | PR period sustained 20+ stress test 0 失守 | 5-02 sprint close 7 PR + 1 memory + 1 commit, 0 forward-progress offer 末尾 |
+| LL-100 (reviewer chunked SOP) | PR #207/#209/sprint_state v3/PR #210/PR #211/PR #212/PR #213 | 7/7 100% 1-run completion: 105+73+73+100+135+117+94=697s, 平均 99.6s |
+| LL-101 (audit cite 必真测 verify) | PR #209 真值订正 (35→18 漂移 48.6%) | 5-02 sprint close 4 次自身实证 (PR #209 自身 47.4→48.6 / Source 8/9/10/11 retry 0 完整真值 / 上轮 18 vs 32 methods / -29% vs -20% drift candidate) |
+| LL-102 | (gap, sustained LL-100 inline note "099 真不存在 = identifier") | 真**LL-102 真 0 sediment in 5-02 sprint close**, gap 沿用 LL-100 sparse numbering pattern |
+| **LL-103 Part 1** (SOP-4 跨 system claim) | **PR #213 Step C3 retry verify** (本 PR #214 candidate) | N×N 同步漂移第 7 次实证 |
+| **LL-103 Part 2** (SOP-5 5 condition audit row backfill) | **PR #212 Step C2 (本 PR #214 candidate)** | 第一次 audit row backfill SQL 写, 真金 0 风险 verify, 17+1 INSERT 全成 |
+
+**5-02 Sprint Close 真闭环 (本 PR sediment)**:
+
+- 真 7 PR + 1 memory patch + 1 LL-100 commit + 1 LL-103 sediment PR (本 PR) = **10 sprint close artifacts**
+- 真**audit chain 17/18 闭环 (94.4%)**, 1/18 long-tail (user portal 真值)
+- 真 5 audit md sediment in `findings/`: F_D78_240_correction.md / wf_metric_definitions.md / sub_task_2_1_1_4_30_real_value_verify.md / sub_task_2_1_1_step_c2_backfill.md / sub_task_2_1_1_step_c3_retry_verify.md
+- 真**0 prod 改 / 0 schtask / 0 .env / 0 hook bypass / 0 broker 触碰** sustained 全 sprint
+- 真 SQL 写仅 PR #212 (audit row, 真金 0 风险, 5 condition verify)
+
+**真 sustained governance milestone**:
+
+5-02 sprint close 真**LL-100 chunked SOP 真稳定** (7/7 100% 1-run completion). 真**未来类似 sediment PR 真 reviewer 平均 ≤100s 1-run**, 真**N×N 同步成本真治理路径 cumulative**: SOP-1 (3 源 dedup) + SOP-2 (audit cite 真测) + SOP-3 (CC prompt 留占位) + SOP-4 (跨 system claim 明示) + SOP-5 (audit row backfill 5 condition) = **5 SOP cluster sediment**.
+
