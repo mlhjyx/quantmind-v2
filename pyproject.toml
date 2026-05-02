@@ -38,6 +38,11 @@ dependencies = [
     # === ML ===
     "lightgbm>=4.5.0",
 
+    # === LLM Router (V3 §5.5 + ADR-020 + ADR-031) ===
+    # LiteLLM 是 V3 LLM 调用 only path (CI lint enforce, 详 docs/LLM_IMPORT_POLICY.md).
+    # cascade 装 openai SDK (deepseek_client.py:222 lazy import 依赖, S6 allowlist marker preserve).
+    "litellm>=1.83.14",
+
     # === 工具 ===
     "httpx>=0.27.0",
     "loguru>=0.7.0",
