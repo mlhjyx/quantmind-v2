@@ -37,10 +37,13 @@ model_list:
 
 router_settings:
   routing_strategy: simple-shuffle
+  # router-level retry (cross-model fallback), distinct from per-model max_retries 上面
   num_retries: 2
   retry_after: 5
   allowed_fails: 3
   cooldown_time: 30
+  # fallbacks 格式: [{primary_model: [fallback_models...]}] per LiteLLM Router spec.
+  # YAML parse 后 = [{"deepseek-v4-flash": ["qwen3-local"]}, {"deepseek-v4-pro": ["qwen3-local"]}]
   fallbacks:
     - deepseek-v4-flash:
         - qwen3-local
