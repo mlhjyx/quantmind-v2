@@ -1,8 +1,75 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)**
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-49, §0.-3)**
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-3 5-02 Sprint Close (Session 47-49, 2026-05-01 ~21:50 → 2026-05-02) ⭐
+
+> **5-02 Sprint Close 真闭环**: 11 artifacts (9 PR #206-#214 + 2 memory patch v3+v4.1). main HEAD 推进 `a6a41f4` → `e26874e`. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` 顶部 Session 49 handoff (单源化, 沿用 X5 + ADR-022 §7).
+
+### Session 47 (2026-05-01 ~21:50, PR #192/#193)
+
+- **PR #192 Layer 1 Week 1 P0 修**: WI 1 pip 26.0.1→26.1 (F-D78-271/272 closed) / WI 2 get_notification_service factory + _SyncNotificationFacade.send_sync (F-D78-235 closed, 14-caller cluster Layer 1 path 解锁) / WI 2.5 broker_qmt _handle_disconnect 真已生效 (反 audit 假设) / WI 3 5-01~5-05 真 5-day Labor Day holiday verify (F-D78-289 P0→P3 demote) / WI 4 fast_ic_recompute --core 11928 rows / 4 CORE / MAX=2026-04-28 / WI 5 emergency_sop_v1.md / WI 6 account_truth_log.md / WI 0.5 _verify_account_oneshot.py
+- **PR #193 Phase 4.2 Layer 4 SOP align**: WI 1 protocol_v1.md (Phase 4.1 verbatim sediment) / WI 2 DECISION_LOG.md top-level (D 决议 SSOT registry, 8 D-headers D-72~D-79) / WI 3 config/hooks/pre-commit (5 metric canonical 真测 verify, warning-only first pass) / WI 4 docs/handoff_template.md (10 number type → SQL cite SOP) / WI 5 CLAUDE.md +1 bullet (Sprint state cite SOP) / WI 6 alpha_continuous_log.md + cross_verify_log.md skeleton
+
+### Session 48 (2026-05-02 早期, PR #206-#211)
+
+- **Layer 2.1.7 chain dv_ttm 4-28 cascade**: PR #206 RC4 (Tushare 非确定性回填 真因) + PR #207 A1.1.B B cascade (factor_values variance 1→3487 distinct 恢复). 4-27/4-28 IC 仍 NULL 真因 2 = forward horizon T+5 未到, 5-08 后自然恢复.
+- **PR #208 LL-100 sediment** (commit `9cdaa91`): reviewer agent mid-flight kill chunked re-launch SOP (2 实证, 沉淀 long-term value)
+- **PR #209 F-D78-240 真值订正**: cite "35" 真值 18, 漂移 48.6% (NOT 47.4% — LL-101 自身真讽刺纠错). 真值 = 17 CC emergency_close fills (4-29 10:43:54) + 1 GUI sell (4-30). 漂移源 = audit risk/08:40 cite "user 4-30 GUI sell 18 股" 歧义 ("18 股"=持仓数, 真 trade 笔数=1). LL-101 sediment LESSONS_LEARNED.md L3173+.
+- **PR #210 WF 4 治理债 audit md** (`docs/audit/2026_05_audit/findings/wf_metric_definitions_2026_05_02.md` 294 lines / 9 sections): F-WF-1/2/3/4 候选 (STABLE 跨脚本两套 + Overfit 阈值跨脚本两套 + wf_equal_weight docstring 真 train 8 年 + full_sample_sharpe 真 6 年). **真重要 finding sim-to-real gap 不被 WF 验证** — 5 fold test 期最后=2026-04-10, 4-29 PT 真生产事件 (688121 -29% / 000012 -10%) 不在任何 fold 内, WF Sharpe=0.8659 PASS 不验证 4-29 真期间 (audit F-D78-85 真证据加深).
+- **PR #211 sub-task 2.1.1 prerequisite 5 source verify** (V2 触发, audit md 284 lines): QMT GUI backup / xtquant SDK / xtdata OHLC / position_snapshot / broker REST 5 source — 0 完整真值 (仅 qty=4500 + 区间 [6.18, 6.63]). V2 verdict: 4-30 GUI sell 真 fill_price + executed_at 真 source = 国金券商 portal only.
+
+### Session 49 (2026-05-02, PR #212-#214 + 2 memory patch)
+
+- **PR #212 sub-task 2.1.1 Step C2 真 SQL 写** (5-02 sprint **第一次破除 "0 SQL 写" sustained**): trade_log +17 fills via PR #168 _backfill_trade_log hook (`backend/app/services/t0_19_audit.py:178`) + risk_event_log +1 audit row (UUID=fb2f20d6-bbd3-4c2e-a7d7-930d84d1dac2). 真 source = `logs/emergency_close_20260429_104354.log`. 真重入检测双保险 (trade_log reject_reason LIKE 't0_19_backfill_%' + flag file). **真金 0 风险 5 condition** (SOP-5 sediment LL-103 Part 2): LIVE_TRADING_DISABLED=true / hook 0 broker import / hook 0 xtquant import / SQL 走 audit DB / post-INSERT 6 metric verify + 0 unintended mutation. user 接触 0 次.
+- **PR #213 Step C3 retry verify** (11 source matrix complete): 4 retry source (CC session 89 files / docs grep / PR #169 narrative / Claude.ai conversation_search) — 0 完整真值. **Source 11 真 source = 国金券商 portal export** (out-of-scope CC + Claude.ai). V2-confirmed sustained.
+- **PR #214 LL-103 sediment** (LESSONS_LEARNED.md L3248+, +175 lines, ll_unique_ids 93→94): Part 1 SOP-4 (跨 system claim 明示 source) + Part 2 SOP-5 (audit row backfill 真 SQL 写 5 condition) + Part 3 (5-02 milestone). **Claude.ai vs CC 真分离 architecture finding**: 真两 system 真分离 (Claude.ai web user account memory vs CC CLI `~/.claude/*.jsonl`, conversation 真不 cross-sync). user 跨 system claim 真不可 cross-verify by CC. **5-01 N×N 同步漂移命题真证据加深 (第 7 次实证)**.
+- **sprint_state v3 (memory direct, Session 48 sediment)** + **sprint_state v4.1 (memory direct, Session 49 sediment)**: yaml keys 10 → 11 (+ description-archived-session-48). +144 lines (Part B handoff section). LL-100 第 9 次连续 76s APPROVE 0 issues.
+
+### 5-02 Sprint Close 关键 milestone 5
+
+| # | milestone | 真值 |
+|---|---|---|
+| 1 | 真 SQL 写第一次破除 sustained (PR #212) | trade_log +17 / risk_event +1 audit row, 5 condition 0 真金风险 |
+| 2 | audit chain 17/18 闭环 (94.4%) | 1/18 (4-30 GUI sell) long-tail = portal only out-of-scope CC |
+| 3 | WF 治理债 audit md sediment (PR #210) | 4 治理债 + sim-to-real gap finding (audit F-D78-85 真证据加深) |
+| 4 | Claude.ai vs CC 真分离 finding (LL-103 Part 1) | SOP-4 sediment, N×N 同步漂移第 7 次实证 |
+| 5 | LL-100 chunked SOP 9/9 100% 1-run | 累计 888s / 平均 98.7s / 全 ≤8 min target / 0 kill 0 retry |
+
+### 5 SOP cluster 完整 sediment
+
+- **SOP-1** (推荐起手项 cross-check 3 源 dedup): 反 N×N 同步漂移
+- **SOP-2** (audit cite 数字必 SQL/git/log 真测 verify before 复用): F-D78-240 漂移 48.6% 触发
+- **SOP-3** (Claude.ai 写 CC prompt 留占位 "{{CC 实测决议}}"): v2 prompt 4 处 stale cite 触发
+- **SOP-4** (跨 system claim 明示 source, LL-103 Part 1): user "跟 CC 说过" 真意 Claude.ai 触发, 30 min 后 v4 draft path 真讽刺自身实证 #2
+- **SOP-5** (audit row backfill 真 SQL 写 5 condition, LL-103 Part 2): PR #212 第一次破除 sustained
+
+### 红线 sustained 全 sprint period
+
+- cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102 (反 v2 prompt cite "2039" 漂移 sustained PR #211)
+- ll_unique_ids = 94 (LESSONS_LEARNED.md grep 真测, post-LL-103 sediment)
+
+### Session 49+1 入口 — (F) PT 重启战略讨论
+
+(Claude.ai+user 战略对话, no CC PR action):
+
+| 议题 | 决议候选 |
+|---|---|
+| V3 风控架构 §20 10 项开放问题 | user 提供 V3_DESIGN.md §20 真原文起手 |
+| sim-to-real gap verify path | (a) paper-mode 5d dry-run / (b) WF refresh cutoff=5-08+ / (c) 反事实回测 4-29 真期间 / (d) 多种组合 |
+| 5-08 后 4-27/4-28 IC verify | sustained P3 backlog, T+5 自然恢复 verify |
+| audit Week 2 candidate 选择性修 | (a) 全修 / (b) 选 P0/P1 / (c) 留 PT 重启后 |
+| PT 重启时间窗口 | (a) 5-08 / (b) 5-12 / (c) 5-19 / (d) 等 V3 Tier A 7-9 周 |
+
+### Long-tail backlog
+
+- **P1**: Step C3 实施 (4-30 GUI sell 1 笔, 等 user 国金 portal export → 1 SQL INSERT 沿用 SOP-5) → audit chain 18/18 闭环
+- **P1 plan-mode**: Layer 2.1.7 A2 架构解耦 (Layer 2.3 主路径)
+- **P2/P3 + 哲学层**: 详 `project_sprint_state.md` Session 49 handoff "Backlog" section
 
 ---
 
