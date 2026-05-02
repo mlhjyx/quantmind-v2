@@ -181,7 +181,7 @@ result: {'total_rows': 5474, 'dates': 1, 'load_time': 52.0, 'calc_time': 0.0, 't
 | **2026-04-23** | ic_5d | **NULL** ⚠️ | T+5=4-30 (理论可算, 但 fast_ic_recompute MAX limit) |
 | **2026-04-24** | ic_5d | **NULL** ⚠️ | T+5=5-2 (holiday, 真不存在) |
 | **2026-04-27** | ic_5d | **NULL** ⚠️ | T+5=5-8 (klines 5-6+ 不存在) |
-| **2026-04-28** | ic_5d | **NULL** ⚠️ | T+5=5-9 (klines 5-6+ 不存在) |
+| **2026-04-28** | ic_5d | **NULL** ⚠️ | T+5=5-8 (klines 5-6/5-7/5-8 不存在) |
 
 ### D.4 cascade 部分受限真因
 
@@ -192,11 +192,11 @@ result: {'total_rows': 5474, 'dates': 1, 'load_time': 52.0, 'calc_time': 0.0, 't
 
 **forward return horizon issue (NEW, 真测发现)**:
 - ic_5d at T = corr(neutral_value[T], forward_return[T → T+5 trading days])
-- 4-28 + 5 trading days = 5-9 (Tushare 5-1~5-5 holiday + 5-6~5-9 真未到)
+- 4-28 + 5 trading days = 5-8 (Tushare 5-1~5-5 holiday, T+1=4-29, T+2=4-30, T+3=5-6, T+4=5-7, T+5=5-8 — 5-6/5-7/5-8 真未到达)
 - klines_daily MAX = 4-30 → forward return 5d 不可计算 → IC=NULL
-- → A1.1 audit cite 真因 2 (cross-section variance=0) 已 fix, 但**真因 3** (forward return horizon limit) 独立, **不在 A1.1 audit framing 内** ⚠️
+- → A1.1 audit cite 真因 1 (cross-section variance=0) 已 fix, 但**真因 2** (forward return horizon limit) 独立, **不在 A1.1 audit framing 内** ⚠️
 
-→ **(N+1) 真发现**: 4-27/4-28 IC NULL 真因 = forward return horizon limit (而非 cross-section variance=0). 需 5-6+ klines 真到达后**自然恢复** (5-8 klines 到 → 4-27 ic_5d 可算; 5-9 klines 到 → 4-28 ic_5d 可算).
+→ **(N+1) 真发现**: 4-27/4-28 IC NULL 真因 = forward return horizon limit (而非 cross-section variance=0). 需 klines 5-6/5-7/5-8 真到达后 ic_5d 可算 → IC 自然恢复.
 
 ### D.5 真生产真闭环
 
@@ -240,7 +240,7 @@ SELECT * FROM signals WHERE created_at::date='2026-04-28' LIMIT 5
 
 ### E.3 signals 4-28 真因 alpha_score 与 dv_ttm cascade 关系
 
-PT alpha 真公式 (CLAUDE.md cite): **`-z(turnover_mean_20) + -z(volatility_20) + +z(bp_ratio) + +z(dv_ttm)`**, equal-weight Top 20.
+PT alpha 真公式 (`vectorized_signal.py:132` 真实现 + `pt_live.yaml:9-12` direction signs): **`mean(-z(turnover_mean_20), -z(volatility_20), z(bp_ratio), z(dv_ttm))`** (equal-weight mean, rank-equivalent to sum), Top 20.
 
 pre-§C state (4-28 dv_ttm 全 0.0):
 - effective alpha = (-turnover - volatility + bp + 0) (dv_ttm 真 contribution = 0)
@@ -301,11 +301,11 @@ cite memory: "BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数 (M=21
 ✅ **完成**:
 - daily_basic 4-28 (B): NULL fix 100% → 31.80%
 - factor_values 4-28 dv_ttm (C): variance 0 → restored (3487 distinct)
-- factor_ic_history (D): rewritten with new variance, BUT 4-27/4-28 IC remains NULL due to **forward return horizon** (independent reason, 自然 5-9 后恢复)
+- factor_ic_history (D): rewritten with new variance, BUT 4-27/4-28 IC remains NULL due to **forward return horizon** (independent reason, 自然 5-8 后恢复)
 - signals 4-28 (E): historical frozen, 不重算 (audit decision)
 
 ⚠️ **partial**:
-- 4-27/4-28 dv_ttm IC: 真 NULL 不是 §D 失败, 是 **forward return horizon 限制** (T+5 需 klines 5-6/5-7/5-8/5-9 真未到达). 5-6+ klines 自然到达后 IC 自动重算 (next QuantMind_DailyIC schtask trigger).
+- 4-27/4-28 dv_ttm IC: 真 NULL 不是 §D 失败, 是 **forward return horizon 限制** (T+5 需 klines 5-6/5-7/5-8/5-8 真未到达). 5-6+ klines 自然到达后 IC 自动重算 (next QuantMind_DailyIC schtask trigger).
 
 ### F.3 partial cascade 是否产生新 silent inconsistency?
 
@@ -322,7 +322,7 @@ cite memory: "BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数 (M=21
 
 | (N+1) 候选 | scope | 推荐 |
 |---|---|---|
-| 5-9+ trigger fast_ic_recompute --factor dv_ttm 验证 4-27/4-28 IC 自然恢复 | 等 5-6 klines 真到达后 1-2 d, 跑 IC recompute | ⭐ **推荐 (5-9 后启动)** — 验证 forward horizon 真自然消除 |
+| 5-8+ trigger fast_ic_recompute --factor dv_ttm 验证 4-27/4-28 IC 自然恢复 | 等 5-6 klines 真到达后 1-2 d, 跑 IC recompute | ⭐ **推荐 (5-8 后启动)** — 验证 forward horizon 真自然消除 |
 | 4-27/4-28 dv_ttm IC backfill via 4-30 klines as 4-day proxy | hack, 反 IC 真定义 (T+5 forward) | ❌ 不推荐 |
 | 历史其他 100% NULL 日 (4-15→4-20 cite) audit cascade | 历史 5 天 daily_basic + factor_values + IC 全 cascade 重 pull | 候选 (留 user 决议, 范围更大) |
 
@@ -335,10 +335,10 @@ cite memory: "BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数 (M=21
 1. **CORE 4 PT 因子 (turnover_mean_20 / volatility_20 / bp_ratio) 4-28 真值是否变化**: §C 仅 surgical 重算 dv_ttm. 其他 3 CORE 因子 4-28 真 factor_values 未真重算. 假设它们 deterministic + 输入 (klines / industry / mcap) 4-28 未变 → 真值不变. 但**未直接 verify**.
 2. **4-27 dv_ttm IC NULL 真因**: §D 真测 4-27 IC NULL, 推断是 forward horizon (T+5=5-8). 但**未真测 fast_ic_recompute 真 lookback / forward 边界逻辑** — 假设 ic_5d 需 T+5 klines 真存在.
 3. **fast_ic_recompute --factor dv_ttm 真 vs --core 真 cascade**: cite memory Layer 1 Week 1 WI 4 用 `--core` 11928 rows / 4 CORE factors, 本 audit 用 `--factor dv_ttm` 2982 rows / 1 factor. **未真测 --core 重算是否产出不同结果**.
-3. **F22 NULL Ratio Guard logger.error 4-28 真 stderr 输出**: §B 真触发 logger.error, 但**未真验** stderr / log file 真捕获 (logs/ 5-1 06:00 LogRotate 真跑).
-4. **lineage row 真写入 verify**: §C save_daily_factors with_lineage=True, 但**未真查 lineage 表** 4-28 dv_ttm 行新增.
-5. **signals 4-28 alpha_score 真 vs dv_ttm 0.0 contribution 数学验证**: 推断 alpha = -z(turnover) - z(vol) + z(bp) + z(dv_ttm), dv_ttm=0 contribution=0. **未真直接 verify** alpha_score 真公式 in signal_engine.py.
-6. **4-15→4-20 历史 100% NULL 日是否同 pattern**: contracts.py:170 cite, 本 audit **未真测** 4-15/4-16/4-17/4-18/4-19/4-20 daily_basic dv_ttm NULL ratio per-date 真值.
+4. **F22 NULL Ratio Guard logger.error 4-28 真 stderr 输出**: §B 真触发 logger.error, 但**未真验** stderr / log file 真捕获 (logs/ 5-1 06:00 LogRotate 真跑).
+5. **lineage row 真写入 verify**: §C save_daily_factors with_lineage=True, 但**未真查 lineage 表** 4-28 dv_ttm 行新增.
+6. **signals 4-28 alpha_score 真 vs dv_ttm 0.0 contribution 数学验证**: 推断 alpha = mean(-z(turnover), -z(vol), z(bp), z(dv_ttm)), dv_ttm=0 contribution=0. **未真直接 verify** alpha_score 真公式 in signal_engine.py.
+7. **4-15→4-20 历史 100% NULL 日是否同 pattern**: contracts.py:170 cite, 本 audit **未真测** 4-15/4-16/4-17/4-18/4-19/4-20 daily_basic dv_ttm NULL ratio per-date 真值.
 
 ---
 
@@ -352,7 +352,7 @@ cite memory: "BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数 (M=21
 
 3. **§D factor_ic_history 4-28 dv_ttm IC partial cascade**:
    - **真因 1 fixed** (cross-section variance=0): §C cascade 已解决
-   - **真因 2 unchanged** (forward return horizon limit): T+5 klines 5-6~5-9 真未到达, 4-27/4-28 IC 自然 NULL 待 5-9+ 自然恢复. **不是 §D 失败, 是 (N+1) 真发现**.
+   - **真因 2 unchanged** (forward return horizon limit): T+5 klines 5-6~5-8 真未到达, 4-27/4-28 IC 自然 NULL 待 5-8+ 自然恢复. **不是 §D 失败, 是 (N+1) 真发现**.
 
 4. **§E (N+1) downstream cascade verify**:
    - dv_ttm schema-wide reference 真闭环 (仅 daily_basic + factor_values + factor_ic_history + signals)
@@ -381,7 +381,7 @@ cite memory: "BH-FDR校正: M = FACTOR_TEST_REGISTRY.md 累积测试总数 (M=21
    - factor_ic_history dv_ttm: 2982 行 UPSERT (IC values rewritten)
 
 8. **user 决议候选**:
-   - (a) 接受当前真状态 (B+C+D+E partial cascade ✅, 4-27/4-28 IC 自然 5-9 后恢复)
-   - (b) 5-9+ 后启动 fast_ic_recompute --factor dv_ttm 验证 4-27/4-28 IC 自然恢复
+   - (a) 接受当前真状态 (B+C+D+E partial cascade ✅, 4-27/4-28 IC 自然 5-8 后恢复)
+   - (b) 5-8+ 后启动 fast_ic_recompute --factor dv_ttm 验证 4-27/4-28 IC 自然恢复
    - (c) 历史 4-15→4-20 同 pattern 100% NULL 日 cascade audit (scope 5 天, 范围更大)
    - (d) (N+1) 真测发现的扩展 (本 audit 真测发现 forward horizon 真因, 留 user 决议是否升级 candidate)
