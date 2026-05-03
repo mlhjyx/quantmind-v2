@@ -247,6 +247,15 @@ class LiteLLMRouter:
         """
         primary_alias = self.model_for(task)  # 仍校验 task 合法性, 反 silent fallback
 
+        # 沿用 reviewer Chunk C P3 hardening: model_alias 必在 init-validated set,
+        # 反 caller 真 typo/unknown alias 走 LiteLLM internal opaque error (fail-loud, 铁律 33).
+        loaded_aliases = {entry["model_name"] for entry in self._raw_config["model_list"]}
+        if model_alias not in loaded_aliases:
+            raise RouterConfigError(
+                f"model_alias '{model_alias}' 不在 yaml model_list (loaded: {sorted(loaded_aliases)}); "
+                "caller 必传 init-validated alias (e.g. FALLBACK_ALIAS)."
+            )
+
         message_dicts = [
             {"role": m.role, "content": m.content} if isinstance(m, LLMMessage) else dict(m)
             for m in messages

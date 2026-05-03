@@ -402,3 +402,22 @@ def test_router_completion_with_alias_override_unknown_task_raises(
             messages=[LLMMessage("user", "x")],
             model_alias=FALLBACK_ALIAS,
         )
+
+
+def test_router_completion_with_alias_override_unknown_alias_raises(
+    litellm_router: LiteLLMRouter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """path C — model_alias 不在 yaml model_list → RouterConfigError (反 caller typo/silent miss).
+
+    沿用 reviewer Chunk C P3 hardening (defensive fail-loud, 铁律 33).
+    """
+    from backend.qm_platform.llm import RouterConfigError
+    _patch_router_completion(monkeypatch, actual_model="x")
+
+    with pytest.raises(RouterConfigError, match="不在 yaml model_list"):
+        litellm_router.completion_with_alias_override(
+            task=RiskTaskType.JUDGE,
+            messages=[LLMMessage("user", "x")],
+            model_alias="future-v5-alias-typo",
+        )

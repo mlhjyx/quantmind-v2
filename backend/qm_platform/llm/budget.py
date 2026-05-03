@@ -150,7 +150,13 @@ class BudgetGuard:
         is_capped: bool,
         today: date | None = None,
     ) -> None:
-        """UPSERT 当日 row (原子, 沿用 feature_flag.py:151 ON CONFLICT 体例)."""
+        """UPSERT 当日 row (原子, 沿用 feature_flag.py:151 ON CONFLICT 体例).
+
+        cost_usd == 0 真合法 — call_count 仍自增, audit trail 完整 (沿用
+        reviewer Chunk A P2 finding clarify): LiteLLM `_hidden_params.response_cost`
+        缺失时 LLMResponse.cost_usd 默认 Decimal("0"), 仍走 UPSERT 一次,
+        反 silent skip + 保 call_count + fallback_count + capped_count 完整.
+        """
         if cost_usd < 0:
             raise ValueError(f"cost_usd 不能为负: {cost_usd}")
 

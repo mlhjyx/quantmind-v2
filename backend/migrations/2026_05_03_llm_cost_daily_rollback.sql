@@ -11,6 +11,7 @@ COMMIT;
 -- 验证 (反 silent rollback fail):
 DO $$
 BEGIN
+    SET LOCAL statement_timeout = '30s';   -- 沿用 risk_event_log.sql DO guard 体例 (reviewer Chunk B P2)
     IF EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_name = 'llm_cost_daily'
