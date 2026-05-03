@@ -205,6 +205,72 @@ class LiteLLMRouter:
             decision_id=decision_id,
         )
 
+    def completion_with_alias_override(
+        self,
+        task: RiskTaskType,
+        messages: list[LLMMessage] | list[dict[str, str]],
+        *,
+        model_alias: str,
+        decision_id: str | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """覆盖 task → primary alias 走 caller 指定 model_alias (S2.2 BudgetAwareRouter capped fallback 消费).
+
+        path C — additive change (NOT mutation 现 completion 方法), 沿用 ADR-022 反
+        silent overwrite + 决议 2 (p1) deepseek_client 0 mutation 体例.
+
+        典型 use case (BudgetAwareRouter capped 状态强制 fallback):
+            response = router.completion_with_alias_override(
+                task=RiskTaskType.JUDGE,
+                messages=[...],
+                model_alias=FALLBACK_ALIAS,   # 强制走 qwen3-local
+                decision_id="risk-event-uuid",
+            )
+            # response.is_fallback == True (检测路径沿用 PRIMARY_MODEL_SUBSTRINGS)
+            # response.decision_id == "risk-event-uuid" (透传, S2.3 audit 真依赖)
+
+        Args:
+            task: 原始任务 (audit cite 沿用 PR #222 contract, 不影响路由).
+            messages: LLMMessage list 或 dict list.
+            model_alias: 强制覆盖 task 真 primary alias (e.g. "qwen3-local").
+            decision_id: caller trace ID (S2.3 audit 透传, 沿用 PR #222 contract).
+            timeout: 单次调用 timeout (秒).
+            **kwargs: 透传 LiteLLM completion (e.g. temperature / max_tokens).
+
+        Returns:
+            LLMResponse (model 真 LiteLLM 实际返值, is_fallback 走子串检测;
+            primary_alias 仍走 task 默认值, 反 fallback 检测漏报).
+
+        Raises:
+            UnknownTaskError: task 不在 enum (反 silent fallback, 沿用铁律 33).
+        """
+        primary_alias = self.model_for(task)  # 仍校验 task 合法性, 反 silent fallback
+
+        message_dicts = [
+            {"role": m.role, "content": m.content} if isinstance(m, LLMMessage) else dict(m)
+            for m in messages
+        ]
+
+        completion_kwargs: dict[str, Any] = dict(kwargs)
+        if timeout is not None:
+            completion_kwargs["timeout"] = timeout
+
+        start = time.perf_counter()
+        result = self._router.completion(
+            model=model_alias,
+            messages=message_dicts,
+            **completion_kwargs,
+        )
+        latency_ms = (time.perf_counter() - start) * 1000.0
+
+        return self._build_response(
+            result=result,
+            primary_alias=primary_alias,
+            latency_ms=latency_ms,
+            decision_id=decision_id,
+        )
+
     def _build_response(
         self,
         *,
