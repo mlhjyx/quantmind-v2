@@ -570,6 +570,38 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_ServicesHealthCheck registered (every 15min, 24/7)" -ForegroundColor Green
 
+# ── 16. QuantMind_LLMCostDaily: Mon-Fri 20:30 (Session 51 PR #224 — S2.3 LLM 成本 daily aggregate) ──
+# 沿用决议 6 (a) S5 退役合并 S2.3 — daily aggregate report + DingTalk push (V3 §16.2 cite).
+# 时段选择 (沿用 S2.3 plan-mode finding 17:30 真冲突 — DailyMoneyflow + FactorHealthDaily 占用):
+#   - 20:30 真 PT_Watchdog 20:00 后 30min, 全 dense window (17:30-18:45) 后 0 资源争抢
+#   - 反 17:30 (cadence 真 2 task 占用, table 无交集但本 LLM 路径无表交集风险)
+# Mon-Fri 仅: A 股非交易日 LLM 路径 (Bull/Bear/Judge cadence) 真无活动, 周末跑只产 0 row 噪声.
+# Action: scripts/llm_cost_daily_report.py (沿用 compute_daily_ic.py 体例, 铁律 41/43 d).
+# DingTalk push: webhook_url 0 set 时真 noop (沿用决议 (I) stub 反 break local dev).
+$llmcostAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "$ProjectRoot\scripts\llm_cost_daily_report.py" `
+    -WorkingDirectory $ProjectRoot
+
+$llmcostTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "20:30"
+
+$llmcostSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_LLMCostDaily" `
+    -Description "QuantMind V2: LLM cost daily aggregate report + DingTalk push (Session 51 PR #224, S2.3 沿用决议 6 (a) S5 退役合并)" `
+    -Action $llmcostAction `
+    -Trigger $llmcostTrigger `
+    -Settings $llmcostSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_LLMCostDaily registered (Mon-Fri 20:30)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete (16 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register; Session 35: +ServicesHealthCheck). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (17 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register; Session 35: +ServicesHealthCheck; Session 51 PR #224: +LLMCostDaily). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"

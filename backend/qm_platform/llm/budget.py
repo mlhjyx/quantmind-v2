@@ -30,10 +30,13 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .router import FALLBACK_ALIAS, LiteLLMRouter
+from .router import FALLBACK_ALIAS, TASK_TO_MODEL_ALIAS, LiteLLMRouter
 from .types import LLMMessage, LLMResponse, RiskTaskType
+
+if TYPE_CHECKING:
+    from .audit import LLMCallLogger
 
 logger = logging.getLogger(__name__)
 
@@ -227,14 +230,20 @@ class BudgetAwareRouter:
         budget: BudgetGuard,
         *,
         strict: bool = False,
+        audit: LLMCallLogger | None = None,
     ) -> None:
         self._router = router
         self._budget = budget
         self._strict = strict
+        self._audit = audit  # S2.3 PR #224: optional audit log (additive, None → 0 audit)
 
     @property
     def is_strict(self) -> bool:
         return self._strict
+
+    @property
+    def audit(self) -> LLMCallLogger | None:
+        return self._audit
 
     def completion(
         self,
@@ -288,4 +297,94 @@ class BudgetAwareRouter:
             is_fallback=response.is_fallback,
             is_capped=is_capped,
         )
+
+        # S2.3 PR #224: optional audit log (additive, audit None → skip).
+        # 失败 path 沿用决议 7 — fail-loud warning + 反 break completion.
+        # 沿用 reviewer Chunk A P2-2 修: 即使 _audit_log 内部 raise (e.g. dataclass
+        # 构造异常), 这里 try/except 包络 → 反 break completion 真 caller.
+        if self._audit is not None:
+            try:
+                self._audit_log(
+                    task=task,
+                    messages=messages,
+                    response=response,
+                    snapshot=snapshot,
+                    is_capped=is_capped,
+                    decision_id=decision_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "llm_audit_record_build_failed",
+                    extra={
+                        "event": "llm_audit_record_build_failed",
+                        "task": task.value,
+                        "decision_id": decision_id,
+                        "exc_class": type(exc).__name__,
+                        "exc_msg": str(exc),
+                    },
+                )
+
         return response
+
+    def _audit_log(
+        self,
+        *,
+        task: RiskTaskType,
+        messages: list[LLMMessage] | list[dict[str, str]],
+        response: LLMResponse,
+        snapshot: BudgetSnapshot,
+        is_capped: bool,
+        decision_id: str | None,
+    ) -> None:
+        """构造 LLMCallRecord + 调 self._audit.log_call (S2.3 additive).
+
+        本方法 0 raise — LLMCallLogger.log_call 内部包络 try/except,
+        失败 → fail-loud warning log + return False (反 break completion 真 caller).
+        """
+        # 沿用 reviewer Chunk A P3-1 修: assert 消除 type: ignore[union-attr]
+        # (caller 真 if self._audit is not None guard, 这里 assert 反 mypy false-positive).
+        assert self._audit is not None
+
+        # lazy import 反循环依赖 (audit.py imports from .budget)
+        from .audit import LLMCallRecord, compute_prompt_hash
+
+        primary_alias = TASK_TO_MODEL_ALIAS.get(task, "")
+        try:
+            prompt_hash = compute_prompt_hash(messages)
+        except Exception as exc:  # pragma: no cover — sha256 真不应失败
+            logger.warning(
+                "llm_audit_prompt_hash_failed",
+                extra={
+                    "event": "llm_audit_prompt_hash_failed",
+                    "task": task.value,
+                    "exc_class": type(exc).__name__,
+                },
+            )
+            prompt_hash = None
+
+        # 沿用 reviewer Chunk A P2-1 修: latency_ms 0 真当作 unknown → 写 NULL.
+        # LLMResponse.latency_ms float=0.0 default 真**永远非 None**, > 0 真已 measure.
+        # 0ms 真不可能 (sha256 速度都 > 0.001ms), 0.0 真**默认未 measure** 信号.
+        latency_ms_int: int | None
+        if response.latency_ms > 0:
+            latency_ms_int = int(round(response.latency_ms))
+        else:
+            latency_ms_int = None
+
+        # NOTE: failure path audit (error_class != None) 留 S2.4+ — 当前仅 success path.
+        # 沿用 reviewer Chunk A P3-3 修 cite — 沿用决议 7 fail-loud + 反 break completion 体例.
+        record = LLMCallRecord(
+            task=task,
+            primary_alias=primary_alias,
+            actual_model=response.model,
+            is_fallback=response.is_fallback,
+            budget_state=snapshot.state,
+            tokens_in=response.tokens_in,
+            tokens_out=response.tokens_out,
+            cost_usd=response.cost_usd,
+            latency_ms=latency_ms_int,
+            decision_id=decision_id,
+            prompt_hash=prompt_hash,
+            error_class=None,
+        )
+        self._audit.log_call(record)

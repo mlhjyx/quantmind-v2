@@ -23,6 +23,7 @@
 | # | 文件 | 触发场景 | 真金风险 |
 |---|------|---------|---------|
 | 01 | [`01_setx_unwind_runbook.md`](01_setx_unwind_runbook.md) | 撤回 D2.3 临时 setx (Machine `SKIP_NAMESPACE_ASSERT=1`), 批 2 P3 startup_assertions 改用 settings 后调用 | 0 (paper mode + LIVE_TRADING_DISABLED=True) |
+| 02 | [`02_llm_cost_daily_runbook.md`](02_llm_cost_daily_runbook.md) | LLM 成本日报 daily aggregate + DingTalk push (Mon-Fri 20:30 schtask 真生产 / user 显式触发) — S2.3 PR #224 合并 S5 退役 | 0 (LLM 路径 0 broker call + 仅 SELECT 真聚合查询) |
 
 ## 添加新 runbook
 
