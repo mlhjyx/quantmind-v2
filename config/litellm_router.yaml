@@ -9,7 +9,7 @@
 #   deepseek-v4-pro   -> deepseek/deepseek-reasoner (R1 reasoning, Judge/RiskReflector)
 #
 # Ollama Qwen3 (S3 prerequisite, 0 cost fallback):
-#   qwen3-local -> ollama/qwen3:8b (LiteLLM ollama provider, OLLAMA_BASE_URL env)
+#   qwen3-local -> ollama_chat/qwen3:8b (LiteLLM /api/chat endpoint, OLLAMA_BASE_URL env, S3 PR #225 sediment)
 
 model_list:
   - model_name: deepseek-v4-flash

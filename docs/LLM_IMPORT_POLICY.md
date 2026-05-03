@@ -468,10 +468,10 @@ user 决议沿用 plan-mode + mini-verify finding:
 
 | 项 | 决议 |
 |---|---|
-| install 路径 | `D:\Program Files\Ollama` (走 `OllamaSetup.exe /DIR=` 命令行参数, 沿用 GitHub issue #2776 PR #6967 GA 支持) |
+| install 路径 | `D:\tools\Ollama` (走 `OllamaSetup.exe /DIR=` 命令行参数, 沿用 GitHub issue #2776 PR #6967 GA 支持). 路径选 `D:\tools\` 沿用 user 现整理风格 (跟 `D:\tools\Servy` / `D:\quantmind-v2` 同 D 盘体例对齐) |
 | 模型 cache 路径 | `D:\ollama-models` (走 `setx OLLAMA_MODELS /M` system-level env, sustained service 启动读 system env) |
 | install 体例 | `OllamaSetup.exe` (反 winget — Ollama Inc 0 在 winget repo, 反 install.ps1 — 0 custom path 参数) |
-| user 接触 | ~3 clicks (1 UAC + 1 安装向导 Install + 1 PS run for setx + 1 ollama pull) + ~5-15 min wall-clock |
+| user 接触 | ~2 clicks (1 UAC click + 1 安装向导 "Install" click) + 3 PS commands (PS Start-Process install + setx /M + ollama pull). ~5-15 min wall-clock (含 5.2 GB 网络下载) |
 
 完整步骤沿用 [`docs/runbook/cc_automation/03_ollama_install_runbook.md`](runbook/cc_automation/03_ollama_install_runbook.md).
 

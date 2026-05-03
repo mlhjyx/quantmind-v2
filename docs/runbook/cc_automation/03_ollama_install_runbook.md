@@ -51,7 +51,7 @@ Write-Host "下载完成: $dst"
 
 ```powershell
 # /DIR 参数沿用 GitHub issue #2776 PR #6967 GA (Ollama 官方支持自定义 install 路径).
-Start-Process "$env:TEMP\OllamaSetup.exe" -ArgumentList '/DIR="D:\Program Files\Ollama"' -Wait
+Start-Process "$env:TEMP\OllamaSetup.exe" -ArgumentList '/DIR="D:\tools\Ollama"' -Wait
 ```
 
 (若 Step 1 走 Option B 浏览器下载, 把 `$env:TEMP\OllamaSetup.exe` 改成实际下载路径, e.g. `D:\Downloads\OllamaSetup.exe`.)
@@ -117,9 +117,13 @@ Get-Service Ollama
 # 5. system-level env var 沿用
 [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")
 # 期望: D:\ollama-models
+
+# 6. install 路径走 D 盘 (反 fall back C 盘默认 path)
+Test-Path "D:\tools\Ollama\ollama.exe"
+# 期望: True (沿用 /DIR= 参数生效)
 ```
 
-5/5 PASS → 进入 model pull. 任一 fail → troubleshoot 段.
+6/6 PASS → 进入 model pull. 任一 fail → troubleshoot 段.
 
 ---
 
@@ -152,10 +156,11 @@ D 盘 path 含 blobs ✅ → install 完成. 进入 e2e test 验证.
 
 ## e2e test 验证 (S3 PR #225 sediment)
 
-```bash
+```powershell
 # 跑 1-2 e2e 冒烟 (requires_ollama marker, sustained pyproject.toml)
-cd D:/quantmind-v2
-.venv/Scripts/python.exe -m pytest backend/tests/test_litellm_e2e.py -m requires_ollama -v
+# 沿用 reviewer Chunk B P3-3: powershell fence + backslash path 跟全文件一致
+Set-Location D:\quantmind-v2
+.\.venv\Scripts\python.exe -m pytest backend\tests\test_litellm_e2e.py -m requires_ollama -v
 # 期望: 1-2 PASSED (Ollama running + qwen3:8b loaded)
 ```
 
@@ -166,8 +171,10 @@ cd D:/quantmind-v2
 ### Ollama service 不启动
 
 ```powershell
-# 查 Windows event log (Ollama 跟错误 cite)
+# 查 Windows event log (Ollama 跟错误 cite, 沿用 reviewer Chunk B P3-2 fallback)
 Get-EventLog -LogName Application -Source Ollama -Newest 10 -ErrorAction SilentlyContinue
+# 若 0 result (Ollama 可能未注册 classic Event Log source) → 走 Get-WinEvent fallback:
+Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='Ollama'} -MaxEvents 10 -ErrorAction SilentlyContinue
 
 # 手工启动 service
 Start-Service Ollama
@@ -215,11 +222,31 @@ Move-Item "$env:USERPROFILE\.ollama\models" "D:\ollama-models\models" -Force
 
 ---
 
+## 失败回滚 (per-step rollback, sustained 00_INDEX 模板字段 6)
+
+| step fail | 真值现象 | 回滚操作 |
+|---|---|---|
+| Step 1 (下载 .exe fail) | Invoke-WebRequest 真**timeout / 404** | 手工浏览器走 https://ollama.com/download/windows 下载, 或 retry PS 命令 |
+| Step 2 (PS Start-Process install fail) | UAC denied / `/DIR=` 0 生效 / 安装向导 abort | (a) 若 install 路径 partial: `Get-ChildItem "D:\tools\Ollama"` 查看真值, 跑现 unins000.exe 清理 (`Start-Process "D:\tools\Ollama\unins000.exe" -Wait`), 反 ls 0 file → 手工 `Remove-Item -Recurse -Force "D:\tools\Ollama"` (b) 0 install 痕迹 → 重 Step 2 (反 admin PS / UAC click) |
+| Step 3 (setx /M fail) | 0 admin / `Access denied` | (a) 验证 admin: `whoami /priv \| Select-String SeIncreaseQuotaPrivilege` (b) 重新打开 PS as admin → 重 Step 3 (c) 备选 GUI: 控制面板 → 系统 → 高级 → 环境变量 → 系统变量 → 新建 `OLLAMA_MODELS` |
+| Step 3 (Restart-Service fail) | service 0 known / Stop hang | (a) `Get-Service Ollama` 验证 service 注册 (Step 2 install 沿用) (b) 手工 GUI 退 tray → 开始菜单 Ollama 启动 (c) 反生效 → reboot Win11 后 service 自启 |
+| model pull fail | `ollama pull` 真**network timeout / disk full** | (a) 验证 D 盘 free space `Get-PSDrive D` (≥10 GB) (b) 验证 OLLAMA_MODELS 沿用: `[Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")` (c) `Restart-Service Ollama` + 重 pull (d) 反 fall back C 盘 → 删 partial cache `Remove-Item -Recurse -Force "$env:USERPROFILE\.ollama\models" -ErrorAction SilentlyContinue` |
+| 部分 install + 完全卸载 | 多 step fail 累积 / install state 漂移 | 走 ## uninstall section 真 3 步完整还原 (uninstaller + rm models + setenv null), 沿用全 reset |
+
+**沿用原则**:
+- 反 silent partial state (沿用铁律 33 fail-loud)
+- 反**force push** / **destructive action** without verify (沿用 SOP-2)
+- uninstall section 真**最终 fallback** (任何 step fail 走完整 reset 后 retry)
+
+---
+
 ## uninstall section (运维需要)
 
 ```powershell
 # 1. PS as admin, 跑 uninstaller
-Start-Process "D:\Program Files\Ollama\unins000.exe" -Wait
+# 注: 沿用 Inno Setup 默认 uninstaller 名 unins000.exe. 若 Ollama 未来版本改 filename
+# (e.g. Uninstall.exe), 先 ls 确认: Get-ChildItem "D:\tools\Ollama" -Filter "unins*.exe"
+Start-Process "D:\tools\Ollama\unins000.exe" -Wait
 
 # 2. 删除模型 cache (沿用 setx path)
 Remove-Item -Recurse -Force "D:\ollama-models"

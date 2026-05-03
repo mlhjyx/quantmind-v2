@@ -12,7 +12,7 @@ skip logic:
 - 沿用 LL-098 X10: e2e tests 仅本地 user 跑过 ollama install + ollama pull qwen3:8b 后跑.
 
 依赖 (S3 runbook 03 user 接触 sediment):
-1. Ollama D 盘 install (D:\Program Files\Ollama)
+1. Ollama D 盘 install (D:\tools\Ollama, 沿用 user D:\tools\ 整理风格)
 2. ollama pull qwen3:8b (~5.2 GB, D:\ollama-models)
 3. Ollama service running (Get-Service Ollama → Status=Running)
 4. config/litellm_router.yaml ollama_chat/qwen3:8b 沿用 PR #225 patch
@@ -128,6 +128,9 @@ def litellm_router_real(monkeypatch: pytest.MonkeyPatch) -> LiteLLMRouter:
     import os
 
     if not os.environ.get("DEEPSEEK_API_KEY"):
+        # 沿用 reviewer Chunk A P3-1 cite: dummy key 仅 fallback path 走通用 (反 primary
+        # path 真触发). 若本 e2e 路由命中 DeepSeek primary, dummy key 真**LiteLLM auth
+        # opaque error** — 测试设计 broken (e2e 应仅走 fallback path 沿用 ollama_chat).
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used-fallback-only")
     if not os.environ.get("OLLAMA_BASE_URL"):
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
