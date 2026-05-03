@@ -30,10 +30,13 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .router import FALLBACK_ALIAS, LiteLLMRouter
+from .router import FALLBACK_ALIAS, TASK_TO_MODEL_ALIAS, LiteLLMRouter
 from .types import LLMMessage, LLMResponse, RiskTaskType
+
+if TYPE_CHECKING:
+    from .audit import LLMCallLogger
 
 logger = logging.getLogger(__name__)
 
@@ -227,14 +230,20 @@ class BudgetAwareRouter:
         budget: BudgetGuard,
         *,
         strict: bool = False,
+        audit: LLMCallLogger | None = None,
     ) -> None:
         self._router = router
         self._budget = budget
         self._strict = strict
+        self._audit = audit  # S2.3 PR #224: optional audit log (additive, None → 0 audit)
 
     @property
     def is_strict(self) -> bool:
         return self._strict
+
+    @property
+    def audit(self) -> LLMCallLogger | None:
+        return self._audit
 
     def completion(
         self,
@@ -288,4 +297,69 @@ class BudgetAwareRouter:
             is_fallback=response.is_fallback,
             is_capped=is_capped,
         )
+
+        # S2.3 PR #224: optional audit log (additive, audit None → skip).
+        # 失败 path 沿用决议 7 — fail-loud warning + 反 break completion (LLMCallLogger 内部包络).
+        if self._audit is not None:
+            self._audit_log(
+                task=task,
+                messages=messages,
+                response=response,
+                snapshot=snapshot,
+                is_capped=is_capped,
+                decision_id=decision_id,
+            )
+
         return response
+
+    def _audit_log(
+        self,
+        *,
+        task: RiskTaskType,
+        messages: list[LLMMessage] | list[dict[str, str]],
+        response: LLMResponse,
+        snapshot: BudgetSnapshot,
+        is_capped: bool,
+        decision_id: str | None,
+    ) -> None:
+        """构造 LLMCallRecord + 调 self._audit.log_call (S2.3 additive).
+
+        本方法 0 raise — LLMCallLogger.log_call 内部包络 try/except,
+        失败 → fail-loud warning log + return False (反 break completion 真 caller).
+        """
+        # lazy import 反循环依赖 (audit.py imports from .budget)
+        from .audit import LLMCallRecord, compute_prompt_hash
+
+        primary_alias = TASK_TO_MODEL_ALIAS.get(task, "")
+        try:
+            prompt_hash = compute_prompt_hash(messages)
+        except Exception as exc:  # pragma: no cover — sha256 真不应失败
+            logger.warning(
+                "llm_audit_prompt_hash_failed",
+                extra={
+                    "event": "llm_audit_prompt_hash_failed",
+                    "task": task.value,
+                    "exc_class": type(exc).__name__,
+                },
+            )
+            prompt_hash = None
+
+        latency_ms_int: int | None = None
+        if response.latency_ms is not None:
+            latency_ms_int = int(round(response.latency_ms))
+
+        record = LLMCallRecord(
+            task=task,
+            primary_alias=primary_alias,
+            actual_model=response.model,
+            is_fallback=response.is_fallback,
+            budget_state=snapshot.state,
+            tokens_in=response.tokens_in,
+            tokens_out=response.tokens_out,
+            cost_usd=response.cost_usd,
+            latency_ms=latency_ms_int,
+            decision_id=decision_id,
+            prompt_hash=prompt_hash,
+            error_class=None,  # success path; failure path 沿用 caller 真 catch + record cite
+        )
+        self._audit.log_call(record)  # type: ignore[union-attr]

@@ -354,3 +354,108 @@ trigger:
 - ADR-031 §6 (S2 渐进 deprecate plan)
 - V3 §20.1 #6 line 1769 (LLM 月预算 sediment)
 - 决议 2 (p1) / 决议 X2 = (ii) 沿用
+
+### §10.7 Audit Trail + Cost Monitoring + DingTalk Push (S2.3 sub-task PR #224, 2026-05-03)
+
+#### §10.7.1 模块组件
+
+`backend/qm_platform/llm/audit.py` (新文件):
+- `LLMCallRecord` frozen dataclass — 13 字段对齐 llm_call_log 表 (反 mutation, 沿用铁律 33)
+- `LLMCallLogger` 类 — runtime audit log INSERT (走 conn_factory DI, 沿用 BudgetGuard 体例)
+- `compute_prompt_hash` 函数 — sha256 truncated 16 hex (反 md5 collision)
+
+`backend/qm_platform/llm/budget.py` patch (additive only, 0 break PR #223):
+- `BudgetAwareRouter.__init__` 加 optional `audit: LLMCallLogger | None = None` param
+- `BudgetAwareRouter.completion` 4 步 flow 真 final step 加 `_audit_log()` (audit None → skip)
+- 沿用决议 6 NULL 允许体例 (反 break 老 caller, audit param 默认 None)
+
+`scripts/llm_cost_daily_report.py` (新文件):
+- 沿用 compute_daily_ic.py 体例 (argparse + dotenv + ZoneInfo + 顶层 try/except)
+- 输出: 当日 sum / month-to-date sum / per-task / per-budget_state breakdown / fallback rate
+- DingTalk markdown push (composition 调 dispatchers/dingtalk.py, NOT 重写, 沿用铁律 34 SSOT)
+- exit code: 0=success / 1=DingTalk push 失败 / 2=fatal (沿用铁律 43 d)
+
+#### §10.7.2 llm_call_log 表 (migrations/2026_05_03_llm_call_log.sql)
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | UUID DEFAULT gen_random_uuid() | composite PK 含 triggered_at (hypertable 硬要求) |
+| `triggered_at` | TIMESTAMPTZ DEFAULT NOW() | hypertable partition column (月度 chunk) |
+| `task` | VARCHAR(40) NOT NULL | 7 任务 enum CHECK (RiskTaskType cite) |
+| `primary_alias` | VARCHAR(40) NOT NULL | TASK_TO_MODEL_ALIAS cite (反 fallback 检测漏报) |
+| `actual_model` | VARCHAR(80) NOT NULL | LiteLLM 真返 model 名 |
+| `is_fallback` | BOOLEAN NOT NULL | 是否走 qwen3-local fallback |
+| `budget_state` | VARCHAR(12) NOT NULL | NORMAL / WARN_80 / CAPPED_100 CHECK |
+| `tokens_in` | INTEGER NOT NULL CHECK >=0 | prompt tokens |
+| `tokens_out` | INTEGER NOT NULL CHECK >=0 | completion tokens |
+| `cost_usd` | NUMERIC(8,4) NOT NULL CHECK >=0 | 单次成本 (Decimal, 沿用 LLMResponse 体例) |
+| `latency_ms` | INTEGER | NULL 允许 |
+| `decision_id` | VARCHAR(64) | NULL 允许 (决议 6, 反 break 老 caller) |
+| `prompt_hash` | VARCHAR(64) | NULL 允许 (决议 5, sha256 truncated 16 hex) |
+| `error_class` | VARCHAR(40) | NULL on success / class name on failure (铁律 33) |
+
+**3 indexes** + **180 天 TimescaleDB retention** (决议 4: 5-10 年累计 ~40-110MB, 季度审计 + 月度 review backref).
+
+**rollback**: `2026_05_03_llm_call_log_rollback.sql` (DROP TABLE CASCADE + DO 验证).
+
+#### §10.7.3 BudgetAwareRouter completion 流程 (S2.3 加 step 4)
+
+```
+1. snapshot = budget.check()                       # 月聚合 cost + state 计算
+2. response = router.completion(...) or completion_with_alias_override(...)
+3. budget.record_cost(response.cost_usd, ...)      # llm_cost_daily UPSERT
+4. if audit: audit.log_call(LLMCallRecord(...))    # llm_call_log INSERT (S2.3 additive)
+return response
+```
+
+**audit_log 失败 path** (决议 7 沿用铁律 33):
+- INSERT 异常 → `logger.warning(structured)` + return False (反 raise — caller 沿用 completion success)
+- conn_factory raise → `logger.warning(conn_factory_failed)` + return False
+- prompt_hash sha256 异常 (理论不可能) → warning + prompt_hash=None
+
+**反 except: pass silent miss** (铁律 33). 沿用 contextlib.suppress(Exception) + silent_ok 注释体例.
+
+#### §10.7.4 daily aggregate cadence (沿用决议 6 (a) S5 退役合并)
+
+`scripts/llm_cost_daily_report.py` Mon-Fri **20:30** (16th schtask, `setup_task_scheduler.ps1` Section 16):
+
+- 20:30 选择: PT_Watchdog 20:00 后 30min, 全 dense window (17:30-18:45) 后 0 资源争抢
+- 反 17:30 (S2.3 plan-mode finding: cadence 真 DailyMoneyflow + FactorHealthDaily 2 task 占用)
+- Mon-Fri 仅: A 股非交易日 LLM 路径 (Bull/Bear/Judge) 真无活动, 周末跑只产 0 row 噪声
+- DingTalk push 走 dispatchers/dingtalk.py composition (NOT 重写, 反双 SSOT 漂移)
+- webhook_url 0 set 时真 noop (沿用决议 (I) stub 反 break local dev)
+- DINGTALK_ALERTS_ENABLED=False 时真 noop (沿用 .env 双锁体例)
+
+#### §10.7.5 LL-110 候选 (audit log fail-loud SOP, P3 backlog)
+
+主题: audit log 失败时真**fail-loud warning 体例 SOP**.
+
+trigger:
+- audit.log_call INSERT 失败 → caller 沿用 completion success (反 break LLM 调用)
+- 但 fail-loud warning log 真 emit (反 silent miss, 铁律 33)
+- 反 except: pass (反 silent_ok 滥用)
+
+处置 (本 PR 沿用):
+- LLMCallLogger.log_call 真包络 try/except → logger.warning(structured) + return False
+- contextlib.suppress(Exception) 真**仅 conn.rollback / conn.close** (close 失败 0 影响 caller)
+- 反 INSERT 主路径 silent skip
+
+本候选不 sediment LESSONS_LEARNED.md (P3 backlog), 留 audit Week 2 讨论时 sediment LL-110.
+
+#### §10.7.6 deferred (Sprint 8 sediment 候选)
+
+- **V3 §20.2 #3 signature scheme**: DingTalk webhook 高可用签名 (沿用 SOP-1 反预设, Sprint 8 sediment)
+- **LL-104 候选 N×N drift 第 9 次实证**: V3 §11.3 RISK Sprint S5 vs LLM Sprint S5 同名不同主题 (audit Week 2 sediment 候选)
+- **caller 强制走 BudgetAwareRouter (反 naked LiteLLMRouter bypass audit)**: 真**S3+ application bootstrap 时 wire** (沿用决议 2 (p1) router 0 mutation)
+
+#### §10.7.7 关联
+
+- [backend/qm_platform/llm/audit.py](../backend/qm_platform/llm/audit.py)
+- [backend/migrations/2026_05_03_llm_call_log.sql](../backend/migrations/2026_05_03_llm_call_log.sql)
+- [scripts/llm_cost_daily_report.py](../scripts/llm_cost_daily_report.py)
+- [backend/tests/test_litellm_audit.py](../backend/tests/test_litellm_audit.py) — 10 audit tests
+- [backend/app/services/dispatchers/dingtalk.py](../backend/app/services/dispatchers/dingtalk.py) (composition 调用)
+- [docs/runbook/cc_automation/02_llm_cost_daily_runbook.md](runbook/cc_automation/02_llm_cost_daily_runbook.md)
+- ADR-031 §6 (S2 渐进 deprecate plan)
+- V3 §16.2 line 1579 (LLM 成本 budget) / V3 §20.1 #6 line 1769 (月预算)
+- 决议 3-7 (沿用 S2.3 plan-mode 7 项 sediment)
