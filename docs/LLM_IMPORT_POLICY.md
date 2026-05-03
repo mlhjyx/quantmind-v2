@@ -214,3 +214,43 @@ S6 marker (deepseek_client.py:222) 真删除条件: 沿用 `docs/audit/sprint_1/
 - [docs/audit/sprint_1/s8_deepseek_audit.md](audit/sprint_1/s8_deepseek_audit.md) — 0 hot path 证据链 + 间接 caller table
 - [config/litellm_router.yaml](../config/litellm_router.yaml) — provider config (本 PR 创建, S2 真消费)
 - [backend/tests/test_litellm_install.py](../backend/tests/test_litellm_install.py) — 7 install + config smoke tests
+- [backend/qm_platform/llm/router.py](../backend/qm_platform/llm/router.py) — LiteLLMRouter core (S2.1 PR #222 sediment)
+- [backend/qm_platform/llm/types.py](../backend/qm_platform/llm/types.py) — RiskTaskType StrEnum 7 task + LLMResponse dataclass
+
+## §10.5 LiteLLMRouter core (S2.1 sub-task PR #222, 2026-05-03)
+
+### §10.5.1 模块位置
+
+`backend/qm_platform/llm/`:
+- `__init__.py` — 公共 API 导出 (LiteLLMRouter / RiskTaskType / LLMMessage / LLMResponse / TASK_TO_MODEL_ALIAS / FALLBACK_ALIAS / RouterConfigError / UnknownTaskError)
+- `types.py` — 7 任务 enum (RiskTaskType StrEnum) + LLMResponse dataclass + 异常类
+- `router.py` — LiteLLMRouter 类 (path 决议 + completion 包装 + fallback 检测)
+
+V3 §11.1 line 1217 row 1 路径 **本 PR 修订**: `backend/app/integrations/litellm/` → `backend/qm_platform/llm/` (沿用 ADR-031 §3 + qm_platform 体例 + N×N 漂移第 10 次实证)。
+
+### §10.5.2 7 任务 → model alias mapping
+
+| RiskTaskType | primary alias | fallback alias | V3 §5.5 行 |
+|---|---|---|---|
+| NEWS_CLASSIFY | deepseek-v4-flash | qwen3-local | L0.2 |
+| FUNDAMENTAL_SUMMARIZE | deepseek-v4-flash | qwen3-local | L2.2 |
+| BULL_AGENT | deepseek-v4-flash | qwen3-local | L2.3 |
+| BEAR_AGENT | deepseek-v4-flash | qwen3-local | L2.3 |
+| EMBEDDING | deepseek-v4-flash | qwen3-local | RAG ingest |
+| JUDGE | deepseek-v4-pro | qwen3-local | L2.3 |
+| RISK_REFLECTOR | deepseek-v4-pro | qwen3-local | L5 |
+
+mapping 走 Python in-code (`backend/qm_platform/llm/router.py:TASK_TO_MODEL_ALIAS`),反 yaml-Python 双 SSOT 漂移。alias 真值跟 `config/litellm_router.yaml` model_list 严格对齐 (init 时 cross-verify)。
+
+### §10.5.3 deferred (S2.2 / S2.3 scope)
+
+- **S2.2 budget guardrails**: BudgetGuard 类 + `llm_cost_daily` 表 + $50/月 + 80% warn + 100% Ollama 强制 fallback
+- **S2.3 cost monitoring + audit trail**: LLMCallLogger + `llm_call_log` 表 + LL-103 SOP-5 5 condition + DingTalk push (V3 §16.2)
+- **S5 退役**: daily aggregate 真 logic 合到 S2.3 (沿用决议 6 (a))
+
+### §10.5.4 关联
+
+- ADR-031 (S2 LiteLLMRouter implementation path) — `docs/adr/ADR-031-s2-litellm-router-implementation-path.md`
+- V3 §5.5 (LLM 路由真预约) / V3 §11.1 row 1 (本 PR 修订) / V3 §16.2 / V3 §20.1 #6
+- 决议 2 (p1) — deepseek_client.py 0 mutation, 渐进 deprecate (ADR-031 §6)
+- 决议 X2 = (ii) — 新建模块, 不改造 deepseek_client
