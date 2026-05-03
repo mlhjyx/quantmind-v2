@@ -32,7 +32,7 @@ import contextlib
 import logging
 import sys
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -118,7 +118,12 @@ def fetch_month_to_date_sum(conn, target_date: date) -> Decimal:
 
 
 def fetch_per_task_breakdown(conn, target_date: date) -> list[dict]:
-    """从 llm_call_log 1 天 groupby task (反 llm_cost_daily 真 sum-only)."""
+    """从 llm_call_log 1 天 groupby task (反 llm_cost_daily 真 sum-only).
+
+    沿用 reviewer Chunk C P2 修: range predicate 真**激活 ix_llm_call_log_task_time
+    + TimescaleDB chunk exclusion** (反 ::date cast 真全表扫描).
+    """
+    next_day = target_date + timedelta(days=1)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -130,11 +135,12 @@ def fetch_per_task_breakdown(conn, target_date: date) -> list[dict]:
                 COALESCE(SUM(tokens_out), 0) AS tokens_out_total,
                 SUM(CASE WHEN is_fallback THEN 1 ELSE 0 END) AS fallback_count
             FROM llm_call_log
-            WHERE triggered_at::date = %s
+            WHERE triggered_at >= %s
+              AND triggered_at < %s
             GROUP BY task
             ORDER BY cost_usd_total DESC
             """,
-            (target_date,),
+            (target_date, next_day),
         )
         rows = cur.fetchall()
     return [
@@ -151,7 +157,11 @@ def fetch_per_task_breakdown(conn, target_date: date) -> list[dict]:
 
 
 def fetch_per_budget_state_breakdown(conn, target_date: date) -> list[dict]:
-    """从 llm_call_log 1 天 groupby budget_state (NORMAL / WARN_80 / CAPPED_100)."""
+    """从 llm_call_log 1 天 groupby budget_state (NORMAL / WARN_80 / CAPPED_100).
+
+    沿用 reviewer Chunk C P2 修: range predicate (沿用 fetch_per_task_breakdown 体例).
+    """
+    next_day = target_date + timedelta(days=1)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -160,11 +170,12 @@ def fetch_per_budget_state_breakdown(conn, target_date: date) -> list[dict]:
                 COUNT(*) AS call_count,
                 COALESCE(SUM(cost_usd), 0) AS cost_usd_total
             FROM llm_call_log
-            WHERE triggered_at::date = %s
+            WHERE triggered_at >= %s
+              AND triggered_at < %s
             GROUP BY budget_state
             ORDER BY budget_state
             """,
-            (target_date,),
+            (target_date, next_day),
         )
         rows = cur.fetchall()
     return [
@@ -294,9 +305,8 @@ def main() -> int:
         per_state = fetch_per_budget_state_breakdown(conn, target_date)
     except Exception:
         logger.error("SQL fail:\n%s", traceback.format_exc())
-        # silent_ok: close 失败 0 影响 exit code (沿用铁律 33 silent_ok 注释)
-        with contextlib.suppress(Exception):
-            conn.close()
+        # 沿用 reviewer Chunk C P1 修: 反 double conn.close() — finally 已包络.
+        # except 直 return, finally 真路径单一 close (反 InterfaceError on second close).
         return 2
     finally:
         # silent_ok: close 失败 0 影响 exit code (沿用铁律 33 silent_ok 注释)

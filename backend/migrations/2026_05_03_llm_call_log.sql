@@ -7,7 +7,7 @@
 --   - 幂等 (CREATE TABLE/INDEX IF NOT EXISTS + create_hypertable if_not_exists=TRUE)
 --   - TimescaleDB hypertable, 按 triggered_at 月度 partition
 --   - 180 天 retention (决议 4 沿用 — 5-10 年累计 ~200K-550K rows / ~40-110MB)
---   - 13 字段 (含 decision_id NULL 允许 — 决议 6 反 break 老 caller)
+--   - 14 字段 (含 id auto-gen UUID + decision_id NULL 允许 — 决议 6 反 break 老 caller)
 --   - prompt_hash sha256 truncated 16 hex (决议 5 反 md5 collision)
 --
 -- 沿用体例:
@@ -34,6 +34,14 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS llm_call_log (
     id              UUID NOT NULL DEFAULT gen_random_uuid(),
     triggered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- task CHECK constraint 真**保留** (沿用 reviewer Chunk B P2-1 修真意图 cite):
+    -- (a) fail-loud DB-level (反 application-layer silent invalid INSERT, 沿用铁律 33)
+    -- (b) 7 task 真 V3 §5.5 sediment + RiskTaskType StrEnum SSOT
+    --     (backend/qm_platform/llm/types.py::RiskTaskType, value 真**lowercase 已对齐**)
+    -- (c) 加新 task 真**重大架构改动** (跟 V3 §5.5 真协同), ALTER TABLE 真**ADR 真审议** 通过.
+    -- 反 risk_event_log.code (无 CHECK, application 验证) — 真**两 SOC**:
+    --   risk_event_log.code 真**应用层多变** (rule_id sustained) → 走 application 验证;
+    --   llm_call_log.task 真**架构层 stable** (V3 §5.5 真 7 enum sediment) → 走 DB CHECK.
     task            VARCHAR(40) NOT NULL
                     CHECK (task IN (
                         'news_classify',
@@ -47,6 +55,9 @@ CREATE TABLE IF NOT EXISTS llm_call_log (
     primary_alias   VARCHAR(40) NOT NULL,           -- TASK_TO_MODEL_ALIAS cite
     actual_model    VARCHAR(80) NOT NULL,           -- LiteLLM 真返 model 名
     is_fallback     BOOLEAN NOT NULL DEFAULT FALSE,
+    -- budget_state 真值跟 BudgetState StrEnum SSOT 对齐 (沿用 reviewer Chunk B P2-2 修):
+    --   backend/qm_platform/llm/budget.py::BudgetState (value 'normal'/'warn_80'/'capped_100' lowercase)
+    --   StrEnum.value 真**lowercase 已实测** (PR #223 sediment, 38 tests verify).
     budget_state    VARCHAR(12) NOT NULL
                     CHECK (budget_state IN ('normal', 'warn_80', 'capped_100')),
     tokens_in       INTEGER NOT NULL DEFAULT 0
@@ -122,7 +133,7 @@ DECLARE
 BEGIN
     SET LOCAL statement_timeout = '30s';
 
-    -- 核心列存在性 (13 列)
+    -- 核心列存在性 (14 列, 沿用 reviewer Chunk B P1 修)
     SELECT COUNT(*) INTO col_count
     FROM information_schema.columns
     WHERE table_name = 'llm_call_log'

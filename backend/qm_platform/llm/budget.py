@@ -299,16 +299,30 @@ class BudgetAwareRouter:
         )
 
         # S2.3 PR #224: optional audit log (additive, audit None → skip).
-        # 失败 path 沿用决议 7 — fail-loud warning + 反 break completion (LLMCallLogger 内部包络).
+        # 失败 path 沿用决议 7 — fail-loud warning + 反 break completion.
+        # 沿用 reviewer Chunk A P2-2 修: 即使 _audit_log 内部 raise (e.g. dataclass
+        # 构造异常), 这里 try/except 包络 → 反 break completion 真 caller.
         if self._audit is not None:
-            self._audit_log(
-                task=task,
-                messages=messages,
-                response=response,
-                snapshot=snapshot,
-                is_capped=is_capped,
-                decision_id=decision_id,
-            )
+            try:
+                self._audit_log(
+                    task=task,
+                    messages=messages,
+                    response=response,
+                    snapshot=snapshot,
+                    is_capped=is_capped,
+                    decision_id=decision_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "llm_audit_record_build_failed",
+                    extra={
+                        "event": "llm_audit_record_build_failed",
+                        "task": task.value,
+                        "decision_id": decision_id,
+                        "exc_class": type(exc).__name__,
+                        "exc_msg": str(exc),
+                    },
+                )
 
         return response
 
@@ -327,6 +341,10 @@ class BudgetAwareRouter:
         本方法 0 raise — LLMCallLogger.log_call 内部包络 try/except,
         失败 → fail-loud warning log + return False (反 break completion 真 caller).
         """
+        # 沿用 reviewer Chunk A P3-1 修: assert 消除 type: ignore[union-attr]
+        # (caller 真 if self._audit is not None guard, 这里 assert 反 mypy false-positive).
+        assert self._audit is not None
+
         # lazy import 反循环依赖 (audit.py imports from .budget)
         from .audit import LLMCallRecord, compute_prompt_hash
 
@@ -344,10 +362,17 @@ class BudgetAwareRouter:
             )
             prompt_hash = None
 
-        latency_ms_int: int | None = None
-        if response.latency_ms is not None:
+        # 沿用 reviewer Chunk A P2-1 修: latency_ms 0 真当作 unknown → 写 NULL.
+        # LLMResponse.latency_ms float=0.0 default 真**永远非 None**, > 0 真已 measure.
+        # 0ms 真不可能 (sha256 速度都 > 0.001ms), 0.0 真**默认未 measure** 信号.
+        latency_ms_int: int | None
+        if response.latency_ms > 0:
             latency_ms_int = int(round(response.latency_ms))
+        else:
+            latency_ms_int = None
 
+        # NOTE: failure path audit (error_class != None) 留 S2.4+ — 当前仅 success path.
+        # 沿用 reviewer Chunk A P3-3 修 cite — 沿用决议 7 fail-loud + 反 break completion 体例.
         record = LLMCallRecord(
             task=task,
             primary_alias=primary_alias,
@@ -360,6 +385,6 @@ class BudgetAwareRouter:
             latency_ms=latency_ms_int,
             decision_id=decision_id,
             prompt_hash=prompt_hash,
-            error_class=None,  # success path; failure path 沿用 caller 真 catch + record cite
+            error_class=None,
         )
-        self._audit.log_call(record)  # type: ignore[union-attr]
+        self._audit.log_call(record)

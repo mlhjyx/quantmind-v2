@@ -357,6 +357,8 @@ def test_llm_call_logger_inserts_row_on_success(
     assert row.cost_usd == Decimal("0.005")
     assert row.decision_id == "d-100"
     assert row.error_class is None
+    # 沿用 reviewer Chunk C P2-2 修: triggered_at 真 datetime 实例 (反 silent string drift)
+    assert isinstance(row.triggered_at, datetime)
 
 
 def test_llm_call_logger_insert_failure_returns_false_and_logs_warning(
