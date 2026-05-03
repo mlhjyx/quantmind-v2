@@ -26,7 +26,9 @@ Application 消费示例 (下游 sub-task 真消费, 本 PR 仅 core):
 from .router import (
     DEFAULT_CONFIG_PATH,
     FALLBACK_ALIAS,
+    PRIMARY_MODEL_SUBSTRINGS,
     TASK_TO_MODEL_ALIAS,
+    FallbackDetectionError,
     LiteLLMRouter,
 )
 from .types import (
@@ -43,8 +45,10 @@ __all__ = [
     "LLMMessage",
     "LLMResponse",
     "TASK_TO_MODEL_ALIAS",
+    "PRIMARY_MODEL_SUBSTRINGS",
     "FALLBACK_ALIAS",
     "DEFAULT_CONFIG_PATH",
     "RouterConfigError",
     "UnknownTaskError",
+    "FallbackDetectionError",
 ]
