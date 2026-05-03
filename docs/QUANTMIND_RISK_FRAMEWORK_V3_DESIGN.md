@@ -1214,7 +1214,7 @@ user approve/reject
 
 | 模块 | 路径 | 职责 | 依赖 |
 |---|---|---|---|
-| `LiteLLMRouter` | `backend/app/integrations/litellm/` | LLM 路由 (V4-Flash/V4-Pro/Ollama) | LiteLLM SDK |
+| `LiteLLMRouter` | `backend/qm_platform/llm/` | LLM 路由 (V4-Flash/V4-Pro/Ollama) | LiteLLM SDK | <!-- ADR-031 path 决议 + S2.1 PR #222 sediment, 修订 PR #216 真旧 cite "backend/app/integrations/litellm/" (该目录不存在), 沿用 qm_platform 体例 + N×N 漂移第 10 次实证 -->
 | `NewsIngestionService` | `backend/app/services/news/` | 6 源 News 接入 | LiteLLMRouter, news_raw |
 | `NewsClassifierService` | `backend/app/services/news/` | V4-Flash 分类 | LiteLLMRouter, news_classified |
 | `FundamentalContextService` | `backend/app/services/fundamental/` | 8 维基本面 | Tushare/AKShare/pywencai |
