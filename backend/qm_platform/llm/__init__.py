@@ -23,6 +23,13 @@ Application 消费示例 (下游 sub-task 真消费, 本 PR 仅 core):
     )
     print(response.content, response.cost_usd, response.is_fallback)
 """
+from .budget import (
+    BudgetAwareRouter,
+    BudgetExceededError,
+    BudgetGuard,
+    BudgetSnapshot,
+    BudgetState,
+)
 from .router import (
     DEFAULT_CONFIG_PATH,
     FALLBACK_ALIAS,
@@ -51,4 +58,10 @@ __all__ = [
     "RouterConfigError",
     "UnknownTaskError",
     "FallbackDetectionError",
+    # S2.2 budget guardrails (PR #223)
+    "BudgetGuard",
+    "BudgetAwareRouter",
+    "BudgetState",
+    "BudgetSnapshot",
+    "BudgetExceededError",
 ]

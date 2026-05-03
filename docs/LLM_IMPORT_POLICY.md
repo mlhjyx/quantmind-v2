@@ -254,3 +254,103 @@ mapping 走 Python in-code (`backend/qm_platform/llm/router.py:TASK_TO_MODEL_ALI
 - V3 §5.5 (LLM 路由真预约) / V3 §11.1 row 1 (本 PR 修订) / V3 §16.2 / V3 §20.1 #6
 - 决议 2 (p1) — deepseek_client.py 0 mutation, 渐进 deprecate (ADR-031 §6)
 - 决议 X2 = (ii) — 新建模块, 不改造 deepseek_client
+
+### §10.6 Budget Guardrails (S2.2 sub-task PR #223, 2026-05-03)
+
+#### §10.6.1 模块组件
+
+`backend/qm_platform/llm/budget.py` (新文件):
+- `BudgetState` StrEnum — 3 state (NORMAL / WARN_80 / CAPPED_100)
+- `BudgetSnapshot` dataclass — check 返值 (state + month_to_date_cost + 阈值)
+- `BudgetExceededError` 异常 — strict mode 反 silent fallback
+- `BudgetGuard` 类 — 月聚合查询 + UPSERT record_cost (走 conn_factory DI)
+- `BudgetAwareRouter` 类 — composition wrap LiteLLMRouter (NOT 继承, 沿用 ADR-022)
+
+`backend/qm_platform/llm/router.py` 加 method (additive change, 0 mutation 现 completion):
+- `LiteLLMRouter.completion_with_alias_override(task, messages, *, model_alias, decision_id, **kwargs)`
+- path C 决议 — 强制覆盖 task → primary alias 走 caller 指定 model_alias
+- 沿用决议 2 (p1) deepseek_client 0 mutation + ADR-022 反 silent overwrite
+
+#### §10.6.2 3 阈值 (Settings env var, 沿用铁律 34 SSOT)
+
+| Settings 字段 | 默认值 | V3 §20.1 #6 cite |
+|---|---|---|
+| `LLM_MONTHLY_BUDGET_USD` | 50.0 | $50/月上限 |
+| `LLM_BUDGET_WARN_THRESHOLD` | 0.80 | 80% budget warn |
+| `LLM_BUDGET_CAP_THRESHOLD` | 1.00 | 100% Ollama fallback |
+
+调阈值 0 改代码 (沿用 BaseSettings + .env 体例)。.env.example 已加 3 var 注释 (PR #223 sediment)。
+
+#### §10.6.3 llm_cost_daily 表 (migrations/2026_05_03_llm_cost_daily.sql)
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `day` | DATE PRIMARY KEY | 自然按日切, 0 reset cron 必要 |
+| `cost_usd_total` | NUMERIC(10,4) | 当日 LLM 总 cost (UPSERT 累加) |
+| `call_count` | INTEGER | 当日 LLM 调用计数 |
+| `fallback_count` | INTEGER | 当日 fallback 命中计数 (含 capped 强制) |
+| `capped_count` | INTEGER | 当日 capped 状态触发计数 |
+| `updated_at` | TIMESTAMPTZ | 反 silent stale row |
+
+UPSERT pattern (沿用 feature_flag.py:151 体例):
+```sql
+INSERT INTO llm_cost_daily (...) VALUES (...)
+ON CONFLICT (day) DO UPDATE SET
+    cost_usd_total = llm_cost_daily.cost_usd_total + EXCLUDED.cost_usd_total,
+    call_count = llm_cost_daily.call_count + 1,
+    ...
+```
+
+#### §10.6.4 BudgetAwareRouter completion 流程
+
+```
+snapshot = budget.check()           # 月聚合 cost + state 计算
+                                    
+if state == CAPPED_100 and strict:
+    raise BudgetExceededError       # strict mode 显式禁 (RiskReflector V4-Pro only 候选)
+                                    
+elif state == CAPPED_100:
+    response = router.completion_with_alias_override(model_alias=FALLBACK_ALIAS, ...)
+                                    # 强制 qwen3-local fallback
+                                    
+elif state == WARN_80:
+    logger.warning(extra={...})    # 结构化 JSON via stdlib extra (S2.3 audit ingest 前向兼容)
+    response = router.completion(...)
+                                    
+else:  # NORMAL
+    response = router.completion(...)  # 透传
+
+budget.record_cost(response.cost_usd, is_fallback, is_capped)  # UPSERT 当日 row
+return response
+```
+
+#### §10.6.5 LL-109 候选 (race window, P3 audit Week 2 sediment 候选)
+
+主题: BudgetGuard.check + record_cost 真 race window — strict mode 终极保护
+
+trigger:
+- T0: task A check() → state=NORMAL
+- T1: task B record_cost() → 累计撞 capped (并发其他 task)
+- T2: task A 透传走 v4-pro (本应 fallback 但 check 已晚)
+
+处置:
+- strict=False (默认) → 软保护, 允许 race window 期间 1 次透传 (V3 §20.1 #6 fallback 优先)
+- strict=True per-task → 终极保护 (RiskReflector / V4-Pro only 任务), capped 直接 raise
+- 0 cache 决议 (S2.2 plan-mode 决议 3 沿用) — 实时正确性 > 1ms cache 节省, 缩小 race window
+
+本候选不 sediment LESSONS_LEARNED.md (P3 backlog), 留 audit Week 2 讨论时 sediment LL-109。
+
+#### §10.6.6 deferred (S2.3 scope)
+
+- **audit trail**: LLMCallLogger + `llm_call_log` 表 + LL-103 SOP-5 5 condition (decision_id chain)
+- **DingTalk push**: WARN_80 / CAPPED_100 状态 webhook (V3 §16.2)
+- **daily aggregate 报告**: 沿用决议 6 (a) S5 退役 → S2.3 合并
+
+#### §10.6.7 关联
+
+- [backend/qm_platform/llm/budget.py](../backend/qm_platform/llm/budget.py)
+- [backend/migrations/2026_05_03_llm_cost_daily.sql](../backend/migrations/2026_05_03_llm_cost_daily.sql)
+- [backend/tests/test_litellm_budget.py](../backend/tests/test_litellm_budget.py) — 13 budget tests
+- ADR-031 §6 (S2 渐进 deprecate plan)
+- V3 §20.1 #6 line 1769 (LLM 月预算 sediment)
+- 决议 2 (p1) / 决议 X2 = (ii) 沿用

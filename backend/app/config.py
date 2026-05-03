@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     # --- AI ---
     DEEPSEEK_API_KEY: str = ""
 
+    # --- LLM Budget Guardrails (V3 §20.1 #6 + ADR-031, S2.2 sediment) ---
+    # $50/月 上限 + 80% warn + 100% Ollama fallback + 月度 review.
+    # cite V3 §20.1 #6 line 1769 sediment (PR #216).
+    # BudgetGuard (backend/qm_platform/llm/budget.py) 走本 3 阈值:
+    #   monthly_budget × warn_threshold = WARN_80 触发线
+    #   monthly_budget × cap_threshold  = CAPPED_100 触发线 (强制 Ollama fallback)
+    LLM_MONTHLY_BUDGET_USD: float = 50.0
+    LLM_BUDGET_WARN_THRESHOLD: float = 0.80
+    LLM_BUDGET_CAP_THRESHOLD: float = 1.00
+    # Ollama base url (S3 sub-task 真依赖, S2.2 之前可走 mock fallback).
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
     # --- 执行模式 ---
     EXECUTION_MODE: Literal["paper", "live"] = "paper"
 
