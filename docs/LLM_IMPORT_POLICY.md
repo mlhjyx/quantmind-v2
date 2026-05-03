@@ -459,3 +459,88 @@ trigger:
 - ADR-031 §6 (S2 渐进 deprecate plan)
 - V3 §16.2 line 1579 (LLM 成本 budget) / V3 §20.1 #6 line 1769 (月预算)
 - 决议 3-7 (沿用 S2.3 plan-mode 7 项 sediment)
+
+### §10.8 Ollama Local Fallback Wire (S3 sub-task PR #225, 2026-05-03)
+
+#### §10.8.1 install 决议 (完全 D 盘体例 II)
+
+user 决议沿用 plan-mode + mini-verify finding:
+
+| 项 | 决议 |
+|---|---|
+| install 路径 | `D:\tools\Ollama` (走 `OllamaSetup.exe /DIR=` 命令行参数, 沿用 GitHub issue #2776 PR #6967 GA 支持). 路径选 `D:\tools\` 沿用 user 现整理风格 (跟 `D:\tools\Servy` / `D:\quantmind-v2` 同 D 盘体例对齐) |
+| 模型 cache 路径 | `D:\ollama-models` (走 `setx OLLAMA_MODELS /M` system-level env, sustained service 启动读 system env) |
+| install 体例 | `OllamaSetup.exe` (反 winget — Ollama Inc 0 在 winget repo, 反 install.ps1 — 0 custom path 参数) |
+| user 接触 | ~2 clicks (1 UAC click + 1 安装向导 "Install" click) + 3 PS commands (PS Start-Process install + setx /M + ollama pull). ~5-15 min wall-clock (含 5.2 GB 网络下载) |
+
+完整步骤沿用 [`docs/runbook/cc_automation/03_ollama_install_runbook.md`](runbook/cc_automation/03_ollama_install_runbook.md).
+
+#### §10.8.2 yaml endpoint patch (ollama → ollama_chat)
+
+`config/litellm_router.yaml` line 33 patch:
+
+```yaml
+# 旧 (PR #221): model: ollama/qwen3:8b          → 走 /api/generate (legacy)
+# 新 (PR #225): model: ollama_chat/qwen3:8b     → 走 /api/chat (LiteLLM 官方推荐)
+```
+
+LiteLLM docs cite "for better responses" — chat endpoint 输出质量沿用. 路由 alias 沿用 `qwen3-local` (PR #221+ contract, 0 break BudgetAwareRouter `completion_with_alias_override(model_alias=FALLBACK_ALIAS)`).
+
+#### §10.8.3 PRIMARY_MODEL_SUBSTRINGS fallback 检测沿用
+
+`backend/qm_platform/llm/router.py` PRIMARY_MODEL_SUBSTRINGS:
+
+```python
+{
+    "deepseek-v4-flash": "deepseek-chat",
+    "deepseek-v4-pro": "deepseek-reasoner",
+}
+```
+
+actual_model (e.g. `ollama_chat/qwen3:8b` 沿用 LiteLLM 真返 model 名 `qwen3:8b` 或类似) 真**不含** `deepseek-chat` / `deepseek-reasoner` 子串 → `is_fallback=True` 自动检测沿用. PR #222 sediment 0 改.
+
+#### §10.8.4 e2e 1-2 冒烟 (requires_ollama marker)
+
+`backend/tests/test_litellm_e2e.py` 2 tests:
+
+| test | 验证 |
+|---|---|
+| `test_e2e_ollama_chat_qwen3_via_alias_override` | LiteLLMRouter.completion_with_alias_override 走 ollama_chat/qwen3:8b endpoint, content 非空 + is_fallback=True + cost_usd=0 + latency_ms>0 |
+| `test_e2e_budget_capped_forces_ollama_fallback` | BudgetAwareRouter 4 步 flow CAPPED_100 强制 fallback, actual_model 含 "qwen" + is_fallback=True |
+
+skip logic:
+- 模块级 socket probe `localhost:11434` — 0 listening → skip 全模块 (沿用 LL-098 X10, e2e 反 CI / pre-push 跑)
+- pytest marker `requires_ollama` 沿用 `pyproject.toml` markers list (跟 smoke / live_tushare 体例对齐)
+- pre-push 走 `backend/tests/smoke/ -m "smoke and not live_tushare"` 限 smoke/ 子目录, e2e tests 在顶层 `backend/tests/` 0 收录, 0 break pre-push
+
+#### §10.8.5 Ollama Windows service 自启 (0 schtask wire)
+
+Ollama 官方 OllamaSetup.exe 自动注册 Windows service "Ollama" + StartType=Automatic. reboot 后 service 自启 — **0 schtask wire 必要** (反 setup_task_scheduler.ps1 改).
+
+verify (post-install):
+
+```powershell
+Get-Service Ollama
+# 期望: Status=Running, StartType=Automatic
+```
+
+#### §10.8.6 GPU CUDA 加速沿用
+
+RTX 5070 12 GB VRAM → Ollama 自动检测 CUDA, qwen3:8b Q4_K_M 沿用 ~5 GB VRAM (12 GB 充裕). 反需手工配置 — runbook 03 troubleshoot 沿用 `nvidia-smi` 验证.
+
+#### §10.8.7 deferred (Sprint 1 后)
+
+- **Sprint 8**: V3 §20.2 #3 DingTalk webhook 高可用签名 (沿用 SOP-1 反预设)
+- **audit Week 2**: LL-110 候选 (audit log fail-loud SOP, S2.3 sediment) + LL-111 候选 (S4 cite drift, S4 老主题 Budget 已并入 S2.2)
+- **S3+ application bootstrap wire**: caller 强制走 BudgetAwareRouter (反 naked LiteLLMRouter bypass audit + budget) — sustained 决议 2 (p1) router 0 mutation
+
+#### §10.8.8 关联
+
+- [config/litellm_router.yaml](../config/litellm_router.yaml) (S3 PR #225 ollama→ollama_chat patch)
+- [backend/tests/test_litellm_e2e.py](../backend/tests/test_litellm_e2e.py) (2 e2e + requires_ollama marker)
+- [docs/runbook/cc_automation/03_ollama_install_runbook.md](runbook/cc_automation/03_ollama_install_runbook.md)
+- ADR-031 §6 (S2 渐进 deprecate plan, S3 Ollama wire 沿用)
+- V3 §20.1 #6 line 1769 (100% Ollama fallback 沿用)
+- [GitHub issue #2776](https://github.com/ollama/ollama/issues/2776) (custom install dir support, /DIR= GA)
+- [Ollama qwen3 Library](https://ollama.com/library/qwen3) (5.2 GB Q4_K_M default)
+- [LiteLLM Ollama Provider Docs](https://docs.litellm.ai/docs/providers/ollama) (ollama_chat better responses)

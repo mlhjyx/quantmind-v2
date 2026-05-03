@@ -101,6 +101,7 @@ asyncio_mode = "auto"
 markers = [
     "smoke: production invocation smoke tests (subprocess-launch, may need live DB/Redis). Run with `pytest -m smoke`.",
     "live_tushare: smoke tests hitting real Tushare API (network + TUSHARE_TOKEN required). Excluded from pre-push to avoid network-flaky blocks. Run with `pytest -m 'smoke and live_tushare'`.",
+    "requires_ollama: e2e tests calling local Ollama server (qwen3:8b model + http://localhost:11434). Auto-skip if Ollama not reachable. Run with `pytest -m requires_ollama` after `ollama serve` + `ollama pull qwen3:8b`. S3 PR #225 sediment.",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

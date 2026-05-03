@@ -9,7 +9,7 @@
 #   deepseek-v4-pro   -> deepseek/deepseek-reasoner (R1 reasoning, Judge/RiskReflector)
 #
 # Ollama Qwen3 (S3 prerequisite, 0 cost fallback):
-#   qwen3-local -> ollama/qwen3:8b (LiteLLM ollama provider, OLLAMA_BASE_URL env)
+#   qwen3-local -> ollama_chat/qwen3:8b (LiteLLM /api/chat endpoint, OLLAMA_BASE_URL env, S3 PR #225 sediment)
 
 model_list:
   - model_name: deepseek-v4-flash
@@ -30,7 +30,12 @@ model_list:
 
   - model_name: qwen3-local
     litellm_params:
-      model: ollama/qwen3:8b
+      # S3 PR #225 patch: ollama/<model> → ollama_chat/<model> 走 /api/chat endpoint.
+      # LiteLLM 官方推荐 ollama_chat (better responses) vs legacy /api/generate.
+      # cite: https://docs.litellm.ai/docs/providers/ollama (ADR-031 §6 sediment).
+      # 路由 alias 沿用 "qwen3-local" (PR #221+ contract, 0 break BudgetAwareRouter
+      # completion_with_alias_override(model_alias="qwen3-local") + FALLBACK_ALIAS).
+      model: ollama_chat/qwen3:8b
       api_base: os.environ/OLLAMA_BASE_URL
       timeout: 60
       max_retries: 1
