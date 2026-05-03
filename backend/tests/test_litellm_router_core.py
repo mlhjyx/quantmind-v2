@@ -50,7 +50,13 @@ def _make_completion_obj(
     completion_tokens: int = 8,
     cost: float = 0.000123,
 ) -> SimpleNamespace:
-    """构造 LiteLLM ChatCompletion 兼容对象 (走 SimpleNamespace 真 attribute access)."""
+    """构造 LiteLLM ChatCompletion 兼容对象 (走 SimpleNamespace 真 attribute access).
+
+    NOTE: _hidden_params 真 LiteLLM 真 dict attribute (走 getattr 路径),
+    SimpleNamespace 真 attribute store 跟 dict-attribute 真 dual-access 兼容. 若
+    LiteLLM 升级后 _hidden_params 真 property/descriptor, 本 mock 真 silent 漂移 —
+    届时 _extract_cost_usd 真 hidden_params.get("response_cost") 真 0 返就是真破.
+    """
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message)
     usage = SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
@@ -270,10 +276,15 @@ def test_kwargs_passthrough(
     assert captured["extra"]["max_tokens"] == 512
 
 
-def test_concurrent_completions_no_race(
+def test_concurrent_completions_all_succeed(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """asyncio gather 多 task type 并发 → 0 race (router 真 stateless on call)."""
+    """asyncio gather 7 task type 并发 → 全部 PASS (router 真 stateless on call).
+
+    NOTE: 本 test 真 mock 真 deterministic, 0 shared mutable state — 证据强度
+    限于 "7 path 真 0 异常" + "完成". 真 race condition 测试需 BudgetGuard /
+    LLMCallLogger 真 shared counter, 留 S2.2/S2.3 真 sediment.
+    """
     _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
 
     async def _drive() -> list[LLMResponse]:
@@ -310,3 +321,16 @@ def test_config_alias_completeness(router: LiteLLMRouter) -> None:
     yaml_aliases = {entry["model_name"] for entry in router._raw_config["model_list"]}
     missing = needed - yaml_aliases
     assert not missing, f"yaml model_list 缺 alias: {missing}"
+
+
+def test_unknown_primary_alias_raises_fallback_detection_error() -> None:
+    """`_is_fallback` 真 primary_alias 不在 PRIMARY_MODEL_SUBSTRINGS → raise (反 silent miss).
+
+    沿用 reviewer Chunk A P2: 未来加 alias 必同步 PRIMARY_MODEL_SUBSTRINGS table,
+    否则 _is_fallback 真 silent return False 真 fallback 状态漏报.
+    """
+    from backend.qm_platform.llm import FallbackDetectionError
+    from backend.qm_platform.llm.router import _is_fallback
+
+    with pytest.raises(FallbackDetectionError, match="not in PRIMARY_MODEL_SUBSTRINGS|不在"):
+        _is_fallback(actual_model="some/model", primary_alias="future-v5-alias")

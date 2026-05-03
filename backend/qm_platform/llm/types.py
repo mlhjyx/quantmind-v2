@@ -34,7 +34,11 @@ class RiskTaskType(StrEnum):
     BEAR_AGENT = "bear_agent"                        # L2.3 V4-Flash
     JUDGE = "judge"                                  # L2.3 V4-Pro
     RISK_REFLECTOR = "risk_reflector"                # L5 V4-Pro
-    EMBEDDING = "embedding"                          # RAG ingest V4-Flash
+    # NOTE: EMBEDDING 这里走 completion() 真 LLM 文本 summarize for RAG ingest,
+    # 不是 vector embedding API. V3 §5.5 真 "Embedding (RAG ingest)" 描述真 LLM
+    # 概要生成路径 (chat completion), vector embedding (BGE-M3 本地 1024 维)
+    # 走 V3 §20.1 #3 真独立 path, 跟 LiteLLMRouter 0 重叠. S3+ 真起手时确认.
+    EMBEDDING = "embedding"                          # RAG ingest summarize V4-Flash
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,10 @@ class LLMResponse:
     - cost_usd 改 Decimal (沿用决议 — 金融金额 Decimal, S2.3 持久化要求)
     - 新增 decision_id (caller traceable, S2.3 audit_trail 5 condition 真依赖)
     - 新增 is_fallback (是否走 qwen3-local fallback, S2.2 budget 状态判定)
+
+    NOTE: 跟 deepseek_client LLMResponse cost_usd: float 真 cross-module type 漂移,
+    跨模块汇总成本时 caller 需走 Decimal(str(...)) 转换. deepseek_client 真
+    Decimal migration 留 ADR-031 §6 渐进 deprecate timeline (S2 sediment 后).
     """
 
     content: str            # 原始响应文本

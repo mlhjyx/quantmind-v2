@@ -121,6 +121,10 @@ class LiteLLMRouter:
         self._config_path = path
         self._raw_config = config
 
+        # NOTE: yaml 真 litellm_settings (drop_params/telemetry/set_verbose/request_timeout)
+        # 走 LiteLLM module-level globals (litellm.drop_params 等), Router() init 不消费.
+        # S2.1 暂不在本模块 import litellm 真模块全局 (反 cross-module side effect),
+        # 留 S2.2/S2.3 真起手时统一在 application bootstrap 真 LLM init 真位置 apply.
         router_settings = config.get("router_settings", {}) or {}
         self._router = Router(
             model_list=config["model_list"],
@@ -253,21 +257,38 @@ def _extract_cost_usd(result: Any) -> Decimal:
         return Decimal("0")
 
 
+PRIMARY_MODEL_SUBSTRINGS: dict[str, str] = {
+    "deepseek-v4-flash": "deepseek-chat",
+    "deepseek-v4-pro": "deepseek-reasoner",
+}
+
+
+class FallbackDetectionError(RuntimeError):
+    """primary alias 不在 PRIMARY_MODEL_SUBSTRINGS 真 known set (反 silent miss, 铁律 33).
+
+    沿用 reviewer Chunk A P2: 未来加 alias 必同步 PRIMARY_MODEL_SUBSTRINGS,
+    否则 _is_fallback 真 silent return False 真 fallback 状态漏报.
+    """
+
+
 def _is_fallback(*, actual_model: str, primary_alias: str) -> bool:
-    """检测真 fallback 路径: actual_model 真模型名跟 primary alias 真期望模型 0 重叠.
+    """检测 fallback 路径: actual_model 真模型名跟 primary alias 期望模型 0 重叠.
 
     primary deepseek-v4-flash → deepseek/deepseek-chat (含 'deepseek-chat' 子串)
     primary deepseek-v4-pro → deepseek/deepseek-reasoner (含 'deepseek-reasoner' 子串)
-    fallback qwen3-local → ollama/qwen3:8b (含 'qwen' 子串)
+    fallback qwen3-local → ollama/qwen3:8b (跟两个 primary 子串都不命中)
 
-    actual_model 真返值跟期望子串 0 命中 → 走 fallback 路径.
+    actual_model 跟期望 primary 子串 0 命中 → 走 fallback 路径 (含 qwen3-local).
+    primary_alias 不在 known set → raise (反 silent miss, 沿用铁律 33).
     """
     if not actual_model or not primary_alias:
         return False
 
-    actual_lower = actual_model.lower()
-    if primary_alias == "deepseek-v4-flash":
-        return "deepseek-chat" not in actual_lower
-    if primary_alias == "deepseek-v4-pro":
-        return "deepseek-reasoner" not in actual_lower
-    return False
+    if primary_alias not in PRIMARY_MODEL_SUBSTRINGS:
+        raise FallbackDetectionError(
+            f"primary alias '{primary_alias}' 不在 PRIMARY_MODEL_SUBSTRINGS known set; "
+            "新加 alias 必同步本表 (沿用铁律 33 fail-loud)."
+        )
+
+    expected_substring = PRIMARY_MODEL_SUBSTRINGS[primary_alias]
+    return expected_substring not in actual_model.lower()
