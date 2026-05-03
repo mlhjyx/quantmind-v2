@@ -31,7 +31,13 @@ cd "$(git rev-parse --show-toplevel)"
 # 沿用 LL-106 sediment 候选: `^[[:space:]]*` 前缀 cover 任意缩进
 PATTERN='^[[:space:]]*(import (anthropic|openai)([[:space:]]|$)|from (anthropic|openai)([[:space:]\.]|$))'
 
+# S4 PR #226 sediment (ADR-032): 反 caller code 真 _internal/ 直接 import bypass factory.
+# scope 排除 backend/qm_platform/llm/ 自身 (bootstrap.py + _internal/ 内部互引合法).
+S4_INTERNAL_PATTERN='^[[:space:]]*from[[:space:]]+backend\.qm_platform\.llm\._internal'
+
 ALLOWLIST_MARKER='# llm-import-allow:'
+# S4 allowlist: test 真**file-level marker** (顶部注释), 沿用 PR #219 行内 marker 体例
+S4_INTERNAL_ALLOWLIST_MARKER='# llm-internal-allow:'
 
 MODE="${1:---staged}"
 
@@ -120,7 +126,96 @@ if [ -n "$HITS" ]; then
     exit 1
 fi
 
-if [ -n "$ALLOWLIST_LOG" ]; then
+# ─────────────────────────────────────────────────────────────
+# S4 PR #226 第 2 轮 scan: caller code (backend/app/, backend/engines/, scripts/)
+# 反 _internal/ 直接 import bypass factory.
+#
+# scope 跟第 1 轮 (anthropic/openai) 真**不同**:
+# - 排除 backend/qm_platform/llm/ 自身 (bootstrap.py + _internal/ 内部互引合法)
+# - 排除 backend/tests/* (mock 体例真依赖, 沿用 PR #219)
+# - 排除 config/hooks/, scripts/check_llm_imports.sh
+# ─────────────────────────────────────────────────────────────
+
+case "$MODE" in
+    --staged|staged)
+        # 沿用 reviewer Chunk B P2 修订: scripts/check_llm_imports.sh 真**.sh 文件**,
+        # `.py$` filter 真已自动排除, sustained `grep -v '^scripts/check_llm_imports\.sh$'`
+        # 真**defensive consistency** 跟第 1 轮 anthropic/openai scan 体例对齐 (反未来
+        # 加 .py wrapper script 真 silent miss).
+        S4_TARGETS=$(git diff --cached --name-only --diff-filter=ACM \
+                    | grep -E '^(backend|scripts)/.*\.py$' \
+                    | grep -v '/tests/' \
+                    | grep -v '^backend/qm_platform/llm/' \
+                    | grep -v '^scripts/check_llm_imports\.sh$' \
+                    || true)
+        ;;
+    --full|full)
+        # 沿用 grep filter 体例 (find -not -path 真**前导 */ 漏 relative path** 真已实测).
+        S4_TARGETS=$(find backend scripts -name "*.py" \
+                    -not -path "*/tests/*" \
+                    2>/dev/null \
+                    | grep -v '^backend/qm_platform/llm/' \
+                    || true)
+        ;;
+esac
+
+S4_HITS=""
+S4_ALLOWLIST_LOG=""
+
+if [ -n "$S4_TARGETS" ]; then
+    for f in $S4_TARGETS; do
+        if [ -f "$f" ]; then
+            MATCH=$(grep -nE "$S4_INTERNAL_PATTERN" "$f" 2>/dev/null || true)
+            if [ -n "$MATCH" ]; then
+                FILTERED=""
+                while IFS= read -r line; do
+                    if [ -z "$line" ]; then
+                        continue
+                    fi
+                    LINE_NUM=$(echo "$line" | cut -d: -f1)
+                    LINE_CONTENT=$(echo "$line" | cut -d: -f2-)
+                    case "$LINE_CONTENT" in
+                        *"$S4_INTERNAL_ALLOWLIST_MARKER"*)
+                            MARKER_TEXT=$(echo "$LINE_CONTENT" | sed -n 's/.*\(# llm-internal-allow:[^[:space:]]*\).*/\1/p')
+                            S4_ALLOWLIST_LOG="${S4_ALLOWLIST_LOG}S4_ALLOWLIST_HIT: ${f}:${LINE_NUM} ${MARKER_TEXT}
+"
+                            ;;
+                        *)
+                            FILTERED="${FILTERED}${line}
+"
+                            ;;
+                    esac
+                done <<EOF
+$MATCH
+EOF
+                if [ -n "$FILTERED" ]; then
+                    S4_HITS="${S4_HITS}${f}:
+${FILTERED}
+"
+                fi
+            fi
+        fi
+    done
+fi
+
+if [ -n "$S4_ALLOWLIST_LOG" ]; then
+    printf "%s" "$S4_ALLOWLIST_LOG" >&2
+fi
+
+if [ -n "$S4_HITS" ]; then
+    echo ""
+    echo "[check_llm_imports] BLOCK (S4): caller code 走 _internal/ 直接 import bypass factory"
+    echo "[check_llm_imports] scope: backend/app/ + backend/engines/ + scripts/ (排除 llm/ + tests/, mode: $MODE)"
+    echo ""
+    printf "%s" "$S4_HITS"
+    echo "[check_llm_imports] 原因: ADR-032 — caller 必走 get_llm_router() factory (反 naked LiteLLMRouter)"
+    echo "[check_llm_imports] 修复: 改 \`from backend.qm_platform.llm import get_llm_router\` (factory)"
+    echo "[check_llm_imports] 详情: docs/LLM_IMPORT_POLICY.md §10.9"
+    echo "[check_llm_imports] 临时豁免 (非 routine): 行内加 \`# llm-internal-allow:<reason-or-issue-ref>\`"
+    exit 1
+fi
+
+if [ -n "$ALLOWLIST_LOG" ] || [ -n "$S4_ALLOWLIST_LOG" ]; then
     echo "[check_llm_imports] 0 unauthorized import 命中, mode=$MODE, 放行 (含 allowlist legacy 见 stderr)."
 else
     echo "[check_llm_imports] 0 forbidden import 命中, mode=$MODE, 放行."

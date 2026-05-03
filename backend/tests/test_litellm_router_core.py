@@ -25,18 +25,21 @@ from typing import Any
 
 import pytest
 
-from backend.qm_platform.llm import (
-    DEFAULT_CONFIG_PATH,
-    FALLBACK_ALIAS,
-    TASK_TO_MODEL_ALIAS,
-    LiteLLMRouter,
+# llm-internal-allow:test-only — S4 PR #226 sediment, mock 体例真依赖 _internal/ 直接 import
+from backend.qm_platform.llm import (  # noqa: F401
     LLMMessage,
     LLMResponse,
     RiskTaskType,
     RouterConfigError,
     UnknownTaskError,
 )
-from backend.qm_platform.llm import router as router_module
+from backend.qm_platform.llm._internal import router as router_module
+from backend.qm_platform.llm._internal.router import (
+    DEFAULT_CONFIG_PATH,
+    FALLBACK_ALIAS,
+    TASK_TO_MODEL_ALIAS,
+    LiteLLMRouter,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 ROUTER_CONFIG = REPO_ROOT / "config" / "litellm_router.yaml"
@@ -329,8 +332,7 @@ def test_unknown_primary_alias_raises_fallback_detection_error() -> None:
     沿用 reviewer Chunk A P2: 未来加 alias 必同步 PRIMARY_MODEL_SUBSTRINGS table,
     否则 _is_fallback 真 silent return False 真 fallback 状态漏报.
     """
-    from backend.qm_platform.llm import FallbackDetectionError
-    from backend.qm_platform.llm.router import _is_fallback
+    from backend.qm_platform.llm._internal.router import FallbackDetectionError, _is_fallback
 
     with pytest.raises(FallbackDetectionError, match="not in PRIMARY_MODEL_SUBSTRINGS|不在"):
         _is_fallback(actual_model="some/model", primary_alias="future-v5-alias")

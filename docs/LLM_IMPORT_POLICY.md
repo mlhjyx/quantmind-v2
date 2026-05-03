@@ -544,3 +544,137 @@ RTX 5070 12 GB VRAM → Ollama 自动检测 CUDA, qwen3:8b Q4_K_M 沿用 ~5 GB V
 - [GitHub issue #2776](https://github.com/ollama/ollama/issues/2776) (custom install dir support, /DIR= GA)
 - [Ollama qwen3 Library](https://ollama.com/library/qwen3) (5.2 GB Q4_K_M default)
 - [LiteLLM Ollama Provider Docs](https://docs.litellm.ai/docs/providers/ollama) (ollama_chat better responses)
+
+### §10.9 S4 Caller Bootstrap Factory + Naked Router Export Restriction (PR #226, 2026-05-03)
+
+#### §10.9.1 决议 sediment
+
+V3 Sprint 1 S4 sub-task (8/8 完成, ADR-032). 老主题 (Budget guardrails) 已并入 S2.2 PR #223, 编号转给新主题 caller bootstrap enforcement.
+
+| 项 | 决议 |
+|---|---|
+| factory 体例 | `get_llm_router(*, settings=None, conn_factory=None)` 沿用 `alert.py:528-554` double-checked lock + reset_*() |
+| singleton lifecycle | process-level cache (module-level _router_singleton + threading.Lock) |
+| 降级 mode | `conn_factory=None` 走 naked LiteLLMRouter (反 BudgetGuard 真 None DB call), Sprint 2+ application bootstrap 时显式 wire 启用全 governance |
+| _internal/ 子包 | router.py / budget.py / audit.py 全移 _internal/ (caller 反直接 import) |
+| public API surface | 18 → 6 export (factory 2 + types 5: RiskTaskType / LLMMessage / LLMResponse / RouterConfigError / UnknownTaskError) |
+| hook 检测 | `scripts/check_llm_imports.sh` 加 S4_INTERNAL_PATTERN + allowlist marker `# llm-internal-allow:` |
+| test 排除 | backend/tests/* 走 hook scope 排除 (沿用 PR #219), 加 file-level marker 沿用 documentation |
+
+#### §10.9.2 模块结构 (S4 PR #226)
+
+```
+backend/qm_platform/llm/
+├── __init__.py            # 公共 API 6 names (get_llm_router / reset_llm_router + 5 types)
+├── bootstrap.py           # factory + singleton 沿用 alert.py 体例
+├── types.py               # 公共 dataclass + enum + exception (PR #222 sediment, sustained)
+└── _internal/             # internal-only, caller 反直接 import (hook BLOCK)
+    ├── __init__.py
+    ├── router.py          # 移自 backend/qm_platform/llm/router.py (S4 git mv)
+    ├── budget.py          # 移自 backend/qm_platform/llm/budget.py (S4 git mv)
+    └── audit.py           # 移自 backend/qm_platform/llm/audit.py (S4 git mv)
+```
+
+#### §10.9.3 caller 真生产典型用法
+
+```python
+# ✅ 沿用 sanctioned path (factory)
+from backend.qm_platform.llm import get_llm_router, RiskTaskType, LLMMessage
+
+# === Mode 1: 降级 mode (conn_factory=None default) ===
+# return type: LiteLLMRouter (反 BudgetGuard / Audit, 沿用决议 — Sprint 2+ wire)
+# completion signature: completion(task, messages, *, decision_id=None, **kwargs)
+# 沿用 LiteLLMRouter 真 completion API (PR #222 sediment, _internal/router.py)
+router = get_llm_router()
+response = router.completion(
+    task=RiskTaskType.JUDGE,
+    messages=[LLMMessage("user", "判定...")],
+    decision_id="risk-event-uuid-xxx",
+)
+# response.cost_usd / response.is_fallback 沿用 LLMResponse contract (PR #222)
+# 反 BudgetGuard.check_state / 反 LLMCallLogger.log_call (降级 mode 0 wire).
+
+# === Mode 2: 全 governance mode (Sprint 2+ application bootstrap) ===
+# return type: BudgetAwareRouter (BudgetGuard + LLMCallLogger 全 wire)
+# completion signature: completion(task, messages, *, decision_id=None, **kwargs)
+# 沿用 BudgetAwareRouter 真 completion API (PR #223+#224 sediment, _internal/budget.py)
+def _conn_factory():
+    return psycopg2.connect(settings.DATABASE_URL_SYNC)
+
+router = get_llm_router(conn_factory=_conn_factory)
+# 4 步 flow: budget.check() → router.completion() → budget.record_cost() → audit.log_call()
+# response 沿用同 LLMResponse contract, 但走全 governance 路径 (反 silent skip).
+```
+
+**caller 真**不必关心 return type 区分**真**completion API 一致** (沿用 PR #222 contract, 反 break 老 caller). 仅**走 BudgetGuard / LLMCallLogger 真 governance** 真区别. 反**强制走全 governance** sustained 决议 (Sprint 2+ wire 时 caller 显式传 conn_factory).
+
+```python
+# ❌ 反向用法 — bypass factory + audit + budget governance, hook 自动 BLOCK
+from backend.qm_platform.llm._internal.router import LiteLLMRouter
+```
+
+#### §10.9.4 test isolation (autouse fixture)
+
+```python
+# backend/tests/conftest.py (S4 PR #226 sediment)
+@pytest.fixture(autouse=True)
+def _reset_llm_singleton():
+    """LLM Router 全局 singleton 跨 test reset (沿用 alert.py reset_*() 体例)."""
+    yield
+    from backend.qm_platform.llm import reset_llm_router
+    reset_llm_router()
+```
+
+反 cross-test pollution: 上 test mock monkeypatch litellm.Router.completion → 下 test 沿用 mock 漂移 — autouse reset 真**反此 silent miss**.
+
+#### §10.9.5 hook 检测 + allowlist marker
+
+`scripts/check_llm_imports.sh` 真 S4 第 2 轮 scan loop:
+
+| 项 | 真值 |
+|---|---|
+| S4_INTERNAL_PATTERN | `^[[:space:]]*from[[:space:]]+backend\.qm_platform\.llm\._internal` |
+| ALLOWLIST_MARKER | `# llm-internal-allow:` |
+| scope (--full mode) | backend/app/ + backend/engines/ + scripts/ (排除 backend/qm_platform/llm/ + backend/tests/* + scripts/check_llm_imports.sh) |
+| scope (--staged mode) | git diff --cached staged Python files, 排除同上 |
+| BLOCK 体例 | exit 1 + 详细错误 + 修复指引 (改 `from backend.qm_platform.llm import get_llm_router`) |
+| 临时豁免 (legacy only) | 行内加 `# llm-internal-allow:<reason-or-issue-ref>` (沿用 PR #219 体例) |
+
+test 真 file-level marker (沿用 4 test 文件):
+
+```python
+# llm-internal-allow:test-only — S4 PR #226 sediment, mock 体例真依赖 _internal/ 直接 import
+from backend.qm_platform.llm._internal.router import LiteLLMRouter
+```
+
+#### §10.9.6 0 prod caller break
+
+| path | 现状 | S4 后 |
+|---|---|---|
+| backend/app/ FastAPI | 0 LiteLLMRouter import (S8 audit §3 0 hot path) | sustained 0 触碰 |
+| backend/app/tasks/ Celery beats | 0 LiteLLMRouter import | sustained 0 触碰 |
+| backend/engines/ | 0 LiteLLMRouter import | sustained 0 触碰 |
+| scripts/llm_cost_daily_report.py (S2.3) | 0 LLM import (仅 DB SELECT + DingTalk push) | sustained 0 触碰 |
+| factor_agent / idea_agent | sustained deepseek_client (ADR-031 §6 deprecate plan) | sustained 0 触碰 (沿用决议 2 (p1)) |
+| **未来 caller** (RiskReflector / Bull/Bear / NewsClassifier) | 0 实施 | Sprint 2+ application bootstrap 真**走 get_llm_router()** |
+
+#### §10.9.7 deferred (Sprint 2+ / audit Week 2)
+
+- **Sprint 2+ application bootstrap wire**: caller (RiskReflector / Bull/Bear / NewsClassifier) 显式 `get_llm_router(conn_factory=...)` 启用全 governance
+- **ADR-031 §6 渐进 deprecate plan**: factor_agent / idea_agent 切换 LiteLLMRouter (Sprint 2-N)
+- **audit Week 2 batch sediment**:
+  - LL-110 (audit log fail-loud SOP)
+  - LL-111 (S4 cite drift, 老 Budget 主题已并 S2.2)
+  - LL-112 (bash 残留 hook trap 防长期残留)
+  - _CappedFakeCursor helper extraction (3 test 文件 mock 重复, audit Week 2 follow-up PR)
+
+#### §10.9.8 关联
+
+- [docs/adr/ADR-032-s4-caller-bootstrap-factory-and-naked-router-export-restriction.md](adr/ADR-032-s4-caller-bootstrap-factory-and-naked-router-export-restriction.md)
+- [backend/qm_platform/llm/bootstrap.py](../backend/qm_platform/llm/bootstrap.py) (factory + singleton)
+- [backend/qm_platform/llm/_internal/](../backend/qm_platform/llm/_internal/) (internal-only 子包)
+- [backend/qm_platform/observability/alert.py](../backend/qm_platform/observability/alert.py) :528-554 (factory 体例参考)
+- [scripts/check_llm_imports.sh](../scripts/check_llm_imports.sh) (S6 PR #219 + S4 PR #226 sediment)
+- ADR-022 反 silent overwrite / ADR-031 §6 渐进 deprecate plan
+- V3 §5.5 (LiteLLM 路由) / V3 §11.1 (path-level abstraction, 0 V3 patch)
+- 决议 2 (p1) sustained: deepseek_client.py 0 mutation

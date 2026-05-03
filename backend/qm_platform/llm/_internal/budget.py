@@ -32,8 +32,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from ..types import LLMMessage, LLMResponse, RiskTaskType
 from .router import FALLBACK_ALIAS, TASK_TO_MODEL_ALIAS, LiteLLMRouter
-from .types import LLMMessage, LLMResponse, RiskTaskType
 
 if TYPE_CHECKING:
     from .audit import LLMCallLogger

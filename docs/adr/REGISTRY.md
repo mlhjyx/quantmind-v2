@@ -41,14 +41,15 @@
 | ADR-029 | L1 实时化 + xtquant subscribe_quote 接入 | reserved | V3 §18.1 row 9 (本 PR sediment, 沿用 ADR-023 真 cite drift # 下移决议, V3 Tier A Sprint 3 真起手时 sediment) |
 | ADR-030 | Layer 4 SOP 沉淀 (governance protocol) | reserved | 4 audit docs (5-01 Phase 4.2 sediment) sustained 下移 (本 PR sediment, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
 | ADR-031 | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | committed | V3 Sprint 1 S8 audit sediment (2026-05-03), user X2=(ii) 决议, 沿用 ADR-020 + ADR-022 + V3 §5.5 真预约 |
+| ADR-032 | S4 caller bootstrap factory + naked LiteLLMRouter export 限制 | committed | V3 Sprint 1 S4 sub-task sediment (2026-05-03 PR #226), 沿用 ADR-022 反 silent overwrite + ADR-031 §6 渐进 deprecate plan 前置 enforcement |
 
 ## 真状态分布
 
-- **committed (真 file 真在 docs/adr/)**: 22 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031)
+- **committed (真 file 真在 docs/adr/)**: 23 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032)
 - **reserved (V3 §18.1 真预约, 0 file 等真起手时 sediment)**: 6 个 (ADR-019/020/025/026/029/030)
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号 sustained)
 
-总 32 # space (含 gap), 真活跃 28 (committed 22 + reserved 6).
+总 33 # space (含 gap), 真活跃 29 (committed 23 + reserved 6).
 
 ## 真 maintenance 规则
 

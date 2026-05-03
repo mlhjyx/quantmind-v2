@@ -37,7 +37,7 @@ from typing import Any
 import yaml
 from litellm import Router
 
-from .types import (
+from ..types import (
     LLMMessage,
     LLMResponse,
     RiskTaskType,
@@ -45,7 +45,10 @@ from .types import (
     UnknownTaskError,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# parents[4] 沿用 S4 PR #226 真 _internal/ 子包深度 (反 PR #222 真 parents[3]).
+# backend/qm_platform/llm/_internal/router.py → parents[0]=_internal → parents[1]=llm
+# → parents[2]=qm_platform → parents[3]=backend → parents[4]=REPO_ROOT.
+REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "litellm_router.yaml"
 
 # V3 §5.5 + 决议 3 (a) — 7 任务 → primary model alias mapping (Python in-code SSOT).

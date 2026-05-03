@@ -1,16 +1,46 @@
-"""pytest共享fixtures — 异步DB session + API测试client。
+"""pytest共享fixtures — 异步DB session + API测试client + LLM singleton reset。
 
 连接真实PostgreSQL: quantmind_v2。
 每个测试用例创建独立connection+transaction，结束后ROLLBACK。
+
+S4 PR #226 sediment: autouse fixture _reset_llm_singleton 反 cross-test pollution
+(沿用 backend/qm_platform/observability/alert.py reset_alert_router 体例 + ADR-032).
 """
 
 import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 # 确保backend目录和项目根目录在sys.path中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_singleton():
+    """LLM Router 全局 singleton 跨 test reset (沿用 alert.py reset_*() 体例).
+
+    yield 后跑 reset_llm_router() 反 singleton 状态污染 (e.g. 上 test mock
+    monkeypatch litellm.Router.completion → 下 test 沿用 mock 漂移).
+
+    沿用 reviewer Chunk B P1 hardening (defensive try/except ImportError):
+    LiteLLM SDK 真**0 装** 时 (e.g. fork checkout 反 install) 跨 test teardown 真
+    fail-safe (反 ModuleNotFoundError break 全 4222 非 LLM tests). 沿用铁律 33
+    silent_ok 注释 (反 silent miss). 实测沿用 PR #226 真 litellm 已装真路径,
+    仅 fork checkout 真**未来 break risk** 真防御.
+
+    沿用 ADR-032 + LL-098 X10 (反 silent cross-test 污染 silent miss).
+    """
+    yield
+    try:
+        from backend.qm_platform.llm import reset_llm_router
+        reset_llm_router()
+    except ImportError:
+        # silent_ok: litellm SDK 0 装时 reset 真 noop (反 break 4222 非 LLM tests).
+        # 沿用铁律 33 silent_ok 注释 + Chunk B P1 reviewer hardening.
+        pass
 
 try:
     import pytest_asyncio

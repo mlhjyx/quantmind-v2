@@ -30,15 +30,14 @@ from decimal import Decimal
 
 import pytest
 
-from backend.qm_platform.llm import (
-    FALLBACK_ALIAS,
+# llm-internal-allow:test-only — S4 PR #226 sediment, e2e 真生产 LiteLLM call 真依赖 _internal/
+from backend.qm_platform.llm import LLMMessage, RiskTaskType
+from backend.qm_platform.llm._internal.budget import (
     BudgetAwareRouter,
     BudgetGuard,
     BudgetState,
-    LiteLLMRouter,
-    LLMMessage,
-    RiskTaskType,
 )
+from backend.qm_platform.llm._internal.router import FALLBACK_ALIAS, LiteLLMRouter
 
 # ─────────────────────────────────────────────────────────────
 # 模块级 Ollama 沿用 probe — 0 listening → skip 全模块
