@@ -581,19 +581,32 @@ backend/qm_platform/llm/
 # ✅ 沿用 sanctioned path (factory)
 from backend.qm_platform.llm import get_llm_router, RiskTaskType, LLMMessage
 
-router = get_llm_router()  # 默认走 default_settings + None conn_factory (降级 mode)
+# === Mode 1: 降级 mode (conn_factory=None default) ===
+# return type: LiteLLMRouter (反 BudgetGuard / Audit, 沿用决议 — Sprint 2+ wire)
+# completion signature: completion(task, messages, *, decision_id=None, **kwargs)
+# 沿用 LiteLLMRouter 真 completion API (PR #222 sediment, _internal/router.py)
+router = get_llm_router()
 response = router.completion(
     task=RiskTaskType.JUDGE,
     messages=[LLMMessage("user", "判定...")],
     decision_id="risk-event-uuid-xxx",
 )
+# response.cost_usd / response.is_fallback 沿用 LLMResponse contract (PR #222)
+# 反 BudgetGuard.check_state / 反 LLMCallLogger.log_call (降级 mode 0 wire).
 
-# Sprint 2+ application bootstrap 真 wire conn_factory 启用全 governance
+# === Mode 2: 全 governance mode (Sprint 2+ application bootstrap) ===
+# return type: BudgetAwareRouter (BudgetGuard + LLMCallLogger 全 wire)
+# completion signature: completion(task, messages, *, decision_id=None, **kwargs)
+# 沿用 BudgetAwareRouter 真 completion API (PR #223+#224 sediment, _internal/budget.py)
 def _conn_factory():
     return psycopg2.connect(settings.DATABASE_URL_SYNC)
 
-router = get_llm_router(conn_factory=_conn_factory)  # BudgetAwareRouter (全 governance)
+router = get_llm_router(conn_factory=_conn_factory)
+# 4 步 flow: budget.check() → router.completion() → budget.record_cost() → audit.log_call()
+# response 沿用同 LLMResponse contract, 但走全 governance 路径 (反 silent skip).
 ```
+
+**caller 真**不必关心 return type 区分**真**completion API 一致** (沿用 PR #222 contract, 反 break 老 caller). 仅**走 BudgetGuard / LLMCallLogger 真 governance** 真区别. 反**强制走全 governance** sustained 决议 (Sprint 2+ wire 时 caller 显式传 conn_factory).
 
 ```python
 # ❌ 反向用法 — bypass factory + audit + budget governance, hook 自动 BLOCK

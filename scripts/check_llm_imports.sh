@@ -138,6 +138,10 @@ fi
 
 case "$MODE" in
     --staged|staged)
+        # 沿用 reviewer Chunk B P2 修订: scripts/check_llm_imports.sh 真**.sh 文件**,
+        # `.py$` filter 真已自动排除, sustained `grep -v '^scripts/check_llm_imports\.sh$'`
+        # 真**defensive consistency** 跟第 1 轮 anthropic/openai scan 体例对齐 (反未来
+        # 加 .py wrapper script 真 silent miss).
         S4_TARGETS=$(git diff --cached --name-only --diff-filter=ACM \
                     | grep -E '^(backend|scripts)/.*\.py$' \
                     | grep -v '/tests/' \

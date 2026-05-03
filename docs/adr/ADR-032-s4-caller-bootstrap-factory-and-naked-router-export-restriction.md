@@ -48,12 +48,15 @@ S4 真**最后 sub-task** (8/8) — 把 PR #221-#225 所有 sediment 沉到**唯
 
 ## Alternatives Considered
 
-| 候选 | 描述 | 拒收理由 |
+沿用 reviewer Chunk C P2 修订 — 表格 column 改 "评价/理由" (兼容采纳 + 拒收语义) + 加 standalone (2) row (反 (2)+(4) 真 partially opaque):
+
+| 候选 | 描述 | 评价/理由 |
 |---|---|---|
-| (1) 直接删 LiteLLMRouter export | __init__.py 删, 反**break 4 test 文件** | break PR #221-#225 test sediment, 撞 ADR-022 silent overwrite |
-| (3) DeprecationWarning import 时 emit | warning + 完成 import (反 hard block) | warning 真生产可能漂移, audit Week 2 sediment hard block 候选 P3 backlog |
-| (4) ruff/lint hook only (无 _internal/ 移) | 仅 hook BLOCK naked import, 反 path-level enforcement | hook 真**最后防线**, 反 path-level structure 真**反 silent bypass** 防御弱 |
-| (2)+(4) 组合 (本 ADR 真采纳) | _internal/ 移 + hook 检测 | path-level structure (反 silent bypass) + hook (反 caller code drift) 双层防御 |
+| (1) 直接删 LiteLLMRouter export | __init__.py 删 LiteLLMRouter export, 反**break 4 test 文件** | ❌ 拒 — break PR #221-#225 test sediment, 撞 ADR-022 silent overwrite |
+| (2) _internal/ 子包 only (无 hook) | 移 router/budget/audit 进 _internal/, 反 hook 检测 | ❌ 拒 — caller code 真 drift 真**反 silent bypass** 防御弱, hook 真**最后 caller code 防线**缺失 |
+| (3) DeprecationWarning import 时 emit | warning + 完成 import (反 hard block) | ❌ 拒 — warning 真生产可能漂移, audit Week 2 sediment hard block 候选 P3 backlog |
+| (4) ruff/lint hook only (无 _internal/ 移) | 仅 hook BLOCK naked import, 反 path-level enforcement | ❌ 拒 — hook 真**最后防线**, 反 path-level structure 真**反 silent bypass** 防御弱 |
+| **(2)+(4) 组合 (本 ADR 真采纳)** | _internal/ 移 + hook 检测 | ✅ **采纳** — path-level structure (反 silent bypass) + hook (反 caller code drift) 双层防御 |
 
 ## Consequences
 

@@ -25,11 +25,22 @@ def _reset_llm_singleton():
     yield 后跑 reset_llm_router() 反 singleton 状态污染 (e.g. 上 test mock
     monkeypatch litellm.Router.completion → 下 test 沿用 mock 漂移).
 
+    沿用 reviewer Chunk B P1 hardening (defensive try/except ImportError):
+    LiteLLM SDK 真**0 装** 时 (e.g. fork checkout 反 install) 跨 test teardown 真
+    fail-safe (反 ModuleNotFoundError break 全 4222 非 LLM tests). 沿用铁律 33
+    silent_ok 注释 (反 silent miss). 实测沿用 PR #226 真 litellm 已装真路径,
+    仅 fork checkout 真**未来 break risk** 真防御.
+
     沿用 ADR-032 + LL-098 X10 (反 silent cross-test 污染 silent miss).
     """
     yield
-    from backend.qm_platform.llm import reset_llm_router
-    reset_llm_router()
+    try:
+        from backend.qm_platform.llm import reset_llm_router
+        reset_llm_router()
+    except ImportError:
+        # silent_ok: litellm SDK 0 装时 reset 真 noop (反 break 4222 非 LLM tests).
+        # 沿用铁律 33 silent_ok 注释 + Chunk B P1 reviewer hardening.
+        pass
 
 try:
     import pytest_asyncio
