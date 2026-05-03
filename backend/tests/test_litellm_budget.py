@@ -29,19 +29,21 @@ from typing import Any
 
 import pytest
 
+# llm-internal-allow:test-only — S4 PR #226 sediment, mock 体例真依赖 _internal/ 直接 import
 from backend.qm_platform.llm import (
-    FALLBACK_ALIAS,
+    LLMMessage,
+    LLMResponse,
+    RiskTaskType,
+)
+from backend.qm_platform.llm._internal import router as router_module
+from backend.qm_platform.llm._internal.budget import (
     BudgetAwareRouter,
     BudgetExceededError,
     BudgetGuard,
     BudgetSnapshot,
     BudgetState,
-    LiteLLMRouter,
-    LLMMessage,
-    LLMResponse,
-    RiskTaskType,
 )
-from backend.qm_platform.llm import router as router_module
+from backend.qm_platform.llm._internal.router import FALLBACK_ALIAS, LiteLLMRouter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 ROUTER_CONFIG = REPO_ROOT / "config" / "litellm_router.yaml"

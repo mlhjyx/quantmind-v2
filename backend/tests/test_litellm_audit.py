@@ -28,18 +28,20 @@ from typing import Any
 
 import pytest
 
-from backend.qm_platform.llm import (
+# llm-internal-allow:test-only — S4 PR #226 sediment, mock 体例真依赖 _internal/ 直接 import
+from backend.qm_platform.llm import LLMMessage, RiskTaskType
+from backend.qm_platform.llm._internal import router as router_module
+from backend.qm_platform.llm._internal.audit import (
+    LLMCallLogger,
+    LLMCallRecord,
+    compute_prompt_hash,
+)
+from backend.qm_platform.llm._internal.budget import (
     BudgetAwareRouter,
     BudgetGuard,
     BudgetState,
-    LiteLLMRouter,
-    LLMCallLogger,
-    LLMCallRecord,
-    LLMMessage,
-    RiskTaskType,
-    compute_prompt_hash,
 )
-from backend.qm_platform.llm import router as router_module
+from backend.qm_platform.llm._internal.router import LiteLLMRouter
 
 # ─────────────────────────────────────────────────────────────
 # In-memory mock conn_factory for llm_call_log (新增, 沿用 budget tests 体例)

@@ -36,8 +36,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from ..types import LLMMessage, RiskTaskType
 from .budget import BudgetState
-from .types import LLMMessage, RiskTaskType
 
 logger = logging.getLogger(__name__)
 
