@@ -386,7 +386,9 @@ def _is_fallback(*, actual_model: str, primary_alias: str) -> bool:
     # NEW (sub-PR 8a-followup-A 5-07): alias equality short-circuit (Case 1 primary
     # success signal). LiteLLM Router 真**default behavior** 返 yaml model_name alias
     # 反 underlying provider/model — sub-PR 8a e2e 真生产 first verify.
-    if actual_model == primary_alias:
+    # 沿用 .lower() 对齐 line 399 substring check (reviewer P1-1 adopt: case-variant
+    # alias 真**反 introduce false positive** — e.g. "DeepSeek-V4-Flash" vs lowercase).
+    if actual_model.lower() == primary_alias.lower():
         return False
 
     if primary_alias not in PRIMARY_MODEL_SUBSTRINGS:

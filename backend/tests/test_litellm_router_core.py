@@ -374,6 +374,16 @@ def test_is_fallback_case1_alias_pass_through_returns_false() -> None:
         actual_model="deepseek-v4-pro",
         primary_alias="deepseek-v4-pro",
     ) is False
+    # reviewer P1-1+P1-2 adopt (5-07): case-variant alias 真**反 introduce false positive**
+    # 沿用 line 399 substring check 真 .lower() normalization 体例 sustained.
+    assert _is_fallback(
+        actual_model="DeepSeek-V4-Flash",
+        primary_alias="deepseek-v4-flash",
+    ) is False
+    assert _is_fallback(
+        actual_model="deepseek-v4-flash",
+        primary_alias="DEEPSEEK-V4-FLASH",
+    ) is False
 
 
 def test_is_fallback_case2_underlying_name_returns_false() -> None:
