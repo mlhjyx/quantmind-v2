@@ -4,9 +4,25 @@
 # scope: S1 install + provider config (本 PR), S2 sub-task (LiteLLMRouter 新建模块) 真消费本 file
 # 安全: 0 hardcode API key, 全走 os.environ/<NAME> (LiteLLM 标准)
 #
-# DeepSeek V4 别名 -> 真实模型 ID 映射 (沿用 V3 §5.5):
-#   deepseek-v4-flash -> deepseek/deepseek-chat (快速 + 低成本, News/summarizer/Bull-Bear/Embedding)
-#   deepseek-v4-pro   -> deepseek/deepseek-reasoner (R1 reasoning, Judge/RiskReflector)
+# DeepSeek V4 别名 -> 真实模型 ID 映射 (5-07 sub-PR 8a-followup-B-yaml 真生产 V4 routing 切换):
+#   deepseek-v4-flash -> deepseek/deepseek-v4-flash + thinking=disabled (V3 §5.5 chat semantic align,
+#                                                       News/summarizer/Bull-Bear/Embedding 真消费)
+#   deepseek-v4-pro   -> deepseek/deepseek-v4-pro   + thinking=enabled  (V3 §5.5 reasoner semantic align,
+#                                                       Judge/RiskReflector 真消费)
+#
+# 沿用 DeepSeek 官方 API 文档 (api-docs.deepseek.com/zh-cn/) thinking mode toggle 体例:
+#   extra_body={"thinking": {"type": "enabled" | "disabled" | "max"}}
+#   双 model 真**dual-mode**: v4-flash + v4-pro 全支持 thinking enabled/disabled, semantic by extra_body 决议.
+#
+# 真生产 evidence (sub-PR 8a-followup-B-yaml 5-07 6 path × thinking toggle 真测):
+#   - flash + thinking=disabled → reasoning_content=null + ~3 out tokens (✅ chat semantic 真生效)
+#   - pro + thinking=enabled    → reasoning_content YES + ~34 out tokens (✅ reasoner semantic 真生效)
+#
+# 已知 cost gap (sustained ADR-DRAFT row 8 sediment defer audit Week 2 batch):
+#   LiteLLM cost registry 真**0 v4-flash / v4-pro entry** → cost_usd=None propagate llm_call_log
+#   → BudgetGuard cost_usd_total 真**0 数据** sustained until LiteLLM SDK 升级 cost registry.
+#   7-24 deadline plan: deepseek-chat / deepseek-reasoner 弃用前 LiteLLM 升级 prerequisite
+#   (audit Week 2 batch governance PR sediment + watch SOP).
 #
 # Ollama Qwen3 (S3 prerequisite, 0 cost fallback):
 #   qwen3-local -> ollama_chat/qwen3.5:9b (LiteLLM /api/chat endpoint, OLLAMA_BASE_URL env, S3 PR #225 sediment)
@@ -14,19 +30,30 @@
 model_list:
   - model_name: deepseek-v4-flash
     litellm_params:
-      model: deepseek/deepseek-chat
+      model: deepseek/deepseek-v4-flash
       api_key: os.environ/DEEPSEEK_API_KEY
       api_base: https://api.deepseek.com
       timeout: 30
       max_retries: 2
+      # sub-PR 8a-followup-B-yaml 5-07: thinking=disabled 沿用 V3 §5.5 V4-Flash chat semantic
+      # (News/summarizer/Bull-Bear/Embedding 真消费 short response, 反 reasoner content noise).
+      # caller 真**override 临时 enable** 走 router.completion(extra_body=...) 透传体例 sustained.
+      extra_body:
+        thinking:
+          type: disabled
 
   - model_name: deepseek-v4-pro
     litellm_params:
-      model: deepseek/deepseek-reasoner
+      model: deepseek/deepseek-v4-pro
       api_key: os.environ/DEEPSEEK_API_KEY
       api_base: https://api.deepseek.com
       timeout: 120
       max_retries: 2
+      # sub-PR 8a-followup-B-yaml 5-07: thinking=enabled 沿用 V3 §5.5 V4-Pro reasoner semantic
+      # (Judge/RiskReflector 真消费 reasoning_content for chain-of-thought, sustained PR #224 audit).
+      extra_body:
+        thinking:
+          type: enabled
 
   - model_name: qwen3-local
     litellm_params:

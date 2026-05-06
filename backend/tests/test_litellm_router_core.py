@@ -138,7 +138,7 @@ def test_completion_mock_happy_path(
 ) -> None:
     """基本 happy path — JUDGE 路由 → deepseek-v4-pro → 真返 LLMResponse."""
     captured = _patch_router_completion(
-        monkeypatch, actual_model="deepseek/deepseek-reasoner", cost=0.0042
+        monkeypatch, actual_model="deepseek/deepseek-v4-pro", cost=0.0042
     )
 
     response = router.completion(
@@ -148,7 +148,7 @@ def test_completion_mock_happy_path(
 
     assert isinstance(response, LLMResponse)
     assert response.content == "ok"
-    assert response.model == "deepseek/deepseek-reasoner"
+    assert response.model == "deepseek/deepseek-v4-pro"
     assert response.tokens_in == 12
     assert response.tokens_out == 8
     assert response.cost_usd == Decimal("0.0042")
@@ -162,7 +162,7 @@ def test_response_dataclass_fields_complete(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """LLMResponse 真 dataclass 7 字段全部齐 (含 decision_id + is_fallback)."""
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
 
     response = router.completion(
         task=RiskTaskType.NEWS_CLASSIFY,
@@ -186,7 +186,7 @@ def test_decision_id_propagation(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """caller 传 decision_id → response 透传 (S2.3 audit trail 真依赖)."""
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
 
     decision_id = "risk-event-uuid-1234abcd"
     response = router.completion(
@@ -202,7 +202,7 @@ def test_decision_id_default_none(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """caller 不传 decision_id → response 真 None (S2.3 真 fail-loud check 候选)."""
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     response = router.completion(
         task=RiskTaskType.EMBEDDING, messages=[LLMMessage("user", "embed me")]
     )
@@ -227,7 +227,7 @@ def test_fallback_detection_v4_pro_stays_primary(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """primary deepseek-v4-pro 真返 deepseek-reasoner → is_fallback=False."""
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-reasoner")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-pro")
 
     response = router.completion(
         task=RiskTaskType.RISK_REFLECTOR,
@@ -241,7 +241,7 @@ def test_unknown_task_completion_raises(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """completion(unknown_task) → UnknownTaskError (反 silent fallback)."""
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     with pytest.raises(UnknownTaskError):
         router.completion(
             task="bogus",  # type: ignore[arg-type]
@@ -253,7 +253,7 @@ def test_messages_dict_input_supported(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """caller 传 dict messages (NOT LLMMessage) 也兼容 (沿用 OpenAI Chat 体例)."""
-    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     raw_messages = [
         {"role": "system", "content": "你是 NewsClassifier"},
         {"role": "user", "content": "分类这条消息"},
@@ -266,7 +266,7 @@ def test_kwargs_passthrough(
     router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """kwargs (temperature / max_tokens) 透传 LiteLLM completion."""
-    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     router.completion(
         task=RiskTaskType.JUDGE,
         messages=[LLMMessage("user", "x")],
@@ -288,7 +288,7 @@ def test_concurrent_completions_all_succeed(
     限于 "7 path 真 0 异常" + "完成". 真 race condition 测试需 BudgetGuard /
     LLMCallLogger 真 shared counter, 留 S2.2/S2.3 真 sediment.
     """
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat")
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
 
     async def _drive() -> list[LLMResponse]:
         loop = asyncio.get_event_loop()
@@ -396,17 +396,18 @@ def test_is_fallback_case2_underlying_name_returns_false() -> None:
 
     # primary deepseek-v4-flash → "deepseek-chat" substring (Case 2 sustained)
     assert _is_fallback(
-        actual_model="deepseek/deepseek-chat",
+        actual_model="deepseek/deepseek-v4-flash",
         primary_alias="deepseek-v4-flash",
     ) is False
     # primary deepseek-v4-pro → "deepseek-reasoner" substring (Case 2 sustained)
     assert _is_fallback(
-        actual_model="deepseek/deepseek-reasoner",
+        actual_model="deepseek/deepseek-v4-pro",
         primary_alias="deepseek-v4-pro",
     ) is False
-    # case-insensitive 沿用 actual_model.lower() (e.g. "DeepSeek/DeepSeek-Chat")
+    # case-insensitive 沿用 actual_model.lower() (e.g. "DeepSeek/DeepSeek-V4-Flash")
+    # sub-PR 8a-followup-B-yaml 5-07 reviewer P1-1 adopt: V4 underlying case-variant 沿用体例.
     assert _is_fallback(
-        actual_model="DeepSeek/DeepSeek-Chat",
+        actual_model="DeepSeek/DeepSeek-V4-Flash",
         primary_alias="deepseek-v4-flash",
     ) is False
 
@@ -437,3 +438,92 @@ def test_is_fallback_case3_fallback_underlying_returns_true() -> None:
         actual_model="ollama_chat/qwen3.5:9b",
         primary_alias="deepseek-v4-pro",
     ) is True
+
+
+# ── sub-PR 8a-followup-B-yaml (5-07): yaml V4 underlying routing + thinking 参数 cover ──
+#
+# DeepSeek 官方 API spec (api-docs.deepseek.com/zh-cn/) sustained:
+# - v4-flash + v4-pro 真**dual-mode model**, thinking enabled/disabled toggle 真生效
+# - extra_body={"thinking": {"type": "enabled" | "disabled" | "max"}}
+# - LiteLLM Router 真**transparent 透传** litellm_params.extra_body 走 completion call
+#
+# yaml 真生效真值 (sub-PR 8a-followup-B-yaml 5-07 修):
+# - deepseek-v4-flash → deepseek/deepseek-v4-flash + extra_body.thinking.type=disabled (chat semantic)
+# - deepseek-v4-pro   → deepseek/deepseek-v4-pro   + extra_body.thinking.type=enabled  (reasoner semantic)
+
+
+def test_yaml_v4_flash_underlying_with_thinking_disabled(router: LiteLLMRouter) -> None:
+    """yaml deepseek-v4-flash entry 真生效真值: underlying = deepseek/deepseek-v4-flash + thinking=disabled.
+
+    沿用 DeepSeek 官方 API spec V3 §5.5 V4-Flash chat semantic align (News/Bull/Bear/Embedding 真消费).
+    sub-PR 8a-followup-B-yaml 5-07 修 — 反 deepseek-chat 旧 alias (7-24 deprecation deadline).
+    """
+    flash_entry = next(
+        e for e in router._raw_config["model_list"] if e["model_name"] == "deepseek-v4-flash"
+    )
+    assert flash_entry["litellm_params"]["model"] == "deepseek/deepseek-v4-flash"
+    extra_body = flash_entry["litellm_params"].get("extra_body", {})
+    assert extra_body.get("thinking", {}).get("type") == "disabled", (
+        "v4-flash 真**chat semantic** 沿用 V3 §5.5 design — extra_body.thinking.type 必 'disabled'"
+    )
+
+
+def test_yaml_v4_pro_underlying_with_thinking_enabled(router: LiteLLMRouter) -> None:
+    """yaml deepseek-v4-pro entry 真生效真值: underlying = deepseek/deepseek-v4-pro + thinking=enabled.
+
+    沿用 DeepSeek 官方 API spec V3 §5.5 V4-Pro reasoner semantic align (Judge/RiskReflector 真消费).
+    sub-PR 8a-followup-B-yaml 5-07 修 — 反 deepseek-reasoner 旧 alias (7-24 deprecation deadline).
+    """
+    pro_entry = next(
+        e for e in router._raw_config["model_list"] if e["model_name"] == "deepseek-v4-pro"
+    )
+    assert pro_entry["litellm_params"]["model"] == "deepseek/deepseek-v4-pro"
+    extra_body = pro_entry["litellm_params"].get("extra_body", {})
+    assert extra_body.get("thinking", {}).get("type") == "enabled", (
+        "v4-pro 真**reasoner semantic** 沿用 V3 §5.5 design — extra_body.thinking.type 必 'enabled'"
+    )
+
+
+def test_yaml_no_legacy_deepseek_chat_or_reasoner_underlying(router: LiteLLMRouter) -> None:
+    """sub-PR 8a-followup-B-yaml 5-07: yaml 真**0 deepseek-chat / deepseek-reasoner underlying**.
+
+    7-24 deprecation deadline plan sustained (audit Week 2 batch + ADR-DRAFT row 8 sediment).
+    任 yaml entry 真**不应 underlying = deepseek/deepseek-chat 或 deepseek/deepseek-reasoner** —
+    全部走 V4 underlying (v4-flash / v4-pro) 真**align user 决议 #4 反留尾巴** 沿用.
+    """
+    legacy_underlying = {"deepseek/deepseek-chat", "deepseek/deepseek-reasoner"}
+    for entry in router._raw_config["model_list"]:
+        underlying = entry["litellm_params"].get("model", "")
+        assert underlying not in legacy_underlying, (
+            f"yaml entry '{entry['model_name']}' 真 underlying='{underlying}' 真 legacy alias "
+            f"(7-24 deprecation deadline) — 沿用 sub-PR 8a-followup-B-yaml 5-07 V4 routing 切换体例"
+        )
+
+
+def test_yaml_routing_dispatches_to_v4_flash_for_news_classify(
+    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """yaml routing 真**dispatch** task=NEWS_CLASSIFY → "deepseek-v4-flash" alias 走 completion call.
+
+    P1-2 reviewer adopt (5-07 sub-PR 8a-followup-B-yaml): rename + restrict scope 沿用 reviewer
+    Option A 体例 — 反 false claim 沿用旧 test name "extra_body_propagation_via_router_completion"
+    (旧 test 真**未 assert** extra_body propagation, 真**naming 真不诚**).
+
+    真**unit-test scope**: monkeypatch litellm Router.completion + capture model kwarg, verify
+    routing 真 dispatch alias 真生效 (沿用 sub-PR 8a-followup-A BUG #1 体例 sustained).
+
+    NOTE (yaml extra_body 透传 真生产 verify defer e2e):
+        LiteLLM Router 真**internal mechanism** 透传 yaml litellm_params.extra_body 走 completion
+        call — 反 mock 真**unit-test level verify** (mock patch Router.completion, 反 deeper internals).
+        真生产 e2e 真**已 verify**: sub-PR 8a-followup-B-yaml 5-07 LiteLLMRouter wrapper 重 e2e:
+        - task=NEWS_CLASSIFY → tokens(out)=3 chat semantic ✅ (thinking=disabled 真生效)
+        - task=JUDGE → tokens(out)=50 reasoner semantic ✅ (thinking=enabled 真生效)
+        evidence 沿用 STATUS_REPORT memory/sprint_2_sub_pr_8a_followup_b_yaml_2026_05_07.md.
+    """
+    captured = _patch_router_completion(monkeypatch, actual_model="deepseek-v4-flash")
+    router.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+    )
+    # captured["model"] 真 alias (沿用 sub-PR 8a-followup-A BUG #1 体例 sustained)
+    assert captured["model"] == "deepseek-v4-flash"

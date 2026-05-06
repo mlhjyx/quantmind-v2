@@ -336,8 +336,12 @@ def _extract_cost_usd(result: Any) -> Decimal:
 
 
 PRIMARY_MODEL_SUBSTRINGS: dict[str, str] = {
-    "deepseek-v4-flash": "deepseek-chat",
-    "deepseek-v4-pro": "deepseek-reasoner",
+    # sub-PR 8a-followup-B-yaml 5-07 reviewer P1-1 adopt: yaml V4 underlying 切换体例
+    # sustained — substring 真**align** yaml litellm_params.model (deepseek/deepseek-v4-*).
+    # 反 sub-PR 8a-followup-A 旧体例 ("deepseek-chat" / "deepseek-reasoner") — yaml V4 切换后
+    # 旧 substring 真**Case 2 false positive 反 introduce** (沿用 BUG #1 reverse case).
+    "deepseek-v4-flash": "deepseek-v4-flash",
+    "deepseek-v4-pro": "deepseek-v4-pro",
 }
 
 
