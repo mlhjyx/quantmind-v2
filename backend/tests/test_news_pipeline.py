@@ -337,3 +337,65 @@ class TestQueryValidation:
         pipeline.fetch_all(query="test")
         assert f1.call_count == 1
         assert f2.call_count == 1
+
+
+# ---------- timeout & unexpected exception (reviewer findings) ----------
+
+
+class TestTimeout:
+    def test_hard_timeout_returns_partial(self):
+        # 1 fast fetcher 命中 + 1 slow fetcher 超时 (hard_timeout_s 触发)
+        # threshold=3 反命中, 走 timeout path
+        f_fast = _StubFetcher(
+            "fast", items=[_make_item("fast", "fast-item", url="http://f")]
+        )
+        f_slow = _StubFetcher(
+            "slow",
+            items=[_make_item("slow", "slow-item", url="http://s")],
+            delay_s=0.5,
+        )
+        pipeline = DataPipeline(
+            [f_fast, f_slow],
+            max_workers=2,
+            hard_timeout_s=0.05,  # 50ms hard timeout
+            early_return_threshold=3,  # 反命中, 强制走 timeout
+        )
+        result = pipeline.fetch_all(query="test")
+        # 真 fast 命中, slow 真 timeout 漏 (沿用 V3§3.1 line 329 partial result)
+        # ThreadPool exit 真等 slow 完成 (~0.5s), 真 caller 真已得 fast 结果
+        assert any(item.source == "fast" for item in result)
+        # 真 caller 真**收 partial result** (反 raise / 反 hang)
+        assert isinstance(result, list)
+
+
+class TestUnexpectedException:
+    def test_unexpected_keyerror_fail_soft(self):
+        # 反 NewsFetchError 别 exception (e.g. KeyError) 真 fail-soft, 沿用
+        # 铁律 33-d (反 break 整 loop, sediment ADR-033 patch reviewer MEDIUM finding)
+        f_ok = _StubFetcher(
+            "zhipu", items=[_make_item("zhipu", "ok", url="http://ok")]
+        )
+        f_unexpected = _StubFetcher("tavily", raises=KeyError("unexpected key"))
+        f_ok2 = _StubFetcher(
+            "anspire", items=[_make_item("anspire", "ok2", url="http://ok2")]
+        )
+        pipeline = DataPipeline(
+            [f_ok, f_unexpected, f_ok2], early_return_threshold=2
+        )
+        result = pipeline.fetch_all(query="test")
+        # 2 ok + 1 unexpected (fail-soft) → 2 items
+        assert len(result) == 2
+        sources = {item.source for item in result}
+        assert sources == {"zhipu", "anspire"}
+
+    def test_unexpected_attribute_error_fail_soft(self):
+        f_ok = _StubFetcher(
+            "zhipu", items=[_make_item("zhipu", "ok", url="http://ok")]
+        )
+        f_attr = _StubFetcher(
+            "tavily", raises=AttributeError("invalid attr")
+        )
+        pipeline = DataPipeline([f_ok, f_attr], early_return_threshold=1)
+        result = pipeline.fetch_all(query="test")
+        assert len(result) == 1
+        assert result[0].source == "zhipu"

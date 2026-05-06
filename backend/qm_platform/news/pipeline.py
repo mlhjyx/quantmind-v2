@@ -169,6 +169,18 @@ class DataPipeline:
                             fetcher.source_name,
                             e,
                         )
+                    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+                        # 反 NewsFetchError 别 exception (e.g. KeyError / AttributeError /
+                        # httpx.DecodingError) 真 fail-soft sustained, 反 break 整 loop
+                        # (沿用 V3§3.1 fail-soft per-source 体例 sustained, 铁律 33-d).
+                        fail_count += 1
+                        logger.error(
+                            "DataPipeline unexpected error source=%s: %s "
+                            "(fail-soft sustained, exc_info logged)",
+                            fetcher.source_name,
+                            e,
+                            exc_info=True,
+                        )
             except TimeoutError:
                 logger.warning(
                     "DataPipeline hard timeout %.1fs reached "
