@@ -14,6 +14,7 @@ from app.api.factors import router as factors_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
 from app.api.mining import router as mining_router
+from app.api.news import router as news_router
 from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
@@ -107,6 +108,7 @@ app.include_router(report_router)
 app.include_router(risk_router)
 app.include_router(factors_router)
 app.include_router(mining_router)
+app.include_router(news_router)
 app.include_router(pipeline_router)
 app.include_router(strategies_router)
 app.include_router(remote_status_router)

@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     # --- AI ---
     DEEPSEEK_API_KEY: str = ""
 
+    # --- News API keys (Sprint 2 sub-PR 8a wire, 5-07 sediment) ---
+    # 5 News 源 fetcher 真消费 (RSSHub 0 key, route path 走独立 caller pattern sub-PR 8b).
+    # 沿用 ADR-035 §2 News ingestion 层独立 client (反 V4 路由层).
+    ZHIPU_API_KEY: str = ""
+    ZHIPU_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
+    TAVILY_API_KEY: str = ""
+    TAVILY_BASE_URL: str = "https://api.tavily.com"
+    ANSPIRE_API_KEY: str = ""
+    ANSPIRE_BASE_URL: str = "https://open.anspire.cn"
+    MARKETAUX_API_KEY: str = ""
+    MARKETAUX_BASE_URL: str = "https://api.marketaux.com/v1"
+    GDELT_BASE_URL: str = "https://api.gdeltproject.org/api/v2/doc/doc"
+    RSSHUB_BASE_URL: str = "http://localhost:1200"
+
     # --- LLM Budget Guardrails (V3 §20.1 #6 + ADR-031, S2.2 sediment) ---
     # $50/月 上限 + 80% warn + 100% Ollama fallback + 月度 review.
     # cite V3 §20.1 #6 line 1769 sediment (PR #216).
