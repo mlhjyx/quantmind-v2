@@ -1,4 +1,4 @@
-# Runbook 03 — Ollama D 盘 install + qwen3:8b model pull (S3 PR #225)
+# Runbook 03 — Ollama D 盘 install + qwen3.5:9b model pull (S3 PR #225)
 
 **触发场景**: Sprint 1 S3 sub-task — 启用 BudgetAwareRouter Capped100 fallback path. user 跑装 + ollama pull, CC 0 触碰 install (沿用 LL-098 X10).
 
@@ -14,9 +14,9 @@
 | 项 | 期望 |
 |---|---|
 | OS | Win11 (业界沿用 Ollama Win 10/11 GA) |
-| RAM | ≥ 16 GB (qwen3:8b inference ~6-8 GB working set, 32 GB 沿用) |
-| GPU | RTX 5070 12 GB VRAM (qwen3:8b Q4_K_M ~5 GB VRAM, 自动 CUDA 加速) |
-| D 盘 free | ≥ 10 GB (runtime ~500 MB + qwen3:8b 5.2 GB + 余量) |
+| RAM | ≥ 16 GB (qwen3.5:9b inference ~8-10 GB working set, 32 GB 沿用) |
+| GPU | RTX 5070 12 GB VRAM (qwen3.5:9b Q4_K_M ~9.6 GB VRAM peak, 自动 CUDA 加速, 5-06 stress test 实测 78% 利用率 ~2.6 GB headroom) |
+| D 盘 free | ≥ 12 GB (runtime ~500 MB + qwen3.5:9b 6.6 GB + 余量) |
 | admin 权限 | UAC click 1 次 (install + setx /M) |
 | LIVE_TRADING_DISABLED | 沿用 .env true |
 | EXECUTION_MODE | 沿用 .env paper |
@@ -130,12 +130,12 @@ Test-Path "D:\tools\Ollama\ollama.exe"
 ## model pull step (~5-15 min, 看带宽)
 
 ```powershell
-# qwen3:8b ~5.2 GB (Ollama 官方 library, default Q4_K_M quantization)
-ollama pull qwen3:8b
+# qwen3.5:9b ~6.6 GB (Ollama 官方 library, default Q4_K_M quantization, 5-06 ADR-034 sediment)
+ollama pull qwen3.5:9b
 
 # 验证 model 沿用
 ollama list
-# 期望: qwen3:8b X.YGB (~5.2 GB)
+# 期望: qwen3.5:9b X.YGB (~6.6 GB)
 ```
 
 **验证 model 路径走 D:\ollama-models** (反走 `%USERPROFILE%\.ollama\models` C 盘):
@@ -143,7 +143,7 @@ ollama list
 ```powershell
 # 真值 path verify
 Get-ChildItem "D:\ollama-models\models\blobs\" | Select-Object -First 3
-# 期望: 3 个 sha256-* blob 文件 (qwen3:8b 真 chunks)
+# 期望: 3 个 sha256-* blob 文件 (qwen3.5:9b 真 chunks)
 
 # 反例: C 盘 path 真**应空** (反 D 盘 setx 失败)
 Test-Path "$env:USERPROFILE\.ollama\models\blobs"
@@ -154,6 +154,33 @@ D 盘 path 含 blobs ✅ → install 完成. 进入 e2e test 验证.
 
 ---
 
+## VRAM stress test 验证 (5-06 ADR-034 sediment, RTX 5070 12 GB fit verify)
+
+```powershell
+# 1. nvidia-smi baseline (model 0 loaded)
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits
+# 期望 baseline: ~1.5-2 GB / 12.2 GB (~13%, 仅桌面 + 别的 app)
+
+# 2. qwen3.5:9b stress test (短 prompt + --verbose 拿 token/s)
+"你好, 请用 100 字介绍下量化交易策略" | ollama run qwen3.5:9b --verbose
+# 期望 verbose stat:
+#   total duration:       ~10s
+#   load duration:        ~5s (model load 进 VRAM)
+#   prompt eval rate:     ~470 tokens/s
+#   eval count:           ~300-400 tokens
+#   eval rate:            ~70-75 tokens/s
+
+# 3. nvidia-smi peak (model loaded + keepalive 沿用)
+nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits
+# 期望 peak: ~9.6 GB / 12.2 GB (~78% utilization, ~2.6 GB headroom 反 OOM)
+```
+
+3/3 PASS → VRAM fit RTX 5070 12 GB ✅. 任一 fail (peak > 11 GB / OOM / token rate < 50 t/s) → troubleshoot 段 GPU 0 加速 / 重启 service.
+
+> **stress test 真值 5-06 实测**: VRAM 1643 MB baseline → **9592 MB peak (78%, ~2.6 GB headroom)** / GPU 27% idle post-load / total duration 9.8s / load 5.0s / prompt eval 472.57 t/s / **eval 73.36 t/s** / 343 output tokens. 沿用 ADR-034 §4 Positive cite.
+
+---
+
 ## e2e test 验证 (S3 PR #225 sediment)
 
 ```powershell
@@ -161,7 +188,7 @@ D 盘 path 含 blobs ✅ → install 完成. 进入 e2e test 验证.
 # 沿用 reviewer Chunk B P3-3: powershell fence + backslash path 跟全文件一致
 Set-Location D:\quantmind-v2
 .\.venv\Scripts\python.exe -m pytest backend\tests\test_litellm_e2e.py -m requires_ollama -v
-# 期望: 1-2 PASSED (Ollama running + qwen3:8b loaded)
+# 期望: 1-2 PASSED (Ollama running + qwen3.5:9b loaded)
 ```
 
 ---
@@ -197,8 +224,8 @@ Get-NetTCPConnection -LocalPort 11434 -ErrorAction SilentlyContinue
 ### GPU 0 加速 (CPU 模式跑)
 
 ```powershell
-# 跑 qwen3:8b 一次, 同时看 ollama 进程 GPU 内存
-ollama run qwen3:8b "test" --verbose
+# 跑 qwen3.5:9b 一次, 同时看 ollama 进程 GPU 内存
+ollama run qwen3.5:9b "test" --verbose
 
 # 另一窗口:
 nvidia-smi
@@ -261,7 +288,7 @@ Remove-Item -Recurse -Force "D:\ollama-models"
 
 完成后归档到:
 - `docs/audit/STATUS_REPORT_<date>_ollama_install.md`
-- 含: install 时间 / 5/5 verify checklist 真值 / qwen3:8b sha256 hash / e2e test 真测 1-2 PASSED 输出 cite / GPU CUDA 加速验证 (nvidia-smi 5 GB VRAM)
+- 含: install 时间 / 5/5 verify checklist 真值 / qwen3.5:9b sha256 hash / e2e test 真测 1-2 PASSED 输出 cite / GPU CUDA 加速验证 (nvidia-smi 5 GB VRAM)
 
 ---
 
