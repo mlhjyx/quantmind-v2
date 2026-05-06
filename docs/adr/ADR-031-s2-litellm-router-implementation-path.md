@@ -139,6 +139,13 @@ caller 切换 PR (sustained ADR-022 集中修订机制):
 - [ ] **S4** (1d): Budget guardrails ($50/月 + 80% warn + 100% Ollama fallback)
 - [ ] **S5** (0.5-1d): LLM cost monitoring daily 累计 + DingTalk push
 - [ ] **(deferred)** Sprint 2-N: caller 切换 PR (factor_agent / idea_agent → LiteLLMRouter)
+- [x] **Sprint 2 sub-PR 7b.2** (#241, 5-07): NewsClassifierService L0.2 V4-Flash sediment (caller class + yaml prompt + tests mock-only)
+  - 实现: `backend/app/services/news/news_classifier_service.py` (V3 line 1223 真预约 path) + `prompts/risk/news_classifier_v1.yaml` (V3 line 390 真预约 yaml)
+  - 路由: `RiskTaskType.NEWS_CLASSIFY` → `deepseek-v4-flash` (router.py:57 sediment, ADR-035 §2 V4 路由层 0 智谱 sustained)
+  - 灾备: Ollama qwen3.5:9b (LLMResponse.is_fallback → ClassificationResult.classifier_cost=NULL, ADR-031 §6 灾备体例 sustained)
+  - 测试: 47 mock-only (4 category × 4 profile × 4 urgency × sentiment boundary + parse fail-loud + persist NotImplementedError verify)
+  - persist hook stub = NotImplementedError 沿用本 §6 line 141 "Sprint 2-N caller 切换" 体例 留 sub-PR 7b.3 真 wire
+- [ ] **Sprint 2 sub-PR 7b.3** (deferred Sprint 3 prerequisite ready): application bootstrap conn_factory wire + NewsClassifierService.persist 真 wire (DataPipeline 入库 news_classified, sub-PR 7b.1 v2 #240 DDL 沿用) + e2e live test (requires_litellm_e2e marker, V4-Flash 真生产 verify)
 - [ ] **(deferred)** Sprint N+: 显式 deprecate PR (deepseek_client.py 删除 + 57 tests 同步删 + S6 hook marker test 同步删)
 
 ---
