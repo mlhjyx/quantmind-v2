@@ -3619,3 +3619,87 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 
 **maintenance 真**: pre-commit hook 5 metric canonical 同步 update 候选 (audit Week 2 batch sediment, 沿用 SOP-3 数字 cite 留占位 SOP)
 
+
+
+---
+
+## LL-107: Sprint 1 PR #222 LiteLLMRouter design layer bug 7d production first verify sediment (sub-PR 8a-followup-A 5-07)
+
+**触发**: 5-07 sub-PR 8a (PR #244) 真生产 e2e first run 触发 BUG #1 — `_is_fallback()` substring detection 返 false positive on alias-pass-through (LiteLLM Router default behavior 真返 yaml `model_name` alias 反 underlying provider/model name).
+
+**真因**: PR #222 (5-03 sediment) 真**单测 cover Case 2 + Case 3** (underlying name + fallback underlying), 但**未 cover Case 1** (alias-pass-through primary success 真**default LiteLLM behavior**). reviewer Chunk A P2 真**警告 false negative**, 真**漏报 false positive 反向 case** 真**未 catch**.
+
+**真生产影响**: 5-07 sub-PR 8a e2e 真**6 row** llm_call_log.is_fallback=t (反 production 真 primary success), BudgetGuard fallback metric 真污染 4 days.
+
+**修复**: sub-PR 8a-followup-A PR #246 — `_is_fallback()` 真**alias equality short-circuit** + 3 case 完整 cover (反 reviewer Chunk A P2 双向警告体例 sustained).
+
+**讽刺点**: 反**reviewer 第二把尺子** 体例**未生效** — Sprint 1 reviewer 真**未识别 default behavior gap**, 真**真生产 first run 才 catch 4 days 后**. 沿用 ADR-022 反 silent overwrite 体例 sustained — design 沉淀 + 单测 + reviewer 真**3 层防御** 真**全漏 default behavior gap**.
+
+**SOP sediment**: detection bug 真**单测 cover 双向 case** + edge case (false positive + false negative + alias-pass-through default behavior). LL-098 X10 forward-progress reverse case 真**reviewer 第二把尺子 first verify** 体例.
+
+---
+
+## LL-108: docstring "完整闭环" claim 真**design intent** 反 bug — user prompt cite drift reverse case (sub-PR 8a-followup 5-07 P1-B RSSHub 0 rows)
+
+**触发**: 5-07 sub-PR 8a-followup STATUS_REPORT P1-B "RSSHub 0 rows diagnose" 真**user prompt 期望 bug**, CC fresh diagnose 真**finding 真不在 bug** — sub-PR 8a 真**design 决议 exclude RSSHub** (route path 走独立 caller pattern, sub-PR 8b 真预约 sustained).
+
+**真因**: sub-PR 8a 真**完整 documentation** (`backend/app/api/news.py:9` 真**显式 cite "RSSHub 不含 — route path 走独立 caller pattern"**), 但 user prompt 真**cite drift** 反**未读** docstring → diagnose 真**design intent verify** 反 bug catch.
+
+**讽刺点**: 沿用候选 #6 production-level vs import-level 闭环语义混淆 reverse case — 5-07 sub-PR 8a 真**完整 documentation** sediment 真**预防** prompt cite drift, 但 user 真**仍 cite drift** 真 diagnose. **真**反**: documentation sediment 沿用 reviewer 第二把尺子, 真**user prompt** 真**第三把尺子** 漏读 documentation 真**cite drift 真 diagnose direction**.
+
+**SOP sediment**: prompt cite drift 真**user 第三把尺子** sediment — CC 沿用 documentation 沉淀真**反向 verify** prompt cite (反假定 prompt cite 真**唯一真值**). 沿用 ADR-037 §Context 真**user instruction → sediment → implementation 多层链路 part drift** 候选体例.
+
+---
+
+## LL-109: hook governance 4 days production 0 catch sediment (sub-PR 8a-followup-pre 5-07 meta-verify)
+
+**触发**: 5-07 sub-PR 8a-followup-A 真**push 触发** Layer 2 git defense hook 真**全局 BLOCK git push** sustained 4 days (5-03 sediment 后). hook 真**反 production-friendly** sub-PR 8a-followup workflow CC autonomous push, user 真**显式授权 hook governance 修订** sub-PR 8a-followup-pre 走 fine-grained 体例.
+
+**真因**: hook 真**default 体例** 真**反 production-friendly** 时 真**未及时 retrofit** 真**4 days 0 catch** 沿用候选 #7 + #8 + #9 体例 — governance 真**未起手** 沉淀直到 first production verify 触发.
+
+**讽刺点**: 真**讽刺 #11** sediment — 5-07 sub-PR 8a-followup-pre 真**meta-verify** real-time push 触发**新 hook 修订** 真**生效 verify**. 真生产 sub-PR 8a-followup-pre 真**meta-verify** 沿用 governance enforcement 体例 sustained — 真**push 真触发本 hook 修订** real-time check 真**生效** 沿用 user 决议精神 #4 反留尾巴.
+
+**SOP sediment**: hook 真**default 体例** 真**反 production-friendly** 时必**及时 retrofit** (反 4 days production 0 catch 真**block** workflow). 沿用 LL-098 X10 forward-progress default reverse case 体例 sustained.
+
+---
+
+## LL-110: alias-layer vs underlying-layer 双层混淆 — DeepSeek API 3 层暗藏机制 sediment (sub-PR 8a-followup-B Q8 5-07)
+
+**触发**: 5-07 sub-PR 8a-followup-B Phase 1 user prompt cite "yaml underlying align v4-flash" 真**fictitious 漂移**, CC 真测 6 path × thinking toggle 真值 反**非简单 fictitious**, 真**3 层暗藏机制** sediment.
+
+**真因 (DeepSeek API 3 层暗藏机制)**:
+- (a) **alias-pass-through layer**: DeepSeek API echoes caller-sent model name as response.model field, 反 underlying provider/model name (沿用 sub-PR 8a-followup-A BUG #1 sediment).
+- (b) **backend silent routing layer**: deepseek-chat / deepseek-reasoner 真**legacy alias** 走 V4 underlying via thinking on/off, 真**dual-mode model** sustained 沿用官方 7-24 deprecation map.
+- (c) **LiteLLM cost registry layer**: v4-* 真**0 cost data** sustained until SDK 升级, BudgetGuard cost_usd_total 永 0 风险.
+
+**讽刺点**: 真**讽刺 #12** sediment — alias layer (V4-Flash 真**caller-facing 命名**) vs underlying layer (deepseek-chat 真**DeepSeek 真 model 名**) 真**双层语义** sustained. user prompt 真**两层 align 期望** 真**fictitious 反 DeepSeek API 真无 v4 model** sustained 5-07 sub-PR 8a-followup-A 修复体例.
+
+**SOP sediment**: 3rd-party API frame finding/修复必 **3 层 verify** (alias / backend routing / cost registry) — 沿用 LL-104 cross-verify SOP 体例 + 沿用 ADR-DRAFT row 8 sediment "DeepSeek API 3 层暗藏机制" 体例.
+
+---
+
+## LL-111: yaml double-model sync governance — 反 single-model drift 体例 sustained (sub-PR 8a-followup-B-yaml PR #247 5-07)
+
+**触发**: 5-07 sub-PR 8a-followup-B-yaml prompt cite "双 model path 1+2 不同步 → STOP escalate user (反单 model 切换, governance 漂移加深)" — yaml 修真**双 model 同步切换** (deepseek-v4-flash + deepseek-v4-pro 全切 V4 underlying + thinking enabled/disabled).
+
+**真因**: 单 model 切换 (e.g. flash 切 V4 + pro 沿用 reasoner) 真**alias-underlying inconsistency** 沿用 governance 漂移加深体例. user 真决议 #4 反留尾巴 sustained — 双 model 同步切换 真**0 governance 尾巴**.
+
+**讽刺点**: 真**讽刺 #13** sediment — yaml 体例真**双 model 同步切换 governance** 沿用 ADR-022 反 silent overwrite 体例 sustained. sub-PR 8a-followup-B-yaml 真**首次** governance enforcement 真生效 yaml 双 model 同步 (反 sub-PR 8a-followup-A 单 router.py 切换 真**part drift**).
+
+**SOP sediment**: yaml routing 修真**双 model 同步必走** (反单 model 切换 governance 漂移加深) — 沿用 ADR-DRAFT row 9 sediment + governance ADR-041 候选 prepare 体例.
+
+---
+
+## LL-112: vanilla 3rd-party SDK call 漏默认参数误归因 silent semantic drift (sub-PR 8a-followup-B Q9+Q10 5-07, 真**真讽刺案例 #14** sediment)
+
+**触发**: 5-07 sub-PR 8a-followup-B Phase 1 CC 真**vanilla** `litellm.completion(model='deepseek/deepseek-v4-flash')` 真**0 thinking 参数** → DeepSeek 默认 thinking enabled → reasoning_content 出现 → CC **3 次 push back 误归因 "silent routing reasoner"**, user **第 7 次 push back catch correctly** + 决议 web_fetch DeepSeek 官方 API docs 真测真值 (api-docs.deepseek.com/zh-cn/).
+
+**真因**: CC 真**漏 web_fetch 官方 API 文档 verify** prerequisite, 真**vanilla SDK call** 默认参数误归因 silent semantic drift. DeepSeek API 真**dual-mode model** (v4-flash + v4-pro) thinking enabled/disabled toggle 真生效, vanilla call 真**默认 enabled** → reasoning_content 出现 → CC 误归因 "silent routing reasoner backend".
+
+**讽刺点**: 真**讽刺 #14** sediment — CC 3 次 push back 真**全错归因**, user 第 7 次 push back catch correctly. 真**user 第七把尺子** 真**user instruction-driven verification** 真生效 反 CC 自主诊断. 沿用候选 #11+#12+#13 体例 sustained — governance enforcement 真**user 真**第七把尺子** 真生效**.
+
+**SOP sediment** (真**关键** governance):
+- 任 3rd-party API frame finding/修复必 **web_fetch 官方文档 verify prerequisite** (反 vanilla SDK call 默认参数误归因)
+- 沿用 ADR-037 §Context 第 7 漂移类型 candidate (3rd-party API 默认参数误归因 silent semantic drift)
+- 沿用 ADR-DRAFT row 10 sediment + governance ADR-042 候选 prepare 体例
+- 真**反 anti-pattern** sustained — CC 真**3 次 push back 误归因** sustained 反**user 第七把尺子** catch — 真**反 anti-pattern v6.0 candidate** governance ADR sediment 体例
