@@ -1,5 +1,13 @@
 -- Sprint 2 sub-PR 7b.1 — news_classified 表 (V3§3.2 NewsClassifier V4-Flash L0.2 output 表)
 --
+-- ⚠️ APPLY ORDER (FK dependency, sub-PR 7b.1 cumulative sequence):
+--   1. backend/migrations/2026_05_06_news_raw.sql           ← MUST apply FIRST (parent)
+--   2. backend/migrations/2026_05_06_news_classified.sql    ← THEN this file (child, FK news_raw)
+--
+--   Note: 反 alphabetical sort 顺序 (news_classified < news_raw 字典序), 真 manual apply
+--   sequence sustained sub-PR 7b.1 commit message + PR description live verify ✅.
+--   反 alphabetical migration runner 真不存在 (manual apply pattern, 沿用 PR #223 sediment).
+--
 -- 目标 (V3§3.2:359-393 sediment):
 --   sub-PR 7b.2 NewsClassifierService (defer 7b.1 prerequisite ready 后起手) consume news_raw
 --   → V4-Flash routing (RiskTaskType.NEWS_CLASSIFY enum sustained types.py:31)
