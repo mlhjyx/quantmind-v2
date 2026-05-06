@@ -1,21 +1,21 @@
-r"""S3 LiteLLM e2e 冒烟 — Ollama qwen3:8b fallback path 真生产验证.
+r"""S3 LiteLLM e2e 冒烟 — Ollama qwen3.5:9b fallback path 真生产验证.
 
 scope (2 e2e tests, sustained pytest.mark.requires_ollama):
 - test_e2e_ollama_chat_qwen3_via_alias_override: 走 LiteLLMRouter.completion_with_alias_override
-  强制 model_alias=FALLBACK_ALIAS, 验证 ollama_chat/qwen3:8b endpoint 沿用 + is_fallback 检测.
+  强制 model_alias=FALLBACK_ALIAS, 验证 ollama_chat/qwen3.5:9b endpoint 沿用 + is_fallback 检测.
 - test_e2e_budget_capped_forces_ollama_fallback: 走 BudgetAwareRouter.completion 真生产 flow,
   mock budget conn_factory 强制 CAPPED_100 状态 → 验证 fallback 触发 + actual_model 含 "qwen3".
 
 skip logic:
 - 模块级 socket probe localhost:11434 — 0 listening → skip 全模块.
 - pytest -m "not requires_ollama" 真**默认排除** (反 CI / pre-push 跑).
-- 沿用 LL-098 X10: e2e tests 仅本地 user 跑过 ollama install + ollama pull qwen3:8b 后跑.
+- 沿用 LL-098 X10: e2e tests 仅本地 user 跑过 ollama install + ollama pull qwen3.5:9b 后跑.
 
 依赖 (S3 runbook 03 user 接触 sediment):
 1. Ollama D 盘 install (D:\tools\Ollama, 沿用 user D:\tools\ 整理风格)
-2. ollama pull qwen3:8b (~5.2 GB, D:\ollama-models)
+2. ollama pull qwen3.5:9b (~5.2 GB, D:\ollama-models)
 3. Ollama service running (Get-Service Ollama → Status=Running)
-4. config/litellm_router.yaml ollama_chat/qwen3:8b 沿用 PR #225 patch
+4. config/litellm_router.yaml ollama_chat/qwen3.5:9b 沿用 PR #225 patch
 
 关联:
 - ADR-031 §6 (S3 Ollama wire sediment)
@@ -58,7 +58,7 @@ pytestmark = [
     pytest.mark.requires_ollama,
     pytest.mark.skipif(
         not _ollama_running(),
-        reason="Ollama not running on localhost:11434 — sustained S3 runbook 03 install + ollama pull qwen3:8b",
+        reason="Ollama not running on localhost:11434 — sustained S3 runbook 03 install + ollama pull qwen3.5:9b",
     ),
 ]
 
@@ -123,7 +123,7 @@ def litellm_router_real(monkeypatch: pytest.MonkeyPatch) -> LiteLLMRouter:
     OLLAMA_BASE_URL 沿用 default http://localhost:11434 (Settings sediment).
     """
     # 反 .env 真值缺失 → fallback dummy key 防 yaml schema 检验 fail.
-    # 真 fallback path 走 ollama_chat/qwen3:8b 反需 DeepSeek key.
+    # 真 fallback path 走 ollama_chat/qwen3.5:9b 反需 DeepSeek key.
     import os
 
     if not os.environ.get("DEEPSEEK_API_KEY"):
@@ -148,7 +148,7 @@ def test_e2e_ollama_chat_qwen3_via_alias_override(
     """走 LiteLLMRouter.completion_with_alias_override(model_alias=FALLBACK_ALIAS).
 
     验证:
-    - ollama_chat/qwen3:8b endpoint 走通 (沿用 yaml PR #225 patch)
+    - ollama_chat/qwen3.5:9b endpoint 走通 (沿用 yaml PR #225 patch)
     - response.content 非空 (qwen3 真生成)
     - response.is_fallback = True (actual_model 含 "qwen" 子串, 反 deepseek-chat / deepseek-reasoner)
     - response.cost_usd = 0 (本地 Ollama 0 cost, LiteLLM _hidden_params response_cost None or 0)
@@ -159,7 +159,7 @@ def test_e2e_ollama_chat_qwen3_via_alias_override(
         messages=[LLMMessage("user", "Reply with the single word 'OK' and nothing else.")],
         model_alias=FALLBACK_ALIAS,
         decision_id="e2e-s3-fallback-001",
-        timeout=120.0,  # qwen3:8b CPU 沿用 ~30s, GPU ~2-5s, 120s 沿用 buffer
+        timeout=120.0,  # qwen3.5:9b CPU 沿用 ~30s, GPU ~2-5s, 120s 沿用 buffer
     )
 
     # 1. content 非空
@@ -172,7 +172,7 @@ def test_e2e_ollama_chat_qwen3_via_alias_override(
     assert response.latency_ms > 0, f"latency_ms 反 measured: {response.latency_ms}"
     # 5. decision_id 透传 (沿用 PR #222 contract)
     assert response.decision_id == "e2e-s3-fallback-001"
-    # 6. actual_model 含 "qwen" (沿用 ollama_chat/qwen3:8b 路由)
+    # 6. actual_model 含 "qwen" (沿用 ollama_chat/qwen3.5:9b 路由)
     assert "qwen" in response.model.lower(), f"actual_model 反 qwen: {response.model}"
 
 
@@ -186,7 +186,7 @@ def test_e2e_budget_capped_forces_ollama_fallback(
     BudgetAwareRouter 4 步 flow:
         1. snapshot.state == CAPPED_100
         2. is_capped + strict=False (default) → 0 raise
-        3. router.completion_with_alias_override(model_alias=FALLBACK_ALIAS) → ollama_chat/qwen3:8b
+        3. router.completion_with_alias_override(model_alias=FALLBACK_ALIAS) → ollama_chat/qwen3.5:9b
         4. budget.record_cost(0, is_fallback=True, is_capped=True) → mock UPSERT noop
 
     验证:

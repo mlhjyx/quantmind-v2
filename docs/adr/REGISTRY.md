@@ -43,14 +43,15 @@
 | ADR-031 | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | committed | V3 Sprint 1 S8 audit sediment (2026-05-03), user X2=(ii) 决议, 沿用 ADR-020 + ADR-022 + V3 §5.5 真预约 |
 | ADR-032 | S4 caller bootstrap factory + naked LiteLLMRouter export 限制 | committed | V3 Sprint 1 S4 sub-task sediment (2026-05-03 PR #226), 沿用 ADR-022 反 silent overwrite + ADR-031 §6 渐进 deprecate plan 前置 enforcement |
 | ADR-033 | News 源替换决议 (5-02 sprint period sediment, V3 §3.1 + §20.1 #10 patch) | committed | V3 Tier A Sprint 2 起手前 prerequisite (本 PR), 沿用 4-29 ADR-020 LiteLLM 路由 + 5-02 web_search 验证 + ADR-022 反 silent overwrite. SSOT drift 主动 finding: sprint_state v7 sustained 老 6 源 cite, 0 sediment 5-02 换源决议 (audit Week 2 batch 候选) |
+| ADR-034 | LLM Fallback Model Upgrade (qwen3:8b → qwen3.5:9b, 5-06 sediment) | committed | V3 Tier A Sprint 1.5 S5 (model SOTA 升级), 沿用 PR #225 (S3 Ollama install) + ADR-031 §6 (ollama_chat endpoint + alias resolve) + ADR-032 (caller bootstrap factory, 0 prod caller 改). 5-06 user 实测 + CC 自主 stress test 双 verify (VRAM 9592/12227 MB peak / 73 t/s eval / 9.8s response). cite drift cross-source 候选 audit Week 2 batch (LL-114 体例延伸) |
 
 ## 真状态分布
 
-- **committed (真 file 真在 docs/adr/)**: 24 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032/**033**)
+- **committed (真 file 真在 docs/adr/)**: 25 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032/033/**034**)
 - **reserved (V3 §18.1 真预约, 0 file 等真起手时 sediment)**: 6 个 (ADR-019/020/025/026/029/030)
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号 sustained)
 
-总 34 # space (含 gap), 真活跃 30 (committed 24 + reserved 6).
+总 35 # space (含 gap), 真活跃 31 (committed 25 + reserved 6).
 
 ## 真 maintenance 规则
 
