@@ -524,7 +524,8 @@ def test_aware_router_audit_failure_does_not_break_completion(
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
     def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
-        # JUDGE → primary deepseek-v4-pro → expected "deepseek-reasoner" 子串
+        # JUDGE → primary deepseek-v4-pro → expected "deepseek-v4-pro" 子串
+        # (sub-PR 8a-followup-B-audit reviewer P3-F6 stale comment 修 — V4 underlying align)
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
             model="deepseek/deepseek-v4-pro",
@@ -689,6 +690,68 @@ def test_aware_router_audit_error_class_budget_capped(
     # BUG #2 fix: error_class 真**budget_capped** (intentional 反 generic primary fail)
     assert row.error_class == "budget_capped"
     assert row.budget_state == "capped_100"
+
+
+def test_aware_router_audit_error_class_budget_capped_routing_anomaly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG #2 fix (reviewer P1-F2 adopt 5-07): is_capped=True + is_fallback=False →
+    error_class='budget_capped_routing_anomaly'.
+
+    Budget cap 强制 fallback path 真**应**返 fallback model, 但 _is_fallback substring drift
+    / fallback alias rename / etc. 真**signal inconsistency** — 反 silent error_class=None
+    (audit 真**budget_capped event 0 visibility** + downstream analytic 真**误 success**).
+    """
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    cost_storage[datetime.now().date().replace(day=1)] = {
+        "cost": Decimal("60.0"),
+        "calls": 100,
+        "fb": 50,
+        "cap": 0,
+    }
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # mock 真**返 primary alias** (反 fallback signal) — 模拟 _is_fallback substring drift
+    # 或 fallback alias rename 真**routing inconsistency**
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            model="deepseek-v4-flash",  # primary alias 反 fallback (anomaly signal)
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2),
+            _hidden_params={"response_cost": 0.0001},
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    aware.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+        decision_id="d-anomaly",
+    )
+
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    # P1-F2 adopt: 真**flag inconsistency** 反 silent None
+    assert row.error_class == "budget_capped_routing_anomaly"
+    assert row.budget_state == "capped_100"
+    assert row.is_fallback is False  # router 真**返 primary 反 fallback signal**
 
 
 def test_aware_router_audit_error_class_success_returns_none(

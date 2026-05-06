@@ -405,12 +405,20 @@ class BudgetAwareRouter:
         # sub-PR 8a-followup-B-audit 5-07 BUG #2 fix: error_class dynamic detect 走
         # response.is_fallback signal (反 hardcoded None). 真**Sprint 1 PR #224 success-only
         # audit deferred 沿用 S2.4 真起手** sediment.
-        # is_capped=True + is_fallback=True → error_class="budget_capped" (intentional fallback)
-        # is_capped=False + is_fallback=True → error_class="primary_fail_fallback_engaged"
-        #                                        (LiteLLM Router internal fallback chain triggered)
-        # is_fallback=False → error_class=None (success path sustained)
-        if response.is_fallback:
-            error_class = "budget_capped" if is_capped else "primary_fail_fallback_engaged"
+        # 4 case 完整 cover (reviewer P1-F2 adopt — 反 silent budget_capped_routing_anomaly):
+        # - is_capped=True + is_fallback=True → "budget_capped" (intentional fallback)
+        # - is_capped=True + is_fallback=False → "budget_capped_routing_anomaly"
+        #     (router 真**返 primary** but budget 真 capped — 反 silent inconsistency, 真**signal**
+        #      _is_fallback substring drift / fallback alias rename / etc.)
+        # - is_capped=False + is_fallback=True → "primary_fail_fallback_engaged"
+        #     (LiteLLM Router internal fallback chain triggered)
+        # - is_capped=False + is_fallback=False → None (success path sustained)
+        if is_capped and response.is_fallback:
+            error_class = "budget_capped"
+        elif is_capped and not response.is_fallback:
+            error_class = "budget_capped_routing_anomaly"
+        elif response.is_fallback:
+            error_class = "primary_fail_fallback_engaged"
         else:
             error_class = None
 
