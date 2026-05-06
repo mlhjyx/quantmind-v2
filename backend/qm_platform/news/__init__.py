@@ -38,11 +38,13 @@ scope (sub-PR 1+2 sediment):
 - ADR-033 (News 6 源换源决议)
 - V3 §3.1 (News 多源接入 line 312-356)
 """
+from .anspire import AnspireNewsFetcher
 from .base import NewsFetcher, NewsFetchError, NewsItem
 from .tavily import TavilyNewsFetcher
 from .zhipu import ZhipuNewsFetcher
 
 __all__ = [
+    "AnspireNewsFetcher",
     "NewsFetcher",
     "NewsFetchError",
     "NewsItem",
