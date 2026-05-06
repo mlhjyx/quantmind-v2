@@ -46,6 +46,7 @@ dependencies = [
     # === 工具 ===
     "httpx>=0.27.0",
     "tenacity>=9.0.0",          # News fetcher retry/backoff (sub-PR 1 sediment, ADR-035 §4 Neg cite)
+    "feedparser>=6.0.0",        # News#6 RSSHub RSS/Atom XML parser (sub-PR 6 sediment, V3§3.1 RSS XML response 反 sub-PR 1+2+3+4+5 JSON 体例)
     "loguru>=0.7.0",
     "structlog>=24.1.0",        # JSON结构化日志（R6生产架构）
     "psutil>=5.9.0",            # 系统资源监控（disk/memory健康检查）
@@ -108,6 +109,7 @@ markers = [
     "requires_anspire: e2e tests calling Anspire AI Search API (https://plugin.anspire.cn/api/ntsearch/search, GET method). Auto-skip if ANSPIRE_API_KEY env missing. Run with `ANSPIRE_API_KEY=sk-xxx pytest -m requires_anspire`. Sub-PR 3 sediment (V3§3.1, Anspire-specific GET + top_k enum + date field).",
     "requires_gdelt: e2e tests calling GDELT 2.0 DOC API (https://api.gdeltproject.org/api/v2/doc/doc, GET method, anonymous). 0 API key needed but network reachability required. Run with `pytest -m requires_gdelt`. Sub-PR 4 sediment (V3§3.1, GDELT-specific 0 API key + seendate YYYYMMDDTHHMMSSZ + language human-readable).",
     "requires_marketaux: e2e tests calling Marketaux /v1/news/all API (https://api.marketaux.com, GET method, api_token query param). Auto-skip if MARKETAUX_API_KEY env missing. Run with `MARKETAUX_API_KEY=xxx pytest -m requires_marketaux`. Sub-PR 5 sediment (V3§3.1, Marketaux-specific api_token query + custom UA header + data wrapper + ISO 8601 microseconds).",
+    "requires_rsshub: e2e tests calling RSSHub local server (http://localhost:1200, GET method, anonymous). Self-hosted Native Node.js + Servy register, port 1200. Auto-skip if RSSHub server unreachable. Run with `pytest -m requires_rsshub` after RSSHub Servy service started. Sub-PR 6 sediment (V3§3.1, RSSHub-specific RSS XML + feedparser + route path query).",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

@@ -42,6 +42,7 @@ from .anspire import AnspireNewsFetcher
 from .base import NewsFetcher, NewsFetchError, NewsItem
 from .gdelt import GdeltNewsFetcher
 from .marketaux import MarketauxNewsFetcher
+from .rsshub import RsshubNewsFetcher
 from .tavily import TavilyNewsFetcher
 from .zhipu import ZhipuNewsFetcher
 
@@ -52,6 +53,7 @@ __all__ = [
     "NewsFetcher",
     "NewsFetchError",
     "NewsItem",
+    "RsshubNewsFetcher",
     "TavilyNewsFetcher",
     "ZhipuNewsFetcher",
 ]
