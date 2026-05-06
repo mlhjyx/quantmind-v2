@@ -286,7 +286,7 @@ def test_aware_router_normal_passes_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """NORMAL 状态 → 透传 inner LiteLLMRouter.completion + record_cost."""
-    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat", cost=0.0042)
+    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash", cost=0.0042)
     aware = BudgetAwareRouter(litellm_router, budget)
 
     response = aware.completion(
@@ -310,7 +310,7 @@ def test_aware_router_warn_80_logs_structured_warning(
 ) -> None:
     """WARN_80 → logger.warning 含 extra dict (S2.3 audit ingest 前向兼容)."""
     storage.upsert(date.today().replace(day=1), Decimal("42"), 0, 0)
-    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-chat", cost=0.001)
+    _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash", cost=0.001)
     aware = BudgetAwareRouter(litellm_router, budget)
 
     with caplog.at_level(logging.WARNING, logger="backend.qm_platform.llm.budget"):

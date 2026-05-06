@@ -263,34 +263,65 @@ class BudgetAwareRouter:
                 f"(task={task}, decision_id={decision_id})"
             )
 
-        if is_capped:
-            response = self._router.completion_with_alias_override(
-                task=task,
-                messages=messages,
-                model_alias=FALLBACK_ALIAS,
-                decision_id=decision_id,
-                **kwargs,
-            )
-        else:
-            if snapshot.state is BudgetState.WARN_80:
-                logger.warning(
-                    "llm_budget_warn",
-                    extra={
-                        "event": "llm_budget_warn",
-                        "state": snapshot.state.value,
-                        "month_to_date_cost_usd": str(snapshot.month_to_date_cost_usd),
-                        "warn_threshold_usd": str(snapshot.warn_threshold_usd),
-                        "monthly_budget_usd": str(snapshot.monthly_budget_usd),
-                        "task": task.value,
-                        "decision_id": decision_id,
-                    },
+        # sub-PR 8a-followup-B-audit 5-07 BUG #3 fix: try/except 包络 LiteLLM Router
+        # completion call. 真生产 exception (e.g. all-fallback exhausted, network fatal,
+        # broker fatal) 真**audit + fail-loud re-raise** sustained 铁律 33.
+        try:
+            if is_capped:
+                response = self._router.completion_with_alias_override(
+                    task=task,
+                    messages=messages,
+                    model_alias=FALLBACK_ALIAS,
+                    decision_id=decision_id,
+                    **kwargs,
                 )
-            response = self._router.completion(
-                task=task,
-                messages=messages,
-                decision_id=decision_id,
-                **kwargs,
-            )
+            else:
+                if snapshot.state is BudgetState.WARN_80:
+                    logger.warning(
+                        "llm_budget_warn",
+                        extra={
+                            "event": "llm_budget_warn",
+                            "state": snapshot.state.value,
+                            "month_to_date_cost_usd": str(snapshot.month_to_date_cost_usd),
+                            "warn_threshold_usd": str(snapshot.warn_threshold_usd),
+                            "monthly_budget_usd": str(snapshot.monthly_budget_usd),
+                            "task": task.value,
+                            "decision_id": decision_id,
+                        },
+                    )
+                response = self._router.completion(
+                    task=task,
+                    messages=messages,
+                    decision_id=decision_id,
+                    **kwargs,
+                )
+        except Exception as exc:
+            # 真 BUG #3 audit failure path: 真**记 llm_call_log row** with error_class
+            # = exception class name + is_fallback=True (反 silent skip), 后 re-raise
+            # sustained 铁律 33 fail-loud caller 真知 LLM call fail.
+            if self._audit is not None:
+                try:
+                    self._audit_log_failure(
+                        task=task,
+                        messages=messages,
+                        snapshot=snapshot,
+                        is_capped=is_capped,
+                        decision_id=decision_id,
+                        exc=exc,
+                    )
+                except Exception as audit_exc:
+                    logger.warning(
+                        "llm_audit_failure_record_build_failed",
+                        extra={
+                            "event": "llm_audit_failure_record_build_failed",
+                            "task": task.value,
+                            "decision_id": decision_id,
+                            "primary_exc": type(exc).__name__,
+                            "audit_exc": type(audit_exc).__name__,
+                            "audit_exc_msg": str(audit_exc),
+                        },
+                    )
+            raise
 
         self._budget.record_cost(
             response.cost_usd,
@@ -371,8 +402,26 @@ class BudgetAwareRouter:
         else:
             latency_ms_int = None
 
-        # NOTE: failure path audit (error_class != None) 留 S2.4+ — 当前仅 success path.
-        # 沿用 reviewer Chunk A P3-3 修 cite — 沿用决议 7 fail-loud + 反 break completion 体例.
+        # sub-PR 8a-followup-B-audit 5-07 BUG #2 fix: error_class dynamic detect 走
+        # response.is_fallback signal (反 hardcoded None). 真**Sprint 1 PR #224 success-only
+        # audit deferred 沿用 S2.4 真起手** sediment.
+        # 4 case 完整 cover (reviewer P1-F2 adopt — 反 silent budget_capped_routing_anomaly):
+        # - is_capped=True + is_fallback=True → "budget_capped" (intentional fallback)
+        # - is_capped=True + is_fallback=False → "budget_capped_routing_anomaly"
+        #     (router 真**返 primary** but budget 真 capped — 反 silent inconsistency, 真**signal**
+        #      _is_fallback substring drift / fallback alias rename / etc.)
+        # - is_capped=False + is_fallback=True → "primary_fail_fallback_engaged"
+        #     (LiteLLM Router internal fallback chain triggered)
+        # - is_capped=False + is_fallback=False → None (success path sustained)
+        if is_capped and response.is_fallback:
+            error_class = "budget_capped"
+        elif is_capped and not response.is_fallback:
+            error_class = "budget_capped_routing_anomaly"
+        elif response.is_fallback:
+            error_class = "primary_fail_fallback_engaged"
+        else:
+            error_class = None
+
         record = LLMCallRecord(
             task=task,
             primary_alias=primary_alias,
@@ -385,6 +434,62 @@ class BudgetAwareRouter:
             latency_ms=latency_ms_int,
             decision_id=decision_id,
             prompt_hash=prompt_hash,
-            error_class=None,
+            error_class=error_class,
         )
         self._audit.log_call(record)
+
+    def _audit_log_failure(
+        self,
+        *,
+        task: RiskTaskType,
+        messages: list[LLMMessage] | list[dict[str, str]],
+        snapshot: BudgetSnapshot,
+        is_capped: bool,
+        decision_id: str | None,
+        exc: BaseException,
+    ) -> None:
+        """sub-PR 8a-followup-B-audit 5-07 BUG #3 fix: failure path audit log.
+
+        LiteLLM Router completion exception 真**audit row** + error_class=exception class name
+        + is_fallback=True (sentinel signal). caller 真**re-raise** 后 audit row 已 persist.
+
+        Args:
+            task: original RiskTaskType.
+            messages: original prompt messages (for prompt_hash).
+            snapshot: BudgetSnapshot at call time.
+            is_capped: budget cap state at call time.
+            decision_id: caller trace ID (NULL allowed).
+            exc: caught exception (类 name 走 error_class).
+        """
+        assert self._audit is not None
+
+        # lazy import 反循环依赖 (audit.py imports from .budget)
+        from .audit import LLMCallRecord, compute_prompt_hash
+
+        primary_alias = TASK_TO_MODEL_ALIAS.get(task, "")
+        try:
+            prompt_hash = compute_prompt_hash(messages)
+        except Exception:  # pragma: no cover — sha256 真不应失败
+            prompt_hash = None
+
+        # actual_model 真**NOT NULL** DDL VARCHAR(80) — sentinel 走 80 char 内.
+        # 真**反 empty string** 沿用铁律 33 fail-loud (sentinel 真**signal exception path**).
+        record = LLMCallRecord(
+            task=task,
+            primary_alias=primary_alias,
+            actual_model="<exception_no_response>",
+            is_fallback=True,  # sentinel: exception 真**fallback signal** (反 success path)
+            budget_state=snapshot.state,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=Decimal("0"),
+            latency_ms=None,
+            decision_id=decision_id,
+            prompt_hash=prompt_hash,
+            error_class=type(exc).__name__,
+        )
+        self._audit.log_call(record)
+
+        # is_capped 真**已 audit 沿用 record.budget_state**, 反**额外 record_cost** 沿用
+        # success path 体例 (反 silent decrement). 真**failure path** 真**0 cost call**
+        # sustained — budget.record_cost 走 success path only (反 in 本 method scope).
