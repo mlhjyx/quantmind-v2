@@ -22,6 +22,7 @@
 - 历史编号 1-44 + X9 (inline 于编号 44) 保持不变 (防文档引用漂移).
 - DEPRECATED 占位保留 (条目 2 合并入 25).
 - 新加 X10 (LL-098 候选, 本 PR 落地, T2 tier).
+- 新加 45 (LL-106 候选, 2026-05-06 PR-B 落地, T1 tier) — 4 doc fresh read SOP enforcement, 沿用 X10 governance pattern (ADR-037 sediment).
 - X1 / X3 / X4 / X5 候选 inline 缺失 (sprint period 软铁律, Step 6.2.5+ promote).
 - X2 / X6 / X7 跳号未定义 (历史决议保留).
 - X8 撤销 (T0-17 撤销同源, SHUTDOWN_NOTICE §195 v3).
@@ -32,7 +33,7 @@
 
 ## §1 Tier 索引 (按 Tier 快速查询)
 
-### T1 强制 (共 31 条)
+### T1 强制 (共 32 条)
 
 | # | 标题 | LL backref | ADR backref |
 |---|---|---|---|
@@ -67,6 +68,7 @@
 | 41 | 时间与时区统一 | Phase 2.1 sim-to-real | — |
 | 42 | PR 分级审查制 | LL-051 / LL-054 / LL-055 | — |
 | 43 | schtask Python 脚本 fail-loud 硬化标准 | LL-068 | — |
+| 45 | 4 doc fresh read SOP enforcement (新, 2026-05-06 PR-B) | LL-106 | ADR-037 |
 
 ### T2 警告 (共 14 条)
 
@@ -739,6 +741,49 @@ Blueprint 过时即事故源.
 - PR #175 (Step 6.2.5a 纯 audit 决议) — 第 6 次
 - PR #176 (Step 6.2.5b-1 文档修订) — 第 7 次
 - 本 PR (Step 6.2.5b-2 hook 实施 + dry-run + stress test 修补) — 第 8 次
+
+---
+
+## §18b Internal source fresh read 类 (条目 45, T1, 新加 2026-05-06 PR-B)
+
+### 45. 4 doc fresh read SOP enforcement [T1] (新加, 2026-05-06 Step 4-7 v2 PR-B)
+
+**全局原则**: sub-PR / sub-step / step / cross-session resume 起手前必走 4 root doc fresh read SOP. 内 source (CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md) 真值时效保障 + 反"凭印象 sediment / 信任 prompt cite / 信任 memory cite" anti-pattern.
+
+#### 触发条件 (任一 true → 必走 SESSION_PROTOCOL.md §1.3 4 步真生产体例)
+
+- (1) **新 sub-PR / sub-step / step 起手前** (含 prerequisite Step / sub-PR 间 transition / Sprint 间 transition)
+- (2) **跨 session resume** (含 /compact + SessionStart hook trigger / new session 冷启动)
+- (3) **prompt cite 4 doc 任一具体数字 / 编号 / cite source** (反信任 prompt cite + memory cite, 沿用 LL-101 + LL-104)
+- (4) **sediment cite 4 doc 任一 ground truth claim** (反 silent overwrite, 沿用 LL-103 真分离 architecture)
+
+#### 4 步真生产体例 (沿用 SESSION_PROTOCOL.md §1.3)
+
+- (a) `ls -la` 4 doc verify mtime — 真值时效, 反"已读"假设
+- (b) full file fresh read 4 doc 关键 section — 反 head/tail truncate (LL-057), full ground truth
+- (c) `Grep` cross-reference cite source 锁定 (parallel multi-pattern) — 沿用 LL-104 cross-verify
+- (d) sediment cite 真值 in PR description / STATUS_REPORT — 真值 cite source ≠ 凭印象 cite (沿用 LL-101)
+
+#### 5 类漂移类型 cite (PR description / STATUS_REPORT 必含)
+
+- (1) **数字漂移** (e.g. T1=8 vs 真起点 T1=31 / 32 rules vs 真起点 45 rules)
+- (2) **编号漂移** (e.g. LL-120 vs 真起点 LL-105 next free=LL-106 / ADR-037 # 占用 verify)
+- (3) **存在漂移** (e.g. SESSION_PROTOCOL.md "已存在拆分" vs 真值 0 存在)
+- (4) **mtime 漂移** (e.g. "4 doc 5-06 mtime sustained" vs 真值 0/4 5-06)
+- (5) **cross-reference 漂移** (e.g. CLAUDE.md cite "拆分 sediment" vs 真值 0 cite)
+
+**违反 → 累计真值漂移**: PR-A #237 5-06 P0 finding 真因 (5-02→5-06 累计 ~3-4x 真值漂移 sediment cite source 锁定真值). 反"凭印象 sediment" anti-pattern.
+
+本铁律由 5-06 user P0 finding 触发: "CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read sustained, CC 显然没有触发这些, 这是为什么?". 沿用 PR-A #237 SOP 文件首版本身含 phantom LL-119 / LL-115 真讽刺案例 #4 sediment cite source 锁定真值 — 真**反复实证** governance 单层 (CC 自主 sediment) 不足, 必须 reviewer 双层防御 + 铁律 enforcement (本铁律 45 sediment).
+
+**关联文档**:
+- [docs/SESSION_PROTOCOL.md](docs/SESSION_PROTOCOL.md) — 4 doc fresh read SOP detailed 体例 (PR-A #237 sediment, 160 行)
+- [docs/adr/ADR-037](docs/adr/ADR-037-internal-source-fresh-read-sop.md) — Internal source fresh read SOP governance decision
+- LESSONS_LEARNED.md LL-106 — 5-06 P0 finding sediment + 真讽刺案例 #4
+
+**LL backref**: LL-106.
+
+**ADR backref**: ADR-037.
 
 ---
 

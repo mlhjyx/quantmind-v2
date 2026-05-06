@@ -3531,3 +3531,91 @@ CC 真 spot-check 时 grep V3 §18.1 全表 → 真发现 row 5/6 真预约 → 
 
 5-02 sprint close 真**LL-100 chunked SOP 真稳定** (12/12 100% 1-run completion sustained, post-PR #217). 真**未来类似 sediment PR 真 reviewer 平均 ≤100s 1-run**, 真**N×N 同步成本真治理路径 cumulative**: SOP-1 (3 源 dedup) + SOP-2 (audit cite 真测) + SOP-3 (CC prompt 留占位) + SOP-4 (跨 system claim 明示) + SOP-5 (audit row backfill 5 condition) + **SOP-6 (ADR # reservation registry SSOT cross-verify)** = **6 SOP cluster sediment**. 真完整 governance debt detection mechanism (sustained 5-02 sprint close 真根本性处置).
 
+---
+
+## LL-106: 内 source fresh read SOP gap — 4 root doc 整 session 反 fresh verify 致 5-02→5-06 累计 ~3-4x 真值漂移 (2026-05-06 P0 finding sediment, Step 4-7 v2 PR-A/PR-B 双 PR 沉淀)
+
+### Part 1: 触发 case (5-06 user P0 finding)
+
+5-06 sprint period (Step 4-7 v2), user 直问: **"CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read sustained, CC 显然没有触发这些, 这是为什么?"**
+
+CC fresh verify 发现 prompt cite 跟 真值 ~3-4x drift:
+
+| 漂移类型 | prompt cite (5-02 memory 沉淀) | fresh verify 真值 (5-06 fresh) | cite source 锁定 |
+|---|---|---|---|
+| 数字漂移 | "32 rules T1=8 + T2=18 + T3=6" | **45 rules T1=31 + T2=14 + T3=0** | [IRONLAWS.md:35](IRONLAWS.md) "T1 强制 (共 31 条)" |
+| 编号漂移 | "ll_unique_ids 97→98 / LL-120" | **last LL-105, next free=LL-106** | [LESSONS_LEARNED.md:3471](LESSONS_LEARNED.md) "LL-105: ADR # reservation" |
+| 存在漂移 | "SESSION_PROTOCOL.md 拆分 sediment 沿用" | **0 存在** (Glob 0 results) | 真完全 fictitious cite, CLAUDE.md 0 cite "SESSION_PROTOCOL" |
+| mtime 漂移 | "4 doc 5-06 mtime sustained" | **0/4 5-06** (CLAUDE/IRONLAWS=5-01, LESSONS/SYSTEM_STATUS=5-03) | `ls -la` 4 root doc 真测 — **这就是 P0 真因** |
+| cross-reference 漂移 | "CLAUDE.md cite SESSION_PROTOCOL 拆分" | **0 cite 全 D:\quantmind-v2\\** | grep `SESSION_PROTOCOL` 0 hits |
+
+### Part 2: 真根因 — SOP gap (LL-119 SOP scope 仅 sediment 外 source)
+
+Sprint 2 sub-PR 1-6 累计沉淀 仅 外 source fresh verify (智谱/Tavily/Anspire/GDELT/Marketaux/RSSHub docs, 沿用 LL-104 cross-verify 体例), 反 sediment 内 source (4 root doc) fresh read SOP. 致 5-02→5-06 累计 ~3-4x 真值漂移.
+
+LL-119 itself 真 phantom — Step 4-7 v2 prompt 反复 cite "LL-119 SOP" 真值 = LL-119 0 存在 LESSONS_LEARNED.md (last LL=LL-105). Phantom term sustained prompt-only fiction, 真未 sediment 入 LESSONS_LEARNED.md. 真讽刺 — 反信任 prompt cite SOP 自己 violate by phantom term.
+
+### Part 3: 真讽刺自身实证 #4 (PR-A #237 SOP 文件首版含 phantom)
+
+PR-A (#237) docs/SESSION_PROTOCOL.md create 首版本身含 LL-119 (~7+ 处) + LL-115 (~1 处) phantom references — **正是本 SOP 设计要防止的 existence drift anti-pattern**.
+
+Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
+- **CRITICAL**: 8 处 phantom LL-119 / LL-115 替为真存在 LL-101 (audit cite 真测) + LL-104 (cross-verify 体例)
+- **MEDIUM**: LL skip count off-by-one — 9 gaps 补全 (LL-006/007/008/071/072/073/075/099/102 = 9 gaps, ll_unique_ids canonical=97 含 LL-074 Amendment 双 heading)
+
+→ 完整闭环 sustained (沿用 LL-067 reviewer 第二把尺子 + LL-104 cross-verify 体例)
+
+**真意义**: SOP 真**首版本身含 anti-pattern** 真**反复实证** governance 单层 (CC 自主 sediment) 不足, 必须 reviewer 双层防御 sustained. 沿用 LL-103 真分离 architecture finding 案例 — sediment 30 min 后即被违反, governance 需 enforcement layer (LL-067 reviewer + LL-098 X10 第 N+1 次 stress test 体例 sustained).
+
+### Part 4: Governance 双层防御 sediment (PR-A + PR-B)
+
+**Layer 1: 实操 SOP file** (PR-A #237 sediment, 沿用):
+- [docs/SESSION_PROTOCOL.md](docs/SESSION_PROTOCOL.md) — 4 doc fresh read SOP detailed 体例 (160 行)
+- §1 4 doc fresh read SOP (4 doc 真值 cite source + 4 触发条件 + 4 步真生产体例 + scope)
+- §2 sub-PR / sub-step / step 起手前必走清单 (强制思考 + 主动发现 + 挑战假设)
+- §3 cite source 锁定真值 SOP (4 元素必含 + 反信任 prompt cite 体例 + 5 类漂移类型)
+
+**Layer 2: 铁律 enforcement** (本 PR-B sediment):
+- [IRONLAWS.md +铁律 45](IRONLAWS.md) (T1) — 4 doc fresh read SOP enforcement, next 编号 1-44 + X9 + X10 + 45 sequence
+- [docs/adr/ADR-037](docs/adr/ADR-037-internal-source-fresh-read-sop.md) — Internal source fresh read SOP governance decision (沿用 ADR-022 集中修订机制 + ADR-021 X10 governance pattern)
+- [LESSONS_LEARNED.md +LL-106](LESSONS_LEARNED.md) (本 LL) — 真讽刺案例 #4 sediment + 5-06 P0 finding cite source 锁定真值 (ll_unique_ids canonical 97 → 98)
+
+### Part 5: 真长期 value (governance debt detection 沿用)
+
+- 4 doc fresh read SOP 真生产 enforcement, 反"凭印象 sediment" anti-pattern (沿用 LL-101 真测 verify)
+- 跨 session resume 时强制 fresh verify 4 doc, 反 5-02→5-06 类似漂移累计
+- 真讽刺自身实证 #4 真生产 captured (PR-A SOP 首版含 phantom → reviewer fix → 完整闭环), 真**反复实证** governance 单层不足, sediment double-layer
+- ll_unique_ids canonical drift detect mechanism — pre-commit hook 5 metric canonical (ll_unique_ids: 97 → 98 sustained 本 PR-B sediment)
+
+### Part 6: SOP cluster 扩展 (5-02 sprint close 6 SOP + 本 LL 真延伸)
+
+| SOP | 主题 | 沉淀 | 本 LL 沿用 |
+|---|---|---|---|
+| SOP-1 | 推荐起手项前 cross-check 3 源 dedup | LL-104 | §1.2 触发条件 (3) |
+| SOP-2 | audit cite 数字必 SQL/git/log 真测 | LL-101 | §1.3 (3) grep cross-reference |
+| SOP-3 | Claude.ai 写 CC prompt 不预填推断, 留占位 | LL-101 | §3.2 反信任 prompt cite |
+| SOP-4 | 跨 system claim 必明示 source system | LL-103 | §3.2 silent overwrite 体例延伸 |
+| SOP-5 | audit row backfill 真 SQL 写 5 condition | LL-103 | — (out of scope) |
+| SOP-6 | ADR # reservation registry SSOT cross-verify | LL-105 | ADR-037 cite 体例 sustained |
+| **SOP-7 (新, 本 LL)** | **内 source fresh read 4 doc + sub-PR 起手前必走** | **LL-106** | **SESSION_PROTOCOL.md §1+§2+§3** |
+
+**真完整 7 SOP cluster sediment**: 5-06 governance milestone (sustained 5-02 6 SOP + 本 SOP-7).
+
+### Part 7: 真 stress test 实绩 (governance pattern verify)
+
+| 沿用 LL # | governance pattern | 真生效证据 |
+|---|---|---|
+| LL-098 (X10) | AI 自动驾驶 forward-progress detection | PR #173-#176 8+ 次 sustained, 本 PR-B 第 N+1 次 |
+| LL-103 SOP-4 真讽刺案例第 1 次 | sediment 30 min 后即被违反 | PR #214 LL-103 sediment 30 min 内 v4 prompt missing source → CC STOP |
+| **LL-106 真讽刺案例第 4 次 (本 LL)** | SOP 文件首版本身含 phantom LL-119/115 | PR-A #237 reviewer 抓 fix → 完整闭环 |
+| LL-067 reviewer 第二把尺子 | reviewer 真 catch governance drift | PR-A #237 reviewer fix CRITICAL + MEDIUM 全采纳 |
+
+### Part 8: ll_unique_ids canonical update sediment
+
+5-02 sprint close ll_unique_ids canonical = 97 (sustained Phase 4.2 Layer 4 Topic 1 A minimal scope, pre-commit hook 5 metric canonical)
+- 真值组成: last LL-105 - 9 gaps (LL-006/007/008/071/072/073/075/099/102) + LL-074 Amendment 双 heading = 97 `## LL-` headings, 96 unique LL # in 1-105
+
+5-06 PR-B 本 LL 真新建 → ll_unique_ids canonical = 98 (LL-106 真新建)
+
+**maintenance 真**: pre-commit hook 5 metric canonical 同步 update 候选 (audit Week 2 batch sediment, 沿用 SOP-3 数字 cite 留占位 SOP)
+

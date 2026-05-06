@@ -46,14 +46,15 @@
 | ADR-034 | LLM Fallback Model Upgrade (qwen3:8b → qwen3.5:9b, 5-06 sediment) | committed | V3 Tier A Sprint 1.5 S5 (model SOTA 升级), 沿用 PR #225 (S3 Ollama install) + ADR-031 §6 (ollama_chat endpoint + alias resolve) + ADR-032 (caller bootstrap factory, 0 prod caller 改). 5-06 user 实测 + CC 自主 stress test 双 verify (VRAM 9592/12227 MB peak / 73 t/s eval / 9.8s response). cite drift cross-source 候选 audit Week 2 batch (LL-114 体例延伸) |
 | ADR-035 | 智谱 News#1 fetcher (GLM-4.7-Flash) + V4 路由层 0 智谱决议 (5-06 (a)+(b) 修订) | committed | V3 Tier A Sprint 2 prerequisite Step 3 (本 PR), 沿用 ADR-031 §6 V4 路由层 sustained DeepSeek + Ollama / ADR-033 5-02 sediment 修订 5-06 model name + Anspire/Marketaux/RSSHub 修订. 5-06 user 决议 (a) GLM-4.7-Flash News#1 永久免费 + (b) GLM-4.7 paid V4-Pro fallback 取消 + GLM-4.5-air paid 32M burst 用途. Step 2 + 2.5 9 漂移 finding cite source 锁定 (LL-114~119 候选 audit Week 2 batch) |
 | ADR-036 | BULL/BEAR Agent mapping V4-Flash → V4-Pro (debate reasoning capability + V3§5.5 internal drift 修复) | committed | V3 Tier A Sprint 2 prerequisite Step 3 (本 PR), 沿用 V3§11.2 line 1228 service cite 已 V4-Pro 体例修复 V3§5.5 internal drift (line 660/661/724/1589 V4-Flash → V4-Pro). 5-06 user 决议 BULL/BEAR debate reasoning capability. cost 重估 ~$0.39/月 full price / ~$0.10/月 discount 走 2026-05-31 (远低 V3§20.1 #6 $50 cap). 0 caller 改 / 0 test 改 / 0 yaml 改 (沿用 dict get + enum 引用) |
+| ADR-037 | Internal source fresh read SOP — 4 root doc + sub-PR/sub-step 起手前必走 enforcement (governance) | committed | V3 Tier A Sprint 2 prerequisite Step 4-7 v2 PR-B (本 PR), 沿用 PR-A #237 SESSION_PROTOCOL.md create + 5-06 user P0 finding sediment + 真讽刺案例 #4 PR-A SOP 首版含 phantom LL-119/115 sediment cite source 锁定真值. 沿用 ADR-022 集中修订机制 + ADR-021 X10 governance pattern. 关联铁律 45 (新, T1 tier) + LL-106 (新, ll_unique_ids 97→98) |
 
 ## 真状态分布
 
-- **committed (真 file 真在 docs/adr/)**: 27 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032/033/034/**035**/**036**)
+- **committed (真 file 真在 docs/adr/)**: 28 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032/033/034/035/036/**037**)
 - **reserved (V3 §18.1 真预约, 0 file 等真起手时 sediment)**: 6 个 (ADR-019/020/025/026/029/030)
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号 sustained)
 
-总 37 # space (含 gap), 真活跃 33 (committed 27 + reserved 6).
+总 38 # space (含 gap), 真活跃 34 (committed 28 + reserved 6).
 
 ## 真 maintenance 规则
 
@@ -85,6 +86,7 @@
 > **新 committed**: ADR-033 (5-06 V3 §3.1 + §20.1 #10 patch, V3 Tier A Sprint 2 起手前 prerequisite) — News 6 源换源决议 (4 替 + 2 沿用, 月成本 $0). 沿用 4-29 ADR-020 LiteLLM 路由 + 5-02 web_search 验证 + ADR-022 反 silent overwrite.
 > **新 committed**: ADR-035 (5-06 Step 3 单 PR sediment) — 智谱 News#1 (GLM-4.7-Flash) + V4 路由层 0 智谱决议 (5-06 (a)+(b) 修订). 沿用 ADR-031 §6 + ADR-033 5-02 sediment 修订.
 > **新 committed**: ADR-036 (5-06 Step 3 单 PR sediment) — BULL/BEAR mapping V4-Flash → V4-Pro (debate reasoning capability + V3§5.5 internal drift 修复). cost 重估 远低 $50 cap.
+> **新 committed**: ADR-037 (5-06 Step 4-7 v2 PR-B sediment) — Internal source fresh read SOP (governance) — 4 root doc + sub-PR/sub-step 起手前必走 enforcement. 沿用 PR-A #237 SESSION_PROTOCOL.md create + 真讽刺案例 #4 sediment + 5-06 user P0 finding cite source 锁定真值. 关联铁律 45 (新, T1) + LL-106 (新, ll_unique_ids 97→98).
 
 ## 历史 N×N 同步漂移 真案例
 
