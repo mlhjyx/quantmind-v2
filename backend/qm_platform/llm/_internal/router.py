@@ -352,14 +352,41 @@ class FallbackDetectionError(RuntimeError):
 def _is_fallback(*, actual_model: str, primary_alias: str) -> bool:
     """检测 fallback 路径: actual_model 真模型名跟 primary alias 期望模型 0 重叠.
 
-    primary deepseek-v4-flash → deepseek/deepseek-chat (含 'deepseek-chat' 子串)
-    primary deepseek-v4-pro → deepseek/deepseek-reasoner (含 'deepseek-reasoner' 子串)
-    fallback qwen3-local → ollama/qwen3:8b (跟两个 primary 子串都不命中)
+    LiteLLM Router 真**返 model identifier 体例双 case** (5-07 sub-PR 8a-followup-A
+    sediment, sub-PR 8a e2e 真生产 first verify):
 
-    actual_model 跟期望 primary 子串 0 命中 → 走 fallback 路径 (含 qwen3-local).
+    Case 1 (primary success, alias-pass-through): LiteLLM Router 真**返 yaml model_name
+    alias** (e.g. `deepseek-v4-flash`) 反 underlying provider/model name. 真**default
+    Router behavior** sustained — caller 真传 model=alias, Router 真**route 走 yaml
+    model_list 真 first match** + 真**返 alias 沿用 caller 真 input alias** 体例.
+    → 真**alias equality short-circuit**: actual_model == primary_alias 真**primary
+    成功** signal (反 fallback).
+
+    Case 2 (primary success, underlying-name): LiteLLM Router 真**直传 underlying
+    provider/model name** (e.g. `deepseek/deepseek-chat`) 真**rare case** 走
+    `_call_with_fallback` internal path. → 真**substring 检测体例 sustained**:
+    expected_substring (`deepseek-chat`) in actual_model (`deepseek/deepseek-chat`) ✅.
+
+    Case 3 (fallback path): LiteLLM Router 真**fallback chain 触发** 时 真**返
+    fallback model 真 underlying name** (e.g. `ollama_chat/qwen3.5:9b`). → 真
+    **substring 检测体例**: expected_substring (`deepseek-chat`) NOT in
+    `ollama_chat/qwen3.5:9b` → return True (correct).
+
+    sub-PR 8a-followup-A 真**修 BUG #1** (5-07 sediment): Case 1 alias-pass-through
+    真**default behavior** Sprint 1 PR #222 真**单测未 cover**, _is_fallback()
+    真**substring 检测** Case 1 真**false positive** (return True for primary
+    success) — 真**生产影响**: llm_call_log 全 row is_fallback=t (反 production
+    实际 primary success), BudgetGuard fallback metric 真污染.
+
     primary_alias 不在 known set → raise (反 silent miss, 沿用铁律 33).
     """
     if not actual_model or not primary_alias:
+        return False
+
+    # NEW (sub-PR 8a-followup-A 5-07): alias equality short-circuit (Case 1 primary
+    # success signal). LiteLLM Router 真**default behavior** 返 yaml model_name alias
+    # 反 underlying provider/model — sub-PR 8a e2e 真生产 first verify.
+    if actual_model == primary_alias:
         return False
 
     if primary_alias not in PRIMARY_MODEL_SUBSTRINGS:

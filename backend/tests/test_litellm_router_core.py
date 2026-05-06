@@ -336,3 +336,94 @@ def test_unknown_primary_alias_raises_fallback_detection_error() -> None:
 
     with pytest.raises(FallbackDetectionError, match="not in PRIMARY_MODEL_SUBSTRINGS|不在"):
         _is_fallback(actual_model="some/model", primary_alias="future-v5-alias")
+
+
+# ── sub-PR 8a-followup-A (5-07): _is_fallback() BUG #1 修复 — Case 1/2/3 cover ──
+#
+# Sprint 1 PR #222 真**单测未 cover** Case 1 (primary success, alias-pass-through),
+# 真**Sprint 2 sub-PR 8a e2e 真生产 first verify** 触发 false positive (是 fallback
+# 但实际 primary 真**成功**). 沿用 STATUS_REPORT memory/sprint_2_sub_pr_8a_followup_diagnose
+# _2026_05_07.md BUG #1 sediment + ADR-DRAFT row 6 真**起手 ADR**.
+#
+# 沿用 reviewer Chunk A P2 真 false negative warning (PR #222), 本 3 case 真**双向 cover**
+# false positive + false negative + edge case (沿用 audit Week 2 batch governance LL 体例
+# "detection bug 必 cover 双向 case + edge case sediment").
+
+
+def test_is_fallback_case1_alias_pass_through_returns_false() -> None:
+    """Case 1: primary success, LiteLLM Router 真**返 yaml model_name alias** (default
+    behavior). actual_model == primary_alias → is_fallback=False (NEW short-circuit,
+    sub-PR 8a-followup-A BUG #1 fix).
+
+    真生产证据 (sub-PR 8a e2e 5-07 02:59):
+    - LiteLLMRouter direct call task=NEWS_CLASSIFY → DeepSeek primary SUCCESS
+    - response.model = "deepseek-v4-flash" (LiteLLM Router 真返 alias 反 underlying)
+    - cost=0.00000238 (真 DeepSeek 计 cost), latency=502ms (真 DeepSeek)
+    - 修复前: is_fallback=True (false positive, "deepseek-chat" not in "deepseek-v4-flash")
+    - 修复后: is_fallback=False (alias equality short-circuit)
+    """
+    from backend.qm_platform.llm._internal.router import _is_fallback
+
+    # primary alias deepseek-v4-flash 真**返 alias** (Case 1 default LiteLLM behavior)
+    assert _is_fallback(
+        actual_model="deepseek-v4-flash",
+        primary_alias="deepseek-v4-flash",
+    ) is False
+    # primary alias deepseek-v4-pro 真**返 alias** (Case 1 cover 7 task type 全部)
+    assert _is_fallback(
+        actual_model="deepseek-v4-pro",
+        primary_alias="deepseek-v4-pro",
+    ) is False
+
+
+def test_is_fallback_case2_underlying_name_returns_false() -> None:
+    """Case 2: primary success, LiteLLM Router 真**返 underlying provider/model name**
+    (rare case, _call_with_fallback internal path). substring 检测体例 sustained.
+
+    actual_model 含 expected_substring → is_fallback=False (沿用 PRIMARY_MODEL_SUBSTRINGS).
+    """
+    from backend.qm_platform.llm._internal.router import _is_fallback
+
+    # primary deepseek-v4-flash → "deepseek-chat" substring (Case 2 sustained)
+    assert _is_fallback(
+        actual_model="deepseek/deepseek-chat",
+        primary_alias="deepseek-v4-flash",
+    ) is False
+    # primary deepseek-v4-pro → "deepseek-reasoner" substring (Case 2 sustained)
+    assert _is_fallback(
+        actual_model="deepseek/deepseek-reasoner",
+        primary_alias="deepseek-v4-pro",
+    ) is False
+    # case-insensitive 沿用 actual_model.lower() (e.g. "DeepSeek/DeepSeek-Chat")
+    assert _is_fallback(
+        actual_model="DeepSeek/DeepSeek-Chat",
+        primary_alias="deepseek-v4-flash",
+    ) is False
+
+
+def test_is_fallback_case3_fallback_underlying_returns_true() -> None:
+    """Case 3: fallback chain triggered, LiteLLM Router 真**返 fallback model 真 underlying
+    name** (e.g. ollama_chat/qwen3.5:9b). substring 检测体例 sustained.
+
+    actual_model NOT 含 primary expected_substring → is_fallback=True.
+
+    真生产证据 (sub-PR 8a e2e 5-07): 6 row classifier_model="ollama_chat/qwen3.5:9b"
+    (LiteLLM Router fallback chain 触发 deepseek-v4-flash → qwen3-local).
+    """
+    from backend.qm_platform.llm._internal.router import _is_fallback
+
+    # fallback to qwen3-local (5-06 ADR-034 升级 qwen3.5:9b)
+    assert _is_fallback(
+        actual_model="ollama_chat/qwen3.5:9b",
+        primary_alias="deepseek-v4-flash",
+    ) is True
+    # 历史 qwen3:8b path (ADR-034 升级前 baseline)
+    assert _is_fallback(
+        actual_model="ollama/qwen3:8b",
+        primary_alias="deepseek-v4-flash",
+    ) is True
+    # primary deepseek-v4-pro fallback to qwen3 (RISK_REFLECTOR / JUDGE 体例)
+    assert _is_fallback(
+        actual_model="ollama_chat/qwen3.5:9b",
+        primary_alias="deepseek-v4-pro",
+    ) is True
