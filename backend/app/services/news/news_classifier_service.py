@@ -419,13 +419,16 @@ class NewsClassifierService:
             )
 
         with conn.cursor() as cur:
+            # 防御性: classified_at 显式 NOW() (反 DEFAULT 漂移, LL-067 reviewer P2 sediment).
+            # INSERT 路径 + UPDATE 路径对称走 NOW() — 反将来 DDL DEFAULT 改 → 初次 insert
+            # 真值 ≠ re-classify update 真值 真静默 asymmetry.
             cur.execute(
                 """
                 INSERT INTO news_classified (
                     news_id, sentiment_score, category, urgency, confidence,
                     profile, classifier_model, classifier_prompt_version,
-                    classifier_cost
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    classifier_cost, classified_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (news_id) DO UPDATE SET
                     sentiment_score = EXCLUDED.sentiment_score,
                     category = EXCLUDED.category,

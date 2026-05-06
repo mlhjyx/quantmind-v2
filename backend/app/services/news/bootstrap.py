@@ -76,6 +76,13 @@ def get_news_classifier(
         ADR-032 line 36 真预约 + bootstrap.py:82 docstring "application 真生产 caller
         必显式传 conn_factory" 体例 sustained.
 
+    ⚠️ NOTE (singleton args ignored on subsequent calls, 沿用 alert.py 体例 sustained):
+        参数 (router / conn_factory) 仅**第一次 init 时消费**, 之后所有 call 真返
+        cached singleton **无视参数** (沿用 alert.py / llm/bootstrap.py double-checked
+        lock 体例). caller 真**先 reset_news_classifier() 再 call** 才能换 router/
+        conn_factory (test isolation pattern, 反 production caller). 沿用 LL-067
+        reviewer P1 finding sediment.
+
     NOTE (singleton lifecycle, 沿用 alert.py + llm/bootstrap.py 体例):
         process-level cache (module-level _classifier_singleton).
         每 process 唯一实例, 反**重复 yaml prompt 加载 cost** + 反 race condition.

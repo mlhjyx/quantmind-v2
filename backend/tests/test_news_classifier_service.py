@@ -13,6 +13,7 @@ scope (mock-only sustained, e2e live + bootstrap wire defer sub-PR 7b.3):
 """
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -650,8 +651,6 @@ class TestBootstrap:
 # ─────────────────────────────────────────────────────────────
 # TestE2ELive — V4-Flash 真生产 API call (requires_litellm_e2e marker)
 # ─────────────────────────────────────────────────────────────
-
-import os  # noqa: E402 — pytest marker block
 
 
 @pytest.mark.requires_litellm_e2e
