@@ -91,6 +91,8 @@ recorded_at: 2026-05-06
 - **GLM-4.7 paid 5M cliff** (7-13 到期): 反 caller 走 (5-06 (b) 决议取消), 反 sediment 0 cost cliff. (audit Week 2 batch sediment 候选 LL-117).
 - **智谱 quota 政策 0 fresh verify**: docs.bigmodel.cn web_fetch lazy load placeholder 反 cite 永久免费 quota 政策. 沿用 5-06 web_search Step 2 cite + user 截图 单源 verify (audit Week 2 batch user console 接触 fresh verify 候选).
 - **search-std/pro 0 wire 0 sediment**: 智谱独立产品 sustained reserve, 反 V3 §5.5 路由层 cite, 反 V3 Tier A scope (Tier B+ 候选).
+- **GLM-4.5-Flash deprecating soon** (5-06 Step 4-3 fresh verify 实证): docs.bigmodel.cn fresh fetch verify, GLM-4.5-Flash 走 deprecating 沉淀, GLM-4.7-Flash 真生产永久免费 successor (200K context + 128K output vs GLM-4.5-Flash 32K context + 96K output). 沿用 §1 Context cite "双 model 永久免费 ~1M tokens/天" 沉淀 5-02 web_search Step 2 单源, 5-06 Step 4-3 fresh verify 实证修订. Sprint 2 implementation 起手时走 `glm-4.7-flash` model_id (反 4.5-Flash deprecating cliff risk). (audit Week 2 batch sediment 候选 LL-115 强化实证).
+- **GLM-4.7-Flash free tier qps cap finding** (5-06 Step 4-3 smoke test 实测): 4 candidate model_id fresh smoke test 实测 — `glm-4.7-flash` 反 HTTP 429 "访问量过大" rate limit code 1305 (free tier qps cap, 反 monthly token quota only sustained), `glm-4.5-flash` / `glm-4.5-air` / `glm-4.7` 全 HTTP 200 ✅ 0.6-2.6s. Sprint 2 implementation 起手时走 LiteLLM provider timeout=30s + retry backoff 沿用 PR #221 体例反 free tier qps spike 反 caller fail (沿用 cold-start 60s retry sediment Step 4-2 体例).
 
 ### Neutral
 
@@ -122,11 +124,13 @@ recorded_at: 2026-05-06
 - ADR-036 (BULL/BEAR Agent mapping V4-Pro) — 单 PR 跟随 sediment, V4 路由层 V4-Pro 走 BULL/BEAR/JUDGE/RISK_REFLECTOR
 - LL-098 X10 (反 forward-progress default) — 本 PR 0 user 接触 implementation
 - LL-114 候选 (cite drift cross-source) — sprint_state v7 老 6 源 cite drift sustained
-- LL-115 候选 (model 选择 SOTA verify) — 5-02 GLM-4-Flash → 5-06 GLM-4.7-Flash 实证
+- LL-115 候选 (model 选择 SOTA verify) — 5-02 GLM-4-Flash → 5-06 GLM-4.7-Flash 实证 + 5-06 Step 4-3 fresh verify 强化实证 (4 candidate model_id smoke test + docs.bigmodel.cn fresh fetch — GLM-4.5-Flash deprecating soon, GLM-4.7-Flash free tier qps cap finding) (audit Week 2 batch sediment)
 - LL-116 候选 (API key 申请前 cite 锁定 SOP) — Anspire 申请方式 P2 漂移实证
 - LL-117 候选 (API quota 7-13 cliff 处置前置 SOP) — 智谱 paid 资源包到期 risk
 - LL-118 候选 (LiteLLM provider model id legacy 兼容 vs upstream model id 升级 SOP) — yaml deepseek-chat legacy vs DeepSeek 官网 NEW canonical
 - LL-119 候选 (memory cite vs 真生产 yaml/官网现役 cross-verify SOP) — 本 PR 实证延伸
 - 5-06 user 决议 (a) GLM-4.7-Flash News#1 sustained + (b) GLM-4.7 paid V4-Pro fallback 取消
 - 5-06 web_search Step 2 + Step 2.5 cite (智谱 + DeepSeek + 4 source cross-verify)
+- 5-06 Step 4-3 fresh verify (4 candidate model_id smoke test: `glm-4.7-flash` HTTP 429 / `glm-4.5-flash` + `glm-4.5-air` + `glm-4.7` HTTP 200 + docs.bigmodel.cn fresh fetch — GLM-4.7-Flash 200K context + 128K output sustained, GLM-4.5-Flash deprecating soon)
+- 5-06 user 决议 Step 4-3: 沿用 (2) GLM-4.7-Flash sustained ADR-035 §2 (反 (1) 改 4.5-Flash / 反 (3) 双 model fallback / 反 (4) 别)
 - docs.bigmodel.cn (GLM-4.7-Flash specs 200K context + MCP integration verify)
