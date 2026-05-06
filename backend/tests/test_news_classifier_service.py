@@ -13,6 +13,7 @@ scope (mock-only sustained, e2e live + bootstrap wire defer sub-PR 7b.3):
 """
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -505,11 +506,10 @@ class TestParseInvalid:
 
 
 class TestPersist:
-    def test_persist_raises_not_implemented(
-        self, service: NewsClassifierService
-    ) -> None:
-        """sub-PR 7b.2 scope = persist hook stub, sub-PR 7b.3 真 wire."""
-        result = ClassificationResult(
+    """sub-PR 7b.3 v2 (#242) 真 wire — INSERT INTO news_classified ON CONFLICT DO UPDATE."""
+
+    def _make_result(self) -> ClassificationResult:
+        return ClassificationResult(
             sentiment_score=Decimal("0.5"),
             category="利好",
             urgency="P1",
@@ -520,8 +520,213 @@ class TestPersist:
             classifier_cost=Decimal("0.0015"),
             news_id=None,
         )
-        with pytest.raises(NotImplementedError, match="sub-PR 7b.3"):
-            service.persist(result, conn=None)
+
+    def test_persist_raises_when_news_id_missing(
+        self, service: NewsClassifierService
+    ) -> None:
+        """news_id=None pre-persist 真 fail-loud (反 silent skip row corrupt 铁律 33)."""
+        result = self._make_result()
+        mock_conn = MagicMock()
+        with pytest.raises(ValueError, match="news_id 真 None"):
+            service.persist(result, conn=mock_conn)
+        mock_conn.cursor.assert_not_called()  # 反 SQL 已 emit
+
+    def test_persist_uses_explicit_news_id_kwarg(
+        self, service: NewsClassifierService
+    ) -> None:
+        """news_id 真 kwarg → 走 INSERT ... VALUES (news_id=given, ...)."""
+        result = self._make_result()
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        service.persist(result, conn=mock_conn, news_id=12345)
+
+        mock_conn.cursor.assert_called_once()
+        mock_cursor.execute.assert_called_once()
+        sql, params = mock_cursor.execute.call_args.args
+        assert "INSERT INTO news_classified" in sql
+        assert "ON CONFLICT (news_id) DO UPDATE" in sql
+        assert "classified_at = NOW()" in sql
+        assert params[0] == 12345  # news_id 真 first column
+        assert params[1] == Decimal("0.5")  # sentiment_score
+        assert params[2] == "利好"  # category
+        assert params[3] == "P1"  # urgency
+        assert params[4] == Decimal("0.8")  # confidence
+        assert params[5] == "short"  # profile
+        assert params[6] == "deepseek-v4-flash"  # classifier_model
+        assert params[7] == "v1"  # classifier_prompt_version
+        assert params[8] == Decimal("0.0015")  # classifier_cost
+
+    def test_persist_falls_back_to_result_news_id(
+        self, service: NewsClassifierService
+    ) -> None:
+        """news_id kwarg 真 None → 走 result.news_id (caller pre-填 news_id 真模式)."""
+        result = ClassificationResult(
+            sentiment_score=Decimal("0"),
+            category="中性",
+            urgency="P3",
+            confidence=Decimal("0.5"),
+            profile="long",
+            classifier_model="qwen3-local",
+            classifier_prompt_version="v1",
+            classifier_cost=None,  # Ollama fallback
+            news_id=99999,
+        )
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        service.persist(result, conn=mock_conn)
+
+        params = mock_cursor.execute.call_args.args[1]
+        assert params[0] == 99999
+        assert params[8] is None  # classifier_cost NULL = Ollama fallback
+
+    def test_persist_does_not_commit(
+        self, service: NewsClassifierService
+    ) -> None:
+        """铁律 32 Service 不 commit — caller 真事务边界管理者."""
+        result = self._make_result()
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        service.persist(result, conn=mock_conn, news_id=1)
+
+        mock_conn.commit.assert_not_called()
+        mock_conn.rollback.assert_not_called()
+
+
+# ─────────────────────────────────────────────────────────────
+# TestBootstrap (sub-PR 7b.3 v2 #242 — get_news_classifier factory)
+# ─────────────────────────────────────────────────────────────
+
+
+class TestBootstrap:
+    """get_news_classifier + reset_news_classifier 体例 (沿用 alert.py:528-554)."""
+
+    def test_factory_returns_singleton(self, mock_router: MagicMock) -> None:
+        from backend.app.services.news import (
+            get_news_classifier,
+            reset_news_classifier,
+        )
+        reset_news_classifier()
+        try:
+            c1 = get_news_classifier(router=mock_router)
+            c2 = get_news_classifier(router=mock_router)
+            assert c1 is c2  # process-level singleton sustained
+        finally:
+            reset_news_classifier()
+
+    def test_factory_accepts_pre_built_router(
+        self, mock_router: MagicMock
+    ) -> None:
+        from backend.app.services.news import (
+            NewsClassifierService,
+            get_news_classifier,
+            reset_news_classifier,
+        )
+        reset_news_classifier()
+        try:
+            classifier = get_news_classifier(router=mock_router)
+            assert isinstance(classifier, NewsClassifierService)
+            assert classifier._router is mock_router
+        finally:
+            reset_news_classifier()
+
+    def test_reset_clears_singleton(self, mock_router: MagicMock) -> None:
+        from backend.app.services.news import (
+            get_news_classifier,
+            reset_news_classifier,
+        )
+        reset_news_classifier()
+        c1 = get_news_classifier(router=mock_router)
+        reset_news_classifier()
+        c2 = get_news_classifier(router=mock_router)
+        assert c1 is not c2  # 反 singleton 真 reset
+        reset_news_classifier()
+
+
+# ─────────────────────────────────────────────────────────────
+# TestE2ELive — V4-Flash 真生产 API call (requires_litellm_e2e marker)
+# ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.requires_litellm_e2e
+@pytest.mark.skipif(
+    not os.getenv("DEEPSEEK_API_KEY"),
+    reason="DEEPSEEK_API_KEY env missing (沿用 sub-PR 1-6 + 7a + 7b.2 marker auto-skip 体例)",
+)
+class TestE2ELive:
+    """V4-Flash 真生产 + DB UPSERT (mock conn capture SQL, 反 quota burn minimal payload).
+
+    红线 sustained: LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / minimal payload.
+    """
+
+    def test_e2e_classify_real_v4_flash_minimal_payload(
+        self, sample_news_item: NewsItem
+    ) -> None:
+        """real DeepSeek V4-Flash API call → ClassificationResult (反 quota burn)."""
+        from backend.app.services.news import get_news_classifier, reset_news_classifier
+        from backend.qm_platform.llm import reset_llm_router
+
+        reset_llm_router()
+        reset_news_classifier()
+        try:
+            classifier = get_news_classifier()  # conn_factory=None 走降级 mode
+            result = classifier.classify(
+                sample_news_item, decision_id="e2e-live-7b.3-v2-test"
+            )
+
+            assert isinstance(result, ClassificationResult)
+            assert result.category in VALID_CATEGORIES
+            assert result.urgency in VALID_URGENCIES
+            assert result.profile in VALID_PROFILES
+            assert Decimal("-1") <= result.sentiment_score <= Decimal("1")
+            assert Decimal("0") <= result.confidence <= Decimal("1")
+            assert result.classifier_prompt_version == "v1"
+            # V4-Flash 真生产 → cost > 0 OR Ollama fallback (cost=NULL)
+            if not result.classifier_model.startswith("qwen3"):
+                assert result.classifier_cost is None or result.classifier_cost >= 0
+        finally:
+            reset_llm_router()
+            reset_news_classifier()
+
+    def test_e2e_classify_then_persist_full_path(
+        self, sample_news_item: NewsItem
+    ) -> None:
+        """real V4-Flash → ClassificationResult → persist UPSERT SQL emit (mock conn).
+
+        反 真 DB 接触 (test infrastructure decoupling sustained sub-PR 1-6 体例),
+        但 SQL emit verify 真**news_classified DDL 沿用 sub-PR 7b.1 v2 #240** sustained.
+        """
+        from backend.app.services.news import get_news_classifier, reset_news_classifier
+        from backend.qm_platform.llm import reset_llm_router
+
+        reset_llm_router()
+        reset_news_classifier()
+        try:
+            classifier = get_news_classifier()
+            result = classifier.classify(
+                sample_news_item, decision_id="e2e-live-7b.3-v2-persist-test"
+            )
+
+            mock_cursor = MagicMock()
+            mock_conn = MagicMock()
+            mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+            classifier.persist(result, conn=mock_conn, news_id=42)
+
+            sql = mock_cursor.execute.call_args.args[0]
+            params = mock_cursor.execute.call_args.args[1]
+            assert "INSERT INTO news_classified" in sql
+            assert "ON CONFLICT (news_id) DO UPDATE" in sql
+            assert params[0] == 42
+            mock_conn.commit.assert_not_called()  # 铁律 32 sustained
+        finally:
+            reset_llm_router()
+            reset_news_classifier()
 
 
 # ─────────────────────────────────────────────────────────────
