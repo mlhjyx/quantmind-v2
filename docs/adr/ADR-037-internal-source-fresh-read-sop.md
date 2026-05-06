@@ -21,6 +21,19 @@ recorded_at: 2026-05-06
 
 **真讽刺自身实证 #4** (PR-A #237): SOP 文件首版本身含 LL-119 / LL-115 phantom references — 正是本 SOP 设计要防止的 existence drift anti-pattern. Reviewer agent 抓 fix → 完整闭环 (沿用 LL-067 reviewer 第二把尺子 + LL-104 cross-verify).
 
+**5-07 sediment 加深 (sub-PR 8a-followup-B 全 4 PR cycle)**: 真**第 6 + 第 7 漂移类型** candidate sediment (audit-week-2-B chunk B):
+
+| # | 漂移类型 candidate | 真生产 evidence | sediment LL | 关联 candidate |
+|---|---|---|---|---|
+| 6 | production runtime state vs source code state | 5-07 sub-PR 8a verify 真**首次 SOP enforcement** catch P0-1 (Risk Beat 4-29 PAUSE 7d wiring code 在 production Beat 0 active) + P0-2 (Sprint 2 ingestion 0 caller wire) | LL-109 hook governance 4 days production 0 catch | sub-PR 8a-followup-pre meta-verify 体例 |
+| 7 | 3rd-party API 默认参数误归因 silent semantic drift | 5-07 sub-PR 8a-followup-B Q9 web_fetch DeepSeek 官方 API docs 真测真值, vanilla LiteLLM call 漏 thinking 参数 → 默认 enabled → reasoning_content 出现 → CC 3 次 push back 误归因 "silent routing reasoner", user 第 7 次 push back catch correctly | LL-110 + LL-112 真讽刺 #14 真**关键 governance** | DeepSeek API 3 层暗藏机制 (alias-pass-through + backend silent routing + LiteLLM cost registry gap) |
+
+**真讽刺自身实证 #5+#6+#7+#8 sediment** (audit-week-2-B chunk B):
+- #5 候选: 真**SOP enforcement** 4 days 后 sub-PR 8a 真**首次 SOP**生效 catch P0 finding (沿用 #4 first SOP enforcement 体例 sustained)
+- #6 候选: hook governance 4 days production 0 catch sediment (LL-109)
+- #7 候选: alias-layer vs underlying-layer 双层混淆 — DeepSeek API 3 层暗藏机制 sediment (LL-110)
+- #8 候选: vanilla 3rd-party SDK call 漏默认参数误归因 silent semantic drift (LL-112) — CC 3 次 push back 误归因, user 第 7 次 push back catch correctly. 真**反 anti-pattern v6.0 candidate** sediment 沿用 LL-098 X10 forward-progress reverse case 体例 sustained.
+
 ## Decision
 
 **Governance 双层防御** sediment (PR-B):
