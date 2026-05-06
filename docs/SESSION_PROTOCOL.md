@@ -2,7 +2,7 @@
 
 > **真意义**: sub-PR / sub-step / step / cross-session resume 起手前必走 fresh read SOP, 真生产 enforcement 体例 sustained.
 > **触发原因 (P0 finding, 2026-05-06)**: user 指出 "CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read sustained, CC 显然没有触发这些, 这是为什么?"
-> **真根因**: SOP gap — LL-119 SOP scope 仅 sediment 外 source fresh verify (智谱/Tavily/Anspire/GDELT/Marketaux/RSSHub docs), 反 sediment 内 source (4 root doc) fresh read SOP, 致 5-02→5-06 累计 ~3-4x 真值漂移 (e.g. prompt cite "32 rules T1=8 + T2=18 + T3=6" 真值 = 45 rules T1=31 + T2=14 + T3=0).
+> **真根因**: SOP gap — sub-PR 1-6 累计沉淀 仅 外 source fresh verify (智谱/Tavily/Anspire/GDELT/Marketaux/RSSHub docs, 沿用 LL-104 cross-verify), 反 sediment 内 source (4 root doc) fresh read SOP, 致 5-02→5-06 累计 ~3-4x 真值漂移 (e.g. prompt cite "32 rules T1=8 + T2=18 + T3=6" 真值 = 45 rules T1=31 + T2=14 + T3=0).
 > **关联文档**: [CLAUDE.md](../CLAUDE.md) (项目入口) / [IRONLAWS.md](../IRONLAWS.md) (铁律 SSOT v3.0) / [LESSONS_LEARNED.md](../LESSONS_LEARNED.md) (LL backlog) / [SYSTEM_STATUS.md](../SYSTEM_STATUS.md) (系统现状) / docs/adr/ADR-037 (候选, PR-B sediment).
 > **本文件版本**: v0.1 (PR-A sediment, 2026-05-06)
 
@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | CLAUDE.md | [CLAUDE.md](../CLAUDE.md) | ~35 KB / ~530 行 | 项目入口 + 铁律 reference + 当前进度 + 文档查阅索引 | 2026-05-01 (Step 6.3b 重构) |
 | IRONLAWS.md | [IRONLAWS.md](../IRONLAWS.md) | ~47 KB | 铁律 SSOT v3.0 (45 rules: T1=31 + T2=14 + T3=0, 1-44 + X9 + X10 编号) | 2026-05-01 (Step 6.2 ADR-021 sediment) |
-| LESSONS_LEARNED.md | [LESSONS_LEARNED.md](../LESSONS_LEARNED.md) | ~222 KB | LL backlog (last LL-105 sustained 5-02 sprint close, 跳号 LL-099/LL-102) | 2026-05-03 (LL-105 ADR # registry SOP-6) |
+| LESSONS_LEARNED.md | [LESSONS_LEARNED.md](../LESSONS_LEARNED.md) | ~222 KB | LL backlog (last LL-105 sustained 5-02 sprint close, 跳号 LL-006/007/008/071/072/073/075/099/102 = 9 gaps, ll_unique_ids canonical=97 含 LL-074 Amendment 双 heading) | 2026-05-03 (LL-105 ADR # registry SOP-6) |
 | SYSTEM_STATUS.md | [SYSTEM_STATUS.md](../SYSTEM_STATUS.md) | ~65 KB | 系统现状 (Servy services / DB / schtask / 当前 Sprint) | 2026-05-03 (Sprint 1 真生产 sediment) |
 
 > **mtime 漂移 finding (本 P0 真因 cite source)**: 0/4 5-06 fresh sustained — 这就是 user 5-06 P0 finding 真因 (整 session 反 fresh read sustained).
@@ -25,7 +25,7 @@
 
 1. **新 sub-PR / sub-step / step 起手前** (含 prerequisite Step / sub-PR 间 transition / Sprint 间 transition)
 2. **跨 session resume** (含 /compact + SessionStart hook trigger / new session 冷启动)
-3. **prompt cite 4 doc 任一具体数字 / 编号 / cite source** (反信任 prompt cite + memory cite, 沿用 LL-119)
+3. **prompt cite 4 doc 任一具体数字 / 编号 / cite source** (反信任 prompt cite + memory cite, 沿用 LL-101 真测 verify + LL-104 cross-verify)
 4. **sediment cite 4 doc 任一 ground truth claim** (反 silent overwrite, 沿用 LL-103 真分离 architecture finding)
 
 ### §1.3 fresh read 真生产体例 (4 步必走)
@@ -40,7 +40,7 @@
 ### §1.4 fresh read scope (本 SOP 当前 scope = 4 root doc)
 
 - **本 SOP scope**: CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md (4 root doc)
-- **拓展候选 (audit Week 2 batch sediment 候选讨论时)**: V3 §3.1+§5.5+§18.1+§20.1 / sprint_state v7 / ADR-031~036 / docs/adr/REGISTRY.md (LL-119 SOP scope 延伸候选)
+- **拓展候选 (audit Week 2 batch sediment 候选讨论时)**: V3 §3.1+§5.5+§18.1+§20.1 / sprint_state v7 / ADR-031~036 / docs/adr/REGISTRY.md (沿用 LL-104 cross-verify 体例 + LL-105 SOP-6 4 source 延伸)
 
 ---
 
@@ -58,7 +58,7 @@
 ### §2.2 主动发现 (任一异常 → STOP + 问)
 
 CC 必须报告"跟我假设不同":
-- prompt cite 数字 / 编号 / cite source 漂移 (沿用 LL-119 + LL-104, 反信任 prompt cite + memory cite)
+- prompt cite 数字 / 编号 / cite source 漂移 (沿用 LL-101 + LL-104, 反信任 prompt cite + memory cite)
 - 4 doc cross-reference cite source 漂移 (沿用 LL-101 + LL-105 SOP-6 体例)
 - 真生产 enforcement 体例 vs prompt cite 体例 (e.g. SESSION_PROTOCOL.md "已存在拆分 sediment" vs 真值 0 存在)
 - 真 PR 体量 vs prompt cite scope (e.g. "微 PR ~150-300 行 单 PR" vs 真值 ~360-550 行 拆 ≥2 chunked)
@@ -74,7 +74,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 
 ---
 
-## §3 cite source 锁定真值 SOP (沿用 LL-119 + LL-104 + LL-105)
+## §3 cite source 锁定真值 SOP (沿用 LL-101 + LL-104 + LL-105)
 
 ### §3.1 真值 cite source 必含 4 元素
 
@@ -94,7 +94,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 
 ### §3.3 真值漂移类型 cite source (PR description / STATUS_REPORT 必含)
 
-5 类漂移类型 cite (沿用 LL-115 强化实证 + LL-119):
+5 类漂移类型 cite (沿用 LL-101 真测 verify + LL-104 cross-verify):
 1. **数字漂移** (e.g. T1=8 vs 真起点 T1=31 / 32 rules vs 真起点 45 rules)
 2. **编号漂移** (e.g. LL-120 vs 真起点 LL-105 next free = LL-106 / ADR-037 # 占用 verify ✅ free)
 3. **存在漂移** (e.g. SESSION_PROTOCOL.md "已存在拆分" vs 真值 0 存在)
@@ -126,8 +126,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 | LL-103 | Claude.ai vs CC 真分离 architecture + audit row backfill | §1.2 (4) sediment cite 反 silent overwrite |
 | LL-104 | Claude.ai 写 prompt 时表格 cite 仅看 1 row 真不够, 必 grep 全表 cross-verify | §1.3 (3) grep cross-reference parallel |
 | LL-105 | ADR # reservation 真预约 4 source cross-verify 必 grep registry SSOT | §3.1 + §3.2 体例延伸 |
-| LL-119 | 沿用外 source fresh verify (反信任 prompt cite + memory cite) | §1.2 (3) 触发条件 + §3.2 体例核心 |
-| **LL-106 (候选, PR-B sediment)** | **4 doc fresh read SOP enforcement (5-06 P0 finding)** | 全文 sediment 真意义 sustained |
+| **LL-106 (候选, PR-B sediment)** | **4 doc fresh read SOP enforcement (5-06 P0 finding) — 内 source fresh verify SOP, 沿用外 source LL-104 + LL-101 cross-verify 体例延伸** | 全文 sediment 真意义 sustained |
 
 ### §4.3 ADR 关联 (5-06 fresh verify 真值, [REGISTRY.md](adr/REGISTRY.md))
 
@@ -145,7 +144,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 
 - **新 SOP section sediment** → 1 PR sediment + 同 PR sediment LESSONS_LEARNED.md +LL row + IRONLAWS.md cross-ref update + ADR sediment (e.g. ADR-037 governance decision)
 - **真值 mtime drift** (e.g. CLAUDE.md / IRONLAWS.md mtime 漂移 > 7 天 sustained) → §1.1 表格 last update 列同步 update
-- **新 4 doc 加入 SOP scope** (e.g. V3 / sprint_state v7 / ADR 沿用 LL-119 SOP scope 拓展) → audit Week 2 batch sediment 候选讨论时 sediment
+- **新 4 doc 加入 SOP scope** (e.g. V3 / sprint_state v7 / ADR 沿用 LL-104 cross-verify 体例 + LL-105 SOP-6 4 source 延伸 sediment) → audit Week 2 batch sediment 候选讨论时 sediment
 
 ### §5.2 版本 history
 
