@@ -7,7 +7,7 @@ scope (mock-only sustained, e2e live + bootstrap wire defer sub-PR 7b.3):
 - TestParseResponse (5): JSON parse / schema validate / range / category / fence strip
 - TestParseInvalid (5): non-JSON / non-object / missing key / out-of-range / invalid enum
 - TestPersist (1): NotImplementedError raise (sub-PR 7b.3 真 wire 留)
-- TestStripCodeFence (3): markdown fence / no fence / nested
+- TestStripCodeFence (5): json/plain/uppercase fence + no-fence passthrough + whitespace
 
 沿用 sub-PR 1-6 + 7a + 7b.1 v2 体例 — mock LiteLLM router + yaml load + JSON parse.
 """
@@ -296,6 +296,29 @@ class TestParseResponse:
         )
         result = service.classify(sample_news_item)
         assert result.urgency == urgency
+
+    @pytest.mark.parametrize(
+        "confidence", ["0", "0.0", "0.5", "1", "1.0"]
+    )
+    def test_confidence_boundary_accepted(
+        self,
+        service: NewsClassifierService,
+        sample_news_item: NewsItem,
+        mock_router: MagicMock,
+        confidence: str,
+    ) -> None:
+        """confidence [0, 1] edge-inclusive accepted-case (沿用 sentiment 体例 verify)."""
+        mock_router.completion.return_value = LLMResponse(
+            content=(
+                '{"sentiment_score": 0.0, "category": "中性", '
+                '"urgency": "P2", "confidence": ' + confidence + ', "profile": "medium"}'
+            ),
+            model="deepseek-v4-flash",
+            cost_usd=Decimal("0.001"),
+            is_fallback=False,
+        )
+        result = service.classify(sample_news_item)
+        assert Decimal("0") <= result.confidence <= Decimal("1")
 
     @pytest.mark.parametrize(
         "sentiment", ["-1", "-1.0", "0", "0.5", "1", "1.0"]
