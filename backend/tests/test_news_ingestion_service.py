@@ -336,6 +336,45 @@ class TestIngestTransactionBoundary:
         with pytest.raises(ValueError, match="query is empty"):
             service.ingest(query="", conn=mock_conn)
 
+    def test_db_error_mid_batch_propagates_no_commit(
+        self,
+        service: NewsIngestionService,
+        mock_pipeline: MagicMock,
+    ) -> None:
+        """LL-067 P1 sediment — psycopg2.Error mid-batch fail-loud propagate (铁律 33).
+
+        反 silent swallow non-ClassificationParseError, caller 真 rollback responsible.
+        Verify (a) exception propagates / (b) 0 conn.commit / (c) batch 真 abort.
+        """
+        mock_pipeline.fetch_all.return_value = [
+            _make_news_item(source="zhipu", title="news 1"),
+            _make_news_item(source="tavily", title="news 2"),
+        ]
+
+        # First INSERT 成功 (RETURNING news_id=1), second INSERT raise psycopg2-like Error
+        call_count = {"value": 0}
+
+        def _execute_side_effect(*args: object, **kwargs: object) -> None:
+            call_count["value"] += 1
+            if call_count["value"] == 2:
+                raise RuntimeError("DB error: NOT NULL violation on title")
+
+        def _fetchone_side_effect() -> tuple[int]:
+            return (1,)
+
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = _execute_side_effect
+        mock_cursor.fetchone.side_effect = _fetchone_side_effect
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        with pytest.raises(RuntimeError, match="NOT NULL violation"):
+            service.ingest(query="q", conn=mock_conn)
+
+        # 铁律 32 sustained: caller 真 rollback responsible, 0 service-level commit
+        mock_conn.commit.assert_not_called()
+        mock_conn.rollback.assert_not_called()
+
 
 # ─────────────────────────────────────────────────────────────
 # TestE2ELive — V4-Flash 真生产 + DataPipeline mock + mock conn capture (full chain)

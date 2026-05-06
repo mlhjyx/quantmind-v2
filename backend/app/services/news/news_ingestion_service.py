@@ -6,7 +6,9 @@ scope (sub-PR 7c, Sprint 2 ingestion 闭环 Layer 2.2 完整闭环 sediment):
 - NewsClassifierService.classify (sub-PR 7b.2 #241) → ClassificationResult
 - NewsClassifierService.persist (sub-PR 7b.3 v2 #242) → news_classified UPSERT (FK news_raw)
 - per-item ClassificationParseError fail-soft (audit log + skip, sub-PR 7b.2 contract)
-- per-item ValueError fail-soft (反 single bad item kill 全 batch)
+- DB errors (psycopg2.Error from INSERT news_raw / persist UPSERT) 真 fail-loud raise
+  (沿用铁律 33, caller rollback batch — sub-PR 7c LL-067 reviewer P1 sediment 真**修订**:
+  反 silent swallow non-ClassificationParseError, fail-loud propagate to caller)
 - 0 conn.commit (铁律 32 sustained, caller 真**事务边界管理者**)
 
 caller 真**唯一 sanctioned 入口** (沿用 sub-PR 7b.3 v2 bootstrap 体例 sustained):
@@ -141,14 +143,21 @@ class NewsIngestionService:
         Raises:
             ValueError: query empty (沿用 DataPipeline.fetch_all 真 fail-loud, 铁律 33).
 
-        Note (per-item fail-soft 沿用 sub-PR 7b.2 contract):
-            ClassificationParseError → audit log + skip (反 single bad item kill batch).
-            news_raw INSERT 真**已成功** (count in `ingested`), classified count 0 该 item.
-            sub-PR 7c 真**反 rollback** 单 item — caller 沿用 batch-level transaction
-            可选择: 全 batch commit (容忍 partial classify) OR 全 batch rollback
-            (反 partial state 入库). 推荐 commit (沿用 sub-PR 7b.1 v2 FK CASCADE 真**自然
-            cleanup** — news_raw 留 + news_classified 反真值 — 反 sub-PR 7b.2 classifier
-            真**未来 backfill** path 真预约).
+        Note (per-item ClassificationParseError fail-soft only, 沿用 sub-PR 7b.2 contract):
+            **仅 ClassificationParseError 真 fail-soft** (audit log + skip, 反 single bad
+            LLM response kill batch). news_raw INSERT 真**已成功** (count in `ingested`),
+            classified count 0 该 item.
+
+            **别 exception (psycopg2.Error / RuntimeError / ValueError) 真 fail-loud
+            propagate** — sub-PR 7c LL-067 reviewer P1 finding sediment sustained 真**修订**:
+            DB-level error (FK violation / NOT NULL / connection drop / persist news_id
+            None silent path) 真**反 silent swallow**, raise to caller, caller 真 rollback
+            batch (沿用铁律 33 fail-loud sustained).
+
+            sub-PR 7c 真**反 rollback** 单 ClassificationParseError item — caller 沿用
+            batch-level transaction 可选择: 全 batch commit (容忍 partial classify, 沿用
+            sub-PR 7b.2 真**未来 backfill** path 真预约) OR 全 batch rollback
+            (沿用 sub-PR 7b.1 v2 FK CASCADE 真**自然 cleanup**).
 
         Note (0 conn.commit, 铁律 32 sustained):
             本 service 0 conn.commit / 0 conn.rollback. caller 真**事务边界管理者**
