@@ -383,27 +383,72 @@ class NewsClassifierService:
         self,
         result: ClassificationResult,
         *,
-        conn: Any | None = None,
+        conn: Any,
+        news_id: int | None = None,
     ) -> None:
-        """Persist ClassificationResult → news_classified 表.
+        """Persist ClassificationResult → news_classified 表 (UPSERT, FK news_raw).
 
-        ⚠️ sub-PR 7b.3 真 wire — 本 sub-PR 7b.2 raise NotImplementedError 沿用
-        铁律 33 fail-loud (反 silent skip 反 silent INSERT row corruption).
+        sub-PR 7b.3 v2 sediment (#242) — 真 wire 沿用 sub-PR 7b.1 v2 #240 DDL FK CASCADE.
 
-        sub-PR 7b.3 真 implementation 沿用:
-        - DataPipeline (sub-PR 7a sediment) + conn_factory DI
-        - news_classified DDL (sub-PR 7b.1 v2 sediment, FK news_raw)
-        - 1:1 mapping (单 NewsItem → 单 ClassificationResult, idempotent)
+        Args:
+            result: ClassificationResult (NewsClassifierService.classify 真返).
+            conn: psycopg2 connection (caller 真**事务边界管理者**, 铁律 32 sustained).
+            news_id: optional FK → news_raw(news_id). 默认走 result.news_id (pre-persist
+                None 沿用 caller 真**先 INSERT news_raw 取 news_id 后** persist 体例,
+                沿用 sub-PR 7c NewsIngestionService orchestrator 真预约 wire pattern).
 
         Raises:
-            NotImplementedError: 沿用 V3§3.2 + ADR-031 §6 line 141
-                                 "Sprint 2-N: caller 切换 PR" 真预约 sediment.
+            ValueError: news_id 真 None (反 silent skip pre-persist row corrupt, 铁律 33).
+
+        Note (铁律 32 Service 不 commit sustained):
+            本 service 走 conn 真 cursor + execute, **0 conn.commit() / 0 conn.rollback()**.
+            caller (sub-PR 7c NewsIngestionService) 真**事务边界管理者** — 沿用 ADR-032
+            line 36 真预约 conn_factory + 真生产 application bootstrap wire 体例.
+
+        Note (idempotent UPSERT, 沿用 sub-PR 7b.1 v2 #240 DDL FK CASCADE):
+            ON CONFLICT (news_id) DO UPDATE SET ... — 1:1 mapping (单 NewsItem → 单
+            ClassificationResult). 反复 classify 同 news_id 真**最后一次 win**, classified_at
+            刷 NOW() (DB clock 服务器时区, 铁律 41).
         """
-        raise NotImplementedError(
-            "persist hook 沿用 sub-PR 7b.3 真 wire (conn_factory + DataPipeline) — "
-            "见 V3§3.2 sediment + ADR-031 §6 line 141 'Sprint 2-N caller 切换 PR' "
-            "真预约 + sub-PR 7b.1 v2 (PR #240) news_classified DDL FK news_raw 沿用"
-        )
+        nid = news_id if news_id is not None else result.news_id
+        if nid is None:
+            raise ValueError(
+                "news_id 真 None (反 silent skip pre-persist row corrupt, 铁律 33). "
+                "caller 真**先 INSERT news_raw 取 news_id 后** persist 体例 "
+                "(沿用 sub-PR 7c NewsIngestionService orchestrator 真预约 V3 line 1222)"
+            )
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO news_classified (
+                    news_id, sentiment_score, category, urgency, confidence,
+                    profile, classifier_model, classifier_prompt_version,
+                    classifier_cost
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (news_id) DO UPDATE SET
+                    sentiment_score = EXCLUDED.sentiment_score,
+                    category = EXCLUDED.category,
+                    urgency = EXCLUDED.urgency,
+                    confidence = EXCLUDED.confidence,
+                    profile = EXCLUDED.profile,
+                    classifier_model = EXCLUDED.classifier_model,
+                    classifier_prompt_version = EXCLUDED.classifier_prompt_version,
+                    classifier_cost = EXCLUDED.classifier_cost,
+                    classified_at = NOW()
+                """,
+                (
+                    nid,
+                    result.sentiment_score,
+                    result.category,
+                    result.urgency,
+                    result.confidence,
+                    result.profile,
+                    result.classifier_model,
+                    result.classifier_prompt_version,
+                    result.classifier_cost,
+                ),
+            )
 
 
 # ─────────────────────────────────────────────────────────────

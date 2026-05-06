@@ -145,7 +145,12 @@ caller 切换 PR (sustained ADR-022 集中修订机制):
   - 灾备: Ollama qwen3.5:9b (LLMResponse.is_fallback → ClassificationResult.classifier_cost=NULL, ADR-031 §6 灾备体例 sustained)
   - 测试: 47 mock-only (4 category × 4 profile × 4 urgency × sentiment boundary + parse fail-loud + persist NotImplementedError verify)
   - persist hook stub = NotImplementedError 沿用本 §6 line 141 "Sprint 2-N caller 切换" 体例 留 sub-PR 7b.3 真 wire
-- [ ] **Sprint 2 sub-PR 7b.3** (deferred Sprint 3 prerequisite ready): application bootstrap conn_factory wire + NewsClassifierService.persist 真 wire (DataPipeline 入库 news_classified, sub-PR 7b.1 v2 #240 DDL 沿用) + e2e live test (requires_litellm_e2e marker, V4-Flash 真生产 verify)
+- [x] **Sprint 2 sub-PR 7b.3 v2** (#242, 5-07): NewsClassifierService.persist 真 wire + bootstrap factory + requires_litellm_e2e marker register + e2e live test
+  - 实现: `backend/app/services/news/news_classifier_service.py:persist` (NotImplementedError stub → INSERT INTO news_classified ON CONFLICT DO UPDATE 沿用 sub-PR 7b.1 v2 #240 FK CASCADE) + `backend/app/services/news/bootstrap.py` (新, get_news_classifier + reset_news_classifier double-checked lock factory 沿用 alert.py:528-554 体例) + `pyproject.toml` +requires_litellm_e2e marker (沿用 sub-PR 1-6 命名体例)
+  - 铁律: 32 (Service 不 commit, caller 管事务) + 31 (DataPipeline 0 DB IO sustained) + 33 (news_id=None fail-loud)
+  - 测试: 47 → 60 mock-only + 2 e2e live (requires_litellm_e2e marker, real V4-Flash + mock conn capture SQL, 反 quota burn minimal payload)
+  - 真讽刺案例 #10 + #11 候选 lesson 真应用: sub-PR 7b.3 v1 STOP push back (CC fresh verify) → v2 (β) split sediment 反 pipeline.py 架构违反 + 反 phantom marker reference
+- [ ] **Sprint 2 sub-PR 7c** (deferred Sprint 3 prerequisite ready): NewsIngestionService orchestrator (V3 line 1222 真预约 backend/app/services/news/) + DataPipeline → news_raw INSERT → NewsClassifierService.classify+persist 全链 e2e + Sprint 2 ingestion 闭环 Layer 2.2 完整闭环 sediment
 - [ ] **(deferred)** Sprint N+: 显式 deprecate PR (deepseek_client.py 删除 + 57 tests 同步删 + S6 hook marker test 同步删)
 
 ---

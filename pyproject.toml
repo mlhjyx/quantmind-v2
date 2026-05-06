@@ -110,6 +110,7 @@ markers = [
     "requires_gdelt: e2e tests calling GDELT 2.0 DOC API (https://api.gdeltproject.org/api/v2/doc/doc, GET method, anonymous). 0 API key needed but network reachability required. Run with `pytest -m requires_gdelt`. Sub-PR 4 sediment (V3§3.1, GDELT-specific 0 API key + seendate YYYYMMDDTHHMMSSZ + language human-readable).",
     "requires_marketaux: e2e tests calling Marketaux /v1/news/all API (https://api.marketaux.com, GET method, api_token query param). Auto-skip if MARKETAUX_API_KEY env missing. Run with `MARKETAUX_API_KEY=xxx pytest -m requires_marketaux`. Sub-PR 5 sediment (V3§3.1, Marketaux-specific api_token query + custom UA header + data wrapper + ISO 8601 microseconds).",
     "requires_rsshub: e2e tests calling RSSHub local server (http://localhost:1200, GET method, anonymous). Self-hosted Native Node.js + Servy register, port 1200. Auto-skip if RSSHub server unreachable. Run with `pytest -m requires_rsshub` after RSSHub Servy service started. Sub-PR 6 sediment (V3§3.1, RSSHub-specific RSS XML + feedparser + route path query).",
+    "requires_litellm_e2e: e2e tests calling DeepSeek V4-Flash via LiteLLM router (deepseek-v4-flash alias, https://api.deepseek.com OpenAI-compatible). Auto-skip if DEEPSEEK_API_KEY env missing. Run with `DEEPSEEK_API_KEY=sk-xxx pytest -m requires_litellm_e2e`. Sub-PR 7b.3 v2 sediment (#242, V3§3.2 NewsClassifier L0.2 V4-Flash routing + ADR-035 §2 V4 路由层 0 智谱 sustained).",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

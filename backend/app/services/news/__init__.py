@@ -22,6 +22,12 @@ defer Sprint 3+:
 """
 from __future__ import annotations
 
+from .bootstrap import get_news_classifier, reset_news_classifier
 from .news_classifier_service import ClassificationResult, NewsClassifierService
 
-__all__ = ["ClassificationResult", "NewsClassifierService"]
+__all__ = [
+    "ClassificationResult",
+    "NewsClassifierService",
+    "get_news_classifier",
+    "reset_news_classifier",
+]
