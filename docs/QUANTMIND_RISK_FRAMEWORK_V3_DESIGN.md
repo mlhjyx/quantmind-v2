@@ -311,16 +311,20 @@ flowchart TB
 
 ### §3.1 News 多源接入 (L0.1)
 
-**6 源清单** (沿用 4-29 决议):
+**6 源清单** (5-02 换源决议沿用, 详 [ADR-033](adr/ADR-033-news-source-replacement-decision.md)):
 
 | 源 | 类型 | 用途 | API 限速策略 |
 |---|---|---|---|
-| **Anspire** | 中文财经 | 主源 | LiteLLM 多 Key 负载均衡 |
-| **Tavily** | 英文 + 翻译 | 海外信号 (港美 ADR 联动) | LiteLLM 限速 fallback |
-| **SerpAPI** | Google News | 跨境 + 突发 | 备用 |
-| **Bocha** | 国内 | Anspire 备用 | 备用 |
-| **Brave** | 隐私源 | 长尾 + 反审查 | 长尾 |
-| **MiniMax** | 中文 LLM 接入 | 综合 + 中文优化 | 综合 |
+| **智谱 GLM-4-Flash** | 中文 LLM 接入 + 联网搜索 | 中文综合主源 (替 MiniMax) | 完全免费 + OpenAI 兼容 + LiteLLM 多 Key 负载均衡 |
+| **Tavily** | 英文 + 翻译 | 海外信号 (港美 ADR 联动, 沿用) | 1000 credits/月永久免费 + LiteLLM 限速 fallback |
+| **Anspire** | 中文财经 | 中文财经主源 (沿用) | 新户 2500 点 + LiteLLM 多 Key 负载均衡 |
+| **GDELT 2.0** | 全球事件 | 跨境 + 突发 (替 Bocha) | 0 API key + 完全免费 + 7×24 实时 stream |
+| **Marketaux** | 金融专用 | 金融信号 + sentiment 标签 (替 SerpAPI) | 80 markets + 完全免费 (100 req/day) + sentiment pre-tagged |
+| **RSSHub 自部署** | 中文财经 RSS | 长尾 + 全主流源 (替 Brave) | 自部署 + 0 API key + 0 第三方依赖 |
+
+**砍源 4 个** (5-02 web_search 验证后决议): Serper / DuckDuckGo / Bocha / Alpha Vantage. 详 [ADR-033 §3 Rationale](adr/ADR-033-news-source-replacement-decision.md).
+
+**月成本**: $0/month (全 6 源完全免费层. Tavily 1000 credits/月永久 + Anspire 新户 2500 点沿用 + 智谱 GLM-4-Flash 完全免费 + GDELT 0 API key + Marketaux 100 req/day + RSSHub 自部署).
 
 **策略**: 并行查询 + 早返回. 任 3 源命中即继续 (full timeout 30s 全等待不可接受).
 
@@ -1770,7 +1774,7 @@ Tier A 全完成 + paper-mode 5d dry-run + .env paper→live user 显式授权:
 | 7 | user 离线 STAGED 30min 后行为 | default execute (反向决策权) vs cancel (保守) | **(c) hybrid 自适应窗口** + 5 hard guardrails (普通 30min / 集合竞价 min(30,剩余)≥2 / 尾盘 min(30,距14:55)≥2 / 跨日 14:55 强制 final batch / 离线 DingTalk 未读 default execute). 30min 0 reply → execute. 详 ADR-027 |
 | 8 | L4 batched 平仓 batch interval | 5min | **普通时段 5min + critical windows (集合竞价 / 尾盘) 缩短到 1min** |
 | 9 | L5 反思 lesson 入 RAG 自动度 | 全自动 (沉淀所有 outcome) | **(c) 自动 + 后置抽查** — 自动入库 V4-Flash embedding (3 hard guardrails: ≤500字 / cite source / confidence≥0.3). 后置抽查 (每月 1 日 V4-Pro): confidence<0.5 全抽 + random 10%, 异常 push DingTalk + 30day 反向决策权. retention: confidence≥0.8 永久 / <0.8 ≤12 月. 详 ADR-028 |
-| 10 | L0 News 6 源是否全实施 | 6 源全实施 (沿用 4-29 决议) | **6 源全实施** (Anspire / Tavily / SerpAPI / Bocha / Brave / MiniMax) + Sprint 1 一次接入 (不分阶段) |
+| 10 | L0 News 6 源是否全实施 | 6 源全实施 (5-02 换源决议沿用, 详 [ADR-033](adr/ADR-033-news-source-replacement-decision.md)) | **6 源全实施** (智谱 GLM-4-Flash / Tavily / Anspire / GDELT 2.0 / Marketaux / RSSHub 自部署) + Sprint 1 一次接入 (不分阶段). 5-02 换源决议沿用, 月成本 $0. 详 [ADR-033](adr/ADR-033-news-source-replacement-decision.md). |
 
 ### §20.2 实施层决议 (Sprint 中 CC 实测)
 
