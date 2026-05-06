@@ -862,6 +862,48 @@ CREATE INDEX idx_minute_bars_trade_date ON minute_bars(trade_date);
 COMMENT ON TABLE minute_bars IS 'Step 6-B: Baostock 5min K线, 所有code统一带后缀';
 
 -- ═══════════════════════════════════════════════════
--- 总计: 47张表（+2: stock_status_daily + minute_bars正式DDL化）
+-- Sprint 2 sub-PR 7b.1 (2026-05-06): news_raw + news_classified DDL 双表 sediment
+-- 用途: V3§3.1+§3.2 News 多源接入 (L0.1 ingestion + L0.2 NewsClassifier output)
+-- Migrations: backend/migrations/2026_05_06_news_raw.sql + 2026_05_06_news_classified.sql
+-- ⚠️ V3§3.1:350 hypertable defer Sprint 3+ (BIGSERIAL PK + hypertable 真 conflict, 沿用
+--    risk_event_log:52-59 precedent: 保 V3§3.1:337 PK spec sustained + PG regular table)
+-- ═══════════════════════════════════════════════════
+CREATE TABLE news_raw (
+    news_id          BIGSERIAL    PRIMARY KEY,                             -- V3§3.1:337 sustained
+    symbol_id        VARCHAR(20),                                          -- NULL = 大盘/行业
+    source           VARCHAR(20)  NOT NULL,                                -- zhipu/tavily/anspire/gdelt/marketaux/rsshub
+    timestamp        TIMESTAMPTZ  NOT NULL,                                -- 文章发布时间
+    title            TEXT         NOT NULL,
+    content          TEXT,
+    url              TEXT,
+    lang             VARCHAR(10)  NOT NULL DEFAULT 'zh',
+    fetch_cost       NUMERIC(8,4) NOT NULL DEFAULT 0  CHECK (fetch_cost >= 0),
+    fetch_latency_ms INT          NOT NULL DEFAULT 0  CHECK (fetch_latency_ms >= 0),
+    fetched_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()                   -- ingestion 入库时间
+);
+CREATE INDEX ix_news_raw_symbol_time ON news_raw (symbol_id, timestamp DESC);
+CREATE INDEX ix_news_raw_source_time ON news_raw (source, fetched_at DESC);
+COMMENT ON TABLE news_raw IS 'V3§3.1 News 多源接入 L0.1 ingestion 入库表 (DataPipeline sub-PR 7a + 7b.3)';
+
+CREATE TABLE news_classified (
+    news_id                    BIGINT       PRIMARY KEY
+                                            REFERENCES news_raw(news_id) ON DELETE CASCADE,  -- V3§3.2:366 FK
+    sentiment_score            NUMERIC(5,4) NOT NULL  CHECK (sentiment_score BETWEEN -1 AND 1),
+    category                   VARCHAR(20)  NOT NULL  CHECK (category IN ('利好', '利空', '中性', '事件驱动')),
+    urgency                    VARCHAR(4)   NOT NULL  CHECK (urgency IN ('P0', 'P1', 'P2', 'P3')),
+    confidence                 NUMERIC(5,4) NOT NULL  CHECK (confidence BETWEEN 0 AND 1),
+    profile                    VARCHAR(20)  NOT NULL  CHECK (profile IN ('ultra_short', 'short', 'medium', 'long')),
+    classifier_model           VARCHAR(50)  NOT NULL,                                            -- "deepseek-chat" / "qwen3.5:9b"
+    classifier_prompt_version  VARCHAR(10)  NOT NULL,                                            -- "v1" prompts/risk/news_classifier_v1.yaml
+    classifier_cost            NUMERIC(8,4)          CHECK (classifier_cost IS NULL OR classifier_cost >= 0),
+    classified_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ix_news_classified_profile_time ON news_classified (profile, classified_at DESC);
+CREATE INDEX ix_news_classified_urgency_time ON news_classified (urgency, classified_at DESC)
+    WHERE urgency IN ('P0', 'P1');  -- partial index, P0/P1 真热查询 (intraday push)
+COMMENT ON TABLE news_classified IS 'V3§3.2 NewsClassifier V4-Flash L0.2 output 表 (sub-PR 7b.2 NewsClassifierService)';
+
+-- ═══════════════════════════════════════════════════
+-- 总计: 49张表（+4: stock_status_daily + minute_bars + news_raw + news_classified DDL化）
 -- 旧版QUANTMIND_V2_DDL_COMPLETE.sql 已废弃，以本文件为准
 -- ═══════════════════════════════════════════════════
