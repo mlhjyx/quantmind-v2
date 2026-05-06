@@ -30,8 +30,8 @@ class RiskTaskType(StrEnum):
 
     NEWS_CLASSIFY = "news_classify"                  # L0.2 V4-Flash
     FUNDAMENTAL_SUMMARIZE = "fundamental_summarize"  # L2.2 V4-Flash
-    BULL_AGENT = "bull_agent"                        # L2.3 V4-Flash
-    BEAR_AGENT = "bear_agent"                        # L2.3 V4-Flash
+    BULL_AGENT = "bull_agent"                        # L2.3 V4-Pro (ADR-036, debate reasoning capability)
+    BEAR_AGENT = "bear_agent"                        # L2.3 V4-Pro (ADR-036, debate reasoning capability)
     JUDGE = "judge"                                  # L2.3 V4-Pro
     RISK_REFLECTOR = "risk_reflector"                # L5 V4-Pro
     # NOTE: EMBEDDING 这里走 completion() 真 LLM 文本 summarize for RAG ingest,

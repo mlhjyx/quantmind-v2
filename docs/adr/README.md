@@ -32,6 +32,8 @@
 | [ADR-032](ADR-032-s4-caller-bootstrap-factory-and-naked-router-export-restriction.md) | S4 caller bootstrap factory + naked LiteLLMRouter export 限制 | accepted | 22, 25, 27, 33, 34 |
 | [ADR-033](ADR-033-news-source-replacement-decision.md) | News 源替换决议 (5-02 sprint period sediment, V3 §3.1 + §20.1 #10 patch) | accepted | 22, 25, 27, 34, 38 |
 | [ADR-034](ADR-034-llm-fallback-model-upgrade-qwen3-to-qwen3-5.md) | LLM Fallback Model Upgrade (qwen3:8b → qwen3.5:9b, 5-06 sediment) | accepted | 22, 25, 27, 34 |
+| [ADR-035](ADR-035-zhipu-news-fetcher-and-v4-route-layer-zhipu-exclusion.md) | 智谱 News#1 fetcher (GLM-4.7-Flash) + V4 路由层 0 智谱决议 (5-06 (a)+(b) 修订) | accepted | 22, 25, 27, 34, 38 |
+| [ADR-036](ADR-036-bull-bear-agent-mapping-v4-flash-to-v4-pro.md) | BULL/BEAR Agent mapping V4-Flash → V4-Pro (debate reasoning capability + V3§5.5 internal drift 修复) | accepted | 22, 25, 27, 34 |
 
 > **注**: ADR-019/020/025/026 sustained reserve (V3 §18.1 row 1/2/5/6 真预约, 0 file 等 user 决议时创建). ADR-024 真主题 = factor lifecycle (5-02 sprint factor task), V3 §18.1 row 4 真预约 "L4 STAGED" 已 # 下移到 ADR-027 (user a-iii 决议 5-02). 详 [ADR-027 §1.1](ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md). ADR-031 (S8 audit) 真 S2 LiteLLMRouter implementation path, ADR-032 真 S4 caller bootstrap factory + naked router export 限制 (V3 Sprint 1 S2-S4 sub-task sediment).
 

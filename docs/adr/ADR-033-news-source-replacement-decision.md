@@ -12,8 +12,14 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 
 **SSOT drift 主动 finding** (audit Week 2 batch sediment 候选, 沿用 LL-114 cite drift 体例):
 - 5-02 换源决议 SSOT source 仅 user prompt + Claude.ai 战略对话
-- sprint_state v7 line 110/197/265 sustained 老 6 源 cite (0 sediment 5-02 换源决议)
+- sprint_state v7 line 110/197/265 sustained 老 6 源 cite (0 sediment 5-02 换源决议) — 5-06 sprint_state v7 patch 走 memory direct write (沿用 v7 patch 体例)
 - V3 doc §3.1 + §20.1 #10 0 patch (本 PR sediment) — 反 silent drift, 走 ADR-022 集中修订机制
+
+**5-06 cross-verify 修订** (Step 2 + Step 2.5 sediment, 沿用 ADR-035 + ADR-036):
+- 智谱 GLM-4-Flash → GLM-4.7-Flash (5-02 cite drift, 0 GLM-4-Flash 实测; 5-06 user 截图 + docs.bigmodel.cn 实测 GLM-4.7-Flash specs 200K context + MCP integration)
+- Anspire 申请方式: ≤2 周 → 即时 (5-06 web_search 实测)
+- Marketaux: 80 markets → 5000+ sources / 30+ languages (5-06 web_search 实测)
+- RSSHub 中文财经源 cite: docs.rsshub.app verify 候选 (audit Week 2 batch)
 
 **触发**: V3 Tier A Sprint 2 起手前 prerequisite (V3 §3.1 6 News 源 API key 申请) — 必先 V3 doc patch + ADR sediment 后, Sprint 2 ingestion implementation 起手.
 
@@ -28,11 +34,11 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 
 | # | 源 | 类型 | 用途 | API 限速策略 | 替换 / 沿用 |
 |---|---|---|---|---|---|
-| 1 | 智谱 GLM-4-Flash | 中文 LLM 接入 + 联网搜索 | 中文综合主源 | 完全免费 + OpenAI 兼容 + LiteLLM 多 Key 负载均衡 | 替 MiniMax |
+| 1 | 智谱 GLM-4.7-Flash (5-06 修订, 沿用 ADR-035) | 中文 LLM 接入 + 联网搜索 + MCP integration | News#1 fetcher 主源 | 永久免费 (~1M tokens/天) + 200K context + 128K max output + OpenAI 兼容 | 替 MiniMax |
 | 2 | Tavily | 英文 + 翻译 | 海外信号 (港美 ADR 联动) | 1000 credits/月永久免费 + LiteLLM 限速 fallback | 沿用 |
-| 3 | Anspire | 中文财经 | 中文财经主源 | 新户 2500 点 + LiteLLM 多 Key 负载均衡 | 沿用 |
+| 3 | Anspire | 中文财经 | 中文财经主源 | 新户 2500 点 + 申请即时 (5-06 web_search 修订, 反 5-02 cite "审批 1-2 周") + LiteLLM 多 Key 负载均衡 | 沿用 |
 | 4 | GDELT 2.0 | 全球事件 | 跨境 + 突发 | 0 API key + 完全免费 + 7×24 实时 stream | 替 Bocha |
-| 5 | Marketaux | 金融专用 | 金融信号 + sentiment 标签 | 80 markets + 完全免费 (100 req/day) + sentiment pre-tagged | 替 SerpAPI |
+| 5 | Marketaux | 金融专用 | 金融信号 + sentiment 标签 | 5000+ sources / 30+ languages + 完全免费 (100 req/day) + sentiment pre-tagged (5-06 修订, 反 5-02 cite "80 markets" 漂移) | 替 SerpAPI |
 | 6 | RSSHub 自部署 | 中文财经 RSS | 长尾 + 全主流源 | 自部署 + 0 API key + 0 第三方依赖 | 替 Brave |
 
 **砍源 4 个** (5-02 web_search 验证后决议):
@@ -44,7 +50,7 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 | 3 | Bocha | 收费层冲突 + 0 商授 free tier verify |
 | 4 | Alpha Vantage | 英文金融 only + 中文 0 覆盖, 跟 Marketaux 重合 |
 
-**月成本**: $0/month (全 6 源完全免费层 / Tavily 1000 credits 永久 / Anspire 2500 点新户 / 智谱 GLM-4-Flash 完全免费 / GDELT 0 API key / Marketaux 100 req/day / RSSHub 自部署).
+**月成本**: $0/month (全 6 源完全免费层 / Tavily 1000 credits 永久 / Anspire 2500 点新户 + 申请即时 / 智谱 GLM-4.7-Flash 永久免费 ~1M tokens/天 (5-06 修订沿用 ADR-035) / GDELT 0 API key / Marketaux 100 req/day / RSSHub 自部署).
 
 ## Alternatives Considered
 
