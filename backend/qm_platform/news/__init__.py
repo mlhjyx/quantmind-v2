@@ -3,18 +3,22 @@
 归属: Framework #News ingestion 子模块 (V3 §3.1 News 多源接入真预约).
 位置: backend/qm_platform/news/ (沿用 ADR-035 §2 News ingestion 层独立 client 决议).
 
-scope (sub-PR 1 sediment):
+scope (sub-PR 1+2 sediment):
 - NewsItem (V3§3.1 news_raw schema 沿用 dataclass)
 - NewsFetcher (abc base class, sub-PR 2-7 沿用 plugin 体例)
 - NewsFetchError (exception 层)
-- ZhipuNewsFetcher (智谱 GLM-4.7-Flash News#1 fetcher, ADR-035 §2)
+- ZhipuNewsFetcher (智谱 GLM-4.7-Flash News#1 fetcher, ADR-035 §2, sub-PR 1)
+- TavilyNewsFetcher (Tavily 英文 + 翻译, V3§3.1 海外信号, sub-PR 2)
 
 公共 API 真**唯一 sanctioned 入口**:
 
-    from backend.qm_platform.news import NewsFetcher, NewsItem, ZhipuNewsFetcher
+    from backend.qm_platform.news import (
+        NewsFetcher, NewsItem, ZhipuNewsFetcher, TavilyNewsFetcher,
+    )
 
-    fetcher = ZhipuNewsFetcher(api_key=settings.ZHIPU_API_KEY)
-    items = fetcher.fetch(query="贵州茅台 财报", limit=10)
+    zhipu = ZhipuNewsFetcher(api_key=settings.ZHIPU_API_KEY)
+    tavily = TavilyNewsFetcher(api_key=settings.TAVILY_API_KEY)
+    items = zhipu.fetch(query="贵州茅台 财报", limit=10) + tavily.fetch(query="Apple Q1", limit=5)
     for item in items:
         print(item.title, item.timestamp, item.source)
 
@@ -35,11 +39,13 @@ scope (sub-PR 1 sediment):
 - V3 §3.1 (News 多源接入 line 312-356)
 """
 from .base import NewsFetcher, NewsFetchError, NewsItem
+from .tavily import TavilyNewsFetcher
 from .zhipu import ZhipuNewsFetcher
 
 __all__ = [
     "NewsFetcher",
     "NewsFetchError",
     "NewsItem",
+    "TavilyNewsFetcher",
     "ZhipuNewsFetcher",
 ]

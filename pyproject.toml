@@ -104,6 +104,7 @@ markers = [
     "live_tushare: smoke tests hitting real Tushare API (network + TUSHARE_TOKEN required). Excluded from pre-push to avoid network-flaky blocks. Run with `pytest -m 'smoke and live_tushare'`.",
     "requires_ollama: e2e tests calling local Ollama server (qwen3:8b model + http://localhost:11434). Auto-skip if Ollama not reachable. Run with `pytest -m requires_ollama` after `ollama serve` + `ollama pull qwen3:8b`. S3 PR #225 sediment.",
     "requires_zhipu: e2e tests calling 智谱 GLM-4.7-Flash News#1 fetcher (https://open.bigmodel.cn/api/paas/v4/chat/completions). Auto-skip if ZHIPU_API_KEY env missing. Run with `ZHIPU_API_KEY=xxx pytest -m requires_zhipu`. Sub-PR 1 sediment (ADR-035 §2).",
+    "requires_tavily: e2e tests calling Tavily Search API (https://api.tavily.com/search). Auto-skip if TAVILY_API_KEY env missing. Run with `TAVILY_API_KEY=tvly-xxx pytest -m requires_tavily`. Sub-PR 2 sediment (V3§3.1).",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
