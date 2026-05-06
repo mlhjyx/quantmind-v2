@@ -295,7 +295,7 @@ def test_llm_call_record_frozen_and_field_alignment() -> None:
     record = LLMCallRecord(
         task=RiskTaskType.JUDGE,
         primary_alias="deepseek-v4-pro",
-        actual_model="deepseek/deepseek-reasoner",
+        actual_model="deepseek/deepseek-v4-pro",
         is_fallback=False,
         budget_state=BudgetState.NORMAL,
         tokens_in=120,
@@ -322,7 +322,7 @@ def test_llm_call_record_decision_id_optional() -> None:
     record = LLMCallRecord(
         task=RiskTaskType.NEWS_CLASSIFY,
         primary_alias="deepseek-v4-flash",
-        actual_model="deepseek/deepseek-chat",
+        actual_model="deepseek/deepseek-v4-flash",
         is_fallback=False,
         budget_state=BudgetState.NORMAL,
         decision_id=None,
@@ -340,7 +340,7 @@ def test_llm_call_logger_inserts_row_on_success(
     record = LLMCallRecord(
         task=RiskTaskType.JUDGE,
         primary_alias="deepseek-v4-pro",
-        actual_model="deepseek/deepseek-reasoner",
+        actual_model="deepseek/deepseek-v4-pro",
         is_fallback=False,
         budget_state=BudgetState.WARN_80,
         tokens_in=50, tokens_out=20,
@@ -375,7 +375,7 @@ def test_llm_call_logger_insert_failure_returns_false_and_logs_warning(
     record = LLMCallRecord(
         task=RiskTaskType.JUDGE,
         primary_alias="deepseek-v4-pro",
-        actual_model="deepseek/deepseek-reasoner",
+        actual_model="deepseek/deepseek-v4-pro",
         is_fallback=False,
         budget_state=BudgetState.NORMAL,
     )
@@ -398,7 +398,7 @@ def test_llm_call_logger_conn_factory_failure_returns_false(
     record = LLMCallRecord(
         task=RiskTaskType.NEWS_CLASSIFY,
         primary_alias="deepseek-v4-flash",
-        actual_model="deepseek/deepseek-chat",
+        actual_model="deepseek/deepseek-v4-flash",
         is_fallback=False,
         budget_state=BudgetState.NORMAL,
     )
@@ -428,7 +428,7 @@ def test_aware_router_with_audit_triggers_log_call(
         usage = SimpleNamespace(prompt_tokens=12, completion_tokens=7)
         return SimpleNamespace(
             choices=[choice],
-            model="deepseek/deepseek-chat",
+            model="deepseek/deepseek-v4-flash",
             usage=usage,
             _hidden_params={"response_cost": 0.0021},
         )
@@ -456,7 +456,7 @@ def test_aware_router_with_audit_triggers_log_call(
     row = call_log_storage.rows[0]
     assert row.task == "news_classify"
     assert row.primary_alias == "deepseek-v4-flash"
-    assert row.actual_model == "deepseek/deepseek-chat"
+    assert row.actual_model == "deepseek/deepseek-v4-flash"
     assert row.budget_state == "normal"
     assert row.tokens_in == 12
     assert row.tokens_out == 7
@@ -482,7 +482,7 @@ def test_aware_router_without_audit_skips_log_call(
     def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
-            model="deepseek/deepseek-chat",
+            model="deepseek/deepseek-v4-flash",
             usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
             _hidden_params={"response_cost": 0.001},
         )
@@ -527,7 +527,7 @@ def test_aware_router_audit_failure_does_not_break_completion(
         # JUDGE → primary deepseek-v4-pro → expected "deepseek-reasoner" 子串
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
-            model="deepseek/deepseek-reasoner",
+            model="deepseek/deepseek-v4-pro",
             usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
             _hidden_params={"response_cost": 0.001},
         )
@@ -556,3 +556,236 @@ def test_aware_router_audit_failure_does_not_break_completion(
     # 但 fail-loud warning 真 emit
     warn_records = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("llm_audit_conn_factory_failed" in r.message for r in warn_records)
+
+
+# ── sub-PR 8a-followup-B-audit (5-07): BUG #2 + BUG #3 — audit error_class dynamic ──
+#
+# BUG #2 [P1]: audit.py 真 success-only audit (PR #224 deferred S2.4+) — error_class
+# hardcoded None → llm_call_log.error_class 永 NULL even when LiteLLM Router internal
+# fallback chain triggered. 真生产 5-07 sub-PR 8a e2e 真**6 row error_class=NULL** but
+# is_fallback=True — 真**audit blind primary fail signal**.
+#
+# BUG #3 [P3]: BudgetAwareRouter.completion 真**0 try/except 包络** LiteLLM Router exception
+# path. 真生产 LiteLLM Router 真**all-fallback exhausted** (allowed_fails=3 + cooldown_time=30
+# 后) raise → BudgetAwareRouter caller 真**0 audit row** (反 silent miss).
+#
+# 修复体例 (sub-PR 8a-followup-B-audit 5-07):
+# - BUG #2: error_class dynamic detect 走 response.is_fallback signal:
+#     is_capped=True + is_fallback=True → "budget_capped" (intentional, 反 error)
+#     is_capped=False + is_fallback=True → "primary_fail_fallback_engaged" (real fail signal)
+#     is_fallback=False → None (success path sustained)
+# - BUG #3: try/except 包络 LiteLLM Router completion call:
+#     audit row 真**写 error_class=ExceptionType.__name__** + actual_model="<exception_no_response>"
+#     + is_fallback=True (sentinel signal) + re-raise sustained 铁律 33 fail-loud.
+
+
+def test_aware_router_audit_error_class_primary_fail_fallback_engaged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG #2 fix: is_capped=False + is_fallback=True → error_class='primary_fail_fallback_engaged'.
+
+    LiteLLM Router internal fallback chain 真**触发** (deepseek primary fail → qwen3-local
+    fallback) 时, audit 真记 error_class signal 反**hardcoded None silent miss**.
+    """
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # mock 真**fallback model name** (qwen3) → _is_fallback True (反 alias-pass-through)
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            model="ollama_chat/qwen3.5:9b",  # fallback signal
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+            _hidden_params={"response_cost": 0.0},
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    response = aware.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+        decision_id="d-fail-fallback",
+    )
+
+    assert response.is_fallback is True  # qwen3 真 fallback signal sustained
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    # BUG #2 fix: error_class dynamic detect 真**primary_fail_fallback_engaged**
+    assert row.error_class == "primary_fail_fallback_engaged"
+    assert row.is_fallback is True
+    assert row.actual_model == "ollama_chat/qwen3.5:9b"
+
+
+def test_aware_router_audit_error_class_budget_capped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG #2 fix: is_capped=True + is_fallback=True → error_class='budget_capped' (intentional).
+
+    Budget cap 真**强制 fallback** 反 primary fail signal — error_class 真**signal cap event**
+    反 generic primary fail.
+    """
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    # 真生效 cost storage with month-to-date >= cap (50.0)
+    # 沿用 _CombinedFakeConn cost_storage dict schema {"cost": Decimal, "calls": int, "fb": int, "cap": int}
+    cost_storage[datetime.now().date().replace(day=1)] = {
+        "cost": Decimal("60.0"),
+        "calls": 100,
+        "fb": 50,
+        "cap": 0,
+    }
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            model="ollama_chat/qwen3.5:9b",  # capped → forced qwen3-local
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=3),
+            _hidden_params={"response_cost": 0.0},
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    aware.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+        decision_id="d-capped",
+    )
+
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    # BUG #2 fix: error_class 真**budget_capped** (intentional 反 generic primary fail)
+    assert row.error_class == "budget_capped"
+    assert row.budget_state == "capped_100"
+
+
+def test_aware_router_audit_error_class_success_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG #2 fix: is_fallback=False (success) → error_class=None sustained."""
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            model="deepseek-v4-flash",  # alias-pass-through → primary success
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2),
+            _hidden_params={"response_cost": 0.0001},
+        )
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    aware.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+        decision_id="d-success",
+    )
+
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    assert row.error_class is None  # success path sustained
+    assert row.is_fallback is False
+
+
+def test_aware_router_completion_exception_audited_then_reraised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG #3 fix: LiteLLM Router exception → audit row + re-raise (fail-loud sustained 铁律 33).
+
+    audit row 真**写**: error_class=ExceptionType.__name__, actual_model='<exception_no_response>',
+    is_fallback=True (sentinel signal), tokens=0, cost=0.
+    caller 真**接 exception** sustained (反 silent skip).
+    """
+    cost_storage: dict = {}
+    call_log_storage = _FakeCallLogStorage()
+
+    def factory() -> _CombinedFakeConn:
+        return _CombinedFakeConn(cost_storage, call_log_storage)
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # mock raise 真**simulate LiteLLM all-fallback exhausted** (allowed_fails=3 + cooldown 30 后)
+    def mock_completion(self: Any, **kwargs: Any) -> SimpleNamespace:
+        raise RuntimeError("LiteLLM Router all fallbacks exhausted")
+
+    monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
+
+    router = LiteLLMRouter()
+    budget = BudgetGuard(
+        factory,
+        monthly_budget_usd=Decimal("50.0"),
+        warn_threshold=Decimal("0.80"),
+        cap_threshold=Decimal("1.00"),
+    )
+    audit = LLMCallLogger(factory)
+    aware = BudgetAwareRouter(router, budget, audit=audit)
+
+    # caller 真**接 exception** sustained 铁律 33 fail-loud
+    with pytest.raises(RuntimeError, match="all fallbacks exhausted"):
+        aware.completion(
+            task=RiskTaskType.NEWS_CLASSIFY,
+            messages=[LLMMessage("user", "test")],
+            decision_id="d-exception",
+        )
+
+    # audit row 真**已写** with error_class signal
+    assert call_log_storage.count() == 1
+    row = call_log_storage.rows[0]
+    assert row.error_class == "RuntimeError"
+    assert row.actual_model == "<exception_no_response>"
+    assert row.is_fallback is True  # sentinel
+    assert row.tokens_in == 0
+    assert row.tokens_out == 0
+    assert row.cost_usd == Decimal("0")
+    assert row.decision_id == "d-exception"
+    assert row.prompt_hash is not None  # compute_prompt_hash 真生效
