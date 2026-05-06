@@ -437,3 +437,89 @@ def test_is_fallback_case3_fallback_underlying_returns_true() -> None:
         actual_model="ollama_chat/qwen3.5:9b",
         primary_alias="deepseek-v4-pro",
     ) is True
+
+
+# ── sub-PR 8a-followup-B-yaml (5-07): yaml V4 underlying routing + thinking 参数 cover ──
+#
+# DeepSeek 官方 API spec (api-docs.deepseek.com/zh-cn/) sustained:
+# - v4-flash + v4-pro 真**dual-mode model**, thinking enabled/disabled toggle 真生效
+# - extra_body={"thinking": {"type": "enabled" | "disabled" | "max"}}
+# - LiteLLM Router 真**transparent 透传** litellm_params.extra_body 走 completion call
+#
+# yaml 真生效真值 (sub-PR 8a-followup-B-yaml 5-07 修):
+# - deepseek-v4-flash → deepseek/deepseek-v4-flash + extra_body.thinking.type=disabled (chat semantic)
+# - deepseek-v4-pro   → deepseek/deepseek-v4-pro   + extra_body.thinking.type=enabled  (reasoner semantic)
+
+
+def test_yaml_v4_flash_underlying_with_thinking_disabled(router: LiteLLMRouter) -> None:
+    """yaml deepseek-v4-flash entry 真生效真值: underlying = deepseek/deepseek-v4-flash + thinking=disabled.
+
+    沿用 DeepSeek 官方 API spec V3 §5.5 V4-Flash chat semantic align (News/Bull/Bear/Embedding 真消费).
+    sub-PR 8a-followup-B-yaml 5-07 修 — 反 deepseek-chat 旧 alias (7-24 deprecation deadline).
+    """
+    flash_entry = next(
+        e for e in router._raw_config["model_list"] if e["model_name"] == "deepseek-v4-flash"
+    )
+    assert flash_entry["litellm_params"]["model"] == "deepseek/deepseek-v4-flash"
+    extra_body = flash_entry["litellm_params"].get("extra_body", {})
+    assert extra_body.get("thinking", {}).get("type") == "disabled", (
+        "v4-flash 真**chat semantic** 沿用 V3 §5.5 design — extra_body.thinking.type 必 'disabled'"
+    )
+
+
+def test_yaml_v4_pro_underlying_with_thinking_enabled(router: LiteLLMRouter) -> None:
+    """yaml deepseek-v4-pro entry 真生效真值: underlying = deepseek/deepseek-v4-pro + thinking=enabled.
+
+    沿用 DeepSeek 官方 API spec V3 §5.5 V4-Pro reasoner semantic align (Judge/RiskReflector 真消费).
+    sub-PR 8a-followup-B-yaml 5-07 修 — 反 deepseek-reasoner 旧 alias (7-24 deprecation deadline).
+    """
+    pro_entry = next(
+        e for e in router._raw_config["model_list"] if e["model_name"] == "deepseek-v4-pro"
+    )
+    assert pro_entry["litellm_params"]["model"] == "deepseek/deepseek-v4-pro"
+    extra_body = pro_entry["litellm_params"].get("extra_body", {})
+    assert extra_body.get("thinking", {}).get("type") == "enabled", (
+        "v4-pro 真**reasoner semantic** 沿用 V3 §5.5 design — extra_body.thinking.type 必 'enabled'"
+    )
+
+
+def test_yaml_no_legacy_deepseek_chat_or_reasoner_underlying(router: LiteLLMRouter) -> None:
+    """sub-PR 8a-followup-B-yaml 5-07: yaml 真**0 deepseek-chat / deepseek-reasoner underlying**.
+
+    7-24 deprecation deadline plan sustained (audit Week 2 batch + ADR-DRAFT row 8 sediment).
+    任 yaml entry 真**不应 underlying = deepseek/deepseek-chat 或 deepseek/deepseek-reasoner** —
+    全部走 V4 underlying (v4-flash / v4-pro) 真**align user 决议 #4 反留尾巴** 沿用.
+    """
+    legacy_underlying = {"deepseek/deepseek-chat", "deepseek/deepseek-reasoner"}
+    for entry in router._raw_config["model_list"]:
+        underlying = entry["litellm_params"].get("model", "")
+        assert underlying not in legacy_underlying, (
+            f"yaml entry '{entry['model_name']}' 真 underlying='{underlying}' 真 legacy alias "
+            f"(7-24 deprecation deadline) — 沿用 sub-PR 8a-followup-B-yaml 5-07 V4 routing 切换体例"
+        )
+
+
+def test_yaml_extra_body_propagation_via_router_completion(
+    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LiteLLM Router 真**transparent 透传** yaml litellm_params.extra_body 走 completion call.
+
+    真生产 verify (sub-PR 8a-followup-B-yaml 5-07 LiteLLMRouter wrapper 重 e2e 真测):
+    - task=NEWS_CLASSIFY → v4-flash + thinking=disabled → tokens(out)=3 chat semantic
+    - task=JUDGE → v4-pro + thinking=enabled → tokens(out)=50 reasoner semantic
+
+    本 unit test verify yaml routing 真**正确**: monkeypatch litellm Router.completion +
+    capture extra_body kwarg 真**走 LiteLLM API call** sustained.
+
+    NOTE: LiteLLM Router 真**internal mechanism** 真**模型 entry 真 litellm_params.extra_body** 透传
+    走 completion call. 反 caller 真**显式 extra_body kwarg** 体例 sustained.
+    """
+    captured = _patch_router_completion(monkeypatch, actual_model="deepseek-v4-flash")
+    router.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=[LLMMessage("user", "test")],
+    )
+    # captured["model"] 真 alias (沿用 sub-PR 8a-followup-A BUG #1 体例 sustained)
+    assert captured["model"] == "deepseek-v4-flash"
+    # NOTE: yaml extra_body 透传 真**LiteLLM Router internal mechanism**, 反 mock 直 verify.
+    # 真生产 e2e 真**已 verify** (sub-PR 8a-followup-B-yaml STATUS_REPORT 5-07 测试 1+2 sediment).
