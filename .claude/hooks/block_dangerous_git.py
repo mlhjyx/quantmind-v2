@@ -36,31 +36,45 @@ import re
 import sys
 
 # 沿用 mattpocock-git-guardrails block-dangerous-git.sh patterns sediment cite source
-# 锁定真值 (sub-PR 8a-followup-pre 5-07 修订: 反 "git push" 全局 BLOCK 体例).
+# 锁定真值 (sub-PR 8a-followup-pre 5-07 修订 + reviewer P0/P1 adopt:
+# 反 "git push" 全局 BLOCK 体例, 反 reviewer P0-1 refspec bypass, 反 P0-2 + prefix
+# force-push bypass, 反 P1-1/2/3 flag order + long-form + checkout -- . variant).
 #
-# 真生效 patterns (sustained 5-07 修订后):
+# 真生效 patterns (sustained 5-07 修订 + reviewer adopt 后):
 DANGEROUS_PATTERNS = [
     r"git reset --hard",
-    r"git clean -fd",
-    r"git clean -f",
-    r"git branch -D",
-    r"git checkout \.",
+    # P1-1 reviewer adopt: catch -fd / -df / -fdx / -dfx 等任 -f 含 flag combo
+    r"git clean\s+-\w*f",
+    # P1-2 reviewer adopt: --delete --force long-form (任 order)
+    r"git branch\s+(-D|--delete\s+--force|--force\s+--delete)",
+    # P1-3 reviewer adopt: checkout . / checkout -- . / checkout HEAD -- . variant
+    r"git checkout\s+(\S+\s+)?--\s+\.",
+    r"git checkout\s+\.",
     r"git restore \.",
-    r"reset --hard",  # legacy redundant pattern sustained 沿用
+    # P3-1 reviewer adopt: remove "reset --hard" bare pattern (redundant + 大量 false
+    # positive sediment 5-07 commit msg meta-bug). sustained "git reset --hard" 真生效.
 ]
 
-# 真**git push specific** dangerous variants (sub-PR 8a-followup-pre 5-07 修订 NEW):
+# 真**git push specific** dangerous variants (sub-PR 8a-followup-pre 5-07 修订 NEW
+# + reviewer P0-1/P0-2 adopt):
 # 反 "git push" 全局 BLOCK 体例, 改 fine-grained 检测 force / main / master.
 PUSH_DANGEROUS_PATTERNS = [
     # force push (任 variant): --force / -f / --force-with-lease
     r"git push\b.*--force\b",
     r"git push\b.*--force-with-lease\b",
     r"git push\b.*\s-f\b",  # -f flag (反 -force-with-lease 真 -fwl pattern 真 0)
+    # P0-2 reviewer adopt: + prefix force-push (refspec native force-push syntax)
+    r"git push\b.*\s\+",  # + prefix on any refspec → 强制 force push
     # push to main / master direct (任 variant)
     r"git push\b.*\borigin\s+main\b",
     r"git push\b.*\borigin\s+master\b",
     r"git push\b.*\smain\b\s*$",  # push 真**末尾参数** main
     r"git push\b.*\smaster\b\s*$",  # push 真**末尾参数** master
+    # P0-1 reviewer adopt: refspec syntax (HEAD:main, feature:main, refs/heads/main)
+    r"git push\b.*:main\b",  # refspec push to main (任 LHS:main)
+    r"git push\b.*:master\b",  # refspec push to master (任 LHS:master)
+    r"git push\b.*\brefs/heads/main\b",  # full refspec to main
+    r"git push\b.*\brefs/heads/master\b",  # full refspec to master
     # standalone "git push" (no args, current branch HEAD push) 真**ambiguous case**
     # 真允许 (沿用 feature-branch 体例 — caller 真**已 checkout feature-branch** 体例
     # sustained sub-PR 8a-followup workflow). user 真**显式想 push main** 必走 explicit

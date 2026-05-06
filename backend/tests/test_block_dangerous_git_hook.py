@@ -143,3 +143,74 @@ def test_safe_commands_allowed(command: str) -> None:
 def test_empty_command_allowed() -> None:
     """空 command (e.g. malformed input) → fail-soft sys.exit(0)."""
     assert _run_hook("") == 0
+
+
+# ── P1-4 reviewer adopt: bypass attack vector coverage (5-07 sub-PR 8a-followup-pre) ──
+#
+# reviewer security finding 真**P0/P1 bypass case** 真**0 cover 5-07 first commit**,
+# 沿用 audit Week 2 batch governance 真**detection bug 双向 case 体例** sediment +
+# 沿用 reviewer Chunk A P2 PR #222 真**双向 cover SOP** sustained.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # P0-1 refspec bypass attack vector (HEAD:main, feature:main, refs/heads/main)
+        "git push origin HEAD:main",
+        "git push origin HEAD:master",
+        "git push origin feature:main",
+        "git push origin feature:master",
+        "git push origin HEAD:refs/heads/main",
+        "git push origin HEAD:refs/heads/master",
+    ],
+)
+def test_refspec_bypass_blocked(command: str) -> None:
+    """P0-1 reviewer adopt: refspec syntax (LHS:main / LHS:master) 真**block** sustained.
+
+    git refspec 真**native syntax** push 走任 LHS:main / LHS:master, 反**origin\\s+main**
+    pattern 真**仅 catch space-separated** — 5-07 first commit 真**bypass vector**.
+    """
+    assert _run_hook(command) == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # P0-2 + prefix force-push bypass attack vector
+        "git push origin +feature-branch",
+        "git push origin +HEAD:main",  # 真**combine P0-1 + P0-2** 真 worst case
+        "git push -u origin +sprint2-branch",
+        "git push origin +master",
+    ],
+)
+def test_plus_prefix_force_push_bypass_blocked(command: str) -> None:
+    """P0-2 reviewer adopt: + prefix refspec 真**force-push native syntax** 沿用
+    git native semantics, 反**仅 --force / -f / --force-with-lease** pattern 真 cover.
+    """
+    assert _run_hook(command) == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # P1-1 reviewer adopt: -df reversed flag order
+        "git clean -df",
+        "git clean -dfx",
+        "git clean -fdx",
+        # P1-2 reviewer adopt: --delete --force long-form (任 order)
+        "git branch --delete --force feature-branch",
+        "git branch --force --delete main",
+        # P1-3 reviewer adopt: checkout -- . variant
+        "git checkout -- .",
+        "git checkout HEAD -- .",
+        "git checkout origin/main -- .",
+    ],
+)
+def test_pattern_correctness_bypass_blocked(command: str) -> None:
+    """P1-1/2/3 reviewer adopt: pattern correctness bypass case 真**block** sustained.
+
+    legacy DANGEROUS_PATTERNS 真**substring 体例** 仅 catch canonical flag order /
+    short-form, reviewer 真**catch flag-order reversal + long-form + -- separator
+    variant** sediment.
+    """
+    assert _run_hook(command) == 2
