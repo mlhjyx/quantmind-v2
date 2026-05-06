@@ -315,16 +315,16 @@ flowchart TB
 
 | 源 | 类型 | 用途 | API 限速策略 |
 |---|---|---|---|
-| **智谱 GLM-4-Flash** | 中文 LLM 接入 + 联网搜索 | 中文综合主源 (替 MiniMax) | 完全免费 + OpenAI 兼容 + LiteLLM 多 Key 负载均衡 |
+| **智谱 GLM-4.7-Flash** | 中文 LLM 接入 + 联网搜索 | News#1 fetcher 主源 (替 MiniMax, 沿用 ADR-035) | 永久免费 (~1M tokens/天) + 200K context + MCP integration + OpenAI 兼容 |
 | **Tavily** | 英文 + 翻译 | 海外信号 (港美 ADR 联动, 沿用) | 1000 credits/月永久免费 + LiteLLM 限速 fallback |
 | **Anspire** | 中文财经 | 中文财经主源 (沿用) | 新户 2500 点 + LiteLLM 多 Key 负载均衡 |
 | **GDELT 2.0** | 全球事件 | 跨境 + 突发 (替 Bocha) | 0 API key + 完全免费 + 7×24 实时 stream |
-| **Marketaux** | 金融专用 | 金融信号 + sentiment 标签 (替 SerpAPI) | 80 markets + 完全免费 (100 req/day) + sentiment pre-tagged |
+| **Marketaux** | 金融专用 | 金融信号 + sentiment 标签 (替 SerpAPI) | 5000+ sources / 30+ languages + 完全免费 (100 req/day) + sentiment pre-tagged (沿用 ADR-035 5-06 cite drift 修订) |
 | **RSSHub 自部署** | 中文财经 RSS | 长尾 + 全主流源 (替 Brave) | 自部署 + 0 API key + 0 第三方依赖 |
 
 **砍源 4 个** (5-02 web_search 验证后决议): Serper / DuckDuckGo / Bocha / Alpha Vantage. 详 [ADR-033 §3 Rationale](adr/ADR-033-news-source-replacement-decision.md).
 
-**月成本**: $0/month (全 6 源完全免费层. Tavily 1000 credits/月永久 + Anspire 新户 2500 点沿用 + 智谱 GLM-4-Flash 完全免费 + GDELT 0 API key + Marketaux 100 req/day + RSSHub 自部署).
+**月成本**: $0/month (全 6 源完全免费层. Tavily 1000 credits/月永久 + Anspire 新户 2500 点沿用 (申请即时 reactjs, 反 5-02 cite "审批 1-2 周") + 智谱 GLM-4.7-Flash 永久免费 (~1M tokens/天, 沿用 ADR-035) + GDELT 0 API key + Marketaux 100 req/day + RSSHub 自部署).
 
 **策略**: 并行查询 + 早返回. 任 3 源命中即继续 (full timeout 30s 全等待不可接受).
 
@@ -657,8 +657,8 @@ prompts/risk/regime_judge_v1.yaml (V4-Pro)
 
 **输入**: 上证指数 / 沪深 300 + 板块涨跌家数 + 北向资金 + 50ETF 期权 IV (恐慌指数 proxy)
 
-**Bull Agent**: 找 3 条看多论据 (V4-Flash)
-**Bear Agent**: 找 3 条看空论据 (V4-Flash)
+**Bull Agent**: 找 3 条看多论据 (V4-Pro, 沿用 ADR-036 debate reasoning capability)
+**Bear Agent**: 找 3 条看空论据 (V4-Pro, 沿用 ADR-036 debate reasoning capability)
 **Judge**: V4-Pro 对 6 论据加权 → 输出 regime {Bull / Bear / Neutral / Transitioning} + confidence + reasoning
 
 **cadence**: 每日 9:00 + 14:30 + 16:00, 3 次更新.
@@ -721,7 +721,7 @@ CREATE INDEX idx_risk_memory_event_type ON risk_memory (event_type, event_timest
 |---|---|---|---|
 | L0.2 NewsClassifier | V4-Flash | 每日 100-300 calls | $0.05-0.15/天 |
 | L2.2 fundamental_context summarizer | V4-Flash | 每 alert 1 call (~10/day) | $0.02/天 |
-| L2.3 Bull Agent / Bear Agent | V4-Flash | 每日 6 calls | $0.03/天 |
+| L2.3 Bull Agent / Bear Agent | V4-Pro (ADR-036) | 每日 6 calls | ~$0.013/天 (full price) / ~$0.003/天 (75% discount 走 2026-05-31) |
 | L2.3 Judge | V4-Pro | 每日 3 calls | $1/天 |
 | L5 RiskReflector | V4-Pro | 周 1 + 月 1 + post-event | $5-10/月 |
 | Embedding (RAG ingest) | V4-Flash | 每 risk_event 1 call | $0.01/事件 |
@@ -1586,7 +1586,7 @@ testcontainers PG + Redis + LiteLLM mock + xtquant mock:
 |---|---|---|---|
 | L0.2 NewsClassifier | V4-Flash | 9000 | $1.5-3 |
 | L0 fundamental_context summarizer | V4-Flash | 300 (per alert) | $0.5 |
-| L2.3 Bull/Bear Agents | V4-Flash | 180 | $0.3 |
+| L2.3 Bull/Bear Agents | V4-Pro (ADR-036) | 180 | ~$0.39 (full) / ~$0.10 (discount 走 2026-05-31) |
 | L2.3 Judge | V4-Pro | 90 | $30 |
 | L5 RiskReflector | V4-Pro | 5 (周 4 + 月 1) | $5-10 |
 | Embedding (RAG ingest) | V4-Flash | per event | $1-2 |

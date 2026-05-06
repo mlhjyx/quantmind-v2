@@ -56,8 +56,8 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "litellm_router.yaml"
 TASK_TO_MODEL_ALIAS: dict[RiskTaskType, str] = {
     RiskTaskType.NEWS_CLASSIFY: "deepseek-v4-flash",
     RiskTaskType.FUNDAMENTAL_SUMMARIZE: "deepseek-v4-flash",
-    RiskTaskType.BULL_AGENT: "deepseek-v4-flash",
-    RiskTaskType.BEAR_AGENT: "deepseek-v4-flash",
+    RiskTaskType.BULL_AGENT: "deepseek-v4-pro",
+    RiskTaskType.BEAR_AGENT: "deepseek-v4-pro",
     RiskTaskType.EMBEDDING: "deepseek-v4-flash",
     RiskTaskType.JUDGE: "deepseek-v4-pro",
     RiskTaskType.RISK_REFLECTOR: "deepseek-v4-pro",
