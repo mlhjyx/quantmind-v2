@@ -42,12 +42,14 @@ from .anspire import AnspireNewsFetcher
 from .base import NewsFetcher, NewsFetchError, NewsItem
 from .gdelt import GdeltNewsFetcher
 from .marketaux import MarketauxNewsFetcher
+from .pipeline import DataPipeline
 from .rsshub import RsshubNewsFetcher
 from .tavily import TavilyNewsFetcher
 from .zhipu import ZhipuNewsFetcher
 
 __all__ = [
     "AnspireNewsFetcher",
+    "DataPipeline",
     "GdeltNewsFetcher",
     "MarketauxNewsFetcher",
     "NewsFetcher",
