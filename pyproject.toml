@@ -106,6 +106,7 @@ markers = [
     "requires_zhipu: e2e tests calling 智谱 GLM-4.7-Flash News#1 fetcher (https://open.bigmodel.cn/api/paas/v4/chat/completions). Auto-skip if ZHIPU_API_KEY env missing. Run with `ZHIPU_API_KEY=xxx pytest -m requires_zhipu`. Sub-PR 1 sediment (ADR-035 §2).",
     "requires_tavily: e2e tests calling Tavily Search API (https://api.tavily.com/search). Auto-skip if TAVILY_API_KEY env missing. Run with `TAVILY_API_KEY=tvly-xxx pytest -m requires_tavily`. Sub-PR 2 sediment (V3§3.1).",
     "requires_anspire: e2e tests calling Anspire AI Search API (https://plugin.anspire.cn/api/ntsearch/search, GET method). Auto-skip if ANSPIRE_API_KEY env missing. Run with `ANSPIRE_API_KEY=sk-xxx pytest -m requires_anspire`. Sub-PR 3 sediment (V3§3.1, Anspire-specific GET + top_k enum + date field).",
+    "requires_gdelt: e2e tests calling GDELT 2.0 DOC API (https://api.gdeltproject.org/api/v2/doc/doc, GET method, anonymous). 0 API key needed but network reachability required. Run with `pytest -m requires_gdelt`. Sub-PR 4 sediment (V3§3.1, GDELT-specific 0 API key + seendate YYYYMMDDTHHMMSSZ + language human-readable).",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
