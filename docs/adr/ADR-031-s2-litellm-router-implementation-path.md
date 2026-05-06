@@ -150,7 +150,17 @@ caller 切换 PR (sustained ADR-022 集中修订机制):
   - 铁律: 32 (Service 不 commit, caller 管事务) + 31 (DataPipeline 0 DB IO sustained) + 33 (news_id=None fail-loud)
   - 测试: 47 → 60 mock-only + 2 e2e live (requires_litellm_e2e marker, real V4-Flash + mock conn capture SQL, 反 quota burn minimal payload)
   - 真讽刺案例 #10 + #11 候选 lesson 真应用: sub-PR 7b.3 v1 STOP push back (CC fresh verify) → v2 (β) split sediment 反 pipeline.py 架构违反 + 反 phantom marker reference
-- [ ] **Sprint 2 sub-PR 7c** (deferred Sprint 3 prerequisite ready): NewsIngestionService orchestrator (V3 line 1222 真预约 backend/app/services/news/) + DataPipeline → news_raw INSERT → NewsClassifierService.classify+persist 全链 e2e + Sprint 2 ingestion 闭环 Layer 2.2 完整闭环 sediment
+- [x] **Sprint 2 sub-PR 7c** (#243, 5-07): NewsIngestionService orchestrator + Sprint 2 ingestion 闭环 Layer 2.2 完整闭环 sediment ✅
+  - 实现: `backend/app/services/news/news_ingestion_service.py` (V3 line 1222 真预约 path, NewsIngestionService class + IngestionStats dataclass) + `__init__.py` +exports
+  - 全链 architecture (沿用铁律 31 + 32 sustained 真讽刺案例 #11 候选 lesson 真应用 sustained):
+    - DataPipeline (sub-PR 7a #239, qm_platform/news/, 0 DB IO 铁律 31) → list[NewsItem]
+    - 本 service (app/services/news/, orchestrator 真**入库点**) → conn → INSERT news_raw RETURNING news_id (9 cols, NewsItem 1:1 align)
+    - NewsClassifierService.classify (sub-PR 7b.2 #241) → ClassificationResult
+    - NewsClassifierService.persist (sub-PR 7b.3 v2 #242) → news_classified UPSERT (FK news_raw)
+    - 0 conn.commit (铁律 32, caller 真事务边界管理者)
+  - per-item fail-soft (沿用 sub-PR 7b.2 contract): ClassificationParseError → audit log + skip + classify_failed count, news_raw row 真**已 INSERT 成功** (容忍 partial classify, sub-PR 7b.2 真**未来 backfill** path 真预约)
+  - 测试: 12 mock-only + 1 e2e live (TestConstructor 2 + TestIngestHappyPath 3 + TestIngestFailSoft 2 + TestIngestNewsRawInsert 3 + TestIngestTransactionBoundary 2 + TestE2ELive 1)
+  - **Sprint 2 ingestion 闭环 Layer 2.2 完整闭环 sediment ✅** (Layer 1 sub-PR 1-6 + Layer 1.5 sub-PR 7a + Layer 2.0 sub-PR 7b.1 v2 + Layer 2.1 sub-PR 7b.2 + Layer 2.1.5 sub-PR 7b.3 v2 + Layer 2.2 sub-PR 7c)
 - [ ] **(deferred)** Sprint N+: 显式 deprecate PR (deepseek_client.py 删除 + 57 tests 同步删 + S6 hook marker test 同步删)
 
 ---
