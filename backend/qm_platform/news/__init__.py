@@ -41,12 +41,14 @@ scope (sub-PR 1+2 sediment):
 from .anspire import AnspireNewsFetcher
 from .base import NewsFetcher, NewsFetchError, NewsItem
 from .gdelt import GdeltNewsFetcher
+from .marketaux import MarketauxNewsFetcher
 from .tavily import TavilyNewsFetcher
 from .zhipu import ZhipuNewsFetcher
 
 __all__ = [
     "AnspireNewsFetcher",
     "GdeltNewsFetcher",
+    "MarketauxNewsFetcher",
     "NewsFetcher",
     "NewsFetchError",
     "NewsItem",
