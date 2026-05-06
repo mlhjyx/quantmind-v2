@@ -107,6 +107,7 @@ markers = [
     "requires_tavily: e2e tests calling Tavily Search API (https://api.tavily.com/search). Auto-skip if TAVILY_API_KEY env missing. Run with `TAVILY_API_KEY=tvly-xxx pytest -m requires_tavily`. Sub-PR 2 sediment (V3§3.1).",
     "requires_anspire: e2e tests calling Anspire AI Search API (https://plugin.anspire.cn/api/ntsearch/search, GET method). Auto-skip if ANSPIRE_API_KEY env missing. Run with `ANSPIRE_API_KEY=sk-xxx pytest -m requires_anspire`. Sub-PR 3 sediment (V3§3.1, Anspire-specific GET + top_k enum + date field).",
     "requires_gdelt: e2e tests calling GDELT 2.0 DOC API (https://api.gdeltproject.org/api/v2/doc/doc, GET method, anonymous). 0 API key needed but network reachability required. Run with `pytest -m requires_gdelt`. Sub-PR 4 sediment (V3§3.1, GDELT-specific 0 API key + seendate YYYYMMDDTHHMMSSZ + language human-readable).",
+    "requires_marketaux: e2e tests calling Marketaux /v1/news/all API (https://api.marketaux.com, GET method, api_token query param). Auto-skip if MARKETAUX_API_KEY env missing. Run with `MARKETAUX_API_KEY=xxx pytest -m requires_marketaux`. Sub-PR 5 sediment (V3§3.1, Marketaux-specific api_token query + custom UA header + data wrapper + ISO 8601 microseconds).",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
