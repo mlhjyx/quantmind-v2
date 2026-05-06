@@ -24,10 +24,13 @@ from __future__ import annotations
 
 from .bootstrap import get_news_classifier, reset_news_classifier
 from .news_classifier_service import ClassificationResult, NewsClassifierService
+from .news_ingestion_service import IngestionStats, NewsIngestionService
 
 __all__ = [
     "ClassificationResult",
+    "IngestionStats",
     "NewsClassifierService",
+    "NewsIngestionService",
     "get_news_classifier",
     "reset_news_classifier",
 ]
