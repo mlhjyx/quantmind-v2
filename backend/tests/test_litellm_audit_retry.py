@@ -226,3 +226,30 @@ def test_default_max_retries_is_2() -> None:
 def test_default_retry_wait_base_is_0_1() -> None:
     """DEFAULT_RETRY_WAIT_BASE=0.1 真**exponential backoff base** sustained ADR-039."""
     assert LLMCallLogger.DEFAULT_RETRY_WAIT_BASE == 0.1
+
+
+# ── Conn-reuse limitation coverage (HIGH reviewer adopt) ──
+
+
+def test_dead_conn_after_operational_error_retries_exhaust() -> None:
+    """OperationalError + dead conn (cursor() raises on retry) → False after exhausting.
+
+    沿用 ADR-039 §Consequences conn-reuse limitation: connection-loss 真**retry on same
+    dead conn** 真**subsequent InterfaceError chain** 真 retry budget exhausted, 真
+    **反 break completion** sustained (return False). connection-loss recovery 真预约
+    sub-PR 8b-resilience circuit breaker + fresh conn_factory() reissue 体例.
+    """
+    conn = MagicMock()
+    cur_alive = MagicMock()
+    cur_alive.execute.side_effect = OperationalError("connection lost")
+    # First cursor() returns alive cursor (raises OperationalError on execute);
+    # subsequent cursor() calls raise InterfaceError (simulating dead conn).
+    conn.cursor.side_effect = [
+        cur_alive,
+        InterfaceError("connection already closed"),
+        InterfaceError("connection already closed"),
+    ]
+    factory = MagicMock(return_value=conn)
+    logger = LLMCallLogger(conn_factory=factory, max_retries=2, retry_wait_base=0.01)
+    # 真**反 break completion** sustained — return False after exhausting retries
+    assert logger.log_call(_make_record()) is False

@@ -68,6 +68,11 @@ post-PR #253 (sub-PR 8b-llm-fix Pydantic propagate primary path 真生效) DeepS
 - audit module 真**stateful retry config** (max_retries / retry_wait_base) 沿用 instance attr 真**caller config exposure** 体例 — 反 default-only API
 - transient classifier 真**string match heuristic** sustained 反 isinstance — 真**driver-specific exc class name change** sustained 真**silent miss** risk (audit Week 2 batch C 真预约 — sub-PR 9 DingTalk push 触发 audit alarm)
 - 真**残余 sub-task** 2 个 (circuit breaker + DingTalk push) 沿用 sub-PR 8b-resilience + sub-PR 9 真预约 sustained — ADR-DRAFT row 7 真**partial closed**, 0 全 closed
+- **Conn-reuse limitation** (HIGH reviewer adopt sub-PR 8b-llm-audit-S2.4): 真**retry on same conn** 真**effective scope**:
+  - `SerializationFailure` (deadlock): conn alive, rollback + retry 真生效 ✅
+  - `InterfaceError` (cursor state): conn alive, rollback + retry 真生效 ✅
+  - `OperationalError` (connection lost / TCP reset): conn dead, rollback 走 suppress 反**retry on same dead conn** 真**subsequent InterfaceError 链 retry budget exhausted**, 真**反 break completion** sustained (return False).
+  真**connection-loss recovery 真预约** sub-PR 8b-resilience circuit breaker + fresh `conn_factory()` reissue 体例 sustained — 真**避免 silent infinite reconnect loop** 沿用 ADR-008 命名空间 circuit breaker 体例 sustained.
 
 ## Implementation
 

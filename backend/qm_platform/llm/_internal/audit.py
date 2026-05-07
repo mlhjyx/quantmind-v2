@@ -232,6 +232,18 @@ class LLMCallLogger:
             - permanent (其他 Exception subclass): immediate fail-loud (反 retry
               same permanent error waste budget).
             - exhausted retries: logger.warning + return False (反 break caller completion).
+
+        Conn-reuse limitation (HIGH reviewer adopt sub-PR 8b-llm-audit-S2.4):
+            真**retry on same conn** 真**effective scope**:
+            - SerializationFailure (deadlock retry): conn alive 沿用, rollback + retry
+              真生效 ✅
+            - InterfaceError (cursor state): conn alive 沿用, rollback + retry 真生效 ✅
+            - OperationalError (connection lost / TCP reset): conn dead, rollback 走
+              suppress 反**retry on same dead conn** subsequent InterfaceError 链 retry
+              budget exhausted, 真**反 break completion** sustained (return False).
+            真**connection-loss recovery 真预约** sub-PR 8b-resilience circuit breaker
+            + fresh `conn_factory()` reissue 体例 sustained (反 silent infinite reconnect
+            loop 沿用 ADR-008 命名空间 circuit breaker 体例).
         """
         attempt = 0
         last_exc: Exception | None = None
