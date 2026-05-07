@@ -422,3 +422,55 @@ def test_env_other_tool_blocked() -> None:
         }
     )
     assert rc == 2
+
+
+# ── P1 reviewer adopt: `.env.XXX` catch-all variants ──
+
+
+def test_env_backup_edit_blocked() -> None:
+    """`.env.backup` 真 BLOCKED 沿用 `.env.local` 体例 (P1 catch-all)."""
+    rc, _, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/backend/.env.backup",
+            "ANSPIRE_BASE_URL=x",
+            "ANSPIRE_BASE_URL=y",
+        )
+    )
+    assert rc == 2
+
+
+def test_env_staging_edit_blocked() -> None:
+    rc, _, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/backend/.env.staging",
+            "ANSPIRE_BASE_URL=x",
+            "ANSPIRE_BASE_URL=y",
+        )
+    )
+    assert rc == 2
+
+
+def test_env_test_edit_blocked() -> None:
+    rc, _, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/backend/.env.test",
+            "ANSPIRE_BASE_URL=x",
+            "ANSPIRE_BASE_URL=y",
+        )
+    )
+    assert rc == 2
+
+
+# ── P3 reviewer adopt: path-anchor `(^|[/\\])\.env$` ──
+
+
+def test_foo_dot_env_not_field_gated() -> None:
+    """`foo.env` 真**反 match** ENV_FIELD_GATED (path-anchor 体例)."""
+    rc, _, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/backend/foo.env",
+            "old",
+            "new",
+        )
+    )
+    assert rc == 0

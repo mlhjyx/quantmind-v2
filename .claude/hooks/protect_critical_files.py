@@ -18,17 +18,19 @@ import json
 import re
 import sys
 
-# 完全禁止 (任 tool, 任 file pattern in BLOCKED_PATTERNS)
+# 完全禁止 (任 tool, 任 file pattern in BLOCKED_PATTERNS).
+# `\.env\.` (any `.env.XXX` variant) 真**广 catch** — `.env.local` / `.env.production` /
+# `.env.backup` / `.env.staging` / `.env.test` 全 BLOCKED (P1 reviewer adopt).
 BLOCKED_PATTERNS = [
-    r"\.env\.local$",
-    r"\.env\.production$",
+    r"\.env\.",
     r"credentials",
     r"\.git/",
 ]
 
-# .env: Write 完全 BLOCKED, Edit/MultiEdit 走字段级 whitelist
+# .env: Write 完全 BLOCKED, Edit/MultiEdit 走字段级 whitelist.
+# `(^|[/\\])\.env$` 真**path-anchor** — `foo.env` 反 match (P3 reviewer adopt).
 ENV_FIELD_GATED = [
-    r"\.env$",
+    r"(^|[/\\])\.env$",
 ]
 
 # .env Edit 字段级 whitelist (5-07 sub-PR 8b-pre-hook).
