@@ -27,6 +27,7 @@ scope (S2.1 — 本 PR):
       33 (fail-loud, unknown task raise) / 34 (config SSOT) /
       41 (UTC 内部, latency_ms float)
 """
+
 from __future__ import annotations
 
 import time
@@ -50,6 +51,58 @@ from ..types import (
 # → parents[2]=qm_platform → parents[3]=backend → parents[4]=REPO_ROOT.
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config" / "litellm_router.yaml"
+
+
+# 5-07 sub-PR 8b-llm-fix yaml-referenced env var whitelist (CC fresh grep
+# config/litellm_router.yaml `os.environ/X` syntax sustained):
+# - line 34/48: api_key: os.environ/DEEPSEEK_API_KEY
+# - line 66: api_base: os.environ/OLLAMA_BASE_URL
+# 反 production secret leak 红线 — 限 yaml 真**真消费** env vars (反 propagate 全
+# Pydantic Settings 字段 → os.environ).
+_YAML_REFERENCED_ENVS: tuple[str, ...] = (
+    "DEEPSEEK_API_KEY",
+    "OLLAMA_BASE_URL",
+)
+
+
+def _propagate_settings_to_environ() -> None:
+    """Propagate Pydantic Settings → os.environ for LiteLLM yaml `os.environ/X`.
+
+    真因 sediment (sub-PR 8b-llm-diag 5-07 root cause):
+        Pydantic-settings v2.x design 0 propagate `.env` → os.environ (Settings 真
+        class attr holder 反 env mutator). LiteLLM yaml `os.environ/X` syntax 自
+        `os.environ.get(X)` → empty string when Pydantic 沿用 .env file load.
+        DeepSeek API 真**Authentication Fails (governor)** 401 → Router fallback
+        Ollama. 5-03 PR #222 起 sustained 4 days production 0 catch, 5-07 sub-PR
+        8b-pre Step 2 e2e first verify catch.
+
+    设计:
+        - Idempotent: 不覆盖已 set os.environ value (沿用 shell env priority).
+        - Whitelist: 限 _YAML_REFERENCED_ENVS (反 production secret 全 propagate).
+        - Graceful: backend.app.config import 失败 → no-op (test contexts without
+          backend.app installed; 沿用 _internal/ 子包真生产**反 hard couple**).
+        - Empty value skip: settings.X 真**默认 ""** 沿用 (反 propagate 真 None /
+          empty string → os.environ 真**反误 set** misleading).
+
+    关联:
+        - ADR-031 §6 (S2 LiteLLMRouter implementation path 决议)
+        - V3 §5.5 (LLM 路由真预约)
+        - LL-110 (web_fetch 官方文档 verify SOP)
+        - LL-112 (user 第 7 push back catch correctly 体例)
+        - 真讽刺 #17 sediment 加深 (修复 metric ≠ 修复真生产 issue 4 days sustained)
+    """
+    import os
+
+    try:
+        from backend.app.config import settings
+    except ImportError:
+        return  # test contexts without backend.app installed (graceful no-op)
+
+    for env_var in _YAML_REFERENCED_ENVS:
+        value = getattr(settings, env_var, "") or ""
+        if value and not os.environ.get(env_var):
+            os.environ[env_var] = value
+
 
 # V3 §5.5 + 决议 3 (a) — 7 任务 → primary model alias mapping (Python in-code SSOT).
 # alias 真值跟 config/litellm_router.yaml model_list 对齐 (PR #221 sediment).
@@ -104,6 +157,12 @@ class LiteLLMRouter:
         Raises:
             RouterConfigError: yaml 加载或 schema 验证失败 (fail-loud).
         """
+        # 5-07 sub-PR 8b-llm-fix: propagate Pydantic .env → os.environ for yaml
+        # `os.environ/X` syntax 真生效 sustained. 真因 sediment详 sub-PR 8b-llm-diag
+        # memory file (Pydantic-settings v2.x 0 propagate by design) +
+        # _propagate_settings_to_environ docstring 真 idempotent + whitelist 体例.
+        _propagate_settings_to_environ()
+
         path = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
         if not path.exists():
             raise RouterConfigError(f"router config 缺失: {path}")
