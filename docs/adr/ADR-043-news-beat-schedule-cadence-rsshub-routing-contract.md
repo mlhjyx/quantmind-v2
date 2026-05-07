@@ -49,7 +49,7 @@ post-PR #254 News API endpoint 真值 sustained (反 Beat schedule register):
    - 03:00 / 07:00 / 11:00 / 15:00 / 23:00 真**0 conflict** sustained
    - 19:00 真**软 conflict Fri factor-lifecycle-weekly 19:00 day_of_week=5** sustained (Beat scheduler 真 sequential dispatch, 软 conflict tolerated)
    - 反 hard collision PT chain 16:25 HealthCheck / 16:30 DailySignal / 09:31 DailyExecute / 17:40 daily-quality-report sustained
-   - 时区 Asia/Shanghai (`celery_app.py:42` `enable_utc=False`) sustained
+   - 时区 Asia/Shanghai + `enable_utc=False` (`celery_app.py:42-43`) sustained
 
 3. **RSSHub 路由层契约 = standalone `POST /api/news/ingest_rsshub` endpoint sustained** (sub-PR 8b-rsshub PR #254 sediment 沿用), route_path semantic 反 search keyword. 真**Beat schedule 真 task** 真预约 sub-PR 8b-cadence-B 真**双 Beat entry**:
    - `news-ingest-5-source-cadence` (主链路 5-source ingest, 4-hour cron)

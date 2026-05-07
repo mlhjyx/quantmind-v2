@@ -53,13 +53,13 @@
 | ADR-042 | (informally reserved, ADR-DRAFT row 10) 3rd-party API spec watch SOP + vanilla call 漏 thinking 参数 verify | reserved | ADR-DRAFT row 10 informal reservation (governance + LL sediment 加 LESSONS_LEARNED.md chunk B 候选), 沿用 SOP-6 cross-verify 体例 sustained, audit chunk C ADR # 重整时 promote 候选 |
 | ADR-043 | News Beat schedule + cadence + RSSHub 路由层契约 (sub-PR 8b-cadence-A sediment-only, partial closure) | committed | V3 Tier A Sprint 2 sub-PR 8b-cadence-A (本 PR), 沿用 ADR-DRAFT row 2 promote + V3§3.1 sub-PR 6 docstring real cite + 4 现存 Beat entries 体例 sustained + sub-PR 8b-rsshub PR #254 RSSHub route_path 独立 caller sediment. 真**残余 sub-task**: News Beat schedule entry register (sub-PR 8b-cadence-B 真预约) + RSSHub multi-route 503 fix (audit chunk C 真预约). 沿用 LL-067 reviewer 第二把尺子 + LL-098 X10 sequence-based + LL-100 chunked SOP + LL-105 SOP-6 cross-verify (反 ADR-040 silent overwrite ADR-DRAFT row 8 informal reservation 体例 sustained 沿用 ADR-024/027/023 案例 1/2/3 # 下移体例). **跳号 ADR-040/041/042 sustained** (informal reservation ADR-DRAFT row 8/9/10 反 silent overwrite SOP-6 体例 sustained) |
 
-## 真状态分布
+## 真状态分布 (5-07 sub-PR 8b-cadence-A 修订, post-PR #255 + 本 PR)
 
-- **committed (真 file 真在 docs/adr/)**: 28 个 (ADR-001~014 + ADR-021/022/023/024/027/028/031/032/033/034/035/036/**037**)
-- **reserved (V3 §18.1 真预约, 0 file 等真起手时 sediment)**: 6 个 (ADR-019/020/025/026/029/030)
+- **committed (真 file 真在 docs/adr/)**: 30 个 (ADR-001~014 + ADR-010-addendum + ADR-021/022/023/024/027/028/031/032/033/034/035/036/**037**/**039**/**043**) — 本 PR +ADR-043, post-PR #255 +ADR-039
+- **reserved (V3 §18.1 真预约 + ADR-DRAFT informal reservation, 0 file 等真起手时 sediment)**: 9 个 (ADR-019/020/025/026/029/030/**040**/**041**/**042**) — 本 PR +ADR-040/041/042 (ADR-DRAFT row 8/9/10 informal reservation 沉淀 sustained 真**REGISTRY SSOT**, 沿用 SOP-6 cross-verify 体例 反 silent overwrite)
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号 sustained)
 
-总 38 # space (含 gap), 真活跃 34 (committed 28 + reserved 6).
+总 43 # space (含 gap), 真活跃 39 (committed 30 + reserved 9). **跳号 ADR-038 sustained** (LiteLLM cost registry V4 gap reserve, ADR-DRAFT row 6 promote target, 等 LiteLLM SDK 升级 verify 时 sediment).
 
 ## 真 maintenance 规则
 
