@@ -38,7 +38,8 @@
 **命名规则**:
 - `NN`: 2 位序号, 按时间顺序递增, 不复用
 - `<scenario>`: snake_case, 简短描述触发场景
-- 后缀必须是 `_runbook.md` (区分于 `_audit.md` / `_design.md`)
+- 后缀必须是 `_runbook.md` (executable ops 多步操作 + rollback 体例) 或 `_sop.md` (monitoring/verification SOP, 真**lighter template** sustained 反 destructive ops, e.g. governance / audit / drift detection)
+- 区分于 `_audit.md` / `_design.md` (ADR / one-shot diagnostic)
 
 **runbook 模板必含字段**:
 1. **触发条件** (何时调用 — 前置依赖)

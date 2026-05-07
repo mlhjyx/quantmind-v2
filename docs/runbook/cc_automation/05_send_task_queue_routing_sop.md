@@ -21,6 +21,8 @@ celery_app.send_task(
 
 ## 真**queue routing matrix** (Worker config 沿用 Servy export QuantMind-Celery)
 
+> **Source**: Servy export config `Parameters` field 真**`-Q default,factor_calc,data_fetch`** sustained (5-07 22:00 实测 `D:\tools\Servy\servy-cli.exe export --name="QuantMind-Celery" --config json --path <tmp>`) + Worker stdout banner `[queues] .> default ... .> data_fetch ... .> factor_calc` 沿用 sub-PR 8b-cadence-B post-merge ops Phase 0 verify (`logs/celery-stdout.log` line "Worker startup banner 5-07 21:38:26").
+
 | queue name | source | task pattern | Worker subscribe? |
 |---|---|---|---|
 | `default` | Beat entry `"queue": "default"` | News ingestion / outbox / factor lifecycle / daily quality / gp-weekly | ✅ subscribed (Worker `--Q default,factor_calc,data_fetch`) |

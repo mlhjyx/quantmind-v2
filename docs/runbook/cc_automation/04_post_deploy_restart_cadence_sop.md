@@ -5,13 +5,15 @@
 
 ## 真适用 service matrix
 
+> **Servy CLI quote 体例**: 沿用 codebase `SYSTEM_RUNBOOK.md` / `CLAUDE.md` / `SOP_EMERGENCY.md` / `DUAL_WRITE_RUNBOOK.md` 全 `--name="<service>"` 双引号体例 sustained.
+
 | service | restart prerequisite trigger | restart command | graceful shutdown |
 |---|---|---|---|
-| **QuantMind-FastAPI** | PR 改 `app/main.py` / `app/api/**` / `app/config.py` / Pydantic Settings field / yaml `os.environ/X` mapping / endpoint logic | `D:\tools\Servy\servy-cli.exe restart --name QuantMind-FastAPI` | ~1.7s 沿用 5-07 23:00:01 实测 |
-| **QuantMind-Celery** (Worker) | PR 改 `app/tasks/**` / `app/services/**` (Celery task path) / `qm_platform/**` / fetcher / `celery_app.py` imports list | `D:\tools\Servy\servy-cli.exe restart --name QuantMind-Celery` | ~10.6s 沿用 5-07 21:38:25 实测 (CLAUDE.md 30s budget) |
-| **QuantMind-CeleryBeat** | PR 改 `app/tasks/beat_schedule.py` (Beat entry add/remove/cron) | `D:\tools\Servy\servy-cli.exe restart --name QuantMind-CeleryBeat` | ~13s 沿用 5-07 21:20:26 实测 |
-| **QuantMind-RSSHub** | PR 改 RSSHub config / lib/routes/ source / dist/ build (反 chunk C-SOP-B 真预约) | `D:\tools\Servy\servy-cli.exe restart --name QuantMind-RSSHub` | TBD (Servy 0-op silent failure 真预约 chunk C-SOP-B fix) |
-| **QuantMind-QMTData** | PR 改 `scripts/qmt_data_service.py` / xtquant path / Redis cache schema | `D:\tools\Servy\servy-cli.exe restart --name QuantMind-QMTData` | TBD |
+| **QuantMind-FastAPI** | PR 改 `app/main.py` / `app/api/**` / `app/config.py` / Pydantic Settings field / yaml `os.environ/X` mapping / endpoint logic | `D:\tools\Servy\servy-cli.exe restart --name="QuantMind-FastAPI"` | ~1.7s 沿用 5-07 23:00:01 实测 |
+| **QuantMind-Celery** (Worker) | PR 改 `app/tasks/**` / `app/services/**` (Celery task path) / `qm_platform/**` / fetcher / `celery_app.py` imports list | `D:\tools\Servy\servy-cli.exe restart --name="QuantMind-Celery"` | ~10.6s 沿用 5-07 21:38:25 实测 (CLAUDE.md 30s budget) |
+| **QuantMind-CeleryBeat** | PR 改 `app/tasks/beat_schedule.py` (Beat entry add/remove/cron) | `D:\tools\Servy\servy-cli.exe restart --name="QuantMind-CeleryBeat"` | ~13s 沿用 5-07 21:20:26 实测 |
+| **QuantMind-RSSHub** | PR 改 RSSHub config / lib/routes/ source / dist/ build (反 chunk C-SOP-B 真预约) | `D:\tools\Servy\servy-cli.exe restart --name="QuantMind-RSSHub"` | TBD (Servy 0-op silent failure 真预约 chunk C-SOP-B fix) |
+| **QuantMind-QMTData** | PR 改 `scripts/qmt_data_service.py` / xtquant path / Redis cache schema | `D:\tools\Servy\servy-cli.exe restart --name="QuantMind-QMTData"` | TBD |
 
 ## 真**3-layer evidence chain** post-restart verify (LL-110 + LL-105 + LL-067 体例)
 
@@ -24,8 +26,9 @@ Get-CimInstance -Query "select ProcessId,CreationDate,CommandLine from Win32_Pro
 真**post-restart 30-60s 内 fresh PID 真值** sustained (反 stale).
 
 ### Layer 2 — stdout banner 真值
-```bash
-tail -50 D:/quantmind-v2/logs/<service>-stdout.log | grep -E "Started|listening|Running"
+```powershell
+# PowerShell native (沿用 Windows 11 primary shell)
+Get-Content "D:\quantmind-v2\logs\<service>-stdout.log" -Tail 50 | Select-String -Pattern "Started|listening|Running"
 ```
 真**fresh banner timestamp align process timestamp** sustained.
 
