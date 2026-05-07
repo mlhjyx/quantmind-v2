@@ -103,7 +103,7 @@ post-PR #254 News API endpoint 真值 (反 Beat schedule register):
 - create unit tests + integration smoke + Sprint 2 e2e re-run verify post-Beat trigger evidence (DB query **fetched/ingested/classified 真生产 batch trigger** + retry policy 生效 production-level)
 
 **留 audit chunk C (RSSHub multi-route 503 fix + ADR # 重整, 待办)**:
-- RSSHub 3/4 routes 503 fix (`/eastmoney/news/0`, `/caixin/finance`, `/sina/finance/economic`) 沿用 sub-PR 8b-rsshub PR #254 sediment 体例
+- RSSHub multi-route 503 fix — chunk C-RSSHub Phase 1c sediment (5-07): **4 working routes baseline restored** (`/jin10/news` + `/jin10/0` + `/jin10/1` importance levels + `/eastmoney/search/A股`) + **7 routes 503 sediment** "registered but upstream third-party API failed" (`/sina/finance/rollnews`, `/sina/finance/china`, `/sina/rollnews`, `/caixin/latest`, `/caixin/finance/cwzc`, `/eastmoney/report/macro`, `/eastmoney/report/strategy`). sub-PR 8b-rsshub PR #254 cite drift sediment (3 fictitious paths cite repaired in chunk C-ADR 5-08). 7 routes 503 留 sub-PR 9 真预约 (RSSHub upstream config / cache / authentication investigation 体例)
 - ADR-DRAFT row 8/9/10 informal reservation # 重整 (沿用 REGISTRY 案例 1/2/3 # 下移体例)
 
 ## References
