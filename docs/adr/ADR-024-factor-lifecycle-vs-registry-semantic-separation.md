@@ -10,19 +10,19 @@
 
 ## §1 Context
 
-### 1.1 当前真状态 (5-02 task 5 实测)
+### 1.1 当前状态 (5-02 task 5 实测)
 
 GLOSSARY §4 + §5 列两表, 真值差 4.3x:
 - factor_lifecycle = 6 行 (4 active + 2 retired)
 - factor_registry = 286 行 (26 active / 14 deprecated / 246 warning)
 
-初始 frame 怀疑是 "SSOT 决议" 问题 (哪个是真 SSOT, 解冻 / deprecate 哪个), 但 task 5 真测推翻 framing.
+初始 frame 怀疑是 "SSOT 决议" 问题 (哪个是 SSOT, 解冻 / deprecate 哪个), 但 task 5 真测推翻 framing.
 
-### 1.2 真测真因 — 字段 0 重叠是设计
+### 1.2 真测因 — 字段 0 重叠是设计
 
 两表 schema 真测 (PK 不同, 字段 0 重叠除 status / factor_name 共通名):
 
-| 表 | PK | 真用途 | 关键字段 |
+| 表 | PK | 用途 | 关键字段 |
 |---|---|---|---|
 | factor_lifecycle | factor_name | 生产策略生命周期 (yaml 镜像) | entry_date / entry_ic / entry_t_stat / rolling_ic_12m / warning_date / retired_date |
 | factor_registry | id (uuid), name UNIQUE | 设计审批 + Gate G1-G8 评估历史 | gate_ic / gate_ir / gate_mono / gate_t / pool / direction / category / source / hypothesis / expression / ic_decay_ratio |
@@ -38,20 +38,20 @@ Table comment 真值:
 | `lifecycle.active` ∩ yaml | **4 完全对齐** | lifecycle 是 yaml 镜像 |
 | `registry.active` ∩ yaml | **0** | yaml CORE 4 在 registry 中 status='warning' (Gate decay 监控状态) |
 | `lifecycle.active` ∩ `registry.active` | **0** | 设计正常, 不是 drift |
-| `factor_ic_history` DISTINCT | 113 | (GLOSSARY §1 sustained) |
+| `factor_ic_history` DISTINCT | 113 | (GLOSSARY §1) |
 
-### 1.4 4-17 冻结真因 (反 zombie 假设)
+### 1.4 4-17 冻结因 (反 zombie 假设)
 
 CC task 5 真测推翻 "schtask zombie / Celery 任务死" 假设 (LL-074 模式不适用):
 
 - factor_registry created_at MAX = 2026-04-17 18:31:52, 281/286 行同 timestamp = mass batch INSERT
-- 真 commit: `3a6c200` (jyxren, 2026-04-17 18:44) "feat(platform): MVP 1.3a Registry Schema + 回填"
+- commit: `3a6c200` (jyxren, 2026-04-17 18:44) "feat(platform): MVP 1.3a Registry Schema + 回填"
 - 4-17 后设计层切走新 onboarding (`qm_platform/factor/registry.py G9+G10`)
 - Phase 2.4/3B/3D/3E 实验全 NO-GO, **不形式注册** (设计如此)
 
 **结论**: 不是 zombie / 不是流程废, 是 MVP 1.3a 设计层切换 + 后续实验 NO-GO 自然不写.
 
-### 1.5 真风险评估
+### 1.5 风险评估
 
 `grep -rn "factor_lifecycle\|factor_registry"` 365 行引用真测:
 
@@ -107,13 +107,13 @@ CC task 5 真测推翻 "schtask zombie / Celery 任务死" 假设 (LL-074 模式
 
 - 任何 "lifecycle vs registry drift" 类 framing 走本 ADR cross-link, 不再走 SSOT 决议路径 (反 task 5 踩坑模式)
 - 防 "lifecycle.active ⊆ registry.active" 类直觉假设 (设计反此假设)
-- 与 ADR-023 (yaml SSOT) 配套, "DB 多表非 SSOT, yaml 是真 SSOT" 系列 thesis 完整
+- 与 ADR-023 (yaml SSOT) 配套, "DB 多表非 SSOT, yaml 是 SSOT" 系列 thesis 完整
 
 ### 3.3 反对意见 (alternative considered, task 5 audit §B.3)
 
 - **(a) lifecycle SSOT, registry deprecate**: 反对. registry G1-G8 评估历史价值 (设计审批 sediment), deprecate 损失 hypothesis / expression / Gate 历史
 - **(b) registry SSOT, lifecycle deprecate**: 反对. lifecycle 运行时跟踪 (entry_date / warning_date / rolling_ic_12m) registry 无, 是另一语义
-- **(d) yaml 唯一 SSOT, 两表都 deprecate**: 强反对. yaml 是配置 SSOT, 不含运行时状态 + 不含 Gate 历史. 两表是 yaml 之外的真 SSOT (各自 domain), 不可被 yaml 替代
+- **(d) yaml 唯一 SSOT, 两表都 deprecate**: 强反对. yaml 是配置 SSOT, 不含运行时状态 + 不含 Gate 历史. 两表是 yaml 之外的 SSOT (各自 domain), 不可被 yaml 替代
 
 ## §4 Follow-up
 
@@ -151,7 +151,7 @@ CC task 5 真测推翻 "schtask zombie / Celery 任务死" 假设 (LL-074 模式
 PGPASSWORD=quantmind psql -U xin -h localhost -d quantmind_v2 -c \
   "SELECT (SELECT COUNT(*) FROM factor_lifecycle) AS lifecycle_n, \
           (SELECT COUNT(*) FROM factor_registry) AS registry_n;"
-# 期望: lifecycle_n=6 / registry_n=286 (5-02 真测 sustained)
+# 期望: lifecycle_n=6 / registry_n=286 (5-02 真测)
 
 # 2. yaml 真值未变
 grep -A 8 "factors:" configs/pt_live.yaml

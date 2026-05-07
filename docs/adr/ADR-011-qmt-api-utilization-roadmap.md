@@ -158,8 +158,8 @@ QMT_STATUS: dict[int, tuple[str, str]] = {
 ### 4.1 F19/F20 收尾 (P0, Session 22)
 
 1. **PR: QMT_STATUS[55] fix** (`qmt_execution_adapter.py:70` final → pending)
-   - 附回归 test: mock 3 trade callback (1200 + 3600 + 0) + 最终 56 → 断言 `filled_volume=4800`
-   - 关联: 铁律 40 baseline 不增 + smoke 29 PASS
+ - 附回归 test: mock 3 trade callback (1200 + 3600 + 0) + 最终 56 → 断言 `filled_volume=4800`
+ - 关联: 铁律 40 baseline 不增 + smoke 29 PASS
 2. **补录 4-17 缺失 trade_log 9663 股** (script 生成 9 行 INSERT, 手工 review 后 apply)
 3. **重算 performance_series 4-17 ~ 4-21 NAV** (基于完整 trade_log)
 4. **重跑 position_snapshot reconstruct** (基于完整 trade_log) → 验证 `pt_audit db_drift` 消除
@@ -203,4 +203,4 @@ QMT_STATUS: dict[int, tuple[str, str]] = {
 - QMT 开发文档: `https://dict.thinktrader.net/` (user 提供)
 - xtquant SDK doc: `D:/quantmind-v2/.venv/Lib/site-packages/Lib/site-packages/xtquant/doc/xttrader.pdf`
 - ADR-008 (execution_mode namespace) — 相关因为 trade_log 污染也是 ADR-008 讨论过的 execution_mode 问题的延伸
-- LL-065 (AI summary 数字必须反向验证) — 本 ADR 演化过程也是 LL-065 的再次验证 (F19 原 "phantom DELETE" 判断数字来自 summary, 经逐层深挖才定真因)
+- LL-065 (AI summary 数字必须反向验证) — 本 ADR 演化过程也是 LL-065 的再次验证 (F19 原 "phantom DELETE" 判断数字来自 summary, 经逐层深挖才定因)

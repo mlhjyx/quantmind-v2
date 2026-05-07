@@ -15,7 +15,7 @@ Wave 3 引入第 2 策略 (S2) 与主策略 S1 (MonthlyRanking) 并跑验证 Str
 
 两者在 Platform 角度差异明显: 事件驱动 vs 时间驱动, 信号频率差 2 数量级, 回测基础设施需求不同.
 
-Phase 3E-II 已验证 10 个微结构因子 (minute_bars 派生) 全 ROBUST 但 WF 0/6 PASS — 分钟级因子真 alpha 存在, 但 **等权框架无法利用**. 若走 Minute Intraday 需同时做 non-equal-weight portfolio optimization, 工程复杂度翻倍.
+Phase 3E-II 已验证 10 个微结构因子 (minute_bars 派生) 全 ROBUST 但 WF 0/6 PASS — 分钟级因子 alpha 存在, 但 **等权框架无法利用**. 若走 Minute Intraday 需同时做 non-equal-weight portfolio optimization, 工程复杂度翻倍.
 
 ## Decision
 

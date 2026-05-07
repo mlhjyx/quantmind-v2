@@ -33,9 +33,9 @@ recorded_at: 2026-05-06
 | Tool calling | partial | native | Qwen 3.5 release sediment |
 | Thinking mode | external prompt | native (Qwen3.5 small series 反 default thinking) | 5-06 stress test ✅ |
 | LiteLLM endpoint | ollama_chat | ollama_chat 沿用 | yaml line 38 patch |
-| Router alias | qwen3-local | qwen3-local 沿用 (反改) | yaml line 12 sustained |
-| API key | 0 (本地) | 0 (本地) sustained | env-driven |
-| Cost | $0 | $0 sustained | 本地 Ollama |
+| Router alias | qwen3-local | qwen3-local 沿用 (反改) | yaml line 12 |
+| API key | 0 (本地) | 0 (本地) | env-driven |
+| Cost | $0 | $0 | 本地 Ollama |
 
 **5-06 CC 自主 stress test 真值** (RTX 5070 12 GB):
 - VRAM baseline: 1643 MB / 12227 MB (~13%)
@@ -72,14 +72,14 @@ recorded_at: 2026-05-06
 - **Disk +1.4 GB**: 5.2 GB → 6.6 GB Q4_K_M. D:\ollama-models 走 OLLAMA_MODELS env (PR #225 sediment 沿用).
 - **VRAM 78% peak vs qwen3:8b ~50% peak**: ~2.6 GB headroom 沿用 (反 OOM), 反**256K context 真生产 stress test** 留 audit Week 2 batch 候选 (沿用 LL-098 X10 反 silent ramp).
 - **VRAM recommend 18 GB (Qwen3.5 9b 官方 cite) vs 12 GB RTX 5070**: 沿用 user 5-06 实测 fit (走 Q4_K_M quantization + KV cache 优化), 反**完整精度 / 256K full context** 走 RTX 5090 / A100 推荐 (沿用 future Sprint 候选).
-- **qwen3:8b model 沿用 disk** (5-06 user 0 删): 走 user 决议时点删除 (ADR §5 Step 7 sustained).
+- **qwen3:8b model 沿用 disk** (5-06 user 0 删): 走 user 决议时点删除 (ADR §5 Step 7).
 
 ### Neutral
 
 - **ollama_chat endpoint 沿用** (PR #225 PR #226 sediment): 反改 endpoint, 反 LiteLLM provider config 改.
 - **Router alias `qwen3-local` 沿用**: 反改 alias 反 BudgetAwareRouter completion_with_alias_override 反 backward-compat break.
 - **Apache 2.0 license 沿用**: Qwen3.5 9B Apache 2.0 = qwen3:8b license, 0 商授 risk drift.
-- **0 e2e test break**: 函数名 `test_e2e_ollama_chat_qwen3_via_alias_override` 沿用 (反 rename 走 git history backward-compat). model name cite 沿用 yaml replace, e2e fixture sustained.
+- **0 e2e test break**: 函数名 `test_e2e_ollama_chat_qwen3_via_alias_override` 沿用 (反 rename 走 git history backward-compat). model name cite 沿用 yaml replace, e2e fixture.
 
 ## Implementation
 

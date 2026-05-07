@@ -108,7 +108,7 @@ Wave 6+ (远期) → 日内 / Forex / AI 闭环 / RL 重评估
 
 1. **Operability 提升 1-2 个数量级**: PT 状态从 3 源人工对账 → 1 页可视化
 2. **Onboarding 友好**: 即便仍是个人系统, 半年后回看也不需要重读 4 万字 CLAUDE.md
-3. **真金风控可见**: Session 10 P0-α 熔断失效类问题在 5.4 风控链路面板上**一眼可见**, 不会再 2 周裸奔
+3. **金风控可见**: Session 10 P0-α 熔断失效类问题在 5.4 风控链路面板上**一眼可见**, 不会再 2 周裸奔
 4. **铁律 22 升级**: "文档跟随代码" 升级到 "状态跟随代码" — UI 是 live 状态文档
 5. **未来公开开源选项保留**: 如果 v2.0 想公开, UI 是产品的脸面, 现在做就不用紧急赶工
 
@@ -127,7 +127,7 @@ Wave 6+ (远期) → 日内 / Forex / AI 闭环 / RL 重评估
 ## Alternatives Considered
 
 ### A1 — 继续不做 (现状)
-**否决**: Session 10 / 20 多次"状态不可见"踩坑已证不可持续. 真金 PT live 后这是合规风险 (无法 audit trail).
+**否决**: Session 10 / 20 多次"状态不可见"踩坑已证不可持续. 金 PT live 后这是合规风险 (无法 audit trail).
 
 ### A2 — Streamlit / Gradio 快速搭建
 **否决**: 写起来快但产品级不够 (无 SSE / 无 component 复用 / 无路由). 半年后必重写. 不如一步到位 Vue.
@@ -155,7 +155,7 @@ Wave 6+ (远期) → 日内 / Forex / AI 闭环 / RL 重评估
 
 UI v1.0 上线后**必须**验证:
 
-- [ ] 5 个 MVP 全部交付, 每个有 smoke test (铁律 10b 真启动验证)
+- [ ] 5 个 MVP 全部交付, 每个有 smoke test (铁律 10b 启动验证)
 - [ ] PT 状态面板 vs Redis/DB/QMT 三源 100% 一致 (max_diff = 0 不变量)
 - [ ] 风控链路面板能复现 Session 10 P0-α 熔断失效场景 (历史回放)
 - [ ] 因子 IC 面板跟 `factor_ic_history` 数据一致, 衰减告警 = `factor_lifecycle_monitor` 输出一致

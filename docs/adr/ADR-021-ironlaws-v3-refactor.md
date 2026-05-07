@@ -15,10 +15,10 @@
 
 - **inline source**: 全部 44 编号铁律 (1-44, 含 1 DEPRECATED #2) 散落在 `CLAUDE.md` L330-L508 (179 行)
 - **X 系列** (sprint period 软铁律候选):
-  - **X9** (条目 44): inline at L501, 编号 44 标 `(X9)` tag, 由 LL-097 沉淀 PR #170 c2 落地
-  - **X1 / X3 / X4 / X5**: 候选未 inline (sprint audit 软铁律, 散落在 audit docs / scripts/audit/README.md)
-  - **X2 / X6 / X7**: 跳号未定义 (历史决议保留)
-  - **X8**: 撤销 (T0-17 撤销同源, SHUTDOWN_NOTICE §195 v3 "PR #150 是补丁不是替代")
+ - **X9** (条目 44): inline at L501, 编号 44 标 `(X9)` tag, 由 LL-097 沉淀 PR #170 c2 落地
+ - **X1 / X3 / X4 / X5**: 候选未 inline (sprint audit 软铁律, 散落在 audit docs / scripts/audit/README.md)
+ - **X2 / X6 / X7**: 跳号未定义 (历史决议保留)
+ - **X8**: 撤销 (T0-17 撤销同源, SHUTDOWN_NOTICE §195 v3 "PR #150 是补丁不是替代")
 - **LL backref / ADR backref**: 散落 inline 在各条铁律内文 + 各 LL 内文, 无统一索引
 
 ### 1.2 触发事件: LL-098 沉淀 (PR #173 Step 6.1)
@@ -50,18 +50,18 @@ Sprint 内文档 3+ 处预占 `ADR-021` 编号:
 新建 `IRONLAWS.md` (项目根目录, 与 `CLAUDE.md` / `LESSONS_LEARNED.md` 平级) 作为铁律 SSOT:
 
 - **结构** (Q4=a 单文件):
-  - §0 Tier 分类标准
-  - §1 Tier 索引 (T1/T2/T3 + DEPRECATED + 候选 + 跳号 / 撤销)
-  - §2-§18 编号 1-44 + X9 完整内容 (复制 + 标准化, Q5=iii)
-  - §18 X 系列治理类 (44 X9 + X10 新)
-  - §19 候选未 promote (X1/X3/X4/X5 显式声明留 Step 6.2.5)
-  - §20 跳号 / 撤销 (X2/X6/X7 + X8)
-  - §21 关联
-  - §22 版本变更记录
+ - §0 Tier 分类标准
+ - §1 Tier 索引 (T1/T2/T3 + DEPRECATED + 候选 + 跳号 / 撤销)
+ - §2-§18 编号 1-44 + X9 完整内容 (复制 + 标准化, Q5=iii)
+ - §18 X 系列治理类 (44 X9 + X10 新)
+ - §19 候选未 promote (X1/X3/X4/X5 显式声明留 Step 6.2.5)
+ - §20 跳号 / 撤销 (X2/X6/X7 + X8)
+ - §21 关联
+ - §22 版本变更记录
 
 - **复制 + 标准化** (Q5=iii):
-  - 0 信息丢失 (复制保 100% 内容)
-  - 加价值: tier 标识 (T1/T2/T3) / LL backref / ADR backref / 关联 PR
+ - 0 信息丢失 (复制保 100% 内容)
+ - 加价值: tier 标识 (T1/T2/T3) / LL backref / ADR backref / 关联 PR
 
 ### 2.2 X10 加入 (D-2=A 仅 X10 inline)
 
@@ -91,9 +91,9 @@ X10 加入位置:
 **仅改**:
 - 顶部加 v3.0 banner (含 IRONLAWS.md pointer + ADR-021 link + 4-30 user 决议 D-1/D-2/D-3=A)
 - 铁律段 (L330-L508) reference 化, 留:
-  - 简述 (1-2 行 / 条) + tier 标识
-  - link IRONLAWS.md 完整内容
-  - 历史 X 系列状态简述
+ - 简述 (1-2 行 / 条) + tier 标识
+ - link IRONLAWS.md 完整内容
+ - 历史 X 系列状态简述
 
 **不改**:
 - 项目身份段
@@ -146,7 +146,7 @@ ADR-015 ~ ADR-020 共 6 项 gap 留待后续 ADR 写作时按需 lazy assignment
 
 ### 3.4 风险
 
-- **零风险**: 0 业务代码改动 / 0 .env / 0 服务重启 / 0 DML / 0 真金风险.
+- **零风险**: 0 业务代码改动 / 0 .env / 0 服务重启 / 0 DML / 0 资金风险.
 - **回滚成本低**: `git revert <merge-commit>` 即可还原 3 文件 + STATUS_REPORT.
 
 ### 3.5 铁律 22 / X5 自相一致

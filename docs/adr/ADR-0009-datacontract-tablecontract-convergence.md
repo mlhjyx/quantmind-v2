@@ -31,9 +31,9 @@ recorded_at: 2026-04-18
 1. **MVP 2.2 Data Lineage 期间**: 继续双 Contract 并轨, 不动. Lineage 写入的 `outputs: list[LineageRef]` 用 `LineageRef(table=str, pk_values=dict)` 最弱耦合表达, **不依赖任一 Contract**.
 2. **MVP 2.1c Sub3 完结后** (预计 2026-04-25+): 老 3 fetcher 退役, Contract 调用点从 8 → 3 (仅新 3 DataSource). **此时重新评估收敛**.
 3. **触发条件** (以下任一满足 → 启动 Contract 收敛专项):
-   - (a) MVP 2.3 Backtest Parity 设计时, `backtest_run` 表 schema 引入 UUID/JSONB/TEXT[]/DECIMAL[] 混合类型, 两套 Contract 表达能力差异造成重复
-   - (b) MVP 3.0 ROF 启动时, 资源声明需要绑定 Contract 元数据 (e.g. contract × resource_profile 映射)
-   - (c) 触发新增第 4 条数据管道 (e.g. JoinQuant / WindDF), 发现每次必须同步两套 Contract 成本显化
+ - (a) MVP 2.3 Backtest Parity 设计时, `backtest_run` 表 schema 引入 UUID/JSONB/TEXT[]/DECIMAL[] 混合类型, 两套 Contract 表达能力差异造成重复
+ - (b) MVP 3.0 ROF 启动时, 资源声明需要绑定 Contract 元数据 (e.g. contract × resource_profile 映射)
+ - (c) 触发新增第 4 条数据管道 (e.g. JoinQuant / WindDF), 发现每次必须同步两套 Contract 成本显化
 
 ## Alternatives Considered
 

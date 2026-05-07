@@ -12,15 +12,15 @@
 
 ## §1 Context
 
-### 1.1 当前真状态 (5-02 task 4 实测)
+### 1.1 当前状态 (5-02 task 4 实测)
 
 QuantMind PT 生产策略配置存在双源:
 
-| Source | 真值 | 真路径 |
+| Source | 真值 | 路径 |
 |---|---|---|
 | `configs/pt_live.yaml` | 4 因子 (CORE3+dv_ttm: turnover_mean_20 / volatility_20 / bp_ratio / dv_ttm) | ✅ 生产读路径 (`backend/engines/signal_engine.py:247`) |
 | DB `strategy_configs.config->'factors'` (latest version) | 5 因子 (CORE5: turnover_mean_20 / volatility_20 / reversal_20 / amihud_20 / bp_ratio) | ⚠️ stale, 47 天冻结 (5-02 真测) |
-| DB `strategy.factor_config` (jsonb) | 同 5 因子 + 真 stale 参数详见下表 (v0.4 修订) | ⚠️ stale, 同根 |
+| DB `strategy.factor_config` (jsonb) | 同 5 因子 + stale 参数详见下表 (v0.4 修订) | ⚠️ stale, 同根 |
 
 第二字段 `strategy.factor_config` 字段 drift 真测 (v0.4 patch, Layer 2.5.1 真测):
 
@@ -34,7 +34,7 @@ QuantMind PT 生产策略配置存在双源:
 | weight_method | "equal" | "equal_weight" (compose) | ✅ 字段名差异等价 (本 ADR v0.3 误标, v0.4 修正) |
 | **🆕 top_n** | **v2=15 / v1=20** | **20** | **⚠️ v2 漂移 (本 ADR v0.3 漏列, v0.4 加)** |
 
-> **v0.4 修订** (2026-05-02 task 2.5.1 真测): 原 v0.3 表标 "6 字段全 stale", 真测后判定: **4 真 stale + 2 字段误标 + 1 字段漏列**. ADR §2 决议 (yaml SSOT + 防御层) 不变 — 0 prod path 真用 stale (FU-1 真测 sustained). 仅元数据修订, 不触发 §2 reversibility (§2.4).
+> **v0.4 修订** (2026-05-02 task 2.5.1 真测): 原 v0.3 表标 "6 字段全 stale", 真测后判定: **4 stale + 2 字段误标 + 1 字段漏列**. ADR §2 决议 (yaml SSOT + 防御层) 不变 — 0 prod path 用 stale (FU-1 真测). 仅元数据修订, 不触发 §2 reversibility (§2.4).
 
 ### 1.2 历史 timeline (5-02 task 4 git 真测)
 
@@ -46,18 +46,18 @@ QuantMind PT 生产策略配置存在双源:
 | 2026-04-12 17:30 | `51b1409` | yaml CORE5→CORE3+dv_ttm cutover (WF OOS Sharpe=0.8659). **0 DB sync / 0 migration / 0 ADR** ⚠️ |
 | 5-02 | (本 ADR) | stale 沉淀决议 |
 
-### 1.3 真风险评估 (5-02 task 4 + task 5 caller 真测)
+### 1.3 风险评估 (5-02 task 4 + task 5 caller 真测)
 
 `grep -rn` 全代码库引用真测:
 
-| Source | 真路径数 | 真用途 | prod risk |
+| Source | 路径数 | 用途 | prod risk |
 |---|---|---|---|
 | `strategy_configs` (14 处) | 14 | 0 trading / 1 API factors 仅前端 / 1 一次性 INSERT (3-22 后冻结) / 4 docstring / 3 测试 / 1 archived | ⚠️ medium (前端展示 stale) |
 | **`factor_lifecycle / factor_registry` (365 行)** | **365** | **0 trading path** (signal_engine.py 仅 1 处注释; run_paper_trading.py + execution_service.py 0 hit). 写路径全在研究 onboarding / 监控 / 画像 / 前端管理 / 一次性 migration (task 5 audit 真测沉淀) | ✅ 无 |
 
-`/api/execution/algo-config` (execution.py:190): 不取 factors, **真读哪些字段未深查 (FU-1 范围)**.
+`/api/execution/algo-config` (execution.py:190): 不取 factors, **读哪些字段未深查 (FU-1 范围)**.
 
-**结论**: 0 生产 trading path 引用. 仅前端展示 + `/api/execution/algo-config` 真读字段未深查 (FU-1).
+**结论**: 0 生产 trading path 引用. 仅前端展示 + `/api/execution/algo-config` 读字段未深查 (FU-1).
 
 ## §2 Decision
 
@@ -98,7 +98,7 @@ DB `strategy_configs` + `strategy.factor_config` 是 **legacy snapshot** (setup 
 
 ### 2.4 Decision reversibility
 
-此 ADR 决议**可逆**. 如果未来真生产真有 driver 改 SSOT (例:多策略并行, yaml 单文件无法表达; 或 DB 真有读路径需求), 可重新决议:
+此 ADR 决议**可逆**. 如果未来真生产有 driver 改 SSOT (例:多策略并行, yaml 单文件无法表达; 或 DB 有读路径需求), 可重新决议:
 - 走新 ADR supersedes 此 ADR
 - 真测 driver 后再决议, 不预设方向
 
@@ -117,17 +117,17 @@ DB `strategy_configs` + `strategy.factor_config` 是 **legacy snapshot** (setup 
 
 - 任何分析 / 报表 / backtest 引用生产策略配置必走 yaml — 减少踩坑 (类似 task 2 audit "X vs Y drift Z%" trap 防范)
 - DB 历史版本保留作 archive — 后续审计 / 复盘可用
-- Cutover SOP + pre-commit hook enforce — 反"4-12 cutover 0 ADR 真 gap"重演
+- Cutover SOP + pre-commit hook enforce — 反"4-12 cutover 0 ADR gap"重演
 
 ### 3.3 反对意见 (alternative considered)
 
-- **(a) sync DB → yaml**: 反对. cutover 频率低 (3-22~4-12 唯一一次), schtask 维护成本 > 真受益. sync 后 DB 仍非 SSOT, 不消除 mental model 双源.
+- **(a) sync DB → yaml**: 反对. cutover 频率低 (3-22~4-12 唯一一次), schtask 维护成本 > 受益. sync 后 DB 仍非 SSOT, 不消除 mental model 双源.
 - **(b) deprecate DB strategy_configs**: 反对. 13 caller 改动 (尤其 `/api/strategies/{id}` 前端展示链), P3 工作量, 0 prod risk 不值得.
 - **(c) 双向同步 yaml ↔ DB**: 反对. race / divergence 风险, 测试覆盖成本高. CC task 4 audit 显式反推荐.
 
 ## §4 Stale 字段清单 (本 ADR cover 范围, v0.4 patch)
 
-DB `strategy.factor_config` 真 stale 字段清单 (v0.4 修订, Layer 2.5.1 真测):
+DB `strategy.factor_config` stale 字段清单 (v0.4 修订, Layer 2.5.1 真测):
 
 | 字段 | DB stale | yaml | 防误读处理 |
 |---|---|---|---|
@@ -143,7 +143,7 @@ DB `strategy.factor_config` 真 stale 字段清单 (v0.4 修订, Layer 2.5.1 真
 
 | # | 项 | 优先级 | 归属 |
 |---|---|---|---|
-| FU-1 | 6 字段 caller 深查 — ✅ **DONE** (5-02 task 2.5.1 audit, 0 prod path 真用 stale, ADR §2 决议 sustained) | P2→done | [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) |
+| FU-1 | 6 字段 caller 深查 — ✅ **DONE** (5-02 task 2.5.1 audit, 0 prod path 用 stale, ADR §2 决议) | P2→done | [docs/audit/strategy_factor_config_callers_deep_2026_05_02.md](../audit/strategy_factor_config_callers_deep_2026_05_02.md) |
 | FU-2 | 前端 `/api/strategies/{id}` UI banner 实施 (静态文案, ~30 行 React) | P2 | frontend ticket (随时起) |
 | FU-3 | GLOSSARY §10 footnote 与本 ADR cross-link verify (双向) | P3 | 本 ADR PR 顺手做 |
 | FU-4 | factor_evaluation 表 (5-02 task 3 标 0 行) 启用时机决议 | P3 | Layer 2.5 (proposed) sub-task |
@@ -189,7 +189,7 @@ PGPASSWORD=quantmind psql -U xin -h localhost -d quantmind_v2 -c \
 # 4. cross-link 完整
 grep "ADR-023" docs/FACTOR_COUNT_GLOSSARY.md docs/audit/yaml_vs_db_strategy_configs_drift_2026_05_02.md
 
-# 5. setup_paper_trading.py deprecated marker 真存在
+# 5. setup_paper_trading.py deprecated marker 存在
 grep -n "DeprecationWarning\|deprecated" scripts/setup_paper_trading.py
 ```
 

@@ -124,7 +124,7 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 
 **Cons**:
 - 破坏 `daily_reconciliation.write_live_snapshot` 契约 (已约定写 'live')
-- 未来真引入 paper 影子对照时, live 和 paper 数据混在 'paper' 命名空间, 再次根因
+- 未来引入 paper 影子对照时, live 和 paper 数据混在 'paper' 命名空间, 再次根因
 - 掩盖 bug 而非根治, 违反铁律 33 精神 (fail-loud)
 
 **不选理由**: 治标不治本. 把熔断/跳空/换仓问题从"读不到"变成"读到 paper 数据假装", 语义更混乱.
@@ -140,13 +140,13 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 - Sub2 阶段 (下周) 无法交付, 拖延 live 重启
 - 契约 D2 的动态化方案已覆盖本质
 
-**不选理由**: 过度工程, 不符合铁律 23 (不预设抽象). 若未来真出现多模式需求再抽.
+**不选理由**: 过度工程, 不符合铁律 23 (不预设抽象). 若未来出现多模式需求再抽.
 
 ## Consequences
 
 ### 好处
 
-- **熔断 L1-L4 live 模式恢复工作** — 真金白银有保护层
+- **熔断 L1-L4 live 模式恢复工作** — 金白银有保护层
 - **每日误换仓消除** — paper_broker.load_state 读到真实持仓, needs_rebalance 按月度判定
 - **组合跳空检测恢复** — pt_monitor live 模式正确读持仓权重
 - **铁律 34 修复** — config SSOT 精神扩展到运行时状态命名空间
@@ -198,10 +198,10 @@ ALTER TABLE strategy ADD CONSTRAINT chk_strategy_mode
 - [x] **阶段 2 D2-c** (2026-04-20 Session 15 PR #27 `337fd1c`): 手工补 4-17 snapshot — `scripts/repair/restore_snapshot_20260417.py` + 8 tests, DB apply 24 rows (reconstruct = 4-16 snapshot + 4-17 trade_log fills). C5 pass 证实 snapshot 正确.
 - [x] **阶段 2 PR-C** (2026-04-20 Session 16 PR #28 `96c7fe0`): `scripts/pt_audit.py` 5 主动 check (C1 st_leak P0 / C2 mode_mismatch P1 / C3 turnover_abnormal P1 / C4 rebalance_date P2 / C5 db_drift P1) + aggregated DingTalk alert + 10 tests. dry-run 4-17 验证: C3 68.4% P1 + C4 非月末 P2 捕获 Session 10 P0-γ 每日换仓.
 - [x] **阶段 4 Session 17** (2026-04-20): 分层重启 schtasks
-  - [x] `pt_audit` schtasks 上线 (`QuantMind_PTAudit` 17:35 + 非交易日 guard + `scheduler_task_log` 持久化 + `logs/pt_audit.log` FileHandler)
-  - [x] `QuantMind_DailySignal` (16:30) **reenable** — PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护 (DB 写路径不触 QMT)
-  - [x] `QuantMind_DailyExecuteAfterData` (17:05) **永久废除** — P0-δ paper 污染源, 从 `scripts/setup_task_scheduler.ps1` 源头删除. 业务由 `DailyReconciliation` 15:40 + `DailySignal` 16:30 替代. 手工 `schtasks /delete /tn QuantMind_DailyExecuteAfterData /f`.
-  - [ ] `QuantMind_DailyExecute` (09:31 live) reenable — 等 Stage 4.2 (Session 18+) 首周 pt_audit + dry-run 无异常后
+ - [x] `pt_audit` schtasks 上线 (`QuantMind_PTAudit` 17:35 + 非交易日 guard + `scheduler_task_log` 持久化 + `logs/pt_audit.log` FileHandler)
+ - [x] `QuantMind_DailySignal` (16:30) **reenable** — PR-A 动态 execution_mode + D2-a 蒸发 guard 双重守护 (DB 写路径不触 QMT)
+ - [x] `QuantMind_DailyExecuteAfterData` (17:05) **永久废除** — P0-δ paper 污染源, 从 `scripts/setup_task_scheduler.ps1` 源头删除. 业务由 `DailyReconciliation` 15:40 + `DailySignal` 16:30 替代. 手工 `schtasks /delete /tn QuantMind_DailyExecuteAfterData /f`.
+ - [ ] `QuantMind_DailyExecute` (09:31 live) reenable — 等 Stage 4.2 (Session 18+) 首周 pt_audit + dry-run 无异常后
 - [ ] **阶段 3 PR-D** (Session 19+): DDL strategy.execution_mode + CHECK + 现有 strategy_id=`28fc37e5` 迁移拆分为 `live_strat` + `paper_strat` + FK 打通 trade_log/position_snapshot/performance_series/circuit_breaker_state
 - [ ] 注册 ADR-008 → `python scripts/knowledge/register_adrs.py --apply`
 
@@ -246,7 +246,7 @@ _assert_positions_not_evaporated(cur, trade_date, strategy_id, qmt_positions)
 - [x] D3-KEEP 契约保留 (`signals` / `trade_log` broker 层绑定 / `paper_trading_service` / `pms_engine` / `realtime_data_service` / `qmt_reconciliation` / `pt_qmt_state` 所有 hardcoded 经 Session 20 全仓盲区扫描确认)
 - [x] 测试契约强制 (`test_execution_mode_isolation.py:471/479` assert signal_service D3-KEEP + 其他契约测试全绿)
 - [x] Stage 4.1 首日 schtasks 自动化验证通过 (15:40 reconciliation / 16:30 signal_phase / 17:35 pt_audit 全部自动跑成功)
-- [x] DailyExecute 09:31 live 仍 Disabled (cutover 后立即恢复真金下单不安全, 需 F14 自愈 + Session 21 F19 清理后 Stage 4.2 评估)
+- [x] DailyExecute 09:31 live 仍 Disabled (cutover 后立即恢复金下单不安全, 需 F14 自愈 + Session 21 F19 清理后 Stage 4.2 评估)
 
 ### 操作手术 (最小可逆)
 
@@ -279,10 +279,10 @@ curl http://127.0.0.1:8000/health  # 期望回退 {"execution_mode":"paper"}
 ### 后果 (与 §Consequences 对齐)
 
 **实际好处兑现**:
-- Session 20 cutover 后 D2 契约**实际生效** (之前 D2 代码路径已补完但 `settings='paper'` 致 runtime 未真走 live 命名空间)
+- Session 20 cutover 后 D2 契约**实际生效** (之前 D2 代码路径已补完但 `settings='paper'` 致 runtime 未走 live 命名空间)
 - F14 (circuit_breaker_state live 0 rows) 4-21 16:30 自愈路径打通
 - F17 (`.env` 17 天僵尸) 根因消除
-- 熔断 L1-L4 live 保护**真正生效** (P0-α 终结, 原 Session 10 发现)
+- 熔断 L1-L4 live 保护**正生效** (P0-α 终结, 原 Session 10 发现)
 
 **新观察** (cutover 后 F19 副产物):
 - PMS 14:30 日志 5 "无当前价格跳过" (002441/300833/688739/920212/920950) 正是 F19 phantom 5 码, 每日污染 PMS. Session 21 清理更紧迫
