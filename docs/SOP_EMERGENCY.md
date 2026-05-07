@@ -3,8 +3,8 @@
 > QuantMind V2 应用层 fire / 实盘账户保护 / 生产事件响应 SOP
 > 版本: v0.1 (草稿) | 日期: 2026-05-01
 > 范围补充: 与 `docs/SOP_DISASTER_RECOVERY.md` 配对
->   - DR (L1-L5): 进程崩溃 / 系统蓝屏 / PG 损坏 / 磁盘故障 / 换机 — **基础设施层**
->   - 本 SOP: 应用 zombie / 真账户异常 / Servy 链停 / DB 连接池 / 紧急清仓 / 实盘事件 — **应用层**
+> - DR (L1-L5): 进程崩溃 / 系统蓝屏 / PG 损坏 / 磁盘故障 / 换机 — **基础设施层**
+> - 本 SOP: 应用 zombie / 真账户异常 / Servy 链停 / DB 连接池 / 紧急清仓 / 实盘事件 — **应用层**
 > 生效前提: `EXECUTION_MODE=paper` (backend/.env:17) + `settings.LIVE_TRADING_DISABLED=True` (config.py:44 默认)
 
 ---
@@ -164,7 +164,7 @@ PGPASSWORD=quantmind psql -U xin -h localhost -d quantmind_v2 -c \
 
 **Step 3** — 若 NAV 跌幅触发风控 (PR #139 SingleStockStopLossRule -8%):
 - 钉钉告警自动到. 检查 `risk_event_log` 是否有当日 entry:
-  ```sql
+```sql
   SELECT triggered_at, severity, rule_id, code, action_taken, LEFT(reason, 100)
   FROM risk_event_log WHERE triggered_at::date = CURRENT_DATE;
   ```
@@ -206,7 +206,7 @@ NAV 跌幅 / 持仓异常告警
 
 - 4-29 实盘事件 (SHUTDOWN_NOTICE §1-§4 v3 narrative): 30天 risk_event_log 0 行 + user 上午 chat 授权清仓
 - LL-081 (Session 38, PR #100/#101/#103/#105): QMT zombie + Redis status 无 TTL → 4h+ silent failure
-- LL-097 X9 (PR #170): schedule / config 注释 ≠ 真停服, 必显式 restart
+- LL-097 X9 (PR #170): schedule / config 注释 ≠ 停服, 必显式 restart
 - T0-15/16/18 已 closed (PR #170 batch-2-p0): QMTFallbackTriggeredRule + qmt_data_service fail-loud + namespace assert
 - T0-19 (PR #167/#168 phase 1+2): emergency_close 后 trade_log/risk_event_log/perf_series 自动写 audit hook
 
@@ -386,7 +386,7 @@ D:\tools\Servy\servy-cli.exe start --name="QuantMind-CeleryBeat"
 ### 适用场景 (任一即触发)
 
 - §2 决策树底部 user 决议清仓 (单股黑天鹅 / 系统性事件)
-- 实盘风控失效 + user 显式 chat 授权 (4-29 真案例 narrative v4)
+- 实盘风控失效 + user 显式 chat 授权 (4-29 案例 narrative v4)
 - 系统逻辑层错误 + 持仓暴露不可控
 
 ### 工具真实位置
@@ -438,7 +438,7 @@ export LIVE_TRADING_FORCE_OVERRIDE=1
 export LIVE_TRADING_OVERRIDE_REASON="Emergency close 2026-05-01: <具体原因>"
 ```
 
-**Step 3 — 真执行** (interactive 模式):
+**Step 3 — 执行** (interactive 模式):
 ```powershell
 .\.venv\Scripts\python.exe scripts\emergency_close_all_positions.py --execute
 # 提示输入, 必须精确输 'YES SELL ALL' (含空格大小写)
@@ -490,13 +490,13 @@ user 决议紧急清仓
 
 ### 红线
 
-- ❌ **禁** 跳过 Step 1 dry-run 直 --execute (4-29 forensic: 10:38-10:41 三次 ImportError dry-run failed → 10:43:54 才 sell, 反向证明 dry-run 起到了真防护)
+- ❌ **禁** 跳过 Step 1 dry-run 直 --execute (4-29 forensic: 10:38-10:41 三次 ImportError dry-run failed → 10:43:54 才 sell, 反向证明 dry-run 起到了防护)
 - ❌ **禁** OVERRIDE_REASON 写空字符串 / "test" / "ok" 等非具体内容 — 双因素加固 1 会 raise (audit 价值)
-- ❌ **禁** 在 LIVE_TRADING_DISABLED guard fail 时绕开走 paper_broker — paper 不发真单, 不解决问题 (但物理隔离设计如此, 不要拼凑)
+- ❌ **禁** 在 LIVE_TRADING_DISABLED guard fail 时绕开走 paper_broker — paper 不发单, 不解决问题 (但物理隔离设计如此, 不要拼凑)
 - ❌ **禁** 反复 --confirm-yes (audit log 已写, OVERRIDE env 持久会被未来 schtask 误用)
 - ❌ **禁** sells 后未跑 Step 4 audit 即认为完成 (4-29 forensic 实测: trade_log 0 行 since 4-17, 因为 4-29 emergency_close 当时还没有 T0-19 audit hook, 直到 PR #168 phase 2 才修)
 
-### 4-29 真案例 forensic (SHUTDOWN_NOTICE §4 v3)
+### 4-29 案例 forensic (SHUTDOWN_NOTICE §4 v3)
 
 5 个 emergency_close_*.log 文件实测时序:
 
@@ -508,12 +508,12 @@ user 决议紧急清仓
 | 10:41:14 | emergency_close_20260429_104114.log | 317 B | dry-run #2 |
 | **10:43:54** | **emergency_close_20260429_104354.log** | **13,992 B** | **--execute --confirm-yes 成交 18 股** |
 
-教训: dry-run 抓出 2 次 ImportError 是工具的真防护 (LL-074 类 fail-loud 设计), 第 5 次才真发单。
+教训: dry-run 抓出 2 次 ImportError 是工具的防护 (LL-074 类 fail-loud 设计), 第 5 次才真发单。
 
 ### 教训 anchor
 
-- 4-29 narrative v3+v4 (PR #165, PR #169 D3-C 实测): user 上午 ~10:40 chat 授权, CC 10:43:54 真执行
-- LL-095 (PR #169 D3 v4): emergency_close status=57 cancel 真因综合判定 (不假设单一原因)
+- 4-29 narrative v3+v4 (PR #165, PR #169 D3-C 实测): user 上午 ~10:40 chat 授权, CC 10:43:54 执行
+- LL-095 (PR #169 D3 v4): emergency_close status=57 cancel 因综合判定 (不假设单一原因)
 - LL-096 (PR #169): forensic 类 spike 修订不可一次性结论
 - T0-19 (PR #167 phase 1 + #168 phase 2): emergency_close 后 trade_log/risk_event_log/perf_series 自动写 audit hook (4-29 当时没有, 现在有)
 - link_paused_2026_04_29.md (PR #150): T1 sprint link-pause 4 件事 (LIVE_TRADING_DISABLED + 2 Beat 注释 + 2 smoke skip), 还原前置见该文档
@@ -546,7 +546,7 @@ user 决议紧急清仓
 │       └─ §4 连接池耗尽 → kill idle in transaction + restart Worker
 │
 ├─ 告警类型: 风控层?
-│   ├─ risk_event_log 当日 0 行 + 真有 NAV 跌? (4-29 同模式)
+│   ├─ risk_event_log 当日 0 行 + 有 NAV 跌? (4-29 同模式)
 │   │   └─ silent failure (LL-081 模式), restart Beat + LL-081 guard 检查 + user 决议
 │   │
 │   └─ MVP 3.1 Risk Framework 周一首生产 (Monday 09:00)?
@@ -698,7 +698,7 @@ PGPASSWORD=quantmind psql -U xin -h localhost -d quantmind_v2 -c \
 | QuantMind_IntradayMonitor | (disabled) |
 | QuantMind_CancelStaleOrders | (disabled) |
 
-> ⚠️ disable schtask 是真停跑 (vs Beat schedule 注释 = LL-097 X9 真坑). 但 schtask 重启命令是 `schtasks /change /tn <name> /enable`。
+> ⚠️ disable schtask 是停跑 (vs Beat schedule 注释 = LL-097 X9 坑). 但 schtask 重启命令是 `schtasks /change /tn <name> /enable`。
 
 ---
 

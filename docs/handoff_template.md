@@ -1,21 +1,21 @@
 # Handoff Template — sprint state SQL verify SOP
 
 **Document ID**: handoff_template
-**Status**: Phase 4.2 sustained CC implementation, sustained Layer 4 SOP Topic 1 B (handoff SQL verify 强制 template)
-**Source**: protocol_v1.md §2 Topic 1 B + Topic 1 C 决议 sustained
+**Status**: Phase 4.2 CC implementation, Layer 4 SOP Topic 1 B (handoff SQL verify 强制 template)
+**Source**: protocol_v1.md §2 Topic 1 B + Topic 1 C 决议
 **Created**: 2026-05-01
 
 ---
 
-## §1 真核哲学 sustained
+## §1 核哲学
 
-**Handoff 真目的**: cross-session continuity sustained — 真**0 fabricated 数字** sustained (anti-pattern v1 守门), 真**0 假设 path/file/function** sustained (anti-pattern v2 守门), 真**0 信 user GUI cite without source** sustained (anti-pattern v3 守门).
+**Handoff 目的**: cross-session continuity — **0 fabricated 数字** (anti-pattern v1 守门), **0 假设 path/file/function** (anti-pattern v2 守门), **0 信 user GUI cite without source** (anti-pattern v3 守门).
 
-**真核守门 sustained**: handoff 中**任一数字** 真**必 cite SQL query + result + timestamp** sustained — 真**0 数字凭空** sustained.
+**核守门**: handoff 中**任一数字** **必 cite SQL query + result + timestamp** — **0 数字凭空**.
 
 ---
 
-## §2 Schema (handoff entry 真核 format)
+## §2 Schema (handoff entry 核 format)
 
 ```yaml
 date: YYYY-MM-DD HH:MM (CC 实测 timestamp, 不假设)
@@ -38,11 +38,11 @@ verdict: closed / sustained / blocked / STOP
 
 ---
 
-## §3 真核 cite SOP 强制 (Topic 1 B + Topic 1 C 同源)
+## §3 核 cite SOP 强制 (Topic 1 B + Topic 1 C 同源)
 
-handoff 中**任一数字** sustained 必 cite 1 项:
+handoff 中**任一数字** 必 cite 1 项:
 
-| 数字类型 | 真**必 cite** source |
+| 数字类型 | **必 cite** source |
 |---|---|
 | factor count | `SELECT count(DISTINCT factor_name) FROM factor_ic_history;` + result + timestamp |
 | Tier 0 数 | `wc -l docs/audit/TIER0_REGISTRY.md` OR `grep -c "T0-" TIER0_REGISTRY.md` + result + timestamp |
@@ -55,23 +55,23 @@ handoff 中**任一数字** sustained 必 cite 1 项:
 | trade_log MAX | `SELECT MAX(trade_time) FROM trade_log;` + result + timestamp |
 | schedule task last run | `SELECT MAX(created_at) FROM scheduler_task_log WHERE task_name='<task>';` + result + timestamp |
 
-**真核 SOP**: handoff 内**任一上述数字** sustained 必 attach 1 row "sql_verify" entry sustained per §2 schema.
+**核 SOP**: handoff 内**任一上述数字** 必 attach 1 row "sql_verify" entry per §2 schema.
 
 ---
 
-## §4 Anti-pattern 守门 sustained
+## §4 Anti-pattern 守门
 
 | anti-pattern | 守门 |
 |---|---|
-| v1 凭空数字 | 真核 §3 cite source SOP enforce |
-| v2 凭空 path | path cite 真**必 ls/find/glob verify** sustained |
-| v3 信 user GUI cite | user GUI cite sustained 真**必 CC SQL/script/log cross-check** sustained |
-| v4 静态分析 = 真测 | 真**必 真 run command + 真 output cite** sustained, 真**0 grep/cat 推断** sustained |
-| v5 Claude 给具体 | 真**必 CC 实测决议** sustained, 真**Claude 仅 verify direction** sustained |
+| v1 凭空数字 | 核 §3 cite source SOP enforce |
+| v2 凭空 path | path cite **必 ls/find/glob verify** |
+| v3 信 user GUI cite | user GUI cite **必 CC SQL/script/log cross-check** |
+| v4 静态分析 = 真测 | **必 run command + output cite**, **0 grep/cat 推断** |
+| v5 Claude 给具体 | **必 CC 实测决议**, **Claude 仅 verify direction** |
 
 ---
 
-## §5 Example handoff entry (sustained Phase 4.2 CC 起手 sediment)
+## §5 Example handoff entry (Phase 4.2 CC 起手 sediment)
 
 ```yaml
 date: 2026-05-01 21:25 (CC 实测 timestamp)
@@ -95,7 +95,7 @@ work_next:
   - WI 7: STATUS_REPORT + PR push
 findings:
   - D-79 sediment: Layer 4 SOP align Phase 4.2 (sustained Topic 1-4 决议 closed)
-  - D-73~D-77 placeholder sustained: 真 0 individual content sustained, 留 Layer 2 sprint Week 2-3 backfill
+  - D-73~D-77 placeholder sustained:  0 individual content sustained, 留 Layer 2 sprint Week 2-3 backfill
 verdict: sustained (in progress)
 ```
 

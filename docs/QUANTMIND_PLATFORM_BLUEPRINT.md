@@ -1,15 +1,15 @@
 # QuantMind Platform Blueprint (QPB v1.16)
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
-> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (6 PR) → v1.9 (intermediate stamp) → v1.10 Session 38-39 (2026-04-27 Monday 18:00-22:30) — MVP 3.3 Signal-Exec 60% 完成 + LL-081 三通道闭合 + LL-076 phase 2 真完结 (单日 10 PR / Wave 3 进 3.x) → v1.11 Session 39 加时 (2026-04-28 00:00-01:00 Tuesday 凌晨) — MVP 3.3 batch 2 Step 2 + 2.5 双完结 (PR #110/#111/#112) + STRICT flip 真切换 LIVE → v1.12 Session 40 (2026-04-28 Tuesday 全天) — MVP 3.3 ✅ 完结 (Stage 3.0 真切换 PR #116 + Stage 3.1 dead code cleanup PR #118) + 用户挑战驱动撤 5-day gate, 调仓日历史 scan 25 trade_dates bit-identical → v1.13 Session 41 (2026-04-28 Tuesday 17:00-17:55) — MVP 3.4 batch 1+2 完结 → v1.14 Session 41 加时 (2026-04-28 Tuesday 17:55-18:30) — MVP 3.4 batch 3 完结 → v1.15 Session 41 持续加时 (2026-04-28 Tuesday 18:30-19:30) — MVP 3.4 batch 4 完结 = MVP 3.4 ✅ 全部完结 → **v1.16 Session 42 (2026-04-28 Tuesday 19:30-22:00) — MVP 3.5 Evaluation Gate Framework ✅ 全 3 批一日完结 = Wave 3 5/5 完结 (PR #123 Pipeline+7Gates / PR #124 lifecycle 双路径 / PR #125 Strategy Gates+ADR-014), 单 session 3 PR + 6 reviewer fix commits + 1 docs commit (设计稿 v2 重构 4→3 批), AI 自主 0 user 接触除 reviewer cancel 决策**
+> **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (6 PR) → v1.9 (intermediate stamp) → v1.10 Session 38-39 (2026-04-27 Monday 18:00-22:30) — MVP 3.3 Signal-Exec 60% 完成 + LL-081 三通道闭合 + LL-076 phase 2 完结 (单日 10 PR / Wave 3 进 3.x) → v1.11 Session 39 加时 (2026-04-28 00:00-01:00 Tuesday 凌晨) — MVP 3.3 batch 2 Step 2 + 2.5 双完结 (PR #110/#111/#112) + STRICT flip 切换 LIVE → v1.12 Session 40 (2026-04-28 Tuesday 全天) — MVP 3.3 ✅ 完结 (Stage 3.0 切换 PR #116 + Stage 3.1 dead code cleanup PR #118) + 用户挑战驱动撤 5-day gate, 调仓日历史 scan 25 trade_dates bit-identical → v1.13 Session 41 (2026-04-28 Tuesday 17:00-17:55) — MVP 3.4 batch 1+2 完结 → v1.14 Session 41 加时 (2026-04-28 Tuesday 17:55-18:30) — MVP 3.4 batch 3 完结 → v1.15 Session 41 持续加时 (2026-04-28 Tuesday 18:30-19:30) — MVP 3.4 batch 4 完结 = MVP 3.4 ✅ 全部完结 → **v1.16 Session 42 (2026-04-28 Tuesday 19:30-22:00) — MVP 3.5 Evaluation Gate Framework ✅ 全 3 批一日完结 = Wave 3 5/5 完结 (PR #123 Pipeline+7Gates / PR #124 lifecycle 双路径 / PR #125 Strategy Gates+ADR-014), 单 session 3 PR + 6 reviewer fix commits + 1 docs commit (设计稿 v2 重构 4→3 批), AI 自主 0 user 接触除 reviewer cancel 决策**
 > **作者**: Architect pass (Opus)
 > **状态**: v1.16 (12 Framework + 6 升维 + **17 MVP**, 27-36.5 周), **Wave 1 ✅ 完结 7/7 + Wave 2 ✅ 完结 + Wave 3 ✅ 完结 5/5 (MVP 3.1 ✅ + MVP 3.2 ✅ + MVP 3.3 ✅ + MVP 3.4 ✅ + **MVP 3.5 ✅ 全部完结 3/3 batches**), 进 Wave 4 主线 (Observability + Performance Attribution + CI/CD + Backup & DR)**
 >
 > **v1.16 验证证据** (Session 42 末 2026-04-28 22:00): **MVP 3.5 + Wave 3 全部完结** — 已 merged PRs **#123 (batch 1: PlatformEvaluationPipeline + 7 Gates concrete G1-G10 + utils paired_bootstrap, 33 unit / 1 smoke) + #124 (batch 2: factor_lifecycle 双路径接 PlatformEvaluationPipeline + 4 周观察期 + DualPathComparison, 16 unit / 1 smoke) + #125 (batch 3: Strategy Gates G1'/G2'/G3' + PlatformStrategyEvaluator + ADR-014 锁契约, 17 unit / 1 smoke)**. 累计 66/66 unit + 45/45 smoke (baseline 42→45 +3 不破, 铁律 40 合规). 6 reviewer fix commits / 12 finding 全决议 (10 采纳 + 2 设计澄清). LL-059 9 步闭环第 82-84 次, AI 自主 0 user 接触除 reviewer cancel 决策. **关键架构**: G1-G10 因子 + G1'-G3' 策略 V1 契约 (ADR-014) + EvaluationPipeline ACCEPT/REJECT/WARNING 三档决策 + Strategy register() 不 inline wire (避 5min 阻塞, 显式 evaluate_strategy 升 LIVE) + GateContext.extra MappingProxyType read-only 防 Gate 间共享污染. **MVP 3.5 设计稿 v2 重构** (Session 42 开工 commit 65ae635): precondition 复核发现 MVP 1.3c 已 wire G9/G10 register 硬门 → 4 批合并为 3 批. **进 Wave 4 主线**: Observability + Performance Attribution + CI/CD + Backup & DR. **跨 PR Follow-up**: MVP 3.4 7 日观察 sunset (5/3 起算) + DBStrategyRegistry update_status(LIVE) 强制 evaluation_required check (MVP 3.5.1) + G10 LLM V2 (Wave 4+).
 > **参考**:
->   - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
->   - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
->   - `CLAUDE.md` (42 条铁律，本蓝图所有框架必须兑现)
+> - `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前系统设计真相源)
+> - `docs/DEV_AI_EVOLUTION.md` (AI 闭环设计，作为 Platform 的 Application)
+> - `CLAUDE.md` (42 条铁律，本蓝图所有框架必须兑现)
 
 ---
 
@@ -574,7 +574,7 @@ class BatchBacktestExecutor:
 
 ### Framework #6: Signal & Execution Framework
 
-**目标**: 唯一信号→订单路径，配置真正 SSOT
+**目标**: 唯一信号→订单路径，配置正 SSOT
 
 **核心接口:**
 ```python
@@ -1007,7 +1007,7 @@ CREATE TABLE data_lineage (
 **解决什么**:
 - 5yr/12yr baseline drift 发现慢的根因
 - 源数据修正 (Tushare 回溯) → 下游自动 stale 标记
-- 铁律 15 真正兑现
+- 铁律 15 正兑现
 - 开源参考: OpenLineage / Marquez / DataHub
 
 **落地 Wave**: Wave 2 (配合 Data Framework)
@@ -1049,7 +1049,7 @@ if residual > threshold: flag("regime shift or model drift")
 ```
 
 **解决什么**:
-- 研究方向自动有焦点（哪个因子真贡献 alpha vs 噪声）
+- 研究方向自动有焦点（哪个因子贡献 alpha vs 噪声）
 - Regime shift 自动 flag
 - 成本 drift 可见（铁律 18 持续监控）
 
@@ -1265,7 +1265,7 @@ Wave 5 (4-6 周): Operator UI ⭐ v1.9 新增 (ADR-012)
 - **依赖**: MVP 1.1 Platform Skeleton + MVP 2.1 Data Framework + ADR-010 + **ADR-010 addendum (v1.7)**
 - **设计文档**: `docs/mvp/MVP_3_1_risk_framework.md` (批 1) + `docs/mvp/MVP_3_1_batch_2_plan.md` + `docs/mvp/MVP_3_1_batch_3_cb_wrapper.md` + `docs/adr/ADR-010-addendum-cb-feasibility.md`
 - **过渡期保护**: intraday_monitor 组合告警 + emergency_stock_alert.py (单股跌 >8% 钉钉, ADR-010 D6 过渡脚本) + 盘后三检 (reconciliation / pt_audit / pt_watchdog)
-- **Sunset gate** (ADR-010 addendum, Session 30 确认 A+B+C 条件): (A 必) adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 真事件 (非 smoke); (B 必) 1 次 L4 审批完整跑通 (`approve_l4.py` → `approval_queue` → `cb_recover_l0` event → signal_engine multiplier=1.0); (C 或) Wave 4 Observability MVP 4.x 启动, `/risk` dashboard 统一可视化. 满足后启动批 3b inline 重审消例外 + 老表 DROP
+- **Sunset gate** (ADR-010 addendum, Session 30 确认 A+B+C 条件): (A 必) adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 事件 (非 smoke); (B 必) 1 次 L4 审批完整跑通 (`approve_l4.py` → `approval_queue` → `cb_recover_l0` event → signal_engine multiplier=1.0); (C 或) Wave 4 Observability MVP 4.x 启动, `/risk` dashboard 统一可视化. 满足后启动批 3b inline 重审消例外 + 老表 DROP
 
 **MVP 3.2: Strategy Framework (#3)** (原 MVP 3.1)
 
@@ -1387,10 +1387,10 @@ MVP 1.1 (Platform Skeleton)
 ## Part 5 · 铁律 Mapping (v1.4 重做, 分 3 类)
 
 > **v1.4 修订**: 原 Mapping 让所有铁律看起来都"被自动执行", 实际一半是文化条款.
-> 现在分 3 类: **代码强制** (真硬门) / **文化约束** (靠自律) / **演进中** (未来代码化).
+> 现在分 3 类: **代码强制** (硬门) / **文化约束** (靠自律) / **演进中** (未来代码化).
 > 铁律以 CLAUDE.md v2 (40 条) 为准.
 
-### 类型 A: 代码强制 (真硬门, 违反 = 编译/启动/CI 失败)
+### 类型 A: 代码强制 (硬门, 违反 = 编译/启动/CI 失败)
 
 | 铁律 | 兑现 Framework / 机制 | 强制点 |
 |---|---|---|
@@ -1448,14 +1448,14 @@ MVP 1.1 (Platform Skeleton)
 
 ### 执行分布 (v1.7 诚实数据, 铁律 43 纳入)
 
-- **代码强制**: 14 条 (33%) — 这些是真硬门
+- **代码强制**: 14 条 (33%) — 这些是硬门
 - **文化约束**: 10 条 (23%) — 这些靠我自律, 代码查不到
 - **演进中**: 17 条 (40%) — 4 Wave 落地后 6-10 条升级为代码强制 (含铁律 43)
 - **PR 流程**: 1 条 (铁律 42) — governance 层, 独立统计
 
 **4 Wave 完成后预期**: 代码强制 25 条 (58%) / 文化约束 10 条 (23%) / 演进中 7 条 (16%) / governance 1 条 (3%).
 
-**产出**: 把"假硬门"幻觉消除, 我实施时清楚哪些真被代码拦截, 哪些是自律.
+**产出**: 把"假硬门"幻觉消除, 我实施时清楚哪些被代码拦截, 哪些是自律.
 
 ---
 
