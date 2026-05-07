@@ -38,9 +38,18 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""
     TAVILY_BASE_URL: str = "https://api.tavily.com"
     ANSPIRE_API_KEY: str = ""
-    ANSPIRE_BASE_URL: str = "https://open.anspire.cn"
+    # 5-07 sub-PR 8b-pre: align fetcher SSOT (plugin.anspire.cn = API endpoint;
+    # open.anspire.cn 是 developer portal 真**API key 注册站**, 反 API endpoint).
+    # 真因 sediment: 5-07 CC live probe + WebSearch evidence — 沿用 fetcher default
+    # SSOT 体例 (anspire.py:47 + .env.example:35 + pyproject.toml:109 align).
+    # 详 LL-110 web_fetch SOP + sub-PR 8b-pre 真讽刺 #16 sediment 加深.
+    ANSPIRE_BASE_URL: str = "https://plugin.anspire.cn"
     MARKETAUX_API_KEY: str = ""
-    MARKETAUX_BASE_URL: str = "https://api.marketaux.com/v1"
+    # 5-07 sub-PR 8b-pre: align fetcher SSOT (base url 反含 /v1 path).
+    # fetcher marketaux.py:138 自加 `/v1/news/all`, base 含 /v1 致 URL 双 v1 → 404.
+    # 真因 sediment: 5-07 CC live probe HTTP 200 verify (api.marketaux.com/v1/news/all).
+    # 沿用 marketaux.py:50 + .env.example:53 + pyproject.toml:111 align.
+    MARKETAUX_BASE_URL: str = "https://api.marketaux.com"
     GDELT_BASE_URL: str = "https://api.gdeltproject.org/api/v2/doc/doc"
     RSSHUB_BASE_URL: str = "http://localhost:1200"
 
