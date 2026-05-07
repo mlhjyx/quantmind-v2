@@ -34,7 +34,7 @@ post-PR #254 News API endpoint 真值 (反 Beat schedule register):
 
 ** Risk v2 Beat schedule 4-29 [PAUSE T1_SPRINT_2026_04_29] 7+ day** ([beat_schedule.py:59 + 74](../../backend/app/tasks/beat_schedule.py) commented out, risk-daily-check 14:30 + intraday-risk-check 5min 双块) 沿用 memory #24 候选 (b) 显式 indefinite paused 体例.
 
-****反**真生产真值** sub-PR 8b-cadence-A meta-verify Phase 0+1 fresh tool 真测真值 sediment (沿用 LL-105 SOP-6 4 source cross-verify + LL-110 web_fetch verify SOP):
+反**真生产真值** sub-PR 8b-cadence-A meta-verify Phase 0+1 fresh tool 真测真值 sediment (沿用 LL-105 SOP-6 4 source cross-verify + LL-110 web_fetch verify SOP):
 - prompt cite "V3 §3.4" fictitious (V3 §3.4 **Parquet 缓存** 反 News Beat) — frame drift 第 9 次 catch
 - prompt cite "ADR-040" silent overwrite ADR-DRAFT row 8 (DeepSeek API watch SOP informal reservation) — frame drift 第 10 次 catch, N×N 同步漂移 案例 #4 候选
 - 沿用 REGISTRY.md 案例 1 (ADR-024 V3§18.1 row 4) + 案例 2 (ADR-027 4 audit docs Layer 4 SOP) + 案例 3 (ADR-023 V3§18.1 row 3) **# 下移体例** 待办 ADR-043 (反 ADR-040)

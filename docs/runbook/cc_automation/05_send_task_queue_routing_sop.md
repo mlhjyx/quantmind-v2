@@ -1,6 +1,6 @@
 # 05 — Celery send_task Queue Routing SOP
 
-> **Why**: sub-PR 8b-cadence-B post-merge ops Option (C) verify (5-07 22:00) **第 1 次 send_task dispatch silent fail** — `celery_app.send_task('app.tasks.news_ingest_tasks.news_ingest_5_sources')`  default routing key `"celery"` 反 Worker subscribed queues `default/data_fetch/factor_calc` (per stdout banner) → Redis LLEN celery=288 backlog stuck. **Frame drift #14 catch sediment**.
+> **Why**: sub-PR 8b-cadence-B post-merge ops Option (C) verify (5-07 22:00) **第 1 次 send_task dispatch silent fail** — `celery_app.send_task('app.tasks.news_ingest_tasks.news_ingest_5_sources')` default routing key `"celery"` 反 Worker subscribed queues `default/data_fetch/factor_calc` (per stdout banner) → Redis LLEN celery=288 backlog stuck. **Frame drift #14 catch sediment**.
 > **触发**: 任 manual `celery_app.send_task(...)` Synthetic dispatch (反 Beat 自动触发) — **queue routing prerequisite verify**.
 
 ## **正确 send_task 体例**
