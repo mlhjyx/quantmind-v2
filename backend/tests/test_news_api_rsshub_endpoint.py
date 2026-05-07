@@ -127,6 +127,10 @@ def test_ingest_rsshub_endpoint_success(app_with_mocked_deps) -> None:
     mock_service.ingest.return_value = mock_stats
     mock_conn = MagicMock()
 
+    # M1 reviewer adopt: TestClient 必 INSIDE patch context 真**生效** —
+    # endpoint 真**local imports** (`from app.services.news import NewsIngestionService`),
+    # patch 真**class-at-definition module** 体例 sustained, refactor 走 outside
+    # `with` block 走 silent miss patch sustained.
     with (
         patch("app.services.news.NewsIngestionService", return_value=mock_service),
         patch("app.services.news.get_news_classifier", return_value=MagicMock()),
@@ -178,8 +182,12 @@ def test_ingest_rsshub_endpoint_500_on_exception(app_with_mocked_deps) -> None:
     mock_conn.close.assert_called_once()
 
 
-def test_ingest_rsshub_endpoint_validation_error_400() -> None:
-    """missing route_path → 422 (FastAPI default for Pydantic ValidationError)."""
+def test_ingest_rsshub_endpoint_validation_error_422() -> None:
+    """missing route_path → 422 (FastAPI default for Pydantic ValidationError).
+
+    LOW reviewer adopt: rename 真 400 → 422 align FastAPI 真**Pydantic ValidationError**
+    response code (反 400 misleading 体例 sustained).
+    """
     from app.main import app
 
     client = TestClient(app)

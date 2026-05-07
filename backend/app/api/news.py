@@ -127,7 +127,16 @@ class IngestRsshubRequest(BaseModel):
         decision_id_prefix: 可选 LLM call audit prefix (默认 None, classifier 真消费).
     """
 
-    route_path: str = Field(..., min_length=1, max_length=128)
+    # M2 reviewer adopt: 真**defense-in-depth** route_path 真**character-set**
+    # 限制 (反 path-traversal `/../../../etc/passwd` / encoded chars 真**反 send
+    # garbage** 到 RSSHub). 沿用文档化 RSSHub routes (`/jin10/news` /
+    # `/eastmoney/news/0` / `/caixin/finance`) 真生产 char set sustained.
+    route_path: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-zA-Z0-9/_\-\.]+$",
+    )
     limit: int = Field(default=10, ge=1, le=50)
     decision_id_prefix: str | None = Field(default=None, max_length=64)
 
