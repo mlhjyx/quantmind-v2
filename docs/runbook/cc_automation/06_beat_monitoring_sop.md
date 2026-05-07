@@ -29,11 +29,12 @@ for name, entry in sorted(entries.items()):
     print(f'  {name}: {entry.schedule}')
 db.close()
 ```
-真**6 entries (4 现存 + 2 News)** sustained ADR-043 §Decision #2 cron `0 3,7,11,15,19,23 * * *`.
+真**6 entries** sustained post-PR #257 merge (4 现存 pre-#257: gp-weekly-mining / outbox-publisher-tick / daily-quality-report / factor-lifecycle-weekly + 2 News post-#257: news-ingest-5-source-cadence / news-ingest-rsshub-cadence) ADR-043 §Decision #2 cron `0 3,7,11,15,19,23 * * *`.
 
 ### Layer 4 — celery-beat-stderr.log 真**Sending due task** ticking
-```bash
-tail -50 D:/quantmind-v2/logs/celery-beat-stderr.log | grep -E "beat: Starting|Sending due task|ERROR"
+```powershell
+# PowerShell native (沿用 Windows 11 primary shell)
+Get-Content "D:\quantmind-v2\logs\celery-beat-stderr.log" -Tail 50 | Select-String -Pattern "beat: Starting|Sending due task|ERROR"
 # Expected: regular ticks (e.g., outbox-publisher-tick every 30s) + last "beat: Starting..." 真值
 ```
 
