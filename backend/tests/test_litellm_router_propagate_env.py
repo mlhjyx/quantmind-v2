@@ -50,6 +50,39 @@ def test_yaml_referenced_envs_excludes_secrets() -> None:
     assert not (set(_YAML_REFERENCED_ENVS) & forbidden)
 
 
+def test_whitelist_covers_all_yaml_environ_refs() -> None:
+    """yaml 真**全 os.environ/X refs** 必 align _YAML_REFERENCED_ENVS (drift-detection).
+
+    沿用 reviewer P-MEDIUM adopt: 反**hardcoded list** silent miss future yaml refs.
+    任 future PR 新加 `os.environ/NEW_KEY` 反同步 whitelist → 本 test 真**fail loud**
+    (反 4-day production sustained drift 重演).
+
+    沿用 LL-110 web_fetch SOP + LL-112 user push back 体例 sustained.
+    """
+    import re
+    from pathlib import Path
+
+    yaml_path = Path(__file__).resolve().parents[2] / "config" / "litellm_router.yaml"
+    assert yaml_path.exists(), f"yaml config not found: {yaml_path}"
+    text = yaml_path.read_text(encoding="utf-8")
+
+    # Match `os.environ/IDENTIFIER` (LiteLLM yaml syntax sustained PR #221+)
+    refs = set(re.findall(r"os\.environ/(\w+)", text))
+    whitelist = set(_YAML_REFERENCED_ENVS)
+
+    missing_in_whitelist = refs - whitelist
+    extra_in_whitelist = whitelist - refs
+    assert not missing_in_whitelist, (
+        f"yaml refs {missing_in_whitelist} 反 in _YAML_REFERENCED_ENVS — "
+        f"future PR 真**4-day production sustained drift** repro 风险. "
+        f"沿用 sub-PR 8b-llm-diag root cause sediment, 必 sync whitelist."
+    )
+    assert not extra_in_whitelist, (
+        f"_YAML_REFERENCED_ENVS 含 {extra_in_whitelist} 反 referenced in yaml — "
+        f"沿用 sub-PR 8b-pre-hook field-level whitelist 体例, 反 dead entry."
+    )
+
+
 # ── propagate behavior ──
 
 
