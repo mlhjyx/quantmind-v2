@@ -55,7 +55,6 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 老 task function (daily_pipeline.pms_check) 保留 1 sprint 供紧急回滚,
     # 批 3 CB adapter 完成后与 pms_engine.py 一并物理删除.
     # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值).
-
     # ── [PAUSE T1_SPRINT_2026_04_29] risk-daily-check 暂停 ──
     # 撤销见: docs/audit/link_paused_2026_04_29.md
     # 暂停理由: T1 sprint 期间 .env=paper / DB 全 live 命名空间漂移持续, 14:30 Beat
@@ -83,7 +82,6 @@ CELERY_BEAT_SCHEDULE: dict = {
     #     },
     # },
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
-
     # ── 高频 30s — Outbox Publisher (MVP 3.4 batch 2) ──
     # event_outbox 表 → Redis Streams `qm:{aggregate_type}:{event_type}`.
     # 周期 30s 高频但 B-Tree partial 索引 cheap (WHERE published_at IS NULL),
@@ -112,6 +110,34 @@ CELERY_BEAT_SCHEDULE: dict = {
     "factor-lifecycle-weekly": {
         "task": "daily_pipeline.factor_lifecycle",
         "schedule": crontab(hour=19, minute=0, day_of_week="5"),  # 5=周五
+        "options": {
+            "queue": "default",
+            "expires": 3600,
+        },
+    },
+    # ── 4-hour News ingestion (ADR-043 §Decision #1+#2, sub-PR 8b-cadence-B) ──
+    # cron offset 3h: 03:00 / 07:00 / 11:00 / 15:00 / 19:00 / 23:00 Asia/Shanghai (6/day).
+    # 软 conflict Fri 19:00 factor-lifecycle-weekly tolerated (Beat sequential dispatch +
+    # Worker --pool=solo --concurrency=1 Windows 单 worker queue 等待真**反 hard collision**).
+    # 反 hard collision: PT chain (Task Scheduler) 16:25 HealthCheck / 16:30 DailySignal /
+    # 09:31 DailyExecute + Beat 17:40 daily-quality-report / 22:00 Sun gp-weekly / 30s outbox.
+    # 5 sources: Zhipu/Anspire/Marketaux/GDELT/Xinhua (RSSHub 走独立 entry below, sub-PR 6 design).
+    # Default query="A股 财经" + limit_per_source=2 (cost throttle ~$0.02-0.05/run).
+    "news-ingest-5-source-cadence": {
+        "task": "app.tasks.news_ingest_tasks.news_ingest_5_sources",
+        "schedule": crontab(hour="3,7,11,15,19,23", minute=0),
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next 4h cron window
+        },
+    },
+    # ── 4-hour RSSHub route_path standalone caller (PR #254 sediment, ADR-043 §Decision #3) ──
+    # Same cron as 5-source for cumulative 12 task-trigger/day; 真 cost ~$0 (Self-hosted localhost:1200).
+    # Default route_path="/jin10/news" (1/4 working sustained PR #254). Other 3 routes
+    # (/eastmoney/news/0, /caixin/finance, /sina/finance/economic) 真 503 audit chunk C 真预约 fix.
+    "news-ingest-rsshub-cadence": {
+        "task": "app.tasks.news_ingest_tasks.news_ingest_rsshub",
+        "schedule": crontab(hour="3,7,11,15,19,23", minute=0),
         "options": {
             "queue": "default",
             "expires": 3600,
