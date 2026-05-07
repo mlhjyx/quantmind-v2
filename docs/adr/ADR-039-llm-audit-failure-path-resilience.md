@@ -27,7 +27,7 @@ post-PR #248 audit failure path **0 retry**: `LLMCallLogger.log_call` INSERT 失
 
 post-PR #253 (sub-PR 8b-llm-fix Pydantic propagate primary path 生效) DeepSeek primary **100% success path 沿用 18:03+ batches**, audit row **全 INSERT 生效** 0 trigger above transient cases. 但**真生产 transient** (e.g. PG restart / network blip / serialization conflict) risk — 沿用 ADR-008 命名空间 partial-write 漂移历史 + LL-100 chunked SOP **production resilience** 体例.
 
-****反**真生产真值** sub-PR 8a-followup-pre meta-verify 4 days production 0 catch (沿用 LL-109 hook governance reverse case): retry policy **production-level** verify 反 paper sediment.
+反**真生产真值** sub-PR 8a-followup-pre meta-verify 4 days production 0 catch (沿用 LL-109 hook governance reverse case): retry policy **production-level** verify 反 paper sediment.
 
 ## Decision
 

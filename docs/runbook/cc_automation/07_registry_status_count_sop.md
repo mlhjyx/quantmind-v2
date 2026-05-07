@@ -20,9 +20,9 @@
 ### 步骤
 1. PR add **ADR row** to `docs/adr/REGISTRY.md`
 2. PR **必同步 update** §状态分布 section:
-   -  committed count +1 (沿用 add committed row)
-   - OR  reserved count +1 (沿用 add reserved row, e.g. ADR-DRAFT informal reservation)
-   -  total # space +1
+   - committed count +1 (沿用 add committed row)
+   - OR reserved count +1 (沿用 add reserved row, e.g. ADR-DRAFT informal reservation)
+   - total # space +1
 3. PR `# 下移体例` reserve ADR-022 反 silent overwrite 沿用 ADR-024/027/023 case 1/2/3 sediment
 
 ### **自动 verify candidate** (chunk C-SOP-B 待办 implementation)
@@ -31,7 +31,7 @@
 ## **SOP-Registry-2 — PR promote ADR-DRAFT row → committed**
 
 ### 步骤
-1. ADR-DRAFT row N status  candidate → `→ ADR-XXX (committed)` mark
+1. ADR-DRAFT row N status candidate → `→ ADR-XXX (committed)` mark
 2. REGISTRY.md add `| ADR-XXX | <title> | committed | <source cite> |` row
 3. Status distribution count update (committed +1 / reserved **反 change** 沿用 informal reservation 沉淀 stays reserved **multi-row reservation 体例**)
 4. ADR file create `docs/adr/ADR-XXX-<slug>.md` (frontmatter + Context + Decision + Alternatives + Consequences + References)

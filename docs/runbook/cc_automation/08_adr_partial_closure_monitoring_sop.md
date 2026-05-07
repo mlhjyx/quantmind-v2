@@ -1,6 +1,6 @@
 # 08 — ADR Partial Closure Monitoring SOP
 
-> **Why**: ADR-DRAFT row 7 (audit failure path coverage S2.4) + row 2 (News fetch query strategy SSOT) `→ ADR-XXX (committed, partial)` **partial closure** 体例 — **残余 sub-task 沉淀 反 forgotten** 漂移风险. ADR-039  retry policy ✅ + circuit breaker (sub-PR 8b-resilience 待办) + DingTalk push (sub-PR 9 待办) **残余** 沿用 row 7 partial closure 体例.
+> **Why**: ADR-DRAFT row 7 (audit failure path coverage S2.4) + row 2 (News fetch query strategy SSOT) `→ ADR-XXX (committed, partial)` **partial closure** 体例 — **残余 sub-task 沉淀 反 forgotten** 漂移风险. ADR-039 retry policy ✅ + circuit breaker (sub-PR 8b-resilience 待办) + DingTalk push (sub-PR 9 待办) **残余** 沿用 row 7 partial closure 体例.
 > **触发**: 任 ADR partial promote → **REGISTRY.md cite + ADR-DRAFT row mark + 残余 sub-task tracking** 三同步.
 
 ## **partial closure 体例**
