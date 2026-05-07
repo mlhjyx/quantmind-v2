@@ -38,6 +38,7 @@ caller 模式 (production manual trigger):
 - backend/app/services/news/bootstrap.py (sub-PR 7b.3 v2 get_news_classifier)
 - backend/qm_platform/news/pipeline.py (sub-PR 7a DataPipeline 6 源并行)
 """
+
 from __future__ import annotations
 
 import logging
@@ -111,6 +112,37 @@ class NewsStatsResponse(BaseModel):
     last_5_news_classified: list[NewsClassifiedSample]
 
 
+class IngestRsshubRequest(BaseModel):
+    """POST /api/news/ingest_rsshub body schema (sub-PR 8b-rsshub 5-07 sediment).
+
+    沿用 sub-PR 6 design intent: route_path 真**独立 caller pattern** (反主链路 5-source
+    ingest). RSSHub 真**route-driven** (各 source path-specific) 反 search keyword
+    semantic 沿用 sub-PR 1+2+3+5 体例.
+
+    Args:
+        route_path: RSSHub route 真生产 endpoint path (e.g. "/jin10/news",
+            "/eastmoney/news/0", "/caixin/finance"). Slash prefix optional —
+            RsshubNewsFetcher.fetch normalize.
+        limit: per-route fetch limit (默认 10, max 50 沿用 sub-PR 6 体例).
+        decision_id_prefix: 可选 LLM call audit prefix (默认 None, classifier 真消费).
+    """
+
+    route_path: str = Field(..., min_length=1, max_length=128)
+    limit: int = Field(default=10, ge=1, le=50)
+    decision_id_prefix: str | None = Field(default=None, max_length=64)
+
+
+class IngestRsshubResponse(BaseModel):
+    """POST /api/news/ingest_rsshub response schema."""
+
+    fetched: int
+    ingested: int
+    classified: int
+    classify_failed: int
+    route_path: str
+    limit: int
+
+
 def _build_pipeline_5_sources() -> DataPipeline:
     """Build DataPipeline with 5 News 源 (Zhipu/Tavily/Anspire/GDELT/Marketaux).
 
@@ -155,6 +187,29 @@ def _build_pipeline_5_sources() -> DataPipeline:
             base_url=settings.MARKETAUX_BASE_URL,
         ),
     ]
+    return DataPipeline(fetchers)
+
+
+def _build_pipeline_rsshub_only() -> DataPipeline:
+    """Build DataPipeline with single RsshubNewsFetcher (sub-PR 8b-rsshub 5-07 sediment).
+
+    沿用 sub-PR 6 design intent: route_path 真**独立 caller pattern** (反主链路
+    5-source ingest). 0 API key (Self-hosted localhost:1200 anonymous, V3§3.1 + ADR-033 +
+    sub-PR 6 sediment 沿用).
+
+    Returns:
+        DataPipeline with single fetcher — caller 真**route_path query** 沿用
+        RsshubNewsFetcher.fetch 体例 (反 search keyword sub-PR 1+2+3+5 体例).
+
+    Note (single-fetcher pipeline 沿用 sub-PR 7a contract sustained):
+        DataPipeline 真**fetch_all** 沿用 single-fetcher case (反 multi-source dedup).
+        sub-PR 8b-rsshub-multi-route 候选: 沿用 _YAML_REFERENCED_ENVS pattern 真**多
+        route 体例** (沿用 settings.RSSHUB_ROUTES 真预约 list, sub-PR 8b-cadence 决议).
+    """
+    from app.config import settings
+    from backend.qm_platform.news import DataPipeline, RsshubNewsFetcher
+
+    fetchers = [RsshubNewsFetcher(base_url=settings.RSSHUB_BASE_URL)]
     return DataPipeline(fetchers)
 
 
@@ -226,6 +281,76 @@ def ingest_news(req: IngestRequest) -> IngestResponse:
         classify_failed=stats.classify_failed,
         query=req.query,
         limit_per_source=req.limit_per_source,
+    )
+
+
+@router.post("/ingest_rsshub", response_model=IngestRsshubResponse)
+def ingest_news_rsshub(req: IngestRsshubRequest) -> IngestRsshubResponse:
+    """Manual trigger RSSHub fetch + classify + persist (route-path 独立 caller, sub-PR 8b-rsshub).
+
+    沿用 sub-PR 6 design intent + sub-PR 7c NewsIngestionService orchestrator + sub-PR
+    7b.3 v2 bootstrap singleton classifier. RSSHub 真**route-driven** caller 体例,
+    反主链路 5-source ingest (反 search keyword semantic).
+
+    Args:
+        req: IngestRsshubRequest body — route_path + limit + decision_id_prefix.
+
+    Returns:
+        IngestRsshubResponse with IngestionStats fields + echo route_path/limit.
+
+    Raises:
+        HTTPException 500: 任 fetcher init / pipeline run / DB insert 真 raise.
+            P2-3 sub-PR 8a-followup-A 体例 sustained: detail 走 sanitized
+            `type(exc).__name__` (反 expose 内 exception message DSN/table leak).
+
+    Note (Beat schedule defer 到 sub-PR 8b-cadence):
+        本 endpoint 真**manual trigger** sustained. cron 频率 + dingtalk rate-limit +
+        cost cap 决议 留 sub-PR 8b-cadence 真预约 (沿用 ADR-DRAFT row 2 sediment).
+
+    Note (split-transaction LLM audit, 沿用 sub-PR 8a 体例 sustained):
+        ingestion 真**主 conn** rollback 时, llm_call_log row 真**仍 persist**
+        (沿用 ADR-032 §Decision split audit 体例 + bootstrap.py:79 docstring sustained).
+    """
+    from app.services.db import get_sync_conn
+    from app.services.news import NewsIngestionService, get_news_classifier
+
+    logger.info(
+        "POST /api/news/ingest_rsshub route_path=%r limit=%d",
+        req.route_path,
+        req.limit,
+    )
+
+    pipeline = _build_pipeline_rsshub_only()
+    classifier = get_news_classifier(conn_factory=get_sync_conn)
+    service = NewsIngestionService(pipeline=pipeline, classifier=classifier)
+
+    conn = get_sync_conn()
+    try:
+        stats = service.ingest(
+            query=req.route_path,
+            conn=conn,
+            limit_per_source=req.limit,
+            decision_id_prefix=req.decision_id_prefix,
+        )
+        conn.commit()  # caller 真事务边界 (铁律 32)
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("ingest_news_rsshub failed route_path=%r: %s", req.route_path, exc)
+        # P2-3 sub-PR 8a-followup-A 体例 sustained: sanitized exception detail
+        raise HTTPException(
+            status_code=500,
+            detail=f"rsshub ingestion failed: {type(exc).__name__}",
+        ) from exc
+    finally:
+        conn.close()
+
+    return IngestRsshubResponse(
+        fetched=stats.fetched,
+        ingested=stats.ingested,
+        classified=stats.classified,
+        classify_failed=stats.classify_failed,
+        route_path=req.route_path,
+        limit=req.limit,
     )
 
 
