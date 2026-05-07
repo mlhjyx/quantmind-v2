@@ -1,9 +1,9 @@
 # 05 — Celery send_task Queue Routing SOP
 
-> **Why**: sub-PR 8b-cadence-B post-merge ops Option (C) verify (5-07 22:00) 真**第 1 次 send_task dispatch silent fail** sustained — `celery_app.send_task('app.tasks.news_ingest_tasks.news_ingest_5_sources')` 真 default routing key `"celery"` 反 Worker subscribed queues `default/data_fetch/factor_calc` (per stdout banner) sustained → Redis LLEN celery=288 backlog stuck. **Frame drift #14 catch sediment**.
-> **触发**: 任 manual `celery_app.send_task(...)` Synthetic dispatch (反 Beat 自动触发) — 真**queue routing prerequisite verify**.
+> **Why**: sub-PR 8b-cadence-B post-merge ops Option (C) verify (5-07 22:00) **第 1 次 send_task dispatch silent fail** — `celery_app.send_task('app.tasks.news_ingest_tasks.news_ingest_5_sources')`  default routing key `"celery"` 反 Worker subscribed queues `default/data_fetch/factor_calc` (per stdout banner) → Redis LLEN celery=288 backlog stuck. **Frame drift #14 catch sediment**.
+> **触发**: 任 manual `celery_app.send_task(...)` Synthetic dispatch (反 Beat 自动触发) — **queue routing prerequisite verify**.
 
-## 真**正确 send_task 体例**
+## **正确 send_task 体例**
 
 ### ❌ Anti-pattern (silent drop reverse case)
 ```python
@@ -19,9 +19,9 @@ celery_app.send_task(
 )
 ```
 
-## 真**queue routing matrix** (Worker config 沿用 Servy export QuantMind-Celery)
+## **queue routing matrix** (Worker config 沿用 Servy export QuantMind-Celery)
 
-> **Source**: Servy export config `Parameters` field 真**`-Q default,factor_calc,data_fetch`** sustained (5-07 22:00 实测 `D:\tools\Servy\servy-cli.exe export --name="QuantMind-Celery" --config json --path <tmp>`) + Worker stdout banner `[queues] .> default ... .> data_fetch ... .> factor_calc` 沿用 sub-PR 8b-cadence-B post-merge ops Phase 0 verify (`logs/celery-stdout.log` line "Worker startup banner 5-07 21:38:26").
+> **Source**: Servy export config `Parameters` field **`-Q default,factor_calc,data_fetch`** (5-07 22:00 实测 `D:\tools\Servy\servy-cli.exe export --name="QuantMind-Celery" --config json --path <tmp>`) + Worker stdout banner `[queues] .> default ... .> data_fetch ... .> factor_calc` 沿用 sub-PR 8b-cadence-B post-merge ops Phase 0 verify (`logs/celery-stdout.log` line "Worker startup banner 5-07 21:38:26").
 
 | queue name | source | task pattern | Worker subscribe? |
 |---|---|---|---|
@@ -30,7 +30,7 @@ celery_app.send_task(
 | `factor_calc` | factor onboarding tasks | factor mining heavy compute | ✅ subscribed |
 | `celery` (default Celery routing key) | manual `send_task` 反 `queue=` | — | ❌ NOT subscribed → **silent drop** |
 
-## 真**verify SOP** post-dispatch
+## **verify SOP** post-dispatch
 
 ### Step 1: Redis queue depth check
 ```powershell
@@ -60,21 +60,21 @@ WHERE task_name LIKE 'news_ingest_%' AND start_time > now() - interval '5 minute
 ORDER BY start_time DESC;
 ```
 
-## 真**反 anti-pattern** sediment
+## **反 anti-pattern** sediment
 
-- ❌ `send_task(name)` 反 `queue=` 假设 default routing 真生效 — Celery default routing key `celery` 反 align Worker queue subscription
-- ❌ Beat entry config `"queue": "default"` cite sustained 反 manual send_task 同步 — manual + Beat 必同 queue 体例 sustained
-- ❌ silent drop 沿用 unregistered task warning 假设 Worker pick up — 真**queue 反 match** 真**0 warning** sustained Celery Worker 真**反 见 task** at all
+- ❌ `send_task(name)` 反 `queue=` 假设 default routing 生效 — Celery default routing key `celery` 反 align Worker queue subscription
+- ❌ Beat entry config `"queue": "default"` cite 反 manual send_task 同步 — manual + Beat 必同 queue 体例
+- ❌ silent drop 沿用 unregistered task warning 假设 Worker pick up — **queue 反 match** **0 warning** Celery Worker **反 见 task** at all
 
 ## 真生产真值 evidence (5-07 22:00)
 
 - 第 1 次 send_task `5-source` + `rsshub` 反 queue= → Redis `celery` LLEN += 2 → Worker 0 pickup → AsyncResult PENDING 30+ min → DB 0 row 反 evidence
 - 第 2 次 send_task with `queue='default'` → Redis `default` LLEN += 2 → Worker pickup 22:02:27 / 22:02:58 → AsyncResult SUCCESS → 8 news_classified rows verified
 
-## 真关联
+## 关联
 
 - ADR-043 §Decision #2 cron + Beat entry config queue 体例
 - LL-067 reviewer 第二把尺子 (Worker registry verify M1 adopt PR #257)
-- 真讽刺 #14 frame drift catch (本 SOP 真**实证 fix path** sustained)
+- drift catch #14 frame drift catch (本 SOP **实证 fix path**)
 - backend/app/tasks/celery_app.py:33-62 (Worker concurrency + queue config)
 - backend/app/tasks/beat_schedule.py (Beat entry queue mapping)
