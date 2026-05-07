@@ -24,11 +24,13 @@ NOT 含 (留下游 / Sprint 8):
       33 (fail-loud, INSERT 失败 warning log + 反 break completion) /
       34 (Config SSOT) / 41 (timezone — DB clock 服务器时区)
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -40,6 +42,23 @@ from ..types import LLMMessage, RiskTaskType
 from .budget import BudgetState
 
 logger = logging.getLogger(__name__)
+
+# 5-07 sub-PR 8b-llm-audit-S2.4 ADR-039: transient DB error class names 真 heuristic
+# (反 hard psycopg2 import couple — audit module 沿用 conn:Any 真**connection-agnostic**
+# 体例 sustained sub-PR 7c contract). 真**connection-level / cursor-level transient**:
+#   - psycopg2.OperationalError (connection lost, server error)
+#   - psycopg2.InterfaceError (cursor or connection state error)
+#   - psycopg2.errors.SerializationFailure (deadlock retry)
+# 反 permanent (no retry):
+#   - psycopg2.ProgrammingError (SQL schema mismatch)
+#   - psycopg2.IntegrityError (constraint violation, retry won't help)
+_TRANSIENT_DB_EXC_CLASSES: frozenset[str] = frozenset(
+    {
+        "OperationalError",
+        "InterfaceError",
+        "SerializationFailure",
+    }
+)
 
 
 @contextmanager
@@ -141,18 +160,46 @@ class LLMCallLogger:
         - 反 except: pass silent miss (铁律 33)
     """
 
-    def __init__(self, conn_factory: Callable[[], Any]) -> None:
+    # 5-07 sub-PR 8b-llm-audit-S2.4 ADR-039 retry policy defaults.
+    # max_retries=2 真**3 total attempts** (initial + 2 retry) sustained.
+    # backoff: 0.1s → 0.2s (max ~0.3s total) — 反**break completion** sustained
+    # sub-PR 7c contract. caller 真生产 latency budget ~5s (V3 §16.2 cost guardrails),
+    # audit retry overhead ~0.3s 沿用 acceptable.
+    DEFAULT_MAX_RETRIES: int = 2
+    DEFAULT_RETRY_WAIT_BASE: float = 0.1
+
+    def __init__(
+        self,
+        conn_factory: Callable[[], Any],
+        *,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_wait_base: float = DEFAULT_RETRY_WAIT_BASE,
+    ) -> None:
+        """Initialize LLMCallLogger with retry policy (ADR-039 sediment).
+
+        Args:
+            conn_factory: callable 返 psycopg2 conn (DI 体例, 沿用 BudgetGuard).
+            max_retries: 真**transient DB error retry count** (默认 2 真 3 attempts total).
+            retry_wait_base: 真**exponential backoff base seconds** (默认 0.1).
+        """
         self._conn_factory = conn_factory
+        self._max_retries = max_retries
+        self._retry_wait_base = retry_wait_base
 
     def log_call(self, record: LLMCallRecord) -> bool:
-        """INSERT 1 row to llm_call_log (原子, 沿用 risk engine._log_event 体例).
+        """INSERT 1 row to llm_call_log (沿用 risk engine._log_event 体例 + ADR-039 retry).
 
         Returns:
-            True on success, False on failure (反 raise — caller 沿用 completion).
+            True on success (含 retry success), False on failure (反 raise).
 
-        失败 path (决议 7 + 铁律 33):
-            - INSERT 异常捕获 → logger.warning(structured) + return False
-            - 反 break BudgetAwareRouter.completion (audit 失败不阻断 LLM)
+        失败 path (决议 7 + 铁律 33 + ADR-039 retry):
+            - transient DB error (OperationalError/InterfaceError/SerializationFailure)
+              真**retry up to max_retries** with exponential backoff (反 silent miss
+              真生产 transient connection loss 漂移 sustained S2.4 sub-task closure).
+            - permanent error (ProgrammingError/IntegrityError 等) 真**immediate fail-loud**
+              (沿用铁律 33 + 反**retry permanent same error** waste budget).
+            - exhausted retries → logger.warning(structured) + return False.
+            - 反 break BudgetAwareRouter.completion (audit 失败不阻断 LLM).
         """
         try:
             conn = self._conn_factory()
@@ -170,58 +217,98 @@ class LLMCallLogger:
             return False
 
         try:
-            with _conn_cursor(conn) as cur:
-                cur.execute(
-                    """
-                    INSERT INTO llm_call_log (
-                        triggered_at, task, primary_alias, actual_model,
-                        is_fallback, budget_state,
-                        tokens_in, tokens_out, cost_usd, latency_ms,
-                        decision_id, prompt_hash, error_class
-                    )
-                    VALUES (
-                        %s, %s, %s, %s,
-                        %s, %s,
-                        %s, %s, %s, %s,
-                        %s, %s, %s
-                    )
-                    """,
-                    (
-                        datetime.now(UTC),
-                        record.task.value,
-                        record.primary_alias,
-                        record.actual_model,
-                        record.is_fallback,
-                        record.budget_state.value,
-                        record.tokens_in,
-                        record.tokens_out,
-                        record.cost_usd,
-                        record.latency_ms,
-                        record.decision_id,
-                        record.prompt_hash,
-                        record.error_class,
-                    ),
-                )
-            conn.commit()
-            return True
-        except Exception as exc:
-            # fail-loud warning (反 silent miss, 铁律 33). caller 沿用走 completion.
-            logger.warning(
-                "llm_audit_insert_failed",
-                extra={
-                    "event": "llm_audit_insert_failed",
-                    "task": record.task.value,
-                    "actual_model": record.actual_model,
-                    "decision_id": record.decision_id,
-                    "exc_class": type(exc).__name__,
-                    "exc_msg": str(exc),
-                },
-            )
-            # silent_ok: rollback 失败时 conn 必将走 close (沿用铁律 33 silent_ok 注释)
-            with suppress(Exception):
-                conn.rollback()
-            return False
+            return self._insert_with_retry(conn, record)
         finally:
             # silent_ok: close 失败 0 影响调用方 (沿用铁律 33 silent_ok 注释)
             with suppress(Exception):
                 conn.close()
+
+    def _insert_with_retry(self, conn: Any, record: LLMCallRecord) -> bool:
+        """INSERT 真**retry on transient DB error** (5-07 sub-PR 8b-llm-audit-S2.4 ADR-039).
+
+        Retry rule:
+            - transient (_TRANSIENT_DB_EXC_CLASSES match): retry with exponential backoff
+              `retry_wait_base * 2^attempt` (e.g. 0.1, 0.2, 0.4 ...).
+            - permanent (其他 Exception subclass): immediate fail-loud (反 retry
+              same permanent error waste budget).
+            - exhausted retries: logger.warning + return False (反 break caller completion).
+        """
+        attempt = 0
+        last_exc: Exception | None = None
+        is_transient = False
+
+        while attempt <= self._max_retries:
+            try:
+                with _conn_cursor(conn) as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO llm_call_log (
+                            triggered_at, task, primary_alias, actual_model,
+                            is_fallback, budget_state,
+                            tokens_in, tokens_out, cost_usd, latency_ms,
+                            decision_id, prompt_hash, error_class
+                        )
+                        VALUES (
+                            %s, %s, %s, %s,
+                            %s, %s,
+                            %s, %s, %s, %s,
+                            %s, %s, %s
+                        )
+                        """,
+                        (
+                            datetime.now(UTC),
+                            record.task.value,
+                            record.primary_alias,
+                            record.actual_model,
+                            record.is_fallback,
+                            record.budget_state.value,
+                            record.tokens_in,
+                            record.tokens_out,
+                            record.cost_usd,
+                            record.latency_ms,
+                            record.decision_id,
+                            record.prompt_hash,
+                            record.error_class,
+                        ),
+                    )
+                conn.commit()
+                if attempt > 0:
+                    # 真**retry success** sediment 沿用铁律 33 fail-loud event log
+                    logger.warning(
+                        "llm_audit_insert_retry_success",
+                        extra={
+                            "event": "llm_audit_insert_retry_success",
+                            "task": record.task.value,
+                            "actual_model": record.actual_model,
+                            "decision_id": record.decision_id,
+                            "attempts": attempt + 1,
+                        },
+                    )
+                return True
+            except Exception as exc:
+                last_exc = exc
+                is_transient = type(exc).__name__ in _TRANSIENT_DB_EXC_CLASSES
+                with suppress(Exception):
+                    conn.rollback()
+                if not is_transient or attempt >= self._max_retries:
+                    break
+                # transient + still have retry budget — exponential backoff
+                wait_seconds = self._retry_wait_base * (2**attempt)
+                time.sleep(wait_seconds)
+                attempt += 1
+
+        # Exhausted retries OR permanent error
+        logger.warning(
+            "llm_audit_insert_failed",
+            extra={
+                "event": "llm_audit_insert_failed",
+                "task": record.task.value,
+                "actual_model": record.actual_model,
+                "decision_id": record.decision_id,
+                "exc_class": type(last_exc).__name__ if last_exc else "Unknown",
+                "exc_msg": str(last_exc) if last_exc else "",
+                "attempts": attempt + 1,
+                "transient": is_transient,
+            },
+        )
+        return False
