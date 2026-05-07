@@ -86,7 +86,7 @@ Logon 触发
 |--------|------|------|
 | QM-SmokeTest | `scripts/smoke_test.py` | 一次性测试, 已完成 |
 | QuantMind_CancelStaleOrders | `scripts/cancel_stale_orders.py` | 紧急撤单, 手动触发 |
-| QuantMind_DailyExecute | `scripts/run_paper_trading.py execute --execution-mode live` | Session 10 P0-α 熔断 live 失效事件后暂停 (CLAUDE.md L549). 等 Stage 4.2 评估 reenable, 依赖 F14 自愈 + F19 phantom 清理. **Session 36 PR-DEXEC**: ps1 加 `Disable-ScheduledTask` 紧跟 Register 防 rerun silent 复活 (实测 04/19 LastResult=0 Sunday 内部跳过, 但 ps1 rerun 后 State=Ready, 下个交易日真金触发风险) |
+| QuantMind_DailyExecute | `scripts/run_paper_trading.py execute --execution-mode live` | Session 10 P0-α 熔断 live 失效事件后暂停 (CLAUDE.md L549). 等 Stage 4.2 评估 reenable, 依赖 F14 自愈 + F19 phantom 清理. **Session 36 PR-DEXEC**: ps1 加 `Disable-ScheduledTask` 紧跟 Register 防 rerun silent 复活 (实测 04/19 LastResult=0 Sunday 内部跳过, 但 ps1 rerun 后 State=Ready, 下个交易日金触发风险) |
 
 ### 已删除历史 (ps1 残留 register 待清理)
 
@@ -127,7 +127,7 @@ Logon 触发
    - **状态**: Disabled (Session 10 P0-α 熔断 live 失效事件后暂停)
    - **Session 36 (2026-04-25) governance 修复 PR-DEXEC**:
      - 实测发现 ps1 L110-133 `Register-ScheduledTask` 后**未** Disable, 每次 rerun (如 Session 36 16:21 注册 ServicesHealthCheck) silent 复活为 Ready 状态. 与 PR-DRECON 15:10/15:40 漂移同 pattern.
-     - 04/19 LastRun LastResult=0 (Sunday 内部 trading_calendar 跳过, 看似无害). 但下个交易日 (周一 04/27 09:31) 会真触发 `--execution-mode live` miniQMT 真金下单, 违反"暂停"意图.
+     - 04/19 LastRun LastResult=0 (Sunday 内部 trading_calendar 跳过, 看似无害). 但下个交易日 (周一 04/27 09:31) 会触发 `--execution-mode live` miniQMT 金下单, 违反"暂停"意图.
      - 修复: ps1 加 `Disable-ScheduledTask` 紧跟 Register, rerun 后保持 Disabled (默认安全).
    - **解锁 reenable Stage 4.2 评估 checklist** (用户决策门, 全部满足才允许 enable):
      - [x] F14 自愈完成 (Session 20 ✅, cb_state live L0 bootstrap)
@@ -157,7 +157,7 @@ Logon 触发
      - 4/10 (run_paper_trading/factor_health_daily/compute_minute_features/fix_st_cleanup_20260414) 仍用 `sys.path.insert(0, str(Path.parent))` 即 scripts/ at sys.path[0].
      - **关键**: `sys.path.insert(0, str(scripts/))` 与 LL-070 不同模式. LL-070 是 `insert(0, str(backend/))` + backend 内有 `platform/` 包 → `import platform` 命中 `backend.platform` 而非 stdlib. scripts/ 目录**无任何 stdlib 命名冲突** (实测 `ls scripts/*.py | grep -E "^(platform|json|datetime|os|sys|...)\.py$"` = 0 hits), 此 pattern **不触发 LL-070 shadow**.
      - **冗余但安全**: schtask 调用 `python scripts/X.py` 时 Python 自动 prepend scripts/ 到 `sys.path[0]`, 这 4 行 insert 实际是 no-op. 改 append 收益是 defense-in-depth, 风险是潜在 sibling imports (e.g. run_paper_trading `from health_check import ...`) 在非常规调用方式下断裂.
-     - **关闭理由**: 当前 0 触发 + 改动有破坏风险 + 真触发条件 (scripts/ 引入 stdlib name 冲突) 极低概率. 留给未来若实际 trigger 再修.
+     - **关闭理由**: 当前 0 触发 + 改动有破坏风险 + 触发条件 (scripts/ 引入 stdlib name 冲突) 极低概率. 留给未来若实际 trigger 再修.
 
 4. ~~**QuantMind_GPPipeline ps1 残留 register 代码 (latent bug)**~~ **✅ CLOSED (Session 32 PR #66 2026-04-24)**
    - ~~Session 16 (2026-04-16) 已 `schtasks /delete` 删除活任务 (避 Celery Beat gp-weekly-mining 双触发)~~

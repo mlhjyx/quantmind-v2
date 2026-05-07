@@ -2,7 +2,7 @@
 
 > **状态**: 存档 (待批 2 P3 完成后调用)
 > **预计耗时**: 2-3 min (含验证)
-> **真金风险**: 0
+> **资金风险**: 0
 > **作者**: D2.3 fix 后归档 (2026-04-30)
 
 ---
@@ -26,7 +26,7 @@ D2.3 修复 FastAPI 启动失败 (`NamespaceMismatchError`) 的临时手段:
 
 ---
 
-## 2. 真金 0 风险确认 (前置, 不通过立即 STOP)
+## 2. 资金 0 风险确认 (前置, 不通过立即 STOP)
 
 **所有命令以 PowerShell 7.6+ (user 默认 `pwsh`, 实测 7.6.1) 或兼容 Windows PowerShell 5.1 (`powershell.exe`, 系统自带 5.1.26100.8115) 在 Windows 11 主机执行** — 本 runbook 用的命令 (`Start-Sleep` / `[Environment]::SetEnvironmentVariable` / `& 'path'` / `Select-String` / 等) 在两版本均兼容. .venv Python 通过 `.venv\Scripts\python.exe` 调.
 
@@ -37,7 +37,7 @@ D2.3 修复 FastAPI 启动失败 (`NamespaceMismatchError`) 的临时手段:
 | 1 | LIVE_TRADING_DISABLED 仍 active | `.venv\Scripts\python.exe -c "from app.config import settings; print(settings.LIVE_TRADING_DISABLED)"` | `True` |
 | 2 | EXECUTION_MODE | `.venv\Scripts\python.exe -c "from app.config import settings; print(settings.EXECUTION_MODE)"` | `paper` 或 user 已确认 live cutover |
 | 3 | 批 2 P3 commit (informational, 实硬门是 #4) | `git log --oneline main \| Select-String "SKIP_NAMESPACE_ASSERT"` | 至少 1 commit (太宽 grep, 仅辅助参考) |
-| 4 | **批 2 P3 完成 detector (硬门)**: `settings.SKIP_NAMESPACE_ASSERT` 真 attr | `.venv\Scripts\python.exe -c "from app.config import settings; print(hasattr(settings, 'SKIP_NAMESPACE_ASSERT'))"` | `True` (必硬门) |
+| 4 | **批 2 P3 完成 detector (硬门)**: `settings.SKIP_NAMESPACE_ASSERT` attr | `.venv\Scripts\python.exe -c "from app.config import settings; print(hasattr(settings, 'SKIP_NAMESPACE_ASSERT'))"` | `True` (必硬门) |
 
 > **检查 #4 是 batch 2 P3 完成 detector** — 该 attr 不存在于 config.py 当前代码, 必须批 2 P3 加 `SKIP_NAMESPACE_ASSERT: bool = False` 字段后才返 `True`. 即便 #3 误命中老 commit, #4 是 code-level 硬门, 防 false-proceed.
 
@@ -56,7 +56,7 @@ D2.3 修复 FastAPI 启动失败 (`NamespaceMismatchError`) 的临时手段:
 
 # 当前 User env (D2.2 user 操作过)
 [System.Environment]::GetEnvironmentVariable('SKIP_NAMESPACE_ASSERT', 'User')
-# 期望: '1' 或 '' (取决于 user D2.2 是否真打了 setx)
+# 期望: '1' 或 '' (取决于 user D2.2 是否打了 setx)
 ```
 
 ### 3.2 FastAPI 当前状态 (撤 setx 前必须 Running, 防对照失明)
@@ -154,7 +154,7 @@ try:
 except urllib.error.HTTPError as e:
     print(f'status={e.code}')
 "
-    # 期望: status=503 (QMT 未连接) 或 status=200 (QMT 真连)
+    # 期望: status=503 (QMT 未连接) 或 status=200 (QMT 连)
 }
 ```
 
@@ -193,7 +193,7 @@ Start-Sleep -Seconds 5
 # 期望: 恢复 {'status':'ok'}
 ```
 
-回滚后 STOP, 报 user — 真因可能是批 2 P3 commit 有 bug 或 settings.SKIP 没真活, 不要重试撤 setx.
+回滚后 STOP, 报 user — 因可能是批 2 P3 commit 有 bug 或 settings.SKIP 没活, 不要重试撤 setx.
 
 ### 场景 B: /health OK 但 admin gate 异常 (返 500 / 200 with no token)
 

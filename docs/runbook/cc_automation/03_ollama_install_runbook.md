@@ -2,7 +2,7 @@
 
 **触发场景**: Sprint 1 S3 sub-task — 启用 BudgetAwareRouter Capped100 fallback path. user 跑装 + ollama pull, CC 0 触碰 install (沿用 LL-098 X10).
 
-**真金 0 风险**:
+**资金 0 风险**:
 - LLM fallback 路径 0 broker call (反 LiteLLMRouter / BudgetAwareRouter 跟 broker.place_order/cancel_order 0 接触)
 - LIVE_TRADING_DISABLED guard 沿用
 - Ollama service 本地 listening 11434 (反对外暴露)
@@ -143,9 +143,9 @@ ollama list
 ```powershell
 # 真值 path verify
 Get-ChildItem "D:\ollama-models\models\blobs\" | Select-Object -First 3
-# 期望: 3 个 sha256-* blob 文件 (qwen3.5:9b 真 chunks)
+# 期望: 3 个 sha256-* blob 文件 (qwen3.5:9b  chunks)
 
-# 反例: C 盘 path 真**应空** (反 D 盘 setx 失败)
+# 反例: C 盘 path **应空** (反 D 盘 setx 失败)
 Test-Path "$env:USERPROFILE\.ollama\models\blobs"
 # 期望: False (沿用) 或 True 但**空**
 ```
@@ -249,21 +249,21 @@ Move-Item "$env:USERPROFILE\.ollama\models" "D:\ollama-models\models" -Force
 
 ---
 
-## 失败回滚 (per-step rollback, sustained 00_INDEX 模板字段 6)
+## 失败回滚 (per-step rollback, 00_INDEX 模板字段 6)
 
 | step fail | 真值现象 | 回滚操作 |
 |---|---|---|
-| Step 1 (下载 .exe fail) | Invoke-WebRequest 真**timeout / 404** | 手工浏览器走 https://ollama.com/download/windows 下载, 或 retry PS 命令 |
+| Step 1 (下载 .exe fail) | Invoke-WebRequest **timeout / 404** | 手工浏览器走 https://ollama.com/download/windows 下载, 或 retry PS 命令 |
 | Step 2 (PS Start-Process install fail) | UAC denied / `/DIR=` 0 生效 / 安装向导 abort | (a) 若 install 路径 partial: `Get-ChildItem "D:\tools\Ollama"` 查看真值, 跑现 unins000.exe 清理 (`Start-Process "D:\tools\Ollama\unins000.exe" -Wait`), 反 ls 0 file → 手工 `Remove-Item -Recurse -Force "D:\tools\Ollama"` (b) 0 install 痕迹 → 重 Step 2 (反 admin PS / UAC click) |
 | Step 3 (setx /M fail) | 0 admin / `Access denied` | (a) 验证 admin: `whoami /priv \| Select-String SeIncreaseQuotaPrivilege` (b) 重新打开 PS as admin → 重 Step 3 (c) 备选 GUI: 控制面板 → 系统 → 高级 → 环境变量 → 系统变量 → 新建 `OLLAMA_MODELS` |
 | Step 3 (Restart-Service fail) | service 0 known / Stop hang | (a) `Get-Service Ollama` 验证 service 注册 (Step 2 install 沿用) (b) 手工 GUI 退 tray → 开始菜单 Ollama 启动 (c) 反生效 → reboot Win11 后 service 自启 |
-| model pull fail | `ollama pull` 真**network timeout / disk full** | (a) 验证 D 盘 free space `Get-PSDrive D` (≥10 GB) (b) 验证 OLLAMA_MODELS 沿用: `[Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")` (c) `Restart-Service Ollama` + 重 pull (d) 反 fall back C 盘 → 删 partial cache `Remove-Item -Recurse -Force "$env:USERPROFILE\.ollama\models" -ErrorAction SilentlyContinue` |
-| 部分 install + 完全卸载 | 多 step fail 累积 / install state 漂移 | 走 ## uninstall section 真 3 步完整还原 (uninstaller + rm models + setenv null), 沿用全 reset |
+| model pull fail | `ollama pull` **network timeout / disk full** | (a) 验证 D 盘 free space `Get-PSDrive D` (≥10 GB) (b) 验证 OLLAMA_MODELS 沿用: `[Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")` (c) `Restart-Service Ollama` + 重 pull (d) 反 fall back C 盘 → 删 partial cache `Remove-Item -Recurse -Force "$env:USERPROFILE\.ollama\models" -ErrorAction SilentlyContinue` |
+| 部分 install + 完全卸载 | 多 step fail 累积 / install state 漂移 | 走 ## uninstall section 3 步完整还原 (uninstaller + rm models + setenv null), 沿用全 reset |
 
 **沿用原则**:
 - 反 silent partial state (沿用铁律 33 fail-loud)
 - 反**force push** / **destructive action** without verify (沿用 SOP-2)
-- uninstall section 真**最终 fallback** (任何 step fail 走完整 reset 后 retry)
+- uninstall section **最终 fallback** (任何 step fail 走完整 reset 后 retry)
 
 ---
 

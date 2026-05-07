@@ -155,6 +155,6 @@ D:\tools\Servy\servy-cli.exe status
 
 - `config/hooks/README.md` — pre-push hook 启用/禁用/故障排查
 - `config/servy/README.md` — Servy 服务管理 + CWD 约束
-- `CLAUDE.md` §铁律 10b — 生产入口真启动验证制度化
+- `CLAUDE.md` §铁律 10b — 生产入口启动验证制度化
 - `CLAUDE.md` §部署规则 — Servy 服务清单 + 启动顺序
 - `backend/migrations/` — 数据库 migration 全集 (幂等)

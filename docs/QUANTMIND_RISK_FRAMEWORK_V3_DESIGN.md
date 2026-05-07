@@ -28,7 +28,7 @@
 - [§14 失败模式分析 + 灾备](#§14-失败模式分析--灾备)
 - [§15 测试策略](#§15-测试策略)
 - [§16 性能 + 资源 budget](#§16-性能--资源-budget)
-- [§17 安全 + 边界 + 真金保护](#§17-安全--边界--真金保护)
+- [§17 安全 + 边界 + 金保护](#§17-安全--边界--金保护)
 - [§18 ADR 清单 + 关联文档](#§18-adr-清单--关联文档)
 - [§19 Roadmap (12 月)](#§19-roadmap-12-月)
 - [§20 开放问题 + 待 user 决议](#§20-开放问题--待-user-决议)
@@ -45,7 +45,7 @@
 - 17 股 CC 4-29 10:43:54 `emergency_close_all_positions.py` 实战 sell via QMT API (status=56 全成)
 - 1 股 (688121.SH 卓然新能 4500 股) 4-29 跌停撮合规则 cancel (status=57 + error_id=-61) → 4-30 跌停解除后 user QMT GUI 手工 sell
 
-**user 4-29 真痛点 (当前文档真起点)**:
+**user 4-29 痛点 (当前文档起点)**:
 - 盘中盯盘看着多只个股跌停, **现风控规则一条都没拦住**
 - 现告警延迟 (14:30 daily Beat), critical event 已发生才知道
 - 没有自动减仓候选 (auto_sell_l4 default=False), 只能手工 emergency_close
@@ -76,7 +76,7 @@
 
 **实时性优先**: 秒级 detection / 分钟级 alert + context / 30min 决策窗口 / 周月级反思.
 
-**决策权边界清晰**: L0/L1/L2/L3 自动. L4 半自动 (STAGED 默认 + 反向决策权). L5 半自动 (push + user approve). 真金 sell 单 default STAGED, OFF fallback, AUTO 仅极端.
+**决策权边界清晰**: L0/L1/L2/L3 自动. L4 半自动 (STAGED 默认 + 反向决策权). L5 半自动 (push + user approve). 金 sell 单 default STAGED, OFF fallback, AUTO 仅极端.
 
 **失败安全**: 任一组件失败不阻断核心 risk path. fail-open 默认 (alert 仍发, 仅缺 context).
 
@@ -92,8 +92,8 @@
 
 | Anti-pattern | 反对方式 |
 |---|---|
-| 凭空 enumerate | 设计基于 4-29 真痛点 + 借鉴 SSOT (4-29 D5-D9 决议 5+1 层 + Tier A/B + daily_stock_analysis 29.5K ⭐ MIT) |
-| Sprint period treadmill | ADR-022 集中机制 sustained, 本文档**不再走 IRONLAWS §22 audit log entry** |
+| 凭空 enumerate | 设计基于 4-29 痛点 + 借鉴 SSOT (4-29 D5-D9 决议 5+1 层 + Tier A/B + daily_stock_analysis 29.5K ⭐ MIT) |
+| Sprint period treadmill | ADR-022 集中机制, 本文档**不再走 IRONLAWS §22 audit log entry** |
 | "留 Step 7+" 滥用 | 本文档 enumerate 全部决议 + 全部失败模式 + 全部边缘 case |
 | 凭空削减 user 决议 | 5+1 层全做 + Tier A/B 全做, 不擅自降级 L2/L5 到不实施 |
 
@@ -104,14 +104,14 @@
 │ Layer 1: 全自动 (L0/L1/L2/L3)                          │
 │   - 数据接入 / 触发 detection / 计算 context / 调整阈值 │
 │   - 0 user 操作                                         │
-│   - 0 真金交易                                          │
+│   - 0 金交易                                          │
 └─────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 2: 半自动 (L4)                                    │
 │   - 系统准备 sell 单 + push                            │
 │   - User 反向决策权 (default 执行 + 30min cancel 窗口)  │
-│   - 真金 sell 走 STAGED 默认 / OFF fallback / AUTO 极端 │
+│   - 金 sell 走 STAGED 默认 / OFF fallback / AUTO 极端 │
 └─────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -122,7 +122,7 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-**真金保护硬锁** (sustained, 不动):
+**金保护硬锁** (不动):
 - `LIVE_TRADING_DISABLED=true` 默认
 - `DINGTALK_ALERTS_ENABLED=false` 默认 (生产开 true)
 - L4 AUTO 模式额外锁: 仅 Crisis regime + portfolio < -5% + user 显式 .env 启用
@@ -135,7 +135,7 @@
 | **集合竞价** | 9:15-9:25 | 实时 + 9:25 final | L1 GapDownOpen + L2 fundamental | **是** (open 前最后机会) |
 | **盘中** | 9:30-11:30 / 13:00-14:55 | tick + 5min + 15min | L1 全部 RealtimeRiskRule + L3 dynamic | 是 (跌停 detection critical) |
 | **尾盘** | 14:55-15:00 | 实时 + 14:55 final batch | L4 STAGED execute + Trailing | **是** (T+1 限制下最后 sell 窗口) |
-| **盘后** | 15:00-16:00 | 1 次 15:30 | L1 daily PMS Beat (sustained) | 中 (复盘 + 次日决策) |
+| **盘后** | 15:00-16:00 | 1 次 15:30 | L1 daily PMS Beat | 中 (复盘 + 次日决策) |
 | **夜间** | 16:00-8:30 next day | 1 次 16:30 + 周末报告 | L5 RiskReflector + 公告流 | 中 (反思 + overnight news) |
 
 **critical windows 定义**: 集合竞价 (9:15-9:25) + 尾盘 (14:55-15:00) + 跌停板撬开瞬间 (任意时刻 detect).
@@ -390,7 +390,7 @@ CREATE TABLE news_classified (
 prompts/risk/news_classifier_v1.yaml
 ```
 
-版本可迭代, sustained 走 git diff. ADR 记录大版本变更.
+版本可迭代, 走 git diff. ADR 记录大版本变更.
 
 ### §3.3 fundamental_context 8 维 schema (L0.3)
 
@@ -478,18 +478,18 @@ CREATE TABLE risk_data_gap_log (
 
 **4-29 决议依据**: 沿用 ADR-010 PMSRule + MVP 3.1b 接口, 实时化升级.
 
-### §4.1 现有规则 sustained (~10 PMSRule)
+### §4.1 现有规则 (~10 PMSRule)
 
-| 规则 | 触发条件 | cadence | sustained 不动? |
+| 规则 | 触发条件 | cadence | 不动? |
 |---|---|---|---|
-| PMSRule L1 | 浮盈 > 30% + 回撤 > 15% | 14:30 daily | ✅ sustained |
-| PMSRule L2 | 浮盈 > 20% + 回撤 > 12% | 14:30 daily | ✅ sustained |
-| PMSRule L3 | 浮盈 > 10% + 回撤 > 10% | 14:30 daily | ✅ sustained |
+| PMSRule L1 | 浮盈 > 30% + 回撤 > 15% | 14:30 daily | ✅ |
+| PMSRule L2 | 浮盈 > 20% + 回撤 > 12% | 14:30 daily | ✅ |
+| PMSRule L3 | 浮盈 > 10% + 回撤 > 10% | 14:30 daily | ✅ |
 | SingleStockStopLoss | 单股 -7% | 14:30 daily | ⚠️ 升级到实时 (本设计) |
 | IntradayDrawdown | portfolio intraday < -5% | 14:30 daily | ⚠️ 升级到实时 (本设计) |
 | CorrelatedLossClump | N 股同时下跌 | 14:30 daily | ⚠️ 升级到实时 (本设计) |
 
-L1 接口 (RiskRule abstract) sustained, 不动. 仅替换 cadence + 新增子类.
+L1 接口 (RiskRule abstract), 不动. 仅替换 cadence + 新增子类.
 
 ### §4.2 实时化升级 (subscribe_quote 接入)
 
@@ -521,7 +521,7 @@ def subscribe_realtime(symbols: list[str], callback):
 | Tick | 实时 (秒级) | 跌停 / 接近跌停 / 流动性骤降 |
 | 5min | 5min | 快速下跌 / 异动放量 |
 | 15min | 15min | 中期趋势 |
-| 14:30 daily | 1/day | sustained PMSRule (不动) |
+| 14:30 daily | 1/day | PMSRule (不动) |
 
 ### §4.3 8 RealtimeRiskRule (新增, 完整 enumerate)
 
@@ -564,10 +564,10 @@ RT_DETECTION_LATENCY_SLA_MS=5000
 **`RealtimeRiskEngine`** (新建, 现 RiskEngine 子类):
 - 异步 worker (Celery solo pool 或独立 supervisor process)
 - 订阅 xtquant tick + 5min/15min Beat
-- 评估 8 RealtimeRiskRule + sustained 10 PMSRule
+- 评估 8 RealtimeRiskRule + 10 PMSRule
 - 触发 → INSERT risk_event_log + 调 L0 告警实时化
 
-**risk_event_log 字段扩展** (sustained schema + 新字段):
+**risk_event_log 字段扩展** (schema + 新字段):
 
 ```sql
 ALTER TABLE risk_event_log ADD COLUMN cadence VARCHAR(20);  -- tick/5min/15min/daily
@@ -713,7 +713,7 @@ CREATE INDEX idx_risk_memory_event_type ON risk_memory (event_type, event_timest
 - 选项 A: BGE-M3 (本地, 0 cost, 1024 维, 中文优化)
 - 选项 B: LiteLLM API (V4-Flash embedding, ~$0.0001/1k tokens, 易接入)
 
-**vector store**: pgvector (TimescaleDB 同 PG, 0 新依赖). 已验证 sustained.
+**vector store**: pgvector (TimescaleDB 同 PG, 0 新依赖). 已验证.
 
 ### §5.5 V4-Flash vs V4-Pro 路由 (沿用 4-29 ADR-020)
 
@@ -817,7 +817,7 @@ SELECT add_retention_policy('dynamic_threshold_adjustments', INTERVAL '180 days'
 
 | 档 | 行为 | 适用 |
 |---|---|---|
-| **OFF** (current default) | 0 自动, 仅 alert. user 4-29 模式 | sustained fallback |
+| **OFF** (current default) | 0 自动, 仅 alert. user 4-29 模式 | fallback |
 | **STAGED** (本设计推荐 default) | 自动准备 sell 单 + push + 30min cancel 窗口 + 反向决策权 | 默认 |
 | **AUTO** | 全自动, 0 confirmation | 仅极端: Crisis regime + portfolio < -5% intraday + user 显式 .env 启用 |
 
@@ -854,7 +854,7 @@ SELECT add_retention_policy('dynamic_threshold_adjustments', INTERVAL '180 days'
 - 浮盈 ≥ 50%, trailing 收紧到 ATR × 1.5
 - 浮盈 ≥ 100%, trailing 收紧到 ATR × 1
 
-**deprecation**: PMSRule v1 (静态) deprecated → ADR-016 (TIER0_REGISTRY D-M2). 现 PMSRule L1/L2/L3 sustained 短期, Tier A Sprint 8 替换.
+**deprecation**: PMSRule v1 (静态) deprecated → ADR-016 (TIER0_REGISTRY D-M2). 现 PMSRule L1/L2/L3 短期, Tier A Sprint 8 替换.
 
 ### §7.4 Re-entry 逻辑
 
@@ -872,7 +872,7 @@ SELECT add_retention_policy('dynamic_threshold_adjustments', INTERVAL '180 days'
 **`L4ExecutionPlanner`** (新 service):
 - 接 RealtimeRiskEngine 输出 → 生成 ExecutionPlan
 - 输出 schema: `{symbol, action: SELL/HOLD/BATCH, qty, limit_price, batch_index, batch_total, scheduled_at, cancel_deadline}`
-- 调 broker_qmt 实施 (sustained T0-5 production-ready)
+- 调 broker_qmt 实施 (T0-5 production-ready)
 
 **ExecutionPlan 存储**:
 
@@ -901,7 +901,7 @@ CREATE INDEX idx_execution_plans_status_deadline ON execution_plans (status, can
 ```
 
 **DingTalk webhook 双向通信** (新增):
-- 现 dingtalk_alert helper (sustained PR #170 c3) 仅 push, 加 webhook receiver listen reply
+- 现 dingtalk_alert helper (PR #170 c3) 仅 push, 加 webhook receiver listen reply
 - user reply 解析 → 更新 execution_plans.user_decision
 - 实施: FastAPI endpoint `POST /api/risk/dingtalk_callback` (DingTalk 加密签名验证)
 
@@ -1176,7 +1176,7 @@ user approve/reject
 
 **Week 2 周报**: 反思 confirm 调整有效, 暂不再调.
 
-**闭环验证**: 系统真"学到" 4-29 之前没学到的东西, 下次类似 panic 时反应改进.
+**闭环验证**: 系统"学到" 4-29 之前没学到的东西, 下次类似 panic 时反应改进.
 
 ---
 
@@ -1189,18 +1189,17 @@ user approve/reject
 | 1 | `news_raw` | L0 原始 | 90 day | ✅ (chunk 1d) |
 | 2 | `news_classified` | L0 分类 | 90 day | (relation to news_raw) |
 | 3 | `fundamental_context_daily` | L0 8 维 | 2 year | ✅ (chunk 1mo) |
-| 4 | `risk_event_log` (扩展) | L1 事件 sustained | 90 day | ✅ sustained |
+| 4 | `risk_event_log` (扩展) | L1 事件 | 90 day | ✅ |
 | 5 | `risk_memory` | L2 RAG | 永久 (重要 lesson) | (pgvector) |
 | 6 | `market_regime_log` | L2 regime | 1 year | ✅ (chunk 1mo) |
 | 7 | `dynamic_threshold_adjustments` | L3 audit | 180 day | ✅ (chunk 1d) |
 | 8 | `execution_plans` | L4 STAGED | 180 day | (status 索引) |
 | 9 | `risk_data_gap_log` | L0 元监控 | 180 day | (component 索引) |
 | 10 | `risk_metrics_daily` | 元监控 KPI | 2 year | ✅ (chunk 1mo) |
-| 11 | (existing) `risk_event_log` | sustained | sustained | sustained |
+| 11 | (existing) `risk_event_log` | | | |
 
 **SSOT 接入**:
-- DataPipeline (沿用铁律 17): 所有入库走 DataPipeline.ingest()
-- DataContract: 11 张新表加 Contract 定义 (`backend/app/data_fetcher/contracts.py`)
+- DataPipeline (沿用铁律 17): 所有入库走 DataPipeline.ingest- DataContract: 11 张新表加 Contract 定义 (`backend/app/data_fetcher/contracts.py`)
 - migrations: `backend/migrations/v3_risk_framework_<n>.sql` (幂等 + rollback 配对)
 
 **索引设计原则** (沿用 LL-034 + 数据库约定):
@@ -1218,7 +1217,7 @@ user approve/reject
 
 | 模块 | 路径 | 职责 | 依赖 |
 |---|---|---|---|
-| `LiteLLMRouter` | `backend/qm_platform/llm/` | LLM 路由 (V4-Flash/V4-Pro/Ollama) | LiteLLM SDK | <!-- ADR-031 path 决议 + S2.1 PR #222 sediment, 修订 PR #216 真旧 cite "backend/app/integrations/litellm/" (该目录不存在), 沿用 qm_platform 体例 + N×N 漂移第 10 次实证 -->
+| `LiteLLMRouter` | `backend/qm_platform/llm/` | LLM 路由 (V4-Flash/V4-Pro/Ollama) | LiteLLM SDK | <!-- ADR-031 path 决议 + S2.1 PR #222 sediment, 修订 PR #216 旧 cite "backend/app/integrations/litellm/" (该目录不存在), 沿用 qm_platform 体例 + N×N 漂移第 10 次实证 -->
 | `NewsIngestionService` | `backend/app/services/news/` | 6 源 News 接入 | LiteLLMRouter, news_raw |
 | `NewsClassifierService` | `backend/app/services/news/` | V4-Flash 分类 | LiteLLMRouter, news_classified |
 | `FundamentalContextService` | `backend/app/services/fundamental/` | 8 维基本面 | Tushare/AKShare/pywencai |
@@ -1231,7 +1230,7 @@ user approve/reject
 | `RiskReflectorAgent` | `backend/app/services/risk/` | L5 反思 (Tier B) | LiteLLMRouter (V4-Pro), risk_memory |
 | `DingTalkWebhookReceiver` | `backend/app/api/risk/` | user reply 解析 | FastAPI endpoint |
 
-### §11.2 RiskRule 接口 (sustained, 不动)
+### §11.2 RiskRule 接口 (不动)
 
 ```python
 # backend/engines/risk/abstract.py (sustained)
@@ -1269,7 +1268,7 @@ class RiskRule(ABC):
 | 数据入库 | DataPipeline (铁律 17) | 11 张新表加 Contract |
 | 信号路径 | SignalComposer (铁律 16) | risk path 与 signal path 正交 (互不影响) |
 | 调度 | Celery Beat | 加 `risk-realtime-tick` (Celery solo pool) + `risk-news-ingest` (5min) + `risk-reflector-weekly` (Sunday 19:00) |
-| 真金 | broker_qmt | L4 调用 sustained 接口 |
+| 金 | broker_qmt | L4 调用 接口 |
 | 告警 | dingtalk_alert helper (PR #170 c3) | 加 priority + cadence + webhook receiver |
 | 配置 | config_guard 启动 raise | RT_* 字段加入 schema |
 | 元监控 | (新) | risk_metrics_daily + alert on alert |
@@ -1298,7 +1297,7 @@ class RiskBacktestAdapter:
 
 **dedup**: events 通过 (timestamp, symbol_id, rule_id) 唯一. backtest 重跑同一时段不重复触发.
 
-**timestamp via context**: 不用 NOW(), 走 RiskContext.timestamp (backtest 提供历史时刻).
+**timestamp via context**: 不用 NOW, 走 RiskContext.timestamp (backtest 提供历史时刻).
 
 ---
 
@@ -1334,14 +1333,14 @@ class RiskBacktestAdapter:
 ### §12.3 测试策略 per Sprint
 
 每 Sprint 验收 (沿用 LL-098 stress test + 铁律 10b smoke):
-- ✅ Unit 95%+ (L1/L4 真金 critical) / 80%+ (L0/L2/L3/L5)
+- ✅ Unit 95%+ (L1/L4 金 critical) / 80%+ (L0/L2/L3/L5)
 - ✅ Integration smoke (testcontainers PG + Redis mock)
 - ✅ pre-push hook PASS (沿用现 X10 + smoke)
 - ✅ STATUS_REPORT 沉淀 (沿用 sprint period 模式, 但**不创新 audit log entry**, 走 ADR-022 反 anti-pattern)
 
 ### §12.4 部署策略
 
-**Servy 服务扩展** (沿用 sustained):
+**Servy 服务扩展** (沿用):
 - `QuantMind-RiskRealtime` (新增): Celery solo pool, 订阅 xtquant tick
 - `QuantMind-RiskNewsIngest` (新增): Celery worker + Beat
 - `QuantMind-RiskReflector` (新增): Celery worker (周末 cron)
@@ -1443,7 +1442,7 @@ CREATE TABLE risk_metrics_daily (
 | # | 失败模式 | 触发条件 | 检测 | 降级路径 | 恢复条件 | 元告警? |
 |---|---|---|---|---|---|---|
 | 1 | LiteLLM cloud 全挂 | 6 LLM provider 全 timeout | LiteLLM SDK error rate > 50% | Ollama 本地 fallback (V4-Flash 替换) | LiteLLM provider 任 1 恢复 | ✅ P0 |
-| 2 | xtquant subscribe_quote 断连 | 5min 无 tick callback | heartbeat check | degrade 到 60s sync (sustained 现路径) | 重连 success | ✅ P0 |
+| 2 | xtquant subscribe_quote 断连 | 5min 无 tick callback | heartbeat check | degrade 到 60s sync (现路径) | 重连 success | ✅ P0 |
 | 3 | PG OOM / lock | PG slow query / connection pool exhausted | pg_stat_activity > 50 idle in tx | degrade: risk_event_log 仅读, INSERT to memory cache + 重试 | PG 恢复 | ✅ P0 |
 | 4 | Redis 不可用 | Redis ping fail | health check | degrade: thresholds_cache 走 PG 直读 + 静态 .env fallback | Redis 恢复 | ✅ P1 |
 | 5 | DingTalk webhook fail | push 无 200 response | push timing > 10s | retry 3 次 → email backup → 系统弹窗 | DingTalk 恢复 | ✅ P0 |
@@ -1539,7 +1538,7 @@ testcontainers PG + Redis + LiteLLM mock + xtquant mock:
 - 实测 V3 风控**会怎么 alert**, **alert latency**, **STAGED 决策点**
 - 与实际市场 outcome 对比 (counterfactual analysis)
 
-### §15.6 合成场景 (CC 决议 methodology, sustained T0-12 G2)
+### §15.6 合成场景 (CC 决议 methodology, T0-12 G2)
 
 **目标**: T0-12 真生产 0 events 验证缺 (TIER0_REGISTRY §2.8) → 走合成场景验证.
 
@@ -1572,9 +1571,9 @@ testcontainers PG + Redis + LiteLLM mock + xtquant mock:
 | RiskMemoryRAG (BGE-M3) | < 2GB | 常驻 (option A) |
 | pgvector | < 500MB | PG 内 |
 | **风控总常驻** | **~5GB** | |
-| **PT + 信号 + factor (sustained)** | **~10GB** | |
-| **PG (shared_buffers + work_mem)** | **~4GB** | sustained |
-| **Redis** | **~1GB** | sustained |
+| **PT + 信号 + factor ** | **~10GB** | |
+| **PG (shared_buffers + work_mem)** | **~4GB** | |
+| **Redis** | **~1GB** | |
 | **OS + buffer** | **~5GB** | |
 | **总 RAM 预算** | **~25GB** | 32GB 内, 留 7GB buffer |
 
@@ -1614,11 +1613,11 @@ testcontainers PG + Redis + LiteLLM mock + xtquant mock:
 | risk_metrics_daily | ~0.1MB | ~1.2MB |
 | **总年增** | **~250MB** | **~3GB compressed** |
 
-DB 现 224GB (sustained), 风控 + 3GB 可接受.
+DB 现 224GB , 风控 + 3GB 可接受.
 
 ---
 
-## §17 安全 + 边界 + 真金保护
+## §17 安全 + 边界 + 金保护
 
 ### §17.1 Claude 边界 (4-29 ADR-020 决议)
 
@@ -1644,7 +1643,7 @@ for path in forbidden_paths:
 
 加入 pre-push hook (沿用 X10 + smoke pattern).
 
-### §17.2 LIVE_TRADING_DISABLED 双锁 (sustained, 不动)
+### §17.2 LIVE_TRADING_DISABLED 双锁 (不动)
 
 ```bash
 LIVE_TRADING_DISABLED=true       # default
@@ -1659,7 +1658,7 @@ L4_AUTO_MODE_CRISIS_ONLY=true    # 仅 Crisis regime 才允许 AUTO
 L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 ```
 
-### §17.3 真金 sell 单边界
+### §17.3 金 sell 单边界
 
 - broker_qmt 仅 sell, 0 buy back (T+1 限制 + 失控风险)
 - AUTO 模式触发 → DingTalk P0 push (即使全自动也通知, audit log)
@@ -1670,7 +1669,7 @@ L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 
 - LLM call 不发送 user 真实持仓 symbol_id 给 third-party LLM provider (V4-Flash / V4-Pro 例外, 已签 enterprise SLA)
 - DingTalk webhook 强制签名验证 (HMAC-SHA256)
-- .env secrets 沉淀到 Windows DPAPI 加密 (sustained 现路径)
+- .env secrets 沉淀到 Windows DPAPI 加密 (现路径)
 - pgvector embedding 不含明文敏感数据 (仅 risk pattern fingerprint)
 
 ---
@@ -1683,27 +1682,27 @@ L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 |---|---|---|
 | **ADR-019** | V3 vision (5+1 层 + Tier A/B + 借鉴清单) | 4-29 决议 + 本设计 |
 | **ADR-020** | Claude 边界 + LiteLLM 路由 + CI lint | 4-29 决议 |
-| **ADR-023** | yaml-ssot-vs-db-strategy-configs-deprecation | 5-02 sprint factor task 5 sediment (NOT V3 设计 § scope, sustained user (a-iii) # 下移决议体例, L1 实时化 主题 → ADR-029 row 9) |
-| **ADR-024** | factor lifecycle vs registry semantic separation | 5-02 sprint factor task sediment (NOT V3 设计 § scope, user (a-iii) 决议 # 下移 sustained ADR-024 真主题 0 改动) |
-| **ADR-025** | RAG vector store 选型 (pgvector + embedding model 决议) | 本设计 §5.4 + §20 #3 (sustained reserve, 等 user 决议) |
-| **ADR-026** | L2 Bull/Bear 2-Agent debate (Tier B) | 本设计 §5.3 (sustained reserve, Tier B 架构决议) |
+| **ADR-023** | yaml-ssot-vs-db-strategy-configs-deprecation | 5-02 sprint factor task 5 sediment (NOT V3 设计 § scope, user (a-iii) # 下移决议体例, L1 实时化 主题 → ADR-029 row 9) |
+| **ADR-024** | factor lifecycle vs registry semantic separation | 5-02 sprint factor task sediment (NOT V3 设计 § scope, user (a-iii) 决议 # 下移 ADR-024 主题 0 改动) |
+| **ADR-025** | RAG vector store 选型 (pgvector + embedding model 决议) | 本设计 §5.4 + §20 #3 (reserve, 等 user 决议) |
+| **ADR-026** | L2 Bull/Bear 2-Agent debate (Tier B) | 本设计 §5.3 (reserve, Tier B 架构决议) |
 | **ADR-027** | L4 STAGED default + 反向决策权论据 + 跌停 fallback | 本设计 §7.1 + §7.2 + §13 #8 + §20.1 #1 + #7 sediment (5-02) |
 | **ADR-028** | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay | 本设计 §7.1 + §5.4 + §5.5 + §15.5 + §20.1 #5 + #9 sediment (5-02) |
-| **ADR-029** | L1 实时化 + xtquant subscribe_quote 接入 | 本设计 §4 (sustained reserve, 沿用 ADR-023 真主题 # 下移决议体例, V3 Tier A Sprint 3 真起手时 sediment) |
-| **ADR-030** | Layer 4 SOP 沉淀 (governance protocol) | 5-01 Phase 4.2 audit 4 docs sustained candidate (sustained reserve, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
-| **ADR-031** | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | V3 Sprint 1 S8 audit sediment (2026-05-03 PR #220), user X2=(ii) 决议 sustained ADR-020 + ADR-022 + 本设计 §5.5 真预约 (cross-reference, 本 # 主 file 在 docs/adr/, 本 row reference-only) |
+| **ADR-029** | L1 实时化 + xtquant subscribe_quote 接入 | 本设计 §4 (reserve, 沿用 ADR-023 主题 # 下移决议体例, V3 Tier A Sprint 3 起手时 sediment) |
+| **ADR-030** | Layer 4 SOP 沉淀 (governance protocol) | 5-01 Phase 4.2 audit 4 docs candidate (reserve, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
+| **ADR-031** | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | V3 Sprint 1 S8 audit sediment (2026-05-03 PR #220), user X2=(ii) 决议 ADR-020 + ADR-022 + 本设计 §5.5 待办 (cross-reference, 本 # 主 file 在 docs/adr/, 本 row reference-only) |
 
-> **真 ADR # registry SSOT**: 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) (5-02 sprint period 累计 3 N×N 同步漂移 textbook 案例真根本性处置 + 5-03 ADR-031 S8 audit sediment, sustained SOP-6 LL-105).
+> ** ADR # registry SSOT**: 详 [docs/adr/REGISTRY.md](../adr/REGISTRY.md) (5-02 sprint period 累计 3 N×N 同步漂移 textbook 案例根本性处置 + 5-03 ADR-031 S8 audit sediment, SOP-6 LL-105).
 
-### §18.2 关联现有 ADR (sustained)
+### §18.2 关联现有 ADR
 
 | ADR | 关联 |
 |---|---|
-| ADR-008 | execution_mode 命名空间 (sustained 全链路动态 settings) |
+| ADR-008 | execution_mode 命名空间 (全链路动态 settings) |
 | ADR-010 + addendum | PMS Deprecation + Risk Framework Migration (V3 是 V2 升级) |
 | ADR-013 | RD-Agent Re-evaluation (Wave 3 末评估, 不影响 V3) |
-| ADR-014 | Evaluation Gate Contract (sustained, 与 risk 正交) |
-| ADR-021 | IRONLAWS v3 (sprint period 治理 sustained) |
+| ADR-014 | Evaluation Gate Contract (与 risk 正交) |
+| ADR-021 | IRONLAWS v3 (sprint period 治理) |
 | ADR-022 | Sprint period treadmill 反 anti-pattern (本设计严格遵守) |
 
 ### §18.3 新文档
@@ -1739,10 +1738,10 @@ L4_AUTO_MODE_PORTFOLIO_DRAWDOWN_THRESHOLD=0.05  # 仅 portfolio < -5% 时
 | **2026 Q4 (11-1 月)** | PT 重启 + 实战调优 | Tier B 全完成 + paper-mode 5d → live cutover (沿用 PT 重启 gate prerequisite) + L5 实战反思 |
 | **2027 Q1+** | V4 评估 | 基于 V3 实战数据 + 新借鉴源研究 (如 RD-Agent Wave 3 末评估) |
 
-### §19.2 PT 重启 critical path (沿用 sprint period sustained)
+### §19.2 PT 重启 critical path (沿用 sprint period)
 
 Tier A 全完成 + paper-mode 5d dry-run + .env paper→live user 显式授权:
-- ✅ T0-15/16/18/19 closed (sprint period sustained)
+- ✅ T0-15/16/18/19 closed (sprint period)
 - ✅ T0-11 (F-D3A-1) closed (PR #170)
 - ✅ Tier A Sprint 1-10 完成 (本 ROADMAP)
 - ✅ Sprint 10 paper-mode 5d 验收通过
@@ -1755,7 +1754,7 @@ Tier A 全完成 + paper-mode 5d dry-run + .env paper→live user 显式授权:
 - **T1.4 现状修批 2.x** (TIER0_REGISTRY G1 7 项): 与本设计 Tier A Sprint 并行 (CC 多任务)
 - **T1.5 回测引入风控** (Q3): 本设计 §11.4 接口契约 + §15.5 历史回放
 - **T1.6 阈值扫参** (Q3-Q4): 基于 Tier A 实施后参数 + L5 反思候选
-- **Wave 4 MVP 4.1 Observability** (sustained, batch 3.x 进行中): 监控基础设施复用
+- **Wave 4 MVP 4.1 Observability** (batch 3.x 进行中): 监控基础设施复用
 
 ---
 
@@ -1766,8 +1765,8 @@ Tier A 全完成 + paper-mode 5d dry-run + .env paper→live user 显式授权:
 | # | 决议项 | 我推荐 | user 决议 (5-02 Claude.ai+user 战略对话 sediment) |
 |---|---|---|---|
 | 1 | STAGED default 模式确认 | STAGED (反向决策权, §7.1 论据) | **(B) implement, default = OFF (短期), 5 prerequisite 后切换 default = STAGED (长期)** — LIVE_TRADING_DISABLED guard reconcile / 跌停 fallback / SOP-6 / paper-mode 5d / .env governance. 详 [ADR-027](adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) |
-| 2 | Bull/Bear regime cadence | daily 3 次 (9:00/14:30/16:00) | **daily 3 次 (9:00 / 14:30 / 16:00)** sustained |
-| 3 | RAG embedding model | BGE-M3 (本地, 0 cost) vs LiteLLM API | **BGE-M3** (本地, 0 cost, 1024 维, 中文优化, V3 §17.4 隐私 sustained) |
+| 2 | Bull/Bear regime cadence | daily 3 次 (9:00/14:30/16:00) | **daily 3 次 (9:00 / 14:30 / 16:00)** |
+| 3 | RAG embedding model | BGE-M3 (本地, 0 cost) vs LiteLLM API | **BGE-M3** (本地, 0 cost, 1024 维, 中文优化, V3 §17.4 隐私) |
 | 4 | RiskReflector cadence | 周 + 月 + 重大事件后 (全开) | **周日 19:00 + 每月 1 日 09:00 + 重大事件后 24h** (sub: STAGED cancel 率异常阈值留 Sprint M 真实数据决议) |
 | 5 | AUTO 模式启用条件 | default OFF + Crisis + portfolio < -5% + 显式 .env | **(D-改) 接受 — Sprint 1~M (AUTO 不开发) → Sprint M+1~N (AUTO + RAG + replay 实施) → Sprint N+ (5 prerequisite 满足后启用)**. 触发 = Crisis regime + portfolio < -5% intraday + .env 双启用. 详 [ADR-028](adr/ADR-028-auto-mode-v4-pro-rag-and-backtest-replay.md) |
 | 6 | LLM 成本月预算上限 | $50/月 | **$50/月** + 80% budget warn / 100% Ollama fallback / 月度 review (跟 V4-Pro 月复盘 cadence 一致) |
