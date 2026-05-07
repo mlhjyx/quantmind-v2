@@ -29,9 +29,9 @@
 | **WF 验证** (2026-04-12) | 1 主, 2 副 | CORE3+dv_ttm+SN050 Sharpe=0.8659 PASS, MDD=-13.91% | configs/pt_live.yaml + CLAUDE.md §策略配置 |
 | Phase 3B 因子特征分析 + P1 评估 (2026-04-13) | 8 P1 候选 | **全 FAIL** (CORE3+dv_ttm = 等权 alpha 上限, 加第 5 因子稀释) | docs/research-kb/findings/ + CLAUDE.md §已知失败方向 |
 | Phase 3D LightGBM ML Synthesis (2026-04-14) | 4 实验 | **全 FAIL** (A-REG/B-REG/A-LR/B-LR), **ML 预测层 CLOSED** | docs/research-kb/findings/phase3d-*.md |
-| Phase 3E-II 微结构因子 (2026-04-15) | 16 因子 | 16/17 neutral IC PASS + 16/16 noise ROBUST + CORE4 独立, 但 WF 0/6 PASS (真 alpha, 等权框架无法利用) | docs/research-kb/findings/ |
+| Phase 3E-II 微结构因子 (2026-04-15) | 16 因子 | 16/17 neutral IC PASS + 16/16 noise ROBUST + CORE4 独立, 但 WF 0/6 PASS ( alpha, 等权框架无法利用) | docs/research-kb/findings/ |
 
-**M 漂移评估**: 上述 ~28+ 实验未追加注册表 (理由: 全 FAIL + 等权框架 alpha 上限 closed, 4 因子 active 状态不变). 严格 BH-FDR 视角下, 真 M 应含这 28+ 实验, 即真 M ≈ 240. 实际 PT 配置不变 (CORE3+dv_ttm), 不影响生产决策. 留 future 因子研究 PR 决议是否补录 (本 PR 仅 sediment audit log).
+**M 漂移评估**: 上述 ~28+ 实验未追加注册表 (理由: 全 FAIL + 等权框架 alpha 上限 closed, 4 因子 active 状态不变). 严格 BH-FDR 视角下, M 应含这 28+ 实验, 即 M ≈ 240. 实际 PT 配置不变 (CORE3+dv_ttm), 不影响生产决策. 留 future 因子研究 PR 决议是否补录 (本 PR 仅 sediment audit log).
 
 **当前 active 因子池** (CORE 4, 沿用 CLAUDE.md §因子系统):
 - turnover_mean_20(-1) / volatility_20(-1) / bp_ratio(+1) / dv_ttm(+1)

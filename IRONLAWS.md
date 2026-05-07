@@ -14,7 +14,7 @@
 
 | Tier | 名称 | 违反后果 | 用途 |
 |---|---|---|---|
-| **T1** | 强制 | block PR / 真金风险 / 数据完整性破坏 | 硬门, 0 容忍 |
+| **T1** | 强制 | block PR / 资金风险 / 数据完整性破坏 | 硬门, 0 容忍 |
 | **T2** | 警告 | 提示 + commit message 写 reason 才能绕过 | 软门, 治理纪律 |
 | **T3** | 建议 | 不阻断, 提供最佳实践参考 | 软建议 |
 
@@ -45,7 +45,7 @@
 | 8 | 任何策略改动必须OOS验证 | "IS强OOS崩" | — |
 | 9 | 所有资源密集任务必须经资源仲裁 | OOM 2026-04-03 | — |
 | 10 | 基础设施改动后全链路验证 | 清明改造 | — |
-| 10b | 生产入口真启动验证 | MVP 1.1b shadow | — |
+| 10b | 生产入口启动验证 | MVP 1.1b shadow | — |
 | 11 | IC必须有可追溯的入库记录 | mf_divergence | — |
 | 12 | G9 Gate 新颖性 | AlphaAgent KDD 2025 | — |
 | 13 | G10 Gate 市场逻辑 | reversal_20 | — |
@@ -86,7 +86,7 @@
 | 38 | Platform Blueprint 是唯一长期架构记忆 | Blueprint drift | ADR-008 |
 | 39 | 双模式思维 — 架构/实施切换必须显式声明 | sprint period 多次 | — |
 | 40 | 测试债务不得增长 | S4 32 fail | — |
-| 44 (X9) | Beat schedule / config 注释 ≠ 真停服, 必显式 restart | LL-097 | — |
+| 44 (X9) | Beat schedule / config 注释 ≠ 停服, 必显式 restart | LL-097 | — |
 | **X10 (新)** | **AI 自动驾驶 detection — 末尾不写 forward-progress offer** | **LL-098** | **ADR-021** |
 
 ### T3 建议 (本版本 0 条)
@@ -197,9 +197,9 @@ ML 训练/验证/测试三段分离; 非 ML 策略/因子/参数改动必须 wal
 
 PASS 才能上线, 不跳过验证直接部署 (清明改造教训).
 
-#### 10b 生产入口真启动验证 (MVP 1.1b Shadow Fix 2026-04-17 沉淀)
+#### 10b 生产入口启动验证 (MVP 1.1b Shadow Fix 2026-04-17 沉淀)
 
-单测 CWD = project root 永远绿不等于生产可用. 任何新 MVP (尤其 Platform / 生产入口 / Servy 管理服务) 必须补 smoke 测试 (`backend/tests/smoke/`): subprocess 从生产启动路径真启动一次, 捕 import-time / top-level 执行错误.
+单测 CWD = project root 永远绿不等于生产可用. 任何新 MVP (尤其 Platform / 生产入口 / Servy 管理服务) 必须补 smoke 测试 (`backend/tests/smoke/`): subprocess 从生产启动路径启动一次, 捕 import-time / top-level 执行错误.
 
 **违反 → MVP 1.1-2.1a 账面交付 7/7 但 FastAPI/PT/Celery 重启即炸 1 周** (stdlib `platform` shadow 潜伏) 的教训. 新 MVP 交付硬门: `pytest -m smoke` 必须全绿.
 
@@ -590,7 +590,7 @@ Blueprint 过时即事故源.
 
 ### 42. PR 分级审查制 (Auto mode 缓冲层) [T1]
 
-**全局原则**: AI-heavy + 真金白银生产环境下 main 直 push 是危险默认, 必须有 "暂停 + revisit" buffer.
+**全局原则**: AI-heavy + 金白银生产环境下 main 直 push 是危险默认, 必须有 "暂停 + revisit" buffer.
 
 **分级**:
 
@@ -668,16 +668,16 @@ Blueprint 过时即事故源.
 
 ## §18 X 系列治理类 (条目 44 X9 + X10 新)
 
-### 44. Beat schedule / config 注释 ≠ 真停服, 必显式 restart (X9) [T2]
+### 44. Beat schedule / config 注释 ≠ 停服, 必显式 restart (X9) [T2]
 
-**全局原则**: 注释 Beat schedule entry / cron / Servy config / .env 等运行时配置文件 **不等于服务真停**. 任何 schedule / config 类改动后必显式重启服务才生效:
+**全局原则**: 注释 Beat schedule entry / cron / Servy config / .env 等运行时配置文件 **不等于服务停**. 任何 schedule / config 类改动后必显式重启服务才生效:
 
 - **Celery Beat schedule** 改动: 必 `Servy restart QuantMind-CeleryBeat` (PR #150 link-pause 注释 risk-daily-check / intraday-risk-check 4-29 20:39 commit, 但 Beat process 4-29 14:07 启动后未 restart, 4-29 20:39 → 4-30 15:35:51 持续运行旧 schedule cache → 73 次 intraday_risk_check error 实测) — Session 45 D3-A Step 5 spike 实测发现.
 - **schtask** enable/disable: 必 `schtasks /Change /Enable` 或 `Disable` 显式 + 验证 `Get-ScheduledTask` State.
 - **Servy config** 改 (ServiceDependencies / RecoveryAction / 等): 必 `Servy stop → start` 完整 cycle, 不仅 reload.
 - **schedule 类 PR 必含 post-merge ops checklist**: PR description 列出 (a) 改了哪些 schedule entry / config (b) post-merge 必跑的 ops 命令 (c) 验证命令 (d) rollback 命令.
 
-**违反 → schedule 改动 N 小时/天后才被发现实际未生效** (PR #150 case: 36h 间 73 次 intraday_risk_check error spam DingTalk + 风控未真停).
+**违反 → schedule 改动 N 小时/天后才被发现实际未生效** (PR #150 case: 36h 间 73 次 intraday_risk_check error spam DingTalk + 风控未停).
 
 本铁律由 Session 45 D3-A Step 5 spike F-D3A-NEW-6 + T0-18 P1 触发. **关联 LL-097** (本铁律的 spike 沉淀, sweep 入 LESSONS_LEARNED.md).
 
@@ -708,7 +708,7 @@ Blueprint 过时即事故源.
 
 #### 触发 case 详细
 
-- 2026-04-30 sprint 偏移. D3-A/B/C 14 维审计闭环后 (PR #155-#169), CC 跳过 D11/D12 决议要求的 Step 5/6/7/T1.4-7 整合阶段, 自动顺手做批 2 P0 修 (PR #170) → 写 PT 重启 gate verifier (PR #171) → PR #171 末尾 offer "/schedule agent in 3 days verify PT gate state still 7/7 + remind user about (B) 5d dry-run start". User 4-30 反问 "为什么跳到最后, 前面都没做完, PT 为什么会重启" 揭示真因, schedule agent offer 撤回.
+- 2026-04-30 sprint 偏移. D3-A/B/C 14 维审计闭环后 (PR #155-#169), CC 跳过 D11/D12 决议要求的 Step 5/6/7/T1.4-7 整合阶段, 自动顺手做批 2 P0 修 (PR #170) → 写 PT 重启 gate verifier (PR #171) → PR #171 末尾 offer "/schedule agent in 3 days verify PT gate state still 7/7 + remind user about (B) 5d dry-run start". User 4-30 反问 "为什么跳到最后, 前面都没做完, PT 为什么会重启" 揭示因, schedule agent offer 撤回.
 
 #### 复用规则 (沿用 LL-098 5 条)
 
@@ -755,7 +755,7 @@ Blueprint 过时即事故源.
 - (1) **新 sub-PR / sub-step / step 起手前** (含 prerequisite Step / sub-PR 间 transition / Sprint 间 transition)
 - (2) **跨 session resume** (含 /compact + SessionStart hook trigger / new session 冷启动)
 - (3) **prompt cite 4 doc 任一具体数字 / 编号 / cite source** (反信任 prompt cite + memory cite, 沿用 LL-101 + LL-104)
-- (4) **sediment cite 4 doc 任一 ground truth claim** (反 silent overwrite, 沿用 LL-103 真分离 architecture)
+- (4) **sediment cite 4 doc 任一 ground truth claim** (反 silent overwrite, 沿用 LL-103 分离 architecture)
 
 #### 4 步真生产体例 (沿用 SESSION_PROTOCOL.md §1.3)
 
@@ -766,20 +766,20 @@ Blueprint 过时即事故源.
 
 #### 5 类漂移类型 cite (PR description / STATUS_REPORT 必含)
 
-- (1) **数字漂移** (e.g. T1=8 vs 真起点 T1=31 / 32 rules vs 真起点 45 rules)
-- (2) **编号漂移** (e.g. LL-120 vs 真起点 LL-105 next free=LL-106 / ADR-037 # 占用 verify)
+- (1) **数字漂移** (e.g. T1=8 vs 起点 T1=31 / 32 rules vs 起点 45 rules)
+- (2) **编号漂移** (e.g. LL-120 vs 起点 LL-105 next free=LL-106 / ADR-037 # 占用 verify)
 - (3) **存在漂移** (e.g. SESSION_PROTOCOL.md "已存在拆分" vs 真值 0 存在)
-- (4) **mtime 漂移** (e.g. "4 doc 5-06 mtime sustained" vs 真值 0/4 5-06)
+- (4) **mtime 漂移** (e.g. "4 doc 5-06 mtime" vs 真值 0/4 5-06)
 - (5) **cross-reference 漂移** (e.g. CLAUDE.md cite "拆分 sediment" vs 真值 0 cite)
 
-**违反 → 累计真值漂移**: PR-A #237 5-06 P0 finding 真因 (5-02→5-06 累计 ~3-4x 真值漂移 sediment cite source 锁定真值). 反"凭印象 sediment" anti-pattern.
+**违反 → 累计真值漂移**: PR-A #237 5-06 P0 finding 因 (5-02→5-06 累计 ~3-4x 真值漂移 sediment cite source 锁定真值). 反"凭印象 sediment" anti-pattern.
 
-本铁律由 5-06 user P0 finding 触发: "CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read sustained, CC 显然没有触发这些, 这是为什么?". 沿用 PR-A #237 SOP 文件首版本身含 phantom LL-119 / LL-115 真讽刺案例 #4 sediment cite source 锁定真值 — 真**反复实证** governance 单层 (CC 自主 sediment) 不足, 必须 reviewer 双层防御 + 铁律 enforcement (本铁律 45 sediment).
+本铁律由 5-06 user P0 finding 触发: "CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read, CC 显然没有触发这些, 这是为什么?". 沿用 PR-A #237 SOP 文件首版本身含 phantom LL-119 / LL-115 drift catch case #4 sediment cite source 锁定真值 — **反复实证** governance 单层 (CC 自主 sediment) 不足, 必须 reviewer 双层防御 + 铁律 enforcement (本铁律 45 sediment).
 
 **关联文档**:
 - [docs/SESSION_PROTOCOL.md](docs/SESSION_PROTOCOL.md) — 4 doc fresh read SOP detailed 体例 (PR-A #237 sediment, 160 行)
 - [docs/adr/ADR-037](docs/adr/ADR-037-internal-source-fresh-read-sop.md) — Internal source fresh read SOP governance decision
-- LESSONS_LEARNED.md LL-106 — 5-06 P0 finding sediment + 真讽刺案例 #4
+- LESSONS_LEARNED.md LL-106 — 5-06 P0 finding sediment + drift catch case #4
 
 **LL backref**: LL-106.
 
@@ -795,7 +795,7 @@ Blueprint 过时即事故源.
 
 **来源**: `scripts/audit/README.md` L6 "审计脚本仅诊断, 不修复".
 
-**含义**: 审计 / spike / forensic 类工作的边界, 仅诊断不修复 / 不触真金 / 仅文档 + diagnostic.
+**含义**: 审计 / spike / forensic 类工作的边界, 仅诊断不修复 / 不触金 / 仅文档 + diagnostic.
 
 ---
 
@@ -882,9 +882,9 @@ ADR 编号系统当前状态 (CC 实测决议**维持现状, 不 rename**):
 
 ### §22.终止 sprint period audit log 链 (Step 6.4 G1, 2026-05-01)
 
-> **终止决议** (沿用 [ADR-022](docs/adr/ADR-022-sprint-treadmill-revocation.md) §2.3): 本 §22 不再 sediment sprint period 漂移修补 audit. **v3.0.3 (Step 6.3b PR #179) 是末次 audit log entry**. v3.0.4+ 仅记真 SSOT 内容变更 (新铁律 / Tier calibration / 候选 promote 等). 漂移修补走 ADR-022 (或后续 ADR-023+) 集中.
+> **终止决议** (沿用 [ADR-022](docs/adr/ADR-022-sprint-treadmill-revocation.md) §2.3): 本 §22 不再 sediment sprint period 漂移修补 audit. **v3.0.3 (Step 6.3b PR #179) 是末次 audit log entry**. v3.0.4+ 仅记 SSOT 内容变更 (新铁律 / Tier calibration / 候选 promote 等). 漂移修补走 ADR-022 (或后续 ADR-023+) 集中.
 >
-> **反 anti-pattern 验证**: Step 6.1 → 6.3b 8 PR 累计 4 audit log entries (v3.0/v3.0.1/v3.0.2/v3.0.3) / 1 day, 形成 sprint period treadmill — 单看每条合理, 累计后 §22 治理 audit log 长 + 真核心铁律内容稀释. ADR-022 集中机制终止此 anti-pattern.
+> **反 anti-pattern 验证**: Step 6.1 → 6.3b 8 PR 累计 4 audit log entries (v3.0/v3.0.1/v3.0.2/v3.0.3) / 1 day, 形成 sprint period treadmill — 单看每条合理, 累计后 §22 治理 audit log 长 + 核心铁律内容稀释. ADR-022 集中机制终止此 anti-pattern.
 
 ---
 

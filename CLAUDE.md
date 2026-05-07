@@ -207,7 +207,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ### Tier 索引 (T1 强制 / T2 警告 / T3 建议)
 
-- **T1 强制 (31 条, 违反 → block PR / 真金风险)**: 1 / 4 / 5 / 6 / 7 / 8 / 9 / 10 / 10b / 11 / 12 / 13 / 14 / 15 / 16 / 17 / 18 / 19 / 20 / 25 / 29 / 30 / 31 / 32 / 33 / 34 / 35 / 36 / 41 / 42 / 43
+- **T1 强制 (31 条, 违反 → block PR / 资金风险)**: 1 / 4 / 5 / 6 / 7 / 8 / 9 / 10 / 10b / 11 / 12 / 13 / 14 / 15 / 16 / 17 / 18 / 19 / 20 / 25 / 29 / 30 / 31 / 32 / 33 / 34 / 35 / 36 / 41 / 42 / 43
 - **T2 警告 (14 条, 违反 → 提示 + commit message 写 reason)**: 3 / 21 / 22 / 23 / 24 / 26 / 27 / 28 / 37 / 38 / 39 / 40 / 44 (X9) / **X10 (新)**
 - **T3 建议**: 本版本 0 条 (留 Step 6.2.5+ promote)
 - **DEPRECATED**: 条目 2 (合并入 25)
@@ -237,7 +237,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 9. [T1] 所有资源密集任务必须经资源仲裁 — 全局原则 (PG OOM 2026-04-03)
 10. [T1] 基础设施改动后全链路验证 — 清明改造教训
-    - **10b** 生产入口真启动验证 — `pytest -m smoke` 必须全绿 (MVP 1.1b shadow fix)
+    - **10b** 生产入口启动验证 — `pytest -m smoke` 必须全绿 (MVP 1.1b shadow fix)
 11. [T1] IC 必须有可追溯的入库记录 — factor_ic_history 唯一入库点 (mf_divergence 教训)
 
 #### 因子质量类 (12-13) — IRONLAWS.md §6
@@ -310,7 +310,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 #### X 系列治理类 (44 X9 + X10 新) — IRONLAWS.md §18
 
-44. [T2] **(X9)** Beat schedule / config 注释 ≠ 真停服, 必显式 restart — schedule 类 PR 必含 post-merge ops checklist (LL-097)
+44. [T2] **(X9)** Beat schedule / config 注释 ≠ 停服, 必显式 restart — schedule 类 PR 必含 post-merge ops checklist (LL-097)
 
 **X10 (新, 2026-04-30 Step 6.2 PR 落地)** [T2]: **AI 自动驾驶 detection — 末尾不写 forward-progress offer**
 - **主条款**: PR / commit / spike 末尾不主动 offer schedule agent / paper-mode / cutover / 任何前推动作. 等 user 显式触发. 反例 → STOP.
@@ -400,7 +400,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 - **清仓 v4 hybrid narrative** (PR #169): 17 股 CC 4-29 10:43:54 emergency_close + 1 股 (688121.SH 卓然新能 4500 股) 4-29 跌停 cancel → 4-30 user GUI sell
 - **PT 重启 gate prerequisite** (Step 6.4 G1 实测修订, 沿用 Step 6.3a §2.1 closed status):
   - ✅ **已 closed (代码层)**: T0-11 (F-D3A-1, PR #170) / T0-15/16/18 (PR #170) / T0-19 (PR #168+#170)
-  - ⏳ **真待办 (运维层)**: DB 4-28 stale snapshot 清 + paper-mode 5d dry-run + .env paper→live 用户授权
+  - ⏳ **待办 (运维层)**: DB 4-28 stale snapshot 清 + paper-mode 5d dry-run + .env paper→live 用户授权
 - 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md) + ADR-008 命名空间契约
 
 ## 文档查阅索引
@@ -442,7 +442,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 阶段 | 状态 | 关键产出 | 详情 |
 |---|---|---|---|
 | **Wave 4 MVP 4.1 Observability** | 🟡 进行中 | batch 1+2.1+2.2 ✅ (PostgresAlertRouter / MetricExporter / AlertRulesEngine), batch 3.x 17 scripts SDK migration 进行中 | SYSTEM_STATUS §0 + QPB v1.16 |
-| **Wave 3 MVP 3.3 Signal-Exec ✅** | 🟢 完结 (Session 40, 2026-04-28) | Stage 3.0 真切换 PR #116, signal_service 内部走 PlatformSignalPipeline | LL-082~088 + memory sprint_state |
+| **Wave 3 MVP 3.3 Signal-Exec ✅** | 🟢 完结 (Session 40, 2026-04-28) | Stage 3.0 切换 PR #116, signal_service 内部走 PlatformSignalPipeline | LL-082~088 + memory sprint_state |
 | **Wave 3 MVP 3.1 Risk Framework ✅** | 🟢 完结 (Session 30, 2026-04-24) | 6 PR / 65 新 tests / Celery Beat 5 schedule entries 生产激活 | ADR-010 addendum |
 | **Wave 2 ✅ 完结** | 🟢 (Session 9, 2026-04-19) | Data Framework / Lineage / MVP 2.1c / 2.2 / 2.3 Sub1+Sub2+Sub3 | SYSTEM_STATUS §0.0 |
 | **Wave 1 ✅ 完结 7/7** | 🟢 (2026-04-17) | Platform Skeleton / Config / DAL / Registry / Direction DB 化 / Knowledge Registry | docs/mvp/MVP_1_*.md |
@@ -466,7 +466,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 `docs/runbook/cc_automation/` 集中存放可触发的 CC ops runbook (e.g. 撤 setx / Servy 全重启 / DB 命名空间修复 / 等). 索引见 [`docs/runbook/cc_automation/00_INDEX.md`](docs/runbook/cc_automation/00_INDEX.md).
 
-**触发模式**: user 一句话 → CC 加载对应 runbook → 自主执行 (前置检查 + 真金 0 风险确认 + 验证清单 + 失败回滚) → STATUS_REPORT 归档. user 0 手工操作.
+**触发模式**: user 一句话 → CC 加载对应 runbook → 自主执行 (前置检查 + 资金 0 风险确认 + 验证清单 + 失败回滚) → STATUS_REPORT 归档. user 0 手工操作.
 
 跟 `docs/audit/` (一次性诊断) / `docs/adr/` (架构决议) / `docs/mvp/` (功能设计) 区分: runbook 是**可重复触发**的运维资产.
 
@@ -490,7 +490,7 @@ CLAUDE.md / IRONLAWS.md / SYSTEM_STATUS.md / LESSONS_LEARNED.md / FACTOR_TEST_RE
 - CLAUDE.md中的统计数字（表数/因子数/测试数）变更时同步更新
 - 不确定的数字标注"约"或"截至日期"
 - 因子池状态以FACTOR_TEST_REGISTRY.md为唯一真相源
-- **Sprint state cite SOP** (Phase 4.2 sustained, Layer 4 Topic 1 C): handoff / status report 中**任一数字** 必 cite source + timestamp (SQL query / grep / file path / etc), 走 [`docs/handoff_template.md`](docs/handoff_template.md) §3 cite SOP. 反**凭空数字** anti-pattern (memory #19 broader 47/53+).
+- **Sprint state cite SOP** (Phase 4.2, Layer 4 Topic 1 C): handoff / status report 中**任一数字** 必 cite source + timestamp (SQL query / grep / file path / etc), 走 [`docs/handoff_template.md`](docs/handoff_template.md) §3 cite SOP. 反**凭空数字** anti-pattern (memory #19 broader 47/53+).
 
 ### 文档层级（固定）
 - **总设计 (当前真相)**: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` ⭐

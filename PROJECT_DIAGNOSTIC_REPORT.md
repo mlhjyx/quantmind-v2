@@ -10,11 +10,11 @@
 
 ## TL;DR — 一段话死刑判决
 
-**真金 ¥1M 当前没有任何自动止损。** 14:30 风控日检 + 09:00–14:55 每 5 分钟盘中检查的 9 条规则**全部走完后产出零真实卖出动作**，根本原因**叠加**为 5 重失效：
+**金 ¥1M 当前没有任何自动止损。** 14:30 风控日检 + 09:00–14:55 每 5 分钟盘中检查的 9 条规则**全部走完后产出零真实卖出动作**，根本原因**叠加**为 5 重失效：
 
-1. **`LoggingSellBroker` 是占位 stub** —— 任何 `action=sell` 的规则触发 → broker 直接 `return {"status": "logged_only"}`，从未替换为真 broker（[risk_wiring.py:54-79](backend/app/services/risk_wiring.py:54)）。批 1 占位 5 个月未升级到批 2。
-2. **8/9 条规则 action 是 `alert_only`** —— 即使 broker 是真的，单股止损/盘中跌 3-8%/QMT 断连/CB 转移**全部只发钉钉**，不下单（[interface.py:122-125](backend/qm_platform/risk/interface.py:122)）。
-3. **唯一 `action=sell` 的 PMSRule 在当前持仓状态下永不触发** —— PMS 要求"浮盈 ≥10/20/30% 且回撤 ≥10/12/15%"，**真金 -29% 卓然股份从未浮盈过 → 任何亏损场景都不命中**（[pms.py:122-129](backend/qm_platform/risk/rules/pms.py:122)）。
+1. **`LoggingSellBroker` 是占位 stub** —— 任何 `action=sell` 的规则触发 → broker 直接 `return {"status": "logged_only"}`，从未替换为 broker（[risk_wiring.py:54-79](backend/app/services/risk_wiring.py:54)）。批 1 占位 5 个月未升级到批 2。
+2. **8/9 条规则 action 是 `alert_only`** —— 即使 broker 是的，单股止损/盘中跌 3-8%/QMT 断连/CB 转移**全部只发钉钉**，不下单（[interface.py:122-125](backend/qm_platform/risk/interface.py:122)）。
+3. **唯一 `action=sell` 的 PMSRule 在当前持仓状态下永不触发** —— PMS 要求"浮盈 ≥10/20/30% 且回撤 ≥10/12/15%"，**金 -29% 卓然股份从未浮盈过 → 任何亏损场景都不命中**（[pms.py:122-129](backend/qm_platform/risk/rules/pms.py:122)）。
 4. **当前 `EXECUTION_MODE=paper` 但持仓数据全是 `live` 命名空间** —— `trade_log` `WHERE execution_mode='paper'` 返 0 行 → `entry_price=0.0` → 所有依赖 entry_price 的规则 `if pos.entry_price <= 0: continue` **silent skip**（[_enricher.py:52-71](backend/qm_platform/risk/sources/_enricher.py:52) + [pms.py:115](backend/qm_platform/risk/rules/pms.py:115) + [single_stock.py:138](backend/qm_platform/risk/rules/single_stock.py:138)）。
 5. **LL-081 的 `>5 持仓 + >60% skip` fail-loud 守门在单仓被 100% bypass** —— 现在持仓只剩 1 股（已清仓 18），守门条件 `total_positions > 5` 不满足 → 完全 silent（[pms.py:172](backend/qm_platform/risk/rules/pms.py:172)）。
 
@@ -25,7 +25,7 @@ risk_daily_check | success | 2026-04-29 14:30:00 |
 ```
 持仓 688121.SH（卓然，-29%）—— **0 触发，0 告警，0 钉钉，risk_event_log 0 行**。
 
-**`risk_event_log` 表建表至今总行数 = 0**（DB 实测）。Risk Framework MVP 3.1 上线 5 天，**从未真正记录过任何风控事件**——这与 CLAUDE.md "Wave 3 1/5 完结 ✅" 的庆功语严重背离。
+**`risk_event_log` 表建表至今总行数 = 0**（DB 实测）。Risk Framework MVP 3.1 上线 5 天，**从未正记录过任何风控事件**——这与 CLAUDE.md "Wave 3 1/5 完结 ✅" 的庆功语严重背离。
 
 明天若开盘暴跌 8%：系统会发 3-5 条钉钉，CB 升 L2，**0 卖出 0 降仓**（CB L2 的 `position_multiplier=1.0`，根本不降仓），次日 L2 自动恢复 L0，账户裸跌到底。详见第 7 部分逐分钟反应序列图。
 
@@ -134,7 +134,7 @@ EXECUTION_MODE=paper
 - 新 Engine 通过 Hybrid adapter 反向依赖老 `risk_control_service.check_circuit_breaker_sync`（铁律 31 例外，[circuit_breaker.py:8-12](backend/qm_platform/risk/rules/circuit_breaker.py:8) ADR-010 addendum）
 - 没有循环依赖，但有**两套并行 cb_state 写路径**：(a) Engine.execute → _log_event → risk_event_log；(b) check_circuit_breaker_sync 内部 _upsert_cb_state_sync → circuit_breaker_state + circuit_breaker_log
 - 老 PMS 仍被 FastAPI `/api/pms/*` 调用（`api/pms.py:22` 还 import `PMSEngine`），前端访问 PMS dashboard 拿到的是死表 0 行数据
-- `/api/risk/*` 走 RiskControlService，与 Risk Framework Engine 绕开 — UI 看到的 cb_state 是真的，但 PMS 看到的是死表
+- `/api/risk/*` 走 RiskControlService，与 Risk Framework Engine 绕开 — UI 看到的 cb_state 是的，但 PMS 看到的是死表
 
 ---
 
@@ -381,7 +381,7 @@ qmt_client.get_prices:
 
 ## 第五部分：与历史血债交叉验证（实证而非推断）
 
-### LL-063：假装健康的死码比真坏的更危险（PMS v1.0 5 重失效）
+### LL-063：假装健康的死码比坏的更危险（PMS v1.0 5 重失效）
 
 **LL 主张修复**：月度 audit + 死表 DROP + 重构入 Wave 3。
 
@@ -441,7 +441,7 @@ if (total_positions > SKIP_RATIO_MIN_POSITIONS  # 5
 - qm:qmt:status stream check 已撤销（LL-087 修正）✅
 
 **判定**:
-- PR-X1 ✅ 真生效
+- PR-X1 ✅ 生效
 - PR-X2 ⚠️ **当前持仓 1 股时实际 bypass，silent failure 重现** ← 这就是今天 14:30 0 trigger 的根因之一
 - PR-X3 ✅ 但 LL-087 撤销 stream check 后仅剩 portfolio:nav 单 probe，单点
 
@@ -502,7 +502,7 @@ if (total_positions > SKIP_RATIO_MIN_POSITIONS  # 5
 
 ### F-A8：`scheduler_task_log` 包络是 Session 44（今天）才加的
 
-之前的 task 跑没有 audit row → **Session 44 之前历史"是否真跑了"无法回溯**。CLAUDE.md 称 Monday 4-27 首次生产触发 → 实际 audit 包络 4-29 才有 → **4-27/4-28 的运行无证据**。
+之前的 task 跑没有 audit row → **Session 44 之前历史"是否跑了"无法回溯**。CLAUDE.md 称 Monday 4-27 首次生产触发 → 实际 audit 包络 4-29 才有 → **4-27/4-28 的运行无证据**。
 
 ### F-A9：`PMS_ENABLED=False` 是 single point of failure
 
@@ -521,7 +521,7 @@ if not settings.PMS_ENABLED:
 
 ### F-A11：`signal_engine` 是否消费 `position_multiplier` 未在本审计验证
 
-CB 通过 `position_multiplier` 影响下游 signal_engine sizing。我没读 signal_engine.py 完整代码确认 multiplier=0 真的会让其不下单。**这是审计未覆盖的剩余盲区**。如果 signal_engine **不消费 multiplier**，CB 完全是装饰品。
+CB 通过 `position_multiplier` 影响下游 signal_engine sizing。我没读 signal_engine.py 完整代码确认 multiplier=0 的会让其不下单。**这是审计未覆盖的剩余盲区**。如果 signal_engine **不消费 multiplier**，CB 完全是装饰品。
 
 ### F-A12：钉钉 `DINGTALK_SECRET=`（空字符串）
 
@@ -573,7 +573,7 @@ position_snapshot 的 `holding_days` 字段全是 0。**意味着 signal_engine 
 
 **最终结论**：
 
-> **当前真金 ¥1M 没有任何自动止损能力。**
+> **当前金 ¥1M 没有任何自动止损能力。**
 > 整个风控系统是"钉钉告警发射器 + 数据库 row 表演 + LoggingSellBroker 笑话"。
 > 唯一会**间接**减少损失的链路是 CB L3/L4 通过 `position_multiplier` 影响**次日**调仓（如果 DailyExecute schtask 启用），但当前 DailyExecute 状态是 disabled（CLAUDE.md L370）。
 > 即使 DailyExecute 启用，next-day 才生效 → **盘中暴跌 0 防护**。
@@ -592,7 +592,7 @@ position_snapshot 的 `holding_days` 字段全是 0。**意味着 signal_engine 
 | V-7 | approve_l4.py 写死 'paper' | live 模式 L4 恢复 | 运维以为已恢复但实际未动 → 持续 halt |
 | V-8 | PMS_ENABLED 是 9 规则 single point | 误改 1 个 flag | 全风控关闭 |
 | V-9 | api/pms.py 仍读 position_monitor 死表 | 用户查 PMS 历史 | 假装健康（无直接资金损失但误导决策） |
-| V-10 | scheduler_task_log 包络 4-29 才加 | 历史回溯需求 | 无法证明 4-27/4-28 是否真跑 |
+| V-10 | scheduler_task_log 包络 4-29 才加 | 历史回溯需求 | 无法证明 4-27/4-28 是否跑 |
 | V-11 | dedup 24h TTL，盘中突变 2 次跌穿同一阈值 | 反弹后再跌 | 第二次跌穿不再告警 |
 | V-12 | DINGTALK_SECRET=空 | 钉钉机器人改签名模式 | 全告警被拒 |
 | V-13 | risk_event_log 90 天 retention + outbox best-effort | event INSERT 后 outbox 失败 | 90 天后 audit 也被删，永久丢失证据 |
@@ -764,15 +764,15 @@ T-1 (4-29 收盘):
 
 次日 16:30 -- DailySignal task
   signal_engine 检查 cb_state → L3, mult=0.5
-  如果 signal_engine 真消费 multiplier (F-A11 待验证):
+  如果 signal_engine 消费 multiplier (F-A11 待验证):
     target weights × 0.5 → 仓位减半
     生成卖单 (50% 仓位 sell)
   signal 写入 signals 表
 
 次日次日 (T+2) 09:31 -- DailyExecute task
   ★ 当前 schtask 是 disabled → 不执行
-  即使启用, 也是 T+2 早上才真正下卖单
-  ★ 从 T 暴跌 8% → T+2 才有 broker.sell 真发生
+  即使启用, 也是 T+2 早上才正下卖单
+  ★ 从 T 暴跌 8% → T+2 才有 broker.sell 发生
   ★ 从触发到执行延迟 ~ 19 小时
   ★ 在此期间持仓 0 减仓
 ```
@@ -788,25 +788,25 @@ T-1 (4-29 收盘):
 > - 14:30 daily check：因 performance_series 当日未写，CB 看不到暴跌 → 不升级
 > - 16:30 signal 任务：写当日 perf_series；signal_engine 是否消费 multiplier 未验证（F-A11 盲区）
 > - 17:35 pt_audit：发 P0 finding；不卖
-> - **次日 14:30 才真升 CB L3/L4**
+> - **次日 14:30 才升 CB L3/L4**
 > - **次日 16:30 才生成减仓信号**
-> - **T+2 09:31 才真发卖单**（且当前 DailyExecute 是 disabled，需手动启用）
+> - **T+2 09:31 才发卖单**（且当前 DailyExecute 是 disabled，需手动启用）
 >
 > **从暴跌到第一个 broker.sell 调用的最快路径 = T+2 早上 ≈ 19 小时延迟**。
 >
 > 这 19 小时里持仓**完全裸露在市场**。如果继续跌到 -15%、-20%，系统的反应仍只是"多发几条钉钉 + 数据库 row 升级"，**broker.sell 调用次数 = 0**。
 >
-> **唯一真有效的资金保护是 CB L4 在次日通过 `position_multiplier=0` 阻止下游再下单**——但这只是"不再加仓"，不是"卖出止损"。
+> **唯一有效的资金保护是 CB L4 在次日通过 `position_multiplier=0` 阻止下游再下单**——但这只是"不再加仓"，不是"卖出止损"。
 >
-> 当前真金 ¥1M（实际只剩 1 股 ¥43k）已用 7 个交易日 + 卓然 -29% + risk_event_log 0 行的实证证明这个判决。
+> 当前金 ¥1M（实际只剩 1 股 ¥43k）已用 7 个交易日 + 卓然 -29% + risk_event_log 0 行的实证证明这个判决。
 >
 > **如果用户期望系统在暴跌时能自动止损，当前架构在三层独立设计上根本不允许这件事发生**：
 > 1. 唯一会调 broker.sell 的规则 PMSRule 要求先有浮盈（亏损场景永不触发）
 > 2. 即使触发，broker 是 LoggingSellBroker stub
-> 3. 即使 broker 是真的，命名空间漂移让 entry_price=0 silent skip
+> 3. 即使 broker 是的，命名空间漂移让 entry_price=0 silent skip
 > 4. 即使 entry_price 不是 0，1 持仓状态下 LL-081 guard bypass 完全 silent
 >
-> **这是一个被错觉成"风控系统"的 audit log 系统。** 文档（CLAUDE.md / LL-081 / Wave 3 1/5 完结 ✅）每一条都说"正常"——这就是 LL-063 "假装健康的死码比真坏的更危险" 升级为整个 Risk Framework 范围。
+> **这是一个被错觉成"风控系统"的 audit log 系统。** 文档（CLAUDE.md / LL-081 / Wave 3 1/5 完结 ✅）每一条都说"正常"——这就是 LL-063 "假装健康的死码比坏的更危险" 升级为整个 Risk Framework 范围。
 
 ---
 
@@ -820,7 +820,7 @@ T-1 (4-29 收盘):
 | **P0-阻断** | 修 ADR-008 命名空间漂移：要么 .env=live + 全部 mode=live 数据；要么 build_context 强制读 'live' 持仓而不论 settings.EXECUTION_MODE | _enricher.py + check_circuit_breaker_sync L1391 | 1 天 |
 | **P0-阻断** | LL-081 guard bypass 修：`SKIP_RATIO_MIN_POSITIONS` 改 0 或加 `or total_positions == 1 + skip_ratio==1.0` 单仓全 skip 也告警 | pms.py:172 | 5 分钟 |
 | **P0-阻断** | approve_l4.py 2 处 hardcoded 'paper' → 接受 `--execution-mode` 参数 | approve_l4.py:42 + L145 | 10 分钟 |
-| **P1** | `auto_sell_l4=True` 默认（当 -25% 时真卖） | risk_wiring.py 注入或 single_stock.py:104 | 5 分钟 |
+| **P1** | `auto_sell_l4=True` 默认（当 -25% 时卖） | risk_wiring.py 注入或 single_stock.py:104 | 5 分钟 |
 | **P1** | 拆分 PMS_ENABLED single point：增 SINGLE_STOCK_ENABLED / INTRADAY_ENABLED / CB_ENABLED 各自 flag | daily_pipeline.py:282 + 517 | 30 分钟 |
 | **P1** | `api/pms.py` 整体 deprecate 或重写走新 RiskFramework 不读 position_monitor 死表 | api/pms.py | 1-2 小时 |
 | **P1** | CB 双钉钉去重（[circuit_breaker.py:129-133](backend/qm_platform/risk/rules/circuit_breaker.py:129) TODO） | check_circuit_breaker_sync 内 send_alert 移除 OR adapter skip _notify | 30 分钟 |
@@ -833,4 +833,4 @@ T-1 (4-29 收盘):
 
 **审计员声明**: 本报告所有结论基于实测代码 + DB 查询 + Redis 实测 + 配置文件读取 + LESSONS_LEARNED 交叉对比。所有文件路径与行号在 2026-04-29 16:30 北京时间核实。审计未覆盖的盲区已在 F-A11 显式声明（signal_engine 是否消费 position_multiplier 需另行验证）。
 
-**审计员忠告**: 在 P0 全部修复 + 一个完整持仓在合成场景跑过 1 次真 broker.sell 之前，**禁止 PT live 重启**。当前文档（CLAUDE.md / LL-081 修复声明 / Wave 3 ✅）的"已恢复"声明是文字游戏；DB `risk_event_log = 0` 是事实。
+**审计员忠告**: 在 P0 全部修复 + 一个完整持仓在合成场景跑过 1 次 broker.sell 之前，**禁止 PT live 重启**。当前文档（CLAUDE.md / LL-081 修复声明 / Wave 3 ✅）的"已恢复"声明是文字游戏；DB `risk_event_log = 0` 是事实。
