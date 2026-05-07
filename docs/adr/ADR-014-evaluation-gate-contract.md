@@ -60,7 +60,7 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 **理由**:
 - register() 应快速返 (毫秒级 DB upsert), 5min 回测阻塞不可接受
 - 全新策略升 LIVE 是低频操作 (单人项目每月 1-2 次), 显式调用清晰
-- LIVE 才是真金风险点, DRAFT/BACKTEST/DRY_RUN 不需要 G1'/G2'/G3'
+- LIVE 才是资金风险点, DRAFT/BACKTEST/DRY_RUN 不需要 G1'/G2'/G3'
 
 ### 4. 全新策略无 baseline 例外
 
@@ -96,7 +96,7 @@ registry.update_status(strategy_id, StrategyStatus.LIVE, reason="...")
 |---|---|---|
 | 单人项目 Gate 阈值漂移 (e.g. G2' -30% 改 -25%) | 历史 audit 不可比 | 阈值在 ADR 表内锁定, 改动须新发 ADR |
 | Wave 4+ 加 G5/G6/G7 触碰 Pipeline 决策聚合逻辑 | breaking change | `_classify_decision` 行为锁定 (本 ADR §2), V2 须新接 method |
-| Strategy register() 调用方忘调 evaluate_strategy 直 update_status(LIVE) | 真金未通过硬门 | DBStrategyRegistry 暂不强制 (避免 inline 5min 阻塞), 后续可加 `update_status` 内 check status='evaluating' 先验态 (跨 PR follow-up) |
+| Strategy register() 调用方忘调 evaluate_strategy 直 update_status(LIVE) | 金未通过硬门 | DBStrategyRegistry 暂不强制 (避免 inline 5min 阻塞), 后续可加 `update_status` 内 check status='evaluating' 先验态 (跨 PR follow-up) |
 | Gate ID 重命名 | audit log 不可追溯 | 标识不可变, V2 必新增 (G10 → G10_v2) |
 
 ## Follow-up (跨 PR, 不在本 ADR)

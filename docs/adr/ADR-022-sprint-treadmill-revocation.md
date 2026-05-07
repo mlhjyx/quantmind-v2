@@ -14,9 +14,9 @@
 
 Step 6.1 → 6.3b 累计 8 PR (PR #172-#179) sprint period 治理基础设施 5 块基石建设期间, 出现以下 anti-pattern:
 
-1. **Audit log 链膨胀**: 每发现 PR 锁文件中过期 target / 数字 / 假设, 走 IRONLAWS §22 新加 v3.0.X entry sediment, 累计 4 entries (v3.0 / v3.0.1 / v3.0.2 / v3.0.3) / 1 day. 单看每条合理, 累计后 IRONLAWS §22 治理 audit log 长 + 真核心铁律内容被稀释.
+1. **Audit log 链膨胀**: 每发现 PR 锁文件中过期 target / 数字 / 假设, 走 IRONLAWS §22 新加 v3.0.X entry sediment, 累计 4 entries (v3.0 / v3.0.1 / v3.0.2 / v3.0.3) / 1 day. 单看每条合理, 累计后 IRONLAWS §22 治理 audit log 长 + 核心铁律内容被稀释.
 
-2. **"留 Step 7+" 滥用**: 每个 PR 都积累若干 "留 Step 7+" 候选, 代表本 PR scope 边界外的发现. 当这类候选累计 13+ 项 (Step 6.4 G1 prompt 实测), 表面是治理纪律 (不擅自扩 scope), 实质是 sprint period treadmill (永远不真清理债, 只 enumerate 留下一波).
+2. **"留 Step 7+" 滥用**: 每个 PR 都积累若干 "留 Step 7+" 候选, 代表本 PR scope 边界外的发现. 当这类候选累计 13+ 项 (Step 6.4 G1 prompt 实测), 表面是治理纪律 (不擅自扩 scope), 实质是 sprint period treadmill (永远不清理债, 只 enumerate 留下一波).
 
 3. **数字漂移高发**: PR #172 PROJECT_FULL_AUDIT line 89 "11 项" 实测 9 项 / ADR-021 §4.5 "~150 行" target 实测不可达 / CLAUDE.md L401 PT prerequisite 暗示 still 待办的 T0 项实际 closed / SYSTEM_STATUS.md 5 day stale / FACTOR_TEST_REGISTRY.md 3 week stale / 等等. 单看每个漂移可走 audit log 沉淀, 累计后形成 "PR 锁文件已不可信" 的隐患.
 
@@ -80,7 +80,7 @@ PR #172-#179 8 PR 锁定的文件中:
 ### §3.2 长期治理
 
 - 未来 sprint period PR 锁文件中发现漂移 → 默认走集中 ADR (新建 ADR-023+ 或 update 本 ADR-022 §X 段) 沉淀
-- IRONLAWS.md §22 仅记真 SSOT 内容版本变更
+- IRONLAWS.md §22 仅记 SSOT 内容版本变更
 - "留 Step 7+" 仅限架构层决议 + 写代码项
 
 ### §3.3 反 anti-pattern 验证
@@ -119,7 +119,7 @@ PR #172-#179 8 PR 锁定的文件中:
 ```markdown
 ### §22.终止 sprint period audit log 链 (Step 6.4 G1, 2026-05-01)
 
-> **终止决议** (沿用 ADR-022 §2.3): 本 §22 不再 sediment sprint period 漂移修补 audit. v3.0.3 (Step 6.3b) 是末次 audit log entry. v3.0.4+ 仅记真 SSOT 内容变更 (新铁律 / Tier calibration / 候选 promote 等). 漂移修补走 ADR-022 (或后续 ADR-023+) 集中.
+> **终止决议** (沿用 ADR-022 §2.3): 本 §22 不再 sediment sprint period 漂移修补 audit. v3.0.3 (Step 6.3b) 是末次 audit log entry. v3.0.4+ 仅记 SSOT 内容变更 (新铁律 / Tier calibration / 候选 promote 等). 漂移修补走 ADR-022 (或后续 ADR-023+) 集中.
 ```
 
 ### §4.4 ADR 索引更新
@@ -175,7 +175,7 @@ PR #172-#179 8 PR 锁定的文件中:
 - **风险**: Anthropic memory 服务不可用 = handoff 失忆.
 - **概率评估**: Anthropic memory 是 Anthropic 托管基础设施, 与 Claude Code CLI 同等可靠级别. 风险 ≈ Claude Code 不可用风险 (实测 sprint period 0 失败).
 - **缓解**: 关键 sprint milestone (如 Step 6.x 治理基础设施 5 块基石 / Wave N 完结 / PT 重启 gate 状态等) 同步沉淀到 repo (SYSTEM_STATUS.md §0.-N + STATUS_REPORT). repo 是 last-resort 恢复源 (即使 memory 全失忆, 走 repo + git log 可重建 ~80% sprint state).
-- **Step 6.4 G1 实证**: WI 3 SYSTEM_STATUS.md §0.-2 sediment 已对齐此原则 — sprint period 关键 milestone 在 repo + memory 双源 (memory = 真 SSOT, repo = recovery snapshot).
+- **Step 6.4 G1 实证**: WI 3 SYSTEM_STATUS.md §0.-2 sediment 已对齐此原则 — sprint period 关键 milestone 在 repo + memory 双源 (memory = SSOT, repo = recovery snapshot).
 
 ### §7.4 反 anti-pattern 验证
 

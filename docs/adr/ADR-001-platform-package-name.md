@@ -50,7 +50,7 @@ backend/platform/
 - MVP 1.1 骨架一天搭完, 后续 MVP 不再改动包路径
 
 **负面**:
-- 若未来真有 Q2 项目 (e.g. `quantmind_forex`) 共享 Platform 代码, 需走 pip 发布路径, 非 import 共用
+- 若未来有 Q2 项目 (e.g. `quantmind_forex`) 共享 Platform 代码, 需走 pip 发布路径, 非 import 共用
 - `backend.qm_platform` 撞 stdlib `platform` — MVP 1.2 踩过一次坑 (pandas `import platform` 被覆盖). 解法: 所有 `sys.path.insert(0, backend_dir)` 改 `append` 保 stdlib 优先
 
 ## References

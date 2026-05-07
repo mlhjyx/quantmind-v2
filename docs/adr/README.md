@@ -1,6 +1,6 @@
 # Architecture Decision Records (ADR)
 
-> Supplements `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (Blueprint = 长期架构真相源, 铁律 38).
+> Supplements `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (Blueprint = 长期架构相源, 铁律 38).
 > ADR = 细粒度的独立决策记录, 每条决策一份 markdown.
 > **双源**: markdown 是权威 (版本控制 + 人类可读); `adr_records` DB 表是查询索引 (`list_by_ironlaw`).
 
@@ -36,7 +36,7 @@
 | [ADR-036](ADR-036-bull-bear-agent-mapping-v4-flash-to-v4-pro.md) | BULL/BEAR Agent mapping V4-Flash → V4-Pro (debate reasoning capability + V3§5.5 internal drift 修复) | accepted | 22, 25, 27, 34 |
 | [ADR-037](ADR-037-internal-source-fresh-read-sop.md) | Internal source fresh read SOP — 4 root doc + sub-PR/sub-step 起手前必走 enforcement (governance) | accepted | 22, 25, 36, 38, 45 |
 
-> **注**: ADR-019/020/025/026 sustained reserve (V3 §18.1 row 1/2/5/6 真预约, 0 file 等 user 决议时创建). ADR-024 真主题 = factor lifecycle (5-02 sprint factor task), V3 §18.1 row 4 真预约 "L4 STAGED" 已 # 下移到 ADR-027 (user a-iii 决议 5-02). 详 [ADR-027 §1.1](ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md). ADR-031 (S8 audit) 真 S2 LiteLLMRouter implementation path, ADR-032 真 S4 caller bootstrap factory + naked router export 限制 (V3 Sprint 1 S2-S4 sub-task sediment).
+> **注**: ADR-019/020/025/026 reserve (V3 §18.1 row 1/2/5/6 待办, 0 file 等 user 决议时创建). ADR-024 主题 = factor lifecycle (5-02 sprint factor task), V3 §18.1 row 4 待办 "L4 STAGED" 已 # 下移到 ADR-027 (user a-iii 决议 5-02). 详 [ADR-027 §1.1](ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md). ADR-031 (S8 audit) S2 LiteLLMRouter implementation path, ADR-032 S4 caller bootstrap factory + naked router export 限制 (V3 Sprint 1 S2-S4 sub-task sediment).
 
 ## 模板
 

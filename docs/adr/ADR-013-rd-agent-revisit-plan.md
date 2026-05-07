@@ -27,19 +27,19 @@ QM 阶段 0 (`memory/project_session_2026_0410b.md`) 评估 RD-Agent 后定为 N
 [QUANTMIND_LANDSCAPE_ANALYSIS_2026.md](../research/QUANTMIND_LANDSCAPE_ANALYSIS_2026.md) Part 6.4 主动反思:
 
 1. **学术地位** (我们 16 个月前没充分评估的)
-   - 微软 Qlib 团队 2024-04 发布, 截至 2026-04 已 13K⭐ / 1520 fork / pushed 4-22 (高活跃)
-   - 论文: arxiv 2505.15155 *"R&D-Agent-Quant: Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization"* — 学术圈引用增长中
-   - 跟 vnpy 4.0 / Qlib Alpha158 形成中国量化生态学术对标三角
+ - 微软 Qlib 团队 2024-04 发布, 截至 2026-04 已 13K⭐ / 1520 fork / pushed 4-22 (高活跃)
+ - 论文: arxiv 2505.15155 *"R&D-Agent-Quant: Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization"* — 学术圈引用增长中
+ - 跟 vnpy 4.0 / Qlib Alpha158 形成中国量化生态学术对标三角
 
 2. **跟 DEV_AI_EVOLUTION V2.1 高度对位**
-   - RD-Agent 4 Agent: Researcher / Coder / Eval / Reflector
-   - QM V2.1 4 Agent: Researcher / Critic / Library_committer / Trader
-   - 角色命名不同, **方法论同源**: hypothesis 生成 → 实现 → 验证 → 反馈
+ - RD-Agent 4 Agent: Researcher / Coder / Eval / Reflector
+ - QM V2.1 4 Agent: Researcher / Critic / Library_committer / Trader
+ - 角色命名不同, **方法论同源**: hypothesis 生成 → 实现 → 验证 → 反馈
 
 3. **NO-GO 阻断点 16 月后可能改变**
-   - Docker on Windows: WSL2 + Docker Desktop 现已稳定 (vs 2026-04-10 时 WSL2 还有 GPU passthrough 问题)
-   - Claude 支持: RD-Agent 已加 LiteLLM provider 抽象 (社区 PR), 可走 Claude API
-   - Windows bug: 24 个月项目成熟度 + 1520 fork 社区压力
+ - Docker on Windows: WSL2 + Docker Desktop 现已稳定 (vs 2026-04-10 时 WSL2 还有 GPU passthrough 问题)
+ - Claude 支持: RD-Agent 已加 LiteLLM provider 抽象 (社区 PR), 可走 Claude API
+ - Windows bug: 24 个月项目成熟度 + 1520 fork 社区压力
 
 ### 真实痛点: V2.1 设计 0% 实现
 
@@ -65,7 +65,7 @@ QM 阶段 0 (`memory/project_session_2026_0410b.md`) 评估 RD-Agent 后定为 N
 ### D3 — 评估期硬约束
 
 - **不打乱 Wave 3-4 任何 MVP**: 评估在 Wave 4 完结后启动, 不并行
-- **不动 PT 真金**: 评估全部在 dev 环境 + 历史数据 sandbox
+- **不动 PT 金**: 评估全部在 dev 环境 + 历史数据 sandbox
 - **失败 fast-fail**: 任一周 critical fail (如 Docker 装不上) 直接终止评估, 走 (c) 维持 NO-GO
 - **不引入 RD-Agent 依赖到 PT 链路**: 评估期间 PT 继续走 CORE3+dv_ttm 等权 + Risk Framework
 - **License 隔离**: RD-Agent MIT 友好, 但若选 (a) 全栈采用, 必须保证 QM 主仓不污染 (如以 git submodule 或独立 conda env 隔离)

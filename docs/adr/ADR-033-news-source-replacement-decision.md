@@ -12,7 +12,7 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 
 **SSOT drift 主动 finding** (audit Week 2 batch sediment 候选, 沿用 LL-101 真测 verify + LL-104 cross-verify cite drift 体例):
 - 5-02 换源决议 SSOT source 仅 user prompt + Claude.ai 战略对话
-- sprint_state v7 line 110/197/265 sustained 老 6 源 cite (0 sediment 5-02 换源决议) — 5-06 sprint_state v7 patch 走 memory direct write (沿用 v7 patch 体例)
+- sprint_state v7 line 110/197/265 老 6 源 cite (0 sediment 5-02 换源决议) — 5-06 sprint_state v7 patch 走 memory direct write (沿用 v7 patch 体例)
 - V3 doc §3.1 + §20.1 #10 0 patch (本 PR sediment) — 反 silent drift, 走 ADR-022 集中修订机制
 
 **5-06 cross-verify 修订** (Step 2 + Step 2.5 sediment, 沿用 ADR-035 + ADR-036):
@@ -81,7 +81,7 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 
 - **Tavily + Anspire 沿用**: 4-29 决议 2/6 源沿用, reduces migration cost. 0 影响 LiteLLM provider config 沿用.
 - **0 prod caller break** (沿用 Sprint 1 8/8 PR sediment): V3 §3.1 + §20.1 #10 doc patch only, 0 ingestion implementation. Sprint 2 implementation 时 caller (V4-Flash NewsClassifier) 走新建模块沿用 ADR-031 体例.
-- **V3 §11.1 path-level abstraction sustained**: News 6 源走 implementation detail, 沿用 path-level (反 V3 doc 加 row 6 源 module). Sprint 2 implementation 时 backend/qm_platform/news/ 子包沿用 ADR-001 体例.
+- **V3 §11.1 path-level abstraction**: News 6 源走 implementation detail, 沿用 path-level (反 V3 doc 加 row 6 源 module). Sprint 2 implementation 时 backend/qm_platform/news/ 子包沿用 ADR-001 体例.
 
 ## Implementation
 
@@ -99,7 +99,7 @@ V3 §3.1 News 多源接入 (L0.1) 4-29 D5-D9 拍板 6 源 (Anspire / Tavily / Se
 
 ## Implementation finding cumulative (sub-PR 1-6 + 7a sediment, 5-06)
 
-Sprint 2 ingestion implementation 累计 plugin-specific finding sediment (沿用 LL-101 真测 verify + LL-104 cross-verify cite source 锁定真值 sustained, audit Week 2 batch sediment 候选):
+Sprint 2 ingestion implementation 累计 plugin-specific finding sediment (沿用 LL-101 真测 verify + LL-104 cross-verify cite source 锁定真值, audit Week 2 batch sediment 候选):
 
 | 源 | sub-PR | plugin-specific finding (5-06 fresh doc verify) | impl 体例 |
 |---|---|---|---|
@@ -108,12 +108,12 @@ Sprint 2 ingestion implementation 累计 plugin-specific finding sediment (沿�
 | Anspire | #233 (sub-PR 3) | GET + Bearer + **64 char query hard limit** (5-06 fresh doc verify finding) + **top_k enum (10/20/30/40/50)** + **多 candidate response wrapper** (data/results/items) + `date` field ISO 8601 | _clamp_top_k() helper + 多 wrapper resolver |
 | GDELT 2.0 | #234 (sub-PR 4) | GET + **0 API key (anonymous)** + articles 单 wrapper + **seendate YYYYMMDDTHHMMSSZ format** (5-06 fresh doc verify) + **language human-readable mapping** (English→en, Chinese→zh) + MAXRECORDS clamp [1, 250] | _parse_seendate() custom + LANGUAGE_MAP |
 | Marketaux | #235 (sub-PR 5) | GET + **api_token query param (反 Bearer)** + **custom UA header** (反 default UA → Cloudflare 1010 block, 5-06 实测 finding) + data 单 wrapper + **ISO 8601 microseconds + Z parse** (Python 3.10 fallback) | DEFAULT_USER_AGENT="QuantMind-V2/1.0 (Python httpx)" |
-| RSSHub 自部署 | #236 (sub-PR 6) | GET + **0 auth + Self-hosted localhost:1200** + **RSS XML response (反 JSON)** + **route path query** (e.g. "/jin10/news", 反 search keyword) + feedparser parse | Servy register sustained + DEFAULT_BASE_URL="http://localhost:1200" |
+| RSSHub 自部署 | #236 (sub-PR 6) | GET + **0 auth + Self-hosted localhost:1200** + **RSS XML response (反 JSON)** + **route path query** (e.g. "/jin10/news", 反 search keyword) + feedparser parse | Servy register + DEFAULT_BASE_URL="http://localhost:1200" |
 | **DataPipeline (sub-PR 7a)** | #本 PR | **6 fetcher 集成 ThreadPoolExecutor** (concurrent.futures, 沿用 6 fetcher 全 sync httpx.Client) + **早返回 (≥3 sources hit, V3§3.1 line 329)** + **hard timeout 30s** + **dedup url-first + title-hash fallback** (RSSHub None URL fallback) | concurrent + fail-soft per-source + dedup |
 
-**真生产 enforcement 体例 sustained**: sub-PR 1-6 plugin-specific finding 真未 sediment 入 V3 §3.1 / ADR-033 main body — 沿用 audit Week 2 batch sediment 候选 (沿用 LL-098 X10 反 forward-progress default + LL-101 真测 verify + LL-104 cross-verify sustained). 本 ADR-033 patch 仅 sediment Implementation finding cumulative section, 真**反 V3 doc patch + 反新 LL row 真新建** (留 audit Week 2 batch sediment 候选 sustained).
+**真生产 enforcement 体例**: sub-PR 1-6 plugin-specific finding 未 sediment 入 V3 §3.1 / ADR-033 main body — 沿用 audit Week 2 batch sediment 候选 (沿用 LL-098 X10 反 forward-progress default + LL-101 真测 verify + LL-104 cross-verify). 本 ADR-033 patch 仅 sediment Implementation finding cumulative section, **反 V3 doc patch + 反新 LL row 新建** (留 audit Week 2 batch sediment 候选).
 
-**沿用案例 #5 真讽刺 lesson**: sub-PR 7 v1 prompt cite "DataPipeline + NewsClassifier 同 backend/qm_platform/news/ 子包 sediment" sustained 反 V3 line 1223 + news/__init__.py:28 docstring 真预约 ground truth → CC Phase 1 (b) STOP push back → user 决议 (1) PR 拆分 + path 修正 sustained → 本 sub-PR 7a (DataPipeline only) + sub-PR 7b NewsClassifier defer Sprint 3 prerequisite (V3 line 1223 真预约 path = `backend/app/services/news/`). 真**反复实证** governance 双层防御 (CC fresh verify + reviewer agent + V3 line/docstring cross-verify, 沿用 LL-067 + LL-104 sustained).
+**沿用案例 #5 drift catch lesson**: sub-PR 7 v1 prompt cite "DataPipeline + NewsClassifier 同 backend/qm_platform/news/ 子包 sediment" 反 V3 line 1223 + news/__init__.py:28 docstring 待办 ground truth → CC Phase 1 (b) STOP push back → user 决议 (1) PR 拆分 + path 修正 → 本 sub-PR 7a (DataPipeline only) + sub-PR 7b NewsClassifier defer Sprint 3 prerequisite (V3 line 1223 待办 path = `backend/app/services/news/`). **反复实证** governance 双层防御 (CC fresh verify + reviewer agent + V3 line/docstring cross-verify, 沿用 LL-067 + LL-104).
 
 ## References
 
@@ -126,4 +126,4 @@ Sprint 2 ingestion implementation 累计 plugin-specific finding sediment (沿�
 - LL-098 X10 (反 forward-progress default) — 本 PR 0 ingestion implementation 起手
 - audit Week 2 batch sediment 候选 (audit cite schtask total 跟 active register 区别, 5-06 v7 patch sediment 候选) — sprint_state v7 SSOT drift 沿用 cite drift 体例 (沿用 LL-101 真测 verify + LL-104 cross-verify)
 - 5-02 web_search 验证 (智谱 GLM-4-Flash + GDELT 2.0 + Marketaux + RSSHub) — user prompt + Claude.ai 战略对话 sediment SSOT
-- sprint_state v7 cite 5-02 换源决议 SSOT drift 主动 finding (line 110/197/265 sustained 老 6 源 cite, 0 sediment 5-02 换源决议) — audit Week 2 batch sediment 候选
+- sprint_state v7 cite 5-02 换源决议 SSOT drift 主动 finding (line 110/197/265 老 6 源 cite, 0 sediment 5-02 换源决议) — audit Week 2 batch sediment 候选

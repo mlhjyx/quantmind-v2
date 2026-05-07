@@ -104,7 +104,7 @@ class CircuitBreakerRule(RiskRule):
             )
         new_level = int(result["level"])
         if new_level == prev_level:
-            return []  # 无 level 变化不写事件 (铁律 33 fail-loud: 只真事件入 log)
+            return []  # 无 level 变化不写事件 (铁律 33 fail-loud: 只事件入 log)
         transition_type = "escalate" if new_level > prev_level else "recover"
         return [RuleResult(
             rule_id=f"cb_{transition_type}_l{new_level}",
@@ -147,10 +147,10 @@ alert_only, bypass}` 是 **Risk Engine 执行意图** (不调 broker, 仅写 eve
 
 ### 方案 C 劣势 + 接受
 - CB 状态仍在老表 (`circuit_breaker_state`), 非 `risk_event_log` 单源
-  * 接受: state table 是 snapshot 语义 (当前状态), event_log 是 history 语义 (触发流)
-  * 两者正交不冲突
+ * 接受: state table 是 snapshot 语义 (当前状态), event_log 是 history 语义 (触发流)
+ * 两者正交不冲突
 - 双系统 (risk_control_service.py 留 + Risk Engine 走 wrapper) 2 月内并存
-  * 接受: 批 3 末尾若 CB 运行稳定可择机做第二次重构把 wrapper inline
+ * 接受: 批 3 末尾若 CB 运行稳定可择机做第二次重构把 wrapper inline
 
 ### 不推荐方案
 
@@ -181,12 +181,12 @@ return {
 **Dismiss 理由**:
 - 工作量等价方案 C (adapter ~200 行 vs API 扩展 ~100 行 + adapter ~100 行)
 - 侵入面更大: 改老 service 影响现有 14 处 caller (grep `check_circuit_breaker_sync`),
-  需 regression 所有 caller; 方案 C adapter 独立新文件零侵入
+ 需 regression 所有 caller; 方案 C adapter 独立新文件零侵入
 - 方案 C "两表并存" 劣势在方案 D 下同样存在 (circuit_breaker_state 仍是 source of
-  truth, D 只改 return payload 不改 storage), 方案 D 没解决 P2-2 Event Sourcing 集成
-  问题, 优势不明显
+ truth, D 只改 return payload 不改 storage), 方案 D 没解决 P2-2 Event Sourcing 集成
+ 问题, 优势不明显
 - 决策倾向: **C > D** 因为独立 adapter 文件 maintainability + 零 caller regression;
-  若未来批 3b wrapper inline 时可重新评估方案 D 融入.
+ 若未来批 3b wrapper inline 时可重新评估方案 D 融入.
 
 ## Consequences
 
@@ -203,56 +203,56 @@ return {
 ### Neutral / 下游 MVP 影响 (reviewer P2-2 采纳展开)
 
 - **MVP 3.2 Strategy Framework**: Risk Engine 对外接口 (run/execute) 不变, 内部 CB
-  adapter 透明. Strategy 层调 `risk_engine.run(context)` 获 events 后走 execute,
-  与其他 rule 无差别. ✅ 无影响.
+ adapter 透明. Strategy 层调 `risk_engine.run(context)` 获 events 后走 execute,
+ 与其他 rule 无差别. ✅ 无影响.
 - **MVP 3.3 Signal & Execution** (隐性耦合 flag): CB 影响 signal_engine 现走
-  `get_position_multiplier` 直读 `circuit_breaker_state` 表. Risk Engine execute 对
-  CB events 是 **no-op** (action=alert_only). 未来 MVP 3.3 若把 order routing 从
-  signal_engine 抽出 (Signal Pipeline 统一入口), 这个 "signal_engine 直读 multiplier"
-  的耦合必须同步迁移到 order_router → 批 3b 或 MVP 3.3 设计时 flag.
+ `get_position_multiplier` 直读 `circuit_breaker_state` 表. Risk Engine execute 对
+ CB events 是 **no-op** (action=alert_only). 未来 MVP 3.3 若把 order routing 从
+ signal_engine 抽出 (Signal Pipeline 统一入口), 这个 "signal_engine 直读 multiplier"
+ 的耦合必须同步迁移到 order_router → 批 3b 或 MVP 3.3 设计时 flag.
 - **MVP 3.4 Event Sourcing** (集成路径决策): CB state 保留在 `circuit_breaker_state`
-  表, transition 事件走 `risk_event_log` (adapter 返 RuleResult → Engine write_log).
-  **关键选择**: CB events 是否进 `event_outbox` (ADR-003 Event Sourcing)?
-  - **当前决策**: 进 event_outbox (统一风控可回放), rule_id=`cb_escalate_l*` /
-    `cb_recover_l*` 对齐 QPB v1.6 §event 重命名 `pms.triggered → risk.triggered`
-    (parent ADR-003 应同步更新事件名清单加 `risk.triggered`, 留 Follow-up)
-  - 保留当前状态查询 (get_position_multiplier) 仍读 circuit_breaker_state, 事件审计
-    读 event_outbox, 两源正交无冲突
+ 表, transition 事件走 `risk_event_log` (adapter 返 RuleResult → Engine write_log).
+ **关键选择**: CB events 是否进 `event_outbox` (ADR-003 Event Sourcing)?
+ - **当前决策**: 进 event_outbox (统一风控可回放), rule_id=`cb_escalate_l*` /
+ `cb_recover_l*` 对齐 QPB v1.6 §event 重命名 `pms.triggered → risk.triggered`
+ (parent ADR-003 应同步更新事件名清单加 `risk.triggered`, 留 Follow-up)
+ - 保留当前状态查询 (get_position_multiplier) 仍读 circuit_breaker_state, 事件审计
+ 读 event_outbox, 两源正交无冲突
 
 ## Follow-up (MVP 3.1 批次调整 + 跨 ADR 同步)
 
 1. **MVP_3_1_risk_framework.md 更新**: 批 3 从 "async→sync 重写" 改为 "CBRule adapter 复用", 耗时 1-1.5 周 → 0.5-0.7 周 (本 PR 已改)
 2. **批 1 启动不受影响**: Framework core + PMS 迁入按原计划
 3. **批 3 设计文档**: 新增 `docs/mvp/MVP_3_1_batch_3_cb_wrapper.md` (批 3 启动前, 不预写)
-   详化 adapter + rule_id 命名 + risk_event_log/circuit_breaker_state 分工. 必明确:
-   - L4 transition adapter 返的 `cb_action=stop` 是否触发 emergency human-approval 钉钉
-     (对齐 scripts/approve_l4.py CLI 手工审批流)
-   - adapter 是否包裹 `conn` 事务边界 (铁律 32: check_circuit_breaker_sync 内调
-     _upsert_cb_state_sync 会 DB commit, adapter 对 conn 不额外管理)
+ 详化 adapter + rule_id 命名 + risk_event_log/circuit_breaker_state 分工. 必明确:
+ - L4 transition adapter 返的 `cb_action=stop` 是否触发 emergency human-approval 钉钉
+ (对齐 scripts/approve_l4.py CLI 手工审批流)
+ - adapter 是否包裹 `conn` 事务边界 (铁律 32: check_circuit_breaker_sync 内调
+ _upsert_cb_state_sync 会 DB commit, adapter 对 conn 不额外管理)
 4. **ADR-003 事件名同步** (reviewer P2-1): 事件清单加 `risk.triggered` 取代
-   `pms.triggered`, 对齐 QPB v1.6 §1263 L. ~~本 ADR addendum 不执行 (跨文档 scope),
-   另开小 PR 处理.~~ **✅ CLOSED** (Session 31 2026-04-24 docs 直推 main): ADR-003
-   L11 事件清单 `pms.triggered` → `risk.triggered` + SYSTEM_BLUEPRINT §PMS 和 §StreamBus
-   事件表同步 + 本条目 mark DONE. 2 处保留历史证据 (F27 根因章节 + MVP 3.1 批 1 plan
-   迁移对照). 铁律 42 docs/** + adr/** 分级允许 direct push main.
+ `pms.triggered`, 对齐 QPB v1.6 §1263 L. ~~本 ADR addendum 不执行 (跨文档 scope),
+ 另开小 PR 处理.~~ **✅ CLOSED** (Session 31 2026-04-24 docs 直推 main): ADR-003
+ L11 事件清单 `pms.triggered` → `risk.triggered` + SYSTEM_BLUEPRINT §PMS 和 §StreamBus
+ 事件表同步 + 本条目 mark DONE. 2 处保留历史证据 (F27 根因章节 + MVP 3.1 批 1 plan
+ 迁移对照). 铁律 42 docs/** + adr/** 分级允许 direct push main.
 5. **Sunset gate** (reviewer P3-1, 精确化 "2 月并存" 条件): risk_control_service.py
-   + circuit_breaker_state/log 表 sunset 的硬门 (非单纯时间):
-   - **条件 A** (必): 批 3 adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 真事件 (非 dry-run smoke)
-   - **条件 B** (必): 有 1 次 L4 审批完整跑通 (approve_l4.py CLI → approval_queue → cb_state_change event → signal_engine multiplier 恢复 1.0)
-   - **条件 C** (或): Wave 4 Observability 启动, 统一 /risk dashboard 有 CB 可视化替代 /risk_control 老 API
-   - 满足 A+B+C 其一后启动批 3b (wrapper inline), 否则延续并存. 避免 PMS 死码覆辙
-     (F30 position_monitor 0 行 10 个月未发现).
-   - **✅ 监控脚本 delivered** (Session 31 2026-04-24 PR #64, `scripts/monitor_mvp_3_1_sunset.py`):
-     3 条件自动 probe (铁律 43 4 项硬化合规: statement_timeout=30s / stdout stderr boot probe /
-     顶层 try/except exit=2 / notifications 表去重). PR #63 dry-run 修复 P0 `SELECT level →
-     current_level` CB column drift 证明 integration dry-run 是必要保险层 (LL-069 候选).
-   - **✅ 监控 schtask wired** (Session 32 2026-04-24 PR #65, `QuantMind_MVP31SunsetMonitor`
-     Weekly Sunday 04:00, NextRun 2026-04-26): 低峰 1/week 频次 (Sunset Gate 天粒度判定, 条件 A
-     最早 2026-05-24 满足), 避开 02:00 DailyBackup / 06:00 LogRotate / Sat 02:00 GPPipeline
-     时段. ExecutionTimeLimit 5 min, 3 DB query 实测 <1s, safety 300x.
+ + circuit_breaker_state/log 表 sunset 的硬门 (非单纯时间):
+ - **条件 A** (必): 批 3 adapter live 30 日 + `risk_event_log.rule_id LIKE 'cb_%'` 有 ≥1 事件 (非 dry-run smoke)
+ - **条件 B** (必): 有 1 次 L4 审批完整跑通 (approve_l4.py CLI → approval_queue → cb_state_change event → signal_engine multiplier 恢复 1.0)
+ - **条件 C** (或): Wave 4 Observability 启动, 统一 /risk dashboard 有 CB 可视化替代 /risk_control 老 API
+ - 满足 A+B+C 其一后启动批 3b (wrapper inline), 否则延续并存. 避免 PMS 死码覆辙
+ (F30 position_monitor 0 行 10 个月未发现).
+ - **✅ 监控脚本 delivered** (Session 31 2026-04-24 PR #64, `scripts/monitor_mvp_3_1_sunset.py`):
+ 3 条件自动 probe (铁律 43 4 项硬化合规: statement_timeout=30s / stdout stderr boot probe /
+ 顶层 try/except exit=2 / notifications 表去重). PR #63 dry-run 修复 P0 `SELECT level →
+ current_level` CB column drift 证明 integration dry-run 是必要保险层 (LL-069 候选).
+ - **✅ 监控 schtask wired** (Session 32 2026-04-24 PR #65, `QuantMind_MVP31SunsetMonitor`
+ Weekly Sunday 04:00, NextRun 2026-04-26): 低峰 1/week 频次 (Sunset Gate 天粒度判定, 条件 A
+ 最早 2026-05-24 满足), 避开 02:00 DailyBackup / 06:00 LogRotate / Sat 02:00 GPPipeline
+ 时段. ExecutionTimeLimit 5 min, 3 DB query 实测 <1s, safety 300x.
 6. **批 3b 明确化** (reviewer P3-2): 批 3b 归属 **QPB v1.6 Wave 4 Observability MVP
-   4.x "Risk Framework L2 整合" 子任务**, 非 "无限延期 Wave 4+". 本 ADR addendum
-   flag 此 backlog 项, QPB 下次 bump 时同步进 Wave 4 MVP 细化.
+ 4.x "Risk Framework L2 整合" 子任务**, 非 "无限延期 Wave 4+". 本 ADR addendum
+ flag 此 backlog 项, QPB 下次 bump 时同步进 Wave 4 MVP 细化.
 
 ## Related
 - ADR-010 PMS Deprecation (parent)
