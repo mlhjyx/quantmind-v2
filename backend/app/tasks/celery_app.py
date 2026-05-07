@@ -48,6 +48,7 @@ celery_app.conf.update(
         "app.tasks.onboarding_tasks",
         "app.tasks.backtest_tasks",
         "app.tasks.outbox_publisher",  # MVP 3.4 batch 2: 30s outbox publisher tick
+        "app.tasks.news_ingest_tasks",  # sub-PR 8b-cadence-B: 4-hour News Beat (ADR-043)
         # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
         # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],
