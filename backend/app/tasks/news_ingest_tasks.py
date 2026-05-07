@@ -6,7 +6,7 @@
 - #3 RSSHub standalone caller route_path semantic (沿用 sub-PR 8b-rsshub PR #254)
 
 Task signatures (Celery 反 keyword args 沿用 app.tasks.daily_pipeline 体例):
-- news_ingest_5_sources(): 5 源 fetch + classify + persist (Zhipu/Anspire/Marketaux/GDELT/Xinhua)
+- news_ingest_5_sources(): 5 源 fetch + classify + persist (Zhipu/Tavily/Anspire/GDELT/Marketaux)
 - news_ingest_rsshub(): RSSHub route_path 独立 caller (jin10/news 1/4 working sustained PR #254)
 
 Beat dispatch:
@@ -44,7 +44,11 @@ DEFAULT_RSSHUB_ROUTE_PATH = "/jin10/news"
 DEFAULT_RSSHUB_LIMIT = 10
 
 
-@celery_app.task(name="app.tasks.news_ingest_tasks.news_ingest_5_sources")
+@celery_app.task(
+    name="app.tasks.news_ingest_tasks.news_ingest_5_sources",
+    soft_time_limit=300,  # 5min — generous for 5 external API calls × limit_per_source=2
+    time_limit=600,  # 10min hard kill (反 solo worker stall blocking outbox-publisher 30s)
+)
 def news_ingest_5_sources(
     *,
     query: str | None = None,
@@ -70,6 +74,10 @@ def news_ingest_5_sources(
     from app.services.db import get_sync_conn
     from app.services.news import NewsIngestionService, get_news_classifier
 
+    # M1 reviewer adopt — proof-of-life audit 沿用 daily_pipeline.py:42-53 motivation
+    # (Session 44 risk task dead-Beat silent miss reverse case sustained, audit chunk B P3 体例).
+    from app.tasks.daily_pipeline import _write_scheduler_log_safe
+
     start_time = datetime.now(UTC)
     q = query or DEFAULT_5_SOURCE_QUERY
     lps = limit_per_source if limit_per_source is not None else DEFAULT_5_SOURCE_LIMIT_PER_SOURCE
@@ -81,6 +89,8 @@ def news_ingest_5_sources(
     service = NewsIngestionService(pipeline=pipeline, classifier=classifier)
 
     conn = get_sync_conn()
+    status = "error"  # default 反 silent success miss, success 真 try block 内 set
+    result_for_audit: dict | None = None
     try:
         stats = service.ingest(
             query=q,
@@ -98,17 +108,31 @@ def news_ingest_5_sources(
             "query": q,
             "limit_per_source": lps,
         }
+        status = "success"
+        result_for_audit = result
         logger.info("news_ingest_5_sources done: %s", result)
         return result
     except Exception as exc:
         conn.rollback()
+        result_for_audit = {"error": f"{type(exc).__name__}: {exc}"}
         logger.exception("news_ingest_5_sources failed query=%r: %s", q, exc)
         raise
     finally:
+        # proof-of-life audit (silent_ok on failure 沿用 daily_pipeline.py 体例)
+        _write_scheduler_log_safe(
+            task_name="news_ingest_5_sources",
+            start_time=start_time,
+            status=status,
+            result_json=result_for_audit,
+        )
         conn.close()
 
 
-@celery_app.task(name="app.tasks.news_ingest_tasks.news_ingest_rsshub")
+@celery_app.task(
+    name="app.tasks.news_ingest_tasks.news_ingest_rsshub",
+    soft_time_limit=300,  # 5min — RSSHub Self-hosted localhost normally fast, defensive bound
+    time_limit=600,  # 10min hard kill (反 solo worker stall blocking outbox-publisher 30s)
+)
 def news_ingest_rsshub(
     *,
     route_path: str | None = None,
@@ -134,6 +158,9 @@ def news_ingest_rsshub(
     from app.services.db import get_sync_conn
     from app.services.news import NewsIngestionService, get_news_classifier
 
+    # M1 reviewer adopt — proof-of-life audit 沿用 daily_pipeline.py:42-53 motivation.
+    from app.tasks.daily_pipeline import _write_scheduler_log_safe
+
     start_time = datetime.now(UTC)
     rp = route_path or DEFAULT_RSSHUB_ROUTE_PATH
     lim = limit if limit is not None else DEFAULT_RSSHUB_LIMIT
@@ -145,6 +172,8 @@ def news_ingest_rsshub(
     service = NewsIngestionService(pipeline=pipeline, classifier=classifier)
 
     conn = get_sync_conn()
+    status = "error"  # default 反 silent success miss
+    result_for_audit: dict | None = None
     try:
         stats = service.ingest(
             query=rp,
@@ -162,11 +191,21 @@ def news_ingest_rsshub(
             "route_path": rp,
             "limit": lim,
         }
+        status = "success"
+        result_for_audit = result
         logger.info("news_ingest_rsshub done: %s", result)
         return result
     except Exception as exc:
         conn.rollback()
+        result_for_audit = {"error": f"{type(exc).__name__}: {exc}"}
         logger.exception("news_ingest_rsshub failed route_path=%r: %s", rp, exc)
         raise
     finally:
+        # proof-of-life audit (silent_ok on failure 沿用 daily_pipeline.py 体例)
+        _write_scheduler_log_safe(
+            task_name="news_ingest_rsshub",
+            start_time=start_time,
+            status=status,
+            result_json=result_for_audit,
+        )
         conn.close()
