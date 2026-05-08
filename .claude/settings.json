@@ -23,6 +23,11 @@
             "type": "command",
             "command": "python D:/quantmind-v2/.claude/hooks/pre_commit_validate.py",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/redline_pretool_block.py",
+            "timeout": 5
           }
         ]
       },
