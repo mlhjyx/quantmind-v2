@@ -180,7 +180,7 @@ CC 第一次 V3 实施 sprint 起手前必走 verify (5 步任一不通过 → S
 | (c) 真值 vs prompt cite 漂移 | "prompt cite 'A' / fresh verify 真值 'B'" |
 | (d) 真值修正 scope | "起点 X / patch = Y / 编号 next = Z" |
 
-→ 自造 `quantmind-cite-source-lock` skill (step 3) 强制 + `cite-source-poststop` hook (step 4) reject 反 silent
+→ 自造 `quantmind-v3-cite-source-lock` skill (step 3) 强制 + 现 `verify_completion.py` 扩展 (合并 cite-source-poststop, 沿用 §L6.2 line 278 决议) reject 反 silent
 
 ### §L5.2 5 类漂移 detect (沿用 SESSION_PROTOCOL §3.3)
 
