@@ -90,6 +90,7 @@ DeepSeek API echoes caller-sent model name as `response.model` field (反 underl
 - [ADR-037](ADR-037-internal-source-fresh-read-sop.md) §Context 第 7 漂移类型 candidate (3rd-party API 默认参数误归因)
 - [ADR-031](ADR-031-s2-litellm-router-implementation-path.md) S2 LiteLLM Router implementation path
 - [ADR-032](ADR-032-s4-caller-bootstrap-factory.md) S4 caller bootstrap factory
-- LL-109 hook governance reverse case
-- LL-110 web_fetch verify SOP
+- LL-109 hook governance 4 days production 0 catch sediment
+- LL-110 alias-layer vs underlying-layer 双层混淆 — DeepSeek API 3 层暗藏机制 sediment (本 ADR 直接来源)
+- LL-112 vanilla 3rd-party SDK call 漏默认参数误归因 silent semantic drift (drift catch case #14, web_fetch verify SOP 根本来源)
 - DeepSeek 官方 API docs: api-docs.deepseek.com/zh-cn/

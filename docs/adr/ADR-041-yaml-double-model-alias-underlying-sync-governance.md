@@ -86,4 +86,6 @@ recorded_at: 2026-05-08
 - [ADR-040](ADR-040-deepseek-api-3-layer-mechanism-watch-sop.md) DeepSeek API 3 层暗藏机制 watch SOP (Layer a/b/c)
 - [ADR-031](ADR-031-s2-litellm-router-implementation-path.md) S2 LiteLLM Router implementation path
 - [ADR-038 (reserved)](REGISTRY.md) LiteLLM cost registry V4 gap promote target (ADR-DRAFT row 6)
+- LL-111 yaml double-model sync governance — 反 single-model drift 体例 (本 ADR 直接来源)
+- LL-110 alias-layer vs underlying-layer 双层混淆 (Layer b backend silent routing 上下文)
 - DeepSeek 官方 deprecation map: api-docs.deepseek.com/zh-cn/

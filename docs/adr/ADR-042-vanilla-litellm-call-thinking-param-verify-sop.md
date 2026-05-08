@@ -95,6 +95,7 @@ CC vanilla `litellm.completion(model="deepseek-chat")` call:
 - [ADR-040](ADR-040-deepseek-api-3-layer-mechanism-watch-sop.md) DeepSeek API 3 层暗藏机制 watch SOP (Layer a/b/c verify)
 - [ADR-041](ADR-041-yaml-double-model-alias-underlying-sync-governance.md) yaml double-model alias-underlying sync governance
 - [ADR-037](ADR-037-internal-source-fresh-read-sop.md) §Context 第 7 漂移类型 candidate
-- LL-109 hook governance reverse case (web_fetch verify SOP)
-- LL-110 web_fetch DeepSeek API docs verify SOP
+- LL-109 hook governance 4 days production 0 catch sediment
+- LL-110 alias-layer vs underlying-layer 双层混淆 — DeepSeek API 3 层暗藏机制 sediment
+- LL-112 vanilla 3rd-party SDK call 漏默认参数误归因 silent semantic drift (drift catch case #14, 本 ADR 直接来源)
 - DeepSeek 官方 API docs: api-docs.deepseek.com/zh-cn/
