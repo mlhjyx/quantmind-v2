@@ -17,7 +17,7 @@ trigger: 起手|sub-PR 起手|step 起手|cross-session resume|新 session|fresh
 
 ## §2 8 doc 清单 (沿用 Constitution §L1.1 SSOT)
 
-详见 `docs/V3_IMPLEMENTATION_CONSTITUTION.md` §L1.1 表. 6 committed + 2 planned:
+详见 `docs/V3_IMPLEMENTATION_CONSTITUTION.md` §L1.1 表. 8 committed (post PR #271, V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md sediment 后, 全 8 doc 已 main HEAD active):
 
 | Doc | 状态 |
 |---|---|
@@ -58,7 +58,7 @@ trigger: 起手|sub-PR 起手|step 起手|cross-session resume|新 session|fresh
 | `.claude/hooks/session_context_inject.py` v2 (SessionStart auto fire) | 自动 inject 4 root doc + Blueprint + sprint state frontmatter description (audit row 11 真测 wired) |
 | 本 skill (CC 主动 invoke 知识层) | sub-PR / step 起手 时 CC 主动 cite SOP + 8 doc 全清单 fresh read 强制 (反仅依赖 hook auto inject 的 4 doc subset) |
 
-→ skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution v0.2 §L6.2 line 255 决议).
+→ skill 是知识层, hook 是机制层. **互补不替代** (沿用 Constitution v0.2 §L6.2 fresh-read-sop 决议).
 
 ## §6 反 anti-pattern (沿用 LL-106)
 

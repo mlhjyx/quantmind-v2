@@ -1,7 +1,7 @@
 ---
 name: quantmind-v3-banned-words
 description: V3 实施期 reply + prompt 出前 banned-words check. 仅白名单 真账户/真发单/真生产/真测/真值; 任 真+任意词 (反 5 白名单) HARD BLOCK + sustained 中文滥用 reject. 沿用 memory #25 + Ctrl-F SOP.
-trigger: banned|出前|reply|response|prompt 出|表达风格|memory #25|Ctrl-F|真+词|sustained 中文滥用
+trigger: banned|出前|reply 出前|prompt 出|表达风格|memory #25|Ctrl-F|真+词|sustained 中文滥用
 ---
 
 # QuantMind V3 Banned Words SOP
@@ -75,7 +75,7 @@ grep -n 'sustained' <file>
 
 | 层 | 机制 |
 |---|---|
-| `.claude/hooks/verify_completion.py` (Stop matcher) — V3 期合并 banned-words-poststop 扩展 (沿用 Constitution v0.2 §L6.2 line 279 决议) | sub-PR 闭后 auto reject + auto-rewrite candidate suggest |
+| `.claude/hooks/verify_completion.py` (Stop matcher) — V3 期合并 banned-words-poststop 扩展 (沿用 Constitution v0.2 §L6.2 banned-words-poststop 扩展决议) | sub-PR 闭后 auto reject + auto-rewrite candidate suggest |
 | 本 skill (CC 主动 invoke 知识层) | reply / prompt 出前 CC 主动 grep verify (反仅依赖 hook 事后 reject) |
 
 → skill 是知识层, hook 是机制层. **互补不替代**.

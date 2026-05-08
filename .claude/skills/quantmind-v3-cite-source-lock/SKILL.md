@@ -60,7 +60,7 @@ user "跟 Claude 说过 X" / "Claude.ai 决议 Y" / "memory cite Z" 等跨 syste
 
 | 层 | 机制 |
 |---|---|
-| `.claude/hooks/verify_completion.py` (Stop matcher) — V3 期合并 cite-source-poststop 扩展 (沿用 Constitution v0.2 §L6.2 line 278 决议) | sub-PR 闭后 auto reject silent 漂移 cite |
+| `.claude/hooks/verify_completion.py` (Stop matcher) — V3 期合并 cite-source-poststop 扩展 (沿用 Constitution v0.2 §L6.2 cite-source-poststop 扩展决议) | sub-PR 闭后 auto reject silent 漂移 cite |
 | 本 skill (CC 主动 invoke 知识层) | 任 cite 出前 CC 主动 cite SOP + 4 元素 verify (反仅依赖 hook auto reject 的事后 enforce) |
 
 → skill 是知识层, hook 是机制层. **互补不替代**.

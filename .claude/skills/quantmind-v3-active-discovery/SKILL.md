@@ -24,7 +24,7 @@ trigger: Phase 0|finding|主动发现|和我假设不同|prompt 没让做|顺序
 
 ## §3 finding sediment 体例
 
-每 finding 必含 cite source 4 元素 (沿用 quantmind-v3-cite-source-lock skill SOP):
+每 finding 必含 cite source 4 元素 (沿用 SESSION_PROTOCOL §3.1 SSOT — skill 实施详见 Constitution §L6.2):
 
 ```
 finding #N: [类型 (a)/(b)/(c)]
