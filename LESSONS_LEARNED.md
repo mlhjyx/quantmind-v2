@@ -3703,3 +3703,85 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - 沿用 ADR-037 §Context 第 7 漂移类型 candidate (3rd-party API 默认参数误归因 silent semantic drift)
 - 沿用 ADR-DRAFT row 10 sediment + governance ADR-042 候选 prepare 体例
 - **反 anti-pattern** — CC **3 次 push back 误归因** 反**user 第七把尺子** catch — **反 anti-pattern v6.0 candidate** governance ADR sediment 体例
+
+---
+
+## LL-113: post-deploy service stale code reverse case sediment (Set B service ops drift case #15-17, sub-PR 8b-cadence-B post-merge ops cumulative)
+
+**触发**: 5-04 ~ 5-07 sub-PR 8b-cadence-B post-merge ops cumulative reverse case sediment. **Set B service ops drift cases** (renumber #15-17 sequential continuation, 避免 Set A LLM API drift cases #12-14 collision 沿用 LL-110/111/112 sediment 体例).
+
+**Set B 3 case 内容**:
+
+### **Drift case #15**: post-deploy Worker stale code (5-04 18:52)
+- **现象**: Worker 5-04 18:52 reverse case 沿用 post-PR #253/#254/#255/#257 deploy 4-day silent — Worker process 沿用 deploy 前 stale code 4 days 0 restart, post-deploy 修订 0 生效
+- **因**: Servy CLI status 沿用 `Running` 显示 沿用 process restart 仅, 未 reflect process **load 时 code freshness**. post-deploy Worker restart 必显式走 (反 deploy 后 0 verify 沿用 schedule code reload 假设)
+- **修**: chunk C-SOP-A SOP-04 post-deploy restart cadence + Servy CLI status verify gate 沿用 sub-PR 8b-cadence-B post-merge ops Phase 0 verify 体例 (PR #258)
+
+### **Drift case #16**: FastAPI stale 5-04 PR #253 in-process Pydantic propagate 4-day silent fallback
+- **现象**: FastAPI 5-04 后 PR #253 Pydantic Settings propagate primary path 修复, FastAPI process 沿用 stale code 4 days 0 restart, in-process Settings.PYDANTIC_PROPAGATE 沿用 deploy 前 default sustained, 修订 0 生效
+- **因**: FastAPI hot reload 沿用 dev mode only (production --workers 2 0 reload), in-process state 沿用 process restart 必显式
+- **修**: chunk C-SOP-A FastAPI restart 沿用 SOP-04 post-deploy restart cadence enforcement (PR #258), 16/16 deepseek-v4-flash post-restart verify primary path 生效
+
+### **Drift case #17**: send_task default routing key "celery" 与 Worker queue config 不符 (5-07 22:00 Option C catch)
+- **现象**: sub-PR 8b-cadence-B Option (C) 5-07 22:00 manual `celery_app.send_task('app.tasks.news_ingest_tasks.news_ingest_5_sources')` → Redis LLEN celery=288 backlog stuck → Worker 0 pickup → AsyncResult PENDING 30+ min
+- **因**: Celery default routing key `celery` 反 align Worker subscribed queues `default/data_fetch/factor_calc` (Servy export `Parameters` field `-Q default,factor_calc,data_fetch`), silent drop 沿用 unregistered task warning 假设 Worker pick up — **queue 不 match** **0 warning** Celery Worker **0 见 task** at all
+- **修**: explicit `queue='default'` 沿用 SOP-05 send_task queue routing prerequisite (PR #258 SOP cluster sediment)
+
+**讽刺点**: **讽刺 #15-17** sediment — Worker / FastAPI / send_task **3 silent failure** 沿用 post-deploy 默认假设 (process restart auto / hot reload / default routing) **均反 production-friendly**. user **第七把尺子** + chunk C-SOP-A FastAPI restart + chunk C-SOP-A SOP cluster sediment + chunk C-SOP-B Servy config repair 沿用 cumulative governance enforcement 生效.
+
+**SOP sediment**:
+- post-deploy Worker / FastAPI restart 沿用 **显式 cadence** (SOP-04, 反 hot reload 假设)
+- send_task **`queue=` explicit** 沿用 **prerequisite verify** (SOP-05, 反 default routing 假设)
+- Servy CLI status `Running` 沿用 **process restart only verify** (反 code freshness verify) — 沿用 SOP-06 monitoring 沉淀候选
+
+**relate**:
+- ADR-039 retry policy + circuit breaker (S2.4 sub-PR 8b-llm-audit-S2.4 PR #255) — silent failure governance prerequisite
+- ADR-043 Beat schedule + cadence + RSSHub routing 契约 (sub-PR 8b-cadence-A PR #257)
+- SOP-04 post-deploy restart cadence (chunk C-SOP-A PR #258)
+- SOP-05 send_task queue routing (chunk C-SOP-A PR #258)
+- LL-097 X9 Beat schedule restart 体例
+- LL-098 X10 forward-progress reverse case (Set B drift case #15-17 reverse case 沿用)
+
+---
+
+## LL-114: 6 backend code files fictitious paths cite drift sub-PR scope 待预约 sediment
+
+**触发**: 5-08 chunk C-ADR PR #267 active discovery — prompt cite "ADR-033 fictitious paths" 漂移 (实际在 ADR-043 L106), grep `/eastmoney/news/0` + `/caixin/finance` + `/sina/finance/economic` 6 backend code files 含 fictitious paths cite (沿用 sub-PR 8b-rsshub PR #254 cite drift 沉淀至 production code 真值漂移).
+
+**6 backend code files** (fresh grep current main HEAD):
+- `backend/qm_platform/news/rsshub.py:7` — docstring `GET http://localhost:1200/<route_path> (e.g. /eastmoney/news/0)`
+- `backend/qm_platform/news/rsshub.py:16` — `route path 体例 (e.g. /eastmoney/news/0 / /jin10/news / /caixin/finance)`
+- `backend/qm_platform/news/rsshub.py:67` — `caller 真传 "/eastmoney/news/0" / "/jin10/news" / "/caixin/finance"`
+- `backend/qm_platform/news/rsshub.py:73,95-96` — fetch example query
+- `backend/app/tasks/beat_schedule.py:137` — `(/eastmoney/news/0, /caixin/finance, /sina/finance/economic) 真 503 audit chunk C 真预约 fix`
+- `backend/app/tasks/news_ingest_tasks.py:148` — `Other 3 routes (/eastmoney/news/0, /caixin/finance, /sina/finance/economic) 真 503`
+- `backend/app/api/news.py:124,133` — `route_path` API contract docstring
+- `backend/tests/test_news_api_rsshub_endpoint.py:49,53` — test fixture `route_path="/eastmoney/news/0"`
+- `backend/tests/test_news_rsshub.py:13,107,121-260,326-419` — 13 occurrences across test fixtures + e2e (live RSSHub server)
+
+**Real existing routes baseline** (沿用 ADR-043 cite repair, chunk C-ADR PR #267):
+- `/jin10/news` (existing default, 1/4 baseline)
+- `/jin10/0` (alt importance level)
+- `/jin10/1` (alt importance level)
+- `/eastmoney/search/A股` (search-driven route)
+
+**因**: sub-PR 8b-rsshub PR #254 cite drift sediment at code level — fictitious paths used as **example values** in docstrings + **test fixtures** + **production task code** (beat_schedule + news_ingest_tasks). Test fixtures + e2e tests will fail against real RSSHub (which returns 503 for fictitious paths). Beat schedule task config will fetch 0 results.
+
+**讽刺点**: **讽刺 #18** sediment — chunk C-ADR PR #267 fix doc cite drift only (ADR-043 L106), production code drift sustained until sub-PR 待预约 fix. 4-29 痛点 fix sequence: News L0.1 capacity 1/4 → 4/4 working real value 沿用 prerequisite S5 L1 实时化起手前.
+
+**SOP sediment**:
+- 任 sub-PR cite drift 修订必走 **doc-only + production-code sub-PR 双 PR 体例** (反 doc-only fix sustained 沿用 prod code drift)
+- 沿用 ADR-022 反 silent overwrite 体例 — sub-PR 8b-rsshub PR #254 cite drift sustained 4 days post-merge 0 catch
+- 沿用 chunk C-SOP-B Servy config repair 体例 (production runtime fix scope)
+
+**Sub-PR scope 待预约** (~1-2h, 沿用 LL-100 chunked SOP <500 line 体例):
+- Phase 0: 4 working routes baseline fresh verify (post-PR #266 Servy production-grade tsx daemon)
+- Phase 1: 6 backend code files fictitious paths replace 真 real existing routes (case-by-case)
+- Phase 2: test fixtures update + e2e re-verify + Beat schedule cron real value verify
+- Phase 3: PR cycle + reviewer + AI self-merge
+
+**relate**:
+- ADR-043 fictitious paths cite repair (chunk C-ADR PR #267, doc-only scope sustained)
+- chunk C-RSSHub Path A baseline data (5-07 PR #266 RSSHub Servy production-grade tsx daemon)
+- LL-098 X10 forward-progress reverse case
+- LL-104 cross-verify SOP (sub-PR cite drift 修订 prerequisite)
