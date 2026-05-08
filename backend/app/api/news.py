@@ -121,16 +121,19 @@ class IngestRsshubRequest(BaseModel):
 
     Args:
         route_path: RSSHub route 真生产 endpoint path (e.g. "/jin10/news",
-            "/eastmoney/news/0", "/caixin/finance"). Slash prefix optional —
-            RsshubNewsFetcher.fetch normalize.
+            "/jin10/0", "/jin10/1"). Slash prefix optional —
+            RsshubNewsFetcher.fetch normalize. Note: regex pattern below requires
+            ASCII-only chars; `/eastmoney/search/A股` (4th working baseline) blocked
+            at API layer 沿用 LL-115 sediment.
         limit: per-route fetch limit (默认 10, max 50 沿用 sub-PR 6 体例).
         decision_id_prefix: 可选 LLM call audit prefix (默认 None, classifier 真消费).
     """
 
     # M2 reviewer adopt: 真**defense-in-depth** route_path 真**character-set**
     # 限制 (反 path-traversal `/../../../etc/passwd` / encoded chars 真**反 send
-    # garbage** 到 RSSHub). 沿用文档化 RSSHub routes (`/jin10/news` /
-    # `/eastmoney/news/0` / `/caixin/finance`) 真生产 char set sustained.
+    # garbage** 到 RSSHub). 沿用文档化 RSSHub ASCII routes (`/jin10/news` /
+    # `/jin10/0` / `/jin10/1`) 真生产 char set sustained. Non-ASCII routes (e.g.
+    # `/eastmoney/search/A股`) supported via direct fetcher only (反 API layer).
     route_path: str = Field(
         ...,
         min_length=1,

@@ -4,7 +4,7 @@
 本地自部署 (沿用 Step 4-5 verify (c) Native Node.js + Servy host 体例 sustained).
 
 RSSHub endpoint (5-06 Phase 0 install + Phase 1 fresh verify):
-    GET http://localhost:1200/<route_path> (e.g. /eastmoney/news/0)
+    GET http://localhost:1200/<route_path> (e.g. /jin10/news)
     Headers: 0 (anonymous, 沿用 sub-PR 4 GDELT 体例 sustained)
     Response: RSS 2.0 / Atom 1.0 XML feed (反 sub-PR 1+2+3+4+5 JSON 体例)
 
@@ -13,7 +13,7 @@ RSSHub-specific finding (5-06 Phase 1 fresh verify, 反 sub-PR 1+2+3+4+5 体例)
 - **0 API key** (沿用 sub-PR 4 GDELT anonymous 体例)
 - **GET method** (沿用 sub-PR 3+4+5 体例)
 - **RSS XML response** (反 sub-PR 1+2+3+4+5 JSON wrapper 体例) — feedparser parser
-- **route path 体例** (e.g. /eastmoney/news/0 / /jin10/news / /caixin/finance) —
+- **route path 体例** (e.g. /jin10/news / /jin10/0 / /jin10/1 / /eastmoney/search/A股) —
   fetch() query 沿用 route path 体例 (反 search keyword sub-PR 1+2+3+5 体例)
 - **lang="zh"** sustained (V3§3.1 中文财经源 ground truth)
 
@@ -64,13 +64,14 @@ class RsshubNewsFetcher(NewsFetcher):
     Note:
         fetch(query=...) 真**route path** (反 sub-PR 1+2+3+5 search keyword 体例),
         因为 RSSHub 真 route-driven (各 source 真 path-specific). 沿用 plugin 体例
-        sustained — caller 真传 "/eastmoney/news/0" / "/jin10/news" / "/caixin/finance"
-        等 route path string. 沿用 sub-PR 7 集成时 NewsClassifier 走 route path map
-        体例 sediment (V3§3.1 6 源 fan-out 体例 sustained).
+        sustained — caller 真传 "/jin10/news" / "/jin10/0" / "/jin10/1" /
+        "/eastmoney/search/A股" 等 route path string (4 working routes baseline,
+        chunk C-RSSHub Path A closure cite). 沿用 sub-PR 7 集成时 NewsClassifier
+        走 route path map 体例 sediment (V3§3.1 6 源 fan-out 体例 sustained).
 
     Example:
         >>> fetcher = RsshubNewsFetcher()
-        >>> items = fetcher.fetch(query="/eastmoney/news/0", limit=10)
+        >>> items = fetcher.fetch(query="/jin10/news", limit=10)
         >>> for item in items:
         ...     print(item.title, item.timestamp, item.source)
     """
@@ -92,8 +93,8 @@ class RsshubNewsFetcher(NewsFetcher):
         """Fetch news items via RSSHub local server (RSS XML feed).
 
         Args:
-            query: RSSHub route path (e.g. "/eastmoney/news/0",
-                "/jin10/news", "/caixin/finance"). 反 search keyword.
+            query: RSSHub route path (e.g. "/jin10/news",
+                "/jin10/0", "/jin10/1", "/eastmoney/search/A股"). 反 search keyword.
             limit: max results (反 server-side clamp — RSSHub 反 limit query param,
                 client-side slice 沿用 base class 体例).
 

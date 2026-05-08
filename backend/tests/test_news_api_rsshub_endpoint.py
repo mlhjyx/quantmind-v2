@@ -46,11 +46,11 @@ def test_ingest_rsshub_request_minimal_valid() -> None:
 
 def test_ingest_rsshub_request_full_valid() -> None:
     req = IngestRsshubRequest(
-        route_path="/eastmoney/news/0",
+        route_path="/jin10/0",
         limit=20,
         decision_id_prefix="rsshub-test-001",
     )
-    assert req.route_path == "/eastmoney/news/0"
+    assert req.route_path == "/jin10/0"
     assert req.limit == 20
     assert req.decision_id_prefix == "rsshub-test-001"
 

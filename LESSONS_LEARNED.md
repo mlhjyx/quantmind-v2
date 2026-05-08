@@ -3785,3 +3785,42 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - chunk C-RSSHub Path A baseline data (5-07 PR #266 RSSHub Servy production-grade tsx daemon)
 - LL-098 X10 forward-progress reverse case
 - LL-104 cross-verify SOP (sub-PR cite drift 修订 prerequisite)
+
+---
+
+## LL-115: LL-114 sub-PR misframe 修正 sediment (option γ HYBRID 体例, 5-08 chunk C-LL precedent 沿用)
+
+**触发**: 5-08 sub-PR (LL-114 待预约) Phase 0 active discovery — prompt cite "News L0.1 capacity 1/4 → 4/4 working real value" 是 capacity expansion framing, 实际 6 backend code files 全部 docstring + comment + test mock + Beat options entries (0 args/kwargs default), 0 生产代码执行路径 fictitious paths. Beat schedule single-entry single-route_path default '/jin10/news', capacity 1/4 是架构现状 (sustained 至 capacity expansion 独立 sub-PR).
+
+**Frame error analysis**:
+- LL-114 cite "News L0.1 capacity 1/4 → 4/4 working real value" 误将 doc/test cite cleanup 当作 capacity expansion
+- 6 backend file 全部是 doc-only (docstring/comment) + test mock (fixture value, mock backend doesn't hit network)
+- Beat schedule entry 0 args/kwargs → default route_path='/jin10/news' (single route per cron cycle)
+- capacity 1/4 → 4/4 working 需要 multi-route dispatch architecture decision (multi-Beat-entry vs task-iterator vs route-list-arg)
+
+**Correct framing** (option γ HYBRID 体例):
+- Doc/test cite cleanup (governance honor: docstring + test mock 与生产 backend 对齐)
+- Beat schedule explicit kwargs={'route_path': '/jin10/news'} (intent 显式, 0 behavior change, future capacity expansion baseline)
+- Capacity expansion 沿用 独立 sub-PR 待预约 (architecture decision required, sustained LL-115 sediment)
+
+**讽刺点**: **讽刺 #19** sediment — LL-114 sub-PR cite 将"path 替换"和"capacity expansion"语义合并 misframe, Phase 0 active discovery catch + option γ HYBRID scope correction. 沿用 chunk C-LL option α scope correction precedent (PR #268) — Phase 0 active discovery 是 governance enforcement 关键 prerequisite, 反 prompt assume scope blind execute.
+
+**SOP sediment**:
+- 任 sub-PR cite 含 "capacity / scale / throughput" 等 framing 必 Phase 0 verify 实际架构 (反 single path replace 假设 capacity expansion)
+- 沿用 chunk C-LL option α scope correction precedent — Phase 0 active discovery 沿用 prompt cite drift catch 体例 sustained
+- 沿用 chunk C-ADR ADR-033 → ADR-043 drift catch precedent — prompt cite location drift 沿用 fresh grep verify
+- LL append-only 沿用 ADR-022 不 silent overwrite 体例 — LL-114 retroactive edit 0, LL-115 修正 sediment 沿用
+
+**Capacity expansion 待预约 sub-PR scope** (~3-4h, architecture decision):
+- Option (i) multi-Beat-entry: 4 Beat entries, one per route, 4x cron triggers
+- Option (ii) task-iterator: news_ingest_rsshub task iterates 4 routes per call
+- Option (iii) route-list-arg: Beat passes `route_paths=['/jin10/news', '/jin10/0', '/jin10/1', '/eastmoney/search/A股']`
+- ADR design + reviewer + AI self-merge
+
+**relate**:
+- LL-114 (sub-PR 待预约 misframe sediment, append-only sustained)
+- chunk C-LL PR #268 (option α scope correction precedent — Phase 0 active discovery enforcement)
+- chunk C-ADR PR #267 (ADR-043 cite repair doc-only 体例 + ADR-033 → ADR-043 drift catch precedent)
+- ADR-043 4 working routes baseline cite (chunk C-RSSHub Path A closure 5-07)
+- LL-098 X10 forward-progress reverse case
+- LL-104 cross-verify SOP
