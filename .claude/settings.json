@@ -97,6 +97,11 @@
             "type": "command",
             "command": "python D:/quantmind-v2/.claude/hooks/verify_completion.py",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/sediment_poststop.py",
+            "timeout": 5
           }
         ]
       }
