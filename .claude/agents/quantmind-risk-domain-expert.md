@@ -127,7 +127,8 @@ If a future review proposes converting this subagent into a "risk persona" with 
 
 ## Anchors (SSOT cite, 反 hardcoded line#)
 
-- `docs/V3_IMPLEMENTATION_CONSTITUTION.md` §13 元监控 / §14 失败模式 / §15.6 合成场景 / §L10 closure gate criteria
+- `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` §13 元监控 / §14 失败模式 / §15.6 合成场景 — V3 spec authoritative source
+- `docs/V3_IMPLEMENTATION_CONSTITUTION.md` §L10 closure gate criteria (V3 spec cross-cite via Constitution layer §L10)
 - `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` §5.1 / §5.2 / §5.3 cross-cutting layer ownership
 - `.claude/skills/quantmind-v3-anti-pattern-guard/SKILL.md` — V3 anti-pattern knowledge layer
 - `.claude/skills/quantmind-v3-sprint-closure-gate/SKILL.md` — sprint closure criteria knowledge layer

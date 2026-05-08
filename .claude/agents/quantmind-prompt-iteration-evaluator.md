@@ -135,7 +135,7 @@ If a future review proposes converting this subagent into a "prompt designer per
 
 ## Anchors (SSOT cite, 反 hardcoded line#)
 
-- `docs/V3_IMPLEMENTATION_CONSTITUTION.md` §3.2 NewsClassifier / §5.2 Bull-Bear debate / §5.3 reflector / §8.4 prompts / §5.4 prompt eval routing
+- `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` §3.2 NewsClassifier / §5.2 Bull-Bear debate / §5.3 reflector / §5.4 prompt eval routing / §8.4 prompts — V3 spec authoritative source
 - `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` §5.4 prompts/risk eval / iteration cross-cutting layer
 - `.claude/skills/quantmind-v3-prompt-eval-iteration/SKILL.md` — eval methodology SOP knowledge layer
 - `.claude/skills/quantmind-v3-prompt-design-laws/SKILL.md` — prompt WRITING phase SOP (distinct scope, design-time only)
