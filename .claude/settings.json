@@ -105,6 +105,18 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:/quantmind-v2/.claude/hooks/handoff_sessionend.py",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
