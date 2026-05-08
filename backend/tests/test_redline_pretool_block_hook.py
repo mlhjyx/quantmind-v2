@@ -85,6 +85,7 @@ def test_broker_call_blocked(command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        # Lowercase canonical
         "setx LIVE_TRADING_DISABLED false",
         "setx EXECUTION_MODE live",
         "setx QMT_ACCOUNT_ID 12345678",
@@ -96,6 +97,10 @@ def test_broker_call_blocked(command: str) -> None:
         "export LIVE_TRADING_DISABLED=false",
         "export EXECUTION_MODE=live",
         "export QMT_ACCOUNT_ID=99",
+        # Case variants (Windows shell case-insensitive — 反 silent bypass)
+        "SETX LIVE_TRADING_DISABLED false",
+        "Setx EXECUTION_MODE live",
+        "SeTx QMT_ACCOUNT_ID 99",
     ],
 )
 def test_env_redline_blocked(command: str) -> None:
@@ -111,11 +116,18 @@ def test_env_redline_blocked(command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        # Canonical
         "echo 'foo' >> configs/pt_live.yaml",
         "echo 'bar' > configs/pt_live.yaml",
         "echo 'baz' >> config/litellm_router.yaml",
         "Add-Content -Path configs/pt_live.yaml -Value 'x'",
         "Set-Content -Path config/litellm_router.yaml -Value 'y'",
+        # Case variants (PowerShell case-insensitive — 反 silent bypass)
+        "add-content -Path configs/pt_live.yaml -Value 'x'",
+        "set-content -Path config/litellm_router.yaml -Value 'y'",
+        "ADD-CONTENT -Path configs/pt_live.yaml -Value 'x'",
+        # Trailing space + EOL boundary 沿用 (?:\s|$) anchor
+        "echo 'foo' >> configs/pt_live.yaml ",
     ],
 )
 def test_prod_yaml_blocked(command: str) -> None:
@@ -123,6 +135,21 @@ def test_prod_yaml_blocked(command: str) -> None:
     rc, _, stderr = _run_hook(command)
     assert rc == 2, f"expected BLOCK for {command!r}, stderr={stderr}"
     assert "prod_yaml" in stderr
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # `.yaml.bak` / `.yaml.staging` etc — sidecar files NOT canonical, 反 over-match
+        "echo 'foo' >> configs/pt_live.yaml.bak",
+        "echo 'bar' > configs/pt_live.yaml.staging",
+        "Add-Content -Path config/litellm_router.yaml.backup-2026-05-08 -Value 'x'",
+    ],
+)
+def test_prod_yaml_sidecar_files_allowed(command: str) -> None:
+    """sidecar file (.yaml.bak / .yaml.staging) 沿用 ALLOW (反 \b over-match P1-1 fix verify)."""
+    rc, _, _ = _run_hook(command)
+    assert rc == 0, f"expected ALLOW for sidecar {command!r}"
 
 
 # ── BLOCK: live-mode broker exec script ──

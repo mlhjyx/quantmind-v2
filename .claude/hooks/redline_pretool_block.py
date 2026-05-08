@@ -22,6 +22,11 @@ bypass 体例 (沿用 quantmind-v3-redline-verify skill §3 user 显式触发 + 
 - per-command marker `# qm-redline-allow:<reason>` (沿用 block_dangerous_git.py
   +  scripts/check_llm_imports.sh allowlist 体例 sustained)
 
+⚠️ **CC self-authorization via bypass marker is X10/LL-098 anti-pattern violation**:
+bypass marker MUST come from user-typed prompt content (Constitution §L8.1 (b) user
+介入 SSOT), 反 CC self-construct marker silent override. 沿用 quantmind-v3-redline-verify
+skill §3 condition (5) "user 显式触发 + 红线 unlock" 沿用反 silent skip.
+
 互补 hook (沿用 Constitution §L6.2 redline-pretool-block 决议 — 跟 protect_critical_files
 互补不替代):
 - protect_critical_files.py (PreToolUse[Edit|Write]) — file path pattern only
@@ -92,18 +97,20 @@ ENV_REDLINE_PATTERNS: list[str] = [
 
 # (3) 真生产 yaml direct mutation via Bash — 反 silent overwrite 沿用 ADR-022
 # protect_critical_files.py 是 PreToolUse[Edit|Write], 反 cover Bash command 体例
+# Anchor `(?:\s|$)` after `\.yaml` 反 `\b` over-match (e.g. `pt_live.yaml.bak`
+# would match with `\b` because `.` is non-word). Strict to canonical filename.
 PROD_YAML_PATTERNS: list[str] = [
     # Append via redirect
-    r">>\s*configs/pt_live\.yaml\b",
-    r">>\s*config/litellm_router\.yaml\b",
+    r">>\s*configs/pt_live\.yaml(?:\s|$)",
+    r">>\s*config/litellm_router\.yaml(?:\s|$)",
     # PowerShell Add-Content / Set-Content
-    r"Add-Content\b.*configs/pt_live\.yaml\b",
-    r"Add-Content\b.*config/litellm_router\.yaml\b",
-    r"Set-Content\b.*configs/pt_live\.yaml\b",
-    r"Set-Content\b.*config/litellm_router\.yaml\b",
+    r"Add-Content\b.*configs/pt_live\.yaml(?:\s|$)",
+    r"Add-Content\b.*config/litellm_router\.yaml(?:\s|$)",
+    r"Set-Content\b.*configs/pt_live\.yaml(?:\s|$)",
+    r"Set-Content\b.*config/litellm_router\.yaml(?:\s|$)",
     # Direct overwrite
-    r">\s*configs/pt_live\.yaml\b",
-    r">\s*config/litellm_router\.yaml\b",
+    r">\s*configs/pt_live\.yaml(?:\s|$)",
+    r">\s*config/litellm_router\.yaml(?:\s|$)",
 ]
 
 # (4) live-mode broker exec script
@@ -138,34 +145,41 @@ def _is_bypassed(command: str) -> bool:
 
 
 def _check_block(command: str) -> tuple[str, str] | None:
-    """Return (category, pattern) if BLOCK matched, else None."""
+    """Return (category, pattern) if BLOCK matched, else None.
+
+    Case-insensitive matching 沿用 Windows shell + PowerShell native semantics —
+    `setx` / `SETX` / `Setx` 全等价 (反 silent bypass via case variant).
+    """
     for pattern in BROKER_CALL_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return ("broker_call", pattern)
     for pattern in ENV_REDLINE_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return ("env_redline", pattern)
     for pattern in PROD_YAML_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return ("prod_yaml", pattern)
     for pattern in LIVE_EXEC_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return ("live_exec", pattern)
     return None
 
 
 def _check_warn(command: str) -> tuple[str, str] | None:
-    """Return (category, pattern) if WARN matched, else None."""
+    """Return (category, pattern) if WARN matched, else None.
+
+    Case-insensitive matching 沿用 _check_block 体例 (反 silent bypass via case variant).
+    """
     for pattern in DB_ROW_WARN_PATTERNS:
-        if re.search(pattern, command):
+        if re.search(pattern, command, re.IGNORECASE):
             return ("db_row_mutation", pattern)
     return None
 
 
-def _emit_warn_and_pass(category: str, pattern: str, command: str) -> None:
+def _emit_warn_and_pass(category: str, pattern: str) -> None:
     """ALLOW-with-WARN: surface SOP cite via hookSpecificOutput, sys.exit(0).
 
-    沿用 protect_critical_files.py:191-201 ALLOW-with-WARN 体例 sustained.
+    沿用 protect_critical_files.py ALLOW-with-WARN 体例 sustained.
     """
     result = {
         "hookSpecificOutput": {
@@ -221,7 +235,7 @@ def main() -> None:
     warn_match = _check_warn(command)
     if warn_match:
         category, pattern = warn_match
-        _emit_warn_and_pass(category, pattern, command)
+        _emit_warn_and_pass(category, pattern)
 
     sys.exit(0)
 
