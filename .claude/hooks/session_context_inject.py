@@ -1,9 +1,19 @@
-"""Hook: Session 启动上下文恢复 (v2 2026-04-18 重写).
+"""Hook: Session 启动上下文恢复 (v3 2026-05-09 V3 实施期 doc 扩展).
 
-根因: v1 (至 2026-04-17) 只提 18 条铁律 + 已归档 ROADMAP_V3, **完全没提 Blueprint + memory handoff**.
-导致连续 session (3/4) 开场铁律 38 违规 — 未读顶层设计文档直接开工.
+根因 (v1 → v2): v1 (至 2026-04-17) 只提 18 条铁律 + 已归档 ROADMAP_V3, **完全没提 Blueprint + memory
+handoff**. 导致连续 session (3/4) 开场铁律 38 违规 — 未读顶层设计文档直接开工.
 
-v2 目标:
+v3 扩展 (V3 step 4 sub-PR 5, sustained Constitution v0.2 §L0.3 step (3) 决议 + §L1.1 8 doc fresh
+read SOP + §L6.2 line 277 fresh-read-sessionstart 合并到 session_context_inject.py 现有扩展决议):
+  - 扩 V3 实施期 doc fresh read trigger: V3_IMPLEMENTATION_CONSTITUTION.md (Constitution v0.2) +
+    V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md (skeleton v0.1) + QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md
+    (V3 spec authoritative source) + docs/adr/REGISTRY.md (ADR # SSOT, LL-105 SOP-6) 4 doc 加入
+    inject scope (沿用 ADR-022 反 abstraction premature — 反 silent 全新 fresh-read-sessionstart
+    hook 创建)
+  - 反 silent 沿用 v2 inject scope (Phase 1 narrowed scope sustained PR #280/#281/#282 LL-130
+    候选体例累积; full 8 doc dynamic content extraction deferred to skill SOP)
+
+v2 目标 (sustained):
   1. 硬性"新 session 必读"指令 (不是软性"关键路径")
   2. Blueprint + memory handoff 置顶, 新铁律 (38/39/25/36/40) 速查
   3. 动态提 memory/project_sprint_state.md frontmatter description (最强实时状态)
@@ -11,6 +21,14 @@ v2 目标:
   5. 保留 audit log + SYSTEM_STATUS 解析 fallback
 
 触发: SessionStart
+
+关联 SSOT (沿用 cite 4 元素 SSOT 锚点 only):
+- Constitution §L0.3 step (3) SessionStart hook fire 决议 (V3 doc fresh read trigger)
+- Constitution §L1.1 8 doc fresh read SOP
+- Constitution §L6.2 line 277 fresh-read-sessionstart 合并决议
+- skeleton §3.2 现有 hook 扩展真值
+- LL-130 候选 (hook regex coverage scope vs full SOP scope governance — Phase 1 narrowed scope)
+- 铁律 45 (4 doc fresh read SOP enforcement)
 """
 
 import json
@@ -72,6 +90,28 @@ def get_current_state(project_root: Path) -> str:
     return f"{step}, {sharpe}".strip().rstrip(",")
 
 
+def get_v3_doc_status(project_root: Path) -> str:
+    """v3 扩展 (V3 step 4 sub-PR 5): 检 V3 实施期 4 doc 存在性 + cite SSOT 锚点.
+
+    沿用 Constitution §L0.3 step (3) + §L1.1 8 doc fresh read SOP + §L6.2 line 277 决议.
+    Phase 1 narrowed scope (sustained PR #280/#281/#282 LL-130 候选体例累积):
+    - 仅 cite path + 存在 status (静态可达)
+    - dynamic content extraction (e.g. Constitution v0.2 frontmatter) deferred to skill SOP
+    """
+    v3_docs = [
+        ("Constitution v0.2", "docs/V3_IMPLEMENTATION_CONSTITUTION.md"),
+        ("Skeleton v0.1", "docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md"),
+        ("V3 Design (spec authoritative source)", "docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md"),
+        ("ADR REGISTRY (LL-105 SOP-6 SSOT)", "docs/adr/REGISTRY.md"),
+    ]
+    lines = []
+    for label, rel_path in v3_docs:
+        f = project_root / rel_path
+        status = "✅ exists" if f.exists() else "⚠️ NOT FOUND"
+        lines.append(f"  - {label}: `{rel_path}` ({status})")
+    return "\n".join(lines)
+
+
 def build_context(project_root: Path) -> str:
     """组装注入 context."""
     memory_root = Path.home() / ".claude" / "projects" / "D--quantmind-v2" / "memory"
@@ -80,8 +120,9 @@ def build_context(project_root: Path) -> str:
     sprint_session = get_sprint_latest_session(memory_root)
     blueprint_ver = get_blueprint_version(project_root)
     legacy_state = get_current_state(project_root)
+    v3_doc_status = get_v3_doc_status(project_root)
 
-    return f"""SESSION START CONTEXT (hook v2, 2026-04-18):
+    return f"""SESSION START CONTEXT (hook v3, 2026-05-09 V3 实施期 doc 扩展):
 
 ⭐ 当前 Sprint 状态 (memory/project_sprint_state.md frontmatter):
 {sprint_desc}
@@ -119,6 +160,11 @@ def build_context(project_root: Path) -> str:
   34. 配置 single source of truth (config_guard 启动硬 raise)
 
 🗂️ Legacy 状态 (SYSTEM_STATUS.md §0, 参考): {legacy_state}
+
+🆕 V3 实施期 doc fresh read SOP (沿用 Constitution v0.2 §L0.3 step (3) + §L1.1 8 doc + 铁律 45):
+{v3_doc_status}
+  → V3 sub-PR 起手必 fresh re-read 4 doc + 任 cite section anchor 必走 §0.3 scope declaration
+    verify (沿用 PR #281 §L7 + PR #282 §L9 reverse cite finding 体例累积)
 """
 
 
