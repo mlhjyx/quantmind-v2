@@ -1,17 +1,37 @@
-"""Harness Hook: 关键文件保护 — 防止误改 (5-07 sub-PR 8b-pre-hook field-level refine).
+"""Harness Hook: 关键文件保护 — 防止误改 (v2 2026-05-09 V3 实施期扩展).
 
 触发: PreToolUse[Edit|Write|MultiEdit]
-功能:
-  - 完全阻止: credentials, .git/, .env.local, .env.production
-  - .env Write 完全阻止 (反整文件覆盖)
+功能 (v1 sustained, sustained user Q1 反向适用 + ADR-022 反 silent overwrite — 混合体例):
+  - 完全阻止 (BLOCK exit 2): credentials, .git/, .env.* variants
+  - .env Write 完全阻止 BLOCK exit 2 (反整文件覆盖)
   - .env Edit/MultiEdit 走字段级 whitelist (沿用 user 决议精神 #8 + Option E):
     仅允许 News URL fields (ANSPIRE/MARKETAUX/ZHIPU/TAVILY/GDELT/RSSHUB_BASE_URL).
     反 production secret (DEEPSEEK_API_KEY / EXECUTION_MODE / LIVE_TRADING_DISABLED /
     QMT_ACCOUNT_ID / DATABASE_URL / TUSHARE_TOKEN / DINGTALK_* / ADMIN_TOKEN 等).
-  - 警告: docs/QUANTMIND_V2_DDL_FINAL.sql, docs/QUANTMIND_V2_DESIGN_V5.md
+  - 警告 (WARN ALLOW with hookSpecificOutput): docs/QUANTMIND_V2_DDL_FINAL.sql,
+    docs/QUANTMIND_V2_DESIGN_V5.md
 
-退出码: 0=通过 (含 ALLOW-with-WARN), 2=阻止
-关联: ADR-DRAFT row 11 candidate (双 source align verify SOP), 真讽刺 #16 sediment 加深.
+功能 (v2 扩展, sustained Constitution v0.2 §L6.2 line 284 候选追加 + skeleton §3.2 line 312):
+  - 警告 (WARN ALLOW with hookSpecificOutput): prompts/risk/*.yaml — V3 production LLM
+    prompt config (sustained user Q2 (β) + Q2 fresh verify 决议: prompts/risk/news_classifier_v1.yaml
+    现存在 4185 bytes 真生产 V3 Sprint 7b.2 PR #241 sediment, 反 future-proof "0 file 现存在
+    prerequisite" 假设修正); WARN scope (反 BLOCK) — prompts evolve, legitimate edits expected.
+
+退出码: 0=通过 (含 ALLOW-with-WARN), 2=阻止 (sustained 现 v1 混合体例 反 silent overwrite ADR-022)
+
+scope (Phase 1 narrowed sustained user Q2 (β) + PR #280/#281/#282/#283 四 PR LL-130 候选体例累积):
+  - prompts/risk/*.yaml WARN file pattern static 可达 (file pattern matcher 真值 1 file 现存在,
+    future-proof for additional yaml prompts)
+  - dynamic content protection (e.g. prompt schema validation) deferred to skill
+    quantmind-v3-prompt-design-laws SOP active CC invoke
+
+关联 SSOT (沿用 cite 4 元素 SSOT 锚点 only):
+- Constitution §L6.2 line 284 (候选追加 cite — protect_critical_files 扩 V3 prompts/risk/*.yaml)
+- skeleton §3.2 line 312 (现有 hook 扩展真值)
+- ADR-DRAFT row 11 candidate (双 source align verify SOP), 真讽刺 #16 sediment 加深
+- skill quantmind-v3-prompt-design-laws (PR #275, prompt design 0 hardcode 体例 + schema validation)
+- LL-130 候选 (hook regex coverage scope vs full SOP scope governance — Phase 1 narrowed)
+- LL-133 候选 (现有 hook v1→v2 lifecycle governance — sustained PR #283 first case + 本 second)
 """
 
 import json
@@ -45,10 +65,13 @@ ENV_EDITABLE_FIELDS = {
     "RSSHUB_BASE_URL",
 }
 
-# 警告但不阻止的文件
+# 警告但不阻止的文件 (sys.exit(0) + hookSpecificOutput.additionalContext WARN)
+# v2 扩展: 加入 prompts/risk/*.yaml — V3 production LLM prompt config
+# (sustained Constitution §L6.2 line 284 候选追加 + skeleton §3.2 line 312 + user Q2 (β)).
 WARN_PATTERNS = [
     r"docs/QUANTMIND_V2_DDL_FINAL\.sql",
     r"docs/QUANTMIND_V2_DESIGN_V5\.md",
+    r"prompts/risk/.+\.yaml",
 ]
 
 # .env field 检测 regex (line-anchored, uppercase identifier + `=`).
