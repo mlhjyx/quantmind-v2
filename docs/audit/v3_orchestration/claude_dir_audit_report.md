@@ -46,14 +46,14 @@
 
 | # | Claude.ai cite | fresh verify 真值 | 漂移类型 | 真值修正 scope |
 |---|---|---|---|---|
-| 1 | "settings.json wire 配 hook 全套" | settings.json 真有 wire (4 types, 9 entries, 7 unique .py + 2 observe.sh) | ✅ verified | 补充: SessionEnd 类型 0 wire — V3 实施期需补 (`handoff-sessionend` v0.1 §L6.2 候选) |
+| 1 | "settings.json wire 配 hook 全套" | settings.json 确实有 wire (4 types, 9 entries, 7 unique .py + 2 observe.sh) | ✅ verified | 补充: SessionEnd 类型 0 wire — V3 实施期需补 (`handoff-sessionend` v0.1 §L6.2 候选) |
 | 2 | "OMC v4.9.1" | cache 4.9.1 + 4.9.3, current 4.9.1, available 4.13.6 | ✅ verified | 现 4.9.1, 不强制 upgrade (V3 实施期 0 必 4.13.6 dependency) |
 | 3 | "ECC continuous-learning-v2 hook wired" | wired pre + post, observe.sh project-scoped | ✅ verified | 0 修正 |
-| 4 | "mattpocock 项目级 clone" | cloned at `.claude/external-skills/mattpocock-skills/` (含 .git/), 22 SKILL.md, plugin.json 12 register | ✅ verified | 0 修正 (clone 真生效) |
-| 5 | **"9 hook 5 类型 wire"** | **9 .py 真存在 ✅, 但 7 wired in 4 types ❌** (SessionEnd 0 wire + block_dangerous_git + doc_drift_check 0 wire) | ❌ **数字漂移 + 编号漂移** | "Claude.ai cite '9 hook 5 类型 wire' / fresh verify 真值 '9 .py + 7 wired in 4 types' / 真值修正: 7/9 .py wired, 2/9 unwired (block_dangerous_git=gap, doc_drift_check=BY DESIGN), SessionEnd 类型缺失" |
+| 4 | "mattpocock 项目级 clone" | cloned at `.claude/external-skills/mattpocock-skills/` (含 .git/), 22 SKILL.md, plugin.json 12 register | ✅ verified | 0 修正 (clone 确实生效) |
+| 5 | **"9 hook 5 类型 wire"** | **9 .py 确实存在 ✅, 但 7 wired in 4 types ❌** (SessionEnd 0 wire + block_dangerous_git + doc_drift_check 0 wire) | ❌ **数字漂移 + 编号漂移** | "Claude.ai cite '9 hook 5 类型 wire' / fresh verify 真值 '9 .py + 7 wired in 4 types' / 真值修正: 7/9 .py wired, 2/9 unwired (block_dangerous_git=gap, doc_drift_check=BY DESIGN), SessionEnd 类型缺失" |
 | 6 | "7 自造 skill" | **7 skills ✅**, 但 6 quantmind-* + 1 omc-reference (NOT 7 quantmind-) | 🟡 **partial** (数字 ✅, 命名构成 drift) | "Claude.ai cite '7 自造 skill' / fresh verify 真值 '7 skills (6 quantmind-* + 1 omc-reference)' / 真值修正: 命名规范 NOT uniform, frontmatter schema 2 variants (trigger vs user-invocable)" |
 | 7 | "rules/quantmind-overrides.md ECC 覆盖体例" | `.claude/rules/quantmind-overrides.md` 1 file, ECC 覆盖 scope (TDD/TS/Go/Java/E2E/Node) confirmed, 铁律 cite 全 valid | ✅ verified | 0 修正 |
-| 8 | **"worktrees + COMMIT_MSG_TMP"** | **worktrees/ 0 存在** (Claude.ai 沿 `.gitignore:67` 推断, 实际目录不存在). COMMIT_MSG_TMP **22** (NOT ~24, drift), **NOT in .gitignore** (workspace residue) | ❌ **存在漂移 + 数字漂移** | "Claude.ai cite 'worktrees + ~24 COMMIT_MSG_TMP' / fresh verify 真值 'worktrees/ 0 存在 (root + .claude/ 双否) + 22 COMMIT_MSG_TMP NOT in .gitignore' / 真值修正: worktrees/ 候选用途 (superpowers using-git-worktrees / OMC team workflow) 待 V3 sub-PR 时机激活; COMMIT_MSG_TMP cleanup governance 决议待 sediment (ADR-DRAFT row 12 候选)" |
+| 8 | **"worktrees + COMMIT_MSG_TMP"** (Claude.ai cite 来源: 5-08 user prompt §1 background "Claude.ai 已 surface 8 finding (...worktrees + COMMIT_MSG_TMP)" — `~24` 为 user prompt paraphrase, 非 Claude.ai 直接 cite 数值 exact) | **worktrees/ 0 存在** (Claude.ai 沿 `.gitignore:67` 推断, 实际目录不存在). COMMIT_MSG_TMP **22** (NOT ~24, paraphrase drift), **NOT in .gitignore** (workspace residue) | ❌ **存在漂移 + 数字漂移** | "user prompt cite 'worktrees + ~24 COMMIT_MSG_TMP' (paraphrase) / fresh verify 真值 'worktrees/ 0 存在 (root + .claude/ 双否) + 22 COMMIT_MSG_TMP NOT in .gitignore' / 真值修正: worktrees/ 候选用途 (superpowers using-git-worktrees / OMC team workflow) 待 V3 sub-PR 时机激活; COMMIT_MSG_TMP cleanup governance 决议待 sediment (ADR-DRAFT row 12 候选)" |
 
 **漂移汇总**: 8 finding 中 **5 verified ✅** (#1-#4 + #7) / **1 partial 🟡** (#6 数字对构成 drift) / **2 drift ❌** (#5 + #8). drift 率 25%, 沿用 LL-101 实证 (Claude.ai cite 必 SQL/git/ls/grep 真测 verify before 复用) 第 N+1 次实证. 详 §10 LL-116 候选.
 
@@ -177,7 +177,7 @@ V3 期 subagent 决议候选: **0 全新 subagent — 借现 OMC general-purpose
 
 **Claude.ai cite 挑战 (§4(c))**: "mattpocock 推荐 6 skill 全 active" — **❌ 真值漂移**. `design-an-interface` 是 deprecated. v0.1 §L6.1 cite 此 skill 为选片, 与 audit 真值 **直接冲突** — v0.2 修订必移除.
 
-**git-guardrails-claude-code 备注**: skill 真存在 + 沿用其 `block-dangerous-git.sh` patterns sediment 入 `.claude/hooks/block_dangerous_git.py` (sub-PR 8a-followup-pre 5-07 sediment, ADR-DRAFT row 7 candidate sediment 体例). **misc/ category 0 plugin auto-load** 不影响其作为 reference patterns 来源的真值.
+**git-guardrails-claude-code 备注**: skill 确实存在 + 沿用其 `block-dangerous-git.sh` patterns sediment 入 `.claude/hooks/block_dangerous_git.py` (sub-PR 8a-followup-pre 5-07 sediment, ADR-DRAFT row 7 candidate sediment 体例). **misc/ category 0 plugin auto-load** 不影响其作为 reference patterns 来源的真值.
 
 ---
 
@@ -260,13 +260,13 @@ LL # next free 真测: **LL-116** (LESSONS_LEARNED.md 末 LL-115 实测 grep, li
 
 ### LL-116 候选 (本 sub-PR 主 sediment)
 
-> **LL-116: Claude.ai 跨 system finding cite 必经 SQL/git/ls/grep 真测 verify before sub-PR 起手 (5-08 .claude/ audit pre-V3 sub-PR sediment, 8 finding 4 drift 实证, LL-101 + LL-103 SOP-4 + LL-104 cumulative)**
+> **LL-116: Claude.ai 跨 system finding cite 必经 SQL/git/ls/grep 真测 verify before sub-PR 起手 (5-08 .claude/ audit pre-V3 sub-PR sediment, 8 finding 中 2 ❌ drift + 1 🟡 partial = 3/8 drift findings 跨 4 sub-item 实证, LL-101 + LL-103 SOP-4 + LL-104 cumulative)**
 
-实证 4 drift:
-1. "9 hook 5 类型 wire" → 真值 9 .py + 7 wired in 4 types (SessionEnd missing, 2 unwired)
-2. "design-an-interface mattpocock 推荐" → 真值 in `deprecated/`, plugin.json 0 register
-3. "worktrees/ exists" → 真值 worktrees/ 0 存在 (root + .claude/ 双否, 仅 .gitignore line 67 entry)
-4. "~24 COMMIT_MSG_TMP" → 真值 22 + NOT in .gitignore
+实证 4 sub-item 跨 3 drift findings (沿用 §2 框架):
+1. (finding #5 ❌) "9 hook 5 类型 wire" → 真值 9 .py + 7 wired in 4 types (SessionEnd missing, 2 unwired)
+2. (finding #8 ❌ sub-a) "worktrees/ exists" → 真值 worktrees/ 0 存在 (root + .claude/ 双否, 仅 .gitignore line 67 entry)
+3. (finding #8 ❌ sub-b) "~24 COMMIT_MSG_TMP" → 真值 22 + NOT in .gitignore
+4. (mattpocock 推荐 6 skill 跨 finding cite 漂移, §4(c) 挑战 verify) "design-an-interface mattpocock 推荐" → 真值 in `deprecated/`, plugin.json 0 register
 
 SOP enforcement: 沿用 LL-103 SOP-4 (Claude.ai vs CC 分离 architecture, 不信单 cite) + LL-104 (表格 cite 仅看 1 row 不够, grep 全表 cross-verify) + LL-105 SOP-6 (registry SSOT cross-verify).
 
@@ -331,7 +331,7 @@ sub_pr: fix/claude-dir-audit-v3-orchestration-pre
 date: 2026-05-08
 trigger: V3 风控实施期主线起手前置 audit (Claude.ai 探讨 step 1 closure 后 surface 8 finding cross-verify)
 
-basline:
+baseline:
   main_HEAD: 8dca576  # CC 实测 git log -1 --format=%h main 2026-05-08
   red_lines_5_5_sustained:
     cash: ¥993,520.16
