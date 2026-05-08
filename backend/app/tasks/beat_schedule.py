@@ -133,11 +133,16 @@ CELERY_BEAT_SCHEDULE: dict = {
     },
     # ── 4-hour RSSHub route_path standalone caller (PR #254 sediment, ADR-043 §Decision #3) ──
     # Same cron as 5-source for cumulative 12 task-trigger/day; 真 cost ~$0 (Self-hosted localhost:1200).
-    # Default route_path="/jin10/news" (1/4 working sustained PR #254). Other 3 routes
-    # (/eastmoney/news/0, /caixin/finance, /sina/finance/economic) 真 503 audit chunk C 真预约 fix.
+    # Explicit kwargs route_path="/jin10/news" (1/4 working baseline, 4 working routes total
+    # /jin10/news + /jin10/0 + /jin10/1 + /eastmoney/search/A股 sustained chunk C-RSSHub Path A
+    # closure + chunk C-ADR PR #267 + chunk C-LL PR #268). 7 routes 503 sediment 待 sub-PR 9
+    # investigation (RSSHub upstream config / cache / authentication 体例).
+    # Capacity expansion (multi-route dispatch) 待预约 独立 sub-PR (architecture decision:
+    # multi-Beat-entry vs task-iterator vs route-list-arg, sustained LL-115 sediment).
     "news-ingest-rsshub-cadence": {
         "task": "app.tasks.news_ingest_tasks.news_ingest_rsshub",
         "schedule": crontab(hour="3,7,11,15,19,23", minute=0),
+        "kwargs": {"route_path": "/jin10/news"},  # explicit intent (沿用 LL-115)
         "options": {
             "queue": "default",
             "expires": 3600,

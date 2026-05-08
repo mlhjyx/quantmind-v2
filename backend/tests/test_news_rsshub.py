@@ -10,7 +10,7 @@ RSSHub-specific tests (反 sub-PR 1+2+3+4+5 体例):
 - 0 API key (沿用 sub-PR 4 GDELT)
 - GET method (沿用 sub-PR 3+4+5)
 - RSS XML response (反 JSON wrapper) — feedparser parser
-- route path query (e.g. /eastmoney/news/0, 反 search keyword)
+- route path query (e.g. /jin10/news, 反 search keyword)
 - lang="zh" sustained (V3§3.1 中文财经源)
 """
 from __future__ import annotations
@@ -104,7 +104,7 @@ def test_rsshub_fetcher_inherits_news_fetcher():
 
 
 def test_rsshub_fetch_route_path_with_leading_slash(monkeypatch):
-    """query='/eastmoney/news/0' → URL: http://localhost:1200/eastmoney/news/0"""
+    """query='/jin10/news' → URL: http://localhost:1200/jin10/news"""
     captured: dict = {}
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -118,12 +118,12 @@ def test_rsshub_fetch_route_path_with_leading_slash(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    fetcher.fetch(query="/eastmoney/news/0", limit=10)
-    assert captured["url"] == "http://localhost:1200/eastmoney/news/0"
+    fetcher.fetch(query="/jin10/news", limit=10)
+    assert captured["url"] == "http://localhost:1200/jin10/news"
 
 
 def test_rsshub_fetch_route_path_no_leading_slash(monkeypatch):
-    """query='eastmoney/news/0' → URL prepends '/'"""
+    """query='jin10/news' (no leading slash) → URL prepends '/'"""
     captured: dict = {}
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -137,8 +137,8 @@ def test_rsshub_fetch_route_path_no_leading_slash(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    fetcher.fetch(query="eastmoney/news/0", limit=10)
-    assert captured["url"] == "http://localhost:1200/eastmoney/news/0"
+    fetcher.fetch(query="jin10/news", limit=10)
+    assert captured["url"] == "http://localhost:1200/jin10/news"
 
 
 def test_rsshub_fetch_uses_get_method_with_custom_ua(monkeypatch):
@@ -158,7 +158,7 @@ def test_rsshub_fetch_uses_get_method_with_custom_ua(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    fetcher.fetch(query="/eastmoney/news/0")
+    fetcher.fetch(query="/jin10/news")
     assert captured["method"] == "GET"
     assert captured["auth_header"] == ""  # anonymous
     assert "QuantMind" in captured["user_agent"]  # custom UA
@@ -179,7 +179,7 @@ def test_rsshub_fetch_parses_rss_2_0(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    items = fetcher.fetch(query="/eastmoney/news/0", limit=10)
+    items = fetcher.fetch(query="/jin10/news", limit=10)
 
     assert len(items) == 2
     assert items[0].title == "贵州茅台 Q1 财报披露"
@@ -225,7 +225,7 @@ def test_rsshub_fetch_limit_slice(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    items = fetcher.fetch(query="/eastmoney/news/0", limit=1)
+    items = fetcher.fetch(query="/jin10/news", limit=1)
     assert len(items) == 1
 
 
@@ -241,7 +241,7 @@ def test_rsshub_fetch_empty_xml_returns_empty(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    items = fetcher.fetch(query="/eastmoney/news/0")
+    items = fetcher.fetch(query="/jin10/news")
     assert items == []
 
 
@@ -257,7 +257,7 @@ def test_rsshub_fetch_malformed_xml_returns_empty(monkeypatch):
     )
 
     fetcher = RsshubNewsFetcher()
-    items = fetcher.fetch(query="/eastmoney/news/0")
+    items = fetcher.fetch(query="/jin10/news")
     assert items == []
 
 
@@ -323,7 +323,7 @@ def test_rsshub_fetch_429_retries_then_raises(monkeypatch):
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
-            fetcher.fetch(query="/eastmoney/news/0")
+            fetcher.fetch(query="/jin10/news")
     assert call_count["n"] == 3
 
 
@@ -343,7 +343,7 @@ def test_rsshub_fetch_5xx_retries_then_raises(monkeypatch):
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
-            fetcher.fetch(query="/eastmoney/news/0")
+            fetcher.fetch(query="/jin10/news")
     assert call_count["n"] == 3
 
 
@@ -362,7 +362,7 @@ def test_rsshub_fetch_timeout_retries_then_raises(monkeypatch):
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
-            fetcher.fetch(query="/eastmoney/news/0")
+            fetcher.fetch(query="/jin10/news")
     assert call_count["n"] == 3
 
 
@@ -410,13 +410,13 @@ def test_parse_feed_timestamp_no_timestamps_falls_back_to_now():
 
 @pytest.mark.requires_rsshub
 def test_rsshub_fetch_e2e_eastmoney():
-    """e2e: 真 RSSHub localhost:1200/eastmoney/news/0 (Servy register service ready).
+    """e2e: 真 RSSHub localhost:1200/jin10/news (Servy register service ready).
 
     跑法: pytest -m requires_rsshub (requires RSSHub Servy service running)
     """
     fetcher = RsshubNewsFetcher()
     try:
-        items = fetcher.fetch(query="/eastmoney/news/0", limit=2)
+        items = fetcher.fetch(query="/jin10/news", limit=2)
         assert isinstance(items, list)
         if items:
             assert items[0].source == "rsshub"

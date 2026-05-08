@@ -143,9 +143,11 @@ def news_ingest_rsshub(
     Wraps backend/app/api/news.py:_build_pipeline_rsshub_only() + NewsIngestionService.ingest().
     RSSHub 真 route-driven 体例 (反 search keyword semantic 沿用 sub-PR 1+2+3+5).
 
-    Note (RSSHub multi-route 503 sustained, audit chunk C 真预约):
-        Default route_path = '/jin10/news' (1/4 working sustained PR #254).
-        Other 3 routes (/eastmoney/news/0, /caixin/finance, /sina/finance/economic) 真 503.
+    Note (RSSHub routes baseline, sustained chunk C-RSSHub Path A closure + chunk C-ADR PR #267):
+        Default route_path = '/jin10/news' (1/4 baseline). 4 working routes total:
+        /jin10/news + /jin10/0 + /jin10/1 + /eastmoney/search/A股 (HTTP 200 verified).
+        7 routes 503 sediment 待 sub-PR 9 investigation (RSSHub upstream config / cache /
+        authentication 体例, sustained LL-114 + LL-115).
 
     Args:
         route_path: RSSHub route endpoint path (default DEFAULT_RSSHUB_ROUTE_PATH).
