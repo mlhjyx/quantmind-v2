@@ -370,6 +370,77 @@ def test_design_v5_file_edit_warns_but_allows() -> None:
     assert "WARNING" in out
 
 
+# ── v2 扩展: V3 prompts/risk/*.yaml WARN (sustained user Q2 (β) + Constitution §L6.2 line 284) ──
+
+
+def test_v2_prompts_risk_yaml_warns_but_allows() -> None:
+    """v2: prompts/risk/*.yaml Edit 触发 WARN ALLOW (反 BLOCK).
+
+    sustained Constitution §L6.2 line 284 候选追加 + skeleton §3.2 line 312 + user Q2 (β) +
+    Q2 fresh verify (prompts/risk/news_classifier_v1.yaml 现存在 4185 bytes V3 Sprint 7b.2
+    PR #241 sediment); WARN scope 反 BLOCK — prompts evolve, legitimate edits expected.
+    """
+    rc, out, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/prompts/risk/news_classifier_v1.yaml",
+            "version: v1",
+            "version: v2",
+        )
+    )
+    assert rc == 0
+    assert "WARNING" in out
+
+
+def test_v2_prompts_risk_yaml_write_warns_but_allows() -> None:
+    """v2: prompts/risk/*.yaml Write (NEW file 创建) 触发 WARN ALLOW (反 BLOCK)."""
+    rc, out, _ = _run_hook(
+        _write(
+            "D:/quantmind-v2/prompts/risk/new_classifier_v2.yaml",
+            "version: v2\nschema: ...",
+        )
+    )
+    assert rc == 0
+    assert "WARNING" in out
+
+
+def test_v2_prompts_risk_non_yaml_passes() -> None:
+    """v2: prompts/risk/foo.txt (非 yaml) 反 trigger WARN_PATTERNS."""
+    rc, out, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/prompts/risk/notes.txt",
+            "old",
+            "new",
+        )
+    )
+    assert rc == 0
+    assert "WARNING" not in out
+
+
+def test_v2_prompts_non_risk_yaml_passes() -> None:
+    """v2: prompts/other/*.yaml (非 risk subdir) 反 trigger WARN_PATTERNS."""
+    rc, out, _ = _run_hook(
+        _edit(
+            "D:/quantmind-v2/prompts/other/some.yaml",
+            "old",
+            "new",
+        )
+    )
+    assert rc == 0
+    assert "WARNING" not in out
+
+
+# ── v2 marker verify ──
+
+
+def test_v2_marker_in_docstring() -> None:
+    """v2 hook source must contain v2 marker + cite Constitution §L6.2 line 284."""
+    hook_source = HOOK.read_text(encoding="utf-8")
+    assert "v2 2026-05-09 V3 实施期扩展" in hook_source, "missing v2 marker"
+    assert "Q2 (β)" in hook_source, "missing user Q2 (β) decision cite"
+    assert "Constitution §L6.2 line 284" in hook_source, "missing Constitution cite"
+    assert "prompts/risk/" in hook_source, "missing prompts/risk/ pattern"
+
+
 # ── ALLOW unrelated ──
 
 
