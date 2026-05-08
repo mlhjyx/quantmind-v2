@@ -2,7 +2,7 @@
 
 > **本文件 = V3 风控长期实施期 (Tier A → T1.5 → Tier B → 横切层 → PT cutover gate) sprint chain 起手时 CC 自主跑通的入口 SOP**.
 >
-> **本文件 = 6 件套 件 6** (沿用 [V3_IMPLEMENTATION_CONSTITUTION.md](V3_IMPLEMENTATION_CONSTITUTION.md) §0 line 5 cite "启动 prompt (step 6) = 6 件套" 真值; 6 件套 = Constitution + skeleton + 13 skill + 8 hook + 7 subagent + 本 launch prompt).
+> **本文件 = 6 件套 件 6** (沿用 [V3_IMPLEMENTATION_CONSTITUTION.md](V3_IMPLEMENTATION_CONSTITUTION.md) §0 scope declaration cite "启动 prompt (step 6) = 6 件套" 真值, CC fresh re-read verify 2026-05-09; 6 件套 = Constitution + skeleton + 13 skill + 8 hook V3-batch + 7 subagent + 本 launch prompt).
 >
 > **scope**: V3 sprint chain 起手 SOP + 三层互补 invocation pattern + 5 大 gate 终态 cite + sediment cite trail enforce + anti-pattern guard 体例.
 >
@@ -20,6 +20,10 @@
 
 ### §0.1 SSOT 锚点 (沿用 LL-105 SOP-6 cite 4 元素)
 
+**legend** (沿用 件 4 hook count 双口径 disambiguation, P1#1 fix sediment):
+- **8 hook V3-batch** = 件 4 sediment scope (4 全新 + 4 现有扩展)
+- **13 hook cumulative** = `.claude/hooks/*.py` ls 真测 (8 V3-batch + 5 现有 sustained 反修订)
+
 | 类别 | 锚点 |
 |---|---|
 | Constitution v0.2 | [V3_IMPLEMENTATION_CONSTITUTION.md](V3_IMPLEMENTATION_CONSTITUTION.md) (件 2) |
@@ -28,13 +32,13 @@
 | audit reality grounding | docs/audit/v3_orchestration/claude_dir_audit_report.md (件 1) |
 | ADR REGISTRY | docs/adr/REGISTRY.md (LL-105 SOP-6 SSOT) |
 | 13 quantmind-v3-* skill (件 3) | .claude/skills/quantmind-v3-*/SKILL.md |
-| 8 hook (件 4: 4 全新 + 4 现有扩展) | .claude/hooks/*.py + .claude/settings.json wire |
-| 7 charter (件 5: 4 全新 + 3 借 OMC extend) | .claude/agents/quantmind-*.md + .claude/agents/quantmind-v3-*.md |
+| 8 hook V3-batch (件 4: 4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283 ×2 + #284 ×2) | .claude/hooks/*.py + .claude/settings.json wire (cumulative 13 ls 真测) |
+| 7 charter (件 5: 4 全新 PR #277/#278 + 3 借 OMC extend PR #279) | .claude/agents/quantmind-*.md + .claude/agents/quantmind-v3-*.md |
 
 ### §0.2 反 anti-pattern 验证
 
 - ✅ 0 凭空 enumerate 新决议 (走 V3 spec / Constitution / skeleton cumulative)
-- ✅ 0 silent overwrite 现 13 hook + 13 v3- skill + 7 charter + settings.json wire (沿用 ADR-022)
+- ✅ 0 silent overwrite 现 13 hook cumulative (8 V3-batch + 5 现有 sustained) + 13 v3- skill + 7 charter + settings.json wire (沿用 ADR-022)
 - ✅ 0 末尾 forward-progress offer (LL-098 X10)
 - ✅ 0 "真+词" 禁词 (memory #25 HARD BLOCK whitelist: 真账户/真发单/真生产/真测/真值)
 - ✅ 0 具体 path / file / function / SQL / command (沿用 skeleton §0.2 line 33 + memory #19/#20 — CC sprint 起手时实测决议)
@@ -65,8 +69,8 @@ CC fresh verify 6 件套 cumulative truth (沿用 LL-101 + LL-116 cite 数字 SQ
 | 1 v1 governance batch | claude_dir audit + drift 率 reality grounding | docs/audit/v3_orchestration/claude_dir_audit_report.md | `cat` |
 | 2 Constitution + skeleton 双 file | V3 quantmind 特有 invariant + invocation map skeleton | docs/V3_IMPLEMENTATION_CONSTITUTION.md (v0.2) + docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md (v0.1) | `cat` + 沿用第 12 项 prompt 升级候选 #1 fresh re-read §0 scope declaration verify |
 | 3 13 quantmind-v3-* skill | SOP knowledge layer | .claude/skills/quantmind-v3-*/SKILL.md | `ls` 真测 13 file |
-| 4 8 hook (4 全新 + 4 现有扩展) | mechanism layer | .claude/hooks/*.py (V3-specific) + 5 现有 sustained | `ls` 真测 + `cat .claude/settings.json` wire 5 wire types verify |
-| 5 7 charter (4 全新 + 3 借 OMC extend) | evidence-gathering layer | .claude/agents/quantmind-*.md + .claude/agents/quantmind-v3-*.md | `ls` 真测 7 file |
+| 4 8 hook V3-batch (4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283 ×2 + #284 ×2; cumulative 13 ls 真测含 5 现有 sustained 反修订) | mechanism layer | .claude/hooks/*.py + 5 现有 sustained (audit_log / block_dangerous_git / doc_drift_check / post_edit_lint / pre_commit_validate) | `ls` 真测 13 cumulative + `cat .claude/settings.json` wire 5 wire types verify |
+| 5 7 charter (4 全新 quantmind- prefix PR #277/#278 + 3 借 OMC extend quantmind-v3- prefix PR #279) | evidence-gathering layer | .claude/agents/quantmind-*.md + .claude/agents/quantmind-v3-*.md | `ls` 真测 7 file |
 | 6 本 launch prompt | sprint chain 起手 SOP entry point | docs/V3_LAUNCH_PROMPT.md | `cat` (本文件) |
 
 → 任一不通过 → STOP + 反问 user (沿用 LL-098 X10 反 forward-progress default).
@@ -128,6 +132,8 @@ sprint 收口 SOP (sustained Constitution §L10 + skeleton §2):
 
 ### §3.4 Tier A MVP 收口 invoke pattern (Gate A trigger)
 
+> **scope cite** (P2 #2 fix): Gate A = Constitution §L10.1 "Tier A closed" sustained; Tier A MVP scope = Tier A sprint chain cumulative per V3 spec §12.1 (S1-S11). 本节 charter 名 `quantmind-v3-tier-a-mvp-gate-evaluator` 沿用件 5 PR #279 sediment naming convention (MVP 表 Tier A sprint chain cumulative paper-mode 5d 验收 evidence-gathering scope, 0 spec drift).
+
 Tier A 全收口 SOP (sustained Constitution §L10.1 Gate A):
 
 | 步 | 动作 | 走 |
@@ -154,7 +160,7 @@ Tier A 全收口 SOP (sustained Constitution §L10.1 Gate A):
 
 | layer | trigger | scope | 件 |
 |---|---|---|---|
-| **mechanism** | hook auto invoke | settings.json wire 5 wire types (SessionStart / PreToolUse / PostToolUse / Stop / SessionEnd); CC 0 主动 invoke, hook auto fire | 件 4 (8 hook = 4 全新 + 4 现有扩展, 全 V3-specific; + 5 现有 sustained 反 修订) |
+| **mechanism** | hook auto invoke | settings.json wire 5 wire types (SessionStart / PreToolUse / PostToolUse / Stop / SessionEnd); CC 0 主动 invoke, hook auto fire | 件 4 (8 hook V3-batch = 4 全新 + 4 现有扩展, V3-specific scope; cumulative 13 ls 真测 含 5 现有 sustained 反 修订 — 沿用 §0.1 legend) |
 | **SOP knowledge** | skill active CC invoke | CC 主动 cite skill name + 走 SOP 知识层; sub-PR 起手 / sediment 前 / cite source 锁定 / banned-words check 等 active scenario | 件 3 (13 quantmind-v3-* skill, 全 SOP knowledge layer) |
 | **evidence-gathering** | charter independent process spawn | CC invoke charter agent via Agent tool subagent_type → 独立 process 执行 evidence-gathering, 隔离 main session context; cross-source verify / domain audit / sprint orchestration / closure gate evidence 等 evidence-gathering scenario | 件 5 (7 charter, 全 evidence-gathering layer) |
 
@@ -264,6 +270,8 @@ CC 起手时:
 ---
 
 ## §12 关联 ADR / LL / 铁律 (cumulative cite, 反 stale; 沿用第 11 项 prompt 升级 + LL-105 SOP-6)
+
+> **freshness audit cite** (P3 #2 fix): cumulative cite, fresh verify 2026-05-09 via LL-105 SOP-6 cross-verify against `docs/adr/REGISTRY.md` (ADR-019/020/021/022/027/028/031/032/036/037/042 committed) + `IRONLAWS.md` (铁律 1-45 sustained, 含 45 = 4 doc fresh read SOP enforcement, ADR-037 backref) + `LESSONS_LEARNED.md` (LL-098/100/101/103/104/105/106/115/116 committed; LL-117/119-134 候选 sustained, V3 governance batch closure 时 promote).
 
 - ADR-022 (反 silent overwrite + 反 abstraction premature + 集中机制)
 - ADR-037 + 铁律 45 (4 doc fresh read SOP + cite source 锁定)
