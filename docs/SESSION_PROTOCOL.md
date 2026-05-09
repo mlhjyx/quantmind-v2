@@ -161,7 +161,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 | 37 | T2 | Session 关闭前必写 handoff (memory/project_sprint_state.md) | §2.3 STATUS_REPORT 体例 |
 | 38 | T2 | Platform Blueprint 是唯一长期架构记忆 — 跨 session 实施漂移禁止 | §1.2 (2) cross-session resume 触发 |
 | 44 (X9) | T2 | Beat schedule / config 注释 ≠ 停服, 必显式 restart | §3.2 ❌ silent overwrite 体例延伸 |
-| **45 (候选, PR-B sediment)** | T1 (候选) | **4 doc fresh read SOP enforcement (LL-106 候选 + ADR-037 候选)** | 全 §1+§2+§3 sediment 体例 |
+| **45** | T1 | **4 doc fresh read SOP enforcement (committed PR-B sediment, sustained 5-06 sediment + LL-106 + ADR-037 cumulative cite, sub-PR 6 stale cite refresh 5-09)** | 全 §1+§2+§3 sediment 体例 |
 
 ### §4.2 LL backref (5-06 fresh tail verify 真值, last LL-105 [LESSONS_LEARNED.md:3471](../LESSONS_LEARNED.md))
 
@@ -173,7 +173,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 | LL-103 | Claude.ai vs CC 分离 architecture + audit row backfill | §1.2 (4) sediment cite 反 silent overwrite |
 | LL-104 | Claude.ai 写 prompt 时表格 cite 仅看 1 row 不够, 必 grep 全表 cross-verify | §1.3 (3) grep cross-reference parallel |
 | LL-105 | ADR # reservation 待办 4 source cross-verify 必 grep registry SSOT | §3.1 + §3.2 体例延伸 |
-| **LL-106 (候选, PR-B sediment)** | **4 doc fresh read SOP enforcement (5-06 P0 finding) — 内 source fresh verify SOP, 沿用外 source LL-104 + LL-101 cross-verify 体例延伸** | 全文 sediment 意义 |
+| **LL-106** | **4 doc fresh read SOP enforcement (5-06 P0 finding) — 内 source fresh verify SOP, 沿用外 source LL-104 + LL-101 cross-verify 体例延伸 (committed PR-B sediment, sustained 5-06 sediment, sub-PR 6 stale cite refresh 5-09)** | 全文 sediment 意义 |
 
 ### §4.3 ADR 关联 (5-06 fresh verify 真值, [REGISTRY.md](adr/REGISTRY.md))
 
@@ -181,7 +181,7 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 |---|---|---|
 | ADR-021 | 铁律 v3.0 重构 + IRONLAWS.md 拆分 + X10 加入 (committed Step 6.2) | §4.1 IRONLAWS 真值起源 |
 | ADR-022 | Sprint Period Treadmill 反 anti-pattern + 集中修订机制 (committed Step 6.4) | §2.3 push back 体例延伸 |
-| **ADR-037 (候选, PR-B sediment)** | **Internal source fresh read SOP (governance)** | 全文 sediment 治理决议 |
+| **ADR-037** | **Internal source fresh read SOP (governance) — committed PR-B sediment, sustained 5-06 sediment, sub-PR 6 stale cite refresh 5-09** | 全文 sediment 治理决议 |
 
 ---
 
@@ -201,10 +201,11 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
   - **header block**: cite v0.1 → v0.2 + v0.2 cumulative cite banner NEW (V3 governance batch closure cumulative pattern sub-PR 1+2+3a+3b+3c+4+5 cite, main HEAD `ddc463d`)
   - **§1.3 footer NEW V3 governance batch closure cumulative learnings sediment体例**: 5 sub-section sediment — (i) 第 12 项 prompt 升级候选 #1 LL-116 fresh re-read enforce 10 case 实证累积反向 enforce 体例 + (ii) 第 11 项 prompt 升级 real-world catch 4+1 case 实证累积反向 enforce 体例 (sub-PR 5 NEW cite drift case = prompt cite "32 untracked" 真值 drift = 43) + (iii) LL-127 §0.3 cumulative cite SSOT 锚点 baseline 五段累积扩 sub-PR 5 cumulative scope 体例 + (iv) LL-136 sub-PR sediment time CC 自身 件 X cumulative cite cross-verify reverse case 体例 sediment (双 case sustained sub-PR 3c typo + sub-PR 5 cite drift) + (v) sub-PR 1+2+3a+3b+3c+4+5 governance pattern parallel体例 cumulative pattern 7 sub-PR 实证累积
   - **§5.2 version history append v0.2 entry** + **§5.3 footer cite refresh** (现 last update + 关联 PR)
+- **v0.2 sub-PR 6 follow-up sediment (post-V3 governance batch closure cumulative pattern stale cite refresh + .gitignore CC-internal scratch files cleanup, 2026-05-09, V3 governance batch closure sub-PR 6)**: sustained 反 retroactive content edit (沿用 ADR-022 反 silent overwrite + LL append-only + sub-PR 5 P3 ride-next-sub-PR finding sediment 进 sub-PR 6 scope) — §4.1 row 6 铁律 45 / §4.2 LL-106 / §4.3 ADR-037 cite candidate→committed refresh (3 stale cite refresh, sustained 5-06 sediment 真值 + 沿用 sub-PR 5 reviewer P3 #1 ride-next-sub-PR finding) + `.gitignore` 2 pattern add (`.claude/COMMIT_MSG_TMP_*.txt` + `.claude/_tmp_*.py`, sustained 41+ untracked accumulated baseline cleanup, 沿用 sub-PR 5 §1.3 footer (ii) prompt cite "32 untracked" 真值 drift = 43→44 cite drift catch reverse case)
 
 ### §5.3 footer
 
 - **维护频率**: 4 doc fresh read SOP scope 拓展时 / SESSION_PROTOCOL section 新增时 (1 PR sediment 沿用 LL-100 chunked SOP)
 - ** SSOT**: 本 [SESSION_PROTOCOL.md](SESSION_PROTOCOL.md) 是 sub-PR / sub-step / step 起手前必走 SOP 唯一权威源
-- **现 last update**: 2026-05-09 (V3 governance batch closure sub-PR 5 sediment, §1.3 扩 V3 governance batch closure cumulative learnings sediment体例 + v0.1 → v0.2 bump)
-- **关联 PR**: PR #237 (PR-A sediment v0.1, 5-06) + PR-B 候选 已 committed (sediment 进 IRONLAWS 铁律 45 + LL-106 + ADR-037 sediment elsewhere) + **本 PR (sub-PR 5 sediment v0.2, 5-09 V3 governance batch closure cumulative pattern 倒数 ~5-7 sub-PR 第 5)** + sub-PR 6/7 pending (cumulative pattern continuation)
+- **现 last update**: 2026-05-09 (V3 governance batch closure sub-PR 6 sediment, §4 stale cite refresh + .gitignore CC-internal scratch files cleanup; post-sub-PR 5 PR #292 §1.3 扩 V3 governance batch closure cumulative learnings sediment体例 + v0.1 → v0.2 bump)
+- **关联 PR**: PR #237 (PR-A sediment v0.1, 5-06) + PR-B 候选 已 committed (sediment 进 IRONLAWS 铁律 45 + LL-106 + ADR-037 sediment elsewhere) + PR #292 (sub-PR 5 sediment v0.2, 5-09 §1.3 扩) + **本 PR (sub-PR 6 sediment, 5-09 §4 stale cite refresh + .gitignore cleanup, V3 governance batch closure cumulative pattern 倒数 ~5-7 sub-PR 第 6)** + optional sub-PR 7 pending (V3_LAUNCH_PROMPT v0.1 → v0.2 修订)
