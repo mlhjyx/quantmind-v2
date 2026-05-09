@@ -4,7 +4,9 @@
 > **触发原因 (P0 finding, 2026-05-06)**: user 指出 "CLAUDE.md / IRONLAWS.md / LESSONS_LEARNED.md / SYSTEM_STATUS.md 4 doc 整 session 反 fresh read, CC 显然没有触发这些, 这是为什么?"
 > **根因**: SOP gap — sub-PR 1-6 累计沉淀 仅 外 source fresh verify (智谱/Tavily/Anspire/GDELT/Marketaux/RSSHub docs, 沿用 LL-104 cross-verify), 反 sediment 内 source (4 root doc) fresh read SOP, 致 5-02→5-06 累计 ~3-4x 真值漂移 (e.g. prompt cite "32 rules T1=8 + T2=18 + T3=6" 真值 = 45 rules T1=31 + T2=14 + T3=0).
 > **关联文档**: [CLAUDE.md](../CLAUDE.md) (项目入口) / [IRONLAWS.md](../IRONLAWS.md) (铁律 SSOT v3.0) / [LESSONS_LEARNED.md](../LESSONS_LEARNED.md) (LL backlog) / [SYSTEM_STATUS.md](../SYSTEM_STATUS.md) (系统现状) / docs/adr/ADR-037 (候选, PR-B sediment).
-> **本文件版本**: v0.1 (PR-A sediment, 2026-05-06)
+> **本文件版本**: v0.2 (post-V3 governance batch closure cumulative learnings sediment, 2026-05-09, V3 governance batch closure sub-PR 5; 沿用 ADR-022 反 silent overwrite — v0.1 row 保留 + version history append + §1.3 footer NEW cumulative learnings sediment)
+>
+> **v0.2 cumulative cite banner** (V3 governance batch closure sub-PR 5 sediment, 2026-05-09; sustained sub-PR 1+2+3a+3b+3c+4 governance pattern parallel体例 + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope 四段累积扩 sub-PR 5 cumulative scope 五段累积): 本 v0.2 修订 trigger = V3 governance batch closure cumulative pattern 倒数 ~5-7 sub-PR 第 5 sub-PR (post-sub-PR 1 PR #286 LL-cumulative-batch + sub-PR 2 PR #287 ADR-cumulative-batch + sub-PR 3 chunked Constitution v0.3 完整闭环 PR #288/#289/#290 + sub-PR 4 PR #291 skeleton v0.2 + Constitution typo fix; main HEAD `ddc463d`). 修订 hybrid (edit header version + augmented banner + footer NEW + version history append) 沿用 sub-PR 4 hybrid 体例累积扩 sub-PR 5 sediment 体例.
 
 ---
 
@@ -36,6 +38,51 @@
 | (2) full file fresh read 4 doc 关键 section | `Read` (sequential, full section) | 反 head/tail truncate (LL-057), full ground truth |
 | (3) grep cross-reference cite source 锁定 | `Grep` (parallel, 多 pattern 一次 batch) | 沿用 LL-104 cross-verify, 反信任 prompt 单 row cite |
 | (4) sediment cite 真值 in PR description / STATUS_REPORT | — | 真值 cite source ≠ 凭印象 cite, 沿用 LL-101 |
+
+### §1.3 footer NEW — V3 governance batch closure cumulative learnings sediment体例 (v0.2 修订, sub-PR 5 sediment, 2026-05-09)
+
+V3 governance batch closure cumulative ~5-7 sub-PR 实证累积 (sub-PR 1+2+3a+3b+3c+4 直 APPROVE 0 findings + sub-PR 5 本 PR) sediment 进 §1.3 fresh read SOP 4 步必走扩展体例:
+
+#### (i) 第 12 项 prompt 升级候选 #1 LL-116 fresh re-read enforce — 10 case 实证累积反向 enforce 体例
+
+LL-116 (committed sub-PR 1 PR #286): "Claude.ai cite 任 doc section anchor 必 fresh re-read doc §0 scope declaration verify". V3 governance batch closure sub-PR 1-5 cumulative 10 case 实证累积反向 enforce — 2 reverse (PR #281/#282) + 8 verified positive (PR #283/#284/#285/#287/#288/#289/#290/#291). 本 §1.3 4 步必走扩展: step (1) ls -la mtime + step (2) full file fresh read 必含 doc §0 scope declaration verify (反 silent 沿用 prompt cite §0 是否真值 body section).
+
+#### (ii) 第 11 项 prompt 升级 real-world catch 4+1 case 实证累积反向 enforce 体例
+
+第 11 项 prompt 升级 real-world catch case 实证累积 (反 silent 沿用 cumulative session memory cite — sustained 5-08+5-09 22 sub-PR cumulative体例累积): sub-PR 6 pre-sediment Q5 + sub-PR 1 LL # next free + sub-PR 2 ADR-DRAFT row 11-26 cumulative count drift + sub-PR 3a Constitution 版本号 v0.1→v0.3 vs v0.2→v0.3 真值修正 + **sub-PR 5 本 PR fresh verify catch — prompt cite "32 untracked" vs fresh `git status --porcelain` 真值 = 43 (cite drift 11/43 ≈ 25%) sediment 进 sub-PR 6 scope cumulative cite drift catch reverse case (NEW)**. 本 §1.3 4 步必走扩展: step (3) grep cross-reference parallel 必含 prompt cite vs fresh verify 真值差异 cite drift catch verify (反 silent 沿用 prompt cite 真值 — 沿用 LL-104 cross-verify 体例累积扩).
+
+#### (iii) LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability — 五段累积扩 sub-PR 5 cumulative scope 体例
+
+LL-127 (committed sub-PR 1 PR #286): "drift rate multi-method sensitivity SOP". V3 governance batch closure cumulative pattern 沿用 §0.3 layer scope declaration cumulative cite SSOT 锚点 baseline 三段累积扩 sub-PR 4 四段累积 → sub-PR 5 本 PR 五段累积:
+- sub-PR 3a §L0.3 footer NEW (Constitution v0.3) — 一段累积
+- sub-PR 3b §L6.2 footer NEW (Constitution v0.3) — 二段累积
+- sub-PR 3c §L10 footer NEW (Constitution v0.3) — 三段累积
+- sub-PR 4 skeleton v0.2 footer NEW — 四段累积扩
+- **sub-PR 5 本 PR §1.3 footer NEW (SESSION_PROTOCOL v0.2)** — 五段累积扩
+
+本 §1.3 4 步必走扩展: step (4) sediment cite 真值 in PR description / STATUS_REPORT 必含 cumulative scope sediment 真值落地 sustainability cite (反 silent 沿用 sub-PR 1-N sediment cite — 沿用 LL-101 真测 verify + LL-105 SOP-6 cross-verify 体例累积扩).
+
+#### (iv) LL-136 sub-PR sediment time CC 自身 件 X cumulative cite cross-verify reverse case — 体例 sediment
+
+LL-136 (committed sub-PR 1 PR #286): "sub-PR sediment time CC 自身 件 X cumulative cite cross-verify reverse case". V3 governance batch closure sub-PR 5 sediment cumulative reverse case 实证累积:
+- **sub-PR 3c CC Edit 引入 typo `非角色扮演 → 非架色扮演`** (sub-PR 4 PR #291 fix `架→角` follow-up — sustained reviewer P3 #2 finding "ride next sub-PR 4" recommendation per LL-100 chunked SOP target)
+- **sub-PR 5 本 PR fresh verify catch — prompt cite "32 untracked" 真值 drift = 43** (沿用 sub-PR 6 scope cumulative cite drift catch reverse case)
+
+本 §1.3 4 步必走扩展: 沿用 LL-136 体例 — sub-PR sediment time CC 自身 cumulative cite reverse case 必显式 sediment + cite 真值差异 (反 silent 沿用 sub-PR sediment time 0 reverse case 倾向, 沿用 LL-103 SOP-4 反向).
+
+#### (v) sub-PR 1+2+3a+3b+3c+4+5 governance pattern parallel体例 cumulative pattern — 7 sub-PR 实证累积
+
+| sub-PR | scope | sediment 体例 | governance |
+|---|---|---|---|
+| sub-PR 1 PR #286 | 8 LL promoted | LL append-only direct promote | LL # registry SSOT cross-verify |
+| sub-PR 2 PR #287 | 3 ADR-044/045/046 promoted | ADR REGISTRY direct promote | ADR # registry SSOT cross-verify |
+| sub-PR 3a PR #288 | Constitution v0.3 §L0.3+§L1.1 | edit cumulative cite refresh +23/-12 | LL-127 §0.3 footer NEW |
+| sub-PR 3b PR #289 | Constitution v0.3 §L6.1+§L6.2 | pure append augmented banner + footer NEW +21/0 | LL-127 §0.3 二段累积 |
+| sub-PR 3c PR #290 | Constitution v0.3 §L10 + version history v0.3 | pure append + version history append +31/-1 | LL-127 §0.3 三段累积 |
+| sub-PR 4 PR #291 | skeleton v0.2 + Constitution typo fix | hybrid (edit + banner + footer NEW + version history append) +27/-10 | LL-127 §0.3 四段累积扩 |
+| **sub-PR 5 本 PR** | SESSION_PROTOCOL §1.3 扩 v0.2 | hybrid (edit header version + footer NEW cumulative learnings + version history append) | **LL-127 §0.3 五段累积扩** |
+
+本 §1.3 4 步必走扩展: 7 sub-PR governance pattern parallel体例累积 sediment cumulative learnings 真值落地 sustainability — V3 governance batch closure cumulative pattern 实证累积扩 SOP 化候选 (promote 时机决议 V3 governance batch closure 全 closed 后 sub-PR 6/7 完整闭环).
 
 ### §1.4 fresh read scope (本 SOP 当前 scope = 4 root doc)
 
@@ -149,11 +196,15 @@ CC 允许 push back 沿用 LL-098 X10 反 forward-progress default:
 ### §5.2 版本 history
 
 - **v0.1 (PR-A sediment, 2026-05-06)**: 4 doc fresh read SOP + sub-PR / sub-step / step 起手前必走清单 + cite source 锁定真值 SOP (沿用 5-06 user (1) 修正 scope ack)
-- **v0.2 候选 (PR-B sediment 待 user 触发)**: IRONLAWS.md +铁律 45 (本 SOP enforcement) + LESSONS_LEARNED.md +LL-106 (5-06 P0 finding sediment) + ADR-037 新建 (governance decision) + REGISTRY +1 row + README +1 cite
+- **v0.2 候选 (PR-B sediment, 5-06 后) 已 committed (sediment 进 IRONLAWS.md +铁律 45 + LESSONS_LEARNED.md +LL-106 + ADR-037 — sustained 5-06 sediment, NOT in SESSION_PROTOCOL.md own version bump)**
+- **v0.2 (post-V3 governance batch closure cumulative learnings sediment, 2026-05-09, V3 governance batch closure sub-PR 5)**: 沿用 ADR-022 反 silent overwrite (v0.1 row 保留, version history append) + sustained sub-PR 1+2+3a+3b+3c+4 governance pattern parallel体例 + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope 五段累积扩 sub-PR 5 cumulative scope. 修订 hybrid (edit header version + augmented banner + footer NEW + version history append) 沿用 sub-PR 4 hybrid 体例累积扩 sub-PR 5 sediment 体例:
+  - **header block**: cite v0.1 → v0.2 + v0.2 cumulative cite banner NEW (V3 governance batch closure cumulative pattern sub-PR 1+2+3a+3b+3c+4+5 cite, main HEAD `ddc463d`)
+  - **§1.3 footer NEW V3 governance batch closure cumulative learnings sediment体例**: 5 sub-section sediment — (i) 第 12 项 prompt 升级候选 #1 LL-116 fresh re-read enforce 10 case 实证累积反向 enforce 体例 + (ii) 第 11 项 prompt 升级 real-world catch 4+1 case 实证累积反向 enforce 体例 (sub-PR 5 NEW cite drift case = prompt cite "32 untracked" 真值 drift = 43) + (iii) LL-127 §0.3 cumulative cite SSOT 锚点 baseline 五段累积扩 sub-PR 5 cumulative scope 体例 + (iv) LL-136 sub-PR sediment time CC 自身 件 X cumulative cite cross-verify reverse case 体例 sediment (双 case sustained sub-PR 3c typo + sub-PR 5 cite drift) + (v) sub-PR 1+2+3a+3b+3c+4+5 governance pattern parallel体例 cumulative pattern 7 sub-PR 实证累积
+  - **§5.2 version history append v0.2 entry** + **§5.3 footer cite refresh** (现 last update + 关联 PR)
 
 ### §5.3 footer
 
 - **维护频率**: 4 doc fresh read SOP scope 拓展时 / SESSION_PROTOCOL section 新增时 (1 PR sediment 沿用 LL-100 chunked SOP)
 - ** SSOT**: 本 [SESSION_PROTOCOL.md](SESSION_PROTOCOL.md) 是 sub-PR / sub-step / step 起手前必走 SOP 唯一权威源
-- **现 last update**: 2026-05-06 (PR-A sediment, Step 4-7 v2 fresh verify 真值修正 scope)
-- **关联 PR**: PR #237 候选 (本 PR-A sediment) + PR #238 候选 (PR-B sediment, ADR-037 + IRONLAWS 铁律 45 + LL-106 + REGISTRY + README)
+- **现 last update**: 2026-05-09 (V3 governance batch closure sub-PR 5 sediment, §1.3 扩 V3 governance batch closure cumulative learnings sediment体例 + v0.1 → v0.2 bump)
+- **关联 PR**: PR #237 (PR-A sediment v0.1, 5-06) + PR-B 候选 已 committed (sediment 进 IRONLAWS 铁律 45 + LL-106 + ADR-037 sediment elsewhere) + **本 PR (sub-PR 5 sediment v0.2, 5-09 V3 governance batch closure cumulative pattern 倒数 ~5-7 sub-PR 第 5)** + sub-PR 6/7 pending (cumulative pattern continuation)
