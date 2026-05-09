@@ -381,6 +381,8 @@ CC push user 时含 6 块反向结构:
 
 ## §L10 V3 closure 终态 criteria (机器可验证)
 
+v0.3 续 修订 (V3 governance batch closure sub-PR 3c, 2026-05-09): post-V3 6 件套 100% closure cumulative cite refresh + sustained sub-PR 1+2+3a+3b governance pattern parallel体例. **数值留 CC 实测决议 + ADR sediment 锁** 体例 sustained (sustained user 5-08 决议 + memory #19/#20 — 沿用 prompt 设计 0 数字 path command 体例; 数值真值 sprint 起手时 CC 实测 baseline + 决议 → 必 ADR sediment 锁住, 后续 sprint cite ADR 反漂移). 沿用 §L0.3 footer (sub-PR 3a) + §L6.2 footer (sub-PR 3b) + 本节 footer (sub-PR 3c) cumulative 体例 — LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability cumulative scope sediment (cumulative pattern 三段累积 ✓).
+
 每 gate 详细 criteria 由对应 skill / subagent 跑机器可验证清单. 任一不通过 → STOP + push user (sprint 收口决议).
 
 ### §L10.1 Gate A: Tier A closed
@@ -456,6 +458,30 @@ verifier: `quantmind-pt-cutover-gate` skill
 
 **0 自动 .env 改动** (沿用 ADR-022 反 anti-pattern). user 显式 push merge.
 
+**v0.3 续 修订 cumulative cite footer** (V3 governance batch closure sub-PR 3c sediment, 2026-05-09; sustained sub-PR 3a §L0.3 footer + sub-PR 3b §L6.2 footer cumulative scope 三段累积 ✓):
+
+- **5 大 gate criteria sustainability cumulative cite** (Gate A-E sustained user 5-08 决议数值留 CC 实测决议 + ADR sediment 锁 体例):
+  - Gate A Tier A closed: V3 §12.1 Sprint S1-S11 + paper-mode 5d (V3 §15.4 数值留 CC 实测) + 元监控 risk_metrics_daily + ADR-019/020/029 + V3 §11.1 12 模块 + LiteLLM 月成本 + CI lint + V3 §3.5 fail-open
+  - Gate B T1.5 closed: V3 §11.4 RiskBacktestAdapter + 12 年 counterfactual + WF 5-fold (OOS Sharpe / MDD / Overfit 阈值留 CC 实测) + T1.5 ADR (CC sprint 起手时实测决议) + sim-to-real gap 0 复发
+  - Gate C Tier B closed: V3 §12.2 Sprint S12-S15 + L2 Bull/Bear + L2 RAG (BGE-M3 + pgvector) + L5 RiskReflector + risk_memory + ADR-025/026
+  - Gate D 横切层 closed: V3 §13 元监控 + V3 §14 失败模式 12 项 + V3 §17.1 CI lint + prompts/risk eval + LiteLLM 月成本 ≥3 month ≤80% baseline (V3 §16.2 上限 CC 实测决议)
+  - Gate E PT cutover gate: paper-mode 5d + 元监控 0 P0 + Tier A ADR + 5 SLA + 10 user 决议 + user 显式 .env paper→live 授权 (LIVE_TRADING_DISABLED + DINGTALK_ALERTS_ENABLED + EXECUTION_MODE + L4_AUTO_MODE_ENABLED 4 锁)
+
+- **数值留 CC 实测决议 + ADR sediment 锁 体例 sustainability** (sustained user 5-08 决议 + memory #19/#20):
+  - sprint 起手时 CC 实测 baseline + 决议数值真值 → 必 ADR sediment 锁 (新 ADR # CC 实测决议, 沿用 LL-105 SOP-6 ADR # registry SSOT cross-verify)
+  - 后续 sprint 沿用 cite ADR, 反 silent inline 数值 hardcoded
+  - 0 hardcoded 数值 inline 进 §L10 (sustained prompt 设计 0 数字 path command 体例 + 反 v0.1 / v0.2 silent inline 数值 reverse case)
+
+- **LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope** (sustained sub-PR 3a §L0.3 footer NEW + sub-PR 3b §L6.2 footer NEW + 本节 footer NEW 三段累积):
+  - §0.3 layer scope declaration (L0/L1/L5/L6/L8/L10 6 layer scope, line 45) 作 cumulative cite SSOT 锚点 baseline 真值落地体例 sustained
+  - 沿用 LL-116 fresh re-read enforce 8 case 实证累积反向 enforce (committed sub-PR 1 PR #286, PR #281/#282 reverse + PR #283/#284/#285/#287/#288/#289 verified positive 1-6)
+  - sub-PR 3c §L10 verified positive case 7 sediment: §L10 + §L10.1 + §L10.2 + §L10.3 + §L10.4 + §L10.5 全 valid body sections (L10 layer per §0.3 line 45 declared scope)
+
+- **件 1+2+3+4+5+6 cumulative closure cite refresh** (sustained sub-PR 3a §L0.3 step (4) + sub-PR 3b §L6.2 footer cumulative cite):
+  - 件 1 ✅ audit (PR #270) + 件 2 ✅ Constitution v0.3 (post-3a+3b+本3c) + skeleton v0.1 (PR #271, sustained sub-PR 4 v0.2 修订 trigger)
+  - 件 3 ✅ 13 skill (PR #272-#275 + #281 bonus) + 件 4 ✅ 13 hook cumulative (4+4+5, PR #276/#280/#281/#282/#283/#284) + 件 5 ✅ 7 charter (PR #277-#279) + 件 6 ✅ V3_LAUNCH_PROMPT v0.1 (PR #285)
+  - V3 governance batch closure cumulative cite: sub-PR 1 LL-cumulative-batch (PR #286, 8 LL committed + 23 sustained candidate sediment) + sub-PR 2 ADR-cumulative-batch (PR #287, 3 ADR-044/045/046 promoted) + sub-PR 3a Constitution v0.3 §L0.3 + §L1.1 (PR #288) + sub-PR 3b §L6.1 + §L6.2 (PR #289) + sub-PR 3c §L10 (本 PR)
+
 ---
 
 ## maintenance + footer
@@ -474,7 +500,11 @@ verifier: `quantmind-pt-cutover-gate` skill
   - **§L0.3 step (3)** cite session_context_inject.py v2 (反 v0.1 cite "fresh-read-sessionstart hook" 0 存在 silent 创建)
   - **§L1.1** 8 doc 标 6 committed + 2 planned (audit §8 真值)
   - **§L6.1** 移除 mattpocock `design-an-interface` (audit §6 真值: deprecated/, plugin.json 0 register), 加候选 `setup-matt-pocock-skills`. superpowers 沿用 v0.1 选片 (audit row 39 真值: 用户级已 enabled, 反 v0.1 cite "0 装" 错). OMC v4.9.1 + ECC continuous-learning-v2 wire 真值 sediment (audit row 11/22/26)
-  - **§L6.2** 13 skill 全 `quantmind-v3-` 中缀 (audit §7 命名 0 冲突). 8 hook = 4 全新 + 4 现有扩展 (audit §4 + §7 决议, 反 v0.1 8 全新 silent 创建). 7 subagent = 4 全新 charter file + 3 借 OMC extend (audit §5.2/§7 决议, 沿用 (β) — user 5-08 决议; 反向 .claude/CLAUDE.md "11 agent 全停用 4-15" 体例 — 4 全新是机制 agent 非角色扮演)
+  - **§L6.2** 13 skill 全 `quantmind-v3-` 中缀 (audit §7 命名 0 冲突). 8 hook = 4 全新 + 4 现有扩展 (audit §4 + §7 决议, 反 v0.1 8 全新 silent 创建). 7 subagent = 4 全新 charter file + 3 借 OMC extend (audit §5.2/§7 决议, 沿用 (β) — user 5-08 决议; 反向 .claude/CLAUDE.md "11 agent 全停用 4-15" 体例 — 4 全新是机制 agent 非架色扮演)
+- **v0.3 (post-V3 6 件套 100% closure cumulative cite refresh, 2026-05-09, V3 governance batch closure sub-PR 3a/3b/3c chunked)**: 沿用 ADR-022 反 silent overwrite + sustained sub-PR 1+2 governance pattern parallel体例 + user (b) 决议拆 chunked sub-PR cumulative pattern. 修订基于 sub-PR 1 PR #286 LL-cumulative-batch (LL-116/117/127/132/133/134/135/136 promoted) + sub-PR 2 PR #287 ADR-cumulative-batch (ADR-044/045/046 promoted):
+  - **sub-PR 3a (PR #288, edit cumulative cite refresh +23/-12)**: §L0.3 (step 1 augmented OMC v4.9.1 + ECC observe.sh wire / step 3 hook v2→v3 + LL-133 cite / step 4 件 3+4+5+6 cumulative closure cite (13 skill + 13 hook 4+4+5 + 7 charter + V3_LAUNCH_PROMPT v0.1) / step 5 augmented redline 双层 / footer NEW LL-127 §0.3 SSOT 锚点 baseline 真值落地 sustainability) + §L1.1 (8 → 9 doc fresh read SOP, NEW row V3_LAUNCH_PROMPT.md + skeleton v0.1 status committed + footer NEW cumulative cite refresh 第 11+12 项 prompt 升级 + LL-132 + DECISION_LOG ad-hoc trigger)
+  - **sub-PR 3b (PR #289, pure append augmented banner + footer NEW +21/0)**: §L6.1 (post-V3 6 件套 100% closure cumulative cite refresh banner + audit row 22 baseline sustained 反 silent inflate/deprecate plugin 选片) + §L6.2 (件 3+4+5+6 cumulative PR # cite + LL-117/133/135 体例累积 + footer NEW LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope + 件 3-6 详细 cumulative cite scope)
+  - **sub-PR 3c (本 PR, pure append augmented banner + footer NEW)**: §L10 (post-V3 6 件套 100% closure cumulative cite refresh banner + 数值留 CC 实测决议 + ADR sediment 锁 体例 sustained + footer NEW 5 大 gate criteria sustainability cumulative cite + LL-127 §0.3 cumulative cite SSOT 锚点 baseline cumulative scope 三段累积 sub-PR 3a + 3b + 3c)
 
 ### footer
 
