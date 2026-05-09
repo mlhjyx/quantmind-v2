@@ -48,6 +48,7 @@ caller 真**唯一 sanctioned 入口** (沿用 sub-PR 7c bootstrap 体例 sustai
 - backend/qm_platform/news/rsshub.py (sub-PR 6 RsshubNewsFetcher route_path arg precedent)
 - backend/app/services/news/news_ingestion_service.py (sub-PR 7c orchestrator precedent)
 """
+
 from __future__ import annotations
 
 import logging
@@ -71,23 +72,34 @@ ANNOUNCEMENT_TYPE_SHAREHOLDER = "shareholder_meeting"
 ANNOUNCEMENT_TYPE_DIVIDEND = "dividend"
 ANNOUNCEMENT_TYPE_OTHER = "other"
 
-# Type inference regex (title keyword based, sustained 公告 真生产 wording precedent)
-_PATTERN_ANNUAL = re.compile(r"年[度报]?报告|年报", re.IGNORECASE)
+# Type inference regex (title keyword based, sustained 公告 真生产 wording precedent).
+# `_PATTERN_ANNUAL` uses negative lookbehind `(?<!半)` to make it order-independent vs
+# `_PATTERN_QUARTERLY` (反 sub-PR 11b reviewer P2 regex order fragility ride-next finding):
+# `半年度报告` / `半年报` (semi-annual = quarterly_report) used to falsely match 年度报告 / 年报
+# substring under naive ordering. With negative lookbehind, ANNUAL match requires the 年 char
+# NOT preceded by 半, so 半年报 → ANNUAL=NO MATCH → falls through to QUARTERLY (which already
+# explicitly captures 半年[度报]?报告|半年报). Order-independence sustained sub-PR 12 cleanup.
+_PATTERN_ANNUAL = re.compile(r"(?<!半)年[度报]?报告|(?<!半)年报", re.IGNORECASE)
 _PATTERN_QUARTERLY = re.compile(r"季[度报]?报告|季报|半年[度报]?报告|半年报", re.IGNORECASE)
 _PATTERN_SHAREHOLDER = re.compile(r"股东大会|临时股东大会|股东会议", re.IGNORECASE)
 _PATTERN_DIVIDEND = re.compile(r"分红|派息|利润分配|股利|权益分派", re.IGNORECASE)
-_PATTERN_MATERIAL = re.compile(r"重大[事项件]|重要事项|重大资产|重大合同|重大诉讼|信息披露", re.IGNORECASE)
+_PATTERN_MATERIAL = re.compile(
+    r"重大[事项件]|重要事项|重大资产|重大合同|重大诉讼|信息披露", re.IGNORECASE
+)
 
 
 def _infer_announcement_type(title: str) -> str:
     """Infer announcement_type from title via keyword regex.
 
-    Order matters — quarterly checked BEFORE annual since 半年度报告 / 半年报 (semi-annual)
-    contains 年度报告 / 年报 substring which would otherwise match annual_report falsely.
-    Then earnings (annual / quarterly) checked before material_event since 重大事项 wording
+    Order is defensive but NOT strictly required (sub-PR 12 ride-next reviewer P1 fix):
+    `_PATTERN_ANNUAL` uses negative lookbehind `(?<!半)` to reject semi-annual matches
+    regardless of check order — see 8-line comment block above the pattern definitions.
+    Quarterly is still checked first as belt-and-suspenders + clear ordering intent.
+
+    Earnings (annual / quarterly) checked before material_event since 重大事项 wording
     can co-occur with earnings disclosure (e.g. 重大事项 提示: 关于年度报告披露). 沿用 ADR-049
-    §2 Finding #2 resolution (annual_report + quarterly_report 真**之后 service-layer filter
-    EXCLUDE** dedup with earnings_announcements Tushare path).
+    §2 Finding #2 resolution (annual_report + quarterly_report 真值 之后 service-layer filter
+    EXCLUDE dedup with earnings_announcements Tushare path).
 
     Args:
         title: announcement 公告 title text.

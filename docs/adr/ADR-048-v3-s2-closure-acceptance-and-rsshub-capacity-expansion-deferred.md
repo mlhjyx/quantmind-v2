@@ -12,7 +12,7 @@ V3 governance batch closure sub-PR 9 (PR #296) sediment V3 §S1 closure ADR-047 
 
 **Phase 0 finding** (sprint-orchestrator return, sustained sub-PR 9 LL-137 体例 第 2 case 实证累积扩): V3 §S2 substantially closed by V2 prior cumulative work — sub-PR 1-7c + 8a/8b/8b-cadence cumulative PR #234-#257 ~22 files / ~3000-4000 行 已 done + 11 test files / 291 pytest pass / 4 skipped / 0 fail (本 sub-PR 10 .venv pytest verify 真测).
 
-V3 §S2 acceptance items per Plan v0.1 §A S2 + V3 §3.1: 9/10 ✅ DONE + 1/10 ⚠️ deferred (4/4 RSSHub capacity expansion architecture decision LL-115 sediment).
+V3 §S2 acceptance items per Plan v0.1 §A S2 + V3 §3.1: 11/12 ✅ DONE + 1/12 ⚠️ deferred (4/4 RSSHub capacity expansion architecture decision LL-115 sediment).
 
 **触发**: V3 Tier A S2/S2.5 sprint 起手 prerequisite verify (post sub-PR 9 closure) → user explicit 5 决议 accept (γ verify-only + closure-only gap fix hybrid for S2 / δ full implement for S2.5 / α sequential / a memory frontmatter patch in S2 closure / a defer 4/4 RSSHub capacity expansion to S5) → sub-PR 10 sediment scope.
 
@@ -97,7 +97,7 @@ V3 §S2 acceptance items per Plan v0.1 §A S2 + V3 §3.1: 9/10 ✅ DONE + 1/10 �
 - **plan-then-execute 体例 3rd 实证累积**: sub-PR 8 sediment 1st 实证 (Plan v0.1 file 创建) + sub-PR 9 sediment 2nd 实证 (V3 §S1 closure ADR-047 + LL-137) + sub-PR 10 sediment 3rd 实证 (V3 §S2 closure ADR-048 + LL-138) — sustained sub-PR 1-9 governance pattern parallel体例
 - **Memory frontmatter cite refresh** (user 决议 #4 (a)): "Sprint 2 起手前剩 V3 §3.1 patch + ADR-033 sediment + 6 News 源 mini-verify" STALE 修订 ✅
 - **4/4 RSSHub capacity expansion ADR sediment 时机锁** (sustained ADR-047 SLA baseline deferred to S5 体例): real traffic + failure mode evidence at S10 paper-mode 5d period 优 synthetic premature commitment
-- **Tier A 真 net new scope further clarified**: post sub-PR 9 (S1 closure) + sub-PR 10 (S2 closure) — 真 net new sprints = S2.5 (greenfield) + S3 + S5 + S7 + S9 + S10 + S11 + 部分 残余 (sustained Tier A baseline ~14-18 周 estimate from sub-PR 9 §L0.4 baseline 真值再修订)
+- **Tier A 真值 net new scope further clarified**: post sub-PR 9 (S1 closure) + sub-PR 10 (S2 closure) — 真值 net new sprints = S2.5 (greenfield) + S3 + S5 + S7 + S9 + S10 + S11 + 部分 残余 (sustained Tier A baseline ~14-18 周 estimate from sub-PR 9 §L0.4 baseline 真值再修订)
 
 ### Negative / Cost
 

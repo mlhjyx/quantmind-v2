@@ -54,7 +54,7 @@ V3 governance batch closure sub-PR 8 (PR #295) sediment Tier A 12 sprint plan v0
 **反 silent forward-progress** (LL-098 X10): NO real LiteLLM stress test outside production paper-mode scope. NO 100 calls cost burn for synthetic baseline. Real evidence at S10 paper-mode 5d period.
 
 **Rationale**:
-- 真 production usage at scale > synthetic 100 calls (5d period exercises LiteLLM at natural cadence vs concentrated burst)
+- 真值 production usage at scale > synthetic 100 calls (5d period exercises LiteLLM at natural cadence vs concentrated burst)
 - Cost discipline (沿用 V3 §16.2 + ADR-034 cost guardrails $50/月 cap + 5-06 cumulative cite)
 - Sequential sub-PR sediment 体例 sustained (LL-098 X10 + Constitution §L8.1 (a) 关键 scope 决议)
 - Ollama fallback path 真值 already evidenced in ADR-034 (9.8s response / 73 t/s on RTX 5070 12 GB) — sufficient for S1 closure baseline
@@ -76,7 +76,7 @@ V3 governance batch closure sub-PR 8 (PR #295) sediment Tier A 12 sprint plan v0
 
 | 候选 | 描述 | 评价/理由 |
 |---|---|---|
-| (1) (α) skip V3 §S1 entirely | declare done by V2 prior work, 不 sediment closure ADR, move to S2/S2.5 | ❌ 拒 — 反 LL-115 capacity expansion 真值 silent overwrite anti-pattern; cov + SLA baseline 真 GAP 留 unaddressed; sprint chain integrity 损失 |
+| (1) (α) skip V3 §S1 entirely | declare done by V2 prior work, 不 sediment closure ADR, move to S2/S2.5 | ❌ 拒 — 反 LL-115 capacity expansion 真值 silent overwrite anti-pattern; cov + SLA baseline 真值 GAP 留 unaddressed; sprint chain integrity 损失 |
 | (2) (β) minimal gap fix sub-PR only | run cov 实测 + SLA stress test + Plan cite 调和 + ADR sediment | ❌ 拒 — pytest-cov 不 在 .venv (scope creep to install), real LiteLLM stress test 走 cost burn (反 V3 §16.2 cost guardrails), 沿用 ADR-034 Ollama 真值 + S5 production paper-mode period 真值更优 |
 | **(3) (γ+β) hybrid: verify-only + cite reconcile + ADR sediment + SLA baseline deferred (本 ADR 采纳)** | 本 sub-PR 9: 6 file delta doc-only sediment + ADR 锁 deferred SLA stress test 时机 | ✅ 采纳 — 真值 grounded (V2 prior work cumulative ~5630 行 + ADR-034 Ollama stress test 真值 + S5 paper-mode 5d period 真生产 exercise will capture real SLA baseline at scale); user 4 决议 全 accept; 反 silent forward-progress LL-098 X10 |
 | (4) (δ) full re-implement | ignore V2 prior work, 从零 implement | ❌ 拒 — 违反 ADR-022 反 silent overwrite + ADR-031 §6 渐进 deprecate plan + LL-115 capacity expansion 真值 silent overwrite anti-pattern |
@@ -90,7 +90,7 @@ V3 governance batch closure sub-PR 8 (PR #295) sediment Tier A 12 sprint plan v0
 - **Constitution §L0.4 baseline 真值再修订**: ~26-31 周 → ~14-18 周, 真值差异根因 cite (sub-PR 8 sediment 时 silent overwrite V2 prior work cumulative cite, LL-137 sediment 候选)
 - **SLA baseline ADR sediment 时机锁**: deferred to S5 paper-mode 5d period real production exercise (反 synthetic stress test cost burn + 反 silent forward-progress LL-098 X10)
 - **plan-then-execute 体例 2nd 实证累积**: sub-PR 8 sediment 1st 实证 (Plan v0.1 file 创建) + sub-PR 9 sediment 2nd 实证 (Plan v0.1 cite reconcile + ADR/LL sediment) — sustained sub-PR 1-8 governance pattern parallel体例
-- **Tier A 真 net new scope clarified**: S2.5 + S5 + S7 + S9 + S10 + S11 + 部分 S2/S3 真 GAP — 真 cycle ~3-5 周 (vs sub-PR 8 sediment ~7-9.5 周 estimate carrying silent overwrite assumption)
+- **Tier A 真值 net new scope clarified**: S2.5 + S5 + S7 + S9 + S10 + S11 + 部分 S2/S3 真值 GAP — 真值 cycle ~3-5 周 (vs sub-PR 8 sediment ~7-9.5 周 estimate carrying silent overwrite assumption)
 
 ### Negative / Cost
 
@@ -120,7 +120,7 @@ V3 governance batch closure sub-PR 8 (PR #295) sediment Tier A 12 sprint plan v0
 
 ### Phase 2 (S5/S10 sprint scope, NOT in sub-PR 9)
 
-- S5 sprint: V3 §11.4 RiskBacktestAdapter stub + 8 RealtimeRiskRule (Constitution §L0.4 真 net new scope)
+- S5 sprint: V3 §11.4 RiskBacktestAdapter stub + 8 RealtimeRiskRule (Constitution §L0.4 真值 net new scope)
 - S10 sprint: paper-mode 5d real production exercise → SLA baseline ADR 锁 sediment (post real P50/P99 measurement at scale)
 
 ## References

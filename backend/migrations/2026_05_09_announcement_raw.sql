@@ -10,7 +10,7 @@
 --   - fetched_at TIMESTAMPTZ DEFAULT NOW() — 时间索引列
 --   - schema 反 1:1 复用 news_raw — 公告流真**结构性差异** (announcement_type/pdf_url/disclosure_date)
 --   - CHECK 反 silent neg (fetch_cost / fetch_latency_ms NUMERIC + INT 反 negative)
---   - announcement_type CHECK (annual_report/quarterly/material_event/shareholder_meeting/dividend/other)
+--   - announcement_type CHECK (annual_report/quarterly_report/material_event/shareholder_meeting/dividend/other)
 --     反 silent enum drift (反 earnings_announcements 207K 行 narrow scope cumulative cite)
 --
 -- ⚠️ 真值边界 (Finding #2 sediment, ADR-049 §Decision 2):

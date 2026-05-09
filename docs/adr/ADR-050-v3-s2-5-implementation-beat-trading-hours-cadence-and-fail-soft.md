@@ -26,7 +26,14 @@ Per ADR-049 §1 Decision 4 sustained — `crontab(hour="9,11,13,15,17", minute=1
 
 Beat entry: `announcement-ingest-trading-hours` in `backend/app/tasks/beat_schedule.py`. Default kwargs `{"symbol_id": "600519", "source": "cninfo"}` (sustained LL-115 explicit intent).
 
-**post-merge ops checklist** (铁律 44 X9): `Servy restart QuantMind-CeleryBeat` (沿用 ADR-043 + LL-097 sediment).
+**post-merge ops checklist** (铁律 44 X9 + LL-141 sediment 4-step expand, sub-PR 12 patch):
+
+1. **Apply migration** — `psql -v ON_ERROR_STOP=1 -f backend/migrations/2026_05_09_announcement_raw.sql` (DDL CREATE TABLE + 7 COMMENT + 3 CREATE INDEX + DO guard PASS) + verify schema (`\d+ announcement_raw` → 12 cols + 6 enum CHECK + 3 indexes)
+2. **Verify Worker imports list 含新 task module** — `backend/app/tasks/celery_app.py:imports=[...]` 必含 `app.tasks.announcement_ingest_tasks` (沿用 LL-141 sediment, sub-PR 11b silent miss caught by user "为什么要等" 直觉, sub-PR 12 hotfix root cause)
+3. **Restart Beat AND Worker (双 restart)** — `Servy restart QuantMind-CeleryBeat` (Beat schedule reload) + `Servy restart QuantMind-Celery` (Worker autodiscover 新 task module). 反 single-step "Beat restart only" 体例 (LL-141 sediment, Beat reload 仅 schedule dict + Worker 必 restart for 新 task autodiscover).
+4. **1:1 task dispatch simulation** — `celery_app.send_task('app.tasks.announcement_ingest_tasks.announcement_ingest', kwargs={'symbol_id': '600519', 'source': 'cninfo'}, queue='default')` → Wait ~15s → verify scheduler_task_log row `status=success` + result_json schema ({fetched/ingested/skipped_earnings/skipped_unknown/symbol_id/source/limit/status}) + 0 KeyError in worker stderr. **反 wait-for-production-fire** (5-10 周日 09:15 / 工作日 09:15) — simulation cost ~30s vs production fire wait ~12-24h, sustained user "为什么要等" 直觉 enforce 第 N+1 次实证 LL-103 反 silent agreeing.
+
+**沿用**: ADR-043 + LL-097 (Beat schedule restart体例) + LL-141 NEW (4-step expansion).
 
 ### §2 Per-source fail-soft + DDL CHECK enforcement
 
