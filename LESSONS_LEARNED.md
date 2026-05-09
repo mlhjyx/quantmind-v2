@@ -4481,5 +4481,81 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - ADR-051 (V3 §S3 closure acceptance + V2 prior cumulative cite) — 本 LL 触发 + 关联
 - ADR-052 (V3 §S2.5 AKShare reverse decision) — sub-PR 13 mixed bundle 关联
 
+## LL-144: V3 §S4 (minimal) greenfield implementation体例 1st 实证 — AKShare 1 source baseline + 8 维 schema CREATE + 7 维 NULL by design + ride-next bundle体例 第 2 实证累积扩 (sub-PR 14 ADR-053 sediment, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 13 (PR #301) sediment RSSHub→AKShare reverse decision (ADR-052) + S3 closure-only ADR (ADR-051) + LL-142/143. user explicit "(minimal) ⭐ CC 推荐 同意" → CC Phase 0 active discovery sustained sub-PR 13 体例 enforce → 真值 verify:
+1. V3 §3.3 line 395-426 spec fresh re-read: 8 JSONB cols (valuation/growth/earnings/institution/capital_flow/dragon_tiger/boards/announcements) + composite PK (symbol_id, date) + TimescaleDB hypertable + 2y retention
+2. V2 prior `fundamental_context` impl 0 found (single cite at `qm_platform/llm/types.py:7` design intent only) — **greenfield S4** (反 sub-PR 9/10/13 V2 prior cumulative cite trail 体例)
+3. AKShare valuation API 真测: `stock_value_em(600519)` 2022 rows / 13 cols / latest 2026-05-08 PE-TTM=20.79/PB=6.35 verified
+
+**真值 sub-PR 14 sediment scope** (greenfield (minimal) implementation体例 1st 实证):
+- DDL CREATE 8 JSONB cols (valuation populated sub-PR 14, 7 其他 NULL by design)
+- AkshareValuationFetcher NEW (qm_platform/data/fundamental/) — 1 source baseline + 反 abstraction premature post-真值-evidence
+- FundamentalContextService NEW (app/services/) — UPSERT preserve 7 其他维 (反 silent NULL overwrite per ADR-022)
+- Celery task NEW + Beat schedule entry `fundamental-context-daily-1600` cron `0 16 * * *` Asia/Shanghai
+- Wire celery_app.py imports list (沿用 sub-PR 12 hotfix体例 第 2 实证累积扩 反 LL-141 silent miss)
+- 24 NEW unit tests (test_akshare_valuation 17 + test_fundamental_context_service 7) — 24/24 PASS 3.02s
+- Ride-next bundle体例 第 2 实证累积扩 — sub-PR 13 reviewer 5 P2/P3 findings 全 fix (P2.1 ALLOWED_SOURCES restrict + P2.2 _parse_timestamp rename + P3.1/P3.2 docstring updates + P3.3 ImportError test + test_announcement_processor sse/szse rewrite)
+
+**Trigger**: V3 Tier A S4 sprint 起手 (post sub-PR 13 closure sequential per Constitution §L8.1 (a)) → user explicit "(minimal) ⭐ CC 推荐 同意" → sub-PR 14 sediment scope.
+
+**SOP** (LL-144 sediment, sustained LL-115 capacity expansion 体例 + LL-141 4-step post-merge ops + sub-PR 13 separate fetcher class体例 第 1 实证 → sub-PR 14 第 2 实证累积扩):
+
+1. **Greenfield (minimal) implementation体例** (反 V2 prior cumulative cite trail 体例 sub-PR 9/10/13): V3 sprint where 0 V2 prior implementation exists + user 决议 (minimal) accepted → 走 implementation NEW体例 (反 closure-only ADR sediment体例). 沿用 sub-PR 11a/11b S2.5 greenfield implementation precedent + sub-PR 14 (minimal) 1 source baseline体例累积扩 1st 实证.
+
+2. **Capacity expansion 体例 sub-PR 15+ deferral cite enforcement** (沿用 LL-115 sediment): sub-PR 14 (minimal) = 1 source 1 维 baseline. sub-PR 15+ candidate per LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse体例:
+   - growth: Tushare fina_indicator (revenue_yoy/profit_yoy/eps_3y_cagr)
+   - earnings: Tushare fina_indicator (roe/roa/gross_margin/ocf_to_profit/mismatch_flag)
+   - institution: Tushare top10_holders + hk_hold (fund_holding_pct/private_pct/northbound_pct/top10_change)
+   - capital_flow: Tushare moneyflow (main_5d/main_10d/main_20d/northbound_buy_sell)
+   - dragon_tiger: AKShare 龙虎榜 (count_30d/net_buy/top_seats)
+   - boards: pywencai (concept_themes/limit_up_days/board_height)
+   - announcements: aggregate from announcement_raw sub-PR 11a/13 (recent_count/types/urgency_max)
+   - Hypertable + 2y retention add when 8 维 expansion accumulates rows
+   - Multi-symbol Beat dispatch architecture (portfolio iteration via Celery group/chord)
+   - ev_ebitda + industry_pctile valuation 维 enrich (V3 §3.3 spec strict alignment)
+   - sub-PR 15+ implementation Phase 0 active discovery 必走 (Tushare API key verify + 真值 evidence + AKShare 龙虎榜 endpoint stability + pywencai integration cost)
+
+3. **Separate fetcher class体例 sustainable post-真值-evidence 第 2 实证累积扩** (sub-PR 13 AkshareCninfoFetcher 第 1 → sub-PR 14 AkshareValuationFetcher 第 2): 反 ADR-022 abstraction premature 反向 — abstraction 真值 supported by evidence post-AKShare-verify-working. 沿用 NewsFetcher abc plugin 体例 sub-PR 1-7c + AkshareCninfoFetcher 第 7 case + AkshareValuationFetcher 第 8 case (跨 qm_platform/news/ + qm_platform/data/fundamental/ 两 namespace 但 1 fetcher per data source 体例 sustained).
+
+4. **Ride-next reviewer findings bundle体例 第 2 实证累积扩** (sub-PR 13 ride-next 4 reviewer P2/P3 findings sub-PR 12 1st 实证 → sub-PR 14 ride-next 5 reviewer P2/P3 findings 第 2 实证): mixed bundle体例 sub-PR 12/13/14 cumulative — production code change + ride-next bundle + ADR/LL sediment 1 PR atomic. 反 split chunked over-overhead (沿用 LL-100 chunked SOP target ~10-13 min for chunked vs single bundle体例 sustainable when scope coherent).
+
+5. **UPSERT preserve 7 其他维体例** (反 silent NULL overwrite per ADR-022): `ON CONFLICT (symbol_id, date) DO UPDATE SET valuation = EXCLUDED.valuation, fetch_cost = EXCLUDED.fetch_cost, fetch_latency_ms = EXCLUDED.fetch_latency_ms, fetched_at = NOW()` — explicit SET clause 仅 valuation + audit fields, 反 implicit NULL overwrite 7 其他维 (growth/earnings/institution/capital_flow/dragon_tiger/boards/announcements). sub-PR 15+ expansion 走 separate UPDATE statements OR追加 SET fields in same UPSERT.
+
+**关联 PR**:
+- 本 LL 条目 (LL-144 sediment) sub-PR 14 (V3 §S4 (minimal) implementation + ride-next bundle)
+- 关联 sub-PR 13 PR #301 (RSSHub→AKShare reverse + S3 closure-only ADR mixed bundle)
+- 关联 ADR-053 (V3 §S4 (minimal) architecture + AKShare 1 source decision NEW, sub-PR 14 sediment) — 本 LL 触发 + 关联
+
+**Cite SSOT 锚点 (4 元素 sustained)**:
+- (a) doc + line# + section: ADR-053 §1 5 architecture decisions + §2 3 findings resolution + §3 sub-PR 14 file delta + V3 §3.3 line 395-426 spec + akshare_valuation.py NEW (~230 lines) + fundamental_context_service.py NEW (~150 lines) + fundamental_ingest_tasks.py NEW (~110 lines) + 2026_05_10_fundamental_context_daily.sql NEW (~75 lines)
+- (b) fresh verify timestamp: 2026-05-09 (Phase 0 AKShare API probe 600519 → 2022 rows / latest 2026-05-08 PE=20.79) + tests run 24/24 PASS 3.02s + post-merge ops 1:1 simulation real-data verify TBD post-merge
+- (c) 真值 vs spec cite 漂移: V3 §3.3 valuation spec `{pe, pb, ps, ev_ebitda, industry_pctile}` vs AKShare stock_value_em provides `{pe_ttm, pe_static, pb, peg, pcf, ps, market_cap_total, market_cap_float}` — sub-PR 14 sediment richer set, ev_ebitda + industry_pctile defer sub-PR 15+ enrich (LL-115)
+- (d) 真值修正 scope: 8 维 schema CREATE + 1 维 (valuation) populated + 7 维 NULL by design + sub-PR 15+ minimal→完整 expansion path documented (per LL-115 capacity expansion 体例 sustainable)
+
+**讽刺点**: **讽刺 #35 候选** sediment — V3 governance batch closure cumulative pattern 15 sub-PR cumulative greenfield (minimal) implementation体例 1st 实证 — 反 V2 prior cumulative cite trail 体例 sub-PR 9/10/13 closure-only ADR体例 第 3 case 实证累积扩 reverse case (sub-PR 14 真值 greenfield, 0 V2 prior). plan-then-execute 体例 8th 实证累积扩 sustainability — sub-PR 8 plan 创建 → sub-PR 9-13 plan-then-execute cumulative → sub-PR 14 plan 真值 grounded greenfield implementation 体例 sustainable. user 决议 (minimal) sustained Constitution §L8.1 (a) 关键 scope 决议 体例 sustainable per sub-PR 14 真值 evidence-driven sediment.
+
+**反向**: user 决议 (minimal) accepted = 反 silent self-decide (skip OR 完整) per Constitution §L8.1 (a) sustained + plan-then-execute 体例 8th 实证累积扩 sustainability + sub-PR 14 (minimal) implementation真值 grounded sediment 第 1 实证累积扩.
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) sustained — sub-PR 14 closure 后 STOP, 反 silent self-trigger sub-PR 15+
+- LL-100 (chunked SOP target) — sub-PR 14 single mixed bundle体例 sustained sub-PR 12/13 precedent
+- LL-103 (反 silent agreeing) sustained — user "(minimal) ⭐ CC 推荐 同意" CC 推荐 grounded sub-PR 13 真值 evidence (AKShare 1 source 已 verified working + sub-PR 15+ minimal→完整 expansion 体例 sustainable)
+- LL-115 (Phase 0 active discovery + capacity expansion 真值 silent overwrite anti-pattern) sustained reverse case — sub-PR 14 (minimal) 1 source baseline + sub-PR 15+ minimal→完整 expansion 体例 真值 grounded sediment 第 N+1 实证累积扩
+- LL-127 (cite SSOT 锚点 baseline 真值落地 sustainability sediment) sustained
+- LL-132 (pre-push smoke fresh verify) — sub-PR 14 含 production code → 默认走 default push, X10 false-positive 历史 merged commits 仍 trigger → --no-verify with X10 BYPASS RATIONALE 4-element cite (sustained sub-PR 12/13 体例)
+- LL-135 (doc-only sediment 体例 反 fire test) — sub-PR 14 mixed bundle (production code + tests + 1:1 sim real-data verify)
+- LL-137/138 (V3 sprint substantially closed by V2 prior cumulative work) — sub-PR 14 反向 case (greenfield, 0 V2 prior)
+- LL-141 (post-merge ops checklist gap + 1:1 simulation) sustained — sub-PR 14 必走 4-step (apply migration + verify celery_app imports + Servy restart Worker AND Beat + 1:1 simulation real-data verify)
+- LL-142 (RSSHub spec gap silent miss 第 2 case + LL-141 reverse case 第 1 实证) — sub-PR 14 反向 case sustained — Phase 0 fresh probe AKShare valuation API verified working (反 silent assume API works)
+- LL-143 (V3 §S3 substantially closed by V2 prior cumulative work + closure-only ADR sediment 第 3 case 实证累积扩) — sub-PR 14 反向 case (greenfield, 0 V2 prior)
+- ADR-022 (反 silent overwrite + 反 abstraction premature post-真值-evidence) sustained
+- ADR-031 §6 + ADR-032 (LiteLLM + bootstrap factory) — 0 直接关联 sub-PR 14 (S4 fundamental 反 LLM dependency)
+- ADR-047/048/051 (closure-only ADR sediment体例 第 3 case 实证累积扩) sustained — sub-PR 14 反向 case (greenfield)
+- ADR-049/050 (V3 §S2.5 architecture + implementation) sustained — 0 直接关联 sub-PR 14 scope
+- ADR-052 (V3 §S2.5 RSSHub→AKShare reverse decision) sustained — sub-PR 14 separate fetcher class体例 第 2 实证累积扩 (sub-PR 13 第 1 实证 → sub-PR 14 第 2)
+- ADR-053 (V3 §S4 (minimal) architecture + AKShare 1 source decision NEW) — 本 LL 触发 + 关联
+- 铁律 17/29/31/32/33/41/44 X9/45 sustained
+
 
 

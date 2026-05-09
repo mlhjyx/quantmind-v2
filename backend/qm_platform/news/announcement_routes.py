@@ -34,10 +34,13 @@ from __future__ import annotations
 
 import warnings
 
-# Allowed source enum (sub-PR 13 sustained, ADR-052 §source-enum-retention decision)
+# Allowed source enum (sub-PR 14 ride-next P2.1 reviewer fix per ADR-053)
 # cninfo: AKShare-fed real production (ADR-052 §1 Decision 3 reverse)
-# sse/szse: reserved 待 sub-PR 14+ AKShare additional source verify (sustained ADR-049 §2 Finding #1)
-ALLOWED_SOURCES = frozenset({"cninfo", "sse", "szse"})
+# sse/szse: REMOVED from ALLOWED_SOURCES sub-PR 14 P2.1 fix — 反 silent data provenance lie
+#   (sub-PR 13 reviewer P2.1: validate_source allowed sse/szse but no fetcher routing →
+#    AKShare fetcher would store data with source="sse" while真值 fetched from cninfo).
+#   sub-PR 15+ candidate: re-add sse/szse when separate fetchers exist (sustained ADR-049 §2 Finding #1).
+ALLOWED_SOURCES = frozenset({"cninfo"})
 
 # Legacy route templates (deprecated per ADR-052, kept for cite trail + ADR-049 backward compat)
 DEFAULT_CNINFO_ROUTE_TEMPLATE = "/cninfo/announcement/{stockCode}"

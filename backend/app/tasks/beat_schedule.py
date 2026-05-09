@@ -168,6 +168,24 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1h within next 2h cron window
         },
     },
+    # ── sub-PR 14 fundamental_context daily 16:00 ingestion (ADR-053 §1 Decision 4) ──
+    # V3 §3.3 line 426 cite "更新 cadence: 每日 16:00 (盘后入库)" — sub-PR 14 (minimal) baseline.
+    # Default symbol_id="600519" (贵州茅台 baseline, sustained sub-PR 11b Beat 体例; real production
+    # multi-symbol Beat dispatch architecture decision deferred per ADR-053 §2 Finding 1, sub-PR 15+ candidate).
+    # Source: AKShare stock_value_em (sub-PR 14 1 source minimal scope, sustained ADR-053 §1 Decision 1).
+    # 真 cost ~$0 (AKShare free, sustained sub-PR 13 AkshareCninfoFetcher 体例).
+    # cron `0 16 * * *` Asia/Shanghai (反 PT chain 16:25/16:30 collision + 反 announcement 16:15 collision).
+    # 铁律 44 X9 + LL-141 4-step post-merge ops checklist enforce: apply migration + verify celery_app
+    # imports list 含本 task module + Servy restart QuantMind-CeleryBeat AND QuantMind-Celery + 1:1 simulation.
+    "fundamental-context-daily-1600": {
+        "task": "app.tasks.fundamental_ingest_tasks.fundamental_context_ingest",
+        "schedule": crontab(hour=16, minute=0),
+        "kwargs": {"symbol_id": "600519"},  # explicit intent (沿用 LL-115)
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next 2h window
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产

@@ -182,6 +182,24 @@ class TestAkshareCninfoFetcherFailures:
             with pytest.raises(NewsFetchError, match=r"schema drift"):
                 f.fetch(query="600519", limit=10)
 
+    def test_fetch_import_error_raises(self) -> None:
+        # sub-PR 14 ride-next P3.3 reviewer fix per ADR-053 — test ImportError fail-loud path.
+        # patch.dict cannot directly cause ImportError; use builtins.__import__ instead.
+        import builtins
+        from unittest.mock import patch as _patch
+
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "akshare":
+                raise ImportError("No module named 'akshare'")
+            return original_import(name, *args, **kwargs)
+
+        with _patch.object(builtins, "__import__", side_effect=mock_import):
+            f = AkshareCninfoFetcher()
+            with pytest.raises(NewsFetchError, match=r"akshare package not installed"):
+                f.fetch(query="600519", limit=10)
+
 
 # §4 _parse_timestamp + _format_date helpers
 
