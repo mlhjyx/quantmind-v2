@@ -244,6 +244,8 @@ user "跟 Claude 说过 X" / "Claude.ai 决议 Y" / "memory cite Z" 等跨 syste
 
 ### §L6.1 plugin 选片决议 (audit reality grounding, 详见 invocation map §1)
 
+v0.3 续 修订 (V3 governance batch closure sub-PR 3b, 2026-05-09): post-V3 6 件套 100% closure cumulative cite refresh (件 4 完整闭环 ✅ post-PR #284 + 件 6 完整闭环 ✅ post-PR #285) + sustained sub-PR 1+2+3a governance pattern parallel体例. plugin 选片真值 sustained 反 silent overwrite (审计 row 22 baseline 真值 + 5-08 step 1 sediment 真值 sustained, sub-PR 3b 反 plugin 选片 silent inflate / silent deprecate).
+
 audit row 22 真值: 用户级 `~/.claude/settings.json` `enabledPlugins` 含 mattpocock-skills + superpowers + ECC + OMC 全 enabled. 项目级 `.claude/external-skills/mattpocock-skills/` clone 真测.
 
 | Plugin | 装载状态 | 选 | 不选 |
@@ -256,6 +258,8 @@ audit row 22 真值: 用户级 `~/.claude/settings.json` `enabledPlugins` 含 ma
 **不装** `bdarbaz/claude-stack-plugin` (合并版): 命名空间冲突 + 丢失 superpowers 工作流强制性.
 
 ### §L6.2 自造 13 skill / 8 hook / 7 subagent 总览 (audit reality grounding, 详见 invocation map §3)
+
+v0.3 续 修订 (V3 governance batch closure sub-PR 3b, 2026-05-09): post-V3 6 件套 100% closure cumulative cite refresh — 件 3 ✅ closed (13 skill PR #272-#275 + #281 bonus) + 件 4 ✅ closed (8 hook V3-batch cumulative — 4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283 ×2 + #284 ×2; cumulative 13 hook .py = 8 V3-batch + 5 现有 sustained) + 件 5 ✅ closed (7 charter PR #277-#279). 沿用 LL-117 atomic sediment+wire 体例 (committed sub-PR 1 PR #286, 6 PR cumulative 实证累积) + LL-133 现有 hook v1→v2 lifecycle governance 体例 (committed sub-PR 1 PR #286, 双 case 实证累积) + LL-135 doc-only sediment 体例 (committed sub-PR 1 PR #286).
 
 audit §7 真值决议: 总数沿用 v0.1 (13 / 8 / 7), 但**实施分类分** "全新 vs 现有扩展 vs OMC borrow", 反 v0.1 默认 sediment 倾向 (沿用 ADR-022 反 abstraction premature).
 
@@ -305,6 +309,23 @@ audit §7 真值决议: 总数沿用 v0.1 (13 / 8 / 7), 但**实施分类分** "
 | ~~sprint-orchestrator~~ | 🟡 **借 OMC** `planner` extend + 写 `quantmind-v3-sprint-orchestrator.md` charter (V3 sprint chain 跟踪 + sprint-by-sprint 触发 invocation) |
 | ~~sprint-closure-gate-evaluator~~ | 🟡 **借 OMC** `verifier` extend + 写 `quantmind-v3-sprint-closure-gate-evaluator.md` charter (V3 §10/15 closure criteria 机器可验证清单) |
 | ~~tier-a-mvp-gate-evaluator~~ | 🟡 **借 OMC** `verifier` extend + 写 `quantmind-v3-tier-a-mvp-gate-evaluator.md` charter (V3 S10 paper-mode 5d 验收专用) |
+
+**v0.3 续 修订 cumulative cite footer** (V3 governance batch closure sub-PR 3b sediment, 2026-05-09; sustained sub-PR 3a footer NEW + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability):
+
+- **件 3 ✅ closed** (PR #272-#275 + #281 bonus, 13 quantmind-v3-* skill cumulative); skill name + scope sustained 反 silent overwrite ADR-022.
+- **件 4 ✅ closed post-PR #284** (8 hook V3-batch = 4 全新 + 4 现有扩展; cumulative 13 hook .py = 8 V3-batch + 5 现有 sustained `audit_log` / `block_dangerous_git` / `doc_drift_check` / `post_edit_lint` / `pre_commit_validate`):
+  - 4 全新 V3 hook: redline_pretool_block (PR #276) / cite_drift_stop_pretool (PR #280) / sediment_poststop (PR #281) / handoff_sessionend (PR #282)
+  - 4 现有扩展 v2: session_context_inject v2→v3 + verify_completion v1→v2 (PR #283) / iron_law_enforce v1→v2 + protect_critical_files v1→v2 (PR #284)
+  - 5 wire types post-PR #285 sustained (SessionStart + PreToolUse + PostToolUse + Stop + SessionEnd, settings.json `enabledPlugins` + hooks)
+  - LL-117 atomic sediment+wire 体例 (committed sub-PR 1 PR #286, 6 PR cumulative 实证累积)
+  - LL-133 现有 hook v1→v2 lifecycle governance 体例 (committed sub-PR 1 PR #286, 双 case 实证累积 PR #283 + #284)
+- **件 5 ✅ closed** (7 charter = 4 quantmind- 全新 + 3 quantmind-v3- 借 OMC extend; charter file naming convention sustained):
+  - 4 全新 quantmind- prefix charter: cite-source-verifier + redline-guardian (PR #277) / risk-domain-expert + prompt-iteration-evaluator (PR #278)
+  - 3 借 OMC extend quantmind-v3- prefix charter: sprint-orchestrator + sprint-closure-gate-evaluator + tier-a-mvp-gate-evaluator (PR #279)
+- **件 6 ✅ closed** (V3_LAUNCH_PROMPT.md PR #285, V3 实施期 sprint chain 起手 SOP entry point):
+  - LL-135 doc-only launch prompt sediment 体例 (committed sub-PR 1 PR #286, 反 hook 反 code sediment 性质 反 fire test 体例)
+  - ADR-045 V3 launch prompt file path 决议体例 (committed sub-PR 2 PR #287, sustained PR #271 docs/V3_*.md naming convention 累积 + ADR-022 反 nested subdir abstraction premature)
+- **LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability** (sustained sub-PR 3a §L0.3 footer NEW sediment + sub-PR 3b §L6.2 footer NEW sediment cumulative scope): §0.3 layer scope declaration (L0/L1/L5/L6/L8/L10 6 layer scope, line 45) 作 cumulative cite SSOT 锚点 baseline 真值落地体例 sustained — 沿用 LL-116 fresh re-read enforce 7 case 实证累积反向 enforce (committed sub-PR 1 PR #286, PR #281/#282 reverse + PR #283/#284/#285/#287/#288 verified positive 1-5).
 
 ### §L6.3 自造 vs plugin 优先级
 
