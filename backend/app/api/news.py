@@ -366,6 +366,125 @@ def ingest_news_rsshub(req: IngestRsshubRequest) -> IngestRsshubResponse:
     )
 
 
+# ─────────────────────────────────────────────────────────────
+# §AnnouncementProcessor — V3 §11.1 row 5 公告流 (sub-PR 11b sediment per ADR-049)
+# ─────────────────────────────────────────────────────────────
+
+
+class IngestAnnouncementRequest(BaseModel):
+    """POST /api/news/ingest_announcement body schema (sub-PR 11b sediment per ADR-049).
+
+    沿用 ADR-049 §1 Decision 3 RSSHub route reuse + Decision 6 sustained `/api/news/` namespace.
+    AnnouncementProcessor 走 RsshubNewsFetcher route_path arg (反 separate fetcher class).
+
+    Args:
+        symbol_id: stock code (e.g. "600519" 贵州茅台). 公告 必 attached to symbol
+            (sub-PR 11a DDL announcement_raw.symbol_id NOT NULL, V3 §11.1 row 5 cite).
+        source: announcement source enum (cninfo/sse/szse). Default 'cninfo' is 1/3 working
+            baseline per ADR-049 §1 Decision 3. sse/szse reserved 待 S5 paper-mode 5d period
+            verify per ADR-049 §2 Finding #1.
+        limit: per-route fetch limit (default 10, max 50 沿用 sub-PR 6 体例).
+    """
+
+    symbol_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        pattern=r"^[a-zA-Z0-9]+$",  # defense-in-depth: ASCII-only 沿用 sub-PR 8b-rsshub 体例
+    )
+    source: str = Field(
+        default="cninfo",
+        pattern=r"^(cninfo|sse|szse)$",
+    )
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class IngestAnnouncementResponse(BaseModel):
+    """POST /api/news/ingest_announcement response schema (沿用 AnnouncementStats dataclass)."""
+
+    fetched: int
+    ingested: int
+    skipped_earnings: int
+    skipped_unknown: int
+    symbol_id: str
+    source: str
+    limit: int
+
+
+@router.post("/ingest_announcement", response_model=IngestAnnouncementResponse)
+def ingest_announcement(req: IngestAnnouncementRequest) -> IngestAnnouncementResponse:
+    """Manual trigger 公告流 ingestion via RSSHub route reuse (sub-PR 11b sediment).
+
+    沿用 ADR-049 §1 Decision 3 RSSHub route reuse + sub-PR 11b AnnouncementProcessor orchestrator.
+    announcement_type filter EXCLUDE earnings disclosure (annual_report + quarterly_report) per
+    ADR-049 §2 Finding #2 — 反 dedup with earnings_announcements 207K rows Tushare-fed PEAD path.
+
+    Args:
+        req: IngestAnnouncementRequest body — symbol_id + source + limit.
+
+    Returns:
+        IngestAnnouncementResponse with AnnouncementStats fields + echo symbol_id/source/limit.
+
+    Raises:
+        HTTPException 500: 任 fetcher init / pipeline run / DB insert 真 raise (fail-loud).
+            Sanitized detail (反 expose 内 exception DSN/table leak) 沿用 sub-PR 8a-followup-A 体例.
+
+    Note (Beat schedule sustained ADR-049 §1 Decision 4):
+        Beat dispatch via app.tasks.announcement_ingest_tasks.announcement_ingest at
+        crontab(hour="9,11,13,15,17", minute=15) Asia/Shanghai trading-hours window.
+        本 endpoint 真 manual trigger sustained.
+
+    Note (announcement_type filter EXCLUDE earnings disclosure, ADR-049 §2 Finding #2):
+        annual_report + quarterly_report 真**EXCLUDE** (skipped_earnings count) — 反 dedup
+        with earnings_announcements 207K rows Tushare-fed PEAD subset path.
+        'other' type 真**EXCLUDE** (skipped_unknown count) — 反 silent insert noise.
+    """
+    from app.services.db import get_sync_conn
+    from app.services.news import AnnouncementProcessor
+
+    logger.info(
+        "POST /api/news/ingest_announcement symbol_id=%s source=%s limit=%d",
+        req.symbol_id,
+        req.source,
+        req.limit,
+    )
+
+    pipeline = _build_pipeline_rsshub_only()
+    processor = AnnouncementProcessor(pipeline=pipeline)
+
+    conn = get_sync_conn()
+    try:
+        stats = processor.ingest(
+            symbol_id=req.symbol_id,
+            source=req.source,
+            conn=conn,
+            limit=req.limit,
+        )
+        conn.commit()  # caller 真值 事务边界 (铁律 32)
+    except Exception as exc:
+        conn.rollback()
+        logger.exception(
+            "ingest_announcement failed symbol_id=%s source=%s: %s",
+            req.symbol_id, req.source, exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"announcement ingestion failed: {type(exc).__name__}",
+        ) from exc
+    finally:
+        conn.close()
+
+    return IngestAnnouncementResponse(
+        fetched=stats.fetched,
+        ingested=stats.ingested,
+        skipped_earnings=stats.skipped_earnings,
+        skipped_unknown=stats.skipped_unknown,
+        symbol_id=req.symbol_id,
+        source=req.source,
+        limit=req.limit,
+    )
+
+
 @router.get("/stats", response_model=NewsStatsResponse)
 def get_news_stats() -> NewsStatsResponse:
     """最近 24h news_raw + news_classified row count + last 5 ingestion samples.

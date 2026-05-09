@@ -9,8 +9,8 @@ defer sub-PR 7b.3:
 - e2e live tests (requires_litellm_e2e marker)
 
 defer Sprint 3+:
-- NewsIngestionService (V3 line 1222) — 6 源 News 接入 + DataPipeline + news_raw 入库
-- AnnouncementProcessor (V3 line 1225) — 公告流 (巨潮/交易所 RSS)
+- NewsIngestionService (V3 line 1222) — ✅ DONE (sub-PR 7c PR #243)
+- AnnouncementProcessor (V3 line 1225) — ✅ DONE (sub-PR 11b, 公告流 巨潮/交易所 RSS via RSSHub route reuse, ADR-049 sustained)
 
 关联:
 - V3 line 1222-1225 (services/news/ 子包 真预约 path)
@@ -22,11 +22,14 @@ defer Sprint 3+:
 """
 from __future__ import annotations
 
+from .announcement_processor import AnnouncementProcessor, AnnouncementStats
 from .bootstrap import get_news_classifier, reset_news_classifier
 from .news_classifier_service import ClassificationResult, NewsClassifierService
 from .news_ingestion_service import IngestionStats, NewsIngestionService
 
 __all__ = [
+    "AnnouncementProcessor",
+    "AnnouncementStats",
     "ClassificationResult",
     "IngestionStats",
     "NewsClassifierService",

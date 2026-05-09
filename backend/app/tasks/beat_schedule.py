@@ -148,6 +148,26 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,
         },
     },
+    # ── trading-hours 公告流 ingestion (sub-PR 11b sediment per ADR-049 §1 Decision 4) ──
+    # cron `9,11,13,15,17 minute=15` Asia/Shanghai (5/day during 9:00-17:00 disclosure window)
+    # 反 23:00/03:00 cron waste (公告流 typically published 9:00-17:00 trading hours)
+    # 反 hard collision PT chain (16:25/16:30/09:31) + news_ingest (minute=0) — minute=15 buffer
+    # Default symbol_id="600519" (贵州茅台 baseline, real production multi-symbol Beat dispatch
+    # architecture decision deferred per ADR-049 §2 Finding #3 sustained pattern, sub-PR 12+ candidate).
+    # Default source="cninfo" (1/3 working baseline per ADR-049 §1 Decision 3, sse/szse reserved
+    # 待 S5 paper-mode 5d period verify per ADR-049 §2 Finding #1).
+    # 真 cost ~$0 (RSSHub Self-hosted localhost:1200 anonymous sustained sub-PR 6).
+    # 铁律 44 X9 post-merge ops checklist sustained: `Servy restart QuantMind-CeleryBeat` after merge
+    # (沿用 ADR-043 + LL-097 sediment, sub-PR 11b post-PR ops).
+    "announcement-ingest-trading-hours": {
+        "task": "app.tasks.announcement_ingest_tasks.announcement_ingest",
+        "schedule": crontab(hour="9,11,13,15,17", minute=15),
+        "kwargs": {"symbol_id": "600519", "source": "cninfo"},  # explicit intent (沿用 LL-115)
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next 2h cron window
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
