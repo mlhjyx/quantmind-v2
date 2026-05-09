@@ -10,7 +10,7 @@
 >
 > **not scope** (现有 SSOT 处理): 4 doc fresh read SOP → SESSION_PROTOCOL §1 / 铁律 → IRONLAWS / D 决议 → DECISION_LOG / LL → LESSONS_LEARNED / ADR # → docs/adr/REGISTRY.md / handoff → handoff_template.
 >
-> **本文件版本**: v0.2 (post-audit reality grounding, 沿用 ADR-022 反 silent overwrite — v0.1 row 保留 + version history append)
+> **本文件版本**: v0.4 (post-Tier A plan 修订 sediment, 2026-05-09, Finding #1 (b) §0.1 ROADMAP 标注 + Finding #3 (a) §L0.4 baseline 修订, 沿用 ADR-022 反 silent overwrite — v0.1/v0.2/v0.3 row 保留 + version history append + header version cite 修订 catch up v0.2 → v0.4)
 > **关联 audit**: `docs/audit/v3_orchestration/claude_dir_audit_report.md` (PR #270, 2026-05-08, 22 row 真值表 + 8 finding cross-verify drift 率 25%)
 > **关联 ADR**: ADR-019 / ADR-020 / ADR-021 / ADR-022 / ADR-027 / ADR-028 / ADR-037 + 后续 V3 实施期 ADR (含 ADR-DRAFT row 11/12/13 候选)
 
@@ -32,7 +32,7 @@
 | D 决议 | `docs/DECISION_LOG.md` |
 | ops runbook | `docs/runbook/cc_automation/00_INDEX.md` |
 | invocation map | `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` (step 2 产出) |
-| 长期 Roadmap | `docs/RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` (V3 §18.3 reserved) |
+| 长期 Roadmap | `docs/RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` (V3 §18.3 reserved scope, planned, not yet sediment, sediment 时机决议 Tier B closure 后 — Finding #1 (b) sediment, sustained ADR-022 反 silent 创建 + 反 silent overwrite) |
 
 ### §0.2 反 anti-pattern 验证 (沿用 ADR-022 集中机制)
 
@@ -102,8 +102,8 @@ CC 第一次 V3 实施 sprint 起手前必走 verify (5 步任一不通过 → S
 
 ### §L0.4 timeline baseline + replan 触发
 
-- **baseline**: progress report Part 4 cite (~12-16 周, 紧)
-- **replan 触发**: 任 stage 实际超 baseline 1.5x → CC 主动 push user (sprint 收口决议) + replan template
+- **baseline**: progress report Part 4 cite (~12-16 周, 紧) — 修订标注 (实际 ~26-31 周, baseline 真值修订 sub-PR # cite, post-Finding #3 (a) + Push back #3 (b) parallel S2 cumulative; 真值 estimate: Tier A 7-9.5 含 S2.5 parallel S2 +0-0.5 周 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1; sustained ADR-022 反 silent overwrite + 反 retroactive content edit, 仅 append 标注 0 改 progress report Part 4 cite 内容)
+- **replan 触发**: 任 stage 实际超 baseline 1.5x → CC 主动 push user (sprint 收口决议) + replan template (修订 baseline 1.5x = ~39-46 周 ~9.7-11.5 月, post-Finding #3 (a) cumulative)
 - **replan template**: 治理债 surface + sub-task creep cite + remaining stage timeline 修订 + Tier B / cutover 时间窗口重谈
 
 ---
@@ -505,6 +505,13 @@ verifier: `quantmind-pt-cutover-gate` skill
   - **sub-PR 3a (PR #288, edit cumulative cite refresh +23/-12)**: §L0.3 (step 1 augmented OMC v4.9.1 + ECC observe.sh wire / step 3 hook v2→v3 + LL-133 cite / step 4 件 3+4+5+6 cumulative closure cite (13 skill + 13 hook 4+4+5 + 7 charter + V3_LAUNCH_PROMPT v0.1) / step 5 augmented redline 双层 / footer NEW LL-127 §0.3 SSOT 锚点 baseline 真值落地 sustainability) + §L1.1 (8 → 9 doc fresh read SOP, NEW row V3_LAUNCH_PROMPT.md + skeleton v0.1 status committed + footer NEW cumulative cite refresh 第 11+12 项 prompt 升级 + LL-132 + DECISION_LOG ad-hoc trigger)
   - **sub-PR 3b (PR #289, pure append augmented banner + footer NEW +21/0)**: §L6.1 (post-V3 6 件套 100% closure cumulative cite refresh banner + audit row 22 baseline sustained 反 silent inflate/deprecate plugin 选片) + §L6.2 (件 3+4+5+6 cumulative PR # cite + LL-117/133/135 体例累积 + footer NEW LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope + 件 3-6 详细 cumulative cite scope)
   - **sub-PR 3c (本 PR, pure append augmented banner + footer NEW)**: §L10 (post-V3 6 件套 100% closure cumulative cite refresh banner + 数值留 CC 实测决议 + ADR sediment 锁 体例 sustained + footer NEW 5 大 gate criteria sustainability cumulative cite + LL-127 §0.3 cumulative cite SSOT 锚点 baseline cumulative scope 三段累积 sub-PR 3a + 3b + 3c)
+- **v0.4 (post-Tier A plan 修订 sediment, 2026-05-09, V3 实施期 Tier A plan phase user 决议 Finding #1 (b) + #2 (b) + #3 (a) + 3 push back accept)**: 沿用 ADR-022 反 silent overwrite (v0.1/v0.2/v0.3 row 保留 + version history append). 修订 trigger = user invoke `quantmind-v3-sprint-orchestrator` charter (件 5) 跑 Tier A S1-S11 sprint chain plan phase, surface 3 Phase 0 active discovery findings, user 决议 4 项 (Finding #1 (b) + #2 (b) + #3 (a) + Push back #1 (i) root path / #2 ack content source / #3 (b) S2.5 parallel S2). 修订基于 plan-then-execute 体例 sub-PR sediment cycle:
+  - **header line 13**: 版本 v0.2 → v0.4 (catch up v0.3 drift sustained ADR-022 反 silent overwrite + sustained 第 11 项 prompt 升级 real-world catch case 实证累积 — header version cite vs version history entry drift 真值修正 候选第 8 case)
+  - **§0.1 line 35 cite 修订** (Finding #1 (b) sediment): `docs/RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` cite 加 "(planned, not yet sediment, V3 §18.3 reserved scope, sediment 时机决议 Tier B closure 后)" 标注 — 沿用 ADR-022 反 silent 创建 ROADMAP file + 反 silent overwrite cite 内容
+  - **§L0.4 baseline 修订** (Finding #3 (a) + Push back #3 (b) parallel S2 cumulative sediment): progress report Part 4 cite "~12-16 周" 加 "(实际 ~26-31 周, baseline 真值修订 sub-PR # cite)" 标注 — 沿用 ADR-022 反 retroactive content edit, 仅 append 标注 0 改 progress report 内容; 真值 estimate Tier A 7-9.5 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1 = ~26-31 周 (~6.5-7.7 月); replan trigger 1.5x = ~39-46 周
+  - **关联 sub-PR**: PR # CC sediment cycle 时实测决议 + 关联 docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md skeleton v0.2 → v0.3 (S2.5 row 加 + Finding #2 (b) sediment) + 关联 docs/V3_TIER_A_SPRINT_PLAN_v0.1.md NEW file (Tier A 12 sprint plan post-Finding 决议落地)
+  - **修订 hybrid 体例真值** (CC 真测决议): edit (header version + §0.1 cite + §L0.4 baseline) + append (version history v0.4 entry) — 沿用 sub-PR 3a/3b/3c/4/5/6/7 hybrid 体例累积扩 sub-PR 8 sediment 体例
+  - **0 hook + 0 skill + 0 charter + 0 settings.json wire delta + 0 ADR-DRAFT.md 修订 + 0 LESSONS_LEARNED.md 修订 + 0 REGISTRY.md 修订 + 0 V3_LAUNCH_PROMPT.md 修订 + 0 SESSION_PROTOCOL.md 修订 + 0 §L0.3/§L1.1/§L5/§L6.1/§L6.2/§L8/§L10 修订** sustained (sustained ADR-022 反 silent overwrite + LL append-only governance + sub-PR 1-7 governance pattern parallel体例)
 
 ### footer
 
