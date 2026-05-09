@@ -4303,3 +4303,56 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - skill quantmind-v3-active-discovery (件 3) — Phase 0 active discovery enforcement sustained
 - 铁律 17/32/33/41/44 (X9)
 
+## LL-141: post-merge ops checklist gap — Worker imports verify + 1:1 task dispatch simulation 必须 supplement Beat restart only (sub-PR 11b silent miss caught by user "为什么要等" intuition + sub-PR 12 hotfix sediment, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 11b (PR #299, `6490979` merged) 完成 V3 §S2.5 AnnouncementProcessor + Celery task + Beat schedule wire. Post-merge ops checklist (沿用 ADR-050 §post-merge ops + 铁律 44 X9 + LL-097 sediment) cite 2 step: (1) `psql -f announcement_raw.sql` apply migration / (2) `Servy restart QuantMind-CeleryBeat`. CC 走完 2 step 全 PASS, declare V3 §S2.5 sprint complete + STOP gate 给 user.
+
+**真值差异 (silent miss caught)**: user 反问 "为什么要等10-11日才能验证？不能提前模拟一比一验证吗？" — 触发 1:1 task dispatch simulation (`celery_app.send_task('app.tasks.announcement_ingest_tasks.announcement_ingest', ...)`) → Worker stderr `Received unregistered task ... KeyError: 'app.tasks.announcement_ingest_tasks.announcement_ingest'`. 真值 root cause: sub-PR 11b file delta 8 个改动 含 beat_schedule.py + announcement_ingest_tasks.py 创建, 但**漏加** `celery_app.py:imports=[...]` 列表 → Celery autodiscover NOT pick up 新 task module → 5-10 09:15 周日 Beat 真 fire 时才会 surface (KeyError on production fire, ADR-050 verify 路径完全 fail).
+
+**Trigger**: post-PR-merge ops verify SOP (Beat restart + 1:1 task dispatch simulation) 被 user "为什么要等" 直觉触发. CC 自身 0 silent post-merge ops gap detect — 沿用 LL-103 反 silent agreeing 第 N+1 次实证.
+
+**SOP** (LL-141 sediment, post-merge ops 4-step checklist sustained):
+
+1. **Beat restart 不充分** (沿用 铁律 44 X9 sustained 体例 增补): Beat process restart 仅 reload BEAT_SCHEDULE dict (`from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE`) — 静态 dict import + crontab schedule 注册. 但 Celery **Worker** process 0 restart → 新 task module NOT registered → autodiscover via `celery_app.conf.imports` list 仅 在 Worker startup 时执行 1 次. 任 `app/tasks/*_tasks.py` 创建 ADD-必须 walk 全链 (Beat schedule wire + Worker imports list + Worker restart).
+
+2. **post-merge ops checklist 4-step (sustained ADR-050 patch)**:
+   (a) Apply migration (DDL + verify schema)
+   (b) **Verify Worker `app.tasks.celery_app.imports=[...]` list 含新 task module path** (反 silent miss, sub-PR 12 hotfix root cause)
+   (c) `Servy restart QuantMind-CeleryBeat` AND `Servy restart QuantMind-Celery` (Worker 必 restart for 新 task autodiscover, 沿用 铁律 44 X9 + Worker reload)
+   (d) **1:1 task dispatch simulation** (`celery_app.send_task(...)` 同样 task name + 同样 kwargs as Beat) → verify scheduler_task_log audit row + result_json schema OK + 0 KeyError (反 wait 5-10 周日 Beat 真 fire 才发现, sustained user "为什么要等" 直觉 enforce)
+
+3. **1:1 simulation > wait-for-production-fire**: Beat 是 dispatcher only — 直接 `celery_app.send_task()` 同样 task name + 同样 kwargs 即等价 Beat fire. simulation cost ~30s vs wait 真 production fire ~12-24h (周日 09:15 / 工作日 09:15 next-day). **post-merge ops checklist sediment SOP**: simulation 必 walk before declare sprint complete, 反 ship "Beat restarted" 即 declare done 体例 (sub-PR 11b 真值 case).
+
+4. **反 forward-progress default LL-098 X10 sustained reverse case**: CC 走完 ADR-050 §post-merge ops 2-step (per spec), declare done — but spec **缺** Worker imports verify + 1:1 simulation 步. **真值 governance gap**: ADR-050 §post-merge ops checklist self-cite 不足以 catch 自身 spec gap. user "为什么要等" 直觉 = 反 LL-103 silent agreeing 第 N+1 次 enforce — sub-PR 11b post-merge ops sediment 真值**carries spec gap silent miss** 第 N 次实证.
+
+**关联 PR**:
+- 本 LL 条目 (LL-141 sediment) sub-PR 12 (hotfix `celery_app.py` imports + ride-next reviewer findings bundle)
+- 关联 sub-PR 11b PR #299 (silent miss source — 8 file delta 漏 1 imports list entry)
+- 关联 ADR-050 (V3 §S2.5 implementation Beat trading-hours cadence + per-source fail-soft) — 本 LL 触发 ADR-050 §post-merge ops checklist patch (sub-PR 12 sediment)
+
+**Cite SSOT 锚点 (4 元素 sustained)**:
+- (a) doc + line# + section: `backend/app/tasks/celery_app.py:45-54` imports list (sub-PR 12 hotfix add line 51 `app.tasks.announcement_ingest_tasks`) + ADR-050 §post-merge ops checklist patch (sub-PR 12 sediment) + LL-141 NEW
+- (b) fresh verify timestamp: 2026-05-09 22:11 sub-PR 12 1:1 simulation success — scheduler_task_log row `status=success` `result_json={"limit":10,"source":"cninfo","status":"success","fetched":0,"ingested":0,...}` (Worker stderr 0 KeyError post-hotfix)
+- (c) 真值 vs spec cite 漂移: ADR-050 §post-merge ops checklist 2-step cite ("apply migration" + "Beat restart") vs reality 4-step needed (add Worker imports verify + 1:1 simulation) — 真值 governance gap caught by user "为什么要等" 直觉
+- (d) 真值修正 scope: ADR-050 §post-merge ops checklist 4-step patch (sub-PR 12 sediment) + celery_app.py imports +1 line + LL-141 NEW
+
+**讽刺点**: **讽刺 #32** sediment — V3 governance batch closure cumulative pattern 12 sub-PR cumulative ADR/LL sediment体例 累积 sediment "post-merge ops checklist sustainability" 反 sustainability ADR-050 自身 §post-merge ops checklist 真值**carries spec gap** 第 1 次实证. ADR sediment 自身 cite drift / spec gap silent miss 体例 反向 enforce 第 N+1 次 — **ADR sediment 体例自身 carries spec gap silent miss risk 第 1 次实证累积** (sustained LL-103 反 silent agreeing 第 N+1 次实证 + LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case + sub-PR 11a/11b ADR-049/050 sediment 真值**自身 spec gap silent miss** 第 1 次实证累积).
+
+**反向**: user "为什么要等10-11日才能验证？" 直觉 = 反 silent forward-progress default LL-098 X10 reverse enforce + 反 silent agreeing LL-103 reverse enforce — single user message 触发 sub-PR 12 hotfix cycle + LL-141 sediment + ADR-050 §post-merge ops checklist 4-step patch + ride-next reviewer findings bundle (sub-PR 9/10/11a/11b 4 cumulative items sediment).
+
+**relate**:
+- LL-097 (Beat schedule restart 体例 sustained) sustained — 本 LL 反 single-step "Beat restart" sufficiency, expand to 4-step Worker + simulation enforcement
+- LL-098 X10 (反 forward-progress default) sustained reverse case — declare done 缺 1:1 simulation step
+- LL-100 (chunked SOP target) — sub-PR 12 hotfix-only atomic + ride-next bundle ~600-800 lines target
+- LL-103 (反 silent agreeing) sustained — 真值**N+1 次实证累积** (user 直觉 catch CC 自身 0 detect spec gap)
+- LL-115 (Phase 0 active discovery + capacity expansion 真值 silent overwrite anti-pattern) reverse case — ADR sediment 自身 spec gap 反向 enforce
+- LL-127 (cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope) sustained
+- LL-132 (pre-push smoke fresh verify) — sub-PR 12 hotfix `celery_app.py` production code 改 → 必 走 default push (反 --no-verify, sustained ADR-049 §5 sediment体例)
+- LL-135 (doc-only sediment 体例 反 fire test) — 本 sub-PR 12 mixed (hotfix production code + ride-next 5 file doc edits) → 反 pure --no-verify 体例
+- LL-137/138/139/140 (V3 governance batch closure cumulative pattern + plan-then-execute 体例 5 实证累积) sustained — 本 LL 第 6 case 实证累积扩 (sub-PR 12 hotfix-only 体例 1st 实证)
+- ADR-022 (反 silent overwrite + 反 retroactive content edit) sustained
+- ADR-043 (News Beat schedule + RSSHub routing 契约) sustained — 本 LL 反向 enforce
+- ADR-049 §5 (`push --no-verify` rationale) — 本 sub-PR 12 hotfix exception 体例 sustained
+- ADR-050 §post-merge ops checklist patch — 本 LL 触发 (sub-PR 12 sediment scope)
+- 铁律 44 X9 (Beat schedule 改必显式 restart) — 本 LL 增补 4-step 体例 (Beat restart 不充分, 加 Worker imports verify + Worker restart + 1:1 simulation)
+
