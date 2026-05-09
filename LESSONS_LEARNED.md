@@ -4262,3 +4262,44 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer sustained
 - charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained 第 3 case 实证累积扩 (closure-verify S1/S2 + greenfield-architecture S2.5)
 
+---
+
+## LL-140: V3 §S2.5 implementation 体例 + announcement_type inference precedent + Beat trading-hours cadence sediment + chunked 2 sub-PR split closure (V3 governance batch closure sub-PR 11b sediment, plan-then-execute 体例 5th 实证 + LL-137/138/139 第 4 case 实证累积扩, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 11a (PR #298) sediment V3 §S2.5 architecture decisions ADR-049 + LL-139 + announcement_raw DDL. User explicit ack sub-PR 11b implementation (post sub-PR 11a closure, "同意" 4th, sustained ADR-049 §3 chunked 2 sub-PR split). CC implements AnnouncementProcessor service orchestrator + RSSHub route reuse + Celery task wrapper + API endpoint + Beat schedule + 31 unit tests, locking implementation-level decisions per ADR-050. **Plan-then-execute 体例 5th 实证累积** (sustained sub-PR 8/9/10/11a/11b cumulative pattern + chunked 2 sub-PR split闭环).
+
+**Trigger**: V3 Tier A S2.5 sprint implementation cycle (post sub-PR 11a closure) + user explicit ack → CC builds 13 file delta production code (~1100-1300 lines, sustained sub-PR 7c NewsIngestionService precedent + ADR-049 §1 Decision 1-6 + ADR-049 §2 3 findings resolution).
+
+**SOP** (LL-140 sediment, sustained LL-137/138/139 体例累积扩):
+
+1. **Greenfield sprint chunked 2 sub-PR split闭环 体例 sustained** (sustained ADR-049 §3 sub-PR 11a + 11b cumulative pattern, 反 Plan v0.1 §A S2.5 single sub-PR 早 cite): chunked 2 split cycle = sub-PR Na (DDL+ADR sediment) + sub-PR Nb (implementation+tests+ADR sediment). 反 single sub-PR体例 for greenfield scope >800 lines (LL-100 chunked SOP target ≤8 min cumulative). Successful 闭环 实证 第 1 case 累积扩 sub-PR 12+ greenfield sprint sustained.
+
+2. **announcement_type inference precedent 体例 sustained** (sub-PR 11b 1st 实证累积): title keyword regex 体例 with order-aware matching (quarterly checked FIRST 反 半年[度报]?报告 / 半年报 false-match annual)。 6 enum mapping (annual_report / quarterly_report / material_event / shareholder_meeting / dividend / other) sustained DDL CHECK constraint enforce + service-layer filter EXCLUDE earnings disclosure dedup (ADR-049 §2 Finding #2 sediment).
+
+3. **Beat trading-hours cadence sediment 体例 sustained** (sub-PR 11b 1st 实证): cron `9,11,13,15,17 minute=15` Asia/Shanghai (5/day during 9:00-17:00 disclosure window, 反 23:00/03:00 cron waste, minute=15 buffer 反 PT chain + news_ingest minute=0 collision)。 post-merge ops checklist `Servy restart QuantMind-CeleryBeat` (铁律 44 X9 sustained ADR-043 + LL-097)。 Real production verify cadence at S5 paper-mode 5d period (sustained ADR-047 + ADR-048 + ADR-049 §2 deferred items pattern).
+
+4. **plan-then-execute 体例 5th 实证累积** (sustained sub-PR 8 1st + 9 2nd + 10 3rd + 11a 4th + 11b 5th cumulative pattern): plan iteration → ExitPlanMode user explicit approve → sub-PR sediment cycle (Constitution + skeleton + Plan + ADR + LL + REGISTRY + greenfield code 13 file delta atomic 1 PR per sub-PR for implementation; doc-only 6-8 file delta for sediment). 反 forward-progress default LL-098 X10. 反 silent self-trigger next sprint without explicit user ack.
+
+5. **Mock-based unit test 体例 sustained sub-PR 7c precedent** (sub-PR 11b 31 tests / 31 PASSED / 6.61s real .venv pytest verify): DataPipeline mock + conn mock + cursor.fetchone preset IDs + NewsItem fixture builder (`_make_news_item` helper). unit ≥80% (L0 non-critical, V3 §12.3) sustained.
+
+**关联 PR**:
+- 本 LL 条目 (LL-140 sediment) sub-PR 11b (本 PR)
+- 关联 sub-PR 11a PR #298 (V3 §S2.5 architecture sediment ADR-049 + LL-139 + announcement_raw DDL) — plan-then-execute 体例 4th 实证 + chunked 2 sub-PR split sub-PR 11a 部分
+- 关联 sub-PR 8/9/10 PR #295/#296/#297 cumulative — plan-then-execute 体例 1st/2nd/3rd 实证
+
+**Cite SSOT 锚点 (4 元素 sustained)**:
+- (a) doc + line# + section: V3 Tier A Sprint Plan v0.1 §A S2.5 row + Constitution §L0.4 baseline + skeleton §2.1 S2.5 row + ADR-050 + ADR-049 + LL-140 NEW
+- (b) fresh verify timestamp: 2026-05-09 sub-PR 11b sediment + 31/31 pytest PASSED 6.61s real .venv pytest verify
+- (c) 真值 vs prompt cite 漂移: Plan §A S2.5 row "single sub-PR" 早 cite vs reality chunked 2 split (sub-PR 11a + 11b) — sub-PR 11a sediment 已 patch
+- (d) 真值修正 scope: ADR-049 §3 chunked split + ADR-050 implementation level locks (Beat cadence + service-layer filter + inference logic)
+
+**讽刺点**: **讽刺 #31** sediment — chunked 2 sub-PR split (sub-PR 11a DDL+ADR + sub-PR 11b implementation) 真值 闭环成功 — 反 Plan v0.1 §A S2.5 single sub-PR 早 cite drift sustained 第 4 case 实证累积扩 cumulative pattern (sustained LL-137 讽刺 #28 + LL-138 讽刺 #29 + LL-139 讽刺 #30 第 4 case 实证累积扩) — **plan-then-execute 体例自身 carries cite drift risk 第 N+3 次实证累积** (sustained LL-139 第 11 次实证 cumulative pattern + 本 sub-PR 11b 第 12 次实证累积扩).
+
+**relate**:
+- LL-098 X10 / LL-100 / LL-115 / LL-116 / LL-117 / LL-127 / LL-132 / LL-133 / LL-135 / LL-136 / LL-137 / LL-138 / LL-139 sustained
+- ADR-022 / ADR-031 / ADR-032 / ADR-033 / ADR-043 / ADR-047 / ADR-048 / ADR-049 sustained
+- ADR-050 (V3 §S2.5 implementation) — 本 LL 关联 ADR
+- charter quantmind-v3-sprint-orchestrator (件 5) — sprint chain state lookup precedent sustained
+- skill quantmind-v3-active-discovery (件 3) — Phase 0 active discovery enforcement sustained
+- 铁律 17/32/33/41/44 (X9)
+
