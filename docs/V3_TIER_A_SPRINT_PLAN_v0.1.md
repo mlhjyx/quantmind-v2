@@ -41,13 +41,13 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 | element | content |
 |---|---|
-| Scope | V3 §11.1 `LiteLLMRouter` (`backend/qm_platform/llm/`, ADR-031 path); V3 §5.5 LLM 路由 (V4-Flash/V4-Pro/Ollama); skeleton §2.1 |
-| Acceptance | LiteLLM SDK install + import smoke + 6 provider config 走 .env; `LiteLLMRouter.call()` 接口 (3 routes); unit ≥95%; LiteLLM <3s + Ollama fallback SLA baseline 实测 + ADR 锁; `check_anthropic_imports.py` CI lint (V3 §17.1, Gate D prereq) |
-| File delta | ~3-5 files / ~400-700 lines |
-| Chunked sub-PR | **single sub-PR** (atomic, LL-100 ≤8min target) |
-| Cycle | V3 §12.1 line 1310: 1 周; replan 1.5x |
-| Dependency | 前置: 0 (起点) / 后置: S2/S2.5/S3/S5/S7/S8 |
-| LL/ADR candidate | ADR # next free (CC 起手实测决议) — provider 选片 + 月成本 budget + Ollama fallback; LL — V4-Flash → V4-Pro 升级 routing finding |
+| Scope | V3 §11.1 `LiteLLMRouter` (`backend/qm_platform/llm/`, ADR-031 path); V3 §5.5 LLM 路由 (V4-Flash/V4-Pro/Ollama); skeleton §2.1. **Status (post sub-PR 9 verify)**: ✅ substantially closed by V2 prior cumulative work — 5/8 acceptance items done, 3/8 closure-only gap (cov 实测 + SLA baseline ADR + cite 调和). 沿用 ADR-047 V3 §S1 closure acceptance + SLA baseline deferred |
+| Acceptance | LiteLLM SDK install + import smoke ✅ (PR #221); 3 routes provider config 走 .env ✅ (deepseek-v4-flash + deepseek-v4-pro + qwen3-local, `config/litellm_router.yaml`); `LiteLLMRouter.call()` 接口 + 7 task enum ✅ (PR #222); unit ≥95% ⚠️ (8 test files exist, 87/95 pass, 8 pre-existing CRLF env issue 不归本 sprint); LiteLLM <3s + Ollama fallback SLA baseline 实测 ⚠️ deferred to S5 paper-mode 5d period (ADR-047 sediment, 反 silent stress test); `check_llm_imports.sh` CI lint ✅ (PR #219, V3 §17.1, Gate D prereq, 沿用 .sh 体例非 .py); ADR-031 path ✅ + ADR-032 caller bootstrap ✅ |
+| File delta | ~3-5 files / ~400-700 lines (retroactive — V2 cumulative ~5630 行 / 48 mock + 2 e2e tests / 0 真账户 risk PR #219-#226 + 4 follow-ups #246/247/253/255 already done by V2 Sprint 1, post sub-PR 9 verify-only + cite reconcile + ADR sediment ~300-500 lines doc-only delta) |
+| Chunked sub-PR | **single sub-PR** (verify-only + cite reconcile + ADR sediment hybrid, sub-PR 9 sediment) |
+| Cycle | V3 §12.1 line 1310: 1 周 baseline (实际 V2 prior cumulative ~5-6 days 5-02 → 5-07; sub-PR 9 closure cycle <1 day verify + doc sediment) |
+| Dependency | 前置: 0 (起点); V2 prior work cumulative: PR #219-#226 + #246/247/253/255 ~5630 行 已 done / 后置: S2/S2.5/S3/S5/S7/S8 |
+| LL/ADR candidate | **ADR-047** ✅ promote (sub-PR 9 V3 §S1 closure acceptance + SLA baseline deferred to S5); **LL-137** ✅ promote (V3 §S1 substantially closed by V2 prior cumulative work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption) |
 | Reviewer reverse risk | 反 hardcoded API key (sustained 数值留 CC 实测 + ADR 锁); 反 SDK silent install 漂移 (LL-115) |
 | 红线 SOP | redline_pretool_block hook + quantmind-v3-redline-verify skill (5/5 query); .env 改 → STOP + push user (memory #24 (b)) |
 | Paper-mode | 0 真账户 mutation, 0 broker call, sustained 红线 5/5 |
@@ -300,12 +300,13 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | S10 | 3 day (paper-mode 5d real time = 5d + verify 1-2d = 1 周 候选) | 1.5 周 |
 | S11 | 1 day (chunked governance batch = 0.5-1 周 候选) | 1.5 周 |
 
-**Tier A total**: ~7-9.5 周 (V3 §12.1 line 1322 cite ~7-9 周 + Finding #2 (b) S2.5 parallel S2 +0-0.5 周 per Push back #3 (b), 含 buffer)
+**Tier A total**: ~7-9.5 周 baseline (V3 §12.1 line 1322 cite ~7-9 周 + Finding #2 (b) S2.5 parallel S2 +0-0.5 周 per Push back #3 (b), 含 buffer). **post sub-PR 9 实测真值修订**: Tier A 真 net new scope 仅 S2.5 + S5 + S7 + S9 + S10 + S11 + 部分 S2/S3 真 GAP (S1/S4/S6/S8 substantially pre-built by V2 prior work) → **真 cycle ~3-5 周** (V2 prior cumulative ~5-6 days 5-02→5-07 已 close S1+S4+S6+S8; 真 net new 6/12 sprint scope ~3-5 周)
 
-**V3 实施期总 cycle 真值修订** (Constitution §L0.4 修订 sediment, post-Finding #3 (a) + Push back #3 (b) 决议落地):
-- progress report Part 4 baseline cite: ~12-16 周, 紧 → **修订加标注 "(实际 ~26-31 周, baseline 真值修订 sub-PR # cite)"** (sustained ADR-022 反 silent overwrite + 反 retroactive content edit)
-- 真值 estimate: Tier A 7-9.5 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1 = **~26-31 周** (~6.5-7.7 月)
-- replan trigger 1.5x = ~39-46 周 (~9.7-11.5 月)
+**V3 实施期总 cycle 真值再修订** (post sub-PR 9 V2 prior work cumulative cite sediment, sustained Finding #3 (a) + Push back #3 (b) 决议落地 cumulative scope):
+- progress report Part 4 baseline cite: ~12-16 周, 紧 → **修订加标注 "(实际 ~14-18 周, baseline 真值再修订 sub-PR 9 cite, post-V2 prior cumulative cite sediment)"** (sustained ADR-022 反 silent overwrite + 反 retroactive content edit)
+- 真值 estimate (post sub-PR 9): Tier A 真 net new ~3-5 周 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1 = **~14-18 周** (~3.5-4.5 月) — **下降 ~10-13 周** vs sub-PR 8 sediment estimate ~26-31 周
+- 真值差异根因: sub-PR 8 sediment 时 silent overwrite V2 prior work cumulative cite (V3 §S1+S4+S6+S8 substantially pre-built), 反 LL-115 capacity expansion 真值 silent overwrite anti-pattern (LL-137 sediment 候选)
+- replan trigger 1.5x = ~21-27 周 (~5-7 月)
 
 **replan trigger condition** (Constitution §L0.4): 任 sprint 实际超 baseline 1.5x → STOP + push user; quantmind-v3-sprint-replan skill (件 3) trigger; replan template = 治理债 surface + sub-task creep cite + remaining stage timeline 修订
 

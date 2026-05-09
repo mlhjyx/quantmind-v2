@@ -4094,3 +4094,56 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - ADR-022 (反 silent overwrite + 集中机制) — cross-verify 体例 mechanism + SOP knowledge 双层 enforce
 - skill quantmind-v3-cite-source-lock SKILL.md (件 3, 4 元素 cite SSOT 锚点 体例) — sub-PR sediment time cite SSOT enforce mechanism
 
+---
+
+## LL-137: V3 §S1 substantially closed by V2 prior cumulative work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption (V3 governance batch closure sub-PR 9 sediment, plan-then-execute 体例 2nd 实证, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 8 (PR #295) sediment Tier A 12 sprint plan v0.1 (Constitution v0.4 + skeleton v0.3 + Plan v0.1 file 创建 + Finding #1/#2/#3 + 3 push back accept). User explicit ack Tier A S1 起手 (15:11 session resume), CC invoke `quantmind-v3-sprint-orchestrator` charter (件 5 借 OMC `planner` extend) for sprint chain state lookup pre sub-PR implementation. **Phase 0 active discovery finding** (LL-115 enforce + Constitution §L5.3): V3 §S1 actual state ≠ Plan §A S1 row "from-scratch start (前置 0)" framing — V2 Sprint 1 prior cumulative work PR #219-#226 (~5630 行 / 48 mock + 2 e2e tests / 0 真账户 risk) + 4 follow-ups #246/247/253/255 已 done by 2026-05-03 → 2026-05-07. V3 §S1 8 acceptance items: 5/8 ✅ DONE + 3/8 ⚠️ residual gap (cov env issue / SLA baseline ADR / 4 cite drift).
+
+**Trigger**: sprint-orchestrator charter Phase 0 verify (read-only Glob/Grep/Read + Bash for git/gh/pip read-only state queries) surface 真值 finding, sustained LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case 第 N 次实证累积扩 plan-then-execute 体例 2nd 实证.
+
+**SOP** (LL-137 sediment):
+
+1. **Tier A sprint chain plan 起手前必 fresh re-verify each sprint 真值 vs prior work cumulative cite** (沿用 LL-115 + LL-116 fresh re-read enforce + LL-117 atomic sediment+wire): Plan §A 各 row 真值需 cross-verify with prior work (V2 Sprint 1 + Sprint 2 cumulative + 4 follow-ups). 反 silent assume from-scratch start.
+
+2. **sprint-orchestrator charter (件 5) 必 invoke pre sub-PR implementation 体例 sustained** (沿用 V3_LAUNCH_PROMPT v0.2 §3.1 sprint 起手 SOP step 2): Phase 0 verify 真值 vs Plan 假设, surface finding ≥1 if material divergence (沿用 LL-115 enforce 3 类 STOP 触发).
+
+3. **真值 baseline sediment 真值再修订体例 sustained** (沿用 ADR-022 反 silent overwrite + 反 retroactive content edit): historical baseline cite 沿用 (v0.1/v0.2/v0.3/v0.4 row 保留), 仅 append "(实际 ~14-18 周)" annotation 真值修订 cite, 0 改 progress report Part 4 历史 content.
+
+4. **plan-then-execute 体例 2nd 实证累积** (sustained sub-PR 8 1st 实证 + sub-PR 9 2nd 实证 cumulative pattern): plan iteration → ExitPlanMode user explicit approve → sub-PR sediment cycle (Constitution + skeleton + Plan + ADR + LL + REGISTRY 6 file delta atomic 1 PR). 反 forward-progress default LL-098 X10. 反 silent self-trigger next sprint without explicit user ack.
+
+5. **sub-PR sediment 真值 vs Plan 假设 reverse case detection 体例 sustained** (LL-115 反 silent overwrite enforce 第 N 次实证累积扩): 任 sub-PR sediment 时 surface "Plan 假设 vs 真值差异" 真值 finding ≥1 if material — sediment LL/ADR row, 反 silent self-correction without user ack.
+
+**关联 PR**:
+- 本 LL 条目 (LL-137 sediment) sub-PR 9 (本 PR)
+- 关联 sub-PR 8 PR #295 (Plan v0.1 file 创建 + Finding #1/#2/#3 + 3 push back accept) — plan-then-execute 1st 实证
+- 关联 V2 Sprint 1 PR #219-#226 + 4 follow-ups #246/247/253/255 (V3 §S1 substantially closed cumulative cite)
+
+**Cite SSOT 锚点 (4 元素 sustained 沿用 LL-101 + LL-105 SOP-6 + LL-116)**:
+- (a) doc + line# + section: V3 Tier A Sprint Plan v0.1 §A S1 row + V3_IMPLEMENTATION_CONSTITUTION.md §L0.4 baseline + V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md §2.1 S1 row
+- (b) fresh verify timestamp: 2026-05-09 sub-PR 9 sediment, sprint-orchestrator charter Phase 0 verify
+- (c) 真值 vs prompt cite 漂移: Plan §A S1 row "前置 0 (起点)" / 真值 V2 prior work cumulative ~5630 行 已 done
+- (d) 真值修正 scope: V3 §S1 8 acceptance items: 6/8 ✅ DONE + 1/8 ⚠️ partial (cov env) + 1/8 ⚠️ deferred (SLA baseline to S5)
+
+**讽刺点**: **讽刺 #28** sediment — CC sub-PR 8 sediment (PR #295) 自身 carries silent overwrite from-scratch assumption ([V2 prior work cumulative cite](LESSONS_LEARNED.md#LL-115) silent miss) — Plan v0.1 §A S1 row "前置 0 (起点)" framing carries silent assumption Tier A 12 sprint 全 from-scratch start, 反 V2 Sprint 1+2 prior cumulative work ~5630 行 已 done. sustained sub-PR 1-7 governance pattern parallel 体例 reveal sub-PR 8 reverse case (sustained sub-PR 8 reveal sub-PR 9 reverse case 体例累积扩 sustainability 沿用) — **plan-then-execute 体例自身 carries cite drift risk 第 N 次实证累积** (沿用 sub-PR 6 pre-sediment Q5 + sub-PR 1 LL # next free + sub-PR 2 ADR-DRAFT row 11-26 cumulative count drift + sub-PR 3a Constitution 版本号 真值修正 + sub-PR 5 prompt cite "32 untracked" 真值 drift + sub-PR 7 git branch -r local cache stale + sub-PR 8 反 silent baseline drift + reverse plan path subdir abstraction + Constitution header version v0.2 vs version history v0.3 entry drift 真值修正 案例累积 + 本 sub-PR 9 反 silent overwrite from-scratch assumption + V2 prior work cumulative cite silent miss 案例第 9 次实证累积).
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) — sub-PR 9 closure 后 STOP gate before S2/S2.5 起手 sustained
+- LL-100 (chunked SOP target ~10-13 min) — sub-PR 9 doc-only sediment 6 file delta atomic
+- LL-115 (Phase 0 active discovery enforcement) — 本 LL 沿用累积扩 第 N 次实证 反 silent overwrite anti-pattern
+- LL-116 (fresh re-read enforce) — sprint-orchestrator charter Phase 0 fresh verify 体例 sustained
+- LL-117 (atomic sediment+wire 体例) — sub-PR 9 6 file delta atomic 1 PR
+- LL-127 (cumulative cite SSOT 锚点 baseline) — sub-PR 9 cumulative cite scope 真值落地 sustainability
+- LL-132 (pre-push smoke baseline drift detection) — pytest 87/95 pass 真值 cite + 8 pre-existing CRLF env issue 不归本 sub-PR scope
+- LL-133 (现有 hook v1→v2 lifecycle governance) — sustained
+- LL-135 (doc-only sediment 体例 反 fire test) — 本 sub-PR 9 doc-only sediment scope sustained
+- LL-136 (sub-PR sediment time CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP) — 本 LL Plan §A S1 row cite drift 4 项 reconcile 体例 sustained
+- ADR-022 (反 silent overwrite + 集中机制) — 反 retroactive content edit + version history append 体例 sustained
+- ADR-031 (S2 LiteLLMRouter implementation path) — V3 §S1 actual state cite source
+- ADR-032 (S4 caller bootstrap factory) — V3 §S1 actual state cite source
+- ADR-034 (Ollama qwen3.5:9b stress test 真值) — Ollama fallback path SLA baseline 真值 evidence
+- ADR-039 (LLM audit failure path resilience) — retry policy 0.3s caller latency budget sustained
+- ADR-047 (V3 §S1 closure acceptance + LiteLLM SLA baseline deferred to S5) — 本 LL sediment 关联 ADR
+- skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer
+- charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained
+
