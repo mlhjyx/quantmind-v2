@@ -4,10 +4,12 @@
 >
 > **scope**: invocation 调度索引 + sprint-by-sprint 触发表 + transition gate + 横切层归属 + 冲突 resolution rules. **0 含 spec body** (skill / hook / subagent 详细 spec 走 step 3-5 各自 file sediment).
 >
-> **关联**: [V3_IMPLEMENTATION_CONSTITUTION.md v0.2](V3_IMPLEMENTATION_CONSTITUTION.md) (本文件 = Constitution §L6 索引展开) + [QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md](QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md) §12 sprint 拆分 + [docs/audit/v3_orchestration/claude_dir_audit_report.md](audit/v3_orchestration/claude_dir_audit_report.md) (PR #270 真值 grounding).
+> **关联**: [V3_IMPLEMENTATION_CONSTITUTION.md v0.3](V3_IMPLEMENTATION_CONSTITUTION.md) (本文件 = Constitution §L6 索引展开, post-V3 governance batch closure sub-PR 3a/3b/3c chunked cumulative cite refresh) + [QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md](QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md) §12 sprint 拆分 + [docs/audit/v3_orchestration/claude_dir_audit_report.md](audit/v3_orchestration/claude_dir_audit_report.md) (PR #270 真值 grounding).
 >
-> **本文件版本**: v0.1 (initial skeleton, post-audit grounded, 2026-05-08)
-> **本文件 scope outside**: ❌ 13 skill SKILL.md 详细 spec (走 step 3) / ❌ 4 全新 hook .py 实现 (走 step 4) / ❌ 7 subagent charter file (走 step 5) / ❌ V3 启动 prompt (走 step 6)
+> **本文件版本**: v0.2 (post-V3 6 件套 100% closure cumulative cite refresh, 沿用 ADR-022 反 silent overwrite — v0.1 row 保留 + version history append, 2026-05-09, V3 governance batch closure sub-PR 4)
+> **本文件 scope outside**: ❌ 13 skill SKILL.md 详细 spec (件 3 ✅ closed, PR #272-#275 + #281 bonus) / ❌ 8 hook .py 实施 (件 4 ✅ closed, post-PR #284, 13 hook cumulative — 4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283/#284 + 5 现有 sustained) / ❌ 7 subagent charter (件 5 ✅ closed, PR #277-#279) / ❌ V3 启动 prompt (件 6 ✅ closed, PR #285 v0.1; sustained optional sub-PR 7 v0.2 修订 trigger)
+>
+> **v0.2 cumulative cite banner** (V3 governance batch closure sub-PR 4 sediment, 2026-05-09; sustained sub-PR 1+2+3a+3b+3c governance pattern parallel体例 + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope 三段累积扩 sub-PR 4 cumulative scope sediment): post-V3 6 件套 100% closure cumulative cite refresh — 件 1 ✅ audit (PR #270, 22 row 真值表) + 件 2 ✅ Constitution v0.3 chunked closure (sub-PR 3a §L0.3+§L1.1 PR #288 + sub-PR 3b §L6.1+§L6.2 PR #289 + sub-PR 3c §L10 + version history v0.3 entry PR #290) + 件 3 ✅ 13 skill (PR #272-#275 + #281 bonus) + 件 4 ✅ 13 hook cumulative (4+4+5, PR #276/#280/#281/#282/#283/#284) + 件 5 ✅ 7 charter (PR #277-#279) + 件 6 ✅ V3_LAUNCH_PROMPT v0.1 (PR #285). V3 governance batch closure cumulative pattern: sub-PR 1 LL-cumulative-batch (PR #286, 8 LL promoted as LL-116/117/127/132/133/134/135/136) + sub-PR 2 ADR-cumulative-batch (PR #287, ADR-044/045/046 直 promote 进 REGISTRY.md) + sub-PR 3 chunked Constitution v0.3 修订 完整闭环 ✅ (3a/3b/3c) + sub-PR 4 本 PR (skeleton v0.2 修订 + Constitution v0.3 §version history typo `架→角` fix). 沿用 LL-098 X10 反 forward-progress default + LL-100 chunked SOP + LL-105 SOP-6 ADR # registry SSOT cross-verify + LL-116 fresh re-read enforce 9 case 实证累积反向 (2 reverse + 7 verified positive PR #281/#282 + PR #283/#284/#285/#287/#288/#289/#290).
 
 ---
 
@@ -198,7 +200,7 @@ S1 → S2 (LiteLLM 是 News fetcher 主源 prerequisite) / S2 → S3 (NewsClassi
 | `iron_law_enforce.py` | `.claude/hooks/iron_law_enforce.py` | 扩 V3 invariant: V3 §11 12 模块 fail-open / 真账户红线 / Beat schedule 注释 ≠ 停服 / prompt 设计 0 数字 path command (合并 anti-prompt-design-violation-pretool) |
 | `protect_critical_files.py` (候选) | `.claude/hooks/protect_critical_files.py` | 候选扩: V3 prompts/risk/*.yaml protect (audit §4 cite, 实施时按 sub-PR 决议是否纳入) |
 
-**残余 sub-task** (audit §10 ADR-DRAFT row 11 候选): `block_dangerous_git.py` 5-07 sub-PR 8a-followup-pre committed but never wired settings.json — V3 实施期某 sprint wire 闭环 (LL-117 候选 promote 时机).
+**残余 sub-task** (5-09 V3 governance batch closure sub-PR 2 PR #287 sediment 修订, ADR-DRAFT row 11 直 promote 进 REGISTRY.md as ADR-044 — 现有 hook v1→v2 action mode 反 silent overwrite ADR-022 体例): `block_dangerous_git.py` 5-07 sub-PR 8a-followup-pre committed but never wired settings.json — V3 实施期某 sprint wire 闭环 (沿用 LL-117 committed sub-PR 1 PR #286 atomic sediment+wire 体例).
 
 ### §3.3 7 subagent 索引 — 4 全新 + 3 借 OMC (step 5 sediment)
 
@@ -365,17 +367,32 @@ audit §5.2 + §7 决议: 4 全 0 重叠 全新 charter file + 3 借 OMC extend 
 ### 版本 history
 
 - **v0.1 (initial skeleton, 2026-05-08)**: post-audit grounded — §0 元信息 + §1 plugin curation (OMC 16 agent + 10 tier-0 / superpowers 10 / mattpocock 6 / ECC 选片) + §2 sprint-by-sprint (Tier A S1-S11 + Tier B S12-S15) + §3 自造索引 (13 skill / 4+4 hook / 4+3 subagent) + §4 transition gate (sprint + stage 7 transitions) + §5 横切层归属 (8 横切 layer) + §6 冲突 resolution rules (8 rule)
+- **v0.2 (post-V3 6 件套 100% closure cumulative cite refresh, 2026-05-09, V3 governance batch closure sub-PR 4)**: 沿用 ADR-022 反 silent overwrite (v0.1 row 保留, version history append) + sustained sub-PR 1+2+3a+3b+3c governance pattern parallel体例 + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope 三段累积扩 sub-PR 4 cumulative scope. 修订 hybrid (edit cumulative cite refresh + augmented banner cumulative cite + footer NEW + version history append) 沿用 sub-PR 3a edit 体例 + sub-PR 3b/3c pure append 体例 累积扩 sub-PR 4 sediment 体例:
+  - **header block**: cite Constitution v0.2 → v0.3 (post-PR #288/#289/#290) + version v0.1 → v0.2 + scope outside refresh (件 3-6 全 closed cumulative PR # cite) + v0.2 cumulative cite banner NEW (V3 6 件套 100% closure + V3 governance batch closure cumulative pattern sub-PR 1+2+3a+3b+3c+4 cite + LL-098/100/105/116 governance pattern cumulative)
+  - **§3.2 残余 sub-task cite refresh**: `block_dangerous_git.py` wire pairing governance ADR-DRAFT row 11 直 promote 进 ADR-044 (sub-PR 2 PR #287 sediment 修订) + LL-117 候选 → committed sub-PR 1 PR #286 cite refresh
+  - **footer cumulative cite refresh**: scope outside 件 3-6 closure cumulative PR # cite + 关联 LL 8 LL-116~136 promoted cite + 关联 ADR ADR-019 ~ ADR-046 (反 ADR-DRAFT row 11/12/13 detour, sustained Q4 (β) 决议) + 关联铁律 sustained
+  - **footer NEW v0.2 cumulative cite section**: V3 governance batch closure sub-PR 4 sediment cumulative scope cite + LL-127 §0.3 cumulative cite SSOT 锚点 baseline 三段累积扩 sub-PR 4 cumulative scope sediment 真值落地 sustainability + sub-PR 5-7 pending cumulative pattern cite
 
 ### footer
 
 - **维护频率**: V3 sprint sediment 时 / Constitution v0.X bump 时 / sprint 间 transition gate 不通过时 (1 PR sediment 沿用 LL-100)
 - **SSOT**: 本文件 = V3 实施期 invocation 索引唯一权威源
-- **关联文件 6 件套**: Constitution + 本 + 13 skill SKILL.md + 8 hook 实施 + 7 subagent charter + 启动 prompt
-- **本文件 scope outside**: ❌ skill / hook / subagent / 启动 prompt 详细 spec (走 step 3-6)
+- **关联文件 6 件套**: Constitution + 本 + 13 skill SKILL.md + 8 hook 实施 + 7 subagent charter + 启动 prompt — **V3 6 件套 100% closure ✓** (post-PR #285, 件 1 audit + 件 2 Constitution v0.3 + 件 3 13 skill + 件 4 13 hook cumulative + 件 5 7 charter + 件 6 V3_LAUNCH_PROMPT v0.1 + 本 skeleton v0.2 修订 sub-PR 4 cumulative scope sediment)
+- **本文件 scope outside**: ❌ skill / hook / subagent / 启动 prompt 详细 spec — 件 3-6 全 ✅ closed (post-PR #285, V3 6 件套 100% 完整闭环 ✓): 件 3 ✅ 13 skill (PR #272-#275 + #281 bonus) / 件 4 ✅ 13 hook cumulative (4+4+5, PR #276/#280/#281/#282/#283/#284) / 件 5 ✅ 7 charter (PR #277-#279) / 件 6 ✅ V3_LAUNCH_PROMPT v0.1 (PR #285)
 - **关联铁律**: 9 / 17 / 25 / 36 / 37 / 42 / 44 (X9) / 45 / X10
-- **关联 LL**: LL-098 (X10) / LL-100 / LL-101 / LL-103 / LL-104 / LL-105 / LL-106 / LL-115 + 后续
-- **关联 ADR**: ADR-019 ~ ADR-043 + ADR-DRAFT row 11/12/13 候选
-- **现 last update**: V3 实施期 sediment
+- **关联 LL**: LL-098 (X10) / LL-100 / LL-101 / LL-103 / LL-104 / LL-105 / LL-106 / LL-115 / **LL-116 / LL-117 / LL-127 / LL-132 / LL-133 / LL-134 / LL-135 / LL-136** (committed sub-PR 1 PR #286, 8 LL promoted; LL-116 fresh re-read enforce + LL-117 atomic sediment+wire + LL-127 §0.3 cumulative cite SSOT 锚点 baseline + LL-132 pre-push smoke baseline drift detection + LL-133 现有 hook v1→v2 lifecycle + LL-134 路径假设 vs 实测 + LL-135 doc-only sediment + LL-136 sub-PR sediment time CC 自身 cumulative cite cross-verify) + 后续
+- **关联 ADR**: ADR-019 ~ ADR-046 (sub-PR 2 PR #287 sediment 直 promote 进 REGISTRY.md as **ADR-044/045/046**, 反 ADR-DRAFT row 11/12/13 detour, sustained user Q4 (β) 决议 + sub-PR 1 LL append-only governance pattern parallel体例)
+- **现 last update**: V3 governance batch closure sub-PR 4 sediment (skeleton v0.2 修订 + Constitution v0.3 §version history typo `架→角` fix, post-PR #290 + 本 PR)
+
+### v0.2 cumulative cite footer NEW (V3 governance batch closure sub-PR 4 sediment, 2026-05-09)
+
+- **post-V3 6 件套 100% closure cumulative cite refresh** (本 v0.2 修订 trigger): 件 2 Constitution v0.3 chunked closure (sub-PR 3a/3b/3c PR #288/#289/#290) + 件 3-6 cumulative PR # 完整闭环 → skeleton v0.1 → v0.2 cumulative cite refresh trigger 满足 (sustained sub-PR 4 user explicit trigger)
+- **V3 governance batch closure cumulative pattern (~5-7 sub-PR)**: sub-PR 1 LL-cumulative-batch (PR #286 ✓ 8 LL committed) + sub-PR 2 ADR-cumulative-batch (PR #287 ✓ 3 ADR-044/045/046 promoted) + sub-PR 3 chunked Constitution v0.3 修订 完整闭环 ✅ (3a §L0.3+§L1.1 PR #288 + 3b §L6.1+§L6.2 PR #289 + 3c §L10 + version history v0.3 entry PR #290) + **sub-PR 4 本 PR** (skeleton v0.2 修订 + Constitution v0.3 §version history typo fix) + sub-PR 5-7 pending (sub-PR 5 SESSION_PROTOCOL §1.3 扩 / sub-PR 6 untracked cleanup + 全 stale cite refresh / optional sub-PR 7 V3_LAUNCH_PROMPT v0.1→v0.2 修订)
+- **LL-127 §0.3 cumulative cite SSOT 锚点 baseline 真值落地 sustainability sediment cumulative scope 四段累积**: sub-PR 3a §L0.3 footer NEW + sub-PR 3b §L6.2 footer NEW + sub-PR 3c §L10 footer NEW + **本 sub-PR 4 skeleton v0.2 footer NEW** = 四段累积 ✓ (LL-127 multi-method sensitivity SOP 体例累积扩 governance pattern parallel体例)
+- **第 11 项 prompt 升级 real-world catch 4 case 实证累积**: sub-PR 6 pre-sediment Q5 + sub-PR 1 LL # next free + sub-PR 2 ADR-DRAFT row 11-26 cumulative count drift + sub-PR 3a Constitution 版本号 v0.1→v0.3 vs v0.2→v0.3 真值修正
+- **第 12 项 prompt 升级候选 #1 LL-116 9 case 实证累积反向 enforce**: 2 reverse (PR #281/#282) + 7 verified positive (PR #283/#284/#285/#287/#288/#289/#290) — 本 sub-PR 4 fresh re-read skeleton v0.1 §0/§1/§2/§3/§N anchor 真值 verify (sustained 第 10 verified positive case 实证累积扩)
+- **sub-PR 4 sediment 体例真值** (CC 真测决议): hybrid (edit + augmented banner cumulative cite + footer NEW + version history append) 沿用 sub-PR 3a edit 体例 + sub-PR 3b/3c pure append 体例 累积扩 sub-PR 4 cumulative scope sediment 体例
+- **0 hook + 0 skill + 0 charter + 0 settings.json wire delta + 0 ADR-DRAFT.md 修订 + 0 LESSONS_LEARNED.md 修订 + 0 REGISTRY.md 修订 + 0 §L0.3/§L1.1/§L5/§L6.1/§L6.2/§L8/§L10 修订** sustained (sustained ADR-022 反 silent overwrite + LL append-only governance + sub-PR 1+2+3a+3b+3c governance pattern parallel体例; 仅 docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md skeleton v0.1→v0.2 + docs/V3_IMPLEMENTATION_CONSTITUTION.md §version history typo `架→角` fix 双 file delta)
 
 ---
 
