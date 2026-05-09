@@ -19,6 +19,7 @@ Mock strategy (沿用 sub-PR 7c test_news_ingestion_service.py precedent):
 - backend/app/services/news/announcement_processor.py
 - backend/qm_platform/news/announcement_routes.py
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -43,7 +44,6 @@ from backend.qm_platform.news.announcement_routes import (
     build_announcement_route,
 )
 from backend.qm_platform.news.base import NewsItem
-
 
 # ─────────────────────────────────────────────────────────────
 # §1 build_announcement_route (announcement_routes.py)
@@ -187,9 +187,9 @@ class TestAnnouncementProcessorIngest:
             skipped_unknown=0,
         )
 
-        # pipeline.fetch_all called with correct route_path
+        # pipeline.fetch_all called with symbol_id (sub-PR 13 ADR-052 reverse — AKShare query semantic)
         pipeline.fetch_all.assert_called_once_with(
-            query="/cninfo/announcement/600519",
+            query="600519",
             limit_per_source=10,
         )
 

@@ -225,6 +225,28 @@ def _build_pipeline_rsshub_only() -> DataPipeline:
     return DataPipeline(fetchers)
 
 
+def _build_pipeline_announcement_akshare() -> DataPipeline:
+    """Build DataPipeline with single AkshareCninfoFetcher (sub-PR 13 sediment per ADR-052 reverse).
+
+    Replaces `_build_pipeline_rsshub_only()` for announcement-ingest use case (sub-PR 11b reverse):
+    ADR-049 §1 Decision 3 RSSHub route reuse 真值 verified broken via sub-PR 13 Phase 0 active
+    discovery (LL-142). Switch to AKShare direct API per ADR-052 §1 reverse decision.
+
+    Returns:
+        DataPipeline with single AkshareCninfoFetcher — caller 真**symbol_id query** (反 RSSHub
+        route_path semantic, ADR-052 §query-semantic-reverse decision sustained).
+
+    Note (single-fetcher pipeline sustained sub-PR 7a contract):
+        DataPipeline.fetch_all single-fetcher case (反 multi-source dedup). sub-PR 14+ candidate:
+        add SSE/SZSE additional sources via separate fetchers (sustained ADR-049 §2 Finding #1
+        deferred resolution).
+    """
+    from backend.qm_platform.news import AkshareCninfoFetcher, DataPipeline
+
+    fetchers = [AkshareCninfoFetcher()]
+    return DataPipeline(fetchers)
+
+
 @router.post("/ingest", response_model=IngestResponse)
 def ingest_news(req: IngestRequest) -> IngestResponse:
     """Manual trigger 5 源 News ingestion + classify + persist.
@@ -449,7 +471,8 @@ def ingest_announcement(req: IngestAnnouncementRequest) -> IngestAnnouncementRes
         req.limit,
     )
 
-    pipeline = _build_pipeline_rsshub_only()
+    # sub-PR 13 ADR-052 reverse: AKShare replaces RSSHub for announcement (LL-142 sediment)
+    pipeline = _build_pipeline_announcement_akshare()
     processor = AnnouncementProcessor(pipeline=pipeline)
 
     conn = get_sync_conn()
@@ -465,7 +488,9 @@ def ingest_announcement(req: IngestAnnouncementRequest) -> IngestAnnouncementRes
         conn.rollback()
         logger.exception(
             "ingest_announcement failed symbol_id=%s source=%s: %s",
-            req.symbol_id, req.source, exc,
+            req.symbol_id,
+            req.source,
+            exc,
         )
         raise HTTPException(
             status_code=500,

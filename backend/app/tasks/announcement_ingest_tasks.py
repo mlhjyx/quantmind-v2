@@ -28,6 +28,7 @@ Beat dispatch (per ADR-050 候选 sub-PR 11b sediment, sustained ADR-049 §1 Dec
 - backend/qm_platform/news/announcement_routes.py (sub-PR 11b route config)
 - backend/migrations/2026_05_09_announcement_raw.sql (sub-PR 11a DDL, post-PR apply 沿用)
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,7 +38,9 @@ from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("celery.announcement_ingest_tasks")
 
-DEFAULT_SYMBOL_ID = "600519"  # 贵州茅台 baseline (sub-PR 11b sustained, real production user override)
+DEFAULT_SYMBOL_ID = (
+    "600519"  # 贵州茅台 baseline (sub-PR 11b sustained, real production user override)
+)
 DEFAULT_SOURCE = "cninfo"  # 1/3 working baseline per ADR-049 §1 Decision 3
 DEFAULT_LIMIT = 10
 
@@ -73,7 +76,7 @@ def announcement_ingest(
         Exception: fetcher init / pipeline run / DB insert 真 raise (fail-loud 铁律 33,
             Celery retry policy 沿用 expires=3600 in beat_schedule.py).
     """
-    from app.api.news import _build_pipeline_rsshub_only
+    from app.api.news import _build_pipeline_announcement_akshare
     from app.services.db import get_sync_conn
     from app.services.news import AnnouncementProcessor
 
@@ -87,10 +90,13 @@ def announcement_ingest(
 
     logger.info(
         "announcement_ingest start symbol_id=%s source=%s limit=%d",
-        sid, src, lim,
+        sid,
+        src,
+        lim,
     )
 
-    pipeline = _build_pipeline_rsshub_only()
+    # sub-PR 13 ADR-052 reverse: AKShare direct API replaces RSSHub route reuse (LL-142 sediment)
+    pipeline = _build_pipeline_announcement_akshare()
     processor = AnnouncementProcessor(pipeline=pipeline)
 
     conn = get_sync_conn()
@@ -123,7 +129,9 @@ def announcement_ingest(
         result_for_audit = {"error": f"{type(exc).__name__}: {exc}"}
         logger.exception(
             "announcement_ingest failed symbol_id=%s source=%s: %s",
-            sid, src, exc,
+            sid,
+            src,
+            exc,
         )
         raise
     finally:
