@@ -10,7 +10,7 @@
 >
 > **not scope** (现有 SSOT 处理): 4 doc fresh read SOP → SESSION_PROTOCOL §1 / 铁律 → IRONLAWS / D 决议 → DECISION_LOG / LL → LESSONS_LEARNED / ADR # → docs/adr/REGISTRY.md / handoff → handoff_template.
 >
-> **本文件版本**: v0.4 (post-Tier A plan 修订 sediment, 2026-05-09, Finding #1 (b) §0.1 ROADMAP 标注 + Finding #3 (a) §L0.4 baseline 修订, 沿用 ADR-022 反 silent overwrite — v0.1/v0.2/v0.3 row 保留 + version history append + header version cite 修订 catch up v0.2 → v0.4)
+> **本文件版本**: v0.5 (post-V3 §S1 closure verify + V2 prior cumulative cite sediment, 2026-05-09, sub-PR 9 V3 §S1 closure acceptance + SLA baseline deferred + §L0.4 baseline 真值再修订 ~26-31→~14-18 周, 沿用 ADR-022 反 silent overwrite — v0.1/v0.2/v0.3/v0.4 row 保留 + version history append)
 > **关联 audit**: `docs/audit/v3_orchestration/claude_dir_audit_report.md` (PR #270, 2026-05-08, 22 row 真值表 + 8 finding cross-verify drift 率 25%)
 > **关联 ADR**: ADR-019 / ADR-020 / ADR-021 / ADR-022 / ADR-027 / ADR-028 / ADR-037 + 后续 V3 实施期 ADR (含 ADR-DRAFT row 11/12/13 候选)
 
@@ -102,8 +102,9 @@ CC 第一次 V3 实施 sprint 起手前必走 verify (5 步任一不通过 → S
 
 ### §L0.4 timeline baseline + replan 触发
 
-- **baseline**: progress report Part 4 cite (~12-16 周, 紧) — 修订标注 (实际 ~26-31 周, baseline 真值修订 sub-PR # cite, post-Finding #3 (a) + Push back #3 (b) parallel S2 cumulative; 真值 estimate: Tier A 7-9.5 含 S2.5 parallel S2 +0-0.5 周 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1; sustained ADR-022 反 silent overwrite + 反 retroactive content edit, 仅 append 标注 0 改 progress report Part 4 cite 内容)
-- **replan 触发**: 任 stage 实际超 baseline 1.5x → CC 主动 push user (sprint 收口决议) + replan template (修订 baseline 1.5x = ~39-46 周 ~9.7-11.5 月, post-Finding #3 (a) cumulative)
+- **baseline**: progress report Part 4 cite (~12-16 周, 紧) — 修订标注 (实际 ~14-18 周, baseline 真值再修订 sub-PR 9 cite, post-V2 prior cumulative cite sediment + sustained Finding #3 (a) + Push back #3 (b) parallel S2 cumulative + sub-PR 9 V2 prior work cumulative cite sediment 三段累积; 真值 estimate: Tier A 真 net new ~3-5 周 (V3 §S1+S4+S6+S8 substantially pre-built by V2 prior work PR #219-#226 + 4 follow-ups #246/247/253/255 已 done, 真 net new scope 仅 S2.5 + S5 + S7 + S9 + S10 + S11 + 部分 S2/S3 真 GAP) + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1 = ~14-18 周 ~3.5-4.5 月; sustained ADR-022 反 silent overwrite + 反 retroactive content edit, 仅 append 标注 0 改 progress report Part 4 cite 内容)
+- **替代 baseline 历史 sediment** (sustained ADR-022 反 silent overwrite, 历史 baseline 沿用): sub-PR 8 sediment 估 ~26-31 周 (Tier A 7-9.5 含 S2.5 +0-0.5 周 + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1) silent overwrite V2 prior work cumulative cite (LL-137 sediment 候选 — 反 silent overwrite from-scratch assumption, sustained LL-115 capacity expansion 真值 silent overwrite anti-pattern); 真值修正后估 ~14-18 周 (post sub-PR 9 V2 prior cumulative cite sediment)
+- **replan 触发**: 任 stage 实际超 baseline 1.5x → CC 主动 push user (sprint 收口决议) + replan template (修订 baseline 1.5x = ~21-27 周 ~5-7 月, post sub-PR 9 cumulative)
 - **replan template**: 治理债 surface + sub-task creep cite + remaining stage timeline 修订 + Tier B / cutover 时间窗口重谈
 
 ---
@@ -512,6 +513,12 @@ verifier: `quantmind-pt-cutover-gate` skill
   - **关联 sub-PR**: PR # CC sediment cycle 时实测决议 + 关联 docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md skeleton v0.2 → v0.3 (S2.5 row 加 + Finding #2 (b) sediment) + 关联 docs/V3_TIER_A_SPRINT_PLAN_v0.1.md NEW file (Tier A 12 sprint plan post-Finding 决议落地)
   - **修订 hybrid 体例真值** (CC 真测决议): edit (header version + §0.1 cite + §L0.4 baseline) + append (version history v0.4 entry) — 沿用 sub-PR 3a/3b/3c/4/5/6/7 hybrid 体例累积扩 sub-PR 8 sediment 体例
   - **0 hook + 0 skill + 0 charter + 0 settings.json wire delta + 0 ADR-DRAFT.md 修订 + 0 LESSONS_LEARNED.md 修订 + 0 REGISTRY.md 修订 + 0 V3_LAUNCH_PROMPT.md 修订 + 0 SESSION_PROTOCOL.md 修订 + 0 §L0.3/§L1.1/§L5/§L6.1/§L6.2/§L8/§L10 修订** sustained (sustained ADR-022 反 silent overwrite + LL append-only governance + sub-PR 1-7 governance pattern parallel体例)
+- **v0.5 (post-V3 §S1 closure verify + V2 prior cumulative cite sediment, 2026-05-09, V3 governance batch closure sub-PR 9 — V3 §S1 substantially closed by V2 prior work + Tier A baseline 真值再修订 ~26-31→~14-18 周)**: 沿用 ADR-022 反 silent overwrite (v0.1/v0.2/v0.3/v0.4 row 保留 + version history append) + sustained sub-PR 1-8 governance pattern parallel体例 + plan-then-execute 体例累积扩 sub-PR 9 cumulative scope sediment. 修订 trigger = sub-PR 8 closure 后 user explicit ack Tier A S1 起手, sprint-orchestrator charter (件 5) 跑 V3 §S1 actual state Phase 0 verify, 4 critical finding surface (V3 §S1 substantially closed by V2 prior work / 6 provider vs 3 routes cite drift / Tier A cycle baseline 真值需再修订 / V3 §S1 closure 走 sequential per Constitution §L8.1 (a)), user 4 决议 accept 全 (γ+β hybrid / (i) drop "6 provider" sustained 3 routes / (a) baseline ~14-18 周 / (a) sequential):
+  - **header line 13**: 版本 v0.4 → v0.5 (sustained sub-PR 9 sediment trigger)
+  - **§L0.4 baseline 真值再修订** (sub-PR 9 sediment 关键): progress report Part 4 cite "~12-16 周" sustained "(实际 ~26-31 周)" 标注 (sub-PR 8 sediment) → **再修订 "(实际 ~14-18 周, baseline 真值再修订 sub-PR 9 cite, post-V2 prior cumulative cite sediment)" 标注**. 真值差异根因: sub-PR 8 sediment 时 silent overwrite V2 prior work cumulative cite (V3 §S1+S4+S6+S8 substantially pre-built), 反 LL-115 capacity expansion 真值 silent overwrite anti-pattern (LL-137 sediment 候选). 真值 estimate (post sub-PR 9): Tier A 真 net new ~3-5 周 (V2 prior cumulative 已 close S1+S4+S6+S8, 真 net new 仅 S2.5+S5+S7+S9+S10+S11+部分 S2/S3) + T1.5 2-4 + Tier B 4-5 + 横切层 ≥12 + cutover 1 = ~14-18 周
+  - **关联 sub-PR**: PR # CC sediment cycle 时实测决议 + 关联 docs/V3_TIER_A_SPRINT_PLAN_v0.1.md §A S1 row reconcile (4 cite drift fix: "6 provider" → "3 routes" / `check_anthropic_imports.py` → `check_llm_imports.sh` / file delta retroactive note / dependency V2 prior cite) + §E grand total 修订 ~14-18 周 + 关联 docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md skeleton §2.1 S1 row V2 prior cite annotation + 关联 ADR-047 NEW (V3 §S1 closure acceptance + SLA baseline deferred to S5) + 关联 LL-137 NEW (V3 §S1 substantially closed by V2 prior work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption)
+  - **修订 hybrid 体例真值** (CC 真测决议): edit (header version + §L0.4 baseline 再修订) + append (version history v0.5 entry) — 沿用 sub-PR 4-8 hybrid 体例累积扩 sub-PR 9 cumulative scope sediment 体例
+  - **0 hook + 0 skill + 0 charter + 0 settings.json wire delta + 0 V3_LAUNCH_PROMPT.md 修订 + 0 SESSION_PROTOCOL.md 修订 + 0 §0.1/§L0.3/§L1.1/§L5/§L6.1/§L6.2/§L8/§L10 修订** sustained; 沿用 sub-PR 9 doc-only sediment scope (Constitution + skeleton + Plan v0.1 + ADR-047 + REGISTRY + LL-137 6 file delta atomic)
 
 ### footer
 
