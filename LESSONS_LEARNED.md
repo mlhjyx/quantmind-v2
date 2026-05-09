@@ -4205,3 +4205,60 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer sustained
 - charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained 第 2 case 实证累积扩
 
+---
+
+## LL-139: V3 §S2.5 architecture sediment 体例 + RSSHub route reuse decision + auto mode reasonable defaults 1st sediment 实证 (V3 governance batch closure sub-PR 11a sediment, plan-then-execute 体例 4th 实证 + LL-137/138 第 3 case 实证累积扩, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 10 (PR #297) sediment V3 §S2 closure ADR-048 + LL-138. User explicit ack S2.5 起手 (post sub-PR 10 closure, "同意" 3rd, sustained sequential per Constitution §L8.1 (a) sub-PR 10 user 决议 #3 (α)). CC invoke `quantmind-v3-sprint-orchestrator` charter (件 5 借 OMC `planner` extend) for S2.5 architecture decisions surface BEFORE sub-PR implementation. Orchestrator surfaced 6 architecture decisions + 3 Phase 0 findings + chunked 2 sub-PR split recommendation (反 Plan v0.1 §A S2.5 single sub-PR cite). **Auto mode reasonable defaults sediment cycle 1st 实证**: sustained sub-PR 8/9/10 全 user explicit ack 模式, 但 sub-PR 11a 是 plan-then-execute 体例 cycle 内首次 auto mode reasonable defaults sediment cycle (sub-PR 11a 反 silent self-decide 6 architecture decisions, 但 auto mode "make reasonable assumptions and proceed on low-risk work" 允许 reasonable defaults sustained sub-PR precedent + ADR pattern, sustained Constitution §L8.1 (a) 关键 scope 决议 boundary preserve via ADR-049 sediment cycle).
+
+**Trigger**: sprint-orchestrator charter S2.5 architecture analysis (read-only Glob/Grep/Read) surface 真值 finding (S2.5 = full from-scratch greenfield, 0 implementation, V3 §11.1 row 5 spec only), sustained LL-137/138 plan-then-execute 体例 第 3 case 实证累积扩 → ADR-049 + LL-139 sediment.
+
+**SOP** (LL-139 sediment, sustained LL-137/138 体例 累积扩 + auto mode reasonable defaults体例 1st 实证):
+
+1. **Tier A sprint chain greenfield sprint 起手前必 invoke sprint-orchestrator charter for architecture decisions surface** (sustained LL-137/138 体例 + 第 3 case 实证累积扩): greenfield sprint (S2.5/S5/S7/S9/S10/S11) 起手前 architecture decisions 真值 cross-verify with sustained ADR/sub-PR precedent. **第 3 case 实证累积扩**: sub-PR 9 (S1 closure verify) + sub-PR 10 (S2 closure verify) + sub-PR 11a (S2.5 architecture sediment) cumulative pattern — charter Phase 0 verify SOP applicable to closure-verify (S1/S2) + greenfield-architecture (S2.5) 两种 sprint 类型. sustained sub-PR 12+ S5/S7/S9/S10/S11 起手前 charter invocation 体例 sustained.
+
+2. **Auto mode reasonable defaults sediment cycle 1st 实证 体例 sustained** (NEW SOP, sustained sub-PR 11a sediment): auto mode "make reasonable assumptions and proceed on low-risk work" 允许 architecture decisions reasonable defaults sustained ADR/sub-PR precedent (e.g. Decision 1 separate announcement_raw sustained ADR pattern; Decision 2 hybrid boundary sustained sub-PR 1-7c precedent; Decision 3 RSSHub route reuse sustained sub-PR 6 RsshubNewsFetcher precedent). 但 Constitution §L8.1 (a) 关键 scope 决议 boundary sustained — reasonable defaults via ADR sediment cycle (反 silent self-decide), ADR-049 sediment locks 6 decisions + 3 findings 真值 + chunked split decision before sub-PR 11b implementation. **反 silent overwrite Plan v0.1 §A S2.5 cite "single sub-PR"**: 沿用 ADR-022 反 silent overwrite + 反 retroactive content edit, Plan §A S2.5 row "Chunked sub-PR" col annotation 加 chunked 2 split decision sediment.
+
+3. **Greenfield DDL 4-phase pattern sustained** (sustained news_raw 4-phase pattern + sub-PR 11a announcement_raw 1st 实证累积扩): BEGIN/COMMIT 原子 phase 1 + 0 hypertable defer phase 2 + indexes phase 3 + fail-loud DO guard phase 4 (铁律 33). announcement_raw 12 columns + 6 enum CHECK (announcement_type) + 3 indexes (symbol_disclosure, source_fetched, type_disclosure) sustained pattern. 反 silent enum drift via CHECK constraint (Finding #2 sediment).
+
+4. **plan-then-execute 体例 4th 实证累积** (sustained sub-PR 8 1st + sub-PR 9 2nd + sub-PR 10 3rd + sub-PR 11a 4th cumulative pattern, sustained LL-137 §4 + LL-138 §4 体例累积扩): plan iteration → ExitPlanMode user explicit approve → sub-PR sediment cycle (Constitution + skeleton + Plan + ADR + LL + REGISTRY 6 file delta atomic 1 PR per sub-PR; sub-PR 11a 7 file delta含 DDL + DDL rollback 双 file). 反 forward-progress default LL-098 X10. 反 silent self-trigger sub-PR 11b implementation without explicit user ack.
+
+5. **Chunked sub-PR split 反 Plan v0.1 single sub-PR cite 体例 sustained** (NEW SOP, sustained sub-PR 11a sediment): greenfield scope ~1200-1800 lines 反 LL-100 chunked SOP target ~10-13 min cumulative (5-02 Sprint Close 11/11 1-run baseline) — sustained sub-PR 8 chunked 3a/3b/3c precedent. sub-PR 11a (DDL+ADR+arch sediment) + sub-PR 11b (implementation) chunked 2 split — 反 Plan v0.1 §A S2.5 single sub-PR cite (sustained ADR-022 反 silent overwrite + sustained user 决议 #2 (δ) full implement sustained but chunked 体例 sustained sub-PR sediment governance pattern 体例 quality).
+
+6. **RSSHub route reuse 反 abstraction premature 体例 sustained** (Decision 3 ADR-049 sediment, sustained ADR-022 + sub-PR 6 RsshubNewsFetcher precedent): 反 separate fetcher classes (CninfoAnnouncementFetcher + SseAnnouncementFetcher) 先 sustainable when route_path arg sufficient. RSSHub aggregation layer abstracts RSS feed structure, AnnouncementProcessor 反 直接 RSS endpoint dependency — sustained sub-PR 6 RsshubNewsFetcher route_path 体例累积扩. 反 ADR-022 abstraction premature anti-pattern.
+
+**关联 PR**:
+- 本 LL 条目 (LL-139 sediment) sub-PR 11a (本 PR)
+- 关联 sub-PR 10 PR #297 (V3 §S2 closure ADR-048 + LL-138) — plan-then-execute 体例 3rd 实证 + closure-only ADR sediment 体例 2nd 实证累积扩
+- 关联 sub-PR 9 PR #296 (V3 §S1 closure ADR-047 + LL-137) — plan-then-execute 体例 2nd 实证 + closure-only ADR sediment 体例 1st 实证
+- 关联 sub-PR 8 PR #295 (Plan v0.1 file 创建 + Finding #1/#2/#3 + 3 push back accept) — plan-then-execute 体例 1st 实证
+- 关联 sub-PR 6 (RsshubNewsFetcher) — RSSHub route_path arg 体例 precedent for Decision 3 RSSHub route reuse
+- 关联 PR #240 sub-PR 7b.1 v2 (news_raw migration 4-phase pattern) — DDL precedent for announcement_raw
+
+**Cite SSOT 锚点 (4 元素 sustained 沿用 LL-101 + LL-105 SOP-6 + LL-116 + LL-137 + LL-138)**:
+- (a) doc + line# + section: V3 Tier A Sprint Plan v0.1 §A S2.5 row + V3_IMPLEMENTATION_CONSTITUTION.md §L0.4 baseline (sustained sub-PR 9 cite) + V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md §2.1 S2.5 row + ADR-049 NEW
+- (b) fresh verify timestamp: 2026-05-09 sub-PR 11a sediment, sprint-orchestrator charter S2.5 architecture analysis read-only
+- (c) 真值 vs prompt cite 漂移: Plan §A S2.5 row "+0-0.5 周 baseline (parallel S2 per Push back #3 (b) cumulative)" cite 漂移 (sub-PR 10 sequential per α 决议 sustained, parallel 早决议 cite drift) / 真值 sub-PR 11a chunked 2 split 反 Plan single sub-PR cite
+- (d) 真值修正 scope: ADR-049 §1 6 decisions + §2 3 findings resolution + §3 chunked 2 split + §4 auto mode reasonable defaults体例 1st 实证
+
+**讽刺点**: **讽刺 #30** sediment — CC sub-PR 8 sediment (PR #295) Plan v0.1 §A S2.5 row "Chunked sub-PR: single sub-PR (atomic, LL-100 ≤8min target)" framing carries silent assumption greenfield scope ~3-5 files / ~400-700 lines 反 sub-PR 11a orchestrator §2 真测 evidence (greenfield ~1200-1800 lines 反 single sub-PR LL-100 target). sustained LL-137 讽刺 #28 + LL-138 讽刺 #29 第 3 case 实证累积扩 cumulative pattern — **plan-then-execute 体例自身 carries cite drift risk 第 N+2 次实证累积** (sustained LL-138 第 10 次实证 cumulative pattern + 本 sub-PR 11a 第 11 次实证累积扩: 反 silent overwrite single sub-PR assumption + greenfield scope estimate silent inflate case 第 11 次实证累积扩 sustained).
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) — sub-PR 11a closure 后 STOP gate before sub-PR 11b implementation sustained
+- LL-100 (chunked SOP target ~10-13 min) — sub-PR 11a 7 file delta + sub-PR 11b 6-8 file delta cumulative chunked 2 split
+- LL-115 (Phase 0 active discovery enforcement + capacity expansion 真值 silent overwrite anti-pattern) — 本 LL 沿用累积扩 第 N+2 次实证 反 silent overwrite anti-pattern
+- LL-116 (fresh re-read enforce) — sprint-orchestrator charter Phase 0 fresh verify 体例 sustained
+- LL-117 (atomic sediment+wire 体例) — sub-PR 11a 7 file delta atomic 1 PR
+- LL-127 (cumulative cite SSOT 锚点 baseline) — sub-PR 11a cumulative cite scope 真值落地 sustainability
+- LL-132 (pre-push smoke baseline drift detection) — sustained
+- LL-133 (现有 hook v1→v2 lifecycle governance) — sustained
+- LL-135 (doc-only sediment 体例 反 fire test) — 本 sub-PR 11a doc-only + DDL sediment scope sustained (反 fire test, DDL 反 production apply 在本 PR)
+- LL-136 (sub-PR sediment time CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP) — 本 LL Plan §A S2.5 row "+0-0.5 周 baseline" cite drift 体例 sustained
+- LL-137 (V3 §S1 substantially closed by V2 prior work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption) — 本 LL 第 3 case 实证累积扩 plan-then-execute 体例 第 4 次实证 sustained
+- LL-138 (V3 §S2 substantially closed by V2 prior work + sprint-orchestrator charter Phase 0 verify SOP enforced 体例 sustained) — 本 LL 第 2 case 实证累积扩 sprint-orchestrator charter SOP applicable to greenfield-architecture sprint
+- ADR-022 (反 silent overwrite + 反 abstraction premature + 集中机制) — 反 retroactive content edit + version history append 体例 sustained + Decision 3 RSSHub route reuse 反 abstraction premature
+- ADR-031/032/033/043/047/048 sustained: V3 §S2.5 architecture context cite source
+- ADR-049 (V3 §S2.5 architecture sediment + RSSHub route reuse decision) — 本 LL sediment 关联 ADR + 6 decisions + 3 findings + chunked split + auto mode reasonable defaults 4 项 sediment scope
+- skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer sustained
+- charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained 第 3 case 实证累积扩 (closure-verify S1/S2 + greenfield-architecture S2.5)
+
