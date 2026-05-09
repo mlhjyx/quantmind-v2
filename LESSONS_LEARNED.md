@@ -4147,3 +4147,61 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer
 - charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained
 
+---
+
+## LL-138: V3 §S2 substantially closed by V2 prior cumulative work + sprint-orchestrator charter Phase 0 verify SOP enforced 体例 sustained (V3 governance batch closure sub-PR 10 sediment, plan-then-execute 体例 3rd 实证 + LL-137 第 2 case 实证累积扩, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 9 (PR #296) sediment V3 §S1 closure ADR-047 + LL-137 (V3 §S1 substantially closed by V2 prior cumulative work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption). User explicit ack S2/S2.5 起手 (post sub-PR 9 closure, "同意" 2nd, sustained Constitution §L8.1 (a) sequential 决议 from sub-PR 9). CC invoke `quantmind-v3-sprint-orchestrator` charter (件 5 借 OMC `planner` extend) for S2/S2.5 sprint chain state lookup pre sub-PR implementation. **Phase 0 active discovery finding** (LL-115 enforce + Constitution §L5.3 + LL-137 plan-then-execute 体例 第 2 case 实证累积扩): V3 §S2 actual state ≠ Plan §A S2 row "fresh re-verify RSSHub 1/4 真值" framing — V2 sub-PR 1-7c + 8a/8b/8b-cadence cumulative PR #234-#257 ~22 files / ~3000-4000 行 已 done by 2026-05-02 → 2026-05-07. V3 §S2 12 acceptance items: 11/12 ✅ DONE + 1/12 ⚠️ deferred (4/4 RSSHub capacity expansion architecture decision LL-115 sediment → S5).
+
+**Trigger**: sprint-orchestrator charter Phase 0 verify (read-only Glob/Grep/Read + Bash for git/grep/find read-only state queries) + .venv pytest 真测 (291 passed / 4 skipped / 0 fail / 203.04s) surface 真值 finding, sustained LL-137 plan-then-execute 体例 第 2 case 实证累积扩 → ADR-048 + LL-138 sediment.
+
+**SOP** (LL-138 sediment, sustained LL-137 体例 累积扩):
+
+1. **Tier A sprint chain plan 起手前必 fresh re-verify each sprint 真值 vs prior work cumulative cite** (LL-137 §1 sustained + 第 2 case 实证累积扩): Plan §A 各 row 真值需 cross-verify with prior work (V2 Sprint 1-2 cumulative + follow-ups). 反 silent assume from-scratch start. **第 N 次实证累积扩 enforce strength**: sub-PR 9 (S1 closure) + sub-PR 10 (S2 closure) cumulative pattern 第 2 case 实证 → sustained sub-PR 11+ S2.5/S3/etc 起手前 sprint-orchestrator charter Phase 0 verify SOP enforce 体例 sustained.
+
+2. **sprint-orchestrator charter (件 5) 必 invoke pre sub-PR implementation 体例 sustained** (LL-137 §2 sustained + 第 2 case 实证累积扩): Phase 0 verify 真值 vs Plan 假设, surface finding ≥1 if material divergence (沿用 LL-115 enforce 3 类 STOP 触发). **第 2 case 实证累积扩**: sub-PR 9 invocation (V3 §S1 verify) + sub-PR 10 invocation (V3 §S2 verify) cumulative — charter Phase 0 verify SOP 是 reliable 真值 surface mechanism, 反 silent skip 候选 SOP enforcement.
+
+3. **真值 baseline sediment 真值再修订体例 sustained** (LL-137 §3 sustained): historical baseline cite 沿用 (v0.1/v0.2/v0.3/v0.4/v0.5 row 保留), 仅 append annotation 真值修订 cite, 0 改 historical content. sub-PR 10 sediment sustained — Tier A baseline ~14-18 周 (sub-PR 9 §L0.4 sediment 真值再修订) sustained, 不 further revise per sub-PR 10 (V3 §S2 substantially closed by V2 prior work, 不 changes Tier A net new estimate).
+
+4. **plan-then-execute 体例 3rd 实证累积** (sustained sub-PR 8 1st 实证 + sub-PR 9 2nd 实证 + sub-PR 10 3rd 实证 cumulative pattern, sustained LL-137 §4 体例累积扩): plan iteration → ExitPlanMode user explicit approve → sub-PR sediment cycle (Constitution + skeleton + Plan + ADR + LL + REGISTRY 6 file delta atomic 1 PR per sub-PR). 反 forward-progress default LL-098 X10. 反 silent self-trigger next sprint without explicit user ack. **第 3 case 实证累积扩**: 6 file delta atomic 1 PR pattern is reliable + reviewer + AI self-merge 体例 cumulative — sustained sub-PR 11+ 起手 trigger satisfied prerequisite (post sub-PR 10 closure).
+
+5. **sub-PR sediment 真值 vs Plan 假设 reverse case detection 体例 sustained** (LL-115 反 silent overwrite enforce 第 N 次实证累积扩 + LL-137 §5 sustained + 第 2 case 实证累积扩): 任 sub-PR sediment 时 surface "Plan 假设 vs 真值差异" 真值 finding ≥1 if material — sediment LL/ADR row, 反 silent self-correction without user ack. **第 2 case 实证累积扩**: sub-PR 9 (S1 closure surface "前置 0 起点" silent overwrite finding) + sub-PR 10 (S2 closure surface "fresh re-verify RSSHub 1/4 真值" silent miss V2 prior cumulative finding) cumulative pattern.
+
+6. **Memory frontmatter cite refresh 体例 sustained** (sub-PR 10 user 决议 #4 (a) sediment, NEW SOP candidate): memory frontmatter description 包含 stale cite 时 (e.g. "Sprint 2 起手前剩 V3 §3.1 patch + ADR-033 sediment + 6 News 源 mini-verify" 全 done by V2 cumulative), 走 sub-PR sediment cycle memory handoff sediment step (沿用铁律 37) 同步 patch frontmatter description. 反 silent stale cite carry-over.
+
+**关联 PR**:
+- 本 LL 条目 (LL-138 sediment) sub-PR 10 (本 PR)
+- 关联 sub-PR 9 PR #296 (V3 §S1 closure ADR-047 + LL-137) — plan-then-execute 体例 2nd 实证 + LL-137 sediment 第 1 case
+- 关联 sub-PR 8 PR #295 (Plan v0.1 file 创建 + Finding #1/#2/#3 + 3 push back accept) — plan-then-execute 体例 1st 实证
+- 关联 V2 Sprint 2 PR #234-#257 cumulative (V3 §S2 substantially closed cumulative cite)
+
+**Cite SSOT 锚点 (4 元素 sustained 沿用 LL-101 + LL-105 SOP-6 + LL-116 + LL-137)**:
+- (a) doc + line# + section: V3 Tier A Sprint Plan v0.1 §A S2 row + V3_IMPLEMENTATION_CONSTITUTION.md §L0.4 baseline (sustained sub-PR 9 cite) + V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md §2.1 S2 row
+- (b) fresh verify timestamp: 2026-05-09 sub-PR 10 sediment, sprint-orchestrator charter Phase 0 verify + .venv pytest 真测 (291 passed / 4 skipped / 203.04s)
+- (c) 真值 vs prompt cite 漂移: Plan §A S2 row "fresh re-verify RSSHub 1/4 真值 sprint 起手时" / 真值 V2 prior work cumulative ~22 files / ~3000-4000 行 + 11 test files / 291 pytest pass + ADR-033 + ADR-043 committed 已 done
+- (d) 真值修正 scope: V3 §S2 12 acceptance items: 11/12 ✅ DONE + 1/12 ⚠️ deferred (4/4 RSSHub capacity expansion → S5 paper-mode 5d period real production scope architecture decision)
+
+**讽刺点**: **讽刺 #29** sediment — CC sub-PR 8 sediment (PR #295) 自身 carries silent overwrite from-scratch assumption 第 2 case 实证累积扩 — Plan v0.1 §A S2 row "fresh re-verify RSSHub 1/4 真值 sprint 起手时" framing carries silent assumption RSSHub 1/4 是 partial state 起点, 反 V2 Sprint 2 prior cumulative work ~22 files / ~3000-4000 行 已 done (含 6 fetcher classes + DataPipeline + NewsIngestionService + Beat schedule + ADR-033 + ADR-043 cumulative). sustained sub-PR 1-9 governance pattern parallel 体例 reveal sub-PR 10 reverse case 第 2 case 实证累积扩 (sustained LL-137 讽刺 #28 第 1 case 实证 + sub-PR 10 讽刺 #29 第 2 case 实证累积扩 cumulative pattern) — **plan-then-execute 体例自身 carries cite drift risk 第 N+1 次实证累积** (sustained LL-137 第 9 次实证 cumulative pattern + 本 sub-PR 10 第 10 次实证累积扩: 反 silent overwrite from-scratch assumption + V2 prior work cumulative cite silent miss case 第 10 次实证累积扩 sustained).
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) — sub-PR 10 closure 后 STOP gate before S2.5 起手 sustained per user 决议 #3 (α) sequential
+- LL-100 (chunked SOP target ~10-13 min) — sub-PR 10 doc-only sediment 6 file delta atomic
+- LL-115 (Phase 0 active discovery enforcement + capacity expansion 真值 silent overwrite anti-pattern) — 本 LL 沿用累积扩 第 N+1 次实证 反 silent overwrite anti-pattern
+- LL-116 (fresh re-read enforce) — sprint-orchestrator charter Phase 0 fresh verify 体例 sustained
+- LL-117 (atomic sediment+wire 体例) — sub-PR 10 6 file delta atomic 1 PR
+- LL-127 (cumulative cite SSOT 锚点 baseline) — sub-PR 10 cumulative cite scope 真值落地 sustainability
+- LL-132 (pre-push smoke baseline drift detection) — pytest 291 passed / 4 skipped / 0 fail 真值 cite (反 sub-PR 9 8 pre-existing CRLF env issue, news tests pass clean)
+- LL-133 (现有 hook v1→v2 lifecycle governance) — sustained
+- LL-135 (doc-only sediment 体例 反 fire test) — 本 sub-PR 10 doc-only sediment scope sustained
+- LL-136 (sub-PR sediment time CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP) — 本 LL Plan §A S2 row cite drift fix 体例 sustained
+- LL-137 (V3 §S1 substantially closed by V2 prior work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption) — 本 LL 第 2 case 实证累积扩 plan-then-execute 体例 第 3 次实证 sustained
+- ADR-022 (反 silent overwrite + 集中机制) — 反 retroactive content edit + version history append 体例 sustained
+- ADR-031 (S2 LiteLLMRouter implementation path) — V3 §S2 actual state cite source
+- ADR-032 (S4 caller bootstrap factory) — V3 §S2 actual state cite source
+- ADR-033 (News 源替换决议) — V3 §3.1 patch via Decision table + 6 News 源 ingest cite source
+- ADR-043 (News Beat schedule + cadence + RSSHub routing 契约) — V3 §S2 Beat schedule + cadence + routing layer cite source
+- ADR-047 (V3 §S1 closure acceptance + LiteLLM SLA baseline deferred to S5) — closure-only ADR sediment 体例 sustained 第 1 case 实证
+- ADR-048 (V3 §S2 closure acceptance + 4/4 RSSHub capacity expansion deferred to S5) — 本 LL sediment 关联 ADR + closure-only ADR sediment 体例 sustained 第 2 case 实证累积扩
+- skill quantmind-v3-active-discovery SKILL.md (件 3, Phase 0 active discovery enforcement) — sprint-orchestrator charter Phase 0 verify mechanism layer sustained
+- charter quantmind-v3-sprint-orchestrator (件 5 借 OMC `planner` extend) — sprint chain state lookup pre sub-PR implementation 体例 sustained 第 2 case 实证累积扩
+

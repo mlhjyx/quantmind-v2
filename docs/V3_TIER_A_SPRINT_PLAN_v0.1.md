@@ -56,13 +56,13 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 | element | content |
 |---|---|
-| Scope | V3 §3.1 News 6 源 (RSSHub 1/4 ✅ partial — 4-29 痛点 fix 上下文); 6 源 mock + integration |
-| Acceptance | 6 源 ingest + early-return SOP (任 3 命中 30s, V3 §13.1); fail-open 设计 (V3 §3.5 + V3 §14 #6); integration smoke + 6 源 mock fail injection; **fresh re-verify RSSHub 1/4 真值** sprint 起手时 (LL-116) |
-| File delta | ~5-8 files / ~600-1000 lines |
-| Chunked sub-PR | **chunked ≥2 sub-PR**: 2a (RSSHub refactor + 2 new source) / 2b (3 new + early-return + fail-open); CC 起手实测决议 |
-| Cycle | V3 §12.1 line 1311: 1 周 |
-| Dependency | 前置: S1 / 后置: S3 / 平行: S2.5 (Push back #3 (b) parallel S2) |
-| LL/ADR candidate | LL — RSSHub 1/4 → 6 源 expansion 真值 finding; ADR — 6 源 fail-open 设计决议 |
+| Scope | V3 §3.1 News 6 源 (RSSHub 1/4 ✅ partial — 4-29 痛点 fix 上下文); 6 源 mock + integration. **Status (post sub-PR 10 verify)**: ✅ substantially closed by V2 prior cumulative work — 6 fetcher classes + DataPipeline + NewsIngestionService + 2 migrations + Beat schedule + 11 test files + ADR-033 + ADR-043 cumulative ~22 files / ~3000-4000 行 done. 沿用 ADR-048 V3 §S2 closure acceptance + 4/4 RSSHub capacity expansion deferred to S5 |
+| Acceptance | 6 源 ingest paths ✅ DONE (ZhipuNewsFetcher + TavilyNewsFetcher + AnspireNewsFetcher + GdeltNewsFetcher + MarketauxNewsFetcher + RsshubNewsFetcher, `backend/qm_platform/news/`); early-return SOP ✅ DONE (DataPipeline early_return_threshold=3 + 30s timeout, PR #239); fail-open 设计 ✅ DONE (DataPipeline fail-soft per source aggregate, V3 §3.5 + V3 §14 #6); NewsIngestionService orchestrator ✅ DONE (PR #243); news_raw + news_classified DDL ✅ DONE (PR #240); API endpoint POST /api/news/ingest + /ingest_rsshub ✅ DONE (PR #244 + #254); Celery Beat schedule + cadence ✅ DONE (4-hour cron `3,7,11,15,19,23`, PR #257 + ADR-043); integration smoke 11 test files ✅ DONE; ADR-033 News 源替换 ✅ committed (5-06); ADR-043 Beat schedule + RSSHub routing 契约 ✅ committed (PR #257); **4/4 RSSHub capacity expansion** ⚠️ deferred to S5 paper-mode 5d period (LL-115 deferred architecture decision: multi-Beat-entry vs task-iterator vs route-list-arg, 沿用 ADR-047 LiteLLM SLA baseline deferred to S5 体例) |
+| File delta | ~5-8 files / ~600-1000 lines (retroactive — V2 cumulative ~22 files / ~3000-4000 行 / 11 test files done by V2 sub-PR 1-7c + 8a/8b/8b-cadence cumulative PR #234-#257; sub-PR 10 closure verify-only + cite reconcile + ADR/LL sediment ~6-8 files / ~400-700 lines doc-only delta) |
+| Chunked sub-PR | **single sub-PR** (verify-only + closure-only gap fix + ADR/LL sediment + Plan/Constitution/skeleton patch hybrid, sub-PR 10 sediment, sustained sub-PR 9 ADR-047 + LL-137 体例) |
+| Cycle | V3 §12.1 line 1311: 1 周 baseline (实际 V2 prior cumulative ~5-6 days 5-02 → 5-07 已 done; sub-PR 10 closure cycle <1 day verify-only + doc sediment) |
+| Dependency | 前置: S1 ✅ closed (PR #296 sub-PR 9 ADR-047 sediment); V2 prior work cumulative: PR #234-#257 ~3000-4000 行 已 done / 后置: S3 (NewsClassifier post sub-PR closure) / 平行: S2.5 (per user 决议 #3 (α) sequential — S2 closure 先 merge 后 S2.5 起手, 反 Plan §A S2.5 cite "parallel S2 per Push back #3 (b)" 早决议 — 沿用 Constitution §L8.1 (a) + sub-PR 9 user 决议 (a) sequential) |
+| LL/ADR candidate | **ADR-048** ✅ promote (sub-PR 10 V3 §S2 closure acceptance + 4/4 RSSHub capacity expansion deferred to S5); **LL-138** ✅ promote (V3 §S2 substantially closed by V2 prior cumulative work — sustained LL-137 plan-then-execute 体例 第 2 case 实证累积扩) |
 | Reviewer reverse risk | RSSHub 1/4 partial 真值需 fresh re-verify (反 silent assume 全新, LL-115); 反 6 源 hardcoded URL 漂移 |
 | 红线 SOP | sustained S1; News API key 改 → STOP |
 | Paper-mode | sustained S1 |
