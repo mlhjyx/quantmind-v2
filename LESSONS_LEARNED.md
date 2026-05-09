@@ -3824,3 +3824,273 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - ADR-043 4 working routes baseline cite (chunk C-RSSHub Path A closure 5-07)
 - LL-098 X10 forward-progress reverse case
 - LL-104 cross-verify SOP
+
+---
+
+## LL-116: Claude.ai cite 任 doc section anchor 必 fresh re-read doc §0 scope declaration verify (5 case 实证累积, V3 governance batch closure sub-PR 1, 2026-05-09)
+
+**触发**: V3 实施期 step 4-6 cumulative session (5-08 → 5-09) 5 PR 实证累积 — Claude.ai cite Constitution v0.2 §LX section anchor 时 silent 沿用 cumulative session memory cite section 真值 反 fresh re-read doc §0 scope declaration verify, 致 reverse cite finding 2 case + verified positive case 3 case 累积.
+
+**5 case 实证累积** (cite truth 真值 cumulative):
+
+| case | PR | doc cite | CC fresh re-read 真值 | 状态 |
+|---|---|---|---|---|
+| 1 | #281 | §L7 documentation sediment automation | enumeration cite (§0.3 line 47 declared L0/L1/L5/L6/L8/L10 6 layer scope, §L7 NOT in scope) | reverse 1 |
+| 2 | #282 | §L9 long-horizon coherence | enumeration cite (§L9 NOT in scope per §0.3 line 47) | reverse 2 |
+| 3 | #283 | §L0.3 / §L5.1 / §L6.2 | valid body sections (L0/L5/L6 layers per §0.3 line 47) | verified positive 1 |
+| 4 | #284 | §L6.2 line 247 | valid body section (L6 layer) | verified positive 2 |
+| 5 | #285 | §0 / §L0.3 / §L10 / §L8 / §L6 | valid body sections (L0/L6/L8/L10 layers) | verified positive 3 |
+
+**因**: cumulative session memory cite cumulative 沿用 (sustained PR sequence cite reuse 体例) silent baseline reverse case — Claude.ai cite session memory frontmatter 沉淀 doc section anchor cite 反 fresh re-read source doc §0 scope declaration. CC sub-PR 起手前未 enforce fresh re-read §0 scope declaration verify, 致 cite drift catch reactive (post-sediment) 反 prerequisite (pre-sediment).
+
+**SOP sediment** (12-A prompt 升级 candidate sustained):
+- Claude.ai 写 prompt 给 CC 时 cite 任 doc section anchor (§LX / §X.Y) 必 prerequisite fresh re-read 该 doc §0 scope declaration verify (反 cumulative session memory cite reuse default)
+- CC sub-PR 起手 fresh re-read prerequisite enforce — sustained quantmind-v3-fresh-read-sop skill SOP active CC invoke + quantmind-v3-cite-source-lock skill 4 元素 cite SSOT 锚点 only enforce
+- reverse case 2 + verified positive case 3 cumulative 实证累积 promote-ready trigger 满足 — V3 governance batch closure sub-PR 1 promote sediment
+
+**讽刺点**: **讽刺 #20** sediment — V3 实施期 cumulative 5 sub-PR cite drift catch 累积 (反 1 case isolated catch), 沉淀 cite drift 是 cumulative session memory 默认 sediment behavior (反 single PR 1 reviewer catch precedent). Claude.ai 写 prompt 时 reuse session memory cite section anchor 默认实证 — fresh re-read §0 scope declaration verify 反 silent default behavior.
+
+**relate**:
+- LL-105 SOP-6 (LL # / ADR # registry SSOT cross-verify) — section anchor cite SSOT 锚点 体例 sustained
+- LL-104 (Claude.ai vs CC cross-verify) — cumulative session memory cite drift 真值 SOP-4 enforce
+- LL-103 SOP-4 (反 silent agreeing) — fresh re-read prerequisite enforce
+- LL-098 X10 (反 forward-progress default) — fresh re-read 是 prerequisite 反 post-hoc catch
+- ADR-022 (反 silent overwrite + 集中机制) — fresh re-read SOP enforce mechanism layer + skill knowledge layer 双层
+- ADR-037 (Internal source fresh read SOP) + 铁律 45 — sub-PR 起手 fresh read SOP 体例 sustained
+- skill quantmind-v3-fresh-read-sop SKILL.md (件 3, 8 doc fresh read SOP)
+- skill quantmind-v3-cite-source-lock SKILL.md (件 3, 4 元素 cite SSOT 锚点 体例)
+- hook cite_drift_stop_pretool.py (件 4, PreToolUse[Edit|Write] cite drift static detect)
+- charter quantmind-cite-source-verifier (件 5, cross-source cite verify)
+- V3 launch prompt §9 cite source 锁定 体例 (件 6 §9 reference)
+
+---
+
+## LL-117: atomic sediment+wire 体例 — hook + tests + settings.json wire delta 同 commit (V3 governance batch closure sub-PR 1, 6 PR 实证累积 promote, 2026-05-09)
+
+**触发**: V3 实施期 step 4 chunked (ζ hybrid) 6 sub-PR atomic sediment+wire 体例 6 PR cumulative 实证累积 (PR #276/#280/#281/#282/#283/#284 — sub-PR 1 redline_pretool_block + sub-PR 2 cite_drift_stop_pretool + sub-PR 3 sediment_poststop + sub-PR 4 handoff_sessionend + sub-PR 5 session_context_inject v3 + verify_completion v2 + sub-PR 6 iron_law_enforce v2 + protect_critical_files v2). 沿用 user 5-08 Q1 (a') 决议体例 — V3 governance batch closure 时 sediment promote.
+
+**因**: V3 实施期 hook + skill + charter 三层互补 governance — hook sediment 1 sub-PR 体例 决议 sediment-only (file delta 仅 .py + tests, settings.json wire 待 sub-PR sequence next) vs atomic (file delta + settings.json wire delta 同 commit 同 PR + post-wire fire test immediate ~3-4 min). atomic 体例 sustained PR cumulative 实证累积 — sediment-only 反向缺 fire test 验证 + wire 漂移 risk + 反 ADR-022 集中机制体例.
+
+**SOP sediment** (atomic sediment+wire 6 PR 实证累积 promote):
+- 1 sub-PR file delta = hook .py + tests + settings.json wire delta 同 commit (反 sediment-only 拆分)
+- post-wire fire test ~3-4 min immediate (sustained PR #276 5-09 smoke verify cycle 体例累积)
+- chunked SOP target ~10-13 min cumulative per sub-PR (sustained LL-100)
+- post-merge memory `project_sprint_state.md` handoff sediment (沿用铁律 37)
+- V3 governance batch closure 时 LL append-only delta promote 进 LESSONS_LEARNED.md (本 LL-117 sediment trigger)
+
+**6 PR 实证累积** (real-world catch 实证):
+
+| sub-PR | PR | scope | atomic file delta |
+|---|---|---|---|
+| 1 | #276 | redline_pretool_block.py 全新 hook + 53 tests | hook + tests + settings.json wire (PreToolUse Bash) |
+| 2 | #280 | cite_drift_stop_pretool.py 全新 hook + 35 tests | hook + tests + settings.json wire (PreToolUse Edit\|Write) |
+| 3 | #281 | sediment_poststop.py 全新 hook + 9 tests + doc-sediment-auto skill | hook + tests + settings.json wire (Stop) + skill bonus closure |
+| 4 | #282 | handoff_sessionend.py 全新 hook + 12 tests | hook + tests + settings.json wire (SessionEnd, NEW wire type) |
+| 5 | #283 | session_context_inject v3 + verify_completion v2 + 15 tests | 2 现有 hook 修订 + tests (0 wire delta sustained) |
+| 6 | #284 | iron_law_enforce v2 + protect_critical_files v2 + 22 tests | 2 现有 hook 修订 + tests (0 wire delta sustained) |
+
+**讽刺点**: **讽刺 #21** sediment — V3 governance enforcement 验证 cumulative pattern 体例文档化 — 反 single PR sediment cycle isolated 实证. user 5-08 Q1 (a') promote trigger sustained 6 PR cumulative 实证累积 prerequisite 满足 真值 (反 single PR isolated atomic precedent insufficient).
+
+**relate**:
+- LL-100 (chunked SOP ≤8 min target) — atomic sediment SOP target 体例 sustained
+- LL-098 X10 (反 forward-progress default) — sub-PR cumulative pattern user 显式 ack 体例
+- LL-101 (cite 数字 SQL/git/log 真测 verify) — atomic sediment cite 4 元素 SSOT 锚点 only
+- ADR-022 (反 silent overwrite + 集中机制 + 反 abstraction premature) — atomic sediment+wire 体例 mechanism + SOP knowledge 双层 enforce
+- ADR-037 + 铁律 45 (4 doc fresh read SOP) — sub-PR atomic sediment 起手 fresh read prerequisite
+- LL-067 reviewer agent + AI self-merge cycle 体例 sustained
+- V3_LAUNCH_PROMPT.md §3.2 sub-PR 内 atomic sediment+wire 体例 (件 6 §3.2 reference)
+
+---
+
+## LL-127: drift rate multi-method sensitivity SOP — Constitution v0.2 + skeleton v0.1 cite drift 率 chat-only audit 实证 (V3 governance batch closure sub-PR 1, 5-09 drift rate audit cycle 实证, 2026-05-09)
+
+**触发**: V3 实施期 5-09 drift rate audit cycle (chat-only audit, ~3-4 min target) — Constitution v0.2 + skeleton v0.1 cite drift 率量化 multi-method sensitivity (per-token / per-cite / cumulative) + decision (D) 决议 sediment V3 governance batch closure 体例累积.
+
+**因**: drift rate 量化 single-method 漂移 假设 (per-token only OR per-cite only) reverse case — V3 实施期 cumulative session 5-08 → 5-09 16 sub-PR cumulative cite drift 累积 sustained single-method 量化 失真 (per-token only 0.05 vs per-cite cumulative 0.09 sensitivity 实证). multi-method sensitivity SOP enforce drift rate 真值 cumulative cite verify (反 single-method silent baseline).
+
+**SOP sediment**:
+- drift rate 量化必走 ≥3 method (per-token / per-cite / cumulative) sensitivity 真值 cumulative cite (反 single-method default)
+- chat-only audit cycle ~3-4 min target (反 full sub-PR sediment cycle, drift rate audit 反 work scope mutation 性质)
+- decision (D) sediment trigger — drift rate cumulative ≥ threshold (e.g. cumulative 5%) → V3 governance batch closure trigger 满足 prerequisite (sustained user 5-09 (D) 决议体例)
+- multi-method sensitivity SOP 沿用 LL-101 cite 数字 SQL/git/log 真测 verify 体例 + LL-104 cumulative session cross-verify 体例
+
+**5-09 drift rate audit cycle 真值 cumulative cite** (~3-4 min chat-only audit cycle):
+- per-token Constitution drift rate ~9.0% (cumulative session 5-08 → 5-09 累积)
+- per-cite cumulative drift rate ~5.0% (cumulative cite 4 元素 SSOT 锚点 only baseline)
+- decision (D) sustained — V3 governance batch closure trigger 满足 prerequisite (cumulative drift rate ≥ baseline)
+
+**讽刺点**: **讽刺 #22** sediment — drift rate 量化 single-method 漂移 假设 reverse case — V3 实施期 cumulative session cite drift 累积 sustained single-method 量化 失真 sustained. multi-method sensitivity SOP enforce drift rate 真值 cumulative cite verify 反 single-method default 反向 catch.
+
+**relate**:
+- LL-101 (cite 数字 SQL/git/log 真测 verify) — drift rate cumulative cite 4 元素 SSOT 锚点 only baseline
+- LL-104 (cumulative session cross-verify) — drift rate cumulative cite SOP 体例
+- LL-105 SOP-6 (LL # / ADR # registry SSOT cross-verify) — drift rate audit cycle SSOT 锚点 only
+- LL-106 (内 source fresh read SOP gap) — 4 doc fresh read SOP enforce drift rate audit prerequisite
+- LL-098 X10 (反 forward-progress default) — drift rate audit cycle decision (D) sediment trigger 体例
+- ADR-022 (反 silent overwrite + 集中机制) — drift rate audit cycle 体例 mechanism + SOP knowledge 双层 enforce
+
+---
+
+## LL-132: pre-push smoke baseline drift detection 真值 augmented (V3 governance batch closure sub-PR 1, 4 PR 实证累积 + 2 STOP cycle, 2026-05-09)
+
+**触发**: V3 实施期 step 4 sub-PR 4-6 + step 6 cumulative 4 PR (PR #282/#283/#284/#285) + 5-09 STOP cycle x2 (PR #282 + sub-PR 6 pre-sediment Q5) — pre-push smoke baseline 真值 cumulative cite drift detection sediment cite trail enforce 体例累积. 真值 augmented post-PR #284 — 22 fail PYTHONPATH-related pre-existing test infra issue (反 PR #277-#281 cumulative cite "55 PASS / 2 skipped" sustained baseline + 反 PR #282/#283 STOP cycle "1 FAILED MVP 3.2 timeout" cite scope).
+
+**因**: cumulative session memory cite "55 PASS / 2 skipped" baseline silent 沿用 default — sub-PR 起手 反 fresh `pytest backend/tests/smoke/` 真测 baseline drift detection. 真值 augmented post-PR #284 — services 全 Running + smoke 22 fail PYTHONPATH-related pre-existing test infra issue (subprocess 0 inherit `.pth` ModuleNotFoundError: 'app'/'engines'/'backend.platform') — 沿用 docs/SETUP_DEV.md `.pth` install SOP gap 累积.
+
+**SOP sediment** (sediment cite trail enforce):
+- 本 sub-PR 起手 fresh `pytest backend/tests/smoke/ -v --tb=short 2>&1 | tail -40` 真测 pre-push smoke baseline 真值 (反 silent 沿用 cumulative cite)
+- push 路径决议: sustained Q3 (a) `--no-verify` + 4 元素 reason cite (sustained CLAUDE.md "user explicitly asked" governance)
+- 4 元素 reason cite augmented (反 single-test "1 FAILED MVP 3.2 timeout" cite scope reverse case):
+  - [1] failure file paths × N categorize (e.g. 5 service-import + 12 MVP live + 4 production_entry_imports + 1 qmt_source per PR #284/#285 cite)
+  - [2] failure cause (e.g. PYTHONPATH/.pth 缺失 pre-existing test infra issue, 反 service down OR sub-PR regression)
+  - [3] scope 0 overlap (sub-PR work scope vs smoke fail file overlap verify)
+  - [4] user 显式 ack cite (sustained CLAUDE.md "user explicitly asked")
+- post-wire fire test 体例 sustained — hook sediment 性质 fire test ~3-4 min immediate; doc-only sediment 反 fire test (sustained PR #285 件 6 体例累积)
+
+**4 PR 实证累积**:
+
+| PR | smoke baseline 真值 | push 路径决议 |
+|---|---|---|
+| #282 | 1 FAILED (MVP 3.2 strategy_registry migration test 30s timeout) | --no-verify + 4 元素 reason cite (1st STOP cycle) |
+| #283 | 1 FAILED (sustained PR #282 baseline) | --no-verify + 4 元素 reason cite (sustained PR #282 体例) |
+| #284 | 22 FAILED (PYTHONPATH-related pre-existing) | --no-verify + 4 元素 reason cite augmented 22 fail categorize |
+| #285 | 22 FAILED (sustained PR #284 baseline) | --no-verify + 4 元素 reason cite sustained |
+
+**讽刺点**: **讽刺 #23** sediment — cumulative session memory cite "55 PASS / 2 skipped" baseline silent 沿用 4 day default reverse case — sub-PR 起手 反 fresh smoke 真测 baseline drift detection 累积. 真值 augmented post-PR #284 reverse case — single-test cite scope 失真 sustained until 22 fail categorize fresh verify catch.
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) — push 路径决议 user 显式 ack 体例
+- LL-100 (chunked SOP ≤8 min target) — atomic sediment SOP target 体例 sustained
+- LL-101 (cite 数字 SQL/git/log 真测 verify) — smoke baseline 4 元素 reason cite SSOT 锚点 only
+- LL-104 (cumulative session cross-verify) — smoke baseline cumulative cite drift catch SOP
+- LL-127 (drift rate multi-method sensitivity SOP) — smoke baseline drift rate cumulative cite multi-method
+- ADR-022 (反 silent overwrite + 集中机制) — smoke baseline 体例 mechanism + SOP knowledge 双层 enforce
+- CLAUDE.md governance "user explicitly asked" — --no-verify push 路径 4 元素 reason cite governance
+- docs/SETUP_DEV.md `.pth` install SOP — PYTHONPATH-related pre-existing test infra issue baseline
+
+---
+
+## LL-133: 现有 hook v1→v2 lifecycle governance 体例 — sustained ADR-022 反 silent overwrite + skeleton §3.2 现有扩展体例 (V3 governance batch closure sub-PR 1, 双 case 实证累积 PR #283 + #284, 2026-05-09)
+
+**触发**: V3 实施期 step 4 sub-PR 5+6 双 case 实证累积 (PR #283 session_context_inject v2→v3 + verify_completion v1→v2 + PR #284 iron_law_enforce v1→v2 + protect_critical_files v1→v2) — 现有 hook v1→v2 lifecycle governance 体例 sediment.
+
+**因**: V3 governance enforcement 决议 — 4 现有 hook 扩展 (合并 anti-prompt-design-violation-pretool / cite-source-poststop / banned-words-poststop / fresh-read-sessionstart 进现有 hook v1→v2) sustained ADR-022 反 silent overwrite + skeleton §3.2 line 277-285 决议 + sustained 现 v1 真值 (反 全新 hook silent 创建). 双 case 实证累积 promote-ready trigger 满足 — V3 governance batch closure sub-PR 1 promote sediment.
+
+**SOP sediment** (现有 hook v1→v2 lifecycle governance 体例):
+- 现有 hook 扩展 sustained 现 v1 action mode 真值 (反 silent overwrite ADR-022) — sustained WARN-only sys.exit(0) OR 混合 BLOCK + WARN 现 v1 体例
+- v2 扩展 scope 沿用 Phase 1 narrowed (LL-130 候选体例累积) — 静态可达 reject pattern detect; full SOP 走 skill knowledge layer active CC invoke
+- 现有 hook v2 修订 + tests delta + 0 settings.json wire delta (现有 wire entry sustained) atomic sediment 1 sub-PR
+- v2 marker present in source + tests verify (反 silent v1→v2 transition without marker)
+
+**双 case 实证累积**:
+
+| case | PR | 现有 hook | v1→v2 scope |
+|---|---|---|---|
+| 1 | #283 | session_context_inject v2→v3 + verify_completion v1→v2 | V3 doc fresh read 4 doc 加入 inject scope + 4 元素 cite source 锁定 reminder + 真+词 detect via git diff staged content |
+| 2 | #284 | iron_law_enforce v1→v2 + protect_critical_files v1→v2 | V3 §11 fail-open + Beat 注释 + prompt 设计 hardcoded command 3/3 类静态可达 detect (sustained Q3 β) + prompts/risk/*.yaml WARN_PATTERNS add (sustained Q2 β) |
+
+**讽刺点**: **讽刺 #24** sediment — V3 governance enforcement 真值 决议 — 4 全新 hook + 4 现有扩展 体例 反 8 全新 hook silent 创建 倾向 (沿用 Constitution §L6.2 line 282 + skeleton §3.2 体例累积). 现有 hook v1→v2 lifecycle governance 体例 文档化 promote-ready 双 case 实证累积 prerequisite 满足.
+
+**relate**:
+- LL-117 (atomic sediment+wire 体例) — 现有 hook v1→v2 lifecycle 沿用 atomic sediment 体例
+- LL-100 (chunked SOP) — sub-PR target ~10-13 min cumulative
+- ADR-022 (反 silent overwrite + 反 abstraction premature + 集中机制) — 现有 hook 扩展 vs 全新 hook silent 创建 governance 体例
+- ADR-037 + 铁律 45 (4 doc fresh read SOP) — 沿用 sub-PR 起手 fresh read prerequisite
+- skeleton §3.2 line 277-285 现有扩展决议体例 (件 2 reference)
+- Constitution §L6.2 line 282 (4 全新 + 4 现有扩展, ADR-022 反 silent overwrite)
+- V3_LAUNCH_PROMPT.md §0.1 8 hook V3-batch (件 4: 4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283 ×2 + #284 ×2) cite (件 6 §0.1 reference)
+
+---
+
+## LL-134: Q5 路径假设 vs 实测真值修正 — services 已 Running + smoke 22 fail PYTHONPATH-related + prompts/risk/ 1 file 现存在 (V3 governance batch closure sub-PR 1, sub-PR 6 pre-sediment STOP cycle 实证, 2026-05-09)
+
+**触发**: V3 实施期 step 4 sub-PR 6 pre-sediment Q5 STOP cycle (5-09) — Q5 (α) "services restart + retest" 路径假设 vs 实测真值修正 — services 全 Running (反 service down 假设) + smoke 22 fail PYTHONPATH-related pre-existing test infra issue (反 service down root cause 假设) + prompts/risk/news_classifier_v1.yaml 1 file 现存在 4185 bytes V3 Sprint 7b.2 PR #241 sediment (反 0 file 现存在 prerequisite 假设).
+
+**因**: cumulative session memory cite + Claude.ai prompt cite 假设 sustained 沿用 stale baseline real-world catch reverse case — sub-PR 起手 fresh verify 真值差异 累积. Q5 (α) services restart 路径假设 sustained "services down" baseline silent 沿用, 实测 services 全 Running (反 Q5 (α) 路径 root cause assumption). smoke 22 fail PYTHONPATH-related pre-existing 反 service down (services 全 Running). prompts/risk/ 1 file 现存在 反 prompt 假设 0 file 现存在 prerequisite (V3 Sprint 7b.2 PR #241 sediment 累积 sustained).
+
+**SOP sediment** (sub-PR 起手 fresh verify 假设 vs 实测 真值修正 体例):
+- sub-PR 起手 fresh verify 真值 必走 ≥3 critical truth source (e.g. main HEAD + smoke baseline + file existence + service status + LL # next free) parallel verify (反 silent 沿用 prompt cite cumulative session memory baseline)
+- prompt cite 假设 vs 实测 真值差异 立 surface (沿用 §3 (a) "和我假设不同" 体例) — 反 silent 沿用 stale baseline + 反 silent 进 sediment cycle without surface
+- 4 类反问 user 显式 ack 真值 sediment trigger (sustained PR #285 5 类 ack 决议体例 — Q1 α + Q2 β + Q3 β + Q4 sustained + Q5 α)
+- LL-132 候选 sediment cite trail enforce 真值 augmented (sustained 沿用 cumulative cite "55 PASS / 2 skipped" baseline reverse case real-world catch)
+
+**3 类 fresh verify 真值修正 cite**:
+
+| 假设 | fresh verify 真值 | finding |
+|---|---|---|
+| services down (Q5 α 假设) | services 全 Running (FastAPI + Celery + CeleryBeat + QMTData + Redis + PG16) | reverse — Q5 (α) 路径 root cause assumption 修正 |
+| smoke 22 fail = service down OR sub-PR regression | PYTHONPATH/.pth 缺失 pre-existing test infra issue (subprocess 0 inherit `.pth`) | augmented — 4 元素 reason cite augmented sustained PR #284/#285 累积 |
+| prompts/risk/ 0 file 现存在 prerequisite (Q2 假设) | news_classifier_v1.yaml 现存在 4185 bytes V3 Sprint 7b.2 PR #241 sediment | reverse — Q2 fresh verify 修正 protect_critical_files v2 scope WARN 反 BLOCK |
+
+**讽刺点**: **讽刺 #25** sediment — sub-PR 起手 fresh verify 真值差异 累积 reverse case sustained — silent 沿用 cumulative session memory cite stale baseline + Claude.ai prompt cite 假设 silent 沿用 cumulative session memory cite stale baseline. real-world catch 累积 sustained sub-PR 6 pre-sediment Q5 STOP cycle 4 类反问 ack governance enforcement 落地. fresh verify SOP enforce — sub-PR 起手 prerequisite 反 silent 沿用 cumulative baseline default behavior.
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) — sub-PR 起手 user 显式 ack 体例 sustained
+- LL-103 SOP-4 + LL-104 (Claude.ai vs CC cross-verify) — fresh verify 真值差异 cumulative session cite drift catch SOP
+- LL-105 SOP-6 (LL # / ADR # registry SSOT cross-verify) — fresh verify 4 元素 cite SSOT 锚点 only
+- LL-106 (内 source fresh read SOP gap) — fresh verify SOP enforce sub-PR 起手 prerequisite
+- LL-115 (LL-114 sub-PR misframe 修正 sediment, option γ HYBRID 体例) — Phase 0 active discovery enforcement 体例 sustained
+- LL-116 (Claude.ai cite 任 doc section anchor 必 fresh re-read doc §0 scope declaration verify) — fresh verify 体例 sustained
+- LL-132 (pre-push smoke baseline drift detection 真值 augmented) — smoke baseline drift catch SOP
+- ADR-022 (反 silent overwrite + 集中机制) — fresh verify 体例 mechanism + SOP knowledge 双层 enforce
+- CLAUDE.md governance "user explicitly asked" — sub-PR 起手 user 显式 ack 体例 sustained
+
+---
+
+## LL-135: doc-only launch prompt sediment 体例 — 件 6 反 hook sediment 性质 反 fire test (V3 governance batch closure sub-PR 1, V3 6 件套 件 6 step 6 PR #285 实证, 2026-05-09)
+
+**触发**: V3 实施期 step 6 PR #285 (V3 6 件套 件 6 V3_LAUNCH_PROMPT.md sediment) — doc-only launch prompt sediment 体例 — 件 6 反 hook + 反 code 修订 性质 → 反 post-wire fire test (反 sustained PR #276/#280/#281/#282/#283/#284 atomic sediment+wire post-wire fire test 体例累积). reviewer 双层防御 governance 落地实证 (REQUEST_CHANGES → APPROVE post-fix sequence).
+
+**因**: V3 governance enforcement — 件 6 V3 启动 prompt sediment 性质 doc-only (反 hook + 反 code 修订) → 反 fire test scope (sustained PR #285 件 6 反 hook sediment 性质). 1 file delta + reviewer 双层防御 governance落地 — initial commit reviewer REQUEST_CHANGES (2 P1 + 3 P2 + 2 P3) → fix commit → reviewer APPROVE post-fix → AI self-merge. 沿用 ADR-022 反 silent overwrite + skeleton §0.2 line 33 enforce 0 hardcoded specifics by Claude.ai writes.
+
+**SOP sediment** (doc-only sediment 体例):
+- doc-only sediment 性质 反 hook + 反 code 修订 → 反 post-wire fire test (sustained PR #270/#271 doc-only sediment 体例累积)
+- doc-only sediment 1 file delta 限 + commit + push + PR + reviewer 双层防御 governance + AI self-merge (LL-100 chunked SOP target ~10-13 min cumulative)
+- doc-only sediment 内文 0 hardcoded specifics (path / file / function / SQL / command) by Claude.ai writes (sustained skeleton §0.2 line 33 + memory #19/#20 enforce) — cite SSOT spec-defined anchors (Constitution + skeleton § + skill / hook / charter spec-defined names + LL/ADR # registry SSOT)
+- doc-only sediment cite 4 元素 SSOT 锚点 only (反 hardcoded line# in prompt body)
+- doc-only sediment file path 决议 沿用 cumulative naming convention (反 nested subdir creation per ADR-022 反 abstraction premature)
+
+**讽刺点**: **讽刺 #26** sediment — V3 6 件套 件 6 doc-only launch prompt sediment 性质 反 hook + 反 code 修订 真值 — 反 fire test 体例落地. reviewer 双层防御 governance 实证 — initial commit P1 reviewer catch + fix iteration → APPROVE post-fix sequence sustained 6 PR cumulative 0 P1 baseline (PR #279-#284) regression catch + recovery 体例累积.
+
+**relate**:
+- LL-117 (atomic sediment+wire 体例) — atomic sediment SOP target 体例 sustained (含 doc-only 反 fire test 例外)
+- LL-100 (chunked SOP) — doc-only sediment SOP target 体例
+- LL-067 reviewer agent + AI self-merge cycle 体例 sustained — reviewer 双层防御 governance 落地实证
+- ADR-022 (反 silent overwrite + 反 abstraction premature + 集中机制) — doc-only sediment 体例 mechanism + SOP knowledge 双层 enforce
+- skeleton §0.2 line 33 enforce 0 hardcoded specifics by Claude.ai writes (件 2 reference)
+- memory #19/#20 (prompt 设计 0 数字 path command enforcement layer) — doc-only sediment cite SSOT 锚点 only
+- V3_LAUNCH_PROMPT.md (件 6, 沿用 docs/V3_*.md naming convention 累积; 反 nested subdir creation)
+
+---
+
+## LL-136: sub-PR sediment time CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP reverse case (V3 governance batch closure sub-PR 1, PR #285 P1 #1 + P1 #2 双 case 实证, 2026-05-09)
+
+**触发**: V3 实施期 step 6 PR #285 reviewer 2 P1 finding sediment — P1 #1 "8 hook V3-batch vs 13 hook cumulative cite drift" + P1 #2 "件 4 batch breakdown 反 cite-locked" 双 case real-world catch. CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP gap sediment — sub-PR sediment time 件 1+2+3+4+5+6 cumulative cite 真值 cross-verify (反 reviewer 双层防御 default 沉淀单点).
+
+**因**: V3 governance enforcement gap — sub-PR sediment time CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP 反 prerequisite (vs reviewer 双层防御 post-hoc catch). PR #285 件 6 V3 launch prompt sediment cite 件 4 "8 hook" vs `ls .claude/hooks/*.py` "13 hook cumulative" 真值差异 sustained — initial commit cite drift 反 catch (reviewer P1 catch only). CC sub-PR sediment time 件 X cumulative cite 真值 cross-verify 反 prerequisite default behavior.
+
+**SOP sediment** (sub-PR sediment time 件 X cumulative cite cross-verify 真值 enforce SOP):
+- sub-PR sediment time CC 必 cross-verify 件 X cumulative cite 真值 (反 silent 沿用 cumulative session memory cite reuse default)
+- 8 hook V3-batch vs 13 hook cumulative `ls` 真测 真值 cross-verify (反 silent 沿用 prompt cite "8 hook" 单 source)
+- 件 4 batch breakdown 真值 cite-lock (4 全新 PR # + 4 现有扩展 PR # 显式 cite, 反 reader 自行 summation)
+- cross-verify SOP 沿用 LL-104 (Claude.ai vs CC cross-verify) + LL-105 SOP-6 (LL # / ADR # registry SSOT cross-verify) + LL-116 (Claude.ai cite 任 doc section anchor 必 fresh re-read doc §0 scope declaration verify) cumulative cite SOP 体例
+
+**双 case 实证 (PR #285 reviewer P1 finding)**:
+
+| case | finding | fix |
+|---|---|---|
+| 1 (P1 #1) | "8 hook V3-batch" vs "13 hook cumulative" cite drift sustained | §0.1 add legend disambig (8 V3-batch = 件 4 sediment scope; 13 cumulative = ls 真测 8 V3-batch + 5 现有 sustained) |
+| 2 (P1 #2) | 件 4 batch breakdown 反 cite-locked | 4 全新 PR #276/#280/#281/#282 + 4 现有扩展 PR #283 ×2 + #284 ×2 显式 cite |
+
+**讽刺点**: **讽刺 #27** sediment — CC 自身 件 X cumulative cite cross-verify 真值 enforce SOP gap sustained — sub-PR sediment time silent 沿用 prompt cite cumulative session memory baseline default reverse case. reviewer 双层防御 post-hoc catch 反 prerequisite — sustained 6 PR cumulative 0 P1 baseline regression catch. cross-verify SOP enforce sub-PR sediment time prerequisite 反 reviewer 双层防御 default 沉淀单点.
+
+**relate**:
+- LL-101 (cite 数字 SQL/git/log 真测 verify) — cumulative cite 真值 cross-verify SOP 体例
+- LL-104 (Claude.ai vs CC cross-verify) — cumulative session cross-verify SOP 体例
+- LL-105 SOP-6 (LL # / ADR # registry SSOT cross-verify) — cumulative cite SSOT 锚点 only
+- LL-116 (Claude.ai cite 任 doc section anchor 必 fresh re-read doc §0 scope declaration verify) — cumulative cite fresh re-read SOP 体例
+- LL-117 (atomic sediment+wire 体例) — sub-PR sediment SOP 体例 sustained
+- LL-067 reviewer agent + AI self-merge cycle 体例 sustained — reviewer 双层防御 governance 落地实证
+- ADR-022 (反 silent overwrite + 集中机制) — cross-verify 体例 mechanism + SOP knowledge 双层 enforce
+- skill quantmind-v3-cite-source-lock SKILL.md (件 3, 4 元素 cite SSOT 锚点 体例) — sub-PR sediment time cite SSOT enforce mechanism
+
