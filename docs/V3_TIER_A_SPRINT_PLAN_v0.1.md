@@ -67,7 +67,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; News API key 改 → STOP |
 | Paper-mode | sustained S1 |
 
-### S2.5 — L0.4 AnnouncementProcessor 公告流 ingest + parser ⭐ (Finding #2 (b) sediment, parallel S2 per Push back #3 (b))
+### S2.5 — L0.4 AnnouncementProcessor 公告流 ingest + parser ⭐ (Finding #2 (b) sediment, parallel S2 per Push back #3 (b)) — ✅ CLOSED sub-PR 11a (PR #298) + 11b (PR #299) + 12 hotfix bundle (PR #300) + 13 RSSHub→AKShare reverse (本 PR sediment, ADR-049 §1 Decision 3 amendment + ADR-052 NEW + LL-142 第 2 silent miss case + 1:1 simulation real-data fetched=10 真cninfo announcements 2026-05-09 23:06)
 
 | element | content |
 |---|---|
@@ -82,7 +82,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; 任 .env RSS source URL 改 → STOP + push user |
 | Paper-mode | sustained S1 |
 
-### S3 — L0.2 NewsClassifier V4-Flash + 4 profile (✅ partial — needs fresh re-verify)
+### S3 — L0.2 NewsClassifier V4-Flash + 4 profile (✅ partial — needs fresh re-verify) — ✅ CLOSED sub-PR 13 (本 PR mixed bundle) — 8/8 ✅ DONE substantially closed by V2 prior cumulative work (PR #241 sub-PR 7b.2 + PR #242 sub-PR 7b.3-v2) + ADR-051 closure-only ADR sediment 第 3 case 实证累积扩
 
 | element | content |
 |---|---|

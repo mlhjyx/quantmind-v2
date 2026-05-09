@@ -4356,3 +4356,130 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 - ADR-050 §post-merge ops checklist patch — 本 LL 触发 (sub-PR 12 sediment scope)
 - 铁律 44 X9 (Beat schedule 改必显式 restart) — 本 LL 增补 4-step 体例 (Beat restart 不充分, 加 Worker imports verify + Worker restart + 1:1 simulation)
 
+## LL-142: RSSHub spec gap silent miss 第 2 case — `/cninfo/announcement/*` HTTP 404 fail-soft masked as "data condition" (LL-141 reverse case 第 1 实证累积扩, sub-PR 13 ADR-052 reverse decision sediment, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 11a (PR #298) ADR-049 §1 Decision 3 cite "RSSHub route reuse with announcement-specific route_path (e.g. `/cninfo/announcement/{stockCode}` route, sub-PR 11b 待办 verify 真值 endpoint structure)" + ADR-049 §2 Finding #1 deferral "Defer real RSS endpoint structure verify to sub-PR 11b". sub-PR 11b (PR #299) implementation 0 actually verify route — 1:1 simulation post-sub-PR-12 (LL-141 sediment) returned `fetched: 0, ingested: 0, status: success` 被 misread as **data condition** (RSSHub returned 0 items 真值).
+
+**真值差异 (silent miss caught by user "可以，主动思考全面" directive)**: sub-PR 13 Phase 0 active discovery 5 parallel checks revealed:
+1. Local RSSHub `/cninfo/announcement/600519` HTTP 404
+2. 5 variant probes (sse/600519/gssh0600519, szse/000002/gssz0000002, sh.600519, sh/600519, /cninfo/announcement) 全 HTTP 404
+3. Local RSSHub root HTML lists `cninfo/announcement/` 作 text reference 但 actual handler 0 loaded (slim/custom build missing cninfo namespace plugin)
+4. Upstream `rsshub.app/cninfo/announcement/...` HTTP 403 production block (RSSHub policy 2025-10+ enforcement)
+5. RSSHub upstream issue #6102 (closed via PR #6103) confirms cninfo route 真值 was broken by website redesign — fix exists in upstream master 但 local instance build 0 包含
+
+**真值 root cause**: ADR-049 §1 Decision 3 cite specific route URL based on **assumption** (sub-PR 11a sediment 时 0 verify, deferred to 11b per ADR-049 §2 Finding #1). sub-PR 11b implementation 1:1 simulation **passes via fail-soft 404→0 items mechanism** — DataPipeline.fetch_all 真**fail-soft per-source aggregate** sustained sub-PR 7a 体例 → 404 source returns 0 items, pipeline aggregates, processor returns `fetched=0` "success". 真值 production capability for announcement_ingest = **0 functional**, fail-soft path masking spec gap.
+
+**Trigger**: user "你需要解决，可以去查询相关文档和互联网" directive enforce CC actively investigate root cause via WebSearch + WebFetch GitHub + AKShare REPL probe. CC 自身 0 silent route gap detect — sustained LL-103 反 silent agreeing 第 N+2 次实证累积扩 + LL-141 reverse case 第 1 实证累积扩 (silent miss 体例 自身 sediment evidence — LL-141 about Worker imports gap, LL-142 about route validity gap, both caught by user directive 反向 enforce CC blind spot).
+
+**SOP** (LL-142 sediment, sustained LL-141 4-step post-merge ops checklist 增补):
+
+1. **Architecture decision cite specific URL/route 必备 verify before sediment** (沿用 sub-PR 11a Decision 3 reverse case体例 第 1 实证): ADR sediment cite specific upstream URL/route/API endpoint 真值 verify protocol — 反 "sub-PR 11b 待办 verify" deferral cite (defer = silent forward over假设 dependency, 真值 catch only at post-merge ops via 真生产 traffic OR user directive 反向 enforce). 沿用 LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case sustained.
+
+2. **Real-data 1:1 simulation 反 fail-soft empty result interpretation** (沿用 LL-141 1:1 simulation 增补): `result_json={fetched: 0, ingested: 0, status: success}` 真值 ambiguous — 区分:
+   - **Data condition** (真值 0 items returned by source): `fetched=0` + curl probe HTTP 200 + downstream source returns 0 items
+   - **Spec gap fail-soft** (route 0 functional, fail-soft to 0 items): `fetched=0` + curl probe HTTP 404/timeout/403 → silent miss 真值
+   sub-PR 13 verify SOP enforce: 1:1 simulation 后必走 curl probe parallel verify upstream HTTP status code (反 silent fail-soft mask, sustained LL-141 reverse case 第 1 实证累积扩).
+
+3. **Phase 0 active discovery parallel multi-probe verify** (sustained LL-115 + 沿用 sub-PR 13 5 parallel checks precedent): RSSHub status check + announcement_raw count + scheduler_task_log audit + Servy 4 services + memory frontmatter staleness — 5 parallel verify protocol caught 3 critical findings (Beat STOPPED + RSSHub 404 + memory stale). 沿用 sub-PR 13 体例 reverse single-source verify (反 silent confirmation bias).
+
+4. **Internet research mandate when local verify fail** (sustained LL-115 + user "可以去查询相关文档和互联网" directive): WebSearch + WebFetch GitHub source + upstream docs/issues 必走 (反 silent assume + 反 silent give up + 反 silent defer to "future sprint"). sub-PR 13 1:1 evidence: WebFetch GitHub issue #6102 + WebSearch RSSHub cninfo route → confirmed route 真值 broken upstream + closed via PR #6103 + fixed in master but not local instance build → architecture reverse decision真值 grounded.
+
+5. **Architecture reverse decision 真值 evidence-driven sediment** (反 ADR-022 abstraction premature 反向): sub-PR 11a Decision 3 cite "反 separate fetcher class体例 sustainable when route_path arg sufficient" 真值**verified不充分**post-真值-evidence — switch to AKShare separate fetcher class 真值 grounded (反 abstraction premature 反向 — abstraction 真值 supported by evidence). ADR-052 sediment真值 reverse体例 第 1 case 实证累积扩 (反 silent overwrite per ADR-022 — original Decision 3 cite preserved with strikethrough + AMENDED row, cite trail intact).
+
+**关联 PR**:
+- 本 LL 条目 (LL-142 sediment) sub-PR 13 (RSSHub→AKShare reverse + S3 closure mixed bundle)
+- 关联 sub-PR 11a PR #298 (silent miss source — ADR-049 §1 Decision 3 cite specific URL 0 verify)
+- 关联 sub-PR 11b PR #299 (silent miss 接力 — implementation 0 verify, 1:1 sim post-sub-PR-12 LL-141 reveal)
+- 关联 ADR-049 §1 Decision 3 amendment (sub-PR 13 sediment, RSSHub route reuse 真值 verified broken)
+- 关联 ADR-052 (V3 §S2.5 AKShare reverse decision NEW, sub-PR 13 sediment) — 本 LL 触发 + 关联
+
+**Cite SSOT 锚点 (4 元素 sustained)**:
+- (a) doc + line# + section: ADR-049 §1 Decision 3 row + §2 Finding #1 + ADR-052 §1 reverse + announcement_routes.py:1-79 (deprecated build_announcement_route + new validate_source) + akshare_cninfo.py NEW (~250 lines)
+- (b) fresh verify timestamp: 2026-05-09 23:06 sub-PR 13 1:1 simulation success — task_id `650ef637-9bb0-4793-a068-9239fa0fe0e7` fetched=10 real cninfo announcements for 600519 (回购股份/业绩说明会/经营数据/独立董事述职/风险评估/审计委员会/年度报告/一季报)
+- (c) 真值 vs spec cite 漂移: ADR-049 §1 Decision 3 cite "/cninfo/announcement/{stockCode}" route 真值 broken — local RSSHub HTTP 404 + upstream rsshub.app HTTP 403 + GitHub issue #6102 confirms upstream redesign caused failure
+- (d) 真值修正 scope: ADR-049 §1 Decision 3 amendment (strikethrough + AMENDED row) + ADR-052 NEW (AKShare reverse decision) + AkshareCninfoFetcher NEW (separate class, 反 ADR-049 abstraction premature 反向, 真值 evidence-driven separate class) + 17 NEW unit tests + 1:1 simulation real-data verify
+
+**讽刺点**: **讽刺 #33** sediment — V3 governance batch closure cumulative pattern 14 sub-PR cumulative ADR/LL sediment体例 累积 sediment "ADR cite specific URL/route assumption 反 verify 反 sustainability" 反 sustainability **ADR-049 §1 Decision 3 自身 cite specific URL `/cninfo/announcement/{stockCode}` 真值 0 verify 第 1 次实证** + **sub-PR 11b implementation 0 verify 第 1 次接力实证** (silent miss体例 自身 sediment evidence 第 N+2 次实证累积扩). LL-141 about Worker imports gap, LL-142 about route validity gap, both caught by user directive 反向 enforce — **silent miss 体例 自身 carries multiple types of silent miss spec gap risk 第 1 次实证累积扩** (sustained LL-103 反 silent agreeing 第 N+2 次实证累积扩 + LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case 第 N+1 次实证累积扩 + sub-PR 11a/11b/12 silent miss 接力体例 第 1 case 实证累积扩).
+
+**反向**: user "为什么要等10-11日才能验证？" + "可以，主动思考全面" + "你需要解决，可以去查询相关文档和互联网" 直觉累积 = 反 silent forward-progress default LL-098 X10 + 反 silent agreeing LL-103 + 反 silent verify defer LL-115 sustained — 3 user directives 累积 触发 sub-PR 12 hotfix + sub-PR 13 reverse decision cycle + LL-141 + LL-142 + ADR-049 amendment + ADR-052 + ADR-051 cumulative sediment体例 第 1 实证累积扩.
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) sustained reverse case — sub-PR 11b "1:1 simulation success" 误判 forward-progress sustained
+- LL-100 (chunked SOP target) — sub-PR 13 mixed bundle体例 sustained sub-PR 12 hotfix bundle precedent
+- LL-103 (反 silent agreeing) sustained — 真值 N+2 次实证累积扩 (user 直觉 catch CC 自身 0 detect 第 2 类 silent miss spec gap)
+- LL-115 (Phase 0 active discovery + capacity expansion 真值 silent overwrite anti-pattern) sustained reverse case — ADR cite specific URL 自身 0 verify 第 1 次实证
+- LL-127 (cite SSOT 锚点 baseline 真值落地 sustainability sediment) sustained
+- LL-132 (pre-push smoke fresh verify) — sub-PR 13 production code 改 → 默认走 default push (反 --no-verify, sustained ADR-049 §5 sediment体例)
+- LL-135 (doc-only sediment 体例 反 fire test) — 本 sub-PR 13 mixed (production code + 5+ doc edits) → 反 pure --no-verify 体例
+- LL-137/138 (V3 sprint substantially closed by V2 prior cumulative work + Tier A sprint chain framing 反 silent overwrite from-scratch assumption) sustained — sub-PR 13 关联 ADR-051 第 3 case 实证累积扩
+- LL-141 (post-merge ops checklist gap + Worker imports verify + 1:1 simulation) sustained reverse case 第 1 实证累积扩 — silent miss 体例 自身 sediment evidence 第 1 case
+- ADR-022 (反 silent overwrite + 反 retroactive content edit + 反 abstraction premature) sustained — sub-PR 13 reverse decision 反向 evidence-driven (反 abstraction premature 反向)
+- ADR-031 §6 + ADR-032 (LiteLLM + bootstrap factory) sustained — 0 关联 sub-PR 13 scope
+- ADR-049 §1 Decision 3 amendment — 本 LL 触发 (sub-PR 13 sediment scope)
+- ADR-050 (V3 §S2.5 implementation Beat trading-hours cadence) sustained — sub-PR 13 0 Beat schedule change
+- ADR-051 (V3 §S3 closure-only) sustained — sub-PR 13 mixed bundle 关联
+- ADR-052 (V3 §S2.5 AKShare reverse decision) — 本 LL 触发 + 关联
+- 铁律 17 (DataPipeline 入库) / 31 (Engine 纯计算) / 33 (fail-loud) / 41 (timezone) / 44 X9 (Beat schedule restart sustained, sub-PR 13 0 Beat schedule change) / 45 (4 doc fresh read SOP enforcement)
+
+## LL-143: V3 §S3 NewsClassifier substantially closed by V2 prior cumulative work — closure-only ADR sediment体例 第 3 case 实证累积扩 (sub-PR 13 ADR-051 sediment, sustained LL-137/138 体例, 2026-05-09)
+
+**情境**: V3 governance batch closure sub-PR 12 (PR #300) sediment hotfix bundle. user explicit "可以，主动思考全面" → CC Phase 0 active discovery + sprint-orchestrator state lookup → V3 §S3 NewsClassifier ✅ partial 真值 verify file path 实测:
+- `backend/app/services/news/news_classifier_service.py:175 class NewsClassifierService` ✅
+- `backend/app/services/news/news_classifier_service.py:250 def classify` ✅
+- `prompts/risk/news_classifier_v1.yaml v1` (4 profile schema sustained) ✅
+- V2 prior cumulative PR #241 sub-PR 7b.2 (NewsClassifierService L0.2 V4-Flash + yaml prompt + ADR-031 §6 patch) + PR #242 sub-PR 7b.3-v2 (NewsClassifierService.persist real wire + bootstrap factory + requires_litellm_e2e marker)
+
+**真值 8/8 ✅ DONE** (V2 prior cumulative work substantially closed sustained sub-PR 9/10 closure-only ADR体例 第 3 case 实证累积扩):
+1. NewsClassifierService 类 + classify 方法 ✅ (PR #241 + #242)
+2. V4-Flash routing via LiteLLMRouter ✅ (ADR-031 §6 patch)
+3. 4 profile schema (ultra_short / short / medium / long) ✅ (yaml v1)
+4. yaml prompt (system_prompt + user_prompt) ✅
+5. persist real wire (news_classified DDL INSERT) ✅ (PR #242)
+6. requires_litellm_e2e marker ✅ (PR #242)
+7. NewsClassifier integration in NewsIngestionService ✅ (sub-PR 7c PR #243)
+8. unit tests ✅ (V2 cumulative)
+
+**Trigger**: V3 Tier A S3 sprint 起手 prerequisite verify (post sub-PR 10 closure sequential per Constitution §L8.1 (a) sustained, sub-PR 11a/11b/12 S2.5 三块完整闭环 sustained → S3 sprint sequential per Plan v0.1 §A) → user explicit "可以" ack → sub-PR 13 sediment scope.
+
+**SOP** (LL-143 sediment, sustained LL-137/138 closure-only ADR体例 第 3 case 实证累积扩):
+
+1. **V2 prior cumulative work cite trail enforcement** (沿用 LL-137/138 体例 第 3 case): V3 sprint 起手 prerequisite Phase 0 active discovery 必走 V2 prior PR cite trail verify (file path import smoke + 类存在 + LiteLLM call wire 真测 + V2 PR # cumulative cite). 反 silent overwrite from-scratch assumption (sustained LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case 第 N 次实证累积扩).
+
+2. **Closure-only ADR sediment体例 sustainable third case proof** (ADR-047 sub-PR 9 + ADR-048 sub-PR 10 + ADR-051 sub-PR 13 cumulative): doc-only ADR sediment with V2 prior cite trail + acceptance criteria status + cycle <1 day closure 体例 sustainable for V3 sprint where V2 prior cumulative work substantially closed. 反 full re-verify with new prompt eval / 反 full re-implement / 反 skip ADR sediment (sustained LL-098 X10 反 silent forward-progress + Constitution §L8.1 (a) 关键 scope 决议 + ADR-022 反 silent overwrite from-scratch assumption).
+
+3. **Sequential sustained per Constitution §L8.1 (a)** (沿用 sub-PR 9/10 sequential 决议体例): V3 sprint chain sequential closure (S1 sub-PR 9 → S2 sub-PR 10 → S2.5 sub-PR 11a+11b+12+13 → S3 sub-PR 13 → S4+ sub-PR 14+ per user 决议 minimal/skip/完整). sub-PR 13 mixed bundle体例 (S2.5 reverse + S3 closure) sustained sub-PR 12 hotfix bundle precedent reviewer 0 P0/P1 + 反 chunked over-split (沿用 LL-100 chunked SOP target ~10-13 min for chunked vs single bundle体例 sustainable when scope coherent + reviewer scope manageable).
+
+**关联 PR**:
+- 本 LL 条目 (LL-143 sediment) sub-PR 13 (RSSHub→AKShare reverse + S3 closure mixed bundle)
+- 关联 V2 prior PR #241 sub-PR 7b.2 + PR #242 sub-PR 7b.3-v2 (NewsClassifier V4-Flash + persist real wire + bootstrap factory + e2e marker)
+- 关联 sub-PR 9 PR #296 + sub-PR 10 PR #297 (closure-only ADR sediment体例 第 1 + 第 2 case 实证累积扩)
+- 关联 ADR-051 (V3 §S3 closure acceptance + V2 prior cumulative cite, sub-PR 13 sediment) — 本 LL 触发 + 关联
+
+**Cite SSOT 锚点 (4 元素 sustained)**:
+- (a) doc + line# + section: ADR-051 §1 acceptance closure 真值 + §2 sub-PR 13 scope + ADR-047 §3 + ADR-048 §3 (closure-only ADR体例累积扩) + news_classifier_service.py:175 class + :250 def classify + prompts/risk/news_classifier_v1.yaml v1 + PR #241+#242 cumulative cite
+- (b) fresh verify timestamp: 2026-05-09 sub-PR 13 Phase 0 active discovery — file path verify via Glob + Grep (`class NewsClassifierService` line 175 + `def classify` line 250) + git log V2 prior cumulative PR #241 (PR title + commit hash) + PR #242 (PR title + commit hash)
+- (c) 真值 vs spec cite 漂移: V3 §S3 8/8 acceptance ✅ DONE 真值 grounded post-V2-prior-cumulative-cite — 反 sub-PR 11a "✅ partial" cite drift (沿用 sub-PR 9 ADR-047 + sub-PR 10 ADR-048 closure-only ADR sediment体例 第 3 case 实证累积扩 — Tier A 真值 net new scope further clarified post sub-PR 13)
+- (d) 真值修正 scope: ADR-051 NEW (V3 §S3 closure acceptance + V2 prior cumulative cite) + Plan v0.1 §A S3 row patch (close-out cite + V2 prior cumulative PR #241+#242 cite) — 反 retroactive content edit per ADR-022 (Plan v0.1 §A S3 row patch 真值 close-out annotation 沿用 sub-PR 9/10 §A S1/S2 row patch体例 sustained)
+
+**讽刺点**: **讽刺 #34 候选** sediment — V3 governance batch closure cumulative pattern 14 sub-PR cumulative closure-only ADR体例 累积 sediment 第 3 case 实证累积扩 (ADR-047 + ADR-048 + ADR-051) 真值**Tier A sprint chain framing 反 silent overwrite from-scratch assumption pattern sustainability** 第 3 实证累积扩 — 反 silent self-decide 真生产 from-scratch implementation 反向 evidence-driven (sustained LL-115 capacity expansion 真值 silent overwrite anti-pattern reverse case 第 N+1 次实证累积扩).
+
+**反向**: V3 §S3 closure-only ADR sediment 体例 sustainable 第 3 case 实证累积扩 = 反 silent self-decide full re-implement / 反 silent skip ADR sediment / 反 silent silent forward-progress 体例累积扩 sustained.
+
+**relate**:
+- LL-098 X10 (反 forward-progress default) sustained — sub-PR 13 closure 后 STOP, 反 silent self-trigger sub-PR 14 S4 implementation (S4 user 决议 minimal/skip/完整 BLOCKER 待 user explicit ack)
+- LL-100 (chunked SOP target) — sub-PR 13 mixed bundle体例 sustained
+- LL-115 (Phase 0 active discovery + capacity expansion 真值 silent overwrite anti-pattern) sustained reverse case 第 N+1 次实证累积扩
+- LL-127 (cite SSOT 锚点 baseline 真值落地 sustainability sediment) sustained
+- LL-135 (doc-only sediment 体例 反 fire test) sustained — closure-only ADR体例 doc-only sediment characteristic sustainable
+- LL-137 (V3 §S1 substantially closed by V2 prior cumulative work) — sub-PR 13 第 3 case 实证累积扩
+- LL-138 (V3 §S2 substantially closed by V2 prior cumulative work) — sub-PR 13 第 3 case 实证累积扩
+- LL-141 (post-merge ops checklist gap + 1:1 simulation) sustained — 0 直接关联 LL-143 但 sub-PR 13 mixed bundle cumulative
+- LL-142 (RSSHub spec gap silent miss 第 2 case + LL-141 reverse case 第 1 实证) — 关联 sub-PR 13 mixed bundle (S2.5 reverse + S3 closure cumulative)
+- ADR-022 (反 silent overwrite + 反 retroactive content edit) sustained
+- ADR-031 §6 + ADR-032 (LiteLLM + bootstrap factory) — V2 prior cumulative cite 关联 NewsClassifier V4-Flash routing
+- ADR-047 (V3 §S1 closure) + ADR-048 (V3 §S2 closure) — closure-only ADR体例 第 3 case 实证累积扩
+- ADR-051 (V3 §S3 closure acceptance + V2 prior cumulative cite) — 本 LL 触发 + 关联
+- ADR-052 (V3 §S2.5 AKShare reverse decision) — sub-PR 13 mixed bundle 关联
+
+
+

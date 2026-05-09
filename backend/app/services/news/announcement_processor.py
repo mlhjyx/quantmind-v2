@@ -210,15 +210,22 @@ class AnnouncementProcessor:
             initially, sub-PR 12+ relax based on real production traffic patterns.
 
         Note (0 conn.commit, 铁律 32 sustained):
-            本 service 0 conn.commit / 0 conn.rollback. caller 真**事务边界管理者**
+            本 service 0 conn.commit / 0 conn.rollback. caller 真值 事务边界管理者
             (沿用 sub-PR 7c NewsIngestionService 体例 sustained ADR-032 line 36).
+
+        Note (sub-PR 13 ADR-052 reverse — AKShare query semantic):
+            pipeline.fetch_all(query=symbol_id) 反 RSSHub route_path semantic (sub-PR 11b reverse).
+            ADR-049 §1 Decision 3 RSSHub route reuse 真值 verified broken (LL-142 sediment).
+            AkshareCninfoFetcher.fetch(query=symbol_id) 直 pass 6-digit stock code.
         """
-        from backend.qm_platform.news.announcement_routes import build_announcement_route
+        from backend.qm_platform.news.announcement_routes import validate_source
 
-        route_path = build_announcement_route(source=source, symbol_id=symbol_id)
+        # Source enum validation (sustained 铁律 33 fail-loud, sub-PR 13 ADR-052 reverse)
+        validate_source(source)
 
+        # AKShare cninfo fetcher takes symbol_id directly as query (反 RSSHub route_path semantic)
         items = self._pipeline.fetch_all(
-            query=route_path,
+            query=symbol_id,
             limit_per_source=limit,
         )
 
