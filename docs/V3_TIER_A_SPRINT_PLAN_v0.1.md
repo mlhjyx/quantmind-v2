@@ -97,7 +97,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1 |
 | Paper-mode | sustained S1 |
 
-### S4 — L0.3 fundamental_context 8 维 schema + ingest (⏳ 决议待 — STOP gate)
+### S4 — L0.3 fundamental_context 8 维 schema + ingest (⏳ 决议待 — STOP gate) — ✅ CLOSED sub-PR 14 (本 PR single mixed bundle) — user 决议 (minimal) accepted ⭐ (Constitution §L8.1 (a) 关键 scope 决议) — 8 维 schema CREATE + AKShare stock_value_em 1 source valuation 维 ingest + smoke + ADR-053 NEW + LL-144 NEW + sub-PR 13 ride-next 5 reviewer findings bundle体例 第 2 实证累积扩 + greenfield (minimal) implementation体例 1st 实证 (反 sub-PR 9/10/13 V2 prior cumulative cite trail closure-only ADR体例)
 
 | element | content |
 |---|---|

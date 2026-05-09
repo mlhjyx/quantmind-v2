@@ -57,13 +57,18 @@ class TestBuildAnnouncementRoute:
         route = build_announcement_route(source="cninfo", symbol_id="600519")
         assert route == "/cninfo/announcement/600519"
 
-    def test_sse_reserved_route(self) -> None:
-        route = build_announcement_route(source="sse", symbol_id="600519")
-        assert route == "/sse/disclosure/600519"
+    def test_sse_now_invalid_source(self) -> None:
+        # sub-PR 14 ride-next P2.1 reviewer fix per ADR-053: sse REMOVED from ALLOWED_SOURCES.
+        # 反 silent data provenance lie (validate_source no longer allows sse — sub-PR 13 reviewer
+        # P2.1 raised that AKShare fetcher would store data with source="sse" while真值 fetched
+        # from cninfo). sub-PR 15+ candidate: re-add when separate sse fetcher exists.
+        with pytest.raises(ValueError, match="Unknown announcement source"):
+            build_announcement_route(source="sse", symbol_id="600519")
 
-    def test_szse_reserved_route(self) -> None:
-        route = build_announcement_route(source="szse", symbol_id="000001")
-        assert route == "/szse/disclosure/000001"
+    def test_szse_now_invalid_source(self) -> None:
+        # sub-PR 14 ride-next P2.1 reviewer fix per ADR-053: szse REMOVED from ALLOWED_SOURCES.
+        with pytest.raises(ValueError, match="Unknown announcement source"):
+            build_announcement_route(source="szse", symbol_id="000001")
 
     def test_unknown_source_raises_value_error(self) -> None:
         # 沿用铁律 33 fail-loud — 反 silent default fallback

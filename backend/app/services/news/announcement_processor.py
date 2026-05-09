@@ -1,9 +1,14 @@
-"""AnnouncementProcessor — V3 §11.1 row 5 公告流 orchestrator (sub-PR 11b sediment per ADR-049).
+"""AnnouncementProcessor — V3 §11.1 row 5 公告流 orchestrator (sub-PR 11b NEW + sub-PR 13 reverse + sub-PR 14 docstring fix).
 
-scope (sub-PR 11b, S2.5 implementation 闭环 Layer 2.2 完整闭环 sediment, sustained sub-PR 7c
-NewsIngestionService precedent 体例):
-- RsshubNewsFetcher (sub-PR 6) route_path 走 announcement-specific routes (e.g.
-  `/cninfo/announcement/{stockCode}`) per ADR-049 §1 Decision 3 RSSHub route reuse
+scope (sub-PR 13 ADR-052 reverse — primary fetcher AKShare; sustained sub-PR 7c NewsIngestionService precedent):
+- **AkshareCninfoFetcher (sub-PR 13 PRIMARY)** — `ak.stock_zh_a_disclosure_report_cninfo` direct API call,
+  query=symbol_id 6-digit string. 沿用 sub-PR 14 ride-next P3.1 reviewer fix per ADR-053 (module
+  docstring opening update reflects AKShare as primary post-ADR-052 reverse, RSSHub as legacy/deprecated).
+- RsshubNewsFetcher (sub-PR 6, **deprecated for announcement** post-ADR-052 reverse):
+  legacy route_path semantic (e.g. `/cninfo/announcement/{stockCode}`) — local RSSHub instance HTTP 404
+  + upstream rsshub.app HTTP 403 production block + GitHub issue #6102 confirms upstream redesign caused
+  failure (LL-142 sediment). build_announcement_route + ROUTE_TEMPLATE constants 保留 with
+  DeprecationWarning (sustained ADR-022 反 silent overwrite + 4 既有测试 backward compat).
 - 逐 NewsItem → infer announcement_type via title keyword regex (annual_report / quarterly_report /
   material_event / shareholder_meeting / dividend / other)
 - announcement_type filter EXCLUDE earnings disclosure (annual_report + quarterly_report) per

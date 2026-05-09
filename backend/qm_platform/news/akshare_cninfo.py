@@ -206,31 +206,38 @@ class AkshareCninfoFetcher(NewsFetcher):
     def _parse_timestamp(raw: object) -> datetime:
         """Parse AKShare 公告时间 column to tz-aware UTC datetime (沿用铁律 41).
 
-        AKShare returns '公告时间' as either:
-        - pandas Timestamp (most common)
+        AKShare returns '公告时间' as one of:
+        - pandas Timestamp (most common, may be naive OR tz-localized)
         - str like '2026-04-25 00:00:00' (Asia/Shanghai naive)
-        Both interpreted as Asia/Shanghai naive → convert to UTC tz-aware.
+        - datetime (naive OR aware)
+
+        Behavior (sub-PR 14 ride-next P2.2 reviewer fix per ADR-053):
+        - **naive input** (no tzinfo): interpreted as Asia/Shanghai → converted to UTC
+        - **tz-aware input** (any timezone): passed through to .astimezone(UTC)
+          (反 force re-interpret Asia/Shanghai for already-localized timestamps —
+           sub-PR 13 reviewer P2.2 raised that variable name `naive` was misleading
+           since the tz-aware passthrough branch is exercised when AKShare returns a
+           tz-localized pandas Timestamp; rename `naive` → `dt` clarifies semantics).
         """
         # pandas Timestamp has .to_pydatetime() / 0-tz string is parseable
         if hasattr(raw, "to_pydatetime"):
-            naive = raw.to_pydatetime()
+            dt = raw.to_pydatetime()
         elif isinstance(raw, str):
             # AKShare format: '2026-04-25 00:00:00' or '2026-04-25'
             try:
-                naive = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
             except ValueError:
-                naive = datetime.strptime(raw, "%Y-%m-%d")
+                dt = datetime.strptime(raw, "%Y-%m-%d")
         elif isinstance(raw, datetime):
-            naive = raw
+            dt = raw
         else:
             raise NewsFetchError(
                 source=SOURCE_NAME,
                 message=f"AKShare 公告时间 type unexpected: {type(raw).__name__} value={raw!r}",
             )
 
-        # If naive, attach Asia/Shanghai then convert to UTC; if aware, just convert
-        if naive.tzinfo is None:
-            sh_aware = naive.replace(tzinfo=ASIA_SHANGHAI)
-        else:
-            sh_aware = naive
-        return sh_aware.astimezone(UTC)
+        # naive → attach Asia/Shanghai then convert to UTC; aware → passthrough convert
+        # (反 force re-interpret aware-as-Asia/Shanghai per sub-PR 13 reviewer P2.2 cite)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ASIA_SHANGHAI)
+        return dt.astimezone(UTC)

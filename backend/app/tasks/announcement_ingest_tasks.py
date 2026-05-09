@@ -58,8 +58,10 @@ def announcement_ingest(
 ) -> dict:
     """Single-symbol announcement ingestion Celery task (Beat-dispatched per ADR-049 §1 Decision 4).
 
-    Wraps backend/app/api/news.py:_build_pipeline_rsshub_only() + AnnouncementProcessor.ingest()
-    pattern (反 HTTP roundtrip, direct Python call sustained Celery task fast path).
+    Wraps backend/app/api/news.py:_build_pipeline_announcement_akshare() + AnnouncementProcessor.ingest()
+    pattern (反 HTTP roundtrip, direct Python call sustained Celery task fast path). sub-PR 14
+    ride-next P3.2 reviewer fix per ADR-053 — _build_pipeline_rsshub_only → _build_pipeline_announcement_akshare
+    (sub-PR 13 ADR-052 reverse体例 sustained, AKShare primary post-RSSHub spec gap LL-142).
 
     Args:
         symbol_id: stock code (default DEFAULT_SYMBOL_ID baseline). Real production caller
