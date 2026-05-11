@@ -309,6 +309,18 @@ class TestFullEvaluate:
         assert cache["volume_spike"][""] == pytest.approx(3.0)
         assert cache["liquidity_collapse"][""] == pytest.approx(0.3)
 
+    def test_liquidity_collapse_stock_not_market(self):
+        """liquidity_collapse 受 stock multiplier 但不受 market multiplier."""
+        engine = DynamicThresholdEngine()
+        sm = {"test": StockMetrics(code="test", liquidity_percentile=0.10)}
+        cache = engine.evaluate(
+            MarketIndicators(index_return=-0.06),  # Crisis
+            stock_metrics=sm,
+        )
+        # Crisis market multiplier (0.5) 不应作用于 liquidity_collapse
+        # 仅 stock multiplier (1.5 for low liquidity) 应用
+        assert cache["liquidity_collapse"]["test"] == pytest.approx(0.3 * 1.5)
+
     def test_custom_defaults(self):
         """自定义 defaults 替换内置值."""
         engine = DynamicThresholdEngine(defaults={"rapid_drop_5min": 0.07})

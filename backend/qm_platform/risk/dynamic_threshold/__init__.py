@@ -7,7 +7,7 @@ ThresholdCache: Redis-backed with in-memory fallback (V3 §14 #4).
 """
 
 from .cache import InMemoryThresholdCache, RedisThresholdCache, ThresholdCache
-from .engine import DynamicThresholdEngine, MarketIndicators, MarketState
+from .engine import DynamicThresholdEngine, MarketIndicators, MarketState, StockMetrics
 
 __all__ = [
     "DynamicThresholdEngine",
@@ -15,5 +15,6 @@ __all__ = [
     "MarketIndicators",
     "MarketState",
     "RedisThresholdCache",
+    "StockMetrics",
     "ThresholdCache",
 ]

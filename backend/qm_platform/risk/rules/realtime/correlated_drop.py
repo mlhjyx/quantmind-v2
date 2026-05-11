@@ -51,6 +51,14 @@ class CorrelatedDrop(RiskRule):
         self._min_count = min_count
         self._drop_threshold = drop_threshold
 
+    def update_threshold(self, new_value: float) -> None:
+        """S7→S5 wire: DynamicThresholdEngine 更新 drop_threshold."""
+        self._drop_threshold = new_value
+
+    def update_min_count(self, new_min_count: int) -> None:
+        """S7→S5 wire: DynamicThresholdEngine 更新 min_count (industry adjust)."""
+        self._min_count = new_min_count
+
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         if context.realtime is None:
             return []

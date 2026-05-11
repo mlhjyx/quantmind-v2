@@ -42,6 +42,10 @@ class LiquidityCollapse(RiskRule):
     def __init__(self, threshold: float = _DEFAULT_COLLAPSE_RATIO) -> None:
         self._threshold = threshold
 
+    def update_threshold(self, new_value: float) -> None:
+        """S7→S5 wire: DynamicThresholdEngine 更新阈值."""
+        self._threshold = new_value
+
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
         if context.realtime is None:
             return []

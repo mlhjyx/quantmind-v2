@@ -78,11 +78,15 @@ class RedisThresholdCache:
         self._connected: bool = False
 
     def _ensure_redis(self) -> bool:
-        """懒初始化 Redis client (避免 import 时连 Redis)."""
+        """懒初始化 Redis client (避免 import 时连 Redis).
+
+        首次失败后停止重试 (set _connected=True), 反 per-tick 2s 阻塞.
+        Redis 恢复需进程重启 (或 L3 5min Beat 重新创建 RedisThresholdCache).
+        """
         if self._redis is not None:
             return True
         if self._connected:
-            return False  # 已尝试过, 失败
+            return False  # 已尝试过, 不再重试 (反 per-tick 2s blocking)
 
         try:
             import redis  # noqa: PLC0415
@@ -94,10 +98,11 @@ class RedisThresholdCache:
             return True
         except Exception as e:
             logger.warning(
-                "[threshold-cache:redis] connection failed: %s, fallback to in-memory",
+                "[threshold-cache:redis] connection failed: %s, "
+                "fallback to in-memory (no further retries this process)",
                 e,
             )
-            self._connected = False
+            self._connected = True  # 停止重试 (反 per-tick 2s blocking)
             return False
 
     def get(self, rule_id: str, code: str) -> float | None:
