@@ -55,21 +55,19 @@ class AlertDispatcher:
     def dispatch(self, results: list[RuleResult]) -> int:
         """分发 RuleResult 列表.
 
-        P0 → 立即 send_fn.
+        P0 → 立即 send_fn (在 lock 外执行, 反 I/O 阻塞其他线程).
         P1/P2 → 缓冲 (等下次 flush).
 
         Returns:
             P0 立即发送数量 (不含缓冲).
         """
         immediate = 0
+        p0_results: list[RuleResult] = []
         with self._lock:
             for r in results:
                 sev = _rule_severity_str(r)
                 if sev == "p0":
-                    if self._send_fn(r):
-                        self._p0_sent += 1
-                    else:
-                        self._send_failed += 1
+                    p0_results.append(r)
                     immediate += 1
                 elif sev == "p1":
                     self._p1_buffer.append(r)
@@ -77,7 +75,17 @@ class AlertDispatcher:
                 elif sev == "p2":
                     self._p2_buffer.append(r)
                     self._p2_buffered += 1
-                # info / unknown → skip (no alert)
+                # sev not in p0/p1/p2 → skip (unknown severity)
+
+        # Send P0 outside lock (反 send_fn I/O 阻塞其他线程)
+        for r in p0_results:
+            if self._send_fn(r):
+                with self._lock:
+                    self._p0_sent += 1
+            else:
+                with self._lock:
+                    self._send_failed += 1
+
         return immediate
 
     # ---- flush ----
