@@ -13,7 +13,7 @@ Coverage:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -25,7 +25,6 @@ from app.services.dingtalk_alert import (
     _upsert_dedup,
     send_with_dedup,
 )
-
 
 # ── Input validation ──
 
@@ -85,7 +84,7 @@ def test_upsert_dedup_hit_suppress_active():
     cur = MagicMock()
     conn.cursor.return_value = cur
     # SELECT returns existing row with suppress_until > NOW
-    future = datetime.now(timezone.utc) + timedelta(minutes=30)
+    future = datetime.now(UTC) + timedelta(minutes=30)
     cur.fetchone.return_value = (future, 5)  # suppress_until, fire_count
 
     hit, count = _upsert_dedup(
@@ -101,7 +100,7 @@ def test_upsert_dedup_expired_suppress_reupsert():
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value = cur
-    past = datetime.now(timezone.utc) - timedelta(minutes=10)
+    past = datetime.now(UTC) - timedelta(minutes=10)
     cur.fetchone.side_effect = [(past, 3), (4,)]  # SELECT expired / RETURNING累+1
 
     hit, count = _upsert_dedup(
@@ -212,11 +211,12 @@ def test_post_retries_once_on_failure():
         assert mock_httpx_post.call_count == 2
 
 
-def test_post_raises_after_2_failures():
+def test_post_raises_after_3_failures():
     with patch("app.services.dingtalk_alert.httpx.post") as mock_httpx_post:
         mock_httpx_post.side_effect = [
             httpx.RequestError("first fail"),
             httpx.RequestError("second fail"),
+            httpx.RequestError("third fail"),
         ]
 
         with pytest.raises(httpx.HTTPError):
@@ -224,4 +224,4 @@ def test_post_raises_after_2_failures():
                 webhook_url="https://x.test", title="t", body="b", severity="p1"
             )
 
-        assert mock_httpx_post.call_count == 2
+        assert mock_httpx_post.call_count == 3
