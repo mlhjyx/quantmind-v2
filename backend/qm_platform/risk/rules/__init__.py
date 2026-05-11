@@ -22,13 +22,17 @@ from .new_position import NewPositionVolatilityRule
 from .pms import PMSRule, PMSThreshold
 from .qmt_fallback import QMTFallbackTriggeredRule, RedisCacheHealthReader
 
-# S5 L1 实时化 (sub-PR 5a): 实时 tick 级风控规则
+# S5 L1 实时化 (sub-PR 5a+5b): 实时 tick 级风控规则
 from .realtime import (  # S5 L1 实时化
+    CorrelatedDrop,
     GapDownOpen,
+    IndustryConcentration,
     LimitDownDetection,
+    LiquidityCollapse,
     NearLimitDown,
     RapidDrop5min,
     RapidDrop15min,
+    VolumeSpike,
 )
 from .single_stock import SingleStockStopLossRule, StopLossThreshold
 
@@ -54,10 +58,14 @@ __all__ = [
     # 批 2 P0 修 (Session 45, T0-15 LL-081 v2)
     "QMTFallbackTriggeredRule",
     "RedisCacheHealthReader",  # Protocol for DI
-    # S5 L1 实时化 (Session 52+, sub-PR 5a)
+    # S5 L1 实时化 (Session 52+, sub-PR 5a+5b)
+    "CorrelatedDrop",
     "GapDownOpen",
+    "IndustryConcentration",
     "LimitDownDetection",
+    "LiquidityCollapse",
     "NearLimitDown",
     "RapidDrop5min",
     "RapidDrop15min",
+    "VolumeSpike",
 ]
