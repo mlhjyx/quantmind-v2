@@ -5,12 +5,13 @@
 
 对齐 MVP_3_1_batch_1_plan.md §3 和 ADR-010 D3.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from backend.qm_platform._types import Severity
 
@@ -60,6 +61,10 @@ class RiskContext:
     positions: tuple[Position, ...]
     portfolio_nav: float
     prev_close_nav: float | None = None
+    # Realtime extension (S5+): tick-level data for realtime rules.
+    # Keys: code → {prev_close, open_price, price_5min_ago, price_15min_ago,
+    #               day_volume, avg_daily_volume, industry}. Optional, None for non-realtime runs.
+    realtime: dict[str, dict[str, Any]] | None = field(default=None)
 
 
 @dataclass(frozen=True)

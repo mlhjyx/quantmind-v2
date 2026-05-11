@@ -7,6 +7,7 @@ MVP 3.1b Phase 1 ✅ Session 44: single_stock.py (SingleStockStopLossRule, P0 �
 MVP 3.1b Phase 1.5b ✅ Session 44: holding_time.py + new_position.py (时间维度)
 批 2 P0 修 ✅ Session 45 (2026-04-30): qmt_fallback.py (T0-15 LL-081 v2 扩 cache fallback)
 """
+
 from .circuit_breaker import CircuitBreakerRule
 from .holding_time import PositionHoldingTimeRule
 from .intraday import (
@@ -20,6 +21,15 @@ from .intraday import (
 from .new_position import NewPositionVolatilityRule
 from .pms import PMSRule, PMSThreshold
 from .qmt_fallback import QMTFallbackTriggeredRule, RedisCacheHealthReader
+
+# S5 L1 实时化 (sub-PR 5a): 实时 tick 级风控规则
+from .realtime import (  # S5 L1 实时化
+    GapDownOpen,
+    LimitDownDetection,
+    NearLimitDown,
+    RapidDrop5min,
+    RapidDrop15min,
+)
 from .single_stock import SingleStockStopLossRule, StopLossThreshold
 
 __all__ = [
@@ -44,4 +54,10 @@ __all__ = [
     # 批 2 P0 修 (Session 45, T0-15 LL-081 v2)
     "QMTFallbackTriggeredRule",
     "RedisCacheHealthReader",  # Protocol for DI
+    # S5 L1 实时化 (Session 52+, sub-PR 5a)
+    "GapDownOpen",
+    "LimitDownDetection",
+    "NearLimitDown",
+    "RapidDrop5min",
+    "RapidDrop15min",
 ]
