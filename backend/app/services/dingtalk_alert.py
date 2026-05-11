@@ -15,13 +15,15 @@
 依赖:
     backend/migrations/alert_dedup.sql (PR feat/batch-2-p0-fixes commit 1 已 apply)
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
+
 from app.config import settings
 from app.services.db import get_sync_conn
 
@@ -106,7 +108,9 @@ def send_with_dedup(
         if dedup_hit:
             logger.info(
                 "[dingtalk_alert] dedup_hit dedup_key=%s severity=%s fire_count=%d",
-                dedup_key, severity, fire_count,
+                dedup_key,
+                severity,
+                fire_count,
             )
             return {
                 "sent": False,
@@ -121,7 +125,8 @@ def send_with_dedup(
             logger.warning(
                 "[dingtalk_alert] alerts_disabled (DINGTALK_ALERTS_ENABLED=False), "
                 "audit-only dedup_key=%s severity=%s",
-                dedup_key, severity,
+                dedup_key,
+                severity,
             )
             return {
                 "sent": False,
@@ -152,7 +157,9 @@ def send_with_dedup(
 
         logger.info(
             "[dingtalk_alert] sent dedup_key=%s severity=%s source=%s",
-            dedup_key, severity, source,
+            dedup_key,
+            severity,
+            source,
         )
         return {
             "sent": True,
@@ -192,7 +199,7 @@ def _upsert_dedup(
         (dedup_key,),
     )
     row = cur.fetchone()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if row is not None and row[0] > now:
         # dedup_hit — 抑制中, 但 fire_count 仍累加 (审计 / 风暴检测)
@@ -246,16 +253,14 @@ def _post_to_dingtalk(
     }
 
     last_err: Exception | None = None
-    for attempt in (1, 2):
+    for attempt in (1, 2, 3):
         try:
             resp = httpx.post(webhook_url, json=payload, timeout=HTTPX_TIMEOUT_SEC)
             resp.raise_for_status()
             return
         except httpx.HTTPError as e:
             last_err = e
-            logger.warning(
-                "[dingtalk_alert] POST attempt %d/2 failed: %s", attempt, e
-            )
+            logger.warning("[dingtalk_alert] POST attempt %d/3 failed: %s", attempt, e)
 
-    # 2 attempts 全失败 — fail-loud raise (铁律 33)
-    raise last_err or httpx.HTTPError("DingTalk POST 双 attempt 全失败")
+    # 3 attempts 全失败 — fail-loud raise (铁律 33)
+    raise last_err or httpx.HTTPError("DingTalk POST 3 attempts 全失败")
