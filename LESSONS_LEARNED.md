@@ -4559,3 +4559,82 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 
 
 
+
+## LL-145: V3 §S5 L1 实时化 RealtimeRiskEngine + 5 rules + DDL — cadence-based engine 体例 + RiskContext.realtime 扩展 + xtquant lazy import (sub-PR 5a, 2026-05-11)
+
+**情境**: V3 Tier A S5 起手 (post-S4 closure, user "开始s5"). S5 = L1 实时化核心, 4-29 痛点 fix 最关键 sprint. chunked 3 sub-PR: 5a (engine + xtquant adapter + 5 rules), 5b (4 remaining rules), 5c (RiskBacktestAdapter stub).
+
+**根因**: realtime risk engine 设计走 DI Protocol 体例 (BrokerProtocol/NotifierProtocol/PriceReaderProtocol) 但 L1 是 tick-driven 非 beat-driven, 需要新 engine 类 (RealtimeRiskEngine) 而非复用 PlatformRiskEngine. 关键决策: cadence-based 注册 (tick/5min/15min) 替代 flat rule list, per-rule crash isolation.
+
+**改进措施**:
+1. RealtimeRiskEngine 独立类, cadence 路由内置 (register(rule, cadence="tick"))
+2. RiskContext.realtime 扩展: optional dict[str, dict] 注入 tick data, 向后兼容
+3. XtQuantTickSubscriber: xtquant lazy import (铁律 31), rolling window, thread-safe
+4. 5 规则: LimitDownDetection/NearLimitDown (tick), RapidDrop5min (5min), RapidDrop15min (15min), GapDownOpen (tick)
+5. DDL: risk_event_log +4 columns (cadence/priority/realtime_metrics/detection_latency_ms)
+6. 45/45 tests PASS, 250 pass 0 regression
+
+**关联 ADR/LR**: ADR-054 候选 (S5 L1 实时化) / LL-146/147 (sub-PR 5b/5c) / 铁律 31/33/24
+
+## LL-146: V3 §S5 sub-PR 5b — 4 剩余 realtime rules 补全: VolumeSpike/IndustryConcentration/CorrelatedDrop/LiquidityCollapse + 实时规则 9 完整枚举 (2026-05-11)
+
+**情境**: sub-PR 5a 完成 5 规则后, 补全 Plan §A S5 "8 RealtimeRiskRule" 剩余 4 规则 + LiquidityCollapse 扩展 (9 total). 每规则独立文件, 纯计算 (铁律 31), tick data 通过 RiskContext.realtime 注入.
+
+**根因**: V3 §4.3 枚举 8 规则, 实际实现 9 规则 (LiquidityCollapse 流动性枯竭扩展). 规则分类: P0 tick (limit_down/near_limit_down/gap_down_open/correlated_drop), P1 5min/15min (rapid_drop_5min/rapid_drop_15min/volume_spike/liquidity_collapse), P2 15min (industry_concentration). Rules 共享 RiskRule ABC, 各自 threshold 可通过 update_threshold() 接入 S7 L3 动态阈值.
+
+**改进措施**:
+1. VolumeSpike: day_vol / avg_daily_vol >= 3.0x → P1 alert
+2. IndustryConcentration: 单行业 >30% → P2 alert (防 4-29 多股同跌)
+3. CorrelatedDrop: ≥3 股 5min 联动跌 ≥3% → P0 alert (系统性风险)
+4. LiquidityCollapse: day_vol / avg_daily_vol < 0.3x → P1 alert
+5. 43/43 tests PASS, full regression 293 pass
+
+**关联**: LL-145/147 / ADR-054 / 铁律 31/33
+
+## LL-147: V3 §S5 sub-PR 5c — RiskBacktestAdapter stub (0 broker/0 alert/0 INSERT) + 16 tests (2026-05-11)
+
+**情境**: Plan §A S5 "横切归属 §5.5 RiskBacktestAdapter 接口前置 stub (T1.5 prereq)". sub-PR 5c 实现 BrokerProtocol + NotifierProtocol + PriceReaderProtocol 的桩版本.
+
+**根因**: S10 paper-mode 5d dry-run 需要无副作用的风险引擎运行环境. RiskBacktestAdapter 提供: sell() 记录调用不真执行, send() 记录告警不真推送, get_prices() 返注入价格不读 Redis. 0 broker / 0 alert / 0 DB INSERT.
+
+**改进措施**:
+1. RiskBacktestAdapter 单类实现三 Protocol, 线程安全 (Lock), 调用记录可断言
+2. 接口: sell(code, shares, reason) → stub result, send(title, text, severity) → 记录, get_prices(codes) → 注入字典
+3. reset() 重置记录 (测试复用), sell_calls/alerts/price_query_count/nav_query_count 属性
+4. 16/16 tests PASS (sell stub + alert stub + price + nav + reset + concurrent + compatibility)
+
+**关联**: LL-145/146 / T1.5 prereq / 铁律 31/33
+
+## LL-148: V3 §S6 L0 告警实时化 AlertDispatcher — P0 立即/P1+P2 缓冲 + callback 解耦 + DingTalk 3-retry (2026-05-11)
+
+**情境**: S5 L1 检测层 closed → S6 告警层. 需求: 3 级 priority (P0/P1/P2) 不同 push cadence, retry 3 + email backup, 线程安全.
+
+**根因**: 现有 dingtalk_alert.py 已支持 dedup + 2-retry, 但缺少 priority routing + batch buffering. AlertDispatcher 填补: P0 immediate send, P1 (60s buffer), P2 (5min buffer). callback 解耦 (铁律 31).
+
+**改进措施**:
+1. AlertDispatcher: dispatch() P0→立即 send_fn, P1/P2→内存缓冲, flush(cadence) 批量取出
+2. _rule_severity_str: 9 rule_id → p0/p1/p2 硬编码映射 (reviewer HIGH: 应改为 RuleResult 带 severity)
+3. EmailBackupStub: JSONL 文件桩 (retry 耗尽 fallback), 线程安全
+4. DingTalk _post_to_dingtalk: 2→3 retry (铁律 33)
+5. 28/28 tests PASS, 337 pass 0 regression
+6. Reviewer HIGH fix: dispatch() lock 内不再调用 send_fn (反 I/O 阻塞)
+
+**关联**: LL-145-147 / 铁律 31/33 / ADR-054
+
+## LL-149: V3 §S7 L3 动态阈值 DynamicThresholdEngine + S7→S5 wire back — 阈值动态化 + 规则反馈闭环 (2026-05-11)
+
+**情境**: S5/S6 closed → S7 L3 动态阈值层. V3 §6 规范: 3 级市场状态 (Calm/Stress/Crisis) + 个股 ATR/beta/liquidity + 行业联动 → L1 阈值动态调整.
+
+**根因**: L1 规则使用静态 .env 阈值, 不区分市场状态/个股特征. DynamicThresholdEngine 实现 regime-aware 阈值: Calm 1.0x / Stress 0.8x / Crisis 0.5x, 叠加个股 beta/ATR/liquidity multiplier, 行业联动 CorrelatedDrop min_count. S7→S5 wire: RealtimeRiskEngine.set_threshold_cache() + 规则 update_threshold().
+
+**改进措施**:
+1. MarketState 评估: index_return / limit_down_count / regime → Calm/Stress/Crisis
+2. StockMultiplier: beta>1.5 ×1.2, liquidity<20% ×1.5, ATR>5% ×1.5
+3. IndustryAdjust: industry day ≤-3% + ≥2 positions → CorrelatedDrop min_count 3→2
+4. ThresholdCache: InMemory (测试) + Redis (生产, pipeline SETEX, 5min TTL)
+5. DDL: dynamic_threshold_adjustments TimescaleDB hypertable
+6. S7→S5 wire: 8 规则 update_threshold() + RealtimeRiskEngine._apply_dynamic_thresholds()
+7. 48/48 tests PASS, 385 pass 0 regression
+8. Reviewer fixes: Redis dead retry + StockMetrics export + missing test
+
+**关联**: LL-145-148 / ADR-054/055 / 铁律 31/33 / V3 §6.1-§6.4
