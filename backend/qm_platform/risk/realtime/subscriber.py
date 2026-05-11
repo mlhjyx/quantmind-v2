@@ -94,11 +94,15 @@ class XtQuantTickSubscriber:
                     "open_price": prev_tick.get("open_price", tick.get("open", 0)),
                 }
 
-                # Rolling price snapshots
+                # Rolling price snapshots (pruned to _15MIN_WINDOW + 60s buffer)
                 if code not in self._price_snapshots:
                     self._price_snapshots[code] = []
                 snapshots = self._price_snapshots[code]
                 snapshots.append((now, prev_price))
+                # Prune entries older than 16 min (15min window + 60s buffer)
+                cutoff_ts = now.timestamp() - (_15MIN_WINDOW + 60)
+                while snapshots and snapshots[0][0].timestamp() < cutoff_ts:
+                    snapshots.pop(0)
 
                 # Day volume accumulator
                 if volume > 0:
@@ -212,6 +216,11 @@ class XtQuantTickSubscriber:
         return snapshots[0][1]
 
     def get_avg_daily_volume(self, code: str, days: int = 20) -> float | None:
-        """获取 20 日均成交量 (需外部注入 DB 数据)."""
-        # TODO: sub-PR 5b 接入 klines_daily avg_volume
+        """获取 20 日均成交量 (需外部注入 DB 数据).
+
+        TODO(S5-followup): Wire klines_daily avg_volume from DB.
+        当前返 None → VolumeSpike / LiquidityCollapse silent skip
+        (production activation requires this wire + avg_daily_volume in
+        get_current_realtime() + industry classification in _current_ticks).
+        """
         return None
