@@ -112,11 +112,11 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; .env Tushare/AKShare key 改 → STOP |
 | Paper-mode | sustained S1 |
 
-### S5 — L1 实时化 + 8 RealtimeRiskRule ⭐⭐⭐ (integration-first override)
+### S5 — L1 实时化 + 9 RealtimeRiskRule ⭐⭐⭐ ✅ DONE (sub-PR 15-17, PR #303, 2026-05-11)
 
 | element | content |
 |---|---|
-| Scope | V3 §11.1 `RealtimeRiskEngine` (`backend/engines/risk/realtime/`); V3 §4 + 4-29 痛点 fix 核心; xtquant subscribe_quote; 8 RealtimeRiskRule (LimitDownDetection / NearLimitDown / CorrelatedDrop 等); **横切归属 §5.5 RiskBacktestAdapter 接口前置 stub (T1.5 prereq, V3 §11.4)** |
+| Scope | V3 §11.1 `RealtimeRiskEngine` (`backend/qm_platform/risk/realtime/`); V3 §4 + 4-29 痛点 fix 核心; xtquant subscribe_quote; 9 RealtimeRiskRule (8 V3 §4.3 + LiquidityCollapse 扩展); RiskBacktestAdapter stub |
 | Acceptance | xtquant subscribe_quote heartbeat (5min 无 tick → degrade 60s sync, V3 §14 #2); 8 RiskRule 实现 + unit ≥95% (L1 critical); LimitDownDetection unit (9.99/10.00/10.01/10.05/主板 vs 科创, V3 §15.2); paper smoke L0→L1→L4 mock; **L1 detection P99<5s SLA** baseline 实测 + ADR 锁; RiskBacktestAdapter 接口 stub (0 broker / 0 alert / 0 INSERT) |
 | File delta | ~10-15 files / ~1500-2500 lines |
 | Chunked sub-PR | **chunked ≥3 sub-PR**: 5a (RiskEngine + xtquant adapter) / 5b (8 Rules atomic chunked 4+4) / 5c (RiskBacktestAdapter stub + paper smoke); CC 起手实测决议 |
@@ -127,7 +127,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | redline_pretool_block hook + quantmind-redline-guardian subagent; .env LIVE_TRADING_DISABLED double-lock verify (V3 §14 #15) |
 | Paper-mode | 0 真账户 mutation, paper smoke only, broker_qmt mock |
 
-### S6 — L0 告警实时化 (3 级 + push cadence)
+### S6 — L0 告警实时化 (3 级 + push cadence) ✅ DONE (sub-PR 18, PR #304, 2026-05-11)
 
 | element | content |
 |---|---|
@@ -142,7 +142,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; webhook 双向 留 S8 |
 | Paper-mode | sustained S1 |
 
-### S7 — L3 dynamic threshold + L1 集成
+### S7 — L3 dynamic threshold + L1 集成 ✅ DONE (sub-PR 19, PR #305, 2026-05-11)
 
 | element | content |
 |---|---|
