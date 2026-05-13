@@ -1,0 +1,17 @@
+"""S8 risk services — DB-aware orchestration layer over qm_platform.risk pure modules.
+
+Sustains layered architecture (CLAUDE.md §3.1):
+  Router (api/) → Service (services/risk/) → Engine (qm_platform/risk/, pure compute)
+"""
+
+from backend.app.services.risk.dingtalk_webhook_service import (
+    DingTalkWebhookResult,
+    DingTalkWebhookService,
+    WebhookOutcome,
+)
+
+__all__ = [
+    "DingTalkWebhookResult",
+    "DingTalkWebhookService",
+    "WebhookOutcome",
+]

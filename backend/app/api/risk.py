@@ -10,15 +10,26 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from qm_platform.risk.execution.webhook_parser import (
+    WebhookParseError,
+    WebhookParseErrorCode,
+    parse_command,
+    verify_signature,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth import verify_admin_token
 from app.db import get_db
+from app.services.db import get_sync_conn
 from app.services.notification_service import NotificationService
+from app.services.risk.dingtalk_webhook_service import (
+    DingTalkWebhookService,
+    WebhookOutcome,
+)
 from app.services.risk_control_service import RiskControlService
 
 logger = structlog.get_logger(__name__)
@@ -42,9 +53,7 @@ def _parse_uuid(value: str, label: str = "ID") -> UUID:
     try:
         return UUID(value)
     except ValueError:
-        raise HTTPException(
-            status_code=400, detail=f"无效的{label}: {value}"
-        ) from None
+        raise HTTPException(status_code=400, detail=f"无效的{label}: {value}") from None
 
 
 # ── 请求体 ──
@@ -53,9 +62,7 @@ def _parse_uuid(value: str, label: str = "ID") -> UUID:
 class L4RecoveryRequest(BaseModel):
     """L4恢复审批请求体。"""
 
-    reviewer_note: str = Field(
-        ..., min_length=1, description="审批请求说明(为什么认为可以恢复)"
-    )
+    reviewer_note: str = Field(..., min_length=1, description="审批请求说明(为什么认为可以恢复)")
 
 
 class L4ApproveRequest(BaseModel):
@@ -98,6 +105,7 @@ async def get_risk_state(
         if "does not exist" in err_msg or "relation" in err_msg:
             logger.warning("风控表可能不存在: %s", err_msg[:200])
             from datetime import date as _date
+
             return {
                 "level": 0,
                 "level_name": "NORMAL",
@@ -212,9 +220,7 @@ async def request_l4_recovery(
     sid = _parse_uuid(strategy_id, "策略ID")
 
     try:
-        approval_id = await svc.request_l4_recovery(
-            sid, execution_mode, body.reviewer_note
-        )
+        approval_id = await svc.request_l4_recovery(sid, execution_mode, body.reviewer_note)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
@@ -424,18 +430,26 @@ async def get_risk_limits(
     position_count = int(pos_row["position_count"] or 0) if pos_row else 0
     current_dd = abs(float(perf_rows[0]["drawdown"] or 0)) if perf_rows else 0.0
     avg_turnover = (
-        sum(float(r["turnover"] or 0) for r in perf_rows) / len(perf_rows)
-        if perf_rows
-        else 0.0
+        sum(float(r["turnover"] or 0) for r in perf_rows) / len(perf_rows) if perf_rows else 0.0
     )
 
     limit_defs = [
         {"name": "单股最大权重", "limit": 0.10, "current": max_single_w, "unit": "比例"},
-        {"name": "行业最大权重", "limit": 0.25, "current": min(max_single_w * 3, 0.30), "unit": "比例"},
+        {
+            "name": "行业最大权重",
+            "limit": 0.25,
+            "current": min(max_single_w * 3, 0.30),
+            "unit": "比例",
+        },
         {"name": "最大持仓数", "limit": 20, "current": float(position_count), "unit": "只"},
         {"name": "最大回撤限制", "limit": 0.15, "current": current_dd, "unit": "比例"},
         {"name": "L1熔断阈值(5日亏损)", "limit": 0.05, "current": current_dd * 0.4, "unit": "比例"},
-        {"name": "L2熔断阈值(20日亏损)", "limit": 0.10, "current": current_dd * 0.7, "unit": "比例"},
+        {
+            "name": "L2熔断阈值(20日亏损)",
+            "limit": 0.10,
+            "current": current_dd * 0.7,
+            "unit": "比例",
+        },
         {"name": "L3熔断阈值(总回撤)", "limit": 0.15, "current": current_dd, "unit": "比例"},
         {"name": "换手率上限(月)", "limit": 0.50, "current": avg_turnover, "unit": "比例"},
     ]
@@ -446,14 +460,16 @@ async def get_risk_limits(
         cur = item["current"]
         usage_pct = round(cur / lim * 100, 1) if lim > 0 else 0.0
         status = "danger" if usage_pct >= 90 else ("warning" if usage_pct >= 70 else "normal")
-        results.append({
-            "name": item["name"],
-            "limit": lim,
-            "current": round(cur, 4),
-            "usage_pct": usage_pct,
-            "unit": item["unit"],
-            "status": status,
-        })
+        results.append(
+            {
+                "name": item["name"],
+                "limit": lim,
+                "current": round(cur, 4),
+                "usage_pct": usage_pct,
+                "unit": item["unit"],
+                "status": status,
+            }
+        )
 
     return results
 
@@ -495,18 +511,42 @@ async def get_stress_tests(
 
     beta = 0.85  # v1.1低波特性近似值
     scenarios = [
-        {"scenario": "2015年股灾", "period": "2015-06 ~ 2015-08", "market_drop": -0.488,
-         "description": "沪深300三个月内暴跌48.8%"},
-        {"scenario": "2018年熊市", "period": "2018-01 ~ 2018-12", "market_drop": -0.283,
-         "description": "中美贸易战，全年持续下跌28.3%"},
-        {"scenario": "2020年新冠冲击", "period": "2020-01 ~ 2020-02", "market_drop": -0.135,
-         "description": "新冠疫情爆发，春节后快速下跌13.5%"},
-        {"scenario": "2022年俄乌冲击", "period": "2022-01 ~ 2022-04", "market_drop": -0.223,
-         "description": "俄乌战争+美联储加息，4个月下跌22.3%"},
-        {"scenario": "极端单日跌停", "period": "单日", "market_drop": -0.10,
-         "description": "假设持仓集中触发10%跌停板"},
-        {"scenario": "流动性危机", "period": "5个交易日", "market_drop": -0.15,
-         "description": "极端流动性危机，5日连续下跌15%"},
+        {
+            "scenario": "2015年股灾",
+            "period": "2015-06 ~ 2015-08",
+            "market_drop": -0.488,
+            "description": "沪深300三个月内暴跌48.8%",
+        },
+        {
+            "scenario": "2018年熊市",
+            "period": "2018-01 ~ 2018-12",
+            "market_drop": -0.283,
+            "description": "中美贸易战，全年持续下跌28.3%",
+        },
+        {
+            "scenario": "2020年新冠冲击",
+            "period": "2020-01 ~ 2020-02",
+            "market_drop": -0.135,
+            "description": "新冠疫情爆发，春节后快速下跌13.5%",
+        },
+        {
+            "scenario": "2022年俄乌冲击",
+            "period": "2022-01 ~ 2022-04",
+            "market_drop": -0.223,
+            "description": "俄乌战争+美联储加息，4个月下跌22.3%",
+        },
+        {
+            "scenario": "极端单日跌停",
+            "period": "单日",
+            "market_drop": -0.10,
+            "description": "假设持仓集中触发10%跌停板",
+        },
+        {
+            "scenario": "流动性危机",
+            "period": "5个交易日",
+            "market_drop": -0.15,
+            "description": "极端流动性危机，5日连续下跌15%",
+        },
     ]
 
     return [
@@ -521,3 +561,165 @@ async def get_stress_tests(
         }
         for s in scenarios
     ]
+
+
+# ── S8 8b DingTalk inbound webhook (反向决策权) ──
+
+
+class DingTalkWebhookBody(BaseModel):
+    """DingTalk inbound webhook body — text payload + optional metadata.
+
+    Real DingTalk card-callback POSTs JSON shape varies by bot type; this minimal
+    schema accepts a `text` field for V1 (custom HMAC bot). Full DingTalk card
+    AES-CBC payload deferred to follow-up sub-PR.
+    """
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=512,
+        description="user command, e.g. 'confirm abc12345' / '取消 abc12345'",
+    )
+
+
+def _get_dingtalk_webhook_service() -> DingTalkWebhookService:
+    """Inject DingTalkWebhookService (stateless singleton)."""
+    return DingTalkWebhookService()
+
+
+def _map_parse_error_to_http(code: WebhookParseErrorCode) -> int:
+    """Map parser error code → HTTP status."""
+    if code in (WebhookParseErrorCode.INVALID_SIGNATURE, WebhookParseErrorCode.STALE_TIMESTAMP):
+        return 401
+    # MALFORMED_BODY / UNKNOWN_COMMAND / INVALID_PLAN_ID → 400 (反 retry storm on
+    # DingTalk side — 4xx tells DingTalk webhook the message is permanently bad)
+    return 400
+
+
+@router.post("/dingtalk-webhook", status_code=200)
+async def dingtalk_inbound_webhook(
+    request: Request,
+    timestamp: str = Header(..., alias="Timestamp"),
+    sign: str = Header(..., alias="Sign"),
+    service: DingTalkWebhookService = Depends(_get_dingtalk_webhook_service),
+) -> dict[str, Any]:
+    """DingTalk inbound webhook — STAGED 反向决策权 (S8 8b).
+
+    User taps button or replies command in DingTalk group → DingTalk POSTs here.
+    This endpoint:
+      1. Verifies HMAC-SHA256 signature with timestamp replay window (±5min)
+      2. Parses command (CONFIRM/CANCEL + plan_id_prefix ≥8 hex)
+      3. Service resolves prefix → execution_plans row, applies state transition
+      4. Returns 200 with outcome (反 4xx-storm → DingTalk auto-retry idempotent webhook)
+
+    Status codes:
+      200 — signature OK, command parsed, processed (see body.outcome for actual result)
+      400 — body malformed / unknown command / invalid plan_id
+      401 — signature mismatch / stale timestamp (replay protection)
+
+    Body format on 200:
+      {
+        "outcome": "transitioned" | "already_terminal" | "deadline_expired" |
+                   "plan_not_found" | "ambiguous_prefix",
+        "plan_id": "<full uuid or null>",
+        "final_status": "<PlanStatus value or null>",
+        "message": "<human-readable note>"
+      }
+
+    红线 SOP: 0 broker call, 0 真账户 mutation. 8c sub-PR wires broker_qmt sell.
+    """
+    # Step 1: raw body for signature verification (反 FastAPI body re-serialization
+    # 漂移 — HMAC must cover exact bytes sent by DingTalk)
+    raw_body_bytes = await request.body()
+    raw_body = raw_body_bytes.decode("utf-8", errors="replace")
+
+    # Step 2: signature verify
+    secret = getattr(settings, "DINGTALK_WEBHOOK_SECRET", "") or ""
+    if not secret:
+        # 反 silent skip — if secret not configured, reject all inbound (production
+        # must set DINGTALK_WEBHOOK_SECRET via .env; sustained 铁律 35 secrets via env)
+        logger.warning(
+            "dingtalk_webhook_secret_unconfigured",
+            note="DINGTALK_WEBHOOK_SECRET empty — rejecting webhook (sustained 铁律 35)",
+        )
+        raise HTTPException(status_code=503, detail="webhook secret not configured")
+
+    try:
+        verify_signature(
+            secret=secret,
+            timestamp=timestamp,
+            body=raw_body,
+            received_sign=sign,
+        )
+    except WebhookParseError as e:
+        logger.warning(
+            "dingtalk_webhook_signature_reject",
+            code=e.code.value,
+            message=str(e),
+        )
+        raise HTTPException(
+            status_code=_map_parse_error_to_http(e.code),
+            detail={"code": e.code.value, "message": str(e)},
+        ) from e
+
+    # Step 3: parse text payload (after sig verify so we don't leak parse details
+    # to unauthenticated requests)
+    try:
+        parsed_body = DingTalkWebhookBody.model_validate_json(raw_body)
+    except ValueError as e:
+        logger.warning(
+            "dingtalk_webhook_body_malformed",
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "malformed_body", "message": "body must be JSON with 'text' field"},
+        ) from e
+
+    try:
+        parsed = parse_command(parsed_body.text)
+    except WebhookParseError as e:
+        logger.warning(
+            "dingtalk_webhook_command_reject",
+            code=e.code.value,
+            message=str(e),
+        )
+        raise HTTPException(
+            status_code=_map_parse_error_to_http(e.code),
+            detail={"code": e.code.value, "message": str(e)},
+        ) from e
+
+    # Step 4: invoke service with sync psycopg2 conn (caller owns transaction)
+    conn = get_sync_conn()
+    try:
+        result = service.process_command(
+            command=parsed.command,
+            plan_id_prefix=parsed.plan_id_prefix,
+            conn=conn,
+        )
+        # Caller owns commit (铁律 32 sustained — service does NOT commit)
+        if result.outcome == WebhookOutcome.TRANSITIONED:
+            conn.commit()
+        else:
+            # No DB write happened for non-TRANSITIONED outcomes; rollback is safe no-op
+            conn.rollback()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    logger.info(
+        "dingtalk_webhook_processed",
+        command=parsed.command.value,
+        plan_id_prefix=parsed.plan_id_prefix[:8],
+        outcome=result.outcome.value,
+        plan_id=result.plan_id,
+    )
+
+    return {
+        "outcome": result.outcome.value,
+        "plan_id": result.plan_id,
+        "final_status": (result.final_status.value if result.final_status is not None else None),
+        "message": result.message,
+    }

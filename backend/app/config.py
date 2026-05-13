@@ -111,8 +111,13 @@ class Settings(BaseSettings):
     DINGTALK_ALERTS_ENABLED: bool = False
     # alert_dedup TTL 默认 60 min (1h, 业界默认 + Q9 决议)
     DINGTALK_DEDUP_TTL_MIN: int = 60
-    DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式），为空则不签名
+    DINGTALK_SECRET: str = ""  # HMAC签名密钥（加签模式 outbound），为空则不签名
     DINGTALK_KEYWORD: str = ""  # 自定义关键词（关键词模式），非空时自动追加到消息
+    # S8 8b inbound webhook secret (反向决策权 CONFIRM/CANCEL endpoint signature).
+    # Distinct from DINGTALK_SECRET (outbound sign): inbound endpoint verifies HMAC-SHA256
+    # of (timestamp + body) with this shared secret. Empty default → endpoint returns 503
+    # (反 silent skip; sustained 铁律 35 secrets via env, 铁律 33 fail-loud at boundary).
+    DINGTALK_WEBHOOK_SECRET: str = ""
 
     # MVP 4.1 batch 3+ Platform SDK 迁移开关 (默认 True 走 PlatformAlertRouter SDK,
     # 含 cross-process PG dedup + AlertRulesEngine yaml-driven). caller 设 False 走旧
