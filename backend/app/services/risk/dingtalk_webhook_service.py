@@ -246,15 +246,23 @@ class DingTalkWebhookService:
         cur = conn.cursor()
         try:
             # Use psycopg2.extras.RealDictCursor-compatible fetching: build dicts manually
+            # Reviewer P1-1 fix: escape LIKE meta-chars in user-controlled prefix.
+            # Current parser regex restricts to [0-9a-fA-F\-]{8,36} so '%' '_' '\'
+            # cannot arrive here — but if the validator is ever loosened, raw
+            # prefix concatenation would open wildcard injection. Be safe-by-
+            # construction: explicitly escape and use ESCAPE clause.
+            escaped_prefix = (
+                plan_id_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
             cur.execute(
                 """
                 SELECT plan_id::text AS plan_id, status, cancel_deadline, mode, symbol_id, qty
                 FROM execution_plans
-                WHERE REPLACE(plan_id::text, '-', '') LIKE %s
+                WHERE REPLACE(plan_id::text, '-', '') LIKE %s ESCAPE '\\'
                 ORDER BY created_at DESC
                 LIMIT 10
                 """,
-                (plan_id_prefix + "%",),
+                (escaped_prefix + "%",),
             )
             cols = [c.name for c in cur.description]
             return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]

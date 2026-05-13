@@ -5,6 +5,7 @@ Sprint 1.23: 新增前端Risk页面 overview/limits/stress-tests 端点。
 遵循CLAUDE.md: Depends注入 + 类型注解 + Google docstring(中文)。
 """
 
+import asyncio
 import math
 from typing import Any
 from uuid import UUID
@@ -629,12 +630,27 @@ async def dingtalk_inbound_webhook(
     红线 SOP: 0 broker call, 0 真账户 mutation. 8c sub-PR wires broker_qmt sell.
     """
     # Step 1: raw body for signature verification (反 FastAPI body re-serialization
-    # 漂移 — HMAC must cover exact bytes sent by DingTalk)
+    # 漂移 — HMAC must cover exact bytes sent by DingTalk).
+    # Reviewer P2-3 fix: strict UTF-8 decode (反 silent corruption from
+    # errors="replace" which would mask legitimate DingTalk payloads sending
+    # non-UTF-8 as opaque INVALID_SIGNATURE).
     raw_body_bytes = await request.body()
-    raw_body = raw_body_bytes.decode("utf-8", errors="replace")
+    try:
+        raw_body = raw_body_bytes.decode("utf-8")
+    except UnicodeDecodeError as e:
+        logger.warning(
+            "dingtalk_webhook_body_decode_error",
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "malformed_body", "message": f"body not valid UTF-8: {e}"},
+        ) from e
 
     # Step 2: signature verify
-    secret = getattr(settings, "DINGTALK_WEBHOOK_SECRET", "") or ""
+    # Reviewer P2-4 fix: settings.DINGTALK_WEBHOOK_SECRET is declared str in
+    # config.py (never None); direct access is clearer than getattr+default.
+    secret = settings.DINGTALK_WEBHOOK_SECRET
     if not secret:
         # 反 silent skip — if secret not configured, reject all inbound (production
         # must set DINGTALK_WEBHOOK_SECRET via .env; sustained 铁律 35 secrets via env)
@@ -689,25 +705,33 @@ async def dingtalk_inbound_webhook(
             detail={"code": e.code.value, "message": str(e)},
         ) from e
 
-    # Step 4: invoke service with sync psycopg2 conn (caller owns transaction)
-    conn = get_sync_conn()
-    try:
-        result = service.process_command(
-            command=parsed.command,
-            plan_id_prefix=parsed.plan_id_prefix,
-            conn=conn,
-        )
-        # Caller owns commit (铁律 32 sustained — service does NOT commit)
-        if result.outcome == WebhookOutcome.TRANSITIONED:
-            conn.commit()
-        else:
-            # No DB write happened for non-TRANSITIONED outcomes; rollback is safe no-op
+    # Step 4: invoke service with sync psycopg2 conn (caller owns transaction).
+    # Reviewer P1-2 fix: wrap entire sync block in asyncio.to_thread so the
+    # event loop is not blocked by psycopg2 SELECT+UPDATE. Webhook traffic is
+    # low (user clicks/min) but PG lock-wait spikes shouldn't stall uvicorn
+    # workers for other endpoints.
+    def _sync_db_block() -> tuple[Any, ...]:
+        conn = get_sync_conn()
+        try:
+            r = service.process_command(
+                command=parsed.command,
+                plan_id_prefix=parsed.plan_id_prefix,
+                conn=conn,
+            )
+            # Caller owns commit (铁律 32 sustained — service does NOT commit)
+            if r.outcome == WebhookOutcome.TRANSITIONED:
+                conn.commit()
+            else:
+                # No DB write happened for non-TRANSITIONED outcomes; rollback is safe no-op
+                conn.rollback()
+            return r
+        except Exception:
             conn.rollback()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            raise
+        finally:
+            conn.close()
+
+    result = await asyncio.to_thread(_sync_db_block)
 
     logger.info(
         "dingtalk_webhook_processed",
