@@ -1,4 +1,6 @@
-"""RiskBacktestAdapter — S5 sub-PR 5c: 回测适配器桩 (0 broker / 0 alert / 0 INSERT).
+"""RiskBacktestAdapter — S5 sub-PR 5c (stub) + TB-1a (full evaluator extension).
+
+## S5 sub-PR 5c 体例 sustained: 回测适配器桩 (0 broker / 0 alert / 0 INSERT)
 
 实现 BrokerProtocol / NotifierProtocol / PriceReaderProtocol 的桩版本:
   - sell() 记录调用到 _sell_calls, 不执行真 broker sell
@@ -10,15 +12,43 @@
   - unit test: 验证 RiskEngine 调用链 (sell/alert 触发正确性)
   - 铁律 10b smoke: 生产入口启动验证 (不依赖 QMT/网络)
 
-设计: 所有调用记录在内部 list, 线程安全。测试可断言 sell 次数/参数/通知内容。
+## TB-1a (Plan v0.2 §A TB-1, 本 sub-PR) — evaluator extension
 
-关联铁律: 31 (纯桩, 0 IO) / 33 (fail-loud on 重复注入) / 24
+post-(α) architecture decision (sustained user ack 2026-05-13 + ADR-066 候选 sediment):
+同 class 加 evaluate_at(timestamp, context, engine) → list[RuleResult] —
+**production parity 优先**, replay 走 RealtimeRiskEngine 真实路径 + 0 IO 注入。
+
+  - evaluate_at(): pure-function evaluator, 按 timestamp cadence boundary
+    分发到 engine.on_tick / on_5min_beat / on_15min_beat
+  - dedup contract: per (timestamp, code, rule_id) unique (V3 §11.4 line 1298)
+  - 纯函数契约 audit: 0 broker call / 0 INSERT / 0 alert during evaluate_at
+    (verify via _sell_calls / _alerts 长度不变 before/after)
+  - register_all_realtime_rules() helper: 注册 10 rules per ADR-029 amend
+    (LimitDownDetection tick / NearLimitDown tick / RapidDrop5min 5min /
+     RapidDrop15min 15min / GapDownOpen tick / VolumeSpike 5min /
+     LiquidityCollapse 5min / IndustryConcentration 5min / CorrelatedDrop 5min /
+     TrailingStop tick)
+
+设计: 所有调用记录在内部 list, 线程安全。测试可断言 sell 次数 / 通知内容 /
+evaluate_at 返回 RuleResult 列表 / dedup behavior。
+
+关联铁律: 31 (纯桩 + evaluate_at 0 IO) / 33 (fail-loud on 重复注入) / 24
+关联 ADR: ADR-029 (10 RealtimeRiskRule) / ADR-064 (Plan v0.2 5 决议 lock D3=b
+2 关键窗口) / ADR-066 候选 (TB-1a sediment)
+关联 LL: LL-098 X10 / LL-159 (CC self silent drift family + 4-step preflight SOP)
+关联 V3: §11.4 (RiskBacktestAdapter pure function) / §15.5 (sim-to-real gap)
 """
 
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from .interface import RiskContext, RuleResult
+    from .realtime.engine import RealtimeRiskEngine
 
 
 class RiskBacktestAdapter:
@@ -49,6 +79,9 @@ class RiskBacktestAdapter:
         self._alerts: list[dict[str, Any]] = []
         self._price_queries: list[list[str]] = []
         self._nav_queries: int = 0
+        # TB-1a evaluate_at() dedup state — per V3 §11.4 line 1298:
+        #   "events 通过 (timestamp, symbol_id, rule_id) 唯一. backtest 重跑同一时段不重复触发."
+        self._evaluated_keys: set[tuple[str, str, str]] = set()
 
     # ---- BrokerProtocol ----
 
@@ -131,9 +164,171 @@ class RiskBacktestAdapter:
             return self._nav_queries
 
     def reset(self) -> None:
-        """重置所有调用记录 (测试间复用)."""
+        """重置所有调用记录 + dedup state (测试间复用)."""
         with self._lock:
             self._sell_calls.clear()
             self._alerts.clear()
             self._price_queries.clear()
             self._nav_queries = 0
+            self._evaluated_keys.clear()
+
+    # ---- TB-1a Evaluator extension (Plan v0.2 §A TB-1, post-(α) architecture) ----
+
+    def evaluate_at(
+        self,
+        timestamp: datetime,
+        context: RiskContext,
+        engine: RealtimeRiskEngine,
+    ) -> list[RuleResult]:
+        """Pure-function evaluator: dispatch engine by cadence + dedup events.
+
+        V3 §11.4 contract: 0 broker / 0 alert / 0 INSERT during evaluate_at.
+        Implementation per (α) architecture (sustained user ack 2026-05-13):
+        invoke RealtimeRiskEngine.on_tick / on_5min_beat / on_15min_beat
+        according to timestamp cadence boundary — production parity.
+
+        Cadence dispatch logic:
+          - tick cadence: always invoked
+          - 5min cadence: invoked when timestamp minute % 5 == 0
+          - 15min cadence: invoked when timestamp minute % 15 == 0
+
+        Dedup per (timestamp_iso, code, rule_id) — V3 §11.4 line 1298.
+        Subsequent evaluate_at(same_timestamp, ...) returns empty list for
+        already-seen events.
+
+        Args:
+            timestamp: backtest timestamp (timezone-aware per 铁律 41).
+            context: RiskContext with realtime tick data.
+            engine: RealtimeRiskEngine instance with rules registered.
+
+        Returns:
+            Deduped RuleResult list for this timestamp.
+
+        Raises:
+            ValueError: timestamp 非 timezone-aware (铁律 41 enforcement).
+        """
+        if timestamp.tzinfo is None:
+            raise ValueError(
+                "evaluate_at timestamp must be timezone-aware (铁律 41 sustained)"
+            )
+
+        results: list[RuleResult] = []
+
+        # 1. tick cadence — always invoke
+        results.extend(engine.on_tick(context))
+
+        # 2. 5min cadence — invoke on 5min boundary
+        if timestamp.minute % 5 == 0 and timestamp.second == 0 and timestamp.microsecond == 0:
+            results.extend(engine.on_5min_beat(context))
+
+        # 3. 15min cadence — invoke on 15min boundary
+        if timestamp.minute % 15 == 0 and timestamp.second == 0 and timestamp.microsecond == 0:
+            results.extend(engine.on_15min_beat(context))
+
+        # Dedup per (timestamp_iso, code, rule_id) — V3 §11.4 line 1298
+        deduped: list[RuleResult] = []
+        ts_iso = timestamp.isoformat()
+        with self._lock:
+            for r in results:
+                key = (ts_iso, r.code, r.rule_id)
+                if key in self._evaluated_keys:
+                    continue
+                self._evaluated_keys.add(key)
+                deduped.append(r)
+
+        return deduped
+
+    def register_all_realtime_rules(self, engine: RealtimeRiskEngine) -> None:
+        """Helper: register 10 RealtimeRiskRule on engine per ADR-029 amend.
+
+        Cadence assignment per V3 §4.3 + ADR-029 §2.2 (post T1.5b-2 reviewer-fix
+        10-rule scope):
+          - tick: LimitDownDetection / NearLimitDown / GapDownOpen / TrailingStop
+          - 5min: RapidDrop5min / VolumeSpike / LiquidityCollapse /
+                  IndustryConcentration / CorrelatedDrop
+          - 15min: RapidDrop15min
+
+        Args:
+            engine: RealtimeRiskEngine instance to register rules into.
+
+        Raises:
+            ValueError: any rule_id already registered (engine fail-loud per 铁律 33).
+        """
+        # Lazy import — avoid top-level circular + sustain stub usability without
+        # importing concrete rule classes (production parity sustained per (α))
+        from .rules.realtime.correlated_drop import CorrelatedDrop
+        from .rules.realtime.gap_down import GapDownOpen
+        from .rules.realtime.industry_concentration import IndustryConcentration
+        from .rules.realtime.limit_down import LimitDownDetection, NearLimitDown
+        from .rules.realtime.liquidity_collapse import LiquidityCollapse
+        from .rules.realtime.rapid_drop import RapidDrop5min, RapidDrop15min
+        from .rules.realtime.trailing_stop import TrailingStop
+        from .rules.realtime.volume_spike import VolumeSpike
+
+        tick_rules = [
+            LimitDownDetection(),
+            NearLimitDown(),
+            GapDownOpen(),
+            TrailingStop(),
+        ]
+        five_min_rules = [
+            RapidDrop5min(),
+            VolumeSpike(),
+            LiquidityCollapse(),
+            IndustryConcentration(),
+            CorrelatedDrop(),
+        ]
+        fifteen_min_rules = [
+            RapidDrop15min(),
+        ]
+
+        for rule in tick_rules:
+            engine.register(rule, cadence="tick")
+        for rule in five_min_rules:
+            engine.register(rule, cadence="5min")
+        for rule in fifteen_min_rules:
+            engine.register(rule, cadence="15min")
+
+    def verify_pure_function_contract(
+        self,
+        *,
+        before_sell_count: int,
+        before_alert_count: int,
+    ) -> None:
+        """Assert 0 broker call / 0 alert during evaluate_at (V3 §11.4 contract).
+
+        Call before evaluate_at + after evaluate_at to verify pure-function
+        guarantee. Raise AssertionError if any IO occurred.
+
+        Usage:
+            before_s, before_a = len(adapter.sell_calls), len(adapter.alerts)
+            adapter.evaluate_at(ts, ctx, engine)
+            adapter.verify_pure_function_contract(
+                before_sell_count=before_s, before_alert_count=before_a
+            )
+
+        Args:
+            before_sell_count: sell_calls 长度 before evaluate_at.
+            before_alert_count: alerts 长度 before evaluate_at.
+
+        Raises:
+            AssertionError: 0 broker/alert 契约 violated.
+        """
+        current_sell = len(self.sell_calls)
+        current_alert = len(self.alerts)
+        if current_sell != before_sell_count:
+            raise AssertionError(
+                f"V3 §11.4 pure-function contract violated: "
+                f"sell_calls grew from {before_sell_count} to {current_sell} during evaluate_at"
+            )
+        if current_alert != before_alert_count:
+            raise AssertionError(
+                f"V3 §11.4 pure-function contract violated: "
+                f"alerts grew from {before_alert_count} to {current_alert} during evaluate_at"
+            )
+
+    @property
+    def evaluated_keys_count(self) -> int:
+        """Dedup state size (number of unique (timestamp, code, rule_id) seen)."""
+        with self._lock:
+            return len(self._evaluated_keys)
