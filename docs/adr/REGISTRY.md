@@ -82,7 +82,7 @@
 - **reserved**: 3 个 (ADR-025/026/030) — ADR-025 (RAG vector store) / ADR-026 (Bull/Bear 2-Agent) sediment 时机 = Tier B TB-2 + TB-3 cycle (Plan v0.2); ADR-030 (Layer 4 SOP) sediment 时机 = audit Week 2 候选讨论
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号)
 
-总 65 # space (含 gap), 活跃 61 (committed 58 + reserved 3 post-ADR-066 sediment 2026-05-14). **跳号 ADR-038** (LiteLLM cost registry V4 gap reserve, ADR-DRAFT row 6 promote target, 等 LiteLLM SDK 升级 verify 时 sediment, sustained user Q1 (α) 反现 trigger sustained).
+总 65 # space (含 gap), 活跃 61 (committed 58 + reserved 3 post-ADR-066 sediment 2026-05-14, **ADR-010-addendum 表行计入 ADR-010 单条目 per addendum convention**, 故 grep `| committed |` 表行计数 59 ≠ unique ADR # 计数 58; sustained PR #332 reviewer HIGH disambiguation cite). **跳号 ADR-038** (LiteLLM cost registry V4 gap reserve, ADR-DRAFT row 6 promote target, 等 LiteLLM SDK 升级 verify 时 sediment, sustained user Q1 (α) 反现 trigger sustained).
 
 ## maintenance 规则
 

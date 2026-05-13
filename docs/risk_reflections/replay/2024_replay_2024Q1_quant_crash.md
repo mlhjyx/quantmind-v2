@@ -32,7 +32,7 @@
 
 ## Top events by code (top 20)
 
-- ``: 1344
+- `` *(empty = IndustryConcentration portfolio-level events, expected v1 noise per ADR-066 D3 caveat)*: 1344
 - `000908.SZ`: 686
 - `000020.SZ`: 644
 - `002217.SZ`: 625

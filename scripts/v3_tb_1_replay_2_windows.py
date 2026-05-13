@@ -447,6 +447,13 @@ def main() -> int:
                 logger.info("[TB-1c] sedimented reflection: %s", target)
             else:
                 logger.info("[TB-1c] --dry-run: skipped sediment")
+
+            # Reviewer P2 fix (PR #332): release long-lived read-only PG snapshot
+            # between windows. Without this, multi-window run holds a single
+            # transaction across ~40s — VACUUM cannot clean tuples modified during
+            # that span. conn.commit() is no-op semantically (0 DML executed) but
+            # closes the transaction and frees the snapshot.
+            conn.commit()
     finally:
         conn.close()
 
