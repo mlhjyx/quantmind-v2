@@ -4741,3 +4741,69 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 6. Multi-secret rotation (key rollover without downtime)
 
 **关联**: PR #307 (`58258b9` initial + `95db073` reviewer-fix → squash `e68b00a` merged) / ADR-057 NEW / ADR-056 (8a parent) / ADR-027 (design SSOT) / LL-150 (8a sediment) / 铁律 1/31/32/33/35/41 / Plan §A S8 row 8b amend / 反 deepseek-style sediment gap pattern (5-sprint cumulative lesson sustained as enforcement)
+
+## LL-152: V3 §S8 8c-PARTIAL Celery L4 Sweep + STAGED Smoke — 反 broker_qmt 红线 监管下的安全 forward momentum (2026-05-13, PR #308)
+
+**情境**: S8 8a state machine + DDL ✅ (commit `dbf55c0` + sediment `dc17d88`). S8 8b DingTalk webhook receiver ✅ (PR #307 `e68b00a` + sediment `1442998`). Plan §A S8 8c scope = `broker_qmt sell 单 wire + STAGED smoke + Celery Beat sweep`. **5/5 红线 关键点**: broker_qmt sell wire mutates 真账户 path.
+
+**Root challenge**: Plan §A 红线 SOP says `broker_qmt sell 单 → STOP + push user`. User "继续" 一次性触发 may be too broad an authorization for direct broker_qmt code change. Solution = **8c-partial decomposition**:
+- 8c-partial (this PR): Celery sweep + STAGED smoke (0 broker call possible)
+- 8c-followup (deferred PR): broker_qmt sell wire (requires explicit user ack for the specific red-line action)
+
+**改进措施 (PR #308 — commit `3a4a324` squash merged 2026-05-13)**:
+
+1. NEW `backend/app/tasks/l4_sweep_tasks.py` (~140 lines) — Celery task + `_sweep_inner` helper
+   - SELECT expired PENDING_CONFIRM (LIMIT 100, partial index targeting)
+   - Race-safe atomic UPDATE WHERE status='PENDING_CONFIRM' AND cancel_deadline < NOW()
+   - Returns {scanned, transitioned, races, batch_limited} for monitoring
+   - **0 broker invocation** — INFO log emits "(broker invocation deferred to 8c-followup)"
+
+2. NEW `test_l4_sweep_tasks.py` (14 tests) — registration / Beat cron / 0/1/3/race/mixed/batch_limit / 铁律 32 verified
+
+3. NEW `test_l4_staged_smoke.py` (11 tests) — STAGED smoke integration using RiskBacktestAdapter stub
+   - L1 → L4 plan generation (STAGED → PENDING_CONFIRM / OFF → CONFIRMED)
+   - Webhook simulation (user.confirm() / cancel() transitions)
+   - Sweep simulation (check_timeout + timeout_execute())
+   - **Adapter isolation: 0 adapter.sell_calls when state machine alone used**
+   - Sanity: explicit adapter.sell() does record (反 silent stub no-record)
+   - Full lifecycle confirm path: PENDING_CONFIRM → CONFIRMED → EXECUTED
+   - Full lifecycle timeout path: PENDING_CONFIRM → TIMEOUT_EXECUTED → EXECUTED
+
+4. EDIT `beat_schedule.py` + `celery_app.py` — `risk-l4-sweep-1min` entry + imports
+
+**Reviewer fixes (commit `32cd307`)**:
+- P1-1: docstring cron string mismatch — fixed `crontab '* * * * 1-5'` → `'* 9-14 * * 1-5'`
+- P1-2: NOW() timezone clarifying comment (铁律 41 reinforcement, 反 future maintainer's Asia/Shanghai vs UTC confusion)
+- LOW: pre-assign `conn = None` before try (反 UnboundLocalError masking get_sync_conn failure)
+- P2-1: `SWEEP_BATCH_LIMIT` via `settings.L4_SWEEP_BATCH_LIMIT` (override path for backlog scenarios)
+
+**Architectural lesson (沿用 5-sprint sediment gap pattern enforcement)**:
+
+This is the **2nd consecutive PR** (after #307) that proactively wrote ADR + LL + REGISTRY + Plan amend in SAME session as code, with reviewer agent invoked BEFORE merge + findings addressed BEFORE merge. The cumulative 5-sprint deepseek-style sediment gap pattern (LL-149 Part 2 + LL-150) is now sustained as ENFORCEMENT not as 教训.
+
+**Red-line discipline lesson**: 8c-partial decomposition is a 1st实证 of "split scope to honor red-line gates without losing momentum". Pattern:
+1. Identify red-line触发点 in original sprint scope
+2. Split into N-partial (clean, 0 red-line) + N-followup (deferred, requires red-line user ack)
+3. N-partial closes with full governance sediment
+4. N-followup waits on explicit user authorization for the specific red-line action
+
+This pattern will recur — e.g. real .env paper→live cutover, real broker_qmt wire, real production yaml mutation.
+
+**Iron law traceability**:
+- 22: doc 跟随代码 — ADR-058 + LL-152 + REGISTRY + Plan amend in same session as code commit
+- 31: not directly invoked (task layer, not engine)
+- 32: `_sweep_inner` does NOT call conn.commit/rollback (1 explicit test)
+- 33: SQL errors propagate; per-row UPDATE rowcount=0 counted as race (NOT silent skip)
+- 41: timezone — explicit comment documents PG TIMESTAMPTZ vs Celery Asia/Shanghai
+- 44 X9: Beat schedule restart enforce — post-merge ops checklist sustained
+
+**Tests cumulative**: 337/337 PASS (S5+S6+S7+S8/8a/8b/8c-partial + fundamental). Ruff clean. Pre-push smoke 55 PASS (3x: initial push, reviewer-fix push, sediment push).
+
+**Deferred (留 8c-followup with explicit user ack)**:
+1. broker_qmt sell wire post-CONFIRMED transition (5/5 红线 关键点 触发)
+2. broker_order_id writeback to execution_plans
+3. broker_fill_status tracking + partial-fill semantics
+4. Integration smoke with real qmt_data_service (paper-mode only, LIVE_TRADING_DISABLED=true)
+5. Operator dashboard / re-issue button + audit query
+
+**关联**: PR #308 (`ab0b9dc` initial + `32cd307` reviewer-fix → squash `3a4a324` merged 2026-05-13) / ADR-058 NEW / ADR-027 design SSOT / ADR-056 (8a parent) / ADR-057 (8b sibling) / LL-150 (8a) / LL-151 (8b) / 铁律 22/31/32/33/41/44 X9 / Plan §A S8 row 8c-partial amend / 红线 discipline 1st partial-decomposition实证 sustained as pattern
