@@ -13,6 +13,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from qm_platform.risk.execution.planner import PlanStatus
 from qm_platform.risk.execution.webhook_parser import (
     WebhookParseError,
     WebhookParseErrorCode,
@@ -30,6 +31,13 @@ from app.services.notification_service import NotificationService
 from app.services.risk.dingtalk_webhook_service import (
     DingTalkWebhookService,
     WebhookOutcome,
+)
+from app.services.risk.staged_execution_service import (
+    StagedExecutionOutcome,
+    StagedExecutionService,
+)
+from app.services.risk.staged_execution_service import (
+    get_default_service as get_default_staged_service,
 )
 from app.services.risk_control_service import RiskControlService
 
@@ -588,6 +596,16 @@ def _get_dingtalk_webhook_service() -> DingTalkWebhookService:
     return DingTalkWebhookService()
 
 
+def _get_staged_execution_service() -> StagedExecutionService:
+    """Inject StagedExecutionService (paper-mode stub or live QMT per settings).
+
+    Factory routes broker_call based on EXECUTION_MODE / LIVE_TRADING_DISABLED:
+      - paper / disabled → RiskBacktestAdapter (0 broker call, stub order_id)
+      - live + enabled → QMTSellAdapter wrapping MiniQMTBroker (xtquant.order_stock)
+    """
+    return get_default_staged_service()
+
+
 def _map_parse_error_to_http(code: WebhookParseErrorCode) -> int:
     """Map parser error code → HTTP status."""
     if code in (WebhookParseErrorCode.INVALID_SIGNATURE, WebhookParseErrorCode.STALE_TIMESTAMP):
@@ -603,6 +621,7 @@ async def dingtalk_inbound_webhook(
     timestamp: str = Header(..., alias="Timestamp"),
     sign: str = Header(..., alias="Sign"),
     service: DingTalkWebhookService = Depends(_get_dingtalk_webhook_service),
+    staged_service: StagedExecutionService = Depends(_get_staged_execution_service),
 ) -> dict[str, Any]:
     """DingTalk inbound webhook — STAGED 反向决策权 (S8 8b).
 
@@ -710,7 +729,11 @@ async def dingtalk_inbound_webhook(
     # event loop is not blocked by psycopg2 SELECT+UPDATE. Webhook traffic is
     # low (user clicks/min) but PG lock-wait spikes shouldn't stall uvicorn
     # workers for other endpoints.
-    def _sync_db_block() -> tuple[Any, ...]:
+    #
+    # S8 8c-followup: after a successful CONFIRMED transition, invoke
+    # StagedExecutionService to call broker.sell + persist broker_order_id +
+    # final EXECUTED/FAILED state. CANCEL path skips broker (terminal CANCELLED).
+    def _sync_db_block() -> tuple[Any, Any]:
         conn = get_sync_conn()
         try:
             r = service.process_command(
@@ -718,20 +741,28 @@ async def dingtalk_inbound_webhook(
                 plan_id_prefix=parsed.plan_id_prefix,
                 conn=conn,
             )
-            # Caller owns commit (铁律 32 sustained — service does NOT commit)
-            if r.outcome == WebhookOutcome.TRANSITIONED:
+            staged_r = None
+            if r.outcome == WebhookOutcome.TRANSITIONED and r.final_status == PlanStatus.CONFIRMED:
+                # 8c-followup wire: broker sell + writeback. Same conn → atomic
+                # within this webhook (both transitions commit together or not at all).
+                # If broker execution raises, conn.rollback below reverts the
+                # CONFIRMED transition too — 反 orphan CONFIRMED row with no broker call.
+                staged_r = staged_service.execute_plan(plan_id=r.plan_id, conn=conn)
+                conn.commit()
+            elif r.outcome == WebhookOutcome.TRANSITIONED:
+                # CANCEL path or any other TRANSITIONED non-CONFIRMED — no broker call
                 conn.commit()
             else:
                 # No DB write happened for non-TRANSITIONED outcomes; rollback is safe no-op
                 conn.rollback()
-            return r
+            return r, staged_r
         except Exception:
             conn.rollback()
             raise
         finally:
             conn.close()
 
-    result = await asyncio.to_thread(_sync_db_block)
+    result, staged_result = await asyncio.to_thread(_sync_db_block)
 
     logger.info(
         "dingtalk_webhook_processed",
@@ -739,11 +770,37 @@ async def dingtalk_inbound_webhook(
         plan_id_prefix=parsed.plan_id_prefix[:8],
         outcome=result.outcome.value,
         plan_id=result.plan_id,
+        staged_outcome=(staged_result.outcome.value if staged_result is not None else None),
+        broker_order_id=(staged_result.broker_order_id if staged_result is not None else None),
     )
 
-    return {
+    response: dict[str, Any] = {
         "outcome": result.outcome.value,
         "plan_id": result.plan_id,
         "final_status": (result.final_status.value if result.final_status is not None else None),
         "message": result.message,
     }
+    if staged_result is not None:
+        # 8c-followup: surface broker outcome to caller (audit / DingTalk reply)
+        response["broker"] = {
+            "outcome": staged_result.outcome.value,
+            "order_id": staged_result.broker_order_id,
+            "final_status": (
+                staged_result.final_status.value if staged_result.final_status is not None else None
+            ),
+            "error": staged_result.error_msg,
+        }
+        # Override top-level final_status with the post-broker state when broker
+        # actually transitioned the row (EXECUTED / FAILED). RACE / NOT_FOUND
+        # / NOT_EXECUTABLE leave the webhook-side CONFIRMED status authoritative.
+        if staged_result.outcome in (
+            StagedExecutionOutcome.EXECUTED,
+            StagedExecutionOutcome.FAILED,
+        ):
+            response["final_status"] = (
+                staged_result.final_status.value
+                if staged_result.final_status is not None
+                else response["final_status"]
+            )
+
+    return response

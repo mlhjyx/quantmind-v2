@@ -121,11 +121,16 @@ def test_sweep_inner_no_rows_zero_op() -> None:
     """Empty SELECT → scanned=0, no UPDATE calls."""
     conn, cur = _make_mock_conn(select_rows=[])
     result = l4t._sweep_inner(conn=conn)
+    # 8c-followup added executed/broker_failed/broker_race keys (default 0 when
+    # staged_service not injected, sustained for legacy callers).
     assert result == {
         "ok": True,
         "scanned": 0,
         "transitioned": 0,
         "races": 0,
+        "executed": 0,
+        "broker_failed": 0,
+        "broker_race": 0,
         "batch_limited": False,
     }
     # Only 1 execute (the SELECT) — no UPDATE
@@ -235,3 +240,98 @@ def test_sweep_inner_does_not_commit() -> None:
 def test_sweep_batch_limit_const() -> None:
     """SWEEP_BATCH_LIMIT is 100 (反 silent change to a value that floods Beat tick)."""
     assert l4t.SWEEP_BATCH_LIMIT == 100
+
+
+# §8 8c-followup broker wire — staged_service injection
+
+
+class _StagedServiceStub:
+    """Records execute_plan calls + returns staged outcomes via injected sequence."""
+
+    def __init__(self, outcomes: list[str], order_ids: list[str | None] | None = None) -> None:
+        # Local import avoids cyclic / unused-import issues at module top
+        from app.services.risk.staged_execution_service import (
+            StagedExecutionOutcome,
+            StagedExecutionServiceResult,
+        )
+
+        self._StagedExecutionOutcome = StagedExecutionOutcome
+        self._StagedExecutionServiceResult = StagedExecutionServiceResult
+        self._outcomes = [StagedExecutionOutcome(o) for o in outcomes]
+        self._order_ids = order_ids or [f"stub-{i}" for i in range(len(outcomes))]
+        self.calls: list[str] = []
+
+    def execute_plan(self, *, plan_id: str, conn) -> object:  # noqa: ARG002
+        self.calls.append(plan_id)
+        idx = len(self.calls) - 1
+        outcome = self._outcomes[idx] if idx < len(self._outcomes) else self._outcomes[-1]
+        order_id = self._order_ids[idx] if idx < len(self._order_ids) else None
+        # Build a minimal result — broker_executor.PlanStatus not required here;
+        # the inner sweep only reads .outcome / .broker_order_id / .error_msg.
+        return self._StagedExecutionServiceResult(
+            outcome=outcome,
+            plan_id=plan_id,
+            broker_order_id=order_id,
+            final_status=None,
+            error_msg=None if outcome == self._StagedExecutionOutcome.EXECUTED else "stub_err",
+            message="stub",
+        )
+
+
+def test_sweep_inner_broker_wire_executed_counter() -> None:
+    """staged_service injected → executed counter increments per EXECUTED outcome."""
+    conn, _cur = _make_mock_conn(
+        select_rows=[_row("p-1"), _row("p-2"), _row("p-3")],
+        update_rowcounts=[1, 1, 1],
+    )
+    stub = _StagedServiceStub(outcomes=["executed", "executed", "executed"])
+    result = l4t._sweep_inner(conn=conn, staged_service=stub)
+    assert result["transitioned"] == 3
+    assert result["executed"] == 3
+    assert result["broker_failed"] == 0
+    assert result["broker_race"] == 0
+    # staged_service invoked once per successful TIMEOUT_EXECUTED transition
+    assert len(stub.calls) == 3
+    assert stub.calls == ["p-1", "p-2", "p-3"]
+
+
+def test_sweep_inner_broker_wire_mixed_outcomes() -> None:
+    """Mixed broker outcomes → counters increment independently."""
+    conn, _cur = _make_mock_conn(
+        select_rows=[_row(f"p-{i}") for i in range(4)],
+        update_rowcounts=[1, 1, 1, 1],
+    )
+    stub = _StagedServiceStub(outcomes=["executed", "failed", "executed", "race"])
+    result = l4t._sweep_inner(conn=conn, staged_service=stub)
+    assert result["transitioned"] == 4
+    assert result["executed"] == 2
+    assert result["broker_failed"] == 1
+    assert result["broker_race"] == 1
+
+
+def test_sweep_inner_broker_wire_skipped_when_no_service() -> None:
+    """staged_service=None (default) — broker counters stay 0; sweep still works."""
+    conn, _cur = _make_mock_conn(
+        select_rows=[_row("p-1")],
+        update_rowcounts=[1],
+    )
+    result = l4t._sweep_inner(conn=conn)  # default staged_service=None
+    assert result["transitioned"] == 1
+    assert result["executed"] == 0
+    assert result["broker_failed"] == 0
+    assert result["broker_race"] == 0
+
+
+def test_sweep_inner_broker_wire_not_called_on_race() -> None:
+    """When TIMEOUT_EXECUTED UPDATE rowcount=0 (race), broker is NOT invoked."""
+    conn, _cur = _make_mock_conn(
+        select_rows=[_row("p-1")],
+        update_rowcounts=[0],  # concurrent webhook stole the row
+    )
+    stub = _StagedServiceStub(outcomes=["executed"])
+    result = l4t._sweep_inner(conn=conn, staged_service=stub)
+    # No TIMEOUT_EXECUTED transition happened → no broker call
+    assert result["transitioned"] == 0
+    assert result["races"] == 1
+    assert result["executed"] == 0
+    assert len(stub.calls) == 0

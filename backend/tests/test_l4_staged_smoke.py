@@ -1,29 +1,35 @@
-"""S8 8c-partial STAGED smoke integration test (L1 → L4 → state transition).
+"""S8 8c STAGED smoke integration test (L1 → L4 → state transition → broker wire).
 
-Plan §A S8 acceptance: STAGED smoke. This test exercises the full pipeline
-END-TO-END using **0 broker / 0 alert / 0 INSERT** via RiskBacktestAdapter
-(S5 sub-PR 5c sediment) as the integration sink.
+Plan §A S8 acceptance: STAGED smoke + broker_qmt sell wire (8c-followup).
 
-Smoke path:
+8c-partial scope (PR #308): state-machine smoke (no broker wire) via
+RiskBacktestAdapter.
+8c-followup scope (this PR): broker_executor.execute_plan_sell wired with
+RiskBacktestAdapter.sell as broker callable — verifies the full
+PENDING_CONFIRM → CONFIRMED → EXECUTED chain including broker invocation.
+
+Smoke path (8c-partial + 8c-followup combined):
   1. Construct a RuleResult (as if emitted by L1 RealtimeRiskEngine evaluating
      a LimitDownDetection rule firing)
   2. Inject into L4ExecutionPlanner with mode=STAGED → ExecutionPlan with
      status=PENDING_CONFIRM + cancel_deadline
   3. Simulate user webhook CONFIRM → state transitions to CONFIRMED via
      ExecutionPlan.confirm()
-  4. Simulate Celery sweep on a separate plan that expires → TIMEOUT_EXECUTED
-     via ExecutionPlan.timeout_execute()
-  5. Verify state machine transitions are atomic (PENDING_CONFIRM → terminal)
-     and that no broker / alert / INSERT occurred (RiskBacktestAdapter records)
+  4. **8c-followup**: broker_executor.execute_plan_sell(plan, adapter.sell) →
+     EXECUTED with stub order_id; adapter.sell_calls grows by 1.
+  5. Simulate Celery sweep on a separate plan that expires → TIMEOUT_EXECUTED
+     via ExecutionPlan.timeout_execute() → broker_executor → EXECUTED
+  6. Verify state machine + broker wire are atomic and that 0 real broker /
+     alert / INSERT occurred (RiskBacktestAdapter records).
 
 NOTE: This is a UNIT-LEVEL smoke (in-memory state machine + adapter stub).
 True end-to-end (Celery Beat fires real task → real PG UPDATE → real broker
-order) is deferred to 8c-followup PR with explicit user authorization (5/5
-红线 关键点 per Plan §A SOP).
+order) requires the deployment-side schedule cutover.
 
 关联铁律: 31 (adapter stub 0 IO) / 33 (fail-loud on invalid transition)
-关联 ADR: ADR-027 (design SSOT) / ADR-056 (8a state machine) / ADR-058 NEW
-关联 LL: LL-152 NEW (8c-partial sediment)
+关联 ADR: ADR-027 (design SSOT) / ADR-056 (8a state machine) /
+  ADR-058 (8c-partial) / ADR-059 NEW (8c-followup broker wire)
+关联 LL: LL-152 (8c-partial) / LL-153 NEW (8c-followup)
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from qm_platform.risk.backtest_adapter import RiskBacktestAdapter
+from qm_platform.risk.execution.broker_executor import execute_plan_sell
 from qm_platform.risk.execution.planner import (
     ExecutionMode,
     L4ExecutionPlanner,
@@ -169,10 +176,10 @@ class TestStagedSmokeAdapterIsolation:
     def test_adapter_records_zero_sell_when_only_state_machine_used(self) -> None:
         """State machine transitions alone don't call adapter.sell.
 
-        This is the safety guarantee for 8c-partial: state transitions happen
-        in-memory; broker_qmt wire (which would call adapter.sell) is deferred
-        to 8c-followup. Verify adapter.sell_calls is empty after a full
-        PENDING_CONFIRM → CONFIRMED → (hypothetical) EXECUTED simulation.
+        The 8c-followup wire only fires when broker_executor.execute_plan_sell
+        is invoked. Pure state-machine transitions (plan.confirm() etc) leave
+        adapter.sell_calls empty. This isolates the broker wire as the sole
+        sell-call entry point so unauthorized code paths can't bypass it.
         """
         adapter = RiskBacktestAdapter()
         result = _make_rule_result()
@@ -180,8 +187,8 @@ class TestStagedSmokeAdapterIsolation:
         plan = planner.generate_plan(result, mode=ExecutionMode.STAGED)
         assert plan is not None
         confirmed = plan.confirm()
-        # If 8c-followup wires broker, it would call adapter.sell here.
-        # 8c-partial does NOT — verify.
+        # Pure state-machine transition does NOT call broker (broker is invoked
+        # via execute_plan_sell explicitly — see §6 8c-followup tests).
         assert confirmed.status == PlanStatus.CONFIRMED
         assert adapter.sell_calls == []
         assert adapter.alerts == []
@@ -248,3 +255,78 @@ class TestStagedSmokeFullLifecycle:
         # TIMEOUT_EXECUTED → EXECUTED allowed (broker fires post-timeout)
         executed = timed_out.mark_executed(broker_order_id="stub-timeout-67890")
         assert executed.status == PlanStatus.EXECUTED
+
+
+# §6 8c-followup broker wire — execute_plan_sell against RiskBacktestAdapter
+
+
+class TestStagedSmokeBrokerWire:
+    """Verify broker_executor.execute_plan_sell + RiskBacktestAdapter chain."""
+
+    def test_confirmed_broker_wire_records_sell(self) -> None:
+        """PENDING_CONFIRM → CONFIRMED → broker_executor → adapter.sell recorded."""
+        adapter = RiskBacktestAdapter(prices={"600519.SH": 1700.0})
+        result = _make_rule_result()
+        planner = L4ExecutionPlanner(staged_enabled=True)
+        plan = planner.generate_plan(result, mode=ExecutionMode.STAGED)
+        assert plan is not None
+        confirmed = plan.confirm()
+        assert confirmed.status == PlanStatus.CONFIRMED
+
+        # 8c-followup wire entry point
+        broker_result = execute_plan_sell(plan=confirmed, broker_call=adapter.sell)
+
+        assert broker_result.success is True
+        assert broker_result.new_plan.status == PlanStatus.EXECUTED
+        # Stub adapter synthesizes order_id from plan_id prefix
+        assert broker_result.order_id == f"stub-{confirmed.plan_id[:8]}"
+        # Adapter recorded exactly 1 sell call with the expected fields
+        assert len(adapter.sell_calls) == 1
+        call = adapter.sell_calls[0]
+        assert call["code"] == "600519.SH"
+        assert call["shares"] == 100
+        assert call["reason"].startswith("l4_")  # audit prefix
+
+    def test_timeout_executed_broker_wire_records_sell(self) -> None:
+        """TIMEOUT_EXECUTED → broker_executor → adapter.sell recorded."""
+        adapter = RiskBacktestAdapter()
+        result = _make_rule_result()
+        planner = L4ExecutionPlanner(staged_enabled=True)
+        now = datetime(2026, 5, 13, 9, 30, tzinfo=UTC)
+        pending = planner.generate_plan(result, mode=ExecutionMode.STAGED, at=now)
+        assert pending is not None
+        after = pending.cancel_deadline + timedelta(seconds=1)
+        timed_out = pending.timeout_execute(at=after)
+        assert timed_out.status == PlanStatus.TIMEOUT_EXECUTED
+
+        broker_result = execute_plan_sell(plan=timed_out, broker_call=adapter.sell)
+
+        assert broker_result.success is True
+        assert broker_result.new_plan.status == PlanStatus.EXECUTED
+        assert len(adapter.sell_calls) == 1
+
+    def test_broker_rejection_marks_plan_failed(self) -> None:
+        """Broker returns non-success status → plan transitions to FAILED."""
+
+        def _reject(code: str, shares: int, reason: str, timeout: float) -> dict:  # noqa: ARG001
+            return {
+                "status": "rejected",
+                "code": code,
+                "shares": shares,
+                "filled_shares": 0,
+                "price": 0.0,
+                "order_id": None,
+                "error": "live_trading_disabled",
+            }
+
+        result = _make_rule_result()
+        planner = L4ExecutionPlanner(staged_enabled=True)
+        plan = planner.generate_plan(result, mode=ExecutionMode.STAGED)
+        assert plan is not None
+        confirmed = plan.confirm()
+
+        broker_result = execute_plan_sell(plan=confirmed, broker_call=_reject)
+
+        assert broker_result.success is False
+        assert broker_result.new_plan.status == PlanStatus.FAILED
+        assert "live_trading_disabled" in (broker_result.error_msg or "")
