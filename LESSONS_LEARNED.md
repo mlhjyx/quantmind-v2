@@ -4954,3 +4954,71 @@ Tests that pass by coincidence are WORSE than tests that fail — they create fa
 5. PMSRule v1 actual deprecation / replacement (ADR-016 D-M2 path — operational follow-up)
 
 **关联**: PR #311 (`7851dc2` initial + `94e25fe` reviewer-fix → squash `a1ac5f6` merged 2026-05-13) / ADR-060 NEW / ADR-027 design SSOT / ADR-016 (PMSRule v1 deprecation path) / ADR-056 (8a) / ADR-059 (8c-followup broker wire — reused by batched dispatch) / LL-150-153 sequence / 铁律 22/24/31/33/44 X9 / Plan §A S9 row 9a ✅ / test-by-accident anti-pattern 1st 实证 sustained as detection signal + reviewer 2nd-set-of-eyes 4th 实证 cumulative
+
+---
+
+## LL-155: V3 §S9b Re-entry Tracker — None-Data Fail-Closed Pattern + Sentiment Strict-vs-Zero Boundary (2026-05-13, PR #313)
+
+**情境**: S9a closed batched + trailing (PR #311 `a1ac5f6` + sediment `bf52461`). Plan §A S9 acceptance includes Re-entry 决议 + 历史回放. S9b (this PR) closes S9 fully — PURE reentry_tracker + chain smoke. No new 5/5 红线 触发 — tracker is pure compute, chain smoke uses RiskBacktestAdapter stub.
+
+**Root design choice — None-data fail-closed pattern**: V3 §7.4 conditions include `sentiment_24h 转正`. The L2 RAG may return None for symbols with no recent news coverage (e.g. low-news small caps, just-IPO'd stocks, newly-listed shares). What should the tracker do with None?
+
+Three options considered:
+1. **Treat None as positive** (assume good news = neutral baseline): UNSAFE — exact opposite of trailing stop's purpose. Could trigger re-entry pushes for symbols where sentiment is unknown, which are typically the RISKIEST symbols (no information ≠ good information).
+2. **Skip the check** (mark sentiment_ok=True if None): equivalent to option 1 in aggregate — would still let the aggregate `should_notify=True` fire on missing data.
+3. **Fail-closed** (sentiment_ok=False on None): chosen. Audit reason "sentiment_24h unknown — fail-closed (反 silent assume positive)" surfaces in the result for operator visibility.
+
+**Lesson — None-data fail-closed is project-wide convention**: this is the 6th project-wide instance (sustained from S5 9 rules + S7 dynamic threshold + S8 8b webhook). Project convention now: missing data NEVER produces an action signal. Sustained as ENFORCEMENT pattern, not lesson-to-remember.
+
+**Sentiment strict-vs-zero boundary**: V3 §7.4 says "sentiment_24h 转正". Implemented as `sentiment_24h > 0` strict, NOT `>= 0`. Zero is the boundary, not a positive value. Strict matches the wording semantic (转正 = "turning positive" = directional change from non-positive to positive). Defensive against neutral-noise (LLM aggregations near zero are noisy — strict > avoids triggering on borderline-neutral days).
+
+**改进措施 (PR #313 — commit `7fc5bd2` squash merged 2026-05-13)**:
+
+1. NEW `backend/qm_platform/risk/execution/reentry_tracker.py` (~270 lines):
+   - ReentryTracker.check() PURE function with 4 V3 §7.4 conditions
+   - SoldRecord + ReentryCheckResult frozen dataclasses
+   - Per-condition breakdown (price_ok / sentiment_ok / regime_ok / within_window) — operator dashboard / RAG correlation
+   - None sentiment fail-closed (项目惯例 6th 实证 sustained)
+   - Sentiment strict > 0 (not >= 0)
+   - Price reb inclusive bounds [sell_price, sell_price × 1.05]
+   - 1-day window inclusive
+   - Suggested qty 50% default ratio, min 1
+   - format_reentry_notification helper
+
+2. MODIFY `backend/tests/test_l4_staged_smoke.py` +2 §7 chain tests:
+   - test_batched_to_broker_to_reentry_chain: full V3 §7.2 → §7.3 → §7.4 chain
+   - test_chain_no_reentry_when_regime_stress: regime block sustained
+
+3. Reviewer P2 fix (commit `d43bf5a`):
+   - **MEDIUM**: negative elapsed guard (future sell_at clock skew) — without guard, `negative_td <= timedelta(days=1)` trivially evaluates True. Added explicit branch with audit reason "sell_at in future — clock skew or bad data".
+   - **LOW**: parametrized defensive tests for sell_price / sell_qty / current_price (cover 0 + negative both). Sustained constructor-tests parametrize style.
+   - **LOW deferred**: __init__.py re-export — sustained convention with batched_planner + broker_executor + 8c-followup (caller uses full submodule path).
+
+4. Tests: 47 → 51 (4 new from reviewer follow-up). Cumulative S5/S7/S8/S9a/S9b + adjacent: 115/115 PASS within scope. Pre-push smoke 55 PASS (3x).
+
+**Architectural lesson (5th consecutive sediment-in-same-session enforcement 实证)**:
+
+PR #307 + #308 + #309 + #311 + #313 — 5 consecutive PRs proactively sedimented ADR + LL + REGISTRY + Plan amend in same session as code, with reviewer agent invoked BEFORE merge. 反 deepseek-style sediment gap pattern is now sustained as ENFORCEMENT pattern via repetition, not LESSON to remember via inscription. Future PRs will be CALLED OUT if they break this pattern.
+
+**Reviewer 2nd-set-of-eyes 5th 实证 cumulative**: PR #307 (LIKE wildcard injection) + #308 (P1+P2 misc) + #309 (HIGH live broker silent fallback) + #311 (test-by-accident anti-pattern) + this PR (MEDIUM negative elapsed guard). 5 distinct catch categories. CC + agent reviewer combo remains > either alone.
+
+**Iron law traceability**:
+- 22: doc 跟随代码 — ADR-061 + LL-155 + REGISTRY + Plan amend in same session
+- 31: reentry_tracker PURE (verified by grep: 0 DB / broker / network / AlertDispatcher imports)
+- 33: fail-loud — invalid sell_price / qty / current_price / bad constructor params all raise ValueError; None sentiment fails closed
+- 44 X9: sustained from S9a (no Beat schedule mutation in S9b)
+
+**Tier A S9 ✅ DONE cumulative**:
+- 9a (PR #311): batched_planner + trailing_stop
+- 9b (this PR): reentry_tracker + chain smoke
+- S9 row in Plan §A: ⚠️ PARTIAL → ✅ DONE
+
+**Deferred (operational follow-ups, not Tier A blockers)**:
+1. Caller-side Celery task `app/tasks/reentry_tasks.py` polling trade_log + AlertDispatcher dispatch — pure tracker is ready for wire
+2. Between-batch re-evaluation Celery task (V3 §7.2 "若市场反弹 + alert 清除 → 停止后续 batch")
+3. PMSRule v1 actual deprecation (ADR-016 D-M2 operational path)
+4. Sentiment threshold tuning per-symbol / per-regime (future RAG correlation analysis S10+)
+
+**Tier A status update post-S9**: S1-S6 ✅, S7 ✅, S8 ✅ (8a+8b+8c-partial+8c-followup), **S9 ✅ (9a+9b)**, S10-S11 pending. 9 of 11 sprints (12 counting S2.5) closed.
+
+**关联**: PR #313 (`2ce177c` initial + `d43bf5a` reviewer-fix → squash `7fc5bd2` merged 2026-05-13) / ADR-061 NEW / ADR-027 design SSOT / ADR-059 (broker wire reused by chain smoke) / ADR-060 (9a parent) / LL-150-154 sequence / 铁律 22/31/33/44 X9 / Plan §A S9 row ⚠️ PARTIAL → ✅ DONE / None-data fail-closed pattern 6th 实证 sustained as project convention + 5th consecutive sediment-in-same-session enforcement + reviewer 5th 实证 cumulative
