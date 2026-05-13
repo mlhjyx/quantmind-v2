@@ -5344,3 +5344,81 @@ PR #307+#308+#309+#311+#313+#315+#319+#320+#321+#322 + #324 (Plan v0.2) + #325/#
 TB-2d sub-PR scope = `default_indicators_provider.py` NEW + `__init__.py` MOD + `market_regime_tasks.py` MOD (Stub→Default) + `dynamic_threshold_tasks.py` MOD (regime read) + `test_default_indicators_provider.py` NEW + ADR-067 NEW + REGISTRY ADR-067 row + LL-161 NEW (本) + memory handoff Session 53+17 = 9 file delta atomic 1 PR per ADR-064 D5=inline 体例 sustained.
 
 **关联**: ADR-067 NEW (TB-2 closure cumulative 4 sub-PR) + Plan v0.2 §A TB-2 row closure marker (留 TB-5c batch per ADR-022 sustained) + 铁律 17 (DataPipeline read 例外 via LL-066) / 24 (单一职责) / 31 (Engine PURE) / 32 (Service 不 commit, task 是 transaction owner) / 33 (fail-loud per-field graceful degradation) / 41 (timezone-aware) / 42 (PR 治理) / 44 X9 (Beat 必 explicit restart, runbook sustained) / LL-066 (DataPipeline subset 例外) / LL-067 reviewer 体例 14 实证 cumulative / LL-097 (Beat restart) / LL-098 X10 / LL-100 chunked SOP 第 5 case 实证 / LL-115 family / LL-141 (4-step post-merge ops) / LL-157 mock-conn schema drift / LL-159 4-step preflight / LL-160 synthetic Position TB-1c / V3 §5.3 Bull/Bear regime / §6.1 DynamicThresholdEngine L3 / §11.2 MarketRegimeService location / §11.4 pure function / §15.5 sim-to-real gap / §16.2 $50/月 cap / 11th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+
+---
+
+## LL-162: V3 TB-3 Closure — 4-Sub-PR Chunked Pattern + Retention Boundary Lock + BGE-M3 Wire 体例 + Engine PURE Nuance for Stateful Model (2026-05-14, PR pending TB-3d sediment cycle + ADR-068 cumulative)
+
+**事件**: V3 Tier B Plan v0.2 TB-3 sprint (Risk Memory RAG + pgvector + BGE-M3 + 4-tier retention) closure cumulative 4 sub-PR — TB-3a foundation (risk_memory DDL + pgvector ivfflat + interface + repository, 22 tests) + TB-3b BGE-M3 EmbeddingService wire (lazy load + DI factory, 22 tests inc 3 real-model smoke) + TB-3c orchestration (4-tier retention PURE filter + RiskMemoryRAG class, 57 tests) + TB-3d doc-only closure (ADR-068 + LL-162 + REGISTRY amend). 101/101 tests cumulative PASS (<14s combined), 4 independent reviewer agents (19th 实证 cumulative inc 本 TB-3d 19th), 0 production code touch live trading path, infrastructure prerequisites pgvector v0.8.2 + BGE-M3 2.5GB cache pre-closure verified.
+
+**根因 / Patterns**:
+
+**Pattern 1: 4-Sub-PR chunked SOP (LL-100 体例 第 6 case 实证, scope-by-vertical-layer sustained)**:
+TB-3 sprint baseline ~1-2 weeks estimated split into 4 vertical-layer sub-PRs:
+- TB-3a "foundation" = data layer (DDL with 3 CHECK constraints + pgvector ivfflat partial index + interface dataclasses + repository persist/retrieve via PG + pgvector)
+- TB-3b "embedding wire" = model orchestration layer (BGE-M3 lazy load + double-checked locking + DI factory + 1024-dim contract validation)
+- TB-3c "RAG orchestration" = composition layer (4-tier retention PURE filter + RiskMemoryRAG.retrieve over-fetch + filter + trim flow)
+- TB-3d "doc-only closure" = sediment layer (ADR-068 7 decisions + LL-162 + REGISTRY amend, 3 file delta minimum closure)
+
+Each sub-PR independently reviewable, deployable (incremental functionality), 0 destructive to prior layers. Sustained from S5/S7/S8/S9 + TB-1 (a/b/c 3-sub-PR) + TB-2 (a/b/c/d 4-sub-PR) cumulative — 第 6 case 实证 (LL-100 SOP sustained).
+
+**Pattern 2: 3-Layer Architecture 15th 实证 cumulative**:
+- Engine PURE side (`qm_platform/risk/memory/`): interface + repository (caller-injected conn 铁律 32) + embedding_service (lazy model wire — 铁律 31 nuance documented) + retention (PURE filter function)
+- Application orchestration (`app/services/risk/risk_memory_rag.py`): RiskMemoryRAG composes EmbeddingService + retrieve_similar + filter_by_retention per V3 §11.2 line 1228 SSOT location
+- Beat dispatch 留 TB-4 (RiskReflectorAgent post-event sediment dispatch — risk_memory INSERT path)
+
+Cumulative 实证 15 (S5 9 rules + S7 dynamic threshold + S8 8a/8b/8c-partial/8c-followup + S9a trailing + S9b reentry + S10 setup + TB-1 (a/b/c) + TB-2 (a/b/c/d) + TB-3 (a/b/c/d)). Sustained as Tier B architecture convention (反 hidden coupling).
+
+**Pattern 3: Engine PURE nuance for stateful model wire (铁律 31 documented exception)**:
+BGEM3EmbeddingService holds ~2.5GB sentence-transformers model state, which strictly is NOT pure compute (loads model file + holds CPU/GPU state). However, placed in `qm_platform/risk/memory/` Engine PURE side because:
+- encode(text) is deterministic given fixed model + input (functional)
+- Caller (TB-3c rag service) injects via DI factory — composition boundary preserved
+- Model load is lazy + reusable (1 load, N encodes) — amortized cost
+- Same/sister modules sustain PURE compute (interface / retention / repository accept conn)
+
+This is a documented architecture nuance — model state is implementation detail of functionally pure operation. Sustained pattern for future stateful Engine PURE wires (e.g. TB-4 RiskReflectorAgent V4-Pro LLM call mass — but those will route through LiteLLM service NOT held in qm_platform Engine PURE side per ADR-031).
+
+**Pattern 4: 4-tier retention boundary lock 7 decisions + ADR-068 sediment 锁**:
+TB-3c sediment lock retention defaults to be confidently used in production:
+- HOT 0-7d ≥ 0.0 (non-negative — anti-correlated dropped as semantically irrelevant)
+- WARM 7-30d ≥ 0.60 (BGE-M3 paraphrase ~0.7-0.9 baseline)
+- COLD 30-90d ≥ 0.70 (high-relevance only)
+- ARCHIVE >90d ≥ 0.80 (very high relevance only)
+
+**Key boundary insight**: tier inclusivity convention = `age_days <= tier_max_days` (fractional-day precision via `total_seconds() / 86400.0`). Age exactly 7.0d → HOT (boundary inclusive). Age 7.0d+1s → WARM (next tier). Verified via 12 boundary tests.
+
+**Override mechanism**: `RetentionPolicy(hot_threshold=-1.0)` to keep truly all HOT hits if caller needs (escape hatch documented + tested). Frozen dataclass + DI pattern means production callers can experiment per-use-case without breaking sediment lock.
+
+**Pattern 5: Over-fetch math k×N with hard cap (反 unbounded ivfflat scan)**:
+RAG.retrieve over-fetches `min(k * multiplier, 50)` from DB pre-retention. Default multiplier=3, hard cap=50. Rationale:
+- multiplier=3 tolerates ~67% retention drop (verified TB-3c mixed-tier test — typical 30-50% drop rate)
+- Hard cap=50 bounds ivfflat scan budget (lists=100 × probes=10 default = ~1000 candidates, requesting 50 well within capacity)
+- Adjustable via `overfetch_multiplier` field if production hit-rate baseline reveals different tradeoff
+
+**Pattern 6: Reviewer 2nd-set-of-eyes cumulative 19 实证 sustained (within Session 53)**:
+TB-3 4 sub-PR × 4 reviewer agents:
+- TB-3a #339 APPROVE (2 MEDIUM applied pre-merge: DDL lesson length CHECK + CTE single-bind)
+- TB-3b #340 APPROVE (2 MEDIUM applied: absolute cache_folder default + @runtime_checkable docstring justification; 1 LOW deferred — 1024 hardcode circular import risk)
+- TB-3c #341 APPROVE (2 MEDIUM + 1 LOW all applied: clock skew warning + dead try/finally + dead timedelta artifact)
+- TB-3d 本 PR pending reviewer spawn (19th)
+
+15 prior + 4 TB-3 = 19 cumulative within session 53 (PR #327-#341). Sustained LL-067 reviewer 体例 + feedback_code_pr_workflow.md 9-step AI 自主闭环 — reviewer-fix cycle applied 6 instances pre-merge across TB-3 cycle.
+
+**Pattern 7: Infrastructure prerequisite pre-closure (Phase A+B 2026-05-14)**:
+TB-3 sprint required 2 BLOCKING infra prerequisites resolved BEFORE TB-3a 起手:
+- pgvector PG extension: installed v0.8.2 via 3rd-party Windows binary (andreiramani/pgvector_pgsql_windows, 137 stars, SHA256 verified) — official pgvector lacks Windows binary, user authorized "可以用第三方的 BGE-M3" 2026-05-14 + Servy stop → vector.dll copy → PG restart → CREATE EXTENSION verified
+- BGE-M3 model cache: sentence-transformers 3.4.1 downgrade from 5.5.0 (Pooling API compat fix) + model 2.5GB cached at `./models/bge-m3/` + smoke verified (1024-dim, 中文 cross-paraphrase sim 0.84)
+
+**Key insight**: pre-closure of infrastructure BLOCKERs before sprint 起手 prevents mid-sprint stalls. Sustained pattern for future Tier B sprints (TB-4 V4-Pro budget guardrail / TB-5 BGE-M3 OOM fail-mode injection). Add prereq runbook 体例 (PR #337 v3_tb_3_pgvector_bge_m3_prereq_install.md) as Tier B SOP pattern.
+
+**Pattern 8: ADR alias resolve via downstream closure (sustained ADR-024/027 # 下移体例)**:
+ADR-025 (RAG vector store 选型) was reserved since V3 §18.1 row 5 (2026-04-29 vision sediment) pending user 决议. The reservation explicitly anticipated TB-3 cycle alias resolution per Plan v0.2 §I sub-PR cycle table. ADR-068 (本) closes TB-3 with full sediment of BGE-M3 + pgvector + 4-tier retention 决议 — ADR-025 status reclassified reserved → committed via alias to ADR-068.
+
+**Key insight**: alias resolution体例 (vs separate ADR file creation) preserves historical # numbering continuity while consolidating related decisions into single coherent ADR. Sustained ADR-024 (factor_lifecycle) / ADR-027 (L4 STAGED) precedent. Future ADR-026 (Bull/Bear 2-Agent) alias to ADR-067 should follow same pattern at audit Week 2 promote decision.
+
+**Sediment 触发模式 (12th consecutive sediment-in-same-session enforcement)**:
+PR #307+#308+#309+#311+#313+#315+#319+#320+#321+#322 + #324 (Plan v0.2) + #325-#328 (T1.5) + #330-#332 (TB-1) + #333-#336 (TB-2) + #338 (TB-2e) + #339-#341 (TB-3 a/b/c) + 本 PR (TB-3d) cumulative = **25+ PR cumulative** 反 deepseek-style sediment gap sustained ENFORCEMENT pattern.
+
+TB-3d sub-PR scope = ADR-068 NEW + REGISTRY ADR-068 row + ADR-025 alias resolve status + count update + LL-162 NEW (本) + memory handoff Session 53+19 = 3 file delta atomic 1 PR per ADR-064 D5=inline 体例 sustained (sub-PR 9-doc-only minimum closure, smallest TB-3 sub-PR by file count).
+
+**关联**: ADR-068 NEW (TB-3 closure cumulative 4 sub-PR) + ADR-025 alias resolve via ADR-068 (Plan v0.2 §I prediction fulfilled) + Plan v0.2 §A TB-3 row closure marker (留 TB-5c batch per ADR-022 sustained) + 铁律 17 (DataPipeline 例外 read-only N/A 本 PR) / 22 (doc 同步) / 24 (单一职责) / 31 (Engine PURE nuance for stateful model wire documented) / 32 (Service 不 commit, RAG read-only path) / 33 (fail-loud) / 41 (timezone-aware throughout retention + RAG) / 42 (PR 治理) / LL-066 (DataPipeline subset 例外 N/A 本 PR) / LL-067 reviewer 体例 19 实证 cumulative / LL-098 X10 / LL-100 chunked SOP 第 6 case 实证 (TB-3 4-sub-PR cumulative) / LL-115 family / LL-141 (4-step post-merge ops N/A 本 doc-only PR) / LL-157 mock-conn schema drift (TB-3b test fixtures sustained 体例) / LL-159 4-step preflight / LL-160 synthetic Position TB-1c / LL-161 TB-2 closure pattern / V3 §5.4 Risk Memory RAG line 710 / §11.2 line 1228 RiskMemoryRAG location SSOT / §11.4 pure function / §14 #13 BGE-M3 OOM fail-mode (留 TB-5 verify) / §15.5 sim-to-real gap / §15.6 ≥7 scenarios (留 TB-5) / §16.1 32GB RAM budget / §16.2 $50/月 cap (BGE-M3 0 cost local) / 12th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
