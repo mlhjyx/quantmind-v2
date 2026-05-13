@@ -4,12 +4,15 @@ Modules (TB-3 chunked sub-PR roadmap per Plan v0.2 §A):
   - interface (TB-3a, merged #339): 纯 dataclass + Enum 契约 (0 IO / 0 DB / 0 LiteLLM / 0 BGE-M3)
   - repository (TB-3a, merged #339): persist + retrieve helpers via PG + pgvector
     (takes embedding as input; embedding computation by TB-3b EmbeddingService)
-  - embedding_service (TB-3b, 本 PR): BGE-M3 EmbeddingService — single-text encode
+  - embedding_service (TB-3b, merged #340): BGE-M3 EmbeddingService — single-text encode
     via sentence-transformers + lazy model load + thread-safe per-instance singleton
-  - rag (TB-3c 留): RiskMemoryRAG.retrieve(query_text, k=5) — orchestrate
-    embed query + ivfflat cosine search + 4-tier retention filter
-  - retention (TB-3c 留): 4-tier retention strategy (hot/warm/cold/archive
-    based on event_timestamp recency + retrieval freq)
+  - retention (TB-3c, 本 PR): 4-tier retention strategy (hot/warm/cold/archive
+    based on event_timestamp recency + cosine_similarity threshold per tier).
+    PURE filter consumed by app/services/risk/risk_memory_rag.py orchestration.
+
+Application orchestration (NOT in this package, per V3 §11.2 line 1228 SSOT):
+  - app/services/risk/risk_memory_rag.py (TB-3c, 本 PR): RiskMemoryRAG.retrieve
+    — composes EmbeddingService + retrieve_similar + filter_by_retention
 
 Architecture (per V3 §5.4 sustained + ADR-064 D2 BGE-M3 1024-dim):
   - 本 package = Engine PURE side (interface + repository data layer)
@@ -44,16 +47,32 @@ from .repository import (
     persist_risk_memory,
     retrieve_similar,
 )
+from .retention import (
+    DEFAULT_POLICY,
+    RetentionPolicy,
+    RetentionTier,
+    classify_tier,
+    filter_by_retention,
+    threshold_for_tier,
+    utcnow,
+)
 
 __all__ = [
+    "DEFAULT_POLICY",
     "EMBEDDING_DIM",
     "ActionTaken",
     "BGEM3EmbeddingService",
     "EmbeddingService",
+    "RetentionPolicy",
+    "RetentionTier",
     "RiskMemory",
     "RiskMemoryError",
     "RiskMemoryOutcome",
     "SimilarMemoryHit",
+    "classify_tier",
+    "filter_by_retention",
     "persist_risk_memory",
     "retrieve_similar",
+    "threshold_for_tier",
+    "utcnow",
 ]
