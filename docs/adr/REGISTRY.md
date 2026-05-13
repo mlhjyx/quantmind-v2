@@ -28,8 +28,8 @@
 | ADR-016 | (gap, 0 file, 0 reserve) | — | — |
 | ADR-017 | (gap, 0 file, 0 reserve) | — | — |
 | ADR-018 | (gap, 0 file, 0 reserve) | — | — |
-| ADR-019 | V3 vision (5+1 层 + Tier A/B + 借鉴清单) | reserved | V3 §18.1 row 1 (4-29 决议 + 本设计) |
-| ADR-020 | Claude 边界 + LiteLLM 路由 + CI lint | reserved | V3 §18.1 row 2 (4-29 决议) |
+| ADR-019 | V3 vision (5+1 层 + Tier A/B + 借鉴清单) | committed | V3 §18.1 row 1 (4-29 决议 + 本设计) + T1.5b-2 formal promote 2026-05-13 (file `ADR-019-v3-vision-5-1-layer-tier-a-b-borrowing-list.md` NEW, sustained Plan v0.2 §C Gate B item 4 closure path) |
+| ADR-020 | Claude 边界 + LiteLLM 路由 + CI lint | committed | V3 §18.1 row 2 (4-29 决议) + T1.5b-2 formal promote 2026-05-13 (file `ADR-020-claude-boundary-litellm-routing-ci-lint.md` NEW, 沿用 ADR-031~036 + ADR-039 7 ADR follow-up chain cumulative + check_llm_imports.sh + pre-push integration verified) |
 | ADR-021 | 铁律 v3.0 重构 + IRONLAWS.md 拆分 + X10 加入 | committed | Step 6.2 (2026-04-30) |
 | ADR-022 | Sprint Period Treadmill 反 anti-pattern + 集中修订机制 | committed | Step 6.4 (2026-04-30/05-01) |
 | ADR-023 | yaml SSOT vs DB strategy_configs deprecation (PT 生产配置唯一 SSOT) | committed | 5-02 sprint factor task 5 (注: V3 §18.1 row 3 原 cite "ADR-023 L1 实时化" drift, 本 PR row 3 修订 + row 9 ADR-029 reserve L1 实时化) |
@@ -38,7 +38,7 @@
 | ADR-026 | L2 Bull/Bear 2-Agent debate (Tier B) | reserved | V3 §18.1 row 6 (本设计 §5.3, Tier B 架构决议) |
 | ADR-027 | L4 STAGED default + 反向决策权论据 + 跌停 fallback | committed | PR #216 (5-02), V3 §20.1 #1 + #7 sediment (注: 本 # silent overwrite 4 audit docs 5-01 Phase 4.2 待办 "Layer 4 SOP" candidate, 本 PR cite 修订 # 下移 ADR-030, user a-iii 决议体例) |
 | ADR-028 | AUTO 模式 + V4-Pro X 阈值动态调整 + Risk Memory RAG + backtest replay | committed | PR #216 (5-02), V3 §20.1 #5 + #9 sediment |
-| ADR-029 | L1 实时化 + xtquant subscribe_quote 接入 | reserved | V3 §18.1 row 9 (本 PR sediment, 沿用 ADR-023 cite drift # 下移决议, V3 Tier A Sprint 3 起手时 sediment) |
+| ADR-029 | L1 实时化 + xtquant subscribe_quote 接入 | committed | V3 §18.1 row 9 (本 PR sediment, 沿用 ADR-023 cite drift # 下移决议) + T1.5b-2 formal promote 2026-05-13 (file `ADR-029-l1-realtime-xtquant-subscribe-quote-9-rules.md` NEW, 沿用 ADR-054 S5 sub-PR 5a/5b/5c closure 实施真值落地 + 9 RealtimeRiskRule + ADR-060 9th TrailingStop sediment cumulative + 104 tests PASS) |
 | ADR-030 | Layer 4 SOP 沉淀 (governance protocol) | reserved | 4 audit docs (5-01 Phase 4.2 sediment) 下移 (本 PR sediment, 沿用 ADR-024/027 conflict # 下移体例, audit Week 2 候选讨论时 sediment) |
 | ADR-031 | S2 LiteLLMRouter implementation path 决议 (新建模块 + 渐进 deprecate) | committed | V3 Sprint 1 S8 audit sediment (2026-05-03), user X2=(ii) 决议, 沿用 ADR-020 + ADR-022 + V3 §5.5 待办 |
 | ADR-032 | S4 caller bootstrap factory + naked LiteLLMRouter export 限制 | committed | V3 Sprint 1 S4 sub-task sediment (2026-05-03 PR #226), 沿用 ADR-022 反 silent overwrite + ADR-031 §6 渐进 deprecate plan 前置 enforcement |
