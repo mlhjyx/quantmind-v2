@@ -393,7 +393,7 @@ verifier: `tier-a-mvp-gate-evaluator` subagent
 **Checklist** (CC 实测每项):
 
 - [ ] V3 §12.1 Sprint S1-S11 全 closed (CC 实测 git log + PR # cite + ADR REGISTRY committed verify)
-- [ ] paper-mode 5d 验收 ✅ (V3 §15.4 标准: P0 alert 误报率 / L1 detection latency P99 / L4 STAGED 流程闭环 / 元监控 0 P0 元告警, 数值阈值 sprint 起手时 CC 实测决议)
+- [ ] ~~paper-mode 5d 验收~~ ⏭️ **DEFERRED per ADR-063** (2026-05-13) — empty-system (0 持仓 + 0 tick subscribe + dev-only LLM activity) state 下 5d 自然 fire 信息熵 ≈ 0, trivially-pass 不 distinguishable from silent-zero bug class (本 session PR #320 修了正是此 class)。真测路径转 Tier B `RiskBacktestAdapter` 历史 minute_bars 回放 → 9 RealtimeRiskRule 真触发。Gate A pass 仅要求其他 7 项 ✅。Tier B closure 时另加 ADR-XXX 记录真测结果。
 - [ ] 元监控 `risk_metrics_daily` 全 KPI 14 day 持续 sediment (CC 实测 SQL row count + 日期连续性 verify)
 - [ ] ADR-019 (V3 vision) + ADR-020 (Claude 边界 + LiteLLM) + ADR-029 (L1 实时化) + Tier A 后续 ADR 全 committed (REGISTRY SSOT verify)
 - [ ] V3 §11.1 12 模块全 production-ready (CC 实测 import + smoke test + module health check)
