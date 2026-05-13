@@ -209,12 +209,12 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | LIVE_TRADING_DISABLED=true sustained 5d 全程; quantmind-v3-pt-cutover-gate skill verify Gate E prereq |
 | Paper-mode | core deliverable — 5d full paper-mode dry-run, 0 真账户 mutation |
 
-### S11 — Tier A ADR sediment + ROADMAP 决议 (post-Finding #1 (b))
+### S11 — Tier A ADR sediment + ROADMAP 决议 (post-Finding #1 (b)) — 🟡 IN-PROGRESS (STATUS_REPORT first artifact landed)
 
 | element | content |
 |---|---|
 | Scope | V3 §11.1 ADR-019/020/029 + Tier A 后续 ADR sediment; ROADMAP creation 决议 (post-Finding #1 (b) sediment, sediment 时机决议 Tier B closure 后 — Tier A S11 scope 不含 ROADMAP creation); skeleton §2.1 (doc-only) |
-| Acceptance | Tier A ADR 全 committed (Constitution §L10.1); LL append 全 (S1-S10 cumulative); STATUS_REPORT sediment; doc review |
+| Acceptance progress | **First artifact ✅**: `docs/audit/V3_TIER_A_CLOSURE_STATUS_REPORT_2026_05_13.md` — Constitution §L10.1 Gate A 8 checklist interim verdict + sprint S1-S11 closure table + test cumulative + 5/5 红线 sustained + ADR-047..062 cumulative + LL-115..156 cumulative + code-vs-operational split pattern generalization + remaining for Gate A. **Sediment-in-same-session pattern** (sustained 6 PR cumulative: #307-#316): ADR + LL already cumulatively appended per sprint — no "batch promote" backlog. **Remaining for S11 closure**: cumulative LL/ADR review pass (no new sediment expected) + Gate A verify post-S10 5d operational kickoff. |
 | File delta | ~5-10 files / ~500-1000 lines (mostly markdown + ADR-DRAFT row promote) |
 | Chunked sub-PR | **chunked ≥2 sub-PR** (sustained governance batch closure pattern PR #286-#294 7 sub-PR 体例): 11a (ADR-cumulative-batch promote) / 11b (LL-cumulative-batch promote) / 11c (STATUS_REPORT) |
 | Cycle | V3 §12.1 line 1320: 1 day (但 chunked governance batch = 0.5-1 周 候选) |
