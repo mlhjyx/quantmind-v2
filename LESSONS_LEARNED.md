@@ -4694,3 +4694,50 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 **Sediment 体例 sustained**: 本 LL-150 + ADR-056 (NEW) + REGISTRY ADR-056 row + Plan §A S8 row 8a closure amend, 沿用 S5/S6/S7 governance batch closure cumulative pattern (沿用 ADR-054/055 + LL-145-149 + REGISTRY + Plan §A amend 体例).
 
 **关联**: commit `dbf55c0` (S8 8a code + DDL + 39 tests) / ADR-027 (design SSOT) / ADR-056 (NEW 本 sediment cycle, 8a implementation) / 铁律 31 / 33 / 44 X9 / Plan §A S8 8a amendment / 第 5 次 sprint closure gate 实证教训
+
+## LL-151: V3 §S8 8b DingTalk Webhook Receiver — STAGED 反向决策权 inbound 路径 + 反 deepseek-style sediment gap (2026-05-13, PR #307)
+
+**情境**: S8 8a state machine + DDL sediment closed (commit `dbf55c0` + sediment `dc17d88`). S8 8b builds the inbound webhook endpoint enabling production CONFIRM/CANCEL reverse decisions via DingTalk. Per Plan §A S8 chunked decomposition: 8a (state machine) ✅ → **8b (webhook receiver)** ← this PR → 8c (broker_qmt wire) pending.
+
+**Root cause** (vs Plan §A acceptance):
+1. After 8a, ExecutionPlan transitions could only fire via direct function calls — no production HTTP path for user button taps
+2. Plan §A acceptance cites `STAGED smoke + DingTalk webhook 双向` — 双向 means both outbound push (existing dingtalk_alert.py) AND inbound webhook receiver
+3. 8b closes the inbound side: DingTalk POST → HMAC verify → command parse → service transition → atomic UPDATE
+
+**改进措施 (PR #307 — commit `e68b00a` squash merged 2026-05-13)**:
+1. NEW `backend/qm_platform/risk/execution/webhook_parser.py` (~215 lines) — PURE module: HMAC-SHA256 verify with ±5min replay window + secrets.compare_digest constant-time + regex command parser (confirm/cancel/确认/取消)
+2. NEW `backend/app/services/risk/__init__.py` + `dingtalk_webhook_service.py` (~220 lines) — DB orchestration with race-safe UPDATE WHERE status='PENDING_CONFIRM' (atomic CAS), 0 conn.commit (铁律 32 verified by 2 explicit tests)
+3. EDIT `backend/app/api/risk.py` (+~170 lines) — async POST `/api/risk/dingtalk-webhook` with raw body capture (反 FastAPI serialization drift), HMAC verify before Pydantic parse, async/sync boundary via `asyncio.to_thread`
+4. EDIT `backend/app/config.py` (+5 lines) — `DINGTALK_WEBHOOK_SECRET: str = ""` (distinct from outbound `DINGTALK_SECRET`)
+5. NEW 24 + 13 + 11 tests = 48 tests total (parser + service + endpoint integration via TestClient + dependency_overrides)
+
+**Reviewer P1+P2 fixes (commit `95db073`)**:
+- P1-1 LIKE wildcard injection defense-in-depth — escape `%` `_` `\` in user-controlled prefix + `LIKE %s ESCAPE '\'` clause
+- P1-2 async/sync blocking — wrap `get_sync_conn + service + commit/rollback` in `await asyncio.to_thread(_sync_db_block)` (反 psycopg2 SELECT+UPDATE blocking uvicorn event loop)
+- P2-3 errors='strict' UTF-8 decode + UnicodeDecodeError → 400 `malformed_body` (反 silent corruption from errors='replace' masking legitimate DingTalk non-UTF-8 payloads as opaque INVALID_SIGNATURE)
+- P2-4 simplify `getattr(settings, "DINGTALK_WEBHOOK_SECRET", "") or ""` → direct `settings.DINGTALK_WEBHOOK_SECRET` (field is declared `str`, never None)
+- P2-5 NEW `test_dingtalk_webhook_endpoint.py` 11 TestClient integration tests using FastAPI `app.dependency_overrides` (反 module-level patch that doesn't bypass Depends)
+
+**Architectural lesson sustained (反 deepseek-style sediment gap)**:
+- Sustains the **5-sprint cumulative pattern** that triggered LL-149 Part 2 + LL-150 (deepseek committed code without governance sediment closure) — this PR proactively wrote ADR-057 + LL-151 + REGISTRY + Plan amend in the same session as the code commit. Confirms quantmind-v3-doc-sediment-auto + quantmind-v3-sprint-closure-gate skills enforce works when invoked.
+- NEW patterns vs prior 5-sprint cycle: (a) reviewer agent invoked before merge (not after); (b) reviewer findings addressed in follow-up commit before merge (not deferred to post-merge fix-up); (c) full integration test layer (TestClient + dependency_overrides) added per reviewer P2-5 — closes a coverage gap that 8a, S5, S6, S7 all left implicit.
+
+**Iron law traceability**:
+- 铁律 1: 外部 API 必读官方文档 — DingTalk simple HMAC scheme implemented (custom bot pattern); full DingTalk card-callback AES-CBC protocol explicitly deferred to follow-up sub-PR per ADR-057 §3 + §11
+- 铁律 31: `webhook_parser.py` pure compute, 0 IO 0 DB — verified
+- 铁律 32: `DingTalkWebhookService.process_command` never calls `conn.commit/rollback` — 2 explicit `assert_not_called()` tests
+- 铁律 33: Signature/timestamp/parse/decode failures raise `WebhookParseError` / `UnicodeDecodeError` → HTTP 401/400 (never silent skip)
+- 铁律 35: `DINGTALK_WEBHOOK_SECRET` via `.env`; empty default → 503 reject all inbound
+- 铁律 41: `cancel_deadline` UTC + ±5min replay window absolute
+
+**Tests** (cumulative S5+S6+S7+S8+8a+8b + fundamental): 312/312 PASS post-reviewer-fix. Ruff clean. Pre-push smoke 55 PASS (twice — initial push + reviewer-fix push).
+
+**Deferred (留 8c or follow-up sub-PR)**:
+1. broker_qmt sell wire post-CONFIRMED (8c scope, 红线 sensitive — needs quantmind-redline-guardian)
+2. Celery Beat sweep for PENDING_CONFIRM expired → TIMEOUT_EXECUTED + auto-sell (8c scope)
+3. STAGED smoke integration test L1→L4→DingTalk→CONFIRM→broker_qmt (8c scope)
+4. Full DingTalk card-callback AES-CBC protocol (separate sub-PR if user activates real card callback bot)
+5. Operator UI for pending execution_plans + re-issue buttons after expiry
+6. Multi-secret rotation (key rollover without downtime)
+
+**关联**: PR #307 (`58258b9` initial + `95db073` reviewer-fix → squash `e68b00a` merged) / ADR-057 NEW / ADR-056 (8a parent) / ADR-027 (design SSOT) / LL-150 (8a sediment) / 铁律 1/31/32/33/35/41 / Plan §A S8 row 8b amend / 反 deepseek-style sediment gap pattern (5-sprint cumulative lesson sustained as enforcement)
