@@ -156,20 +156,18 @@ class RiskMemoryRAG:
 
         # Read-only path — caller-supplied connection. No commit/rollback
         # per 铁律 32 (read query has no transaction state to flush).
+        # Caller owns connection lifecycle (pool return, etc); RAG does not
+        # close — per ADR-013 conn_factory 体例 sustained TB-2c IndicatorsProvider.
+        # Reviewer-fix (PR #341 MEDIUM 2): no try/finally wrapper since RAG
+        # manages no resource — exception propagation is identical without it.
         conn = self.conn_factory()
-        try:
-            raw_hits = retrieve_similar(
-                conn,
-                query_embedding,
-                k=overfetch_k,
-                event_type=event_type,
-                min_cosine_similarity=None,  # retention filter handles it
-            )
-        finally:
-            # Caller owns connection lifecycle (pool return, etc). RAG just
-            # uses + releases its reference. Connection 不 close here per
-            # ADR-013 conn_factory 体例 (sustained TB-2c IndicatorsProvider).
-            pass
+        raw_hits = retrieve_similar(
+            conn,
+            query_embedding,
+            k=overfetch_k,
+            event_type=event_type,
+            min_cosine_similarity=None,  # retention filter handles it
+        )
 
         # 4-tier retention filter.
         filtered = filter_by_retention(raw_hits, now_effective, self.retention_policy)

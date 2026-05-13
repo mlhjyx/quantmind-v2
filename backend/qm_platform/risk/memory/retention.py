@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -158,6 +158,19 @@ def classify_tier(
     # sub-day boundaries (e.g. age = 7 days 1 hour ≠ HOT).
     age_days = age.total_seconds() / 86400.0
 
+    # Reviewer-fix (PR #341 MEDIUM 1): negative age = event_timestamp > now.
+    # Likely clock skew / timezone misconfiguration / test error. Soft-check
+    # (warn rather than raise — filter processes N hits, one bad row should
+    # not blow up the whole retrieval). Sustained line 115 monotonic-warning 体例.
+    if age_days < 0:
+        logger.warning(
+            "[risk-memory] classify_tier: negative age_days=%.2f "
+            "(event_timestamp=%s > now=%s) — clock skew / tz misconfig?",
+            age_days,
+            event_timestamp.isoformat(),
+            now.isoformat(),
+        )
+
     if age_days <= policy.hot_max_days:
         return RetentionTier.HOT
     if age_days <= policy.warm_max_days:
@@ -238,8 +251,3 @@ __all__ = [
     "threshold_for_tier",
     "utcnow",
 ]
-
-
-# Defensive: timedelta import for caller convenience (e.g. tests creating
-# fixed event_timestamps at specific tier boundaries).
-_ = timedelta  # noqa: F841 — re-export safety
