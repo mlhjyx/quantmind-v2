@@ -19,10 +19,24 @@
 | **S7** | L3 dynamic threshold + L1 集成 + Beat wire | ✅ DONE | sub-PR 19 + audit-fix PR #306 | ADR-055 + §8 Amendment 1 | LL-149 Part 2 |
 | **S8** | L4 STAGED 决策权 + DingTalk webhook + broker_qmt wire | ✅ DONE | PR #307/#308/#309 (8a + 8b + 8c-partial + 8c-followup) | ADR-056/057/058/059 | LL-150/151/152/153 |
 | **S9** | L4 batched + trailing + Re-entry | ✅ DONE | PR #311 (9a) + PR #313 (9b) | ADR-060/061 | LL-154/155 |
-| **S10** | paper-mode 5d dry-run + 触发率验证 | ⚠️ SETUP-READY | PR #315 (code infra) | ADR-062 | LL-156 |
-| **S11** | Tier A ADR sediment + ROADMAP 更新 | 🟡 IN-PROGRESS (this report) | TBD | TBD | TBD |
+| **S10** | paper-mode 5d dry-run + 触发率验证 | ⏭️ CODE ✅ + 5d ACCEPTANCE DEFERRED per ADR-063 | PR #315 (code infra) + PR #319/#320/#321/#322 (operational ops + ADR-063 skip) | ADR-062 + ADR-063 | LL-156 + LL-157 |
+| **S11** | Tier A ADR sediment + ROADMAP 更新 | ✅ DONE (T1.5 cumulative closure 2026-05-13, ADR-065 sediment) | T1.5a PR #325 + T1.5b-1 PR #326 + T1.5b-2 PR #327 + T1.5b-3 PR #328 + T1.5b-4 (本 PR) | ADR-065 + ADR-019/020/029 (T1.5b-2 promote) + ADR-064 (Plan v0.2) | LL-158 + LL-159 |
 
-**Counts**: 10 of 12 sprints ✅ DONE (S1-S6 + S2.5 + S7-S9). S10 setup-ready (5d operational kickoff pending). S11 in-progress (this report is the first artifact).
+**Counts** (post-T1.5 closure 2026-05-13): **12 of 12 sprints ✅ DONE** (S1-S6 + S2.5 + S7-S11). S10 5d acceptance ⏭️ DEFERRED per ADR-063 (Tier B replay 真测路径替代 wall-clock).
+
+## §1.1 T1.5 Transition Cycle Cumulative Closure (2026-05-13)
+
+Post-S11 IN-PROGRESS (本 STATUS_REPORT first artifact PR #317), T1.5 chunked 4 sub-PR cumulative closure 完成 Gate A formal close:
+
+| T1.5 sub-PR | PR# | scope | cumulative cycle |
+|---|---|---|---|
+| T1.5a | #325 (`3087ced`) | Gate A 7/8 verify run + STATUS_REPORT sediment + interim verdict | ~1 day |
+| T1.5b-1 | #326 (`71374b0`) | Item 3 retroactive ETL + DELETE 4 weekend rows + 4-step preflight SOP NEW | ~0.5 day |
+| T1.5b-2 | #327 (`67c5d66`) | Item 4 ADR-019/020/029 promote + REGISTRY amend + reviewer-fix cycle | ~0.5 day |
+| T1.5b-3 | #328 | Item 8 V3 §3.5 fail-open 3 integration smoke tests (13/13 PASS) | ~0.5 day |
+| T1.5b-4 | 本 PR | ADR-065 NEW + Constitution §L10.1 amend + STATUS_REPORT amend (本) + LL-159 sediment + memory handoff | ~0.5 day |
+
+**Tier A formal closure ✅** post-T1.5b-4 sediment.
 
 ## §2 Constitution §L10.1 Gate A 8 Checklist (interim status)
 
@@ -35,7 +49,20 @@
 7. **CI lint check_anthropic_imports.py 生效**: ✅ PR #219 (S6 sub-PR — note: not §6 sprint; cite trail to S1 CI hook) + ADR-031 §6 patch.
 8. **V3 §3.5 fail-open 设计实测**: ✅ Implemented in DataPipeline (sub-PR 7a #239) + AnnouncementProcessor (sub-PR 11b #299). Per-source fail-soft sustained.
 
-**Gate A interim verdict**: 3 of 8 items ✅ DONE; 1 ✅ partial; 1 ⚠️ pending operational; 3 ❌ pending S10 operational kickoff. Gate A blocked on (1) S10 5d run completion, (2) S11 doc closure (this report ongoing), (3) risk_metrics_daily 14-day sediment (post-5d).
+**Gate A interim verdict** (initial v0.1 sediment 2026-05-13 morning, post PR #317): 3 of 8 items ✅ DONE; 1 ✅ partial; 1 ⚠️ pending operational; 3 ❌ pending S10 operational kickoff.
+
+**Gate A FINAL verdict** (post-T1.5 cumulative closure 2026-05-13 evening, ADR-065 sediment): **7 of 8 items ✅ PASS + 1 ⏭️ DEFERRED** = **Gate A formal close ✅** per ADR-063 amendment (Gate A pass 仅要求其余 7/8 项 ✅).
+
+- Item 1 ✅ PASS (sustained T1.5a §2 + ADR-065 §2.1)
+- Item 2 ⏭️ DEFERRED per ADR-063 (sustained Tier B `RiskBacktestAdapter` replay 真测路径替代 wall-clock)
+- Item 3 ✅ PASS (T1.5b-1 retroactive ETL + DELETE 4 weekend cleanup per 4-step preflight SOP + natural Beat-fire interpretation 10/10 weekday fires present)
+- Item 4 ✅ PASS (T1.5b-2 ADR-019/020/029 formal promote reserved → committed)
+- Item 5 ✅ PASS (10 Tier A modules import smoke 10/10)
+- Item 6 ✅ PASS (May 2026 cost = $0.0000 well below $50 cap)
+- Item 7 ✅ PASS (`scripts/check_llm_imports.sh` + pre-push integration verified, sustained ADR-031 §6 path 决议)
+- Item 8 ✅ PASS (T1.5b-3 V3 §3.5 fail-open 3 integration smoke tests 13/13 PASS + ruff clean + reviewer COMMENT)
+
+Tier B TB-1 起手 prereq 全 satisfied per D1=a 串行 lock (ADR-064).
 
 ## §3 Test Cumulative
 

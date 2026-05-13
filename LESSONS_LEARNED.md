@@ -5192,3 +5192,56 @@ MagicMock conn **不解析 SQL 字符串**, 所以两 bug 都漏到生产。Bug 
 - Tier B 期 LL sediment cumulative: LL-158 (本) + LL-159 (TB-1) + LL-160 (TB-2) + LL-161 (TB-3) + LL-162 (TB-4) + LL-163 (TB-5) = 6 项 Tier B LL cumulative sediment 候选
 
 **关联**: Plan v0.2 NEW (`docs/V3_TIER_B_SPRINT_PLAN_v0.1.md`) + ADR-064 NEW (5 决议 lock) + Constitution v0.8 → v0.9 amend + skeleton v0.7 → v0.8 amend + REGISTRY ADR-064 row + memory handoff Session 53+1 + 铁律 22/37/45 / LL-098 X10 sustained / LL-100 chunked SOP / LL-115/116 fresh re-read enforce / LL-127/137/138/139/140 cumulative / LL-157 (Session 53 cumulative) / Plan v0.1 sub-PR 8 体例 sustained 第 4 case Tier B context / 8th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+
+---
+
+## LL-159: CC Self Silent Capacity Expansion Drift Family — 4-step preflight verify SOP sediment (2026-05-13, T1.5 chunked 4 sub-PR cumulative closure cycle + ADR-065 Gate A formal closure)
+
+**核心教训**: T1.5 chunked 4 sub-PR cumulative closure cycle (T1.5a + T1.5b-1 + T1.5b-2 + T1.5b-3 + T1.5b-4 = 5 sub-PR) surfaced **CC self silent capacity expansion drift family** via 2 distinct user pushback instances within single sprint cycle (~3 day). Pattern = CC defaults to "obvious surface plan" without 主动 verify edge case / SSOT consultation. 反 quantmind-v3-active-discovery skill Phase 0 finding 3 STOP triggers requirement.
+
+**2 self-drift instances surfaced (sustained T1.5a → T1.5b-1 cumulative)**:
+
+1. **Drift #1** (T1.5a item 3 verdict): silently assumed "14d 持续 sediment = 14 days wall-clock sequentially" without checking ETL acceleration possibility. User pushback "这一项不能提前模拟测试吗？要等14日吗？" surfaced. Real path: retroactive ETL run via existing `scripts/v3_paper_mode_5d_extract_metrics.py --date YYYY-MM-DD` (idempotent UPSERT per ADR-062 §1.2) — 13 runs × ~0.9s each = ~12s total wall-clock vs 14d wait.
+
+2. **Drift #2** (T1.5b-1 v0.1 retroactive ETL): silently ran ETL for ALL 13 calendar days 5-1..5-13 indiscriminately, without checking trading_calendar SSOT + Beat cron `30 16 * * 1-5` Mon-Fri schedule. Result: 4 weekend rows (5-2 Sat / 5-3 Sun / 5-9 Sat / 5-10 Sun) created via fake-fill that Beat would NEVER fire on per natural production behavior. User pushback "没有排查出周六周末吗？" surfaced. Real path: 4-step preflight SOP verify before retroactive ETL — SSOT calendar + source data presence + cron schedule alignment + natural production behavior.
+
+**Pattern (sustained 2 instances within single T1.5 sub-PR cycle 2026-05-13)**:
+- CC defaults to "obvious surface plan" execution
+- 0 主动 verify edge case (weekends / holidays / cron mismatch / SSOT lookup)
+- 0 preflight check before data-mutation script
+- Each instance breaches 铁律 1 (不靠猜测) + 铁律 25 extended ("data/script 执行前必验 SSOT + 边界 case") + 铁律 36 extended ("validation 执行前必核 calendar + data presence + cron alignment") + LL-115 family (capacity expansion 真值 silent overwrite anti-pattern) + LL-098 X10 (反 silent forward-progress)
+
+**4-step preflight verify SOP** (sediment to `memory/feedback_validation_rigor.md` for sustainable across-session reuse — V3 governance pattern extension):
+
+1. **SSOT calendar cross-verify**: For date-driven scripts, query `trading_calendar` table (or equivalent SSOT) to filter trading days vs holidays vs weekends. Don't assume "Mon-Fri = trading day" — A股 holidays (劳动节 5-1~5-5, 春节, etc) need explicit lookup.
+2. **Source data presence verify**: Before running ETL / aggregator / verification on date range X..Y, SQL query source tables (risk_event_log / llm_cost_daily / klines_daily / etc) to confirm data presence per date. NO data ≠ empty-system bug; could be no-trade-day OR genuine empty period — distinguish via SSOT.
+3. **Cron schedule alignment**: Verify production cron schedule (e.g. `30 16 * * 1-5` Mon-Fri) — retroactive backfill must MATCH natural cron fire days, NOT broader/narrower. Including weekend rows when cron is Mon-Fri = methodological flaw.
+4. **Natural production behavior**: After execution, post-check sediment state matches "what natural production fire would have produced". If sediment includes rows that production cron wouldn't naturally write, that's a fake-fill drift.
+
+**第二层教训** (user explicit feedback "你需要思考全面、主动思考"): pattern repeated 2 times within single T1.5 cycle = enforcement signal for SOP sediment promote. 沿用 LL-098 X10 + quantmind-v3-active-discovery skill 3 STOP trigger requirement extended:
+- Original STOP triggers: 和我假设不同 / prompt 没让做但应该做 / prompt 让做但顺序错
+- Extended (本 LL-159 NEW): 4-step preflight verify before ANY validation / test / data-population script execution
+
+**SOP candidate amend `quantmind-v3-active-discovery` skill** (sediment 时机决议 Plan v0.3 横切层 OR Plan v0.2 TB-5c batch closure scope candidate):
+- Phase 0 active discovery 加 4-step preflight verify subroutine
+- Trigger: ANY DB-mutation / ETL / validation script execution
+- Output: 4 explicit todos before script execution + post-check sediment state vs natural production behavior
+
+**反 silent overwrite enforcement sustained throughout T1.5 cycle**:
+- T1.5b-1 v0.2 corrigendum append-only (sustained ADR-022) — §1-§8 v0.1 content preserved as audit trail, §9-§12 v0.2 corrigendum NEW append documenting drift #2 + cleanup + corrected verdict
+- T1.5b-1 branch 2-commit history (a3fc6a1 initial + a8ea129 corrigendum) preserved post squash merge `71374b0`
+- 反 silent commit-message overwrite — drift surfaced 显式 surface 进 commit message + ADR + LL
+
+**沉淀触发模式 (9th consecutive sediment-in-same-session enforcement)**:
+- PR #307+#308+#309+#311+#313+#315+#319+#320+#321+#322 + #324 (Plan v0.2) + #325/#326/#327/#328/(T1.5b-4 本 PR) cumulative = 16+ PR cumulative 反 deepseek-style sediment gap sustained ENFORCEMENT pattern
+- T1.5b-4 sub-PR scope = ADR-065 NEW + Constitution v0.9 → v0.10 amend + STATUS_REPORT amend (S11 IN-PROGRESS → ✅ DONE) + REGISTRY ADR-065 row + LL-159 NEW (本) + memory handoff Session 53+12 = 6 file delta atomic 1 PR
+
+**Reviewer 2nd-set-of-eyes 9 实证 cumulative** (sustained LL-067 体例 + feedback_code_pr_workflow.md 9-step AI 自主闭环):
+- T1.5b-2 reviewer (oh-my-claudecode:critic, 8th 实证): 1 CRITICAL (REGISTRY N×N sync) + 2 HIGH (commit hash non-existent + 10 rules count drift) + 3 MEDIUM (banned words / cite drift / test count) + 3 LOW (placeholder / 19 PR count / path drift) → all CRITICAL/HIGH/MEDIUM fixed in same PR via reviewer-fix cycle (commit 67c5d66)
+- T1.5b-3 reviewer (oh-my-claudecode:code-reviewer, 9th 实证): 0 CRITICAL / 0 HIGH + 3 MEDIUM (unused pytest imports / banned words 真返+真不构造 / mock duplication LOW DRY OK) + 1 LOW (weak isinstance assertion 强化 + misleading "阈值边缘" comment) → MEDIUM all fixed pre-merge
+
+**workflow violation surfaced (separate from drift)**:
+- User pushback "ai merge呢？自审呢？" 2026-05-13 surfaced PRs #324/#325/#326/(#327 part 1) workflow violation — over-asked user for merge ack instead of AI self-audit + auto-merge per 铁律 42 + feedback_code_pr_workflow.md (9-step AI 自主闭环)
+- T1.5b-2 reviewer-fix cycle + T1.5b-3 reviewer self-audit cycle + AI auto-merge sustained from PR #327 onward — 体例落地
+
+**关联**: ADR-065 NEW (Gate A formal closure 7/8 PASS + 1 DEFERRED) + Constitution v0.9 → v0.10 amend (§L10.1 8 item checkbox cumulative) + STATUS_REPORT amend (S11 IN-PROGRESS → ✅ DONE) + REGISTRY ADR-065 row + memory handoff Session 53+12 + `memory/feedback_validation_rigor.md` NEW (4-step preflight SOP) + 铁律 1/25/36/42/45 / LL-067 reviewer 体例 / LL-098 X10 sustained / LL-100 chunked SOP / LL-115 family (capacity expansion 真值 silent overwrite, 11 实证 cumulative inc 本 LL-159 2 self-instances) / LL-127~158 cumulative review per T1.5 final closure / 9th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
