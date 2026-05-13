@@ -5022,3 +5022,81 @@ PR #307 + #308 + #309 + #311 + #313 — 5 consecutive PRs proactively sedimented
 **Tier A status update post-S9**: S1-S6 ✅, S7 ✅, S8 ✅ (8a+8b+8c-partial+8c-followup), **S9 ✅ (9a+9b)**, S10-S11 pending. 9 of 11 sprints (12 counting S2.5) closed.
 
 **关联**: PR #313 (`2ce177c` initial + `d43bf5a` reviewer-fix → squash `7fc5bd2` merged 2026-05-13) / ADR-061 NEW / ADR-027 design SSOT / ADR-059 (broker wire reused by chain smoke) / ADR-060 (9a parent) / LL-150-154 sequence / 铁律 22/31/33/44 X9 / Plan §A S9 row ⚠️ PARTIAL → ✅ DONE / None-data fail-closed pattern 6th 实证 sustained as project convention + 5th consecutive sediment-in-same-session enforcement + reviewer 5th 实证 cumulative
+
+---
+
+## LL-156: V3 §S10 Setup — Code-vs-Operational Sprint Split Pattern + Per-Query Rollback Safety (2026-05-13, PR #315)
+
+**情境**: S9 fully closed (PR #311/#312/#313/#314 cumulative). Plan §A S10 acceptance includes both code deliverables (E2E fixture + 元监控 query + ADR sediment) and an operational 5d wall-clock dry-run. The code parts can land in this session; the 5d run requires separate operational kickoff.
+
+**Root design choice — split S10 into "setup" (code) + "operational kickoff" (wall-clock)**:
+
+Two approaches considered:
+1. **Bundle**: code + operational kickoff in one cycle. Problem: 5d wall-clock means the cycle spans 5+ calendar days; PR can't merge until verify passes; intermediate state unclear.
+2. **Split**: ship code prereqs as one PR; operational kickoff is a separate user-driven cycle.
+
+Option 2 chosen. PR #315 delivers DDL + 2 PURE modules + 2 CLI wrappers + 25 tests. The actual 5d run is operationally bounded: apply migration + register Celery Beat extract task + run for 5 days + run verify CLI. Each step is testable independently.
+
+**Lesson — code-vs-operational sprint split is project-wide convention** (cumulative pattern from S8 8c-partial / 8c-followup split + S9a / S9b split + this PR setup-vs-kickoff). Pattern detection signals:
+- Wall-clock dimension (days / weeks)
+- Operational gating (DBA / SRE / user-explicit step)
+- Multiple natural sub-deliverables
+→ Split into "code prereqs PR" + "operational kickoff cycle".
+
+**Per-query rollback safety pattern (反 transaction abort cascade)**:
+
+PostgreSQL semantics: any query error sets the connection to `InFailedSqlTransaction`. Subsequent queries on same connection all fail with the same error. For aggregator code that runs 9+ queries against potentially-missing tables, this means ONE failed query (e.g. `llm_cost_daily` not yet present on day 1 of paper-mode) would cause ALL subsequent queries to fail too.
+
+Fix in `_run_query_safe`: on per-query exception, log + `conn.rollback()` + return `default_on_missing`. This resets the transaction state so subsequent queries succeed.
+
+Caveat (reviewer P2 db, deferred): if caller has an OUTER transaction open, this rollback breaks it. Current flow (single Celery task per invocation, one-conn-one-job) doesn't have this issue. SAVEPOINT pattern would preserve outer transaction state; refactor candidate if cross-task batching is added.
+
+**改进措施 (PR #315 — commit `acc77f6` squash merged 2026-05-13)**:
+
+1. NEW DDL `backend/migrations/2026_05_13_risk_metrics_daily.sql` + rollback — V3 §13.2 schema 1:1, PK on date (no redundant index per reviewer P2), JSONB column comment for `\d+` visibility.
+
+2. NEW PURE module `backend/qm_platform/risk/metrics/daily_aggregator.py`:
+   - Spec-driven SQL dispatch: 9 metrics × default_on_missing fallback
+   - UPSERT idempotent: INSERT ... ON CONFLICT (date) DO UPDATE SET ... — all 19 mutable columns
+   - Per-query rollback safety (反 transaction abort cascade)
+   - 11 columns intentionally deferred — comment block documents source-sprint for each
+
+3. NEW PURE module `backend/qm_platform/risk/metrics/verify_report.py`:
+   - V3 §15.4 4-item acceptance check: P0 误报率 < 30% / L1 P99 < 5s / STAGED FAILED = 0 / 元告警 P0 = 0
+   - AcceptanceReport.all_pass False on any missing day OR item fail
+   - to_markdown() sediment-ready format
+
+4. NEW CLI wrappers (thin, ~80 lines each):
+   - `scripts/v3_paper_mode_5d_extract_metrics.py` (daily cron)
+   - `scripts/v3_paper_mode_5d_verify_report.py` (post-window verify)
+
+5. Reviewer 1 HIGH + 4 MEDIUM + 1 LOW applied (commit `6c5ab00`):
+   - HIGH: `_load_window_rows` fetches all 20 columns (反 latent data-availability trap)
+   - MEDIUM: DDL COMMENTS moved INSIDE BEGIN/COMMIT (反 partial migration state)
+   - MEDIUM: dropped redundant idx_risk_metrics_date_desc (PK serves both directions)
+   - MEDIUM: 11 deferred columns explicit comment block
+   - MEDIUM: daily_aggregator docstring amended (rollback nuance)
+   - LOW: verify_report CLI rollback symmetry with extract CLI
+
+**Architectural lesson (6th consecutive sediment-in-same-session enforcement 实证)**:
+
+PR #307 + #308 + #309 + #311 + #313 + #315 — 6 consecutive PRs proactively sedimented ADR + LL + REGISTRY + Plan amend in same session as code, with reviewer agent invoked BEFORE merge. 反 deepseek-style sediment gap pattern is now sustained as ENFORCEMENT pattern via repetition (6 实证 across 2 sprint chains: S8 cumulative + S9 cumulative + S10 setup).
+
+**Reviewer 2nd-set-of-eyes 6th 实证 cumulative**: PR #307 (LIKE wildcard injection) + #308 (P1+P2 misc) + #309 (HIGH live broker silent fallback) + #311 (test-by-accident anti-pattern) + #313 (MEDIUM negative elapsed guard) + this PR (HIGH latent data-availability trap + 2 DB reviewer P1 + cross-finding deferred columns). 6 distinct catch categories. Cross-reviewer cross-finding (code + db) is particularly valuable for DDL changes.
+
+**Iron law traceability**:
+- 22: doc 跟随代码 — ADR-062 + LL-156 + REGISTRY + Plan amend in same session
+- 31 not strictly invoked (SQL IO-adjacent; PURE compute on results)
+- 32: PURE modules 0 conn.commit; CLI scripts own boundary; `_run_query_safe` rollback is per-query error recovery NOT transaction boundary write
+- 33: missing tables → default + log warning; missing days → all_pass=False fail-loud
+
+**Tier A status post-S10 setup**: S1-S9 ✅ + S10 setup-ready (code prereqs landed) + S11 pending. The 5d operational kickoff is pending separate user-driven cycle.
+
+**Deferred (operational + follow-up)**:
+1. 5d wall-clock dry-run kickoff (operational)
+2. Source-table population for 11 deferred metric columns (S11+ / Tier B)
+3. SAVEPOINT pattern refactor in `_run_query_safe` (if cross-task batching ever needed)
+4. _MockConn._idx order coupling cleanup (test maintainability)
+5. p0_false_positive_count > p0_total warning (caller logic check)
+
+**关联**: PR #315 (`e3d04c7` initial + `6c5ab00` reviewer-fix → squash `acc77f6` merged 2026-05-13) / ADR-062 NEW / ADR-027 design SSOT / ADR-054-061 (source tables) / LL-150-155 sequence / 铁律 22/32/33 / Plan §A S10 row ⚠️ SETUP-READY (5d kickoff operational, pending user-driven cycle) / code-vs-operational split pattern 2nd 实证 cumulative (8c partial-followup + 9a-9b precedents) + 6th consecutive sediment-in-same-session enforcement + reviewer 6th 实证 cumulative

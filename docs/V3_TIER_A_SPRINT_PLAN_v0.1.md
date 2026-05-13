@@ -189,7 +189,12 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S8 |
 | Paper-mode | sustained S8 |
 
-### S10 — paper-mode 5d dry-run + 触发率验证
+### S10 — paper-mode 5d dry-run + 触发率验证 ⚠️ SETUP-READY (PR #315 `acc77f6` infrastructure landed 2026-05-13; 5d wall-clock kickoff pending operational cycle)
+
+| element | content |
+|---|---|
+| Setup progress | **Code prereqs ✅** (PR #315): NEW DDL `risk_metrics_daily` (V3 §13.2 1:1 schema) + NEW PURE `daily_aggregator.py` (spec-driven 9-metric SQL dispatch + per-query rollback safety + UPSERT idempotent) + NEW PURE `verify_report.py` (V3 §15.4 4-item AcceptanceReport + markdown contract) + 2 thin CLI wrappers + 25 tests. **Operational kickoff PENDING** (separate user-driven cycle): apply migration → register Celery Beat daily extract task → run 5d wall-clock → verify CLI → ADR-062 closure verdict + quantmind-v3-tier-a-mvp-gate-evaluator subagent Gate A verify. |
+| Sediment | ADR-062 NEW (5 decisions: spec-driven dispatch / UPSERT idempotency / V3 §15.4 acceptance encoding / DDL hygiene / thin CLI wrappers) + LL-156 NEW (code-vs-operational sprint split pattern 2nd 实证 + per-query rollback safety + 6th consecutive sediment-in-same-session enforcement + reviewer 6th 实证 cumulative) + REGISTRY ADR-062 row + 状态分布 51→52 + 总 52→53 # space. |
 
 | element | content |
 |---|---|
