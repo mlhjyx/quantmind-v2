@@ -243,6 +243,44 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 300,  # 5min within next 24h cycle (反 stale retry on Mon)
         },
     },
+    # ── TB-2c: V3 §5.3 Bull/Bear regime detection 3 daily Beat schedules ──
+    # V3 §5.3 line 664 cadence: 每日 9:00 + 14:30 + 16:00 (3 次更新, Asia/Shanghai trading days).
+    # Task: app.tasks.market_regime_tasks.classify_market_regime
+    #   → BullAgent V4-Pro + BearAgent V4-Pro + RegimeJudge V4-Pro (ADR-036 sustained)
+    #   → market_regime_log INSERT (PR #333 TB-2a DDL + repository sustained)
+    # 反 hard collision (sustained dynamic_threshold_tasks 体例):
+    #   - 09:00 — clean (no existing entry; gp-weekly Sun 22:00 / news 03/07/.../23 minute=0 hour-offset)
+    #   - 14:30 — risk-l4-sweep-1min (* 9-14 minute=*) sequential queue tolerated (Beat solo dispatch)
+    #     + DEPRECATED risk-daily-check (paused per T1_SPRINT_2026_04_29)
+    #   - 16:00 — fundamental-context-daily-1600 minute=0 collision; sequential queue tolerated
+    #     (independent V4-Pro tasks, ~3-5s combined LLM call latency)
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   per docs/runbook/cc_automation/v3_tb_2c_market_regime_beat_wire.md (LL-141 4-step sediment).
+    # IndicatorsProvider TB-2c = StubIndicatorsProvider (all-None numeric fields, 留 TB-2d/5 real wire).
+    "risk-market-regime-0900": {
+        "task": "app.tasks.market_regime_tasks.classify_market_regime",
+        "schedule": crontab(hour=9, minute=0, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1800,  # 30min within next 5h window (14:30 cycle)
+        },
+    },
+    "risk-market-regime-1430": {
+        "task": "app.tasks.market_regime_tasks.classify_market_regime",
+        "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1800,  # 30min within next 1.5h window (16:00 cycle)
+        },
+    },
+    "risk-market-regime-1600": {
+        "task": "app.tasks.market_regime_tasks.classify_market_regime",
+        "schedule": crontab(hour=16, minute=0, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 1800,  # 30min within next 17h window (next day 09:00)
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
