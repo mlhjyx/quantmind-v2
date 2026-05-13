@@ -41,6 +41,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,30 @@ logger = logging.getLogger(__name__)
 # RiskMemory.embedding validation + DDL VECTOR(1024)).
 EMBEDDING_DIM: int = 1024
 
-# Default BGE-M3 model identifier + local cache folder per Session 53+19
-# Phase A install (./models/bge-m3/ pre-downloaded).
+# Default BGE-M3 model identifier per Session 53+19 Phase A install.
 _DEFAULT_MODEL_NAME: str = "BAAI/bge-m3"
-_DEFAULT_CACHE_FOLDER: str = "./models/bge-m3"
+
+
+def _resolve_default_cache_folder() -> str:
+    """Resolve default model cache folder to repo-relative absolute path.
+
+    Reviewer-fix (PR #340 MEDIUM 1): the previous default `./models/bge-m3` is
+    CWD-dependent — Servy uvicorn process CWD differs from Celery / script
+    invocations. Walk up from this module file to find repo root (containing
+    `CLAUDE.md` + `backend/`), join `models/bge-m3`. Caller can still override
+    via `cache_folder=...` for tests / alternate install locations.
+
+    Fallback: if repo markers not found (e.g. installed as wheel), return the
+    original relative path `./models/bge-m3` — caller MUST then pass absolute.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "CLAUDE.md").exists() and (parent / "backend").is_dir():
+            return str(parent / "models" / "bge-m3")
+    return "./models/bge-m3"
+
+
+_DEFAULT_CACHE_FOLDER: str = _resolve_default_cache_folder()
 
 
 @runtime_checkable
@@ -67,6 +88,15 @@ class EmbeddingService(Protocol):
       - encode(text) returns exactly EMBEDDING_DIM-length tuple of float
       - Same input MUST return same output (deterministic) under fixed model
       - Empty / whitespace text raises ValueError (fail-loud per 铁律 33)
+
+    Reviewer-note (PR #340 MEDIUM 2): `@runtime_checkable` here is intentional +
+    diverges from sibling risk modules (intraday.py / qmt_fallback.py) which
+    explicitly avoid it. Justification: this Protocol declares a SINGLE method
+    (`encode`), so structural `isinstance()` check is safe — there is no risk
+    of partial-implementation silently satisfying isinstance + then failing at
+    call site (the multi-method Protocol concern that motivates the sibling
+    modules' choice). Used at DI composition boundary for fail-loud validation
+    when TB-3c rag service wires this in.
     """
 
     def encode(self, text: str) -> tuple[float, ...]:

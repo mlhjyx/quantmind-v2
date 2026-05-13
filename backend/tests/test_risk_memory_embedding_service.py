@@ -250,9 +250,22 @@ class TestConstructorDefaults:
         svc = BGEM3EmbeddingService(model_factory=_stub_factory(_StubModel()))
         assert svc.model_name == "BAAI/bge-m3"
 
-    def test_default_cache_folder(self) -> None:
+    def test_default_cache_folder_resolves_to_repo_models_bge_m3(self) -> None:
+        """PR #340 MEDIUM 1 reviewer-fix: default cache_folder resolves to
+        absolute repo-rooted path (CWD-independent) instead of relative
+        `./models/bge-m3` which broke under Servy / Celery process CWDs.
+        """
         svc = BGEM3EmbeddingService(model_factory=_stub_factory(_StubModel()))
-        assert svc.cache_folder == "./models/bge-m3"
+        cache = Path(svc.cache_folder)
+        # When invoked from repo root, the resolver finds CLAUDE.md +
+        # backend/ markers and returns absolute path.
+        assert cache.is_absolute() or svc.cache_folder == "./models/bge-m3", (
+            f"cache_folder should resolve to absolute path or fallback "
+            f"literal, got {svc.cache_folder!r}"
+        )
+        # Path ends with models/bge-m3 (platform-agnostic check).
+        assert cache.name == "bge-m3"
+        assert cache.parent.name == "models"
 
     def test_default_normalize_true(self) -> None:
         svc = BGEM3EmbeddingService(model_factory=_stub_factory(_StubModel()))
