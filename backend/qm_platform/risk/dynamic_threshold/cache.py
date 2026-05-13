@@ -75,17 +75,20 @@ class RedisThresholdCache:
     def __init__(self, redis_client: Any = None, prefix: str = _REDIS_PREFIX) -> None:
         self._redis = redis_client
         self._prefix = prefix
-        self._connected: bool = False
+        self._connect_attempted: bool = False
 
     def _ensure_redis(self) -> bool:
         """懒初始化 Redis client (避免 import 时连 Redis).
 
-        首次失败后停止重试 (set _connected=True), 反 per-tick 2s 阻塞.
+        首次失败后停止重试 (set _connect_attempted=True), 反 per-tick 2s 阻塞.
+        反双语义 (LL-149 Part 2 P1-3 deferred → 本 sub-PR closure): 之前字段名
+        `_connected` 同时表示 "连接成功" 和 "尝试已停止 (即使失败)" — 现 rename
+        到 `_connect_attempted` 让语义明确 (成功/失败都标 True 表示"已试过").
         Redis 恢复需进程重启 (或 L3 5min Beat 重新创建 RedisThresholdCache).
         """
         if self._redis is not None:
             return True
-        if self._connected:
+        if self._connect_attempted:
             return False  # 已尝试过, 不再重试 (反 per-tick 2s blocking)
 
         try:
@@ -93,7 +96,7 @@ class RedisThresholdCache:
 
             self._redis = redis.Redis(host="localhost", port=6379, socket_connect_timeout=2)
             self._redis.ping()
-            self._connected = True
+            self._connect_attempted = True
             logger.info("[threshold-cache:redis] connected")
             return True
         except Exception as e:
@@ -102,7 +105,7 @@ class RedisThresholdCache:
                 "fallback to in-memory (no further retries this process)",
                 e,
             )
-            self._connected = True  # 停止重试 (反 per-tick 2s blocking)
+            self._connect_attempted = True  # 停止重试 (反 per-tick 2s blocking)
             return False
 
     def get(self, rule_id: str, code: str) -> float | None:
