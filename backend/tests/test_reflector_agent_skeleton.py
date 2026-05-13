@@ -571,6 +571,29 @@ class TestReflectorAgent:
         with pytest.raises(ReflectorAgentError, match="JSON parse failure"):
             agent.reflect(_valid_input(), now=_NOW)
 
+    def test_reflect_brace_escape_in_summary_str(self) -> None:
+        """PR #343 reviewer-fix MEDIUM 1: free-form summary str with literal
+        `{` / `}` (e.g. JSON snippets in events_summary) must NOT break
+        str.format() substitution. TB-4c will compose DB data containing
+        braces — proactive guard."""
+        router = _StubRouter()
+        agent = ReflectorAgent(router=router)
+        # Summary with JSON-like content + dict repr (real-world TB-4c case)
+        inp_with_braces = _valid_input(
+            events_summary='{"event_id": 42, "symbol": "600519.SH"}',
+            plans_summary="STAGED execute_at=2026-05-11T14:00 → {symbol: 600519.SH, qty: 1000}",
+            pnl_outcome="Day P&L: {'2026-05-08': -0.5%, '2026-05-09': +1.2%}",
+            rag_top5='[{"sim": 0.84, "lesson": "STAGED 30min default"}]',
+        )
+        # Should NOT raise — escape produces safe-to-format str.
+        out = agent.reflect(inp_with_braces, now=_NOW)
+        assert isinstance(out, ReflectionOutput)
+        # Verify substituted content reached user message intact (after escape
+        # produces `{{`/`}}` in template-time → renders as single `{`/`}` in final string).
+        user_msg = router.calls[0]["messages"][1].content
+        assert "600519.SH" in user_msg
+        assert "STAGED" in user_msg
+
 
 # ---------------------------------------------------------------------------
 # RiskReflectorAgent application service skeleton

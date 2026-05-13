@@ -370,16 +370,23 @@ class ReflectorAgent:
         system_prompt = prompt["system_prompt"]
         user_template = prompt["user_template"]
 
-        # Substitute user_template placeholders with ReflectionInput fields.
-        # Sustained TB-2b agents.py .format(**kwargs) 体例.
+        # Reviewer-fix (PR #343 MEDIUM 1): escape `{` / `}` in free-form summary
+        # str fields before .format() — TB-4c will compose these from real DB
+        # data (risk_event_log JSON / RAG hits) that may contain literal braces,
+        # which would otherwise raise KeyError/ValueError. Sustained TB-2b
+        # regime/agents.py used numeric-only inputs, so this risk didn't surface
+        # there; reflector inputs are free-form so escape proactively.
+        def _esc(s: str) -> str:
+            return s.replace("{", "{{").replace("}", "}}")
+
         user_message = user_template.format(
-            period_label=input_data.period_label,
+            period_label=_esc(input_data.period_label),
             period_start=input_data.period_start.isoformat(),
             period_end=input_data.period_end.isoformat(),
-            events_summary=input_data.events_summary,
-            plans_summary=input_data.plans_summary,
-            pnl_outcome=input_data.pnl_outcome,
-            rag_top5=input_data.rag_top5,
+            events_summary=_esc(input_data.events_summary),
+            plans_summary=_esc(input_data.plans_summary),
+            pnl_outcome=_esc(input_data.pnl_outcome),
+            rag_top5=_esc(input_data.rag_top5),
         )
 
         messages: list[LLMMessage] = [
@@ -404,8 +411,12 @@ class ReflectorAgent:
             decision_id=decision_id,
         )
 
-        # LLMResponse contract: .content (str) — sustained TB-2b agents.py 体例.
-        raw_text = getattr(response, "content", None)
+        # LLMResponse contract: .content (str always present per types.py:66) —
+        # sustained TB-2b agents.py direct-access 体例.
+        # Reviewer-fix (PR #343 MEDIUM 2): switch getattr → direct attribute
+        # access, aligning with TB-2b regime/agents.py:153 precedent (the
+        # _RouterProtocol return type guarantee makes defensive getattr redundant).
+        raw_text = response.content
         if not isinstance(raw_text, str) or not raw_text.strip():
             raise ReflectorAgentError(
                 f"reflector V4-Pro response.content must be non-empty str, "
