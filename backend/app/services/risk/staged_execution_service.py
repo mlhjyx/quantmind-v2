@@ -36,7 +36,6 @@ Flow:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -177,7 +176,6 @@ class StagedExecutionService:
             new_status=(PlanStatus.EXECUTED if broker_result.success else PlanStatus.FAILED),
             broker_order_id=broker_result.order_id,
             broker_fill_status=(broker_result.filled_shares if broker_result.success else None),
-            now=now,
         )
 
         if updated_rows == 0:
@@ -242,6 +240,10 @@ class StagedExecutionService:
     def _load_plan(conn: Any, plan_id: str) -> dict[str, Any] | None:
         cur = conn.cursor()
         try:
+            # Reviewer P2-4 (code-reviewer): use CAST(%s AS uuid) on the param
+            # side so PG can use the (plan_id, created_at) unique index. Casting
+            # plan_id::text on the column side (previous code) forced sequential
+            # scans. LL-034 pattern sustained.
             cur.execute(
                 """
                 SELECT plan_id::text AS plan_id, status, mode, symbol_id, qty,
@@ -250,7 +252,7 @@ class StagedExecutionService:
                        risk_reason, user_decision, user_decision_at,
                        triggered_by_event_id, risk_metrics, created_at
                 FROM execution_plans
-                WHERE plan_id::text = %s
+                WHERE plan_id = CAST(%s AS uuid)
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
@@ -299,13 +301,16 @@ class StagedExecutionService:
         new_status: PlanStatus,
         broker_order_id: str | None,
         broker_fill_status: int | None,
-        now: datetime,  # noqa: ARG004 — kept for future audit column
     ) -> int:
         """Atomic UPDATE — only writes if status still CONFIRMED/TIMEOUT_EXECUTED.
 
         rowcount=1 → write succeeded; rowcount=0 → concurrent transition (another
         worker / manual fix already wrote EXECUTED/FAILED, OR plan reverted to
         a non-executable state which is a programming error elsewhere).
+
+        Reviewer P2-4 (code-reviewer): UUID cast on param side (CAST(%s AS uuid))
+        to enable index usage on execution_plans (plan_id, created_at). Reviewer
+        P2-5: dropped unused `now` param — no `updated_at` column exists.
         """
         cur = conn.cursor()
         try:
@@ -315,7 +320,7 @@ class StagedExecutionService:
                 SET status = %s,
                     broker_order_id = %s,
                     broker_fill_status = %s
-                WHERE plan_id::text = %s
+                WHERE plan_id = CAST(%s AS uuid)
                   AND status IN %s
                 """,
                 (
@@ -347,14 +352,16 @@ def build_default_broker_call() -> tuple[BrokerCallable, str]:
         order_id="stub-<plan_id_prefix>" + broker_fill_status=0.
 
     Live-mode + LIVE_TRADING_DISABLED=false (future Tier B cutover): returns
-        QMTSellAdapter.sell wrapping a connected MiniQMTBroker. ⚠️ Real
-        xtquant.order_stock call; LiveTradingGuard inside MiniQMTBroker is the
-        last line of defense.
+        QMTSellAdapter.sell wrapping a connected MiniQMTBroker. LiveTradingGuard
+        inside MiniQMTBroker is the last line of defense.
 
-    Construction is best-effort fail-safe: if live wiring throws (e.g. xtquant
-    not importable, QMT path missing), fallback to RiskBacktestAdapter so the
-    STAGED queue doesn't starve. The fallback is logged loudly + an alert event
-    would surface via the AlertDispatcher chain in a follow-up.
+    Reviewer HIGH fix (code-reviewer + security-reviewer cross-finding): in live
+    mode, broker construction failure now RAISES instead of silently falling
+    back to stub. Silent fallback would mark plans EXECUTED with stub order_id
+    while no real order reached the broker — a dangerous false-EXECUTED gap.
+    A P0 DingTalk alert is emitted (best-effort) so the operator is paged.
+    In paper mode (current default), there is no fallback path — stub is the
+    intentional choice.
     """
     if is_paper_mode_or_disabled():
         logger.info(
@@ -369,26 +376,55 @@ def build_default_broker_call() -> tuple[BrokerCallable, str]:
 
         from app.config import settings
 
-        broker = MiniQMTBroker(
-            qmt_path=getattr(settings, "QMT_PATH", ""),
-            account_id=getattr(settings, "QMT_ACCOUNT_ID", ""),
-        )
+        # Reviewer P3 (security): direct attribute access — fail fast if
+        # QMT_PATH / QMT_ACCOUNT_ID missing rather than constructing the broker
+        # with empty-string credentials and getting an opaque downstream error.
+        qmt_path = settings.QMT_PATH
+        qmt_account = settings.QMT_ACCOUNT_ID
+        if not qmt_path or not qmt_account:
+            raise RuntimeError(
+                f"live mode requires non-empty QMT_PATH ({bool(qmt_path)}) + "
+                f"QMT_ACCOUNT_ID ({bool(qmt_account)})"
+            )
+
+        broker = MiniQMTBroker(qmt_path=qmt_path, account_id=qmt_account)
         broker.connect()
         adapter = QMTSellAdapter(broker=broker)
         logger.warning(
-            "[staged-exec-service] LIVE MODE — QMTSellAdapter wired to MiniQMTBroker. "
+            "[staged-exec-service] LIVE MODE — QMTSellAdapter wired to broker. "
             "5/5 红线 关键点: ensure LIVE_TRADING_DISABLED state is intentional."
         )
         return adapter.sell, "live_qmt"
-    except Exception:
-        # 反 STAGED queue starvation — fall back to stub, alert via logging
+    except Exception as exc:
+        # Reviewer HIGH fix: in live mode, broker wire failure is an alertable
+        # safety incident — operator must be paged AND the STAGED execution
+        # path should halt for this tick / request (反 silent false-EXECUTED
+        # with stub order_id while no broker call actually fired). Emit P0
+        # alert (best-effort) and re-raise.
         logger.exception(
-            "[staged-exec-service] live broker wire failed — falling back to "
-            "RiskBacktestAdapter stub. STAGED plans will register EXECUTED with "
-            "stub order_id until live wire is repaired."
+            "[staged-exec-service] LIVE MODE broker wire FAILED — raising "
+            "to halt this STAGED execution (反 silent false-EXECUTED)"
         )
-        stub = RiskBacktestAdapter()
-        return stub.sell, "paper_stub"
+        try:
+            from app.config import settings as _s
+            from app.services.notification_service import send_alert
+
+            send_alert(
+                level="P0",
+                title="V3 L4 STAGED live broker wire FAILED",
+                content=(
+                    "**Live broker construction failed**\n\n"
+                    f"- Error: `{type(exc).__name__}: {str(exc)[:200]}`\n"
+                    "- Effect: STAGED plans HALTED for this tick / request\n"
+                    "- Action: inspect QMT_PATH / QMT_ACCOUNT_ID / qmt install"
+                ),
+                webhook_url=getattr(_s, "DINGTALK_WEBHOOK_URL", ""),
+                secret=getattr(_s, "DINGTALK_SECRET", ""),
+            )
+        except Exception:
+            # silent_ok: alert is best-effort; log already fired
+            logger.exception("[staged-exec-service] P0 alert send failed (silent_ok)")
+        raise
 
 
 def get_default_service() -> StagedExecutionService:
@@ -411,7 +447,3 @@ __all__ = [
     "build_default_broker_call",
     "get_default_service",
 ]
-
-
-# Optional: expose Callable type alias for callers who want to swap brokers
-BrokerCallType = Callable[[str, int, str, float], dict[str, Any]]

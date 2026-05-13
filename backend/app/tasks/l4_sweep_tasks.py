@@ -239,6 +239,18 @@ def _sweep_inner(
                                 else "<missing>"
                             ),
                         )
+                    else:
+                        # Reviewer LOW (code-reviewer): NOT_FOUND / NOT_EXECUTABLE
+                        # should be unreachable since we just successfully UPDATEd
+                        # status to TIMEOUT_EXECUTED on this row. Defensive log
+                        # surfaces the unexpected condition for debugging
+                        # (铁律 33 fail-loud — silent count loss would mask drift).
+                        logger.warning(
+                            "[l4-sweep] unexpected staged outcome=%s for plan_id=%s "
+                            "(post-TIMEOUT_EXECUTED transition; investigate)",
+                            staged_r.outcome.value,
+                            plan_id,
+                        )
             else:
                 # rowcount=0 → concurrent webhook user decision changed status
                 races += 1

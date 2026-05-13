@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from .planner import ExecutionPlan, PlanStatus
@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 # Broker SLA (V3 §13.1 — broker call <5s P99)
 DEFAULT_BROKER_TIMEOUT_SEC: float = 5.0
+
+# Reviewer P2 (security-reviewer): cap error_msg length to bound stack-trace
+# leak into HTTP response bodies. Type name + truncated message preserves debug
+# context for the operator log without surfacing full Python traceback strings.
+_MAX_ERR_LEN: int = 200
 
 # Broker result status whitelist — success outcomes
 _SUCCESS_STATUSES: frozenset[str] = frozenset(
@@ -116,7 +121,10 @@ def execute_plan_sell(
             "(expected CONFIRMED or TIMEOUT_EXECUTED)"
         )
 
-    now = at or datetime.now(UTC)
+    # Reviewer LOW (code-reviewer): `at` kept for forward-compat / test
+    # determinism (staged_execution_service.execute_plan injects clock for
+    # audit log alignment); dropped unused local binding.
+    _ = at
 
     # Build broker call args. reason includes plan_id_prefix for audit cross-ref
     # in broker logs (xtquant order_remark accepts ≤24 chars; QMTSellAdapter
@@ -141,13 +149,18 @@ def execute_plan_sell(
             plan.plan_id,
             plan.symbol_id,
         )
-        failed_plan = plan.mark_failed(reason=f"broker exception: {type(exc).__name__}: {exc}")
+        # Reviewer P2 (security-reviewer): sanitize error_msg length to bound
+        # internal exception details surfaced in API response. Type name +
+        # message capped at MAX_ERR_LEN keeps stack-trace-style leaks out of
+        # the wire while preserving enough debug context for the operator log.
+        safe_err = f"{type(exc).__name__}: {str(exc)[:_MAX_ERR_LEN]}"
+        failed_plan = plan.mark_failed(reason=f"broker exception: {safe_err}")
         return BrokerExecutionResult(
             success=False,
             order_id=None,
             filled_shares=0,
             fill_price=0.0,
-            error_msg=f"{type(exc).__name__}: {exc}",
+            error_msg=safe_err,
             new_plan=failed_plan,
         )
 
@@ -181,8 +194,6 @@ def execute_plan_sell(
             filled_shares,
             fill_price,
         )
-        # Bind clock for caller traceability (audit trail at *now* not at plan time)
-        _ = now
         return BrokerExecutionResult(
             success=True,
             order_id=order_id,

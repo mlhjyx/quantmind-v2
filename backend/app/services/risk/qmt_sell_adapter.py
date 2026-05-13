@@ -139,6 +139,9 @@ class QMTSellAdapter:
             # as error result so caller logs FAILED. Do NOT raise (反 silent
             # broker outage → STAGED queue starvation; caller still gets FAILED
             # via execute_plan_sell return path).
+            #
+            # Reviewer P2 (security-reviewer): cap message length so stack-trace
+            # details don't leak verbatim into API response bodies.
             logger.exception(
                 "[qmt-sell-adapter] place_order raised for code=%s shares=%d",
                 code,
@@ -151,7 +154,7 @@ class QMTSellAdapter:
                 "filled_shares": 0,
                 "price": 0.0,
                 "order_id": None,
-                "error": f"{type(e).__name__}: {e}",
+                "error": f"{type(e).__name__}: {str(e)[:200]}",
             }
 
         if order_id is None or order_id < 0:
