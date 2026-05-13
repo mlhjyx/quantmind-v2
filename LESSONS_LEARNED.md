@@ -5142,3 +5142,53 @@ MagicMock conn **不解析 SQL 字符串**, 所以两 bug 都漏到生产。Bug 
 - 7 distinct catch categories: LIKE injection / P1+P2 misc / HIGH live broker / test-by-accident / MEDIUM elapsed guard / HIGH data-availability + cross-finding DB review / CRITICAL pre-existing case mismatch.
 
 **关联**: PR #319 `2b8b84f` (Beat wire) + PR #320 `f054065` (2 bug fix + 3 smoke) + PR #321 `0111b3c` (C1 toolkit + cleanup runbook + verify report) + ADR-063 NEW (5d skip per empty-system) + LL-115 family 9th cumulative + LL-098 X10 (反 silent forward-progress) sustained + Constitution §L10.1 Gate A 第 2 项 amendment + Plan §A S10 DEFERRED tag + 铁律 22/33 / 7th consecutive sediment-in-same-session enforcement / reviewer 7th 实证 cumulative
+
+---
+
+## LL-158: V3 Tier B Plan v0.1 Sediment — plan-then-execute 体例 第 4 case Tier B context (2026-05-13, Plan v0.2 sub-PR sediment cycle + ADR-064 5 决议 lock)
+
+**核心教训**: Plan v0.2 Tier B sprint chain (T1.5 + TB-1~5, 6 sprint) plan-then-execute 体例第 4 case 实证累积扩 sustainability cumulative pattern 体例文档化 4 case cumulative:
+
+- **case 1**: Plan v0.1 sub-PR 8 (2026-05-09) — Tier A sprint chain (S1 + S2 + S2.5 + S3-S11, 12 sprint) plan-then-execute 体例 第 1 case 实证, post-Finding #1/#2/#3 + Push back #1/#2/#3 user 决议落地 sediment
+- **case 2**: sub-PR 11b (2026-05-09) — V3 §S2.5 implementation closure plan-then-execute 体例 第 2 case 实证, post-ADR-049 chunked precedent + ADR-050 implementation sediment
+- **case 3**: sub-PR 13 (2026-05-09) — V3 §S3 NewsClassifier closure plan-then-execute 体例 第 3 case 实证, post-ADR-051 closure-only ADR sediment
+- **case 4 (本 LL)**: Plan v0.2 sub-PR sediment cycle (2026-05-13) — Tier B sprint chain plan-then-execute 体例 第 4 case 实证, post-Tier A code-side 12/12 closure cumulative Session 53 + ADR-063 sediment 真值落地 + 5 决议 lock (D1=a 串行 / D2=A BGE-M3 / D3=b 2 关键窗口 / D4=否 仅 Tier B / D5=inline 完整)
+
+**第二层教训**: ADR-063 sediment 后 Tier A 5d paper-mode acceptance ⏭ DEFERRED, 真测路径转 Tier B `RiskBacktestAdapter` 历史 minute_bars replay → 9 RealtimeRiskRule 真触发. Plan v0.2 Tier B sprint chain 6 sprint 设计将 V3 §12.2 原 4 sprint (S12-S15, ~4-5 周) 扩 6 sprint (T1.5 + TB-1~5, ~8.5-12 周), net new scope 包括:
+
+- T1.5 Tier A formal closure (Gate A 7/8 verify + Tier A ADR cumulative promote, NOT in V3 §12.2 原)
+- TB-1 `RiskBacktestAdapter` 完整实现 (V3 §11.4 + 2 关键窗口 historical replay infra + 9 RealtimeRiskRule 真触发 evaluator + counterfactual analysis framework, V3 §12.2 原 仅 stub T1.5 prereq)
+- TB-5 Tier B replay 验收 (V3 §15.4 4 项 + V3 §13.1 5 SLA transferable on replay path + V3 §15.6 合成场景 ≥7 类 CI + Gate B + Gate C formal close, post-ADR-063 net new scope)
+- TB-2~TB-4 mapping to V3 §12.2 S12-S14 (sustained 原 设计 scope)
+
+**反 anti-pattern enforcement**:
+
+- ❌ Silent self-trigger T1.5 起手 (sustained LL-098 X10): Plan v0.2 sediment 后 STOP + push user, NOT 自动 T1.5 起手
+- ❌ N×N 同步漂移 (LL-101/103/116 cumulative): Plan v0.2 sub-PR sediment 7 file delta atomic 1 PR (Plan v0.2 doc + Constitution amend + skeleton amend + REGISTRY + ADR-064 + LL-158 + memory handoff), 5 doc 同步
+- ❌ Silent retroactive content edit Constitution §L10.2 Gate B item 2 + item 3 (sustained ADR-022): 仅 amend Plan v0.2 §C 标注 "MODIFIED per D3=b 决议" + "⏭ N/A — factor research scope", Constitution §L10.2 amend 留 TB-5c sediment 周期 batch closure pattern
+- ✅ Plan-then-execute 体例 sustainability sustained: case 1-4 cumulative 4 case 实证累积扩 sub-PR 8 体例 sustainability + ADR-049 §3 chunked sub-PR 体例 greenfield scope sustained
+
+**5 决议 lock 体例 cumulative pattern**:
+
+- Plan v0.1 6 项决议 (Finding #1/#2/#3 + Push back #1/#2/#3) + Plan v0.2 5 项决议 (D1-D5) = **11 项决议 cumulative sediment** via plan-then-execute 体例 user-approved sub-PR sediment cycle
+- 每决议 lock 走 ADR sediment (Plan v0.1 决议 → ADR-049/050/051 chunked / Plan v0.2 决议 → ADR-064 lock), sustained LL-105 SOP-6 ADR # registry SSOT cross-verify
+
+**Tier B sprint chain dependency graph 真值**:
+
+- T1.5 (D1=a 串行 lock) → TB-1 (D3=b 2 关键窗口 lock) → TB-2 → TB-3 (D2=A BGE-M3 lock) → TB-4 → TB-5
+- 反 并行 (D1=a 决议 reject 并行 option): 干净 phase transition + sub-task creep 风险 lower (sustained Plan v0.1 §B item 11 mitigation 体例)
+
+**沉淀触发模式 (8th consecutive sediment-in-same-session enforcement)**:
+
+- PR #307+#308+#309+#311+#313+#315+(#319+#320+#321+ADR-063 cumulative)+(本 Plan v0.2 sub-PR sediment) → 8+ PR cumulative 反 deepseek-style sediment gap sustained ENFORCEMENT
+- 本 LL 是 Plan v0.2 + Constitution amend (header v0.8 → v0.9) + skeleton amend (header v0.7 → v0.8 + §2.2 Tier B sprint chain row) + REGISTRY row + ADR-064 NEW + LL-158 append + memory handoff append 7 file delta atomic 1 sediment PR, 沿用 Plan v0.1 sub-PR 8 体例 sustained
+
+**plan-then-execute 体例 sustainability cumulative 体例文档化**:
+
+- case 1-4 cumulative pattern 4 case 实证累积扩 sub-PR 8 体例 sustainability sustained
+- 5 决议 lock 体例 + 11 项决议 cumulative pattern (Plan v0.1 6 + Plan v0.2 5) sustained user-approved sub-PR sediment cycle
+- Constitution §L10.2 amend pending TB-5c batch closure pattern (sustained ADR-022 反 retroactive content edit, 仅 append 标注体例 留 batch closure 周期)
+- Tier B 期 ADR sediment cumulative: ADR-064 (本) + ADR-065 (T1.5) + ADR-066 (TB-1) + ADR-067 (TB-2) + ADR-068 (TB-3) + ADR-069 (TB-4) + ADR-070 (TB-5 replay) + ADR-071 (TB-5 closure) = 8 项 Tier B ADR cumulative sediment 候选
+- Tier B 期 LL sediment cumulative: LL-158 (本) + LL-159 (TB-1) + LL-160 (TB-2) + LL-161 (TB-3) + LL-162 (TB-4) + LL-163 (TB-5) = 6 项 Tier B LL cumulative sediment 候选
+
+**关联**: Plan v0.2 NEW (`docs/V3_TIER_B_SPRINT_PLAN_v0.1.md`) + ADR-064 NEW (5 决议 lock) + Constitution v0.8 → v0.9 amend + skeleton v0.7 → v0.8 amend + REGISTRY ADR-064 row + memory handoff Session 53+1 + 铁律 22/37/45 / LL-098 X10 sustained / LL-100 chunked SOP / LL-115/116 fresh re-read enforce / LL-127/137/138/139/140 cumulative / LL-157 (Session 53 cumulative) / Plan v0.1 sub-PR 8 体例 sustained 第 4 case Tier B context / 8th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
