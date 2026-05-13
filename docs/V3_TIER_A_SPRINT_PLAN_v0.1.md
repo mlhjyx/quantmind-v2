@@ -199,7 +199,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | element | content |
 |---|---|
 | Scope | V3 §15.4 E2E paper-mode 5d; skeleton §2.1 (E2E ~不适 TDD); **横切归属 §5.6 5 SLA verify** |
-| Acceptance | 5d paper-mode 跑通 + 触发率 / 误报率 / 漏报 / STAGED cancel 率 / LLM cost / 元监控 KPI 实测; **5 SLA 全满足** baseline 实测 + ADR 锁; **V3 §15.4 验收 4 项** (CC 实测决议): P0 误报率<30% / L1 P99<5s / L4 STAGED 0 失败 / 元监控 0 P0; quantmind-v3-tier-a-mvp-gate-evaluator subagent verify |
+| Acceptance | ⏭️ **DEFERRED per ADR-063** (2026-05-13) — original Tier A wall-clock 5d 执行 deferred to Tier B `RiskBacktestAdapter` historical minute_bars replay 等价 path (empty-system 5d trivial-pass anti-pattern, 0 持仓 + 0 tick subscribe + free-LLM provider 状态下 信息熵 ≈ 0). **Acceptance content unchanged**, 仅 execution mode shift: 5d paper-mode (replay) 跑通 + 触发率 / 误报率 / 漏报 / STAGED cancel 率 / LLM cost / 元监控 KPI 实测; **5 SLA 全满足** baseline 实测 + ADR 锁; **V3 §15.4 验收 4 项** (CC 实测决议): P0 误报率<30% / L1 P99<5s / L4 STAGED 0 失败 / 元监控 0 P0; quantmind-v3-tier-a-mvp-gate-evaluator subagent verify. 真测 sprint chain detail 留 Plan v0.2 Tier B (TB-1 RiskBacktestAdapter 完整实现 + TB-5 替代 5d 验收). |
 | File delta | ~2-3 files / ~200-400 lines (E2E fixture + 元监控 query + ADR sediment) |
 | Chunked sub-PR | **single sub-PR** (E2E + verify report sediment, OMC `ralph` long-running 5d) |
 | Cycle | V3 §12.1 line 1319: 3 day (但 paper-mode 5d real time = 5d + verify 1-2d = 1 周 候选) |
@@ -250,7 +250,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 **Constitution §L10.1 Gate A 8 checklist** (CC 实测每项):
 1. V3 §12.1 Sprint S1 / S2 / S2.5 / S3 / S4 / S5 / S6 / S7 / S8 / S9 / S10 / S11 全 closed (12 sprint, post-Finding #2 (b) S2.5 加 sediment, git log + PR # + ADR REGISTRY committed verify)
-2. paper-mode 5d 验收 ✅ (V3 §15.4 标准, 数值 CC 起手时实测决议 + ADR 锁)
+2. ~~paper-mode 5d 验收 ✅~~ ⏭️ **DEFERRED per ADR-063** — Tier A wall-clock 5d trivial-pass anti-pattern; 真测路径转 Tier B `RiskBacktestAdapter` replay. Gate A pass 仅要求其他 7 项 ✅; Tier B closure 时另加 ADR-XXX 记录真测结果 (sustained Constitution §L10.1 line 396 amendment)
 3. 元监控 risk_metrics_daily 全 KPI 14 day 持续 sediment
 4. ADR-019 + ADR-020 + ADR-029 + Tier A 后续 ADR 全 committed
 5. V3 §11.1 12 模块全 production-ready (import + smoke + module health check)
@@ -266,7 +266,9 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 ## §D Tier A 期 paper-mode 5d 真测期 SOP
 
-**S10 sprint paper-mode 5d 监控 SOP**:
+> **⏭️ DEFERRED per ADR-063** (2026-05-13, cumulative with PR #319+#320+#321+#322) — 原 Tier A S10 wall-clock context 的 5d 执行**已 DEFERRED** to Tier B `RiskBacktestAdapter` 历史 minute_bars replay path (empty-system 5d 自然 fire trivial-pass anti-pattern, 详 ADR-063 §1.5 Evidence). **本节 SOP content 仍 fully valid** 用于 Tier B replay context — 4 项 acceptance / 5 SLA verify / LIVE_TRADING_DISABLED sustained / Gate E prereq 全部 transferable (WHAT 不变, WHEN+HOW 换). Plan v0.2 Tier B sprint chain 起手时 cite 本节 SOP details.
+
+**S10 sprint paper-mode 5d 监控 SOP** (post-ADR-063: applies to Tier B replay 等价 path):
 - 元监控 risk_metrics_daily 0 P0 元告警 (V3 §13.2)
 - 5 SLA 满足 verify (V3 §13.1: L1<5s / News 30s / LiteLLM<3s / DingTalk<10s / STAGED 30min)
 - V3 §15.4 验收 4 项 (P0 误报率<30% / L1 P99<5s / L4 STAGED 0 失败 / 元监控 0 P0)
@@ -279,7 +281,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 - paper→live cutover NOT in S10 scope, 仅 Gate E prereq verify (Constitution §L10.5)
 
 **Gate E PT cutover gate prereq** (Constitution §L10.5, NOT in Tier A scope, 留 Tier A + T1.5 + Tier B + 横切层 全 closed 后):
-- paper-mode 5d 通过 (Gate A 部分)
+- paper-mode 5d 通过 (Gate A 部分) — ⏭️ post-ADR-063: satisfied by Tier B `RiskBacktestAdapter` replay 等价 path 替代 wall-clock
 - 元监控 0 P0 (Gate A 部分)
 - Tier A ADR 全 sediment (Gate A 部分)
 - 5 SLA 满足
