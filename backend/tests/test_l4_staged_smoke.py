@@ -330,3 +330,133 @@ class TestStagedSmokeBrokerWire:
         assert broker_result.success is False
         assert broker_result.new_plan.status == PlanStatus.FAILED
         assert "live_trading_disabled" in (broker_result.error_msg or "")
+
+
+# §7 8c-followup + S9a/S9b — 历史回放 end-to-end chain smoke
+# (batched 平仓 → trailing stop check → broker wire → re-entry tracker)
+
+
+class TestHistoricalReplayChain:
+    """Verify full V3 §7 chain end-to-end against RiskBacktestAdapter stub.
+
+    Replays a realistic scenario:
+      1. CorrelatedDrop P0 event triggers BatchedPlanner → 3 ExecutionPlan
+      2. Each batch dispatches via broker_executor + RiskBacktestAdapter stub
+      3. Sold records collected from broker calls
+      4. Days later, prices rebound → ReentryTracker suggests re-entry
+      5. Verify adapter call counts + reentry suggested qty
+    """
+
+    def test_batched_to_broker_to_reentry_chain(self) -> None:
+        """Full V3 §7.2 → §7.3 (broker wire) → §7.4 chain."""
+        from datetime import UTC
+        from datetime import timedelta as _td
+
+        from qm_platform.risk.execution.batched_planner import (
+            BatchedPositionInput,
+            generate_batched_plans,
+        )
+        from qm_platform.risk.execution.reentry_tracker import (
+            ReentryTracker,
+            SoldRecord,
+        )
+
+        adapter = RiskBacktestAdapter(prices={"AAA": 100.0, "BBB": 80.0})
+
+        # Step 1: P0 trigger → BatchedPlanner generates 3 batches per position
+        sell_at = datetime(2026, 5, 13, 10, 0, tzinfo=UTC)
+        plans = generate_batched_plans(
+            trigger_event_id=99,
+            trigger_reason="CorrelatedDrop 4+ stocks",
+            positions=[
+                BatchedPositionInput(
+                    code="AAA",
+                    shares=300,
+                    current_price=100.0,
+                    daily_volume=1_000_000.0,
+                    drop_pct=-0.08,
+                    sentiment_24h=-0.5,
+                ),
+                BatchedPositionInput(
+                    code="BBB",
+                    shares=150,
+                    current_price=80.0,
+                    daily_volume=500_000.0,
+                    drop_pct=-0.06,
+                    sentiment_24h=-0.3,
+                ),
+            ],
+            mode=ExecutionMode.OFF,  # immediate dispatch
+            at=sell_at,
+        )
+        # 2 positions × 3 batches = 6 plans
+        assert len(plans) == 6
+
+        # Step 2: Each batch dispatches via broker_executor (sustained S8 wire)
+        for plan in plans:
+            broker_result = execute_plan_sell(plan=plan, broker_call=adapter.sell)
+            assert broker_result.success is True
+            assert broker_result.new_plan.status == PlanStatus.EXECUTED
+
+        # adapter recorded 6 sell calls (3 per symbol)
+        assert len(adapter.sell_calls) == 6
+        aaa_calls = [c for c in adapter.sell_calls if c["code"] == "AAA"]
+        bbb_calls = [c for c in adapter.sell_calls if c["code"] == "BBB"]
+        assert len(aaa_calls) == 3
+        assert len(bbb_calls) == 3
+        # AAA shares split 100/100/100, BBB 50/50/50
+        assert sum(c["shares"] for c in aaa_calls) == 300
+        assert sum(c["shares"] for c in bbb_calls) == 150
+
+        # Step 3: Days later, AAA rebounds within +5%, sentiment 转正, regime calm
+        tracker = ReentryTracker()
+        sold_aaa = SoldRecord(
+            symbol="AAA",
+            sell_price=100.0,
+            sell_qty=300,
+            sell_at=sell_at,
+            sell_reason="CorrelatedDrop 4+ stocks",
+        )
+        result = tracker.check(
+            sold=sold_aaa,
+            current_price=103.0,  # +3%, within +5%
+            sentiment_24h=0.4,  # 转正
+            regime="calm",
+            at=sell_at + _td(hours=18),  # within 1-day window
+        )
+
+        assert result.should_notify is True
+        assert result.symbol == "AAA"
+        assert result.suggested_qty == 150  # 50% of 300
+        assert result.price_ok is True
+        assert result.sentiment_ok is True
+        assert result.regime_ok is True
+        assert result.within_window is True
+
+    def test_chain_no_reentry_when_regime_stress(self) -> None:
+        """If regime remains stressed, no re-entry suggestion even on price rebound."""
+        from datetime import UTC
+        from datetime import timedelta as _td
+
+        from qm_platform.risk.execution.reentry_tracker import (
+            ReentryTracker,
+            SoldRecord,
+        )
+
+        tracker = ReentryTracker()
+        sold_at = datetime(2026, 5, 13, 10, 0, tzinfo=UTC)
+        sold = SoldRecord(
+            symbol="AAA",
+            sell_price=100.0,
+            sell_qty=300,
+            sell_at=sold_at,
+        )
+        result = tracker.check(
+            sold=sold,
+            current_price=103.0,
+            sentiment_24h=0.4,
+            regime="stress",  # still stressed
+            at=sold_at + _td(hours=6),
+        )
+        assert result.should_notify is False
+        assert result.regime_ok is False
