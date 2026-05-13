@@ -138,3 +138,7 @@ cache/earnings_sue.parquet
 cache/industry_map.parquet
 cache/registry_audit/
 cache/*.json
+
+# HF models cache (TB-3 BGE-M3 + future)
+models/bge-m3/
+models/hf_*/

@@ -5,16 +5,23 @@ Provides MarketIndicators inputs to MarketRegimeService.classify via Celery Beat
   - StubIndicatorsProvider (TB-2c scope — returns all-None, sustained TB-2a design
     codification: all-None acceptable, prompts handle "data unavailable")
 
-Real data source wire (留 TB-2d/5):
-  - sse_return / hs300_return: SELECT close/prev_close FROM klines_daily WHERE code IN ('000001.SH', '000300.SH')
-  - breadth_up / breadth_down: SELECT COUNT(*) FROM realtime_quotes WHERE pct_chg > 0 / < 0
-  - north_flow_cny: SELECT north_money FROM moneyflow_hsgt WHERE trade_date = today
-  - iv_50etf: Tushare option_iv API or fallback estimator (留 TB-5 batch)
+Real data source wire — see `default_indicators_provider.DefaultIndicatorsProvider`
+for actual TB-2d + TB-2e 6/6 implementation. Per-field source mapping:
+  - sse_return / hs300_return: SELECT pct_change FROM index_daily WHERE index_code IN
+    ('000001.SH', '000300.SH') ORDER BY trade_date DESC LIMIT 1, then / 100 to convert
+    percent → decimal fraction (TB-2d sediment)
+  - breadth_up / breadth_down: SUM(CASE WHEN pct_change > 0 / < 0) FROM klines_daily
+    WHERE trade_date = latest AND is_suspended = false (TB-2d sediment)
+  - north_flow_cny: Tushare moneyflow_hsgt API .north_money (亿 CNY, latest trade_date,
+    NaN-skipped); no local moneyflow_hsgt table in current DB schema (TB-2e sediment)
+  - iv_50etf: 上证 20-day realized volatility × sqrt(252) annualized as proxy for V3
+    §5.3 line 658 "恐慌指数 proxy" (TB-2e sediment); true 50ETF BS-IV pipeline 留 TB-5
+    if needed beyond realized vol proxy
 
 Sustains 3-layer pattern (反 hidden coupling):
-  - 本模块 = Engine PURE side (provider interface + stub)
+  - 本模块 = Engine PURE side (provider Protocol + StubIndicatorsProvider for tests / fallback)
+  - default_indicators_provider.py = Concrete real-data implementation (TB-2d + TB-2e)
   - app/tasks/market_regime_tasks.py = Beat orchestration (calls provider + service)
-  - Real-data DefaultIndicatorsProvider 留 TB-2d/5 separate sub-PR
 
 关联 V3: §5.3 line 658 (5 input dimensions) / §11.2 (provider location TBD)
 关联 ADR: ADR-022 / ADR-029 / ADR-036 / ADR-064 / ADR-066
