@@ -55,6 +55,18 @@ _IV_PROXY_WINDOW_DAYS: int = 20
 _TRADING_DAYS_PER_YEAR: int = 252
 
 
+def _is_nan(x: Any) -> bool:
+    """Pandas NaN detection without numpy/pandas import in hot path.
+
+    Reviewer-fix (PR #338 MEDIUM 1): moved from module bottom to constants
+    block for discoverability — only called by `_fetch_north_flow_cny`.
+    """
+    try:
+        return x != x  # NaN != NaN (float NaN identity check)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class DefaultIndicatorsProvider:
     """V3 §5.3 real-data IndicatorsProvider — queries index_daily + klines_daily + Tushare hsgt.
 
@@ -339,9 +351,3 @@ class DefaultIndicatorsProvider:
             return None
 
 
-def _is_nan(x: Any) -> bool:
-    """Pandas NaN detection without numpy/pandas import in hot path."""
-    try:
-        return x != x  # NaN != NaN (float NaN identity check)
-    except Exception:  # noqa: BLE001
-        return False
