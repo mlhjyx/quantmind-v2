@@ -6,9 +6,10 @@ sub-item only — broker invocation deferred to 8c-followup PR (5/5 红线 关�
 needs explicit user ack per Plan §A S8 红线 SOP).
 
 Flow:
-  1. Celery Beat fires every 1min (crontab `* * * * 1-5` Asia/Shanghai trading hours)
+  1. Celery Beat fires every 1min during trading hours (crontab `* 9-14 * * 1-5`
+     Asia/Shanghai). Reviewer P1-1 fix: previous docstring omitted hour range.
   2. Task SELECTs execution_plans WHERE status='PENDING_CONFIRM' AND
-     cancel_deadline < NOW() — ORDER BY cancel_deadline ASC LIMIT 100
+     cancel_deadline < NOW() — ORDER BY cancel_deadline ASC LIMIT SWEEP_BATCH_LIMIT
   3. For each expired plan, race-safe UPDATE status to TIMEOUT_EXECUTED with
      user_decision='timeout' (atomic compare-and-set, 反 race with concurrent
      webhook user CONFIRM/CANCEL)
@@ -33,15 +34,18 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.config import settings
 from app.services.db import get_sync_conn
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("celery.l4_sweep_tasks")
 
-# Batch limit per sweep iteration — caps blast radius if many plans expire at once
-# (e.g. crash + restart with backlog). 100 plans/min is generous given typical
-# trading-day plan volume (~tens/day).
-SWEEP_BATCH_LIMIT: int = 100
+# Reviewer P2-1 fix: batch limit reads from settings (override path), default 100.
+# Caps blast radius if many plans expire at once (e.g. crash + restart with
+# backlog). 100 plans/min is generous given typical trading-day plan volume
+# (~tens/day). Backlog 1000+ rows → ~10 min full clear. Operator can raise
+# via settings.L4_SWEEP_BATCH_LIMIT in .env.
+SWEEP_BATCH_LIMIT: int = getattr(settings, "L4_SWEEP_BATCH_LIMIT", 100)
 
 
 @celery_app.task(
@@ -67,8 +71,12 @@ def sweep_pending_confirm_plans() -> dict[str, Any]:
     Raises:
         Any psycopg2.Error propagates to Celery retry.
     """
-    conn = get_sync_conn()
+    # Reviewer LOW fix: pre-assign conn=None so a get_sync_conn() failure doesn't
+    # raise UnboundLocalError in the finally block (which would mask the original
+    # exception, e.g. PG connection refused). Standard psycopg2 pattern.
+    conn = None
     try:
+        conn = get_sync_conn()
         result = _sweep_inner(conn=conn)
         conn.commit()
         logger.info(
@@ -80,10 +88,12 @@ def sweep_pending_confirm_plans() -> dict[str, Any]:
         )
         return result
     except Exception:
-        conn.rollback()
+        if conn is not None:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def _sweep_inner(*, conn: Any, limit: int = SWEEP_BATCH_LIMIT) -> dict[str, Any]:
@@ -99,6 +109,10 @@ def _sweep_inner(*, conn: Any, limit: int = SWEEP_BATCH_LIMIT) -> dict[str, Any]
     cur = conn.cursor()
     try:
         # Step 1: SELECT expired PENDING_CONFIRM plans
+        # Reviewer P1-2 note: cancel_deadline column is TIMESTAMPTZ; PostgreSQL
+        # NOW() returns the session's current UTC timestamp regardless of Celery's
+        # `timezone="Asia/Shanghai" + enable_utc=False` config (PG TIMESTAMPTZ
+        # arithmetic is timezone-correct internally). 铁律 41 sustained.
         cur.execute(
             """
             SELECT plan_id::text AS plan_id, symbol_id, qty, cancel_deadline,
