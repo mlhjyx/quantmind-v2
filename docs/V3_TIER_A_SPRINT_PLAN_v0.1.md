@@ -189,12 +189,12 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S8 |
 | Paper-mode | sustained S8 |
 
-### S10 — paper-mode 5d dry-run + 触发率验证 ⚠️ SETUP-READY (PR #315 `acc77f6` infrastructure landed 2026-05-13; 5d wall-clock kickoff pending operational cycle)
+### S10 — paper-mode 5d dry-run + 触发率验证 ⏭️ CODE ✅ + 5d ACCEPTANCE DEFERRED per ADR-063 (operational kickoff cycle ran 2026-05-13; empty-system trivial-pass anti-pattern → Tier B真测路径)
 
 | element | content |
 |---|---|
-| Setup progress | **Code prereqs ✅** (PR #315): NEW DDL `risk_metrics_daily` (V3 §13.2 1:1 schema) + NEW PURE `daily_aggregator.py` (spec-driven 9-metric SQL dispatch + per-query rollback safety + UPSERT idempotent) + NEW PURE `verify_report.py` (V3 §15.4 4-item AcceptanceReport + markdown contract) + 2 thin CLI wrappers + 25 tests. **Operational kickoff PENDING** (separate user-driven cycle): apply migration → register Celery Beat daily extract task → run 5d wall-clock → verify CLI → ADR-062 closure verdict + quantmind-v3-tier-a-mvp-gate-evaluator subagent Gate A verify. |
-| Sediment | ADR-062 NEW (5 decisions: spec-driven dispatch / UPSERT idempotency / V3 §15.4 acceptance encoding / DDL hygiene / thin CLI wrappers) + LL-156 NEW (code-vs-operational sprint split pattern 2nd 实证 + per-query rollback safety + 6th consecutive sediment-in-same-session enforcement + reviewer 6th 实证 cumulative) + REGISTRY ADR-062 row + 状态分布 51→52 + 总 52→53 # space. |
+| Setup progress | **Code prereqs ✅** (PR #315/#319/#320/#321 cumulative 2026-05-13): NEW DDL `risk_metrics_daily` applied to PG + NEW PURE `daily_aggregator.py` (spec-driven 9-metric SQL dispatch + per-query rollback safety + UPSERT idempotent) + NEW PURE `verify_report.py` (V3 §15.4 4-item AcceptanceReport + markdown contract) + 2 thin CLI wrappers + Celery Beat wire (`risk-metrics-daily-extract-16-30` crontab 30 16 * * 1-5 Asia/Shanghai) + 2 SQL bug fixes (column-name drift + severity case mismatch) + 3 new smoke tests + C1 synthetic 5d toolkit + 38 cumulative tests. **Operational kickoff cycle ran 2026-05-13 ~20:14-20:50**: Servy worker+beat restart loaded new code → manual Celery fire validated chain → 5-day historical replay (5-7..5-13) executed → V3 §15.4 verify CLI generated report against synthetic data showing 3/4 PASS + 1 deferred (latency instrumentation not yet wired). **5d natural-fire window DEFERRED per ADR-063**: empty-system (0 持仓 + 0 tick subscribe) trivial-pass anti-pattern → 真测路径转 Tier B `RiskBacktestAdapter` (S5 sub-PR 5c stub 已留, 完整实现 = 历史 minute_bars 回放 → 9 RealtimeRiskRule 真触发). |
+| Sediment | ADR-062 NEW (S10 setup, 5 decisions) + ADR-063 NEW (5d skip per empty-system anti-pattern, 1 decision + Constitution §L10.1 Gate A footnote amendment) + LL-156 (code-vs-operational split) + LL-157 NEW (column-name + case-mismatch mock-conn anti-pattern 2nd-PR 实证 — bug surfaced during 1:1 operational test) + REGISTRY ADR-062/063 rows + Constitution §L10.1 Gate A item 2 strikethrough + DEFERRED tag + memory handoff. |
 
 | element | content |
 |---|---|

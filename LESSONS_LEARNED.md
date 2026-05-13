@@ -5100,3 +5100,45 @@ PR #307 + #308 + #309 + #311 + #313 + #315 — 6 consecutive PRs proactively sed
 5. p0_false_positive_count > p0_total warning (caller logic check)
 
 **关联**: PR #315 (`e3d04c7` initial + `6c5ab00` reviewer-fix → squash `acc77f6` merged 2026-05-13) / ADR-062 NEW / ADR-027 design SSOT / ADR-054-061 (source tables) / LL-150-155 sequence / 铁律 22/32/33 / Plan §A S10 row ⚠️ SETUP-READY (5d kickoff operational, pending user-driven cycle) / code-vs-operational split pattern 2nd 实证 cumulative (8c partial-followup + 9a-9b precedents) + 6th consecutive sediment-in-same-session enforcement + reviewer 6th 实证 cumulative
+
+---
+
+## LL-157: V3 §S10 5d Operational Kickoff Surfaced 2 Mock-Conn Schema-Drift Bugs + Empty-System Trivial-Pass Anti-Pattern (2026-05-13, PR #319+#320+#321 cumulative + ADR-063 sediment)
+
+**核心教训**: `daily_aggregator._DEFAULT_SPECS` 在 PR #315 落地时通过 7 个 MagicMock-conn unit tests, 但生产首次 Celery fire (PR #319 wire 后, 本 session 20:17) 立即暴露 2 类 silent-zero bug:
+
+1. **列名漂移**: `WHERE date = %s` 用了 `total_cost_usd`/`date`, 真 schema 是 `cost_usd_total`/`day`。SQL parse OK + 返回 PG error, 被 `_run_query_safe` swallow → 永远 cost=0.
+2. **Case-mismatch**: `severity = 'P0'` (uppercase) 但 CHECK constraint + Severity enum .value 全 lowercase ('p0')。SQL parse OK, WHERE 永远 0 match → 永远 P0/P1/P2 count=0.
+
+MagicMock conn **不解析 SQL 字符串**, 所以两 bug 都漏到生产。Bug 1 在 Celery fire 时被 `_run_query_safe` ERROR log 暴露 (尚可见), bug 2 完全 silent (无 PG error, 只返回 0 like normal empty data).
+
+**修复 + 防回归** (PR #320):
+- 1-line SQL fix per bug × 2 = 4 行修复
+- NEW 3 smoke tests with real PG conn:
+  - `test_each_spec_sql_parses_against_real_schema`: sentinel 1900-01-01 跑每条 spec, 验 schema-level parse 不炸
+  - `test_aggregate_daily_metrics_no_warn_against_real_schema`: caplog 监听 ERROR log
+  - `test_alerts_severity_case_matches_real_schema`: SAVEPOINT 插 p0/p1/p2 sentinel rows → aggregate → 断言 count==1 → ROLLBACK
+- 第三个 smoke 是 case-mismatch 唯一 detectable test 模式 (SQL parse + sentinel-empty 数据测试无法 distinguish "case wrong" from "no data")
+
+**第二层教训** (ADR-063): 修了 silent-zero bug 后, 5d 自然 fire 窗口 (5-14 → 5-20) 在 empty-system (0 持仓 + 0 tick subscribe + free LLM provider) 仍**信息熵 ≈ 0** — verify 报告 trivially-pass 不 distinguishable from "another silent-zero bug regression"。empty-system 5d wall-clock test **不是** V3 §15.4 设计本意的真测, 只是 "code parses + Beat fires + DB writes 0s".
+
+**反 anti-pattern enforcement**:
+- ❌ Empty-system 5d trivial-pass: 跑空数据 PASS ≠ "verified". V3 §15.4 4 项 acceptance 设计前提是 system actively executing (real tick stream + real positions + real LLM decisions).
+- ✅ Tier B RiskBacktestAdapter 真测路径: 历史 minute_bars (5 年 ~191M rows × 2537 stocks) 回放 → 9 RealtimeRiskRule 真触发 → 真数据流 → meaningful verify 报告. S5 sub-PR 5c 已 stub 接口, Tier B 完整实现 ~3 day 工程.
+- ✅ Constitution §L10.1 Gate A footnote amendment: Gate A 第 2 项 paper-mode 5d 验收 strikethrough + DEFERRED per ADR-063; Gate A pass 仅要求其余 7 项 ✅.
+
+**Mock-conn schema-drift anti-pattern family 累积** (LL-115 family):
+- 1-7 实证 cumulative pre-本 session
+- 8th: PR #320 v1 — `llm_cost_total` column-name drift
+- 9th: PR #320 v2 — `severity` case-mismatch (reviewer CRITICAL 捕获, smoke v1 漏, smoke v2 SAVEPOINT 才 detect)
+- 9 实证后 sediment 为强制 SOP: **PURE SQL aggregator/dispatcher 模块 MUST 有 schema-aware smoke test against real PG**, mock-conn unit test 仅 cover 业务逻辑非 schema-level correctness.
+
+**沉淀触发模式 (7th consecutive sediment-in-same-session enforcement)**:
+- PR #307+#308+#309+#311+#313+#315+(#319+#320+#321+ADR-063 cumulative) → 7+ PR cumulative 反 deepseek-style sediment gap sustained ENFORCEMENT
+- 本 LL 是 1 ADR + 4 doc edit (Constitution + Plan + REGISTRY + LL-157) 单 sediment PR, 沿用 PR #316 sediment 模板.
+
+**Reviewer 2nd-set-of-eyes 7th 实证 cumulative**:
+- PR #320 v1 reviewer caught **CRITICAL** pre-existing severity case bug (not introduced by this PR but exposed by new smoke test). Single PR catching 2 bugs (column-name drift + reviewer-CRITICAL case) = highest yield per PR cumulative.
+- 7 distinct catch categories: LIKE injection / P1+P2 misc / HIGH live broker / test-by-accident / MEDIUM elapsed guard / HIGH data-availability + cross-finding DB review / CRITICAL pre-existing case mismatch.
+
+**关联**: PR #319 `2b8b84f` (Beat wire) + PR #320 `f054065` (2 bug fix + 3 smoke) + PR #321 `0111b3c` (C1 toolkit + cleanup runbook + verify report) + ADR-063 NEW (5d skip per empty-system) + LL-115 family 9th cumulative + LL-098 X10 (反 silent forward-progress) sustained + Constitution §L10.1 Gate A 第 2 项 amendment + Plan §A S10 DEFERRED tag + 铁律 22/33 / 7th consecutive sediment-in-same-session enforcement / reviewer 7th 实证 cumulative
