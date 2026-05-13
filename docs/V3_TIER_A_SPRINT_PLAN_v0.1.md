@@ -172,16 +172,16 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | redline_pretool_block hook + quantmind-redline-guardian subagent (双层); 5/5 红线 关键点 → explicit user ack 3-step gate (AskUserQuestion + classifier backstop + 授权); 8a/8b/8c-partial/8c-followup 0 broker call (paper-mode) + 0 真账户 mutation + 0 .env mutation sustained. |
 | Paper-mode | LIVE_TRADING_DISABLED=true sustained; factory routes to RiskBacktestAdapter stub (0 broker call); live mode wired but gated by 3-layer defense (factory + LiveTradingGuard + adapter exception catch). |
 
-### S9 — L4 batched + trailing + Re-entry
+### S9 — L4 batched + trailing + Re-entry ⚠️ PARTIAL (9a ✅ PR #311 `a1ac5f6`+sediment 本commit; 9b pending re-entry tracker)
 
 | element | content |
 |---|---|
-| Scope | V3 §7.2-§7.4 batched + trailing + Re-entry; skeleton §2.1 (TDD-first) |
-| Acceptance | batched sell 多笔; trailing stop; Re-entry 决议; 历史回放; unit ≥95% |
-| File delta | ~5-7 files / ~800-1200 lines |
-| Chunked sub-PR | **single sub-PR** OR **chunked 2** (batched+trailing vs Re-entry); CC 起手实测决议 |
-| Cycle | V3 §12.1 line 1318: 1 周 |
-| Dependency | 前置: S8 / 后置: S10 |
+| Scope | V3 §7.2 batched + §7.3 trailing + §7.4 Re-entry; skeleton §2.1 (TDD-first). Chunked into 9a (batched+trailing) + 9b (re-entry + 历史回放). |
+| Acceptance progress | **9a ✅ DONE** (PR #311): NEW `batched_planner.py` PURE engine (N=max(3, ceil(×0.3)), 5min stagger, per-batch 30min deadline, equal qty split + remainder forward, priority drop/volume/sentiment/code, 0-qty skip, mode routing) + NEW `trailing_stop.py` RealtimeRiskRule (replaces PMSRule v1 static per ADR-016 D-M2; activation pnl≥20%, bracket trailing % per V3 §7.3, peak ratchet, in-memory state, ATR via context.realtime). 68 tests. **Activation-vs-tracking semantic correction** (reviewer HIGH cross-finding): once activated, state persists on retrace; test-by-accident anti-pattern 1st 实证. **9b PENDING**: V3 §7.4 re-entry tracker + DingTalk push + 历史回放 smoke + between-batch re-eval Celery task + PMSRule v1 actual deprecation. |
+| File delta | 9a: 4 files / 1128 insertions (planner 220 + rule 215 + tests 410 + tests 285). 9b est: ~5-7 files / ~600-900 lines. |
+| Chunked sub-PR | **chunked into 2**: 9a ✅ PR #311 / 9b pending. No new 5/5 红线 触发 in either (broker dispatch reuses S8 8c-followup wire). |
+| Cycle | V3 §12.1 line 1318: 1 周 (range). 9a actual <1 day. 9b TBD. |
+| Dependency | 前置: S8 ✅ / 后置: S10 |
 | LL/ADR candidate | LL — Re-entry 决议算法 finding |
 | Reviewer reverse risk | trailing stop 历史回放 sim-to-real gap 风险 (PR #210 体例); CC 起手 fresh re-read sim-to-real gap finding |
 | 红线 SOP | sustained S8 |
