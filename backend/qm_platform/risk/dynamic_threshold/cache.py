@@ -117,6 +117,17 @@ class RedisThresholdCache:
             return None
 
     def set_batch(self, thresholds: dict[str, dict[str, float]], ttl: int = 300) -> None:
+        """Pipeline-write all thresholds with TTL.
+
+        Failure semantics (S7 audit-fix P1-2, post-reviewer):
+        - Redis unavailable (lazy `_ensure_redis` returned False) → silent no-op,
+          intentional fallback path documented in `_ensure_redis` (反 per-tick
+          2s blocking). Operator visibility for this path is the caller's
+          responsibility (e.g. monitoring cache miss rate).
+        - Redis available but `pipe.execute()` raises (network blip / OOM /
+          OOM-killed connection) → re-raise after logging. Caller (e.g. Celery
+          task) decides retry policy (反 silent fail-loud violation 铁律 33).
+        """
         if not self._ensure_redis():
             return
 
@@ -135,6 +146,7 @@ class RedisThresholdCache:
             )
         except Exception as e:
             logger.error("[threshold-cache:redis] set_batch failed: %s", e)
+            raise
 
     def flush(self) -> None:
         if not self._ensure_redis():

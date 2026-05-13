@@ -84,7 +84,7 @@ def test_compute_returns_calm_with_stub_inputs(monkeypatch: pytest.MonkeyPatch) 
     assert result["market_state"] == "calm"
     assert result["rules_evaluated"] > 0
     assert result["stocks_evaluated"] == 0  # stub helper returns empty
-    assert result["ttl"] == 300
+    assert result["ttl"] == 360  # P1-1 fix: Beat cadence (300s) + 20% headroom
 
 
 def test_compute_populates_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,8 +118,8 @@ def test_singletons_cached_across_calls(monkeypatch: pytest.MonkeyPatch) -> None
     assert cache1 is cache2
 
 
-def test_cache_set_batch_called_with_ttl_300(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cache.set_batch is invoked with TTL=300s aligned with Beat cadence."""
+def test_cache_set_batch_called_with_ttl_360(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cache.set_batch invoked with TTL=360s (Beat cadence 300s + 20% headroom, P1-1)."""
     mock_cache = MagicMock()
     monkeypatch.setattr(dtt, "_cache", mock_cache)
     monkeypatch.setattr(dtt, "_engine", None)
@@ -131,9 +131,42 @@ def test_cache_set_batch_called_with_ttl_300(monkeypatch: pytest.MonkeyPatch) ->
     args = mock_cache.set_batch.call_args.args
     # TTL passed as kwarg or as second positional
     if kwargs.get("ttl") is not None:
-        assert kwargs["ttl"] == 300
+        assert kwargs["ttl"] == 360
     else:
-        assert args[1] == 300
+        assert args[1] == 360
+
+
+def test_cache_set_batch_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P1-2: cache.set_batch raise propagates to Celery (反 silent failure 铁律 33)."""
+    mock_cache = MagicMock()
+    mock_cache.set_batch.side_effect = RuntimeError("redis OOM")
+    monkeypatch.setattr(dtt, "_cache", mock_cache)
+    monkeypatch.setattr(dtt, "_engine", None)
+
+    with pytest.raises(RuntimeError, match="redis OOM"):
+        dtt.compute_dynamic_thresholds.run()
+
+
+def test_stub_warning_logged_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """P2-6: stub posture warning fires once + is silent on subsequent ticks."""
+    from qm_platform.risk.dynamic_threshold.cache import InMemoryThresholdCache
+
+    mem_cache = InMemoryThresholdCache()
+    monkeypatch.setattr(dtt, "_cache", mem_cache)
+    monkeypatch.setattr(dtt, "_engine", None)
+    monkeypatch.setattr(dtt, "_stub_warned", False)  # reset
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="celery.dynamic_threshold_tasks"):
+        dtt.compute_dynamic_thresholds.run()
+        dtt.compute_dynamic_thresholds.run()
+        dtt.compute_dynamic_thresholds.run()
+
+    stub_warnings = [r for r in caplog.records if "STUB inputs active" in r.message]
+    assert len(stub_warnings) == 1  # only first tick warns
 
 
 # §4 Build-helper unit tests (反 silent stub drift in follow-up sub-PR)

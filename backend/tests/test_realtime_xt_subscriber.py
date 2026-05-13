@@ -124,3 +124,40 @@ def test_avg_volume_provider_returning_none_propagates() -> None:
     """Provider explicitly returning None is preserved (not coerced)."""
     sub = XtQuantTickSubscriber(avg_volume_provider=lambda c, d: None)
     assert sub.get_avg_daily_volume("600519.SH") is None
+
+
+# §3 P2-5: rate-limited provider error counter
+
+
+def test_provider_error_count_increments_on_failure() -> None:
+    """Each provider failure increments the consecutive error counter."""
+
+    def boom(code: str, days: int) -> float | None:
+        raise RuntimeError("db down")
+
+    sub = XtQuantTickSubscriber(avg_volume_provider=boom)
+    assert sub._provider_error_count == 0
+    sub.get_avg_daily_volume("A.SH")
+    sub.get_avg_daily_volume("B.SH")
+    sub.get_avg_daily_volume("C.SH")
+    assert sub._provider_error_count == 3
+
+
+def test_provider_error_count_resets_on_success() -> None:
+    """First successful provider call resets the consecutive error counter."""
+    calls: list[int] = []
+
+    def flaky(code: str, days: int) -> float | None:
+        calls.append(1)
+        if len(calls) <= 3:
+            raise RuntimeError("transient")
+        return 999.0
+
+    sub = XtQuantTickSubscriber(avg_volume_provider=flaky)
+    sub.get_avg_daily_volume("A.SH")
+    sub.get_avg_daily_volume("B.SH")
+    sub.get_avg_daily_volume("C.SH")
+    assert sub._provider_error_count == 3
+    # 4th call succeeds → counter reset
+    assert sub.get_avg_daily_volume("D.SH") == pytest.approx(999.0)
+    assert sub._provider_error_count == 0

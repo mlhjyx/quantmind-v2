@@ -59,6 +59,10 @@ logger = logging.getLogger("celery.dynamic_threshold_tasks")
 # cache is per-process Redis client reference). 反 per-tick re-import overhead.
 _engine: DynamicThresholdEngine | None = None
 _cache: ThresholdCache | None = None
+# Reviewer P2-6: one-time stub-active warning so operator sees in production
+# logs that real CSI300 / holdings wire is still deferred (defaults to CALM
+# state regardless of actual market). Cleared once real wire lands.
+_stub_warned: bool = False
 
 
 def _get_engine() -> DynamicThresholdEngine:
@@ -144,6 +148,17 @@ def compute_dynamic_thresholds() -> dict[str, Any]:
     Raises:
         Re-raises any unhandled exception from engine.evaluate() for Celery retry.
     """
+    global _stub_warned
+    if not _stub_warned:
+        # Reviewer P2-6: surface stub posture once at first invocation
+        logger.warning(
+            "[dynamic-threshold-beat] STUB inputs active — _build_market_indicators "
+            "returns all-None and _build_stock_metrics returns {}; threshold state "
+            "will report CALM regardless of real market conditions. Wire real "
+            "CSI300/holdings/ATR/beta data path before S10 paper-mode 5d (LL-141)."
+        )
+        _stub_warned = True
+
     indicators = _build_market_indicators()
     stock_metrics = _build_stock_metrics()
     engine = _get_engine()
@@ -152,9 +167,15 @@ def compute_dynamic_thresholds() -> dict[str, Any]:
     state = engine.assess_market_state(indicators)
     thresholds = engine.evaluate(indicators, stock_metrics=stock_metrics or None)
 
-    # 5min TTL aligns with Beat cadence — stale cache returns None → rules fallback
-    # to hardcoded defaults (反 stale threshold leak across Beat down period).
-    ttl_seconds = 300
+    # TTL = Beat cadence + 20% headroom (reviewer P1-1) — at TTL=300s exactly,
+    # queue jitter / pipeline latency could let keys expire just before the next
+    # Beat tick. 360s closes the expiry race; L1 still falls back to hardcoded
+    # defaults if cache.get() returns None (反 stale threshold leak).
+    ttl_seconds = 360
+    # Reviewer P1-2: cache.set_batch now re-raises on Redis pipe.execute failure
+    # (see cache.py docstring) → exception propagates here → Celery retry per
+    # task_acks_late + task_reject_on_worker_lost. Redis-unavailable silent
+    # fallback path (no Redis daemon at all) still no-ops without raise.
     cache.set_batch(thresholds, ttl=ttl_seconds)
 
     cache_writes = sum(len(stocks) for stocks in thresholds.values())

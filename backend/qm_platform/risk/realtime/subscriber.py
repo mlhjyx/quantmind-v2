@@ -57,6 +57,11 @@ class XtQuantTickSubscriber:
         # caller wires DB-based fn (SELECT AVG(volume) FROM klines_daily ...).
         # None (default) keeps the safe-skip stub for unit tests and paper-mode.
         self._avg_volume_provider: AvgVolumeProvider | None = avg_volume_provider
+        # Reviewer P2-5: rate-limited provider error counter — log WARNING per
+        # failure, but escalate to ERROR every 100 consecutive failures so a
+        # silently broken DB provider becomes operator-visible without flooding
+        # tick-frequency logs. Reset on first successful call.
+        self._provider_error_count: int = 0
         # Rolling state
         self._current_ticks: dict[str, dict[str, Any]] = {}
         self._price_snapshots: dict[str, list[tuple[datetime, float]]] = {}
@@ -194,6 +199,13 @@ class XtQuantTickSubscriber:
 
         if self._xtdata is not None and hasattr(self._xtdata, "unsubscribe_quote"):
             for s, seq in list(self._subscribe_ids.items()):
+                # TODO(铁律 1: 外部 API 必须先读官方文档): xtquant 0.0.x SDK ships
+                # `unsubscribe_quote(seq)` (single positional int arg per current
+                # xtdata.py); production activation MUST verify the actual installed
+                # xtquant version's signature — alternative forms `(stock_code,
+                # period)` exist in some forks. If signature differs, the call
+                # silently fails into the `except` below and the native sub leaks
+                # (the bug this code aims to fix). Reviewer P1-4 acknowledged.
                 try:
                     self._xtdata.unsubscribe_quote(seq)
                     logger.info("[xt-subscriber] unsubscribed %s seq=%d", s, seq)
@@ -269,13 +281,35 @@ class XtQuantTickSubscriber:
         if self._avg_volume_provider is None:
             return None
         try:
-            return self._avg_volume_provider(code, days)
+            value = self._avg_volume_provider(code, days)
+            # Reviewer P2-5: reset error counter on first success
+            if self._provider_error_count > 0:
+                logger.info(
+                    "[xt-subscriber] avg_volume_provider recovered after %d failures",
+                    self._provider_error_count,
+                )
+                self._provider_error_count = 0
+            return value
         except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "[xt-subscriber] avg_volume_provider(%s, %d) raised %s: %s",
-                code,
-                days,
-                type(e).__name__,
-                e,
-            )
+            self._provider_error_count += 1
+            # Reviewer P2-5: rate-limited operator-visible ERROR every 100 failures
+            if self._provider_error_count % 100 == 1:
+                logger.error(
+                    "[xt-subscriber] avg_volume_provider(%s, %d) raised %s: %s "
+                    "(consecutive_failures=%d, VolumeSpike/LiquidityCollapse "
+                    "rules silent-skip until recovery)",
+                    code,
+                    days,
+                    type(e).__name__,
+                    e,
+                    self._provider_error_count,
+                )
+            else:
+                logger.warning(
+                    "[xt-subscriber] avg_volume_provider(%s, %d) raised %s: %s",
+                    code,
+                    days,
+                    type(e).__name__,
+                    e,
+                )
             return None
