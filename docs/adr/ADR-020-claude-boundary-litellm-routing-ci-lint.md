@@ -1,6 +1,6 @@
 # ADR-020: Claude Boundary + LiteLLM Routing + CI Lint Enforcement
 
-**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §C Gate B item 4 closure)
+**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §A T1.5 Acceptance item (4) closure)
 **Date**: 2026-04-29 (decision) / 2026-05-13 (formal promote)
 **Decider**: User 4-29 决议
 **Related**: ADR-019 (V3 vision) / ADR-022 (反 silent overwrite) / ADR-031 (S2 LiteLLMRouter implementation path) / ADR-032 (S4 caller bootstrap factory) / ADR-033 (News 源替换 5-02) / ADR-034 (qwen3 fallback 5-06) / ADR-035 (智谱 News#1 + V4 路由层 5-06) / ADR-036 (BULL/BEAR V4-Flash → V4-Pro mapping) / ADR-039 (LLM audit failure resilience) / ADR-064 (Plan v0.2 5 决议 lock) / V3_DESIGN §17.1 (SSOT)
@@ -98,7 +98,7 @@ Sustained subsequent ADR cumulative chain:
 ### §3.4 Test coverage
 
 - `scripts/check_llm_imports.sh` unit + integration tests sediment (S2/S4 sub-PR cycle cumulative)
-- Pre-commit + pre-push hook integration verified via 29 PR cumulative 真 fire log
+- Pre-commit + pre-push hook integration verified via 29 PR cumulative pre-push hook fire log
 
 ---
 

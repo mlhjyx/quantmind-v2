@@ -76,11 +76,11 @@
 
 ## 状态分布 (5-13 sub-PR closure + Plan v0.2 sub-PR sediment 修订, post-ADR-064)
 
-- **committed ( file 在 docs/adr/)**: 53 个 (+ADR-054..063) — S5 L1 实时化 closure + S7 L3 动态阈值 closure + S8 fully ✅ DONE (8a/8b/8c-partial/8c-followup) + S9 fully ✅ DONE (9a/9b) + S10 setup + 5d-skip decision (operational kickoff replaced by Tier B real-test path)
-- **reserved**: 5 个 (ADR-019/020/025/026/030) — ADR-029 promoted to committed via ADR-054 (S5 L1 实时化)
+- **committed ( file 在 docs/adr/)**: 56 个 (含 ADR-019/020/029 T1.5b-2 formal promote 2026-05-13 + ADR-054~063 + ADR-064 Plan v0.2 5 决议 lock) — S5 L1 实时化 closure + S7 L3 动态阈值 closure + S8 fully ✅ DONE (8a/8b/8c-partial/8c-followup) + S9 fully ✅ DONE (9a/9b) + S10 setup + 5d-skip decision (operational kickoff replaced by Tier B real-test path) + ADR-019/020/029 foundational Tier A formal promote (Plan v0.2 §A T1.5 Acceptance item (4) closure)
+- **reserved**: 3 个 (ADR-025/026/030) — ADR-025 (RAG vector store) / ADR-026 (Bull/Bear 2-Agent) sediment 时机 = Tier B TB-2 + TB-3 cycle (Plan v0.2); ADR-030 (Layer 4 SOP) sediment 时机 = audit Week 2 候选讨论
 - **gap (0 file, 0 reserve)**: 4 个 (ADR-015/016/017/018, 历史跳号)
 
-总 54 # space (含 gap), 活跃 50 (committed 44 + reserved 6). **跳号 ADR-038** (LiteLLM cost registry V4 gap reserve, ADR-DRAFT row 6 promote target, 等 LiteLLM SDK 升级 verify 时 sediment, sustained user Q1 (α) 反现 trigger sustained).
+总 54 # space (含 gap), 活跃 50 (committed 47 + reserved 3 post-T1.5b-2 ADR-019/020/029 promote 2026-05-13). **跳号 ADR-038** (LiteLLM cost registry V4 gap reserve, ADR-DRAFT row 6 promote target, 等 LiteLLM SDK 升级 verify 时 sediment, sustained user Q1 (α) 反现 trigger sustained).
 
 ## maintenance 规则
 
@@ -102,10 +102,11 @@
 
 ### 现 reserved # 起手时同步 update
 
-- ADR-019/020 (V3 vision / Claude 边界): V3 实施时 sediment
-- ADR-025 (RAG vector store): user 决议 vector store 选型时 sediment
-- ADR-026 (Bull/Bear 2-Agent): Tier B 架构决议时 sediment
-- ADR-029 (L1 实时化 + xtquant subscribe_quote): V3 Tier A Sprint 3 起手时 sediment
+post-T1.5b-2 (2026-05-13) ADR-019/020/029 全 committed, 剩余 3 reserved:
+
+- ADR-025 (RAG vector store 选型 pgvector + embedding model 决议): sediment 时机 = Tier B TB-3 RiskMemoryRAG cycle (Plan v0.2 §A TB-3 row, alias ADR-068 candidate per Plan v0.2 §I sub-PR cycle table)
+- ADR-026 (Bull/Bear 2-Agent debate Tier B 架构决议): sediment 时机 = Tier B TB-2 MarketRegimeService cycle (Plan v0.2 §A TB-2 row, alias ADR-067 candidate per Plan v0.2 §I sub-PR cycle table)
+- ADR-030 (Layer 4 SOP 沉淀 governance protocol): sediment 时机 = audit Week 2 候选讨论时 sediment
 - ADR-030 (Layer 4 SOP): audit Week 2 候选讨论时 sediment
 
 > **新 committed**: ADR-031 (S8 audit, 2026-05-03 PR #220) — S2 LiteLLMRouter implementation path 决议, S2 起手时引用本 ADR 渐进 deprecate plan.

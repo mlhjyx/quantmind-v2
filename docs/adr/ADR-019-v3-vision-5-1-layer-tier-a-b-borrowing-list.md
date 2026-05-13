@@ -1,6 +1,6 @@
 # ADR-019: V3 Vision — 5+1 Layer Risk Architecture + Tier A/B Phasing + Borrowing List
 
-**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §C Gate B item 4 closure)
+**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §A T1.5 Acceptance item (4) closure)
 **Date**: 2026-04-29 (decision) / 2026-05-13 (formal promote)
 **Decider**: User 4-29 决议
 **Related**: ADR-020 (Claude 边界 + LiteLLM 路由) / ADR-021 (铁律 v3.0 + IRONLAWS) / ADR-022 (反 silent overwrite) / ADR-027 (L4 STAGED + 反向决策权) / ADR-028 (AUTO + V4-Pro X 阈值 + RAG + backtest replay) / ADR-029 (L1 实时化 + xtquant subscribe_quote) / ADR-064 (Plan v0.2 5 决议 lock) / V3_DESIGN doc itself (SSOT)
@@ -47,7 +47,7 @@ V3 风控走 **5+1 layer 架构** (sustained V3 §2.1 5+1 层数据流图 SSOT):
 
 **Tier A (Plan v0.1, ~6-8 weeks baseline)**: L0 + L1 + L3 + L4 完整 production-ready + RiskBacktestAdapter stub (T1.5 prereq)
 
-- Sprint S1-S11 + S2.5 (12 sprint chain, sustained Plan v0.1 sub-PR 8 + cumulative 19 PR #296-#324 cumulative 2026-05-13 Tier A code-side closure)
+- Sprint S1-S11 + S2.5 (12 sprint chain, sustained Plan v0.1 sub-PR 8 + cumulative 29 PR #296-#324 cumulative 2026-05-13 Tier A code-side closure)
 - Tier A scope: 9 模块 production-ready (LiteLLMRouter + NewsIngestionService + NewsClassifierService + FundamentalContextService + AnnouncementProcessor + RealtimeRiskEngine + DynamicThresholdEngine + L4ExecutionPlanner + DingTalkWebhookReceiver) + RiskBacktestAdapter stub (S5 sub-PR 5c `a656176` 140 行 stub base)
 
 **T1.5 transition (Plan v0.2, ~3-5 day baseline)**: Tier A formal closure + Gate A 7/8 verify + Tier A ADR cumulative promote
@@ -80,7 +80,7 @@ V3 风控走 **5+1 layer 架构** (sustained V3 §2.1 5+1 层数据流图 SSOT):
 
 ### §3.1 V3 实施期总 cycle 真值
 
-- Tier A (Plan v0.1): ~3-5 周真 net new (V2 prior cumulative S1/S4/S6/S8 substantially pre-built per sub-PR 9 sediment体例) — ✅ closed Session 53 cumulative 19 PR #296-#324
+- Tier A (Plan v0.1): ~3-5 周 net new (V2 prior cumulative S1/S4/S6/S8 substantially pre-built per sub-PR 9 sediment 体例) — ✅ closed Session 53 cumulative 29 PR #296-#324
 - T1.5 (Plan v0.2): ~3-5 day (Gate A 7/8 verify + Tier A ADR cumulative promote + 3 INCOMPLETE items closure)
 - Tier B (Plan v0.2): ~8.5-12 weeks (TB-1~5)
 - 横切层 (Plan v0.3): ≥12 weeks

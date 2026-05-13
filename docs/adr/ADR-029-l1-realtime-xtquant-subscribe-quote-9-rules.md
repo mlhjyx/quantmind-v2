@@ -1,6 +1,6 @@
 # ADR-029: L1 Realtime Risk Engine + xtquant subscribe_quote Integration + 9 RealtimeRiskRule
 
-**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §C Gate B item 4 closure)
+**Status**: Committed (reserved 2026-04-29 + formal promote 2026-05-13 via T1.5b-2 Plan v0.2 §A T1.5 Acceptance item (4) closure)
 **Date**: 2026-04-29 (decision) / 2026-05-11 (S5 sub-PR 5a/5b/5c implementation closure) / 2026-05-13 (formal promote)
 **Decider**: User 4-29 决议 + V3 §S5 sub-PR 17-19 closure (sustained ADR-054)
 **Related**: ADR-019 (V3 vision 5+1 层) / ADR-022 (反 silent overwrite) / ADR-027 (L4 STAGED + 反向决策权 + 跌停 fallback) / ADR-054 (V3 §S5 L1 实时化 RealtimeRiskEngine sub-PR 15-17 closure) / ADR-055 (V3 §S7 L3 动态阈值 + S7→S5 wire back) / ADR-056 (V3 §S8 8a L4 STAGED 状态机) / ADR-064 (Plan v0.2 5 决议 lock) / V3_DESIGN §4 (SSOT) + §11.1 row 6 (SSOT)
@@ -51,27 +51,30 @@ class RiskRule(ABC):
         ...
 ```
 
-### §2.2 Sub-decision #2: 9 RealtimeRiskRule (V3 §4.3)
+### §2.2 Sub-decision #2: 10 RealtimeRiskRule (V3 §4.3 + post-S9a TrailingStop addition cumulative)
 
-**Production-ready 9 rules** (sustained ADR-054 S5 sub-PR 15+16 closure, post S9a TrailingStop addition):
+**Production-ready 10 rules** (sustained ADR-054 S5 sub-PR 15+16 closure + S9a TrailingStop addition, post reviewer audit 2026-05-13 真值 verify 10 distinct classes in `backend/qm_platform/risk/rules/realtime/`):
 
-| # | rule_id | priority | cadence | description |
+| # | rule_id (class name) | priority | cadence | description |
 |---|---|---|---|---|
 | 1 | LimitDownDetection | P0 | tick | 跌停 detect (9.99%/10.00%/10.01% 主板 vs 科创 不同阈值) |
 | 2 | NearLimitDown | P1 | tick | 接近跌停 (e.g. 9.4%/9.5%/9.6% 边缘) |
 | 3 | RapidDrop5min | P1 | 5min | 5min 内 急跌 (default 5% threshold, adjustable per L3 regime) |
 | 4 | RapidDrop15min | P2 | 15min | 15min 内 急跌 (default 7%) |
-| 5 | GapDown | P1 | daily | 开盘 gap down (-5%+) |
+| 5 | GapDownOpen | P1 | daily | 开盘 gap down (-5%+) |
 | 6 | VolumeSpike | P2 | 5min | 成交量 异常放大 (e.g. 5x avg, sentinel for crisis) |
 | 7 | LiquidityCollapse | P0 | 5min | liquidity drop ratio (V3 §6.2 RT_LIQUIDITY_DROP_RATIO 配置) |
-| 8 | IndustryConcentrationDrop | P1 | 5min | 持仓 N 股同行业, 同行业 day -5% 联动 (V3 §6.3 Industry 联动) |
-| 9 | TrailingStop | P1 | tick | 阶梯利润保护 (PMSRule v1 体例 sustained, V3 §7.3, sub-PR S9a `a1ac5f6` ADR-060) |
+| 8 | IndustryConcentration | P1 | 5min | 持仓 N 股同行业, single-industry exposure 集中度 (V3 §6.3) |
+| 9 | CorrelatedDrop | P1 | 5min | 多股 同时下跌 (0/1/2/3/4 股 4-6min 时间窗口, V3 §4.3 + V3 §15.2 unit test boundary) |
+| 10 | TrailingStop | P1 | tick | 阶梯利润保护 (PMSRule v1 体例 sustained, V3 §7.3, sub-PR S9a `a1ac5f6` ADR-060) |
 
-**Sub-PR closure timeline**:
-- S5 sub-PR 5a `8888da7` (PR #14 wave): 5 rules implementation (LimitDownDetection, NearLimitDown, RapidDrop5min, RapidDrop15min, GapDown) + 45 tests
-- S5 sub-PR 5b `4dc6849` (PR #15 wave): 4 remaining rules (VolumeSpike, LiquidityCollapse, IndustryConcentrationDrop, [placeholder]) + 43 tests
-- S5 sub-PR 5c `a656176`: RiskBacktestAdapter stub + 16 tests (T1.5 prereq, full impl 留 Tier B TB-1 per Plan v0.2)
-- S9a sub-PR `a1ac5f6` (PR #311): V3 §7.2 BatchedPlanner + V3 §7.3 TrailingStop (rule #9 sediment)
+**Note on rule count**: V3 §4.3 设计稿 cite "9 RealtimeRiskRule (新增, 完整 enumerate)" 但 production 实施真值 = **10 rules** (S5 sub-PR 5a+5b cumulative + S9a TrailingStop addition cumulative). 9 → 10 transition due to S9a `a1ac5f6` TrailingStop sediment. ADR-054 cumulative cite "104 tests PASS" 仅覆盖 S5 scope (sub-PR 5a 45 + sub-PR 5b 43 + sub-PR 5c 16); S9a TrailingStop 加 68 tests via PR #311 (ADR-060 sediment). Cumulative 9-rule + TrailingStop test sum ≈ 172 tests.
+
+**Sub-PR closure timeline** (commit hashes post-squash-merge verified 2026-05-13):
+- S5 sub-PR 5a `9c52a4b` (per `git log --grep="sub-PR 5a"`): 5 rules implementation (LimitDownDetection, NearLimitDown, RapidDrop5min, RapidDrop15min, GapDownOpen) + 45 tests + DDL `risk_event_log` +4 columns
+- S5 sub-PR 5b `44176e5` (per `git log --grep="sub-PR 5b"`): 4 remaining rules (VolumeSpike, LiquidityCollapse, IndustryConcentration, CorrelatedDrop) + 43 tests
+- S5 sub-PR 5c `a656176`: RiskBacktestAdapter 3-Protocol stub (BrokerProtocol + NotifierProtocol + PriceReaderProtocol) + 16 tests (T1.5 prereq, full impl 留 Tier B TB-1 per Plan v0.2)
+- S9a sub-PR PR #311 squash `a1ac5f6`: V3 §7.2 BatchedPlanner + V3 §7.3 TrailingStop (10th rule sediment) + 68 tests (ADR-060)
 
 ### §2.3 Sub-decision #3: xtquant subscribe_quote 接入
 
@@ -112,8 +115,8 @@ class RiskRule(ABC):
 ### §3.1 Tier A S5 closure 实施真值落地
 
 post-S5 sub-PR 5a + 5b + 5c (+ S9a TrailingStop addition) cumulative:
-- 9 RealtimeRiskRule 全 production-ready (ADR-054 + ADR-060)
-- 104 tests PASS (sustained ADR-054 cite)
+- **10 RealtimeRiskRule 全 production-ready** (ADR-054 S5 scope 9 rules + ADR-060 S9a TrailingStop 10th rule, 真值 verify per `backend/qm_platform/risk/rules/realtime/` directory 10 distinct class files 2026-05-13 reviewer audit)
+- **104 tests (S5 scope) + 68 tests (S9a scope) = 172 tests cumulative** (sustained ADR-054 S5 cite + ADR-060 S9a cite, cumulative for 10-rule scope)
 - RiskBacktestAdapter stub 留 Tier B TB-1 full impl (sustained Plan v0.2 §A TB-1 + ADR-066 candidate)
 - xtquant subscribe_quote 接入 lazy import 体例 sustained (CLAUDE.md xtquant rules + ADR-031 §6)
 - Servy QuantMind-RiskRealtime + Celery solo pool integration 留 production deploy post Gate A formal close (T1.5 cycle)
