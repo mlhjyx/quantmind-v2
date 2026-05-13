@@ -81,16 +81,19 @@ $env:PYTHONPATH = "$PWD\backend"
 from app.tasks.market_regime_tasks import classify_market_regime
 result = classify_market_regime.apply(args=[], kwargs={'decision_id': 'tb2c-manual-smoke'}).get()
 print('Result:', result)
+print('SMOKE_REGIME_ID=' + str(result['regime_id']))
 "@
 ```
 
 **Expected** (TB-2c stub provider sustained):
 - `result.ok = True`
-- `result.regime_id > 0` (BIGSERIAL生成)
+- `result.regime_id > 0` (BIGSERIAL生成) — **capture this value for Step 5 cleanup**
 - `result.regime ∈ {Bull, Bear, Neutral, Transitioning}` (Judge 输出, stub all-None 输入倾向 Neutral / Transitioning)
 - `result.confidence ∈ [0, 1]`
 - `result.cost_usd ≈ $0.001-0.01` (3 V4-Pro calls, ADR-036 cost estimate)
 - Log: `[market-regime] STUB IndicatorsProvider active` (one-time warning per worker process)
+
+**Note**: `decision_id` is NOT stored in `market_regime_log` table — it only flows through LiteLLM audit trail. Use `regime_id` (printed as `SMOKE_REGIME_ID=N` above) for the Step 5 cleanup.
 
 ### Step 4: Verify row inserted to market_regime_log
 
@@ -115,17 +118,16 @@ SELECT regime_id, regime, confidence, cost_usd,
 
 ### Step 5: Cleanup manual smoke row (optional)
 
+Replace `<SMOKE_REGIME_ID>` with the regime_id value captured from Step 3 output:
+
 ```powershell
 $env:PGPASSWORD='quantmind'
-& "D:\pgsql\bin\psql.exe" -U xin -d quantmind_v2 -c @"
-DELETE FROM market_regime_log
- WHERE judge_reasoning LIKE 'tb2c-manual-smoke%'
-    OR regime_id IN (
-       SELECT regime_id FROM market_regime_log
-        ORDER BY regime_id DESC LIMIT 1
-    );
-"@
+& "D:\pgsql\bin\psql.exe" -U xin -d quantmind_v2 -c "DELETE FROM market_regime_log WHERE regime_id = <SMOKE_REGIME_ID>;"
 ```
+
+**Reviewer-fix (PR #335 HIGH)**: precise `regime_id`-based DELETE 反 ambiguous LIKE filter
+on `judge_reasoning` (LLM text, not metadata) OR latest-row fallback (could DELETE natural
+Beat fire row if cleanup delayed). Single-row regime_id is exact.
 
 **Note**: Skip Step 5 if user wants to keep the smoke row as 1st audit baseline.
 

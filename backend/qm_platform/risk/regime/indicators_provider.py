@@ -72,10 +72,11 @@ class StubIndicatorsProvider:
         # One-time warning per worker process (反 per-tick log noise).
         if not StubIndicatorsProvider._stub_warned:
             logger.warning(
-                "[market-regime] STUB IndicatorsProvider active — all 5 numeric "
-                "fields will be None until DefaultIndicatorsProvider wired (TB-2d/5). "
-                "Bull/Bear/Judge V4-Pro prompts handle data-unavailable path; "
-                "regime will tend toward Neutral / Transitioning + low confidence."
+                "[market-regime] STUB IndicatorsProvider active — all 6 numeric "
+                "fields (sse_return / hs300_return / breadth_up / breadth_down / "
+                "north_flow_cny / iv_50etf) will be None until DefaultIndicatorsProvider "
+                "wired (TB-2d/5). Bull/Bear/Judge V4-Pro prompts handle data-unavailable "
+                "path; regime will tend toward Neutral / Transitioning + low confidence."
             )
             StubIndicatorsProvider._stub_warned = True
 

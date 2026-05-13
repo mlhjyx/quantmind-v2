@@ -50,7 +50,7 @@ class TestStubIndicatorsProvider:
         provider = StubIndicatorsProvider()
         ind = provider.fetch()
         assert isinstance(ind, MarketIndicators)
-        # All 5 numeric fields None per TB-2c stub scope.
+        # All 6 numeric fields None per TB-2c stub scope (reviewer-fix MEDIUM: was "5").
         assert ind.sse_return is None
         assert ind.hs300_return is None
         assert ind.breadth_up is None
