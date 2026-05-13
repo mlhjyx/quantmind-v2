@@ -174,14 +174,24 @@ class ReentryTracker:
         reasons: list[str] = []
 
         # 1. 1-day lookback window
+        # Reviewer P2 fix: guard against negative elapsed (sell_at in future).
+        # Clock skew / bad data could otherwise pass the ≤ 1d check trivially.
         elapsed = at - sold.sell_at
-        within_window = elapsed <= timedelta(days=self._lookback_window_days)
-        if within_window:
-            reasons.append(f"within {self._lookback_window_days}d window (elapsed={elapsed})")
-        else:
+        if elapsed < timedelta(0):
+            within_window = False
             reasons.append(
-                f"outside {self._lookback_window_days}d window (elapsed={elapsed}) — stale signal"
+                f"sell_at in future (elapsed={elapsed}) — clock skew or bad data"
             )
+        else:
+            within_window = elapsed <= timedelta(days=self._lookback_window_days)
+            if within_window:
+                reasons.append(
+                    f"within {self._lookback_window_days}d window (elapsed={elapsed})"
+                )
+            else:
+                reasons.append(
+                    f"outside {self._lookback_window_days}d window (elapsed={elapsed}) — stale signal"
+                )
 
         # 2. Price rebound within ±5% above sell_price (反 chasing too-high momentum)
         price_upper_bound = sold.sell_price * (1 + self._price_reb_window_pct)

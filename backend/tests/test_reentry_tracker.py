@@ -112,6 +112,24 @@ class TestLookbackWindow:
         assert result.within_window is False
         assert result.should_notify is False  # window fail blocks aggregate
 
+    def test_future_sell_at_clock_skew_guarded(self):
+        """Reviewer P2 fix: negative elapsed (sell_at in future) → within_window=False.
+        Without the guard, `negative_td <= timedelta(days=1)` evaluates True, so a
+        future-timestamped sell record would trivially pass the window check.
+        """
+        tracker = ReentryTracker()
+        result = tracker.check(
+            sold=_sold(sell_at=_NOW + timedelta(hours=2)),  # 2h in future
+            current_price=1750.0,
+            sentiment_24h=0.3,
+            regime="calm",
+            at=_NOW,
+        )
+        assert result.within_window is False
+        assert result.should_notify is False
+        # Reason mentions clock skew / future for operator audit
+        assert any("future" in r for r in result.reasons)
+
 
 # ── Price rebound ──
 
@@ -301,34 +319,39 @@ class TestSuggestedQty:
 
 
 class TestDefensive:
-    def test_zero_sell_price_raises(self):
+    @pytest.mark.parametrize("bad", [-100.0, 0.0])
+    def test_invalid_sell_price_raises(self, bad: float):
+        """Reviewer P3 fix: parametrize covers both 0 and negative (sustained
+        constructor-tests style)."""
         tracker = ReentryTracker()
         with pytest.raises(ValueError, match="sell_price must be > 0"):
             tracker.check(
-                sold=_sold(sell_price=0),
+                sold=_sold(sell_price=bad),
                 current_price=1750.0,
                 sentiment_24h=0.3,
                 regime="calm",
                 at=_NOW,
             )
 
-    def test_zero_sell_qty_raises(self):
+    @pytest.mark.parametrize("bad", [-10, 0])
+    def test_invalid_sell_qty_raises(self, bad: int):
         tracker = ReentryTracker()
         with pytest.raises(ValueError, match="sell_qty must be > 0"):
             tracker.check(
-                sold=_sold(sell_qty=0),
+                sold=_sold(sell_qty=bad),
                 current_price=1750.0,
                 sentiment_24h=0.3,
                 regime="calm",
                 at=_NOW,
             )
 
-    def test_zero_current_price_raises(self):
+    @pytest.mark.parametrize("bad", [-1.0, 0.0])
+    def test_invalid_current_price_raises(self, bad: float):
         tracker = ReentryTracker()
         with pytest.raises(ValueError, match="current_price must be > 0"):
             tracker.check(
                 sold=_sold(),
-                current_price=0,
+                current_price=bad,
                 sentiment_24h=0.3,
                 regime="calm",
                 at=_NOW,
