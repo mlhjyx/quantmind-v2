@@ -9,9 +9,11 @@ from backend.app.services.risk.dingtalk_webhook_service import (
     DingTalkWebhookService,
     WebhookOutcome,
 )
+from backend.app.services.risk.market_regime_service import MarketRegimeService
 
 __all__ = [
     "DingTalkWebhookResult",
     "DingTalkWebhookService",
+    "MarketRegimeService",
     "WebhookOutcome",
 ]
