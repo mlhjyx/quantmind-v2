@@ -4638,3 +4638,32 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 8. Reviewer fixes: Redis dead retry + StockMetrics export + missing test
 
 **关联**: LL-145-148 / ADR-054/055 / 铁律 31/33 / V3 §6.1-§6.4
+
+### Part 2: 审查驱动 audit fix re-execution (PR #306, 2026-05-13)
+
+**情境**: User 4-30 ack 后 5-13 反馈 "S5-S7 是 deepseek 执行的, 有问题, 需要重新根据 plan 进行执行". 启动 audit re-verification 对照 Plan §A acceptance criteria.
+
+**Audit findings**:
+- S5 ✅ 主体合规 (9 rules / cadence engine / lazy xt / DDL +4 / stub adapter), 但 P1-1 `subscriber.stop()` 未真 `unsubscribe_quote()` + P1-2 `get_avg_daily_volume()` 硬编码 None
+- S6 ✅ 完全合规 (无 finding)
+- S7 🔴 **P0 关键缺口**: Plan §A line 150 acceptance 写明 `dynamic threshold 5min Beat (risk-dynamic-threshold-5min)` 但 **Celery Beat 完全未 wire** — DynamicThresholdEngine + ThresholdCache 存在但无 task module + 无 beat_schedule entry, 生产 `thresholds_cache` 永空, S7→S5 reverse loop 只在 unit test 生效.
+
+**根因 vs 沿用 LL-149 Part 1 sediment**:
+- LL-149 Part 1 重点描述了 engine + cache + reverse loop 的设计意图, 但**未要求 sub-PR 19 起手前对照 Plan §A acceptance line 150 走 closure gate 验证 Beat 是否真 wire**
+- python-reviewer 当时只检查代码 quality 不验生产路径完整性 → 形成 "代码合规但生产不闭环" 的灰色地带
+- 跨 reviewer / 跨 sprint 的 "closure gate criteria 落地验证" 责任不在单个 reviewer 上, 必须有显式 quantmind-v3-sprint-closure-gate skill enforce
+
+**改进措施 (Part 2)**:
+1. PR #306 wire S7 Beat: NEW `dynamic_threshold_tasks.py` (`compute_dynamic_thresholds()` task) + beat_schedule entry `crontab(*/5 9-14 * * 1-5)` + celery_app imports
+2. P1-1 fix: `XtQuantTickSubscriber` 跟踪 `_subscribe_ids` dict, `stop()` 真调 `unsubscribe_quote(seq)` (best-effort)
+3. P1-2 fix: `__init__(avg_volume_provider=...)` 可注入 DB-backed fn, 默认 None 保持 paper-mode safe
+4. 审查驱动 P1+P2 follow-up commit (`9593d75`): TTL 300→360s headroom / `set_batch` re-raise on pipe.execute fail / xtquant API iron-law-1 TODO / provider 错误率限 / 一次性 stub 警告
+5. 264/264 tests PASS (was 259 +5 new), ruff clean, pre-push smoke 55 PASS
+
+**Sprint closure gate 第 4 次实证教训** (沿用 V3 governance pattern):
+- 之前 sub-PR 19 关闭时缺乏 Plan §A acceptance line-by-line audit, "deepseek 执行" 隐含信任未实测
+- **未来 sprint closure 起手必走 quantmind-v3-sprint-closure-gate skill** + 对照 Plan §A acceptance line 逐项 verify (Beat? DDL? 5 wire? unit ≥X%? 5 SLA?) — 任一 missing → STOP + push user (反 silent 沿用 stale closure sediment)
+
+**Reviewer P1-3 deferred**: cache.py:105 `_connected` 字段双语义 (success + retry-stopped) 是 pre-existing 设计漂移, 不在 PR #306 scope. Filed 为 follow-up sub-PR (rename `_connect_attempted` + restore `_connected` true success flag).
+
+**关联**: PR #306 (`c55662e` squash merge to main) / ADR-055 §8 Amendment 1 / 铁律 1 (外部 API 必读官方文档) / 铁律 33 (fail-loud) / 铁律 44 X9 / Plan §A S7 amendment / quantmind-v3-sprint-closure-gate skill

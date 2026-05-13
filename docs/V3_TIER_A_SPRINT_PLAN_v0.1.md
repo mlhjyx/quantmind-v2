@@ -112,7 +112,7 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; .env Tushare/AKShare key 改 → STOP |
 | Paper-mode | sustained S1 |
 
-### S5 — L1 实时化 + 9 RealtimeRiskRule ⭐⭐⭐ ✅ DONE (sub-PR 15-17, PR #303, 2026-05-11)
+### S5 — L1 实时化 + 9 RealtimeRiskRule ⭐⭐⭐ ✅ DONE (sub-PR 15-17 PR #303 2026-05-11 + audit-fix PR #306 2026-05-13: P1-1 subscriber.stop unsubscribe leak + P1-2 injectable avg_volume_provider)
 
 | element | content |
 |---|---|
@@ -142,18 +142,18 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; webhook 双向 留 S8 |
 | Paper-mode | sustained S1 |
 
-### S7 — L3 dynamic threshold + L1 集成 ✅ DONE (sub-PR 19, PR #305, 2026-05-11)
+### S7 — L3 dynamic threshold + L1 集成 ✅ DONE (sub-PR 19 PR #305 2026-05-11 + audit-fix PR #306 2026-05-13)
 
 | element | content |
 |---|---|
-| Scope | V3 §6 DynamicThresholdEngine (`backend/engines/risk/dynamic_thresholds/`); market_regime_log + ATR/beta; skeleton §2.1 (TDD-first) |
-| Acceptance | dynamic threshold 5min Beat (`risk-dynamic-threshold-5min`); Stress 模拟; L1 wire fed back (S7→S5 reverse loop); thresholds_cache (Redis fallback, V3 §14 #4); unit ≥80% |
-| File delta | ~5-7 files / ~700-1000 lines |
-| Chunked sub-PR | **single sub-PR** OR **chunked 2** (engine + Beat vs L1 fed back wire); CC 起手实测决议 |
-| Cycle | V3 §12.1 line 1316: 1 周 |
-| Dependency | 前置: S5 / 后置: S5 reverse fed back loop |
-| LL/ADR candidate | LL — dynamic threshold 真测 + Stress 模拟 baseline 锁 |
-| Reviewer reverse risk | S7→S5 reverse loop circular dep verify (cite source 4 元素); Beat schedule 改必显式 restart (铁律 44 X9) |
+| Scope | V3 §6 DynamicThresholdEngine (`backend/qm_platform/risk/dynamic_threshold/`); ATR/beta/liquidity; skeleton §2.1 (TDD-first) |
+| Acceptance (closed) | ✅ dynamic threshold **5min Beat** wired in PR #306 (`risk-dynamic-threshold-5min`, `crontab(*/5 9-14 * * 1-5)` Asia/Shanghai, NEW `backend/app/tasks/dynamic_threshold_tasks.py`) / ✅ Stress 模拟 (3 tests in TestStressSimulation) / ✅ L1 wire fed back (S7→S5 reverse loop via `RealtimeRiskEngine.set_threshold_cache`) / ✅ thresholds_cache InMemory + Redis with lazy init fallback / ✅ unit 264/264 PASS post-audit-fix |
+| File delta | sub-PR 19: ~5-7 files / ~700-1000 lines (initial). PR #306 audit-fix: +6 files / +542/-10 lines (NEW task module + NEW 2 test files + 3 EDIT) + reviewer fix `9593d75`: +6 files / +170/-16 lines (TTL/raise/TODO/rate-limit/stub-warn). |
+| Chunked sub-PR | sub-PR 19 single (engine + cache + DDL + 47 tests). Audit-fix split commits: `5b1aba0` (Beat wire + S5 lifecycle) + `9593d75` (reviewer P1+P2 robustness) |
+| Cycle | V3 §12.1 line 1316: 1 周. actual: sub-PR 19 <1 day; audit-fix re-execution <1 day (post-user 2026-05-13 flag). |
+| Dependency | 前置: S5 ✅ / 后置: S5 reverse fed back loop ✅ wired |
+| LL/ADR | ADR-055 §1-§7 (sub-PR 19) + §8 Amendment 1 (PR #306 audit-fix). LL-149 Part 1 (engine sediment) + Part 2 (audit-fix re-execution lesson). |
+| Reviewer reverse risk | S7→S5 reverse loop verified via tests. Beat schedule 改 → 必 restart enforce (铁律 44 X9). **Audit-discovered**: prior sub-PR 19 closure missed Plan §A line 150 acceptance "5min Beat" wire — gap closed by PR #306; sediment lesson: sprint closure must run quantmind-v3-sprint-closure-gate skill line-by-line vs Plan §A. |
 | 红线 SOP | sustained S1; Beat schedule 改 → 必 restart enforce (X9) |
 | Paper-mode | sustained S1 |
 
