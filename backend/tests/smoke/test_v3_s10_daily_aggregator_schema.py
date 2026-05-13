@@ -80,3 +80,55 @@ def test_aggregate_daily_metrics_no_warn_against_real_schema(caplog) -> None:
         "[daily-aggregator] query failed messages surfaced — schema drift?\n"
         + "\n".join(query_failed_lines)
     )
+
+
+@pytest.mark.smoke
+def test_alerts_severity_case_matches_real_schema() -> None:
+    """Filter literal values in alert specs must match real CHECK constraint case.
+
+    Reviewer cross-finding (2026-05-13 PR #320 v1): SQL had `severity = 'P0'`
+    (uppercase) but real schema enforces `CHECK (severity IN ('p0', 'p1', 'p2',
+    'info'))` (lowercase, sustained Severity enum .value). PG varchar `=` is
+    case-sensitive, so the spec silently returned 0 forever — same anti-pattern
+    family as LL-115 capacity expansion 真值 silent overwrite.
+
+    Strategy: insert a sentinel P0/P1/P2 row in a SAVEPOINT at the sentinel date,
+    run aggregator, assert each counter == 1, ROLLBACK. No data leak to prod.
+    """
+    sentinel_date = date(1900, 1, 1)
+    sentinel_dt_str = "1900-01-01 12:00:00+08"
+
+    conn = get_sync_conn()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SAVEPOINT alerts_case_test")
+            for sev in ("p0", "p1", "p2"):
+                cur.execute(
+                    """INSERT INTO risk_event_log
+                       (strategy_id, execution_mode, rule_id, severity, code,
+                        shares, reason, context_snapshot, action_taken,
+                        triggered_at, created_at)
+                       VALUES (gen_random_uuid(), 'paper', %s, %s, '000000',
+                               0, 'smoke test', '{}'::jsonb, 'alert_only',
+                               %s::timestamptz, %s::timestamptz)""",
+                    (f"smoke_test_{sev}", sev, sentinel_dt_str, sentinel_dt_str),
+                )
+
+            result = aggregate_daily_metrics(conn, sentinel_date)
+            assert result.alerts_p0_count == 1, (
+                f"alerts_p0_count spec did not match lowercase 'p0' real row "
+                f"(got {result.alerts_p0_count}). Case-sensitivity drift between "
+                f"SQL literal + Severity enum .value."
+            )
+            assert result.alerts_p1_count == 1, (
+                f"alerts_p1_count spec did not match lowercase 'p1' real row (got {result.alerts_p1_count})"
+            )
+            assert result.alerts_p2_count == 1, (
+                f"alerts_p2_count spec did not match lowercase 'p2' real row (got {result.alerts_p2_count})"
+            )
+        finally:
+            cur.execute("ROLLBACK TO SAVEPOINT alerts_case_test")
+            cur.close()
+    finally:
+        conn.close()

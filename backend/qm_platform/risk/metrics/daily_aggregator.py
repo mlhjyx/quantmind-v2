@@ -105,7 +105,7 @@ _DEFAULT_SPECS: dict[str, DailyMetricsSpec] = {
         sql=(
             "SELECT COUNT(*) FROM risk_event_log "
             "WHERE date_trunc('day', created_at AT TIME ZONE 'Asia/Shanghai') = %s "
-            "AND severity = 'P0'"
+            "AND severity = 'p0'"
         ),
     ),
     "alerts_p1_count": DailyMetricsSpec(
@@ -113,7 +113,7 @@ _DEFAULT_SPECS: dict[str, DailyMetricsSpec] = {
         sql=(
             "SELECT COUNT(*) FROM risk_event_log "
             "WHERE date_trunc('day', created_at AT TIME ZONE 'Asia/Shanghai') = %s "
-            "AND severity = 'P1'"
+            "AND severity = 'p1'"
         ),
     ),
     "alerts_p2_count": DailyMetricsSpec(
@@ -121,7 +121,7 @@ _DEFAULT_SPECS: dict[str, DailyMetricsSpec] = {
         sql=(
             "SELECT COUNT(*) FROM risk_event_log "
             "WHERE date_trunc('day', created_at AT TIME ZONE 'Asia/Shanghai') = %s "
-            "AND severity = 'P2'"
+            "AND severity = 'p2'"
         ),
     ),
     "staged_plans_count": DailyMetricsSpec(
