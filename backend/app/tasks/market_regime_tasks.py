@@ -48,7 +48,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from qm_platform.risk.regime.indicators_provider import StubIndicatorsProvider
+from qm_platform.risk.regime.default_indicators_provider import (
+    DefaultIndicatorsProvider,
+)
 from qm_platform.risk.regime.repository import persist_market_regime
 
 from app.services.risk.market_regime_service import MarketRegimeService
@@ -77,10 +79,15 @@ def _get_service() -> MarketRegimeService:
 
 
 def _get_provider() -> IndicatorsProvider:
-    """Lazy singleton — IndicatorsProvider (TB-2c stub; TB-2d/5 default real wire)."""
+    """Lazy singleton — IndicatorsProvider.
+
+    TB-2c initial: StubIndicatorsProvider (all-None).
+    TB-2d ✅: DefaultIndicatorsProvider (real PG queries — sse/hs300/breadth via
+    index_daily + klines_daily; north_flow_cny + iv_50etf 留 TB-5).
+    """
     global _provider
     if _provider is None:
-        _provider = StubIndicatorsProvider()
+        _provider = DefaultIndicatorsProvider()
     return _provider
 
 

@@ -90,22 +90,64 @@ def _get_cache() -> ThresholdCache:
 def _build_market_indicators() -> MarketIndicators:
     """Build current market indicators snapshot.
 
-    sub-PR S7-Beat-wire SCOPE: stub fields (all None → engine returns CALM default).
-    Production wire (real CSI300 index_return + limit_down_count + northbound_flow +
-    L2 regime) deferred to S10 paper-mode 5d dry-run per Plan §A S10 acceptance.
+    TB-2d wire: regime field now queries latest market_regime_log row (V3 §5.3 +
+    ADR-067 TB-2 closure). Other fields (index_return / limit_down_count /
+    northbound_flow) still stub (留 TB-5 cumulative wire batch).
 
-    Real wire path (follow-up sub-PR):
-    - index_return: SELECT close/prev_close FROM klines_daily WHERE symbol_id='000300' LIMIT 2
-    - limit_down_count: SELECT COUNT(*) FROM realtime_quotes WHERE pct_chg <= -9.8
-    - northbound_flow: read northbound netflow API or DB cached value
-    - regime: read latest L2 MarketRegime row (Tier B scope, currently stub)
+    Real wire path remaining for other fields (留 TB-5):
+    - index_return: SELECT pct_change FROM index_daily WHERE index_code='000300.SH' LIMIT 1
+      → /100 (符合 DefaultIndicatorsProvider pattern)
+    - limit_down_count: SELECT COUNT(*) FROM klines_daily WHERE pct_change <= -9.9 trading-day
+      OR realtime_quotes intraday tick stream
+    - northbound_flow: 留 TB-5 (no moneyflow_hsgt table in current DB schema)
     """
     return MarketIndicators(
         index_return=None,
         limit_down_count=None,
         northbound_flow=None,
-        regime=None,
+        regime=_fetch_latest_regime(),
     )
+
+
+def _fetch_latest_regime() -> str | None:
+    """Query latest market_regime_log row → regime str (TB-2d L3 integration).
+
+    Returns:
+        "bull"/"bear"/"neutral"/"transitioning" lowercase OR None on:
+        - query failure
+        - 0 rows (no regime classification yet, e.g. fresh DB)
+        - PG connection failure
+
+    Sustained DynamicThresholdEngine.assess_market_state: `regime.lower() == "bear"`
+    → STRESS state (V3 §6.1). Other labels OR None → CALM (sustained default).
+
+    Per-call connection — opens + closes per Beat tick. Acceptable cost:
+    - Beat cadence 5min (288 fires/day during trading hours)
+    - market_regime_log writes only 3 times/day (9:00/14:30/16:00)
+    - SELECT with PK index O(log N), <5ms typical
+    """
+    try:
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+
+        conn = get_sync_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT regime FROM market_regime_log ORDER BY timestamp DESC LIMIT 1")
+                row = cur.fetchone()
+                if row is None or row[0] is None:
+                    return None
+                # Normalize to lowercase — DynamicThresholdEngine expects "bear"/"bull"/"neutral"
+                # while DB stores "Bull"/"Bear"/"Neutral"/"Transitioning" per DDL CHECK.
+                return str(row[0]).lower()
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "[dynamic-threshold-beat] failed to fetch latest regime "
+            "(market_regime_log query): %s; defaulting to CALM via regime=None",
+            e,
+        )
+        return None
 
 
 def _build_stock_metrics() -> dict[str, StockMetrics]:

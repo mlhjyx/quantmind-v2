@@ -22,6 +22,7 @@ Architecture (per V3 §11.2 line 1227 SSOT + ADR-036 V4-Pro mapping sustained):
 
 from __future__ import annotations
 
+from .default_indicators_provider import DefaultIndicatorsProvider
 from .interface import (
     MarketIndicators,
     MarketRegime,
@@ -32,6 +33,7 @@ from .interface import (
 from .repository import persist_market_regime
 
 __all__ = [
+    "DefaultIndicatorsProvider",
     "MarketIndicators",
     "MarketRegime",
     "MarketRegimeError",
