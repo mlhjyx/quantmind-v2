@@ -172,16 +172,18 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | redline_pretool_block hook + quantmind-redline-guardian subagent (双层); 5/5 红线 关键点 → explicit user ack 3-step gate (AskUserQuestion + classifier backstop + 授权); 8a/8b/8c-partial/8c-followup 0 broker call (paper-mode) + 0 真账户 mutation + 0 .env mutation sustained. |
 | Paper-mode | LIVE_TRADING_DISABLED=true sustained; factory routes to RiskBacktestAdapter stub (0 broker call); live mode wired but gated by 3-layer defense (factory + LiveTradingGuard + adapter exception catch). |
 
-### S9 — L4 batched + trailing + Re-entry ⚠️ PARTIAL (9a ✅ PR #311 `a1ac5f6`+sediment 本commit; 9b pending re-entry tracker)
+### S9 — L4 batched + trailing + Re-entry ✅ DONE (9a ✅ PR #311 `a1ac5f6`+sediment `bf52461`; 9b ✅ PR #313 `7fc5bd2`+sediment 本commit)
 
 | element | content |
 |---|---|
 | Scope | V3 §7.2 batched + §7.3 trailing + §7.4 Re-entry; skeleton §2.1 (TDD-first). Chunked into 9a (batched+trailing) + 9b (re-entry + 历史回放). |
-| Acceptance progress | **9a ✅ DONE** (PR #311): NEW `batched_planner.py` PURE engine (N=max(3, ceil(×0.3)), 5min stagger, per-batch 30min deadline, equal qty split + remainder forward, priority drop/volume/sentiment/code, 0-qty skip, mode routing) + NEW `trailing_stop.py` RealtimeRiskRule (replaces PMSRule v1 static per ADR-016 D-M2; activation pnl≥20%, bracket trailing % per V3 §7.3, peak ratchet, in-memory state, ATR via context.realtime). 68 tests. **Activation-vs-tracking semantic correction** (reviewer HIGH cross-finding): once activated, state persists on retrace; test-by-accident anti-pattern 1st 实证. **9b PENDING**: V3 §7.4 re-entry tracker + DingTalk push + 历史回放 smoke + between-batch re-eval Celery task + PMSRule v1 actual deprecation. |
-| File delta | 9a: 4 files / 1128 insertions (planner 220 + rule 215 + tests 410 + tests 285). 9b est: ~5-7 files / ~600-900 lines. |
-| Chunked sub-PR | **chunked into 2**: 9a ✅ PR #311 / 9b pending. No new 5/5 红线 触发 in either (broker dispatch reuses S8 8c-followup wire). |
-| Cycle | V3 §12.1 line 1318: 1 周 (range). 9a actual <1 day. 9b TBD. |
-| Dependency | 前置: S8 ✅ / 后置: S10 |
+| Acceptance progress | **9a ✅ DONE** (PR #311): NEW `batched_planner.py` PURE engine (N=max(3, ceil(×0.3)), 5min stagger, per-batch 30min deadline, equal qty split + remainder forward, priority drop/volume/sentiment/code, 0-qty skip, mode routing) + NEW `trailing_stop.py` RealtimeRiskRule (replaces PMSRule v1 static per ADR-016 D-M2; activation pnl≥20%, bracket trailing % per V3 §7.3, peak ratchet, in-memory state, ATR via context.realtime). 68 tests. **Activation-vs-tracking semantic correction** (reviewer HIGH cross-finding): once activated, state persists on retrace; test-by-accident anti-pattern 1st 实证. **9b ✅ DONE** (PR #313): NEW `reentry_tracker.py` PURE engine — V3 §7.4 4 conditions (1d window + price reb [sell, +5%] inclusive + sentiment > 0 strict + regime=calm); None sentiment fail-closed (6th 实证 of project-wide 反 silent assume positive convention); future-sell_at guard (reviewer P2 fix 反 negative_td trivially passing ≤1d). + chain smoke 2 tests verifying V3 §7.2/§7.3/§7.4 end-to-end via RiskBacktestAdapter stub (0 broker call). 51 tests. Closes S9 fully. |
+| File delta | 9a: 4 files / 1128 insertions. 9b: 3 files / 808 insertions (tracker 270 + tests 481 + smoke +57). Total S9: 7 files / ~1900 insertions. |
+| Chunked sub-PR | **chunked into 2**: 9a ✅ PR #311 / 9b ✅ PR #313. No new 5/5 红线 触发 in either (broker dispatch reuses S8 8c-followup wire path, paper-mode sustained). |
+| Cycle | V3 §12.1 line 1318: 1 周 (range). 9a + 9b both actual <1 day each (high-density session). |
+| Dependency | 前置: S8 ✅ / 后置: S10 (paper-mode 5d 已 prereq-ready) |
+| LL/ADR | ADR-060 (9a impl) + ADR-061 NEW (9b impl + chain smoke + None-data fail-closed pattern 6th 实证 + 5th consecutive sediment-in-same-session enforcement). LL-154 (9a — test-by-accident anti-pattern) + LL-155 NEW (9b — None-data fail-closed + sentiment strict-vs-zero + reviewer 5th 实证 cumulative). |
+| 留 deferred (operational follow-ups, not Tier A blockers) | (a) caller-side Celery task `app/tasks/reentry_tasks.py` polling trade_log + AlertDispatcher dispatch — pure tracker ready for wire; (b) between-batch re-eval Celery task per V3 §7.2 "若市场反弹 + alert 清除 → 停止后续 batch"; (c) PMSRule v1 actual deprecation per ADR-016 D-M2; (d) sentiment threshold tuning (RAG correlation S10+). |
 | LL/ADR candidate | LL — Re-entry 决议算法 finding |
 | Reviewer reverse risk | trailing stop 历史回放 sim-to-real gap 风险 (PR #210 体例); CC 起手 fresh re-read sim-to-real gap finding |
 | 红线 SOP | sustained S8 |
