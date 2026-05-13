@@ -224,6 +224,25 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 45,  # 45s within next 60s cycle (反 overlap on slow PG)
         },
     },
+    # ── S10 operational: daily metrics extract at 16:30 Asia/Shanghai ──
+    # V3 §13.2 元监控 + ADR-062 (S10 setup). Daily aggregator pulls
+    # risk_event_log / execution_plans / llm_cost_daily → risk_metrics_daily
+    # UPSERT. Fires post-market-close (16:30) so the day is complete.
+    # crontab `30 16 * * 1-5` Asia/Shanghai (trading days only; weekend skips
+    # are fine since 0 trade activity).
+    # Cohort safety: 16:35 DailyMoneyflow (Mon-Fri) + 17:30 pull_moneyflow
+    # (sustained PR #46) are SEQUENTIAL — Beat dispatches one-at-a-time, no
+    # overlap concern. expires=300 (5min within next 24h cycle).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND
+    # QuantMind-Celery` (sustained pattern from S7 + S8 8c).
+    "risk-metrics-daily-extract-16-30": {
+        "task": "app.tasks.daily_metrics_extract_tasks.extract_daily_metrics",
+        "schedule": crontab(minute=30, hour=16, day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 300,  # 5min within next 24h cycle (反 stale retry on Mon)
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
