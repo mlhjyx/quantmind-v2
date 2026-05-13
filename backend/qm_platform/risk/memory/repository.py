@@ -153,20 +153,23 @@ def retrieve_similar(
         raise ValueError(f"k must be > 0, got {k}")
 
     query_str = _embedding_to_pgvector_str(query_embedding)
+    # Reviewer-fix (PR pending #339 MEDIUM 2): CTE binds 1024-dim vector once
+    # (avoids double-passing ~8KB text payload — distance + ORDER BY share q.qvec).
     base_sql = """
+        WITH q AS (SELECT %s::vector AS qvec)
         SELECT memory_id, event_type, symbol_id, event_timestamp,
                context_snapshot, action_taken, outcome, lesson, embedding,
                created_at,
-               1 - (embedding <=> %s::vector) AS cosine_sim
-          FROM risk_memory
+               1 - (embedding <=> q.qvec) AS cosine_sim
+          FROM risk_memory, q
          WHERE embedding IS NOT NULL
     """
     params: list[Any] = [query_str]
     if event_type is not None:
         base_sql += " AND event_type = %s"
         params.append(event_type)
-    base_sql += " ORDER BY embedding <=> %s::vector LIMIT %s"
-    params.extend([query_str, k])
+    base_sql += " ORDER BY embedding <=> q.qvec LIMIT %s"
+    params.append(k)
 
     hits: list[SimilarMemoryHit] = []
     cur = conn.cursor()

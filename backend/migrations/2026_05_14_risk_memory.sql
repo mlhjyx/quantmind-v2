@@ -50,7 +50,14 @@ CREATE TABLE IF NOT EXISTS risk_memory (
         CHECK (action_taken IS NULL OR action_taken IN (
             'STAGED_executed', 'STAGED_cancelled', 'STAGED_timeout_executed',
             'manual_sell', 'no_action', 'reentry'
-        ))
+        )),
+    -- Reviewer-fix (PR pending #339 MEDIUM 1): defense-in-depth length CHECK
+    -- mirroring chk_event_type_non_empty + chk_action_taken_vocab patterns.
+    -- Python-side validation (interface.py RiskMemory.__post_init__) covers
+    -- TB-3a repository writes, but raw SQL / future ETL bypass paths benefit
+    -- from DB-level enforcement.
+    CONSTRAINT chk_lesson_max_length
+        CHECK (lesson IS NULL OR length(lesson) <= 500)
 );
 
 -- ivfflat index for vector cosine similarity search (V3 §5.4 line 706).
