@@ -52,6 +52,7 @@ celery_app.conf.update(
         "app.tasks.announcement_ingest_tasks",  # sub-PR 11b: announcement Beat trading-hours cadence (ADR-050)
         "app.tasks.fundamental_ingest_tasks",  # sub-PR 14: fundamental_context daily 16:00 Beat (ADR-053, LL-141 sustained 4-step post-merge ops)
         "app.tasks.dynamic_threshold_tasks",  # S7 audit fix: 5min Beat wiring DynamicThresholdEngine → ThresholdCache (LL-145/149 + ADR-055)
+        "app.tasks.l4_sweep_tasks",  # S8 8c-partial: 1min Beat sweep PENDING_CONFIRM expired → TIMEOUT_EXECUTED (ADR-058 + LL-152, broker_qmt wire deferred to 8c-followup)
         # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
         # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],
