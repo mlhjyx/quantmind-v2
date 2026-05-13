@@ -186,6 +186,25 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1h within next 2h window
         },
     },
+    # ── S7 audit fix: 5min Beat DynamicThresholdEngine compute ──
+    # V3 §6 + Plan §A S7 acceptance: "dynamic threshold 5min Beat (`risk-dynamic-threshold-5min`)".
+    # crontab `*/5 9-14 * * 1-5` Asia/Shanghai (trading-hours only, ~72 fires/day).
+    # 反 hard collision PT chain 16:25/16:30/09:31 (cron hour upper bound 14 excludes).
+    # 反 outbox 30s collision (different worker queue cadence + Beat sequential dispatch).
+    # 反 news cron `3,7,11,15,19,23 0` (hour offset reserved 9-14 only).
+    # task body: DynamicThresholdEngine.evaluate() → RedisThresholdCache.set_batch(TTL=300s)
+    #   stub MarketIndicators + empty StockMetrics (sub-PR S7-Beat-wire minimal scope;
+    #   production CSI300/holdings/ATR/beta wire deferred to S10 paper-mode 5d dry-run
+    #   per Plan §A S10 acceptance + LL-141 4-step sustained).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`.
+    "risk-dynamic-threshold-5min": {
+        "task": "app.tasks.dynamic_threshold_tasks.compute_dynamic_thresholds",
+        "schedule": crontab(minute="*/5", hour="9-14", day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 240,  # 4min within next 5min cycle
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产

@@ -24,6 +24,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+AvgVolumeProvider = Callable[[str, int], float | None]
+"""Injectable provider: (code, days) -> avg daily volume.
+
+Production wire path (deferred to S10 paper-mode 5d dry-run per Plan §A):
+    SELECT AVG(volume) FROM klines_daily
+    WHERE symbol_id=? AND trade_date >= today - days
+"""
+
 logger = logging.getLogger(__name__)
 
 # Rolling window params
@@ -41,10 +49,14 @@ class XtQuantTickSubscriber:
     非单例 — 业务方可持多个实例 (e.g. 不同 symbol 组).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, avg_volume_provider: AvgVolumeProvider | None = None) -> None:
         self._running = False
         self._symbols: list[str] = []
         self._lock = threading.Lock()
+        # S5 audit fix P1-2: injectable provider for avg daily volume — production
+        # caller wires DB-based fn (SELECT AVG(volume) FROM klines_daily ...).
+        # None (default) keeps the safe-skip stub for unit tests and paper-mode.
+        self._avg_volume_provider: AvgVolumeProvider | None = avg_volume_provider
         # Rolling state
         self._current_ticks: dict[str, dict[str, Any]] = {}
         self._price_snapshots: dict[str, list[tuple[datetime, float]]] = {}
@@ -52,6 +64,11 @@ class XtQuantTickSubscriber:
         self._callbacks: list[TickCallback] = []
         # xtquant 模块懒加载
         self._xtdata = None
+        # Per-symbol subscribe seq ids returned by xtquant subscribe_quote
+        # (S5 audit fix P1-1: needed for true unsubscribe on stop() — without
+        # this the prior implementation just set _running=False and leaked the
+        # xtquant native subscription across worker restarts).
+        self._subscribe_ids: dict[str, int] = {}
 
     @property
     def is_running(self) -> bool:
@@ -146,13 +163,15 @@ class XtQuantTickSubscriber:
 
         for s in symbols:
             try:
-                self._xtdata.subscribe_quote(
+                seq = self._xtdata.subscribe_quote(
                     stock_code=s,
                     period="tick",
                     count=-1,
                     callback=self._on_xt_tick,
                 )
-                logger.info("[xt-subscriber] subscribed %s (tick)", s)
+                if isinstance(seq, int) and seq >= 0:
+                    self._subscribe_ids[s] = seq
+                logger.info("[xt-subscriber] subscribed %s (tick) seq=%s", s, seq)
             except Exception as e:
                 logger.error(
                     "[xt-subscriber] subscribe_quote failed for %s: %s: %s",
@@ -162,10 +181,30 @@ class XtQuantTickSubscriber:
                 )
 
     def stop(self) -> None:
-        """停止所有订阅."""
+        """停止所有订阅.
+
+        S5 audit fix P1-1: actually call xtdata.unsubscribe_quote(seq) for every
+        registered subscribe seq id, so xtquant native subscription releases
+        across worker restarts. Failure on individual unsubscribe is logged but
+        does not abort the loop (best-effort cleanup).
+        """
         if not self._running:
             return
         self._running = False
+
+        if self._xtdata is not None and hasattr(self._xtdata, "unsubscribe_quote"):
+            for s, seq in list(self._subscribe_ids.items()):
+                try:
+                    self._xtdata.unsubscribe_quote(seq)
+                    logger.info("[xt-subscriber] unsubscribed %s seq=%d", s, seq)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "[xt-subscriber] unsubscribe_quote(%d) for %s failed: %s",
+                        seq,
+                        s,
+                        e,
+                    )
+        self._subscribe_ids.clear()
         logger.info("[xt-subscriber] stopped, symbols=%s", self._symbols)
 
     def get_current_realtime(
@@ -216,11 +255,27 @@ class XtQuantTickSubscriber:
         return snapshots[0][1]
 
     def get_avg_daily_volume(self, code: str, days: int = 20) -> float | None:
-        """获取 20 日均成交量 (需外部注入 DB 数据).
+        """获取 N 日均成交量 (injectable provider, S5 audit fix P1-2).
 
-        TODO(S5-followup): Wire klines_daily avg_volume from DB.
-        当前返 None → VolumeSpike / LiquidityCollapse silent skip
-        (production activation requires this wire + avg_daily_volume in
-        get_current_realtime() + industry classification in _current_ticks).
+        生产 wire: ctor 接受 `avg_volume_provider=fn(code, days) -> float | None`
+        指向 DB-backed implementation. 未注入时返 None → VolumeSpike /
+        LiquidityCollapse silent skip (paper-mode + unit test safe).
+
+        Caller responsibility: ensure provider is idempotent + thread-safe +
+        cached (e.g. lru_cache or Redis SETEX). Provider 失败 (raise) 被本方法
+        吞掉 silent return None (反 per-tick subscribe_quote callback 串行
+        crash 整个 XtQuantTickSubscriber 进程; 错误已 logged).
         """
-        return None
+        if self._avg_volume_provider is None:
+            return None
+        try:
+            return self._avg_volume_provider(code, days)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[xt-subscriber] avg_volume_provider(%s, %d) raised %s: %s",
+                code,
+                days,
+                type(e).__name__,
+                e,
+            )
+            return None
