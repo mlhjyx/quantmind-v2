@@ -403,6 +403,23 @@ class TestRedisCache:
         cache.set_batch({"rapid_drop_5min": {"600519.SH": 0.04}})
         # 不抛异常 = pass
 
+    def test_set_batch_reraises_on_pipe_execute_failure(self):
+        """P1-2 audit fix: Redis available but pipe.execute fails → re-raise.
+
+        Distinct from `test_set_batch_noop_on_disconnect` which exercises the
+        Redis-unavailable path (silent fallback). Here Redis IS available but
+        the pipeline operation raises (e.g. OOM / connection reset) — we must
+        propagate so Celery retry kicks in (反 silent failure 铁律 33).
+        """
+        mock_redis = MagicMock()
+        mock_pipe = MagicMock()
+        mock_redis.pipeline.return_value = mock_pipe
+        mock_pipe.execute.side_effect = RuntimeError("redis OOM-killed")
+
+        cache = RedisThresholdCache(redis_client=mock_redis)
+        with pytest.raises(RuntimeError, match="redis OOM-killed"):
+            cache.set_batch({"rapid_drop_5min": {"600519.SH": 0.04}})
+
 
 # ── Stress simulation (acceptance: Stress 模拟) ──
 
