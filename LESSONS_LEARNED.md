@@ -4667,3 +4667,30 @@ Reviewer agent (oh-my-claudecode:code-reviewer) 抓 fix:
 **Reviewer P1-3 deferred**: cache.py:105 `_connected` 字段双语义 (success + retry-stopped) 是 pre-existing 设计漂移, 不在 PR #306 scope. Filed 为 follow-up sub-PR (rename `_connect_attempted` + restore `_connected` true success flag).
 
 **关联**: PR #306 (`c55662e` squash merge to main) / ADR-055 §8 Amendment 1 / 铁律 1 (外部 API 必读官方文档) / 铁律 33 (fail-loud) / 铁律 44 X9 / Plan §A S7 amendment / quantmind-v3-sprint-closure-gate skill
+
+## LL-150: V3 §S8 8a L4 STAGED state machine + ExecutionPlan DDL — 反向决策权状态机基础设施 + sediment 闭环 backfill (2026-05-11 → 2026-05-13)
+
+**情境**: S5/S6/S7 closure 后 S8 起手. V3 §7.5 + ADR-027 design 锁定 STAGED 状态机 (PENDING_CONFIRM → CONFIRMED / CANCELLED / TIMEOUT_EXECUTED → EXECUTED / FAILED) 作 V3 §7 + 4-29 痛点 fix 核心. Plan §A S8 chunked: 8a (状态机 + DDL) / 8b (DingTalk webhook) / 8c (broker_qmt sell wire). 本 8a 闭环.
+
+**根因 vs Plan §A acceptance**:
+1. L4ExecutionPlanner 纯计算 (铁律 31) — 不调 broker / 不发 DingTalk / 不写 DB. broker + 通知由上层注入 (8c scope).
+2. ExecutionPlan dataclass 不可变 — 状态变更 transition() 创建新实例 (反 mutation 漂移).
+3. cancel_deadline 计算: V3 §7.1 default 30min + ADR-027 §2.2 5 guardrails (auction adaptive 9:15-9:25 floor 2min / late session 14:55+ adaptive / cross-day 14:55 clamp).
+4. ExecutionMode: OFF (default 立即 CONFIRMED) / STAGED (30min cancel window) / AUTO (reserved Crisis only).
+5. DDL: execution_plans TimescaleDB hypertable + 180d retention + index (status, cancel_deadline) for PENDING_CONFIRM sweep + index (symbol_id, status, created_at DESC) for code-scoped query.
+6. 39 tests PASS (TestExecutionPlan 10 / TestL4PlannerGeneratePlan 10 / TestCancelDeadline 8 / TestValidTransition 6 / TestTimeoutCheck 3 / TestStagedFlow 2 — covers state machine, mode resolution, deadline guardrails, transition validity, timeout detection, full lifecycle flows).
+
+**改进措施**:
+1. backend/qm_platform/risk/execution/planner.py NEW (~372 lines) — ExecutionPlan + L4ExecutionPlanner + ExecutionMode + PlanStatus enums + valid_transition / check_timeout static helpers
+2. backend/qm_platform/risk/execution/__init__.py NEW — public exports
+3. backend/migrations/2026_05_11_execution_plans.sql NEW + applied to production (table + hypertable + 4 indexes verified via psycopg2 connect 2026-05-13)
+4. 39 unit tests in test_l4_execution_planner.py (all PASS, ruff clean, format applied)
+5. STAGED_ENABLED default=False (ADR-027 §2.1 短期, OFF mode → immediate CONFIRMED, 反 silent STAGED activation pre-prerequisite 5 condition verify)
+
+**Sediment lesson Part 1 (2026-05-13 backfill)**: 
+- S8 8a 代码 + DDL + tests 已 committed (commit `dbf55c0`, 2026-05-11) 但 **LL-150 / ADR-056 / REGISTRY row / Plan §A S8 row amendment 全部缺失** — 第 5 次 sprint closure gate 实证教训 (S5/S6/S7 + 本 8a 累计 4 次实证). commit message 提及 "LL-150" 但 grep 验证 0 命中 — 沿用 LL-149 Part 2 "ghost sediment" 失败模式 (commit claims sediment 但 file 真值缺失). 
+- **改进 enforce**: 未来 sprint sub-PR closure 必走 `quantmind-v3-doc-sediment-auto` skill + `quantmind-v3-sprint-closure-gate` skill 双验证 (反 commit message 真值漂移); commit message 提及 "LL-N" / "ADR-N" 必 grep 验证 file 真值存在后才 push.
+
+**Sediment 体例 sustained**: 本 LL-150 + ADR-056 (NEW) + REGISTRY ADR-056 row + Plan §A S8 row 8a closure amend, 沿用 S5/S6/S7 governance batch closure cumulative pattern (沿用 ADR-054/055 + LL-145-149 + REGISTRY + Plan §A amend 体例).
+
+**关联**: commit `dbf55c0` (S8 8a code + DDL + 39 tests) / ADR-027 (design SSOT) / ADR-056 (NEW 本 sediment cycle, 8a implementation) / 铁律 31 / 33 / 44 X9 / Plan §A S8 8a amendment / 第 5 次 sprint closure gate 实证教训

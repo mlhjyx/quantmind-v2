@@ -157,20 +157,20 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | 红线 SOP | sustained S1; Beat schedule 改 → 必 restart enforce (X9) |
 | Paper-mode | sustained S1 |
 
-### S8 — L4 STAGED 决策权 + DingTalk webhook 双向 ⭐⭐⭐ (integration-first override)
+### S8 — L4 STAGED 决策权 + DingTalk webhook 双向 ⭐⭐⭐ ⚠️ PARTIAL (8a ✅ committed `dbf55c0` 2026-05-11 + sediment closure backfill 2026-05-13; 8b/8c pending)
 
 | element | content |
 |---|---|
-| Scope | V3 §11.1 `L4ExecutionPlanner` + `DingTalkWebhookReceiver`; V3 §7 + 4-29 痛点 fix 核心; ADR-027 STAGED default + 反向决策权 + 跌停 fallback; skeleton §2.1 |
-| Acceptance | STAGED PENDING_CONFIRM → CONFIRMED / CANCELLED / TIMEOUT_EXECUTED 状态机; cancel_deadline 严格 30min SLA; STAGED smoke + DingTalk webhook 双向; broker_qmt sell 单 wire (5/5 红线 关键点); failure mode #8 user 离线 STAGED default 执行 (反向决策权); unit ≥95% (L4 critical) |
-| File delta | ~10-13 files / ~1500-2200 lines |
-| Chunked sub-PR | **chunked ≥2-3 sub-PR**: 8a (L4 STAGED 状态机 + tests) / 8b (DingTalk webhook receiver) / 8c (broker_qmt sell 单 wire + STAGED smoke); CC 起手实测决议 |
-| Cycle | V3 §12.1 line 1317: 1-2 周 (range, replan 1.5x = 1.5-3 周) |
-| Dependency | 前置: S6 / broker_qmt (现 PR #212 真 SQL 写第一次破除 sustained) / 后置: S9 |
-| LL/ADR candidate | ADR-027 sediment 锁 (V3 §20.1 #1 STAGED default 决议); LL — broker_qmt sell 单 wire 真测 + 反向决策权 5 prereq finding |
-| Reviewer reverse risk | broker_qmt sell 单红线触发 — quantmind-redline-guardian subagent 必 invoke; user 介入 STAGED default 模式 → `grill-me` skill; integration-first override 风险 (sustained S5); 反 silent .env 改 live trading flag |
-| 红线 SOP | redline_pretool_block hook + quantmind-redline-guardian subagent (双层); broker_qmt sell 单 → STOP + push user |
-| Paper-mode | LIVE_TRADING_DISABLED=true sustained, broker_qmt sell 单 paper-mode only |
+| Scope | V3 §11.1 `L4ExecutionPlanner` (8a ✅) + `DingTalkWebhookReceiver` (8b pending); V3 §7 + 4-29 痛点 fix 核心; ADR-027 STAGED default + 反向决策权 + 跌停 fallback; skeleton §2.1 |
+| Acceptance progress | **8a ✅ DONE**: ExecutionPlan 不可变 dataclass + 状态机 PENDING_CONFIRM → CONFIRMED/CANCELLED/TIMEOUT_EXECUTED → EXECUTED/FAILED + valid_transition 静态查表 + cancel_deadline ADR-027 §2.2 5 guardrails + STAGED_ENABLED=False default + DDL execution_plans hypertable + 4 indexes + 180d retention + 39 tests (TestExecutionPlan 10 + TestL4PlannerGeneratePlan 10 + TestCancelDeadline 8 + TestValidTransition 6 + TestTimeoutCheck 3 + TestStagedFlow 2). **8b pending**: DingTalk webhook receiver (CONFIRM/CANCEL inbound + signature verify + ExecutionPlan transition wire + 反 replay). **8c pending**: broker_qmt sell 单 wire (5/5 红线 关键点) + STAGED smoke + Celery Beat sweep PENDING_CONFIRM expired + integration-first override unit ≥95% backfill |
+| File delta | 8a actual: 4 files / 880 insertions (planner.py 372 + DDL 69 + tests 424 + __init__ 15). 8b est: ~3-5 files / ~400-700 lines. 8c est: ~3-5 files / ~400-700 lines. |
+| Chunked sub-PR | **chunked ≥2-3 sub-PR**: 8a (L4 STAGED 状态机 + DDL + 39 tests) ✅ committed dbf55c0 / 8b (DingTalk webhook receiver) pending / 8c (broker_qmt sell 单 wire + STAGED smoke) pending; CC 起手实测决议 |
+| Cycle | V3 §12.1 line 1317: 1-2 周 (range, replan 1.5x = 1.5-3 周). actual 8a <1 day; 8b/8c TBD. |
+| Dependency | 前置: S6 ✅ / broker_qmt (现 PR #212 真 SQL 写第一次破除 sustained) / 后置: S9 |
+| LL/ADR | ADR-027 (design SSOT) + **ADR-056 NEW** (8a implementation sediment, 2026-05-13 backfill) + LL-150 NEW (8a sediment + sprint closure gate 第 5 次实证教训 — commit message claimed "LL-150" but file 真值 0, backfill 后落地). |
+| Reviewer reverse risk | broker_qmt sell 单红线触发 (8c) — quantmind-redline-guardian subagent 必 invoke; user 介入 STAGED default 模式 → `grill-me` skill; integration-first override 风险 (sustained S5 8a 已沿用); 反 silent .env 改 live trading flag. **Audit-discovered**: 8a 代码 + DDL committed 2026-05-11 但 LL-150/ADR-056/REGISTRY/Plan amendment 全部 silent missing — 第 5 次 sprint closure gate 实证教训, 触发 sediment backfill cycle (2026-05-13). |
+| 红线 SOP | redline_pretool_block hook + quantmind-redline-guardian subagent (双层); broker_qmt sell 单 (8c) → STOP + push user; 8a 0 broker call sustained (planner 纯计算 铁律 31) |
+| Paper-mode | LIVE_TRADING_DISABLED=true sustained, broker_qmt sell 单 (8c) paper-mode only |
 
 ### S9 — L4 batched + trailing + Re-entry
 
