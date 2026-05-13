@@ -4896,3 +4896,61 @@ S5 (PR #306 audit fix) + S5/S6/S7/S8 8a (LL-149 Part 2 + LL-150 backfill) + S8 8
 5. Live-mode end-to-end paper-mode → mock-live cutover dry-run (Tier B Gate E proper validation)
 
 **关联**: PR #309 (`0283de5` initial + `4f3f5c5` reviewer-fix → squash `184959c` merged 2026-05-13) / ADR-059 NEW / ADR-027 design SSOT / ADR-056 (8a) / ADR-057 (8b) / ADR-058 (8c-partial) / LL-150-152 sequence / 铁律 22/31/32/33/35/41/44 X9 / Plan §A S8 row 8c-followup amend → S8 ✅ DONE / 5/5 红线 关键点 explicit user ack pattern + auto-mode classifier backstop 2nd 实证 sustained as enforcement
+
+---
+
+## LL-154: V3 §S9a Batched 平仓 + Trailing Stop — Test-by-Accident Anti-Pattern + Reviewer 2nd-Set-of-Eyes Value (2026-05-13, PR #311)
+
+**情境**: S8 fully closed (8a + 8b + 8c-partial + 8c-followup, ADR-056-059 sediment cumulative). Plan §A S9 acceptance: batched sell + trailing stop + re-entry + 历史回放. Chunked into 2 sub-PR (S9a: batched + trailing; S9b: re-entry + 历史回放). S9a no new 5/5 红线 触发 — both modules PURE / rule-layer; broker dispatch reuses S8 8c-followup wire.
+
+**Root challenge (test-by-accident anti-pattern)**: TrailingStop initial implementation had a subtle activation-vs-tracking semantic bug. The original `evaluate` logic cleared internal `_trail_state[code]` whenever `pnl_pct < activation_pnl`, even after the position had been activated. This DEFEATS the whole purpose of trailing stop — once activated, trailing should keep tracking even if pnl retraces below 20% (the rule is supposed to catch the retrace from peak).
+
+Worse: the initial test `test_state_cleared_on_retrace_below_activation` was PASSING — but for the WRONG reason. The retrace setup (peak=125, current=110) was simultaneously breaching the trailing stop (stop=112.5 at 10% floor), causing a TRIGGER which purged state. Test assertion `"600519.SH" not in rule._trail_state` succeeded because of the trigger, not because of any retrace-clear logic. **Zero test coverage** for the actual intended semantic.
+
+**Reviewer 2nd-set-of-eyes catch (HIGH severity)**: code-reviewer agent identified this anti-pattern: "test name and comment claim 'state cleared on retrace below activation,' directly contradicting the production docstring at trailing_stop.py:132-136 which says 'keep tracking even if current pnl retraces below 20%.'" The test was a textbook case of TEST-BY-ACCIDENT — passing by coincidence, not by design.
+
+**改进措施 (PR #311 — commit `a1ac5f6` squash merged 2026-05-13)**:
+
+1. **TrailingStop evaluate logic correction** (`backend/qm_platform/risk/rules/realtime/trailing_stop.py`):
+   - Once activated (state exists), keep tracking regardless of current pnl
+   - Activation gate (pnl ≥ 20%) only applies when state is None
+   - Bracket frozen at peak_pnl (not current_pnl) — 反 bracket downgrade on retrace
+   - state purged only on (a) trigger fires, (b) caller invokes reset(), (c) position disappears from RiskContext
+   - Peak ratchet upward only: max(stored, pos.peak_price, pos.current_price)
+
+2. **Test design 2-split fix** (`backend/tests/test_trailing_stop.py`):
+   - `test_state_persists_on_retrace_below_activation_without_trigger` (HIGH coverage gap): activate at +25% (peak=125), retrace to current=119 (pnl=19%, below activation but ABOVE stop=112.5), assert state IS still present AND result == []. This is the previously-untested semantic.
+   - `test_state_cleared_on_retrace_that_triggers_stop` (companion): the trigger purge path, sustained as a separate test with clear naming.
+
+3. **Reviewer P2 additional fixes** (`backend/qm_platform/risk/execution/batched_planner.py`):
+   - Duplicate-code rejection: splits dict keyed by code; without dedup, second entry silently overwrote first while still emitting plans for both with wrong qty
+   - current_price > 0 validation: zero/negative price → 0 limit_price = nonsensical sell order
+
+4. **Tests: 64 → 68** (4 new: 2 from HIGH split, 2 from P2 validation). Cumulative S5/S7/S8/S9a + adjacent: 219/219 PASS. Pre-push smoke 55 PASS (3x).
+
+**Architectural lesson (test-by-accident anti-pattern)**:
+
+Tests that pass by coincidence are WORSE than tests that fail — they create false confidence + zero coverage for the actual intended semantic. Detection signals (sustained for future TDD):
+- **Test name vs implementation mismatch** — when the test name implies semantic A but the test setup actually exercises semantic B
+- **Multiple latent triggers in one test setup** — when a single test scenario could satisfy the assertion through multiple distinct code paths
+- **Production docstring contradicts test name** — strongest signal; reviewer agent caught this exact case
+
+**Reviewer 2nd-set-of-eyes value sustained** (4th 实证 cumulative): PR #309 (reviewer caught HIGH live broker silent fallback) + PR #308 (reviewer caught P1+P2 misc) + PR #307 (reviewer caught LIKE wildcard injection) + this PR #311 (reviewer caught test-by-accident + duplicate code + 0 current_price). CC + agent reviewer combo > either alone. Sustained as ENFORCEMENT pattern, not lesson-to-remember.
+
+**Sprint closure gate cumulative pattern 7th 实证**: ADR-060 + LL-154 + REGISTRY + Plan amend in same session as code, reviewer agent invoked BEFORE merge + findings addressed BEFORE merge. 反 deepseek-style sediment gap pattern sustained as ENFORCEMENT (cumulative 4 consecutive PR: #307+#308+#309+#311).
+
+**Iron law traceability**:
+- 22: doc 跟随代码 — ADR-060 + LL-154 + REGISTRY + Plan amend in same session
+- 24: 单一职责 — TrailingStop = 1 rule = 1 file = 1 class
+- 31: batched_planner PURE (0 IO/DB/network); trailing_stop state rule-internal not engine IO
+- 33: fail-loud — empty positions / shares ≤ 0 / 0 current_price / bad activation / duplicate codes all ValueError
+- 44 X9: sustained from S5/S7/S8 (post-merge ops checklist unchanged for S9a — pure code change, no Beat schedule mutation)
+
+**Deferred (S9b separate PR, no new 红线)**:
+1. Re-entry tracker for batched-sold symbols (V3 §7.4)
+2. DingTalk push integration for re-entry notifications
+3. 历史回放 smoke verifying batched+trailing chain end-to-end
+4. Between-batch re-evaluation Celery task (V3 §7.2 "若市场反弹 + alert 清除 → 停止后续 batch")
+5. PMSRule v1 actual deprecation / replacement (ADR-016 D-M2 path — operational follow-up)
+
+**关联**: PR #311 (`7851dc2` initial + `94e25fe` reviewer-fix → squash `a1ac5f6` merged 2026-05-13) / ADR-060 NEW / ADR-027 design SSOT / ADR-016 (PMSRule v1 deprecation path) / ADR-056 (8a) / ADR-059 (8c-followup broker wire — reused by batched dispatch) / LL-150-153 sequence / 铁律 22/24/31/33/44 X9 / Plan §A S9 row 9a ✅ / test-by-accident anti-pattern 1st 实证 sustained as detection signal + reviewer 2nd-set-of-eyes 4th 实证 cumulative
