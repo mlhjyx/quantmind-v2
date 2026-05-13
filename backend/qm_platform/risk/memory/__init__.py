@@ -1,10 +1,11 @@
 """V3 §5.4 Risk Memory RAG (Tier B, TB-3 sprint chain).
 
 Modules (TB-3 chunked sub-PR roadmap per Plan v0.2 §A):
-  - interface (TB-3a, 本 PR): 纯 dataclass + Enum 契约 (0 IO / 0 DB / 0 LiteLLM / 0 BGE-M3)
-  - repository (TB-3a, 本 PR): persist + retrieve helpers via PG + pgvector
-    (takes embedding as input; embedding computation 留 TB-3b BGE-M3 wire)
-  - embedding_service (TB-3b 留): BGE-M3 EmbeddingService wire — single-text encode
+  - interface (TB-3a, merged #339): 纯 dataclass + Enum 契约 (0 IO / 0 DB / 0 LiteLLM / 0 BGE-M3)
+  - repository (TB-3a, merged #339): persist + retrieve helpers via PG + pgvector
+    (takes embedding as input; embedding computation by TB-3b EmbeddingService)
+  - embedding_service (TB-3b, 本 PR): BGE-M3 EmbeddingService — single-text encode
+    via sentence-transformers + lazy model load + thread-safe per-instance singleton
   - rag (TB-3c 留): RiskMemoryRAG.retrieve(query_text, k=5) — orchestrate
     embed query + ivfflat cosine search + 4-tier retention filter
   - retention (TB-3c 留): 4-tier retention strategy (hot/warm/cold/archive
@@ -27,11 +28,17 @@ Prereq:
 
 from __future__ import annotations
 
+from .embedding_service import (
+    EMBEDDING_DIM,
+    BGEM3EmbeddingService,
+    EmbeddingService,
+)
 from .interface import (
     ActionTaken,
     RiskMemory,
     RiskMemoryError,
     RiskMemoryOutcome,
+    SimilarMemoryHit,
 )
 from .repository import (
     persist_risk_memory,
@@ -39,10 +46,14 @@ from .repository import (
 )
 
 __all__ = [
+    "EMBEDDING_DIM",
     "ActionTaken",
+    "BGEM3EmbeddingService",
+    "EmbeddingService",
     "RiskMemory",
     "RiskMemoryError",
     "RiskMemoryOutcome",
+    "SimilarMemoryHit",
     "persist_risk_memory",
     "retrieve_similar",
 ]
