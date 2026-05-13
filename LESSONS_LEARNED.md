@@ -5245,3 +5245,48 @@ MagicMock conn **不解析 SQL 字符串**, 所以两 bug 都漏到生产。Bug 
 - T1.5b-2 reviewer-fix cycle + T1.5b-3 reviewer self-audit cycle + AI auto-merge sustained from PR #327 onward — 体例落地
 
 **关联**: ADR-065 NEW (Gate A formal closure 7/8 PASS + 1 DEFERRED) + Constitution v0.9 → v0.10 amend (§L10.1 8 item checkbox cumulative) + STATUS_REPORT amend (S11 IN-PROGRESS → ✅ DONE) + REGISTRY ADR-065 row + memory handoff Session 53+12 + `memory/feedback_validation_rigor.md` NEW (4-step preflight SOP) + 铁律 1/25/36/42/45 / LL-067 reviewer 体例 / LL-098 X10 sustained / LL-100 chunked SOP / LL-115 family (capacity expansion 真值 silent overwrite, 11 实证 cumulative inc 本 LL-159 2 self-instances) / LL-127~158 cumulative review per T1.5 final closure / 9th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+
+---
+
+## LL-160: V3 TB-1c Replay — Synthetic Per-Bar Position Methodology for Fire-Count Baseline (2026-05-14, PR pending TB-1c sediment cycle + ADR-066 cumulative)
+
+**事件**: V3 Tier B Plan v0.2 TB-1 sprint 第 3 sub-PR (TB-1c) 跑 2 关键窗口 (2024Q1 量化踩踏 + 2025-04-07 关税冲击) 真测 against real DB minute_bars. 起初 design 假设 `positions=()` empty (per ReplayRunner.run_window 默认参数) — 实测 0 events fire 跨 4.3M bars × 2 windows. Root cause: **10 RealtimeRiskRule 全部 iterate `for pos in context.positions:`**, empty positions → 0 fire baseline → useless for sim-to-real gap audit.
+
+**根因**: V3 §15.5 sim-to-real gap 起步 baseline 需要 fire count upper bound. 单纯 minute_bars 回放无 position context → 任何 position-iterating rule (全 10 rules) 不触发. 三个 alternative 方案:
+- **(A) Universe-wide treat-as-held synthetic Position** (per bar synthesize Position(code=bar.code, shares=100, entry_price=prev_close, current_price=close)): 测量 "若全 universe 持仓" 的 upper bound fire count → production fire 应 ≤ baseline.
+- **(B) Historical position_snapshot replay**: position_snapshot 仅含 paper/live mode 历史, 2024Q1 + 2025-04 时 V3 paper mode 未启用 → 0 historical positions → 与 empty 等价 fail.
+- **(C) Single fixed portfolio replay** (e.g. top 20 PT codes): 不能 cover universe 触发模式, 失去 sim-to-real gap upper bound 意义.
+- **决议: (A) universe-wide synthetic** = 唯一可行 v1 baseline.
+
+**改进措施**:
+1. ReplayRunner subclass `Tb1cRunner(ReplayRunner)` override `build_context(ts, positions, bar_row)` — ignore passed positions + synthesize per-bar Position from bar_row (code/shares=100/entry_price=prev_close/current_price=close)
+2. Inject 5min/15min rolling state (`_price_history: dict[code, deque]`) on `self` for cross-bar lookback (price_5min_ago / price_15min_ago)
+3. Day boundary detection: reset history on new trading day for each code (overnight ≠ "5min ago")
+4. Documented v1 caveats in reflection markdown: 3/10 rules silent skip due to missing avg_daily_volume / industry / atr_pct data → VolumeSpike / LiquidityCollapse / CorrelatedDrop sparse. IndustryConcentration falls to "unknown" 100% fires every timestamp (元数据 noise, not real signal).
+5. TB-5c batch closure 时补完整 10/10 rules coverage + gap quantitative metric.
+
+**实测 baseline 结果**:
+- 2024Q1: **328,680 events** / 3.3M bars / 28 days / 29.8s / contract verified True
+- 2025-04: **234,952 events** / 962K bars / 8 days / 9.1s / contract verified True
+- Throughput: ~110K bars/s single-process Python
+- Rules fired: 7/10 (gap_down_open / limit_down_detection / near_limit_down / industry_concentration noise / rapid_drop_5min / rapid_drop_15min / trailing_stop)
+- Pure-function contract verified ✅ (0 broker / 0 INSERT / 0 alert during evaluate_at)
+
+**反 silent-zero baseline anti-pattern** (LL-115 family sustained 12 实证 cumulative):
+- 起初 0 fire 跨 4.3M bars 是 silent-zero — 与"无 events fire 因 universe 不暴露 risk regime"无法区分.
+- Synthetic universe injection 破除 silent-zero — 真测路径 fire count >> 0 → 与 production gap 可量化.
+- 本 case 是 LL-115 第 12 实证 (cumulative with ADR-063 5d empty-system trivial-pass + LL-157 mock-conn schema drift + LL-159 4-step preflight SOP).
+
+**3-layer pattern sustained**:
+- Engine PURE (RealtimeRiskEngine 不 IO, 不持久化)
+- Adapter PURE (RiskBacktestAdapter stub broker/notifier/price_reader, 0 真 broker)
+- Script orchestration (scripts/v3_tb_1_replay_2_windows.py 持久化 reflection markdown via Path.write_text, 0 DB write)
+- 0 broker / 0 INSERT / 0 alert sustained during evaluate_at (verify_pure_function_contract assert before/after counts)
+
+**Sediment 触发模式 (10th consecutive sediment-in-same-session enforcement)**:
+- PR #307+#308+#309+#311+#313+#315+#319+#320+#321+#322 + #324 (Plan v0.2) + #325/#326/#327/#328/#329 (T1.5) + #330 (TB-1a) + #331 (TB-1b) + 本 PR (TB-1c) cumulative = 18+ PR cumulative 反 deepseek-style sediment gap sustained ENFORCEMENT
+- TB-1c sub-PR scope = ADR-066 NEW + scripts/v3_tb_1_replay_2_windows.py NEW + 2 reflection markdown NEW + REGISTRY ADR-066 row + LL-160 NEW (本) + memory handoff Session 53+13 = 7 file delta atomic 1 PR per ADR-064 D5=inline 体例 sustained
+
+**Reviewer 2nd-set-of-eyes 10 实证 cumulative 候选** (sustained LL-067 体例 + feedback_code_pr_workflow.md 9-step AI 自主闭环): TB-1c reviewer spawn pending 本 PR sediment.
+
+**关联**: ADR-066 NEW (TB-1 closure cumulative 3 sub-PR) + Plan v0.2 §A TB-1 row closure marker + 铁律 1/24/25/31/33/36/41 / LL-067 reviewer 体例 / LL-098 X10 sustained / LL-100 chunked SOP / LL-115 family 12 实证 cumulative inc 本 LL-160 / LL-127~159 cumulative review per TB-1 closure / V3 §11.4 RiskBacktestAdapter pure function / V3 §15.5 sim-to-real gap counterfactual / 10th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
