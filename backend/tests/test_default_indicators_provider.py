@@ -115,16 +115,21 @@ class TestMockConn:
         assert ind.hs300_return == pytest.approx(0.005, abs=1e-6)
         assert ind.breadth_up == 3000
 
-    def test_fetch_conn_level_failure_returns_all_none(self) -> None:
-        """Conn factory raises → all fields None + None ts not crashed."""
+    def test_fetch_conn_factory_failure_propagates_operational_error(self) -> None:
+        """Connection factory failure is NOT caught internally — exception propagates.
+
+        Reviewer-fix (PR #336 HIGH): rename from misleading
+        ``test_fetch_conn_level_failure_returns_all_none`` (claimed all-None) —
+        actual behavior is intentional propagation. If we can't open a
+        connection at all, Celery task should fail-loud + retry (sustained
+        铁律 33 + task_acks_late=True per celery_app.py). All-None silent
+        path would mask infra failure (LL-115 family silent-zero anti-pattern).
+        """
 
         def boom() -> psycopg2.extensions.connection:
             raise psycopg2.OperationalError("PG down simulation")
 
         provider = DefaultIndicatorsProvider(conn_factory=boom)
-        # The exception is propagated out of self._conn_factory() — not caught
-        # internally since we can't even open a connection. Verify the exception
-        # type matches expectation (caller responsible for handling).
         with pytest.raises(psycopg2.OperationalError, match="PG down"):
             provider.fetch()
 
