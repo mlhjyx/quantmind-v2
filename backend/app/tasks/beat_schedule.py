@@ -205,6 +205,25 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 240,  # 4min within next 5min cycle
         },
     },
+    # ── S8 8c-partial: 1min Beat L4 sweep PENDING_CONFIRM expired ──
+    # V3 §S8 8c (Plan §A): Celery Beat sweep PENDING_CONFIRM → TIMEOUT_EXECUTED.
+    # crontab `* 9-14 * * 1-5` Asia/Shanghai (every 1min during trading hours,
+    # ~360 fires/day). 反 hard collision: PT chain (16:25/16:30/09:31) excluded
+    # by hour ≤14; outbox 30s + news cron + dynamic_threshold */5 minute=0 — all
+    # cadence-different + Beat sequential dispatch tolerates overlap.
+    # task body: SELECT expired PENDING_CONFIRM (LIMIT 100) → race-safe UPDATE
+    # WHERE status='PENDING_CONFIRM' AND cancel_deadline < NOW() to TIMEOUT_EXECUTED.
+    # **8c-partial scope**: state transition only. Broker_qmt sell wire deferred
+    # to 8c-followup PR (5/5 红线 关键点 needs explicit user ack per Plan §A SOP).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`.
+    "risk-l4-sweep-1min": {
+        "task": "app.tasks.l4_sweep_tasks.sweep_pending_confirm_plans",
+        "schedule": crontab(minute="*", hour="9-14", day_of_week="1-5"),
+        "options": {
+            "queue": "default",
+            "expires": 45,  # 45s within next 60s cycle (反 overlap on slow PG)
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产

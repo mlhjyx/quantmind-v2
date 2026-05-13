@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     # of (timestamp + body) with this shared secret. Empty default → endpoint returns 503
     # (反 silent skip; sustained 铁律 35 secrets via env, 铁律 33 fail-loud at boundary).
     DINGTALK_WEBHOOK_SECRET: str = ""
+    # S8 8c-partial: L4 sweep batch limit (PENDING_CONFIRM expired → TIMEOUT_EXECUTED).
+    # Default 100/min caps blast radius after crash+restart with backlog. Operator
+    # can raise (e.g. 500) if a large backlog needs faster clearance, but each row
+    # is an individual UPDATE — higher values increase PG lock contention.
+    L4_SWEEP_BATCH_LIMIT: int = 100
 
     # MVP 4.1 batch 3+ Platform SDK 迁移开关 (默认 True 走 PlatformAlertRouter SDK,
     # 含 cross-process PG dedup + AlertRulesEngine yaml-driven). caller 设 False 走旧
