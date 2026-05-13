@@ -251,4 +251,4 @@ V3 Tier B Plan v0.2 TB-3 sprint = "L2 RiskMemoryRAG + pgvector + BGE-M3 本地 e
 
 **ADR-068 Status: Accepted (V3 Tier B TB-3 closure cumulative 4 sub-PR — RiskMemoryRAG + pgvector + BGE-M3 + 4-tier retention ✅).**
 
-新人 ADR (post-ADR-067 count: committed 60 + reserved 2 — ADR-025 alias committed via 本 ADR), 0 reserved reserve.
+新人 ADR (post-ADR-067 count: committed 61 inc ADR-025 alias-committed via 本 ADR without separate file + reserved 2; active 63 = 67 # space - 4 historical gap; sustained PR #342 reviewer MEDIUM 1 count semantic clarification), 0 new reserved reserve.
