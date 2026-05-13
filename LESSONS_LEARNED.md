@@ -4807,3 +4807,92 @@ This pattern will recur — e.g. real .env paper→live cutover, real broker_qmt
 5. Operator dashboard / re-issue button + audit query
 
 **关联**: PR #308 (`ab0b9dc` initial + `32cd307` reviewer-fix → squash `3a4a324` merged 2026-05-13) / ADR-058 NEW / ADR-027 design SSOT / ADR-056 (8a parent) / ADR-057 (8b sibling) / LL-150 (8a) / LL-151 (8b) / 铁律 22/31/32/33/41/44 X9 / Plan §A S8 row 8c-partial amend / 红线 discipline 1st partial-decomposition实证 sustained as pattern
+
+---
+
+## LL-153: V3 §S8 8c-followup Broker QMT Sell Wire — 5/5 红线 关键点 explicit user ack + auto-mode classifier backstop + 反 silent false-EXECUTED (2026-05-13, PR #309)
+
+**情境**: S8 8c-partial (PR #308 `3a4a324`) closed Celery sweep + STAGED smoke with broker_qmt wire deferred to 8c-followup. Plan §A S8 acceptance line requires `broker_qmt sell 单 wire (5/5 红线 关键点)`. ADR-058 §10 listed 4 deferred items (broker wire / order_id writeback / fill_status / integration smoke) explicitly awaiting user authorization.
+
+**Root challenge**: 5/5 红线 关键点 sediment guardrails — when does "user authorized continuation" vs "user authorized this specific red-line action" diverge? Three signals had to align before forward motion:
+
+1. **AskUserQuestion explicit choice**: when user said only "继续吧" after the STOP gate's 5 options (A through E), CC reopened the gate via AskUserQuestion. User selected "S8 8c-followup — broker_qmt sell wire" + "work without stopping for clarifying questions".
+2. **Auto-mode classifier backstop**: even after the explicit choice, the local Claude Code auto-mode classifier rejected `git checkout -b fix/v3-s8-8c-followup-broker-qmt-wire` reasoning "user's '继续吧' is not specific authorization for 5/5 red-line option". CC then STOPPED + surfaced explicit "我打算做的事 + 5/5 红线 影响真值" summary + asked for one-word `Y/N` ack.
+3. **User explicit "我授权你相关权限"**: this third turn closed the loop; CC proceeded.
+
+**Lesson — three-layer red-line gate**: AskUserQuestion alone is not sufficient for 5/5 红线 关键点; the auto-mode classifier acted as a 2nd-layer backstop that forced a *third* explicit user ack. The pattern is *correct* — over-cautious is the right failure mode when the alternative is unauthorized broker mutation.
+
+**改进措施 (PR #309 — commit `184959c` squash merged 2026-05-13)**:
+
+1. NEW `backend/qm_platform/risk/execution/broker_executor.py` (~220 lines) — PURE engine
+   - `execute_plan_sell(plan, broker_call, timeout, at) → BrokerExecutionResult` pure function
+   - 0 broker_qmt import, 0 DB, 0 network — broker callable injected
+   - Result interpretation: SUCCESS statuses (stub_sell_ok/ok/filled/partial_filled) vs FAILURE (rejected/error/unknown/raises)
+   - `stub-<plan_id_prefix>` order_id synthesis for paper-mode (反 silent NULL in audit query)
+
+2. NEW `backend/app/services/risk/staged_execution_service.py` (~410 lines) — DB orchestration
+   - `StagedExecutionService.execute_plan(plan_id, conn) → StagedExecutionServiceResult`
+   - Race-safe atomic UPDATE `WHERE plan_id = CAST(%s AS uuid) AND status IN ('CONFIRMED', 'TIMEOUT_EXECUTED')` (compare-and-set)
+   - 0 conn.commit/rollback (铁律 32 sustained 4th 实证)
+   - `build_default_broker_call()` factory: paper-mode/disabled → RiskBacktestAdapter; live → QMTSellAdapter via MiniQMTBroker
+
+3. NEW `backend/app/services/risk/qmt_sell_adapter.py` (~170 lines) — production adapter
+   - Wraps `MiniQMTBroker.place_order` into BrokerProtocol `sell(code, shares, reason, timeout) → dict` shape
+   - LiveTradingDisabledError → status='rejected' + error='live_trading_disabled' (反 silent swallow)
+   - is_paper_mode_or_disabled() centralizes factory routing decision
+
+4. MODIFY `backend/app/api/risk.py` (~70 lines added) — webhook endpoint wire
+   - After CONFIRMED transition (DingTalkWebhookService), call staged_service.execute_plan
+   - Atomic per-webhook commit: webhook transition + broker writeback land/rollback together
+   - Response body adds `"broker"` block with outcome/order_id/error
+
+5. MODIFY `backend/app/tasks/l4_sweep_tasks.py` (~145 lines changed) — sweep task wire
+   - After each TIMEOUT_EXECUTED transition, call staged_service.execute_plan
+   - Result dict adds `executed/broker_failed/broker_race` counters (sustained backward-compat: default 0 when staged_service=None)
+   - Defensive else branch for unexpected NOT_FOUND/NOT_EXECUTABLE (反 silent count loss)
+
+6. 49 NEW + 1 updated tests across 5 files (broker_executor 17 / qmt_sell_adapter 12 / staged_execution_service 8 / staged_smoke +3 / sweep +4 / endpoint +1)
+
+**Reviewer fixes (commit `4f3f5c5`)** — cross-reviewer (code-reviewer + security-reviewer) findings:
+
+- **HIGH (cross-reviewer consensus)**: live broker construction failure originally fell back silently to RiskBacktestAdapter stub. This would mark plans EXECUTED with stub order_id while no real order reached the broker — dangerous false-EXECUTED gap. Fix: in live mode, RAISE the exception after emitting P0 DingTalk alert (best-effort, silent_ok on alert failure). Paper mode default unchanged.
+- **MEDIUM (code-reviewer P2-2)**: remove duplicate `BrokerCallType` alias shadowing `BrokerCallable`
+- **MEDIUM (code-reviewer P2-4)**: SQL UUID cast — `WHERE plan_id::text = %s` → `WHERE plan_id = CAST(%s AS uuid)` (preserves index usage on TimescaleDB hypertable). LL-034 pattern sustained.
+- **MEDIUM (code-reviewer P2-5)**: drop unused `now` param from `_race_safe_update` (no `updated_at` column exists; carried for no benefit)
+- **MEDIUM (security-reviewer P2-1)**: error_msg length cap (200 chars) in broker_executor + qmt_sell_adapter — bounds stack-trace leak into API response body
+- **LOW (code-reviewer)**: remove `_ = now` dead-code binding
+- **LOW (code-reviewer)**: defensive else branch in `_sweep_inner` for unexpected staged outcomes
+- **LOW (security-reviewer P3-3)**: QMT_PATH/QMT_ACCOUNT_ID direct settings attr access (fail-fast on missing creds vs getattr empty-string fallback)
+
+**Architectural lesson (3rd consecutive layered-architecture replication 实证)**:
+
+PR #307 (8b webhook) + PR #308 (8c-partial sweep) + PR #309 (8c-followup broker wire) all follow the same 3-layer split: PURE engine (qm_platform/risk/execution/) → DB service (app/services/risk/) → API/Task entry point. Test injectability via injectable Callable is the consistent pattern. This is now a *replicated convention* not a *one-off design*.
+
+The auto-mode classifier reject + explicit user ack 3-step gate is the **2nd 实证** (1st was when PR #309 setup tried to create the branch). This will recur whenever:
+- broker mutation code path touched
+- .env / production yaml mutated
+- production DB row mutated outside the normal Pipeline
+
+**Sprint closure gate cumulative pattern enforcement (6th 实证)**:
+
+S5 (PR #306 audit fix) + S5/S6/S7/S8 8a (LL-149 Part 2 + LL-150 backfill) + S8 8b (PR #307 sediment in same session) + S8 8c-partial (PR #308 sediment in same session) + this PR all have ADR + LL + REGISTRY + Plan amend in the **same session as code**, with reviewer agents invoked **BEFORE merge** + findings addressed **BEFORE merge**. The cumulative 5-sprint deepseek-style sediment gap pattern (LL-149/150/151/152/153) is now **sustained ENFORCEMENT**, not 教训 to remember.
+
+**Iron law traceability**:
+- 22: doc 跟随代码 — ADR-059 + LL-153 + REGISTRY + Plan amend in same session as code commit
+- 31: broker_executor PURE (verified: 0 broker_qmt import, 0 DB, 0 network)
+- 32: staged_execution_service 0 commit (3 explicit tests: TestNoCommit + 2 sweep flow tests)
+- 33: broker exceptions → FAILED state with error_msg; live broker wire failure RAISES with P0 alert (反 silent false-EXECUTED)
+- 35: QMT_PATH/QMT_ACCOUNT_ID via env, direct attr access fail-fast on missing
+- 41: sustained from 8c-partial (PG TIMESTAMPTZ vs Celery Asia/Shanghai)
+- 44 X9: staged_service rebuilt per Celery task invocation; post-merge ops sustained
+
+**Tests cumulative**: 156/156 PASS (S5+S6+S7+S8/8a/8b/8c-partial/8c-followup + fundamental, post-reviewer-fix). Pre-push smoke 55 PASS (3x: initial push, reviewer-fix push, sediment push). Ruff clean.
+
+**Deferred (out of S8 scope; not blockers)**:
+1. Async broker fill callback wire (filled_shares=0 returned at submit-time; real fill comes via MiniQMTBroker callback)
+2. Operator dashboard / re-issue button (UX work, ADR-058 §10 item 5)
+3. Multi-secret rotation (operational follow-up)
+4. Partial-fill reconciliation split-execution row (current: partial_filled counts as success at this layer)
+5. Live-mode end-to-end paper-mode → mock-live cutover dry-run (Tier B Gate E proper validation)
+
+**关联**: PR #309 (`0283de5` initial + `4f3f5c5` reviewer-fix → squash `184959c` merged 2026-05-13) / ADR-059 NEW / ADR-027 design SSOT / ADR-056 (8a) / ADR-057 (8b) / ADR-058 (8c-partial) / LL-150-152 sequence / 铁律 22/31/32/33/35/41/44 X9 / Plan §A S8 row 8c-followup amend → S8 ✅ DONE / 5/5 红线 关键点 explicit user ack pattern + auto-mode classifier backstop 2nd 实证 sustained as enforcement
