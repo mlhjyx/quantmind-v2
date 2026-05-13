@@ -38,6 +38,11 @@ from app.services.risk.dingtalk_webhook_service import (
     DingTalkWebhookService,
     WebhookOutcome,
 )
+from app.services.risk.staged_execution_service import (
+    StagedExecutionOutcome,
+    StagedExecutionService,
+    StagedExecutionServiceResult,
+)
 
 TEST_SECRET = "test-secret-do-not-use-in-prod"
 TEST_PREFIX = "abcd1234"
@@ -86,6 +91,34 @@ def _stub_service(
     return svc
 
 
+def _stub_staged_service(
+    outcome: StagedExecutionOutcome = StagedExecutionOutcome.EXECUTED,
+    plan_id: str | None = "abcd1234-...",
+    broker_order_id: str | None = "stub-abcd1234",
+    final_status: PlanStatus | None = PlanStatus.EXECUTED,
+) -> StagedExecutionService:
+    """Stub StagedExecutionService for 8c-followup endpoint integration.
+
+    The endpoint now calls staged_service.execute_plan after CONFIRMED
+    transitions. Real broker call is unwanted in unit tests — this stub returns
+    a deterministic result without touching the DB or broker.
+    """
+    # Build the service with a no-op broker (won't be invoked since we patch
+    # execute_plan directly).
+    svc = StagedExecutionService(broker_call=lambda *a, **k: {"status": "ok"})
+    svc.execute_plan = MagicMock(  # type: ignore[method-assign]
+        return_value=StagedExecutionServiceResult(
+            outcome=outcome,
+            plan_id=plan_id,
+            broker_order_id=broker_order_id,
+            final_status=final_status,
+            error_msg=None,
+            message=f"stub {outcome.value}",
+        )
+    )
+    return svc
+
+
 # §1 happy path
 
 
@@ -99,6 +132,7 @@ class TestEndpointHappyPath:
         body = '{"text": "confirm abcd1234"}'
         sign = _sign_body(body, now_unix)
         stub = _stub_service(WebhookOutcome.TRANSITIONED)
+        staged_stub = _stub_staged_service()
 
         # FastAPI dependency override: app.dependency_overrides bypasses Depends().
         # The endpoint also calls get_sync_conn() inline (not via Depends), so we
@@ -106,6 +140,7 @@ class TestEndpointHappyPath:
         from app.api import risk as risk_mod
 
         app.dependency_overrides[risk_mod._get_dingtalk_webhook_service] = lambda: stub
+        app.dependency_overrides[risk_mod._get_staged_execution_service] = lambda: staged_stub
         try:
             with patch.object(risk_mod, "get_sync_conn") as mock_conn_factory:
                 mock_conn = MagicMock()
@@ -121,8 +156,15 @@ class TestEndpointHappyPath:
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["outcome"] == "transitioned"
-        assert data["final_status"] == "CONFIRMED"
-        # TRANSITIONED path commits the conn
+        # 8c-followup: post-broker status override → EXECUTED (was CONFIRMED in 8c-partial)
+        assert data["final_status"] == "EXECUTED"
+        # 8c-followup: broker block is present
+        assert "broker" in data
+        assert data["broker"]["outcome"] == "executed"
+        assert data["broker"]["order_id"] == "stub-abcd1234"
+        # staged_service was invoked with the plan_id from the webhook result
+        staged_stub.execute_plan.assert_called_once()
+        # TRANSITIONED + CONFIRMED → broker run → commit ONCE for atomic webhook + broker
         mock_conn.commit.assert_called_once()
         mock_conn.close.assert_called_once()
 
