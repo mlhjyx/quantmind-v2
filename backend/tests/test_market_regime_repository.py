@@ -117,6 +117,28 @@ def test_market_indicators_naive_ts_raises() -> None:
         MarketIndicators(timestamp=naive)
 
 
+def test_market_indicators_all_none_accepted() -> None:
+    """PR #333 reviewer MEDIUM 1 design codification: fully-empty indicators IS allowed.
+
+    TB-2b BullAgent/BearAgent/Judge prompts handle "all source feeds failed" path.
+    Interface layer does NOT enforce minimum-data invariant (反 over-strict —
+    "no data" IS a valid runtime state distinct from "data corruption").
+    """
+    ts = datetime(2026, 5, 14, 9, 0, 0, tzinfo=SHANGHAI_TZ)
+    ind = MarketIndicators(timestamp=ts)
+    # All optional fields are None — should NOT raise.
+    assert ind.sse_return is None
+    assert ind.hs300_return is None
+    assert ind.breadth_up is None
+    assert ind.breadth_down is None
+    assert ind.north_flow_cny is None
+    assert ind.iv_50etf is None
+    # Serialization preserves all None for downstream prompt layer.
+    j = ind.to_jsonable()
+    assert j["sse_return"] is None
+    assert j["iv_50etf"] is None
+
+
 def test_market_indicators_negative_breadth_raises() -> None:
     ts = datetime(2026, 5, 14, 9, 0, 0, tzinfo=SHANGHAI_TZ)
     with pytest.raises(ValueError, match="breadth_up must be ≥ 0"):
@@ -226,14 +248,18 @@ def test_market_regime_arguments_jsonable() -> None:
 
 
 def _connect_test_db() -> psycopg2.extensions.connection | None:
-    """Try real PG connect; skip if unavailable (sustained mock-conn anti-pattern reject)."""
+    """Try real PG connect; skip if unavailable (sustained mock-conn anti-pattern reject).
+
+    Reviewer-fix (PR #333 MEDIUM 3): use public ``get_sync_conn`` 反 private
+    ``_get_dsn`` coupling to internal API (sustained project test pattern,
+    aligned with test_v3_s10_daily_aggregator_schema.py:26).
+    """
     try:
-        from app.services.db import _get_dsn  # noqa: PLC0415
+        from app.services.db import get_sync_conn  # noqa: PLC0415
     except Exception:
         return None
     try:
-        dsn = _get_dsn()
-        return psycopg2.connect(dsn)
+        return get_sync_conn()
     except Exception:
         return None
 

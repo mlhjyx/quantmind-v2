@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS market_regime_log (
     bull_arguments JSONB,        -- 3-arg structure: [{"argument": "...", "evidence": "...", "weight": 0.x}, ...]
     bear_arguments JSONB,        -- same shape
     judge_reasoning TEXT,
-    market_indicators JSONB,     -- 输入 snapshot: {sse_return, hs300_return, breadth_up, breadth_down, north_flow, iv_50etf}
+    market_indicators JSONB,     -- 输入 snapshot: {sse_return, hs300_return, breadth_up, breadth_down, north_flow_cny, iv_50etf}
     cost_usd NUMERIC(8, 4) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     -- TimescaleDB hypertable requires partition key (timestamp) in PRIMARY KEY.
@@ -63,14 +63,14 @@ COMMENT ON TABLE market_regime_log IS
     'V3 §5.3 Bull/Bear regime detection — 每日 3 次 V4-Pro × 3 agent debate 输出';
 COMMENT ON COLUMN market_regime_log.regime IS
     'V3 §5.3 label: Bull/Bear/Neutral/Transitioning (CHECK constrained, ADR-036 V4-Pro Judge 输出)';
-COMMENT ON COLUMN market_regime_log.confidence IS
-    'V3 §5.3 Judge confidence ∈ [0, 1] (CHECK constrained)';
 COMMENT ON COLUMN market_regime_log.bull_arguments IS
     'JSONB array of 3 看多 arguments per Bull Agent V4-Pro (ADR-036)';
 COMMENT ON COLUMN market_regime_log.bear_arguments IS
     'JSONB array of 3 看空 arguments per Bear Agent V4-Pro (ADR-036)';
 COMMENT ON COLUMN market_regime_log.market_indicators IS
-    'JSONB 输入 snapshot: {sse_return, hs300_return, breadth_up, breadth_down, north_flow, iv_50etf}';
+    'JSONB 输入 snapshot: {sse_return, hs300_return, breadth_up, breadth_down, north_flow_cny, iv_50etf} — field names align MarketIndicators dataclass per backend/qm_platform/risk/regime/interface.py';
+COMMENT ON COLUMN market_regime_log.confidence IS
+    'V3 §5.3 Judge confidence ∈ [0, 1] (CHECK chk_confidence_range). NUMERIC(5,4) = 4 decimal precision sufficient for Judge weighted vote — higher precision is LLM stochastic noise.';
 COMMENT ON COLUMN market_regime_log.cost_usd IS
     'V3 §16.2 月预算 ≤ $50/月 — Bull/Bear/Judge 3 calls × 3 daily × 30 days = 270 calls (V4-Pro ~$0.39/月 per ADR-036)';
 

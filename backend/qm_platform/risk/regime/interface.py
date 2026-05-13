@@ -74,6 +74,13 @@ class MarketIndicators:
     Note: 所有数值字段 Optional 容忍 source feed timeout (Tushare / Wind / etc) —
     LLM agents 接收 dict 时 None 字段 will be marked "data unavailable" in prompt
     per TB-2b prompt 体例.
+
+    Design decision (PR #333 reviewer MEDIUM 1): fully-empty indicators (all 5
+    numeric None) IS allowed by __post_init__ — TB-2b BullAgent/BearAgent/Judge
+    prompts MUST guard 反 garbage reasoning when all source feeds fail. The
+    failure path is delegated to prompt layer 反 over-strict validation at
+    interface layer (sustained 反 silent vs fail-loud trade-off; "no data" IS a
+    valid runtime state distinct from "data corruption").
     """
 
     timestamp: datetime

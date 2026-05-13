@@ -2,7 +2,8 @@
 
 Modules (TB-2 chunked sub-PR roadmap per Plan v0.2 §A):
   - interface (TB-2a, 本 PR): 纯 dataclass + Enum 契约 (0 IO / 0 DB / 0 LiteLLM)
-  - repository (TB-2a, 本 PR): persist MarketRegime → market_regime_log via DataPipeline (铁律 17)
+  - repository (TB-2a, 本 PR): persist MarketRegime → market_regime_log via single-row INSERT
+    (LL-066 exception to 铁律 17 DataPipeline — 3 daily cadence × 1 row each, not batch)
   - service (TB-2b 留): MarketRegimeService.classify orchestration (Bull/Bear/Judge V4-Pro)
   - agents (TB-2b 留): BullAgent / BearAgent / RegimeJudge wiring LiteLLMRouter
   - prompts (TB-2b 留): prompts/risk/bull_agent_v1.yaml / bear_agent_v1.yaml / regime_judge_v1.yaml
