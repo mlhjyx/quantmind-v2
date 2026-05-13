@@ -10,10 +10,15 @@ Layered architecture:
     commit + Celery Beat 周期触发
 
 铁律 31 not strictly invoked (SQL is IO-adjacent but caller owns conn).
-铁律 32 sustained: 0 conn.commit/rollback in this module.
+铁律 32 sustained: 0 conn.commit in this module. conn.rollback() IS called inside
+  `_run_query_safe` ONLY to reset PG transaction state after per-query errors
+  (required by psycopg2 — without this, subsequent queries fail with
+  "InFailedSqlTransaction" cascading). This is NOT a transaction boundary
+  operation — it's per-query error recovery. Caller still owns the outer
+  commit() and any savepoint semantics.
 铁律 33 sustained: missing source tables → log warn + return 0 for that metric
   (反 silent skip the entire aggregation; partial metric is better than no
-  metric at all on first-week of paper-mode 5d before all tables populated).
+  metric at all on first-week before all tables populated).
 
 V3 §15.4 验收指标 (4 项, 由 verify_report 检查 5d 累计):
   - P0 alert 误报率 < 30% (本表写 raw count; 误报率 verify 报告侧 join trade_log)
@@ -80,6 +85,20 @@ class DailyMetricsResult:
 
 # SQL specs per metric. Caller may swap individual queries via spec override
 # (e.g. for testing or future schema changes).
+#
+# Reviewer P2 (code-reviewer + db-reviewer cross-finding): 9 columns are
+# populated via spec queries below (alerts P0/P1/P2 + staged 5 states + llm_cost).
+# The remaining 11 DailyMetricsResult fields are INTENTIONALLY left at dataclass
+# defaults until their source tables are wired:
+#   - news_ingested_count / news_source_failures — L0 NewsIngestionService (S11+)
+#   - fundamental_ingest_success_rate — L0.3 FundamentalContext (S4 minimal exists)
+#   - detection_latency_p50_ms / detection_latency_p99_ms — L1 latency
+#     instrumentation (needs risk_event_log latency_ms column or histogram cache)
+#   - sentiment_calls_count / sentiment_avg_cost / rag_retrievals_count — L2
+#     pipeline metrics (Tier B scope)
+#   - reflector_weekly_completed / reflector_lessons_added — L5 RiskReflector
+#     (Tier B scope)
+# These can be added via spec override once source tables/columns exist.
 _DEFAULT_SPECS: dict[str, DailyMetricsSpec] = {
     "alerts_p0_count": DailyMetricsSpec(
         column="alerts_p0_count",

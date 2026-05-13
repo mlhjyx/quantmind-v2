@@ -217,10 +217,23 @@ def _load_window_rows(conn: Any, window_start: date, window_end: date) -> list[d
     """
     cur = conn.cursor()
     try:
+        # Reviewer P1 (code-reviewer): fetch ALL columns from risk_metrics_daily
+        # so future enrichments (per-day staged breakdowns / L0/L2/L5 metrics)
+        # can read directly from the loaded rows without needing a separate
+        # query. Previously fetched 6 columns — latent data-availability trap.
         cur.execute(
             """
-            SELECT date, alerts_p0_count, alerts_p1_count, alerts_p2_count,
-                   detection_latency_p99_ms, llm_cost_total
+            SELECT date,
+                   news_ingested_count, news_source_failures,
+                   fundamental_ingest_success_rate,
+                   alerts_p0_count, alerts_p1_count, alerts_p2_count,
+                   detection_latency_p50_ms, detection_latency_p99_ms,
+                   sentiment_calls_count, sentiment_avg_cost, rag_retrievals_count,
+                   staged_plans_count, staged_executed_count,
+                   staged_cancelled_count, staged_timeout_executed_count,
+                   auto_triggered_count,
+                   reflector_weekly_completed, reflector_lessons_added,
+                   llm_cost_total
             FROM risk_metrics_daily
             WHERE date BETWEEN %s AND %s
             ORDER BY date ASC

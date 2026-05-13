@@ -6,7 +6,7 @@
 ---
 --- 变更:
 ---   1. NEW TABLE risk_metrics_daily (V3 §13.2 schema 1:1)
----   2. Index on date DESC for verify report lookups
+---   2. PK on `date` serves both ASC and DESC verify lookups (no separate index)
 ---
 --- Rollback: 2026_05_13_risk_metrics_daily_rollback.sql
 ---
@@ -46,16 +46,23 @@ CREATE TABLE IF NOT EXISTS risk_metrics_daily (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_risk_metrics_date_desc
-    ON risk_metrics_daily (date DESC);
+-- Reviewer P2 (db-reviewer): no separate index needed — PK on `date` already
+-- creates a unique B-tree index that serves both ASC and DESC scans for the
+-- 5-row window verify query. Earlier draft had idx_risk_metrics_date_desc;
+-- redundant + wasted write overhead.
 
-COMMIT;
-
+-- Reviewer P1 (db-reviewer): COMMENT ON statements moved INSIDE transaction
+-- (previously after COMMIT — risk of partial migration state if DDL fails
+-- between COMMIT and COMMENT).
 COMMENT ON TABLE risk_metrics_daily IS
-    'V3 §13.2 元监控 — 风控系统自身 KPI 日聚合 (S10 paper-mode 5d + 持续元监控)';
+    'V3 §13.2 元监控 — 风控系统自身 KPI 日聚合';
+COMMENT ON COLUMN risk_metrics_daily.news_source_failures IS
+    'JSONB shape: {source_name: failure_count}, e.g. {"rsshub": 3, "tavily": 1}';
 COMMENT ON COLUMN risk_metrics_daily.detection_latency_p99_ms IS
     'V3 §13.1 SLA: L1 detection P99 < 5000ms (5s)';
 COMMENT ON COLUMN risk_metrics_daily.staged_timeout_executed_count IS
     'V3 §7.5 STAGED 30min cancel_deadline 超时默认执行 (反向决策权)';
 COMMENT ON COLUMN risk_metrics_daily.llm_cost_total IS
     'V3 §16.2 月预算 ≤ $50/月 → 日均 ≤ $1.67 (5d 累计 ≤ $8.35)';
+
+COMMIT;

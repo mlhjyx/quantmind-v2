@@ -104,6 +104,14 @@ def main() -> int:
         return 0 if report.all_pass else 1
     except Exception:
         logger.exception("[verify-report] failed")
+        # Reviewer P3 (code-reviewer): rollback on exception for symmetry with
+        # extract CLI script. generate_verify_report is read-only so this is
+        # defensive — harmless if no transaction was open.
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                logger.exception("[verify-report] rollback after error failed")
         return 1
     finally:
         if conn is not None:
