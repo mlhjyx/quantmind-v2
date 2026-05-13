@@ -326,3 +326,37 @@ class TestDefensive:
 
     def test_default_batch_interval(self):
         assert DEFAULT_BATCH_INTERVAL_MIN == 5
+
+    def test_duplicate_codes_rejected(self):
+        """Reviewer P2 fix: duplicate code → ValueError (反 silent dict
+        overwrite producing double plans with wrong quantities)."""
+        with pytest.raises(ValueError, match="duplicate position codes"):
+            generate_batched_plans(
+                trigger_event_id=None,
+                trigger_reason="test",
+                positions=[_pos("AAA", shares=100), _pos("AAA", shares=200)],
+                mode=ExecutionMode.OFF,
+                at=_NOW,
+            )
+
+    def test_zero_current_price_rejected(self):
+        """Reviewer P2 fix: 0 current_price → 0 limit_price = nonsensical
+        sell order; fail fast."""
+        with pytest.raises(ValueError, match="current_price must be > 0"):
+            generate_batched_plans(
+                trigger_event_id=None,
+                trigger_reason="test",
+                positions=[_pos("AAA", shares=100, current_price=0)],
+                mode=ExecutionMode.OFF,
+                at=_NOW,
+            )
+
+    def test_negative_current_price_rejected(self):
+        with pytest.raises(ValueError, match="current_price must be > 0"):
+            generate_batched_plans(
+                trigger_event_id=None,
+                trigger_reason="test",
+                positions=[_pos("AAA", shares=100, current_price=-1.0)],
+                mode=ExecutionMode.OFF,
+                at=_NOW,
+            )

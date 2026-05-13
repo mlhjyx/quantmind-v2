@@ -90,14 +90,37 @@ class TestActivationGate:
         # State recorded
         assert "600519.SH" in rule._trail_state
 
-    def test_state_cleared_on_retrace_below_activation(self):
+    def test_state_persists_on_retrace_below_activation_without_trigger(self):
+        """Reviewer P1 fix: previously misnamed test was passing by accident
+        (current=110 → pnl=10% → also triggered trailing stop at 10% floor,
+        purging state). The CORRECT semantic per V3 §7.3: once activated, state
+        persists even if pnl retraces below 20% — that's the trailing stop's
+        whole purpose. Test the no-trigger case explicitly.
+        """
         rule = TrailingStop()
-        # First: activate at +25%
+        # Activate at +25% (peak=125, no ATR → 10% floor, stop=112.5)
         rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=125)))
         assert "600519.SH" in rule._trail_state
-        # Then: pnl drops to +10% → below activation, state cleared
-        rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=110)))
-        assert "600519.SH" not in rule._trail_state
+        # Retrace to current=119 → pnl=19% (below 20% activation), BUT
+        # stop=112.5 → 119 > 112.5 so no trigger; state should PERSIST.
+        results = rule.evaluate(
+            _ctx(_pos(entry_price=100, peak_price=125, current_price=119))
+        )
+        assert results == []  # no trigger
+        assert "600519.SH" in rule._trail_state  # state persists
+
+    def test_state_cleared_on_retrace_that_triggers_stop(self):
+        """Companion test: retrace that DOES breach trailing stop fires a
+        trigger and purges state post-trigger (sustained existing semantic).
+        """
+        rule = TrailingStop()
+        rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=125)))
+        # current=110 → stop=112.5 → 110 < 112.5 → TRIGGER → state purged
+        results = rule.evaluate(
+            _ctx(_pos(entry_price=100, peak_price=125, current_price=110))
+        )
+        assert len(results) == 1  # triggered
+        assert "600519.SH" not in rule._trail_state  # state purged post-trigger
 
 
 # ── Trigger logic ──

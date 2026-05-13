@@ -153,9 +153,24 @@ def generate_batched_plans(
         raise ValueError("positions must be non-empty")
     if batch_interval_min <= 0:
         raise ValueError(f"batch_interval_min must be > 0, got {batch_interval_min}")
+    # Reviewer P2 (code-reviewer): duplicate-code check — splits dict keyed by
+    # code; without dedup, second entry would silently overwrite first in dict
+    # but both would still appear in sorted_positions, emitting double plans
+    # with wrong quantities.
+    codes = [p.code for p in positions]
+    if len(codes) != len(set(codes)):
+        dups = sorted({c for c in codes if codes.count(c) > 1})
+        raise ValueError(f"duplicate position codes not allowed: {dups}")
     for p in positions:
         if p.shares <= 0:
             raise ValueError(f"position {p.code} shares must be > 0, got {p.shares}")
+        # Reviewer P2 (code-reviewer): current_price > 0 validation. Zero/
+        # negative price would yield nonsensical limit_price=0; better to fail
+        # fast than emit a 0-price sell order.
+        if p.current_price <= 0:
+            raise ValueError(
+                f"position {p.code} current_price must be > 0, got {p.current_price}"
+            )
 
     n_batches = compute_batch_count(len(positions))
     sorted_positions = sorted(positions, key=_priority_key)
