@@ -166,7 +166,7 @@ _DEFAULT_SPECS: dict[str, DailyMetricsSpec] = {
     ),
     "llm_cost_total": DailyMetricsSpec(
         column="llm_cost_total",
-        sql="SELECT COALESCE(SUM(total_cost_usd), 0) FROM llm_cost_daily WHERE date = %s",
+        sql="SELECT COALESCE(SUM(cost_usd_total), 0) FROM llm_cost_daily WHERE day = %s",
         default_on_missing=0.0,
     ),
 }
