@@ -185,10 +185,14 @@ def _extract_candidate_text(report_path: Path, index: int) -> str:
                 # Blank line or next section header ends the candidate block.
                 in_candidate_block = False
 
-    if index > len(candidates):
+    # Reviewer-fix (PR #346 MEDIUM 2): defense-in-depth `index < 1` guard —
+    # _parse_candidate_id already validates index ≥ 1, but if a caller bypasses
+    # it, `candidates[0 - 1]` = candidates[-1] would silently return the LAST
+    # candidate. Explicit lower-bound check 反 silent wrong-candidate.
+    if index < 1 or index > len(candidates):
         raise ReflectionCandidateError(
-            f"candidate index {index} out of range — report {report_path.name} "
-            f"has {len(candidates)} candidate(s)"
+            f"candidate index {index} out of range [1, {len(candidates)}] — "
+            f"report {report_path.name} has {len(candidates)} candidate(s)"
         )
     return candidates[index - 1]
 

@@ -344,6 +344,18 @@ class TestPrScriptRedlineSelfCheck:
         with pytest.raises(RuntimeError, match="RED-LINE SELF-CHECK FAILED"):
             mod._redline_self_check(["configs/pt_live.yaml"])
 
+    def test_redline_abort_on_engines(self) -> None:
+        """PR #346 reviewer-fix LOW 1: dedicated test for backend/engines/ fragment."""
+        mod = _load_pr_script()
+        with pytest.raises(RuntimeError, match="RED-LINE SELF-CHECK FAILED"):
+            mod._redline_self_check(["backend/engines/factor_engine.py"])
+
+    def test_redline_abort_on_litellm_router(self) -> None:
+        """PR #346 reviewer-fix LOW 1: dedicated test for config/litellm_router fragment."""
+        mod = _load_pr_script()
+        with pytest.raises(RuntimeError, match="RED-LINE SELF-CHECK FAILED"):
+            mod._redline_self_check(["config/litellm_router/config.yaml"])
+
     def test_redline_abort_on_outside_path(self) -> None:
         mod = _load_pr_script()
         with pytest.raises(RuntimeError, match="outside"):
