@@ -62,13 +62,38 @@ def _valid_output(period_label: str = "2026_W19") -> ReflectionOutput:
     )
 
 
-class _StubService:
-    """Stub RiskReflectorAgent — records reflect calls + returns configured output."""
+class _StubConn:
+    """Minimal psycopg2 connection stub — records commit/rollback/close."""
 
-    def __init__(self, output: ReflectionOutput | None = None, raise_exc: Exception | None = None) -> None:
+    def __init__(self) -> None:
+        self.committed = False
+        self.rolled_back = False
+        self.closed = False
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def rollback(self) -> None:
+        self.rolled_back = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _StubService:
+    """Stub RiskReflectorAgent — records reflect + sediment_lesson calls."""
+
+    def __init__(
+        self,
+        output: ReflectionOutput | None = None,
+        raise_exc: Exception | None = None,
+        sediment_raise_exc: Exception | None = None,
+    ) -> None:
         self._output = output
         self._raise = raise_exc
+        self._sediment_raise = sediment_raise_exc
         self.calls: list[dict[str, Any]] = []
+        self.sediment_calls: list[dict[str, Any]] = []
 
     def reflect(
         self,
@@ -82,10 +107,32 @@ class _StubService:
             raise self._raise
         return self._output or _valid_output(input_data.period_label)
 
+    def sediment_lesson(
+        self,
+        output: ReflectionOutput,
+        conn: Any,
+        *,
+        event_type: str,
+        symbol_id: str | None = None,
+        event_timestamp: datetime | None = None,
+    ) -> int:
+        self.sediment_calls.append(
+            {
+                "output": output,
+                "conn": conn,
+                "event_type": event_type,
+                "symbol_id": symbol_id,
+                "event_timestamp": event_timestamp,
+            }
+        )
+        if self._sediment_raise is not None:
+            raise self._sediment_raise
+        return 42  # stub memory_id
+
 
 @pytest.fixture
 def stub_env(monkeypatch, tmp_path):
-    """Patch _get_service + REFLECTIONS_DIR + send_with_dedup for isolated task tests."""
+    """Patch _get_service + REFLECTIONS_DIR + send_with_dedup + get_sync_conn."""
     stub_svc = _StubService()
     monkeypatch.setattr(rrt, "_get_service", lambda: stub_svc)
     monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
@@ -101,10 +148,23 @@ def stub_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(dingtalk_mod, "send_with_dedup", _stub_send)
 
+    # get_sync_conn imported inside _run_reflection — patch at source module (TB-4c).
+    import app.services.db as db_mod
+
+    conns: list[_StubConn] = []
+
+    def _stub_get_conn() -> _StubConn:
+        c = _StubConn()
+        conns.append(c)
+        return c
+
+    monkeypatch.setattr(db_mod, "get_sync_conn", _stub_get_conn)
+
     return {
         "service": stub_svc,
         "reflections_dir": tmp_path,
         "dingtalk_calls": dingtalk_calls,
+        "conns": conns,
     }
 
 
@@ -326,10 +386,12 @@ class TestRunReflection:
             target_path=target,
             decision_id="test-decision",
             dedup_key="risk_reflector:weekly:2026_W19",
+            event_type="WeeklyReflection",
         )
         assert result["ok"] is True
         assert result["period_label"] == "2026_W19"
         assert result["report_path"] == str(target)
+        assert result["memory_id"] == 42  # stub sediment memory_id
         assert target.exists()
         # Service was invoked with stub input.
         assert len(stub_env["service"].calls) == 1
@@ -337,6 +399,15 @@ class TestRunReflection:
         # DingTalk push attempted.
         assert len(stub_env["dingtalk_calls"]) == 1
         assert stub_env["dingtalk_calls"][0]["dedup_key"] == "risk_reflector:weekly:2026_W19"
+        # TB-4c: lesson sediment invoked + conn committed + closed (铁律 32).
+        assert len(stub_env["service"].sediment_calls) == 1
+        sediment = stub_env["service"].sediment_calls[0]
+        assert sediment["event_type"] == "WeeklyReflection"
+        assert sediment["event_timestamp"] == datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
+        assert len(stub_env["conns"]) == 1
+        assert stub_env["conns"][0].committed is True
+        assert stub_env["conns"][0].rolled_back is False
+        assert stub_env["conns"][0].closed is True
 
     def test_propagates_service_error(self, monkeypatch, tmp_path) -> None:
         from qm_platform.risk.reflector import ReflectorAgentError
@@ -352,7 +423,51 @@ class TestRunReflection:
                 target_path=tmp_path / "2026_W19.md",
                 decision_id="test",
                 dedup_key="test",
+                event_type="WeeklyReflection",
             )
+
+    def test_sediment_error_rolls_back_conn(self, monkeypatch, tmp_path) -> None:
+        """TB-4c: sediment_lesson failure → conn.rollback() + close + raise (铁律 33)."""
+        from qm_platform.risk.memory.interface import RiskMemoryError
+
+        svc = _StubService(sediment_raise_exc=RiskMemoryError("BGE-M3 OOM"))
+        monkeypatch.setattr(rrt, "_get_service", lambda: svc)
+        monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
+
+        import app.services.dingtalk_alert as dingtalk_mod
+
+        monkeypatch.setattr(
+            dingtalk_mod,
+            "send_with_dedup",
+            lambda **kw: {"sent": False, "reason": "alerts_disabled"},
+        )
+
+        import app.services.db as db_mod
+
+        conns: list[_StubConn] = []
+
+        def _stub_get_conn() -> _StubConn:
+            c = _StubConn()
+            conns.append(c)
+            return c
+
+        monkeypatch.setattr(db_mod, "get_sync_conn", _stub_get_conn)
+
+        with pytest.raises(RiskMemoryError, match="BGE-M3 OOM"):
+            rrt._run_reflection(
+                period_label="2026_W19",
+                period_start=datetime(2026, 5, 3, 0, 0, tzinfo=UTC),
+                period_end=datetime(2026, 5, 10, 0, 0, tzinfo=UTC),
+                target_path=tmp_path / "2026_W19.md",
+                decision_id="test",
+                dedup_key="test",
+                event_type="WeeklyReflection",
+            )
+        # conn rolled back + closed (反 leak).
+        assert len(conns) == 1
+        assert conns[0].committed is False
+        assert conns[0].rolled_back is True
+        assert conns[0].closed is True
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +483,10 @@ class TestCeleryTasks:
         assert "_W" in result["period_label"]
         # Report written to patched REFLECTIONS_DIR.
         assert Path(result["report_path"]).exists()
+        # TB-4c: lesson sedimented with WeeklyReflection event_type.
+        assert result["memory_id"] == 42
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "WeeklyReflection"
+        assert stub_env["service"].sediment_calls[0]["symbol_id"] is None
 
     def test_weekly_reflection_auto_decision_id(self, stub_env) -> None:
         result = rrt.weekly_reflection()
@@ -380,6 +499,8 @@ class TestCeleryTasks:
         # period_label = YYYY_MM (no _W).
         assert "_W" not in result["period_label"]
         assert Path(result["report_path"]).exists()
+        # TB-4c: lesson sedimented with MonthlyReflection event_type.
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "MonthlyReflection"
 
     def test_event_reflection(self, stub_env) -> None:
         result = rrt.event_reflection(
@@ -391,6 +512,20 @@ class TestCeleryTasks:
         # Report written under event/ subdir.
         assert "event" in result["report_path"]
         assert Path(result["report_path"]).exists()
+        # TB-4c: default event_type when caller omits.
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "EventReflection"
+
+    def test_event_reflection_custom_event_type_and_symbol(self, stub_env) -> None:
+        """TB-4c: L1 dispatch supplies triggering event_type + symbol_id."""
+        rrt.event_reflection(
+            event_summary="600519 跌停",
+            event_type="LimitDown",
+            symbol_id="600519.SH",
+            decision_id="event-limitdown",
+        )
+        sediment = stub_env["service"].sediment_calls[0]
+        assert sediment["event_type"] == "LimitDown"
+        assert sediment["symbol_id"] == "600519.SH"
 
     def test_event_reflection_empty_summary_raises(self, stub_env) -> None:
         with pytest.raises(ValueError, match="event_summary must be non-empty"):

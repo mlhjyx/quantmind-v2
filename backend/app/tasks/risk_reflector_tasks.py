@@ -34,16 +34,25 @@ Schedule collision risk (反 hard collision, sustained TB-2c 体例):
     weekday. Beat sequential dispatch + `--pool=solo` Windows tolerates
     sub-second queue (independent V4-Pro tasks, ~3-5s combined). Acceptable.
 
-TB-4b scope boundary (留 TB-4c/d):
-  - Input gathering = stub placeholder (TB-4c wires real DB queries)
-  - lesson→risk_memory 闭环 = 留 TB-4c (V4-Flash embed → INSERT risk_memory)
+TB-4c scope (本 PR — lesson loop wired):
+  - lesson→risk_memory 闭环 ✅ (V3 §8.3) — RiskReflectorAgent.sediment_lesson:
+    BGE-M3 embed lesson text → RiskMemory → persist_risk_memory INSERT.
+    embedding 选型 = BGE-M3 local per ADR-064 D2 + ADR-068 D2 (NOT V4-Flash —
+    V3 §8.3/§16.2 "V4-Flash embedding" cite is pre-ADR-064 spec drift, 留 TB-5c
+    batch doc amend per ADR-022).
+TB-4c scope boundary (留 TB-4d):
+  - Input gathering still stub placeholder (TB-4d wires real risk_event_log /
+    execution_plans / trade_log / RiskMemoryRAG queries)
   - user reply approve → CC auto PR generate = 留 TB-4d (DingTalk webhook patch)
 
 铁律 22 sustained: doc 跟随代码 — beat_schedule.py amend + runbook + README same PR.
-铁律 31 sustained: qm_platform/risk/reflector engine PURE; 本 task = Application dispatch.
-铁律 32 sustained: 本 TB-4b 0 domain DB write (markdown file write only — TB-4c adds
-  risk_memory INSERT). Note: `send_with_dedup` DingTalk helper writes alert_dedup
-  dedup metadata (helper-internal, not domain data).
+铁律 31 sustained: qm_platform/risk/reflector + memory engine PURE; 本 task = Application dispatch.
+铁律 32 sustained: TB-4c risk_memory INSERT — 本 task is caller / transaction owner
+  (explicit conn.commit + rollback). sediment_lesson takes caller-injected conn,
+  does NOT commit. `send_with_dedup` DingTalk helper writes alert_dedup metadata
+  (helper-internal).
+铁律 17 sustained: risk_memory INSERT 走 persist_risk_memory single-row (LL-066
+  subset 例外 — small per-reflection sediment, not batch).
 铁律 33 sustained: fail-loud — ReflectorAgentError / file IO error propagate per Celery retry.
 铁律 41 sustained: Asia/Shanghai timezone via celery_app.py + tz-aware datetime throughout.
 铁律 44 X9 sustained: post-merge ops `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
@@ -73,9 +82,15 @@ from app.services.risk.risk_reflector_agent import RiskReflectorAgent
 from app.tasks.celery_app import celery_app
 
 if TYPE_CHECKING:
+    from qm_platform.risk.memory.embedding_service import EmbeddingService
     from qm_platform.risk.reflector.agent import _RouterProtocol
 
 logger = logging.getLogger("celery.risk_reflector_tasks")
+
+# risk_memory.event_type for periodic reflections (open vocab per V3 §5.4).
+# event_reflection uses caller-supplied event_type (the triggering event).
+_EVENT_TYPE_WEEKLY: str = "WeeklyReflection"
+_EVENT_TYPE_MONTHLY: str = "MonthlyReflection"
 
 # ─────────────────────────────────────────────────────────────
 # 常量 (V3 §8.2 沉淀 dir + repo root resolution)
@@ -100,10 +115,11 @@ _service: RiskReflectorAgent | None = None
 
 
 def _get_service() -> RiskReflectorAgent:
-    """Lazy singleton — RiskReflectorAgent with shared LiteLLMRouter factory.
+    """Lazy singleton — RiskReflectorAgent with shared LiteLLMRouter + BGE-M3 factory.
 
-    Sustained TB-2c market_regime_tasks._get_service 体例 — router init is
-    non-trivial, reuse across Beat invocations.
+    Sustained TB-2c market_regime_tasks._get_service 体例 — router + embedding
+    service init is non-trivial (BGE-M3 ~2.5GB model load), reuse across Beat
+    invocations. TB-4c: embedding_factory wired for lesson→risk_memory 闭环.
     """
     global _service
     if _service is None:
@@ -113,7 +129,20 @@ def _get_service() -> RiskReflectorAgent:
 
             return get_llm_router()
 
-        _service = RiskReflectorAgent(router_factory=_router_factory)
+        def _embedding_factory() -> EmbeddingService:
+            # BGE-M3 local embedding (ADR-064 D2 + ADR-068 D2 sustained, NOT
+            # V4-Flash — pre-ADR-064 V3 §8.3/§16.2 spec drift). Default
+            # cache_folder resolves to repo-rooted ./models/bge-m3 (TB-3b 体例).
+            from backend.qm_platform.risk.memory.embedding_service import (  # noqa: PLC0415
+                BGEM3EmbeddingService,
+            )
+
+            return BGEM3EmbeddingService()
+
+        _service = RiskReflectorAgent(
+            router_factory=_router_factory,
+            embedding_factory=_embedding_factory,
+        )
     return _service
 
 
@@ -328,20 +357,42 @@ def _run_reflection(
     target_path: Path,
     decision_id: str,
     dedup_key: str,
+    event_type: str,
+    symbol_id: str | None = None,
 ) -> dict[str, Any]:
     """Shared reflection task body — gather stub input → reflect → sediment → push.
 
+    TB-4b flow: gather → reflect → markdown write → DingTalk push.
+    TB-4c (本 PR) adds: → lesson→risk_memory 闭环 (V3 §8.3) as the final step.
+
+    Args:
+        event_type: risk_memory.event_type for the lesson sediment (TB-4c).
+            Weekly/monthly use period-category constants; event_reflection
+            uses caller-supplied triggering event type.
+        symbol_id: optional stock code for the lesson sediment (None for
+            market-wide weekly/monthly reflections).
+
     Returns task result dict. Raises ReflectorAgentError / file IO error /
-    httpx error per 铁律 33 fail-loud (Celery retry).
+    httpx error / RiskMemoryError / psycopg2.Error per 铁律 33 fail-loud
+    (Celery retry).
+
+    TB-4c retry-double-insert minor risk (documented, 留 TB-5 dedup if needed):
+        If sediment commits but Celery retries the whole task (e.g. worker
+        loss mid-result-ack), a duplicate risk_memory row could be inserted.
+        Low-impact — RAG retrieval tolerates near-duplicates (returns 2 similar
+        hits). risk_memory has no natural key for reflections; dedup guard
+        deferred to TB-5 if production retry frequency warrants it.
     """
     logger.info(
-        "[risk-reflector-beat] reflection start: period=%s decision_id=%s",
+        "[risk-reflector-beat] reflection start: period=%s event_type=%s decision_id=%s",
         period_label,
+        event_type,
         decision_id,
     )
 
     service = _get_service()
-    # TB-4b: stub input (TB-4c wires real DB gathering).
+    # TB-4b: stub input (TB-4d wires real DB gathering — risk_event_log /
+    # execution_plans / trade_log / RiskMemoryRAG).
     input_data = _build_stub_input(period_label, period_start, period_end)
     output = service.reflect(input_data, decision_id=decision_id)
 
@@ -353,6 +404,26 @@ def _run_reflection(
         output, dedup_key=dedup_key, target_path=target_path
     )
 
+    # TB-4c: lesson→risk_memory 闭环 (V3 §8.3) — BGE-M3 embed + persist.
+    # 铁律 32: 本 task is caller / transaction owner — explicit commit/rollback.
+    from app.services.db import get_sync_conn  # noqa: PLC0415
+
+    conn = get_sync_conn()
+    try:
+        memory_id = service.sediment_lesson(
+            output,
+            conn,
+            event_type=event_type,
+            symbol_id=symbol_id,
+            event_timestamp=period_end,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
     total_candidates = sum(len(r.candidates) for r in output.reflections)
     result: dict[str, Any] = {
         "ok": True,
@@ -360,14 +431,16 @@ def _run_reflection(
         "decision_id": decision_id,
         "report_path": str(target_path),
         "total_candidates": total_candidates,
+        "memory_id": memory_id,
         "dingtalk_sent": push_result.get("sent", False),
         "dingtalk_reason": push_result.get("reason", "unknown"),
     }
     logger.info(
         "[risk-reflector-beat] reflection complete: period=%s candidates=%d "
-        "dingtalk_sent=%s decision_id=%s",
+        "memory_id=%d dingtalk_sent=%s decision_id=%s",
         period_label,
         total_candidates,
+        memory_id,
         push_result.get("sent", False),
         decision_id,
     )
@@ -408,6 +481,7 @@ def weekly_reflection(decision_id: str | None = None) -> dict[str, Any]:
         target_path=target_path,
         decision_id=decision_id,
         dedup_key=f"risk_reflector:weekly:{period_label}",
+        event_type=_EVENT_TYPE_WEEKLY,
     )
 
 
@@ -440,6 +514,7 @@ def monthly_reflection(decision_id: str | None = None) -> dict[str, Any]:
         target_path=target_path,
         decision_id=decision_id,
         dedup_key=f"risk_reflector:monthly:{period_label}",
+        event_type=_EVENT_TYPE_MONTHLY,
     )
 
 
@@ -450,17 +525,25 @@ def monthly_reflection(decision_id: str | None = None) -> dict[str, Any]:
 )
 def event_reflection(
     event_summary: str,
+    event_type: str = "EventReflection",
+    symbol_id: str | None = None,
     event_window_hours: int = 24,
     decision_id: str | None = None,
 ) -> dict[str, Any]:
     """V3 §8.1 重大事件后反思 — event-triggered (NO Beat schedule).
 
-    Dispatched by L1 event detection (TB-4c+ wire) when V3 §8.1 line 921
+    Dispatched by L1 event detection (TB-4d+ wire) when V3 §8.1 line 921
     triggers fire: 单日 portfolio < -5% / N 股同时跌停 / STAGED cancel 率异常.
 
     Args:
         event_summary: short event description (slugified into filename +
             used as period_label suffix). Required, non-empty.
+        event_type: risk_memory.event_type for the lesson sediment (TB-4c).
+            Caller (L1 dispatch) supplies the triggering event category
+            (e.g. "LimitDown" / "RapidDrop"). Default "EventReflection" for
+            manual/generic invocation. Open vocab per V3 §5.4.
+        symbol_id: optional stock code if the event is symbol-specific
+            (None for market-wide events — CorrelatedDrop / regime shift).
         event_window_hours: lookback window in hours (default 24h per V3 §8.1).
         decision_id: optional caller-traceable ID. Auto-generated if None.
 
@@ -489,4 +572,6 @@ def event_reflection(
         target_path=target_path,
         decision_id=decision_id,
         dedup_key=f"risk_reflector:event:{date_str}:{slug}",
+        event_type=event_type,
+        symbol_id=symbol_id,
     )
