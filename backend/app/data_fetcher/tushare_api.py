@@ -40,6 +40,20 @@ SLEEP_INTERVALS: dict[str, float] = {
 }
 DEFAULT_INTERVAL = 0.20
 
+# V3 §14 mode 7: Tushare 限速 detection — keyword set for rate-limit error classification.
+# Module-level constant + pure helper so the disaster-drill (test_v3_hc_2c_disaster_drill.py)
+# imports + asserts the REAL detection, NOT a replicated copy (铁律 34 single source).
+RATE_LIMIT_KEYWORDS: tuple[str, ...] = ("每分钟", "频率", "频次", "limit", "too many")
+
+
+def is_rate_limit_error(err_msg: str) -> bool:
+    """Classify a Tushare API error message as rate-limit (V3 §14 mode 7).
+
+    rate-limit → 固定 60s 冷却; 非 rate-limit → 指数退避 (见 TushareAPI._call_with_retry).
+    """
+    return any(kw in err_msg for kw in RATE_LIMIT_KEYWORDS)
+
+
 # daily_basic只拉需要的字段(避免brotli大payload错误)
 DAILY_BASIC_FIELDS = (
     "ts_code,trade_date,close,turnover_rate,turnover_rate_f,"
@@ -104,9 +118,7 @@ class TushareAPI:
 
             except Exception as e:
                 err_msg = str(e)
-                is_rate_limit = any(
-                    kw in err_msg for kw in ("每分钟", "频率", "频次", "limit", "too many")
-                )
+                is_rate_limit = is_rate_limit_error(err_msg)
 
                 if attempt < max_retries:
                     if is_rate_limit:
