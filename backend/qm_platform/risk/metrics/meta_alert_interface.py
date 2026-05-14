@@ -3,7 +3,8 @@
 本模块 0 IO / 0 DB / 0 Redis / 0 LiteLLM / 0 HTTP (铁律 31 Platform Engine PURE).
 所有数据采集 (心跳读取 / LiteLLM 调用窗口聚合 / DingTalk push 状态 / News 源 timeout
 计数 / STAGED plan 状态查询) 由 HC-1b Application layer (meta_monitor_service) 承担;
-本模块只定义 5 元告警 rule 的 input snapshot 契约 + MetaAlert 结果契约 + 阈值 SSOT.
+本模块定义 5 polled rule 的 input snapshot 契约 + MetaAlert 结果契约 + 阈值 SSOT
++ event-emitted rule id (HC-2b G5 RISK_REFLECTOR_FAILED — 见 MetaAlertRuleId docstring).
 
 对齐 V3 §13.3 元告警 (alert on alert) — 5 风控系统失效场景:
   1. L1 RealtimeRiskEngine 心跳超 5min 无 tick (xtquant 断连)        → P0
@@ -63,22 +64,40 @@ class MetaAlertSeverity(StrEnum):
 
 
 class MetaAlertRuleId(StrEnum):
-    """5 元告警 rule id — 对齐 V3 §13.3 5 风控系统失效场景."""
+    """元告警 rule id — V3 §13.3 5 polled rule + V3 §14 event-emitted rule.
+
+    **Polled rules (5)** — 对齐 V3 §13.3 5 风控系统失效场景. HC-1b meta_monitor_service
+    每 5min 采集 snapshot → 跑 meta_alert_rules.py 对应 `evaluate_*` 纯函数:
+      L1_HEARTBEAT_STALE / LITELLM_FAILURE_RATE / DINGTALK_PUSH_FAILED /
+      NEWS_ALL_SOURCES_TIMEOUT / STAGED_PENDING_CONFIRM_OVERDUE
+
+    **Event-emitted rules** — V3 §14 失败模式表 per-mode 元告警, 由失败源头任务在
+    捕获自身失败时直接构造 MetaAlert + 走 channel fallback chain (NOT polled — 无
+    对应 `evaluate_*` 纯函数 / 无 snapshot 契约; 失败是 event-driven 不是可轮询的
+    持续状态):
+      RISK_REFLECTOR_FAILED — V3 §14 mode 14: L5 RiskReflector V4-Pro weekly/
+        monthly run 重试一次仍失败 (HC-2b G5, risk_reflector_tasks 自 emit)
+    """
 
     L1_HEARTBEAT_STALE = "l1_heartbeat_stale"
     LITELLM_FAILURE_RATE = "litellm_failure_rate"
     DINGTALK_PUSH_FAILED = "dingtalk_push_failed"
     NEWS_ALL_SOURCES_TIMEOUT = "news_all_sources_timeout"
     STAGED_PENDING_CONFIRM_OVERDUE = "staged_pending_confirm_overdue"
+    # Event-emitted (HC-2b G5) — see class docstring.
+    RISK_REFLECTOR_FAILED = "risk_reflector_failed"
 
 
-# Per-rule severity SSOT (§13.3-vs-§14 reconciliation — News=P1, 其余=P0).
+# Per-rule severity SSOT (§13.3-vs-§14 reconciliation — News=P1, 其余 polled=P0;
+# RISK_REFLECTOR_FAILED=P1 per V3 §14 mode 14 ⚠️ P1 — 反思失败 = degraded
+# (跳过本周/本月反思, alert 仍发, 仅缺 lessons), 非系统失效).
 RULE_SEVERITY: dict[MetaAlertRuleId, MetaAlertSeverity] = {
     MetaAlertRuleId.L1_HEARTBEAT_STALE: MetaAlertSeverity.P0,
     MetaAlertRuleId.LITELLM_FAILURE_RATE: MetaAlertSeverity.P0,
     MetaAlertRuleId.DINGTALK_PUSH_FAILED: MetaAlertSeverity.P0,
     MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT: MetaAlertSeverity.P1,
     MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE: MetaAlertSeverity.P0,
+    MetaAlertRuleId.RISK_REFLECTOR_FAILED: MetaAlertSeverity.P1,
 }
 
 

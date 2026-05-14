@@ -418,9 +418,7 @@ def _run_reflection(
     _write_reflection_markdown(output, target_path)
 
     # Push DingTalk 摘要 (V3 §8.2 line 945-957).
-    push_result = _push_dingtalk_summary(
-        output, dedup_key=dedup_key, target_path=target_path
-    )
+    push_result = _push_dingtalk_summary(output, dedup_key=dedup_key, target_path=target_path)
 
     # TB-4c: lesson→risk_memory 闭环 (V3 §8.3) — BGE-M3 embed + persist.
     # 铁律 32: 本 task is caller / transaction owner — explicit commit/rollback.
@@ -466,19 +464,149 @@ def _run_reflection(
 
 
 # ─────────────────────────────────────────────────────────────
+# V3 §14 mode 14 — retry-once-skip + RISK_REFLECTOR_FAILED 元告警 (HC-2b G5)
+# ─────────────────────────────────────────────────────────────
+
+# retry countdown — V4-Pro transient failure (LiteLLM blip / timeout) recovery
+# margin. 5min: long enough for a transient LiteLLM provider hiccup to clear,
+# short enough that the retry still lands well within the same period.
+_REFLECTOR_RETRY_COUNTDOWN_S: int = 300
+
+
+def _emit_reflector_failure_meta_alert(
+    *, cadence_label: str, period_label: str, exc: BaseException
+) -> None:
+    """Emit RISK_REFLECTOR_FAILED 元告警 via HC-1b channel fallback chain (V3 §14 mode 14).
+
+    Event-emitted rule (NOT polled — 见 meta_alert_interface.MetaAlertRuleId docstring):
+    RiskReflector 自身失败时直接构造 MetaAlert + 走 push_triggered (主 DingTalk → 备
+    email → 极端 log-P0).
+
+    Fail-soft: 元告警 push 自身失败 **不掩盖** 原 reflection 失败 (caller 仍 raise 原 exc;
+    push 失败仅 log). 反 — 一个 notification 失败连带吞掉根因.
+    """
+    try:
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+        from app.services.risk.meta_monitor_service import MetaMonitorService  # noqa: PLC0415
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (  # noqa: PLC0415
+            RULE_SEVERITY,
+            MetaAlert,
+            MetaAlertRuleId,
+        )
+
+        rule_id = MetaAlertRuleId.RISK_REFLECTOR_FAILED
+        alert = MetaAlert(
+            rule_id=rule_id,
+            severity=RULE_SEVERITY[rule_id],
+            triggered=True,
+            detail=(
+                f"L5 RiskReflector {cadence_label} reflection failed after retry "
+                f"(period={period_label}) — 跳过本周期, 下一 cadence crontab 自然重跑. "
+                f"cause: {type(exc).__name__}: {exc}"
+            ),
+            observed_at=datetime.now(UTC),
+        )
+        # push_triggered = HC-1b public API (filters .triggered, runs channel
+        # fallback chain per alert). conn owned here — failure path 自管事务.
+        conn = get_sync_conn()
+        try:
+            MetaMonitorService().push_triggered([alert], conn=conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except Exception as push_exc:  # noqa: BLE001 — fail-soft: 元告警 push 失败不掩盖原 reflection 失败
+        logger.error(
+            "[risk-reflector-beat] RISK_REFLECTOR_FAILED 元告警 push itself failed "
+            "(原 reflection 失败 caller 仍 raise propagate): %s",
+            push_exc,
+        )
+
+
+def _dispatch_with_retry_skip(
+    task: Any,
+    *,
+    cadence_label: str,
+    period_label: str,
+    period_start: datetime,
+    period_end: datetime,
+    target_path: Path,
+    decision_id: str,
+    dedup_key: str,
+    event_type: str,
+) -> dict[str, Any]:
+    """Run _run_reflection with V3 §14 mode 14 retry-once-then-skip semantics.
+
+    失败 → Celery retry 一次 (countdown _REFLECTOR_RETRY_COUNTDOWN_S); 重试仍失败 →
+    emit RISK_REFLECTOR_FAILED 元告警 + raise propagate (Celery marks task FAILED →
+    "跳过本周期"; 下一 cadence crontab 自然重跑 — NO manual re-dispatch needed).
+
+    Only scheduled cadences (weekly/monthly) use this — event_reflection is L1-event
+    dispatched (caller-driven), retry/skip 语义 N/A.
+
+    Args:
+        task: the bound Celery task (`self` — needs `request.retries` + `max_retries`
+            + `.retry()`).
+    """
+    try:
+        return _run_reflection(
+            period_label=period_label,
+            period_start=period_start,
+            period_end=period_end,
+            target_path=target_path,
+            decision_id=decision_id,
+            dedup_key=dedup_key,
+            event_type=event_type,
+        )
+    except Exception as exc:
+        if task.request.retries < task.max_retries:
+            logger.warning(
+                "[risk-reflector-beat] %s reflection failed (attempt %d/%d) — retry in %ds: %s",
+                cadence_label,
+                task.request.retries + 1,
+                task.max_retries + 1,
+                _REFLECTOR_RETRY_COUNTDOWN_S,
+                exc,
+            )
+            # self.retry() raises celery.exceptions.Retry — propagates past this
+            # `except Exception` handler (raised within it, not re-caught).
+            # `from exc` satisfies B904 (semantically correct — retry caused by exc).
+            raise task.retry(exc=exc, countdown=_REFLECTOR_RETRY_COUNTDOWN_S) from exc
+        # Retries exhausted — emit 元告警 + 跳过本周期 (re-raise → Celery FAILED).
+        logger.error(
+            "[risk-reflector-beat] %s reflection failed after retry — "
+            "emit RISK_REFLECTOR_FAILED 元告警 + skip period %s: %s",
+            cadence_label,
+            period_label,
+            exc,
+        )
+        _emit_reflector_failure_meta_alert(
+            cadence_label=cadence_label, period_label=period_label, exc=exc
+        )
+        raise
+
+
+# ─────────────────────────────────────────────────────────────
 # Celery tasks — 3 cadence (weekly / monthly / event)
 # ─────────────────────────────────────────────────────────────
 
 
 @celery_app.task(
+    bind=True,  # HC-2b G5: needs self.request.retries / max_retries / .retry()
     name="app.tasks.risk_reflector_tasks.weekly_reflection",
     soft_time_limit=90,  # V4-Pro 5 维反思 typically 10-30s, 90s soft margin
     time_limit=180,  # 3min hard kill (反 hung V4-Pro)
+    max_retries=1,  # V3 §14 mode 14: 重试一次 (then skip + 元告警)
 )
-def weekly_reflection(decision_id: str | None = None) -> dict[str, Any]:
+def weekly_reflection(self: Any, decision_id: str | None = None) -> dict[str, Any]:
     """V3 §8.1 周复盘 — Sunday 19:00 Beat `risk-reflector-weekly`.
 
     Reflects the trailing 7-day period. Writes docs/risk_reflections/YYYY_WW.md.
+
+    V3 §14 mode 14 (HC-2b G5): 失败 → retry 一次 → 仍失败 → emit
+    RISK_REFLECTOR_FAILED 元告警 + 跳过本周 (下周 crontab 自然重跑).
 
     Args:
         decision_id: optional caller-traceable ID. Auto-generated if None.
@@ -492,7 +620,9 @@ def weekly_reflection(decision_id: str | None = None) -> dict[str, Any]:
     if decision_id is None:
         decision_id = f"reflector-weekly-{now.isoformat(timespec='seconds')}"
     target_path = REFLECTIONS_DIR / f"{period_label}.md"
-    return _run_reflection(
+    return _dispatch_with_retry_skip(
+        self,
+        cadence_label="weekly",
         period_label=period_label,
         period_start=period_start,
         period_end=period_end,
@@ -504,15 +634,20 @@ def weekly_reflection(decision_id: str | None = None) -> dict[str, Any]:
 
 
 @celery_app.task(
+    bind=True,  # HC-2b G5: needs self.request.retries / max_retries / .retry()
     name="app.tasks.risk_reflector_tasks.monthly_reflection",
     soft_time_limit=90,
     time_limit=180,
+    max_retries=1,  # V3 §14 mode 14: 重试一次 (then skip + 元告警)
 )
-def monthly_reflection(decision_id: str | None = None) -> dict[str, Any]:
+def monthly_reflection(self: Any, decision_id: str | None = None) -> dict[str, Any]:
     """V3 §8.1 月复盘 — 月 1 日 09:00 Beat `risk-reflector-monthly`.
 
     Reflects the *previous* full calendar month. Writes
     docs/risk_reflections/YYYY_MM.md.
+
+    V3 §14 mode 14 (HC-2b G5): 失败 → retry 一次 → 仍失败 → emit
+    RISK_REFLECTOR_FAILED 元告警 + 跳过本月 (下月 crontab 自然重跑).
 
     Args:
         decision_id: optional caller-traceable ID. Auto-generated if None.
@@ -525,7 +660,9 @@ def monthly_reflection(decision_id: str | None = None) -> dict[str, Any]:
     if decision_id is None:
         decision_id = f"reflector-monthly-{now.isoformat(timespec='seconds')}"
     target_path = REFLECTIONS_DIR / f"{period_label}.md"
-    return _run_reflection(
+    return _dispatch_with_retry_skip(
+        self,
+        cadence_label="monthly",
         period_label=period_label,
         period_start=period_start,
         period_end=period_end,

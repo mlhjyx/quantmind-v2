@@ -575,3 +575,217 @@ class TestBeatScheduleWiring:
         from app.tasks.celery_app import celery_app
 
         assert "app.tasks.risk_reflector_tasks" in celery_app.conf.imports
+
+
+# ---------------------------------------------------------------------------
+# HC-2b G5 — retry-once-skip + RISK_REFLECTOR_FAILED 元告警 (V3 §14 mode 14)
+# ---------------------------------------------------------------------------
+
+
+class _FakeRetryError(BaseException):
+    """Stand-in for celery.exceptions.Retry — raised by _FakeTask.retry().
+
+    Inherits BaseException (NOT Exception) for fidelity with real
+    celery.exceptions.Retry — so it propagates past any `except Exception`
+    just as the real Retry control-flow exception does (reviewer MEDIUM).
+    """
+
+
+class _FakeTask:
+    """Minimal bound-task stub — request.retries / max_retries / retry()."""
+
+    def __init__(self, retries: int = 0, max_retries: int = 1) -> None:
+        from types import SimpleNamespace
+
+        self.request = SimpleNamespace(retries=retries)
+        self.max_retries = max_retries
+        self.retry_calls: list[dict[str, Any]] = []
+
+    def retry(self, *, exc: BaseException, countdown: int) -> None:
+        self.retry_calls.append({"exc": exc, "countdown": countdown})
+        raise _FakeRetryError(str(exc))  # mimic celery.exceptions.Retry control flow
+
+
+class TestRiskReflectorFailedEnum:
+    """RISK_REFLECTOR_FAILED enum + severity SSOT (HC-2b G5)."""
+
+    def test_rule_id_in_enum(self) -> None:
+        from backend.qm_platform.risk.metrics.meta_alert_interface import MetaAlertRuleId
+
+        assert MetaAlertRuleId.RISK_REFLECTOR_FAILED.value == "risk_reflector_failed"
+
+    def test_severity_is_p1(self) -> None:
+        """V3 §14 mode 14 ⚠️ P1 — 反思失败 = degraded 非系统失效."""
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (
+            RULE_SEVERITY,
+            MetaAlertRuleId,
+            MetaAlertSeverity,
+        )
+
+        assert RULE_SEVERITY[MetaAlertRuleId.RISK_REFLECTOR_FAILED] is MetaAlertSeverity.P1
+
+
+class TestRetrySkipDispatch:
+    """_dispatch_with_retry_skip — V3 §14 mode 14 retry-once-then-skip."""
+
+    def test_success_returns_result_no_retry(self, stub_env) -> None:
+        task = _FakeTask(retries=0)
+        target = stub_env["reflections_dir"] / "2026_W19.md"
+        result = rrt._dispatch_with_retry_skip(
+            task,
+            cadence_label="weekly",
+            period_label="2026_W19",
+            period_start=datetime(2026, 5, 3, 0, 0, tzinfo=UTC),
+            period_end=datetime(2026, 5, 10, 0, 0, tzinfo=UTC),
+            target_path=target,
+            decision_id="test",
+            dedup_key="risk_reflector:weekly:2026_W19",
+            event_type="Reflection:Weekly",
+        )
+        assert result["ok"] is True
+        assert task.retry_calls == []  # success → 0 retry
+
+    def test_first_failure_triggers_retry(self, monkeypatch, tmp_path) -> None:
+        """retries=0 < max_retries=1 → task.retry() called (countdown SSOT)."""
+        from qm_platform.risk.reflector import ReflectorAgentError
+
+        failing = _StubService(raise_exc=ReflectorAgentError("V4-Pro timeout"))
+        monkeypatch.setattr(rrt, "_get_service", lambda: failing)
+        monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
+        task = _FakeTask(retries=0, max_retries=1)
+        with pytest.raises(_FakeRetryError):
+            rrt._dispatch_with_retry_skip(
+                task,
+                cadence_label="weekly",
+                period_label="2026_W19",
+                period_start=datetime(2026, 5, 3, 0, 0, tzinfo=UTC),
+                period_end=datetime(2026, 5, 10, 0, 0, tzinfo=UTC),
+                target_path=tmp_path / "2026_W19.md",
+                decision_id="test",
+                dedup_key="test",
+                event_type="Reflection:Weekly",
+            )
+        assert len(task.retry_calls) == 1
+        assert task.retry_calls[0]["countdown"] == rrt._REFLECTOR_RETRY_COUNTDOWN_S
+
+    def test_retries_exhausted_emits_meta_alert_and_reraises(self, monkeypatch, tmp_path) -> None:
+        """retries==max_retries → emit RISK_REFLECTOR_FAILED 元告警 + re-raise 原 exc."""
+        from qm_platform.risk.reflector import ReflectorAgentError
+
+        failing = _StubService(raise_exc=ReflectorAgentError("V4-Pro timeout x2"))
+        monkeypatch.setattr(rrt, "_get_service", lambda: failing)
+        monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
+
+        emit_calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(
+            rrt,
+            "_emit_reflector_failure_meta_alert",
+            lambda **kw: emit_calls.append(kw),
+        )
+        task = _FakeTask(retries=1, max_retries=1)
+        with pytest.raises(ReflectorAgentError, match="V4-Pro timeout x2"):
+            rrt._dispatch_with_retry_skip(
+                task,
+                cadence_label="monthly",
+                period_label="2026_04",
+                period_start=datetime(2026, 4, 1, 0, 0, tzinfo=UTC),
+                period_end=datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
+                target_path=tmp_path / "2026_04.md",
+                decision_id="test",
+                dedup_key="test",
+                event_type="Reflection:Monthly",
+            )
+        assert task.retry_calls == []  # exhausted → no further retry
+        assert len(emit_calls) == 1
+        assert emit_calls[0]["cadence_label"] == "monthly"
+        assert emit_calls[0]["period_label"] == "2026_04"
+        assert isinstance(emit_calls[0]["exc"], ReflectorAgentError)
+
+
+class TestEmitReflectorFailureMetaAlert:
+    """_emit_reflector_failure_meta_alert — RISK_REFLECTOR_FAILED via channel chain."""
+
+    def test_builds_correct_meta_alert_and_pushes(self, monkeypatch) -> None:
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (
+            MetaAlertRuleId,
+            MetaAlertSeverity,
+        )
+
+        pushed: list[dict[str, Any]] = []
+
+        class _StubMMS:
+            def push_triggered(self, alerts: Any, *, conn: Any) -> list[dict[str, Any]]:
+                pushed.append({"alerts": alerts, "conn": conn})
+                return [{"channel": "log_p0"}]
+
+        import app.services.risk.meta_monitor_service as mms_mod
+
+        monkeypatch.setattr(mms_mod, "MetaMonitorService", _StubMMS)
+
+        import app.services.db as db_mod
+
+        conns: list[_StubConn] = []
+
+        def _get_conn() -> _StubConn:
+            c = _StubConn()
+            conns.append(c)
+            return c
+
+        monkeypatch.setattr(db_mod, "get_sync_conn", _get_conn)
+
+        rrt._emit_reflector_failure_meta_alert(
+            cadence_label="weekly",
+            period_label="2026_W19",
+            exc=RuntimeError("boom"),
+        )
+        assert len(pushed) == 1
+        alert = pushed[0]["alerts"][0]
+        assert alert.rule_id is MetaAlertRuleId.RISK_REFLECTOR_FAILED
+        assert alert.severity is MetaAlertSeverity.P1
+        assert alert.triggered is True
+        assert "weekly" in alert.detail
+        assert "2026_W19" in alert.detail
+        assert "boom" in alert.detail
+        assert conns[0].committed is True
+        assert conns[0].closed is True
+
+    def test_push_failure_is_fail_soft(self, monkeypatch) -> None:
+        """元告警 push 自身失败 → log + swallow (NOT raise — 不掩盖原 reflection 失败)."""
+
+        class _BoomMMS:
+            def push_triggered(self, alerts: Any, *, conn: Any) -> list[dict[str, Any]]:
+                raise RuntimeError("DingTalk + email + log all broken")
+
+        import app.services.risk.meta_monitor_service as mms_mod
+
+        monkeypatch.setattr(mms_mod, "MetaMonitorService", _BoomMMS)
+
+        import app.services.db as db_mod
+
+        conns: list[_StubConn] = []
+
+        def _get_conn() -> _StubConn:
+            c = _StubConn()
+            conns.append(c)
+            return c
+
+        monkeypatch.setattr(db_mod, "get_sync_conn", _get_conn)
+
+        # Must NOT raise — fail-soft (原 reflection 失败 caller 仍 raise propagate).
+        rrt._emit_reflector_failure_meta_alert(
+            cadence_label="weekly",
+            period_label="2026_W19",
+            exc=RuntimeError("orig"),
+        )
+        assert conns[0].rolled_back is True  # push raised → rollback
+        assert conns[0].closed is True
+
+
+class TestReflectionTaskDecorators:
+    """weekly/monthly_reflection task decorator — bind=True + max_retries=1."""
+
+    def test_weekly_is_bound_with_max_retries_1(self) -> None:
+        assert rrt.weekly_reflection.max_retries == 1
+
+    def test_monthly_is_bound_with_max_retries_1(self) -> None:
+        assert rrt.monthly_reflection.max_retries == 1

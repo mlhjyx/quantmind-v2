@@ -63,7 +63,9 @@ def print_config_header() -> None:
     n_factors = len(cfg.factor_names)
 
     print(f"\n{_BOLD}{'=' * 60}{_RESET}")
-    print(f"{_BOLD}{_CYAN}  PAPER_TRADING_CONFIG (.env驱动, WLS中性化+涨跌停板块+volume_cap+zscore clip+mergesort){_RESET}")
+    print(
+        f"{_BOLD}{_CYAN}  PAPER_TRADING_CONFIG (.env驱动, WLS中性化+涨跌停板块+volume_cap+zscore clip+mergesort){_RESET}"
+    )
     print(f"{'=' * 60}")
     print(f"  因子数量:   {n_factors}")
     print(f"  因子列表:   [{factors_str}]")
@@ -119,8 +121,10 @@ def assert_baseline_config(
         print(f"  {_YELLOW}缺少的因子 (基线中有):   {missing}{_RESET}")
 
     print(f"\n  当前传入 ({len(factor_names)}因子): {sorted(factor_names)}")
-    print(f"  基线配置 ({len(PAPER_TRADING_CONFIG.factor_names)}因子): "
-          f"{sorted(PAPER_TRADING_CONFIG.factor_names)}")
+    print(
+        f"  基线配置 ({len(PAPER_TRADING_CONFIG.factor_names)}因子): "
+        f"{sorted(PAPER_TRADING_CONFIG.factor_names)}"
+    )
     print(f"{'!' * 60}\n")
 
     # 同时打印完整配置供人工核对
@@ -174,8 +178,7 @@ def _load_pt_yaml(yaml_path: Path | str) -> dict[str, Any]:
 
     if not path.exists():
         raise FileNotFoundError(
-            f"pt_live.yaml 未找到: {path}. "
-            "check_config_alignment 需要 YAML 作为权威源."
+            f"pt_live.yaml 未找到: {path}. check_config_alignment 需要 YAML 作为权威源."
         )
 
     with path.open(encoding="utf-8") as f:
@@ -269,27 +272,32 @@ def assert_execution_mode_integrity(
     """
     if mode is None:
         from app.config import settings
+
         mode = settings.EXECUTION_MODE
 
     if mode not in ("paper", "live"):
         # ConfigDriftError 签名: list[dict[{param, sources}]] (MVP 1.2 Platform auditor)
-        raise ConfigDriftError([
-            {
-                "param": "EXECUTION_MODE",
-                "sources": {
-                    ".env:EXECUTION_MODE": mode,
-                    "allowed": "'paper' or 'live'",
-                },
-            }
-        ])
+        raise ConfigDriftError(
+            [
+                {
+                    "param": "EXECUTION_MODE",
+                    "sources": {
+                        ".env:EXECUTION_MODE": mode,
+                        "allowed": "'paper' or 'live'",
+                    },
+                }
+            ]
+        )
 
     if mode == "paper":
         from datetime import date, timedelta
+
         cutoff = date.today() - timedelta(days=recent_days)
         own_conn = False
         if conn is None:
             try:
                 from app.services.db import get_sync_conn
+
                 conn = get_sync_conn()
                 own_conn = True
             except Exception as e:
@@ -300,7 +308,8 @@ def assert_execution_mode_integrity(
                 return
 
         try:
-            with conn.cursor() as cur:  # review MEDIUM 采纳: cursor 走 context manager, 防 fetch error 时 cur 泄漏
+            # review MEDIUM 采纳: cursor 走 context manager, 防 fetch error 时 cur 泄漏
+            with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*), MAX(trade_date) FROM trade_log "
                     "WHERE execution_mode = 'live' AND trade_date >= %s",
@@ -313,7 +322,9 @@ def assert_execution_mode_integrity(
                 logger.warning(
                     "[config_guard.EXECUTION_MODE] mode='paper' 但最近 %d 日内有 %d 条 live trade_log "
                     "(最新 %s). 疑似 F17 误切 paper — 若实际应 live, 改 .env:EXECUTION_MODE=live.",
-                    recent_days, cnt, max_d,
+                    recent_days,
+                    cnt,
+                    max_d,
                 )
             else:
                 logger.info(
@@ -322,11 +333,13 @@ def assert_execution_mode_integrity(
                 )
         except Exception as e:
             logger.warning(
-                "[config_guard.EXECUTION_MODE] live trade_log 交叉检测异常 (非阻塞): %s", e,
+                "[config_guard.EXECUTION_MODE] live trade_log 交叉检测异常 (非阻塞): %s",
+                e,
             )
         finally:
             if own_conn and conn is not None:
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     conn.close()  # silent_ok: close 失败不影响校验结果
     else:
@@ -336,6 +349,88 @@ def assert_execution_mode_integrity(
             "若 schtasks QuantMind_DailyExecute Enabled, 09:31 将真实下单. "
             "请确认 QMT 连接 + 资金就位.",
         )
+
+
+# ---------------------------------------------------------------------------
+# LIVE_TRADING_DISABLED 双锁完整性校验 (V3 §14 mode 15, HC-2b G6)
+# ---------------------------------------------------------------------------
+
+
+def assert_live_trading_lock_integrity(
+    *,
+    execution_mode: str | None = None,
+    live_trading_disabled: bool | None = None,
+) -> None:
+    """LIVE_TRADING_DISABLED 双锁完整性校验 (V3 §14 mode 15, HC-2b G6).
+
+    背景 (HC-2a §14 enforcement matrix G6 finding): V3 §14 mode 15
+    "LIVE_TRADING_DISABLED 双锁失效" — .env 误改致双锁不一致. config_guard /
+    PlatformConfigAuditor 校验 EXECUTION_MODE (`assert_execution_mode_integrity`)
+    但 **0 校验 LIVE_TRADING_DISABLED** — 双锁第 2 锁缺 startup gate, 此前仅靠
+    call-time `live_trading_guard.assert_live_trading_allowed` 一层. 本函数补
+    startup gate (双层 defense — startup + call-time).
+
+    双锁 = EXECUTION_MODE + LIVE_TRADING_DISABLED. 一致性约束:
+      - EXECUTION_MODE=paper → LIVE_TRADING_DISABLED 必 True (paper 模式真金必锁).
+        违反 = 双锁不一致 (一锁说 paper, 另一锁放行真金) → RAISE ConfigDriftError.
+      - EXECUTION_MODE=live + LIVE_TRADING_DISABLED=True = fail-secure 安全态
+        (live 模式但交易仍被 call-time guard 锁) → INFO log, NOT raise (保守方向
+        不阻断启动).
+
+    本函数在 PT 启动前校验 (run_paper_trading Step 0.5, `assert_execution_mode_integrity`
+    之后调用 — 故 execution_mode 此时已被前者校验为 'paper'/'live').
+
+    Args:
+        execution_mode: 显式传入 (测试用). None → `settings.EXECUTION_MODE`.
+        live_trading_disabled: 显式传入 (测试用). None → `settings.LIVE_TRADING_DISABLED`.
+
+    Raises:
+        ConfigDriftError: EXECUTION_MODE=paper 但 LIVE_TRADING_DISABLED 非 True
+            (双锁不一致 — V3 §14 mode 15 双锁失效).
+    """
+    if execution_mode is None or live_trading_disabled is None:
+        from app.config import settings
+
+        if execution_mode is None:
+            execution_mode = settings.EXECUTION_MODE
+        if live_trading_disabled is None:
+            live_trading_disabled = settings.LIVE_TRADING_DISABLED
+
+    if execution_mode == "paper":
+        if not live_trading_disabled:
+            # ConfigDriftError 签名: list[dict[{param, sources}]] (MVP 1.2 Platform auditor)
+            raise ConfigDriftError(
+                [
+                    {
+                        "param": "LIVE_TRADING_DISABLED",
+                        "sources": {
+                            ".env:EXECUTION_MODE": execution_mode,
+                            ".env:LIVE_TRADING_DISABLED": str(live_trading_disabled),
+                            "expected": (
+                                "EXECUTION_MODE=paper 要求 LIVE_TRADING_DISABLED=true "
+                                "(双锁一致性, V3 §14 mode 15)"
+                            ),
+                        },
+                    }
+                ]
+            )
+        logger.info(
+            "[config_guard.LIVE_TRADING] 双锁一致性校验通过 "
+            "(EXECUTION_MODE=paper + LIVE_TRADING_DISABLED=true)",
+        )
+    elif execution_mode == "live":
+        if live_trading_disabled:
+            logger.info(
+                "[config_guard.LIVE_TRADING] mode='live' 但 LIVE_TRADING_DISABLED=true "
+                "— fail-secure 安全态 (live 模式真金交易仍被 call-time guard 阻断). "
+                "若实际应放行真金, 改 .env:LIVE_TRADING_DISABLED=false + 双因素 OVERRIDE.",
+            )
+        else:
+            logger.info(
+                "[config_guard.LIVE_TRADING] mode='live' + LIVE_TRADING_DISABLED=false "
+                "— 真金放行态, 请确认 QMT 连接 + 资金就位.",
+            )
+    # else: unknown mode — assert_execution_mode_integrity 已 raise, 本函数不重复校验
 
 
 # ---------------------------------------------------------------------------
@@ -390,10 +485,7 @@ def get_cumulative_test_count(registry_path: Path | str | None = None) -> int:
     path = Path(registry_path) if registry_path is not None else _resolve_registry_path()
 
     if not path.exists():
-        raise FileNotFoundError(
-            f"FACTOR_TEST_REGISTRY.md 未找到: {path}\n"
-            "请先创建因子测试注册表。"
-        )
+        raise FileNotFoundError(f"FACTOR_TEST_REGISTRY.md 未找到: {path}\n请先创建因子测试注册表。")
 
     content = path.read_text(encoding="utf-8")
 
@@ -424,9 +516,7 @@ def get_cumulative_test_count(registry_path: Path | str | None = None) -> int:
         count += 1
 
     if count == 0:
-        raise ValueError(
-            f"FACTOR_TEST_REGISTRY.md 中未找到有效的因子测试记录: {path}"
-        )
+        raise ValueError(f"FACTOR_TEST_REGISTRY.md 中未找到有效的因子测试记录: {path}")
 
     logger.info("[config_guard] 累积因子测试总数 M = %d", count)
     return count
@@ -465,9 +555,7 @@ def bh_fdr_adjusted_threshold(
     m = get_cumulative_test_count(registry_path=registry_path)
 
     if rank > m:
-        raise ValueError(
-            f"rank({rank})不能超过累积测试总数M({m})"
-        )
+        raise ValueError(f"rank({rank})不能超过累积测试总数M({m})")
 
     threshold = alpha * rank / m
 
