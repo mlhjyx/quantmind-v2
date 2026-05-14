@@ -1,7 +1,7 @@
-"""V3 §13.3 元告警 (alert-on-alert) Celery Beat task — HC-1b sub-PR (5min cadence wire).
+"""V3 §13.3 + §14 元告警 (alert-on-alert) Celery Beat task — HC-1b sub-PR (5min cadence wire).
 
-V3 §13.3 元监控: every 5min collect 5 风控系统失效场景 snapshot → run 5 PURE rules
-→ push triggered 元告警 via DingTalk.
+V3 §13.3 + §14 元监控: every 5min collect 7 风控系统失效场景 snapshot → run 7 PURE
+rules → push triggered 元告警 via DingTalk (HC-2b3 added PG health + 千股跌停 regime).
 
 Beat schedule (beat_schedule.py):
   "meta-monitor-tick" — crontab(minute="*/5")  # every 5min, all hours
@@ -60,7 +60,7 @@ def _get_service() -> MetaMonitorService:
     time_limit=180,  # 3min hard kill (反 hung httpx)
 )
 def meta_monitor_tick() -> dict[str, Any]:
-    """V3 §13.3 元告警 5min tick — collect 5 snapshots, run 5 rules, push triggered.
+    """V3 §13.3 + §14 元告警 5min tick — collect 7 snapshots, run 7 rules, push triggered.
 
     铁律 32: 本 task is the transaction owner — explicit commit/rollback around
     the full collect → evaluate → push cycle (send_with_dedup's alert_dedup

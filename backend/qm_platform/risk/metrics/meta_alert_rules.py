@@ -1,14 +1,16 @@
-"""V3 §13.3 元告警 (alert on alert) — 5 PURE rule eval functions (HC-1a).
+"""V3 §13.3 + §14 元告警 (alert on alert) — 7 PURE rule eval functions (HC-1a + HC-2b3).
 
 本模块 0 IO / 0 DB / 0 Redis / 0 LiteLLM / 0 HTTP (铁律 31 Platform Engine PURE).
 每个 rule = 纯函数: input snapshot (HC-1b Application layer 采集) → MetaAlert.
 
-5 rule 对齐 V3 §13.3 5 风控系统失效场景 (meta_alert_interface.py docstring 详):
+7 polled rule (meta_alert_interface.py docstring 详):
   evaluate_l1_heartbeat            — L1 RealtimeRiskEngine 心跳超 5min 无 tick    (P0)
   evaluate_litellm_failure_rate    — LiteLLM API 失败率 > 50% (5min window)       (P0)
   evaluate_dingtalk_push           — DingTalk push 失败 (无 200 response)         (P0)
   evaluate_news_sources_timeout    — L0 News 全源 timeout (5min)                  (P1)
   evaluate_staged_overdue          — L4 STAGED PENDING_CONFIRM 超 35min            (P0)
+  evaluate_pg_health               — V3 §14 mode 3: PG idle-in-tx > 50 (HC-2b3 G3) (P0)
+  evaluate_market_crisis           — V3 §14 mode 9: 大盘 -7% / 跌停 > 500 (HC-2b3 G4) (P0)
 
 每个 rule **总是** 返回 MetaAlert (triggered True 或 False) — 沿用 RuleResult
 always-return-with-bool 体例; HC-1b meta_monitor_service 据 .triggered 过滤后推
@@ -20,14 +22,19 @@ from __future__ import annotations
 from .meta_alert_interface import (
     L1_HEARTBEAT_STALE_THRESHOLD_S,
     LITELLM_FAILURE_RATE_THRESHOLD,
+    MARKET_CRISIS_INDEX_RETURN_THRESHOLD,
+    MARKET_CRISIS_LIMIT_DOWN_THRESHOLD,
+    PG_IDLE_IN_TX_THRESHOLD,
     RULE_SEVERITY,
     STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S,
     DingTalkPushSnapshot,
     L1HeartbeatSnapshot,
     LiteLLMCallWindowSnapshot,
+    MarketCrisisSnapshot,
     MetaAlert,
     MetaAlertRuleId,
     NewsSourceWindowSnapshot,
+    PGHealthSnapshot,
     StagedPlanWindowSnapshot,
 )
 
@@ -216,10 +223,109 @@ def evaluate_staged_overdue(snapshot: StagedPlanWindowSnapshot) -> MetaAlert:
     )
 
 
+def evaluate_pg_health(snapshot: PGHealthSnapshot) -> MetaAlert:
+    """Rule 6 — PG OOM / lock: idle-in-transaction 连接数超 50 (V3 §14 mode 3, P0).
+
+    triggered iff idle_in_transaction > PG_IDLE_IN_TX_THRESHOLD (50). idle-in-tx
+    连接堆积 = 事务开启未提交 / slow query 长期占用 → connection pool 濒临耗尽.
+    严格 > 边界 (沿用 5 rule 体例).
+    """
+    rule_id = MetaAlertRuleId.PG_POOL_EXHAUSTED
+    severity = RULE_SEVERITY[rule_id]
+
+    triggered = snapshot.idle_in_transaction > PG_IDLE_IN_TX_THRESHOLD
+    if triggered:
+        detail = (
+            f"PG idle-in-transaction {snapshot.idle_in_transaction} > "
+            f"{PG_IDLE_IN_TX_THRESHOLD} threshold (total connections "
+            f"{snapshot.total_connections}) — connection pool 濒临耗尽 / lock 堆积?"
+        )
+    else:
+        detail = (
+            f"PG healthy — idle-in-transaction {snapshot.idle_in_transaction} <= "
+            f"{PG_IDLE_IN_TX_THRESHOLD} threshold (total connections "
+            f"{snapshot.total_connections})"
+        )
+    return MetaAlert(
+        rule_id=rule_id,
+        severity=severity,
+        triggered=triggered,
+        detail=detail,
+        observed_at=snapshot.now,
+    )
+
+
+def evaluate_market_crisis(snapshot: MarketCrisisSnapshot) -> MetaAlert:
+    """Rule 7 — 千股跌停极端 regime: 大盘 -7% OR 跌停家数 > 500 (V3 §14 mode 9, P0).
+
+    triggered iff (index_return <= -0.07) OR (limit_down_count > 500). 两 leg 任一
+    命中即触发 (OR — V3 §14 mode 9 "大盘 -7% / 跌停家数 > 500"). 两 leg 均 None
+    (index_daily + klines_daily feed 均不可用) → not triggered (无信号).
+
+    注: 阈值取 V3 §14 mode 9 (-7% / >500) — 区别于 dynamic_threshold §6.1 Crisis
+    (-5% / >200). index_return 用 <= (-7% 或更深); limit_down_count 用严格 >.
+    """
+    rule_id = MetaAlertRuleId.MARKET_CRISIS_REGIME
+    severity = RULE_SEVERITY[rule_id]
+
+    index_hit = (
+        snapshot.index_return is not None
+        and snapshot.index_return <= MARKET_CRISIS_INDEX_RETURN_THRESHOLD
+    )
+    limit_down_hit = (
+        snapshot.limit_down_count is not None
+        and snapshot.limit_down_count > MARKET_CRISIS_LIMIT_DOWN_THRESHOLD
+    )
+    triggered = index_hit or limit_down_hit
+    both_absent = snapshot.index_return is None and snapshot.limit_down_count is None
+
+    if both_absent:
+        detail = (
+            "no market data available (index_daily + klines_daily feeds both "
+            "absent) — no signal"
+        )
+    elif triggered:
+        reasons: list[str] = []
+        if index_hit:
+            reasons.append(
+                f"大盘 {snapshot.index_return:.2%} <= "
+                f"{MARKET_CRISIS_INDEX_RETURN_THRESHOLD:.0%}"
+            )
+        if limit_down_hit:
+            reasons.append(
+                f"跌停家数 {snapshot.limit_down_count} > "
+                f"{MARKET_CRISIS_LIMIT_DOWN_THRESHOLD}"
+            )
+        detail = f"千股跌停极端 regime — {' AND '.join(reasons)} — Crisis Mode 候选 (V3 §14.2)"
+    else:
+        idx_str = (
+            f"{snapshot.index_return:.2%}" if snapshot.index_return is not None else "n/a"
+        )
+        ldc_str = (
+            str(snapshot.limit_down_count)
+            if snapshot.limit_down_count is not None
+            else "n/a"
+        )
+        detail = (
+            f"market regime within bounds — 大盘 {idx_str} (threshold "
+            f"{MARKET_CRISIS_INDEX_RETURN_THRESHOLD:.0%}), 跌停家数 {ldc_str} "
+            f"(threshold {MARKET_CRISIS_LIMIT_DOWN_THRESHOLD})"
+        )
+    return MetaAlert(
+        rule_id=rule_id,
+        severity=severity,
+        triggered=triggered,
+        detail=detail,
+        observed_at=snapshot.now,
+    )
+
+
 __all__ = [
     "evaluate_dingtalk_push",
     "evaluate_l1_heartbeat",
     "evaluate_litellm_failure_rate",
+    "evaluate_market_crisis",
     "evaluate_news_sources_timeout",
+    "evaluate_pg_health",
     "evaluate_staged_overdue",
 ]

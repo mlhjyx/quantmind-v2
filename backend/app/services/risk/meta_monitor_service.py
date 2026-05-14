@@ -1,15 +1,18 @@
-"""V3 §13.3 元告警 (alert-on-alert) — Application orchestration (HC-1b).
+"""V3 §13.3 + §14 元告警 (alert-on-alert) — Application orchestration (HC-1b + HC-2b3).
 
 3-layer (沿用 risk_reflector_agent / market_regime_service 体例):
-  - qm_platform/risk/metrics/meta_alert_* = Engine PURE (HC-1a: interface + 5 rules)
-  - 本 module = Application orchestration — 5 snapshot 采集 + run 5 PURE rules + DingTalk push
+  - qm_platform/risk/metrics/meta_alert_* = Engine PURE (HC-1a + HC-2b3: interface + 7 rules)
+  - 本 module = Application orchestration — 7 snapshot 采集 + run 7 PURE rules + DingTalk push
   - app/tasks/meta_monitor_tasks = Beat dispatch (5min cadence)
 
-Collector status (post-HC-1b3 — 4 real + 1 no-signal):
+Collector status (post-HC-2b3 — 6 real + 1 no-signal):
   - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success) ✅ HC-1b
   - STAGED overdue: real query `execution_plans` (status='PENDING_CONFIRM') ✅ HC-1b
   - DingTalk push status: real query `alert_dedup.last_push_ok` ✅ HC-1b3
   - News 全源 timeout: real read Redis `qm:news:last_run_stats` ✅ HC-1b3
+  - PG OOM/lock: real query `pg_stat_activity` (idle-in-transaction count) ✅ HC-2b3 G3
+  - 千股跌停极端 regime: real query `index_daily` + `klines_daily` via
+    market_indicators_query (V3 §14 mode 9) ✅ HC-2b3 G4
   - L1 心跳: no-signal (last_tick_at=None) — DEFERRED per HC-1b3 Finding (no
     production XtQuantTickSubscriber runner exists to instrument; instrumenting
     would never fire — see `_collect_l1_heartbeat`). 不是 "not yet wired", 是
@@ -36,6 +39,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from backend.app.services.risk.market_indicators_query import (
+    query_index_return,
+    query_limit_down_count,
+)
 from backend.qm_platform.risk.metrics.meta_alert_interface import (
     LITELLM_FAILURE_RATE_WINDOW_S,
     NEWS_RUN_STATS_REDIS_KEY,
@@ -43,8 +50,10 @@ from backend.qm_platform.risk.metrics.meta_alert_interface import (
     DingTalkPushSnapshot,
     L1HeartbeatSnapshot,
     LiteLLMCallWindowSnapshot,
+    MarketCrisisSnapshot,
     MetaAlert,
     NewsSourceWindowSnapshot,
+    PGHealthSnapshot,
     StagedPlanState,
     StagedPlanWindowSnapshot,
 )
@@ -52,7 +61,9 @@ from backend.qm_platform.risk.metrics.meta_alert_rules import (
     evaluate_dingtalk_push,
     evaluate_l1_heartbeat,
     evaluate_litellm_failure_rate,
+    evaluate_market_crisis,
     evaluate_news_sources_timeout,
+    evaluate_pg_health,
     evaluate_staged_overdue,
 )
 
@@ -69,7 +80,7 @@ _NEWS_SOURCE_COUNT_FALLBACK: int = 6
 
 
 class MetaMonitorService:
-    """V3 §13.3 元告警 orchestration — collect 5 snapshots, run 5 PURE rules, push.
+    """V3 §13.3 + §14 元告警 orchestration — collect 7 snapshots, run 7 PURE rules, push.
 
     conn injected per call; optional redis_client injected at construction (DI
     体例 sustained IntradayAlertDedup) — used by the News collector.
@@ -94,18 +105,20 @@ class MetaMonitorService:
         return self._redis
 
     def collect_and_evaluate(self, conn: Any, *, now: datetime | None = None) -> list[MetaAlert]:
-        """Collect 5 snapshots + run 5 PURE rules → list of 5 MetaAlert.
+        """Collect 7 snapshots + run 7 PURE polled rules → list of 7 MetaAlert.
 
-        Returns ALL 5 MetaAlert (triggered True 和 False) — caller filters
+        Returns ALL 7 MetaAlert (triggered True 和 False) — caller filters
         `.triggered` for push; non-triggered kept for logging / future
-        risk_metrics_daily 元告警-count aggregation.
+        risk_metrics_daily 元告警-count aggregation. Event-emitted rules
+        (RISK_REFLECTOR_FAILED / BROKER_PLAN_STUCK) are NOT polled here — the
+        failure-source tasks emit those directly (see MetaAlertRuleId docstring).
 
         Args:
             conn: psycopg2 connection (read-only here; caller owns commit).
             now: injectable clock for tests (default datetime.now(UTC)).
 
         Returns:
-            list[MetaAlert] — 5 items, one per V3 §13.3 元告警 rule.
+            list[MetaAlert] — 7 items, one per V3 §13.3 + §14 polled 元告警 rule.
 
         Raises:
             psycopg2.Error: DB query failure (caller decides rollback).
@@ -120,10 +133,12 @@ class MetaMonitorService:
             evaluate_l1_heartbeat(self._collect_l1_heartbeat(at)),
             evaluate_dingtalk_push(self._collect_dingtalk(conn, at)),
             evaluate_news_sources_timeout(self._collect_news(at)),
+            evaluate_pg_health(self._collect_pg_health(conn, at)),
+            evaluate_market_crisis(self._collect_market_crisis(conn, at)),
         ]
         triggered = [a for a in alerts if a.triggered]
         logger.info(
-            "[meta-monitor] evaluated 5 rules @ %s — %d triggered: %s",
+            "[meta-monitor] evaluated 7 rules @ %s — %d triggered: %s",
             at.isoformat(),
             len(triggered),
             [a.rule_id.value for a in triggered] or "none",
@@ -275,11 +290,14 @@ class MetaMonitorService:
             "reason": "all_channels_failed",
         }
 
-    # ── Collectors — 4 real (LiteLLM / STAGED / DingTalk / News) + 1 no-signal (L1) ──
+    # ── Collectors — 6 real (LiteLLM / STAGED / DingTalk / News / PG / Crisis)
+    #    + 1 no-signal (L1) ──
     # HC-1b3 wired DingTalk-push-status (alert_dedup.last_push_ok) + News per-run
-    # stats (Redis qm:news:last_run_stats). L1-heartbeat stays no-signal — DEFERRED
-    # per HC-1b3 Finding (no production XtQuantTickSubscriber runner exists to
-    # instrument; instrumenting it would never fire — see _collect_l1_heartbeat).
+    # stats (Redis qm:news:last_run_stats). HC-2b3 wired PG health (pg_stat_activity)
+    # + 千股跌停极端 regime (index_daily + klines_daily). L1-heartbeat stays
+    # no-signal — DEFERRED per HC-1b3 Finding (no production XtQuantTickSubscriber
+    # runner exists to instrument; instrumenting it would never fire — see
+    # _collect_l1_heartbeat).
 
     @staticmethod
     def _collect_litellm(conn: Any, now: datetime) -> LiteLLMCallWindowSnapshot:
@@ -442,6 +460,65 @@ class MetaMonitorService:
             total_sources=total,
             timed_out_sources=timed_out,
             window_seconds=NEWS_SOURCE_TIMEOUT_WINDOW_S,
+            now=now,
+        )
+
+    @staticmethod
+    def _collect_pg_health(conn: Any, now: datetime) -> PGHealthSnapshot:
+        """Real collector (HC-2b3 G3) — pg_stat_activity idle-in-transaction + total.
+
+        V3 §14 mode 3 检测: idle-in-transaction 连接堆积 = connection pool 耗尽 /
+        lock 堆积前兆. `COUNT(*) FILTER (WHERE state = 'idle in transaction')` =
+        idle-in-tx 计数; `COUNT(*)` = 总连接数.
+
+        Instance-wide (NOT filtered by current_database) — `max_connections` 是
+        cluster 级资源, 其他 database 的 idle-in-tx 连接同样占用全局 slot 并可触发
+        "PG OOM / lock"; 且 V3 §14 mode 3 spec "pg_stat_activity > 50 idle in tx"
+        无 per-database 限定. idle-in-transaction 只由真实 client 事务产生 (后台 /
+        replication 连接不会进此状态), 故 instance-wide 计数即真实信号.
+
+        psycopg2.Error propagate (fail-loud 沿用 _collect_litellm / _collect_staged
+        体例 — 铁律 33; PG query 失败 caller 决定 rollback). 注: PG 自身故障时本
+        collector 可能 raise — 这正是 V3 §14 mode 3 "PG OOM / lock" 的失败信号本体,
+        propagate 让 Beat task fail-loud 比 silent no-signal 更符合 P0 语义.
+        """
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_tx,
+                    COUNT(*) AS total
+                FROM pg_stat_activity
+                """
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        idle_in_tx = int(row[0]) if row and row[0] is not None else 0
+        total = int(row[1]) if row and row[1] is not None else 0
+        return PGHealthSnapshot(
+            idle_in_transaction=idle_in_tx,
+            total_connections=total,
+            now=now,
+        )
+
+    @staticmethod
+    def _collect_market_crisis(conn: Any, now: datetime) -> MarketCrisisSnapshot:
+        """Real collector (HC-2b3 G4) — index_daily + klines_daily via market_indicators_query.
+
+        V3 §14 mode 9 检测: 大盘 -7% (index_daily 000300.SH 最新交易日 pct_change)
+        OR 跌停家数 > 500 (klines_daily 最新交易日 pct_change <= -9.9). 共用
+        market_indicators_query helper (铁律 34 — 与 dynamic_threshold_tasks.
+        _build_market_indicators 单源, 反 limit_down_count / index_return 口径漂移).
+
+        psycopg2.Error propagate (fail-loud 沿用 collector 体例 — 铁律 33).
+        无数据 (index_daily 无 000300.SH row / klines_daily 空) → None leg
+        (无信号, 非 error — PURE rule 优雅处理).
+        """
+        return MarketCrisisSnapshot(
+            index_return=query_index_return(conn),
+            limit_down_count=query_limit_down_count(conn),
             now=now,
         )
 
