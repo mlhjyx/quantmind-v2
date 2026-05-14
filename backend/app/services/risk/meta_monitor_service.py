@@ -15,8 +15,11 @@ HC-1b scope (precondition 核 真值 — 2 real collector + 3 no-signal):
     timed_out_sources=0 / last_push_attempted=False → not triggered) — 这是显式
     设计降级 (logged + documented), 非 silent failure (铁律 33).
 
-HC-1b channel scope: DingTalk only (send_with_dedup). 完整 channel fallback chain
-  (主 DingTalk → 备 email → 极端 log-P0) 留 HC-1b2.
+Channel fallback chain (V3 §13.3, HC-1b2): 主 DingTalk → 备 email → 极端 log-P0
+  (`_push_via_channel_chain`). DingTalk unreachable / configured-but-undeliverable
+  → escalate email; email not-delivered / failed → escalate log-P0 (元告警 never
+  silently vanishes). DingTalk-push-status / L1-heartbeat / News per-source real
+  collectors 仍 no-signal → HC-1b3.
 
 铁律 31: qm_platform meta_alert_* PURE; 本 service = Application (DB read via
   injected conn, 0 commit).
@@ -108,10 +111,10 @@ class MetaMonitorService:
         return alerts
 
     def push_triggered(self, alerts: list[MetaAlert], *, conn: Any) -> list[dict[str, Any]]:
-        """Push triggered MetaAlert via DingTalk (send_with_dedup, conn injected).
+        """Push triggered MetaAlert via V3 §13.3 channel fallback chain (HC-1b2).
 
-        HC-1b channel scope = DingTalk only. 完整 channel fallback chain
-        (主 DingTalk → 备 email → 极端 log-P0) 留 HC-1b2.
+        Channel fallback chain: 主 DingTalk → 备 email → 极端 log-P0. Per-alert
+        chain is `_push_via_channel_chain`.
 
         Args:
             alerts: list from collect_and_evaluate (this method filters .triggered).
@@ -120,43 +123,137 @@ class MetaMonitorService:
                 task owns commit).
 
         Returns:
-            list of send_with_dedup result dicts (one per triggered alert).
+            list of channel-result dicts (one per triggered alert; each has a
+            `channel` key ∈ "dingtalk"/"email"/"log_p0" + `rule_id` + the
+            underlying helper's result fields).
 
         Raises:
-            httpx.HTTPError: DingTalk POST failure when DINGTALK_ALERTS_ENABLED
-                (fail-loud per 铁律 33; HC-1b2 email backup will catch this path).
+            psycopg2.Error: alert_dedup write failure inside send_with_dedup —
+                propagates (DB transaction is borked; Beat task rolls back +
+                Celery retries). NOT escalated to email — DB error is a
+                different failure class than "DingTalk unreachable".
 
-        Retry-atomicity trade-off (reviewer LOW, documented known behavior): if
-        alert #1 sends OK (alert_dedup row written) then alert #2's POST raises,
+        Retry-atomicity trade-off (documented known behavior): if alert #1 sends
+        OK (alert_dedup row written) then alert #2's chain hits a psycopg2.Error,
         the Beat task rolls back the whole transaction → alert #1's dedup row is
         also rolled back. On Celery retry alert #1 is re-sent; the alert_dedup
         suppression window then handles duplicate suppression after the
         successful re-send. All-or-nothing is the intended design (反 per-alert
         commit which would violate the single-transaction-boundary 铁律 32).
         """
-        from app.services.dingtalk_alert import send_with_dedup  # noqa: PLC0415
-
         results: list[dict[str, Any]] = []
         for alert in alerts:
             if not alert.triggered:
                 continue
-            result = send_with_dedup(
-                dedup_key=f"meta_alert:{alert.rule_id.value}",
-                severity=alert.severity.value,  # MetaAlertSeverity "p0"/"p1"
+            results.append(self._push_via_channel_chain(alert, conn=conn))
+        return results
+
+    @staticmethod
+    def _push_via_channel_chain(alert: MetaAlert, *, conn: Any) -> dict[str, Any]:
+        """V3 §13.3 元告警 channel fallback chain — 主 DingTalk → 备 email → 极端 log-P0.
+
+        - 主 DingTalk (send_with_dedup): terminal when delivered OR by-design-skip
+          (dedup_suppressed / alerts_disabled — paper-mode audit-only). httpx.HTTPError
+          (DingTalk unreachable) OR reason=no_webhook (config gap, can't deliver) →
+          escalate to email.
+        - 备 email (send_email_alert): terminal when sent. Not-delivered (disabled /
+          no_smtp_config) OR send failure → escalate to log-P0.
+        - 极端 log-P0: last-resort logger.critical — 元告警 never silently vanishes
+          (V3 §13.3 "DingTalk 不可用 → 系统弹窗 + log P0"; 系统弹窗 N/A on headless
+          server → log P0 is the realized last resort).
+
+        psycopg2.Error from send_with_dedup's alert_dedup write is NOT caught —
+        propagates to the Beat task (different failure class than channel-down).
+        """
+        import psycopg2  # noqa: PLC0415
+
+        from app.services.dingtalk_alert import send_with_dedup  # noqa: PLC0415
+
+        rule = alert.rule_id.value
+        severity = alert.severity.value  # MetaAlertSeverity "p0"/"p1"
+        title = f"元告警 {rule}"
+
+        # Step 1: 主 DingTalk
+        try:
+            dt = send_with_dedup(
+                dedup_key=f"meta_alert:{rule}",
+                severity=severity,
                 source="meta_monitor",
-                title=f"元告警 {alert.rule_id.value}",
+                title=title,
                 body=alert.detail,
                 conn=conn,
             )
-            results.append(result)
+            if dt.get("sent") or dt.get("reason") in ("dedup_suppressed", "alerts_disabled"):
+                logger.warning(
+                    "[meta-monitor] 元告警 rule=%s severity=%s channel=dingtalk reason=%s",
+                    rule,
+                    severity,
+                    dt.get("reason"),
+                )
+                return {"channel": "dingtalk", "rule_id": rule, **dt}
+            # reason == no_webhook → DingTalk configured-but-cannot-deliver, escalate
             logger.warning(
-                "[meta-monitor] 元告警 triggered rule=%s severity=%s sent=%s reason=%s",
-                alert.rule_id.value,
-                alert.severity.value,
-                result.get("sent"),
-                result.get("reason"),
+                "[meta-monitor] DingTalk channel cannot deliver rule=%s reason=%s "
+                "— escalate to email",
+                rule,
+                dt.get("reason"),
             )
-        return results
+        except psycopg2.Error:
+            # alert_dedup write failure = borked transaction, different failure class
+            # than channel-down — propagate for Beat task rollback + Celery retry.
+            raise
+        except Exception as e:  # noqa: BLE001 — channel chain resilience: any non-DB
+            # DingTalk-side failure (httpx.HTTPError / future validation error /
+            # unexpected) must still fall through to email so the 元告警 never silently
+            # vanishes (sustained "never vanish" invariant, symmetric with email step).
+            logger.warning(
+                "[meta-monitor] DingTalk channel failed rule=%s: %s — escalate to email",
+                rule,
+                e,
+            )
+
+        # Step 2: 备 email
+        from app.services.email_alert import send_email_alert  # noqa: PLC0415
+
+        try:
+            em = send_email_alert(
+                subject=f"[元告警] {title}", body=alert.detail, source="meta_monitor"
+            )
+            if em.get("sent"):
+                logger.warning(
+                    "[meta-monitor] 元告警 rule=%s severity=%s channel=email (DingTalk escalated)",
+                    rule,
+                    severity,
+                )
+                return {"channel": "email", "rule_id": rule, **em}
+            logger.warning(
+                "[meta-monitor] email channel did not deliver rule=%s reason=%s "
+                "— escalate to log-P0",
+                rule,
+                em.get("reason"),
+            )
+        except Exception as e:  # noqa: BLE001 — channel chain must stay resilient; any
+            # email-side failure (smtplib.SMTPException / OSError / unexpected) must still
+            # fall through to log-P0 so the 元告警 never silently vanishes.
+            logger.warning(
+                "[meta-monitor] email channel failed rule=%s: %s — escalate to log-P0",
+                rule,
+                e,
+            )
+
+        # Step 3: 极端 log-P0 (last resort — 元告警 never silently vanishes)
+        logger.critical(
+            "[meta-monitor] P0 元告警 — ALL CHANNELS FAILED rule=%s severity=%s detail=%s",
+            rule,
+            severity,
+            alert.detail,
+        )
+        return {
+            "channel": "log_p0",
+            "rule_id": rule,
+            "sent": False,
+            "reason": "all_channels_failed",
+        }
 
     # ── Collectors — 2 real (LiteLLM / STAGED) + 3 no-signal (L1 / DingTalk / News) ──
 

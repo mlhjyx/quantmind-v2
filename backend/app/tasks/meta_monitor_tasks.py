@@ -9,7 +9,7 @@ Beat schedule (beat_schedule.py):
   All-hours cadence (不限 trading hours, 区别于 risk-dynamic-threshold-5min `9-14`):
   风控系统失效可发生在任意时刻 — LiteLLM Beat tasks (news 03/07/.../23 / regime
   9:00/14:30/16:00 / reflector) + STAGED plan cancel_deadline 跨夜 都不限交易时段.
-  L1 心跳 collector is HC-1b no-signal (HC-1b2 wires trading-hours-aware real source).
+  L1 心跳 collector is no-signal (HC-1b3 wires trading-hours-aware real source).
 
   反 hard collision: outbox 30s + dynamic-threshold/l4-sweep (`9-14`) + news cron
   (minute=0) + regime/reflector + daily-metrics 16:30 — all cadence-different OR
@@ -42,7 +42,7 @@ logger = logging.getLogger("celery.meta_monitor_tasks")
 
 # Module-level lazy singleton (沿用 risk_reflector_tasks / market_regime_tasks 体例).
 # MetaMonitorService is stateless + cheap, but the singleton 体例 is kept for
-# consistency + future (HC-1b2 may add a Redis client / email client to the service).
+# consistency + future (HC-1b3 may add a Redis client to the service for L1 heartbeat).
 _service: MetaMonitorService | None = None
 
 
@@ -70,9 +70,11 @@ def meta_monitor_tick() -> dict[str, Any]:
         Task result dict (ok / evaluated / triggered / pushed / triggered_rules / at).
 
     Raises:
-        psycopg2.Error: DB query failure (Celery retry per task policy).
-        httpx.HTTPError: DingTalk POST failure when DINGTALK_ALERTS_ENABLED
-            (fail-loud 铁律 33; HC-1b2 email backup will catch this path).
+        psycopg2.Error: DB query / alert_dedup write failure — propagates for
+            Celery retry (铁律 33). DingTalk/email channel failures do NOT
+            propagate: the channel fallback chain catches them and escalates
+            (主 DingTalk → 备 email → 极端 log-P0), so a channel-down does not
+            crash the tick — only a borked DB transaction does.
     """
     from app.services.db import get_sync_conn  # noqa: PLC0415
 

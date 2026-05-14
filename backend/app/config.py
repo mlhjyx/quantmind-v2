@@ -118,6 +118,17 @@ class Settings(BaseSettings):
     # of (timestamp + body) with this shared secret. Empty default → endpoint returns 503
     # (反 silent skip; sustained 铁律 35 secrets via env, 铁律 33 fail-loud at boundary).
     DINGTALK_WEBHOOK_SECRET: str = ""
+    # HC-1b2 (V3 §13.3): email backup channel — 元告警 channel fallback chain
+    # 备用通道 (主 DingTalk → 备 email → 极端 log-P0). 双锁体例 sustained DingTalk:
+    # EMAIL_ALERTS_ENABLED=False default-off + SMTP config 全空 → email_alert helper
+    # 不真发, 返回 disabled/no_config dict (channel chain fall-through to log-P0).
+    EMAIL_ALERTS_ENABLED: bool = False
+    SMTP_HOST: str = ""  # smtp server host, 空 → email channel 不可用
+    SMTP_PORT: int = 587  # smtp submission port (STARTTLS); 465 = implicit TLS
+    SMTP_USER: str = ""  # smtp auth user (空 → 不 login, e.g. open relay)
+    SMTP_PASSWORD: str = ""  # smtp auth password (铁律 35 env-var only, .gitignore)
+    SMTP_FROM: str = ""  # 发件人地址, 空 → email channel 不可用
+    ALERT_EMAIL_TO: str = ""  # 收件人地址 (逗号分隔多个), 空 → email channel 不可用
     # S8 8c-partial: L4 sweep batch limit (PENDING_CONFIRM expired → TIMEOUT_EXECUTED).
     # Default 100/min caps blast radius after crash+restart with backlog. Operator
     # can raise (e.g. 500) if a large backlog needs faster clearance, but each row

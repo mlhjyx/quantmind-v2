@@ -6,8 +6,10 @@
   - _collect_staged: real query → StagedPlanWindowSnapshot (plan_id str, pending_since)
   - 3 no-signal collectors (L1 / DingTalk / News) → always not triggered
   - LiteLLM failure / STAGED overdue → respective rule triggered
-  - push_triggered: only .triggered pushed; send_with_dedup args (dedup_key/severity/
-    source/conn); 0 triggered → empty list
+  - push_triggered + _push_via_channel_chain (V3 §13.3 channel fallback chain):
+    主 DingTalk terminal (sent/dedup_suppressed/alerts_disabled) → no escalation;
+    no_webhook / httpx.HTTPError → escalate email; email not-delivered/raises →
+    escalate log-P0; non-httpx error (psycopg2.Error class) propagates
 """
 
 from __future__ import annotations
@@ -15,6 +17,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
+
+import httpx
+import psycopg2
+import pytest
 
 from backend.app.services.risk.meta_monitor_service import MetaMonitorService
 from backend.qm_platform.risk.metrics.meta_alert_interface import (
@@ -166,24 +172,32 @@ def test_collect_staged_empty_rows() -> None:
     assert snapshot.plans == ()
 
 
-# ── push_triggered ──
+# ── push_triggered / _push_via_channel_chain (V3 §13.3 channel fallback chain) ──
 
 
-def test_push_triggered_only_triggered_pushed() -> None:
+def _alert(
+    rule_id: MetaAlertRuleId = MetaAlertRuleId.LITELLM_FAILURE_RATE,
+    *,
+    severity: MetaAlertSeverity = MetaAlertSeverity.P0,
+    triggered: bool = True,
+) -> MetaAlert:
+    return MetaAlert(
+        rule_id=rule_id,
+        severity=severity,
+        triggered=triggered,
+        detail=f"synthetic {rule_id.value}",
+        observed_at=_NOW,
+    )
+
+
+def test_push_triggered_only_triggered_filtered() -> None:
     svc = MetaMonitorService()
-    # litellm failure (triggered) + healthy rest
-    alerts = svc.collect_and_evaluate(_MockConn(litellm_row=(10, 9)), now=_NOW)
-    conn = _MockConn()
+    alerts = [_alert(triggered=True), _alert(MetaAlertRuleId.L1_HEARTBEAT_STALE, triggered=False)]
     with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
         mock_send.return_value = {"sent": False, "reason": "alerts_disabled"}
-        results = svc.push_triggered(alerts, conn=conn)
-    assert len(results) == 1  # only the 1 triggered litellm alert
+        results = svc.push_triggered(alerts, conn=_MockConn())
+    assert len(results) == 1  # only the triggered one
     assert mock_send.call_count == 1
-    call_kwargs = mock_send.call_args.kwargs
-    assert call_kwargs["dedup_key"] == "meta_alert:litellm_failure_rate"
-    assert call_kwargs["severity"] == "p0"
-    assert call_kwargs["source"] == "meta_monitor"
-    assert call_kwargs["conn"] is conn
 
 
 def test_push_triggered_zero_triggered_empty_list() -> None:
@@ -195,17 +209,136 @@ def test_push_triggered_zero_triggered_empty_list() -> None:
     assert mock_send.call_count == 0
 
 
-def test_push_triggered_severity_passed_through() -> None:
-    # build a P1 triggered alert (News) — but News is no-signal, so synthesize directly
+def test_chain_dingtalk_terminal_alerts_disabled_no_email() -> None:
+    # alerts_disabled (paper-mode audit-only) is a by-design terminal — NOT escalated
     svc = MetaMonitorService()
-    p1_alert = MetaAlert(
-        rule_id=MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT,
-        severity=MetaAlertSeverity.P1,
-        triggered=True,
-        detail="synthetic p1",
-        observed_at=_NOW,
-    )
-    with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
-        mock_send.return_value = {"sent": False, "reason": "alerts_disabled"}
+    conn = _MockConn()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.return_value = {"sent": False, "reason": "alerts_disabled"}
+        results = svc.push_triggered([_alert()], conn=conn)
+    assert results[0]["channel"] == "dingtalk"
+    assert results[0]["rule_id"] == "litellm_failure_rate"
+    mock_email.assert_not_called()
+    # send_with_dedup got the right args incl injected conn
+    kw = mock_dt.call_args.kwargs
+    assert kw["dedup_key"] == "meta_alert:litellm_failure_rate"
+    assert kw["severity"] == "p0"
+    assert kw["source"] == "meta_monitor"
+    assert kw["conn"] is conn
+
+
+def test_chain_dingtalk_terminal_sent_no_email() -> None:
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.return_value = {"sent": True, "reason": "sent"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "dingtalk"
+    mock_email.assert_not_called()
+
+
+def test_chain_dingtalk_dedup_suppressed_terminal_no_email() -> None:
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.return_value = {"sent": False, "reason": "dedup_suppressed"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "dingtalk"
+    mock_email.assert_not_called()
+
+
+def test_chain_dingtalk_no_webhook_escalates_to_email() -> None:
+    # no_webhook = configured-but-cannot-deliver → escalate to email
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.return_value = {"sent": False, "reason": "no_webhook"}
+        mock_email.return_value = {"sent": True, "reason": "sent"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "email"
+    mock_email.assert_called_once()
+
+
+def test_chain_dingtalk_httperror_escalates_to_email() -> None:
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.side_effect = httpx.HTTPError("dingtalk unreachable")
+        mock_email.return_value = {"sent": True, "reason": "sent"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "email"
+    assert results[0]["rule_id"] == "litellm_failure_rate"
+    mock_email.assert_called_once()
+
+
+def test_chain_email_not_delivered_escalates_to_log_p0() -> None:
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.side_effect = httpx.HTTPError("dingtalk unreachable")
+        mock_email.return_value = {"sent": False, "reason": "email_alerts_disabled"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "log_p0"
+    assert results[0]["sent"] is False
+    assert results[0]["reason"] == "all_channels_failed"
+
+
+def test_chain_email_raises_escalates_to_log_p0() -> None:
+    import smtplib
+
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.side_effect = httpx.HTTPError("dingtalk unreachable")
+        mock_email.side_effect = smtplib.SMTPException("smtp down")
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "log_p0"
+
+
+def test_chain_dingtalk_psycopg2error_propagates() -> None:
+    # psycopg2.Error (alert_dedup write failure) is NOT caught — propagates (borked txn,
+    # different failure class than channel-down; Beat task rolls back + Celery retries)
+    svc = MetaMonitorService()
+    with patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt:
+        mock_dt.side_effect = psycopg2.OperationalError("simulated DB failure")
+        with pytest.raises(psycopg2.OperationalError, match="simulated DB failure"):
+            svc.push_triggered([_alert()], conn=_MockConn())
+
+
+def test_chain_dingtalk_unexpected_error_escalates_to_email() -> None:
+    # non-psycopg2, non-httpx error from send_with_dedup (e.g. future validation error)
+    # escalates to email — "元告警 never silently vanishes" invariant (reviewer HIGH fix)
+    svc = MetaMonitorService()
+    with (
+        patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
+        patch("app.services.email_alert.send_email_alert") as mock_email,
+    ):
+        mock_dt.side_effect = ValueError("unexpected validation error")
+        mock_email.return_value = {"sent": True, "reason": "sent"}
+        results = svc.push_triggered([_alert()], conn=_MockConn())
+    assert results[0]["channel"] == "email"
+    mock_email.assert_called_once()
+
+
+def test_chain_severity_passed_through() -> None:
+    svc = MetaMonitorService()
+    p1_alert = _alert(MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT, severity=MetaAlertSeverity.P1)
+    with patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt:
+        mock_dt.return_value = {"sent": False, "reason": "alerts_disabled"}
         svc.push_triggered([p1_alert], conn=_MockConn())
-    assert mock_send.call_args.kwargs["severity"] == "p1"
+    assert mock_dt.call_args.kwargs["severity"] == "p1"
