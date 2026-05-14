@@ -76,21 +76,32 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from qm_platform.risk.reflector import ReflectionInput, ReflectionOutput
-
 from app.services.risk.risk_reflector_agent import RiskReflectorAgent
 from app.tasks.celery_app import celery_app
 
+# Reviewer-fix (PR #345 MEDIUM 1): align imports to `backend.qm_platform.*` —
+# risk_reflector_agent.py (the service this task composes) uses
+# `backend.qm_platform.*`, and `qm_platform.*` vs `backend.qm_platform.*` are
+# distinct module objects (.pth dual root). Consistent root 反 latent
+# isinstance-mismatch risk.
+from backend.qm_platform.risk.reflector import ReflectionInput, ReflectionOutput
+
 if TYPE_CHECKING:
-    from qm_platform.risk.memory.embedding_service import EmbeddingService
-    from qm_platform.risk.reflector.agent import _RouterProtocol
+    from backend.qm_platform.risk.memory.embedding_service import EmbeddingService
+    from backend.qm_platform.risk.reflector.agent import _RouterProtocol
 
 logger = logging.getLogger("celery.risk_reflector_tasks")
 
 # risk_memory.event_type for periodic reflections (open vocab per V3 §5.4).
-# event_reflection uses caller-supplied event_type (the triggering event).
-_EVENT_TYPE_WEEKLY: str = "WeeklyReflection"
-_EVENT_TYPE_MONTHLY: str = "MonthlyReflection"
+# Reviewer-fix (PR #345 MEDIUM 2): `Reflection:` namespace prefix 反 semantic
+# pollution — risk_memory.event_type is shared with real risk events
+# (LimitDown/RapidDrop/etc); prefixed reflection types let RAG retrieval callers
+# distinguish (TB-3c RiskMemoryRAG default-filters reflections out of L1 push
+# augmentation where only real-event memories are relevant). event_reflection
+# uses caller-supplied event_type (L1 dispatch passes the REAL triggering event
+# type — a reflection ABOUT a LimitDown IS relevant when querying LimitDown).
+_EVENT_TYPE_WEEKLY: str = "Reflection:Weekly"
+_EVENT_TYPE_MONTHLY: str = "Reflection:Monthly"
 
 # ─────────────────────────────────────────────────────────────
 # 常量 (V3 §8.2 沉淀 dir + repo root resolution)
@@ -525,7 +536,7 @@ def monthly_reflection(decision_id: str | None = None) -> dict[str, Any]:
 )
 def event_reflection(
     event_summary: str,
-    event_type: str = "EventReflection",
+    event_type: str = "Reflection:Event",
     symbol_id: str | None = None,
     event_window_hours: int = 24,
     decision_id: str | None = None,
@@ -539,9 +550,11 @@ def event_reflection(
         event_summary: short event description (slugified into filename +
             used as period_label suffix). Required, non-empty.
         event_type: risk_memory.event_type for the lesson sediment (TB-4c).
-            Caller (L1 dispatch) supplies the triggering event category
-            (e.g. "LimitDown" / "RapidDrop"). Default "EventReflection" for
-            manual/generic invocation. Open vocab per V3 §5.4.
+            Caller (L1 dispatch) supplies the REAL triggering event category
+            (e.g. "LimitDown" / "RapidDrop") — a reflection ABOUT a LimitDown
+            IS relevant when RAG-querying LimitDown memories, so no prefix.
+            Default "Reflection:Event" for manual/generic invocation (prefixed
+            namespace per PR #345 MEDIUM 2). Open vocab per V3 §5.4.
         symbol_id: optional stock code if the event is symbol-specific
             (None for market-wide events — CorrelatedDrop / regime shift).
         event_window_hours: lookback window in hours (default 24h per V3 §8.1).

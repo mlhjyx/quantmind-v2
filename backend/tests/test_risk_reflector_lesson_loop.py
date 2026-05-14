@@ -167,6 +167,17 @@ class TestComposeLessonText:
         assert len(lesson) == 500
         assert not lesson.endswith("…")
 
+    def test_exactly_501_truncated_to_500(self) -> None:
+        """PR #345 reviewer-fix LOW 1: 501-char is the first value triggering
+        truncation — boundary test nails the off-by-one math (lesson[:499] + '…'
+        = 500 codepoints, '…' = U+2026 single codepoint)."""
+        over_by_one = "y" * 501
+        out = _make_output(overall_summary=over_by_one)
+        lesson = _compose_lesson_text(out)
+        assert len(lesson) == 500
+        assert lesson.endswith("…")
+        assert lesson[:499] == "y" * 499
+
 
 # ---------------------------------------------------------------------------
 # _compose_context_snapshot

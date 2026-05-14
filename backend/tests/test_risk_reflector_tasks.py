@@ -24,14 +24,19 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from qm_platform.risk.reflector import (
+
+from app.tasks import risk_reflector_tasks as rrt
+
+# Import from backend.qm_platform.* to match risk_reflector_tasks.py's import
+# root (PR #345 MEDIUM 1 — aligned to backend.qm_platform.*). `qm_platform.*`
+# and `backend.qm_platform.*` are distinct module objects (.pth dual root) —
+# isinstance checks + class identity must use the SUT's root.
+from backend.qm_platform.risk.reflector import (
     ReflectionDimension,
     ReflectionDimensionOutput,
     ReflectionInput,
     ReflectionOutput,
 )
-
-from app.tasks import risk_reflector_tasks as rrt
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -386,7 +391,7 @@ class TestRunReflection:
             target_path=target,
             decision_id="test-decision",
             dedup_key="risk_reflector:weekly:2026_W19",
-            event_type="WeeklyReflection",
+            event_type="Reflection:Weekly",
         )
         assert result["ok"] is True
         assert result["period_label"] == "2026_W19"
@@ -402,7 +407,7 @@ class TestRunReflection:
         # TB-4c: lesson sediment invoked + conn committed + closed (铁律 32).
         assert len(stub_env["service"].sediment_calls) == 1
         sediment = stub_env["service"].sediment_calls[0]
-        assert sediment["event_type"] == "WeeklyReflection"
+        assert sediment["event_type"] == "Reflection:Weekly"
         assert sediment["event_timestamp"] == datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
         assert len(stub_env["conns"]) == 1
         assert stub_env["conns"][0].committed is True
@@ -423,7 +428,7 @@ class TestRunReflection:
                 target_path=tmp_path / "2026_W19.md",
                 decision_id="test",
                 dedup_key="test",
-                event_type="WeeklyReflection",
+                event_type="Reflection:Weekly",
             )
 
     def test_sediment_error_rolls_back_conn(self, monkeypatch, tmp_path) -> None:
@@ -461,7 +466,7 @@ class TestRunReflection:
                 target_path=tmp_path / "2026_W19.md",
                 decision_id="test",
                 dedup_key="test",
-                event_type="WeeklyReflection",
+                event_type="Reflection:Weekly",
             )
         # conn rolled back + closed (反 leak).
         assert len(conns) == 1
@@ -483,9 +488,9 @@ class TestCeleryTasks:
         assert "_W" in result["period_label"]
         # Report written to patched REFLECTIONS_DIR.
         assert Path(result["report_path"]).exists()
-        # TB-4c: lesson sedimented with WeeklyReflection event_type.
+        # TB-4c: lesson sedimented with Reflection:Weekly event_type.
         assert result["memory_id"] == 42
-        assert stub_env["service"].sediment_calls[0]["event_type"] == "WeeklyReflection"
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "Reflection:Weekly"
         assert stub_env["service"].sediment_calls[0]["symbol_id"] is None
 
     def test_weekly_reflection_auto_decision_id(self, stub_env) -> None:
@@ -499,8 +504,8 @@ class TestCeleryTasks:
         # period_label = YYYY_MM (no _W).
         assert "_W" not in result["period_label"]
         assert Path(result["report_path"]).exists()
-        # TB-4c: lesson sedimented with MonthlyReflection event_type.
-        assert stub_env["service"].sediment_calls[0]["event_type"] == "MonthlyReflection"
+        # TB-4c: lesson sedimented with Reflection:Monthly event_type.
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "Reflection:Monthly"
 
     def test_event_reflection(self, stub_env) -> None:
         result = rrt.event_reflection(
@@ -513,7 +518,7 @@ class TestCeleryTasks:
         assert "event" in result["report_path"]
         assert Path(result["report_path"]).exists()
         # TB-4c: default event_type when caller omits.
-        assert stub_env["service"].sediment_calls[0]["event_type"] == "EventReflection"
+        assert stub_env["service"].sediment_calls[0]["event_type"] == "Reflection:Event"
 
     def test_event_reflection_custom_event_type_and_symbol(self, stub_env) -> None:
         """TB-4c: L1 dispatch supplies triggering event_type + symbol_id."""
