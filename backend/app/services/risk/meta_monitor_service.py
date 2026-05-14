@@ -468,8 +468,13 @@ class MetaMonitorService:
         """Real collector (HC-2b3 G3) — pg_stat_activity idle-in-transaction + total.
 
         V3 §14 mode 3 检测: idle-in-transaction 连接堆积 = connection pool 耗尽 /
-        lock 堆积前兆. `COUNT(*) FILTER (WHERE state = 'idle in transaction')` =
-        idle-in-tx 计数; `COUNT(*)` = 总连接数.
+        lock 堆积前兆.
+        - `COUNT(*) FILTER (WHERE state = 'idle in transaction')` = idle-in-tx 计数.
+          state IS NULL (后台 worker / 本查询自身连接) 被 FILTER 隐式排除 (NULL =
+          'idle in transaction' → NULL → falsy), 无需显式 IS NOT NULL guard.
+        - `COUNT(*) FILTER (WHERE backend_type = 'client backend')` = client 连接数.
+          反 background worker (autovacuum / walsender / bgwriter / checkpointer /
+          本查询连接) 虚高 total_connections (reviewer LOW — db-reviewer post-merge).
 
         Instance-wide (NOT filtered by current_database) — `max_connections` 是
         cluster 级资源, 其他 database 的 idle-in-tx 连接同样占用全局 slot 并可触发
@@ -488,7 +493,7 @@ class MetaMonitorService:
                 """
                 SELECT
                     COUNT(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_tx,
-                    COUNT(*) AS total
+                    COUNT(*) FILTER (WHERE backend_type = 'client backend') AS total
                 FROM pg_stat_activity
                 """
             )
