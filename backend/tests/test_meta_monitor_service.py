@@ -363,6 +363,29 @@ def test_collect_pg_health_null_row_defaults_zero() -> None:
     assert snapshot.total_connections == 0
 
 
+def test_collect_pg_health_partial_none_tuple_zero_idle_defaults_zero() -> None:
+    # defensive: (0, None) partial-None tuple — COUNT(*) FILTER never returns NULL
+    # in PG, but the collector guards each column → None total defaults to 0.
+    # idle=0 <= total=0 holds → valid snapshot.
+    conn = _MockConn(pg_health_row=(0, None))  # type: ignore[arg-type]
+    snapshot = MetaMonitorService._collect_pg_health(conn, _NOW)
+    assert snapshot.idle_in_transaction == 0
+    assert snapshot.total_connections == 0
+
+
+def test_collect_pg_health_contradictory_partial_none_fails_loud() -> None:
+    # defensive edge: (3, None) → idle=3, total defaults to 0 → idle > total
+    # contradictory → PGHealthSnapshot.__post_init__ fail-loud MetaAlertError
+    # (铁律 33 — contradictory data is NOT silently coerced). This tuple shape
+    # is impossible from the real SQL (COUNT(*) FILTER never NULLs), but the
+    # fail-loud path is the correct response if it ever occurred.
+    from backend.qm_platform.risk.metrics.meta_alert_interface import MetaAlertError
+
+    conn = _MockConn(pg_health_row=(3, None))  # type: ignore[arg-type]
+    with pytest.raises(MetaAlertError, match="cannot exceed"):
+        MetaMonitorService._collect_pg_health(conn, _NOW)
+
+
 # ── _collect_market_crisis (HC-2b3 G4 — real index_daily + klines_daily query) ──
 
 

@@ -44,6 +44,10 @@ def query_limit_down_count(conn: Any) -> int | None:
     - `HAVING COUNT(*) > 0`: 空表 (klines_daily 无任何 row → MAX(trade_date) NULL
       → WHERE 0 match) → 0 行返回 → None (无信号), 区别于真实交易日的 "0 跌停"
       (与 query_index_return 的 None-on-no-data 语义对齐, 反 空表/calm-day 混淆).
+      边缘 case: 最新交易日全市场停牌 (e.g. 全市场熔断) → 非停牌行 0 → HAVING
+      过滤 → None (无信号), 而非 0. 此边缘 case 下 evaluate_market_crisis 的
+      index_return leg (OR 语义) 仍可独立触发, 故无 alert gap (reviewer MEDIUM —
+      both reviewer post-merge, 决议: comment 标注, 不改 SQL).
 
     Args:
         conn: psycopg2 connection (read-only; caller owns transaction).
