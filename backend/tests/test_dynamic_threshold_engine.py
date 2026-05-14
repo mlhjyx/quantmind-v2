@@ -421,6 +421,83 @@ class TestRedisCache:
             cache.set_batch({"rapid_drop_5min": {"600519.SH": 0.04}})
 
 
+class TestRedisCacheAutoReconnect:
+    """HC-2b2 G6: RedisThresholdCache auto-reconnect after cooldown (V3 §14 mode 4).
+
+    Replaces the old `_connect_attempted` permanent-block — Redis recovery no
+    longer needs a process restart. Cooldown gates retries 反 per-tick storms.
+    """
+
+    def test_cooldown_gates_then_allows_retry(self, monkeypatch):
+        """connect fail → cooldown blocks retry → after cooldown re-attempts."""
+        import redis
+
+        import backend.qm_platform.risk.dynamic_threshold.cache as cache_mod
+
+        attempts = [0]
+
+        def _failing_redis(**_kw):
+            attempts[0] += 1
+            raise ConnectionError("forced fail for test")
+
+        monkeypatch.setattr(redis, "Redis", _failing_redis)
+        clock = [1000.0]
+        monkeypatch.setattr(cache_mod.time, "monotonic", lambda: clock[0])
+
+        cache = RedisThresholdCache()  # lazy / self-managed
+        assert cache._ensure_redis() is False
+        assert attempts[0] == 1
+        assert cache._last_connect_attempt == 1000.0
+        assert cache._redis is None
+
+        # within cooldown → NO retry
+        clock[0] += cache_mod._RECONNECT_COOLDOWN_S - 1
+        assert cache._ensure_redis() is False
+        assert attempts[0] == 1  # not retried
+
+        # past cooldown → retries (auto-reconnect, no process restart)
+        clock[0] += 2
+        assert cache._ensure_redis() is False
+        assert attempts[0] == 2  # retried
+
+    def test_injected_client_never_auto_creates(self):
+        """injected client reset to None → _ensure_redis False (no auto-create real Redis)."""
+        mock_redis = MagicMock()
+        cache = RedisThresholdCache(redis_client=mock_redis)
+        assert cache._injected is True
+        assert cache._ensure_redis() is True  # has injected client
+        cache._redis = None  # simulate reset by a get/set failure
+        assert cache._ensure_redis() is False  # injected → caller owns lifecycle
+        assert cache._last_connect_attempt is None  # never took the lazy path
+
+    def test_get_failure_drops_client(self):
+        """get() raises → _redis reset to None (next _ensure_redis reconnects)."""
+        mock_redis = MagicMock()
+        mock_redis.get.side_effect = RuntimeError("connection reset by peer")
+        cache = RedisThresholdCache(redis_client=mock_redis)
+        assert cache.get("rapid_drop_5min", "600519.SH") is None  # in-memory fallback
+        assert cache._redis is None  # suspect client dropped
+
+    def test_set_batch_failure_drops_client_and_reraises(self):
+        """set_batch raises → _redis reset to None + re-raise (铁律 33 fail-loud)."""
+        mock_redis = MagicMock()
+        mock_pipe = MagicMock()
+        mock_redis.pipeline.return_value = mock_pipe
+        mock_pipe.execute.side_effect = RuntimeError("redis OOM")
+        cache = RedisThresholdCache(redis_client=mock_redis)
+        with pytest.raises(RuntimeError, match="redis OOM"):
+            cache.set_batch({"rapid_drop_5min": {"600519.SH": 0.04}})
+        assert cache._redis is None  # dropped before re-raise
+
+    def test_flush_failure_drops_client(self):
+        """flush() raises → _redis reset to None (flush stays fail-soft, no raise)."""
+        mock_redis = MagicMock()
+        mock_redis.keys.side_effect = RuntimeError("redis down")
+        cache = RedisThresholdCache(redis_client=mock_redis)
+        cache.flush()  # fail-soft — does not raise
+        assert cache._redis is None
+
+
 # ── Stress simulation (acceptance: Stress 模拟) ──
 
 

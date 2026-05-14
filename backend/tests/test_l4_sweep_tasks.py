@@ -19,6 +19,7 @@ Coverage:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import MagicMock
 
 from app.tasks import l4_sweep_tasks as l4t
@@ -335,3 +336,285 @@ def test_sweep_inner_broker_wire_not_called_on_race() -> None:
     assert result["races"] == 1
     assert result["executed"] == 0
     assert len(stub.calls) == 0
+
+
+# ─────────────────────────────────────────────────────────────
+# HC-2b2 G7 — broker plan stuck sweep + BROKER_PLAN_STUCK 元告警 (V3 §14 mode 12)
+# ─────────────────────────────────────────────────────────────
+
+
+def _make_stuck_mock_conn(*, select_rows: list[tuple]) -> tuple[MagicMock, MagicMock]:
+    """Mock conn for _sweep_stuck_inner — SELECT returns (plan_id, status, stuck_since)."""
+    conn = MagicMock()
+    cursor = MagicMock()
+    desc_items = [type("Col", (), {"name": n})() for n in ("plan_id", "status", "stuck_since")]
+
+    def execute_side_effect(sql: str, params: tuple) -> None:  # noqa: ARG001
+        cursor.description = desc_items
+        cursor.fetchall = MagicMock(return_value=select_rows or [])
+
+    cursor.execute = MagicMock(side_effect=execute_side_effect)
+    cursor.close = MagicMock()
+    conn.cursor = MagicMock(return_value=cursor)
+    return conn, cursor
+
+
+def _stuck_row(
+    plan_id: str, status: str = "CONFIRMED", stuck_since: datetime | None = None
+) -> tuple:
+    if stuck_since is None:
+        stuck_since = datetime(2026, 5, 14, 9, 0, tzinfo=UTC)
+    return (plan_id, status, stuck_since)
+
+
+class _StuckStagedStub:
+    """execute_plan — returns a result for normal plan_ids, raises for plan_ids in `fail`."""
+
+    def __init__(self, *, fail: dict[str, Exception] | None = None) -> None:
+        self._fail = fail or {}
+        self.calls: list[str] = []
+
+    def execute_plan(self, *, plan_id: str, conn: Any) -> object:  # noqa: ARG002
+        self.calls.append(plan_id)
+        if plan_id in self._fail:
+            raise self._fail[plan_id]
+        from app.services.risk.staged_execution_service import (
+            StagedExecutionOutcome,
+            StagedExecutionServiceResult,
+        )
+
+        return StagedExecutionServiceResult(
+            outcome=StagedExecutionOutcome.EXECUTED,
+            plan_id=plan_id,
+            broker_order_id="stub-order",
+            final_status=None,
+            error_msg=None,
+            message="stub resolved",
+        )
+
+
+_NOW_STUCK = datetime(2026, 5, 14, 10, 0, 0, tzinfo=UTC)
+
+
+class TestBrokerPlanStuckEnum:
+    """BROKER_PLAN_STUCK enum + severity SSOT (HC-2b2 G7)."""
+
+    def test_rule_id_in_enum(self) -> None:
+        from backend.qm_platform.risk.metrics.meta_alert_interface import MetaAlertRuleId
+
+        assert MetaAlertRuleId.BROKER_PLAN_STUCK.value == "broker_plan_stuck"
+
+    def test_severity_is_p0(self) -> None:
+        """V3 §14 mode 12 ✅ P0 — broker 接口故障 = 系统失效."""
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (
+            RULE_SEVERITY,
+            MetaAlertRuleId,
+            MetaAlertSeverity,
+        )
+
+        assert RULE_SEVERITY[MetaAlertRuleId.BROKER_PLAN_STUCK] is MetaAlertSeverity.P0
+
+    def test_threshold_const(self) -> None:
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (
+            BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S,
+        )
+
+        assert BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S == 300
+
+
+class TestSweepStuckInner:
+    """_sweep_stuck_inner — detect stuck plans + retry execute_plan."""
+
+    def test_no_stuck_plans_zero_op(self, monkeypatch) -> None:
+        emit_calls: list[Any] = []
+        monkeypatch.setattr(
+            l4t, "_emit_broker_plan_stuck_meta_alert", lambda *a, **k: emit_calls.append((a, k))
+        )
+        conn, cur = _make_stuck_mock_conn(select_rows=[])
+        stub = _StuckStagedStub()
+        result = l4t._sweep_stuck_inner(conn=conn, staged_service=stub, now=_NOW_STUCK)
+        assert result == {
+            "ok": True,
+            "scanned": 0,
+            "resolved": 0,
+            "still_stuck": 0,
+            "still_stuck_plan_ids": [],
+            "batch_limited": False,
+        }
+        assert stub.calls == []
+        assert emit_calls == []  # nothing stuck → no 元告警
+
+    def test_stuck_plan_retry_resolves(self, monkeypatch) -> None:
+        """retry execute_plan succeeds → resolved, conn.commit per-plan, no 元告警."""
+        emit_calls: list[Any] = []
+        monkeypatch.setattr(
+            l4t, "_emit_broker_plan_stuck_meta_alert", lambda *a, **k: emit_calls.append((a, k))
+        )
+        conn, _cur = _make_stuck_mock_conn(select_rows=[_stuck_row("p-1", "TIMEOUT_EXECUTED")])
+        stub = _StuckStagedStub()
+        result = l4t._sweep_stuck_inner(conn=conn, staged_service=stub, now=_NOW_STUCK)
+        assert result["scanned"] == 1
+        assert result["resolved"] == 1
+        assert result["still_stuck"] == 0
+        assert stub.calls == ["p-1"]
+        conn.commit.assert_called_once()  # per-plan commit on success
+        conn.rollback.assert_not_called()
+        assert emit_calls == []
+
+    def test_stuck_plan_retry_raises_emits_meta_alert(self, monkeypatch) -> None:
+        """retry raises → rollback + still_stuck + BROKER_PLAN_STUCK 元告警."""
+        emit_calls: list[Any] = []
+        monkeypatch.setattr(
+            l4t,
+            "_emit_broker_plan_stuck_meta_alert",
+            lambda stuck, *, now: emit_calls.append({"stuck": stuck, "now": now}),
+        )
+        conn, _cur = _make_stuck_mock_conn(select_rows=[_stuck_row("p-1", "CONFIRMED")])
+        stub = _StuckStagedStub(fail={"p-1": RuntimeError("broker DB write borked")})
+        result = l4t._sweep_stuck_inner(conn=conn, staged_service=stub, now=_NOW_STUCK)
+        assert result["scanned"] == 1
+        assert result["resolved"] == 0
+        assert result["still_stuck"] == 1
+        assert result["still_stuck_plan_ids"] == ["p-1"]
+        conn.rollback.assert_called_once()  # borked txn cleared before next plan
+        conn.commit.assert_not_called()
+        # 元告警 emitted once, summarizing the still-stuck plan
+        assert len(emit_calls) == 1
+        stuck = emit_calls[0]["stuck"]
+        assert stuck[0][0] == "p-1"
+        assert stuck[0][1] == "CONFIRMED"
+        assert "broker DB write borked" in stuck[0][2]
+
+    def test_mixed_resolve_and_stuck(self, monkeypatch) -> None:
+        """3 stuck plans: 2 resolve, 1 raises → per-plan resilient (1 bad ≠ abort)."""
+        emit_calls: list[Any] = []
+        monkeypatch.setattr(
+            l4t,
+            "_emit_broker_plan_stuck_meta_alert",
+            lambda stuck, *, now: emit_calls.append({"stuck": stuck, "now": now}),
+        )
+        conn, _cur = _make_stuck_mock_conn(
+            select_rows=[
+                _stuck_row("p-1", "CONFIRMED"),
+                _stuck_row("p-2", "TIMEOUT_EXECUTED"),
+                _stuck_row("p-3", "CONFIRMED"),
+            ]
+        )
+        stub = _StuckStagedStub(fail={"p-2": RuntimeError("still down")})
+        result = l4t._sweep_stuck_inner(conn=conn, staged_service=stub, now=_NOW_STUCK)
+        assert result["scanned"] == 3
+        assert result["resolved"] == 2  # p-1 + p-3
+        assert result["still_stuck"] == 1  # p-2
+        assert result["still_stuck_plan_ids"] == ["p-2"]
+        assert stub.calls == ["p-1", "p-2", "p-3"]  # all 3 attempted (resilient)
+        assert conn.commit.call_count == 2  # p-1 + p-3
+        conn.rollback.assert_called_once()  # p-2
+        assert len(emit_calls) == 1
+        assert len(emit_calls[0]["stuck"]) == 1
+
+    def test_batch_limit_flag(self, monkeypatch) -> None:
+        monkeypatch.setattr(l4t, "_emit_broker_plan_stuck_meta_alert", lambda *a, **k: None)
+        conn, _cur = _make_stuck_mock_conn(select_rows=[_stuck_row(f"p-{i}") for i in range(3)])
+        stub = _StuckStagedStub()
+        result = l4t._sweep_stuck_inner(conn=conn, staged_service=stub, now=_NOW_STUCK, limit=3)
+        assert result["batch_limited"] is True
+
+
+class TestEmitBrokerPlanStuckMetaAlert:
+    """_emit_broker_plan_stuck_meta_alert — BROKER_PLAN_STUCK via channel chain."""
+
+    def test_builds_correct_meta_alert_and_pushes(self, monkeypatch) -> None:
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (
+            MetaAlertRuleId,
+            MetaAlertSeverity,
+        )
+
+        pushed: list[dict[str, Any]] = []
+
+        class _StubMMS:
+            def push_triggered(self, alerts: Any, *, conn: Any) -> list[dict[str, Any]]:
+                pushed.append({"alerts": alerts, "conn": conn})
+                return [{"channel": "log_p0"}]
+
+        import app.services.risk.meta_monitor_service as mms_mod
+
+        monkeypatch.setattr(mms_mod, "MetaMonitorService", _StubMMS)
+
+        import app.services.db as db_mod
+
+        committed: list[bool] = []
+
+        class _StubConn:
+            def commit(self) -> None:
+                committed.append(True)
+
+            def rollback(self) -> None:
+                committed.append(False)
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(db_mod, "get_sync_conn", _StubConn)
+
+        l4t._emit_broker_plan_stuck_meta_alert(
+            [("p-1", "CONFIRMED", "RuntimeError: broker down")], now=_NOW_STUCK
+        )
+        assert len(pushed) == 1
+        alert = pushed[0]["alerts"][0]
+        assert alert.rule_id is MetaAlertRuleId.BROKER_PLAN_STUCK
+        assert alert.severity is MetaAlertSeverity.P0
+        assert alert.triggered is True
+        assert "p-1" in alert.detail
+        assert "CONFIRMED" in alert.detail
+        assert committed == [True]
+
+    def test_push_failure_is_fail_soft(self, monkeypatch) -> None:
+        """元告警 push 自身失败 → log + swallow (NOT raise — sweep 结果不被吞)."""
+
+        class _BoomMMS:
+            def push_triggered(self, alerts: Any, *, conn: Any) -> list[dict[str, Any]]:
+                raise RuntimeError("all channels down")
+
+        import app.services.risk.meta_monitor_service as mms_mod
+
+        monkeypatch.setattr(mms_mod, "MetaMonitorService", _BoomMMS)
+
+        import app.services.db as db_mod
+
+        rolled_back: list[bool] = []
+
+        class _StubConn:
+            def commit(self) -> None:
+                pass
+
+            def rollback(self) -> None:
+                rolled_back.append(True)
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(db_mod, "get_sync_conn", _StubConn)
+
+        # Must NOT raise — fail-soft.
+        l4t._emit_broker_plan_stuck_meta_alert([("p-1", "CONFIRMED", "err")], now=_NOW_STUCK)
+        assert rolled_back == [True]
+
+
+class TestSweepStuckBeatWiring:
+    """risk-l4-broker-stuck-sweep Beat entry + task registration (HC-2b2 G7)."""
+
+    def test_task_registered(self) -> None:
+        assert "app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans" in celery_app.tasks
+
+    def test_beat_entry_exists_and_correct(self) -> None:
+        assert "risk-l4-broker-stuck-sweep" in CELERY_BEAT_SCHEDULE
+        entry = CELERY_BEAT_SCHEDULE["risk-l4-broker-stuck-sweep"]
+        assert entry["task"] == "app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans"
+        assert entry["options"]["queue"] == "default"
+        assert entry["options"]["expires"] == 240
+
+    def test_beat_entry_every_5min_all_hours(self) -> None:
+        """*/5 all hours — stuck plans persist across any time incl overnight."""
+        schedule = CELERY_BEAT_SCHEDULE["risk-l4-broker-stuck-sweep"]["schedule"]
+        assert schedule.minute == {0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}
+        assert schedule.hour == set(range(24))  # all hours (反 9-14 trading-only)

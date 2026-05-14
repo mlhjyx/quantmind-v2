@@ -38,6 +38,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.config import settings
@@ -50,6 +51,9 @@ from app.services.risk.staged_execution_service import (
     get_default_service as get_default_staged_service,
 )
 from app.tasks.celery_app import celery_app
+from backend.qm_platform.risk.metrics.meta_alert_interface import (
+    BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S,
+)
 
 logger = logging.getLogger("celery.l4_sweep_tasks")
 
@@ -271,3 +275,205 @@ def _sweep_inner(
         }
     finally:
         cur.close()
+
+
+# ─────────────────────────────────────────────────────────────
+# V3 §14 mode 12 — broker plan stuck sweep + BROKER_PLAN_STUCK 元告警 (HC-2b2 G7)
+# ─────────────────────────────────────────────────────────────
+
+
+def _emit_broker_plan_stuck_meta_alert(
+    stuck_plans: list[tuple[str, str, str]], *, now: datetime
+) -> None:
+    """Emit BROKER_PLAN_STUCK 元告警 via HC-1b channel fallback chain (V3 §14 mode 12).
+
+    Event-emitted rule (NOT polled — 见 meta_alert_interface.MetaAlertRuleId docstring):
+    sweep 检测到 plan 卡在 CONFIRMED/TIMEOUT_EXECUTED 且 retry 仍未推进 → 直接构造
+    MetaAlert + 走 push_triggered (主 DingTalk → 备 email → 极端 log-P0).
+
+    一个 alert 汇总所有 still-stuck plan (沿用 evaluate_staged_overdue 单 alert 汇总体例).
+    Fail-soft: 元告警 push 自身失败仅 log (反 — notification 失败连带吞掉 sweep 结果).
+
+    Args:
+        stuck_plans: list of (plan_id, status, reason) — retry 后仍卡的 plan.
+        now: tz-aware 评估时刻.
+    """
+    try:
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+        from app.services.risk.meta_monitor_service import MetaMonitorService  # noqa: PLC0415
+        from backend.qm_platform.risk.metrics.meta_alert_interface import (  # noqa: PLC0415
+            RULE_SEVERITY,
+            MetaAlert,
+            MetaAlertRuleId,
+        )
+
+        rule_id = MetaAlertRuleId.BROKER_PLAN_STUCK
+        worst = stuck_plans[0]
+        detail = (
+            f"{len(stuck_plans)} execution_plan(s) stuck in CONFIRMED/TIMEOUT_EXECUTED "
+            f"> {BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S}s — retry 仍未推进, broker 接口故障? "
+            f"(e.g. plan_id={worst[0]} status={worst[1]} reason={worst[2]}) "
+            f"— 需 user 手工干预 reconciliation"
+        )
+        alert = MetaAlert(
+            rule_id=rule_id,
+            severity=RULE_SEVERITY[rule_id],
+            triggered=True,
+            detail=detail,
+            observed_at=now,
+        )
+        # push_triggered = HC-1b public API (channel fallback chain). conn owned
+        # here — failure-path helper 自管事务 (反 复用 sweep conn 的不确定状态).
+        conn = get_sync_conn()
+        try:
+            MetaMonitorService().push_triggered([alert], conn=conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    except Exception as push_exc:  # noqa: BLE001 — fail-soft: 元告警 push 失败不吞 sweep 结果
+        logger.error(
+            "[l4-broker-stuck-sweep] BROKER_PLAN_STUCK 元告警 push itself failed "
+            "(sweep 结果 caller 仍返回): %s",
+            push_exc,
+        )
+
+
+def _sweep_stuck_inner(
+    *,
+    conn: Any,
+    staged_service: StagedExecutionService,
+    now: datetime,
+    limit: int = SWEEP_BATCH_LIMIT,
+) -> dict[str, Any]:
+    """Inner sweep — SELECT stuck CONFIRMED/TIMEOUT_EXECUTED plans + retry execute_plan.
+
+    A plan in CONFIRMED/TIMEOUT_EXECUTED for > BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S
+    means execute_plan never completed (broker call 挂 / DB writeback 失败 / worker
+    中途死). **CONFIRMED-stuck 此前 0 retry 路径** — l4_sweep 只扫 PENDING_CONFIRM,
+    webhook CONFIRM 后的 execute_plan 失败无人重试.
+
+    Per-plan independent transaction (commit-per-plan): 这是 reconciliation safety
+    net — 一个 un-resolvable plan 必须 NOT block 其余 plan 的 reconcile (区别于
+    l4_sweep 的 all-or-nothing batch — 那是 cohesive batch).
+
+    retry execute_plan outcomes:
+      - EXECUTED / FAILED / RACE / NOT_EXECUTABLE → plan 推进到/已是终态 = resolved.
+      - execute_plan raises (DB error / borked txn) → plan 仍卡 → rollback + 计入
+        still_stuck → 汇总 emit BROKER_PLAN_STUCK 元告警.
+
+    Caller owns conn lifecycle; this fn commits/rollbacks per-plan internally
+    (task IS the transaction owner — per-plan boundary is a deliberate choice).
+    """
+    cutoff = now - timedelta(seconds=BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S)
+    cur = conn.cursor()
+    try:
+        # COALESCE(user_decision_at, created_at): TIMEOUT_EXECUTED + webhook-CONFIRMED
+        # both set user_decision_at; created_at is the fallback (defensive — a plan
+        # should never be CONFIRMED/TIMEOUT_EXECUTED with NULL user_decision_at).
+        cur.execute(
+            """
+            SELECT plan_id::text AS plan_id, status,
+                   COALESCE(user_decision_at, created_at) AS stuck_since
+            FROM execution_plans
+            WHERE status IN ('CONFIRMED', 'TIMEOUT_EXECUTED')
+              AND COALESCE(user_decision_at, created_at) < %s
+            ORDER BY COALESCE(user_decision_at, created_at) ASC
+            LIMIT %s
+            """,
+            (cutoff, limit),
+        )
+        cols = [c.name for c in cur.description]
+        stuck_rows = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+    finally:
+        cur.close()
+
+    scanned = len(stuck_rows)
+    resolved = 0
+    still_stuck: list[tuple[str, str, str]] = []
+
+    for row in stuck_rows:
+        plan_id = row["plan_id"]
+        status = row["status"]
+        try:
+            r = staged_service.execute_plan(plan_id=plan_id, conn=conn)
+            conn.commit()  # per-plan independent transaction (task owns boundary)
+            resolved += 1
+            logger.info(
+                "[l4-broker-stuck-sweep] plan_id=%s was %s — retry resolved: "
+                "outcome=%s final_status=%s",
+                plan_id,
+                status,
+                r.outcome.value,
+                r.final_status.value if r.final_status is not None else "<none>",
+            )
+        except Exception as exc:  # noqa: BLE001 — per-plan resilient (反 1 bad plan 阻断整 sweep)
+            conn.rollback()  # clear borked txn before the next plan's query
+            reason = f"{type(exc).__name__}: {exc}"
+            still_stuck.append((plan_id, status, reason))
+            logger.warning(
+                "[l4-broker-stuck-sweep] plan_id=%s status=%s retry FAILED (still stuck): %s",
+                plan_id,
+                status,
+                reason,
+            )
+
+    if still_stuck:
+        _emit_broker_plan_stuck_meta_alert(still_stuck, now=now)
+
+    return {
+        "ok": True,
+        "scanned": scanned,
+        "resolved": resolved,
+        "still_stuck": len(still_stuck),
+        "still_stuck_plan_ids": [p[0] for p in still_stuck],
+        "batch_limited": scanned == limit,
+    }
+
+
+@celery_app.task(
+    name="app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans",
+    soft_time_limit=60,  # retry loop over stuck plans — generous vs sweep_pending's 30s
+    time_limit=120,
+)
+def sweep_stuck_broker_plans() -> dict[str, Any]:
+    """Sweep execution_plans stuck in CONFIRMED/TIMEOUT_EXECUTED → retry + 元告警.
+
+    Beat schedule: `risk-l4-broker-stuck-sweep` (every 5min, all hours — stuck plans
+    persist across any time incl overnight; CONFIRMED-stuck has NO other retry path).
+
+    V3 §14 mode 12 (HC-2b2 G7): broker_qmt 接口故障 — sell 单提交但 status 未推进.
+    Detects plans stuck > BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S, retries execute_plan
+    (idempotent — race-safe UPDATE), plans still stuck after retry → BROKER_PLAN_STUCK
+    元告警 (P0, user 手工干预 reconciliation).
+
+    Returns:
+        {ok, scanned, resolved, still_stuck, still_stuck_plan_ids, batch_limited}
+
+    Raises:
+        psycopg2.Error from get_sync_conn / the stuck-plan SELECT propagates to
+        Celery retry. Per-plan execute_plan errors are caught + escalated (NOT raised)
+        — 一个 bad plan 不阻断 sweep.
+    """
+    conn = None
+    try:
+        conn = get_sync_conn()
+        staged_service = get_default_staged_service()
+        result = _sweep_stuck_inner(conn=conn, staged_service=staged_service, now=datetime.now(UTC))
+        logger.info(
+            "[l4-broker-stuck-sweep] scanned=%d resolved=%d still_stuck=%d batch_limited=%s",
+            result["scanned"],
+            result["resolved"],
+            result["still_stuck"],
+            result["batch_limited"],
+        )
+        return result
+    except Exception:
+        if conn is not None:
+            conn.rollback()
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
