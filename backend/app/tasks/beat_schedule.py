@@ -286,8 +286,11 @@ CELERY_BEAT_SCHEDULE: dict = {
     #   event-triggered 24h post-event has NO Beat entry — dispatched by L1 event
     #   detection (TB-4c+ wire) since trigger is data-driven not time-driven.
     # 反 hard collision:
-    #   - Sunday 19:00 — `factor-lifecycle-weekly` is Friday 19:00 (NO overlap),
-    #     `gp-weekly-mining` is Sunday 22:00 (NO overlap). Sunday 19:00 clean.
+    #   - Sunday 19:00 — `news-ingest-5-source-cadence` + `news-ingest-rsshub-cadence`
+    #     both fire at 19:00 daily (crontab hour="3,7,11,15,19,23", incl Sunday).
+    #     Beat sequential dispatch + `--pool=solo` tolerates (independent tasks,
+    #     ~5-10s combined queue). `factor-lifecycle-weekly` is Friday 19:00 (NO
+    #     overlap), `gp-weekly-mining` is Sunday 22:00 (NO overlap).
     #   - 月 1 日 09:00 — may collide with `risk-market-regime-0900` when 月 1 日 is
     #     a weekday. Beat sequential dispatch + `--pool=solo` Windows tolerates
     #     sub-second queue (independent V4-Pro tasks, ~3-5s combined). Acceptable.

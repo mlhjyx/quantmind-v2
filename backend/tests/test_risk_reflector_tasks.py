@@ -129,6 +129,15 @@ class TestWeeklyBounds:
         assert start.tzinfo is not None
         assert end.tzinfo is not None
 
+    def test_year_boundary_iso_week(self) -> None:
+        """PR #344 reviewer-fix MEDIUM 1: ISO week year-boundary edge case —
+        2025-12-29 (Monday) is ISO week 1 of 2026, so iso_year (2026) != calendar
+        year (2025). period_label must use iso_year not calendar year."""
+        boundary = datetime(2025, 12, 29, 19, 0, 0, tzinfo=UTC)
+        label, _, _ = rrt._weekly_bounds(boundary)
+        # isocalendar() → (2026, 1, 1) — label uses iso_year=2026, NOT 2025.
+        assert label == "2026_W01"
+
 
 class TestMonthlyBounds:
     def test_reflects_previous_month(self) -> None:
@@ -215,13 +224,15 @@ class TestRenderReflectionMarkdown:
 class TestRenderDingtalkSummary:
     def test_contains_period_and_summary(self) -> None:
         out = _valid_output("2026_W19")
-        summary = rrt._render_dingtalk_summary(out)
+        target = rrt.REFLECTIONS_DIR / "2026_W19.md"
+        summary = rrt._render_dingtalk_summary(out, target)
         assert "2026_W19" in summary
         assert "综合摘要" in summary
 
     def test_contains_findings_candidates_count(self) -> None:
         out = _valid_output()
-        summary = rrt._render_dingtalk_summary(out)
+        target = rrt.REFLECTIONS_DIR / "2026_W19.md"
+        summary = rrt._render_dingtalk_summary(out, target)
         # 1 finding (detection) + 2 candidates (threshold + action).
         assert "1 项" in summary  # findings
         assert "2 项" in summary  # candidates
@@ -230,14 +241,27 @@ class TestRenderDingtalkSummary:
         # Force a tiny cap to test truncation path.
         monkeypatch.setattr(rrt, "_DINGTALK_SUMMARY_MAX_CHARS", 100)
         out = _valid_output()
-        summary = rrt._render_dingtalk_summary(out)
+        target = rrt.REFLECTIONS_DIR / "2026_W19.md"
+        summary = rrt._render_dingtalk_summary(out, target)
         assert len(summary) <= 100
         assert "截断" in summary
 
-    def test_links_full_report(self) -> None:
+    def test_links_full_report_weekly(self) -> None:
+        """PR #344 reviewer-fix LOW 1: report link uses actual target_path
+        relative to repo root (weekly = top-level YYYY_WW.md)."""
         out = _valid_output("2026_W19")
-        summary = rrt._render_dingtalk_summary(out)
-        assert "docs/risk_reflections/2026_W19.md" in summary
+        target = rrt.REFLECTIONS_DIR / "2026_W19.md"
+        summary = rrt._render_dingtalk_summary(out, target)
+        assert "docs/risk_reflections/2026_W19.md" in summary.replace("\\", "/")
+
+    def test_links_full_report_event_subdir(self) -> None:
+        """PR #344 reviewer-fix LOW 1: event reflections write to event/ subdir —
+        report link must reflect actual path NOT computed period_label.md."""
+        out = _valid_output("event-2026-05-10-limitdown_cluster")
+        target = rrt.REFLECTIONS_DIR / "event" / "2026-05-10_limitdown_cluster.md"
+        summary = rrt._render_dingtalk_summary(out, target)
+        # Link must point to event/ subdir, NOT top-level event-...-cluster.md.
+        assert "event/2026-05-10_limitdown_cluster.md" in summary.replace("\\", "/")
 
 
 # ---------------------------------------------------------------------------

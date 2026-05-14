@@ -25,8 +25,11 @@ Beat schedule per V3 §8.1 (beat_schedule.py amend):
     (TB-4c+ wire) since trigger is data-driven not time-driven.
 
 Schedule collision risk (反 hard collision, sustained TB-2c 体例):
-  - Sunday 19:00 — collides with `factor-lifecycle-weekly` (Friday 19:00, NO overlap)
-    and `gp-weekly-mining` (Sunday 22:00, NO overlap). Sunday 19:00 clean.
+  - Sunday 19:00 — collides with `news-ingest-5-source-cadence` +
+    `news-ingest-rsshub-cadence` (both crontab `hour="3,7,11,15,19,23"` fire
+    every day at 19:00 incl Sunday). Beat sequential dispatch + `--pool=solo`
+    tolerates (independent tasks, ~5-10s combined queue). `factor-lifecycle-weekly`
+    is Friday 19:00 (NO overlap), `gp-weekly-mining` is Sunday 22:00 (NO overlap).
   - 月 1 日 09:00 — may collide with `risk-market-regime-0900` if 月 1 日 is a
     weekday. Beat sequential dispatch + `--pool=solo` Windows tolerates
     sub-second queue (independent V4-Pro tasks, ~3-5s combined). Acceptable.
@@ -38,7 +41,9 @@ TB-4b scope boundary (留 TB-4c/d):
 
 铁律 22 sustained: doc 跟随代码 — beat_schedule.py amend + runbook + README same PR.
 铁律 31 sustained: qm_platform/risk/reflector engine PURE; 本 task = Application dispatch.
-铁律 32 sustained: 本 TB-4b 0 DB write (markdown file write only — TB-4c adds risk_memory INSERT).
+铁律 32 sustained: 本 TB-4b 0 domain DB write (markdown file write only — TB-4c adds
+  risk_memory INSERT). Note: `send_with_dedup` DingTalk helper writes alert_dedup
+  dedup metadata (helper-internal, not domain data).
 铁律 33 sustained: fail-loud — ReflectorAgentError / file IO error propagate per Celery retry.
 铁律 41 sustained: Asia/Shanghai timezone via celery_app.py + tz-aware datetime throughout.
 铁律 44 X9 sustained: post-merge ops `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
@@ -218,11 +223,15 @@ def _render_reflection_markdown(output: ReflectionOutput) -> str:
     return "\n".join(lines)
 
 
-def _render_dingtalk_summary(output: ReflectionOutput) -> str:
+def _render_dingtalk_summary(output: ReflectionOutput, target_path: Path) -> str:
     """Render ReflectionOutput → DingTalk markdown 摘要 (short, ≤ 3000 chars).
 
     V3 §8.2 line 945-957 体例 — overall_summary + per-dim candidates count +
     完整 report 走 repo 沉淀 (本摘要不含全文).
+
+    Reviewer-fix (PR #344 LOW 1): report link uses actual target_path (relative
+    to repo root) instead of computed `period_label`.md — event reflections
+    write to event/ subdir so period_label != filename path.
     """
     total_findings = sum(len(r.findings) for r in output.reflections)
     total_candidates = sum(len(r.candidates) for r in output.reflections)
@@ -241,7 +250,13 @@ def _render_dingtalk_summary(output: ReflectionOutput) -> str:
                 f"- {r.dimension.value.capitalize()}: {len(r.candidates)} 候选"
             )
     lines.append("")
-    lines.append(f"完整报告: docs/risk_reflections/{output.period_label}.md")
+    # Accurate report link — relative to repo root (handles event/ subdir).
+    try:
+        rel_path = target_path.relative_to(_REPO_ROOT)
+    except ValueError:
+        # target_path outside repo (e.g. test tmp_path) — fall back to name.
+        rel_path = target_path.name
+    lines.append(f"完整报告: {rel_path}")
     summary = "\n".join(lines)
     # Hard cap — truncate (反 DingTalk ~5KB body limit per V3 §8.2).
     if len(summary) > _DINGTALK_SUMMARY_MAX_CHARS:
@@ -275,17 +290,22 @@ def _write_reflection_markdown(output: ReflectionOutput, target_path: Path) -> N
     )
 
 
-def _push_dingtalk_summary(output: ReflectionOutput, *, dedup_key: str) -> dict[str, Any]:
+def _push_dingtalk_summary(
+    output: ReflectionOutput, *, dedup_key: str, target_path: Path
+) -> dict[str, Any]:
     """Push DingTalk 摘要 via send_with_dedup (双锁 + alert_dedup 去重).
 
     DINGTALK_ALERTS_ENABLED default-off — paper-mode 0 真 push unless explicitly
     enabled. Returns send_with_dedup result dict.
 
+    Note: send_with_dedup writes alert_dedup dedup metadata (helper-internal,
+    not domain DB write per 铁律 32 — TB-4b task itself is 0 domain DB write).
+
     铁律 33 fail-loud — httpx error propagates if alerts enabled + push fails.
     """
     from app.services.dingtalk_alert import send_with_dedup  # noqa: PLC0415
 
-    body = _render_dingtalk_summary(output)
+    body = _render_dingtalk_summary(output, target_path)
     return send_with_dedup(
         dedup_key=dedup_key,
         severity="info",
@@ -329,7 +349,9 @@ def _run_reflection(
     _write_reflection_markdown(output, target_path)
 
     # Push DingTalk 摘要 (V3 §8.2 line 945-957).
-    push_result = _push_dingtalk_summary(output, dedup_key=dedup_key)
+    push_result = _push_dingtalk_summary(
+        output, dedup_key=dedup_key, target_path=target_path
+    )
 
     total_candidates = sum(len(r.candidates) for r in output.reflections)
     result: dict[str, Any] = {

@@ -35,7 +35,7 @@ Select-String "risk-reflector-" backend\app\tasks\beat_schedule.py
 | EXECUTION_MODE | paper | paper | `Select-String "EXECUTION_MODE" backend\.env` |
 | QMT_ACCOUNT_ID | 81001102 | 81001102 | `Select-String "QMT_ACCOUNT_ID" backend\.env` |
 
-**0 broker mutation / 0 .env change** in this runbook — Beat wire is pure schedule registration. TB-4b task body writes markdown file + (optional, DINGTALK_ALERTS_ENABLED-gated) DingTalk push only — 0 DB write, 0 broker call.
+**0 broker mutation / 0 .env change** in this runbook — Beat wire is pure schedule registration. TB-4b task body writes markdown file + (optional, DINGTALK_ALERTS_ENABLED-gated) DingTalk push only — **0 domain DB write**, 0 broker call. Note: `send_with_dedup` DingTalk helper writes `alert_dedup` dedup metadata (helper-internal, not domain data — sustained TB-2c market_regime alert path 体例).
 
 ## 执行步骤
 
