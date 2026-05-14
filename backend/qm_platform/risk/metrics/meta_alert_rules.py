@@ -185,7 +185,7 @@ def evaluate_staged_overdue(snapshot: StagedPlanWindowSnapshot) -> MetaAlert:
     rule_id = MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE
     severity = RULE_SEVERITY[rule_id]
 
-    overdue: list[tuple[int, float]] = []
+    overdue: list[tuple[str, float]] = []
     for plan in snapshot.plans:
         if plan.status != _PENDING_CONFIRM_STATUS:
             continue

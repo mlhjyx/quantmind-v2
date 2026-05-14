@@ -255,7 +255,7 @@ def test_news_zero_total_raises() -> None:
 # ── Rule 5: evaluate_staged_overdue ──
 
 
-def _staged(plan_id: int, status: str, age_seconds: int) -> StagedPlanState:
+def _staged(plan_id: str, status: str, age_seconds: int) -> StagedPlanState:
     return StagedPlanState(
         plan_id=plan_id,
         status=status,
@@ -270,22 +270,22 @@ def test_staged_empty_not_triggered() -> None:
 
 def test_staged_boundary_exactly_threshold_not_triggered() -> None:
     # exactly 2100s pending → NOT triggered (rule uses strict >)
-    plan = _staged(1, "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S)
+    plan = _staged("plan-1", "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S)
     alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=(plan,), now=_NOW))
     assert alert.triggered is False
 
 
 def test_staged_just_over_threshold_triggered() -> None:
-    plan = _staged(42, "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 1)
+    plan = _staged("plan-42", "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 1)
     alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=(plan,), now=_NOW))
     assert alert.triggered is True
     assert alert.severity is MetaAlertSeverity.P0
-    assert "plan_id=42" in alert.detail
+    assert "plan_id=plan-42" in alert.detail
     assert "cancel_deadline" in alert.detail
 
 
 def test_staged_under_threshold_not_triggered() -> None:
-    plan = _staged(1, "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S - 1)
+    plan = _staged("plan-1", "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S - 1)
     alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=(plan,), now=_NOW))
     assert alert.triggered is False
     assert "none over" in alert.detail
@@ -293,28 +293,30 @@ def test_staged_under_threshold_not_triggered() -> None:
 
 def test_staged_non_pending_status_ignored_even_if_old() -> None:
     # an EXECUTED plan that's very old must NOT trigger — only PENDING_CONFIRM counts
-    plan = _staged(1, "EXECUTED", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S * 10)
+    plan = _staged("plan-1", "EXECUTED", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S * 10)
     alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=(plan,), now=_NOW))
     assert alert.triggered is False
 
 
 def test_staged_multiple_overdue_picks_worst() -> None:
     plans = (
-        _staged(1, "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 100),
-        _staged(2, "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 5000),
-        _staged(3, "CONFIRMED", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 9999),
-        _staged(4, "PENDING_CONFIRM", 10),
+        _staged("plan-1", "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 100),
+        _staged("plan-2", "PENDING_CONFIRM", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 5000),
+        _staged("plan-3", "CONFIRMED", STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 9999),
+        _staged("plan-4", "PENDING_CONFIRM", 10),
     )
     alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=plans, now=_NOW))
     assert alert.triggered is True
-    # 2 overdue (plan 1 + plan 2); plan 3 is CONFIRMED (ignored), plan 4 fresh
+    # 2 overdue (plan-1 + plan-2); plan-3 is CONFIRMED (ignored), plan-4 fresh
     assert "2 STAGED plan(s)" in alert.detail
-    assert "plan_id=2" in alert.detail  # worst
+    assert "plan_id=plan-2" in alert.detail  # worst
 
 
 def test_staged_naive_pending_since_raises() -> None:
     with pytest.raises(MetaAlertError, match="tz-aware"):
-        StagedPlanState(plan_id=1, status="PENDING_CONFIRM", pending_since=datetime(2026, 5, 14))
+        StagedPlanState(
+            plan_id="plan-1", status="PENDING_CONFIRM", pending_since=datetime(2026, 5, 14)
+        )
 
 
 # ── interface: RULE_SEVERITY SSOT + MetaAlert contract ──
