@@ -212,12 +212,13 @@ class StagedPlanState:
     """One STAGED execution_plan 的相关状态 (StagedPlanWindowSnapshot 的 member).
 
     Args:
-      plan_id: execution_plans.plan_id.
+      plan_id: execution_plans.plan_id — UUID text (HC-1b precondition 核 surface:
+        execution_plans.plan_id 是 UUID NOT BIGSERIAL, HC-1a `int` 假设修正为 str).
       status: plan status (PENDING_CONFIRM / CONFIRMED / EXECUTED / CANCELLED / ...).
       pending_since: 进入 PENDING_CONFIRM 状态的 tz-aware 时间戳.
     """
 
-    plan_id: int
+    plan_id: str
     status: str
     pending_since: datetime
 

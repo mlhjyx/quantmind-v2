@@ -314,6 +314,29 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 3600,  # 1h window — monthly cadence has ample slack
         },
     },
+    # ── HC-1b: V3 §13.3 元告警 (alert-on-alert) 5min Beat ──
+    # V3 §13.3 元监控: every 5min collect 5 风控系统失效场景 snapshot → run 5 PURE
+    #   rules (qm_platform/risk/metrics/meta_alert_rules) → push triggered via DingTalk.
+    # crontab `*/5 * * * *` Asia/Shanghai — every 5min ALL hours (不限 trading hours,
+    #   区别于 risk-dynamic-threshold-5min `9-14`): 风控系统失效可发生在任意时刻
+    #   (LiteLLM Beat tasks news/regime/reflector + STAGED cancel_deadline 跨夜).
+    #   L1 心跳 collector is HC-1b no-signal (HC-1b2 wires trading-hours-aware source).
+    # 反 hard collision: outbox 30s + dynamic-threshold/l4-sweep (`9-14`) + news cron
+    #   (minute=0) + regime/reflector + daily-metrics 16:30 — all cadence-different OR
+    #   Beat sequential dispatch + Worker --pool=solo tolerates (cheap 2-query task).
+    # task body: MetaMonitorService.collect_and_evaluate (2 real collector llm_call_log +
+    #   execution_plans, 3 no-signal L1/DingTalk/News → HC-1b2 real wire) → push_triggered
+    #   via send_with_dedup (DingTalk only; channel fallback chain 留 HC-1b2).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   per docs/runbook/cc_automation/v3_hc_1b_meta_monitor_beat_wire.md (LL-141 4-step).
+    "meta-monitor-tick": {
+        "task": "app.tasks.meta_monitor_tasks.meta_monitor_tick",
+        "schedule": crontab(minute="*/5"),  # every 5min, all hours
+        "options": {
+            "queue": "default",
+            "expires": 240,  # 4min within next 5min cycle (反 stale retry pileup)
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产

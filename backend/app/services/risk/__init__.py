@@ -10,10 +10,12 @@ from backend.app.services.risk.dingtalk_webhook_service import (
     WebhookOutcome,
 )
 from backend.app.services.risk.market_regime_service import MarketRegimeService
+from backend.app.services.risk.meta_monitor_service import MetaMonitorService
 
 __all__ = [
     "DingTalkWebhookResult",
     "DingTalkWebhookService",
     "MarketRegimeService",
+    "MetaMonitorService",
     "WebhookOutcome",
 ]
