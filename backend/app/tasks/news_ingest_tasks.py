@@ -31,10 +31,13 @@ Beat dispatch:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from app.tasks.celery_app import celery_app
+from backend.qm_platform.risk.metrics.meta_alert_interface import NEWS_RUN_STATS_REDIS_KEY
 
 logger = logging.getLogger("celery.news_ingest_tasks")
 
@@ -42,6 +45,35 @@ DEFAULT_5_SOURCE_QUERY = "A股 财经"
 DEFAULT_5_SOURCE_LIMIT_PER_SOURCE = 2
 DEFAULT_RSSHUB_ROUTE_PATH = "/jin10/news"
 DEFAULT_RSSHUB_LIMIT = 10
+
+# HC-1b3: News 元告警 instrumentation (V3 §13.3) — persist DataPipeline per-run
+# aggregate to Redis so the out-of-process meta_monitor News collector can read it.
+# Redis key = NEWS_RUN_STATS_REDIS_KEY (SSOT in meta_alert_interface — single
+# definition shared with the meta_monitor reader, reviewer MEDIUM).
+# TTL 8h > 4h news cadence → healthy pipeline always leaves a fresh-ish key;
+# expired key → _collect_news treats as "no recent run stats" (not triggered).
+_NEWS_RUN_STATS_TTL_S = 28800  # 8h
+
+
+def _persist_news_run_stats(pipeline: Any) -> None:
+    """HC-1b3: persist DataPipeline.get_last_run_stats() → Redis (meta_monitor News collector).
+
+    Fail-soft — 元告警 instrumentation 是旁路, Redis 故障不阻塞 news ingestion 主路径
+    (news 入库已 commit). 沿用 IntradayAlertDedup Redis 体例 (redis.from_url).
+    """
+    import redis as redis_lib  # noqa: PLC0415
+
+    from app.config import settings  # noqa: PLC0415
+
+    stats = pipeline.get_last_run_stats()
+    if stats is None:
+        return
+    try:
+        client = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
+        client.setex(NEWS_RUN_STATS_REDIS_KEY, _NEWS_RUN_STATS_TTL_S, json.dumps(stats))
+        logger.info("[news-ingest] persisted run-stats to Redis: %s", stats)
+    except Exception as e:  # noqa: BLE001 — fail-soft, 元告警 instrumentation 旁路
+        logger.warning("[news-ingest] persist run-stats to Redis failed (fail-soft): %s", e)
 
 
 @celery_app.task(
@@ -99,6 +131,9 @@ def news_ingest_5_sources(
             decision_id_prefix=f"news-beat-5src-{start_time.strftime('%Y%m%dT%H%M%SZ')}",
         )
         conn.commit()
+        # HC-1b3: persist per-run aggregate → Redis for meta_monitor News 元告警
+        # collector (V3 §13.3). fail-soft 旁路, 不阻塞已 commit 的 news 入库.
+        _persist_news_run_stats(pipeline)
         result = {
             "status": "success",
             "fetched": stats.fetched,

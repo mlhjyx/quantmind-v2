@@ -11,6 +11,7 @@ Coverage:
 
 沿用 sub-PR 1-6 体例 (mock NewsFetcher + NewsItem + NewsFetchError).
 """
+
 from __future__ import annotations
 
 import time
@@ -119,15 +120,9 @@ class TestHappyPath:
         assert result[0].source == "zhipu"
 
     def test_three_fetchers_all_hit(self):
-        f1 = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "z1", url="http://z1")]
-        )
-        f2 = _StubFetcher(
-            "tavily", items=[_make_item("tavily", "t1", url="http://t1")]
-        )
-        f3 = _StubFetcher(
-            "anspire", items=[_make_item("anspire", "a1", url="http://a1")]
-        )
+        f1 = _StubFetcher("zhipu", items=[_make_item("zhipu", "z1", url="http://z1")])
+        f2 = _StubFetcher("tavily", items=[_make_item("tavily", "t1", url="http://t1")])
+        f3 = _StubFetcher("anspire", items=[_make_item("anspire", "a1", url="http://a1")])
         pipeline = DataPipeline([f1, f2, f3], early_return_threshold=3)
         result = pipeline.fetch_all(query="test")
         assert len(result) == 3
@@ -140,19 +135,13 @@ class TestHappyPath:
 
 class TestFailSoft:
     def test_one_fetcher_fails_others_succeed(self):
-        f_ok = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "ok-1", url="http://ok")]
-        )
+        f_ok = _StubFetcher("zhipu", items=[_make_item("zhipu", "ok-1", url="http://ok")])
         f_fail = _StubFetcher(
             "tavily",
             raises=NewsFetchError("tavily", "HTTP 500"),
         )
-        f_ok2 = _StubFetcher(
-            "anspire", items=[_make_item("anspire", "ok-2", url="http://ok2")]
-        )
-        pipeline = DataPipeline(
-            [f_ok, f_fail, f_ok2], early_return_threshold=2
-        )
+        f_ok2 = _StubFetcher("anspire", items=[_make_item("anspire", "ok-2", url="http://ok2")])
+        pipeline = DataPipeline([f_ok, f_fail, f_ok2], early_return_threshold=2)
         result = pipeline.fetch_all(query="test")
         # 2 ok + 1 fail (fail-soft) → 2 items
         assert len(result) == 2
@@ -160,12 +149,8 @@ class TestFailSoft:
         assert sources == {"zhipu", "anspire"}
 
     def test_all_fail_returns_empty(self):
-        f1 = _StubFetcher(
-            "zhipu", raises=NewsFetchError("zhipu", "rate limit")
-        )
-        f2 = _StubFetcher(
-            "tavily", raises=NewsFetchError("tavily", "timeout")
-        )
+        f1 = _StubFetcher("zhipu", raises=NewsFetchError("zhipu", "rate limit"))
+        f2 = _StubFetcher("tavily", raises=NewsFetchError("tavily", "timeout"))
         pipeline = DataPipeline([f1, f2], early_return_threshold=1)
         result = pipeline.fetch_all(query="test")
         assert result == []
@@ -216,9 +201,7 @@ class TestEarlyReturn:
 
 class TestDedup:
     def test_url_dedup(self):
-        f1 = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "Title A", url="http://x")]
-        )
+        f1 = _StubFetcher("zhipu", items=[_make_item("zhipu", "Title A", url="http://x")])
         f2 = _StubFetcher(
             "tavily",
             items=[_make_item("tavily", "Title A different", url="http://x")],
@@ -230,9 +213,7 @@ class TestDedup:
 
     def test_title_dedup(self):
         # 同 title 跨源 (反 url) → dedup 1 row
-        f1 = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "Same Title", url="http://a")]
-        )
+        f1 = _StubFetcher("zhipu", items=[_make_item("zhipu", "Same Title", url="http://a")])
         f2 = _StubFetcher(
             "tavily",
             items=[_make_item("tavily", "Same Title", url="http://b")],
@@ -243,9 +224,7 @@ class TestDedup:
 
     def test_title_normalization(self):
         # title 真 strip().lower() 走 dedup
-        f1 = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "Same Title", url="http://a")]
-        )
+        f1 = _StubFetcher("zhipu", items=[_make_item("zhipu", "Same Title", url="http://a")])
         f2 = _StubFetcher(
             "tavily",
             items=[_make_item("tavily", "  same title  ", url="http://b")],
@@ -256,9 +235,7 @@ class TestDedup:
 
     def test_rsshub_none_url_title_fallback(self):
         # RSSHub 真 url 可能 None — title-only dedup
-        f1 = _StubFetcher(
-            "rsshub", items=[_make_item("rsshub", "RSS Title", url=None)]
-        )
+        f1 = _StubFetcher("rsshub", items=[_make_item("rsshub", "RSS Title", url=None)])
         f2 = _StubFetcher(
             "tavily",
             items=[_make_item("tavily", "RSS Title", url="http://t")],
@@ -288,27 +265,19 @@ class TestDedup:
 
 class TestLimit:
     def test_limit_per_source_passed(self):
-        items = [
-            _make_item("zhipu", f"t-{i}", url=f"http://z{i}") for i in range(20)
-        ]
+        items = [_make_item("zhipu", f"t-{i}", url=f"http://z{i}") for i in range(20)]
         f = _StubFetcher("zhipu", items=items)
         pipeline = DataPipeline([f], early_return_threshold=1)
         result = pipeline.fetch_all(query="test", limit_per_source=5)
         assert len(result) == 5
 
     def test_total_limit_post_dedup(self):
-        items_z = [
-            _make_item("zhipu", f"t-{i}", url=f"http://z{i}") for i in range(10)
-        ]
-        items_t = [
-            _make_item("tavily", f"t-{i}", url=f"http://t{i}") for i in range(10)
-        ]
+        items_z = [_make_item("zhipu", f"t-{i}", url=f"http://z{i}") for i in range(10)]
+        items_t = [_make_item("tavily", f"t-{i}", url=f"http://t{i}") for i in range(10)]
         f1 = _StubFetcher("zhipu", items=items_z)
         f2 = _StubFetcher("tavily", items=items_t)
         pipeline = DataPipeline([f1, f2], early_return_threshold=2)
-        result = pipeline.fetch_all(
-            query="test", limit_per_source=10, total_limit=15
-        )
+        result = pipeline.fetch_all(query="test", limit_per_source=10, total_limit=15)
         # raw 20 → dedup (titles 重复 t-0~t-9 跨源) → 10 → total_limit=15 → 10
         # 真 sustained dedup 走 title (zhipu t-0 + tavily t-0 真 dedup)
         assert len(result) == 10
@@ -346,9 +315,7 @@ class TestTimeout:
     def test_hard_timeout_returns_partial(self):
         # 1 fast fetcher 命中 + 1 slow fetcher 超时 (hard_timeout_s 触发)
         # threshold=3 反命中, 走 timeout path
-        f_fast = _StubFetcher(
-            "fast", items=[_make_item("fast", "fast-item", url="http://f")]
-        )
+        f_fast = _StubFetcher("fast", items=[_make_item("fast", "fast-item", url="http://f")])
         f_slow = _StubFetcher(
             "slow",
             items=[_make_item("slow", "slow-item", url="http://s")],
@@ -372,16 +339,10 @@ class TestUnexpectedException:
     def test_unexpected_keyerror_fail_soft(self):
         # 反 NewsFetchError 别 exception (e.g. KeyError) 真 fail-soft, 沿用
         # 铁律 33-d (反 break 整 loop, sediment ADR-033 patch reviewer MEDIUM finding)
-        f_ok = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "ok", url="http://ok")]
-        )
+        f_ok = _StubFetcher("zhipu", items=[_make_item("zhipu", "ok", url="http://ok")])
         f_unexpected = _StubFetcher("tavily", raises=KeyError("unexpected key"))
-        f_ok2 = _StubFetcher(
-            "anspire", items=[_make_item("anspire", "ok2", url="http://ok2")]
-        )
-        pipeline = DataPipeline(
-            [f_ok, f_unexpected, f_ok2], early_return_threshold=2
-        )
+        f_ok2 = _StubFetcher("anspire", items=[_make_item("anspire", "ok2", url="http://ok2")])
+        pipeline = DataPipeline([f_ok, f_unexpected, f_ok2], early_return_threshold=2)
         result = pipeline.fetch_all(query="test")
         # 2 ok + 1 unexpected (fail-soft) → 2 items
         assert len(result) == 2
@@ -389,13 +350,59 @@ class TestUnexpectedException:
         assert sources == {"zhipu", "anspire"}
 
     def test_unexpected_attribute_error_fail_soft(self):
-        f_ok = _StubFetcher(
-            "zhipu", items=[_make_item("zhipu", "ok", url="http://ok")]
-        )
-        f_attr = _StubFetcher(
-            "tavily", raises=AttributeError("invalid attr")
-        )
+        f_ok = _StubFetcher("zhipu", items=[_make_item("zhipu", "ok", url="http://ok")])
+        f_attr = _StubFetcher("tavily", raises=AttributeError("invalid attr"))
         pipeline = DataPipeline([f_ok, f_attr], early_return_threshold=1)
         result = pipeline.fetch_all(query="test")
         assert len(result) == 1
         assert result[0].source == "zhipu"
+
+
+# ---------- HC-1b3: get_last_run_stats (News 元告警 instrumentation) ----------
+
+
+class TestGetLastRunStats:
+    """HC-1b3: DataPipeline.get_last_run_stats — per-run aggregate for the
+    meta_monitor News 元告警 collector (V3 §13.3)."""
+
+    def test_none_before_first_run(self):
+        pipeline = DataPipeline([_StubFetcher("a")])
+        assert pipeline.get_last_run_stats() is None
+
+    def test_records_counts_after_run(self):
+        # high early_return_threshold so both sources run (反 early-return abandon)
+        pipeline = DataPipeline(
+            [
+                _StubFetcher("a", items=[_make_item("a", "t1")]),
+                _StubFetcher("b", items=[_make_item("b", "t2")]),
+            ],
+            early_return_threshold=5,
+        )
+        pipeline.fetch_all(query="q")
+        stats = pipeline.get_last_run_stats()
+        assert stats is not None
+        assert stats["success_count"] == 2
+        assert stats["fail_count"] == 0
+        assert stats["total_sources"] == 2
+        assert "run_at" in stats
+
+    def test_all_sources_fail_success_count_zero(self):
+        # success_count == 0 is the all-timeout signal for evaluate_news_sources_timeout
+        pipeline = DataPipeline(
+            [
+                _StubFetcher("a", raises=NewsFetchError("a", "down")),
+                _StubFetcher("b", raises=NewsFetchError("b", "down")),
+            ]
+        )
+        pipeline.fetch_all(query="q")
+        stats = pipeline.get_last_run_stats()
+        assert stats["success_count"] == 0
+        assert stats["fail_count"] == 2
+        assert stats["total_sources"] == 2
+
+    def test_get_returns_copy_not_internal_ref(self):
+        pipeline = DataPipeline([_StubFetcher("a", items=[_make_item("a", "t")])])
+        pipeline.fetch_all(query="q")
+        s1 = pipeline.get_last_run_stats()
+        s1["success_count"] = 999
+        assert pipeline.get_last_run_stats()["success_count"] != 999

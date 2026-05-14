@@ -41,6 +41,11 @@ LITELLM_FAILURE_RATE_WINDOW_S: int = 300
 # 4. News 6 源全 timeout window (V3 §13.3 line 1423 "5min")
 NEWS_SOURCE_TIMEOUT_WINDOW_S: int = 300
 
+# HC-1b3: Redis key SSOT — the News-ingest Beat task (news_ingest_tasks) persists
+# DataPipeline per-run stats here; meta_monitor_service._collect_news reads it.
+# Single definition (反 cross-module string-equality drift, reviewer MEDIUM).
+NEWS_RUN_STATS_REDIS_KEY: str = "qm:news:last_run_stats"
+
 # 5. STAGED PENDING_CONFIRM overdue 阈值: 超 35min → cancel_deadline 机制失效
 #    (V3 §13.3 line 1424; 区别于 §14 mode 8 的正常 30min auto-execute)
 STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S: int = 2100
@@ -288,6 +293,7 @@ __all__ = [
     "LITELLM_FAILURE_RATE_THRESHOLD",
     "LITELLM_FAILURE_RATE_WINDOW_S",
     "L1_HEARTBEAT_STALE_THRESHOLD_S",
+    "NEWS_RUN_STATS_REDIS_KEY",
     "NEWS_SOURCE_TIMEOUT_WINDOW_S",
     "RULE_SEVERITY",
     "STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S",

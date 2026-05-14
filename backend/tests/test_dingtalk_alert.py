@@ -11,6 +11,7 @@ Coverage:
 - httpx retry 1 time on failure
 - _upsert_dedup INSERT vs UPDATE branches
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -41,9 +42,7 @@ def test_send_validates_source_empty():
 
 def test_send_validates_severity_enum():
     with pytest.raises(ValueError, match="不在 enum"):
-        send_with_dedup(
-            dedup_key="k", severity="bogus", source="s", title="t", conn=MagicMock()
-        )
+        send_with_dedup(dedup_key="k", severity="bogus", source="s", title="t", conn=MagicMock())
 
 
 # ── Severity-driven defaults ──
@@ -72,8 +71,12 @@ def test_upsert_dedup_insert_new_row():
     cur.fetchone.side_effect = [None, (1,)]  # 1st: SELECT none / 2nd: RETURNING fire_count
 
     hit, count = _upsert_dedup(
-        conn=conn, dedup_key="k1", severity="p1", source="s",
-        title="t", suppress_minutes=30,
+        conn=conn,
+        dedup_key="k1",
+        severity="p1",
+        source="s",
+        title="t",
+        suppress_minutes=30,
     )
     assert hit is False
     assert count == 1
@@ -88,8 +91,12 @@ def test_upsert_dedup_hit_suppress_active():
     cur.fetchone.return_value = (future, 5)  # suppress_until, fire_count
 
     hit, count = _upsert_dedup(
-        conn=conn, dedup_key="k1", severity="p1", source="s",
-        title="t", suppress_minutes=30,
+        conn=conn,
+        dedup_key="k1",
+        severity="p1",
+        source="s",
+        title="t",
+        suppress_minutes=30,
     )
     assert hit is True
     assert count == 6  # was 5, +1 累加
@@ -104,8 +111,12 @@ def test_upsert_dedup_expired_suppress_reupsert():
     cur.fetchone.side_effect = [(past, 3), (4,)]  # SELECT expired / RETURNING累+1
 
     hit, count = _upsert_dedup(
-        conn=conn, dedup_key="k1", severity="p1", source="s",
-        title="t", suppress_minutes=30,
+        conn=conn,
+        dedup_key="k1",
+        severity="p1",
+        source="s",
+        title="t",
+        suppress_minutes=30,
     )
     assert hit is False
     assert count == 4
@@ -124,7 +135,10 @@ def test_send_alerts_disabled_audit_only(mock_upsert, mock_post, mock_settings):
     mock_upsert.return_value = (False, 1)  # not hit
 
     result = send_with_dedup(
-        dedup_key="k", severity="p1", source="s", title="t",
+        dedup_key="k",
+        severity="p1",
+        source="s",
+        title="t",
         conn=MagicMock(),
     )
 
@@ -143,7 +157,10 @@ def test_send_dedup_hit_no_post(mock_upsert, mock_post, mock_settings):
     mock_upsert.return_value = (True, 5)  # dedup hit
 
     result = send_with_dedup(
-        dedup_key="k", severity="p1", source="s", title="t",
+        dedup_key="k",
+        severity="p1",
+        source="s",
+        title="t",
         conn=MagicMock(),
     )
 
@@ -163,7 +180,11 @@ def test_send_happy_path_real_post(mock_upsert, mock_post, mock_settings):
     mock_upsert.return_value = (False, 1)
 
     result = send_with_dedup(
-        dedup_key="k", severity="p0", source="s", title="t", body="b",
+        dedup_key="k",
+        severity="p0",
+        source="s",
+        title="t",
+        body="b",
         conn=MagicMock(),
     )
 
@@ -182,12 +203,63 @@ def test_send_no_webhook_url(mock_upsert, mock_post, mock_settings):
     mock_upsert.return_value = (False, 1)
 
     result = send_with_dedup(
-        dedup_key="k", severity="p1", source="s", title="t",
+        dedup_key="k",
+        severity="p1",
+        source="s",
+        title="t",
         conn=MagicMock(),
     )
 
     assert result["sent"] is False
     assert result["reason"] == "no_webhook"
+    mock_post.assert_not_called()
+
+
+# ── HC-1b3: push outcome recording (alert_dedup.last_push_ok) ──
+
+
+@patch("app.services.dingtalk_alert.settings")
+@patch("app.services.dingtalk_alert._record_push_outcome")
+@patch("app.services.dingtalk_alert._post_to_dingtalk")
+@patch("app.services.dingtalk_alert._upsert_dedup")
+def test_send_records_push_outcome_on_success(mock_upsert, mock_post, mock_record, mock_settings):
+    # HC-1b3: real POST success → _record_push_outcome(ok=True, "200")
+    mock_settings.DINGTALK_ALERTS_ENABLED = True
+    mock_settings.DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/webhook/x"
+    mock_upsert.return_value = (False, 1)
+    conn = MagicMock()
+    send_with_dedup(dedup_key="k", severity="p0", source="s", title="t", conn=conn)
+    mock_record.assert_called_once_with(conn, "k", ok=True, status="200")
+
+
+@patch("app.services.dingtalk_alert.settings")
+@patch("app.services.dingtalk_alert._record_push_outcome")
+@patch("app.services.dingtalk_alert._post_to_dingtalk")
+@patch("app.services.dingtalk_alert._upsert_dedup")
+def test_send_records_push_outcome_on_failure_and_reraises(
+    mock_upsert, mock_post, mock_record, mock_settings
+):
+    # HC-1b3: real POST raises httpx.HTTPError → _record_push_outcome(ok=False) + re-raise
+    mock_settings.DINGTALK_ALERTS_ENABLED = True
+    mock_settings.DINGTALK_WEBHOOK_URL = "https://oapi.dingtalk.com/webhook/x"
+    mock_upsert.return_value = (False, 1)
+    mock_post.side_effect = httpx.HTTPError("dingtalk down")
+    conn = MagicMock()
+    with pytest.raises(httpx.HTTPError, match="dingtalk down"):
+        send_with_dedup(dedup_key="k", severity="p0", source="s", title="t", conn=conn)
+    mock_record.assert_called_once_with(conn, "k", ok=False, status="HTTPError")
+
+
+@patch("app.services.dingtalk_alert.settings")
+@patch("app.services.dingtalk_alert._record_push_outcome")
+@patch("app.services.dingtalk_alert._post_to_dingtalk")
+@patch("app.services.dingtalk_alert._upsert_dedup")
+def test_send_no_record_when_alerts_disabled(mock_upsert, mock_post, mock_record, mock_settings):
+    # alerts_disabled → no real POST → _record_push_outcome NOT called (last_push_ok NULL)
+    mock_settings.DINGTALK_ALERTS_ENABLED = False
+    mock_upsert.return_value = (False, 1)
+    send_with_dedup(dedup_key="k", severity="p0", source="s", title="t", conn=MagicMock())
+    mock_record.assert_not_called()
     mock_post.assert_not_called()
 
 
@@ -204,9 +276,7 @@ def test_post_retries_once_on_failure():
             mock_resp_ok,
         ]
 
-        _post_to_dingtalk(
-            webhook_url="https://x.test", title="t", body="b", severity="p1"
-        )
+        _post_to_dingtalk(webhook_url="https://x.test", title="t", body="b", severity="p1")
 
         assert mock_httpx_post.call_count == 2
 
@@ -220,8 +290,6 @@ def test_post_raises_after_3_failures():
         ]
 
         with pytest.raises(httpx.HTTPError):
-            _post_to_dingtalk(
-                webhook_url="https://x.test", title="t", body="b", severity="p1"
-            )
+            _post_to_dingtalk(webhook_url="https://x.test", title="t", body="b", severity="p1")
 
         assert mock_httpx_post.call_count == 3

@@ -4,7 +4,10 @@
   - collect_and_evaluate: 5 rules always evaluated; healthy system → 0 triggered
   - _collect_litellm: real query → LiteLLMCallWindowSnapshot (window param + counts)
   - _collect_staged: real query → StagedPlanWindowSnapshot (plan_id str, pending_since)
-  - 3 no-signal collectors (L1 / DingTalk / News) → always not triggered
+  - _collect_dingtalk (HC-1b3): real alert_dedup.last_push_ok query — failed/ok/no-row
+  - _collect_news (HC-1b3): real Redis qm:news:last_run_stats — 0-success/success/
+    absent/Redis-error fail-soft
+  - _collect_l1_heartbeat: no-signal (DEFERRED per HC-1b3 Finding — no prod subscriber)
   - LiteLLM failure / STAGED overdue → respective rule triggered
   - push_triggered + _push_via_channel_chain (V3 §13.3 channel fallback chain):
     主 DingTalk terminal (sent/dedup_suppressed/alerts_disabled) → no escalation;
@@ -34,7 +37,7 @@ from backend.qm_platform.risk.metrics.meta_alert_interface import (
 _NOW = datetime(2026, 5, 14, 10, 0, 0, tzinfo=UTC)
 
 
-# ── Mock conn ──
+# ── Mock conn + Redis ──
 
 
 class _MockCursor:
@@ -49,6 +52,8 @@ class _MockCursor:
     def fetchone(self) -> tuple[Any, ...] | None:
         if "llm_call_log" in self._last_sql:
             return self._conn.litellm_row
+        if "alert_dedup" in self._last_sql:
+            return self._conn.dingtalk_row
         return None
 
     def fetchall(self) -> list[tuple[Any, ...]]:
@@ -61,20 +66,46 @@ class _MockCursor:
 
 
 class _MockConn:
-    """Returns staged litellm_row for llm_call_log + staged_rows for execution_plans."""
+    """Mock conn: litellm_row (llm_call_log) + staged_rows (execution_plans) +
+    dingtalk_row (alert_dedup last-push-outcome query)."""
 
     def __init__(
         self,
         *,
         litellm_row: tuple[int, int] = (0, 0),
         staged_rows: list[tuple[Any, ...]] | None = None,
+        dingtalk_row: tuple[Any, ...] | None = None,
     ) -> None:
         self.litellm_row = litellm_row
         self.staged_rows = staged_rows or []
+        self.dingtalk_row = dingtalk_row  # None = no real-POST row → not triggered
         self.executed: list[tuple[str, tuple[Any, ...]]] = []
 
     def cursor(self) -> _MockCursor:
         return _MockCursor(self)
+
+
+class _MockRedis:
+    """Mock Redis — .get() returns the configured news-stats JSON string or None.
+
+    raise_on_get=True simulates a Redis failure (fail-soft path test).
+    """
+
+    def __init__(self, *, news_stats_json: str | None = None, raise_on_get: bool = False) -> None:
+        self._news_stats_json = news_stats_json
+        self._raise_on_get = raise_on_get
+
+    def get(self, key: str) -> str | None:
+        if self._raise_on_get:
+            raise ConnectionError("simulated Redis failure")
+        if key == "qm:news:last_run_stats":
+            return self._news_stats_json
+        return None
+
+
+def _make_svc(redis: _MockRedis | None = None) -> MetaMonitorService:
+    """MetaMonitorService with an injected mock Redis (default empty → News no-signal)."""
+    return MetaMonitorService(redis_client=redis if redis is not None else _MockRedis())
 
 
 def _by_rule(alerts: list[MetaAlert], rule_id: MetaAlertRuleId) -> MetaAlert:
@@ -85,22 +116,23 @@ def _by_rule(alerts: list[MetaAlert], rule_id: MetaAlertRuleId) -> MetaAlert:
 
 
 def test_collect_and_evaluate_returns_5_alerts_one_per_rule() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
     assert len(alerts) == 5
     assert {a.rule_id for a in alerts} == set(MetaAlertRuleId)
 
 
 def test_collect_and_evaluate_healthy_system_zero_triggered() -> None:
-    # 0 LiteLLM calls, 0 STAGED plans, 3 no-signal collectors → all not triggered
-    svc = MetaMonitorService()
+    # all signals empty/healthy (0 LiteLLM calls, 0 STAGED, no DingTalk push row,
+    # no News Redis stats, L1 no-signal) → all 5 rules not triggered
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(litellm_row=(0, 0), staged_rows=[]), now=_NOW)
     assert all(not a.triggered for a in alerts)
 
 
 def test_collect_and_evaluate_litellm_failure_triggers_rule() -> None:
     # 10 calls, 8 failed = 80% > 50% threshold
-    svc = MetaMonitorService()
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(litellm_row=(10, 8)), now=_NOW)
     litellm_alert = _by_rule(alerts, MetaAlertRuleId.LITELLM_FAILURE_RATE)
     assert litellm_alert.triggered is True
@@ -110,20 +142,35 @@ def test_collect_and_evaluate_litellm_failure_triggers_rule() -> None:
 def test_collect_and_evaluate_staged_overdue_triggers_rule() -> None:
     overdue_created = _NOW - timedelta(seconds=STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 60)
     rows = [("uuid-aaaa-1111", "PENDING_CONFIRM", overdue_created)]
-    svc = MetaMonitorService()
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(staged_rows=rows), now=_NOW)
     staged_alert = _by_rule(alerts, MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE)
     assert staged_alert.triggered is True
     assert "uuid-aaaa-1111" in staged_alert.detail
 
 
-def test_collect_and_evaluate_no_signal_collectors_never_trigger() -> None:
-    # L1 heartbeat / DingTalk push / News — HC-1b no-signal collectors, never triggered
-    svc = MetaMonitorService()
+def test_collect_and_evaluate_l1_heartbeat_always_no_signal() -> None:
+    # L1 heartbeat — DEFERRED per HC-1b3 Finding (no prod subscriber). Collector is
+    # hard-wired no-signal (last_tick_at=None) → rule never triggers regardless of inputs.
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
-    assert _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE).triggered is False
-    assert _by_rule(alerts, MetaAlertRuleId.DINGTALK_PUSH_FAILED).triggered is False
-    assert _by_rule(alerts, MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT).triggered is False
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "no heartbeat data" in l1.detail
+
+
+def test_collect_and_evaluate_dingtalk_and_news_real_triggers() -> None:
+    # HC-1b3: DingTalk-status + News are real collectors now — verify a failed
+    # DingTalk push row + a 0-success News run both surface as triggered.
+    import json as _json
+
+    svc = _make_svc(
+        _MockRedis(news_stats_json=_json.dumps({"success_count": 0, "total_sources": 6}))
+    )
+    conn = _MockConn(dingtalk_row=(False, "HTTPError"))
+    alerts = svc.collect_and_evaluate(conn, now=_NOW)
+    assert _by_rule(alerts, MetaAlertRuleId.DINGTALK_PUSH_FAILED).triggered is True
+    assert _by_rule(alerts, MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT).triggered is True
 
 
 # ── _collect_litellm ──
@@ -172,6 +219,72 @@ def test_collect_staged_empty_rows() -> None:
     assert snapshot.plans == ()
 
 
+# ── _collect_dingtalk (HC-1b3 — real alert_dedup.last_push_ok query) ──
+
+
+def test_collect_dingtalk_no_row_not_attempted() -> None:
+    # no alert_dedup row with last_push_ok IS NOT NULL → last_push_attempted=False
+    snapshot = MetaMonitorService._collect_dingtalk(_MockConn(dingtalk_row=None), _NOW)
+    assert snapshot.last_push_attempted is False
+    assert snapshot.now == _NOW
+
+
+def test_collect_dingtalk_last_push_ok() -> None:
+    snapshot = MetaMonitorService._collect_dingtalk(_MockConn(dingtalk_row=(True, "200")), _NOW)
+    assert snapshot.last_push_attempted is True
+    assert snapshot.last_push_ok is True
+    assert snapshot.last_push_status == "200"
+
+
+def test_collect_dingtalk_last_push_failed() -> None:
+    snapshot = MetaMonitorService._collect_dingtalk(
+        _MockConn(dingtalk_row=(False, "ConnectTimeout")), _NOW
+    )
+    assert snapshot.last_push_attempted is True
+    assert snapshot.last_push_ok is False
+    assert snapshot.last_push_status == "ConnectTimeout"
+
+
+# ── _collect_news (HC-1b3 — real Redis qm:news:last_run_stats read) ──
+
+
+def test_collect_news_zero_success_triggers() -> None:
+    import json as _json
+
+    svc = _make_svc(
+        _MockRedis(news_stats_json=_json.dumps({"success_count": 0, "total_sources": 6}))
+    )
+    snapshot = svc._collect_news(_NOW)
+    # success_count == 0 → all sources failed → timed_out == total → rule triggers
+    assert snapshot.total_sources == 6
+    assert snapshot.timed_out_sources == 6
+
+
+def test_collect_news_some_success_not_triggered() -> None:
+    import json as _json
+
+    svc = _make_svc(
+        _MockRedis(news_stats_json=_json.dumps({"success_count": 3, "total_sources": 6}))
+    )
+    snapshot = svc._collect_news(_NOW)
+    assert snapshot.timed_out_sources == 0  # any success → not all-timeout
+
+
+def test_collect_news_key_absent_no_signal() -> None:
+    # Redis key absent (expired / Beat never ran) → no-signal (timed_out=0)
+    svc = _make_svc(_MockRedis(news_stats_json=None))
+    snapshot = svc._collect_news(_NOW)
+    assert snapshot.timed_out_sources == 0
+    assert snapshot.total_sources >= 1  # fallback count, valid for the rule contract
+
+
+def test_collect_news_redis_error_fail_soft() -> None:
+    # Redis failure → fail-soft no-signal (反 crash the whole meta_monitor tick)
+    svc = _make_svc(_MockRedis(raise_on_get=True))
+    snapshot = svc._collect_news(_NOW)
+    assert snapshot.timed_out_sources == 0
+
+
 # ── push_triggered / _push_via_channel_chain (V3 §13.3 channel fallback chain) ──
 
 
@@ -191,7 +304,7 @@ def _alert(
 
 
 def test_push_triggered_only_triggered_filtered() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     alerts = [_alert(triggered=True), _alert(MetaAlertRuleId.L1_HEARTBEAT_STALE, triggered=False)]
     with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
         mock_send.return_value = {"sent": False, "reason": "alerts_disabled"}
@@ -201,7 +314,7 @@ def test_push_triggered_only_triggered_filtered() -> None:
 
 
 def test_push_triggered_zero_triggered_empty_list() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)  # healthy → 0 triggered
     with patch("app.services.dingtalk_alert.send_with_dedup") as mock_send:
         results = svc.push_triggered(alerts, conn=_MockConn())
@@ -211,7 +324,7 @@ def test_push_triggered_zero_triggered_empty_list() -> None:
 
 def test_chain_dingtalk_terminal_alerts_disabled_no_email() -> None:
     # alerts_disabled (paper-mode audit-only) is a by-design terminal — NOT escalated
-    svc = MetaMonitorService()
+    svc = _make_svc()
     conn = _MockConn()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
@@ -231,7 +344,7 @@ def test_chain_dingtalk_terminal_alerts_disabled_no_email() -> None:
 
 
 def test_chain_dingtalk_terminal_sent_no_email() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -243,7 +356,7 @@ def test_chain_dingtalk_terminal_sent_no_email() -> None:
 
 
 def test_chain_dingtalk_dedup_suppressed_terminal_no_email() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -256,7 +369,7 @@ def test_chain_dingtalk_dedup_suppressed_terminal_no_email() -> None:
 
 def test_chain_dingtalk_no_webhook_escalates_to_email() -> None:
     # no_webhook = configured-but-cannot-deliver → escalate to email
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -269,7 +382,7 @@ def test_chain_dingtalk_no_webhook_escalates_to_email() -> None:
 
 
 def test_chain_dingtalk_httperror_escalates_to_email() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -283,7 +396,7 @@ def test_chain_dingtalk_httperror_escalates_to_email() -> None:
 
 
 def test_chain_email_not_delivered_escalates_to_log_p0() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -299,7 +412,7 @@ def test_chain_email_not_delivered_escalates_to_log_p0() -> None:
 def test_chain_email_raises_escalates_to_log_p0() -> None:
     import smtplib
 
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -313,7 +426,7 @@ def test_chain_email_raises_escalates_to_log_p0() -> None:
 def test_chain_dingtalk_psycopg2error_propagates() -> None:
     # psycopg2.Error (alert_dedup write failure) is NOT caught — propagates (borked txn,
     # different failure class than channel-down; Beat task rolls back + Celery retries)
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt:
         mock_dt.side_effect = psycopg2.OperationalError("simulated DB failure")
         with pytest.raises(psycopg2.OperationalError, match="simulated DB failure"):
@@ -323,7 +436,7 @@ def test_chain_dingtalk_psycopg2error_propagates() -> None:
 def test_chain_dingtalk_unexpected_error_escalates_to_email() -> None:
     # non-psycopg2, non-httpx error from send_with_dedup (e.g. future validation error)
     # escalates to email — "元告警 never silently vanishes" invariant (reviewer HIGH fix)
-    svc = MetaMonitorService()
+    svc = _make_svc()
     with (
         patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt,
         patch("app.services.email_alert.send_email_alert") as mock_email,
@@ -336,7 +449,7 @@ def test_chain_dingtalk_unexpected_error_escalates_to_email() -> None:
 
 
 def test_chain_severity_passed_through() -> None:
-    svc = MetaMonitorService()
+    svc = _make_svc()
     p1_alert = _alert(MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT, severity=MetaAlertSeverity.P1)
     with patch("app.services.dingtalk_alert.send_with_dedup") as mock_dt:
         mock_dt.return_value = {"sent": False, "reason": "alerts_disabled"}
