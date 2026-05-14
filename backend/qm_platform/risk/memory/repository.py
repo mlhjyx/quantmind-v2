@@ -138,15 +138,16 @@ def retrieve_similar(
         psycopg2.Error: SQL failure.
     """
     from .interface import (  # noqa: PLC0415
+        EMBEDDING_DIM,
         ActionTaken,
         RiskMemory,
         RiskMemoryOutcome,
         SimilarMemoryHit,
     )
 
-    if len(query_embedding) != 1024:
+    if len(query_embedding) != EMBEDDING_DIM:
         raise ValueError(
-            f"query_embedding must be 1024-dim (BGE-M3 per ADR-064 D2), "
+            f"query_embedding must be {EMBEDDING_DIM}-dim (BGE-M3 per ADR-064 D2), "
             f"got {len(query_embedding)} dim"
         )
     if k <= 0:

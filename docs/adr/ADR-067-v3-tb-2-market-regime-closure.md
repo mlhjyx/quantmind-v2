@@ -73,6 +73,8 @@ V3 Tier B Plan v0.2 TB-2 sprint = "MarketRegimeService Bull/Bear V4-Pro × 3 deb
 
 **Graceful per-field degradation**: Each individual query catches exceptions → returns None for that field (反 silent total failure; sustained 铁律 33 fail-loud at field-level granularity).
 
+> **2026-05-14 标注 (TB-5c, ADR-071 D4 follow-up)**: `north_flow_cny` + `iv_50etf` real-data-source wire remains **DEFERRED to Plan v0.3 横切层** — not resolved in TB-5c. Honest status: both fields still return None (no `moneyflow_hsgt` table; no 50ETF option-IV data source decision). This does NOT block Tier B closure — `MarketIndicators` declares all 5 numeric fields Optional (TB-2a design lock) and the Bull/Bear/Judge prompts guard "data unavailable", so MarketRegimeService is production-active with 4/6 fields. The 2-field real wire (+ a possible realized-vol proxy for iv_50etf) is a Plan v0.3 prereq. Append-only 标注, sustained ADR-022.
+
 ---
 
 ## Results

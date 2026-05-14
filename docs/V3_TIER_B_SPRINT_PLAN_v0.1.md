@@ -55,6 +55,8 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 ### T1.5 — Tier A formal closure + Gate A 7/8 verify + Tier A ADR cumulative promote ⭐ (D1=a 串行 lock)
 
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — ADR-065 (Gate A 7/8 PASS + 1 DEFERRED). PR #325-#328.
+
 | element | content |
 |---|---|
 | Scope | Tier A code-side 12/12 sprint closure 已成 (Session 53 cumulative 19 PR, sub-PR 9~19 sediment 体例 cumulative). 形式 Gate A 7/8 项 verify + Tier A ADR-047~063 cumulative promote + sprint timeline 真值修订 (sub-PR 9 cite + ADR-063 sediment post-修订) + ROADMAP doc sediment (Constitution §0.1 line cite "RISK_FRAMEWORK_LONG_TERM_ROADMAP.md, planned, sediment 时机决议 Tier B closure 后" 标注 sustained, Plan v0.2 Tier B closure 时由 TB-5 sediment closure 标注). **Status (post Session 53 cumulative)**: Gate A item 1 ✅ (12 sprint code-side closed) + item 2 ⏭️ DEFERRED per ADR-063 + items 3-8 待 `quantmind-v3-tier-a-mvp-gate-evaluator` subagent verify run |
@@ -69,6 +71,9 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | Paper-mode | 0 真账户 mutation, 0 broker call, sustained 红线 5/5 throughout T1.5 |
 
 ### TB-1 — RiskBacktestAdapter 完整实现 + 历史 minute_bars replay 2 关键窗口 ⭐ (D3=b 2 关键窗口 lock)
+
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — ADR-066. PR #330 (TB-1a) + #331 (TB-1b) + #332 (TB-1c).
+> **9 rules → 10 rules 标注 (ADR-066 D2)**: 本节多处 cite "9 RealtimeRiskRule" 是 ADR-029 S5 base-time write 体例; S9a 加 TrailingStop 为第 10 个 (ADR-060), 且 CorrelatedDrop 亦在 ADR-029 10-rule set 内但本节 Scope list 漏列 — 实为 **10 RealtimeRiskRule** (LimitDownDetection / NearLimitDown / GapDownOpen / TrailingStop / RapidDrop5min / RapidDrop15min / VolumeSpike / LiquidityCollapse / IndustryConcentration / CorrelatedDrop). Append-only 标注, sustained ADR-022 反 retroactive content edit.
 
 | element | content |
 |---|---|
@@ -85,6 +90,8 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 ### TB-2 — L2 MarketRegimeService Bull/Bear 2-Agent debate (V4-Pro × 3) + market_regime_log + L3 集成
 
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — ADR-067. PR #333 (TB-2a) + #334 (TB-2b) + #335 (TB-2c) + #336 (TB-2d).
+
 | element | content |
 |---|---|
 | Scope | V3 §5.3 Bull/Bear regime detection + V3 §11.1 row 6 `MarketRegimeService` (`backend/app/services/risk/`); V4-Pro Bull Agent (3 看多论据, sustained ADR-036 mapping V4-Flash → V4-Pro debate reasoning capability) + V4-Pro Bear Agent (3 看空论据) + V4-Pro Judge (regime 输出: Bull/Bear/Neutral/Transitioning + confidence + reasoning); `prompts/risk/bull_agent_v1.yaml` + `prompts/risk/bear_agent_v1.yaml` + `prompts/risk/regime_judge_v1.yaml` NEW (sustained quantmind-v3-prompt-design-laws skill enforce 0 hardcoded 决议 + sprint 起手 CC 实测决议 + ADR-067 sediment 锁); `market_regime_log` DDL NEW (TimescaleDB hypertable, 1 month chunk per V3 §5.3 line 670, BIGSERIAL PK + timestamp + regime VARCHAR(20) CHECK + confidence NUMERIC(5,4) + bull/bear_arguments JSONB + judge_reasoning TEXT + market_indicators JSONB + cost NUMERIC(8,4)); Celery Beat 3 schedule (9:00 + 14:30 + 16:00 Asia/Shanghai per V3 §5.3 line 664); L3 阈值集成 (regime=Bear → L1 RT_RAPID_DROP_5MIN × 0.8 verify per V3 §5.3 line 685); regime change → 每日 push user 确认调整 (不全自动 per V3 §5.3 line 687); 输入: 上证指数 / 沪深 300 + 板块涨跌家数 + 北向资金 + 50ETF 期权 IV (恐慌指数 proxy) per V3 §5.3 line 658 |
@@ -99,6 +106,8 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | Paper-mode | sustained T1.5; prompt eval 走 historical case 数据 (TB-1 replay sourced OR Tushare 历史回放), 0 真 live regime signal action; regime change push user 确认 走 DingTalk 但 NOT auto-execute (sustained V3 §5.3 line 687) |
 
 ### TB-3 — L2 RiskMemoryRAG + pgvector + BGE-M3 本地 embedding ⭐ (D2=A BGE-M3 lock)
+
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — ADR-068. PR #339 (TB-3a) + #340 (TB-3b) + #341 (TB-3c) + #342 (TB-3d).
 
 | element | content |
 |---|---|
@@ -115,6 +124,8 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 
 ### TB-4 — L5 RiskReflectorAgent + 5 维反思 (V4-Pro) + 周/月/event cadence + lesson→risk_memory 闭环
 
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — ADR-069. PR #343 (TB-4a) + #344 (TB-4b) + #345 (TB-4c) + #346 (TB-4d).
+
 | element | content |
 |---|---|
 | Scope | V3 §8 L5 反思闭环层 + V3 §11.1 row 8 `RiskReflectorAgent` (`backend/app/services/risk/`); `prompts/risk/reflector_v1.yaml` NEW (V4-Pro 5 维反思 per V3 §8.1: Detection / Threshold / Action / Context / Strategy 5 维); Celery Beat 3 cadence per V3 §8.1 line 918-921 (Sunday 19:00 周复盘 / 月 1 日 09:00 月复盘 / 重大事件后 24h e.g. 单日 portfolio < -5% / N 股同时跌停 / STAGED cancel 率异常); DingTalk push 摘要 per V3 §8.2 (周复盘 markdown report 摘要 + repo 沉淀); `docs/risk_reflections/YYYY_WW.md` + `docs/risk_reflections/YYYY_MM.md` + `docs/risk_reflections/event/YYYY-MM-DD_<event_summary>.md` 沉淀 dir 体例 NEW (sustained V3 §8.2 line 938-942); lesson→risk_memory 闭环 per V3 §8.3 (每事件 outcome 收集后 V4-Flash embedding → INSERT risk_memory 走 DataPipeline 铁律 17); 参数候选→user reply approve→CC 自动生成 PR per V3 §8.3 line 965-967 (候选不自动改 .env, sustained ADR-022, user reply approve → CC 自动 commit + push → user merge); user reply reject → 候选入 `docs/research-kb/risk_findings/` 长尾留存 per V3 §8.3 line 968; 候选规则新增→docs/research-kb/risk_findings/ 长尾留存→正常 PR 流程 per V3 §8.3 line 970-972 |
@@ -129,6 +140,8 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 | Paper-mode | sustained T1.5; reflection 走 TB-1 replay sourced events OR mock data (synthetic + replay-sourced), 0 真 live PT outcome 影响; user reply approve → CC 自动 PR 仅 generate, NOT merge (sustained user 显式 merge) |
 
 ### TB-5 — Tier B closure + RiskBacktestAdapter replay 验收 + V3 §15.6 合成场景 ≥7 类 + Gate B/C 形式 close
+
+> **✅ CLOSED 2026-05-14 (TB-5c 标注)** — TB-5a PR #347 (≥7 synthetic scenarios) + TB-5b PR #348 ADR-070 (replay acceptance) + TB-5c PR #349 ADR-071 (Gate B 5/5 + Gate C 6/6 formal close). **V3 Tier B (6-sprint chain T1.5→TB-1→TB-2→TB-3→TB-4→TB-5) FULLY CLOSED.** Next: Plan v0.3 横切层 (user 显式 ack required, sustained LL-098 X10).
 
 | element | content |
 |---|---|
@@ -209,6 +222,18 @@ Each sprint row: scope cite → acceptance → file delta order → chunked sub-
 **STOP gate**: TB-5 closure → `quantmind-v3-tier-a-mvp-gate-evaluator` subagent (件 5) Tier B variant 借用 charter verify Gate B 5/5 + Gate C 6/6 全 ✅ + V3 §15.4 4/4 PASS + V3 §13.1 5/5 SLA verify → STOP + push user (Constitution §L8.1 (c) sprint 收口决议, sustained LL-098 X10 反 silent self-trigger 横切层 Plan v0.3 起手)
 
 **Plan v0.3 横切层 起手 prereq**: Tier B closure ✅ + 横切层 scope Plan v0.3 起手前 user 显式 ack (sustained Plan v0.1 §F (vi) plan-then-execute 体例 sustainability sustained)
+
+> **✅ Tier B FULLY CLOSED 2026-05-14 (TB-5c, ADR-071)** — STOP gate satisfied: Gate B 5/5 ✅ + Gate C 6/6 ✅ + V3 §15.4 4/4 ✅ + V3 §13.1 5/5 ✅. **Plan v0.3 横切层 NOT auto-started — user 显式 ack required** (sustained LL-098 X10 反 silent self-trigger).
+>
+> **Plan v0.3 横切层 起手 prereq sediment** (scope carried into Plan v0.3 when user triggers it):
+> - **Gate D 横切层 core** (Constitution §L10.4): V3 §13 元监控 `risk_metrics_daily` + alert-on-alert production-active / V3 §14 失败模式 12 项 enforce + 灾备演练 ≥1 round / V3 §17.1 CI lint + pre-push hook 集成 / prompts/risk eval ≥1 round / LiteLLM cost ≥3 month ≤80% baseline
+> - **Carried-forward DEFERRALS from Tier B** (need live production query traffic, N/A in paper-mode — sustained ADR-063 paper-mode deferral pattern):
+>   - Gate C item 3 sub-item — RAG retrieval 命中率 ≥ baseline measurement (ADR-071 D4)
+>   - Gate C item 5 sub-item — lesson→risk_memory 后置抽查 ≥1 live round (ADR-071 D4)
+>   - 5y full minute_bars replay (ADR-064 D3=b — Tier B did 2 关键窗口 only)
+>   - ADR-067 D5 — `north_flow_cny` + `iv_50etf` MarketIndicators real-data-source wire
+>   - `RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` full sediment (Constitution §0.1 — Tier B closure REACHED, sediment 时机 now due)
+> - **D4 决议 lock sustained** (ADR-064): Plan v0.2 = Tier B scope only; 横切层 = Plan v0.3; cutover = Plan v0.4 Gate E.
 
 ---
 

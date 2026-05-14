@@ -44,11 +44,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-logger = logging.getLogger(__name__)
+# EMBEDDING_DIM (BGE-M3 1024-dim, ADR-064 D2 + ADR-068 D2) is the single source
+# of truth in `interface.py` — imported here so existing callers that reference
+# `embedding_service.EMBEDDING_DIM` keep working (TB-5c batch: constant
+# consolidated into the PURE interface module, resolving the TB-3b reviewer LOW).
+from .interface import EMBEDDING_DIM
 
-# BGE-M3 embedding dimension per ADR-064 D2 (sustained from interface.py
-# RiskMemory.embedding validation + DDL VECTOR(1024)).
-EMBEDDING_DIM: int = 1024
+logger = logging.getLogger(__name__)
 
 # Default BGE-M3 model identifier per Session 53+19 Phase A install.
 _DEFAULT_MODEL_NAME: str = "BAAI/bge-m3"

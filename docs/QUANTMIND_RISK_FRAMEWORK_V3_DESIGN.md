@@ -724,8 +724,10 @@ CREATE INDEX idx_risk_memory_event_type ON risk_memory (event_type, event_timest
 | L2.3 Bull Agent / Bear Agent | V4-Pro (ADR-036) | 每日 6 calls | ~$0.013/天 (full price) / ~$0.003/天 (75% discount 走 2026-05-31) |
 | L2.3 Judge | V4-Pro | 每日 3 calls | $1/天 |
 | L5 RiskReflector | V4-Pro | 周 1 + 月 1 + post-event | $5-10/月 |
-| Embedding (RAG ingest) | V4-Flash | 每 risk_event 1 call | $0.01/事件 |
+| Embedding (RAG ingest) | ~~V4-Flash~~ **BGE-M3 本地** | 每 risk_event 1 call | ~~$0.01/事件~~ **$0** |
 | 灾备 fallback | Ollama 本地 | LiteLLM 全 timeout 时 | $0 |
+
+> **2026-05-14 标注 (TB-5c, ADR-071 / ADR-069 D3)**: Embedding (RAG ingest) 实为 **BGE-M3 本地 1024-dim** (ADR-064 D2 + ADR-068 D2 lock) — NOT V4-Flash API. 0 LLM cost (本地推理). 本设计期 "V4-Flash embedding" cite 是 pre-ADR-064 spec drift. Append-only 标注, sustained ADR-022.
 
 **总月预算**: $20-50 (Tier A ~$10/月, Tier B 加 ~$30-40/月).
 
@@ -959,7 +961,8 @@ docs/risk_reflections/event/YYYY-MM-DD_<event_summary>.md
 ### §8.3 闭环 (本设计核心)
 
 **lesson → risk_memory** (RAG L2.4 同库):
-- 每事件 outcome 收集后, V4-Flash embedding → INSERT risk_memory
+- 每事件 outcome 收集后, ~~V4-Flash embedding~~ → INSERT risk_memory
+  > **2026-05-14 标注 (TB-5c, ADR-071 / ADR-069 D3)**: embedding 实为 **BGE-M3 本地 1024-dim** (NOT V4-Flash API) — ADR-064 D2 + ADR-068 D2 决议 supersede 本设计期 "V4-Flash embedding" cite (pre-ADR-064 spec drift). 0 LLM cost, 中文优化. Append-only 标注, sustained ADR-022.
 - 下次相似事件触发时, RAG retrieval 返回 historical lesson
 
 **参数候选 → user approve → .env 更新**:
