@@ -13,10 +13,18 @@ docs/risk_reflections/
 ├── YYYY_MM.md              # 月复盘 (月 1 日 09:00 Beat — risk-reflector-monthly)
 ├── event/                  # 事件后反思 (event-triggered 24h post-event)
 │   └── YYYY-MM-DD_<event_summary>.md
-└── replay/                 # TB-1c replay 真测 reflection (历史沉淀, 非 Beat 写)
-    ├── 2024_replay_2024Q1_quant_crash.md
-    └── 2025_replay_2025_04_07_tariff_shock.md
+├── replay/                 # TB-1c replay 真测 reflection (历史沉淀, 非 Beat 写)
+│   ├── 2024_replay_2024Q1_quant_crash.md
+│   └── 2025_replay_2025_04_07_tariff_shock.md
+└── disaster_drill/          # V3 §14.1 灾备演练 synthetic injection sediment (HC-2c, 非 Beat 写)
+    └── YYYY-MM-DD.md        # 每 round: per-mode result + gap finding + enforcement matrix cross-ref
 ```
+
+> **注**: `disaster_drill/` 沉淀 V3 §14.1 灾备演练 (失败模式 synthetic injection drill) —
+> 跟 RiskReflector V4-Pro 反思 (§8, 上述 weekly/monthly/event/replay) 不同体系. drill
+> = pytest synthetic injection (instant, 0 wall-clock wait, 反日历式观察期), 写入方 =
+> 横切层 HC-2c sub-PR (非 Beat). 详 `backend/tests/test_v3_hc_2c_disaster_drill.py` +
+> Plan v0.3 §A HC-2c + §D 真测期 SOP.
 
 ## Cadence (V3 §8.1 line 918-921)
 
