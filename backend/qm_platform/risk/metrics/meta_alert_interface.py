@@ -51,6 +51,12 @@ NEWS_RUN_STATS_REDIS_KEY: str = "qm:news:last_run_stats"
 #    (V3 §13.3 line 1424; 区别于 §14 mode 8 的正常 30min auto-execute)
 STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S: int = 2100
 
+# HC-2b2 G7 (V3 §14 mode 12): broker plan stuck 阈值 — plan 卡在 CONFIRMED /
+# TIMEOUT_EXECUTED (executable 但未推进到 EXECUTED/FAILED) 超 5min = broker 接口
+# 故障信号 (broker call 挂 / writeback 失败 / worker 中途死). CONFIRMED-stuck
+# 此前 0 retry 路径 (l4_sweep 只扫 PENDING_CONFIRM).
+BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S: int = 300
+
 
 class MetaAlertSeverity(StrEnum):
     """元告警 severity — 对齐 V3 §13.3 + §14 失败模式表 per-mode 真值.
@@ -77,6 +83,9 @@ class MetaAlertRuleId(StrEnum):
     持续状态):
       RISK_REFLECTOR_FAILED — V3 §14 mode 14: L5 RiskReflector V4-Pro weekly/
         monthly run 重试一次仍失败 (HC-2b G5, risk_reflector_tasks 自 emit)
+      BROKER_PLAN_STUCK — V3 §14 mode 12: execution_plan 卡在 CONFIRMED /
+        TIMEOUT_EXECUTED 超 5min, retry 仍未推进 (HC-2b2 G7, l4_sweep_tasks
+        sweep_stuck_broker_plans 自 emit)
     """
 
     L1_HEARTBEAT_STALE = "l1_heartbeat_stale"
@@ -84,13 +93,16 @@ class MetaAlertRuleId(StrEnum):
     DINGTALK_PUSH_FAILED = "dingtalk_push_failed"
     NEWS_ALL_SOURCES_TIMEOUT = "news_all_sources_timeout"
     STAGED_PENDING_CONFIRM_OVERDUE = "staged_pending_confirm_overdue"
-    # Event-emitted (HC-2b G5) — see class docstring.
+    # Event-emitted (HC-2b G5 / HC-2b2 G7) — see class docstring.
     RISK_REFLECTOR_FAILED = "risk_reflector_failed"
+    BROKER_PLAN_STUCK = "broker_plan_stuck"
 
 
 # Per-rule severity SSOT (§13.3-vs-§14 reconciliation — News=P1, 其余 polled=P0;
 # RISK_REFLECTOR_FAILED=P1 per V3 §14 mode 14 ⚠️ P1 — 反思失败 = degraded
-# (跳过本周/本月反思, alert 仍发, 仅缺 lessons), 非系统失效).
+# (跳过本周/本月反思, alert 仍发, 仅缺 lessons), 非系统失效;
+# BROKER_PLAN_STUCK=P0 per V3 §14 mode 12 ✅ P0 — broker 接口故障 = 系统失效,
+# sell 单可能未真正成交, 需 user 手工干预 reconciliation).
 RULE_SEVERITY: dict[MetaAlertRuleId, MetaAlertSeverity] = {
     MetaAlertRuleId.L1_HEARTBEAT_STALE: MetaAlertSeverity.P0,
     MetaAlertRuleId.LITELLM_FAILURE_RATE: MetaAlertSeverity.P0,
@@ -98,6 +110,7 @@ RULE_SEVERITY: dict[MetaAlertRuleId, MetaAlertSeverity] = {
     MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT: MetaAlertSeverity.P1,
     MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE: MetaAlertSeverity.P0,
     MetaAlertRuleId.RISK_REFLECTOR_FAILED: MetaAlertSeverity.P1,
+    MetaAlertRuleId.BROKER_PLAN_STUCK: MetaAlertSeverity.P0,
 }
 
 
@@ -309,6 +322,7 @@ class MetaAlert:
 
 
 __all__ = [
+    "BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S",
     "LITELLM_FAILURE_RATE_THRESHOLD",
     "LITELLM_FAILURE_RATE_WINDOW_S",
     "L1_HEARTBEAT_STALE_THRESHOLD_S",

@@ -12,12 +12,20 @@ Protocol interface allows swapping implementations.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
 # Redis key prefix
 _REDIS_PREFIX = "risk:thresholds"
+
+# HC-2b2 G8 (V3 §14 mode 4): Redis auto-reconnect cooldown. After a failed
+# connect attempt, the next attempt is gated for this many seconds — long
+# enough to avoid per-tick reconnect storms (the original `_connected`
+# anti-pattern was 2s-blocking every tick), short enough that a recovered
+# Redis is picked up within minutes WITHOUT a process restart.
+_RECONNECT_COOLDOWN_S: float = 60.0
 
 
 class ThresholdCache(Protocol):
@@ -75,37 +83,56 @@ class RedisThresholdCache:
     def __init__(self, redis_client: Any = None, prefix: str = _REDIS_PREFIX) -> None:
         self._redis = redis_client
         self._prefix = prefix
-        self._connect_attempted: bool = False
+        # HC-2b2 G8: injected client (DI / test) → caller owns lifecycle, this
+        # class never auto-(re)creates one. Lazy / self-managed client →
+        # auto-reconnect after a cooldown window.
+        self._injected: bool = redis_client is not None
+        # monotonic ts of the last self-managed connect attempt (None = never
+        # tried). Gates auto-reconnect retries to _RECONNECT_COOLDOWN_S.
+        self._last_connect_attempt: float | None = None
 
     def _ensure_redis(self) -> bool:
-        """懒初始化 Redis client (避免 import 时连 Redis).
+        """懒初始化 + auto-reconnect Redis client (HC-2b2 G8, V3 §14 mode 4).
 
-        首次失败后停止重试 (set _connect_attempted=True), 反 per-tick 2s 阻塞.
-        反双语义 (LL-149 Part 2 P1-3 deferred → 本 sub-PR closure): 之前字段名
-        `_connected` 同时表示 "连接成功" 和 "尝试已停止 (即使失败)" — 现 rename
-        到 `_connect_attempted` 让语义明确 (成功/失败都标 True 表示"已试过").
-        Redis 恢复需进程重启 (或 L3 5min Beat 重新创建 RedisThresholdCache).
+        失败后 **不再永久阻断** — 隔 _RECONNECT_COOLDOWN_S 秒自动重连 (替代原
+        `_connect_attempted` 永久阻断体例). Redis 恢复无需进程重启. cooldown
+        窗口防 per-tick 2s 重连风暴 (sustained 原 anti-per-tick-blocking 意图).
+
+        Injected client (`_injected=True`, DI / test): caller owns lifecycle —
+        本类永不 auto-create 真 redis.Redis(). 若 injected client 被 get/set 失败
+        reset 为 None, `_ensure_redis` 返 False (caller 须自行 re-inject).
         """
         if self._redis is not None:
             return True
-        if self._connect_attempted:
-            return False  # 已尝试过, 不再重试 (反 per-tick 2s blocking)
+        if self._injected:
+            # injected client reset to None by a get/set failure — caller owns
+            # the lifecycle, do NOT auto-create a real redis.Redis() here.
+            return False
+
+        now = time.monotonic()
+        if (
+            self._last_connect_attempt is not None
+            and now - self._last_connect_attempt < _RECONNECT_COOLDOWN_S
+        ):
+            return False  # 仍在 cooldown 窗口内, 不重试 (反 per-tick 2s blocking)
+        self._last_connect_attempt = now
 
         try:
             import redis  # noqa: PLC0415
 
             self._redis = redis.Redis(host="localhost", port=6379, socket_connect_timeout=2)
             self._redis.ping()
-            self._connect_attempted = True
             logger.info("[threshold-cache:redis] connected")
             return True
         except Exception as e:
             logger.warning(
-                "[threshold-cache:redis] connection failed: %s, "
-                "fallback to in-memory (no further retries this process)",
+                "[threshold-cache:redis] connection failed: %s, fallback to "
+                "in-memory (auto-reconnect after %.0fs cooldown — no process "
+                "restart needed)",
                 e,
+                _RECONNECT_COOLDOWN_S,
             )
-            self._connect_attempted = True  # 停止重试 (反 per-tick 2s blocking)
+            self._redis = None
             return False
 
     def get(self, rule_id: str, code: str) -> float | None:
@@ -117,6 +144,10 @@ class RedisThresholdCache:
             return float(val) if val is not None else None
         except Exception as e:
             logger.error("[threshold-cache:redis] get failed: %s", e)
+            # HC-2b2 G8: drop the (now-suspect) client → next _ensure_redis
+            # auto-reconnects after cooldown. Caller transparently falls back
+            # to in-memory for this call (returns None).
+            self._redis = None
             return None
 
     def set_batch(self, thresholds: dict[str, dict[str, float]], ttl: int = 300) -> None:
@@ -149,6 +180,9 @@ class RedisThresholdCache:
             )
         except Exception as e:
             logger.error("[threshold-cache:redis] set_batch failed: %s", e)
+            # HC-2b2 G8: drop the suspect client before re-raising → next
+            # _ensure_redis auto-reconnects after cooldown (caller decides retry).
+            self._redis = None
             raise
 
     def flush(self) -> None:
@@ -161,3 +195,5 @@ class RedisThresholdCache:
             logger.debug("[threshold-cache:redis] flushed %d keys", len(keys))
         except Exception as e:
             logger.error("[threshold-cache:redis] flush failed: %s", e)
+            # HC-2b2 G8: drop the suspect client → next _ensure_redis auto-reconnects.
+            self._redis = None

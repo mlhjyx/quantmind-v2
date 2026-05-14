@@ -224,6 +224,25 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 45,  # 45s within next 60s cycle (反 overlap on slow PG)
         },
     },
+    # ── HC-2b2 G7 (V3 §14 mode 12): broker plan stuck sweep ──
+    # Plans stuck in CONFIRMED / TIMEOUT_EXECUTED > 5min = broker 接口故障 signal
+    # (execute_plan never completed — broker call 挂 / DB writeback 失败 / worker
+    # 中途死). CONFIRMED-stuck 此前 0 retry 路径 (l4_sweep 只扫 PENDING_CONFIRM).
+    # Task retries execute_plan (idempotent); plans still stuck → BROKER_PLAN_STUCK
+    # 元告警 (P0). crontab `*/5 * * * *` — every 5min ALL hours (区别于
+    # risk-l4-sweep-1min `9-14`): a CONFIRMED plan can be confirmed near close +
+    # stuck overnight; reconciliation 不应等到次日开盘.
+    # 反 hard collision: meta-monitor-tick `*/5` + outbox 30s — Beat sequential
+    # dispatch + Worker --pool=solo tolerates (cheap SELECT + per-plan retry).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`.
+    "risk-l4-broker-stuck-sweep": {
+        "task": "app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans",
+        "schedule": crontab(minute="*/5"),
+        "options": {
+            "queue": "default",
+            "expires": 240,  # 4min within next 5min cycle (反 stale retry pileup)
+        },
+    },
     # ── S10 operational: daily metrics extract at 16:30 Asia/Shanghai ──
     # V3 §13.2 元监控 + ADR-062 (S10 setup). Daily aggregator pulls
     # risk_event_log / execution_plans / llm_cost_daily → risk_metrics_daily
