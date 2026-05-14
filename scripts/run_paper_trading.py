@@ -122,17 +122,18 @@ def _write_heartbeat(trade_date: date, phase: str) -> None:
     """写入心跳文件供 pt_watchdog 检测。Step 6-A 拆分时遗漏, 2026-04-16 补回。"""
     try:
         _HEARTBEAT_FILE.write_text(
-            json.dumps({
-                "trade_date": str(trade_date),
-                "completed_at": datetime.now().isoformat(),
-                "phase": phase,
-                "status": "ok",
-            }),
+            json.dumps(
+                {
+                    "trade_date": str(trade_date),
+                    "completed_at": datetime.now().isoformat(),
+                    "phase": phase,
+                    "status": "ok",
+                }
+            ),
             encoding="utf-8",
         )
     except OSError as e:
         logger.warning("[Heartbeat] 写入失败: %s", e)
-
 
 
 # ════════════════════════════════════════════════════════════
@@ -180,6 +181,7 @@ def run_signal_phase(
             ConfigDriftError,
             assert_baseline_config,
             assert_execution_mode_integrity,
+            assert_live_trading_lock_integrity,
             check_config_alignment,
         )
 
@@ -200,6 +202,17 @@ def run_signal_phase(
             logger.error("[Step0.5] EXECUTION_MODE 校验失败:\n%s", e)
             if not dry_run:
                 log_step(conn, "signal_phase", "failed", f"EXECUTION_MODE drift: {e}")
+            sys.exit(1)
+
+        # HC-2b G6 (V3 §14 mode 15): LIVE_TRADING_DISABLED 双锁完整性校验.
+        # EXECUTION_MODE=paper 但 LIVE_TRADING_DISABLED 非 true → 双锁不一致 RAISE.
+        # 补 startup gate (此前仅 call-time live_trading_guard 一层).
+        try:
+            assert_live_trading_lock_integrity()
+        except ConfigDriftError as e:
+            logger.error("[Step0.5] LIVE_TRADING_DISABLED 双锁校验失败:\n%s", e)
+            if not dry_run:
+                log_step(conn, "signal_phase", "failed", f"LIVE_TRADING lock drift: {e}")
             sys.exit(1)
 
         # 兼容性: 保留旧的 factor-only 校验 (warning-level, 防止 factors 被外部脚本篡改)
@@ -318,7 +331,6 @@ def run_signal_phase(
             len(signal_result.target_weights),
             signal_result.is_rebalance,
         )
-
 
         # Step 3.5: 影子选股(可选,失败不阻塞)
         if signal_result.is_rebalance:

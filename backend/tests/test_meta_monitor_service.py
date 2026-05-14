@@ -119,7 +119,15 @@ def test_collect_and_evaluate_returns_5_alerts_one_per_rule() -> None:
     svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
     assert len(alerts) == 5
-    assert {a.rule_id for a in alerts} == set(MetaAlertRuleId)
+    # collect_and_evaluate runs the 5 POLLED rules; RISK_REFLECTOR_FAILED is
+    # event-emitted (HC-2b G5 — not polled, no evaluate_* fn) so correctly absent.
+    assert {a.rule_id for a in alerts} == {
+        MetaAlertRuleId.L1_HEARTBEAT_STALE,
+        MetaAlertRuleId.LITELLM_FAILURE_RATE,
+        MetaAlertRuleId.DINGTALK_PUSH_FAILED,
+        MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT,
+        MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE,
+    }
 
 
 def test_collect_and_evaluate_healthy_system_zero_triggered() -> None:
