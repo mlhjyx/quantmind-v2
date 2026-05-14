@@ -1,3 +1,8 @@
 # Shell scripts must be LF-terminated to work on Unix shell (Git Bash on Windows counts).
-# Without this, git autocrlf=true on Windows clones breaks the hook ("bad interpreter: No such file").
+# Without this, git autocrlf=true on Windows clones breaks the hook ("bad interpreter: No such file")
+# OR a strict bash hits `syntax error near unexpected token $'in\r'` (HC-3a Finding —
+# scripts/check_llm_imports.sh + config/hooks/pre-commit were CRLF in the working tree,
+# breaking test_llm_import_block_governance.py's `subprocess.run(["bash", ...])` 8/10).
+*.sh text eol=lf
+config/hooks/pre-commit text eol=lf
 config/hooks/pre-push text eol=lf
