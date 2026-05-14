@@ -5,21 +5,21 @@
   - 本 module = Application orchestration — 5 snapshot 采集 + run 5 PURE rules + DingTalk push
   - app/tasks/meta_monitor_tasks = Beat dispatch (5min cadence)
 
-HC-1b scope (precondition 核 真值 — 2 real collector + 3 no-signal):
-  - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success) ✅
-  - STAGED overdue: real query `execution_plans` (status='PENDING_CONFIRM') ✅
-  - L1 心跳 / News 全源 timeout / DingTalk push status: 暂 "no signal" 优雅降级 —
-    无 clean queryable 源, 需 instrumentation (RealtimeRiskEngine last-tick 暴露 /
-    news per-source status 持久化 / DingTalk push outcome 持久化) → HC-1b2 wire real 源.
-    HC-1a PURE rule 已优雅处理 no-signal input (last_tick_at=None /
-    timed_out_sources=0 / last_push_attempted=False → not triggered) — 这是显式
-    设计降级 (logged + documented), 非 silent failure (铁律 33).
+Collector status (post-HC-1b3 — 4 real + 1 no-signal):
+  - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success) ✅ HC-1b
+  - STAGED overdue: real query `execution_plans` (status='PENDING_CONFIRM') ✅ HC-1b
+  - DingTalk push status: real query `alert_dedup.last_push_ok` ✅ HC-1b3
+  - News 全源 timeout: real read Redis `qm:news:last_run_stats` ✅ HC-1b3
+  - L1 心跳: no-signal (last_tick_at=None) — DEFERRED per HC-1b3 Finding (no
+    production XtQuantTickSubscriber runner exists to instrument; instrumenting
+    would never fire — see `_collect_l1_heartbeat`). 不是 "not yet wired", 是
+    "源在 production 尚不存在" — 留 realtime engine production-wiring (Plan v0.4
+    cutover scope 候选). HC-1a PURE rule 优雅处理 no-signal input → not triggered.
 
 Channel fallback chain (V3 §13.3, HC-1b2): 主 DingTalk → 备 email → 极端 log-P0
   (`_push_via_channel_chain`). DingTalk unreachable / configured-but-undeliverable
   → escalate email; email not-delivered / failed → escalate log-P0 (元告警 never
-  silently vanishes). DingTalk-push-status / L1-heartbeat / News per-source real
-  collectors 仍 no-signal → HC-1b3.
+  silently vanishes).
 
 铁律 31: qm_platform meta_alert_* PURE; 本 service = Application (DB read via
   injected conn, 0 commit).
@@ -31,12 +31,14 @@ Channel fallback chain (V3 §13.3, HC-1b2): 主 DingTalk → 备 email → 极�
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.qm_platform.risk.metrics.meta_alert_interface import (
     LITELLM_FAILURE_RATE_WINDOW_S,
+    NEWS_RUN_STATS_REDIS_KEY,
     NEWS_SOURCE_TIMEOUT_WINDOW_S,
     DingTalkPushSnapshot,
     L1HeartbeatSnapshot,
@@ -56,22 +58,40 @@ from backend.qm_platform.risk.metrics.meta_alert_rules import (
 
 logger = logging.getLogger(__name__)
 
-# V3 §13.3 "News 6 源" — placeholder source count for the no-signal News snapshot.
-# HC-1b2 wires the real per-source status; until then timed_out_sources=0 → not
-# triggered regardless of this count (rule triggers only when timed_out == total).
-_NEWS_SOURCE_COUNT_PLACEHOLDER: int = 6
-
 _PENDING_CONFIRM_STATUS = "PENDING_CONFIRM"
+
+# HC-1b3: NEWS_RUN_STATS_REDIS_KEY imported from meta_alert_interface (SSOT — single
+# definition shared by the News-ingest Beat writer + this collector reader).
+# Fallback total_sources when the News run-stats key is absent (key expired / news
+# Beat never ran). Only used for the no-signal NewsSourceWindowSnapshot — rule
+# triggers only when timed_out == total, and timed_out=0 in that path → not triggered.
+_NEWS_SOURCE_COUNT_FALLBACK: int = 6
 
 
 class MetaMonitorService:
     """V3 §13.3 元告警 orchestration — collect 5 snapshots, run 5 PURE rules, push.
 
-    Stateless — conn injected per call (沿用 DingTalkWebhookService 体例).
+    conn injected per call; optional redis_client injected at construction (DI
+    体例 sustained IntradayAlertDedup) — used by the News collector.
     """
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, *, redis_client: Any = None) -> None:
+        """Args:
+        redis_client: optional injected Redis client (tests inject a mock).
+            None → lazy-created from settings.REDIS_URL on first News-collector
+            call (沿用 IntradayAlertDedup redis.from_url 体例).
+        """
+        self._redis = redis_client
+
+    def _get_redis(self) -> Any:
+        """Lazy Redis client (沿用 IntradayAlertDedup — decode_responses=True)."""
+        if self._redis is None:
+            import redis as redis_lib  # noqa: PLC0415
+
+            from app.config import settings  # noqa: PLC0415
+
+            self._redis = redis_lib.from_url(settings.REDIS_URL, decode_responses=True)
+        return self._redis
 
     def collect_and_evaluate(self, conn: Any, *, now: datetime | None = None) -> list[MetaAlert]:
         """Collect 5 snapshots + run 5 PURE rules → list of 5 MetaAlert.
@@ -98,7 +118,7 @@ class MetaMonitorService:
             evaluate_litellm_failure_rate(self._collect_litellm(conn, at)),
             evaluate_staged_overdue(self._collect_staged(conn, at)),
             evaluate_l1_heartbeat(self._collect_l1_heartbeat(at)),
-            evaluate_dingtalk_push(self._collect_dingtalk(at)),
+            evaluate_dingtalk_push(self._collect_dingtalk(conn, at)),
             evaluate_news_sources_timeout(self._collect_news(at)),
         ]
         triggered = [a for a in alerts if a.triggered]
@@ -255,7 +275,11 @@ class MetaMonitorService:
             "reason": "all_channels_failed",
         }
 
-    # ── Collectors — 2 real (LiteLLM / STAGED) + 3 no-signal (L1 / DingTalk / News) ──
+    # ── Collectors — 4 real (LiteLLM / STAGED / DingTalk / News) + 1 no-signal (L1) ──
+    # HC-1b3 wired DingTalk-push-status (alert_dedup.last_push_ok) + News per-run
+    # stats (Redis qm:news:last_run_stats). L1-heartbeat stays no-signal — DEFERRED
+    # per HC-1b3 Finding (no production XtQuantTickSubscriber runner exists to
+    # instrument; instrumenting it would never fire — see _collect_l1_heartbeat).
 
     @staticmethod
     def _collect_litellm(conn: Any, now: datetime) -> LiteLLMCallWindowSnapshot:
@@ -322,47 +346,101 @@ class MetaMonitorService:
 
     @staticmethod
     def _collect_l1_heartbeat(now: datetime) -> L1HeartbeatSnapshot:
-        """No-signal collector (HC-1b2 wires real source).
+        """No-signal collector — DEFERRED per HC-1b3 Finding (NOT just "not yet wired").
 
-        RealtimeRiskEngine 不暴露 last-tick timestamp + 无 clean queryable 源
-        (precondition 核 真值). last_tick_at=None → PURE rule not triggered +
-        detail "no heartbeat data". HC-1b2 instruments the engine / Redis
-        market-data freshness as the real source.
+        HC-1b3 precondition 核 真值: XtQuantTickSubscriber + RealtimeRiskEngine are
+        instantiated ONLY in tests + the replay runner — there is NO production
+        runner wiring the realtime subscriber into a live tick flow (S5/Tier A
+        built the components; production wiring deferred, consistent with
+        paper-mode 红线 0 持仓 / LIVE_TRADING_DISABLED=true). Instrumenting a
+        heartbeat now would never fire (no production subscriber). last_tick_at=None
+        → PURE rule not triggered + detail "no heartbeat data" — this is the
+        *correct* state until the realtime engine gets production-wired (likely
+        Plan v0.4 cutover scope — touches live xtquant). See HC-1b3 PR / ADR-073.
         """
-        logger.debug("[meta-monitor] L1 heartbeat collector = no-signal (HC-1b2 wires real source)")
+        logger.debug(
+            "[meta-monitor] L1 heartbeat collector = no-signal (DEFERRED — no prod "
+            "realtime subscriber, HC-1b3 Finding)"
+        )
         return L1HeartbeatSnapshot(last_tick_at=None, now=now)
 
     @staticmethod
-    def _collect_dingtalk(now: datetime) -> DingTalkPushSnapshot:
-        """No-signal collector (HC-1b2 wires real source).
+    def _collect_dingtalk(conn: Any, now: datetime) -> DingTalkPushSnapshot:
+        """Real collector (HC-1b3) — alert_dedup.last_push_ok most-recent real POST.
 
-        DingTalk push outcome 无持久化 (alert_dedup 只追踪 fire_count, 不含
-        success/failure; send_with_dedup 只返回瞬时结果). last_push_attempted=False
-        → PURE rule not triggered. HC-1b2 adds push-outcome persistence.
+        send_with_dedup (dingtalk_alert.py) records every real DingTalk POST outcome
+        into alert_dedup.last_push_ok / last_push_status (HC-1b3 DDL +2 cols). Rows
+        with last_push_ok IS NULL never had a real POST (alerts_disabled / no_webhook
+        / dedup_suppressed) — excluded. Most recent real-POST row (by last_fired_at,
+        which on a real-fire row ≈ the POST time) is the operative DingTalk health
+        signal. No real-POST row at all → last_push_attempted=False → not triggered.
         """
-        logger.debug(
-            "[meta-monitor] DingTalk push collector = no-signal (HC-1b2 wires real source)"
-        )
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT last_push_ok, last_push_status
+                FROM alert_dedup
+                WHERE last_push_ok IS NOT NULL
+                ORDER BY last_fired_at DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if row is None:
+            return DingTalkPushSnapshot(
+                last_push_attempted=False,
+                last_push_ok=False,
+                last_push_status="",
+                now=now,
+            )
         return DingTalkPushSnapshot(
-            last_push_attempted=False,
-            last_push_ok=False,
-            last_push_status="",
+            last_push_attempted=True,
+            last_push_ok=bool(row[0]),
+            last_push_status=str(row[1]) if row[1] else "",
             now=now,
         )
 
-    @staticmethod
-    def _collect_news(now: datetime) -> NewsSourceWindowSnapshot:
-        """No-signal collector (HC-1b2 wires real source).
+    def _collect_news(self, now: datetime) -> NewsSourceWindowSnapshot:
+        """Real collector (HC-1b3) — Redis qm:news:last_run_stats from News-ingest Beat.
 
-        NewsIngestionService.ingest() 不暴露 per-source timeout status —
-        IngestionStats 只含 fetched/ingested/classified counts (precondition 核
-        真值). timed_out_sources=0 → PURE rule not triggered. HC-1b2 instruments
-        per-source status persistence as the real source.
+        The News-ingest Beat task (news_ingest_5_sources) persists each DataPipeline
+        run's per-source aggregate to Redis after `ingest()`. This collector reads
+        the most recent run: `success_count == 0` → all sources failed/timed-out →
+        timed_out_sources = total_sources (rule triggers). Any success → not triggered.
+
+        Cadence-mismatch Finding (HC-1b3): V3 §13.3 says "5min", but the News Beat
+        runs every 4h (`3,7,11,15,19,23`) — the 5min window does NOT apply to a
+        4h-cadence pipeline. The operative signal is "the last news run got 0
+        successes", not "all sources timed out in the last 5min". window_seconds is
+        passed nominal (NEWS_SOURCE_TIMEOUT_WINDOW_S, detail-string only). Redis key
+        absent (expired / Beat never ran) → no-signal (timed_out_sources=0); a
+        completely-dead News Beat is a separate "Beat health" concern, not this rule.
+
+        Fail-soft on Redis/JSON error → no-signal (反 Redis 故障 crash the whole
+        meta_monitor tick; the other 3 real collectors still run).
         """
-        logger.debug("[meta-monitor] News source collector = no-signal (HC-1b2 wires real source)")
+        total = _NEWS_SOURCE_COUNT_FALLBACK
+        timed_out = 0
+        try:
+            raw = self._get_redis().get(NEWS_RUN_STATS_REDIS_KEY)
+            if raw is not None:
+                stats = json.loads(raw)
+                total = int(stats.get("total_sources", _NEWS_SOURCE_COUNT_FALLBACK))
+                success = int(stats.get("success_count", 0))
+                timed_out = total if success == 0 else 0
+        except Exception as e:  # noqa: BLE001 — fail-soft, News collector 旁路 (反
+            # Redis/JSON error crash 整个 meta_monitor tick; 其余 3 real collector 仍跑)
+            logger.warning(
+                "[meta-monitor] News collector Redis read failed (fail-soft, no-signal): %s",
+                e,
+            )
+            total, timed_out = _NEWS_SOURCE_COUNT_FALLBACK, 0
         return NewsSourceWindowSnapshot(
-            total_sources=_NEWS_SOURCE_COUNT_PLACEHOLDER,
-            timed_out_sources=0,
+            total_sources=total,
+            timed_out_sources=timed_out,
             window_seconds=NEWS_SOURCE_TIMEOUT_WINDOW_S,
             now=now,
         )

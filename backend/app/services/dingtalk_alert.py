@@ -147,13 +147,22 @@ def send_with_dedup(
                 "fire_count": fire_count,
             }
 
-        # Step 4: 真 POST (sync httpx + retry 1 次)
-        _post_to_dingtalk(
-            webhook_url=settings.DINGTALK_WEBHOOK_URL,
-            title=title,
-            body=body,
-            severity=severity,
-        )
+        # Step 4: 真 POST (sync httpx + retry). HC-1b3: 记录 push outcome 到
+        # alert_dedup.last_push_ok/last_push_status (V3 §13.3 元告警 — meta_monitor
+        # _collect_dingtalk 读最近一次真 POST 结果喂 evaluate_dingtalk_push rule).
+        # 仅真 POST 路径记录 — alerts_disabled / no_webhook / dedup_suppressed 不调
+        # → last_push_ok 保持 NULL (表示从未真 POST).
+        try:
+            _post_to_dingtalk(
+                webhook_url=settings.DINGTALK_WEBHOOK_URL,
+                title=title,
+                body=body,
+                severity=severity,
+            )
+        except httpx.HTTPError as e:
+            _record_push_outcome(conn, dedup_key, ok=False, status=type(e).__name__)
+            raise
+        _record_push_outcome(conn, dedup_key, ok=True, status="200")
 
         logger.info(
             "[dingtalk_alert] sent dedup_key=%s severity=%s source=%s",
@@ -233,6 +242,31 @@ def _upsert_dedup(
     fire_count = cur.fetchone()[0]
     cur.close()
     return False, fire_count
+
+
+def _record_push_outcome(conn: Any, dedup_key: str, *, ok: bool, status: str) -> None:
+    """HC-1b3: 记录最近一次真 POST DingTalk 的结果到 alert_dedup (V3 §13.3 元告警).
+
+    UPDATE alert_dedup SET last_push_ok / last_push_status WHERE dedup_key. 仅在
+    send_with_dedup Step 4 真 POST 后调用 (alerts_disabled / no_webhook /
+    dedup_suppressed 路径不调 → last_push_ok 保持 NULL = 从未真 POST). caller 管理
+    事务 (own_conn finally commit / 注入 conn caller commit). row 必存在 (Step 1
+    _upsert_dedup 已 UPSERT).
+
+    Args:
+        conn: psycopg2 connection.
+        dedup_key: alert_dedup PK.
+        ok: True = 收到 200 / False = POST 失败.
+        status: 状态文本 (e.g. "200" / "HTTPError" / "ConnectTimeout").
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE alert_dedup SET last_push_ok = %s, last_push_status = %s WHERE dedup_key = %s",
+            (ok, status, dedup_key),
+        )
+    finally:
+        cur.close()
 
 
 def _post_to_dingtalk(

@@ -24,10 +24,13 @@ scope (sub-PR 7a, sub-PR 7b NewsClassifier defer Sprint 3 prerequisite):
 - 铁律 41 (timezone — NewsItem.timestamp tz-aware sustained sub-PR 1-6)
 - 铁律 45 (4 doc fresh read SOP enforcement, PR-B sediment)
 """
+
 from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
+from typing import Any
 
 from .base import NewsFetcher, NewsFetchError, NewsItem
 
@@ -89,9 +92,7 @@ class DataPipeline:
         if not fetchers:
             raise ValueError("fetchers list is empty (沿用铁律 33 fail-loud)")
         if early_return_threshold < 1:
-            raise ValueError(
-                f"early_return_threshold must be >= 1, got {early_return_threshold}"
-            )
+            raise ValueError(f"early_return_threshold must be >= 1, got {early_return_threshold}")
         if hard_timeout_s <= 0:
             raise ValueError(f"hard_timeout_s must be > 0, got {hard_timeout_s}")
         if max_workers < 1:
@@ -101,6 +102,12 @@ class DataPipeline:
         self._max_workers = max_workers
         self._hard_timeout_s = hard_timeout_s
         self._early_return_threshold = early_return_threshold
+        # HC-1b3: most-recent fetch_all run's per-source aggregate (V3 §13.3 元告警
+        # instrumentation — meta_monitor News collector reads this via the Beat
+        # task which persists it to Redis). None until fetch_all is first called.
+        # NOT DB IO (铁律 31 sustained — DataPipeline 0 DB IO; this is in-process
+        # run-output memo, the Beat task does the Redis persist).
+        self._last_run_stats: dict[str, Any] | None = None
 
     def fetch_all(
         self,
@@ -132,22 +139,18 @@ class DataPipeline:
 
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
             future_to_fetcher = {
-                pool.submit(self._safe_fetch, f, query, limit_per_source): f
-                for f in self._fetchers
+                pool.submit(self._safe_fetch, f, query, limit_per_source): f for f in self._fetchers
             }
 
             try:
-                for future in as_completed(
-                    future_to_fetcher, timeout=self._hard_timeout_s
-                ):
+                for future in as_completed(future_to_fetcher, timeout=self._hard_timeout_s):
                     fetcher = future_to_fetcher[future]
                     try:
                         items = future.result()
                         all_items.extend(items)
                         success_count += 1
                         logger.debug(
-                            "DataPipeline source=%s returned %d items "
-                            "(success=%d, fail=%d)",
+                            "DataPipeline source=%s returned %d items (success=%d, fail=%d)",
                             fetcher.source_name,
                             len(items),
                             success_count,
@@ -164,8 +167,7 @@ class DataPipeline:
                     except NewsFetchError as e:
                         fail_count += 1
                         logger.warning(
-                            "DataPipeline fail-soft source=%s: %s "
-                            "(V3§3.1 + base.py caller 模式)",
+                            "DataPipeline fail-soft source=%s: %s (V3§3.1 + base.py caller 模式)",
                             fetcher.source_name,
                             e,
                         )
@@ -195,9 +197,23 @@ class DataPipeline:
         if total_limit is not None and total_limit > 0:
             deduped = deduped[:total_limit]
 
+        # HC-1b3: memo this run's per-source aggregate for the News 元告警 collector.
+        # success_count == 0 → all sources failed/timed-out (the operative signal for
+        # evaluate_news_sources_timeout). Note: early-return + hard-timeout mean some
+        # sources may be neither success nor fail (abandoned futures) — success_count
+        # is the meaningful "did news get anything" signal, NOT a precise per-source map.
+        # Thread-safe: success_count/fail_count are main-thread-only (ThreadPool workers
+        # are joined by the `with` block exit above) — this write has no concurrent reader
+        # (get_last_run_stats is called by the Beat task AFTER fetch_all returns).
+        self._last_run_stats = {
+            "run_at": datetime.now(UTC).isoformat(),
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "total_sources": len(self._fetchers),
+        }
+
         logger.info(
-            "DataPipeline aggregate: raw=%d deduped=%d "
-            "(success_sources=%d, fail_sources=%d)",
+            "DataPipeline aggregate: raw=%d deduped=%d (success_sources=%d, fail_sources=%d)",
             len(all_items),
             len(deduped),
             success_count,
@@ -205,10 +221,19 @@ class DataPipeline:
         )
         return deduped
 
+    def get_last_run_stats(self) -> dict[str, Any] | None:
+        """HC-1b3: most-recent fetch_all run's per-source aggregate (V3 §13.3 元告警).
+
+        Returns a copy of `{run_at, success_count, fail_count, total_sources}`, or
+        None if fetch_all has never been called. `success_count == 0` → all sources
+        failed/timed-out (the News 元告警 trigger condition). The News-ingest Beat
+        task reads this after `ingest()` and persists it to Redis for the
+        out-of-process meta_monitor News collector.
+        """
+        return dict(self._last_run_stats) if self._last_run_stats is not None else None
+
     @staticmethod
-    def _safe_fetch(
-        fetcher: NewsFetcher, query: str, limit: int
-    ) -> list[NewsItem]:
+    def _safe_fetch(fetcher: NewsFetcher, query: str, limit: int) -> list[NewsItem]:
         """ThreadPool worker — 直接 raise NewsFetchError, caller fail-soft."""
         return fetcher.fetch(query=query, limit=limit)
 
