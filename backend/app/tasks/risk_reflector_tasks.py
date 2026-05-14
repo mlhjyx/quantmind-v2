@@ -283,13 +283,20 @@ def _render_dingtalk_summary(output: ReflectionOutput, target_path: Path) -> str
         f"**发现**: {total_findings} 项 / **改进候选**: {total_candidates} 项",
         "",
     ]
-    # Per-dim candidates count brief.
-    for r in output.reflections:
-        if r.candidates:
-            lines.append(
-                f"- {r.dimension.value.capitalize()}: {len(r.candidates)} 候选"
-            )
-    lines.append("")
+    # TB-4d: list each candidate with its candidate_id so user can reply
+    # `approve <candidate_id>` / `reject <candidate_id>` via DingTalk webhook.
+    # candidate_id = `<period_label>#<global_index>` (1-based, across 5 维 in
+    # ReflectionDimension enum order) — sustained _candidate_id_for() in
+    # reflection_candidate_service.py.
+    if total_candidates > 0:
+        lines.append("**改进候选** (回复 `approve <id>` / `reject <id>`):")
+        global_idx = 0
+        for r in output.reflections:
+            for c in r.candidates:
+                global_idx += 1
+                candidate_id = f"{output.period_label}#{global_idx}"
+                lines.append(f"- `{candidate_id}` [{r.dimension.value}] {c}")
+        lines.append("")
     # Accurate report link — relative to repo root (handles event/ subdir).
     try:
         rel_path = target_path.relative_to(_REPO_ROOT)

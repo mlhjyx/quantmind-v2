@@ -66,15 +66,39 @@ _COMMAND_PATTERN = re.compile(
 # UUID-ish characters validity (反 SQL-injection vector even though we use parametrized query downstream)
 _PLAN_ID_VALIDATOR = re.compile(r"^[0-9a-fA-F\-]{8,36}$")
 
+# ── TB-4d: RiskReflector candidate approve/reject command ──
+# Distinct from the STAGED execution_plans confirm/cancel commands above.
+# candidate_id format: `<period_label>#<index>` where period_label is the
+# reflection period (e.g. "2026_W19" / "2026_05" / "event-2026-05-14-slug")
+# and index is 1-based global candidate index across 5 维 (per
+# risk_reflector_tasks._render_dingtalk_summary). reflection_candidate_service
+# resolves it to the source report + candidate text.
+_CANDIDATE_COMMAND_PATTERN = re.compile(
+    r"^\s*(approve|reject|批准|拒绝)\s+([\w\-]+#\d+)\s*$",
+    re.IGNORECASE,
+)
+
+# candidate_id validity — period_label (word chars + dashes) + '#' + 1-based index.
+# 反 path-traversal: \w + \- excludes '/' '.' so '../' cannot appear (sustained
+# _slugify_event filename-safety 体例). Length cap 80 反 abuse.
+_CANDIDATE_ID_VALIDATOR = re.compile(r"^[\w\-]{1,72}#\d{1,6}$")
+
 
 # ── Result types ──
 
 
 class WebhookCommand(StrEnum):
-    """Inbound webhook command after parsing."""
+    """Inbound webhook command after parsing (STAGED execution_plans path)."""
 
     CONFIRM = "confirm"
     CANCEL = "cancel"
+
+
+class CandidateCommand(StrEnum):
+    """TB-4d: RiskReflector candidate approve/reject command after parsing."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
 
 
 class WebhookParseErrorCode(StrEnum):
@@ -85,6 +109,7 @@ class WebhookParseErrorCode(StrEnum):
     MALFORMED_BODY = "malformed_body"
     UNKNOWN_COMMAND = "unknown_command"
     INVALID_PLAN_ID = "invalid_plan_id"
+    INVALID_CANDIDATE_ID = "invalid_candidate_id"  # TB-4d
 
 
 @dataclass(frozen=True)
@@ -93,6 +118,15 @@ class ParsedWebhook:
 
     command: WebhookCommand
     plan_id_prefix: str  # may be partial (≥8 hex), caller resolves to full UUID
+
+
+@dataclass(frozen=True)
+class ParsedCandidateWebhook:
+    """TB-4d: parsed RiskReflector candidate command — caller passes to
+    reflection_candidate_service for risk_findings/ sediment."""
+
+    command: CandidateCommand
+    candidate_id: str  # `<period_label>#<index>` — service resolves to report + text
 
 
 class WebhookParseError(Exception):
@@ -231,3 +265,81 @@ def parse_command(text: str) -> ParsedWebhook:
         )
 
     return ParsedWebhook(command=command, plan_id_prefix=plan_id_norm)
+
+
+# ── TB-4d: RiskReflector candidate command parsing ──
+
+
+def parse_candidate_command(text: str) -> ParsedCandidateWebhook:
+    """Parse inbound webhook text into (CandidateCommand, candidate_id) — TB-4d.
+
+    Accepts (case-insensitive verb):
+        "approve <candidate_id>" / "reject <candidate_id>"
+        "批准 <candidate_id>" / "拒绝 <candidate_id>"
+        candidate_id = `<period_label>#<index>` (e.g. "2026_W19#1",
+        "event-2026-05-14-limitdown#3").
+
+    Pure compute (铁律 31) — NO IO, NO DB. Caller (reflection_candidate_service)
+    resolves candidate_id to source report + candidate text + writes
+    docs/research-kb/risk_findings/ sediment.
+
+    Distinct from parse_command (STAGED execution_plans confirm/cancel) — this
+    is the V3 §8.3 参数候选 approve/reject path.
+
+    Raises:
+        WebhookParseError(MALFORMED_BODY): empty / whitespace-only / wrong shape.
+        WebhookParseError(UNKNOWN_COMMAND): verb not in {approve/reject/批准/拒绝}.
+        WebhookParseError(INVALID_CANDIDATE_ID): candidate_id wrong format
+            (反 path-traversal — \\w + \\- excludes '/' '.').
+
+    Returns:
+        ParsedCandidateWebhook with normalized command + candidate_id.
+    """
+    if not text or not text.strip():
+        raise WebhookParseError(
+            WebhookParseErrorCode.MALFORMED_BODY,
+            "empty or whitespace-only text",
+        )
+
+    match = _CANDIDATE_COMMAND_PATTERN.match(text)
+    if match is None:
+        verb_only = re.match(r"^\s*(\S+)", text)
+        if verb_only and verb_only.group(1).lower() not in {
+            "approve",
+            "reject",
+            "批准",
+            "拒绝",
+        }:
+            raise WebhookParseError(
+                WebhookParseErrorCode.UNKNOWN_COMMAND,
+                f"verb {verb_only.group(1)!r} not in {{approve, reject, 批准, 拒绝}}",
+            )
+        raise WebhookParseError(
+            WebhookParseErrorCode.MALFORMED_BODY,
+            "expected '<verb> <candidate_id>' format (candidate_id = period#index)",
+        )
+
+    verb_raw = match.group(1).lower()
+    candidate_id_raw = match.group(2)
+
+    if verb_raw in {"approve", "批准"}:
+        command = CandidateCommand.APPROVE
+    elif verb_raw in {"reject", "拒绝"}:
+        command = CandidateCommand.REJECT
+    else:
+        # Defensive — unreachable since regex matched.
+        raise WebhookParseError(
+            WebhookParseErrorCode.UNKNOWN_COMMAND,
+            f"verb {verb_raw!r} not handled",
+        )
+
+    # Defense-in-depth — regex already constrains, but validate explicitly
+    # (反 path-traversal: \\w + \\- excludes '/' '.' so '../' impossible).
+    if not _CANDIDATE_ID_VALIDATOR.match(candidate_id_raw):
+        raise WebhookParseError(
+            WebhookParseErrorCode.INVALID_CANDIDATE_ID,
+            f"candidate_id {candidate_id_raw!r} not '<period_label>#<index>' "
+            f"(period_label [\\w\\-]{{1,72}}, index \\d{{1,6}})",
+        )
+
+    return ParsedCandidateWebhook(command=command, candidate_id=candidate_id_raw)
