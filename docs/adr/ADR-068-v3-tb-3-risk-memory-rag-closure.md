@@ -65,6 +65,8 @@ V3 Tier B Plan v0.2 TB-3 sprint = "L2 RiskMemoryRAG + pgvector + BGE-M3 本地 e
 - Partial index `WHERE embedding IS NOT NULL` excludes pre-embedded rows (e.g. rows persisted before TB-3b BGE-M3 wire OR batch-pending rows) — sustained TB-3a reviewer-fix MEDIUM 2 体例
 - Re-tune trigger: lists=200 candidate at TB-5c if N > 30000 actual (ADR amend at that time, sustained ADR-022)
 
+> **2026-05-14 标注 (TB-5c, ADR-071)**: Re-tune trigger CHECKED at TB-5c — **N << 30000**, `lists=100` SUSTAINED, no re-tune. risk_memory is effectively empty in paper-mode (0 持仓 + RiskReflector has 0 live cycles fired; only test rows). The lists=200 re-tune is a future trigger that will only become relevant well after live trading begins (likely Plan v0.4+ scope). Append-only 标注, sustained ADR-022.
+
 ### D4: 4-tier retention default thresholds (本 ADR-068 sediment 锁)
 
 **Decision**: Default RetentionPolicy boundaries + thresholds (TB-3c implementation):

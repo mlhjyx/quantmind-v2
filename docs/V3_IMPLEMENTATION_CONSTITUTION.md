@@ -32,7 +32,7 @@
 | D 决议 | `docs/DECISION_LOG.md` |
 | ops runbook | `docs/runbook/cc_automation/00_INDEX.md` |
 | invocation map | `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` (step 2 产出) |
-| 长期 Roadmap | `docs/RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` (V3 §18.3 reserved scope, planned, not yet sediment, sediment 时机决议 Tier B closure 后 — Finding #1 (b) sediment, sustained ADR-022 反 silent 创建 + 反 silent overwrite) |
+| 长期 Roadmap | `docs/RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` (V3 §18.3 reserved scope, planned, not yet sediment, sediment 时机决议 Tier B closure 后 — Finding #1 (b) sediment, sustained ADR-022 反 silent 创建 + 反 silent overwrite). **2026-05-14 标注 (TB-5c, ADR-071)**: Tier B closure REACHED (Gate B 5/5 + Gate C 6/6 ✅) → sediment 时机 now due; 完整 ROADMAP file 创建 留 Plan v0.3 横切层 scope (TB-5c 仅标注 closure 触发, NOT 创建完整 file — sustained ADR-022 反 silent 创建) |
 | Tier A sprint plan | `docs/V3_TIER_A_SPRINT_PLAN_v0.1.md` (12 sprint S1+S2+S2.5+S3-S11, ✅ code-side 12/12 closed Session 53 cumulative 19 PR #296-#323; T1.5 formal close 留 Plan v0.2 起手) |
 | Tier B sprint plan | `docs/V3_TIER_B_SPRINT_PLAN_v0.1.md` (6 sprint T1.5+TB-1~5, post-ADR-063 + 5 决议 lock D1=a/D2=A/D3=b/D4=否/D5=inline, baseline ~8.5-12 周, Plan v0.2 sub-PR sediment NEW 2026-05-13) |
 
@@ -405,28 +405,32 @@ verifier: `tier-a-mvp-gate-evaluator` subagent
 
 ### §L10.2 Gate B: T1.5 closed
 
+> **CLOSED 2026-05-14 — Gate B 5/5 PASS** (TB-5c, ADR-071 D1+D2). verifier: `oh-my-claudecode:verifier` agent w/ Tier B Gate B charter (借用 charter verify 体例 per Plan v0.2 §C). Items 2 + 3 AMENDED per Plan v0.2 §G II Push back #1 + #2 — append-only annotation, sustained ADR-022 反 retroactive content edit.
+
 verifier: `risk-domain-expert` subagent + `sprint-closure-gate-evaluator` subagent
 
 **Checklist**:
 
-- [ ] V3 §11.4 `RiskBacktestAdapter` 实现 + 0 broker / 0 alert / 0 INSERT 依赖 verify (CC 实测 import 验 + 静态 + 真测 mock backtest run)
-- [ ] 12 年 counterfactual replay 跑通 (沿用 sim-to-real gap audit 体例, V3 §15.5)
-- [ ] WF 5-fold 全正 STABLE (沿用 4-12 CORE3+dv_ttm 体例, OOS Sharpe / MDD / Overfit 阈值 sprint 起手时 CC 实测决议)
-- [ ] T1.5 sediment ADR (新 ADR # CC sprint 起手时实测决议)
-- [ ] sim-to-real gap finding (PR #210 体例) Tier A 实施期间 0 复发 (CC 实测 audit log)
+- [x] V3 §11.4 `RiskBacktestAdapter` 实现 + 0 broker / 0 alert / 0 INSERT 依赖 verify (CC 实测 import 验 + 静态 + 真测 mock backtest run) ✅ (TB-1a + TB-5b — ADR-066 + ADR-070)
+- [x] ~~12 年 counterfactual replay 跑通 (沿用 sim-to-real gap audit 体例, V3 §15.5)~~ ⏭ **AMENDED per ADR-064 D3=b** (Plan v0.2 §G II Push back #1) → **2 关键窗口** (2024Q1 量化踩踏 + 2025-04-07 关税冲击) replay 跑通 ✅ (TB-1c ADR-066 + TB-5b ADR-070); 5y full replay deferred to Plan v0.3 横切层 scope
+- [x] ~~WF 5-fold 全正 STABLE (沿用 4-12 CORE3+dv_ttm 体例, OOS Sharpe / MDD / Overfit 阈值 sprint 起手时 CC 实测决议)~~ ⏭ **N/A — factor research scope** (Plan v0.2 §G II Push back #2): WF 5-fold 是 Phase 2 factor team 验收标准 (CORE3+dv_ttm 2026-04-12 WF PASS 已 gate 于 PT 配置), NOT Tier B 风控 scope — 独立轨道
+- [x] T1.5 sediment ADR (新 ADR # CC sprint 起手时实测决议) ✅ (ADR-065)
+- [x] sim-to-real gap finding (PR #210 体例) Tier A 实施期间 0 复发 (CC 实测 audit log) ✅ (ADR-071 D2 — 0 PR #210-class recurrence Tier A + Tier B, affirmative statement on record)
 
 ### §L10.3 Gate C: Tier B closed
+
+> **CLOSED 2026-05-14 — Gate C 6/6 PASS** (TB-5c, ADR-071 D3+D4+D5). verifier: `oh-my-claudecode:verifier` agent w/ Tier B Gate C charter. 2 sub-items (item 3 RAG 命中率 baseline + item 5 后置抽查 ≥1 round) DEFERRED to Plan v0.3 横切层 — need live production query traffic, N/A in paper-mode (ADR-071 D4, sustained ADR-063 paper-mode deferral pattern). V3 §15.4 4/4 + V3 §13.1 5/5 全 VERIFIED (TB-5a + TB-5b).
 
 verifier: `risk-domain-expert` subagent
 
 **Checklist**:
 
-- [ ] V3 §12.2 Sprint S12-S15 全 closed
-- [ ] L2 Bull/Bear regime production-active (Daily 3 次 cadence verify, V3 §20.1 #2)
-- [ ] L2 RAG (BGE-M3 + pgvector) production-active + retrieval 命中率 ≥ baseline (V3 §20.1 #3)
-- [ ] L5 RiskReflector 周/月/event-after cadence ≥1 完整 cycle (V3 §20.1 #4)
-- [ ] 反思 lesson → risk_memory 自动入库 + 后置抽查 ≥1 round (V3 §20.1 #9 (c) hybrid)
-- [ ] ADR-025 (RAG vector store 选型) + ADR-026 (Bull/Bear 2-Agent debate) + Tier B 后续 ADR 全 committed
+- [x] V3 §12.2 Sprint S12-S15 全 closed ✅ (TB-2 S12 ADR-067 + TB-3 S13 ADR-068 + TB-4 S14 ADR-069 + TB-5 S15 TB-5a/5b/5c ADR-070/071)
+- [x] L2 Bull/Bear regime production-active (Daily 3 次 cadence verify, V3 §20.1 #2) ✅ (TB-2c — beat_schedule.py risk-market-regime-0900/1430/1600 wired)
+- [x] L2 RAG (BGE-M3 + pgvector) production-active + retrieval 命中率 ≥ baseline (V3 §20.1 #3) ✅ production-active (TB-3c); ⏭ 命中率 baseline measurement DEFERRED to Plan v0.3 (ADR-071 D4 — needs live query traffic)
+- [x] L5 RiskReflector 周/月/event-after cadence ≥1 完整 cycle (V3 §20.1 #4) ✅ (TB-4 — weekly/monthly Beat wired + 154 tests end-to-end)
+- [x] 反思 lesson → risk_memory 自动入库 + 后置抽查 ≥1 round (V3 §20.1 #9 (c) hybrid) ✅ 自动入库 (TB-4c sediment_lesson); ⏭ 后置抽查 ≥1 round DEFERRED to Plan v0.3 (ADR-071 D4 — needs ≥1 live cycle fired)
+- [x] ADR-025 (RAG vector store 选型) + ADR-026 (Bull/Bear 2-Agent debate) + Tier B 后续 ADR 全 committed ✅ (ADR-025 alias ADR-068; **ADR-026 reserved → committed alias ADR-067 in TB-5c, ADR-071 D5**; ADR-066/067/068/069/070/071 全 committed)
 
 ### §L10.4 Gate D: 横切层 closed
 

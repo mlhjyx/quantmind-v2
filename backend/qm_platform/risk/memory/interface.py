@@ -14,6 +14,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+# BGE-M3 embedding dimension (ADR-064 D2 + ADR-068 D2 sustained). Single source
+# of truth — `embedding_service.py` + `repository.py` import this constant rather
+# than hardcoding `1024` (TB-3b reviewer LOW resolved in TB-5c batch: defined here
+# in the PURE interface module to avoid the embedding_service → interface circular
+# import). Aligned with the DDL `embedding VECTOR(1024)`.
+EMBEDDING_DIM: int = 1024
+
 
 class ActionTaken(StrEnum):
     """V3 §5.4 line 700 6-state action_taken — 对齐 risk_memory.action_taken CHECK constraint.
@@ -125,10 +132,10 @@ class RiskMemory:
                 f"discipline, sustained TB-4 RiskReflectorAgent prompt cap), "
                 f"got {len(self.lesson)} chars"
             )
-        if self.embedding is not None and len(self.embedding) != 1024:
+        if self.embedding is not None and len(self.embedding) != EMBEDDING_DIM:
             raise ValueError(
-                f"RiskMemory.embedding must be 1024-dim (BGE-M3 per ADR-064 D2), "
-                f"got {len(self.embedding)} dim"
+                f"RiskMemory.embedding must be {EMBEDDING_DIM}-dim (BGE-M3 per "
+                f"ADR-064 D2), got {len(self.embedding)} dim"
             )
 
     def context_snapshot_jsonable(self) -> dict[str, Any]:
