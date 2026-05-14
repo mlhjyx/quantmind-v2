@@ -5422,3 +5422,67 @@ PR #307+#308+#309+#311+#313+#315+#319+#320+#321+#322 + #324 (Plan v0.2) + #325-#
 TB-3d sub-PR scope = ADR-068 NEW + REGISTRY ADR-068 row + ADR-025 alias resolve status + count update + LL-162 NEW (本) + memory handoff Session 53+19 = 3 file delta atomic 1 PR per ADR-064 D5=inline 体例 sustained (sub-PR 9-doc-only minimum closure, smallest TB-3 sub-PR by file count).
 
 **关联**: ADR-068 NEW (TB-3 closure cumulative 4 sub-PR) + ADR-025 alias resolve via ADR-068 (Plan v0.2 §I prediction fulfilled) + Plan v0.2 §A TB-3 row closure marker (留 TB-5c batch per ADR-022 sustained) + 铁律 17 (DataPipeline 例外 read-only N/A 本 PR) / 22 (doc 同步) / 24 (单一职责) / 31 (Engine PURE nuance for stateful model wire documented) / 32 (Service 不 commit, RAG read-only path) / 33 (fail-loud) / 41 (timezone-aware throughout retention + RAG) / 42 (PR 治理) / LL-066 (DataPipeline subset 例外 N/A 本 PR) / LL-067 reviewer 体例 19 实证 cumulative / LL-098 X10 / LL-100 chunked SOP 第 6 case 实证 (TB-3 4-sub-PR cumulative) / LL-115 family / LL-141 (4-step post-merge ops N/A 本 doc-only PR) / LL-157 mock-conn schema drift (TB-3b test fixtures sustained 体例) / LL-159 4-step preflight / LL-160 synthetic Position TB-1c / LL-161 TB-2 closure pattern / V3 §5.4 Risk Memory RAG line 710 / §11.2 line 1228 RiskMemoryRAG location SSOT / §11.4 pure function / §14 #13 BGE-M3 OOM fail-mode (留 TB-5 verify) / §15.5 sim-to-real gap / §15.6 ≥7 scenarios (留 TB-5) / §16.1 32GB RAM budget / §16.2 $50/月 cap (BGE-M3 0 cost local) / 12th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+
+---
+
+## LL-163: V3 TB-4 Closure — 4-Sub-PR Chunked Pattern + AI-PR-Generation Flow Safety Design (option B) + 3-Layer Architecture 16th 实证 (2026-05-14, PR pending TB-4d sediment cycle + ADR-069 cumulative)
+
+**事件**: V3 Tier B Plan v0.2 TB-4 sprint (L5 RiskReflectorAgent + 5 维反思 + lesson 闭环 + AI-PR-generation flow) closure cumulative 4 sub-PR — TB-4a skeleton (RiskReflectorAgent + reflector_v1.yaml 5 维 prompt + V4-Pro wire, 57 tests) + TB-4b Beat cadence (Celery Beat 2 cadence + DingTalk push + docs/risk_reflections/ dir 体例, 37 tests) + TB-4c lesson loop (lesson→risk_memory 闭环 BGE-M3 embed + 4 边界 case prompt eval, 23 tests) + TB-4d closure (AI-PR-generation flow + webhook patch + candidate service + ADR-069 + LL-163, 37 tests). 154/154 tests cumulative PASS (<1s combined all mocked), 4 independent reviewer agents (23rd 实证 cumulative), 0 production code touch live trading path.
+
+**根因 / Patterns**:
+
+**Pattern 1: 4-Sub-PR chunked SOP (LL-100 体例 第 7 case 实证, scope-by-vertical-layer sustained)**:
+TB-4 sprint baseline ~2 weeks split into 4 vertical-layer sub-PRs:
+- TB-4a "skeleton" = Engine PURE layer (interface + agent V4-Pro wrapper + prompt yaml)
+- TB-4b "Beat cadence" = dispatch layer (3 cadence tasks + Beat schedule + DingTalk push + sediment dir 体例)
+- TB-4c "lesson loop" =闭环 layer (sediment_lesson BGE-M3 embed → RiskMemory → persist + 4 边界 case eval)
+- TB-4d "closure" = governance layer (AI-PR-generation flow + webhook patch + candidate service + ADR-069 + LL-163)
+
+第 7 case 实证 (S5 + S7 + S8 + S9 + TB-1 + TB-2 + TB-3 + TB-4 cumulative — LL-100 chunked SOP sustained as Tier B universal convention).
+
+**Pattern 2: 3-Layer Architecture 16th 实证 cumulative**:
+- Engine PURE side (`qm_platform/risk/reflector/` + `qm_platform/risk/execution/webhook_parser.py`): interface + agent + pure parser (0 IO / HMAC verify + command parse)
+- Application orchestration (`app/services/risk/risk_reflector_agent.py` + `reflection_candidate_service.py`): reflect + sediment_lesson + candidate sediment (file IO)
+- Beat dispatch (`app/tasks/risk_reflector_tasks.py`): 3 cadence + markdown sediment + DingTalk push + transaction owner (铁律 32)
+- Explicit-trigger tool (`scripts/generate_risk_candidate_pr.py`): the ONLY git-touching component
+
+16th cumulative 实证 (S5 + S7 + S8×4 + S9×2 + S10 + TB-1×3 + TB-2×4 + TB-3×4 + TB-4×4).
+
+**Pattern 3: AI-PR-generation flow safety design — "Webhook sediment + scripts/ PR 生成器" (option B, user 决议)**:
+V3 §8.3 line 967 "user reply approve → 系统生成 PR (CC 自动 commit + push)" is the deepest user→AI→repo automation chain in V3 implementation. CC presented 3 safety-boundary options via AskUserQuestion (PR #345 plan), user chose **option B**:
+- **Option A** (webhook sediment only) — safest but 闭环 incomplete (candidate sits in risk_findings/ with no PR mechanism)
+- **Option C** (webhook handler itself does git commit+push) — REJECTED: production Celery process running git is fragile + webhook hot path mutating repo is largest 红线 surface
+- **Option B** (chosen) — webhook handler stays pure (0 git / 0 .env); the `scripts/generate_risk_candidate_pr.py` is the ONLY git-touching component, behind explicit human/CC trigger, with a **red-line self-check** that aborts if the staged change set touches anything outside `docs/research-kb/risk_findings/`; the script does branch+commit+push but **NEVER merge** — user 显式 merge (LL-098 X10 sustained)
+
+**Key insight**: when V3 spec describes an automation flow ("系统生成 PR"), the SAFE implementation decomposes it into (a) a pure-sediment hot path (webhook handler, 0 side effects) + (b) an explicit-trigger git-touching tool with a red-line self-check gate. The flow is "closed" without the webhook hot path ever touching git/.env. Sustained pattern for future automation flows (TB-5+ cutover prep / 横切层 Plan v0.3 automation).
+
+**Pattern 4: embedding 选型 spec-drift surfaced proactively (BGE-M3 NOT V4-Flash)**:
+V3 §8.3 line 962 + §16.2 line 727 + Plan v0.2 §A TB-4 row cite "V4-Flash embedding" for the lesson→risk_memory loop — but ADR-064 D2 + ADR-068 D2 superseded this with BGE-M3 local embedding lock. CC surfaced this proactively at TB-4c 起手 (not waiting for reviewer). TB-4c sustains BGE-M3; the "V4-Flash embedding" V3 spec cite is a pre-ADR-064 artifact, doc amend 留 TB-5c batch per ADR-022 反 retroactive content edit.
+
+**Key insight**: V3 spec text written pre-ADR can drift from ADR decisions. Sprint 起手 fresh-read SOP should cross-check V3 spec citations against later ADR decisions (sustained 铁律 45 + ADR-037 fresh-read SOP — extend to "V3 spec vs ADR cross-check" when an ADR post-dates the V3 spec section).
+
+**Pattern 5: candidate_id namespace prefix 反 semantic pollution (reviewer MEDIUM)**:
+risk_memory.event_type is shared between real risk events (LimitDown/RapidDrop) and reflection lessons. TB-4c initial used bare "WeeklyReflection"/"MonthlyReflection" — reviewer surfaced semantic pollution (RAG retrieve_similar without event_type filter mixes reflections with real events). Fix: `Reflection:` namespace prefix (`Reflection:Weekly` / `Reflection:Monthly` / `Reflection:Event`). event_reflection caller-supplied event_type stays unprefixed (a reflection ABOUT a LimitDown IS relevant when RAG-querying LimitDown).
+
+**Key insight**: when a shared vocab column (event_type) gains a new category of values, namespace-prefix the new category 反 silent semantic pollution of existing consumers.
+
+**Pattern 6: dual import-root isinstance-mismatch (reviewer MEDIUM, surfaced real failure)**:
+`.pth` dual root makes `qm_platform.*` and `backend.qm_platform.*` distinct module objects. TB-4c risk_reflector_tasks.py initially mixed roots (module-level `qm_platform.*` + lazy factory `backend.qm_platform.*`). Reviewer flagged as latent isinstance-mismatch risk. The fix (align to `backend.qm_platform.*`) surfaced a REAL test failure (`isinstance(inp, ReflectionInput)` False) once SUT switched root — confirming the latent risk was genuine, not theoretical.
+
+**Key insight**: in dual-import-root projects, a module + its tests MUST use the SAME root consistently — mixed roots produce latent isinstance failures that surface only when a strict type check is added. Sustained: align test imports to SUT's root.
+
+**Pattern 7: Reviewer 2nd-set-of-eyes cumulative 23 实证 sustained**:
+TB-4 4 sub-PR × 4 reviewer agents:
+- TB-4a #343 APPROVE (2 MEDIUM applied: brace escape + direct response.content)
+- TB-4b #344 REQUEST CHANGES → APPROVE (1 HIGH collision analysis + 2 MEDIUM + 1 LOW applied)
+- TB-4c #345 APPROVE (2 MEDIUM import-root + event_type prefix + 1 LOW 501-char test applied; 2 LOW reviewer-confirmed no-change)
+- TB-4d 本 PR pending reviewer spawn (23rd)
+
+19 prior + 4 TB-4 = 23 cumulative within session 53 (PR #327-#346). Sustained LL-067 reviewer 体例 + feedback_code_pr_workflow.md 9-step AI 自主闭环 — reviewer-fix cycle applied 8 instances pre-merge across TB-4 cycle.
+
+**Sediment 触发模式 (13th consecutive sediment-in-same-session enforcement)**:
+PR #307~#346 cumulative = **40 PR cumulative** 反 deepseek-style sediment gap sustained ENFORCEMENT pattern.
+
+TB-4d sub-PR scope = webhook_parser.py MOD + reflection_candidate_service.py NEW + scripts/generate_risk_candidate_pr.py NEW + risk_reflector_tasks.py MOD (_render_dingtalk_summary) + docs/research-kb/risk_findings/README.md NEW + test_reflection_candidate_flow.py NEW (37 tests) + ADR-069 NEW + REGISTRY ADR-069 row + LL-163 NEW (本) = 9 file delta atomic 1 PR per ADR-064 D5=inline 体例 sustained.
+
+**关联**: ADR-069 NEW (TB-4 closure cumulative 4 sub-PR) + Plan v0.2 §A TB-4 row closure marker (留 TB-5c batch per ADR-022 sustained) + V3 §8.3/§16.2 "V4-Flash embedding" → BGE-M3 amend (留 TB-5c batch per ADR-022) + 铁律 17 (DataPipeline subset 例外 LL-066 TB-4c risk_memory INSERT) / 22 (doc 同步) / 24 (单一职责) / 31 (Engine PURE — reflector + webhook_parser) / 32 (Service 不 commit, task transaction owner) / 33 (fail-loud — ReflectorAgentError / ReflectionCandidateError / red-line self-check abort) / 35 (secrets — 0 .env touch in webhook + script red-line) / 41 (tz-aware) / 42 (PR 治理) / 44 X9 (Beat restart, TB-4b runbook) / LL-066 (DataPipeline subset 例外) / LL-067 reviewer 体例 23 实证 cumulative / LL-097 (Beat restart) / LL-098 X10 (反 silent forward-progress — AI-PR-generation flow: script generates PR, user merges, NEVER auto-merge) / LL-100 chunked SOP 第 7 case 实证 / LL-115 family / LL-141 (4-step post-merge ops) / LL-151 (S8 webhook 体例 sustained) / LL-157 (V4-Pro timeout 反 silent skip) / LL-159 4-step preflight / LL-160 DI factory / LL-161 TB-2 closure / LL-162 TB-3 closure / V3 §8 (L5 反思闭环层) / §8.1-8.4 / §11.2 line 1228 / §11.4 / §14 #13 / §16.2 / 13th consecutive sediment-in-same-session enforcement / 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
