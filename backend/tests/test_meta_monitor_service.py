@@ -1,14 +1,16 @@
-"""Unit tests for MetaMonitorService — V3 §13.3 元告警 Application orchestration (HC-1b).
+"""Unit tests for MetaMonitorService — V3 §13.3 + §14 元告警 Application orchestration (HC-1b + HC-2b3).
 
 覆盖:
-  - collect_and_evaluate: 5 rules always evaluated; healthy system → 0 triggered
+  - collect_and_evaluate: 7 polled rules always evaluated; healthy system → 0 triggered
   - _collect_litellm: real query → LiteLLMCallWindowSnapshot (window param + counts)
   - _collect_staged: real query → StagedPlanWindowSnapshot (plan_id str, pending_since)
   - _collect_dingtalk (HC-1b3): real alert_dedup.last_push_ok query — failed/ok/no-row
   - _collect_news (HC-1b3): real Redis qm:news:last_run_stats — 0-success/success/
     absent/Redis-error fail-soft
+  - _collect_pg_health (HC-2b3 G3): real pg_stat_activity query — healthy/idle-堆积/null-row
+  - _collect_market_crisis (HC-2b3 G4): real index_daily + klines_daily query — crisis/calm/no-data
   - _collect_l1_heartbeat: no-signal (DEFERRED per HC-1b3 Finding — no prod subscriber)
-  - LiteLLM failure / STAGED overdue → respective rule triggered
+  - LiteLLM failure / STAGED overdue / PG idle 堆积 / Crisis regime → respective rule triggered
   - push_triggered + _push_via_channel_chain (V3 §13.3 channel fallback chain):
     主 DingTalk terminal (sent/dedup_suppressed/alerts_disabled) → no escalation;
     no_webhook / httpx.HTTPError → escalate email; email not-delivered/raises →
@@ -54,6 +56,12 @@ class _MockCursor:
             return self._conn.litellm_row
         if "alert_dedup" in self._last_sql:
             return self._conn.dingtalk_row
+        if "pg_stat_activity" in self._last_sql:
+            return self._conn.pg_health_row
+        if "index_daily" in self._last_sql:
+            return self._conn.index_return_row
+        if "klines_daily" in self._last_sql:
+            return self._conn.limit_down_row
         return None
 
     def fetchall(self) -> list[tuple[Any, ...]]:
@@ -64,10 +72,19 @@ class _MockCursor:
     def close(self) -> None:
         pass
 
+    # context-manager support for `with conn.cursor() as cur:` (market_indicators_query
+    # uses plain cur.close() in finally; this is harmless extra surface for safety).
+    def __enter__(self) -> _MockCursor:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
 
 class _MockConn:
     """Mock conn: litellm_row (llm_call_log) + staged_rows (execution_plans) +
-    dingtalk_row (alert_dedup last-push-outcome query)."""
+    dingtalk_row (alert_dedup) + pg_health_row (pg_stat_activity) +
+    index_return_row (index_daily) + limit_down_row (klines_daily)."""
 
     def __init__(
         self,
@@ -75,10 +92,19 @@ class _MockConn:
         litellm_row: tuple[int, int] = (0, 0),
         staged_rows: list[tuple[Any, ...]] | None = None,
         dingtalk_row: tuple[Any, ...] | None = None,
+        pg_health_row: tuple[int, int] | None = (0, 0),
+        index_return_row: tuple[Any, ...] | None = None,
+        limit_down_row: tuple[Any, ...] | None = None,
     ) -> None:
         self.litellm_row = litellm_row
         self.staged_rows = staged_rows or []
         self.dingtalk_row = dingtalk_row  # None = no real-POST row → not triggered
+        # pg_health_row: (idle_in_tx, total); default (0,0) = healthy PG
+        self.pg_health_row = pg_health_row
+        # index_return_row: (pct_change,) in % units; None = no index_daily row → no signal
+        self.index_return_row = index_return_row
+        # limit_down_row: (count,); None = no klines_daily data → no signal
+        self.limit_down_row = limit_down_row
         self.executed: list[tuple[str, tuple[Any, ...]]] = []
 
     def cursor(self) -> _MockCursor:
@@ -115,18 +141,21 @@ def _by_rule(alerts: list[MetaAlert], rule_id: MetaAlertRuleId) -> MetaAlert:
 # ── collect_and_evaluate ──
 
 
-def test_collect_and_evaluate_returns_5_alerts_one_per_rule() -> None:
+def test_collect_and_evaluate_returns_7_alerts_one_per_rule() -> None:
     svc = _make_svc()
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
-    assert len(alerts) == 5
-    # collect_and_evaluate runs the 5 POLLED rules; RISK_REFLECTOR_FAILED is
-    # event-emitted (HC-2b G5 — not polled, no evaluate_* fn) so correctly absent.
+    assert len(alerts) == 7
+    # collect_and_evaluate runs the 7 POLLED rules; RISK_REFLECTOR_FAILED and
+    # BROKER_PLAN_STUCK are event-emitted (HC-2b G5 / HC-2b2 G7 — not polled, no
+    # evaluate_* fn) so correctly absent.
     assert {a.rule_id for a in alerts} == {
         MetaAlertRuleId.L1_HEARTBEAT_STALE,
         MetaAlertRuleId.LITELLM_FAILURE_RATE,
         MetaAlertRuleId.DINGTALK_PUSH_FAILED,
         MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT,
         MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE,
+        MetaAlertRuleId.PG_POOL_EXHAUSTED,
+        MetaAlertRuleId.MARKET_CRISIS_REGIME,
     }
 
 
@@ -179,6 +208,24 @@ def test_collect_and_evaluate_dingtalk_and_news_real_triggers() -> None:
     alerts = svc.collect_and_evaluate(conn, now=_NOW)
     assert _by_rule(alerts, MetaAlertRuleId.DINGTALK_PUSH_FAILED).triggered is True
     assert _by_rule(alerts, MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT).triggered is True
+
+
+def test_collect_and_evaluate_pg_idle_buildup_triggers_rule() -> None:
+    # HC-2b3 G3: pg_stat_activity 60 idle-in-tx > 50 threshold → PG_POOL_EXHAUSTED triggers
+    svc = _make_svc()
+    alerts = svc.collect_and_evaluate(_MockConn(pg_health_row=(60, 90)), now=_NOW)
+    pg_alert = _by_rule(alerts, MetaAlertRuleId.PG_POOL_EXHAUSTED)
+    assert pg_alert.triggered is True
+    assert pg_alert.severity is MetaAlertSeverity.P0
+
+
+def test_collect_and_evaluate_market_crisis_triggers_rule() -> None:
+    # HC-2b3 G4: index_daily -8% (pct_change -8.0 → -0.08) → MARKET_CRISIS_REGIME triggers
+    svc = _make_svc()
+    alerts = svc.collect_and_evaluate(_MockConn(index_return_row=(-8.0,)), now=_NOW)
+    crisis_alert = _by_rule(alerts, MetaAlertRuleId.MARKET_CRISIS_REGIME)
+    assert crisis_alert.triggered is True
+    assert crisis_alert.severity is MetaAlertSeverity.P0
 
 
 # ── _collect_litellm ──
@@ -291,6 +338,63 @@ def test_collect_news_redis_error_fail_soft() -> None:
     svc = _make_svc(_MockRedis(raise_on_get=True))
     snapshot = svc._collect_news(_NOW)
     assert snapshot.timed_out_sources == 0
+
+
+# ── _collect_pg_health (HC-2b3 G3 — real pg_stat_activity query) ──
+
+
+def test_collect_pg_health_healthy() -> None:
+    snapshot = MetaMonitorService._collect_pg_health(_MockConn(pg_health_row=(2, 8)), _NOW)
+    assert snapshot.idle_in_transaction == 2
+    assert snapshot.total_connections == 8
+    assert snapshot.now == _NOW
+
+
+def test_collect_pg_health_idle_buildup() -> None:
+    snapshot = MetaMonitorService._collect_pg_health(_MockConn(pg_health_row=(75, 100)), _NOW)
+    assert snapshot.idle_in_transaction == 75
+    assert snapshot.total_connections == 100
+
+
+def test_collect_pg_health_null_row_defaults_zero() -> None:
+    # fetchone returns None → defensive default 0/0 (healthy)
+    snapshot = MetaMonitorService._collect_pg_health(_MockConn(pg_health_row=None), _NOW)
+    assert snapshot.idle_in_transaction == 0
+    assert snapshot.total_connections == 0
+
+
+# ── _collect_market_crisis (HC-2b3 G4 — real index_daily + klines_daily query) ──
+
+
+def test_collect_market_crisis_no_data_both_none() -> None:
+    # no index_daily / klines_daily rows → both legs None → snapshot all-None
+    snapshot = MetaMonitorService._collect_market_crisis(_MockConn(), _NOW)
+    assert snapshot.index_return is None
+    assert snapshot.limit_down_count is None
+    assert snapshot.now == _NOW
+
+
+def test_collect_market_crisis_index_return_converted_to_fraction() -> None:
+    # index_daily.pct_change -7.5 (% units) → index_return -0.075 (fraction)
+    snapshot = MetaMonitorService._collect_market_crisis(
+        _MockConn(index_return_row=(-7.5,)), _NOW
+    )
+    assert snapshot.index_return == pytest.approx(-0.075)
+
+
+def test_collect_market_crisis_limit_down_count() -> None:
+    snapshot = MetaMonitorService._collect_market_crisis(
+        _MockConn(limit_down_row=(623,)), _NOW
+    )
+    assert snapshot.limit_down_count == 623
+
+
+def test_collect_market_crisis_both_legs_populated() -> None:
+    snapshot = MetaMonitorService._collect_market_crisis(
+        _MockConn(index_return_row=(-8.2,), limit_down_row=(710,)), _NOW
+    )
+    assert snapshot.index_return == pytest.approx(-0.082)
+    assert snapshot.limit_down_count == 710
 
 
 # ── push_triggered / _push_via_channel_chain (V3 §13.3 channel fallback chain) ──

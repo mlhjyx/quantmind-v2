@@ -7,7 +7,12 @@ Coverage (沿用 sub-PR 14 fundamental_ingest_tasks test 体例):
 - engine + cache singletons cache across calls (反 per-tick re-init)
 - Beat schedule entry exists in CELERY_BEAT_SCHEDULE with correct cron + queue
 - task is included in celery_app imports list (反 Beat dispatch → unregistered error)
-- Cache set_batch invoked with correct TTL=300
+- Cache set_batch invoked with correct TTL=360
+
+HC-2b3 G4 update: _build_market_indicators de-stubbed (index_return / limit_down_count
+now query index_daily / klines_daily via market_indicators_query). Tests that call
+.run() monkeypatch _build_market_indicators with `_stub_market_indicators` so the smoke
+tests stay DB-independent; the de-stub query path is tested in test_market_indicators_query.
 
 关联铁律: 32 (caller 真**事务边界**) / 33 (fail-loud) / 44 X9 (Beat restart enforce)
 关联 ADR: ADR-055 (S7 audit fix wire addendum)
@@ -19,10 +24,23 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from qm_platform.risk.dynamic_threshold.engine import MarketIndicators
 
 from app.tasks import dynamic_threshold_tasks as dtt
 from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE
 from app.tasks.celery_app import celery_app
+
+
+def _stub_market_indicators() -> MarketIndicators:
+    """All-None MarketIndicators stub — keeps .run() smoke tests DB-independent.
+
+    HC-2b3 G4 de-stubbed the real _build_market_indicators (now queries
+    index_daily / klines_daily). Smoke tests monkeypatch this in so engine
+    behaviour (CALM default on all-None) is exercised without a live DB.
+    """
+    return MarketIndicators(
+        index_return=None, limit_down_count=None, northbound_flow=None, regime=None
+    )
 
 # §1 Task registration
 
@@ -77,6 +95,8 @@ def test_compute_returns_calm_with_stub_inputs(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(dtt, "_cache", mem_cache)
     # Reset engine singleton to pick up clean state
     monkeypatch.setattr(dtt, "_engine", None)
+    # HC-2b3 G4: _build_market_indicators now hits the DB — stub it for the smoke test
+    monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
 
     result = dtt.compute_dynamic_thresholds.run()
 
@@ -94,6 +114,7 @@ def test_compute_populates_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     mem_cache = InMemoryThresholdCache()
     monkeypatch.setattr(dtt, "_cache", mem_cache)
     monkeypatch.setattr(dtt, "_engine", None)
+    monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
 
     dtt.compute_dynamic_thresholds.run()
 
@@ -123,6 +144,7 @@ def test_cache_set_batch_called_with_ttl_360(monkeypatch: pytest.MonkeyPatch) ->
     mock_cache = MagicMock()
     monkeypatch.setattr(dtt, "_cache", mock_cache)
     monkeypatch.setattr(dtt, "_engine", None)
+    monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
 
     dtt.compute_dynamic_thresholds.run()
 
@@ -142,6 +164,7 @@ def test_cache_set_batch_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> 
     mock_cache.set_batch.side_effect = RuntimeError("redis OOM")
     monkeypatch.setattr(dtt, "_cache", mock_cache)
     monkeypatch.setattr(dtt, "_engine", None)
+    monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
 
     with pytest.raises(RuntimeError, match="redis OOM"):
         dtt.compute_dynamic_thresholds.run()
@@ -150,13 +173,14 @@ def test_cache_set_batch_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> 
 def test_stub_warning_logged_once(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """P2-6: stub posture warning fires once + is silent on subsequent ticks."""
+    """P2-6: partial-stub posture warning fires once + is silent on subsequent ticks."""
     from qm_platform.risk.dynamic_threshold.cache import InMemoryThresholdCache
 
     mem_cache = InMemoryThresholdCache()
     monkeypatch.setattr(dtt, "_cache", mem_cache)
     monkeypatch.setattr(dtt, "_engine", None)
     monkeypatch.setattr(dtt, "_stub_warned", False)  # reset
+    monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
 
     import logging
 
@@ -165,20 +189,46 @@ def test_stub_warning_logged_once(
         dtt.compute_dynamic_thresholds.run()
         dtt.compute_dynamic_thresholds.run()
 
-    stub_warnings = [r for r in caplog.records if "STUB inputs active" in r.message]
+    # HC-2b3 G4: warning text now "partial STUB inputs active" (market indicators
+    # wired, _build_stock_metrics still stub).
+    stub_warnings = [r for r in caplog.records if "partial STUB inputs active" in r.message]
     assert len(stub_warnings) == 1  # only first tick warns
 
 
-# §4 Build-helper unit tests (反 silent stub drift in follow-up sub-PR)
+# §4 Build-helper unit tests
 
 
-def test_build_market_indicators_stub_returns_all_none() -> None:
-    """Current sub-PR scope: all fields None → engine returns CALM default."""
+def test_build_market_indicators_wires_market_crisis_indicators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HC-2b3 G4: _build_market_indicators wires index_return + limit_down_count
+    from _fetch_market_crisis_indicators; regime from _fetch_latest_regime;
+    northbound_flow stays stub (None)."""
+    monkeypatch.setattr(dtt, "_fetch_market_crisis_indicators", lambda: (-0.06, 312))
+    monkeypatch.setattr(dtt, "_fetch_latest_regime", lambda: "bear")
+
     ind = dtt._build_market_indicators()
-    assert ind.index_return is None
-    assert ind.limit_down_count is None
-    assert ind.northbound_flow is None
-    assert ind.regime is None
+    assert ind.index_return == -0.06
+    assert ind.limit_down_count == 312
+    assert ind.regime == "bear"
+    assert ind.northbound_flow is None  # 留 TB-5 (no moneyflow_hsgt table)
+
+
+def test_fetch_market_crisis_indicators_fail_soft_to_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HC-2b3 G4: _fetch_market_crisis_indicators fail-softs to (None, None) on
+    DB error (沿用 _fetch_latest_regime 体例 — degrades to CALM, 反 crash Beat tick)."""
+
+    def _boom() -> object:
+        raise RuntimeError("simulated DB connection failure")
+
+    # get_sync_conn is imported inside the function from app.services.db — patch source
+    monkeypatch.setattr("app.services.db.get_sync_conn", _boom)
+
+    index_return, limit_down_count = dtt._fetch_market_crisis_indicators()
+    assert index_return is None
+    assert limit_down_count is None
 
 
 def test_build_stock_metrics_stub_returns_empty() -> None:

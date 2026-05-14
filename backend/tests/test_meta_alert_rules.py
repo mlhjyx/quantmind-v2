@@ -1,11 +1,14 @@
-"""Unit tests for meta_alert_rules + meta_alert_interface — V3 §13.3 元告警 (HC-1a).
+"""Unit tests for meta_alert_rules + meta_alert_interface — V3 §13.3 + §14 元告警 (HC-1a + HC-2b3).
 
-覆盖 5 PURE rule eval + interface 契约校验:
+覆盖 7 PURE polled rule eval + interface 契约校验:
   - evaluate_l1_heartbeat: None / 边界 300s / stale / healthy / future-tick error
   - evaluate_litellm_failure_rate: 0-call / 边界 50% / >50% / <50% / 计数校验 error
   - evaluate_dingtalk_push: not-attempted / ok / failed
   - evaluate_news_sources_timeout: all-timeout / partial / none / 计数校验 error
   - evaluate_staged_overdue: empty / 边界 2100s / overdue / non-PENDING ignored / worst-pick
+  - evaluate_pg_health (HC-2b3 G3): 边界 50 / >50 / 0 / 计数校验 error (V3 §14 mode 3)
+  - evaluate_market_crisis (HC-2b3 G4): both-None / index 边界 -7% / limit_down 边界 500 /
+    both-leg / one-None / 计数校验 error (V3 §14 mode 9)
   - interface: tz-aware enforce (铁律 41) / RULE_SEVERITY SSOT / MetaAlert.to_jsonable
 """
 
@@ -18,16 +21,21 @@ import pytest
 from backend.qm_platform.risk.metrics.meta_alert_interface import (
     L1_HEARTBEAT_STALE_THRESHOLD_S,
     LITELLM_FAILURE_RATE_THRESHOLD,
+    MARKET_CRISIS_INDEX_RETURN_THRESHOLD,
+    MARKET_CRISIS_LIMIT_DOWN_THRESHOLD,
+    PG_IDLE_IN_TX_THRESHOLD,
     RULE_SEVERITY,
     STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S,
     DingTalkPushSnapshot,
     L1HeartbeatSnapshot,
     LiteLLMCallWindowSnapshot,
+    MarketCrisisSnapshot,
     MetaAlert,
     MetaAlertError,
     MetaAlertRuleId,
     MetaAlertSeverity,
     NewsSourceWindowSnapshot,
+    PGHealthSnapshot,
     StagedPlanState,
     StagedPlanWindowSnapshot,
 )
@@ -35,7 +43,9 @@ from backend.qm_platform.risk.metrics.meta_alert_rules import (
     evaluate_dingtalk_push,
     evaluate_l1_heartbeat,
     evaluate_litellm_failure_rate,
+    evaluate_market_crisis,
     evaluate_news_sources_timeout,
+    evaluate_pg_health,
     evaluate_staged_overdue,
 )
 
@@ -319,6 +329,183 @@ def test_staged_naive_pending_since_raises() -> None:
         )
 
 
+# ── Rule 6: evaluate_pg_health (HC-2b3 G3 — V3 §14 mode 3 PG OOM / lock) ──
+
+
+def test_pg_health_boundary_exactly_threshold_not_triggered() -> None:
+    # exactly 50 idle-in-tx → NOT triggered (rule uses strict >)
+    alert = evaluate_pg_health(
+        PGHealthSnapshot(
+            idle_in_transaction=PG_IDLE_IN_TX_THRESHOLD, total_connections=60, now=_NOW
+        )
+    )
+    assert PG_IDLE_IN_TX_THRESHOLD == 50
+    assert alert.triggered is False
+    assert alert.rule_id is MetaAlertRuleId.PG_POOL_EXHAUSTED
+    assert alert.severity is MetaAlertSeverity.P0
+    assert "healthy" in alert.detail
+
+
+def test_pg_health_just_over_threshold_triggered() -> None:
+    alert = evaluate_pg_health(
+        PGHealthSnapshot(
+            idle_in_transaction=PG_IDLE_IN_TX_THRESHOLD + 1, total_connections=80, now=_NOW
+        )
+    )
+    assert alert.triggered is True
+    assert alert.severity is MetaAlertSeverity.P0
+    assert "connection pool" in alert.detail
+    assert alert.observed_at == _NOW
+
+
+def test_pg_health_zero_idle_not_triggered() -> None:
+    alert = evaluate_pg_health(
+        PGHealthSnapshot(idle_in_transaction=0, total_connections=5, now=_NOW)
+    )
+    assert alert.triggered is False
+
+
+def test_pg_health_many_idle_triggered() -> None:
+    alert = evaluate_pg_health(
+        PGHealthSnapshot(idle_in_transaction=100, total_connections=120, now=_NOW)
+    )
+    assert alert.triggered is True
+    assert "100" in alert.detail
+
+
+def test_pg_health_negative_idle_raises() -> None:
+    with pytest.raises(MetaAlertError, match="idle_in_transaction"):
+        PGHealthSnapshot(idle_in_transaction=-1, total_connections=5, now=_NOW)
+
+
+def test_pg_health_negative_total_raises() -> None:
+    with pytest.raises(MetaAlertError, match="total_connections"):
+        PGHealthSnapshot(idle_in_transaction=0, total_connections=-1, now=_NOW)
+
+
+def test_pg_health_idle_exceeds_total_raises() -> None:
+    with pytest.raises(MetaAlertError, match="cannot exceed"):
+        PGHealthSnapshot(idle_in_transaction=10, total_connections=5, now=_NOW)
+
+
+def test_pg_health_naive_now_raises() -> None:
+    with pytest.raises(MetaAlertError, match="tz-aware"):
+        PGHealthSnapshot(
+            idle_in_transaction=0, total_connections=5, now=datetime(2026, 5, 14, 10, 0, 0)
+        )
+
+
+# ── Rule 7: evaluate_market_crisis (HC-2b3 G4 — V3 §14 mode 9 千股跌停极端 regime) ──
+
+
+def test_market_crisis_both_none_not_triggered() -> None:
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=None, limit_down_count=None, now=_NOW)
+    )
+    assert alert.triggered is False
+    assert alert.rule_id is MetaAlertRuleId.MARKET_CRISIS_REGIME
+    assert alert.severity is MetaAlertSeverity.P0
+    assert "no signal" in alert.detail
+
+
+def test_market_crisis_index_boundary_exactly_threshold_triggered() -> None:
+    # exactly -7% → triggered (rule uses <=)
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(
+            index_return=MARKET_CRISIS_INDEX_RETURN_THRESHOLD, limit_down_count=10, now=_NOW
+        )
+    )
+    assert MARKET_CRISIS_INDEX_RETURN_THRESHOLD == -0.07
+    assert alert.triggered is True
+    assert "大盘" in alert.detail
+
+
+def test_market_crisis_index_just_above_threshold_not_triggered() -> None:
+    # -6.99% → NOT triggered (above the -7% threshold)
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=-0.0699, limit_down_count=10, now=_NOW)
+    )
+    assert alert.triggered is False
+    assert "within bounds" in alert.detail
+    # both legs present → detail shows both numeric values, no "n/a" placeholder
+    assert "n/a" not in alert.detail
+
+
+def test_market_crisis_index_deep_drop_triggered() -> None:
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=-0.09, limit_down_count=None, now=_NOW)
+    )
+    assert alert.triggered is True
+    assert "Crisis Mode" in alert.detail
+
+
+def test_market_crisis_limit_down_boundary_exactly_threshold_not_triggered() -> None:
+    # exactly 500 跌停 → NOT triggered (rule uses strict >)
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(
+            index_return=-0.01, limit_down_count=MARKET_CRISIS_LIMIT_DOWN_THRESHOLD, now=_NOW
+        )
+    )
+    assert MARKET_CRISIS_LIMIT_DOWN_THRESHOLD == 500
+    assert alert.triggered is False
+
+
+def test_market_crisis_limit_down_just_over_threshold_triggered() -> None:
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(
+            index_return=-0.01, limit_down_count=MARKET_CRISIS_LIMIT_DOWN_THRESHOLD + 1, now=_NOW
+        )
+    )
+    assert alert.triggered is True
+    assert "跌停家数 501" in alert.detail
+
+
+def test_market_crisis_zero_limit_down_not_triggered() -> None:
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=0.01, limit_down_count=0, now=_NOW)
+    )
+    assert alert.triggered is False
+
+
+def test_market_crisis_both_legs_hit_detail_has_and() -> None:
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=-0.08, limit_down_count=600, now=_NOW)
+    )
+    assert alert.triggered is True
+    assert " AND " in alert.detail
+    assert "大盘" in alert.detail
+    assert "跌停家数" in alert.detail
+
+
+def test_market_crisis_one_leg_none_other_hit_triggered() -> None:
+    # index None, limit_down over threshold → still triggered (OR semantics)
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=None, limit_down_count=700, now=_NOW)
+    )
+    assert alert.triggered is True
+
+
+def test_market_crisis_one_leg_none_other_safe_not_triggered() -> None:
+    # index None, limit_down safe → not triggered; detail shows n/a for missing leg
+    alert = evaluate_market_crisis(
+        MarketCrisisSnapshot(index_return=None, limit_down_count=10, now=_NOW)
+    )
+    assert alert.triggered is False
+    assert "n/a" in alert.detail
+
+
+def test_market_crisis_negative_limit_down_raises() -> None:
+    with pytest.raises(MetaAlertError, match="limit_down_count"):
+        MarketCrisisSnapshot(index_return=-0.01, limit_down_count=-1, now=_NOW)
+
+
+def test_market_crisis_naive_now_raises() -> None:
+    with pytest.raises(MetaAlertError, match="tz-aware"):
+        MarketCrisisSnapshot(
+            index_return=-0.08, limit_down_count=600, now=datetime(2026, 5, 14, 10, 0, 0)
+        )
+
+
 # ── interface: RULE_SEVERITY SSOT + MetaAlert contract ──
 
 
@@ -328,6 +515,9 @@ def test_rule_severity_ssot_news_is_p1_others_p0() -> None:
     assert RULE_SEVERITY[MetaAlertRuleId.LITELLM_FAILURE_RATE] is MetaAlertSeverity.P0
     assert RULE_SEVERITY[MetaAlertRuleId.DINGTALK_PUSH_FAILED] is MetaAlertSeverity.P0
     assert RULE_SEVERITY[MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE] is MetaAlertSeverity.P0
+    # HC-2b3 G3/G4 — both P0 per V3 §14 mode 3 / mode 9
+    assert RULE_SEVERITY[MetaAlertRuleId.PG_POOL_EXHAUSTED] is MetaAlertSeverity.P0
+    assert RULE_SEVERITY[MetaAlertRuleId.MARKET_CRISIS_REGIME] is MetaAlertSeverity.P0
     # every rule id has a severity mapping
     assert set(RULE_SEVERITY) == set(MetaAlertRuleId)
 

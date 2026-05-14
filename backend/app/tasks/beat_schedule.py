@@ -343,9 +343,11 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 反 hard collision: outbox 30s + dynamic-threshold/l4-sweep (`9-14`) + news cron
     #   (minute=0) + regime/reflector + daily-metrics 16:30 — all cadence-different OR
     #   Beat sequential dispatch + Worker --pool=solo tolerates (cheap 2-query task).
-    # task body: MetaMonitorService.collect_and_evaluate (2 real collector llm_call_log +
-    #   execution_plans, 3 no-signal L1/DingTalk/News → HC-1b3 real wire) → push_triggered
-    #   via channel fallback chain (主 DingTalk → 备 email → 极端 log-P0, HC-1b2).
+    # task body: MetaMonitorService.collect_and_evaluate (7 polled rules — 6 real
+    #   collector: llm_call_log + execution_plans + alert_dedup + Redis news-stats +
+    #   pg_stat_activity (HC-2b3 G3) + index_daily/klines_daily (HC-2b3 G4); 1
+    #   no-signal: L1 heartbeat) → push_triggered via channel fallback chain
+    #   (主 DingTalk → 备 email → 极端 log-P0, HC-1b2).
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
     #   per docs/runbook/cc_automation/v3_hc_1b_meta_monitor_beat_wire.md (LL-141 4-step).
     "meta-monitor-tick": {

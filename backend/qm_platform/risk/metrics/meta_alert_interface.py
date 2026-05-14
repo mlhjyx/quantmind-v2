@@ -57,6 +57,20 @@ STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S: int = 2100
 # 此前 0 retry 路径 (l4_sweep 只扫 PENDING_CONFIRM).
 BROKER_PLAN_STUCK_OVERDUE_THRESHOLD_S: int = 300
 
+# HC-2b3 G3 (V3 §14 mode 3): PG OOM / lock — pg_stat_activity idle-in-transaction
+# 连接数超 50 = connection pool 濒临耗尽信号 (slow query 堆积 / 事务开启未提交
+# 泄漏). 对齐 V3 §14 mode 3 检测 "pg_stat_activity > 50 idle in tx".
+PG_IDLE_IN_TX_THRESHOLD: int = 50
+
+# HC-2b3 G4 (V3 §14 mode 9): 千股跌停极端 regime — 大盘 -7% OR 跌停家数 > 500.
+# 注: 区别于 dynamic_threshold/engine.py §6.1 Crisis 阈值 (-5% / >200, L3 阈值收紧
+# 触发) — V3 §14 mode 9 是更极端的尾部 (Crisis Mode 触发: alert dedup + portfolio
+# push + News 减频, §14.2). 两 "Crisis" 同名不同 severity tier (HC-2b3 Finding #5
+# spec-internal divergence — V3_DESIGN:754 §6.1 vs :1455 §14, 留 HC-4c batch closure
+# 标注 sustained HC-2a §4 体例). index_return 为 fraction (-0.07 = -7%).
+MARKET_CRISIS_INDEX_RETURN_THRESHOLD: float = -0.07
+MARKET_CRISIS_LIMIT_DOWN_THRESHOLD: int = 500
+
 
 class MetaAlertSeverity(StrEnum):
     """元告警 severity — 对齐 V3 §13.3 + §14 失败模式表 per-mode 真值.
@@ -70,12 +84,17 @@ class MetaAlertSeverity(StrEnum):
 
 
 class MetaAlertRuleId(StrEnum):
-    """元告警 rule id — V3 §13.3 5 polled rule + V3 §14 event-emitted rule.
+    """元告警 rule id — V3 §13.3 + §14 polled rule + V3 §14 event-emitted rule.
 
-    **Polled rules (5)** — 对齐 V3 §13.3 5 风控系统失效场景. HC-1b meta_monitor_service
-    每 5min 采集 snapshot → 跑 meta_alert_rules.py 对应 `evaluate_*` 纯函数:
+    **Polled rules (7)** — HC-1b meta_monitor_service 每 5min 采集 snapshot → 跑
+    meta_alert_rules.py 对应 `evaluate_*` 纯函数:
       L1_HEARTBEAT_STALE / LITELLM_FAILURE_RATE / DINGTALK_PUSH_FAILED /
-      NEWS_ALL_SOURCES_TIMEOUT / STAGED_PENDING_CONFIRM_OVERDUE
+      NEWS_ALL_SOURCES_TIMEOUT / STAGED_PENDING_CONFIRM_OVERDUE  — 对齐 V3 §13.3
+        5 风控系统失效场景 (HC-1)
+      PG_POOL_EXHAUSTED — V3 §14 mode 3: pg_stat_activity idle-in-transaction > 50
+        = connection pool 濒临耗尽 / lock 堆积 (HC-2b3 G3, _collect_pg_health 轮询)
+      MARKET_CRISIS_REGIME — V3 §14 mode 9: 大盘 -7% OR 跌停家数 > 500 = 千股跌停
+        极端 regime (HC-2b3 G4, _collect_market_crisis 轮询 index_daily + klines_daily)
 
     **Event-emitted rules** — V3 §14 失败模式表 per-mode 元告警, 由失败源头任务在
     捕获自身失败时直接构造 MetaAlert + 走 channel fallback chain (NOT polled — 无
@@ -93,6 +112,9 @@ class MetaAlertRuleId(StrEnum):
     DINGTALK_PUSH_FAILED = "dingtalk_push_failed"
     NEWS_ALL_SOURCES_TIMEOUT = "news_all_sources_timeout"
     STAGED_PENDING_CONFIRM_OVERDUE = "staged_pending_confirm_overdue"
+    # Polled (HC-2b3 G3 / G4) — see class docstring §Polled rules.
+    PG_POOL_EXHAUSTED = "pg_pool_exhausted"
+    MARKET_CRISIS_REGIME = "market_crisis_regime"
     # Event-emitted (HC-2b G5 / HC-2b2 G7) — see class docstring.
     RISK_REFLECTOR_FAILED = "risk_reflector_failed"
     BROKER_PLAN_STUCK = "broker_plan_stuck"
@@ -102,13 +124,17 @@ class MetaAlertRuleId(StrEnum):
 # RISK_REFLECTOR_FAILED=P1 per V3 §14 mode 14 ⚠️ P1 — 反思失败 = degraded
 # (跳过本周/本月反思, alert 仍发, 仅缺 lessons), 非系统失效;
 # BROKER_PLAN_STUCK=P0 per V3 §14 mode 12 ✅ P0 — broker 接口故障 = 系统失效,
-# sell 单可能未真正成交, 需 user 手工干预 reconciliation).
+# sell 单可能未真正成交, 需 user 手工干预 reconciliation;
+# PG_POOL_EXHAUSTED=P0 per V3 §14 mode 3 ✅ P0 — PG OOM/lock = 系统失效;
+# MARKET_CRISIS_REGIME=P0 per V3 §14 mode 9 ✅ P0 — 千股跌停极端 regime).
 RULE_SEVERITY: dict[MetaAlertRuleId, MetaAlertSeverity] = {
     MetaAlertRuleId.L1_HEARTBEAT_STALE: MetaAlertSeverity.P0,
     MetaAlertRuleId.LITELLM_FAILURE_RATE: MetaAlertSeverity.P0,
     MetaAlertRuleId.DINGTALK_PUSH_FAILED: MetaAlertSeverity.P0,
     MetaAlertRuleId.NEWS_ALL_SOURCES_TIMEOUT: MetaAlertSeverity.P1,
     MetaAlertRuleId.STAGED_PENDING_CONFIRM_OVERDUE: MetaAlertSeverity.P0,
+    MetaAlertRuleId.PG_POOL_EXHAUSTED: MetaAlertSeverity.P0,
+    MetaAlertRuleId.MARKET_CRISIS_REGIME: MetaAlertSeverity.P0,
     MetaAlertRuleId.RISK_REFLECTOR_FAILED: MetaAlertSeverity.P1,
     MetaAlertRuleId.BROKER_PLAN_STUCK: MetaAlertSeverity.P0,
 }
@@ -280,6 +306,65 @@ class StagedPlanWindowSnapshot:
         _require_tz_aware(self.now, "StagedPlanWindowSnapshot.now")
 
 
+@dataclass(frozen=True)
+class PGHealthSnapshot:
+    """Rule 6 input — PostgreSQL 连接健康快照 (V3 §14 mode 3 PG OOM / lock, HC-2b3 G3).
+
+    Args:
+      idle_in_transaction: pg_stat_activity 中 state='idle in transaction' 的连接数
+        (事务开启但未提交 — connection pool 耗尽 / lock 堆积的前兆信号).
+      total_connections: 当前 database 的总连接数 (含 active / idle / idle in tx).
+      now: 评估时刻 (tz-aware, 铁律 41).
+    """
+
+    idle_in_transaction: int
+    total_connections: int
+    now: datetime
+
+    def __post_init__(self) -> None:
+        _require_tz_aware(self.now, "PGHealthSnapshot.now")
+        if self.idle_in_transaction < 0:
+            raise MetaAlertError(
+                f"idle_in_transaction must be >= 0, got {self.idle_in_transaction}"
+            )
+        if self.total_connections < 0:
+            raise MetaAlertError(
+                f"total_connections must be >= 0, got {self.total_connections}"
+            )
+        if self.idle_in_transaction > self.total_connections:
+            raise MetaAlertError(
+                f"idle_in_transaction ({self.idle_in_transaction}) cannot exceed "
+                f"total_connections ({self.total_connections})"
+            )
+
+
+@dataclass(frozen=True)
+class MarketCrisisSnapshot:
+    """Rule 7 input — 千股跌停极端 regime 市场快照 (V3 §14 mode 9, HC-2b3 G4).
+
+    Args:
+      index_return: 大盘当日 return as fraction (e.g. -0.07 = -7%). None = 指数
+        数据不可用 (index_daily 无 000300.SH row / 查询降级) → 该 leg 无信号.
+      limit_down_count: 全市场最新交易日跌停家数 (≥ 0 when set). None = klines_daily
+        数据不可用 → 该 leg 无信号.
+      now: 评估时刻 (tz-aware, 铁律 41).
+
+    Note: 两 leg 均 Optional — index_daily / klines_daily 任一 feed 缺失时 rule 仍
+    可用另一 leg 判定; 两 leg 均 None → not triggered (无信号, 反 silent fail).
+    """
+
+    index_return: float | None
+    limit_down_count: int | None
+    now: datetime
+
+    def __post_init__(self) -> None:
+        _require_tz_aware(self.now, "MarketCrisisSnapshot.now")
+        if self.limit_down_count is not None and self.limit_down_count < 0:
+            raise MetaAlertError(
+                f"limit_down_count must be >= 0 when set, got {self.limit_down_count}"
+            )
+
+
 # ── MetaAlert 结果契约 ──
 
 
@@ -326,18 +411,23 @@ __all__ = [
     "LITELLM_FAILURE_RATE_THRESHOLD",
     "LITELLM_FAILURE_RATE_WINDOW_S",
     "L1_HEARTBEAT_STALE_THRESHOLD_S",
+    "MARKET_CRISIS_INDEX_RETURN_THRESHOLD",
+    "MARKET_CRISIS_LIMIT_DOWN_THRESHOLD",
     "NEWS_RUN_STATS_REDIS_KEY",
     "NEWS_SOURCE_TIMEOUT_WINDOW_S",
+    "PG_IDLE_IN_TX_THRESHOLD",
     "RULE_SEVERITY",
     "STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S",
     "DingTalkPushSnapshot",
     "L1HeartbeatSnapshot",
     "LiteLLMCallWindowSnapshot",
+    "MarketCrisisSnapshot",
     "MetaAlert",
     "MetaAlertError",
     "MetaAlertRuleId",
     "MetaAlertSeverity",
     "NewsSourceWindowSnapshot",
+    "PGHealthSnapshot",
     "StagedPlanState",
     "StagedPlanWindowSnapshot",
 ]
