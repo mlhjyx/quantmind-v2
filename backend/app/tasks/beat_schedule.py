@@ -281,6 +281,36 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 1800,  # 30min within next 17h window (next day 09:00)
         },
     },
+    # ── TB-4b: V3 §8 RiskReflector 5 维反思 Celery Beat 2 cadence ──
+    # V3 §8.1 line 918-921: 每周日 19:00 (周复盘) + 每月 1 日 09:00 (月复盘).
+    #   event-triggered 24h post-event has NO Beat entry — dispatched by L1 event
+    #   detection (TB-4c+ wire) since trigger is data-driven not time-driven.
+    # 反 hard collision:
+    #   - Sunday 19:00 — `factor-lifecycle-weekly` is Friday 19:00 (NO overlap),
+    #     `gp-weekly-mining` is Sunday 22:00 (NO overlap). Sunday 19:00 clean.
+    #   - 月 1 日 09:00 — may collide with `risk-market-regime-0900` when 月 1 日 is
+    #     a weekday. Beat sequential dispatch + `--pool=solo` Windows tolerates
+    #     sub-second queue (independent V4-Pro tasks, ~3-5s combined). Acceptable.
+    # post-merge ops: Servy restart QuantMind-CeleryBeat AND QuantMind-Celery
+    #   per docs/runbook/cc_automation/v3_tb_4b_reflector_beat_wire.md (LL-141 4-step).
+    # TB-4b input gathering = stub placeholder (TB-4c wires real risk_event_log /
+    #   execution_plans / trade_log / RiskMemoryRAG).
+    "risk-reflector-weekly": {
+        "task": "app.tasks.risk_reflector_tasks.weekly_reflection",
+        "schedule": crontab(hour=19, minute=0, day_of_week="0"),  # 0=Sunday
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h window — weekly cadence has ample slack
+        },
+    },
+    "risk-reflector-monthly": {
+        "task": "app.tasks.risk_reflector_tasks.monthly_reflection",
+        "schedule": crontab(hour=9, minute=0, day_of_month="1"),
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h window — monthly cadence has ample slack
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
