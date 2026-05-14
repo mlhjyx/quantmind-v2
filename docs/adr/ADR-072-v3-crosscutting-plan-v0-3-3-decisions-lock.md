@@ -42,7 +42,7 @@ User approved 3 决议 via AskUserQuestion 1 round ack — CC presented Gate D 5
 ### D3 = both into HC-4 (5y replay + north_flow/iv wire)
 
 - ✅ 5y full minute_bars replay (~191M rows, 实际覆盖 2021-2025 minute_bars 范围) — TB-1 RiskBacktestAdapter.evaluate_at + ADR-070 `_TimingAdapter` side-channel infra 已就绪, 纯 replay run (0 新 evaluator code, 0 changes to closed TB-1 code sustained ADR-022), long-tail acceptance vs Tier B 2 关键窗口 → 纳入 HC-4a
-- ✅ ADR-067 D5 `north_flow_cny` + `iv_50etf` MarketIndicators real-data-source wire (TB-2 left DEFERRED) — HC-4a wire 真数据源 (沿用 铁律 1 先读官方文档确认接口), 清掉 carried deferral backlog
+- ✅ ADR-067 D5 `north_flow_cny` + `iv_50etf` MarketIndicators real-data-source wire (TB-2 left DEFERRED) — HC-4a wire 真数据源 (沿用 铁律 1 先读官方文档确认接口), 清掉 carried deferral backlog — **✅ 2026-05-15 标注 (HC-4c, ADR-076 真值修正)**: "TB-2 left DEFERRED" 是 stale — TB-2e (PR #338 `c537d13`) 实际已 wire 真数据源 (`default_indicators_provider.py` `_fetch_north_flow_cny` Tushare moneyflow_hsgt + `_fetch_iv_50etf_proxy` 上证 realized-vol proxy, production-active). HC-4a item 因此 = **验证 production-active** (0 new code), NOT net-new wire; carried deferral 仍清掉 (路径 = verify-confirm). see HC-4a report §4 + ADR-067 D5 2026-05-15 标注
 - ⚠️ Trade-off: 5y replay ~191M rows wall-clock run time (TB-1c 2 关键窗口 ~3.32M+0.96M bars; 5y ~191M ≈ 40x) — accept, HC-4a cycle 含此 run time buffer (~0.5 周)
 - carried deferral 路由结果: 5y replay→HC-4a / north_flow-iv→HC-4a / ROADMAP→HC-4b / LiteLLM-3month→Gate E (D2) / RAG 命中率+lesson 抽查→Gate E (need live query traffic, paper-mode 物理不可做)
 

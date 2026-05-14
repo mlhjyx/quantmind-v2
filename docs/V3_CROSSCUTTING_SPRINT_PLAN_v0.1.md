@@ -43,7 +43,7 @@ V3 Tier B (6-sprint chain T1.5→TB-1→TB-2→TB-3→TB-4→TB-5) **FULLY CLOSE
 - Gate C item 3 sub-item — RAG retrieval 命中率 ≥ baseline measurement → **route to Gate E** (need live production query traffic, paper-mode 物理不可做)
 - Gate C item 5 sub-item — lesson→risk_memory 后置抽查 ≥1 live round → **route to Gate E** (同上)
 - 5y full minute_bars replay (ADR-064 D3=b — Tier B 仅 2 关键窗口) → **HC-4** (D3 决议)
-- ADR-067 D5 — `north_flow_cny` + `iv_50etf` MarketIndicators real-data-source wire → **HC-4** (D3 决议)
+- ADR-067 D5 — `north_flow_cny` + `iv_50etf` MarketIndicators real-data-source wire → **HC-4** (D3 决议) — **✅ 2026-05-15 标注 (HC-4c)**: HC-4a Phase 0 fresh-verify 发现 TB-2e (PR #338 `c537d13`) 已 wire 真数据源 (`default_indicators_provider.py` `_fetch_north_flow_cny` + `_fetch_iv_50etf_proxy`, production-active via `market_regime_tasks._get_provider()`) → HC-4a item = **验证 NOT 实现** (re-shaped per user 决议 A); 0 new code, sustained ADR-022. see HC-4a report §4
 - `RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` full sediment (Constitution §0.1) → **HC-4** (Tier B closure REACHED, sediment 时机 now due)
 
 **3 决议 lock** (ADR-072 sediment, sustained ADR-064 5-决议-lock 体例):
@@ -108,6 +108,8 @@ V3 Tier B (6-sprint chain T1.5→TB-1→TB-2→TB-3→TB-4→TB-5) **FULLY CLOSE
 | Paper-mode | sustained HC-1; prompts/risk eval iteration 走 offline eval fixture OR LiteLLM mock, 0 真 production LLM cost burst; CI lint verify 走 read-only 静态分析 path |
 
 ### HC-4 — carried deferral 路由 + 5y replay + north_flow/iv wire + ROADMAP sediment + Gate D formal close
+
+> **✅ CLOSED 2026-05-15 (HC-4c 标注, ADR-076)** — chunked **3 sub-PR (planned 3, actual 3 — 0 balloon**, 沿用 HC-3 estimate-held 体例 反 HC-1/HC-2 双 net-new-wiring 3→5; LL-168 lesson 1 classification 实证 — HC-4 全 verify/audit/closure-sediment): HC-4a PR #360 `3d508ca` (5y full minute_bars replay chunked per-quarter 20 windows 2021Q1-2025Q4 — ✅ PASS 4/4 V3 §15.4: FP rate 4.12% / latency P99 0.024ms / STAGED 0 failed / 元监控 0 P0; 139.3M minute_bars / 1413.8s; + north_flow/iv wire VERIFY — TB-2e PR #338 `c537d13` 已 wire, HC-4a item = 验证 NOT 实现 re-shaped per user 决议 A; code+python reviewer) + HC-4b `2c621bb` (`RISK_FRAMEWORK_LONG_TERM_ROADMAP.md` NEW 171 lines + carried deferral 6 项路由 sediment — 3 done / 3 → Gate E; document-specialist reviewer; docs-only 直 push 铁律 42) + HC-4c 本 (Gate D `sprint-closure-gate-evaluator` subagent verify **PASS 5/5** + ADR-076 + Constitution §L10.4 5-checkbox amend + §0.1 ROADMAP closure 标注 + skeleton §2.2.2 closure 标注 + Plan v0.3 §A HC-4 closure blockquote + stale-cite amends + LL-169 + memory handoff + Plan v0.4 cutover prereq sediment; docs-only 直 push 铁律 42). **Gate D (Constitution §L10.4) 形式 CLOSED** — items 1-4 ✅ verified production-active + item 5 ⏭ DEFERRED-to-Gate-E (methodologically sound, ADR-072 D2). **横切层 4-sprint chain FULLY CLOSED** (HC-1 ADR-073 + HC-2 ADR-074 + HC-3 ADR-075 + HC-4 ADR-076). Next: Plan v0.4 (Gate E PT cutover) — user 显式 trigger required, sustained LL-098 X10 + §C STOP gate. 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102.
 
 | element | content |
 |---|---|
@@ -258,7 +260,7 @@ per-sprint baseline cite (Plan v0.3 §A HC-1~4 cumulative):
 **D3=both into HC-4 lock** (5y replay + north_flow/iv wire):
 
 - ✅ 5y full replay — TB-1 RiskBacktestAdapter + ADR-070 `_TimingAdapter` infra 已就绪, 纯 replay run (0 新 evaluator code), 清掉 ADR-064 D3=b carried deferral
-- ✅ north_flow/iv wire — ADR-067 D5 TB-2 left DEFERRED, HC-4 wire 真数据源, 清掉 carried deferral backlog
+- ✅ north_flow/iv wire — ADR-067 D5 TB-2 left DEFERRED, HC-4 wire 真数据源, 清掉 carried deferral backlog — **2026-05-15 真值修正 (HC-4c)**: "TB-2 left DEFERRED" 是 stale — TB-2e (PR #338 `c537d13`) 实际已 wire 真数据源; HC-4a item 因此 = 验证 production-active (0 new code), NOT 实现; carried deferral 仍清掉但路径是 verify-confirm 非 net-new wire
 - ⚠️ trade-off: 5y replay ~191M rows wall-clock run time (TB-1c 2 关键窗口 ~3.32M+0.96M bars; 5y ~191M ≈ 40x) — accept, HC-4a cycle 含此 run time buffer (~0.5 周)
 
 ### (II) CC-domain push back
