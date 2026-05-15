@@ -45,7 +45,6 @@ from app.services.notification_service import NotificationService
 from app.services.pt_data_service import fetch_daily_data
 from app.services.pt_monitor_service import check_opening_gap
 from app.services.pt_qmt_state import QMTEmptyPositionsError, save_qmt_state
-from app.services.risk_control_service import check_circuit_breaker_sync
 from app.services.shadow_portfolio import (
     generate_shadow_lgbm_inertia,
     generate_shadow_lgbm_signals,
@@ -56,6 +55,7 @@ from app.services.trading_calendar import (
     get_prev_trading_day,
     is_trading_day,
 )
+from app.services.v3_cutover_adapter import check_v3_circuit_breaker
 
 # ── 日志配置 ──
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -282,7 +282,7 @@ def run_signal_phase(
             logger.warning("[Step1.5] NAV更新失败(不影响信号): %s", e)
 
         # Step 1.6: 风控评估
-        cb = check_circuit_breaker_sync(
+        cb = check_v3_circuit_breaker(
             conn=conn,
             strategy_id=settings.PAPER_STRATEGY_ID,
             exec_date=trade_date,
@@ -450,7 +450,7 @@ def run_execute_phase(
         check_opening_gap(exec_date, price_data_t, conn, notif_svc, dry_run)
 
         # Step 5.9: 熔断检查
-        cb = check_circuit_breaker_sync(
+        cb = check_v3_circuit_breaker(
             conn=conn,
             strategy_id=settings.PAPER_STRATEGY_ID,
             exec_date=exec_date,
