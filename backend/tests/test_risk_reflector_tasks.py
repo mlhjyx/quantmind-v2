@@ -2,7 +2,9 @@
 
 Coverage:
   - _weekly_bounds / _monthly_bounds period computation (tz-aware, ISO week, prev month)
-  - _build_stub_input placeholder ReflectionInput (TB-4c replaces)
+  - _build_reflection_input + 4 gather helpers (IC-2c 2026-05-15 de-stub —
+    replaces _build_stub_input placeholder with real risk_event_log /
+    execution_plans / trade_log / RiskMemoryRAG queries; per-source fail-soft)
   - _render_reflection_markdown — full report rendering (5 维 sections + findings + candidates)
   - _render_dingtalk_summary — short 摘要 + truncation hard cap
   - _slugify_event — filename slug (non-alnum → _, length cap, CJK preserved)
@@ -135,11 +137,44 @@ class _StubService:
         return 42  # stub memory_id
 
 
+def _patch_input_gather_deps(monkeypatch: Any) -> None:
+    """Shared helper — patches IC-2c input-gathering deps for ad-hoc tests.
+
+    Used by tests that bypass the `stub_env` fixture (e.g. failing-service
+    error-propagation tests). Patches `_get_rag` (stub returning empty
+    retrieve()) + `get_sync_conn` (stub _StubConn) so `_run_reflection`'s
+    input-gathering phase can complete before the test's actual assertion
+    target (service.reflect raise / sediment_lesson raise / retry dispatch).
+    """
+    from unittest.mock import MagicMock
+
+    stub_rag = MagicMock()
+    stub_rag.retrieve.return_value = []
+    monkeypatch.setattr(rrt, "_get_rag", lambda: stub_rag)
+
+    import app.services.db as db_mod
+
+    monkeypatch.setattr(db_mod, "get_sync_conn", lambda: _StubConn())
+
+
 @pytest.fixture
 def stub_env(monkeypatch, tmp_path):
-    """Patch _get_service + REFLECTIONS_DIR + send_with_dedup + get_sync_conn."""
+    """Patch _get_service + _get_rag + REFLECTIONS_DIR + send_with_dedup + get_sync_conn.
+
+    IC-2c (2026-05-15) addition: _get_rag patched to return stub RAG with
+    empty retrieve() result — input gathering returns "数据不足: RAG returned
+    0 hits" placeholder, which reflector_v1.yaml prompt handles per design.
+    """
+    from unittest.mock import MagicMock
+
     stub_svc = _StubService()
     monkeypatch.setattr(rrt, "_get_service", lambda: stub_svc)
+
+    # IC-2c: _get_rag stub — empty hits (consistent with placeholder fail-soft semantics)
+    stub_rag = MagicMock()
+    stub_rag.retrieve.return_value = []
+    monkeypatch.setattr(rrt, "_get_rag", lambda: stub_rag)
+
     monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
 
     dingtalk_calls: list[dict[str, Any]] = []
@@ -226,26 +261,339 @@ class TestMonthlyBounds:
 
 
 # ---------------------------------------------------------------------------
-# _build_stub_input
+# _build_reflection_input + 4 gather helpers (IC-2c 2026-05-15 de-stub)
 # ---------------------------------------------------------------------------
 
 
-class TestBuildStubInput:
-    def test_returns_valid_reflection_input(self) -> None:
-        start = datetime(2026, 5, 3, 0, 0, tzinfo=UTC)
-        end = datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
-        inp = rrt._build_stub_input("2026_W19", start, end)
-        assert isinstance(inp, ReflectionInput)
-        assert inp.period_label == "2026_W19"
+class _MockCursor:
+    """SQL-route dispatch mock — table-name-specific routing (LL-171 lesson 3
+    SSOT pattern: stock_basic / daily_basic / risk_event_log / execution_plans
+    / trade_log are disjoint table names, so substring routing is order-stable
+    after WU-IC-2a P2 fix sustained).
+    """
 
-    def test_placeholder_marked_tb4c(self) -> None:
-        start = datetime(2026, 5, 3, 0, 0, tzinfo=UTC)
-        end = datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
-        inp = rrt._build_stub_input("2026_W19", start, end)
-        # All 4 summary fields should be clearly-marked stub placeholders.
-        assert "TB-4b stub" in inp.events_summary
-        assert "TB-4c" in inp.events_summary
-        assert inp.events_summary == inp.plans_summary == inp.pnl_outcome == inp.rag_top5
+    def __init__(self, routes: dict[str, list[tuple]]) -> None:
+        self._routes = routes
+        self._last_sql = ""
+
+    def execute(self, sql: str, params: tuple = ()) -> None:
+        # Reviewer-fix (python-reviewer P2-3, 2026-05-15): params type
+        # assertion matches real psycopg2 binding contract — surfaces bugs
+        # where gatherers accidentally pass None / wrong-type for params.
+        assert isinstance(params, (tuple, list)), (
+            f"_MockCursor.execute: params must be tuple/list, got {type(params).__name__}"
+        )
+        self._last_sql = sql
+
+    def fetchall(self) -> list[tuple]:
+        sql = self._last_sql
+        # Route by most-specific table name first (sustained LL-171 lesson 3)
+        if "risk_event_log" in sql:
+            return self._routes.get("risk_event_log", [])
+        if "execution_plans" in sql:
+            return self._routes.get("execution_plans", [])
+        if "trade_log" in sql:
+            return self._routes.get("trade_log", [])
+        return []
+
+    def close(self) -> None:
+        pass
+
+
+class _MockConn:
+    def __init__(self, routes: dict[str, list[tuple]] | None = None) -> None:
+        self._routes = routes or {}
+
+    def cursor(self) -> _MockCursor:
+        return _MockCursor(self._routes)
+
+    def close(self) -> None:
+        pass
+
+
+_T_START = datetime(2026, 5, 3, 0, 0, tzinfo=UTC)
+_T_END = datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
+
+
+class TestGatherEventsSummary:
+    """`_gather_events_summary` — risk_event_log GROUP BY (rule_id, severity)."""
+
+    def test_returns_markdown_table_with_totals(self) -> None:
+        rows = [
+            ("limit_down_detection", "p0", 5),
+            ("rapid_drop_5min", "p1", 3),
+            ("near_limit_down", "p2", 2),
+        ]
+        conn = _MockConn({"risk_event_log": rows})
+        result = rrt._gather_events_summary(conn, _T_START, _T_END)
+        assert "| rule_id | severity | count |" in result
+        assert "| limit_down_detection | p0 | 5 |" in result
+        assert "Total: 10 events" in result
+        assert "3 (rule, severity) groups" in result
+
+    def test_zero_rows_returns_placeholder(self) -> None:
+        conn = _MockConn({"risk_event_log": []})
+        result = rrt._gather_events_summary(conn, _T_START, _T_END)
+        assert "数据不足" in result
+        assert "0 risk_event_log rows" in result
+
+    def test_db_error_fails_soft(self) -> None:
+        from unittest.mock import MagicMock
+
+        conn = MagicMock()
+        conn.cursor.side_effect = RuntimeError("simulated PG down")
+        result = rrt._gather_events_summary(conn, _T_START, _T_END)
+        assert "数据不足: events_summary 查询失败" in result
+        assert "RuntimeError" in result
+
+
+class TestGatherPlansSummary:
+    """`_gather_plans_summary` — execution_plans GROUP BY (status, user_decision)."""
+
+    def test_returns_markdown_table_with_cancel_rate(self) -> None:
+        rows = [
+            ("CANCELLED", "cancel", 3),
+            ("CONFIRMED", "confirm", 7),
+            ("PENDING_CONFIRM", "null", 1),
+        ]
+        conn = _MockConn({"execution_plans": rows})
+        result = rrt._gather_plans_summary(conn, _T_START, _T_END)
+        assert "| status | user_decision | count |" in result
+        # Cancel rate: 3 cancelled / (3+7) confirmed = 30%
+        assert "Cancel rate: 3/10 = 30.0%" in result
+
+    def test_no_cancel_rate_when_no_terminal_states(self) -> None:
+        rows = [("PENDING_CONFIRM", "null", 5)]
+        conn = _MockConn({"execution_plans": rows})
+        result = rrt._gather_plans_summary(conn, _T_START, _T_END)
+        # No CONFIRMED + 0 CANCELLED → no cancel-rate line
+        assert "Cancel rate" not in result
+
+    def test_zero_rows_returns_placeholder(self) -> None:
+        conn = _MockConn({"execution_plans": []})
+        result = rrt._gather_plans_summary(conn, _T_START, _T_END)
+        assert "数据不足" in result
+        assert "0 execution_plans rows" in result
+
+    def test_db_error_fails_soft(self) -> None:
+        from unittest.mock import MagicMock
+
+        conn = MagicMock()
+        conn.cursor.side_effect = ConnectionError("PG dropped")
+        result = rrt._gather_plans_summary(conn, _T_START, _T_END)
+        assert "数据不足: plans_summary 查询失败" in result
+
+
+class TestGatherPnlOutcome:
+    """`_gather_pnl_outcome` — trade_log paper-mode aggregate."""
+
+    def test_returns_markdown_table(self) -> None:
+        rows = [
+            ("buy", 5, 50000.00, 50028.50, 5.7),
+            ("sell", 4, 40000.00, 39985.30, -3.7),
+        ]
+        conn = _MockConn({"trade_log": rows})
+        result = rrt._gather_pnl_outcome(conn, _T_START, _T_END)
+        assert "| direction | count | gross ¥ | total_cost ¥ | avg slippage bps |" in result
+        assert "| buy | 5 |" in result
+        assert "| sell | 4 |" in result
+
+    def test_zero_rows_returns_placeholder(self) -> None:
+        conn = _MockConn({"trade_log": []})
+        result = rrt._gather_pnl_outcome(conn, _T_START, _T_END)
+        assert "数据不足" in result
+        assert "0 paper-mode filled trade_log rows" in result
+
+    def test_db_error_fails_soft(self) -> None:
+        from unittest.mock import MagicMock
+
+        conn = MagicMock()
+        conn.cursor.side_effect = OSError("disk full")
+        result = rrt._gather_pnl_outcome(conn, _T_START, _T_END)
+        assert "数据不足: pnl_outcome 查询失败" in result
+
+
+class TestGatherRagTop5:
+    """`_gather_rag_top5` — RiskMemoryRAG.retrieve → markdown table."""
+
+    @staticmethod
+    def _make_hit(cosine: float, event_type: str, symbol: str | None, lesson: str) -> Any:
+        """Build SimilarMemoryHit + RiskMemory dual fake for table rendering."""
+        from unittest.mock import MagicMock
+
+        memory = MagicMock()
+        memory.event_type = event_type
+        memory.symbol_id = symbol
+        memory.lesson = lesson
+        hit = MagicMock()
+        hit.memory = memory
+        hit.cosine_similarity = cosine
+        return hit
+
+    def test_renders_markdown_table_with_top_hits(self) -> None:
+        from unittest.mock import MagicMock
+
+        rag = MagicMock()
+        rag.retrieve.return_value = [
+            self._make_hit(0.92, "LimitDown", "600519.SH", "茅台 4-29 跌停反思"),
+            self._make_hit(0.85, "RapidDrop", None, "市场级 RapidDrop 5min 复盘"),
+        ]
+        result = rrt._gather_rag_top5(rag, "query text", event_type=None)
+        assert "| cosine | event_type | symbol | lesson |" in result
+        assert "| 0.920 | LimitDown | 600519.SH |" in result
+        assert "| 0.850 | RapidDrop | — |" in result  # None → em-dash placeholder
+        rag.retrieve.assert_called_once_with("query text", k=5, event_type=None)
+
+    def test_empty_hits_returns_placeholder(self) -> None:
+        from unittest.mock import MagicMock
+
+        rag = MagicMock()
+        rag.retrieve.return_value = []
+        result = rrt._gather_rag_top5(rag, "q", event_type="LimitDown")
+        assert "数据不足: RAG returned 0 hits" in result
+        assert "event_type='LimitDown'" in result
+
+    def test_retrieve_exception_fails_soft(self) -> None:
+        from unittest.mock import MagicMock
+
+        rag = MagicMock()
+        rag.retrieve.side_effect = ValueError("query embed failed")
+        result = rrt._gather_rag_top5(rag, "q")
+        assert "数据不足: RAG retrieve 失败" in result
+        assert "ValueError" in result
+
+    def test_long_lesson_truncated_with_pipe_escape(self) -> None:
+        from unittest.mock import MagicMock
+
+        rag = MagicMock()
+        # Pipes inside the first 80 chars (truncation window) so escape fires
+        long_lesson = "pipe1 | pipe2 | " + ("X" * 100)
+        rag.retrieve.return_value = [
+            self._make_hit(0.7, "LimitDown", "000001.SZ", long_lesson),
+        ]
+        result = rrt._gather_rag_top5(rag, "q")
+        # Truncated to 80 + "..." + pipe-escaped
+        assert "..." in result
+        # Original pipes inside the truncation window must be escaped
+        assert "pipe1 \\| pipe2 \\|" in result
+
+    def test_newline_in_lesson_replaced_with_space(self) -> None:
+        from unittest.mock import MagicMock
+
+        rag = MagicMock()
+        rag.retrieve.return_value = [
+            self._make_hit(0.8, "RapidDrop", "300001.SZ", "line1\nline2"),
+        ]
+        result = rrt._gather_rag_top5(rag, "q")
+        # Newlines replaced with spaces (would break markdown table otherwise)
+        assert "line1 line2" in result
+        assert "line1\nline2" not in result.split("\n")[2]  # 3rd line = first data row
+
+
+class TestBuildReflectionInput:
+    """Integration: `_build_reflection_input` orchestrates all 4 sources."""
+
+    def test_full_path_assembles_4_real_summaries(self) -> None:
+        from unittest.mock import MagicMock
+
+        conn = _MockConn(
+            {
+                "risk_event_log": [("limit_down_detection", "p0", 5)],
+                "execution_plans": [("CONFIRMED", "confirm", 7)],
+                "trade_log": [("buy", 5, 50000.00, 50028.50, 5.7)],
+            }
+        )
+        rag = MagicMock()
+        rag.retrieve.return_value = [
+            # Reviewer-fix (code-reviewer P2-5, 2026-05-15): _make_hit is now
+            # @staticmethod — direct call without instantiation.
+            TestGatherRagTop5._make_hit(0.9, "LimitDown", "600519.SH", "lesson")
+        ]
+
+        result = rrt._build_reflection_input(
+            "2026_W19",
+            _T_START,
+            _T_END,
+            conn=conn,
+            rag=rag,
+            rag_event_type_filter=None,
+        )
+        assert isinstance(result, ReflectionInput)
+        assert result.period_label == "2026_W19"
+        assert "| limit_down_detection | p0 | 5 |" in result.events_summary
+        assert "| CONFIRMED | confirm | 7 |" in result.plans_summary
+        assert "| buy | 5 |" in result.pnl_outcome
+        assert "| 0.900 | LimitDown |" in result.rag_top5
+
+    def test_per_source_fail_soft_independent(self) -> None:
+        """If risk_event_log raises but other 3 sources succeed, only events_summary
+        gets the placeholder; other fields still real."""
+        from unittest.mock import MagicMock
+
+        # Build a conn where ONLY risk_event_log query raises
+        class _PartialFailConn:
+            def cursor(self) -> Any:
+                return _PartialFailCursor()
+
+            def close(self) -> None:
+                pass
+
+        class _PartialFailCursor:
+            def __init__(self) -> None:
+                self._last_sql = ""
+
+            def execute(self, sql: str, params: tuple = ()) -> None:
+                self._last_sql = sql
+                if "risk_event_log" in sql:
+                    raise RuntimeError("simulated risk_event_log down")
+
+            def fetchall(self) -> list[tuple]:
+                if "execution_plans" in self._last_sql:
+                    return [("CONFIRMED", "confirm", 1)]
+                if "trade_log" in self._last_sql:
+                    return [("buy", 1, 100.0, 100.5, 1.5)]
+                return []
+
+            def close(self) -> None:
+                pass
+
+        rag = MagicMock()
+        rag.retrieve.return_value = []
+
+        result = rrt._build_reflection_input(
+            "2026_W19",
+            _T_START,
+            _T_END,
+            conn=_PartialFailConn(),
+            rag=rag,
+            rag_event_type_filter=None,
+        )
+        assert "数据不足" in result.events_summary
+        assert "RuntimeError" in result.events_summary
+        # Other 3 sources still real / empty (NOT contaminated by events fail)
+        assert "| CONFIRMED | confirm | 1 |" in result.plans_summary
+        assert "| buy | 1 |" in result.pnl_outcome
+        assert "数据不足: RAG returned 0 hits" in result.rag_top5
+
+    def test_event_type_filter_passed_to_rag(self) -> None:
+        """rag_event_type_filter forwarded to RAG.retrieve event_type kwarg."""
+        from unittest.mock import MagicMock
+
+        conn = _MockConn({"risk_event_log": [], "execution_plans": [], "trade_log": []})
+        rag = MagicMock()
+        rag.retrieve.return_value = []
+
+        rrt._build_reflection_input(
+            "event-LimitDown-2026-05-15",
+            _T_START,
+            _T_END,
+            conn=conn,
+            rag=rag,
+            rag_event_type_filter="LimitDown",
+        )
+        rag.retrieve.assert_called_once()
+        call_kwargs = rag.retrieve.call_args.kwargs
+        assert call_kwargs.get("event_type") == "LimitDown"
 
 
 # ---------------------------------------------------------------------------
@@ -409,16 +757,25 @@ class TestRunReflection:
         sediment = stub_env["service"].sediment_calls[0]
         assert sediment["event_type"] == "Reflection:Weekly"
         assert sediment["event_timestamp"] == datetime(2026, 5, 10, 0, 0, tzinfo=UTC)
-        assert len(stub_env["conns"]) == 1
-        assert stub_env["conns"][0].committed is True
+        # IC-2c (2026-05-15): 2 conns opened — [0] input-gather (read-only,
+        # close-only, no commit/rollback), [1] sediment (commit on success).
+        # Pre-IC-2c: only 1 sediment conn (stub_input gather used no DB).
+        assert len(stub_env["conns"]) == 2
+        # Input-gather conn (conns[0]): closed only, NO commit/rollback
+        assert stub_env["conns"][0].committed is False
         assert stub_env["conns"][0].rolled_back is False
         assert stub_env["conns"][0].closed is True
+        # Sediment conn (conns[-1]): committed + closed
+        assert stub_env["conns"][-1].committed is True
+        assert stub_env["conns"][-1].rolled_back is False
+        assert stub_env["conns"][-1].closed is True
 
     def test_propagates_service_error(self, monkeypatch, tmp_path) -> None:
         from qm_platform.risk.reflector import ReflectorAgentError
 
         failing_svc = _StubService(raise_exc=ReflectorAgentError("V4-Pro timeout"))
         monkeypatch.setattr(rrt, "_get_service", lambda: failing_svc)
+        _patch_input_gather_deps(monkeypatch)  # IC-2c: stub RAG + get_sync_conn
         monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
         with pytest.raises(ReflectorAgentError, match="V4-Pro timeout"):
             rrt._run_reflection(
@@ -437,6 +794,7 @@ class TestRunReflection:
 
         svc = _StubService(sediment_raise_exc=RiskMemoryError("BGE-M3 OOM"))
         monkeypatch.setattr(rrt, "_get_service", lambda: svc)
+        _patch_input_gather_deps(monkeypatch)  # IC-2c: stub RAG + get_sync_conn
         monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
 
         import app.services.dingtalk_alert as dingtalk_mod
@@ -468,11 +826,17 @@ class TestRunReflection:
                 dedup_key="test",
                 event_type="Reflection:Weekly",
             )
-        # conn rolled back + closed (反 leak).
-        assert len(conns) == 1
+        # IC-2c (2026-05-15): 2 conns opened — [0] input-gather (read-only),
+        # [1] sediment (rolled back due to sediment_lesson raise).
+        assert len(conns) == 2
+        # Input-gather conn (conns[0]): closed only, NO commit/rollback
         assert conns[0].committed is False
-        assert conns[0].rolled_back is True
+        assert conns[0].rolled_back is False
         assert conns[0].closed is True
+        # Sediment conn (conns[-1]): rolled back + closed (反 leak)
+        assert conns[-1].committed is False
+        assert conns[-1].rolled_back is True
+        assert conns[-1].closed is True
 
 
 # ---------------------------------------------------------------------------
@@ -651,6 +1015,7 @@ class TestRetrySkipDispatch:
 
         failing = _StubService(raise_exc=ReflectorAgentError("V4-Pro timeout"))
         monkeypatch.setattr(rrt, "_get_service", lambda: failing)
+        _patch_input_gather_deps(monkeypatch)  # IC-2c: stub RAG + get_sync_conn
         monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
         task = _FakeTask(retries=0, max_retries=1)
         with pytest.raises(_FakeRetryError):
@@ -674,6 +1039,7 @@ class TestRetrySkipDispatch:
 
         failing = _StubService(raise_exc=ReflectorAgentError("V4-Pro timeout x2"))
         monkeypatch.setattr(rrt, "_get_service", lambda: failing)
+        _patch_input_gather_deps(monkeypatch)  # IC-2c: stub RAG + get_sync_conn
         monkeypatch.setattr(rrt, "REFLECTIONS_DIR", tmp_path)
 
         emit_calls: list[dict[str, Any]] = []
