@@ -5,6 +5,14 @@ Session 34 (2026-04-25 02:20 UTC) 抓出 CeleryBeat 在 04-24 19:26 → 04-25 02
 再次发生, MVP 3.1 Risk Framework intraday-risk-check `*/5 9-14 * * 1-5` 72/日 +
 risk-daily-check 14:30 全 missed → 真金 ¥1M 0 熔断保护.
 
+**Historical context (V3 PT Cutover IC-2b 2026-05-15 update)**: 上述 2 个
+Beat (intraday-risk-check + risk-daily-check) 已 FORMAL RETIRE 2026-05-15 —
+post-IC-1c L1 RealtimeRiskEngine production runner + V3 signal-path
+check_v3_circuit_breaker 已 cover 这些路径. 本 healthcheck 脚本 still relevant
+for OTHER Beat tasks (dynamic-threshold-5min / l4-sweep-1min / meta-monitor /
+news-ingest / etc) — CeleryBeat 静默死亡 仍是真风险, 仅 historical motivation
+中的 2 个 specific Beat 已 retired. 详 docs/audit/link_paused_2026_04_29.md.
+
 PT_Watchdog 1/日 (20:00) 检测频次远不够 (Beat 凌晨死亡 → 20:00 = 17h 静默 gap).
 
 ## 检查项
@@ -103,6 +111,7 @@ def _to_cst_display(utc_iso: str | None) -> str:
         return dt_cst.strftime("%Y-%m-%d %H:%M:%S CST")
     except (ValueError, TypeError):
         return utc_iso  # fallback raw 防 alert 完全 broken
+
 
 # ─── sys.path + .env bootstrap (对齐 monitor_mvp_3_1_sunset.py PR #73 模式) ──
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -858,7 +867,8 @@ def _run() -> int:
             logger.error(
                 "[Observability] AlertDispatchError P0 sink 失败: %s "
                 "(services_healthcheck Beat 死亡告警关键, 状态文件标记 sent=False "
-                "下次 schtask 重试)", e,
+                "下次 schtask 重试)",
+                e,
             )
             sent = False
 

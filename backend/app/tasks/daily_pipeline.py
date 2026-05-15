@@ -99,13 +99,16 @@ def _write_scheduler_log_safe(
         # 已完成. 上层 logger.error 仍捕获故障 trace.
         logger.warning(
             "[scheduler_task_log] write failed task=%s: %s: %s",
-            task_name, type(e).__name__, e,
+            task_name,
+            type(e).__name__,
+            e,
         )
 
 
 # ════════════════════════════════════════════════════════════
 # T日 16:25 — 健康预检（信号前 5 分钟）
 # ════════════════════════════════════════════════════════════
+
 
 @celery_app.task(
     bind=True,
@@ -156,9 +159,7 @@ def daily_health_check_task(self) -> dict:
             )
         except Exception:
             # S3 F78 修复: 加 logger.warning, publish 失败不阻塞但必须可追溯
-            logger.warning(
-                "[daily_pipeline] health_check StreamBus publish 失败", exc_info=True
-            )
+            logger.warning("[daily_pipeline] health_check StreamBus publish 失败", exc_info=True)
 
         return result
     except Exception as exc:
@@ -174,9 +175,7 @@ async def _async_health_check() -> dict:
     async with get_async_session() as session:
         # 1. PostgreSQL 连接
         try:
-            result = await session.execute(
-                __import__("sqlalchemy").text("SELECT 1")
-            )
+            result = await session.execute(__import__("sqlalchemy").text("SELECT 1"))
             checks["postgresql"] = result.scalar() == 1
         except Exception as e:
             checks["postgresql"] = False
@@ -185,9 +184,7 @@ async def _async_health_check() -> dict:
         # 2. 昨日数据是否已更新（klines_daily 最新日期）
         try:
             result = await session.execute(
-                __import__("sqlalchemy").text(
-                    "SELECT MAX(trade_date) FROM klines_daily"
-                )
+                __import__("sqlalchemy").text("SELECT MAX(trade_date) FROM klines_daily")
             )
             latest_date = result.scalar()
             # 允许 1 天延迟（周末/节假日）
@@ -203,6 +200,7 @@ async def _async_health_check() -> dict:
     # 3. Redis 连接（通过 Celery ping）
     try:
         from app.tasks.celery_app import celery_app as _app
+
         _app.connection().ensure_connection(max_retries=1)
         checks["redis"] = True
     except Exception:
@@ -211,17 +209,16 @@ async def _async_health_check() -> dict:
     # 4. 磁盘空间 > 10GB
     try:
         import shutil
+
         usage = shutil.disk_usage("D:\\")
-        free_gb = usage.free / (1024 ** 3)
+        free_gb = usage.free / (1024**3)
         checks["disk_space"] = free_gb > 10
         if not checks["disk_space"]:
             logger.warning(f"磁盘剩余 {free_gb:.1f}GB < 10GB")
     except Exception:
         checks["disk_space"] = True  # 获取失败不阻塞
 
-    checks["all_pass"] = all(
-        v for k, v in checks.items() if k != "all_pass"
-    )
+    checks["all_pass"] = all(v for k, v in checks.items() if k != "all_pass")
     return checks
 
 
@@ -242,7 +239,7 @@ async def _async_health_check() -> dict:
 def risk_daily_check_task(self) -> dict:
     """Risk Framework 日检 (MVP 3.1 批 1 PR 3, 2026-04-24 Session 29).
 
-    RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): Celery Beat
+    **RETIRED 2026-05-15** (V3 PT Cutover Plan v0.4 §A IC-2b): Celery Beat
     `risk-daily-check` 14:30 Mon-Fri Beat schedule entry physically removed
     (post-IC-1c L1 RealtimeRiskEngine production runner + V3 signal-path
     check_v3_circuit_breaker covers this path). Task function kept for
@@ -350,12 +347,14 @@ def risk_daily_check_task(self) -> dict:
                 )
                 if not context.positions:
                     logger.info("[Risk] strategy=%s 无持仓, 跳过", strategy_id)
-                    per_strategy_results.append({
-                        "strategy_id": strategy_id,
-                        "status": "ok",
-                        "checked": 0,
-                        "triggered": 0,
-                    })
+                    per_strategy_results.append(
+                        {
+                            "strategy_id": strategy_id,
+                            "status": "ok",
+                            "checked": 0,
+                            "triggered": 0,
+                        }
+                    )
                     all_errored = False
                     continue
 
@@ -377,19 +376,21 @@ def risk_daily_check_task(self) -> dict:
                     for r in to_execute:
                         dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
 
-                per_strategy_results.append({
-                    "strategy_id": strategy_id,
-                    "status": "ok",
-                    "checked": len(context.positions),
-                    "triggered": len(results),
-                    "alerted": len(to_execute),
-                    "dedup_skipped": len(skipped),
-                    "signals": [
-                        {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
-                        for r in to_execute
-                    ],
-                    "dedup_skipped_rules": skipped,
-                })
+                per_strategy_results.append(
+                    {
+                        "strategy_id": strategy_id,
+                        "status": "ok",
+                        "checked": len(context.positions),
+                        "triggered": len(results),
+                        "alerted": len(to_execute),
+                        "dedup_skipped": len(skipped),
+                        "signals": [
+                            {"rule_id": r.rule_id, "code": r.code, "shares": r.shares}
+                            for r in to_execute
+                        ],
+                        "dedup_skipped_rules": skipped,
+                    }
+                )
                 total_checked += len(context.positions)
                 total_triggered += len(results)
                 total_alerted += len(to_execute)
@@ -398,28 +399,34 @@ def risk_daily_check_task(self) -> dict:
                 logger.info(
                     "[Risk] strategy=%s 日检完成: checked=%d triggered=%d alerted=%d "
                     "dedup_skipped=%d",
-                    strategy_id, len(context.positions), len(results),
-                    len(to_execute), len(skipped),
+                    strategy_id,
+                    len(context.positions),
+                    len(results),
+                    len(to_execute),
+                    len(skipped),
                 )
 
             except Exception as exc:
                 # per-strategy 异常: log + 继续 (other strategies 不受影响). 若所有都异常
                 # 最后 raise retry (all_errored guard).
                 logger.error(
-                    "[Risk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
+                    "[Risk] strategy=%s 异常: %s",
+                    strategy_id,
+                    exc,
+                    exc_info=True,
                 )
-                per_strategy_results.append({
-                    "strategy_id": strategy_id,
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                })
+                per_strategy_results.append(
+                    {
+                        "strategy_id": strategy_id,
+                        "status": "error",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
 
         # 全 strategy 异常 → Celery retry (对齐原 max_retries=1 语义). Monday 安全兜底:
         # 若 batch 4 代码引入的新 code path 全挂, Celery retry 给 1 次机会 + 失败告警.
         if all_errored and strategies:
-            first_err = next(
-                (s for s in per_strategy_results if s.get("status") == "error"), None
-            )
+            first_err = next((s for s in per_strategy_results if s.get("status") == "error"), None)
             err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
             exc = RuntimeError(f"All {len(strategies)} strategies failed: {err_msg}")
             logger.error("[Risk] 所有策略全挂, Celery retry: %s", exc)
@@ -445,8 +452,12 @@ def risk_daily_check_task(self) -> dict:
         logger.info(
             "[Risk] 日检完成: strategies=%d total_checked=%d total_triggered=%d "
             "total_alerted=%d total_dedup_skipped=%d mode=%s",
-            len(strategies), total_checked, total_triggered,
-            total_alerted, total_dedup_skipped, execution_mode,
+            len(strategies),
+            total_checked,
+            total_triggered,
+            total_alerted,
+            total_dedup_skipped,
+            execution_mode,
         )
         return _audit_summary
     except Exception as e:
@@ -459,7 +470,10 @@ def risk_daily_check_task(self) -> dict:
         raise
     finally:
         _write_scheduler_log_safe(
-            "risk_daily_check", _audit_start, _audit_status, _audit_summary,
+            "risk_daily_check",
+            _audit_start,
+            _audit_status,
+            _audit_summary,
         )
 
 
@@ -582,9 +596,7 @@ def intraday_risk_check_task(self) -> dict:
                 # 2. 填 prev_close_nav (批 2 新增, intraday drop rules 需要, per-strategy)
                 nav_conn = get_sync_conn()
                 try:
-                    prev_close_nav = _load_prev_close_nav(
-                        nav_conn, strategy_id, execution_mode
-                    )
+                    prev_close_nav = _load_prev_close_nav(nav_conn, strategy_id, execution_mode)
                 finally:
                     nav_conn.close()
                 context = replace(context, prev_close_nav=prev_close_nav)
@@ -610,46 +622,51 @@ def intraday_risk_check_task(self) -> dict:
                     for r in to_execute:
                         dedup.mark_alerted(r.rule_id, strategy_id, execution_mode)
 
-                per_strategy_results.append({
-                    "strategy_id": strategy_id,
-                    "status": "ok",
-                    "prev_close_nav": prev_close_nav,
-                    "portfolio_nav": context.portfolio_nav,
-                    "positions_count": len(context.positions),
-                    "triggered": len(results),
-                    "alerted": len(to_execute),
-                    "dedup_skipped": len(skipped),
-                    "signals": [
-                        {"rule_id": r.rule_id, "code": r.code} for r in to_execute
-                    ],
-                })
+                per_strategy_results.append(
+                    {
+                        "strategy_id": strategy_id,
+                        "status": "ok",
+                        "prev_close_nav": prev_close_nav,
+                        "portfolio_nav": context.portfolio_nav,
+                        "positions_count": len(context.positions),
+                        "triggered": len(results),
+                        "alerted": len(to_execute),
+                        "dedup_skipped": len(skipped),
+                        "signals": [{"rule_id": r.rule_id, "code": r.code} for r in to_execute],
+                    }
+                )
                 total_triggered += len(results)
                 total_alerted += len(to_execute)
                 total_dedup_skipped += len(skipped)
                 all_errored = False
                 logger.info(
-                    "[IntradayRisk] strategy=%s 盘中完成: triggered=%d alerted=%d "
-                    "dedup_skipped=%d",
-                    strategy_id, len(results), len(to_execute), len(skipped),
+                    "[IntradayRisk] strategy=%s 盘中完成: triggered=%d alerted=%d dedup_skipped=%d",
+                    strategy_id,
+                    len(results),
+                    len(to_execute),
+                    len(skipped),
                 )
 
             except Exception as exc:
                 # per-strategy 异常: log + 继续. max_retries=0 不 retry, 下 5min 会再跑.
                 logger.error(
-                    "[IntradayRisk] strategy=%s 异常: %s", strategy_id, exc, exc_info=True,
+                    "[IntradayRisk] strategy=%s 异常: %s",
+                    strategy_id,
+                    exc,
+                    exc_info=True,
                 )
-                per_strategy_results.append({
-                    "strategy_id": strategy_id,
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                })
+                per_strategy_results.append(
+                    {
+                        "strategy_id": strategy_id,
+                        "status": "error",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
 
         # 全 strategy 异常 + 有 strategies → raise propagate Celery FAILURE → 监控告警
         # (max_retries=0, 不 retry, 下 5min 周期会自然再跑一次)
         if all_errored and strategies:
-            first_err = next(
-                (s for s in per_strategy_results if s.get("status") == "error"), None
-            )
+            first_err = next((s for s in per_strategy_results if s.get("status") == "error"), None)
             err_msg = first_err.get("error", "unknown") if first_err else "all strategies failed"
             _audit_summary = {
                 "status": "error",
@@ -657,9 +674,7 @@ def intraday_risk_check_task(self) -> dict:
                 "strategies_failed": len(strategies),
             }
             _audit_status = "error"
-            raise RuntimeError(
-                f"[IntradayRisk] All {len(strategies)} strategies failed: {err_msg}"
-            )
+            raise RuntimeError(f"[IntradayRisk] All {len(strategies)} strategies failed: {err_msg}")
 
         _audit_summary = {
             "status": "ok",
@@ -674,7 +689,11 @@ def intraday_risk_check_task(self) -> dict:
         logger.info(
             "[IntradayRisk] 盘中完成: strategies=%d total_triggered=%d total_alerted=%d "
             "total_dedup_skipped=%d mode=%s",
-            len(strategies), total_triggered, total_alerted, total_dedup_skipped, execution_mode,
+            len(strategies),
+            total_triggered,
+            total_alerted,
+            total_dedup_skipped,
+            execution_mode,
         )
         return _audit_summary
     except Exception as e:
@@ -690,7 +709,10 @@ def intraday_risk_check_task(self) -> dict:
         raise
     finally:
         _write_scheduler_log_safe(
-            "intraday_risk_check", _audit_start, _audit_status, _audit_summary,
+            "intraday_risk_check",
+            _audit_start,
+            _audit_status,
+            _audit_summary,
         )
 
 
@@ -730,6 +752,7 @@ def pms_daily_check_task(self) -> dict:
 
     from app.core.qmt_client import get_qmt_client
     from app.services.pms_engine import PMSEngine
+
     checker = TradingDayChecker()
     is_td, reason = checker.is_trading_day(date.today())
     if not is_td:
@@ -747,6 +770,7 @@ def pms_daily_check_task(self) -> dict:
 
     conn = _get_redis_client  # 占位，实际用sync DB连接
     from app.services.db import get_sync_conn
+
     conn = get_sync_conn()
 
     try:
@@ -771,7 +795,8 @@ def pms_daily_check_task(self) -> dict:
             engine.record_trigger(conn, sig, strategy_id, date.today())
             logger.info(
                 "[PMS] 触发: %s 层级%d 浮盈=%.1f%% 回撤=%.1f%%",
-                sig.code, sig.level,
+                sig.code,
+                sig.level,
                 sig.unrealized_pnl_pct * 100,
                 sig.drawdown_from_peak_pct * 100,
             )
@@ -782,10 +807,7 @@ def pms_daily_check_task(self) -> dict:
             "status": "ok",
             "checked": len(positions),
             "triggered": len(sell_signals),
-            "signals": [
-                {"code": s.code, "level": s.level}
-                for s in sell_signals
-            ],
+            "signals": [{"code": s.code, "level": s.level} for s in sell_signals],
         }
         logger.info("[PMS] 检查完成: %d只持仓, %d只触发", len(positions), len(sell_signals))
         return result
@@ -802,13 +824,14 @@ def pms_daily_check_task(self) -> dict:
 # T日 16:30 — 信号生成
 # ════════════════════════════════════════════════════════════
 
+
 @celery_app.task(
     bind=True,
     name="daily_pipeline.signal",
     acks_late=True,
     max_retries=2,
     default_retry_delay=300,
-    time_limit=1800,       # 硬超时 30min
+    time_limit=1800,  # 硬超时 30min
     soft_time_limit=1500,  # 软超时 25min
 )
 def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
@@ -829,9 +852,7 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
         执行摘要 dict。
     """
     trade_date = (
-        datetime.strptime(trade_date_str, "%Y-%m-%d").date()
-        if trade_date_str
-        else date.today()
+        datetime.strptime(trade_date_str, "%Y-%m-%d").date() if trade_date_str else date.today()
     )
     trade_date_str = str(trade_date)
 
@@ -841,8 +862,7 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
         msg = f"[Signal] health_check未通过，跳过T日={trade_date}信号生成"
         logger.error(msg)
         _send_health_gate_alert(trade_date)
-        return {"status": "skipped", "trade_date": trade_date_str,
-                "reason": "health_check_failed"}
+        return {"status": "skipped", "trade_date": trade_date_str, "reason": "health_check_failed"}
     elif health_status == "missing":
         logger.warning(
             "[Signal] 无health_check结果(T日=%s)，放行（可能是手动触发）",
@@ -856,8 +876,12 @@ def daily_signal_task(self, trade_date_str: str | None = None) -> dict:
         result = asyncio.run(_async_signal(trade_date))
         elapsed = time.time() - t0
         logger.info(f"[Signal] 完成 ({elapsed:.1f}s)")
-        return {"status": "success", "trade_date": trade_date_str,
-                "elapsed_seconds": round(elapsed, 1), **result}
+        return {
+            "status": "success",
+            "trade_date": trade_date_str,
+            "elapsed_seconds": round(elapsed, 1),
+            **result,
+        }
     except Exception as exc:
         logger.error(f"[Signal] 异常: {exc}", exc_info=True)
         raise self.retry(exc=exc) from exc
@@ -899,6 +923,7 @@ def _send_health_gate_alert(trade_date: date) -> None:
         failed_items = [k for k, v in details.items() if k != "all_pass" and not v]
 
         import psycopg2
+
         conn = psycopg2.connect(settings.DATABASE_URL.replace("+asyncpg", ""))
         try:
             ns.send_sync(
@@ -932,6 +957,7 @@ async def _async_signal(trade_date: date) -> dict:
         sys.path.insert(0, scripts_dir)
 
     from run_paper_trading import run_signal_phase
+
     # run_signal_phase 是同步函数，在 asyncio.run() 上下文中直接调用
     # （它内部用 psycopg2 同步连接，不与 event loop 冲突）
     run_signal_phase(trade_date, dry_run=False, skip_fetch=False, skip_factors=False)
@@ -942,6 +968,7 @@ async def _async_signal(trade_date: date) -> dict:
 # ════════════════════════════════════════════════════════════
 # T+1日 09:00 — 执行调仓
 # ════════════════════════════════════════════════════════════
+
 
 @celery_app.task(
     bind=True,
@@ -965,9 +992,7 @@ def daily_execute_task(self, exec_date_str: str | None = None) -> dict:
         执行摘要 dict。
     """
     exec_date = (
-        datetime.strptime(exec_date_str, "%Y-%m-%d").date()
-        if exec_date_str
-        else date.today()
+        datetime.strptime(exec_date_str, "%Y-%m-%d").date() if exec_date_str else date.today()
     )
     exec_date_str = str(exec_date)
     logger.info(f"[Execute] exec_date={exec_date}")
@@ -977,8 +1002,12 @@ def daily_execute_task(self, exec_date_str: str | None = None) -> dict:
         result = asyncio.run(_async_execute(exec_date))
         elapsed = time.time() - t0
         logger.info(f"[Execute] 完成 ({elapsed:.1f}s)")
-        return {"status": "success", "exec_date": exec_date_str,
-                "elapsed_seconds": round(elapsed, 1), **result}
+        return {
+            "status": "success",
+            "exec_date": exec_date_str,
+            "elapsed_seconds": round(elapsed, 1),
+            **result,
+        }
     except Exception as exc:
         logger.error(f"[Execute] 异常: {exc}", exc_info=True)
         raise self.retry(exc=exc) from exc
@@ -994,6 +1023,7 @@ async def _async_execute(exec_date: date) -> dict:
         sys.path.insert(0, scripts_dir)
 
     from run_paper_trading import run_execute_phase
+
     run_execute_phase(exec_date, dry_run=False, skip_fetch=False)
 
     return {"phase": "execute", "exec_date": str(exec_date)}
@@ -1024,10 +1054,7 @@ def data_quality_report_task(self, trade_date_str: str | None = None) -> dict:
     """
     from engines.trading_day_checker import TradingDayChecker
 
-    td = (
-        datetime.strptime(trade_date_str, "%Y-%m-%d").date()
-        if trade_date_str else date.today()
-    )
+    td = datetime.strptime(trade_date_str, "%Y-%m-%d").date() if trade_date_str else date.today()
     checker = TradingDayChecker()
     is_td, reason = checker.is_trading_day(td)
     if not is_td:
@@ -1038,14 +1065,29 @@ def data_quality_report_task(self, trade_date_str: str | None = None) -> dict:
     from app.services.data_orchestrator import DataOrchestrator
 
     DEFAULT_FACTORS = [
-        "turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm",
-        "high_freq_volatility_20", "volume_concentration_20", "volume_autocorr_20",
-        "smart_money_ratio_20", "opening_volume_share_20", "closing_trend_strength_20",
-        "vwap_deviation_20", "order_flow_imbalance_20", "intraday_momentum_20",
+        "turnover_mean_20",
+        "volatility_20",
+        "bp_ratio",
+        "dv_ttm",
+        "high_freq_volatility_20",
+        "volume_concentration_20",
+        "volume_autocorr_20",
+        "smart_money_ratio_20",
+        "opening_volume_share_20",
+        "closing_trend_strength_20",
+        "vwap_deviation_20",
+        "order_flow_imbalance_20",
+        "intraday_momentum_20",
         "volume_price_divergence_20",
     ]
-    DEFAULT_L1 = ["klines_daily", "daily_basic", "moneyflow_daily",
-                  "minute_bars", "index_daily", "symbols"]
+    DEFAULT_L1 = [
+        "klines_daily",
+        "daily_basic",
+        "moneyflow_daily",
+        "minute_bars",
+        "index_daily",
+        "symbols",
+    ]
 
     orch = DataOrchestrator("2021-01-01", "2025-12-31")
     t0 = time.time()
@@ -1061,7 +1103,8 @@ def data_quality_report_task(self, trade_date_str: str | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"quality_report_{td}.json"
     out_path.write_text(
-        json.dumps(report, indent=2, default=str), encoding="utf-8",
+        json.dumps(report, indent=2, default=str),
+        encoding="utf-8",
     )
 
     # 告警

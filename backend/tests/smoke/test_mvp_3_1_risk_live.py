@@ -4,13 +4,20 @@
   1. `backend.qm_platform.risk` (engine + interface + sources + rules) 可 import
   2. `app.services.risk_wiring` 可 import (wiring 层 DI 契约)
   3. `app.tasks.daily_pipeline.risk_daily_check_task` Celery task 已注册
-  4. `app.tasks.beat_schedule.risk-daily-check` schedule 已注册
+  4. `app.tasks.beat_schedule.risk-daily-check` Beat schedule entry **ABSENT**
+     (RETIRED 2026-05-15 per IC-2b — regression guard against accidental re-add)
 
 铁律 10b 意图: 单测 CWD=project root 永远绿不等于生产可用, smoke 必须从生产启动
 路径 subprocess 真启动, 捕 import-time / top-level 执行错误. 本 smoke 不跑 L4 逻辑
 (无 QMT / Redis / DB), 仅验证 import 不炸 — 具体行为覆盖在 L1 unit tests
 (test_risk_engine.py / test_risk_rules_pms.py / test_risk_sources.py PR #57).
+
+LL-171 lesson 4: regression guard pattern — IC-2b reviewer convergence (both
+code-reviewer + python-reviewer) flagged stale PRESENCE assertions as a latent
+trap. Inverted to ABSENCE assertion so the smoke actively guards against a
+future maintainer accidentally re-adding the retired Beat entries.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -21,20 +28,15 @@ import pytest
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason="RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): risk-daily-check "
-    "Beat schedule entry physically removed from beat_schedule.py. Post-IC-1c L1 "
-    "RealtimeRiskEngine production runner + V3 signal-path check_v3_circuit_breaker "
-    "covers this path. 见 docs/audit/link_paused_2026_04_29.md (FORMAL RETIRE section)."
-)
 def test_mvp_3_1_risk_framework_imports() -> None:
     """Platform risk + wiring + Celery task 链路 subprocess import 不炸.
 
     断言:
       - PlatformRiskEngine / PMSRule / QMTPositionSource 可 import
       - build_risk_engine factory 可 import
-      - Celery task daily_pipeline.risk_check 注册
-      - Beat schedule risk-daily-check 14:30 MoFr 配置正确
+      - Celery task daily_pipeline.risk_check 注册 (任 retain for manual invocation)
+      - Beat schedule risk-daily-check entry **ABSENT** (RETIRED 2026-05-15
+        per IC-2b regression guard)
     """
     project_root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
@@ -68,21 +70,14 @@ def test_mvp_3_1_risk_framework_imports() -> None:
                 "from app.tasks.daily_pipeline import risk_daily_check_task; "
                 "assert risk_daily_check_task.name == 'daily_pipeline.risk_check', "
                 "f'task name drifted: {risk_daily_check_task.name}'; "
-                # 4. Beat schedule 注册
+                # 4. Beat schedule ABSENT (RETIRED 2026-05-15 per IC-2b — regression
+                #    guard against accidental re-add by future maintainer). Inverted
+                #    from PRESENCE assertion per LL-171 lesson 4 (reviewer convergence
+                #    on stale-assertion-in-skipped-test trap).
                 "from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE; "
-                "assert 'risk-daily-check' in CELERY_BEAT_SCHEDULE, "
-                "'risk-daily-check missing from CELERY_BEAT_SCHEDULE'; "
-                "entry = CELERY_BEAT_SCHEDULE['risk-daily-check']; "
-                "assert entry['task'] == 'daily_pipeline.risk_check', "
-                "f\"task mismatch: {entry['task']}\"; "
-                "sched = entry['schedule']; "
-                # reviewer P3 采纳: {14}/{30}/{1,2,3,4,5} 是 Python set 字面量 (非 f-string
-                # 插值), celery.schedules.crontab.hour/minute/day_of_week 内部存 set.
-                # 外层字符串非 f-string 所以 `{14}` 直接传 subprocess -c 原样执行.
-                "assert sched.hour == {14}, f'hour drifted: {sched.hour}'; "
-                "assert sched.minute == {30}, f'minute drifted: {sched.minute}'; "
-                "assert sched.day_of_week == {1, 2, 3, 4, 5}, "
-                "f'day_of_week drifted: {sched.day_of_week}'; "
+                "assert 'risk-daily-check' not in CELERY_BEAT_SCHEDULE, "
+                "'regression: risk-daily-check Beat entry retired IC-2b — "
+                "must stay removed'; "
                 # 5. PMSRule 实例化 + action/severity 契约
                 "pr = PMSRule(); "
                 "assert pr.rule_id == 'pms', f'rule_id drifted: {pr.rule_id}'; "
