@@ -12,7 +12,10 @@ Architecture:
      SSOT per IC-1c WU-1 — replay-vs-production parity ADR-076 D1)
   4. engine.set_threshold_cache(RedisThresholdCache()) — read S7 Beat publishes
   5. tick callback → build RiskContext → engine.on_tick(ctx) → dispatch results
-  6. heartbeat SETEX `risk:l1_heartbeat` TTL=300s per tick (LL-081 zombie protection)
+  6. heartbeat SETEX `risk:l1_heartbeat` TTL=3600s per tick (LL-081 zombie
+     protection; TTL must exceed L1_HEARTBEAT_STALE_THRESHOLD_S=300s alert
+     threshold so the rule has a real alert window after crash — see WU-3
+     Finding #10 sediment)
   7. resync loop (60s): refresh holdings cache for tick-callback RiskContext build
 
 Scope (WU-2 minimal — verify-driven per LL-100 chunked SOP):
@@ -84,6 +87,11 @@ from qm_platform.risk.realtime import (  # noqa: E402
     XtQuantTickSubscriber,
     register_all_realtime_rules,
 )
+from qm_platform.risk.realtime.runtime_keys import (  # noqa: E402
+    CACHE_L1_HEARTBEAT,
+    CACHE_L1_HEARTBEAT_TTL_SEC,
+    STREAM_RISK_L1_TRIGGERED,
+)
 
 from app.config import settings  # noqa: E402
 from app.core.qmt_client import QMTClient  # noqa: E402
@@ -101,19 +109,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("realtime_risk_engine_service")
 
-# Redis 键 (沿用 qmt_data_service.py 命名空间体例)
-CACHE_L1_HEARTBEAT: Final[str] = "risk:l1_heartbeat"
-"""LL-081 体例: SETEX TTL=300s. zombie 后自然 expire → meta_monitor_service
-`_collect_l1_heartbeat` (WU-3 read path) 看到 None → 触发 P0 元告警."""
-
-CACHE_L1_HEARTBEAT_TTL_SEC: Final[int] = 300
-"""5min TTL — 与 ThresholdCache TTL + Beat cadence 对齐. 反 zombie 时 key
-永不过期 silent failure (沿用 LL-081 qmt_data_service SETEX 修复体例)."""
-
-STREAM_RISK_L1_TRIGGERED: Final[str] = "qm:risk:l1_triggered"
-"""L1 RealtimeRiskEngine 触发的 RuleResult 发布 stream. 消费者 (IC-2 scope
-信号链 / L4ExecutionPlanner) 后续接入. WU-2 minimal scope = publish only,
-no consumer wire."""
+# Redis 键 — extracted to qm_platform.risk.realtime.runtime_keys SSOT module
+# (WU-3 python-reviewer P2 fix, 2026-05-15) so writer (this service) and
+# reader (meta_monitor_service._collect_l1_heartbeat) import from a single
+# declaration site. CACHE_L1_HEARTBEAT / CACHE_L1_HEARTBEAT_TTL_SEC /
+# STREAM_RISK_L1_TRIGGERED imported at the top of this file and re-exported
+# at module level so existing imports `from scripts.realtime_risk_engine_service
+# import CACHE_L1_HEARTBEAT` continue to work transparently.
 
 # 同步间隔
 SYNC_INTERVAL_SEC: Final[int] = 60

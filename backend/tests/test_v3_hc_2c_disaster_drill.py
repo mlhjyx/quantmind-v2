@@ -150,11 +150,20 @@ class TestDrillMode2XtquantDisconnect:
         snap = L1HeartbeatSnapshot(last_tick_at=_NOW - timedelta(seconds=30), now=_NOW)
         assert evaluate_l1_heartbeat(snap).triggered is False
 
-    def test_gap_collector_no_signal_runner_deferred(self) -> None:
-        # HC-2a matrix G2: no production runner — _collect_l1_heartbeat hard-wired
-        # no-signal. Drill round documents the gap (Plan v0.4 cutover scope).
-        snap = MetaMonitorService._collect_l1_heartbeat(_NOW)
-        assert snap.last_tick_at is None  # no-signal — instrument deferred
+    def test_gap_collector_no_signal_when_redis_key_absent(self) -> None:
+        # IC-1c WU-3 (2026-05-15): _collect_l1_heartbeat is now Redis-backed
+        # (was static no-signal stub through HC-2c when this drill was written).
+        # When the Redis key `risk:l1_heartbeat` is absent (engine never started
+        # / TTL expired post-3600s-after-crash), last_tick_at=None → rule "no
+        # signal" — the same "no-signal" assertion still holds, but the
+        # mechanism is now real (Redis miss) rather than a static stub.
+        from unittest.mock import MagicMock
+
+        empty_redis = MagicMock()
+        empty_redis.get.return_value = None
+        svc = MetaMonitorService(redis_client=empty_redis)
+        snap = svc._collect_l1_heartbeat(_NOW)
+        assert snap.last_tick_at is None  # no-signal — Redis key absent
 
 
 # ─────────────────────────────────────────────────────────────
@@ -375,12 +384,9 @@ class TestDrillMode8UserOfflineStagedTimeout:
         plan_state = StagedPlanState(
             plan_id="drill-m8-stuck",
             status="PENDING_CONFIRM",
-            pending_since=_NOW
-            - timedelta(seconds=STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 60),
+            pending_since=_NOW - timedelta(seconds=STAGED_PENDING_CONFIRM_OVERDUE_THRESHOLD_S + 60),
         )
-        alert = evaluate_staged_overdue(
-            StagedPlanWindowSnapshot(plans=(plan_state,), now=_NOW)
-        )
+        alert = evaluate_staged_overdue(StagedPlanWindowSnapshot(plans=(plan_state,), now=_NOW))
         assert alert.triggered is True
         assert alert.severity is MetaAlertSeverity.P0
 
@@ -466,9 +472,7 @@ class TestDrillMode10HighFalsePositive:
         # 元告警. Confirm meta_alert_rules exposes no evaluate_false_positive_* fn.
         from backend.qm_platform.risk.metrics import meta_alert_rules
 
-        assert not any(
-            name.startswith("evaluate_false_positive") for name in dir(meta_alert_rules)
-        )
+        assert not any(name.startswith("evaluate_false_positive") for name in dir(meta_alert_rules))
 
     def test_qualitative_reflector_path_exists(self) -> None:
         # The handling path is the qualitative RiskReflector V4-Pro 5-维反思 —
@@ -509,11 +513,20 @@ class TestDrillMode11RealtimeRiskEngineCrash:
         assert evaluate_l1_heartbeat(snap).triggered is True
 
     def test_gap_no_production_runner_shared_root_cause_with_mode2(self) -> None:
-        # HC-2a matrix G1: no production RealtimeRiskEngine runner / no Servy
-        # heartbeat for it — same root cause as mode 2 (G2). _collect_l1_heartbeat
-        # stays no-signal until the realtime engine is production-wired (Plan v0.4).
-        snap = MetaMonitorService._collect_l1_heartbeat(_NOW)
-        assert snap.last_tick_at is None  # no-signal — runner deferred
+        # IC-1c WU-3 (2026-05-15): _collect_l1_heartbeat is now a real Redis-
+        # backed instance method. The previous "static no-signal stub"
+        # assertion stays valid as a documentation of the absent-key path —
+        # which is what happens when no production runner is wired (no SETEX
+        # writes to `risk:l1_heartbeat`). HC-2a matrix G1 root cause closed
+        # at code level by IC-1c WU-2 + WU-3; ops still needs Servy register
+        # to actually populate the key (Plan v0.4 cutover scope deliverable).
+        from unittest.mock import MagicMock
+
+        empty_redis = MagicMock()
+        empty_redis.get.return_value = None
+        svc = MetaMonitorService(redis_client=empty_redis)
+        snap = svc._collect_l1_heartbeat(_NOW)
+        assert snap.last_tick_at is None  # no-signal — Redis key absent (no prod runner)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -536,10 +549,7 @@ class TestDrillMode12BrokerInterfaceFault:
         """Mock conn for _sweep_stuck_inner (沿用 test_l4_sweep_tasks _make_stuck_mock_conn)."""
         conn = MagicMock()
         cursor = MagicMock()
-        desc = [
-            type("Col", (), {"name": n})()
-            for n in ("plan_id", "status", "stuck_since")
-        ]
+        desc = [type("Col", (), {"name": n})() for n in ("plan_id", "status", "stuck_since")]
 
         def _exec(sql: str, params: tuple) -> None:  # noqa: ARG001
             cursor.description = desc
@@ -562,9 +572,7 @@ class TestDrillMode12BrokerInterfaceFault:
             lambda *a, **k: emit_calls.append((a, k)),
         )
         # 注入: 1 plan stuck in CONFIRMED 1h, retry execute_plan raises (broker fault).
-        conn = self._stuck_mock_conn(
-            [("drill-m12-stuck", "CONFIRMED", _NOW - timedelta(hours=1))]
-        )
+        conn = self._stuck_mock_conn([("drill-m12-stuck", "CONFIRMED", _NOW - timedelta(hours=1))])
         staged = MagicMock()
         staged.execute_plan.side_effect = RuntimeError("broker socket timeout")
 
@@ -586,9 +594,7 @@ class TestDrillMode12BrokerInterfaceFault:
             lambda *a, **k: emit_calls.append((a, k)),
         )
         # 恢复: broker recovered → retry execute_plan succeeds → resolved.
-        conn = self._stuck_mock_conn(
-            [("drill-m12-ok", "CONFIRMED", _NOW - timedelta(hours=1))]
-        )
+        conn = self._stuck_mock_conn([("drill-m12-ok", "CONFIRMED", _NOW - timedelta(hours=1))])
         staged = MagicMock()
         staged.execute_plan.return_value = MagicMock(
             outcome=MagicMock(value="EXECUTED"), final_status=None
