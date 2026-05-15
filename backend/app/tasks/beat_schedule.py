@@ -55,32 +55,14 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 老 task function (daily_pipeline.pms_check) 保留 1 sprint 供紧急回滚,
     # 批 3 CB adapter 完成后与 pms_engine.py 一并物理删除.
     # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值).
-    # ── [PAUSE T1_SPRINT_2026_04_29] risk-daily-check 暂停 ──
-    # 撤销见: docs/audit/link_paused_2026_04_29.md
-    # 暂停理由: T1 sprint 期间 .env=paper / DB 全 live 命名空间漂移持续, 14:30 Beat
-    # 触发后 entry_price=0 silent skip 全规则 + LL-081 三段 guard 触 ALL_SKIPPED ERROR
-    # → 钉钉每日刷屏. 真金保护已转挂 LIVE_TRADING_DISABLED=true (broker 层),
-    # Beat 暂停后避免误告警噪音, 启动断言 (D 层) + 数据链 (C 层) 仍保留漂移可见.
-    # 还原前置: T1.4 完成 / 批 2 写路径漂移修 / .env 改 live 收敛
-    # "risk-daily-check": {
-    #     "task": "daily_pipeline.risk_check",
-    #     "schedule": crontab(hour=14, minute=30, day_of_week="1-5"),
-    #     "options": {
-    #         "queue": "default",
-    #         "expires": 1200,
-    #     },
-    # },
-    # ── [PAUSE T1_SPRINT_2026_04_29] intraday-risk-check 暂停 ──
-    # 撤销见: docs/audit/link_paused_2026_04_29.md
-    # 同 risk-daily-check 理由, 5min 高频 72 次/日 钉钉刷屏更甚.
-    # "intraday-risk-check": {
-    #     "task": "daily_pipeline.intraday_risk_check",
-    #     "schedule": crontab(minute="*/5", hour="9-14", day_of_week="1-5"),
-    #     "options": {
-    #         "queue": "default",
-    #         "expires": 240,
-    #     },
-    # },
+    # ── [RETIRED T1_SPRINT_2026_04_29 → IC-2b 2026-05-15] risk-daily-check + intraday-risk-check ──
+    # 历史: T1 sprint 期间 14:30 daily + 5min intraday Beat 因 .env=paper / DB live 命名空间漂移
+    # 触发 ALL_SKIPPED ERROR 钉钉刷屏 → 2026-04-29 暂停 (commented-out, 沿用 audit doc).
+    # 形式 retire 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): post-IC-1c L1 RealtimeRiskEngine
+    # production runner (PR #363) + meta_monitor L1 heartbeat alert re-activated (PR #364)
+    # 已 cover intraday tick-by-tick + daily 14:30 风控路径 — 这 2 paused Beat 在 V3 chain
+    # 中 redundant. Commented-out blocks 物理删除避免长期 dead-code visual noise.
+    # 详 docs/audit/link_paused_2026_04_29.md (历史 audit) + ADR-079 reserved (IC-2 closure cumulative, IC-2c sediment).
     # ── [已移除] daily-execute: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailyExecute 09:31触发 ──
     # ── 高频 30s — Outbox Publisher (MVP 3.4 batch 2) ──
     # event_outbox 表 → Redis Streams `qm:{aggregate_type}:{event_type}`.
@@ -270,7 +252,7 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 反 hard collision (sustained dynamic_threshold_tasks 体例):
     #   - 09:00 — clean (no existing entry; gp-weekly Sun 22:00 / news 03/07/.../23 minute=0 hour-offset)
     #   - 14:30 — risk-l4-sweep-1min (* 9-14 minute=*) sequential queue tolerated (Beat solo dispatch)
-    #     + DEPRECATED risk-daily-check (paused per T1_SPRINT_2026_04_29)
+    #     (historical risk-daily-check 14:30 retired 2026-05-15 per IC-2b — V3 chain covers it now)
     #   - 16:00 — fundamental-context-daily-1600 minute=0 collision; sequential queue tolerated
     #     (independent V4-Pro tasks, ~3-5s combined LLM call latency)
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`

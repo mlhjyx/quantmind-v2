@@ -202,5 +202,30 @@ grep -rn "T1 sprint link-pause" backend/tests/smoke/
 
 ---
 
-> **状态**: T1 sprint link-pause active.
-> **解除窗口**: 批 2 完成 + 用户 cutover 决策, 至少 1 周后 (2026-05-06+).
+> **状态**: ~~T1 sprint link-pause active~~ **FORMAL RETIRE 2026-05-15** (V3 PT Cutover Plan v0.4 §A IC-2b sprint).
+> **解除窗口**: ~~批 2 完成 + 用户 cutover 决策, 至少 1 周后 (2026-05-06+)~~ — **OBSOLETE**.
+
+---
+
+## 形式 RETIRE 沉淀 2026-05-15 (IC-2b)
+
+V3 PT Cutover Plan v0.4 §A IC-2b sprint, user 决议 (P1) Formal retire (NOT unpause). 撤销决议背景:
+
+- ✅ **IC-1c WU-2 PR #363** `5629186` (L1 RealtimeRiskEngine production runner `scripts/realtime_risk_engine_service.py` — Servy-managed, signal-handled, 10 rules registered via `rule_registry` SSOT, SETEX `risk:l1_heartbeat` per tick). Production runner subscribes xtquant tick → engine.on_tick (4 tick rules) → Redis stream publish + heartbeat.
+- ✅ **IC-1c WU-3 PR #364** `0f1c205` (meta_monitor `_collect_l1_heartbeat` Redis read path replace + TTL bug fix). ADR-073 D3 dormant L1 元告警 re-activated end-to-end — engine crash now surfaces via P0 DingTalk alert (NOT silent).
+
+→ 原 paused Beat 2 entries (`risk-daily-check` 14:30 daily + `intraday-risk-check` 5min) 在 post-IC-1c V3 chain 中是 **redundant**:
+- `intraday-risk-check` 5min 高频 → 被 L1 RealtimeRiskEngine tick-by-tick subscribe 替代 (更高频 + 更准, 直走 xtquant tick stream)
+- `risk-daily-check` 14:30 daily → 被 V3 signal path (run_paper_trading.py via `v3_cutover_adapter.check_v3_circuit_breaker`, IC-1a PR #361) 替代 (signal phase + execute phase 双 check)
+
+**Commented-out blocks 物理删除 (beat_schedule.py:58-83)** 2026-05-15 — 避免 long-term dead-code visual noise + 防 future maintainer 误以为可 unpause. Audit doc 保留作 historical context (T1 sprint 期间 4-29 link-pause 决议是 V3 PT Cutover Plan v0.4 §A IC-1+IC-2 chain 的源头之一).
+
+**关联**:
+- ADR-073 D3 dormant L1 元告警 re-activated cite
+- ADR-076 D1 replay-as-gate parity (IC-1c WU-1 rule_registry SSOT)
+- ADR-079 reserved (IC-2 closure cumulative — sediment 时机 IC-2c, 包含本 retire 决议体例)
+- LL-098 X10 (per-sub-PR STOP gate — 历史 4-29 pause + 5-15 retire 跨 2 个 user 显式 trigger)
+- Plan v0.4 §A IC-2b (本 retire 决议落地 sprint)
+- 铁律 42 (docs/** 直 push for audit doc amend)
+
+红线 5/5 sustained throughout pause + retire 转换: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102.

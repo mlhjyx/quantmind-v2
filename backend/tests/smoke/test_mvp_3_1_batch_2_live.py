@@ -4,13 +4,20 @@
   1. `backend.qm_platform.risk.rules.intraday` 4 规则 + Protocol 可 import
   2. `app.services.risk_wiring` 批 2 扩展 (build_intraday_risk_engine / IntradayAlertDedup / _load_prev_close_nav) 可 import
   3. `app.tasks.daily_pipeline.intraday_risk_check_task` Celery task 已注册
-  4. `app.tasks.beat_schedule.intraday-risk-check` schedule 已注册 (5min cron, hour=9-14, MoFr)
+  4. `app.tasks.beat_schedule.intraday-risk-check` Beat schedule entry **ABSENT**
+     (RETIRED 2026-05-15 per IC-2b regression guard — L1 RealtimeRiskEngine
+     subscribes tick-by-tick, higher cadence than 5min Beat)
   5. IntradayAlertDedup key build + TTL 契约 (不真调 Redis)
 
 铁律 10b 意图: 单测 CWD=project root 永远绿不等于生产可用, smoke 必须从生产启动
 路径 subprocess 真启动, 捕 import-time / top-level 执行错误. 本 smoke 不跑 L4 逻辑
 (无 QMT / Redis / DB), 仅验证 import 不炸 — 具体行为覆盖在 L1 unit tests.
+
+LL-171 lesson 4: regression guard pattern — IC-2b reviewer convergence
+inverted PRESENCE assertion to ABSENCE so the smoke actively guards against
+a future maintainer accidentally re-adding the retired Beat entry.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -21,12 +28,8 @@ import pytest
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason="T1 sprint link-pause (2026-04-29): intraday-risk-check Beat 暂停, "
-    "见 docs/audit/link_paused_2026_04_29.md. 还原后取消 skip."
-)
 def test_mvp_3_1_batch_2_intraday_imports() -> None:
-    """Platform intraday + wiring + Celery task + Beat schedule subprocess import 不炸."""
+    """Platform intraday + wiring + Celery task + Beat schedule ABSENT subprocess import 不炸."""
     project_root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
         [
@@ -56,19 +59,13 @@ def test_mvp_3_1_batch_2_intraday_imports() -> None:
                 "from app.tasks.daily_pipeline import intraday_risk_check_task; "
                 "assert intraday_risk_check_task.name == 'daily_pipeline.intraday_risk_check', "
                 "f'task name drifted: {intraday_risk_check_task.name}'; "
-                # 4. Beat schedule 注册 + crontab 参数验证
+                # 4. Beat schedule ABSENT (RETIRED 2026-05-15 per IC-2b — regression
+                #    guard against accidental re-add). Inverted from PRESENCE per
+                #    LL-171 lesson 4 (reviewer convergence on stale-assertion trap).
                 "from app.tasks.beat_schedule import CELERY_BEAT_SCHEDULE; "
-                "assert 'intraday-risk-check' in CELERY_BEAT_SCHEDULE, "
-                "'intraday-risk-check missing from CELERY_BEAT_SCHEDULE'; "
-                "entry = CELERY_BEAT_SCHEDULE['intraday-risk-check']; "
-                "assert entry['task'] == 'daily_pipeline.intraday_risk_check', "
-                "f\"task mismatch: {entry['task']}\"; "
-                "sched = entry['schedule']; "
-                # reviewer P2 采纳 python: set equality 替 len 断言, 检测 crontab 展开值漂移
-                "assert sched.minute == {0,5,10,15,20,25,30,35,40,45,50,55}, "
-                "f'minute set drifted: {sched.minute}'; "
-                "assert sched.hour == {9,10,11,12,13,14}, f'hour drifted: {sched.hour}'; "
-                "assert sched.day_of_week == {1,2,3,4,5}, f'day_of_week drifted: {sched.day_of_week}'; "
+                "assert 'intraday-risk-check' not in CELERY_BEAT_SCHEDULE, "
+                "'regression: intraday-risk-check Beat entry retired IC-2b — "
+                "must stay removed'; "
                 # 5. IntradayAlertDedup key build + TTL 契约
                 "k = IntradayAlertDedup._build_key('pms_l1', 'strat_x', 'paper'); "
                 "assert k.startswith('qm:risk:dedup:pms_l1:strat_x:paper:'), "
