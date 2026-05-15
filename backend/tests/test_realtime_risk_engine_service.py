@@ -247,12 +247,18 @@ class TestDispatchTriggered:
         assert json.loads(payload["metrics"]) == {"pct_change": -0.099}
         assert call_args.kwargs["source"] == "realtime_risk_engine_service"
 
-    def test_dispatch_increments_trigger_count(self):
-        """Each triggered result increments trigger_count for visibility."""
+    def test_dispatch_publishes_one_per_result(self):
+        """Each triggered result publishes exactly one stream message.
+
+        Reviewer fix (both reviewers P2-1, 2026-05-15): `_trigger_count`
+        is no longer mutated by `_dispatch_triggered` — it lives in `_on_tick`
+        under the lock so both counters are atomic. This test verifies the
+        publish path independently.
+        """
         service = _make_service()
         results = [self._make_result(rule_id=f"rule_{i}") for i in range(3)]
         service._dispatch_triggered(results)
-        assert service._trigger_count == 3
+        assert service._bus.publish_sync.call_count == 3
 
     def test_dispatch_stream_failure_swallowed(self):
         """Stream publish raise → log warning, no propagation (sustained tick eval)."""
@@ -262,15 +268,31 @@ class TestDispatchTriggered:
         service._dispatch_triggered([self._make_result()])
 
     def test_dispatch_zero_broker_calls(self):
-        """红线 sustained: WU-2 dispatch path makes 0 broker calls."""
+        """红线 sustained: WU-2 dispatch path makes 0 broker calls.
+
+        Reviewer fix (code-reviewer P2-4 + python-reviewer P2-3, 2026-05-15):
+        replaced the fragile `dir(service)` substring scan with explicit
+        mock-call assertions on QMTClient broker-mutation methods + a stream
+        name invariant check. The dir-scan proved only "no broker-named
+        attribute" — not "0 broker calls". The new assertions prove that
+        QMTClient.place_order / cancel_order are never invoked AND the
+        publish_sync target stream contains 'risk' (not 'execution').
+        """
         service = _make_service()
-        # Service does not carry a broker dep at all
-        assert not hasattr(service, "_broker")
         service._dispatch_triggered([self._make_result()])
-        # Verify no MagicMock-broker-like attribute received calls
-        for attr_name in dir(service):
-            if "broker" in attr_name.lower():
-                pytest.fail(f"Unexpected broker-like attribute: {attr_name}")
+        # QMTClient must not receive ANY order placement / cancellation call
+        service._qmt_client.place_order.assert_not_called()
+        service._qmt_client.cancel_order.assert_not_called()
+        # Stream publish target must be the L1 risk stream, not an execution stream
+        call_args = service._bus.publish_sync.call_args
+        assert call_args is not None
+        stream_name = call_args.args[0]
+        assert "risk" in stream_name, (
+            f"Unexpected stream target {stream_name!r} — must be 'risk' family"
+        )
+        assert "execution" not in stream_name, (
+            f"Forbidden execution stream target {stream_name!r} in dispatch path"
+        )
 
 
 # ---------- TestOnTickFlow ----------
@@ -315,6 +337,60 @@ class TestOnTickFlow:
         service._redis.setex.assert_not_called()
         assert service._tick_count == 0
 
+    def test_on_tick_internal_exception_swallowed_with_log(self):
+        """Build/eval exception is caught by service-internal guard (reviewer P2-2).
+
+        Verifies the service does not rely on subscriber.py:145 external catch
+        for its own correctness — a `_build_realtime_context` or `engine.on_tick`
+        crash is logged with full stack trace and the callback returns cleanly.
+        """
+        service = _make_service(positions={"600519.SH": 100})
+        service._refresh_positions()
+        # Mock engine that raises on on_tick
+        mock_engine = MagicMock()
+        mock_engine.on_tick.side_effect = RuntimeError("engine crashed")
+        service._engine = mock_engine
+        service._running = True
+        # Must not raise (service-internal try/except guard)
+        service._on_tick({"600519.SH": {"price": 1700.0}})
+
+    def test_on_tick_increments_trigger_count_atomically(self):
+        """`_trigger_count` accumulates under lock in `_on_tick` (reviewer P2-1).
+
+        After WU-2 reviewer-fix: counter is mutated in `_on_tick` (not in
+        `_dispatch_triggered`) so both `_tick_count` and `_trigger_count` are
+        consistent within the same lock acquisition.
+        """
+        # Build a mock engine that returns 2 triggered RuleResults
+        mock_engine = MagicMock()
+        mock_engine.on_tick.return_value = [
+            RuleResult(
+                rule_id="limit_down_detection",
+                code="600519.SH",
+                shares=100,
+                reason="test",
+                metrics={"pct_change": -0.099},
+            ),
+            RuleResult(
+                rule_id="near_limit_down",
+                code="600519.SH",
+                shares=100,
+                reason="test",
+                metrics={"pct_change": -0.08},
+            ),
+        ]
+        service = _make_service(positions={"600519.SH": 100})
+        service._engine = mock_engine
+        service._running = True
+        service._refresh_positions()
+
+        service._on_tick({"600519.SH": {"price": 1700.0}})
+
+        # 1 tick, 2 triggers — atomically accumulated
+        assert service._tick_count == 1
+        assert service._trigger_count == 2
+        assert service._bus.publish_sync.call_count == 2
+
 
 # ---------- TestBuildEngine ----------
 
@@ -349,3 +425,114 @@ class TestShutdown:
         service._running = True
         service._handle_shutdown(15, None)  # SIGTERM=15
         assert service._running is False
+
+
+# ---------- TestStartLifecycle ----------
+
+
+class TestStartLifecycle:
+    """`start()` lifecycle — cleanup invariants on success + failure paths.
+
+    Reviewer fix (code-reviewer P1-2 + P2-3, 2026-05-15): verify that
+    `_cleanup` is invoked even when `subscriber.start()` raises mid-startup,
+    so the subscriber + engine + redis client never leak.
+    """
+
+    def test_start_subscriber_raise_calls_cleanup(self):
+        """subscriber.start() RuntimeError → cleanup runs, exception propagates."""
+        service = _make_service(
+            positions={"600519.SH": 100},
+            nav={"total_value": 200_000.0},
+        )
+        # Make subscriber.start() raise — simulates xtquant disconnect / already-running
+        service._subscriber.start.side_effect = RuntimeError("xtquant subscribe failed")
+
+        with pytest.raises(RuntimeError, match="xtquant subscribe failed"):
+            service.start()
+
+        # P1-2 fix verified: _cleanup must have been called even though
+        # subscriber.start() raised mid-startup. The try/finally now wraps
+        # the whole startup sequence (engine build + subscriber start +
+        # sync loop), so subscriber.stop() runs in the finally clause.
+        service._subscriber.stop.assert_called_once()
+
+    def test_start_sync_loop_returns_calls_cleanup(self):
+        """Normal sync-loop exit (graceful shutdown) → cleanup runs."""
+        service = _make_service(
+            positions={"600519.SH": 100},
+            nav={"total_value": 200_000.0},
+        )
+        # Mock _run_sync_loop to exit immediately
+        service._run_sync_loop = MagicMock()
+
+        service.start()
+
+        service._subscriber.stop.assert_called_once()
+        service._run_sync_loop.assert_called_once()
+
+    def test_start_with_zero_holdings_does_not_call_subscriber_start(self):
+        """0 positions (paper-mode 红线 sustained) → subscriber.start() skipped."""
+        service = _make_service(
+            positions={},
+            nav={"total_value": 1_000_000.0, "cash": 1_000_000.0},
+        )
+        service._run_sync_loop = MagicMock()
+
+        service.start()
+
+        # 0 holdings → no subscribe call; but cleanup still runs
+        service._subscriber.start.assert_not_called()
+        service._subscriber.stop.assert_called_once()
+
+
+# ---------- TestBuildEngineGuard ----------
+
+
+class TestBuildEngineGuard:
+    """`_build_engine` rule registration guard (reviewer P1-1, 2026-05-15).
+
+    Verify that an injected engine with pre-existing rules is NOT
+    auto-double-registered (which would crash with ValueError).
+    """
+
+    def test_injected_engine_with_rules_not_double_registered(self):
+        """Injected engine with rules → _build_engine respects caller-owned state.
+
+        Without the P1-1 fix, calling _build_engine on an injected engine
+        that already has any of the 10 canonical rules raises ValueError.
+        After fix: register_all_realtime_rules is skipped when engine is
+        injected (freshly_built=False).
+        """
+        from backend.qm_platform.risk.rules.realtime.limit_down import (
+            LimitDownDetection,
+        )
+
+        # Pre-populate an engine
+        prepopulated_engine = RealtimeRiskEngine()
+        prepopulated_engine.register(LimitDownDetection(), cadence="tick")
+
+        service = RealtimeRiskEngineService(
+            strategy_id="test-strategy",
+            qmt_client=_make_mock_qmt_client(),
+            subscriber=MagicMock(),
+            engine=prepopulated_engine,  # injected, NOT freshly built
+            threshold_cache=InMemoryThresholdCache(),
+            redis_client=MagicMock(),
+            stream_bus=MagicMock(),
+        )
+
+        # MUST NOT raise — fix bypasses register_all_realtime_rules
+        engine = service._build_engine()
+
+        # Engine remains as-injected (only the manually-registered rule)
+        assert engine is prepopulated_engine
+        assert engine.registered_rules["tick"] == ["limit_down_detection"]
+        # threshold_cache still gets wired
+        assert engine._threshold_cache is service._threshold_cache
+
+    def test_fresh_engine_path_still_registers_all_rules(self):
+        """engine=None → freshly built → 10 rules registered (regression guard)."""
+        service = _make_service()  # engine=None → freshly built path
+        engine = service._build_engine()
+        total = sum(len(rules) for rules in engine.registered_rules.values())
+        assert total == 10

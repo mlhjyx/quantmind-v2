@@ -197,9 +197,19 @@ class RealtimeRiskEngineService:
 
         Uses rule_registry SSOT (IC-1c WU-1) — same rule set as replay/backtest
         path. Threshold cache reads S7 Beat publishes (cross-process via Redis).
+
+        Reviewer fix (code-reviewer P1-1, 2026-05-15): rules are registered ONLY
+        when the engine is freshly built here. An injected engine (DI test path,
+        OR a future caller that wants to pre-populate custom rule subsets) is
+        taken as-is — caller owns rule registration. Without this guard, calling
+        `register_all_realtime_rules` on an injected engine that already has any
+        of the 10 canonical rules raises `ValueError` from
+        `RealtimeRiskEngine.register` (engine.py:67-69 fail-loud 铁律 33).
         """
+        freshly_built = self._engine is None
         engine = self._engine or RealtimeRiskEngine()
-        register_all_realtime_rules(engine)
+        if freshly_built:
+            register_all_realtime_rules(engine)
 
         if self._threshold_cache is None:
             self._threshold_cache = RedisThresholdCache()
@@ -351,9 +361,15 @@ class RealtimeRiskEngineService:
         `qm:risk:l1_triggered` for downstream consumers (future IC-2+ scope).
 
         红线 sustained: 0 broker call, 0 sell, 0 .env mutation.
+
+        Reviewer fix (code-reviewer P2-1 + python-reviewer P2-1, 2026-05-15):
+        `_trigger_count` accumulation moved to `_on_tick` (under the same
+        `_lock` block that owns `_tick_count`) so both counters are mutated
+        atomically together and the periodic debug log shows a consistent
+        snapshot. This method now only logs + publishes; counter math lives
+        in the single tick orchestration path.
         """
         for result in results:
-            self._trigger_count += 1
             logger.warning(
                 "[realtime-risk] L1 rule triggered: rule_id=%s code=%s shares=%s reason=%s",
                 result.rule_id,
@@ -389,7 +405,12 @@ class RealtimeRiskEngineService:
 
         Sustains subscriber.py:139-151 callback exception contract (subscriber
         wraps callbacks in try/except so a crashing callback never tears down
-        the xtquant subscription).
+        the xtquant subscription). Reviewer fix (code-reviewer P2-2 +
+        python-reviewer P2-2, 2026-05-15): the outer subscriber-level catch is
+        the strict requirement; this method ALSO carries a service-internal
+        try/except so the service does not rely on the subscriber's external
+        catch for its own correctness invariants (heartbeat-on-success,
+        counter-consistency).
 
         Flow per tick:
           1. Build RiskContext from cached positions + tick data
@@ -397,34 +418,67 @@ class RealtimeRiskEngineService:
           3. Dispatch triggered results (log + stream)
           4. Write heartbeat SETEX
           5. Periodic operational debug log (every 100 ticks)
+
+        Concurrency (reviewer fix code-reviewer P2-1 + python-reviewer P2-1+P2-2,
+        2026-05-15): all four counters/snapshots — `_tick_count`,
+        `_trigger_count` increment, plus `_positions` length and
+        `_portfolio_nav` reads — are taken inside a single `with self._lock`
+        block so the periodic debug log shows a consistent snapshot from a
+        single point in time (no torn read between sync-loop writer and
+        xtquant-thread reader).
         """
         if not self._running:
             return
         if self._engine is None:
             return  # not yet started
 
-        context = self._build_realtime_context(ticks)
-        results = self._engine.on_tick(context)
-        if results:
-            self._dispatch_triggered(results)
+        try:
+            context = self._build_realtime_context(ticks)
+            results = self._engine.on_tick(context)
+            triggered_count = len(results)
+            if results:
+                self._dispatch_triggered(results)
 
-        now = datetime.now(UTC)
-        self._write_heartbeat(now)
+            now = datetime.now(UTC)
+            self._write_heartbeat(now)
 
-        with self._lock:
-            self._tick_count += 1
-            tick_count = self._tick_count
-        if tick_count % 100 == 0:
-            logger.info(
-                "[realtime-risk] ticks_processed=%d triggers_total=%d positions=%d nav=%.2f",
-                tick_count,
-                self._trigger_count,
-                len(self._positions),
-                self._portfolio_nav,
-            )
+            # All four reads/writes under one lock block — sustained snapshot
+            with self._lock:
+                self._tick_count += 1
+                self._trigger_count += triggered_count
+                tick_count = self._tick_count
+                trigger_count_snapshot = self._trigger_count
+                pos_count_snapshot = len(self._positions)
+                nav_snapshot = self._portfolio_nav
+
+            if tick_count % 100 == 0:
+                logger.info(
+                    "[realtime-risk] ticks_processed=%d triggers_total=%d positions=%d nav=%.2f",
+                    tick_count,
+                    trigger_count_snapshot,
+                    pos_count_snapshot,
+                    nav_snapshot,
+                )
+        except Exception:  # noqa: BLE001
+            # Service-internal isolation guard (reviewer fix code-reviewer P2-2):
+            # subscriber.py:145 also catches, but we add this guard so a future
+            # subscriber implementation change cannot silently break the service's
+            # heartbeat / counter invariants. Heartbeat write failure has its own
+            # silent_ok in _write_heartbeat; this catches build_context /
+            # engine.on_tick / dispatch crashes. # silent_ok: tick loss is self-
+            # correcting on next tick; full stack trace logged for forensics.
+            logger.exception("[realtime-risk] _on_tick failed (tick eval skipped)")
 
     def start(self) -> None:
-        """Start the service — connect Redis + xtquant + subscribe + tick loop."""
+        """Start the service — connect Redis + xtquant + subscribe + tick loop.
+
+        Reviewer fix (code-reviewer P1-2, 2026-05-15): the try/finally guarding
+        `_cleanup()` now wraps every step that could leave a resource leaked
+        (subscriber.start() can raise `RuntimeError("already running")` or
+        propagate subscribe_quote exceptions). The previous narrower scope
+        only wrapped `_run_sync_loop()`, so a subscriber.start() failure left
+        engine + Redis + (partially-started) subscriber uncleaned.
+        """
         logger.info("=== Realtime Risk Engine Service 启动 ===")
         self._running = True
 
@@ -432,42 +486,42 @@ class RealtimeRiskEngineService:
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
 
-        # Initial position refresh (used to determine subscribe symbol set)
-        if not self._refresh_positions():
-            logger.warning(
-                "[realtime-risk] initial position refresh failed — will retry "
-                "in sync loop, but no symbols subscribed yet"
-            )
-
-        # Build engine (rule_registry + threshold cache)
-        self._engine = self._build_engine()
-
-        # Build subscriber (lazy — xtquant only imported on subscribe)
-        if self._subscriber is None:
-            ensure_xtquant_path()
-            self._subscriber = XtQuantTickSubscriber()
-        self._subscriber.add_callback(self._on_tick)
-
-        # Subscribe to current holdings
-        with self._lock:
-            initial_codes = list(self._positions.keys())
-        if initial_codes:
-            self._subscriber.start(initial_codes)
-            logger.info(
-                "[realtime-risk] subscribed to %d holdings: %s",
-                len(initial_codes),
-                initial_codes,
-            )
-        else:
-            logger.warning(
-                "[realtime-risk] 0 holdings at startup (paper-mode 0 positions "
-                "sustained per 红线 5/5) — subscriber idle until next sync detects "
-                "new positions. Manual Servy restart needed if holdings appear."
-            )
-
-        # Resync loop — refreshes position cache + heartbeat (no auto-subscribe
-        # of new codes in WU-2 minimal scope, doc as known limitation)
         try:
+            # Initial position refresh (used to determine subscribe symbol set)
+            if not self._refresh_positions():
+                logger.warning(
+                    "[realtime-risk] initial position refresh failed — will retry "
+                    "in sync loop, but no symbols subscribed yet"
+                )
+
+            # Build engine (rule_registry + threshold cache)
+            self._engine = self._build_engine()
+
+            # Build subscriber (lazy — xtquant only imported on subscribe)
+            if self._subscriber is None:
+                ensure_xtquant_path()
+                self._subscriber = XtQuantTickSubscriber()
+            self._subscriber.add_callback(self._on_tick)
+
+            # Subscribe to current holdings — reviewer P1-2 covers raise here
+            with self._lock:
+                initial_codes = list(self._positions.keys())
+            if initial_codes:
+                self._subscriber.start(initial_codes)
+                logger.info(
+                    "[realtime-risk] subscribed to %d holdings: %s",
+                    len(initial_codes),
+                    initial_codes,
+                )
+            else:
+                logger.warning(
+                    "[realtime-risk] 0 holdings at startup (paper-mode 0 positions "
+                    "sustained per 红线 5/5) — subscriber idle until next sync detects "
+                    "new positions. Manual Servy restart needed if holdings appear."
+                )
+
+            # Resync loop — refreshes position cache + heartbeat (no auto-subscribe
+            # of new codes in WU-2 minimal scope, doc as known limitation)
             self._run_sync_loop()
         finally:
             self._cleanup()
