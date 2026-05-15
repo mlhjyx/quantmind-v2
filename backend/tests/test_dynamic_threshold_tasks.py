@@ -42,6 +42,7 @@ def _stub_market_indicators() -> MarketIndicators:
         index_return=None, limit_down_count=None, northbound_flow=None, regime=None
     )
 
+
 # §1 Task registration
 
 
@@ -170,17 +171,28 @@ def test_cache_set_batch_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> 
         dtt.compute_dynamic_thresholds.run()
 
 
-def test_stub_warning_logged_once(
+def test_no_stub_warning_after_ic_2a_destub(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """P2-6: partial-stub posture warning fires once + is silent on subsequent ticks."""
+    """IC-2a (2026-05-15) regression guard: partial-STUB warning is GONE.
+
+    Pre-IC-2a behavior: `partial STUB inputs active` warning logged once on
+    first Beat tick (P2-6 stub-warned flag). Post-IC-2a: _build_stock_metrics
+    is fully wired (factor_values + daily_basic + stock_basic queries), so
+    the warning + the `_stub_warned` module-level flag are removed.
+
+    Asserting absence pins the de-stub closure — a future regression that
+    re-introduces a stub posture would re-trigger this warning and fail this
+    assertion.
+    """
     from qm_platform.risk.dynamic_threshold.cache import InMemoryThresholdCache
 
     mem_cache = InMemoryThresholdCache()
     monkeypatch.setattr(dtt, "_cache", mem_cache)
     monkeypatch.setattr(dtt, "_engine", None)
-    monkeypatch.setattr(dtt, "_stub_warned", False)  # reset
     monkeypatch.setattr(dtt, "_build_market_indicators", _stub_market_indicators)
+    # Stub holdings fetch to 0 positions (red-line paper-mode sustained)
+    monkeypatch.setattr(dtt, "_build_stock_metrics", lambda: {})
 
     import logging
 
@@ -189,10 +201,209 @@ def test_stub_warning_logged_once(
         dtt.compute_dynamic_thresholds.run()
         dtt.compute_dynamic_thresholds.run()
 
-    # HC-2b3 G4: warning text now "partial STUB inputs active" (market indicators
-    # wired, _build_stock_metrics still stub).
     stub_warnings = [r for r in caplog.records if "partial STUB inputs active" in r.message]
-    assert len(stub_warnings) == 1  # only first tick warns
+    assert len(stub_warnings) == 0, (
+        "IC-2a regression: partial-STUB warning should not fire — _build_stock_metrics "
+        "is fully wired. If this test fails, a stub posture was re-introduced."
+    )
+    # Module-level flag should also be gone (asserts symbol absence)
+    assert not hasattr(dtt, "_stub_warned"), (
+        "IC-2a regression: _stub_warned module-level flag should be removed."
+    )
+
+
+# ── IC-2a (2026-05-15): _build_stock_metrics de-stub tests ──
+
+
+class _MockCursor:
+    """Minimal DB cursor mock for _fetch_stock_metrics_from_db tests."""
+
+    def __init__(self, fetchall_routes: dict[str, list[tuple]]) -> None:
+        self._routes = fetchall_routes
+        self._last_sql = ""
+
+    def execute(self, sql: str, params: tuple = ()) -> None:
+        self._last_sql = sql
+
+    def fetchall(self) -> list[tuple]:
+        # Reviewer-fix (code-reviewer P2-A + python-reviewer P2-2, 2026-05-15):
+        # route by MOST-SPECIFIC table name first. Original order had
+        # "factor_values" first, but if future SQL refactor JOINs daily_basic
+        # against factor_values, the substring "factor_values" would match
+        # incorrectly. Disjoint table names (stock_basic / daily_basic) checked
+        # before the more-broadly-referenced factor_values eliminates ordering
+        # dependency on SQL text shape.
+        sql = self._last_sql
+        if "stock_basic" in sql:
+            return self._routes.get("stock_basic", [])
+        if "daily_basic" in sql or "PERCENT_RANK" in sql:
+            return self._routes.get("daily_basic", [])
+        if "factor_values" in sql:
+            return self._routes.get("factor_values", [])
+        return []
+
+    def close(self) -> None:
+        pass
+
+
+class _MockConn:
+    """Minimal DB conn mock that returns a _MockCursor per cursor() call."""
+
+    def __init__(self, fetchall_routes: dict[str, list[tuple]] | None = None) -> None:
+        self._routes = fetchall_routes or {}
+
+    def cursor(self) -> _MockCursor:
+        return _MockCursor(self._routes)
+
+    def close(self) -> None:
+        pass
+
+
+def test_build_stock_metrics_zero_holdings_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """0 holdings (red-line paper-mode sustained) → empty dict, no DB calls.
+
+    Monkeypatch target rationale (python-reviewer P2-1, 2026-05-15): patch
+    the SOURCE MODULE (`app.core.qmt_client`), NOT the consumer module
+    (`app.tasks.dynamic_threshold_tasks`). The lazy `from app.core.qmt_client
+    import get_qmt_client` inside `_get_qmt_client_lazy` re-fetches the
+    attribute from the source module on every call, so patching the source
+    module's attribute correctly intercepts the call. Patching the consumer
+    module would silently NOT intercept (lazy import binds a fresh local name).
+    """
+    from app.core import qmt_client as qc
+
+    mock_client = MagicMock()
+    mock_client.get_positions.return_value = {}
+    monkeypatch.setattr(qc, "get_qmt_client", lambda: mock_client)
+
+    result = dtt._build_stock_metrics()
+    assert result == {}
+
+
+def test_build_stock_metrics_qmt_failure_fails_soft(monkeypatch: pytest.MonkeyPatch) -> None:
+    """QMT-down → fail-soft empty dict, market-only eval continues."""
+    from app.core import qmt_client as qc
+
+    def raising_client():
+        raise ConnectionError("simulated QMT down")
+
+    monkeypatch.setattr(qc, "get_qmt_client", raising_client)
+    result = dtt._build_stock_metrics()
+    assert result == {}
+
+
+def test_fetch_stock_metrics_from_db_populates_all_three_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Happy path: factor_values + daily_basic + stock_basic all return data → full StockMetrics."""
+    from app.services import db as db_mod
+
+    codes = ["600519.SH", "000001.SZ"]
+    mock_conn = _MockConn(
+        fetchall_routes={
+            "factor_values": [
+                ("600519.SH", "atr_norm_20", 0.025),
+                ("600519.SH", "beta_market_20", 1.15),
+                ("000001.SZ", "atr_norm_20", 0.035),
+                ("000001.SZ", "beta_market_20", 0.85),
+            ],
+            "daily_basic": [
+                ("600519.SH", 0.95),
+                ("000001.SZ", 0.40),
+            ],
+            "stock_basic": [
+                ("600519.SH", "食品饮料"),
+                ("000001.SZ", "银行"),
+            ],
+        }
+    )
+    monkeypatch.setattr(db_mod, "get_sync_conn", lambda: mock_conn)
+
+    result = dtt._fetch_stock_metrics_from_db(codes)
+
+    assert set(result.keys()) == set(codes)
+    assert result["600519.SH"].atr_ratio == 0.025
+    assert result["600519.SH"].beta == 1.15
+    assert result["600519.SH"].liquidity_percentile == 0.95
+    assert result["600519.SH"].industry == "食品饮料"
+    assert result["000001.SZ"].atr_ratio == 0.035
+    assert result["000001.SZ"].beta == 0.85
+    assert result["000001.SZ"].liquidity_percentile == 0.40
+    assert result["000001.SZ"].industry == "银行"
+
+
+def test_fetch_stock_metrics_partial_source_missing_returns_partial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """factor_values empty → atr/beta=None; daily_basic + stock_basic still populate."""
+    from app.services import db as db_mod
+
+    codes = ["600519.SH"]
+    mock_conn = _MockConn(
+        fetchall_routes={
+            "factor_values": [],  # no data
+            "daily_basic": [("600519.SH", 0.95)],
+            "stock_basic": [("600519.SH", "食品饮料")],
+        }
+    )
+    monkeypatch.setattr(db_mod, "get_sync_conn", lambda: mock_conn)
+
+    result = dtt._fetch_stock_metrics_from_db(codes)
+    m = result["600519.SH"]
+    assert m.atr_ratio is None
+    assert m.beta is None
+    assert m.liquidity_percentile == 0.95
+    assert m.industry == "食品饮料"
+
+
+def test_fetch_stock_metrics_db_connection_failure_fails_soft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PG connection failure → code-only StockMetrics (all fields None), 0 raise."""
+    from app.services import db as db_mod
+
+    def raising_conn():
+        raise ConnectionError("simulated PG down")
+
+    monkeypatch.setattr(db_mod, "get_sync_conn", raising_conn)
+    result = dtt._fetch_stock_metrics_from_db(["600519.SH"])
+    assert "600519.SH" in result
+    m = result["600519.SH"]
+    assert m.code == "600519.SH"
+    assert m.atr_ratio is None
+    assert m.beta is None
+    assert m.liquidity_percentile is None
+    assert m.industry is None
+
+
+def test_build_stock_metrics_full_path_with_holdings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end: holdings + factor_values + daily_basic + stock_basic all wired."""
+    from app.core import qmt_client as qc
+    from app.services import db as db_mod
+
+    mock_client = MagicMock()
+    mock_client.get_positions.return_value = {"600519.SH": 100}
+    monkeypatch.setattr(qc, "get_qmt_client", lambda: mock_client)
+
+    mock_conn = _MockConn(
+        fetchall_routes={
+            "factor_values": [
+                ("600519.SH", "atr_norm_20", 0.025),
+                ("600519.SH", "beta_market_20", 1.15),
+            ],
+            "daily_basic": [("600519.SH", 0.95)],
+            "stock_basic": [("600519.SH", "食品饮料")],
+        }
+    )
+    monkeypatch.setattr(db_mod, "get_sync_conn", lambda: mock_conn)
+
+    result = dtt._build_stock_metrics()
+    assert "600519.SH" in result
+    m = result["600519.SH"]
+    assert m.atr_ratio == 0.025
+    assert m.beta == 1.15
+    assert m.liquidity_percentile == 0.95
+    assert m.industry == "食品饮料"
 
 
 # §4 Build-helper unit tests
