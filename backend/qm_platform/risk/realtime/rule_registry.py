@@ -20,7 +20,8 @@ function. Sustains ADR-076 D1 invariant: replay 走 RealtimeRiskEngine 真实路
 
 Lazy import retained from the adapter precedent — concrete rule classes are
 not imported at module load so the platform stub remains usable without
-pulling the rule implementations (production parity sustained per (α)).
+pulling the rule implementations (production parity sustained per ADR-076 D1
+replay-as-gate invariant + ADR-066 候选 TB-1a architecture decision).
 
 关联铁律: 31 (engine PURE) / 33 (fail-loud on duplicate registration)
 关联 ADR: ADR-029 (10 RealtimeRiskRule) / ADR-076 D1 (replay-as-gate parity)
@@ -57,7 +58,8 @@ def register_all_realtime_rules(engine: RealtimeRiskEngine) -> None:
         invariant from the adapter precedent).
     """
     # Lazy import — avoid top-level circular + sustain stub usability without
-    # importing concrete rule classes (production parity sustained per (α)).
+    # importing concrete rule classes (production parity sustained per ADR-076
+    # D1 replay-as-gate invariant + ADR-066 候选 TB-1a architecture decision).
     from ..rules.realtime.correlated_drop import CorrelatedDrop
     from ..rules.realtime.gap_down import GapDownOpen
     from ..rules.realtime.industry_concentration import IndustryConcentration

@@ -79,7 +79,20 @@ class TestAdapterDelegateParity:
     replay-vs-production parity invariant)."""
 
     def test_adapter_method_produces_identical_state(self):
-        """adapter.register_all_realtime_rules(engine_a) == free_fn(engine_b)."""
+        """adapter.register_all_realtime_rules(engine_a) ≡ free_fn(engine_b).
+
+        Parity verified at two layers to prevent both insertion-order
+        refactor flakes AND future rule-class divergence (WU-2 production
+        runner could otherwise pass with same rule_ids but different
+        constructor args — e.g. `TrailingStop(stop_pct=0.08)` vs default):
+
+        Layer 1 — rule_id SET equality per cadence (intent: same rule set,
+                  order-agnostic so a future alphabetical-sort refactor
+                  inside the SSOT doesn't break the parity test).
+        Layer 2 — rule CLASS-TYPE list per cadence (intent: catches future
+                  divergence where rules gain non-trivial __init__ args and
+                  the two callers might pass different values).
+        """
         engine_a = RealtimeRiskEngine()
         engine_b = RealtimeRiskEngine()
 
@@ -87,10 +100,25 @@ class TestAdapterDelegateParity:
         adapter.register_all_realtime_rules(engine_a)
         register_all_realtime_rules(engine_b)
 
-        assert engine_a.registered_rules == engine_b.registered_rules, (
-            "SSOT invariant violated: adapter delegate diverged from "
-            "free function — replay-vs-production parity (ADR-076 D1) broken."
-        )
+        # Layer 1: rule_id set equality per cadence
+        for cadence in ("tick", "5min", "15min"):
+            assert set(engine_a.registered_rules[cadence]) == set(
+                engine_b.registered_rules[cadence]
+            ), (
+                f"SSOT invariant violated at cadence={cadence!r}: rule_id set "
+                f"diverged between adapter delegate and free function "
+                f"(ADR-076 D1 replay-vs-production parity broken)."
+            )
+
+        # Layer 2: rule class-type equality per cadence (intent — sustain
+        # parity once rules gain non-trivial constructor args in WU-2+)
+        for cadence in ("tick", "5min", "15min"):
+            types_a = sorted(type(r).__name__ for r in engine_a._rules[cadence].values())
+            types_b = sorted(type(r).__name__ for r in engine_b._rules[cadence].values())
+            assert types_a == types_b, (
+                f"SSOT invariant violated at cadence={cadence!r}: rule class "
+                f"types diverged adapter={types_a} vs free_fn={types_b}."
+            )
 
     def test_adapter_delegate_total_count(self):
         """Adapter delegate also produces exactly 10 rules."""
