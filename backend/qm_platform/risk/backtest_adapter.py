@@ -208,9 +208,7 @@ class RiskBacktestAdapter:
             ValueError: timestamp 非 timezone-aware (铁律 41 enforcement).
         """
         if timestamp.tzinfo is None:
-            raise ValueError(
-                "evaluate_at timestamp must be timezone-aware (铁律 41 sustained)"
-            )
+            raise ValueError("evaluate_at timestamp must be timezone-aware (铁律 41 sustained)")
 
         results: list[RuleResult] = []
 
@@ -241,12 +239,14 @@ class RiskBacktestAdapter:
     def register_all_realtime_rules(self, engine: RealtimeRiskEngine) -> None:
         """Helper: register 10 RealtimeRiskRule on engine per ADR-029 amend.
 
-        Cadence assignment per V3 §4.3 + ADR-029 §2.2 (post T1.5b-2 reviewer-fix
-        10-rule scope):
-          - tick: LimitDownDetection / NearLimitDown / GapDownOpen / TrailingStop
-          - 5min: RapidDrop5min / VolumeSpike / LiquidityCollapse /
-                  IndustryConcentration / CorrelatedDrop
-          - 15min: RapidDrop15min
+        Thin delegate to `realtime.rule_registry.register_all_realtime_rules` —
+        the SSOT for L1 rule set wiring (IC-1c WU-1, ADR-076 D1 replay-vs-
+        production parity invariant). The L1 production runner imports the
+        same free function directly, so both replay and production paths
+        register identical rule sets / cadences by construction.
+
+        Cadence assignment per V3 §4.3 + ADR-029 §2.2 — see rule_registry
+        docstring for the 10-rule cadence map.
 
         Args:
             engine: RealtimeRiskEngine instance to register rules into.
@@ -254,40 +254,11 @@ class RiskBacktestAdapter:
         Raises:
             ValueError: any rule_id already registered (engine fail-loud per 铁律 33).
         """
-        # Lazy import — avoid top-level circular + sustain stub usability without
-        # importing concrete rule classes (production parity sustained per (α))
-        from .rules.realtime.correlated_drop import CorrelatedDrop
-        from .rules.realtime.gap_down import GapDownOpen
-        from .rules.realtime.industry_concentration import IndustryConcentration
-        from .rules.realtime.limit_down import LimitDownDetection, NearLimitDown
-        from .rules.realtime.liquidity_collapse import LiquidityCollapse
-        from .rules.realtime.rapid_drop import RapidDrop5min, RapidDrop15min
-        from .rules.realtime.trailing_stop import TrailingStop
-        from .rules.realtime.volume_spike import VolumeSpike
+        from .realtime.rule_registry import (
+            register_all_realtime_rules as _register_all,
+        )
 
-        tick_rules = [
-            LimitDownDetection(),
-            NearLimitDown(),
-            GapDownOpen(),
-            TrailingStop(),
-        ]
-        five_min_rules = [
-            RapidDrop5min(),
-            VolumeSpike(),
-            LiquidityCollapse(),
-            IndustryConcentration(),
-            CorrelatedDrop(),
-        ]
-        fifteen_min_rules = [
-            RapidDrop15min(),
-        ]
-
-        for rule in tick_rules:
-            engine.register(rule, cadence="tick")
-        for rule in five_min_rules:
-            engine.register(rule, cadence="5min")
-        for rule in fifteen_min_rules:
-            engine.register(rule, cadence="15min")
+        _register_all(engine)
 
     def verify_pure_function_contract(
         self,

@@ -15,6 +15,7 @@ AlertDispatcher (S6): P0 立即 / P1+P2 批量缓冲告警分发.
 from .alert import AlertDispatcher
 from .email_backup import EmailBackupStub
 from .engine import RealtimeRiskEngine
+from .rule_registry import register_all_realtime_rules
 from .subscriber import XtQuantTickSubscriber
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "EmailBackupStub",
     "RealtimeRiskEngine",
     "XtQuantTickSubscriber",
+    "register_all_realtime_rules",
 ]
