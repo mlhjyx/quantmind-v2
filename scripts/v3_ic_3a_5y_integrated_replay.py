@@ -139,9 +139,16 @@ class _QuarterDailyMetrics:
     """L3 daily-cadence rule evaluation metrics for one quarter.
 
     Wiring-assertion fields (sustained synthetic-universe体例):
-      trading_days: distinct (code-agnostic) trading days seen in this quarter.
+      trading_days: distinct trade_date keys seen in this quarter, including
+        days whose bars were all degenerate (zero-price / peak < entry).
+      non_empty_trading_days: trade_date keys that produced >= 1 valid
+        synthetic position — the rules-loop denominator. Strict invariant:
+        eval_calls = non_empty_trading_days * len(daily_rules) (code-reviewer
+        HIGH-1, 2026-05-16: previous report label "trading_days × 4 rules"
+        was inaccurate when degenerate-only days existed; this field makes
+        the math transparent).
       synthetic_positions: total (code, day) pairs evaluated.
-      eval_calls: total Rule.evaluate calls = trading_days × len(daily_rules).
+      eval_calls: total Rule.evaluate calls = non_empty_trading_days × len(rules).
       crashes: any rule.evaluate() raise — must be 0 for green wiring.
       triggers_by_rule: per-rule_id RuleResult count (informational, NOT a
         verdict; synthetic positions deliberately rarely satisfy real rule
@@ -149,6 +156,7 @@ class _QuarterDailyMetrics:
     """
 
     trading_days: int = 0
+    non_empty_trading_days: int = 0
     synthetic_positions: int = 0
     eval_calls: int = 0
     crashes: int = 0
@@ -294,6 +302,7 @@ def _evaluate_daily_cadence_for_quarter(
             # only degenerate bars). Does NOT count toward eval_calls or
             # crashes since no rule was invoked.
             continue
+        metrics.non_empty_trading_days += 1
         metrics.synthetic_positions += len(positions)
         ctx = _build_synthetic_context(trade_date, positions)
 
@@ -374,6 +383,12 @@ def _run_quarter_integrated(
         return None
 
     # Path B: L3 daily-cadence — re-load bars locally for this quarter.
+    # Cursor-reuse safety (code-reviewer MEDIUM, 2026-05-16): uses the same
+    # server-side cursor name ("tb_5b_replay_minute_bars") as Path A. Safe
+    # because Path A's `_run_quarter` exhausted and closed that cursor before
+    # returning (its `with conn.cursor(name=...)` block exits on Path A
+    # completion). DO NOT parallelize Path A + Path B on the same conn —
+    # cursor name collision would raise psycopg2 DuplicateCursor.
     from v3_tb_5b_replay_acceptance import _make_minute_bars_loader  # noqa: PLC0415
 
     loader = _make_minute_bars_loader(conn, codes_limit)
@@ -408,21 +423,49 @@ def _run_quarter_integrated(
 
 
 def _aggregate_daily(quarters: list[_QuarterIntegratedResult]) -> dict[str, Any]:
-    """Incrementally aggregate L3 daily-cadence metrics across quarters."""
+    """Incrementally aggregate L3 daily-cadence metrics across quarters.
+
+    The `eval_calls == non_empty_trading_days × rules_count` invariant
+    (code-reviewer HIGH-1 fix, 2026-05-16) is exposed via the derived
+    `rules_count_inferred` field — strict math: rules_count = eval_calls //
+    non_empty_trading_days when both > 0. pass_l3_wiring requires the
+    invariant to hold cleanly (no remainder).
+    """
     triggers: dict[str, int] = defaultdict(int)
     for q in quarters:
         for rid, n in q.daily.triggers_by_rule.items():
             triggers[rid] += n
     total_eval_calls = sum(q.daily.eval_calls for q in quarters)
     total_crashes = sum(q.daily.crashes for q in quarters)
+    total_non_empty_td = sum(q.daily.non_empty_trading_days for q in quarters)
+
+    # Derived rules_count + invariant integrity check (HIGH-1).
+    if total_non_empty_td > 0 and total_eval_calls > 0:
+        rules_count_inferred = total_eval_calls // total_non_empty_td
+        invariant_ok = (
+            rules_count_inferred > 0
+            and total_eval_calls == total_non_empty_td * rules_count_inferred
+        )
+    else:
+        rules_count_inferred = 0
+        invariant_ok = False
+
     return {
         "total_trading_days": sum(q.daily.trading_days for q in quarters),
+        "total_non_empty_trading_days": total_non_empty_td,
         "total_synthetic_positions": sum(q.daily.synthetic_positions for q in quarters),
         "total_eval_calls": total_eval_calls,
         "total_crashes": total_crashes,
+        "rules_count_inferred": rules_count_inferred,
+        "invariant_ok": invariant_ok,
         "triggers_by_rule": dict(sorted(triggers.items())),
-        # Wiring-assertion verdict: 0 crashes across 5y × 4 rules × ~1260 td.
-        "pass_l3_wiring": total_crashes == 0 and total_eval_calls > 0,
+        # Wiring-assertion verdict: 0 crashes + invariant clean +
+        # eval_calls > 0 across 5y × rules_count × non_empty_td.
+        "pass_l3_wiring": (
+            total_crashes == 0
+            and total_eval_calls > 0
+            and invariant_ok
+        ),
     }
 
 
@@ -500,22 +543,32 @@ def _render_integrated_report(
     lines.append("| Metric | Value | Verdict |")
     lines.append("|---|---|---|")
     lines.append(
-        f"| Trading days evaluated (5y) | `{daily_agg['total_trading_days']:,}` | — |"
+        f"| Trading days seen (incl. degenerate) | "
+        f"`{daily_agg['total_trading_days']:,}` | — |"
+    )
+    lines.append(
+        f"| Non-empty trading days (>=1 valid synthetic position) | "
+        f"`{daily_agg['total_non_empty_trading_days']:,}` | — |"
     )
     lines.append(
         f"| Synthetic positions (Σ code×day) | "
         f"`{daily_agg['total_synthetic_positions']:,}` | — |"
     )
+    rules_count = daily_agg["rules_count_inferred"]
     lines.append(
         f"| Rule.evaluate() calls | `{daily_agg['total_eval_calls']:,}` "
-        f"(= trading_days × 4 rules) | — |"
+        f"(= non_empty_trading_days × {rules_count} rules) | — |"
+    )
+    lines.append(
+        f"| Invariant (eval_calls == non_empty_td × rules_count) | — | "
+        f"{'✅' if daily_agg['invariant_ok'] else '❌'} |"
     )
     lines.append(
         f"| Crashes | `{daily_agg['total_crashes']}` | "
         f"{'✅' if daily_agg['total_crashes'] == 0 else '❌'} |"
     )
     lines.append(
-        f"| L3 wiring (eval_calls > 0 AND crashes == 0) | — | "
+        f"| L3 wiring (eval_calls > 0 AND crashes == 0 AND invariant_ok) | — | "
         f"{'✅' if daily_agg['pass_l3_wiring'] else '❌'} |"
     )
     lines.append("")

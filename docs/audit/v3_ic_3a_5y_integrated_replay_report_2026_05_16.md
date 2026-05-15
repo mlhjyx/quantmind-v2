@@ -23,11 +23,18 @@
 
 | Metric | Value | Verdict |
 |---|---|---|
-| Trading days evaluated (5y) | `1,212` | — |
+| Trading days seen (incl. degenerate) | `1,212` | — |
+| Non-empty trading days (>=1 valid synthetic position) | `1,212` | — |
 | Synthetic positions (Σ code×day) | `2,901,547` | — |
-| Rule.evaluate() calls | `4,848` (= trading_days × 4 rules) | — |
+| Rule.evaluate() calls | `4,848` (= non_empty_trading_days × 4 rules) | — |
+| Invariant (eval_calls == non_empty_td × rules_count) | — | ✅ |
 | Crashes | `0` | ✅ |
-| L3 wiring (eval_calls > 0 AND crashes == 0) | — | ✅ |
+| L3 wiring (eval_calls > 0 AND crashes == 0 AND invariant_ok) | — | ✅ |
+
+> **Note**: report regenerated 2026-05-16 with HIGH-1 invariant precision fix
+> (code-reviewer PR #368 review). Underlying numbers unchanged (full 5y run
+> 2026-05-16 ~02:09); `non_empty_trading_days` == `trading_days` because 0
+> quarters had all-degenerate days. Invariant `4,848 == 1,212 × 4 rules` ✅.
 
 **Per-rule trigger counts** (informational — synthetic-universe ≠ real-portfolio precision):
 
