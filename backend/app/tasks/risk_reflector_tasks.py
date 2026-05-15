@@ -34,16 +34,30 @@ Schedule collision risk (反 hard collision, sustained TB-2c 体例):
     weekday. Beat sequential dispatch + `--pool=solo` Windows tolerates
     sub-second queue (independent V4-Pro tasks, ~3-5s combined). Acceptable.
 
-TB-4c scope (本 PR — lesson loop wired):
+TB-4c scope (lesson loop wired):
   - lesson→risk_memory 闭环 ✅ (V3 §8.3) — RiskReflectorAgent.sediment_lesson:
     BGE-M3 embed lesson text → RiskMemory → persist_risk_memory INSERT.
     embedding 选型 = BGE-M3 local per ADR-064 D2 + ADR-068 D2 (NOT V4-Flash —
     V3 §8.3/§16.2 "V4-Flash embedding" cite is pre-ADR-064 spec drift, 留 TB-5c
     batch doc amend per ADR-022).
-TB-4c scope boundary (留 TB-4d):
-  - Input gathering still stub placeholder (TB-4d wires real risk_event_log /
-    execution_plans / trade_log / RiskMemoryRAG queries)
-  - user reply approve → CC auto PR generate = 留 TB-4d (DingTalk webhook patch)
+
+V3 PT Cutover Plan v0.4 §A IC-2c scope (2026-05-15 — input de-stub closure):
+  - `_build_stub_input` placeholder REMOVED; replaced with `_build_reflection_input`
+    that gathers 4 REAL sources (per user 决议 R1 full 4-source wire):
+    - events_summary  → risk_event_log GROUP BY (rule_id, severity)
+    - plans_summary   → execution_plans GROUP BY (status, user_decision)
+                        + cancel-rate calc (user trust calibration signal)
+    - pnl_outcome     → trade_log GROUP BY direction (paper-mode only,
+                        sustains 红线 — live-mode 0 持仓 anyway)
+    - rag_top5        → RiskMemoryRAG.retrieve(query, k=5)
+  - Per-source fail-soft sustains reflector_v1.yaml "数据不足, 待下周期"
+    empty-data path (transient infra blip → data-light reflection, NOT crash).
+  - RAG event_type filter: weekly/monthly = None (broad recall);
+    event_reflection = real triggering event_type (e.g. "LimitDown" narrow).
+
+IC-2c remaining (留 IC-2d closure sediment):
+  - user reply approve → CC auto PR generate (DingTalk webhook patch) — was
+    historically TB-4d candidate; now留 future IC-3 or post-cutover scope.
 
 铁律 22 sustained: doc 跟随代码 — beat_schedule.py amend + runbook + README same PR.
 铁律 31 sustained: qm_platform/risk/reflector + memory engine PURE; 本 task = Application dispatch.
@@ -123,6 +137,35 @@ _DINGTALK_SUMMARY_MAX_CHARS: int = 3000
 # ─────────────────────────────────────────────────────────────
 
 _service: RiskReflectorAgent | None = None
+# IC-2c (2026-05-15) NEW singleton — shares embedding_service with the agent
+# (avoids 2x BGE-M3 ~2.5GB model load). Lazy + initialized on first
+# reflection task invocation (weekly/monthly cadence).
+_rag: Any = None  # RiskMemoryRAG; Any to defer heavy import to first use
+
+
+def _get_rag() -> Any:
+    """Lazy singleton — RiskMemoryRAG sharing embedding_service with RiskReflectorAgent.
+
+    IC-2c (2026-05-15): replaces _build_stub_input's rag placeholder. RAG
+    queries risk_memory rows for top-5 similar lessons during reflection input
+    composition (V3 §8.1 line 923 rag_top5 field).
+
+    embedding_service is shared via `_get_service()._ensure_embedding_service()`
+    so the BGE-M3 ~2.5GB model is loaded ONCE per worker process (sustained
+    `_get_service` lazy pattern). conn_factory uses `app.services.db.get_sync_conn`
+    — caller owns connection lifecycle (RAG.retrieve opens + caller closes).
+    """
+    global _rag
+    if _rag is None:
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+        from backend.app.services.risk.risk_memory_rag import RiskMemoryRAG  # noqa: PLC0415
+
+        service = _get_service()
+        _rag = RiskMemoryRAG(
+            embedding_service=service._ensure_embedding_service(),
+            conn_factory=get_sync_conn,
+        )
+    return _rag
 
 
 def _get_service() -> RiskReflectorAgent:
@@ -162,34 +205,239 @@ def _get_service() -> RiskReflectorAgent:
 # ─────────────────────────────────────────────────────────────
 
 
-def _build_stub_input(
+def _build_reflection_input(
     period_label: str,
     period_start: datetime,
     period_end: datetime,
+    *,
+    conn: Any,
+    rag: Any,  # RiskMemoryRAG — typed Any to avoid heavy import at module load
+    rag_event_type_filter: str | None = None,
 ) -> ReflectionInput:
-    """TB-4b placeholder ReflectionInput — TB-4c wires real DB gathering.
+    """V3 §8.1 line 923 — gather 4 real input sources for V4-Pro reflection.
 
-    Sustained TB-2c StubIndicatorsProvider 体例 — stub returns clearly-marked
-    placeholder summaries so the cadence + push + sediment wire can be tested
-    end-to-end before TB-4c real input gathering.
+    V3 PT Cutover Plan v0.4 §A IC-2c de-stub (2026-05-15, replaces
+    `_build_stub_input` placeholder). Per user 决议 (R1) full 4-source wire:
+    - events_summary  → risk_event_log GROUP BY (rule_id, severity) period-bounded
+    - plans_summary   → execution_plans GROUP BY (status, user_decision) period-bounded
+    - pnl_outcome     → trade_log GROUP BY direction period-bounded, paper-mode
+    - rag_top5        → RiskMemoryRAG.retrieve(query, k=5)
 
-    The reflector_v1.yaml prompt explicitly handles the empty-data path
-    ("数据不足, 待下周期") so V4-Pro reflection over stub input produces a
-    valid (if data-light) ReflectionOutput.
+    Per-source fail-soft sustains _fetch_market_crisis_indicators / _collect_news
+    体例 — each gatherer returns "数据不足: {error}" placeholder on exception, so
+    a transient infra blip degrades to data-light reflection (V3 §8.1
+    reflector_v1.yaml explicitly handles "数据不足, 待下周期" path) rather than
+    crashing the weekly/monthly Beat.
+
+    Args:
+        period_label: e.g. "2026_W18" (weekly) / "2026_05" (monthly) /
+            "event-2026-05-14-LimitDownCluster" (event-triggered).
+        period_start: tz-aware inclusive lower bound.
+        period_end: tz-aware exclusive upper bound.
+        conn: psycopg2 connection (read-only here; caller owns close).
+            Used for 3 SQL queries (events / plans / pnl).
+        rag: RiskMemoryRAG instance for similar-lesson retrieval.
+        rag_event_type_filter: optional event_type filter for RAG (e.g.
+            "LimitDown" for event_reflection). None for weekly/monthly (recall
+            across all event types).
+
+    Returns:
+        ReflectionInput with 4 real string fields (each MAY contain
+        "数据不足: ..." prefix on per-source failure — engine + prompt handle
+        gracefully).
     """
-    placeholder = (
-        "[TB-4b stub — TB-4c will gather from risk_event_log / execution_plans / "
-        "trade_log / RiskMemoryRAG]"
-    )
+    events_summary = _gather_events_summary(conn, period_start, period_end)
+    plans_summary = _gather_plans_summary(conn, period_start, period_end)
+    pnl_outcome = _gather_pnl_outcome(conn, period_start, period_end)
+
+    # RAG query text: period_label + events brief (events_summary already
+    # gathered → use first ~200 chars for embedding query context).
+    rag_query = f"{period_label} 风控复盘: {events_summary[:200]}"
+    rag_top5 = _gather_rag_top5(rag, rag_query, event_type=rag_event_type_filter)
+
     return ReflectionInput(
         period_label=period_label,
         period_start=period_start,
         period_end=period_end,
-        events_summary=placeholder,
-        plans_summary=placeholder,
-        pnl_outcome=placeholder,
-        rag_top5=placeholder,
+        events_summary=events_summary,
+        plans_summary=plans_summary,
+        pnl_outcome=pnl_outcome,
+        rag_top5=rag_top5,
     )
+
+
+def _gather_events_summary(conn: Any, start: datetime, end: datetime) -> str:
+    """Aggregate risk_event_log rows in [start, end) by (rule_id, severity).
+
+    Returns markdown table sorted by count DESC + total row, OR "数据不足"
+    placeholder on 0 rows / query failure (fail-soft per-source).
+
+    Period-bounded via `triggered_at` column (TimescaleDB hypertable, 90d
+    retention sustained).
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT rule_id, severity, COUNT(*) AS cnt
+                FROM risk_event_log
+                WHERE triggered_at >= %s AND triggered_at < %s
+                GROUP BY rule_id, severity
+                ORDER BY cnt DESC, rule_id ASC
+                LIMIT 20
+                """,
+                (start, end),
+            )
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning("[risk-reflector] events_summary gather failed (fail-soft): %s", e)
+        return f"数据不足: events_summary 查询失败 ({type(e).__name__}: {e})"
+
+    if not rows:
+        return f"数据不足: 0 risk_event_log rows in [{start.date()}, {end.date()})"
+
+    lines = ["| rule_id | severity | count |", "|---|---|---|"]
+    total = 0
+    for rule_id, severity, count in rows:
+        lines.append(f"| {rule_id} | {severity} | {count} |")
+        total += int(count)
+    lines.append("")
+    lines.append(f"Total: {total} events across {len(rows)} (rule, severity) groups")
+    return "\n".join(lines)
+
+
+def _gather_plans_summary(conn: Any, start: datetime, end: datetime) -> str:
+    """Aggregate execution_plans rows in [start, end) by (status, user_decision).
+
+    Includes STAGED cancel-rate calculation:
+        cancel_rate = CANCELLED / (CANCELLED + CONFIRMED)
+    surfaces user trust calibration signal per V3 §8.1.
+
+    Period-bounded via `created_at`.
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT status, COALESCE(user_decision, 'null') AS decision, COUNT(*) AS cnt
+                FROM execution_plans
+                WHERE created_at >= %s AND created_at < %s
+                GROUP BY status, user_decision
+                ORDER BY status ASC, decision ASC
+                """,
+                (start, end),
+            )
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning("[risk-reflector] plans_summary gather failed (fail-soft): %s", e)
+        return f"数据不足: plans_summary 查询失败 ({type(e).__name__}: {e})"
+
+    if not rows:
+        return f"数据不足: 0 execution_plans rows in [{start.date()}, {end.date()})"
+
+    lines = ["| status | user_decision | count |", "|---|---|---|"]
+    for status, decision, count in rows:
+        lines.append(f"| {status} | {decision} | {count} |")
+
+    cancelled = sum(int(c) for s, _, c in rows if s == "CANCELLED")
+    confirmed = sum(int(c) for s, _, c in rows if s == "CONFIRMED")
+    denom = cancelled + confirmed
+    if denom > 0:
+        lines.append("")
+        lines.append(
+            f"Cancel rate: {cancelled}/{denom} = {cancelled / denom:.1%} "
+            "(user-cancelled vs confirmed)"
+        )
+    return "\n".join(lines)
+
+
+def _gather_pnl_outcome(conn: Any, start: datetime, end: datetime) -> str:
+    """Aggregate trade_log rows in [start, end) by direction (paper-mode only).
+
+    Period-bounded via `created_at`. Filter `execution_mode='paper'` sustains
+    红线 (live-mode 0 持仓 anyway — if live trades appear, reflection over
+    paper-only avoids leaking live exposure into the prompt context).
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT direction,
+                       COUNT(*) AS cnt,
+                       COALESCE(SUM(quantity * fill_price), 0) AS gross,
+                       COALESCE(SUM(total_cost), 0) AS total_cost_sum,
+                       COALESCE(AVG(slippage_bps), 0) AS avg_slip
+                FROM trade_log
+                WHERE created_at >= %s AND created_at < %s
+                  AND execution_mode = 'paper'
+                  AND fill_price IS NOT NULL
+                GROUP BY direction
+                """,
+                (start, end),
+            )
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning("[risk-reflector] pnl_outcome gather failed (fail-soft): %s", e)
+        return f"数据不足: pnl_outcome 查询失败 ({type(e).__name__}: {e})"
+
+    if not rows:
+        return f"数据不足: 0 paper-mode filled trade_log rows in [{start.date()}, {end.date()})"
+
+    lines = [
+        "| direction | count | gross ¥ | total_cost ¥ | avg slippage bps |",
+        "|---|---|---|---|---|",
+    ]
+    for direction, count, gross, total_cost, avg_slip in rows:
+        lines.append(
+            f"| {direction} | {count} | {float(gross):,.2f} | "
+            f"{float(total_cost):,.2f} | {float(avg_slip):.2f} |"
+        )
+    return "\n".join(lines)
+
+
+def _gather_rag_top5(rag: Any, query: str, *, event_type: str | None = None) -> str:
+    """RiskMemoryRAG.retrieve(query, k=5) → markdown table of top-5 similar lessons.
+
+    Fail-soft per-source: empty hits OR retrieval exception → "数据不足: ..."
+    placeholder, sustained 3 SQL gatherer 体例.
+
+    Each row: `(cosine, event_type, symbol_id, lesson_preview)` with lesson
+    truncated to 80 chars + pipe-escape for table-safety.
+    """
+    try:
+        hits = rag.retrieve(query, k=5, event_type=event_type)
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning("[risk-reflector] rag_top5 retrieve failed (fail-soft): %s", e)
+        return f"数据不足: RAG retrieve 失败 ({type(e).__name__}: {e})"
+
+    if not hits:
+        filt = f"event_type={event_type!r}" if event_type else "(no filter)"
+        return f"数据不足: RAG returned 0 hits for query {filt}"
+
+    lines = [
+        "| cosine | event_type | symbol | lesson |",
+        "|---|---|---|---|",
+    ]
+    for hit in hits:
+        m = hit.memory
+        lesson_raw = m.lesson or "(no lesson)"
+        # Truncate + escape pipes/newlines so the markdown table doesn't break
+        lesson_preview = lesson_raw[:80] + ("..." if len(lesson_raw) > 80 else "")
+        lesson_preview = lesson_preview.replace("|", "\\|").replace("\n", " ")
+        symbol = m.symbol_id or "—"
+        lines.append(
+            f"| {hit.cosine_similarity:.3f} | {m.event_type} | {symbol} | {lesson_preview} |"
+        )
+    return "\n".join(lines)
 
 
 def _weekly_bounds(now: datetime) -> tuple[str, datetime, datetime]:
@@ -409,9 +657,32 @@ def _run_reflection(
     )
 
     service = _get_service()
-    # TB-4b: stub input (TB-4d wires real DB gathering — risk_event_log /
-    # execution_plans / trade_log / RiskMemoryRAG).
-    input_data = _build_stub_input(period_label, period_start, period_end)
+    # IC-2c (2026-05-15) de-stub: real 4-source gather from risk_event_log /
+    # execution_plans / trade_log / RiskMemoryRAG. Per-source fail-soft sustains
+    # reflector_v1.yaml "数据不足, 待下周期" empty-data path.
+    # 铁律 32: separate conn from sediment conn — input gather conn closes BEFORE
+    # the ~30-60s V4-Pro LLM call (反 hold PG conn open during LLM latency
+    # anti-pattern). sediment conn opens later for the lesson INSERT.
+    from app.services.db import get_sync_conn  # noqa: PLC0415
+
+    rag = _get_rag()
+    input_conn = get_sync_conn()
+    try:
+        input_data = _build_reflection_input(
+            period_label,
+            period_start,
+            period_end,
+            conn=input_conn,
+            rag=rag,
+            # Weekly/monthly use "Reflection:Weekly"/"Reflection:Monthly" meta-type
+            # → broad RAG recall (None filter) across all real risk events.
+            # event_reflection passes the REAL triggering event type (e.g.
+            # "LimitDown") → narrow RAG to same-category memories per V3 §11.4.
+            rag_event_type_filter=(None if event_type.startswith("Reflection:") else event_type),
+        )
+    finally:
+        input_conn.close()
+
     output = service.reflect(input_data, decision_id=decision_id)
 
     # Write markdown report (V3 §8.2 沉淀).
