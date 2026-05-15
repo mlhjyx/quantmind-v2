@@ -87,6 +87,11 @@ from qm_platform.risk.realtime import (  # noqa: E402
     XtQuantTickSubscriber,
     register_all_realtime_rules,
 )
+from qm_platform.risk.realtime.runtime_keys import (  # noqa: E402
+    CACHE_L1_HEARTBEAT,
+    CACHE_L1_HEARTBEAT_TTL_SEC,
+    STREAM_RISK_L1_TRIGGERED,
+)
 
 from app.config import settings  # noqa: E402
 from app.core.qmt_client import QMTClient  # noqa: E402
@@ -104,24 +109,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("realtime_risk_engine_service")
 
-# Redis 键 (沿用 qmt_data_service.py 命名空间体例)
-CACHE_L1_HEARTBEAT: Final[str] = "risk:l1_heartbeat"
-"""LL-081 体例: SETEX TTL=300s. zombie 后自然 expire → meta_monitor_service
-`_collect_l1_heartbeat` (WU-3 read path) 看到 None → 触发 P0 元告警."""
-
-CACHE_L1_HEARTBEAT_TTL_SEC: Final[int] = 3600
-"""1h TTL — MUST exceed L1_HEARTBEAT_STALE_THRESHOLD_S (300s in meta_alert_
-interface.py) to keep the key alive long enough for the staleness check to
-fire (WU-3 Finding #10, 2026-05-15). If TTL == threshold, the Redis key
-expires at exactly the moment staleness crosses the alert boundary, giving
-the meta_monitor rule a ~zero alert window after a service crash. With
-TTL=3600s, the post-crash alert window is 300s..3600s (rule fires) → 3600s+
-(key expires → silent again). Sustained LL-081 zombie protection pattern."""
-
-STREAM_RISK_L1_TRIGGERED: Final[str] = "qm:risk:l1_triggered"
-"""L1 RealtimeRiskEngine 触发的 RuleResult 发布 stream. 消费者 (IC-2 scope
-信号链 / L4ExecutionPlanner) 后续接入. WU-2 minimal scope = publish only,
-no consumer wire."""
+# Redis 键 — extracted to qm_platform.risk.realtime.runtime_keys SSOT module
+# (WU-3 python-reviewer P2 fix, 2026-05-15) so writer (this service) and
+# reader (meta_monitor_service._collect_l1_heartbeat) import from a single
+# declaration site. CACHE_L1_HEARTBEAT / CACHE_L1_HEARTBEAT_TTL_SEC /
+# STREAM_RISK_L1_TRIGGERED imported at the top of this file and re-exported
+# at module level so existing imports `from scripts.realtime_risk_engine_service
+# import CACHE_L1_HEARTBEAT` continue to work transparently.
 
 # 同步间隔
 SYNC_INTERVAL_SEC: Final[int] = 60

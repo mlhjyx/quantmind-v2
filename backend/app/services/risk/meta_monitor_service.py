@@ -69,6 +69,7 @@ from backend.qm_platform.risk.metrics.meta_alert_rules import (
     evaluate_pg_health,
     evaluate_staged_overdue,
 )
+from backend.qm_platform.risk.realtime.runtime_keys import CACHE_L1_HEARTBEAT
 
 logger = logging.getLogger(__name__)
 
@@ -365,14 +366,10 @@ class MetaMonitorService:
         )
         return StagedPlanWindowSnapshot(plans=plans, now=now)
 
-    # L1 heartbeat key matches scripts/realtime_risk_engine_service.py
-    # CACHE_L1_HEARTBEAT — single SSOT for the cross-process Redis key.
-    _L1_HEARTBEAT_REDIS_KEY = "risk:l1_heartbeat"
-
     def _collect_l1_heartbeat(self, now: datetime) -> L1HeartbeatSnapshot:
         """Real collector (V3 PT Cutover IC-1c WU-3, 2026-05-15) — reads
-        `risk:l1_heartbeat` Redis key written by `realtime_risk_engine_service.py`
-        (IC-1c WU-2) every tick.
+        CACHE_L1_HEARTBEAT (`risk:l1_heartbeat`) Redis key written by
+        `realtime_risk_engine_service.py` (IC-1c WU-2) every tick.
 
         Re-activates ADR-073 D3 dormant L1-heartbeat元告警: HC-1b3 had to defer
         instrumentation because no production runner existed; IC-1c WU-2 built
@@ -381,30 +378,41 @@ class MetaMonitorService:
         L1_HEARTBEAT_STALE_THRESHOLD_S (300s) so the rule has a meaningful
         post-crash alert window (WU-3 Finding #10).
 
+        SSOT: CACHE_L1_HEARTBEAT is imported from
+        `qm_platform.risk.realtime.runtime_keys` (python-reviewer P2 fix —
+        single declaration shared between writer + reader, replaces the
+        previous 3-copy duplicate).
+
         Semantics (per evaluate_l1_heartbeat rule docstring):
           - key present + tz-aware ISO ts → L1HeartbeatSnapshot(last_tick_at=ts)
             rule fires P0 iff now - ts > 300s
           - key absent (TTL expired, service never started, or post-3600s
             after crash) → last_tick_at=None → rule "no signal" (NOT triggered)
 
-        Fail-soft (WU-3 Finding #11): any Redis error / parse error / future-tick
-        violation → last_tick_at=None (no-signal). Redis-down is already
-        surfaced via the PG-health / DingTalk-push collectors; cascading a
-        Redis failure to a P0 L1 alert would be a misleading double-fire.
-        Sustained _collect_news 体例.
+        Fail-soft (WU-3 Finding #11): Redis-transport / parse / naive-datetime /
+        future-tick clock-skew → last_tick_at=None (no-signal). Redis-down is
+        already surfaced via the PG-health / DingTalk-push collectors;
+        cascading a Redis failure to a P0 L1 alert would be misleading
+        double-fire. Sustained _collect_news 体例.
+
+        Exception scope is INTENTIONALLY narrow (python-reviewer P2 fix,
+        2026-05-15): catches (ConnectionError, OSError, ValueError) only.
+        MetaAlertError and other RuntimeError subclasses propagate — they
+        indicate a contract violation in this module (not a transient Redis
+        condition) and should fail-loud per 铁律 33.
         """
         last_tick_at: datetime | None = None
         try:
-            raw = self._get_redis().get(self._L1_HEARTBEAT_REDIS_KEY)
+            raw = self._get_redis().get(CACHE_L1_HEARTBEAT)
             if raw is not None:
-                # ISO 8601 format with timezone — fromisoformat handles "+00:00"
-                # and "Z" (Python 3.11+). Service writes datetime.now(UTC).isoformat()
-                # which produces "+00:00" suffix → tz-aware result.
+                # ISO 8601 with tz — fromisoformat handles "+00:00" and "Z"
+                # (Python 3.11+). Runner writes datetime.now(UTC).isoformat()
+                # → "+00:00" suffix → tz-aware result.
                 parsed = datetime.fromisoformat(raw)
                 if parsed.tzinfo is None:
                     raise ValueError(
-                        f"L1 heartbeat key {self._L1_HEARTBEAT_REDIS_KEY!r} "
-                        f"returned naive datetime {raw!r} (铁律 41 violation)"
+                        f"L1 heartbeat key {CACHE_L1_HEARTBEAT!r} returned "
+                        f"naive datetime {raw!r} (铁律 41 violation)"
                     )
                 if parsed > now:
                     raise ValueError(
@@ -413,11 +421,13 @@ class MetaMonitorService:
                         f"skew between service host and meta_monitor host"
                     )
                 last_tick_at = parsed
-        except Exception as e:  # noqa: BLE001 — fail-soft per Finding #11
-            # silent_ok: Redis-down / parse error / clock-skew → no-signal.
-            # Cascading to P0 L1 alert would mislead ops (Redis-down has
-            # its own surfaces). The rule emits "no heartbeat data" detail
-            # which correctly tags this as "engine state unknown".
+        except (ConnectionError, OSError, ValueError) as e:
+            # silent_ok per Finding #11: Redis-transport (ConnectionError /
+            # OSError) / ISO parse error / naive-datetime / future-tick
+            # (ValueError) → no-signal. Cascading to P0 L1 alert would mislead
+            # ops (Redis-down has its own surfaces). Narrow scope sustains
+            # 铁律 33 — MetaAlertError / other RuntimeError subclasses still
+            # propagate to surface contract violations as operational failures.
             logger.warning(
                 "[meta-monitor] L1 heartbeat Redis read failed (fail-soft, no-signal): %s",
                 e,

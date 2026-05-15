@@ -37,6 +37,7 @@ from backend.qm_platform.risk.metrics.meta_alert_interface import (
     MetaAlertRuleId,
     MetaAlertSeverity,
 )
+from backend.qm_platform.risk.realtime.runtime_keys import CACHE_L1_HEARTBEAT
 
 _NOW = datetime(2026, 5, 14, 10, 0, 0, tzinfo=UTC)
 
@@ -139,7 +140,9 @@ class _MockRedis:
             raise ConnectionError("simulated Redis failure")
         if key == "qm:news:last_run_stats":
             return self._news_stats_json
-        if key == "risk:l1_heartbeat":
+        if key == CACHE_L1_HEARTBEAT:
+            # WU-3 SSOT (python-reviewer P2 fix): reference the shared constant
+            # rather than inlining the string — silent-drift guard.
             return self._l1_heartbeat
         return None
 
@@ -248,6 +251,9 @@ def test_collect_and_evaluate_l1_heartbeat_malformed_iso_fails_soft() -> None:
     WU-3 Finding #11: Redis returns garbage / corrupted value → collector
     logs warning + returns last_tick_at=None → rule "no heartbeat data".
     Sustained _collect_news fail-soft 体例.
+
+    python-reviewer P2 fix: explicit detail assertion (was missing) — parity
+    with naive/future tests; regression guard if fail-soft path changes.
     """
     svc = _make_svc(_MockRedis(l1_heartbeat="not-a-timestamp"))
     # Must not raise
@@ -255,6 +261,22 @@ def test_collect_and_evaluate_l1_heartbeat_malformed_iso_fails_soft() -> None:
     l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
     assert l1.triggered is False
     assert "no heartbeat data" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_z_suffix_parsed_correctly() -> None:
+    """ISO timestamp with `Z` suffix (UTC shorthand) → parsed as tz-aware.
+
+    python-reviewer P2 fix (2026-05-15): the `_collect_l1_heartbeat` docstring
+    documents Python 3.11+ "Z" suffix support, but no test exercised the path.
+    Future producers (Go sidecar / monitoring exporter writing to the same
+    Redis key) may emit "Z" — this test pins the contract.
+    """
+    z_ts = "2026-05-14T09:59:50Z"  # 10s before _NOW = 10:00:00 → healthy
+    svc = _make_svc(_MockRedis(l1_heartbeat=z_ts))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "healthy" in l1.detail
 
 
 def test_collect_and_evaluate_l1_heartbeat_naive_datetime_fails_soft() -> None:
