@@ -226,12 +226,20 @@ class _MockCursor:
         self._last_sql = sql
 
     def fetchall(self) -> list[tuple]:
-        if "factor_values" in self._last_sql:
-            return self._routes.get("factor_values", [])
-        if "daily_basic" in self._last_sql or "PERCENT_RANK" in self._last_sql:
-            return self._routes.get("daily_basic", [])
-        if "stock_basic" in self._last_sql:
+        # Reviewer-fix (code-reviewer P2-A + python-reviewer P2-2, 2026-05-15):
+        # route by MOST-SPECIFIC table name first. Original order had
+        # "factor_values" first, but if future SQL refactor JOINs daily_basic
+        # against factor_values, the substring "factor_values" would match
+        # incorrectly. Disjoint table names (stock_basic / daily_basic) checked
+        # before the more-broadly-referenced factor_values eliminates ordering
+        # dependency on SQL text shape.
+        sql = self._last_sql
+        if "stock_basic" in sql:
             return self._routes.get("stock_basic", [])
+        if "daily_basic" in sql or "PERCENT_RANK" in sql:
+            return self._routes.get("daily_basic", [])
+        if "factor_values" in sql:
+            return self._routes.get("factor_values", [])
         return []
 
     def close(self) -> None:
@@ -252,7 +260,16 @@ class _MockConn:
 
 
 def test_build_stock_metrics_zero_holdings_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    """0 holdings (red-line paper-mode sustained) → empty dict, no DB calls."""
+    """0 holdings (red-line paper-mode sustained) → empty dict, no DB calls.
+
+    Monkeypatch target rationale (python-reviewer P2-1, 2026-05-15): patch
+    the SOURCE MODULE (`app.core.qmt_client`), NOT the consumer module
+    (`app.tasks.dynamic_threshold_tasks`). The lazy `from app.core.qmt_client
+    import get_qmt_client` inside `_get_qmt_client_lazy` re-fetches the
+    attribute from the source module on every call, so patching the source
+    module's attribute correctly intercepts the call. Patching the consumer
+    module would silently NOT intercept (lazy import binds a fresh local name).
+    """
     from app.core import qmt_client as qc
 
     mock_client = MagicMock()

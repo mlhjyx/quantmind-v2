@@ -217,9 +217,13 @@ def _build_stock_metrics() -> dict[str, StockMetrics]:
         holdings OR QMT-down (caller handles empty dict as market-only eval).
     """
     try:
-        from app.core.qmt_client import get_qmt_client  # noqa: PLC0415
-
-        positions = get_qmt_client().get_positions()
+        # Reviewer-fix (code-reviewer P1-B, 2026-05-15): import is hoisted to
+        # MODULE scope just below — ImportError on app.core.qmt_client is a
+        # deploy regression (NOT transient infra blip) and MUST propagate
+        # fail-loud per 铁律 33. The try block here ONLY catches QMT data-fetch
+        # exceptions (Redis-down / parse error / etc), which are legitimate
+        # fail-soft conditions.
+        positions = _get_qmt_client_lazy().get_positions()
     except Exception as e:  # noqa: BLE001 — fail-soft: QMT-down → market-only eval
         logger.warning(
             "[dynamic-threshold] QMT holdings fetch failed (fail-soft, market-only eval): %s",
@@ -240,6 +244,25 @@ def _build_stock_metrics() -> dict[str, StockMetrics]:
 #   beta_market_20 — 20d market beta vs CSI300 (StockMetrics.beta)
 _FACTOR_NAME_ATR: str = "atr_norm_20"
 _FACTOR_NAME_BETA: str = "beta_market_20"
+
+
+def _get_qmt_client_lazy() -> Any:  # noqa: ANN401 — duck-typed indirection
+    """Module-hoisted QMTClient indirection — ImportError fail-loud per 铁律 33.
+
+    Reviewer-fix (code-reviewer P1-B, 2026-05-15): the `from app.core.qmt_client
+    import get_qmt_client` lives at this scope (NOT inside `_build_stock_metrics`
+    fail-soft try block) so a deploy regression that breaks the import surfaces
+    as a fail-loud ImportError, NOT a silent "QMT holdings fetch failed" log
+    line. The actual `.get_positions()` call still lives inside the caller's
+    fail-soft try (Redis-down is transient infra, distinct from import failure).
+
+    Lazy via function-body import sustained for test monkeypatch isolation
+    (tests patch `app.core.qmt_client.get_qmt_client` — the source-module
+    attribute — and this function re-fetches the current attribute each call).
+    """
+    from app.core.qmt_client import get_qmt_client  # noqa: PLC0415
+
+    return get_qmt_client()
 
 
 def _fetch_stock_metrics_from_db(codes: list[str]) -> dict[str, StockMetrics]:
@@ -282,34 +305,51 @@ def _fetch_stock_metrics_from_db(codes: list[str]) -> dict[str, StockMetrics]:
 
 
 def _populate_atr_beta(conn: Any, codes: list[str], metrics: dict[str, StockMetrics]) -> None:
-    """Fetch atr_ratio + beta from factor_values latest available trade_date.
+    """Fetch atr_ratio + beta from factor_values per-factor latest trade_date.
 
-    Uses single query with WHERE factor_name IN (atr_norm_20, beta_market_20).
-    Latest date is per-factor MAX(trade_date) — query uses 1 sub-select to pin
-    the common latest-date (factor_values writes are batched per-day, so both
-    factors share the same latest date in production).
+    Reviewer-fix (code-reviewer P1-A + python-reviewer P2-3, 2026-05-15):
+    uses PER-FACTOR `MAX(trade_date)` sub-selects (NOT a shared CTE) so that if
+    one factor's nightly batch fails individually (atr_norm_20 latest=2026-05-14,
+    beta_market_20 latest=2026-05-13), each factor independently picks its own
+    latest available date instead of silently returning zero rows for the
+    factor with the earlier date. Sustained 铁律 33 fail-loud principle:
+    silent data drop is worse than fail-loud crash; here we avoid both via
+    independent date resolution.
+
+    Single round-trip preserved by using `OR` between the 2 (factor, date)
+    pairs in WHERE clause — engine planner uses idx_fv_date_factor.
     """
     try:
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                WITH latest AS (
+                WITH latest_atr AS (
                     SELECT MAX(trade_date) AS d
                     FROM factor_values
-                    WHERE factor_name = ANY(%s)
+                    WHERE factor_name = %s
+                ),
+                latest_beta AS (
+                    SELECT MAX(trade_date) AS d
+                    FROM factor_values
+                    WHERE factor_name = %s
                 )
                 SELECT fv.code, fv.factor_name, fv.raw_value
-                FROM factor_values fv, latest
-                WHERE fv.trade_date = latest.d
-                  AND fv.code = ANY(%s)
-                  AND fv.factor_name = ANY(%s)
+                FROM factor_values fv
+                WHERE fv.code = ANY(%s)
                   AND fv.raw_value IS NOT NULL
+                  AND (
+                      (fv.factor_name = %s AND fv.trade_date = (SELECT d FROM latest_atr))
+                      OR
+                      (fv.factor_name = %s AND fv.trade_date = (SELECT d FROM latest_beta))
+                  )
                 """,
                 (
-                    [_FACTOR_NAME_ATR, _FACTOR_NAME_BETA],
+                    _FACTOR_NAME_ATR,
+                    _FACTOR_NAME_BETA,
                     codes,
-                    [_FACTOR_NAME_ATR, _FACTOR_NAME_BETA],
+                    _FACTOR_NAME_ATR,
+                    _FACTOR_NAME_BETA,
                 ),
             )
             for code, factor_name, raw_value in cur.fetchall():
