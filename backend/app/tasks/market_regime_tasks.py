@@ -20,8 +20,9 @@ Beat schedule per V3 §5.3 (beat_schedule.py amend):
 
 Schedule collision risk (反 hard collision, sustained dynamic_threshold_tasks 体例):
   - 09:00 — clean (no existing entry)
-  - 14:30 — risk-l4-sweep-1min fires every minute incl 14:30 + DEPRECATED risk-daily-check (paused);
+  - 14:30 — risk-l4-sweep-1min fires every minute incl 14:30;
     Beat sequential dispatch + --pool=solo Windows tolerates sub-second queue
+    (historical risk-daily-check 14:30 RETIRED 2026-05-15 per IC-2b)
   - 16:00 — fundamental-context-daily-1600 minute=0 collision; sequential queue tolerated
     (independent V4-Pro tasks, ~3-5s combined)
 

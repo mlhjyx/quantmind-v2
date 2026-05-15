@@ -242,7 +242,12 @@ async def _async_health_check() -> dict:
 def risk_daily_check_task(self) -> dict:
     """Risk Framework 日检 (MVP 3.1 批 1 PR 3, 2026-04-24 Session 29).
 
-    Celery Beat risk-daily-check 14:30 Mon-Fri 触发. 非交易日自动跳过.
+    RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): Celery Beat
+    `risk-daily-check` 14:30 Mon-Fri Beat schedule entry physically removed
+    (post-IC-1c L1 RealtimeRiskEngine production runner + V3 signal-path
+    check_v3_circuit_breaker covers this path). Task function kept for
+    optional manual invocation / future un-retire; NOT wired to any Beat
+    trigger. 非交易日自动跳过 (historical 14:30 wire).
     走 PlatformRiskEngine + PMSRule (替代老 pms_engine.check_protection).
 
     批 1 行为保持 v1 语义: LoggingSellBroker 仅 log 不实盘卖, 批 2 接真 broker.
@@ -460,7 +465,7 @@ def risk_daily_check_task(self) -> dict:
 
 # ════════════════════════════════════════════════════════════
 # T日 09:35-15:00 — Intraday Risk Framework 5min 检查 (MVP 3.1 批 2 PR 2 Session 30)
-# 组合级 3%/5%/8% 跌幅告警 + QMT 断连告警, Celery Beat `intraday-risk-check`
+# 组合级 3%/5%/8% 跌幅告警 + QMT 断连告警 (Beat `intraday-risk-check` RETIRED 2026-05-15 per IC-2b — L1 RealtimeRiskEngine production runner replaces it)
 # ════════════════════════════════════════════════════════════
 
 
@@ -474,7 +479,12 @@ def risk_daily_check_task(self) -> dict:
 def intraday_risk_check_task(self) -> dict:
     """Intraday Risk Framework 盘中检查 (MVP 3.1 批 2 PR 2, 2026-04-24 Session 30).
 
-    Celery Beat `intraday-risk-check` 5min cron (09:35-15:00 Mon-Fri, 72 次/日).
+    RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): Celery Beat
+    `intraday-risk-check` 5min cron Beat schedule entry physically removed
+    (post-IC-1c L1 RealtimeRiskEngine production runner subscribes xtquant
+    tick-by-tick — higher cadence + more precise than 5min Beat). Task
+    function kept for optional manual invocation; NOT wired to any Beat
+    trigger. Historical: 5min cron (09:35-15:00 Mon-Fri, 72 次/日).
     (reviewer P3 采纳 code: `*/5 × 6h (9-14) = 12 × 6 = 72 次`, 原注释 54 算错)
     4 规则评估: IntradayPortfolioDrop{3,5,8}PctRule + QMTDisconnectRule.
 

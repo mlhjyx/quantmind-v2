@@ -22,8 +22,10 @@ import pytest
 
 @pytest.mark.smoke
 @pytest.mark.skip(
-    reason="T1 sprint link-pause (2026-04-29): intraday-risk-check Beat 暂停, "
-    "见 docs/audit/link_paused_2026_04_29.md. 还原后取消 skip."
+    reason="RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): intraday-risk-check "
+    "Beat schedule entry physically removed from beat_schedule.py. Post-IC-1c L1 "
+    "RealtimeRiskEngine production runner subscribes xtquant tick-by-tick — higher "
+    "cadence than 5min Beat. 见 docs/audit/link_paused_2026_04_29.md (FORMAL RETIRE)."
 )
 def test_mvp_3_1_batch_2_intraday_imports() -> None:
     """Platform intraday + wiring + Celery task + Beat schedule subprocess import 不炸."""

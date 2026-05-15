@@ -22,8 +22,10 @@ import pytest
 
 @pytest.mark.smoke
 @pytest.mark.skip(
-    reason="T1 sprint link-pause (2026-04-29): risk-daily-check Beat 暂停, "
-    "见 docs/audit/link_paused_2026_04_29.md. 还原后取消 skip."
+    reason="RETIRED 2026-05-15 (V3 PT Cutover Plan v0.4 §A IC-2b): risk-daily-check "
+    "Beat schedule entry physically removed from beat_schedule.py. Post-IC-1c L1 "
+    "RealtimeRiskEngine production runner + V3 signal-path check_v3_circuit_breaker "
+    "covers this path. 见 docs/audit/link_paused_2026_04_29.md (FORMAL RETIRE section)."
 )
 def test_mvp_3_1_risk_framework_imports() -> None:
     """Platform risk + wiring + Celery task 链路 subprocess import 不炸.
