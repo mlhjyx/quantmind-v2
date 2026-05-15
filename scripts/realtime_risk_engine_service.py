@@ -12,7 +12,10 @@ Architecture:
      SSOT per IC-1c WU-1 — replay-vs-production parity ADR-076 D1)
   4. engine.set_threshold_cache(RedisThresholdCache()) — read S7 Beat publishes
   5. tick callback → build RiskContext → engine.on_tick(ctx) → dispatch results
-  6. heartbeat SETEX `risk:l1_heartbeat` TTL=300s per tick (LL-081 zombie protection)
+  6. heartbeat SETEX `risk:l1_heartbeat` TTL=3600s per tick (LL-081 zombie
+     protection; TTL must exceed L1_HEARTBEAT_STALE_THRESHOLD_S=300s alert
+     threshold so the rule has a real alert window after crash — see WU-3
+     Finding #10 sediment)
   7. resync loop (60s): refresh holdings cache for tick-callback RiskContext build
 
 Scope (WU-2 minimal — verify-driven per LL-100 chunked SOP):
@@ -106,9 +109,14 @@ CACHE_L1_HEARTBEAT: Final[str] = "risk:l1_heartbeat"
 """LL-081 体例: SETEX TTL=300s. zombie 后自然 expire → meta_monitor_service
 `_collect_l1_heartbeat` (WU-3 read path) 看到 None → 触发 P0 元告警."""
 
-CACHE_L1_HEARTBEAT_TTL_SEC: Final[int] = 300
-"""5min TTL — 与 ThresholdCache TTL + Beat cadence 对齐. 反 zombie 时 key
-永不过期 silent failure (沿用 LL-081 qmt_data_service SETEX 修复体例)."""
+CACHE_L1_HEARTBEAT_TTL_SEC: Final[int] = 3600
+"""1h TTL — MUST exceed L1_HEARTBEAT_STALE_THRESHOLD_S (300s in meta_alert_
+interface.py) to keep the key alive long enough for the staleness check to
+fire (WU-3 Finding #10, 2026-05-15). If TTL == threshold, the Redis key
+expires at exactly the moment staleness crosses the alert boundary, giving
+the meta_monitor rule a ~zero alert window after a service crash. With
+TTL=3600s, the post-crash alert window is 300s..3600s (rule fires) → 3600s+
+(key expires → silent again). Sustained LL-081 zombie protection pattern."""
 
 STREAM_RISK_L1_TRIGGERED: Final[str] = "qm:risk:l1_triggered"
 """L1 RealtimeRiskEngine 触发的 RuleResult 发布 stream. 消费者 (IC-2 scope

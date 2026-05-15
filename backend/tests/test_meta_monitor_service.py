@@ -9,7 +9,9 @@
     absent/Redis-error fail-soft
   - _collect_pg_health (HC-2b3 G3): real pg_stat_activity query — healthy/idle-堆积/null-row
   - _collect_market_crisis (HC-2b3 G4): real index_daily + klines_daily query — crisis/calm/no-data
-  - _collect_l1_heartbeat: no-signal (DEFERRED per HC-1b3 Finding — no prod subscriber)
+  - _collect_l1_heartbeat (IC-1c WU-3, 2026-05-15): real Redis read of
+    `risk:l1_heartbeat` written by realtime_risk_engine_service.py (WU-2 runner) —
+    fresh/stale/absent/malformed/redis-down fail-soft paths covered
   - LiteLLM failure / STAGED overdue / PG idle 堆积 / Crisis regime → respective rule triggered
   - push_triggered + _push_via_channel_chain (V3 §13.3 channel fallback chain):
     主 DingTalk terminal (sent/dedup_suppressed/alerts_disabled) → no escalation;
@@ -115,10 +117,21 @@ class _MockRedis:
     """Mock Redis — .get() returns the configured news-stats JSON string or None.
 
     raise_on_get=True simulates a Redis failure (fail-soft path test).
+
+    WU-3 extension (2026-05-15): also responds to `risk:l1_heartbeat` so the
+    L1 heartbeat collector tests can inject fresh / stale / absent / malformed
+    timestamps via the same mock surface.
     """
 
-    def __init__(self, *, news_stats_json: str | None = None, raise_on_get: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        news_stats_json: str | None = None,
+        l1_heartbeat: str | None = None,
+        raise_on_get: bool = False,
+    ) -> None:
         self._news_stats_json = news_stats_json
+        self._l1_heartbeat = l1_heartbeat
         self._raise_on_get = raise_on_get
 
     def get(self, key: str) -> str | None:
@@ -126,6 +139,8 @@ class _MockRedis:
             raise ConnectionError("simulated Redis failure")
         if key == "qm:news:last_run_stats":
             return self._news_stats_json
+        if key == "risk:l1_heartbeat":
+            return self._l1_heartbeat
         return None
 
 
@@ -186,11 +201,97 @@ def test_collect_and_evaluate_staged_overdue_triggers_rule() -> None:
     assert "uuid-aaaa-1111" in staged_alert.detail
 
 
-def test_collect_and_evaluate_l1_heartbeat_always_no_signal() -> None:
-    # L1 heartbeat — DEFERRED per HC-1b3 Finding (no prod subscriber). Collector is
-    # hard-wired no-signal (last_tick_at=None) → rule never triggers regardless of inputs.
-    svc = _make_svc()
+def test_collect_and_evaluate_l1_heartbeat_absent_key_no_signal() -> None:
+    """IC-1c WU-3 (2026-05-15): replaces previous "always-no-signal" test.
+
+    L1 heartbeat key absent (TTL expired post-crash beyond 3600s, OR service
+    never started) → last_tick_at=None → rule emits "no heartbeat data"
+    (not triggered). This is the explicit "engine not started" silent state
+    per evaluate_l1_heartbeat docstring.
+    """
+    svc = _make_svc(_MockRedis(l1_heartbeat=None))
     alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "no heartbeat data" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_fresh_healthy() -> None:
+    """Fresh heartbeat (< 300s old) → rule not triggered, detail "healthy"."""
+    fresh_ts = (_NOW - timedelta(seconds=10)).isoformat()
+    svc = _make_svc(_MockRedis(l1_heartbeat=fresh_ts))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "healthy" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_stale_triggers_p0() -> None:
+    """Stale heartbeat (> 300s old) → P0 rule fires — closes ADR-073 D3 dormant alert.
+
+    WU-3 sediment: post-IC-1c WU-2 runner crash, heartbeat key persists with
+    last_tick_at = crash_time (TTL 3600s), meta_monitor reads timestamp,
+    rule fires P0 because (now - last_tick_at) > 300s threshold.
+    """
+    stale_ts = (_NOW - timedelta(seconds=400)).isoformat()  # 400s > 300s threshold
+    svc = _make_svc(_MockRedis(l1_heartbeat=stale_ts))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is True
+    assert l1.severity is MetaAlertSeverity.P0
+    assert "stale" in l1.detail.lower() or "断连" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_malformed_iso_fails_soft() -> None:
+    """Malformed ISO timestamp → fail-soft (no-signal), no exception propagation.
+
+    WU-3 Finding #11: Redis returns garbage / corrupted value → collector
+    logs warning + returns last_tick_at=None → rule "no heartbeat data".
+    Sustained _collect_news fail-soft 体例.
+    """
+    svc = _make_svc(_MockRedis(l1_heartbeat="not-a-timestamp"))
+    # Must not raise
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "no heartbeat data" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_naive_datetime_fails_soft() -> None:
+    """ISO timestamp without tz → fail-soft (铁律 41 violation caught, no-signal)."""
+    # Naive ISO (no timezone suffix)
+    naive_ts = datetime(2026, 5, 14, 9, 55, 0).isoformat()
+    svc = _make_svc(_MockRedis(l1_heartbeat=naive_ts))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+
+
+def test_collect_and_evaluate_l1_heartbeat_future_tick_fails_soft() -> None:
+    """Future last_tick_at (clock skew between hosts) → fail-soft (no-signal).
+
+    Avoids cascading clock-skew into a P0 L1 alert — Redis return is
+    treated as garbage and the rule silently no-signals.
+    """
+    future_ts = (_NOW + timedelta(seconds=60)).isoformat()
+    svc = _make_svc(_MockRedis(l1_heartbeat=future_ts))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
+    assert l1.triggered is False
+    assert "no heartbeat data" in l1.detail
+
+
+def test_collect_and_evaluate_l1_heartbeat_redis_failure_fails_soft() -> None:
+    """Redis connection error → fail-soft (no-signal), other collectors still run.
+
+    WU-3 Finding #11 sediment: Redis-down already surfaces via PG-health /
+    DingTalk-push collectors; cascading to a P0 L1 alert would be misleading
+    double-fire. Sustained _collect_news fail-soft 体例.
+    """
+    svc = _make_svc(_MockRedis(raise_on_get=True))
+    alerts = svc.collect_and_evaluate(_MockConn(), now=_NOW)
+    # 7 alerts still returned despite Redis error in L1 + News collectors
+    assert len(alerts) == 7
     l1 = _by_rule(alerts, MetaAlertRuleId.L1_HEARTBEAT_STALE)
     assert l1.triggered is False
     assert "no heartbeat data" in l1.detail
@@ -399,16 +500,12 @@ def test_collect_market_crisis_no_data_both_none() -> None:
 
 def test_collect_market_crisis_index_return_converted_to_fraction() -> None:
     # index_daily.pct_change -7.5 (% units) → index_return -0.075 (fraction)
-    snapshot = MetaMonitorService._collect_market_crisis(
-        _MockConn(index_return_row=(-7.5,)), _NOW
-    )
+    snapshot = MetaMonitorService._collect_market_crisis(_MockConn(index_return_row=(-7.5,)), _NOW)
     assert snapshot.index_return == pytest.approx(-0.075)
 
 
 def test_collect_market_crisis_limit_down_count() -> None:
-    snapshot = MetaMonitorService._collect_market_crisis(
-        _MockConn(limit_down_row=(623,)), _NOW
-    )
+    snapshot = MetaMonitorService._collect_market_crisis(_MockConn(limit_down_row=(623,)), _NOW)
     assert snapshot.limit_down_count == 623
 
 

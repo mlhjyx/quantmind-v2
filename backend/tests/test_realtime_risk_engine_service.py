@@ -199,12 +199,25 @@ class TestHeartbeatWrite:
     """L1 heartbeat SETEX write — WU-3 alert rule activation prerequisite."""
 
     def test_heartbeat_write_uses_setex_with_correct_ttl(self):
-        """_write_heartbeat calls Redis SETEX with documented key + TTL."""
+        """_write_heartbeat calls Redis SETEX with documented key + TTL.
+
+        WU-3 Finding #10 (2026-05-15): TTL MUST exceed
+        L1_HEARTBEAT_STALE_THRESHOLD_S (300s) so the meta_monitor staleness
+        check has a real alert window after a service crash. The constant is
+        currently 3600s — this test pins the invariant that TTL > 300s.
+        """
         service = _make_service()
         now = datetime.now(UTC)
         service._write_heartbeat(now)
         service._redis.setex.assert_called_once_with(
             CACHE_L1_HEARTBEAT, CACHE_L1_HEARTBEAT_TTL_SEC, now.isoformat()
+        )
+        # WU-3 invariant: TTL must exceed the alert staleness threshold
+        # so a crashed engine's heartbeat key remains long enough for the
+        # rule to detect staleness (otherwise the post-crash alert window is ~0).
+        assert CACHE_L1_HEARTBEAT_TTL_SEC > 300, (
+            f"CACHE_L1_HEARTBEAT_TTL_SEC={CACHE_L1_HEARTBEAT_TTL_SEC}s must exceed "
+            f"L1_HEARTBEAT_STALE_THRESHOLD_S=300s — see WU-3 Finding #10."
         )
 
     def test_heartbeat_write_redis_failure_swallowed(self):

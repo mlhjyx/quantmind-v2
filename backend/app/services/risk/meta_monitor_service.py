@@ -5,7 +5,7 @@
   - 本 module = Application orchestration — 7 snapshot 采集 + run 7 PURE rules + DingTalk push
   - app/tasks/meta_monitor_tasks = Beat dispatch (5min cadence)
 
-Collector status (post-HC-2b3 — 6 real + 1 no-signal):
+Collector status (post-WU-3 — 7 real, 0 deferred):
   - LiteLLM 失败率: real query `llm_call_log` (error_class NULL=success) ✅ HC-1b
   - STAGED overdue: real query `execution_plans` (status='PENDING_CONFIRM') ✅ HC-1b
   - DingTalk push status: real query `alert_dedup.last_push_ok` ✅ HC-1b3
@@ -13,11 +13,14 @@ Collector status (post-HC-2b3 — 6 real + 1 no-signal):
   - PG OOM/lock: real query `pg_stat_activity` (idle-in-transaction count) ✅ HC-2b3 G3
   - 千股跌停极端 regime: real query `index_daily` + `klines_daily` via
     market_indicators_query (V3 §14 mode 9) ✅ HC-2b3 G4
-  - L1 心跳: no-signal (last_tick_at=None) — DEFERRED per HC-1b3 Finding (no
-    production XtQuantTickSubscriber runner exists to instrument; instrumenting
-    would never fire — see `_collect_l1_heartbeat`). 不是 "not yet wired", 是
-    "源在 production 尚不存在" — 留 realtime engine production-wiring (Plan v0.4
-    cutover scope 候选). HC-1a PURE rule 优雅处理 no-signal input → not triggered.
+  - L1 心跳: real read Redis `risk:l1_heartbeat` written by
+    `scripts/realtime_risk_engine_service.py` (IC-1c WU-2 production runner) ✅
+    V3 PT Cutover IC-1c WU-3 (2026-05-15). Re-activates ADR-073 D3 dormant
+    alert — was DEFERRED through HC-4 because no production runner existed.
+    Now sourced from runner's per-tick `SETEX risk:l1_heartbeat TTL=3600s`.
+    The TTL exceeds L1_HEARTBEAT_STALE_THRESHOLD_S (300s) to give the rule
+    a meaningful post-crash alert window (WU-3 Finding #10 sediment).
+    Fail-soft on Redis/parse error → no-signal sustained.
 
 Channel fallback chain (V3 §13.3, HC-1b2): 主 DingTalk → 备 email → 极端 log-P0
   (`_push_via_channel_chain`). DingTalk unreachable / configured-but-undeliverable
@@ -290,14 +293,14 @@ class MetaMonitorService:
             "reason": "all_channels_failed",
         }
 
-    # ── Collectors — 6 real (LiteLLM / STAGED / DingTalk / News / PG / Crisis)
-    #    + 1 no-signal (L1) ──
+    # ── Collectors — 7 real (LiteLLM / STAGED / DingTalk / News / PG / Crisis
+    #    + L1 heartbeat as of IC-1c WU-3) ──
     # HC-1b3 wired DingTalk-push-status (alert_dedup.last_push_ok) + News per-run
     # stats (Redis qm:news:last_run_stats). HC-2b3 wired PG health (pg_stat_activity)
-    # + 千股跌停极端 regime (index_daily + klines_daily). L1-heartbeat stays
-    # no-signal — DEFERRED per HC-1b3 Finding (no production XtQuantTickSubscriber
-    # runner exists to instrument; instrumenting it would never fire — see
-    # _collect_l1_heartbeat).
+    # + 千股跌停极端 regime (index_daily + klines_daily). IC-1c WU-2 built the L1
+    # production runner; WU-3 (this commit) replaces the no-signal stub with a
+    # Redis read of `risk:l1_heartbeat` written by the runner per tick — closes
+    # the HC-1b3 deferred Finding and ADR-073 D3 dormant alert.
 
     @staticmethod
     def _collect_litellm(conn: Any, now: datetime) -> LiteLLMCallWindowSnapshot:
@@ -362,25 +365,66 @@ class MetaMonitorService:
         )
         return StagedPlanWindowSnapshot(plans=plans, now=now)
 
-    @staticmethod
-    def _collect_l1_heartbeat(now: datetime) -> L1HeartbeatSnapshot:
-        """No-signal collector — DEFERRED per HC-1b3 Finding (NOT just "not yet wired").
+    # L1 heartbeat key matches scripts/realtime_risk_engine_service.py
+    # CACHE_L1_HEARTBEAT — single SSOT for the cross-process Redis key.
+    _L1_HEARTBEAT_REDIS_KEY = "risk:l1_heartbeat"
 
-        HC-1b3 precondition 核 真值: XtQuantTickSubscriber + RealtimeRiskEngine are
-        instantiated ONLY in tests + the replay runner — there is NO production
-        runner wiring the realtime subscriber into a live tick flow (S5/Tier A
-        built the components; production wiring deferred, consistent with
-        paper-mode 红线 0 持仓 / LIVE_TRADING_DISABLED=true). Instrumenting a
-        heartbeat now would never fire (no production subscriber). last_tick_at=None
-        → PURE rule not triggered + detail "no heartbeat data" — this is the
-        *correct* state until the realtime engine gets production-wired (likely
-        Plan v0.4 cutover scope — touches live xtquant). See HC-1b3 PR / ADR-073.
+    def _collect_l1_heartbeat(self, now: datetime) -> L1HeartbeatSnapshot:
+        """Real collector (V3 PT Cutover IC-1c WU-3, 2026-05-15) — reads
+        `risk:l1_heartbeat` Redis key written by `realtime_risk_engine_service.py`
+        (IC-1c WU-2) every tick.
+
+        Re-activates ADR-073 D3 dormant L1-heartbeat元告警: HC-1b3 had to defer
+        instrumentation because no production runner existed; IC-1c WU-2 built
+        the runner (commit 5629186) and this method now reads its heartbeat
+        writes. The runner's TTL=3600s is required to exceed
+        L1_HEARTBEAT_STALE_THRESHOLD_S (300s) so the rule has a meaningful
+        post-crash alert window (WU-3 Finding #10).
+
+        Semantics (per evaluate_l1_heartbeat rule docstring):
+          - key present + tz-aware ISO ts → L1HeartbeatSnapshot(last_tick_at=ts)
+            rule fires P0 iff now - ts > 300s
+          - key absent (TTL expired, service never started, or post-3600s
+            after crash) → last_tick_at=None → rule "no signal" (NOT triggered)
+
+        Fail-soft (WU-3 Finding #11): any Redis error / parse error / future-tick
+        violation → last_tick_at=None (no-signal). Redis-down is already
+        surfaced via the PG-health / DingTalk-push collectors; cascading a
+        Redis failure to a P0 L1 alert would be a misleading double-fire.
+        Sustained _collect_news 体例.
         """
-        logger.debug(
-            "[meta-monitor] L1 heartbeat collector = no-signal (DEFERRED — no prod "
-            "realtime subscriber, HC-1b3 Finding)"
-        )
-        return L1HeartbeatSnapshot(last_tick_at=None, now=now)
+        last_tick_at: datetime | None = None
+        try:
+            raw = self._get_redis().get(self._L1_HEARTBEAT_REDIS_KEY)
+            if raw is not None:
+                # ISO 8601 format with timezone — fromisoformat handles "+00:00"
+                # and "Z" (Python 3.11+). Service writes datetime.now(UTC).isoformat()
+                # which produces "+00:00" suffix → tz-aware result.
+                parsed = datetime.fromisoformat(raw)
+                if parsed.tzinfo is None:
+                    raise ValueError(
+                        f"L1 heartbeat key {self._L1_HEARTBEAT_REDIS_KEY!r} "
+                        f"returned naive datetime {raw!r} (铁律 41 violation)"
+                    )
+                if parsed > now:
+                    raise ValueError(
+                        f"L1 heartbeat last_tick_at {parsed.isoformat()} is in "
+                        f"the future relative to now {now.isoformat()} — clock "
+                        f"skew between service host and meta_monitor host"
+                    )
+                last_tick_at = parsed
+        except Exception as e:  # noqa: BLE001 — fail-soft per Finding #11
+            # silent_ok: Redis-down / parse error / clock-skew → no-signal.
+            # Cascading to P0 L1 alert would mislead ops (Redis-down has
+            # its own surfaces). The rule emits "no heartbeat data" detail
+            # which correctly tags this as "engine state unknown".
+            logger.warning(
+                "[meta-monitor] L1 heartbeat Redis read failed (fail-soft, no-signal): %s",
+                e,
+            )
+            last_tick_at = None
+
+        return L1HeartbeatSnapshot(last_tick_at=last_tick_at, now=now)
 
     @staticmethod
     def _collect_dingtalk(conn: Any, now: datetime) -> DingTalkPushSnapshot:
