@@ -61,11 +61,9 @@ logger = logging.getLogger("celery.dynamic_threshold_tasks")
 # cache is per-process Redis client reference). 反 per-tick re-import overhead.
 _engine: DynamicThresholdEngine | None = None
 _cache: ThresholdCache | None = None
-# Reviewer P2-6: one-time stub-active warning so operator sees in production
-# logs that the remaining stub wire (per-stock metrics) is still deferred.
-# HC-2b3 G4 wired market indicators (index_return / limit_down_count); stock
-# metrics (ATR/beta/liquidity from holdings) still stub. Cleared once full wire lands.
-_stub_warned: bool = False
+# Reviewer P2-6 stub-warned flag REMOVED 2026-05-15 — V3 Plan v0.4 IC-2a de-stubbed
+# _build_stock_metrics (real factor_values + daily_basic + stock_basic queries).
+# Test `test_stub_warning_logged_once` updated to assert absence (regression guard).
 
 
 def _get_engine() -> DynamicThresholdEngine:
@@ -189,20 +187,208 @@ def _fetch_latest_regime() -> str | None:
 
 
 def _build_stock_metrics() -> dict[str, StockMetrics]:
-    """Build per-stock metrics for current positions.
+    """Build per-stock metrics for current positions (V3 Plan v0.4 IC-2a de-stub, 2026-05-15).
 
-    sub-PR S7-Beat-wire SCOPE: returns empty dict (engine evaluates market-level only,
-    cache stores "" key globals). Production wire (real ATR / beta / liquidity from
-    DB + holdings from QMTClient) deferred to S10 paper-mode 5d dry-run.
+    De-stubs the previous `return {}` placeholder. Fetches holdings from QMT cache
+    + per-stock atr_ratio / beta / liquidity_percentile / industry from PG tables:
 
-    Real wire path (follow-up sub-PR):
-    - holdings: QMTClient().read_positions() → list of codes
-    - ATR(20): SELECT close/atr_20 FROM factor_values WHERE symbol_id IN holdings
-    - beta: SELECT beta_60 FROM factor_values WHERE symbol_id IN holdings
-    - liquidity_percentile: dv_ttm rank pctile from daily_basic
-    - industry: SELECT industry_sw1 FROM stock_basic WHERE symbol_id IN holdings
+    Data sources (Phase 0 真值 verified — user 决议 S1 factor_values primary):
+    - holdings: QMTClient().get_positions() → dict[code, shares] keys
+    - atr_ratio: factor_values WHERE factor_name='atr_norm_20' (ATR(20)/close ratio,
+      pre-computed nightly; 5.6M rows verified 2026-05-15)
+    - beta: factor_values WHERE factor_name='beta_market_20' (20-day market beta vs
+      CSI300; 10.4M rows verified)
+    - liquidity_percentile: PERCENT_RANK() OVER (ORDER BY dv_ttm) from daily_basic
+      latest trade_date (universe-wide percentile, [0,1])
+    - industry: stock_basic.industry_sw1 (SW1 行业 VARCHAR(50))
+
+    Latest-available-date strategy: per-source MAX(trade_date) read independently
+    (factor_values + daily_basic). Paper-mode 0 holdings → returns empty dict
+    (sustained 红线 — no DB load when no positions to evaluate).
+
+    Fail-soft (沿用 _fetch_market_crisis_indicators / _fetch_latest_regime 体例):
+    QMT-down / DB-down / partial-source-missing → log warning + return whatever
+    partial metrics were gathered (engine handles partial StockMetrics gracefully
+    per engine.py:60 "All fields optional"). 反 transient infra blip crash the
+    5min Beat tick. Per-stock missing field → None (engine skip semantics).
+
+    Returns:
+        dict[code, StockMetrics] for codes currently held. Empty dict if 0
+        holdings OR QMT-down (caller handles empty dict as market-only eval).
     """
-    return {}
+    try:
+        from app.core.qmt_client import get_qmt_client  # noqa: PLC0415
+
+        positions = get_qmt_client().get_positions()
+    except Exception as e:  # noqa: BLE001 — fail-soft: QMT-down → market-only eval
+        logger.warning(
+            "[dynamic-threshold] QMT holdings fetch failed (fail-soft, market-only eval): %s",
+            e,
+        )
+        return {}
+
+    codes = sorted(positions.keys())  # deterministic order for logs/tests
+    if not codes:
+        # paper-mode 0 holdings (red-line sustained) — no per-stock adjustments
+        return {}
+
+    return _fetch_stock_metrics_from_db(codes)
+
+
+# Factor name SSOT — must match factor_values DB rows verified 2026-05-15:
+#   atr_norm_20    — ATR(20) / close ratio (StockMetrics.atr_ratio)
+#   beta_market_20 — 20d market beta vs CSI300 (StockMetrics.beta)
+_FACTOR_NAME_ATR: str = "atr_norm_20"
+_FACTOR_NAME_BETA: str = "beta_market_20"
+
+
+def _fetch_stock_metrics_from_db(codes: list[str]) -> dict[str, StockMetrics]:
+    """Fetch StockMetrics for given codes from factor_values + daily_basic + stock_basic.
+
+    3 queries (one per data source); each query is fail-soft — a single source
+    failure leaves that StockMetrics field as None (engine skip semantics) while
+    the other 2 sources still populate their fields.
+
+    Args:
+        codes: non-empty list of stock codes (e.g. ["600519.SH"]); caller MUST
+            pre-filter (_build_stock_metrics guards empty list before calling).
+
+    Returns:
+        dict[code, StockMetrics] — every code in `codes` has an entry
+        (StockMetrics with code= field set + partial / None other fields).
+    """
+    from app.services.db import get_sync_conn  # noqa: PLC0415
+
+    # Initialize StockMetrics with code only — fields filled by per-source queries
+    metrics: dict[str, StockMetrics] = {code: StockMetrics(code=code) for code in codes}
+
+    try:
+        conn = get_sync_conn()
+    except Exception as e:  # noqa: BLE001 — fail-soft: DB-down → market-only eval
+        logger.warning(
+            "[dynamic-threshold] PG connection failed (fail-soft, market-only eval): %s",
+            e,
+        )
+        return metrics  # return code-only metrics; engine handles all-None gracefully
+
+    try:
+        _populate_atr_beta(conn, codes, metrics)
+        _populate_liquidity_percentile(conn, codes, metrics)
+        _populate_industry(conn, codes, metrics)
+    finally:
+        conn.close()
+
+    return metrics
+
+
+def _populate_atr_beta(conn: Any, codes: list[str], metrics: dict[str, StockMetrics]) -> None:
+    """Fetch atr_ratio + beta from factor_values latest available trade_date.
+
+    Uses single query with WHERE factor_name IN (atr_norm_20, beta_market_20).
+    Latest date is per-factor MAX(trade_date) — query uses 1 sub-select to pin
+    the common latest-date (factor_values writes are batched per-day, so both
+    factors share the same latest date in production).
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                WITH latest AS (
+                    SELECT MAX(trade_date) AS d
+                    FROM factor_values
+                    WHERE factor_name = ANY(%s)
+                )
+                SELECT fv.code, fv.factor_name, fv.raw_value
+                FROM factor_values fv, latest
+                WHERE fv.trade_date = latest.d
+                  AND fv.code = ANY(%s)
+                  AND fv.factor_name = ANY(%s)
+                  AND fv.raw_value IS NOT NULL
+                """,
+                (
+                    [_FACTOR_NAME_ATR, _FACTOR_NAME_BETA],
+                    codes,
+                    [_FACTOR_NAME_ATR, _FACTOR_NAME_BETA],
+                ),
+            )
+            for code, factor_name, raw_value in cur.fetchall():
+                if code not in metrics:
+                    continue  # defensive — shouldn't happen given WHERE clause
+                if factor_name == _FACTOR_NAME_ATR:
+                    metrics[code].atr_ratio = float(raw_value)
+                elif factor_name == _FACTOR_NAME_BETA:
+                    metrics[code].beta = float(raw_value)
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning(
+            "[dynamic-threshold] ATR/beta fetch failed (fail-soft, atr/beta=None): %s",
+            e,
+        )
+
+
+def _populate_liquidity_percentile(
+    conn: Any, codes: list[str], metrics: dict[str, StockMetrics]
+) -> None:
+    """Fetch liquidity_percentile from PERCENT_RANK over daily_basic.dv_ttm.
+
+    Universe-wide percentile rank (NOT just over the holdings subset) — engine
+    expects [0,1] where 0=lowest liquidity, 1=highest. Latest trade_date with
+    dv_ttm IS NOT NULL.
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                WITH latest AS (
+                    SELECT MAX(trade_date) AS d
+                    FROM daily_basic
+                    WHERE dv_ttm IS NOT NULL
+                ),
+                ranked AS (
+                    SELECT db.code, PERCENT_RANK() OVER (ORDER BY db.dv_ttm) AS pct
+                    FROM daily_basic db, latest
+                    WHERE db.trade_date = latest.d
+                      AND db.dv_ttm IS NOT NULL
+                )
+                SELECT code, pct FROM ranked WHERE code = ANY(%s)
+                """,
+                (codes,),
+            )
+            for code, pct in cur.fetchall():
+                if code in metrics and pct is not None:
+                    metrics[code].liquidity_percentile = float(pct)
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning(
+            "[dynamic-threshold] liquidity_percentile fetch failed "
+            "(fail-soft, liquidity_percentile=None): %s",
+            e,
+        )
+
+
+def _populate_industry(conn: Any, codes: list[str], metrics: dict[str, StockMetrics]) -> None:
+    """Fetch industry_sw1 from stock_basic — relatively static, no date constraint."""
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT code, industry_sw1 FROM stock_basic WHERE code = ANY(%s)",
+                (codes,),
+            )
+            for code, industry in cur.fetchall():
+                if code in metrics and industry is not None:
+                    metrics[code].industry = str(industry)
+        finally:
+            cur.close()
+    except Exception as e:  # noqa: BLE001 — fail-soft per-source
+        logger.warning(
+            "[dynamic-threshold] industry fetch failed (fail-soft, industry=None): %s",
+            e,
+        )
 
 
 @celery_app.task(
@@ -228,19 +414,9 @@ def compute_dynamic_thresholds() -> dict[str, Any]:
     Raises:
         Re-raises any unhandled exception from engine.evaluate() for Celery retry.
     """
-    global _stub_warned
-    if not _stub_warned:
-        # Reviewer P2-6: surface remaining stub posture once at first invocation.
-        # HC-2b3 G4 wired market indicators (index_return / limit_down_count);
-        # _build_stock_metrics still returns {} → engine evaluates market-level only.
-        logger.warning(
-            "[dynamic-threshold-beat] partial STUB inputs active — market indicators "
-            "wired (HC-2b3 G4) but _build_stock_metrics returns {}; per-stock "
-            "ATR/beta/liquidity adjustment not applied. Wire real holdings/ATR/beta "
-            "data path before S10 paper-mode 5d (LL-141)."
-        )
-        _stub_warned = True
-
+    # IC-2a 2026-05-15: _build_stock_metrics is now fully wired (real factor_values
+    # + daily_basic + stock_basic). The previous partial-STUB warning is gone;
+    # absence is the canonical "fully wired" signal (no more deferred posture).
     indicators = _build_market_indicators()
     stock_metrics = _build_stock_metrics()
     engine = _get_engine()
