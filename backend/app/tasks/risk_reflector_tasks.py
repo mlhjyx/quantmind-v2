@@ -252,7 +252,15 @@ def _build_reflection_input(
 
     # RAG query text: period_label + events brief (events_summary already
     # gathered → use first ~200 chars for embedding query context).
-    rag_query = f"{period_label} 风控复盘: {events_summary[:200]}"
+    # Reviewer-fix (code-reviewer P2-2, 2026-05-15): guard against
+    # "数据不足: ..." placeholder contamination — when events_summary is a
+    # fail-soft placeholder (DB query raised), the error message itself would
+    # poison the embedding query and return noise hits. Fall back to minimal
+    # context (period_label only) so RAG retrieves period-generic memories.
+    if events_summary.startswith("数据不足"):
+        rag_query = f"{period_label} 风控复盘"
+    else:
+        rag_query = f"{period_label} 风控复盘: {events_summary[:200]}"
     rag_top5 = _gather_rag_top5(rag, rag_query, event_type=rag_event_type_filter)
 
     return ReflectionInput(
@@ -693,8 +701,10 @@ def _run_reflection(
 
     # TB-4c: lesson→risk_memory 闭环 (V3 §8.3) — BGE-M3 embed + persist.
     # 铁律 32: 本 task is caller / transaction owner — explicit commit/rollback.
-    from app.services.db import get_sync_conn  # noqa: PLC0415
-
+    # IC-2c reviewer-fix (python-reviewer P2-2): redundant `from app.services.db
+    # import get_sync_conn` removed here — already bound in function scope by
+    # the IC-2c input-gather import at line ~666 (CPython caches via sys.modules
+    # so the re-import was a no-op, but the duplication was misleading).
     conn = get_sync_conn()
     try:
         memory_id = service.sediment_lesson(

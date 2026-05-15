@@ -154,20 +154,37 @@ class RiskMemoryRAG:
             _OVERFETCH_HARD_CAP,
         )
 
-        # Read-only path — caller-supplied connection. No commit/rollback
-        # per 铁律 32 (read query has no transaction state to flush).
-        # Caller owns connection lifecycle (pool return, etc); RAG does not
-        # close — per ADR-013 conn_factory 体例 sustained TB-2c IndicatorsProvider.
-        # Reviewer-fix (PR #341 MEDIUM 2): no try/finally wrapper since RAG
-        # manages no resource — exception propagation is identical without it.
+        # Read-only path — RAG opens a connection per call via conn_factory,
+        # MUST close it before returning (otherwise leaks 1 PG conn per
+        # retrieve() in long-lived workers — exhausts max_connections).
+        # Reviewer-fix (IC-2c P1, 2026-05-15): added try/finally to close.
+        # IC-2c activates this path in weekly + monthly Beat (52+12+event/yr);
+        # in --pool=solo single-thread Beat, each leaked conn lingers until
+        # worker restart. Previous comment claiming "caller owns lifecycle"
+        # (PR #341 MEDIUM 2) was incorrect — there is no caller-visible conn
+        # handle, retrieve() OWNS the conn it opens. Sustained 铁律 32 no
+        # commit/rollback (read-only path); ownership = closer.
         conn = self.conn_factory()
-        raw_hits = retrieve_similar(
-            conn,
-            query_embedding,
-            k=overfetch_k,
-            event_type=event_type,
-            min_cosine_similarity=None,  # retention filter handles it
-        )
+        try:
+            raw_hits = retrieve_similar(
+                conn,
+                query_embedding,
+                k=overfetch_k,
+                event_type=event_type,
+                min_cosine_similarity=None,  # retention filter handles it
+            )
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001 — silent_ok: close-error is non-actionable
+                # silent_ok: best-effort close. If conn.close() itself raises
+                # (e.g. broken socket), the underlying query result is preserved
+                # in raw_hits via the try block — secondary close failure should
+                # not mask the primary retrieval outcome.
+                logger.warning(
+                    "[risk-memory-rag] conn.close() after retrieve failed (best-effort)",
+                    exc_info=True,
+                )
 
         # 4-tier retention filter.
         filtered = filter_by_retention(raw_hits, now_effective, self.retention_policy)

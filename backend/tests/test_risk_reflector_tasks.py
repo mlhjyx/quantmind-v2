@@ -277,6 +277,12 @@ class _MockCursor:
         self._last_sql = ""
 
     def execute(self, sql: str, params: tuple = ()) -> None:
+        # Reviewer-fix (python-reviewer P2-3, 2026-05-15): params type
+        # assertion matches real psycopg2 binding contract — surfaces bugs
+        # where gatherers accidentally pass None / wrong-type for params.
+        assert isinstance(params, (tuple, list)), (
+            f"_MockCursor.execute: params must be tuple/list, got {type(params).__name__}"
+        )
         self._last_sql = sql
 
     def fetchall(self) -> list[tuple]:
@@ -410,7 +416,8 @@ class TestGatherPnlOutcome:
 class TestGatherRagTop5:
     """`_gather_rag_top5` — RiskMemoryRAG.retrieve → markdown table."""
 
-    def _make_hit(self, cosine: float, event_type: str, symbol: str | None, lesson: str) -> Any:
+    @staticmethod
+    def _make_hit(cosine: float, event_type: str, symbol: str | None, lesson: str) -> Any:
         """Build SimilarMemoryHit + RiskMemory dual fake for table rendering."""
         from unittest.mock import MagicMock
 
@@ -498,9 +505,9 @@ class TestBuildReflectionInput:
         )
         rag = MagicMock()
         rag.retrieve.return_value = [
-            TestGatherRagTop5._make_hit(
-                TestGatherRagTop5(), 0.9, "LimitDown", "600519.SH", "lesson"
-            )
+            # Reviewer-fix (code-reviewer P2-5, 2026-05-15): _make_hit is now
+            # @staticmethod — direct call without instantiation.
+            TestGatherRagTop5._make_hit(0.9, "LimitDown", "600519.SH", "lesson")
         ]
 
         result = rrt._build_reflection_input(
