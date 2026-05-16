@@ -182,7 +182,9 @@ class TestServyServicesParser:
     @patch("v3_ct_1b_operational_readiness.subprocess.run")
     def test_fails_when_powershell_returncode_nonzero(self, mock_run: MagicMock) -> None:
         mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="Get-Service: error",
+            returncode=1,
+            stdout="",
+            stderr="Get-Service: error",
         )
         r = _check_servy_services()
         assert r.passed is False
@@ -235,11 +237,15 @@ class TestRenderReport:
             timestamp_utc="2026-05-17T00:00:00+00:00",
             timestamp_shanghai="2026-05-17T08:00:00+08:00",
             checks=[
-                _CheckResult(name="servy_services_running", passed=True, detail="5 services Running"),
+                _CheckResult(
+                    name="servy_services_running", passed=True, detail="5 services Running"
+                ),
                 _CheckResult(name="fastapi_health", passed=True, detail="FastAPI /health OK"),
                 _CheckResult(name="redis_streams", passed=True, detail="Redis PING + 3 streams"),
                 _CheckResult(name="pg_select_perms", passed=True, detail="5 tables verified"),
-                _CheckResult(name="dingtalk_endpoint_reachable", passed=True, detail="TCP reachable"),
+                _CheckResult(
+                    name="dingtalk_endpoint_reachable", passed=True, detail="TCP reachable"
+                ),
                 _CheckResult(name="news_sources_reachable", passed=True, detail="RSSHub reachable"),
             ],
         )

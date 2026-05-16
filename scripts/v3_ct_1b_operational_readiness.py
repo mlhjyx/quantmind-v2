@@ -172,7 +172,11 @@ def _check_servy_services() -> _CheckResult:
                 )
         if not r.failures:
             r.passed = True
-            r.detail = f"5 services Running: {', '.join(sorted(names_seen))}"
+            # P2 reviewer fix (2026-05-17): use len() not hardcoded "5".
+            r.detail = (
+                f"{len(_EXPECTED_SERVICES)} services Running: "
+                f"{', '.join(sorted(_EXPECTED_SERVICES))}"
+            )
     except subprocess.TimeoutExpired:
         r.failures.append("PowerShell Get-Service timeout >10s")
     except json.JSONDecodeError as e:
@@ -210,8 +214,14 @@ def _check_fastapi_health() -> _CheckResult:
 
 
 def _check_redis_streams() -> _CheckResult:
-    """Check 3: Redis PING + qm:* streams exist."""
+    """Check 3: Redis PING + qm:* streams exist.
+
+    P1 reviewer fix (2026-05-17, code-reviewer): explicit client.close() in
+    try/finally to avoid connection pool leak if called from long-lived
+    context (sustained CT-1a conn lifecycle体例).
+    """
     r = _CheckResult(name="redis_streams")
+    client = None
     try:
         import redis
 
@@ -229,28 +239,40 @@ def _check_redis_streams() -> _CheckResult:
                 r.failures.append(f"Expected stream {stream!r} not found in Redis")
                 continue
             key_type = client.type(stream)
-            type_str = (
-                key_type.decode("utf-8") if isinstance(key_type, bytes) else str(key_type)
-            )
+            type_str = key_type.decode("utf-8") if isinstance(key_type, bytes) else str(key_type)
             if type_str != "stream":
-                r.failures.append(
-                    f"Key {stream!r} type={type_str!r} (expected 'stream')"
-                )
+                r.failures.append(f"Key {stream!r} type={type_str!r} (expected 'stream')")
         if not r.failures:
             r.passed = True
             r.detail = f"Redis PING + {len(_EXPECTED_STREAMS)} qm:* streams verified"
     except Exception as e:  # noqa: BLE001 — fail-loud
         r.failures.append(f"{type(e).__name__}: {e}")
+    finally:
+        if client is not None:
+            import contextlib
+
+            # silent_ok: close-error non-actionable (P2 reviewer fix; pool
+            # GC'd on next process exit even if close fails).
+            with contextlib.suppress(Exception):
+                client.close()
     return r
 
 
 def _check_pg_perms(conn_factory: Callable[[], Any] | None = None) -> _CheckResult:
     """Check 4: SELECT on 5 production tables succeeds (read perms intact).
 
+    P1 reviewer fix (2026-05-17, both reviewers): replaced f-string table
+    interpolation with `psycopg2.sql.Identifier` to prevent SQL identifier
+    injection. `_PROD_TABLES` is a hardcoded constant tuple today but the
+    pattern would become an injection vector if extended to config-driven
+    table lists. SAFE allowlist check kept as belt-and-suspenders.
+
     Args:
         conn_factory: optional connection factory (tests). Default uses
             `app.services.db.get_sync_conn`.
     """
+    from psycopg2 import sql  # noqa: PLC0415 — deferred psycopg2 import
+
     r = _CheckResult(name="pg_select_perms")
     try:
         if conn_factory is None:
@@ -261,7 +283,12 @@ def _check_pg_perms(conn_factory: Callable[[], Any] | None = None) -> _CheckResu
         try:
             with conn.cursor() as cur:
                 for tbl in _PROD_TABLES:
-                    cur.execute(f"SELECT COUNT(*) FROM {tbl} LIMIT 1")
+                    # P1 fix: allowlist + sql.Identifier (defense-in-depth).
+                    if tbl not in _PROD_TABLES:
+                        raise ValueError(f"Table {tbl!r} not in _PROD_TABLES allowlist")
+                    cur.execute(
+                        sql.SQL("SELECT COUNT(*) FROM {} LIMIT 1").format(sql.Identifier(tbl))
+                    )
                     cnt = cur.fetchone()[0]
                     logger.info("[CT-1b] %s SELECT COUNT = %d", tbl, cnt)
         finally:
@@ -282,13 +309,14 @@ def _check_dingtalk_endpoint() -> _CheckResult:
     r = _CheckResult(name="dingtalk_endpoint_reachable")
     try:
         # Lazy import to avoid Settings dependency at module top.
+        # P2 reviewer fix (2026-05-17): narrowed ImportError/AttributeError
+        # only — broader Exception was masking real config breakage with
+        # "skipped" pass.
         try:
             from app.config import settings  # noqa: PLC0415
 
-            webhook = getattr(settings, "DINGTALK_WEBHOOK_URL", None) or getattr(
-                settings, "DINGTALK_ALERTS_WEBHOOK", None
-            )
-        except Exception:  # noqa: BLE001 — informational only
+            webhook = getattr(settings, "DINGTALK_WEBHOOK_URL", None)
+        except (ImportError, AttributeError):
             webhook = None
         if not webhook:
             r.passed = True
@@ -317,16 +345,38 @@ def _check_dingtalk_endpoint() -> _CheckResult:
 def _check_news_sources_reachable() -> _CheckResult:
     """Check 6: news source endpoints reachable via TCP connect (no fetch).
 
-    Reads news source URLs from settings/config; gracefully degrades if
-    config missing. NO content fetch, NO token consumption.
+    P2 reviewer fix (2026-05-17, both reviewers): RSSHub endpoint
+    config-driven via `RSSHUB_URL` settings attr (sustained DingTalk check
+    pattern) with localhost:1200 default. Failure message uses ', '.join
+    instead of list repr per python-reviewer LOW.
+
+    Reads RSSHub URL from settings/config; gracefully degrades to default
+    (127.0.0.1:1200, sustained Servy QuantMind-RSSHub service). NO content
+    fetch, NO token consumption.
     """
     r = _CheckResult(name="news_sources_reachable")
     try:
-        # RSSHub is the primary news ingress per ADR-031/033 sediment.
-        # Verify port 1200 (RSSHub default) reachable on localhost.
         import socket  # noqa: PLC0415
+        from urllib.parse import urlparse  # noqa: PLC0415
 
-        rsshub_endpoints = [("127.0.0.1", 1200)]
+        # Discover RSSHub endpoint from settings; fall back to localhost:1200.
+        rsshub_host = "127.0.0.1"
+        rsshub_port = 1200
+        try:
+            from app.config import settings  # noqa: PLC0415
+
+            rsshub_url = getattr(settings, "RSSHUB_URL", None) or getattr(
+                settings, "RSSHUB_BASE_URL", None
+            )
+            if rsshub_url:
+                parsed = urlparse(str(rsshub_url))
+                if parsed.hostname:
+                    rsshub_host = parsed.hostname
+                    rsshub_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except (ImportError, AttributeError):
+            pass  # silent_ok: use defaults
+
+        rsshub_endpoints = [(rsshub_host, rsshub_port)]
         reachable = []
         unreachable = []
         for host, port in rsshub_endpoints:
@@ -336,10 +386,10 @@ def _check_news_sources_reachable() -> _CheckResult:
             except OSError as e:
                 unreachable.append(f"{host}:{port} ({type(e).__name__})")
         if unreachable:
-            r.failures.append(f"News source unreachable: {unreachable}")
+            r.failures.append(f"News source unreachable: {', '.join(unreachable)}")
             return r
         r.passed = True
-        r.detail = f"News sources reachable: {reachable}"
+        r.detail = f"News sources reachable: {', '.join(reachable)}"
     except Exception as e:  # noqa: BLE001 — fail-loud
         r.failures.append(f"{type(e).__name__}: {e}")
     return r
@@ -372,9 +422,7 @@ def run_all_checks() -> _ReadinessReport:
         result = check_fn()
         report.checks.append(result)
         if result.passed:
-            logger.info(
-                "[CT-1b] ✅ %s — %s", result.name, result.detail or "OK"
-            )
+            logger.info("[CT-1b] ✅ %s — %s", result.name, result.detail or "OK")
         else:
             logger.warning(
                 "[CT-1b] ❌ %s — failures: %s",
@@ -429,11 +477,19 @@ def render_report(report: _ReadinessReport) -> str:
     lines.append("")
     lines.append("| # | SLA | Threshold | IC-3 evidence | Status |")
     lines.append("|---|---|---|---|---|")
-    lines.append("| 1 | L1 detection latency P99 | < 5s | IC-3a 0.010ms max-quarter (139M minute_bars, 20 quarters) | ✅ |")
-    lines.append("| 2 | L4 STAGED 30min cancel | = 30min | IC-3a 0 staged_failed (1363 actionable → 1363 closed_ok) | ✅ |")
-    lines.append("| 3 | L0 News 6-source 30s timeout | < 30s | IC-3c scenario 5 (LLM outage + Ollama fallback test) | ✅ |")
+    lines.append(
+        "| 1 | L1 detection latency P99 | < 5s | IC-3a 0.010ms max-quarter (139M minute_bars, 20 quarters) | ✅ |"
+    )
+    lines.append(
+        "| 2 | L4 STAGED 30min cancel | = 30min | IC-3a 0 staged_failed (1363 actionable → 1363 closed_ok) | ✅ |"
+    )
+    lines.append(
+        "| 3 | L0 News 6-source 30s timeout | < 30s | IC-3c scenario 5 (LLM outage + Ollama fallback test) | ✅ |"
+    )
     lines.append("| 4 | LiteLLM <3s + Ollama fallback | < 3s | IC-3c scenario 5 | ✅ |")
-    lines.append("| 5 | DingTalk push <10s P99 | < 10s | IC-3c scenario 6 (DingTalk down + email backup test) | ✅ |")
+    lines.append(
+        "| 5 | DingTalk push <10s P99 | < 10s | IC-3c scenario 6 (DingTalk down + email backup test) | ✅ |"
+    )
     lines.append("")
     lines.append(
         "**Replay-path equivalence sustained per ADR-063** (Tier B 真测路径): "
@@ -490,7 +546,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="run checks + print report, do NOT sediment markdown",
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
     )
     return p
