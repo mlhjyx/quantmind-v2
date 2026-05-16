@@ -94,7 +94,8 @@ class TestGateEReport:
         prereq = [_PrereqResult(name=f"p{i}", passed=True) for i in range(5)]
         prereq[2] = _PrereqResult(name="p2", failures=["boom"])
         report = _GateEReport(
-            timestamp_utc="x", timestamp_shanghai="y",
+            timestamp_utc="x",
+            timestamp_shanghai="y",
             prereq_checks=prereq,
             user_decisions_checks=[_PrereqResult(name=f"d{i}", passed=True) for i in range(10)],
         )
@@ -105,7 +106,8 @@ class TestGateEReport:
         decisions = [_PrereqResult(name=f"d{i}", passed=True) for i in range(10)]
         decisions[5] = _PrereqResult(name="d5", failures=["boom"])
         report = _GateEReport(
-            timestamp_utc="x", timestamp_shanghai="y",
+            timestamp_utc="x",
+            timestamp_shanghai="y",
             prereq_checks=[_PrereqResult(name=f"p{i}", passed=True) for i in range(5)],
             user_decisions_checks=decisions,
         )
@@ -115,7 +117,8 @@ class TestGateEReport:
     def test_gate_e_not_ready_if_prereq_count_wrong(self) -> None:
         """Defensive: <5 prereq is unsafe even if all passed."""
         report = _GateEReport(
-            timestamp_utc="x", timestamp_shanghai="y",
+            timestamp_utc="x",
+            timestamp_shanghai="y",
             prereq_checks=[_PrereqResult(name="p0", passed=True)] * 4,  # only 4
             user_decisions_checks=[_PrereqResult(name=f"d{i}", passed=True) for i in range(10)],
         )
@@ -141,8 +144,7 @@ class TestRenderReport:
                 _PrereqResult(name="10_user_decisions_v3_20_1", passed=True, detail="10 decisions"),
             ],
             user_decisions_checks=[
-                _PrereqResult(name=f"d{i}", passed=True, detail="OK")
-                for i in range(10)
+                _PrereqResult(name=f"d{i}", passed=True, detail="OK") for i in range(10)
             ],
         )
 

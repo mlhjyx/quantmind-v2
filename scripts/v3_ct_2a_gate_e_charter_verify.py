@@ -49,9 +49,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -64,24 +65,17 @@ logger = logging.getLogger(__name__)
 
 # Expected sediment artifacts (CT-2a charter verify cite cross-reference).
 _IC3A_REPORT: Path = (
-    PROJECT_ROOT / "docs" / "audit"
-    / "v3_ic_3a_5y_integrated_replay_report_2026_05_16.md"
+    PROJECT_ROOT / "docs" / "audit" / "v3_ic_3a_5y_integrated_replay_report_2026_05_16.md"
 )
 _IC3B_REPORT: Path = (
-    PROJECT_ROOT / "docs" / "audit"
-    / "v3_ic_3b_counterfactual_replay_report_2026_05_16.md"
+    PROJECT_ROOT / "docs" / "audit" / "v3_ic_3b_counterfactual_replay_report_2026_05_16.md"
 )
 _IC3C_REPORT: Path = (
-    PROJECT_ROOT / "docs" / "audit"
-    / "v3_ic_3c_synthetic_scenarios_report_2026_05_16.md"
+    PROJECT_ROOT / "docs" / "audit" / "v3_ic_3c_synthetic_scenarios_report_2026_05_16.md"
 )
-_CT1A_REPORT: Path = (
-    PROJECT_ROOT / "docs" / "audit"
-    / "v3_ct_1a_cleanup_report_2026_05_16.md"
-)
+_CT1A_REPORT: Path = PROJECT_ROOT / "docs" / "audit" / "v3_ct_1a_cleanup_report_2026_05_16.md"
 _CT1B_REPORT: Path = (
-    PROJECT_ROOT / "docs" / "audit"
-    / "v3_ct_1b_operational_readiness_report_2026_05_17.md"
+    PROJECT_ROOT / "docs" / "audit" / "v3_ct_1b_operational_readiness_report_2026_05_17.md"
 )
 
 # Tier A ADR list per V3 §12.1 + Constitution §L10.4 sediment.
@@ -140,13 +134,12 @@ class _GateEReport:
 
     @property
     def all_prereq_passed(self) -> bool:
-        return (
-            all(c.passed for c in self.prereq_checks)
-            and len(self.prereq_checks) == 5
-        )
+        return all(c.passed for c in self.prereq_checks) and len(self.prereq_checks) == 5
 
     @property
     def all_user_decisions_passed(self) -> bool:
+        # python-reviewer MEDIUM fix (2026-05-17): explicit count == 10
+        # guard parity with all_prereq_passed (defensive correctness).
         return (
             all(c.passed for c in self.user_decisions_checks)
             and len(self.user_decisions_checks) == 10
@@ -165,9 +158,7 @@ def _check_prereq_1_paper_mode_5d() -> _PrereqResult:
 
     IC-3a 5y replay 4/4 V3 §15.4 PASS = Tier A 5d paper-mode equivalent.
     """
-    r = _PrereqResult(
-        name="paper_mode_5d (ADR-063 replay-path equivalent)"
-    )
+    r = _PrereqResult(name="paper_mode_5d (ADR-063 replay-path equivalent)")
     if not _IC3A_REPORT.exists():
         r.failures.append(f"IC-3a report missing: {_IC3A_REPORT}")
         return r
@@ -191,15 +182,26 @@ def _check_prereq_1_paper_mode_5d() -> _PrereqResult:
 
 
 def _check_prereq_2_meta_monitor_0_p0() -> _PrereqResult:
-    """Prereq 2: 元监控 0 P0 — IC-3a item 4 + CT-1b operational readiness."""
+    """Prereq 2: 元监控 0 P0 — IC-3a item 4 + CT-1b operational readiness.
+
+    P2 reviewer fix (2026-05-17, both reviewers): tightened `"= 0"`
+    overly broad substring match to regex `元监控.*= 0` proximity check —
+    `= 0` is a common token in any markdown, plain in-clause `in txt`
+    would pass vacuously.
+    """
     r = _PrereqResult(name="meta_monitor_0_p0")
     if not _IC3A_REPORT.exists() or not _CT1B_REPORT.exists():
         r.failures.append("IC-3a or CT-1b report missing")
         return r
     ic3a = _IC3A_REPORT.read_text(encoding="utf-8")
     ct1b = _CT1B_REPORT.read_text(encoding="utf-8")
-    if "元监控" not in ic3a or "= 0" not in ic3a:
-        r.failures.append("IC-3a 元监控 = 0 cite missing")
+    # Tightened proximity match: 元监控 + "= 0" or "0 P0" must co-occur on
+    # the same line (sustained 4-acceptance row format in IC-3a §1 table).
+    has_meta_monitor_zero = any(
+        "元监控" in line and ("= 0" in line or "0 P0" in line) for line in ic3a.splitlines()
+    )
+    if not has_meta_monitor_zero:
+        r.failures.append("IC-3a 元监控 = 0 same-line cite missing (post-P2 reviewer fix)")
     if "✅ READY" not in ct1b:
         r.failures.append("CT-1b operational readiness verdict not ✅ READY")
     if not r.failures:
@@ -218,19 +220,30 @@ def _check_prereq_3_tier_a_adr_sediment() -> _PrereqResult:
     txt = registry.read_text(encoding="utf-8")
     missing = [adr for adr in _TIER_A_ADR_MIN if adr not in txt]
     if missing:
+        r.failures.append(f"Tier A ADRs missing from REGISTRY: {', '.join(missing)}")
+    # P2 reviewer fix (2026-05-17, both reviewers): regex floor check
+    # instead of hardcoded "73/74 个" 2-value whitelist. Future ADR
+    # promotion would have falsely blocked Gate E re-runs.
+    committed_match = re.search(r"committed[^:]*:\s*\*\*(\d+)\s*个\*\*", txt)
+    # Fallback to non-bold format if first regex doesn't match.
+    if not committed_match:
+        committed_match = re.search(r"\*\*committed[^:]*\*\*:\s*(\d+)\s*个", txt)
+    if not committed_match:
+        committed_match = re.search(r"committed.*?:\s*(\d+)\s*个", txt)
+    if not committed_match:
         r.failures.append(
-            f"Tier A ADRs missing from REGISTRY: {', '.join(missing)}"
+            "REGISTRY committed count unparseable (P2 reviewer fix — regex floor check)"
         )
-    # Verify committed status — fuzzy match against committed count.
-    if "73 个" not in txt and "74 个" not in txt:
+    elif int(committed_match.group(1)) < 73:
         r.failures.append(
-            "REGISTRY committed count NOT 73 or 74 (post-CT-1 expected)"
+            f"REGISTRY committed count = {committed_match.group(1)} < 73 (post-CT-1 expected >=73)"
         )
     if not r.failures:
+        committed_count = committed_match.group(1) if committed_match else "?"
         r.passed = True
         r.detail = (
-            f"REGISTRY committed >=73 + {len(_TIER_A_ADR_MIN)} Tier A ADRs "
-            f"all present"
+            f"REGISTRY committed = {committed_count} (>=73) + "
+            f"{len(_TIER_A_ADR_MIN)} Tier A ADRs all present"
         )
     return r
 
@@ -256,12 +269,9 @@ def _check_prereq_4_5_sla_satisfied() -> _PrereqResult:
     if sla_section_start < 0:
         r.failures.append("CT-1b §2 SLA section header missing")
     else:
-        sla_section = txt[sla_section_start:sla_section_start + 3000]
+        sla_section = txt[sla_section_start : sla_section_start + 3000]
         if sla_section.count("✅") < 5:
-            r.failures.append(
-                f"CT-1b SLA section has <5 ✅ marks (got "
-                f"{sla_section.count('✅')})"
-            )
+            r.failures.append(f"CT-1b SLA section has <5 ✅ marks (got {sla_section.count('✅')})")
     if not r.failures:
         r.passed = True
         r.detail = "5 SLA all cited ✅ in CT-1b report (IC-3 cumulative)"
@@ -294,7 +304,13 @@ def _check_prereq_5_10_user_decisions_verify() -> _PrereqResult:
 
 
 def _check_user_decision(idx: int, keyword: str, sediment: str) -> _PrereqResult:
-    """One user 决议 verify — V3 §20.1 + ADR cite cross-reference."""
+    """One user 决议 verify — V3 §20.1 + ADR cite cross-reference.
+
+    P2 reviewer fix (2026-05-17, code-reviewer): for ADR-anchored decisions
+    (items 1/5/10), additionally cross-cite that the ADR file itself exists
+    + contains 'committed' status. Closes gap where stale-or-reserved ADR
+    cited in V3 §20.1 would pass without ADR file verify.
+    """
     r = _PrereqResult(name=f"user_decision_{idx}_{keyword[:30]}")
     v3_design = PROJECT_ROOT / "docs" / "QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md"
     if not v3_design.exists():
@@ -305,11 +321,30 @@ def _check_user_decision(idx: int, keyword: str, sediment: str) -> _PrereqResult
     if table_start < 0:
         r.failures.append("V3 §20.1 table missing")
         return r
-    table_section = txt[table_start:table_start + 5000]
+    table_section = txt[table_start : table_start + 5000]
     if keyword not in table_section:
         r.failures.append(f"决议 keyword {keyword!r} not in V3 §20.1 table")
     if sediment not in table_section:
         r.failures.append(f"决议 sediment {sediment!r} not cited")
+
+    # P2 cross-cite: if sediment is an ADR-NNN reference, verify ADR file
+    # exists + contains 'committed' status in REGISTRY (cross-cite).
+    adr_match = re.match(r"^ADR-(\d+)$", sediment)
+    if adr_match:
+        adr_num = adr_match.group(1)
+        registry = PROJECT_ROOT / "docs" / "adr" / "REGISTRY.md"
+        if registry.exists():
+            reg_txt = registry.read_text(encoding="utf-8")
+            # Look for ADR-NNN row + 'committed' status on same line.
+            adr_row_committed = any(
+                f"ADR-{adr_num}" in line and "committed" in line for line in reg_txt.splitlines()
+            )
+            if not adr_row_committed:
+                r.failures.append(
+                    f"ADR-{adr_num} not committed in REGISTRY (sediment "
+                    f"cross-cite failed per P2 fix)"
+                )
+
     if not r.failures:
         r.passed = True
         r.detail = f"{keyword} → {sediment} ✅ cited in V3 §20.1"
@@ -321,8 +356,6 @@ def _check_user_decision(idx: int, keyword: str, sediment: str) -> _PrereqResult
 
 def run_gate_e_verify() -> _GateEReport:
     """Run full Gate E charter verify."""
-    from datetime import UTC
-
     now_utc = datetime.now(UTC)
     report = _GateEReport(
         timestamp_utc=now_utc.isoformat(),
@@ -344,9 +377,7 @@ def run_gate_e_verify() -> _GateEReport:
         if result.passed:
             logger.info("[CT-2a] ✅ %s — %s", result.name, result.detail)
         else:
-            logger.warning(
-                "[CT-2a] ❌ %s — failures: %s", result.name, "; ".join(result.failures)
-            )
+            logger.warning("[CT-2a] ❌ %s — failures: %s", result.name, "; ".join(result.failures))
 
     # 10 user 决议.
     for idx, (keyword, sediment) in enumerate(_TEN_USER_DECISIONS, start=1):
@@ -394,13 +425,14 @@ def render_report(report: _GateEReport) -> str:
         lines.append(f"| {idx} | `{p.name}` | {status} | {detail} |")
     lines.append("")
     lines.append(
-        f"**5 prereq verdict**: "
-        f"{'✅ ALL PASS' if report.all_prereq_passed else '❌ FAIL'}"
+        f"**5 prereq verdict**: {'✅ ALL PASS' if report.all_prereq_passed else '❌ FAIL'}"
     )
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("## §2 10 user 决议 (V3 §20.1 — closed PR #216 sediment, ADR-027/028/033 cumulative)")
+    lines.append(
+        "## §2 10 user 决议 (V3 §20.1 — closed PR #216 sediment, ADR-027/028/033 cumulative)"
+    )
     lines.append("")
     lines.append("| # | 决议项 | Sediment | Status |")
     lines.append("|---|---|---|---|")
@@ -439,7 +471,7 @@ def render_report(report: _GateEReport) -> str:
         lines.append("")
         lines.append("CT-2b .env flip prerequisite satisfied. Next step requires:")
         lines.append("")
-        lines.append("1. **User 显式 trigger**: \"同意 apply CT-2b\" message (sustained")
+        lines.append('1. **User 显式 trigger**: "同意 apply CT-2b" message (sustained')
         lines.append("   user 决议 T1 2026-05-17 3-step gate体例)")
         lines.append("2. **CC opens CT-2b PR**: .env field change (LIVE_TRADING_DISABLED")
         lines.append("   true→false + EXECUTION_MODE paper→live) + redline-guardian +")
@@ -449,7 +481,9 @@ def render_report(report: _GateEReport) -> str:
         lines.append("   readiness")
         lines.append("4. **CC executes CT-2b apply** ONLY after explicit user 同意 trigger")
     else:
-        lines.append("**Gate E ❌ NOT READY**: CT-2b transition BLOCKED until 5 prereq + 10 user 决议 all green.")
+        lines.append(
+            "**Gate E ❌ NOT READY**: CT-2b transition BLOCKED until 5 prereq + 10 user 决议 all green."
+        )
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -467,7 +501,7 @@ def render_report(report: _GateEReport) -> str:
     )
     lines.append(
         "- **Defense-in-depth gate**: CT-2b transition requires (1) Gate E "
-        "verify ✅ (本 report), (2) user 显式 \"同意 apply CT-2b\" message, "
+        'verify ✅ (本 report), (2) user 显式 "同意 apply CT-2b" message, '
         "(3) CT-2b PR + 3-reviewer + redline-guardian, (4) user 显式 .env "
         "授权 per Constitution §L8.1 (c)."
     )
@@ -507,7 +541,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="print report, do NOT sediment markdown",
     )
     p.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
     )
     return p

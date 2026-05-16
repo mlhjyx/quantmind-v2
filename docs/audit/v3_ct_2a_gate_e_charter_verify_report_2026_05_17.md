@@ -1,7 +1,7 @@
 # V3 CT-2a — Gate E Charter Verify Report (Constitution §L10.5)
 
-**Run timestamp (Asia/Shanghai)**: 2026-05-17T00:36:01.511380+08:00
-**Run timestamp (UTC)**: 2026-05-16T16:36:01.511380+00:00
+**Run timestamp (Asia/Shanghai)**: 2026-05-17T00:41:40.201328+08:00
+**Run timestamp (UTC)**: 2026-05-16T16:41:40.201328+00:00
 **Gate E overall verdict**: ✅ READY
 
 **Scope**: V3 Plan v0.4 §A CT-2a — Gate E charter verify BEFORE CT-2b .env paper→live flip. Verify-only doc (0 mutation) per user 决议 (C1)+(M1)+(T1) 2026-05-17. Re-cites sediment from IC-3 + CT-1 + Constitution §L10.5 + V3 §20.1; 5 prereq + 10 user 决议 verify.
@@ -14,7 +14,7 @@
 |---|---|---|---|
 | 1 | `paper_mode_5d (ADR-063 replay-path equivalent)` | ✅ PASS | IC-3a 5y replay 4/4 V3 §15.4 PASS + ADR-063 replay-path equivalent cited (Tier A 5d paper-mode equivalent) |
 | 2 | `meta_monitor_0_p0` | ✅ PASS | IC-3a 元监控 = 0 ✅ + CT-1b operational readiness ✅ READY |
-| 3 | `tier_a_adr_full_sediment` | ✅ PASS | REGISTRY committed >=73 + 13 Tier A ADRs all present |
+| 3 | `tier_a_adr_full_sediment` | ✅ PASS | REGISTRY committed = 74 (>=73) + 13 Tier A ADRs all present |
 | 4 | `5_sla_satisfied_v3_13_1` | ✅ PASS | 5 SLA all cited ✅ in CT-1b report (IC-3 cumulative) |
 | 5 | `10_user_decisions_v3_20_1` | ✅ PASS | V3 §20.1 + 10 decisions + sediment ADR cite verified |
 
