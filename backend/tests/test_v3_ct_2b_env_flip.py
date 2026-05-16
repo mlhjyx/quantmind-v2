@@ -26,6 +26,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
@@ -126,8 +128,6 @@ class TestReadEnvFieldStates:
         assert states["KEY_A"].line_number == 3
 
     def test_raises_filenotfound_if_missing(self, tmp_path: Path) -> None:
-        import pytest
-
         with pytest.raises(FileNotFoundError, match=".env file not found"):
             _read_env_field_states(tmp_path / "nonexistent.env", ("X",))
 
@@ -255,8 +255,6 @@ class TestApplyFlip:
                 "LIVE_TRADING_DISABLED=true",
             ],
         )
-        import pytest
-
         with pytest.raises(ValueError, match="value drift mid-apply|not found"):
             _apply_flip(env)
 
@@ -319,8 +317,6 @@ class TestSnapshotAndRollback:
         env = self._make_env(tmp_path, "X=y\n")
         snap_path = tmp_path / "snap.json"
         snap_path.write_text(json.dumps({"missing_env_full_content": True}), encoding="utf-8")
-
-        import pytest
 
         with pytest.raises(ValueError, match="missing env_full_content"):
             _rollback_from_snapshot(env, snap_path)

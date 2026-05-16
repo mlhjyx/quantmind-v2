@@ -140,11 +140,24 @@ class _FlipResult:
 
 
 def _read_env_field_states(env_path: Path, fields: tuple[str, ...]) -> dict[str, _EnvFieldState]:
-    """Read .env, return per-field state map. fields = field names to extract."""
+    """Read .env, return per-field state map. fields = field names to extract.
+
+    **Assumption** (P1 reviewer doc, 2026-05-17, code-reviewer): values are
+    UNQUOTED (dotenv format without shell quoting). If .env contains
+    `KEY="value"` (quoted), `val.strip()` returns `'"value"'` with quotes
+    preserved. Preflight comparison `current_value != pre_v` would then
+    fail-loud against unquoted `pre_v`, blocking apply (safe outcome).
+    Backend .env convention is unquoted; if quoted convention ever adopted,
+    add `.lstrip('"').rstrip('"')` normalization here.
+    """
     if not env_path.exists():
         raise FileNotFoundError(f".env file not found: {env_path}")
     states = {f: _EnvFieldState(field=f) for f in fields}
-    with env_path.open(encoding="utf-8") as f:
+    # python-reviewer P2 fix (2026-05-17): utf-8-sig transparently strips
+    # BOM marker if .env was edited+saved by a tool that prepended one
+    # (Windows Notepad / VS Code with BOM enabled). Defends against silent
+    # `﻿KEY` first-key parse drift.
+    with env_path.open(encoding="utf-8-sig") as f:
         for idx, line in enumerate(f, start=1):
             line_stripped = line.strip()
             if not line_stripped or line_stripped.startswith("#"):
@@ -201,7 +214,7 @@ def _verify_preflight(env_path: Path) -> tuple[bool, list[_EnvFieldState], list[
 # ---------- Snapshot capture ----------
 
 
-def _capture_snapshot(env_path: Path, pre_flip_states: list[_EnvFieldState]) -> dict[str, str]:
+def _capture_snapshot(env_path: Path, pre_flip_states: list[_EnvFieldState]) -> dict[str, object]:
     """Capture .env current full content + field states for rollback safety.
 
     Returns:
@@ -254,7 +267,9 @@ def _apply_flip(env_path: Path) -> str:
     Reads .env line-by-line, replaces field values per _ENV_FLIPS,
     writes back atomically via tempfile + os.replace.
     """
-    lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    # P2 BOM fix sustained: utf-8-sig read; write below uses utf-8 (no BOM
+    # emitted; rollback would also strip BOM — acceptable normalization).
+    lines = env_path.read_text(encoding="utf-8-sig").splitlines(keepends=True)
     flip_targets = {f: (pre, post) for f, pre, post in _ENV_FLIPS}
     flipped_lines: list[str] = []
     flips_applied: dict[str, bool] = {f: False for f in flip_targets}
@@ -340,7 +355,11 @@ def _rollback_from_snapshot(env_path: Path, snapshot_path: Path) -> None:
     """Re-write .env from JSON snapshot full content. Atomic write."""
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     original_content = snapshot.get("env_full_content")
-    if not isinstance(original_content, str):
+    # P2 reviewer fix (2026-05-17, code-reviewer): empty-string guard —
+    # belt-and-suspenders for emergency rollback path. A snapshot with
+    # valid JSON structure but empty env_full_content would write an
+    # empty .env (silent damage).
+    if not isinstance(original_content, str) or not original_content:
         raise ValueError(f"Snapshot {snapshot_path} missing env_full_content (str expected)")
 
     fd, tmp_path = tempfile.mkstemp(
@@ -502,9 +521,20 @@ def main() -> int:
             return 1
         try:
             _rollback_from_snapshot(args.env_path, _ROLLBACK_SNAPSHOT)
+            # P2 reviewer fix (2026-05-17, code-reviewer): post-rollback
+            # verify — confirm restored .env matches pre-flip state.
+            # Defends against corrupted snapshot (valid JSON but wrong
+            # content) producing misleading success message.
+            ok, _, failures = _verify_preflight(args.env_path)
+            if not ok:
+                logger.error(
+                    "[CT-2b rollback] post-rollback verify FAILED: %s",
+                    failures,
+                )
+                return 1
             logger.warning(
-                "[CT-2b rollback] ✅ .env restored from snapshot — "
-                "verify state via: python scripts/v3_ct_2b_env_flip_apply.py --dry-run"
+                "[CT-2b rollback] ✅ .env restored from snapshot + "
+                "post-rollback verify PASS (pre-flip state confirmed)"
             )
             return 0
         except Exception:
