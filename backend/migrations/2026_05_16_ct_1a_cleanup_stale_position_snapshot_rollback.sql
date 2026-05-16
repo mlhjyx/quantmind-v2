@@ -1,0 +1,28 @@
+-- V3 Plan v0.4 CT-1a — ROLLBACK for 2026_05_16_ct_1a_cleanup_stale_position_snapshot.sql
+--
+-- Rollback mechanism: pre-DELETE rows captured to JSON snapshot by the
+-- apply runner BEFORE executing the DELETE:
+--   docs/audit/v3_ct_1a_rollback_snapshot_2026_05_16.json
+--
+-- This .sql file is a PLACEHOLDER documenting the rollback procedure.
+-- Pure SQL cannot bind from JSON without COPY; rollback must run via:
+--
+--   python scripts/v3_ct_1a_apply_cleanup.py --rollback
+--
+-- which reads the JSON snapshot + re-INSERTs the 114 rows (sustained
+-- migrations 2026_05_03_llm_call_log_rollback.sql precedent for runner-
+-- driven rollback patterns).
+--
+-- Manual rollback fallback (if Python runner unavailable, JSON snapshot
+-- contains all row data needed for re-INSERT):
+--
+--   1. Load docs/audit/v3_ct_1a_rollback_snapshot_2026_05_16.json
+--   2. For each row, INSERT INTO position_snapshot
+--      (code, trade_date, strategy_id, market, quantity, avg_cost,
+--       market_value, weight, unrealized_pnl, holding_days, execution_mode)
+--      VALUES (...) per JSON row data
+--   3. Verify count matches (114 rows) post re-INSERT
+--
+-- Sustained migrations rollback file 体例 (PR #45 fast_ic_recompute rollback
+-- precedent + LL-066 DataPipeline subset 例外 + ADR-022 reversibility
+-- discipline).

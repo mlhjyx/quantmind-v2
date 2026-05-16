@@ -1,0 +1,19 @@
+-- V3 Plan v0.4 CT-1a — ROLLBACK for 2026_05_16_ct_1a_cleanup_stale_performance_series.sql
+--
+-- Sustained position_snapshot rollback pattern (companion file
+-- 2026_05_16_ct_1a_cleanup_stale_position_snapshot_rollback.sql):
+-- pre-DELETE rows captured to JSON snapshot by the apply runner
+-- BEFORE executing the DELETE:
+--   docs/audit/v3_ct_1a_rollback_snapshot_2026_05_16.json
+--
+-- Pure SQL cannot bind from JSON; rollback runs via:
+--   python scripts/v3_ct_1a_apply_cleanup.py --rollback
+--
+-- Manual rollback fallback (JSON snapshot has all data needed):
+--   1. Load docs/audit/v3_ct_1a_rollback_snapshot_2026_05_16.json
+--   2. For each performance_series row, INSERT INTO performance_series
+--      (trade_date, strategy_id, market, nav, daily_return,
+--       cumulative_return, drawdown, cash_ratio, position_count,
+--       turnover, benchmark_nav, excess_return, execution_mode, cash)
+--      VALUES (...) per JSON row data
+--   3. Verify count matches (7 rows) post re-INSERT
