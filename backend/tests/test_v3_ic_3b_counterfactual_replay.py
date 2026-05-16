@@ -110,9 +110,7 @@ class TestCounterfactualPassedSemantics:
         assert r.counterfactual_passed is False
 
     def test_tick_with_error_fails(self) -> None:
-        r = _IncidentResult(
-            incident=_mk_tick_incident(), p0_alert_count=100, error="DBError: ..."
-        )
+        r = _IncidentResult(incident=_mk_tick_incident(), p0_alert_count=100, error="DBError: ...")
         assert r.counterfactual_passed is False
 
     def test_daily_with_zero_alerts_passes_wiring_health(self) -> None:

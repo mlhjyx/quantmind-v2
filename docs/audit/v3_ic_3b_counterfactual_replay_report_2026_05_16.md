@@ -27,8 +27,8 @@
 - minute_bars replayed: **120,336**
 - Total alerts: **182,350** (P0=182216 / P1=134 / P2=0)
 - Distinct codes alerted: **2,411**
-- Earliest alert (UTC): `2025-04-07T09:35:00+08:00`
-- Replay wall-clock: **9.0s**
+- Earliest alert (UTC): `2025-04-07T01:35:00+00:00` (= Asia/Shanghai `2025-04-07T09:35:00+08:00`)
+- Replay wall-clock: **12.5s**
 
 **Top rule_id triggers**:
 
@@ -56,8 +56,8 @@
 - minute_bars replayed: **475,056**
 - Total alerts: **196,220** (P0=195991 / P1=229 / P2=0)
 - Distinct codes alerted: **2,199**
-- Earliest alert (UTC): `2024-02-05T09:35:00+08:00`
-- Replay wall-clock: **13.0s**
+- Earliest alert (UTC): `2024-02-05T01:35:00+00:00` (= Asia/Shanghai `2024-02-05T09:35:00+08:00`)
+- Replay wall-clock: **13.2s**
 
 **Top rule_id triggers**:
 

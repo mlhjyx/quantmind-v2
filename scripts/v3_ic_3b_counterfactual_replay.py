@@ -213,15 +213,21 @@ class _IncidentResult:
           response to incident.
 
         - **Daily cadence**: requires `error is None` (rules executed cleanly).
-          Alert count is informational. Rationale (Phase 0 finding, 2026-05-16):
-          4-29 is documented as user-initiated liquidation NOT market crash —
-          synthetic positions show loss vs prior avg in -5% to +10% range
-          (well under daily-rule L1 10% threshold). V3 daily Beat 14:30
-          silently passing on benign price action IS the correct behavior
-          (sustained 铁律 33 silent_ok skip-path semantics in PMSRule /
-          SingleStockStopLossRule docstrings). Daily-cadence test verifies
-          wiring health (rules execute without crash); positive alerts on
-          this incident would actually indicate a false-positive risk rule.
+          Alert count is informational by design — daily Beat 14:30 fires
+          based on end-of-day state which is necessarily lagging vs intraday
+          tick-cadence detection. Sustained 铁律 33 silent_ok skip-path
+          semantics in PMSRule / SingleStockStopLossRule mean 0 alerts on
+          benign data IS correct behavior.
+
+        **Future-incident contract** (code-reviewer P2.1 follow-up, 2026-05-16):
+        if a future daily-cadence incident is added that DOES expect alerts
+        (e.g. a real crash day reconstructed from klines_daily), this
+        per-cadence uniform threshold becomes unsafe. The fix path is to
+        add an optional `expected_min_alerts: int` field to `Incident` and
+        check `r.total_alerts >= incident.expected_min_alerts` in daily
+        path. Current IC-3b scope has only 1 daily incident (4-29
+        user-liquidation) where wiring health IS the correct criterion;
+        the per-cadence rule holds correctly here.
         """
         if self.error is not None:
             return False
@@ -234,15 +240,16 @@ class _IncidentResult:
 # ---------- Tick-cadence replay (incidents 1, 2) ----------
 
 
-def _run_tick_incident(
-    incident: Incident, conn: Any
-) -> _IncidentResult:
+def _run_tick_incident(incident: Incident, conn: Any) -> _IncidentResult:
     """Run minute_bars tick replay over the incident window — reuse HC-4a infra."""
     import time
 
+    # P0 rule_id SSOT — sustained acceptance.py §1 `_P0_RULE_IDS` frozenset
+    # (code-reviewer P1.2 fix, 2026-05-16): canonical source eliminates
+    # dual-declaration drift risk if engine adds new P0 rules or renames.
     from qm_platform.risk.realtime.engine import RealtimeRiskEngine
+    from qm_platform.risk.replay.acceptance import _P0_RULE_IDS
     from qm_platform.risk.replay.runner import ReplayWindow
-    from v3_hc_4a_5y_replay_acceptance import _aggregate as _hc4a_aggregate  # noqa: F401
     from v3_tb_5b_replay_acceptance import (
         _make_minute_bars_loader,
         _make_synthetic_runner,
@@ -280,13 +287,10 @@ def _run_tick_incident(
         runner.run_window(window, bars=bars)
         del bars  # release before classification
 
-        # Aggregate alerts by severity. Sustained acceptance.py §1 P0 rule_id set.
-        p0_rules = frozenset(
-            {"limit_down_detection", "near_limit_down", "gap_down_open", "correlated_drop"}
-        )
-
+        # Aggregate alerts by severity. `_P0_RULE_IDS` imported above from
+        # acceptance.py SSOT (code-reviewer P1.2 fix).
         for alert_ts, event in adapter.timestamped_events:
-            if event.rule_id in p0_rules:
+            if event.rule_id in _P0_RULE_IDS:
                 result.p0_alert_count += 1
             else:
                 # Per RuleResult contract, rule_id alone doesn't carry severity;
@@ -375,6 +379,16 @@ def _load_4_29_emergency_close_positions(conn: Any) -> list[Any]:
         # 决议 emergency_close happened at 10:43 — slightly before 14:30 —
         # so this is a hypothetical "what if V3 had run BEFORE user 决议").
         # Also pull prior 4 weeks avg close as entry_price proxy (loss baseline).
+        #
+        # NOTE (code-reviewer P2.2 follow-up, 2026-05-16): position_snapshot
+        # table has an `avg_cost` column that would give the TRUE held-position
+        # entry cost. We use klines_daily prior-4-week-avg instead because:
+        # (1) PT was in paused-Beat era 4-29-prior, position_snapshot may not
+        # be populated reliably; (2) the counterfactual is synthetic-universe
+        # NOT real-portfolio precision (sustained acceptance.py §1 体例);
+        # (3) avg_cost would tie this script to PT account state, breaking
+        # red-line 0 真账户 dependence. Future expansion could optionally
+        # consult position_snapshot.avg_cost when populated.
         cur.execute(
             """
             SELECT code, close FROM klines_daily
@@ -400,9 +414,7 @@ def _load_4_29_emergency_close_positions(conn: Any) -> list[Any]:
         current = crash_close.get(code)
         prior = prior_stats.get(code)
         if current is None or prior is None or current <= 0:
-            logger.warning(
-                "[IC-3b daily] code=%s missing klines_daily data — skip", code
-            )
+            logger.warning("[IC-3b daily] code=%s missing klines_daily data — skip", code)
             continue
         avg_close, max_close = prior
         if avg_close <= 0 or max_close <= 0:
@@ -428,9 +440,7 @@ def _load_4_29_emergency_close_positions(conn: Any) -> list[Any]:
     return positions
 
 
-def _run_daily_incident(
-    incident: Incident, conn: Any
-) -> _IncidentResult:
+def _run_daily_incident(incident: Incident, conn: Any) -> _IncidentResult:
     """Run 4-29 daily-cadence counterfactual via klines_daily + trade_log."""
     import time
 
@@ -477,10 +487,8 @@ def _run_daily_incident(
         for rule in rules:
             try:
                 rule_results = rule.evaluate(ctx)
-            except Exception:  # noqa: BLE001 — wiring fail-loud
-                logger.exception(
-                    "[IC-3b daily] rule=%s.evaluate raised", type(rule).__name__
-                )
+            except Exception:  # noqa: BLE001 — wiring fail-loud per acceptance.py 体例
+                logger.exception("[IC-3b daily] rule=%s.evaluate raised", type(rule).__name__)
                 continue
             for r in rule_results:
                 # Daily rules use rule_id_l{N} pattern (sustained PMSRule体例);
@@ -496,9 +504,7 @@ def _run_daily_incident(
                 else:
                     result.p2_alert_count += 1
                 result.codes_alerted.add(r.code)
-                result.alerts_by_rule_id[r.rule_id] = (
-                    result.alerts_by_rule_id.get(r.rule_id, 0) + 1
-                )
+                result.alerts_by_rule_id[r.rule_id] = result.alerts_by_rule_id.get(r.rule_id, 0) + 1
 
         # Daily path: earliest_alert_ts is the EOD ts (synthetic, all rules
         # fire simultaneously at 14:30 daily Beat).
@@ -561,14 +567,9 @@ def _render_report(results: list[_IncidentResult]) -> str:
             lines.append(f"❌ **Replay crashed**: `{r.error}`")
         else:
             if r.incident.cadence == "tick":
-                lines.append(
-                    f"- minute_bars replayed: **{r.minute_bars_replayed:,}**"
-                )
+                lines.append(f"- minute_bars replayed: **{r.minute_bars_replayed:,}**")
             else:
-                lines.append(
-                    f"- Synthetic positions evaluated: "
-                    f"**{r.daily_positions_evaluated}**"
-                )
+                lines.append(f"- Synthetic positions evaluated: **{r.daily_positions_evaluated}**")
             lines.append(
                 f"- Total alerts: **{r.total_alerts:,}** "
                 f"(P0={r.p0_alert_count} / P1={r.p1_alert_count} / P2={r.p2_alert_count})"
@@ -576,7 +577,9 @@ def _render_report(results: list[_IncidentResult]) -> str:
             lines.append(f"- Distinct codes alerted: **{len(r.codes_alerted):,}**")
             if r.earliest_alert_ts is not None:
                 lines.append(
-                    f"- Earliest alert (UTC): `{r.earliest_alert_ts.isoformat()}`"
+                    f"- Earliest alert (UTC): "
+                    f"`{r.earliest_alert_ts.astimezone(UTC).isoformat()}`"
+                    f" (= Asia/Shanghai `{r.earliest_alert_ts.astimezone(_SHANGHAI_TZ).isoformat()}`)"
                 )
             lines.append(f"- Replay wall-clock: **{r.wall_clock_s:.1f}s**")
             lines.append("")
@@ -585,9 +588,7 @@ def _render_report(results: list[_IncidentResult]) -> str:
                 lines.append("")
                 lines.append("| rule_id | count |")
                 lines.append("|---|---|")
-                for rid, n in sorted(
-                    r.alerts_by_rule_id.items(), key=lambda x: -x[1]
-                )[:15]:
+                for rid, n in sorted(r.alerts_by_rule_id.items(), key=lambda x: -x[1])[:15]:
                     lines.append(f"| `{rid}` | {n:,} |")
             if r.counterfactual_passed:
                 if r.incident.cadence == "tick":
@@ -605,9 +606,7 @@ def _render_report(results: list[_IncidentResult]) -> str:
                         f"to benign price action."
                     )
             else:
-                verdict_str = (
-                    f"❌ FAIL — {'replay crashed' if r.error else '0 P0 alerts (tick cadence requires ≥1)'}"
-                )
+                verdict_str = f"❌ FAIL — {'replay crashed' if r.error else '0 P0 alerts (tick cadence requires ≥1)'}"
             lines.append("")
             lines.append(f"**Verdict**: {verdict_str}")
         lines.append("")
@@ -623,13 +622,11 @@ def _render_report(results: list[_IncidentResult]) -> str:
     lines.append("4. **Counterfactual measurability**: outcome quantifiable")
     lines.append("5. **Diversity**: ≥2 different shock types represented")
     lines.append("")
-    lines.append(
-        "**Rejected candidates** (criteria 3 = data avail fail):"
-    )
+    lines.append("**Rejected candidates** (criteria 3 = data avail fail):")
     lines.append(
         "  - 2020-02-03 COVID 开盘 -7.7% → minute_bars min=2019-01-02 covers, "
-        "but 5-year window scope creep risk per Plan §B row 5 \"counterfactual "
-        "incident 选取偏向 — scope creep\" warning → reserved for future expansion."
+        'but 5-year window scope creep risk per Plan §B row 5 "counterfactual '
+        'incident 选取偏向 — scope creep" warning → reserved for future expansion.'
     )
     lines.append("")
     lines.append("**Mixed-methodology + Phase 0 meta-finding (4-29)**:")
@@ -644,8 +641,8 @@ def _render_report(results: list[_IncidentResult]) -> str:
         "GAIN on 4-29 vs prior month avg (max loss vs avg = -4.79%, mostly "
         "+/-5% range, NONE breached SingleStockStopLoss L1 10% threshold). "
         "**4-29 was a user-decision portfolio liquidation, NOT a systemic "
-        "market crash**. Plan §A IC-3b literal phrasing \"4-29 crash 显式 "
-        "prevented/mitigated\" reflects original sediment narrative; actual "
+        'market crash**. Plan §A IC-3b literal phrasing "4-29 crash 显式 '
+        'prevented/mitigated" reflects original sediment narrative; actual '
         "DB evidence shows controlled exit, not crash."
     )
     lines.append(
@@ -750,7 +747,14 @@ def main() -> int:
             else:
                 r = _run_daily_incident(incident, conn)
             results.append(r)
-            conn.commit()  # release long-lived snapshot between incidents
+            # No writes performed (read-only replay path, 0 INSERT). Commit
+            # is a no-op release pattern sustained from HC-4a/TB-5b体例 —
+            # closes any implicit transaction psycopg2 may have opened in
+            # default isolation, freeing the named server-side cursor used
+            # by `_make_minute_bars_loader` between incidents. NOT a snapshot
+            # release (READ COMMITTED has no per-tx snapshot).
+            # (code-reviewer P3 clarification fix, 2026-05-16).
+            conn.commit()
             logger.info(
                 "[IC-3b] incident=%s done in %.1fs — P0=%d P1=%d P2=%d codes=%d verdict=%s",
                 r.incident.name,
