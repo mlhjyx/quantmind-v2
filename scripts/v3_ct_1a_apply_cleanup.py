@@ -53,10 +53,11 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -181,10 +182,17 @@ def _verify_preflight(conn: Any, *, env_check: bool = True) -> _PreflightResult:
         else:
             r.cb_state_live_nav = float(row[0]) if row[0] is not None else None
             r.cb_state_live_updated_at = row[1]
-            if r.cb_state_live_nav != 993520.16:
+            # P1 reviewer fix (2026-05-16): use absolute tolerance instead of
+            # float equality. Decimal→float roundtrip can introduce IEEE 754
+            # binary representation error; tolerance ¥0.01 = 1 cent — well
+            # below any meaningful NAV change but tolerates float noise.
+            if (
+                r.cb_state_live_nav is None
+                or abs(r.cb_state_live_nav - 993520.16) > 0.01
+            ):
                 r.failures.append(
-                    f"circuit_breaker_state.live nav drift: expected 993520.16, "
-                    f"got {r.cb_state_live_nav}"
+                    f"circuit_breaker_state.live nav drift: expected ~993520.16 "
+                    f"(±0.01), got {r.cb_state_live_nav}"
                 )
 
         # 4. performance_series latest row invariant — should be 5-15 NAV
@@ -202,18 +210,22 @@ def _verify_preflight(conn: Any, *, env_check: bool = True) -> _PreflightResult:
             r.perf_series_latest_nav = float(row[1]) if row[1] is not None else None
 
     # 5. Red-line env check (sustained 红线 5/5 invariant).
+    # Strict gate per reviewer P2 fix (2026-05-16): unset env var FAILS,
+    # NOT silently passes. Previous `if x and x != "true"` allowed empty
+    # string through; new logic requires explicit "true"/"paper" exact match.
     if env_check:
         live_disabled = os.environ.get("LIVE_TRADING_DISABLED", "").lower()
         exec_mode = os.environ.get("EXECUTION_MODE", "").lower()
-        if live_disabled and live_disabled != "true":
+        if live_disabled != "true":
             r.failures.append(
                 f"LIVE_TRADING_DISABLED env != 'true' (got {live_disabled!r}); "
-                f"refuse mutation on production tables"
+                f"refuse mutation on production tables. If running outside "
+                f"production shell, set env explicitly or use --no-env-check."
             )
-        if exec_mode and exec_mode not in ("paper", ""):
+        if exec_mode != "paper":
             r.failures.append(
                 f"EXECUTION_MODE env != 'paper' (got {exec_mode!r}); "
-                f"refuse mutation on production tables"
+                f"refuse mutation on production tables."
             )
 
     return r
@@ -226,9 +238,17 @@ def _capture_snapshot(conn: Any) -> dict[str, Any]:
     """Capture pre-DELETE rows to JSON-serializable dict for rollback."""
 
     def _json_default(o: Any) -> Any:
+        # P2 reviewer fix (2026-05-16): JSON-native pass-through.
+        # Previous version converted None/bool/int/float via str(),
+        # producing the literal string "None" for NULL columns — would
+        # corrupt rollback re-INSERTs (NULL → 'None' text). Now: None /
+        # bool / int / float / str return as-is; Decimal/date/datetime
+        # serialize via isoformat or str.
+        if o is None or isinstance(o, (bool, int, float, str)):
+            return o
         if isinstance(o, Decimal):
             return str(o)
-        if isinstance(o, (datetime,)):
+        if isinstance(o, (datetime, date)):
             return o.isoformat()
         return str(o)
 
@@ -312,8 +332,33 @@ def _execute_migration_sql(conn: Any, sql_path: Path) -> None:
 # ---------- Rollback ----------
 
 
+_SAFE_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _validate_column_names(cols: list[str], table: str) -> None:
+    """Defense against SQL identifier injection in rollback INSERT.
+
+    P1 reviewer fix (2026-05-16): JSON snapshot column names are read off
+    disk and interpolated as SQL identifiers (NOT bind parameters — column
+    names cannot be parameterized in SQL). A corrupted/crafted snapshot
+    file with column names like `"code; DROP TABLE position_snapshot--"`
+    would have been silently injected. Now: every column name must match
+    a safe identifier regex (lowercase alpha + underscore + digits).
+    """
+    for c in cols:
+        if not _SAFE_IDENT_RE.match(c):
+            raise ValueError(
+                f"Unsafe column name {c!r} in rollback snapshot for table "
+                f"{table!r} — refusing to construct INSERT (P1 SQL identifier "
+                f"injection guard). Snapshot file may be corrupted."
+            )
+
+
 def _rollback_from_snapshot(conn: Any, snapshot: dict[str, Any]) -> tuple[int, int]:
-    """Re-INSERT rows from snapshot. Returns (ps_count, prf_count)."""
+    """Re-INSERT rows from snapshot. Returns (ps_count, prf_count).
+
+    Column names validated against safe-identifier regex (P1 fix).
+    """
     ps_rows = snapshot.get("position_snapshot_rows", [])
     prf_rows = snapshot.get("performance_series_rows", [])
     logger.info(
@@ -325,6 +370,7 @@ def _rollback_from_snapshot(conn: Any, snapshot: dict[str, Any]) -> tuple[int, i
     with conn.cursor() as cur:
         if ps_rows:
             cols = list(ps_rows[0].keys())
+            _validate_column_names(cols, "position_snapshot")
             placeholders = ", ".join(["%s"] * len(cols))
             col_list = ", ".join(cols)
             sql = (
@@ -335,6 +381,7 @@ def _rollback_from_snapshot(conn: Any, snapshot: dict[str, Any]) -> tuple[int, i
 
         if prf_rows:
             cols = list(prf_rows[0].keys())
+            _validate_column_names(cols, "performance_series")
             placeholders = ", ".join(["%s"] * len(cols))
             col_list = ", ".join(cols)
             sql = (
@@ -443,10 +490,28 @@ def main() -> int:
             snapshot = json.loads(_ROLLBACK_SNAPSHOT.read_text(encoding="utf-8"))
             ps_count, prf_count = _rollback_from_snapshot(conn, snapshot)
             conn.commit()
+            # P2 reviewer fix (2026-05-16): post-rollback verify — confirm
+            # rows are actually present. Defends against silent partial
+            # rollback if PK conflict or constraint were to drop rows.
+            post = _verify_preflight(conn, env_check=False)
             print(
                 f"[CT-1a rollback] ✅ re-inserted {ps_count} position_snapshot + "
                 f"{prf_count} performance_series rows from snapshot"
             )
+            print(
+                f"[CT-1a rollback] post-verify: position_snapshot={post.position_snapshot_count} "
+                f"performance_series={post.performance_series_count} "
+                f"(expected {ps_count} + {prf_count})"
+            )
+            if (
+                post.position_snapshot_count != ps_count
+                or post.performance_series_count != prf_count
+            ):
+                logger.error(
+                    "[CT-1a rollback] post-verify FAILED — re-INSERT counts "
+                    "diverge from snapshot. Manual investigation required."
+                )
+                return 1
             return 0
 
         # APPLY mode.
@@ -476,7 +541,8 @@ def main() -> int:
         if (
             post.position_snapshot_count == 0
             and post.performance_series_count == 0
-            and post.cb_state_live_nav == 993520.16
+            and post.cb_state_live_nav is not None
+            and abs(post.cb_state_live_nav - 993520.16) <= 0.01
         ):
             print(
                 "[CT-1a apply] ✅ POST-VERIFY PASS: stale rows deleted, "

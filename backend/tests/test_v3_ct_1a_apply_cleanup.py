@@ -17,6 +17,8 @@ Out of scope (integration-only, exercised by `python scripts/v3_ct_1a_apply_clea
 关联 LL: LL-098 X10 / LL-159 / LL-172
 """
 
+# ruff: noqa: E402 — sys.path.insert(s) precede imports (necessary path setup pattern)
+
 from __future__ import annotations
 
 import json
@@ -100,12 +102,19 @@ class TestMigrationFiles:
         assert _MIGRATION_PERF_SERIES.exists()
 
     def test_position_snapshot_migration_has_safety_assertions(self) -> None:
-        """Migration must include pre + post DO block assertions."""
+        """Migration must include pre + post DO block assertions.
+
+        Code-reviewer P1 fix (2026-05-16): BEGIN/COMMIT removed from SQL
+        files — runner manages transaction boundary so position_snapshot
+        + performance_series commit atomically. Pre/post DO block
+        assertions remain (the real safety net).
+        """
         sql = _MIGRATION_POS_SNAPSHOT.read_text(encoding="utf-8")
         assert "DO $$" in sql
         assert "RAISE EXCEPTION" in sql
-        assert "BEGIN;" in sql
-        assert "COMMIT;" in sql
+        # P1 fix sustained: BEGIN/COMMIT NOT in file (runner manages txn).
+        assert "BEGIN;" not in sql
+        assert "COMMIT;" not in sql
         assert "pre_count" in sql.lower() or "expected 114" in sql.lower()
 
     def test_performance_series_migration_has_position_count_19_guard(self) -> None:
@@ -251,8 +260,8 @@ class TestVerifyPreflight:
         assert r.ok is False
         assert any("circuit_breaker_state.live nav drift" in f for f in r.failures)
 
-    def test_env_check_blocks_when_live_trading_enabled(self, monkeypatch: Any) -> None:
-        cur = _MockCursor(
+    def _passing_cursor(self) -> _MockCursor:
+        return _MockCursor(
             {
                 "FROM position_snapshot": [(114,)],
                 "FROM performance_series WHERE trade_date BETWEEN": [(7,)],
@@ -260,10 +269,41 @@ class TestVerifyPreflight:
                 "ORDER BY trade_date DESC": [("2026-05-15", "993520.66")],
             }
         )
+
+    def test_env_check_blocks_when_live_trading_enabled(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("LIVE_TRADING_DISABLED", "false")
-        r = _verify_preflight(_MockConn(cur), env_check=True)
+        monkeypatch.setenv("EXECUTION_MODE", "paper")
+        r = _verify_preflight(_MockConn(self._passing_cursor()), env_check=True)
         assert r.ok is False
         assert any("LIVE_TRADING_DISABLED" in f for f in r.failures)
+
+    def test_env_check_blocks_when_unset_strict_gate(self, monkeypatch: Any) -> None:
+        """P2 reviewer fix (2026-05-16): unset env var FAILS, NOT silently passes.
+
+        Previous gate `if x and x != 'true'` allowed empty-string env through
+        (defensive-but-permissive). New strict gate requires explicit "true".
+        """
+        monkeypatch.delenv("LIVE_TRADING_DISABLED", raising=False)
+        monkeypatch.delenv("EXECUTION_MODE", raising=False)
+        r = _verify_preflight(_MockConn(self._passing_cursor()), env_check=True)
+        assert r.ok is False
+        assert any("LIVE_TRADING_DISABLED" in f for f in r.failures)
+        assert any("EXECUTION_MODE" in f for f in r.failures)
+
+    def test_performance_series_count_drift_fails(self) -> None:
+        """P2 reviewer fix (2026-05-16): missing drift test (parity with
+        position_snapshot drift coverage)."""
+        cur = _MockCursor(
+            {
+                "FROM position_snapshot": [(114,)],
+                "FROM performance_series WHERE trade_date BETWEEN": [(6,)],
+                "FROM circuit_breaker_state": [("993520.16", "x")],
+                "ORDER BY trade_date DESC": [("2026-05-15", "993520.66")],
+            }
+        )
+        r = _verify_preflight(_MockConn(cur), env_check=False)
+        assert r.ok is False
+        assert any("performance_series stale count drift" in f for f in r.failures)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -355,6 +395,83 @@ class TestRollback:
         assert ps == 0
         assert prf == 0
         assert cur.execute.call_count == 0
+
+    def test_rollback_blocks_unsafe_column_name(self) -> None:
+        """P1 reviewer fix (2026-05-16): SQL identifier injection guard.
+
+        Corrupted/crafted snapshot with unsafe column names must be rejected
+        BEFORE any INSERT is constructed. Defense-in-depth — column names
+        cannot be parameterized in SQL, so identifier validation is the
+        only protection.
+        """
+        cur = MagicMock()
+        cur.__enter__ = lambda self: self
+        cur.__exit__ = lambda *a: None
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+
+        bad_snapshot = {
+            "position_snapshot_rows": [
+                {"code; DROP TABLE position_snapshot--": "x", "trade_date": "2026-04-27"},
+            ],
+            "performance_series_rows": [],
+        }
+        with pytest.raises(ValueError, match="Unsafe column name"):
+            _rollback_from_snapshot(conn, bad_snapshot)
+        # 0 SQL executed (guard fires BEFORE INSERT construction).
+        assert cur.execute.call_count == 0
+
+
+# ─────────────────────────────────────────────────────────────
+# _json_default — JSON-native pass-through (P2 fix: None→"None" corruption)
+# ─────────────────────────────────────────────────────────────
+
+
+class TestJsonDefaultPassThrough:
+    """P2 reviewer fix (2026-05-16): _json_default must preserve None / bool /
+    int / float / str as-is. Previous str() fallback converted None to the
+    string 'None', corrupting NULL columns in rollback re-INSERT.
+
+    Test verifies snapshot capture preserves NULLs correctly via _capture_snapshot.
+    """
+
+    def test_none_preserved_as_none_in_snapshot(self) -> None:
+        cur = _MockCursor(
+            {
+                "table_name = 'position_snapshot'": [
+                    ("code",), ("turnover",),
+                ],
+                "FROM position_snapshot WHERE trade_date = ANY": [
+                    ("600519.SH", None),  # turnover is NULL
+                ],
+                "table_name = 'performance_series'": [("trade_date",)],
+                "FROM performance_series WHERE trade_date BETWEEN": [],
+            }
+        )
+        snap = _capture_snapshot(_MockConn(cur))
+        assert len(snap["position_snapshot_rows"]) == 1
+        row = snap["position_snapshot_rows"][0]
+        # P2 fix: None preserved as None (NOT the string "None").
+        assert row["turnover"] is None
+
+    def test_int_and_float_preserved_natively(self) -> None:
+        cur = _MockCursor(
+            {
+                "table_name = 'position_snapshot'": [
+                    ("code",), ("quantity",), ("ratio",),
+                ],
+                "FROM position_snapshot WHERE trade_date = ANY": [
+                    ("600519.SH", 10700, 0.5),
+                ],
+                "table_name = 'performance_series'": [("trade_date",)],
+                "FROM performance_series WHERE trade_date BETWEEN": [],
+            }
+        )
+        snap = _capture_snapshot(_MockConn(cur))
+        row = snap["position_snapshot_rows"][0]
+        assert row["quantity"] == 10700  # int preserved
+        assert isinstance(row["quantity"], int)
+        assert row["ratio"] == pytest.approx(0.5)
 
 
 # ─────────────────────────────────────────────────────────────

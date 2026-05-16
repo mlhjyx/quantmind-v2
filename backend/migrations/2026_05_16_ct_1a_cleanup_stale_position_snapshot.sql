@@ -30,9 +30,12 @@
 --   AND execution_mode='live' AND strategy_id='28fc37e5-...'
 --   → expected 0
 
-BEGIN;
+-- NOTE (code-reviewer P1 fix, 2026-05-16): removed inline BEGIN/COMMIT —
+-- transaction boundary managed by `scripts/v3_ct_1a_apply_cleanup.py`
+-- runner so position_snapshot DELETE + performance_series DELETE commit
+-- atomically together. Partial-failure scenario (position_snapshot
+-- committed + performance_series fails) is now impossible.
 
--- Audit marker via temp logging (no-op SELECT for transactional integrity).
 SELECT 'CT-1a stale position_snapshot cleanup starting' AS audit_marker,
        NOW() AS started_at;
 
@@ -81,9 +84,8 @@ BEGIN
     END IF;
 END $$;
 
--- Successful path commits the transaction. Apply runner verifies post-state
--- via standalone SELECT after this script returns.
-COMMIT;
+-- NOTE (code-reviewer P1 fix): runner-managed transaction boundary —
+-- conn.commit() invoked AFTER both migration files succeed.
 
 -- 关联: V3 Plan v0.4 §A CT-1 row + 铁律 22/33/42 + LL-098 X10 +
 --   LL-159/172 (4-step preflight + multi-directory grep amended) +

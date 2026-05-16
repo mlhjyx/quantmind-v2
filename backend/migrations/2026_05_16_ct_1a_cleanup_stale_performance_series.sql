@@ -18,7 +18,9 @@
 -- Apply via: scripts/v3_ct_1a_apply_cleanup.py --apply (user 同意 trigger
 -- required per Plan §A 红线 SOP).
 
-BEGIN;
+-- NOTE (code-reviewer P1 fix, 2026-05-16): removed inline BEGIN/COMMIT —
+-- transaction boundary managed by `scripts/v3_ct_1a_apply_cleanup.py`
+-- runner so position_snapshot + performance_series commit atomically.
 
 SELECT 'CT-1a stale performance_series cleanup starting' AS audit_marker,
        NOW() AS started_at;
@@ -70,7 +72,7 @@ BEGIN
     END IF;
 END $$;
 
-COMMIT;
+-- NOTE: runner-managed transaction boundary.
 
 -- 关联: V3 Plan v0.4 §A CT-1 row + 铁律 22/33/42 + LL-098 X10 +
 --   LL-159/172 + SHUTDOWN_NOTICE §3 (DB drift NAV diff -1.8%) +
