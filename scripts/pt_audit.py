@@ -33,6 +33,18 @@ Exit codes:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# sys.path bootstrap (LL-175 lesson 2 — was missing entirely, schtask fired with
+# "No module named 'qm_platform'" since 5-17 P0-6 audit).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_DIR = PROJECT_ROOT / "backend"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
+
 import argparse
 import functools
 import importlib.util

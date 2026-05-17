@@ -28,7 +28,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.append(str(PROJECT_ROOT / "backend"))
+BACKEND_DIR = PROJECT_ROOT / "backend"
+# Canonical sys.path order: PROJECT_ROOT first, then BACKEND_DIR (LL-175 lesson 2).
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
 import pandas as pd
 import psycopg2
