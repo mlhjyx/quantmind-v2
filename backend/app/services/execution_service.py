@@ -149,6 +149,13 @@ class ExecutionService:
         #  - adapter 层: 实时 tick T+1 09:30 涨停 reject (per-order, 已存在)
         #  - pre-filter 层 (本): T日 known status 移除 + capital re-distribution
         #    避免 N 只 reject → N×weight cash 闲置 (尤其 0→20 initial build).
+        #
+        # 顺序设计 (PR #379 reviewer P2): filter 在 CB adjustments 之后. L3 reduce
+        # (×position_multiplier) 已 scale weights down, original_total 反映 CB-adjusted
+        # 总仓位 magnitude. re-normalize `scale = original_total / new_total` 保留
+        # CB constraint (即仍受 L3 半仓约束), 而非恢复原始 signal 总和.
+        # MIN_TRADABLE_AFTER_FILTER floor: 防 mass halt 时 1 只单股集中风险 (reviewer P2).
+        MIN_TRADABLE_AFTER_FILTER = 5
         if hedged_target and is_rebalance:
             nontradable = self._filter_nontradable_codes(
                 conn, exec_date, list(hedged_target.keys())
@@ -159,21 +166,32 @@ class ExecutionService:
                 }
                 original_total = sum(hedged_target.values())
                 new_total = sum(filtered.values()) if filtered else 0.0
-                if new_total > 0:
+                # Truncated preview for log readability (reviewer P3).
+                _preview = dict(list(nontradable.items())[:5])
+                _ellip = "..." if len(nontradable) > 5 else ""
+                if new_total <= 0:
+                    logger.error(
+                        f"[ExecutionService] Intraday filter 移除所有 {len(nontradable)} 只 "
+                        f"target_weights → 空, 跳过本次调仓 reasons={_preview}{_ellip}"
+                    )
+                    hedged_target = {}
+                    is_rebalance = False
+                elif len(filtered) < MIN_TRADABLE_AFTER_FILTER:
+                    # 防集中风险: 过少剩余 codes → 拒绝单股 ~100% 部署 (reviewer P2).
+                    logger.error(
+                        f"[ExecutionService] Intraday filter 后剩余 {len(filtered)} 只 "
+                        f"(<{MIN_TRADABLE_AFTER_FILTER}), 集中风险拒绝调仓 reasons={_preview}{_ellip}"
+                    )
+                    hedged_target = {}
+                    is_rebalance = False
+                else:
                     scale = original_total / new_total
                     hedged_target = {k: v * scale for k, v in filtered.items()}
                     logger.warning(
                         f"[ExecutionService] Intraday filter 移除 {len(nontradable)} 只 "
-                        f"({list(nontradable.keys())[:5]}{'...' if len(nontradable)>5 else ''}), "
-                        f"re-normalize {len(hedged_target)} 只 scale={scale:.3f} reasons={nontradable}"
+                        f"reasons={_preview}{_ellip}, "
+                        f"re-normalize {len(hedged_target)} 只 scale={scale:.3f}"
                     )
-                else:
-                    logger.error(
-                        f"[ExecutionService] Intraday filter 移除所有 {len(nontradable)} 只 "
-                        f"target_weights → 空, 跳过本次调仓 reasons={nontradable}"
-                    )
-                    hedged_target = {}
-                    is_rebalance = False
 
         # ── 路由到对应Broker ──
         if execution_mode == "live":
@@ -285,46 +303,54 @@ class ExecutionService:
         Returns:
             {code: reason} (e.g. {'600001.SH': 'suspended', '688001.SH': 'limit_up_T-1'}).
             空 codes 返 {}.
+
+        .. note::
+            **Cross-table date-skew assumption** (PR #379 reviewer P2):
+            stock_status_daily 和 klines_daily 各自取 MAX(trade_date < exec_date),
+            两表若 last-populated 日期不同, 两查询解到不同 T日. 新上市股若有 klines
+            但无 status 行 → 仅 limit_up 检查能命中, suspended/new_stock 漏检.
+            P3 follow-up: 每日 DataQualityCheck 应包含两表 last-populated date alignment.
         """
         if not codes:
             return {}
         placeholders = ",".join(["%s"] * len(codes))
-        cur = conn.cursor()
         result: dict[str, str] = {}
 
-        # (1) stock_status_daily T日 is_suspended / is_new_stock
-        cur.execute(
-            f"""SELECT code,
-                CASE WHEN is_suspended THEN 'suspended'
-                     WHEN is_new_stock THEN 'new_stock'
-                     ELSE 'unknown' END AS reason
-                FROM stock_status_daily
-                WHERE trade_date = (
-                    SELECT MAX(trade_date) FROM stock_status_daily
-                    WHERE trade_date < %s
-                )
-                  AND code IN ({placeholders})
-                  AND (is_suspended = TRUE OR is_new_stock = TRUE)""",
-            [exec_date, *codes],
-        )
-        for code, reason in cur.fetchall():
-            result[code] = reason
+        # PR #379 reviewer P1: use `with conn.cursor()` to avoid cursor leak on exception.
+        with conn.cursor() as cur:
+            # (1) stock_status_daily T日 is_suspended / is_new_stock
+            cur.execute(
+                f"""SELECT code,
+                    CASE WHEN is_suspended THEN 'suspended'
+                         WHEN is_new_stock THEN 'new_stock'
+                         ELSE 'unknown' END AS reason
+                    FROM stock_status_daily
+                    WHERE trade_date = (
+                        SELECT MAX(trade_date) FROM stock_status_daily
+                        WHERE trade_date < %s
+                    )
+                      AND code IN ({placeholders})
+                      AND (is_suspended = TRUE OR is_new_stock = TRUE)""",
+                [exec_date, *codes],
+            )
+            for code, reason in cur.fetchall():
+                result[code] = reason
 
-        # (2) T日 涨停 (close >= up_limit * 0.998)
-        cur.execute(
-            f"""SELECT DISTINCT code FROM klines_daily
-                WHERE trade_date = (
-                    SELECT MAX(trade_date) FROM klines_daily WHERE trade_date < %s
-                )
-                  AND code IN ({placeholders})
-                  AND up_limit > 0
-                  AND close >= up_limit * 0.998""",
-            [exec_date, *codes],
-        )
-        for (code,) in cur.fetchall():
-            # 不覆盖更严重原因 (suspended > limit_up)
-            if code not in result:
-                result[code] = "limit_up_T-1"
+            # (2) T日 涨停 (close >= up_limit * 0.998)
+            cur.execute(
+                f"""SELECT DISTINCT code FROM klines_daily
+                    WHERE trade_date = (
+                        SELECT MAX(trade_date) FROM klines_daily WHERE trade_date < %s
+                    )
+                      AND code IN ({placeholders})
+                      AND up_limit > 0
+                      AND close >= up_limit * 0.998""",
+                [exec_date, *codes],
+            )
+            for (code,) in cur.fetchall():
+                # 不覆盖更严重原因 (suspended > limit_up)
+                if code not in result:
+                    result[code] = "limit_up_T-1"
 
         return result
 

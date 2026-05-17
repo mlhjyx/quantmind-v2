@@ -17,9 +17,16 @@ from backend.app.services.execution_service import ExecutionService
 
 def _make_conn(status_rows: list[tuple], klines_rows: list[tuple]) -> MagicMock:
     """Build a psycopg2-style mock conn whose cursor.execute returns 2 separate
-    fetchall() payloads (1st = stock_status query, 2nd = klines query)."""
+    fetchall() payloads (1st = stock_status query, 2nd = klines query).
+
+    Cursor is wrapped to support `with conn.cursor() as cur:` context manager
+    pattern used by ExecutionService._filter_nontradable_codes (PR #379 reviewer P1 fix).
+    """
     cur = MagicMock()
     cur.fetchall.side_effect = [status_rows, klines_rows]
+    # Make `with cur:` return the same cur (default MagicMock returns a child).
+    cur.__enter__ = MagicMock(return_value=cur)
+    cur.__exit__ = MagicMock(return_value=False)
     conn = MagicMock()
     conn.cursor.return_value = cur
     return conn
