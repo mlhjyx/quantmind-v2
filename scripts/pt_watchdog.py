@@ -23,7 +23,14 @@ from datetime import date, datetime
 from pathlib import Path
 
 # 添加项目路径
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+# PROJECT_ROOT needed for `from backend.qm_platform._types` transitive import
+# via qm_platform/__init__.py → backtest/__init__.py → memory_registry.py.
+# Phase 0 Finding #9/#32/#33/#35 cumulative — sys.path drift pattern recurrence
+# (4th 实证 per LL-175 lesson 2); same fix as services_healthcheck.py + data_quality_check.py.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(_PROJECT_ROOT))
+sys.path.append(str(_PROJECT_ROOT / "backend"))
 
 # Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
