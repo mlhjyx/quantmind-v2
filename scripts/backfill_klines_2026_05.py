@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -75,8 +76,6 @@ def _now_iso() -> tuple[str, str]:
 
 def _check_apply_env() -> list[str]:
     """Strict env gate sustained CT-1a P2 fix体例."""
-    import os
-
     failures = []
     for k in _REQUIRED_ENV_FOR_APPLY:
         v = os.environ.get(k, "")
@@ -178,10 +177,11 @@ def _apply() -> int:
         try:
             r = _apply_one_date(api, trade_date_str)
             summary.append((trade_date_str, "ok", r))
-        except Exception as e:
-            logger.exception("[%s] FAILED: %s", trade_date_str, e)
+        except Exception as e:  # noqa: BLE001 — broad except by design: continue with remaining dates per partial-backfill体例
+            logger.exception("[%s] FAILED", trade_date_str)
             summary.append((trade_date_str, "fail", {"error": str(e)}))
             # Continue with remaining dates — partial backfill better than total fail.
+            # NOTE: idempotent ON CONFLICT DO UPDATE makes re-run safe per code-reviewer P1 fix.
 
     print()
     print("=== APPLY summary ===")
@@ -198,7 +198,9 @@ def _apply() -> int:
 
     # Verdict.
     ok = all(s == "ok" for _, s, _ in summary)
-    if ok and state_post["klines_daily"] >= "2026-05-15" and state_post["daily_basic"] >= "2026-05-15":
+    klines_ok = (state_post["klines_daily"] or "") >= "2026-05-15"
+    basic_ok = (state_post["daily_basic"] or "") >= "2026-05-15"
+    if ok and klines_ok and basic_ok:
         print()
         print("✅✅✅ BACKFILL SUCCESS — klines_daily + daily_basic both fresh through 2026-05-15 ✅✅✅")
         return 0
@@ -213,8 +215,8 @@ def _verify() -> int:
     state = _read_db_state()
     print(_preflight_summary(state))
     print()
-    ok_klines = state["klines_daily"] >= "2026-05-15"
-    ok_basic = state["daily_basic"] >= "2026-05-15"
+    ok_klines = (state["klines_daily"] or "") >= "2026-05-15"
+    ok_basic = (state["daily_basic"] or "") >= "2026-05-15"
     if ok_klines and ok_basic:
         print("✅ Verify PASS — both tables fresh through 2026-05-15")
         return 0
@@ -229,7 +231,10 @@ def _verify() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = parser.add_mutually_exclusive_group()
-    g.add_argument("--dry-run", action="store_true", default=True, help="(default) preflight + plan, 0 mutation")
+    # NOTE: --dry-run is the default behavior via fallthrough dispatch (line ~244),
+    # NOT via default=True (which is ignored by argparse inside mutex groups per
+    # convergent reviewer P1/P2 finding — code-rev P2 + python-rev P1-2).
+    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation")
     g.add_argument("--apply", action="store_true", help="EXECUTE backfill")
     g.add_argument("--verify", action="store_true", help="post-apply state verify only")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])

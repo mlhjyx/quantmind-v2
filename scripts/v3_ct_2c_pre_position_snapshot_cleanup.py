@@ -35,7 +35,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -153,9 +155,6 @@ def _check_preflight(rows: list[dict], xtquant: dict) -> list[str]:
 
 def _write_snapshot_atomic(rows: list[dict], xtquant: dict) -> None:
     """Atomic snapshot write — tempfile + os.replace (sustained CT-1a体例)."""
-    import os
-    import tempfile
-
     utc_iso, sh_iso = _now_iso()
     snapshot = {
         "captured_at_utc": utc_iso,
@@ -253,15 +252,17 @@ def _apply() -> int:
         prev_autocommit = conn.autocommit
         conn.autocommit = False
         try:
-            cur = conn.cursor()
-            cur.execute(
-                """DELETE FROM position_snapshot
-                   WHERE strategy_id = %s
-                     AND execution_mode = %s
-                     AND trade_date <= %s""",
-                (_TARGET_STRATEGY_ID, _TARGET_EXECUTION_MODE, _TARGET_MAX_TRADE_DATE),
-            )
-            affected = cur.rowcount
+            # Cursor in context manager per convergent reviewer P1/P2-2 fix —
+            # ensures cur.close() on early-return rollback path.
+            with conn.cursor() as cur:
+                cur.execute(
+                    """DELETE FROM position_snapshot
+                       WHERE strategy_id = %s
+                         AND execution_mode = %s
+                         AND trade_date <= %s""",
+                    (_TARGET_STRATEGY_ID, _TARGET_EXECUTION_MODE, _TARGET_MAX_TRADE_DATE),
+                )
+                affected = cur.rowcount
             if affected != _EXPECTED_ROW_COUNT:
                 conn.rollback()
                 print(
@@ -272,9 +273,9 @@ def _apply() -> int:
             conn.commit()
             elapsed = time.time() - t0
             print(f"  ✅ DELETE committed: {affected} rows in {elapsed:.2f}s")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — broad catch for atomic rollback
             conn.rollback()
-            logger.exception("DELETE failed: %s", e)
+            logger.exception("DELETE failed")
             print(f"  ❌ DELETE FAILED: {e} — transaction rolled back")
             return 1
         finally:
@@ -317,33 +318,41 @@ def _rollback() -> int:
         prev_autocommit = conn.autocommit
         conn.autocommit = False
         try:
-            cur = conn.cursor()
-            for r in rows:
-                cur.execute(
-                    """INSERT INTO position_snapshot
-                       (code, trade_date, strategy_id, market, quantity, avg_cost,
-                        market_value, weight, unrealized_pnl, holding_days, execution_mode)
-                       VALUES (%(code)s, %(trade_date)s, %(strategy_id)s, %(market)s,
-                               %(quantity)s, %(avg_cost)s, %(market_value)s, %(weight)s,
-                               %(unrealized_pnl)s, %(holding_days)s, %(execution_mode)s)
-                       ON CONFLICT (code, trade_date, strategy_id) DO UPDATE SET
-                         market = EXCLUDED.market,
-                         quantity = EXCLUDED.quantity,
-                         avg_cost = EXCLUDED.avg_cost,
-                         market_value = EXCLUDED.market_value,
-                         weight = EXCLUDED.weight,
-                         unrealized_pnl = EXCLUDED.unrealized_pnl,
-                         holding_days = EXCLUDED.holding_days,
-                         execution_mode = EXCLUDED.execution_mode""",
-                    r,
-                )
+            # Cursor in context manager per convergent reviewer P1/P2-2 fix.
+            with conn.cursor() as cur:
+                restored = 0  # python-rev P2-8: actual upsert count vs input count
+                for r in rows:
+                    cur.execute(
+                        """INSERT INTO position_snapshot
+                           (code, trade_date, strategy_id, market, quantity, avg_cost,
+                            market_value, weight, unrealized_pnl, holding_days, execution_mode)
+                           VALUES (%(code)s, %(trade_date)s, %(strategy_id)s, %(market)s,
+                                   %(quantity)s, %(avg_cost)s, %(market_value)s, %(weight)s,
+                                   %(unrealized_pnl)s, %(holding_days)s, %(execution_mode)s)
+                           ON CONFLICT (code, trade_date, strategy_id) DO UPDATE SET
+                             market = EXCLUDED.market,
+                             quantity = EXCLUDED.quantity,
+                             avg_cost = EXCLUDED.avg_cost,
+                             market_value = EXCLUDED.market_value,
+                             weight = EXCLUDED.weight,
+                             unrealized_pnl = EXCLUDED.unrealized_pnl,
+                             holding_days = EXCLUDED.holding_days,
+                             execution_mode = EXCLUDED.execution_mode""",
+                        r,
+                    )
+                    restored += cur.rowcount
             conn.commit()
-            print(f"  ✅ Restored {len(rows)} rows")
+            if restored != len(rows):
+                logger.warning(
+                    "Rollback row-count mismatch: actual=%d expected=%d (may indicate partial prior restore)",
+                    restored, len(rows),
+                )
+            print(f"  ✅ Restored {restored}/{len(rows)} rows")
             return 0
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — broad catch for atomic restore rollback
             conn.rollback()
-            logger.exception("Rollback failed: %s", e)
-            print(f"  ❌ Rollback FAILED: {e}")
+            logger.exception("Restore (rollback) failed")
+            print(f"  ❌ Restore (rollback) FAILED: {e}")
             return 1
         finally:
             conn.autocommit = prev_autocommit
@@ -368,7 +377,9 @@ def _verify() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = parser.add_mutually_exclusive_group()
-    g.add_argument("--dry-run", action="store_true", default=True, help="(default) preflight + plan")
+    # NOTE: --dry-run via fallthrough dispatch, NOT default=True (mutex group
+    # ignores default per convergent reviewer P1-2 / P2 finding).
+    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan")
     g.add_argument("--apply", action="store_true", help="EXECUTE cleanup")
     g.add_argument("--rollback", action="store_true", help="restore from snapshot")
     g.add_argument("--verify", action="store_true", help="post-apply state verify")

@@ -73,8 +73,13 @@ def _now_iso() -> tuple[str, str]:
     )
 
 
-def _read_state() -> dict[str, dict]:
-    """Read per-factor latest trade_date + row counts."""
+def _read_state() -> dict[str, object]:
+    """Read per-factor latest trade_date + row counts.
+
+    Returns dict mixing per-factor entries (dict with 'latest' + 'rows' keys)
+    AND sentinel keys ('__klines_latest', '__basic_latest') with str values.
+    Use 'object' annotation per python-reviewer P2-4 (dict[str, dict] inaccurate).
+    """
     out = {}
     with get_sync_conn() as conn, conn.cursor() as cur:
         for f in _TARGET_FACTORS:
@@ -93,7 +98,7 @@ def _read_state() -> dict[str, dict]:
     return out
 
 
-def _preflight_summary(state: dict) -> str:
+def _preflight_summary(state: dict[str, object]) -> str:
     target = "2026-05-15"
     lines = [
         "=== Preflight ===",
@@ -201,9 +206,10 @@ def _apply() -> int:
         elapsed_a = time.time() - t_a
         print(f"  ✅ Stage A done in {elapsed_a:.1f}s")
         print(f"  result: {result_a}")
-    except Exception as e:
-        logger.exception("Stage A FAILED: %s", e)
+    except Exception as e:  # noqa: BLE001 — broad catch to surface any compute_batch_factors failure with operator guidance
+        logger.exception("Stage A FAILED")
         print(f"  ❌ Stage A FAILED: {e}")
+        print("  ℹ️  Any partially written raw_value rows are idempotent (ON CONFLICT DO UPDATE) — re-run with --apply is safe per code-reviewer P2 fix.")
         return 1
     print()
 
@@ -227,8 +233,8 @@ def _apply() -> int:
             print(f"  summary: {result_b.summary()}")
         else:
             print(f"  result: {result_b}")
-    except Exception as e:
-        logger.exception("Stage B FAILED: %s", e)
+    except Exception as e:  # noqa: BLE001 — broad catch to surface any neutralize_factors failure
+        logger.exception("Stage B FAILED")
         print(f"  ❌ Stage B FAILED: {e}")
         return 1
     print()
@@ -239,7 +245,7 @@ def _apply() -> int:
     print(_preflight_summary(state_post))
     print()
 
-    ok = all(state_post[f]["latest"] >= "2026-05-15" for f in _TARGET_FACTORS)
+    ok = all((state_post[f]["latest"] or "") >= "2026-05-15" for f in _TARGET_FACTORS)  # type: ignore[index] — sentinel dict[str, object] per P2-4
     if ok:
         print("✅✅✅ FACTOR RECOMPUTE SUCCESS — 4 factors fresh through 2026-05-15 ✅✅✅")
         return 0
@@ -265,7 +271,9 @@ def _verify() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = parser.add_mutually_exclusive_group()
-    g.add_argument("--dry-run", action="store_true", default=True, help="(default) preflight + plan, 0 mutation")
+    # NOTE: --dry-run via fallthrough dispatch, NOT default=True (mutex group ignores
+    # the default per convergent reviewer P1-2 / P2 finding).
+    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation")
     g.add_argument("--apply", action="store_true", help="EXECUTE 2-stage pipeline")
     g.add_argument("--verify", action="store_true", help="post-apply state verify only")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
