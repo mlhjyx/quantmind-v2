@@ -1,11 +1,12 @@
 # QuantMind V3 风控架构设计文档
 
-**Version**: 1.0 (initial draft)
-**Date**: 2026-05-01
+**Version**: 1.0 (initial draft) → v1.0.1 cumulative annotation (2026-05-17)
+**Date**: 2026-05-01 (initial) → 2026-05-17 (closure annotation, sustained ADR-022 append-only)
 **Author**: Claude (Anthropic) + Stanleytu
-**Status**: Draft — 待 user review + 决议
+**Status**: ~~Draft — 待 user review + 决议~~ → **§20.1 10/10 + §20.2 5/5 + §20.3 3/3 ALL RESOLVED**; §20.4 4 V4 candidates open by design (need live data trigger). Tier A/B/横切层 Gate A-D ALL CLOSED. Gate E partial (DINGTALK_ALERTS_ENABLED + L4_AUTO_MODE_ENABLED sustained OFF per ADR-027/028). Formal version bump v1.0 → v1.1 pending dedicated review cycle (separate from this 5-17 closure annotation per ADR-022).
 **Source**: 沿用 4-29 D5-D9 决议 + 4-29 PT 暂停清仓事件 + sprint period 治理基础设施 6 块基石
 **License**: 内部设计文档, 非公开
+**Closure cumulative cite**: §20.1 closure → 5-02 Claude.ai+user 战略对话 sediment via ADR-027 (L4 STAGED) + ADR-028 (AUTO+RAG+replay) + ADR-033 (News 6 源换源). §20.2 closure → Sprint 1/5/8/13/14 implementation 期间 CC 实测 (Tier A S1-S11 ✅ + Tier B TB-1~5 ✅). §20.3 closure → ADR-022 audit log 终止 + §3.4 enforcement + §2.3 sustained. Gate A 7/8 PASS (ADR-065). Gate B/C closure 2026-05-14 (ADR-071). Gate D closure 2026-05-15 (ADR-076). Gate E partial CLOSED 2026-05-17 (CT-2c-pre operational remediation, ADR-082 reserved).
 
 ---
 
@@ -709,8 +710,8 @@ CREATE INDEX idx_risk_memory_event_type ON risk_memory (event_type, event_timest
 
 **Retrieval**: L1 触发时, vector similarity search 历史相似事件 → push 内容含 "类似情况 N 次, 做 X 动作, 平均结果 Y".
 
-**embedding 模型** (待 user 决议, §20 #3):
-- 选项 A: BGE-M3 (本地, 0 cost, 1024 维, 中文优化)
+**embedding 模型** ~~(待 user 决议, §20 #3)~~ **[5-02 RESOLVED: BGE-M3 per §20.1 #3 + ADR-068 D2 lock; production wired TB-3b PR #340 — `backend/qm_platform/risk/memory/embedding_service.py`]**:
+- 选项 A: BGE-M3 (本地, 0 cost, 1024 维, 中文优化) ← **CHOSEN**
 - 选项 B: LiteLLM API (V4-Flash embedding, ~$0.0001/1k tokens, 易接入)
 
 **vector store**: pgvector (TimescaleDB 同 PG, 0 新依赖). 已验证.
@@ -1594,7 +1595,7 @@ testcontainers PG + Redis + LiteLLM mock + xtquant mock:
 | Embedding (RAG ingest) | V4-Flash | per event | $1-2 |
 | **总月预算** | | | **$40-50** |
 
-**预算上限** (待 user 决议, §20 #6): 推荐 $50/月 上限. 超 → P1 元告警 + 降级 (Bull/Bear cadence 减 / RAG retrieval 缓存延长).
+**预算上限** ~~(待 user 决议, §20 #6)~~ **[5-02 RESOLVED: $50/月 per §20.1 #6 + ADR-072 D2; 3-month sustained ≤80% baseline verification DEFERRED to Gate E (wall-clock 不可压缩)]**: $50/月 上限. 超 → P1 元告警 + 降级 (Bull/Bear cadence 减 / RAG retrieval 缓存延长).
 
 ### §16.3 实时延迟 SLA
 
@@ -1809,6 +1810,7 @@ Tier A 全完成 + paper-mode 5d dry-run + .env paper→live user 显式授权:
 
 **版本历史**:
 - v1.0 (2026-05-01): 初稿. 完整 enumerate 5+1 层 + Tier A/B + 端到端闭环 + 落地 + 失败模式 + 测试 + 监控 + 12 月 Roadmap + 开放问题.
+- **v1.0.1 (2026-05-17, append-only cumulative annotation per ADR-022)**: doc hygiene amend — 3 stale "待 user 决议" reference closure annotation (header status + line 713 embedding + line 1598 budget ceiling). 实际 §20.1 10/10 + §20.2 5/5 + §20.3 3/3 ALL RESOLVED via 5-02 战略对话 + Sprint 1-15 implementation + ADR-022 sustained. Tier A Gate A 7/8 PASS (ADR-065). Tier B Gate B 5/5 + Gate C 6/6 PASS (ADR-071). 横切层 Gate D 5/5 PASS (ADR-076). PT cutover Plan v0.4 IC-1~3 + CT-1~2 ALL CLOSED (ADR-077-081). Gate E partial CLOSED 5-17 CT-2c-pre (ADR-082 reserved). §20.4 V4 候选 4 项 sustained open by design (need live data trigger). 形式 v1.0 → v1.1 explicit version bump pending dedicated review cycle (separate sub-PR).
 
 **作者**: Claude (Anthropic) — 沿用 4-29 D5-D9 决议 + 4-29 PT 暂停清仓事件 + sprint period 治理基础设施 6 块基石.
 
