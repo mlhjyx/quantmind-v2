@@ -19,7 +19,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.core.xtquant_path import ensure_xtquant_path
 from engines.base_broker import BaseBroker
+
+# Ensure xtquant path on sys.path at module load (idempotent).
+# Before this fix: Mon 09:31 SH live-fire would hit
+#   `ModuleNotFoundError: No module named 'xtquant'`
+# inside MiniQMTBroker.connect() at line ~236 `from xtquant.xttrader import ...`
+# because Celery workers + standalone Python invocations don't pre-call
+# `ensure_xtquant_path()` (only qmt_data_service.py + realtime_risk_engine_service.py
+# + scripts/emergency_close_all_positions.py + a few others do).
+# This is the 5th 实证 sys.path drift pattern per LL-175 lesson 2 (different module
+# but same architectural debt). Surfaced by P0 DingTalk alert "V3 L4 STAGED live
+# broker wire FAILED" on 2026-05-17 ~18:30 SH.
+ensure_xtquant_path()
 
 logger = logging.getLogger("qmt_broker")
 
