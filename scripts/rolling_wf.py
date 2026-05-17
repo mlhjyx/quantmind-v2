@@ -125,6 +125,14 @@ def _load_wf_data():
     if "raw_value" in factor_df.columns and "neutral_value" not in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
 
+    # PR #381 reviewer P2: fail-loud (铁律 33) — assert neutral_value column present
+    # so downstream signal_func 不在深处抛 opaque KeyError 而是这里清晰报错.
+    if "neutral_value" not in factor_df.columns:
+        raise ValueError(
+            f"factor_df missing 'neutral_value' column; columns present: {list(factor_df.columns)}. "
+            f"Likely cache schema drift — check parquet_cache.FACTOR_SQL."
+        )
+
     logger.info(
         "数据加载 (cache %s ~ %s): factors=%d行, prices=%d行, bench=%d行",
         start,
@@ -156,11 +164,13 @@ def _run_wf(factor_df, price_df, bench_df) -> dict:
 
     # Size-neutral (P0-2 fix 2026-05-17: API drift — load_ln_mcap_pivot now requires
     # (start_date, end_date, conn=None) signature instead of price_df arg).
-    import psycopg2 as _pg
-    _pg_dsn = "host=localhost port=5432 dbname=quantmind_v2 user=xin password=quantmind"
+    # PR #381 reviewer P1: use get_sync_conn() (env-driven via DATABASE_URL, 铁律 35)
+    # instead of hardcoded DSN. Matches engines/backtest/runner.py:131 pattern.
+    from app.data_fetcher.data_loader import get_sync_conn
+
     _start = min(price_df["trade_date"])
     _end = max(price_df["trade_date"])
-    _conn_sn = _pg.connect(_pg_dsn)
+    _conn_sn = get_sync_conn()
     try:
         ln_mcap_pivot = load_ln_mcap_pivot(_start, _end, conn=_conn_sn)
     finally:
