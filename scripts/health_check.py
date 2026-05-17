@@ -27,10 +27,12 @@ if sys.platform == "win32":
 # → all_pass=False → signal_phase [Step0] 预检失败 (5-11~5-15 连续 5 天 + 5-17).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.append(str(BACKEND_DIR))
+# Canonical order: PROJECT_ROOT first (outer namespace), then BACKEND_DIR
+# (matches pt_watchdog.py / data_quality_check.py / services_healthcheck.py).
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
 from app.services.price_utils import _get_sync_conn
 
