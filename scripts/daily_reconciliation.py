@@ -16,7 +16,13 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_DIR = PROJECT_ROOT / "backend"
+# Canonical sys.path order: PROJECT_ROOT first, then BACKEND_DIR (LL-175 lesson 2).
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
 
 import psycopg2
 import structlog
