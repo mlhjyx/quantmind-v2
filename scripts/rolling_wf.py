@@ -94,17 +94,41 @@ ALERT_RATIO = 0.70  # Sharpe 下降 >30% → ALERT
 
 
 def _load_wf_data():
-    """加载 WF 所需的因子/价格/基准数据 (走 Parquet 缓存)。"""
+    """加载 WF 所需的因子/价格/基准数据 (走 Parquet 缓存)。
 
-    from data.parquet_cache import BacktestDataCache
+    P0-2 fix (2026-05-17): `BacktestDataCache` 接口只有 `load(start, end)` 返 dict
+    `{"price_data", "factor_data", "benchmark"}`. 旧调用 `load_factor_data()` /
+    `load_price_data()` / `load_benchmark_data()` (无参 3 个独立方法) 不存在 → AttributeError.
+    走 cache_meta.json 实际 cached range (2014-01-01 ~ 2026-04-15).
+    """
+
+    from data.parquet_cache import CACHE_DIR, BacktestDataCache
 
     cache = BacktestDataCache()
-    factor_df = cache.load_factor_data()
-    price_df = cache.load_price_data()
-    bench_df = cache.load_benchmark_data()
+    meta_path = CACHE_DIR / "cache_meta.json"
+    if not meta_path.exists():
+        raise FileNotFoundError(
+            f"cache_meta.json 不存在 ({meta_path}). 请先 `python scripts/build_backtest_cache.py`"
+        )
+    with open(meta_path) as f:
+        meta = json.load(f)
+    start = meta["start_date"]
+    end = meta["end_date"]
+
+    data = cache.load(start, end)
+    price_df = data["price_data"]
+    factor_df = data["factor_data"]
+    bench_df = data["benchmark"]
+
+    # parquet_cache.FACTOR_SQL 把 COALESCE(neutral_value, raw_value) 存为 "raw_value" 列
+    # (Step 6-D Fix 1 comment, 历史遗留). 下游 signal_func 期望 "neutral_value", 兼容 rename.
+    if "raw_value" in factor_df.columns and "neutral_value" not in factor_df.columns:
+        factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
 
     logger.info(
-        "数据加载: factors=%d行, prices=%d行, bench=%d行",
+        "数据加载 (cache %s ~ %s): factors=%d行, prices=%d行, bench=%d行",
+        start,
+        end,
         len(factor_df),
         len(price_df),
         len(bench_df),
@@ -130,8 +154,17 @@ def _run_wf(factor_df, price_df, bench_df) -> dict:
     cfg_factors = list(CORE_DIRECTIONS.keys())
     cfg_factor_df = factor_df[factor_df["factor_name"].isin(cfg_factors)].copy()
 
-    # Size-neutral
-    ln_mcap_pivot = load_ln_mcap_pivot(price_df)
+    # Size-neutral (P0-2 fix 2026-05-17: API drift — load_ln_mcap_pivot now requires
+    # (start_date, end_date, conn=None) signature instead of price_df arg).
+    import psycopg2 as _pg
+    _pg_dsn = "host=localhost port=5432 dbname=quantmind_v2 user=xin password=quantmind"
+    _start = min(price_df["trade_date"])
+    _end = max(price_df["trade_date"])
+    _conn_sn = _pg.connect(_pg_dsn)
+    try:
+        ln_mcap_pivot = load_ln_mcap_pivot(_start, _end, conn=_conn_sn)
+    finally:
+        _conn_sn.close()
 
     # 构建 signal function
     from engines.walk_forward import make_equal_weight_signal_func
