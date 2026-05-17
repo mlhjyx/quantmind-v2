@@ -38,6 +38,13 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 # 铁律 10b shadow fix: append 而非 insert(0) 避免 backend/platform/ shadow stdlib
 # platform (参考 PR #67 pt_daily_summary 8 天 silent-fail 根因).
+# 7th sys.path drift fix (同 PR #377 broker_qmt + PR #378 health_check pattern):
+# qm_platform.backtest 内部 `from backend.qm_platform._types import BacktestMode`
+# 需要 PROJECT_ROOT 也在 sys.path.
+# Canonical order: PROJECT_ROOT first, then BACKEND_DIR
+# (matches pt_watchdog.py / data_quality_check.py / services_healthcheck.py).
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
