@@ -21,7 +21,16 @@ from pathlib import Path
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+# 6th sys.path drift fix (LL-175 lesson 2 cumulative pattern):
+# `engines.config_guard` 内部 import `from backend.qm_platform.config.auditor import ...`
+# 需要 PROJECT_ROOT 也在 sys.path. 此前仅 append backend 导致 check_config_drift FAIL
+# → all_pass=False → signal_phase [Step0] 预检失败 (5-11~5-15 连续 5 天 + 5-17).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_DIR = PROJECT_ROOT / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.append(str(BACKEND_DIR))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from app.services.price_utils import _get_sync_conn
 
