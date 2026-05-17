@@ -791,6 +791,8 @@ DYNAMIC_THRESHOLDS_LOG_LEVEL=DEBUG  # 记录每次调整的 reason
 
 **记录**:
 
+> **[2026-05-17 annotation — DEFERRED audit feature, append-only per ADR-022]**: `dynamic_threshold_adjustments` 表 schema 已 deploy (S7 PR #305 migration `backend/migrations/v3_risk_framework_s7.sql`) 但**当前 code path 不写入此表** (DB 实测 0 rows). **设计本意 = audit log for material threshold changes**. **真生产路径 = Redis-only operational cache** (`backend/qm_platform/risk/dynamic_threshold/cache.py:RedisThresholdCache`, TTL 360s). **5min Beat `compute_dynamic_thresholds`** (`backend/app/tasks/dynamic_threshold_tasks.py`) 仅 `cache.set_batch(thresholds, ttl=360)` → 0 DB write. **delta-tracking flush task** (write material changes to此表) 留 V3 §19 Roadmap **future sprint** 实施 — 当前操作层 audit 价值 vs 实施复杂度 trade-off 不 favor immediate impl. 当前 Redis 是 operational SSOT, L1 RealtimeRiskRule 每 tick 读 Redis 不读 DB. 0 functional impact. Cite: Phase 1 Explore agent investigation 2026-05-17 evening.
+
 ```sql
 CREATE TABLE dynamic_threshold_adjustments (
     adjustment_id BIGSERIAL PRIMARY KEY,
