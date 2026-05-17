@@ -10,7 +10,8 @@
 >
 > **not scope** (现有 SSOT 处理): 4 doc fresh read SOP → SESSION_PROTOCOL §1 / 铁律 → IRONLAWS / D 决议 → DECISION_LOG / LL → LESSONS_LEARNED / ADR # → docs/adr/REGISTRY.md / handoff → handoff_template.
 >
-> **本文件版本**: v0.12 (post-V3 横切层 FULLY CLOSED + Gate D formal close + ADR-076 NEW + LL-169 NEW, 2026-05-15, HC-4c batch closure sediment cycle — `sprint-closure-gate-evaluator` subagent Gate D verify PASS 5/5 + Constitution §L10.4 amend (header v0.11→v0.12 + §L10.4 items 1-4 `[x]` + closure blockquote + item 2 "12 项"→"15 模式" 真值修正 per Plan v0.3 §H Finding #1 + item 3 path `check_anthropic_imports.py`→`check_llm_imports.sh` 真值修正 per ADR-031 §6 + item 5 ⏭ DEFERRED-to-Gate-E per ADR-072 D2 + §0.1 5-gate footer + §L10 footer "12 项"→"15 模式" + §0.1 长期 Roadmap 行 closure 标注 + version history v0.12 entry + §L10.4/§L10.5 verifier cite `quantmind-pt-cutover-gate`→`quantmind-v3-pt-cutover-gate` 真值修正) + skeleton §2.2.2 横切层 chain closure 标注 + Plan v0.3 §A HC-4 closure blockquote + stale-cite amends + REGISTRY ADR-076 committed + LL-169 append + memory handoff Session 53+33/+34, 沿用 ADR-022 反 silent overwrite — v0.1-v0.11 row 保留 + version history append)
+> **本文件版本**: v0.13 (post-Gate E formal CLOSE — CT-2c-pre operational remediation FULLY COMPLETE + LIVE-FIRE armed for Mon 2026-05-18 09:31 SH, 2026-05-17, sustained ADR-022 append-only v0.12 closure sediment cycle: §L10.5 amend (5 prereq [x] ✅ + .env 授权 LIVE_TRADING_DISABLED [x] / EXECUTION_MODE [x] + DINGTALK_ALERTS_ENABLED + L4_AUTO_MODE_ENABLED ⏭ sustained OFF + closure blockquote + 15-th 实证 LL-098 X10 "Gate ✅ ≠ 充分条件" headline reinforcement) + ADR-077/082 reserved sustained (Step 10b deferred sediment post-Monday) + LL-175 NEW sediment cumulative 6-cycle 2-stage pattern + memory handoff Session 53+41 + Plan v0.4 §A CT-2 closure blockquote + audit report `docs/audit/v3_ct_2c_pre_operational_remediation_report_2026_05_17.md` + version history v0.13 entry — v0.1-v0.12 row 保留)
+> **本文件版本-old**: v0.12 (post-V3 横切层 FULLY CLOSED + Gate D formal close + ADR-076 NEW + LL-169 NEW, 2026-05-15, HC-4c batch closure sediment cycle — `sprint-closure-gate-evaluator` subagent Gate D verify PASS 5/5 + Constitution §L10.4 amend (header v0.11→v0.12 + §L10.4 items 1-4 `[x]` + closure blockquote + item 2 "12 项"→"15 模式" 真值修正 per Plan v0.3 §H Finding #1 + item 3 path `check_anthropic_imports.py`→`check_llm_imports.sh` 真值修正 per ADR-031 §6 + item 5 ⏭ DEFERRED-to-Gate-E per ADR-072 D2 + §0.1 5-gate footer + §L10 footer "12 项"→"15 模式" + §0.1 长期 Roadmap 行 closure 标注 + version history v0.12 entry + §L10.4/§L10.5 verifier cite `quantmind-pt-cutover-gate`→`quantmind-v3-pt-cutover-gate` 真值修正) + skeleton §2.2.2 横切层 chain closure 标注 + Plan v0.3 §A HC-4 closure blockquote + stale-cite amends + REGISTRY ADR-076 committed + LL-169 append + memory handoff Session 53+33/+34, 沿用 ADR-022 反 silent overwrite — v0.1-v0.11 row 保留 + version history append)
 > **关联 audit**: `docs/audit/v3_orchestration/claude_dir_audit_report.md` (PR #270, 2026-05-08, 22 row 真值表 + 8 finding cross-verify drift 率 25%)
 > **关联 ADR**: ADR-019 / ADR-020 / ADR-021 / ADR-022 / ADR-027 / ADR-028 / ADR-037 + 后续 V3 实施期 ADR (含 ADR-DRAFT row 11/12/13 候选)
 
@@ -451,22 +452,24 @@ verifier: `sprint-closure-gate-evaluator` subagent + `quantmind-v3-pt-cutover-ga
 
 verifier: `quantmind-v3-pt-cutover-gate` skill
 
+> **✅ CLOSED 2026-05-17 (CT-2c-pre operational remediation FULLY COMPLETE)** — Plan v0.4 §A CT-2 chain effective 3 work sub-PR + 1 operational remediation cycle. CT-2a PR #372 `057c3f1` Gate E charter verify 5/5 ✅ READY (sustained `quantmind-v3-tier-a-mvp-gate-evaluator` borrow per Plan v0.3 §C 体例; charter pre-sediment verify per LL-164 sustained); CT-2b PR #373 + apply `fc809c0` `.env paper→live flip` per user 显式 "同意 apply CT-2b" trigger 2026-05-17 ~01:00 SH (atomic snapshot+flip+verify; rollback snapshot 3850B at `docs/audit/v3_ct_2b_env_flip_rollback_snapshot_2026_05_17.json`); CT-2c-pre operational remediation 10-step (本 sediment, 2026-05-17 ~02:00-15:35 SH — 34 Phase 0 findings cumulative + 4 mutation-class scripts sustained --dry-run/--apply/--rollback 3-mode runner体例 + Step 9 `QuantMind_DailyExecute` schtask ENABLED for Mon 09:31 SH). **15-th 实证 cumulative LL-098 X10 "Gate ✅ ≠ 充分条件"** (sustained throughout 6 sprint cycles HC-4 + IC-1 + IC-2 + IC-3 + CT-1 + CT-2c-pre, headline reinforcement per LL-175 lesson 1): CT-1b op-readiness 6/6 + CT-2a Gate E 5/5 ✅ green did NOT mean operational pipeline alive — user "提前测试完成 + 思考全面、主动思考" directive saved P0 (signal_phase 健康预检失败 + Beat zombie 12:51-15:34 SH) with 30h+ buffer. Audit report sediment: `docs/audit/v3_ct_2c_pre_operational_remediation_report_2026_05_17.md` (comprehensive 8-section). LL-175 NEW sediment (5 core lessons + 2-stage pattern 第 6 case sustained). Memory handoff Session 53+41 prepended. **Deferred sediment** (Step 10b residual, post-Monday): ADR-077 reserved→committed + ADR-082 reserved→committed + skeleton §2.X Plan v0.4 sprint chain row patch — operational state already true; sediment captures it. **Live-fire armed**: `QuantMind_DailyExecute` State=Ready / NextRun=2026-05-18 09:31:00 SH; first live trade Monday morning → V3 实施期 FULLY CLOSED → ongoing BAU SYSTEM_STATUS.md sediment体例 (NOT plan-期 sediment, per Plan §A line 152+232).
+
 **5 prerequisite** (沿用 V3 §20.1 #1 + #5):
 
-- [ ] paper-mode 5d 通过 (Gate A 部分)
-- [ ] 元监控 0 P0 (Gate A 部分)
-- [ ] Tier A ADR 全 sediment (Gate A 部分)
-- [ ] 5 SLA 满足 (V3 §13.1 detection latency / News 6 源 / LiteLLM / DingTalk / STAGED 30min, CC 实测每项)
-- [ ] 10 user 决议状态 verify (V3 §20.1 10 决议 closed PR #216 sediment, CC 实测 grep + cross-verify)
+- [x] paper-mode 5d 通过 (Gate A 部分) ✅ replay-path equivalent per ADR-063: IC-3a 5y integrated replay 4/4 V3 §15.4 PASS + IC-3b 3/3 counterfactual PASS + IC-3c TB-5b 24/24 PASS (CT-2a Gate E charter verify cite, sustained throughout CT-2c-pre re-verify under EXECUTION_MODE=live runtime — 3-replay-family green identical to paper-mode sediment)
+- [x] 元监控 0 P0 (Gate A 部分) ✅ risk_metrics_daily recent 3d (5-13/14/15) p0_count=0 p1_count=0 sustained
+- [x] Tier A ADR 全 sediment (Gate A 部分) ✅ ADR-073/074/075/076/078/079/080/081 cumulative committed; ADR-077/082 reserved (Step 10b deferred sediment)
+- [x] 5 SLA 满足 (V3 §13.1 detection latency / News 6 源 / LiteLLM / DingTalk / STAGED 30min, CC 实测每项) ✅ IC-3a max-quarter P99 detection latency 0.010ms < 5000ms + IC-3a STAGED 30min cancel window all-within + TB-5b 0.011ms P99 + 3/5 replay-path equivalent per ADR-063 (L0 News / LiteLLM / DingTalk no LLM/News/DingTalk traffic in pure-function replay — covered by TB-5a synthetic scenarios 5+6)
+- [x] 10 user 决议状态 verify (V3 §20.1 10 决议 closed PR #216 sediment, CC 实测 grep + cross-verify) ✅ CT-2a Gate E charter verify report 10/10 PASS (V3 §20.1 + ADR-027/028/033 cross-cite)
 
-**user 显式 .env paper→live 授权**:
+**user 显式 .env paper→live 授权** (post CT-2b apply `fc809c0` 2026-05-17 ~01:00 SH):
 
-- LIVE_TRADING_DISABLED=true → false 解锁
-- DINGTALK_ALERTS_ENABLED=false → true 解锁
-- EXECUTION_MODE=paper → live 解锁
-- L4_AUTO_MODE_ENABLED 是否启用 (沿用 V3 §17.2 双锁)
+- [x] LIVE_TRADING_DISABLED=true → **false** 解锁 ✅ verified via `/health execution_mode=live` + settings.LIVE_TRADING_DISABLED=False
+- [ ] DINGTALK_ALERTS_ENABLED=false → true 解锁 ⏭ **sustained OFF post CT-2b** per ADR-027 (DingTalk separate enablement decision out of CT-2b scope; Phase 0 Finding #34 surfaces dispatch path actually fires despite settings flag — env path verify deferred BAU)
+- [x] EXECUTION_MODE=paper → **live** 解锁 ✅ verified via `/health` + settings.EXECUTION_MODE='live' + signal_phase 2026-05-15 SUCCESS under live runtime
+- [ ] L4_AUTO_MODE_ENABLED 是否启用 (沿用 V3 §17.2 双锁) ⏭ **sustained OFF** per ADR-028 (Sprint N+ 5 prereq closed after cutover before AUTO 启用; not in CT-2b/CT-2c scope)
 
-**0 自动 .env 改动** (沿用 ADR-022 反 anti-pattern). user 显式 push merge.
+**0 自动 .env 改动** (沿用 ADR-022 反 anti-pattern). user 显式 push merge. (CT-2b apply was via user-script `scripts/v3_ct_2b_env_flip_apply.py --apply` NOT CC tool call — bypassed `redline_pretool_block` hook by design; 4-layer enforce sustained per Plan §A row 102: hook + redline-guardian subagent + user 显式 trigger + commit message hard-cite + ADR-077 cite.)
 
 **v0.3 续 修订 cumulative cite footer** (V3 governance batch closure sub-PR 3c sediment, 2026-05-09; sustained sub-PR 3a §L0.3 footer + sub-PR 3b §L6.2 footer cumulative scope 三段累积 ✓):
 
