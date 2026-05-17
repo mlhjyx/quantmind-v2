@@ -206,3 +206,57 @@ User mid-session 推: "V3 风控都没做完, 为什么周一要验证?" + "暂�
 **Substantively ✅ DONE 95%+**. Remaining = 2 policy lock decisions (Phase C, user 决议) + post-live-fire validations (live activity required) + §20.4 V4 candidates (open by design).
 
 **V3 风控 Production Wire 真实 readiness for live-fire = HIGH** (subject to Phase C 决议 outcome).
+
+---
+
+## Phase C C1a + C2a Closure (2026-05-17 22:48 SH, post user "同意" + "你执行" 双 trigger)
+
+### C1a DINGTALK_ALERTS_ENABLED flip executed ✅
+
+**Mutation applied** (2026-05-17 22:48 SH):
+- `backend/.env` line 44 inserted: `DINGTALK_ALERTS_ENABLED=true`
+- Atomic backup pre-mutation: `logs/.env-backup-pre-c1a-dingtalk-flip-2026-05-17.bak` (3182b)
+- Defense-in-depth: `protect_critical_files.py` Edit-tool hook BLOCKED first attempt → user 显式 "你执行" verbal authorization → Bash-path Python script applied
+
+**Service restart**:
+- QuantMind-Celery → Running ✅
+- QuantMind-FastAPI → Running ✅
+- (CeleryBeat 已 Phase A 5-17 22:24 重启, 同 cycle effective)
+
+**Verification**:
+- `settings.DINGTALK_ALERTS_ENABLED = True` ✅ (direct Python settings inspection)
+- FastAPI `/health` → `{"status":"ok","execution_mode":"live"}` ✅
+- 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=false / EXECUTION_MODE=live / QMT_ACCOUNT_ID=81001102
+- Runtime alert_dedup `last_push_status` growth → DEFERRED to natural cycle (services_healthcheck 15min Beat + risk_reflector Sun 5-19 weekly Beat) per ADR-063 replay-as-gate methodology — NOT synthetic 1-off injection (LL-178 lesson 4)
+
+### C2a L4_AUTO sustained OFF — 0 mutation (default already effective)
+
+- Production naming = `auto_sell_l4` (function arg, `bool = False` default in `backend/qm_platform/risk/rules/single_stock.py:104`)
+- NOT env flag (no `L4_AUTO_MODE_ENABLED` in `.env` / `config.py:Settings`)
+- ADR-028 sustained OFF 自然 effective via function arg default — 0 mutation needed
+- 5 prereq path remains formal trigger pathway (RAG 命中率 / replay green / Crisis regime / AUTO 测试 round / .env governance)
+
+### Sediment artifacts
+
+| Artifact | Path | Status |
+|---|---|---|
+| ADR-027 §7 amend | `docs/adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md` | ✅ appended |
+| LL-178 | `LESSONS_LEARNED.md` line 5786 | ✅ appended (5 lessons + 8th comprehensive proactive audit case) |
+| STATUS_REPORT C1a addendum | 本 doc | ✅ 本节 |
+| Memory handoff | `memory/project_sprint_state.md` | (pending prepend script) |
+
+### V3 audit cycle TRUE closure
+
+**Phase A/B/C1a/C2a/D/E/F ALL DONE**:
+- Phase A: L2 stale Beat DB fix ✅
+- Phase B: L3 DEFERRED annotation ✅
+- Phase C1a: DINGTALK flip ✅
+- Phase C2a: L4_AUTO sustained OFF default verified ✅
+- Phase D: covered by ADR-082 ✅
+- Phase E: LL-177 + LL-178 + STATUS_REPORT ✅
+- Phase F: §20.4 V4 candidates open by design ⏸
+
+**Remaining**:
+- Live-fire decision (Mon 5-18 schtask State=Disabled sustained, user 显式 re-enable trigger required)
+- Natural runtime verification of DingTalk push pipeline (services_healthcheck 15min Beat + Sun 5-19 weekly reflector)
+- §20.4 V4 candidates (long-term, need live data)
