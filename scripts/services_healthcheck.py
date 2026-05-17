@@ -117,6 +117,12 @@ def _to_cst_display(utc_iso: str | None) -> str:
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
+# PROJECT_ROOT needed for `from backend.qm_platform._types` resolution
+# (transitive import via qm_platform/__init__.py -> backtest/__init__.py ->
+# memory_registry.py). Phase 0 Finding #9+#32 cumulative — sys.path drift
+# pattern caused Result=1 every 15min silent failure for weeks.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
