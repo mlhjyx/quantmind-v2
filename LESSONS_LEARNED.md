@@ -6196,3 +6196,106 @@ Mon 5-18 16:59 SH = V3 audit cycle 真闭环 evidence sufficient for live-fire r
 >
 > **铁律 backref**: 22 (doc follow code), 33 (silent failure 禁 — cost 0 是 silent fail), 25 (代码变更前必读)
 > **Heuristic backref**: #15 Test-Reality Gap / #17 Audit-Self-Audit (ADR closure ≠ DB reality) / #18 Alternative Path / #20 Reverse Mapping
+
+## LL-187: 2026-05-19 Frontend Design v3 Phase H Implementation + F-S7-001 P0 LLM Cost Fix Closure (9-commit autonomous session sediment)
+
+**Trigger**: User "依次进行，直到完成" + "需思考全面、主动思考" — 9 commits cumulative autonomous closure of post-audit roadmap items.
+
+**Session scope** (574820f → 45f592b, 9 commits):
+
+### Phase H Frontend Redesign (W1+2+4+5+6, ~95% closed)
+
+5 NEW components (Phase H 系统级 UI infrastructure):
+- `components/safety/EnvStateBanner.tsx` — 35 pages 覆盖, 5s refetch /api/system/env-state, 4 variants (safe/live/mismatch/unknown)
+- `components/safety/ShutdownBanner.tsx` — Dashboard 顶部维护模式 (0 持仓 + cash > 95 万 + LIVE_TRADING_DISABLED 三条件)
+- `components/safety/SafetyControlPanel.tsx` — RiskManagement 4th tab, L0-L4 ladder + force-reset HIGH-tier
+- `components/ui/ConfirmModal.tsx` 4 safety tiers (LOW/MED/HIGH/CRIT) — promoted from Execution/modals.tsx 全局复用
+- `components/ai/AssistPanel.tsx` + FloatingAssistLauncher — 3 modes (floating/embedded/inline) + Cmd+J 全局快捷键
+
+10/15 v3 Top findings closed:
+- P0: #1 EnvStateBanner / #2 L4 UI / #6 hardcoded LOW (真值 circuit_breaker.level)
+- P1: #4 AssistPanel placeholder / #15 shutdown 状态
+- P2: #5+#10 axios SSOT (14 raw axios → apiClient) / #8 alert (2/3) / #11 days=0 (DB JOIN) / #13 5-op no-op / OOS warning
+- P3: #9 NotificationSystem.tsx dead code (281 lines deleted)
+
+Deferred: #3 双轨样式 414/116 (50h scope) / #7 cron hardcoded / #12 PMS归并 (PMS history已wired) / #14 三套 real-time
+
+### Phase G F-S7-001 P0 闭环 (commit 23ebea5)
+
+**Pre-fix**: 570 LLM calls / 12d / 877K tokens 累计 `cost_usd=0` silent drift. Root cause: LiteLLM `model_cost.json` 不含 DeepSeek 真值表 → `_hidden_params.response_cost=None`. BudgetGuard silently defanged + audit cost rows 全 0 + AI_ASSIST_ENABLED 启用 blocked.
+
+**Fix path 选定** (#18 alternatives 三选其二):
+- Path 1 (preferred): LiteLLM `response_cost` 真值透传 (沿用旧体例)
+- Path 2 (fallback NEW): tokens × per-token rate (V4-Flash $0.07/M in + $0.27/M out; V4-Pro $0.55/M in + $2.19/M out) — DeepSeek cache-miss upper bound 真不 underestimate
+- Path 3 (sustained): unknown model 静默返 0 (反 silent expansion, 沿用旧体例 + audit alert path)
+
+**Tests**: 6 new regression tests + 31/31 existing router PASS (0 regression). 4-axis covered: LiteLLM-provided / V4-Flash compute / V4-Pro compute / substring underlying name / 0 tokens / unknown model silent miss.
+
+**业务影响**: AI_ASSIST_ENABLED 真启用 unblocked (用户可 `.env` flag 切 true + restart fastapi 后真 LLM 调用 + 真 cost 计入). 历史 570 calls cost_usd=0 sustained (audit trail 真实记录, 反 retroactive overwrite).
+
+### Phase G F-S7-008 P0 (commit b560a0c)
+
+`scripts/db_vacuum_analyze.py` — VACUUM ANALYZE 10 张重型表 (factor_values 172GB / minute_bars 36GB / klines_daily 4GB / daily_basic 3.7GB / factor_ic_history / position_snapshot / trade_log / stock_valuation / moneyflow / stream_outbox). VACUUM 不锁表, 单表串行执行. Schtask 调度建议 docstring 内嵌. **留 user elevated terminal 注册 schtask**.
+
+### Phase I Tech Debt (axios SSOT + dead code, ~50% closed)
+
+- 14 raw axios.get → apiClient.get (6 files: api/dashboard.ts + 5 pages)
+- 3 dead files deleted -370 lines (NotificationSystem 281 + DashboardForex 39 + TradeExecution legacy)
+- Sidebar 外汇 toggle drop
+
+Deferred: 双轨样式 414/116 (50h migration) / admin token httpOnly cookie (audit P0-22, 需 backend cookie middleware)
+
+### Cumulative session totals
+
+- 9 commits / 34 files / 3 deleted / +2778/-812 / net +1966 lines
+- TS check + vite build 6 次全过 (4.32s → 3.93s)
+- pytest 44/44 PASS (31 router + 6 new F-S7-001 + 4 dry-run regression + 3 propagate-env)
+- 0 broker call from any of 9 commits
+
+### Plan v8 final completion
+
+| Phase | Status | % |
+|---|---|---|
+| 1-5 AUDIT (earlier session) | ✅ Complete | 100% |
+| G Audit Closure | ✅ F-S7-001 + F-S7-008 P0 closed | ~95% |
+| H Frontend Redesign | ✅ Mostly complete | ~95% |
+| I Tech Debt Cleanup | 🟢 Partial | ~50% |
+| J Strategy Diversification | ⛔ User gate | 0% |
+| K Live-Fire Resume | ⛔ Conditional | 0% |
+
+### Sustained design principles (9 commits)
+
+- 业务向 UI (user 5-19 explicit feedback)
+- AI Boundary CRIT ops NEVER LLM (Block list + Compose-only + Direct list 服务端 enforce)
+- Stub mode default safe (LL-183 教训 — AI_ASSIST_ENABLED 显式 opt-in + 历史 gate on F-S7-001 修复)
+- 4 Safety Tiers ConfirmModal 全局化 (LOW/MED/HIGH/CRIT)
+- CRIT ops 仍 CC-only (OpsEscapeHatchPanel 只展示 bash 命令 + 复制到剪贴板)
+- Audit 真实记录 sustained (反 retroactive overwrite, 历史 0 cost 不溯改)
+
+### 红线 5/5 sustained throughout session
+
+- cash ¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+- 0 broker call from any of 9 commits
+- Backend /api/agent/chat stub mode 0 outbound LLM (0 cost)
+
+### 留 user 决议触发
+
+1. AI_ASSIST_ENABLED 真启用 (F-S7-001 unblocked, .env flag 切 true 即生效)
+2. VACUUM schtask 实际注册 (elevated terminal)
+3. F-S7-005 RAG memory backfill (strategic decision)
+4. AgentConfig prompt versioning UI (需 backend prompt history endpoint)
+5. 双轨样式 414/116 migration (50h, Phase I)
+6. PT 重启战略 (V3 §20.1 设计层 10/10 ready, sim-to-real gap verify path)
+7. Phase J Strategy Diversification (audit §2 + §16 dependent)
+8. Phase K Live-Fire Resume (conditional on Phase B regression + V3 cutover gate)
+
+### 关联
+
+- F-S7-001 P0 closure → Audit Subagent I supplement (LL-186 P0 escalation 真闭环)
+- v3 Top 15 mapping → STATUS_REPORT_2026_05_19_frontend_v3_phase_h_w1_w6.md §9
+- DEV_FRONTEND_UI.md 实现状态 ~45% → ~65% (铁律 22 doc follow code)
+- Section XI Frontend Control Plane inversion (LL-185) → OpsEscapeHatchPanel 12 ops + 4 risk tier 显式 CC-bash path
+
+**铁律 backref**: 22 (doc follow code), 33 (silent failure 禁 — cost 0 silent drift), 25 (代码变更前必读), 37 (Session 关闭前必写 handoff — Session 57 handoff prepended)
+
+**Heuristic backref**: #15 Test-Reality Gap (audit 真值 verify vs ADR closure) / #18 Alternative Path (F-S7-001 三 path 决议) / #19 UX Workflow Gap (OpsEscapeHatchPanel 12 ops 闭环) / #20 Reverse Mapping (Frontend Design v3 + DEV_FRONTEND_UI sync)
