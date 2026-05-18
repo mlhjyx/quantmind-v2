@@ -2,13 +2,13 @@
 
 **Window**: 2024-01-02 → 2024-02-09  
 **Description**: 雪球结构化产品集中敲入 + 量化中性策略踩踏 (2024-01~02), 微盘股下跌 + 千股跌停  
-**Run date**: 2026-05-13  
+**Run date**: 2026-05-18  
 
 ## Run metadata
 
 - Total minute_bars consumed: **3,322,031**
 - Total unique timestamps: **1,344**
-- Wall clock: **29.8s**
+- Wall clock: **30.5s**
 - Pure-function contract verified (0 broker / 0 INSERT / 0 alert): **True**
 
 ---
@@ -32,7 +32,7 @@
 
 ## Top events by code (top 20)
 
-- `` *(empty = IndustryConcentration portfolio-level events, expected v1 noise per ADR-066 D3 caveat)*: 1344
+- ``: 1344
 - `000908.SZ`: 686
 - `000020.SZ`: 644
 - `002217.SZ`: 625

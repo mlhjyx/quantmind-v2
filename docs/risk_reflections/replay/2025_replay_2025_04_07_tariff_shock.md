@@ -2,13 +2,13 @@
 
 **Window**: 2025-04-01 → 2025-04-11  
 **Description**: 关税冲击 4-07 大盘单日 -13.15% + 千股跌停 (TB-1 真测窗口 #2)  
-**Run date**: 2026-05-13  
+**Run date**: 2026-05-18  
 
 ## Run metadata
 
 - Total minute_bars consumed: **962,544**
 - Total unique timestamps: **384**
-- Wall clock: **9.1s**
+- Wall clock: **9.7s**
 - Pure-function contract verified (0 broker / 0 INSERT / 0 alert): **True**
 
 ---
@@ -32,7 +32,7 @@
 
 ## Top events by code (top 20)
 
-- `` *(empty = IndustryConcentration portfolio-level events, expected v1 noise per ADR-066 D3 caveat)*: 384
+- ``: 384
 - `603579.SH`: 353
 - `002384.SZ`: 335
 - `002529.SZ`: 316
