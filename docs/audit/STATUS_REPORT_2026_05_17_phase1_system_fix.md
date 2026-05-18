@@ -260,3 +260,60 @@ User mid-session 推: "V3 风控都没做完, 为什么周一要验证?" + "暂�
 - Live-fire decision (Mon 5-18 schtask State=Disabled sustained, user 显式 re-enable trigger required)
 - Natural runtime verification of DingTalk push pipeline (services_healthcheck 15min Beat + Sun 5-19 weekly reflector)
 - §20.4 V4 candidates (long-term, need live data)
+
+---
+
+## Mon 5-18 Incident Addendum (13:35 SH discovered via user "今天周一了" challenge)
+
+### 🚨 Beat 静默死亡 incident — sediment narrative 后 1 分钟
+
+**Timeline**:
+| 时间 SH | 事件 |
+|---|---|
+| 5-17 22:48 | C1a flip + Celery + FastAPI restart |
+| 5-17 22:49:37 | Beat last stderr entry (normal dispatch) |
+| 5-17 22:50:11 | Servy cascade stop FastAPI (我 restart 步骤); Beat 同时 silently terminated 无 stderr error |
+| 5-17 22:50 | 我 commit `b1178f6` "V3 audit cycle TRUE COMPLETE" — 1 min 后 sediment narrative 完全脱离 runtime truth |
+| 5-18 00:00-13:30 | **13.5h Celery Beat 0 task dispatch** (Mon 09:00 market_regime missed, 全 morning silent) |
+| 5-18 13:30 | User "今天周一了" 5-word challenge → 立即 Servy restart Beat → Running ✅ |
+| 5-18 13:32-13:34 | news_ingest + l4-sweep + outbox-publisher-tick dispatch verified ✅ post-restart |
+
+### 第 2 个 finding — 14-day alert_dedup `last_push_status=NULL` 全 NULL
+
+DB 实测 30d alert_dedup 15 rows (services_healthcheck 55 fires + pt_watchdog + data_quality_check + risk_reflector + pt_daily_summary 等) **全部 push_ok=NULL + status=None** — 14 天 0 真 DingTalk POST. 即使 C1a flip 22:48 SH 后 5-17 23:45 / 5-18 13:30:04 alert 仍 NULL.
+
+**Root cause** per `dingtalk_alert.py:153-154`: `alerts_disabled / no_webhook / dedup_suppressed 不调 _record_push_outcome → last_push_ok 保持 NULL`. 5-18 13:30:04 services_healthcheck 55-th fire 走的是 `dedup_suppressed path` (UPSERT 增 fire_count 不进 Step 4 POST), 故 NULL state 永不更新.
+
+**Verification gap**: C1a flip 的 "真 POST 路径真活" 在现存 source 上 **NEVER verified** (历史 row dedup-suppressed); 需新 dedup_key (first-time path) 或 explicit suppress_until expire 才能 trigger fresh POST.
+
+### LL-179 sediment (5 lessons cumulative LL-176 lesson 1 第 17 + 18 次实证)
+
+1. **Sediment narrative ≠ runtime truth** — 60 tests pass + smoke green 测的是 PR test suite, NOT runtime Beat 守护状态
+2. **Servy cascade kill sibling service silent path** — restart Celery 触发 Beat stop 但不 cascade restart; 候选 ADR-082 D8 Servy verify-all watchdog
+3. **14-day alert_dedup dedup-suppressed-path masks ENTIRE pipeline silent** — post-flip verification corner case
+4. **User 5-word challenge "今天周一了" 反 self-affirming narrative 钳制** — `commit + tests-pass` 不可当 runtime monitoring 替代品
+5. **Mon morning live verification MUST 前置 NOT 后置** — "natural cycle verification" 必配 `infrastructure_alive_probe` checkpoint
+
+### V3 audit cycle revised 真实状态
+
+**Before user challenge (claim)**: V3 audit cycle TRUE COMPLETE, 95%+ done, 60 tests pass smoke green.
+
+**After user challenge (truth)**:
+- Phase A Beat restart 22:24 SH ✅ but Beat 22:50 SH dead silent (Phase A 修复 verification gap until 14:30 SH Mon afternoon)
+- Phase C1a DINGTALK flip ✅ settings level, but 真 POST 路径在现存 alert_dedup source 上 NEVER verified (dedup-suppressed mask)
+- 实际 V3 runtime "true complete" 状态 = **pending 14:30 SH market_regime fire** + **pending new dedup_key DingTalk POST evidence**
+
+### Pending verification (Mon 5-18 afternoon)
+
+- 14:30 SH market_regime task fire — Phase A true verification first natural cycle post-restart
+- 16:30 SH signal_phase Beat-driven — first natural fire post-restart (5-17 15:23 SH last success)
+- 17:30 SH DailyDataIngest_Postclose (Windows schtask, Beat-independent)
+- alert_dedup 新 dedup_key 真 POST evidence (需 natural cycle 等 OR manual delete 旧 row 强制 fresh path)
+
+### Updated Mon afternoon path
+
+1. Beat stability monitor (next 30-60 min, verify 不再 silent die)
+2. 14:30 SH market_regime fire verify (45 min away)
+3. 16:30 SH signal_phase fire verify (3h away)
+4. Sediment further if anomaly detected
+5. Live-fire decision ONLY post Beat 24h+ stable + verifications pass
