@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantMind-V2 — Variant B: Trader-Velocity Control Center</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0a0e1a;
+    color: #f9fafb;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  :root {
+    --bg-base:      #0a0e1a;
+    --bg-surface:   #111827;
+    --bg-elevated:  #1f2937;
+    --glass-bg:     rgba(31, 41, 55, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --primary:      #06b6d4;
+    --primary-dark: #0891b2;
+    --success:      #10b981;
+    --warning:      #f59e0b;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --text-primary: #f9fafb;
+    --text-secondary:#9ca3af;
+    --text-muted:   #6b7280;
+    --border:       rgba(75, 85, 99, 0.5);
+    --border-subtle:rgba(75, 85, 99, 0.25);
+    --shadow-glass: 0 8px 32px rgba(0,0,0,0.4);
+    --glow-cyan:    0 0 24px rgba(6,182,212,0.35);
+    --glow-red:     0 0 24px rgba(239,68,68,0.45);
+    --glow-green:   0 0 20px rgba(16,185,129,0.35);
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
+  }
+
+  /* ===== ENV BANNER ===== */
+  .env-banner {
+    height: 32px; padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
+    background: rgba(239,68,68,0.12); border-bottom: 1px solid rgba(239,68,68,0.35);
+    flex-shrink: 0;
+    animation: pulse-red 2s ease-in-out infinite;
+  }
+  @keyframes pulse-red { 0%,100%{background:rgba(239,68,68,0.12)} 50%{background:rgba(239,68,68,0.2)} }
+  .env-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 9999px; font-weight: 700; font-size: 0.68rem;
+  }
+  .env-pill.live { background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid rgba(239,68,68,0.45); }
+  .env-pill.paper{ background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
+  .env-detail { color: var(--text-secondary); }
+  .env-detail b { color: #fca5a5; }
+
+  /* ===== TOP BAR ===== */
+  .topbar {
+    height: 48px; padding: 0 20px;
+    display: flex; align-items: center; gap: 0;
+    background: rgba(17,24,39,0.98); border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .logo { font-size: 0.95rem; font-weight: 700; color: var(--primary); margin-right: 24px; white-space:nowrap; }
+  .logo em { color: var(--text-muted); font-style:normal; font-weight:400; }
+  .nav-link {
+    padding: 0 12px; height: 100%; display: flex; align-items: center;
+    font-size: 0.78rem; color: var(--text-muted); cursor: pointer;
+    border-bottom: 2px solid transparent; transition: all 0.15s; white-space:nowrap;
+  }
+  .nav-link:hover { color: var(--text-primary); }
+  .nav-link.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .spacer { flex:1; }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; }
+  .cmd-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 0.72rem; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .cmd-btn:hover { color: var(--text-primary); border-color: var(--primary); }
+  kbd { font-family: monospace; background: var(--bg-elevated); padding: 1px 5px; border-radius: 3px; font-size: 0.65rem; color: var(--text-muted); border: 1px solid var(--border); }
+  .ticker-strip { font-size: 0.68rem; font-family: monospace; color: var(--text-muted); display: flex; gap: 12px; }
+  .tick-item { display: flex; gap: 4px; }
+  .tick-up { color: #f87171; }
+  .tick-dn { color: #34d399; }
+
+  /* ===== MAIN 3-COLUMN LAYOUT ===== */
+  .main { display: grid; grid-template-columns: 200px 1fr 280px; height: calc(100vh - 80px); overflow: hidden; }
+
+  /* ===== LEFT SIDEBAR (Quick Actions) ===== */
+  .sidebar { border-right: 1px solid var(--border-subtle); overflow-y: auto; padding: 12px 0; background: var(--bg-surface); }
+  .sb-section { padding: 8px 12px 4px; }
+  .sb-label { font-size: 0.62rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; padding: 0 4px; margin-bottom: 4px; }
+  .sb-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; border-radius: var(--radius-sm);
+    font-size: 0.78rem; color: var(--text-secondary);
+    cursor: pointer; transition: all 0.12s; border: none; background: none; width: 100%; text-align: left; font-family: inherit;
+  }
+  .sb-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+  .sb-item.active { background: rgba(6,182,212,0.1); color: var(--primary); }
+  .sb-item .icon { font-size: 0.85rem; width: 18px; flex-shrink: 0; }
+  .sb-badge {
+    margin-left: auto; font-size: 0.6rem; padding: 1px 5px; border-radius: 9999px; font-weight: 700;
+  }
+  .badge-red { background: rgba(239,68,68,0.2); color: #f87171; }
+  .badge-green { background: rgba(16,185,129,0.15); color: #34d399; }
+  .badge-amber { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .badge-blue  { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .sidebar-sep { height: 1px; background: var(--border-subtle); margin: 8px 12px; }
+
+  /* ===== CENTER PANEL ===== */
+  .center { overflow-y: auto; display: flex; flex-direction: column; }
+
+  /* ===== KPI STRIP ===== */
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .kpi-cell {
+    padding: 10px 16px; border-right: 1px solid var(--border-subtle);
+    cursor: default;
+  }
+  .kpi-cell:last-child { border-right: none; }
+  .kpi-label { font-size: 0.62rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+  .kpi-value { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); font-family: monospace; margin-top: 3px; }
+  .kpi-change { font-size: 0.68rem; font-weight: 600; margin-top: 2px; }
+  .pos { color: #f87171; }
+  .neg { color: #34d399; }
+  .neu { color: var(--text-muted); }
+
+  /* ===== NAV CHART (simulated sparkline) ===== */
+  .chart-area {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .chart-title { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
+  .chart-tabs { display: flex; gap: 2px; }
+  .chart-tab { padding: 2px 8px; font-size: 0.65rem; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); background: none; border: 1px solid transparent; font-family: inherit; }
+  .chart-tab:hover { color: var(--text-primary); }
+  .chart-tab.active { background: rgba(6,182,212,0.15); color: var(--primary); border-color: rgba(6,182,212,0.3); }
+  .sparkline-svg { width: 100%; height: 60px; display: block; }
+
+  /* ===== OPS QUICK GRID ===== */
+  .ops-area { padding: 12px 16px; flex: 1; }
+  .ops-area-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .ops-area-title { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+  .view-toggle { display: flex; gap: 2px; }
+  .vt-btn { padding: 3px 8px; font-size: 0.65rem; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid var(--border-subtle); background: none; color: var(--text-muted); font-family: inherit; }
+  .vt-btn.active { background: rgba(6,182,212,0.15); color: var(--primary); border-color: rgba(6,182,212,0.3); }
+
+  /* ===== QUICK ACTION BUTTONS (velocity style — big click targets) ===== */
+  .quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .quick-btn {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    color: var(--text-primary); font-family: inherit;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .quick-btn:hover { border-color: var(--border); transform: translateY(-1px); box-shadow: var(--shadow-glass); }
+  .quick-btn:active { transform: translateY(0); }
+  .quick-btn.tier-low:hover  { border-color: rgba(16,185,129,0.4); box-shadow: var(--glow-green); }
+  .quick-btn.tier-med:hover  { border-color: rgba(59,130,246,0.4); }
+  .quick-btn.tier-high:hover { border-color: rgba(245,158,11,0.4); }
+  .quick-btn.tier-crit { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.07); }
+  .quick-btn.tier-crit:hover { border-color: rgba(239,68,68,0.6); box-shadow: var(--glow-red); }
+  .quick-btn.disabled { opacity: 0.35; pointer-events: none; }
+  .qb-icon { font-size: 1.1rem; }
+  .qb-name { font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+  .qb-tier {
+    font-size: 0.6rem; font-weight: 700; padding: 1px 5px; border-radius: 9999px; margin-top: auto;
+  }
+  .tier-low .qb-tier  { background: rgba(16,185,129,0.15); color: #34d399; }
+  .tier-med .qb-tier  { background: rgba(59,130,246,0.15);  color: #60a5fa; }
+  .tier-high .qb-tier { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+  .tier-crit .qb-tier { background: rgba(239,68,68,0.15);   color: #f87171; }
+
+  /* ===== RIGHT: STREAMING LOGS ===== */
+  .log-panel { border-left: 1px solid var(--border-subtle); display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface); }
+  .log-header { padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+  .log-title { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+  .live-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 9999px; font-size: 0.6rem; font-weight: 700; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+  .live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .log-tabs { display: flex; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+  .log-tab { padding: 7px 12px; font-size: 0.7rem; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; background: none; border-top: none; border-left: none; border-right: none; font-family: inherit; }
+  .log-tab:hover { color: var(--text-primary); }
+  .log-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .log-feed { flex: 1; overflow-y: auto; padding: 4px 0; font-family: monospace; font-size: 0.7rem; }
+  .log-entry {
+    padding: 3px 14px; border-bottom: 1px solid rgba(75,85,99,0.12);
+    display: flex; flex-direction: column; gap: 2px;
+    transition: background 0.1s; cursor: pointer;
+  }
+  .log-entry:hover { background: rgba(255,255,255,0.025); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--text-muted); font-size: 0.62rem; }
+  .log-text { color: var(--text-primary); font-size: 0.72rem; line-height: 1.4; }
+  .log-text.error { color: #f87171; }
+  .log-text.warn  { color: #fbbf24; }
+  .log-text.info  { color: #93c5fd; }
+  .log-text.success { color: #34d399; }
+  .log-sep { height: 1px; background: var(--border-subtle); margin: 3px 0; }
+
+  /* Streaming animation for new entries */
+  @keyframes slideIn { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: translateX(0); } }
+  .log-entry.new { animation: slideIn 0.2s ease-out; }
+
+  /* ===== COMMAND PALETTE OVERLAY ===== */
+  .cmd-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+    z-index: 1000; display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 10vh;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  }
+  .cmd-overlay.open { opacity: 1; pointer-events: all; }
+  .cmd-palette {
+    width: 560px; max-width: 95vw;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  }
+  .cmd-input-wrap { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .cmd-search-icon { color: var(--text-muted); font-size: 0.85rem; }
+  .cmd-input { flex: 1; background: none; border: none; outline: none; color: var(--text-primary); font-size: 0.9rem; font-family: inherit; }
+  .cmd-input::placeholder { color: var(--text-muted); }
+  .cmd-esc { font-size: 0.6rem; color: var(--text-muted); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; font-family: monospace; flex-shrink: 0; }
+  .cmd-list { max-height: 360px; overflow-y: auto; padding: 6px; }
+  .cmd-group-label { padding: 4px 8px; font-size: 0.62rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+  .cmd-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background 0.1s;
+  }
+  .cmd-item:hover, .cmd-item.selected { background: rgba(6,182,212,0.12); }
+  .cmd-item-icon { font-size: 0.9rem; width: 20px; flex-shrink: 0; }
+  .cmd-item-text { flex: 1; }
+  .cmd-item-name { font-size: 0.8rem; color: var(--text-primary); font-weight: 500; }
+  .cmd-item-desc { font-size: 0.68rem; color: var(--text-muted); }
+  .cmd-item-tier { font-size: 0.6rem; font-weight: 700; padding: 1px 6px; border-radius: 9999px; flex-shrink: 0; }
+  .cmd-item-hotkey { font-size: 0.62rem; font-family: monospace; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border-subtle); padding: 1px 5px; border-radius: 3px; }
+  .cmd-footer { padding: 8px 14px; border-top: 1px solid var(--border-subtle); display: flex; gap: 12px; font-size: 0.62rem; color: var(--text-muted); }
+
+  /* ===== CONFIRM MODAL ===== */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+    z-index: 2000; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px; max-width: 420px; width: 90%; box-shadow: var(--shadow-glass); }
+  .modal-h { font-size: 0.95rem; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .modal-body { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ===== GENERIC BUTTONS ===== */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; font-family: inherit; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-p  { background: var(--primary); color: #fff; }
+  .btn-p:hover:not(:disabled) { background: var(--primary-dark); box-shadow: var(--glow-cyan); }
+  .btn-d  { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+  .btn-d:hover:not(:disabled) { background: rgba(239,68,68,0.3); }
+  .btn-s  { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-s:hover:not(:disabled) { color: var(--text-primary); border-color: var(--primary); }
+
+  /* ===== PHRASE INPUT ===== */
+  .phrase-input { width: 100%; padding: 7px 11px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 0.82rem; font-family: monospace; outline: none; margin-top: 8px; transition: border-color 0.15s; }
+  .phrase-input:focus { border-color: var(--primary); }
+  .phrase-input.valid { border-color: var(--success); }
+  .phrase-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+  .phrase-hint code { color: var(--primary); background: rgba(6,182,212,0.1); padding: 1px 5px; border-radius: 3px; }
+
+  /* ===== TOAST ===== */
+  .toast-stack { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+  .toast-item {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 10px 14px;
+    font-size: 0.78rem; min-width: 240px; max-width: 320px;
+    pointer-events: all;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: var(--shadow-glass);
+    animation: toastIn 0.25s ease-out;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  .toast-item.toast-success { border-left: 3px solid var(--success); }
+  .toast-item.toast-warn    { border-left: 3px solid var(--warning); }
+  .toast-item.toast-error   { border-left: 3px solid var(--danger); }
+  .toast-msg { flex: 1; }
+  .toast-title { font-weight: 600; color: var(--text-primary); }
+  .toast-sub { font-size: 0.68rem; color: var(--text-muted); margin-top: 1px; }
+  .toast-undo { font-size: 0.68rem; color: var(--primary); cursor: pointer; white-space: nowrap; border: 1px solid rgba(6,182,212,0.3); padding: 2px 7px; border-radius: 9999px; background: rgba(6,182,212,0.1); }
+  .toast-undo:hover { background: rgba(6,182,212,0.2); }
+  .toast-close { color: var(--text-muted); cursor: pointer; font-size: 0.75rem; }
+  .toast-close:hover { color: var(--text-primary); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.35); border-radius: 9999px; }
+</style>
+</head>
+<body>
+
+<!-- ENV BANNER -->
+<div class="env-banner">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="env-pill live">⚠ LIVE</span>
+    <span class="env-detail">EXECUTION_MODE=<b>live</b> · LIVE_TRADING_DISABLED=<b>false</b> · LL-183 post-incident</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="ticker-strip">
+      <span class="tick-item">沪深300 <span class="tick-up">+0.87%</span></span>
+      <span class="tick-item">上证 <span class="tick-dn">-0.32%</span></span>
+      <span class="tick-item">BTC <span class="tick-up">+1.24%</span></span>
+    </span>
+    <span style="font-size:0.68rem;color:var(--warning)">⚠ 需确认env状态后操作</span>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<nav class="topbar">
+  <span class="logo">QM<em>-V2</em></span>
+  <a class="nav-link active">控制中枢</a>
+  <a class="nav-link">PT看板</a>
+  <a class="nav-link">风控</a>
+  <a class="nav-link">交易审计</a>
+  <a class="nav-link">因子</a>
+  <a class="nav-link">系统</a>
+  <div class="spacer"></div>
+  <div class="topbar-actions">
+    <button class="cmd-btn" onclick="openCmdPalette()">
+      <span>⌘K</span> 命令面板
+    </button>
+    <div style="font-family:monospace;font-size:0.78rem;color:var(--text-primary);padding: 0 8px">
+      ¥993,520.66
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:0.72rem;color:var(--text-muted)">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block;box-shadow:0 0 5px rgba(16,185,129,.6)"></span>
+      在线
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN 3-COLUMN LAYOUT -->
+<div class="main">
+
+  <!-- LEFT SIDEBAR: Quick Nav + Status -->
+  <div class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">操作</div>
+      <button class="sb-item active"><span class="icon">⚡</span>控制中枢</button>
+      <button class="sb-item"><span class="icon">📊</span>PT看板</button>
+      <button class="sb-item"><span class="icon">🛡️</span>风控监控 <span class="sb-badge badge-red">2</span></button>
+      <button class="sb-item"><span class="icon">📋</span>交易审计</button>
+    </div>
+    <div class="sidebar-sep"></div>
+    <div class="sb-section">
+      <div class="sb-label">研究</div>
+      <button class="sb-item"><span class="icon">🧪</span>因子探索</button>
+      <button class="sb-item"><span class="icon">⚗️</span>策略实验室</button>
+      <button class="sb-item"><span class="icon">📈</span>回测查看</button>
+    </div>
+    <div class="sidebar-sep"></div>
+    <div class="sb-section">
+      <div class="sb-label">系统状态</div>
+      <div style="padding: 4px 8px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem">
+          <span style="color:var(--text-muted)">FastAPI</span>
+          <span class="sb-badge badge-green">运行</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem">
+          <span style="color:var(--text-muted)">Celery</span>
+          <span class="sb-badge badge-green">运行</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem">
+          <span style="color:var(--text-muted)">CeleryBeat</span>
+          <span class="sb-badge badge-green">运行</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem">
+          <span style="color:var(--text-muted)">QMTData</span>
+          <span class="sb-badge badge-red">离线</span>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-sep"></div>
+    <div class="sb-section">
+      <div class="sb-label">持仓快览</div>
+      <div style="padding: 4px 8px; font-size: 0.72rem; color: var(--text-muted); text-align:center; font-style:italic">
+        0 持仓 · 已清仓<br/>cash ¥993,520.66
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: KPI + Chart + Ops Grid -->
+  <div class="center">
+
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+      <div class="kpi-cell">
+        <div class="kpi-label">账户净值 NAV</div>
+        <div class="kpi-value">¥993,520</div>
+        <div class="kpi-change neg">▼ -0.05%</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">可用资金</div>
+        <div class="kpi-value">¥993,520</div>
+        <div class="kpi-change neu">100% cash</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">持仓</div>
+        <div class="kpi-value">0</div>
+        <div class="kpi-change neu">已清仓</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">WF Sharpe</div>
+        <div class="kpi-value">0.8659</div>
+        <div class="kpi-change pos">CORE3+dv_ttm</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">今日信号</div>
+        <div class="kpi-value">--</div>
+        <div class="kpi-change neu">PT暂停</div>
+      </div>
+    </div>
+
+    <!-- Inline sparkline chart -->
+    <div class="chart-area">
+      <div class="chart-header">
+        <div class="chart-title">NAV 走势 (30日)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="chart-tabs">
+            <button class="chart-tab">7D</button>
+            <button class="chart-tab active">30D</button>
+            <button class="chart-tab">90D</button>
+            <button class="chart-tab">1Y</button>
+          </div>
+        </div>
+      </div>
+      <!-- SVG sparkline (simulated) -->
+      <svg class="sparkline-svg" viewBox="0 0 600 60" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="navGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#06b6d4" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0,40 L20,38 L40,35 L60,36 L80,30 L100,28 L120,32 L140,25 L160,22 L180,26 L200,20 L220,18 L240,22 L260,19 L280,15 L300,18 L320,22 L340,20 L360,24 L380,26 L400,28 L420,25 L440,27 L460,30 L480,28 L500,32 L520,35 L540,33 L560,36 L580,38 L600,40" fill="url(#navGrad)" stroke="none"/>
+        <path d="M0,40 L20,38 L40,35 L60,36 L80,30 L100,28 L120,32 L140,25 L160,22 L180,26 L200,20 L220,18 L240,22 L260,19 L280,15 L300,18 L320,22 L340,20 L360,24 L380,26 L400,28 L420,25 L440,27 L460,30 L480,28 L500,32 L520,35 L540,33 L560,36 L580,38 L600,40" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+        <!-- Drawdown shading -->
+        <path d="M460,30 L480,28 L500,32 L520,35 L540,33 L560,36 L580,38 L600,40 L600,60 L460,60 Z" fill="rgba(239,68,68,0.08)"/>
+      </svg>
+    </div>
+
+    <!-- OPS QUICK GRID (velocity style) -->
+    <div class="ops-area">
+      <div class="ops-area-header">
+        <div>
+          <div class="ops-area-title">快速操作 — 32 后端入口</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px">
+            VARIANT B · 交易员速度 · 1键触发低风险 / CRIT需三锁
+          </div>
+        </div>
+        <div class="view-toggle">
+          <button class="vt-btn active">全部</button>
+          <button class="vt-btn">交易</button>
+          <button class="vt-btn">系统</button>
+          <button class="vt-btn">数据</button>
+          <button class="vt-btn">审计</button>
+        </div>
+      </div>
+
+      <div class="quick-grid">
+        <!-- Trading Ops -->
+        <button class="quick-btn tier-low" onclick="fireQuick('signal_trigger')">
+          <span class="qb-icon">⚡</span>
+          <span class="qb-name">触发信号计算</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <button class="quick-btn tier-crit disabled" data-tip="LL-183后锁定" onclick="fireQuick('execute')">
+          <span class="qb-icon">🚀</span>
+          <span class="qb-name">执行交易</span>
+          <span class="qb-tier">CRIT · 三锁</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('cancel_stale')">
+          <span class="qb-icon">✕</span>
+          <span class="qb-name">撤销挂单</span>
+          <span class="qb-tier">LOW · 1键+撤销</span>
+        </button>
+        <button class="quick-btn tier-crit" onclick="openConfirm('emergency')">
+          <span class="qb-icon">🆘</span>
+          <span class="qb-name">紧急全平</span>
+          <span class="qb-tier">CRIT · 三锁</span>
+        </button>
+        <button class="quick-btn tier-med" onclick="fireQuick('pause')">
+          <span class="qb-icon">⏸️</span>
+          <span class="qb-name">暂停交易</span>
+          <span class="qb-tier">MED · 确认</span>
+        </button>
+        <button class="quick-btn tier-med" onclick="fireQuick('resume')">
+          <span class="qb-icon">▶️</span>
+          <span class="qb-name">恢复交易</span>
+          <span class="qb-tier">MED · 确认</span>
+        </button>
+        <!-- Env + System -->
+        <button class="quick-btn tier-crit" onclick="openConfirm('envflip')">
+          <span class="qb-icon">🔀</span>
+          <span class="qb-name">环境切换</span>
+          <span class="qb-tier">CRIT · 三锁+30s</span>
+        </button>
+        <button class="quick-btn tier-med" onclick="fireQuick('servy_restart')">
+          <span class="qb-icon">🔄</span>
+          <span class="qb-name">服务重启</span>
+          <span class="qb-tier">MED · 选择服务</span>
+        </button>
+        <button class="quick-btn tier-med" onclick="fireQuick('schtask')">
+          <span class="qb-icon">🗓️</span>
+          <span class="qb-name">计划任务</span>
+          <span class="qb-tier">MED · 管理</span>
+        </button>
+        <button class="quick-btn tier-high" onclick="openConfirm('l4approve')">
+          <span class="qb-icon">✅</span>
+          <span class="qb-name">L4 STAGED 审批</span>
+          <span class="qb-tier">HIGH · 原因+重认证</span>
+        </button>
+        <!-- Data Ops -->
+        <button class="quick-btn tier-low" onclick="fireQuick('pull_tushare')">
+          <span class="qb-icon">📥</span>
+          <span class="qb-name">拉取 Tushare</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('pull_baostock')">
+          <span class="qb-icon">📥</span>
+          <span class="qb-name">拉取 Baostock</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('lifecycle')">
+          <span class="qb-icon">🔁</span>
+          <span class="qb-name">因子生命周期</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('reconcile')">
+          <span class="qb-icon">⚖️</span>
+          <span class="qb-name">对账检查</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('backup')">
+          <span class="qb-icon">💾</span>
+          <span class="qb-name">DB 备份</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+        <!-- Audit Ops -->
+        <button class="quick-btn tier-low" onclick="fireQuick('ll_sediment')">
+          <span class="qb-icon">📝</span>
+          <span class="qb-name">LL 沉淀</span>
+          <span class="qb-tier">LOW · 表单</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('adr_create')">
+          <span class="qb-icon">📐</span>
+          <span class="qb-name">创建 ADR</span>
+          <span class="qb-tier">LOW · 表单</span>
+        </button>
+        <button class="quick-btn tier-low" onclick="fireQuick('news_pull')">
+          <span class="qb-icon">📰</span>
+          <span class="qb-name">拉取新闻</span>
+          <span class="qb-tier">LOW · 1键</span>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- end center -->
+
+  <!-- RIGHT: STREAMING LOGS -->
+  <div class="log-panel">
+    <div class="log-header">
+      <div class="log-title">
+        实时日志
+        <span class="live-badge"><span class="live-dot"></span>SSE</span>
+      </div>
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px">Redis Streams → /api/streams/*</div>
+    </div>
+    <div class="log-tabs">
+      <button class="log-tab active">全部</button>
+      <button class="log-tab">交易</button>
+      <button class="log-tab">风控</button>
+      <button class="log-tab">系统</button>
+    </div>
+    <div class="log-feed" id="logFeed">
+
+      <div class="log-entry new" style="background:rgba(239,68,68,0.05)">
+        <span class="log-time">18:47:33</span>
+        <span class="log-text error">⛔ RiskFrameworkHealth FAIL — exit code 1</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">18:45:12</span>
+        <span class="log-text warn">⚠ DataQualityCheck 超时 — 第3次复现</span>
+      </div>
+      <div class="log-sep"></div>
+      <div class="log-entry">
+        <span class="log-time">18:00:01</span>
+        <span class="log-text success">✓ DailyIC 触发 — 84 rows · 1.9s</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">17:35:00</span>
+        <span class="log-text info">ℹ PTAudit — 0 findings · 5 checks PASS</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">17:30:01</span>
+        <span class="log-text success">✓ moneyflow pull — 5180 rows</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">16:30:00</span>
+        <span class="log-text info">ℹ signal_phase Beat — TOP_N=20 · SN b=0.50</span>
+      </div>
+      <div class="log-sep"></div>
+      <div class="log-entry">
+        <span class="log-time">09:43:12</span>
+        <span class="log-text error">⛔ LL-183 emergency_close 触发 — 18持仓</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">09:42:58</span>
+        <span class="log-text error">⛔ LL-183 dry_run gate miss detected</span>
+      </div>
+      <div class="log-entry">
+        <span class="log-time">09:31:02</span>
+        <span class="log-text warn">⚠ execute_phase triggered — dry_run=False</span>
+      </div>
+      <div class="log-sep"></div>
+      <div class="log-entry">
+        <span class="log-time">昨日 19:00</span>
+        <span class="log-text success">✓ factor_lifecycle Beat — 4 CORE OK · dv_ttm ratio=0.517</span>
+      </div>
+
+    </div>
+  </div><!-- end log-panel -->
+
+</div><!-- end main -->
+
+<!-- ===== COMMAND PALETTE ===== -->
+<div class="cmd-overlay" id="cmdOverlay">
+  <div class="cmd-palette">
+    <div class="cmd-input-wrap">
+      <span class="cmd-search-icon">⌕</span>
+      <input class="cmd-input" id="cmdInput" placeholder="输入命令、操作、股票代码…" oninput="filterCommands(this.value)" />
+      <span class="cmd-esc" onclick="closeCmdPalette()">ESC</span>
+    </div>
+    <div class="cmd-list" id="cmdList">
+      <div class="cmd-group-label">CRIT 操作</div>
+      <div class="cmd-item"><span class="cmd-item-icon">🚀</span><div class="cmd-item-text"><div class="cmd-item-name">执行交易 (Execute Phase)</div><div class="cmd-item-desc">需三锁验证 · LL-183 attack surface</div></div><span class="cmd-item-tier tier-crit" style="background:rgba(239,68,68,0.15);color:#f87171;padding:2px 6px;border-radius:9999px;font-size:.6rem;font-weight:700">CRIT</span></div>
+      <div class="cmd-item"><span class="cmd-item-icon">🔀</span><div class="cmd-item-text"><div class="cmd-item-name">环境切换 paper↔live</div><div class="cmd-item-desc">三锁+30s冷却+DingTalk</div></div><span class="cmd-item-tier tier-crit" style="background:rgba(239,68,68,0.15);color:#f87171;padding:2px 6px;border-radius:9999px;font-size:.6rem;font-weight:700">CRIT</span></div>
+      <div class="cmd-item"><span class="cmd-item-icon">🆘</span><div class="cmd-item-text"><div class="cmd-item-name">紧急全平 (emergency_close)</div><div class="cmd-item-desc">所有持仓市价清仓</div></div><span class="cmd-item-tier tier-crit" style="background:rgba(239,68,68,0.15);color:#f87171;padding:2px 6px;border-radius:9999px;font-size:.6rem;font-weight:700">CRIT</span></div>
+      <div class="cmd-group-label">快速操作</div>
+      <div class="cmd-item" onclick="closeCmdPalette();fireQuick('signal_trigger')"><span class="cmd-item-icon">⚡</span><div class="cmd-item-text"><div class="cmd-item-name">触发信号计算</div><div class="cmd-item-desc">signal_phase 手动触发</div></div><span class="cmd-item-hotkey">ctrl+s</span></div>
+      <div class="cmd-item" onclick="closeCmdPalette();fireQuick('cancel_stale')"><span class="cmd-item-icon">✕</span><div class="cmd-item-text"><div class="cmd-item-name">撤销挂单</div><div class="cmd-item-desc">cancel_stale_orders</div></div><span class="cmd-item-hotkey">ctrl+x</span></div>
+      <div class="cmd-item" onclick="closeCmdPalette();fireQuick('pull_tushare')"><span class="cmd-item-icon">📥</span><div class="cmd-item-text"><div class="cmd-item-name">拉取 Tushare 数据</div><div class="cmd-item-desc">今日日线+基本面</div></div></div>
+      <div class="cmd-item" onclick="closeCmdPalette();fireQuick('reconcile')"><span class="cmd-item-icon">⚖️</span><div class="cmd-item-text"><div class="cmd-item-name">运行对账检查</div><div class="cmd-item-desc">DB vs xtquant 持仓差异</div></div></div>
+      <div class="cmd-group-label">导航</div>
+      <div class="cmd-item"><span class="cmd-item-icon">📊</span><div class="cmd-item-text"><div class="cmd-item-name">PT看板</div><div class="cmd-item-desc">NAV / 持仓 / 今日交易</div></div><span class="cmd-item-hotkey">g p</span></div>
+      <div class="cmd-item"><span class="cmd-item-icon">🛡️</span><div class="cmd-item-text"><div class="cmd-item-name">风控监控</div><div class="cmd-item-desc">L0-L5 实时状态</div></div><span class="cmd-item-hotkey">g r</span></div>
+      <div class="cmd-item"><span class="cmd-item-icon">🧪</span><div class="cmd-item-text"><div class="cmd-item-name">因子探索</div><div class="cmd-item-desc">库 / IC / 画像 / 生命周期</div></div><span class="cmd-item-hotkey">g f</span></div>
+    </div>
+    <div class="cmd-footer">
+      <span>↑↓ 选择</span><span>↵ 执行</span><span>ESC 关闭</span><span>⌘K 再打开</span>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL (CRIT 三锁) -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <div class="modal-h" id="confirmTitle">⚠️ 确认操作</div>
+    <div class="modal-body" id="confirmBody">请确认以下操作</div>
+    <div id="phraseSection" style="display:none">
+      <div class="phrase-hint">输入确认短语: <code id="phraseRequired"></code></div>
+      <input class="phrase-input" id="phraseInput" oninput="checkModalPhrase()" />
+    </div>
+    <div id="cooldownSection" style="display:none;margin-top:10px">
+      <div style="height:3px;background:rgba(239,68,68,0.15);border-radius:9999px;overflow:hidden">
+        <div id="cooldownBar" style="height:100%;background:var(--danger);width:100%;transition:width linear"></div>
+      </div>
+      <div style="font-size:0.68rem;color:var(--warning);margin-top:4px" id="cooldownText">冷却 5s…</div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-s" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-d" id="confirmBtn" onclick="executeConfirm()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST STACK -->
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+// ===== COMMAND PALETTE =====
+function openCmdPalette() {
+  document.getElementById('cmdOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('cmdInput').focus(), 50);
+}
+function closeCmdPalette() {
+  document.getElementById('cmdOverlay').classList.remove('open');
+  document.getElementById('cmdInput').value = '';
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); }
+  if (e.key === 'Escape') { closeCmdPalette(); closeConfirm(); }
+});
+document.getElementById('cmdOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('cmdOverlay')) closeCmdPalette();
+});
+
+// ===== QUICK FIRE OPS =====
+function fireQuick(name) {
+  const msgs = {
+    signal_trigger: ['⚡ 信号计算已触发', '正在计算 TOP_N=20 信号…', true],
+    cancel_stale:   ['✕ 撤销挂单已发送', '当日未成交订单已撤', true],
+    pause:          ['⏸ 交易已暂停', '已记录 audit_log', false],
+    resume:         ['▶ 交易已恢复', '已记录 audit_log', false],
+    servy_restart:  ['🔄 服务重启中', '预计30秒完成', false],
+    schtask:        ['🗓 计划任务管理', '打开任务管理器…', false],
+    pull_tushare:   ['📥 Tushare 拉取已排队', '今日日线数据', true],
+    pull_baostock:  ['📥 Baostock 拉取已排队', '5min K线数据', true],
+    lifecycle:      ['🔁 因子生命周期运行', '4 CORE因子检查中…', true],
+    reconcile:      ['⚖️ 对账检查已开始', 'DB vs xtquant 比对中', false],
+    backup:         ['💾 DB备份已触发', '预计3分钟完成', true],
+    ll_sediment:    ['📝 LL 条目表单', '打开 LL 新增表单…', false],
+    adr_create:     ['📐 ADR 创建表单', '打开 ADR 新增表单…', false],
+    news_pull:      ['📰 新闻拉取', '6个来源 · 拉取中…', true],
+  };
+  const [title, sub, canUndo] = msgs[name] || [name, '', false];
+  addToast('success', title, sub, canUndo);
+  // Simulate adding to log feed
+  addLogEntry('info', `▶ ${title}`);
+}
+
+// ===== CONFIRM MODAL =====
+let currentOp = null;
+function openConfirm(op) {
+  currentOp = op;
+  const configs = {
+    envflip: { title: '⚠️ 环境切换 paper↔live', body: 'CRIT操作：EXECUTION_MODE 将切换。需三锁验证。', phrase: 'FLIP-TO-PAPER-20260518', cooldown: true },
+    emergency: { title: '🆘 紧急全平', body: '将市价卖出所有持仓。当前0持仓，此操作无效果。', phrase: 'CONFIRM-LIQUIDATE-20260518', cooldown: true },
+    l4approve: { title: '✅ L4 STAGED 审批', body: '确认审批 L4 STAGED 事件？请输入审批原因：', phrase: null, cooldown: false },
+  };
+  const c = configs[op] || { title: '确认', body: '确认执行操作?', phrase: null, cooldown: false };
+  document.getElementById('confirmTitle').textContent = c.title;
+  document.getElementById('confirmBody').textContent = c.body;
+
+  const phraseSection = document.getElementById('phraseSection');
+  if (c.phrase) {
+    phraseSection.style.display = 'block';
+    document.getElementById('phraseRequired').textContent = c.phrase;
+    document.getElementById('phraseInput').value = '';
+    document.getElementById('confirmBtn').disabled = true;
+  } else {
+    phraseSection.style.display = 'none';
+    document.getElementById('confirmBtn').disabled = false;
+  }
+
+  if (c.cooldown) {
+    document.getElementById('cooldownSection').style.display = 'block';
+    startCooldown(5);
+  } else {
+    document.getElementById('cooldownSection').style.display = 'none';
+  }
+
+  document.getElementById('confirmModal').classList.add('open');
+}
+function closeConfirm() {
+  document.getElementById('confirmModal').classList.remove('open');
+  currentOp = null;
+}
+function checkModalPhrase() {
+  const phrases = { envflip: 'FLIP-TO-PAPER-20260518', emergency: 'CONFIRM-LIQUIDATE-20260518' };
+  const val = document.getElementById('phraseInput').value;
+  const exp = phrases[currentOp] || '';
+  const match = val === exp;
+  document.getElementById('phraseInput').classList.toggle('valid', match);
+  if (!cooldownActive) document.getElementById('confirmBtn').disabled = !match;
+}
+let cooldownActive = false;
+function startCooldown(secs) {
+  cooldownActive = true;
+  document.getElementById('confirmBtn').disabled = true;
+  const bar = document.getElementById('cooldownBar');
+  const txt = document.getElementById('cooldownText');
+  bar.style.transition = 'none'; bar.style.width = '100%';
+  setTimeout(() => {
+    bar.style.transition = `width ${secs}s linear`;
+    bar.style.width = '0%';
+  }, 50);
+  let remaining = secs;
+  const iv = setInterval(() => {
+    remaining--;
+    txt.textContent = remaining > 0 ? `冷却 ${remaining}s…` : '冷却完成';
+    if (remaining <= 0) {
+      clearInterval(iv);
+      cooldownActive = false;
+      const phraseEl = document.getElementById('phraseInput');
+      const phrases = { envflip: 'FLIP-TO-PAPER-20260518', emergency: 'CONFIRM-LIQUIDATE-20260518' };
+      const exp = phrases[currentOp] || '';
+      if (!exp || phraseEl.value === exp) {
+        document.getElementById('confirmBtn').disabled = false;
+      }
+    }
+  }, 1000);
+}
+function executeConfirm() {
+  const msgs = {
+    envflip: ['🔀 环境已切换 → PAPER', 'DingTalk推送 · audit_log已记录'],
+    emergency: ['🆘 紧急全平已执行', '0持仓无操作 · audit_log已记录'],
+    l4approve: ['✅ L4 STAGED 已审批', '风控事件队列更新'],
+  };
+  const [t, s] = msgs[currentOp] || ['操作完成', ''];
+  closeConfirm();
+  addToast('success', t, s, false);
+  addLogEntry('success', `✓ ${t}`);
+}
+document.getElementById('confirmModal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('confirmModal')) closeConfirm();
+});
+
+// ===== TOAST =====
+let toastId = 0;
+function addToast(type, title, sub, canUndo) {
+  const id = ++toastId;
+  const stack = document.getElementById('toastStack');
+  const el = document.createElement('div');
+  el.className = `toast-item toast-${type}`;
+  el.id = `toast-${id}`;
+  el.innerHTML = `
+    <div class="toast-msg">
+      <div class="toast-title">${title}</div>
+      <div class="toast-sub">${sub}</div>
+    </div>
+    ${canUndo ? `<span class="toast-undo" onclick="undoToast(${id})">撤销 10s</span>` : ''}
+    <span class="toast-close" onclick="removeToast(${id})">✕</span>
+  `;
+  stack.appendChild(el);
+  setTimeout(() => removeToast(id), canUndo ? 12000 : 5000);
+}
+function removeToast(id) {
+  document.getElementById(`toast-${id}`)?.remove();
+}
+function undoToast(id) {
+  removeToast(id);
+  addToast('warn', '↺ 操作已撤销', '已在10s内撤销', false);
+}
+
+// ===== LOG FEED SIMULATION =====
+function addLogEntry(type, text) {
+  const feed = document.getElementById('logFeed');
+  const el = document.createElement('div');
+  el.className = 'log-entry new';
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  el.innerHTML = `<span class="log-time">${now}</span><span class="log-text ${type}">${text}</span>`;
+  feed.prepend(el);
+}
+
+// Simulate streaming log entries
+const fakeEvents = [
+  ['info',    'ℹ beat:heartbeat — Celery OK'],
+  ['success', '✓ Redis ping OK — 0.8ms'],
+  ['info',    'ℹ qm:factor:lifecycle — check scheduled'],
+  ['warn',    '⚠ dv_ttm ratio=0.517 < 0.8 — WARNING'],
+  ['success', '✓ DB freshness check — klines_daily 今日最新'],
+];
+let evtIdx = 0;
+setInterval(() => {
+  const [type, text] = fakeEvents[evtIdx % fakeEvents.length];
+  addLogEntry(type, text);
+  evtIdx++;
+}, 4000);
+</script>
+</body>
+</html>
