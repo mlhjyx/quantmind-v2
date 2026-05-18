@@ -363,7 +363,12 @@ class LiteLLMRouter:
         tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0) if usage is not None else 0
         tokens_out = int(getattr(usage, "completion_tokens", 0) or 0) if usage is not None else 0
 
-        cost_usd = _extract_cost_usd(result)
+        cost_usd = _extract_cost_usd(
+            result,
+            actual_model=actual_model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
 
         is_fallback = _is_fallback(actual_model=actual_model, primary_alias=primary_alias)
 
@@ -379,19 +384,84 @@ class LiteLLMRouter:
         )
 
 
-def _extract_cost_usd(result: Any) -> Decimal:
-    """从 LiteLLM ChatCompletion 提取 cost_usd (Decimal).
+# F-S7-001 fix (2026-05-19): DeepSeek pricing 真值表 — LiteLLM model_cost.json 不含
+# DeepSeek, 导致 _hidden_params.response_cost=None, 跨 570 calls cost_usd=0 silent
+# drift. 走 fallback compute from tokens × per-token rate (cache-miss upper bound).
+# 单位: USD per single token (input / output 区分).
+#
+# 来源: DeepSeek 官方 pricing (2026, cache-miss 上限):
+#   - deepseek-chat (V4-Flash): $0.07/M input, $0.27/M output
+#   - deepseek-reasoner (V4-Pro): $0.55/M input, $2.19/M output
+#
+# 注: cache-hit 折扣 ($0.014/M / $0.14/M input) 真**不**纳入 fallback —
+# 反 underestimate audit cost. Cache-hit 真值需 LiteLLM 真返 response_cost
+# (本 fallback path 仅 LiteLLM 缺值时触发).
+_MODEL_PRICING_USD_PER_TOKEN: dict[str, tuple[Decimal, Decimal]] = {
+    # alias / underlying name → (input_rate, output_rate)
+    "deepseek-chat": (Decimal("0.00000007"), Decimal("0.00000027")),
+    "deepseek-v4-flash": (Decimal("0.00000007"), Decimal("0.00000027")),
+    "deepseek/deepseek-chat": (Decimal("0.00000007"), Decimal("0.00000027")),
+    "deepseek-reasoner": (Decimal("0.00000055"), Decimal("0.00000219")),
+    "deepseek-v4-pro": (Decimal("0.00000055"), Decimal("0.00000219")),
+    "deepseek/deepseek-reasoner": (Decimal("0.00000055"), Decimal("0.00000219")),
+}
 
-    LiteLLM 走 `_hidden_params` 注入 `response_cost` (USD float). 缺时返 0.
+
+def _extract_cost_usd(
+    result: Any,
+    *,
+    actual_model: str = "",
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+) -> Decimal:
+    """从 LiteLLM ChatCompletion 提取 cost_usd (Decimal) — F-S7-001 修复 (2026-05-19).
+
+    Strategy:
+        1. 优先走 LiteLLM `_hidden_params.response_cost` (USD float) — 真值真准
+        2. response_cost=None 时 fallback 计算 tokens × per-token rate
+           (DeepSeek 不在 LiteLLM model_cost.json, 走 _MODEL_PRICING_USD_PER_TOKEN)
+        3. 模型不在 pricing table 时返 0 (反 silent miss → 走 audit alert)
+
+    Args:
+        result: LiteLLM ChatCompletion 真返.
+        actual_model: 真返 model identifier (e.g. "deepseek/deepseek-chat" 或
+                      "deepseek-v4-flash"), 用于 fallback 路径查 pricing.
+        tokens_in: prompt tokens (供 fallback 计算).
+        tokens_out: completion tokens (供 fallback 计算).
+
+    Returns:
+        Decimal cost in USD. 0 含义 "已知模型 0 token 计算 = 0" OR
+        "未知模型 silent miss" (后者必走 audit alert path, 反 LL-101 cost-tracking
+        broken sustained).
     """
+    # Path 1: LiteLLM 真返 response_cost (准 — 走 model_cost.json)
     hidden = getattr(result, "_hidden_params", None) or {}
     cost = hidden.get("response_cost") if isinstance(hidden, dict) else None
-    if cost is None:
+    if cost is not None:
+        try:
+            return Decimal(str(cost))
+        except (ValueError, ArithmeticError):
+            pass  # fall through to fallback
+
+    # Path 2: fallback compute from tokens × per-token rate (F-S7-001 修复)
+    if tokens_in == 0 and tokens_out == 0:
+        return Decimal("0")  # 0 token = 0 cost (real, not silent miss)
+
+    # Lookup pricing — 优先 exact match, 否则 substring (兼容 "deepseek/xxx" prefix)
+    pricing: tuple[Decimal, Decimal] | None = _MODEL_PRICING_USD_PER_TOKEN.get(actual_model)
+    if pricing is None:
+        for key, rates in _MODEL_PRICING_USD_PER_TOKEN.items():
+            if key in actual_model or actual_model in key:
+                pricing = rates
+                break
+
+    if pricing is None:
+        # silent miss — unknown model, 沿用旧体例返 0. 真正修复路径走 audit alert
+        # (LL-101 cost-tracking broken sustained — model 真新增需同步 table)
         return Decimal("0")
-    try:
-        return Decimal(str(cost))
-    except (ValueError, ArithmeticError):
-        return Decimal("0")
+
+    input_rate, output_rate = pricing
+    return (Decimal(tokens_in) * input_rate) + (Decimal(tokens_out) * output_rate)
 
 
 PRIMARY_MODEL_SUBSTRINGS: dict[str, str] = {

@@ -527,3 +527,80 @@ def test_yaml_routing_dispatches_to_v4_flash_for_news_classify(
     )
     # captured["model"] 真 alias (沿用 sub-PR 8a-followup-A BUG #1 体例 sustained)
     assert captured["model"] == "deepseek-v4-flash"
+
+
+# ---------------------------------------------------------------------------
+# F-S7-001 P0 regression (2026-05-19) — DeepSeek pricing fallback
+# 修复前: LiteLLM model_cost.json 不含 DeepSeek → _hidden_params.response_cost=None
+# → cost_usd=0 silent drift across 570 calls (audit Subagent I supplement P0 NEW)
+# 修复后: tokens × per-token rate fallback compute (cache-miss upper bound)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_cost_litellm_provided_passthrough() -> None:
+    """LiteLLM 真返 response_cost 时优先走该路径 (反 fallback 篡改)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params={"response_cost": 0.00042})
+    cost = _extract_cost_usd(
+        result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500
+    )
+    assert cost == Decimal("0.00042"), (
+        "LiteLLM 真返 response_cost 真优先生效 (反 fallback 篡改)"
+    )
+
+
+def test_extract_cost_fallback_deepseek_v4_flash() -> None:
+    """V4-Flash fallback compute: $0.07/M in + $0.27/M out (cache-miss upper bound)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500
+    )
+    # 1000 × 0.00000007 + 500 × 0.00000027 = 0.00007 + 0.000135 = 0.000205
+    assert cost == Decimal("0.000205"), f"V4-Flash 1000/500 expected $0.000205 got {cost}"
+
+
+def test_extract_cost_fallback_deepseek_v4_pro() -> None:
+    """V4-Pro fallback compute: $0.55/M in + $2.19/M out (reasoner pricing)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result, actual_model="deepseek-reasoner", tokens_in=2000, tokens_out=1000
+    )
+    # 2000 × 0.00000055 + 1000 × 0.00000219 = 0.0011 + 0.00219 = 0.00329
+    assert cost == Decimal("0.00329"), f"V4-Pro 2000/1000 expected $0.00329 got {cost}"
+
+
+def test_extract_cost_substring_match_underlying_name() -> None:
+    """underlying name (e.g. deepseek/deepseek-chat) 走 substring match path."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result, actual_model="deepseek/deepseek-chat", tokens_in=100, tokens_out=50
+    )
+    # 100 × 0.00000007 + 50 × 0.00000027 = 0.000007 + 0.0000135 = 0.0000205
+    assert cost == Decimal("0.0000205")
+
+
+def test_extract_cost_zero_tokens_returns_zero() -> None:
+    """0 token = 0 cost (真值, 反 silent miss)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(result, actual_model="deepseek-chat", tokens_in=0, tokens_out=0)
+    assert cost == Decimal("0")
+
+
+def test_extract_cost_unknown_model_silent_miss_zero() -> None:
+    """未知模型 silent miss 返 0 (沿用旧体例, 真正修复路径走 audit alert)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result, actual_model="gpt-4o-unknown", tokens_in=1000, tokens_out=500
+    )
+    assert cost == Decimal("0"), "未知模型 silent miss 返 0 (沿用旧体例)"
