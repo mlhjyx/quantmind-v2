@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantMind-V2 — Variant A: Safety-First Control Center</title>
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0a0e1a;
+    color: #f9fafb;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== DESIGN TOKENS ===== */
+  :root {
+    --bg-base:      #0a0e1a;
+    --bg-surface:   #111827;
+    --bg-elevated:  #1f2937;
+    --glass-bg:     rgba(31, 41, 55, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --primary:      #06b6d4;
+    --primary-dark: #0891b2;
+    --success:      #10b981;
+    --warning:      #f59e0b;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --text-muted:   #6b7280;
+    --border:       rgba(75, 85, 99, 0.5);
+    --border-subtle: rgba(75, 85, 99, 0.3);
+    --shadow-glass: 0 8px 32px 0 rgba(0,0,0,0.37);
+    --glow-cyan:    0 0 20px rgba(6,182,212,0.3);
+    --glow-red:     0 0 20px rgba(239,68,68,0.4);
+    --radius-sm:    4px;
+    --radius-md:    8px;
+    --radius-lg:    12px;
+  }
+
+  /* ===== ENV BANNER ===== */
+  .env-banner {
+    width: 100%;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    position: sticky;
+    top: 0;
+  }
+  .env-banner.live {
+    background: rgba(239, 68, 68, 0.15);
+    border-bottom-color: rgba(239, 68, 68, 0.5);
+    animation: pulse-red 2s ease-in-out infinite;
+  }
+  .env-banner.paper {
+    background: rgba(16, 185, 129, 0.1);
+    border-bottom-color: rgba(16, 185, 129, 0.3);
+  }
+  .env-banner.mismatch {
+    background: rgba(245, 158, 11, 0.12);
+    border-bottom-color: rgba(245, 158, 11, 0.4);
+  }
+  @keyframes pulse-red {
+    0%, 100% { background: rgba(239,68,68,0.15); }
+    50%       { background: rgba(239,68,68,0.25); }
+  }
+  .env-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.7rem;
+  }
+  .env-badge.paper { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); }
+  .env-badge.live  { background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid rgba(239,68,68,0.5); }
+  .env-detail { color: var(--text-secondary); font-weight: 400; }
+  .env-detail span { color: var(--text-primary); font-weight: 500; margin: 0 4px; }
+  .env-warning { color: var(--warning); font-size: 0.7rem; display: flex; align-items: center; gap: 4px; }
+
+  /* ===== TOP NAV ===== */
+  .topnav {
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    height: 52px;
+    background: rgba(17, 24, 39, 0.95);
+    border-bottom: 1px solid var(--border-subtle);
+    gap: 32px;
+    backdrop-filter: blur(12px);
+  }
+  .logo { font-size: 1rem; font-weight: 700; color: var(--primary); letter-spacing: -0.02em; white-space: nowrap; }
+  .logo span { color: var(--text-secondary); font-weight: 400; }
+  .nav-tabs { display: flex; gap: 2px; }
+  .nav-tab {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    background: none;
+  }
+  .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+  .nav-tab.active { color: var(--primary); background: rgba(6,182,212,0.1); }
+  .nav-spacer { flex: 1; }
+  .nav-status { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.6); }
+  .dot.red   { background: var(--danger);  box-shadow: 0 0 6px rgba(239,68,68,0.6); }
+  .dot.amber { background: var(--warning); box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ===== LEFT PANEL ===== */
+  .left-panel {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 20px 24px;
+    gap: 16px;
+  }
+
+  /* ===== PAGE HEADER ===== */
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .page-title { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
+  .page-subtitle { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .kbd {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: var(--radius-sm);
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    font-size: 0.7rem; font-family: monospace; color: var(--text-secondary);
+  }
+
+  /* ===== VARIANT BADGE ===== */
+  .variant-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 9999px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    background: rgba(239,68,68,0.15); color: #f87171;
+    border: 1px solid rgba(239,68,68,0.3);
+    margin-bottom: 4px;
+  }
+
+  /* ===== SAFETY LEGEND ===== */
+  .safety-legend {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    padding: 10px 16px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    font-size: 0.72rem;
+  }
+  .legend-label { color: var(--text-muted); font-weight: 500; margin-right: 4px; }
+  .tier-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 9999px; font-weight: 600; font-size: 0.68rem;
+  }
+  .tier-low  { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+  .tier-med  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+  .tier-high { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+  .tier-crit { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+
+  /* ===== OPS GRID ===== */
+  .ops-section { display: flex; flex-direction: column; gap: 10px; }
+  .section-label {
+    font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+
+  .ops-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+  }
+
+  /* ===== OP CARD ===== */
+  .op-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .op-card:hover { border-color: var(--border); }
+  .op-card.crit { border-left: 3px solid var(--danger); }
+  .op-card.high { border-left: 3px solid var(--warning); }
+  .op-card.med  { border-left: 3px solid var(--info); }
+  .op-card.low  { border-left: 3px solid var(--success); }
+  .op-card.disabled { opacity: 0.45; pointer-events: none; }
+
+  .op-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .op-name { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+  .op-desc { font-size: 0.7rem; color: var(--text-muted); line-height: 1.4; }
+
+  .op-meta { display: flex; align-items: center; gap: 6px; }
+  .op-locks { display: flex; gap: 3px; font-size: 0.65rem; }
+  .lock-icon { color: var(--text-muted); }
+  .lock-icon.active { color: var(--warning); }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 6px 14px; border-radius: var(--radius-sm);
+    font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    border: none; transition: all 0.15s; white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); box-shadow: var(--glow-cyan); }
+  .btn-danger  { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
+  .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.3); box-shadow: var(--glow-red); }
+  .btn-secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { color: var(--text-primary); border-color: var(--primary); }
+  .btn-success { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+  .btn-success:hover:not(:disabled) { background: rgba(16,185,129,0.3); }
+  .btn-sm { padding: 4px 10px; font-size: 0.72rem; }
+  .btn-full { width: 100%; }
+
+  /* CRIT button special treatment */
+  .btn-crit {
+    background: rgba(239,68,68,0.1); color: #f87171;
+    border: 1px solid rgba(239,68,68,0.35);
+    position: relative;
+  }
+  .btn-crit::before {
+    content: '🔒';
+    font-size: 0.65rem;
+  }
+  .btn-crit:hover:not(:disabled) { background: rgba(239,68,68,0.2); box-shadow: var(--glow-red); }
+
+  /* ===== CONFIRM MODAL DEMO ===== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: var(--shadow-glass);
+    transform: translateY(8px); transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .modal-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; flex-shrink: 0;
+    background: rgba(239,68,68,0.15); color: #f87171;
+  }
+  .modal-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+  .modal-subtitle { font-size: 0.78rem; color: var(--text-secondary); margin-top: 3px; }
+
+  .modal-section {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    font-size: 0.8rem;
+  }
+  .modal-section-label { font-size: 0.68rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .env-check { display: flex; align-items: center; gap: 8px; }
+  .env-check-icon { font-size: 1rem; }
+  .env-check-text { color: var(--text-primary); font-weight: 500; }
+
+  .phrase-input {
+    width: 100%; padding: 8px 12px;
+    background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-primary);
+    font-size: 0.82rem; font-family: monospace;
+    margin-top: 6px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .phrase-input:focus { border-color: var(--primary); }
+  .phrase-input.valid { border-color: var(--success); }
+  .phrase-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+  .phrase-hint code { color: var(--primary); font-family: monospace; background: rgba(6,182,212,0.1); padding: 1px 5px; border-radius: 3px; }
+
+  .cooldown-bar {
+    height: 4px; background: var(--border-subtle);
+    border-radius: 9999px; overflow: hidden; margin-top: 8px;
+  }
+  .cooldown-fill {
+    height: 100%; background: var(--danger);
+    border-radius: 9999px;
+    animation: cooldown 5s linear forwards;
+  }
+  @keyframes cooldown { from { width: 100%; } to { width: 0%; } }
+  .cooldown-label { font-size: 0.7rem; color: var(--warning); margin-top: 4px; }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ===== RIGHT PANEL — AUDIT LOG ===== */
+  .right-panel {
+    border-left: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-surface);
+  }
+  .audit-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .audit-title { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+  .audit-subtitle { font-size: 0.68rem; color: var(--text-muted); }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.6); animation: blink 1.5s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .audit-filters { padding: 8px 12px; display: flex; gap: 4px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .filter-chip {
+    padding: 2px 8px; border-radius: 9999px;
+    font-size: 0.65rem; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border-subtle); background: transparent;
+    color: var(--text-muted); transition: all 0.15s; font-family: inherit;
+  }
+  .filter-chip:hover { color: var(--text-primary); border-color: var(--border); }
+  .filter-chip.active { background: rgba(6,182,212,0.15); color: var(--primary); border-color: rgba(6,182,212,0.4); }
+
+  .audit-log { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .audit-entry {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .audit-entry:hover { background: rgba(255,255,255,0.03); }
+  .audit-entry:last-child { border-bottom: none; }
+  .audit-ts { font-size: 0.65rem; color: var(--text-muted); font-family: monospace; }
+  .audit-actor { font-size: 0.65rem; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin: 0 4px; }
+  .actor-cc { background: rgba(6,182,212,0.15); color: var(--primary); }
+  .actor-user { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .actor-beat { background: rgba(245,158,11,0.12); color: #fbbf24; }
+  .actor-system { background: rgba(107,114,128,0.2); color: var(--text-secondary); }
+  .audit-action { font-size: 0.78rem; color: var(--text-primary); margin-top: 3px; font-weight: 500; }
+  .audit-meta { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; font-family: monospace; }
+  .severity-dot {
+    display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 4px; vertical-align: middle;
+  }
+  .sev-info  { background: var(--info); }
+  .sev-warn  { background: var(--warning); }
+  .sev-error { background: var(--danger); }
+  .sev-crit  { background: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.7); }
+
+  /* ===== LOCKED STATE OVERLAY ===== */
+  .lockout-banner {
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.35);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 0.8rem;
+  }
+  .lockout-icon { font-size: 1.2rem; flex-shrink: 0; }
+  .lockout-text { color: #fca5a5; }
+  .lockout-reason { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
+
+  /* ===== SCHTASK TABLE ===== */
+  .schtask-table { width: 100%; border-collapse: collapse; }
+  .schtask-table th { font-size: 0.68rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+  .schtask-table td { font-size: 0.78rem; padding: 7px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); }
+  .schtask-table tr:last-child td { border-bottom: none; }
+  .schtask-table tr:hover td { background: rgba(255,255,255,0.03); }
+  .status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 0.68rem; font-weight: 600; }
+  .pill-ok  { background: rgba(16,185,129,0.15); color: #34d399; }
+  .pill-dis { background: rgba(239,68,68,0.15);  color: #f87171; }
+  .pill-warn{ background: rgba(245,158,11,0.15); color: #fbbf24; }
+
+  /* ===== GLASS CARD ===== */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.4); border-radius: 9999px; }
+
+  /* ===== TOOLTIP ===== */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 0.68rem; padding: 4px 8px;
+    border-radius: var(--radius-sm); white-space: nowrap; z-index: 999; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== ENV BANNER (always visible, anti-LL-183) ===== -->
+<div class="env-banner mismatch" id="envBanner">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span class="env-badge live">⚠ LIVE</span>
+    <span class="env-detail">
+      EXECUTION_MODE=<span>live</span> · LIVE_TRADING_DISABLED=<span style="color:#fca5a5">false</span>
+      · PT_TOP_N=<span>20</span> · QMT=<span>81001102</span>
+    </span>
+  </div>
+  <div class="env-warning">
+    ⚠ RED LINE — LL-183 post-incident state. Execute phase gated. Verify intentional before any op.
+  </div>
+</div>
+
+<!-- ===== TOP NAV ===== -->
+<nav class="topnav">
+  <div class="logo">QuantMind<span>-V2</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active">控制中枢</button>
+    <button class="nav-tab">PT看板</button>
+    <button class="nav-tab">风控监控</button>
+    <button class="nav-tab">交易审计</button>
+    <button class="nav-tab">因子探索</button>
+    <button class="nav-tab">系统健康</button>
+  </div>
+  <div class="nav-spacer"></div>
+  <div class="nav-status">
+    <span class="dot amber"></span>警戒态
+    <span style="color:var(--border-subtle)">|</span>
+    <span class="dot green"></span>FastAPI
+    <span class="dot green"></span>Celery
+    <span class="dot red"></span>QMT离线
+    <span style="color:var(--border-subtle)">|</span>
+    <span style="font-family:monospace">¥993,520.66</span>
+  </div>
+</nav>
+
+<!-- ===== MAIN LAYOUT ===== -->
+<div class="main-layout">
+
+  <!-- LEFT: CONTROL CENTER -->
+  <div class="left-panel">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div>
+        <div class="variant-badge">VARIANT A — 安全优先</div>
+        <div class="page-title">控制中枢 — Control Center</div>
+        <div class="page-subtitle">32 后端操作 → 前端交互式入口 · Section XI fulfillment</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="openModal('cmd')">
+        <span style="font-size:0.7rem">⌘K</span> 命令面板
+      </button>
+    </div>
+
+    <!-- Lockout Banner (L4 active) -->
+    <div class="lockout-banner">
+      <span class="lockout-icon">🔴</span>
+      <div>
+        <div class="lockout-text">LL-183 后修复待验证 — LIVE_TRADING_DISABLED=false (需改回 true)</div>
+        <div class="lockout-reason">CRIT 操作已禁用直至 env 状态确认。使用"环境切换"按钮或运维 runbook。</div>
+      </div>
+    </div>
+
+    <!-- Safety Legend -->
+    <div class="safety-legend">
+      <span class="legend-label">安全等级:</span>
+      <span class="tier-badge tier-low">LOW — 1键+撤销10s</span>
+      <span class="tier-badge tier-med">MED — 确认弹窗</span>
+      <span class="tier-badge tier-high">HIGH — 原因+重认证</span>
+      <span class="tier-badge tier-crit">CRIT — 三锁 (env+短语+冷却)</span>
+    </div>
+
+    <!-- SECTION 1: 交易操作 -->
+    <div class="ops-section">
+      <div class="section-label">交易操作 Trading Ops</div>
+      <div class="ops-grid">
+
+        <!-- Signal Trigger: LOW -->
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">触发信号计算</div>
+              <div class="op-desc">Signal Phase · 手动 beat 16:30 前触发</div>
+            </div>
+            <span class="tier-badge tier-low" style="flex-shrink:0">LOW</span>
+          </div>
+          <div class="op-meta">
+            <button class="btn btn-success btn-sm btn-full" onclick="fireOp('signal_trigger', 'low')">
+              触发信号
+            </button>
+          </div>
+        </div>
+
+        <!-- Execute Trigger: CRIT (disabled due to lockout) -->
+        <div class="op-card crit disabled" data-tip="CRIT op — env 状态需确认">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">执行交易</div>
+              <div class="op-desc">Execute Phase · schtask 09:31 · LL-183 Attack Surface</div>
+            </div>
+            <span class="tier-badge tier-crit" style="flex-shrink:0">CRIT</span>
+          </div>
+          <div class="op-meta">
+            <div class="op-locks">
+              <span class="lock-icon active">🔒</span>
+              <span style="font-size:0.65rem;color:var(--text-muted)">三锁: env + 短语 + 5s冷却</span>
+            </div>
+          </div>
+          <button class="btn btn-crit btn-full btn-sm" disabled>执行交易 (锁定)</button>
+        </div>
+
+        <!-- Cancel Stale: LOW -->
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">撤销挂单</div>
+              <div class="op-desc">cancel_stale_orders · 当日未成交</div>
+            </div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <button class="btn btn-secondary btn-sm btn-full" onclick="fireOp('cancel_stale', 'low')">撤销挂单</button>
+        </div>
+
+        <!-- Emergency Close: CRIT -->
+        <div class="op-card crit">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">紧急全平</div>
+              <div class="op-desc">emergency_close_all · 0持仓时禁用</div>
+            </div>
+            <span class="tier-badge tier-crit">CRIT</span>
+          </div>
+          <div class="op-meta">
+            <div class="op-locks"><span class="lock-icon active">🔒</span><span style="font-size:0.65rem;color:var(--text-muted)">三锁</span></div>
+          </div>
+          <button class="btn btn-danger btn-full btn-sm" disabled data-tip="0持仓 — 无需执行">
+            🔒 紧急全平 (0持仓)
+          </button>
+        </div>
+
+        <!-- Pause/Resume: MED -->
+        <div class="op-card med">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">暂停 / 恢复交易</div>
+              <div class="op-desc">pauseTrading · resumeTrading</div>
+            </div>
+            <span class="tier-badge tier-med">MED</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <button class="btn btn-secondary btn-sm" onclick="fireOp('pause', 'med')">暂停</button>
+            <button class="btn btn-success btn-sm" onclick="fireOp('resume', 'med')">恢复</button>
+          </div>
+        </div>
+
+        <!-- Dry-Run Toggle: LOW -->
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">Dry-Run 模式</div>
+              <div class="op-desc">--dry-run 标志 · 模拟不实际下单</div>
+            </div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+            <div style="position:relative;width:36px;height:20px">
+              <input type="checkbox" id="dryRunToggle" checked style="opacity:0;width:0;height:0;position:absolute" />
+              <div class="toggle-track" id="toggleTrack" style="position:absolute;inset:0;background:var(--success);border-radius:10px;transition:background .2s;">
+                <div style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;"></div>
+              </div>
+            </div>
+            <span style="font-size:0.78rem;color:var(--success);font-weight:600">Dry-Run ON</span>
+          </label>
+        </div>
+
+      </div><!-- end ops-grid trading -->
+    </div>
+
+    <!-- SECTION 2: 环境 & 系统 -->
+    <div class="ops-section">
+      <div class="section-label">环境 & 系统 System Ops</div>
+      <div class="ops-grid">
+
+        <!-- Env Flip: CRIT -->
+        <div class="op-card crit">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">环境切换</div>
+              <div class="op-desc">paper ↔ live · .env EXECUTION_MODE · LL-183根因</div>
+            </div>
+            <span class="tier-badge tier-crit">CRIT</span>
+          </div>
+          <div class="op-meta">
+            <div class="op-locks"><span class="lock-icon active">🔒🔒🔒</span></div>
+          </div>
+          <button class="btn btn-crit btn-full btn-sm" onclick="openModal('envflip')">
+            环境切换 paper↔live
+          </button>
+        </div>
+
+        <!-- Servy Restart: MED -->
+        <div class="op-card med">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">Servy 服务重启</div>
+              <div class="op-desc">4服务 · FastAPI/Celery/Beat/QMT</div>
+            </div>
+            <span class="tier-badge tier-med">MED</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <button class="btn btn-secondary btn-sm" onclick="fireOp('restart_all','med')">全部重启</button>
+            <button class="btn btn-secondary btn-sm" onclick="openModal('servy')">选择服务</button>
+          </div>
+        </div>
+
+        <!-- Schtask: MED -->
+        <div class="op-card med" style="grid-column: span 2">
+          <div class="op-card-header">
+            <div>
+              <div class="op-name">计划任务管理 (Schtask)</div>
+              <div class="op-desc">19个任务 · 4已禁用 · 启用/禁用需确认</div>
+            </div>
+            <span class="tier-badge tier-med">MED</span>
+          </div>
+          <table class="schtask-table">
+            <thead><tr><th>任务名</th><th>状态</th><th>上次结果</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr>
+                <td style="font-family:monospace;font-size:0.72rem">QuantMind_DailyExecute</td>
+                <td><span class="status-pill pill-dis">已禁用</span></td>
+                <td style="color:var(--text-muted)">LL-183后禁用</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="fireOp('schtask_enable','med')">启用</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:monospace;font-size:0.72rem">QuantMind_DailyIC</td>
+                <td><span class="status-pill pill-ok">就绪</span></td>
+                <td style="color:var(--success)">0 (PASS)</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="fireOp('schtask_disable','med')">禁用</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:monospace;font-size:0.72rem">QuantMind_DataQualityCheck</td>
+                <td><span class="status-pill pill-warn">警告</span></td>
+                <td style="color:var(--warning)">1 (超时)</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="fireOp('diagnose','low')">诊断</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:monospace;font-size:0.72rem">QuantMind_RiskFrameworkHealth</td>
+                <td><span class="status-pill pill-warn">警告</span></td>
+                <td style="color:var(--warning)">1 (错误)</td>
+                <td><button class="btn btn-secondary btn-sm" onclick="fireOp('diagnose','low')">诊断</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SECTION 3: 数据操作 -->
+    <div class="ops-section">
+      <div class="section-label">数据操作 Data Ops</div>
+      <div class="ops-grid">
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div><div class="op-name">强制拉取 Tushare</div><div class="op-desc">日线 / 基本面 / 资金流</div></div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <div style="display:flex;gap:4px">
+            <input type="date" value="2026-05-18" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:4px 8px;font-size:0.72rem;font-family:inherit;" />
+            <button class="btn btn-primary btn-sm" onclick="fireOp('pull_tushare','low')">拉取</button>
+          </div>
+        </div>
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div><div class="op-name">强制因子生命周期</div><div class="op-desc">factor_lifecycle · 周五19:00 Beat</div></div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <button class="btn btn-secondary btn-full btn-sm" onclick="fireOp('lifecycle','low')">运行生命周期检查</button>
+        </div>
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div><div class="op-name">DB 备份</div><div class="op-desc">pg_backup · 立即触发</div></div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <button class="btn btn-secondary btn-full btn-sm" onclick="fireOp('backup','low')">运行备份</button>
+        </div>
+        <div class="op-card med">
+          <div class="op-card-header">
+            <div><div class="op-name">对账检查</div><div class="op-desc">DB vs xtquant · 持仓差异</div></div>
+            <span class="tier-badge tier-med">MED</span>
+          </div>
+          <button class="btn btn-secondary btn-full btn-sm" onclick="fireOp('reconcile','med')">运行对账</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: 审计操作 -->
+    <div class="ops-section">
+      <div class="section-label">审计操作 Audit Ops</div>
+      <div class="ops-grid">
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div><div class="op-name">LL 沉淀</div><div class="op-desc">lessons learned 新增条目</div></div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <button class="btn btn-primary btn-sm btn-full" onclick="openModal('ll')">+ 新增 LL 条目</button>
+        </div>
+        <div class="op-card low">
+          <div class="op-card-header">
+            <div><div class="op-name">ADR 创建</div><div class="op-desc">架构决议新增</div></div>
+            <span class="tier-badge tier-low">LOW</span>
+          </div>
+          <button class="btn btn-secondary btn-sm btn-full" onclick="openModal('adr')">+ 新增 ADR</button>
+        </div>
+        <div class="op-card high">
+          <div class="op-card-header">
+            <div><div class="op-name">L4 STAGED 审批</div><div class="op-desc">风控暂停队列 · 当前0个</div></div>
+            <span class="tier-badge tier-high">HIGH</span>
+          </div>
+          <button class="btn btn-secondary btn-sm btn-full" disabled data-tip="无待审批项">L4审批 (队列空)</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end left-panel -->
+
+  <!-- RIGHT: IMMUTABLE AUDIT LOG (always visible) -->
+  <div class="right-panel">
+    <div class="audit-header">
+      <div>
+        <div class="audit-title">操作审计日志 <span style="color:var(--text-muted);font-weight:400">(不可删除)</span></div>
+        <div class="audit-subtitle">所有 UI 操作 → audit_log + DingTalk</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-dot"></div>
+        <span style="font-size:0.65rem;color:var(--text-muted)">实时</span>
+      </div>
+    </div>
+    <div class="audit-filters">
+      <button class="filter-chip active">全部</button>
+      <button class="filter-chip">CRIT</button>
+      <button class="filter-chip">HIGH</button>
+      <button class="filter-chip">user</button>
+      <button class="filter-chip">beat</button>
+      <button class="filter-chip">CC</button>
+    </div>
+    <div class="audit-log">
+
+      <!-- Log entries (mock realistic data) -->
+      <div class="audit-entry" style="background:rgba(239,68,68,0.05)">
+        <div><span class="audit-ts">2026-05-18 09:43:12</span><span class="audit-actor actor-cc">CC</span><span class="severity-dot sev-crit"></span></div>
+        <div class="audit-action">LL-183 emergency_close 18只持仓</div>
+        <div class="audit-meta">执行模式=live · 触发源=CC-auto · 已记录UUID=fb2f20d6</div>
+      </div>
+      <div class="audit-entry" style="background:rgba(239,68,68,0.04)">
+        <div><span class="audit-ts">2026-05-18 09:42:58</span><span class="audit-actor actor-system">system</span><span class="severity-dot sev-crit"></span></div>
+        <div class="audit-action">LL-183 检测: dry_run=False 但 gate 未触发</div>
+        <div class="audit-meta">risk_event_log · execute_phase 不门控异常</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-05-18 09:31:02</span><span class="audit-actor actor-beat">beat</span><span class="severity-dot sev-error"></span></div>
+        <div class="audit-action">execute_phase 触发 — schtask QuantMind_DailyExecute</div>
+        <div class="audit-meta">paper_trading.py:execute_phase · dry_run=False 实际下单</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-05-17 18:00:00</span><span class="audit-actor actor-beat">beat</span><span class="severity-dot sev-info"></span></div>
+        <div class="audit-action">DailyIC 18:00 计划触发 — 84行 1.9s</div>
+        <div class="audit-meta">factor_ic_history · CORE4 更新</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-05-17 17:35:00</span><span class="audit-actor actor-beat">beat</span><span class="severity-dot sev-info"></span></div>
+        <div class="audit-action">PTAudit 完成 — 0 findings</div>
+        <div class="audit-meta">scripts/pt_audit.py · 5 checks PASS</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-05-17 16:30:00</span><span class="audit-actor actor-beat">beat</span><span class="severity-dot sev-info"></span></div>
+        <div class="audit-action">signal_phase Beat 16:30 触发</div>
+        <div class="audit-meta">signal_engine · TOP_N=20 · SN b=0.50</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-05-16 09:15:44</span><span class="audit-actor actor-user">user</span><span class="severity-dot sev-warn"></span></div>
+        <div class="audit-action">env_flip paper→live (运维runbook)</div>
+        <div class="audit-meta">LL-183修复前手工操作 · 已记录</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-04-30 14:54:00</span><span class="audit-actor actor-user">user</span><span class="severity-dot sev-info"></span></div>
+        <div class="audit-action">用户 GUI 清仓 688121.SH 卓然新能 4500股</div>
+        <div class="audit-meta">xtquant GUI · 跌停 cancel 后手工</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-04-29 10:43:54</span><span class="audit-actor actor-cc">CC</span><span class="severity-dot sev-warn"></span></div>
+        <div class="audit-action">emergency_close 17只持仓 (清仓v4)</div>
+        <div class="audit-meta">user 决议 · cash=¥993,520.16 · 0持仓</div>
+      </div>
+      <div class="audit-entry">
+        <div><span class="audit-ts">2026-04-22 18:00:00</span><span class="audit-actor actor-beat">beat</span><span class="severity-dot sev-info"></span></div>
+        <div class="audit-action">DailyIC schtask 首次自动触发 ✓</div>
+        <div class="audit-meta">84 rows · 1.9s · CORE4 ic_20d max 3-24</div>
+      </div>
+
+    </div><!-- end audit-log -->
+  </div><!-- end right-panel -->
+
+</div><!-- end main-layout -->
+
+<!-- ===== MODAL: ENV FLIP (CRIT — 三锁) ===== -->
+<div class="modal-overlay" id="modal-envflip">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon">⚠️</div>
+      <div>
+        <div class="modal-title">环境切换 paper ↔ live</div>
+        <div class="modal-subtitle">CRIT 操作 · 三锁验证 · LL-183根因 · 不可撤销</div>
+      </div>
+    </div>
+
+    <!-- Lock 1: Env Check -->
+    <div class="modal-section">
+      <div class="modal-section-label">🔒 锁 1 — 当前环境确认</div>
+      <div class="env-check">
+        <span class="env-check-icon">⚠️</span>
+        <div>
+          <div class="env-check-text" style="color:#fca5a5">EXECUTION_MODE=live · LIVE_TRADING_DISABLED=false</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px">目标: 切换为 paper · LIVE_TRADING_DISABLED=true</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lock 2: Typed Phrase -->
+    <div class="modal-section">
+      <div class="modal-section-label">🔒 锁 2 — 输入确认短语</div>
+      <div style="font-size:0.78rem;color:var(--text-secondary)">请完整输入以下短语确认操作:</div>
+      <div class="phrase-hint">必须完整输入: <code>FLIP-TO-PAPER-20260518</code></div>
+      <input class="phrase-input" id="envPhraseInput" placeholder="FLIP-TO-PAPER-20260518" oninput="checkPhrase(this,'FLIP-TO-PAPER-20260518','envConfirmBtn')" />
+    </div>
+
+    <!-- Lock 3: Cooldown -->
+    <div class="modal-section">
+      <div class="modal-section-label">🔒 锁 3 — 5秒冷却 (匹配后启动)</div>
+      <div class="cooldown-bar" id="envCooldownBar" style="display:none">
+        <div class="cooldown-fill"></div>
+      </div>
+      <div class="cooldown-label" id="envCooldownLabel" style="display:none">冷却中…请等待5秒后才可确认</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('envflip')">取消</button>
+      <button class="btn btn-danger" id="envConfirmBtn" disabled onclick="executeOp('envflip')">
+        确认切换环境
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: LL SEDIMENT ===== -->
+<div class="modal-overlay" id="modal-ll">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon" style="background:rgba(6,182,212,0.15);color:var(--primary)">📝</div>
+      <div>
+        <div class="modal-title">新增 LL 条目</div>
+        <div class="modal-subtitle">LOW 操作 · 自动追加 LESSONS_LEARNED.md</div>
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-label">LL 编号</div>
+      <input class="phrase-input" placeholder="LL-184 (自动递增)" style="font-family:monospace" />
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-label">标题</div>
+      <input class="phrase-input" placeholder="一句话描述问题" />
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-label">根因 & 教训</div>
+      <textarea class="phrase-input" rows="3" placeholder="详细描述根因、触发条件、教训..." style="resize:vertical"></textarea>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-label">严重性</div>
+      <select class="phrase-input">
+        <option>P0 (生产资金影响)</option>
+        <option>P1 (功能中断)</option>
+        <option>P2 (非紧急改进)</option>
+        <option>P3 (轻微)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('ll')">取消</button>
+      <button class="btn btn-primary" onclick="executeOp('ll')">提交 LL 条目</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast" style="
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  background:var(--bg-elevated);border:1px solid var(--border);
+  border-radius:var(--radius-md);padding:12px 16px;
+  font-size:0.8rem;max-width:320px;
+  transform:translateY(20px);opacity:0;transition:all .25s;
+  box-shadow:var(--shadow-glass);
+  display:flex;align-items:flex-start;gap:10px;
+">
+  <span id="toastIcon">✓</span>
+  <div>
+    <div id="toastMsg" style="font-weight:600;color:var(--text-primary)"></div>
+    <div id="toastSub" style="font-size:0.72rem;color:var(--text-muted);margin-top:2px"></div>
+  </div>
+  <div id="toastUndo" style="display:none;margin-left:auto">
+    <button class="btn btn-secondary btn-sm" onclick="undoOp()">撤销 (10s)</button>
+  </div>
+</div>
+
+<script>
+// ===== MODAL MANAGEMENT =====
+function openModal(id) {
+  document.getElementById('modal-' + id)?.classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById('modal-' + id)?.classList.remove('open');
+}
+
+// ===== PHRASE VALIDATION =====
+function checkPhrase(input, expected, btnId) {
+  const btn = document.getElementById(btnId);
+  if (input.value === expected) {
+    input.classList.add('valid');
+    if (btn) btn.disabled = false;
+  } else {
+    input.classList.remove('valid');
+    if (btn) btn.disabled = true;
+  }
+}
+
+// ===== FIRE OPERATION (with toast) =====
+function fireOp(name, tier) {
+  const labels = {
+    signal_trigger: '信号计算已触发',
+    cancel_stale: '挂单撤销请求已发送',
+    pause: '交易已暂停',
+    resume: '交易已恢复',
+    restart_all: '所有Servy服务重启中…',
+    pull_tushare: 'Tushare 数据拉取已排队',
+    lifecycle: '因子生命周期检查已触发',
+    backup: 'DB 备份已触发',
+    reconcile: '对账检查已开始',
+    schtask_enable: 'schtask 启用 — 需确认',
+    schtask_disable: 'schtask 已禁用',
+    diagnose: '诊断任务已排队',
+  };
+  const canUndo = (tier === 'low');
+  showToast('✓', labels[name] || name, '已记录到 audit_log · DingTalk 推送中', canUndo);
+}
+
+function executeOp(name) {
+  closeModal(name);
+  const labels = {
+    envflip: '环境已切换 → PAPER',
+    ll: 'LL 条目已提交',
+  };
+  showToast('✓', labels[name] || '操作完成', '已记录到 audit_log', false);
+}
+
+// ===== TOAST =====
+let toastTimeout;
+function showToast(icon, msg, sub, canUndo) {
+  clearTimeout(toastTimeout);
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent = msg;
+  document.getElementById('toastSub').textContent = sub;
+  document.getElementById('toastUndo').style.display = canUndo ? 'block' : 'none';
+  t.style.opacity = '1'; t.style.transform = 'translateY(0)';
+  toastTimeout = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(20px)'; }, canUndo ? 12000 : 4000);
+}
+function undoOp() {
+  showToast('↺', '操作已撤销', '已在10s内撤销', false);
+}
+
+// ===== CLOSE MODAL ON OVERLAY CLICK =====
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>

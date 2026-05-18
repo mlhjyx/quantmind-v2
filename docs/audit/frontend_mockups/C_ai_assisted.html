@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantMind-V2 — Variant C: AI-Assisted Control Center</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #080c18;
+    color: #f1f5f9;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  :root {
+    --bg-base:      #080c18;
+    --bg-surface:   #0f1626;
+    --bg-elevated:  #1a2236;
+    --bg-card:      rgba(26, 34, 54, 0.8);
+    --glass-bg:     rgba(26, 34, 54, 0.65);
+    --glass-border: rgba(148, 163, 184, 0.08);
+    --primary:      #06b6d4;
+    --primary-glow: rgba(6, 182, 212, 0.25);
+    --ai-purple:    #8b5cf6;
+    --ai-glow:      rgba(139, 92, 246, 0.25);
+    --success:      #10b981;
+    --warning:      #f59e0b;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted:   #64748b;
+    --border:       rgba(100, 116, 139, 0.35);
+    --border-subtle:rgba(100, 116, 139, 0.15);
+    --shadow-deep:  0 20px 60px rgba(0,0,0,0.5);
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px;
+  }
+
+  /* ===== ENV BANNER ===== */
+  .env-banner {
+    height: 34px; padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.7rem; font-weight: 600;
+    background: rgba(239,68,68,0.1); border-bottom: 1px solid rgba(239,68,68,0.3);
+    flex-shrink: 0;
+    animation: pulse-banner 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse-banner { 0%,100%{background:rgba(239,68,68,0.1)} 50%{background:rgba(239,68,68,0.18)} }
+  .env-pill { display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:9999px;font-weight:700;font-size:0.65rem; }
+  .env-pill.live { background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid rgba(239,68,68,0.4); }
+  .env-pill.paper{ background:rgba(16,185,129,0.15);color:#6ee7b7;border:1px solid rgba(16,185,129,0.35); }
+  .env-meta { color: var(--text-secondary); }
+  .env-meta b { color: #fca5a5; }
+  .ai-cost { display:flex;align-items:center;gap:5px;font-size:0.68rem;color:var(--text-muted); }
+  .ai-cost-val { color: var(--ai-purple); font-weight:600; font-family:monospace; }
+
+  /* ===== TOP BAR ===== */
+  .topbar {
+    height: 50px; padding: 0 20px;
+    display: flex; align-items: center; gap: 0;
+    background: rgba(15,22,38,0.98); border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0; backdrop-filter: blur(12px);
+  }
+  .logo { font-size: 1rem; font-weight: 700; letter-spacing: -0.03em; margin-right: 28px; white-space:nowrap; }
+  .logo-qm { color: var(--primary); }
+  .logo-ai { color: var(--ai-purple); font-size:0.65rem;vertical-align:super;margin-left:2px; }
+  .nav-link { padding: 0 12px; height: 100%; display:flex;align-items:center;font-size:0.78rem;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap; }
+  .nav-link:hover { color:var(--text-primary); }
+  .nav-link.active { color:var(--primary);border-bottom-color:var(--primary); }
+  .spacer { flex:1; }
+  .topbar-right { display:flex;align-items:center;gap:10px; }
+  .ai-indicator { display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:9999px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);font-size:0.7rem;color:#c4b5fd; }
+  .ai-dot { width:5px;height:5px;border-radius:50%;background:var(--ai-purple);animation:ai-pulse 2s ease-in-out infinite; }
+  @keyframes ai-pulse { 0%,100%{opacity:1;box-shadow:0 0 4px rgba(139,92,246,.6)} 50%{opacity:0.4;box-shadow:none} }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main { display:grid;grid-template-columns:1fr 380px;height:calc(100vh - 84px);overflow:hidden; }
+
+  /* ===== LEFT: CONTENT AREA ===== */
+  .content { display:flex;flex-direction:column;overflow-y:auto; }
+
+  /* ===== CONTEXT BAR (AI situational awareness) ===== */
+  .context-bar {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex; gap: 12px; flex-wrap: wrap;
+    flex-shrink: 0;
+    background: var(--bg-surface);
+  }
+  .ctx-card {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 8px 14px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    flex: 1; min-width: 110px;
+  }
+  .ctx-label { font-size: 0.6rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .ctx-val { font-size: 0.9rem; font-weight: 700; font-family: monospace; }
+  .ctx-sub { font-size: 0.65rem; color: var(--text-muted); }
+  .ctx-good { color: var(--success); }
+  .ctx-bad  { color: var(--danger); }
+  .ctx-warn { color: var(--warning); }
+  .ctx-neu  { color: var(--text-primary); }
+
+  /* ===== AI SUGGESTION PANEL ===== */
+  .ai-suggest-area {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .ai-suggest-header { display:flex;align-items:center;gap:8px;margin-bottom:8px; }
+  .ai-suggest-title { font-size:0.75rem;font-weight:700;color:var(--text-primary); }
+  .ai-badge { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;background:rgba(139,92,246,0.15);color:#c4b5fd;font-size:0.62rem;font-weight:700;border:1px solid rgba(139,92,246,0.25); }
+  .suggestions { display:flex;gap:8px;flex-wrap:wrap; }
+  .suggestion-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: rgba(139,92,246,0.08);
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 9999px;
+    font-size: 0.75rem; color: #c4b5fd;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .suggestion-chip:hover { background: rgba(139,92,246,0.18); border-color: rgba(139,92,246,0.4); }
+  .suggestion-chip .chip-icon { font-size: 0.8rem; }
+  .suggestion-chip.warn { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); color: #fde68a; }
+  .suggestion-chip.warn:hover { background: rgba(245,158,11,0.15); }
+
+  /* ===== AUTO-EXPLAIN PANELS ===== */
+  .explain-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px 20px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .explain-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+  .explain-title { font-size:0.72rem;font-weight:700;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:6px; }
+  .explain-title .icon { font-size:0.85rem; }
+  .explain-body { font-size:0.75rem;color:var(--text-secondary);line-height:1.6; }
+  .explain-highlight { color:var(--text-primary);font-weight:600; }
+  .factor-bars { display:flex;flex-direction:column;gap:4px;margin-top:8px; }
+  .factor-bar-row { display:flex;align-items:center;gap:8px; }
+  .factor-bar-name { font-size:0.68rem;color:var(--text-muted);width:110px;flex-shrink:0;font-family:monospace; }
+  .factor-bar-track { flex:1;height:6px;background:rgba(255,255,255,0.07);border-radius:9999px;overflow:hidden; }
+  .factor-bar-fill { height:100%;border-radius:9999px;transition:width .5s ease; }
+  .factor-bar-val { font-size:0.65rem;color:var(--text-muted);font-family:monospace;width:38px;text-align:right;flex-shrink:0; }
+  .regime-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:9999px;font-size:0.7rem;font-weight:700; }
+  .regime-bull  { background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3); }
+  .regime-bear  { background:rgba(16,185,129,0.15);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3); }
+  .regime-neut  { background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.3); }
+
+  /* ===== OPS GRID (compact, secondary to chat) ===== */
+  .ops-section { padding: 12px 20px; flex: 1; }
+  .ops-section-title { font-size:0.78rem;font-weight:700;color:var(--text-primary);margin-bottom:8px;display:flex;align-items:center;gap:8px; }
+  .ops-section-title .note { font-weight:400;color:var(--text-muted);font-size:0.68rem; }
+  .ops-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px; }
+  .op-btn {
+    display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+    padding:8px 10px;border-radius:var(--radius-md);cursor:pointer;
+    border:1px solid var(--glass-border);background:var(--glass-bg);
+    backdrop-filter:blur(8px);color:var(--text-primary);font-family:inherit;
+    transition:all .15s;text-align:left;
+  }
+  .op-btn:hover { border-color:var(--border);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.3); }
+  .op-btn.crit { border-color:rgba(239,68,68,.2);background:rgba(239,68,68,.06); }
+  .op-btn.crit:hover { border-color:rgba(239,68,68,.4); }
+  .op-btn.ai-assisted { border-color:rgba(139,92,246,.2); }
+  .op-btn.ai-assisted:hover { border-color:rgba(139,92,246,.4);box-shadow:0 0 12px rgba(139,92,246,.15); }
+  .op-btn-icon { font-size:1rem; }
+  .op-btn-name { font-size:0.75rem;font-weight:600;line-height:1.2; }
+  .op-btn-tag { font-size:0.6rem;padding:1px 5px;border-radius:9999px;font-weight:700; }
+  .tag-low  { background:rgba(16,185,129,.12);color:#6ee7b7; }
+  .tag-crit { background:rgba(239,68,68,.12);color:#fca5a5; }
+  .tag-ai   { background:rgba(139,92,246,.12);color:#c4b5fd; }
+
+  /* ===== RIGHT: AI CHAT PANEL ===== */
+  .chat-panel {
+    border-left: 1px solid var(--border-subtle);
+    display: flex; flex-direction: column;
+    background: var(--bg-surface);
+    overflow: hidden;
+  }
+  .chat-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .chat-title { font-size:0.82rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:7px; }
+  .chat-subtitle { font-size:0.65rem;color:var(--text-muted);margin-top:3px;line-height:1.5; }
+  .chat-boundary {
+    margin-top:6px;padding:6px 10px;
+    background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);
+    border-radius:var(--radius-sm);font-size:0.65rem;color:#fca5a5;
+  }
+  .chat-boundary b { color:#f87171; }
+
+  /* Chat messages */
+  .chat-messages { flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px; }
+  .msg { display:flex;flex-direction:column;gap:3px; }
+  .msg-user { align-items:flex-end; }
+  .msg-ai { align-items:flex-start; }
+  .msg-bubble {
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: 0.78rem; line-height: 1.6;
+    max-width: 92%;
+  }
+  .msg-user .msg-bubble {
+    background: var(--primary);
+    color: #fff;
+    border-bottom-right-radius: 2px;
+  }
+  .msg-ai .msg-bubble {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
+    border-bottom-left-radius: 2px;
+  }
+  .msg-meta { font-size:0.62rem;color:var(--text-muted);padding:0 4px; }
+  .msg-ai .msg-meta { display:flex;align-items:center;gap:4px; }
+  .ai-icon { font-size:0.72rem; }
+  .tool-call {
+    display:flex;align-items:center;gap:6px;
+    background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);
+    border-radius:var(--radius-sm);padding:4px 8px;font-size:0.68rem;
+    color:#c4b5fd;margin-top:4px;font-family:monospace;
+  }
+  .tool-call-icon { font-size:0.75rem; }
+  .action-btns { display:flex;gap:5px;flex-wrap:wrap;margin-top:6px; }
+  .action-btn {
+    display:inline-flex;align-items:center;gap:4px;
+    padding:4px 9px;border-radius:9999px;font-size:0.68rem;font-weight:600;cursor:pointer;
+    border:none;font-family:inherit;transition:all .15s;
+  }
+  .ab-confirm { background:rgba(16,185,129,0.2);color:#6ee7b7;border:1px solid rgba(16,185,129,.3); }
+  .ab-confirm:hover { background:rgba(16,185,129,0.3); }
+  .ab-cancel  { background:rgba(100,116,139,0.15);color:var(--text-secondary);border:1px solid var(--border-subtle); }
+  .ab-cancel:hover  { color:var(--text-primary); }
+  .ab-detail  { background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,.25); }
+  .typing-dots { display:flex;gap:3px;padding:10px 12px;align-items:center; }
+  .typing-dot { width:5px;height:5px;border-radius:50%;background:var(--text-muted); }
+  .typing-dot:nth-child(1) { animation:bounce .8s .0s ease-in-out infinite; }
+  .typing-dot:nth-child(2) { animation:bounce .8s .2s ease-in-out infinite; }
+  .typing-dot:nth-child(3) { animation:bounce .8s .4s ease-in-out infinite; }
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:.5} 40%{transform:translateY(-4px);opacity:1} }
+
+  /* Suggested prompts */
+  .suggested-prompts { padding: 8px 12px; border-top: 1px solid var(--border-subtle); flex-shrink: 0; }
+  .sp-label { font-size:0.6rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px; }
+  .sp-chips { display:flex;flex-wrap:wrap;gap:4px; }
+  .sp-chip {
+    display:inline-flex;align-items:center;gap:4px;
+    padding:4px 9px;border-radius:9999px;font-size:0.68rem;cursor:pointer;
+    background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.18);color:#c4b5fd;
+    transition:all .12s;
+  }
+  .sp-chip:hover { background:rgba(139,92,246,0.15); }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .chat-input-wrap {
+    display:flex;align-items:flex-end;gap:8px;
+    background:var(--bg-elevated);border:1px solid var(--border);
+    border-radius:var(--radius-md);padding:8px 10px;
+    transition:border-color .15s;
+  }
+  .chat-input-wrap:focus-within { border-color:var(--primary);box-shadow:0 0 0 2px rgba(6,182,212,.12); }
+  .chat-input {
+    flex:1;background:none;border:none;outline:none;color:var(--text-primary);
+    font-size:0.82rem;font-family:inherit;resize:none;min-height:20px;max-height:80px;
+    line-height:1.5;
+  }
+  .chat-input::placeholder { color:var(--text-muted); }
+  .chat-send-btn {
+    display:flex;align-items:center;justify-content:center;
+    width:28px;height:28px;border-radius:var(--radius-sm);
+    background:var(--primary);border:none;cursor:pointer;
+    transition:all .15s;flex-shrink:0;
+  }
+  .chat-send-btn:hover { background:var(--primary-dark);box-shadow:0 0 12px rgba(6,182,212,.35); }
+  .chat-input-meta { display:flex;align-items:center;justify-content:space-between;margin-top:5px;font-size:0.62rem;color:var(--text-muted); }
+
+  /* Cost tracker */
+  .cost-pill {
+    display:inline-flex;align-items:center;gap:4px;
+    padding:2px 7px;border-radius:9999px;font-size:0.62rem;font-weight:600;
+    background:rgba(139,92,246,0.1);color:#c4b5fd;border:1px solid rgba(139,92,246,0.2);
+  }
+
+  /* ===== MODAL (CRIT 三锁) ===== */
+  .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:2000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .15s; }
+  .modal-overlay.open { opacity:1;pointer-events:all; }
+  .modal { background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;max-width:440px;width:90%;box-shadow:var(--shadow-deep); }
+  .modal-head { font-size:.95rem;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px; }
+  .modal-desc { font-size:.78rem;color:var(--text-secondary);margin-bottom:12px;line-height:1.6; }
+  .modal-section { background:rgba(0,0,0,.2);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:10px; }
+  .ms-label { font-size:.62rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px; }
+  .phrase-input { width:100%;padding:7px 10px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:.8rem;font-family:monospace;outline:none;margin-top:5px;transition:border-color .15s; }
+  .phrase-input:focus { border-color:var(--primary); }
+  .phrase-input.valid { border-color:var(--success); }
+  .phrase-hint { font-size:.65rem;color:var(--text-muted);margin-top:3px; }
+  .phrase-hint code { color:var(--primary);background:rgba(6,182,212,.1);padding:1px 4px;border-radius:3px; }
+  .modal-actions { display:flex;gap:8px;justify-content:flex-end;margin-top:14px; }
+  .btn-s { display:inline-flex;align-items:center;gap:4px;padding:6px 13px;border-radius:var(--radius-sm);font-size:.76rem;font-weight:600;cursor:pointer;background:transparent;color:var(--text-secondary);border:1px solid var(--border);font-family:inherit;transition:all .15s; }
+  .btn-s:hover { color:var(--text-primary);border-color:var(--primary); }
+  .btn-d { display:inline-flex;align-items:center;gap:4px;padding:6px 13px;border-radius:var(--radius-sm);font-size:.76rem;font-weight:600;cursor:pointer;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.35);font-family:inherit;transition:all .15s; }
+  .btn-d:hover:not(:disabled) { background:rgba(239,68,68,.25); }
+  .btn-d:disabled { opacity:.4;cursor:not-allowed; }
+
+  /* ===== TOAST ===== */
+  .toast-area { position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:5px; }
+  .toast { background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);padding:9px 13px;font-size:.76rem;min-width:220px;max-width:300px;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow-deep);animation:toastIn .2s ease-out; }
+  @keyframes toastIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+  .toast.t-success { border-left:3px solid var(--success); }
+  .toast.t-warn    { border-left:3px solid var(--warning); }
+  .toast.t-error   { border-left:3px solid var(--danger); }
+  .toast.t-ai      { border-left:3px solid var(--ai-purple); }
+  .toast-body { flex:1; }
+  .toast-title { font-weight:600;color:var(--text-primary); }
+  .toast-sub { font-size:.65rem;color:var(--text-muted);margin-top:1px; }
+  .toast-close { color:var(--text-muted);cursor:pointer;font-size:.7rem; }
+
+  ::-webkit-scrollbar { width:4px;height:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:rgba(100,116,139,.25);border-radius:9999px; }
+</style>
+</head>
+<body>
+
+<!-- ENV BANNER -->
+<div class="env-banner">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="env-pill live">⚠ LIVE</span>
+    <span class="env-meta">EXECUTION_MODE=<b>live</b> · LIVE_TRADING_DISABLED=<b>false</b> · LL-183 后修复态 · AI 无法执行 CRIT 操作</span>
+  </div>
+  <div class="ai-cost">
+    AI 月用量:
+    <span class="ai-cost-val">¥3.42</span>
+    / 上限 ¥50 · 本会话: 12次调用
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<nav class="topbar">
+  <span class="logo"><span class="logo-qm">QuantMind</span><span class="logo-ai">AI</span></span>
+  <a class="nav-link active">控制中枢</a>
+  <a class="nav-link">PT看板</a>
+  <a class="nav-link">风控</a>
+  <a class="nav-link">交易审计</a>
+  <a class="nav-link">因子</a>
+  <a class="nav-link">系统</a>
+  <div class="spacer"></div>
+  <div class="topbar-right">
+    <div class="ai-indicator"><span class="ai-dot"></span>Claude Sonnet 活跃</div>
+    <div style="font-family:monospace;font-size:.78rem;color:var(--text-primary)">¥993,520.66</div>
+    <div style="font-size:.7rem;color:var(--text-muted)">VARIANT C — AI辅助</div>
+  </div>
+</nav>
+
+<!-- MAIN LAYOUT -->
+<div class="main">
+
+  <!-- LEFT: CONTEXT + EXPLAIN + OPS -->
+  <div class="content">
+
+    <!-- Context bar (AI situational awareness) -->
+    <div class="context-bar">
+      <div class="ctx-card">
+        <span class="ctx-label">账户净值</span>
+        <span class="ctx-val ctx-neu">¥993,520</span>
+        <span class="ctx-sub">0持仓 · 100% cash</span>
+      </div>
+      <div class="ctx-card">
+        <span class="ctx-label">PT状态</span>
+        <span class="ctx-val ctx-warn">暂停</span>
+        <span class="ctx-sub">LL-183后清仓</span>
+      </div>
+      <div class="ctx-card">
+        <span class="ctx-label">市场 Regime</span>
+        <span class="ctx-val"><span class="regime-badge regime-neut">中性</span></span>
+        <span class="ctx-sub">静态 b=0.50 SN</span>
+      </div>
+      <div class="ctx-card">
+        <span class="ctx-label">dv_ttm 状态</span>
+        <span class="ctx-val ctx-warn">警告</span>
+        <span class="ctx-sub">ratio=0.517 &lt; 0.8</span>
+      </div>
+      <div class="ctx-card">
+        <span class="ctx-label">风控 L级</span>
+        <span class="ctx-val ctx-good">L0正常</span>
+        <span class="ctx-sub">0 STAGED</span>
+      </div>
+      <div class="ctx-card">
+        <span class="ctx-label">今日信号</span>
+        <span class="ctx-val ctx-neu">--</span>
+        <span class="ctx-sub">PT暂停中</span>
+      </div>
+    </div>
+
+    <!-- AI Smart Suggestions -->
+    <div class="ai-suggest-area">
+      <div class="ai-suggest-header">
+        <span class="ai-suggest-title">AI 智能建议</span>
+        <span class="ai-badge">🤖 Context-Aware</span>
+        <span style="font-size:.65rem;color:var(--text-muted);margin-left:auto">基于当前系统状态自动生成</span>
+      </div>
+      <div class="suggestions">
+        <div class="suggestion-chip warn" onclick="usePrompt('为什么 dv_ttm ratio=0.517 低于阈值？需要降权吗？')">
+          <span class="chip-icon">⚠️</span>
+          dv_ttm 警告分析
+        </div>
+        <div class="suggestion-chip" onclick="usePrompt('LL-183 根因分析 — dry-run 未门控的完整修复验证')">
+          <span class="chip-icon">🔍</span>
+          LL-183 修复验证
+        </div>
+        <div class="suggestion-chip" onclick="usePrompt('PT 重启前 gate 清单当前状态 — 哪些已关闭哪些待办？')">
+          <span class="chip-icon">📋</span>
+          PT 重启 Gate 状态
+        </div>
+        <div class="suggestion-chip" onclick="usePrompt('今天信号计算结果是什么？TOP 20 股票列表')">
+          <span class="chip-icon">⚡</span>
+          今日信号预览
+        </div>
+        <div class="suggestion-chip" onclick="usePrompt('CORE3+dv_ttm 因子近期 IC 趋势，60天衰减情况')">
+          <span class="chip-icon">📈</span>
+          因子 IC 趋势
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto-explain panels -->
+    <div class="explain-grid">
+
+      <!-- Factor Contribution -->
+      <div class="explain-card">
+        <div class="explain-title"><span class="icon">🧬</span>因子贡献 (CORE3+dv_ttm)</div>
+        <div class="explain-body">
+          最新 IC 权重分布 (2026-05-17):
+        </div>
+        <div class="factor-bars">
+          <div class="factor-bar-row">
+            <span class="factor-bar-name">turnover_mean_20</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" style="width:78%;background:#06b6d4"></div></div>
+            <span class="factor-bar-val">0.0231</span>
+          </div>
+          <div class="factor-bar-row">
+            <span class="factor-bar-name">volatility_20</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" style="width:65%;background:#06b6d4"></div></div>
+            <span class="factor-bar-val">0.0195</span>
+          </div>
+          <div class="factor-bar-row">
+            <span class="factor-bar-name">bp_ratio</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" style="width:55%;background:#10b981"></div></div>
+            <span class="factor-bar-val">0.0162</span>
+          </div>
+          <div class="factor-bar-row">
+            <span class="factor-bar-name">dv_ttm</span>
+            <div class="factor-bar-track"><div class="factor-bar-fill" style="width:32%;background:#f59e0b"></div></div>
+            <span class="factor-bar-val" style="color:#fbbf24">0.0094⚠</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Regime Detection -->
+      <div class="explain-card">
+        <div class="explain-title"><span class="icon">🌡️</span>市场 Regime 检测</div>
+        <div class="explain-body">
+          当前状态: <span class="regime-badge regime-neut">中性 Neutral</span><br/>
+          <br/>
+          5 指标检验 (2026-05-18):
+          <br/>
+        </div>
+        <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;font-size:.68rem">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">bull_prob</span><span style="color:var(--text-secondary)">0.48</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">bear_prob</span><span style="color:var(--text-secondary)">0.31</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">IC bull/bear diff</span><span style="color:var(--text-secondary)">p=0.12 (ns)</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Recommendation</span><span style="color:var(--success)">static b=0.50 SN</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Ops grid (compact, secondary) -->
+    <div class="ops-section">
+      <div class="ops-section-title">
+        后端操作入口 (32 ops) <span class="note">— 或直接在 AI 对话框输入自然语言</span>
+      </div>
+      <div class="ops-grid">
+        <button class="op-btn" onclick="usePrompt('触发信号计算')">
+          <span class="op-btn-icon">⚡</span>
+          <span class="op-btn-name">触发信号</span>
+          <span class="op-btn-tag tag-low">LOW · AI可执行</span>
+        </button>
+        <button class="op-btn crit" onclick="sendMessage('执行交易 execute_phase 需要三锁验证，我来协助您完成')">
+          <span class="op-btn-icon">🚀</span>
+          <span class="op-btn-name">执行交易</span>
+          <span class="op-btn-tag tag-crit">CRIT · 三锁</span>
+        </button>
+        <button class="op-btn" onclick="usePrompt('撤销当日所有挂单')">
+          <span class="op-btn-icon">✕</span>
+          <span class="op-btn-name">撤销挂单</span>
+          <span class="op-btn-tag tag-low">LOW · AI可执行</span>
+        </button>
+        <button class="op-btn crit" onclick="usePrompt('紧急全平所有持仓 (当前0持仓)')">
+          <span class="op-btn-icon">🆘</span>
+          <span class="op-btn-name">紧急全平</span>
+          <span class="op-btn-tag tag-crit">CRIT · 三锁</span>
+        </button>
+        <button class="op-btn ai-assisted" onclick="usePrompt('分析今日PT交易日报')">
+          <span class="op-btn-icon">📊</span>
+          <span class="op-btn-name">PT 日报分析</span>
+          <span class="op-btn-tag tag-ai">AI 生成</span>
+        </button>
+        <button class="op-btn ai-assisted" onclick="usePrompt('解释当前风控状态，是否有异常？')">
+          <span class="op-btn-icon">🛡️</span>
+          <span class="op-btn-name">风控状态解释</span>
+          <span class="op-btn-tag tag-ai">AI 解释</span>
+        </button>
+        <button class="op-btn" onclick="usePrompt('强制拉取今日 Tushare 数据')">
+          <span class="op-btn-icon">📥</span>
+          <span class="op-btn-name">拉取 Tushare</span>
+          <span class="op-btn-tag tag-low">LOW</span>
+        </button>
+        <button class="op-btn" onclick="usePrompt('查看系统健康状态')">
+          <span class="op-btn-icon">🔍</span>
+          <span class="op-btn-name">系统健康检查</span>
+          <span class="op-btn-tag tag-low">LOW</span>
+        </button>
+        <button class="op-btn ai-assisted" onclick="usePrompt('为当前 LL-183 事件生成 LL 沉淀草稿')">
+          <span class="op-btn-icon">📝</span>
+          <span class="op-btn-name">AI 辅助 LL 草稿</span>
+          <span class="op-btn-tag tag-ai">AI 起草</span>
+        </button>
+        <button class="op-btn" onclick="usePrompt('运行因子生命周期检查')">
+          <span class="op-btn-icon">🔁</span>
+          <span class="op-btn-name">因子生命周期</span>
+          <span class="op-btn-tag tag-low">LOW</span>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- end content -->
+
+  <!-- RIGHT: AI CHAT PANEL -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-title">
+        <span class="ai-dot"></span>
+        AI 助手 — 自然语言操作
+      </div>
+      <div class="chat-subtitle">
+        输入自然语言指令操作系统。LOW/MED 操作直接执行，CRIT 操作 AI 组装参数后需用户手动确认三锁。
+      </div>
+      <div class="chat-boundary">
+        <b>⚠ AI边界</b>: 绝不执行 env_flip / execute_phase / emergency_close。CRIT ops 永远需要用户手动三锁确认。
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+
+      <!-- AI greeting -->
+      <div class="msg msg-ai">
+        <div class="msg-bubble">
+          您好！QuantMind AI 助手就绪。<br/><br/>
+          当前状态摘要：<br/>
+          • <span style="color:#fca5a5">⚠ LL-183 修复态</span> — LIVE_TRADING_DISABLED=false (异常)<br/>
+          • 账户 ¥993,520.66 · 0持仓<br/>
+          • dv_ttm ratio=0.517 低于阈值<br/>
+          • DailyExecute schtask 已禁用<br/><br/>
+          我可以帮您：查询数据、分析因子、起草LL文档、触发低风险操作，或解释系统状态。
+        </div>
+        <div class="msg-meta"><span class="ai-icon">🤖</span>Claude Sonnet · 18:47</div>
+      </div>
+
+      <!-- User message example -->
+      <div class="msg msg-user">
+        <div class="msg-bubble">为什么 dv_ttm 显示警告状态？</div>
+        <div class="msg-meta">18:48</div>
+      </div>
+
+      <!-- AI response with tool call -->
+      <div class="msg msg-ai">
+        <div class="tool-call"><span class="tool-call-icon">🔧</span>调用 GET /api/factors/dv_ttm/lifecycle</div>
+        <div class="msg-bubble">
+          <b>dv_ttm 生命周期分析</b><br/><br/>
+          factor_lifecycle 检测到 <span class="explain-highlight">ratio=0.517</span>，低于健康阈值 <b>0.8</b>。<br/><br/>
+          <b>根因</b>：近20日 IC 衰减加速。<br/>
+          IC_5d 近均值 0.0094 (历史中位 0.018)<br/>
+          decay_level 从 "stable" → "warning"<br/><br/>
+          <b>建议</b>：<br/>
+          1. PT 仍可使用，但权重考虑降至 0.75x<br/>
+          2. 下周五 19:00 生命周期 Beat 自动复评<br/>
+          3. 若 ratio < 0.3 则触发 deprecated 流程
+        </div>
+        <div class="action-btns">
+          <button class="action-btn ab-detail" onclick="usePrompt('显示 dv_ttm 近60天 IC 趋势图数据')">查看IC趋势</button>
+          <button class="action-btn ab-confirm" onclick="usePrompt('强制触发因子生命周期重新检查')">立即重检</button>
+        </div>
+        <div class="msg-meta"><span class="ai-icon">🤖</span>Claude Sonnet · 18:48</div>
+      </div>
+
+      <!-- Cancel orders example -->
+      <div class="msg msg-user">
+        <div class="msg-bubble">撤销 601398.SH 的所有挂单</div>
+        <div class="msg-meta">18:49</div>
+      </div>
+      <div class="msg msg-ai">
+        <div class="tool-call"><span class="tool-call-icon">🔧</span>调用 GET /api/execution/orders?symbol=601398.SH&status=pending</div>
+        <div class="msg-bubble">
+          查询结果：601398.SH (工商银行) 当前 <span class="explain-highlight">0 个挂单</span>。<br/><br/>
+          目前账户0持仓、PT暂停，无需撤单。<br/>
+          如您需要撤销其他股票挂单，请告知代码。
+        </div>
+        <div class="msg-meta"><span class="ai-icon">🤖</span>Claude Sonnet · 18:49 · 低风险 · 已记录audit</div>
+      </div>
+
+      <!-- Typing indicator (shows AI is processing) -->
+      <div class="msg msg-ai" id="typingIndicator" style="display:none">
+        <div class="typing-dots">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      </div>
+
+    </div><!-- end chat-messages -->
+
+    <!-- Suggested prompts -->
+    <div class="suggested-prompts">
+      <div class="sp-label">快速提问</div>
+      <div class="sp-chips">
+        <span class="sp-chip" onclick="usePrompt('今天的 PT 信号是什么?')">今日信号</span>
+        <span class="sp-chip" onclick="usePrompt('系统当前所有警告列表')">所有警告</span>
+        <span class="sp-chip" onclick="usePrompt('生成 LL-183 事件 LL 沉淀草稿')">LL草稿</span>
+        <span class="sp-chip" onclick="usePrompt('Servy 各服务状态')">服务状态</span>
+        <span class="sp-chip" onclick="usePrompt('bp_ratio 近30天 IC 均值趋势')">bp_ratio IC</span>
+        <span class="sp-chip" onclick="usePrompt('PT 重启前需要完成哪些 gate?')">重启Gate</span>
+      </div>
+    </div>
+
+    <!-- Chat Input -->
+    <div class="chat-input-area">
+      <div class="chat-input-wrap">
+        <textarea class="chat-input" id="chatInput" rows="1" placeholder="输入自然语言指令… 如 "查询今日因子IC" 或 "撤销 601398 挂单"" onkeydown="handleKey(event)"></textarea>
+        <button class="chat-send-btn" onclick="sendFromInput()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+      <div class="chat-input-meta">
+        <span>LOW/MED: AI 直接执行 · CRIT: AI 组装参数 → 您手动三锁确认</span>
+        <span class="cost-pill">本月 ¥3.42 / ¥50上限</span>
+      </div>
+    </div>
+  </div><!-- end chat-panel -->
+
+</div><!-- end main -->
+
+<!-- CRIT MODAL (三锁) — triggered by AI compose, user must confirm -->
+<div class="modal-overlay" id="critModal">
+  <div class="modal">
+    <div class="modal-head" id="critModalTitle">⚠️ CRIT 操作确认</div>
+    <div class="modal-desc" id="critModalDesc">AI 已组装参数，需您手动完成三锁确认。AI 不可绕过此步骤。</div>
+    <div class="modal-section">
+      <div class="ms-label">🔒 锁 1 — 环境状态</div>
+      <div style="font-size:.75rem;color:#fca5a5">LIVE_TRADING_DISABLED=false (⚠ 异常状态)</div>
+    </div>
+    <div class="modal-section">
+      <div class="ms-label">🔒 锁 2 — 输入确认短语</div>
+      <div class="phrase-hint">请输入: <code id="critPhrase">FLIP-TO-PAPER-20260518</code></div>
+      <input class="phrase-input" id="critPhraseInput" oninput="checkCritPhrase()" />
+    </div>
+    <div class="modal-section" id="critCooldownSection">
+      <div class="ms-label">🔒 锁 3 — 冷却等待</div>
+      <div style="height:3px;background:rgba(239,68,68,.1);border-radius:9999px;margin-top:4px;overflow:hidden">
+        <div id="critCooldownBar" style="height:100%;background:var(--danger);width:100%;transition:width 5s linear"></div>
+      </div>
+      <div style="font-size:.65rem;color:var(--warning);margin-top:3px" id="critCooldownTxt">冷却 5s…</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-s" onclick="closeCritModal()">取消</button>
+      <button class="btn-d" id="critConfirmBtn" disabled onclick="executeCrit()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast area -->
+<div class="toast-area" id="toastArea"></div>
+
+<script>
+// ===== CHAT LOGIC =====
+const aiResponses = {
+  '触发信号计算': { text: '正在调用 POST /api/paper-trading/signal-trigger…\n\n✓ 信号计算已触发。TOP_N=20，SN b=0.50，预计30s完成。结果将推送到 PT 看板。', tool: 'POST /api/paper-trading/signal-trigger', tier: 'low' },
+  '撤销当日所有挂单': { text: '查询当前挂单: 0个。\n\n账户当前0持仓、PT暂停，无挂单需要撤销。', tool: 'GET /api/execution/orders', tier: 'low' },
+  '系统当前所有警告列表': { text: '当前警告 (3 项):\n\n⚠ dv_ttm ratio=0.517 < 0.8 (factor_lifecycle)\n⚠ LIVE_TRADING_DISABLED=false (LL-183后异常状态)\n⚠ QuantMind_DataQualityCheck exit=1 连续3日', tool: 'GET /api/system/alerts', tier: 'low' },
+  'Servy 各服务状态': { text: '● FastAPI — Running | 1.2GB | uptime 47h\n● Celery — Running | 700MB | uptime 47h\n● CeleryBeat — Running | 300MB | uptime 47h\n⊗ QMTData — Stopped (离线模式)', tool: 'GET /api/system/services', tier: 'low' },
+};
+
+function usePrompt(text) {
+  document.getElementById('chatInput').value = text;
+  document.getElementById('chatInput').focus();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
+}
+
+function sendFromInput() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  sendMessage(text);
+}
+
+function sendMessage(text) {
+  const msgs = document.getElementById('chatMessages');
+  // Add user message
+  const userEl = document.createElement('div');
+  userEl.className = 'msg msg-user';
+  userEl.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div><div class="msg-meta">${new Date().toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})}</div>`;
+  msgs.appendChild(userEl);
+
+  // Show typing
+  document.getElementById('typingIndicator').style.display = 'flex';
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Simulate AI response
+  setTimeout(() => {
+    document.getElementById('typingIndicator').style.display = 'none';
+    const resp = getAIResponse(text);
+    const aiEl = document.createElement('div');
+    aiEl.className = 'msg msg-ai';
+    let toolHtml = resp.tool ? `<div class="tool-call"><span class="tool-call-icon">🔧</span>调用 ${escHtml(resp.tool)}</div>` : '';
+    aiEl.innerHTML = `
+      ${toolHtml}
+      <div class="msg-bubble">${resp.text.replace(/\n/g,'<br/>')}</div>
+      <div class="msg-meta"><span class="ai-icon">🤖</span>Claude Sonnet · ${new Date().toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})} · ${resp.tier === 'crit' ? '<span style="color:#f87171">CRIT — 需三锁</span>' : '已记录audit'}</div>
+    `;
+    msgs.appendChild(aiEl);
+    msgs.scrollTop = msgs.scrollHeight;
+    if (resp.tier === 'low') addToast('ai', 'AI操作已执行', resp.tool || text, false);
+    if (resp.tier === 'crit') { setTimeout(() => openCritModal(text), 800); }
+  }, 1200);
+}
+
+function getAIResponse(text) {
+  const textLower = text.toLowerCase();
+  for (const [key, val] of Object.entries(aiResponses)) {
+    if (text.includes(key) || textLower.includes(key.toLowerCase())) return val;
+  }
+  if (textLower.includes('env_flip') || textLower.includes('环境切换') || textLower.includes('执行交易') || textLower.includes('紧急全平')) {
+    return { text: '检测到 CRIT 操作请求。\n\n⚠ AI 边界：我不能直接执行此操作。\n\n我已为您准备好参数，请在弹出的三锁确认框中手动完成验证。', tool: null, tier: 'crit' };
+  }
+  if (textLower.includes('dv_ttm') || textLower.includes('因子')) {
+    return { text: 'dv_ttm 因子分析 (CORE3+dv_ttm 组合):\n\n近期 IC 趋势: 5d=0.0094, ma20=0.016, ma60=0.019\nIC 衰减率: 过去30d -18.3%\n生命周期状态: ⚠ warning (ratio=0.517)\n\n建议: 保留但权重降低观察下一个 lifecycle 周期。', tool: 'GET /api/factors/dv_ttm', tier: 'low' };
+  }
+  if (textLower.includes('ll') || textLower.includes('教训') || textLower.includes('沉淀')) {
+    return { text: '已生成 LL 草稿:\n\n**LL-184 候选**: dry-run 标志应在前端强制可见\n**根因**: LL-183 中 dry_run=False 被静默忽略\n**建议**: PT Dashboard 顶部常驻 dry-run 状态指示\n\n需要我直接提交此 LL 条目吗？', tool: 'POST /api/audit/lessons (draft)', tier: 'med' };
+  }
+  return { text: `已处理您的请求: "${text.substring(0,50)}"。\n\n相关 API 调用结果将显示在此处。实际对接后将返回真实数据。`, tool: null, tier: 'low' };
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ===== CRIT MODAL =====
+let critCooldownDone = false;
+let critPhraseOk = false;
+const CRIT_PHRASE = 'FLIP-TO-PAPER-20260518';
+
+function openCritModal(op) {
+  critCooldownDone = false; critPhraseOk = false;
+  document.getElementById('critPhrase').textContent = CRIT_PHRASE;
+  document.getElementById('critPhraseInput').value = '';
+  document.getElementById('critPhraseInput').classList.remove('valid');
+  document.getElementById('critConfirmBtn').disabled = true;
+  document.getElementById('critModal').classList.add('open');
+  // Start cooldown
+  const bar = document.getElementById('critCooldownBar');
+  bar.style.transition = 'none'; bar.style.width = '100%';
+  setTimeout(() => { bar.style.transition = 'width 5s linear'; bar.style.width = '0%'; }, 60);
+  let rem = 5;
+  const iv = setInterval(() => {
+    rem--;
+    document.getElementById('critCooldownTxt').textContent = rem > 0 ? `冷却 ${rem}s…` : '冷却完成 ✓';
+    if (rem <= 0) { clearInterval(iv); critCooldownDone = true; maybeEnableConfirm(); }
+  }, 1000);
+}
+function checkCritPhrase() {
+  const v = document.getElementById('critPhraseInput').value;
+  critPhraseOk = (v === CRIT_PHRASE);
+  document.getElementById('critPhraseInput').classList.toggle('valid', critPhraseOk);
+  maybeEnableConfirm();
+}
+function maybeEnableConfirm() {
+  document.getElementById('critConfirmBtn').disabled = !(critCooldownDone && critPhraseOk);
+}
+function closeCritModal() { document.getElementById('critModal').classList.remove('open'); }
+function executeCrit() {
+  closeCritModal();
+  addToast('ai', '✓ 环境切换已确认', '三锁完成 · DingTalk已推送 · audit_log已记录', false);
+  sendMessage('环境切换已完成 — 已切换为 PAPER 模式');
+}
+document.getElementById('critModal').addEventListener('click', (e) => { if(e.target===document.getElementById('critModal')) closeCritModal(); });
+
+// ===== TOASTS =====
+let tid = 0;
+function addToast(type, title, sub, close) {
+  const id = ++tid;
+  const area = document.getElementById('toastArea');
+  const el = document.createElement('div');
+  el.className = `toast t-${type}`; el.id = `t-${id}`;
+  el.innerHTML = `<div class="toast-body"><div class="toast-title">${title}</div><div class="toast-sub">${sub}</div></div><span class="toast-close" onclick="document.getElementById('t-${id}')?.remove()">✕</span>`;
+  area.appendChild(el);
+  setTimeout(() => el.remove(), close ? 12000 : 6000);
+}
+</script>
+</body>
+</html>
