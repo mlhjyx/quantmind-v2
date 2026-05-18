@@ -84,24 +84,25 @@ logger = logging.getLogger(__name__)
 # - earliest_check_utc_hour: 当日最早可检查时刻 (UTC), 防 schtask 在 Beat 首发前
 #   误报 missing (e.g. intraday Beat 09:35 CST = 01:35 UTC, 检查不能早于 02:00 UTC)
 EXPECTED_SCHEDULE = {
-    "risk_daily_check": {
-        "expected_per_day": 1,
-        "max_gap_minutes": 60 * 24 + 60,  # 1 day + 1h tolerance (next day 14:30)
-        "trigger_time": "14:30 CST",
-        # 14:30 CST = 06:30 UTC, 检查器 schtask 设计 15:30 CST = 07:30 UTC
-        "earliest_check_utc_hour": 6,  # 14:00 CST 后才检查
-        "severity_on_missing": "P0",
-    },
-    "intraday_risk_check": {
-        "expected_per_day": 72,  # 5min cron × 6h (09:00-14:55)
-        "min_per_day": 60,  # 容忍 12 cycle gap (1h restart window)
-        "max_gap_minutes": 30,  # 盘中 gap >30min 即 stale (5min cron 应高频)
-        "trigger_time": "*/5 9-14 CST",
-        # 09:00 CST = 01:00 UTC, 检查不能早于 ~10:00 CST = 02:00 UTC
-        # (P2 reviewer 采纳: 防 Mon-am 09:30 检查时 0 cycle 误报 missing)
-        "earliest_check_utc_hour": 2,
-        "severity_on_missing": "P0",
-    },
+    # ── [RETIRED 2026-05-15 per IC-2b V3 PT Cutover Plan v0.4 §A] ──
+    # 2 tasks below were removed from `beat_schedule.py:58` 2026-05-15 because
+    # V3 L1 RealtimeRiskEngine subscribes to xtquant tick directly (replaces
+    # Celery-Beat polling 14:30 daily + 5min intraday).
+    # Original EXPECTED_SCHEDULE entries:
+    #   - "risk_daily_check": 14:30 CST daily → V3 §3.3 dynamic threshold
+    #   - "intraday_risk_check": */5 9-14 CST → V3 §3.1 RealtimeRiskEngine
+    # Removed 2026-05-19 to stop P0 false-positive cascade (sustained 5-15~5-18,
+    # ~4 trading days × 2 finding = 8+ DingTalk P0 alerts wasted).
+    # 关联: audit P0-7 root cause (V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md)
+    # + LL-187 候选 (script ↔ Beat schedule drift sediment).
+    #
+    # TODO: Re-populate with V3 era active Beat tasks before next sprint:
+    #   - "risk-l4-sweep-1min" (line 211 beat_schedule.py, */1 9-14 CST = 360/day)
+    #   - "risk-market-regime-0900/1430/1600" (3x daily)
+    #   - "risk-dynamic-threshold-5min" (5min trading hours)
+    #   - "meta-monitor-tick" (5min ALL hours = 288/day)
+    #   - "risk-metrics-daily-extract-16-30" (1x daily Mon-Fri)
+    # Until repopulated, script is no-op (0 findings, 0 DingTalk alerts).
 }
 
 
