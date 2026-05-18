@@ -1,5 +1,9 @@
 # V3 Audit Section V — Frontend Redesign Proposal (2026-05-18 evening)
 
+> ⚠️ **DIRECTION CORRECTION 2026-05-19** — user feedback: "**偏离我的设计**, 并不是将 ADR/LL 都体现在 web, 而是**业务相关**. 你可以**在之前的 web 基础上进行改造**".
+> **Canonical direction**: `V3_AUDIT_FRONTEND_DESIGN_REVISED_v2.md` (incremental refactor of existing 35 pages + AI 辅助 panel 集成, NOT from-scratch redesign).
+> This v1 doc retained as historical analysis (12-page "from scratch" approach explored, then deprecated per user feedback).
+>
 > **Source**: Subagent H §21-24 (Frontend Redesign)
 > **Sister doc**: `V3_AUDIT_S9_UX_CONTROL_PLANE.md` (Section XI Backend Op → Frontend Action Matrix)
 > **Master**: `V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md`

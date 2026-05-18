@@ -1,5 +1,9 @@
 # V3 Audit Section XI — User Experience & Frontend Control Plane (NEW v6, 2026-05-18 evening)
 
+> ⚠️ **PARTIAL DIRECTION CORRECTION 2026-05-19** — user feedback: 32 ops 矩阵 (§41) 仍然 valid (业务 ops), 但**不要新建 "Control Center" 单页**. Instead: 把 ops 分散嵌入到现有 `Execution/index.tsx` (trading ops) + `SystemSettings.tsx` (system ops) + `RiskManagement.tsx` (L4 STAGED approve/reject) + `PipelineConsole.tsx` (AI assist + LLM ops).
+> **Canonical direction**: `V3_AUDIT_FRONTEND_DESIGN_REVISED_v2.md` §3 Phase H REVISED.
+> §41 matrix + 4 safety tiers (LOW/MED/HIGH/CRIT 三锁) 仍然 valid 应用.
+>
 > **Source**: Subagent H §41-45
 > **Plan v6 trigger**: User "**所有后端操作都需要能在前端进行操作, 交互式**". 主仆 inversion — frontend = primary control plane, CC = automation backend.
 > **Sister doc**: `V3_AUDIT_S5_FRONTEND_REDESIGN_PROPOSAL.md` (UI design)
