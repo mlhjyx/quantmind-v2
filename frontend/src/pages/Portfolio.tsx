@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
+import apiClient from "@/api/client";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, ChartTooltip } from "@/components/shared";
@@ -70,9 +71,9 @@ export default function Portfolio() {
     let live = true;
     const load = async () => {
       const [s, p, h] = await Promise.allSettled([
-        axios.get<SectorItem[]>("/api/portfolio/sector-distribution", { params: { execution_mode: "live" } }),
-        axios.get<DailyPnl[]>("/api/portfolio/daily-pnl", { params: { days: 20, execution_mode: "live" } }),
-        axios.get<Array<{ code: string; holding_days: number }>>("/api/portfolio/holdings", { params: { execution_mode: "live" } }),
+        apiClient.get<SectorItem[]>("/portfolio/sector-distribution", { params: { execution_mode: "live" } }),
+        apiClient.get<DailyPnl[]>("/portfolio/daily-pnl", { params: { days: 20, execution_mode: "live" } }),
+        apiClient.get<Array<{ code: string; holding_days: number }>>("/portfolio/holdings", { params: { execution_mode: "live" } }),
       ]);
       if (!live) return;
 

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+// Frontend Design v3 §4.3 / Audit Finding #5: 6 raw axios bypass → apiClient SSOT
+import apiClient from "@/api/client";
 import { Link } from "react-router-dom";
 import { ChevronRight, Play, Bell } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -64,7 +65,7 @@ export default function DashboardOverview() {
 
     // Alerts
     setAlertsError(null);
-    axios.get<Alert[]>("/api/dashboard/alerts", { params: { execution_mode: "live" } })
+    apiClient.get<Alert[]>("/dashboard/alerts", { params: { execution_mode: "live" } })
       .then((r) => setAlerts(r.data))
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
@@ -74,7 +75,7 @@ export default function DashboardOverview() {
 
     // Monthly returns
     setMonthlyError(null);
-    axios.get<Record<string, number[]>>("/api/dashboard/monthly-returns", { params: { execution_mode: "live" } })
+    apiClient.get<Record<string, number[]>>("/dashboard/monthly-returns", { params: { execution_mode: "live" } })
       .then((r) => setMonthlyData(r.data))
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
@@ -84,7 +85,7 @@ export default function DashboardOverview() {
 
     // Industry distribution
     setIndustryError(null);
-    axios.get<IndustryItem[]>("/api/dashboard/industry-distribution", { params: { execution_mode: "live" } })
+    apiClient.get<IndustryItem[]>("/dashboard/industry-distribution", { params: { execution_mode: "live" } })
       .then((r) => setIndustryDist(r.data))
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "请求失败";
@@ -108,7 +109,7 @@ export default function DashboardOverview() {
       });
 
     // Factors list
-    axios.get<{ name: string; category: string; direction: string; status: string; ic_mean: number | null; ic_ir: number | null }[]>("/api/factors")
+    apiClient.get<{ name: string; category: string; direction: string; status: string; ic_mean: number | null; ic_ir: number | null }[]>("/factors")
       .then((r) => {
         const rows: FactorRow[] = r.data.map((f) => ({
           name: f.name,
@@ -131,7 +132,7 @@ export default function DashboardOverview() {
       .catch(() => setEnvState(null));
 
     // Pipeline status → transform node_statuses to steps array
-    axios.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/api/pipeline/status")
+    apiClient.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/pipeline/status")
       .then((r) => {
         const nodeMap = r.data.node_statuses ?? {};
         const currentNode = r.data.current_node;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
+import apiClient from "@/api/client";
 import { useNavigate } from "react-router-dom";
 import NAVChart from "@/components/NAVChart";
 import type { NAVPoint, NAVPeriod } from "@/types/dashboard";
@@ -172,7 +173,7 @@ export default function PTGraduation() {
       criteria: GraduationCriterion[];
     };
 
-    axios.get<GraduationStatusResp>("/api/paper-trading/graduation-status", { params: { execution_mode: "live" } })
+    apiClient.get<GraduationStatusResp>("/paper-trading/graduation-status", { params: { execution_mode: "live" } })
       .then((r) => {
         const resp = r.data;
         const criteria = resp.criteria ?? [];
