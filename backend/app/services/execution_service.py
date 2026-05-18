@@ -527,6 +527,7 @@ class ExecutionService:
         initial_capital: float,
         cb_level: int = 0,
         dry_run: bool = False,
+        execution_mode: str = "paper",
     ) -> list[Fill]:
         """处理封板待补单。
 
@@ -595,8 +596,10 @@ class ExecutionService:
         next_rebal_date = self._get_next_rebalance_date(conn, exec_date)
 
         # 加载Broker并处理补单
+        # ADR-008 D2: PaperBroker 必显式传 execution_mode (paper/live 命名空间, 铁律 31/34)
         paper_broker = PaperBroker(
             strategy_id=strategy_id,
+            execution_mode=execution_mode,
             initial_capital=initial_capital,
         )
         paper_broker.load_state(conn)

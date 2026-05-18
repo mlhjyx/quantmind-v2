@@ -100,7 +100,12 @@ class QMTDataService:
                 logger.error("QMT_PATH 或 QMT_ACCOUNT_ID 未配置")
                 return False
 
-            self._broker = MiniQMTBroker(qmt_path, account_id)
+            # LL-182: stable session_id for long-running QMTData service (reuse
+            # across Servy restart, no per-restart mutex accumulation). role="qmtdata"
+            # discriminator avoids collision with execute_phase / sell_adapter / staged.
+            from engines.broker_qmt import _stable_session_id
+            session_id = _stable_session_id(account_id, role="qmtdata")
+            self._broker = MiniQMTBroker(qmt_path, account_id, session_id=session_id)
             self._broker.connect()
             logger.info("QMT连接成功: account=%s", account_id)
 

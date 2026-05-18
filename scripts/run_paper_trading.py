@@ -470,6 +470,8 @@ def run_execute_phase(
                 price_data=price_data_t,
                 initial_capital=settings.PAPER_INITIAL_CAPITAL,
                 cb_level=cb.get("level", 0),
+                dry_run=dry_run,
+                execution_mode=settings.EXECUTION_MODE,
             )
             # P0 批 1 Fix 3 (2026-04-29): position_multiplier 必从 cb dict 取, 非 hardcoded 0.5.
             # check_circuit_breaker_sync 返 CB_POSITION_MULTIPLIER[level] = {0:1.0, 1:1.0,
@@ -478,6 +480,11 @@ def run_execute_phase(
             # reviewer P2 采纳 (everything-claude-code): fallback 1.0 实际 unreachable
             # (risk_control_service.py:1626-1632 永远在 return dict 中含 'position_multiplier'
             # key), 防御性 belt only. 保留以防 future refactor 简化 CB 返回结构.
+            # LL-183 fix: dry_run MUST be propagated to execute_rebalance.
+            # Pre-fix: --dry-run flag silent NOT-GATING live broker calls (true
+            # broker.buy() in execute_rebalance regardless of flag). 5-18 19:46 SH
+            # incident: 11 buy orders 真发送 miniQMT ¥543K frozen despite --dry-run.
+            # Root: line 482 call missing `dry_run=dry_run` propagation.
             exec_result = exec_svc.execute_rebalance(
                 conn=conn,
                 strategy_id=settings.PAPER_STRATEGY_ID,
@@ -488,6 +495,7 @@ def run_execute_phase(
                 price_data=price_data_t,
                 initial_capital=settings.PAPER_INITIAL_CAPITAL,
                 signal_date=signal_date,
+                dry_run=dry_run,
                 execution_mode=exec_mode,
             )
             fill_count = (
