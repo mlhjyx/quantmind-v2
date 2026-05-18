@@ -12,11 +12,11 @@
 """
 
 import asyncio
+import hashlib
 import logging
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -154,6 +154,31 @@ def _trade_to_dict(trade: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# LL-182: stable session_id helper (反 1414 stale mutex 累积)
+# ---------------------------------------------------------------------------
+
+def _stable_session_id(account_id: str) -> int:
+    """Generate stable session_id from account_id (12-digit int, fits xtquant range).
+
+    **LL-182 fix** — replace time-based session_id (HHMMSSffffff) with deterministic
+    hash. Same account → same session_id always. miniQMT reuses existing session
+    instead of creating new `down_queue_<id>__mutex` file per connect.
+
+    Root cause sediment: time-based session_id 2026-04-02 → 2026-05-18 累积 1412
+    stale mutex files (~30/day) in `userdata_mini/down_queue_*__mutex`, exhausting
+    miniQMT internal session pool → connect_failed -1 sustained windows.
+
+    Args:
+        account_id: QMT account id (e.g. "81001102")
+
+    Returns:
+        Deterministic 12-digit int session_id (same input → same output).
+    """
+    h = hashlib.md5(f"miniqmt_{account_id}".encode()).hexdigest()
+    return int(h[:12], 16) % (10**12)
+
+
+# ---------------------------------------------------------------------------
 # MiniQMTBroker
 # ---------------------------------------------------------------------------
 
@@ -200,7 +225,9 @@ class MiniQMTBroker(BaseBroker):
         """
         self._qmt_path = qmt_path
         self._account_id = account_id
-        self._session_id = session_id or int(datetime.now().strftime("%H%M%S%f"))
+        # LL-182: stable session_id default (反 1414 stale mutex 累积 4-02 → 5-18).
+        # session_id 参数显式传入仍优先 (e.g. multi-instance test 隔离).
+        self._session_id = session_id or _stable_session_id(account_id)
 
         self._trader: Any = None  # XtQuantTrader实例
         self._account: Any = None  # StockAccount实例
@@ -234,6 +261,47 @@ class MiniQMTBroker(BaseBroker):
     # 连接管理
     # ------------------------------------------------------------------
 
+    def cleanup_stale_mutex_files(self, max_age_days: int = 7) -> int:
+        """删除 userdata_mini 中过期的 down_queue_*__mutex 文件 (LL-182).
+
+        **LL-182 fix** — auto-cleanup stale session mutex files to prevent miniQMT
+        internal session pool exhaustion. 配合 stable session_id (`_stable_session_id`)
+        消除 4-02→5-18 累积 1412 stale mutex (~30/day) connect_failed 真根因.
+
+        Args:
+            max_age_days: 删 mtime 早于 N day 的 mutex 文件. connect() 默认 7d
+                (保留 last 7d 防误删 active session); disconnect() 用 1d 激进 cleanup.
+
+        Returns:
+            实际删除的文件数. 0 = 0 stale OR path 不存在.
+
+        Safety:
+            - 仅删 `down_queue_*__mutex` 文件 (per-session marker, 非 order book)
+            - mtime 严格阈值, 不删 active session current mutex
+            - 失败 silent_ok (file lock / permission, 下次 cleanup 重试)
+        """
+        try:
+            qmt_dir = Path(self._qmt_path)
+            if not qmt_dir.exists():
+                return 0
+            cutoff = time.time() - max_age_days * 86400
+            deleted = 0
+            for f in qmt_dir.glob("down_queue_*__mutex"):
+                try:
+                    if f.stat().st_mtime < cutoff:
+                        f.unlink()
+                        deleted += 1
+                except OSError:
+                    pass  # silent_ok: file lock / permission, retry next cleanup
+            if deleted:
+                logger.info(
+                    f"[QMT] cleanup stale mutex: deleted {deleted} files older than {max_age_days}d"
+                )
+            return deleted
+        except OSError:
+            logger.exception("[QMT] cleanup_stale_mutex_files glob failed")
+            return 0
+
     def connect(self) -> None:
         """连接miniQMT交易端并订阅账户推送。
 
@@ -245,6 +313,10 @@ class MiniQMTBroker(BaseBroker):
             raise RuntimeError(
                 f"miniQMT路径不存在: {self._qmt_path}，请确认QMT客户端已安装且路径正确"
             )
+
+        # LL-182: cleanup stale mutex files 前置 (反 1414 stale mutex 累积 connect_failed
+        # 真根因). 配合 stable session_id 消除 per-connect mutex 累积.
+        self.cleanup_stale_mutex_files(max_age_days=7)
 
         # 延迟导入xtquant（仅在实际使用时需要）
         from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
