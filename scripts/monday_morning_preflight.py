@@ -359,6 +359,82 @@ def _check_daily_execute_schtask() -> dict:
 # verified via Check #4 portfolio:nav freshness (HASH key updated every poll).
 # Stream freshness check would produce false-positive FAIL during normal steady
 # state and is therefore harmful. 6 checks total (was 7).
+#
+# Check 7 added 2026-05-18 per LL-179 lesson 5: Servy "Running" state ≠ Beat
+# dispatch loop alive. Beat process can be Running but unable to dispatch
+# (broker disconnect / persistent DB corrupt / silent termination 0 stderr).
+# Mon 5-18 incident: Beat ran fine 22:24-22:49 SH 5-17, then silently terminated;
+# Servy state lagged + 13.5h 0 task dispatch. Check 7 = celery-beat-stderr.log
+# last "Sending due task" entry within last 5min (outbox-publisher-tick is 30s
+# Beat cadence, so 5min staleness = ~10 missed ticks = certain dispatch failure).
+
+
+def _check_beat_dispatch_alive() -> dict:
+    """Check 7: CeleryBeat dispatch loop alive (LL-179 lesson 5 sediment).
+
+    Servy "Running" state ≠ Beat dispatch loop active. Beat process can survive
+    while dispatch loop dies (broker disconnect / persistent DB corrupt / silent
+    process death). Direct evidence: celery-beat-stderr.log latest 'Sending due
+    task' entry. 5min staleness threshold = ~10 missed 30s-cadence outbox-publisher
+    ticks → certain failure (not transient).
+    """
+    import re
+
+    try:
+        log_path = PROJECT_ROOT / "logs" / "celery-beat-stderr.log"
+        if not log_path.exists():
+            return {
+                "name": "beat_dispatch_alive",
+                "pass": False,
+                "reason": "celery-beat-stderr.log not found",
+            }
+
+        # Read last 8KB tail (sufficient for ~50 dispatch entries).
+        size = log_path.stat().st_size
+        offset = max(0, size - 8192)
+        with open(log_path, "rb") as f:
+            f.seek(offset)
+            tail = f.read().decode("utf-8", errors="replace")
+
+        pattern = re.compile(
+            r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+: INFO/MainProcess\] Scheduler: Sending due task"
+        )
+        matches = pattern.findall(tail)
+        if not matches:
+            return {
+                "name": "beat_dispatch_alive",
+                "pass": False,
+                "reason": "no 'Sending due task' entries in last 8KB stderr tail (Beat dispatch loop dead)",
+            }
+
+        latest_ts_str = matches[-1]
+        latest_dt = datetime.fromisoformat(latest_ts_str).replace(
+            tzinfo=ZoneInfo("Asia/Shanghai")
+        )
+        now_sh = _now_sh()
+        delta_sec = (now_sh - latest_dt).total_seconds()
+
+        if delta_sec > 300:
+            return {
+                "name": "beat_dispatch_alive",
+                "pass": False,
+                "reason": (
+                    f"latest dispatch {latest_ts_str} ({int(delta_sec)}s ago) > 5min — "
+                    "Beat may be silently terminated (LL-179 lesson 5)"
+                ),
+                "evidence": {"latest_dispatch": latest_ts_str, "delta_sec": int(delta_sec)},
+            }
+
+        return {
+            "name": "beat_dispatch_alive",
+            "pass": True,
+            "reason": f"latest dispatch {latest_ts_str} ({int(delta_sec)}s ago)",
+            "evidence": {"latest_dispatch": latest_ts_str, "delta_sec": int(delta_sec)},
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"name": "beat_dispatch_alive", "pass": False, "reason": f"{type(e).__name__}: {e}"}
+
+
 _CHECKS = (
     ("1. Servy services (4 services Running)", _check_servy_services),
     ("2. services_healthcheck full pass", _check_services_healthcheck),
@@ -366,6 +442,7 @@ _CHECKS = (
     ("4. xtquant truth via Redis (nav fresh + 0 持仓)", _check_xtquant_truth),
     ("5. DB freshness (klines_daily >= 2026-05-15)", _check_db_freshness),
     ("6. QuantMind_DailyExecute schtask Ready", _check_daily_execute_schtask),
+    ("7. CeleryBeat dispatch loop alive (LL-179 lesson 5)", _check_beat_dispatch_alive),
 )
 
 
