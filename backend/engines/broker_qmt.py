@@ -11,6 +11,7 @@
     broker.disconnect()
 """
 
+import asyncio
 import logging
 import threading
 import time
@@ -248,6 +249,19 @@ class MiniQMTBroker(BaseBroker):
         # 延迟导入xtquant（仅在实际使用时需要）
         from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
         from xtquant.xttype import StockAccount
+
+        # M3 fix 2026-05-18 14:02 SH P0 incident — xtquant.xttrader internally
+        # uses asyncio/Tornado; Celery worker thread (--pool=solo MainThread) +
+        # Python 3.10+ raises RuntimeError "no current event loop in thread
+        # 'MainThread'" if no loop set before XtQuantTrader() instantiation.
+        # PR #377 fixed ModuleNotFoundError (sys.path drift) but did NOT cover
+        # this asyncio compat sub-class. Defensive bootstrap: ensure event loop
+        # set before any xtquant API call. Idempotent: if loop exists, no-op.
+        # Sediment LL-180 candidate. 6th 实证 sys.path/asyncio drift sub-class.
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
 
         # 创建回调子类（动态继承，因为xtquant需要XtQuantTraderCallback子类）
         broker_ref = self

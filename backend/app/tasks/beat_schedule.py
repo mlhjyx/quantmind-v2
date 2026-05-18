@@ -198,6 +198,12 @@ CELERY_BEAT_SCHEDULE: dict = {
     # **8c-partial scope**: state transition only. Broker_qmt sell wire deferred
     # to 8c-followup PR (5/5 红线 关键点 needs explicit user ack per Plan §A SOP).
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`.
+    # ── [Re-enabled 2026-05-18 14:11 SH post M3 broker_qmt asyncio bootstrap fix] ──
+    # M1 temp-disable history: 14:02-14:11 SH ~9 min window blocked spam from 14:02 SH
+    # P0 DingTalk "V3 L4 STAGED live broker wire FAILED" (RuntimeError: no event loop).
+    # M3 fix applied to broker_qmt.py:253-264 — asyncio.set_event_loop bootstrap before
+    # xtquant.xttrader API calls. LL-180 候选: 6th 实证 sys.path/asyncio drift sub-class
+    # (PR #377 fixed ModuleNotFoundError, this PR fixes asyncio compat).
     "risk-l4-sweep-1min": {
         "task": "app.tasks.l4_sweep_tasks.sweep_pending_confirm_plans",
         "schedule": crontab(minute="*", hour="9-14", day_of_week="1-5"),
@@ -217,6 +223,7 @@ CELERY_BEAT_SCHEDULE: dict = {
     # 反 hard collision: meta-monitor-tick `*/5` + outbox 30s — Beat sequential
     # dispatch + Worker --pool=solo tolerates (cheap SELECT + per-plan retry).
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`.
+    # ── [Re-enabled 2026-05-18 14:11 SH post M3 broker_qmt asyncio bootstrap fix] ──
     "risk-l4-broker-stuck-sweep": {
         "task": "app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans",
         "schedule": crontab(minute="*/5"),
