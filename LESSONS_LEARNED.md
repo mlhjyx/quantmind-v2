@@ -5998,3 +5998,201 @@ Mon 5-18 16:59 SH = V3 audit cycle 真闭环 evidence sufficient for live-fire r
 - ADR-082 D11 ⏳ Servy single-service-at-a-time SOP (LL-180 lesson 3)
 - ADR-082 D12 ⏳ Alert pipeline 双 path 统一审计 (LL-180 lesson 4)
 - Commit-message lint banned words (LL-180 lesson 5 + LL-181 lesson 1)
+
+
+## LL-182: Mon 5-18 Evening (~19:00 SH) QMT connect_failed Sustained — 5-axis Root Cause Fix + Stable session_id + Auto-cleanup Mutex Pool (Mon evening incident sediment)
+
+> **沉淀时机**: 5-18 evening incident — QMT connect_failed 58min sustained despite miniQMT GUI alive 全程. User: "qmt 我一直登录着的, 为什么会频繁出现连接不上的问题, 这个需要解决、排查相关问题. 有没有其他方法来解决这个问题, 这个问题很严重." + "我希望一次性解决问题, 不是什么短中长期".
+>
+> **结论**: 5-axis 一次性根本修复 (commit `481ebcd`):
+>   1. `_stable_session_id(account_id)` 用 `hashlib.md5(f"miniqmt_{account_id}")` → 12-digit int (e.g. `81001102 → 214701322725`). 替换 time-based default `int(datetime.now().strftime("%H%M%S%f"))` (collision-prone).
+>   2. `cleanup_stale_mutex_files(max_age_days=7)` 加入 `connect()` 起手. 防 mutex pool 累积无界增长.
+>   3. Bulk cleanup 1222 stale mutex files in `userdata_mini/down_queue_*__mutex` (pool ~94% exhausted post-incident).
+>   4. RealtimeRisk Servy hardening parity (per LL-181 pattern: Beat ≠ Schtask, separate health probe).
+>   5. Module-restart SOP after sdk-import changes (xtquant lazy import via QMTDataSource — clean restart prevents session_id collision).
+>
+> **教训**: time-based session_id 不是 ID — 是 "approximately unique within microseconds". Multi-process spawn + restart → collision → mutex pool exhaustion → opaque connect_failed. **真 ID 必须 deterministic per account**.
+>
+> **关联**: audit doc `docs/audit/V3_QMT_CONNECT_ROOT_CAUSE_FIX_2026_05_18.md` (commit 481ebcd). 沉淀 audit chain MASTER `b4b8b8c`.
+>
+> **#18 alternatives** (sustained for future similar incidents):
+> 1. Stable hash-based ID (chosen) — deterministic + collision-free
+> 2. UUID4 per process (rejected — opacity, can't debug)
+> 3. PID-based ID (rejected — process restart reuses PID)
+>
+> **铁律 backref**: 36 (precondition 必核) / 33 (silent failure 禁) / 1 (no guess)
+
+## LL-183: Mon 5-18 19:46 SH P0 — `--dry-run` Flag Silent NOT-GATING Live Broker (Critical P0 Bug, 11 Buy Orders 真发 miniQMT, 0 Fills Containment)
+
+> **沉淀时机**: 5-18 evening Stage 6 pre-09:31 SH proactive verification. CC ran `python scripts/run_paper_trading.py execute --dry-run --skip-fetch --date 2026-05-19` expecting NO broker calls. **Reality**: 19:46-19:52 SH 19 buy orders cycled (place → wait 60s → cancel-on-timeout → next target), 7 unique stocks, accumulator ¥0 → ¥543,560 cash frozen, 11 orders status "已报待撤" queued.
+>
+> **Containment 19:52 SH**: TaskStop background bash + cancel_stale_orders.py + schtask QuantMind_DailyExecute Disabled. trade_log verify: **0 fills last 2h** ✅. position_snapshot today: 0 rows ✅. QMT total_asset ¥993,520.66 unchanged ✅. 红线 5/5 sustained.
+>
+> **Root cause** (`scripts/run_paper_trading.py:482-493` pre-fix):
+> ```python
+> exec_result = exec_svc.execute_rebalance(
+>     conn=conn, strategy_id=..., target_weights=hedged_target,
+>     ...
+>     execution_mode=exec_mode,
+> )  # MISSING dry_run=dry_run
+> ```
+> `execute_rebalance` signature defaults `dry_run=False`, so live broker fires regardless of script `--dry-run` flag. Same bug in line 466-474 `process_pending_orders()`.
+>
+> **Why it survived**: `--dry-run` historically used with `execution_mode=paper` (PaperBroker, no real broker side effect). 真账户 live-fire path 没 dry-run tested with valid signals 直到这次. Code reviewer / pre-push hooks 没 catch (silent runtime behavior, 0 exception, just incorrect propagation).
+>
+> **Fix applied** (commit `355b813`):
+> - Line 466: `process_pending_orders(... dry_run=dry_run, ...)` ✅
+> - Line 482: `execute_rebalance(... dry_run=dry_run, ...)` ✅
+> - `execution_service.py:412-413` `if dry_run: skip` gate verified
+>
+> **Regression gate** (commit `7b57018`): `backend/tests/test_dry_run_no_broker_call.py` 4 tests — dry_run=True 0 broker call + dry_run=False broker called + sibling process_pending + signature audit. 4 PASS 0.07s.
+>
+> **Recurrence prevention**:
+> 1. Pytest regression gate (done)
+> 2. Audit ALL live-mode `--dry-run` propagation (Phase B audit done, NO sibling bugs found)
+> 3. SOP candidate: any `--dry-run` invocation, first read execute path full call chain to verify dry_run terminates at broker boundary
+>
+> **关联**: audit doc `docs/audit/V3_DRY_RUN_BUG_LL_183_2026_05_18.md` (commit `355b813`) / Phase B audit closure `7b57018` / 5-18 evening STATUS_REPORT `b4b8b8c`
+>
+> **#18 alternatives** (sustained):
+> 1. Pytest regression gate (chosen primary)
+> 2. Static analysis (mypy strict + custom plugin to flag missing kwarg propagation)
+> 3. Contract-based dry_run (Protocol class with dry_run mandatory in signature)
+>
+> **铁律 backref**: 33 (silent failure 禁), 35 (config single source), 25 (代码变更前必读)
+> **Heuristic backref**: #15 Test-Reality Gap (pytest 604 PASS 但生产 fail) ⭐ — 这是 V3 Audit Section VII heuristic #15 的 canonical case
+
+## LL-184: 2026-05-18 Evening V3 Full Project Deep Audit Closure — Plan v8 Iteration + 9 Subagents 3 Batches + Top 50 Findings + Strategic Alternatives Chapter (Audit-Level Sediment)
+
+> **沉淀时机**: 5-18 evening 10h+ autonomous audit. Plan iterated v4→v5→v6→v7→v8 with user Q&A approval at each iteration. user 反复挑战 "你思维局限了" → heuristic #18 GLOBAL ENFORCE birth (every finding 2-3 alternatives). user "所有后端操作都需要能在前端进行操作, 交互式" → Section XI inversion + heuristic #19 UX Workflow Gap. user "你仔细阅读 plan 还有没有遗漏" → heuristic #20 NEW v8 双向 Design-Implementation Reverse Mapping.
+>
+> **执行**: 9 subagents across 3 batches (A/B/C inventory + D/E/F flow/closure + G/H/I health/frontend/strategic) + CC cross-validate gates between batches (LL-106 drift containment 3-4x prevention).
+>
+> **Top 5 P0** (immediate ≤24h):
+> 1. .env LIVE_TRADING_DISABLED=false + EXECUTION_MODE=live post LL-183 unrolled (RED LINE)
+> 2. PG password `quantmind` plaintext + 6 .env-*.bak leaked logs/
+> 3. pg_restore never tested 2026 (backup unverified)
+> 4. Reflector → ThresholdEngine NOT wired (apply_reflection grep 0 hits — V3 §16 learning theatre)
+> 5. Beat death no heartbeat monitor — LL-181 sustained, 8-hop longest cascade
+>
+> **3 cross-cutting themes**:
+> - System "open-loop" (5/7 loops broken)
+> - CC primary actor, Frontend passive (13/32 ops 既无 API 又无 UI — Section XI inversion)
+> - Knowledge fragility (bus factor=1 + 0 onboard doc + sprint_state 768KB + LL count drift 94→160 + ADR count drift 22→67)
+>
+> **NEW heuristic #20 双向 reverse trace**:
+> - Forward (design → code): DEV_AI_EVOLUTION.md 705 行 Layer 3 Feature Map / Layer 4 riskfolio 0 code hits — heuristic #14 Documentation Lying
+> - Backward (code → design): paper_broker.py / base_broker.py / signal_router.py 无独立 design doc — heuristic #20 NEW v8 Code Orphan
+>
+> **教训**:
+> 1. **审计本身需 cross-validate gates** (LL-106 sediment 3-4x drift 真存在 — Subagent A recursive count engines 86 vs CC top-level verify 45)
+> 2. **设计 doc IMPLEMENTED % audit 是核心 audit dim**, 不只 doc 存在与否 — ~20 design docs IMPLEMENTED % vary 0-100% (DEV_FOREX 0% / DEV_AI_EVOLUTION 25% / DEV_BACKTEST 70% / V3_DESIGN 85%)
+> 3. **heuristic #18 GLOBAL ENFORCE** (每 finding 2-3 alt remediation) 应作 audit 标准 — 反 "单解 bias" + 反 user 反复挑战 "思维局限"
+> 4. **Section XI inversion** (frontend = primary control plane) 是 LL-183 教训 institutional 化 — UI 不能 silent NOT-GATE
+> 5. **Audit cadence calendar 化** (event-driven post-LL + quarterly + pre-cutover + tech debt threshold)
+>
+> **关联**: Master `b4b8b8c` `V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md` + 13 audit docs + 3 HTML mockup + STATUS_REPORT `STATUS_REPORT_2026_05_18_evening_audit_closure.md` + Supplement `3f5c345`
+>
+> **#18 alternatives** (audit methodology meta):
+> 1. Batch-staggered subagents + CC cross-validate gates (chosen, 9 subagents 3 batches LL-106 containment)
+> 2. All-parallel 9 subagents (rejected — drift contamination cascades)
+> 3. Sequential 1-by-1 (rejected — elapsed cost 27h+)
+>
+> **铁律 backref**: 22 (doc follow code), 37 (handoff before close), X10 (no forward progress offer)
+> **Heuristic backref**: #1/#2/#3/#4/#13/#14/#15/#16/#17/#18/#19/#20 全应用
+
+## LL-185: 2026-05-18 Evening Section XI Backend Op → Frontend Action Coverage Matrix Audit — Frontend = Primary Control Plane Inversion + 3 HTML Mockup Variants A/B/C + claude.ai/design Web 2-path Frontend Design (NEW v6 Sediment)
+
+> **沉淀时机**: V3 Full Project Deep Audit Plan v8 Section XI (NEW v6). user 5-18 evening 明确: "**所有后端操作都需要能在前端进行操作, 交互式**". 暴露架构主仆 inversion 问题 — 设计目标应是 user 用 frontend 控制系统, CC 作 backend automation, 但事实倒过来.
+>
+> **Section XI §41 Backend Op → Frontend Action Coverage Matrix** (32 ops enumerate):
+> - 14/32 (44%) 有 API + UI
+> - 5/32 有 API 无 UI (L4 ops / news / version rollback)
+> - **13/32 (41%) 既无 API 又无 UI** — 包括 execute_phase / env_flip / cancel_stale / Servy restart / schtask toggle / pull_tushare / factor_lifecycle force / risk threshold / L4 STAGED confirm / LL sediment / ADR creation / Beat schedule view
+>
+> **Frontend Design 2-path** (user 提问 "前端设计规范 feed claude.ai/design"):
+> 1. Path 1: `V3_AUDIT_FRONTEND_DESIGN_SPEC.md` (~810 lines) → user 复制 → https://claude.ai/design 网页 → 生成 React+Tailwind code → 下载 → CC 集成
+> 2. Path 2: `oh-my-claudecode:designer` agent → 3 HTML mockup variants 自动出 (audit-time, 0 touchpoint)
+> 3. Path 3 (推荐): Hybrid — designer agent 出 quick HTML mockup (audit 期内) + spec doc 同时备给 user post-audit polish
+>
+> **3 HTML Mockup Variants** (`docs/audit/frontend_mockups/`):
+> - **A_safety_first.html** (44 KB) — 安全优先 / LL-183 prevention focus / 大红 env banner + 三锁 (env match + typed phrase + cooldown) + 全屏 30% audit log fixed
+> - **B_trader_velocity.html** (45 KB) — 操盘员速度 / 3-col layout + Cmd+K palette + SSE streaming log 4s 动 + 1-click LOW + toast undo 10s
+> - **C_ai_assisted.html** (43 KB) — AI 辅助 / Claude 风格 chat panel + tool call ("撤掉 601398 所有 order") + auto-explain panels + CRIT boundary (AI 不能直接触发 emergency_close / env_flip)
+>
+> **Designer agent recommendation**: Build A first (2 weeks safety guardrail LL-183 prevention) → layer B second (PT 重启 gate 后 3 weeks velocity UX) → evaluate C last (Phase 5+).
+>
+> **Confirmation tiers** (per heuristic #19 UX Workflow Gap):
+> - LOW (cancel order): 1-click + toast undo 10s
+> - MED (force pull, factor archive): modal + confirm
+> - HIGH (L4 approve, drift fix): modal + typed reason + admin token re-enter
+> - **CRIT** (live execute, env_flip, emergency_close): **三锁** = env check + typed phrase (如 `EXECUTE-PAPER-20260518`) + 5s cooldown timer
+>
+> **教训**:
+> 1. UI 不能 silent NOT-GATE (LL-183 frontend 化 — 三锁 + audit log immutable + always-visible env banner)
+> 2. AI 不能直接触发 CRIT ops (变体 C 设计: AI 可 compose 但必须 manual 三锁 modal)
+> 3. Frontend Design Spec ↔ web tool 是合理 user touchpoint, 不应 100% 自动化 (path 1 仍 valuable)
+>
+> **关联**: `V3_AUDIT_S9_UX_CONTROL_PLANE.md` + `V3_AUDIT_S5_FRONTEND_REDESIGN_PROPOSAL.md` + `V3_AUDIT_FRONTEND_DESIGN_SPEC.md` + `V3_AUDIT_FRONTEND_DESIGN_PROPOSAL.md` + 3 HTML mockup variants + Master `b4b8b8c`
+>
+> **#18 alternatives** (frontend design path):
+> 1. Hybrid 3-path (chosen)
+> 2. Pure claude.ai/design web (rejected — user touchpoint required)
+> 3. Pure designer agent (rejected — static HTML not React, missing 2nd opinion)
+>
+> **铁律 backref**: X10 (forward-progress offer 禁), 33 (silent failure 禁)
+> **Heuristic backref**: #18 Alternative Path / #19 UX Workflow Gap (NEW v6)
+
+## LL-186: 2026-05-18 Evening Subagent I Resume DB-Verify Supplement — LLM Cost Tracking BROKEN + RAG 1 Row Theatrical + VACUUM ANALYZE Never Ran (Audit Supplement Sediment, 3 P0 Escalations)
+
+> **沉淀时机**: V3 Full Project Deep Audit Plan v8 Phase 5 post-commit. user requested "resume audit subagent I" to fill [DB-VERIFY-PENDING] flags in Master §31/§32/§34. PG password discovered as `quantmind` plaintext (P0-2 from Subagent G). Supplement committed `3f5c345`.
+>
+> **3 P0 escalations (vs Master)**:
+>
+> **F-S7-001 P0 NEW** — LLM cost_usd integration BROKEN:
+> - Real DB query: `SELECT call_type, COUNT(*), SUM(cost_usd) FROM llm_call_log WHERE created_at > date_trunc('month', NOW())`
+> - Result: 570 calls / **$0.00 across the board** / 12 days 5-07~5-18 / ~877K tokens
+> - Should be ~$0.16 MTD given 877K tokens
+> - **Cost tracking integration broken**. BudgetGuard $50/月 capt silently defanged 100%.
+> - Master §31 (P1) escalates to P0.
+>
+> **F-S7-005 P0 NEW** — RAG Memory theatrical:
+> - `SELECT COUNT(*), MAX(created_at) FROM risk_memory` → **1 row total** (single Reflection:Weekly from 5-17 19:00)
+> - Despite ADR-068 "TB-3 risk-memory RAG closure" sediment
+> - 1024-d pgvector index has 0 retrieval value at 1 row
+> - Master §34 (P1) escalates to P0.
+>
+> **F-S7-008 P1 NEW** — VACUUM ANALYZE never ran:
+> - `pg_stat_user_tables` shows n_live_tup=0 for factor_values
+> - But real `COUNT(*)` = **840,850,343 rows**
+> - **Planner stats stale across all hypertables**
+> - **Subagent C's stat-based dead table detection itself unreliable** — needs COUNT(*) confirm
+>
+> **Verified findings**:
+> - §32 V4-Flash/Pro routing: 326 flash + 19 pro (94.5%/5.5%) over 7d, 0 qwen3 fallback. Routing integrity ✅. ADR-036 cost concern not material at current volume.
+> - §32 F-S7-004 P1 NEW: `fundamental_summarize` + `embedding` task types = 0 calls ever (2/7 routing coverage gap 28.6%)
+> - §29.1 F-D78-241 sustained: trade_log MAX 2026-04-29 (20d stale) / risk_event_log MAX 2026-04-30 (19d stale) / 3 events / 30d vs 4+ LL-180~183 incidents → **incident reconstructability degrading**
+> - Dead tables (12 candidates): all confirmed n_live_tup=0, 216 KB overhead
+>
+> **教训**:
+> 1. **DB-verify is the gold-standard** — file-grep + code-read 推 trace 都不如真 SQL 跑出来 (3 P1 escalated to P0 just via SQL)
+> 2. **Tracking config alive ≠ integration alive** — LLM cost schema 完整 + budget.py 3 state machine + cost_usd column exists, BUT actual cost_usd writes all 0.00. Integration testing 必 end-to-end (从 LLM call → DB row → cost > 0).
+> 3. **ADR closure ≠ DB reality** — ADR-068 "TB-3 risk-memory RAG closure" sediment 但 risk_memory 1 row 5d 后. 闭环 verify 必 DB query, 不是 ADR doc.
+> 4. **pg_stat reliability requires VACUUM** — n_live_tup 是 planner stat, 真值需 COUNT(*). 30min VACUUM ANALYZE cron 是 cheap recovery.
+>
+> **关联**: `V3_AUDIT_S7_ML_COST_HARDWARE_SUPPLEMENT.md` (350 lines, commit `3f5c345`) + Master `b4b8b8c` + STATUS_REPORT closure
+>
+> **Recovery sequencing** (PT-restart prerequisite, ordered):
+> 1. F-S7-001 (2-4h) fix LLM cost integration before v4-pro scale-up
+> 2. F-S7-008 (30min) VACUUM ANALYZE cron
+> 3. F-S7-005 (1-2h) RAG backfill bootstrap
+> 4. F-D78-241 (~1w) audit middleware emergency_close
+> 5. F-S7-007 (2h) drop 12 dead tables (needs ADR for forex_*)
+>
+> **#18 alternatives** (F-S7-001 LLM cost fix):
+> 1. Fix LiteLLM router cost_usd extraction from response.usage.total_cost (chosen primary)
+> 2. Post-call DB UPDATE based on token count × per-model pricing table (defensive backup)
+> 3. Switch to LiteLLM proxy server with built-in cost tracking (heavier infrastructure)
+>
+> **铁律 backref**: 22 (doc follow code), 33 (silent failure 禁 — cost 0 是 silent fail), 25 (代码变更前必读)
+> **Heuristic backref**: #15 Test-Reality Gap / #17 Audit-Self-Audit (ADR closure ≠ DB reality) / #18 Alternative Path / #20 Reverse Mapping
