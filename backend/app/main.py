@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.agent import router as agent_router
 from app.api.approval import router as approval_router
 from app.api.backtest import router as backtest_router
 from app.api.dashboard import router as dashboard_router
@@ -92,6 +93,7 @@ app.add_middleware(
 
 # --- API 路由注册 ---
 app.include_router(health_router)
+app.include_router(agent_router)
 app.include_router(approval_router)
 app.include_router(backtest_router)
 app.include_router(dashboard_router)

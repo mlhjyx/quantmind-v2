@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { FactorPanel } from "@/components/strategy/FactorPanel";
 import { StrategyEditor } from "@/components/strategy/StrategyEditor";
 import { StrategyPreview } from "@/components/strategy/StrategyPreview";
+import { AssistPanel } from "@/components/ai/AssistPanel";
+import { useNotificationStore } from "@/store/notificationStore";
 import { getFactorsSummary } from "@/api/factors";
 import { listStrategies, createStrategy, updateStrategy } from "@/api/strategies";
 import { STALE } from "@/api/QueryProvider";
@@ -73,7 +75,11 @@ export default function StrategyWorkspace() {
 
   const handleSave = () => {
     if (!config.name.trim()) {
-      alert("请输入策略名称");
+      useNotificationStore.getState().add({
+        type: "warning",
+        title: "请输入策略名称",
+        message: "策略名称不能为空",
+      });
       return;
     }
     saveMutation.mutate();
@@ -81,7 +87,11 @@ export default function StrategyWorkspace() {
 
   const handleRunBacktest = () => {
     if (!config.name.trim()) {
-      alert("请先保存策略");
+      useNotificationStore.getState().add({
+        type: "warning",
+        title: "请先保存策略",
+        message: "运行回测前必须保存策略",
+      });
       return;
     }
     navigate("/backtest/config");
@@ -215,28 +225,8 @@ export default function StrategyWorkspace() {
 
         {/* Right: AI Assistant + Preview (260px) */}
         <div className="w-[260px] shrink-0 flex flex-col gap-4">
-          {/* AI Assistant placeholder */}
-          <GlassCard variant="glow" padding="sm">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-base">🤖</span>
-              <h2 className="text-xs font-semibold text-slate-300">AI 助手</h2>
-              <span className="ml-auto text-xs text-slate-600 bg-slate-700/50 px-1.5 py-0.5 rounded">Sprint 1.18</span>
-            </div>
-            <div className="space-y-2 mb-3">
-              {["生成策略", "优化建议", "解释策略", "因子诊断"].map((label) => (
-                <button
-                  key={label}
-                  disabled
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs text-slate-500 border border-white/5 cursor-not-allowed opacity-60"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/5">
-              <p className="text-xs text-slate-600 italic">AI 策略助手即将上线</p>
-            </div>
-          </GlassCard>
+          {/* AI Assistant — Frontend Design v3 §3.2.2 (replaces Sprint 1.18 placeholder) */}
+          <AssistPanel context={{ page: "strategy" }} mode="inline" />
 
           {/* Strategy Preview */}
           <GlassCard className="flex-1 overflow-y-auto" padding="sm">

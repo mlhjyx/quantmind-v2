@@ -7,6 +7,7 @@ import { C } from "@/theme";
 import { PageErrorBoundary } from "@/components/ui/PageErrorBoundary";
 import { useMarketOverview } from "@/hooks/useRealtimeData";
 import { EnvStateBanner } from "@/components/safety/EnvStateBanner";
+import { FloatingAssistLauncher } from "@/components/ai/AssistPanel";
 
 function fmtPrice(v: number): string {
   return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -104,6 +105,8 @@ export function Layout() {
         </div>
       </div>
       <ToastContainer />
+      {/* AI 助手 Cmd+J 全局快捷键 + 浮动入口 */}
+      <FloatingAssistLauncher />
     </NotificationProvider>
   );
 }

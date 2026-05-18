@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { FlowChart } from "@/components/pipeline/FlowChart";
 import { ApprovalPanel } from "@/components/pipeline/ApprovalPanel";
 import { PipelineHistory } from "@/components/pipeline/PipelineHistory";
+import { AssistPanel } from "@/components/ai/AssistPanel";
 import {
   getPipelineStatus,
   getPendingApprovals,
@@ -42,7 +43,7 @@ const LOG_LEVEL_COLORS: Record<string, string> = {
   decision: "text-blue-300",
 };
 
-const TABS = ["状态流程", "待审批", "运行历史", "AI决策日志"] as const;
+const TABS = ["状态流程", "待审批", "运行历史", "AI决策日志", "AI助手"] as const;
 type Tab = (typeof TABS)[number];
 
 // Mock empty state for use when API not yet available
@@ -589,6 +590,10 @@ export default function PipelineConsole() {
 
       {activeTab === "运行历史" && (
         <PipelineHistory runs={history} loading={loadingHistory} />
+      )}
+
+      {activeTab === "AI助手" && (
+        <AssistPanel context={{ page: "pipeline", entity_id: status.run_id ?? undefined }} mode="embedded" />
       )}
 
       {activeTab === "AI决策日志" && (
