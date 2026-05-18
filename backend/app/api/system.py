@@ -397,3 +397,52 @@ async def test_notification(
         return {"success": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
     except Exception as exc:
         return {"success": False, "message": f"发送失败: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/system/env-state  — Frontend Design v3 §3.1.1 EnvStateBanner backing
+# ---------------------------------------------------------------------------
+
+
+@router.get("/env-state", summary="当前 .env 关键字段实时状态（LL-183 prevention UI）")
+async def get_env_state() -> dict[str, Any]:
+    """返回前端 EnvStateBanner 渲染所需的 .env 关键字段实时快照。
+
+    设计原因 (LL-183 silent NOT-GATING 教训):
+        Dry-run 旗标可静默 bypass live broker call, 用户无任何视觉 hint
+        即 EXECUTION_MODE=live + LIVE_TRADING_DISABLED=false 也看不出. 此端点
+        为前端顶部 banner 提供 SSOT, 覆盖 35 pages.
+
+    渲染语义 (前端解析):
+        - mode=paper + live_trading_disabled=true → GREEN safe banner
+        - mode=live + live_trading_disabled=false → RED + pulse banner
+        - mode=live + live_trading_disabled=true → AMBER mismatch banner
+        - mode=disabled → GRAY maintenance banner (post-shutdown like 2026-04-29)
+
+    Returns:
+        dict 含 mode / live_trading_disabled / qmt_account_id / pt_top_n /
+        dingtalk_enabled / l4_auto_enabled / last_updated (ISO timestamp).
+    """
+    from datetime import UTC, datetime
+
+    from app.config import settings
+
+    # L4 AUTO mode — 5-15 V3 PT cutover plan v0.4 retired Beat polling,
+    # 不在 config.py 显式字段; 走环境变量 fallback (默认 False = STAGED 人工审批)
+    l4_auto_env = os.environ.get("L4_AUTO_MODE_ENABLED", "false").strip().lower()
+    l4_auto_enabled = l4_auto_env in ("true", "1", "yes")
+
+    # mode 推导: 优先 EXECUTION_MODE, 若 LIVE_TRADING_DISABLED=true 且 0 持仓 → disabled
+    # 注: 'disabled' 推导需要 DB 0 持仓事实; 这里仅基于 env 字段, 由前端结合 portfolio
+    #     summary 决定是否升级为 disabled 显示 (ShutdownBanner)
+    mode = settings.EXECUTION_MODE  # 'paper' | 'live'
+
+    return {
+        "mode": mode,
+        "live_trading_disabled": settings.LIVE_TRADING_DISABLED,
+        "qmt_account_id": settings.QMT_ACCOUNT_ID or "—",
+        "pt_top_n": settings.PT_TOP_N,
+        "dingtalk_enabled": settings.DINGTALK_ALERTS_ENABLED,
+        "l4_auto_enabled": l4_auto_enabled,
+        "last_updated": datetime.now(UTC).isoformat(),
+    }

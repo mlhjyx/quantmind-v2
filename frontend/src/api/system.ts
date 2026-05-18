@@ -2,6 +2,21 @@ import apiClient from "./client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+/**
+ * Frontend Design v3 §2.1 EnvStateBanner backing.
+ *
+ * 来自 GET /api/system/env-state. LL-183 silent NOT-GATING UI 化, 覆盖 35 pages.
+ */
+export interface EnvState {
+  mode: "paper" | "live";
+  live_trading_disabled: boolean;
+  qmt_account_id: string;
+  pt_top_n: number;
+  dingtalk_enabled: boolean;
+  l4_auto_enabled: boolean;
+  last_updated: string;
+}
+
 export interface DataSource {
   name: string;
   display_name: string;
@@ -76,6 +91,16 @@ export async function saveNotificationParams(
 
 export async function testNotification(webhook_url: string): Promise<{ success: boolean; message: string }> {
   const { data } = await apiClient.post("/system/test-notification", { webhook_url });
+  return data;
+}
+
+/**
+ * Fetch current .env critical state for top banner (LL-183 prevention).
+ *
+ * 5s refetch recommended (env 变化 immediate visibility).
+ */
+export async function fetchEnvState(): Promise<EnvState> {
+  const { data } = await apiClient.get<EnvState>("/system/env-state");
   return data;
 }
 

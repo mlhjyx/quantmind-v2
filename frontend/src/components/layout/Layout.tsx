@@ -6,6 +6,7 @@ import { ToastContainer } from "@/components/ui/Toast";
 import { C } from "@/theme";
 import { PageErrorBoundary } from "@/components/ui/PageErrorBoundary";
 import { useMarketOverview } from "@/hooks/useRealtimeData";
+import { EnvStateBanner } from "@/components/safety/EnvStateBanner";
 
 function fmtPrice(v: number): string {
   return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -82,6 +83,8 @@ export function Layout() {
 
         {/* Main content */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* LL-183 prevention: .env state banner 顶部固定, 覆盖 35 pages */}
+          <EnvStateBanner />
           <TopBar />
           <main className="flex-1 overflow-y-auto relative">
             {/* Subtle radial gradient background */}
