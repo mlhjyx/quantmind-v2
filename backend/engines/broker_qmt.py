@@ -17,6 +17,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -157,24 +158,35 @@ def _trade_to_dict(trade: Any) -> dict[str, Any]:
 # LL-182: stable session_id helper (反 1414 stale mutex 累积)
 # ---------------------------------------------------------------------------
 
-def _stable_session_id(account_id: str) -> int:
-    """Generate stable session_id from account_id (12-digit int, fits xtquant range).
+def _stable_session_id(account_id: str, role: str = "default") -> int:
+    """Generate stable session_id from (account_id, role) tuple — 12-digit int.
 
     **LL-182 fix** — replace time-based session_id (HHMMSSffffff) with deterministic
-    hash. Same account → same session_id always. miniQMT reuses existing session
+    hash for **long-running services** that benefit from session reuse across restart.
+    Same (account, role) → same session_id always. miniQMT reuses existing session
     instead of creating new `down_queue_<id>__mutex` file per connect.
 
+    **Multi-process safety**: different role → different session_id, avoid collision
+    when QMTData service + execute_phase script try to connect simultaneously.
+    Recommended roles: "qmtdata" (long-running) / "execute" (09:31 SH schtask) /
+    "sell_adapter" / "staged_exec" (event-driven). 默认 "default" 仅 unit-test 用.
+
+    **Opt-in only** — `MiniQMTBroker.__init__` 默认仍走 time-based (single-shot
+    callers no stable session benefit + avoid multi-process conflict). Long-running
+    services explicit pass `session_id=_stable_session_id(account, role)`.
+
     Root cause sediment: time-based session_id 2026-04-02 → 2026-05-18 累积 1412
-    stale mutex files (~30/day) in `userdata_mini/down_queue_*__mutex`, exhausting
-    miniQMT internal session pool → connect_failed -1 sustained windows.
+    stale mutex files (~30/day) in `userdata_mini/down_queue_*__mutex`. Stable
+    session 配合 `cleanup_stale_mutex_files` 在 connect() 自动 cleanup 双管齐下.
 
     Args:
         account_id: QMT account id (e.g. "81001102")
+        role: process role string (e.g. "qmtdata", "execute"). Default "default".
 
     Returns:
         Deterministic 12-digit int session_id (same input → same output).
     """
-    h = hashlib.md5(f"miniqmt_{account_id}".encode()).hexdigest()
+    h = hashlib.md5(f"miniqmt_{account_id}_{role}".encode()).hexdigest()
     return int(h[:12], 16) % (10**12)
 
 
@@ -225,9 +237,13 @@ class MiniQMTBroker(BaseBroker):
         """
         self._qmt_path = qmt_path
         self._account_id = account_id
-        # LL-182: stable session_id default (反 1414 stale mutex 累积 4-02 → 5-18).
-        # session_id 参数显式传入仍优先 (e.g. multi-instance test 隔离).
-        self._session_id = session_id or _stable_session_id(account_id)
+        # LL-182 architecture revised — multi-process safety:
+        # - Default time-based session_id (each process unique, avoids multi-process
+        #   collision when QMTData service + execute_phase script connect 同时).
+        # - Long-running services explicit pass `session_id=_stable_session_id(account, role)`
+        #   for session reuse across restart (e.g. qmt_data_service.py role="qmtdata").
+        # - `cleanup_stale_mutex_files` auto-called in connect() handles accumulation.
+        self._session_id = session_id or int(datetime.now().strftime("%H%M%S%f"))
 
         self._trader: Any = None  # XtQuantTrader实例
         self._account: Any = None  # StockAccount实例
