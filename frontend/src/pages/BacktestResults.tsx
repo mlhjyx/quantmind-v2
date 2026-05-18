@@ -639,6 +639,33 @@ const TABS = [
 
 // ---- Main Page ----
 
+/**
+ * OOS Heterogeneity Banner — Frontend Design v3 §3.3.1.
+ *
+ * 业务目的: CORE3+dv_ttm WF Sharpe=0.87, 但 5yr=0.61 / 12yr=0.36 三窗口异质性 2.4×.
+ * 高 Sharpe (>=0.7) 时显示警告, 提醒用户结果是否 over-fit 单窗口.
+ */
+function OOSHeterogeneityBanner({ sharpe }: { sharpe: number | null }) {
+  // 仅在 Sharpe 显示乐观 (>=0.7) 时提醒
+  if (sharpe == null || sharpe < 0.7) return null;
+  return (
+    <div className="mb-4 rounded-xl p-3 border border-amber-500/30 bg-amber-500/8 flex items-start gap-3">
+      <span className="text-amber-400 text-base shrink-0">⚠</span>
+      <div className="flex-1 text-xs">
+        <div className="text-amber-200 font-semibold mb-1">回测窗口异质性提醒</div>
+        <div className="text-slate-300 leading-relaxed">
+          当前回测 Sharpe = <span className="font-mono text-amber-200">{sharpe.toFixed(2)}</span>{". "}
+          历史多窗口对比:
+          <span className="font-mono text-slate-200"> 5yr=0.61 / 12yr=0.36 / WF=0.87</span>{" "}
+          (跨期最大 / 最小 = 2.4×).
+          单窗口结果可能高估 alpha, 建议:{" "}
+          <span className="text-amber-200">paired bootstrap + 多窗口 WF 交叉验证 + 涨跌停 / ST / 退市股 universe 真值核验</span>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BacktestResults() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
@@ -694,6 +721,9 @@ export default function BacktestResults() {
 
       {result && (
         <>
+          {/* OOS heterogeneity warning (Frontend Design v3 §3.3.1) — 提醒不同回测窗口 Sharpe 差异大 */}
+          <OOSHeterogeneityBanner sharpe={typeof result.metrics.sharpe === "number" ? result.metrics.sharpe : null} />
+
           {/* Top metric cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
             {METRICS_CONFIG.map((m) => {
