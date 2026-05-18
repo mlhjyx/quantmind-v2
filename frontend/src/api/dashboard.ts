@@ -1,4 +1,6 @@
-import axios from "axios";
+// Frontend Design v3 §4.3 / Audit Finding #10: 2 套 axios 统一 → apiClient SSOT
+// (反 bypass apiClient.interceptors 真 401/429/503 toast handler + auth header)
+import apiClient from "./client";
 import type {
   DashboardSummary,
   NAVPoint,
@@ -8,7 +10,7 @@ import type {
   CircuitBreakerState,
 } from "@/types/dashboard";
 
-const api = axios.create({ baseURL: "/api" });
+const api = apiClient;
 
 export async function fetchSummary(): Promise<DashboardSummary> {
   const { data } = await api.get<DashboardSummary>("/dashboard/summary", {

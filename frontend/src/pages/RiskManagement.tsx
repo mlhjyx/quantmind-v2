@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
+import apiClient from "@/api/client";
 import { Shield, AlertTriangle } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -64,9 +65,9 @@ export default function RiskManagement() {
         // 先请求live数据，如果为空fallback到paper
         let mode = "live";
         const [overview, limits, stress] = await Promise.allSettled([
-          axios.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/api/risk/overview", { params: { execution_mode: mode } }),
-          axios.get<RiskLimit[]>("/api/risk/limits", { params: { execution_mode: mode } }),
-          axios.get<StressTest[]>("/api/risk/stress-tests", { params: { execution_mode: mode } }),
+          apiClient.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/risk/overview", { params: { execution_mode: mode } }),
+          apiClient.get<RiskLimit[]>("/risk/limits", { params: { execution_mode: mode } }),
+          apiClient.get<StressTest[]>("/risk/stress-tests", { params: { execution_mode: mode } }),
         ]);
         if (!live) return;
 
@@ -78,9 +79,9 @@ export default function RiskManagement() {
         if (liveEmpty && mode === "live") {
           mode = "paper";
           const [ov2, li2, st2] = await Promise.allSettled([
-            axios.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/api/risk/overview", { params: { execution_mode: mode } }),
-            axios.get<RiskLimit[]>("/api/risk/limits", { params: { execution_mode: mode } }),
-            axios.get<StressTest[]>("/api/risk/stress-tests", { params: { execution_mode: mode } }),
+            apiClient.get<{ metrics?: OverviewMetric[]; var_series?: VarPoint[]; exposure?: ExposureItem[] }>("/risk/overview", { params: { execution_mode: mode } }),
+            apiClient.get<RiskLimit[]>("/risk/limits", { params: { execution_mode: mode } }),
+            apiClient.get<StressTest[]>("/risk/stress-tests", { params: { execution_mode: mode } }),
           ]);
           if (!live) return;
           if (ov2.status === "fulfilled") {

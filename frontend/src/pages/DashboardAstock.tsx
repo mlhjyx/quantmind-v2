@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+// Frontend Design v3 §4.3: raw axios → apiClient SSOT (Audit Finding #5)
+import apiClient from "@/api/client";
 import { Link, useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -512,15 +513,15 @@ export default function DashboardAstock() {
     }
 
     // Supplementary data — show empty on error, do not silently hide
-    axios.get<SectorItem[]>("/api/portfolio/sector-distribution", { params: { execution_mode: "live" } })
+    apiClient.get<SectorItem[]>("/portfolio/sector-distribution", { params: { execution_mode: "live" } })
       .then((r) => setSectors(r.data))
       .catch(() => setSectors([]));
 
-    axios.get<Record<string, (number | null)[]>>("/api/dashboard/monthly-returns", { params: { execution_mode: "live" } })
+    apiClient.get<Record<string, (number | null)[]>>("/dashboard/monthly-returns", { params: { execution_mode: "live" } })
       .then((r) => setMonthlyData(r.data))
       .catch(() => setMonthlyData({}));
 
-    axios.get<{ total: number; active: number; candidate: number; warning: number; critical: number; retired: number }>("/api/factors/stats")
+    apiClient.get<{ total: number; active: number; candidate: number; warning: number; critical: number; retired: number }>("/factors/stats")
       .then((r) => {
         setFactorStatus({
           active: r.data.active ?? 0,
