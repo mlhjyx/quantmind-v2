@@ -495,6 +495,199 @@ function HealthTab() {
           <span className="text-xs text-emerald-400">最新</span>
         )}
       </GlassCard>
+
+      <OpsEscapeHatchPanel />
+    </div>
+  );
+}
+
+// ── Ops Escape Hatch Panel (Frontend Design v3 §3.3.4 安全 ops 显式 CC bash 路径) ──
+
+interface OpsCommand {
+  category: string;
+  label: string;
+  description: string;
+  bash: string;
+  risk: "LOW" | "MED" | "HIGH" | "CRIT";
+}
+
+const OPS_COMMANDS: OpsCommand[] = [
+  // Servy services
+  {
+    category: "Servy 服务",
+    label: "重启 FastAPI",
+    description: "代码变更后重启 backend (graceful, 30s)",
+    bash: "powershell -File scripts\\service_manager.ps1 restart fastapi",
+    risk: "MED",
+  },
+  {
+    category: "Servy 服务",
+    label: "重启 Celery Worker",
+    description: "Beat 任务变更后必须 restart (Celery graceful 30s)",
+    bash: "powershell -File scripts\\service_manager.ps1 restart celery",
+    risk: "MED",
+  },
+  {
+    category: "Servy 服务",
+    label: "重启所有服务",
+    description: "完整环境冷启动 (FastAPI + Celery + Beat + QMTData)",
+    bash: "powershell -File scripts\\service_manager.ps1 restart all",
+    risk: "HIGH",
+  },
+  {
+    category: "Servy 服务",
+    label: "查看服务状态",
+    description: "Servy 4 services running status",
+    bash: "powershell -File scripts\\service_manager.ps1 status",
+    risk: "LOW",
+  },
+  // Env flip
+  {
+    category: "ENV 切换 (CRIT)",
+    label: "切换 paper → live",
+    description:
+      "CRIT: 真金交易模式启用. 必先 (1) 完成 PT 5d dry-run / (2) 用户授权 / (3) red-line check. 走 SHUTDOWN_NOTICE §9.",
+    bash: '# 编辑 backend/.env: EXECUTION_MODE=live + LIVE_TRADING_DISABLED=false\n# 然后重启 fastapi',
+    risk: "CRIT",
+  },
+  {
+    category: "ENV 切换 (CRIT)",
+    label: "切换 live → paper",
+    description: "降级到模拟模式, 立即生效需要重启 FastAPI",
+    bash: '# 编辑 backend/.env: EXECUTION_MODE=paper + LIVE_TRADING_DISABLED=true\n# 然后重启 fastapi',
+    risk: "HIGH",
+  },
+  // Schtask ops
+  {
+    category: "Windows Schtask",
+    label: "查看所有 QM 任务",
+    description: "列出所有 QuantMind_* schtask 调度状态",
+    bash: 'schtasks /Query /FO TABLE | findstr /I "QuantMind_"',
+    risk: "LOW",
+  },
+  {
+    category: "Windows Schtask",
+    label: "禁用 DailyIC schtask",
+    description: "停用每日 18:00 IC 计算 (维护期专用)",
+    bash: 'schtasks /Change /TN "QuantMind_DailyIC" /DISABLE',
+    risk: "MED",
+  },
+  {
+    category: "Windows Schtask",
+    label: "启用 DailyIC schtask",
+    description: "恢复每日 18:00 IC 计算",
+    bash: 'schtasks /Change /TN "QuantMind_DailyIC" /ENABLE',
+    risk: "MED",
+  },
+  // Emergency
+  {
+    category: "紧急操作 (CRIT, CC-only)",
+    label: "紧急平仓所有",
+    description:
+      "CRIT: 真金交易场景紧急清仓. 仅 LIVE 模式 + 用户授权 + 红线核验后执行.",
+    bash: "python scripts/emergency_close_all_positions.py --execute",
+    risk: "CRIT",
+  },
+  {
+    category: "紧急操作 (CRIT, CC-only)",
+    label: "取消所有挂单 (dry-run)",
+    description: "查看会取消哪些, 不实际取消",
+    bash: "python scripts/cancel_stale_orders.py --dry-run",
+    risk: "LOW",
+  },
+  {
+    category: "紧急操作 (CRIT, CC-only)",
+    label: "取消所有挂单 (execute)",
+    description: "实际取消所有挂单, 真金交易场景慎用",
+    bash: "python scripts/cancel_stale_orders.py --execute",
+    risk: "HIGH",
+  },
+];
+
+function riskBadge(risk: OpsCommand["risk"]): { color: string; bg: string } {
+  switch (risk) {
+    case "LOW":
+      return { color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" };
+    case "MED":
+      return { color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/30" };
+    case "HIGH":
+      return { color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/30" };
+    case "CRIT":
+      return { color: "text-red-400", bg: "bg-red-500/10 border-red-500/30" };
+  }
+}
+
+function OpsEscapeHatchPanel() {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = async (bash: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(bash);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Clipboard 失败时不阻塞 — 用户手动复制
+      setCopied(null);
+    }
+  };
+
+  // 按 category 分组
+  const grouped = OPS_COMMANDS.reduce<Record<string, OpsCommand[]>>((acc, cmd) => {
+    if (!acc[cmd.category]) acc[cmd.category] = [];
+    acc[cmd.category]!.push(cmd);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-3">
+      <SectionTitle>运维操作 (CC bash 触发, UI 不直接执行)</SectionTitle>
+      <GlassCard padding="sm">
+        <div className="text-xs text-slate-300 leading-relaxed mb-3">
+          高风险 ops (Servy 重启 / schtask 启停 / env 切换 / 紧急平仓) 默认禁止 UI 直接触发,
+          走 CC 终端 bash 命令保留 audit trail. 复制下方命令到 CC, 由 CC 执行并提交 commit
+          记录原因. 反 LL-183 silent NOT-GATING + 反 GUI 误触.
+        </div>
+
+        {Object.entries(grouped).map(([category, cmds]) => (
+          <div key={category} className="mb-4">
+            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">
+              {category}
+            </div>
+            <div className="space-y-1.5">
+              {cmds.map((cmd) => {
+                const { color, bg } = riskBadge(cmd.risk);
+                return (
+                  <div
+                    key={cmd.label}
+                    className={`rounded-md p-2.5 border ${bg}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-slate-100 flex-1">
+                        {cmd.label}
+                      </span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${color}`}>
+                        {cmd.risk}
+                      </span>
+                      <button
+                        onClick={() => void handleCopy(cmd.bash, cmd.label)}
+                        className="text-[10px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 cursor-pointer"
+                      >
+                        {copied === cmd.label ? "已复制" : "复制"}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mb-1.5 leading-snug">
+                      {cmd.description}
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-300 bg-slate-900/60 rounded px-2 py-1 break-all whitespace-pre-wrap">
+                      {cmd.bash}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </GlassCard>
     </div>
   );
 }
