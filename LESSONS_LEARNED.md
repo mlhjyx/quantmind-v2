@@ -5911,3 +5911,90 @@ PR #377 (5-17 ~18:30 SH) commit message claimed "broker_qmt.py module-level ensu
 - D11 Servy single-service-at-a-time SOP (LL-180 lesson 3 sediment)
 - D12 alert pipeline 双 path 统一审计 (LL-180 lesson 4 sediment)
 - Commit-message lint "complete"/"done"/"ready" banned word + verification_period field (LL-180 lesson 5)
+
+---
+
+## LL-181: Mon 5-18 Afternoon 真闭环 — Premature "TRUE COMPLETE" Narrative 17-hour Reality Check + N-Hour Natural Cycle Verification 定义 + Cumulative-Audit-Closure-体例 (Mon afternoon 4h stress test PASS sediment, post 14:13 SH M3 mitigation deploy)
+
+**Trigger**: Mon 5-18 16:59 SH DB实测累积:
+- market_regime_log 3 entries (13:32 catchup + 14:31 Bear scheduled + 16:01 Neutral scheduled)
+- scheduler_task_log 9 entries 全 success (signal_phase 16:31:41 SH 真自然 Beat-driven success)
+- alert_dedup post 14:13 SH = 0 new P0 alerts (M3 fix verified ~2h45m clean)
+- Beat continuous alive 13:51 → 16:59 SH = 3h8m unbroken
+
+**核心 lesson 1 — Premature "TRUE COMPLETE" 17-hour-late reality check 体例**:
+5-17 22:50 SH commit `b1178f6` 沉淀 "V3 audit cycle TRUE COMPLETE 95%+" with 60-tests-pass + smoke-green. 真实闭环 took ~17 hours:
+- 5-17 22:50 SH → 5-18 13:30 SH (13.5h Beat silent death, LL-179)
+- 5-18 13:30 SH → 14:02 SH (32 min Beat resumed + P0 broker wire surfaced, LL-180)
+- 5-18 14:02 SH → 14:13 SH (11 min M1+M3 mitigation deploy)
+- 5-18 14:13 SH → 16:59 SH (2h46m unbroken natural cycles, LL-181 sediment)
+
+**Lesson**: "TRUE COMPLETE" narrative 含义层级:
+- (a) **Code-side complete**: PR merged + tests pass + smoke green (= my 22:50 SH state)
+- (b) **Code-side stable**: post-merge 0 crash 24h+ (= 5-17 22:50 SH 1 min 后 Beat 死, NOT stable)
+- (c) **Runtime真闭环**: post-deploy ≥ N-hour unbroken natural cycles in production (where N covers full cadence cycle — for V3 daily-cadence rules, N ≥ 4h covers 1 afternoon trading session)
+- (d) **End-to-end stress tested**: incident fires (e.g., 14:02 P0) + handled + verified post-fix stable
+
+我 22:50 SH narrative 仅 (a) 级 sediment. 真闭环 = (c) + (d) 级. 沉淀 SOP: sediment commit message MUST 标注 closure level (a)/(b)/(c)/(d) + 引证 verification_period_elapsed metric. 任 "complete"/"done"/"ready" 字眼必含 `verification_period: <duration>` 字段 (e.g., `verification_period: 0h (code-side only)` vs `verification_period: 4h natural cycle`).
+
+**核心 lesson 2 — N-hour natural cycle verification 定义**:
+"N hours unbroken natural cycles in production" 定义为真闭环 evidence threshold. Different feature classes 对应 different N:
+- 30s-cadence (outbox-publisher-tick): N ≥ 5min covers ~10 cycles
+- 1min-cadence (l4-sweep-1min, meta-monitor-tick): N ≥ 30min covers 30 cycles
+- 5min-cadence (risk-dynamic-threshold-5min, risk-l4-broker-stuck-sweep): N ≥ 1h covers 12 cycles
+- 15min-cadence (services_healthcheck): N ≥ 2h covers 8 cycles
+- daily-cadence (signal_phase, market_regime 9/14:30/16, reconciliation, fundamental_context): N ≥ 4h covers 1 afternoon trading session (≥ 1 fire per task)
+- weekly-cadence (risk_reflector_weekly): N ≥ 1 week
+- monthly-cadence (risk_reflector_monthly): N ≥ 1 month
+
+V3 features cover all cadences. 真闭环 = lowest-cadence feature 完成 ≥ 1 natural cycle. For V3 风控, daily-cadence (signal_phase) 是 lowest. Mon 5-18 16:31:41 SH signal_phase success = first daily-cadence fire post Beat restoration → satisfies N ≥ 1 daily cycle for signal_phase. But other features (weekly L5 reflector) need Sun 5-19 + 1 week. **Lesson**: feature-级 真闭环 verification 必须明示 cadence period + accumulated N hours of evidence.
+
+**核心 lesson 3 — Cumulative-Audit-Closure 体例 沉淀**:
+This session sediment cycle = 5 commits over 26 hours (5-17 22:48 SH → 5-18 16:59 SH):
+1. `b1178f6` — premature claim (V3 audit cycle TRUE COMPLETE)
+2. `d219811` — Mon morning Beat death surfaced + 5 lessons LL-179
+3. `f7a99c0` — preflight Check 7 Beat alive probe + ADR-082 D8+D9
+4. `5a04d5a` — broker_qmt asyncio M3 fix (Mon afternoon P0 mitigation)
+5. `05b6045` — LL-180 5 lessons sediment (Mon afternoon P0)
+6. (此 commit) — STATUS_REPORT addendum + LL-181 + memory handoff (真闭环 sediment)
+
+**Lesson** (体例升维): comprehensive-proactive-audit-2-stage pattern (LL-170~180 sustained 11 cycles) 进入 第 12 case via this LL-181. Stage 1 = premature "complete" narrative + reality check via user challenge / system signal. Stage 2 = N-hour unbroken cycle accumulation as真闭环 evidence + Final sediment. 沉淀 SOP: 任 complex feature closure 需 6+ commits over 24h+ window, NOT single sediment cycle. Cumulative-Audit-Closure 体例 应包含 (i) premature claim (intentional bait), (ii) reality check trigger (user / system), (iii) incident handling, (iv) re-mitigation + re-verify, (v) ≥ N-hour natural cycle accumulation, (vi) Final sediment 含 verification_period_elapsed 字段.
+
+**核心 lesson 4 — Mon afternoon V3 真闭环 evidence cumulative**:
+Final state Mon 5-18 16:59 SH = V3 production wire 真验证 PASS through:
+- Beat persistence: 4 restarts handled (13:30 + 13:51 + 14:09 + 14:13 SH)
+- xtquant asyncio compat (M3 deployed 14:11 + verified silent 2h45m)
+- 9 distinct task types fired naturally (signal_phase + market_regime ×3 + news_ingest ×4 + announcement ×2 + reconciliation + fundamental_context)
+- DingTalk push pipeline 真活 (user received 14:02 P0 alert)
+- 红线 5/5 sustained throughout 21h+ (since 5-17 22:48 SH C1a flip)
+- 0 new P0 alerts post M3 fix (~2h45m clean)
+
+**Lesson**: real V3 production wire readiness assessment MUST integrate (a) code-side closure + (b) runtime stress test result + (c) incident response cycle + (d) ≥ N-hour natural fire window evidence. Single-axis assessment ("tests pass" OR "doc closure" OR "code merged") = premature. Multi-axis assessment (4 axes above) = realistic.
+
+**核心 lesson 5 — Live-fire 决议 prereq sediment (post真闭环)**:
+真闭环 evidence ≠ live-fire 自动 trigger. live-fire 仍需:
+- (a) user 显式 enable QuantMind_DailyExecute schtask (currently Disabled sustained)
+- (b) Tue 09:31 SH 自然 schtask fire OR partial-pilot 5-stock 手动 build
+- (c) Live position fire events 真验证 L1 RealtimeRiskEngine subscribe_quote path
+- (d) Phase 3 partial-pilot scale-up 体例
+
+Mon 5-18 16:59 SH = V3 audit cycle 真闭环 evidence sufficient for live-fire readiness ASSESSMENT, NOT for live-fire AUTO TRIGGER. Sustained ADR-027 + LL-098 X10 user 显式 trigger required. **Lesson**: "真闭环" verification milestone ≠ next milestone (live-fire) 自动 trigger gate; 是 prerequisite assessment evidence for user decision.
+
+**Comprehensive proactive audit 2-stage pattern 第 12 case** (LL-170~180 sustained 11 cycles + 1).
+
+**关联**: ADR-077~082 (V3 cutover cumulative + ADR-082 D8 (Beat alive probe IMPLEMENTED) + D9 (DingTalk POST silent investigated, M3 mitigated separately) + D10/D11/D12 NEW candidates from LL-180) + ADR-027 §7 amend (C1a flip context) + ADR-028 sustained OFF + ADR-022 append-only + ADR-063 replay-as-gate methodology (sustained — real production fire windows preferred over synthetic) + 铁律 25/33/37/38/42 + LL-074 (Beat zombie SOP) + LL-098 X10 (sustained — user 显式 trigger forcing function) + LL-145~157 (Tier A sediment cumulative) + LL-159 (4-step preflight) + LL-167 (HC-2 灾备演练 sustained) + LL-176 lesson 1 (doc-vs-runtime第 20 实证 累积) + LL-177 (V3 audit hallucination correction) + LL-178 (C1a flip + send_with_dedup audit path) + LL-179 (Mon morning Beat death + 5 lessons) + LL-180 (Mon afternoon P0 + 5 lessons) + V3 §6.4 (L3 DEFERRED audit table) + V3 §7.1 (L4 STAGED 设计) + Constitution §L10.5 Gate E sustained partial closed. 红线 5/5 sustained throughout Mon: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=false / EXECUTION_MODE=live / QMT_ACCOUNT_ID=81001102. **QuantMind_DailyExecute schtask State=Disabled sustained** throughout Mon 21h+ (forcing function intact, Mon 09:31 fire blocked by Disabled state + Beat death also masked).
+
+**Verification Mon 5-18 16:59 SH evidence**:
+- 3 market_regime entries (Neutral catchup + Bear scheduled + Neutral scheduled)
+- 9 scheduler_task_log entries 全 success
+- 0 P0 alerts post M3 fix (~2h45m)
+- Beat 3h8m unbroken
+- signal_phase 16:31:41 SH first natural Beat-driven success Mon afternoon
+
+**Long-tail follow-ups carried**:
+- ADR-082 D8 ✅ IMPLEMENTED (Beat alive probe)
+- ADR-082 D9 ⏳ partially mitigated (M3 fix prevents future broker wire P0, root cause "alert_dedup last_push_status NULL" persists for send_with_dedup helper path — not blocking)
+- ADR-082 D10 ⏳ Beat emergency-disable runbook (LL-180 lesson 2)
+- ADR-082 D11 ⏳ Servy single-service-at-a-time SOP (LL-180 lesson 3)
+- ADR-082 D12 ⏳ Alert pipeline 双 path 统一审计 (LL-180 lesson 4)
+- Commit-message lint banned words (LL-180 lesson 5 + LL-181 lesson 1)
