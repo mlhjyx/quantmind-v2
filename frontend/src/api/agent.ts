@@ -93,3 +93,58 @@ export async function resetAgentConfig(name: AgentName): Promise<AgentConfig> {
   const res = await apiClient.post<AgentConfig>(`/agent/${name}/config/reset`);
   return res.data;
 }
+
+// ---- AssistPanel chat (Frontend Design v3 §2.3) ----
+
+export type AssistDomain =
+  | "dashboard"
+  | "risk"
+  | "factor"
+  | "execution"
+  | "strategy"
+  | "backtest"
+  | "pipeline"
+  | "general";
+
+export interface AssistContext {
+  page: AssistDomain;
+  entity_id?: string;
+  data_snapshot?: Record<string, unknown>;
+}
+
+export interface ChatMessageDto {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface ChatRequest {
+  messages: ChatMessageDto[];
+  context: AssistContext;
+}
+
+export interface ChatResponse {
+  reply: string;
+  mode: "stub" | "live";
+  cost_usd: number;
+  tokens_in: number;
+  tokens_out: number;
+  timestamp: string;
+}
+
+export interface ChatStatus {
+  enabled: boolean;
+  mode: "stub" | "live";
+  blocked_ops: string[];
+  compose_only_ops: string[];
+  direct_ops: string[];
+}
+
+export async function postChat(req: ChatRequest): Promise<ChatResponse> {
+  const res = await apiClient.post<ChatResponse>("/agent/chat", req);
+  return res.data;
+}
+
+export async function getChatStatus(): Promise<ChatStatus> {
+  const res = await apiClient.get<ChatStatus>("/agent/chat/status");
+  return res.data;
+}

@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
 import { GPPanel } from "@/components/mining/GPPanel";
 import { LLMPanel } from "@/components/mining/LLMPanel";
 import { BruteForcePanel } from "@/components/mining/BruteForcePanel";
 import { CandidateTable } from "@/components/mining/CandidateTable";
+import { AssistPanel } from "@/components/ai/AssistPanel";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMiningStore } from "@/store/miningStore";
 import {
@@ -340,34 +340,9 @@ export default function FactorLab() {
           </GlassCard>
         </div>
 
-        {/* Right: AI assistant panel */}
+        {/* Right: AI assistant panel — Frontend Design v3 §3.2.3 (replaces inert placeholder) */}
         <div className="w-full xl:w-[340px]">
-          <GlassCard className="h-full">
-            <h3 className="text-sm font-semibold text-slate-200 mb-3">AI 助手</h3>
-            <div className="flex flex-col gap-2 mb-4">
-              {["生成因子建议", "解释现有因子", "优化建议", "诊断IC衰退"].map((action) => (
-                <Button key={action} variant="ghost" size="sm" className="justify-start text-left w-full">
-                  {action}
-                </Button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 flex-1 min-h-[200px] bg-slate-900/40 rounded-xl p-3 border border-white/5">
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-xs text-slate-500 text-center">
-                  输入问题或选择上方快捷操作<br />
-                  <span className="text-[10px] text-slate-600">API: POST /api/ai/factor-assist</span>
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-3">
-              <input
-                type="text"
-                placeholder="输入问题..."
-                className="flex-1 bg-slate-800 border border-white/10 text-slate-200 text-xs rounded-xl px-3 py-2 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50"
-              />
-              <Button size="sm" variant="primary">发送</Button>
-            </div>
-          </GlassCard>
+          <AssistPanel context={{ page: "factor" }} mode="embedded" />
         </div>
       </div>
     </div>
