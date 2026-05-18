@@ -35,6 +35,10 @@ export default function Portfolio() {
   // Realtime portfolio data (5s refresh)
   const { data: rtPortfolio, isLoading: rtLoading } = usePortfolio();
 
+  // Frontend Design v3 §3.2.5 — holding_days lookup map from /api/portfolio/holdings (DB)
+  // (realtime API 不 track entry date, 走 position_snapshot SQL JOIN)
+  const [holdingDaysMap, setHoldingDaysMap] = useState<Record<string, number>>({});
+
   // Map realtime positions to Holding interface
   const rtHoldings: Holding[] | null = rtPortfolio
     ? rtPortfolio.positions.map((p) => ({
@@ -46,7 +50,7 @@ export default function Portfolio() {
         price: p.last_price,
         pnl: p.pnl_pct,
         pnlAmt: p.pnl,
-        days: 0, // realtime API doesn't track holding days
+        days: holdingDaysMap[p.code] ?? 0, // 来自 /api/portfolio/holdings DB JOIN
         signal: 0,
         marketValue: p.market_value,
         dailyReturn: p.daily_return,
@@ -65,11 +69,23 @@ export default function Portfolio() {
   useEffect(() => {
     let live = true;
     const load = async () => {
-      const [s, p] = await Promise.allSettled([
+      const [s, p, h] = await Promise.allSettled([
         axios.get<SectorItem[]>("/api/portfolio/sector-distribution", { params: { execution_mode: "live" } }),
         axios.get<DailyPnl[]>("/api/portfolio/daily-pnl", { params: { days: 20, execution_mode: "live" } }),
+        axios.get<Array<{ code: string; holding_days: number }>>("/api/portfolio/holdings", { params: { execution_mode: "live" } }),
       ]);
       if (!live) return;
+
+      // Build holding_days map from DB (Frontend Design v3 §3.2.5)
+      if (h.status === "fulfilled" && Array.isArray(h.value.data)) {
+        const map: Record<string, number> = {};
+        for (const row of h.value.data) {
+          if (row.code && typeof row.holding_days === "number") {
+            map[row.code] = row.holding_days;
+          }
+        }
+        setHoldingDaysMap(map);
+      }
 
       const newErrors: string[] = [];
 

@@ -1,18 +1,20 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { MetricCard } from "@/components/ui/MetricCard";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import TabICAnalysis from "@/components/factor/evaluation/TabICAnalysis";
 import TabGroupReturns from "@/components/factor/evaluation/TabGroupReturns";
 import TabICDecay from "@/components/factor/evaluation/TabICDecay";
 import TabCorrelation from "@/components/factor/evaluation/TabCorrelation";
 import TabAnnual from "@/components/factor/evaluation/TabAnnual";
 import TabRegimeStats from "@/components/factor/evaluation/TabRegimeStats";
-import { getFactorReport } from "@/api/factors";
+import { getFactorReport, archiveFactor, triggerHealthCheck } from "@/api/factors";
 import { STALE } from "@/api/QueryProvider";
+import { useNotificationStore } from "@/store/notificationStore";
 
 type TabKey = "ic" | "groups" | "decay" | "correlation" | "annual" | "regime";
 
@@ -34,7 +36,12 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 export default function FactorEvaluation() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const notify = useNotificationStore((s) => s.add);
   const [activeTab, setActiveTab] = useState<TabKey>("ic");
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [opLoading, setOpLoading] = useState<string | null>(null);
 
   const factorId = id ?? "turnover_mean_20";
 
@@ -44,6 +51,64 @@ export default function FactorEvaluation() {
     staleTime: STALE.factor,
     retry: 1,
   });
+
+  // Frontend Design v3 §3.2.4 — wire 5 ops buttons (replace no-op)
+  const handleReevaluate = async () => {
+    setOpLoading("reeval");
+    try {
+      await triggerHealthCheck();
+      await queryClient.invalidateQueries({ queryKey: ["factor-report", factorId] });
+      notify({ type: "success", title: "重评已触发", message: "因子健康检查已运行, 报告已刷新" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "请求失败";
+      notify({ type: "error", title: "重评失败", message: msg });
+    } finally {
+      setOpLoading(null);
+    }
+  };
+
+  const handleAddToStrategy = () => {
+    navigate(`/strategies/workspace?factor=${encodeURIComponent(factorId)}`);
+  };
+
+  const handleExportPDF = () => {
+    notify({
+      type: "info",
+      title: "导出 PDF",
+      message: "请在弹出的打印对话框中选择 '另存为 PDF'",
+    });
+    // 用浏览器原生 print → PDF (零后端依赖)
+    setTimeout(() => window.print(), 300);
+  };
+
+  const handleArchive = async (meta: { reason?: string }) => {
+    setShowArchiveConfirm(false);
+    setOpLoading("archive");
+    try {
+      await archiveFactor(factorId);
+      await queryClient.invalidateQueries({ queryKey: ["factor-report", factorId] });
+      notify({
+        type: "success",
+        title: "因子已归档",
+        message: `${factorId} 状态 → archived ${meta.reason ? "(" + meta.reason + ")" : ""}`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "请求失败";
+      notify({ type: "error", title: "归档失败", message: msg });
+    } finally {
+      setOpLoading(null);
+    }
+  };
+
+  const handlePromote = () => {
+    // 因子激活走 Friday 19:00 factor_lifecycle Beat, 不开 sync 端点 (反 silent activate)
+    notify({
+      type: "info",
+      title: "入库需走 Lifecycle Beat",
+      message:
+        "因子状态变更由 Friday 19:00 factor_lifecycle Celery Beat 自动评估, 不允许 UI 直接 promote. 详见 DEV_FACTOR_MINING.md §lifecycle.",
+    });
+  };
 
   const badge = report ? (STATUS_BADGE[report.status] ?? { label: report.status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" }) : null;
 
@@ -84,11 +149,31 @@ export default function FactorEvaluation() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm">编辑重评</Button>
-          <Button variant="secondary" size="sm">添加到策略</Button>
-          <Button variant="secondary" size="sm">导出PDF</Button>
-          <Button variant="danger" size="sm">✗ 丢弃</Button>
-          <Button size="sm">✓ 入库</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleReevaluate()}
+            disabled={opLoading === "reeval"}
+          >
+            {opLoading === "reeval" ? "重评中..." : "编辑重评"}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleAddToStrategy}>
+            添加到策略
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleExportPDF}>
+            导出PDF
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowArchiveConfirm(true)}
+            disabled={opLoading === "archive"}
+          >
+            {opLoading === "archive" ? "归档中..." : "✗ 丢弃"}
+          </Button>
+          <Button size="sm" onClick={handlePromote}>
+            ✓ 入库
+          </Button>
         </div>
       </div>
 
@@ -183,6 +268,19 @@ export default function FactorEvaluation() {
           {activeTab === "annual" && <TabAnnual report={report} />}
           {activeTab === "regime" && <TabRegimeStats report={report} />}
         </>
+      )}
+
+      {/* Archive confirmation modal (Frontend Design v3 §2.4 HIGH tier) */}
+      {showArchiveConfirm && (
+        <ConfirmModal
+          title="归档因子"
+          message={`将 ${factorId} 标记为 archived. 此操作可被未来 factor_lifecycle Beat 重新评估 (非不可逆但 PT 期间将不再参与信号). 请输入归档理由.`}
+          safetyTier="HIGH"
+          requiredReason
+          reasonMinLength={5}
+          onConfirm={handleArchive}
+          onCancel={() => setShowArchiveConfirm(false)}
+        />
       )}
     </div>
   );
