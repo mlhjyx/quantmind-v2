@@ -233,11 +233,7 @@ export default function DashboardOverview() {
           <span style={{ fontSize: 10, color: C.text4 }}>PT Day 3/60</span>
           <ChevronRight size={12} color={C.text4} />
         </Link>
-        <Link to="/dashboard/forex" className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: C.bg1, border: `1px solid ${C.border}`, opacity: 0.5 }}>
-          <span style={{ fontSize: 12, color: C.text3 }}>外汇策略</span>
-          <span style={{ fontSize: 10, color: C.text4 }}>Phase 2</span>
-          <ChevronRight size={12} color={C.text4} />
-        </Link>
+        {/* 外汇策略 link 已移除 (DEV_FOREX DEFERRED, Phase H Week 6 cleanup) */}
       </div>
 
       {/* Scrollable content */}
