@@ -45,7 +45,7 @@ export const router = createBrowserRouter([
       // Dashboard
       { path: "dashboard", element: lazyPage(() => import("@/pages/Dashboard")) },
       { path: "dashboard/astock", element: lazyPage(() => import("@/pages/DashboardAstock")) },
-      { path: "dashboard/forex", element: lazyPage(() => import("@/pages/DashboardForex")) },
+      // dashboard/forex 已删除 (DEV_FOREX DEFERRED, Phase H Week 6 cleanup)
 
       // Strategy
       { path: "strategy", element: lazyPage(() => import("@/pages/StrategyWorkspace")) },
