@@ -6,6 +6,7 @@ import { FlowChart } from "@/components/pipeline/FlowChart";
 import { ApprovalPanel } from "@/components/pipeline/ApprovalPanel";
 import { PipelineHistory } from "@/components/pipeline/PipelineHistory";
 import { AssistPanel } from "@/components/ai/AssistPanel";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   getPipelineStatus,
   getPendingApprovals,
@@ -248,20 +249,29 @@ export default function PipelineConsole() {
     }
   };
 
-  const handleCandidateReject = async (factorId: number) => {
+  // Frontend Design v3 §6 #8 — replace window.prompt → ConfirmModal HIGH-tier
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+
+  const handleCandidateReject = (factorId: number) => {
     if (!status.run_id) return;
-    const reason = window.prompt("请输入拒绝理由（必填，≥5字，将写入GP学习知识库）：");
-    if (!reason || reason.trim().length < 5) {
-      if (reason !== null) setError("拒绝理由不能少于5个字");
+    setRejectingId(factorId);  // opens modal
+  };
+
+  const doCandidateReject = async (meta: { reason?: string }) => {
+    const factorId = rejectingId;
+    if (factorId == null || !status.run_id) {
+      setRejectingId(null);
       return;
     }
+    const reason = (meta.reason ?? "").trim();
+    setRejectingId(null);
     setCandidateActions((prev) => ({ ...prev, [factorId]: "rejecting" }));
     try {
-      await rejectFactor(status.run_id, factorId, reason.trim());
+      await rejectFactor(status.run_id, factorId, reason);
       setCandidates((prev) =>
         prev.map((c) =>
           c.id === factorId
-            ? { ...c, status: "rejected" as const, decision_by: "user", decision_reason: reason.trim() }
+            ? { ...c, status: "rejected" as const, decision_by: "user", decision_reason: reason }
             : c
         )
       );
@@ -632,6 +642,19 @@ export default function PipelineConsole() {
             </div>
           )}
         </GlassCard>
+      )}
+
+      {/* Reject reason confirmation (Frontend Design v3 §6 #8 — replace window.prompt) */}
+      {rejectingId !== null && (
+        <ConfirmModal
+          title={`拒绝因子 #${rejectingId}`}
+          message="将写入 GP 学习知识库 (反 silent reject). 请输入拒绝理由."
+          safetyTier="HIGH"
+          requiredReason
+          reasonMinLength={5}
+          onConfirm={doCandidateReject}
+          onCancel={() => setRejectingId(null)}
+        />
       )}
     </div>
   );
