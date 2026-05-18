@@ -121,25 +121,20 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {!collapsed && <NotificationPanel />}
       </div>
 
-      {/* Market switcher */}
+      {/* Market label (外汇 已删除, DEV_FOREX DEFERRED, Phase H Week 6 cleanup) */}
       {!collapsed && (
         <div className="mx-3 mb-3">
           <div
-            className="flex rounded-md overflow-hidden"
-            style={{ border: `1px solid ${C.border}` }}
+            className="rounded-md text-center py-1.5"
+            style={{
+              border: `1px solid ${C.border}`,
+              fontSize: 10,
+              color: "#fff",
+              background: C.accentSoft,
+              fontWeight: 500,
+            }}
           >
-            <div
-              className="flex-1 text-center py-1.5"
-              style={{ fontSize: 10, color: "#fff", background: C.accentSoft, fontWeight: 500 }}
-            >
-              A股
-            </div>
-            <div
-              className="flex-1 text-center py-1.5"
-              style={{ fontSize: 10, color: C.text4 }}
-            >
-              外汇
-            </div>
+            A股
           </div>
         </div>
       )}
