@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Card, CardHeader } from "@/components/shared";
 import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
+import { fetchEnvState, type EnvState } from "@/api/system";
 import { C } from "@/theme";
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { usePortfolio } from "@/hooks/useRealtimeData";
+import { ShutdownBanner } from "@/components/safety/ShutdownBanner";
 
 import { KPIGrid } from "./KPIGrid";
 import { EquityCurve } from "./EquityCurve";
@@ -30,6 +32,7 @@ export default function DashboardOverview() {
   const { data: rtPortfolio } = usePortfolio();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [envState, setEnvState] = useState<EnvState | null>(null);
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [monthlyData, setMonthlyData] = useState<Record<string, number[]> | null>(null);
   const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
@@ -122,6 +125,11 @@ export default function DashboardOverview() {
         setFactorData([]);
       });
 
+    // Env state for ShutdownBanner condition (LL-183 prevention sibling)
+    fetchEnvState()
+      .then(setEnvState)
+      .catch(() => setEnvState(null));
+
     // Pipeline status → transform node_statuses to steps array
     axios.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/api/pipeline/status")
       .then((r) => {
@@ -181,6 +189,20 @@ export default function DashboardOverview() {
           </Button>
         </div>
       </div>
+
+      {/* Maintenance/shutdown banner — only renders when 0 持仓 + cash > 95 万 + LIVE_TRADING_DISABLED */}
+      {envState && summary && (
+        <div className="px-5 pt-3">
+          <ShutdownBanner
+            positionsCount={summary.position_count}
+            cashAmount={
+              rtPortfolio?.account?.available_cash ??
+              summary.nav * (summary.cash_ratio ?? 0)
+            }
+            liveTradingDisabled={envState.live_trading_disabled}
+          />
+        </div>
+      )}
 
       {/* Error banners */}
       {error && (

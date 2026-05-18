@@ -13,6 +13,9 @@ import {
 } from "recharts";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip } from "@/components/shared";
+import { SafetyControlPanel } from "@/components/safety/SafetyControlPanel";
+import { fetchCircuitBreakerState } from "@/api/dashboard";
+import type { CircuitBreakerState } from "@/types/dashboard";
 
 // ── Types ──
 interface OverviewMetric { label: string; value: string; color?: string; }
@@ -28,6 +31,20 @@ function usageColor(usage: number) {
   return C.up;
 }
 
+/**
+ * Map circuit_breaker level → risk badge label + color (Frontend Design v3 §3.1.3).
+ * Replaces hardcoded "LOW" with real backend state.
+ * 注: 风险语义用 down(绿)=安全 / warn(黄)=注意 / up(红)=危险 顺序, 跟股票涨跌色相反.
+ */
+function riskBadge(level: number | null): { label: string; color: string } {
+  if (level == null) return { label: "—", color: C.text4 };
+  if (level === 0) return { label: "LOW", color: C.down };
+  if (level === 1) return { label: "WARN", color: C.warn };
+  if (level === 2) return { label: "ELEVATED", color: "#fb923c" };
+  if (level === 3) return { label: "HIGH", color: C.up };
+  return { label: "CRITICAL", color: "#dc2626" };
+}
+
 export default function RiskManagement() {
   const [tab, setTab] = useState("风控总览");
 
@@ -36,6 +53,7 @@ export default function RiskManagement() {
   const [exposure, setExposure]               = useState<ExposureItem[] | null>(null);
   const [stressTests, setStressTests]         = useState<StressTest[] | null>(null);
   const [riskLimits, setRiskLimits]           = useState<RiskLimit[] | null>(null);
+  const [cbState, setCbState]                 = useState<CircuitBreakerState | null>(null);
   const [loading, setLoading]                 = useState(true);
   const [fetchError, setFetchError]           = useState(false);
 
@@ -98,8 +116,18 @@ export default function RiskManagement() {
       }
     };
     void load();
+    // Circuit breaker state (Frontend Design v3 §3.1.3 — fix hardcoded LOW)
+    fetchCircuitBreakerState()
+      .then((cb) => { if (live) setCbState(cb); })
+      .catch(() => { if (live) setCbState(null); });
+
     const id = setInterval(() => void load(), 30_000);
-    return () => { live = false; clearInterval(id); };
+    const cbId = setInterval(() => {
+      void fetchCircuitBreakerState()
+        .then((cb) => { if (live) setCbState(cb); })
+        .catch(() => {});
+    }, 10_000);
+    return () => { live = false; clearInterval(id); clearInterval(cbId); };
   }, []);
 
   const warnCount     = riskLimits?.filter((r) => r.status === "warn").length ?? 0;
@@ -109,14 +137,26 @@ export default function RiskManagement() {
   return (
     <>
       <PageHeader title="风控管理" titleEn="Risk Management">
-        <TabButtons tabs={["风控总览", "压力测试", "限额监控"]} active={tab} onChange={setTab} />
-        <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-          style={{ background: `${C.up}10`, border: `1px solid ${C.up}30` }}
-        >
-          <Shield size={14} color={C.up} />
-          <span style={{ fontSize: 11, color: C.up, fontWeight: 500 }}>风险等级: LOW</span>
-        </div>
+        <TabButtons
+          tabs={["风控总览", "压力测试", "限额监控", "紧急控制"]}
+          active={tab}
+          onChange={setTab}
+        />
+        {(() => {
+          const badge = riskBadge(cbState?.level ?? null);
+          return (
+            <div
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+              style={{ background: `${badge.color}12`, border: `1px solid ${badge.color}35` }}
+              title={cbState ? `L${cbState.level} · ${cbState.level_name}` : "熔断状态未知"}
+            >
+              <Shield size={14} color={badge.color} />
+              <span style={{ fontSize: 11, color: badge.color, fontWeight: 500 }}>
+                风险等级: {badge.label}
+              </span>
+            </div>
+          );
+        })()}
       </PageHeader>
 
       <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
@@ -239,6 +279,8 @@ export default function RiskManagement() {
             </div>
           </Card>
         )}
+
+        {tab === "紧急控制" && <SafetyControlPanel />}
 
         {tab === "限额监控" && (
           <Card>
