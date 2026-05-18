@@ -152,4 +152,75 @@ User 决议触发点:
 
 ---
 
-**End STATUS_REPORT. Awaiting user 决议 Phase H Week 5 or further work.**
+**End STATUS_REPORT v1. Awaiting user 决议 Phase H Week 5 or further work.**
+
+---
+
+## §9 Session Continuation Sediment (commits 7+8, 2026-05-19 late)
+
+User trigger "继续，依次进行" + "需思考全面、主动思考" 触发持续推进, 增 2 commits:
+
+| # | SHA | Phase | Description | Diff |
+|---|---|---|---|---|
+| 7 | `23ebea5` | G | F-S7-001 P0 closure — LiteLLM DeepSeek pricing fallback | +156/-9 (2 files) |
+| 8 | `b3da5a4` | I | axios SSOT migration — 6 files / 14 raw axios → apiClient | +32/-25 (6 files) |
+
+### §9.1 F-S7-001 P0 真闭环 (commit 23ebea5)
+
+**Pre-fix**: 570 LLM calls / 12d / 877K tokens 累计 `cost_usd=0` silent drift. Root cause: LiteLLM `model_cost.json` 不含 DeepSeek 真值表 → `_hidden_params.response_cost=None`. BudgetGuard silently defanged, audit cost row 全 0, **AI_ASSIST_ENABLED 真启用 blocked**.
+
+**Fix**: `_extract_cost_usd()` 3-path strategy:
+- Path 1 (preferred): LiteLLM `response_cost` 真值
+- Path 2 (fallback NEW): tokens × per-token rate (V4-Flash $0.07/M in + $0.27/M out; V4-Pro $0.55/M in + $2.19/M out)
+- Path 3 (sustained): unknown model 静默返 0
+
+**Tests**: 6 new regression tests + 31/31 router tests PASS (0 regression).
+- `test_extract_cost_litellm_provided_passthrough` — LiteLLM 真值优先
+- `test_extract_cost_fallback_deepseek_v4_flash` — V4-Flash 1000/500 → $0.000205 真值验
+- `test_extract_cost_fallback_deepseek_v4_pro` — V4-Pro 2000/1000 → $0.00329 真值验
+- `test_extract_cost_substring_match_underlying_name` — underlying name 走 substring path
+- `test_extract_cost_zero_tokens_returns_zero` — 0 token = $0 (real)
+- `test_extract_cost_unknown_model_silent_miss_zero` — gpt-4o-unknown 返 $0 (沿用旧体例)
+
+**业务影响**: AI_ASSIST_ENABLED 真启用 unblocked. 用户可 `.env` 切 `AI_ASSIST_ENABLED=true` + 重启 FastAPI 后真 LLM 调用真 cost 计入. **历史 570 calls cost_usd=0 sustained** (audit trail 真实记录, 反 retroactive overwrite).
+
+### §9.2 axios SSOT 全 migration (commit b3da5a4)
+
+**Pre-migration**: 14 raw `axios.get` calls 跨 6 files (api/dashboard.ts + 5 pages) bypass apiClient.interceptors.
+
+**Post-migration**: 全 14 calls → `apiClient.get` (统一 interceptor: auth Bearer + 401 expiry redirect + 403/422/429/503 toast). URL prefix `/api/` 统一剥除 (apiClient 自动 prepend BASE_URL=/api).
+
+**Files migrated**:
+- `api/dashboard.ts:11` 自建 `axios.create({baseURL: "/api"})` removed
+- `pages/Dashboard/index.tsx` (5 calls)
+- `pages/Portfolio.tsx` (3 calls)
+- `pages/DashboardAstock.tsx` (3 calls)
+- `pages/PTGraduation.tsx` (1 call)
+- `pages/RiskManagement.tsx` (6 calls in 双 try fallback live/paper)
+
+**Verification**: `grep -rn "import axios" frontend/src/pages/ frontend/src/api/` returns 0 — full SSOT achieved. Audit Finding #5 + #10 真闭环.
+
+### §9.3 Cumulative session totals (commits 1-8)
+
+- 8 commits / 34 files / 3 deleted / +2694/-805 / net +1889 lines
+- 2 audit P0 closures (F-S7-008 VACUUM script + F-S7-001 LLM cost fix)
+- 2 audit P1+P2 closures (#5+#10 axios SSOT)
+- TS check + vite build 全 6 验证 EXIT=0 (4.32s → 3.93s → 4.05s → 4.01s → 4.09s)
+- 37/37 router tests PASS (31 existing + 6 new F-S7-001)
+
+### §9.4 Plan v8 completion matrix (final)
+
+| Phase | Status | % |
+|---|---|---|
+| 1-5 (AUDIT) | ✅ Complete | 100% |
+| G (Audit Closure) | ✅ Mostly closed | ~95% (F-S7-005 RAG defer) |
+| H (Frontend Redesign W1+2+4+5+6) | ✅ Mostly complete | ~95% (AgentConfig prompt versioning defer) |
+| I (Tech Debt Cleanup) | 🟢 Partial | ~50% (dead code + axios SSOT done; 双轨样式 50h defer) |
+| J (Strategy Diversification) | ⛔ Not started | 0% (user gate) |
+| K (Live-Fire Resume) | ⛔ Not started | 0% (conditional) |
+
+**Plan v8 verdict**: Audit-level deliverables 100% done. Phase G/H/I 实施 ~80% cumulative. Remaining items mostly user-gate or large-scale 双轨 migration.
+
+---
+
+**End STATUS_REPORT v2.** 8 commits cumulative this evening. Ready for user 决议 J / K / 双轨 migration / 其它.

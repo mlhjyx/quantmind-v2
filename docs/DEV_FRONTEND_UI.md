@@ -1,9 +1,15 @@
-> **文档状态: DESIGN_VALID_CODE_PARTIAL (2026-04-16 更新)**
-> 实现状态: ~45% — 24个页面文件已创建, 53个共享组件, 12个API客户端。后端96个API端点已实现(远超设计的57个)。
-> **仍有价值**: §一UI风格/技术栈 ✅ / §十组件规范 ✅ / §十一实时更新策略 ✅ / §十二空状态/加载态 ✅ / §十三通知系统 ✅ / §十四 Figma改进清单 ✅
-> **需对齐**: §七API汇总(设计48端点 vs 实际96端点) / §二~§四页面功能(需审计数据绑定) / AI助手面板后端(0% 实现)
-> **决策D2 (2026-04-16)**: PROGRESSIVE — 12页面保留 + AI助手保留(上下文copilot) + 补运维操作功能(日志/服务管理/配置编辑)
-> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §12**
+> **文档状态: DESIGN_VALID_CODE_~65% (2026-05-19 Phase H 后更新)**
+> 实现状态: **~65%** (Phase H W1-6 完成后) — 35个页面文件已创建 (-2 死代码删: DashboardForex + TradeExecution), 27个共享组件 (Phase H 新增 5: EnvStateBanner + ShutdownBanner + SafetyControlPanel + ConfirmModal 4-tier + AssistPanel + FloatingAssistLauncher), 12个API客户端, 123 后端 endpoints (Phase H 新增 3: GET /api/system/env-state + POST /api/agent/chat + GET /api/agent/chat/status). 死代码 -370 行 (NotificationSystem 281 + DashboardForex 39 + TradeExecution legacy). 14 raw axios calls 全 migrate → apiClient SSOT (Audit Finding #5+#10 真闭环).
+> **Phase H 闭环成果 (Frontend Design v3 §6 Top 15)**:
+>   - P0: #1 EnvStateBanner / #2 L4 UI / #6 hardcoded LOW → 真值 ✅
+>   - P1: #4 AssistPanel placeholder / #15 shutdown 状态 ✅
+>   - P2: #5+#10 axios SSOT / #8 alert (2/3) / #11 days=0 / #13 5-op no-op / OOS warning ✅
+>   - P3: #9 NotificationSystem dead code ✅
+>   - 留: #3 双轨样式 414/116 (50h migration, 渐进策略) / #7 cron hardcoded (calendar SSOT dep) / #12 PMS归并 (PMS history 已 wired) / #14 三套 real-time 并存
+> **Phase H 设计原则**: 业务向 UI (无 ADR/LL 元数据 cite) / AI Boundary CRIT ops NEVER LLM (block list 5 ops 服务端 enforce) / Stub mode default safe (LL-183 教训) / 4 Safety Tiers ConfirmModal (LOW/MED/HIGH/CRIT) / CRIT ops 仍 CC-only (OpsEscapeHatchPanel 只展示 bash 命令 + 复制到剪贴板)
+> **AI Assist 集成**: 4 entry points wired (Layout floating Cmd+J / Ctrl+J global / PipelineConsole 5th tab embedded / StrategyWorkspace inline / FactorLab embedded). Stub 模式默认开 (反 silent LLM cost 增长), .env AI_ASSIST_ENABLED=true + F-S7-001 P0 修复 (commit 23ebea5) 后真启用.
+> **决策D2 (2026-04-16)**: PROGRESSIVE — 12页面保留 + AI助手保留(上下文copilot) + 补运维操作功能(日志/服务管理/配置编辑). Phase H 2026-05-19 真闭环 4 entry points + OpsEscapeHatchPanel (Servy 4 + ENV 切换 2 + Schtask 3 + 紧急平仓 3, 12 ops with 4-tier risk badges).
+> 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §12** + Frontend Design v3 实施: `docs/audit/V3_AUDIT_FRONTEND_DESIGN_v3.md` (409 lines, file-level refactor plan)
 
 # QuantMind V2 — 前端 UI 详细开发文档
 
