@@ -1,4 +1,10 @@
-# V3 Frontend Design Proposal — A/B/C Variant Rationale
+> ⚠️ **DIRECTION DEPRECATED 2026-05-19** — user feedback: "**A/B/C 偏离我的设计**, 并不是将 ADR/LL 都体现在 web, 而是业务相关. 你可以在之前的 web 基础上进行改造, 但是 **C 的 AI 辅助这个很有用**, 可以弄到之前的 web 上".
+> **Canonical**: `V3_AUDIT_FRONTEND_DESIGN_REVISED_v2.md` — incremental refactor of existing 35 pages + AI 辅助 panel 集成 (extracted from C variant).
+> 3 HTML mockups in `frontend_mockups/{A,B,C}.html` 保留为 exploratory artifact, NOT canonical direction. C 的 AI chat panel pattern → 沉淀到 v2 doc §2.4 `AssistPanel.tsx` design.
+>
+> ---
+>
+> # V3 Frontend Design Proposal — A/B/C Variant Rationale
 ## Phase 4-bis Step B · oh-my-claudecode:designer agent output · 2026-05-18 evening
 
 > **Sister docs**: `V3_AUDIT_S5_FRONTEND_REDESIGN_PROPOSAL.md` (IA + roadmap) · `V3_AUDIT_S9_UX_CONTROL_PLANE.md` (32 ops matrix) · `V3_AUDIT_FRONTEND_DESIGN_SPEC.md` (full design spec)

@@ -1,5 +1,9 @@
 # QuantMind-V2 Frontend Design Specification (Phase 4-bis Step A, NEW v7)
 
+> ⚠️ **PARTIAL CORRECTION 2026-05-19** — Design tokens (Part 2) + Component lib (Part 3) + Real-time strategy (Part 7) + Auth (Part 11) **仍然 valid**. Pages-by-page layout (Part 4 "12 page IA from scratch") **deprecated** — user feedback "在之前的 web 基础上进行改造". Refactor existing 35 pages instead.
+> **Canonical direction**: `V3_AUDIT_FRONTEND_DESIGN_REVISED_v2.md` §1 existing-pages inventory + §3 Phase H REVISED.
+> Spec doc 可仍用 feed claude.ai/design 网页 for **component library + design tokens**, but **NOT 整页 12-page IA**.
+>
 > **Purpose**: This spec is **feedable to https://claude.ai/design** (web tool) for full frontend mockup generation, OR usable directly by `oh-my-claudecode:designer` agent
 > **Source**: Synthesis of `V3_AUDIT_S5_FRONTEND_REDESIGN_PROPOSAL.md` + `V3_AUDIT_S9_UX_CONTROL_PLANE.md` + backend inventory (132 API endpoints / 36 services / Redis Streams) + user persona (single-user, full-time quant developer, expects Team Lead-style proactive UI)
 > **User decision (post-audit)**: choose path 1 (user feeds claude.ai/design web) / path 2 (CC spawns designer agent for HTML mockup) / path 3 (hybrid both)
