@@ -5860,3 +5860,54 @@ Phase C1a "deferred runtime verification to natural cycle" per LL-178 lesson 4 �
 - 17:30 SH DailyDataIngest_Postclose schtask 是否真 fire (Windows schtask 不依赖 Beat)
 - 16:30 SH signal_phase Beat-driven (now alive) — 是否走通 Step 0 healthcheck + Step 3 信号生成 (前次 5-17 15:23 SH last success, Mon will be first natural Beat fire if alive)
 - alert_dedup 新 dedup_key 是否走真 POST path (e.g., new source 触发 / suppress_until expire 触发)
+
+---
+
+## LL-180: Mon 5-18 14:02 SH P0 V3 L4 STAGED live broker wire FAILED — xtquant asyncio Compat Sub-class + M1+M3 双管 Mitigation 体例 + PR #377 Narrative 6-day Premature + 2nd Servy Cascade Kill 实证 (Mon afternoon incident discovery via user DingTalk screenshot share)
+
+**事件 timeline** (2026-05-18 Mon afternoon):
+
+| 时间 SH | 事件 |
+|---|---|
+| 14:00:00 | Beat 自然 cycle dispatch `risk-l4-sweep-1min` |
+| 14:02:00 | `sweep_pending_confirm_plans` task body → `staged_execution_service.build_default_broker_call()` → live mode path (EXECUTION_MODE=live + LIVE_TRADING_DISABLED=false post-CT-2b) → `MiniQMTBroker.connect()` → `XtQuantTrader(path, session)` → **RuntimeError: no current event loop in thread 'MainThread'** → P0 alert via `send_alert` (direct path, NOT `send_with_dedup`, NOT 写 alert_dedup) → DingTalk webhook POST ✅ |
+| 14:02 SH | User DingTalk 屏抓 screenshot share — 我 surface critical |
+| 14:05 SH | M1 mitigation: 注释 `risk-l4-sweep-1min` + `risk-l4-broker-stuck-sweep` Beat entries (block 1-min cadence spam) |
+| 14:09:26 SH | Servy restart QuantMind-CeleryBeat → 14:10:00 cycle: 0 l4-sweep dispatches ✅ |
+| 14:11 SH | M3 fix: `backend/engines/broker_qmt.py` add `import asyncio` (line 14) + `asyncio.set_event_loop(asyncio.new_event_loop())` defensive bootstrap (lines 253-264) before XtQuantTrader instantiation |
+| 14:11 SH | Smoke test: `python -c "from engines.broker_qmt import MiniQMTBroker"` + bootstrap pattern verified — ProactorEventLoop created when no loop ✅ |
+| 14:11 SH | Re-enable 2 l4-sweep Beat entries (uncomment dict entries) + Servy restart CeleryBeat + Celery (Beat 2nd cascade kill — Servy says "restarted" but status=Stopped + Aborted!) |
+| 14:13:51 SH | Manual `Servy start QuantMind-CeleryBeat` → Beat Running, 14:13:53 first dispatch outbox-publisher-tick |
+| 14:14:00 SH | Next cycle: `risk-l4-sweep-1min` dispatched ✅, **NO new P0 alert** (M3 fix verified) |
+| 14:15 SH | DB verify: alert_dedup 0 new rows post 14:13, execution_plans 0 total → sweep early-returns when no plans (or M3 bootstrap success-no-error) |
+
+**核心 lesson 1 — xtquant asyncio compat 是 6th sys.path/asyncio drift sub-class family (PR #377 narrative 6-day premature)**:
+PR #377 (5-17 ~18:30 SH) commit message claimed "broker_qmt.py module-level ensure_xtquant_path() fix" 修了 "V3 L4 STAGED live broker wire FAILED" P0 alert. **真实**: PR #377 仅修了 ModuleNotFoundError sub-class (`No module named 'xtquant'`), 未覆盖 asyncio compat sub-class. Mon 5-18 14:02 SH 是 PR #377 narrative 的延迟 verification — 真 fire 路径 (Beat→Celery worker→sweep→broker_call→MiniQMTBroker.connect → xtquant.xttrader → asyncio) **6 天后才走通**, 暴露 ModuleNotFoundError 修复后的下一层 bug. **Lesson**: 任 commit/PR 声明 "fixed X P0 alert" 必标注 verification scope — "已修 silent failure path A1 (ImportError), pending verification path A2 (initialization runtime), pending verification path A3 (live broker construction async compat)". PR #377 narrative was an unguarded "fixed alert" claim, masking M2/M3 sub-class remaining gap. 沉淀 SOP: P0 alert fix commit MUST 写 stress-test 5+ failure mode discrimination + cite which sub-classes 已 covered vs which 待 verify. Sustained LL-176 lesson 1 (doc-closure-vs-runtime-healthy) 第 18 + 19 次实证 — same pattern, PR-level granularity this time.
+
+**核心 lesson 2 — M1 (temp disable) + M3 (root fix) 双管 mitigation 体例**:
+14:02 spam risk = 60 alerts/hour at 1-min cadence. Single-track M3 = ~30-60 min 修真, 期间 spam continues. Single-track M1 = 1 min stop spam but no真修 (re-enable later 仍 spam). 双管 = M1 (block spam 30s, 1 Edit + Servy restart 4-5min) + M3 同步 (read code + fix + smoke 10-15min) + re-enable post-M3. Time-to-zero-spam = ~3 min (post M1 first restart). Time-to-真修+re-enable = ~12 min total. **Lesson**: P0 spam class incident mitigation MUST 区分 "stop spam" (M1) + "fix root" (M3) 两 goal — 分 parallel track, 不 serialize. 沉淀 SOP: 任 P0 spam class incident 起手 M1 ≤ 5 min + M3 ≤ 30 min, total <35 min wall-clock. Verify by checking spam stopped post-M1 + no new fire post-M3. 加 ADR-082 D10 candidate "Beat schedule emergency-disable runbook" (single-edit + Servy restart playbook).
+
+**核心 lesson 3 — Servy cascade kill (LL-179 lesson 2) 2nd 实证 in same session — sequential Servy restart pattern**:
+14:11 SH 我 `Servy restart Beat` + `Servy restart Celery` 序列 → Beat "Aborted!" + status=Stopped (Celery Running). 这是 LL-179 lesson 2 (Servy cascade kill) 同 session 第 2 次 复现 — 5-17 22:50 SH (Servy restart Celery/FastAPI 同时杀 Beat) + 5-18 14:11 SH (sequential restart Beat then Celery 杀 Beat). **Lesson 升维**: Servy restart 多服务序列 unsafe — Beat 特别脆弱, 可能 broker connection / persistent DB / event loop init race condition cause silent abort. 沉淀 SOP升维 from LL-179: any Servy multi-service restart MUST 单 service 单 verify status=Running before next restart. Wait-for-Running 5s + status check; do NOT batch 4 services in 1 call. 加 ADR-082 D11 candidate "Servy single-service-at-a-time restart SOP with Running probe between"; LL-179 lesson 2 ADR-082 D8 candidate (Servy verify-all auto-restart watchdog) 加 prereq "single-service restart serialization".
+
+**核心 lesson 4 — send_alert (direct) vs send_with_dedup (audit) 双 path 可见性差异**:
+14:02 SH P0 用 `send_alert` (notification_service direct path), NOT `send_with_dedup` (dingtalk_alert.py via alert_dedup audit table). 我 DB query `alert_dedup WHERE last_fired_at >= 14:00 SH` 返 0 rows — false 推导 "no P0 fired today". 实际 push 已发但走 different DB table OR no DB table at all. **Lesson**: alert visibility MUST 检查双 path — (a) alert_dedup (audit + dedup helper, has DB row); (b) notification_service direct (no DB row, sole DingTalk POST + log). LL-178 lesson 3 (14-day push silent) 部分被 amend — push 不一定 silent, 只是 audit row 走不同 path. 沉淀 SOP: incident postmortem must grep BOTH `send_alert` AND `send_with_dedup` call sites. 加 ADR-082 D12 candidate "alert pipeline 双 path 统一审计" (refactor notification_service to also write alert_dedup row, OR add separate alert_log table for direct-send path, OR document the differential).
+
+**核心 lesson 5 — Mon afternoon 实证 LL-179 lesson 1 (sediment narrative ≠ runtime truth) 第 N+2 次**:
+我 5-17 22:50 SH commit `b1178f6` 沉淀 "V3 audit cycle TRUE COMPLETE 95%+" 后 1 分钟 Beat silent death (LL-179 lesson 1). 5-18 14:02 SH 又 1 个 P0 alert (M2/M3 sub-class 未覆盖). 沉淀 narrative "TRUE COMPLETE" 是 sediment-time snapshot, 不保证 runtime forward stability. **Lesson** (Iterative重确认): commit message 关键 word "TRUE COMPLETE" 应替换为 "code-side complete pending runtime soak". 加 commit-message lint rule: "complete" "done" "ready" 三 banned word unless 配 `verification_period_elapsed: <duration>` 字段. 沿用 LL-098 X10 X10 forwarding-progress STOP gate, 加 commit message scope guard.
+
+**Comprehensive proactive audit 2-stage pattern 第 11 case** (LL-170~179 sustained 10 cycles + 1): Stage 1 = user DingTalk screenshot share = critical reality grounding (LL-179 lesson 4 sustained). Stage 2 = M1 spam stop + M3 root fix + Beat re-enable + post-cycle verify + LL-180 sediment.
+
+**关联**: ADR-027 §7 + ADR-028 (sustained) + ADR-082 D8 (Beat alive probe IMPLEMENTED prior) + **ADR-082 D10/D11/D12 NEW candidates** (Beat emergency-disable runbook / Servy single-service-at-a-time SOP / alert pipeline 双 path 统一) + ADR-022 append-only sediment + ADR-063 replay-as-gate methodology (sustained — runtime evidence preferred over synthetic) + 铁律 25 / 33 / 35 / 38 / 42 / 44 X9 (post-merge ops checklist enforced via pre-edit hook) + LL-074 (Beat zombie SOP) + LL-098 X10 (18th + 19th 实证 — user trigger forcing function reality grounding) + LL-145~149 (S5~S7 sediment) + LL-150~157 (S8~S10 sediment) + LL-159 (4-step preflight) + LL-176 lesson 1 (doc-closure-vs-runtime-healthy 18th + 19th 实证 cumulative) + LL-177 (L2 Beat fix) + LL-178 (C1a flip + send_with_dedup audit path) + LL-179 lesson 1 (sediment ≠ runtime 第 N+2 次) + lesson 2 (Servy cascade kill 2nd 实证 in same session) + lesson 4 (user 5-word/screenshot challenge 第 N+1 次) + lesson 5 (alive probe checkpoint pre-condition) + V3 §7.1 (L4 STAGED scope, sustained — wire functional but sub-class debugging延迟到生产 fire window) + Constitution §L10.5 Gate E sustained partial closed (DINGTALK enabled ✅ via verbal "你执行" 5-17 + L4_AUTO sustained OFF default verified). 红线 5/5 sustained throughout: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=false / EXECUTION_MODE=live / QMT_ACCOUNT_ID=81001102. **QuantMind_DailyExecute schtask State=Disabled sustained** (Phase 1 forcing function — Mon 09:31 auto-fire blocked + Beat death masked any path during morning).
+
+**Verification post-M3** (2026-05-18 14:15 SH):
+- broker_qmt import smoke ✅ (asyncio ProactorEventLoop bootstrap verified)
+- Beat alive post 14:13:51 restart ✅ (outbox + l4-sweep-1min dispatching)
+- 0 new P0 DingTalk alerts post 14:13 SH ✅ (alert_dedup verified)
+- M1 spam window = ~9 min (14:02-14:11), bounded.
+
+**Long-tail follow-ups**:
+- D10 Beat emergency-disable runbook (LL-180 lesson 2 sediment)
+- D11 Servy single-service-at-a-time SOP (LL-180 lesson 3 sediment)
+- D12 alert pipeline 双 path 统一审计 (LL-180 lesson 4 sediment)
+- Commit-message lint "complete"/"done"/"ready" banned word + verification_period field (LL-180 lesson 5)
