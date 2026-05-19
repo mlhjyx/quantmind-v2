@@ -1,6 +1,31 @@
 # RiskControlService 接口设计文档
 
-> **Sprint 1.1 目标** | 作者: strategy agent | 日期: 2026-03-22
+> ⚠️ **PARTIALLY DEPRECATED 2026-05-19** (Plan v8 P0-18 closure batch 2)
+>
+> **L4 设计已被 ADR-027 重定义** — 本文档 §2.1 `L4_STOPPED ── 累计亏损>25%, 停止所有交易, 人工审批` (旧设计) 与 V3 ADR-027 §2.1 L4 STAGED default + 反向决策权 + 跌停 fallback (新设计) **存在 semantic conflict** (Plan v8 S2 Design vs Reality Gap §2.5 + Master P0-18).
+>
+> **真值 source priority** (沿用 LL-105 SOP-6 SSOT):
+> 1. [`docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md`](QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md) §4 L1-L4 ladder (V3 风控层 spec authoritative)
+> 2. [`docs/adr/ADR-027`](adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) §2.1 STAGED default + §2.2 反向决策权 + §2.3 跌停 fallback (L4 实施细节)
+> 3. [`docs/adr/ADR-029`](adr/) (V3 实施 ladder, cite ADR-085 §1.2)
+> 4. (NOT 本文档 §2 4级熔断状态机) — 旧 L4_STOPPED 设计 sustained 留作历史 reference, 不再 valid as L4 truth
+>
+> **What still valid in 本文档**:
+> - §1 背景与动机 (sustained, 真问题描述)
+> - §2.1 L0-L3 状态机 (NORMAL/L1_PAUSED/L2_HALTED/L3_REDUCED 升级规则 sustained, ADR-027 不覆盖此 3 层)
+> - §2.2 状态转换规则 L0-L3 portion (sustained)
+> - §3+ 接口设计 (sustained 大部分, 但 L4 portion 走 ADR-027)
+>
+> **Maintenance**: 本文档不再 maintain L4 portion. Plan v8 §VIII #14 Doc Lying violation if updated. **Future readers** → V3_DESIGN §4 + ADR-027 是 authoritative.
+>
+> **Action history** (沿用 ADR-022 append-only 体例):
+> - 2026-03-22: Initial draft (Sprint 1.1)
+> - 2026-05-02: ADR-027 redefined L4 (Claude.ai+user 战略对话 sediment, V3 §20.1 #1 + #7)
+> - **2026-05-19: This DEPRECATION header added** (Plan v8 P0-18 closure, sustained Master Top 50 finding closure)
+
+---
+
+> **Sprint 1.1 目标** (sustained historical) | 作者: strategy agent | 日期: 2026-03-22
 > **来源**: DESIGN_V5 8.1 + CLAUDE.md 风控层 + 当前 `check_circuit_breaker()` 简版升级
 
 ---
