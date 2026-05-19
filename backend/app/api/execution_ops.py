@@ -13,12 +13,17 @@ from datetime import date
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+
+# P0 Session 57+1 fix (2026-05-19, security-reviewer P0-1): cookie-aware SSOT
+# (core.auth.verify_admin_token supports both cookie + header back-compat).
+# Replaces previous local _verify_admin_token (plain != compare = timing attack regression).
+from app.core.auth import verify_admin_token as _verify_admin_token
 from app.db import get_db
 from app.services.qmt_connection_manager import qmt_manager
 
@@ -64,17 +69,6 @@ def _increment_rate(action: str) -> None:
 
 def _get_session(session: AsyncSession = Depends(get_db)) -> AsyncSession:
     return session
-
-
-def _verify_admin_token(
-    x_admin_token: str = Header(alias="X-Admin-Token", default=""),
-) -> str:
-    """验证Admin Token。"""
-    if not settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=500, detail="ADMIN_TOKEN未配置")
-    if x_admin_token != settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="无效的Admin Token")
-    return x_admin_token
 
 
 def _require_qmt_connected() -> None:

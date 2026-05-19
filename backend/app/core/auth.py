@@ -45,15 +45,13 @@ def verify_admin_token(
         raise HTTPException(status_code=500, detail="ADMIN_TOKEN未配置")
 
     expected = settings.ADMIN_TOKEN
+    # security-reviewer P1-1: fall-through with single opaque error message
+    # eliminates token-source enumeration oracle (cookie vs header detection).
     # Cookie wins if present (preferred, XSS-safe)
-    if admin_token_cookie:
-        if secrets.compare_digest(admin_token_cookie, expected):
-            return
-        raise HTTPException(status_code=401, detail="无效的Admin Token (cookie)")
-    # Fallback: header path (legacy)
-    if x_admin_token:
-        if secrets.compare_digest(x_admin_token, expected):
-            return
-        raise HTTPException(status_code=401, detail="无效的Admin Token (header)")
-    # Neither provided
-    raise HTTPException(status_code=401, detail="缺少 admin_token (cookie 或 X-Admin-Token header)")
+    if admin_token_cookie and secrets.compare_digest(admin_token_cookie, expected):
+        return
+    # Header path (legacy back-compat)
+    if x_admin_token and secrets.compare_digest(x_admin_token, expected):
+        return
+    # Single opaque message (no source disclosure)
+    raise HTTPException(status_code=401, detail="无效的Admin Token")

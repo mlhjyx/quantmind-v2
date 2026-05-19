@@ -29,8 +29,10 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from app.core.auth import verify_admin_token
 
 logger = structlog.get_logger(__name__)
 
@@ -418,39 +420,47 @@ def _fetch_active_config(name: str) -> dict[str, Any] | None:
 
 
 def _seed_default_config(name: str) -> dict[str, Any]:
-    """First-run seed: INSERT v1 default config row (idempotent via UNIQUE constraint)."""
+    """First-run seed: INSERT v1 default config row (idempotent via UNIQUE constraint).
+
+    code-reviewer P1.4 fix: nested try/rollback ensures conn returned to pool clean
+    even on INSERT exception (CHECK constraint violation / type mismatch).
+    """
     default = _AGENT_DEFAULT_CONFIGS[name]
     conn = _get_db_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO prompt_history (
-                    agent_name, version, display_name, model, temperature, max_tokens,
-                    system_prompt, ic_threshold, t_stat_threshold,
-                    auto_archive, auto_reject, max_daily_runs,
-                    is_active, reason, created_by
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO prompt_history (
+                        agent_name, version, display_name, model, temperature, max_tokens,
+                        system_prompt, ic_threshold, t_stat_threshold,
+                        auto_archive, auto_reject, max_daily_runs,
+                        is_active, reason, created_by
+                    )
+                    VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE,
+                            'initial seed from _AGENT_DEFAULT_CONFIGS', 'system')
+                    ON CONFLICT (agent_name, version) DO NOTHING
+                    RETURNING version
+                    """,
+                    (
+                        name,
+                        default["display_name"],
+                        default["model"],
+                        default["temperature"],
+                        default["max_tokens"],
+                        default["system_prompt"],
+                        default["ic_threshold"],
+                        default["t_stat_threshold"],
+                        default["auto_archive"],
+                        default["auto_reject"],
+                        default["max_daily_runs"],
+                    ),
                 )
-                VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE,
-                        'initial seed from _AGENT_DEFAULT_CONFIGS', 'system')
-                ON CONFLICT (agent_name, version) DO NOTHING
-                RETURNING version
-                """,
-                (
-                    name,
-                    default["display_name"],
-                    default["model"],
-                    default["temperature"],
-                    default["max_tokens"],
-                    default["system_prompt"],
-                    default["ic_threshold"],
-                    default["t_stat_threshold"],
-                    default["auto_archive"],
-                    default["auto_reject"],
-                    default["max_daily_runs"],
-                ),
-            )
-        conn.commit()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
     finally:
         conn.close()
     fetched = _fetch_active_config(name)
@@ -458,11 +468,21 @@ def _seed_default_config(name: str) -> dict[str, Any]:
 
 
 def _insert_new_version(name: str, payload: dict[str, Any], reason: str | None) -> dict[str, Any]:
-    """INSERT 新 version row + mark previous active=FALSE (atomic single transaction)."""
+    """INSERT 新 version row + mark previous active=FALSE (atomic single transaction).
+
+    P1.5 fix (security-reviewer + code-reviewer): pg_advisory_xact_lock serializes
+    concurrent PUTs per agent_name, preventing TOCTOU race on next_version compute +
+    UNIQUE constraint loser silent data loss. Lock auto-releases on commit/rollback.
+    """
     conn = _get_db_conn()
     try:
         with conn.cursor() as cur:
-            # Get next version + current active config
+            # P1.5: advisory lock per-agent (single writer, auto-release on txn end)
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                (f"prompt_history_{name}",),
+            )
+            # Get next version + current active config (now race-free)
             cur.execute(
                 "SELECT COALESCE(MAX(version), 0) + 1 FROM prompt_history WHERE agent_name = %s",
                 (name,),
@@ -581,7 +601,11 @@ async def get_agent_config(name: str) -> dict[str, Any]:
 
 
 @router.put("/{name}/config", summary="Agent 配置更新 (insert new version row)")
-async def put_agent_config(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def put_agent_config(
+    name: str,
+    payload: dict[str, Any],
+    _: None = Depends(verify_admin_token),  # P2-1 fix (treat as P1): auth gate on mutation
+) -> dict[str, Any]:
     """更新 agent 配置 — 真 INSERT 新 version + mark previous active=FALSE.
 
     H1 真闭环 (反 LL-183 silent UI lie pattern): 用户改动持久化 to prompt_history.
@@ -603,7 +627,10 @@ async def put_agent_config(name: str, payload: dict[str, Any]) -> dict[str, Any]
 
 
 @router.post("/{name}/config/reset", summary="Agent 配置重置 (insert version row from defaults)")
-async def reset_agent_config(name: str) -> dict[str, Any]:
+async def reset_agent_config(
+    name: str,
+    _: None = Depends(verify_admin_token),  # P2-1 fix: auth gate
+) -> dict[str, Any]:
     """重置 agent 配置 — INSERT 新 version row with default values."""
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
@@ -642,7 +669,12 @@ async def get_agent_history(name: str, limit: int = 20) -> list[dict[str, Any]]:
 
 
 @router.post("/{name}/config/rollback", summary="Agent 配置 rollback 至历史 version")
-async def rollback_agent_config(name: str, version: int, reason: str | None = None) -> dict[str, Any]:
+async def rollback_agent_config(
+    name: str,
+    version: int,
+    reason: str | None = None,
+    _: None = Depends(verify_admin_token),  # P2-1 fix: auth gate on mutation
+) -> dict[str, Any]:
     """Rollback 至 prompt_history 指定 version. 策略: INSERT 新 version row (copy from target)
     + mark previous active=FALSE (atomic txn, 沿用 _insert_new_version 体例).
 

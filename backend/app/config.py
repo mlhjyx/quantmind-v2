@@ -153,6 +153,9 @@ class Settings(BaseSettings):
 
     # --- 执行操作认证 ---
     ADMIN_TOKEN: str = ""  # 执行操作API认证token
+    # S1 P0-22 fix (Session 57+1, 2026-05-19): cookie Secure flag SSOT (铁律 34).
+    # Dev HTTP localhost: false. Production HTTPS: true via .env override.
+    COOKIE_SECURE_FLAG: bool = False
 
     # --- 远程状态API ---
     REMOTE_API_KEY: str = ""  # 空字符串=禁用认证（仅本地开发），生产必须设置
