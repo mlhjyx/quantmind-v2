@@ -34,7 +34,7 @@ def test_platform_strategy_batch_1_imports_clean():
         capture_output=True,
         text=True,
         cwd=str(_REPO),
-        timeout=30,
+        timeout=60,  # Plan v8 fix (5-20): bump from 30s — DB lock contention during Phase B-1 caused 30s timeout false-fail
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert result.returncode == 0, (
@@ -69,7 +69,7 @@ def test_migration_idempotent_rerun():
         capture_output=True,
         text=True,
         cwd=str(_REPO),
-        timeout=30,
+        timeout=60,  # Plan v8 fix (5-20): bump from 30s — DB lock contention during Phase B-1 caused 30s timeout false-fail
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     # 若 DB 不可用跳过 (本地 dev 环境容许; CI 须 DB 在线)
