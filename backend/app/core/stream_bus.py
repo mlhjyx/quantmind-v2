@@ -7,11 +7,21 @@ Stream 命名规范: qm:{domain}:{event_type}
 - publish 失败不阻塞主流程（只日志不抛异常）
 - 同步优先（当前系统 sync 为主）
 - maxlen 防止 Stream 无限增长
+
+⚠️ DEPRECATION (Plan v8 P1-30, LL-191 sub-class):
+publish_sync 仅用于 **ops 类 alert** (health / quality / status).
+**Business events** (signal/fill/order/trade) 必走 outbox publisher
+(qm_platform.observability 模块) — transactional + retry + lineage.
+反 LL-187 sediment-then-forget pattern: business event 用 publish_sync 是
+ad-hoc 路径漂移, 不进 trade_log/factor_ic_history canonical sink.
+
+详 Plan v8 §4 P1-30 / docs/QUANTMIND_PLATFORM_BLUEPRINT.md outbox publisher §.
 """
 
 import contextlib
 import json
 import logging
+import warnings
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,6 +30,16 @@ import redis
 from app.config import settings
 
 logger = logging.getLogger("stream_bus")
+
+# Plan v8 P1-30 deprecation guard: business event stream prefix 发 warning.
+# 0 production caller 命中 (5-19 verify), 仅防御未来 ad-hoc 路径漂移.
+_BUSINESS_EVENT_PREFIXES = (
+    "qm:signal:",
+    "qm:execution:",
+    "qm:fill:",
+    "qm:trade:",
+    "qm:order:",
+)
 
 # ── Stream 名称常量 ──────────────────────────────────────
 # MVP 3.4 batch 5 sunset (PR #130 2026-04-28, reviewer P2 fix):
@@ -99,6 +119,17 @@ class StreamBus:
         Returns:
             message_id 或 None（失败时）。
         """
+        # Plan v8 P1-30 deprecation guard: business event stream 必走 outbox.
+        if any(stream.startswith(prefix) for prefix in _BUSINESS_EVENT_PREFIXES):
+            warnings.warn(
+                f"StreamBus.publish_sync({stream!r}) is DEPRECATED for business events. "
+                f"Use outbox publisher (qm_platform.observability) for "
+                f"signal/fill/order/trade events — transactional + retry + lineage. "
+                f"publish_sync should be reserved for ops alerts (health/quality/status). "
+                f"See Plan v8 P1-30 + LL-191.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         message = {
             "published_at": datetime.now(UTC).isoformat(),
             "source": source,
