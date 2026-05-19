@@ -388,7 +388,7 @@ async def get_drift(
             asset = await _broker_query_asset()
             total_asset = float(asset.get("total_asset", 0))
         except Exception:
-            pass
+            pass  # silent_ok: broker query_asset transient fail → fall to DB NAV path below (total_asset==0 triggers fallback). 铁律 33 annotation (Session 58 round-2 C2 audit).
     if total_asset == 0:
         result_nav = await session.execute(
             text("""
@@ -474,7 +474,7 @@ async def get_drift(
             asset = await _broker_query_asset()
             available_cash = float(asset.get("cash", 0))
         except Exception:
-            pass
+            pass  # silent_ok: broker query_asset transient fail → available_cash=0 fallback (drift analysis degrades to overbought_release only). 铁律 33 annotation.
 
     total_available = available_cash + overbought_release
     missing_count = sum(1 for d in drift_items if d["status"] == "missing")

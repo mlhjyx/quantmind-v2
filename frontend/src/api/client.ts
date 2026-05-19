@@ -1,7 +1,29 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { useNotificationStore } from "@/store/notificationStore";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+// L2 fix (Session 58 round-2, ISSUES_PENDING_REGISTRY §10 L2): runtime config support.
+// 旧 pattern build-time-only `import.meta.env.VITE_API_BASE_URL` 需 rebuild on deploy.
+// Now supports `window.__APP_CONFIG__.apiBaseUrl` runtime override via index.html
+// script injection (e.g. nginx envsubst at container start). Build-time fallback retained.
+//
+// Usage at deploy time (e.g. Docker entrypoint OR nginx):
+//   <script>window.__APP_CONFIG__ = { apiBaseUrl: "https://api.prod.example.com" };</script>
+// Injected BEFORE main bundle <script src="/assets/index-*.js">.
+declare global {
+  interface Window {
+    __APP_CONFIG__?: {
+      apiBaseUrl?: string;
+      wsUrl?: string;
+      wsBaseUrl?: string;
+    };
+  }
+}
+
+const _runtimeConfig = (typeof window !== "undefined" ? window.__APP_CONFIG__ : undefined) ?? {};
+const BASE_URL =
+  _runtimeConfig.apiBaseUrl ??
+  import.meta.env.VITE_API_BASE_URL ??
+  "/api";
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

@@ -135,13 +135,13 @@ def _to_jsonable_scalar(v):
         try:
             return v.isoformat()
         except TypeError:
-            pass
+            pass  # silent_ok: isoformat() TypeError on non-tz datetime → fall to next normalization (numpy scalar / raw return). 铁律 33 annotation (Session 58 round-2 C2 audit).
     # numpy scalar 归一
     if hasattr(v, "item") and not isinstance(v, (str, bytes)):
         try:
             return v.item()
         except (ValueError, AttributeError):
-            pass
+            pass  # silent_ok: numpy scalar conversion ValueError/AttributeError → return raw v (last-resort identity). 铁律 33 annotation.
     return v
 
 

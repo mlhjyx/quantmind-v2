@@ -1,7 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? "";
+// L2 fix (Session 58 round-2): runtime config support (same pattern as client.ts).
+const _wsRuntimeConfig = (typeof window !== "undefined" ? window.__APP_CONFIG__ : undefined) ?? {};
+const WS_URL = _wsRuntimeConfig.wsUrl ?? import.meta.env.VITE_WS_URL ?? "";
 
 interface UseWebSocketOptions {
   namespace?: string;
@@ -16,11 +18,24 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const socketRef = useRef<Socket | null>(null);
   const listenersRef = useRef<Map<string, ((...args: unknown[]) => void)[]>>(new Map());
 
+  // L3 fix (Session 58 round-2, ISSUES_PENDING_REGISTRY §10 L3): callback refs
+  // 反 stale closure. 旧 pattern dep array `[enabled, namespace]` with eslint-disable
+  // meant callbacks captured at first mount only — inline arrow function callers got
+  // stale references. Refs let callbacks update without re-subscribing socket.
+  const onConnectRef = useRef(onConnect);
+  const onDisconnectRef = useRef(onDisconnect);
+  const onErrorRef = useRef(onError);
+  onConnectRef.current = onConnect;
+  onDisconnectRef.current = onDisconnect;
+  onErrorRef.current = onError;
+
   useEffect(() => {
     if (!enabled) return;
 
     const socket = io(`${WS_URL}${namespace}`, {
-      transports: ["websocket"],
+      // L3 fix: add polling fallback for firewall/proxy environments that block WS upgrade.
+      // 反 silent connect failure on corporate network. socket.io auto-upgrades to WS when possible.
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -29,9 +44,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
     socketRef.current = socket;
 
-    socket.on("connect", () => onConnect?.());
-    socket.on("disconnect", () => onDisconnect?.());
-    socket.on("connect_error", (err) => onError?.(err));
+    // L3 fix: use refs for callbacks (反 stale closure on inline arrow functions).
+    socket.on("connect", () => onConnectRef.current?.());
+    socket.on("disconnect", () => onDisconnectRef.current?.());
+    socket.on("connect_error", (err) => {
+      // L3 fix: surface to console even when no onError handler (反 silent fail at boundary).
+      if (onErrorRef.current) {
+        onErrorRef.current(err);
+      } else {
+        console.warn(`[useWebSocket] connect_error namespace=${namespace}:`, err.message);
+      }
+    });
 
     // Re-attach any listeners registered before connection
     listenersRef.current.forEach((handlers, event) => {
@@ -42,7 +65,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, namespace]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, namespace]);
 
   const on = useCallback(<T = unknown>(event: string, handler: (data: T) => void) => {
     const h = handler as (...args: unknown[]) => void;
