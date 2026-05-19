@@ -38,9 +38,8 @@ export default function AgentConfig() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // H1 fix (2026-05-19): saveSuccess state removed since save button is disabled
-  // pending Phase I prompt_history table impl (per ISSUES_PENDING_REGISTRY §9 H1).
-  const setSaveSuccess: (_: boolean) => void = () => {};
+  // H1 真闭环 (2026-05-19): prompt_history table 已 land (migration 2026_05_19), save 真持久化
+  const [saveSuccess, setSaveSuccess] = useState(false);
   // Track per-agent local changes
   const [localChanges, setLocalChanges] = useState<Record<AgentName, Partial<AgentConfigType>>>({
     idea: {}, factor: {}, eval: {}, diagnosis: {},
@@ -156,37 +155,35 @@ export default function AgentConfig() {
             size="sm"
             loading={resetting}
             onClick={handleReset}
-            disabled
-            title="Phase I stub: 恢复默认 0 操作 (backend prompt_history table 未实施)"
+            title="重置为 default config (新 version row INSERT)"
           >
-            恢复默认 (DEFERRED)
+            恢复默认
           </Button>
           <Button
             size="sm"
             loading={saving}
-            disabled
+            disabled={!hasUnsavedChanges}
             onClick={handleSave}
-            title="Phase I stub: PUT no-op, 用户改动不持久化. 真 prompt versioning UI 等 backend prompt_history table 实施 (~8h)"
+            className={saveSuccess ? "bg-green-600 border-green-500/50" : ""}
+            title="保存为新 version row (prompt_history table)"
           >
-            保存配置 (DEFERRED)
+            {saveSuccess ? "已保存 ✓" : "保存配置"}
           </Button>
         </div>
       </div>
 
-      {/* H1 LL-183 prevention: stub mode warning (reflects backend agent.py PUT no-op state) */}
-      <div className="mb-4 flex items-start gap-2 bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-3">
-        <span className="text-amber-400 text-base shrink-0">⚠</span>
+      {/* H1 真闭环 (2026-05-19): prompt_history table 已 land, 真 persist 启用. */}
+      <div className="mb-4 flex items-start gap-2 bg-emerald-900/20 border border-emerald-500/30 rounded-xl px-4 py-3">
+        <span className="text-emerald-400 text-base shrink-0">✓</span>
         <div className="flex-1">
-          <div className="text-sm text-amber-200 font-semibold mb-1">
-            Phase I — 配置只读 (backend prompt_history table 未实施)
+          <div className="text-sm text-emerald-200 font-semibold mb-1">
+            Prompt Versioning Active — 配置改动真持久化 (prompt_history table)
           </div>
           <div className="text-xs text-slate-300 leading-relaxed">
-            当前 backend `PUT /api/agent/{`{name}`}/config` 为 stub no-op, 用户在此页修改的 prompt /
-            temperature / max_tokens 等 <strong>不会持久化</strong> (重新加载即丢失). 反 LL-183
-            silent UI lie 教训, 本页 "保存" + "恢复默认" 按钮已 disabled.{" "}
-            <span className="text-amber-200">真 prompt versioning UI 等 Phase I P2 实施</span>{" "}
-            (~8h backend prompt_history table + 真 SQL persist + version diff/rollback).
-            详 <code className="text-amber-200">docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md §9 H1</code>.
+            点击 <strong>保存配置</strong> 触发 PUT /api/agent/{`{name}`}/config — backend 真
+            INSERT 新 version row + mark 前 active=FALSE (atomic txn). GET /history 可拉
+            last N versions. Rollback / version diff UI 留 Phase I 续期 enhancement.
+            详 <code className="text-emerald-200">backend/migrations/2026_05_19_prompt_history.sql</code>.
           </div>
         </div>
       </div>

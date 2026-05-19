@@ -1,4 +1,16 @@
-# QuantMind Platform Blueprint (QPB v1.16)
+# QuantMind Platform Blueprint (QPB v1.16 + Session 57 G2 addendum)
+
+> **Session 57 (2026-05-19) G2 audit addendum** (per ISSUES_PENDING_REGISTRY §6 G2):
+> - **Framework #13 Calendar (NEW, light annotation, 真 module 已 land)**: `backend/qm_platform/calendar/` 模块 (commit 8a57c90):
+>   - get_calendar() singleton + CalendarProvider facade
+>   - 4-layer fallback (QMT / Tushare / DB / heuristic)
+>   - is_trading_day_today_or_skip() task gate helper (commit 79814bd)
+>   - pt_day_counter() PT 进度 (start_date / total_days / completion_pct)
+>   - 服务于 Audit Section X §39 SSOT + 防 LL-181 节假日 Beat 空跑
+> - **未 promote 到 Framework #1-#12 正式 chapter** (避 invasive QPB structural change), 留 user 决议 future QPB v1.17 时 promote
+> - **Framework #11 ROF 沿用**: LLM cost tracking F-S7-001 fix (commit 23ebea5) + P9 cache-hit detection (commit 6d51a77) 强化 ROF observability
+> - **IRONLAWS v3.0 sustained**: Session 57 0 new铁律 add (沿用 user explicit trigger 才促 promote 体例)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §6 G2 / `LL-187` sediment
 
 > **本文件**: QuantMind V2 平台化蓝图 — 从"脚本堆"到"Core Platform + Applications"的演进规划
 > **创建**: 2026-04-17 v1.0 → v1.1 (+#11 ROF + U6) → v1.2 (4 主决策) → v1.3 P0 补丁 → v1.4 Cold Start Ready → v1.5 Wave 2 Data 层完结 → v1.6 Wave 3 MVP 重排 — MVP 3.1 Risk Framework 新增 (ADR-010 PMS Deprecation) → v1.7 Session 24-27 收束 — MVP 3.1 批 0 feasibility spike ✅ + ADR-010 addendum (方案 C Hybrid adapter) + 铁律 43 登记 → v1.8 Session 28-30 收束 — MVP 3.1 Risk Framework 正式完结 (6 PR) → v1.9 (intermediate stamp) → v1.10 Session 38-39 (2026-04-27 Monday 18:00-22:30) — MVP 3.3 Signal-Exec 60% 完成 + LL-081 三通道闭合 + LL-076 phase 2 完结 (单日 10 PR / Wave 3 进 3.x) → v1.11 Session 39 加时 (2026-04-28 00:00-01:00 Tuesday 凌晨) — MVP 3.3 batch 2 Step 2 + 2.5 双完结 (PR #110/#111/#112) + STRICT flip 切换 LIVE → v1.12 Session 40 (2026-04-28 Tuesday 全天) — MVP 3.3 ✅ 完结 (Stage 3.0 切换 PR #116 + Stage 3.1 dead code cleanup PR #118) + 用户挑战驱动撤 5-day gate, 调仓日历史 scan 25 trade_dates bit-identical → v1.13 Session 41 (2026-04-28 Tuesday 17:00-17:55) — MVP 3.4 batch 1+2 完结 → v1.14 Session 41 加时 (2026-04-28 Tuesday 17:55-18:30) — MVP 3.4 batch 3 完结 → v1.15 Session 41 持续加时 (2026-04-28 Tuesday 18:30-19:30) — MVP 3.4 batch 4 完结 = MVP 3.4 ✅ 全部完结 → **v1.16 Session 42 (2026-04-28 Tuesday 19:30-22:00) — MVP 3.5 Evaluation Gate Framework ✅ 全 3 批一日完结 = Wave 3 5/5 完结 (PR #123 Pipeline+7Gates / PR #124 lifecycle 双路径 / PR #125 Strategy Gates+ADR-014), 单 session 3 PR + 6 reviewer fix commits + 1 docs commit (设计稿 v2 重构 4→3 批), AI 自主 0 user 接触除 reviewer cancel 决策**
