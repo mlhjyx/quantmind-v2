@@ -99,15 +99,21 @@ def find_commit_violations(file_path: Path) -> list[dict]:
             if isinstance(node.func, ast.Attribute) and node.func.attr == "commit":
                 method_ctx = ".".join(self.method_stack) if self.method_stack else "<module>"
                 # Get receiver name (conn / cursor / etc)
+                # AI reviewer MEDIUM fix (PR #385 iteration): defensive try/except wraps
+                # 2-level chain extraction — protects against triple+ chains like
+                # `self.db.conn.commit()` where node.func.value.value is ast.Attribute (no .id).
                 receiver = "?"
-                if isinstance(node.func.value, ast.Name):
-                    receiver = node.func.value.id
-                elif isinstance(node.func.value, ast.Attribute):
-                    receiver = (
-                        f"{node.func.value.value.id}.{node.func.value.attr}"
-                        if isinstance(node.func.value.value, ast.Name)
-                        else "?"
-                    )
+                try:
+                    if isinstance(node.func.value, ast.Name):
+                        receiver = node.func.value.id
+                    elif isinstance(node.func.value, ast.Attribute):
+                        if isinstance(node.func.value.value, ast.Name):
+                            receiver = (
+                                f"{node.func.value.value.id}.{node.func.value.attr}"
+                            )
+                        # Deeper chains: fall back to receiver = "?"
+                except AttributeError:
+                    receiver = "?"
                 self.found.append({
                     "line": node.lineno,
                     "col": node.col_offset,
@@ -191,7 +197,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    result = audit()
+    # AI reviewer LOW fix (PR #385 iteration): wrap audit() in try/except
+    # to honor docstring exit code 2 contract (script error).
+    try:
+        result = audit()
+    except Exception as exc:
+        print(f"[FATAL] audit() raised unexpected exception: {exc}", file=sys.stderr)
+        return 2
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
