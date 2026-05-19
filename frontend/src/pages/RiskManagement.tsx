@@ -17,6 +17,7 @@ import { Card, CardHeader, PageHeader, TabButtons, ChartTooltip } from "@/compon
 import { SafetyControlPanel } from "@/components/safety/SafetyControlPanel";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
 import type { CircuitBreakerState } from "@/types/dashboard";
+import { useRiskEventsSSE } from "@/hooks/useRiskEventsSSE";
 
 // ── Types ──
 interface OverviewMetric { label: string; value: string; color?: string; }
@@ -25,6 +26,107 @@ interface StressTest     { scenario: string; impact: number; probability: string
 interface VarPoint       { date: string; var95: number; var99: number; limit: number; }
 interface ExposureItem   { factor: string; exposure: number; limit: number; color: string; }
 
+
+// Session 58 round-5 ADR-084 Phase 1 closure: SSE EventSource live events tab.
+// 反 polling waste — sub-second latency for P0/P1 alerts via server push.
+// 关联 hooks/useRiskEventsSSE.ts (round-4 NEW hook) + backend/app/api/sse.py (round-2 P4).
+function LiveRiskEventsPanel() {
+  const { events, isConnected, lastHeartbeatAt, error, reconnect } = useRiskEventsSSE({
+    maxBuffer: 50,
+  });
+
+  return (
+    <Card>
+      <CardHeader title="实时风控事件 (SSE)" titleEn="Live Risk Events Stream" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-3 mb-3" style={{ fontSize: 11 }}>
+          <span
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded"
+            style={{
+              background: isConnected ? `${C.down}15` : `${C.up}15`,
+              color: isConnected ? C.down : C.up,
+              fontWeight: 600,
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                background: isConnected ? C.down : C.up,
+                animation: isConnected ? "pulse 2s infinite" : undefined,
+              }}
+            />
+            {isConnected ? "已连接" : "未连接"}
+          </span>
+          {lastHeartbeatAt && (
+            <span style={{ color: C.text4 }}>
+              心跳: <span style={{ color: C.text3, fontFamily: C.mono }}>
+                {lastHeartbeatAt.toLocaleTimeString("zh-CN")}
+              </span>
+            </span>
+          )}
+          {error && (
+            <span style={{ color: C.warn }}>错误: {error}</span>
+          )}
+          <button
+            onClick={reconnect}
+            className="ml-auto px-2 py-0.5 rounded cursor-pointer"
+            style={{ background: C.bg3, color: C.text3, fontSize: 10 }}
+          >
+            重新连接
+          </button>
+        </div>
+        {events.length === 0 ? (
+          <div className="p-6 text-center" style={{ fontSize: 12, color: C.text4 }}>
+            等待事件流 ... 当 risk_event_log 有新 row 时实时显示在此 (sub-second latency).
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {[...events].reverse().map((ev) => (
+              <div
+                key={ev.id}
+                className="px-3 py-2 rounded"
+                style={{
+                  background: C.bg2,
+                  border: `1px solid ${C.border}`,
+                  fontSize: 11,
+                }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="px-1.5 py-0.5 rounded font-mono"
+                    style={{
+                      fontSize: 9,
+                      background: `${C.up}15`,
+                      color: C.up,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {ev.severity}
+                  </span>
+                  <span style={{ color: C.text2, fontWeight: 500 }}>{ev.rule_id}</span>
+                  {ev.code && (
+                    <span style={{ color: C.text3, fontFamily: C.mono }}>{ev.code}</span>
+                  )}
+                  <span className="ml-auto" style={{ color: C.text4, fontFamily: C.mono }}>
+                    {new Date(ev.triggered_at).toLocaleString("zh-CN")}
+                  </span>
+                </div>
+                {ev.reason && (
+                  <div style={{ color: C.text3, lineHeight: 1.5 }}>{ev.reason}</div>
+                )}
+                {ev.action_taken && (
+                  <div className="mt-1" style={{ color: C.info, fontSize: 10 }}>
+                    Action: {ev.action_taken}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function usageColor(usage: number) {
   if (usage >= 90) return C.down;
@@ -139,7 +241,7 @@ export default function RiskManagement() {
     <>
       <PageHeader title="风控管理" titleEn="Risk Management">
         <TabButtons
-          tabs={["风控总览", "压力测试", "限额监控", "紧急控制"]}
+          tabs={["风控总览", "压力测试", "限额监控", "紧急控制", "实时事件"]}
           active={tab}
           onChange={setTab}
         />
@@ -282,6 +384,8 @@ export default function RiskManagement() {
         )}
 
         {tab === "紧急控制" && <SafetyControlPanel />}
+
+        {tab === "实时事件" && <LiveRiskEventsPanel />}
 
         {tab === "限额监控" && (
           <Card>
