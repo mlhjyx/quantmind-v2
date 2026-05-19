@@ -139,7 +139,7 @@
 | P0-15 | 09:30 SH market open no watcher | ✅ CC can write script + schtask (~3h) | NO (autonomous) |
 | P0-16 | No monthly LLM cost audit aggregator | ✅ CC can write script + Beat (~2h) | NO (autonomous-doable, Plan v8 #29 audit cadence subset) |
 | P0-17 | HC-2c disaster drill pytest-only | ❌ production drill 复杂 | YES (decision) |
-| P0-18 | RISK_CONTROL_SERVICE_DESIGN vs ADR-027 conflict | ✅ CC can sediment merge doc (~30min) | NO (autonomous doc edit) |
+| P0-18 | RISK_CONTROL_SERVICE_DESIGN vs ADR-027 conflict | ✅ **CLOSED** (Session 58 round-6 prior batch 2): DEPRECATION header added at line 3 redirecting L4 portion to ADR-027 + V3_DESIGN §4. §2.1 L0-L3 状态机 sustained (ADR-027 不覆盖). L4 portion stale flagged. 5-19 22:00 SH verify cite present. | NO |
 | P0-19 | Bus factor=1 + 0 onboard doc | ✅ CC can write ONBOARDING.md ~300 lines (~2h) | NO (autonomous) |
 | P0-20 | Knowledge transfer 4/4 FAIL | 🟡 CC can write AUDIT_INDEX.md + USER_TRIBAL_KNOWLEDGE.md (~3h) | NO (autonomous) |
 | P0-21 | Live trade reproducibility 4 sources stale | ❌ Phase J multi-week | YES (alt decision) |

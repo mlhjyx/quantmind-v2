@@ -11,6 +11,17 @@ P0/P1/P2 3 级 priority 路由:
   - send_fn 由调用方注入 (dingtalk_alert.send_with_retry 或其他)
   - stats 跟踪 dispatch/flush/send_failed 计数
 
+⚠️ Plan v8 P1-28 closure note (2026-05-19):
+  - **Current**: 纯内存 by design (铁律 31 platform layer 0 IO).
+    AlertDispatcher 是无状态算法 — buffer 是 cache 不是 source of truth.
+  - **Source of truth**: risk_event_log table (由 send_fn callback 调用方负责 INSERT
+    — e.g. dingtalk_alert.send_with_retry 内部应 INSERT).
+  - **Leak risk**: Servy restart 期间 buffer 丢失 → DingTalk 通知丢 (但 audit row 不丢).
+  - **Safety net** (本 commit added): MAX_BUFFER_SIZE=1000 + warning log on overflow.
+    防 Beat scheduler 死锁导致 buffer 无限增长.
+  - **Full DB persist defer**: V3 §S5/S6 integration phase (AlertDispatcher 0 production
+    caller 当前 — tests-only usage, see test_realtime_alert.py + test_v3_15_6_synthetic_scenarios.py).
+
 用法:
     dispatcher = AlertDispatcher(send_fn=send_alert_with_retry)
     # S5 RealtimeRiskEngine 产出 results
@@ -25,13 +36,21 @@ P0/P1/P2 3 级 priority 路由:
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 
 from ..interface import RuleResult
 
+logger = logging.getLogger(__name__)
+
 # send_fn 签名: (RuleResult) -> bool (True=发送成功)
 SendFn = Callable[[RuleResult], bool]
+
+# Plan v8 P1-28 safety net: max in-memory buffer size before overflow warning.
+# 防 Beat scheduler 死锁 / send_fn 永久 fail 导致 buffer 无限增长 OOM.
+# Threshold 1000 是 1 trading day worth of P1+P2 alerts upper bound (5min*48*2 levels).
+MAX_BUFFER_SIZE = 1000
 
 
 class AlertDispatcher:
@@ -72,9 +91,24 @@ class AlertDispatcher:
                 elif sev == "p1":
                     self._p1_buffer.append(r)
                     self._p1_buffered += 1
+                    # Plan v8 P1-28 overflow safety net
+                    if len(self._p1_buffer) > MAX_BUFFER_SIZE:
+                        logger.warning(
+                            "[AlertDispatcher] p1_buffer size=%d exceeds MAX_BUFFER_SIZE=%d "
+                            "— Beat flush may be stalled (Plan v8 P1-28)",
+                            len(self._p1_buffer),
+                            MAX_BUFFER_SIZE,
+                        )
                 elif sev == "p2":
                     self._p2_buffer.append(r)
                     self._p2_buffered += 1
+                    if len(self._p2_buffer) > MAX_BUFFER_SIZE:
+                        logger.warning(
+                            "[AlertDispatcher] p2_buffer size=%d exceeds MAX_BUFFER_SIZE=%d "
+                            "— Beat flush may be stalled (Plan v8 P1-28)",
+                            len(self._p2_buffer),
+                            MAX_BUFFER_SIZE,
+                        )
                 # sev not in p0/p1/p2 → skip (unknown severity)
 
         # Send P0 outside lock (反 send_fn I/O 阻塞其他线程)
