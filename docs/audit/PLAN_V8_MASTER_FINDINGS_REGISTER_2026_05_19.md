@@ -149,7 +149,7 @@
 
 | # | Finding | 5d Window-Doable? |
 |---|---|---|
-| P1-25 | L4 _CANCEL_WINDOW hardcoded | ✅ yaml-driven refactor (~1h) |
+| P1-25 | L4 _CANCEL_WINDOW hardcoded | ✅ **CLOSED** 5-19 (this batch): L4ExecutionPlanner constructor 加 `cancel_window_minutes` 参数 + default `_CANCEL_WINDOW_MINUTES_DEFAULT=30`. 3 usages migrated to self._cancel_window_minutes. 39/39 tests PASS. 0 cross-layer env IO (铁律 31 sustained). |
 | P1-26 | FundamentalContextService 1/8 维 | ❌ V3 §3.3 8 维 implement multi-week |
 | P1-27 | Alpha158 45-factor gap | ✅ **CLOSED** 5-19 (commit 5033ac3): --all-alpha158 flag added to compute_daily_ic.py (mutually_exclusive_group), get_alpha158_names() returns 158 names verified. 留 user 触发大规模 backfill. |
 | P1-28 | AlertDispatcher buffered flush leak | ✅ CC can add DB persist (~2h) |

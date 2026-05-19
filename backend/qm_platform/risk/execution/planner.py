@@ -52,7 +52,10 @@ class PlanStatus(StrEnum):
 
 
 # Time window guardrails (ADR-027 §2.2)
-_CANCEL_WINDOW_MINUTES: int = 30  # 默认
+# Plan v8 P1-25 closure (5-19): _CANCEL_WINDOW_MINUTES 默认值, 可通过
+# L4ExecutionPlanner(cancel_window_minutes=N) 覆盖 (constructor injection, 0 cross-layer
+# env IO 反铁律 31 platform pure compute SOP). 反 hardcoded magic number bypass SOP.
+_CANCEL_WINDOW_MINUTES_DEFAULT: int = 30  # 默认
 _CRITICAL_WINDOW_MIN_MINUTES: int = 2  # 集合竞价/尾盘下限
 _LATE_SESSION_CUTOFF_HOUR: int = 14
 _LATE_SESSION_CUTOFF_MINUTE: int = 55  # 14:55 final batch
@@ -183,8 +186,21 @@ class L4ExecutionPlanner:
     # STAGED default enabled (ADR-027: short-term default=false)
     STAGED_ENABLED: bool = False
 
-    def __init__(self, staged_enabled: bool = False) -> None:
+    def __init__(
+        self,
+        staged_enabled: bool = False,
+        cancel_window_minutes: int = _CANCEL_WINDOW_MINUTES_DEFAULT,
+    ) -> None:
+        """L4ExecutionPlanner constructor.
+
+        Args:
+            staged_enabled: ADR-027 §2.1 STAGED mode toggle.
+            cancel_window_minutes: Plan v8 P1-25 — cancel window override (default 30min).
+                Set via yaml-driven config injection from caller (e.g. configs/pt_live.yaml
+                or risk yaml). 反 hardcoded magic number, 沿用铁律 34 SSOT SOP.
+        """
         self._staged_enabled = staged_enabled
+        self._cancel_window_minutes = cancel_window_minutes
 
     # ── Main entry ──
 
@@ -301,7 +317,7 @@ class L4ExecutionPlanner:
             remaining = (auction_end - now).total_seconds() / 60
             window = max(
                 _CRITICAL_WINDOW_MIN_MINUTES,
-                min(_CANCEL_WINDOW_MINUTES, remaining),
+                min(self._cancel_window_minutes, remaining),
             )
             return now + timedelta(minutes=window)
 
@@ -310,12 +326,12 @@ class L4ExecutionPlanner:
             remaining = (late_cutoff.replace(hour=15, minute=0) - now).total_seconds() / 60
             window = max(
                 _CRITICAL_WINDOW_MIN_MINUTES,
-                min(_CANCEL_WINDOW_MINUTES, remaining),
+                min(self._cancel_window_minutes, remaining),
             )
             return now + timedelta(minutes=window)
 
         # a. Normal: default 30min
-        deadline = now + timedelta(minutes=_CANCEL_WINDOW_MINUTES)
+        deadline = now + timedelta(minutes=self._cancel_window_minutes)
 
         # d. Cross-day guard: FINAL clamp, force ≤ 14:55
         if deadline > late_cutoff:
