@@ -1,10 +1,17 @@
 # QuantMind V2 — AI 闭环进化设计文档
 
-> **版本**: 2.1 | **日期**: 2026-04-16
+> **版本**: 2.1 | **日期**: 2026-04-16 (Session 57 2026-05-19 G1 audit addendum)
 > **状态**: DESIGN (基于 28 个失败方向 + 213 次因子测试 + 3 篇 2025 前沿论文实证校准)
 > **前版**: V1.0 (2026-03-19, 1064 行, 4-Agent + Pipeline 全自动闭环) → 本版精简重构
 > **路线图**: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §Phase 3
 > **实验证据**: `docs/research-kb/` (19 条目) + `CLAUDE.md` §已知失败方向 (28 条)
+
+> **Session 57 (2026-05-19) addendum** — 本 doc 实施进度 update (per ISSUES_PENDING_REGISTRY §6 G1):
+> - **AI_ASSIST_ENABLED env flag** (NEW commit 7e8f0bb): real LLM in /api/agent/chat 路径接通, gate on F-S7-001 cost tracking修复 (commit 23ebea5)
+> - **LiteLLM cache-hit fallback** (P9, commit 6d51a77): cost 精度 +20% for repeated prompts
+> - **AgentConfig page** stub backend endpoints (commit fb2c45b) — page 4 agent tabs functional, prompt versioning DB table 留 Phase I
+> - **真完成度**: 旧 ~30% (Sprint 1.18 placeholder) → 现 ~45% (AI Assist real LLM + 4 entry points + cost tracking)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §6 G1 / `LL-187` sediment
 
 ---
 
