@@ -79,25 +79,35 @@ def find_commit_violations(file_path: Path) -> list[dict]:
         return violations
 
     # Track method context (current FunctionDef / AsyncFunctionDef)
+    # AI reviewer cycle 4 enhancement: track is_async flag per method context to
+    # surface async `await conn.commit()` patterns (Phase J coverage extension).
     class CommitVisitor(ast.NodeVisitor):
         def __init__(self) -> None:
-            self.method_stack: list[str] = []
+            self.method_stack: list[tuple[str, bool]] = []  # (name, is_async)
             self.found: list[dict] = []
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-            self.method_stack.append(node.name)
+            self.method_stack.append((node.name, False))
             self.generic_visit(node)
             self.method_stack.pop()
 
         def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-            self.method_stack.append(node.name)
+            self.method_stack.append((node.name, True))
             self.generic_visit(node)
             self.method_stack.pop()
 
         def visit_Call(self, node: ast.Call) -> None:
             # Match .commit() pattern
             if isinstance(node.func, ast.Attribute) and node.func.attr == "commit":
-                method_ctx = ".".join(self.method_stack) if self.method_stack else "<module>"
+                # AI reviewer cycle 4 enhancement: surface is_async context
+                method_ctx = (
+                    ".".join(name for name, _ in self.method_stack)
+                    if self.method_stack
+                    else "<module>"
+                )
+                # If any ancestor in stack is async, this commit is "in async context"
+                # (await conn.commit() OR sync conn.commit() inside async def — both surface)
+                is_async = any(is_async for _, is_async in self.method_stack)
                 # Get receiver name (conn / cursor / etc)
                 # AI reviewer MEDIUM fix (PR #385 iteration): defensive try/except wraps
                 # 2-level chain extraction — protects against triple+ chains like
@@ -119,6 +129,7 @@ def find_commit_violations(file_path: Path) -> list[dict]:
                     "col": node.col_offset,
                     "receiver": receiver,
                     "method": method_ctx,
+                    "is_async": is_async,
                 })
             self.generic_visit(node)
 
@@ -186,7 +197,12 @@ def print_human_report(result: dict, tier_filter: int | None = None) -> None:
         tier_label = {1: "T1 hot   ", 2: "T2 cold  ", 3: "T3 utility"}[f["tier"]]
         print(f"  [{tier_label}] {f['file']} ({f['violation_count']} violations)")
         for v in f["violations"]:
-            print(f"      line {v['line']:4d}: {v['receiver']}.commit() in {v['method']}()")
+            # AI reviewer cycle 4 enhancement: surface async/sync context indicator
+            async_tag = " [async]" if v.get("is_async") else ""
+            print(
+                f"      line {v['line']:4d}: {v['receiver']}.commit() in "
+                f"{v['method']}(){async_tag}"
+            )
 
 
 def main() -> int:
