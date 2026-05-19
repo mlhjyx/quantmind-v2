@@ -702,6 +702,8 @@ ML预测(启用时)
 
 ### 4.2 外汇完整数据流
 
+> ⚠️ DEPRECATED 2026-05-20: Forex 已归档 (P1-37 closure, 0% 实施). 详见 docs/archive/DEV_FOREX_2026_05_19_archived.md. 本节保留为历史 audit trail，不维护。
+
 ```
 数据拉取
   → integrations/mt5_client.py: get_rates()
@@ -887,6 +889,8 @@ SchedulerService:
 ```
 
 ### 5.3 A股与外汇共享组件的路由方式（解决Review问题⑤）
+
+> ⚠️ DEPRECATED 2026-05-20: Forex 已归档 (P1-37 closure, 0% 实施). A股/Forex 双路由设计不再适用。详见 docs/archive/DEV_FOREX_2026_05_19_archived.md. 本节保留为历史 audit trail，不维护。
 
 ```
 两种路由层级:
@@ -1135,6 +1139,8 @@ ws_manager = WSManager()
 
 ## 十二、全局ML模型路线图
 
+> ⚠️ DEPRECATED 2026-05-20: ML 预测主路径已 CLOSED (Phase 3D, 4实验全 FAIL). ML 仅保留于 shadow_portfolio.py shadow 路径. §12.1-§12.4 保留为历史 audit trail，不维护。详见 docs/research-kb/failed/ + ML_WALKFORWARD_DESIGN.md §2.
+
 ### 12.1 11个模型的归属与Phase
 
 | # | 模型 | A股用途 | 外汇用途 | Phase | 状态 |
@@ -1210,6 +1216,8 @@ Phase 4 (Mac Studio + MLX):
 ```
 
 ### 12.4 共用的BaseMLPredictor架构
+
+> ⚠️ DEPRECATED 2026-05-20: BaseMLPredictor / ForexLGBMPredictor 未实施 (ML 预测主路径 CLOSED Phase 3D). 保留为历史设计参考。
 
 ```python
 class BaseMLPredictor(ABC):

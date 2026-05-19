@@ -117,6 +117,8 @@ Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不
 
 ## 三、外汇每日调度时序（UTC）
 
+> ⚠️ DEPRECATED 2026-05-20: Forex 已归档 (P1-37 closure, 0% 实施). FX1-FX11 任务链 / MT5 调度 / forex_data 队列均未实施。详见 docs/archive/DEV_FOREX_2026_05_19_archived.md. 本节保留为历史 audit trail，不维护。
+
 ### D1 Bar Close后（22:00 UTC = 北京06:00）
 
 | 时间UTC | 任务ID | 名称 | 依赖 | 超时 |
