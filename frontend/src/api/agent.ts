@@ -102,6 +102,39 @@ export async function resetAgentConfig(name: AgentName): Promise<AgentConfig> {
   return res.data;
 }
 
+// ---- Prompt versioning (commit 506a2cf + this) — prompt_history table backed ----
+
+export interface AgentHistoryRow extends AgentConfig {
+  version: number;
+  is_active: boolean;
+  reason: string | null;
+  created_at: string | null;
+  created_by: string;
+}
+
+export async function getAgentHistory(
+  name: AgentName,
+  limit = 20,
+): Promise<AgentHistoryRow[]> {
+  const res = await apiClient.get<AgentHistoryRow[]>(`/agent/${name}/history`, {
+    params: { limit },
+  });
+  return res.data;
+}
+
+export async function rollbackAgentConfig(
+  name: AgentName,
+  version: number,
+  reason?: string,
+): Promise<AgentConfig> {
+  const res = await apiClient.post<AgentConfig>(
+    `/agent/${name}/config/rollback`,
+    null,
+    { params: { version, reason } },
+  );
+  return res.data;
+}
+
 // ---- AssistPanel chat (Frontend Design v3 §2.3) ----
 
 export type AssistDomain =

@@ -10,11 +10,15 @@ import {
   getCostSummary,
   updateAgentConfig,
   resetAgentConfig,
+  getAgentHistory,
+  rollbackAgentConfig,
   type AgentConfig as AgentConfigType,
   type AgentName,
+  type AgentHistoryRow,
   type ModelHealth as ModelHealthType,
   type CostSummary,
 } from "@/api/agent";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 const AGENT_TABS: { id: AgentName; label: string; icon: string; desc: string }[] = [
   { id: "idea",      label: "Idea Agent",      icon: "💡", desc: "因子发现与假设生成" },
@@ -23,7 +27,7 @@ const AGENT_TABS: { id: AgentName; label: string; icon: string; desc: string }[]
   { id: "diagnosis", label: "Diagnosis Agent",  icon: "🩺", desc: "诊断优化与修复" },
 ];
 
-const PAGE_TABS = ["Agent配置", "模型健康", "费用仪表盘"] as const;
+const PAGE_TABS = ["Agent配置", "Prompt 版本", "模型健康", "费用仪表盘"] as const;
 type PageTab = (typeof PAGE_TABS)[number];
 
 export default function AgentConfig() {
@@ -32,9 +36,12 @@ export default function AgentConfig() {
   const [configs, setConfigs] = useState<AgentConfigType[]>([]);
   const [modelHealth, setModelHealth] = useState<ModelHealthType[]>([]);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
+  const [history, setHistory] = useState<AgentHistoryRow[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(true);
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [loadingCost, setLoadingCost] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +89,36 @@ export default function AgentConfig() {
     }
   }, []);
 
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const rows = await getAgentHistory(activeAgent, 50);
+      setHistory(rows);
+    } catch {
+      setHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [activeAgent]);
+
+  const handleRollback = async (version: number) => {
+    setRollbackTarget(null);
+    try {
+      const updated = await rollbackAgentConfig(
+        activeAgent,
+        version,
+        `rollback via UI to v${version}`,
+      );
+      setConfigs((prev) => prev.map((c) => (c.name === activeAgent ? updated : c)));
+      // Refresh history
+      await loadHistory();
+      setError(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "rollback 失败";
+      setError(`回滚失败: ${msg}`);
+    }
+  };
+
   useEffect(() => {
     loadConfigs();
   }, [loadConfigs]);
@@ -89,7 +126,8 @@ export default function AgentConfig() {
   useEffect(() => {
     if (activePageTab === "模型健康") loadModelHealth();
     else if (activePageTab === "费用仪表盘") loadCostSummary();
-  }, [activePageTab, loadModelHealth, loadCostSummary]);
+    else if (activePageTab === "Prompt 版本") loadHistory();
+  }, [activePageTab, loadModelHealth, loadCostSummary, loadHistory]);
 
   const currentConfig = configs.find((c) => c.name === activeAgent);
   const mergedConfig = currentConfig
@@ -280,6 +318,89 @@ export default function AgentConfig() {
         </div>
       )}
 
+      {activePageTab === "Prompt 版本" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-400">
+              {activeAgent} agent · prompt_history version chain (active row highlighted)
+            </p>
+            <Button size="sm" variant="ghost" onClick={loadHistory} disabled={loadingHistory}>
+              {loadingHistory ? "加载中..." : "刷新"}
+            </Button>
+          </div>
+          {loadingHistory && history.length === 0 ? (
+            <div className="text-center py-8 text-sm text-slate-400">加载中...</div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-8 text-sm text-slate-500">
+              暂无版本历史 (首次使用会自动 seed v1)
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {history.map((row) => (
+                <div
+                  key={row.version}
+                  className={`px-4 py-3 rounded-xl border ${
+                    row.is_active
+                      ? "bg-emerald-500/10 border-emerald-500/40"
+                      : "bg-slate-800/40 border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <span
+                      className={`text-sm font-mono font-semibold ${
+                        row.is_active ? "text-emerald-300" : "text-slate-300"
+                      }`}
+                    >
+                      v{row.version}
+                    </span>
+                    {row.is_active && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                        ACTIVE
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-500 font-mono">{row.model}</span>
+                    <span className="text-xs text-slate-500">temp={row.temperature.toFixed(2)}</span>
+                    <span className="text-xs text-slate-500">max_tokens={row.max_tokens}</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="text-xs text-slate-500 font-mono">
+                        {row.created_at?.slice(0, 19).replace("T", " ") ?? "—"}
+                      </span>
+                      {!row.is_active && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setRollbackTarget(row.version)}
+                          title={`回滚到 v${row.version} (INSERT 新 version 复制此 row)`}
+                        >
+                          回滚至此
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1">
+                      <p className="text-xs text-slate-500 mb-1">理由 / 创建者</p>
+                      <p className="text-xs text-slate-300">
+                        {row.reason ?? "—"}{" "}
+                        <span className="text-slate-500">· by {row.created_by}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <details className="mt-2">
+                    <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-300">
+                      System prompt ({row.system_prompt.length} chars)
+                    </summary>
+                    <pre className="mt-2 p-2 bg-slate-900/60 rounded text-xs text-slate-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-40">
+                      {row.system_prompt}
+                    </pre>
+                  </details>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {activePageTab === "模型健康" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -302,6 +423,18 @@ export default function AgentConfig() {
           </div>
           <CostDashboard summary={costSummary} loading={loadingCost} />
         </div>
+      )}
+
+      {rollbackTarget !== null && (
+        <ConfirmModal
+          title={`回滚 ${activeAgent} 到 v${rollbackTarget}`}
+          message={`将 INSERT 新 version row 复制 v${rollbackTarget} 内容 + 当前 active row 标 FALSE. 反 destructive overwrite (旧 version 保留, audit trail real). 请确认.`}
+          safetyTier="HIGH"
+          requiredReason
+          reasonMinLength={5}
+          onConfirm={() => void handleRollback(rollbackTarget)}
+          onCancel={() => setRollbackTarget(null)}
+        />
       )}
     </div>
   );

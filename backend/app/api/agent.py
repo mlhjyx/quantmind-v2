@@ -641,6 +641,68 @@ async def get_agent_history(name: str, limit: int = 20) -> list[dict[str, Any]]:
         conn.close()
 
 
+@router.post("/{name}/config/rollback", summary="Agent 配置 rollback 至历史 version")
+async def rollback_agent_config(name: str, version: int, reason: str | None = None) -> dict[str, Any]:
+    """Rollback 至 prompt_history 指定 version. 策略: INSERT 新 version row (copy from target)
+    + mark previous active=FALSE (atomic txn, 沿用 _insert_new_version 体例).
+
+    反 ' destructive overwrite ' (沿用 ADR-022): 旧 version row 真**保留**, 不真 UPDATE 旧 row.
+    audit trail real (反 retroactive edit).
+
+    Args:
+        name: agent 名 (idea/factor/eval/diagnosis).
+        version: target version 号 (从 /history 拉的 version 字段).
+        reason: rollback 理由 (optional, audit trail).
+    """
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    if version < 1:
+        raise HTTPException(status_code=400, detail="version 必须 >= 1")
+
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            # Pull target version row (反 ' version 不存在 silent fail ')
+            cur.execute(
+                """
+                SELECT display_name, model, temperature, max_tokens, system_prompt,
+                       ic_threshold, t_stat_threshold,
+                       auto_archive, auto_reject, max_daily_runs
+                FROM prompt_history
+                WHERE agent_name = %s AND version = %s
+                """,
+                (name, version),
+            )
+            target = cur.fetchone()
+            if target is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Agent {name} version {version} 不存在",
+                )
+    finally:
+        conn.close()
+
+    # Build payload from target version + call _insert_new_version (atomic txn)
+    payload = {
+        "display_name": target[0],
+        "model": target[1],
+        "temperature": float(target[2]),
+        "max_tokens": target[3],
+        "system_prompt": target[4],
+        "ic_threshold": float(target[5]),
+        "t_stat_threshold": float(target[6]),
+        "auto_archive": target[7],
+        "auto_reject": target[8],
+        "max_daily_runs": target[9],
+    }
+    rollback_reason = reason or f"rollback to version {version}"
+    try:
+        return _insert_new_version(name, payload, rollback_reason)
+    except Exception as exc:
+        logger.exception("rollback_agent_config DB INSERT failed", agent=name, version=version)
+        raise HTTPException(status_code=500, detail=f"Rollback failed: {exc}") from exc
+
+
 @router.get("/model-health", summary="LLM 模型健康检查 (stub)")
 async def get_model_health() -> list[dict[str, Any]]:
     """返回 3 model health stub. 真实施需 backend periodic LLM ping cron."""
