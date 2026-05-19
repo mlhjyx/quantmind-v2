@@ -174,13 +174,51 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-# --- Startup guard (Session 57+1 retroactive P1-5 fix, security-reviewer 2026-05-19) ---
-# 反 production live mode 下 admin_token cookie 走 plain HTTP (cleartext sniffable).
-# 铁律 33 fail-loud at boundary — 不允许 silent insecure config.
-# Bypass: 仍可走 dev (EXECUTION_MODE=paper) 不强制 Secure flag (localhost HTTP).
-if settings.EXECUTION_MODE == "live" and not settings.COOKIE_SECURE_FLAG:
-    raise RuntimeError(
-        "EXECUTION_MODE=live requires COOKIE_SECURE_FLAG=true (HTTPS only). "
-        "Set COOKIE_SECURE_FLAG=true in .env (production HTTPS) "
-        "OR set EXECUTION_MODE=paper (dev). 反 admin_token cleartext over HTTP."
+# --- Startup guard refined (Session 58 round-1 forensic fix, 2026-05-19) ---
+#
+# Round-2 (commit `5a58ef0`) added 1-factor strict raise:
+#     `EXECUTION_MODE=live AND not COOKIE_SECURE_FLAG → RuntimeError`
+# Session 58 cold-start forensic surfaced real env state: EXECUTION_MODE=live
+# operational 3+ weeks (5-17 backup chain proof), LIVE_TRADING_DISABLED=false,
+# 0 actual broker trades since 4-29 (trade_log真值 17 rows全是 emergency_close).
+# Round-2 strict raise would block legitimate Servy restart given stable .env.
+#
+# Refined to 3-factor advisory + external-bind escalation:
+#   1. EXECUTION_MODE=live (live mode active)
+#   2. NOT LIVE_TRADING_DISABLED (broker calls actually allowed)
+#   3. NOT COOKIE_SECURE_FLAG (cookie travels cleartext)
+# If ALL three match:
+#   - external API_HOST bind (0.0.0.0 / external IP) → logger.error (HIGH severity)
+#   - localhost-only (127.0.0.1 / ::1) → logger.warning (LOW practical risk for
+#     single-user dev — current operational state for 3+ weeks)
+# Operator decides COOKIE_SECURE_FLAG=true timing on HTTPS migration roadmap.
+#
+# 沉淀 LL-188 候选: handoff sediment claim ("EXECUTION_MODE=paper sustained") 必
+# 反向 verify .env file 真值 + mtime before commit msg / retroactive review.
+# Plan v8 audit 流 + Session 57+1 6 rounds 红线 claim 全程未真核, 3+ 周 silent drift.
+
+if (settings.EXECUTION_MODE == "live"
+        and not settings.LIVE_TRADING_DISABLED
+        and not settings.COOKIE_SECURE_FLAG):
+    import logging as _config_logging
+    _config_logger = _config_logging.getLogger("config_guard")
+    _is_external_bind = settings.API_HOST not in ("127.0.0.1", "localhost", "::1")
+    _guard_msg = (
+        "[CONFIG GUARD] Live trading + cookie not Secure "
+        f"(EXECUTION_MODE=live + LIVE_TRADING_DISABLED=false + COOKIE_SECURE_FLAG=false, "
+        f"API_HOST={settings.API_HOST}). admin_token cookie would travel cleartext over "
+        "HTTP. Mitigation: set COOKIE_SECURE_FLAG=true in .env when migrating to HTTPS."
     )
+    if _is_external_bind:
+        _config_logger.error(
+            "%s 🚨 SEVERITY=HIGH (API_HOST=%s = external/all-interface bind, "
+            "cookie travels cleartext on LAN)",
+            _guard_msg,
+            settings.API_HOST,
+        )
+    else:
+        _config_logger.warning(
+            "%s (localhost — low practical risk for single-user dev)",
+            _guard_msg,
+        )
+    del _config_logging
