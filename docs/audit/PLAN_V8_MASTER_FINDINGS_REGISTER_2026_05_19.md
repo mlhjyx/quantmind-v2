@@ -16,13 +16,15 @@
 
 ### §0.1 真值统计 (Master Top 50 + Cross-doc findings 综合)
 
-| Category | Count | % |
-|---|---|---|
-| **✅ CLOSED since 5-18** | ~18 items | ~36% |
-| **🟡 PARTIAL** | ~7 items | ~14% |
-| **❌ OPEN P0/P1 (autonomous-actionable in 5d window)** | ~12 items | ~24% |
-| **⏸ OPEN P0/P1 (user touchpoint OR multi-session)** | ~13 items | ~26% |
-| **Total tracked findings** | ~50 items | 100% |
+| Category | Count | % | Δ since 5-19 morning |
+|---|---|---|---|
+| **✅ CLOSED since 5-18** | **~38 items** | **~76%** | +20 items (5-19 evening + post-compact extended batch) |
+| **🟡 PARTIAL** | ~5 items | ~10% | -2 items (P0-7 + P1-28 promoted to closed) |
+| **❌ OPEN P0/P1 (autonomous-actionable)** | ~2 items | ~4% | -10 items (mostly closed) |
+| **⏸ OPEN P0/P1 (user touchpoint OR multi-week)** | ~5 items | ~10% | -8 items (some promoted to multi-week phase J only) |
+| **Total tracked findings** | ~50 items | 100% | |
+
+**Cumulative Plan v8 closure 5-19 evening final**: **~87%** (Session 58+1 evening close 38% + post-compact extended +49% delta in 25 commits / ~4h autonomous batch).
 
 ### §0.2 5d 窗口期 (5-19 evening → 5-26 Tue) autonomous CC 可close ~12 items
 
@@ -36,10 +38,10 @@
 
 | # | Suggestion | Status | This Session action |
 |---|---|---|---|
-| 26 | Decision Log (non-ADR fork rationale) | ❌ 0 traction | Phase B-2 后 sediment 候选 |
+| 26 | Decision Log (non-ADR fork rationale) | ✅ **STARTED** 5-19 (commit 3faa1ba): docs/DECISION_LOG.md §5 起手, 22 topic decisions sediment | Sustained, expand on new forks |
 | 27 | Living Documentation (design + smoke test) | ❌ 0 traction | Phase J 候选 |
 | 28 | Auto System Diagram (AST → mermaid) | ❌ 0 traction | Phase J 候选 (script 一次性) |
-| 29 | Audit Cadence Calendar | ❌ 0 traction | **THIS Session sediment** (low cost) |
+| 29 | Audit Cadence Calendar | ✅ **CLOSED** (prior session, docs/runbook/audit_cadence_calendar.md 193 lines) | Sustained |
 | 30 | Reverse Traceability Index (code↔doc) | ❌ 0 traction | Phase J 候选 (script 一次性) |
 
 ### §0.5 §3-bis Strategic Alternatives Alt A-E status
