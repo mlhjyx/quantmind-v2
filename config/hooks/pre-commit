@@ -104,8 +104,57 @@ except Exception as e:
 # 5. 测试 baseline (defer to pre-push hook smoke run, 这里仅 cite sprint state baseline)
 canonical['test_baseline'] = '2864 pass / 24 fail (sprint state cite, sustained Session 9 baseline)'
 
+# 6. LL-188 step 0 sediment-drift check (Session 58 round-6 NEW):
+#    Scan staged .md files for red-line claims (EXECUTION_MODE / LIVE_TRADING_DISABLED)
+#    and compare against backend/.env real values. Warn on mismatch (sustained warning-only style).
+#    反 LL-188 pattern (Session 57+1 6 rounds 全程 false 'paper' claim while .env=live for 3+ weeks).
+try:
+    import re
+    env_file = ROOT / 'backend/.env'
+    if env_file.exists():
+        env_text = env_file.read_text(encoding='utf-8')
+        m_mode = re.search(r'^EXECUTION_MODE=(\S+)', env_text, re.MULTILINE)
+        m_disabled = re.search(r'^LIVE_TRADING_DISABLED=(\S+)', env_text, re.MULTILINE)
+        env_actual_mode = m_mode.group(1).strip() if m_mode else 'paper'  # default
+        env_actual_disabled = m_disabled.group(1).strip().lower() if m_disabled else 'true'
+        canonical['env_actual'] = f'EXECUTION_MODE={env_actual_mode} / LIVE_TRADING_DISABLED={env_actual_disabled}'
+
+        # Scan staged .md for claim mismatch
+        import subprocess
+        staged = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM']).decode().splitlines()
+        staged_md = [f for f in staged if f.endswith('.md')]
+        ll_188_warnings = []
+        for f in staged_md:
+            try:
+                # Use cached blob (not working tree — may have un-staged edits)
+                content = subprocess.check_output(['git', 'show', f':{f}']).decode(errors='replace')
+            except Exception:
+                continue
+            # Detect EXECUTION_MODE claims
+            for claim_match in re.finditer(r'EXECUTION_MODE=(\w+)', content):
+                claimed = claim_match.group(1).lower()
+                if claimed in ('paper', 'live') and claimed != env_actual_mode.lower():
+                    ll_188_warnings.append(f'{f}: claims EXECUTION_MODE={claimed} but .env actual={env_actual_mode}')
+            # Detect LIVE_TRADING_DISABLED claims
+            for claim_match in re.finditer(r'LIVE_TRADING_DISABLED=(\w+)', content):
+                claimed = claim_match.group(1).lower()
+                if claimed in ('true', 'false') and claimed != env_actual_disabled:
+                    ll_188_warnings.append(f'{f}: claims LIVE_TRADING_DISABLED={claimed} but .env actual={env_actual_disabled}')
+
+        if ll_188_warnings:
+            canonical['LL_188_sediment_drift'] = f'⚠️  {len(ll_188_warnings)} mismatch found in staged .md'
+            for w in ll_188_warnings[:10]:  # cap at 10 to avoid spam
+                warnings.append(f'  LL-188 drift: {w}')
+        else:
+            canonical['LL_188_sediment_drift'] = '✅ no drift detected'
+    else:
+        canonical['env_actual'] = 'N/A (backend/.env missing)'
+except Exception as e:
+    warnings.append(f'LL-188 sediment-drift check skipped: {type(e).__name__}: {e}')
+    canonical['LL_188_sediment_drift'] = 'N/A (check skipped)'
+
 # Print canonical
-print('[pre-commit] 5 metric canonical (sustained Phase 4.2 Layer 4 Topic 1 A minimal scope):')
+print('[pre-commit] 6 metric canonical (sustained Phase 4.2 Layer 4 Topic 1 A + LL-188 Session 58 round-6):')
 for k, v in canonical.items():
     print(f'  {k}: {v}')
 
