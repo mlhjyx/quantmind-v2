@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.config import settings
 from app.core.auth import verify_admin_token
+from app.core.rate_limit import rate_limit_chat
 
 logger = structlog.get_logger(__name__)
 
@@ -185,6 +186,7 @@ def _is_ai_enabled() -> bool:
 async def post_chat(
     req: ChatRequest,
     _: None = Depends(verify_admin_token),  # P1-2 fix: 反 unauthenticated LLM cost sink
+    _rl: None = Depends(rate_limit_chat),  # S3 close: 10 req/min per IP token-bucket
 ) -> ChatResponse:
     """处理 AssistPanel 聊天请求.
 

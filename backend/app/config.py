@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # Distinct from LLM_BUDGET_* (cost-time guardrail) — 本 flag 是 enable-time gate.
     AI_ASSIST_ENABLED: bool = False
 
+    # --- LLM chat rate-limit (Session 58 round-2 S3 close, 2026-05-19) ---
+    # Short-window defense (token bucket per IP) complementing BudgetGuard monthly cap.
+    # Default 10 req/min per IP, burst = 10. 反 LLM cost abuse / DoS via /agent/chat.
+    # Production multi-tenant: upgrade to Redis-backed (per backend/app/core/rate_limit.py).
+    LLM_CHAT_RATE_LIMIT_PER_MIN: int = 10
+
     # --- 真金硬开关 (T1 sprint link-pause, 2026-04-29) ---
     # 默认 True (fail-secure): MiniQMTBroker.place_order / cancel_order 直 raise
     # LiveTradingDisabledError. paper_broker 物理隔离不受影响 (guard 只挂 MiniQMTBroker).
