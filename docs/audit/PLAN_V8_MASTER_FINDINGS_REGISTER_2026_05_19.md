@@ -134,7 +134,7 @@
 | P0-8 | Redis production data plane dark | 🟡 Path B Phase B-1 active 后可能复活 (qmt_data_service running) — verify on 5-20 Day 1 | NO |
 | P0-9 | 30 service-layer commit() violations | ❌ 多文件 refactor, 高风险 | YES (architectural decision Alt 1/2/3) |
 | P0-10 | 铁律 18 slippage quarterly 0 scheduler | ✅ CC can add Beat entry crontab(month=1,4,7,10) | NO (autonomous-doable, just add Beat entry) |
-| P0-11 | Survivorship bias 12yr universe | ❌ Phase J multi-week research | YES |
+| P0-11 | Survivorship bias 12yr universe | ✅ **FALSE ALARM** (5-19 B3 audit verify, `docs/research/SURVIVORSHIP_BIAS_AUDIT_2026_05_19_final.md`) — factor_values + klines_daily + stock_status_daily 三层 sediment 含 5743 stocks (含 241/322 退市 / 12.1M ST 行 / 12.5 年 sediment), Subagent G 假设错. 残余 §3.1/§3.2/§3.3 留 5-yr backtest sample run | NO |
 | P0-12 | 11 pytest collection errors | ✅ CC can quarantine (Alt 2) | NO (autonomous-doable) |
 | P0-15 | 09:30 SH market open no watcher | ✅ CC can write script + schtask (~3h) | NO (autonomous) |
 | P0-16 | No monthly LLM cost audit aggregator | ✅ CC can write script + Beat (~2h) | NO (autonomous-doable, Plan v8 #29 audit cadence subset) |
