@@ -75,11 +75,18 @@ router_settings:
   allowed_fails: 3
   cooldown_time: 30
   # fallbacks 格式: [{primary_model: [fallback_models...]}] per LiteLLM Router spec.
-  # YAML parse 后 = [{"deepseek-v4-flash": ["qwen3-local"]}, {"deepseek-v4-pro": ["qwen3-local"]}]
+  # YAML parse 后 = [{"deepseek-v4-flash": ["qwen3-local"]}, {"deepseek-v4-pro": ["deepseek-v4-flash", "qwen3-local"]}]
+  #
+  # Plan v8 P1-29 closure (2026-05-19): V4-Pro 真 3-hop fallback chain (V4-Pro → V4-Flash → Qwen3),
+  # 反 prior 2-hop chain skip 中间档 (V4-Pro fail 直接 Qwen3 = drop chain-of-thought 能力).
+  # Trade-off: V4-Flash 是 chat semantic (thinking=disabled), V4-Pro 是 reasoner semantic (thinking=enabled);
+  # V4-Pro→V4-Flash fallback 会 lose reasoning_content 但保留 DeepSeek API up-time + cost basis;
+  # V4-Pro→Qwen3 fallback 是 0 cost local 但 latency 高 (60s timeout vs DeepSeek 30s/120s).
   fallbacks:
     - deepseek-v4-flash:
         - qwen3-local
     - deepseek-v4-pro:
+        - deepseek-v4-flash
         - qwen3-local
 
 litellm_settings:
