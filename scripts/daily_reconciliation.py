@@ -87,7 +87,9 @@ def query_qmt_positions() -> dict[str, int] | None:
         # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
         # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
         # Pure FATAL retained only on EXECUTION_MODE undefined (bad config).
-        expected_mode = os.environ.get("EXECUTION_MODE")
+        # AI reviewer LOW fix iteration (PR #384): normalize case + strip whitespace
+        # to handle 'Paper' / 'paper ' / mixed-case .env values gracefully.
+        expected_mode = (os.environ.get("EXECUTION_MODE") or "").strip().lower()
         if expected_mode == "paper":
             logger.info(
                 "[daily_reconciliation] EXECUTION_MODE=paper detected — graceful skip "

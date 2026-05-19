@@ -149,7 +149,8 @@ def query_qmt_positions() -> tuple[float, list[dict]] | None:
         # fail-loud per 铁律 34
         # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
         # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
-        expected_mode = os.environ.get("EXECUTION_MODE")
+        # AI reviewer LOW fix iteration (PR #384): normalize case + strip whitespace.
+        expected_mode = (os.environ.get("EXECUTION_MODE") or "").strip().lower()
         if expected_mode == "paper":
             logger.info(
                 "[intraday_monitor] EXECUTION_MODE=paper detected — graceful skip "
