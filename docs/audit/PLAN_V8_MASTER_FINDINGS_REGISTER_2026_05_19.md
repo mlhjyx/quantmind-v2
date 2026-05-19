@@ -126,7 +126,7 @@
 | # | Finding | 5d Window-Doable? | User Touchpoint? |
 |---|---|---|---|
 | P0-2 | PG password plaintext + 6 .bak leaks | 🟡 PARTIAL (CC can rotate password but needs Servy restart) | YES (rotate decision + .env edit) |
-| P0-3 | pg_restore never tested 2026 | ✅ CC can schedule weekly Beat OR schtask | YES (decision: which schtask cadence) |
+| P0-3 | pg_restore never tested 2026 | ✅ **CLOSED** 5-19 (this batch): scripts/pg_backup.py Step 5 post-backup auto-verify (`verify_backup()` pg_restore --list) + send_alert on failure. Daily verify (not weekly, 更严格). 0 schtask register needed — sustained existing schtask. | NO |
 | P0-4 | Reflector → ThresholdEngine NOT wired | ❌ multi-day implement | YES (alt decision: auto wire vs human-in-loop weekly report) |
 | P0-5 | Beat death no heartbeat (LL-181 sustained) | ✅ CC can wire qm:beat:heartbeat write + schtask probe (~2h) | NO (autonomous-doable) |
 | P0-6 | Schtask freshness probe absent | ✅ CC can write `audit_schtask_freshness.py` (~2h) | NO (autonomous-doable) |
