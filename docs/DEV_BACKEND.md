@@ -1,8 +1,16 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~60% — 29个Service文件+22个API路由已实现, Router→Service→Engine三层分层完全落地。设计的17个核心Service全部有对应实现, 另有12个扩展Service(pt_*, qmt_*, realtime等)。
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: **~65%** (Session 57 后) — 29个Service文件+25个API路由已实现 (含 NEW agent / calendar-info / env-state, +3 endpoints), Router→Service→Engine三层分层完全落地。
 > 仍有价值: §3 分层规范、§4 数据流定义、§5 协同矩阵
 > 已过时/被替代: 部分Service详细接口设计与实际签名有差异, 以代码为准
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+>
+> **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §6 G1):
+> - NEW `backend/qm_platform/calendar/` 模块 (Audit Section X §39, commit 8a57c90): SSOT for trading calendar
+> - NEW `backend/app/api/agent.py` (commit 65d81df + fb2c45b): 8 endpoints (chat + chat/status + 6 stub agent config endpoints)
+> - NEW endpoint `/api/system/env-state` (commit 65ed55b) — LL-183 silent NOT-GATING UI prevention
+> - NEW endpoint `/api/system/calendar-info` (commit 8a57c90) — PT day counter + trading calendar SSOT
+> - LiteLLM router enhanced: F-S7-001 cost fix (23ebea5) + P9 cache-hit fallback (6d51a77)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §6 G1 / `LL-187` sediment
 
 # QuantMind V2 — 后端服务层详细开发文档
 

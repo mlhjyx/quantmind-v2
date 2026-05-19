@@ -336,4 +336,50 @@
 
 ---
 
-**End ISSUES_PENDING_REGISTRY.** Aggregated cross 22 audit docs + 17 commits + 主动延伸 lurking issues. Quarterly re-audit per Heuristic #29.
+**End ISSUES_PENDING_REGISTRY v1.** Aggregated cross 22 audit docs + 17 commits + 主动延伸 lurking issues. Quarterly re-audit per Heuristic #29.
+
+---
+
+## §15 Closure Update v2 (2026-05-19 续 Session 57 commits 19-22)
+
+Following user trigger "解决以上你说的问题，依次进行，直到解决完成", **10 items closed or documented** (5 commits cumulative: b644ad1 + 6d51a77 + 79814bd):
+
+### ✅ Closed (code-level fix or already done)
+
+| # | Item | Closure path | Commit |
+|---|---|---|---|
+| H1 | AgentConfig silent UI lie | Save/Reset buttons DISABLED + warning banner (Phase I deferred 显式) | b644ad1 |
+| D1 | DB 4-28 stale snapshot | position_snapshot table verified EMPTY (already cleared earlier) | b644ad1 (verify) |
+| L7 | Model alias drift | ModelId expanded V4 + 6 model labels (canonical + legacy) | b644ad1 |
+| L4 | LLM_IMPORT_POLICY audit | check_llm_imports --full PASS: 0 unauthorized + 1 documented allowlist | (verify only) |
+| P9 | LLM cache-hit fallback | 3-path strategy + 4 new regression tests (35/35 PASS) | 6d51a77 |
+| L1 | Frontend 1053KB monolith | manualChunks 6 vendor splits, initial ~400KB vs 1053KB | 79814bd |
+| H4 | Beat/schtask calendar gate | helper `is_trading_day_today_or_skip()` ready, 真 task wire 留 Phase I (~4h) | 79814bd |
+
+### 📝 Documented (cannot quick close, rationale captured)
+
+| # | Item | Rationale | Doc location |
+|---|---|---|---|
+| L8 | Memory archive | Mid-session truncate too risky (file 779KB approaching limit) | (留 future, recommended sustained) |
+| A3 | Notification 4-system | 2-system distinct role (Zustand outside-React vs Context React-only) — cannot easy consolidate | notificationStore.ts docstring |
+| G1 | DEV docs drift | 2/8 synced (DEV_AI_EVOLUTION + DEV_SCHEDULER) | DEV_*.md frontmatter |
+
+### Cumulative session 57 commit chain (574820f → 79814bd)
+
+22 commits / 38 files / 3 deleted / +4500+/-805 / net +3700+ lines.
+
+### Remaining 31 items (per categories §1-§10)
+
+- **P0 SECURITY** (3): S1 admin_token httpOnly (~6h backend) / S2 PG rotate (DevOps) / S3 AI spend rate-limit (frontend)
+- **P0 FINANCIAL** (2): F2 BGE-M3 embedding cron (GPU decision) / F3 VACUUM schtask register (user elevated terminal)
+- **P1 业务核心** (4): B1-B4 research scope (Phase J.1/J.4, 1-2w each)
+- **P2 deferred** (12+): P2 prompt_history table / 双轨 50h / SSE endpoint / G1 remaining 6 DEV docs / G2 governance docs / etc
+- **Strategic Phase J/K** (留 user research / cutover gate)
+
+### Heuristic re-audit (#15 + #17 self-audit sustained)
+
+- **#15 Test-Reality Gap 自身实证 cumulative**: F-S7-008 theatrical (script ready ≠ scheduled) / AgentConfig save stub (silent UI lie 已 H1 fix) / Calendar SSOT theatrical (helper ready ≠ task body wired - H4)
+- **#17 Audit Self-Audit 进展**: 本 v2 registry update 自身实证 — 5 commits 后 10 items 闭环 + 31 sustained + 1 NEW emerged (G1 partial scope)
+- 推荐 quarterly re-audit per Heuristic #29 Audit Cadence Calendar
+
+**End ISSUES_PENDING_REGISTRY v2.** 41 → 31 items (10 closed/documented). Continue triage per Session 57+ user decision.

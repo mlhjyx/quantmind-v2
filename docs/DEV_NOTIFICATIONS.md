@@ -1,8 +1,17 @@
-> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16 更新)**
-> 实现状态: ~35% — notification_service+templates+throttler已实现。后端5个API端点已有(list/unread-count/read/detail/test)。notifications表已建(541行数据)。
+> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: ~35% (sustained) — notification_service+templates+throttler已实现。后端5个API端点已有(list/unread-count/read/detail/test)。notifications表已建(541行数据)。
 > **前端**: DEV_FRONTEND_UI.md §十三 定义了 Toast/铃铛/通知中心/分级/偏好, 前端页面待审计数据绑定状态。
 > 未实现: 邮件/微信推送、告警升级链、WebSocket实时推送(/ws/notifications)
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §13**
+>
+> **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §4 A3):
+> - **4→2 system 真 distinct role 已明确** (commit 79814bd 改 notificationStore docstring):
+>   - notificationStore (Zustand): callable anywhere incl axios interceptor outside React
+>   - NotificationContext (React Provider): P0-P3 persistent + Toast/Panel render
+> - **NotificationSystem.tsx (281 lines) 已删除** (commit e5bd897 W6 cleanup)
+> - **不能 easy consolidate** 真原因: apiClient axios.create() interceptor 不在 React 上下文
+> - 真 consolidate path 留 Phase I (~4-6h refactor)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §4 A3 / `frontend/src/store/notificationStore.ts` docstring
 
 # QuantMind V2 — 通知告警详细开发文档
 

@@ -1,8 +1,14 @@
-> **文档状态: MOSTLY_IMPLEMENTED (2026-04-16 更新)**
-> 实现状态: ~70% — Step 4-A 8模块拆分 + Step 4-B YAML配置驱动 + Step 5 Parquet缓存 + Step 6-D WF/12年跑通 + Phase 1.1 性能优化(841s→14.6s) 全部完成。
+> **文档状态: MOSTLY_IMPLEMENTED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: ~70% (sustained) — Step 4-A 8模块拆分 + Step 4-B YAML配置驱动 + Step 5 Parquet缓存 + Step 6-D WF/12年跑通 + Phase 1.1 性能优化(841s→14.6s) 全部完成。
 > **§0 是实际代码结构(优先读), §一~§十是原始设计(部分过时)**
 > 已过时/被替代: Rust加速→不存在(纯Python); VectorizedBacktester→Archived; §五实现计划→全部完成
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §6**
+>
+> **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §3 B1+B3):
+> - **OOS heterogeneity warning** (Frontend Design v3 §3.3.1, commit 8969d87): BacktestResults UI 显示 Sharpe ≥ 0.7 时 5yr/12yr/WF 2.4× spread alert
+> - **Phase J.4 research scope** documented: 5yr=0.61 / 12yr=0.36 / WF=0.87 异质性 root cause investigation (~2w research)
+> - **Survivorship bias 未审计** sustained (audit Section IX §37) — Phase J.4 prerequisite
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §3 B1+B3 / `PHASE_J_K_REMAINING_DECISION_DOC §1.3` (Phase J.4)
 
 # QuantMind V2 — 回测引擎详细开发文档
 
