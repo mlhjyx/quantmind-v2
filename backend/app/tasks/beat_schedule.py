@@ -18,6 +18,24 @@ NOTE:
     - crontab day_of_week='1-5' 过滤周末，但节假日仍需 task 内部判断
     - trade_date_str 参数由 task 内部用 date.today() 生成
       （Beat 触发时不传日期，task 自行计算当日/前日）
+
+H4 fix (2026-05-19, Audit Section X §39 + ISSUES_PENDING_REGISTRY §4 A5/§9 H4):
+    Calendar SSOT helper for task-level gate (反 LL-181 节假日 Beat 空跑):
+
+        from backend.qm_platform.calendar import is_trading_day_today_or_skip
+
+        @celery_app.task(name="risk.daily-check")
+        def risk_daily_check():
+            if not is_trading_day_today_or_skip():
+                return  # silent skip 节假日
+            # ... real task body ...
+
+    Schtask Python wrapper 同 pattern:
+        if not is_trading_day_today_or_skip():
+            sys.exit(0)
+
+    Helper ready in calendar module. 真 task body 加 gate 留 Phase I
+    (~4h, 10 task entrypoint × 1 line each).
 """
 
 from celery.schedules import crontab

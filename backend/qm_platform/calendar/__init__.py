@@ -37,7 +37,14 @@ from typing import Any
 
 from .provider import CalendarProvider
 
-__all__ = ["get_calendar", "reset_calendar", "CalendarProvider"]
+__all__ = [
+    "get_calendar",
+    "reset_calendar",
+    "CalendarProvider",
+    "is_trading_day_today_or_skip",
+    "parse_pt_start_date",
+    "parse_pt_total_days",
+]
 
 _calendar_singleton: CalendarProvider | None = None
 _singleton_lock = threading.Lock()
@@ -93,3 +100,45 @@ def parse_pt_total_days() -> int:
         except ValueError:
             pass
     return 60
+
+
+def is_trading_day_today_or_skip(*, logger: Any = None) -> bool:
+    """H4 fix (Audit Section X §39 + ISSUES_PENDING_REGISTRY §4 A5/§9 H4):
+    Celery Beat / Windows Schtask task wrapper helper — checks if today is
+    trading day, returns False (caller should `return early`) on non-trading day.
+
+    Usage pattern (Beat task body):
+        from backend.qm_platform.calendar import is_trading_day_today_or_skip
+
+        @celery_app.task(name="risk.daily-check")
+        def risk_daily_check():
+            if not is_trading_day_today_or_skip():
+                return  # silent skip non-trading day
+            # ... real task body ...
+
+    Schtask Python wrapper:
+        from backend.qm_platform.calendar import is_trading_day_today_or_skip
+        if not is_trading_day_today_or_skip():
+            sys.exit(0)  # quiet exit, schtask LastResult=0
+
+    Reason 沿用 (反 silent skip):
+        crontab day_of_week='1-5' 仅过滤周末, A 股 ~15 法定假日/年 仍空触发.
+        本 helper 走 Calendar SSOT (4-layer fallback QMT/Tushare/DB/heuristic).
+
+    Args:
+        logger: optional structlog logger to record skip event.
+
+    Returns:
+        True if today is trading day → caller proceeds.
+        False if non-trading day → caller should return/exit early.
+    """
+    cal = get_calendar()
+    today = date.today()
+    is_td, reason = cal.is_trading_day_with_reason(today)
+    if not is_td and logger is not None:
+        logger.info(
+            "Beat/schtask skip (non-trading day)",
+            today=today.isoformat(),
+            reason=reason,
+        )
+    return is_td

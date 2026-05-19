@@ -1,8 +1,15 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10)**
-> 实现状态: ~25% — 7个Celery task文件+2个beat crontab(周日IC监控+工作日PMS)+Windows Task Scheduler PT链路已实现。
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: ~30% — 7个Celery task文件+2个beat crontab(周日IC监控+工作日PMS)+Windows Task Scheduler PT链路已实现。
 > 仍有价值: 调度链路时间线设计、任务依赖关系
 > 已过时/被替代: 未实现模块的调度设计, 实际调度以 Windows Task Scheduler + Celery Beat 为准
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+>
+> **Session 57 (2026-05-19) addendum** — Calendar SSOT 新增 (per ISSUES_PENDING_REGISTRY §6 G1):
+> - `backend/qm_platform/calendar/` 模块 NEW (commit 8a57c90): 4-layer fallback (QMT/Tushare/DB/heuristic)
+> - `is_trading_day_today_or_skip()` helper (commit b644ad1+): Beat/schtask task body 真 calendar gate, 反 LL-181 节假日空跑
+> - Schtask 调度建议 db_vacuum_analyze 等 NEW (commit b560a0c)
+> - **真 task body 加 calendar gate 留 Phase I** (~4h, 10 task entrypoint × 1 line each)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §9 H4 / Audit Section X §39
 
 # QuantMind V2 — 调度与运维详细开发文档
 
