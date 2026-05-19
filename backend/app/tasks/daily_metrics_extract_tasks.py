@@ -82,6 +82,20 @@ def extract_daily_metrics() -> dict[str, Any]:
     Raises:
         psycopg2.Error: any DB error propagates to Celery retry.
     """
+    # A5/C4/H4 Calendar gate wire (Session 57+1 round-5, 2026-05-19):
+    # crontab `* * 1-5` only filters Mon-Fri. National holiday on weekday
+    # slips through → empty aggregation (0 risk events / 0 trades / cost=0).
+    # 反 risk_metrics_daily 写 holiday row 干扰 staleness alert.
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        target_date = _today_shanghai().date()
+        logger.info(
+            "[daily-metrics-extract] skip: non-trading day (calendar SSOT) date=%s",
+            target_date,
+        )
+        return {"ok": True, "skipped": "non_trading_day", "date": target_date.isoformat()}
+
     # Reviewer-style pre-assign conn=None (sustained 8c-partial pattern):
     # get_sync_conn() failure would otherwise raise UnboundLocalError in finally.
     conn = None

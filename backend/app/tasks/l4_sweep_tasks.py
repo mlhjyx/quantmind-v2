@@ -94,6 +94,28 @@ def sweep_pending_confirm_plans() -> dict[str, Any]:
     Raises:
         Any psycopg2.Error propagates to Celery retry.
     """
+    # A5/C4/H4 Calendar gate wire (Session 57+1 round-5, 2026-05-19):
+    # crontab `* 9-14 * * 1-5` 已 filter Mon-Fri trading hours, but A 股 法定假日
+    # on weekday slips through → 1min × 6h = 360 NOOPs/holiday hammering PG.
+    # PENDING_CONFIRM plans 不会在 holiday 创建 (PT chain Mon-Fri trading-only).
+    # 反 仍 sweep + DB load. NOT applied to sweep_stuck_broker_plans (跨日 stuck
+    # plan reconciliation 需 every-day retry — 不 calendar-gated).
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        logger.info("[l4-sweep] skip: non-trading day (calendar SSOT)")
+        return {
+            "ok": True,
+            "skipped": "non_trading_day",
+            "scanned": 0,
+            "transitioned": 0,
+            "races": 0,
+            "executed": 0,
+            "broker_failed": 0,
+            "broker_race": 0,
+            "batch_limited": False,
+        }
+
     # Reviewer LOW fix (8c-partial): pre-assign conn=None so a get_sync_conn()
     # failure doesn't raise UnboundLocalError in the finally block (which would
     # mask the original exception, e.g. PG connection refused).
