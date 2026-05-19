@@ -73,7 +73,7 @@ def is_trading_day_today() -> bool:
     try:
         conn = psycopg2.connect(
             dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
         )
         cur = conn.cursor()
         cur.execute(
@@ -100,7 +100,7 @@ def get_prev_close_mv() -> float | None:
     try:
         conn = psycopg2.connect(
             dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
         )
         cur = conn.cursor()
         today = date.today()
@@ -346,7 +346,7 @@ def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
     try:
         with closing(psycopg2.connect(
             dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
         )) as conn, conn.cursor() as cur:
             # 对每个 code 取最近 trade_date < today 的 close (DISTINCT ON PG 语法)
             cur.execute(
@@ -369,7 +369,7 @@ def _get_prev_close(code: str) -> float | None:
     try:
         with closing(psycopg2.connect(
             dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
         )) as conn, conn.cursor() as cur:
             cur.execute(
                 """SELECT close FROM klines_daily
@@ -473,7 +473,7 @@ def save_monitor_log(
     try:
         conn = psycopg2.connect(
             dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
         )
         cur = conn.cursor()
         cur.execute(

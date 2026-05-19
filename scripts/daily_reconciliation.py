@@ -43,7 +43,7 @@ def get_sync_conn():
     """获取psycopg2连接。"""
     return psycopg2.connect(
         dbname="quantmind_v2", user="xin",
-        password="quantmind", host="localhost",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost",
     )
 
 
