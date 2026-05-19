@@ -11,7 +11,8 @@
  * 用户应有 UI 入口可见 + 安全 confirm flow. CRIT ops 仍 CC-only (e.g. env_flip).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Shield, AlertCircle, Zap, RefreshCw, History } from "lucide-react";
 import { C } from "@/theme";
 import { Card, CardHeader } from "@/components/shared";
@@ -21,6 +22,12 @@ import type { CircuitBreakerState } from "@/types/dashboard";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
 import { fetchEnvState, type EnvState } from "@/api/system";
 import { isAdminAuthed } from "@/api/execution";
+
+interface SafetyPanelData {
+  cb: CircuitBreakerState | null;
+  env: EnvState | null;
+  adminAuthed: boolean;
+}
 
 interface LevelDef {
   level: number;
@@ -38,37 +45,35 @@ const LEVEL_LADDER: LevelDef[] = [
 ];
 
 export function SafetyControlPanel() {
-  const [state, setState] = useState<CircuitBreakerState | null>(null);
-  const [envState, setEnvState] = useState<EnvState | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  // P2 fix (security-reviewer Session 57+1 round-4): pre-check admin auth state.
-  // 旧 pattern user fill reason → click confirm → 401 silent error. 现 pre-check →
-  // button disabled with tooltip "需先设置 admin token", UX 阻挡反误操作.
-  const [adminAuthed, setAdminAuthed] = useState<boolean | null>(null);
 
-  // P2 fix (typescript-reviewer Session 57+1 round-4): useCallback wrap on load
-  // (沿用 SystemSettings 体例). 当前未消费 ref equality, 但 future maintainer 加
-  // prop dep 时 useCallback boundary prevents silent stale-closure regression.
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [cb, env, authed] = await Promise.all([
-      fetchCircuitBreakerState().catch(() => null),
-      fetchEnvState().catch(() => null),
-      isAdminAuthed().catch(() => false),
-    ]);
-    setState(cb);
-    setEnvState(env);
-    setAdminAuthed(authed);
-    setLoading(false);
-  }, []);
+  // Session 58 round-4 ADR-084 Phase 1: setInterval → react-query (uniform lifecycle).
+  // 反 manual setInterval + 4 useState dance. react-query handles:
+  // - Refetch interval (10s sustained)
+  // - Mount/unmount cleanup
+  // - Dedupe concurrent queries
+  // - Background pause when tab inactive
+  // - Per-key cache (other components subscribing same key get free reuse)
+  const { data, isLoading, refetch } = useQuery<SafetyPanelData>({
+    queryKey: ["safety-control-panel"],
+    queryFn: async () => {
+      const [cb, env, authed] = await Promise.all([
+        fetchCircuitBreakerState().catch(() => null),
+        fetchEnvState().catch(() => null),
+        isAdminAuthed().catch(() => false),
+      ]);
+      return { cb, env, adminAuthed: authed };
+    },
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
 
-  useEffect(() => {
-    void load();
-    const id = setInterval(() => void load(), 10_000);
-    return () => clearInterval(id);
-  }, [load]);
+  const state = data?.cb ?? null;
+  const envState = data?.env ?? null;
+  const adminAuthed = data?.adminAuthed ?? null;
+  const loading = isLoading;
+  const load = () => void refetch();
 
   const handleForceReset = async (meta: { reason?: string }) => {
     setShowResetConfirm(false);
