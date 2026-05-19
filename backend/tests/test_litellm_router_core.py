@@ -604,3 +604,90 @@ def test_extract_cost_unknown_model_silent_miss_zero() -> None:
         result, actual_model="gpt-4o-unknown", tokens_in=1000, tokens_out=500
     )
     assert cost == Decimal("0"), "未知模型 silent miss 返 0 (沿用旧体例)"
+
+
+# ---------------------------------------------------------------------------
+# P9 regression (2026-05-19) — Cache-hit/miss split fallback (DeepSeek 5× discount)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_cost_cache_hit_split_v4_flash() -> None:
+    """V4-Flash with 800 hit + 200 miss + 500 out → use cache-hit rate for 800 tokens."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    usage_with_hit = SimpleNamespace(
+        prompt_cache_hit_tokens=800,
+        prompt_cache_miss_tokens=200,
+    )
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result,
+        actual_model="deepseek-v4-flash",
+        tokens_in=1000,
+        tokens_out=500,
+        usage=usage_with_hit,
+    )
+    # 800 × 0.000000014 + 200 × 0.00000007 + 500 × 0.00000027
+    # = 0.0000112 + 0.000014 + 0.000135 = 0.0001602
+    expected = Decimal("0.0001602")
+    assert cost == expected, f"V4-Flash cache-hit expected ${expected} got ${cost}"
+
+
+def test_extract_cost_no_cache_hit_data_sustains_upper_bound() -> None:
+    """usage=None → fallback cache-miss upper bound (sustained F-S7-001 behavior)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result,
+        actual_model="deepseek-v4-flash",
+        tokens_in=1000,
+        tokens_out=500,
+        usage=None,
+    )
+    # Sustained F-S7-001 behavior: 1000 × cache-miss + 500 × output
+    expected = Decimal("0.000205")
+    assert cost == expected
+
+
+def test_extract_cost_cache_hit_v4_pro() -> None:
+    """V4-Pro reasoner with cache-hit split applies ~4x discount."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    usage_with_hit = SimpleNamespace(
+        prompt_cache_hit_tokens=1500,
+        prompt_cache_miss_tokens=500,
+    )
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result,
+        actual_model="deepseek-v4-pro",
+        tokens_in=2000,
+        tokens_out=1000,
+        usage=usage_with_hit,
+    )
+    # 1500 × 0.00000014 + 500 × 0.00000055 + 1000 × 0.00000219
+    # = 0.00021 + 0.000275 + 0.00219 = 0.002675
+    expected = Decimal("0.002675")
+    assert cost == expected
+
+
+def test_extract_cost_cache_hit_zero_tokens_ignored() -> None:
+    """cache_hit_tokens=0 → use sustained F-S7-001 path (NOT cache-hit lookup)."""
+    from backend.qm_platform.llm._internal.router import _extract_cost_usd
+
+    usage = SimpleNamespace(
+        prompt_cache_hit_tokens=0,
+        prompt_cache_miss_tokens=1000,
+    )
+    result = SimpleNamespace(_hidden_params=None)
+    cost = _extract_cost_usd(
+        result,
+        actual_model="deepseek-v4-flash",
+        tokens_in=1000,
+        tokens_out=500,
+        usage=usage,
+    )
+    # cache_hit_tokens=0 sustains old path: 1000 × cache-miss + 500 × output = 0.000205
+    expected = Decimal("0.000205")
+    assert cost == expected

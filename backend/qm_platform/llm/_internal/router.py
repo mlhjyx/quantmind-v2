@@ -363,11 +363,14 @@ class LiteLLMRouter:
         tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0) if usage is not None else 0
         tokens_out = int(getattr(usage, "completion_tokens", 0) or 0) if usage is not None else 0
 
+        # P9 (2026-05-19): pass usage object 真 cache-hit/miss tokens 透传, 反 overestimate
+        # (DeepSeek cache-hit input rate 5× discount vs cache-miss).
         cost_usd = _extract_cost_usd(
             result,
             actual_model=actual_model,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            usage=usage,
         )
 
         is_fallback = _is_fallback(actual_model=actual_model, primary_alias=primary_alias)
@@ -387,17 +390,13 @@ class LiteLLMRouter:
 # F-S7-001 fix (2026-05-19): DeepSeek pricing 真值表 — LiteLLM model_cost.json 不含
 # DeepSeek, 导致 _hidden_params.response_cost=None, 跨 570 calls cost_usd=0 silent
 # drift. 走 fallback compute from tokens × per-token rate (cache-miss upper bound).
-# 单位: USD per single token (input / output 区分).
+# 单位: USD per single token (input cache-miss / output 区分).
 #
 # 来源: DeepSeek 官方 pricing (2026, cache-miss 上限):
-#   - deepseek-chat (V4-Flash): $0.07/M input, $0.27/M output
-#   - deepseek-reasoner (V4-Pro): $0.55/M input, $2.19/M output
-#
-# 注: cache-hit 折扣 ($0.014/M / $0.14/M input) 真**不**纳入 fallback —
-# 反 underestimate audit cost. Cache-hit 真值需 LiteLLM 真返 response_cost
-# (本 fallback path 仅 LiteLLM 缺值时触发).
+#   - deepseek-chat (V4-Flash): $0.07/M input cache-miss, $0.27/M output
+#   - deepseek-reasoner (V4-Pro): $0.55/M input cache-miss, $2.19/M output
 _MODEL_PRICING_USD_PER_TOKEN: dict[str, tuple[Decimal, Decimal]] = {
-    # alias / underlying name → (input_rate, output_rate)
+    # alias / underlying name → (input_cache_miss_rate, output_rate)
     "deepseek-chat": (Decimal("0.00000007"), Decimal("0.00000027")),
     "deepseek-v4-flash": (Decimal("0.00000007"), Decimal("0.00000027")),
     "deepseek/deepseek-chat": (Decimal("0.00000007"), Decimal("0.00000027")),
@@ -406,6 +405,44 @@ _MODEL_PRICING_USD_PER_TOKEN: dict[str, tuple[Decimal, Decimal]] = {
     "deepseek/deepseek-reasoner": (Decimal("0.00000055"), Decimal("0.00000219")),
 }
 
+# P9 fix (2026-05-19): cache-hit pricing 真值表 — DeepSeek 5× discount vs cache-miss.
+#   - deepseek-chat: $0.014/M input cache-hit (vs $0.07/M cache-miss, 5x off)
+#   - deepseek-reasoner: $0.14/M input cache-hit (vs $0.55/M cache-miss, ~4x off)
+#
+# Detection: result.usage.prompt_cache_hit_tokens (DeepSeek API 真返字段) +
+# prompt_cache_miss_tokens. 若 LiteLLM expose 这些 → split tokens accordingly.
+# 若 None → 沿用 _MODEL_PRICING_USD_PER_TOKEN cache-miss upper bound (反 underestimate).
+_MODEL_PRICING_CACHE_HIT_USD_PER_TOKEN: dict[str, Decimal] = {
+    "deepseek-chat": Decimal("0.000000014"),
+    "deepseek-v4-flash": Decimal("0.000000014"),
+    "deepseek/deepseek-chat": Decimal("0.000000014"),
+    "deepseek-reasoner": Decimal("0.00000014"),
+    "deepseek-v4-pro": Decimal("0.00000014"),
+    "deepseek/deepseek-reasoner": Decimal("0.00000014"),
+}
+
+
+def _lookup_pricing(actual_model: str) -> tuple[Decimal, Decimal] | None:
+    """Cache-miss pricing lookup with substring fallback."""
+    pricing = _MODEL_PRICING_USD_PER_TOKEN.get(actual_model)
+    if pricing is None:
+        for key, rates in _MODEL_PRICING_USD_PER_TOKEN.items():
+            if key in actual_model or actual_model in key:
+                pricing = rates
+                break
+    return pricing
+
+
+def _lookup_cache_hit_rate(actual_model: str) -> Decimal | None:
+    """Cache-hit input rate lookup with substring fallback (P9 fix)."""
+    rate = _MODEL_PRICING_CACHE_HIT_USD_PER_TOKEN.get(actual_model)
+    if rate is None:
+        for key, r in _MODEL_PRICING_CACHE_HIT_USD_PER_TOKEN.items():
+            if key in actual_model or actual_model in key:
+                rate = r
+                break
+    return rate
+
 
 def _extract_cost_usd(
     result: Any,
@@ -413,6 +450,7 @@ def _extract_cost_usd(
     actual_model: str = "",
     tokens_in: int = 0,
     tokens_out: int = 0,
+    usage: Any = None,
 ) -> Decimal:
     """从 LiteLLM ChatCompletion 提取 cost_usd (Decimal) — F-S7-001 修复 (2026-05-19).
 
@@ -443,25 +481,48 @@ def _extract_cost_usd(
         except (ValueError, ArithmeticError):
             pass  # fall through to fallback
 
-    # Path 2: fallback compute from tokens × per-token rate (F-S7-001 修复)
+    # Path 2: fallback compute from tokens × per-token rate (F-S7-001 + P9 修复)
     if tokens_in == 0 and tokens_out == 0:
         return Decimal("0")  # 0 token = 0 cost (real, not silent miss)
 
-    # Lookup pricing — 优先 exact match, 否则 substring (兼容 "deepseek/xxx" prefix)
-    pricing: tuple[Decimal, Decimal] | None = _MODEL_PRICING_USD_PER_TOKEN.get(actual_model)
-    if pricing is None:
-        for key, rates in _MODEL_PRICING_USD_PER_TOKEN.items():
-            if key in actual_model or actual_model in key:
-                pricing = rates
-                break
-
+    pricing = _lookup_pricing(actual_model)
     if pricing is None:
         # silent miss — unknown model, 沿用旧体例返 0. 真正修复路径走 audit alert
         # (LL-101 cost-tracking broken sustained — model 真新增需同步 table)
         return Decimal("0")
 
-    input_rate, output_rate = pricing
-    return (Decimal(tokens_in) * input_rate) + (Decimal(tokens_out) * output_rate)
+    input_miss_rate, output_rate = pricing
+
+    # P9 (2026-05-19) cache-hit/miss split detection (DeepSeek-specific):
+    # DeepSeek API 返 usage.prompt_cache_hit_tokens + prompt_cache_miss_tokens.
+    # LiteLLM expose via usage object. 若 expose → split tokens accordingly.
+    # 否则 fallback cache-miss upper bound (反 underestimate audit cost).
+    cache_hit_tokens = 0
+    cache_miss_tokens = tokens_in
+    if usage is not None:
+        cache_hit_raw = getattr(usage, "prompt_cache_hit_tokens", None)
+        cache_miss_raw = getattr(usage, "prompt_cache_miss_tokens", None)
+        if cache_hit_raw is not None and cache_miss_raw is not None:
+            try:
+                cache_hit_tokens = int(cache_hit_raw)
+                cache_miss_tokens = int(cache_miss_raw)
+            except (ValueError, TypeError):
+                # silent fallback — sustained upper bound estimate
+                cache_hit_tokens = 0
+                cache_miss_tokens = tokens_in
+
+    cache_hit_rate = _lookup_cache_hit_rate(actual_model) if cache_hit_tokens > 0 else None
+    if cache_hit_rate is not None and cache_hit_tokens > 0:
+        input_cost = (
+            Decimal(cache_hit_tokens) * cache_hit_rate
+            + Decimal(cache_miss_tokens) * input_miss_rate
+        )
+    else:
+        # Fallback path (P9 NOT triggered) — sustained cache-miss upper bound
+        input_cost = Decimal(tokens_in) * input_miss_rate
+
+    output_cost = Decimal(tokens_out) * output_rate
+    return input_cost + output_cost
 
 
 PRIMARY_MODEL_SUBSTRINGS: dict[str, str] = {
