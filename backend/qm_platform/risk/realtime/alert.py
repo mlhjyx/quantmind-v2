@@ -91,30 +91,23 @@ class AlertDispatcher:
                 elif sev == "p1":
                     self._p1_buffer.append(r)
                     self._p1_buffered += 1
-                    # Plan v8 P1-28 overflow safety net + CRITICAL eviction (code review 5-20)
-                    # Pre-fix: warn-only → OOM still possible if Beat flush truly stalled.
-                    # Post-fix: cap buffer via drop-oldest (trading system prefers losing
-                    # old alerts over OOM crash). 反 LL-181 silent failure recurrence.
+                    # Plan v8 P1-28 overflow safety net
                     if len(self._p1_buffer) > MAX_BUFFER_SIZE:
-                        evicted = len(self._p1_buffer) - MAX_BUFFER_SIZE
-                        self._p1_buffer = self._p1_buffer[-MAX_BUFFER_SIZE:]
-                        logger.error(
-                            "[AlertDispatcher] p1_buffer overflow capped at %d "
-                            "(evicted %d oldest, Beat flush stalled — Plan v8 P1-28)",
+                        logger.warning(
+                            "[AlertDispatcher] p1_buffer size=%d exceeds MAX_BUFFER_SIZE=%d "
+                            "— Beat flush may be stalled (Plan v8 P1-28)",
+                            len(self._p1_buffer),
                             MAX_BUFFER_SIZE,
-                            evicted,
                         )
                 elif sev == "p2":
                     self._p2_buffer.append(r)
                     self._p2_buffered += 1
                     if len(self._p2_buffer) > MAX_BUFFER_SIZE:
-                        evicted = len(self._p2_buffer) - MAX_BUFFER_SIZE
-                        self._p2_buffer = self._p2_buffer[-MAX_BUFFER_SIZE:]
-                        logger.error(
-                            "[AlertDispatcher] p2_buffer overflow capped at %d "
-                            "(evicted %d oldest, Beat flush stalled — Plan v8 P1-28)",
+                        logger.warning(
+                            "[AlertDispatcher] p2_buffer size=%d exceeds MAX_BUFFER_SIZE=%d "
+                            "— Beat flush may be stalled (Plan v8 P1-28)",
+                            len(self._p2_buffer),
                             MAX_BUFFER_SIZE,
-                            evicted,
                         )
                 # sev not in p0/p1/p2 → skip (unknown severity)
 

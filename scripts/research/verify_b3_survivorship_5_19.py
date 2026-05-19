@@ -1,7 +1,6 @@
 """B3 任务 1+2 深度验证: factor_values 退市股 sediment + stock_status_daily 历史 ST 真值."""
 
 import re
-import sys
 from pathlib import Path
 
 import psycopg2
@@ -12,9 +11,6 @@ m = re.search(
     env,
     re.MULTILINE,
 )
-# Plan v8 code review MEDIUM fix (5-20): fail-loud if .env format drift (铁律 33).
-if m is None:
-    sys.exit("[verify_b3] FATAL: DATABASE_URL not found in backend/.env (env format drift)")
 u, p, h, port, db = m.groups()
 conn = psycopg2.connect(host=h, port=port, dbname=db, user=u, password=p)
 cur = conn.cursor()

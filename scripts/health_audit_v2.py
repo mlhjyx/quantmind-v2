@@ -35,7 +35,6 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 # Asia/Shanghai timezone (铁律 41)
 SH_TZ = timezone(timedelta(hours=8))
@@ -266,7 +265,7 @@ def send_dingtalk_alert(failures_summary: dict[str, list[str]]) -> None:
 def main() -> int:
     """Run all checks, return exit code (0=PASS, 1=FAIL per 铁律 33)."""
     print(f"=== HealthAuditV2 {NOW.isoformat()} ===")
-    print(f"Sustained: 铁律 9/33/41 + LL-181/189 + ADR-086 Tier 2 candidate")
+    print("Sustained: 铁律 9/33/41 + LL-181/189 + ADR-086 Tier 2 candidate")
     print()
 
     all_failures: dict[str, list[str]] = {}

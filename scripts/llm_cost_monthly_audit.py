@@ -27,7 +27,6 @@ Date: 2026-05-19 evening SH.
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -80,7 +79,7 @@ def _parse_database_url(url: str) -> dict[str, str]:
 def main() -> int:
     """Run monthly audit, push DingTalk if cost > 80% threshold, exit 0/1."""
     print(f"=== LLM Cost Monthly Audit {NOW.isoformat()} ===")
-    print(f"Sustained: 铁律 9/33/35/41 + V3 §20.1 #6 + LL-190 sediment-then-forget enforcement")
+    print("Sustained: 铁律 9/33/35/41 + V3 §20.1 #6 + LL-190 sediment-then-forget enforcement")
     print()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -107,8 +106,8 @@ def main() -> int:
     # Connect DB
     try:
         import psycopg2  # noqa: F401
-    except ImportError:
-        raise SystemExit("FAIL: psycopg2 not installed (沿用 backend/.venv 体例)")
+    except ImportError as err:
+        raise SystemExit("FAIL: psycopg2 not installed (沿用 backend/.venv 体例)") from err
 
     import psycopg2
 
@@ -164,15 +163,15 @@ def main() -> int:
 
         # Threshold evaluation
         if mtd_ratio >= CAP_RATIO:
-            print(f"[ALERT] CAP THRESHOLD EXCEEDED: trigger Ollama fallback per ADR-028 §3.3")
+            print("[ALERT] CAP THRESHOLD EXCEEDED: trigger Ollama fallback per ADR-028 §3.3")
             status = "CAP_EXCEEDED"
             exit_code = 1
         elif mtd_ratio >= WARN_RATIO:
-            print(f"[WARN] WARN THRESHOLD EXCEEDED: cost approaching $50 monthly budget")
+            print("[WARN] WARN THRESHOLD EXCEEDED: cost approaching $50 monthly budget")
             status = "WARN"
             exit_code = 0  # Warning still exit 0 (沿用 budget.py state machine — warning, not fail)
         else:
-            print(f"[OK] within budget")
+            print("[OK] within budget")
             status = "OK"
             exit_code = 0
 

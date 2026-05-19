@@ -63,7 +63,6 @@ def check_trading_day_today() -> tuple[bool, str]:
 
     # Primary: DB SSOT
     try:
-        import os
         import re
 
         import psycopg2
@@ -77,7 +76,9 @@ def check_trading_day_today() -> tuple[bool, str]:
         )
         if m:
             sys.path.insert(0, str(backend_dir))
-            from app.services.trading_calendar import is_trading_day  # type: ignore[import-not-found]
+            from app.services.trading_calendar import (
+                is_trading_day,  # type: ignore[import-not-found]
+            )
 
             u, p, h, port, db = m.groups()
             conn = psycopg2.connect(
@@ -107,7 +108,7 @@ def check_trading_day_today() -> tuple[bool, str]:
 def check_beat_alive() -> tuple[bool, str]:
     """Check Celery Beat alive via celerybeat-schedule.dat mtime (P0-5 reuse)."""
     if not BEAT_SCHEDULE_FILE.exists():
-        return False, f"celerybeat-schedule.dat missing"
+        return False, "celerybeat-schedule.dat missing"
 
     mtime = datetime.fromtimestamp(BEAT_SCHEDULE_FILE.stat().st_mtime, tz=UTC)
     age_sec = (datetime.now(UTC) - mtime).total_seconds()
@@ -202,11 +203,10 @@ def _send_dingtalk_alert(result: dict) -> None:
     backend_dir = Path(__file__).resolve().parent.parent / "backend"
     sys.path.insert(0, str(backend_dir))
 
-    # Plan v8 code review HIGH fix (5-20): real send_alert at notification_service
     try:
-        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
+        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
+        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
         return
 
     title = "[P0] 09:30 SH market open watcher ALERT"
@@ -221,7 +221,7 @@ def _send_dingtalk_alert(result: dict) -> None:
     body_lines.append("")
     body_lines.append("Required action: 检查 Servy Celery + Beat status, 必要时 restart.")
 
-    send_alert("P0", title, "\n".join(body_lines))
+    send_alert(title, "\n".join(body_lines))
 
 
 if __name__ == "__main__":
