@@ -293,6 +293,21 @@ class FactorOnboardingService:
         Raises:
             OnboardingBlocked: G9/G10 失败 (hypothesis 占位 / AST 太近似).
                 调用方 (Celery onboarding_task) 负责记录到 approval_queue 审计.
+
+        TODO P1-34 (Plan v8, 2026-05-19 sediment, 待 wire):
+            G1-G8 quality gates (factor_gate.py) **not yet wired** in onboarding service.
+            Current path: only G9 (AST) + G10 (hypothesis) gate.
+            Missing gates:
+              - G1 |IC_mean| > 0.02 (快筛)
+              - G2 与现有 Active 因子 截面 corr < 0.7 (正交性)
+              - G3 t-stat > 2.0 (宽松显著性)
+              - G4 中性化 IC 衰减 < 50%
+              - G5 方向与经济假设一致
+              - G6 BH-FDR 多重检验校正 (Harvey Liu Zhu 2016, t>2.5 硬标准)
+              - G7 SimBroker 回测 Sharpe ≥ 基线 1.03
+              - G8 strategy 策略匹配
+            Wire path: 在 _onboard_inner 末尾 (post G9/G10) 调用 factor_gate.run_gates
+            + 失败 raise OnboardingBlocked. Effort ~2h.
         """
         from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
         from backend.qm_platform.factor.interface import FactorSpec

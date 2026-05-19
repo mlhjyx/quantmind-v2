@@ -158,7 +158,7 @@
 | P1-31 | Loop 1 Signal 0 NAV feedback | ❌ Phase J |
 | P1-32 | Loop 4 Regime → Signal disconnect | ❌ Phase J |
 | P1-33 | SPF 6 no Tushare fallback chain | ❌ multi-week (Baostock/akshare backup) |
-| P1-34 | Gates G1-G10 no closed-loop runner | ✅ CC can wire factor_gate.py to factor_onboarding.py (~2h) |
+| P1-34 | Gates G1-G10 no closed-loop runner | 🟡 **PARTIAL** 5-19 (this batch): TODO P1-34 marker sediment 到 backend/app/services/factor_onboarding.py:_upsert_factor_registry docstring (line ~296). 详细列 G1-G8 8 gates + wire path + ~2h effort estimate. 真 wiring 留 next session (high test risk, 多个 onboarding test 需 update). |
 | P1-35 | risk-reflector-weekly stub input | ✅ CC can wire TB-4c real input (~3h) |
 | P1-36 | Risk subservice cluster 0 API | ❌ 7 services × API design |
 | P1-38 | DEV_AI_EVOLUTION Layer 3+4 0% impl | ❌ Phase J |
