@@ -404,6 +404,57 @@ async def test_notification(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/calendar-info", summary="交易日历 + PT day counter (Audit Section X §39 SSOT)")
+async def get_calendar_info() -> dict[str, Any]:
+    """返回 trading calendar SSOT 真值 — Dashboard "PT Day X/Y" + 节假日 verify 接通.
+
+    设计原因 (Audit Section X §39 + Frontend Design v3 #7):
+        Beat schedule / schtask / Dashboard hardcoded "PT Day 3/60" 跨脚本漂移
+        (LL-181 lesson). 通过 calendar SSOT 单一来源消除漂移.
+
+    Returns:
+        dict 含 today_is_trading_day / today_reason / next_trading_day /
+        prev_trading_day / pt_day_counter (current_day/total/completion_pct/label).
+    """
+    from datetime import date as _date
+
+    try:
+        # Lazy import — 容错 calendar 模块不可加载
+        from backend.qm_platform.calendar import get_calendar
+    except ImportError:
+        # Fallback path — 反 silent fail (铁律 33), 显式 error response
+        return {
+            "error": "calendar module 不可加载",
+            "today_is_trading_day": None,
+            "pt_day_counter": None,
+        }
+
+    try:
+        cal = get_calendar()
+        today = _date.today()
+        is_td, reason = cal.is_trading_day_with_reason(today)
+        next_td = cal.next_trading_day(today)
+        prev_td = cal.prev_trading_day(today)
+        pt_info = cal.pt_day_counter(today=today)
+
+        return {
+            "today": today.isoformat(),
+            "today_is_trading_day": is_td,
+            "today_reason": reason,
+            "next_trading_day": next_td.isoformat(),
+            "prev_trading_day": prev_td.isoformat(),
+            "pt_day_counter": pt_info,
+        }
+    except Exception as exc:
+        logger.exception("calendar-info 端点失败")
+        return {
+            "error": str(exc),
+            "today": _date.today().isoformat(),
+            "today_is_trading_day": None,
+            "pt_day_counter": None,
+        }
+
+
 @router.get("/env-state", summary="当前 .env 关键字段实时状态（LL-183 prevention UI）")
 async def get_env_state() -> dict[str, Any]:
     """返回前端 EnvStateBanner 渲染所需的 .env 关键字段实时快照。

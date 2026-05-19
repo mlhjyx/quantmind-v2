@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Card, CardHeader } from "@/components/shared";
 import { fetchSummary, fetchPositions, fetchNAVSeries } from "@/api/dashboard";
-import { fetchEnvState, type EnvState } from "@/api/system";
+import { fetchEnvState, fetchCalendarInfo, type EnvState, type CalendarInfo } from "@/api/system";
 import { C } from "@/theme";
 import type { DashboardSummary, Position } from "@/types/dashboard";
 import { usePortfolio } from "@/hooks/useRealtimeData";
@@ -34,6 +34,7 @@ export default function DashboardOverview() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [envState, setEnvState] = useState<EnvState | null>(null);
+  const [calendarInfo, setCalendarInfo] = useState<CalendarInfo | null>(null);
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [monthlyData, setMonthlyData] = useState<Record<string, number[]> | null>(null);
   const [industryDist, setIndustryDist] = useState<IndustryItem[] | null>(null);
@@ -130,6 +131,11 @@ export default function DashboardOverview() {
     fetchEnvState()
       .then(setEnvState)
       .catch(() => setEnvState(null));
+
+    // Calendar SSOT (Audit Section X §39 — PT Day X/Y 替 hardcoded)
+    fetchCalendarInfo()
+      .then(setCalendarInfo)
+      .catch(() => setCalendarInfo(null));
 
     // Pipeline status → transform node_statuses to steps array
     apiClient.get<{ node_statuses: Record<string, string>; current_node: string | null; status: string }>("/pipeline/status")
@@ -231,7 +237,9 @@ export default function DashboardOverview() {
       <div className="flex items-center gap-3 px-5 py-2" style={{ borderBottom: `1px solid ${C.border}` }}>
         <Link to="/dashboard/astock" className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: C.bg1, border: `1px solid ${C.border}` }}>
           <span style={{ fontSize: 12, color: C.text1 }}>A股策略 v1.1</span>
-          <span style={{ fontSize: 10, color: C.text4 }}>PT Day 3/60</span>
+          <span style={{ fontSize: 10, color: C.text4 }} title={calendarInfo?.pt_day_counter ? `start=${calendarInfo.pt_day_counter.start_date} today=${calendarInfo.pt_day_counter.today}` : "calendar SSOT 未连接"}>
+            {calendarInfo?.pt_day_counter?.label ?? "PT Day —/—"}
+          </span>
           <ChevronRight size={12} color={C.text4} />
         </Link>
         {/* 外汇策略 link 已移除 (DEV_FOREX DEFERRED, Phase H Week 6 cleanup) */}
