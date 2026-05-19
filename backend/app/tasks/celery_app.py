@@ -10,6 +10,37 @@ Sprint 1.1: 激活 Beat 调度，替换 crontab。
   QuantMind-Celery 服务 (见 scripts/service_manager.ps1)。
   真正并发需按 docs/research/R6_production_architecture.md §3.2 启动多个
   solo worker 实例 + 不同 queue, 而非调高 worker_concurrency。
+
+⚠️ Solo pool memory leak — LL-189 候选 (2026-05-19 Session 58+1):
+  `--pool=solo` = 单 process, 不 fork = 内存累积 24h+ 不释放.
+  实测 5-19 18:30 SH: worker_main@XIN 24h runtime → WS 43.9GB / private 1.4GB
+  (Windows 报告 94% RAM Used, available 1.7GB, 接近 OOM, 沿用 LL-009 4-03
+  PG OOM 教训). Root cause: pandas/numpy 用 glibc malloc, factor_calc /
+  data_fetch queue task 累积. Beat 22 entries (outbox 30s + L4 sweep 1min +
+  meta_monitor 5min + ...) ≈ 5000+ task/day fed solo worker.
+
+  **Hardening 选项** (solo pool 不支持 `worker_max_memory_per_child`,
+  仅 prefork 有效, 沿用 celery 5.x source `celery.concurrency.asynpool`
+  vs `celery.concurrency.solo` 区分):
+
+  1. **Periodic restart schtask** (RECOMMENDED): Windows Task Scheduler
+     `QuantMind_CeleryNightlyRestart` 每日 03:30 SH 触发
+     `Restart-Service QuantMind-Celery` (~30s graceful + auto-restart 沿用
+     Servy AutoRestart=true). 反 24h+ 累积.
+
+  2. **Memory monitor rule**: Beat `meta-monitor-tick` 5min Beat 加 rule
+     `Available MBytes < 2000 → P1 DingTalk alert` (V3 §13.3 第 8 元告警).
+
+  3. **Servy memory limit**: Servy `--memory-limit=4096` (4GB) 触发
+     auto-restart if 超 (Servy v7.6 支持). 沿用 docs/audit/STATUS_REPORT
+     体例.
+
+  4. **Backend hardening**: pandas explicit `gc.collect() + del df` 模式
+     in factor_calc task body. 沿用铁律 33 fail-loud + explicit release.
+
+  Immediate fix: 直接 restart `QuantMind-Celery` service (graceful 30s
+  shutdown). 长期 sediment ADR-086 候选 (Periodic restart + monitor wire,
+  5-19 Session 58+1 sediment driver).
 """
 
 import sys
@@ -41,6 +72,13 @@ celery_app.conf.update(
     # 时区（A 股调度用北京时间，Phase 2 外汇调度用 UTC）
     timezone="Asia/Shanghai",
     enable_utc=False,
+    # ⭐ Default queue routing (LL-189 候选 fix, 2026-05-19 Session 58+1):
+    #   Producers (.delay() / .apply_async()/ Beat) without explicit queue= 走 "default"
+    #   而非默认 "celery". 反 worker `-Q default,factor_calc,data_fetch` 不订阅 "celery"
+    #   导致 orphan 累积 (实测 5-19 18:30 SH 288 orphan, 286/288 = run_backtest from
+    #   api/backtest.py:202 + services/backtest_service.py:94 `.delay()` no-queue calls).
+    #   沿用 ADR-086 候选 hardening sediment + celery 5.x doc canonical 体例.
+    task_default_queue="default",
     # 任务发现
     imports=[
         "app.tasks.daily_pipeline",
