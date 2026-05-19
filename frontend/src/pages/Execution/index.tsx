@@ -160,8 +160,14 @@ export default function Execution() {
     }
   }, []);
 
-  const handleTokenSubmit = useCallback((token: string) => {
-    setAdminToken(token);
+  const handleTokenSubmit = useCallback(async (token: string) => {
+    // S1 P0-22 fix: try cookie path first (XSS-safe). Fallback to legacy
+    // localStorage if cookie endpoint unreachable (back-compat sustained).
+    const { setAdminTokenSecure } = await import("@/api/execution");
+    const ok = await setAdminTokenSecure(token);
+    if (!ok) {
+      setAdminToken(token); // legacy fallback
+    }
     setShowTokenModal(false);
     if (pendingAction) {
       pendingAction();

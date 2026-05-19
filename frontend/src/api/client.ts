@@ -7,6 +7,10 @@ export const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
+  // S1 P0-22 fix (Session 57+1, 2026-05-19): withCredentials=true sends
+  // HttpOnly cookies (admin_token) automatically. Required for cookie-based
+  // auth migration from localStorage. Same-origin works without CORS.
+  withCredentials: true,
 });
 
 // Request interceptor: attach auth token
