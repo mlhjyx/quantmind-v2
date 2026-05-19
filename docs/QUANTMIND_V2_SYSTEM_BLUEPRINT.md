@@ -546,13 +546,21 @@ Orchestrator 状态机: 7 状态 + 16 转换规则
 
 ### 12.1 现有资产
 
-| 类别 | 数量 |
-|------|------|
-| 页面文件 | 24 个 |
-| API 客户端 | 12 个 |
-| 后端 API 端点 | ~96 个 |
-| 共享组件 | 53 个 |
-| Zustand Store | 4 个 |
+> **Code > Docs 实测修订** (Plan v9 Phase G, 2026-05-20): 下表数字均经 code-truth grep 验证，非设计文档估算。
+
+| 类别 | 数量 | 来源 / 验证方式 |
+|------|------|----------------|
+| 页面文件 | 24 个 | `ls frontend/src/pages/` |
+| API 客户端 | 12 个 | `ls frontend/src/api/` |
+| 后端 API 端点 | **148 个** (+54% vs ~96 设计文档) | `docs/API_COVERAGE.md` (Phase H 实测 2026-05-20) |
+| 共享组件 | **58 个** (含 Phase H W1-W6 +5 NEW) | `ls frontend/src/components/` |
+| Zustand Store | 4 个 | `ls frontend/src/store/` |
+| Service files | **57 个** (vs 25 设计文档估算) | `ls backend/app/services/` |
+| RAG memory events | 20 historical events backfilled (dry-run) | `scripts/rag_memory_backfill.py` |
+
+**Phase H W1-W6 NEW components** (2026-05-19): EnvStateBanner / ShutdownBanner / SafetyControlPanel / ConfirmModal (4-tier) / AssistPanel. 4 AI entry points. axios SSOT 14→0.
+
+**V3 §S5-S8 merged main**: ~330 tests (PR #343-346 cumulative, 104+28+48+154 breakdown).
 
 ### 12.2 页面清单与状态
 

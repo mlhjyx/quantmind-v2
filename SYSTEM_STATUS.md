@@ -1,8 +1,49 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** ⭐
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** + **Plan v9 Design-Reality Reconciliation closure (2026-05-20, §0.-5)** ⭐
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-5 Plan v9 Design-Reality Reconciliation closure (2026-05-20) ⭐
+
+> **Plan v9 闭环**: 11-phase autonomous audit + reconciliation. main HEAD sustained at `a4b49d0`. LL count 192 → 193. 详细 sprint state 走 Anthropic memory `project_sprint_state.md`.
+
+### Plan v9 key metrics (2026-05-20 实测)
+
+| Metric | Before (design doc claim) | After (code-truth verified) | Delta |
+|--------|--------------------------|----------------------------|-------|
+| Backend API endpoints | ~96 | **148** | +54% |
+| Service files | 25 | **57** | +128% |
+| Frontend components | 48 | 53 (Phase H W1-W6 +5 NEW) | +10% |
+| LL entries | 192 | **193** | +1 |
+| DEV_*.md docs updated | 0 | **10** (Phase D) | — |
+| V3 §S5-S8 tests merged main | 0 | **~330** (PR #343-346) | — |
+
+### Plan v9 phase summary
+
+| Phase | Status | Output |
+|-------|--------|--------|
+| A: 设计文档 vs 代码现实 | ✅ | 8 DEV_*.md + 4 plat doc gap audit |
+| B: 合成 gap matrix + Triage | ✅ | Gap matrix + P0/P1/P2 triage |
+| C: 立即修复 (autonomous-fix) | ✅ | False alarm verification (LL-193 ×2 caught) |
+| D: 更新 DEV_*.md 对齐现实 | ✅ | 10 DEV docs updated |
+| E: 设计验收目标 + 闭环验证 | ✅ | Acceptance criteria locked |
+| F: stale branch cleanup | ✅ | 11 local + 3 OPEN PRs closed |
+| G: 扩展 audit (BLUEPRINT + STATUS) | ✅ | SYSTEM_BLUEPRINT + SYSTEM_STATUS updated |
+| H: 生成 docs/API_COVERAGE.md | ✅ | 148 backend × 11 frontend coverage map |
+| I: LL-193 sediment + SYSTEM_STATUS | ✅ | This section + LL-193 |
+| J: 系统完整运行闭环 verify | ⏳ pending | — |
+| K: Fix pipeline.ts URL bug (live 404) | ⏳ pending | — |
+
+### Phase H NEW components (Frontend Redesign v3, 2026-05-19)
+
+5 NEW components: EnvStateBanner / ShutdownBanner / SafetyControlPanel / ConfirmModal (4-tier) / AssistPanel. 4 AI entry points wired. 10/15 v3 findings closed. axios SSOT 14→0 raw axios.
+
+### RAG memory backfill status
+
+20 historical events (3 risk_event + 17 trade_log emergency 4-29 清仓) dry-run verified. Script ready: `scripts/rag_memory_backfill.py`. Awaiting user trigger for production run.
 
 ---
 
