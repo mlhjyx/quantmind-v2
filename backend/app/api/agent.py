@@ -361,46 +361,284 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
 }
 
 
-@router.get("/{name}/config", summary="Agent 配置查询 (read-only stub)")
+# H1 真闭环 (2026-05-19, ISSUES_PENDING_REGISTRY §9 H1): prompt_history table
+# 真 persist + version diff support (反 LL-183 silent UI lie sustained).
+# Migration: backend/migrations/2026_05_19_prompt_history.sql
+
+def _get_db_conn() -> Any:
+    """psycopg2 sync conn — 沿用 backend.app.services.db pattern."""
+    from app.services.db import get_sync_conn
+    return get_sync_conn()
+
+
+def _row_to_config(row: tuple) -> dict[str, Any]:
+    """prompt_history row → AgentConfig API shape."""
+    return {
+        "name": row[0],
+        "version": row[1],
+        "display_name": row[2],
+        "model": row[3],
+        "temperature": float(row[4]),
+        "max_tokens": row[5],
+        "system_prompt": row[6],
+        "ic_threshold": float(row[7]),
+        "t_stat_threshold": float(row[8]),
+        "auto_archive": row[9],
+        "auto_reject": row[10],
+        "max_daily_runs": row[11],
+        "is_active": row[12],
+        "reason": row[13],
+        "created_at": row[14].isoformat() if row[14] else None,
+        "created_by": row[15],
+    }
+
+
+def _fetch_active_config(name: str) -> dict[str, Any] | None:
+    """从 prompt_history 拿 active row (is_active=TRUE)."""
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT agent_name, version, display_name, model, temperature, max_tokens,
+                       system_prompt, ic_threshold, t_stat_threshold,
+                       auto_archive, auto_reject, max_daily_runs,
+                       is_active, reason, created_at, created_by
+                FROM prompt_history
+                WHERE agent_name = %s AND is_active = TRUE
+                ORDER BY version DESC
+                LIMIT 1
+                """,
+                (name,),
+            )
+            row = cur.fetchone()
+        return _row_to_config(row) if row else None
+    finally:
+        conn.close()
+
+
+def _seed_default_config(name: str) -> dict[str, Any]:
+    """First-run seed: INSERT v1 default config row (idempotent via UNIQUE constraint)."""
+    default = _AGENT_DEFAULT_CONFIGS[name]
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO prompt_history (
+                    agent_name, version, display_name, model, temperature, max_tokens,
+                    system_prompt, ic_threshold, t_stat_threshold,
+                    auto_archive, auto_reject, max_daily_runs,
+                    is_active, reason, created_by
+                )
+                VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE,
+                        'initial seed from _AGENT_DEFAULT_CONFIGS', 'system')
+                ON CONFLICT (agent_name, version) DO NOTHING
+                RETURNING version
+                """,
+                (
+                    name,
+                    default["display_name"],
+                    default["model"],
+                    default["temperature"],
+                    default["max_tokens"],
+                    default["system_prompt"],
+                    default["ic_threshold"],
+                    default["t_stat_threshold"],
+                    default["auto_archive"],
+                    default["auto_reject"],
+                    default["max_daily_runs"],
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    fetched = _fetch_active_config(name)
+    return fetched if fetched else default
+
+
+def _insert_new_version(name: str, payload: dict[str, Any], reason: str | None) -> dict[str, Any]:
+    """INSERT 新 version row + mark previous active=FALSE (atomic single transaction)."""
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            # Get next version + current active config
+            cur.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM prompt_history WHERE agent_name = %s",
+                (name,),
+            )
+            next_version = cur.fetchone()[0]
+
+            # Pull current active to apply partial updates atop
+            cur.execute(
+                """
+                SELECT display_name, model, temperature, max_tokens, system_prompt,
+                       ic_threshold, t_stat_threshold,
+                       auto_archive, auto_reject, max_daily_runs
+                FROM prompt_history
+                WHERE agent_name = %s AND is_active = TRUE
+                ORDER BY version DESC LIMIT 1
+                """,
+                (name,),
+            )
+            current = cur.fetchone()
+            if current is None:
+                default = _AGENT_DEFAULT_CONFIGS[name]
+                current_vals = {
+                    "display_name": default["display_name"],
+                    "model": default["model"],
+                    "temperature": default["temperature"],
+                    "max_tokens": default["max_tokens"],
+                    "system_prompt": default["system_prompt"],
+                    "ic_threshold": default["ic_threshold"],
+                    "t_stat_threshold": default["t_stat_threshold"],
+                    "auto_archive": default["auto_archive"],
+                    "auto_reject": default["auto_reject"],
+                    "max_daily_runs": default["max_daily_runs"],
+                }
+            else:
+                current_vals = {
+                    "display_name": current[0],
+                    "model": current[1],
+                    "temperature": float(current[2]),
+                    "max_tokens": current[3],
+                    "system_prompt": current[4],
+                    "ic_threshold": float(current[5]),
+                    "t_stat_threshold": float(current[6]),
+                    "auto_archive": current[7],
+                    "auto_reject": current[8],
+                    "max_daily_runs": current[9],
+                }
+
+            merged = {**current_vals, **{k: v for k, v in payload.items() if k in current_vals}}
+
+            # Mark previous active=FALSE
+            cur.execute(
+                "UPDATE prompt_history SET is_active = FALSE WHERE agent_name = %s AND is_active = TRUE",
+                (name,),
+            )
+
+            # INSERT new version active
+            cur.execute(
+                """
+                INSERT INTO prompt_history (
+                    agent_name, version, display_name, model, temperature, max_tokens,
+                    system_prompt, ic_threshold, t_stat_threshold,
+                    auto_archive, auto_reject, max_daily_runs,
+                    is_active, reason, created_by
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, 'user')
+                """,
+                (
+                    name,
+                    next_version,
+                    merged["display_name"],
+                    merged["model"],
+                    merged["temperature"],
+                    merged["max_tokens"],
+                    merged["system_prompt"],
+                    merged["ic_threshold"],
+                    merged["t_stat_threshold"],
+                    merged["auto_archive"],
+                    merged["auto_reject"],
+                    merged["max_daily_runs"],
+                    reason or f"user update via PUT /agent/{name}/config",
+                ),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    fetched = _fetch_active_config(name)
+    if fetched is None:
+        raise RuntimeError("post-INSERT 拉 active row 真 None — atomic txn rollback 真 silent fail (铁律 33)")
+    return fetched
+
+
+@router.get("/{name}/config", summary="Agent 配置查询 (DB-persisted prompt_history)")
 async def get_agent_config(name: str) -> dict[str, Any]:
-    """返回 agent 配置 (含 system_prompt). Phase I read-only stub —
-    真 prompt versioning 留 backend prompt history table 实施.
+    """返回 agent 配置. 走 prompt_history table 真 active row.
+    First-run: 0 rows → 自动 seed v1 default + 返.
 
     Args:
         name: agent 名 (idea / factor / eval / diagnosis).
     """
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
-    return _AGENT_DEFAULT_CONFIGS[name]
+
+    try:
+        fetched = _fetch_active_config(name)
+        if fetched is None:
+            # First run: seed v1 from defaults
+            return _seed_default_config(name)
+        return fetched
+    except Exception:
+        logger.exception("get_agent_config DB query failed, fallback to defaults", agent=name)
+        return _AGENT_DEFAULT_CONFIGS[name]
 
 
-@router.put("/{name}/config", summary="Agent 配置更新 (stub no-op)")
+@router.put("/{name}/config", summary="Agent 配置更新 (insert new version row)")
 async def put_agent_config(name: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """更新 agent 配置. 当前 stub no-op (留 backend prompt history 实施).
+    """更新 agent 配置 — 真 INSERT 新 version + mark previous active=FALSE.
 
-    真实施需:
-      1. Backend prompt_history table (name, version, prompt, model, temp, created_at)
-      2. 写入新 version row + 保留旧 version
-      3. Rollback via version_id
+    H1 真闭环 (反 LL-183 silent UI lie pattern): 用户改动持久化 to prompt_history.
+    Version diff/rollback UI 留 future enhancement.
 
-    返回当前 default config (未持久化用户改动).
+    Args:
+        name: agent 名.
+        payload: partial update (任意 fields from AgentConfig schema). reason 可选.
     """
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
-    logger.warning(
-        "Agent config PUT 当前 stub no-op, 用户改动未持久化 (留 Phase I prompt history 实施)",
-        agent=name,
-        payload_keys=list(payload.keys()),
-    )
-    return _AGENT_DEFAULT_CONFIGS[name]
+
+    reason = payload.pop("reason", None) if isinstance(payload, dict) else None
+    try:
+        return _insert_new_version(name, payload, reason)
+    except Exception as exc:
+        logger.exception("put_agent_config DB INSERT failed", agent=name)
+        raise HTTPException(status_code=500, detail=f"Config update failed: {exc}") from exc
 
 
-@router.post("/{name}/config/reset", summary="Agent 配置重置 (stub no-op)")
+@router.post("/{name}/config/reset", summary="Agent 配置重置 (insert version row from defaults)")
 async def reset_agent_config(name: str) -> dict[str, Any]:
-    """重置 agent 配置. Stub no-op — 返 default config."""
+    """重置 agent 配置 — INSERT 新 version row with default values."""
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
-    return _AGENT_DEFAULT_CONFIGS[name]
+
+    default = _AGENT_DEFAULT_CONFIGS[name]
+    try:
+        return _insert_new_version(name, dict(default), "reset to default")
+    except Exception as exc:
+        logger.exception("reset_agent_config DB INSERT failed", agent=name)
+        raise HTTPException(status_code=500, detail=f"Config reset failed: {exc}") from exc
+
+
+@router.get("/{name}/history", summary="Agent prompt 版本历史 (last N versions)")
+async def get_agent_history(name: str, limit: int = 20) -> list[dict[str, Any]]:
+    """返回 last N 版本 prompt_history rows (newest first)."""
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    conn = _get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT agent_name, version, display_name, model, temperature, max_tokens,
+                       system_prompt, ic_threshold, t_stat_threshold,
+                       auto_archive, auto_reject, max_daily_runs,
+                       is_active, reason, created_at, created_by
+                FROM prompt_history
+                WHERE agent_name = %s
+                ORDER BY version DESC LIMIT %s
+                """,
+                (name, max(1, min(limit, 100))),
+            )
+            return [_row_to_config(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 @router.get("/model-health", summary="LLM 模型健康检查 (stub)")
