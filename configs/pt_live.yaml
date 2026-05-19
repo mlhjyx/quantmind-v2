@@ -2,7 +2,7 @@
 # 所有策略级参数的唯一来源（替代散落在.env/config.py/signal_engine中的配置）
 
 strategy:
-  name: equal_weight_top20
+  name: equal_weight_top20  # historical name sustained; effective top_n in field below (灰度 PT_TOP_N=5 since 2026-05-18)
   factors:
     # CORE3+dv_ttm (WF OOS Sharpe=0.8659, MDD=-13.91%, 2026-04-12 PASS)
     # 变更: CORE5→CORE3+dv_ttm, 去掉reversal_20和amihud_20, 加入dv_ttm
@@ -11,7 +11,11 @@ strategy:
     - {name: bp_ratio, direction: 1}
     - {name: dv_ttm, direction: 1}
   compose: equal_weight
-  top_n: 20
+  # 2026-05-18 灰度 PT_TOP_N=5 (sustained .env + signal_engine.py:PAPER_TRADING_CONFIG aligned)
+  # 2026-05-19 Session 58+1 batch 7 fix: yaml drift 20→5 (P0-7 root cause closure)
+  # Backup pre-fix: logs/pt_live.yaml.bak-pre-top-n-fix-2026-05-19
+  # 沿用 铁律 34 (config single SSOT) — QM-HealthCheck config_drift_ok FAIL surfaced
+  top_n: 5
   rebalance_freq: monthly
   industry_cap: 1.0       # 无行业约束(1.0=不限)
   turnover_cap: 0.5       # 单次换手率上限50%
