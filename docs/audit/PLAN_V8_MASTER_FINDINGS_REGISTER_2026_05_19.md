@@ -130,7 +130,7 @@
 | P0-4 | Reflector → ThresholdEngine NOT wired | ❌ multi-day implement | YES (alt decision: auto wire vs human-in-loop weekly report) |
 | P0-5 | Beat death no heartbeat (LL-181 sustained) | ✅ CC can wire qm:beat:heartbeat write + schtask probe (~2h) | NO (autonomous-doable) |
 | P0-6 | Schtask freshness probe absent | ✅ CC can write `audit_schtask_freshness.py` (~2h) | NO (autonomous-doable) |
-| P0-7 | DataQuality+RiskFrameworkHealth failing today | ✅ CC can re-check + diagnose root cause | NO (read-only diag autonomous) |
+| P0-7 | DataQuality+RiskFrameworkHealth failing today | 🟡 **PARTIAL** 5-19 (re-verify post commit 2357b90): RiskFrameworkHealth ✅ PASS (LastResult=0, 18:45). FactorHealthDaily ✅ PASS (17:30). **仍 fail**: QM-HealthCheck (16:25, LastResult=1) + DataQualityCheck (18:30, LastResult=1) + DailySignal (16:30, LastResult=1). pt_live.yaml top_n=20→5 fix partial. 留 next session diagnose. | NO (read-only diag) |
 | P0-8 | Redis production data plane dark | 🟡 Path B Phase B-1 active 后可能复活 (qmt_data_service running) — verify on 5-20 Day 1 | NO |
 | P0-9 | 30 service-layer commit() violations | ❌ 多文件 refactor, 高风险 | YES (architectural decision Alt 1/2/3) |
 | P0-10 | 铁律 18 slippage quarterly 0 scheduler | ✅ CC can add Beat entry crontab(month=1,4,7,10) | NO (autonomous-doable, just add Beat entry) |
