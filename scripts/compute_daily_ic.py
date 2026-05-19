@@ -58,6 +58,7 @@ load_dotenv(BACKEND_DIR / ".env")
 
 import pandas as pd  # noqa: E402
 import psycopg2.extensions  # noqa: E402
+from engines.alpha158_factors import get_alpha158_names  # noqa: E402
 from engines.ic_calculator import (  # noqa: E402
     IC_CALCULATOR_ID,
     IC_CALCULATOR_VERSION,
@@ -405,6 +406,10 @@ def _run(args: argparse.Namespace) -> int:
         factors: list[str] | None = list(CORE_FACTORS)
     elif args.factors:
         factors = [f.strip() for f in args.factors.split(",") if f.strip()]
+    elif args.all_alpha158:
+        # Plan v8 P1-27 closure: backfill IC for 158 Alpha158 factors.
+        # Closes 113 vs 158 (45 factor gap) in factor_ic_history.
+        factors = get_alpha158_names()
     else:
         factors = None
 
@@ -494,6 +499,11 @@ def main() -> int:
     factor_group.add_argument("--factors", type=str, help="逗号分隔 factor 列表 (覆盖 registry)")
     factor_group.add_argument(
         "--core", action="store_true", help=f"仅 {len(CORE_FACTORS)} CORE: {CORE_FACTORS}"
+    )
+    factor_group.add_argument(
+        "--all-alpha158",
+        action="store_true",
+        help="Plan v8 P1-27: 全 158 Alpha158 因子 IC backfill (closes 113 vs 158 45 factor gap)",
     )
     parser.add_argument("--dry-run", action="store_true", help="不入库, 仅报告")
     parser.add_argument("--verbose", action="store_true", help="详细日志")
