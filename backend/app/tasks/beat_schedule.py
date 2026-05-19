@@ -365,6 +365,49 @@ CELERY_BEAT_SCHEDULE: dict = {
             "expires": 240,  # 4min within next 5min cycle (反 stale retry pileup)
         },
     },
+    # ── Plan v8 Master P0-16 closure: monthly LLM cost aggregator (Session 58+1, batch 6) ──
+    # 沿用 V3 §20.1 #6 budget cap ($50/month + 80% warn + 100% Ollama fallback)
+    # crontab `0 8 1 * *` Asia/Shanghai = 月初 1日 08:00 SH (避开 trading hours + Beat 高峰)
+    # task body: 沿用 scripts/llm_cost_monthly_audit.py logic via Celery task wrapper
+    #   - SELECT month bucket sums from llm_call_log
+    #   - Push DingTalk if MoM change > 50% OR MTD > 80% budget
+    #   - Output: stdout + 沉淀 to scheduler_log table
+    # 反 hard collision: 月初 1日 09:00 SH risk-reflector-monthly (沿用 §risk-reflector-monthly)
+    #   sequential queue tolerated (Beat solo dispatch). 月初 08:00 SH no other Beat fires.
+    # **NOTE**: 任务 wrapper (`app.tasks.llm_cost_audit_tasks.monthly_audit`) **未实现** — 留 follow-up
+    #   sub-PR autonomous implement OR user manual sched scripts/llm_cost_monthly_audit.py.
+    #   Beat entry 沉淀 ahead of time per Plan v8 §VIII #29 audit cadence体例 enforcement.
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   (沿用 ADR-043 + LL-097 sediment).
+    "llm-cost-monthly-audit": {
+        "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",  # **未实现** task, 待 follow-up sub-PR
+        "schedule": crontab(hour=8, minute=0, day_of_month="1"),
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next month cycle
+        },
+    },
+    # ── Plan v8 Master P0-10 closure: slippage 季度复核 (Session 58+1, batch 6) ──
+    # 沿用 铁律 18: 回测成本实现必须与实盘对齐 — H0 验证 < 5bps + 季度复核
+    # crontab `0 2 1 1,4,7,10 *` Asia/Shanghai = 每季度第 1 天 02:00 SH (Q1/Q2/Q3/Q4)
+    # task body: 沿用 scripts/bayesian_slippage_calibration.py logic via Celery task wrapper
+    #   - SELECT recent trade_log + price impact analysis
+    #   - Bayesian update Y_small/Y_mid/Y_large slippage coefs
+    #   - Compare vs current calibration; alert if drift > 30% per coef
+    #   - Output: docs/research/slippage_calibration_YYYYQ.md + 沉淀 calibration_history table
+    # 反 hard collision: 02:00 SH 月初 1日 no other Beat fires (gp-weekly Sun 22:00 + outbox 30s only).
+    # **NOTE**: 任务 wrapper (`app.tasks.slippage_calibration_tasks.quarterly_recalibrate`) **未实现** —
+    #   留 follow-up sub-PR. Beat entry 沉淀 ahead of time per 铁律 18 enforcement + Plan v8 P0-10 closure.
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   (沿用 ADR-043 + LL-097 sediment).
+    "slippage-calibration-quarterly": {
+        "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",  # **未实现** task, 待 follow-up sub-PR
+        "schedule": crontab(hour=2, minute=0, day_of_month="1", month_of_year="1,4,7,10"),
+        "options": {
+            "queue": "default",
+            "expires": 7200,  # 2h within next quarter cycle
+        },
+    },
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
