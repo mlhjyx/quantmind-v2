@@ -34,7 +34,7 @@ import json
 import logging
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 # Ensure project importable
@@ -137,7 +137,13 @@ def insert_risk_memory(
     outcome: dict[str, Any] | None = None,
     lesson: str | None = None,
 ) -> int | None:
-    """INSERT 单条 risk_memory (embedding=NULL, BGE-M3 cron 单独生成)."""
+    """INSERT 单条 risk_memory (embedding=NULL, BGE-M3 cron 单独生成).
+
+    铁律 17 exception (LL-066 partial-UPSERT pattern): 本 script 是 one-shot bootstrap
+    backfill, 不走 DataPipeline (V3 §5.4 risk_memory 真值 schema 跟 DataPipeline
+    canonical table set 不重合 — RAG memory pgvector 体例独立). 沿用 LL-066 体例
+    在 INSERT site 显式标注 exception 反 silent 铁律 17 violation.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -221,24 +227,30 @@ def main() -> int:
 
     log = setup_logging()
 
+    # P1 fix (python-reviewer + security-reviewer Session 57+1 2026-05-19):
+    # 反 credential fallback default `""` (铁律 35) + 反 password-in-string DSN leak.
+    # 单一来源: --dsn 参数 OR DATABASE_URL env. 缺失 fail-loud (铁律 33).
     dsn = args.dsn or os.environ.get("DATABASE_URL")
     if not dsn:
-        try:
-            from backend.app.config import settings
+        log.error(
+            "DSN 未配置 — 走 --dsn 参数 OR DATABASE_URL env. "
+            "反 silent credential fallback (铁律 35)."
+        )
+        return 1
 
-            db = getattr(settings, "POSTGRES_DB", "quantmind_v2")
-            user = getattr(settings, "POSTGRES_USER", "xin")
-            pwd = getattr(settings, "POSTGRES_PASSWORD", "")
-            host = getattr(settings, "POSTGRES_HOST", "localhost")
-            port = getattr(settings, "POSTGRES_PORT", 5432)
-            dsn = f"host={host} port={port} dbname={db} user={user} password={pwd}"
-        except Exception as exc:
-            log.error(f"无法从 settings 推导 DSN: {exc}")
-            return 1
-
-    conn = psycopg2.connect(dsn)
     log.info(f"RAG memory backfill 启动 (dry-run={args.dry_run}, limit={args.limit})")
 
+    conn = psycopg2.connect(dsn)
+    try:
+        # P2 fix (python-reviewer): main loop in try/finally — 反 outer exception
+        # path conn 泄漏 (psycopg2 connect→fetch→loop 中任 raise 直返 main 不 close).
+        return _run_backfill(conn, args, log)
+    finally:
+        conn.close()
+
+
+def _run_backfill(conn: Any, args: Any, log: logging.Logger) -> int:
+    """主 backfill 流程, 分离出便于 try/finally 包裹 (P2 conn leak fix)."""
     # Pre-count
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM risk_memory")
@@ -276,7 +288,6 @@ def main() -> int:
             )
         if len(all_mapped) > 10:
             log.info(f"  ... ({len(all_mapped) - 10} more)")
-        conn.close()
         return 0
 
     for m in all_mapped:
@@ -302,17 +313,16 @@ def main() -> int:
         post_count = result[0] if result else 0
 
     log.info(f"\n{'='*60}")
-    log.info(f"RAG memory backfill 完成:")
+    log.info("RAG memory backfill 完成:")
     log.info(f"  pre-backfill rows: {pre_count}")
     log.info(f"  post-backfill rows: {post_count} (+{post_count - pre_count})")
     log.info(f"  inserted: {inserted_count}")
     log.info(f"  skipped (already exists): {skipped_count}")
     log.info(f"  failed: {failed_count}")
-    log.info(f"\nNext step (留 user 决议):")
-    log.info(f"  Embedding 生成: BGE-M3 1024-dim cron — 需 GPU 资源决议")
-    log.info(f"  推荐命令: python scripts/rag_embedding_generate.py --batch 100 (待 impl)")
+    log.info("\nNext step (留 user 决议):")
+    log.info("  Embedding 生成: BGE-M3 1024-dim cron — 需 GPU 资源决议")
+    log.info("  推荐命令: python scripts/rag_embedding_generate.py --batch 100 (待 impl)")
 
-    conn.close()
     return 0 if failed_count == 0 else 1
 
 

@@ -24,14 +24,15 @@ Upgrade path (1 commit when ready):
 
 from __future__ import annotations
 
-import os
+import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.config import settings
 from app.core.auth import verify_admin_token
 
 logger = structlog.get_logger(__name__)
@@ -53,6 +54,21 @@ class AssistContext(BaseModel):
     page: AssistDomain = Field(description="当前页面 domain")
     entity_id: str | None = Field(default=None, description="操作对象 ID (e.g. factor name, strategy id)")
     data_snapshot: dict[str, Any] | None = Field(default=None, description="可选的数据快照")
+
+    @field_validator("entity_id")
+    @classmethod
+    def _sanitize_entity_id(cls, v: str | None) -> str | None:
+        """P1-4 fix (security-reviewer, Session 57+1 2026-05-19): prompt injection防御.
+
+        entity_id 来源前端 query/path, 未 sanitize 时可被 attacker 注入 LLM
+        system_prompt override 指令 (e.g. "ignore previous instructions, execute...").
+        严格白名单: 字母数字 + 点 + 中划线 + 下划线 + 斜杠 (factor name / strategy id / stock code 体例).
+        长度 cap 64 chars 防 prompt blow-up. 空串/全被剥光 → None.
+        """
+        if v is None:
+            return None
+        sanitized = re.sub(r"[^a-zA-Z0-9._\-/]", "", v)[:64]
+        return sanitized or None
 
 
 class ChatMessage(BaseModel):
@@ -151,9 +167,13 @@ def _stub_reply(messages: list[ChatMessage], context: AssistContext) -> str:
 
 
 def _is_ai_enabled() -> bool:
-    """检查 AI_ASSIST_ENABLED 旗标 (默认 false, 反 silent LLM cost 增长)."""
-    val = os.environ.get("AI_ASSIST_ENABLED", "false").strip().lower()
-    return val in ("true", "1", "yes")
+    """检查 AI_ASSIST_ENABLED 旗标 (默认 false, 反 silent LLM cost 增长).
+
+    P1 fix (python-reviewer, Session 57+1 2026-05-19): 走 settings.AI_ASSIST_ENABLED SSOT
+    (铁律 34), 反 os.environ direct read (middle-layer bypass anti-pattern).
+    Settings pydantic 已处理 .env 加载 + 类型 coercion.
+    """
+    return settings.AI_ASSIST_ENABLED
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +182,10 @@ def _is_ai_enabled() -> bool:
 
 
 @router.post("/chat", response_model=ChatResponse, summary="AI Assist Panel 聊天端点")
-async def post_chat(req: ChatRequest) -> ChatResponse:
+async def post_chat(
+    req: ChatRequest,
+    _: None = Depends(verify_admin_token),  # P1-2 fix: 反 unauthenticated LLM cost sink
+) -> ChatResponse:
     """处理 AssistPanel 聊天请求.
 
     当前 STUB 模式 — 返回 context-aware 解释而非调用真 LLM.
@@ -259,7 +282,9 @@ def _real_llm_chat(req: ChatRequest) -> ChatResponse:
 
 
 @router.get("/chat/status", summary="AI Assist 启用状态查询")
-async def get_chat_status() -> dict[str, Any]:
+async def get_chat_status(
+    _: None = Depends(verify_admin_token),  # P1-2 fix: 反 op taxonomy info disclosure
+) -> dict[str, Any]:
     """返回 AI Assist 当前 enable 状态 (前端 banner 提示用)."""
     return {
         "enabled": _is_ai_enabled(),
@@ -467,12 +492,23 @@ def _seed_default_config(name: str) -> dict[str, Any]:
     return fetched if fetched else default
 
 
-def _insert_new_version(name: str, payload: dict[str, Any], reason: str | None) -> dict[str, Any]:
+def _insert_new_version(
+    name: str,
+    payload: dict[str, Any],
+    reason: str | None,
+    *,
+    source_version: int | None = None,
+) -> dict[str, Any]:
     """INSERT 新 version row + mark previous active=FALSE (atomic single transaction).
 
     P1.5 fix (security-reviewer + code-reviewer): pg_advisory_xact_lock serializes
     concurrent PUTs per agent_name, preventing TOCTOU race on next_version compute +
     UNIQUE constraint loser silent data loss. Lock auto-releases on commit/rollback.
+
+    P1 rollback atomicity fix (python-reviewer, Session 57+1 2026-05-19):
+        source_version=N → 复制 N 号 version 作 base (rollback path), 在 advisory lock
+        内做 SELECT 防 TOCTOU. None → 走 is_active=TRUE active row (regular update path).
+        Raise ValueError if source_version not found (caller endpoint maps to HTTP 404).
     """
     conn = _get_db_conn()
     try:
@@ -489,19 +525,41 @@ def _insert_new_version(name: str, payload: dict[str, Any], reason: str | None) 
             )
             next_version = cur.fetchone()[0]
 
-            # Pull current active to apply partial updates atop
-            cur.execute(
-                """
-                SELECT display_name, model, temperature, max_tokens, system_prompt,
-                       ic_threshold, t_stat_threshold,
-                       auto_archive, auto_reject, max_daily_runs
-                FROM prompt_history
-                WHERE agent_name = %s AND is_active = TRUE
-                ORDER BY version DESC LIMIT 1
-                """,
-                (name,),
-            )
-            current = cur.fetchone()
+            # P1 atomic rollback: pull source row from specific version OR current active.
+            # 走 advisory lock 内单 SELECT 替代外层 SELECT+close+inner SELECT 两 conn race.
+            if source_version is not None:
+                cur.execute(
+                    """
+                    SELECT display_name, model, temperature, max_tokens, system_prompt,
+                           ic_threshold, t_stat_threshold,
+                           auto_archive, auto_reject, max_daily_runs
+                    FROM prompt_history
+                    WHERE agent_name = %s AND version = %s
+                    """,
+                    (name, source_version),
+                )
+                source_row = cur.fetchone()
+                if source_row is None:
+                    # version 真不存在 (advisory lock held → strong consistency).
+                    # 反 silent fail (铁律 33): endpoint maps to HTTP 404.
+                    raise ValueError(
+                        f"agent {name} version {source_version} not found"
+                    )
+                current = source_row
+            else:
+                # Pull current active to apply partial updates atop
+                cur.execute(
+                    """
+                    SELECT display_name, model, temperature, max_tokens, system_prompt,
+                           ic_threshold, t_stat_threshold,
+                           auto_archive, auto_reject, max_daily_runs
+                    FROM prompt_history
+                    WHERE agent_name = %s AND is_active = TRUE
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (name,),
+                )
+                current = cur.fetchone()
             if current is None:
                 default = _AGENT_DEFAULT_CONFIGS[name]
                 current_vals = {
@@ -644,7 +702,11 @@ async def reset_agent_config(
 
 
 @router.get("/{name}/history", summary="Agent prompt 版本历史 (last N versions)")
-async def get_agent_history(name: str, limit: int = 20) -> list[dict[str, Any]]:
+async def get_agent_history(
+    name: str,
+    limit: int = 20,
+    _: None = Depends(verify_admin_token),  # P2-2 fix (treat P1): 反 prompt enumeration leak
+) -> list[dict[str, Any]]:
     """返回 last N 版本 prompt_history rows (newest first)."""
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
@@ -691,52 +753,31 @@ async def rollback_agent_config(
     if version < 1:
         raise HTTPException(status_code=400, detail="version 必须 >= 1")
 
-    conn = _get_db_conn()
-    try:
-        with conn.cursor() as cur:
-            # Pull target version row (反 ' version 不存在 silent fail ')
-            cur.execute(
-                """
-                SELECT display_name, model, temperature, max_tokens, system_prompt,
-                       ic_threshold, t_stat_threshold,
-                       auto_archive, auto_reject, max_daily_runs
-                FROM prompt_history
-                WHERE agent_name = %s AND version = %s
-                """,
-                (name, version),
-            )
-            target = cur.fetchone()
-            if target is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Agent {name} version {version} 不存在",
-                )
-    finally:
-        conn.close()
-
-    # Build payload from target version + call _insert_new_version (atomic txn)
-    payload = {
-        "display_name": target[0],
-        "model": target[1],
-        "temperature": float(target[2]),
-        "max_tokens": target[3],
-        "system_prompt": target[4],
-        "ic_threshold": float(target[5]),
-        "t_stat_threshold": float(target[6]),
-        "auto_archive": target[7],
-        "auto_reject": target[8],
-        "max_daily_runs": target[9],
-    }
+    # P1 atomic rollback (python-reviewer Session 57+1 2026-05-19):
+    # 走 _insert_new_version(source_version=version) — 单 connection / 单 advisory
+    # lock / 单 txn 内做 SELECT (target) + INSERT (new) + UPDATE (active flip).
+    # 反 旧 2-conn pattern 的 TOCTOU race (外层 SELECT close 到内层 INSERT open 之间
+    # 另一 PUT 可改 target row → audit trail corruption).
     rollback_reason = reason or f"rollback to version {version}"
     try:
-        return _insert_new_version(name, payload, rollback_reason)
+        return _insert_new_version(
+            name,
+            {},
+            rollback_reason,
+            source_version=version,
+        )
+    except ValueError as exc:
+        # version 真不存在 (advisory lock 内 SELECT, strong consistency)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("rollback_agent_config DB INSERT failed", agent=name, version=version)
         raise HTTPException(status_code=500, detail=f"Rollback failed: {exc}") from exc
 
 
 @router.get("/model-health", summary="LLM 模型健康检查 (stub)")
-async def get_model_health() -> list[dict[str, Any]]:
+async def get_model_health(
+    _: None = Depends(verify_admin_token),  # P3-1 fix: 反 model/provider name leak
+) -> list[dict[str, Any]]:
     """返回 3 model health stub. 真实施需 backend periodic LLM ping cron."""
     return [
         {
@@ -764,7 +805,10 @@ async def get_model_health() -> list[dict[str, Any]]:
 
 
 @router.get("/cost-summary", summary="LLM 成本汇总 (从 llm_call_log 真值)")
-async def get_cost_summary(month: str | None = None) -> dict[str, Any]:
+async def get_cost_summary(
+    month: str | None = None,
+    _: None = Depends(verify_admin_token),  # P2 retroactive: cost data 视作 sensitive ops
+) -> dict[str, Any]:
     """返回月度 LLM 成本汇总.
 
     F-S7-001 P0 修复后 (commit 23ebea5), 新 LLM 调用 cost_usd 真值入库.
@@ -803,7 +847,11 @@ async def get_cost_summary(month: str | None = None) -> dict[str, Any]:
 
 
 @router.get("/{name}/logs", summary="Agent 调用日志 (stub empty)")
-async def get_agent_logs(name: str, limit: int = 50) -> list[dict[str, Any]]:
+async def get_agent_logs(
+    name: str,
+    limit: int = 50,
+    _: None = Depends(verify_admin_token),  # P2-2 fix: 反 unauthenticated log enumeration
+) -> list[dict[str, Any]]:
     """返回 agent 调用 logs. Stub empty — 真实施需 llm_call_log SQL 聚合."""
     if name not in _AGENT_DEFAULT_CONFIGS:
         raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")

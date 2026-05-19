@@ -323,6 +323,12 @@ export function FloatingAssistLauncher({
   detectPage?: () => AssistDomain;
 }) {
   const [open, setOpen] = useState(false);
+  // P1 fix (typescript-reviewer Session 57+1 2026-05-19): use ref to read latest `open`
+  // inside the keydown handler without re-registering the listener on every toggle.
+  // 反 stale closure: 旧 pattern 把 `open` 放 dep array, handler re-registered on each
+  // setState — 快速 Cmd+J 双击间 listener swap 期间 keypress 可能丢失.
+  const openRef = useRef(false);
+  openRef.current = open;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -331,13 +337,13 @@ export function FloatingAssistLauncher({
         e.preventDefault();
         setOpen((v) => !v);
       }
-      if (e.key === "Escape" && open) {
+      if (e.key === "Escape" && openRef.current) {
         setOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open]);
+  }, []);
 
   // Auto-detect current page from URL
   const page: AssistDomain = detectPage ? detectPage() : detectFromPath();

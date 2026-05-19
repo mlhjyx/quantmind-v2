@@ -168,39 +168,47 @@ def main() -> int:
 
     log = setup_logging()
 
-    # DSN 推导优先级: --dsn / DATABASE_URL env / backend.app.config.settings
+    # P2 fix (security-reviewer Session 57+1 2026-05-19): whitelist validation 反
+    # 调用方 inject 任意 table name (e.g. pg_authid system catalog → privilege abuse
+    # if DB user 是 superuser). sql.Identifier 防 SQL injection 但不防 semantic abuse.
+    _heavy_set = set(HEAVY_TABLES)
+    invalid = [t for t in args.tables if t not in _heavy_set]
+    if invalid:
+        log.error(
+            f"非法表名 (不在 HEAVY_TABLES whitelist): {invalid}. "
+            f"允许的表: {HEAVY_TABLES}"
+        )
+        return 1
+
+    # P1 fix (python-reviewer + security-reviewer): 反 credential fallback (铁律 35)
+    # + 反 password-in-string DSN. 单一来源: --dsn 参数 OR DATABASE_URL env.
     dsn = args.dsn or os.environ.get("DATABASE_URL")
     if not dsn:
-        try:
-            from backend.app.config import settings  # type: ignore
-
-            db = getattr(settings, "POSTGRES_DB", "quantmind_v2")
-            user = getattr(settings, "POSTGRES_USER", "xin")
-            pwd = getattr(settings, "POSTGRES_PASSWORD", "")
-            host = getattr(settings, "POSTGRES_HOST", "localhost")
-            port = getattr(settings, "POSTGRES_PORT", 5432)
-            dsn = f"host={host} port={port} dbname={db} user={user} password={pwd}"
-        except Exception as exc:
-            log.error(f"无法从 settings 推导 DSN: {exc}")
-            return 1
+        log.error(
+            "DSN 未配置 — 走 --dsn 参数 OR DATABASE_URL env. "
+            "反 silent credential fallback (铁律 35)."
+        )
+        return 1
 
     log.info(f"目标表: {args.tables}")
     log.info(f"开始 VACUUM ANALYZE 维护周期, 共 {len(args.tables)} 张表")
 
+    # P2 fix (python-reviewer): try/finally conn — 反 outer exception path conn 泄漏.
     conn = psycopg2.connect(dsn)
-    results = []
-    failures = []
-    overall_start = time.time()
+    try:
+        results = []
+        failures = []
+        overall_start = time.time()
 
-    for table in args.tables:
-        try:
-            result = vacuum_analyze_table(conn, table, log)
-            results.append(result)
-        except Exception as exc:
-            log.exception(f"VACUUM ANALYZE 失败 {table}: {exc}")
-            failures.append({"table": table, "error": str(exc)})
-
-    conn.close()
+        for table in args.tables:
+            try:
+                result = vacuum_analyze_table(conn, table, log)
+                results.append(result)
+            except Exception as exc:
+                log.exception(f"VACUUM ANALYZE 失败 {table}: {exc}")
+                failures.append({"table": table, "error": str(exc)})
+    finally:
+        conn.close()
 
     overall_elapsed = time.time() - overall_start
     log.info(f"\n{'='*60}")

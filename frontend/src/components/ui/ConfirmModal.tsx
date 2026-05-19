@@ -57,13 +57,18 @@ export function ConfirmModal({
   const [legacyConfirm, setLegacyConfirm] = useState("");
   const [cooldown, setCooldown] = useState(tier === "CRIT" ? cooldownSeconds ?? 5 : 0);
 
+  // P1 fix (typescript-reviewer Session 57+1 2026-05-19): drop `cooldown` from dep array.
+  // Original pattern re-registered the interval on every tick (because setCooldown changes
+  // cooldown), causing React StrictMode double-fires and unpredictable timer behavior.
+  // Functional setter pattern lets the interval persist for the CRIT-tier lifetime, ticking
+  // down without re-registering. Effect re-runs only when `tier` flips, which is correct.
   useEffect(() => {
-    if (tier !== "CRIT" || cooldown <= 0) return;
+    if (tier !== "CRIT") return;
     const id = setInterval(() => {
       setCooldown((c) => (c > 0 ? c - 1 : 0));
     }, 1000);
     return () => clearInterval(id);
-  }, [tier, cooldown]);
+  }, [tier]);
 
   const dangerTier = tier === "HIGH" || tier === "CRIT";
   const titleColor = dangerTier ? C.up : C.text1;

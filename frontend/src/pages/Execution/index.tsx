@@ -21,7 +21,6 @@ import {
   getAuditLog,
   getTradingPaused,
   getAdminToken,
-  setAdminToken,
 } from "@/api/execution";
 import type {
   QMTStatus,
@@ -161,19 +160,22 @@ export default function Execution() {
   }, []);
 
   const handleTokenSubmit = useCallback(async (token: string) => {
-    // S1 P0-22 fix: try cookie path first (XSS-safe). Fallback to legacy
-    // localStorage if cookie endpoint unreachable (back-compat sustained).
+    // P1-1 fix (security-reviewer Session 57+1 2026-05-19): NO legacy localStorage
+    // fallback. 旧 pattern (cookie fail → setAdminToken(token) 写 localStorage) 重开
+    // P0-22 XSS exfiltration vector. 真闭环: 仅走 cookie path (HttpOnly XSS-safe),
+    // cookie endpoint fail 时 surface error 提示 user, 不静默 fallback 到不安全 store.
     const { setAdminTokenSecure } = await import("@/api/execution");
     const ok = await setAdminTokenSecure(token);
     if (!ok) {
-      setAdminToken(token); // legacy fallback
+      showToast("Token 验证失败 (cookie endpoint 不可达 OR token 错误). 反 localStorage fallback (XSS-safe).", false);
+      return;
     }
     setShowTokenModal(false);
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
     }
-  }, [pendingAction]);
+  }, [pendingAction, showToast]);
 
   // --- Mutations (unified, with cross-page invalidation) ---
   const cancelAllMutBase = useCancelAll();
