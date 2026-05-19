@@ -140,8 +140,8 @@
 | P0-16 | No monthly LLM cost audit aggregator | ✅ CC can write script + Beat (~2h) | NO (autonomous-doable, Plan v8 #29 audit cadence subset) |
 | P0-17 | HC-2c disaster drill pytest-only | ❌ production drill 复杂 | YES (decision) |
 | P0-18 | RISK_CONTROL_SERVICE_DESIGN vs ADR-027 conflict | ✅ **CLOSED** (Session 58 round-6 prior batch 2): DEPRECATION header added at line 3 redirecting L4 portion to ADR-027 + V3_DESIGN §4. §2.1 L0-L3 状态机 sustained (ADR-027 不覆盖). L4 portion stale flagged. 5-19 22:00 SH verify cite present. | NO |
-| P0-19 | Bus factor=1 + 0 onboard doc | ✅ CC can write ONBOARDING.md ~300 lines (~2h) | NO (autonomous) |
-| P0-20 | Knowledge transfer 4/4 FAIL | 🟡 CC can write AUDIT_INDEX.md + USER_TRIBAL_KNOWLEDGE.md (~3h) | NO (autonomous) |
+| P0-19 | Bus factor=1 + 0 onboard doc | ✅ **CLOSED** (prior session 5-19 19:52 SH): docs/ONBOARDING.md exists, 305 lines. | NO |
+| P0-20 | Knowledge transfer 4/4 FAIL | ✅ **CLOSED** (prior session 5-19 19:54-19:56 SH): docs/USER_TRIBAL_KNOWLEDGE.md (245 lines) + docs/audit/AUDIT_MASTER_INDEX_2026_05_19.md (222 lines) both exist. | NO |
 | P0-21 | Live trade reproducibility 4 sources stale | ❌ Phase J multi-week | YES (alt decision) |
 | P0-24 | execution_service.py dry_run NameError risk | ✅ **FALSE ALARM verified** 5-19 (this batch): backend/app/services/execution_service.py:394-395 `fills: list[Fill] = []` + `new_pending: list[PendingOrder] = []` initialized BEFORE `if dry_run:` branch at line 412. 0 NameError risk. Subagent F audit assumption similar to P0-11 pattern (LL-191 cite-source 5-element). | NO |
 
