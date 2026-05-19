@@ -462,6 +462,23 @@ def main() -> None:
     if not args.dry_run and not args.skip_parquet:
         export_parquet_snapshots()
 
+    # Step 5: Plan v8 P0-3 closure (2026-05-19) — 自动 verify backup integrity 每日, 不仅 weekly
+    # 反 P0-3 "pg_restore never tested 2026" — daily backup 后 immediate pg_restore --list verify
+    # SOP: backup verify failure 不阻塞下次 backup 但 alert (P1 severity).
+    if not args.dry_run and backup_file:
+        logger.info("Step 5: Plan v8 P0-3 post-backup verify (pg_restore --list)")
+        verify_ok = verify_backup()
+        if not verify_ok:
+            logger.error("[P0-3] post-backup verify FAILED — backup may be corrupted, send alert")
+            try:
+                send_alert(
+                    "pg_backup verify FAILED",
+                    f"今日 backup 通过 pg_dump 但 pg_restore --list verify 失败. "
+                    f"backup file: {backup_file.name}. 检查 D:\\quantmind-v2\\backups\\daily\\.",
+                )
+            except Exception:
+                logger.warning("[P0-3] send_alert call failed (non-blocking)")
+
     # 汇总
     elapsed = (datetime.now() - start_time).total_seconds()
     if backup_file:
