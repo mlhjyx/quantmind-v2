@@ -144,10 +144,11 @@ def _send_dingtalk_alert(severity: str, reason: str, data: dict) -> None:
     backend_dir = Path(__file__).resolve().parent.parent / "backend"
     sys.path.insert(0, str(backend_dir))
 
+    # Plan v8 code review HIGH fix (5-20): real send_alert at notification_service
     try:
-        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
+        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
+        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
         return
 
     title = f"[P0] Celery Beat {severity} detected — LL-181 类 silent failure"
@@ -160,7 +161,7 @@ def _send_dingtalk_alert(severity: str, reason: str, data: dict) -> None:
         "",
         "Required action: 检查 Celery Beat Servy service status, 必要时 servy-cli restart QuantMind-CeleryBeat",
     ]
-    send_alert(title, "\n".join(body_lines))
+    send_alert("P0", title, "\n".join(body_lines))
 
 
 if __name__ == "__main__":

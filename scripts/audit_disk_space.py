@@ -146,7 +146,7 @@ def main() -> int:
                 print(f"  {sym} {sev:8s} {r['path']:60s} — {r['reason']}")
             else:
                 print(
-                    f"  {sym} {sev:8s} {r['path']:60s} — used {r['used_pct']}%% "
+                    f"  {sym} {sev:8s} {r['path']:60s} — used {r['used_pct']}% "
                     f"({r['used_gb']:.1f}/{r['total_gb']:.1f} GB)"
                 )
 
@@ -165,10 +165,13 @@ def _send_dingtalk_alert(summary: dict, results: list[dict]) -> None:
     backend_dir = PROJECT_ROOT / "backend"
     sys.path.insert(0, str(backend_dir))
 
+    # Plan v8 code review HIGH fix (5-20): real send_alert lives at
+    # backend/app/services/notification_service.py with signature
+    # send_alert(level, title, content, ...). Was using non-existent app.core.dingtalk.
     try:
-        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
+        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
+        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
         return
 
     p0 = summary["by_severity"]["P0"]
@@ -184,7 +187,7 @@ def _send_dingtalk_alert(summary: dict, results: list[dict]) -> None:
                 f"- [{r['severity']}] {r['path']}: used {r['used_pct']}% "
                 f"({r['used_gb']:.1f}/{r['total_gb']:.1f} GB)"
             )
-    send_alert(title, "\n".join(body_lines))
+    send_alert(severity_word, title, "\n".join(body_lines))
 
 
 if __name__ == "__main__":

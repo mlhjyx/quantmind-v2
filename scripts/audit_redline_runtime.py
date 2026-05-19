@@ -51,7 +51,12 @@ REDLINE_FIELDS = (
 
 
 def read_env_field(name: str) -> str:
-    """Read field value from .env. Returns MISSING if not found."""
+    """Read field value from .env. Returns MISSING if not found.
+
+    Plan v8 code review MEDIUM fix (5-20): strip surrounding quotes to prevent
+    false-positive drift when .env uses EXECUTION_MODE="paper" syntax.
+    L4_AUTO_MODE_ENABLED default per backend/app/config.py:Settings (default=False).
+    """
     if not ENV_FILE.exists():
         return "MISSING"
     try:
@@ -60,11 +65,12 @@ def read_env_field(name: str) -> str:
         return "MISSING"
     m = re.search(rf"^{re.escape(name)}=(.+)$", text, re.MULTILINE)
     if m is None:
-        # Default fallback per config.py
+        # Default fallback per backend/app/config.py:Settings (sustained 5-20)
         if name == "L4_AUTO_MODE_ENABLED":
-            return "false"  # default
+            return "false"  # default per config.py L4_AUTO_MODE_ENABLED: bool = False
         return "MISSING"
-    return m.group(1).strip()
+    # Strip surrounding quotes (single or double) — prevents quote-vs-no-quote false drift.
+    return m.group(1).strip().strip('"').strip("'")
 
 
 def read_current_redline() -> dict[str, str]:
@@ -72,14 +78,32 @@ def read_current_redline() -> dict[str, str]:
     return {field: read_env_field(field) for field in REDLINE_FIELDS}
 
 
+class BaselineCorruptedError(Exception):
+    """Baseline file exists but JSON parse failed (LL-188 anti-pattern防).
+
+    Plan v8 code review MEDIUM fix (5-20): distinguish "file missing" (first run OK)
+    from "file corrupted" (silent re-baseline DANGER — drift detection anchor lost).
+    Raise on corruption so main() can exit code 2 + alert, NOT silently re-baseline.
+    """
+
+
 def load_baseline() -> dict[str, str] | None:
-    """Load persisted baseline (None if not yet captured)."""
+    """Load persisted baseline.
+
+    Returns None if file truly absent (first run).
+    Raises BaselineCorruptedError if file exists but JSON parse failed.
+    """
     if not BASELINE_FILE.exists():
         return None
     try:
-        return json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
+        text = BASELINE_FILE.read_text(encoding="utf-8")
+        return json.loads(text)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # CORRUPTED — do NOT silently re-baseline (would reset drift anchor).
+        raise BaselineCorruptedError(
+            f"Baseline file {BASELINE_FILE} corrupted: {exc}. "
+            f"Manual review required — review .env mutation history before --reset."
+        ) from exc
 
 
 def persist_baseline(values: dict[str, str]) -> None:
@@ -128,9 +152,20 @@ def main() -> int:
                 print(f"  {field} = {val}")
         return 0
 
-    baseline = load_baseline()
+    try:
+        baseline = load_baseline()
+    except BaselineCorruptedError as exc:
+        # CORRUPTED baseline — alert + exit 2, NOT silent re-baseline.
+        print(f"[redline-runtime] 🔴 BASELINE CORRUPTED: {exc}", file=sys.stderr)
+        if not args.no_alert:
+            try:
+                _send_corruption_alert(str(exc))
+            except Exception as alert_exc:
+                print(f"[WARN] DingTalk alert failed: {alert_exc}", file=sys.stderr)
+        return 2
+
     if baseline is None:
-        # First run: persist baseline
+        # First run (file truly absent): persist baseline
         persist_baseline(current)
         msg = f"[redline-runtime] FIRST RUN — baseline persisted at {BASELINE_FILE}"
         if args.json:
@@ -175,14 +210,18 @@ def main() -> int:
 
 
 def _send_dingtalk_alert(summary: dict) -> None:
-    """Send DingTalk P0 alert on red-line drift (LL-188 anti-pattern recurrence防)."""
+    """Send DingTalk P0 alert on red-line drift (LL-188 anti-pattern recurrence防).
+
+    Plan v8 code review HIGH fix (5-20): real send_alert at
+    notification_service.send_alert(level, title, content), not app.core.dingtalk.
+    """
     backend_dir = PROJECT_ROOT / "backend"
     sys.path.insert(0, str(backend_dir))
 
     try:
-        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
+        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
+        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
         return
 
     title = f"[P0] 红线 runtime drift: {summary['drift_count']} field(s) changed"
@@ -197,7 +236,28 @@ def _send_dingtalk_alert(summary: dict) -> None:
     body_lines.append("")
     body_lines.append("Required action: IMMEDIATE — verify .env mutation source. If unauthorized, ROLLBACK from .env-backup-*.bak. Reset baseline post-verify via --reset.")
 
-    send_alert(title, "\n".join(body_lines))
+    send_alert("P0", title, "\n".join(body_lines))
+
+
+def _send_corruption_alert(reason: str) -> None:
+    """Send DingTalk P0 alert on baseline corruption (drift detection anchor lost)."""
+    backend_dir = PROJECT_ROOT / "backend"
+    sys.path.insert(0, str(backend_dir))
+
+    try:
+        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
+    except ImportError:
+        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
+        return
+
+    title = "[P0] 红线 baseline CORRUPTED — drift detection anchor LOST"
+    body = (
+        f"Baseline file: {BASELINE_FILE}\n"
+        f"Reason: {reason}\n\n"
+        "Required action: MANUAL review .env mutation history before --reset. "
+        "Corrupted baseline ≠ first-run; DO NOT auto-recreate (LL-188 防drift)."
+    )
+    send_alert("P0", title, body)
 
 
 if __name__ == "__main__":

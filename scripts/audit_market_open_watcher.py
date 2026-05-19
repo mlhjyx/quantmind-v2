@@ -202,10 +202,11 @@ def _send_dingtalk_alert(result: dict) -> None:
     backend_dir = Path(__file__).resolve().parent.parent / "backend"
     sys.path.insert(0, str(backend_dir))
 
+    # Plan v8 code review HIGH fix (5-20): real send_alert at notification_service
     try:
-        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
+        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
+        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
         return
 
     title = "[P0] 09:30 SH market open watcher ALERT"
@@ -220,7 +221,7 @@ def _send_dingtalk_alert(result: dict) -> None:
     body_lines.append("")
     body_lines.append("Required action: 检查 Servy Celery + Beat status, 必要时 restart.")
 
-    send_alert(title, "\n".join(body_lines))
+    send_alert("P0", title, "\n".join(body_lines))
 
 
 if __name__ == "__main__":
