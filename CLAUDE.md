@@ -78,7 +78,7 @@ quantmind-v2/
 │   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md        # ⭐ 当前总设计真相源
 │   ├── QUANTMIND_PLATFORM_BLUEPRINT.md         # ⭐ 平台化路线图 (QPB v1.16)
 │   ├── DEV_BACKEND.md / DEV_BACKTEST_ENGINE.md / DEV_FACTOR_MINING.md / DEV_FRONTEND_UI.md / DEV_SCHEDULER.md / DEV_PARAM_CONFIG.md / DEV_AI_EVOLUTION.md / DEV_NOTIFICATIONS.md  # DEV_FOREX 已 archive 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, 0% impl 0 backend hits)
-│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-086, 累计 67+ 实测 2026-05-18 plan v8 audit / sustained 5-19 Session 58+1 ADR-085/086 sediment) — 索引见 docs/adr/REGISTRY.md (LL-105 SOP-6 SSOT)
+│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-086 sparse numbering, 累计 71 .md 实测 2026-05-19 22:00 SH `ls docs/adr/ADR-*.md \| wc -l` / 含 1 ADR-DRAFT template, P1-42 closure) — 索引见 docs/adr/REGISTRY.md (LL-105 SOP-6 SSOT)
 │   ├── audit/                                   # 一次性诊断 / STATUS_REPORT
 │   ├── mvp/                                     # MVP 设计稿 (≤2 页, 铁律 24)
 │   ├── research-kb/                             # 研究知识库 (failed / findings / decisions)
