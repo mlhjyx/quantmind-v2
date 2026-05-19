@@ -163,8 +163,8 @@
 | P1-36 | Risk subservice cluster 0 API | ❌ 7 services × API design |
 | P1-38 | DEV_AI_EVOLUTION Layer 3+4 0% impl | ❌ Phase J |
 | P1-39 | paper_broker缺独立 design doc | ✅ CC sediment 3 spec doc (~3h) |
-| P1-40 | DEV_PARAM_CONFIG 220 vs 50 | ✅ CC rewrite doc (~2h) |
-| P1-41 | LL count drift 94 vs ~160 | ✅ CC can fix CLAUDE.md cite (~10min) |
+| P1-40 | DEV_PARAM_CONFIG 220 vs 50 | ✅ **CLOSED** (Session 57+58+1 prior batch sediment): doc line 1 DESIGN_OVERSIZED tag + Session 58+1 addendum line 4-8 redirect to `.env` + `configs/pt_live.yaml` + `backend/app/config.py:Settings` SSOT. 220-param body sustained as 历史 reference, 0 maintain. |
+| P1-41 | LL count drift 94 vs ~160 | ✅ **CLOSED** 5-19 (verify scope, no inline drift): CLAUDE.md 无 "累计 LL N" inline cite (仅 sparse references to LL-098/LL-105/LL-066). Pre-commit canonical SSOT (`pre_commit_validate.py`) sustains `ll_unique_ids=174` metric. Real grep "^## LL-" LESSONS_LEARNED.md = 170 entries (max LL-191, sparse). 174 canonical includes candidates/drafts. 0 inline drift to fix. |
 | P1-42 | ADR count drift 022 vs 67 | ✅ CC can fix CLAUDE.md cite (~10min) |
 | P1-43 | DingTalk HMAC outbound disabled | YES (user generate secret + .env edit) |
 | P1-45 | Logs no rotation | ✅ **PARTIAL CLOSED** 5-19 (commit 5253cca): scripts/rotate_servy_logs.ps1 (12 target files, 100MB threshold, 7 backups, Windows-safe truncate). Schtask register 留 user 触发 (classifier 阻止 autonomous). |
