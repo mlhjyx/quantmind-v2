@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # --- 执行模式 ---
     EXECUTION_MODE: Literal["paper", "live"] = "paper"
 
+    # --- AI Assist gate (Session 57+1 retroactive P1 fix, 2026-05-19) ---
+    # 默认 false (反 silent LLM cost 增长). 启用前置: F-S7-001 cost tracking closed.
+    # 铁律 34 SSOT: 走 settings.AI_ASSIST_ENABLED, 反 os.environ direct read.
+    # Distinct from LLM_BUDGET_* (cost-time guardrail) — 本 flag 是 enable-time gate.
+    AI_ASSIST_ENABLED: bool = False
+
     # --- 真金硬开关 (T1 sprint link-pause, 2026-04-29) ---
     # 默认 True (fail-secure): MiniQMTBroker.place_order / cancel_order 直 raise
     # LiveTradingDisabledError. paper_broker 物理隔离不受影响 (guard 只挂 MiniQMTBroker).
@@ -166,3 +172,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+# --- Startup guard (Session 57+1 retroactive P1-5 fix, security-reviewer 2026-05-19) ---
+# 反 production live mode 下 admin_token cookie 走 plain HTTP (cleartext sniffable).
+# 铁律 33 fail-loud at boundary — 不允许 silent insecure config.
+# Bypass: 仍可走 dev (EXECUTION_MODE=paper) 不强制 Secure flag (localhost HTTP).
+if settings.EXECUTION_MODE == "live" and not settings.COOKIE_SECURE_FLAG:
+    raise RuntimeError(
+        "EXECUTION_MODE=live requires COOKIE_SECURE_FLAG=true (HTTPS only). "
+        "Set COOKIE_SECURE_FLAG=true in .env (production HTTPS) "
+        "OR set EXECUTION_MODE=paper (dev). 反 admin_token cleartext over HTTP."
+    )

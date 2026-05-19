@@ -26,9 +26,10 @@ from __future__ import annotations
 import secrets
 
 import structlog
-from fastapi import APIRouter, Cookie, Header, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response
 
 from app.config import settings
+from app.core.auth import verify_admin_token
 
 logger = structlog.get_logger(__name__)
 
@@ -39,9 +40,9 @@ _COOKIE_NAME = "admin_token"
 _COOKIE_MAX_AGE = 60 * 60 * 24 * 90  # 90 days
 _COOKIE_PATH = "/"
 _COOKIE_SAMESITE: str = "strict"
-# Secure flag is enabled only in production (HTTPS). In dev (localhost HTTP) browser
-# rejects Secure cookies. Toggle via .env COOKIE_SECURE_FLAG=true on production.
-_COOKIE_SECURE = False  # Default dev. Production .env should set COOKIE_SECURE_FLAG=true
+# Secure flag toggled via settings.COOKIE_SECURE_FLAG (SSOT, 铁律 34).
+# Dev HTTP localhost: false. Production HTTPS: true via .env override.
+# Startup guard (config.py): EXECUTION_MODE=live && !COOKIE_SECURE_FLAG → RuntimeError.
 
 
 def _cookie_secure_enabled() -> bool:
@@ -98,8 +99,15 @@ async def set_admin_token_cookie(
 
 
 @router.post("/admin-token/clear", summary="Clear admin_token cookie (logout)")
-async def clear_admin_token_cookie(response: Response) -> dict[str, str]:
+async def clear_admin_token_cookie(
+    response: Response,
+    _: None = Depends(verify_admin_token),
+) -> dict[str, str]:
     """Delete admin_token cookie (logout / token rotate).
+
+    P1-3 fix (security-reviewer, Session 57+1 2026-05-19): require valid cookie/header
+    before clearing — prevents CSRF forced-logout DoS from cross-site navigation
+    POST (SameSite=Strict blocks cross-site cookies but not all cross-origin POSTs).
 
     Returns:
         {"status": "ok", "cookie_cleared": "admin_token"}

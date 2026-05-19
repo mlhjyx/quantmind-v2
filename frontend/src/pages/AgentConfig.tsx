@@ -101,14 +101,16 @@ export default function AgentConfig() {
     }
   }, [activeAgent]);
 
-  const handleRollback = async (version: number) => {
+  const handleRollback = async (version: number, userReason?: string) => {
     setRollbackTarget(null);
+    // P1 fix (typescript-reviewer Session 57+1 2026-05-19): forward user-supplied
+    // reason from ConfirmModal HIGH tier (`requiredReason` input). 旧 pattern 把
+    // meta.reason 丢弃 → audit trail 写死 hardcoded `rollback via UI to v{N}` 失真.
+    const reason = userReason?.trim()
+      ? `${userReason.trim()} (rollback via UI to v${version})`
+      : `rollback via UI to v${version}`;
     try {
-      const updated = await rollbackAgentConfig(
-        activeAgent,
-        version,
-        `rollback via UI to v${version}`,
-      );
+      const updated = await rollbackAgentConfig(activeAgent, version, reason);
       setConfigs((prev) => prev.map((c) => (c.name === activeAgent ? updated : c)));
       // Refresh history
       await loadHistory();
@@ -432,7 +434,7 @@ export default function AgentConfig() {
           safetyTier="HIGH"
           requiredReason
           reasonMinLength={5}
-          onConfirm={() => void handleRollback(rollbackTarget)}
+          onConfirm={(meta) => void handleRollback(rollbackTarget, meta.reason)}
           onCancel={() => setRollbackTarget(null)}
         />
       )}
