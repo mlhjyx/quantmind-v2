@@ -6642,3 +6642,80 @@ New 5-element cite (LL-191 sediment 加 1 元素): **+ row-count SQL truth (for 
 **Heuristic backref**: #14 Documentation Lying (Subagent claim ≠ 真值) / #17 Audit Self-Audit (audit 自己 audit subagent) / #18 Alternative Path Thinking (P0-11 alt remediation 应含 "validate assumption first" 一档 — 不直接进 Phase J multi-week research) / #20 Design-Implementation Reverse Mapping (claim "排除退市股" → 真 implementation 不 JOIN symbols)
 
 **ADR backref**: ADR-080 (Sub-Class Pattern Discovery — 本 LL 是 cite-source-lock skill sub-class) / 候选 ADR-087 (Subagent Audit Assumption Verification SOP — 5-element cite)
+
+## LL-192: 2026-05-20 Day 1 — Silent ImportError Hides Dead Alert Path Across 5 Audit Scripts (Cross-Domain Spread Pattern)
+
+**触发**: 5-20 Day 1 deep autonomous batch, AI code reviewer 发现新 audit scripts import `from app.core.dingtalk import send_alert` (module 不存在), 被 `try/except ImportError + pass` 模式 silent swallow. 然后 forensic 发现**5 个 audit scripts 全部 共享同样 dead import pattern** — pre-existing 3 个 (audit_beat_heartbeat / audit_schtask_freshness / audit_market_open_watcher) + 新增 2 个 (audit_disk_space / audit_redline_runtime) 全 copy-paste 同一 pattern.
+
+**类**: LL-183 (silent NOT-GATING) 跨 family. LL-183 是 `--dry-run` flag silent fail (silent NOT-GATING 在 broker 路径), 本 LL 是 silent NOT-ALERTING 在 audit/probe 路径 — 所有 P0 alert 永远不发, 真到 incident 才发现.
+
+### 1. Pattern Description
+
+**Symptom**:
+```python
+# Pattern repeated across 5 audit scripts:
+try:
+    from app.core.dingtalk import send_alert  # ← module 不存在
+except ImportError:
+    print("[WARN] app.core.dingtalk unavailable, skip alert")  # ← silent swallow
+    return  # ← alert function returns w/o sending
+```
+
+**Real path**: `app.services.notification_service.send_alert(level, title, content)` (3 positional args)
+
+**Forensic** (5-20 cold grep):
+- app.core.dingtalk module: **DOES NOT EXIST** (filesystem verified)
+- 5 scripts share same import: copy-paste pattern propagation
+- All 5 fall through ImportError → alert NEVER fires
+- Pre-existing 3 scripts (commits 61db683 / d23a4b7 / 15373ca) deployed without DingTalk validation
+- New 2 scripts (a3f368c) sustained the same bug via copy-paste from existing
+
+**Impact analysis**:
+- Beat death detection (LL-181 父类): alert path dead → silent if Beat dies
+- Schtask freshness detection: alert path dead → silent if schtask cascade fail
+- Market open watcher: alert path dead → silent if 09:30 trading day issues
+- Disk space probe: alert path dead → silent if disk full
+- 红线 runtime drift (LL-188 父类): alert path dead → silent if .env mutate accidentally
+
+**5 silent probes** = probe value 50% (read-only verify works, alerting layer dead).
+
+### 2. Root Cause
+
+3-layer compounding:
+1. **Copy-paste propagation**: First script wrote dead import, subsequent 4 scripts copy-pasted same pattern (反 LL-191 cross-domain spread pattern)
+2. **Try/except too broad**: `except ImportError` catches "module not found" same as legitimate "module loaded but feature unavailable" — should differentiate
+3. **0 cold-run integration test**: AI reviewer or human reviewer 应在 PR pre-merge 触发 alert path真测 (e.g. `pytest test_audit_alert_path` with mock send_alert validation)
+
+**Anti-pattern**: "Soft fail" pattern (try/except + log + continue) becomes "silent fail" when error message is buried in stderr that no one reads.
+
+### 3. Real Fix
+
+5 audit scripts batch-corrected (commit 8234375):
+- All 5 import path: `app.core.dingtalk` → `app.services.notification_service`
+- All 5 send_alert call: 2-arg → 3-arg (level, title, content)
+- Cold-run validation: 6 scripts (5 audit + 1 disaster drill) all PASS
+
+**SOP enforcement** (生产硬化):
+- Audit scripts MUST include cold-run alert path test (e.g. monkeypatch send_alert, assert called)
+- New audit script PRs MUST trigger pre-merge integration test on alert path
+- `try/except ImportError + pass` pattern triggers审查 (replace w/ explicit feature detection)
+
+### 4. Detection mechanisms
+
+How could this have been detected sooner?
+- **Static analysis**: `grep -rn "app.core.dingtalk" scripts/` would surface all 5 scripts (1 command)
+- **Module existence check**: pytest `test_audit_scripts_import.py` to validate every audit script's `_send_dingtalk_alert` actually imports a real module
+- **AI code review SOP**: explicit prompt "verify alert path imports real module" (added to code-reviewer agent prompts going forward)
+
+### 5. Relations
+
+- LL-183 (silent NOT-GATING in broker path) — parent silent-fail pattern
+- LL-188 (sediment drift forensic) — alert path dead means LL-188 prevention probe is partially dead
+- LL-191 (Subagent audit assumption verification) — same pattern: code review found assumption (alert paths work) was wrong
+- ADR-080 (Sub-Class Pattern Discovery) — copy-paste propagation is a sub-class of pattern-spread
+
+**铁律 backref**: 33 (silent failure prohibition — try/except + pass without `# silent_ok` 是 silent failure) / 10b (生产入口启动验证 — alert path is a生产入口) / 25 (代码变更前必读 — copy-paste 时未验证 import path)
+
+**Heuristic backref**: #14 Documentation Lying (script docstring says "DingTalk alert escalation" while real path is dead) / #15 Test-Reality Gap (LL-183 父类 pattern recurrence) / #18 Alternative Path Thinking (alt: feature detection vs try/except ImportError pass-through)
+
+**ADR backref**: 候选 ADR-088 (Audit script alert path integration test SOP — mandatory cold-run alert assertion)
