@@ -131,20 +131,82 @@ export interface AuditLogItem {
 }
 
 // ---------------------------------------------------------------------------
-// Admin token helper
+// Admin token helper — S1 P0-22 fix (Session 57+1, 2026-05-19):
+// HttpOnly cookie path preferred (XSS-safe); legacy localStorage path kept for
+// gradual migration but new code should use setAdminTokenSecure().
 // ---------------------------------------------------------------------------
 
 const ADMIN_TOKEN_KEY = "admin_token";
 
 export function getAdminToken(): string {
+  // NOTE: HttpOnly cookie 不可读 by JS (intentional, XSS-safe). This function
+  // returns ONLY legacy localStorage path. Use isAdminAuthed() async helper
+  // to check "logged in" state without exposing token value.
   return localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
 }
 
+/**
+ * Legacy: localStorage-based admin_token set (XSS-vulnerable, DEPRECATED).
+ * New code should use setAdminTokenSecure() which uses HttpOnly cookie.
+ */
 export function setAdminToken(token: string): void {
   localStorage.setItem(ADMIN_TOKEN_KEY, token);
 }
 
+/**
+ * S1 fix preferred path: POST /api/auth/admin-token sets HttpOnly cookie.
+ * Browser stores cookie not accessible to JS → XSS-safe.
+ * Returns true on success, false if token rejected (401).
+ */
+export async function setAdminTokenSecure(token: string): Promise<boolean> {
+  const apiClient = (await import("./client")).default;
+  try {
+    await apiClient.post(
+      "/auth/admin-token",
+      null,
+      { headers: { "X-Admin-Token": token }, withCredentials: true },
+    );
+    // Cleanup legacy localStorage entry (post-migration hygiene)
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * S1: clear HttpOnly cookie (logout).
+ */
+export async function clearAdminTokenSecure(): Promise<void> {
+  const apiClient = (await import("./client")).default;
+  try {
+    await apiClient.post("/auth/admin-token/clear", null, { withCredentials: true });
+  } catch {
+    // 沿用 silent — clearance best-effort
+  }
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+/**
+ * Check if admin_token cookie is set + valid (no token value exposed).
+ */
+export async function isAdminAuthed(): Promise<boolean> {
+  const apiClient = (await import("./client")).default;
+  try {
+    const { data } = await apiClient.get<{ cookie_present: boolean; valid: boolean }>(
+      "/auth/admin-token/status",
+      { withCredentials: true },
+    );
+    return data.valid;
+  } catch {
+    return false;
+  }
+}
+
 function authHeaders(): Record<string, string> {
+  // Legacy header path retained for back-compat (cookie path preferred + auto-sent
+  // by browser via withCredentials). If localStorage has a token (legacy session),
+  // send as header so legacy backend code paths still work.
   const token = getAdminToken();
   return token ? { "X-Admin-Token": token } : {};
 }

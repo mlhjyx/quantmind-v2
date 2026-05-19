@@ -1,37 +1,59 @@
 """共享 admin auth dependency — 单一来源, 防 DRY 违规.
 
-2026-04-30 治理债清理 batch 1.7 reviewer P1 (HIGH) 采纳:
-- 原 _verify_admin_token 在 risk.py / approval.py / execution_ops.py 复制 3 份,
-  批 2 P2 secrets.compare_digest 修需触 3 文件 (shotgun surgery anti-pattern)
-- 提取到本模块, 全 router 用 `from app.core.auth import verify_admin_token`
-- 批 2 P2 secrets.compare_digest 单点修复 = 1 文件改动
+S1 P0-22 fix (Session 57+1, 2026-05-19) — admin_token httpOnly cookie 支持:
+- verify_admin_token 现支持 2 token source: HttpOnly cookie `admin_token` (preferred)
+  OR `X-Admin-Token` header (legacy fallback)
+- Cookie path 反 XSS: 浏览器 JS 不可读 HttpOnly cookie, 反 localStorage 攻击向量
+- Header path 留 back-compat: legacy frontend / curl / api test 仍可用
+- Timing attack fix: secrets.compare_digest sustained constant-time compare
 
-return None (而非 token 值): reviewer P1 (HIGH) 采纳, 不向 endpoint 泄 secret 值.
+历史 (沿用 prior batch sediment):
+- 2026-04-30 治理债清理 batch 1.7: 提取 3-copy verify_admin_token 到本模块 SSOT
+- D2.2 Finding P2 timing attack — 本 PR fix (secrets.compare_digest)
+- execution_ops.py 仍有 local _verify_admin_token (留 Phase I cleanup follow-up)
+
+return None (而非 token 值): 沿用旧体例, 不向 endpoint 泄 secret 值.
 endpoint signature 用 `_: None = Depends(verify_admin_token)` 显式 discard.
-
-Note:
-- execution_ops.py 暂保留独立 _verify_admin_token (本 PR scope 不动, 留批 2 一并迁)
-- 沿用 plain `!=` compare (D2.2 Finding 标 P2 timing attack), 留批 2 P2 单独修
-  (改 secrets.compare_digest), 本批不改实现.
 """
 
 from __future__ import annotations
 
-from fastapi import Header, HTTPException
+import secrets
+
+from fastapi import Cookie, Header, HTTPException
 
 from app.config import settings
 
 
 def verify_admin_token(
     x_admin_token: str = Header(alias="X-Admin-Token", default=""),
+    admin_token_cookie: str = Cookie(alias="admin_token", default=""),
 ) -> None:
-    """验证 X-Admin-Token header.
+    """验证 admin token via HttpOnly cookie (preferred) OR X-Admin-Token header (legacy).
+
+    Source priority:
+        1. HttpOnly cookie `admin_token` (XSS-safe, set via POST /api/auth/admin-token)
+        2. `X-Admin-Token` header (back-compat, legacy frontend / curl / test path)
+
+    Both compared via secrets.compare_digest (constant-time, 反 timing attack).
 
     Raises:
         HTTPException 500: settings.ADMIN_TOKEN 未配置 (生产前置必须配)
-        HTTPException 401: token 不匹配
+        HTTPException 401: token 不匹配 OR 完全缺失
     """
     if not settings.ADMIN_TOKEN:
         raise HTTPException(status_code=500, detail="ADMIN_TOKEN未配置")
-    if x_admin_token != settings.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="无效的Admin Token")
+
+    expected = settings.ADMIN_TOKEN
+    # Cookie wins if present (preferred, XSS-safe)
+    if admin_token_cookie:
+        if secrets.compare_digest(admin_token_cookie, expected):
+            return
+        raise HTTPException(status_code=401, detail="无效的Admin Token (cookie)")
+    # Fallback: header path (legacy)
+    if x_admin_token:
+        if secrets.compare_digest(x_admin_token, expected):
+            return
+        raise HTTPException(status_code=401, detail="无效的Admin Token (header)")
+    # Neither provided
+    raise HTTPException(status_code=401, detail="缺少 admin_token (cookie 或 X-Admin-Token header)")
