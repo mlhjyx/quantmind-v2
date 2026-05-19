@@ -35,23 +35,25 @@ logger = structlog.get_logger(__name__)
 
 class OpType(Enum):
     """算子类型。"""
-    UNARY = "unary"           # 单目: f(x) → y
-    BINARY = "binary"         # 双目: f(x, y) → z
-    TERNARY = "ternary"       # 三目: f(cond, x, y) → z  [NEW: FactorMiner ifelse]
-    TS = "ts"                 # 时序: f(x, window) → y
-    TS_BINARY = "ts_binary"   # 时序双目: f(x, y, window) → z
-    CS = "cs"                 # 截面: f(x) → rank/zscore
-    TERMINAL = "terminal"     # 终端: 数据字段或常数
+
+    UNARY = "unary"  # 单目: f(x) → y
+    BINARY = "binary"  # 双目: f(x, y) → z
+    TERNARY = "ternary"  # 三目: f(cond, x, y) → z  [NEW: FactorMiner ifelse]
+    TS = "ts"  # 时序: f(x, window) → y
+    TS_BINARY = "ts_binary"  # 时序双目: f(x, y, window) → z
+    CS = "cs"  # 截面: f(x) → rank/zscore
+    TERMINAL = "terminal"  # 终端: 数据字段或常数
 
 
 class DimType(Enum):
     """量纲类型 — 用于过滤无经济意义的表达式 (AlphaZero量纲约束)。"""
-    PRICE = "price"           # 元: open, high, low, close, vwap
-    VOLUME = "volume"         # 手: volume
-    AMOUNT = "amount"         # 元(成交额): amount, buy_lg_amount, ...
-    RATIO = "ratio"           # 无量纲: returns, turnover_rate, pe_ttm, pb, ...
-    MARKET_CAP = "market_cap" # 元(大数): total_mv, circ_mv
-    UNKNOWN = "unknown"       # 经运算后无法追踪
+
+    PRICE = "price"  # 元: open, high, low, close, vwap
+    VOLUME = "volume"  # 手: volume
+    AMOUNT = "amount"  # 元(成交额): amount, buy_lg_amount, ...
+    RATIO = "ratio"  # 无量纲: returns, turnover_rate, pe_ttm, pb, ...
+    MARKET_CAP = "market_cap"  # 元(大数): total_mv, circ_mv
+    UNKNOWN = "unknown"  # 经运算后无法追踪
 
 
 # ---------------------------------------------------------------------------
@@ -60,46 +62,50 @@ class DimType(Enum):
 
 # 时序算子 (必须指定窗口w)
 TS_OPS: dict[str, dict[str, Any]] = {
-    "ts_mean":  {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
-    "ts_std":   {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
-    "ts_max":   {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
-    "ts_min":   {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
-    "ts_sum":   {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
-    "ts_rank":  {"args": 1, "windows": [5, 10, 20],     "type": OpType.TS},
-    "ts_skew":  {"args": 1, "windows": [20, 60],        "type": OpType.TS},
-    "ts_kurt":  {"args": 1, "windows": [20, 60],        "type": OpType.TS},
-    "delay":    {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
-    "delta":    {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
-    "ts_pct":   {"args": 1, "windows": [1, 5, 10, 20],  "type": OpType.TS},
+    "ts_mean": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
+    "ts_std": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
+    "ts_max": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
+    "ts_min": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
+    "ts_sum": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},
+    "ts_rank": {"args": 1, "windows": [5, 10, 20], "type": OpType.TS},
+    "ts_skew": {"args": 1, "windows": [20, 60], "type": OpType.TS},
+    "ts_kurt": {"args": 1, "windows": [20, 60], "type": OpType.TS},
+    "delay": {"args": 1, "windows": [1, 5, 10, 20], "type": OpType.TS},
+    "delta": {"args": 1, "windows": [1, 5, 10, 20], "type": OpType.TS},
+    "ts_pct": {"args": 1, "windows": [1, 5, 10, 20], "type": OpType.TS},
     # NEW: AlphaZero/FactorMiner operators
-    "ts_slope":         {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性回归斜率
-    "ts_rsquare":       {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性回归R²
-    "ts_decay_linear":  {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 线性衰减加权mean
-    "ts_argmax":        {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 最大值位置/window
-    "ts_argmin":        {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},   # 最小值位置/window
+    "ts_slope": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},  # 线性回归斜率
+    "ts_rsquare": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},  # 线性回归R²
+    "ts_decay_linear": {
+        "args": 1,
+        "windows": [5, 10, 20, 60],
+        "type": OpType.TS,
+    },  # 线性衰减加权mean
+    "ts_argmax": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},  # 最大值位置/window
+    "ts_argmin": {"args": 1, "windows": [5, 10, 20, 60], "type": OpType.TS},  # 最小值位置/window
 }
 
 # 时序双目算子
 TS_BINARY_OPS: dict[str, dict[str, Any]] = {
-    "ts_corr":  {"args": 2, "windows": [10, 20, 60], "type": OpType.TS_BINARY},
-    "ts_cov":   {"args": 2, "windows": [10, 20, 60], "type": OpType.TS_BINARY},
+    "ts_corr": {"args": 2, "windows": [10, 20, 60], "type": OpType.TS_BINARY},
+    "ts_cov": {"args": 2, "windows": [10, 20, 60], "type": OpType.TS_BINARY},
 }
 
 # 截面算子（不需要窗口参数）
 CS_OPS: dict[str, dict[str, Any]] = {
-    "cs_rank":   {"args": 1, "type": OpType.CS},
+    "cs_rank": {"args": 1, "type": OpType.CS},
     "cs_zscore": {"args": 1, "type": OpType.CS},
     "cs_demean": {"args": 1, "type": OpType.CS},
 }
 
 # 单目数学算子
 UNARY_OPS: dict[str, dict[str, Any]] = {
-    "log":  {"args": 1, "type": OpType.UNARY},   # log(abs(x)+1e-10)
-    "abs":  {"args": 1, "type": OpType.UNARY},
+    "log": {"args": 1, "type": OpType.UNARY},  # log(abs(x)+1e-10)
+    "abs": {"args": 1, "type": OpType.UNARY},
     "sign": {"args": 1, "type": OpType.UNARY},
-    "neg":  {"args": 1, "type": OpType.UNARY},   # -x
-    "inv":  {"args": 1, "type": OpType.UNARY},   # 1/x (安全除法)
-    "sqrt": {"args": 1, "type": OpType.UNARY},   # sqrt(abs(x))
+    "neg": {"args": 1, "type": OpType.UNARY},  # -x
+    "inv": {"args": 1, "type": OpType.UNARY},  # 1/x (安全除法)
+    "sqrt": {"args": 1, "type": OpType.UNARY},  # sqrt(abs(x))
 }
 
 # 双目数学算子
@@ -107,7 +113,7 @@ BINARY_OPS: dict[str, dict[str, Any]] = {
     "add": {"args": 2, "type": OpType.BINARY},
     "sub": {"args": 2, "type": OpType.BINARY},
     "mul": {"args": 2, "type": OpType.BINARY},
-    "div": {"args": 2, "type": OpType.BINARY},   # 安全除法
+    "div": {"args": 2, "type": OpType.BINARY},  # 安全除法
     "max": {"args": 2, "type": OpType.BINARY},
     "min": {"args": 2, "type": OpType.BINARY},
     # NEW: AlphaZero power operator
@@ -132,24 +138,43 @@ ALL_OPS: dict[str, dict[str, Any]] = {
 # 终端节点（数据字段）
 TERMINALS: list[str] = [
     # 价量 (日频)
-    "open", "high", "low", "close", "volume", "amount", "turnover_rate",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "turnover_rate",
     # 估值 (日频)
-    "pe_ttm", "pb", "ps_ttm", "total_mv", "circ_mv",
+    "pe_ttm",
+    "pb",
+    "ps_ttm",
+    "total_mv",
+    "circ_mv",
     # 资金流向 (日频)
-    "buy_lg_amount", "sell_lg_amount", "net_lg_amount",
-    "buy_md_amount", "sell_md_amount", "net_md_amount",
+    "buy_lg_amount",
+    "sell_lg_amount",
+    "net_lg_amount",
+    "buy_md_amount",
+    "sell_md_amount",
+    "net_md_amount",
     # 派生 (预计算)
-    "returns",     # close/delay(close,1) - 1
-    "vwap",        # amount/volume
-    "high_low",    # (high-low)/close
+    "returns",  # close/delay(close,1) - 1
+    "vwap",  # amount/volume
+    "high_low",  # (high-low)/close
     "close_open",  # (close-open)/open
 ]
 
 # 无量纲终端（可直接做截面比较）
 DIMENSIONLESS_TERMINALS: frozenset[str] = frozenset(
     {
-        "returns", "turnover_rate", "high_low", "close_open",
-        "pe_ttm", "pb", "ps_ttm",  # 估值比率本身无量纲
+        "returns",
+        "turnover_rate",
+        "high_low",
+        "close_open",
+        "pe_ttm",
+        "pb",
+        "ps_ttm",  # 估值比率本身无量纲
     }
 )
 
@@ -160,10 +185,10 @@ MAX_NODES: int = 20
 # 种子因子（v1.1的5个Active因子的DSL表达式）
 SEED_FACTORS: dict[str, str] = {
     "turnover_mean_20": "ts_mean(turnover_rate, 20)",
-    "volatility_20":    "ts_std(returns, 20)",
-    "reversal_20":      "neg(ts_pct(close, 20))",
-    "amihud_20":        "ts_mean(div(abs(returns), amount), 20)",
-    "bp_ratio":         "inv(pb)",
+    "volatility_20": "ts_std(returns, 20)",
+    "reversal_20": "neg(ts_pct(close, 20))",
+    "amihud_20": "ts_mean(div(abs(returns), amount), 20)",
+    "bp_ratio": "inv(pb)",
 }
 
 
@@ -187,22 +212,32 @@ DIMENSION_RULES: dict[str, Any] = {
 
 TERMINAL_DIM: dict[str, DimType] = {
     # 价格类 (元/股)
-    "open": DimType.PRICE, "high": DimType.PRICE,
-    "low": DimType.PRICE, "close": DimType.PRICE, "vwap": DimType.PRICE,
+    "open": DimType.PRICE,
+    "high": DimType.PRICE,
+    "low": DimType.PRICE,
+    "close": DimType.PRICE,
+    "vwap": DimType.PRICE,
     # 成交量 (手)
     "volume": DimType.VOLUME,
     # 成交额 (元)
     "amount": DimType.AMOUNT,
-    "buy_lg_amount": DimType.AMOUNT, "sell_lg_amount": DimType.AMOUNT,
+    "buy_lg_amount": DimType.AMOUNT,
+    "sell_lg_amount": DimType.AMOUNT,
     "net_lg_amount": DimType.AMOUNT,
-    "buy_md_amount": DimType.AMOUNT, "sell_md_amount": DimType.AMOUNT,
+    "buy_md_amount": DimType.AMOUNT,
+    "sell_md_amount": DimType.AMOUNT,
     "net_md_amount": DimType.AMOUNT,
     # 市值 (元, 大数)
-    "total_mv": DimType.MARKET_CAP, "circ_mv": DimType.MARKET_CAP,
+    "total_mv": DimType.MARKET_CAP,
+    "circ_mv": DimType.MARKET_CAP,
     # 无量纲比率
-    "returns": DimType.RATIO, "turnover_rate": DimType.RATIO,
-    "pe_ttm": DimType.RATIO, "pb": DimType.RATIO, "ps_ttm": DimType.RATIO,
-    "high_low": DimType.RATIO, "close_open": DimType.RATIO,
+    "returns": DimType.RATIO,
+    "turnover_rate": DimType.RATIO,
+    "pe_ttm": DimType.RATIO,
+    "pb": DimType.RATIO,
+    "ps_ttm": DimType.RATIO,
+    "high_low": DimType.RATIO,
+    "close_open": DimType.RATIO,
 }
 
 # 同量纲终端分组 (用于关联变异的字段替换)
@@ -250,9 +285,20 @@ def infer_dimension(node: ExprNode) -> DimType:
         return DimType.RATIO
 
     # 时序单目: 保持输入量纲
-    if op in ("ts_mean", "ts_std", "ts_max", "ts_min", "ts_sum",
-              "ts_rank", "ts_skew", "ts_kurt", "ts_decay_linear",
-              "delay", "delta", "ts_pct"):
+    if op in (
+        "ts_mean",
+        "ts_std",
+        "ts_max",
+        "ts_min",
+        "ts_sum",
+        "ts_rank",
+        "ts_skew",
+        "ts_kurt",
+        "ts_decay_linear",
+        "delay",
+        "delta",
+        "ts_pct",
+    ):
         return child_dims[0]
 
     # abs/neg: 保持量纲
@@ -305,31 +351,31 @@ def check_dimensional_validity(node: ExprNode) -> tuple[bool, str]:
         child_dims = [infer_dimension(c) for c in n.children]
 
         # 规则1: add/sub 必须同量纲
-        if op in ("add", "sub"):
-            if len(child_dims) >= 2 and child_dims[0] != child_dims[1]:
-                if child_dims[0] != DimType.UNKNOWN and child_dims[1] != DimType.UNKNOWN:
-                    return False, (
-                        f"{op}({child_dims[0].value}, {child_dims[1].value}): "
-                        f"不同量纲相加减无意义"
-                    )
+        if (
+            op in ("add", "sub")
+            and len(child_dims) >= 2
+            and child_dims[0] != child_dims[1]
+            and child_dims[0] != DimType.UNKNOWN
+            and child_dims[1] != DimType.UNKNOWN
+        ):
+            return False, (
+                f"{op}({child_dims[0].value}, {child_dims[1].value}): 不同量纲相加减无意义"
+            )
 
         # 规则2: log/sqrt 仅接受 RATIO
-        if op in ("log", "sqrt"):
-            if child_dims[0] not in (DimType.RATIO, DimType.UNKNOWN):
-                return False, (
-                    f"{op}({child_dims[0].value}): "
-                    f"对有量纲数据取log/sqrt无意义"
-                )
+        if op in ("log", "sqrt") and child_dims[0] not in (DimType.RATIO, DimType.UNKNOWN):
+            return False, (f"{op}({child_dims[0].value}): 对有量纲数据取log/sqrt无意义")
 
         # 规则3: 同类型相乘无经济意义 (price*price / volume*volume)
-        if op == "mul":
-            if (len(child_dims) >= 2
-                    and child_dims[0] == child_dims[1]
-                    and child_dims[0] in (DimType.PRICE, DimType.VOLUME, DimType.MARKET_CAP)):
-                return False, (
-                    f"mul({child_dims[0].value}, {child_dims[1].value}): "
-                    f"同类型相乘无经济意义"
-                )
+        if (
+            op == "mul"
+            and len(child_dims) >= 2
+            and child_dims[0] == child_dims[1]
+            and child_dims[0] in (DimType.PRICE, DimType.VOLUME, DimType.MARKET_CAP)
+        ):
+            return False, (
+                f"mul({child_dims[0].value}, {child_dims[1].value}): 同类型相乘无经济意义"
+            )
 
     return True, "OK"
 
@@ -352,8 +398,8 @@ class ExprNode:
 
     op: str
     children: list[ExprNode] = field(default_factory=list)
-    window: int | None = None        # 时序算子窗口参数
-    value: float | None = None       # const节点的值
+    window: int | None = None  # 时序算子窗口参数
+    value: float | None = None  # const节点的值
 
     # ----------------------------------------------------------------
     # 序列化
@@ -535,6 +581,7 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
 
     # NEW: ts_slope — 线性回归斜率 (OLS, FactorMiner)
     if op == "ts_slope":
+
         def _slope(s):
             x = np.arange(len(s), dtype=float)
             mask = np.isfinite(s.values)
@@ -547,10 +594,12 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
             if denom < 1e-15:
                 return np.nan
             return ((xm - mx) * (ym - my)).sum() / denom
+
         return child_vals[0].rolling(w, min_periods=max(3, w // 2)).apply(_slope, raw=False)
 
     # NEW: ts_rsquare — 线性回归R² (FactorMiner)
     if op == "ts_rsquare":
+
         def _rsquare(s):
             x = np.arange(len(s), dtype=float)
             mask = np.isfinite(s.values)
@@ -569,10 +618,12 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
             intercept = my - slope * mx
             ss_res = ((ym - (slope * xm + intercept)) ** 2).sum()
             return 1.0 - ss_res / ss_tot
+
         return child_vals[0].rolling(w, min_periods=max(3, w // 2)).apply(_rsquare, raw=False)
 
     # NEW: ts_decay_linear — 线性衰减加权mean (AlphaZero)
     if op == "ts_decay_linear":
+
         def _decay(arr):
             n = len(arr)
             mask = np.isfinite(arr)
@@ -584,26 +635,31 @@ def _eval_node_unsafe(node: ExprNode, data: pd.DataFrame) -> pd.Series:
             if wt_sum < 1e-15:
                 return np.nan
             return np.nansum(np.where(mask, arr, 0.0) * wt) / wt_sum
+
         return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_decay, raw=True)
 
     # NEW: ts_argmax — 最大值位置/window (Alpha158, 归一化到[0,1])
     if op == "ts_argmax":
+
         def _argmax(s):
             vals = s.values
             mask = np.isfinite(vals)
             if mask.sum() < max(1, w // 2):
                 return np.nan
             return float(np.nanargmax(vals)) / (len(vals) - 1) if len(vals) > 1 else 0.5
+
         return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_argmax, raw=False)
 
     # NEW: ts_argmin — 最小值位置/window (Alpha158, 归一化到[0,1])
     if op == "ts_argmin":
+
         def _argmin(s):
             vals = s.values
             mask = np.isfinite(vals)
             if mask.sum() < max(1, w // 2):
                 return np.nan
             return float(np.nanargmin(vals)) / (len(vals) - 1) if len(vals) > 1 else 0.5
+
         return child_vals[0].rolling(w, min_periods=max(1, w // 2)).apply(_argmin, raw=False)
 
     # 时序双目算子
@@ -764,10 +820,7 @@ class FactorDSL:
         n_args = op_info["args"]
         op_type = op_info["type"]
 
-        children = [
-            self.random_tree(max_depth, current_depth + 1)
-            for _ in range(n_args)
-        ]
+        children = [self.random_tree(max_depth, current_depth + 1) for _ in range(n_args)]
 
         window = None
         if op_type in (OpType.TS, OpType.TS_BINARY):
@@ -969,7 +1022,9 @@ class FactorDSL:
             if node.op in ALL_OPS:
                 op_info = ALL_OPS[node.op]
                 op_type = op_info.get("type")
-                if op_type in (OpType.TS, OpType.TS_BINARY) and (node.window is None or node.window <= 0):
+                if op_type in (OpType.TS, OpType.TS_BINARY) and (
+                    node.window is None or node.window <= 0
+                ):
                     return False, f"时序算子 {node.op} 缺少有效窗口参数"
 
         # 量纲约束检查 (AlphaZero正则化进化)
@@ -1200,10 +1255,7 @@ class FactorDSL:
 
         if r < 0.50:
             # 子树保留变异: 选一个双目节点, 保留一侧, 另一侧随机重生
-            binary_nodes = [
-                n for n in result.all_nodes()
-                if len(n.children) >= 2
-            ]
+            binary_nodes = [n for n in result.all_nodes() if len(n.children) >= 2]
             if binary_nodes:
                 node = self._rng.choice(binary_nodes)
                 # 随机选要替换的子树侧
@@ -1219,10 +1271,7 @@ class FactorDSL:
 
         elif r < 0.70:
             # 窗口邻域变异: 只移动±1级, 非完全随机
-            ts_nodes = [
-                n for n in result.all_nodes()
-                if n.op in TS_OPS or n.op in TS_BINARY_OPS
-            ]
+            ts_nodes = [n for n in result.all_nodes() if n.op in TS_OPS or n.op in TS_BINARY_OPS]
             if ts_nodes:
                 node = self._rng.choice(ts_nodes)
                 op_info = ALL_OPS.get(node.op, {})
@@ -1240,17 +1289,11 @@ class FactorDSL:
 
         elif r < 0.90:
             # 同量纲字段替换: 只在同DimType终端间替换
-            terminals = [
-                n for n in result.all_nodes()
-                if n.is_terminal() and n.op in TERMINAL_DIM
-            ]
+            terminals = [n for n in result.all_nodes() if n.is_terminal() and n.op in TERMINAL_DIM]
             if terminals:
                 node = self._rng.choice(terminals)
                 dim = TERMINAL_DIM[node.op]
-                candidates = [
-                    t for t in DIM_GROUPS.get(dim, [])
-                    if t != node.op
-                ]
+                candidates = [t for t in DIM_GROUPS.get(dim, []) if t != node.op]
                 if candidates:
                     node.op = self._rng.choice(candidates)
 
@@ -1292,9 +1335,7 @@ class _DSLParser:
         node = self._parse_expr()
         self._skip_whitespace()
         if self.pos < len(self.expr):
-            raise ValueError(
-                f"解析未完成，剩余: {self.expr[self.pos:]!r}"
-            )
+            raise ValueError(f"解析未完成，剩余: {self.expr[self.pos :]!r}")
         return node
 
     def _parse_expr(self) -> ExprNode:
@@ -1311,7 +1352,7 @@ class _DSLParser:
             v = float(name)
             return ExprNode(op="const", value=v)
         except ValueError:
-            pass
+            pass  # silent_ok: non-numeric name falls through to symbol
 
         if name in TERMINALS:
             return ExprNode(op=name)
@@ -1363,8 +1404,8 @@ class _DSLParser:
         ):
             self.pos += 1
         if self.pos == start:
-            raise ValueError(f"期望标识符，位置{self.pos}: {self.expr[self.pos:self.pos+10]!r}")
-        return self.expr[start:self.pos]
+            raise ValueError(f"期望标识符，位置{self.pos}: {self.expr[self.pos : self.pos + 10]!r}")
+        return self.expr[start : self.pos]
 
     def _try_parse_number(self) -> float | None:
         """尝试解析数值，失败返回None（不移动pos）。"""
@@ -1386,7 +1427,7 @@ class _DSLParser:
                 self.pos += 1
 
         if has_digit:
-            return float(self.expr[start:self.pos])
+            return float(self.expr[start : self.pos])
 
         self.pos = start
         return None
@@ -1395,7 +1436,7 @@ class _DSLParser:
         """期望特定字符，不匹配则raise。"""
         self._skip_whitespace()
         if self.pos >= len(self.expr) or self.expr[self.pos] != char:
-            ctx = self.expr[self.pos:self.pos+10] if self.pos < len(self.expr) else "<EOF>"
+            ctx = self.expr[self.pos : self.pos + 10] if self.pos < len(self.expr) else "<EOF>"
             raise ValueError(f"期望 {char!r}，得到 {ctx!r}，位置{self.pos}")
         self.pos += 1
 

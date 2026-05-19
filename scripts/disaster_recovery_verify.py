@@ -67,13 +67,18 @@ def _pg_env() -> dict:
         env_file = PROJECT_ROOT / "backend" / ".env"
         if env_file.exists():
             for line in env_file.read_text(encoding="utf-8").splitlines():
-                if "://" in line and "@" in line and ("DATABASE_URL" in line or "PGPASSWORD" in line):
+                if (
+                    "://" in line
+                    and "@" in line
+                    and ("DATABASE_URL" in line or "PGPASSWORD" in line)
+                ):
                     try:
                         creds = line.split("://")[1].split("@")[0]
                         if ":" in creds:
                             env["PGPASSWORD"] = creds.split(":")[1]
-                    except Exception:
-                        pass
+                    except (IndexError, ValueError):
+                        print(f"[disaster_recovery] DATABASE_URL parse failed: {line}")
+                        continue  # silent_ok: malformed .env line is non-fatal, fall through to next line
                 elif line.startswith("PGPASSWORD="):
                     env["PGPASSWORD"] = line.split("=", 1)[1].strip()
     return env
@@ -147,7 +152,9 @@ def verify_backup_integrity(backup_path: Path) -> tuple[bool, dict]:
         return False, info
 
     if result.returncode != 0:
-        info["errors"].append(f"pg_restore --list 失败(exit={result.returncode}): {result.stderr.strip()[:200]}")
+        info["errors"].append(
+            f"pg_restore --list 失败(exit={result.returncode}): {result.stderr.strip()[:200]}"
+        )
         return False, info
 
     counts: Counter = Counter()
@@ -212,7 +219,8 @@ def restore_to_test_db(backup_path: Path, target_db: str) -> tuple[bool, float]:
         [str(PG_RESTORE)]
         + _pg_args()
         + [
-            "-d", target_db,
+            "-d",
+            target_db,
             "--no-owner",
             "--no-privileges",
             "--clean",
@@ -391,9 +399,7 @@ def run_verification(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="QuantMind V2 灾备恢复验证 (R6 §6.4)"
-    )
+    parser = argparse.ArgumentParser(description="QuantMind V2 灾备恢复验证 (R6 §6.4)")
     parser.add_argument(
         "--dry-run",
         action="store_true",

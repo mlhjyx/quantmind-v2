@@ -20,6 +20,7 @@ ADR-010 过渡期 (Risk Framework MVP 3.1 落地前):
     python scripts/intraday_monitor.py
     python scripts/intraday_monitor.py --force   # 忽略交易时间检查
 """
+
 from __future__ import annotations
 
 import json
@@ -52,10 +53,10 @@ if TYPE_CHECKING:
 logger = structlog.get_logger("intraday_monitor")
 
 # ── 告警阈值 ──
-ALERT_P1_THRESHOLD = -0.03   # 组合跌3%
-ALERT_P0_THRESHOLD = -0.05   # 组合跌5%
-ALERT_P0_REDUCE    = -0.08   # 组合跌8% 建议减仓
-LIMIT_DOWN_PCT     = -0.095  # 单股接近跌停
+ALERT_P1_THRESHOLD = -0.03  # 组合跌3%
+ALERT_P0_THRESHOLD = -0.05  # 组合跌5%
+ALERT_P0_REDUCE = -0.08  # 组合跌8% 建议减仓
+LIMIT_DOWN_PCT = -0.095  # 单股接近跌停
 ALERT_EMERGENCY_STOCK = -0.08  # 单股当日跌>8% P1 告警 (ADR-010 过渡期, Risk Framework MVP 3.1 前)
 
 
@@ -64,16 +65,20 @@ def is_trading_hours(now: datetime | None = None) -> bool:
     now = now or datetime.now()
     t = now.time()
     from datetime import time as dt_time
+
     return dt_time(9, 25) <= t <= dt_time(15, 5)
 
 
 def is_trading_day_today() -> bool:
     """从DB查询今天是否交易日。"""
     import psycopg2
+
     try:
         conn = psycopg2.connect(
-            dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            dbname="quantmind_v2",
+            user="xin",
+            password="quantmind",
+            host="localhost",
         )
         cur = conn.cursor()
         cur.execute(
@@ -97,10 +102,13 @@ def get_prev_close_mv() -> float | None:
     被当成"昨收" → 日内 pnl_pct=0. 对齐 run_paper_trading.py:230 + daily_reconciliation.py:206.
     """
     import psycopg2
+
     try:
         conn = psycopg2.connect(
-            dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            dbname="quantmind_v2",
+            user="xin",
+            password="quantmind",
+            host="localhost",
         )
         cur = conn.cursor()
         today = date.today()
@@ -137,8 +145,15 @@ def query_qmt_positions() -> tuple[float, list[dict]] | None:
             logger.error("QMT_PATH或QMT_ACCOUNT_ID未配置")
             return None
 
-        # 设置环境让qmt_manager识别live模式
-        os.environ["EXECUTION_MODE"] = "live"
+        # Plan v8 Wave 3 security fix H-2 (5-20): removed silent SSOT override,
+        # fail-loud per 铁律 34
+        expected_mode = os.environ.get("EXECUTION_MODE")
+        if expected_mode != "live":
+            sys.exit(
+                f"[FATAL] intraday_monitor.py requires EXECUTION_MODE=live in .env, "
+                f"got {expected_mode!r}. Refusing to silently override SSOT (铁律 34). "
+                "Set in .env explicitly OR run via cutover gate."
+            )
 
         from engines.broker_qmt import MiniQMTBroker
 
@@ -209,7 +224,9 @@ def _send_alert_via_platform_sdk(
     from qm_platform.observability import Alert, get_alert_router
 
     today_str = str(date.today())
-    severity = Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    severity = (
+        Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    )
 
     # PR #142 python-reviewer P1.2 采纳: portfolio_drop 必须 details_extra 含 cb_level
     if kind == "portfolio_drop":
@@ -334,6 +351,7 @@ def send_alert(
 
 # ── ADR-010 过渡期: 单股急跌检测 helpers ──
 
+
 def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
     """批量查 prev_close (1 query 替代 N): review P1 MEDIUM 优化.
 
@@ -343,11 +361,19 @@ def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
     if not codes:
         return {}
     import psycopg2
+
     try:
-        with closing(psycopg2.connect(
-            dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
-        )) as conn, conn.cursor() as cur:
+        with (
+            closing(
+                psycopg2.connect(
+                    dbname="quantmind_v2",
+                    user="xin",
+                    password="quantmind",
+                    host="localhost",
+                )
+            ) as conn,
+            conn.cursor() as cur,
+        ):
             # 对每个 code 取最近 trade_date < today 的 close (DISTINCT ON PG 语法)
             cur.execute(
                 """SELECT DISTINCT ON (code) code, close
@@ -366,11 +392,19 @@ def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
 def _get_prev_close(code: str) -> float | None:
     """从 klines_daily 查单股前一交易日收盘价 (review P1 HIGH 修: try/finally close)."""
     import psycopg2
+
     try:
-        with closing(psycopg2.connect(
-            dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
-        )) as conn, conn.cursor() as cur:
+        with (
+            closing(
+                psycopg2.connect(
+                    dbname="quantmind_v2",
+                    user="xin",
+                    password="quantmind",
+                    host="localhost",
+                )
+            ) as conn,
+            conn.cursor() as cur,
+        ):
             cur.execute(
                 """SELECT close FROM klines_daily
                        WHERE code = %s AND trade_date < %s
@@ -394,6 +428,7 @@ def _get_current_price(code: str, r=None) -> float | None:
     try:
         if r is None:
             import redis
+
             r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         raw = r.get(f"market:latest:{code}")
         if not raw:
@@ -440,6 +475,7 @@ def _already_alerted_emergency(code: str, r=None) -> bool:
     try:
         if r is None:
             import redis
+
             r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         return r.exists(_emergency_dedup_key(code)) > 0
     except Exception:
@@ -455,6 +491,7 @@ def _mark_alerted_emergency(code: str, r=None) -> None:
     try:
         if r is None:
             import redis
+
             r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
         r.setex(_emergency_dedup_key(code), 86400, "1")
     except Exception as e:
@@ -470,10 +507,13 @@ def save_monitor_log(
 ) -> None:
     """写入intraday_monitor_log表。"""
     import psycopg2
+
     try:
         conn = psycopg2.connect(
-            dbname="quantmind_v2", user="xin",
-            password="quantmind", host="localhost",
+            dbname="quantmind_v2",
+            user="xin",
+            password="quantmind",
+            host="localhost",
         )
         cur = conn.cursor()
         cur.execute(
@@ -519,7 +559,8 @@ def run_monitor(force: bool = False) -> None:
         alerts.append("QMT连接失败")
         alert_level = "P0"
         send_alert(
-            "P0", f"QMT断连 {now.strftime('%H:%M')}",
+            "P0",
+            f"QMT断连 {now.strftime('%H:%M')}",
             "盘中监控: miniQMT连接失败, 无法获取实时市值",
             kind="qmt_disconnect",
         )
@@ -529,10 +570,7 @@ def run_monitor(force: bool = False) -> None:
     total_mv, positions = result
     pnl_pct = (total_mv - prev_mv) / prev_mv if prev_mv > 0 else 0.0
 
-    logger.info(
-        f"[IntradayMonitor] 市值={total_mv:,.0f}, "
-        f"昨收={prev_mv:,.0f}, 日内={pnl_pct:+.2%}"
-    )
+    logger.info(f"[IntradayMonitor] 市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}, 日内={pnl_pct:+.2%}")
 
     # 4. 组合级告警
     if pnl_pct <= ALERT_P0_REDUCE:
@@ -540,7 +578,8 @@ def run_monitor(force: bool = False) -> None:
         msg = f"组合日内跌{pnl_pct:.2%}, 建议减仓50%"
         alerts.append(msg)
         send_alert(
-            "P0", f"组合暴跌 {now.strftime('%H:%M')}",
+            "P0",
+            f"组合暴跌 {now.strftime('%H:%M')}",
             f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
             kind="portfolio_drop",
             details_extra={"cb_level": 3, "pnl_pct": f"{pnl_pct:.4f}"},
@@ -550,7 +589,8 @@ def run_monitor(force: bool = False) -> None:
         msg = f"组合日内跌{pnl_pct:.2%}"
         alerts.append(msg)
         send_alert(
-            "P0", f"组合大跌 {now.strftime('%H:%M')}",
+            "P0",
+            f"组合大跌 {now.strftime('%H:%M')}",
             f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
             kind="portfolio_drop",
             details_extra={"cb_level": 2, "pnl_pct": f"{pnl_pct:.4f}"},
@@ -560,7 +600,8 @@ def run_monitor(force: bool = False) -> None:
         msg = f"组合日内跌{pnl_pct:.2%}"
         alerts.append(msg)
         send_alert(
-            "P1", f"组合下跌 {now.strftime('%H:%M')}",
+            "P1",
+            f"组合下跌 {now.strftime('%H:%M')}",
             f"市值={total_mv:,.0f}, 昨收={prev_mv:,.0f}\n{msg}",
             kind="portfolio_drop",
             details_extra={"cb_level": 1, "pnl_pct": f"{pnl_pct:.4f}"},
@@ -569,10 +610,13 @@ def run_monitor(force: bool = False) -> None:
     # 5. 单股急跌检测 (ADR-010 过渡期保险丝, 阈值 -8%, 每股每日限 1 次)
     # review P1 优化: 单 Redis client + 批量 prev_close, 避免 N×3 Redis + N DB
     emergency_stocks: list[dict] = []
-    valid_codes = [p.get("stock_code", "") for p in positions if p.get("stock_code") and p.get("volume", 0) > 0]
+    valid_codes = [
+        p.get("stock_code", "") for p in positions if p.get("stock_code") and p.get("volume", 0) > 0
+    ]
     prev_closes = _get_prev_closes_batch(valid_codes)  # 1 DB query 替代 N
     try:
         import redis as _redis_mod
+
         redis_client = _redis_mod.Redis(host="localhost", port=6379, db=0, decode_responses=True)
     except Exception as e:
         logger.warning(f"Redis client init failed, fallback per-call: {e}")
@@ -595,7 +639,10 @@ def run_monitor(force: bool = False) -> None:
         if alert_level is None:
             alert_level = "P1"
         lines = [f"  {s['code']}: {s['pnl_pct']:+.2%}" for s in emergency_stocks]
-        summary = f"单股急跌 {len(emergency_stocks)} 只 (阈值 {ALERT_EMERGENCY_STOCK:+.0%}):\n" + "\n".join(lines)
+        summary = (
+            f"单股急跌 {len(emergency_stocks)} 只 (阈值 {ALERT_EMERGENCY_STOCK:+.0%}):\n"
+            + "\n".join(lines)
+        )
         alerts.append(summary)
         # batch 3.8: 单股急跌单次 alert 聚合 N 只 (Redis dedup 已在外层 loop 防同股
         # 多次 — 见 _already_alerted_emergency / _mark_alerted_emergency).
@@ -620,9 +667,9 @@ def run_monitor(force: bool = False) -> None:
 def main() -> None:
     """CLI入口。"""
     import argparse
+
     parser = argparse.ArgumentParser(description="盘中风控监控")
-    parser.add_argument("--force", action="store_true",
-                        help="忽略交易时间检查(测试用)")
+    parser.add_argument("--force", action="store_true", help="忽略交易时间检查(测试用)")
     args = parser.parse_args()
     run_monitor(force=args.force)
 

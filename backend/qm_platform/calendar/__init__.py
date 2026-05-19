@@ -92,7 +92,7 @@ def parse_pt_start_date() -> date:
         try:
             return date.fromisoformat(raw)
         except ValueError:
-            pass
+            pass  # silent_ok: fall through to module default
     return date(2026, 3, 15)
 
 
@@ -103,7 +103,7 @@ def parse_pt_total_days() -> int:
         try:
             return int(raw)
         except ValueError:
-            pass
+            pass  # silent_ok: fall through to module default
     return 60
 
 

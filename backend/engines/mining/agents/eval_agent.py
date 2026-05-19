@@ -36,15 +36,16 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class EvalResult:
     """EvalAgent的输出 — 因子评估结果。"""
+
     factor_name: str
-    is_valid: bool = False         # 代码执行成功且有有效IC
-    ic_mean: float = 0.0           # IC均值
-    ic_std: float = 0.0            # IC标准差
-    ir: float = 0.0                # IC信息比率 (ic_mean / ic_std)
-    t_stat: float = 0.0            # t统计量
+    is_valid: bool = False  # 代码执行成功且有有效IC
+    ic_mean: float = 0.0  # IC均值
+    ic_std: float = 0.0  # IC标准差
+    ir: float = 0.0  # IC信息比率 (ic_mean / ic_std)
+    t_stat: float = 0.0  # t统计量
     ic_series: list[float] = field(default_factory=list)  # 日频IC时序
-    n_dates: int = 0               # 有效截面日数
-    coverage: float = 0.0          # 平均截面覆盖率
+    n_dates: int = 0  # 有效截面日数
+    coverage: float = 0.0  # 平均截面覆盖率
     recommendation: str = "reject"  # "accept" / "review" / "reject"
     rejection_reason: str = ""
     execution_error: str = ""
@@ -55,10 +56,10 @@ class EvalResult:
 # 快筛阈值 (与factor_gate.py G1一致)
 # ---------------------------------------------------------------------------
 
-IC_THRESHOLD_ACCEPT = 0.03   # |IC| > 0.03 → 推荐进入Gate Pipeline
-IC_THRESHOLD_REVIEW = 0.02   # |IC| > 0.02 → 半自动审查
-T_STAT_THRESHOLD = 2.0       # t > 2.0 → 统计显著
-MIN_DATES = 20               # 至少20个截面日
+IC_THRESHOLD_ACCEPT = 0.03  # |IC| > 0.03 → 推荐进入Gate Pipeline
+IC_THRESHOLD_REVIEW = 0.02  # |IC| > 0.02 → 半自动审查
+T_STAT_THRESHOLD = 2.0  # t > 2.0 → 统计显著
+MIN_DATES = 20  # 至少20个截面日
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +135,9 @@ class EvalAgent:
 
         try:
             # 受限命名空间
-            namespace: dict = {"pd": pd, "np": np}
+            # Plan v8 Wave 3 security fix (5-20): empty __builtins__ defense-in-depth,
+            # blocks __import__ bypass of blocklist
+            namespace: dict = {"__builtins__": {}, "pd": pd, "np": np}
             exec(code, namespace)  # noqa: S102
 
             compute_fn = namespace.get("compute_factor")
@@ -150,11 +153,13 @@ class EvalAgent:
                     if isinstance(values, pd.Series):
                         for code_str, val in zip(group["code"], values, strict=False):
                             if pd.notna(val) and np.isfinite(val):
-                                rows.append({
-                                    "code": code_str,
-                                    "trade_date": trade_date,
-                                    "factor_value": float(val),
-                                })
+                                rows.append(
+                                    {
+                                        "code": code_str,
+                                        "trade_date": trade_date,
+                                        "factor_value": float(val),
+                                    }
+                                )
                 except Exception:
                     continue
 
@@ -165,7 +170,9 @@ class EvalAgent:
             df = pd.DataFrame(rows)
             logger.info(
                 "[EvalAgent] %s: 计算成功, %d行, %d个日期",
-                result.factor_name, len(df), df["trade_date"].nunique(),
+                result.factor_name,
+                len(df),
+                df["trade_date"].nunique(),
             )
             return df
 
@@ -196,9 +203,7 @@ class EvalAgent:
         ic_list: list[float] = []
         coverage_list: list[float] = []
 
-        total_stocks: dict = (
-            forward_returns.groupby("trade_date")["code"].nunique().to_dict()
-        )
+        total_stocks: dict = forward_returns.groupby("trade_date")["code"].nunique().to_dict()
 
         for dt in dates:
             cross = merged[merged["trade_date"] == dt]
@@ -233,7 +238,11 @@ class EvalAgent:
 
         logger.info(
             "[EvalAgent] %s: IC=%.4f, IR=%.2f, t=%.2f, n=%d",
-            result.factor_name, result.ic_mean, result.ir, result.t_stat, result.n_dates,
+            result.factor_name,
+            result.ic_mean,
+            result.ir,
+            result.t_stat,
+            result.n_dates,
         )
 
     @staticmethod
