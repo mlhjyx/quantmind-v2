@@ -11,6 +11,17 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+# P2 fix (python-reviewer Session 57+1 round-2): named magic-number constants.
+# 沿用 ADR-022 append-only sediment naming 体例.
+#
+# _MAX_SEARCH_DAYS: prev_trading_day 回溯上限. A 股最长连续非交易区间 ~14d (春节);
+# 30d cap 留 2x buffer. 超过 → 真异常 (data freshness / TradingDayChecker 故障),
+# fail-loud 反 silent heuristic fallback (旧 pattern 续走 weekday() ≥ 5 reduction).
+_MAX_SEARCH_DAYS: int = 30
+# _MAX_CALENDAR_RANGE_DAYS: n_trading_days_between 区间上限. PT 60d scope 真值 buffer.
+# 多年 range 走 _MAX_CALENDAR_RANGE_DAYS 显式 raise → 反 silent truncation 误返.
+_MAX_CALENDAR_RANGE_DAYS: int = 366
+
 
 class CalendarProvider:
     """Trading calendar SSOT facade."""
@@ -58,19 +69,29 @@ class CalendarProvider:
         return self._get_checker().next_trading_day(after_date)
 
     def prev_trading_day(self, before_date: date | None = None) -> date:
-        """前一个交易日 (不含 before_date 本身)."""
+        """前一个交易日 (不含 before_date 本身).
+
+        P2 fix (python-reviewer Session 57+1 round-2): 反 silent heuristic fallback.
+        Raise RuntimeError if _MAX_SEARCH_DAYS 内未找到 trading day → 真异常
+        (TradingDayChecker 故障 OR data freshness issue), 不允许 silent weekday()
+        reduction (可能返非交易日, 反 铁律 33 fail-loud).
+        """
         d = (before_date or date.today()) - timedelta(days=1)
-        for _ in range(30):
+        for _ in range(_MAX_SEARCH_DAYS):
             if self.is_trading_day(d):
                 return d
             d -= timedelta(days=1)
-        # Fallback heuristic: 前一工作日
-        while d.weekday() >= 5:
-            d -= timedelta(days=1)
-        return d
+        raise RuntimeError(
+            f"prev_trading_day: 回溯 {_MAX_SEARCH_DAYS} 天仍未找到 trading day "
+            f"(from {before_date}). 真异常: TradingDayChecker 或 data 异常."
+        )
 
     def n_trading_days_between(self, d1: date, d2: date) -> int:
         """区间 [d1, d2] 含两端的交易日数.
+
+        P2 fix (python-reviewer Session 57+1 round-2): 反 silent truncation.
+        Raise ValueError if range > _MAX_CALENDAR_RANGE_DAYS → 真值错返
+        (多年 range 默认 365 cap 旧 pattern silent truncate, 误算误差).
 
         Args:
             d1: 起始日 (含).
@@ -78,13 +99,23 @@ class CalendarProvider:
 
         Returns:
             交易日总数. d1 > d2 时返 0.
+
+        Raises:
+            ValueError: range (d2 - d1) > _MAX_CALENDAR_RANGE_DAYS days.
+                Caller 需 batch 分段 OR 显式 raise cap.
         """
         if d1 > d2:
             return 0
+        range_days = (d2 - d1).days
+        if range_days > _MAX_CALENDAR_RANGE_DAYS:
+            raise ValueError(
+                f"n_trading_days_between: range {range_days} days > "
+                f"_MAX_CALENDAR_RANGE_DAYS={_MAX_CALENDAR_RANGE_DAYS}. "
+                f"PT 60d scope 真值上限. 多年 range caller 需 batch 分段."
+            )
         count = 0
         d = d1
-        # Cap loop at 366 days to avoid infinite (safe for PT 60-day scope)
-        for _ in range(366):
+        for _ in range(_MAX_CALENDAR_RANGE_DAYS + 1):
             if d > d2:
                 break
             if self.is_trading_day(d):

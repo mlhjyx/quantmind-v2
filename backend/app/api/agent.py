@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import settings
@@ -704,7 +704,7 @@ async def reset_agent_config(
 @router.get("/{name}/history", summary="Agent prompt 版本历史 (last N versions)")
 async def get_agent_history(
     name: str,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=100),  # P3 fix: explicit bounds (反 unbounded sql LIMIT)
     _: None = Depends(verify_admin_token),  # P2-2 fix (treat P1): 反 prompt enumeration leak
 ) -> list[dict[str, Any]]:
     """返回 last N 版本 prompt_history rows (newest first)."""
@@ -723,7 +723,7 @@ async def get_agent_history(
                 WHERE agent_name = %s
                 ORDER BY version DESC LIMIT %s
                 """,
-                (name, max(1, min(limit, 100))),
+                (name, limit),
             )
             return [_row_to_config(row) for row in cur.fetchall()]
     finally:
@@ -849,7 +849,7 @@ async def get_cost_summary(
 @router.get("/{name}/logs", summary="Agent 调用日志 (stub empty)")
 async def get_agent_logs(
     name: str,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),  # P3 fix: explicit bounds (反 large LIMIT)
     _: None = Depends(verify_admin_token),  # P2-2 fix: 反 unauthenticated log enumeration
 ) -> list[dict[str, Any]]:
     """返回 agent 调用 logs. Stub empty — 真实施需 llm_call_log SQL 聚合."""
