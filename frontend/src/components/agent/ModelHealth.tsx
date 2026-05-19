@@ -1,10 +1,14 @@
 import { GlassCard } from "@/components/ui/GlassCard";
 import type { ModelHealth as ModelHealthType } from "@/api/agent";
 
+// L7 fix (2026-05-19): V4 alias canonical + legacy retained
 const MODEL_LABELS: Record<string, string> = {
-  "deepseek-r1": "DeepSeek-R1",
-  "deepseek-v3": "DeepSeek-V3.2",
-  "qwen3":       "Qwen3",
+  "deepseek-v4-flash": "DeepSeek V4-Flash",
+  "deepseek-v4-pro":   "DeepSeek V4-Pro",
+  "qwen3-local":       "Qwen3 (ollama)",
+  "deepseek-r1":       "DeepSeek-R1 (LEGACY)",
+  "deepseek-v3":       "DeepSeek-V3.2 (LEGACY)",
+  "qwen3":             "Qwen3 (LEGACY)",
 };
 
 interface ModelHealthProps {
