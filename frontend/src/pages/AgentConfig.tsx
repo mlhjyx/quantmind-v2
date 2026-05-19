@@ -70,8 +70,13 @@ export default function AgentConfig() {
     try {
       const data = await getModelHealth();
       setModelHealth(data);
-    } catch {
-      // silent
+    } catch (err) {
+      // P3 fix (typescript-reviewer Session 57+1 round-4): surface error via main
+      // error banner 代替 silent (铁律 33). 旧 // silent 让 user 看 empty model list
+      // 不知是 API 401/404/network — 现 setError 提示真因.
+      const msg = err instanceof Error ? err.message : "未知错误";
+      setError(`模型健康检查失败: ${msg}`);
+      setModelHealth([]);
     } finally {
       setLoadingHealth(false);
     }
@@ -82,8 +87,11 @@ export default function AgentConfig() {
     try {
       const data = await getCostSummary();
       setCostSummary(data);
-    } catch {
-      // silent
+    } catch (err) {
+      // P3 fix (Session 57+1 round-4): same as loadModelHealth, 反 silent (铁律 33).
+      const msg = err instanceof Error ? err.message : "未知错误";
+      setError(`费用汇总加载失败: ${msg}`);
+      setCostSummary(null);
     } finally {
       setLoadingCost(false);
     }

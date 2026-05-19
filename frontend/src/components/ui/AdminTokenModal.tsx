@@ -4,7 +4,12 @@
  * Frontend Design v3 §2.4 — Promoted from Execution/modals.tsx for global reuse.
  *
  * 配合 SafetyControlPanel + Execution + future ops requiring ADMIN_TOKEN gate.
- * TODO Phase I §3.4: move token from localStorage → httpOnly cookie (audit P0-22).
+ *
+ * Token storage path (P0-22 closed, Session 57+1 round-1+2 verified):
+ *   1. onSubmit(val) 传给 caller (e.g. Execution/index.tsx handleTokenSubmit)
+ *   2. caller 走 setAdminTokenSecure() → POST /auth/admin-token 设 HttpOnly cookie
+ *   3. cookie endpoint fail → surface error toast (反 localStorage fallback, XSS-safe)
+ *   4. localStorage path 仍保留 (legacy setAdminToken export) 但 0 caller 真用
  */
 
 import { useEffect, useRef, useState } from "react";

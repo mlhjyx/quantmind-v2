@@ -81,6 +81,11 @@ def parse_pt_start_date() -> date:
 
     Default 来源: SHUTDOWN_NOTICE_2026_04_30 §0 — PT 4-29 user 决议清仓前
     已运行约 6 周, 假定 start=2026-03-15 (placeholder, .env override 真值时生效).
+
+    铁律-34-exception (P3 audit Session 57+1 round-4): calendar module 设计为
+    loadable outside backend.app context (e.g. unit test isolation / scripts
+    standalone import), 不依赖 app.config.settings. 直读 os.environ 是**故意**
+    保持 module-level loose-coupling, 反 反向 import (backend.qm_platform → backend.app).
     """
     raw = os.environ.get("PT_START_DATE", "").strip()
     if raw:

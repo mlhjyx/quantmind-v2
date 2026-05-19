@@ -194,14 +194,19 @@ def map_risk_event_to_memory(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def map_trade_emergency_to_memory(event: dict[str, Any]) -> dict[str, Any]:
-    """转换 trade_log emergency row → risk_memory payload (real schema verified)."""
+    """转换 trade_log emergency row → risk_memory payload (real schema verified).
+
+    P3 fix (python-reviewer Session 57+1 round-4): fill_price 走 str() 替代 float()
+    保留 Decimal 精度. trade_log.fill_price 是 NUMERIC, float() cast 损 IEEE 754
+    精度 (e.g. 12.3456 → 12.345599...). context_snapshot 是 JSONB, str 直存有效.
+    """
     return {
         "event_type": "emergency_close",
         "symbol_id": event.get("code"),
         "event_timestamp": event["executed_at"],
         "context_snapshot": {
             "source": "trade_log",
-            "fill_price": float(event["fill_price"]) if event["fill_price"] is not None else None,
+            "fill_price": str(event["fill_price"]) if event["fill_price"] is not None else None,
             "quantity": event["quantity"],
             "direction": event["direction"],
             "reject_reason": event["reject_reason"],
