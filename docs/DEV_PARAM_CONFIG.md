@@ -18,6 +18,16 @@
 
 # QuantMind V2 — 参数可配置性系统 详细开发文档
 
+> ⚠️ **DESIGN_OVERSIZED — DOC STATUS**:
+>
+> 本文档为设计阶段产物 (claim 220+ params). 实际系统 SSOT 走以下三处:
+>
+> 1. **`backend/app/config.py:Settings`** — Pydantic Settings class (~50 active fields)
+> 2. **`configs/pt_live.yaml`** — PT 生产策略配置 (63 lines)
+> 3. **`backend/engines/config_guard.py`** + **`backend/platform/config/auditor.py:PlatformConfigAuditor._TRIPLE_SOURCE_FIELDS`** (L57-64) — 铁律 34 三源对齐验证 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq 5 fields)
+>
+> 本文档 220+ params 表保留作设计参考, 实际查询应走 SSOT 三处. Last drift verify: 2026-05-20.
+
 > **对应总设计文档**: 第七章 §7.6
 > **版本**: 2.0 | **日期**: 2026-03-19
 > **设计哲学**: 最大化可配置——几乎所有参数都能在前端调

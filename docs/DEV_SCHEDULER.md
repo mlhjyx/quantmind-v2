@@ -1,5 +1,5 @@
-> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10, Session 57 2026-05-19 G1 audit addendum)**
-> 实现状态: ~30% — 7个Celery task文件+2个beat crontab(周日IC监控+工作日PMS)+Windows Task Scheduler PT链路已实现。
+> **⚠️ 文档状态: PARTIALLY_IMPLEMENTED (2026-04-10, Session 57 2026-05-19 G1 audit addendum, Plan v9 2026-05-20 sediment)**
+> 实现状态: 🟡 Partial — Celery Beat 20 entries + Windows schtask 27 tasks (sediment 2026-05-20 Plan v9 audit). 原 ~30% claim 已过时.
 > 仍有价值: 调度链路时间线设计、任务依赖关系
 > 已过时/被替代: 未实现模块的调度设计, 实际调度以 Windows Task Scheduler + Celery Beat 为准
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
@@ -22,6 +22,53 @@
 ## 一、调度框架
 
 Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不引入APScheduler/crontab。
+
+---
+
+## 〇、Beat + Schtask 真实清单 (2026-05-20 Plan v9 audit sediment)
+
+> **真值来源**: `backend/app/tasks/beat_schedule.py` (实测 20 active entries) + `scripts/audit_schtask_freshness.py` (27 schtask tasks).
+
+### Celery Beat (backend/app/tasks/beat_schedule.py, 20 active entries)
+
+| # | Key | Task | Schedule |
+|---|-----|------|----------|
+| 1 | gp-weekly-mining | app.tasks.mining_tasks.run_gp_mining | Sun 22:00 |
+| 2 | outbox-publisher-tick | app.tasks.outbox_publisher.outbox_publisher_tick | every 30s |
+| 3 | daily-quality-report | daily_pipeline.data_quality_report | Mon-Fri 17:40 |
+| 4 | factor-lifecycle-weekly | daily_pipeline.factor_lifecycle | Fri 19:00 |
+| 5 | news-ingest-5-source-cadence | app.tasks.news_ingest_tasks.news_ingest_5_sources | 3/7/11/15/19/23:00 daily |
+| 6 | news-ingest-rsshub-cadence | app.tasks.news_ingest_tasks.news_ingest_rsshub | 3/7/11/15/19/23:00 daily |
+| 7 | announcement-ingest-trading-hours | app.tasks.announcement_ingest_tasks.announcement_ingest | 9/11/13/15/17:15 daily |
+| 8 | fundamental-context-daily-1600 | app.tasks.fundamental_ingest_tasks.fundamental_context_ingest | daily 16:00 |
+| 9 | risk-dynamic-threshold-5min | app.tasks.dynamic_threshold_tasks.compute_dynamic_thresholds | */5 9-14 Mon-Fri |
+| 10 | risk-l4-sweep-1min | app.tasks.l4_sweep_tasks.sweep_pending_confirm_plans | * 9-14 Mon-Fri |
+| 11 | risk-l4-broker-stuck-sweep | app.tasks.l4_sweep_tasks.sweep_stuck_broker_plans | */5 all hours |
+| 12 | risk-metrics-daily-extract-16-30 | app.tasks.daily_metrics_extract_tasks.extract_daily_metrics | Mon-Fri 16:30 |
+| 13 | risk-market-regime-0900 | app.tasks.market_regime_tasks.classify_market_regime | Mon-Fri 09:00 |
+| 14 | risk-market-regime-1430 | app.tasks.market_regime_tasks.classify_market_regime | Mon-Fri 14:30 |
+| 15 | risk-market-regime-1600 | app.tasks.market_regime_tasks.classify_market_regime | Mon-Fri 16:00 |
+| 16 | risk-reflector-weekly | app.tasks.risk_reflector_tasks.weekly_reflection | Sun 19:00 |
+| 17 | risk-reflector-monthly | app.tasks.risk_reflector_tasks.monthly_reflection | 1st of month 09:00 |
+| 18 | meta-monitor-tick | app.tasks.meta_monitor_tasks.meta_monitor_tick | */5 all hours |
+| 19 | llm-cost-monthly-audit | app.tasks.llm_cost_audit_tasks.monthly_audit | 1st of month 08:00 |
+| 20 | slippage-calibration-quarterly | app.tasks.slippage_calibration_tasks.quarterly_recalibrate | Q1/Q2/Q3/Q4 1日 02:00 |
+
+### Windows schtask (scripts/audit_schtask_freshness.py, 27 tasks)
+
+关键任务列表 (完整清单见 `scripts/audit_schtask_freshness.py` EXPECTED_TASKS):
+- **QM-HealthCheck** (16:25) — 盘后健康预检
+- **QuantMind_DailySignal** (16:30) — PT 主链信号生成, 写 pt_heartbeat.json
+- **QuantMind_DataQualityCheck** (18:30) — 数据质量报告
+- **QuantMind_PT_Watchdog** (20:00) — heartbeat freshness 验证
+- **QuantMind_DailyIC** (Mon-Fri 18:00) — `scripts/compute_daily_ic.py` IC 入库 (铁律 11)
+- **QuantMind_IcRolling** (Mon-Fri 18:15) — `scripts/compute_ic_rolling.py` IC rolling
+- **QuantMind_DailyMoneyflow** (17:30) — Tushare moneyflow pull
+- 其余 20 tasks 详 `scripts/audit_schtask_freshness.py:EXPECTED_TASKS`
+
+### PT 主 chain 架构澄清
+
+> **PT 主 chain (DailySignal 16:30) 走 Windows schtask 非 Celery Beat** — `beat_schedule.py` 注释 L68-84: "已移除 / 由 Task Scheduler 驱动". 此架构由 Servy 多进程 + Windows-native 调度可靠性决定 (Servy migration Session 31+). Celery Beat 负责 V3 风控/ML/新闻/元监控等辅助任务, 不负责 PT 主链.
 
 ---
 

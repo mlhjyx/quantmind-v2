@@ -146,12 +146,28 @@ python scripts/run_backtest.py --config configs/pt_live.yaml
 | 16 (信号路径唯一) | runner.py 调用 SignalComposer.compose(), 不再有 vectorized_signal 独立链路 |
 | 17 (DataPipeline 入库) | 回测引擎不入库, 只消费 DataFeed; DataFeed 的数据来源必须经 DataPipeline |
 
+### §0 追加状态 (2026-05-20 Plan v9 sediment)
+
+**Step 5-7 完成度**:
+- Step 5 (Parquet 缓存 `backend/data/parquet_cache.py`) ✅ 30min→1.6s 加速 (CLAUDE.md 性能表)
+- Step 6-H ✅ size_neutral_beta=0.50 激活 (`.env PT_SIZE_NEUTRAL_BETA=0.50`)
+- Step 7 (Walk-Forward) ✅ 实现 (`scripts/run_rolling_wf.py`), WF OOS Sharpe=0.8659 (CORE3+dv_ttm, 2026-04-12 PASS)
+
+**成本模型真值 (broker.py:150-154)**:
+- 印花税历史分段 ✅ **已实现** — `BacktestConfig.historical_stamp_tax=True` (default), `broker.py:154` 实现 `0.0005 if trade_date >= date(2023, 8, 28) else 0.001`. 12yr backtest 历史阶段税率正确.
+- `can_trade` 涨跌停/停牌 ✅ **已实现** — `backend/engines/backtest/validators.py` `ValidatorChain`: `SuspensionValidator` (volume=0) + `DataCompletenessValidator` + `PriceLimitValidator` (涨跌停封板检测, ST 5% price_limit via symbols_info override). 实际 105 → 178 行 (Session 36 PR fix 补 symbols_info contract).
+
 ---
 
 ## 一、概述
 
-> **⚠️ §一~§十 是 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
-> **已过时的关键点**: Rust 引擎(从未实现, 纯 Python) / VectorizedBacktester(Archived) / §五实现计划(全部完成) / §九待办(全部完成)
+> **⚠️ §一~§十 HISTORICAL — 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
+>
+> **已过时的关键点 (2026-05-20 sediment)**:
+> - **Rust 引擎**: 从未实现, 纯 Python. `.env.example` 中 `RUST_ENGINE_PATH=./rust_engine/target/release/quant-backtest` 是 dead config (rust_engine/ 目录不存在).
+> - **真实回测引擎**: `backend/engines/backtest/` (8 模块) + `scripts/run_backtest.py`. Hybrid 架构 = Python CC; Qlib ML 信号层 + RD-Agent 均 NO-GO per Step 6-H.
+> - VectorizedBacktester → Archived / §五实现计划 → 全部完成 / §九待办 → 全部完成
+> - 历史章节保留作设计参考, 不执行.
 
 回测引擎是 QuantMind V2 的核心基础设施，负责将因子信号转化为模拟交易，验证策略有效性。本文档覆盖：
 

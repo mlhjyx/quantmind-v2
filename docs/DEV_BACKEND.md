@@ -11,6 +11,20 @@
 > - NEW endpoint `/api/system/calendar-info` (commit 8a57c90) — PT day counter + trading calendar SSOT
 > - LiteLLM router enhanced: F-S7-001 cost fix (23ebea5) + P9 cache-hit fallback (6d51a77)
 > - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §6 G1 / `LL-187` sediment
+>
+> **Plan v9 Phase C-2 sediment (2026-05-20)**:
+> - **API 端点真值**: 148 endpoints (真值源: backend/app/main.py:104-128 24 routers + `grep '@router\.'` count. 旧 doc "~96" undercount 54%. Session 57 addendum: +Phase H W1-W6 8 agent endpoints + 2 system endpoints)
+> - **Service 层 expansion**: 57 files (2.3x design scope). 含 services/news/ (6 fetchers: anspire/gdelt/tavily/zhipu/marketaux/rsshub) + services/risk/ (realtime + dispatchers + dynamic_threshold + reflector) 子目录. Last verify 2026-05-20.
+> - **铁律 32 documented exceptions (F16-classC)**: 9 sites in services/ retain `conn.commit()`:
+>   - notification_service.py:595/755 — leaf utility 例外
+>   - pt_qmt_state.py:110 — SAVEPOINT scope
+>   - shadow_portfolio.py:52 — idempotent DDL bootstrap
+>   - risk_control_service.py:1199 — idempotent DDL bootstrap
+>   - strategy_bootstrap.py:99 — transaction lifecycle
+>   - fundamental_context_service.py:21 — explicit caller TX
+>   - data_orchestrator.py:256 — (Phase C-1 annotated)
+>   - dingtalk_alert.py:182 — leaf utility
+>   - t0_19_audit.py:506 — (Phase C-1 annotated)
 
 # QuantMind V2 — 后端服务层详细开发文档
 

@@ -1,10 +1,30 @@
 # GP最小闭环设计文档
 
-> **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新)
-> **状态**: 🔧 PARTIAL (~40%) — GP引擎+FactorDSL+WarmStart已实现, Pipeline编排器8节点状态机已实现(超本文档4组件设计), 但端到端自动闭环未打通
-> **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py
+> **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新) / 2026-05-20 (audit sediment)
+> **状态**: 🟡 ~45% Aligned (2026-05-20 audit) — schema ✅, GP operators count TBD (class-based, no @operator decorator), G9+G10 gates PARTIAL
+> **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py / ast_dedup.py / bruteforce_engine.py / engine_selector.py / factor_sandbox.py / quick_backtester.py / deepseek_client.py
 > **决策D6 (2026-04-16)**: GP先完善闭环(DSL→IC自动评估→Gate自动→入库) → LLM prompt改造(AlphaAgent范式) → 轨迹进化融合
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §11**
+
+---
+
+### Implementation Status (2026-05-20 真值 sediment)
+
+| Component | Design Claim | Actual Reality | Status |
+|---|---|---|---|
+| FactorDSL | §2.4 dimension rules + forbidden combos | `backend/engines/mining/factor_dsl.py` EXISTS | Verified |
+| GP Engine | DEAP + 岛屿模型 + Warm Start | `backend/engines/mining/gp_engine.py` EXISTS | Verified |
+| Pipeline Orchestrator | 4 组件设计 | 8节点状态机 EXISTS (`pipeline_orchestrator.py`) — 超设计 | Verified (exceeds design) |
+| Factor Gate Pipeline | G1-G4 quick + G1-G8 full | ⚠️ G9+G10 gates PARTIAL (Plan v8 P1-34 sediment TODO, ~2h wire pending) | PARTIAL |
+| GP operator pattern | Session 16d "7 new operators" claim | No `@operator` decorator found — operators are class-based in mining/; class count TBD | Unverified claim |
+| "243 tests" (Session 16d claim) | 243 GP tests | No dedicated mining test dir found; tests in `backend/tests/` only | Claim unverified |
+| mining_knowledge table | ✅ schema defined | ✅ Plan v8 P1-35 closed | Verified |
+| ast_dedup | Not in original design | `backend/engines/mining/ast_dedup.py` EXISTS — added post-design | Implemented beyond design |
+| bruteforce_engine | Not in original design | `backend/engines/mining/bruteforce_engine.py` EXISTS | Implemented beyond design |
+| engine_selector | Not in original design | `backend/engines/mining/engine_selector.py` EXISTS | Implemented beyond design |
+| deepseek_client | Not in original design | `backend/engines/mining/deepseek_client.py` EXISTS | Implemented beyond design |
+
+**Phase J defer**: 真 GP operator audit + 243 tests verify (~2h, multi-week defer per FACTOR_TEST_REGISTRY.md follow-up).
 
 ---
 

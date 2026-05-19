@@ -9,6 +9,11 @@
 > - **archiveFactor + triggerHealthCheck** real wire (前 no-op placeholder closed)
 > - **CORE3+dv_ttm 单点失败 risk sustained** (Phase J.3 backup strategy research scope, 4-8w)
 > - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §3 B2 + Frontend Design v3 §6 #13
+>
+> **Plan v9 Phase C-2 sediment (2026-05-20)**:
+> - **compute_daily_ic.py 调度状态**: scripts/compute_daily_ic.py 接 Windows schtask `QuantMind_DailyIC` Mon-Fri 18:00 (Session 22 PR #40 wire). 未接 Celery Beat (Windows-native schtask 是 PT 调度真值). Heartbeat freshness 经 scripts/audit_schtask_freshness.py 监控 (Plan v8 P0-6). 首跑 2026-04-22 18:00 实测 0 ✓ 84 rows 1.9s PASS.
+> - **Alpha158 实际实现**: ~40 因子 (16 def in alpha158_factors.py + 5 composite in factor_engine/alpha158.py). 158 full standard 未全 port — Phase 2 mining backlog. truth source: Session 24 DailyIC 实测 + Session 22 Part 6 backfill.
+> - **Phase C refactor 数字澄清**: factor_engine.py 2049→416 旧度量仅反映 __init__ + core. 实际 package total ~1518 LOC (factor_engine/ 5 modules ~912 LOC + factor_compute_service.py 606 LOC). truth source: Session 16a memory.
 
 # QuantMind V2 — 因子挖掘系统 详细开发文档
 
@@ -27,7 +32,7 @@
 | GP框架 | **DEAP**（非gplearn） | 支持岛屿模型/自定义适应度/逻辑+参数分离 | 1.16 |
 | AST去重 | **3层级联**: AST结构→Embedding相似度→Spearman相关性 | AlphaAgent(KDD 2025)验证，corr<0.7判定不重复 | 1.14 |
 | 搜索调度 | **Thompson Sampling** | 对比ε-greedy/UCB1，冷启动快+自然衰减 | 1.17 |
-| Alpha158对标 | **提取模式不引入依赖** | ~60%重叠，Gap因子(BETA/RSV/CORD/CNTP/CNTD)纳入挖掘候选 | 1.14 |
+| Alpha158对标 | **提取模式不引入依赖** | ~60%重叠，Gap因子(BETA/RSV/CORD/CNTP/CNTD)纳入挖掘候选. **实际实现 ~40 因子** (16 def in alpha158_factors.py + 5 composite in factor_engine/alpha158.py). 158 full standard 未全 port — Phase 2 mining backlog. | 1.14 |
 | GP适应度 | **多目标异构**: IC/ICIR/Novelty/Decay | 4岛×200-500种群，环形迁移每50代 | 1.16 |
 | Factor Gate | **G1-G8自动化** | G4 t>2.5(Harvey 2016) + G5中性化存活 + G6 AST+Spearman去重 | 1.14 |
 
@@ -1047,9 +1052,11 @@ class FactorSandbox:
 | 18 | high_low_range_20 | calc_hl_range(df, 20) | high_adj, low_adj | 0 |
 | 19-34 | (资金流/融资/ROE/营收增速等) | Phase 1实现 | 各自数据源 | 1 |
 
-所有函数位于: backend/engines/factor_engine.py
+所有函数位于: `backend/engines/factor_engine/` 包 (Phase C 2026-04-16 拆分: calculators/ preprocess/ alpha158/ pead/ _constants.py). 编排入口: `factor_compute_service.py`. 数据加载: `factor_repository.py`. 旧单文件 factor_engine.py 已不存在.
 输入: 复权价格(close_adj = close × adj_factor), 不复权量(volume)
 输出: pd.Series, index=stock_code, 截面标准化后
+
+> **Phase C refactor (2026-04-16 Session 16a, F31 closed)**: factor_engine.py 2049 行 → factor_engine/ package (5 modules ~912 LOC) + factor_compute_service.py 606 LOC = ~1518 LOC total. 旧 "2049→416" 度量仅反映 __init__ + core, package total 更高. 25 调用方零改动. truth source: Session 16a memory.
 
 ---
 

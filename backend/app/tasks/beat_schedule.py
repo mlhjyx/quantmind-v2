@@ -374,13 +374,12 @@ CELERY_BEAT_SCHEDULE: dict = {
     #   - Output: stdout + 沉淀 to scheduler_log table
     # 反 hard collision: 月初 1日 09:00 SH risk-reflector-monthly (沿用 §risk-reflector-monthly)
     #   sequential queue tolerated (Beat solo dispatch). 月初 08:00 SH no other Beat fires.
-    # **NOTE**: 任务 wrapper (`app.tasks.llm_cost_audit_tasks.monthly_audit`) **未实现** — 留 follow-up
-    #   sub-PR autonomous implement OR user manual sched scripts/llm_cost_monthly_audit.py.
-    #   Beat entry 沉淀 ahead of time per Plan v8 §VIII #29 audit cadence体例 enforcement.
+    # **CLOSED**: 任务 wrapper `app.tasks.llm_cost_audit_tasks.monthly_audit` 已实现 (Plan v9 Phase C-1).
+    #   Subprocess wrapper → scripts/llm_cost_monthly_audit.py. 铁律 33 fail-loud compliant.
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
     #   (沿用 ADR-043 + LL-097 sediment).
     "llm-cost-monthly-audit": {
-        "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",  # **未实现** task, 待 follow-up sub-PR
+        "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",
         "schedule": crontab(hour=8, minute=0, day_of_month="1"),
         "options": {
             "queue": "default",
@@ -396,12 +395,12 @@ CELERY_BEAT_SCHEDULE: dict = {
     #   - Compare vs current calibration; alert if drift > 30% per coef
     #   - Output: docs/research/slippage_calibration_YYYYQ.md + 沉淀 calibration_history table
     # 反 hard collision: 02:00 SH 月初 1日 no other Beat fires (gp-weekly Sun 22:00 + outbox 30s only).
-    # **NOTE**: 任务 wrapper (`app.tasks.slippage_calibration_tasks.quarterly_recalibrate`) **未实现** —
-    #   留 follow-up sub-PR. Beat entry 沉淀 ahead of time per 铁律 18 enforcement + Plan v8 P0-10 closure.
+    # **CLOSED**: 任务 wrapper `app.tasks.slippage_calibration_tasks.quarterly_recalibrate` 已实现 (Plan v9 Phase C-1).
+    #   Subprocess wrapper → scripts/bayesian_slippage_calibration.py. 铁律 33 fail-loud compliant.
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
     #   (沿用 ADR-043 + LL-097 sediment).
     "slippage-calibration-quarterly": {
-        "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",  # **未实现** task, 待 follow-up sub-PR
+        "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",
         "schedule": crontab(hour=2, minute=0, day_of_month="1", month_of_year="1,4,7,10"),
         "options": {
             "queue": "default",

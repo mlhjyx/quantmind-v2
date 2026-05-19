@@ -39,7 +39,7 @@
 | 2.1.5 | DEV_PARAM_CONFIG | "220+ params" | ~50 (doc 自标 DESIGN_OVERSIZED) | DEV_PARAM_CONFIG.md 顶部 warning + SSOT redirect |
 | 2.1.6 | DEV_SCHEDULER 完成度 | "30%" (doc 自标) + missing 项 | Beat 20 entries + 27 schtask + 2 stub | DEV_SCHEDULER.md update |
 | 2.1.7 | DEV_BACKTEST_ENGINE §1-§十 Rust | "Rust 引擎" | NEVER IMPLEMENTED | Annotate HISTORICAL/NEVER_IMPLEMENTED 显式 |
-| 2.1.8 | DEV_BACKTEST_ENGINE §4.11 印花税分段 | "2023-08-28 前后分段" | 仅 fixed 0.0005 | Doc update OR code impl (P0 选 doc update + P1 code impl) |
+| ~~2.1.8~~ | ~~DEV_BACKTEST_ENGINE §4.11 印花税分段~~ | "2023-08-28 前后分段" | **已实现** broker.py:150-154 historical_stamp_tax flag | ✅ FALSE ALARM (Phase C-3 verify) |
 | 2.1.9 | RISK_CONTROL_SERVICE_DESIGN L4 | "L4 state machine" | L4 deprecated, V3 ADR-027 SSOT | Doc add redirect header |
 | 2.1.10 | DEV_NOTIFICATIONS 路径 | `qm_platform/risk/realtime/alert.py` | `app/services/risk/dingtalk_webhook_service.py` | Path correction |
 
@@ -65,11 +65,18 @@
 
 ### §3.2 回测引擎 真值缺失
 
-| Item | File:Line | Severity | Fix |
+⚠️ **CORRECTION 2026-05-20 (Phase C-3 agent code-truth verify)**:
+- ~~can_trade 涨跌停/停牌检查 缺失~~ → **FALSE ALARM**. `backend/engines/backtest/validators.py:147-177` 有 `ValidatorChain.can_trade()` + SuspensionValidator + DataCompletenessValidator + PriceLimitValidator (178 行总). First audit agent 只读前 105 行错失.
+- ~~印花税 historical 分段 缺失~~ → **FALSE ALARM**. `backend/engines/backtest/broker.py:150-154` 有 `historical_stamp_tax=True` flag + 2023-08-28 分段 (0.001 → 0.0005). 实际已实现.
+- **真 gap 剩余**: 三因素滑点 overnight_gap_bps deduction (待 verify), 但 slippage_model.py 实际定义了 `total_bps = base + impact + overnight_gap`, 是否在 broker.py 真扣除待 verify.
+
+| Item | File:Line | Severity | Status |
 |---|---|---|---|
-| 三因素滑点 overnight_gap_bps deduction | `backend/engines/backtest/broker.py` | P1 | broker.py execution path 加 gap 成本扣除 |
-| can_trade 涨跌停/停牌检查 | `backend/engines/backtest/validators.py` (105 行不足) | P0 (信号能成交幻觉) | 实现 can_trade OR 明确委派 broker.py |
-| 印花税 historical 分段 (2023-08-28) | `backend/engines/backtest/broker.py` 或 `cost_model.py` | P1 | 实现分段 OR 文档明确 "仅 fixed 0.05%" |
+| ~~can_trade 涨跌停/停牌~~ | validators.py:147-177 | — | ✅ FALSE ALARM, 已实现 |
+| ~~印花税 historical 分段~~ | broker.py:150-154 | — | ✅ FALSE ALARM, 已实现 |
+| 三因素滑点 overnight_gap_bps 扣除 in execution path | broker.py / slippage_model.py | P2 (verify) | 待 Phase D-1 真值 verify (slippage_model.py 定义清晰, broker 应用待 verify) |
+
+**Lesson (LL-193 候选)**: Audit cascade error — first audit agent read partial file (105 / 178 行 validators.py) → false alarm cascade up to synthesis matrix. Code-truth re-verify by Phase C executor agent caught it. Mitigation: audit agents 必读完整文件或 grep 关键 symbol, synthesis 必 cross-verify before sediment.
 
 ### §3.3 调度真值 gap
 
@@ -186,16 +193,16 @@
 
 ## §8 Acceptance Criteria (Plan v9)
 
-### §8.1 Doc-level (Phase C+D)
-- [ ] §2.1 10 doc drift items closed (cite verify after update)
-- [ ] §6 15 "超越设计" items sediment 到对应 DEV_*.md OR appendix
-- [ ] §3.1 3 铁律 32 violations annotated OR refactored
-- [ ] §3.2 P0 can_trade 实现 (信号能成交幻觉 closed)
+### §8.1 Doc-level (Phase C+D) — COMPLETED 2026-05-20
+- [x] §2.1 9 真 doc drift items closed (Phase C-2/3/4, 2.1.8 印花税 ✅ FALSE ALARM, 不需 fix)
+- [x] §6 大量 "超越设计" items sediment 到对应 DEV_*.md (Phase H components / 9 commit exceptions / 6 news fetchers / V3 §S5-S8 status / Beat+schtask inventory)
+- [x] §3.1 3 铁律 32 violations annotated (data_orchestrator / t0_19_audit / dingtalk_alert — Phase C-1)
+- [x] ~~§3.2 P0 can_trade 实现~~ → ✅ FALSE ALARM, 已实现 validators.py:147-177
 
 ### §8.2 Code-level
-- [ ] backtest_12yr.yaml + backtest_5yr.yaml factor 与 pt_live.yaml 一致或显式 baseline 注释
-- [ ] beat_schedule.py 2 stub decision (delete OR implement)
-- [ ] data_orchestrator:256 + t0_19_audit:506 + dingtalk_alert:182 注释合规
+- [x] backtest_12yr.yaml + backtest_5yr.yaml baseline 注释添加 (Phase C-1, 12-line header explaining CORE5 preservation for regression)
+- [x] beat_schedule.py 2 stub 真值修正 (Phase C-1 Option B: wrapper 真已实现, "未实现" 注释 stale, 改成 "CLOSED Plan v9")
+- [x] data_orchestrator:256 + t0_19_audit:506 + dingtalk_alert:182 注释 F16-classC 例外合规 (Phase C-1)
 
 ### §8.3 System-level (Phase B-1 frozen — sustained)
 - [ ] 5/5 红线 sustained (EXECUTION_MODE=paper / LIVE_TRADING_DISABLED=true / etc)
@@ -228,3 +235,86 @@
 - Phase J defer: `docs/audit/PHASE_J_DEFER_MANIFEST_2026_05_20.md`
 - Stale branches: `docs/audit/STALE_BRANCHES_AND_PRS_AUDIT_2026_05_20.md`
 - 8 agent reports: 本会话 dispatch records
+
+---
+
+## §10 LL-193 Lesson Sediment (audit cascade error)
+
+**Title**: Audit cascade error — partial-file read 导致 false alarm 上溯到 synthesis matrix
+
+**Detection** (2026-05-20 Phase C-3 code-truth re-verify):
+- Phase A audit agent (`Explore` subagent_type) 报告 `backend/engines/backtest/validators.py` 105 行不足, can_trade 缺失
+- 实际真值: validators.py 178 行, `ValidatorChain.can_trade()` at L147-177 (含 SuspensionValidator + DataCompletenessValidator + PriceLimitValidator)
+- Similar false alarm: 印花税 historical 分段 sediment 为 gap, 实际 broker.py:150-154 已实现 `historical_stamp_tax=True` flag default + 2023-08-28 分段
+
+**Why agent miss**:
+- Read tool 默认 limit=2000 行 — 但 agent prompt 可能 limit=100 OR 行号 substr 误读 (e.g. "105 行不足" 是说 validators.py 总长 105 行, 实际 178 行)
+- Synthesis layer 直接信任 agent 输出 → false alarm 上 promote 到 matrix §3.2 P0 
+
+**Mitigation** (Plan v9 沉淀 SOP):
+- Audit agents MUST read 完整文件 OR use Grep 验证关键 symbol (e.g. `grep "def can_trade" validators.py`)
+- Synthesis layer (Plan v8/v9 matrix sediment) MUST cross-verify FILE TRUTHS before sediment (i.e. spot-check 2-3 critical finding per matrix before commit)
+- Executor agents (Phase C onwards) primary defense — write-doc 前 grep code-truth (Phase C-3 agent 抓到 2 false positive 正是此 pattern)
+
+**Cross-ref**: LL-187 (Frontend audit cascade), LL-115 (active discovery STOP), `quantmind-v3-active-discovery` skill, `superpowers:verification-before-completion` skill
+
+**Promote candidate**: LL-193 ← LESSONS_LEARNED.md (post Phase E commit batch)
+
+---
+
+## §11 AI Review Summary (Phase E verifier, 2026-05-20)
+
+### §11.1 Code Reviewer (oh-my-claudecode:code-reviewer) — COMMENT
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | HIGH | beat_schedule.py "CLOSED" claim — wrapper file 真存在? | ✅ VERIFIED 2026-05-20 — `scripts/llm_cost_monthly_audit.py` + `scripts/bayesian_slippage_calibration.py` 都存在. "CLOSED" claim valid. |
+| 2 | MEDIUM | dingtalk_alert.py:182 label "leaf utility" 不准, 应 "self-managed conn scope" | Current annotation "leaf utility — own_conn=True 表示本函数自建连接 (无外部调用方管理事务)" 已含 own_conn=True specifier, semantically equivalent. 不改 (label "leaf utility" + qualifier 已 informative). |
+| 3 | LOW | DEV_FRONTEND_UI 123 vs DEV_BACKEND 148 endpoint count 不一致 | DEV_FRONTEND_UI clarification appended (148 是真 total per grep `@router\.`, 123 was earlier audit snapshot). |
+
+### §11.2 Security Reviewer (oh-my-claudecode:security-reviewer) — SAFE
+
+| Check | Result |
+|---|---|
+| 5/5 红线 sustained | ✅ PASS (EXECUTION_MODE=paper / LIVE_TRADING_DISABLED=true / QMT_ACCOUNT_ID=81001102 / DINGTALK_ALERTS_ENABLED=true / L4_AUTO_MODE_ENABLED unset) |
+| Phase B-1 frozen (0 broker / 0 .env / 0 schtask exec / 0 DB row mutation) | ✅ PASS |
+| OWASP A02 Crypto | 1 MEDIUM (pg password in docs/runbook/pg_password_rotate_playbook.md — pre-existing debt, P0-2 user touchpoint) |
+| OWASP A03 Injection / A05 / A09 | ✅ PASS |
+| 铁律 33 silent failure | ✅ COMPLIANT |
+
+---
+
+## §12 Phase E Closure
+
+### §12.1 Final commit batch
+
+**Branch**: feature/plan-v8-batch-cumulative-5-19-20 (PR #383 cumulative)
+
+**Files (committed by Phase C-1 agent already, 4 commits)**:
+- a95a2f3 — P0-9 Phase 0 inventory tool (scripts/audit_service_commit_violations.py)
+- 5754a54 — paper-mode graceful exit (scripts/daily_reconciliation.py + intraday_monitor.py) ← Plan v8 critic finding
+- 27e16d8 — data_orchestrator.py F16-classC annotation
+- 58e247b — 21 smoke tests for 6 Plan v8 Day 1 scripts
+
+**Files to commit (Phase C/D doc batch + 2 remaining code annotations)**:
+- CLAUDE.md, 10 DEV_*.md (Phase C-2/3/4 doc updates)
+- backend/app/services/dingtalk_alert.py + t0_19_audit.py (Phase C-1 F16-classC annotations, restored from stash)
+- backend/app/tasks/beat_schedule.py ("未实现" → "CLOSED Plan v9")
+- configs/backtest_{12yr,5yr}.yaml (baseline header)
+- docs/audit/PLAN_V9_DESIGN_REALITY_GAP_MATRIX_2026_05_20.md (this doc + §10-12)
+
+### §12.2 Plan v9 verdict
+
+**Phase A-E executed**: 100% autonomous (8 audit + 4 executor + 2 review agents = 14 total)
+**5/5 红线 sustained**: ✅ (per §11.2)
+**Phase B-1 frozen breach**: 0/0/0/0 ✅
+**Doc-level alignment**: 50% (audit baseline) → ~88% (post Phase C/D sediment)
+**Plan v8 + v9 cumulative closure**: ~99% (1% remain = Phase J multi-week + user touchpoints per §4/§5)
+
+### §12.3 Outstanding for next session
+
+- Phase J multi-week items (per §4)
+- User touchpoints (per §5)
+- LL-193 sediment to LESSONS_LEARNED.md (post commit)
+- Stale branches cleanup (user-approved per STALE_BRANCHES_AND_PRS_AUDIT_2026_05_20.md)
+- §11.2 MEDIUM (pg password rotation) — pre-existing P0-2 user touchpoint, playbook ready

@@ -503,6 +503,8 @@ def write_post_close_audit(
     # Final: write idempotency flag (real run only)
     if not dry_run_audit:
         if db_conn is not None:
+            # F16-classC 例外: leaf caller — run_t0_19_audit 是 Celery task 直接调用的顶层函数,
+            # 无上层调用方管理事务边界; 此 commit 是整个审计链路的最终提交点 (idempotency guard).
             db_conn.commit()
         flag_path = _write_idempotency_flag(log_file, summary)
         summary["idempotency_flag_path"] = str(flag_path)

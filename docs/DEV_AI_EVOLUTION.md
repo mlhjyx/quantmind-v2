@@ -11,6 +11,18 @@
 > - **真完成度**: ~30-45% (sustained Session 57 addendum, Layer 1+2 + AI Assist real LLM)
 > - **Future readers**: Layer 3+4 NOT_STARTED Q3-Q4 trigger (sustained S6 §VIII #16 + Phase J post Phase B-2 live restart)
 > - **Recommendation**: 沿用 ADR-022 append-only — 本 doc 设计 705 行 sustained as reference, 0 maintain Layer 3+4 章节 until Q3-Q4 trigger. Sustained ADR-028 (AUTO + RAG + backtest replay) Sprint M+1~N implementation timeline.
+>
+> **Plan v9 Phase C-2 sediment (2026-05-20)** — Status (2026-05-20):
+> - V3 §S5 RealtimeRiskEngine + 10 rules + 104 tests ✅ merged main (backend/qm_platform/risk/realtime/engine.py, PR #343)
+> - V3 §S6 AlertDispatcher + 28 tests ✅ merged main (backend/qm_platform/risk/realtime/alert.py, PR #344)
+> - V3 §S7 DynamicThresholdEngine + 48 tests ✅ merged main (backend/qm_platform/risk/dynamic_threshold/, PR #345)
+> - V3 §S8 RiskReflector TB-4a-d + 154 tests ✅ merged main (backend/qm_platform/risk/reflector/agent.py, PR #346)
+> - 6 news fetchers merged (anspire/gdelt/tavily/zhihu/marketaux/rsshub) — backend/qm_platform/news/
+> - Market Regime 3 daily cadence (9:00/14:30/16:00) — backend/qm_platform/risk/regime/agents.py
+> - Risk Memory closure (lesson→risk_event_log) — backend/qm_platform/risk/memory/repository.py
+> - LiteLLM cost tracking (F-S7-001 cache-hit fallback) — backend/qm_platform/llm/_internal/litellm_router.py
+> - **agents/ → app/services/ai/ relocation**: 2026-04-15 agents/ 目录删除 ≠ AI 闭环停止. 实际是 relocate 至 backend/app/services/ai/ + backend/qm_platform/risk/. Layer 1-2 持续运行.
+> - **Layer 1 (Trajectory) ~95% / Layer 2 (Agents) ~60% / Layer 3 (Feature Map) + Layer 4 (Capital Alloc) 0% (Q3-Q4 trigger per ADR-028)**
 > **状态**: DESIGN (基于 28 个失败方向 + 213 次因子测试 + 3 篇 2025 前沿论文实证校准)
 > **前版**: V1.0 (2026-03-19, 1064 行, 4-Agent + Pipeline 全自动闭环) → 本版精简重构
 > **路线图**: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §Phase 3
@@ -426,6 +438,8 @@ Step 8: 写入知识库 + 更新 FACTOR_TEST_REGISTRY (铁律 11)
 ---
 
 ## 五、Layer 3 — Feature Map (策略种群矩阵)
+
+> **Layer 3 (Feature Map) + Layer 4 (riskfolio-lib rebalance) 当前 0% 实现, deferred 至 Q3-Q4 per ADR-028.** 本节为参考保留, 0 maintenance until Q3-Q4 trigger. 真值 source: Plan v9 §6.8-6.9 (2026-05-20 verify).
 
 借鉴 [QuantEvolve (2025)](https://arxiv.org/abs/2510.18569) 的 Quality-Diversity 优化。
 
