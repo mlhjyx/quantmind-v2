@@ -122,6 +122,19 @@ def classify_market_regime(decision_id: str | None = None) -> dict[str, Any]:
     if decision_id is None:
         decision_id = f"market-regime-{datetime.now(UTC).isoformat(timespec='seconds')}"
 
+    # A5/C4/H4 Calendar gate wire (Session 57+1 round-5, 2026-05-19):
+    # crontab `1-5` only filters Mon-Fri — A 股 ~15 法定假日/年 仍空触发 Beat.
+    # Calendar SSOT 4-layer fallback (QMT/Tushare/DB/heuristic) gates here.
+    # 反 节假日空发 3 V4-Pro LLM calls (~$0.01-0.05/call cost waste).
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        logger.info(
+            "[market-regime-beat] skip: non-trading day (calendar SSOT) decision_id=%s",
+            decision_id,
+        )
+        return {"ok": True, "skipped": "non_trading_day", "decision_id": decision_id}
+
     logger.info(
         "[market-regime-beat] classify start: decision_id=%s",
         decision_id,

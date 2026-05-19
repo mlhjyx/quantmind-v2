@@ -454,6 +454,17 @@ def compute_dynamic_thresholds() -> dict[str, Any]:
     Raises:
         Re-raises any unhandled exception from engine.evaluate() for Celery retry.
     """
+    # A5/C4/H4 Calendar gate wire (Session 57+1 round-5, 2026-05-19):
+    # crontab `*/5 9-14 * * 1-5` 已 filter Mon-Fri trading hours, but A 股 法定假日
+    # on weekday slips through → 5min × 6h = 72 NOOPs/holiday wasting DB queries
+    # + LLM regime fetch. Calendar SSOT 4-layer fallback gates here.
+    # 反 stress cache stale values written during holiday confusing L1 engine.
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        logger.info("[dynamic-threshold-beat] skip: non-trading day (calendar SSOT)")
+        return {"ok": True, "skipped": "non_trading_day"}
+
     # IC-2a 2026-05-15: _build_stock_metrics is now fully wired (real factor_values
     # + daily_basic + stock_basic). The previous partial-STUB warning is gone;
     # absence is the canonical "fully wired" signal (no more deferred posture).
