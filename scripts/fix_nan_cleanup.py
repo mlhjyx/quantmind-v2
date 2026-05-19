@@ -2,9 +2,16 @@
 
 Uses date-partitioned approach for TimescaleDB partition pruning.
 """
+import os
+
 import psycopg2
 
-conn = psycopg2.connect('postgresql://xin:quantmind@localhost:5432/quantmind_v2')
+conn = psycopg2.connect(
+    os.environ.get(
+        "DATABASE_URL",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
+    )
+)
 cur = conn.cursor()
 
 # First find which dates have NaN (fast with partition pruning)

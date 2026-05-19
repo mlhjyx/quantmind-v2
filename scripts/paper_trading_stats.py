@@ -9,6 +9,7 @@
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -44,7 +45,10 @@ FACTOR_DIRECTIONS = {
     "bp_ratio": +1,
 }
 
-DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
+DB_URI = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
+)
 
 
 def load_performance(conn, sid: str) -> pd.DataFrame:
