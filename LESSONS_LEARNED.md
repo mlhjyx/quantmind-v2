@@ -6381,3 +6381,169 @@ Service can now restart safely (warning logged, NOT raised).
 **铁律 backref**: 33 (silent failure 禁 — 应用 sediment layer) / 35 (secrets via env — operator decision 0 CC PR 是符合 .env gitignored 体例) / 42 (PR + reviewer 制 — sediment review 应 retroactive cycle scope 含) / 36 (precondition 必核 — env state 是 precondition reverse-verify catch)
 
 **Heuristic backref**: #15 Test-Reality Gap (sediment claim vs file真值 reverse-verify) / #1 Drift Detection (commit msg vs actual .env 漂移) / #17 Audit Self-Audit (Session 57+1 6 rounds 自身 audit 缺 sediment drift detection)
+
+---
+
+## LL-189: 2026-05-19 Session 58+1 — Celery Solo Pool Memory Leak + Orphan Queue Routing (3 sub-pattern)
+
+**触发**: User 5-19 ~18:21 SH 报告 "占用了 29gb 的内存". Cold verify: Available 1,704 MB / 5.9% free (32 GB DDR5), 接近 OOM (沿用 LL-009 4-03 PG OOM 教训). PID 9696 QuantMind-Celery worker 24h+ runtime, WS 43.9 GB / private 1.4 GB. 5-19 18:30 → 18:35 SH cleanup 14 min, +15.3 GB recovered, 0 broker call / 0 .env / 0 schtask mutation.
+
+**类**: LL-009 (PG OOM 跨域 RAM hygiene) + LL-183 (silent NOT-GATING sediment 层) cross-class. 3 sub-pattern sediment 跨域 recurrence prevention.
+
+### 1. Sub-pattern #1 — Solo pool unbounded memory growth
+
+**真值**:
+- `--pool=solo --concurrency=1` Windows 生产配置 (CLAUDE.md §部署规则 sustained, S3 F82 修复后 sustained)
+- 不 fork = 单 process 累积内存 0 reset (区别于 prefork pool 每 N 任务 fork child + `worker_max_memory_per_child` 触发 child auto-restart)
+- glibc malloc + pandas/numpy + Python GC 联合不 release native heap (page allocate 后 不还给 OS)
+- Beat 22 schedule entries 持续 feed solo worker:
+ - outbox-publisher-tick (30s) ≈ 2,880 fires/day
+ - meta-monitor-tick (5min) ≈ 288 fires/day
+ - risk-l4-sweep-1min (1min trading hrs) ≈ 360 fires/day
+ - risk-dynamic-threshold-5min (5min trading hrs) ≈ 72 fires/day
+ - news + regime + reflector + 等 ≈ 5,000+ task/day total
+
+**Celery 5.x source verified**:
+- `worker_max_memory_per_child` 配置仅 prefork pool 有效 (`celery.concurrency.asynpool.AsynPool._post_init_callback`)
+- Solo pool (`celery.concurrency.solo.TaskPool`) 不实现 max_memory_per_child
+- 单一 hardening 路径 = **外部周期 restart** (schtask / Beat)
+
+**实测 leak rate**: +3.5 MB / 5s ≈ 42 MB/min ≈ 2.5 GB/hr 持续 (24h+ heavy load 累积).
+
+### 2. Sub-pattern #2 — Orphan queue via .delay() no-queue routing
+
+**真值**:
+- 288 messages in `celery` Redis queue (Worker `-Q default,factor_calc,data_fetch` 不订阅 "celery")
+- 286/288 = `app.tasks.backtest_tasks.run_backtest` orphan
+- 3 producer PIDs (gen18740 / gen32784 / gen90328) 都已死
+- `expires=null` (no TTL, 永不过期)
+
+**Root cause**:
+- `backend/app/api/backtest.py:202` — `run_backtest.delay(run_id)` no `queue=` argument
+- `backend/app/services/backtest_service.py:94` — `run_backtest.delay(run_id)` no `queue=` argument
+- Celery default → "celery" queue (`task_default_queue` config 未设)
+- Worker `-Q default,factor_calc,data_fetch` 不订阅 "celery"
+- 24h+ silent orphan 累积
+
+**Fix**: `task_default_queue="default"` in `backend/app/tasks/celery_app.py` (Session 58+1 commit `f39ce64`).
+
+### 3. Sub-pattern #3 — Orphan-as-protection 讽刺
+
+**真值**:
+- 286 orphan `run_backtest` task 都是 expires=null + queue="celery"
+- 若被 worker 消费 → 单 backtest run ~3-5 GB price_data load × 286 task → 立即 OOM (反 PG OOM 跨域)
+- **真讽刺: orphan 反而是 OOM 保护层**
+
+**Lesson**: Silent failure 在 queue routing layer 反向救命 — 但这是 **fragile protection**, 不可依赖. 真 fix 需 caller side `apply_async(queue="backtest_heavy", expires=3600)` + 独立 worker pool (sub-class of LL-187 sediment-then-forget pattern, capacity issue 未真 fix, 只 fix routing).
+
+### 4. Remediation Cumulative (Session 58+1)
+
+1. **Immediate**: `Stop-Service QuantMind-Celery` (12s graceful) + service_manager.ps1 restart all + flush 288 orphan
+2. **Config hardening**: `task_default_queue="default"` (反 future orphan recurrence)
+3. **STATUS_REPORT sediment**: `docs/audit/STATUS_REPORT_2026_05_19_memory_cleanup.md` (290 lines)
+4. **ADR-086 候选 (promote pending)**: 周期 restart schtask + memory monitor rule + Servy memory limit + backend hardening (pandas explicit gc.collect)
+
+### 5. 4 Hardening 选项 (沿用 ADR-086 promote)
+
+1. **Periodic restart schtask** (RECOMMENDED): Windows Task Scheduler `QuantMind_CeleryNightlyRestart` 每日 03:30 SH 触发 `Restart-Service QuantMind-Celery` (~30s graceful + Servy AutoRestart=true). 反 24h+ 累积.
+2. **Memory monitor rule**: Beat `meta-monitor-tick` 5min 加 rule `Available MBytes < 2000 → P1 DingTalk alert` (V3 §13.3 第 8 元告警 candidate).
+3. **Servy memory limit** (if Servy v7.6 支持): `--memory-limit=4096` (4 GB) 触发 auto-restart if 超.
+4. **Backend hardening**: pandas explicit `gc.collect() + del df` 模式 in factor_calc task body (沿用铁律 33 fail-loud + explicit release).
+
+### 6. 关联
+
+- LL-009 (4-03 PG OOM 事件) — 跨域 RAM hygiene 父 class, 铁律 9 出处 (重数据并发限制)
+- LL-181 (Beat schedule paused 7 天) — Beat consume side fail mode 父 class
+- LL-183 (silent NOT-GATING) — sediment 层 silent 失败 parent class
+- LL-187 (Frontend v3 sediment-then-forget) — sub-pattern #3 cross-domain irony
+- LL-188 (sediment drift forensic) — sister sub-class
+- LL-189 (本条目) — solo pool leak + orphan queue routing
+- ADR-086 候选 (周期 restart hardening, promote pending)
+- 铁律 9 (重数据并发限制) + 铁律 33 (fail-loud silent failure)
+
+**铁律 backref**: 9 (并发限制基础) / 33 (fail-loud silent failure禁) / 34 (Settings SSOT) / 38 (Blueprint sustained — Celery solo pool 在 CLAUDE.md §部署规则 sustained, 短期 cross-domain hardening alone fix 不当 Blueprint-level decision change)
+
+**Heuristic backref**: #4 Closed-Loop (orphan queue routing broken-link) / #16 Pre-Mortem (24h leak 反向 anticipate ambush) / #15 Test-Reality Gap (worker survives 24h pytest 100% PASS but production accumulates) / #18 Alternative Path (4 hardening options sediment)
+
+---
+
+## LL-190: 2026-05-19 Session 58+1 — Plan v8 Audit Sediment-Then-Forget Pattern (Cross-Domain LL-187 Recurrence)
+
+**触发**: User 5-19 ~20:00 SH 反向 challenge: "plan v8 不是审计完就结束, 出现的问题或更改方案需要探讨执行的... 你需要一个个 doc 通读 + 一个个解决问题 / 建议". 暴露 Session 58 + 58+1 全程 reactive (issue → fix → next), plan v8 §VII heuristic #17 "Audit Self-Audit + Cadence" 自己 first failure.
+
+**类**: LL-187 (Frontend v3 W1-W6 sediment-then-forget) 跨域 recurrence. Cross-class to LL-183 (silent NOT-GATING) parent — plan v8 sediment 层 silent 失败 (cf. LL-188 sediment 层 vs LL-183 代码层 sub-class).
+
+### 1. Pattern Description
+
+**Plan v8 5-18 evening sediment**:
+- 11 audit docs ~5000 lines
+- 3 HTML mockup variants A/B/C
+- Master Top 50 findings (24 P0 + 26 P1) with heuristic #18 GLOBAL 2-3 alt remediation each
+- §3-bis Strategic Alternatives Alt A-E
+- §VIII 30 suggestions (含 #26-30 NEW v8: Decision Log / Living Doc / Auto Diagram / Audit Cadence / Reverse Trace)
+- §9.3 14 Open Questions
+
+**Session 58 / 58+1 真值 work distribution** (19 commits since 5-18):
+- 11/19 reactive fix (LL-188 + S3 + L1/L2/L3 + A3 + C2 + F-S7 + Servy + cron block defuse)
+- 5/19 discovery-driven sediment (LL-188 + LL-189 + Frontend v3 W1-W6 + ADR-084 + Memory cleanup)
+- 3/19 proactive plan v8 follow-through (Path B brief + ADR-085 + 5d observation template)
+- **0/19 plan v8 §VIII #26-30 5 suggestion implement**
+- **0/19 plan v8 §3-bis Strategic Alt A-E follow-up**
+- **0/19 plan v8 §9.3 14 Open Q user decision triggered**
+
+**Direct quote** (UNRESOLVED_COMPREHENSIVE_AUDIT_2026_05_19 §6):
+> "Plan v8 audit sediment alone ≠ sustained audit enforcement. Heuristic #17 Audit Self-Audit + #18 Alternative Path Thinking + §VIII 30 suggestions, 若 sediment 后 0 schtask / 0 cron / 0 explicit enforcement mechanism, 全 drift 入 dormant state. Session 58 / 58+1 是 first-instance LL-187 cross-domain recurrence (Phase H Frontend v3 W1-W6 ✅ 后 W7-W15 sediment-then-forget). Root cause: 'sediment 完成' fault tolerance 误认 = 'audit framework active'."
+
+### 2. Root Cause
+
+我把 plan v8 看作 "**sediment complete = audit framework active**". 反 §VII heuristic #17 "Audit Self-Audit + Cadence" 自己 first failure.
+
+具体 mechanism:
+- Plan v8 5-18 evening **沉淀 SOP doc** (30 suggestion / 50 finding / Strategic Alt / Open Q)
+- 沉淀完后 CC main process 进入 "audit done" state
+- 后续 sessions (Session 58 round 1-6 + Session 58+1) reactive fix issue-by-issue
+- 每个 reactive fix **不返回 plan v8** 系统性 cross-reference 是否触发 follow-up
+- 5/30 sediment-only-no-implement suggestion 全 dormant
+- 5/5 Strategic Alt 0 traction
+- 14/14 Open Q 0 user decision
+
+**类 LL-187 sediment-then-forget**: Phase H W1-W6 ✅ 后 W7-W15 sediment-only-no-implement.
+
+### 3. Real Fix (sustained enforcement mechanism)
+
+Plan v8 sediment ALONE 不够. 真 fix:
+
+| Sediment | + Enforcement Mechanism |
+|---|---|
+| 30 suggestion | schtask check 月度 status update |
+| 50 finding | DB table `audit_findings_tracker` + monthly review Beat |
+| Strategic Alt | quarterly review + decision deadline |
+| Open Q | DingTalk reminder + user touchpoint queue track |
+| Audit cadence #29 | schtask `QuantMind_AuditCadenceTick` quarterly fire |
+
+**沿用 Plan v8 §VIII #29 Audit Cadence Calendar** 4 trigger:
+- (a) Post-LL incident P0 → mini-audit within 7d
+- (b) Quarterly full (Q1/Q2/Q3/Q4)
+- (c) Pre-cutover gate (Tier A→B / paper→live / 重大架构变)
+- (d) Tech debt threshold (LL > 200 OR ADR > 100 OR test fail > baseline+10)
+
+### 4. Remediation Cumulative (Session 58+1)
+
+1. **UNRESOLVED_COMPREHENSIVE_AUDIT_2026_05_19_session_58_plus_1.md** (`3385bd8`, 287 lines) — surface 30+ items
+2. **PLAN_V8_MASTER_FINDINGS_REGISTER_2026_05_19.md** (THIS Session) — per-doc × per-finding × closure status
+3. **5d window autonomous closure queue** (this Session promote): LL-189 + LL-190 + ADR-086 + Phase B-2 preflight + 5d gate criteria + CLAUDE.md count drift fix
+4. **Plan v8 §VIII #29 Audit Cadence Calendar sediment** (Day 3 of 5d window)
+
+### 5. 关联
+
+- LL-187 (Phase H Frontend v3 sediment-then-forget) — parent pattern
+- LL-188 (sediment drift forensic) — sister sub-class (sediment 层 vs LL-183 代码层)
+- LL-189 (worker leak + orphan queue) — sister
+- LL-190 (本条目) — cross-domain sediment-then-forget audit framework
+- ADR-086 候选 (Celery周期 restart + monitor) — first audit-driven enforcement
+- Plan v8 §VII heuristic #17 (Audit Self-Audit + Cadence) — self-violation parent
+- Plan v8 §VIII #29 Audit Cadence Calendar (NEW v8) — fix mechanism cite
+
+**铁律 backref**: 17 (heuristic #17 self-audit, 自己 first violation) / 38 (Blueprint sustained — plan v8 是 audit blueprint, 应 sustained enforcement 不仅 sediment) / 26 (验证不可跳过 — plan v8 sediment 后 follow-up enforcement 也算 verification step)
+
+**Heuristic backref**: #17 Audit Self-Audit (self-violation parent) / #18 Alternative Path (本 pattern 是 single-fix bias 即 reactive 模式) / #14 Documentation Lying (plan v8 sediment claim "audit framework active" 实质 dormant) / #20 Design-Implementation Reverse Mapping (plan v8 设计 30 suggestion → 实施 0/30 反向 traceability)

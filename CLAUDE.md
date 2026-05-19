@@ -78,7 +78,7 @@ quantmind-v2/
 │   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md        # ⭐ 当前总设计真相源
 │   ├── QUANTMIND_PLATFORM_BLUEPRINT.md         # ⭐ 平台化路线图 (QPB v1.16)
 │   ├── DEV_BACKEND.md / DEV_BACKTEST_ENGINE.md / DEV_FACTOR_MINING.md / DEV_FRONTEND_UI.md / DEV_SCHEDULER.md / DEV_PARAM_CONFIG.md / DEV_AI_EVOLUTION.md / DEV_FOREX.md / DEV_NOTIFICATIONS.md
-│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-022)
+│   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-086, 累计 67+ 实测 2026-05-18 plan v8 audit / sustained 5-19 Session 58+1 ADR-085/086 sediment) — 索引见 docs/adr/REGISTRY.md (LL-105 SOP-6 SSOT)
 │   ├── audit/                                   # 一次性诊断 / STATUS_REPORT
 │   ├── mvp/                                     # MVP 设计稿 (≤2 页, 铁律 24)
 │   ├── research-kb/                             # 研究知识库 (failed / findings / decisions)
@@ -355,7 +355,7 @@ NSSM配置备份在 `config/nssm-backup/`，包含注册表导出文件(.reg)和
 
 ## 已知失败方向（high-level, 完整列表见 [docs/research-kb/failed/](docs/research-kb/failed/) + [docs/research-kb/decisions/](docs/research-kb/decisions/)）
 
-> 30+ 失败方向已沉淀到 research-kb (8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订). 本节仅列**最关键**的方向 (新研究启动前必读), 完整历史 + 详细论据 走 research-kb.
+> 30+ 失败方向已沉淀到 research-kb (实测 41 entries: 8 failed + 25 findings + 5 decisions + 1 experiments + 2 risk_findings, Step 6.4 G1 实测修订 + plan v8 audit S2 doc status matrix 2026-05-18 verify). 本节仅列**最关键**的方向 (新研究启动前必读), 完整历史 + 详细论据 走 research-kb.
 
 | 关键失败方向 | 结论 | 来源 |
 |---|---|---|
