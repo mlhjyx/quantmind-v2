@@ -55,24 +55,24 @@ def setup_logging() -> logging.Logger:
 
 
 def fetch_risk_events(conn: Any, limit: int, log: logging.Logger) -> list[dict[str, Any]]:
-    """从 risk_event_log 读取历史事件."""
+    """从 risk_event_log 读取历史事件 (real schema verified 2026-05-19)."""
     events: list[dict[str, Any]] = []
     with conn.cursor() as cur:
         try:
             cur.execute(
                 """
-                SELECT event_type, symbol_id, event_timestamp,
-                       trigger_metrics, action_taken, outcome, reason
+                SELECT rule_id, code, triggered_at, severity, reason,
+                       action_taken, context_snapshot, realtime_metrics
                 FROM risk_event_log
-                ORDER BY event_timestamp DESC
+                ORDER BY triggered_at DESC
                 LIMIT %s
                 """,
                 (limit,),
             )
             rows = cur.fetchall()
             cols = [
-                "event_type", "symbol_id", "event_timestamp",
-                "trigger_metrics", "action_taken", "outcome", "reason",
+                "rule_id", "code", "triggered_at", "severity", "reason",
+                "action_taken", "context_snapshot", "realtime_metrics",
             ]
             for row in rows:
                 record = dict(zip(cols, row, strict=False))
@@ -80,36 +80,35 @@ def fetch_risk_events(conn: Any, limit: int, log: logging.Logger) -> list[dict[s
             log.info(f"  risk_event_log: {len(events)} rows")
         except Exception as exc:
             log.warning(f"risk_event_log 读取失败 (表可能不存在): {exc}")
+            conn.rollback()
     return events
 
 
 def fetch_trade_emergency(conn: Any, limit: int, log: logging.Logger) -> list[dict[str, Any]]:
-    """从 trade_log 读取 emergency_close 事件 (4-29 清仓真实).
-
-    匹配规则: reject_reason LIKE 'emergency_close%' OR side='SELL' + reason含'清仓'.
-    """
+    """从 trade_log 读取 emergency_close 事件 (4-29 清仓真实, real schema verified)."""
     events: list[dict[str, Any]] = []
     with conn.cursor() as cur:
         try:
             cur.execute(
                 """
-                SELECT symbol_id, fill_time, fill_price, fill_qty, side, reject_reason
+                SELECT code, executed_at, fill_price, quantity, direction, reject_reason
                 FROM trade_log
                 WHERE reject_reason LIKE 'emergency_close%%'
                    OR reject_reason LIKE 't0_19_backfill%%'
-                ORDER BY fill_time DESC
+                ORDER BY executed_at DESC
                 LIMIT %s
                 """,
                 (limit,),
             )
             rows = cur.fetchall()
-            cols = ["symbol_id", "fill_time", "fill_price", "fill_qty", "side", "reject_reason"]
+            cols = ["code", "executed_at", "fill_price", "quantity", "direction", "reject_reason"]
             for row in rows:
                 record = dict(zip(cols, row, strict=False))
                 events.append(record)
             log.info(f"  trade_log emergency: {len(events)} rows")
         except Exception as exc:
             log.warning(f"trade_log 读取失败: {exc}")
+            conn.rollback()
     return events
 
 
@@ -164,38 +163,46 @@ def insert_risk_memory(
 
 
 def map_risk_event_to_memory(event: dict[str, Any]) -> dict[str, Any]:
-    """转换 risk_event_log row → risk_memory payload."""
+    """转换 risk_event_log row → risk_memory payload (real schema verified)."""
+    # rule_id 真值是 enum-like 字符串, 映射 risk_memory.event_type
+    rule_id = event.get("rule_id") or "unknown_rule"
     return {
-        "event_type": event["event_type"],
-        "symbol_id": event.get("symbol_id"),
-        "event_timestamp": event["event_timestamp"],
+        "event_type": f"risk_{rule_id}"[:50],  # 50 char limit
+        "symbol_id": event.get("code"),
+        "event_timestamp": event["triggered_at"],
         "context_snapshot": {
             "source": "risk_event_log",
-            "trigger_metrics": event.get("trigger_metrics", {}),
+            "rule_id": rule_id,
+            "severity": event.get("severity"),
             "reason": event.get("reason", ""),
+            "realtime_metrics": event.get("realtime_metrics", {}),
+            "context_snapshot_original": event.get("context_snapshot", {}),
         },
-        "action_taken": event.get("action_taken"),
-        "outcome": event.get("outcome"),
+        "action_taken": event.get("action_taken") if event.get("action_taken") in (
+            'STAGED_executed', 'STAGED_cancelled', 'STAGED_timeout_executed',
+            'manual_sell', 'no_action', 'reentry'
+        ) else None,  # vocabulary CHECK constraint enforce
+        "outcome": None,
         "lesson": None,
     }
 
 
 def map_trade_emergency_to_memory(event: dict[str, Any]) -> dict[str, Any]:
-    """转换 trade_log emergency row → risk_memory payload."""
+    """转换 trade_log emergency row → risk_memory payload (real schema verified)."""
     return {
         "event_type": "emergency_close",
-        "symbol_id": event.get("symbol_id"),
-        "event_timestamp": event["fill_time"],
+        "symbol_id": event.get("code"),
+        "event_timestamp": event["executed_at"],
         "context_snapshot": {
             "source": "trade_log",
-            "fill_price": float(event["fill_price"]) if event["fill_price"] else None,
-            "fill_qty": event["fill_qty"],
-            "side": event["side"],
+            "fill_price": float(event["fill_price"]) if event["fill_price"] is not None else None,
+            "quantity": event["quantity"],
+            "direction": event["direction"],
             "reject_reason": event["reject_reason"],
         },
         "action_taken": "manual_sell",
         "outcome": None,
-        "lesson": "4-29 user 清仓决议 emergency_close, 沿用 SHUTDOWN_NOTICE_2026_04_30 §9 prerequisite",
+        "lesson": "4-29 user 清仓决议 emergency_close (SHUTDOWN_NOTICE §9)"[:500],
     }
 
 
