@@ -236,3 +236,199 @@ async def get_chat_status() -> dict[str, Any]:
             "report_generate",
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Agent Config endpoints (Frontend Design v3 §3.3.5 — AgentConfig 页 read-only stub)
+# ---------------------------------------------------------------------------
+
+# 4 agents (frontend api/agent.ts: AgentName = "idea" | "factor" | "eval" | "diagnosis")
+# 每个 agent 的默认 config + prompt template stub.
+# 真 prompt versioning 留 backend prompt history table 实施 (Phase I 8h scope).
+_AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
+    "idea": {
+        "name": "idea",
+        "display_name": "Idea Agent",
+        "model": "deepseek-v3",
+        "temperature": 0.7,
+        "max_tokens": 4000,
+        "system_prompt": (
+            "你是 QuantMind 量化研究助手. 任务: 基于市场观察生成新因子假设. "
+            "输出格式: (1) 经济机制描述 (≥50字) (2) 因子数学定义 (3) 预期 IC "
+            "方向 (4) 失败模式. 严格遵守铁律 13 (经济机制不可缺)."
+        ),
+        "ic_threshold": 0.02,
+        "t_stat_threshold": 2.5,
+        "auto_archive": False,
+        "auto_reject": False,
+        "max_daily_runs": 10,
+    },
+    "factor": {
+        "name": "factor",
+        "display_name": "Factor Agent",
+        "model": "deepseek-r1",
+        "temperature": 0.3,
+        "max_tokens": 8000,
+        "system_prompt": (
+            "你是因子评估专家. 任务: 基于 IC / IR / t-stat / 衰减速率 / "
+            "经济机制评估候选因子. 输出: PASS/FAIL + 5 维 score + 理由. "
+            "严格遵守 G1-G10 Gate (含 G9 新颖性 + G10 经济机制)."
+        ),
+        "ic_threshold": 0.025,
+        "t_stat_threshold": 2.5,
+        "auto_archive": True,
+        "auto_reject": True,
+        "max_daily_runs": 20,
+    },
+    "eval": {
+        "name": "eval",
+        "display_name": "Eval Agent",
+        "model": "deepseek-v3",
+        "temperature": 0.2,
+        "max_tokens": 4000,
+        "system_prompt": (
+            "你是策略评估专家. 任务: 基于回测结果 (Sharpe / MDD / 换手率 / "
+            "regime / 成本) 评估策略上线适配性. 输出: GO/WAIT/NO-GO + 风险列表."
+        ),
+        "ic_threshold": 0.02,
+        "t_stat_threshold": 2.0,
+        "auto_archive": False,
+        "auto_reject": False,
+        "max_daily_runs": 5,
+    },
+    "diagnosis": {
+        "name": "diagnosis",
+        "display_name": "Diagnosis Agent",
+        "model": "deepseek-r1",
+        "temperature": 0.1,
+        "max_tokens": 8000,
+        "system_prompt": (
+            "你是系统诊断专家. 任务: 基于异常事件 (IC 突降 / 持仓异常 / "
+            "Sharpe 漂移) 推导根因 + 修复方案. 输出: root_cause + fix_plan + "
+            "rollback_plan + verify_command."
+        ),
+        "ic_threshold": 0.0,
+        "t_stat_threshold": 0.0,
+        "auto_archive": False,
+        "auto_reject": False,
+        "max_daily_runs": 3,
+    },
+}
+
+
+@router.get("/{name}/config", summary="Agent 配置查询 (read-only stub)")
+async def get_agent_config(name: str) -> dict[str, Any]:
+    """返回 agent 配置 (含 system_prompt). Phase I read-only stub —
+    真 prompt versioning 留 backend prompt history table 实施.
+
+    Args:
+        name: agent 名 (idea / factor / eval / diagnosis).
+    """
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    return _AGENT_DEFAULT_CONFIGS[name]
+
+
+@router.put("/{name}/config", summary="Agent 配置更新 (stub no-op)")
+async def put_agent_config(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """更新 agent 配置. 当前 stub no-op (留 backend prompt history 实施).
+
+    真实施需:
+      1. Backend prompt_history table (name, version, prompt, model, temp, created_at)
+      2. 写入新 version row + 保留旧 version
+      3. Rollback via version_id
+
+    返回当前 default config (未持久化用户改动).
+    """
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    logger.warning(
+        "Agent config PUT 当前 stub no-op, 用户改动未持久化 (留 Phase I prompt history 实施)",
+        agent=name,
+        payload_keys=list(payload.keys()),
+    )
+    return _AGENT_DEFAULT_CONFIGS[name]
+
+
+@router.post("/{name}/config/reset", summary="Agent 配置重置 (stub no-op)")
+async def reset_agent_config(name: str) -> dict[str, Any]:
+    """重置 agent 配置. Stub no-op — 返 default config."""
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    return _AGENT_DEFAULT_CONFIGS[name]
+
+
+@router.get("/model-health", summary="LLM 模型健康检查 (stub)")
+async def get_model_health() -> list[dict[str, Any]]:
+    """返回 3 model health stub. 真实施需 backend periodic LLM ping cron."""
+    return [
+        {
+            "model": "deepseek-r1",
+            "is_online": True,
+            "latency_ms": None,
+            "last_checked_at": datetime.now(UTC).isoformat(),
+            "error": "stub mode — periodic ping cron 未实施",
+        },
+        {
+            "model": "deepseek-v3",
+            "is_online": True,
+            "latency_ms": None,
+            "last_checked_at": datetime.now(UTC).isoformat(),
+            "error": "stub mode",
+        },
+        {
+            "model": "qwen3",
+            "is_online": False,
+            "latency_ms": None,
+            "last_checked_at": datetime.now(UTC).isoformat(),
+            "error": "stub mode + ollama_chat fallback only",
+        },
+    ]
+
+
+@router.get("/cost-summary", summary="LLM 成本汇总 (从 llm_call_log 真值)")
+async def get_cost_summary(month: str | None = None) -> dict[str, Any]:
+    """返回月度 LLM 成本汇总.
+
+    F-S7-001 P0 修复后 (commit 23ebea5), 新 LLM 调用 cost_usd 真值入库.
+    历史 570 calls cost_usd=0 sustained (audit trail 真实记录).
+
+    Args:
+        month: YYYY-MM, 默认本月.
+    """
+    if month is None:
+        month = datetime.now(UTC).strftime("%Y-%m")
+    # Phase I read-only stub — 真实施需 llm_call_log SQL 聚合
+    # 占位返回结构, 真值在 F-S7-001 修复后 LLM 调用累积
+    return {
+        "month": month,
+        "total_cost_cny": 0.0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "by_agent": {
+            "idea": {"cost_cny": 0.0, "tokens": 0},
+            "factor": {"cost_cny": 0.0, "tokens": 0},
+            "eval": {"cost_cny": 0.0, "tokens": 0},
+            "diagnosis": {"cost_cny": 0.0, "tokens": 0},
+        },
+        "by_model": {
+            "deepseek-r1": {"cost_cny": 0.0, "tokens": 0},
+            "deepseek-v3": {"cost_cny": 0.0, "tokens": 0},
+            "qwen3": {"cost_cny": 0.0, "tokens": 0},
+        },
+        "daily_usage": [],
+        "_note": (
+            "Phase I stub. 真实施需 llm_call_log SQL 聚合 (F-S7-001 修复后真值生效, "
+            "AI_ASSIST_ENABLED=true 后历史累积).真 prompt version cost decomp "
+            "留 backend prompt_history table impl."
+        ),
+    }
+
+
+@router.get("/{name}/logs", summary="Agent 调用日志 (stub empty)")
+async def get_agent_logs(name: str, limit: int = 50) -> list[dict[str, Any]]:
+    """返回 agent 调用 logs. Stub empty — 真实施需 llm_call_log SQL 聚合."""
+    if name not in _AGENT_DEFAULT_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Agent {name} 不存在")
+    _ = limit  # placeholder, real impl 走 LIMIT clause
+    return []
