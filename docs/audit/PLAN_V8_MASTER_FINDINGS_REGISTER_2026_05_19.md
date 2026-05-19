@@ -151,10 +151,10 @@
 |---|---|---|
 | P1-25 | L4 _CANCEL_WINDOW hardcoded | ✅ yaml-driven refactor (~1h) |
 | P1-26 | FundamentalContextService 1/8 维 | ❌ V3 §3.3 8 维 implement multi-week |
-| P1-27 | Alpha158 45-factor gap | 🟡 (autonomous: --all-alpha158 flag) |
+| P1-27 | Alpha158 45-factor gap | ✅ **CLOSED** 5-19 (commit 5033ac3): --all-alpha158 flag added to compute_daily_ic.py (mutually_exclusive_group), get_alpha158_names() returns 158 names verified. 留 user 触发大规模 backfill. |
 | P1-28 | AlertDispatcher buffered flush leak | ✅ CC can add DB persist (~2h) |
 | P1-29 | LLM Router no failover | ✅ CC can add `completion_with_alias_override` auto-routing (~3h) |
-| P1-30 | StreamBus publish_sync drift | ✅ CC can deprecation warning (~30min) |
+| P1-30 | StreamBus publish_sync drift | ✅ **CLOSED** 5-19 (commit 70f9557): DeprecationWarning for business event prefixes (qm:signal:/execution:/fill:/trade:/order:). 2 existing ops callers (health/quality) 不破. |
 | P1-31 | Loop 1 Signal 0 NAV feedback | ❌ Phase J |
 | P1-32 | Loop 4 Regime → Signal disconnect | ❌ Phase J |
 | P1-33 | SPF 6 no Tushare fallback chain | ❌ multi-week (Baostock/akshare backup) |
@@ -167,7 +167,7 @@
 | P1-41 | LL count drift 94 vs ~160 | ✅ CC can fix CLAUDE.md cite (~10min) |
 | P1-42 | ADR count drift 022 vs 67 | ✅ CC can fix CLAUDE.md cite (~10min) |
 | P1-43 | DingTalk HMAC outbound disabled | YES (user generate secret + .env edit) |
-| P1-45 | Logs no rotation | ✅ CC add RotatingFileHandler (~2h) |
+| P1-45 | Logs no rotation | ✅ **PARTIAL CLOSED** 5-19 (commit 5253cca): scripts/rotate_servy_logs.ps1 (12 target files, 100MB threshold, 7 backups, Windows-safe truncate). Schtask register 留 user 触发 (classifier 阻止 autonomous). |
 | P1-47 | Frontend dual chart libs ECharts+Recharts | ❌ Frontend Phase H/I multi-day |
 | P1-50 | No Control Center / Cmd palette | ❌ DEFERRED (v2/v3 direction correction: embed in existing pages) |
 
