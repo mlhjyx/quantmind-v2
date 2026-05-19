@@ -51,10 +51,13 @@ NAV-vs-prediction delta ← performance_series ← trade_log ← execute_phase
 
 ### §2.4 Adaptation modes
 - **Read-only**: Display delta in dashboard, no auto-adapt
-- **Soft adapt**: Adjust factor weights ±5% based on delta
+- **Soft adapt**: Adjust factor weights ±15% based on delta
 - **Hard adapt**: Switch factor set on sustained breach
 
 **Decision**: Read-only Phase 1, Soft adapt Phase 2 (Phase J+1+)
+
+Note (code review MEDIUM fix 5-20): Soft adapt bound revised 5% → 15% to align with
+§4 compound bound calculation. Previous draft conflict resolved.
 
 ### §2.5 Implementation phases
 
@@ -132,7 +135,11 @@ Both loops affect signal_engine — coordination needed:
 
 If both active: apply Loop 4 regime modulation, then Loop 1 delta adjustment.
 
-Bounded compound: total ±25% max adjustment per factor weight (15% Loop 1 + 20% Loop 4 - overlap dampening).
+Bounded compound: total ±25% max adjustment per factor weight
+- Loop 1 soft adapt: ±15% (§2.4)
+- Loop 4 regime modulation: ±20% bounded (§3.3 Option B)
+- Compound overlap dampening: applied (e.g. when both sign agree, dampen by ~30%)
+- Hard cap: 25% prevents pathological compounding (code review MEDIUM fix 5-20).
 
 ---
 

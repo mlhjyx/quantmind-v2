@@ -2,15 +2,13 @@
 #
 # Plan v8 — Schtask register batch script (留 user trigger after Phase B-1 Day 1 验证)
 #
-# Bundles 4 new schtask registers from Plan v8 closure batch:
+# Bundles 6 schtask registers from Plan v8 closure batch (code review HIGH fix 5-20):
 # 1. QuantMind_RotateServyLogs (P1-45, daily 02:00)
 # 2. QuantMind_SchtaskFreshnessProbe (P0-6, daily 09:00)
 # 3. QuantMind_BeatHeartbeatProbe (P0-5, every 5 min)
 # 4. QuantMind_MarketOpenWatcher (P0-15, daily 09:31)
-#
-# Plus 2 from prior batches:
 # 5. QuantMind_CeleryNightlyRestart (ADR-086 Tier 1, daily 03:30)
-# 6. QuantMind_AuditCadenceQuarterly (§VIII #29, Jan 1/Apr 1/Jul 1/Oct 1)
+# 6. QuantMind_AuditCadenceQuarterly (§VIII #29, Jan 1 03:00)
 #
 # Usage:
 #   .\scripts\register_phase_b_1_schtasks.ps1                # All 6, prompt per task
@@ -69,6 +67,16 @@ $tasks = @(
         StartTime = "03:30"
         Command = $POWERSHELL_EXE
         Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"D:\tools\Servy\servy-cli.exe restart --name=QuantMind-Celery`""
+    },
+    @{
+        Name = "QuantMind_AuditCadenceQuarterly"
+        Description = "Plan v8 §VIII #29: Quarterly audit cadence reminder (Jan/Apr/Jul/Oct 1st)"
+        Schedule = "MONTHLY"
+        Modifier = "1"
+        Months = "JAN,APR,JUL,OCT"
+        StartTime = "03:00"
+        Command = $POWERSHELL_EXE
+        Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$PYTHON_EXE D:\quantmind-v2\scripts\audit_design_doc_smoke.py --strict`""
     }
 )
 
@@ -88,10 +96,13 @@ function Register-Task {
     Write-Host "Command: $($Task.Command)"
     Write-Host "Arguments: $($Task.Arguments)"
 
+    # Plan v8 code review MEDIUM fix (5-20): properly quote executable path within /TR value
+    # for future-proofing against paths with spaces (e.g. C:\Program Files\...).
+    $trValue = "`"\`"$($Task.Command)\`" $($Task.Arguments)`""
     $cmdArgs = @(
         "/Create",
         "/TN", $Task.Name,
-        "/TR", "`"$($Task.Command) $($Task.Arguments)`"",
+        "/TR", $trValue,
         "/SC", $Task.Schedule,
         "/F"
     )
@@ -102,6 +113,10 @@ function Register-Task {
     if ($Task.Modifier) {
         $cmdArgs += "/MO"
         $cmdArgs += $Task.Modifier
+    }
+    if ($Task.Months) {
+        $cmdArgs += "/M"
+        $cmdArgs += $Task.Months
     }
 
     $cmdString = "schtasks $($cmdArgs -join ' ')"

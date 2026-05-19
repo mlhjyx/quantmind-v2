@@ -52,10 +52,13 @@
 - Less mature for complex visualizations
 - Limited theming flexibility
 
-**Current usage** (3+ pages):
-- AssistPanel.tsx (simple line chart)
-- PT_Dashboard.tsx (NAV mini chart)
-- SystemSettings.tsx (sparkline)
+**Current usage** (6 files — code review MEDIUM fix 5-20, grep verified):
+- `components/mining/GPPanel.tsx`
+- `pages/Dashboard/EquityCurve.tsx`
+- `pages/MarketData.tsx`
+- `pages/MiningTaskCenter.tsx`
+- `pages/Portfolio.tsx`
+- `pages/RiskManagement.tsx`
 
 ---
 
@@ -69,10 +72,13 @@
 - 5+ pages already invested in ECharts (sunk cost favors consolidation)
 - Recharts limited for complex risk heatmaps
 
-**Migrate**:
-- AssistPanel.tsx (Recharts → ECharts)
-- PT_Dashboard.tsx (Recharts → ECharts)
-- SystemSettings.tsx (Recharts → ECharts)
+**Migrate** (6 files — code review MEDIUM fix 5-20):
+- `components/mining/GPPanel.tsx` (Recharts → ECharts)
+- `pages/Dashboard/EquityCurve.tsx` (Recharts → ECharts)
+- `pages/MarketData.tsx` (Recharts → ECharts)
+- `pages/MiningTaskCenter.tsx` (Recharts → ECharts)
+- `pages/Portfolio.tsx` (Recharts → ECharts)
+- `pages/RiskManagement.tsx` (Recharts → ECharts)
 
 **Remove**:
 - `recharts` from package.json
@@ -138,10 +144,13 @@ For each Recharts page:
 - Create `useECharts` hook + test
 - Theme alignment (single ECharts theme for all pages)
 
-### §5.2 Phase 2 (Day 2-3): Migrate 3 pages
-- AssistPanel.tsx
-- PT_Dashboard.tsx
-- SystemSettings.tsx
+### §5.2 Phase 2 (Day 2-5): Migrate 6 files
+- `components/mining/GPPanel.tsx`
+- `pages/Dashboard/EquityCurve.tsx`
+- `pages/MarketData.tsx`
+- `pages/MiningTaskCenter.tsx`
+- `pages/Portfolio.tsx`
+- `pages/RiskManagement.tsx`
 
 ### §5.3 Phase 3 (Day 4): Cleanup
 - Remove `recharts` from package.json
@@ -187,11 +196,11 @@ For each Recharts page:
 | Phase | Effort | Dependencies |
 |---|---|---|
 | 1 Setup hook + theme | 1 day | None |
-| 2 Migrate 3 pages | 2-3 days | Phase 1 |
+| 2 Migrate 6 files | 4-5 days | Phase 1 |
 | 3 Cleanup + bundle verify | 1 day | Phase 2 |
 | 4 Docs sediment | 0.5 day | Phase 3 |
 
-**Total**: 4-5 days
+**Total**: 6-8 days (code review MEDIUM fix — was understated as 4-5 days)
 
 ---
 

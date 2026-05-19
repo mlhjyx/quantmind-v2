@@ -90,7 +90,7 @@ quantmind-v2/
 │   ├── engines/                                 # 核心计算引擎 (factor_engine / backtest / fast_neutralize / config_guard / slippage_model / mining)
 │   ├── migrations/                              # SQL migration (幂等 + rollback 配对)
 │   ├── data/                                    # Data 层 (parquet_cache 等)
-│   └── tests/                                   # 100+ test files (Session 9 实测 2864 pass / 24 fail baseline)
+│   └── tests/                                   # **6251 tests collected 0 error (5-20 SH 实测)** (vs Session 9 实测 2864 pass / 24 fail)
 ├── frontend/src/                                # React (api / pages / components / store)
 ├── scripts/                                     # ⭐ run_paper_trading / run_backtest / qmt_data_service / health_check / pt_watchdog / pg_backup / approve_l4 / cancel_stale_orders / data_quality_check / monitor_factor_ic / registry / knowledge / archive / research
 ├── configs/                                     # YAML 配置 (pt_live / backtest_5yr / backtest_12yr)
@@ -463,7 +463,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 - **Sprint 治理基础设施 5 块基石** (2026-04-30, Step 6-6.3a): IRONLAWS.md / ADR-021 / 第 19 条 memory 铁律 / X10+LL-098+pre-push hook / §23 双口径
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
-- **测试基线**: 2864 pass / 24 fail (Session 9 末实测, 铁律 40 baseline 保持) + smoke 28 PASS + regression 5yr+12yr max_diff=0
+- **测试基线** (5-20 SH 实测, 铁律 40 baseline 保持): **6251 collected / 0 collection error** (vs Session 9 实测 2864 pass / 24 fail, 接近 1 月增量 +3387 tests / +118%) + **smoke 70 PASS** (vs 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 22d stale, 待 Phase B-2 post 5-27 refresh)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
 

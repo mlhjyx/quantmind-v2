@@ -24,9 +24,9 @@
 
 ## §2 Procedure
 
-### §2.1 Pre-flight checks
+### §2.1 Pre-flight checks (PowerShell — Windows-only system per code review LOW fix 5-20)
 
-```bash
+```powershell
 # 1. Verify cash + 持仓 baseline sustained
 psql -U xin -d quantmind_v2 -c "SELECT trade_date, nav FROM performance_series ORDER BY trade_date DESC LIMIT 1;"
 # Expected: NAV ~¥993,520.66
@@ -34,8 +34,9 @@ psql -U xin -d quantmind_v2 -c "SELECT trade_date, nav FROM performance_series O
 # 2. Servy services healthy
 powershell -File scripts/service_manager.ps1 status
 
-# 3. .env backup
-cp backend/.env logs/.env-backup-pre-pg-rotate-$(date +%Y%m%d).bak
+# 3. .env backup (Windows PowerShell, not bash)
+$DateStamp = Get-Date -Format "yyyyMMdd"
+Copy-Item backend/.env "logs/.env-backup-pre-pg-rotate-$DateStamp.bak"
 
 # 4. Verify no active long-running transactions
 psql -U xin -d quantmind_v2 -c "SELECT pid, query_start, state, query FROM pg_stat_activity WHERE state != 'idle';"
@@ -103,17 +104,32 @@ psql -U xin -d quantmind_v2 -c "SELECT trade_date, nav FROM performance_series O
 If services fail to connect post-rotation:
 
 ```powershell
-# 1. Revert .env from backup
-cp logs/.env-backup-pre-pg-rotate-<DATE>.bak backend/.env
+# Plan v8 code review MEDIUM fix (5-20): rollback extracts OLD password from backup
+# file (NOT hardcoded — after rotation the previous value is unknown to this script).
 
-# 2. Revert PG password (need new password to revert)
-$env:PGPASSWORD = "$NEW_PASSWORD"
-psql -U xin -d postgres -c "ALTER ROLE xin WITH PASSWORD 'quantmind';"
+# 1. Extract OLD password from .env backup file
+$BackupFile = (Get-ChildItem logs/.env-backup-pre-pg-rotate-*.bak | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$OldPasswordLine = Select-String -Path $BackupFile -Pattern 'PG_PASSWORD=' | Select-Object -First 1
+if (-not $OldPasswordLine) {
+    # Fallback: extract from DATABASE_URL line in backup
+    $OldUrlLine = Select-String -Path $BackupFile -Pattern 'DATABASE_URL=' | Select-Object -First 1
+    $OldPassword = ($OldUrlLine.Line -replace '.*postgresql://[^:]+:([^@]+)@.*', '$1')
+} else {
+    $OldPassword = $OldPasswordLine.Line.Split('=', 2)[1]
+}
+Write-Host "Extracted OLD password from $BackupFile"
 
-# 3. Restart all Servy services
+# 2. Restore .env from backup
+Copy-Item $BackupFile backend/.env -Force
+
+# 3. Revert PG role password (need CURRENT new password to authenticate, then reset to OLD)
+$env:PGPASSWORD = "$NEW_PASSWORD"  # current set in §2.2 step 1
+psql -U xin -d postgres -c "ALTER ROLE xin WITH PASSWORD '$OldPassword';"
+
+# 4. Restart all Servy services
 powershell -File scripts/service_manager.ps1 restart all
 
-# 4. Verify
+# 5. Verify
 powershell -File scripts/service_manager.ps1 status
 ```
 
