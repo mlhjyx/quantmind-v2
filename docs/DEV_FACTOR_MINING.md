@@ -1,8 +1,14 @@
-> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16 更新)**
-> 实现状态: ~55% — Gate/Profiler/IC完整。GP引擎+Pipeline编排器已实现, 但未形成端到端自动闭环。
+> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: ~55% (sustained) — Gate/Profiler/IC完整。GP引擎+Pipeline编排器已实现, 但未形成端到端自动闭环。
 > **Phase C (2026-04-16)**: factor_engine.py 已拆分为 `backend/engines/factor_engine/` 包 (calculators/preprocess/alpha158/pead/_constants), 数据加载移至 `factor_repository.py`, 编排移至 `factor_compute_service.py`。本文档中引用 factor_engine 单文件的部分已过时。
 > 已过时/被替代: RD-Agent→路线C决策不集成(2026-04-10); LLM自由生成→证伪(IC=0.006); 决策D6: GP先闭环+LLM prompt改造并行
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §4+§11**
+>
+> **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §3 + Frontend Design v3 #13):
+> - **FactorEvaluation 5 ops wired** (commit 8969d87): 编辑重评/添加到策略/导出PDF/丢弃HIGH-tier/入库defer
+> - **archiveFactor + triggerHealthCheck** real wire (前 no-op placeholder closed)
+> - **CORE3+dv_ttm 单点失败 risk sustained** (Phase J.3 backup strategy research scope, 4-8w)
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §3 B2 + Frontend Design v3 §6 #13
 
 # QuantMind V2 — 因子挖掘系统 详细开发文档
 

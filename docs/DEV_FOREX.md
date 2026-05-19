@@ -1,7 +1,14 @@
-> **⚠️ 文档状态: NOT_STARTED (2026-04-10)**
-> 实现状态: 0% — A股未成熟前不启动外汇模块。Phase 2+ 计划。
+> **⚠️ 文档状态: NOT_STARTED (2026-04-10, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: 0% (sustained DEFERRED) — A股未成熟前不启动外汇模块。Phase 2+ 计划。
 > 仍有价值: 外汇数据源调研、交易时间设计
 > 参考: docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md
+>
+> **Session 57 (2026-05-19) addendum** — Phase H 清理 (per Frontend Design v3 §3.4):
+> - **frontend/src/pages/DashboardForex.tsx 已删除** (commit e5bd897 W6, 39 lines stub)
+> - **router.tsx /dashboard/forex 路由已删除**
+> - **Sidebar "外汇" toggle 已删除** (commit b560a0c)
+> - **Session 57+ 推荐**: 当 PT 重启 + Phase J Strategy Diversification (Phase J.3 Backup Strategy Research, 4-8w) 完成后再 Phase 2+ 启动 Forex (per `PHASE_J_K_REMAINING_DECISION_DOC §1.3`)
+> - **forex_* DB tables 留 ADR decide** (per Subagent G + ISSUES_PENDING_REGISTRY §7 P8): 是否 drop or retain pending Phase 2 decision
 
 # QuantMind V2 — 外汇模块详细开发文档
 

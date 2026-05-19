@@ -1,8 +1,14 @@
-> **文档状态: DESIGN_OVERSIZED (2026-04-16 更新)**
-> 实现状态: ~25% — 设计220参数, 实际在用约50个。决策D5: 裁剪至50核心+30高价值待实现。
+> **文档状态: DESIGN_OVERSIZED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
+> 实现状态: ~25% (sustained) — 设计220参数, 实际在用约50个。决策D5: 裁剪至50核心+30高价值待实现。
 > **实际参数权威来源**: `.env` + `configs/pt_live.yaml` + `backend/app/config.py` (铁律34 single source of truth)
 > **config_guard**: `backend/engines/config_guard.py` 启动时校验6参数三源对齐, 不一致 RAISE (2026-04-15 Phase B M3 落地)
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §14**
+>
+> **Session 57 (2026-05-19) addendum** (per ISSUES_PENDING_REGISTRY §1 + §10):
+> - **AI_ASSIST_ENABLED** flag NEW (.env, commit 7e8f0bb): 默认 false, .env explicit true 触发真 LLM 调用
+> - **PT_START_DATE** + **PT_TOTAL_DAYS** flags NEW (.env, commit 8a57c90): 默认 2026-03-15 / 60, Calendar SSOT 服务于 Dashboard "PT Day X/Y"
+> - **L4 LLM_IMPORT_POLICY audit** PASS (commit 79814bd verify): 0 unauthorized + 1 documented allowlist
+> - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §10 L6 + §1 S3
 
 # QuantMind V2 — 参数可配置性系统 详细开发文档
 
