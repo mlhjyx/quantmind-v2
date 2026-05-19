@@ -104,3 +104,30 @@ export async function fetchEnvState(): Promise<EnvState> {
   return data;
 }
 
+/**
+ * Calendar info (Audit Section X §39 SSOT + Finding #7 hardcoded "PT Day X/Y" 修复).
+ */
+export interface PTDayCounter {
+  current_day: number;
+  total_days: number;
+  start_date: string;
+  today: string;
+  completion_pct: number;
+  label: string;
+}
+
+export interface CalendarInfo {
+  today: string;
+  today_is_trading_day: boolean | null;
+  today_reason?: string;
+  next_trading_day?: string;
+  prev_trading_day?: string;
+  pt_day_counter: PTDayCounter | null;
+  error?: string;
+}
+
+export async function fetchCalendarInfo(): Promise<CalendarInfo> {
+  const { data } = await apiClient.get<CalendarInfo>("/system/calendar-info");
+  return data;
+}
+
