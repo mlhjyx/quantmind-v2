@@ -6299,3 +6299,85 @@ Deferred: 双轨样式 414/116 (50h migration) / admin token httpOnly cookie (au
 **铁律 backref**: 22 (doc follow code), 33 (silent failure 禁 — cost 0 silent drift), 25 (代码变更前必读), 37 (Session 关闭前必写 handoff — Session 57 handoff prepended)
 
 **Heuristic backref**: #15 Test-Reality Gap (audit 真值 verify vs ADR closure) / #18 Alternative Path (F-S7-001 三 path 决议) / #19 UX Workflow Gap (OpsEscapeHatchPanel 12 ops 闭环) / #20 Reverse Mapping (Frontend Design v3 + DEV_FRONTEND_UI sync)
+
+---
+
+## LL-188: 2026-05-19 Session 58 Cold-Start Forensic — Sediment Drift Surface (.env=live 3+ weeks while CC handoff claim paper sustained, Round-2 Startup Guard P0 Ticking Bomb Defused, SOP Step 0 Cold-Start Env Reality Check)
+
+**触发**: Session 58 启动 `grep EXECUTION_MODE backend/.env` 即 surface 真实 env 状态 vs 我整个 Session 57+1 6 rounds commit msg 反复 sustain 的"红线 5/5 EXECUTION_MODE=paper" claim **直接矛盾**. Cold-start cold verification 在 5-19 ~13:00 SH 一次性暴露 sediment drift.
+
+**类**: LL-183 silent NOT-GATING 子类 — 应用在 **sediment 层** (handoff / commit msg / status report claim), 区别于 LL-183 应用在 **代码层** (--dry-run flag silent NOT-GATING live broker). 同 pattern, 不同 layer.
+
+### 1. 真值时间线 (Forensic Chain)
+
+| 时点 | 事件 | Evidence |
+|---|---|---|
+| **4-20** | `.env.bak.20260420-session20-cutover`: EXECUTION_MODE=paper | backup file |
+| **4-29 10:43** | 17 emergency_close orders | trade_log 17 rows reject_reason `t0_19_backfill_2026-04-29` |
+| **4-29~5-15** | PT 重启 prep Session 45-55 | Claude.ai+user 战略对话 sediment (V3 §20.1 设计层 10/10 ready) |
+| **5-15~5-17** | .env paper→live flip | operator authorized (no CC PR), backup chain confirms |
+| **5-17 22:45** | `.env-backup-pre-c1a-dingtalk-flip`: EXECUTION_MODE=**live** ← cutover confirmed | backup file |
+| **5-18 18:55** | operator manual_verify DingTalk POST | alert_dedup row `manual_verify_2026-05-18T18:55` |
+| **4-30 → 5-19** | trade_log 0 new rows / 19 days | DB真值 query |
+| **5-19 ~13:00** | Session 58 cold-start surface | grep + backup chain + DB query reverse-verify |
+
+### 2. 我的 Sediment Drift Pattern (Session 57+1 6 rounds)
+
+整个 Session 57+1 (2026-05-19 ~05:00 → ~13:00 SH, 6 commits cumulative) 全部 commit msg + handoff sediment 反复 claim:
+> 红线 5/5 sustained: cash ¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / 0 broker call
+
+**真值** (Session 58 cold-start forensic):
+- cash claim likely accurate (0 trades since 4-29) — **CORRECT**
+- 0 持仓 — **CORRECT** (trade_log真值 + position_snapshot empty)
+- LIVE_TRADING_DISABLED=true — **FALSE** (env actual = false, broker 实际 enabled)
+- EXECUTION_MODE=paper — **FALSE** (env actual = live for 3+ weeks)
+- 0 broker call — **CORRECT** (trade_log真值 4-30 起 0 rows)
+
+### 3. P0 Ticking Bomb (Round-2 我自己加的 startup guard 引爆)
+
+Round-2 commit `5a58ef0` 加 startup guard (intended security hardening):
+```python
+if settings.EXECUTION_MODE == "live" and not settings.COOKIE_SECURE_FLAG:
+    raise RuntimeError("EXECUTION_MODE=live requires COOKIE_SECURE_FLAG=true...")
+```
+
+Cold-start 真值: env=live + COOKIE_SECURE_FLAG 未 set → 任何 `import backend.app.config` 触发 RuntimeError. 当前 running FastAPI 是 round-2 之前 cold-started 旧版无 guard 仍能跑, **下次 Servy restart 立即 boom**.
+
+**Defuse** (commit `c01817b` Session 58 round-1): 3-factor + external-bind branch + downgrade to logger advisory:
+- 3-factor: EXECUTION_MODE=live + NOT LIVE_TRADING_DISABLED + NOT COOKIE_SECURE_FLAG
+- 外部 bind (0.0.0.0 / 外部 IP): `logger.error HIGH severity`
+- localhost (127.0.0.1 / ::1): `logger.warning LOW practical risk`
+- Operator decides COOKIE_SECURE_FLAG=true timing on HTTPS migration roadmap
+
+Service can now restart safely (warning logged, NOT raised).
+
+### 4. Root Cause (反 silent rot recurrence)
+
+**Why sediment drift unnoticed 3+ weeks**: Session 57+1 retroactive review 6 rounds (round-1~6) 真**code-level review only**. ✅ 找 12 P1 + 23 P2/P3 + theatrical 修复, 但**未做 env reality check** — sediment layer 完全没 audit. 我 trust handoff text claim "EXECUTION_MODE=paper" 未反向核 .env file.
+
+**LL-183 类比**:
+- LL-183 (5-18): pytest 真 PASS 但 `--dry-run` silent NOT-GATING 真发 broker — 代码层 silent fail
+- LL-188 (5-19): commit msg 反复 sustain "paper" 但 .env 真值 live — sediment 层 silent fail
+
+### 5. Remediation (Cumulative)
+
+1. **Defuse P0 ticking bomb** (commit `c01817b`): 3-factor advisory guard
+2. **Correct red-line claim format** (Session 58 round-1 memory prepend): "0 broker call sustained DESPITE env=live (operator 决议 PT 重启 prep, no signal generation triggering broker)"
+3. **SOP append** (docs/runbook/retroactive_review.md): 步 0 新增 cold-start env reality check (`grep EXECUTION_MODE backend/.env` + backup chain reverse-verify + DB trade_log真值 check)
+4. **Forward sediment SOP**: 任 commit msg / handoff / status report 中 red-line claim 必反向核:
+   - `.env` file 真值 + mtime
+   - Backup chain (`logs/.env-backup-pre-*` naming convention sustained)
+   - DB trade_log / position_snapshot 真值 (反 silent claim drift)
+5. **LL-188 sediment** (本条目): pattern documented for cross-session recurrence prevention
+
+### 6. 关联
+
+- LL-183 (5-18 P0): silent NOT-GATING pattern parent class (code layer)
+- LL-187 (5-19): Session 57 Frontend Design v3 sediment — 同期但未 cover env state
+- SOP append: `docs/runbook/retroactive_review.md` 步 0 cold-start env reality check
+- Commit fix chain: `c01817b` (round-1 defuse)
+- Forensic doc: memory prepend `project_sprint_state.md` Session 58 round-1 section
+
+**铁律 backref**: 33 (silent failure 禁 — 应用 sediment layer) / 35 (secrets via env — operator decision 0 CC PR 是符合 .env gitignored 体例) / 42 (PR + reviewer 制 — sediment review 应 retroactive cycle scope 含) / 36 (precondition 必核 — env state 是 precondition reverse-verify catch)
+
+**Heuristic backref**: #15 Test-Reality Gap (sediment claim vs file真值 reverse-verify) / #1 Drift Detection (commit msg vs actual .env 漂移) / #17 Audit Self-Audit (Session 57+1 6 rounds 自身 audit 缺 sediment drift detection)
