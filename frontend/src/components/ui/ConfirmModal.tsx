@@ -93,10 +93,22 @@ export function ConfirmModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.6)" }}
+      // P2 fix (typescript-reviewer Session 57+1 round-2): backdrop click 显式
+      // 处理: LOW/MED tier 允许点击外部取消, HIGH/CRIT tier 阻止 (反误触).
+      // 反 旧 pattern undocumented asymmetry (backdrop 无 onClick 默认全部不取消).
+      onClick={(e) => {
+        if (e.target === e.currentTarget && tier !== "HIGH" && tier !== "CRIT") {
+          onCancel();
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
     >
       <div
         className="rounded-xl p-6"
         style={{ background: C.bg2, border: `1px solid ${borderColor}`, width: 420 }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-2">
           {dangerTier ? (
@@ -104,7 +116,7 @@ export function ConfirmModal({
           ) : (
             <AlertTriangle size={14} color={C.text3} />
           )}
-          <div style={{ fontSize: 14, fontWeight: 700, color: titleColor }}>{title}</div>
+          <div id="confirm-modal-title" style={{ fontSize: 14, fontWeight: 700, color: titleColor }}>{title}</div>
           <span
             className="ml-auto px-2 py-0.5 rounded"
             style={{ fontSize: 10, color: tierBadgeColor, background: `${tierBadgeColor}15` }}

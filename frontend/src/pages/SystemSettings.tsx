@@ -70,7 +70,12 @@ function DataSourceTab() {
     setError(null);
     try {
       setSources(await fetchDataSources());
-    } catch {
+    } catch (err) {
+      // P2 fix (typescript-reviewer Session 57+1 round-2): surface 错误代替 silent
+      // empty-state (反 铁律 33). 旧 pattern setSources([]) 让 user 看 "暂无数据源
+      // 信息" 误以为正常空表, 实际 API 失败. 现 error state → 重试按钮 visible.
+      const msg = err instanceof Error ? err.message : "未知错误";
+      setError(`数据源加载失败: ${msg}`);
       setSources([]);
     } finally {
       setLoading(false);
@@ -156,10 +161,12 @@ function NotificationsTab() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const params = await fetchNotificationParams();
         const map = Object.fromEntries(params.map((p) => [p.key, p.value]));
@@ -168,8 +175,12 @@ function NotificationsTab() {
         if (map["notification.level_p0"] !== undefined) setLevels((prev) => ({ ...prev, P0: map["notification.level_p0"] !== "false" }));
         if (map["notification.level_p1"] !== undefined) setLevels((prev) => ({ ...prev, P1: map["notification.level_p1"] !== "false" }));
         if (map["notification.level_p2"] !== undefined) setLevels((prev) => ({ ...prev, P2: map["notification.level_p2"] !== "false" }));
-      } catch {
-        // keep defaults
+      } catch (err) {
+        // P2 fix (typescript-reviewer Session 57+1 round-2): surface 错误代替 silent
+        // empty catch (反 铁律 33). 旧 // keep defaults 让 user 看默认值不知道 fetch
+        // 真失败, 显示 loadError banner 提示 user 实际状态.
+        const msg = err instanceof Error ? err.message : "未知错误";
+        setLoadError(`通知配置加载失败 (走默认值): ${msg}`);
       } finally {
         setLoading(false);
       }
@@ -216,6 +227,11 @@ function NotificationsTab() {
 
   return (
     <div className="space-y-6 max-w-xl">
+      {loadError && (
+        <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-2.5">
+          <span className="text-xs text-amber-300">{loadError}</span>
+        </div>
+      )}
       <GlassCard>
         <SectionTitle>钉钉通知配置</SectionTitle>
         <div className="space-y-3">
