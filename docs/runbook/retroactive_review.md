@@ -24,7 +24,55 @@
 
 ---
 
-## 2. SOP — 7 步走
+## 2. SOP — 8 步走 (步 0 NEW Session 58 round-1 LL-188 sediment)
+
+### 步 0. Cold-Start Env Reality Check (LL-188 sediment, 反 sediment drift 3+ weeks)
+
+**Why**: Sediment claim ("EXECUTION_MODE=paper sustained" etc) 可与 .env 真值漂移. Session 57+1 6 rounds 全程未真核, 3+ weeks drift unnoticed until Session 58 cold-start. 反 silent rot at sediment layer (LL-188).
+
+**1-minute check**:
+```bash
+# Env reality check (反 sediment claim 直接核)
+grep -E "^(EXECUTION_MODE|LIVE_TRADING_DISABLED|COOKIE_SECURE_FLAG|API_HOST|DINGTALK_ALERTS_ENABLED)" backend/.env
+
+# Backup chain timeline (paper→live cutover trace)
+ls -la logs/.env-backup-*.bak backend/.env.bak.* 2>/dev/null | sort -k 6,7
+
+# DB真值 reverse-verify (trade_log + position_snapshot)
+python -c "
+import re, psycopg2, urllib.parse as up
+url = re.search(r'^DATABASE_URL=(.+)$', open('backend/.env').read(), re.MULTILINE).group(1).strip().strip('\"\\'').replace('postgresql+asyncpg://','postgresql://')
+p = up.urlparse(url)
+conn = psycopg2.connect(host=p.hostname, port=p.port or 5432, dbname=p.path.lstrip('/'), user=p.username, password=p.password)
+cur = conn.cursor()
+cur.execute(\"SELECT COUNT(*), MIN(executed_at), MAX(executed_at) FROM trade_log WHERE executed_at > NOW() - INTERVAL '30 days';\")
+print('trade_log last 30d:', cur.fetchone())
+cur.execute(\"SELECT COUNT(DISTINCT trade_date) FROM position_snapshot;\")
+print('position_snapshot trade_dates:', cur.fetchone()[0])
+conn.close()
+"
+```
+
+**Expected output check**:
+- `EXECUTION_MODE`: paper OR live (whatever operator decided)
+- `LIVE_TRADING_DISABLED`: true (broker disabled) OR false (broker enabled — extra caution)
+- Backup chain: 最近 backup 应 reflect 任 cutover events (naming convention `pre-{event}-{date}.bak`)
+- trade_log: 最近 N 天活动反 sediment claim "0 broker call sustained"
+
+**Red-line claim format SHOULD match reality**:
+- ✅ "0 broker call sustained" + trade_log 真 0 rows = consistent
+- ❌ "EXECUTION_MODE=paper sustained" + .env actual `live` = **drift, STOP, surface to user**
+- ⚠️ "持仓 0" + position_snapshot 0 rows = consistent (清仓 confirmed)
+
+**Action on drift detected**:
+1. **STOP**: do NOT proceed with retroactive review under false sediment assumption
+2. **Surface**: 给 user 完整 forensic chain (file mtime / backup chain / DB真值 / git log) + corrected red-line claim format
+3. **Sediment**: LL candidate (类 LL-188 pattern) — sediment 漂移 layer recurrence prevention
+4. **Defuse**: 任 sediment-dependent guards (like round-2 startup guard) 反向 audit + relax/refine
+
+---
+
+## 3. SOP — 7 步 (retroactive review main flow)
 
 ### 步 1. Inventory (scope 确定)
 ```bash
