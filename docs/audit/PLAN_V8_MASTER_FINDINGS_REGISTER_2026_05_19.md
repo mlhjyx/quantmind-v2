@@ -153,7 +153,7 @@
 | P1-26 | FundamentalContextService 1/8 维 | ❌ V3 §3.3 8 维 implement multi-week |
 | P1-27 | Alpha158 45-factor gap | ✅ **CLOSED** 5-19 (commit 5033ac3): --all-alpha158 flag added to compute_daily_ic.py (mutually_exclusive_group), get_alpha158_names() returns 158 names verified. 留 user 触发大规模 backfill. |
 | P1-28 | AlertDispatcher buffered flush leak | ✅ CC can add DB persist (~2h) |
-| P1-29 | LLM Router no failover | ✅ CC can add `completion_with_alias_override` auto-routing (~3h) |
+| P1-29 | LLM Router no failover | ✅ **CLOSED** 5-19 (yaml change, this batch): config/litellm_router.yaml fallbacks chain V4-Pro → V4-Flash → qwen3-local (3-hop, replacing 2-hop). V4-Flash → qwen3-local sustained. Verify yaml parse OK. |
 | P1-30 | StreamBus publish_sync drift | ✅ **CLOSED** 5-19 (commit 70f9557): DeprecationWarning for business event prefixes (qm:signal:/execution:/fill:/trade:/order:). 2 existing ops callers (health/quality) 不破. |
 | P1-31 | Loop 1 Signal 0 NAV feedback | ❌ Phase J |
 | P1-32 | Loop 4 Regime → Signal disconnect | ❌ Phase J |
