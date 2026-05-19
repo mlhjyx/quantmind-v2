@@ -1,6 +1,16 @@
 # QuantMind V2 — AI 闭环进化设计文档
 
-> **版本**: 2.1 | **日期**: 2026-04-16 (Session 57 2026-05-19 G1 audit addendum)
+> **版本**: 2.1 | **日期**: 2026-04-16 (Session 57 2026-05-19 G1 audit addendum + Session 58+1 2026-05-19 P1-38 sediment closure)
+>
+> **Session 58+1 (2026-05-19) addendum** — Plan v8 P1-38 sediment closure (per `docs/audit/V3_AUDIT_S2_DESIGN_VS_REALITY_GAP.md` §2.2 + Master P1-38):
+> - **Layer 1 (Trajectory)**: ic_monitor / rolling_wf / pt_daily_summary — ✅ 实现 (scripts/monitor_factor_ic.py + scripts/run_rolling_wf.py)
+> - **Layer 2 (Agents)**: idea_agent / factor_agent / eval_agent ✅ partial (4 files exist), strategy_agent ❌ MISSING
+> - **Layer 3 (Feature Map RANKING/FAST/EVENT/MODIFIER × 风险/市值)**: **0% impl, Grep 0 hits** — heuristic #14 Documentation Lying sustained
+> - **Layer 4 (riskfolio-lib quarterly rebalance)**: **0% impl, Grep `riskfolio` 0 backend hits** — heuristic #14 sustained
+> - **Orchestrator 8 节点状态机**: **0 中枢实现** — engine_selector.py 仅工具不是 state machine
+> - **真完成度**: ~30-45% (sustained Session 57 addendum, Layer 1+2 + AI Assist real LLM)
+> - **Future readers**: Layer 3+4 NOT_STARTED Q3-Q4 trigger (sustained S6 §VIII #16 + Phase J post Phase B-2 live restart)
+> - **Recommendation**: 沿用 ADR-022 append-only — 本 doc 设计 705 行 sustained as reference, 0 maintain Layer 3+4 章节 until Q3-Q4 trigger. Sustained ADR-028 (AUTO + RAG + backtest replay) Sprint M+1~N implementation timeline.
 > **状态**: DESIGN (基于 28 个失败方向 + 213 次因子测试 + 3 篇 2025 前沿论文实证校准)
 > **前版**: V1.0 (2026-03-19, 1064 行, 4-Agent + Pipeline 全自动闭环) → 本版精简重构
 > **路线图**: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §Phase 3

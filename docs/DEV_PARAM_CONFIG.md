@@ -1,5 +1,11 @@
-> **文档状态: DESIGN_OVERSIZED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
-> 实现状态: ~25% (sustained) — 设计220参数, 实际在用约50个。决策D5: 裁剪至50核心+30高价值待实现。
+> **文档状态: DESIGN_OVERSIZED (2026-04-16, Session 57 2026-05-19 G1 audit addendum, Session 58+1 2026-05-19 P1-40 sediment closure)**
+> 实现状态: ~25% (sustained) — 设计220参数, 实际在用约50个。决策D5: 裁剪至50核心+30高价值待实现+140 archived。
+>
+> **Session 58+1 (2026-05-19) addendum** — Plan v8 P1-40 sediment closure (per `docs/audit/V3_AUDIT_S2_DESIGN_VS_REALITY_GAP.md` §2.4 + Master P1-40):
+> - **真值**: 220 design 参数 vs 实际 50 D5 active 决议. **Level 3 AI 自动调 14 参数 0% 实施** (sustained).
+> - **真 active 50 核心 params SSOT**: `.env` + `configs/pt_live.yaml` + `backend/app/config.py` (铁律 34 single source of truth)
+> - **Future maintenance**: 本 doc 设计 220 章节 sustained 留为历史 reference, 0 maintain. 真 changes 走 IRONLAWS / SYSTEM_BLUEPRINT / config_guard 真值 sediment.
+> - **Action recommendation**: Future readers 走 (1) `backend/app/config.py:Settings` 实际 50 params SSOT; (2) `configs/pt_live.yaml` runtime overrides; (3) 不走本 doc §3 220 参数表 (sustained DESIGN_OVERSIZED tag).
 > **实际参数权威来源**: `.env` + `configs/pt_live.yaml` + `backend/app/config.py` (铁律34 single source of truth)
 > **config_guard**: `backend/engines/config_guard.py` 启动时校验6参数三源对齐, 不一致 RAISE (2026-04-15 Phase B M3 落地)
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §14**
