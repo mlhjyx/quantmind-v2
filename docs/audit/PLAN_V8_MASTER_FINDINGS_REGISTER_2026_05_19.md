@@ -159,10 +159,10 @@
 | P1-32 | Loop 4 Regime → Signal disconnect | ❌ Phase J |
 | P1-33 | SPF 6 no Tushare fallback chain | ❌ multi-week (Baostock/akshare backup) |
 | P1-34 | Gates G1-G10 no closed-loop runner | 🟡 **PARTIAL** 5-19 (this batch): TODO P1-34 marker sediment 到 backend/app/services/factor_onboarding.py:_upsert_factor_registry docstring (line ~296). 详细列 G1-G8 8 gates + wire path + ~2h effort estimate. 真 wiring 留 next session (high test risk, 多个 onboarding test 需 update). |
-| P1-35 | risk-reflector-weekly stub input | ✅ CC can wire TB-4c real input (~3h) |
+| P1-35 | risk-reflector-weekly stub input | ✅ **CLOSED** (PT cutover plan v0.4 §A IC-2c, 2026-05-15): `_build_stub_input` REMOVED, replaced with `_build_reflection_input` gathering 4 REAL sources (events_summary risk_event_log GROUP BY rule_id+severity / trade_log_summary / execution_plans / RAG retrieve). Verify backend/app/tasks/risk_reflector_tasks.py:208+. | NO |
 | P1-36 | Risk subservice cluster 0 API | ❌ 7 services × API design |
 | P1-38 | DEV_AI_EVOLUTION Layer 3+4 0% impl | ❌ Phase J |
-| P1-39 | paper_broker缺独立 design doc | ✅ CC sediment 3 spec doc (~3h) |
+| P1-39 | paper_broker缺独立 design doc | ✅ **CLOSED** 5-19 (this batch): docs/DEV_PAPER_BROKER.md sediment (~220 lines, 10 §sections). Covers purpose/layered design/T+1/cost model/order lifecycle/SimBroker diff/test coverage/future enhance/ADR+LL refs. Sub-3-doc strategy compressed to single comprehensive doc (sustained 维护成本). |
 | P1-40 | DEV_PARAM_CONFIG 220 vs 50 | ✅ **CLOSED** (Session 57+58+1 prior batch sediment): doc line 1 DESIGN_OVERSIZED tag + Session 58+1 addendum line 4-8 redirect to `.env` + `configs/pt_live.yaml` + `backend/app/config.py:Settings` SSOT. 220-param body sustained as 历史 reference, 0 maintain. |
 | P1-41 | LL count drift 94 vs ~160 | ✅ **CLOSED** 5-19 (verify scope, no inline drift): CLAUDE.md 无 "累计 LL N" inline cite (仅 sparse references to LL-098/LL-105/LL-066). Pre-commit canonical SSOT (`pre_commit_validate.py`) sustains `ll_unique_ids=174` metric. Real grep "^## LL-" LESSONS_LEARNED.md = 170 entries (max LL-191, sparse). 174 canonical includes candidates/drafts. 0 inline drift to fix. |
 | P1-42 | ADR count drift 022 vs 67 | ✅ CC can fix CLAUDE.md cite (~10min) |
