@@ -602,6 +602,36 @@ Register-ScheduledTask `
 
 Write-Host "[OK] QuantMind_LLMCostDaily registered (Mon-Fri 20:30)" -ForegroundColor Green
 
+# ── QuantMind_VacuumAnalyze: 周日 03:00 (Session 57+1 round-5, 2026-05-19 F3 closure) ──
+# 走 wrapper .ps1 (反 schtask config 裸 password — 铁律 35).
+# wrapper 读 backend/.env DATABASE_URL → 设 $env → call python.
+# VACUUM ANALYZE 不锁表, 10 重型表 weekly cadence (factor_values 840M / minute_bars 190M
+# / klines_daily 11.8M / daily_basic 11.7M / 等). 沿用 ISSUES_PENDING_REGISTRY §2 F3
+# closure + RETROACTIVE_REVIEW_FINDINGS_2026_05_19 round-2 P1 hardening.
+$vacuumAction = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -File $ProjectRoot\scripts\run_vacuum_analyze.ps1" `
+    -WorkingDirectory $ProjectRoot
+
+$vacuumTrigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At "03:00"
+
+$vacuumSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+    -StartWhenAvailable `
+    -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask `
+    -TaskName "QuantMind_VacuumAnalyze" `
+    -Description "QuantMind V2: weekly VACUUM ANALYZE on 10 heavy tables (Session 57+1 F3 closure, 2026-05-19)" `
+    -Action $vacuumAction `
+    -Trigger $vacuumTrigger `
+    -Settings $vacuumSettings `
+    -Force
+
+Write-Host "[OK] QuantMind_VacuumAnalyze registered (Sun 03:00)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Task Scheduler setup complete (17 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register; Session 35: +ServicesHealthCheck; Session 51 PR #224: +LLMCostDaily). Verify with:" -ForegroundColor Cyan
+Write-Host "Task Scheduler setup complete (18 tasks; Stage 4: -DailyExecuteAfterData +PTAudit; Session 22 Part 2: +DailyIC; Session 22 Part 8: +IcRolling; Session 32 PR #65: +MVP31SunsetMonitor; Session 32 PR #66: -GPPipeline ps1 register; Session 35: +ServicesHealthCheck; Session 51 PR #224: +LLMCostDaily; Session 57+1 round-5: +VacuumAnalyze). Verify with:" -ForegroundColor Cyan
 Write-Host "  Get-ScheduledTask -TaskName 'QM-*','QuantMind_*' | Format-Table TaskName, State, LastRunTime"

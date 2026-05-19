@@ -142,3 +142,6 @@ cache/*.json
 # HF models cache (TB-3 BGE-M3 + future)
 models/bge-m3/
 models/hf_*/
+
+# Memory archive (personal session state — outside git, sediment 2026-05-19 L8 closure)
+docs/archive/memory/
