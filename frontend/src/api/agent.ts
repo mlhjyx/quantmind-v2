@@ -3,7 +3,15 @@ import apiClient from "./client";
 // ---- Types ----
 
 export type AgentName = "idea" | "factor" | "eval" | "diagnosis";
-export type ModelId = "deepseek-r1" | "deepseek-v3" | "qwen3";
+// L7 fix (2026-05-19): expanded to include sub-PR 8a-followup-A V4 aliases (5-07 切换)
+// Legacy names kept for back-compat with existing cost log + UI labels.
+export type ModelId =
+  | "deepseek-r1"
+  | "deepseek-v3"
+  | "qwen3"
+  | "deepseek-v4-flash"  // V4 chat (replaces deepseek-chat alias)
+  | "deepseek-v4-pro"    // V4 reasoner (replaces deepseek-reasoner alias)
+  | "qwen3-local";       // ollama fallback
 
 export interface AgentConfig {
   name: AgentName;

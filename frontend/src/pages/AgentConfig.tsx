@@ -38,7 +38,9 @@ export default function AgentConfig() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // H1 fix (2026-05-19): saveSuccess state removed since save button is disabled
+  // pending Phase I prompt_history table impl (per ISSUES_PENDING_REGISTRY §9 H1).
+  const setSaveSuccess: (_: boolean) => void = () => {};
   // Track per-agent local changes
   const [localChanges, setLocalChanges] = useState<Record<AgentName, Partial<AgentConfigType>>>({
     idea: {}, factor: {}, eval: {}, diagnosis: {},
@@ -154,18 +156,38 @@ export default function AgentConfig() {
             size="sm"
             loading={resetting}
             onClick={handleReset}
+            disabled
+            title="Phase I stub: 恢复默认 0 操作 (backend prompt_history table 未实施)"
           >
-            恢复默认
+            恢复默认 (DEFERRED)
           </Button>
           <Button
             size="sm"
             loading={saving}
-            disabled={!hasUnsavedChanges}
+            disabled
             onClick={handleSave}
-            className={saveSuccess ? "bg-green-600 border-green-500/50" : ""}
+            title="Phase I stub: PUT no-op, 用户改动不持久化. 真 prompt versioning UI 等 backend prompt_history table 实施 (~8h)"
           >
-            {saveSuccess ? "已保存 ✓" : "保存配置"}
+            保存配置 (DEFERRED)
           </Button>
+        </div>
+      </div>
+
+      {/* H1 LL-183 prevention: stub mode warning (reflects backend agent.py PUT no-op state) */}
+      <div className="mb-4 flex items-start gap-2 bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-3">
+        <span className="text-amber-400 text-base shrink-0">⚠</span>
+        <div className="flex-1">
+          <div className="text-sm text-amber-200 font-semibold mb-1">
+            Phase I — 配置只读 (backend prompt_history table 未实施)
+          </div>
+          <div className="text-xs text-slate-300 leading-relaxed">
+            当前 backend `PUT /api/agent/{`{name}`}/config` 为 stub no-op, 用户在此页修改的 prompt /
+            temperature / max_tokens 等 <strong>不会持久化</strong> (重新加载即丢失). 反 LL-183
+            silent UI lie 教训, 本页 "保存" + "恢复默认" 按钮已 disabled.{" "}
+            <span className="text-amber-200">真 prompt versioning UI 等 Phase I P2 实施</span>{" "}
+            (~8h backend prompt_history table + 真 SQL persist + version diff/rollback).
+            详 <code className="text-amber-200">docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md §9 H1</code>.
+          </div>
         </div>
       </div>
 

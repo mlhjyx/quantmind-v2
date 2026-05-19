@@ -3,10 +3,16 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import type { AgentConfig, ModelId } from "@/api/agent";
 
+// L7 fix (2026-05-19): V4 alias canonical per sub-PR 8a-followup-A (5-07 切换)
+// Legacy options kept for back-compat with historical cost log + handoff (LL-101 sustained).
 const MODEL_OPTIONS: { value: ModelId; label: string; desc: string }[] = [
-  { value: "deepseek-r1",  label: "DeepSeek-R1",    desc: "深度推理，适合复杂分析" },
-  { value: "deepseek-v3",  label: "DeepSeek-V3.2",  desc: "快速生成，适合大批量任务" },
-  { value: "qwen3",        label: "Qwen3",           desc: "中文优化，适合本土化场景" },
+  { value: "deepseek-v4-flash", label: "DeepSeek V4-Flash", desc: "V4 chat (canonical), $0.07/M input / $0.27/M output" },
+  { value: "deepseek-v4-pro",   label: "DeepSeek V4-Pro",   desc: "V4 reasoner (canonical), $0.55/M input / $2.19/M output" },
+  { value: "qwen3-local",       label: "Qwen3 (ollama)",    desc: "本地 fallback, 0 outbound cost" },
+  // Legacy aliases (pre-5-07 切换) — historical cost log 仍 reference
+  { value: "deepseek-r1",       label: "DeepSeek-R1 (LEGACY)", desc: "pre-5-07 alias, 等价 V4-Pro" },
+  { value: "deepseek-v3",       label: "DeepSeek-V3.2 (LEGACY)", desc: "pre-5-07 alias, 等价 V4-Flash" },
+  { value: "qwen3",             label: "Qwen3 (LEGACY)",       desc: "pre-rename alias" },
 ];
 
 interface AgentTabProps {

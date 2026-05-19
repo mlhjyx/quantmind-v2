@@ -294,7 +294,7 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
     "idea": {
         "name": "idea",
         "display_name": "Idea Agent",
-        "model": "deepseek-v3",
+        "model": "deepseek-v4-flash",
         "temperature": 0.7,
         "max_tokens": 4000,
         "system_prompt": (
@@ -311,7 +311,7 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
     "factor": {
         "name": "factor",
         "display_name": "Factor Agent",
-        "model": "deepseek-r1",
+        "model": "deepseek-v4-pro",
         "temperature": 0.3,
         "max_tokens": 8000,
         "system_prompt": (
@@ -328,7 +328,7 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
     "eval": {
         "name": "eval",
         "display_name": "Eval Agent",
-        "model": "deepseek-v3",
+        "model": "deepseek-v4-flash",
         "temperature": 0.2,
         "max_tokens": 4000,
         "system_prompt": (
@@ -344,7 +344,7 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
     "diagnosis": {
         "name": "diagnosis",
         "display_name": "Diagnosis Agent",
-        "model": "deepseek-r1",
+        "model": "deepseek-v4-pro",
         "temperature": 0.1,
         "max_tokens": 8000,
         "system_prompt": (
@@ -408,25 +408,25 @@ async def get_model_health() -> list[dict[str, Any]]:
     """返回 3 model health stub. 真实施需 backend periodic LLM ping cron."""
     return [
         {
-            "model": "deepseek-r1",
+            "model": "deepseek-v4-pro",
             "is_online": True,
             "latency_ms": None,
             "last_checked_at": datetime.now(UTC).isoformat(),
             "error": "stub mode — periodic ping cron 未实施",
         },
         {
-            "model": "deepseek-v3",
+            "model": "deepseek-v4-flash",
             "is_online": True,
             "latency_ms": None,
             "last_checked_at": datetime.now(UTC).isoformat(),
             "error": "stub mode",
         },
         {
-            "model": "qwen3",
+            "model": "qwen3-local",
             "is_online": False,
             "latency_ms": None,
             "last_checked_at": datetime.now(UTC).isoformat(),
-            "error": "stub mode + ollama_chat fallback only",
+            "error": "stub mode + ollama_chat fallback only (L7 sync: qwen3 → qwen3-local)",
         },
     ]
 
@@ -457,9 +457,9 @@ async def get_cost_summary(month: str | None = None) -> dict[str, Any]:
             "diagnosis": {"cost_cny": 0.0, "tokens": 0},
         },
         "by_model": {
-            "deepseek-r1": {"cost_cny": 0.0, "tokens": 0},
-            "deepseek-v3": {"cost_cny": 0.0, "tokens": 0},
-            "qwen3": {"cost_cny": 0.0, "tokens": 0},
+            "deepseek-v4-flash": {"cost_cny": 0.0, "tokens": 0},
+            "deepseek-v4-pro": {"cost_cny": 0.0, "tokens": 0},
+            "qwen3-local": {"cost_cny": 0.0, "tokens": 0},
         },
         "daily_usage": [],
         "_note": (
