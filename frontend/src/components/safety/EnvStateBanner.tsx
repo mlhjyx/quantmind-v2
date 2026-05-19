@@ -13,7 +13,7 @@
  * Backend: GET /api/system/env-state (5s refetch).
  */
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ShieldCheck, Zap } from "lucide-react";
 import { fetchEnvState, type EnvState } from "@/api/system";
 import { C } from "@/theme";
@@ -81,33 +81,22 @@ function variantStyle(variant: BannerVariant): VariantStyle {
 }
 
 export function EnvStateBanner() {
-  const [state, setState] = useState<EnvState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Session 58 round-4 ADR-084 Phase 1: setInterval → react-query (uniform lifecycle).
+  // 反 manual setInterval + alive flag duplication. react-query handles:
+  // - Refetch interval (5s sustained)
+  // - Stale-while-revalidate semantics
+  // - Mount/unmount cleanup
+  // - Dedupe concurrent queries
+  // - Background pause when tab inactive (battery saving)
+  const { data: state, error: queryError } = useQuery<EnvState>({
+    queryKey: ["env-state"],
+    queryFn: fetchEnvState,
+    refetchInterval: 5_000,
+    staleTime: 3_000,
+  });
+  const error = queryError instanceof Error ? queryError.message : queryError ? "加载失败" : null;
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const data = await fetchEnvState();
-        if (alive) {
-          setState(data);
-          setError(null);
-        }
-      } catch (err) {
-        if (alive) {
-          setError(err instanceof Error ? err.message : "加载失败");
-        }
-      }
-    };
-    void load();
-    const id = setInterval(() => void load(), 5_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  const variant = deriveVariant(state);
+  const variant = deriveVariant(state ?? null);
   const style = variantStyle(variant);
 
   return (
