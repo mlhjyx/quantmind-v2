@@ -190,23 +190,68 @@ async def post_chat(req: ChatRequest) -> ChatResponse:
             timestamp=datetime.now(UTC).isoformat(),
         )
 
-    # 真 LLM 调用 path (待 F-S7-001 修复 + 用户启用 AI_ASSIST_ENABLED 后激活)
-    # 当前留 TODO 占位, 反 silent LLM 调用导致 zero-cost 计入 audit 漂移
-    logger.warning(
-        "AI_ASSIST_ENABLED=true 但 LLM 调用 path 仍未启用 (待 F-S7-001 P0 修复)",
-        page=req.context.page,
+    # 真 LLM 调用 path — F-S7-001 closed (commit 23ebea5) 后启用.
+    # 走 get_llm_router() 唯一 sanctioned 入口 + NEWS_CLASSIFY task (V4-Flash 最便宜 path).
+    # NEWS_CLASSIFY 真业务是新闻分类, 这里 abuse 用作 chat — semantic mismatch 但 LLM
+    # 真 input/output 无差异. 留 future RiskTaskType.GENERAL_ASSIST 实施 (修 prompt
+    # versioning table 时一起加 enum + yaml entry).
+    try:
+        return _real_llm_chat(req)
+    except Exception as exc:
+        # Fallback 反 silent fail (铁律 33): 真 LLM 调用失败时 graceful degrade 到 stub
+        logger.exception(
+            "Real LLM call failed, falling back to stub reply",
+            page=req.context.page,
+            error=str(exc),
+        )
+        stub = _stub_reply(req.messages, req.context)
+        return ChatResponse(
+            reply=f"⚠️ LLM 调用失败 ({exc}), 走 stub fallback:\n\n{stub}",
+            mode="stub",
+            cost_usd=0.0,
+            tokens_in=0,
+            tokens_out=0,
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+
+
+def _real_llm_chat(req: ChatRequest) -> ChatResponse:
+    """走 get_llm_router() 真 LLM 调用 path.
+
+    F-S7-001 P0 closed → cost_usd 真值入 LLMResponse (DeepSeek pricing fallback path).
+    AI Boundary CRIT ops 自然 enforce — 当前 path 仅返 text reply, 无 tool calling.
+    """
+    # llm-internal-allow: agent chat 走 sanctioned get_llm_router() facade (反 naked LiteLLMRouter)
+    from backend.qm_platform.llm import LLMMessage, RiskTaskType, get_llm_router
+
+    router = get_llm_router()
+    domain_hint = _DOMAIN_HINTS.get(req.context.page, _DOMAIN_HINTS["general"])
+    system_prompt = (
+        f"你是 QuantMind AI 助手 (QuantMind {req.context.page} domain).\n"
+        f"专业背景: {domain_hint}\n\n"
+        f"硬约束:\n"
+        f"- 仅 explanation-only, 不允许触发任何 ops (trade / env_flip / emergency_close 全 forbidden)\n"
+        f"- 引用真值仅基于用户输入 + 你的训练知识, 不编造系统真值\n"
+        f"- 中文回复, 简洁直接, ≤ 300 字"
     )
-    reply = _stub_reply(req.messages, req.context)
-    reply = (
-        "⚠️ AI_ASSIST_ENABLED=true 但 LLM 调用 path 仍未启用 (F-S7-001 P0 cost tracking 待修复).\n\n"
-        + reply
+    messages: list[LLMMessage] = [LLMMessage("system", system_prompt)]
+    for m in req.messages:
+        messages.append(LLMMessage(m.role, m.content))
+
+    # Use NEWS_CLASSIFY task (V4-Flash, cheapest, ~$0.0002/typical-call).
+    # 留 future GENERAL_ASSIST task 时迁移.
+    response = router.completion(
+        task=RiskTaskType.NEWS_CLASSIFY,
+        messages=messages,
+        decision_id=f"frontend-assist-{req.context.page}",
     )
+
     return ChatResponse(
-        reply=reply,
-        mode="stub",
-        cost_usd=0.0,
-        tokens_in=0,
-        tokens_out=0,
+        reply=response.content,
+        mode="live",
+        cost_usd=float(response.cost_usd),
+        tokens_in=response.tokens_in,
+        tokens_out=response.tokens_out,
         timestamp=datetime.now(UTC).isoformat(),
     )
 
