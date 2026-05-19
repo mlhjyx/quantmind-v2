@@ -65,7 +65,7 @@ export function ShutdownBanner({ positionsCount, cashAmount, liveTradingDisabled
           fontSize: 11,
           color: C.text3,
         }}
-        onClick={() => window.open("/system/settings", "_blank")}
+        onClick={() => window.open("/system/settings", "_blank", "noopener,noreferrer")}
         title="跳转到系统设置查看 .env 状态"
       >
         查看 ENV

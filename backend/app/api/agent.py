@@ -653,8 +653,16 @@ async def get_agent_config(name: str) -> dict[str, Any]:
             # First run: seed v1 from defaults
             return _seed_default_config(name)
         return fetched
-    except Exception:
-        logger.exception("get_agent_config DB query failed, fallback to defaults", agent=name)
+    except Exception as exc:
+        # P2 fix (python-reviewer Session 57+1 round-4): explicit silent_ok 注释
+        # 反 铁律 33 (no silent failure). Degraded mode 真合理 (DB unreachable 时
+        # serve in-memory defaults 比 5xx 报错对 frontend dashboard UX 更友好), 但
+        # 必须 log WARNING 让 ops 可见 + 显式 # silent_ok 标记防 future 误认 bug.
+        logger.warning(  # silent_ok: DB unreachable → degraded-mode defaults (反 5xx user-facing)
+            "get_agent_config DB query failed, returning in-memory defaults",
+            agent=name,
+            error=str(exc),
+        )
         return _AGENT_DEFAULT_CONFIGS[name]
 
 

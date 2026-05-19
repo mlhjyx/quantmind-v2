@@ -11,7 +11,7 @@
  * 用户应有 UI 入口可见 + 安全 confirm flow. CRIT ops 仍 CC-only (e.g. env_flip).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Shield, AlertCircle, Zap, RefreshCw, History } from "lucide-react";
 import { C } from "@/theme";
 import { Card, CardHeader } from "@/components/shared";
@@ -20,6 +20,7 @@ import apiClient from "@/api/client";
 import type { CircuitBreakerState } from "@/types/dashboard";
 import { fetchCircuitBreakerState } from "@/api/dashboard";
 import { fetchEnvState, type EnvState } from "@/api/system";
+import { isAdminAuthed } from "@/api/execution";
 
 interface LevelDef {
   level: number;
@@ -42,23 +43,32 @@ export function SafetyControlPanel() {
   const [loading, setLoading] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // P2 fix (security-reviewer Session 57+1 round-4): pre-check admin auth state.
+  // 旧 pattern user fill reason → click confirm → 401 silent error. 现 pre-check →
+  // button disabled with tooltip "需先设置 admin token", UX 阻挡反误操作.
+  const [adminAuthed, setAdminAuthed] = useState<boolean | null>(null);
 
-  const load = async () => {
+  // P2 fix (typescript-reviewer Session 57+1 round-4): useCallback wrap on load
+  // (沿用 SystemSettings 体例). 当前未消费 ref equality, 但 future maintainer 加
+  // prop dep 时 useCallback boundary prevents silent stale-closure regression.
+  const load = useCallback(async () => {
     setLoading(true);
-    const [cb, env] = await Promise.all([
+    const [cb, env, authed] = await Promise.all([
       fetchCircuitBreakerState().catch(() => null),
       fetchEnvState().catch(() => null),
+      isAdminAuthed().catch(() => false),
     ]);
     setState(cb);
     setEnvState(env);
+    setAdminAuthed(authed);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     void load();
     const id = setInterval(() => void load(), 10_000);
     return () => clearInterval(id);
-  }, []);
+  }, [load]);
 
   const handleForceReset = async (meta: { reason?: string }) => {
     setShowResetConfirm(false);
@@ -252,24 +262,26 @@ export function SafetyControlPanel() {
             {/* Force-reset button */}
             <button
               onClick={() => setShowResetConfirm(true)}
-              disabled={loading || currentLevel === 0}
+              disabled={loading || currentLevel === 0 || adminAuthed === false}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer"
               style={{
-                background: currentLevel === 0 ? C.bg3 : `${C.up}15`,
-                border: `1px solid ${currentLevel === 0 ? C.border : `${C.up}50`}`,
+                background: currentLevel === 0 || adminAuthed === false ? C.bg3 : `${C.up}15`,
+                border: `1px solid ${currentLevel === 0 || adminAuthed === false ? C.border : `${C.up}50`}`,
                 fontSize: 12,
-                color: currentLevel === 0 ? C.text4 : C.up,
+                color: currentLevel === 0 || adminAuthed === false ? C.text4 : C.up,
                 fontWeight: 500,
-                cursor: currentLevel === 0 ? "not-allowed" : "pointer",
+                cursor: currentLevel === 0 || adminAuthed === false ? "not-allowed" : "pointer",
               }}
               title={
                 currentLevel === 0
                   ? "当前 NORMAL, 无需 reset"
-                  : "回归 L0 NORMAL (需要理由 + 高风险确认)"
+                  : adminAuthed === false
+                    ? "需先设置 Admin Token (走 Execution 页面 ⚙ 入口)"
+                    : "回归 L0 NORMAL (需要理由 + 高风险确认)"
               }
             >
               <RefreshCw size={13} />
-              强制回归 L0 NORMAL
+              {adminAuthed === false ? "未授权 (需 Admin Token)" : "强制回归 L0 NORMAL"}
             </button>
 
             {/* L4 STAGED notice */}
