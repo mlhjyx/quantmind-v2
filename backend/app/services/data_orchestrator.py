@@ -253,6 +253,8 @@ class CheckpointTracker:
                 """,
                 (asset_name, trade_date, row_count),
             )
+            # F16-classC 例外: leaf utility — mark_success 是独立审计辅助方法, 非 Service 主流程;
+            # 调用方 (DataPipeline) 不管理此 conn 的事务边界, 此处 commit 封装完整 SAVEPOINT scope.
             self._conn.commit()
         except Exception:
             # silent_ok: pipeline_runs 可能未建, 不阻塞主流程
