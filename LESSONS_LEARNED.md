@@ -6547,3 +6547,98 @@ Plan v8 sediment ALONE 不够. 真 fix:
 **铁律 backref**: 17 (heuristic #17 self-audit, 自己 first violation) / 38 (Blueprint sustained — plan v8 是 audit blueprint, 应 sustained enforcement 不仅 sediment) / 26 (验证不可跳过 — plan v8 sediment 后 follow-up enforcement 也算 verification step)
 
 **Heuristic backref**: #17 Audit Self-Audit (self-violation parent) / #18 Alternative Path (本 pattern 是 single-fix bias 即 reactive 模式) / #14 Documentation Lying (plan v8 sediment claim "audit framework active" 实质 dormant) / #20 Design-Implementation Reverse Mapping (plan v8 设计 30 suggestion → 实施 0/30 反向 traceability)
+
+## LL-191: 2026-05-19 Session 58+1 Evening — Subagent Audit 假设性 P0 Finding 必跑真值 SQL 验证 (Plan v8 P0-11 Survivorship Bias 假设 FALSE ALARM 反证案例)
+
+**触发**: 5-19 ~20:50 SH B3 Phase J 验证完成 (`_verify_b3_tasks_5_19.py` cold run), Plan v8 P0-11 Subagent G "BACKTEST EXCLUDES delisted entirely" 假设被真值 SQL 证伪 — factor_values 全表含 5743 stocks (含 241/322 退市), stock_status_daily 12.1M 行 ST sediment 2014-2026 完整, 退市股 ST 历史 + factor sediment 都完整 → 生存者偏差 likely 不显著, P0-11 候选 FALSE ALARM.
+
+**类**: LL-101/103/106 quantmind-v3-cite-source-lock skill 跨域 recurrence — subagent audit 时 4 元素 cite (path + line + section + verify timestamp) 未真值跑 row-count SQL → 凭 SQL grep 推断 backtest universe behavior. 沿用 LL-106 "3-4x 真值漂移" sustained pattern 沉淀.
+
+### 1. Pattern Description
+
+**Plan v8 P0-11 Subagent G claim** (5-18 audit, V3_AUDIT_S7_ML_COST_HARDWARE.md §37):
+- "12yr backtest universe likely 排除退市股 → 生存者偏差 → Sharpe=0.3594 可能虚高"
+- **Mark P0** (rank top 24)
+- **Mark "❌ Phase J multi-week research"** (5d window-doable=NO)
+- **Mark "YES user touchpoint"**
+
+**B3 真值** (5-19 20:50 SH, `_verify_b3_tasks_5_19.py` cold run):
+- klines_daily 唯一 stocks: **5,743** (含历史退市)
+- factor_values 唯一 stocks: **5,743**
+- 322 退市股 / factor_values 覆盖: **241 / 322 (74.8%)**
+- 2014-2026 247 只退市股 / factor_values 覆盖: **247 / 247 (100%)**
+- stock_status_daily 行数: **12,118,876**, 日期 2014-01-02 → 2026-05-18 (12.5 年)
+- 2023-2025 退市股 退市前 ST 天数 Top 10: 全部 ≥ 1173 天 (sediment 完整)
+- ST 但未退市: 631 只 / ST 后退市: 204 只 (摘帽 + 退市路径完整)
+
+**Verdict**: P0-11 假设可证伪. Subagent G 误报 pattern.
+
+### 2. Root Cause
+
+Subagent G 5-18 audit 阶段 SQL grep 路径覆盖不全:
+- Grep 到 backtest SQL 字符串但**未跑真值 row count**
+- Grep 到 `WHERE k.volume > 0` 但推断为 "排除退市股" (实际只过滤当日无成交)
+- **未 JOIN symbols 也未读 symbols.delist_date 真值**
+- Result: 凭 SQL 文本推断 backtest universe 排除退市股 (错)
+
+**真实 SQL** (`parquet_cache.py`):
+```sql
+FROM klines_daily k
+LEFT JOIN daily_basic db ...
+LEFT JOIN stock_status_daily ss ...
+WHERE k.trade_date BETWEEN %s AND %s
+  AND k.volume > 0
+-- 不 JOIN symbols → 不知 delist_date → 不过滤退市股
+```
+
+`k.volume > 0` 过滤的是当日**无成交**的股票 (退市后已无成交, 自动剔除) 但**退市前**所有交易日 volume > 0 → backtest 真**含**退市股的全历史.
+
+### 3. Real Fix (Subagent audit assumption verification SOP)
+
+**沿用 quantmind-v3-cite-source-lock skill 4 元素 + 加 1 元素**:
+
+Old 4-element cite (LL-101/103/106): path + line + section + verify timestamp
+New 5-element cite (LL-191 sediment 加 1 元素): **+ row-count SQL truth (for behavior-based claim)**
+
+具体 SOP:
+- Subagent prompt 强制: 任何 P0 类 "behavior-based finding" (e.g. "backtest excludes X" / "scheduler doesn't run Y" / "data quality has Z gap") 必附:
+  1. SQL 真值 row count
+  2. Sample 5-10 行真数据
+  3. Reproduce script (`_verify_*.py`)
+- CC main process cross-validate gate 校验所有 Subagent P0 finding 含 5-element cite (含真值 SQL truth)
+- 反 "凭 SQL grep 推断 behavior" anti-pattern (跨 sub-class LL-101/103/106 N×N 同步漂移)
+
+### 4. Remediation
+
+1. **`docs/research/SURVIVORSHIP_BIAS_AUDIT_2026_05_19_final.md`** sediment — final verdict + 残余风险 §3.1/§3.2/§3.3
+2. **`PLAN_V8_MASTER_FINDINGS_REGISTER_2026_05_19.md` P0-11 row update** — mark FALSE ALARM with B3 audit cite
+3. **`_verify_b3_tasks_5_19.py` retained** — reproduce script for future audit
+4. **LL-191 sediment** (本条目) — Subagent audit assumption verification SOP
+
+### 5. 残余风险 (留 5-yr backtest sample run)
+
+虽然 sediment 完整, 仍残余 3 个风险量化 (deferred Phase J Day 1+):
+- §3.1 Top-N 选股是否真选中退市股 (因子真值问题)
+- §3.2 Look-ahead bias (delist_date 提前已知) — 验证 backtest SQL 不 JOIN symbols ✅
+- §3.3 Backtest universe filter (是否过滤 ST? 是否过滤 0 volume? — `WHERE k.volume > 0` 自动过滤当日无成交, 但**退市前**成交日仍在 universe)
+
+### 6. P1-46 候选 spawn
+
+**Title**: factor compute pipeline 应 stop-at-delist 否则计算大量退市后 useless rows
+**Why**: B3 audit 1.4 样本 (5 只 2025 退市股) factor_values 最后日 = 2026-04-08 (远超退市日), factor 计算了 ~100-500 useless rows / 退市股 × 247 退市股 = ~25k-125k useless rows
+**Severity**: P1 (data hygiene, 不阻塞 alpha)
+**Fix**: factor compute pipeline 加 `symbols.delist_date` filter — `WHERE (s.delist_date IS NULL OR f.trade_date < s.delist_date)`
+
+### 7. 关联
+
+- LL-101/103/104/106 quantmind-v3-cite-source-lock — 4 元素 cite skill parent
+- LL-106 "3-4x 真值漂移 sustained" — N×N 同步漂移历史
+- LL-190 plan v8 sediment-then-forget — 本 LL 间接 spawn (5d window 推进 Phase J B3 验证)
+- Plan v8 §VII heuristic #17 Audit Self-Audit — 本 LL meta-audit pattern (audit 中 audit subagent)
+- ADR-080 Sub-Class Pattern Discovery — 本 LL 是 cite-source-lock skill sub-class
+
+**铁律 backref**: 11 (因子 IC 决策无可追溯 — 本 LL extend 到 audit finding 类) / 26 (验证不可跳过 — Subagent SQL grep 不等于真值验证) / 27 (结论必须明确 ✅/❌/⚠️ — Subagent G "likely" 假设无量化 truth)
+
+**Heuristic backref**: #14 Documentation Lying (Subagent claim ≠ 真值) / #17 Audit Self-Audit (audit 自己 audit subagent) / #18 Alternative Path Thinking (P0-11 alt remediation 应含 "validate assumption first" 一档 — 不直接进 Phase J multi-week research) / #20 Design-Implementation Reverse Mapping (claim "排除退市股" → 真 implementation 不 JOIN symbols)
+
+**ADR backref**: ADR-080 (Sub-Class Pattern Discovery — 本 LL 是 cite-source-lock skill sub-class) / 候选 ADR-087 (Subagent Audit Assumption Verification SOP — 5-element cite)
