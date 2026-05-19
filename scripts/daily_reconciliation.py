@@ -84,7 +84,17 @@ def query_qmt_positions() -> dict[str, int] | None:
 
         # Plan v8 Wave 3 security fix H-2 (5-20): removed silent SSOT override,
         # fail-loud per 铁律 34
+        # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
+        # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
+        # Pure FATAL retained only on EXECUTION_MODE undefined (bad config).
         expected_mode = os.environ.get("EXECUTION_MODE")
+        if expected_mode == "paper":
+            logger.info(
+                "[daily_reconciliation] EXECUTION_MODE=paper detected — graceful skip "
+                "(Phase B-1 paper-mode dry-run, requires live for QMT reconciliation). "
+                "Exit 0 to keep schtask LastResult clean."
+            )
+            sys.exit(0)
         if expected_mode != "live":
             sys.exit(
                 f"[FATAL] daily_reconciliation.py requires EXECUTION_MODE=live in .env, "
