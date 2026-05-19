@@ -143,7 +143,7 @@
 | P0-19 | Bus factor=1 + 0 onboard doc | ✅ CC can write ONBOARDING.md ~300 lines (~2h) | NO (autonomous) |
 | P0-20 | Knowledge transfer 4/4 FAIL | 🟡 CC can write AUDIT_INDEX.md + USER_TRIBAL_KNOWLEDGE.md (~3h) | NO (autonomous) |
 | P0-21 | Live trade reproducibility 4 sources stale | ❌ Phase J multi-week | YES (alt decision) |
-| P0-24 | execution_service.py dry_run NameError risk | ✅ CC can verify + test (~30min) | NO (verify autonomous) |
+| P0-24 | execution_service.py dry_run NameError risk | ✅ **FALSE ALARM verified** 5-19 (this batch): backend/app/services/execution_service.py:394-395 `fills: list[Fill] = []` + `new_pending: list[PendingOrder] = []` initialized BEFORE `if dry_run:` branch at line 412. 0 NameError risk. Subagent F audit assumption similar to P0-11 pattern (LL-191 cite-source 5-element). | NO |
 
 ### §2.2 Master P1 — Still Open (~12 items)
 
