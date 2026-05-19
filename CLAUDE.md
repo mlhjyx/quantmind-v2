@@ -77,7 +77,7 @@ quantmind-v2/
 │   ├── QUANTMIND_V2_DDL_FINAL.sql              # ⭐ 建表来源
 │   ├── QUANTMIND_V2_SYSTEM_BLUEPRINT.md        # ⭐ 当前总设计真相源
 │   ├── QUANTMIND_PLATFORM_BLUEPRINT.md         # ⭐ 平台化路线图 (QPB v1.16)
-│   ├── DEV_BACKEND.md / DEV_BACKTEST_ENGINE.md / DEV_FACTOR_MINING.md / DEV_FRONTEND_UI.md / DEV_SCHEDULER.md / DEV_PARAM_CONFIG.md / DEV_AI_EVOLUTION.md / DEV_FOREX.md / DEV_NOTIFICATIONS.md
+│   ├── DEV_BACKEND.md / DEV_BACKTEST_ENGINE.md / DEV_FACTOR_MINING.md / DEV_FRONTEND_UI.md / DEV_SCHEDULER.md / DEV_PARAM_CONFIG.md / DEV_AI_EVOLUTION.md / DEV_NOTIFICATIONS.md  # DEV_FOREX 已 archive 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, 0% impl 0 backend hits)
 │   ├── adr/                                     # 架构决议 (ADR-001 ~ ADR-086, 累计 67+ 实测 2026-05-18 plan v8 audit / sustained 5-19 Session 58+1 ADR-085/086 sediment) — 索引见 docs/adr/REGISTRY.md (LL-105 SOP-6 SSOT)
 │   ├── audit/                                   # 一次性诊断 / STATUS_REPORT
 │   ├── mvp/                                     # MVP 设计稿 (≤2 页, 铁律 24)
@@ -422,7 +422,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
 | 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
 | 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 705行) |
-| 写外汇模块(⏳) | docs/DEV_FOREX.md (682行, DEFERRED) |
+| 写外汇模块(⏳ deferred Phase 2+) | **已 archive** 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, A股稳态前不启动) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (38条目: 8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订) |
 | 性能优化最佳实践 | `.claude/skills/quantmind-performance/` |
