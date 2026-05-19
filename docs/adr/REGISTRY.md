@@ -168,6 +168,12 @@ post-ADR-076 (2026-05-15) 剩余 1 reserved (ADR-030):
 
 ## footer
 
+## ADR-083 NEW (2026-05-19) — Dead Table Audit Decision
+
+| ADR-083 | F-S7-007 12 Dead Tables Audit Decision — KEEP all 12 as scaffold, defer drop | committed | Session 57+1 autonomous closure 2026-05-19 (post-cutover Session BAU sediment). **3 decisions** (sustained ADR-072 D2 + ADR-082 ongoing体例): D1=**KEEP all 12 dead tables** post code-ref grep + per-category triage (heavy-ref 6 tables sustain无work, DEFERRED-feature 3 forex_* tables sustain DEV_FOREX policy, future-scaffold 3 tables sustain Wave 5+ candidate) — alternative drop rejected: forex_* drop需 DEV_FOREX 更新 (sustained ADR-007 pattern); chip/agent/factor_mining drop需 feature 决议 closed / D2=**Re-eval trigger 4 cases**: Phase J 决议 closes Forex path → drop 3 forex tables / DEV_AI_EVOLUTION Sprint 1.18+ wires agent_decision_log / Wave 5+ chip_distribution path closed / Quarterly audit (next Q3 2026 per Heuristic #29 Audit Cadence Calendar) / D3=**Test smoke remains green** — `test_phase_b_infra.py` 12 tables existence assertion sustained, dropping would break smoke (require concurrent test refactor). **代码 ref evidence (Session 57+1 grep)**: agent_decision_log 1 ref (test only) / chip_distribution 1 / factor_mining_task 1 / forex_bars 1 / forex_events 1 / forex_swap_rates 1 / approval_queue 144 / experiments 88 / platform_metrics 40 / gp_approval_queue 22 / backtest_holdings 9 / backtest_wf_windows 4. **216 KB disk** negligible. **F-S7-007 P1 finding → CLOSED with documented KEEP decision**. **0 broker / 0 .env / 0 DB row mutation**, 红线 5/5 sustained: cash=¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true (sustained post Session 57 rollback) / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102. 关联 ADR-007 (MVP 2.3 老 backtest_run schema sustained pattern) / ADR-022 (append-only sediment) / ADR-072 D2 (carried-Gate-E deferral方法ology) / ADR-082 (ongoing monthly review体例). 关联 V3_AUDIT_S7_ML_COST_HARDWARE_SUPPLEMENT.md §X / ISSUES_PENDING_REGISTRY §7 P8 / Heuristic #18 Alternative Path + #29 Audit Cadence Calendar / DEV_FOREX.md (NOT_STARTED Phase 2+) / DEV_AI_EVOLUTION.md (Sprint 1.18+ candidate). doc-only sediment 直 push per 铁律 42 (2 file delta: ADR-083 file + REGISTRY.md 本 row). 新人 ADR 0 reserved reserve. |
+
+## footer
+
 - **维护频率**: 每次新 ADR # reserve / 创建时同步 update (1 PR cover)
 - ** SSOT**: 本 [REGISTRY.md](REGISTRY.md) 是 ADR # 待办 / 创建状态唯一权威源 (沿用 LL-105 SOP-6 sediment 5-02 sprint close)
 - **现 last update**: 5-02 sprint period (3 N×N 同步漂移 textbook 案例 根本性处置)
