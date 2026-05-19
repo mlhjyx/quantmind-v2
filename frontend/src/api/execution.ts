@@ -175,16 +175,24 @@ export async function setAdminTokenSecure(token: string): Promise<boolean> {
 }
 
 /**
- * S1: clear HttpOnly cookie (logout).
+ * S1: clear HttpOnly cookie (logout). Returns whether backend cleared successfully.
+ * security-reviewer P1-2 fix: surface backend failure to caller (反 silent fail 铁律 33).
+ * Caller should show error toast if false (cookie may persist 90 days on shared workstation).
  */
-export async function clearAdminTokenSecure(): Promise<void> {
+export async function clearAdminTokenSecure(): Promise<boolean> {
   const apiClient = (await import("./client")).default;
+  let backendCleared = false;
   try {
     await apiClient.post("/auth/admin-token/clear", null, { withCredentials: true });
-  } catch {
-    // 沿用 silent — clearance best-effort
+    backendCleared = true;
+  } catch (e) {
+    // Surface to console (caller surfaces via toast). 反 铁律 33 silent fail.
+    console.error("admin_token cookie clear failed; cookie may persist on browser", e);
   }
   localStorage.removeItem(ADMIN_TOKEN_KEY);
+  // Best-effort client-side cookie expiry (works if not HttpOnly, harmless otherwise)
+  document.cookie = "admin_token=; Max-Age=0; Path=/; SameSite=Strict";
+  return backendCleared;
 }
 
 /**

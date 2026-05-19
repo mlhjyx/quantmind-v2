@@ -45,10 +45,10 @@ _COOKIE_SECURE = False  # Default dev. Production .env should set COOKIE_SECURE_
 
 
 def _cookie_secure_enabled() -> bool:
-    """Read COOKIE_SECURE_FLAG from settings (production HTTPS = true)."""
-    import os
-    raw = os.environ.get("COOKIE_SECURE_FLAG", "false").strip().lower()
-    return raw in ("true", "1", "yes")
+    """Read COOKIE_SECURE_FLAG from settings (铁律 34 SSOT, code-reviewer P1.2).
+    Dev HTTP localhost: false. Production HTTPS: true via .env override.
+    """
+    return settings.COOKIE_SECURE_FLAG
 
 
 @router.post("/admin-token", summary="Set admin_token HttpOnly cookie (S1 P0-22)")
