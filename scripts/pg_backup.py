@@ -46,7 +46,19 @@ MONTHLY_DIR = BACKUP_ROOT / "monthly"
 PARQUET_DIR = BACKUP_ROOT / "parquet"
 LOG_DIR = PROJECT_ROOT / "logs"
 
-PG_BIN = Path(os.environ.get("PG_BIN", r"C:\Program Files\PostgreSQL\16\bin"))
+# Plan v8 code review CRITICAL fix (5-20): default PG_BIN aligned with real install path.
+# CLAUDE.md sustains `D:\pgsql\bin` as the PG 16.8 install location (Servy bootstrap doc).
+# Previous default `C:\Program Files\PostgreSQL\16\bin` would silently FAIL daily backup
+# if PG_BIN env var not set → break DR chain. Multi-path probe defends against future moves.
+_PG_BIN_CANDIDATES = (
+    os.environ.get("PG_BIN"),
+    r"D:\pgsql\bin",
+    r"C:\Program Files\PostgreSQL\16\bin",
+)
+PG_BIN = next(
+    (Path(p) for p in _PG_BIN_CANDIDATES if p and Path(p).exists()),
+    Path(r"D:\pgsql\bin"),  # fallback (will fail-loud later if also missing)
+)
 PG_DUMP = PG_BIN / "pg_dump.exe"
 PG_RESTORE = PG_BIN / "pg_restore.exe"
 
