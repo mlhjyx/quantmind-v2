@@ -2,13 +2,16 @@
 #
 # Plan v8 — Schtask register batch script (留 user trigger after Phase B-1 Day 1 验证)
 #
-# Bundles 6 schtask registers from Plan v8 closure batch (code review HIGH fix 5-20):
+# Bundles 9 schtask registers from Plan v8 closure batch (5-20 Day 1+):
 # 1. QuantMind_RotateServyLogs (P1-45, daily 02:00)
 # 2. QuantMind_SchtaskFreshnessProbe (P0-6, daily 09:00)
 # 3. QuantMind_BeatHeartbeatProbe (P0-5, every 5 min)
 # 4. QuantMind_MarketOpenWatcher (P0-15, daily 09:31)
 # 5. QuantMind_CeleryNightlyRestart (ADR-086 Tier 1, daily 03:30)
 # 6. QuantMind_AuditCadenceQuarterly (§VIII #29, Jan 1 03:00)
+# 7. QuantMind_DiskSpaceProbe (P0-17 gap closure, hourly)
+# 8. QuantMind_RedlineRuntimeProbe (P0-17 gap closure, 15-min, LL-188 防drift)
+# 9. QuantMind_DisasterDrillSim (P0-17 Phase 1, weekly Sun 20:00)
 #
 # Usage:
 #   .\scripts\register_phase_b_1_schtasks.ps1                # All 6, prompt per task
@@ -77,6 +80,31 @@ $tasks = @(
         StartTime = "03:00"
         Command = $POWERSHELL_EXE
         Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$PYTHON_EXE D:\quantmind-v2\scripts\audit_design_doc_smoke.py --strict`""
+    },
+    @{
+        Name = "QuantMind_DiskSpaceProbe"
+        Description = "Plan v8 P0-17 gap closure: Hourly disk space probe (D:\ + C:\Users)"
+        Schedule = "HOURLY"
+        Modifier = "1"
+        Command = $POWERSHELL_EXE
+        Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$PYTHON_EXE D:\quantmind-v2\scripts\audit_disk_space.py`""
+    },
+    @{
+        Name = "QuantMind_RedlineRuntimeProbe"
+        Description = "Plan v8 P0-17 gap closure: 5/5 红线 runtime probe (15-min cadence, LL-188 防drift)"
+        Schedule = "MINUTE"
+        Modifier = 15
+        Command = $POWERSHELL_EXE
+        Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$PYTHON_EXE D:\quantmind-v2\scripts\audit_redline_runtime.py`""
+    },
+    @{
+        Name = "QuantMind_DisasterDrillSim"
+        Description = "Plan v8 P0-17 Phase 1: Weekly disaster drill simulator (read-only Sun 20:00)"
+        Schedule = "WEEKLY"
+        Days = "SUN"
+        StartTime = "20:00"
+        Command = $POWERSHELL_EXE
+        Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$PYTHON_EXE D:\quantmind-v2\scripts\disaster_drill_simulator.py`""
     }
 )
 
@@ -117,6 +145,10 @@ function Register-Task {
     if ($Task.Months) {
         $cmdArgs += "/M"
         $cmdArgs += $Task.Months
+    }
+    if ($Task.Days) {
+        $cmdArgs += "/D"
+        $cmdArgs += $Task.Days
     }
 
     $cmdString = "schtasks $($cmdArgs -join ' ')"
