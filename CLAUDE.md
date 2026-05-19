@@ -436,11 +436,18 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 - ✅ R1-R7 研究完成 / 因子画像 V2 完成 / 性能优化 (TimescaleDB + Parquet 1000x + GPU 6.2x)
 - ✅ 清明改造完成 (Servy + Redis5.0 + StreamBus + QMT A-lite)
 - ✅ Step 0→6-H 重构 + 12 年 OOS 验证 + 研究收束 (2026-04-09~10)
+- ✅ **V3 Full Project Deep Audit (Plan v8)** ✅ (2026-05-18 evening) — 11 audit docs / 3 HTML mockup variants / Top 50 findings + Strategic Alternatives chapter / LL-184/185/186 sediment
+- ✅ **Phase H Frontend Redesign v3 W1+2+4+5+6** ✅ (2026-05-19, 11 commits) — 5 NEW components (EnvStateBanner / ShutdownBanner / SafetyControlPanel / ConfirmModal 4-tier / AssistPanel) + AI Boundary + 4 entry points + 10/15 v3 findings closed + axios SSOT (14→0)
+- ✅ **Phase G F-S7-001 P0 closed** (2026-05-19, commit 23ebea5) — DeepSeek pricing fallback (LiteLLM cost_usd=0 silent drift 修复, 6 new + 31/31 existing tests PASS), AI_ASSIST_ENABLED unblocked
+- ✅ **Phase G F-S7-008 + F-S7-005 scripts ready** (2026-05-19) — VACUUM ANALYZE 10 重型表 + RAG memory backfill (20 历史 events real DB verified), 留 user schtask + 真 backfill 触发
 
 ### 重要里程碑 (按时序倒排)
 
 | 阶段 | 状态 | 关键产出 | 详情 |
 |---|---|---|---|
+| **Plan v8 doc-level 100% closure** | ✅ (2026-05-19) | 22 docs / 6000+ lines / 14 user 决议触发 enumerate + Phase J/K DOC-CLOSED + decision tree | docs/audit/PLAN_V8_DOCS_INDEX_2026_05_19.md |
+| **Phase H Frontend Redesign v3 W1+2+4+5+6 ✅** | ✅ (Session 57, 2026-05-19) | 11 commits / 5 NEW components + 10/15 v3 findings closed + axios SSOT + dead code -370 lines | LL-187 / STATUS_REPORT_2026_05_19_frontend_v3_phase_h_w1_w6.md |
+| **V3 Full Project Deep Audit (Plan v8)** | ✅ (2026-05-18) | 11 audit docs + Top 50 findings + 3 HTML mockup + LL-184/185/186 | V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md |
 | **Wave 4 MVP 4.1 Observability** | 🟡 进行中 | batch 1+2.1+2.2 ✅ (PostgresAlertRouter / MetricExporter / AlertRulesEngine), batch 3.x 17 scripts SDK migration 进行中 | SYSTEM_STATUS §0 + QPB v1.16 |
 | **Wave 3 MVP 3.3 Signal-Exec ✅** | 🟢 完结 (Session 40, 2026-04-28) | Stage 3.0 切换 PR #116, signal_service 内部走 PlatformSignalPipeline | LL-082~088 + memory sprint_state |
 | **Wave 3 MVP 3.1 Risk Framework ✅** | 🟢 完结 (Session 30, 2026-04-24) | 6 PR / 65 新 tests / Celery Beat 5 schedule entries 生产激活 | ADR-010 addendum |

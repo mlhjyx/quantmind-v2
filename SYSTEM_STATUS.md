@@ -1,8 +1,95 @@
 # QuantMind V2 系统全面梳理报告
 
 > **目的**: 重构前系统真实状态完整记录，供架构顾问审阅
-> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)**
+> **日期**: 2026-04-09 (初版) + Step 6-H (2026-04-10) + Phase 2.1 (2026-04-11) + Phase 2.4 (2026-04-12) + PT配置更新 CORE3+dv_ttm (2026-04-12) + **平台化蓝图启动 (2026-04-17)** + **Session 24-45 + Step 6.x sprint 治理 sediment (2026-05-01 §0.-2)** + **5-02 Sprint Close (Session 47-50, §0.-3)** + **Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19, §0.-4)** ⭐
 > **基于**: 实际查询数据，非设计文档描述
+
+---
+
+## §0.-4 Session 57 Plan v8 Phase H+G+I doc-level 100% closure (2026-05-19) ⭐
+
+> **Session 57 闭环**: 13 commits cumulative (574820f → a4b49d0). Plan v8 doc-level 100% — Phase H Frontend Redesign W1+W2+W4+W5+W6 + Phase G F-S7-001+F-S7-008+F-S7-005 + Phase I 部分 tech debt. main HEAD `1a7dd8b` → `a4b49d0`. 详细 sprint state 走 Anthropic memory `project_sprint_state.md` 顶部 Session 57 handoff.
+
+### Session 57 13-commit chain (按时序)
+
+| # | SHA | Phase | Description |
+|---|---|---|---|
+| 1 | `65ed55b` | H W1 | EnvStateBanner + ShutdownBanner + SafetyControlPanel + ConfirmModal 4-tier |
+| 2 | `65d81df` | H W2 | AssistPanel + Cmd+J + 4 entry points + backend /api/agent/chat (stub mode) |
+| 3 | `8969d87` | H W4 | FactorEval 5 ops + Portfolio days fix + BacktestResults OOS warning |
+| 4 | `e5bd897` | H W6 | Dead code cleanup -370 lines (NotificationSystem + DashboardForex + TradeExecution) |
+| 5 | `f392b7a` | — | STATUS_REPORT v1 sediment |
+| 6 | `b560a0c` | H W5 + G | SystemSettings OpsEscapeHatchPanel + Sidebar 外汇 drop + VACUUM ANALYZE script (F-S7-008) |
+| 7 | `23ebea5` | G | **F-S7-001 P0 closure** — DeepSeek pricing fallback (6 new + 31/31 existing tests PASS) |
+| 8 | `b3da5a4` | I | axios SSOT — 6 files / 14 raw axios → apiClient (0 raw 残留) |
+| 9 | `45f592b` | — | DEV_FRONTEND_UI frontmatter + STATUS_REPORT v2 §9 |
+| 10 | `9046faf` | — | LL-187 sediment |
+| 11 | `a317292` | G+H+I | PipelineConsole prompt fix + F-S7-005 RAG backfill script + Phase J/K decision doc |
+| 12 | `3d64be2` | — | PLAN_V8_DOCS_INDEX (22 docs 章节导航) |
+| 13 | `a4b49d0` | G | rag_memory_backfill schema fix (real DB verified, dry-run 20 rows OK) |
+
+**累积**: 38 files / 3 deleted / +3868/-845 / net +3023 lines.
+
+### Phase G/H/I closures
+
+- **Phase G F-S7-001 P0** ✅ (commit 23ebea5): DeepSeek pricing 3-path strategy (LiteLLM response_cost / tokens × per-token / unknown silent miss). 6 regression + 31 existing 全 PASS. AI_ASSIST_ENABLED 真启用 unblocked.
+- **Phase G F-S7-008 P0** 🟢 (script ready b560a0c): VACUUM ANALYZE 10 重型表脚本. 留 user elevated terminal schtask 注册.
+- **Phase G F-S7-005 P0** 🟢 (script ready a317292+a4b49d0): RAG memory backfill, dry-run 验证 20 历史 events (3 risk_event + 17 trade_log emergency 4-29 清仓). 留 user 真触发.
+- **Phase H Frontend Redesign v3 W1+2+4+5+6** ✅: 5 NEW components + 4 AI entry points + 10/15 v3 findings closed + OpsEscapeHatchPanel (12 ops 显式 CC bash path).
+- **Phase I Tech Debt** 🟢 partial: 死代码 -370 lines + axios SSOT 14→0 + sidebar 外汇 drop. 双轨样式 50h migration / admin_token httpOnly cookie 留 user.
+
+### v3 Top 15 findings closure (10/15)
+
+- P0: #1 EnvStateBanner / #2 L4 UI / #6 hardcoded LOW (真值)
+- P1: #4 AssistPanel placeholder / #15 shutdown 状态
+- P2: #5+#10 axios SSOT / #8 window.prompt/alert (3/3 closed) / #11 days=0 (DB JOIN) / #13 5-op no-op / OOS warning
+- P3: #9 NotificationSystem dead code
+
+Deferred (5 项 DOC-CLOSED): #3 双轨样式 (50h) / #7 cron hardcoded / #12 PMS归并 (PMS history已wired, 决议保持独立) / #14 三套 real-time / admin_token / socket.io evaluation (retain)
+
+### 22 docs / 6000+ lines audit + STATUS_REPORT
+
+- `V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md` (685) — Top 50 findings + Strategic Alternatives
+- `V3_AUDIT_S1_DOMAIN.md` (100) — A股 quirks + Strategy Edge
+- `V3_AUDIT_S2_INVENTORY.md` (304) + DOC_STATUS_MATRIX (98) + DESIGN_VS_REALITY_GAP (120)
+- `V3_AUDIT_S3_FLOW_AND_CLOSURE.md` (303) — 6 business flow + cascade map
+- `V3_AUDIT_S4_HEALTH_AND_DEAD_CODE.md` (286)
+- `V3_AUDIT_S6_STRATEGIC_AND_CONTINUITY.md` (150)
+- `V3_AUDIT_S7_ML_COST_HARDWARE.md` (279) + SUPPLEMENT (350, F-S7-001+005+008 P0)
+- `V3_AUDIT_S9_UX_CONTROL_PLANE.md` (173) — 32 ops matrix
+- Frontend v1→v3: `S5 PROPOSAL` (219) + `DESIGN_REVISED v2` (205) + `DESIGN_SPEC` (815) + `DESIGN_PROPOSAL` (344) + `DESIGN_v3` (409) ⭐ canonical
+- `STATUS_REPORT_2026_05_19_frontend_v3_phase_h_w1_w6.md` (226)
+- `PHASE_J_K_REMAINING_DECISION_DOC_2026_05_19.md` (209) — 14 user 决议触发 + Phase J/K 入口
+- `PLAN_V8_DOCS_INDEX_2026_05_19.md` (407) ⭐ 总导航 + 章节 breakdown
+
+### 14 user 决议触发点 (Plan v8 doc-level 100%)
+
+1. AI_ASSIST_ENABLED 真启用 (.env flip)
+2. VACUUM schtask 注册 (elevated terminal)
+3. F-S7-005 RAG memory backfill execute (`python scripts/rag_memory_backfill.py --dsn "..." --limit 500`)
+4. F-S7-005 BGE-M3 embedding cron (GPU 资源决议)
+5. AgentConfig prompt versioning UI (需 backend prompt history endpoint)
+6. 双轨样式 P2/P3 pages 顺手 migrate (~50h sustained)
+7. admin_token httpOnly cookie (~6h, P0-22 安全)
+8. SSE realtime endpoint (~16h, Phase I §4.4 option A)
+9. Calendar SSOT (~8h, Section X §39, unblocks F#7)
+10. Phase J.1 Sharpe Confidence Decomp (~1w research)
+11. Phase J.4 OOS Heterogeneity Investigation (~2w research)
+12. Phase K.4-K.10 sequence (live-fire resume gate, conditional)
+13. DB 4-28 stale snapshot 清理 (K.5, user single SQL)
+14. Paper-mode 5d dry-run (K.6, 1 week elapsed natural)
+
+### 红线 5/5 sustained throughout 13 commits
+
+- cash ¥993,520.66 / 0 持仓 / LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102
+- 0 broker call from any of 13 commits
+- Backend /api/agent/chat stub mode 0 outbound LLM (0 cost)
+
+### Tests + Build sanity
+
+- TS check: 7× `tsc --noEmit` EXIT=0 sustained
+- Vite build: 6× ✓ (4.32s → 4.34s)
+- pytest: 44/44 PASS (31 router + 6 new F-S7-001 + 4 dry-run regression + 3 propagate-env)
 
 ---
 
