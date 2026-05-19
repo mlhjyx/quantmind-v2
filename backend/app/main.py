@@ -27,11 +27,13 @@ from app.api.realtime import router as realtime_router
 from app.api.remote_status import router as remote_status_router
 from app.api.report import router as report_router
 from app.api.risk import router as risk_router
+from app.api.sse import router as sse_router
 from app.api.strategies import router as strategies_router
 from app.api.system import router as system_router
 from app.config import settings
 from app.db import engine
 from app.logging_config import configure_logging
+from app.middleware.audit import AuditMiddleware
 from app.services.qmt_connection_manager import qmt_manager
 from app.websocket import socket_app
 
@@ -92,6 +94,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# P7 F-D78-241 audit middleware (Session 58 round-2 close).
+# Cross-cutting audit log for state-mutating admin-authed requests (POST/PUT/DELETE/PATCH).
+# Complements per-endpoint audit (execution_ops.py operation_audit_log INSERT).
+# Skip paths: /health, /ws/*, /api/sse/* (高频/streaming).
+app.add_middleware(AuditMiddleware)
+
 # --- API 路由注册 ---
 app.include_router(health_router)
 app.include_router(agent_router)
@@ -117,6 +125,7 @@ app.include_router(pipeline_router)
 app.include_router(strategies_router)
 app.include_router(remote_status_router)
 app.include_router(system_router)
+app.include_router(sse_router)  # P4 SSE endpoint (Session 58 round-2)
 
 
 @app.get("/health")
