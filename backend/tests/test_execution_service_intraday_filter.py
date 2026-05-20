@@ -46,28 +46,20 @@ class TestFilterNontradableCodes:
         assert result == {}
 
     def test_suspended_detected(self):
-        conn = _make_conn(
-            status_rows=[("600001.SH", "suspended")], klines_rows=[]
-        )
+        conn = _make_conn(status_rows=[("600001.SH", "suspended")], klines_rows=[])
         result = ExecutionService._filter_nontradable_codes(
             conn, self.EXEC, ["600000.SH", "600001.SH"]
         )
         assert result == {"600001.SH": "suspended"}
 
     def test_new_stock_detected(self):
-        conn = _make_conn(
-            status_rows=[("688999.SH", "new_stock")], klines_rows=[]
-        )
-        result = ExecutionService._filter_nontradable_codes(
-            conn, self.EXEC, ["688999.SH"]
-        )
+        conn = _make_conn(status_rows=[("688999.SH", "new_stock")], klines_rows=[])
+        result = ExecutionService._filter_nontradable_codes(conn, self.EXEC, ["688999.SH"])
         assert result == {"688999.SH": "new_stock"}
 
     def test_limit_up_detected(self):
         conn = _make_conn(status_rows=[], klines_rows=[("688001.SH",)])
-        result = ExecutionService._filter_nontradable_codes(
-            conn, self.EXEC, ["688001.SH"]
-        )
+        result = ExecutionService._filter_nontradable_codes(conn, self.EXEC, ["688001.SH"])
         assert result == {"688001.SH": "limit_up_T-1"}
 
     def test_suspended_precedence_over_limit_up(self):
@@ -76,9 +68,7 @@ class TestFilterNontradableCodes:
             status_rows=[("600001.SH", "suspended")],
             klines_rows=[("600001.SH",)],
         )
-        result = ExecutionService._filter_nontradable_codes(
-            conn, self.EXEC, ["600001.SH"]
-        )
+        result = ExecutionService._filter_nontradable_codes(conn, self.EXEC, ["600001.SH"])
         assert result == {"600001.SH": "suspended"}
 
     def test_mixed_reasons(self):

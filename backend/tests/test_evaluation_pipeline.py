@@ -5,6 +5,7 @@
   - 7 Gates (14): 每 Gate 2 tests (pass + fail or data_unavailable)
   - Pipeline (5): evaluate_factor / evaluate_full / gate_detail / decision aggregation
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -125,9 +126,7 @@ def test_g1_data_unavailable_when_ic_missing():
 
 
 def test_g2_low_corr_passes():
-    ctx = GateContext(
-        factor_name="x", active_corr_max=0.3, monthly_return_corr_max=0.1
-    )
+    ctx = GateContext(factor_name="x", active_corr_max=0.3, monthly_return_corr_max=0.1)
     result = G2CorrelationFilterGate().evaluate(ctx)
     assert result.passed is True
 
@@ -180,17 +179,13 @@ def test_g4_oos_worse_fails():
 
 
 def test_g8_strong_p_passes_bh():
-    ctx = GateContext(
-        factor_name="x", bh_fdr_p_value=0.0001, bh_fdr_rank=1, bh_fdr_m=84
-    )
+    ctx = GateContext(factor_name="x", bh_fdr_p_value=0.0001, bh_fdr_rank=1, bh_fdr_m=84)
     result = G8BhFdrGate().evaluate(ctx)
     assert result.passed is True
 
 
 def test_g8_weak_p_fails_bh():
-    ctx = GateContext(
-        factor_name="x", bh_fdr_p_value=0.04, bh_fdr_rank=1, bh_fdr_m=84
-    )
+    ctx = GateContext(factor_name="x", bh_fdr_p_value=0.04, bh_fdr_rank=1, bh_fdr_m=84)
     # 1/84 × 0.05 ≈ 0.000595 < 0.04 → 拒绝
     result = G8BhFdrGate().evaluate(ctx)
     assert result.passed is False
@@ -230,7 +225,9 @@ def test_g9_novel_factor_passes():
     """registry.novelty_check 返 True (mock)."""
     fake_registry = MagicMock()
     fake_registry.novelty_check.return_value = True
-    meta = _make_meta("new_factor", "ts_mean(close, 20)", "趋势惯性 hypothesis 25 字以上 (满足 G10 长度门槛)")
+    meta = _make_meta(
+        "new_factor", "ts_mean(close, 20)", "趋势惯性 hypothesis 25 字以上 (满足 G10 长度门槛)"
+    )
     ctx = GateContext(factor_name="new_factor", factor_meta=meta, registry=fake_registry)
     result = G9NoveltyAstGate().evaluate(ctx)
     assert result.passed is True
@@ -241,7 +238,9 @@ def test_g9_similar_factor_fails():
     """registry.novelty_check 返 False (相似度过高)."""
     fake_registry = MagicMock()
     fake_registry.novelty_check.return_value = False
-    meta = _make_meta("dup_factor", "ts_mean(close, 19)", "略改窗口 hypothesis 25 字以上 (满足 G10 长度门槛)")
+    meta = _make_meta(
+        "dup_factor", "ts_mean(close, 19)", "略改窗口 hypothesis 25 字以上 (满足 G10 长度门槛)"
+    )
     ctx = GateContext(factor_name="dup_factor", factor_meta=meta, registry=fake_registry)
     result = G9NoveltyAstGate().evaluate(ctx)
     assert result.passed is False
@@ -358,9 +357,7 @@ def test_pipeline_decision_reject_on_hard_fail():
         meta = _make_meta("x", "ts_mean(c, 20)", "TBD")  # G10 too short
         return GateContext(factor_name=name, factor_meta=meta)
 
-    pipeline = PlatformEvaluationPipeline(
-        gates=[G10HypothesisGate()], context_loader=loader
-    )
+    pipeline = PlatformEvaluationPipeline(gates=[G10HypothesisGate()], context_loader=loader)
     report = pipeline.evaluate_full("x")
     assert report.decision == EvaluationDecision.REJECT
     assert "G10_hypothesis" in report.reasoning
@@ -368,9 +365,7 @@ def test_pipeline_decision_reject_on_hard_fail():
 
 def test_pipeline_gate_detail_unknown_raises():
     loader = _build_passing_ctx_loader()
-    pipeline = PlatformEvaluationPipeline(
-        gates=[G1IcSignificanceGate()], context_loader=loader
-    )
+    pipeline = PlatformEvaluationPipeline(gates=[G1IcSignificanceGate()], context_loader=loader)
     with pytest.raises(ValueError, match="unknown gate"):
         pipeline.gate_detail("good_factor", "NOPE_gate")
 

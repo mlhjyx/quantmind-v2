@@ -10,6 +10,7 @@ subprocess 启动 + live PG + 真调 DBFeatureFlag, 验证:
   - feature_flags 表缺失 / use_db_direction 被误 unregister / paramstyle 配错
   - FlagNotFound 被 silent 吞 (违反铁律 33 — MVP 1.2 硬门)
 """
+
 from __future__ import annotations
 
 import subprocess

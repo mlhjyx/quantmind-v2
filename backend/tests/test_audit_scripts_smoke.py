@@ -48,12 +48,12 @@ def load_script(name: str):
     return module
 
 
-def run_script(name: str, args: list[str] | None = None, timeout: int = 30) -> subprocess.CompletedProcess:
+def run_script(
+    name: str, args: list[str] | None = None, timeout: int = 30
+) -> subprocess.CompletedProcess:
     """Run script as subprocess. Returns CompletedProcess."""
     cmd = [sys.executable, str(SCRIPTS_DIR / name)] + (args or [])
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8"
-    )
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8")
 
 
 # ============================================================

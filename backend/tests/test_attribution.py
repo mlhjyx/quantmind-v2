@@ -87,10 +87,13 @@ class TestBrinsonSinglePeriod:
         )
 
         # 恒等式验证
-        assert abs(
-            result.total_excess
-            - (result.allocation_effect + result.selection_effect + result.interaction_effect)
-        ) < 1e-10
+        assert (
+            abs(
+                result.total_excess
+                - (result.allocation_effect + result.selection_effect + result.interaction_effect)
+            )
+            < 1e-10
+        )
 
     def test_excess_matches_direct_calculation(self):
         """total_excess ≈ 组合收益 - 基准收益。"""
@@ -131,8 +134,17 @@ class TestBrinsonSinglePeriod:
             period=self.period,
         )
 
-        expected_cols = {"industry", "w_p", "w_b", "r_p", "r_b",
-                         "allocation", "selection", "interaction", "total"}
+        expected_cols = {
+            "industry",
+            "w_p",
+            "w_b",
+            "r_p",
+            "r_b",
+            "allocation",
+            "selection",
+            "interaction",
+            "total",
+        }
         assert expected_cols.issubset(set(result.industry_detail.columns))
 
     def test_unknown_industry(self):
@@ -208,21 +220,39 @@ class TestBrinsonSummary:
         """多期summary正确累加。"""
         engine = BrinsonAttribution()
         r1 = BrinsonResult(
-            total_excess=0.02, allocation_effect=0.01,
-            selection_effect=0.008, interaction_effect=0.002,
-            industry_detail=pd.DataFrame([
-                {"industry": "银行", "allocation": 0.01, "selection": 0.005,
-                 "interaction": 0.001, "total": 0.016}
-            ]),
+            total_excess=0.02,
+            allocation_effect=0.01,
+            selection_effect=0.008,
+            interaction_effect=0.002,
+            industry_detail=pd.DataFrame(
+                [
+                    {
+                        "industry": "银行",
+                        "allocation": 0.01,
+                        "selection": 0.005,
+                        "interaction": 0.001,
+                        "total": 0.016,
+                    }
+                ]
+            ),
             period=(date(2023, 1, 1), date(2023, 1, 31)),
         )
         r2 = BrinsonResult(
-            total_excess=0.03, allocation_effect=0.015,
-            selection_effect=0.01, interaction_effect=0.005,
-            industry_detail=pd.DataFrame([
-                {"industry": "银行", "allocation": 0.008, "selection": 0.012,
-                 "interaction": 0.003, "total": 0.023}
-            ]),
+            total_excess=0.03,
+            allocation_effect=0.015,
+            selection_effect=0.01,
+            interaction_effect=0.005,
+            industry_detail=pd.DataFrame(
+                [
+                    {
+                        "industry": "银行",
+                        "allocation": 0.008,
+                        "selection": 0.012,
+                        "interaction": 0.003,
+                        "total": 0.023,
+                    }
+                ]
+            ),
             period=(date(2023, 2, 1), date(2023, 2, 28)),
         )
 

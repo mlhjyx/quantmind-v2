@@ -10,6 +10,7 @@ Bug B: health_check.check_stock_status hard fail 1 天滞后就阻塞整 PT.
 
 铁律 33 fail-loud + 铁律 40 测试债不增长.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,7 +51,7 @@ def test_fetch_daily_data_source_contains_fail_loud_raise():
     assert "FAIL-LOUD" in src, "FAIL-LOUD marker in comment"
     assert "raise" in src, "raise statement present (not silent swallow)"
     # 确保不是老版本的 silent swallow
-    silent_pattern = '\"\"\"results[\"status_rows\"] = 0\n        except'
+    silent_pattern = '"""results["status_rows"] = 0\n        except'
     assert silent_pattern not in src, "old silent swallow pattern not present"
 
 
@@ -144,9 +145,7 @@ def test_check_stock_status_lag_3_days_fails():
 
 def test_check_stock_status_empty_table_fails():
     """stock_status_daily 完全空 → FAIL."""
-    conn = _make_mock_conn(
-        max_status_date=None, prev_trading_day=date(2026, 4, 17), lag_days=0
-    )
+    conn = _make_mock_conn(max_status_date=None, prev_trading_day=date(2026, 4, 17), lag_days=0)
     ok, msg = hc.check_stock_status(conn, date(2026, 4, 18))
     assert ok is False
     assert "stock_status_daily表为空" in msg

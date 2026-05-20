@@ -22,6 +22,7 @@ from app.main import app
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _uuid() -> str:
     return str(uuid.uuid4())
 
@@ -85,9 +86,7 @@ def _mock_session_no_run() -> MagicMock:
     return session
 
 
-def _mock_session_for_history(
-    total: int, items: list[dict[str, Any]]
-) -> MagicMock:
+def _mock_session_for_history(total: int, items: list[dict[str, Any]]) -> MagicMock:
     """创建用于 /history 端点的mock session（两次execute调用）。"""
     session = AsyncMock()
 
@@ -97,7 +96,9 @@ def _mock_session_for_history(
 
     # 第二次调用: SELECT rows
     rows_mapping = MagicMock()
-    rows_mapping.all.return_value = [MagicMock(**{"__iter__": lambda s: iter({}), "keys": lambda s: []}) for _ in items]
+    rows_mapping.all.return_value = [
+        MagicMock(**{"__iter__": lambda s: iter({}), "keys": lambda s: []}) for _ in items
+    ]
     # 使用真实的dict模拟mappings
     rows_result = MagicMock()
     rows_result.mappings.return_value = MagicMock(all=MagicMock(return_value=items))
@@ -139,6 +140,7 @@ def _mock_session_multi_execute(*results: Any) -> MagicMock:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def run_id() -> str:
@@ -339,12 +341,26 @@ async def test_get_result_not_completed(running_run: dict):
 async def test_get_nav_series(completed_run: dict):
     """GET /{run_id}/nav 返回NAV列表。"""
     nav_rows = [
-        {"trade_date": date(2023, 1, 3), "nav": 1.0, "cash": 100000,
-         "market_value": 900000, "daily_return": 0.0,
-         "benchmark_nav": 1.0, "benchmark_return": 0.0, "excess_return": 0.0},
-        {"trade_date": date(2023, 1, 4), "nav": 1.01, "cash": 100000,
-         "market_value": 910000, "daily_return": 0.01,
-         "benchmark_nav": 1.005, "benchmark_return": 0.005, "excess_return": 0.005},
+        {
+            "trade_date": date(2023, 1, 3),
+            "nav": 1.0,
+            "cash": 100000,
+            "market_value": 900000,
+            "daily_return": 0.0,
+            "benchmark_nav": 1.0,
+            "benchmark_return": 0.0,
+            "excess_return": 0.0,
+        },
+        {
+            "trade_date": date(2023, 1, 4),
+            "nav": 1.01,
+            "cash": 100000,
+            "market_value": 910000,
+            "daily_return": 0.01,
+            "benchmark_nav": 1.005,
+            "benchmark_return": 0.005,
+            "excess_return": 0.005,
+        },
     ]
     # 第一次execute: _require_completed, 第二次: nav查询
     session = _mock_session_multi_execute(completed_run, nav_rows)
@@ -408,6 +424,7 @@ async def test_report_quantstats_not_installed(completed_run: dict):
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             # Mock quantstats import failure
             import builtins
+
             real_import = builtins.__import__
 
             def mock_import(name, *args, **kwargs):
@@ -547,11 +564,22 @@ async def test_compare_invalid_uuid():
 async def test_get_trades(completed_run: dict):
     """GET /{run_id}/trades 返回分页交易明细。"""
     trade_rows = [
-        {"id": 1, "signal_date": date(2023, 1, 3), "exec_date": date(2023, 1, 4),
-         "stock_code": "000001.SZ", "side": "buy", "shares": 100,
-         "target_price": 10.0, "exec_price": 10.05, "slippage_bps": 5.0,
-         "commission": 3.0, "stamp_tax": 0.0, "transfer_fee": 0.1,
-         "total_cost": 3.1, "reject_reason": None},
+        {
+            "id": 1,
+            "signal_date": date(2023, 1, 3),
+            "exec_date": date(2023, 1, 4),
+            "stock_code": "000001.SZ",
+            "side": "buy",
+            "shares": 100,
+            "target_price": 10.0,
+            "exec_price": 10.05,
+            "slippage_bps": 5.0,
+            "commission": 3.0,
+            "stamp_tax": 0.0,
+            "transfer_fee": 0.1,
+            "total_cost": 3.1,
+            "reject_reason": None,
+        },
     ]
     # 3 execute calls: _require_completed, COUNT, SELECT
     session = _mock_session_multi_execute(completed_run, 1, trade_rows)
@@ -601,8 +629,14 @@ async def test_get_holdings_summary(completed_run: dict):
 async def test_get_annual_breakdown(completed_run: dict):
     """GET /{run_id}/annual 返回年度绩效列表。"""
     annual_rows = [
-        {"year": 2023, "annual_return": 0.15, "avg_daily_return": 0.0006,
-         "std_daily_return": 0.012, "trading_days": 244, "worst_day": -0.05},
+        {
+            "year": 2023,
+            "annual_return": 0.15,
+            "avg_daily_return": 0.0006,
+            "std_daily_return": 0.012,
+            "trading_days": 244,
+            "worst_day": -0.05,
+        },
     ]
     session = _mock_session_multi_execute(completed_run, annual_rows)
     app.dependency_overrides[_get_session] = lambda: session
@@ -654,12 +688,24 @@ async def test_get_monthly_heatmap(completed_run: dict):
 async def test_get_market_state(completed_run: dict):
     """GET /{run_id}/market-state 返回分段绩效。"""
     state_rows = [
-        {"market_state": "bull", "trading_days": 100, "avg_daily_return": 0.001,
-         "std_daily_return": 0.01, "cumulative_return": 0.1,
-         "worst_day": -0.03, "best_day": 0.05},
-        {"market_state": "sideways", "trading_days": 144, "avg_daily_return": 0.0003,
-         "std_daily_return": 0.008, "cumulative_return": 0.04,
-         "worst_day": -0.02, "best_day": 0.03},
+        {
+            "market_state": "bull",
+            "trading_days": 100,
+            "avg_daily_return": 0.001,
+            "std_daily_return": 0.01,
+            "cumulative_return": 0.1,
+            "worst_day": -0.03,
+            "best_day": 0.05,
+        },
+        {
+            "market_state": "sideways",
+            "trading_days": 144,
+            "avg_daily_return": 0.0003,
+            "std_daily_return": 0.008,
+            "cumulative_return": 0.04,
+            "worst_day": -0.02,
+            "best_day": 0.03,
+        },
     ]
     session = _mock_session_multi_execute(completed_run, state_rows)
     app.dependency_overrides[_get_session] = lambda: session
@@ -709,7 +755,9 @@ async def test_get_cost_sensitivity(completed_run: dict):
 async def test_cost_sensitivity_warning_when_2x_sharpe_low():
     """成本敏感性: 2x成本Sharpe<0.5时应有warning。"""
     rid = _uuid()
-    run = _make_run_row(rid, sharpe_ratio=0.4, annual_return=0.05, max_drawdown=-0.1, calmar_ratio=0.5)
+    run = _make_run_row(
+        rid, sharpe_ratio=0.4, annual_return=0.05, max_drawdown=-0.1, calmar_ratio=0.5
+    )
     nav_rows = [
         {"trade_date": date(2023, 1, 3), "daily_return": 0.001, "nav": 1.001},
     ]

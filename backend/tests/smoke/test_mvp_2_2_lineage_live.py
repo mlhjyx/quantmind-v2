@@ -11,6 +11,7 @@ subprocess 启动 + live PG + 真跑 DataPipeline.ingest(lineage=...) 路径:
 
 失败意味: Lineage 存储 / JSONB @> containment / pipeline 埋点任一环断.
 """
+
 from __future__ import annotations
 
 import subprocess

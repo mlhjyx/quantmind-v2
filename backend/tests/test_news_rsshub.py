@@ -13,6 +13,7 @@ RSSHub-specific tests (反 sub-PR 1+2+3+4+5 体例):
 - route path query (e.g. /jin10/news, 反 search keyword)
 - lang="zh" sustained (V3§3.1 中文财经源)
 """
+
 from __future__ import annotations
 
 from datetime import UTC
@@ -113,9 +114,7 @@ def test_rsshub_fetch_route_path_with_leading_slash(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     fetcher.fetch(query="/jin10/news", limit=10)
@@ -132,9 +131,7 @@ def test_rsshub_fetch_route_path_no_leading_slash(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     fetcher.fetch(query="jin10/news", limit=10)
@@ -153,9 +150,7 @@ def test_rsshub_fetch_uses_get_method_with_custom_ua(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     fetcher.fetch(query="/jin10/news")
@@ -169,14 +164,13 @@ def test_rsshub_fetch_uses_get_method_with_custom_ua(monkeypatch):
 
 def test_rsshub_fetch_parses_rss_2_0(monkeypatch):
     """RSS 2.0 feed → NewsItem list (item.title / item.link / item.pubDate)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=SAMPLE_RSS_2_0)
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/jin10/news", limit=10)
@@ -196,14 +190,13 @@ def test_rsshub_fetch_parses_rss_2_0(monkeypatch):
 
 def test_rsshub_fetch_parses_atom_1_0(monkeypatch):
     """Atom 1.0 feed → NewsItem list (entry.title / entry.link / entry.updated)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=SAMPLE_ATOM_1_0)
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/jin10/news", limit=10)
@@ -215,14 +208,13 @@ def test_rsshub_fetch_parses_atom_1_0(monkeypatch):
 
 def test_rsshub_fetch_limit_slice(monkeypatch):
     """limit=1 → only 1 item returned (client-side slice, RSSHub 反 limit query)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=SAMPLE_RSS_2_0)  # 2 items
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/jin10/news", limit=1)
@@ -231,14 +223,13 @@ def test_rsshub_fetch_limit_slice(monkeypatch):
 
 def test_rsshub_fetch_empty_xml_returns_empty(monkeypatch):
     """Empty XML response → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="")
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/jin10/news")
@@ -247,14 +238,13 @@ def test_rsshub_fetch_empty_xml_returns_empty(monkeypatch):
 
 def test_rsshub_fetch_malformed_xml_returns_empty(monkeypatch):
     """Malformed XML → feedparser bozo + 0 entries → empty list."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<not-rss>not valid</not-rss>")
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/jin10/news")
@@ -274,9 +264,7 @@ def test_rsshub_fetch_empty_title_skipped(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     items = fetcher.fetch(query="/x")
@@ -297,9 +285,7 @@ def test_rsshub_fetch_4xx_404_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = RsshubNewsFetcher()
     with pytest.raises(NewsFetchError, match="HTTP 404"):
@@ -316,9 +302,7 @@ def test_rsshub_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
@@ -336,9 +320,7 @@ def test_rsshub_fetch_5xx_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
@@ -356,9 +338,7 @@ def test_rsshub_fetch_timeout_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
     with patch("backend.qm_platform.news.rsshub.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = RsshubNewsFetcher()
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
@@ -376,6 +356,7 @@ def test_rsshub_retryable_error_is_runtime_error():
 def test_parse_feed_timestamp_published_parsed():
     """RSS pubDate → struct_time → datetime UTC."""
     import time
+
     entry = {"published_parsed": time.struct_time((2026, 5, 6, 12, 30, 0, 0, 0, 0))}
     ts = _parse_feed_timestamp(entry)  # type: ignore[arg-type]
     assert ts.year == 2026
@@ -387,6 +368,7 @@ def test_parse_feed_timestamp_published_parsed():
 def test_parse_feed_timestamp_updated_parsed_fallback():
     """published_parsed missing → updated_parsed fallback."""
     import time
+
     entry = {"updated_parsed": time.struct_time((2026, 5, 6, 12, 0, 0, 0, 0, 0))}
     ts = _parse_feed_timestamp(entry)  # type: ignore[arg-type]
     assert ts.year == 2026

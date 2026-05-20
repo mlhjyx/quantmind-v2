@@ -88,9 +88,22 @@ def _make_bars(
     """Build a small synthetic intra-day bar stream for one (code, day)."""
     # 3 bars at 09:30 / 10:30 / 14:55 — open at start, peak at mid, close at end.
     return [
-        _mk_bar(code, trade_date, hour=9, minute=30, open_p=open_p, high=open_p, low=open_p, close=open_p),
-        _mk_bar(code, trade_date, hour=10, minute=30, open_p=open_p, high=high, low=open_p, close=high),
-        _mk_bar(code, trade_date, hour=14, minute=55, open_p=high, high=high, low=close, close=close),
+        _mk_bar(
+            code,
+            trade_date,
+            hour=9,
+            minute=30,
+            open_p=open_p,
+            high=open_p,
+            low=open_p,
+            close=open_p,
+        ),
+        _mk_bar(
+            code, trade_date, hour=10, minute=30, open_p=open_p, high=high, low=open_p, close=high
+        ),
+        _mk_bar(
+            code, trade_date, hour=14, minute=55, open_p=high, high=high, low=close, close=close
+        ),
     ]
 
 
@@ -113,10 +126,9 @@ class TestBuildSyntheticPositions:
         assert p.entry_date == date(2024, 6, 3)
 
     def test_multi_code_emits_one_position_per_code(self) -> None:
-        bars = (
-            _make_bars("600000.SH", date(2024, 6, 3), open_p=10.0, high=11.0, close=10.5)
-            + _make_bars("600519.SH", date(2024, 6, 3), open_p=1700.0, high=1720.0, close=1715.0)
-        )
+        bars = _make_bars(
+            "600000.SH", date(2024, 6, 3), open_p=10.0, high=11.0, close=10.5
+        ) + _make_bars("600519.SH", date(2024, 6, 3), open_p=1700.0, high=1720.0, close=1715.0)
         positions = _build_synthetic_positions(bars)
         assert len(positions) == 2
         codes = {p.code for p in positions}
@@ -125,8 +137,26 @@ class TestBuildSyntheticPositions:
     def test_degenerate_peak_below_entry_skipped(self) -> None:
         """If max(high) < open (data corruption), skip rather than feed rule garbage."""
         bars = [
-            _mk_bar("BAD.SH", date(2024, 6, 3), hour=9, minute=30, open_p=10.0, high=9.5, low=9.0, close=9.2),
-            _mk_bar("BAD.SH", date(2024, 6, 3), hour=10, minute=30, open_p=10.0, high=9.8, low=9.5, close=9.5),
+            _mk_bar(
+                "BAD.SH",
+                date(2024, 6, 3),
+                hour=9,
+                minute=30,
+                open_p=10.0,
+                high=9.5,
+                low=9.0,
+                close=9.2,
+            ),
+            _mk_bar(
+                "BAD.SH",
+                date(2024, 6, 3),
+                hour=10,
+                minute=30,
+                open_p=10.0,
+                high=9.8,
+                low=9.5,
+                close=9.5,
+            ),
         ]
         positions = _build_synthetic_positions(bars)
         assert positions == []
@@ -134,7 +164,16 @@ class TestBuildSyntheticPositions:
     def test_zero_price_skipped(self) -> None:
         """Zero open or close = pre-listing garbage, skipped silently."""
         bars = [
-            _mk_bar("ZERO.SH", date(2024, 6, 3), hour=9, minute=30, open_p=0.0, high=0.0, low=0.0, close=0.0),
+            _mk_bar(
+                "ZERO.SH",
+                date(2024, 6, 3),
+                hour=9,
+                minute=30,
+                open_p=0.0,
+                high=0.0,
+                low=0.0,
+                close=0.0,
+            ),
         ]
         positions = _build_synthetic_positions(bars)
         assert positions == []
@@ -167,10 +206,9 @@ class TestBuildSyntheticContext:
         assert ctx.execution_mode == "paper"
 
     def test_portfolio_nav_is_sum_of_current_prices(self) -> None:
-        bars = (
-            _make_bars("600000.SH", date(2024, 6, 3), open_p=10.0, high=11.0, close=10.5)
-            + _make_bars("600519.SH", date(2024, 6, 3), open_p=1700.0, high=1720.0, close=1715.0)
-        )
+        bars = _make_bars(
+            "600000.SH", date(2024, 6, 3), open_p=10.0, high=11.0, close=10.5
+        ) + _make_bars("600519.SH", date(2024, 6, 3), open_p=1700.0, high=1720.0, close=1715.0)
         positions = _build_synthetic_positions(bars)
         ctx = _build_synthetic_context(date(2024, 6, 3), positions)
         # 1 share each × close: 10.5 + 1715.0 = 1725.5
@@ -274,7 +312,16 @@ class TestEvaluateDailyCadenceForQuarter:
         """
         rules = _build_daily_rules()
         bars = [
-            _mk_bar("BAD.SH", date(2024, 6, 3), hour=9, minute=30, open_p=0.0, high=0.0, low=0.0, close=0.0),
+            _mk_bar(
+                "BAD.SH",
+                date(2024, 6, 3),
+                hour=9,
+                minute=30,
+                open_p=0.0,
+                high=0.0,
+                low=0.0,
+                close=0.0,
+            ),
         ]
         m = _evaluate_daily_cadence_for_quarter(bars, rules)
         # trading_days counts ALL distinct trade_date keys, including degenerate.
@@ -292,7 +339,18 @@ class TestEvaluateDailyCadenceForQuarter:
             # Day 1 valid
             _make_bars("600000.SH", date(2024, 6, 3), open_p=10.0, high=11.0, close=10.5)
             # Day 2 all-degenerate
-            + [_mk_bar("BAD.SH", date(2024, 6, 4), hour=9, minute=30, open_p=0.0, high=0.0, low=0.0, close=0.0)]
+            + [
+                _mk_bar(
+                    "BAD.SH",
+                    date(2024, 6, 4),
+                    hour=9,
+                    minute=30,
+                    open_p=0.0,
+                    high=0.0,
+                    low=0.0,
+                    close=0.0,
+                )
+            ]
             # Day 3 valid
             + _make_bars("600519.SH", date(2024, 6, 5), open_p=1700.0, high=1720.0, close=1715.0)
         )
@@ -343,7 +401,13 @@ class TestAggregateDaily:
     def test_aggregates_counts_across_quarters(self) -> None:
         quarters = [
             _mk_quarter("2024Q1", td=63, calls=63 * 4, crashes=0, triggers={"pms_l3": 2}),
-            _mk_quarter("2024Q2", td=60, calls=60 * 4, crashes=0, triggers={"pms_l3": 1, "single_stock_stop_loss": 5}),
+            _mk_quarter(
+                "2024Q2",
+                td=60,
+                calls=60 * 4,
+                crashes=0,
+                triggers={"pms_l3": 1, "single_stock_stop_loss": 5},
+            ),
         ]
         agg = _aggregate_daily(quarters)
         assert agg["total_trading_days"] == 123
@@ -371,7 +435,9 @@ class TestAggregateDaily:
     def test_invariant_violation_fails_wiring_verdict(self) -> None:
         """HIGH-1 regression guard: eval_calls inconsistent with non_empty_td × rules_count → FAIL."""
         # 63 non_empty_td × 4 rules = 252 expected; provide 253 (off-by-one).
-        quarters = [_mk_quarter("2024Q1", td=63, non_empty_td=63, calls=253, crashes=0, triggers={})]
+        quarters = [
+            _mk_quarter("2024Q1", td=63, non_empty_td=63, calls=253, crashes=0, triggers={})
+        ]
         agg = _aggregate_daily(quarters)
         assert agg["invariant_ok"] is False
         assert agg["pass_l3_wiring"] is False
@@ -379,7 +445,9 @@ class TestAggregateDaily:
     def test_mixed_degenerate_days_invariant_holds(self) -> None:
         """HIGH-1 regression guard: trading_days != non_empty_trading_days, invariant still holds."""
         # 60 trading_days, 50 non_empty → expect 50 × 4 = 200 calls.
-        quarters = [_mk_quarter("2024Q1", td=60, non_empty_td=50, calls=200, crashes=0, triggers={})]
+        quarters = [
+            _mk_quarter("2024Q1", td=60, non_empty_td=50, calls=200, crashes=0, triggers={})
+        ]
         agg = _aggregate_daily(quarters)
         assert agg["total_trading_days"] == 60
         assert agg["total_non_empty_trading_days"] == 50

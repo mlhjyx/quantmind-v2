@@ -10,6 +10,7 @@ Coverage:
 - escalation suppressed second time (alerted flag, prevents spam)
 - escalation reset after success (next failure episode triggers again)
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,6 +30,7 @@ def qmt_service():
     # Avoid bus/stream/redis import at module load time
     with patch("qmt_data_service.get_stream_bus", return_value=MagicMock()):
         from qmt_data_service import QMTDataService
+
         svc = QMTDataService()
     svc._broker = MagicMock()
     svc._redis = MagicMock()
@@ -39,6 +41,7 @@ def test_threshold_constant_5():
     """5 consecutive failures × 60s = 5 min."""
     with patch("qmt_data_service.get_stream_bus", return_value=MagicMock()):
         from qmt_data_service import QMTDataService
+
         assert QMTDataService._CONSECUTIVE_FAILURE_THRESHOLD == 5
 
 

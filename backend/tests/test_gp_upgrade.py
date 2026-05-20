@@ -25,6 +25,7 @@ from engines.mining.factor_dsl import (
 # Fixtures
 # ============================================================
 
+
 @pytest.fixture
 def dsl():
     return FactorDSL(seed=42)
@@ -34,27 +35,32 @@ def dsl():
 def market_data():
     np.random.seed(42)
     n = 100
-    return pd.DataFrame({
-        "close": np.random.randn(n).cumsum() + 50,
-        "open": np.random.randn(n).cumsum() + 50,
-        "high": np.random.randn(n).cumsum() + 52,
-        "low": np.random.randn(n).cumsum() + 48,
-        "volume": np.random.randint(100, 10000, n).astype(float),
-        "amount": np.random.randint(100000, 1000000, n).astype(float),
-        "returns": np.random.randn(n) * 0.02,
-        "turnover_rate": np.random.uniform(0.01, 0.1, n),
-        "pe_ttm": np.random.uniform(5, 50, n),
-        "pb": np.random.uniform(0.5, 5, n),
-    }, index=range(n))
+    return pd.DataFrame(
+        {
+            "close": np.random.randn(n).cumsum() + 50,
+            "open": np.random.randn(n).cumsum() + 50,
+            "high": np.random.randn(n).cumsum() + 52,
+            "low": np.random.randn(n).cumsum() + 48,
+            "volume": np.random.randint(100, 10000, n).astype(float),
+            "amount": np.random.randint(100000, 1000000, n).astype(float),
+            "returns": np.random.randn(n) * 0.02,
+            "turnover_rate": np.random.uniform(0.01, 0.1, n),
+            "pe_ttm": np.random.uniform(5, 50, n),
+            "pb": np.random.uniform(0.5, 5, n),
+        },
+        index=range(n),
+    )
 
 
 # ============================================================
 # 1. Dimensional Type System
 # ============================================================
 
+
 class TestDimType:
     def test_all_terminals_mapped(self):
         from engines.mining.factor_dsl import TERMINALS
+
         for t in TERMINALS:
             assert t in TERMINAL_DIM, f"{t} missing from TERMINAL_DIM"
 
@@ -143,15 +149,11 @@ class TestDimensionalValidity:
         assert ok
 
     def test_valid_nested_complex(self, dsl):
-        ok, _ = check_dimensional_validity(
-            dsl.from_string("ts_mean(div(close, open), 20)")
-        )
+        ok, _ = check_dimensional_validity(dsl.from_string("ts_mean(div(close, open), 20)"))
         assert ok
 
     def test_valid_ifelse(self, dsl):
-        ok, _ = check_dimensional_validity(
-            dsl.from_string("ifelse(returns, close, high)")
-        )
+        ok, _ = check_dimensional_validity(dsl.from_string("ifelse(returns, close, high)"))
         assert ok
 
     # ---- INVALID ----
@@ -191,9 +193,7 @@ class TestDimensionalValidity:
         assert not ok
 
     def test_invalid_nested_add_mixed(self, dsl):
-        ok, _ = check_dimensional_validity(
-            dsl.from_string("ts_mean(add(close, returns), 20)")
-        )
+        ok, _ = check_dimensional_validity(dsl.from_string("ts_mean(add(close, returns), 20)"))
         assert not ok
 
     def test_invalid_sub_amount_ratio(self, dsl):
@@ -218,11 +218,20 @@ class TestValidateIntegration:
 # 2. New Operators
 # ============================================================
 
+
 class TestNewOperatorRegistration:
-    @pytest.mark.parametrize("op", [
-        "ts_slope", "ts_rsquare", "ts_decay_linear",
-        "ts_argmax", "ts_argmin", "power", "ifelse",
-    ])
+    @pytest.mark.parametrize(
+        "op",
+        [
+            "ts_slope",
+            "ts_rsquare",
+            "ts_decay_linear",
+            "ts_argmax",
+            "ts_argmin",
+            "power",
+            "ifelse",
+        ],
+    )
     def test_operator_in_registry(self, op):
         assert op in ALL_OPS
 
@@ -301,15 +310,18 @@ class TestNewOperatorEvaluation:
 
 
 class TestNewOperatorSerialization:
-    @pytest.mark.parametrize("expr", [
-        "ts_slope(close, 20)",
-        "ts_rsquare(returns, 10)",
-        "ts_decay_linear(close, 60)",
-        "ts_argmax(close, 5)",
-        "ts_argmin(volume, 20)",
-        "power(close, returns)",
-        "ifelse(returns, close, volume)",
-    ])
+    @pytest.mark.parametrize(
+        "expr",
+        [
+            "ts_slope(close, 20)",
+            "ts_rsquare(returns, 10)",
+            "ts_decay_linear(close, 60)",
+            "ts_argmax(close, 5)",
+            "ts_argmin(volume, 20)",
+            "power(close, returns)",
+            "ifelse(returns, close, volume)",
+        ],
+    )
     def test_roundtrip(self, dsl, expr):
         tree = dsl.from_string(expr)
         serialized = tree.to_string()
@@ -320,6 +332,7 @@ class TestNewOperatorSerialization:
 # ============================================================
 # 3. Correlated Mutation
 # ============================================================
+
 
 class TestCorrelatedMutation:
     def test_always_produces_valid(self, dsl):
@@ -365,9 +378,11 @@ class TestCorrelatedMutation:
 # 4. Catastrophe Algorithm
 # ============================================================
 
+
 class TestCatastrophe:
     def test_config_defaults(self):
         from engines.mining.gp_engine import GPConfig
+
         cfg = GPConfig()
         assert cfg.catastrophe_interval == 10
         assert cfg.catastrophe_diversity_threshold == 0.3
@@ -375,6 +390,7 @@ class TestCatastrophe:
 
     def test_stats_fields(self):
         from engines.mining.gp_engine import GPRunStats
+
         stats = GPRunStats(run_id="test")
         assert stats.catastrophe_count == 0
         assert stats.catastrophe_generations == []
@@ -382,6 +398,7 @@ class TestCatastrophe:
     def _make_pop(self, engine, exprs):
         """Helper: create DEAP population from expression strings."""
         from deap import creator
+
         pop = []
         for expr in exprs:
             tree = engine.dsl.from_string(expr)
@@ -435,11 +452,16 @@ class TestCatastrophe:
 
         # All different trees → diversity = 10/10 = 1.0 > 0.3
         exprs = [
-            "ts_mean(close, 20)", "ts_std(returns, 10)",
-            "cs_rank(volume)", "div(close, open)",
-            "ts_max(close, 60)", "neg(returns)",
-            "ts_min(close, 5)", "abs(returns)",
-            "ts_sum(volume, 20)", "inv(pb)",
+            "ts_mean(close, 20)",
+            "ts_std(returns, 10)",
+            "cs_rank(volume)",
+            "div(close, open)",
+            "ts_max(close, 60)",
+            "neg(returns)",
+            "ts_min(close, 5)",
+            "abs(returns)",
+            "ts_sum(volume, 20)",
+            "inv(pb)",
         ]
         pop = self._make_pop(engine, exprs)
 

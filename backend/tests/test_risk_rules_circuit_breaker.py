@@ -14,6 +14,7 @@ reviewer P2-4 修 (python): `_make_rule_with_mocks(prev_level)` 原 `if prev_lev
 将 0 吞成 None (走 no-row 分支), L0 真实 state 测不到. 改 `is not None` 显式语义.
 新加 test_returns_zero_when_row_is_explicitly_l0 覆盖此分支 (+1 test = 21 total).
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -58,9 +59,7 @@ def _make_rule_with_mocks(prev_level: int | None, cb_result: dict):
     # — 对齐 adapter 改为显式 try/finally conn.close() pattern.
     mock_conn_factory = MagicMock(return_value=mock_conn)
 
-    rule = CircuitBreakerRule(
-        conn_factory=mock_conn_factory, initial_capital=1_000_000.0
-    )
+    rule = CircuitBreakerRule(conn_factory=mock_conn_factory, initial_capital=1_000_000.0)
     return rule, mock_conn_factory, cb_result
 
 
@@ -178,8 +177,13 @@ class TestNoChange:
     def test_no_change_l0(self):
         rule, _, cb_result = _make_rule_with_mocks(
             prev_level=0,
-            cb_result={"level": 0, "action": "normal", "reason": "no change",
-                      "position_multiplier": 1.0, "recovery_info": ""},
+            cb_result={
+                "level": 0,
+                "action": "normal",
+                "reason": "no change",
+                "position_multiplier": 1.0,
+                "recovery_info": "",
+            },
         )
         with patch(
             "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
@@ -191,8 +195,13 @@ class TestNoChange:
         """L3 持续状态 — 不写事件 (铁律 33 只真 transition 入 log)."""
         rule, _, cb_result = _make_rule_with_mocks(
             prev_level=3,
-            cb_result={"level": 3, "action": "reduce", "reason": "still L3",
-                      "position_multiplier": 0.5, "recovery_info": "streak 2 days"},
+            cb_result={
+                "level": 3,
+                "action": "reduce",
+                "reason": "still L3",
+                "position_multiplier": 0.5,
+                "recovery_info": "streak 2 days",
+            },
         )
         with patch(
             "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
@@ -214,8 +223,13 @@ class TestSeverityMapping:
     def test_l4_escalate_reason_contains_transition(self):
         rule, _, cb_result = _make_rule_with_mocks(
             prev_level=0,
-            cb_result={"level": 4, "action": "stop", "reason": "cumulative loss > 25%",
-                      "position_multiplier": 0.0, "recovery_info": ""},
+            cb_result={
+                "level": 4,
+                "action": "stop",
+                "reason": "cumulative loss > 25%",
+                "position_multiplier": 0.0,
+                "recovery_info": "",
+            },
         )
         with patch(
             "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
@@ -229,8 +243,13 @@ class TestSeverityMapping:
     def test_recover_reason_contains_transition(self):
         rule, _, cb_result = _make_rule_with_mocks(
             prev_level=3,
-            cb_result={"level": 0, "action": "normal", "reason": "streak satisfied",
-                      "position_multiplier": 1.0, "recovery_info": "5d streak"},
+            cb_result={
+                "level": 0,
+                "action": "normal",
+                "reason": "streak satisfied",
+                "position_multiplier": 1.0,
+                "recovery_info": "5d streak",
+            },
         )
         with patch(
             "backend.qm_platform.risk.rules.circuit_breaker._check_cb_sync",
@@ -259,7 +278,9 @@ class TestRootRuleIdFor:
         """非 cb_* pattern → 不声明所有权 (返原 id)."""
         rule = CircuitBreakerRule(conn_factory=MagicMock(), initial_capital=1e6)
         assert rule.root_rule_id_for("pms_l1") == "pms_l1"
-        assert rule.root_rule_id_for("intraday_portfolio_drop_5pct") == "intraday_portfolio_drop_5pct"
+        assert (
+            rule.root_rule_id_for("intraday_portfolio_drop_5pct") == "intraday_portfolio_drop_5pct"
+        )
         # Edge: cb_ 前缀但非数字后缀
         assert rule.root_rule_id_for("cb_escalate_lx") == "cb_escalate_lx"
 
@@ -316,7 +337,7 @@ class TestReadCurrentLevel:
         mock_conn = MagicMock()
         # psycopg2 异常 __init__ 需 pgcode/msg, 这里用 MagicMock spec 避完整模拟
         mock_conn.cursor.side_effect = psycopg2.errors.UndefinedTable(
-            "relation \"circuit_breaker_state\" does not exist"
+            'relation "circuit_breaker_state" does not exist'
         )
 
         level = CircuitBreakerRule._read_current_level(mock_conn, "s1", "paper")
@@ -336,7 +357,7 @@ class TestReadCurrentLevel:
 
         mock_conn = MagicMock()
         mock_conn.cursor.side_effect = psycopg2.errors.UndefinedColumn(
-            "column \"level\" does not exist"
+            'column "level" does not exist'
         )
 
         with pytest.raises(psycopg2.errors.UndefinedColumn):
@@ -379,6 +400,7 @@ class TestReadCurrentLevel:
         )
         # 防误用孤立 "level " (含空格, 排除子串匹配 current_level)
         import re
+
         # SELECT 语句里孤立 level (前后非字母数字/下划线) 且非 current_level 子串
         # e.g. "SELECT level FROM" match, "SELECT current_level FROM" 不 match
         isolated_level_pattern = re.compile(r"(?<![\w_])level(?![\w_])")

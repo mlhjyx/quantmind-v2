@@ -71,9 +71,7 @@ def _make_empty_session() -> MagicMock:
 @pytest.mark.asyncio
 async def test_ping_returns_ok():
     """ping端点返回200, ok=True, 包含ts字段。"""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://localhost"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as client:
         response = await client.get("/api/v1/ping")
 
     assert response.status_code == 200

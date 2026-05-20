@@ -14,6 +14,7 @@
 
 测试不依赖 DB / Redis / network — 纯逻辑单测 (铁律 31 Engine 纯计算同方向).
 """
+
 from __future__ import annotations
 
 import argparse

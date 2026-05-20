@@ -34,6 +34,7 @@ from engines.metrics import (
 # Helpers
 # ═══════════════════════════════════════════════════
 
+
 def _make_fake_fills(pnls: list[float]):
     """构造假Fill对象用于测试win_rate/profit_factor。
 
@@ -49,25 +50,42 @@ def _make_fake_fills(pnls: list[float]):
     for i, pnl in enumerate(pnls):
         code = f"{i:06d}.SZ"
         if pnl >= 0:
-            fills.append(Fill(
-                code=code, trade_date=d, direction="sell",
-                price=10.0, shares=100,
-                amount=1000.0 + pnl, commission=0, tax=0, slippage=0,
-                total_cost=1000.0,
-            ))
+            fills.append(
+                Fill(
+                    code=code,
+                    trade_date=d,
+                    direction="sell",
+                    price=10.0,
+                    shares=100,
+                    amount=1000.0 + pnl,
+                    commission=0,
+                    tax=0,
+                    slippage=0,
+                    total_cost=1000.0,
+                )
+            )
         else:
-            fills.append(Fill(
-                code=code, trade_date=d, direction="sell",
-                price=10.0, shares=100,
-                amount=1000.0, commission=0, tax=0, slippage=0,
-                total_cost=1000.0 + abs(pnl),
-            ))
+            fills.append(
+                Fill(
+                    code=code,
+                    trade_date=d,
+                    direction="sell",
+                    price=10.0,
+                    shares=100,
+                    amount=1000.0,
+                    commission=0,
+                    tax=0,
+                    slippage=0,
+                    total_cost=1000.0 + abs(pnl),
+                )
+            )
     return fills
 
 
 # ═══════════════════════════════════════════════════
 # Test: Calmar Ratio
 # ═══════════════════════════════════════════════════
+
 
 class TestCalmarRatio:
     """Calmar = annual_return / |max_drawdown|。"""
@@ -88,6 +106,7 @@ class TestCalmarRatio:
 # ═══════════════════════════════════════════════════
 # Test: Sortino Ratio
 # ═══════════════════════════════════════════════════
+
 
 class TestSortinoRatio:
     """Sortino = excess_return / downside_std。"""
@@ -110,6 +129,7 @@ class TestSortinoRatio:
 # ═══════════════════════════════════════════════════
 # Test: Bootstrap Sharpe CI
 # ═══════════════════════════════════════════════════
+
 
 class TestBootstrapCI:
     """Bootstrap Sharpe 95%置信区间。"""
@@ -140,6 +160,7 @@ class TestBootstrapCI:
 # ═══════════════════════════════════════════════════
 # Test: 成本敏感性单调递减
 # ═══════════════════════════════════════════════════
+
 
 class TestCostSensitivity:
     """成本敏感性: 0.5x Sharpe > 1x > 1.5x > 2x。"""
@@ -175,14 +196,13 @@ class TestCostSensitivity:
 
         sharpes = [cs[k]["sharpe"] for k in ["0.5x", "1.0x", "1.5x", "2.0x"]]
         for i in range(len(sharpes) - 1):
-            assert sharpes[i] >= sharpes[i + 1], (
-                f"成本敏感性非单调: {sharpes}"
-            )
+            assert sharpes[i] >= sharpes[i + 1], f"成本敏感性非单调: {sharpes}"
 
 
 # ═══════════════════════════════════════════════════
 # Test: 12项指标全部出现
 # ═══════════════════════════════════════════════════
+
 
 class TestAllMetricsPresent:
     """to_dict()包含所有12项指标。"""
@@ -268,6 +288,7 @@ class TestAllMetricsPresent:
 # Test: Warning Flags
 # ═══════════════════════════════════════════════════
 
+
 class TestWarningFlags:
     """警告标志正确触发。"""
 
@@ -284,9 +305,13 @@ class TestWarningFlags:
 
         config = BacktestConfig()
         result = BacktestResult(
-            daily_nav=nav, daily_returns=returns,
-            benchmark_nav=nav.copy(), benchmark_returns=returns.copy(),
-            trades=[], holdings_history={}, config=config,
+            daily_nav=nav,
+            daily_returns=returns,
+            benchmark_nav=nav.copy(),
+            benchmark_returns=returns.copy(),
+            trades=[],
+            holdings_history={},
+            config=config,
             turnover_series=pd.Series(dtype=float),
         )
         report = generate_report(result)

@@ -12,6 +12,7 @@ subprocess 启动 + live PG + 真调 DBFactorRegistry + PlatformLifecycleMonitor
   - factor_ic_history 表 schema 变化 / ic_ma20/ic_ma60 列缺失
   - PlatformLifecycleMonitor.evaluate_all 链路有 import-time or runtime 错
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -65,7 +66,7 @@ def test_lifecycle_live_evaluate_all() -> None:
         "try:\n"
         "    with conn_check.cursor() as cur:\n"
         "        cur.execute(\n"
-        "            \"SELECT name, status FROM factor_registry \"\n"
+        '            "SELECT name, status FROM factor_registry "\n'
         "            \"WHERE name = ANY(%s) AND status != 'deprecated'\",\n"
         "            (list(expected_core),),\n"
         "        )\n"

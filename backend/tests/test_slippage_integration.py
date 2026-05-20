@@ -19,7 +19,7 @@ class TestSimBrokerVolumeImpact:
         close: float = 10.0,
         pre_close: float = 9.8,
         volume: float = 5_000_000,
-        amount: float = 50_000_000,   # 元(P17: standardize_units已转换, =5000万元)
+        amount: float = 50_000_000,  # 元(P17: standardize_units已转换, =5000万元)
         total_mv: float = 50_000_000_000,  # 元(P17: standardize_units已转换, =500亿元)
         turnover_rate: float = 5.0,
         volatility_20: float | None = None,

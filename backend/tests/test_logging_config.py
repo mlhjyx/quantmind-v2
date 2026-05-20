@@ -113,6 +113,7 @@ class TestJsonOutput:
         # 验证日志文件被写入
         # 注意: structlog通过stdlib桥接，文件写入可能在flush后才可见
         import time
+
         time.sleep(0.05)  # 短暂等待flush
 
         # 文件应存在（由RotatingFileHandler创建）

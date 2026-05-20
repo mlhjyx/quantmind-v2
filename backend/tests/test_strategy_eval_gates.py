@@ -7,6 +7,7 @@
     runner 异常
   - PlatformStrategyEvaluator (2): evaluate_strategy 全 PASS / sim_to_real_check 5bps 阈值
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -107,7 +108,10 @@ def test_strategy_g3_max_diff_zero_passes():
 
 
 def test_strategy_g3_max_diff_nonzero_fails():
-    runner = lambda: {"max_diff": 1e-9, "sharpe": 0.65}  # 极小但非零, 铁律 15 严格 = 0  # noqa: E731
+    runner = lambda: {
+        "max_diff": 1e-9,
+        "sharpe": 0.65,
+    }  # 极小但非零, 铁律 15 严格 = 0  # noqa: E731
     ctx = build_strategy_context("S1", regression_runner=runner)
     result = StrategyG3RegressionGate().evaluate(ctx)
     assert result.passed is False

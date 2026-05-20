@@ -40,9 +40,7 @@ def test_parse_env_file_missing_returns_empty(tmp_path: Path) -> None:
 def test_parse_env_file_parses_kv(tmp_path: Path) -> None:
     """解析 k=v, 跳过注释 + 空行, strip 空白."""
     env = tmp_path / ".env"
-    env.write_text(
-        "# comment\nDINGTALK_WEBHOOK_URL=https://x\n\nFOO = bar \n", encoding="utf-8"
-    )
+    env.write_text("# comment\nDINGTALK_WEBHOOK_URL=https://x\n\nFOO = bar \n", encoding="utf-8")
     parsed = bsc._parse_env_file(env)
     assert parsed["DINGTALK_WEBHOOK_URL"] == "https://x"
     assert parsed["FOO"] == "bar"
@@ -83,9 +81,7 @@ def test_push_dingtalk_slippage_plain_post_when_no_secret() -> None:
     """webhook 有 / secret 无 → plain post; URL 无 sign; text 含系数名."""
     with patch("httpx.post") as mock_post:
         mock_post.return_value = MagicMock(status_code=200)
-        bsc._push_dingtalk_slippage(
-            {"DINGTALK_WEBHOOK_URL": _WEBHOOK}, "2026Q2", {"base_bps": 0.5}
-        )
+        bsc._push_dingtalk_slippage({"DINGTALK_WEBHOOK_URL": _WEBHOOK}, "2026Q2", {"base_bps": 0.5})
     mock_post.assert_called_once()
     url = mock_post.call_args.args[0]
     assert "sign=" not in url
@@ -108,9 +104,7 @@ def test_push_dingtalk_slippage_fail_soft_on_error() -> None:
     """httpx.post 抛错 → fail-soft, 不向上抛 (铁律 33 — 校准结果不受影响)."""
     with patch("httpx.post", side_effect=RuntimeError("net down")):
         # 不应抛异常 —— 若抛, 本测试直接 error.
-        bsc._push_dingtalk_slippage(
-            {"DINGTALK_WEBHOOK_URL": _WEBHOOK}, "2026Q2", {"base_bps": 0.5}
-        )
+        bsc._push_dingtalk_slippage({"DINGTALK_WEBHOOK_URL": _WEBHOOK}, "2026Q2", {"base_bps": 0.5})
 
 
 # §4 _finalize_quarterly (code-review PR #393: repo_root seam for testability)

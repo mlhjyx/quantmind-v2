@@ -3,6 +3,7 @@
 覆盖 generate_signals 的 5 场景 + validate_signals + _find_expired_positions + config 覆盖.
 纯 metadata-injection 测试 (不触 DB, 铁律 31 S2 纯计算原则).
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -18,6 +19,7 @@ from backend.qm_platform.strategy.interface import (
 )
 
 # ─── Test helpers ─────────────────────────────────────────────────────
+
 
 def _mk_ctx(
     trade_date: date = date(2026, 4, 28),
@@ -39,6 +41,7 @@ def _mk_ctx(
 
 # ─── Class attrs tests ────────────────────────────────────────────────
 
+
 def test_s2_class_attrs():
     assert S2PEADEvent.name == "s2_pead_event"
     assert S2PEADEvent.rebalance_freq == RebalanceFreq.EVENT
@@ -46,10 +49,12 @@ def test_s2_class_attrs():
     assert S2PEADEvent.factor_pool == []  # 绕开 DEPRECATED pead_q1
     # Stable UUID (deterministic for DB seed / per-session reproduce)
     from uuid import UUID
+
     UUID(S2PEADEvent.strategy_id)  # raises if invalid
 
 
 # ─── generate_signals: empty cases ────────────────────────────────────
+
 
 def test_empty_candidates_no_positions_returns_empty():
     s2 = S2PEADEvent()
@@ -84,6 +89,7 @@ def test_missing_current_positions_key_raises():
 
 
 # ─── generate_signals: buy-only cases ─────────────────────────────────
+
 
 def test_single_candidate_above_threshold_generates_buy():
     s2 = S2PEADEvent()
@@ -143,7 +149,11 @@ def test_eps_surprise_cap_clips_outlier():
 def test_top_n_per_day_limits_candidates():
     s2 = S2PEADEvent()
     candidates = [
-        {"code": f"60000{i}.SH", "eps_surprise_pct": 0.5 + i * 0.1, "trigger_date": date(2026, 4, 28)}
+        {
+            "code": f"60000{i}.SH",
+            "eps_surprise_pct": 0.5 + i * 0.1,
+            "trigger_date": date(2026, 4, 28),
+        }
         for i in range(10)  # 10 candidates all above threshold
     ]
     ctx = _mk_ctx(
@@ -180,6 +190,7 @@ def test_ties_sorted_deterministic():
 
 # ─── generate_signals: sell-only cases ────────────────────────────────
 
+
 def test_expired_position_generates_sell():
     s2 = S2PEADEvent()
     ctx = _mk_ctx(
@@ -207,12 +218,11 @@ def test_position_under_holding_days_not_sold():
 
 # ─── generate_signals: concurrent limit + mixed cases ─────────────────
 
+
 def test_max_concurrent_positions_blocks_new_buys():
     s2 = S2PEADEvent()
     # 20 positions all active (max_concurrent=20), no expiries, new candidates all rejected
-    current_positions = {
-        f"60000{i}.SH": {"holding_days": 10, "weight": 0.05} for i in range(20)
-    }
+    current_positions = {f"60000{i}.SH": {"holding_days": 10, "weight": 0.05} for i in range(20)}
     candidates = [
         {"code": "600099.SH", "eps_surprise_pct": 0.5, "trigger_date": date(2026, 4, 28)},
     ]
@@ -230,8 +240,7 @@ def test_expiry_frees_slot_for_new_buy():
     s2 = S2PEADEvent()
     # 20 positions, 5 expired → 15 active → 5 new slots free
     current_positions = {
-        f"60000{i}.SH": {"holding_days": 30 if i < 5 else 10, "weight": 0.05}
-        for i in range(20)
+        f"60000{i}.SH": {"holding_days": 30 if i < 5 else 10, "weight": 0.05} for i in range(20)
     }
     candidates = [
         {"code": f"60010{i}.SH", "eps_surprise_pct": 0.5 + i * 0.1}
@@ -267,6 +276,7 @@ def test_already_held_candidate_skipped_avoid_duplicate_buy():
 
 
 # ─── Config override ──────────────────────────────────────────────────
+
 
 def test_config_threshold_override():
     cfg = S2PEADConfig(eps_surprise_threshold=0.1)  # lower threshold
@@ -308,10 +318,12 @@ def test_config_max_concurrent_override():
 
 # ─── validate_signals ─────────────────────────────────────────────────
 
+
 def test_validate_signals_passes_sell_regardless_of_universe():
     s2 = S2PEADEvent()
     ctx = _mk_ctx(universe=[])  # empty universe (已退市不在今日 universe)
     from backend.qm_platform._types import Signal
+
     sell = Signal(
         strategy_id=s2.strategy_id,
         code="600519.SH",
@@ -328,6 +340,7 @@ def test_validate_signals_filters_buy_not_in_universe():
     s2 = S2PEADEvent()
     ctx = _mk_ctx(universe=["600519.SH"])  # only 600519 valid
     from backend.qm_platform._types import Signal
+
     buy_valid = Signal(
         strategy_id=s2.strategy_id,
         code="600519.SH",
@@ -349,6 +362,7 @@ def test_validate_signals_filters_buy_not_in_universe():
 
 
 # ─── Fail-safe per candidate: non-numeric eps_surprise_pct ───────────
+
 
 def test_non_numeric_eps_surprise_pct_skipped_per_candidate():
     """reviewer MEDIUM (PR #70) fix: 坏数据不 crash 整个 generate_signals."""
@@ -382,6 +396,7 @@ def test_candidate_dict_not_mutated_by_generate_signals():
 
 
 # ─── _find_expired_positions edge cases ───────────────────────────────
+
 
 def test_find_expired_missing_holding_days_treats_as_zero():
     s2 = S2PEADEvent()

@@ -12,6 +12,7 @@ subprocess 启动 + live PG + 真查 klines_daily / symbols / factor_values / st
 
 失败意味: DAL 扩 7 方法签名/SQL 破坏, 或生产数据空.
 """
+
 from __future__ import annotations
 
 import subprocess

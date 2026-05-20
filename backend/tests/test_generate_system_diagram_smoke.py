@@ -6,6 +6,7 @@ Plan v8 §VIII #28 Auto System Diagram script. Smoke gate:
 - Main entry responds to --help (or any recognized exit code)
 - AST walk produces a non-empty module list when called directly
 """
+
 from __future__ import annotations
 
 import importlib.util

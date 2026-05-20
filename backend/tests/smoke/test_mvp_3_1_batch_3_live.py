@@ -12,6 +12,7 @@
 路径 subprocess 真启动, 捕 import-time / top-level 执行错误. 本 smoke 不跑 L4 逻辑
 (无 risk_control_service DB), 仅验证 import + 契约 — 具体行为覆盖在 L1 unit tests.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -73,8 +74,6 @@ def test_mvp_3_1_batch_3_circuit_breaker_imports() -> None:
         cwd=str(project_root),
     )
     assert result.returncode == 0, (
-        f"MVP 3.1 batch 3 CB smoke import failed:\n"
-        f"STDOUT: {result.stdout}\n"
-        f"STDERR: {result.stderr}"
+        f"MVP 3.1 batch 3 CB smoke import failed:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
     )
     assert "OK" in result.stdout, f"Assertion(s) missing: {result.stdout}"

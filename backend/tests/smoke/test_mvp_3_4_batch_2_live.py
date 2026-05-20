@@ -5,6 +5,7 @@ OutboxPublisher 可实例化, beat_schedule outbox-publisher-tick 注册成功.
 
 对齐 test_mvp_3_3_batch_1_live pattern.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -63,6 +64,4 @@ def test_outbox_publisher_imports_and_beat_registered():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK outbox_publisher boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK outbox_publisher boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

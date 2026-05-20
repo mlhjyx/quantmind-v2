@@ -24,6 +24,7 @@ input has no command/content field, only env var bypass applies):
 - LL-117 候选 / LL-124 候选 / LL-130 候选
 - skill quantmind-v3-doc-sediment-auto (full sediment SOP knowledge layer)
 """
+
 from __future__ import annotations
 
 import json
@@ -35,9 +36,7 @@ from unittest.mock import patch
 
 import pytest
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "sediment_poststop.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "sediment_poststop.py"
 
 
 def _run_hook(

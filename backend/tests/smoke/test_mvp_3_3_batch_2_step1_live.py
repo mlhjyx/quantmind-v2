@@ -3,6 +3,7 @@
 subprocess 真启动验证 module-top imports + SDK 实例化 + 基础 route 路径不破.
 对齐 batch 1 smoke pattern: LL-052 platform shadow + sys.path 注入.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -78,6 +79,4 @@ def test_order_router_imports_and_route():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK order router boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK order router boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

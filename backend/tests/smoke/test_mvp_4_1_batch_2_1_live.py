@@ -3,6 +3,7 @@
 subprocess 真启动: SDK 导出 + ABC 关系 + 静态契约 marker + migration 文件存在.
 fail-loud / NaN reject 由 unit 覆盖.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -79,7 +80,6 @@ def test_mvp_4_1_batch_2_1_metric_exporter_imports_and_contracts():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_2_1_metric_exporter boot" in result.stdout

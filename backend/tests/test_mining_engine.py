@@ -156,26 +156,24 @@ class TestBruteForceTemplates:
     def test_all_templates_have_valid_direction(self) -> None:
         valid_directions = {"positive", "negative"}
         for tpl in FACTOR_TEMPLATES:
-            assert tpl.direction in valid_directions, (
-                f"无效方向 {tpl.direction!r}: {tpl.name}"
-            )
+            assert tpl.direction in valid_directions, f"无效方向 {tpl.direction!r}: {tpl.name}"
 
     def test_all_templates_have_valid_category(self) -> None:
         valid_categories = {
-            "price_volume", "liquidity", "flow",
-            "fundamental", "cross_source", "conditional",
+            "price_volume",
+            "liquidity",
+            "flow",
+            "fundamental",
+            "cross_source",
+            "conditional",
         }
         for tpl in FACTOR_TEMPLATES:
-            assert tpl.category in valid_categories, (
-                f"无效类别 {tpl.category!r}: {tpl.name}"
-            )
+            assert tpl.category in valid_categories, f"无效类别 {tpl.category!r}: {tpl.name}"
 
     def test_all_templates_have_economic_rationale(self) -> None:
         """每个模板必须有有意义的经济学解释（不能是占位符）"""
         for tpl in FACTOR_TEMPLATES:
-            assert len(tpl.economic_rationale.strip()) >= 10, (
-                f"经济学假设过短: {tpl.name!r}"
-            )
+            assert len(tpl.economic_rationale.strip()) >= 10, f"经济学假设过短: {tpl.name!r}"
 
     def test_category_coverage_required(self) -> None:
         """至少覆盖价量、流动性、基本面三大类"""
@@ -250,16 +248,30 @@ class TestBruteForceEngine:
 
     def test_factor_candidate_passed_all_property(self) -> None:
         c = FactorCandidate(
-            name="test", category="price_volume", direction="negative",
-            expression="rank(close)", window=20, economic_rationale="test",
-            academic_support=3, passed_g1=True, passed_g2=True, passed_g3=True,
+            name="test",
+            category="price_volume",
+            direction="negative",
+            expression="rank(close)",
+            window=20,
+            economic_rationale="test",
+            academic_support=3,
+            passed_g1=True,
+            passed_g2=True,
+            passed_g3=True,
         )
         assert c.passed_all
 
         c2 = FactorCandidate(
-            name="test2", category="price_volume", direction="negative",
-            expression="rank(close)", window=20, economic_rationale="test",
-            academic_support=3, passed_g1=True, passed_g2=False, passed_g3=True,
+            name="test2",
+            category="price_volume",
+            direction="negative",
+            expression="rank(close)",
+            window=20,
+            economic_rationale="test",
+            academic_support=3,
+            passed_g1=True,
+            passed_g2=False,
+            passed_g3=True,
         )
         assert not c2.passed_all
 
@@ -281,9 +293,7 @@ class TestASTDeduplicator:
         assert tree is not None
         assert isinstance(tree, ast_mod.AST)
 
-    def test_normalize_ast_returns_none_on_syntax_error(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_normalize_ast_returns_none_on_syntax_error(self, dedup: ASTDeduplicator) -> None:
         result = dedup.normalize_ast("rank(close +")
         assert result is None
 
@@ -372,8 +382,10 @@ class TestASTDeduplicator:
 
     def test_deduplicate_multiple_groups(self, dedup: ASTDeduplicator) -> None:
         exprs = [
-            "rank(a + b)", "rank(b + a)",
-            "rank(a * b)", "rank(b * a)",
+            "rank(a + b)",
+            "rank(b + a)",
+            "rank(a * b)",
+            "rank(b * a)",
         ]
         result = dedup.deduplicate(exprs)
         assert len(result.unique_expressions) == 2

@@ -12,6 +12,7 @@ cwd = backend/ —— 复现生产 Celery worker (Servy QuantMind-Celery) 的 cw
 
 运行: `pytest backend/tests/smoke/test_celery_worker_import.py -v -m smoke`
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -30,8 +31,7 @@ def test_celery_app_imports_cleanly() -> None:
         [
             sys.executable,
             "-c",
-            "from app.tasks.celery_app import celery_app; "
-            "print('Celery app:', celery_app.main)",
+            "from app.tasks.celery_app import celery_app; print('Celery app:', celery_app.main)",
         ],
         cwd=str(PROJECT_ROOT / "backend"),
         capture_output=True,
@@ -105,8 +105,5 @@ def test_celery_beat_schedule_imports() -> None:
         errors="replace",
     )
     if result.returncode != 0:
-        pytest.fail(
-            f"beat_schedule import failed:\n"
-            f"stderr[:1500]:\n{result.stderr[:1500]}"
-        )
+        pytest.fail(f"beat_schedule import failed:\nstderr[:1500]:\n{result.stderr[:1500]}")
     assert "beat schedule entries" in result.stdout

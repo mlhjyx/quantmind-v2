@@ -13,6 +13,7 @@ BaseDataSource abstract 本次不 smoke (无 concrete), 待 MVP 2.1b 3 fetcher �
   - MaxDateChecker / TTLGuard / check_stale 语义回归
   - CacheCoherencyPolicy dataclass 签名变化
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -43,7 +44,7 @@ def test_cache_coherency_live_max_date_checker() -> None:
         "try:\n"
         "    with conn.cursor() as cur:\n"
         "        cur.execute(\n"
-        "            \"SELECT MAX(trade_date) FROM factor_values \"\n"
+        '            "SELECT MAX(trade_date) FROM factor_values "\n'
         "            \"WHERE factor_name='turnover_mean_20'\"\n"
         "        )\n"
         "        db_max = cur.fetchone()[0]\n"

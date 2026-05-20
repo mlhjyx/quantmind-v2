@@ -11,6 +11,7 @@ V3 §5.5 + ADR-020 enforce — LiteLLMRouter (S2 sub-task) only path.
 - tests/ subdir 的 mock import → 不触发 BLOCK
 - deepseek_client.py:222 必须保留 marker (防意外删除)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -19,7 +20,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPT_REL = "scripts/check_llm_imports.sh"  # bash 在 Windows 用 forward slash + relative path 跨平台兼容
+SCRIPT_REL = (
+    "scripts/check_llm_imports.sh"  # bash 在 Windows 用 forward slash + relative path 跨平台兼容
+)
 VIOLATOR_PATH = REPO_ROOT / "scripts" / "_s6_governance_test_violator.py"
 DEEPSEEK_CLIENT = REPO_ROOT / "backend" / "engines" / "mining" / "deepseek_client.py"
 

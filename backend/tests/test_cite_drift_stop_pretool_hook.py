@@ -23,6 +23,7 @@ scope per §4(c) push back — heuristic precision concern + ADR-022 反 abstrac
 - LL-117 候选 / LL-119 #1-#7 候选 / LL-124 候选 / LL-128 候选
 - skill quantmind-v3-cite-source-lock (PR #272, full 5 类 SOP knowledge layer)
 """
+
 from __future__ import annotations
 
 import json
@@ -33,9 +34,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "cite_drift_stop_pretool.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "cite_drift_stop_pretool.py"
 
 
 def _run_hook(
@@ -197,7 +196,9 @@ def test_bypass_env_var_zero_does_not_bypass() -> None:
 def test_bypass_per_content_marker() -> None:
     """per-content marker `# qm-drift-allow:<reason>` 沿用 ALLOW (user 显式触发 only)."""
     file_path = ".claude/agents/quantmind-test-charter.md"
-    content = "legacy `quantmind-pt-cutover-gate` reference  # qm-drift-allow:legacy-charter-archive"
+    content = (
+        "legacy `quantmind-pt-cutover-gate` reference  # qm-drift-allow:legacy-charter-archive"
+    )
     rc, stdout, _ = _run_hook(file_path, content)
     assert rc == 0
     assert "additionalContext" not in stdout
@@ -260,9 +261,7 @@ def test_memory_sprint_state_in_v3_scope() -> None:
 def test_multi_drift_in_single_write() -> None:
     """Multiple drift patterns in single content all surface."""
     file_path = ".claude/agents/quantmind-test.md"
-    content = (
-        "Cite `quantmind-cite-source-lock` skill + read `configs/litellm_router.yaml`."
-    )
+    content = "Cite `quantmind-cite-source-lock` skill + read `configs/litellm_router.yaml`."
     rc, stdout, _ = _run_hook(file_path, content)
     assert rc == 0
     assert "cross_ref_drift" in stdout

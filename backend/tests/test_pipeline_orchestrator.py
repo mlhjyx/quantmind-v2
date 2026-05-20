@@ -111,9 +111,7 @@ def _make_sandbox_mock(valid: bool = True, exec_success: bool = True) -> MagicMo
     exec_result.success = exec_success
     exec_result.elapsed_seconds = 0.05
     exec_result.error = None if exec_success else "Mock exec error"
-    exec_result.result = pd.Series(
-        np.random.default_rng(1).uniform(0, 1, 10), name="factor_value"
-    )
+    exec_result.result = pd.Series(np.random.default_rng(1).uniform(0, 1, 10), name="factor_value")
     mock.execute_safely.return_value = exec_result
     return mock
 
@@ -461,8 +459,7 @@ class TestBatchPipeline:
         orchestrator._classifier = _make_classifier_mock()
 
         candidates = [
-            {"factor_name": f"f_{i}", "factor_expr": f"ts_mean(close, {i + 5})"}
-            for i in range(3)
+            {"factor_name": f"f_{i}", "factor_expr": f"ts_mean(close, {i + 5})"} for i in range(3)
         ]
 
         state = await orchestrator.run_batch(
@@ -511,9 +508,7 @@ class TestPipelineRunState:
     ) -> None:
         assert orchestrator.get_run_state("nonexistent_run_id") is None
 
-    def test_list_runs_empty_initially(
-        self, orchestrator: PipelineOrchestrator
-    ) -> None:
+    def test_list_runs_empty_initially(self, orchestrator: PipelineOrchestrator) -> None:
         assert orchestrator.list_runs() == []
 
 
@@ -602,7 +597,7 @@ class TestStateCounts:
         )
 
         assert state.passed_sandbox == 2  # 两个都通过sandbox
-        assert state.passed_gate == 1     # 只有一个通过gate
+        assert state.passed_gate == 1  # 只有一个通过gate
 
 
 # ---------------------------------------------------------------------------
@@ -889,6 +884,7 @@ class TestBlacklistSeedFactors:
         # 明确标记发现的bug需要arch修复
         if overlap:
             import warnings
+
             warnings.warn(
                 f"P1 BUG: initialize_population step2变体未过滤黑名单, "
                 f"leaking {len(overlap)}/{len(all_seed_hashes)} 个种子hash. "
@@ -914,5 +910,7 @@ class TestBlacklistSeedFactors:
         pop_hashes = {ind[0].to_ast_hash() for ind in pop}
 
         # 非黑名单的种子至少有一个出现在种群中
-        other_hashes = {h for h in (t.to_ast_hash() for t in seed_trees.values()) if h != first_hash}
+        other_hashes = {
+            h for h in (t.to_ast_hash() for t in seed_trees.values()) if h != first_hash
+        }
         assert len(other_hashes & pop_hashes) > 0, "非黑名单种子应出现在种群中"

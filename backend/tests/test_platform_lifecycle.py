@@ -10,6 +10,7 @@
 执行:
   pytest backend/tests/test_platform_lifecycle.py -v
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -164,7 +165,10 @@ def test_non_active_non_warning_no_transition() -> None:
 
 def _make_ic_tail(ic_ma20: float, ic_ma60: float, n: int = 30) -> list[dict]:
     """构造 n 天 IC tail, 值全部相同 (静态 ratio)."""
-    return [{"trade_date": f"2026-01-{i+1:02d}", "ic_ma20": ic_ma20, "ic_ma60": ic_ma60} for i in range(n)]
+    return [
+        {"trade_date": f"2026-01-{i + 1:02d}", "ic_ma20": ic_ma20, "ic_ma60": ic_ma60}
+        for i in range(n)
+    ]
 
 
 def test_monitor_evaluate_all_empty_active() -> None:
@@ -229,9 +233,7 @@ def test_monitor_handles_string_status_from_db() -> None:
     meta = _StrStatusMeta(name="f1", status="active")  # 字符串, 非 Enum
     registry = MagicMock()
     registry.get_active.return_value = [meta]
-    monitor = PlatformLifecycleMonitor(
-        registry, ic_reader=lambda n, d: _make_ic_tail(0.02, 0.05)
-    )
+    monitor = PlatformLifecycleMonitor(registry, ic_reader=lambda n, d: _make_ic_tail(0.02, 0.05))
     decisions = monitor.evaluate_all()
     assert len(decisions) == 1
     assert decisions[0].from_status == FactorStatus.ACTIVE
@@ -242,9 +244,7 @@ def test_monitor_returns_interface_transition_decision() -> None:
     meta = _StubMeta(name="f1", status=FactorStatus.ACTIVE)
     registry = MagicMock()
     registry.get_active.return_value = [meta]
-    monitor = PlatformLifecycleMonitor(
-        registry, ic_reader=lambda n, d: _make_ic_tail(0.02, 0.05)
-    )
+    monitor = PlatformLifecycleMonitor(registry, ic_reader=lambda n, d: _make_ic_tail(0.02, 0.05))
     d = monitor.evaluate_all()[0]
     assert isinstance(d, TransitionDecision)
     # interface 版 dataclass 字段: factor_name, from_status, to_status, reason, metrics
@@ -296,6 +296,4 @@ def test_import_lifecycle_no_engines_import() -> None:
         assert not mod.startswith("backend.engines"), (
             f"lifecycle.py 依赖了 {mod} — 违反 MVP 1.1 严格隔离"
         )
-        assert not mod.startswith("engines."), (
-            f"lifecycle.py 依赖了 {mod} — 违反 MVP 1.1 严格隔离"
-        )
+        assert not mod.startswith("engines."), f"lifecycle.py 依赖了 {mod} — 违反 MVP 1.1 严格隔离"

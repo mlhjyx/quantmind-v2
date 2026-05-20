@@ -76,9 +76,7 @@ def _valid_dimension(dim: ReflectionDimension = ReflectionDimension.DETECTION) -
 def _valid_response_dict() -> dict[str, Any]:
     return {
         "overall_summary": "W18 复盘: 12 alerts 全及时, STAGED 80% 准确率, 1 漏报 LimitDown 5min.",
-        "reflections": {
-            dim.value: _valid_dimension(dim) for dim in ReflectionDimension
-        },
+        "reflections": {dim.value: _valid_dimension(dim) for dim in ReflectionDimension},
     }
 
 
@@ -92,7 +90,9 @@ class _StubResponse:
 class _StubRouter:
     """Stub matching _RouterProtocol — records calls + returns configured response."""
 
-    def __init__(self, response_text: str | None = None, raise_exc: Exception | None = None) -> None:
+    def __init__(
+        self, response_text: str | None = None, raise_exc: Exception | None = None
+    ) -> None:
         self._response_text = response_text
         self._raise = raise_exc
         self.calls: list[dict[str, Any]] = []

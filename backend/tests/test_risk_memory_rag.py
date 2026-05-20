@@ -182,9 +182,7 @@ class TestRetrieve:
 
     def test_default_k_used_when_k_none(self, monkeypatch) -> None:
         emb = _StubEmbeddingService()
-        rag = RiskMemoryRAG(
-            embedding_service=emb, conn_factory=_conn_factory(), default_k=7
-        )
+        rag = RiskMemoryRAG(embedding_service=emb, conn_factory=_conn_factory(), default_k=7)
         mock_retrieve = MagicMock(return_value=[])
         monkeypatch.setattr(
             "qm_platform.risk.memory.repository.retrieve_similar",

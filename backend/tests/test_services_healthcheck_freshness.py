@@ -25,6 +25,7 @@ Fix (PR-X3 + LL-087):
   - test_nav_key_missing_treated_as_stale: key 不存在 → stale
   - test_redis_unreachable_all_stale_fail_loud: Redis 挂 → portfolio:nav stale, 不 crash
 """
+
 from __future__ import annotations
 
 import json

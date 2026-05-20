@@ -26,12 +26,14 @@ from engines.factor_gate import (
 # 测试数据：基于FACTOR_TEST_REGISTRY.md历史结论
 # ---------------------------------------------------------------------------
 
+
 # v1.1 Active因子的历史IC数据（从FACTOR_TEST_REGISTRY.md）
 # 月度IC序列：用均值+适当分布模拟，保证统计特征与历史一致
 def make_ic_series(ic_mean: float, ic_std: float, n: int = 60) -> list[float]:
     """生成满足指定均值和标准差的IC序列（确定性，无随机）。"""
     # 用等差分布保证精确的均值和std
     import numpy as np
+
     rng = np.random.default_rng(42)
     series = rng.normal(ic_mean, ic_std, n)
     # 归一化到精确均值
@@ -42,10 +44,10 @@ def make_ic_series(ic_mean: float, ic_std: float, n: int = 60) -> list[float]:
 # v1.1因子参考数据（FACTOR_TEST_REGISTRY.md）
 V1_FACTORS = {
     "turnover_mean_20": {"ic_mean": -0.0643, "ic_std": 0.030, "direction": -1},
-    "volatility_20":    {"ic_mean": -0.0690, "ic_std": 0.038, "direction": -1},
-    "reversal_20":      {"ic_mean": +0.0386, "ic_std": 0.038, "direction": +1},
-    "amihud_20":        {"ic_mean": +0.0215, "ic_std": 0.028, "direction": +1},
-    "bp_ratio":         {"ic_mean": +0.0523, "ic_std": 0.030, "direction": +1},
+    "volatility_20": {"ic_mean": -0.0690, "ic_std": 0.038, "direction": -1},
+    "reversal_20": {"ic_mean": +0.0386, "ic_std": 0.038, "direction": +1},
+    "amihud_20": {"ic_mean": +0.0215, "ic_std": 0.028, "direction": +1},
+    "bp_ratio": {"ic_mean": +0.0523, "ic_std": 0.030, "direction": +1},
 }
 
 # Active因子互相关（近似，用于G2测试）
@@ -294,9 +296,7 @@ class TestRunGatesV11Factors:
         assert report.gates["G7"].status == GateStatus.PENDING
         assert report.gates["G8"].status == GateStatus.PENDING
         # 综合状态：G1-G5全PASS但G6-G8 PENDING → PARTIAL
-        assert report.overall_status == "PARTIAL", (
-            f"{fname} overall_status={report.overall_status}"
-        )
+        assert report.overall_status == "PARTIAL", f"{fname} overall_status={report.overall_status}"
 
     def test_report_has_all_8_gates(self, pipeline: FactorGatePipeline) -> None:
         """GateReport必须包含G1-G8全部8个Gate。"""
@@ -304,8 +304,11 @@ class TestRunGatesV11Factors:
         neutral_ic = make_ic_series(-0.055, 0.025, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates(
-                "turnover_mean_20", ic_series, neutral_ic,
-                ACTIVE_CORR_MOCK, expected_direction=-1,
+                "turnover_mean_20",
+                ic_series,
+                neutral_ic,
+                ACTIVE_CORR_MOCK,
+                expected_direction=-1,
             )
         for gid in ["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"]:
             assert gid in report.gates, f"报告缺少 {gid}"
@@ -361,7 +364,8 @@ class TestKnownFailFactors:
         corr = {"reversal_20": 1.00}  # 完全冗余
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates(
-                "momentum_20", ic_series,
+                "momentum_20",
+                ic_series,
                 active_factor_corr=corr,
                 expected_direction=-1,
             )
@@ -379,9 +383,7 @@ class TestSemiAutoGateConfirm:
         ic_series = make_ic_series(-0.064, 0.03, 60)
         neutral_ic = make_ic_series(-0.055, 0.025, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
-            return pipeline.run_gates(
-                "test_factor", ic_series, neutral_ic, ACTIVE_CORR_MOCK, -1
-            )
+            return pipeline.run_gates("test_factor", ic_series, neutral_ic, ACTIVE_CORR_MOCK, -1)
 
     def test_confirm_g6_pass(self, pipeline: FactorGatePipeline) -> None:
         report = self._get_partial_report(pipeline)
@@ -433,9 +435,7 @@ class TestQuickScreen:
     def test_pass_strong_factor(self, pipeline: FactorGatePipeline) -> None:
         ic_series = make_ic_series(-0.064, 0.03, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
-            passed, reason = pipeline.quick_screen(
-                "turnover_mean_20", ic_series, ACTIVE_CORR_MOCK
-            )
+            passed, reason = pipeline.quick_screen("turnover_mean_20", ic_series, ACTIVE_CORR_MOCK)
         assert passed is True
 
     def test_fail_low_ic(self, pipeline: FactorGatePipeline) -> None:
@@ -477,6 +477,7 @@ class TestEdgeCases:
     def test_all_nan_ic(self, pipeline: FactorGatePipeline) -> None:
         """全NaN的IC序列应FAIL。"""
         import math
+
         ic_series = [math.nan] * 30
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates("all_nan", ic_series)

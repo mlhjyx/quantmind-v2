@@ -9,6 +9,7 @@
   - read_reconcile_counts (COUNT(*) per trade_date + UnsupportedTable)
   - read_pead_announcements (earnings_announcements Q1 窗口)
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -32,10 +33,7 @@ def seeded_conn():
     conn = sqlite3.connect(":memory:")
     cur = conn.cursor()
     # klines_daily (for read_calendar + freshness)
-    cur.execute(
-        "CREATE TABLE klines_daily ("
-        "code TEXT, trade_date DATE, close REAL)"
-    )
+    cur.execute("CREATE TABLE klines_daily (code TEXT, trade_date DATE, close REAL)")
     cur.executemany(
         "INSERT INTO klines_daily VALUES (?, ?, ?)",
         [
@@ -57,10 +55,9 @@ def seeded_conn():
         "INSERT INTO symbols VALUES (?, ?, ?, ?, ?)",
         [
             ("600519.SH", "astock", "L", date(2001, 8, 27), None),  # 已上市
-            ("000001.SZ", "astock", "L", date(1991, 4, 3), None),   # 已上市
-            ("999999.SH", "astock", "D", date(2000, 1, 1),
-             date(2020, 5, 1)),  # 已退市
-            ("688001.SH", "astock", "L", date(2027, 1, 1), None),   # 未上市
+            ("000001.SZ", "astock", "L", date(1991, 4, 3), None),  # 已上市
+            ("999999.SH", "astock", "D", date(2000, 1, 1), date(2020, 5, 1)),  # 已退市
+            ("688001.SH", "astock", "L", date(2027, 1, 1), None),  # 未上市
             ("AUDUSD", "forex", "L", None, None),  # 非 astock
         ],
     )
@@ -75,12 +72,9 @@ def seeded_conn():
     cur.executemany(
         "INSERT INTO stock_status_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            ("600519.SH", date(2026, 4, 15), 0, 0, 0, "main",
-             date(2001, 8, 27), None),
-            ("000001.SZ", date(2026, 4, 15), 0, 1, 0, "main",
-             date(1991, 4, 3), None),  # 停牌
-            ("300001.SZ", date(2026, 4, 15), 1, 0, 0, "gem",
-             date(2009, 1, 1), None),  # ST
+            ("600519.SH", date(2026, 4, 15), 0, 0, 0, "main", date(2001, 8, 27), None),
+            ("000001.SZ", date(2026, 4, 15), 0, 1, 0, "main", date(1991, 4, 3), None),  # 停牌
+            ("300001.SZ", date(2026, 4, 15), 1, 0, 0, "gem", date(2009, 1, 1), None),  # ST
         ],
     )
 
@@ -141,11 +135,8 @@ def seeded_conn():
     )
 
     # 其他 freshness 白名单表 (仅 schema, 用于验证 freshness/reconcile 通过)
-    for tbl in ("daily_basic", "moneyflow_daily", "index_daily",
-                "minute_bars"):
-        cur.execute(
-            f"CREATE TABLE {tbl} (code TEXT, trade_date DATE, val REAL)"
-        )
+    for tbl in ("daily_basic", "moneyflow_daily", "index_daily", "minute_bars"):
+        cur.execute(f"CREATE TABLE {tbl} (code TEXT, trade_date DATE, val REAL)")
     cur.execute(
         "INSERT INTO daily_basic VALUES (?, ?, ?)",
         ("600519.SH", date(2026, 4, 15), 30.5),
@@ -177,20 +168,24 @@ def test_read_calendar_no_filter(dal):
     result = dal.read_calendar()
     assert len(result) == 3
     assert result == [
-        date(2026, 4, 14), date(2026, 4, 15), date(2026, 4, 16),
+        date(2026, 4, 14),
+        date(2026, 4, 15),
+        date(2026, 4, 16),
     ]
 
 
 def test_read_calendar_start_end_filter(dal):
     result = dal.read_calendar(
-        start=date(2026, 4, 15), end=date(2026, 4, 15),
+        start=date(2026, 4, 15),
+        end=date(2026, 4, 15),
     )
     assert result == [date(2026, 4, 15)]
 
 
 def test_read_calendar_empty_range(dal):
     result = dal.read_calendar(
-        start=date(2027, 1, 1), end=date(2027, 12, 31),
+        start=date(2027, 1, 1),
+        end=date(2027, 12, 31),
     )
     assert result == []
 
@@ -225,12 +220,18 @@ def test_read_universe_returns_active_astock_only(dal):
 
 def test_read_stock_status_basic(dal):
     df = dal.read_stock_status(
-        codes=["600519.SH", "000001.SZ"], as_of=date(2026, 4, 15),
+        codes=["600519.SH", "000001.SZ"],
+        as_of=date(2026, 4, 15),
     )
     assert len(df) == 2
     assert set(df.columns) == {
-        "code", "is_st", "is_suspended", "is_new_stock",
-        "board", "list_date", "delist_date",
+        "code",
+        "is_st",
+        "is_suspended",
+        "is_new_stock",
+        "board",
+        "list_date",
+        "delist_date",
     }
 
 
@@ -238,8 +239,13 @@ def test_read_stock_status_empty_codes(dal):
     df = dal.read_stock_status(codes=[], as_of=date(2026, 4, 15))
     assert df.empty
     assert list(df.columns) == [
-        "code", "is_st", "is_suspended", "is_new_stock",
-        "board", "list_date", "delist_date",
+        "code",
+        "is_st",
+        "is_suspended",
+        "is_new_stock",
+        "board",
+        "list_date",
+        "delist_date",
     ]
 
 
@@ -267,7 +273,10 @@ def test_read_factor_names_registry_default(dal):
     # registry 有 4 因子 (bp_ratio / volatility_20 / turnover_mean_20 / reversal_20),
     # 最后一个 reversal_20 在 factor_values 无数据但注册了, 仍返.
     assert names == [
-        "bp_ratio", "reversal_20", "turnover_mean_20", "volatility_20",
+        "bp_ratio",
+        "reversal_20",
+        "turnover_mean_20",
+        "volatility_20",
     ]
 
 
@@ -347,7 +356,8 @@ def test_read_reconcile_counts_unsupported_raises(dal):
 
 def test_read_pead_basic(dal):
     df = dal.read_pead_announcements(
-        trade_date=date(2026, 4, 15), lookback_days=7,
+        trade_date=date(2026, 4, 15),
+        lookback_days=7,
     )
     # 期望: 2 行 (600519.SH + 000001.SZ 在窗口内 Q1 且 eps 合法)
     assert len(df) == 2
@@ -356,7 +366,8 @@ def test_read_pead_basic(dal):
 
 def test_read_pead_excludes_non_q1_and_large_eps(dal):
     df = dal.read_pead_announcements(
-        trade_date=date(2026, 4, 15), lookback_days=30,
+        trade_date=date(2026, 4, 15),
+        lookback_days=30,
     )
     # 应排除: Q3 (000002.SZ) + abs eps>=10 (002002.SZ) + eps NULL (002003.SZ)
     tscodes = set(df["ts_code"])
@@ -369,7 +380,8 @@ def test_read_pead_excludes_non_q1_and_large_eps(dal):
 
 def test_read_pead_empty_window_returns_empty_df(dal):
     df = dal.read_pead_announcements(
-        trade_date=date(2025, 1, 1), lookback_days=7,
+        trade_date=date(2025, 1, 1),
+        lookback_days=7,
     )
     assert df.empty
     assert list(df.columns) == ["ts_code", "eps_surprise_pct", "ann_td"]

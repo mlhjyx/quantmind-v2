@@ -3,6 +3,7 @@
 Mock TushareAPI.query (无 TUSHARE_TOKEN / 无网络).
 覆盖 3 contract dispatch + board 识别 + value_ranges + fail-loud.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -242,7 +243,11 @@ def test_fetch_daily_basic() -> None:
 
 
 def test_fetch_moneyflow() -> None:
-    cols = {c: [100] if c.endswith("_vol") else [100.0] for c in MONEYFLOW_DATA_CONTRACT.schema if c not in ("ts_code", "trade_date")}
+    cols = {
+        c: [100] if c.endswith("_vol") else [100.0]
+        for c in MONEYFLOW_DATA_CONTRACT.schema
+        if c not in ("ts_code", "trade_date")
+    }
     cols["ts_code"] = ["600519.SH"]
     cols["trade_date"] = ["20260415"]
     df_mock = pd.DataFrame(cols)
@@ -532,8 +537,6 @@ def test_daily_basic_nan_tolerance() -> None:
 
     # threshold 0.25 → PASS
     client2 = _FakeTushareClient(responses={("daily_basic", "20260415"): df_mock})
-    src_loose = TushareDataSource(
-        client=client2, end=date(2026, 4, 15), nan_ratio_threshold=0.25
-    )
+    src_loose = TushareDataSource(client=client2, end=date(2026, 4, 15), nan_ratio_threshold=0.25)
     df = src_loose.fetch(DAILY_BASIC_DATA_CONTRACT, since=date(2026, 4, 15))
     assert len(df) == 10

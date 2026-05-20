@@ -6,6 +6,7 @@ Covers daily production chain: Tushare data ingest -> factor compute -> signal g
 铁律 9 (并发限制): runs in solo mode (no parallel DB calls).
 Phase B-1 frozen: pytest.mark.skip prevents accidental DB mutation.
 """
+
 from __future__ import annotations
 
 import pytest
