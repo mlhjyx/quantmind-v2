@@ -226,6 +226,12 @@ CREATE TABLE notification_preferences (
 | /api/notifications/clear-old | DELETE | 清理旧通知 |
 | /ws/notifications | WS | 实时推送 |
 
+> ✅ **实现状态 (Plan I, 2026-05-20)**: `read-all` (PUT) + `clear-old` (DELETE)
+> 已实现 (`api/notifications.py` + `NotificationRepository.mark_all_read` /
+> `delete_old`)。`clear-old` 仅删除超过 N 天 (默认 30, 1-365) 的**已读**通知,
+> 未读通知一律保留。`preferences` GET/PUT 待实现 —— 需 `notification_preferences`
+> 表的 service/repo 层 (独立 follow-up)。
+
 ---
 
 ## ⚠️ Review补丁（2026-03-20）

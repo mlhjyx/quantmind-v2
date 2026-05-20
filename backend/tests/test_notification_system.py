@@ -226,6 +226,8 @@ def _make_notification_repo_mock(
     unread_count: int = 3,
     get_by_id_result: dict | None = None,
     mark_read_result: bool = True,
+    mark_all_read_count: int = 5,
+    delete_old_count: int = 7,
 ) -> MagicMock:
     """创建NotificationRepository mock。"""
     repo = MagicMock()
@@ -233,6 +235,8 @@ def _make_notification_repo_mock(
     repo.count_unread = AsyncMock(return_value=unread_count)
     repo.get_by_id = AsyncMock(return_value=get_by_id_result)
     repo.mark_read = AsyncMock(return_value=mark_read_result)
+    repo.mark_all_read = AsyncMock(return_value=mark_all_read_count)
+    repo.delete_old = AsyncMock(return_value=delete_old_count)
     return repo
 
 
@@ -379,6 +383,37 @@ class TestNotificationAPI:
         data = resp.json()
         assert data["success"] is True
         assert data["id"] == "n-001"
+
+    @pytest.mark.asyncio
+    async def test_mark_all_read(self, client, _override_notification_repo):
+        """PUT /api/notifications/read-all 标记全部已读返回 updated_count。"""
+        resp = await client.put("/api/notifications/read-all")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["updated_count"] == 5
+
+    @pytest.mark.asyncio
+    async def test_clear_old(self, client, _override_notification_repo):
+        """DELETE /api/notifications/clear-old 清理旧通知返回 deleted_count。"""
+        resp = await client.delete("/api/notifications/clear-old")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["deleted_count"] == 7
+
+    @pytest.mark.asyncio
+    async def test_clear_old_custom_days(self, client, _override_notification_repo):
+        """DELETE /api/notifications/clear-old?days=90 透传 days 给 repo.delete_old。"""
+        resp = await client.delete("/api/notifications/clear-old?days=90")
+        assert resp.status_code == 200
+        _override_notification_repo.delete_old.assert_awaited_once_with(90)
+
+    @pytest.mark.asyncio
+    async def test_clear_old_invalid_days_returns_422(self, client, _override_notification_repo):
+        """DELETE /api/notifications/clear-old?days=0 超出 [1,365] 返回 422。"""
+        resp = await client.delete("/api/notifications/clear-old?days=0")
+        assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_notification_returns_404(

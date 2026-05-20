@@ -97,6 +97,38 @@ async def unread_count(
     return {"unread_count": count}
 
 
+@router.put("/read-all")
+async def mark_all_read(
+    repo: NotificationRepository = Depends(_get_repo),
+) -> dict[str, Any]:
+    """标记全部未读通知为已读 (DEV_NOTIFICATIONS §8)。
+
+    Returns:
+        包含 success 和 updated_count (本次标记的条数) 的字典。
+    """
+    count = await repo.mark_all_read()
+    return {"success": True, "updated_count": count}
+
+
+@router.delete("/clear-old")
+async def clear_old(
+    days: int = Query(30, ge=1, le=365, description="保留天数, 早于此的已读通知被清理"),
+    repo: NotificationRepository = Depends(_get_repo),
+) -> dict[str, Any]:
+    """清理旧通知 — 删除超过 days 天的已读通知 (DEV_NOTIFICATIONS §8)。
+
+    未读通知一律保留 (不论多旧), 避免清理绕过用户未读感知。
+
+    Args:
+        days: 保留天数 (1-365), 默认 30。
+
+    Returns:
+        包含 success 和 deleted_count 的字典。
+    """
+    count = await repo.delete_old(days)
+    return {"success": True, "deleted_count": count}
+
+
 @router.get("/{notification_id}")
 async def get_notification(
     notification_id: str,
