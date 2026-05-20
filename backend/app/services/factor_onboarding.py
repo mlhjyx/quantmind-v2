@@ -242,8 +242,10 @@ class FactorOnboardingService:
 
         # ── Step 5.5: G1-G5 自动质量门 (Plan 4, P1-34) ────────────────
         # factor_gate.FactorGatePipeline G1-G5 (IC 量级 / Active-corr / t-stat /
-        # 中性化衰减 / 方向). G6-G8 半自动 → run_gates 标 PENDING, L2 人工晋升处理.
+        # 中性化衰减 / 方向). G2 Active-corr 走 conn 查 CORE 池真正交 (Plan A).
+        # G6-G8 半自动 → run_gates 标 PENDING, L2 人工晋升处理.
         gates_passed, gate_summary, failed_gates = self._run_quality_gates(
+            conn=conn,
             factor_name=factor_name,
             factor_values_df=factor_values_df,
             ic_df=ic_df,
@@ -882,6 +884,7 @@ class FactorOnboardingService:
 
     def _run_quality_gates(
         self,
+        conn: psycopg2.extensions.connection,
         factor_name: str,
         factor_values_df: pd.DataFrame,
         ic_df: pd.DataFrame,
@@ -895,7 +898,12 @@ class FactorOnboardingService:
         / G5 方向一致。G6-G8 半自动 (Newey-West t / SimBroker 回测 / strategy 匹配)
         由 run_gates 标 PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
 
+        G2 真正交 (Plan A): 通过 `_compute_active_factor_corr` 查 CORE (Active) 池
+        因子的截面 Spearman 相关 → FactorGatePipeline G2 真强制 (旧版传 None →
+        PASS-with-warning, 正交性从未真检验)。
+
         Args:
+            conn: psycopg2 连接 (只读 — G2 查 CORE 因子值, Service 不 commit 铁律 32)。
             factor_name: 因子名。
             factor_values_df: [code, trade_date, raw_value, neutral_value]。
             ic_df: _compute_ic_multi_horizon 输出 (neutral IC, 含 ic_20d)。
@@ -926,16 +934,16 @@ class FactorOnboardingService:
         raw_ic_series = [float(x) for x in aligned["raw"].tolist()]
         neutral_ic_series = [float(x) for x in aligned["neutral"].tolist()]
 
+        # G2 真正交 (Plan A): 新因子 vs CORE (Active) 池各因子的平均截面 Spearman
+        # 相关 {core_name: corr}。空 dict (CORE 池空 / 查询失败 / 无重叠数据) →
+        # _gate_g2 PASS-with-warning (退化, 但有 warning 日志, 非 silent failure)。
+        active_factor_corr = self._compute_active_factor_corr(conn, factor_name, factor_values_df)
+
         report = FactorGatePipeline().run_gates(
             factor_name=factor_name,
             ic_series=raw_ic_series,
             neutral_ic_series=neutral_ic_series,
-            # G2 best-effort: active_factor_corr=None → _gate_g2 returns PASS-with-warning,
-            # i.e. orthogonality vs the Active pool is NOT actually enforced here. True G2
-            # enforcement needs an Active-pool cross-correlation query — a recorded
-            # follow-up (PR "Discovered follow-ups"); L2 human ACTIVE-promotion also
-            # reviews orthogonality.
-            active_factor_corr=None,
+            active_factor_corr=active_factor_corr,
             expected_direction=expected_direction,
         )
         return report.auto_gates_passed, report.summary(), report.failed_gates
@@ -993,10 +1001,169 @@ class FactorOnboardingService:
             )
             return pd.Series(dtype=float)
 
+    # ------------------------------------------------------------------
+    # Step 5.5 (Plan A): G2 真正交性 — Active 池截面相关
+    # ------------------------------------------------------------------
+
+    def _compute_active_factor_corr(
+        self,
+        conn: psycopg2.extensions.connection,
+        factor_name: str,
+        factor_values_df: pd.DataFrame,
+    ) -> dict[str, float]:
+        """计算新因子与 CORE (Active) 池各因子的平均截面 Spearman 相关 (G2 门用)。
+
+        G2 正交性门要求新因子与现有 Active 因子的截面相关 < 0.7 (CLAUDE.md 因子审批
+        硬标准)。本方法查 factor_registry `pool='CORE'` 因子 (项目语境 "Active" 池 =
+        蓝图 §4.1 "CORE (Active)"), 从 factor_values 加载其 `neutral_value`, 与新因子
+        逐交易日截面相关, 返回 {core_factor_name: mean_corr} 供 FactorGatePipeline G2
+        真强制 (旧版传 None → _gate_g2 PASS-with-warning, 正交性从未真检验)。
+
+        资源 (铁律 9): CORE 池仅 ~4 因子, 查询按新因子 trade_date 范围 scoped, 单次
+        只读 SELECT (Service 不 commit, 铁律 32)。
+
+        Args:
+            conn: psycopg2 连接 (只读)。
+            factor_name: 新因子名 — 自身若已在 CORE 池则排除 (防自相关 corr=1.0)。
+            factor_values_df: 新因子值 [code, trade_date, raw_value, neutral_value]。
+
+        Returns:
+            {core_factor_name: mean_cross_sectional_corr} (signed)。CORE 池空 / 查询
+            失败 / 无重叠数据 → {} (调用方传给 _gate_g2 → PASS-with-warning, 退化但
+            有 warning 日志, 非 silent failure — 铁律 33)。
+        """
+        if factor_values_df.empty:
+            return {}
+        new_values = factor_values_df[["code", "trade_date", "neutral_value"]].copy()
+        new_values["trade_date"] = pd.to_datetime(new_values["trade_date"])
+        new_values["neutral_value"] = pd.to_numeric(new_values["neutral_value"], errors="coerce")
+        new_values = new_values.dropna(subset=["neutral_value"])
+        if new_values.empty:
+            return {}
+        min_date = new_values["trade_date"].min().date()
+        max_date = new_values["trade_date"].max().date()
+
+        try:
+            with conn.cursor() as cur:
+                # CORE (Active) 池因子名 — 排除新因子自身 (大小写不敏感) +
+                # 排除 retired/deprecated (已退役因子不在产, 与其冗余无治理意义;
+                # active/warning/critical 仍保留 — warning 如 dv_ttm 仍在 PT 配置)。
+                cur.execute(
+                    """
+                    SELECT name FROM factor_registry
+                    WHERE pool = 'CORE'
+                      AND status NOT IN ('retired', 'deprecated')
+                      AND lower(name) <> lower(%s)
+                    """,
+                    (factor_name,),
+                )
+                core_factors = [r[0] for r in cur.fetchall()]
+                if not core_factors:
+                    logger.info("G2: CORE 池无其他因子, 正交性门跳过 (factor=%s)", factor_name)
+                    return {}
+                # CORE 因子值 — 按新因子 trade_date 范围 scoped 单次只读。量级估算:
+                # ~4 CORE 因子 × ~250 交易日/年 × ~3000 股 ≈ 3M 行/年, 1-2 年
+                # onboarding 窗口可全量入内存 (铁律 9: 单次只读, 非并发重任务)。
+                cur.execute(
+                    """
+                    SELECT factor_name, code, trade_date, neutral_value
+                    FROM factor_values
+                    WHERE factor_name = ANY(%s)
+                      AND trade_date BETWEEN %s AND %s
+                      AND neutral_value IS NOT NULL
+                    """,
+                    (core_factors, min_date, max_date),
+                )
+                rows = cur.fetchall()
+        except psycopg2.Error as exc:
+            logger.warning(
+                "G2: CORE 因子相关查询失败, G2 退化为 PASS-with-warning: %s",
+                exc,
+                exc_info=True,
+            )
+            return {}
+
+        if not rows:
+            logger.warning(
+                "G2: CORE 因子在 %s~%s 无 factor_values 数据, G2 退化 (factor=%s)",
+                min_date,
+                max_date,
+                factor_name,
+            )
+            return {}
+
+        active_df = pd.DataFrame(
+            rows, columns=["factor_name", "code", "trade_date", "neutral_value"]
+        )
+        active_df["trade_date"] = pd.to_datetime(active_df["trade_date"])
+        active_df["neutral_value"] = pd.to_numeric(active_df["neutral_value"], errors="coerce")
+
+        result: dict[str, float] = {}
+        for core_name, sub in active_df.groupby("factor_name"):
+            corr = _mean_cross_sectional_corr(
+                new_values, sub[["code", "trade_date", "neutral_value"]]
+            )
+            if corr is not None:
+                result[str(core_name)] = corr
+
+        logger.info(
+            "G2: Active 正交相关计算完成 factor=%s, %d/%d CORE 因子有效, corr=%s",
+            factor_name,
+            len(result),
+            len(core_factors),
+            {k: round(v, 4) for k, v in result.items()},
+        )
+        return result
+
 
 # ---------------------------------------------------------------------------
 # 辅助函数 (module-level)
 # ---------------------------------------------------------------------------
+
+# G2 单日截面相关至少需的股票数 — 不足则 rank corr 噪声过大, 跳过该日。
+MIN_STOCKS_FOR_CORR = 20
+
+
+def _mean_cross_sectional_corr(
+    new_values: pd.DataFrame,
+    other_values: pd.DataFrame,
+    min_stocks: int = MIN_STOCKS_FOR_CORR,
+) -> float | None:
+    """计算两因子的平均截面 Spearman 相关系数 (G2 正交性门用, 纯计算)。
+
+    逐交易日: 在 (code) 截面上对两列 `neutral_value` 做 Spearman rank 相关, 再对
+    所有有效交易日取均值。单日有效股票 < min_stocks 或某列方差为 0 (corr=NaN) →
+    跳过该日。
+
+    Args:
+        new_values: [code, trade_date, neutral_value] — 新因子值。
+        other_values: [code, trade_date, neutral_value] — 某 Active 因子值。
+        min_stocks: 单日参与相关计算的最少股票数 (默认 MIN_STOCKS_FOR_CORR)。
+
+    Returns:
+        平均截面 Spearman 相关 (signed, -1~1); 无有效交易日 → None。调用方
+        (_gate_g2) 取 abs 与 0.7 阈值比较, 故此处保留符号 (镜像因子 corr<0)。
+    """
+    if new_values.empty or other_values.empty:
+        return None
+    merged = new_values.merge(
+        other_values,
+        on=["code", "trade_date"],
+        suffixes=("_new", "_other"),
+        how="inner",
+    )
+    if merged.empty:
+        return None
+    daily_corrs: list[float] = []
+    for _, group in merged.groupby("trade_date"):
+        if len(group) < min_stocks:
+            continue
+        corr = group["neutral_value_new"].corr(group["neutral_value_other"], method="spearman")
+        if not pd.isna(corr):
+            daily_corrs.append(float(corr))
+    if not daily_corrs:
+        return None
+    return float(np.mean(daily_corrs))
 
 
 def _compute_decay_level(ic_df: pd.DataFrame) -> str:
