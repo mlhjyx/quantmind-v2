@@ -31,6 +31,13 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from engines.factor_gate import (  # noqa: E402
+    FactorGatePipeline,
+    GateReport,
+    GateResult,
+    GateStatus,
+)
+
 from app.services.factor_onboarding import (  # noqa: E402
     FactorOnboardingService,
     _mean_cross_sectional_corr,
@@ -475,3 +482,81 @@ def test_compute_active_factor_corr_no_factor_values_rows(
     conn, _cur = _fake_conn([[("core_x",)], []])  # 名非空, factor_values 行空
     fvdf = _factor_values_df(20, 30, lambda _di, ci: float(ci))
     assert service._compute_active_factor_corr(conn, "new_factor", fvdf) == {}
+
+
+# ================================================================
+# Plan F — G8 auto-assist (_run_g8_auto_assist + FactorClassifier)
+# ================================================================
+
+
+def _ic_df(n_dates: int, ic_by_horizon: dict[int, float]) -> pd.DataFrame:
+    """构造 multi-horizon IC DataFrame [trade_date, ic_<h>d ...]。"""
+    base = datetime.date(2025, 1, 6)
+    rows = []
+    for di in range(n_dates):
+        row = {"trade_date": base + datetime.timedelta(days=di)}
+        for h, ic in ic_by_horizon.items():
+            row[f"ic_{h}d"] = ic
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _g8_pending_report(factor_name: str) -> GateReport:
+    """构造仅含 G8=PENDING 的 GateReport (模拟 run_gates 初始态)。"""
+    report = GateReport(factor_name=factor_name)
+    report.gates["G8"] = GateResult(
+        "G8", GateStatus.PENDING, "strategy_match", None, None, "run_gates 初始"
+    )
+    return report
+
+
+def test_g8_auto_assist_confirms_classifiable_factor(
+    service: FactorOnboardingService,
+) -> None:
+    """IC 衰减清晰 + 高稀疏度 → FactorClassifier 分类 → G8 从 PENDING 被填充。"""
+    ic_df = _ic_df(10, {1: 0.06, 5: 0.05, 10: 0.04, 20: 0.03})
+    fvdf = _factor_values_df(10, 30, lambda _di, ci: float(ci))  # raw 全非 NaN
+    report = _g8_pending_report("g8_test")
+
+    service._run_g8_auto_assist(FactorGatePipeline(), report, "g8_test", ic_df, fvdf)
+
+    assert report.gates["G8"].status in (GateStatus.PASS, GateStatus.FAIL)
+    assert report.gates["G8"].data.get("signal_type")
+    assert report.gates["G8"].data.get("rebalance_freq")
+
+
+def test_g8_auto_assist_stays_pending_insufficient_ic(
+    service: FactorOnboardingService,
+) -> None:
+    """ic_df 仅 1 个 horizon → ic_decay <2 entry → G8 保持 PENDING (fail-safe)。"""
+    ic_df = _ic_df(10, {1: 0.06})  # 仅 ic_1d
+    fvdf = _factor_values_df(10, 30, lambda _di, ci: float(ci))
+    report = _g8_pending_report("g8_pending")
+
+    service._run_g8_auto_assist(FactorGatePipeline(), report, "g8_pending", ic_df, fvdf)
+
+    assert report.gates["G8"].status == GateStatus.PENDING
+
+
+def test_g8_auto_assist_isolates_onboarding_wiring(
+    service: FactorOnboardingService,
+) -> None:
+    """mock FactorClassifier — 隔离验证 onboarding G8 wiring 正确调 confirm_g8。"""
+    from engines.factor_classifier import FactorSignalType
+
+    classification = MagicMock()
+    classification.signal_type = FactorSignalType.RANKING
+    classification.recommended_frequency = "monthly"
+    classification.confidence = 0.9
+    classification.reasoning = "mock reasoning"
+    ic_df = _ic_df(10, {1: 0.06, 5: 0.05, 10: 0.04, 20: 0.03})
+    fvdf = _factor_values_df(10, 30, lambda _di, ci: float(ci))
+    report = _g8_pending_report("g8_mock")
+
+    with patch("engines.factor_classifier.FactorClassifier") as mock_cls:
+        mock_cls.return_value.classify_factor.return_value = classification
+        service._run_g8_auto_assist(FactorGatePipeline(), report, "g8_mock", ic_df, fvdf)
+
+    assert report.gates["G8"].status == GateStatus.PASS
+    assert report.gates["G8"].data["signal_type"] == "ranking"
+    assert report.gates["G8"].data["rebalance_freq"] == "monthly"
