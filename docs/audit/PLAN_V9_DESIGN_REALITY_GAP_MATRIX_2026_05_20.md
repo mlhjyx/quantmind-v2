@@ -90,8 +90,8 @@
 
 | Item | Claim | Fix |
 |---|---|---|
-| GP Session 16d "7 new operators + 243 tests" | 无 git evidence | 实测 backend/engines/mining/ + pytest count + 沉淀 |
-| FACTOR_TEST_REGISTRY.md "M=213" | 文件无累计 M 字段 | 添加 M 累计统计 OR 移除引用 |
+| GP Session 16d "7 new operators + 243 tests" | ✅ VERIFIED Plan 3 (2026-05-20): git evidence 存在 (commit `5b70440` AlphaZero 升级 — 原述「无 git evidence」错); `factor_dsl.py ALL_OPS` = 35 算子 (8 tagged `# NEW`); "243 tests" 错 — 实测 393 collected | GP_CLOSED_LOOP_DESIGN.md L19-20/L27 + factor_dsl.py docstring 已订正 |
+| FACTOR_TEST_REGISTRY.md "M=213" | ⚠️ CORRECTION Plan 3: 原述「文件无累计 M 字段」错 — M 字段存在 (FACTOR_TEST_REGISTRY.md L13, M=213). 真问题 = L13 (M=213, 含 Alpha158 批量) vs L141 (M=88, 仅表行) 口径不一致 | L141 加口径说明 note; M 真值统一留因子研究 PR (factor-governance, 非 doc-truth scope) |
 
 ---
 

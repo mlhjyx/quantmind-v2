@@ -1,7 +1,7 @@
 # GP最小闭环设计文档
 
 > **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新) / 2026-05-20 (audit sediment)
-> **状态**: 🟡 ~45% Aligned (2026-05-20 audit) — schema ✅, GP operators count TBD (class-based, no @operator decorator), G9+G10 gates PARTIAL
+> **状态**: 🟡 ~45% Aligned (2026-05-20 audit) — schema ✅, GP operators 35 (factor_dsl.py ALL_OPS dict 注册表, Plan 3 verified), G9+G10 gates PARTIAL
 > **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py / ast_dedup.py / bruteforce_engine.py / engine_selector.py / factor_sandbox.py / quick_backtester.py / deepseek_client.py
 > **决策D6 (2026-04-16)**: GP先完善闭环(DSL→IC自动评估→Gate自动→入库) → LLM prompt改造(AlphaAgent范式) → 轨迹进化融合
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §11**
@@ -16,15 +16,15 @@
 | GP Engine | DEAP + 岛屿模型 + Warm Start | `backend/engines/mining/gp_engine.py` EXISTS | Verified |
 | Pipeline Orchestrator | 4 组件设计 | 8节点状态机 EXISTS (`pipeline_orchestrator.py`) — 超设计 | Verified (exceeds design) |
 | Factor Gate Pipeline | G1-G4 quick + G1-G8 full | ⚠️ G9+G10 gates PARTIAL (Plan v8 P1-34 sediment TODO, ~2h wire pending) | PARTIAL |
-| GP operator pattern | Session 16d "7 new operators" claim | No `@operator` decorator found — operators are class-based in mining/; class count TBD | Unverified claim |
-| "243 tests" (Session 16d claim) | 243 GP tests | No dedicated mining test dir found; tests in `backend/tests/` only | Claim unverified |
+| GP operator pattern | Session 16d "7 new operators" claim | `factor_dsl.py` `ALL_OPS` = **35 算子** (6 类 dict 注册表, 非 class-based; TS 16 + TS_BINARY 2 + CS 3 + UNARY 6 + BINARY 7 + TERNARY 1); 8 项 tagged `# NEW` (commit `5b70440` 2026-04-17 AlphaZero 升级, commit msg "7 新算子") | Verified (Plan 3) |
+| "243 tests" (Session 16d claim) | 243 GP tests | "243" 无来源支撑; 实测 GP/mining 测试 (`test_gp_*` / `test_mining_*` / `test_factor_dsl` / `test_gp_upgrade`, 8 文件) `pytest --co` = **393 collected** | Verified — 243 错 (Plan 3) |
 | mining_knowledge table | ✅ schema defined | ✅ Plan v8 P1-35 closed | Verified |
 | ast_dedup | Not in original design | `backend/engines/mining/ast_dedup.py` EXISTS — added post-design | Implemented beyond design |
 | bruteforce_engine | Not in original design | `backend/engines/mining/bruteforce_engine.py` EXISTS | Implemented beyond design |
 | engine_selector | Not in original design | `backend/engines/mining/engine_selector.py` EXISTS | Implemented beyond design |
 | deepseek_client | Not in original design | `backend/engines/mining/deepseek_client.py` EXISTS | Implemented beyond design |
 
-**Phase J defer**: 真 GP operator audit + 243 tests verify (~2h, multi-week defer per FACTOR_TEST_REGISTRY.md follow-up).
+**Plan 3 closed (2026-05-20)**: 真 GP operator audit 完成 — 35 算子 (factor_dsl.py `ALL_OPS`) + 393 GP/mining tests collected verified; "243 tests" claim 证伪 (无来源). git evidence = commit `5b70440`.
 
 ---
 
