@@ -20,8 +20,6 @@ Cleanup (post-verify):
 
 from __future__ import annotations
 
-import json
-import uuid
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
