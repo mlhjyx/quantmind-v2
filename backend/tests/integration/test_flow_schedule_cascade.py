@@ -24,6 +24,13 @@ def test_calendar_gate_skip_on_holidays_per_ll_181():
 
     Plan 1 (DEV_SCHEDULER §6.12 Phase I): the SSOT helper returns False on a
     non-trading day so Beat/schtask task bodies skip cleanly instead of 节假日空跑.
+
+    Plan D fix: also patch `_default_conn_factory` → None so `_resolve_trading_day`
+    takes the conn-less `get_calendar()` path. Without it, a reachable live DB
+    routes the check through `TradingDayChecker` (Layer 3) and bypasses the patched
+    `get_calendar` → env-dependent flake (passed only when no DB reachable). This
+    flake pre-dates Plan D (verified via `git stash`); fixed here as it surfaced
+    running the calendar tests.
     """
     from unittest.mock import MagicMock, patch
 
@@ -31,12 +38,18 @@ def test_calendar_gate_skip_on_holidays_per_ll_181():
 
     non_trading = MagicMock()
     non_trading.is_trading_day_with_reason.return_value = (False, "tushare_api: 非交易日")
-    with patch("qm_platform.calendar.get_calendar", return_value=non_trading):
+    with (
+        patch("qm_platform.calendar.get_calendar", return_value=non_trading),
+        patch("qm_platform.calendar._default_conn_factory", return_value=None),
+    ):
         assert is_trading_day_today_or_skip() is False
 
     trading = MagicMock()
     trading.is_trading_day_with_reason.return_value = (True, "tushare_api: 交易日")
-    with patch("qm_platform.calendar.get_calendar", return_value=trading):
+    with (
+        patch("qm_platform.calendar.get_calendar", return_value=trading),
+        patch("qm_platform.calendar._default_conn_factory", return_value=None),
+    ):
         assert is_trading_day_today_or_skip() is True
 
 

@@ -51,22 +51,28 @@ _calendar_singleton: CalendarProvider | None = None
 _singleton_lock = threading.Lock()
 
 
-def get_calendar(*, conn_factory: Any = None) -> CalendarProvider:
-    """Lazy-init singleton CalendarProvider.
+def get_calendar() -> CalendarProvider:
+    """Lazy-init 进程级 singleton CalendarProvider (conn-less by design)。
 
-    Args:
-        conn_factory: 可选 conn factory (走 TradingDayChecker Layer 3 DB query).
-                      None 时 fallback Layer 4 heuristic (周末=非交易日).
+    Plan D (2026-05-20): 移除旧 `conn_factory` 形参 — 它是死且误导的 API:
+      (1) 0 调用方传入 (system.py / daily_pipeline.py / 本模块内部全部无参调用);
+      (2) singleton 语义下首次 init 后传入的 `conn_factory` 被静默忽略 (反铁律 33
+          — 静默忽略 = 隐性失败 footgun: API 签名暗示 per-call 可控, 实则无效)。
+
+    本 singleton 故意 conn-less (`CalendarProvider()` → TradingDayChecker Layer 4
+    heuristic): 进程级 singleton 不宜长持 DB 连接。需 Layer 3 DB-backed 交易日
+    判定的调用方走 `is_trading_day_today_or_skip()` — 它用短生命周期 conn +
+    `TradingDayChecker` (见 `_resolve_trading_day`), 不经本 singleton。
 
     Returns:
-        CalendarProvider singleton.
+        CalendarProvider singleton (conn-less)。
     """
     global _calendar_singleton
     if _calendar_singleton is not None:
         return _calendar_singleton
     with _singleton_lock:
         if _calendar_singleton is None:
-            _calendar_singleton = CalendarProvider(conn_factory=conn_factory)
+            _calendar_singleton = CalendarProvider()
     return _calendar_singleton
 
 
