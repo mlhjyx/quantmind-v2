@@ -221,6 +221,13 @@ DIMENSION_RULES = {
 }
 ```
 
+> ✅ **实现状态 (Plan J, 2026-05-20)**: `forbidden_combos` 已 wire 进
+> `FactorDSL.validate()` —— `check_forbidden_combos()` 遍历表达式树, 任一节点
+> 命中 `(op, field, field)` 黑名单 (全部直接子节点为终端字段且字段集合相等,
+> 顺序无关) 即 validate 拒绝; GP 引擎 (`gp_engine.py` validate 调用) + IdeaAgent
+> 据此跳过。此前 `DIMENSION_RULES` 0 consumer (定义但未消费)。`dimensionless`
+> 规则由 `DIMENSIONLESS_TERMINALS` + `check_dimensional_validity` 量纲推断覆盖。
+
 ---
 
 ## 3. 组件2: Warm Start GP Engine

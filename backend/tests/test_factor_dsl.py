@@ -30,6 +30,7 @@ from engines.mining.factor_dsl import (
     ExprNode,
     FactorDSL,
     OpType,
+    check_forbidden_combos,
     get_seed_trees,
 )
 
@@ -458,6 +459,88 @@ class TestValidation:
         )
         valid, reason = dsl.validate(tree)
         assert valid, reason
+
+
+# ---------------------------------------------------------------------------
+# 5b. 禁止组合 (forbidden_combos, GP_CLOSED_LOOP_DESIGN §2.4)
+# ---------------------------------------------------------------------------
+
+
+class TestForbiddenCombos:
+    """check_forbidden_combos + validate() 对 DIMENSION_RULES.forbidden_combos 的拦截。"""
+
+    def test_ts_corr_volume_pe_rejected(self) -> None:
+        """ts_corr(volume, pe_ttm) 是禁止组合 — validate() 拒绝。"""
+        dsl = FactorDSL()
+        tree = ExprNode(
+            op="ts_corr",
+            children=[ExprNode(op="volume"), ExprNode(op="pe_ttm")],
+            window=20,
+        )
+        valid, reason = dsl.validate(tree)
+        assert not valid
+        assert "禁止组合" in reason
+
+    def test_ts_corr_reversed_order_rejected(self) -> None:
+        """ts_corr 对称 — (pe_ttm, volume) 反序同样被拒绝 (集合匹配)。"""
+        dsl = FactorDSL()
+        tree = ExprNode(
+            op="ts_corr",
+            children=[ExprNode(op="pe_ttm"), ExprNode(op="volume")],
+            window=20,
+        )
+        valid, _ = dsl.validate(tree)
+        assert not valid
+
+    def test_div_close_volume_rejected(self) -> None:
+        """div(close, volume) 是禁止组合 — validate() 拒绝。"""
+        dsl = FactorDSL()
+        tree = ExprNode(
+            op="div",
+            children=[ExprNode(op="close"), ExprNode(op="volume")],
+        )
+        valid, reason = dsl.validate(tree)
+        assert not valid
+        assert "禁止组合" in reason
+
+    def test_div_reversed_order_rejected(self) -> None:
+        """div(volume, close) 反序同样无经济意义 — 集合匹配, 被拒绝。"""
+        dsl = FactorDSL()
+        tree = ExprNode(
+            op="div",
+            children=[ExprNode(op="volume"), ExprNode(op="close")],
+        )
+        valid, _ = dsl.validate(tree)
+        assert not valid
+
+    def test_non_forbidden_combo_passes(self) -> None:
+        """ts_corr(close, volume) 不在黑名单 — 通过 (量价相关有经济意义)。"""
+        dsl = FactorDSL()
+        tree = ExprNode(
+            op="ts_corr",
+            children=[ExprNode(op="close"), ExprNode(op="volume")],
+            window=20,
+        )
+        valid, reason = dsl.validate(tree)
+        assert valid, reason
+
+    def test_nested_combo_not_matched(self) -> None:
+        """div(ts_mean(close,20), volume) — 子节点非全终端, 不命中字面黑名单。"""
+        tree = ExprNode(
+            op="div",
+            children=[
+                ExprNode(op="ts_mean", children=[ExprNode(op="close")], window=20),
+                ExprNode(op="volume"),
+            ],
+        )
+        ok, _ = check_forbidden_combos(tree)
+        assert ok
+
+    def test_helper_clean_seed_trees_return_ok(self) -> None:
+        """check_forbidden_combos 对 5 个种子因子树均返回 (True, 'OK')。"""
+        for name, tree in get_seed_trees().items():
+            ok, reason = check_forbidden_combos(tree)
+            assert ok and reason == "OK", f"种子因子 {name} 误判: {reason}"
 
 
 # ---------------------------------------------------------------------------
