@@ -190,10 +190,10 @@ def compute_financial_factors(
 
 # 因子方向映射（用于信号合成）
 FINANCIAL_FACTOR_DIRECTION = {
-    "roe_change_q": 1,       # 越大越好（盈利改善）
-    "revenue_accel": 1,      # 越大越好（增速加速）
-    "accrual_anomaly": -1,   # 越小越好（低应计=高质量）
-    "roe_momentum_3q": 1,    # 越大越好（3Q平滑ROE改善）
+    "roe_change_q": 1,  # 越大越好（盈利改善）
+    "revenue_accel": 1,  # 越大越好（增速加速）
+    "accrual_anomaly": -1,  # 越小越好（低应计=高质量）
+    "roe_momentum_3q": 1,  # 越大越好（3Q平滑ROE改善）
 }
 
 

@@ -39,29 +39,29 @@ logger = structlog.get_logger(__name__)
 class FactorSignalType(StrEnum):
     """因子信号类型（R1 §6.1, 可扩展）。"""
 
-    RANKING = "ranking"            # 排序型: Top-N定期调仓
+    RANKING = "ranking"  # 排序型: Top-N定期调仓
     FAST_RANKING = "fast_ranking"  # 快排序型: Top-N高频调仓
-    EVENT = "event"                # 事件型: 阈值触发+固定持有期
-    MODIFIER = "modifier"          # 调节型: 仓位调整/风险预算
-    HYBRID = "hybrid"              # 混合型: 排序+事件特征共存
-    CONDITIONAL = "conditional"    # 条件型: 只在特定regime下有效
-    PAIRED = "paired"              # 配对型: 需多因子联合触发
-    ADAPTIVE = "adaptive"          # 自适应型: 参数随市场状态切换
+    EVENT = "event"  # 事件型: 阈值触发+固定持有期
+    MODIFIER = "modifier"  # 调节型: 仓位调整/风险预算
+    HYBRID = "hybrid"  # 混合型: 排序+事件特征共存
+    CONDITIONAL = "conditional"  # 条件型: 只在特定regime下有效
+    PAIRED = "paired"  # 配对型: 需多因子联合触发
+    ADAPTIVE = "adaptive"  # 自适应型: 参数随市场状态切换
     UNCLASSIFIED = "unclassified"  # 未分类: 需人工审查
 
 
 class SelectionMethod(StrEnum):
     """选股方式。"""
 
-    TOP_N = "top_n"              # 截面排序Top-N
-    THRESHOLD = "threshold"      # 阈值过滤
+    TOP_N = "top_n"  # 截面排序Top-N
+    THRESHOLD = "threshold"  # 阈值过滤
     EVENT_TRIGGER = "event_trigger"  # 事件触发
 
 
 class WeightingScheme(StrEnum):
     """权重方案。"""
 
-    EQUAL = "equal"              # 等权 1/N
+    EQUAL = "equal"  # 等权 1/N
     IC_WEIGHTED = "ic_weighted"  # IC加权
     SIGNAL_STRENGTH = "signal_strength"  # 信号强度加权
     RISK_PARITY = "risk_parity"  # 风险平价
@@ -71,8 +71,8 @@ class TriggerMode(StrEnum):
     """触发模式。"""
 
     CONTINUOUS = "continuous"  # 每个截面都有信号
-    EVENT = "event"            # 外部事件驱动
-    CONDITION = "condition"    # 市场状态切换
+    EVENT = "event"  # 外部事件驱动
+    CONDITION = "condition"  # 市场状态切换
 
 
 # ============================================================
@@ -89,12 +89,12 @@ class FactorClassification:
 
     factor_name: str
     signal_type: FactorSignalType
-    recommended_frequency: str   # daily/weekly/biweekly/monthly
+    recommended_frequency: str  # daily/weekly/biweekly/monthly
     recommended_selection: SelectionMethod
     recommended_weighting: WeightingScheme
     feature_vector: dict[str, float]
-    confidence: float            # 0-1, 越低越可能是边界/混合型
-    reasoning: str               # 经济学解释
+    confidence: float  # 0-1, 越低越可能是边界/混合型
+    reasoning: str  # 经济学解释
     recommended_config: dict = field(default_factory=dict)
 
 
@@ -217,7 +217,9 @@ class FactorClassifier:
 
         # Step 4: 分类决策
         signal_type, confidence = self._classify_decision_tree(
-            half_life, signal_sparsity, trigger_mode,
+            half_life,
+            signal_sparsity,
+            trigger_mode,
         )
 
         # Step 5: 推荐配置
@@ -226,7 +228,12 @@ class FactorClassifier:
         weighting = self._recommend_weighting(signal_type)
         config = self._recommend_strategy_config(signal_type, half_life)
         reasoning = self._generate_reasoning(
-            factor_name, signal_type, half_life, signal_sparsity, trigger_mode, ic_decay,
+            factor_name,
+            signal_type,
+            half_life,
+            signal_sparsity,
+            trigger_mode,
+            ic_decay,
         )
 
         return FactorClassification(
@@ -369,7 +376,9 @@ class FactorClassifier:
     # ── 推荐逻辑 ──
 
     def _recommend_frequency(
-        self, signal_type: FactorSignalType, half_life: float,
+        self,
+        signal_type: FactorSignalType,
+        half_life: float,
     ) -> str:
         """推荐调仓频率。"""
         if signal_type == FactorSignalType.EVENT:
@@ -399,7 +408,9 @@ class FactorClassifier:
         return WeightingScheme.EQUAL
 
     def _recommend_strategy_config(
-        self, signal_type: FactorSignalType, half_life: float,
+        self,
+        signal_type: FactorSignalType,
+        half_life: float,
     ) -> dict:
         """根据分类推荐完整策略配置。
 
@@ -501,10 +512,7 @@ class FactorClassifier:
         ]
 
         if signal_type == FactorSignalType.RANKING:
-            parts.append(
-                f"信号稀疏度{sparsity:.0%}，截面排序有效。"
-                f"半衰期>{15}天，月度调仓匹配。"
-            )
+            parts.append(f"信号稀疏度{sparsity:.0%}，截面排序有效。半衰期>{15}天，月度调仓匹配。")
         elif signal_type == FactorSignalType.FAST_RANKING:
             parts.append(
                 f"信号稀疏度{sparsity:.0%}，截面排序有效。"

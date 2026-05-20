@@ -43,6 +43,7 @@ logger = logging.getLogger("qmt_broker")
 # 回调
 # ---------------------------------------------------------------------------
 
+
 class _QMTCallback:
     """xtquant回调实现，桥接到MiniQMTBroker的回调处理。"""
 
@@ -88,11 +89,13 @@ class _QMTCallback:
         )
         for cb in self._broker._error_callbacks:
             try:
-                cb({
-                    "order_id": error.order_id,
-                    "error_id": error.error_id,
-                    "error_msg": error.error_msg,
-                })
+                cb(
+                    {
+                        "order_id": error.order_id,
+                        "error_id": error.error_id,
+                        "error_msg": error.error_msg,
+                    }
+                )
             except Exception:
                 logger.exception("[QMT] 外部错误回调异常")
 
@@ -104,6 +107,7 @@ class _QMTCallback:
 # ---------------------------------------------------------------------------
 # 辅助函数：xtquant对象 → 标准化dict
 # ---------------------------------------------------------------------------
+
 
 def _asset_to_dict(asset: Any) -> dict[str, Any]:
     """XtAsset → dict。"""
@@ -158,6 +162,7 @@ def _trade_to_dict(trade: Any) -> dict[str, Any]:
 # LL-182: stable session_id helper (反 1414 stale mutex 累积)
 # ---------------------------------------------------------------------------
 
+
 def _stable_session_id(account_id: str, role: str = "default") -> int:
     """Generate stable session_id from (account_id, role) tuple — 12-digit int.
 
@@ -193,6 +198,7 @@ def _stable_session_id(account_id: str, role: str = "default") -> int:
 # ---------------------------------------------------------------------------
 # MiniQMTBroker
 # ---------------------------------------------------------------------------
+
 
 class MiniQMTBroker(BaseBroker):
     """miniQMT实盘/模拟交易Broker。
@@ -528,6 +534,7 @@ class MiniQMTBroker(BaseBroker):
         # 阻断真实 xtquant.order_stock. 双因素 OVERRIDE 才允许 bypass + 审计 + 钉钉 P0.
         # 撤销: docs/audit/link_paused_2026_04_29.md
         from app.security.live_trading_guard import assert_live_trading_allowed
+
         assert_live_trading_allowed(operation="place_order", code=code)
 
         from xtquant import xtconstant
@@ -541,10 +548,7 @@ class MiniQMTBroker(BaseBroker):
             raise ValueError("限价单必须指定price")
 
         # 方向映射
-        xt_direction = (
-            xtconstant.STOCK_BUY if direction == "buy"
-            else xtconstant.STOCK_SELL
-        )
+        xt_direction = xtconstant.STOCK_BUY if direction == "buy" else xtconstant.STOCK_SELL
 
         # 价格类型映射
         # 市价单需根据交易所选择正确类型:
@@ -613,9 +617,8 @@ class MiniQMTBroker(BaseBroker):
         # reviewer P2 (oh-my-claudecode:code-reviewer) 采纳: code 字段语义是"stock code",
         # cancel_order 传 order_id 会让审计 trail 写"股票: 12345678"误导. 加 order_id= 前缀.
         from app.security.live_trading_guard import assert_live_trading_allowed
-        assert_live_trading_allowed(
-            operation="cancel_order", code=f"order_id={order_id}"
-        )
+
+        assert_live_trading_allowed(operation="cancel_order", code=f"order_id={order_id}")
 
         logger.info(f"[QMT] 撤单: order_id={order_id}")
 

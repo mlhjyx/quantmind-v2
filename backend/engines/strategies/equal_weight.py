@@ -82,13 +82,9 @@ class EqualWeightStrategy(BaseStrategy):
 
         # ── 因子截面覆盖率检查 ──
         for fname in self.config["factor_names"]:
-            count = context.factor_df[
-                context.factor_df["factor_name"] == fname
-            ].shape[0]
+            count = context.factor_df[context.factor_df["factor_name"] == fname].shape[0]
             if count < 1000:
-                raise ValueError(
-                    f"因子 {fname} 截面覆盖率严重不足: {count}只 < 1000"
-                )
+                raise ValueError(f"因子 {fname} 截面覆盖率严重不足: {count}只 < 1000")
             elif count < 3000:
                 msg = (
                     f"因子 {fname} 截面覆盖率偏低: {count}只 < 3000。"
@@ -104,35 +100,30 @@ class EqualWeightStrategy(BaseStrategy):
 
         # ── 构建目标持仓 ──
         target = self.build_portfolio(
-            scores, context.industry_map, context.prev_holdings,
+            scores,
+            context.industry_map,
+            context.prev_holdings,
         )
         logger.info(
-            f"[EqualWeightStrategy] 目标持仓: {len(target)}只, "
-            f"总权重={sum(target.values()):.3f}"
+            f"[EqualWeightStrategy] 目标持仓: {len(target)}只, 总权重={sum(target.values()):.3f}"
         )
 
         # ── max_replace限制 ──
         max_replace = self.config.get("max_replace")
         if max_replace is not None and context.prev_holdings:
-            target = self._apply_max_replace(
-                target, context.prev_holdings, max_replace
-            )
+            target = self._apply_max_replace(target, context.prev_holdings, max_replace)
 
         # ── 是否调仓日 ──
         is_rebalance = self.should_rebalance(context.trade_date, context.conn)
 
         # ── 行业集中度检查 ──
-        ind_warning = self._check_industry_concentration(
-            target, context.industry_map
-        )
+        ind_warning = self._check_industry_concentration(target, context.industry_map)
         if ind_warning:
             warnings.append(ind_warning)
 
         # ── 持仓重合度检查 ──
         if context.prev_holdings:
-            overlap_warning = self._check_overlap(
-                target, context.prev_holdings
-            )
+            overlap_warning = self._check_overlap(target, context.prev_holdings)
             if overlap_warning:
                 warnings.append(overlap_warning)
 
@@ -155,7 +146,8 @@ class EqualWeightStrategy(BaseStrategy):
         start = trade_date - timedelta(days=7)
         end = trade_date + timedelta(days=7)
         rebalance_dates = get_rebalance_dates(
-            start, end,
+            start,
+            end,
             freq=self.config.get("rebalance_freq", "monthly"),
             conn=conn,
         )
@@ -256,8 +248,6 @@ class EqualWeightStrategy(BaseStrategy):
         valid_freqs = {"weekly", "biweekly", "monthly"}
         freq = self.config.get("rebalance_freq", "monthly")
         if freq not in valid_freqs:
-            raise ValueError(
-                f"rebalance_freq必须是{valid_freqs}之一，当前: {freq}"
-            )
+            raise ValueError(f"rebalance_freq必须是{valid_freqs}之一，当前: {freq}")
         if self.config.get("weight_method", "equal") != "equal":
             raise ValueError("EqualWeightStrategy只支持weight_method='equal'")

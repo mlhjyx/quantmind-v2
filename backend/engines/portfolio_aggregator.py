@@ -58,13 +58,9 @@ class PortfolioAggregator:
         # 验证capital_allocation
         alloc_sum = sum(capital_allocation.values())
         if abs(alloc_sum - 1.0) > 0.01:
-            warnings.append(
-                f"资金分配比例总和={alloc_sum:.3f}，偏离1.0。已自动归一化。"
-            )
+            warnings.append(f"资金分配比例总和={alloc_sum:.3f}，偏离1.0。已自动归一化。")
             if alloc_sum > 0:
-                capital_allocation = {
-                    k: v / alloc_sum for k, v in capital_allocation.items()
-                }
+                capital_allocation = {k: v / alloc_sum for k, v in capital_allocation.items()}
 
         # 验证策略匹配
         missing = set(strategy_weights) - set(capital_allocation)
@@ -96,9 +92,7 @@ class PortfolioAggregator:
         # 必须在过滤极小权重之前检查，否则负权重被 w>1e-6 静默丢弃
         negative = {c: w for c, w in merged.items() if w < 0}
         if negative:
-            warnings.append(
-                f"发现负权重股票（可能策略冲突）: {negative}"
-            )
+            warnings.append(f"发现负权重股票（可能策略冲突）: {negative}")
             merged = {c: w for c, w in merged.items() if w > 0}
 
         # 过滤极小权重

@@ -102,15 +102,11 @@ def compute_forward_excess_returns(
     ).sort_index()
 
     # 2. benchmark -> series
-    bench = (
-        benchmark_df.set_index("trade_date")[benchmark_price_col]
-        .sort_index()
-        .astype(float)
-    )
+    bench = benchmark_df.set_index("trade_date")[benchmark_price_col].sort_index().astype(float)
 
     # 3. 计算股票 T+1 → T+horizon 收益
     #    T 行对应 "T+1 买入, T+horizon 卖出" 的收益
-    entry = price_wide.shift(-1)       # T+1 价格 (买入)
+    entry = price_wide.shift(-1)  # T+1 价格 (买入)
     exit_p = price_wide.shift(-horizon)  # T+horizon 价格 (卖出)
     stock_ret = exit_p / entry - 1
 
@@ -132,9 +128,7 @@ def compute_forward_excess_returns(
 # ============================================================
 
 
-def compute_daily_rank_ic(
-    factor_values: pd.Series, forward_returns: pd.Series
-) -> float | None:
+def compute_daily_rank_ic(factor_values: pd.Series, forward_returns: pd.Series) -> float | None:
     """单日截面 Spearman Rank IC.
 
     Args:
@@ -152,9 +146,7 @@ def compute_daily_rank_ic(
     return float(corr) if not np.isnan(corr) else None
 
 
-def compute_ic_series(
-    factor_wide: pd.DataFrame, returns_wide: pd.DataFrame
-) -> pd.Series:
+def compute_ic_series(factor_wide: pd.DataFrame, returns_wide: pd.DataFrame) -> pd.Series:
     """时间序列 IC: 对每个 trade_date 计算截面 Rank IC.
 
     Args:
@@ -183,9 +175,7 @@ def compute_ic_series(
 # ============================================================
 
 
-def summarize_ic_stats(
-    ic_series: pd.Series, annualize: bool = False
-) -> dict:
+def summarize_ic_stats(ic_series: pd.Series, annualize: bool = False) -> dict:
     """对 IC 序列做汇总统计.
 
     Args:

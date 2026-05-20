@@ -44,6 +44,7 @@ logger = structlog.get_logger(__name__)
 # Fix 2 — Universe 过滤 helper
 # ============================================================
 
+
 def build_exclusion_map(price_data: pd.DataFrame) -> dict[date, set[str]]:
     """从 price_data 构建 per-date 排除集合 (ST / suspended / new / BJ)。
 
@@ -88,6 +89,7 @@ def build_exclusion_map(price_data: pd.DataFrame) -> dict[date, set[str]]:
 # ============================================================
 # Fix 4 — 等权 signal_func 工厂
 # ============================================================
+
 
 def make_equal_weight_signal_func(
     factor_df: pd.DataFrame,
@@ -164,7 +166,8 @@ def make_equal_weight_signal_func(
         if not fold_rebal:
             logger.warning(
                 "make_equal_weight_signal_func: test 期 [%s..%s] 没有 rebal 日",
-                test_dates[0], test_dates[-1],
+                test_dates[0],
+                test_dates[-1],
             )
             return {}
 
@@ -187,9 +190,16 @@ def make_equal_weight_signal_func(
                     continue
 
                 # Size-neutral adjustment
-                if size_neutral_beta > 0 and ln_mcap_pivot is not None and latest_date in ln_mcap_pivot.index:
+                if (
+                    size_neutral_beta > 0
+                    and ln_mcap_pivot is not None
+                    and latest_date in ln_mcap_pivot.index
+                ):
                     from engines.size_neutral import apply_size_neutral
-                    scores = apply_size_neutral(scores, ln_mcap_pivot.loc[latest_date], size_neutral_beta)
+
+                    scores = apply_size_neutral(
+                        scores, ln_mcap_pivot.loc[latest_date], size_neutral_beta
+                    )
 
                 weights = builder.build(scores, pd.Series(dtype=str))
                 if weights:
@@ -201,7 +211,9 @@ def make_equal_weight_signal_func(
 
         logger.info(
             "signal_func fold: test [%s..%s] 生成 %d 个调仓日信号",
-            test_dates[0], test_dates[-1], len(target_portfolios),
+            test_dates[0],
+            test_dates[-1],
+            len(target_portfolios),
         )
         return target_portfolios
 
@@ -212,6 +224,7 @@ def make_equal_weight_signal_func(
 # 配置与结果数据类型
 # ============================================================
 
+
 @dataclass
 class WFConfig:
     """Walk-Forward 配置。
@@ -219,36 +232,39 @@ class WFConfig:
     默认5折: train=3年(750天), gap=5天, test=1年(250天)。
     总需 5×250 + 750 = 2000天数据 (约8年)。
     """
+
     n_splits: int = 5
-    train_window: int = 750   # ~3年交易日
-    gap: int = 5              # 防信息泄露 (purged gap)
-    test_window: int = 250    # ~1年交易日
+    train_window: int = 750  # ~3年交易日
+    gap: int = 5  # 防信息泄露 (purged gap)
+    test_window: int = 250  # ~1年交易日
 
 
 @dataclass
 class WFFoldResult:
     """单折Walk-Forward结果。"""
+
     fold_idx: int
-    train_period: tuple[date, date]   # (start, end) inclusive
-    test_period: tuple[date, date]    # (start, end) inclusive
+    train_period: tuple[date, date]  # (start, end) inclusive
+    test_period: tuple[date, date]  # (start, end) inclusive
     oos_sharpe: float
     oos_mdd: float
     oos_annual_return: float
-    oos_nav: pd.Series                # date → NAV (OOS期间)
-    oos_returns: pd.Series            # date → daily return (OOS期间)
-    oos_trades: list                  # Fill列表
-    train_days: int                   # 实际训练天数
-    test_days: int                    # 实际测试天数
+    oos_nav: pd.Series  # date → NAV (OOS期间)
+    oos_returns: pd.Series  # date → daily return (OOS期间)
+    oos_trades: list  # Fill列表
+    train_days: int  # 实际训练天数
+    test_days: int  # 实际测试天数
 
 
 @dataclass
 class WFResult:
     """Walk-Forward 汇总结果。"""
+
     config: WFConfig
     backtest_config: BacktestConfig
     fold_results: list[WFFoldResult]
-    combined_oos_nav: pd.Series       # 全部OOS拼接后的NAV
-    combined_oos_returns: pd.Series   # 全部OOS拼接后的daily return
+    combined_oos_nav: pd.Series  # 全部OOS拼接后的NAV
+    combined_oos_returns: pd.Series  # 全部OOS拼接后的daily return
     combined_oos_sharpe: float
     combined_oos_mdd: float
     combined_oos_annual_return: float
@@ -275,6 +291,7 @@ SignalFunc = Callable[[list[date], list[date]], dict[date, dict[str, float]]]
 # Walk-Forward 引擎
 # ============================================================
 
+
 class WalkForwardEngine:
     """Walk-Forward 滚动验证引擎。
 
@@ -295,9 +312,7 @@ class WalkForwardEngine:
         self.wf_config = wf_config
         self.bt_config = backtest_config or BacktestConfig()
 
-    def generate_splits(
-        self, all_dates: list[date]
-    ) -> list[tuple[list[date], list[date]]]:
+    def generate_splits(self, all_dates: list[date]) -> list[tuple[list[date], list[date]]]:
         """生成 train/test 日期分割。
 
         分割逻辑（从末尾往前排列，确保最近数据被测试）:
@@ -363,13 +378,11 @@ class WalkForwardEngine:
             _, test_next = splits[i + 1]
             if test_i[-1] >= test_next[0]:
                 raise ValueError(
-                    f"Fold {i} 和 Fold {i+1} 的测试期重叠: "
-                    f"{test_i[-1]} >= {test_next[0]}"
+                    f"Fold {i} 和 Fold {i + 1} 的测试期重叠: {test_i[-1]} >= {test_next[0]}"
                 )
 
         logger.info(
-            f"Walk-Forward 分割完成: {len(splits)} 折, "
-            f"总OOS天数 = {sum(len(t) for _, t in splits)}"
+            f"Walk-Forward 分割完成: {len(splits)} 折, 总OOS天数 = {sum(len(t) for _, t in splits)}"
         )
         for i, (train, test) in enumerate(splits):
             logger.info(
@@ -420,7 +433,7 @@ class WalkForwardEngine:
         all_oos_navs: list[pd.Series] = []
 
         for fold_idx, (train_dates, test_dates) in enumerate(splits):
-            logger.info(f"Walk-Forward Fold {fold_idx}/{len(splits)-1} 开始...")
+            logger.info(f"Walk-Forward Fold {fold_idx}/{len(splits) - 1} 开始...")
 
             fold_result = self._run_single_fold(
                 fold_idx=fold_idx,
@@ -450,9 +463,7 @@ class WalkForwardEngine:
         total_oos_days = len(combined_nav)
         years = total_oos_days / TRADING_DAYS_PER_YEAR
         total_return = float(combined_nav.iloc[-1] / combined_nav.iloc[0] - 1)
-        annual_return = float(
-            (1 + total_return) ** (1 / max(years, 0.01)) - 1
-        )
+        annual_return = float((1 + total_return) ** (1 / max(years, 0.01)) - 1)
 
         result = WFResult(
             config=self.wf_config,
@@ -522,19 +533,18 @@ class WalkForwardEngine:
         earliest_signal = min(target_portfolios.keys())
         test_price_dates = sorted(
             set(test_dates)
-            | {d for d in price_data["trade_date"].unique()
-               if earliest_signal <= d <= test_dates[-1]}
+            | {
+                d
+                for d in price_data["trade_date"].unique()
+                if earliest_signal <= d <= test_dates[-1]
+            }
         )
 
-        test_price = price_data[
-            price_data["trade_date"].isin(test_price_dates)
-        ].copy()
+        test_price = price_data[price_data["trade_date"].isin(test_price_dates)].copy()
 
         test_bench = None
         if benchmark_data is not None and not benchmark_data.empty:
-            test_bench = benchmark_data[
-                benchmark_data["trade_date"].isin(test_price_dates)
-            ].copy()
+            test_bench = benchmark_data[benchmark_data["trade_date"].isin(test_price_dates)].copy()
 
         # 3. 用 SimpleBacktester 跑测试期回测
         backtester = SimpleBacktester(self.bt_config)
@@ -554,9 +564,7 @@ class WalkForwardEngine:
             oos_mdd = calc_max_drawdown(oos_nav)
             years = len(oos_returns) / TRADING_DAYS_PER_YEAR
             total_ret = float(oos_nav.iloc[-1] / oos_nav.iloc[0] - 1)
-            oos_annual_return = float(
-                (1 + total_ret) ** (1 / max(years, 0.01)) - 1
-            )
+            oos_annual_return = float((1 + total_ret) ** (1 / max(years, 0.01)) - 1)
         else:
             oos_sharpe = 0.0
             oos_mdd = 0.0
@@ -622,6 +630,7 @@ class WalkForwardEngine:
 # 辅助: 打印 Walk-Forward 报告
 # ============================================================
 
+
 def print_wf_report(wf_result: WFResult, full_sample_sharpe: float | None = None) -> None:
     """打印 Walk-Forward 报告到终端。
 
@@ -634,14 +643,18 @@ def print_wf_report(wf_result: WFResult, full_sample_sharpe: float | None = None
     print("=" * 70)
 
     cfg = wf_result.config
-    print(f"\n配置: {cfg.n_splits}折, "
-          f"train={cfg.train_window}d, gap={cfg.gap}d, test={cfg.test_window}d")
+    print(
+        f"\n配置: {cfg.n_splits}折, "
+        f"train={cfg.train_window}d, gap={cfg.gap}d, test={cfg.test_window}d"
+    )
 
     print(f"\n{'--- 各折OOS绩效 ---':^70}")
-    print(f"  {'Fold':>4}  {'训练期':^25}  {'测试期':^25}  "
-          f"{'Sharpe':>7}  {'MDD':>7}  {'Annual':>7}")
-    print(f"  {'----':>4}  {'-'*25:^25}  {'-'*25:^25}  "
-          f"{'------':>7}  {'---':>7}  {'------':>7}")
+    print(
+        f"  {'Fold':>4}  {'训练期':^25}  {'测试期':^25}  {'Sharpe':>7}  {'MDD':>7}  {'Annual':>7}"
+    )
+    print(
+        f"  {'----':>4}  {'-' * 25:^25}  {'-' * 25:^25}  {'------':>7}  {'---':>7}  {'------':>7}"
+    )
 
     for fr in wf_result.fold_results:
         train_str = f"{fr.train_period[0]}~{fr.train_period[1]}"

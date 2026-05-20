@@ -106,8 +106,9 @@ class NodeResult:
             return None
         return self.finished_at - self.started_at
 
-    def finish(self, status: NodeStatus, output: dict[str, Any] | None = None,
-               error: str | None = None) -> None:
+    def finish(
+        self, status: NodeStatus, output: dict[str, Any] | None = None, error: str | None = None
+    ) -> None:
         """标记节点完成。"""
         self.status = status
         self.finished_at = time.time()
@@ -138,18 +139,18 @@ class FactorCandidate:
 
     factor_name: str
     factor_expr: str
-    source_engine: str          # gp / bruteforce / llm
+    source_engine: str  # gp / bruteforce / llm
     run_id: str
     ast_hash: str = ""
-    factor_values: pd.DataFrame | None = None   # SANDBOX节点填充
-    gate_report: Any | None = None              # GATE节点填充（GateReport）
-    classification: Any | None = None           # CLASSIFY节点填充（FactorClassification）
+    factor_values: pd.DataFrame | None = None  # SANDBOX节点填充
+    gate_report: Any | None = None  # GATE节点填充（GateReport）
+    classification: Any | None = None  # CLASSIFY节点填充（FactorClassification）
     strategy_config: dict[str, Any] = field(default_factory=dict)  # STRATEGY_MATCH
-    backtest_result: Any | None = None          # BACKTEST节点填充
-    risk_passed: bool = False                   # RISK_CHECK节点填充
-    approval_id: int | None = None              # APPROVAL节点填充
+    backtest_result: Any | None = None  # BACKTEST节点填充
+    risk_passed: bool = False  # RISK_CHECK节点填充
+    approval_id: int | None = None  # APPROVAL节点填充
     node_results: dict[str, NodeResult] = field(default_factory=dict)
-    skip_reason: str | None = None              # 跳过时记录原因
+    skip_reason: str | None = None  # 跳过时记录原因
 
     def record_node(self, node: PipelineNode, result: NodeResult) -> None:
         """记录节点结果到候选体。"""
@@ -205,9 +206,9 @@ class PipelineRunState:
 # 风控检查辅助
 # ---------------------------------------------------------------------------
 
-_RISK_MDD_LIMIT: float = 0.35        # MDD硬性上限（GP_CLOSED_LOOP §5.2）
-_RISK_MAX_CORR: float = 0.70         # 与现有因子最大相关性（Gate G2复用）
-_RISK_MIN_SHARPE: float = 0.39       # 5年全量Sharpe下限（基线0.39 volume_impact）
+_RISK_MDD_LIMIT: float = 0.35  # MDD硬性上限（GP_CLOSED_LOOP §5.2）
+_RISK_MAX_CORR: float = 0.70  # 与现有因子最大相关性（Gate G2复用）
+_RISK_MIN_SHARPE: float = 0.39  # 5年全量Sharpe下限（基线0.39 volume_impact）
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +348,9 @@ class PipelineOrchestrator:
 
         logger.info(
             "批量Pipeline启动: run_id=%s, engine=%s, candidates=%d",
-            run_id, source_engine, len(candidates),
+            run_id,
+            source_engine,
+            len(candidates),
         )
 
         # 构建候选体列表
@@ -384,7 +387,10 @@ class PipelineOrchestrator:
 
         logger.info(
             "批量Pipeline完成: run_id=%s, passed_gate=%d/%d, pending_approval=%d",
-            run_id, state.passed_gate, state.total_candidates, state.pending_approval,
+            run_id,
+            state.passed_gate,
+            state.total_candidates,
+            state.pending_approval,
         )
         return state
 
@@ -464,9 +470,7 @@ class PipelineOrchestrator:
     # 节点实现
     # ------------------------------------------------------------------
 
-    async def _node_generate(
-        self, candidate: FactorCandidate, state: PipelineRunState
-    ) -> None:
+    async def _node_generate(self, candidate: FactorCandidate, state: PipelineRunState) -> None:
         """Node 1: GENERATE — 登记候选因子，验证基本字段。"""
         node_result = NodeResult(node=PipelineNode.GENERATE, status=NodeStatus.RUNNING)
         state.current_node = PipelineNode.GENERATE
@@ -483,6 +487,7 @@ class PipelineOrchestrator:
 
         # 计算AST hash（用于去重）
         import hashlib
+
         candidate.ast_hash = hashlib.sha256(candidate.factor_expr.encode()).hexdigest()[:16]
 
         node_result.finish(
@@ -653,9 +658,7 @@ class PipelineOrchestrator:
             candidate.record_node(PipelineNode.GATE, node_result)
             state.node_statuses[PipelineNode.GATE] = NodeStatus.FAILED
 
-    async def _node_classify(
-        self, candidate: FactorCandidate, state: PipelineRunState
-    ) -> None:
+    async def _node_classify(self, candidate: FactorCandidate, state: PipelineRunState) -> None:
         """Node 4: CLASSIFY — FactorClassifier分类。"""
         node_result = NodeResult(node=PipelineNode.CLASSIFY, status=NodeStatus.RUNNING)
         state.current_node = PipelineNode.CLASSIFY
@@ -682,7 +685,7 @@ class PipelineOrchestrator:
                 factor_name=candidate.factor_name,
                 ic_decay=ic_decay,
                 ic_std=ic_std,
-                signal_sparsity=0.7,   # 默认持续型，Gate通过的多为排序因子
+                signal_sparsity=0.7,  # 默认持续型，Gate通过的多为排序因子
             )
             candidate.classification = classification
 
@@ -700,7 +703,9 @@ class PipelineOrchestrator:
             state.node_statuses[PipelineNode.CLASSIFY] = NodeStatus.COMPLETED
 
         except Exception as exc:
-            logger.warning("CLASSIFY节点异常(非阻断): factor=%s, err=%s", candidate.factor_name, exc)
+            logger.warning(
+                "CLASSIFY节点异常(非阻断): factor=%s, err=%s", candidate.factor_name, exc
+            )
             node_result.finish(NodeStatus.FAILED, error=f"CLASSIFY异常: {exc}")
             candidate.record_node(PipelineNode.CLASSIFY, node_result)
             state.node_statuses[PipelineNode.CLASSIFY] = NodeStatus.FAILED
@@ -836,9 +841,7 @@ class PipelineOrchestrator:
             candidate.record_node(PipelineNode.BACKTEST, node_result)
             state.node_statuses[PipelineNode.BACKTEST] = NodeStatus.FAILED
 
-    async def _node_risk_check(
-        self, candidate: FactorCandidate, state: PipelineRunState
-    ) -> None:
+    async def _node_risk_check(self, candidate: FactorCandidate, state: PipelineRunState) -> None:
         """Node 7: RISK_CHECK — 回测MDD + 集中度风险检查。"""
         node_result = NodeResult(node=PipelineNode.RISK_CHECK, status=NodeStatus.RUNNING)
         state.current_node = PipelineNode.RISK_CHECK
@@ -885,9 +888,7 @@ class PipelineOrchestrator:
         candidate.record_node(PipelineNode.RISK_CHECK, node_result)
         state.node_statuses[PipelineNode.RISK_CHECK] = NodeStatus.COMPLETED
 
-    async def _node_approval(
-        self, candidate: FactorCandidate, state: PipelineRunState
-    ) -> None:
+    async def _node_approval(self, candidate: FactorCandidate, state: PipelineRunState) -> None:
         """Node 8: APPROVAL — 写入gp_approval_queue等待人工审批。"""
         node_result = NodeResult(node=PipelineNode.APPROVAL, status=NodeStatus.RUNNING)
         state.current_node = PipelineNode.APPROVAL
@@ -982,9 +983,7 @@ class PipelineOrchestrator:
             await self._conn.rollback()
             return None
 
-    async def _record_knowledge(
-        self, candidate: FactorCandidate, failure_stage: str
-    ) -> None:
+    async def _record_knowledge(self, candidate: FactorCandidate, failure_stage: str) -> None:
         """将失败因子写入mining_knowledge表（供下轮GP学习）。
 
         无DB连接时记录到日志。
@@ -997,7 +996,9 @@ class PipelineOrchestrator:
         if self._conn is None:
             logger.info(
                 "mining_knowledge(内存模式): factor=%s, stage=%s, errors=%s",
-                candidate.factor_name, failure_stage, error_details,
+                candidate.factor_name,
+                failure_stage,
+                error_details,
             )
             return
 
@@ -1044,25 +1045,26 @@ class PipelineOrchestrator:
     def _get_sandbox(self) -> Any:
         if self._sandbox is None:
             from engines.mining.factor_sandbox import FactorSandbox
+
             self._sandbox = FactorSandbox(timeout=10)
         return self._sandbox
 
     def _get_gate(self) -> Any:
         if self._gate is None:
             from engines.factor_gate import FactorGatePipeline
+
             self._gate = FactorGatePipeline(conn=self._conn)
         return self._gate
 
     def _get_classifier(self) -> Any:
         if self._classifier is None:
             from engines.factor_classifier import FactorClassifier
+
             self._classifier = FactorClassifier()
         return self._classifier
 
     @staticmethod
-    def _update_state_counts(
-        state: PipelineRunState, candidates: list[FactorCandidate]
-    ) -> None:
+    def _update_state_counts(state: PipelineRunState, candidates: list[FactorCandidate]) -> None:
         """统计各节点通过数量。"""
         for c in candidates:
             sandbox_r = c.node_results.get(PipelineNode.SANDBOX)
@@ -1101,7 +1103,9 @@ class PipelineOrchestrator:
             "risk_passed": candidate.risk_passed,
             "sharpe": float(bt.sharpe) if bt and bt.sharpe != -999.0 else None,
             "mdd": float(bt.mdd) if bt else None,
-            "signal_type": str(candidate.classification.signal_type) if candidate.classification else None,
+            "signal_type": str(candidate.classification.signal_type)
+            if candidate.classification
+            else None,
             "strategy_config": candidate.strategy_config,
             "node_results": node_summary,
         }
@@ -1137,9 +1141,7 @@ def _extract_fwd_series(forward_returns: pd.DataFrame) -> pd.Series:
     return forward_returns.iloc[:, 0].dropna()
 
 
-def _compute_ic_stats(
-    factor: pd.Series, forward_returns: pd.Series
-) -> tuple[float, float, float]:
+def _compute_ic_stats(factor: pd.Series, forward_returns: pd.Series) -> tuple[float, float, float]:
     """计算IC均值、标准差、t统计量。
 
     Returns:
@@ -1162,14 +1164,12 @@ def _compute_ic_stats(
 
     ic_std = float(f.corr(r, method="pearson"))  # 近似std代理
     n = len(aligned)
-    t_stat = ic_mean * (n ** 0.5) / max(abs(ic_std), 1e-8) if ic_std != 0 else 0.0
+    t_stat = ic_mean * (n**0.5) / max(abs(ic_std), 1e-8) if ic_std != 0 else 0.0
 
     return ic_mean, abs(ic_std), abs(t_stat)
 
 
-def _compute_neutralized_ic(
-    factor: pd.Series, forward_returns: pd.Series
-) -> float:
+def _compute_neutralized_ic(factor: pd.Series, forward_returns: pd.Series) -> float:
     """计算中性化后IC（铁律2）。简化版：去市场beta后重算IC。
 
     Returns:
@@ -1202,7 +1202,9 @@ def _compute_factor_correlations(
             if len(aligned) < 20:
                 result[name] = 0.0
             else:
-                result[name] = float(abs(aligned.iloc[:, 0].corr(aligned.iloc[:, 1], method="spearman")))
+                result[name] = float(
+                    abs(aligned.iloc[:, 0].corr(aligned.iloc[:, 1], method="spearman"))
+                )
         except Exception:
             result[name] = 0.0
     return result

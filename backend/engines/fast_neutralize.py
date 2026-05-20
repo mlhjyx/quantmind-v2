@@ -124,7 +124,9 @@ def _update_db_neutral_values(
     total_updated = 0
 
     # 按年分批处理，减少单次事务大小和锁持有时间
-    result_df = pd.DataFrame(results, columns=["code", "trade_date", "factor_name", "neutral_value"])
+    result_df = pd.DataFrame(
+        results, columns=["code", "trade_date", "factor_name", "neutral_value"]
+    )
     result_df["year"] = pd.to_datetime(result_df["trade_date"]).dt.year
 
     for year, year_df in result_df.groupby("year"):
@@ -146,16 +148,23 @@ def _update_db_neutral_values(
         # Step 2: COPY写入临时表（比INSERT快100x）
         buf = io.StringIO()
         for _, row in year_df.iterrows():
-            buf.write(f"{row['code']}\t{row['trade_date']}\t{row['factor_name']}\t{row['neutral_value']}\n")
+            buf.write(
+                f"{row['code']}\t{row['trade_date']}\t{row['factor_name']}\t{row['neutral_value']}\n"
+            )
         buf.seek(0)
-        cur.copy_from(buf, "_tmp_neutral_update", columns=("code", "trade_date", "factor_name", "neutral_value"))
+        cur.copy_from(
+            buf,
+            "_tmp_neutral_update",
+            columns=("code", "trade_date", "factor_name", "neutral_value"),
+        )
 
         # Step 2b: 临时表加索引加速JOIN
         cur.execute("CREATE INDEX ON _tmp_neutral_update (code, trade_date, factor_name)")
 
         # Step 3: UPDATE JOIN + trade_date范围约束（触发TimescaleDB chunk exclusion）
         # 没有trade_date BETWEEN → PG扫描全部119GB; 有了 → 只扫描该年的chunk (~10GB)
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE factor_values AS fv
             SET neutral_value = tmp.neutral_value
             FROM _tmp_neutral_update AS tmp
@@ -163,7 +172,9 @@ def _update_db_neutral_values(
               AND fv.trade_date = tmp.trade_date
               AND fv.factor_name = tmp.factor_name
               AND fv.trade_date BETWEEN %s AND %s
-        """, (year_start, year_end))
+        """,
+            (year_start, year_end),
+        )
         year_updated = cur.rowcount
 
         cur.execute("DROP TABLE IF EXISTS _tmp_neutral_update")
@@ -279,7 +290,8 @@ def fast_neutralize_batch(
         # 向量化merge (O(N) hash join, 替代 O(N×D) dict.get循环)
         fdata = fdata.merge(
             ind_series.rename_axis("code").reset_index(),
-            on="code", how="left",
+            on="code",
+            how="left",
         )
         fdata["industry"] = fdata["industry"].fillna("其他")
         fdata = fdata.merge(mv_df_flat, on=["code", "trade_date"], how="left")
@@ -298,23 +310,31 @@ def fast_neutralize_batch(
             return pd.Series(values, index=group.index)
 
         fdata["neutral"] = fdata.groupby(
-            "trade_date", group_keys=False, sort=False,
+            "trade_date",
+            group_keys=False,
+            sort=False,
         ).apply(_neutralize_day)
 
         # bulk提取 (一次zip替代N次append)
         valid = fdata[~fdata["neutral"].isna()]
         if len(valid) > 0:
-            results.extend(zip(
-                valid["code"].values,
-                valid["trade_date"].values,
-                [fname] * len(valid),
-                valid["neutral"].astype(float).values, strict=False,
-            ))
+            results.extend(
+                zip(
+                    valid["code"].values,
+                    valid["trade_date"].values,
+                    [fname] * len(valid),
+                    valid["neutral"].astype(float).values,
+                    strict=False,
+                )
+            )
 
         n_dates = fdata["trade_date"].nunique()
         logger.info(
             "  %s: %d天, %d行, %.1fs (向量化)",
-            fname, n_dates, len(valid), time.time() - t1,
+            fname,
+            n_dates,
+            len(valid),
+            time.time() - t1,
         )
 
     if not results:
@@ -338,7 +358,9 @@ def fast_neutralize_batch(
         output_path = os.path.join(cache_dir, "neutral_values.parquet")
 
         t2 = time.time()
-        result_df = pd.DataFrame(results, columns=["code", "trade_date", "factor_name", "neutral_value"])
+        result_df = pd.DataFrame(
+            results, columns=["code", "trade_date", "factor_name", "neutral_value"]
+        )
         result_df["trade_date"] = pd.to_datetime(result_df["trade_date"])
 
         # 增量合并：保留已有因子，更新/追加本次计算的因子
@@ -348,7 +370,9 @@ def fast_neutralize_batch(
             result_df = pd.concat([existing, result_df], ignore_index=True)
 
         result_df.to_parquet(output_path, index=False)
-        logger.info("  Parquet写入: %s (%d行, %.1fs)", output_path, len(result_df), time.time() - t2)
+        logger.info(
+            "  Parquet写入: %s (%d行, %.1fs)", output_path, len(result_df), time.time() - t2
+        )
 
     total_time = time.time() - t_start
     logger.info("中性化完成: %d行, %.1f分钟", len(results), total_time / 60)
