@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -48,6 +48,9 @@ import structlog
 
 from app.data_fetcher.contracts import FACTOR_IC_HISTORY, FACTOR_VALUES
 from app.data_fetcher.pipeline import DataPipeline
+
+if TYPE_CHECKING:
+    from engines.factor_gate import FactorGatePipeline, GateReport
 
 logger = structlog.get_logger(__name__)
 
@@ -65,6 +68,12 @@ LOOKBACK_BUFFER_DAYS: int = 60
 
 # CSI300 指数代码 (用于 ic_calculator 计算超额收益, 铁律 19)
 BENCHMARK_INDEX_CODE: str = "000300.SH"
+
+# G8 auto-assist (Plan F): FactorClassifier 标准 4 类 — 仅这些 signal_type 自动
+# confirm_g8; unclassified/hybrid/conditional/paired/adaptive → 保持 PENDING 待 L2。
+_G8_CLASSIFIABLE_SIGNAL_TYPES: frozenset[str] = frozenset(
+    {"ranking", "fast_ranking", "event", "modifier"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -969,8 +978,8 @@ class FactorOnboardingService:
 
     def _run_g8_auto_assist(
         self,
-        pipeline: Any,
-        report: Any,
+        pipeline: FactorGatePipeline,
+        report: GateReport,
         factor_name: str,
         ic_df: pd.DataFrame,
         factor_values_df: pd.DataFrame,
@@ -993,10 +1002,7 @@ class FactorOnboardingService:
             ic_df: _compute_ic_multi_horizon 输出 (含 ic_1d/5d/10d/20d)。
             factor_values_df: [code, trade_date, raw_value, neutral_value]。
         """
-        from engines.factor_classifier import (  # noqa: PLC0415
-            FactorClassifier,
-            FactorSignalType,
-        )
+        from engines.factor_classifier import FactorClassifier  # noqa: PLC0415
 
         try:
             # ic_decay {horizon: mean IC} — FactorClassifier 拟合衰减半衰期用
@@ -1017,16 +1023,24 @@ class FactorOnboardingService:
             # 信号稀疏度 — raw_value 非 NaN 占比 (event 因子 raw 多为空 → 低稀疏度;
             # ranking 因子 raw 全覆盖 → 高稀疏度)。中性化后 neutral_value 经填充少
             # NaN, 不能反映信号稀疏度 — 故用 raw_value。
-            raw_col = factor_values_df["raw_value"]
-            signal_sparsity = float(raw_col.notna().mean()) if len(raw_col) > 0 else 0.80
+            if factor_values_df.empty or "raw_value" not in factor_values_df.columns:
+                logger.info(
+                    "G8 auto-assist: factor_values_df 空/无 raw_value, G8 保持 PENDING (factor=%s)",
+                    factor_name,
+                )
+                return
+            signal_sparsity = float(factor_values_df["raw_value"].notna().mean())
 
             classification = FactorClassifier().classify_factor(
                 factor_name=factor_name,
                 ic_decay=ic_decay,
                 signal_sparsity=signal_sparsity,
             )
-        except (ValueError, KeyError, ZeroDivisionError, RuntimeError) as exc:
-            # 数据/拟合异常 → G8 保持 PENDING (fail-safe)。TypeError 等代码 bug 不吞。
+        except Exception as exc:  # noqa: BLE001
+            # 数据/拟合异常 → G8 保持 PENDING (fail-safe, 不臆造 verdict)。
+            # TypeError/AttributeError/ImportError 是代码 bug, 不吞 — 让其 surface。
+            if isinstance(exc, (TypeError, AttributeError, ImportError)):
+                raise
             logger.warning(
                 "G8 auto-assist: 分类失败, G8 保持 PENDING (factor=%s): %s",
                 factor_name,
@@ -1035,10 +1049,12 @@ class FactorOnboardingService:
             )
             return
 
+        # allowlist: 仅 FactorClassifier 标准 4 类自动 confirm_g8; unclassified /
+        # hybrid / conditional / paired / adaptive 等 → 保持 PENDING 待 L2 人工。
         sig = classification.signal_type
-        if sig in (FactorSignalType.UNCLASSIFIED, FactorSignalType.HYBRID):
+        if sig.value not in _G8_CLASSIFIABLE_SIGNAL_TYPES:
             logger.info(
-                "G8 auto-assist: 分类=%s 不确定, G8 保持 PENDING 待 L2 (factor=%s)",
+                "G8 auto-assist: 分类=%s 非标准 4 类, G8 保持 PENDING 待 L2 (factor=%s)",
                 sig.value,
                 factor_name,
             )

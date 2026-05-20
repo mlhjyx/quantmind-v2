@@ -536,3 +536,27 @@ def test_g8_auto_assist_stays_pending_insufficient_ic(
     service._run_g8_auto_assist(FactorGatePipeline(), report, "g8_pending", ic_df, fvdf)
 
     assert report.gates["G8"].status == GateStatus.PENDING
+
+
+def test_g8_auto_assist_isolates_onboarding_wiring(
+    service: FactorOnboardingService,
+) -> None:
+    """mock FactorClassifier — 隔离验证 onboarding G8 wiring 正确调 confirm_g8。"""
+    from engines.factor_classifier import FactorSignalType
+
+    classification = MagicMock()
+    classification.signal_type = FactorSignalType.RANKING
+    classification.recommended_frequency = "monthly"
+    classification.confidence = 0.9
+    classification.reasoning = "mock reasoning"
+    ic_df = _ic_df(10, {1: 0.06, 5: 0.05, 10: 0.04, 20: 0.03})
+    fvdf = _factor_values_df(10, 30, lambda _di, ci: float(ci))
+    report = _g8_pending_report("g8_mock")
+
+    with patch("engines.factor_classifier.FactorClassifier") as mock_cls:
+        mock_cls.return_value.classify_factor.return_value = classification
+        service._run_g8_auto_assist(FactorGatePipeline(), report, "g8_mock", ic_df, fvdf)
+
+    assert report.gates["G8"].status == GateStatus.PASS
+    assert report.gates["G8"].data["signal_type"] == "ranking"
+    assert report.gates["G8"].data["rebalance_freq"] == "monthly"
