@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    import pandas as pd
     from qm_platform.observability import AlertRulesEngine
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -92,6 +93,14 @@ SN_BETA = 0.50
 WARN_RATIO = 0.85  # Sharpe 下降 >15% → WARN
 ALERT_RATIO = 0.70  # Sharpe 下降 >30% → ALERT
 
+# DSR (Deflated Sharpe Ratio, DEV_BACKTEST_ENGINE.md §4.12.1) — 多重检验校正.
+# n_trials: doc 公式 N = n_windows × param_grid_size. rolling_wf 跑固定
+# CORE3+dv_ttm 配置 (param_grid_size=1), n_windows = WF n_splits = 5.
+_DSR_N_TRIALS = 5
+# DSR < 0.5 = "大概率过拟合" (doc §4.12.1 解读). Sharpe 判定 OK 但 DSR 低于此阈值
+# 时升级 OK → WARN, 提示 OOS Sharpe 经多重检验校正后统计上不显著.
+_DSR_WARN_THRESHOLD = 0.5
+
 
 def _load_wf_data():
     """加载 WF 所需的因子/价格/基准数据 (走 Parquet 缓存)。
@@ -142,6 +151,62 @@ def _load_wf_data():
         len(bench_df),
     )
     return factor_df, price_df, bench_df
+
+
+def _compute_dsr(
+    combined_oos_sharpe: float,
+    combined_oos_returns: pd.Series | None,
+    total_oos_days: int,
+) -> tuple[float | None, str]:
+    """计算 WF OOS 拼接结果的 Deflated Sharpe Ratio (DEV_BACKTEST_ENGINE §4.12.1).
+
+    观测 Sharpe 取 `combined_oos_sharpe` (OOS 拼接曲线的 Sharpe), 与 skew/kurt
+    所基于的 `combined_oos_returns` 同源, 保证口径一致 — 不与各 fold Sharpe 均值
+    `chain_sharpe` 混用. n_trials 取 WF n_splits=5 (doc 公式 N = n_windows ×
+    param_grid_size, rolling_wf 固定配置 param_grid_size=1).
+
+    pandas `.kurtosis()` 返超额峰度 (正态=0), DSR 引擎要原始峰度 (正态=3), 故 +3
+    (对齐 doc §4.12.1 reference 实现 `kurt = ... + 3  # excess→raw`).
+
+    DSR 是补充诊断指标 (非主告警信号): 任何计算失败 (数据不足 / skew·kurt 非有限
+    值 / 引擎 ValueError) → 返 `(None, "")` + log warning, 不阻断 WF 主结果.
+
+    Args:
+        combined_oos_sharpe: WF OOS 拼接曲线的年化 Sharpe.
+        combined_oos_returns: WF OOS 拼接日收益 pandas Series.
+        total_oos_days: OOS 拼接总交易日数 (DSR n_observations).
+
+    Returns:
+        (dsr, interpretation). dsr 为 None 表示无法计算; 否则 round 到 4 位.
+    """
+    from engines.dsr import deflated_sharpe_ratio, interpret_dsr
+
+    try:
+        # DSR 需有限 skew (3 阶矩) + 有限 kurtosis (4 阶矩); pandas 对 n<4 的
+        # .kurtosis() 返 NaN, 故取 4 作数据量下限 (生产 total_oos_days ~1250).
+        if total_oos_days < 4 or combined_oos_returns is None or len(combined_oos_returns) < 4:
+            logger.warning("[DSR] OOS 数据不足 (<4 点, days=%s), 跳过 DSR 计算", total_oos_days)
+            return None, ""
+        skew = float(combined_oos_returns.skew())
+        kurt = float(combined_oos_returns.kurtosis()) + 3.0  # excess → raw
+        if not (np.isfinite(skew) and np.isfinite(kurt)):
+            logger.warning(
+                "[DSR] skew/kurt 非有限值 (skew=%s, kurt=%s), 跳过 DSR 计算",
+                skew,
+                kurt,
+            )
+            return None, ""
+        dsr = deflated_sharpe_ratio(
+            observed_sharpe=combined_oos_sharpe,
+            n_trials=_DSR_N_TRIALS,
+            n_observations=total_oos_days,
+            skewness=skew,
+            kurtosis=kurt,
+        )
+        return round(dsr, 4), interpret_dsr(dsr)
+    except Exception as e:  # noqa: BLE001 — DSR 补充指标, 失败不阻断 WF 主结果 (铁律 33 fail-safe)
+        logger.warning("[DSR] 计算失败 (%s: %s), 跳过 DSR", type(e).__name__, e)
+        return None, ""
 
 
 def _run_wf(factor_df, price_df, bench_df) -> dict:
@@ -215,9 +280,22 @@ def _run_wf(factor_df, price_df, bench_df) -> dict:
     chain_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
     neg_folds = sum(1 for s in oos_sharpes if s < 0)
 
+    # DSR (DEV_BACKTEST_ENGINE §4.12.1): 多重检验校正后的 Sharpe 显著性.
+    # observed_sharpe 用 combined_oos_sharpe (拼接曲线 Sharpe) — 与 skew/kurt 所
+    # 基于的 combined_oos_returns 同源 (chain_sharpe 是各 fold Sharpe 均值, 口径不同).
+    dsr, dsr_interp = _compute_dsr(
+        result.combined_oos_sharpe,
+        result.combined_oos_returns,
+        result.total_oos_days,
+    )
+
     return {
         "chain_sharpe": round(chain_sharpe, 4),
+        "combined_oos_sharpe": result.combined_oos_sharpe,
+        "total_oos_days": result.total_oos_days,
         "neg_folds": neg_folds,
+        "dsr": dsr,
+        "dsr_interpretation": dsr_interp,
         "folds": fold_data,
         "elapsed_s": round(elapsed, 1),
         "run_date": str(date.today()),
@@ -225,35 +303,53 @@ def _run_wf(factor_df, price_df, bench_df) -> dict:
 
 
 def _classify_result(wf_result: dict) -> dict:
-    """分类告警等级。"""
+    """分类告警等级。
+
+    Sharpe / neg_fold 阈值决定基础等级; DSR (DEV_BACKTEST_ENGINE §4.12.1) 作补充
+    诊断: 当 Sharpe 判定 OK 但 DSR < _DSR_WARN_THRESHOLD (大概率过拟合) 时升级
+    OK → WARN (label=DSR_LOW). DSR 不下调已有的 P1 / WARN 等级。
+
+    `dsr` / `dsr_interpretation` 用 .get() 读取 — 兼容 --skip-wf 加载的旧 result
+    JSON (无 DSR 字段时 dsr=None, 不渲染 suffix 也不触发升级)。
+    """
     sharpe = wf_result["chain_sharpe"]
     neg_folds = wf_result["neg_folds"]
+    dsr = wf_result.get("dsr")
+    dsr_interp = wf_result.get("dsr_interpretation", "")
+    dsr_suffix = f" | DSR={dsr} ({dsr_interp})" if dsr is not None else ""
 
     if neg_folds > 0:
         return {
             "level": "P1",
             "label": "NEGATIVE_FOLD",
-            "msg": f"WF OOS 有 {neg_folds} 个负 fold! chain_sharpe={sharpe:.4f}",
+            "msg": f"WF OOS 有 {neg_folds} 个负 fold! chain_sharpe={sharpe:.4f}{dsr_suffix}",
         }
 
     if sharpe < BASELINE_SHARPE * ALERT_RATIO:
         return {
             "level": "P1",
             "label": "SHARPE_ALERT",
-            "msg": f"WF OOS Sharpe 严重下降: {sharpe:.4f} (基线 {BASELINE_SHARPE}, 下降 {(1 - sharpe / BASELINE_SHARPE) * 100:.0f}%)",
+            "msg": f"WF OOS Sharpe 严重下降: {sharpe:.4f} (基线 {BASELINE_SHARPE}, 下降 {(1 - sharpe / BASELINE_SHARPE) * 100:.0f}%){dsr_suffix}",
         }
 
     if sharpe < BASELINE_SHARPE * WARN_RATIO:
         return {
             "level": "WARN",
             "label": "SHARPE_WARN",
-            "msg": f"WF OOS Sharpe 轻微下降: {sharpe:.4f} (基线 {BASELINE_SHARPE}, 下降 {(1 - sharpe / BASELINE_SHARPE) * 100:.0f}%)",
+            "msg": f"WF OOS Sharpe 轻微下降: {sharpe:.4f} (基线 {BASELINE_SHARPE}, 下降 {(1 - sharpe / BASELINE_SHARPE) * 100:.0f}%){dsr_suffix}",
+        }
+
+    if dsr is not None and dsr < _DSR_WARN_THRESHOLD:
+        return {
+            "level": "WARN",
+            "label": "DSR_LOW",
+            "msg": f"WF OOS Sharpe 稳定 ({sharpe:.4f}) 但 DSR={dsr} < {_DSR_WARN_THRESHOLD} — {dsr_interp} (多重检验校正后不显著)",
         }
 
     return {
         "level": "OK",
         "label": "STABLE",
-        "msg": f"WF OOS Sharpe 稳定: {sharpe:.4f} (基线 {BASELINE_SHARPE})",
+        "msg": f"WF OOS Sharpe 稳定: {sharpe:.4f} (基线 {BASELINE_SHARPE}){dsr_suffix}",
     }
 
 
@@ -331,11 +427,7 @@ def _send_alert_via_platform_sdk(title: str, content: str, level: str = "P1") ->
     engine = _get_rules_engine()
     if engine is not None:
         rule = engine.match(alert)
-        dedup_key = (
-            rule.format_dedup_key(alert)
-            if rule
-            else f"rolling_wf:summary:{today_str}"
-        )
+        dedup_key = rule.format_dedup_key(alert) if rule else f"rolling_wf:summary:{today_str}"
         suppress_minutes = rule.suppress_minutes if rule else 1440
     else:
         dedup_key = f"rolling_wf:summary:{today_str}"
@@ -443,7 +535,8 @@ def run_rolling_wf(dry_run: bool = False, skip_wf: bool = False, force: bool = F
         except AlertDispatchError as e:
             logger.error(
                 "[Observability] AlertDispatchError 月度告警 sink 失败: %s "
-                "(rolling_wf 月度任务, 非紧急, 不阻断 schtask)", e,
+                "(rolling_wf 月度任务, 非紧急, 不阻断 schtask)",
+                e,
             )
 
     return {
