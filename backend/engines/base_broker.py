@@ -89,6 +89,4 @@ def get_broker(mode: str, **kwargs) -> BaseBroker:
         account_id = kwargs.get("account_id", "")
         return MiniQMTBroker(qmt_path=qmt_path, account_id=account_id)
     else:
-        raise ValueError(
-            f"无效的执行模式: {mode!r}，支持: 'backtest', 'paper', 'live'"
-        )
+        raise ValueError(f"无效的执行模式: {mode!r}，支持: 'backtest', 'paper', 'live'")

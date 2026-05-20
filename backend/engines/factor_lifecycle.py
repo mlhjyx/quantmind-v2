@@ -38,7 +38,7 @@ class FactorStatus(StrEnum):
 
 
 # Thresholds per DEV_AI_EVOLUTION V2.1 §3.1
-WARNING_RATIO = 0.8   # |IC_MA20|/|IC_MA60| < 0.8 → warning (轻度衰减)
+WARNING_RATIO = 0.8  # |IC_MA20|/|IC_MA60| < 0.8 → warning (轻度衰减)
 CRITICAL_RATIO = 0.5  # |IC_MA20|/|IC_MA60| < 0.5 → critical (需持续)
 CRITICAL_PERSISTENCE_DAYS = 20
 MIN_ABS_IC_MA60 = 1e-6  # 基线 IC ≈ 0 时比率无意义
@@ -308,9 +308,9 @@ def build_lifecycle_context(
 class CompositeMode(StrEnum):
     """OR 复合决策模式."""
 
-    OFF = "off"          # 仅老路径 (生产兼容默认)
+    OFF = "off"  # 仅老路径 (生产兼容默认)
     G1_ONLY = "g1-only"  # 老 OR (G1 fail) — 防 G10 hypothesis 缺失批量降级
-    STRICT = "strict"    # 老 OR (G1 OR G10 fail)
+    STRICT = "strict"  # 老 OR (G1 OR G10 fail)
 
 
 # Gate names matching qm_platform.eval.gates.{g1_ic_significance,g10_hypothesis}.name
@@ -403,7 +403,9 @@ def compute_composite_decision(
 
     # 新路径合成只在 active 状态 (warning/critical 已是 demoted, 由老路径主导持续性升级)
     if current_status != FactorStatus.ACTIVE.value:
-        return old_decision  # 可能 None (active→active 无变化, 或 warning→active recovery 无 trigger)
+        return (
+            old_decision  # 可能 None (active→active 无变化, 或 warning→active recovery 无 trigger)
+        )
 
     if not triggers:
         # 新路径未触发, 老路径也无变化 → 透传

@@ -19,11 +19,12 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class SignalConfig:
     """Phase A 信号生成配置。"""
+
     top_n: int = 15
-    rebalance_freq: str = "monthly"         # daily/weekly/biweekly/monthly
-    weight_mode: str = "equal"              # equal (后续支持 ic_weighted)
-    min_factor_ratio: float = 0.5           # 股票至少有50%因子有值才保留
-    industry_cap: float = 0.25              # 行业上限(暂不在Phase A实现，留给Phase B)
+    rebalance_freq: str = "monthly"  # daily/weekly/biweekly/monthly
+    weight_mode: str = "equal"  # equal (后续支持 ic_weighted)
+    min_factor_ratio: float = 0.5  # 股票至少有50%因子有值才保留
+    industry_cap: float = 0.25  # 行业上限(暂不在Phase A实现，留给Phase B)
 
 
 def compute_rebalance_dates(trading_days: list[date], freq: str) -> list[date]:
@@ -45,30 +46,18 @@ def compute_rebalance_dates(trading_days: list[date], freq: str) -> list[date]:
         return list(trading_days)
     elif freq == "weekly":
         return list(
-            td_series.groupby(
-                td_series.apply(lambda d: (d.year, d.isocalendar()[1]))
-            ).last()
+            td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last()
         )
     elif freq == "biweekly":
         weekly = list(
-            td_series.groupby(
-                td_series.apply(lambda d: (d.year, d.isocalendar()[1]))
-            ).last()
+            td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last()
         )
         return weekly[::2]
     elif freq == "monthly":
-        return list(
-            td_series.groupby(
-                td_series.apply(lambda d: (d.year, d.month))
-            ).last()
-        )
+        return list(td_series.groupby(td_series.apply(lambda d: (d.year, d.month))).last())
     else:
         # 默认月度
-        return list(
-            td_series.groupby(
-                td_series.apply(lambda d: (d.year, d.month))
-            ).last()
-        )
+        return list(td_series.groupby(td_series.apply(lambda d: (d.year, d.month))).last())
 
 
 def build_target_portfolios(
@@ -106,7 +95,10 @@ def build_target_portfolios(
 
         # pivot: code x factor_name → raw_value
         pivot = pd.DataFrame(day_data).pivot_table(
-            index="code", columns="factor_name", values="raw_value", aggfunc="first",
+            index="code",
+            columns="factor_name",
+            values="raw_value",
+            aggfunc="first",
         )
 
         available_factors = [f for f in factor_names if f in pivot.columns]
@@ -140,6 +132,8 @@ def build_target_portfolios(
 
     logger.info(
         "Phase A信号生成完成: %d个调仓日, %d个因子, Top-%d",
-        len(targets), len(factor_names), top_n,
+        len(targets),
+        len(factor_names),
+        top_n,
     )
     return targets

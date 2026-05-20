@@ -37,16 +37,16 @@ logger = structlog.get_logger(__name__)
 class SignalType(StrEnum):
     """信号类型分类。"""
 
-    RANKING = "ranking"    # 排序型: 因子得分排名选Top-N
-    FILTER = "filter"      # 过滤型: 条件过滤(ROE>阈值)
-    EVENT = "event"        # 事件型: 离散触发(PEAD/公告)
+    RANKING = "ranking"  # 排序型: 因子得分排名选Top-N
+    FILTER = "filter"  # 过滤型: 条件过滤(ROE>阈值)
+    EVENT = "event"  # 事件型: 离散触发(PEAD/公告)
     MODIFIER = "modifier"  # 调节型: 调整权重/仓位(regime切换)
 
 
 class WeightMethod(StrEnum):
     """权重分配方案（DESIGN_V5 §6.4）。"""
 
-    EQUAL = "equal"              # 等权 1/N
+    EQUAL = "equal"  # 等权 1/N
     SCORE_WEIGHTED = "score_weighted"  # Alpha加权
     RISK_PARITY = "risk_parity"  # 风险平价 (Phase 1)
 
@@ -229,10 +229,6 @@ class BaseStrategy(ABC):
         required = ["factor_names", "top_n", "weight_method"]
         missing = [k for k in required if k not in self.config]
         if missing:
-            raise ValueError(
-                f"策略 {self.strategy_id} config缺少必要字段: {missing}"
-            )
+            raise ValueError(f"策略 {self.strategy_id} config缺少必要字段: {missing}")
         if not self.config["factor_names"]:
-            raise ValueError(
-                f"策略 {self.strategy_id} factor_names不能为空"
-            )
+            raise ValueError(f"策略 {self.strategy_id} factor_names不能为空")

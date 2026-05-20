@@ -47,33 +47,36 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class ActiveFactor:
     """当前Active因子信息（输入上下文）。"""
+
     name: str
     expression: str
     ic: float
-    ic_direction: str   # "positive" | "negative"
+    ic_direction: str  # "positive" | "negative"
     category: str
 
 
 @dataclass
 class FailedFactor:
     """历史失败因子信息（输入上下文）。"""
+
     name: str
     expression: str
-    failure_reason: str   # Gate失败原因，如 "IC_TOO_LOW" / "CORR_TOO_HIGH"
+    failure_reason: str  # Gate失败原因，如 "IC_TOO_LOW" / "CORR_TOO_HIGH"
 
 
 @dataclass
 class FactorHypothesis:
     """因子假设 — IdeaAgent的输出单元。"""
+
     name: str
-    expression: str                          # FactorDSL格式表达式
-    hypothesis: str                          # 经济学解释
-    expected_ic_direction: str               # "positive" | "negative"
+    expression: str  # FactorDSL格式表达式
+    hypothesis: str  # 经济学解释
+    expected_ic_direction: str  # "positive" | "negative"
     expected_ic_range: list[float] = field(default_factory=lambda: [0.02, 0.05])
-    category: str = "价量"                   # 价量/流动性/资金流/基本面/行为
-    novelty_vs_existing: str = ""            # 与已有因子的区别
-    dsl_valid: bool = False                  # DSL验证结果（填充by IdeaAgent）
-    dsl_error: str = ""                      # DSL验证错误信息
+    category: str = "价量"  # 价量/流动性/资金流/基本面/行为
+    novelty_vs_existing: str = ""  # 与已有因子的区别
+    dsl_valid: bool = False  # DSL验证结果（填充by IdeaAgent）
+    dsl_error: str = ""  # DSL验证错误信息
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +219,10 @@ A股市场特征:
             valid_count = sum(1 for h in hypotheses if h.dsl_valid)
             logger.info(
                 "IdeaAgent生成完成 attempt=%d/%d: %d/%d个DSL合法",
-                attempt + 1, self._max_validate_retries, valid_count, len(hypotheses),
+                attempt + 1,
+                self._max_validate_retries,
+                valid_count,
+                len(hypotheses),
             )
 
             # 如果有足够的有效因子就返回
@@ -226,16 +232,21 @@ A股市场特征:
             # 无效过多，重试时增加约束提示
             logger.warning(
                 "DSL合法率不足 (%d/%d)，重试 attempt %d/%d",
-                valid_count, len(hypotheses), attempt + 1, self._max_validate_retries,
+                valid_count,
+                len(hypotheses),
+                attempt + 1,
+                self._max_validate_retries,
             )
             # 将无效因子的错误信息加入failed_factors，避免重复
             for h in hypotheses:
                 if not h.dsl_valid:
-                    failed_factors.append(FailedFactor(
-                        name=h.name,
-                        expression=h.expression,
-                        failure_reason=f"DSL_INVALID: {h.dsl_error}",
-                    ))
+                    failed_factors.append(
+                        FailedFactor(
+                            name=h.name,
+                            expression=h.expression,
+                            failure_reason=f"DSL_INVALID: {h.dsl_error}",
+                        )
+                    )
 
         return hypotheses  # 返回最后一次结果（含无效）
 
@@ -268,7 +279,7 @@ A股市场特征:
             model=self._model,
             base_url=self._base_url,
             json_mode=True,
-            temperature=0.8,   # 略高温度增加多样性
+            temperature=0.8,  # 略高温度增加多样性
             max_tokens=3000,
         )
 
@@ -359,7 +370,7 @@ A股市场特征:
         if not factors:
             return "（暂无失败历史）"
         lines = []
-        for f in factors[:20]:   # 限制最多20条，避免prompt过长
+        for f in factors[:20]:  # 限制最多20条，避免prompt过长
             lines.append(f"  - {f.name}: {f.expression} → 失败原因: {f.failure_reason}")
         return "\n".join(lines)
 
@@ -371,16 +382,41 @@ A股市场特征:
     def _default_active_factors(self) -> list[ActiveFactor]:
         """使用v1.1种子因子作为默认Active因子上下文。"""
         defaults = [
-            ActiveFactor("turnover_mean_20", SEED_FACTORS["turnover_mean_20"],
-                         ic=-0.042, ic_direction="negative", category="流动性"),
-            ActiveFactor("volatility_20",    SEED_FACTORS["volatility_20"],
-                         ic=-0.038, ic_direction="negative", category="价量"),
-            ActiveFactor("reversal_20",      SEED_FACTORS["reversal_20"],
-                         ic=0.031,  ic_direction="positive", category="价量"),
-            ActiveFactor("amihud_20",        SEED_FACTORS["amihud_20"],
-                         ic=-0.035, ic_direction="negative", category="流动性"),
-            ActiveFactor("bp_ratio",         SEED_FACTORS["bp_ratio"],
-                         ic=0.028,  ic_direction="positive", category="基本面"),
+            ActiveFactor(
+                "turnover_mean_20",
+                SEED_FACTORS["turnover_mean_20"],
+                ic=-0.042,
+                ic_direction="negative",
+                category="流动性",
+            ),
+            ActiveFactor(
+                "volatility_20",
+                SEED_FACTORS["volatility_20"],
+                ic=-0.038,
+                ic_direction="negative",
+                category="价量",
+            ),
+            ActiveFactor(
+                "reversal_20",
+                SEED_FACTORS["reversal_20"],
+                ic=0.031,
+                ic_direction="positive",
+                category="价量",
+            ),
+            ActiveFactor(
+                "amihud_20",
+                SEED_FACTORS["amihud_20"],
+                ic=-0.035,
+                ic_direction="negative",
+                category="流动性",
+            ),
+            ActiveFactor(
+                "bp_ratio",
+                SEED_FACTORS["bp_ratio"],
+                ic=0.028,
+                ic_direction="positive",
+                category="基本面",
+            ),
         ]
         return defaults
 

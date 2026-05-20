@@ -88,6 +88,7 @@ class DataFeed:
 
         if db_url is None:
             from app.config import settings
+
             # Settings用大写DATABASE_URL，去掉asyncpg前缀给psycopg2用
             db_url = settings.DATABASE_URL.replace("+asyncpg", "")
 
@@ -184,7 +185,11 @@ class DataFeed:
         df = pd.read_parquet(path)
 
         # trade_date可能被序列化为Timestamp，转回date
-        if not df.empty and "trade_date" in df.columns and pd.api.types.is_datetime64_any_dtype(df["trade_date"]):
+        if (
+            not df.empty
+            and "trade_date" in df.columns
+            and pd.api.types.is_datetime64_any_dtype(df["trade_date"])
+        ):
             df["trade_date"] = df["trade_date"].dt.date
 
         logger.info(
@@ -245,9 +250,7 @@ class DataFeed:
         Returns:
             该日所有股票的行情数据。
         """
-        result: pd.DataFrame = self._data.loc[
-            self._data["trade_date"] == trade_date
-        ].copy()
+        result: pd.DataFrame = self._data.loc[self._data["trade_date"] == trade_date].copy()
         return result
 
     def validate(self) -> None:
@@ -262,10 +265,7 @@ class DataFeed:
         # 1. 必需列检查
         missing = [c for c in REQUIRED_COLUMNS if c not in self._data.columns]
         if missing:
-            raise DataFeedValidationError(
-                f"缺少必需列: {missing}。"
-                f"必需列: {REQUIRED_COLUMNS}"
-            )
+            raise DataFeedValidationError(f"缺少必需列: {missing}。必需列: {REQUIRED_COLUMNS}")
 
         # 2. 推荐列警告
         missing_rec = [c for c in RECOMMENDED_COLUMNS if c not in self._data.columns]

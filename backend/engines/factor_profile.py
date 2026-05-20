@@ -234,7 +234,9 @@ class FactorProfilePipeline:
             profiles.append(profile)
             logger.info(
                 "因子 %s: half_life=%.1f天, freq=%s, IC(1d)=%.4f",
-                fname, profile.half_life_days, profile.recommended_freq,
+                fname,
+                profile.half_life_days,
+                profile.recommended_freq,
                 ic_decay.get(1, 0.0),
             )
 
@@ -399,8 +401,7 @@ class FactorProfilePipeline:
         )
         assert isinstance(result, pd.DataFrame)
         self._trading_days = [
-            d.date() if hasattr(d, "date") else d
-            for d in result["cal_date"].tolist()
+            d.date() if hasattr(d, "date") else d for d in result["cal_date"].tolist()
         ]
         logger.info("加载交易日历: %d个交易日", len(self._trading_days))
         return self._trading_days

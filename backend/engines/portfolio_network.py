@@ -224,6 +224,7 @@ def compute_period_returns(
 @dataclass
 class TrainerConfig:
     """训练配置。"""
+
     lr: float = 1e-3
     weight_decay: float = 0.01
     max_epochs: int = 500
@@ -241,6 +242,7 @@ class TrainerConfig:
 @dataclass
 class TrainResult:
     """训练结果。"""
+
     best_epoch: int = 0
     best_val_sharpe: float = 0.0
     train_losses: list[float] = field(default_factory=list)
@@ -259,9 +261,7 @@ class PortfolioTrainer:
 
     def __init__(self, config: TrainerConfig):
         self.config = config
-        self.device = torch.device(
-            config.device if torch.cuda.is_available() else "cpu"
-        )
+        self.device = torch.device(config.device if torch.cuda.is_available() else "cpu")
 
     def train_fold(
         self,
@@ -332,7 +332,8 @@ class PortfolioTrainer:
                 returns_seq.append(returns_t)
 
             loss = sharpe_loss(
-                weights_seq, returns_seq,
+                weights_seq,
+                returns_seq,
                 lambda_turnover=cfg.lambda_turnover,
                 cost_rate=cfg.cost_rate,
             )
@@ -363,8 +364,10 @@ class PortfolioTrainer:
                 result.val_sharpes.append(val_sharpe)
 
                 if epoch % cfg.print_every == 0:
-                    print(f"    Epoch {epoch:>4d}: loss={loss.item():.4f}, "
-                          f"val_sharpe={val_sharpe:.4f}")
+                    print(
+                        f"    Epoch {epoch:>4d}: loss={loss.item():.4f}, "
+                        f"val_sharpe={val_sharpe:.4f}"
+                    )
 
                 # Early stopping
                 if val_sharpe > best_val_sharpe:
@@ -376,8 +379,10 @@ class PortfolioTrainer:
                 else:
                     patience_counter += 1
                     if patience_counter >= cfg.patience:
-                        print(f"    Early stopping at epoch {epoch} "
-                              f"(best val_sharpe={best_val_sharpe:.4f} at epoch {result.best_epoch})")
+                        print(
+                            f"    Early stopping at epoch {epoch} "
+                            f"(best val_sharpe={best_val_sharpe:.4f} at epoch {result.best_epoch})"
+                        )
                         break
 
         # 恢复最优模型

@@ -49,9 +49,7 @@ def calc_portfolio_beta(
     )
 
     if len(perf_df) < 20:
-        logger.info(
-            f"[Beta] 历史数据不足({len(perf_df)}<20天), beta=0.0"
-        )
+        logger.info(f"[Beta] 历史数据不足({len(perf_df)}<20天), beta=0.0")
         return 0.0
 
     perf_df = perf_df.sort_values("trade_date")

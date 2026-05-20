@@ -107,10 +107,12 @@ class TradingDayChecker:
         """通过QMT查询交易日（仅live模式）。"""
         try:
             from app.config import settings
+
             if settings.EXECUTION_MODE != "live":
                 return None
 
             from app.services.qmt_connection_manager import qmt_manager
+
             if qmt_manager.state != "connected":
                 return None
 
@@ -127,10 +129,12 @@ class TradingDayChecker:
         """通过Tushare trade_cal API查询。"""
         try:
             from app.config import settings
+
             if not settings.TUSHARE_TOKEN:
                 return None
 
             import tushare as ts
+
             pro = ts.pro_api(settings.TUSHARE_TOKEN)
             d_str = d.strftime("%Y%m%d")
             df = pro.trade_cal(

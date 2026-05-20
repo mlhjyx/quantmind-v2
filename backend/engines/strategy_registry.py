@@ -25,18 +25,14 @@ class StrategyRegistry:
             strategy_class: BaseStrategy子类
         """
         if not issubclass(strategy_class, BaseStrategy):
-            raise TypeError(
-                f"{strategy_class.__name__} 不是 BaseStrategy 子类"
-            )
+            raise TypeError(f"{strategy_class.__name__} 不是 BaseStrategy 子类")
         if name in cls._registry:
             logger.warning(f"策略 '{name}' 已注册，将被覆盖")
         cls._registry[name] = strategy_class
         logger.debug(f"注册策略: {name} -> {strategy_class.__name__}")
 
     @classmethod
-    def create(
-        cls, name: str, config: dict, strategy_id: str
-    ) -> BaseStrategy:
+    def create(cls, name: str, config: dict, strategy_id: str) -> BaseStrategy:
         """按名称创建策略实例。
 
         Args:
@@ -52,9 +48,7 @@ class StrategyRegistry:
         """
         if name not in cls._registry:
             available = ", ".join(cls._registry.keys()) or "(空)"
-            raise ValueError(
-                f"策略不存在: '{name}'。可用策略: {available}"
-            )
+            raise ValueError(f"策略不存在: '{name}'。可用策略: {available}")
         return cls._registry[name](config=config, strategy_id=strategy_id)
 
     @classmethod
