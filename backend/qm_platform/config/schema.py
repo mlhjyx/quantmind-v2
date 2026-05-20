@@ -12,6 +12,7 @@ Framework 各自 MVP 纳入 — 铁律 23 独立可执行 + 铁律 24 抽象层�
 
 实施时机: MVP 1.2 Config Management (Wave 1, 2026-04-18).
 """
+
 from __future__ import annotations
 
 from typing import Any

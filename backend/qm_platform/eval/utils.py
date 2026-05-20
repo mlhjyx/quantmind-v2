@@ -6,6 +6,7 @@ paired_bootstrap_pvalue: 单边 paired bootstrap p 值, MVP 3.5 G3 / Strategy G1
   - MVP 3.5 batch 1: 新建 (替原研究脚本散落实现)
   - 后续 Strategy Eval Gate (批 3) 复用
 """
+
 from __future__ import annotations
 
 import numpy as np

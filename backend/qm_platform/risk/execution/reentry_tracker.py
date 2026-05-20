@@ -179,15 +179,11 @@ class ReentryTracker:
         elapsed = at - sold.sell_at
         if elapsed < timedelta(0):
             within_window = False
-            reasons.append(
-                f"sell_at in future (elapsed={elapsed}) — clock skew or bad data"
-            )
+            reasons.append(f"sell_at in future (elapsed={elapsed}) — clock skew or bad data")
         else:
             within_window = elapsed <= timedelta(days=self._lookback_window_days)
             if within_window:
-                reasons.append(
-                    f"within {self._lookback_window_days}d window (elapsed={elapsed})"
-                )
+                reasons.append(f"within {self._lookback_window_days}d window (elapsed={elapsed})")
             else:
                 reasons.append(
                     f"outside {self._lookback_window_days}d window (elapsed={elapsed}) — stale signal"

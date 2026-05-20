@@ -101,9 +101,7 @@ class RetentionPolicy:
             ("archive_threshold", self.archive_threshold),
         ):
             if not (-1.0 <= val <= 1.0):
-                raise ValueError(
-                    f"RetentionPolicy.{name} must be in [-1.0, 1.0], got {val}"
-                )
+                raise ValueError(f"RetentionPolicy.{name} must be in [-1.0, 1.0], got {val}")
         # Thresholds typically increase with age — soft check (warn rather
         # than raise, to allow experimental policies).
         if not (
@@ -147,9 +145,7 @@ def classify_tier(
         ValueError: event_timestamp OR now is naive (no tzinfo) per 铁律 41.
     """
     if event_timestamp.tzinfo is None:
-        raise ValueError(
-            "classify_tier: event_timestamp must be tz-aware (铁律 41 sustained)"
-        )
+        raise ValueError("classify_tier: event_timestamp must be tz-aware (铁律 41 sustained)")
     if now.tzinfo is None:
         raise ValueError("classify_tier: now must be tz-aware (铁律 41 sustained)")
 

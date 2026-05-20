@@ -20,6 +20,7 @@ Retry 体例 (沿用 sub-PR 1+2 tenacity 体例 sustained):
 - retry on httpx.TimeoutException + _AnspireRetryableError (429 + 5xx)
 - 反 retry on 4xx 别 (auth/param) → fail-loud immediate raise NewsFetchError
 """
+
 from __future__ import annotations
 
 import time

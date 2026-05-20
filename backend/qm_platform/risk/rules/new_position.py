@@ -25,6 +25,7 @@
 
 关联铁律: 24 (单一职责: 仅"新仓+亏损"双 condition) / 31 (纯计算) / 33 (silent_ok skip)
 """
+
 from __future__ import annotations
 
 import logging
@@ -103,8 +104,12 @@ class NewPositionVolatilityRule(RiskRule):
 
         for pos in context.positions:
             # silent_ok: skip 路径 (无 entry_date / 已平仓 / 价格异常)
-            if (pos.entry_date is None or pos.shares <= 0
-                    or pos.entry_price <= 0 or pos.current_price <= 0):
+            if (
+                pos.entry_date is None
+                or pos.shares <= 0
+                or pos.entry_price <= 0
+                or pos.current_price <= 0
+            ):
                 continue
 
             holding_days = (today - pos.entry_date).days

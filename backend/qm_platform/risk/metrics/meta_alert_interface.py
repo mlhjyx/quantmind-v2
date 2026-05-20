@@ -328,9 +328,7 @@ class PGHealthSnapshot:
                 f"idle_in_transaction must be >= 0, got {self.idle_in_transaction}"
             )
         if self.total_connections < 0:
-            raise MetaAlertError(
-                f"total_connections must be >= 0, got {self.total_connections}"
-            )
+            raise MetaAlertError(f"total_connections must be >= 0, got {self.total_connections}")
         if self.idle_in_transaction > self.total_connections:
             raise MetaAlertError(
                 f"idle_in_transaction ({self.idle_in_transaction}) cannot exceed "

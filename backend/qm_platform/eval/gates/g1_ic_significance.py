@@ -3,6 +3,7 @@
 ic_series: 时间序列 IC (e.g. ic_5d / ic_20d 数列).
 判定: t = ic.mean() / (ic.std(ddof=1) / sqrt(n)), t > G1_T_THRESHOLD 通过.
 """
+
 from __future__ import annotations
 
 from ..interface import GateResult

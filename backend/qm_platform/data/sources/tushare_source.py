@@ -35,6 +35,7 @@ Usage:
     # + adj_factor/up_limit/down_limit)
     # 走 DataPipeline.ingest(df, KLINES_DAILY TableContract) 完成归一+入库
 """
+
 from __future__ import annotations
 
 import logging
@@ -153,7 +154,10 @@ MONEYFLOW_DATA_CONTRACT = DataContract(
 )
 
 _CONTRACT_API_MAP = {
-    "klines_daily": ("daily", "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"),
+    "klines_daily": (
+        "daily",
+        "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount",
+    ),
     "daily_basic": (
         "daily_basic",
         "ts_code,trade_date,close,turnover_rate,turnover_rate_f,volume_ratio,"
@@ -226,8 +230,7 @@ class TushareDataSource(BaseDataSource):
         name = contract.name
         if name not in _CONTRACT_API_MAP:
             raise ValueError(
-                f"TushareDataSource 不支持 contract={name!r}, "
-                f"支持: {sorted(_CONTRACT_API_MAP)}"
+                f"TushareDataSource 不支持 contract={name!r}, 支持: {sorted(_CONTRACT_API_MAP)}"
             )
         # MVP 2.1c Sub3-prep: klines_daily 特殊走 3 API 合并路径
         if name == "klines_daily":
@@ -237,9 +240,7 @@ class TushareDataSource(BaseDataSource):
 
     # ---------- klines_daily 3 API merge (MVP 2.1c Sub3-prep) ----------
 
-    def _fetch_klines_merged(
-        self, since: date, contract: DataContract
-    ) -> pd.DataFrame:
+    def _fetch_klines_merged(self, since: date, contract: DataContract) -> pd.DataFrame:
         """合并 ts.daily + ts.adj_factor + ts.stk_limit 3 API, 与老 fetcher pattern 对齐.
 
         老 fetcher 参考: backend/app/data_fetcher/fetch_base_data.py::fetch_klines_daily
@@ -268,9 +269,7 @@ class TushareDataSource(BaseDataSource):
             try:
                 df_d = self._client.query("daily", trade_date=td_str, fields=daily_fields)
             except Exception as e:
-                raise RuntimeError(
-                    f"Tushare daily 查询 trade_date={td_str} 失败: {e}"
-                ) from e
+                raise RuntimeError(f"Tushare daily 查询 trade_date={td_str} 失败: {e}") from e
 
             if df_d is None or df_d.empty:
                 d += timedelta(days=1)
@@ -279,18 +278,12 @@ class TushareDataSource(BaseDataSource):
 
             # 2. adj_factor (可空 → fallback 1.0)
             try:
-                df_adj = self._client.query(
-                    "adj_factor", trade_date=td_str, fields=adj_fields
-                )
+                df_adj = self._client.query("adj_factor", trade_date=td_str, fields=adj_fields)
             except Exception as e:
-                raise RuntimeError(
-                    f"Tushare adj_factor 查询 trade_date={td_str} 失败: {e}"
-                ) from e
+                raise RuntimeError(f"Tushare adj_factor 查询 trade_date={td_str} 失败: {e}") from e
 
             if df_adj is not None and not df_adj.empty:
-                df_d = df_d.merge(
-                    df_adj[["ts_code", "adj_factor"]], on="ts_code", how="left"
-                )
+                df_d = df_d.merge(df_adj[["ts_code", "adj_factor"]], on="ts_code", how="left")
                 # left merge 个别 ts_code 缺 adj_factor → fallna 1.0
                 df_d["adj_factor"] = df_d["adj_factor"].fillna(1.0)
             else:
@@ -298,13 +291,9 @@ class TushareDataSource(BaseDataSource):
 
             # 3. stk_limit (可空 → fallback None)
             try:
-                df_lim = self._client.query(
-                    "stk_limit", trade_date=td_str, fields=lim_fields
-                )
+                df_lim = self._client.query("stk_limit", trade_date=td_str, fields=lim_fields)
             except Exception as e:
-                raise RuntimeError(
-                    f"Tushare stk_limit 查询 trade_date={td_str} 失败: {e}"
-                ) from e
+                raise RuntimeError(f"Tushare stk_limit 查询 trade_date={td_str} 失败: {e}") from e
 
             if df_lim is not None and not df_lim.empty:
                 df_d = df_d.merge(
@@ -356,9 +345,7 @@ class TushareDataSource(BaseDataSource):
             try:
                 df = self._client.query(api_name, trade_date=td_str, fields=fields)
             except Exception as e:
-                raise RuntimeError(
-                    f"Tushare {api_name} 查询 trade_date={td_str} 失败: {e}"
-                ) from e
+                raise RuntimeError(f"Tushare {api_name} 查询 trade_date={td_str} 失败: {e}") from e
             if df is not None and not df.empty:
                 all_frames.append(df)
             d += timedelta(days=1)
@@ -391,9 +378,7 @@ class TushareDataSource(BaseDataSource):
         "klines_daily": frozenset({"up_limit", "down_limit"}),
     }
 
-    def _check_nan_ratio(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_nan_ratio(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """Override: 跳过 fallback 允许高 NaN 的列 (e.g. klines_daily up/down_limit)."""
         tolerant = self._NAN_TOLERANT_COLS.get(contract.name, frozenset())
         if not tolerant:
@@ -424,9 +409,7 @@ class TushareDataSource(BaseDataSource):
 
     # ---------- _check_value_ranges override ----------
 
-    def _check_value_ranges(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_value_ranges(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """业务约束 (与 contracts.py TableContract value_ranges 对齐)."""
         issues: list[str] = []
         if df.empty:
@@ -454,17 +437,13 @@ class TushareDataSource(BaseDataSource):
                 bad = df["pct_chg"].notna() & (df["pct_chg"].abs() > 1100)
                 n = int(bad.sum())
                 if n > 0:
-                    issues.append(
-                        f"[range] pct_chg 列 {n} 行 |%| > 1100 (超 10x 新股极限, 疑 bug)"
-                    )
+                    issues.append(f"[range] pct_chg 列 {n} 行 |%| > 1100 (超 10x 新股极限, 疑 bug)")
             # MVP 2.1c Sub3-prep: 3 新字段值域
             if "adj_factor" in df.columns:
                 bad = df["adj_factor"].notna() & (df["adj_factor"] <= 0)
                 n = int(bad.sum())
                 if n > 0:
-                    issues.append(
-                        f"[range] adj_factor 列 {n} 行 <= 0 (复权因子必须正)"
-                    )
+                    issues.append(f"[range] adj_factor 列 {n} 行 <= 0 (复权因子必须正)")
             for col in ("up_limit", "down_limit"):
                 if col in df.columns:
                     bad = df[col].notna() & (df[col] < 0)

@@ -11,6 +11,7 @@ U6 Resource Awareness: 系统知道自己硬件边界, 主动调度.
 实施时机:
   - MVP 3.0 Resource Orchestration (Wave 3 前置)
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -74,9 +75,7 @@ class ResourceManager(ABC):
         """返回当前资源快照 (给观察方用)."""
 
     @abstractmethod
-    def acquire(
-        self, profile: ResourceProfile, priority: Priority, caller: str
-    ) -> AdmissionResult:
+    def acquire(self, profile: ResourceProfile, priority: Priority, caller: str) -> AdmissionResult:
         """申请资源 lease (阻塞直到可用 / 超时 / 拒绝).
 
         Args:

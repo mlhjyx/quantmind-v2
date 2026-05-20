@@ -7,6 +7,7 @@
 仍需 PriceReader 读 Redis market:latest (current_price 来源是价格 Redis 非 DB).
 Primary / fallback 区别只在 shares 来源, 价格+peak+entry 从 DB 共享.
 """
+
 from __future__ import annotations
 
 from ..interface import Position, PositionSource, PositionSourceError
@@ -64,6 +65,9 @@ class DBPositionSource(PositionSource):
 
         current_prices = self._price_reader.get_prices(codes)
         return build_positions(
-            shares_dict, entry_prices, peak_prices, current_prices,
+            shares_dict,
+            entry_prices,
+            peak_prices,
+            current_prices,
             entry_dates=entry_dates,
         )

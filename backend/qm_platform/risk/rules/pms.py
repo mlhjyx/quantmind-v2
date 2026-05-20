@@ -13,6 +13,7 @@
 
 关联铁律: 24 / 31 / 33 / 34
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,9 @@ logger = logging.getLogger(__name__)
 # 当持仓数 > MIN_POSITIONS 且 skip_ratio > THRESHOLD 时, log P1 warning 触发监控.
 # 单股 skip (entry_price=0 等数据问题) OK, 但 19/19 全 skip 是系统性故障 (QMT 数据失联).
 SKIP_RATIO_ALERT_THRESHOLD: Final[float] = 0.6  # 60% 严格大于触发 (>0.6, 即 ≥ 61%)
-SKIP_RATIO_MIN_POSITIONS: Final[int] = 5  # 持仓数门槛: 持仓 ≤ 5 时 skip 视为噪声不告警 (避免 data quality 单股噪声)
+SKIP_RATIO_MIN_POSITIONS: Final[int] = (
+    5  # 持仓数门槛: 持仓 ≤ 5 时 skip 视为噪声不告警 (避免 data quality 单股噪声)
+)
 
 
 @dataclass(frozen=True)
@@ -37,8 +40,8 @@ class PMSThreshold:
     """单层保护阈值 (frozen, 不可变)."""
 
     level: int
-    min_gain: float         # 最低浮盈触发阈 (e.g. 0.30 = +30%)
-    max_drawdown: float     # 最低回撤触发阈 (e.g. 0.15 = -15% from peak)
+    min_gain: float  # 最低浮盈触发阈 (e.g. 0.30 = +30%)
+    max_drawdown: float  # 最低回撤触发阈 (e.g. 0.15 = -15% from peak)
 
 
 # 默认阈值 (对齐 CLAUDE.md §PMS 规则 + .env PMS_LEVEL{1,2,3}_*)

@@ -37,6 +37,7 @@
 - **cancel_callable DI**: 默认 None → cancel_stale raise NotImplementedError. Step 2
   wire 时注入 QMTConnectionManager.broker.cancel_pending_orders.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -103,10 +104,10 @@ class PlatformOrderRouter(OrderRouter):
         audit_trail: ExecutionAuditTrail | None = None,
     ) -> None:
         """Args:
-          lot_size: A 股整手 (默认 100). 测试可注 1.
-          cancel_callable: Step 2 wire QMT 撤单 DI. None → cancel_stale raise NotImplemented.
-          audit_trail: Step 3 (本批) audit hook DI. None → 跳过 record() (backward compat).
-            注入 StubExecutionAuditTrail / DBOutboxAuditTrail (MVP 3.4) 启用 audit chain.
+        lot_size: A 股整手 (默认 100). 测试可注 1.
+        cancel_callable: Step 2 wire QMT 撤单 DI. None → cancel_stale raise NotImplemented.
+        audit_trail: Step 3 (本批) audit hook DI. None → 跳过 record() (backward compat).
+          注入 StubExecutionAuditTrail / DBOutboxAuditTrail (MVP 3.4) 启用 audit chain.
         """
         if lot_size < 1:
             raise ValueError(f"lot_size 必须 ≥ 1, got {lot_size}")
@@ -169,7 +170,8 @@ class PlatformOrderRouter(OrderRouter):
         # Step 3 daily_pipeline wire 时由 multi-strategy diff prev_holdings 路径补齐.
         signal_codes = {sig.code for sig in signals}
         orphan_positions = {
-            code: qty for code, qty in current_positions.items()
+            code: qty
+            for code, qty in current_positions.items()
             if code not in signal_codes and qty > 0
         }
         if orphan_positions:
@@ -300,6 +302,7 @@ class PlatformOrderRouter(OrderRouter):
             from datetime import (  # noqa: PLC0415 — local import 防 module-top circular
                 datetime,
             )
+
             recorded_at = datetime.now(UTC).isoformat()
             for order, (target_shares, price) in zip(orders, order_audit_meta, strict=True):
                 self._audit_trail.record(

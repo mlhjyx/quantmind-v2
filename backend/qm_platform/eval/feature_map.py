@@ -5,6 +5,7 @@ Plan v9 Phase M Proposal 7: interface-only contract pre Q3-Q4 implementation tri
 
 Pattern: follow QPB SDK conventions — interface.py / factory.py / impl.py separation.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

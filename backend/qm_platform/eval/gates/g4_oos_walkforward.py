@@ -2,6 +2,7 @@
 
 不实跑回测 (Wave 3 暂只读已存 cache), ctx.wf_oos_sharpe + ctx.wf_baseline_sharpe 由调用方提供.
 """
+
 from __future__ import annotations
 
 from ..interface import GateResult

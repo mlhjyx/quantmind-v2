@@ -3,6 +3,7 @@
 ctx.active_corr_max: 调用方预计算的 max |corr| (避免 Gate 内部 IO).
 ctx.monthly_return_corr_max: 月收益 corr (可选, 设计稿 0.3 阈值).
 """
+
 from __future__ import annotations
 
 from ..interface import GateResult

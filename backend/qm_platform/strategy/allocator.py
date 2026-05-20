@@ -4,6 +4,7 @@
 
 Wave 3 静态等权, 后续 Wave 4+ 扩 vol-target / max-drawdown-budget / regime-dependent.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,8 +50,7 @@ class EqualWeightAllocator(CapitalAllocator):
         """
         if total_capital <= 0:
             raise ValueError(
-                f"total_capital 必须 > 0, 实测 {total_capital}. "
-                "paper 配置或 live cash 被异常扣完."
+                f"total_capital 必须 > 0, 实测 {total_capital}. paper 配置或 live cash 被异常扣完."
             )
         n = len(strategies)
         if n == 0:
