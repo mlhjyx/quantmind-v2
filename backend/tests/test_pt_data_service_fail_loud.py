@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest  # noqa: F401
 
@@ -24,7 +24,6 @@ import pytest  # noqa: F401
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import health_check as hc  # noqa: E402
-
 
 # ═══════════════════════════════════════════════════════════════
 # Bug A: pt_data_service fetch_daily_data fail-loud on status failure

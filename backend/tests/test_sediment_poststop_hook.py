@@ -32,9 +32,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "sediment_poststop.py"
 

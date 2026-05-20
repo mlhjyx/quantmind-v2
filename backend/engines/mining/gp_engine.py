@@ -1049,7 +1049,7 @@ class GPEngine:
                 )
                 for ind in invalid_inds
             ]
-            for ind, fut in zip(invalid_inds, futures):
+            for ind, fut in zip(invalid_inds, futures, strict=True):
                 ind.fitness.values = fut.result()
 
     def _evaluate_individual(
