@@ -64,8 +64,9 @@ A 股 T+1 制度: 当日买入的股票当日不可卖. 以下为 PaperBroker / 
 ### §3.1 Share-side T+1 — 结构性保证 (非显式 guard)
 
 PaperBroker 是**月频调仓**引擎. `paper_broker.py:_do_rebalance` 在单次
-`execute_rebalance` 调用内**先卖后买**: 卖出操作的 `holdings` 来自上月末
-`position_snapshot` 快照, 买入在卖出之后执行; 两次调仓相隔 ~20 个交易日. 因此
+`execute_rebalance` 调用内**先卖后买**: 卖出操作的 `holdings` 来自最近一次
+`position_snapshot` 快照 (上一次调仓时 `save_state` 写入), 买入在卖出之后执行;
+两次调仓相隔 ~20 个交易日. 因此
 "当日买入又当日卖出" 在当前架构下**结构上不可能发生** —— share-side T+1 规则由
 调仓架构本身保证. `process_pending_orders` (T+1 封板补单) 只买不卖, 同样不产生违规.
 

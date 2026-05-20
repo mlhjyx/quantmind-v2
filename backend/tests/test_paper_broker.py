@@ -59,6 +59,8 @@ def _make_price_data(
                         "up_limit": up_limit,
                         "down_limit": round(pre_close * 0.90, 2),
                         "turnover_rate": 0.3,
+                        "total_mv": 5_000_000_000.0,
+                        "volatility_20": 0.30,
                     }
                 )
             else:
@@ -76,6 +78,8 @@ def _make_price_data(
                         "up_limit": round(pre_close * 1.10, 2),
                         "down_limit": round(pre_close * 0.90, 2),
                         "turnover_rate": 5.0,
+                        "total_mv": 5_000_000_000.0,
+                        "volatility_20": 0.30,
                     }
                 )
     return pd.DataFrame(rows)
@@ -222,6 +226,27 @@ class TestT1Invariant:
         )
         # All fills are on the rebalance trade_date (no cross-day leakage).
         assert all(f.trade_date == td for f in fills)
+
+    def test_partial_selldown_code_not_also_bought(self) -> None:
+        """Downscale path: a code in the target whose holding EXCEEDS its target
+        weight is partially SOLD down — it must not also appear as a buy fill in
+        the same rebalance (the T+1 invariant must hold for sell-side deltas too).
+        """
+        td = date(2024, 3, 29)
+        price_data = _make_price_data(["DOWNSIZE", "NEW"], [td])
+        broker = _make_broker(holdings={"DOWNSIZE": 90_000}, cash=50_000)
+
+        fills, _ = broker.execute_rebalance(
+            {"DOWNSIZE": 0.10, "NEW": 0.40}, td, price_data, signal_date=td
+        )
+        buy_codes = {f.code for f in fills if f.direction == "buy"}
+        sell_codes = {f.code for f in fills if f.direction == "sell"}
+
+        assert "DOWNSIZE" in sell_codes, "holding over target weight → partial sell"
+        assert "NEW" in buy_codes
+        assert buy_codes & sell_codes == set(), (
+            f"T+1 violation — code(s) bought AND sold same day: {buy_codes & sell_codes}"
+        )
 
     def test_pending_order_retry_only_buys(self) -> None:
         """process_pending_orders (T+1 补单) only ever buys — never sells a same-day
