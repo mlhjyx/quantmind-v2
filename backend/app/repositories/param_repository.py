@@ -8,6 +8,7 @@ CLAUDE.md: 所有数据库操作用async/await，Service通过Depends获取db se
 """
 
 import json
+from datetime import datetime
 from typing import Any
 
 from app.repositories.base_repository import BaseRepository
@@ -243,3 +244,98 @@ class ParamRepository(BaseRepository):
             }
             for r in rows
         ]
+
+    # ─── 一键回滚 (DEV_PARAM_CONFIG §4.4) ───
+
+    async def get_params_created_after(self, timestamp: datetime) -> list[str]:
+        """返回在 timestamp 之后才首次创建的参数名列表。
+
+        判定: param_change_log 中该参数 created_at > timestamp 的最早一条变更,
+        其 old_value IS NULL —— 即该参数在 timestamp 时点尚不存在 (首次 set
+        时 update_param 传入 old_value=None). 这类参数无法回滚到"不存在"状态
+        (rollback_to 不删除参数行), 由 ParamService.rollback_to 报告为 skipped。
+
+        Args:
+            timestamp: 回滚目标时间点。
+
+        Returns:
+            参数名列表 (按名称排序)。
+        """
+        rows = await self.fetch_all(
+            """
+            SELECT param_name FROM (
+                SELECT DISTINCT ON (param_name) param_name, old_value
+                FROM param_change_log
+                WHERE created_at > :ts
+                ORDER BY param_name, created_at ASC
+            ) earliest
+            WHERE old_value IS NULL
+            ORDER BY param_name
+            """,
+            {"ts": timestamp},
+        )
+        return [r[0] for r in rows]
+
+    async def rollback_to(
+        self,
+        timestamp: datetime,
+        reason: str,
+        changed_by: str = "system",
+    ) -> list[str]:
+        """将所有在 timestamp 之后变更过的参数回滚到该时点的值。
+
+        单条 SQL (CTE) 原子完成 审计写入 + 值回滚, 全程 JSONB 列对列直接复制
+        (不经 Python json 序列化往返 —— 与 asyncpg 对 JSONB 的返回类型无关):
+          - rollback_plan: 每个 post-T 参数的最早一条变更 → old_value =
+            该参数在 timestamp 时点的值
+          - applicable: 过滤掉 value_at_t IS NULL (timestamp 之后才创建的参数,
+            不回滚 —— 见 get_params_created_after)
+          - audit_insert: 写 param_change_log 审计行 (old=当前值, new=T 时点值,
+            数据修改型 CTE 即使未被主查询引用也必然执行 —— PG 文档保证)
+          - 主 UPDATE: ai_parameters.param_value ← T 时点值
+
+        三个 CTE 与主 UPDATE 共享同一语句快照, audit_insert 写入的行不会被
+        rollback_plan 看见 (无 created_at 污染)。
+
+        Args:
+            timestamp: 回滚目标时间点。
+            reason: 回滚原因 (写入审计行)。
+            changed_by: 审计行 changed_by + ai_parameters.updated_by。
+
+        Returns:
+            实际被回滚的参数名列表 (UPDATE RETURNING)。
+        """
+        result = await self.execute(
+            """
+            WITH rollback_plan AS (
+                SELECT DISTINCT ON (param_name) param_name,
+                       old_value AS value_at_t
+                FROM param_change_log
+                WHERE created_at > :ts
+                ORDER BY param_name, created_at ASC
+            ),
+            applicable AS (
+                SELECT rp.param_name, rp.value_at_t,
+                       a.param_value AS current_value
+                FROM rollback_plan rp
+                JOIN ai_parameters a ON a.param_name = rp.param_name
+                WHERE rp.value_at_t IS NOT NULL
+            ),
+            audit_insert AS (
+                INSERT INTO param_change_log
+                    (param_name, old_value, new_value, changed_by, reason)
+                SELECT param_name, current_value, value_at_t, :by, :reason
+                FROM applicable
+                RETURNING param_name
+            )
+            UPDATE ai_parameters a
+            SET param_value = ap.value_at_t,
+                updated_by = :by,
+                updated_at = NOW()
+            FROM applicable ap
+            WHERE a.param_name = ap.param_name
+            RETURNING a.param_name
+            """,
+            {"ts": timestamp, "reason": reason, "by": changed_by},
+        )
+        return [r[0] for r in result.fetchall()]

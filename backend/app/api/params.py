@@ -5,6 +5,7 @@ DEV_PARAM_CONFIG.md: L2级别参数通过前端界面实时调整。
 CLAUDE.md: Service依赖注入统一用FastAPI的Depends链注入。
 """
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,6 +36,18 @@ class UpdateParamRequest(BaseModel):
     changed_by: str = Field(
         default="manual",
         description="变更者: manual/ai/system",
+        pattern=r"^(manual|ai|system)$",
+    )
+
+
+class RollbackParamsRequest(BaseModel):
+    """一键回滚的请求体。"""
+
+    timestamp: datetime = Field(..., description="回滚目标时间点 (ISO-8601, 建议带时区偏移)")
+    reason: str = Field(..., min_length=1, max_length=500, description="回滚原因（必填）")
+    changed_by: str = Field(
+        default="system",
+        description="发起者: manual/ai/system",
         pattern=r"^(manual|ai|system)$",
     )
 
@@ -159,3 +172,28 @@ async def init_defaults(
     """
     count = await svc.init_defaults()
     return {"initialized_count": count}
+
+
+@router.post("/rollback")
+async def rollback_params(
+    body: RollbackParamsRequest,
+    svc: ParamService = Depends(_get_param_service),
+) -> dict[str, Any]:
+    """一键回滚: 将所有参数恢复到指定时间点的状态 (DEV_PARAM_CONFIG §4.4)。
+
+    对每个在 timestamp 之后变更过的参数, 将其值恢复为该时点的值, 并写入
+    param_change_log 审计。timestamp 之后才首次创建的参数不回滚也不删除,
+    在 skipped_created_after 中报告。timestamp 之后无任何变更时返回空摘要。
+
+    Args:
+        body: 含 timestamp（回滚目标时间点）、reason（必填原因）、changed_by。
+
+    Returns:
+        回滚摘要: timestamp / rolled_back / rolled_back_count /
+        skipped_created_after / skipped_count。
+    """
+    return await svc.rollback_to(
+        timestamp=body.timestamp,
+        reason=body.reason,
+        changed_by=body.changed_by,
+    )

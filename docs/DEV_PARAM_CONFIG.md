@@ -268,12 +268,34 @@ CREATE TABLE param_change_log (
 
 ## 4.4 一键回滚
 
+✅ **已实现 (Plan H, 2026-05-20)**: `ParamService.rollback_to(timestamp, reason,
+changed_by)` + `POST /api/params/rollback`。
+
+回滚 = 对每个在 `timestamp` 之后变更过的参数, 将其值恢复为该时点的值
+(`param_change_log` 中该参数 post-T 最早一条变更的 `old_value`)。
+
+实现要点:
+- **单条 CTE SQL 原子完成** 审计写入 + 值回滚 (`ParamRepository.rollback_to`):
+  `rollback_plan` (DISTINCT ON 取每参数 post-T 最早变更) → `applicable`
+  (过滤掉 `value_at_t IS NULL` 即 T 之后才创建的参数) → `audit_insert`
+  (写 `param_change_log` 审计行) → 主 `UPDATE ai_parameters`。
+- **JSONB 列对列直接复制**, 不经 Python `json.dumps` 序列化往返 —— 与
+  asyncpg 对 JSONB 列的返回类型无关, 杜绝双重编码。
+- **timestamp 之后才首次创建的参数不回滚也不删除参数行**, 在返回的
+  `skipped_created_after` 中报告 (`get_params_created_after`)。
+- 审计行 `reason` 带 `[rollback→T]` 前缀便于检索; `changed_by` 默认 `system`。
+- timestamp 之后无任何变更 → 返回空摘要 (合法情况, 非错误)。
+
 ```python
-def rollback_params_to(timestamp: datetime):
-    """回滚所有参数到指定时间点的状态"""
-    # 从param_change_log反向回放
-    # 支持前端一键操作
+async def rollback_to(timestamp, reason, changed_by="system") -> dict:
+    """回滚所有参数到 timestamp 时点状态; 返回
+    {timestamp, rolled_back, rolled_back_count,
+     skipped_created_after, skipped_count} 摘要"""
 ```
+
+> §4.2 `estimate_param_impact` 变更影响预估弹窗 —— 暂未实现 (该节示例的
+> lambda key `holding_n`/`single_stock_max` 与实际参数名 `holding_count_n`/
+> `single_stock_max_weight` 不一致, 需先对齐参数名映射, 留独立 follow-up)。
 
 ---
 

@@ -9,6 +9,7 @@ Mock策略: ParamRepository全部mock，不依赖DB。
 API测试通过FastAPI dependency_overrides注入mock session。
 """
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -47,6 +48,8 @@ def _make_mock_repo(
     repo.update_param_value = AsyncMock(return_value=True)
     repo.insert_change_log = AsyncMock()
     repo.get_change_log = AsyncMock(return_value=[])
+    repo.rollback_to = AsyncMock(return_value=[])
+    repo.get_params_created_after = AsyncMock(return_value=[])
     return repo
 
 
@@ -82,12 +85,8 @@ class TestParamDefaults:
             assert param_def.default_value is not None or param_def.param_type == ParamType.STR, (
                 f"{key} 缺少default_value"
             )
-            assert isinstance(param_def.param_type, ParamType), (
-                f"{key} param_type不是ParamType枚举"
-            )
-            assert isinstance(param_def.module, ParamModule), (
-                f"{key} module不是ParamModule枚举"
-            )
+            assert isinstance(param_def.param_type, ParamType), f"{key} param_type不是ParamType枚举"
+            assert isinstance(param_def.module, ParamModule), f"{key} module不是ParamModule枚举"
             assert param_def.description and len(param_def.description) > 0, (
                 f"{key} 缺少description"
             )
@@ -121,8 +120,18 @@ class TestParamDefaults:
     def test_get_modules_returns_all(self) -> None:
         """get_modules()应返回所有已注册模块。"""
         modules = get_modules()
-        expected = {"factor", "signal", "backtest", "risk", "paper_trading",
-                    "universe", "execution", "gp_engine", "scheduler", "data"}
+        expected = {
+            "factor",
+            "signal",
+            "backtest",
+            "risk",
+            "paper_trading",
+            "universe",
+            "execution",
+            "gp_engine",
+            "scheduler",
+            "data",
+        }
         # 允许有更多模块但必须包含这些核心模块
         for mod in expected:
             assert mod in modules, f"模块 {mod} 缺失"
@@ -335,5 +344,126 @@ class TestParamAPI:
                     json={"value": 25},
                 )
             assert resp.status_code == 422, "缺少必填字段reason应返回422"
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+
+# ═══════════════════════════════════════════════════
+# 4. 一键回滚测试 (DEV_PARAM_CONFIG §4.4 — Plan H)
+# ═══════════════════════════════════════════════════
+
+
+class TestParamRollback:
+    """ParamService.rollback_to + POST /api/params/rollback 测试（mock DB）。"""
+
+    @pytest.mark.asyncio
+    async def test_rollback_service_composes_summary(self) -> None:
+        """rollback_to 正确组装 rolled_back / skipped 摘要。"""
+        svc = _make_param_service_with_mock()
+        svc.repo.rollback_to = AsyncMock(return_value=["signal.top_n", "factor.ic_threshold"])
+        svc.repo.get_params_created_after = AsyncMock(return_value=["risk.new_param"])
+
+        ts = datetime(2026, 5, 1, tzinfo=UTC)
+        result = await svc.rollback_to(timestamp=ts, reason="测试回滚")
+
+        assert result["timestamp"] == ts.isoformat()
+        assert result["rolled_back_count"] == 2
+        # rolled_back 按名称排序
+        assert result["rolled_back"] == ["factor.ic_threshold", "signal.top_n"]
+        assert result["skipped_count"] == 1
+        assert result["skipped_created_after"] == ["risk.new_param"]
+
+    @pytest.mark.asyncio
+    async def test_rollback_service_audit_reason_prefixed(self) -> None:
+        """审计 reason 带 [rollback→T] 前缀, 便于在 param_change_log 检索。"""
+        svc = _make_param_service_with_mock()
+        svc.repo.rollback_to = AsyncMock(return_value=[])
+        svc.repo.get_params_created_after = AsyncMock(return_value=[])
+
+        ts = datetime(2026, 5, 1, tzinfo=UTC)
+        await svc.rollback_to(timestamp=ts, reason="人工原因")
+
+        audit_reason = svc.repo.rollback_to.call_args.args[1]
+        assert audit_reason.startswith("[rollback→2026-05-01T00:00:00+00:00]")
+        assert "人工原因" in audit_reason
+
+    @pytest.mark.asyncio
+    async def test_rollback_api_success(self) -> None:
+        """POST /api/params/rollback 成功返回200 + 回滚摘要。"""
+        svc = _make_param_service_with_mock()
+        svc.repo.rollback_to = AsyncMock(return_value=["signal.top_n"])
+        svc.repo.get_params_created_after = AsyncMock(return_value=[])
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/params/rollback",
+                    json={
+                        "timestamp": "2026-05-01T00:00:00+00:00",
+                        "reason": "回滚到5月1日基线",
+                    },
+                )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["rolled_back"] == ["signal.top_n"]
+            assert data["rolled_back_count"] == 1
+            assert data["skipped_count"] == 0
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_rollback_api_no_changes_returns_empty(self) -> None:
+        """timestamp 之后无变更 → 返回200 + 空摘要 (合法情况, 非错误)。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/params/rollback",
+                    json={
+                        "timestamp": "2030-01-01T00:00:00+00:00",
+                        "reason": "未来时间点无变更",
+                    },
+                )
+            assert resp.status_code == 200
+            assert resp.json()["rolled_back_count"] == 0
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_rollback_api_missing_reason_returns_422(self) -> None:
+        """POST /api/params/rollback 缺少必填 reason 返回422。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/params/rollback",
+                    json={"timestamp": "2026-05-01T00:00:00+00:00"},
+                )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_rollback_api_missing_timestamp_returns_422(self) -> None:
+        """POST /api/params/rollback 缺少必填 timestamp 返回422。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.post(
+                    "/api/params/rollback",
+                    json={"reason": "缺时间戳"},
+                )
+            assert resp.status_code == 422
         finally:
             app.dependency_overrides.pop(dep_key, None)
