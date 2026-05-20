@@ -173,10 +173,15 @@ class TestEvalAgentExecution:
     """EvalAgent 代码执行和IC计算。"""
 
     def test_valid_factor_code_evaluates(self):
-        """有效因子代码能执行并产出IC。"""
+        """有效因子代码能执行并产出IC。
+
+        因子代码不写 `import` — pd/np 已由 EvalAgent 沙箱注入 (契约见
+        FactorAgent._SYSTEM_PROMPT 规则 3 "已导入为 pd, np" + 规则 6
+        "不能使用 import"). 2026-05-20 Plan v8 Wave 3 安全加固将沙箱
+        __builtins__ 置空, import 语句不再可用 — 本测试遵循该契约.
+        """
         code = """
 def compute_factor(df):
-    import pandas as pd
     return df["close"].rank(ascending=False)
 """
         price_data = _make_price_data(n_dates=40, n_stocks=50)
