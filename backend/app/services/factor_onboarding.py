@@ -895,7 +895,7 @@ class FactorOnboardingService:
         """运行 G1-G5 自动质量门 (engines.factor_gate.FactorGatePipeline)。
 
         G1 |IC|>0.02 / G2 Active-corr<0.7 / G3 t-stat (BH-FDR) / G4 中性化衰减<50%
-        / G5 方向一致。G7-G8 半自动 (SimBroker 回测 / strategy 匹配) 由 run_gates 标
+        / G5 方向一致。G7 半自动 (SimBroker 回测, 真需回测运行) 由 run_gates 标
         PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
 
         G2 真正交 (Plan A): 通过 `_compute_active_factor_corr` 查 CORE (Active) 池
@@ -904,6 +904,10 @@ class FactorOnboardingService:
 
         G6 auto-assist (Plan B): Newey-West HAC t 机械可算 → `confirm_g6_auto` 自动算
         并填充 G6 (非纯 PENDING), 辅助 L2 晋升复核。不改 auto_gates_passed (仅 G1-G5)。
+
+        G8 auto-assist (Plan F): FactorClassifier 自动分类 (IC 衰减半衰期 + 信号稀疏度
+        → signal_type / 调仓频率) → `confirm_g8` 填充 G8 策略匹配建议; 分类不确定
+        (unclassified/hybrid) → 保持 PENDING。同 G6 不改 auto_gates_passed。
 
         Args:
             conn: psycopg2 连接 (只读 — G2 查 CORE 因子值, Service 不 commit 铁律 32)。
@@ -954,10 +958,107 @@ class FactorOnboardingService:
         # 校正) → 自动算并 confirm_g6, L2 人工晋升 ACTIVE 时 report.summary() 已含 G6
         # 计算值 (非纯 PENDING)。不改 auto_gates_passed (G1-G5) → 不改 accept/reject。
         pipeline.confirm_g6_auto(report, raw_ic_series)
-        # 返回 failed 仅 G1-G5 自动门 (决策相关, 驱动 OnboardingBlocked); G6 computed
+        # G8 auto-assist (Plan F): FactorClassifier 自动分类 (signal_type / 调仓频率)
+        # → confirm_g8, L2 人工晋升 ACTIVE 时 report 已含策略匹配建议。同 G6 不改
+        # auto_gates_passed; 分类不确定 (unclassified/hybrid) → G8 保持 PENDING。
+        self._run_g8_auto_assist(pipeline, report, factor_name, ic_df, factor_values_df)
+        # 返回 failed 仅 G1-G5 自动门 (决策相关, 驱动 OnboardingBlocked); G6/G8 computed
         # verdict 见 report.summary() (logged for L2)。
         auto_failed = [g for g in report.failed_gates if g in ("G1", "G2", "G3", "G4", "G5")]
         return report.auto_gates_passed, report.summary(), auto_failed
+
+    def _run_g8_auto_assist(
+        self,
+        pipeline: Any,
+        report: Any,
+        factor_name: str,
+        ic_df: pd.DataFrame,
+        factor_values_df: pd.DataFrame,
+    ) -> None:
+        """G8 半自动门 auto-assist — FactorClassifier 自动分类 → confirm_g8 (Plan F)。
+
+        G8 (strategy 策略匹配) 是半自动门 — run_gates 标 PENDING。FactorClassifier
+        以 IC 衰减半衰期 + 信号稀疏度判定 signal_type (ranking/fast_ranking/event/
+        modifier) + 推荐调仓频率, 入口是简单参数 (ic_decay dict + sparsity), 可在
+        onboarding 自动跑 → GateReport 的 G8 行带策略匹配建议供 L2 晋升复核。
+
+        分类不确定 (signal_type=unclassified/hybrid) 或数据异常 → G8 保持 run_gates
+        设定的 PENDING (fail-safe, 不臆造; 同 G6 confirm_g6_auto 体例)。本方法 in-place
+        改 report, 不改 auto_gates_passed (仅 G1-G5)。
+
+        Args:
+            pipeline: FactorGatePipeline 实例 (调 confirm_g8)。
+            report: run_gates 产出的 GateReport。
+            factor_name: 因子名。
+            ic_df: _compute_ic_multi_horizon 输出 (含 ic_1d/5d/10d/20d)。
+            factor_values_df: [code, trade_date, raw_value, neutral_value]。
+        """
+        from engines.factor_classifier import (  # noqa: PLC0415
+            FactorClassifier,
+            FactorSignalType,
+        )
+
+        try:
+            # ic_decay {horizon: mean IC} — FactorClassifier 拟合衰减半衰期用
+            ic_decay: dict[int, float] = {}
+            for h in HORIZONS:
+                col = f"ic_{h}d"
+                if col in ic_df.columns:
+                    vals = ic_df[col].dropna()
+                    if not vals.empty:
+                        ic_decay[h] = float(vals.mean())
+            if len(ic_decay) < 2:
+                logger.info(
+                    "G8 auto-assist: ic_decay 样本不足 (<2 horizon), G8 保持 PENDING (factor=%s)",
+                    factor_name,
+                )
+                return
+
+            # 信号稀疏度 — raw_value 非 NaN 占比 (event 因子 raw 多为空 → 低稀疏度;
+            # ranking 因子 raw 全覆盖 → 高稀疏度)。中性化后 neutral_value 经填充少
+            # NaN, 不能反映信号稀疏度 — 故用 raw_value。
+            raw_col = factor_values_df["raw_value"]
+            signal_sparsity = float(raw_col.notna().mean()) if len(raw_col) > 0 else 0.80
+
+            classification = FactorClassifier().classify_factor(
+                factor_name=factor_name,
+                ic_decay=ic_decay,
+                signal_sparsity=signal_sparsity,
+            )
+        except (ValueError, KeyError, ZeroDivisionError, RuntimeError) as exc:
+            # 数据/拟合异常 → G8 保持 PENDING (fail-safe)。TypeError 等代码 bug 不吞。
+            logger.warning(
+                "G8 auto-assist: 分类失败, G8 保持 PENDING (factor=%s): %s",
+                factor_name,
+                exc,
+                exc_info=True,
+            )
+            return
+
+        sig = classification.signal_type
+        if sig in (FactorSignalType.UNCLASSIFIED, FactorSignalType.HYBRID):
+            logger.info(
+                "G8 auto-assist: 分类=%s 不确定, G8 保持 PENDING 待 L2 (factor=%s)",
+                sig.value,
+                factor_name,
+            )
+            return
+
+        pipeline.confirm_g8(
+            report,
+            signal_type=sig.value,
+            rebalance_freq=classification.recommended_frequency,
+            strategy_notes=(
+                f"[auto-classified conf={classification.confidence:.2f}] {classification.reasoning}"
+            ),
+        )
+        logger.info(
+            "G8 auto-assist: factor=%s → signal_type=%s, freq=%s, conf=%.2f",
+            factor_name,
+            sig.value,
+            classification.recommended_frequency,
+            classification.confidence,
+        )
 
     def _compute_raw_ic_20d(
         self,
