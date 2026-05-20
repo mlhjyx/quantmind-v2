@@ -131,7 +131,7 @@ def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:
     价格数据从klines_daily读取，QMT资产查询获取总资产用于weight计算。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         qmt_positions: {code_with_suffix: shares} QMT持仓（可能含.SH/.SZ后缀）。
 
@@ -208,7 +208,7 @@ def write_live_performance(conn, d: date, nav_total: float, cash: float) -> None
     """将QMT当日净值写入performance_series (execution_mode='live')。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         nav_total: 当日总资产（QMT total_asset，已含持仓+现金+冻结）。
         cash: 当日可用现金（用于cash_ratio计算）。

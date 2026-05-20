@@ -27,9 +27,9 @@ _GUARDED_SCRIPTS = [
     _REPO / "scripts" / "intraday_monitor.py",
 ]
 
-# An inline DB secret literal — `password="..."` / `password='...'` with a
-# value char. Does NOT match `password=os.environ[...]` / `password=None`.
-_INLINE_SECRET = re.compile(r"""password\s*=\s*["'][^"']""")
+# An inline DB secret literal — `password="..."` / `password='...'` (incl. the
+# empty `password=""`). Does NOT match `password=os.environ[...]` / `password=None`.
+_INLINE_SECRET = re.compile(r"""password\s*=\s*["']""")
 
 
 @pytest.mark.parametrize("script", _GUARDED_SCRIPTS, ids=lambda p: p.name)
