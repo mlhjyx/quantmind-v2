@@ -7,7 +7,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -44,6 +44,26 @@ class TestNotificationRequest(BaseModel):
     title: str = "测试通知"
     content: str = "这是一条测试通知，用于验证通知系统是否正常工作。"
     market: str = "system"
+
+
+class NotificationPreferences(BaseModel):
+    """通知偏好请求/响应体 (全量替换语义 — 前端 GET 当前值后整体 PUT 回)。
+
+    字段默认值对齐 notification_preferences 表的列默认值 (QUANTMIND_V2_DDL_FINAL.sql)。
+    """
+
+    toast_p0: bool = True
+    toast_p1: bool = True
+    toast_p2: bool = True
+    toast_p3: bool = True
+    dingtalk_enabled: bool = False
+    dingtalk_webhook: str | None = Field(default=None, max_length=500)
+    dispatch_p0: bool = True
+    dispatch_p1: bool = True
+    dispatch_p2: bool = False
+    quiet_enabled: bool = True
+    quiet_start: int = Field(default=23, ge=0, le=23, description="静默开始小时 0-23")
+    quiet_end: int = Field(default=7, ge=0, le=23, description="静默结束小时 0-23")
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +147,40 @@ async def clear_old(
     """
     count = await repo.delete_old(days)
     return {"success": True, "deleted_count": count}
+
+
+@router.get("/preferences")
+async def get_preferences(
+    repo: NotificationRepository = Depends(_get_repo),
+) -> dict[str, Any]:
+    """获取通知偏好 (DEV_NOTIFICATIONS §8)。
+
+    notification_preferences 是单例设置表; 无记录时返回列默认值
+    (id / updated_at 为 None)。
+
+    Returns:
+        通知偏好字典。
+    """
+    prefs = await repo.get_preferences()
+    if prefs is None:
+        return {**NotificationPreferences().model_dump(), "id": None, "updated_at": None}
+    return prefs
+
+
+@router.put("/preferences")
+async def update_preferences(
+    body: NotificationPreferences,
+    repo: NotificationRepository = Depends(_get_repo),
+) -> dict[str, Any]:
+    """更新通知偏好 (DEV_NOTIFICATIONS §8) — 全量替换 (单例 upsert)。
+
+    Args:
+        body: 完整的通知偏好 (前端 GET 当前值, 用户编辑后整体提交)。
+
+    Returns:
+        写入后的通知偏好字典 (含 id / updated_at)。
+    """
+    return await repo.upsert_preferences(body.model_dump())
 
 
 @router.get("/{notification_id}")

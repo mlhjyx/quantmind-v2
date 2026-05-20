@@ -193,6 +193,76 @@ class NotificationRepository(BaseRepository):
         )
         return result.rowcount
 
+    # ─── 通知偏好 (DEV_NOTIFICATIONS §7+§8 — 单例设置表) ───
+
+    async def get_preferences(self) -> dict[str, Any] | None:
+        """读取通知偏好。
+
+        notification_preferences 是单用户单例设置表 (无业务键)。取最新一行;
+        无任何行时返回 None (调用方用列默认值兜底)。
+
+        Returns:
+            偏好字典, 无记录返回 None。
+        """
+        row = await self.fetch_one(
+            """SELECT id, toast_p0, toast_p1, toast_p2, toast_p3,
+                      dingtalk_enabled, dingtalk_webhook,
+                      dispatch_p0, dispatch_p1, dispatch_p2,
+                      quiet_enabled, quiet_start, quiet_end, updated_at
+               FROM notification_preferences
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 1"""
+        )
+        if not row:
+            return None
+        return _prefs_row_to_dict(row)
+
+    async def upsert_preferences(self, prefs: dict[str, Any]) -> dict[str, Any]:
+        """单例 upsert 通知偏好 (全量替换语义)。
+
+        notification_preferences 单例表无业务键: 先做无 WHERE 的 UPDATE
+        (单例下命中 0 或 1 行); rowcount==0 (尚无行) 时 INSERT 首行。
+
+        Args:
+            prefs: 含 12 个可编辑字段的字典 (由 NotificationPreferences 模型
+                model_dump() 产出, 字段齐全)。
+
+        Returns:
+            写入后的偏好字典 (含 id / updated_at)。
+        """
+        result = await self.execute(
+            """UPDATE notification_preferences SET
+                   toast_p0 = :toast_p0, toast_p1 = :toast_p1,
+                   toast_p2 = :toast_p2, toast_p3 = :toast_p3,
+                   dingtalk_enabled = :dingtalk_enabled,
+                   dingtalk_webhook = :dingtalk_webhook,
+                   dispatch_p0 = :dispatch_p0, dispatch_p1 = :dispatch_p1,
+                   dispatch_p2 = :dispatch_p2,
+                   quiet_enabled = :quiet_enabled,
+                   quiet_start = :quiet_start, quiet_end = :quiet_end,
+                   updated_at = NOW()""",
+            prefs,
+        )
+        if result.rowcount == 0:
+            await self.execute(
+                """INSERT INTO notification_preferences (
+                       toast_p0, toast_p1, toast_p2, toast_p3,
+                       dingtalk_enabled, dingtalk_webhook,
+                       dispatch_p0, dispatch_p1, dispatch_p2,
+                       quiet_enabled, quiet_start, quiet_end
+                   ) VALUES (
+                       :toast_p0, :toast_p1, :toast_p2, :toast_p3,
+                       :dingtalk_enabled, :dingtalk_webhook,
+                       :dispatch_p0, :dispatch_p1, :dispatch_p2,
+                       :quiet_enabled, :quiet_start, :quiet_end
+                   )""",
+                prefs,
+            )
+        updated = await self.get_preferences()
+        if updated is None:  # pragma: no cover - 刚 upsert 必有行 (fail-loud)
+            raise RuntimeError("upsert_preferences: 写入后仍读不到偏好行")
+        return updated
+
 
 class NotificationService:
     """统一通知服务。
@@ -809,4 +879,31 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "is_read": row[7],
         "is_acted": row[8],
         "created_at": row[9].isoformat() if row[9] else None,
+    }
+
+
+def _prefs_row_to_dict(row: Any) -> dict[str, Any]:
+    """将 notification_preferences 行转换为偏好字典。
+
+    Args:
+        row: SELECT 结果行 (列顺序见 get_preferences 的 SELECT)。
+
+    Returns:
+        偏好字典。
+    """
+    return {
+        "id": str(row[0]),
+        "toast_p0": row[1],
+        "toast_p1": row[2],
+        "toast_p2": row[3],
+        "toast_p3": row[4],
+        "dingtalk_enabled": row[5],
+        "dingtalk_webhook": row[6],
+        "dispatch_p0": row[7],
+        "dispatch_p1": row[8],
+        "dispatch_p2": row[9],
+        "quiet_enabled": row[10],
+        "quiet_start": row[11],
+        "quiet_end": row[12],
+        "updated_at": row[13].isoformat() if row[13] else None,
     }

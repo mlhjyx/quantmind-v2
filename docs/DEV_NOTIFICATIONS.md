@@ -226,11 +226,14 @@ CREATE TABLE notification_preferences (
 | /api/notifications/clear-old | DELETE | 清理旧通知 |
 | /ws/notifications | WS | 实时推送 |
 
-> ✅ **实现状态 (Plan I, 2026-05-20)**: `read-all` (PUT) + `clear-old` (DELETE)
-> 已实现 (`api/notifications.py` + `NotificationRepository.mark_all_read` /
-> `delete_old`)。`clear-old` 仅删除超过 N 天 (默认 30, 1-365) 的**已读**通知,
-> 未读通知一律保留。`preferences` GET/PUT 待实现 —— 需 `notification_preferences`
-> 表的 service/repo 层 (独立 follow-up)。
+> ✅ **实现状态 (Plan I+K, 2026-05-20)**: `read-all` (PUT) + `clear-old` (DELETE)
+> + `preferences` GET/PUT 全部已实现 (`api/notifications.py` +
+> `NotificationRepository`)。`clear-old` 仅删除超过 N 天 (默认 30, 1-365) 的
+> **已读**通知, 未读一律保留。`preferences` 走单例表 `notification_preferences`
+> (无业务键 → singleton upsert: 无 WHERE 的 UPDATE, rowcount==0 时 INSERT);
+> GET 无记录时返回列默认值。字段以 `QUANTMIND_V2_DDL_FINAL.sql` 为准 (12 可编辑
+> 字段: toast_p0-3 / dingtalk_enabled+webhook / dispatch_p0-2 / quiet_enabled
+> +start+end —— §7 的 center_p*/sound_*/dingtalk_verified 不在 DDL_FINAL, 未实现)。
 
 ---
 
