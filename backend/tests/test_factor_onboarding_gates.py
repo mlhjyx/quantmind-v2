@@ -296,20 +296,24 @@ def test_upsert_registry_duplicate_returns_existing_id(service: FactorOnboarding
 
 
 def _factor_values_df(n_dates: int, n_codes: int, value_fn) -> pd.DataFrame:
-    """构造 [code, trade_date, neutral_value] 因子值 DataFrame。
+    """构造 [code, trade_date, raw_value, neutral_value] 因子值 DataFrame。
 
-    value_fn(date_idx, code_idx) -> float — 单日截面值生成器。
+    与 onboarding `factor_values_df` 4 列契约一致 (raw_value 取与 neutral 同值,
+    本测试只检验 neutral_value)。value_fn(date_idx, code_idx) -> float。
     """
     base = datetime.date(2025, 1, 6)
-    rows = [
-        {
-            "code": f"{600000 + ci:06d}.SH",
-            "trade_date": base + datetime.timedelta(days=di),
-            "neutral_value": value_fn(di, ci),
-        }
-        for di in range(n_dates)
-        for ci in range(n_codes)
-    ]
+    rows = []
+    for di in range(n_dates):
+        for ci in range(n_codes):
+            val = value_fn(di, ci)
+            rows.append(
+                {
+                    "code": f"{600000 + ci:06d}.SH",
+                    "trade_date": base + datetime.timedelta(days=di),
+                    "raw_value": val,
+                    "neutral_value": val,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -432,6 +436,27 @@ def test_compute_active_factor_corr_returns_dict(
     assert "core_x" in result
     assert result["core_x"] > 0.99
     assert cur.execute.call_count == 2
+
+
+def test_compute_active_factor_corr_multiple_core_factors(
+    service: FactorOnboardingService,
+) -> None:
+    """CORE 池 2 因子 (一相关 + 一独立) → dict 含 2 key, groupby 各算各的。"""
+    fvdf = _factor_values_df(20, 30, lambda _di, ci: float(ci))
+    base = datetime.date(2025, 1, 6)
+    rng = np.random.default_rng(7)
+    rows = []
+    for di in range(20):
+        td = base + datetime.timedelta(days=di)
+        for ci in range(30):
+            code = f"{600000 + ci:06d}.SH"
+            rows.append(("core_corr", code, td, float(ci) * 2.0))
+            rows.append(("core_indep", code, td, float(rng.standard_normal())))
+    conn, _cur = _fake_conn([[("core_corr",), ("core_indep",)], rows])
+    result = service._compute_active_factor_corr(conn, "new_factor", fvdf)
+    assert set(result.keys()) == {"core_corr", "core_indep"}
+    assert result["core_corr"] > 0.99
+    assert abs(result["core_indep"]) < 0.3
 
 
 def test_compute_active_factor_corr_db_error_returns_empty(

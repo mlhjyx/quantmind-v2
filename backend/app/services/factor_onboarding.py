@@ -1045,11 +1045,15 @@ class FactorOnboardingService:
 
         try:
             with conn.cursor() as cur:
-                # CORE (Active) 池因子名 — 排除新因子自身 (大小写不敏感)。
+                # CORE (Active) 池因子名 — 排除新因子自身 (大小写不敏感) +
+                # 排除 retired/deprecated (已退役因子不在产, 与其冗余无治理意义;
+                # active/warning/critical 仍保留 — warning 如 dv_ttm 仍在 PT 配置)。
                 cur.execute(
                     """
                     SELECT name FROM factor_registry
-                    WHERE pool = 'CORE' AND lower(name) <> lower(%s)
+                    WHERE pool = 'CORE'
+                      AND status NOT IN ('retired', 'deprecated')
+                      AND lower(name) <> lower(%s)
                     """,
                     (factor_name,),
                 )
@@ -1057,6 +1061,9 @@ class FactorOnboardingService:
                 if not core_factors:
                     logger.info("G2: CORE 池无其他因子, 正交性门跳过 (factor=%s)", factor_name)
                     return {}
+                # CORE 因子值 — 按新因子 trade_date 范围 scoped 单次只读。量级估算:
+                # ~4 CORE 因子 × ~250 交易日/年 × ~3000 股 ≈ 3M 行/年, 1-2 年
+                # onboarding 窗口可全量入内存 (铁律 9: 单次只读, 非并发重任务)。
                 cur.execute(
                     """
                     SELECT factor_name, code, trade_date, neutral_value
