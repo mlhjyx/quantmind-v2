@@ -8,7 +8,7 @@
 > - `backend/qm_platform/calendar/` 模块 NEW (commit 8a57c90): 4-layer fallback (QMT/Tushare/DB/heuristic)
 > - `is_trading_day_today_or_skip()` helper (commit b644ad1+): Beat/schtask task body 真 calendar gate, 反 LL-181 节假日空跑
 > - Schtask 调度建议 db_vacuum_analyze 等 NEW (commit b560a0c)
-> - **真 task body 加 calendar gate 留 Phase I** (~4h, 10 task entrypoint × 1 line each)
+> - **Calendar gate Phase I — DONE** (Plan 1, 2026-05-20): 7 trading-day-sensitive Beat task functions gated via `is_trading_day_today_or_skip` (helper stdlib-logger crash bug 同时修复); 详 §〇 gate-status 表
 > - 详 `docs/audit/ISSUES_PENDING_REGISTRY_2026_05_19.md` §9 H4 / Audit Section X §39
 
 # QuantMind V2 — 调度与运维详细开发文档
@@ -53,6 +53,18 @@ Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不
 | 18 | meta-monitor-tick | app.tasks.meta_monitor_tasks.meta_monitor_tick | */5 all hours |
 | 19 | llm-cost-monthly-audit | app.tasks.llm_cost_audit_tasks.monthly_audit | 1st of month 08:00 |
 | 20 | slippage-calibration-quarterly | app.tasks.slippage_calibration_tasks.quarterly_recalibrate | Q1/Q2/Q3/Q4 1日 02:00 |
+
+### Calendar gate status (Plan 1 — DEV_SCHEDULER §6.12 Phase I, 2026-05-20)
+
+每个交易日敏感的 Beat task body 走 `is_trading_day_today_or_skip()` (calendar SSOT 4-layer fallback) — `day_of_week=1-5` 仅过滤周末, A 股 ~15 法定节假日/年 仍需 task 内 gate (LL-181 节假日空跑 lesson).
+
+| 状态 | Task functions |
+|------|----------------|
+| ✅ Gated | compute_dynamic_thresholds / sweep_pending_confirm_plans / extract_daily_metrics / classify_market_regime (Session 57+1) + factor_lifecycle / fundamental_context_ingest / data_quality_report (Plan 1; data_quality 由 raw TradingDayChecker() 迁移至 SSOT) |
+| ⊘ 故意不 gate | sweep_stuck_broker_plans (跨日 stuck-plan 对账须每日重试含节假日) / meta_monitor_tick (元监控 all-hours by design) / announcement_ingest (cron 含周末, 公告可在非交易日发布, gate 会漏数据) |
+| — 非交易日无关 | outbox_publisher_tick / news_ingest ×2 / monthly_audit / quarterly_recalibrate / gp_weekly_mining (周日) / risk_reflector weekly+monthly (回溯型, 不依赖 today 为交易日) |
+
+> **Plan 1.5 follow-up**: 无 DB conn 时 gate 退化到 Layer 4 weekday heuristic (无法识别法定节假日) — 待接通 Layer 3 本地 `trading_calendar` 表使 gate 在 Tushare 不可达时仍可靠.
 
 ### Windows schtask (scripts/audit_schtask_freshness.py, 27 tasks)
 
