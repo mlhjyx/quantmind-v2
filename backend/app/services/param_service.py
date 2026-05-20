@@ -7,6 +7,7 @@ DEV_PARAM_CONFIG.md四级控制体系中的L2级别参数管理。
 CLAUDE.md: Service依赖注入统一用FastAPI的Depends链注入。
 """
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -244,6 +245,49 @@ class ParamService:
             变更日志列表，按时间倒序。
         """
         return await self.repo.get_change_log(param_name=key, limit=limit)
+
+    async def rollback_to(
+        self,
+        timestamp: datetime,
+        reason: str,
+        changed_by: str = "system",
+    ) -> dict[str, Any]:
+        """将所有参数回滚到指定时间点的状态 (DEV_PARAM_CONFIG §4.4 一键回滚)。
+
+        回滚 = 对每个在 timestamp 之后变更过的参数, 将其值恢复为该时点的值
+        (param_change_log 中该参数 post-T 最早一条变更的 old_value)。回滚动作
+        本身写入 param_change_log 审计 (reason 带 [rollback→T] 前缀便于检索)。
+
+        timestamp 之后才首次创建的参数 (该时点尚不存在) 不回滚, 也不删除参数行,
+        在返回的 skipped_created_after 中报告, 由调用方决定是否单独处理。
+
+        回滚按历史值原样恢复, 不重新做 min/max 校验 —— 该值在当初被设置时已
+        校验通过, rollback 是状态还原而非新增变更。
+
+        Args:
+            timestamp: 回滚目标时间点 (tz-aware ISO datetime)。
+            reason: 回滚原因 (必填, 写入审计)。
+            changed_by: 发起者 manual/ai/system (审计 changed_by + updated_by)。
+
+        Returns:
+            回滚摘要字典:
+            - timestamp: 回滚目标时间点 ISO 串
+            - rolled_back: 已回滚的参数名列表 (按名称排序)
+            - rolled_back_count: 已回滚数量
+            - skipped_created_after: 因 T 之后才创建而跳过的参数名列表
+            - skipped_count: 跳过数量
+        """
+        audit_reason = f"[rollback→{timestamp.isoformat()}] {reason}"
+        outcome = await self.repo.rollback_to(timestamp, reason=audit_reason, changed_by=changed_by)
+        rolled_back = sorted(outcome["rolled_back"])
+        skipped = sorted(outcome["skipped"])
+        return {
+            "timestamp": timestamp.isoformat(),
+            "rolled_back": rolled_back,
+            "rolled_back_count": len(rolled_back),
+            "skipped_created_after": skipped,
+            "skipped_count": len(skipped),
+        }
 
     async def init_defaults(self) -> int:
         """将param_defaults中的参数定义初始化到DB。
