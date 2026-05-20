@@ -34,8 +34,10 @@ H4 fix (2026-05-19, Audit Section X §39 + ISSUES_PENDING_REGISTRY §4 A5/§9 H4
         if not is_trading_day_today_or_skip():
             sys.exit(0)
 
-    Helper ready in calendar module. 真 task body 加 gate 留 Phase I
-    (~4h, 10 task entrypoint × 1 line each).
+    Calendar gate Phase I — DONE (Plan 1, 2026-05-20): 7 trading-day-sensitive Beat
+    task functions gated via is_trading_day_today_or_skip; 3 deliberately NOT gated
+    (sweep_stuck_broker_plans 跨日对账 / meta_monitor_tick 元监控 all-hours /
+    announcement_ingest cron 含周末公告); 余下非交易日无关. 详 docs/DEV_SCHEDULER.md §〇.
 """
 
 from celery.schedules import crontab
