@@ -301,6 +301,99 @@ class TestMainFailLoud:
             assert dqc.main() == 0
 
 
+class TestCheckFactorValues:
+    """check_factor_values — factor_values 计算因子表巡检 (Plan E §10.5)."""
+
+    def _make_cur(self, fetchall_seq, fetchone_seq):
+        """mock cursor: fetchall / fetchone 各按调用顺序返回序列元素."""
+        cur = MagicMock()
+        cur.fetchall.side_effect = list(fetchall_seq)
+        cur.fetchone.side_effect = list(fetchone_seq)
+        return cur
+
+    def test_no_active_factors_skips(self):
+        """factor_registry 无 active 因子 → 跳过, 0 告警."""
+        cur = self._make_cur([[]], [])
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert alerts == []
+
+    def test_factor_values_empty_p0(self):
+        """active 因子存在但 factor_values 无数据 → P0."""
+        cur = self._make_cur([[("f1",), ("f2",)]], [(None,)])
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert len(alerts) == 1
+        assert "[P0]" in alerts[0]
+        assert "无 active 因子数据" in alerts[0]
+
+    def test_all_healthy_no_alerts(self):
+        """最新日 = expected, 各因子 0 NULL / 0 NaN / 0 越界 → 0 告警."""
+        cur = self._make_cur(
+            fetchall_seq=[
+                [("f1",), ("f2",)],
+                [("f1", 5000, 0, 0, 0), ("f2", 5000, 0, 0, 0)],
+            ],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert alerts == []
+
+    def test_staleness_alert(self):
+        """factor_values 最新日滞后 expected → 滞后告警 (lag>1 → P0)."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",)], [("f1", 5000, 0, 0, 0)]],
+            fetchone_seq=[(date(2026, 4, 20),), (3,)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        stale = [a for a in alerts if "滞后" in a]
+        assert len(stale) == 1
+        assert "[P0]" in stale[0]
+
+    def test_missing_factor_p0(self):
+        """active 因子在最新日 0 行 → P0 覆盖缺失."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",), ("f2",)], [("f1", 5000, 0, 0, 0)]],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert any("[P0]" in a and "覆盖缺失" in a and "f2" in a for a in alerts)
+
+    def test_literal_nan_p0(self):
+        """neutral_value 含字面 NaN → P0 (铁律 29)."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",)], [("f1", 5000, 0, 12, 0)]],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert any("[P0]" in a and "NaN" in a and "f1" in a for a in alerts)
+
+    def test_high_null_ratio_p1(self):
+        """neutral_value NULL 比例超阈值 (50%>30%) → P1."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",)], [("f1", 1000, 500, 0, 0)]],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert any("[P1]" in a and "NULL" in a and "f1" in a for a in alerts)
+
+    def test_out_of_range_p1(self):
+        """neutral_value 越界 → P1."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",)], [("f1", 5000, 0, 0, 7)]],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert any("[P1]" in a and "越界" in a and "f1" in a for a in alerts)
+
+    def test_null_below_threshold_no_alert(self):
+        """NULL 比例低于阈值 (10%<30%) → 不告警 (中性化天然有少量 NULL)."""
+        cur = self._make_cur(
+            fetchall_seq=[[("f1",)], [("f1", 1000, 100, 0, 0)]],
+            fetchone_seq=[(date(2026, 4, 23),)],
+        )
+        alerts = dqc.check_factor_values(cur, date(2026, 4, 23), date(2026, 4, 24))
+        assert alerts == []
+
+
 def psycopg2_timeout_error() -> Exception:
     """模拟 PG statement_timeout 触发的 QueryCanceled.
 
