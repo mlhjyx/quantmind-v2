@@ -66,7 +66,12 @@ def _parse_database_url(url: str) -> dict[str, str]:
         r"postgresql\+?(?:asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)", url
     )
     if not m:
-        raise SystemExit(f"FAIL: DATABASE_URL parse failed: {url[:50]}...")
+        # Security-review M1 (PR #392): 不回显 url —— DATABASE_URL 含 DB 密码,
+        # url[:50] 会泄露明文密码到 stderr → Celery wrapper 捕获并传播.
+        raise SystemExit(
+            "FAIL: DATABASE_URL parse failed "
+            "(expected postgresql://user:pass@host:port/db) — value redacted"
+        )
     return {
         "user": m.group(1),
         "password": m.group(2),

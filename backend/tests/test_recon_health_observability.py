@@ -277,6 +277,9 @@ def test_dr_run_reconciliation_fails_loud_on_unexpected_error():
         if "scheduler_task_log" in str(c) and "failed" in str(c)
     ]
     assert failed_inserts, "expected a status='failed' scheduler_task_log INSERT"
+    # Code-review M2 (PR #392): rollback 必在 failed-row INSERT 前调用 — 清
+    # aborted-transaction 状态, 反 InFailedSqlTransaction 致 failed-row 静默丢失.
+    mock_conn.rollback.assert_called()
     mock_conn.close.assert_called_once()
 
 

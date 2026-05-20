@@ -581,6 +581,10 @@ def run_reconciliation(recon_date: date) -> None:
         # paper-mode 优雅退出走 SystemExit (BaseException, 不被本 except 捕获),
         # 因此 Phase B-1 paper-mode exit 0 路径不受影响.
         try:
+            # Code-review M1 (PR #392): 若原异常来自失败的 SQL, conn 处于
+            # aborted-transaction 状态, 直接 execute 抛 InFailedSqlTransaction →
+            # failed-row 静默丢失. 先 rollback 清状态再写 failed row.
+            conn.rollback()
             fail_cur = conn.cursor()
             fail_cur.execute(
                 """INSERT INTO scheduler_task_log
