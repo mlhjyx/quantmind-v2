@@ -428,4 +428,6 @@ def estimate_param_impact(param_name: str, old_value: Any, new_value: Any) -> st
             return formula(float(old_value), float(new_value))
         except (TypeError, ValueError):
             pass  # silent_ok: 值非数值 → 回退通用串 (formula 仅适用数值参数)
-    return f"{param_name}: {old_value} → {new_value}"
+    # old_value 可能为 None (STR 参数无 default 值) — 避免 "None" 字面泄漏到 UI。
+    old_display = old_value if old_value is not None else "(未设置)"
+    return f"{param_name}: {old_display} → {new_value}"

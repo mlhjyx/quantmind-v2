@@ -510,6 +510,12 @@ class TestEstimateParamImpact:
         """公式参数但值非数值 → 安全回退通用串, 不抛异常。"""
         assert estimate_param_impact("signal.top_n", "abc", 25) == ("signal.top_n: abc → 25")
 
+    def test_none_old_value_shows_placeholder(self) -> None:
+        """old_value 为 None (STR 参数无 default) → 显示 (未设置), 不泄漏 'None'。"""
+        assert estimate_param_impact("execution.mode", None, "live") == (
+            "execution.mode: (未设置) → live"
+        )
+
     @pytest.mark.asyncio
     async def test_impact_api_success(self) -> None:
         """GET /api/params/signal.top_n/impact?new_value=25 → 200 + 影响串。"""
