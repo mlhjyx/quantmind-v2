@@ -49,9 +49,9 @@ def _make_data(n: int = 100, seed: int = 0) -> pd.DataFrame:
     returns = rng.normal(0.0, 0.02, n)
 
     data = {
-        "open":  close * rng.uniform(0.98, 1.02, n),
-        "high":  close * rng.uniform(1.00, 1.05, n),
-        "low":   close * rng.uniform(0.95, 1.00, n),
+        "open": close * rng.uniform(0.98, 1.02, n),
+        "high": close * rng.uniform(1.00, 1.05, n),
+        "low": close * rng.uniform(0.95, 1.00, n),
         "close": close,
         "volume": volume,
         "amount": amount,
@@ -85,9 +85,9 @@ def _make_ts_data(n_rows: int = 60, seed: int = 0) -> pd.DataFrame:
     pb = rng.uniform(1.0, 5.0, n_rows)
 
     data = {
-        "open":  close * rng.uniform(0.99, 1.01, n_rows),
-        "high":  close * rng.uniform(1.00, 1.03, n_rows),
-        "low":   close * rng.uniform(0.97, 1.00, n_rows),
+        "open": close * rng.uniform(0.99, 1.01, n_rows),
+        "high": close * rng.uniform(1.00, 1.03, n_rows),
+        "low": close * rng.uniform(0.97, 1.00, n_rows),
         "close": close,
         "volume": volume,
         "amount": amount,
@@ -246,8 +246,9 @@ class TestOperatorCorrectness:
         node = ExprNode(op="ts_mean", children=[ExprNode(op="close")], window=10)
         result = node.evaluate(data_ts)
         expected = data_ts["close"].rolling(10, min_periods=5).mean()
-        pd.testing.assert_series_equal(result.reset_index(drop=True),
-                                       expected.reset_index(drop=True))
+        pd.testing.assert_series_equal(
+            result.reset_index(drop=True), expected.reset_index(drop=True)
+        )
 
     def test_neg_negates_values(self, data_cs: pd.DataFrame) -> None:
         """neg 应对所有值取负。"""
@@ -266,8 +267,9 @@ class TestOperatorCorrectness:
         node = ExprNode(op="inv", children=[ExprNode(op="pb")])
         result = node.evaluate(data_cs)
         expected = 1.0 / data_cs["pb"]
-        pd.testing.assert_series_equal(result.reset_index(drop=True),
-                                       expected.reset_index(drop=True))
+        pd.testing.assert_series_equal(
+            result.reset_index(drop=True), expected.reset_index(drop=True)
+        )
 
     def test_div_zero_returns_nan(self, data_cs: pd.DataFrame) -> None:
         """div 除以0应返回 NaN，不抛出。"""
@@ -307,16 +309,18 @@ class TestOperatorCorrectness:
         node = ExprNode(op="delay", children=[ExprNode(op="close")], window=5)
         result = node.evaluate(data_ts)
         expected = data_ts["close"].shift(5)
-        pd.testing.assert_series_equal(result.reset_index(drop=True),
-                                       expected.reset_index(drop=True))
+        pd.testing.assert_series_equal(
+            result.reset_index(drop=True), expected.reset_index(drop=True)
+        )
 
     def test_delta_equals_diff(self, data_ts: pd.DataFrame) -> None:
         """delta(close, 5) 应等于 close - close.shift(5)。"""
         node = ExprNode(op="delta", children=[ExprNode(op="close")], window=5)
         result = node.evaluate(data_ts)
         expected = data_ts["close"] - data_ts["close"].shift(5)
-        pd.testing.assert_series_equal(result.reset_index(drop=True),
-                                       expected.reset_index(drop=True))
+        pd.testing.assert_series_equal(
+            result.reset_index(drop=True), expected.reset_index(drop=True)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -576,11 +580,13 @@ class TestEvaluateBoundary:
 
     def test_all_nan_input_returns_nan(self) -> None:
         """全 NaN 输入应返回全 NaN（不抛出）。"""
-        data = pd.DataFrame({
-            "close": [float("nan")] * 20,
-            "volume": [float("nan")] * 20,
-            "returns": [float("nan")] * 20,
-        })
+        data = pd.DataFrame(
+            {
+                "close": [float("nan")] * 20,
+                "volume": [float("nan")] * 20,
+                "returns": [float("nan")] * 20,
+            }
+        )
         node = ExprNode(op="ts_mean", children=[ExprNode(op="close")], window=5)
         result = node.evaluate(data)
         assert isinstance(result, pd.Series)
@@ -895,7 +901,9 @@ class TestSeedToVariants:
 
     def test_variants_count_matches_request(self) -> None:
         dsl = FactorDSL(seed=10)
-        variants = dsl.seed_to_variants("turnover_mean_20", "ts_mean(turnover_rate, 20)", n_variants=8)
+        variants = dsl.seed_to_variants(
+            "turnover_mean_20", "ts_mean(turnover_rate, 20)", n_variants=8
+        )
         assert len(variants) == 8
 
     def test_variants_include_original_seed(self) -> None:
@@ -933,9 +941,7 @@ class TestRandomTree:
         dsl = FactorDSL(seed=20)
         for _ in range(50):
             tree = dsl.random_tree()
-            assert tree.depth() <= dsl.max_depth, (
-                f"树深度 {tree.depth()} 超过上限 {dsl.max_depth}"
-            )
+            assert tree.depth() <= dsl.max_depth, f"树深度 {tree.depth()} 超过上限 {dsl.max_depth}"
 
     def test_random_tree_node_count_within_limit(self) -> None:
         dsl = FactorDSL(seed=21)

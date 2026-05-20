@@ -191,16 +191,12 @@ class TestQuickBacktesterBasic:
 class TestDeterminism:
     """确定性: 相同输入→相同输出 (bit-identical)。"""
 
-    def test_same_input_same_output(
-        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
-    ) -> None:
+    def test_same_input_same_output(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
         """相同数据跑两次，Sharpe结果完全相同。"""
         bt = QuickBacktester(price_data=price_df, top_n=15)
         r1 = bt.backtest(factor_df)
         r2 = bt.backtest(factor_df)
-        assert r1.sharpe == r2.sharpe, (
-            f"确定性失败: 第1次={r1.sharpe}, 第2次={r2.sharpe}"
-        )
+        assert r1.sharpe == r2.sharpe, f"确定性失败: 第1次={r1.sharpe}, 第2次={r2.sharpe}"
         assert r1.mdd == r2.mdd
 
 
@@ -227,9 +223,7 @@ class TestEdgeCases:
         result = bt.backtest(bad_df)
         assert result.sharpe == -999.0
 
-    def test_all_nan_factor_values(
-        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
-    ) -> None:
+    def test_all_nan_factor_values(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
         """全NaN因子值应安全退出（不崩溃）。"""
         bt = QuickBacktester(price_data=price_df, top_n=15)
         nan_df = factor_df.copy()
@@ -333,24 +327,20 @@ class TestQuickBacktestResult:
 
     def test_is_valid_success(self) -> None:
         """正常结果is_valid=True。"""
-        r = QuickBacktestResult(
-            sharpe=1.2, mdd=0.1, turnover=0.3, ic_mean=0.03, n_rebalances=12
-        )
+        r = QuickBacktestResult(sharpe=1.2, mdd=0.1, turnover=0.3, ic_mean=0.03, n_rebalances=12)
         assert r.is_valid is True
 
     def test_is_valid_error_code(self) -> None:
         """sharpe=-999时is_valid=False。"""
         r = QuickBacktestResult(
-            sharpe=-999.0, mdd=1.0, turnover=0.0, ic_mean=0.0, n_rebalances=0,
-            error="测试错误"
+            sharpe=-999.0, mdd=1.0, turnover=0.0, ic_mean=0.0, n_rebalances=0, error="测试错误"
         )
         assert r.is_valid is False
 
     def test_is_valid_with_error_message(self) -> None:
         """有error字段时is_valid=False。"""
         r = QuickBacktestResult(
-            sharpe=0.5, mdd=0.1, turnover=0.3, ic_mean=0.02, n_rebalances=5,
-            error="some error"
+            sharpe=0.5, mdd=0.1, turnover=0.3, ic_mean=0.02, n_rebalances=5, error="some error"
         )
         assert r.is_valid is False
 
@@ -369,9 +359,7 @@ class TestBitIdenticalDeterminism:
         r1 = bt.backtest(factor_df)
         r2 = bt.backtest(factor_df)
         # 使用 == 而非 approx，验证 bit-identical
-        assert r1.sharpe == r2.sharpe, (
-            f"Sharpe bit-identical 失败: {r1.sharpe!r} != {r2.sharpe!r}"
-        )
+        assert r1.sharpe == r2.sharpe, f"Sharpe bit-identical 失败: {r1.sharpe!r} != {r2.sharpe!r}"
 
     def test_mdd_bit_identical(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
         """MDD 两次完全相等。"""
@@ -394,22 +382,24 @@ class TestBitIdenticalDeterminism:
         r2 = bt.backtest(factor_df)
         assert r1.ic_mean == r2.ic_mean
 
-    def test_n_rebalances_bit_identical(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+    def test_n_rebalances_bit_identical(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
         """调仓次数两次完全相等。"""
         bt = QuickBacktester(price_data=price_df, top_n=15)
         r1 = bt.backtest(factor_df)
         r2 = bt.backtest(factor_df)
         assert r1.n_rebalances == r2.n_rebalances
 
-    def test_fresh_instance_bit_identical(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+    def test_fresh_instance_bit_identical(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
         """两个独立实例，相同输入结果 bit-identical。"""
         bt1 = QuickBacktester(price_data=price_df, top_n=15)
         bt2 = QuickBacktester(price_data=price_df, top_n=15)
         r1 = bt1.backtest(factor_df)
         r2 = bt2.backtest(factor_df)
-        assert r1.sharpe == r2.sharpe, (
-            f"独立实例 Sharpe 不一致: {r1.sharpe!r} != {r2.sharpe!r}"
-        )
+        assert r1.sharpe == r2.sharpe, f"独立实例 Sharpe 不一致: {r1.sharpe!r} != {r2.sharpe!r}"
         assert r1.mdd == r2.mdd
 
 
@@ -428,15 +418,19 @@ class TestExtremeBoundary:
         dates = sorted(price_df["trade_date"].unique())
         single_date = dates[-1]
         codes = price_df["code"].unique()[:20]
-        single_day_df = pd.DataFrame({
-            "trade_date": [single_date] * len(codes),
-            "code": codes,
-            "factor_value": list(range(len(codes))),
-        })
+        single_day_df = pd.DataFrame(
+            {
+                "trade_date": [single_date] * len(codes),
+                "code": codes,
+                "factor_value": list(range(len(codes))),
+            }
+        )
         result = bt.backtest(single_day_df)
         assert isinstance(result.sharpe, float)
 
-    def test_all_same_factor_values_no_crash(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+    def test_all_same_factor_values_no_crash(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
         """全相同因子值（无排序信息）应安全处理。"""
         bt = QuickBacktester(price_data=price_df, top_n=15)
         uniform_df = factor_df.copy()
@@ -463,13 +457,17 @@ class TestExtremeBoundary:
         rows = []
         for d in monthly_dates:
             for code in codes_5:
-                rows.append({"trade_date": d, "code": code, "factor_value": float(hash(code) % 100)})
+                rows.append(
+                    {"trade_date": d, "code": code, "factor_value": float(hash(code) % 100)}
+                )
         factor_small = pd.DataFrame(rows)
 
         result = bt.backtest(factor_small)
         assert isinstance(result.sharpe, float)
 
-    def test_factor_with_extreme_values_no_crash(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+    def test_factor_with_extreme_values_no_crash(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
         """含极端值（inf, -inf）的因子应不崩溃（应被当作 NaN 处理或返回 error）。"""
         bt = QuickBacktester(price_data=price_df, top_n=15)
         extreme_df = factor_df.copy()

@@ -214,17 +214,16 @@ class QuickBacktester:
 
         if not valid_rebal_dates:
             raise ValueError(
-                f"无有效调仓日: 调仓日={len(self._rebalance_dates)}, "
-                f"因子日={len(factor_idx)}"
+                f"无有效调仓日: 调仓日={len(self._rebalance_dates)}, 因子日={len(factor_idx)}"
             )
 
         # 执行日映射: signal_date → exec_date (下一个交易日)
         exec_map: dict[date, date] = {}
         for sd in valid_rebal_dates:
             sd_key = sd if isinstance(sd, date) else sd.date()
-            future = [d for d in self._all_dates if (
-                (d if isinstance(d, date) else d.date()) > sd_key
-            )]
+            future = [
+                d for d in self._all_dates if ((d if isinstance(d, date) else d.date()) > sd_key)
+            ]
             if future:
                 exec_d = future[0]
                 if isinstance(exec_d, pd.Timestamp):
@@ -246,8 +245,7 @@ class QuickBacktester:
                 valid_codes = [
                     (code, val)
                     for code, val in factor_snapshot.items()
-                    if not math.isnan(val)
-                    and price_idx.get((code, td), {}).get("volume", 0) > 0
+                    if not math.isnan(val) and price_idx.get((code, td), {}).get("volume", 0) > 0
                 ]
                 valid_codes.sort(key=lambda x: x[1], reverse=True)
                 selected = [code for code, _ in valid_codes[: self.top_n]]
@@ -257,10 +255,13 @@ class QuickBacktester:
 
                     # 计算换手率（双边）
                     all_codes = set(new_portfolio) | set(current_portfolio)
-                    turnover = sum(
-                        abs(new_portfolio.get(c, 0.0) - current_portfolio.get(c, 0.0))
-                        for c in all_codes
-                    ) / 2.0
+                    turnover = (
+                        sum(
+                            abs(new_portfolio.get(c, 0.0) - current_portfolio.get(c, 0.0))
+                            for c in all_codes
+                        )
+                        / 2.0
+                    )
                     turnovers.append(turnover)
 
                     current_portfolio = new_portfolio
@@ -466,10 +467,9 @@ def _calc_ic_mean(
                 td = td.date()
             close_idx[(row["code"], td)] = float(row["close"])
 
-        all_dates = sorted({
-            d if isinstance(d, date) else d.date()
-            for d in price_data["trade_date"].unique()
-        })
+        all_dates = sorted(
+            {d if isinstance(d, date) else d.date() for d in price_data["trade_date"].unique()}
+        )
 
         ics: list[float] = []
         for _, grp in factor_values.groupby("trade_date"):
