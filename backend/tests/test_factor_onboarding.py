@@ -271,6 +271,9 @@ def _patch_all_onboard_deps(
         patch.object(
             svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
         ),  # MVP 1.3c
+        patch.object(
+            svc, "_run_quality_gates", return_value=(True, "stubbed: G1-G5 PASS", [])
+        ),  # Plan 4 — G1-G5 gate is a precondition; orchestration tests stub it
     ]
 
 
@@ -296,6 +299,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -319,6 +323,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -339,6 +344,7 @@ class TestOnboardHappyPath:
             patch.object(svc, "_upsert_factor_values", return_value=42) as mock_fv,
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -359,6 +365,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -526,6 +533,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result1 = svc._onboard_inner(conn1, approval_queue_id=1)
 
@@ -539,6 +547,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result2 = svc._onboard_inner(conn2, approval_queue_id=2)
 
@@ -560,6 +569,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -905,3 +915,68 @@ class TestBoundaryConditions:
                 sys.modules["engines.mining.factor_dsl"] = original_mod
 
         assert result_df.empty
+
+
+# ---------------------------------------------------------------------------
+# 8. G1-G5 质量门 wiring (Plan 4, P1-34)
+# ---------------------------------------------------------------------------
+
+
+class TestOnboardQualityGates:
+    """Plan 4 — the G1-G5 quality-gate result gates factor_registry.status.
+
+    The gate logic itself is covered by test_factor_gate.py; these tests verify the
+    _onboard_inner WIRING — _run_quality_gates is stubbed to a pass/fail verdict.
+    """
+
+    def test_gate_pass_sets_status_active(self):
+        """G1-G5 全 PASS → factor_registry.status='active', 入库成功."""
+        svc = _make_svc()
+        conn = _make_sync_conn(aq_row=_approved_aq_row())
+
+        with (
+            _patch_all_onboard_deps(svc)[0],
+            _patch_all_onboard_deps(svc)[1],
+            _patch_all_onboard_deps(svc)[2],
+            _patch_all_onboard_deps(svc)[3],
+            _patch_all_onboard_deps(svc)[4],
+            _patch_all_onboard_deps(svc)[5],
+            _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],
+            patch.object(svc, "_run_quality_gates", return_value=(True, "G1-G5 PASS", [])),
+        ):
+            result = svc._onboard_inner(conn, approval_queue_id=1)
+
+        assert result["success"] is True
+        # 最后一次 execute = UPDATE factor_registry; status 参数 (index 3) = 'active'
+        update_params = conn._test_cursor.execute.call_args_list[-1].args[1]
+        assert update_params[3] == "active"
+
+    def test_gate_fail_raises_onboarding_blocked_and_rejects(self):
+        """任一 G1-G5 FAIL → raise OnboardingBlocked + status='rejected'."""
+        from backend.qm_platform.factor.registry import OnboardingBlocked
+
+        svc = _make_svc()
+        conn = _make_sync_conn(aq_row=_approved_aq_row())
+
+        with (
+            _patch_all_onboard_deps(svc)[0],
+            _patch_all_onboard_deps(svc)[1],
+            _patch_all_onboard_deps(svc)[2],
+            _patch_all_onboard_deps(svc)[3],
+            _patch_all_onboard_deps(svc)[4],
+            _patch_all_onboard_deps(svc)[5],
+            _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],
+            patch.object(
+                svc,
+                "_run_quality_gates",
+                return_value=(False, "G1[FAIL] |IC|=0.005 <= 0.02", ["G1"]),
+            ),
+            pytest.raises(OnboardingBlocked, match="G1-G5"),
+        ):
+            svc._onboard_inner(conn, approval_queue_id=1)
+
+        # UPDATE 在 raise 之前执行 → status='rejected' 已写 (reject 审计 trail)
+        update_params = conn._test_cursor.execute.call_args_list[-1].args[1]
+        assert update_params[3] == "rejected"
