@@ -33,6 +33,7 @@
     # CI-style assertion: 期望至少 1 次 trigger
     python scripts/replay_risk_rules.py --assert-min-triggers 1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -83,31 +84,42 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="结束日期 (含, 默认 today-1, 防今日 klines_daily 未入库)",
     )
     p.add_argument(
-        "--mode", choices=("live", "paper"), default="live",
+        "--mode",
+        choices=("live", "paper"),
+        default="live",
         help="execution_mode 过滤 (默认 live)",
     )
     p.add_argument(
-        "--strategy-id", default=None,
+        "--strategy-id",
+        default=None,
         help="strategy_id UUID 过滤 (默认全部 strategy)",
     )
     p.add_argument(
-        "--codes", default=None,
+        "--codes",
+        default=None,
         help="逗号分隔股票码过滤 (e.g. 688121.SH,000012.SZ)",
     )
     p.add_argument(
-        "--out-csv", default=None,
+        "--out-csv",
+        default=None,
         help="可选 CSV 输出路径 (默认 stdout 表格仅)",
     )
     p.add_argument(
-        "--assert-min-triggers", type=int, default=0,
+        "--assert-min-triggers",
+        type=int,
+        default=0,
         help="若总触发 < N, exit 1 (CI gate, 默认 0 = 不 assert)",
     )
     return p
 
 
 def _load_snapshots(
-    conn, start: date, end: date, mode: str,
-    strategy_id: str | None, codes: list[str] | None,
+    conn,
+    start: date,
+    end: date,
+    mode: str,
+    strategy_id: str | None,
+    codes: list[str] | None,
 ) -> dict:
     """加载 position_snapshot + klines_daily (close) JOIN.
 
@@ -121,7 +133,8 @@ def _load_snapshots(
       但**禁止用于交易执行** — 执行需 Decimal 精度 (CLAUDE.md 编码规则).
     """
     cur = conn.cursor()
-    sql_parts = ["""
+    sql_parts = [
+        """
         SELECT ps.trade_date, ps.strategy_id::text, ps.code,
                ps.quantity, ps.avg_cost, k.close
           FROM position_snapshot ps
@@ -132,7 +145,8 @@ def _load_snapshots(
            AND ps.avg_cost IS NOT NULL
            AND ps.quantity > 0
            AND ps.avg_cost > 0
-    """]
+    """
+    ]
     params: list = [mode, start, end]
     if strategy_id:
         sql_parts.append("AND ps.strategy_id::text = %s")
@@ -148,12 +162,14 @@ def _load_snapshots(
     for row in cur.fetchall():
         td, sid, code, qty, avg_cost, close = row
         key = (td, sid)
-        grouped.setdefault(key, []).append({
-            "code": code,
-            "shares": int(qty),
-            "avg_cost": float(avg_cost),
-            "current_price": float(close),
-        })
+        grouped.setdefault(key, []).append(
+            {
+                "code": code,
+                "shares": int(qty),
+                "avg_cost": float(avg_cost),
+                "current_price": float(close),
+            }
+        )
     cur.close()
     return grouped
 
@@ -167,11 +183,14 @@ def _count_actual_alerts(conn, start: date, end: date, mode: str) -> int | None:
     cur = conn.cursor()
     try:
         # 字段名: triggered_at (实测 schema 2026-04-29, NOT event_time)
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FROM risk_event_log
              WHERE triggered_at::date BETWEEN %s AND %s
                AND execution_mode = %s
-        """, (start, end, mode))
+        """,
+            (start, end, mode),
+        )
         return int(cur.fetchone()[0])
     except Exception as e:
         # 表可能不存在或字段不一致 (Phase 2 修复 audit log 之前)
@@ -182,7 +201,9 @@ def _count_actual_alerts(conn, start: date, end: date, mode: str) -> int | None:
 
 
 def _replay(
-    grouped: dict, rule, mode: str,
+    grouped: dict,
+    rule,
+    mode: str,
 ) -> list[TriggerRow]:
     """对每 (trade_date, strategy_id) 跑 rule.evaluate, 收集 triggers."""
     from backend.qm_platform.risk.interface import Position, RiskContext
@@ -236,25 +257,29 @@ def _replay(
             # 防未来 rule 改变分母 (e.g. VWAP basis) 时 audit 与 rule 静默背离.
             loss_pct = float(r.metrics.get("loss_pct", 0.0))
             sev_p = int(r.metrics.get("severity_level_p", _UNKNOWN_SEVERITY_P))
-            triggers.append(TriggerRow(
-                trade_date=td,
-                strategy_id=sid,
-                execution_mode=mode,
-                code=r.code,
-                rule_id=r.rule_id,
-                loss_pct=loss_pct,
-                entry_price=pos["avg_cost"],
-                current_price=pos["current_price"],
-                shares=pos["shares"],
-                severity=sev_p_to_str.get(sev_p, "?"),
-            ))
+            triggers.append(
+                TriggerRow(
+                    trade_date=td,
+                    strategy_id=sid,
+                    execution_mode=mode,
+                    code=r.code,
+                    rule_id=r.rule_id,
+                    loss_pct=loss_pct,
+                    entry_price=pos["avg_cost"],
+                    current_price=pos["current_price"],
+                    shares=pos["shares"],
+                    severity=sev_p_to_str.get(sev_p, "?"),
+                )
+            )
     return triggers
 
 
 def _print_summary(
     triggers: list[TriggerRow],
     actual_alerts: int | None,
-    start: date, end: date, mode: str,
+    start: date,
+    end: date,
+    mode: str,
 ) -> None:
     """stdout 友好打印.
 
@@ -295,8 +320,10 @@ def _print_summary(
 
     # 详表
     print("\n  Per-trigger detail:")
-    print(f"  {'date':12} {'code':12} {'rule':30} {'loss%':>8} "
-          f"{'entry':>10} {'current':>10} {'shares':>8} {'sev':>4}")
+    print(
+        f"  {'date':12} {'code':12} {'rule':30} {'loss%':>8} "
+        f"{'entry':>10} {'current':>10} {'shares':>8} {'sev':>4}"
+    )
     print(f"  {'-' * 78}")
     for t in triggers:
         print(
@@ -311,17 +338,35 @@ def _write_csv(path: Path, triggers: list[TriggerRow]) -> None:
     """可选 CSV 持久化 audit."""
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow([
-            "trade_date", "strategy_id", "execution_mode", "code",
-            "rule_id", "loss_pct", "entry_price", "current_price",
-            "shares", "severity",
-        ])
+        w.writerow(
+            [
+                "trade_date",
+                "strategy_id",
+                "execution_mode",
+                "code",
+                "rule_id",
+                "loss_pct",
+                "entry_price",
+                "current_price",
+                "shares",
+                "severity",
+            ]
+        )
         for t in triggers:
-            w.writerow([
-                t.trade_date, t.strategy_id, t.execution_mode, t.code,
-                t.rule_id, f"{t.loss_pct:.6f}", f"{t.entry_price:.6f}",
-                f"{t.current_price:.6f}", t.shares, t.severity,
-            ])
+            w.writerow(
+                [
+                    t.trade_date,
+                    t.strategy_id,
+                    t.execution_mode,
+                    t.code,
+                    t.rule_id,
+                    f"{t.loss_pct:.6f}",
+                    f"{t.entry_price:.6f}",
+                    f"{t.current_price:.6f}",
+                    t.shares,
+                    t.severity,
+                ]
+            )
     print(f"  CSV written: {path}")
 
 
@@ -347,8 +392,12 @@ def main() -> int:
     conn = get_sync_conn()
     try:
         grouped = _load_snapshots(
-            conn, args.start, args.end, args.mode,
-            args.strategy_id, codes,
+            conn,
+            args.start,
+            args.end,
+            args.mode,
+            args.strategy_id,
+            codes,
         )
         triggers = _replay(grouped, rule, args.mode)
         actual = _count_actual_alerts(conn, args.start, args.end, args.mode)

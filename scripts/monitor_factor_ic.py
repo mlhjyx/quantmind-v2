@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 # Active因子列表: 从PT配置动态读取 (铁律34 single source of truth)
 try:
     from engines.signal_engine import PAPER_TRADING_CONFIG
+
     ACTIVE_FACTORS = list(PAPER_TRADING_CONFIG.factor_names)
 except ImportError:
     # fallback: CORE3+dv_ttm (2026-04-12 WF PASS配置)
@@ -64,6 +65,7 @@ except ImportError:
 # 数据加载
 # ============================================================
 
+
 def get_conn():
     """获取psycopg2同步连接（读.env配置）。"""
     return _get_sync_conn()
@@ -72,8 +74,9 @@ def get_conn():
 def load_lifecycle(conn) -> pd.DataFrame:
     """加载factor_lifecycle表。"""
     sql = "SELECT * FROM factor_lifecycle ORDER BY factor_name"
-    return pd.read_sql(sql, conn, parse_dates=["entry_date", "rolling_ic_updated",
-                                                 "warning_date", "retired_date"])
+    return pd.read_sql(
+        sql, conn, parse_dates=["entry_date", "rolling_ic_updated", "warning_date", "retired_date"]
+    )
 
 
 def load_index_returns(conn, start_date: date) -> pd.Series:
@@ -129,6 +132,7 @@ def load_factor_values(conn, factor_names: list[str], start_date: date) -> pd.Da
 # IC计算
 # ============================================================
 
+
 def compute_forward_excess_return(
     stock_ret_df: pd.DataFrame,
     index_ret_series: pd.Series,
@@ -148,20 +152,12 @@ def compute_forward_excess_return(
     index_ret_aligned = index_ret_series.reindex(ret_wide.index)
 
     # Forward cumulative return
-    stock_fwd = (
-        (1 + ret_wide)
-        .rolling(forward_days)
-        .apply(lambda x: x.prod(), raw=True)
-        .shift(-forward_days)
-        - 1
-    )
-    index_fwd = (
-        (1 + index_ret_aligned)
-        .rolling(forward_days)
-        .apply(lambda x: x.prod(), raw=True)
-        .shift(-forward_days)
-        - 1
-    )
+    stock_fwd = (1 + ret_wide).rolling(forward_days).apply(lambda x: x.prod(), raw=True).shift(
+        -forward_days
+    ) - 1
+    index_fwd = (1 + index_ret_aligned).rolling(forward_days).apply(
+        lambda x: x.prod(), raw=True
+    ).shift(-forward_days) - 1
 
     excess_ret = stock_fwd.subtract(index_fwd, axis=0)
     excess_long = excess_ret.stack().reset_index()
@@ -186,9 +182,7 @@ def compute_daily_ic(
     Returns:
         pd.Series: index=trade_date, values=IC
     """
-    f = factor_df[factor_df["factor_name"] == factor_name][
-        ["code", "trade_date", "zscore"]
-    ]
+    f = factor_df[factor_df["factor_name"] == factor_name][["code", "trade_date", "zscore"]]
     merged = f.merge(excess_ret_df, on=["code", "trade_date"], how="inner").dropna()
 
     def _daily_ic(group: pd.DataFrame) -> float:
@@ -218,6 +212,7 @@ def compute_monthly_ic(daily_ic: pd.Series) -> pd.Series:
 # ============================================================
 # 状态转换逻辑
 # ============================================================
+
 
 def evaluate_transitions(
     lifecycle_df: pd.DataFrame,
@@ -252,8 +247,11 @@ def evaluate_transitions(
 
         monthly_ic = monthly_ic_dict[fname]
         if len(monthly_ic) < 3:
-            logger.warning("Factor %s: insufficient monthly IC data (%d months), skipping.",
-                           fname, len(monthly_ic))
+            logger.warning(
+                "Factor %s: insufficient monthly IC data (%d months), skipping.",
+                fname,
+                len(monthly_ic),
+            )
             continue
 
         # 最近12个月的滚动IC均值
@@ -265,56 +263,64 @@ def evaluate_transitions(
         if current_status == "active":
             # active → warning: 滚动IC绝对值 < 入池IC绝对值的50%
             if abs(rolling_ic_12m) < abs(entry_ic) * 0.50:
-                transitions.append({
-                    "factor_name": fname,
-                    "from_status": "active",
-                    "to_status": "warning",
-                    "reason": (
-                        f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} < "
-                        f"50% of entry |IC|={abs(entry_ic) * 0.50:.4f}"
-                    ),
-                    "rolling_ic_12m": rolling_ic_12m,
-                    "warning_date": today,
-                })
+                transitions.append(
+                    {
+                        "factor_name": fname,
+                        "from_status": "active",
+                        "to_status": "warning",
+                        "reason": (
+                            f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} < "
+                            f"50% of entry |IC|={abs(entry_ic) * 0.50:.4f}"
+                        ),
+                        "rolling_ic_12m": rolling_ic_12m,
+                        "warning_date": today,
+                    }
+                )
 
         elif current_status == "warning":
             # warning → retired: 连续6月IC < 0
             if len(recent_6m) >= 6 and (recent_6m < 0).all():
-                transitions.append({
-                    "factor_name": fname,
-                    "from_status": "warning",
-                    "to_status": "retired",
-                    "reason": "6 consecutive months IC < 0",
-                    "rolling_ic_12m": rolling_ic_12m,
-                    "retired_date": today,
-                })
+                transitions.append(
+                    {
+                        "factor_name": fname,
+                        "from_status": "warning",
+                        "to_status": "retired",
+                        "reason": "6 consecutive months IC < 0",
+                        "rolling_ic_12m": rolling_ic_12m,
+                        "retired_date": today,
+                    }
+                )
             # warning → monitoring: 滚动IC恢复到入池IC的70%以上
             elif abs(rolling_ic_12m) >= abs(entry_ic) * 0.70:
-                transitions.append({
-                    "factor_name": fname,
-                    "from_status": "warning",
-                    "to_status": "monitoring",
-                    "reason": (
-                        f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} >= "
-                        f"70% of entry |IC|={abs(entry_ic) * 0.70:.4f}, recovered"
-                    ),
-                    "rolling_ic_12m": rolling_ic_12m,
-                })
+                transitions.append(
+                    {
+                        "factor_name": fname,
+                        "from_status": "warning",
+                        "to_status": "monitoring",
+                        "reason": (
+                            f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} >= "
+                            f"70% of entry |IC|={abs(entry_ic) * 0.70:.4f}, recovered"
+                        ),
+                        "rolling_ic_12m": rolling_ic_12m,
+                    }
+                )
 
         elif current_status == "monitoring":
             # monitoring → warning: 与active相同条件
             if abs(rolling_ic_12m) < abs(entry_ic) * 0.50:
-                transitions.append({
-                    "factor_name": fname,
-                    "from_status": "monitoring",
-                    "to_status": "warning",
-                    "reason": (
-                        f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} < "
-                        f"50% of entry |IC|={abs(entry_ic) * 0.50:.4f}"
-                    ),
-                    "rolling_ic_12m": rolling_ic_12m,
-                    "warning_date": today,
-                })
+                transitions.append(
+                    {
+                        "factor_name": fname,
+                        "from_status": "monitoring",
+                        "to_status": "warning",
+                        "reason": (
+                            f"Rolling 12m |IC|={abs(rolling_ic_12m):.4f} < "
+                            f"50% of entry |IC|={abs(entry_ic) * 0.50:.4f}"
+                        ),
+                        "rolling_ic_12m": rolling_ic_12m,
+                        "warning_date": today,
+                    }
+                )
 
     return transitions
 
@@ -322,6 +328,7 @@ def evaluate_transitions(
 # ============================================================
 # 数据库更新
 # ============================================================
+
 
 def update_lifecycle(
     conn,
@@ -336,13 +343,16 @@ def update_lifecycle(
     cur = conn.cursor()
 
     # 始终更新rolling_ic
-    cur.execute("""
+    cur.execute(
+        """
         UPDATE factor_lifecycle
         SET rolling_ic_12m = %s,
             rolling_ic_updated = %s,
             updated_at = CURRENT_TIMESTAMP
         WHERE factor_name = %s
-    """, (rolling_ic_12m, today, factor_name))
+    """,
+        (rolling_ic_12m, today, factor_name),
+    )
 
     # 状态转换
     if new_status:
@@ -367,6 +377,7 @@ def update_lifecycle(
 # ============================================================
 # 报告生成
 # ============================================================
+
 
 def generate_report(
     lifecycle_df: pd.DataFrame,
@@ -429,9 +440,7 @@ def generate_report(
         lines.append("")
         lines.append("--- Status Transitions ---")
         for t in transitions:
-            lines.append(
-                f"  {t['factor_name']}: {t['from_status']} -> {t['to_status']}"
-            )
+            lines.append(f"  {t['factor_name']}: {t['from_status']} -> {t['to_status']}")
             lines.append(f"    Reason: {t['reason']}")
     else:
         lines.append("")
@@ -445,6 +454,7 @@ def generate_report(
 # ============================================================
 # 钉钉通知
 # ============================================================
+
 
 @functools.lru_cache(maxsize=1)
 def _get_rules_engine():
@@ -472,9 +482,7 @@ def _send_alert_via_platform_sdk(report: str, transitions: list[dict]) -> None:
     # P0 retired 被静默吞掉. 同时保留 new_state/to 兼容 (caller 也许传 dict 用别名).
     severity_value = "info"
     for t in transitions:
-        new_st = (
-            t.get("to_status") or t.get("new_state") or t.get("to") or ""
-        ).lower()
+        new_st = (t.get("to_status") or t.get("new_state") or t.get("to") or "").lower()
         if new_st == "retired":
             severity_value = "p0"
             break
@@ -593,14 +601,16 @@ def send_dingtalk(report: str, transitions: list[dict]) -> None:
 # 主流程
 # ============================================================
 
+
 def main():
     parser = argparse.ArgumentParser(description="Factor lifecycle rolling IC monitor")
-    parser.add_argument("--months", type=int, default=12,
-                        help="Rolling window in months (default: 12)")
-    parser.add_argument("--dingtalk", action="store_true",
-                        help="Send DingTalk notification")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Compute and report but do not update DB")
+    parser.add_argument(
+        "--months", type=int, default=12, help="Rolling window in months (default: 12)"
+    )
+    parser.add_argument("--dingtalk", action="store_true", help="Send DingTalk notification")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Compute and report but do not update DB"
+    )
     args = parser.parse_args()
 
     today = date.today()
@@ -616,7 +626,9 @@ def main():
         factor_names = lifecycle_df["factor_name"].tolist()
 
         if not factor_names:
-            logger.error("No factors in factor_lifecycle table. Run setup_factor_lifecycle.py first.")
+            logger.error(
+                "No factors in factor_lifecycle table. Run setup_factor_lifecycle.py first."
+            )
             return
 
         logger.info("Tracking %d factors: %s", len(factor_names), factor_names)
@@ -656,7 +668,11 @@ def main():
             rolling_mean = float(monthly_ic.tail(args.months).mean())
             logger.info(
                 "  %s: daily IC count=%d, monthly IC count=%d, rolling %dm mean=%+.4f",
-                fname, len(daily_ic), len(monthly_ic), args.months, rolling_mean,
+                fname,
+                len(daily_ic),
+                len(monthly_ic),
+                args.months,
+                rolling_mean,
             )
 
         # 6. 评估状态转换
@@ -664,8 +680,13 @@ def main():
         transitions = evaluate_transitions(lifecycle_df, monthly_ic_dict, today)
 
         for t in transitions:
-            logger.info("  TRANSITION: %s %s -> %s (%s)",
-                         t["factor_name"], t["from_status"], t["to_status"], t["reason"])
+            logger.info(
+                "  TRANSITION: %s %s -> %s (%s)",
+                t["factor_name"],
+                t["from_status"],
+                t["to_status"],
+                t["reason"],
+            )
 
         # 7. 更新数据库
         if not args.dry_run:
@@ -705,9 +726,7 @@ def main():
             try:
                 send_dingtalk(report, transitions)
             except AlertDispatchError as e:
-                logger.error(
-                    "[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e
-                )
+                logger.error("[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e)
     finally:
         conn.close()
     logger.info("Done.")

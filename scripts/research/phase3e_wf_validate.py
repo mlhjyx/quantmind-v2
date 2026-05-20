@@ -11,6 +11,7 @@ Usage:
     python scripts/research/phase3e_wf_validate.py
     python scripts/research/phase3e_wf_validate.py --factor high_freq_volatility_20
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,8 +38,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Suppress noisy loggers
-for name in ("engines.backtest", "engines.signal_engine", "engines.walk_forward",
-             "engines.backtest.engine", "engines.backtest.broker"):
+for name in (
+    "engines.backtest",
+    "engines.signal_engine",
+    "engines.walk_forward",
+    "engines.backtest.engine",
+    "engines.backtest.broker",
+):
     logging.getLogger(name).setLevel(logging.WARNING)
 
 # CORE4 baseline
@@ -53,11 +59,11 @@ BASELINE_SHARPE = 0.8659  # WF OOS baseline (5-fold, 2014-2026)
 # Top microstructure candidates by neutral IC (from ic_neutral_screen.csv)
 # Direction = sign of neutral IC
 TOP_CANDIDATES = [
-    ("high_freq_volatility_20", -1),     # neutral_ic=-0.094
-    ("volume_autocorr_20", -1),          # neutral_ic=-0.083
-    ("intraday_kurtosis_20", -1),        # neutral_ic=-0.081
-    ("intraday_skewness_20", -1),        # neutral_ic=-0.078
-    ("max_intraday_drawdown_20", 1),     # neutral_ic=+0.078
+    ("high_freq_volatility_20", -1),  # neutral_ic=-0.094
+    ("volume_autocorr_20", -1),  # neutral_ic=-0.083
+    ("intraday_kurtosis_20", -1),  # neutral_ic=-0.081
+    ("intraday_skewness_20", -1),  # neutral_ic=-0.078
+    ("max_intraday_drawdown_20", 1),  # neutral_ic=+0.078
     ("weighted_price_contribution_20", -1),  # neutral_ic=-0.070
 ]
 
@@ -139,9 +145,7 @@ def load_data(factor_names: list[str], start_date: str, end_date: str):
         params=(start_date, end_date),
     )
     mcap_df["ln_mcap"] = np.log(mcap_df["total_mv"].astype(float) + 1e-12)
-    ln_mcap_pivot = mcap_df.pivot_table(
-        index="trade_date", columns="code", values="ln_mcap"
-    )
+    ln_mcap_pivot = mcap_df.pivot_table(index="trade_date", columns="code", values="ln_mcap")
 
     conn2.close()
     logger.info("All data loaded in %.0fs", time.time() - t0)
@@ -185,7 +189,9 @@ def run_wf_for_config(
     fdf = factor_df[factor_df["factor_name"].isin(needed)].copy()
 
     signal_func = make_equal_weight_signal_func(
-        fdf, directions, price_data,
+        fdf,
+        directions,
+        price_data,
         top_n=20,
         rebalance_freq="monthly",
         size_neutral_beta=0.50,
@@ -202,13 +208,15 @@ def run_wf_for_config(
     # Collect fold details
     fold_details = []
     for fr in wf_result.fold_results:
-        fold_details.append({
-            "fold": fr.fold_idx,
-            "test_period": f"{fr.test_period[0]}~{fr.test_period[1]}",
-            "oos_sharpe": round(fr.oos_sharpe, 4),
-            "oos_mdd": round(fr.oos_mdd, 4),
-            "oos_annual_return": round(fr.oos_annual_return, 4),
-        })
+        fold_details.append(
+            {
+                "fold": fr.fold_idx,
+                "test_period": f"{fr.test_period[0]}~{fr.test_period[1]}",
+                "oos_sharpe": round(fr.oos_sharpe, 4),
+                "oos_mdd": round(fr.oos_mdd, 4),
+                "oos_annual_return": round(fr.oos_annual_return, 4),
+            }
+        )
 
     result = {
         "config_name": config_name,
@@ -229,8 +237,12 @@ def run_wf_for_config(
     neg = result["negative_folds"]
     logger.info(
         "[%s] OOS Sharpe=%.4f, MDD=%.2f%%, %d neg folds -> %s (%.0fs)",
-        config_name, result["oos_sharpe"], result["oos_mdd"] * 100,
-        neg, marker, elapsed,
+        config_name,
+        result["oos_sharpe"],
+        result["oos_mdd"] * 100,
+        neg,
+        marker,
+        elapsed,
     )
     return result
 
@@ -276,8 +288,12 @@ def main():
     print("[Baseline] CORE4 only (3-fold, 2019-2026)")
     print(f"{'=' * 70}")
     baseline = run_wf_for_config(
-        "CORE4_baseline", CORE4_DIRECTIONS,
-        factor_df, price_data, benchmark, ln_mcap_pivot,
+        "CORE4_baseline",
+        CORE4_DIRECTIONS,
+        factor_df,
+        price_data,
+        benchmark,
+        ln_mcap_pivot,
     )
 
     # Run each candidate (CORE4 + 1 microstructure factor)
@@ -289,8 +305,12 @@ def main():
 
         test_directions = {**CORE4_DIRECTIONS, fname: direction}
         r = run_wf_for_config(
-            f"CORE4+{fname}", test_directions,
-            factor_df, price_data, benchmark, ln_mcap_pivot,
+            f"CORE4+{fname}",
+            test_directions,
+            factor_df,
+            price_data,
+            benchmark,
+            ln_mcap_pivot,
         )
         r["delta_sharpe"] = round(r["oos_sharpe"] - baseline["oos_sharpe"], 4)
         results.append(r)
@@ -318,7 +338,9 @@ def main():
         )
 
     pass_configs = [r for r in results[1:] if r["pass"]]
-    print(f"\n  {len(pass_configs)}/{len(results)-1} candidates PASS (Sharpe > baseline {baseline['oos_sharpe']:.4f})")
+    print(
+        f"\n  {len(pass_configs)}/{len(results) - 1} candidates PASS (Sharpe > baseline {baseline['oos_sharpe']:.4f})"
+    )
     print(f"  Total time: {time.time() - t0:.0f}s")
     print(f"  Results: {out_path}")
 

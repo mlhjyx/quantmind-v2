@@ -50,9 +50,9 @@ def list_pending(conn) -> None:
         print("No pending L4 approval requests.")
         return
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"  Pending L4 Approval Requests ({len(rows)})")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     for row in rows:
         print(f"\n  Approval ID:   {row[0]}")
         print(f"  Strategy ID:   {row[1]}")
@@ -61,7 +61,7 @@ def list_pending(conn) -> None:
         print(f"  CB Level:      L{row[4]}")
         print(f"  CB Since:      {row[5]}")
         print(f"  CB Reason:     {row[6]}")
-        print(f"  {'-'*60}")
+        print(f"  {'-' * 60}")
     print()
 
 
@@ -97,11 +97,16 @@ def approve_request(conn, approval_id: str) -> None:
     print(f"Approved: {approval_id}")
     print(f"Strategy {strategy_id} will recover to NORMAL on next execution.")
 
-    send_alert("P1", "L4审批已通过",
-               f"策略{strategy_id} L4恢复审批已通过。\n"
-               f"审批ID: {approval_id}\n"
-               f"下次执行时将自动恢复到NORMAL状态。",
-               settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+    send_alert(
+        "P1",
+        "L4审批已通过",
+        f"策略{strategy_id} L4恢复审批已通过。\n"
+        f"审批ID: {approval_id}\n"
+        f"下次执行时将自动恢复到NORMAL状态。",
+        settings.DINGTALK_WEBHOOK_URL,
+        settings.DINGTALK_SECRET,
+        conn,
+    )
 
 
 def reject_request(conn, approval_id: str) -> None:
@@ -185,9 +190,14 @@ def force_reset(conn, reason: str) -> None:
     print(f"Force reset: L{prev_level} -> NORMAL")
     print(f"Reason: {reason}")
 
-    send_alert("P0", "L4强制重置",
-               f"策略{strategy_id}从L{prev_level}强制重置到NORMAL。\n原因: {reason}",
-               settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn)
+    send_alert(
+        "P0",
+        "L4强制重置",
+        f"策略{strategy_id}从L{prev_level}强制重置到NORMAL。\n原因: {reason}",
+        settings.DINGTALK_WEBHOOK_URL,
+        settings.DINGTALK_SECRET,
+        conn,
+    )
 
 
 def main():
@@ -196,10 +206,14 @@ def main():
     group.add_argument("--list", action="store_true", help="List pending L4 approvals")
     group.add_argument("--approve", action="store_true", help="Approve a L4 recovery request")
     group.add_argument("--reject", action="store_true", help="Reject a L4 recovery request")
-    group.add_argument("--force-reset", action="store_true", help="Force reset to NORMAL (emergency)")
+    group.add_argument(
+        "--force-reset", action="store_true", help="Force reset to NORMAL (emergency)"
+    )
 
     parser.add_argument("--approval-id", type=str, help="Approval UUID (for --approve/--reject)")
-    parser.add_argument("--reason", type=str, default="", help="Reason (required for --force-reset)")
+    parser.add_argument(
+        "--reason", type=str, default="", help="Reason (required for --force-reset)"
+    )
 
     args = parser.parse_args()
 

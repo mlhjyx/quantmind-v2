@@ -108,12 +108,14 @@ def find_commit_violations(file_path: Path) -> list[dict]:
                         if isinstance(node.func.value.value, ast.Name)
                         else "?"
                     )
-                self.found.append({
-                    "line": node.lineno,
-                    "col": node.col_offset,
-                    "receiver": receiver,
-                    "method": method_ctx,
-                })
+                self.found.append(
+                    {
+                        "line": node.lineno,
+                        "col": node.col_offset,
+                        "receiver": receiver,
+                        "method": method_ctx,
+                    }
+                )
             self.generic_visit(node)
 
     visitor = CommitVisitor()
@@ -135,12 +137,14 @@ def audit() -> dict:
             continue
         rel_path = str(py_file.relative_to(PROJECT_ROOT)).replace("\\", "/")
         tier = classify_tier(rel_path)
-        files_data.append({
-            "file": rel_path,
-            "tier": tier,
-            "violation_count": len(violations),
-            "violations": violations,
-        })
+        files_data.append(
+            {
+                "file": rel_path,
+                "tier": tier,
+                "violation_count": len(violations),
+                "violations": violations,
+            }
+        )
         total_violations += len(violations)
         by_tier[tier] += len(violations)
 

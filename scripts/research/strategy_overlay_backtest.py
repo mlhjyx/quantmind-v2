@@ -35,14 +35,23 @@ RF_DAILY = RF_ANNUAL / 252
 EXTRA_COST_BPS = 30
 
 CORE_5 = [
-    ("turnover_mean_20", -1), ("volatility_20", -1), ("reversal_20", 1),
-    ("amihud_20", 1), ("bp_ratio", 1),
+    ("turnover_mean_20", -1),
+    ("volatility_20", -1),
+    ("reversal_20", 1),
+    ("amihud_20", 1),
+    ("bp_ratio", 1),
 ]
 
 FACTORS_15 = CORE_5 + [
-    ("money_flow_strength", 1), ("a158_vsump5", -1), ("a158_vma5", 1),
-    ("kbar_kmid", -1), ("a158_rank5", -1), ("kbar_ksft", -1),
-    ("vwap_bias_1d", -1), ("a158_corr5", -1), ("turnover_surge_ratio", -1),
+    ("money_flow_strength", 1),
+    ("a158_vsump5", -1),
+    ("a158_vma5", 1),
+    ("kbar_kmid", -1),
+    ("a158_rank5", -1),
+    ("kbar_ksft", -1),
+    ("vwap_bias_1d", -1),
+    ("a158_corr5", -1),
+    ("turnover_surge_ratio", -1),
     ("chmom_60_20", -1),
 ]
 
@@ -65,12 +74,15 @@ def load_data(conn) -> dict:
     cur = conn.cursor()
 
     # 月末调仓日
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date))
             trade_date FROM klines_daily
         WHERE trade_date >= %s AND trade_date <= %s
         ORDER BY EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date), trade_date DESC
-    """, (BT_START, BT_END))
+    """,
+        (BT_START, BT_END),
+    )
     rebal_dates = sorted([r[0] for r in cur.fetchall()])
     print(f"  调仓日: {len(rebal_dates)}个")
 
@@ -80,7 +92,8 @@ def load_data(conn) -> dict:
         """SELECT code, trade_date, factor_name, neutral_value
            FROM factor_values
            WHERE trade_date = ANY(%s) AND factor_name = ANY(%s) AND neutral_value IS NOT NULL""",
-        conn, params=(rebal_dates, all_fnames),
+        conn,
+        params=(rebal_dates, all_fnames),
     )
     print(f"  因子: {len(factor_data):,}行, {factor_data['factor_name'].nunique()}个")
 
@@ -88,7 +101,8 @@ def load_data(conn) -> dict:
     prices = pd.read_sql(
         """SELECT code, trade_date, close * COALESCE(adj_factor, 1) AS adj_close
            FROM klines_daily WHERE trade_date >= %s AND trade_date <= %s AND volume > 0""",
-        conn, params=(BT_START, BT_END),
+        conn,
+        params=(BT_START, BT_END),
     )
     price_pivot = prices.pivot(index="trade_date", columns="code", values="adj_close").sort_index()
     daily_ret = price_pivot.pct_change(fill_method=None)
@@ -100,16 +114,20 @@ def load_data(conn) -> dict:
     mv_data = pd.read_sql(
         """SELECT code, trade_date, total_mv FROM daily_basic
            WHERE trade_date = ANY(%s) AND total_mv > 0""",
-        conn, params=(rebal_dates,),
+        conn,
+        params=(rebal_dates,),
     )
 
     # MODIFIER信号面板（nb_sh_sz_divergence）
     print("  构建MODIFIER面板...")
-    cur.execute("""
+    cur.execute(
+        """
         SELECT code, trade_date, hold_vol FROM northbound_holdings
         WHERE trade_date >= %s AND trade_date <= %s AND hold_vol IS NOT NULL
         ORDER BY code, trade_date
-    """, (DATA_START, BT_END))
+    """,
+        (DATA_START, BT_END),
+    )
     nb_df = pd.DataFrame(cur.fetchall(), columns=["code", "trade_date", "hold_vol"])
     nb_df["trade_date"] = pd.to_datetime(nb_df["trade_date"])
     nb_df["hold_vol"] = nb_df["hold_vol"].astype(float)
@@ -118,7 +136,8 @@ def load_data(conn) -> dict:
         """SELECT code, trade_date, close * adj_factor as adj_close
            FROM klines_daily WHERE trade_date >= %s AND trade_date <= %s
              AND close IS NOT NULL AND adj_factor IS NOT NULL""",
-        conn, params=(DATA_START, BT_END),
+        conn,
+        params=(DATA_START, BT_END),
     )
     nb_price["trade_date"] = pd.to_datetime(nb_price["trade_date"])
     nb_price["adj_close"] = nb_price["adj_close"].astype(float)
@@ -261,7 +280,9 @@ def run_backtest(
     mv_samples = []
 
     for i, rd in enumerate(rebal_dates):
-        df = factor_data[(factor_data["trade_date"] == rd) & (factor_data["factor_name"].isin(fnames))]
+        df = factor_data[
+            (factor_data["trade_date"] == rd) & (factor_data["factor_name"].isin(fnames))
+        ]
         if df.empty:
             continue
 
@@ -298,7 +319,9 @@ def run_backtest(
             continue
         if i + 1 < len(rebal_dates):
             next_rd_ts = pd.Timestamp(rebal_dates[i + 1])
-            end_idx = next((j for j, d in enumerate(all_dates_ts) if d > next_rd_ts), len(all_dates_ts))
+            end_idx = next(
+                (j for j, d in enumerate(all_dates_ts) if d > next_rd_ts), len(all_dates_ts)
+            )
         else:
             end_idx = len(all_dates_ts)
 
@@ -317,9 +340,13 @@ def run_backtest(
     if modifier_coeff is not None:
         # 对齐index → date
         br = base_ret.copy()
-        br.index = pd.Index([d.date() if hasattr(d, "date") and callable(d.date) else d for d in br.index])
+        br.index = pd.Index(
+            [d.date() if hasattr(d, "date") and callable(d.date) else d for d in br.index]
+        )
         mc = modifier_coeff.copy()
-        mc.index = pd.Index([d.date() if hasattr(d, "date") and callable(d.date) else d for d in mc.index])
+        mc.index = pd.Index(
+            [d.date() if hasattr(d, "date") and callable(d.date) else d for d in mc.index]
+        )
         common = br.index.intersection(mc.index)
         br = br.loc[common]
         cf = mc.loc[common]
@@ -372,7 +399,11 @@ def run_backtest(
         yearly[year] = (round(yr_sharpe, 2), round(yr_mdd * 100, 1))
 
     return Result(
-        label=label, cagr=cagr, sharpe=sharpe, mdd=mdd, calmar=calmar,
+        label=label,
+        cagr=cagr,
+        sharpe=sharpe,
+        mdd=mdd,
+        calmar=calmar,
         mv_median=np.median(mv_samples) if mv_samples else 0,
         small_pct=small_pct,
         avg_turnover=np.mean(turnovers) if turnovers else 0,
@@ -394,7 +425,9 @@ def print_report(results: list[Result]) -> None:
     print("═" * 95)
 
     # 框架验证
-    print(f"\n  框架验证: 基线Sharpe={base.sharpe:.2f} (期望≈1.27, 偏差{(base.sharpe/1.27-1)*100:+.0f}%)")
+    print(
+        f"\n  框架验证: 基线Sharpe={base.sharpe:.2f} (期望≈1.27, 偏差{(base.sharpe / 1.27 - 1) * 100:+.0f}%)"
+    )
 
     # 核心结果
     print("\n  核心结果:")
@@ -402,14 +435,16 @@ def print_report(results: list[Result]) -> None:
         f"  {'策略':<24s} │ {'CAGR%':>7s} │ {'Sharpe':>7s} │ {'MDD%':>7s} │ "
         f"{'Calmar':>7s} │ {'<100亿%':>7s} │ {'减仓天%':>7s} │ {'额外成本%':>8s}"
     )
-    print(f"  {'─'*24}─┼─{'─'*7}─┼─{'─'*7}─┼─{'─'*7}─┼─{'─'*7}─┼─{'─'*7}─┼─{'─'*7}─┼─{'─'*8}")
+    print(
+        f"  {'─' * 24}─┼─{'─' * 7}─┼─{'─' * 7}─┼─{'─' * 7}─┼─{'─' * 7}─┼─{'─' * 7}─┼─{'─' * 7}─┼─{'─' * 8}"
+    )
 
     for r in results:
         mark = " ★" if r.calmar > 1.0 and r.sharpe > 1.0 else ""
         print(
-            f"  {r.label:<24s} │ {r.cagr*100:>+7.1f} │ {r.sharpe:>7.2f} │ "
-            f"{r.mdd*100:>+7.1f} │ {r.calmar:>7.2f} │ {r.small_pct*100:>6.0f}% │ "
-            f"{r.reduce_pct*100:>6.1f}% │ {r.extra_cost*100:>7.2f}%{mark}"
+            f"  {r.label:<24s} │ {r.cagr * 100:>+7.1f} │ {r.sharpe:>7.2f} │ "
+            f"{r.mdd * 100:>+7.1f} │ {r.calmar:>7.2f} │ {r.small_pct * 100:>6.0f}% │ "
+            f"{r.reduce_pct * 100:>6.1f}% │ {r.extra_cost * 100:>7.2f}%{mark}"
         )
 
     # 年度分解
@@ -418,13 +453,15 @@ def print_report(results: list[Result]) -> None:
         f"  {'年':>6s}  │ {'基线':>14s} │ {'D组(15因子)':>14s} │ "
         f"{'M组(MODIFIER)':>14s} │ {'叠加':>14s}"
     )
-    print(f"  {'─'*6}  ┼ {'─'*14} ┼ {'─'*14} ┼ {'─'*14} ┼ {'─'*14}")
+    print(f"  {'─' * 6}  ┼ {'─' * 14} ┼ {'─' * 14} ┼ {'─' * 14} ┼ {'─' * 14}")
     for year in range(BT_START.year, BT_END.year + 1):
         parts = []
         for r in results:
             s, m = r.yearly.get(year, (0, 0))
             parts.append(f"{s:>+5.2f}/{m:>+6.1f}")
-        print(f"  {year:>6d}  │ {parts[0]:>14s} │ {parts[1]:>14s} │ {parts[2]:>14s} │ {parts[3]:>14s}")
+        print(
+            f"  {year:>6d}  │ {parts[0]:>14s} │ {parts[1]:>14s} │ {parts[2]:>14s} │ {parts[3]:>14s}"
+        )
 
     # MDD改善分解
     print("\n  MDD改善分解:")
@@ -439,18 +476,20 @@ def print_report(results: list[Result]) -> None:
     additive = d_improve + m_improve
     if abs(additive) > 0:
         overlap = 1 - o_improve / additive
-        print(f"    正交性: 期望{additive:+.1f}pp, 实际{o_improve:+.1f}pp, 重叠{overlap*100:.0f}%")
+        print(
+            f"    正交性: 期望{additive:+.1f}pp, 实际{o_improve:+.1f}pp, 重叠{overlap * 100:.0f}%"
+        )
 
     # 结论
     print("\n  结论:")
     print(f"    D组Sharpe验证: {d_grp.sharpe:.2f}")
 
     if overlay.mdd * 100 > -30:
-        print(f"    ✅ 叠加MDD={overlay.mdd*100:.1f}% (< -30%目标)")
+        print(f"    ✅ 叠加MDD={overlay.mdd * 100:.1f}% (< -30%目标)")
     elif overlay.mdd * 100 > -35:
-        print(f"    ⚠️ 叠加MDD={overlay.mdd*100:.1f}% (接近-30%目标)")
+        print(f"    ⚠️ 叠加MDD={overlay.mdd * 100:.1f}% (接近-30%目标)")
     else:
-        print(f"    ❌ 叠加MDD={overlay.mdd*100:.1f}% (未达-30%目标)")
+        print(f"    ❌ 叠加MDD={overlay.mdd * 100:.1f}% (未达-30%目标)")
 
     if overlay.sharpe > 1.0:
         print(f"    ✅ 叠加Sharpe={overlay.sharpe:.2f} (> 1.0)")
@@ -463,7 +502,9 @@ def print_report(results: list[Result]) -> None:
     best = max(results, key=lambda r: r.calmar)
     print(f"\n    最优策略: {best.label} (Calmar={best.calmar:.2f})")
     if best.label != "基线(CORE 5)":
-        print(f"    vs基线: Sharpe {base.sharpe:.2f}→{best.sharpe:.2f}, MDD {base.mdd*100:.1f}%→{best.mdd*100:.1f}%")
+        print(
+            f"    vs基线: Sharpe {base.sharpe:.2f}→{best.sharpe:.2f}, MDD {base.mdd * 100:.1f}%→{best.mdd * 100:.1f}%"
+        )
 
     print(f"\n{'═' * 95}\n")
 
@@ -479,7 +520,9 @@ def main() -> None:
     mod_coeff = compute_modifier_coeff(data["sh_sz_signal"])
     reduce_days = (mod_coeff < 0.95).sum()
     total_days = mod_coeff.notna().sum()
-    print(f"  MODIFIER系数: 减仓{reduce_days}/{total_days}天 ({reduce_days/max(total_days,1)*100:.1f}%)")
+    print(
+        f"  MODIFIER系数: 减仓{reduce_days}/{total_days}天 ({reduce_days / max(total_days, 1) * 100:.1f}%)"
+    )
 
     # 4组统一回测
     print("\n[回测]")
@@ -494,7 +537,7 @@ def main() -> None:
     for label, factors, mod in configs:
         print(f"  {label}...", end=" ", flush=True)
         r = run_backtest(factors, data, mod, label)
-        print(f"Sharpe={r.sharpe:.2f} MDD={r.mdd*100:.1f}% Calmar={r.calmar:.2f}")
+        print(f"Sharpe={r.sharpe:.2f} MDD={r.mdd * 100:.1f}% Calmar={r.calmar:.2f}")
         results.append(r)
 
     print_report(results)

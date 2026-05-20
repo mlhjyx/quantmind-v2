@@ -61,11 +61,11 @@ logger = logging.getLogger("bayesian_slippage_cal")
 
 PRIORS: dict[str, tuple[float, float]] = {
     # 参数名: (均值, 标准差)
-    "base_bps": (8.0, 3.0),          # 小盘基础滑点，R4: 8bps
-    "k_coef": (0.5, 0.2),            # 旧路径冲击系数（保留兼容性）
-    "y_small": (1.5, 0.3),           # 小盘Y，R4建议1.8
-    "y_large": (2.5, 0.5),           # 大单惩罚（此处用于overnight sigma）
-    "sell_penalty": (1.2, 0.2),      # 卖出惩罚，R4建议1.3
+    "base_bps": (8.0, 3.0),  # 小盘基础滑点，R4: 8bps
+    "k_coef": (0.5, 0.2),  # 旧路径冲击系数（保留兼容性）
+    "y_small": (1.5, 0.3),  # 小盘Y，R4建议1.8
+    "y_large": (2.5, 0.5),  # 大单惩罚（此处用于overnight sigma）
+    "sell_penalty": (1.2, 0.2),  # 卖出惩罚，R4建议1.3
     "overnight_gap_cost_bps": (25.0, 10.0),  # 隔夜跳空均值
 }
 
@@ -108,8 +108,12 @@ def load_pt_execution_data(min_records: int = 30) -> pd.DataFrame:
         不足时返回空DataFrame（列结构相同）。
     """
     required_cols = [
-        "direction", "quantity", "fill_price", "target_price",
-        "slippage_bps", "trade_date",
+        "direction",
+        "quantity",
+        "fill_price",
+        "target_price",
+        "slippage_bps",
+        "trade_date",
     ]
     empty = pd.DataFrame(columns=required_cols)
 
@@ -166,7 +170,8 @@ def load_pt_execution_data(min_records: int = 30) -> pd.DataFrame:
     if n < min_records:
         logger.info(
             "数据不足（当前%d条，需要>=%d条），返回空DataFrame",
-            n, min_records,
+            n,
+            min_records,
         )
         return empty
 
@@ -208,9 +213,7 @@ def compute_model_slippage(
         if key in params:
             val = params[key]
             if not (lo <= val <= hi):
-                raise ValueError(
-                    f"参数 {key}={val:.4f} 超出合理范围 [{lo}, {hi}]"
-                )
+                raise ValueError(f"参数 {key}={val:.4f} 超出合理范围 [{lo}, {hi}]")
 
     base_bps = params.get("base_bps", PRIORS["base_bps"][0])
     y_small = params.get("y_small", PRIORS["y_small"][0])
@@ -352,10 +355,10 @@ def mle_calibrate(executions: pd.DataFrame) -> CalibrationResult:
     # 计算RMSE
     predicted = compute_model_slippage(opt_params, executions)
     rmse = float(np.sqrt(np.mean((observed - predicted) ** 2)))
-    log_lik_final = float(-result.fun + sum(
-        -0.5 * ((opt_params[k] - PRIORS[k][0]) / PRIORS[k][1]) ** 2
-        for k in param_names
-    ))
+    log_lik_final = float(
+        -result.fun
+        + sum(-0.5 * ((opt_params[k] - PRIORS[k][0]) / PRIORS[k][1]) ** 2 for k in param_names)
+    )
 
     return CalibrationResult(
         params=opt_params,
@@ -400,9 +403,8 @@ def _pymc_calibrate(executions: pd.DataFrame, pm, pt) -> CalibrationResult:
         sigma = pm.HalfNormal("sigma", sigma=10.0)
 
         # 简化预测（PyMC tensor路径）
-        trade_amounts = (
-            np.asarray(executions["quantity"], dtype=float)
-            * np.asarray(executions["fill_price"], dtype=float)
+        trade_amounts = np.asarray(executions["quantity"], dtype=float) * np.asarray(
+            executions["fill_price"], dtype=float
         )
         participation = np.clip(trade_amounts / 100_000_000.0, 1e-6, 0.5)
         is_sell = (executions["direction"].values == "sell").astype(float)
@@ -415,6 +417,7 @@ def _pymc_calibrate(executions: pd.DataFrame, pm, pt) -> CalibrationResult:
         trace = pm.sample(1000, tune=500, cores=1, progressbar=False, return_inferencedata=True)
 
     import arviz as az  # type: ignore
+
     summary = az.summary(trace, hdi_prob=0.95)
 
     param_names = ["base_bps", "y_small", "sell_penalty", "overnight_gap_cost_bps"]
@@ -543,9 +546,7 @@ def _compute_coef_drift(params: dict[str, float]) -> dict[str, float]:
     return over
 
 
-def _push_dingtalk_slippage(
-    env: dict[str, str], tag: str, over: dict[str, float]
-) -> None:
+def _push_dingtalk_slippage(env: dict[str, str], tag: str, over: dict[str, float]) -> None:
     """滑点系数 drift > 30% 时 DingTalk 告警 (沿用 llm_cost_monthly_audit 体例).
 
     plain-post; .env 含 DINGTALK_SECRET 则附加 HMAC-SHA256 加签.
@@ -639,9 +640,7 @@ def _finalize_quarterly(
     # (2) 逐系数 drift 检测 + 告警
     over = _compute_coef_drift(result.params)
     if not over:
-        print(
-            f"[Drift] 所有系数 drift <= {_DRIFT_ALERT_THRESHOLD * 100:.0f}%, 无需告警"
-        )
+        print(f"[Drift] 所有系数 drift <= {_DRIFT_ALERT_THRESHOLD * 100:.0f}%, 无需告警")
         return
 
     drift_str = ", ".join(f"{k}={d * 100:.0f}%" for k, d in over.items())
@@ -660,15 +659,19 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="Bayesian滑点参数校准")
     parser.add_argument(
-        "--min-records", type=int, default=30,
+        "--min-records",
+        type=int,
+        default=30,
         help="最少需要N条记录才执行校准（默认30）",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="只检查数据量，不实际校准",
     )
     parser.add_argument(
-        "--output-params", action="store_true",
+        "--output-params",
+        action="store_true",
         help="输出可直接粘贴到.env的参数行",
     )
     args = parser.parse_args()
@@ -695,13 +698,17 @@ def main() -> None:
             print("\n# 可粘贴到.env的R4手动推荐参数:")
             print(f"SLIPPAGE_Y_SMALL={R4_MANUAL_RECOMMENDATIONS['y_small']}")
             print(f"SLIPPAGE_SELL_PENALTY={R4_MANUAL_RECOMMENDATIONS['sell_penalty']}")
-            print(f"SLIPPAGE_OVERNIGHT_GAP_BPS={R4_MANUAL_RECOMMENDATIONS['overnight_gap_cost_bps']}")
+            print(
+                f"SLIPPAGE_OVERNIGHT_GAP_BPS={R4_MANUAL_RECOMMENDATIONS['overnight_gap_cost_bps']}"
+            )
         return
 
     print(f"\n读取到 {len(df)} 条PT执行记录")
-    print(f"滑点统计: 均值={df['slippage_bps'].mean():.1f}bps, "
-          f"中位数={df['slippage_bps'].median():.1f}bps, "
-          f"标准差={df['slippage_bps'].std():.1f}bps")
+    print(
+        f"滑点统计: 均值={df['slippage_bps'].mean():.1f}bps, "
+        f"中位数={df['slippage_bps'].median():.1f}bps, "
+        f"标准差={df['slippage_bps'].std():.1f}bps"
+    )
 
     if args.dry_run:
         print("\n[--dry-run] 数据检查完成，跳过校准。")

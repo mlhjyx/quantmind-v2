@@ -1402,9 +1402,7 @@ def part2_1_factor_inventory():
         conn,
         params=(latest_date, tuple(CORE5_FACTORS)),
     )
-    core5_wide.pivot_table(
-        index="code", columns="factor_name", values="neutral_value"
-    )
+    core5_wide.pivot_table(index="code", columns="factor_name", values="neutral_value")
 
     conn.close()
 

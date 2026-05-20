@@ -83,6 +83,7 @@ EXTRA_PURGE_DAYS = 16
 # Generic Model Signal Function Factory
 # ============================================================
 
+
 def _make_generic_signal_func(
     ml_data: pd.DataFrame,
     feature_names: list[str],
@@ -155,6 +156,7 @@ def _make_generic_signal_func(
 
         # 3. Preprocess (fit on train_inner only)
         from engines.ml_engine import FeaturePreprocessor
+
         preprocessor = FeaturePreprocessor()
         preprocessor.fit(train_inner, actual_features)
 
@@ -166,7 +168,9 @@ def _make_generic_signal_func(
         X_valid = valid_processed[actual_features].values.astype(np.float32)
         y_valid = valid_processed["excess_return_20"].values.astype(np.float32)
 
-        print(f"  Train: {len(X_train):,}, Valid: {len(X_valid):,}, Features: {len(actual_features)}")
+        print(
+            f"  Train: {len(X_train):,}, Valid: {len(X_valid):,}, Features: {len(actual_features)}"
+        )
 
         # 4. Train model (delegated)
         predict_fn, best_iter, extra = train_predict_fn(
@@ -180,20 +184,24 @@ def _make_generic_signal_func(
         valid_ic = _compute_ic(valid_pred, y_valid)
 
         elapsed = time.time() - t0
-        print(f"  Train IC={train_ic:.4f}, Valid IC={valid_ic:.4f}, "
-              f"best_iter={best_iter}, {elapsed:.1f}s")
+        print(
+            f"  Train IC={train_ic:.4f}, Valid IC={valid_ic:.4f}, "
+            f"best_iter={best_iter}, {elapsed:.1f}s"
+        )
 
         if fold_diagnostics is not None:
-            fold_diagnostics.append(FoldDiagnostics(
-                fold_idx=fold_idx,
-                train_samples=len(X_train),
-                valid_samples=len(X_valid),
-                train_ic=train_ic,
-                valid_ic=valid_ic,
-                best_iter=best_iter,
-                feature_importance=extra.get("feature_importance", {}),
-                elapsed_s=elapsed,
-            ))
+            fold_diagnostics.append(
+                FoldDiagnostics(
+                    fold_idx=fold_idx,
+                    train_samples=len(X_train),
+                    valid_samples=len(X_valid),
+                    train_ic=train_ic,
+                    valid_ic=valid_ic,
+                    best_iter=best_iter,
+                    feature_importance=extra.get("feature_importance", {}),
+                    elapsed_s=elapsed,
+                )
+            )
 
         # 6. Generate signals for test period
         fold_rebal = [rd for rd in all_rebal_dates if rd in test_set]
@@ -229,6 +237,7 @@ def _make_generic_signal_func(
             # SN adjustment
             if SN_BETA > 0 and ln_mcap_pivot is not None and latest_date in ln_mcap_pivot.index:
                 from engines.size_neutral import apply_size_neutral
+
                 scores = apply_size_neutral(scores, ln_mcap_pivot.loc[latest_date], SN_BETA)
 
             weights = builder.build(scores, pd.Series(dtype=str))
@@ -244,6 +253,7 @@ def _make_generic_signal_func(
 # ============================================================
 # Model-Specific train_predict_fn Implementations
 # ============================================================
+
 
 def _xgboost_train(X_train, y_train, X_valid, y_valid, features, fold_idx):
     """XGBoost regression with GPU acceleration."""
@@ -268,7 +278,8 @@ def _xgboost_train(X_train, y_train, X_valid, y_valid, features, fold_idx):
     }
 
     model = xgb.train(
-        params, dtrain,
+        params,
+        dtrain,
         num_boost_round=500,
         evals=[(dvalid, "valid")],
         early_stopping_rounds=50,
@@ -326,14 +337,19 @@ def _tabnet_train(X_train, y_train, X_valid, y_valid, features, fold_idx):
     y_valid = y_valid.reshape(-1, 1)
 
     model = TabNetRegressor(
-        n_d=32, n_a=32, n_steps=5, gamma=1.5,
-        n_independent=2, n_shared=2,
+        n_d=32,
+        n_a=32,
+        n_steps=5,
+        gamma=1.5,
+        n_independent=2,
+        n_shared=2,
         seed=42,
         verbose=0,
         device_name="cuda",
     )
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         eval_set=[(X_valid, y_valid)],
         eval_metric=["rmse"],
         max_epochs=200,
@@ -401,10 +417,12 @@ def _lstm_train(X_train, y_train, X_valid, y_valid, features, fold_idx):
         torch.FloatTensor(X_va),
         torch.FloatTensor(y_valid),
     )
-    train_loader = DataLoader(train_ds, batch_size=32768, shuffle=True,
-                              pin_memory=True, num_workers=0)
-    valid_loader = DataLoader(valid_ds, batch_size=65536, shuffle=False,
-                              pin_memory=True, num_workers=0)
+    train_loader = DataLoader(
+        train_ds, batch_size=32768, shuffle=True, pin_memory=True, num_workers=0
+    )
+    valid_loader = DataLoader(
+        valid_ds, batch_size=65536, shuffle=False, pin_memory=True, num_workers=0
+    )
 
     model = FactorMLP(n_features).to(device)
     # torch.compile requires Triton (Linux only), skip on Windows
@@ -477,7 +495,8 @@ def _lightgbm_train(X_train, y_train, X_valid, y_valid, features, fold_idx):
         lgb.log_evaluation(period=0),
     ]
     model = lgb.train(
-        params, train_ds,
+        params,
+        train_ds,
         num_boost_round=500,
         valid_sets=[valid_ds],
         valid_names=["valid"],
@@ -506,8 +525,12 @@ MODEL_REGISTRY = {
 # Stacking Ensemble
 # ============================================================
 
+
 def _make_stacking_signal_func(
-    ml_data, feature_names, price_data, ln_mcap_pivot,
+    ml_data,
+    feature_names,
+    price_data,
+    ln_mcap_pivot,
     base_models=("lightgbm", "xgboost", "catboost"),
     fold_diagnostics=None,
 ):
@@ -519,9 +542,13 @@ def _make_stacking_signal_func(
     all_rebal_dates = compute_rebalance_dates(all_trading_days, REBALANCE_FREQ)
 
     se_config = SignalConfig(
-        factor_names=feature_names[:4], top_n=TOP_N,
-        weight_method="equal", rebalance_freq=REBALANCE_FREQ,
-        industry_cap=1.0, turnover_cap=1.0, cash_buffer=0.0,
+        factor_names=feature_names[:4],
+        top_n=TOP_N,
+        weight_method="equal",
+        rebalance_freq=REBALANCE_FREQ,
+        industry_cap=1.0,
+        turnover_cap=1.0,
+        cash_buffer=0.0,
     )
     builder = PortfolioBuilder(se_config)
     actual_features = [f for f in feature_names if f in ml_data.columns]
@@ -539,7 +566,9 @@ def _make_stacking_signal_func(
         train_full = ml_data[ml_data["trade_date"].isin(train_set)].copy()
         train_unique = sorted(train_full["trade_date"].unique())
         if len(train_unique) > EXTRA_PURGE_DAYS + 50:
-            train_full = train_full[train_full["trade_date"] <= train_unique[-(EXTRA_PURGE_DAYS + 1)]]
+            train_full = train_full[
+                train_full["trade_date"] <= train_unique[-(EXTRA_PURGE_DAYS + 1)]
+            ]
             train_unique = sorted(train_full["trade_date"].unique())
 
         split_idx = int(len(train_unique) * 0.8)
@@ -547,6 +576,7 @@ def _make_stacking_signal_func(
         valid_data = train_full[train_full["trade_date"].isin(set(train_unique[split_idx:]))]
 
         from engines.ml_engine import FeaturePreprocessor
+
         preprocessor = FeaturePreprocessor()
         preprocessor.fit(train_inner, actual_features)
         train_p = preprocessor.transform(train_inner)
@@ -606,6 +636,7 @@ def _make_stacking_signal_func(
 
             if SN_BETA > 0 and ln_mcap_pivot is not None and latest in ln_mcap_pivot.index:
                 from engines.size_neutral import apply_size_neutral
+
                 scores = apply_size_neutral(scores, ln_mcap_pivot.loc[latest], SN_BETA)
 
             weights = builder.build(scores, pd.Series(dtype=str))
@@ -622,6 +653,7 @@ def _make_stacking_signal_func(
 # Runner
 # ============================================================
 
+
 def run_experiment(
     model_key: str,
     ml_data: pd.DataFrame,
@@ -631,21 +663,27 @@ def run_experiment(
     ln_mcap_pivot: pd.DataFrame,
 ) -> dict:
     """Run a single model experiment through WF engine."""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Experiment: {model_key}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     fold_diags: list[FoldDiagnostics] = []
 
     if model_key == "stacking":
         signal_func = _make_stacking_signal_func(
-            ml_data, feature_names, price_df, ln_mcap_pivot,
+            ml_data,
+            feature_names,
+            price_df,
+            ln_mcap_pivot,
             fold_diagnostics=fold_diags,
         )
     else:
         model_label, train_fn = MODEL_REGISTRY[model_key]
         signal_func = _make_generic_signal_func(
-            ml_data, feature_names, price_df, ln_mcap_pivot,
+            ml_data,
+            feature_names,
+            price_df,
+            ln_mcap_pivot,
             model_name=model_label,
             train_predict_fn=train_fn,
             fold_diagnostics=fold_diags,
@@ -682,24 +720,26 @@ def run_experiment(
     }
 
     # Print summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Result: {model_key}")
     print(f"  OOS Sharpe: {result['oos_sharpe']}")
     print(f"  OOS MDD: {result['oos_mdd']}")
     print(f"  Per-fold: {result['per_fold_sharpe']}")
     print(f"  Neg folds: {result['neg_folds']}/5")
     print(f"  Time: {elapsed:.0f}s")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 3E: Multi-model ML exploration")
-    parser.add_argument("--model", choices=list(MODEL_REGISTRY.keys()) + ["stacking"],
-                        help="Model to run")
-    parser.add_argument("--all-trees", action="store_true",
-                        help="Run all tree models (LightGBM, XGBoost, CatBoost)")
+    parser.add_argument(
+        "--model", choices=list(MODEL_REGISTRY.keys()) + ["stacking"], help="Model to run"
+    )
+    parser.add_argument(
+        "--all-trees", action="store_true", help="Run all tree models (LightGBM, XGBoost, CatBoost)"
+    )
     parser.add_argument("--all", action="store_true", help="Run all models")
     parser.add_argument("--compare", action="store_true", help="Print comparison table")
     args = parser.parse_args()
@@ -711,8 +751,10 @@ def main():
             print(f"\n{'Model':<20} {'Sharpe':>8} {'MDD':>8} {'NegFolds':>9} {'Time':>8}")
             print("-" * 55)
             for r in sorted(results, key=lambda x: -x["oos_sharpe"]):
-                print(f"{r['model']:<20} {r['oos_sharpe']:>8.4f} {r['oos_mdd']:>8.4f} "
-                      f"{r['neg_folds']:>5}/5    {r['elapsed_s']:>6.0f}s")
+                print(
+                    f"{r['model']:<20} {r['oos_sharpe']:>8.4f} {r['oos_mdd']:>8.4f} "
+                    f"{r['neg_folds']:>5}/5    {r['elapsed_s']:>6.0f}s"
+                )
             print("\nBaseline (equal-weight): Sharpe=0.8659, MDD=-0.1391")
         else:
             print("No results yet. Run experiments first.")
@@ -747,8 +789,12 @@ def main():
     for model_key in models:
         try:
             result = run_experiment(
-                model_key, ml_data, FEATURES_A,
-                price_df, bench_df, ln_mcap_pivot,
+                model_key,
+                ml_data,
+                FEATURES_A,
+                price_df,
+                bench_df,
+                ln_mcap_pivot,
             )
             # Update or append result
             all_results = [r for r in all_results if r["model"] != model_key]
@@ -762,19 +808,22 @@ def main():
         except Exception as e:
             print(f"\n!!! {model_key} FAILED: {e}")
             import traceback
+
             traceback.print_exc()
             continue
 
         gc.collect()
 
     # Final comparison
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("FINAL COMPARISON")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"{'Model':<20} {'Sharpe':>8} {'MDD':>8} {'NegFolds':>9}")
     print("-" * 45)
     for r in sorted(all_results, key=lambda x: -x["oos_sharpe"]):
-        print(f"{r['model']:<20} {r['oos_sharpe']:>8.4f} {r['oos_mdd']:>8.4f} {r['neg_folds']:>5}/5")
+        print(
+            f"{r['model']:<20} {r['oos_sharpe']:>8.4f} {r['oos_mdd']:>8.4f} {r['neg_folds']:>5}/5"
+        )
     print(f"{'equal-weight':<20} {'0.8659':>8} {'-0.1391':>8} {'0':>5}/5")
 
 

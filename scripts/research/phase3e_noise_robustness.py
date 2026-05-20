@@ -7,6 +7,7 @@ Criteria:
   5% noise retention < 0.95 -> WARNING
   20% noise retention < 0.50 -> FRAGILE, exclude from Active pool
 """
+
 from __future__ import annotations
 
 import json
@@ -32,11 +33,21 @@ OUT_DIR = Path("cache/phase3e")
 
 # 16 PASS factors from ic_neutral_screen.csv (amihud_intraday_20 excluded = FAIL)
 PASS_FACTORS = [
-    "intraday_skewness_20", "intraday_kurtosis_20", "high_freq_volatility_20",
-    "updown_vol_ratio_20", "max_intraday_drawdown_20", "volume_concentration_20",
-    "volume_autocorr_20", "smart_money_ratio_20", "volume_return_corr_20",
-    "open_drive_20", "close_drive_20", "morning_afternoon_ratio_20",
-    "variance_ratio_20", "price_path_efficiency_20", "autocorr_5min_20",
+    "intraday_skewness_20",
+    "intraday_kurtosis_20",
+    "high_freq_volatility_20",
+    "updown_vol_ratio_20",
+    "max_intraday_drawdown_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "volume_return_corr_20",
+    "open_drive_20",
+    "close_drive_20",
+    "morning_afternoon_ratio_20",
+    "variance_ratio_20",
+    "price_path_efficiency_20",
+    "autocorr_5min_20",
     "weighted_price_contribution_20",
 ]
 
@@ -64,12 +75,15 @@ def load_shared_data(conn):
 def load_raw_factor(factor_name: str, conn) -> pd.DataFrame:
     """Load raw_value from DB."""
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT trade_date, code, raw_value FROM factor_values
         WHERE factor_name = %s AND raw_value IS NOT NULL
           AND trade_date >= '2019-01-01'
         ORDER BY trade_date, code
-    """, (factor_name,))
+    """,
+        (factor_name,),
+    )
     rows = cur.fetchall()
     cur.close()
     if not rows:
@@ -163,6 +177,7 @@ def main():
     print("[Step 2] Loading price data...")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from phase3d_ml_synthesis import load_price_benchmark
+
     price_df, bench_df = load_price_benchmark()
     fwd_ret = compute_forward_excess_returns(price_df, bench_df, horizon=HORIZON, price_col="close")
     print(f"  Shared data ready in {time.time() - t0:.0f}s")
@@ -215,7 +230,7 @@ def main():
 
         s5 = f"5%={r5['retention']:.3f}" + (" !" if warn_5 else "")
         s20 = f"20%={r20['retention']:.3f}" + (" FRAGILE" if fragile_20 else "")
-        print(f"  clean={r5['clean_ic']:+.4f} | {s5} | {s20} -> {status} ({time.time()-t1:.0f}s)")
+        print(f"  clean={r5['clean_ic']:+.4f} | {s5} | {s20} -> {status} ({time.time() - t1:.0f}s)")
 
     # 4. Save results
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -245,7 +260,9 @@ def main():
     print(f"  {'-' * 68}")
     for r in sorted(results, key=lambda x: x["retention_20pct"], reverse=True):
         marker = {"ROBUST": "", "WARN": " !", "FRAGILE": " XX"}[r["status"]]
-        print(f"  {r['factor']:<32} {r['clean_ic']:>+9.4f} {r['retention_5pct']:>8.3f} {r['retention_20pct']:>8.3f} {r['status']:>8}{marker}")
+        print(
+            f"  {r['factor']:<32} {r['clean_ic']:>+9.4f} {r['retention_5pct']:>8.3f} {r['retention_20pct']:>8.3f} {r['status']:>8}{marker}"
+        )
 
     robust = sum(1 for r in results if r["status"] == "ROBUST")
     warn = sum(1 for r in results if r["status"] == "WARN")

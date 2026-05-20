@@ -89,7 +89,11 @@ def load_all_data():
         factor_parts.append(pd.read_parquet(yr_dir / "factor_data.parquet"))
 
     price_df = pd.concat(price_parts, ignore_index=True)
-    bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date").sort_values("trade_date")
+    bench_df = (
+        pd.concat(bench_parts, ignore_index=True)
+        .drop_duplicates("trade_date")
+        .sort_values("trade_date")
+    )
     factor_df = pd.concat(factor_parts, ignore_index=True)
 
     # Parquet raw_value 实际是 neutral
@@ -104,7 +108,9 @@ def load_all_data():
         & (price_df["board"].fillna("") != "bse")
     ].copy()
 
-    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, factor: {factor_df.shape}, {time.time()-t0:.1f}s")
+    print(
+        f"  price: {price_df.shape}, bench: {bench_df.shape}, factor: {factor_df.shape}, {time.time() - t0:.1f}s"
+    )
     return price_df, bench_df, factor_df
 
 
@@ -112,9 +118,7 @@ def load_strategy_nav():
     """加载 yearly_chain_nav (Step 6-D 输出)."""
     p = BASELINE_DIR / "yearly_chain_nav.parquet"
     if not p.exists():
-        raise FileNotFoundError(
-            f"{p} 不存在, 请先跑 scripts/yearly_breakdown_backtest.py"
-        )
+        raise FileNotFoundError(f"{p} 不存在, 请先跑 scripts/yearly_breakdown_backtest.py")
     df = pd.read_parquet(p)
     df["trade_date"] = pd.to_datetime(df["trade_date"])
     return df.set_index("trade_date")["nav"]
@@ -199,7 +203,9 @@ def build_smb_momentum(price_df, rolling_months: int = 3) -> pd.Series:
     smb_df.index = pd.to_datetime(smb_df.index)
 
     # 月度复利
-    monthly_smb = smb_df["smb_daily"].resample("ME").apply(lambda x: (1 + x).prod() - 1 if len(x) > 0 else 0)
+    monthly_smb = (
+        smb_df["smb_daily"].resample("ME").apply(lambda x: (1 + x).prod() - 1 if len(x) > 0 else 0)
+    )
     rolling_smb = monthly_smb.rolling(rolling_months, min_periods=1).sum()
     rolling_smb.name = "smb_momentum"
     return rolling_smb
@@ -297,7 +303,9 @@ def compute_future_strategy_sharpe(strategy_nav: pd.Series, horizons_months: lis
             # 未来 h 月的日收益
             future_start = me + pd.Timedelta(days=1)
             future_end = me + pd.Timedelta(days=h * 30 + 10)
-            future_ret = daily_ret[(daily_ret.index >= future_start) & (daily_ret.index <= future_end)]
+            future_ret = daily_ret[
+                (daily_ret.index >= future_start) & (daily_ret.index <= future_end)
+            ]
             if len(future_ret) < 20:
                 row[f"future_sharpe_{h}m"] = np.nan
                 continue
@@ -310,9 +318,7 @@ def compute_future_strategy_sharpe(strategy_nav: pd.Series, horizons_months: lis
     return pd.DataFrame(records).set_index("month_end")
 
 
-def analyze_predictive_power(
-    indicators: pd.DataFrame, future_sharpe: pd.DataFrame
-) -> dict:
+def analyze_predictive_power(indicators: pd.DataFrame, future_sharpe: pd.DataFrame) -> dict:
     """每个指标 vs 未来 Sharpe 的相关系数 + t-stat."""
     results = {}
 
@@ -353,9 +359,7 @@ def analyze_predictive_power(
     return results
 
 
-def regime_flag_oos_backtest(
-    factor_rolling_ic: pd.Series, strategy_nav: pd.Series
-) -> dict:
+def regime_flag_oos_backtest(factor_rolling_ic: pd.Series, strategy_nav: pd.Series) -> dict:
     """基于 factor_rolling_ic 的 regime flag OOS 测试.
 
     训练: 2014-2020, 用 rolling_ic 中位数作为阈值
@@ -385,7 +389,7 @@ def regime_flag_oos_backtest(
     # 应用到日频收益: 将 month-end flag 扩展到每天
     daily_flag = pd.Series(index=daily_ret.index, dtype=float)
     for month_end, flag in flags.items():
-        mask = (daily_ret.index.to_period("M") == month_end.to_period("M"))
+        mask = daily_ret.index.to_period("M") == month_end.to_period("M")
         daily_flag.loc[mask] = flag
     daily_flag = daily_flag.fillna(1)
 
@@ -438,7 +442,9 @@ def main():
 
     price_df, bench_df, factor_df = load_all_data()
     strategy_nav = load_strategy_nav()
-    print(f"[Strategy NAV] {len(strategy_nav)} days, {strategy_nav.index[0]}..{strategy_nav.index[-1]}")
+    print(
+        f"[Strategy NAV] {len(strategy_nav)} days, {strategy_nav.index[0]}..{strategy_nav.index[-1]}"
+    )
 
     print("\n[Indicators] 构建 5 个候选 regime 指标...")
     indicators = {}
@@ -463,7 +469,9 @@ def main():
     print("\n[Predictive Power] 各指标 vs 未来 Sharpe 相关系数...")
     predictive = analyze_predictive_power(ind_df, future_sharpe)
 
-    print(f"\n  {'Indicator':<22} {'corr 1m':>9} {'p 1m':>7} {'corr 3m':>9} {'p 3m':>7} {'corr 6m':>9} {'p 6m':>7}")
+    print(
+        f"\n  {'Indicator':<22} {'corr 1m':>9} {'p 1m':>7} {'corr 3m':>9} {'p 3m':>7} {'corr 6m':>9} {'p 6m':>7}"
+    )
     print("  " + "-" * 75)
     for ind_name, row in predictive.items():
         print(
@@ -482,7 +490,7 @@ def main():
     print("\n[Crisis Periods] 失效年份前后指标值...")
     crisis_snapshots = {}
     for crisis_year in [2017, 2018, 2022, 2023]:
-        start = pd.Timestamp(f"{crisis_year-1}-10-01")
+        start = pd.Timestamp(f"{crisis_year - 1}-10-01")
         end = pd.Timestamp(f"{crisis_year}-03-31")
         period_ind = ind_df.loc[(ind_df.index >= start) & (ind_df.index <= end)]
         if period_ind.empty:

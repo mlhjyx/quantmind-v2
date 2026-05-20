@@ -11,6 +11,7 @@ CLI:
 
 铁律: 22 / 32 / 33 / 38.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -206,7 +207,10 @@ def main() -> None:
         for adr in adrs:
             logger.info(
                 "  %s | %s | ironlaws=%s | %s",
-                adr.adr_id, adr.title[:40], adr.related_ironlaws, adr.file_path,
+                adr.adr_id,
+                adr.title[:40],
+                adr.related_ironlaws,
+                adr.file_path,
             )
 
     dry = not args.apply

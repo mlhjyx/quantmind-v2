@@ -127,7 +127,7 @@ def check_schtask_freshness() -> tuple[bool, list[str]]:
             f"  $state = $t.State;"
             f"  $last_run = if ($info.LastRunTime) {{ $info.LastRunTime.ToString('o') }} else {{ 'NEVER' }};"
             f"  $last_result = $info.LastTaskResult;"
-            f"  Write-Output (\"$state|$last_run|$last_result\")"
+            f'  Write-Output ("$state|$last_run|$last_result")'
             f"}}"
         )
         if rc != 0:
@@ -209,9 +209,7 @@ def check_celery_worker_alive() -> tuple[bool, list[str]]:
 
 def check_system_memory() -> tuple[bool, list[str]]:
     """Available MBytes < threshold (ADR-086 Tier 2 candidate)."""
-    rc, stdout, _ = _ps(
-        "(Get-Counter '\\Memory\\Available MBytes').CounterSamples.CookedValue"
-    )
+    rc, stdout, _ = _ps("(Get-Counter '\\Memory\\Available MBytes').CounterSamples.CookedValue")
     if rc != 0:
         return False, ["Get-Counter Available MBytes failed"]
     try:

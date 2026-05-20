@@ -33,6 +33,7 @@ DROP `circuit_breaker_state` / `circuit_breaker_log` 老表 + `scripts/approve_l
 - 铁律 43: schtask Python 脚本 4 项硬化标准 (statement_timeout / FileHandler delay=True /
   boot probe / 顶层 try/except)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -145,9 +146,7 @@ class SunsetReport:
     def any_satisfied(self) -> bool:
         """A+B+C 任一满足 → 启动批 3b."""
         return (
-            self.condition_a.satisfied
-            or self.condition_b.satisfied
-            or self.condition_c.satisfied
+            self.condition_a.satisfied or self.condition_b.satisfied or self.condition_c.satisfied
         )
 
     @property
@@ -226,9 +225,7 @@ def check_condition_a(
 
     return ConditionResult(
         name="A",
-        description=(
-            f"adapter live ≥ {CONDITION_A_DAYS_THRESHOLD} 日 + cb_* 真事件 ≥ 1"
-        ),
+        description=(f"adapter live ≥ {CONDITION_A_DAYS_THRESHOLD} 日 + cb_* 真事件 ≥ 1"),
         satisfied=satisfied,
         details={
             "days_elapsed": days_elapsed,
@@ -291,12 +288,8 @@ def check_condition_b(conn: Any) -> ConditionResult:
         details={
             "l4_approved_count": l4_approved_count,
             "cb_recover_count": cb_recover_count,
-            "latest_approval_at": (
-                latest_approval.isoformat() if latest_approval else None
-            ),
-            "latest_recover_at": (
-                latest_recover.isoformat() if latest_recover else None
-            ),
+            "latest_approval_at": (latest_approval.isoformat() if latest_approval else None),
+            "latest_recover_at": (latest_recover.isoformat() if latest_recover else None),
         },
     )
 
@@ -341,9 +334,7 @@ def check_condition_c(conn: Any) -> ConditionResult:
 
     return ConditionResult(
         name="C",
-        description=(
-            f"Wave 4 Observability 启动 (feature_flag `{WAVE_4_FEATURE_FLAG}`)"
-        ),
+        description=(f"Wave 4 Observability 启动 (feature_flag `{WAVE_4_FEATURE_FLAG}`)"),
         satisfied=flag_enabled,
         details={
             "flag_name": WAVE_4_FEATURE_FLAG,
@@ -448,29 +439,22 @@ def main() -> int:
     """CLI entry — 铁律 43 (c) boot stderr probe + (d) 顶层 try/except."""
     # 铁律 43 (c) boot probe — stderr 优先 (schtask LastResult 捕获)
     print(
-        f"[monitor_mvp_3_1_sunset] boot {datetime.now(UTC).isoformat()} "
-        f"pid={os.getpid()}",
+        f"[monitor_mvp_3_1_sunset] boot {datetime.now(UTC).isoformat()} pid={os.getpid()}",
         flush=True,
         file=sys.stderr,
     )
 
     logger = _setup_logger()
     parser = argparse.ArgumentParser(
-        description=(
-            "MVP 3.1 Risk Framework Sunset Gate 监控 — A+B+C 任一满足启动批 3b."
-        )
+        description=("MVP 3.1 Risk Framework Sunset Gate 监控 — A+B+C 任一满足启动批 3b.")
     )
-    parser.add_argument(
-        "--json", action="store_true", help="输出 JSON 格式 (stdout)"
-    )
+    parser.add_argument("--json", action="store_true", help="输出 JSON 格式 (stdout)")
     parser.add_argument(
         "--no-dingtalk",
         action="store_true",
         help="不发钉钉 (dry-run 或 CI 用)",
     )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="verbose logging")
     args = parser.parse_args()
 
     if args.verbose:
@@ -499,21 +483,13 @@ def main() -> int:
             )
 
             # 钉钉告警 (首次条件达成时, 同一 conn 原子去重 + insert)
-            if (
-                not args.no_dingtalk
-                and report.any_satisfied
-                and should_send_dingtalk(conn, report)
-            ):
-                title = (
-                    f"MVP 3.1 Sunset Gate 可启动批 3b "
-                    f"({report.days_since_activation}日)"
-                )
+            if not args.no_dingtalk and report.any_satisfied and should_send_dingtalk(conn, report):
+                title = f"MVP 3.1 Sunset Gate 可启动批 3b ({report.days_since_activation}日)"
                 content = format_text_report(report)
                 record_dingtalk_alert(conn, report, title, content)
                 conn.commit()  # 铁律 32 caller-owned commit
                 logger.warning(
-                    "告警已写 notifications 表 "
-                    "(钉钉 webhook 发送由下游 notifier 异步处理)"
+                    "告警已写 notifications 表 (钉钉 webhook 发送由下游 notifier 异步处理)"
                 )
         finally:
             conn.close()

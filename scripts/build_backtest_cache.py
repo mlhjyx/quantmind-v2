@@ -50,8 +50,8 @@ def main():
             if p.exists():
                 sizes[f.split(".")[0]] = p.stat().st_size / 1024 / 1024
         print(
-            f"  {year}: price={s['price_rows']:>8,} ({sizes.get('price_data',0):.1f}MB) "
-            f"factor={s['factor_rows']:>10,} ({sizes.get('factor_data',0):.1f}MB) "
+            f"  {year}: price={s['price_rows']:>8,} ({sizes.get('price_data', 0):.1f}MB) "
+            f"factor={s['factor_rows']:>10,} ({sizes.get('factor_data', 0):.1f}MB) "
             f"({s['elapsed_sec']:.1f}s)"
         )
 

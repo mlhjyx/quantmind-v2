@@ -88,10 +88,7 @@ def main():
     print("\n[1/3] 加载数据...")
     t0 = time.time()
     factor_df, price_data, benchmark = load_data(conn, start, end)
-    print(
-        "  因子: %d行, 价格: %d行 (%ds)"
-        % (len(factor_df), len(price_data), time.time() - t0)
-    )
+    print("  因子: %d行, 价格: %d行 (%ds)" % (len(factor_df), len(price_data), time.time() - t0))
 
     directions = {
         "turnover_mean_20": -1,
@@ -116,27 +113,36 @@ def main():
     print("\n--- 变体A: 基线(5因子等权, 无Modifier) ---")
     t1 = time.time()
     result_a = run_hybrid_backtest(
-        factor_df, directions, price_data, config, benchmark,
+        factor_df,
+        directions,
+        price_data,
+        config,
+        benchmark,
     )
     report_a = generate_report(result_a, price_data, num_trials=69)
-    print("  Sharpe=%.3f DSR=%.4f MDD=%.2f%% (%ds)"
-          % (report_a.sharpe_ratio, report_a.deflated_sharpe,
-             report_a.max_drawdown, time.time() - t1))
+    print(
+        "  Sharpe=%.3f DSR=%.4f MDD=%.2f%% (%ds)"
+        % (report_a.sharpe_ratio, report_a.deflated_sharpe, report_a.max_drawdown, time.time() - t1)
+    )
 
     # B: + NorthboundModifier
     print("\n--- 变体B: 5因子 + NorthboundModifier ---")
     t2 = time.time()
     nb_modifier = NorthboundModifier({"scale_negative": 0.7, "scale_panic": 0.5})
     result_b = run_composite_backtest(
-        factor_df, directions, price_data, config,
+        factor_df,
+        directions,
+        price_data,
+        config,
         modifiers=[nb_modifier],
         benchmark_data=benchmark,
         conn=conn,
     )
     report_b = generate_report(result_b, price_data, num_trials=69)
-    print("  Sharpe=%.3f DSR=%.4f MDD=%.2f%% (%ds)"
-          % (report_b.sharpe_ratio, report_b.deflated_sharpe,
-             report_b.max_drawdown, time.time() - t2))
+    print(
+        "  Sharpe=%.3f DSR=%.4f MDD=%.2f%% (%ds)"
+        % (report_b.sharpe_ratio, report_b.deflated_sharpe, report_b.max_drawdown, time.time() - t2)
+    )
 
     # 对比
     print("\n[3/3] 对比")
@@ -144,7 +150,9 @@ def main():
     print("  %-30s %10s %10s" % ("指标", "A(基线)", "B(+NB Mod)"))
     print("  " + "-" * 52)
     print("  %-30s %10.3f %10.3f" % ("Sharpe", report_a.sharpe_ratio, report_b.sharpe_ratio))
-    print("  %-30s %10.4f %10.4f" % ("DSR (M=69)", report_a.deflated_sharpe, report_b.deflated_sharpe))
+    print(
+        "  %-30s %10.4f %10.4f" % ("DSR (M=69)", report_a.deflated_sharpe, report_b.deflated_sharpe)
+    )
     print("  %-30s %10.2f%% %9.2f%%" % ("MDD", report_a.max_drawdown, report_b.max_drawdown))
     print("  %-30s %10.2f %10.2f" % ("Calmar", report_a.calmar_ratio, report_b.calmar_ratio))
     print("  %-30s %10.2f %10.2f" % ("Sortino", report_a.sortino_ratio, report_b.sortino_ratio))
@@ -157,19 +165,21 @@ def main():
 
     print("\n  判定:")
     if sharpe_improved:
-        print("  ✅ Sharpe改善: %.3f → %.3f (+%.3f)"
-              % (report_a.sharpe_ratio, report_b.sharpe_ratio,
-                 report_b.sharpe_ratio - report_a.sharpe_ratio))
+        print(
+            "  ✅ Sharpe改善: %.3f → %.3f (+%.3f)"
+            % (
+                report_a.sharpe_ratio,
+                report_b.sharpe_ratio,
+                report_b.sharpe_ratio - report_a.sharpe_ratio,
+            )
+        )
     else:
-        print("  ⚠️ Sharpe未改善: %.3f → %.3f"
-              % (report_a.sharpe_ratio, report_b.sharpe_ratio))
+        print("  ⚠️ Sharpe未改善: %.3f → %.3f" % (report_a.sharpe_ratio, report_b.sharpe_ratio))
 
     if mdd_improved:
-        print("  ✅ MDD改善: %.2f%% → %.2f%%"
-              % (report_a.max_drawdown, report_b.max_drawdown))
+        print("  ✅ MDD改善: %.2f%% → %.2f%%" % (report_a.max_drawdown, report_b.max_drawdown))
     else:
-        print("  ⚠️ MDD未改善: %.2f%% → %.2f%%"
-              % (report_a.max_drawdown, report_b.max_drawdown))
+        print("  ⚠️ MDD未改善: %.2f%% → %.2f%%" % (report_a.max_drawdown, report_b.max_drawdown))
 
     print("=" * 70)
     conn.close()

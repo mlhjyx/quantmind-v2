@@ -214,9 +214,7 @@ def _build_synthetic_positions(bars_for_day: list[dict[str, Any]]) -> list[Any]:
     return positions
 
 
-def _build_synthetic_context(
-    trade_date: date, positions: list[Any]
-) -> Any:
+def _build_synthetic_context(trade_date: date, positions: list[Any]) -> Any:
     """Build RiskContext at 15:00 Asia/Shanghai of trade_date.
 
     Args:
@@ -322,9 +320,7 @@ def _evaluate_daily_cadence_for_quarter(
                 metrics.crashes += 1
                 continue
             for r in results:
-                metrics.triggers_by_rule[r.rule_id] = (
-                    metrics.triggers_by_rule.get(r.rule_id, 0) + 1
-                )
+                metrics.triggers_by_rule[r.rule_id] = metrics.triggers_by_rule.get(r.rule_id, 0) + 1
 
     return metrics
 
@@ -461,11 +457,7 @@ def _aggregate_daily(quarters: list[_QuarterIntegratedResult]) -> dict[str, Any]
         "triggers_by_rule": dict(sorted(triggers.items())),
         # Wiring-assertion verdict: 0 crashes + invariant clean +
         # eval_calls > 0 across 5y × rules_count × non_empty_td.
-        "pass_l3_wiring": (
-            total_crashes == 0
-            and total_eval_calls > 0
-            and invariant_ok
-        ),
+        "pass_l3_wiring": (total_crashes == 0 and total_eval_calls > 0 and invariant_ok),
     }
 
 
@@ -543,16 +535,14 @@ def _render_integrated_report(
     lines.append("| Metric | Value | Verdict |")
     lines.append("|---|---|---|")
     lines.append(
-        f"| Trading days seen (incl. degenerate) | "
-        f"`{daily_agg['total_trading_days']:,}` | — |"
+        f"| Trading days seen (incl. degenerate) | `{daily_agg['total_trading_days']:,}` | — |"
     )
     lines.append(
         f"| Non-empty trading days (>=1 valid synthetic position) | "
         f"`{daily_agg['total_non_empty_trading_days']:,}` | — |"
     )
     lines.append(
-        f"| Synthetic positions (Σ code×day) | "
-        f"`{daily_agg['total_synthetic_positions']:,}` | — |"
+        f"| Synthetic positions (Σ code×day) | `{daily_agg['total_synthetic_positions']:,}` | — |"
     )
     rules_count = daily_agg["rules_count_inferred"]
     lines.append(
@@ -573,7 +563,9 @@ def _render_integrated_report(
     )
     lines.append("")
     if daily_agg["triggers_by_rule"]:
-        lines.append("**Per-rule trigger counts** (informational — synthetic-universe ≠ real-portfolio precision):")
+        lines.append(
+            "**Per-rule trigger counts** (informational — synthetic-universe ≠ real-portfolio precision):"
+        )
         lines.append("")
         lines.append("| rule_id | triggers |")
         lines.append("|---|---|")
@@ -581,7 +573,9 @@ def _render_integrated_report(
             lines.append(f"| `{rid}` | {n:,} |")
         lines.append("")
     else:
-        lines.append("**Per-rule trigger counts**: 0 across all rules (expected for synthetic single-day positions — see script docstring §Synthetic position construction).")
+        lines.append(
+            "**Per-rule trigger counts**: 0 across all rules (expected for synthetic single-day positions — see script docstring §Synthetic position construction)."
+        )
         lines.append("")
     lines.append("---")
     lines.append("")
@@ -691,8 +685,7 @@ def main() -> int:
 
     rules = _build_daily_rules()
     logger.info(
-        "[IC-3a] starting 5y integrated chunked replay — %d quarters, "
-        "codes_limit=%s, L3 rules=%s",
+        "[IC-3a] starting 5y integrated chunked replay — %d quarters, codes_limit=%s, L3 rules=%s",
         len(windows),
         args.codes_limit,
         [type(r).__name__ for r in rules],

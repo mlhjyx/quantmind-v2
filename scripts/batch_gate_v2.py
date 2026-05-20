@@ -98,7 +98,7 @@ def load_price_bench():
         & (price_df["board"].fillna("") != "bse")
     ].copy()
     bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date")
-    print(f"  price {price_df.shape}, bench {bench_df.shape}, {time.time()-t0:.1f}s")
+    print(f"  price {price_df.shape}, bench {bench_df.shape}, {time.time() - t0:.1f}s")
     return price_df, bench_df
 
 
@@ -161,9 +161,7 @@ def half_life_from_ic(ic_series: pd.Series, max_lag: int = 60) -> float:
     return float(max_lag)
 
 
-def compute_cross_sectional_corr(
-    factor_wide_a: pd.DataFrame, factor_wide_b: pd.DataFrame
-) -> float:
+def compute_cross_sectional_corr(factor_wide_a: pd.DataFrame, factor_wide_b: pd.DataFrame) -> float:
     """Average cross-sectional Spearman correlation between two factors across time."""
     common_dates = factor_wide_a.index.intersection(factor_wide_b.index)
     if len(common_dates) < 30:
@@ -335,9 +333,7 @@ def run_gates(
             return True  # skipped gate counts as pass
         return bool(v)  # coerce numpy.bool_ to Python bool
 
-    auto_pass = all(
-        _is_pass(g.get("passed")) for gn, g in gates.items() if gn != "G8"
-    )
+    auto_pass = all(_is_pass(g.get("passed")) for gn, g in gates.items() if gn != "G8")
     # 需要 G1/G2/G3/G6 真的通过 (不是 None)
     core_gates_pass = all(
         gates[gn].get("passed") is not False
@@ -354,9 +350,9 @@ def run_gates(
         "gates": gates,
         # Step 6-G fix: 用显式 `== False` + 类型转换, 避免 numpy.bool_ is False 失效
         "failed_gates": [
-            gn for gn in ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
-            if gates[gn].get("passed") is not None
-            and not bool(gates[gn].get("passed"))
+            gn
+            for gn in ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
+            if gates[gn].get("passed") is not None and not bool(gates[gn].get("passed"))
         ],
     }
 
@@ -374,10 +370,14 @@ def main():
     print(f"  total universe (12yr union): {len(total_universe)}")
     # Step 6-G G7 fix: 每日活跃股票数 (coverage 分母)
     daily_active = price_df.groupby("trade_date")["code"].nunique()
-    print(f"  daily active: mean={int(daily_active.mean())}, min={int(daily_active.min())}, max={int(daily_active.max())}")
+    print(
+        f"  daily active: mean={int(daily_active.mean())}, min={int(daily_active.min())}, max={int(daily_active.max())}"
+    )
 
     print("[Precompute] forward excess return (horizon=20)...")
-    fwd_ret = compute_forward_excess_returns(price_df, bench_df, horizon=HORIZON, price_col="adj_close")
+    fwd_ret = compute_forward_excess_returns(
+        price_df, bench_df, horizon=HORIZON, price_col="adj_close"
+    )
 
     conn = get_sync_conn()
 
@@ -412,7 +412,7 @@ def main():
         factor_df = load_factor(f, conn)
         if factor_df.empty:
             results[f] = {"error": "no data", "verdict": "ERROR"}
-            print(f"  [{i+1}/{len(factor_list)}] {f}: no data")
+            print(f"  [{i + 1}/{len(factor_list)}] {f}: no data")
             continue
 
         try:
@@ -420,24 +420,25 @@ def main():
             results[f] = r
 
             if "error" in r:
-                print(f"  [{i+1}/{len(factor_list)}] {f}: {r['error']}")
+                print(f"  [{i + 1}/{len(factor_list)}] {f}: {r['error']}")
                 continue
 
             verdict = r["verdict"]
             stats = r["ic_stats"]
             failed = ",".join(r["failed_gates"]) or "-"
             print(
-                f"  [{i+1}/{len(factor_list)}] {f:<30} {verdict:<4} "
+                f"  [{i + 1}/{len(factor_list)}] {f:<30} {verdict:<4} "
                 f"IC={stats['mean']:+.4f} IR={stats['ir']:+.3f} "
                 f"t={stats['t_stat']:+6.2f} failed={failed}"
             )
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             results[f] = {"error": str(e)[:80], "verdict": "ERROR"}
 
     elapsed = time.time() - t0
-    print(f"\n总耗时: {elapsed:.0f}s ({elapsed/60:.1f} min)")
+    print(f"\n总耗时: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
     conn.close()
 
     # Summary

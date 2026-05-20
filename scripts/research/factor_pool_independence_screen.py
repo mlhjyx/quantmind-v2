@@ -81,8 +81,10 @@ def main():
 
     # 3. 筛选独立候选
     print("\n[3/4] 筛选独立候选因子...")
-    print("  条件: 与所有Active |corr|<%.1f, 候选间|corr|<%.1f"
-          % (CORR_THRESHOLD_VS_ACTIVE, CORR_THRESHOLD_VS_CANDIDATE))
+    print(
+        "  条件: 与所有Active |corr|<%.1f, 候选间|corr|<%.1f"
+        % (CORR_THRESHOLD_VS_ACTIVE, CORR_THRESHOLD_VS_CANDIDATE)
+    )
 
     # Step A: 与Active低相关
     independent = []
@@ -135,7 +137,10 @@ def main():
         if not blocked:
             final_selected.append(c)
 
-    print("\n  候选间去冗余: %d个最终通过, %d个被拒" % (len(final_selected), len(rejected_candidate_corr)))
+    print(
+        "\n  候选间去冗余: %d个最终通过, %d个被拒"
+        % (len(final_selected), len(rejected_candidate_corr))
+    )
     if rejected_candidate_corr:
         print("  被拒(候选间高相关):")
         for name, blocker, corr_val in rejected_candidate_corr:
@@ -149,9 +154,16 @@ def main():
     for f in final_selected:
         s = ic_stats[f]
         direction = "+" if s["mean_ic"] > 0 else "-"
-        print("  %-30s %8.4f %8.3f %8s %6d" % (
-            f, s["abs_mean_ic"], abs(s["icir"]), direction, s["n_days"],
-        ))
+        print(
+            "  %-30s %8.4f %8.3f %8s %6d"
+            % (
+                f,
+                s["abs_mean_ic"],
+                abs(s["icir"]),
+                direction,
+                s["n_days"],
+            )
+        )
 
     # Active因子对照
     print("\n  --- Active因子(对照) ---")
@@ -159,9 +171,16 @@ def main():
         ic_series = pivot[f].dropna()
         mean_ic = ic_series.mean()
         icir = mean_ic / ic_series.std() if ic_series.std() > 0 else 0
-        print("  %-30s %8.4f %8.3f %8s %6d" % (
-            f, abs(mean_ic), abs(icir), "+" if mean_ic > 0 else "-", len(ic_series),
-        ))
+        print(
+            "  %-30s %8.4f %8.3f %8s %6d"
+            % (
+                f,
+                abs(mean_ic),
+                abs(icir),
+                "+" if mean_ic > 0 else "-",
+                len(ic_series),
+            )
+        )
 
     # 相关矩阵(仅选中+Active)
     selected_all = active_in_data + final_selected
@@ -175,8 +194,10 @@ def main():
     print(display_corr.to_string())
 
     print("\n" + "=" * 70)
-    print("结论: %d个独立候选因子(与Active corr<%.1f, 候选间corr<%.1f)"
-          % (len(final_selected), CORR_THRESHOLD_VS_ACTIVE, CORR_THRESHOLD_VS_CANDIDATE))
+    print(
+        "结论: %d个独立候选因子(与Active corr<%.1f, 候选间corr<%.1f)"
+        % (len(final_selected), CORR_THRESHOLD_VS_ACTIVE, CORR_THRESHOLD_VS_CANDIDATE)
+    )
     print("下一步: 对这些候选做paired bootstrap回测验证(p<0.05 vs 基线)")
     print("=" * 70)
 

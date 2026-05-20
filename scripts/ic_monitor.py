@@ -158,15 +158,11 @@ def _get_rules_engine():
     try:
         return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
     except Exception as e:  # noqa: BLE001
-        logger.warning(
-            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
-        )
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e)
         return None
 
 
-def _send_alert_via_platform_sdk(
-    title: str, content: str, level: str, alerts: list[dict]
-) -> None:
+def _send_alert_via_platform_sdk(title: str, content: str, level: str, alerts: list[dict]) -> None:
     """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.3)."""
     from datetime import UTC, datetime
 
@@ -319,14 +315,10 @@ def run_ic_monitor(recent_months: int = 3, dry_run: bool = False) -> dict:
             )
             # batch 3.3 (P1.1 batch 3.1 模式延续): AlertDispatchError 单独 catch
             try:
-                _send_dingtalk(
-                    f"IC 衰减告警 {date.today()}", content, max_level, alerts=alerts
-                )
+                _send_dingtalk(f"IC 衰减告警 {date.today()}", content, max_level, alerts=alerts)
                 logger.info("[Alert] 发送 %s 告警: %d 条", max_level, len(alerts))
             except AlertDispatchError as e:
-                logger.error(
-                    "[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e
-                )
+                logger.error("[Observability] AlertDispatchError — 告警未送达, 主流程继续: %s", e)
         elif alerts:
             logger.info("[DRY-RUN] 有 %d 条告警, 但 dry-run 不发送", len(alerts))
         else:

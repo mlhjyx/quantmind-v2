@@ -97,7 +97,10 @@ def main() -> int:
         "--warn-pct", type=float, default=WARN_PCT, help=f"WARN threshold (default {WARN_PCT}%%)"
     )
     parser.add_argument(
-        "--alert-pct", type=float, default=ALERT_PCT, help=f"ALERT threshold (default {ALERT_PCT}%%)"
+        "--alert-pct",
+        type=float,
+        default=ALERT_PCT,
+        help=f"ALERT threshold (default {ALERT_PCT}%%)",
     )
     parser.add_argument(
         "--p0-pct", type=float, default=P0_PCT, help=f"P0 threshold (default {P0_PCT}%%)"
@@ -139,7 +142,9 @@ def main() -> int:
         )
         for r in results:
             sev = r.get("severity", "?")
-            sym = {"OK": "  ", "WARN": "⚠️", "ALERT": "🚨", "P0": "🔴", "MISSING": "❓"}.get(sev, "?")
+            sym = {"OK": "  ", "WARN": "⚠️", "ALERT": "🚨", "P0": "🔴", "MISSING": "❓"}.get(
+                sev, "?"
+            )
             if "error" in r:
                 print(f"  {sym} {sev:8s} {r['path']:60s} — ERROR: {r['error']}")
             elif "reason" in r:

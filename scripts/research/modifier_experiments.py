@@ -93,7 +93,9 @@ def load_all_data():
     factor_df = pd.concat(factor_parts, ignore_index=True)
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
-    print(f"  price {price_df.shape}, bench {bench_df.shape}, factor {factor_df.shape}, {time.time()-t0:.1f}s")
+    print(
+        f"  price {price_df.shape}, bench {bench_df.shape}, factor {factor_df.shape}, {time.time() - t0:.1f}s"
+    )
     return price_df, bench_df, factor_df
 
 
@@ -108,7 +110,7 @@ def load_ln_mcap():
         conn,
     )
     conn.close()
-    print(f"  ln_mcap {df.shape}, {time.time()-t0:.1f}s")
+    print(f"  ln_mcap {df.shape}, {time.time() - t0:.1f}s")
     return df
 
 
@@ -174,6 +176,7 @@ def compute_bench_vol_20d(bench_df: pd.DataFrame) -> pd.Series:
 
 def vol_tiered_signal(vol_20d: pd.Series) -> pd.Series:
     """方案 A: 阶梯式仓位."""
+
     def _tier(v):
         if np.isnan(v):
             return 1.0
@@ -184,6 +187,7 @@ def vol_tiered_signal(vol_20d: pd.Series) -> pd.Series:
         if v < 0.35:
             return 0.5
         return 0.3
+
     return vol_20d.apply(_tier)
 
 
@@ -315,10 +319,12 @@ def partial_size_neutral_targets(
                     idx2 = len(ln_mcap_pivot) - 1
                 ln_mcap_row = ln_mcap_pivot.iloc[idx2]
 
-            df = pd.DataFrame({
-                "score": scores,
-                "ln_mcap": ln_mcap_row.reindex(scores.index),
-            }).dropna()
+            df = pd.DataFrame(
+                {
+                    "score": scores,
+                    "ln_mcap": ln_mcap_row.reindex(scores.index),
+                }
+            ).dropna()
             if len(df) < top_n + 5:
                 continue
 
@@ -390,8 +396,13 @@ def main():
         pms=PMSConfig(enabled=True, exec_mode="same_close"),
     )
     base_targets = partial_size_neutral_targets(
-        base_factor_df, price_df, ln_mcap_df, CORE_DIRECTIONS,
-        beta=0.0, top_n=20, rebalance_freq="monthly",
+        base_factor_df,
+        price_df,
+        ln_mcap_df,
+        CORE_DIRECTIONS,
+        beta=0.0,
+        top_n=20,
+        rebalance_freq="monthly",
     )
     base_backtester = SimpleBacktester(config)
     base_result = base_backtester.run(
@@ -403,7 +414,7 @@ def main():
     base_ret = base_nav.pct_change().dropna()
     base_metrics = compute_metrics(base_nav, base_ret)
     base_yearly = yearly_sharpe(base_ret)
-    print(f"  Base: {base_metrics} ({time.time()-t0:.0f}s)")
+    print(f"  Base: {base_metrics} ({time.time() - t0:.0f}s)")
 
     results = {
         "base": {
@@ -416,7 +427,9 @@ def main():
     # ========== Part 1: Vol-Targeting ==========
     print("\n[Part 1] Vol-Targeting")
     vol_20d = compute_bench_vol_20d(bench_df)
-    print(f"  CSI300 vol_20d: mean={float(vol_20d.mean()):.3f}, max={float(vol_20d.max()):.3f}, min={float(vol_20d.min()):.3f}")
+    print(
+        f"  CSI300 vol_20d: mean={float(vol_20d.mean()):.3f}, max={float(vol_20d.max()):.3f}, min={float(vol_20d.min()):.3f}"
+    )
 
     vol_signals = {
         "vol_tiered": vol_tiered_signal(vol_20d),
@@ -430,8 +443,12 @@ def main():
         m = compute_metrics(scaled_nav, scaled_ret)
         y = yearly_sharpe(scaled_ret)
         oos = split_metrics(scaled_ret)
-        print(f"  [{name}] Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}")
-        print(f"    OOS train Sharpe={oos['train_2014_2020'].get('sharpe')}, test Sharpe={oos['test_2021_2026'].get('sharpe')}")
+        print(
+            f"  [{name}] Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}"
+        )
+        print(
+            f"    OOS train Sharpe={oos['train_2014_2020'].get('sharpe')}, test Sharpe={oos['test_2021_2026'].get('sharpe')}"
+        )
         # Average position over time
         s_lagged = sig.shift(1).reindex(base_ret.index, method="ffill").fillna(1.0)
         avg_pos = float(s_lagged.mean())
@@ -457,7 +474,9 @@ def main():
         m = compute_metrics(scaled_nav, scaled_ret)
         y = yearly_sharpe(scaled_ret)
         oos = split_metrics(scaled_ret)
-        print(f"  [{name}] Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}")
+        print(
+            f"  [{name}] Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}"
+        )
         s_lagged = sig.shift(1).reindex(base_ret.index, method="ffill").fillna(1.0)
         avg_pos = float(s_lagged.mean())
         results[name] = {
@@ -477,12 +496,17 @@ def main():
     print("\n[Part 3] Partial Size-Neutral")
 
     for beta in [0.25, 0.50, 0.75]:
-        name = f"size_neutral_b{int(beta*100):03d}"
+        name = f"size_neutral_b{int(beta * 100):03d}"
         print(f"  [{name}] building target_portfolios with beta={beta}...")
         t0 = time.time()
         targets = partial_size_neutral_targets(
-            base_factor_df, price_df, ln_mcap_df, CORE_DIRECTIONS,
-            beta=beta, top_n=20, rebalance_freq="monthly",
+            base_factor_df,
+            price_df,
+            ln_mcap_df,
+            CORE_DIRECTIONS,
+            beta=beta,
+            top_n=20,
+            rebalance_freq="monthly",
         )
         backtester = SimpleBacktester(config)
         sn_result = backtester.run(
@@ -495,7 +519,9 @@ def main():
         m = compute_metrics(sn_nav, sn_ret)
         y = yearly_sharpe(sn_ret)
         oos = split_metrics(sn_ret)
-        print(f"    Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}, {time.time()-t0:.0f}s")
+        print(
+            f"    Sharpe={m.get('sharpe')}, MDD={m.get('mdd'):.2%}, Annual={m.get('annual'):.2%}, {time.time() - t0:.0f}s"
+        )
         results[name] = {
             "metrics": m,
             "yearly": y,
@@ -533,7 +559,9 @@ def main():
     m_c = compute_metrics(scaled_nav, scaled_ret)
     y_c = yearly_sharpe(scaled_ret)
     oos_c = split_metrics(scaled_ret)
-    print(f"  [combined_vol_dd] Sharpe={m_c.get('sharpe')}, MDD={m_c.get('mdd'):.2%}, Annual={m_c.get('annual'):.2%}")
+    print(
+        f"  [combined_vol_dd] Sharpe={m_c.get('sharpe')}, MDD={m_c.get('mdd'):.2%}, Annual={m_c.get('annual'):.2%}"
+    )
     results["combined_vol_dd"] = {
         "metrics": m_c,
         "yearly": y_c,

@@ -41,6 +41,7 @@
     # 强制触发钉钉测试 (即使无 finding, 也发一条 INFO)
     python scripts/risk_framework_health_check.py --force-trigger
 """
+
 from __future__ import annotations
 
 import argparse
@@ -121,19 +122,25 @@ def _arg_parser() -> argparse.ArgumentParser:
         description="Risk Framework dead-man's-switch (Phase 0a, Session 44)."
     )
     p.add_argument(
-        "--window-hours", type=int, default=24,
+        "--window-hours",
+        type=int,
+        default=24,
         help="检查窗口 (h, 默认 24)",
     )
     p.add_argument(
-        "--no-alert", action="store_true",
+        "--no-alert",
+        action="store_true",
         help="dry-run: 只 stdout, 不发钉钉",
     )
     p.add_argument(
-        "--force-trigger", action="store_true",
+        "--force-trigger",
+        action="store_true",
         help="强制发钉钉 (测试通道, 即使无 finding 也发 INFO)",
     )
     p.add_argument(
-        "--statement-timeout-ms", type=int, default=60_000,
+        "--statement-timeout-ms",
+        type=int,
+        default=60_000,
         help="PG statement_timeout (ms, 默认 60s, 铁律 43-a)",
     )
     return p
@@ -142,6 +149,7 @@ def _arg_parser() -> argparse.ArgumentParser:
 def _open_conn(statement_timeout_ms: int):
     """sync psycopg2 conn, 启用 statement_timeout (铁律 43-a)."""
     from app.services.db import get_sync_conn
+
     conn = get_sync_conn()
     with conn.cursor() as cur:
         cur.execute("SET statement_timeout = %s", (statement_timeout_ms,))
@@ -151,12 +159,17 @@ def _open_conn(statement_timeout_ms: int):
 def _is_trading_day(conn, today: date) -> tuple[bool, str]:
     """复用 TradingDayChecker (Layer 3 DB calendar)."""
     from engines.trading_day_checker import TradingDayChecker
+
     checker = TradingDayChecker(conn=conn)
     return checker.is_trading_day(today)
 
 
 def _check_task(
-    conn, task_name: str, spec: dict, now_utc: datetime, window_hours: int,
+    conn,
+    task_name: str,
+    spec: dict,
+    now_utc: datetime,
+    window_hours: int,
 ) -> list[Finding]:
     """对单 task_name 跑 3 类 check (missing / errored / stale)."""
     findings: list[Finding] = []
@@ -187,34 +200,36 @@ def _check_task(
     # (e.g. Mon-am 09:30 CST = 01:30 UTC, intraday Beat 09:00 CST 才刚启, 检查器
     # 跑早了 → 0 row → 误报 P0). 跳过 missing 检查若当前 UTC 早于 earliest.
     earliest_hour = spec.get("earliest_check_utc_hour")
-    too_early = (
-        earliest_hour is not None and now_utc.hour < earliest_hour
-    )
+    too_early = earliest_hour is not None and now_utc.hour < earliest_hour
 
     expected_min = spec.get("min_per_day") or spec.get("expected_per_day", 1)
     if total_runs == 0 and not too_early:
-        findings.append(Finding(
-            severity=spec["severity_on_missing"],
-            task_name=task_name,
-            kind="missing",
-            detail=(
-                f"窗口 {window_hours}h 内 0 行 scheduler_task_log → "
-                f"Beat / worker 挂? 期望 ≥{expected_min} runs (trigger={spec['trigger_time']})"
-            ),
-        ))
+        findings.append(
+            Finding(
+                severity=spec["severity_on_missing"],
+                task_name=task_name,
+                kind="missing",
+                detail=(
+                    f"窗口 {window_hours}h 内 0 行 scheduler_task_log → "
+                    f"Beat / worker 挂? 期望 ≥{expected_min} runs (trigger={spec['trigger_time']})"
+                ),
+            )
+        )
 
     # 2. Errored — status in (error, retry) (P1)
     error_count = status_counts.get("error", 0) + status_counts.get("retry", 0)
     if error_count > 0:
-        findings.append(Finding(
-            severity="P1",
-            task_name=task_name,
-            kind="errored",
-            detail=(
-                f"窗口 {window_hours}h 内 {error_count} 条 error/retry "
-                f"(distribution={status_counts})"
-            ),
-        ))
+        findings.append(
+            Finding(
+                severity="P1",
+                task_name=task_name,
+                kind="errored",
+                detail=(
+                    f"窗口 {window_hours}h 内 {error_count} 条 error/retry "
+                    f"(distribution={status_counts})"
+                ),
+            )
+        )
 
     # 3. Stale — last success > max_gap_minutes (P1, 部分跑了但停了)
     max_gap = spec["max_gap_minutes"]
@@ -225,38 +240,42 @@ def _check_task(
         gap_min = (now_utc - last_success).total_seconds() / 60
         if gap_min > max_gap and total_runs > 0:
             # 同时 missing=False (有 row) but stale → 中途停了
-            findings.append(Finding(
-                severity="P1",
-                task_name=task_name,
-                kind="stale",
-                detail=(
-                    f"上次 success={last_success.isoformat()}, "
-                    f"gap={gap_min:.0f}min > 阈值 {max_gap}min → 中途挂 / Beat 漂移"
-                ),
-            ))
+            findings.append(
+                Finding(
+                    severity="P1",
+                    task_name=task_name,
+                    kind="stale",
+                    detail=(
+                        f"上次 success={last_success.isoformat()}, "
+                        f"gap={gap_min:.0f}min > 阈值 {max_gap}min → 中途挂 / Beat 漂移"
+                    ),
+                )
+            )
 
     # 4. Under-count — intraday 期望 72×/日, 但只跑 50× → P1
     # P2 reviewer 采纳: too_early 同样 skip under_count 防早跑误报
     min_runs = spec.get("min_per_day")
-    if (
-        min_runs and total_runs > 0
-        and total_runs < min_runs and not too_early
-    ):
-        findings.append(Finding(
-            severity="P1",
-            task_name=task_name,
-            kind="under_count",
-            detail=(
-                f"窗口内 {total_runs} runs < min_per_day={min_runs} "
-                f"(期望 ~{spec.get('expected_per_day', '?')}×) → cycles 漏跑"
-            ),
-        ))
+    if min_runs and total_runs > 0 and total_runs < min_runs and not too_early:
+        findings.append(
+            Finding(
+                severity="P1",
+                task_name=task_name,
+                kind="under_count",
+                detail=(
+                    f"窗口内 {total_runs} runs < min_per_day={min_runs} "
+                    f"(期望 ~{spec.get('expected_per_day', '?')}×) → cycles 漏跑"
+                ),
+            )
+        )
 
     return findings
 
 
 def _print_summary(
-    findings: list[Finding], today: date, is_td: bool, td_reason: str,
+    findings: list[Finding],
+    today: date,
+    is_td: bool,
+    td_reason: str,
 ) -> None:
     """stdout 友好打印."""
     print("\n" + "=" * 80)
@@ -284,7 +303,9 @@ def _print_summary(
 
 
 def _send_dingtalk(
-    findings: list[Finding], today: date, force: bool,
+    findings: list[Finding],
+    today: date,
+    force: bool,
     statement_timeout_ms: int = 60_000,
 ) -> None:
     """钉钉 P0/P1 告警 (经 notification_service.send_sync).
@@ -317,29 +338,18 @@ def _send_dingtalk(
         title = f"[risk-health] {today} 强制测试 (0 findings)"
         content = "通道测试: scheduler_task_log 检查全绿."
     else:
-        title = (
-            f"[risk-health] {today} P0={p0_count} P1={p1_count} "
-            f"({len(findings)} findings 总)"
-        )
+        title = f"[risk-health] {today} P0={p0_count} P1={p1_count} ({len(findings)} findings 总)"
         content_lines = [
             f"## Risk Framework 自检异常 ({today})\n",
             "### Findings",
         ]
         for f in findings:
-            content_lines.append(
-                f"- **[{f.severity}]** task=`{f.task_name}` kind=`{f.kind}`"
-            )
+            content_lines.append(f"- **[{f.severity}]** task=`{f.task_name}` kind=`{f.kind}`")
             content_lines.append(f"  - detail: {f.detail}")
         content_lines.append("\n### 处置建议")
-        content_lines.append(
-            "- P0 missing: 检查 Celery Beat / worker 是否运行 (servy-cli status)"
-        )
-        content_lines.append(
-            "- P1 errored: 看最近 logs/celery-stderr.log 找异常根因"
-        )
-        content_lines.append(
-            "- P1 stale: 检查最近一次 success time, 之间 cycle 哪挂了"
-        )
+        content_lines.append("- P0 missing: 检查 Celery Beat / worker 是否运行 (servy-cli status)")
+        content_lines.append("- P1 errored: 看最近 logs/celery-stderr.log 找异常根因")
+        content_lines.append("- P1 stale: 检查最近一次 success time, 之间 cycle 哪挂了")
         content = "\n".join(content_lines)
 
     # P1 reviewer 采纳 (PR #145 fix #2): 走 _open_conn 应用 statement_timeout (铁律 43-a)
@@ -349,8 +359,12 @@ def _send_dingtalk(
     try:
         svc = get_notification_service()
         svc.send_sync(
-            conn=conn, level=level, category="risk",
-            title=title, content=content, force=force,
+            conn=conn,
+            level=level,
+            category="risk",
+            title=title,
+            content=content,
+            force=force,
         )
         conn.commit()  # script 是事务持有方, send_sync 内不 commit (铁律 32)
         logger.info("[risk-health] DingTalk %s sent: %s", level, title)
@@ -362,7 +376,8 @@ def main() -> int:
     # 铁律 43-c: stderr boot probe (即使 logger init 失败也有启动证据)
     print(
         f"[risk-health] boot {datetime.now(UTC).isoformat()} pid={os.getpid()}",
-        flush=True, file=sys.stderr,
+        flush=True,
+        file=sys.stderr,
     )
 
     args = _arg_parser().parse_args()
@@ -382,7 +397,11 @@ def main() -> int:
             all_findings: list[Finding] = []
             for task_name, spec in EXPECTED_SCHEDULE.items():
                 findings = _check_task(
-                    conn, task_name, spec, now_utc, args.window_hours,
+                    conn,
+                    task_name,
+                    spec,
+                    now_utc,
+                    args.window_hours,
                 )
                 all_findings.extend(findings)
         finally:
@@ -393,14 +412,18 @@ def main() -> int:
         if not args.no_alert and (all_findings or args.force_trigger):
             try:
                 _send_dingtalk(
-                    all_findings, today, args.force_trigger,
+                    all_findings,
+                    today,
+                    args.force_trigger,
                     statement_timeout_ms=args.statement_timeout_ms,
                 )
             except Exception as e:  # noqa: BLE001
                 # silent_ok: DingTalk 失败不阻 stdout report (CI 模式仍能消费)
                 logger.error(
                     "[risk-health] DingTalk send failed (报警失败但 finding 已 stdout): %s: %s",
-                    type(e).__name__, e, exc_info=True,
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
                 )
 
         # exit code: 0 全绿, 1 有 finding (CI gate)
@@ -412,7 +435,8 @@ def main() -> int:
         # 铁律 43-d: top-level except → stderr + exit(2) → schtask LastResult 非零
         print(
             f"[risk-health] FATAL: {type(e).__name__}: {e}",
-            file=sys.stderr, flush=True,
+            file=sys.stderr,
+            flush=True,
         )
         traceback.print_exc(file=sys.stderr)
         with suppress(Exception):

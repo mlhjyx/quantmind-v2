@@ -101,9 +101,7 @@ def main() -> int:
         help=f"Stale threshold in seconds (default {DEFAULT_STALE_SECONDS})",
     )
     parser.add_argument("--json", action="store_true", help="Output JSON only")
-    parser.add_argument(
-        "--no-alert", action="store_true", help="Skip DingTalk alert on DEAD"
-    )
+    parser.add_argument("--no-alert", action="store_true", help="Skip DingTalk alert on DEAD")
     args = parser.parse_args()
 
     severity, reason, data = probe_beat(args.stale_seconds)

@@ -50,7 +50,9 @@ def load_klines_year(conn, year: int, lookback_start: date = None) -> pd.DataFra
     """
     year_end = date(year + 1, 1, 1)
     df = pd.read_sql(sql, conn, params=(lookback_start, year_end))
-    print(f"  Loaded klines {year} (with lookback from {lookback_start}): {len(df):,} rows, {df['code'].nunique()} stocks")
+    print(
+        f"  Loaded klines {year} (with lookback from {lookback_start}): {len(df):,} rows, {df['code'].nunique()} stocks"
+    )
     return df
 
 
@@ -79,7 +81,9 @@ def write_factor_batch(conn, rows: list[tuple]) -> int:
     for code, td, fname, val in rows:
         buf.write(f"{code}\t{td}\t{fname}\t{val}\n")
     buf.seek(0)
-    cur.copy_from(buf, "_alpha158_staging", columns=("code", "trade_date", "factor_name", "raw_value"))
+    cur.copy_from(
+        buf, "_alpha158_staging", columns=("code", "trade_date", "factor_name", "raw_value")
+    )
 
     # 3. UPSERT到正式表
     cur.execute("""
@@ -116,7 +120,7 @@ def process_year(conn, year: int, stock_batch_size: int = 500) -> dict:
 
     # 分批处理股票
     for batch_idx in range(0, len(all_codes), stock_batch_size):
-        batch_codes = all_codes[batch_idx:batch_idx + stock_batch_size]
+        batch_codes = all_codes[batch_idx : batch_idx + stock_batch_size]
         t_batch = time.time()
 
         # 加载这批股票的数据（含lookback）
@@ -141,7 +145,7 @@ def process_year(conn, year: int, stock_batch_size: int = 500) -> dict:
         try:
             result_df = compute_all_alpha158(price_df, skip_slow=False)
         except Exception as e:
-            print(f"    BATCH {batch_idx//stock_batch_size} FAILED: {e}")
+            print(f"    BATCH {batch_idx // stock_batch_size} FAILED: {e}")
             continue
 
         if result_df.empty:
@@ -174,8 +178,10 @@ def process_year(conn, year: int, stock_batch_size: int = 500) -> dict:
         stats["batches"] += 1
 
         elapsed = time.time() - t_batch
-        print(f"    Batch {batch_idx//stock_batch_size + 1}/{(len(all_codes) + stock_batch_size - 1)//stock_batch_size}: "
-              f"{len(batch_codes)} stocks, {written:,} rows written ({elapsed:.1f}s)")
+        print(
+            f"    Batch {batch_idx // stock_batch_size + 1}/{(len(all_codes) + stock_batch_size - 1) // stock_batch_size}: "
+            f"{len(batch_codes)} stocks, {written:,} rows written ({elapsed:.1f}s)"
+        )
 
         del price_df, result_df, rows
         gc.collect()
@@ -204,32 +210,37 @@ def main():
 
     for year in range(args.start, args.end + 1):
         t_year = time.time()
-        print(f"\n{'='*40} {year} {'='*40}")
+        print(f"\n{'=' * 40} {year} {'=' * 40}")
 
         stats = process_year(conn, year, stock_batch_size=args.stock_batch)
         grand_total += stats["total_written"]
 
         elapsed = time.time() - t_year
-        print(f"  {year} 完成: {stats['total_written']:,} rows, "
-              f"{stats['stocks_processed']} stocks, {elapsed:.1f}s")
+        print(
+            f"  {year} 完成: {stats['total_written']:,} rows, "
+            f"{stats['stocks_processed']} stocks, {elapsed:.1f}s"
+        )
 
     total_elapsed = time.time() - t_total
     print("\n" + "=" * 70)
     print("  Alpha158 全部完成")
     print(f"  总写入: {grand_total:,} rows")
-    print(f"  总耗时: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)")
+    print(f"  总耗时: {total_elapsed:.1f}s ({total_elapsed / 60:.1f} min)")
     print("=" * 70)
 
     # 验证: 检查因子覆盖率
     print("\n── 因子覆盖率验证 ──")
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT factor_name, COUNT(*) as cnt
         FROM factor_values
         WHERE factor_name IN %s
         GROUP BY factor_name
         ORDER BY cnt DESC
-    """, (tuple(all_names),))
+    """,
+        (tuple(all_names),),
+    )
 
     covered = 0
     for row in cur.fetchall():
