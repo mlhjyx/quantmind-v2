@@ -29,7 +29,11 @@ from app.services.param_defaults import (
     get_modules,
     get_param_def,
 )
-from app.services.param_service import ParamService, ParamValidationError
+from app.services.param_service import (
+    ParamService,
+    ParamValidationError,
+    estimate_param_impact,
+)
 
 # ═══════════════════════════════════════════════════
 # Helpers
@@ -467,6 +471,88 @@ class TestParamRollback:
                     "/api/params/rollback",
                     json={"reason": "缺时间戳"},
                 )
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+
+# ═══════════════════════════════════════════════════
+# 5. 参数变更影响预估 (DEV_PARAM_CONFIG §4.2 — Plan L)
+# ═══════════════════════════════════════════════════
+
+
+class TestEstimateParamImpact:
+    """estimate_param_impact 纯函数 + GET /api/params/{key}/impact 路由。"""
+
+    def test_top_n_formula(self) -> None:
+        """signal.top_n → 选股数事实陈述。"""
+        assert estimate_param_impact("signal.top_n", 30, 25) == "选股数 30 → 25 只"
+
+    def test_turnover_cap_percent_formula(self) -> None:
+        """signal.turnover_cap → 百分比换算。"""
+        assert estimate_param_impact("signal.turnover_cap", 0.5, 0.6) == "换手率上限 50% → 60%"
+
+    def test_initial_capital_formula(self) -> None:
+        """backtest.initial_capital → 千分位金额。"""
+        assert (
+            estimate_param_impact("backtest.initial_capital", 1000000, 500000)
+            == "初始资金 ¥1,000,000 → ¥500,000"
+        )
+
+    def test_unknown_param_generic_fallback(self) -> None:
+        """未登记公式的参数 → 通用 {name}: {old} → {new} 串。"""
+        assert (
+            estimate_param_impact("factor.ic_threshold", 0.03, 0.05)
+            == "factor.ic_threshold: 0.03 → 0.05"
+        )
+
+    def test_non_numeric_value_falls_back_to_generic(self) -> None:
+        """公式参数但值非数值 → 安全回退通用串, 不抛异常。"""
+        assert estimate_param_impact("signal.top_n", "abc", 25) == ("signal.top_n: abc → 25")
+
+    @pytest.mark.asyncio
+    async def test_impact_api_success(self) -> None:
+        """GET /api/params/signal.top_n/impact?new_value=25 → 200 + 影响串。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/params/signal.top_n/impact?new_value=25")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["param_name"] == "signal.top_n"
+            assert data["old_value"] == 30
+            assert data["new_value"] == "25"
+            assert "选股数" in data["impact"]
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_impact_api_nonexistent_param_404(self) -> None:
+        """GET /api/params/{key}/impact 参数不存在 → 404。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/params/nonexistent.xyz/impact?new_value=1")
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(dep_key, None)
+
+    @pytest.mark.asyncio
+    async def test_impact_api_missing_new_value_422(self) -> None:
+        """GET /api/params/{key}/impact 缺少必填 new_value → 422。"""
+        svc = _make_param_service_with_mock()
+        dep_key, dep_override = _override_param_service(svc)
+        app.dependency_overrides[dep_key] = dep_override
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/params/signal.top_n/impact")
             assert resp.status_code == 422
         finally:
             app.dependency_overrides.pop(dep_key, None)

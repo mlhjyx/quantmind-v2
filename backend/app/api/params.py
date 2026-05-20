@@ -13,7 +13,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.services.param_service import ParamService, ParamValidationError
+from app.services.param_service import (
+    ParamService,
+    ParamValidationError,
+    estimate_param_impact,
+)
 
 router = APIRouter(prefix="/api/params", tags=["params"])
 
@@ -99,6 +103,41 @@ async def get_changelog(
         变更日志列表，每项含 id/param_name/old_value/new_value/changed_by/reason/created_at。
     """
     return await svc.get_change_log(key=key or None, limit=limit)
+
+
+@router.get("/{key}/impact")
+async def estimate_impact(
+    key: str,
+    new_value: str = Query(..., description="拟变更的新值 (数值型参数将按数值解析)"),
+    svc: ParamService = Depends(_get_param_service),
+) -> dict[str, Any]:
+    """预估参数变更影响 (DEV_PARAM_CONFIG §4.2 — 变更确认弹窗)。
+
+    取参数当前值为 old_value, 结合 new_value 返回人类可读影响说明。
+    本路由必须注册在 GET /{key:path} 之前 —— 后者 :path 贪婪匹配会吞掉
+    `/impact` 后缀。
+
+    Args:
+        key: 参数 key。
+        new_value: 拟变更的新值。
+
+    Returns:
+        含 param_name / old_value / new_value / impact 的字典。
+
+    Raises:
+        HTTPException: 参数不存在时返回 404。
+    """
+    try:
+        param = await svc.get_param(key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    old_value = param.get("param_value")
+    return {
+        "param_name": key,
+        "old_value": old_value,
+        "new_value": new_value,
+        "impact": estimate_param_impact(key, old_value, new_value),
+    }
 
 
 @router.get("/{key:path}")

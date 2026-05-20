@@ -7,6 +7,7 @@ DEV_PARAM_CONFIG.md四级控制体系中的L2级别参数管理。
 CLAUDE.md: Service依赖注入统一用FastAPI的Depends链注入。
 """
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -389,3 +390,42 @@ class ParamService:
         if param_def.enum_options:
             d["enum_options"] = param_def.enum_options
         return d
+
+
+# ─── 参数变更影响预估 (DEV_PARAM_CONFIG §4.2) ───
+
+# 影响预估公式: 键为真实参数 key (param_defaults dotted key)。每个公式接收
+# float(old) / float(new), 返回人类可读影响串。仅做事实性陈述 (单位换算 /
+# 重述), 不做启发式预测 —— 凭空预测数字 (换手率/成本变化) 会误导用户。
+_PARAM_IMPACT_FORMULAS: dict[str, Callable[[float, float], str]] = {
+    "signal.top_n": lambda o, n: f"选股数 {int(o)} → {int(n)} 只",
+    "signal.turnover_cap": lambda o, n: f"换手率上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "signal.industry_cap": lambda o, n: f"行业权重上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "signal.single_stock_cap": lambda o, n: f"单股权重上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "backtest.initial_capital": lambda o, n: f"初始资金 ¥{o:,.0f} → ¥{n:,.0f}",
+}
+
+
+def estimate_param_impact(param_name: str, old_value: Any, new_value: Any) -> str:
+    """预估参数变更影响, 返回人类可读说明 (DEV_PARAM_CONFIG §4.2)。
+
+    用于前端参数变更确认弹窗。对 _PARAM_IMPACT_FORMULAS 中登记的数值型参数
+    给出单位换算后的事实陈述; 其余参数 (及任一值无法转 float 时) 回退为通用
+    `{name}: {old} → {new}` 串。不做启发式预测 (换手率/成本预测等 —— 凭空
+    数字会误导用户, 反 fake-precision)。
+
+    Args:
+        param_name: 参数 key (param_defaults dotted key)。
+        old_value: 当前值。
+        new_value: 拟变更的新值。
+
+    Returns:
+        影响说明字符串。
+    """
+    formula = _PARAM_IMPACT_FORMULAS.get(param_name)
+    if formula is not None:
+        try:
+            return formula(float(old_value), float(new_value))
+        except (TypeError, ValueError):
+            pass  # silent_ok: 值非数值 → 回退通用串 (formula 仅适用数值参数)
+    return f"{param_name}: {old_value} → {new_value}"
