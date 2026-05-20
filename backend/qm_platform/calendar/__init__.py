@@ -176,6 +176,9 @@ def _default_conn_factory() -> Any:
 
         return get_sync_conn
     except Exception:
+        # Deliberately broad: ANY failure obtaining the conn factory (ImportError
+        # under test isolation, or a module-level config error) → return None so the
+        # caller degrades to a conn-less check. Supports the never-raises contract.
         return None
 
 
@@ -210,7 +213,21 @@ def _resolve_trading_day(today: date, conn_factory: Any, logger: Any) -> tuple[b
             from backend.engines.trading_day_checker import (  # noqa: PLC0415
                 TradingDayChecker,
             )
+        # Note: when Tushare succeeds (Layer 2), TradingDayChecker._upsert_local
+        # commits an idempotent single-row UPSERT to trading_calendar on this conn
+        # (self-healing cache) before we close it — the gate is not a pure read.
         return TradingDayChecker(conn=conn).is_trading_day(today)
+    except Exception as exc:
+        # 铁律 33 fail-safe: the gate MUST always return a verdict (docstring
+        # contract). A double-ImportError or any TradingDayChecker runtime failure
+        # degrades to the conn-less get_calendar() path rather than crashing the
+        # Beat task.
+        if logger is not None:
+            logger.warning(
+                f"calendar gate: TradingDayChecker failed, degrading to conn-less "
+                f"trading-day check: {exc}"
+            )
+        return get_calendar().is_trading_day_with_reason(today)
     finally:
         if conn is not None:
             # silent_ok: conn close failure must not break the gate

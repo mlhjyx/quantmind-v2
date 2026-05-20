@@ -173,6 +173,25 @@ class TestLayer3DbFallback:
             result = is_trading_day_today_or_skip(conn_factory=_boom)
         assert result is True  # degraded to the conn-less get_calendar() path
 
+    def test_checker_runtime_failure_degrades_gracefully(self) -> None:
+        """TradingDayChecker raising at runtime → gate degrades to the conn-less
+        path, never crashes (铁律 33 fail-safe — the gate must always return a
+        verdict; a crash here would take down the Beat task it guards).
+        """
+        from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+        mock_checker = MagicMock()
+        mock_checker.is_trading_day.side_effect = RuntimeError("checker boom")
+        with (
+            patch("engines.trading_day_checker.TradingDayChecker", return_value=mock_checker),
+            patch(
+                "qm_platform.calendar.get_calendar",
+                return_value=_mock_calendar(True, "tushare_api: 交易日"),
+            ),
+        ):
+            result = is_trading_day_today_or_skip(conn_factory=lambda: MagicMock())
+        assert result is True  # degraded to the conn-less get_calendar() path
+
 
 # ─────────────────────────────────────────────────────────────
 # Layer 4 heuristic — holiday-blind by nature (last resort)
