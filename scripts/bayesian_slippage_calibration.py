@@ -33,6 +33,8 @@ import os
 import sys
 import warnings
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -505,6 +507,142 @@ DEFAULT_PARAMS: dict[str, float] = {
 }
 
 
+# ── Plan v10: 季度报告输出 + 系数 drift 告警 ──────────────────────────────
+# 关闭 Beat `slippage-calibration-quarterly` 设计未实现的两项:
+#   "Compare vs current calibration; alert if drift > 30% per coef.
+#    Output: docs/research/slippage_calibration_YYYYQ.md"
+
+_DRIFT_ALERT_THRESHOLD = 0.30  # |校准值-默认值|/默认值 > 30% → 告警
+
+
+def _parse_env_file(env_path: Path) -> dict[str, str]:
+    """解析 .env → field→value dict; 文件不存在返回空 dict (fail-soft)."""
+    fields: dict[str, str] = {}
+    if not env_path.exists():
+        return fields
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        fields[k.strip()] = v.strip()
+    return fields
+
+
+def _compute_coef_drift(params: dict[str, float]) -> dict[str, float]:
+    """逐系数算相对 DEFAULT_PARAMS 的 |drift|, 返回超阈值的 {系数: drift}."""
+    over: dict[str, float] = {}
+    for k, cal_val in params.items():
+        orig = DEFAULT_PARAMS.get(k)
+        if not orig:  # None 或 0 → 无法算相对 drift
+            continue
+        drift = abs((cal_val - orig) / orig)
+        if drift > _DRIFT_ALERT_THRESHOLD:
+            over[k] = drift
+    return over
+
+
+def _push_dingtalk_slippage(
+    env: dict[str, str], tag: str, over: dict[str, float]
+) -> None:
+    """滑点系数 drift > 30% 时 DingTalk 告警 (沿用 llm_cost_monthly_audit 体例).
+
+    plain-post; .env 含 DINGTALK_SECRET 则附加 HMAC-SHA256 加签.
+
+    Args:
+        env: 解析后的 .env dict.
+        tag: 季度标签 (e.g. "2026Q2").
+        over: {系数名: drift 比例} —— drift 超阈值的系数.
+
+    铁律 33 fail-soft: 校准已完成, 告警旁路失败仅 print, 不抛错.
+    """
+    webhook = env.get("DINGTALK_WEBHOOK_URL", "").strip()
+    if not webhook:
+        print("[DingTalk] DINGTALK_WEBHOOK_URL 未配置 — 跳过滑点漂移告警")
+        return
+
+    coef_lines = "\n".join(f"  {k}: drift {d * 100:.0f}%" for k, d in over.items())
+    text = (
+        f"[滑点校准漂移告警 {tag}] {len(over)} 个系数 drift > "
+        f"{_DRIFT_ALERT_THRESHOLD * 100:.0f}%\n"
+        f"{coef_lines}\n"
+        f"复查 docs/research/slippage_calibration_{tag}.md + 验证集拟合优度 "
+        f"(铁律 7) 后再决定是否更新 .env"
+    )
+    try:
+        import httpx
+
+        url = webhook
+        secret = env.get("DINGTALK_SECRET", "").strip()
+        if secret:
+            import base64
+            import hashlib
+            import hmac
+            import time
+            import urllib.parse
+
+            ts = str(round(time.time() * 1000))
+            hmac_code = hmac.new(
+                secret.encode("utf-8"),
+                f"{ts}\n{secret}".encode(),
+                digestmod=hashlib.sha256,
+            ).digest()
+            sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+            url = f"{webhook}&timestamp={ts}&sign={sign}"
+
+        resp = httpx.post(
+            url,
+            json={"msgtype": "text", "text": {"content": text}},
+            timeout=10,
+        )
+        print(f"[DingTalk] 滑点漂移告警已推送 http={resp.status_code}")
+    except Exception as e:
+        # 铁律 33 fail-soft: 校准已完成, 告警旁路失败不抛错.
+        print(f"[DingTalk] 滑点漂移告警推送失败 (fail-soft): {e}")
+
+
+def _finalize_quarterly(report: str, result: CalibrationResult) -> None:
+    """关闭 Beat `slippage-calibration-quarterly` 设计两项 (Plan v10):
+
+    (1) 校准报告写入 docs/research/slippage_calibration_{YYYYQ}.md;
+    (2) 逐系数对比 DEFAULT_PARAMS, |drift| > 30% → DingTalk 告警.
+
+    Args:
+        report: generate_calibration_report 产出的文本报告.
+        result: CalibrationResult (含 .params 校准后系数).
+
+    铁律 18 季度复核 enforcement; 铁律 33 告警 fail-soft.
+    """
+    now = datetime.now()
+    tag = f"{now.year}Q{(now.month - 1) // 3 + 1}"
+    repo_root = Path(__file__).resolve().parent.parent
+
+    # (1) 季度报告文件输出
+    out_dir = repo_root / "docs" / "research"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"slippage_calibration_{tag}.md"
+    out_path.write_text(
+        f"# Slippage Calibration {tag}\n\n"
+        f"> 自动生成 by scripts/bayesian_slippage_calibration.py (铁律 18 季度复核)\n\n"
+        f"```\n{report}\n```\n",
+        encoding="utf-8",
+    )
+    print(f"\n[Output] 季度校准报告已写入: {out_path}")
+
+    # (2) 逐系数 drift 检测 + 告警
+    over = _compute_coef_drift(result.params)
+    if not over:
+        print(
+            f"[Drift] 所有系数 drift <= {_DRIFT_ALERT_THRESHOLD * 100:.0f}%, 无需告警"
+        )
+        return
+
+    drift_str = ", ".join(f"{k}={d * 100:.0f}%" for k, d in over.items())
+    print(f"[ALERT] 滑点系数 drift > {_DRIFT_ALERT_THRESHOLD * 100:.0f}%: {drift_str}")
+    env = _parse_env_file(repo_root / "backend" / ".env")
+    _push_dingtalk_slippage(env, tag, over)
+
+
 def main() -> None:
     """命令行入口。
 
@@ -569,6 +707,10 @@ def main() -> None:
     # 生成报告
     report = generate_calibration_report(DEFAULT_PARAMS, result, df)
     print("\n" + report)
+
+    # Plan v10: 季度报告文件输出 + 系数 drift > 30% DingTalk 告警
+    # (关闭 Beat slippage-calibration-quarterly 设计的 alert + output 两项)
+    _finalize_quarterly(report, result)
 
     if args.output_params:
         print("\n# 可粘贴到.env的校准参数（请先在验证集确认后再使用）:")
