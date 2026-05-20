@@ -911,19 +911,30 @@ class FactorOnboardingService:
         """
         from engines.factor_gate import FactorGatePipeline  # noqa: PLC0415
 
-        neutral_ic_series = (
-            [float(x) for x in ic_df["ic_20d"].dropna().tolist()]
-            if not ic_df.empty and "ic_20d" in ic_df.columns
-            else []
-        )
-        raw_ic_series = self._compute_raw_ic_20d(factor_values_df, price_df, benchmark_df)
+        # Neutral 20d IC, indexed by trade_date (from _compute_ic_multi_horizon).
+        if not ic_df.empty and "ic_20d" in ic_df.columns and "trade_date" in ic_df.columns:
+            neutral_ic = ic_df.set_index("trade_date")["ic_20d"].dropna().astype(float)
+        else:
+            neutral_ic = pd.Series(dtype=float)
+        raw_ic = self._compute_raw_ic_20d(factor_values_df, price_df, benchmark_df)
+
+        # G4 decay = (|mean(raw)| - |mean(neutral)|)/|mean(raw)| — the two means MUST
+        # be over the SAME trade_date population, else the ratio is distorted (raw vs
+        # neutral can have different NaN dates). Inner-join on trade_date + dropna so
+        # both series cover identical dates before G1-G5 evaluate them.
+        aligned = pd.concat({"raw": raw_ic, "neutral": neutral_ic}, axis=1, join="inner").dropna()
+        raw_ic_series = [float(x) for x in aligned["raw"].tolist()]
+        neutral_ic_series = [float(x) for x in aligned["neutral"].tolist()]
 
         report = FactorGatePipeline().run_gates(
             factor_name=factor_name,
             ic_series=raw_ic_series,
             neutral_ic_series=neutral_ic_series,
-            # G2 best-effort: 无 Active-corr 数据 → _gate_g2 PASS-with-warning.
-            # 真 orthogonality query (Active 池截面 corr) 留后续 PR。
+            # G2 best-effort: active_factor_corr=None → _gate_g2 returns PASS-with-warning,
+            # i.e. orthogonality vs the Active pool is NOT actually enforced here. True G2
+            # enforcement needs an Active-pool cross-correlation query — a recorded
+            # follow-up (PR "Discovered follow-ups"); L2 human ACTIVE-promotion also
+            # reviews orthogonality.
             active_factor_corr=None,
             expected_direction=expected_direction,
         )
@@ -934,16 +945,21 @@ class FactorOnboardingService:
         factor_values_df: pd.DataFrame,
         price_df: pd.DataFrame,
         benchmark_df: pd.DataFrame,
-    ) -> list[float]:
+    ) -> pd.Series:
         """计算 raw (未中性化) 20 日 IC 序列 — G4 中性化衰减门需 raw vs neutral。
 
         `_compute_ic_multi_horizon` 只算 `neutral_value` IC; FactorGatePipeline G4
         比较 |raw_IC| vs |neutral_IC|, 故需 raw 序列。复用 ic_calculator 同一套
-        机制, horizon=20。输入不足 / 计算失败 → 返回 [] (G4 会因 raw 空 FAIL,
-        fail-loud — 反 silent 通过).
+        机制, horizon=20。
+
+        Returns:
+            trade_date 索引的 raw 20d IC Series (调用方按 trade_date 与 neutral IC
+            对齐, 见 `_run_quality_gates`)。输入不足 / 数据形状异常 → 空 Series
+            (G4 会因 raw 空 FAIL, fail-loud — 反 silent 通过)。`ValueError` /
+            `KeyError` (数据异常) 吞为空 Series; `TypeError` 等代码 bug 不吞, surface。
         """
         if factor_values_df.empty or price_df.empty or benchmark_df.empty:
-            return []
+            return pd.Series(dtype=float)
         try:
             from engines.ic_calculator import (  # noqa: PLC0415
                 compute_forward_excess_returns,
@@ -968,12 +984,14 @@ class FactorOnboardingService:
                 benchmark_price_col="close",
             )
             ic_series = compute_ic_series(factor_wide, fwd)
-            return [float(x) for x in ic_series.dropna().tolist()]
-        except Exception as exc:
+            return ic_series.dropna().astype(float)
+        except (ValueError, KeyError) as exc:
+            # 数据形状异常 (空截面 / 列缺失) → 空 Series → G4 因 raw 空 FAIL (fail-loud).
+            # TypeError / AttributeError / ImportError 等代码 bug 不在此吞 — 让其 surface.
             logger.warning(
                 "raw 20d IC 计算失败 (G4 将因 raw 空 FAIL): error=%s", exc, exc_info=True
             )
-            return []
+            return pd.Series(dtype=float)
 
 
 # ---------------------------------------------------------------------------
