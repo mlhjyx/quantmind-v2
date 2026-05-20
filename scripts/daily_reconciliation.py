@@ -24,29 +24,22 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
-import psycopg2
 import structlog
 
 # Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
 
+# 铁律 35: DB 连接走 app.services.db canonical get_sync_conn (从 settings.DATABASE_URL
+# 派生, 0 hardcoded 密码 + 连接泄漏跟踪). re-export 保持本模块 get_sync_conn 名称稳定
+# (test_recon_health_observability.py 的 patch 目标不变).
 from app.config import settings
+from app.services.db import get_sync_conn
 
 logger = structlog.get_logger("daily_reconciliation")
 
 # 告警阈值
 STOCK_DIFF_THRESHOLD = 0.01  # 单股差异>1% → P1
 TOTAL_MV_DIFF_THRESHOLD = 0.05  # 总市值差异>5% → P0
-
-
-def get_sync_conn():
-    """获取psycopg2连接。"""
-    return psycopg2.connect(
-        dbname="quantmind_v2",
-        user="xin",
-        password="quantmind",
-        host="localhost",
-    )
 
 
 def is_trading_day(conn, d: date) -> bool:
@@ -138,7 +131,7 @@ def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:
     价格数据从klines_daily读取，QMT资产查询获取总资产用于weight计算。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         qmt_positions: {code_with_suffix: shares} QMT持仓（可能含.SH/.SZ后缀）。
 
@@ -215,7 +208,7 @@ def write_live_performance(conn, d: date, nav_total: float, cash: float) -> None
     """将QMT当日净值写入performance_series (execution_mode='live')。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         nav_total: 当日总资产（QMT total_asset，已含持仓+现金+冻结）。
         cash: 当日可用现金（用于cash_ratio计算）。
