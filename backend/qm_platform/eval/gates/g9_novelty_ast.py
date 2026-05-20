@@ -3,6 +3,7 @@
 包装 MVP 1.3c qm_platform/factor/registry.py:_default_ast_jaccard + novelty_check.
 ctx.factor_meta + ctx.registry 必需 (registry.novelty_check 已封 ACTIVE 因子遍历).
 """
+
 from __future__ import annotations
 
 from ...factor.interface import FactorSpec

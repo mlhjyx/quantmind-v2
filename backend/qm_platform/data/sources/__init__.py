@@ -9,6 +9,7 @@
   - Sub-commit 2 ✅: QMTDataSource (Redis sink 特殊路径)
   - Sub-commit 3 ✅: TushareDataSource (生产 PT dual-write)
 """
+
 from .baostock_source import (
     MINUTE_BARS_DATA_CONTRACT,
     BaostockDataSource,

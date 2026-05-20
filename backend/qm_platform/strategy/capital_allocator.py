@@ -8,6 +8,7 @@ Note: the existing CapitalAllocator ABC in .interface uses Decimal + strategies 
 operates on weight fractions (0.0-1.0) with AllocationContext, intended for the Q3-Q4
 multi-strategy dynamic allocation trigger. Both coexist; ADR-028 governs promotion timing.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

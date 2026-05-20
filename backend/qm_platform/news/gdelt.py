@@ -24,6 +24,7 @@ Retry 体例 (沿用 sub-PR 1+2+3 tenacity 体例 sustained):
 - retry on httpx.TimeoutException + _GdeltRetryableError (429 + 5xx)
 - 反 retry on 4xx 别 → fail-loud immediate raise NewsFetchError
 """
+
 from __future__ import annotations
 
 import time

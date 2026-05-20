@@ -18,6 +18,7 @@ Usage:
     df = source.fetch(MINUTE_BARS_DATA_CONTRACT, since=date(2026, 4, 15))
     # df schema/PK/NaN/value_range 已 validate, 可直接 DataPipeline.ingest
 """
+
 from __future__ import annotations
 
 import logging
@@ -126,9 +127,7 @@ class BaostockDataSource(BaseDataSource):
 
         lg = bs.login()
         if lg.error_code != "0":
-            raise RuntimeError(
-                f"Baostock 登录失败: code={lg.error_code}, msg={lg.error_msg}"
-            )
+            raise RuntimeError(f"Baostock 登录失败: code={lg.error_code}, msg={lg.error_msg}")
 
         try:
             all_rows: list[dict] = []
@@ -164,9 +163,7 @@ class BaostockDataSource(BaseDataSource):
     # ---------- 内部: 单 code 查询 (抽自 scripts/fetch_minute_bars.py::_query_baostock) ----------
 
     @staticmethod
-    def _query_code(
-        bs_module, bs_code: str, start: str, end: str
-    ) -> list[dict]:
+    def _query_code(bs_module, bs_code: str, start: str, end: str) -> list[dict]:
         """单 code Baostock 5min 查询, 静态方法便于 mock.
 
         Args:
@@ -183,9 +180,7 @@ class BaostockDataSource(BaseDataSource):
             adjustflag="3",  # 不复权
         )
         if rs.error_code != "0":
-            logger.warning(
-                "Baostock %s 查询失败: %s %s", bs_code, rs.error_code, rs.error_msg
-            )
+            logger.warning("Baostock %s 查询失败: %s %s", bs_code, rs.error_code, rs.error_msg)
             return []
 
         rows: list[dict] = []
@@ -215,9 +210,7 @@ class BaostockDataSource(BaseDataSource):
 
     # ---------- _check_value_ranges override (业务约束) ----------
 
-    def _check_value_ranges(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_value_ranges(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """业务约束: close > 0, high >= low, volume >= 0."""
         del contract
         issues: list[str] = []

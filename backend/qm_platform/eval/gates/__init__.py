@@ -5,6 +5,7 @@ Pipeline 顺序跑所有 Gate, 用户看到完整 picture (而非首 fail 抛中
 
 设计稿: docs/mvp/MVP_3_5_eval_gate_framework.md
 """
+
 from __future__ import annotations
 
 from .base import Gate, GateContext, GateError

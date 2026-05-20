@@ -83,13 +83,9 @@ class ReflectionInput:
         if not self.period_label or not self.period_label.strip():
             raise ValueError("ReflectionInput.period_label must be non-empty")
         if self.period_start.tzinfo is None:
-            raise ValueError(
-                "ReflectionInput.period_start must be tz-aware (铁律 41 sustained)"
-            )
+            raise ValueError("ReflectionInput.period_start must be tz-aware (铁律 41 sustained)")
         if self.period_end.tzinfo is None:
-            raise ValueError(
-                "ReflectionInput.period_end must be tz-aware (铁律 41 sustained)"
-            )
+            raise ValueError("ReflectionInput.period_end must be tz-aware (铁律 41 sustained)")
         if self.period_end <= self.period_start:
             raise ValueError(
                 f"ReflectionInput.period_end ({self.period_end.isoformat()}) "
@@ -167,9 +163,7 @@ class ReflectionOutput:
         if not self.period_label or not self.period_label.strip():
             raise ValueError("ReflectionOutput.period_label must be non-empty")
         if self.generated_at.tzinfo is None:
-            raise ValueError(
-                "ReflectionOutput.generated_at must be tz-aware (铁律 41 sustained)"
-            )
+            raise ValueError("ReflectionOutput.generated_at must be tz-aware (铁律 41 sustained)")
         if len(self.reflections) != 5:
             raise ValueError(
                 f"ReflectionOutput.reflections must contain exactly 5 dimensions "

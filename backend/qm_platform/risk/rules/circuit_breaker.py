@@ -20,6 +20,7 @@ MVP 3.1 批 3 (Session 30 末). ADR-010 addendum 方案 C 明确决策: 不重�
 关联铁律: 24 (单一职责 adapter) / 31 **例外** / 33 (fail-loud level 变化入 log) /
           34 (initial_capital SSOT) / 36 (precondition 1640 行核查已完成 Session 27)
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -43,6 +44,7 @@ try:
     from app.services.risk_control_service import (  # noqa: PLC0415
         check_circuit_breaker_sync as _check_cb_sync,
     )
+
     _LAZY_IMPORT_OK = True
 except ImportError:
     _LAZY_IMPORT_OK = False
@@ -90,9 +92,7 @@ class CircuitBreakerRule(RiskRule):
     severity: Severity = Severity.P1
     action: Literal["sell", "alert_only", "bypass"] = "alert_only"
 
-    def __init__(
-        self, conn_factory: Callable[[], Any], initial_capital: float
-    ) -> None:
+    def __init__(self, conn_factory: Callable[[], Any], initial_capital: float) -> None:
         """注入 conn_factory + 初始资金 (DI).
 
         reviewer P2-1 采纳 (python): `Callable[[], Any]` 精确 conn_factory 签名
@@ -140,9 +140,7 @@ class CircuitBreakerRule(RiskRule):
         # reviewer P1 HIGH 采纳: 显式 try/finally close, 不用 with 防 _TrackedConnection 泄漏
         conn = self._conn_factory()
         try:
-            prev_level = self._read_current_level(
-                conn, context.strategy_id, context.execution_mode
-            )
+            prev_level = self._read_current_level(conn, context.strategy_id, context.execution_mode)
             cb_result = _check_cb_sync(
                 conn,
                 context.strategy_id,
@@ -185,9 +183,7 @@ class CircuitBreakerRule(RiskRule):
                     # 替 magic float 1.0/-1.0, 可读且扩展新 transition 时不 break downstream
                     # if-else (e.g. 若未来加 "lateral").
                     "transition_type": transition,  # "escalate" | "recover"
-                    "position_multiplier": float(
-                        cb_result.get("position_multiplier", 1.0)
-                    ),
+                    "position_multiplier": float(cb_result.get("position_multiplier", 1.0)),
                     # reviewer P2 采纳 (python P2-2 + code MEDIUM): severity_numeric dict
                     # mapping 替原公式 (非单调 p0=2 p1=1 p2=3, recovery 反最高 = 语义错).
                     "severity_numeric": _SEVERITY_NUMERIC[triggered_severity],
@@ -247,6 +243,7 @@ class CircuitBreakerRule(RiskRule):
                 "CircuitBreakerRule._read_current_level 读 cb_state 失败 "
                 "(strategy_id=%s, execution_mode=%s) — 铁律 33 fail-loud, "
                 "非 UndefinedTable 异常不 silent 返 0",
-                strategy_id, execution_mode,
+                strategy_id,
+                execution_mode,
             )
             raise

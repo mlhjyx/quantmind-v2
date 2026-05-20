@@ -21,6 +21,7 @@ Applications (PT / GP / Research / AI 闭环 / Forex) 必须通过本 SDK 消费
 
 实施状态: v1.0 骨架 (MVP 1.1, 2026-04-18), 所有 interface 抛 NotImplementedError.
 """
+
 from ._types import (
     BacktestMode,
     Order,

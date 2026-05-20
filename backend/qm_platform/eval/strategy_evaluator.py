@@ -8,6 +8,7 @@ Strategy Gates (G1' / G2' / G3') 后包成 Verdict.
   - 调用方在升 LIVE 前显式调 evaluator.evaluate_strategy(strategy_id), 通过才 update_status(LIVE)
   - sim_to_real_check 对齐铁律 18 (回测 vs PT 实盘 H0 验证)
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -110,9 +111,7 @@ class PlatformStrategyEvaluator(StrategyEvaluator):
                 "decision": (
                     EvaluationDecision.ACCEPT.value if passed else EvaluationDecision.REJECT.value
                 ),
-                "reasoning": (
-                    f"|gap|={gap_abs:.2f}bps {'<' if passed else '≥'} 5.0 bps threshold"
-                ),
+                "reasoning": (f"|gap|={gap_abs:.2f}bps {'<' if passed else '≥'} 5.0 bps threshold"),
                 "gap_bps": float(gap_bps),
                 "threshold_bps": 5.0,
                 "ironclad_rule": 18,

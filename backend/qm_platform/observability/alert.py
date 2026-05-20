@@ -38,6 +38,7 @@ Usage:
     >>> result  # "sent" / "deduped" / 抛 AlertDispatchError
     'sent'
 """
+
 from __future__ import annotations
 
 import logging
@@ -124,6 +125,7 @@ class DingTalkChannel:
         # sender 注入便于单测 (生产默认 send_markdown_sync).
         if sender is None:
             from app.services.dispatchers.dingtalk import send_markdown_sync as _default_sender
+
             sender = _default_sender
         self._sender = sender
 
@@ -141,8 +143,7 @@ class DingTalkChannel:
             f"### {title}\n\n"
             f"**source**: `{alert.source}`  \n"
             f"**trade_date**: `{alert.trade_date or 'N/A'}`  \n"
-            f"**utc**: `{alert.timestamp_utc}`\n\n"
-            + "\n".join(details_lines)
+            f"**utc**: `{alert.timestamp_utc}`\n\n" + "\n".join(details_lines)
         )
         return self._sender(
             webhook_url=self._webhook_url,
@@ -183,6 +184,7 @@ class PostgresAlertRouter(AlertRouter):
     ) -> None:
         if channels is None:
             from app.config import settings
+
             channels = [
                 DingTalkChannel(
                     webhook_url=settings.DINGTALK_WEBHOOK_URL,
@@ -199,6 +201,7 @@ class PostgresAlertRouter(AlertRouter):
         self._channels: list[Channel] = chans
         if conn_factory is None:
             from app.services.db import get_sync_conn as _default_factory
+
             conn_factory = _default_factory
         self._conn_factory = conn_factory
         self._now_fn = now_fn or _now_utc
@@ -253,9 +256,7 @@ class PostgresAlertRouter(AlertRouter):
                 else:
                     # 发送至所有 channel (任一成功即视为 sent, 短路后续避免双发)
                     sent_any, failures = self._dispatch(alert)
-                    self._upsert_dedup(
-                        conn, dedup_key, alert, now, suppress_min, fired=sent_any
-                    )
+                    self._upsert_dedup(conn, dedup_key, alert, now, suppress_min, fired=sent_any)
         finally:
             conn.close()
 
@@ -274,9 +275,7 @@ class PostgresAlertRouter(AlertRouter):
                 dedup_key,
                 failures,
             )
-            raise AlertDispatchError(
-                f"All channels failed for dedup_key={dedup_key!r}: {failures}"
-            )
+            raise AlertDispatchError(f"All channels failed for dedup_key={dedup_key!r}: {failures}")
         logger.info(
             "[AlertRouter] sent key=%s severity=%s suppress=%dmin",
             dedup_key,
@@ -388,9 +387,7 @@ class PostgresAlertRouter(AlertRouter):
         if not isinstance(dedup_key, str) or not dedup_key:
             raise ValueError("dedup_key 必须非空字符串")
         if len(dedup_key) > _DEDUP_KEY_MAX_LEN:
-            raise ValueError(
-                f"dedup_key 超长 (>{_DEDUP_KEY_MAX_LEN} chars): {len(dedup_key)}"
-            )
+            raise ValueError(f"dedup_key 超长 (>{_DEDUP_KEY_MAX_LEN} chars): {len(dedup_key)}")
         if suppress_minutes is not None:
             # reviewer LOW#2: bool 是 int 子类, 显式 reject 防 fire(suppress_minutes=True) 静默通过
             if (
@@ -398,9 +395,7 @@ class PostgresAlertRouter(AlertRouter):
                 or isinstance(suppress_minutes, bool)
                 or suppress_minutes <= 0
             ):
-                raise ValueError(
-                    f"suppress_minutes 必须正整数, got {suppress_minutes!r}"
-                )
+                raise ValueError(f"suppress_minutes 必须正整数, got {suppress_minutes!r}")
             if suppress_minutes > _MAX_SUPPRESS_MINUTES:
                 raise ValueError(
                     f"suppress_minutes 超过 7d 上限 ({_MAX_SUPPRESS_MINUTES}min), "
@@ -408,9 +403,7 @@ class PostgresAlertRouter(AlertRouter):
                 )
 
     @staticmethod
-    def _is_deduped(
-        conn: psycopg2.extensions.connection, dedup_key: str, now: datetime
-    ) -> bool:
+    def _is_deduped(conn: psycopg2.extensions.connection, dedup_key: str, now: datetime) -> bool:
         """SELECT FOR UPDATE 上锁查 suppress_until > now."""
         with conn.cursor() as cur:
             cur.execute(
@@ -511,9 +504,7 @@ class PostgresAlertRouter(AlertRouter):
                 ok = ch.send(alert)
             except Exception as e:  # noqa: BLE001
                 # channel 抛异常 → 视为该 channel failed, 继续下一 channel (铁律 28).
-                logger.exception(
-                    "[AlertRouter] channel %s raised", getattr(ch, "name", "?")
-                )
+                logger.exception("[AlertRouter] channel %s raised", getattr(ch, "name", "?"))
                 failures.append(f"{getattr(ch, 'name', '?')}: {type(e).__name__}: {e}")
                 continue
             if ok:

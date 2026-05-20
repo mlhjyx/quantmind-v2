@@ -27,6 +27,7 @@ P0 severity 默认 5min suppress.
 
 关联 LL: LL-091 (推论必标 P3-FOLLOWUP) + LL-097 (X9 schedule restart)
 """
+
 from __future__ import annotations
 
 from typing import Literal, Protocol

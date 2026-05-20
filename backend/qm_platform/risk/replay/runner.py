@@ -242,13 +242,12 @@ class ReplayRunner:
         wall_clock = time.monotonic() - start_time
 
         # Construct window UTC timestamps for summary metadata
-        window_start_dt = datetime.combine(
-            window.start_date, datetime.min.time()
-        ).replace(tzinfo=UTC)
-        window_end_dt = (
-            datetime.combine(window.end_date, datetime.min.time()).replace(tzinfo=UTC)
-            + timedelta(days=1)
+        window_start_dt = datetime.combine(window.start_date, datetime.min.time()).replace(
+            tzinfo=UTC
         )
+        window_end_dt = datetime.combine(window.end_date, datetime.min.time()).replace(
+            tzinfo=UTC
+        ) + timedelta(days=1)
 
         summary = summarize_events(
             events,
@@ -265,9 +264,7 @@ class ReplayRunner:
             )
         except AssertionError as e:
             contract_verified = False
-            logger.error(
-                "[ReplayRunner] V3 §11.4 pure-function contract violated: %s", e
-            )
+            logger.error("[ReplayRunner] V3 §11.4 pure-function contract violated: %s", e)
 
         return ReplayRunResult(
             window=window,

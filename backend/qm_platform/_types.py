@@ -15,6 +15,7 @@
   - Severity: MVP 4.1 (Observability)
   - ResourceProfile/Priority: MVP 3.0 (Resource, U6)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
