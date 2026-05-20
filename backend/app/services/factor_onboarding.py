@@ -240,24 +240,56 @@ class FactorOnboardingService:
         ic_written = self._upsert_ic_history(conn, factor_name, ic_df)
         logger.info("factor_ic_history 写入完成: %d 行", ic_written)
 
-        # ── Step 6: 更新 factor_registry gate 统计 ────────────────────
+        # ── Step 5.5: G1-G5 自动质量门 (Plan 4, P1-34) ────────────────
+        # factor_gate.FactorGatePipeline G1-G5 (IC 量级 / Active-corr / t-stat /
+        # 中性化衰减 / 方向). G6-G8 半自动 → run_gates 标 PENDING, L2 人工晋升处理.
+        gates_passed, gate_summary, failed_gates = self._run_quality_gates(
+            factor_name=factor_name,
+            factor_values_df=factor_values_df,
+            ic_df=ic_df,
+            price_df=price_df,
+            benchmark_df=benchmark_df,
+            expected_direction=int(gate_result.get("direction", 1)),
+        )
+        logger.info(
+            "G1-G8 质量门: passed=%s, failed=%s\n%s",
+            gates_passed,
+            failed_gates,
+            gate_summary,
+        )
+
+        # ── Step 6: 更新 factor_registry gate 统计 + status (门控) ─────
         gate_ic, gate_ir, gate_t = self._compute_gate_stats(ic_df)
+        new_status = "active" if gates_passed else "rejected"
         with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE factor_registry
                 SET gate_ic = %s, gate_ir = %s, gate_t = %s,
-                    status = 'active', updated_at = NOW()
+                    status = %s, updated_at = NOW()
                 WHERE id = %s
                 """,
-                (gate_ic, gate_ir, gate_t, registry_id),
+                (gate_ic, gate_ir, gate_t, new_status, registry_id),
             )
         logger.info(
-            "factor_registry gate 更新完成: factor_name=%s, gate_ic=%.4f, gate_t=%.4f",
+            "factor_registry gate 更新完成: factor_name=%s, status=%s, gate_ic=%.4f, gate_t=%.4f",
             factor_name,
+            new_status,
             gate_ic or 0.0,
             gate_t or 0.0,
         )
+
+        if not gates_passed:
+            # 因子未通过 G1-G5 质量门 → status='rejected' + raise (沿用 G9/G10
+            # OnboardingBlocked 体例; 调用方 Celery onboarding_task 记录审计).
+            # factor_values / factor_ic_history 行保留作 reject 审计 trail.
+            from backend.qm_platform.factor.registry import (  # noqa: PLC0415
+                OnboardingBlocked,
+            )
+
+            raise OnboardingBlocked(
+                f"G1-G5 质量门未通过 (factor={factor_name}): failed={failed_gates}. {gate_summary}"
+            )
 
         return {
             "success": True,
@@ -294,20 +326,10 @@ class FactorOnboardingService:
             OnboardingBlocked: G9/G10 失败 (hypothesis 占位 / AST 太近似).
                 调用方 (Celery onboarding_task) 负责记录到 approval_queue 审计.
 
-        TODO P1-34 (Plan v8, 2026-05-19 sediment, 待 wire):
-            G1-G8 quality gates (factor_gate.py) **not yet wired** in onboarding service.
-            Current path: only G9 (AST) + G10 (hypothesis) gate.
-            Missing gates:
-              - G1 |IC_mean| > 0.02 (快筛)
-              - G2 与现有 Active 因子 截面 corr < 0.7 (正交性)
-              - G3 t-stat > 2.0 (宽松显著性)
-              - G4 中性化 IC 衰减 < 50%
-              - G5 方向与经济假设一致
-              - G6 BH-FDR 多重检验校正 (Harvey Liu Zhu 2016, t>2.5 硬标准)
-              - G7 SimBroker 回测 Sharpe ≥ 基线 1.03
-              - G8 strategy 策略匹配
-            Wire path: 在 _onboard_inner 末尾 (post G9/G10) 调用 factor_gate.run_gates
-            + 失败 raise OnboardingBlocked. Effort ~2h.
+        G1-G8 质量门 (Plan 4, P1-34, 2026-05-20): G1-G5 自动门已 wire 在
+        `_onboard_inner` Step 5.5 (`_run_quality_gates`) — 失败 → status='rejected'
+        + raise OnboardingBlocked。G6-G8 半自动 (run_gates 标 PENDING), L2 人工晋升
+        ACTIVE 时处理。本方法 (`_upsert_factor_registry`) 仅管 G9/G10。
         """
         from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
         from backend.qm_platform.factor.interface import FactorSpec
@@ -853,6 +875,105 @@ class FactorOnboardingService:
         gate_ir = float(round(ic_mean / ic_std, 4))
         gate_t = float(round(ic_mean / (ic_std / np.sqrt(n)), 4))
         return gate_ic, gate_ir, gate_t
+
+    # ------------------------------------------------------------------
+    # Step 5.5: G1-G5 质量门 (Plan 4, P1-34)
+    # ------------------------------------------------------------------
+
+    def _run_quality_gates(
+        self,
+        factor_name: str,
+        factor_values_df: pd.DataFrame,
+        ic_df: pd.DataFrame,
+        price_df: pd.DataFrame,
+        benchmark_df: pd.DataFrame,
+        expected_direction: int,
+    ) -> tuple[bool, str, list[str]]:
+        """运行 G1-G5 自动质量门 (engines.factor_gate.FactorGatePipeline)。
+
+        G1 |IC|>0.02 / G2 Active-corr<0.7 / G3 t-stat (BH-FDR) / G4 中性化衰减<50%
+        / G5 方向一致。G6-G8 半自动 (Newey-West t / SimBroker 回测 / strategy 匹配)
+        由 run_gates 标 PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
+
+        Args:
+            factor_name: 因子名。
+            factor_values_df: [code, trade_date, raw_value, neutral_value]。
+            ic_df: _compute_ic_multi_horizon 输出 (neutral IC, 含 ic_20d)。
+            price_df: [code, trade_date, adj_close]。
+            benchmark_df: [trade_date, close] CSI300。
+            expected_direction: 经济假设方向 (G5)。
+
+        Returns:
+            (auto_gates_passed, report_summary, failed_gate_ids):
+              auto_gates_passed — G1-G5 全 PASS。
+              report_summary — GateReport.summary() 全文 (含 G6-G8 PENDING, 供 L2)。
+              failed_gate_ids — FAIL 的 gate id 列表。
+        """
+        from engines.factor_gate import FactorGatePipeline  # noqa: PLC0415
+
+        neutral_ic_series = (
+            [float(x) for x in ic_df["ic_20d"].dropna().tolist()]
+            if not ic_df.empty and "ic_20d" in ic_df.columns
+            else []
+        )
+        raw_ic_series = self._compute_raw_ic_20d(factor_values_df, price_df, benchmark_df)
+
+        report = FactorGatePipeline().run_gates(
+            factor_name=factor_name,
+            ic_series=raw_ic_series,
+            neutral_ic_series=neutral_ic_series,
+            # G2 best-effort: 无 Active-corr 数据 → _gate_g2 PASS-with-warning.
+            # 真 orthogonality query (Active 池截面 corr) 留后续 PR。
+            active_factor_corr=None,
+            expected_direction=expected_direction,
+        )
+        return report.auto_gates_passed, report.summary(), report.failed_gates
+
+    def _compute_raw_ic_20d(
+        self,
+        factor_values_df: pd.DataFrame,
+        price_df: pd.DataFrame,
+        benchmark_df: pd.DataFrame,
+    ) -> list[float]:
+        """计算 raw (未中性化) 20 日 IC 序列 — G4 中性化衰减门需 raw vs neutral。
+
+        `_compute_ic_multi_horizon` 只算 `neutral_value` IC; FactorGatePipeline G4
+        比较 |raw_IC| vs |neutral_IC|, 故需 raw 序列。复用 ic_calculator 同一套
+        机制, horizon=20。输入不足 / 计算失败 → 返回 [] (G4 会因 raw 空 FAIL,
+        fail-loud — 反 silent 通过).
+        """
+        if factor_values_df.empty or price_df.empty or benchmark_df.empty:
+            return []
+        try:
+            from engines.ic_calculator import (  # noqa: PLC0415
+                compute_forward_excess_returns,
+                compute_ic_series,
+            )
+
+            factor_wide = (
+                factor_values_df[["trade_date", "code", "raw_value"]]
+                .pivot_table(
+                    index="trade_date",
+                    columns="code",
+                    values="raw_value",
+                    aggfunc="first",
+                )
+                .sort_index()
+            )
+            fwd = compute_forward_excess_returns(
+                price_df,
+                benchmark_df,
+                horizon=20,
+                price_col="adj_close",
+                benchmark_price_col="close",
+            )
+            ic_series = compute_ic_series(factor_wide, fwd)
+            return [float(x) for x in ic_series.dropna().tolist()]
+        except Exception as exc:
+            logger.warning(
+                "raw 20d IC 计算失败 (G4 将因 raw 空 FAIL): error=%s", exc, exc_info=True
+            )
+            return []
 
 
 # ---------------------------------------------------------------------------

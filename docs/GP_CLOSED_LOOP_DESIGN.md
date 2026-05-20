@@ -15,7 +15,7 @@
 | FactorDSL | §2.4 dimension rules + forbidden combos | `backend/engines/mining/factor_dsl.py` EXISTS | Verified |
 | GP Engine | DEAP + 岛屿模型 + Warm Start | `backend/engines/mining/gp_engine.py` EXISTS | Verified |
 | Pipeline Orchestrator | 4 组件设计 | 8节点状态机 EXISTS (`pipeline_orchestrator.py`) — 超设计 | Verified (exceeds design) |
-| Factor Gate Pipeline | G1-G4 quick + G1-G8 full | ⚠️ G9+G10 gates PARTIAL (Plan v8 P1-34 sediment TODO, ~2h wire pending) | PARTIAL |
+| Factor Gate Pipeline | G1-G4 quick + G1-G8 full | G1-G5 自动门 wired into onboarding (Plan 4 P1-34, `_onboard_inner` Step 5.5 `_run_quality_gates` — FAIL → status='rejected' + `OnboardingBlocked`); G9+G10 in `_upsert_factor_registry`; G6-G8 半自动 (run_gates 标 PENDING) → L2 人工晋升 ACTIVE 处理 | Verified (Plan 4) |
 | GP operator pattern | Session 16d "7 new operators" claim | `factor_dsl.py` `ALL_OPS` = **35 算子** (6 类 dict 注册表, 非 class-based; TS 16 + TS_BINARY 2 + CS 3 + UNARY 6 + BINARY 7 + TERNARY 1); 8 项 tagged `# NEW` (commit `5b70440` 2026-04-17 AlphaZero 升级, commit msg "7 新算子") | Verified (Plan 3) |
 | "243 tests" (Session 16d claim) | 243 GP tests | "243" 无来源支撑; 实测 GP/mining 测试 (`test_gp_*` / `test_mining_*` / `test_factor_dsl` / `test_gp_upgrade`, 8 文件) `pytest --co` = **393 collected** | Verified — 243 错 (Plan 3) |
 | mining_knowledge table | ✅ schema defined | ✅ Plan v8 P1-35 closed | Verified |
