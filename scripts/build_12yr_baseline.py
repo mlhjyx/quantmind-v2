@@ -88,9 +88,13 @@ def load_12yr_parquet_cache():
 
     price_df = pd.concat(pd_, ignore_index=True).sort_values(["code", "trade_date"])
     factor_df = pd.concat(fd, ignore_index=True)
-    bench_df = pd.concat(bm, ignore_index=True).sort_values("trade_date").drop_duplicates("trade_date")
+    bench_df = (
+        pd.concat(bm, ignore_index=True).sort_values("trade_date").drop_duplicates("trade_date")
+    )
 
-    print(f"  price_df: {price_df.shape} ({price_df['trade_date'].min()}..{price_df['trade_date'].max()})")
+    print(
+        f"  price_df: {price_df.shape} ({price_df['trade_date'].min()}..{price_df['trade_date'].max()})"
+    )
     print(f"  factor_df: {factor_df.shape}")
     print(f"  bench_df: {bench_df.shape}")
     print(f"  加载耗时: {time.time() - t0:.1f}s")

@@ -70,6 +70,7 @@ def show_performance(conn, days: int = 10):
     if total_days >= 2:
         rets = df["daily_return"].values
         import numpy as np
+
         sharpe = float(np.mean(rets) / np.std(rets) * (252**0.5)) if np.std(rets) > 0 else 0
         print(f"\n  运行: {total_days}个交易日 | 滚动Sharpe: {sharpe:.2f}")
         print("  毕业标准: 60天, Sharpe ≥ 0.90 (回测1.28×70%)")

@@ -36,9 +36,10 @@ def _get_dsn() -> str:
     url = s.DATABASE_URL
     for prefix in ("postgresql+asyncpg://", "postgres://"):
         if url.startswith(prefix):
-            url = "postgresql://" + url[len(prefix):]
+            url = "postgresql://" + url[len(prefix) :]
             break
     return url
+
 
 INDEX_NAME = "idx_fv_factor_date_covering"
 TEST_SQL = """
@@ -89,7 +90,9 @@ def explain_query(cur, factor_name, start, end):
     print("\n[diagnose]")
     print(f"  Index Only Scan: {'✅' if index_only else '❌'}")
     print(f"  Index Scan     : {'✅' if index_scan else '  (not used)'}")
-    print(f"  Heap Fetches=0 : {'✅' if heap_fetches_zero else '⚠️  non-zero, 可能 visibility map 未更新'}")
+    print(
+        f"  Heap Fetches=0 : {'✅' if heap_fetches_zero else '⚠️  non-zero, 可能 visibility map 未更新'}"
+    )
     return index_only or index_scan
 
 
@@ -105,10 +108,10 @@ def benchmark_query(cur, factor_name, start, end, rounds=10):
         if i == 0:
             n_rows = len(rows)
     print(f"  rows={n_rows}")
-    print(f"  median={statistics.median(timings)*1000:.1f}ms")
-    print(f"  mean  ={statistics.mean(timings)*1000:.1f}ms")
-    print(f"  min   ={min(timings)*1000:.1f}ms")
-    print(f"  max   ={max(timings)*1000:.1f}ms")
+    print(f"  median={statistics.median(timings) * 1000:.1f}ms")
+    print(f"  mean  ={statistics.mean(timings) * 1000:.1f}ms")
+    print(f"  min   ={min(timings) * 1000:.1f}ms")
+    print(f"  max   ={max(timings) * 1000:.1f}ms")
     return statistics.median(timings)
 
 

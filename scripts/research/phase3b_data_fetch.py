@@ -72,6 +72,7 @@ SLEEP_PER_DATE_REQUEST = 0.4  # seconds
 # 工具函数
 # ────────────────────────────────────────────────────────────
 
+
 def get_pro() -> Any:
     """获取Tushare Pro API实例。"""
     return ts.pro_api(TUSHARE_TOKEN)
@@ -107,8 +108,9 @@ def save_checkpoint(name: str, done_set: set) -> None:
         json.dump(list(done_set), f)
 
 
-def upsert_df(conn, table: str, df: pd.DataFrame, pk_cols: list[str],
-              batch_size: int = BATCH_SIZE) -> int:
+def upsert_df(
+    conn, table: str, df: pd.DataFrame, pk_cols: list[str], batch_size: int = BATCH_SIZE
+) -> int:
     """通用Upsert: ON CONFLICT (pk_cols) DO UPDATE SET non-pk columns。
 
     返回upsert行数。
@@ -138,11 +140,10 @@ def upsert_df(conn, table: str, df: pd.DataFrame, pk_cols: list[str],
     cur = conn.cursor()
     try:
         for i in range(0, len(df), batch_size):
-            chunk = df.iloc[i:i + batch_size]
+            chunk = df.iloc[i : i + batch_size]
             # 铁律29: 确保所有NaN已被转为None
             records = [
-                tuple(None if (isinstance(v, float) and np.isnan(v)) else v
-                      for v in row)
+                tuple(None if (isinstance(v, float) and np.isnan(v)) else v for v in row)
                 for row in chunk.itertuples(index=False)
             ]
             psycopg2.extras.execute_values(cur, sql, records)
@@ -198,11 +199,20 @@ FINA_FIELDS = (
 FINA_RENAME = {"ts_code": "code"}
 
 FINA_DB_COLS = [
-    "code", "end_date", "ann_date",
-    "roe", "roe_dt", "roa",
-    "grossprofit_margin", "netprofit_margin",
-    "debt_to_assets", "current_ratio", "quick_ratio",
-    "dt_netprofit_yoy", "basic_eps_yoy", "update_flag",
+    "code",
+    "end_date",
+    "ann_date",
+    "roe",
+    "roe_dt",
+    "roa",
+    "grossprofit_margin",
+    "netprofit_margin",
+    "debt_to_assets",
+    "current_ratio",
+    "quick_ratio",
+    "dt_netprofit_yoy",
+    "basic_eps_yoy",
+    "update_flag",
 ]
 
 
@@ -230,15 +240,18 @@ def fetch_fina_indicator(symbols: list[str], conn) -> dict:
     request_count = 0
 
     remaining = [s for s in symbols if s not in done_set]
-    print(f"[fina_indicator] {len(remaining)} stocks to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(
+        f"[fina_indicator] {len(remaining)} stocks to fetch (skipping {len(done_set)} already done)"
+    )
 
     for idx, code in enumerate(remaining):
         if idx > 0 and idx % 100 == 0:
             elapsed = time.time() - start_time
             rate = request_count / elapsed * 60
-            print(f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
-                  f"{rate:.0f} req/min, {len(failed)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
+                f"{rate:.0f} req/min, {len(failed)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         # 重试3次
@@ -292,8 +305,7 @@ def fetch_fina_indicator(symbols: list[str], conn) -> dict:
         df = df.drop_duplicates(subset=["code", "end_date"], keep="first")
 
         if not df.empty:
-            rows_written = upsert_df(conn, "fina_indicator", df,
-                                     pk_cols=["code", "end_date"])
+            rows_written = upsert_df(conn, "fina_indicator", df, pk_cols=["code", "end_date"])
             total_rows += rows_written
 
         done_set.add(code)
@@ -311,15 +323,16 @@ def fetch_fina_indicator(symbols: list[str], conn) -> dict:
         "requested": len(remaining),
         "skipped_checkpoint": len(done_set) - len(remaining),
     }
-    print(f"[fina_indicator] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed)} failed")
+    print(f"[fina_indicator] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed)} failed")
     return stats
 
 
 def verify_fina_indicator(conn) -> dict:
     """拉取后验证SQL。"""
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*), MIN(end_date), MAX(end_date), COUNT(DISTINCT code) FROM fina_indicator")
+    cur.execute(
+        "SELECT COUNT(*), MIN(end_date), MAX(end_date), COUNT(DISTINCT code) FROM fina_indicator"
+    )
     cnt, min_d, max_d, codes = cur.fetchone()
 
     cur.execute("SELECT COUNT(*) FROM fina_indicator WHERE end_date IS NULL OR code IS NULL")
@@ -345,9 +358,11 @@ def verify_fina_indicator(conn) -> dict:
         "all_metric_null_rows": all_null,
         "estimated_missing_pct": round(missing_pct, 2),
     }
-    print(f"[fina_indicator verify] {cnt} rows, {codes} stocks, "
-          f"{min_d}~{max_d}, null_pk={null_pk}, "
-          f"all_null={all_null}, est_missing={missing_pct:.1f}%")
+    print(
+        f"[fina_indicator verify] {cnt} rows, {codes} stocks, "
+        f"{min_d}~{max_d}, null_pk={null_pk}, "
+        f"all_null={all_null}, est_missing={missing_pct:.1f}%"
+    )
     return result
 
 
@@ -380,8 +395,16 @@ COMMENT ON COLUMN margin_detail.rzrqye IS '融资融券余额, 单位: 元';
 MARGIN_RENAME = {"ts_code": "code"}
 
 MARGIN_DB_COLS = [
-    "code", "trade_date",
-    "rzye", "rqye", "rzmre", "rqyl", "rzche", "rqchl", "rqmcl", "rzrqye",
+    "code",
+    "trade_date",
+    "rzye",
+    "rqye",
+    "rzmre",
+    "rqyl",
+    "rzche",
+    "rqchl",
+    "rqmcl",
+    "rzrqye",
 ]
 
 
@@ -393,8 +416,9 @@ def create_margin_detail_table(conn) -> None:
     print("[margin_detail] table created/verified OK")
 
 
-def get_missing_margin_dates(conn, start_date: str = "20140102",
-                             end_date: str = "20260410") -> list[str]:
+def get_missing_margin_dates(
+    conn, start_date: str = "20140102", end_date: str = "20260410"
+) -> list[str]:
     """返回margin_detail中缺失的交易日列表 (YYYYMMDD格式)。"""
     cur = conn.cursor()
     # 获取已有日期
@@ -402,13 +426,18 @@ def get_missing_margin_dates(conn, start_date: str = "20140102",
     existing = {r[0].strftime("%Y%m%d") for r in cur.fetchall()}
 
     # 获取trading_calendar中的交易日 (DB从2015起，2014需特殊处理)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT trade_date FROM trading_calendar
         WHERE is_trading_day = TRUE
           AND trade_date BETWEEN %s AND %s
         ORDER BY trade_date
-    """, (start_date[:4] + "-" + start_date[4:6] + "-" + start_date[6:],
-          end_date[:4] + "-" + end_date[4:6] + "-" + end_date[6:]))
+    """,
+        (
+            start_date[:4] + "-" + start_date[4:6] + "-" + start_date[6:],
+            end_date[:4] + "-" + end_date[4:6] + "-" + end_date[6:],
+        ),
+    )
     all_trade_dates = {r[0].strftime("%Y%m%d") for r in cur.fetchall()}
     cur.close()
 
@@ -436,8 +465,9 @@ def fetch_margin_detail(conn) -> dict:
 
     missing_dates = get_missing_margin_dates(conn)
     remaining = [d for d in missing_dates if d not in done_set]
-    print(f"[margin_detail] {len(remaining)} dates to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(
+        f"[margin_detail] {len(remaining)} dates to fetch (skipping {len(done_set)} already done)"
+    )
 
     total_rows = 0
     failed_dates = []
@@ -447,9 +477,11 @@ def fetch_margin_detail(conn) -> dict:
         if idx > 0 and idx % 50 == 0:
             elapsed = time.time() - start_time
             rate = (idx + 1) / elapsed * 60
-            print(f"  [{idx}/{len(remaining)}] date={trade_date}, "
-                  f"{total_rows} rows, {rate:.0f} dates/min, "
-                  f"{len(failed_dates)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] date={trade_date}, "
+                f"{total_rows} rows, {rate:.0f} dates/min, "
+                f"{len(failed_dates)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         df = None
@@ -490,8 +522,7 @@ def fetch_margin_detail(conn) -> dict:
         df = df[df["code"].notna() & df["trade_date"].notna()]
 
         if not df.empty:
-            rows_written = upsert_df(conn, "margin_detail", df,
-                                     pk_cols=["code", "trade_date"])
+            rows_written = upsert_df(conn, "margin_detail", df, pk_cols=["code", "trade_date"])
             total_rows += rows_written
 
         done_set.add(trade_date)
@@ -507,15 +538,19 @@ def fetch_margin_detail(conn) -> dict:
         "failed_count": len(failed_dates),
         "dates_requested": len(remaining),
     }
-    print(f"[margin_detail] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed_dates)} failed dates")
+    print(
+        f"[margin_detail] DONE: {total_rows} rows in {elapsed:.0f}s, "
+        f"{len(failed_dates)} failed dates"
+    )
     return stats
 
 
 def verify_margin_detail(conn) -> dict:
     """验证margin_detail。"""
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*), MIN(trade_date), MAX(trade_date), COUNT(DISTINCT code) FROM margin_detail")
+    cur.execute(
+        "SELECT COUNT(*), MIN(trade_date), MAX(trade_date), COUNT(DISTINCT code) FROM margin_detail"
+    )
     cnt, min_d, max_d, codes = cur.fetchone()
 
     cur.execute("SELECT COUNT(*) FROM margin_detail WHERE rzye IS NULL AND rqye IS NULL")
@@ -529,8 +564,9 @@ def verify_margin_detail(conn) -> dict:
         "distinct_codes": codes,
         "all_metric_null_rows": all_null,
     }
-    print(f"[margin_detail verify] {cnt} rows, {codes} stocks, {min_d}~{max_d}, "
-          f"all_null={all_null}")
+    print(
+        f"[margin_detail verify] {cnt} rows, {codes} stocks, {min_d}~{max_d}, all_null={all_null}"
+    )
     return result
 
 
@@ -569,9 +605,18 @@ FORECAST_FIELDS = (
 FORECAST_RENAME = {"ts_code": "code"}
 
 FORECAST_DB_COLS = [
-    "code", "end_date", "ann_date", "type",
-    "p_change_min", "p_change_max", "net_profit_min", "net_profit_max",
-    "last_parent_net", "first_ann_date", "summary", "change_reason",
+    "code",
+    "end_date",
+    "ann_date",
+    "type",
+    "p_change_min",
+    "p_change_max",
+    "net_profit_min",
+    "net_profit_max",
+    "last_parent_net",
+    "first_ann_date",
+    "summary",
+    "change_reason",
 ]
 
 
@@ -595,15 +640,16 @@ def fetch_forecast(symbols: list[str], conn) -> dict:
     request_count = 0
 
     remaining = [s for s in symbols if s not in done_set]
-    print(f"[forecast] {len(remaining)} stocks to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(f"[forecast] {len(remaining)} stocks to fetch (skipping {len(done_set)} already done)")
 
     for idx, code in enumerate(remaining):
         if idx > 0 and idx % 100 == 0:
             elapsed = time.time() - start_time
             rate = request_count / elapsed * 60 if elapsed > 0 else 0
-            print(f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
-                  f"{rate:.0f} req/min, {len(failed)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
+                f"{rate:.0f} req/min, {len(failed)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         df = None
@@ -644,8 +690,7 @@ def fetch_forecast(symbols: list[str], conn) -> dict:
         df = df.drop_duplicates(subset=["code", "end_date"], keep="first")
 
         if not df.empty:
-            rows_written = upsert_df(conn, "forecast", df,
-                                     pk_cols=["code", "end_date"])
+            rows_written = upsert_df(conn, "forecast", df, pk_cols=["code", "end_date"])
             total_rows += rows_written
 
         done_set.add(code)
@@ -661,8 +706,7 @@ def fetch_forecast(symbols: list[str], conn) -> dict:
         "failed_codes": failed[:20],
         "requested": len(remaining),
     }
-    print(f"[forecast] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed)} failed")
+    print(f"[forecast] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed)} failed")
     return stats
 
 
@@ -725,11 +769,26 @@ EXPRESS_FIELDS = (
 EXPRESS_RENAME = {"ts_code": "code"}
 
 EXPRESS_DB_COLS = [
-    "code", "end_date", "ann_date", "revenue", "operate_profit",
-    "total_profit", "n_income", "total_assets",
-    "diluted_eps", "diluted_roe", "yoy_net_profit", "bps",
-    "yoy_sales", "yoy_op", "yoy_tp", "yoy_dedu_np",
-    "yoy_eps", "yoy_roe", "perf_summary", "is_audit",
+    "code",
+    "end_date",
+    "ann_date",
+    "revenue",
+    "operate_profit",
+    "total_profit",
+    "n_income",
+    "total_assets",
+    "diluted_eps",
+    "diluted_roe",
+    "yoy_net_profit",
+    "bps",
+    "yoy_sales",
+    "yoy_op",
+    "yoy_tp",
+    "yoy_dedu_np",
+    "yoy_eps",
+    "yoy_roe",
+    "perf_summary",
+    "is_audit",
 ]
 
 
@@ -753,15 +812,16 @@ def fetch_express(symbols: list[str], conn) -> dict:
     request_count = 0
 
     remaining = [s for s in symbols if s not in done_set]
-    print(f"[express] {len(remaining)} stocks to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(f"[express] {len(remaining)} stocks to fetch (skipping {len(done_set)} already done)")
 
     for idx, code in enumerate(remaining):
         if idx > 0 and idx % 100 == 0:
             elapsed = time.time() - start_time
             rate = request_count / elapsed * 60 if elapsed > 0 else 0
-            print(f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
-                  f"{rate:.0f} req/min, {len(failed)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
+                f"{rate:.0f} req/min, {len(failed)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         df = None
@@ -801,8 +861,7 @@ def fetch_express(symbols: list[str], conn) -> dict:
         df = df.drop_duplicates(subset=["code", "end_date"], keep="first")
 
         if not df.empty:
-            rows_written = upsert_df(conn, "express", df,
-                                     pk_cols=["code", "end_date"])
+            rows_written = upsert_df(conn, "express", df, pk_cols=["code", "end_date"])
             total_rows += rows_written
 
         done_set.add(code)
@@ -818,8 +877,7 @@ def fetch_express(symbols: list[str], conn) -> dict:
         "failed_codes": failed[:20],
         "requested": len(remaining),
     }
-    print(f"[express] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed)} failed")
+    print(f"[express] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed)} failed")
     return stats
 
 
@@ -870,9 +928,21 @@ COMMENT ON COLUMN top_list.net_amount IS '龙虎榜净买入额, 单位: 万元'
 TOP_LIST_RENAME = {"ts_code": "code"}
 
 TOP_LIST_DB_COLS = [
-    "code", "trade_date", "name", "close", "pct_change", "turnover_rate",
-    "amount", "l_sell", "l_buy", "l_amount", "net_amount",
-    "net_rate", "amount_rate", "float_values", "reason",
+    "code",
+    "trade_date",
+    "name",
+    "close",
+    "pct_change",
+    "turnover_rate",
+    "amount",
+    "l_sell",
+    "l_buy",
+    "l_amount",
+    "net_amount",
+    "net_rate",
+    "amount_rate",
+    "float_values",
+    "reason",
 ]
 
 
@@ -884,20 +954,26 @@ def create_top_list_table(conn) -> None:
     print("[top_list] table created/verified OK")
 
 
-def get_missing_top_list_dates(conn, start_date: str = "20140102",
-                               end_date: str = "20260410") -> list[str]:
+def get_missing_top_list_dates(
+    conn, start_date: str = "20140102", end_date: str = "20260410"
+) -> list[str]:
     """返回top_list中缺失的交易日列表。"""
     cur = conn.cursor()
     cur.execute("SELECT DISTINCT trade_date FROM top_list ORDER BY trade_date")
     existing = {r[0].strftime("%Y%m%d") for r in cur.fetchall()}
 
     # 使用klines_daily的日期作为交易日参考 (覆盖2014-2026)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT trade_date FROM klines_daily
         WHERE trade_date BETWEEN %s AND %s
         ORDER BY trade_date
-    """, (start_date[:4] + "-" + start_date[4:6] + "-" + start_date[6:],
-          end_date[:4] + "-" + end_date[4:6] + "-" + end_date[6:]))
+    """,
+        (
+            start_date[:4] + "-" + start_date[4:6] + "-" + start_date[6:],
+            end_date[:4] + "-" + end_date[4:6] + "-" + end_date[6:],
+        ),
+    )
     all_trade_dates = {r[0].strftime("%Y%m%d") for r in cur.fetchall()}
     cur.close()
 
@@ -913,8 +989,7 @@ def fetch_top_list(conn) -> dict:
 
     missing_dates = get_missing_top_list_dates(conn)
     remaining = [d for d in missing_dates if d not in done_set]
-    print(f"[top_list] {len(remaining)} dates to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(f"[top_list] {len(remaining)} dates to fetch (skipping {len(done_set)} already done)")
 
     total_rows = 0
     failed_dates = []
@@ -924,9 +999,11 @@ def fetch_top_list(conn) -> dict:
         if idx > 0 and idx % 50 == 0:
             elapsed = time.time() - start_time
             rate = (idx + 1) / elapsed * 60 if elapsed > 0 else 0
-            print(f"  [{idx}/{len(remaining)}] date={trade_date}, "
-                  f"{total_rows} rows, {rate:.0f} dates/min, "
-                  f"{len(failed_dates)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] date={trade_date}, "
+                f"{total_rows} rows, {rate:.0f} dates/min, "
+                f"{len(failed_dates)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         df = None
@@ -966,8 +1043,7 @@ def fetch_top_list(conn) -> dict:
             df = df.drop_duplicates(subset=["code", "trade_date"], keep="first")
 
         if not df.empty:
-            rows_written = upsert_df(conn, "top_list", df,
-                                     pk_cols=["code", "trade_date"])
+            rows_written = upsert_df(conn, "top_list", df, pk_cols=["code", "trade_date"])
             total_rows += rows_written
 
         done_set.add(trade_date)
@@ -983,14 +1059,15 @@ def fetch_top_list(conn) -> dict:
         "failed_count": len(failed_dates),
         "dates_requested": len(remaining),
     }
-    print(f"[top_list] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed_dates)} failed dates")
+    print(f"[top_list] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed_dates)} failed dates")
     return stats
 
 
 def verify_top_list(conn) -> dict:
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*), MIN(trade_date), MAX(trade_date), COUNT(DISTINCT code) FROM top_list")
+    cur.execute(
+        "SELECT COUNT(*), MIN(trade_date), MAX(trade_date), COUNT(DISTINCT code) FROM top_list"
+    )
     cnt, min_d, max_d, codes = cur.fetchone()
     cur.close()
     result = {
@@ -1023,15 +1100,18 @@ def fetch_holdernumber(symbols: list[str], conn) -> dict:
     request_count = 0
 
     remaining = [s for s in symbols if s not in done_set]
-    print(f"[holdernumber] {len(remaining)} stocks to fetch "
-          f"(skipping {len(done_set)} already done)")
+    print(
+        f"[holdernumber] {len(remaining)} stocks to fetch (skipping {len(done_set)} already done)"
+    )
 
     for idx, code in enumerate(remaining):
         if idx > 0 and idx % 100 == 0:
             elapsed = time.time() - start_time
             rate = request_count / elapsed * 60 if elapsed > 0 else 0
-            print(f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
-                  f"{rate:.0f} req/min, {len(failed)} failed")
+            print(
+                f"  [{idx}/{len(remaining)}] {total_rows} rows fetched, "
+                f"{rate:.0f} req/min, {len(failed)} failed"
+            )
             save_checkpoint(checkpoint_key, done_set)
 
         df = None
@@ -1068,8 +1148,9 @@ def fetch_holdernumber(symbols: list[str], conn) -> dict:
         df = df.drop_duplicates(subset=["code", "ann_date", "end_date"], keep="first")
 
         if not df.empty:
-            rows_written = upsert_df(conn, "holder_number", df,
-                                     pk_cols=["code", "ann_date", "end_date"])
+            rows_written = upsert_df(
+                conn, "holder_number", df, pk_cols=["code", "ann_date", "end_date"]
+            )
             total_rows += rows_written
 
         done_set.add(code)
@@ -1085,14 +1166,15 @@ def fetch_holdernumber(symbols: list[str], conn) -> dict:
         "failed_codes": failed[:20],
         "requested": len(remaining),
     }
-    print(f"[holdernumber] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed)} failed")
+    print(f"[holdernumber] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed)} failed")
     return stats
 
 
 def verify_holdernumber(conn) -> dict:
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*), MIN(end_date), MAX(end_date), COUNT(DISTINCT code) FROM holder_number")
+    cur.execute(
+        "SELECT COUNT(*), MIN(end_date), MAX(end_date), COUNT(DISTINCT code) FROM holder_number"
+    )
     cnt, min_d, max_d, codes = cur.fetchone()
     cur.close()
     result = {
@@ -1108,6 +1190,7 @@ def verify_holdernumber(conn) -> dict:
 # ────────────────────────────────────────────────────────────
 # 主流程
 # ────────────────────────────────────────────────────────────
+
 
 def get_active_symbols(conn) -> list[str]:
     """获取活跃非BJ股票代码列表。"""
@@ -1129,16 +1212,19 @@ def main():
     parser = argparse.ArgumentParser(description="Phase 3B 新数据源拉取入库")
     parser.add_argument(
         "--task",
-        choices=["fina_indicator", "margin_detail", "forecast", "express",
-                 "top_list", "holdernumber", "all"],
+        choices=[
+            "fina_indicator",
+            "margin_detail",
+            "forecast",
+            "express",
+            "top_list",
+            "holdernumber",
+            "all",
+        ],
         default="all",
-        help="要执行的任务"
+        help="要执行的任务",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="只建表和验证，不拉取数据"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="只建表和验证，不拉取数据")
     args = parser.parse_args()
 
     conn = get_conn()
@@ -1151,30 +1237,36 @@ def main():
 
     try:
         # moneyflow_daily: 已有完整数据, 跳过
-        report["skipped"].append({
-            "table": "moneyflow_daily",
-            "reason": "already complete: 11,386,118 rows, 2014-01-02~2026-04-10"
-        })
+        report["skipped"].append(
+            {
+                "table": "moneyflow_daily",
+                "reason": "already complete: 11,386,118 rows, 2014-01-02~2026-04-10",
+            }
+        )
 
         # holder_number: 已有82K行历史数据, 属于低优先级
-        report["skipped"].append({
-            "table": "holder_number",
-            "reason": "already has 82,286 rows from 1994-2026, low priority"
-        })
+        report["skipped"].append(
+            {
+                "table": "holder_number",
+                "reason": "already has 82,286 rows from 1994-2026, low priority",
+            }
+        )
 
         # stk_factor: 与daily_basic完全重复(11.6M行, 18列全覆盖), 跳过
-        report["skipped"].append({
-            "table": "stk_factor",
-            "reason": "redundant with daily_basic (11,615,969 rows, all 18 cols overlap)"
-        })
+        report["skipped"].append(
+            {
+                "table": "stk_factor",
+                "reason": "redundant with daily_basic (11,615,969 rows, all 18 cols overlap)",
+            }
+        )
 
         symbols = None  # lazy load
 
         # ── Task 1: fina_indicator ────────────────────────────
         if args.task in ("fina_indicator", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 1: fina_indicator")
-            print("="*60)
+            print("=" * 60)
             create_fina_indicator_table(conn)
 
             if not args.dry_run:
@@ -1200,9 +1292,9 @@ def main():
 
         # ── Task 2: margin_detail ─────────────────────────────
         if args.task in ("margin_detail", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 2: margin_detail")
-            print("="*60)
+            print("=" * 60)
             create_margin_detail_table(conn)
 
             if not args.dry_run:
@@ -1222,9 +1314,9 @@ def main():
 
         # ── Task 3: forecast ──────────────────────────────────
         if args.task in ("forecast", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 3: forecast (业绩预告)")
-            print("="*60)
+            print("=" * 60)
             create_forecast_table(conn)
 
             if not args.dry_run:
@@ -1246,9 +1338,9 @@ def main():
 
         # ── Task 4: express ───────────────────────────────────
         if args.task in ("express", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 4: express (业绩快报)")
-            print("="*60)
+            print("=" * 60)
             create_express_table(conn)
 
             if not args.dry_run:
@@ -1270,9 +1362,9 @@ def main():
 
         # ── Task 5: top_list ──────────────────────────────────
         if args.task in ("top_list", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 5: top_list (龙虎榜)")
-            print("="*60)
+            print("=" * 60)
             create_top_list_table(conn)
 
             if not args.dry_run:
@@ -1292,9 +1384,9 @@ def main():
 
         # ── Task 6: holdernumber (补全) ───────────────────────
         if args.task in ("holdernumber", "all"):
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("TASK 6: holdernumber (股东户数补全)")
-            print("="*60)
+            print("=" * 60)
             # 表已存在, 不需要DDL
 
             if not args.dry_run:
@@ -1324,9 +1416,9 @@ def main():
     print(f"\n[report] written to {REPORT_PATH}")
 
     # 打印摘要
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     for task_name, stats in report["tasks"].items():
         if isinstance(stats, dict) and "total_rows" in stats:
             v = stats.get("verification", {})

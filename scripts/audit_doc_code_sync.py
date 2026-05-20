@@ -16,6 +16,7 @@ Exit:
 
 Read-only. No DB / .env / broker / schtask mutation.
 """
+
 from __future__ import annotations
 
 import re
@@ -44,10 +45,13 @@ def _grep_count(pattern: str, paths: list[str]) -> int:
 
 def audit_endpoint_count() -> tuple[int, int, float]:
     """API endpoint: documented vs code grep."""
-    code_count = _grep_count(r"@router\.(get|post|put|delete|patch)", [
-        "backend/app/api/*.py",
-        "backend/app/api/**/*.py",
-    ])
+    code_count = _grep_count(
+        r"@router\.(get|post|put|delete|patch)",
+        [
+            "backend/app/api/*.py",
+            "backend/app/api/**/*.py",
+        ],
+    )
     doc_path = REPO / "docs" / "DEV_BACKEND.md"
     doc_count = 0
     if doc_path.exists():
@@ -61,8 +65,11 @@ def audit_endpoint_count() -> tuple[int, int, float]:
 
 def audit_service_count() -> tuple[int, int, float]:
     """Service .py file count."""
-    code_count = sum(1 for _ in (REPO / "backend" / "app" / "services").rglob("*.py")
-                     if _.is_file() and not _.name.startswith("_"))
+    code_count = sum(
+        1
+        for _ in (REPO / "backend" / "app" / "services").rglob("*.py")
+        if _.is_file() and not _.name.startswith("_")
+    )
     doc_path = REPO / "docs" / "DEV_BACKEND.md"
     doc_count = 0
     if doc_path.exists():
@@ -113,20 +120,20 @@ def main() -> int:
         try:
             doc, code, drift = fn()
             status = "OK" if drift <= TOLERANCE else "DRIFT"
-            print(f"  [{status:5}] {name:20} doc={doc:>6} code={code:>6} drift={drift*100:.1f}%")
+            print(f"  [{status:5}] {name:20} doc={doc:>6} code={code:>6} drift={drift * 100:.1f}%")
             if drift > TOLERANCE:
-                failures.append(f"{name}: doc={doc} code={code} drift={drift*100:.1f}%")
+                failures.append(f"{name}: doc={doc} code={code} drift={drift * 100:.1f}%")
         except Exception as e:
             print(f"  [ERROR] {name}: {e}")
             return 2
 
     print()
     if failures:
-        print(f"FAIL — {len(failures)} metric(s) drift > {TOLERANCE*100:.0f}%:")
+        print(f"FAIL — {len(failures)} metric(s) drift > {TOLERANCE * 100:.0f}%:")
         for f in failures:
             print(f"  - {f}")
         return 1
-    print(f"PASS — all metrics within {TOLERANCE*100:.0f}% tolerance.")
+    print(f"PASS — all metrics within {TOLERANCE * 100:.0f}% tolerance.")
     return 0
 
 

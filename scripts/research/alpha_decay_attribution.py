@@ -94,9 +94,11 @@ def load_price_benchmark_12yr():
         & (~price_df["is_new_stock"])
         & (price_df["board"].fillna("") != "bse")
     ].copy()
-    print(f"  price filtered: {before:,} → {len(price_df):,} ({(1-len(price_df)/before)*100:.1f}% removed)")
+    print(
+        f"  price filtered: {before:,} → {len(price_df):,} ({(1 - len(price_df) / before) * 100:.1f}% removed)"
+    )
 
-    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time()-t0:.1f}s")
+    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time() - t0:.1f}s")
     return price_df, bench_df
 
 
@@ -347,9 +349,7 @@ def main():
 
     # 5yr 重叠对比
     print("\n[Overlap] 2021-2026 CORE vs Candidates (5 yr only)...")
-    print(
-        f"  {'Factor':<25} {'IC mean':>9} {'IC IR':>9} {'Hit':>7} {'|IC|':>9}"
-    )
+    print(f"  {'Factor':<25} {'IC mean':>9} {'IC IR':>9} {'Hit':>7} {'|IC|':>9}")
     print("  " + "-" * 65)
 
     # CORE late period

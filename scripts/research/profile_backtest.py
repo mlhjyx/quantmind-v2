@@ -123,9 +123,7 @@ def main():
 
     # PR C2 契约: LIVE_PT always re-run → engine_artifacts 必塞
     if result.engine_artifacts is None:
-        raise RuntimeError(
-            "engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run)"
-        )
+        raise RuntimeError("engine_artifacts=None — 违反 PR C2 契约 (LIVE_PT always re-run)")
     engine_result = result.engine_artifacts["engine_result"]
     price_data_from_artifacts = result.engine_artifacts["price_data"]
 

@@ -28,6 +28,7 @@ Phase B M1 (2026-04-15) 接入 pre-commit:
     0 = 无违规, 或仅有 baseline 已知债务
     1 = 有新增违规 (阻断 commit)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -232,18 +233,14 @@ def main() -> int:
                 "紧急绕过: git commit --no-verify (仅在你确定违规是误报时)。"
             )
         elif known_debt:
-            print(
-                f"✅ 无新增违规 (baseline 中有 {len(known_debt)} 条已知债务, 不阻断 commit)"
-            )
+            print(f"✅ 无新增违规 (baseline 中有 {len(known_debt)} 条已知债务, 不阻断 commit)")
             for v in known_debt:
                 print(f"  [known_debt] {v['file']}:{v['line']}  {v['code'][:80]}")
         else:
             print("✅ 生产代码无违规: 所有 INSERT 生产表都走 DataPipeline。")
 
         if research_hits:
-            print(
-                f"\n⚠️  研究脚本软豁免 (登记但不阻断): {len(research_hits)} 处"
-            )
+            print(f"\n⚠️  研究脚本软豁免 (登记但不阻断): {len(research_hits)} 处")
             for v in research_hits[:10]:
                 print(f"  {v['file']}:{v['line']}  {v['code'][:80]}")
             if len(research_hits) > 10:

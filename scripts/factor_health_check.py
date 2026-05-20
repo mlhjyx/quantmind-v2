@@ -27,8 +27,10 @@ import psycopg2
 
 def get_conn():
     return psycopg2.connect(
-        host="localhost", port=5432,
-        dbname="quantmind_v2", user="xin",
+        host="localhost",
+        port=5432,
+        dbname="quantmind_v2",
+        user="xin",
         password=os.getenv("PG_PASSWORD", "quantmind"),
     )
 
@@ -51,7 +53,8 @@ def check_factor(cur, factor_name: str, year: int | None = None) -> dict:
         label = "全量"
 
     # 1. 基本统计
-    cur.execute("""
+    cur.execute(
+        """
         SELECT COUNT(*) as total,
             MIN(trade_date) as min_date,
             MAX(trade_date) as max_date,
@@ -64,7 +67,9 @@ def check_factor(cur, factor_name: str, year: int | None = None) -> dict:
             SUM(CASE WHEN neutral_value IS NOT NULL AND neutral_value::text != 'NaN' THEN 1 ELSE 0 END) as nv_valid
         FROM factor_values
         WHERE factor_name = %s AND trade_date BETWEEN %s AND %s
-    """, (factor_name, date_start, date_end))
+    """,
+        (factor_name, date_start, date_end),
+    )
     r = cur.fetchone()
 
     total, min_date, max_date, n_stocks, n_dates = r[0], r[1], r[2], r[3], r[4]
@@ -72,15 +77,23 @@ def check_factor(cur, factor_name: str, year: int | None = None) -> dict:
 
     if total == 0:
         return {
-            "factor_name": factor_name, "status": "❌",
-            "issues": [f"无数据 ({label})"], "stats": {},
+            "factor_name": factor_name,
+            "status": "❌",
+            "issues": [f"无数据 ({label})"],
+            "stats": {},
         }
 
     stats = {
-        "total": total, "min_date": str(min_date), "max_date": str(max_date),
-        "n_stocks": n_stocks, "n_dates": n_dates,
-        "rv_null": rv_null, "rv_nan": rv_nan,
-        "nv_null": nv_null, "nv_nan": nv_nan, "nv_valid": nv_valid,
+        "total": total,
+        "min_date": str(min_date),
+        "max_date": str(max_date),
+        "n_stocks": n_stocks,
+        "n_dates": n_dates,
+        "rv_null": rv_null,
+        "rv_nan": rv_nan,
+        "nv_null": nv_null,
+        "nv_nan": nv_nan,
+        "nv_valid": nv_valid,
     }
 
     # 2. 检查 raw_value NaN (不应存在, float NaN != SQL NULL)
@@ -105,13 +118,16 @@ def check_factor(cur, factor_name: str, year: int | None = None) -> dict:
 
     # 5. 检查数值范围 (neutral_value应该在z-score范围内)
     if nv_valid > 0:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT MIN(neutral_value::float), MAX(neutral_value::float),
                    AVG(neutral_value::float), STDDEV(neutral_value::float)
             FROM factor_values
             WHERE factor_name = %s AND trade_date BETWEEN %s AND %s
               AND neutral_value IS NOT NULL AND neutral_value::text != 'NaN'
-        """, (factor_name, date_start, date_end))
+        """,
+            (factor_name, date_start, date_end),
+        )
         vmin, vmax, vmean, vstd = cur.fetchone()
         stats["nv_min"] = round(float(vmin), 4) if vmin else None
         stats["nv_max"] = round(float(vmax), 4) if vmax else None
@@ -126,10 +142,13 @@ def check_factor(cur, factor_name: str, year: int | None = None) -> dict:
             issues.append(f"neutral_value标准差过小: {float(vstd):.4f} (可能是常数)")
 
     # 6. 检查数据覆盖率 (最近交易日是否有数据)
-    cur.execute("""
+    cur.execute(
+        """
         SELECT MAX(trade_date) FROM factor_values
         WHERE factor_name = %s AND raw_value IS NOT NULL
-    """, (factor_name,))
+    """,
+        (factor_name,),
+    )
     latest_date = cur.fetchone()[0]
     stats["latest_data_date"] = str(latest_date) if latest_date else None
 
@@ -196,12 +215,15 @@ def check_parquet_db_consistency(cur, factor_name: str, year: int = 2024) -> dic
     for dt in sample_dates:
         pq_sub = pq_df[pq_df["trade_date"] == dt].set_index("code")["raw_value"]
         # DB查询
-        cur.execute("""
+        cur.execute(
+            """
             SELECT code, COALESCE(neutral_value, raw_value)::float
             FROM factor_values
             WHERE factor_name = %s AND trade_date = %s
               AND (neutral_value IS NOT NULL OR raw_value IS NOT NULL)
-        """, (factor_name, str(dt)))
+        """,
+            (factor_name, str(dt)),
+        )
         db_dict = {r[0]: r[1] for r in cur.fetchall()}
 
         for code in pq_sub.index[:20]:  # 每日抽20只
@@ -269,7 +291,7 @@ def main():
         s = result["stats"]
         line = f"  {status} {f:<35}"
         if s:
-            line += f" rows={s.get('total',0):>10,}"
+            line += f" rows={s.get('total', 0):>10,}"
             if s.get("nv_valid"):
                 line += f"  nv_valid={s['nv_valid']:>10,}"
             if s.get("nv_nan"):
@@ -286,10 +308,14 @@ def main():
         if args.check_parquet and status == "✅":
             pq_check = check_parquet_db_consistency(cur, f, args.year or 2024)
             if pq_check.get("consistent") is False:
-                print(f"      → ⚠️ Parquet不一致: {pq_check['match_pct']}% match ({pq_check['mismatches']} mismatches)")
+                print(
+                    f"      → ⚠️ Parquet不一致: {pq_check['match_pct']}% match ({pq_check['mismatches']} mismatches)"
+                )
             elif pq_check.get("consistent") is True:
                 if args.verbose:
-                    print(f"      → Parquet一致 ({pq_check['match_pct']}%, {pq_check['checked']}个样本)")
+                    print(
+                        f"      → Parquet一致 ({pq_check['match_pct']}%, {pq_check['checked']}个样本)"
+                    )
 
     # 汇总
     elapsed = time.time() - t_start

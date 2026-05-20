@@ -62,9 +62,7 @@ def _parse_env_file(env_path: Path) -> dict[str, str]:
 def _parse_database_url(url: str) -> dict[str, str]:
     """Parse postgresql+asyncpg://user:pass@host:port/db → connection dict."""
     # postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2
-    m = re.match(
-        r"postgresql\+?(?:asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)", url
-    )
+    m = re.match(r"postgresql\+?(?:asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)", url)
     if not m:
         # Security-review M1 (PR #392): 不回显 url —— DATABASE_URL 含 DB 密码,
         # url[:50] 会泄露明文密码到 stderr → Celery wrapper 捕获并传播.
@@ -224,9 +222,7 @@ def main() -> int:
         rows = cur.fetchall()
         print(f"[Query] llm_call_log last 6 months, {len(rows)} groups:")
         print()
-        print(
-            f"  {'Month':<10} {'CallType':<25} {'Count':>8} {'Total$':>10} {'Avg$':>10}"
-        )
+        print(f"  {'Month':<10} {'CallType':<25} {'Count':>8} {'Total$':>10} {'Avg$':>10}")
         print(f"  {'-' * 10} {'-' * 25} {'-' * 8} {'-' * 10} {'-' * 10}")
         current_month = NOW.strftime("%Y-%m")
         mtd_total = 0.0
@@ -234,9 +230,7 @@ def main() -> int:
             month, call_type, count, total, avg = row
             total_f = float(total) if total else 0.0
             avg_f = float(avg) if avg else 0.0
-            print(
-                f"  {month:<10} {call_type:<25} {count:>8} {total_f:>10.4f} {avg_f:>10.6f}"
-            )
+            print(f"  {month:<10} {call_type:<25} {count:>8} {total_f:>10.4f} {avg_f:>10.6f}")
             if month == current_month:
                 mtd_total += total_f
         print()
@@ -274,9 +268,7 @@ def main() -> int:
         mom_change: float | None = None
         if last_month_total is not None:
             last_month_f = float(last_month_total)
-            mom_change = (
-                (mtd_total - last_month_f) / last_month_f * 100 if last_month_f > 0 else 0
-            )
+            mom_change = (mtd_total - last_month_f) / last_month_f * 100 if last_month_f > 0 else 0
             print(f"[Compare] Last month ({last_month_dt}): ${last_month_f:.4f}")
             print(f"[Compare] MoM change: {mom_change:+.1f}%")
 

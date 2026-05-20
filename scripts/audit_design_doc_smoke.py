@@ -115,11 +115,13 @@ def extract_claude_md_claims(claude_md: Path) -> list[dict]:
     # ADR count claim, e.g. "累计 71 .md 实测 2026-05-19"
     m = re.search(r"累计\s*(\d+)\s*\.md.*?ADR", text)
     if m:
-        claims.append({
-            "fact": "adr_count",
-            "claim_value": int(m.group(1)),
-            "claim_text": m.group(0)[:80],
-        })
+        claims.append(
+            {
+                "fact": "adr_count",
+                "claim_value": int(m.group(1)),
+                "claim_text": m.group(0)[:80],
+            }
+        )
 
     # PT config claims
     for field, pattern in [
@@ -128,11 +130,13 @@ def extract_claude_md_claims(claude_md: Path) -> list[dict]:
     ]:
         m = re.search(pattern, text)
         if m:
-            claims.append({
-                "fact": field,
-                "claim_value": m.group(1),
-                "claim_text": m.group(0),
-            })
+            claims.append(
+                {
+                    "fact": field,
+                    "claim_value": m.group(1),
+                    "claim_text": m.group(0),
+                }
+            )
 
     return claims
 
@@ -155,12 +159,14 @@ def compare_claims_vs_truth(claims: list[dict], truth: dict) -> list[dict]:
             severity = "DRIFT"
             note = f"Claim {claim_value!r} ≠ truth {truth_value!r}"
 
-        results.append({
-            **claim,
-            "truth_value": truth_value,
-            "severity": severity,
-            "note": note,
-        })
+        results.append(
+            {
+                **claim,
+                "truth_value": truth_value,
+                "severity": severity,
+                "note": note,
+            }
+        )
 
     return results
 
@@ -214,13 +220,15 @@ def to_markdown_report(truth: dict, drift_results: list[dict]) -> str:
         src = truth_sources.get(fact, "?")
         lines.append(f"| `{fact}` | `{value}` | {src} |")
 
-    lines.extend([
-        "",
-        "## §3 Drift Findings",
-        "",
-        "| Severity | Fact | Claim | Truth | Note |",
-        "|---|---|---|---|---|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## §3 Drift Findings",
+            "",
+            "| Severity | Fact | Claim | Truth | Note |",
+            "|---|---|---|---|---|",
+        ]
+    )
 
     if drift_results:
         for r in drift_results:
@@ -233,34 +241,36 @@ def to_markdown_report(truth: dict, drift_results: list[dict]) -> str:
     else:
         lines.append("| — | — | — | — | No claims extracted from CLAUDE.md |")
 
-    lines.extend([
-        "",
-        "## §4 5/5 红线 Field Verification",
-        "",
-        "| Field | Truth | Expected (Phase B-1) | Verdict |",
-        "|---|---|---|---|",
-        f"| EXECUTION_MODE | `{truth.get('env_execution_mode')}` | `paper` | "
-        f"{'✅' if truth.get('env_execution_mode') == 'paper' else '❌ DRIFT'} |",
-        f"| LIVE_TRADING_DISABLED | `{truth.get('env_live_trading_disabled')}` | `true` | "
-        f"{'✅' if truth.get('env_live_trading_disabled') == 'true' else '❌ DRIFT'} |",
-        f"| QMT_ACCOUNT_ID | `{truth.get('env_qmt_account_id')}` | `81001102` | "
-        f"{'✅' if truth.get('env_qmt_account_id') == '81001102' else '❌ DRIFT'} |",
-        f"| DINGTALK_ALERTS_ENABLED | `{truth.get('env_dingtalk_enabled')}` | `true` | "
-        f"{'✅' if truth.get('env_dingtalk_enabled') == 'true' else '❌ DRIFT'} |",
-        "",
-        "---",
-        "",
-        "**Auto-regenerate**: `python scripts/audit_design_doc_smoke.py`",
-        "**Source of truth**: filesystem counts + grep + backend/.env",
-        f"**Plan v8 §VIII #27 closure**: {datetime.now(UTC).strftime('%Y-%m-%d')} sediment",
-        "",
-        "## §5 Future Enhancement",
-        "",
-        "- Expand claim extraction to DEV_*.md (factor counts, schtask counts, service counts)",
-        "- Integrate w/ pre-commit canonical metrics (factor_count, ll_unique_ids, etc)",
-        "- DB query truth sources (factor_ic_history.factors, trade_log rows)",
-        "- Schtask LastResult via Get-ScheduledTaskInfo (Windows-only)",
-    ])
+    lines.extend(
+        [
+            "",
+            "## §4 5/5 红线 Field Verification",
+            "",
+            "| Field | Truth | Expected (Phase B-1) | Verdict |",
+            "|---|---|---|---|",
+            f"| EXECUTION_MODE | `{truth.get('env_execution_mode')}` | `paper` | "
+            f"{'✅' if truth.get('env_execution_mode') == 'paper' else '❌ DRIFT'} |",
+            f"| LIVE_TRADING_DISABLED | `{truth.get('env_live_trading_disabled')}` | `true` | "
+            f"{'✅' if truth.get('env_live_trading_disabled') == 'true' else '❌ DRIFT'} |",
+            f"| QMT_ACCOUNT_ID | `{truth.get('env_qmt_account_id')}` | `81001102` | "
+            f"{'✅' if truth.get('env_qmt_account_id') == '81001102' else '❌ DRIFT'} |",
+            f"| DINGTALK_ALERTS_ENABLED | `{truth.get('env_dingtalk_enabled')}` | `true` | "
+            f"{'✅' if truth.get('env_dingtalk_enabled') == 'true' else '❌ DRIFT'} |",
+            "",
+            "---",
+            "",
+            "**Auto-regenerate**: `python scripts/audit_design_doc_smoke.py`",
+            "**Source of truth**: filesystem counts + grep + backend/.env",
+            f"**Plan v8 §VIII #27 closure**: {datetime.now(UTC).strftime('%Y-%m-%d')} sediment",
+            "",
+            "## §5 Future Enhancement",
+            "",
+            "- Expand claim extraction to DEV_*.md (factor counts, schtask counts, service counts)",
+            "- Integrate w/ pre-commit canonical metrics (factor_count, ll_unique_ids, etc)",
+            "- DB query truth sources (factor_ic_history.factors, trade_log rows)",
+            "- Schtask LastResult via Get-ScheduledTaskInfo (Windows-only)",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -305,9 +315,7 @@ def main() -> int:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report, encoding="utf-8")
         print(f"[smoke-test] Written: {output_path}", file=sys.stderr)
-        print(
-            f"[smoke-test] Drift: {drift_count} / {len(drift)}", file=sys.stderr
-        )
+        print(f"[smoke-test] Drift: {drift_count} / {len(drift)}", file=sys.stderr)
 
     return 1 if args.strict and drift_count > 0 else 0
 

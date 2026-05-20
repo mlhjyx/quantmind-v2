@@ -49,7 +49,9 @@ def load_price_data(conn, start: str = "2019-01-01", end: str = "2026-12-31") ->
     return df
 
 
-def load_price_data_simple(conn, start: str = "2019-01-01", end: str = "2026-12-31") -> pd.DataFrame:
+def load_price_data_simple(
+    conn, start: str = "2019-01-01", end: str = "2026-12-31"
+) -> pd.DataFrame:
     """简化价格加载: 直接用close (非复权, 但IC排名不受影响)。"""
     sql = """
         SELECT code, trade_date, close as adj_close
@@ -80,7 +82,9 @@ def load_benchmark(conn, start: str = "2019-01-01", end: str = "2026-12-31") -> 
     return df
 
 
-def load_factor_data(conn, factor_name: str, start: str = "2019-01-01", end: str = "2026-12-31") -> pd.DataFrame:
+def load_factor_data(
+    conn, factor_name: str, start: str = "2019-01-01", end: str = "2026-12-31"
+) -> pd.DataFrame:
     """加载单因子数据 (raw_value) via FactorCache (P1-4 迁移, DATA_SYSTEM_V1).
 
     优先走 Parquet 缓存, miss 时回 DB. 保持原 `neutral_value` 列名以兼容
@@ -97,8 +101,11 @@ def load_factor_data(conn, factor_name: str, start: str = "2019-01-01", end: str
     start_d = _dt.strptime(start, "%Y-%m-%d").date()
     end_d = _dt.strptime(end, "%Y-%m-%d").date()
     df = cache.load(
-        factor_name, column="raw_value",
-        start=start_d, end=end_d, conn=conn,
+        factor_name,
+        column="raw_value",
+        start=start_d,
+        end=end_d,
+        conn=conn,
     )
     if df.empty:
         return pd.DataFrame(columns=["code", "trade_date", "factor_name", "neutral_value"])
@@ -125,9 +132,11 @@ def main():
         price_df = load_price_data_simple(conn, args.start, args.end)
         benchmark_df = load_benchmark(conn, args.start, args.end)
 
-        print(f"\n{'='*90}")
-        print(f"{'Factor':<35} {'IC_mean':>8} {'IC_std':>8} {'ICIR':>8} {'t_stat':>8} {'hit%':>6} {'N_days':>7} {'dir':>4}")
-        print(f"{'='*90}")
+        print(f"\n{'=' * 90}")
+        print(
+            f"{'Factor':<35} {'IC_mean':>8} {'IC_std':>8} {'ICIR':>8} {'t_stat':>8} {'hit%':>6} {'N_days':>7} {'dir':>4}"
+        )
+        print(f"{'=' * 90}")
 
         results = []
         for factor_name in factors:
@@ -138,7 +147,9 @@ def main():
 
             try:
                 result = compute_factor_ic_full(
-                    factor_df, price_df, benchmark_df,
+                    factor_df,
+                    price_df,
+                    benchmark_df,
                     horizon=args.horizon,
                     factor_value_col="neutral_value",  # mapped from raw_value in SQL
                 )
@@ -155,34 +166,42 @@ def main():
                     f"{stats['std']:>8.4f} "
                     f"{stats.get('ir', 0):>8.3f} "
                     f"{stats.get('t_stat', 0):>8.2f} "
-                    f"{stats.get('hit_rate', 0)*100:>5.1f}% "
+                    f"{stats.get('hit_rate', 0) * 100:>5.1f}% "
                     f"{stats.get('n_days', 0):>7} "
                     f"{'OK' if directional_ic > 0 else 'REV':>4}"
                 )
 
-                results.append({
-                    "factor": factor_name,
-                    "ic_mean": raw_ic,
-                    "ic_std": stats["std"],
-                    "icir": stats.get("ir", 0),
-                    "t_stat": stats.get("t_stat", 0),
-                    "hit_rate": stats.get("hit_rate", 0),
-                    "n_days": stats.get("n_days", 0),
-                    "direction": direction,
-                    "directional_ic": directional_ic,
-                })
+                results.append(
+                    {
+                        "factor": factor_name,
+                        "ic_mean": raw_ic,
+                        "ic_std": stats["std"],
+                        "icir": stats.get("ir", 0),
+                        "t_stat": stats.get("t_stat", 0),
+                        "hit_rate": stats.get("hit_rate", 0),
+                        "n_days": stats.get("n_days", 0),
+                        "direction": direction,
+                        "directional_ic": directional_ic,
+                    }
+                )
 
             except Exception as e:
                 print(f"{factor_name:<35} ERROR: {e}")
 
         if results:
-            print(f"\n{'='*90}")
+            print(f"\n{'=' * 90}")
             print(f"\nSummary: {len(results)} factors evaluated")
             # 按 |directional_ic| 排序
             sorted_results = sorted(results, key=lambda x: abs(x["directional_ic"]), reverse=True)
             print("\nTop factors by |directional IC|:")
             for r in sorted_results[:5]:
-                status = "PASS" if abs(r["t_stat"]) >= 2.5 else "WEAK" if abs(r["t_stat"]) >= 2.0 else "FAIL"
+                status = (
+                    "PASS"
+                    if abs(r["t_stat"]) >= 2.5
+                    else "WEAK"
+                    if abs(r["t_stat"]) >= 2.0
+                    else "FAIL"
+                )
                 print(f"  {r['factor']:<35} IC={r['ic_mean']:+.4f} t={r['t_stat']:.2f} [{status}]")
 
     finally:

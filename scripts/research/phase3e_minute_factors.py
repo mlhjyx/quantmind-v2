@@ -71,6 +71,7 @@ ALL_FACTORS = [
 # Daily Metric Computation (per stock-day group of 48 bars)
 # ============================================================
 
+
 def compute_daily_metrics(group: pd.DataFrame) -> dict:
     """Compute all 20 daily raw metrics from a single stock-day (48 bars).
 
@@ -226,10 +227,7 @@ def compute_daily_metrics(group: pd.DataFrame) -> dict:
     # D1: variance ratio VR(6) = Var(30min) / (6 * Var(5min))
     if len(ret) >= 30:
         # 30-min returns (every 6 bars)
-        ret_30 = np.array([
-            np.prod(1 + ret[i:i+6]) - 1
-            for i in range(0, len(ret) - 5, 6)
-        ])
+        ret_30 = np.array([np.prod(1 + ret[i : i + 6]) - 1 for i in range(0, len(ret) - 5, 6)])
         var_5 = np.nanvar(ret, ddof=1)
         var_30 = np.nanvar(ret_30, ddof=1)
         if var_5 > 1e-15:
@@ -244,9 +242,7 @@ def compute_daily_metrics(group: pd.DataFrame) -> dict:
     sum_abs_bar_ret = np.nansum(np.abs(bar_ret))
     if sum_abs_bar_ret > 1e-10:
         price_level = o[0] if o[0] > 0 else 1.0
-        result["price_path_efficiency"] = float(
-            (abs_total_move / price_level) / sum_abs_bar_ret
-        )
+        result["price_path_efficiency"] = float((abs_total_move / price_level) / sum_abs_bar_ret)
     else:
         result["price_path_efficiency"] = np.nan
 
@@ -292,6 +288,7 @@ _DAILY_KEYS = [f.replace("_20", "") for f in ALL_FACTORS]
 # Year Processing Pipeline
 # ============================================================
 
+
 def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
     """Process one year: load minute bars → compute daily metrics → 20-day rolling.
 
@@ -299,9 +296,9 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
         DataFrame with columns: code, trade_date, factor_name, raw_value
         Ready for DB insertion.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Processing {year}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     t0 = time.time()
     df = cache.load_year(year)
@@ -321,9 +318,9 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
         for key, val in metrics.items():
             daily_records.append((code, td, key, val))
         if (i + 1) % 50000 == 0:
-            print(f" {i+1}/{total_groups}", end="", flush=True)
+            print(f" {i + 1}/{total_groups}", end="", flush=True)
 
-    print(f" done ({time.time()-t1:.0f}s)")
+    print(f" done ({time.time() - t1:.0f}s)")
 
     # Free minute data
     del df, grouped
@@ -345,9 +342,8 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
         fdf = fdf.sort_values(["code", "trade_date"])
 
         # Rolling mean per stock (vectorized)
-        fdf["raw_value"] = (
-            fdf.groupby("code")["value"]
-            .transform(lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean())
+        fdf["raw_value"] = fdf.groupby("code")["value"].transform(
+            lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean()
         )
 
         # Drop rows where rolling is NaN (first 9 days)
@@ -356,15 +352,19 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
         valid["factor_name"] = factor_name
         parts.append(valid)
 
-    print(f" done ({time.time()-t2:.0f}s)")
+    print(f" done ({time.time() - t2:.0f}s)")
     del daily_df
     gc.collect()
 
-    result_df = pd.concat(parts, ignore_index=True)[["code", "trade_date", "factor_name", "raw_value"]]
+    result_df = pd.concat(parts, ignore_index=True)[
+        ["code", "trade_date", "factor_name", "raw_value"]
+    ]
     del parts
 
     elapsed = time.time() - t0
-    print(f"  Result: {len(result_df):,} rows, {result_df['factor_name'].nunique()} factors, {elapsed:.0f}s total")
+    print(
+        f"  Result: {len(result_df):,} rows, {result_df['factor_name'].nunique()} factors, {elapsed:.0f}s total"
+    )
 
     return result_df
 
@@ -395,16 +395,21 @@ def write_to_db(result_df: pd.DataFrame, conn) -> int:
     tmp.loc[mask, "raw_value"] = None
 
     buf = io.StringIO()
-    for code, td, fname, val in zip(tmp["code"], tmp["trade_date"], tmp["factor_name"], tmp["raw_value"]):
+    for code, td, fname, val in zip(
+        tmp["code"], tmp["trade_date"], tmp["factor_name"], tmp["raw_value"]
+    ):
         val_str = "\\N" if val is None or pd.isna(val) else str(val)
         buf.write(f"{code}\t{td}\t{fname}\t{val_str}\n")
     written = len(tmp)
     del tmp
 
     buf.seek(0)
-    cur.copy_from(buf, "_minute_factor_staging",
-                  columns=("code", "trade_date", "factor_name", "raw_value"),
-                  null="\\N")
+    cur.copy_from(
+        buf,
+        "_minute_factor_staging",
+        columns=("code", "trade_date", "factor_name", "raw_value"),
+        null="\\N",
+    )
 
     # 3. UPSERT
     cur.execute("""
@@ -448,9 +453,15 @@ def spot_check(cache: MinuteDataCache) -> None:
     print("\n--- Manual checks ---")
     print(f"  Bars: {len(group)}")
     print(f"  Returns: {len(ret)} values, mean={np.mean(ret):.6f}, std={np.std(ret):.6f}")
-    print(f"  scipy.skew(ret): {sp_stats.skew(ret, bias=False):.6f} vs factor: {metrics.get('intraday_skewness', 'N/A')}")
-    print(f"  Realized vol (sum r²): {np.sum(ret**2):.8f} vs factor: {metrics.get('high_freq_volatility', 'N/A')}")
-    print(f"  Volume HHI: {np.sum((v/v.sum())**2):.6f} vs factor: {metrics.get('volume_concentration', 'N/A')}")
+    print(
+        f"  scipy.skew(ret): {sp_stats.skew(ret, bias=False):.6f} vs factor: {metrics.get('intraday_skewness', 'N/A')}"
+    )
+    print(
+        f"  Realized vol (sum r²): {np.sum(ret**2):.8f} vs factor: {metrics.get('high_freq_volatility', 'N/A')}"
+    )
+    print(
+        f"  Volume HHI: {np.sum((v / v.sum()) ** 2):.6f} vs factor: {metrics.get('volume_concentration', 'N/A')}"
+    )
 
     del df
 
@@ -458,6 +469,7 @@ def spot_check(cache: MinuteDataCache) -> None:
 # ============================================================
 # Main
 # ============================================================
+
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 3E: Microstructure factors")
@@ -507,7 +519,7 @@ def main():
             del result_df
             gc.collect()
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"DONE: {grand_total:,} total rows written to factor_values")
         print(f"Factors: {len(ALL_FACTORS)}")
         print(f"Years: {years}")

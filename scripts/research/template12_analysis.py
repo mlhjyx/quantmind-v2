@@ -88,7 +88,7 @@ def main():
     t0 = time.time()
     price_df, bench_df = load_price_bench()
     fwd_ret = compute_forward_excess_returns(price_df, bench_df, horizon=20, price_col="adj_close")
-    print(f"  {time.time()-t0:.1f}s")
+    print(f"  {time.time() - t0:.1f}s")
 
     # Load CORE 5 + Template 12 factors — per-factor loop to avoid OOM
     # OOM fix (Step 6-G): 原版一次性 IN (11 因子) 查询加载 ~75M 行, 超出内存上限.
@@ -119,7 +119,9 @@ def main():
         ic = compute_ic_series(wide.loc[common], fwd_ret.loc[common])
         ic_series[fname] = ic
         del wide  # 即时释放 wide 表 (IC 时序已保留)
-        print(f"  {fname}: n_days={int(ic.notna().sum())}, IC_mean={float(ic.mean()):+.4f} ({time.time()-t_load:.1f}s)")
+        print(
+            f"  {fname}: n_days={int(ic.notna().sum())}, IC_mean={float(ic.mean()):+.4f} ({time.time() - t_load:.1f}s)"
+        )
     conn.close()
 
     # IC time series correlation: T12 factors vs CORE 5
@@ -156,8 +158,9 @@ def main():
             "ic_sideways": float(ic_side) if ic_side is not None else None,
             "regime_sensitivity": float(regime_sens) if regime_sens is not None else None,
             "bull_bear_sign_flip": (
-                ic_bull is not None and ic_bear is not None
-                 and np.sign(float(ic_bull)) != np.sign(float(ic_bear))
+                ic_bull is not None
+                and ic_bear is not None
+                and np.sign(float(ic_bull)) != np.sign(float(ic_bear))
             ),
             "max_corr_factor_profile": max_corr_f,
             "max_corr_value_profile": float(max_corr_v) if max_corr_v is not None else None,

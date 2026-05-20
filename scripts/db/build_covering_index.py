@@ -42,9 +42,10 @@ def _get_dsn() -> str:
     url = s.DATABASE_URL
     for prefix in ("postgresql+asyncpg://", "postgres://"):
         if url.startswith(prefix):
-            url = "postgresql://" + url[len(prefix):]
+            url = "postgresql://" + url[len(prefix) :]
             break
     return url
+
 
 INDEX_NAME = "idx_fv_factor_date_covering"
 # TimescaleDB hypertable 不支持 CONCURRENTLY, 普通 CREATE INDEX 会传播到 all chunks.
@@ -111,9 +112,7 @@ def monitor_progress(conn):
         return None
     phase, bd, bt, td, tt, lt, lp = row
     pct = (bd / bt * 100) if bt else 0
-    print(
-        f"  [progress] phase={phase} blocks={bd}/{bt} ({pct:.1f}%) tuples={td}/{tt} lockers={lt}"
-    )
+    print(f"  [progress] phase={phase} blocks={bd}/{bt} ({pct:.1f}%) tuples={td}/{tt} lockers={lt}")
     return phase
 
 
@@ -162,10 +161,10 @@ def main():
         # 监控进度需要另一个连接 → 用 async
         cur.execute(INDEX_SQL)
         elapsed = time.time() - t0
-        print(f"[done] 耗时 {elapsed/60:.1f} min")
+        print(f"[done] 耗时 {elapsed / 60:.1f} min")
     except Exception as e:
         elapsed = time.time() - t0
-        print(f"[FAIL] 耗时 {elapsed/60:.1f} min, 错误: {e}")
+        print(f"[FAIL] 耗时 {elapsed / 60:.1f} min, 错误: {e}")
         cur.close()
         conn.close()
         return 1

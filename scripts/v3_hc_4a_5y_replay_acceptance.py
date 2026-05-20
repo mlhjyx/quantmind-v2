@@ -281,7 +281,9 @@ def _aggregate(quarters: list[_QuarterResult]) -> dict[str, Any]:
 
 def _render_report(quarters: list[_QuarterResult], agg: dict[str, Any]) -> str:
     """Render the 5y replay acceptance report markdown."""
-    overall = agg["pass_fp_rate"] and agg["pass_latency"] and agg["pass_staged"] and agg["pass_meta"]
+    overall = (
+        agg["pass_fp_rate"] and agg["pass_latency"] and agg["pass_staged"] and agg["pass_meta"]
+    )
     lines: list[str] = []
     lines.append("# V3 HC-4a — 5y Full minute_bars Replay Acceptance Report")
     lines.append("")
@@ -398,9 +400,7 @@ def _render_report(quarters: list[_QuarterResult], agg: dict[str, Any]) -> str:
         "EXECUTION_MODE=paper / QMT_ACCOUNT_ID=81001102."
     )
     lines.append("")
-    lines.append(
-        "关联: V3 §15.4 / §13.1 / §15.5 · ADR-063 / ADR-066 / ADR-070 / ADR-076 ·"
-    )
+    lines.append("关联: V3 §15.4 / §13.1 / §15.5 · ADR-063 / ADR-066 / ADR-070 / ADR-076 ·")
     lines.append("Plan v0.3 §A HC-4 row + §D · 铁律 31/33/41 · LL-098 X10 / LL-159")
     lines.append("")
     return "\n".join(lines)
@@ -479,7 +479,9 @@ def main() -> int:
     report = _render_report(quarters, agg)
     print(report)  # noqa: T201 — ops script user-facing output
 
-    overall = agg["pass_fp_rate"] and agg["pass_latency"] and agg["pass_staged"] and agg["pass_meta"]
+    overall = (
+        agg["pass_fp_rate"] and agg["pass_latency"] and agg["pass_staged"] and agg["pass_meta"]
+    )
     if not args.dry_run:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report, encoding="utf-8")

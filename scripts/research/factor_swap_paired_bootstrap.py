@@ -87,8 +87,12 @@ def load_price_bench():
         price_parts.append(pd.read_parquet(yr_dir / "price_data.parquet"))
         bench_parts.append(pd.read_parquet(yr_dir / "benchmark.parquet"))
     price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
-    bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date").sort_values("trade_date")
-    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time()-t0:.1f}s")
+    bench_df = (
+        pd.concat(bench_parts, ignore_index=True)
+        .drop_duplicates("trade_date")
+        .sort_values("trade_date")
+    )
+    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time() - t0:.1f}s")
     return price_df, bench_df
 
 
@@ -236,7 +240,9 @@ def main():
 
     print(f"\n[Factors] 加载 {len(all_factors)} 因子: {all_factors}")
     factor_df = load_factors_from_db(all_factors, conn)
-    print(f"  factor_df: {factor_df.shape}, factors loaded: {sorted(factor_df['factor_name'].unique())}")
+    print(
+        f"  factor_df: {factor_df.shape}, factors loaded: {sorted(factor_df['factor_name'].unique())}"
+    )
 
     # Backtest config
     config = BacktestConfig(
@@ -254,7 +260,9 @@ def main():
     t0 = time.time()
     base_factor_df = factor_df[factor_df["factor_name"].isin(CORE_DIRECTIONS.keys())].copy()
     base = run_strategy(base_factor_df, price_df, bench_df, CORE_DIRECTIONS, config)
-    print(f"  Sharpe={base['sharpe']}, MDD={base['mdd']:.2%}, Annual={base['annual']:.2%}, {time.time()-t0:.0f}s")
+    print(
+        f"  Sharpe={base['sharpe']}, MDD={base['mdd']:.2%}, Annual={base['annual']:.2%}, {time.time() - t0:.0f}s"
+    )
 
     # === Variants ===
     variants_results = {}
@@ -272,7 +280,9 @@ def main():
 
         t0 = time.time()
         variant = run_strategy(variant_factor_df, price_df, bench_df, new_dirs, config)
-        print(f"  Sharpe={variant['sharpe']}, MDD={variant['mdd']:.2%}, Annual={variant['annual']:.2%}, {time.time()-t0:.0f}s")
+        print(
+            f"  Sharpe={variant['sharpe']}, MDD={variant['mdd']:.2%}, Annual={variant['annual']:.2%}, {time.time() - t0:.0f}s"
+        )
 
         # Paired bootstrap
         print(f"  bootstrap N={args.n_bootstrap}...")
@@ -297,7 +307,9 @@ def main():
         variants_results[label] = {
             "to_replace": to_replace,
             "replacement": replacement,
-            "metrics": {k: v for k, v in variant.items() if k not in ("nav", "returns", "directions")},
+            "metrics": {
+                k: v for k, v in variant.items() if k not in ("nav", "returns", "directions")
+            },
             "directions": variant["directions"],
             "vs_base": {
                 "sharpe_diff": round(variant["sharpe"] - base["sharpe"], 4),
@@ -344,7 +356,9 @@ def main():
     print("\n" + "=" * 88)
     print("  Factor Swap Paired Bootstrap")
     print("=" * 88)
-    print(f"  Base CORE 5: Sharpe={base['sharpe']}, MDD={base['mdd']:.2%}, Annual={base['annual']:.2%}")
+    print(
+        f"  Base CORE 5: Sharpe={base['sharpe']}, MDD={base['mdd']:.2%}, Annual={base['annual']:.2%}"
+    )
     print()
 
     for label, r in variants_results.items():
