@@ -249,3 +249,54 @@ def test_fhd_unified_sdk_path_accepts_none_conn():
         )
         mock_sdk.assert_called_once()
         mock_legacy.assert_not_called()
+
+
+# ─────────── 铁律 43 fail-loud regression (Plan v10, 2026-05-20) ───────────
+
+
+def test_dr_run_reconciliation_fails_loud_on_unexpected_error():
+    """铁律 43: run_reconciliation 遇未预期异常 → 写 failed scheduler_task_log + re-raise.
+
+    反旧行为 swallow → 脚本 exit 0 把对账失败伪装成 schtask success.
+    """
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+
+    with (
+        patch.object(dr_mod, "get_sync_conn", return_value=mock_conn),
+        patch.object(dr_mod, "is_trading_day", return_value=True),
+        patch.object(dr_mod, "query_qmt_positions", side_effect=RuntimeError("boom")),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        dr_mod.run_reconciliation(date(2026, 5, 20))
+
+    failed_inserts = [
+        c
+        for c in mock_cur.execute.call_args_list
+        if "scheduler_task_log" in str(c) and "failed" in str(c)
+    ]
+    assert failed_inserts, "expected a status='failed' scheduler_task_log INSERT"
+    # Code-review M2 (PR #392): rollback 必在 failed-row INSERT 前调用 — 清
+    # aborted-transaction 状态, 反 InFailedSqlTransaction 致 failed-row 静默丢失.
+    mock_conn.rollback.assert_called()
+    mock_conn.close.assert_called_once()
+
+
+def test_dr_run_reconciliation_paper_mode_exit0_not_swallowed():
+    """paper-mode SystemExit(0) 不被 except Exception 捕获 (BaseException).
+
+    确认 铁律 43 fail-loud 修正不影响 Phase B-1 paper-mode 优雅退出 (exit 0).
+    """
+    mock_conn = MagicMock()
+
+    with (
+        patch.object(dr_mod, "get_sync_conn", return_value=mock_conn),
+        patch.object(dr_mod, "is_trading_day", return_value=True),
+        patch.object(dr_mod, "query_qmt_positions", side_effect=SystemExit(0)),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        dr_mod.run_reconciliation(date(2026, 5, 20))
+
+    assert exc_info.value.code == 0
+    mock_conn.close.assert_called_once()

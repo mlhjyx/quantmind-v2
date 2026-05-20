@@ -575,6 +575,30 @@ def run_reconciliation(recon_date: date) -> None:
         import traceback
 
         traceback.print_exc()
+        # 铁律 43 fail-loud: 写 failed scheduler_task_log row (供 schtask 监控
+        # 可见) 并 re-raise —— 反 swallow → exit 0 把对账失败伪装成成功
+        # (旧行为: except 吞异常, 脚本仍 exit 0, schtask LastResult 误报 success).
+        # paper-mode 优雅退出走 SystemExit (BaseException, 不被本 except 捕获),
+        # 因此 Phase B-1 paper-mode exit 0 路径不受影响.
+        try:
+            # Code-review M1 (PR #392): 若原异常来自失败的 SQL, conn 处于
+            # aborted-transaction 状态, 直接 execute 抛 InFailedSqlTransaction →
+            # failed-row 静默丢失. 先 rollback 清状态再写 failed row.
+            conn.rollback()
+            fail_cur = conn.cursor()
+            fail_cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, status,
+                    error_message, result_json)
+                   VALUES ('reconciliation', 'astock', NOW(), NOW(), 'failed',
+                           %s, NULL)""",
+                (str(e)[:500],),
+            )
+            conn.commit()
+        except Exception as log_err:  # noqa: BLE001
+            # silent_ok: failed-row 写入失败不掩盖原异常 — 下方 raise 仍 fail-loud.
+            logger.error(f"[Reconciliation] failed-row 写入失败: {log_err}")
+        raise
     finally:
         conn.close()
 

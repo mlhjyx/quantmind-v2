@@ -1115,7 +1115,7 @@ CeleryBeat 自2026-04-03 Servy迁移后持续运行,以下任务正常调度:
 | DEV_PARAM_CONFIG.md | 452 | 2026-03-28 | 🟡 |
 | DEV_AI_EVOLUTION.md | 1050 | 2026-03-28 | 🟡 AI闭环尚未实施 |
 | GP_CLOSED_LOOP_DESIGN.md | 663 | 2026-03-28 | 🟡 GP产出0因子,Beat已停 |
-| RISK_CONTROL_SERVICE_DESIGN.md | 678 | 2026-03-22 | 🟡 L1-L4设计,实际只有L4 approve_l4.py |
+| RISK_CONTROL_SERVICE_DESIGN.md | 678 | 2026-03-22 | 🔴 PARTIALLY DEPRECATED — V3 风控已开发, QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md 是当前 SSOT |
 | ML_WALKFORWARD_DESIGN.md | 1121 | 2026-04-05 | ✅ 较准确 |
 | ROADMAP_V3.md | 2267 | 2026-04-05 | ✅ 路线图最新 |
 | DDL_FINAL.sql | 813 | 2026-04-06 | 🟡 DDL 45张 vs DB实际62张(代码动态建的17张未同步) |

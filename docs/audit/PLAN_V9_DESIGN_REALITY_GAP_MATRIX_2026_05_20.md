@@ -99,7 +99,7 @@
 
 | Item | Why defer | Plan v8 ref |
 |---|---|---|
-| 流 4 风控 chain wire (AlertDispatcher → Beat) | 3-7d, multi-week | PHASE_J_DEFER_MANIFEST_2026_05_20.md |
+| ~~流 4 风控 chain wire (AlertDispatcher → Beat)~~ **撤销 2026-05-20** — user 明确「风控 v3 已开发」: V3 风控 `QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` (SSOT, Tier A S1-S11 ✅ + Tier B TB-1~5 ✅ + Gate A-D closed) 已实现, 旧 `RISK_CONTROL_SERVICE_DESIGN.md` 已 PARTIALLY DEPRECATED. 非真 implementation gap. | n/a | user 2026-05-20 |
 | 流 5 daily_reconciliation schtask 复活 | ~2h code + schtask | 同上 |
 | 流 6 RAG consumer wire (V3 §5.4) | 1-2w | 同上 |
 | 流 3→4 trade event publish | 1w | 同上 |
@@ -201,7 +201,7 @@
 
 ### §8.2 Code-level
 - [x] backtest_12yr.yaml + backtest_5yr.yaml baseline 注释添加 (Phase C-1, 12-line header explaining CORE5 preservation for regression)
-- [x] beat_schedule.py 2 stub 真值修正 (Phase C-1 Option B: wrapper 真已实现, "未实现" 注释 stale, 改成 "CLOSED Plan v9")
+- [~] beat_schedule.py 2 stub — Plan v9 Phase C-1 **仅改了注释** (claim "CLOSED" 不实): 2 task 模块 (llm_cost_audit_tasks / slippage_calibration_tasks, 建于 Plan v8 P0-16/P0-10) 实为 orphaned —— 未注册到 celery_app.py imports list → worker 不 import → task 不注册 → Beat fire 抛 `unregistered task`. **Plan v10 真闭环** (commit 29c308a, 2026-05-20): 注册 imports list + CAP_EXCEEDED retry-storm 修正 + 23 单测 + 1 smoke. LL-193 audit-cascade pattern 第 2 次实证.
 - [x] data_orchestrator:256 + t0_19_audit:506 + dingtalk_alert:182 注释 F16-classC 例外合规 (Phase C-1)
 
 ### §8.3 System-level (Phase B-1 frozen — sustained)

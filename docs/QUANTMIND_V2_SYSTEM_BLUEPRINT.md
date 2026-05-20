@@ -781,7 +781,7 @@ config_guard 启动时检查:
 | DEV_FOREX.md | 外汇模块设计 | ⏳ DEFERRED |
 | DEV_NOTIFICATIONS.md | 通知系统设计 | 🔧 |
 | GP_CLOSED_LOOP_DESIGN.md | GP 因子挖掘闭环 | 🔧 40% 实现 |
-| RISK_CONTROL_SERVICE_DESIGN.md | 风控 L1-L4 | ✅ |
+| RISK_CONTROL_SERVICE_DESIGN.md | 风控 L1-L4 (旧) | ⚠️ PARTIALLY DEPRECATED → QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (V3 SSOT) |
 | QUANTMIND_V2_DDL_FINAL.sql | 建表唯一来源 | ✅ |
 | FACTOR_TEST_REGISTRY.md | 因子测试注册表 | ✅ 持续维护 |
 | LESSONS_LEARNED.md | 经验教训 49 条 | ✅ |

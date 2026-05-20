@@ -1,10 +1,14 @@
-"""Smoke test — Celery worker 模块能从项目根 CWD subprocess 导入 + 关键 task 注册.
+"""Smoke test — Celery worker 模块能从 backend/ CWD subprocess 导入 + 关键 task 注册.
 
 不启动 Celery worker (需要 Redis broker), 但以生产相同方式导入 celery_app 模块,
 确认:
   1. 整个 task 发现链无 ImportError (celery.imports 里所有模块能加载)
   2. 关键 task 'daily_pipeline.factor_lifecycle' 注册成功 (今日 KeyError 根因)
   3. beat_schedule 加载无异常
+
+cwd = backend/ —— 复现生产 Celery worker (Servy QuantMind-Celery) 的 cwd, 使
+`app.*` 直接可导入 (项目无 .pth, 系统 Python 运行; Plan v10 2026-05-20 修正,
+原 cwd=项目根 在无 .pth 环境下 `ModuleNotFoundError: No module named 'app'`).
 
 运行: `pytest backend/tests/smoke/test_celery_worker_import.py -v -m smoke`
 """
@@ -21,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 @pytest.mark.smoke
 def test_celery_app_imports_cleanly() -> None:
-    """subprocess 从项目根 `import app.tasks.celery_app` 不应异常."""
+    """subprocess 从 backend/ CWD `import app.tasks.celery_app` 不应异常."""
     result = subprocess.run(
         [
             sys.executable,
@@ -29,7 +33,7 @@ def test_celery_app_imports_cleanly() -> None:
             "from app.tasks.celery_app import celery_app; "
             "print('Celery app:', celery_app.main)",
         ],
-        cwd=str(PROJECT_ROOT),
+        cwd=str(PROJECT_ROOT / "backend"),
         capture_output=True,
         text=True,
         timeout=30,
@@ -66,7 +70,7 @@ def test_critical_celery_tasks_registered() -> None:
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=str(PROJECT_ROOT),
+        cwd=str(PROJECT_ROOT / "backend"),
         capture_output=True,
         text=True,
         timeout=30,
@@ -93,7 +97,7 @@ def test_celery_beat_schedule_imports() -> None:
             "assert len(CELERY_BEAT_SCHEDULE) > 0, 'empty beat schedule'; "
             "print('beat schedule entries:', len(CELERY_BEAT_SCHEDULE))",
         ],
-        cwd=str(PROJECT_ROOT),
+        cwd=str(PROJECT_ROOT / "backend"),
         capture_output=True,
         text=True,
         timeout=15,
