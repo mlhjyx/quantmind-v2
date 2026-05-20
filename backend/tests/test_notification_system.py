@@ -237,6 +237,8 @@ def _make_notification_repo_mock(
     repo.mark_read = AsyncMock(return_value=mark_read_result)
     repo.mark_all_read = AsyncMock(return_value=mark_all_read_count)
     repo.delete_old = AsyncMock(return_value=delete_old_count)
+    repo.get_preferences = AsyncMock(return_value=None)
+    repo.upsert_preferences = AsyncMock(return_value={})
     return repo
 
 
@@ -424,3 +426,113 @@ class TestNotificationAPI:
         assert resp.status_code == 404
         data = resp.json()
         assert "不存在" in data["detail"]
+
+
+# ============================================================================
+# 5. 通知偏好 GET/PUT (DEV_NOTIFICATIONS §8 — Plan K)
+# ============================================================================
+
+
+class TestNotificationPreferences:
+    """通知偏好 GET/PUT 端点测试 (mock repo)。"""
+
+    _SAMPLE_PREFS = {
+        "id": "pref-uuid-001",
+        "toast_p0": True,
+        "toast_p1": False,
+        "toast_p2": True,
+        "toast_p3": True,
+        "dingtalk_enabled": True,
+        "dingtalk_webhook": "https://oapi.dingtalk.com/robot/send?access_token=x",
+        "dispatch_p0": True,
+        "dispatch_p1": True,
+        "dispatch_p2": True,
+        "quiet_enabled": False,
+        "quiet_start": 22,
+        "quiet_end": 8,
+        "updated_at": "2026-05-20T15:00:00+00:00",
+    }
+
+    @pytest.mark.asyncio
+    async def test_get_preferences_no_row_returns_defaults(
+        self, client, _override_notification_repo
+    ):
+        """GET /preferences 无记录 → 返回列默认值, id/updated_at 为 None。"""
+        _override_notification_repo.get_preferences = AsyncMock(return_value=None)
+        resp = await client.get("/api/notifications/preferences")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] is None
+        assert data["updated_at"] is None
+        assert data["toast_p0"] is True
+        assert data["dingtalk_enabled"] is False
+        assert data["quiet_start"] == 23
+
+    @pytest.mark.asyncio
+    async def test_get_preferences_existing_row(self, client, _override_notification_repo):
+        """GET /preferences 有记录 → 原样返回该行。"""
+        _override_notification_repo.get_preferences = AsyncMock(
+            return_value=dict(self._SAMPLE_PREFS)
+        )
+        resp = await client.get("/api/notifications/preferences")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "pref-uuid-001"
+        assert data["toast_p1"] is False
+        assert data["dingtalk_webhook"].startswith("https://oapi.dingtalk.com")
+
+    @pytest.mark.asyncio
+    async def test_put_preferences_success(self, client, _override_notification_repo):
+        """PUT /preferences 全量更新 → 200, upsert 收到全部 12 个字段。"""
+        _override_notification_repo.upsert_preferences = AsyncMock(
+            return_value=dict(self._SAMPLE_PREFS)
+        )
+        resp = await client.put(
+            "/api/notifications/preferences",
+            json={
+                "toast_p0": True,
+                "toast_p1": False,
+                "toast_p2": True,
+                "toast_p3": True,
+                "dingtalk_enabled": True,
+                "dingtalk_webhook": "https://oapi.dingtalk.com/robot/send?access_token=x",
+                "dispatch_p0": True,
+                "dispatch_p1": True,
+                "dispatch_p2": True,
+                "quiet_enabled": False,
+                "quiet_start": 22,
+                "quiet_end": 8,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "pref-uuid-001"
+        sent = _override_notification_repo.upsert_preferences.call_args.args[0]
+        assert sent["toast_p1"] is False
+        assert sent["quiet_start"] == 22
+        assert len(sent) == 12
+
+    @pytest.mark.asyncio
+    async def test_put_preferences_empty_body_uses_field_defaults(
+        self, client, _override_notification_repo
+    ):
+        """PUT /preferences 空 body → Pydantic 字段默认值填充 (全量替换语义)。"""
+        _override_notification_repo.upsert_preferences = AsyncMock(
+            return_value=dict(self._SAMPLE_PREFS)
+        )
+        resp = await client.put("/api/notifications/preferences", json={})
+        assert resp.status_code == 200
+        sent = _override_notification_repo.upsert_preferences.call_args.args[0]
+        assert sent["toast_p0"] is True
+        assert sent["quiet_start"] == 23
+        assert sent["dispatch_p2"] is False
+
+    @pytest.mark.asyncio
+    async def test_put_preferences_invalid_quiet_hour_returns_422(
+        self, client, _override_notification_repo
+    ):
+        """PUT /preferences quiet_start=25 超出 [0,23] → 422。"""
+        resp = await client.put(
+            "/api/notifications/preferences",
+            json={"quiet_start": 25},
+        )
+        assert resp.status_code == 422
