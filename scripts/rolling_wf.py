@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    import pandas as pd
     from qm_platform.observability import AlertRulesEngine
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -154,7 +155,7 @@ def _load_wf_data():
 
 def _compute_dsr(
     combined_oos_sharpe: float,
-    combined_oos_returns,
+    combined_oos_returns: pd.Series | None,
     total_oos_days: int,
 ) -> tuple[float | None, str]:
     """计算 WF OOS 拼接结果的 Deflated Sharpe Ratio (DEV_BACKTEST_ENGINE §4.12.1).
@@ -181,8 +182,10 @@ def _compute_dsr(
     from engines.dsr import deflated_sharpe_ratio, interpret_dsr
 
     try:
-        if total_oos_days < 2 or combined_oos_returns is None or len(combined_oos_returns) < 2:
-            logger.warning("[DSR] OOS 数据不足 (days=%s), 跳过 DSR 计算", total_oos_days)
+        # DSR 需有限 skew (3 阶矩) + 有限 kurtosis (4 阶矩); pandas 对 n<4 的
+        # .kurtosis() 返 NaN, 故取 4 作数据量下限 (生产 total_oos_days ~1250).
+        if total_oos_days < 4 or combined_oos_returns is None or len(combined_oos_returns) < 4:
+            logger.warning("[DSR] OOS 数据不足 (<4 点, days=%s), 跳过 DSR 计算", total_oos_days)
             return None, ""
         skew = float(combined_oos_returns.skew())
         kurt = float(combined_oos_returns.kurtosis()) + 3.0  # excess → raw

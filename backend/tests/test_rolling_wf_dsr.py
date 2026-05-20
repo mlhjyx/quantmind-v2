@@ -46,8 +46,14 @@ class TestComputeDsr:
         assert interp in _DSR_INTERPS
 
     def test_insufficient_days_returns_none(self):
-        """total_oos_days < 2 → 数据不足 guard 命中, 返 (None, "")."""
+        """total_oos_days < 4 → 数据不足 guard 命中, 返 (None, "")."""
         dsr, interp = rwf._compute_dsr(0.86, _returns(n=1), 1)
+        assert dsr is None
+        assert interp == ""
+
+    def test_three_point_series_insufficient(self):
+        """3 点序列 (< 4 点下限, kurtosis 需 ≥4 点) → 数据不足 guard 命中."""
+        dsr, interp = rwf._compute_dsr(0.86, pd.Series([0.01, 0.02, 0.03]), 3)
         assert dsr is None
         assert interp == ""
 
@@ -57,10 +63,11 @@ class TestComputeDsr:
         assert dsr is None
         assert interp == ""
 
-    def test_nonfinite_skew_returns_none(self):
-        """2 点序列 .skew()=NaN → np.isfinite guard 命中, 安全返 None 不抛异常."""
-        two_point = pd.Series([0.01, 0.02])
-        dsr, interp = rwf._compute_dsr(0.86, two_point, 2)
+    def test_nonfinite_stat_returns_none(self):
+        """≥4 点但含 NaN → kurtosis 非有限 (pandas skipna 后仅 3 有效点) →
+        np.isfinite guard 命中, 安全返 None 不抛异常。"""
+        with_nan = pd.Series([0.01, 0.02, 0.03, np.nan])
+        dsr, interp = rwf._compute_dsr(0.86, with_nan, 4)
         assert dsr is None
         assert interp == ""
 
