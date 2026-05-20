@@ -810,7 +810,8 @@ class FactorDSL:
             for _ in range(10):
                 tree = self._random_tree_once(max_depth, 0)
                 dim_ok, _ = check_dimensional_validity(tree)
-                if dim_ok:
+                combo_ok, _ = check_forbidden_combos(tree)
+                if dim_ok and combo_ok:
                     return tree
             # 10次失败 → 返回安全的简单树
             return self._random_terminal()
@@ -1214,10 +1215,12 @@ class FactorDSL:
             if a.depth() > self.max_depth or b.depth() > self.max_depth:
                 continue
 
-            # 验证量纲
+            # 验证量纲 + 禁止组合 (GP_CLOSED_LOOP §2.4)
             dim_ok_a, _ = check_dimensional_validity(a)
             dim_ok_b, _ = check_dimensional_validity(b)
-            if dim_ok_a and dim_ok_b:
+            combo_ok_a, _ = check_forbidden_combos(a)
+            combo_ok_b, _ = check_forbidden_combos(b)
+            if dim_ok_a and dim_ok_b and combo_ok_a and combo_ok_b:
                 return a, b
 
         # 重试失败 → 返回原树clone
@@ -1285,7 +1288,8 @@ class FactorDSL:
         for _attempt in range(max_retries):
             result = self._correlated_mutate_once(tree)
             dim_ok, _ = check_dimensional_validity(result)
-            if dim_ok:
+            combo_ok, _ = check_forbidden_combos(result)
+            if dim_ok and combo_ok:
                 return result
         # 所有重试失败, 返回原树clone
         return tree.clone()
