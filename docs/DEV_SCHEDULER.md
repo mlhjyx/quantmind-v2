@@ -64,7 +64,7 @@ Celery Beat(定时) + Celery Worker(执行) + Redis(Broker)。统一框架，不
 | ⊘ 故意不 gate | sweep_stuck_broker_plans (跨日 stuck-plan 对账须每日重试含节假日) / meta_monitor_tick (元监控 all-hours by design) / announcement_ingest (cron 含周末, 公告可在非交易日发布, gate 会漏数据) |
 | — 非交易日无关 | outbox_publisher_tick / news_ingest ×2 / monthly_audit / quarterly_recalibrate / gp_weekly_mining (周日) / risk_reflector weekly+monthly (回溯型, 不依赖 today 为交易日) |
 
-> **Plan 1.5 follow-up**: 无 DB conn 时 gate 退化到 Layer 4 weekday heuristic (无法识别法定节假日) — 待接通 Layer 3 本地 `trading_calendar` 表使 gate 在 Tushare 不可达时仍可靠.
+> **Plan 1.5 (2026-05-20) — DONE**: `is_trading_day_today_or_skip` 现走 conn-backed `TradingDayChecker`, Layer 3 本地 `trading_calendar` 表已接通 — Tushare 不可达时 fallback 到 DB 表 (而非 holiday-blind weekday heuristic). 无 DB conn 时优雅降级到 conn-less Tushare→heuristic 路径 (不 crash).
 
 ### Windows schtask (scripts/audit_schtask_freshness.py, 27 tasks)
 
