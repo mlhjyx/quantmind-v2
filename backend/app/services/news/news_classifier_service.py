@@ -50,6 +50,7 @@ caller 真**唯一 sanctioned 入口** (沿用 ADR-032 + bootstrap.py docstring 
 - backend/qm_platform/llm/_internal/router.py:57 (TASK_TO_MODEL_ALIAS sediment)
 - backend/qm_platform/news/base.py (NewsItem schema, sub-PR 1 sediment)
 """
+
 from __future__ import annotations
 
 import json
@@ -230,13 +231,10 @@ class NewsClassifierService:
         required = ("version", "system_prompt", "user_template")
         for key in required:
             if key not in data:
-                raise PromptLoadError(
-                    f"yaml prompt missing required key '{key}' at {path}"
-                )
+                raise PromptLoadError(f"yaml prompt missing required key '{key}' at {path}")
             if not isinstance(data[key], str):
                 raise PromptLoadError(
-                    f"yaml prompt key '{key}' must be str, got "
-                    f"{type(data[key]).__name__}: {path}"
+                    f"yaml prompt key '{key}' must be str, got {type(data[key]).__name__}: {path}"
                 )
 
         if data["version"] != PROMPT_VERSION:
@@ -308,9 +306,7 @@ class NewsClassifierService:
         try:
             payload = json.loads(json_text)
         except json.JSONDecodeError as e:
-            raise ClassificationParseError(
-                f"LLM response not JSON: {e}", raw_content=raw
-            ) from e
+            raise ClassificationParseError(f"LLM response not JSON: {e}", raw_content=raw) from e
 
         if not isinstance(payload, dict):
             raise ClassificationParseError(
@@ -320,14 +316,15 @@ class NewsClassifierService:
 
         # 6 required keys (V3§3.2 line 365-376)
         required = (
-            "sentiment_score", "category", "urgency",
-            "confidence", "profile",
+            "sentiment_score",
+            "category",
+            "urgency",
+            "confidence",
+            "profile",
         )
         missing = [k for k in required if k not in payload]
         if missing:
-            raise ClassificationParseError(
-                f"LLM response missing keys: {missing}", raw_content=raw
-            )
+            raise ClassificationParseError(f"LLM response missing keys: {missing}", raw_content=raw)
 
         # Schema validate (沿用 news_classified.sql CHECK 锁定)
         sentiment = _to_decimal(payload["sentiment_score"], "sentiment_score", raw)
@@ -338,9 +335,7 @@ class NewsClassifierService:
 
         confidence = _to_decimal(payload["confidence"], "confidence", raw)
         if not (Decimal("0") <= confidence <= Decimal("1")):
-            raise ClassificationParseError(
-                f"confidence 越界 [0, 1]: {confidence}", raw_content=raw
-            )
+            raise ClassificationParseError(f"confidence 越界 [0, 1]: {confidence}", raw_content=raw)
 
         category = str(payload["category"])
         if category not in VALID_CATEGORIES:

@@ -200,11 +200,13 @@ class StreamBus:
                 if isinstance(last_entry, (list, tuple)) and len(last_entry) >= 2:
                     fields = last_entry[1] if isinstance(last_entry[1], dict) else {}
                     last_time = fields.get("published_at")
-            result.append({
-                "stream": name,
-                "length": length,
-                "last_published_at": last_time,
-            })
+            result.append(
+                {
+                    "stream": name,
+                    "length": length,
+                    "last_published_at": last_time,
+                }
+            )
         return result
 
     def close(self) -> None:

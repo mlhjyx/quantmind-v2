@@ -31,8 +31,11 @@ logger = logging.getLogger("celery.backtest_tasks")
 DB_URL = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 
 DEFAULT_FACTORS = [
-    "turnover_mean_20", "volatility_20", "reversal_20",
-    "amihud_20", "bp_ratio",
+    "turnover_mean_20",
+    "volatility_20",
+    "reversal_20",
+    "amihud_20",
+    "bp_ratio",
 ]
 
 
@@ -52,7 +55,9 @@ def run_backtest(self, run_id: str) -> dict[str, Any]:
         result = asyncio.run(_run_async(run_id))
         logger.info(
             "回测任务完成: run_id=%s, %.1fs, %d trades",
-            run_id, time.monotonic() - t0, result.get("trade_count", 0),
+            run_id,
+            time.monotonic() - t0,
+            result.get("trade_count", 0),
         )
         return result
     except Exception as exc:
@@ -64,6 +69,7 @@ def run_backtest(self, run_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Async main logic
 # ---------------------------------------------------------------------------
+
 
 async def _run_async(run_id: str) -> dict[str, Any]:
     import asyncpg
@@ -81,7 +87,11 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         if not row:
             raise ValueError(f"backtest_run not found: {run_id}")
 
-        cfg = row["config_json"] if isinstance(row["config_json"], dict) else json.loads(row["config_json"])
+        cfg = (
+            row["config_json"]
+            if isinstance(row["config_json"], dict)
+            else json.loads(row["config_json"])
+        )
         start_dt: date = row["start_date"]
         end_dt: date = row["end_date"]
         factors = row["factor_list"] or DEFAULT_FACTORS
@@ -135,6 +145,7 @@ async def _run_async(run_id: str) -> dict[str, Any]:
 # Data loading
 # ---------------------------------------------------------------------------
 
+
 async def _load_prices(conn, start_dt: date, end_dt: date) -> pd.DataFrame:
     """加载 klines_daily 行情数据。"""
     rows = await conn.fetch(
@@ -146,13 +157,22 @@ async def _load_prices(conn, start_dt: date, end_dt: date) -> pd.DataFrame:
           AND k.is_suspended = false AND k.is_st = false
         ORDER BY k.trade_date, k.code
         """,
-        start_dt, end_dt,
+        start_dt,
+        end_dt,
     )
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame([dict(r) for r in rows])
-    for col in ["open", "close", "volume", "amount", "up_limit", "down_limit",
-                "turnover_rate", "pre_close"]:
+    for col in [
+        "open",
+        "close",
+        "volume",
+        "amount",
+        "up_limit",
+        "down_limit",
+        "turnover_rate",
+        "pre_close",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
@@ -167,7 +187,9 @@ async def _load_factors(conn, start_dt: date, end_dt: date, factors: list[str]) 
         WHERE trade_date BETWEEN $1 AND $2
           AND factor_name = ANY($3)
         """,
-        start_dt, end_dt, factors,
+        start_dt,
+        end_dt,
+        factors,
     )
     if not rows:
         return pd.DataFrame()
@@ -194,7 +216,9 @@ async def _load_benchmark(conn, start_dt: date, end_dt: date, code: str) -> pd.D
         WHERE index_code = $1 AND trade_date BETWEEN $2 AND $3
         ORDER BY trade_date
         """,
-        code, start_dt, end_dt,
+        code,
+        start_dt,
+        end_dt,
     )
     if not rows:
         return pd.DataFrame()
@@ -207,6 +231,7 @@ async def _load_benchmark(conn, start_dt: date, end_dt: date, code: str) -> pd.D
 # Portfolio construction
 # ---------------------------------------------------------------------------
 
+
 def _rebalance_dates(trading_days: list, freq: str) -> list[date]:
     """从交易日列表计算调仓日期。"""
     if not trading_days:
@@ -217,9 +242,13 @@ def _rebalance_dates(trading_days: list, freq: str) -> list[date]:
     if freq == "daily":
         return list(trading_days)
     elif freq == "weekly":
-        return list(td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last())
+        return list(
+            td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last()
+        )
     elif freq == "biweekly":
-        weekly = list(td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last())
+        weekly = list(
+            td_series.groupby(td_series.apply(lambda d: (d.year, d.isocalendar()[1]))).last()
+        )
         return weekly[::2]
     elif freq == "monthly":
         return list(td_series.groupby(td_series.apply(lambda d: (d.year, d.month))).last())
@@ -257,7 +286,10 @@ def _build_targets(
 
         # pivot: code × factor_name → raw_value
         pivot = pd.DataFrame(day_data).pivot_table(
-            index="code", columns="factor_name", values="raw_value", aggfunc="first",
+            index="code",
+            columns="factor_name",
+            values="raw_value",
+            aggfunc="first",
         )
 
         available_factors = [f for f in factor_names if f in pivot.columns]
@@ -295,6 +327,7 @@ def _build_targets(
 # Metrics
 # ---------------------------------------------------------------------------
 
+
 def _calc_metrics(result) -> dict[str, Any]:
     """从 BacktestResult 计算核心指标。"""
     nav = result.daily_nav
@@ -325,7 +358,11 @@ def _calc_metrics(result) -> dict[str, Any]:
     win_rate = float((rets > 0).sum() / len(rets)) if len(rets) > 0 else 0
 
     # Turnover
-    avg_turnover = float(result.turnover_series.mean()) if result.turnover_series is not None and len(result.turnover_series) > 0 else 0
+    avg_turnover = (
+        float(result.turnover_series.mean())
+        if result.turnover_series is not None and len(result.turnover_series) > 0
+        else 0
+    )
 
     # Calmar
     calmar = annual_return / abs(mdd) if mdd != 0 else 0
@@ -342,7 +379,11 @@ def _calc_metrics(result) -> dict[str, Any]:
         "calmar_ratio": round(calmar, 4),
         "sortino_ratio": round(sortino, 4),
         "win_rate": round(win_rate, 4),
-        "annual_turnover": round(avg_turnover * ann_factor / trading_days * len(result.turnover_series), 4) if result.turnover_series is not None and len(result.turnover_series) > 0 else 0,
+        "annual_turnover": round(
+            avg_turnover * ann_factor / trading_days * len(result.turnover_series), 4
+        )
+        if result.turnover_series is not None and len(result.turnover_series) > 0
+        else 0,
         "total_trades": len(result.trades),
     }
 
@@ -351,7 +392,17 @@ def _calc_metrics(result) -> dict[str, Any]:
 # DB write
 # ---------------------------------------------------------------------------
 
-async def _write_results(conn, rid: uuid.UUID, metrics: dict, result, elapsed: int, start_dt: date, end_dt: date, factors: list[str]) -> None:
+
+async def _write_results(
+    conn,
+    rid: uuid.UUID,
+    metrics: dict,
+    result,
+    elapsed: int,
+    start_dt: date,
+    end_dt: date,
+    factors: list[str],
+) -> None:
     """写入 backtest_run + backtest_trades + backtest_daily_nav。"""
     # 1. Update backtest_run
     await conn.execute(
@@ -365,11 +416,19 @@ async def _write_results(conn, rid: uuid.UUID, metrics: dict, result, elapsed: i
             factor_list = $12
         WHERE run_id = $13
         """,
-        metrics.get("annual_return"), metrics.get("sharpe_ratio"),
-        metrics.get("max_drawdown"), metrics.get("calmar_ratio"),
-        metrics.get("sortino_ratio"), metrics.get("win_rate"),
-        metrics.get("annual_turnover"), metrics.get("total_trades"),
-        start_dt, end_dt, elapsed, factors, rid,
+        metrics.get("annual_return"),
+        metrics.get("sharpe_ratio"),
+        metrics.get("max_drawdown"),
+        metrics.get("calmar_ratio"),
+        metrics.get("sortino_ratio"),
+        metrics.get("win_rate"),
+        metrics.get("annual_turnover"),
+        metrics.get("total_trades"),
+        start_dt,
+        end_dt,
+        elapsed,
+        factors,
+        rid,
     )
 
     # 2. Insert backtest_trades
@@ -377,12 +436,21 @@ async def _write_results(conn, rid: uuid.UUID, metrics: dict, result, elapsed: i
         trade_rows = []
         for fill in result.trades:
             slippage_bps = round(fill.slippage / fill.amount * 10000, 2) if fill.amount > 0 else 0
-            trade_rows.append((
-                rid, fill.trade_date, fill.trade_date, fill.code,
-                fill.direction, fill.shares, round(fill.price, 4),
-                slippage_bps, round(fill.commission, 4),
-                round(fill.tax, 4), round(fill.total_cost, 4),
-            ))
+            trade_rows.append(
+                (
+                    rid,
+                    fill.trade_date,
+                    fill.trade_date,
+                    fill.code,
+                    fill.direction,
+                    fill.shares,
+                    round(fill.price, 4),
+                    slippage_bps,
+                    round(fill.commission, 4),
+                    round(fill.tax, 4),
+                    round(fill.total_cost, 4),
+                )
+            )
         await conn.executemany(
             """
             INSERT INTO backtest_trades
@@ -405,7 +473,9 @@ async def _write_results(conn, rid: uuid.UUID, metrics: dict, result, elapsed: i
             n = float(nav[dt])
             dr = float(daily_rets[dt]) if dt in daily_rets.index else 0
             bn = float(bench_nav[dt]) if bench_nav is not None and dt in bench_nav.index else 1.0
-            nav_rows.append((rid, dt, round(n, 2), round(dr, 6), round(bn, 4), round(float(dd[dt]), 6)))
+            nav_rows.append(
+                (rid, dt, round(n, 2), round(dr, 6), round(bn, 4), round(float(dd[dt]), 6))
+            )
         await conn.executemany(
             """
             INSERT INTO backtest_daily_nav (run_id, trade_date, nav, daily_return, benchmark_nav, drawdown)
@@ -415,17 +485,24 @@ async def _write_results(conn, rid: uuid.UUID, metrics: dict, result, elapsed: i
             nav_rows,
         )
 
-    logger.info("回测结果写入完成: %s, %d trades, %d nav points", rid, len(result.trades), len(nav) if nav is not None else 0)
+    logger.info(
+        "回测结果写入完成: %s, %d trades, %d nav points",
+        rid,
+        len(result.trades),
+        len(nav) if nav is not None else 0,
+    )
 
 
 async def _mark_failed(run_id: str, error_msg: str) -> None:
     """标记回测失败。"""
     import asyncpg
+
     try:
         conn = await asyncpg.connect(DB_URL)
         await conn.execute(
             "UPDATE backtest_run SET status = 'failed', error_message = $1 WHERE run_id = $2",
-            error_msg, uuid.UUID(run_id),
+            error_msg,
+            uuid.UUID(run_id),
         )
         await conn.close()
     except Exception as exc:

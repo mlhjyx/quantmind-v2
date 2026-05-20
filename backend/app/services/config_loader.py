@@ -78,9 +78,7 @@ def to_backtest_config(config: dict) -> BacktestConfig:
     )
 
     # PMSConfig
-    pms_tiers = [
-        (t["gain"], t["drawdown"]) for t in pms_cfg.get("tiers", [])
-    ]
+    pms_tiers = [(t["gain"], t["drawdown"]) for t in pms_cfg.get("tiers", [])]
     pms = PMSConfig(
         enabled=pms_cfg.get("enabled", False),
         tiers=pms_tiers or [(0.30, 0.15), (0.20, 0.12), (0.10, 0.10)],

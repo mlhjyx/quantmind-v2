@@ -20,6 +20,7 @@ defer Sprint 3+:
 - ADR-036 (BULL/BEAR V4-Pro mapping 沿用)
 - sub-PR 7b.1 v2 (#240, news_raw + news_classified DDL 双表 sediment)
 """
+
 from __future__ import annotations
 
 from .announcement_processor import AnnouncementProcessor, AnnouncementStats

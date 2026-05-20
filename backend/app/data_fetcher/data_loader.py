@@ -47,9 +47,7 @@ def _get_valid_codes(conn: psycopg2.extensions.connection) -> set[str]:
     return _symbols_cache
 
 
-def _filter_valid_codes(
-    df: pd.DataFrame, conn: psycopg2.extensions.connection
-) -> pd.DataFrame:
+def _filter_valid_codes(df: pd.DataFrame, conn: psycopg2.extensions.connection) -> pd.DataFrame:
     """过滤掉symbols表中不存在的code，避免FK约束失败。"""
     valid = _get_valid_codes(conn)
     mask = df["code"].isin(valid)

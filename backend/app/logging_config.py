@@ -43,7 +43,7 @@ import structlog
 LOG_DIR = Path("D:/quantmind-v2/logs")
 LOG_FILE = LOG_DIR / "app.log"
 MAX_BYTES = 10 * 1024 * 1024  # 10MB per file
-BACKUP_COUNT = 7               # 保留7个轮转文件
+BACKUP_COUNT = 7  # 保留7个轮转文件
 DEFAULT_LEVEL = logging.INFO
 
 
