@@ -546,8 +546,11 @@ def run_quick_backtest(config: dict, years: int = 1) -> dict:
         config: 策略配置字典, 必须含:
             - "price_data" (pd.DataFrame): 行情, 列见 QuickBacktester。
             - "factor_values" (pd.DataFrame): 因子值, 列见 QuickBacktester.backtest。
-            可选: "top_n" (int, 默认 15) / "initial_capital" (float, 默认 1e6)。
-        years: 回测窗口年数 (默认 1), 映射 QuickBacktester.lookback_days。
+            可选: "top_n" (int, 默认 15) / "initial_capital" (float, 默认 1e6) /
+            "years" (int, 存在时覆盖 years 形参 —— 供 run_batch_backtest 按
+            config 定制窗口)。
+        years: 回测窗口年数默认值 (默认 1); config["years"] 存在时被其覆盖。
+            映射 QuickBacktester.lookback_days。
 
     Returns:
         {"sharpe", "mdd", "annual_return", "turnover"} —— 对齐 §二-A 规格。
@@ -564,11 +567,15 @@ def run_quick_backtest(config: dict, years: int = 1) -> dict:
             "(caller-provides-data 契约)"
         )
 
+    # config["years"] 可覆盖 years 形参 (per-config 窗口定制)。
+    # lookback_days = years × 365 日历日 ≈ years × 244 交易日 —— 与
+    # _annualized_return 的 /_TRADING_DAYS_PER_YEAR (244) 年化口径一致。
+    effective_years = int(config.get("years", years))
     bt = QuickBacktester(
         price_data=price_data,
         top_n=int(config.get("top_n", _DEFAULT_TOP_N)),
         initial_capital=float(config.get("initial_capital", _DEFAULT_INITIAL_CAPITAL)),
-        lookback_days=int(years * 365),
+        lookback_days=effective_years * 365,
     )
     result = bt.backtest(factor_values)
 
@@ -592,6 +599,7 @@ def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
 
     Args:
         configs: 策略配置列表, 每项格式同 run_quick_backtest 的 config。
+            单个 config 可经 "years" 键自定回测窗口 (默认 1 年)。
         mode: "quick" —— 逐个走 run_quick_backtest。其余值 raise ValueError:
             完整 WF 批量是既有 scripts/rolling_wf.py 路径, 不在本接口重复实现。
 
@@ -606,4 +614,5 @@ def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
             f"run_batch_backtest 当前仅支持 mode='quick' (收到 {mode!r}); "
             "完整 WF 批量走既有 scripts/rolling_wf.py 路径"
         )
-    return [run_quick_backtest(cfg, years=1) for cfg in configs]
+    # 不强制 years —— 各 config 经 "years" 键自定窗口 (默认 1, 见 run_quick_backtest)。
+    return [run_quick_backtest(cfg) for cfg in configs]

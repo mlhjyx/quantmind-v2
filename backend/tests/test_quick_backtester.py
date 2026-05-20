@@ -526,6 +526,15 @@ class TestRunQuickBacktest:
         out = run_quick_backtest({"price_data": price_df, "factor_values": factor_df})
         assert isinstance(out["sharpe"], float)
 
+    def test_config_years_key_accepted(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
+        """config 的 'years' 键被接受 (覆盖 years 形参), 返回有效结果。"""
+        config = {"price_data": price_df, "factor_values": factor_df, "years": 2}
+        out = run_quick_backtest(config, years=1)
+        assert set(out) >= {"sharpe", "mdd", "annual_return", "turnover"}
+        assert isinstance(out["sharpe"], float)
+
 
 class TestRunBatchBacktest:
     """run_batch_backtest 串行批量接口 (DEV_AI_EVOLUTION §二-A)。"""
