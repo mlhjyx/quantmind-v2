@@ -192,6 +192,10 @@ async def rollback_params(
         回滚摘要: timestamp / rolled_back / rolled_back_count /
         skipped_created_after / skipped_count。
     """
+    # 无领域错误映射 (不同于 update_param 的 400/404): rollback 无"校验失败"/
+    # "参数不存在"语义 —— timestamp 由 Pydantic 校验, 空结果 (T 之后无变更)
+    # 是合法 200。意外 DB 异常按本文件既有惯例向上传播 → FastAPI 默认 500
+    # (不在此 swallow, 铁律 33 fail-loud)。
     return await svc.rollback_to(
         timestamp=body.timestamp,
         reason=body.reason,

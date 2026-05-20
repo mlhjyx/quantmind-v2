@@ -247,55 +247,28 @@ class ParamRepository(BaseRepository):
 
     # ─── 一键回滚 (DEV_PARAM_CONFIG §4.4) ───
 
-    async def get_params_created_after(self, timestamp: datetime) -> list[str]:
-        """返回在 timestamp 之后才首次创建的参数名列表。
-
-        判定: param_change_log 中该参数 created_at > timestamp 的最早一条变更,
-        其 old_value IS NULL —— 即该参数在 timestamp 时点尚不存在 (首次 set
-        时 update_param 传入 old_value=None). 这类参数无法回滚到"不存在"状态
-        (rollback_to 不删除参数行), 由 ParamService.rollback_to 报告为 skipped。
-
-        Args:
-            timestamp: 回滚目标时间点。
-
-        Returns:
-            参数名列表 (按名称排序)。
-        """
-        rows = await self.fetch_all(
-            """
-            SELECT param_name FROM (
-                SELECT DISTINCT ON (param_name) param_name, old_value
-                FROM param_change_log
-                WHERE created_at > :ts
-                ORDER BY param_name, created_at ASC
-            ) earliest
-            WHERE old_value IS NULL
-            ORDER BY param_name
-            """,
-            {"ts": timestamp},
-        )
-        return [r[0] for r in rows]
-
     async def rollback_to(
         self,
         timestamp: datetime,
         reason: str,
         changed_by: str = "system",
-    ) -> list[str]:
+    ) -> dict[str, list[str]]:
         """将所有在 timestamp 之后变更过的参数回滚到该时点的值。
 
-        单条 SQL (CTE) 原子完成 审计写入 + 值回滚, 全程 JSONB 列对列直接复制
-        (不经 Python json 序列化往返 —— 与 asyncpg 对 JSONB 的返回类型无关):
+        单条 SQL (CTE) 原子完成 审计写入 + 值回滚 + skipped 判定 —— 全部基于
+        同一语句快照, 杜绝 "先查 skipped 再 rollback" 两条独立语句之间的 TOCTOU
+        窗口 (并发写入者无法在两步之间插队)。全程 JSONB 列对列直接复制 (不经
+        Python json 序列化往返 —— 与 asyncpg 对 JSONB 的返回类型无关):
           - rollback_plan: 每个 post-T 参数的最早一条变更 → old_value =
-            该参数在 timestamp 时点的值
-          - applicable: 过滤掉 value_at_t IS NULL (timestamp 之后才创建的参数,
-            不回滚 —— 见 get_params_created_after)
-          - audit_insert: 写 param_change_log 审计行 (old=当前值, new=T 时点值,
-            数据修改型 CTE 即使未被主查询引用也必然执行 —— PG 文档保证)
-          - 主 UPDATE: ai_parameters.param_value ← T 时点值
-
-        三个 CTE 与主 UPDATE 共享同一语句快照, audit_insert 写入的行不会被
-        rollback_plan 看见 (无 created_at 污染)。
+            该参数在 timestamp 时点的值 (value_at_t)
+          - applicable: value_at_t IS NOT NULL 的参数 (可回滚)
+          - skipped: value_at_t IS NULL 的参数 (timestamp 之后才首次创建,
+            该时点尚不存在 —— 不回滚也不删除参数行)
+          - audit_insert: 写 param_change_log 审计行 (old=当前值, new=T 时点值)
+          - do_update: ai_parameters.param_value ← T 时点值
+          数据修改型 CTE (audit_insert / do_update) 即使未被主查询引用也必然
+          执行一次 (PG 文档保证); 主 SELECT 以 kind 列区分 rolled_back / skipped。
+          audit_insert 写入的行与所有 CTE 共享同一快照, 不会污染 rollback_plan。
 
         Args:
             timestamp: 回滚目标时间点。
@@ -303,7 +276,7 @@ class ParamRepository(BaseRepository):
             changed_by: 审计行 changed_by + ai_parameters.updated_by。
 
         Returns:
-            实际被回滚的参数名列表 (UPDATE RETURNING)。
+            {"rolled_back": [param_name, ...], "skipped": [param_name, ...]}。
         """
         result = await self.execute(
             """
@@ -321,21 +294,33 @@ class ParamRepository(BaseRepository):
                 JOIN ai_parameters a ON a.param_name = rp.param_name
                 WHERE rp.value_at_t IS NOT NULL
             ),
+            skipped AS (
+                SELECT param_name FROM rollback_plan WHERE value_at_t IS NULL
+            ),
             audit_insert AS (
                 INSERT INTO param_change_log
                     (param_name, old_value, new_value, changed_by, reason)
                 SELECT param_name, current_value, value_at_t, :by, :reason
                 FROM applicable
                 RETURNING param_name
+            ),
+            do_update AS (
+                UPDATE ai_parameters a
+                SET param_value = ap.value_at_t,
+                    updated_by = :by,
+                    updated_at = NOW()
+                FROM applicable ap
+                WHERE a.param_name = ap.param_name
+                RETURNING a.param_name
             )
-            UPDATE ai_parameters a
-            SET param_value = ap.value_at_t,
-                updated_by = :by,
-                updated_at = NOW()
-            FROM applicable ap
-            WHERE a.param_name = ap.param_name
-            RETURNING a.param_name
+            SELECT 'rolled_back' AS kind, param_name FROM do_update
+            UNION ALL
+            SELECT 'skipped' AS kind, param_name FROM skipped
             """,
             {"ts": timestamp, "reason": reason, "by": changed_by},
         )
-        return [r[0] for r in result.fetchall()]
+        rolled_back: list[str] = []
+        skipped: list[str] = []
+        for kind, param_name in result.fetchall():
+            (rolled_back if kind == "rolled_back" else skipped).append(param_name)
+        return {"rolled_back": rolled_back, "skipped": skipped}

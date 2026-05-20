@@ -278,11 +278,12 @@ class ParamService:
             - skipped_count: 跳过数量
         """
         audit_reason = f"[rollback→{timestamp.isoformat()}] {reason}"
-        skipped = await self.repo.get_params_created_after(timestamp)
-        rolled_back = await self.repo.rollback_to(timestamp, audit_reason, changed_by=changed_by)
+        outcome = await self.repo.rollback_to(timestamp, reason=audit_reason, changed_by=changed_by)
+        rolled_back = sorted(outcome["rolled_back"])
+        skipped = sorted(outcome["skipped"])
         return {
             "timestamp": timestamp.isoformat(),
-            "rolled_back": sorted(rolled_back),
+            "rolled_back": rolled_back,
             "rolled_back_count": len(rolled_back),
             "skipped_created_after": skipped,
             "skipped_count": len(skipped),

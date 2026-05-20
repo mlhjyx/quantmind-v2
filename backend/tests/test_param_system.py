@@ -48,8 +48,7 @@ def _make_mock_repo(
     repo.update_param_value = AsyncMock(return_value=True)
     repo.insert_change_log = AsyncMock()
     repo.get_change_log = AsyncMock(return_value=[])
-    repo.rollback_to = AsyncMock(return_value=[])
-    repo.get_params_created_after = AsyncMock(return_value=[])
+    repo.rollback_to = AsyncMock(return_value={"rolled_back": [], "skipped": []})
     return repo
 
 
@@ -360,8 +359,12 @@ class TestParamRollback:
     async def test_rollback_service_composes_summary(self) -> None:
         """rollback_to 正确组装 rolled_back / skipped 摘要。"""
         svc = _make_param_service_with_mock()
-        svc.repo.rollback_to = AsyncMock(return_value=["signal.top_n", "factor.ic_threshold"])
-        svc.repo.get_params_created_after = AsyncMock(return_value=["risk.new_param"])
+        svc.repo.rollback_to = AsyncMock(
+            return_value={
+                "rolled_back": ["signal.top_n", "factor.ic_threshold"],
+                "skipped": ["risk.new_param"],
+            }
+        )
 
         ts = datetime(2026, 5, 1, tzinfo=UTC)
         result = await svc.rollback_to(timestamp=ts, reason="测试回滚")
@@ -377,13 +380,12 @@ class TestParamRollback:
     async def test_rollback_service_audit_reason_prefixed(self) -> None:
         """审计 reason 带 [rollback→T] 前缀, 便于在 param_change_log 检索。"""
         svc = _make_param_service_with_mock()
-        svc.repo.rollback_to = AsyncMock(return_value=[])
-        svc.repo.get_params_created_after = AsyncMock(return_value=[])
+        svc.repo.rollback_to = AsyncMock(return_value={"rolled_back": [], "skipped": []})
 
         ts = datetime(2026, 5, 1, tzinfo=UTC)
         await svc.rollback_to(timestamp=ts, reason="人工原因")
 
-        audit_reason = svc.repo.rollback_to.call_args.args[1]
+        audit_reason = svc.repo.rollback_to.call_args.kwargs["reason"]
         assert audit_reason.startswith("[rollback→2026-05-01T00:00:00+00:00]")
         assert "人工原因" in audit_reason
 
@@ -391,8 +393,9 @@ class TestParamRollback:
     async def test_rollback_api_success(self) -> None:
         """POST /api/params/rollback 成功返回200 + 回滚摘要。"""
         svc = _make_param_service_with_mock()
-        svc.repo.rollback_to = AsyncMock(return_value=["signal.top_n"])
-        svc.repo.get_params_created_after = AsyncMock(return_value=[])
+        svc.repo.rollback_to = AsyncMock(
+            return_value={"rolled_back": ["signal.top_n"], "skipped": []}
+        )
         dep_key, dep_override = _override_param_service(svc)
         app.dependency_overrides[dep_key] = dep_override
         try:
