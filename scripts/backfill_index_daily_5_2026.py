@@ -32,7 +32,6 @@ from dotenv import load_dotenv
 
 load_dotenv(BACKEND_DIR / ".env")
 
-import psycopg2  # noqa: E402
 
 from app.data_fetcher.data_loader import get_sync_conn  # noqa: E402
 from app.data_fetcher.tushare_api import TushareAPI  # noqa: E402

@@ -197,7 +197,7 @@ def main() -> int:
                 print(f"  {d['field']}: baseline={d['baseline']!r} → current={d['current']!r}")
             print(f"  baseline captured: {baseline.get('captured_at')}")
         else:
-            print(f"[redline-runtime] ✅ All 5/5 红线 fields sustained vs baseline")
+            print("[redline-runtime] ✅ All 5/5 红线 fields sustained vs baseline")
             for field, val in current.items():
                 print(f"  {field} = {val}")
 

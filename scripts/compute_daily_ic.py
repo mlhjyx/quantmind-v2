@@ -50,9 +50,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
 # LL-076 phase 2 PR-1: TimeWindowResolver 抽象 (PR #99 phase 1 落盘)
-from app.utils.time_window_resolver import TimeWindow, TimeWindowResolver  # noqa: E402
-
 from dotenv import load_dotenv  # noqa: E402
+
+from app.utils.time_window_resolver import TimeWindow, TimeWindowResolver  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
