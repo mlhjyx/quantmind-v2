@@ -212,6 +212,7 @@ class TestRunChecksExitCodes:
                 patch.object(dqc, "check_row_counts", return_value=[]),
                 patch.object(dqc, "check_null_ratios", return_value=[]),
                 patch.object(dqc, "check_latest_dates", return_value=[]),
+                patch.object(dqc, "check_factor_values", return_value=[]),
             ):
                 rc = dqc.run_checks(self._mock_args())
         assert rc == 0
@@ -226,6 +227,7 @@ class TestRunChecksExitCodes:
                 patch.object(dqc, "check_row_counts", return_value=["row alert"]),
                 patch.object(dqc, "check_null_ratios", return_value=[]),
                 patch.object(dqc, "check_latest_dates", return_value=[]),
+                patch.object(dqc, "check_factor_values", return_value=[]),
                 patch.object(dqc, "send_dingtalk_alert"),
             ):
                 rc = dqc.run_checks(self._mock_args(dry_run=True))
@@ -255,6 +257,7 @@ class TestRunChecksExitCodes:
                 patch.object(dqc, "check_row_counts", return_value=[]) as row_check,
                 patch.object(dqc, "check_null_ratios", return_value=[]),
                 patch.object(dqc, "check_latest_dates", return_value=[]),
+                patch.object(dqc, "check_factor_values", return_value=[]),
                 patch.object(dqc, "send_dingtalk_alert", side_effect=_capture),
             ):
                 rc = dqc.run_checks(self._mock_args(dry_run=True))

@@ -285,7 +285,7 @@ def _summarize_factor_issue(level: str, issue: str, factors: list[str], d: date)
     """汇总同类 factor_values 告警为单条 (防 N 因子异常 → N 条告警刷屏)。"""
     n = len(factors)
     shown = ", ".join(factors[:8])
-    suffix = f" ... (共 {n})" if n > 8 else ""
+    suffix = " ..." if n > 8 else ""  # n 已在主文本 "{n} 个", suffix 仅标列表截断
     return f"[{level}] factor_values {d} {n} 个 active 因子 {issue}: {shown}{suffix}"
 
 
@@ -315,7 +315,10 @@ def check_factor_values(
         logger.info("factor_registry 无 active 因子, 跳过 factor_values 巡检")
         return alerts
 
-    # 2. factor_values 最新日 (scoped active 因子, 排除未来日期脏数据 sentinel)
+    # 2. factor_values 最新日 (scoped active 因子, 排除未来日期脏数据 sentinel)。
+    # MAX(trade_date) 走 idx_fv_date_factor (trade_date, factor_name) 反向扫描 —
+    # 最新交易日含全部 active 因子, 反向扫到首个匹配行即得 MAX (扫描有界);
+    # statement_timeout=60s 兜底极端情形 (铁律 9)。
     cutoff = today + timedelta(days=FUTURE_DATE_GUARD_DAYS)
     cur.execute(
         "SELECT MAX(trade_date) FROM factor_values "
@@ -352,7 +355,8 @@ def check_factor_values(
                   COUNT(*) AS total,
                   COUNT(*) FILTER (WHERE neutral_value IS NULL) AS null_cnt,
                   COUNT(*) FILTER (WHERE neutral_value = CAST('NaN' AS numeric)) AS nan_cnt,
-                  COUNT(*) FILTER (WHERE neutral_value > %s OR neutral_value < %s) AS oor_cnt
+                  COUNT(*) FILTER (WHERE neutral_value <> CAST('NaN' AS numeric)
+                                   AND (neutral_value > %s OR neutral_value < %s)) AS oor_cnt
            FROM factor_values
            WHERE trade_date = %s AND factor_name = ANY(%s)
            GROUP BY factor_name""",
