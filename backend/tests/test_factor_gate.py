@@ -19,6 +19,7 @@ from engines.factor_gate import (
     G4_NEUTRALIZATION_MAX_DECAY,
     FactorGatePipeline,
     GateStatus,
+    compute_newey_west_t,
 )
 
 # ---------------------------------------------------------------------------
@@ -496,3 +497,77 @@ class TestEdgeCases:
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates("weak", ic_series)
         assert "G1" in report.failed_gates
+
+
+# ---------------------------------------------------------------------------
+# Plan B — G6 Newey-West HAC t auto-assist
+#   compute_newey_west_t (纯函数) + FactorGatePipeline.confirm_g6_auto
+# ---------------------------------------------------------------------------
+
+
+def _ordinary_t(series: list[float]) -> float:
+    """普通 (iid 假设) IC 均值 t — 测试对照用。"""
+    import numpy as np
+
+    arr = np.array(series, dtype=float)
+    n = len(arr)
+    return float(arr.mean() / (arr.std(ddof=1) / math.sqrt(n)))
+
+
+def test_newey_west_none_when_too_few_samples() -> None:
+    """有效样本 n<5 → None。"""
+    assert compute_newey_west_t([0.05, 0.04, 0.06]) is None
+    assert compute_newey_west_t([]) is None
+
+
+def test_newey_west_none_when_constant_series() -> None:
+    """常数序列方差退化 (gamma_0=0) → None。"""
+    assert compute_newey_west_t([0.03] * 30) is None
+
+
+def test_newey_west_sign_follows_mean() -> None:
+    """t 符号跟随 IC 均值符号。"""
+    pos = compute_newey_west_t(make_ic_series(0.05, 0.03, 40))
+    neg = compute_newey_west_t(make_ic_series(-0.05, 0.03, 40))
+    assert pos is not None and pos > 0
+    assert neg is not None and neg < 0
+
+
+def test_newey_west_strong_factor_significant() -> None:
+    """强因子 (mean=0.05, std=0.03, n=60) → HAC t 仍显著 (>2.5 G6 硬标准)。"""
+    nw_t = compute_newey_west_t(make_ic_series(0.05, 0.03, 60))
+    assert nw_t is not None
+    assert nw_t > 2.5
+
+
+def test_newey_west_penalizes_positive_autocorrelation() -> None:
+    """正自相关序列 → HAC t 量级 < 普通 t (Newey-West 下调高估的显著性)。"""
+    # 分块序列: 块内值相等 → 强正自相关。
+    series = ([0.06] * 8 + [0.02] * 8) * 3  # n=48, mean=0.04
+    nw_t = compute_newey_west_t(series)
+    naive_t = _ordinary_t(series)
+    assert nw_t is not None
+    assert nw_t > 0
+    assert nw_t < naive_t  # HAC 惩罚正自相关 → t 变小
+
+
+def test_confirm_g6_auto_fills_g6_verdict() -> None:
+    """confirm_g6_auto → G6 从 PENDING 变为 PASS/FAIL 计算值, data 含 NW t。"""
+    pipeline = FactorGatePipeline()
+    ic_series = make_ic_series(-0.064, 0.03, 60)
+    with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
+        report = pipeline.run_gates("turnover_mean_20", ic_series)
+    assert report.gates["G6"].status == GateStatus.PENDING  # run_gates 初始
+    pipeline.confirm_g6_auto(report, ic_series)
+    assert report.gates["G6"].status in (GateStatus.PASS, GateStatus.FAIL)
+    assert "t_stat_newey_west" in report.gates["G6"].data
+
+
+def test_confirm_g6_auto_preserves_pending_when_uncomputable() -> None:
+    """ic_series 太短 (NW 不可算) → G6 保持 run_gates 设定的 PENDING。"""
+    pipeline = FactorGatePipeline()
+    ic_series = make_ic_series(-0.064, 0.03, 60)
+    with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
+        report = pipeline.run_gates("turnover_mean_20", ic_series)
+    pipeline.confirm_g6_auto(report, [0.01, 0.02])  # n=2 <5, NW 不可算
+    assert report.gates["G6"].status == GateStatus.PENDING
