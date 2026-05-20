@@ -223,6 +223,10 @@ class NotificationRepository(BaseRepository):
         notification_preferences 单例表无业务键: 先做无 WHERE 的 UPDATE
         (单例下命中 0 或 1 行); rowcount==0 (尚无行) 时 INSERT 首行。
 
+        并发安全: 该表无唯一约束, 两个并发请求在空表上可能各自 rowcount==0
+        → 双 INSERT 破坏单例不变量。故先取 pg_advisory_xact_lock 串行化
+        upsert (事务级锁, get_db 提交时释放) —— code-review MED 采纳。
+
         Args:
             prefs: 含 12 个可编辑字段的字典 (由 NotificationPreferences 模型
                 model_dump() 产出, 字段齐全)。
@@ -230,6 +234,10 @@ class NotificationRepository(BaseRepository):
         Returns:
             写入后的偏好字典 (含 id / updated_at)。
         """
+        # 事务级 advisory lock: 串行化并发 upsert, 保单例不变量。
+        await self.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('notification_preferences_singleton'))"
+        )
         result = await self.execute(
             """UPDATE notification_preferences SET
                    toast_p0 = :toast_p0, toast_p1 = :toast_p1,
