@@ -11,6 +11,7 @@ subprocess 启动 + live PG + 真跑 ingest 2 新 Contract (SHADOW_PORTFOLIO + S
 
 失败意味: DataPipeline.ingest 破坏语义 / Contract 字段不对齐 DB schema / ON CONFLICT 触发异常.
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -13,6 +13,7 @@ subprocess 启动 + live PG + 真调 3 concrete Knowledge Registries, 验证:
 
 关闭 Wave 1 Knowledge Framework 生产真启动最后一个盲区 (1.1/1.2/1.3b/1.3c/1.4/2.1a 全覆盖).
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -1,4 +1,5 @@
 """MVP 1.2 test — PlatformConfigAuditor (check_alignment + dump_on_startup)."""
+
 from __future__ import annotations
 
 import json
@@ -159,9 +160,7 @@ def test_config_drift_error_message_includes_all_drifts() -> None:
         PlatformConfigAuditor().check_alignment(
             yaml_path=PT_LIVE_YAML,
             env={"PT_TOP_N": "99"},
-            python_config=_FakePythonConfig(
-                top_n=20, size_neutral_beta=0.99, turnover_cap=0.99
-            ),
+            python_config=_FakePythonConfig(top_n=20, size_neutral_beta=0.99, turnover_cap=0.99),
             strict=True,
         )
     msg = str(exc_info.value)
@@ -194,9 +193,7 @@ def test_dump_on_startup_creates_file(tmp_path: Path) -> None:
         yaml_path=PT_LIVE_YAML,
         env={"DATABASE_URL": "postgresql://test"},
     )
-    audit_path = PlatformConfigAuditor().dump_on_startup(
-        cfg, caller="unit_test", log_dir=tmp_path
-    )
+    audit_path = PlatformConfigAuditor().dump_on_startup(cfg, caller="unit_test", log_dir=tmp_path)
     assert audit_path.exists()
     data = json.loads(audit_path.read_text(encoding="utf-8"))
     assert isinstance(data, list)
@@ -248,8 +245,6 @@ def test_dump_creates_log_dir(tmp_path: Path) -> None:
         yaml_path=PT_LIVE_YAML,
         env={"DATABASE_URL": "postgresql://test"},
     )
-    audit_path = PlatformConfigAuditor().dump_on_startup(
-        cfg, caller="mkdir_test", log_dir=nested
-    )
+    audit_path = PlatformConfigAuditor().dump_on_startup(cfg, caller="mkdir_test", log_dir=nested)
     assert audit_path.exists()
     assert nested.is_dir()

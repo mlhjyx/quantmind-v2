@@ -4,6 +4,7 @@ subprocess 真启动验证: qm_platform.signal.audit module-top imports 不破,
 OutboxBackedAuditTrail 可访问 + AuditMissing exception class 导出 + 双 audit
 模式共存 (Stub + Outbox 都通过 ABC).
 """
+
 from __future__ import annotations
 
 import subprocess

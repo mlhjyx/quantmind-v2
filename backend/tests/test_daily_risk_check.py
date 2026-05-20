@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 # ── Step 1.6 逻辑内联提取 (与 run_paper_trading.py 一致) ──
 
+
 def _run_step_1_6(
     conn: Any,
     trade_date: date,
@@ -35,11 +36,11 @@ def _run_step_1_6(
 
     if cb["level"] >= 3:
         notif_svc.send_sync(
-            conn, "P0", "risk",
+            conn,
+            "P0",
+            "risk",
             f"风控告警 L{cb['level']} {trade_date}",
-            f"{cb['reason']}\n"
-            f"仓位系数: {cb['position_multiplier']:.0%}\n"
-            f"次日执行将应用降仓指令",
+            f"{cb['reason']}\n仓位系数: {cb['position_multiplier']:.0%}\n次日执行将应用降仓指令",
         )
         conn.commit()
 
@@ -60,13 +61,15 @@ class TestDailyRiskCheck:
         return notif
 
     def _make_check_fn(self, level: int, reason: str = "test") -> MagicMock:
-        fn = MagicMock(return_value={
-            "level": level,
-            "reason": reason,
-            "position_multiplier": 1.0 if level < 3 else 0.5,
-            "action": "normal",
-            "recovery_info": "",
-        })
+        fn = MagicMock(
+            return_value={
+                "level": level,
+                "reason": reason,
+                "position_multiplier": 1.0 if level < 3 else 0.5,
+                "action": "normal",
+                "recovery_info": "",
+            }
+        )
         return fn
 
     def test_normal_day_calls_check(self):
@@ -77,7 +80,9 @@ class TestDailyRiskCheck:
         td = date(2026, 3, 26)
 
         result = _run_step_1_6(
-            conn, td, dry_run=False,
+            conn,
+            td,
+            dry_run=False,
             strategy_id="test-strategy-id",
             initial_capital=1_000_000,
             notif_svc=notif,
@@ -96,9 +101,13 @@ class TestDailyRiskCheck:
         check_fn = self._make_check_fn(level=1, reason="单日亏损3%")
 
         result = _run_step_1_6(
-            conn, date(2026, 3, 26), dry_run=False,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            date(2026, 3, 26),
+            dry_run=False,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         assert result["level"] == 1
@@ -111,9 +120,13 @@ class TestDailyRiskCheck:
         check_fn = self._make_check_fn(level=2, reason="单日亏损5%")
 
         _run_step_1_6(
-            conn, date(2026, 3, 26), dry_run=False,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            date(2026, 3, 26),
+            dry_run=False,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         notif.send_sync.assert_not_called()
@@ -126,9 +139,13 @@ class TestDailyRiskCheck:
         td = date(2026, 3, 26)
 
         result = _run_step_1_6(
-            conn, td, dry_run=False,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            td,
+            dry_run=False,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         assert result["level"] == 3
@@ -148,9 +165,13 @@ class TestDailyRiskCheck:
         check_fn.return_value["position_multiplier"] = 0.0
 
         result = _run_step_1_6(
-            conn, date(2026, 3, 26), dry_run=False,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            date(2026, 3, 26),
+            dry_run=False,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         assert result["level"] == 4
@@ -164,9 +185,13 @@ class TestDailyRiskCheck:
         check_fn = self._make_check_fn(level=0)
 
         result = _run_step_1_6(
-            conn, date(2026, 3, 26), dry_run=True,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            date(2026, 3, 26),
+            dry_run=True,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         assert result is None
@@ -180,9 +205,13 @@ class TestDailyRiskCheck:
         check_fn = self._make_check_fn(level=3, reason="滚动20日亏损10.5%")
 
         _run_step_1_6(
-            conn, date(2026, 3, 26), dry_run=False,
-            strategy_id="s", initial_capital=1_000_000,
-            notif_svc=notif, check_fn=check_fn,
+            conn,
+            date(2026, 3, 26),
+            dry_run=False,
+            strategy_id="s",
+            initial_capital=1_000_000,
+            notif_svc=notif,
+            check_fn=check_fn,
         )
 
         body = notif.send_sync.call_args.args[4]

@@ -10,6 +10,7 @@ Test coverage:
     - dry_run_audit=True self-test (real fixture log)
     - chat_authorization signature schema
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,7 +36,9 @@ from app.services.t0_19_audit import (
     write_post_close_audit,
 )
 
-REAL_LOG = Path(__file__).resolve().parent.parent.parent / "logs" / "emergency_close_20260429_104354.log"
+REAL_LOG = (
+    Path(__file__).resolve().parent.parent.parent / "logs" / "emergency_close_20260429_104354.log"
+)
 
 
 # ── Q7 weighted_avg algorithm (Phase 1 §1 Q7, 3 cases) ──
@@ -85,7 +88,9 @@ def test_parse_real_log_17_fills_not_18():
     (沿用铁律 27 不 fabricate).
     """
     fills_by_order = _parse_emergency_close_log(REAL_LOG)
-    assert len(fills_by_order) == 17, f"expected 17 unique (code, order_id) with fills, got {len(fills_by_order)}"
+    assert len(fills_by_order) == 17, (
+        f"expected 17 unique (code, order_id) with fills, got {len(fills_by_order)}"
+    )
 
     # Each order has ≥1 fill
     for key, fills in fills_by_order.items():
@@ -98,10 +103,23 @@ def test_parse_real_log_specific_tickers_17_filled():
     fills_by_order = _parse_emergency_close_log(REAL_LOG)
     codes = {key[0] for key in fills_by_order}
     expected_filled = {
-        "000333.SZ", "000507.SZ", "002282.SZ", "002623.SZ", "300750.SZ",
-        "600028.SH", "600900.SH", "600938.SH", "600941.SH", "601088.SH",
-        "601138.SH", "601398.SH", "601857.SH", "601988.SH",
-        "688211.SH", "688391.SH", "688981.SH",  # 17 codes
+        "000333.SZ",
+        "000507.SZ",
+        "002282.SZ",
+        "002623.SZ",
+        "300750.SZ",
+        "600028.SH",
+        "600900.SH",
+        "600938.SH",
+        "600941.SH",
+        "601088.SH",
+        "601138.SH",
+        "601398.SH",
+        "601857.SH",
+        "601988.SH",
+        "688211.SH",
+        "688391.SH",
+        "688981.SH",  # 17 codes
     }
     assert codes == expected_filled
     assert "688121.SH" not in codes  # critical: failed sell not in backfill
@@ -217,9 +235,7 @@ def test_trade_date_4_29_not_4_30(tmp_path, capsys):
 
 def test_performance_series_trade_date_4_29(capsys):
     conn = MagicMock()
-    _write_performance_series_row(
-        conn, "2026-04-29", "test-strategy", 993520.16, dry_run=True
-    )
+    _write_performance_series_row(conn, "2026-04-29", "test-strategy", 993520.16, dry_run=True)
     captured = capsys.readouterr()
     assert "trade_date=2026-04-29" in captured.out
     assert "2026-04-30" not in captured.out  # NEW STOP gate

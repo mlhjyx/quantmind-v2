@@ -12,6 +12,7 @@ Anspire-specific tests (反 sub-PR 1+2 体例):
 - `date` field parse (反 Tavily 0 published_date)
 - response 顶层 wrapper 多 candidate (data / results / items) try parse
 """
+
 from __future__ import annotations
 
 import os
@@ -61,14 +62,13 @@ def test_anspire_fetcher_query_overflow_raises():
 
 def test_anspire_fetcher_query_at_64_chars_passes(monkeypatch):
     """query == 64 chars → 沿用 fetch (反 raise, boundary)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"results": []})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="a" * 64)  # boundary OK
@@ -164,9 +164,7 @@ def test_anspire_fetch_uses_get_method(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     fetcher.fetch(query="贵州茅台", limit=10)
@@ -186,9 +184,7 @@ def test_anspire_fetch_top_k_clamp_in_request(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     fetcher.fetch(query="test", limit=15)
@@ -223,9 +219,7 @@ def test_anspire_fetch_parses_valid_response_with_date(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="贵州茅台", limit=5)
@@ -251,9 +245,7 @@ def test_anspire_fetch_response_wrapper_results(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="test")
@@ -270,9 +262,7 @@ def test_anspire_fetch_response_wrapper_items(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="test")
@@ -288,9 +278,7 @@ def test_anspire_fetch_4xx_400_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     with pytest.raises(NewsFetchError, match="HTTP 400"):
@@ -307,9 +295,7 @@ def test_anspire_fetch_4xx_401_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-bad")
     with pytest.raises(NewsFetchError, match="HTTP 401"):
@@ -326,13 +312,9 @@ def test_anspire_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
-    with patch(
-        "backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0
-    ):
+    with patch("backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = AnspireNewsFetcher(api_key="sk-test")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
             fetcher.fetch(query="test")
@@ -348,13 +330,9 @@ def test_anspire_fetch_5xx_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
-    with patch(
-        "backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0
-    ):
+    with patch("backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = AnspireNewsFetcher(api_key="sk-test")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
             fetcher.fetch(query="test")
@@ -370,12 +348,8 @@ def test_anspire_fetch_timeout_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
-    with patch(
-        "backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0
-    ):
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
+    with patch("backend.qm_platform.news.anspire.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = AnspireNewsFetcher(api_key="sk-test")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
             fetcher.fetch(query="test")
@@ -388,9 +362,7 @@ def test_anspire_fetch_missing_results_returns_empty(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="test")
@@ -410,9 +382,7 @@ def test_anspire_fetch_empty_title_skipped(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="test")
@@ -433,9 +403,7 @@ def test_anspire_news_item_uses_zh_lang(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = AnspireNewsFetcher(api_key="sk-test")
     items = fetcher.fetch(query="test")
@@ -448,8 +416,7 @@ def test_anspire_news_item_uses_zh_lang(monkeypatch):
 
 @pytest.mark.requires_anspire
 @pytest.mark.skipif(
-    not os.environ.get("ANSPIRE_API_KEY"),
-    reason="requires ANSPIRE_API_KEY env (e2e live API call)"
+    not os.environ.get("ANSPIRE_API_KEY"), reason="requires ANSPIRE_API_KEY env (e2e live API call)"
 )
 def test_anspire_fetch_e2e_minimal_payload():
     """e2e: 真 ANSPIRE_API_KEY 走 minimal payload (反耗 quota).

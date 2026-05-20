@@ -1,4 +1,5 @@
 """MVP 1.2 test — ConfigSchema (Pydantic) + ConfigLoader (env > yaml > default)."""
+
 from __future__ import annotations
 
 from pathlib import Path

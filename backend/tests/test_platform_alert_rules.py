@@ -1,4 +1,5 @@
 """MVP 4.1 batch 2.2 unit tests — AlertRulesEngine yaml-driven routing."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -173,12 +174,13 @@ def test_engine_match_no_rule_returns_none():
 def test_from_dict_zero_rules_logs_warning(caplog):
     """reviewer P2 采纳: 加载 0 rules 必 log warn (退化 SSOT 应早提示运维)."""
     import logging as _logging
+
     with caplog.at_level(_logging.WARNING, logger="qm_platform.observability.rules"):
         engine = AlertRulesEngine.from_dict({"rules": []})
     assert len(engine.rules) == 0
-    assert any(
-        "0 rules" in rec.message for rec in caplog.records
-    ), f"必 log 0-rules warning, got: {[r.message for r in caplog.records]}"
+    assert any("0 rules" in rec.message for rec in caplog.records), (
+        f"必 log 0-rules warning, got: {[r.message for r in caplog.records]}"
+    )
 
 
 # ─────────────────────────── from_dict schema validation ───────────────────────────
@@ -356,9 +358,7 @@ def test_from_yaml_loads_real_default_config():
     matched = engine.match(a_p1)
     assert matched is not None
     assert matched.name == "p1_factor_lifecycle_warning"
-    assert (
-        matched.format_dedup_key(a_p1) == "factor_lifecycle:dv_ttm:warning"
-    )
+    assert matched.format_dedup_key(a_p1) == "factor_lifecycle:dv_ttm:warning"
 
 
 def test_from_yaml_file_not_found_raises():

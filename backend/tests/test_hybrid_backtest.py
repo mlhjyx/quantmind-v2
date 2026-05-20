@@ -35,6 +35,7 @@ from engines.vectorized_signal import (
 # Fixtures: 合成测试数据
 # ═══════════════════════════════════════════════════
 
+
 def _make_trading_days(start: date, n_days: int) -> list[date]:
     """生成n个交易日（跳过周末）。"""
     days = []
@@ -59,18 +60,20 @@ def _make_price_data(codes: list[str], trading_days: list[date], seed: int = 42)
             pre_close = close / (1 + ret)
             volume = int(rng.uniform(50000, 500000))
             amount = close * volume * 100 / 1000  # 千元
-            rows.append({
-                "code": code,
-                "trade_date": td,
-                "open": round(close * (1 + rng.normal(0, 0.005)), 2),
-                "close": round(close, 2),
-                "pre_close": round(pre_close, 2),
-                "volume": volume,
-                "amount": round(amount, 2),
-                "up_limit": round(pre_close * 1.10, 2),
-                "down_limit": round(pre_close * 0.90, 2),
-                "turnover_rate": round(rng.uniform(1, 10), 2),
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "trade_date": td,
+                    "open": round(close * (1 + rng.normal(0, 0.005)), 2),
+                    "close": round(close, 2),
+                    "pre_close": round(pre_close, 2),
+                    "volume": volume,
+                    "amount": round(amount, 2),
+                    "up_limit": round(pre_close * 1.10, 2),
+                    "down_limit": round(pre_close * 0.90, 2),
+                    "turnover_rate": round(rng.uniform(1, 10), 2),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -87,12 +90,14 @@ def _make_factor_data(
     for td in trading_days:
         for code in codes:
             for f in factors:
-                rows.append({
-                    "code": code,
-                    "trade_date": td,
-                    "factor_name": f,
-                    "raw_value": round(rng.normal(0, 1), 4),
-                })
+                rows.append(
+                    {
+                        "code": code,
+                        "trade_date": td,
+                        "factor_name": f,
+                        "raw_value": round(rng.normal(0, 1), 4),
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -103,8 +108,11 @@ def test_data():
     trading_days = _make_trading_days(date(2024, 1, 2), 250)  # ~1年
     factors = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
     directions = {
-        "turnover_mean_20": -1, "volatility_20": -1, "reversal_20": -1,
-        "amihud_20": -1, "bp_ratio": 1,
+        "turnover_mean_20": -1,
+        "volatility_20": -1,
+        "reversal_20": -1,
+        "amihud_20": -1,
+        "bp_ratio": 1,
     }
 
     price_df = _make_price_data(codes, trading_days)
@@ -123,6 +131,7 @@ def test_data():
 # ═══════════════════════════════════════════════════
 # Test: Phase A — 向量化信号层
 # ═══════════════════════════════════════════════════
+
 
 class TestPhaseASignal:
     """Phase A vectorized_signal 单独测试。"""
@@ -151,7 +160,10 @@ class TestPhaseASignal:
         config = SignalConfig(top_n=15)
 
         targets = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
 
         assert len(targets) > 0
@@ -167,7 +179,10 @@ class TestPhaseASignal:
         config = SignalConfig(top_n=5)
 
         targets = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
 
         for _rd, portfolio in targets.items():
@@ -180,10 +195,16 @@ class TestPhaseASignal:
         config = SignalConfig(top_n=15)
 
         t1 = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
         t2 = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
 
         assert t1.keys() == t2.keys()
@@ -195,6 +216,7 @@ class TestPhaseASignal:
 # Test: Phase B — 事件驱动执行确定性
 # ═══════════════════════════════════════════════════
 
+
 class TestPhaseBExecution:
     """Phase B SimpleBacktester 给定固定target_weights确定性。"""
 
@@ -203,7 +225,10 @@ class TestPhaseBExecution:
         rebal = compute_rebalance_dates(test_data["trading_days"], "monthly")
         config = SignalConfig(top_n=15)
         targets = build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
 
         bt_config = BacktestConfig(
@@ -224,6 +249,7 @@ class TestPhaseBExecution:
 # ═══════════════════════════════════════════════════
 # Test: Hybrid vs Simple 一致性
 # ═══════════════════════════════════════════════════
+
 
 class TestHybridConsistency:
     """Hybrid回测确定性: 同一输入跑两次结果完全一致（铁律15）。
@@ -286,6 +312,7 @@ class TestHybridConsistency:
 # Test: 性能
 # ═══════════════════════════════════════════════════
 
+
 class TestHybridPerformance:
     """Hybrid性能测试。"""
 
@@ -296,7 +323,10 @@ class TestHybridPerformance:
 
         t0 = time.monotonic()
         build_target_portfolios(
-            test_data["factor_df"], test_data["directions"], rebal, config,
+            test_data["factor_df"],
+            test_data["directions"],
+            rebal,
+            config,
         )
         elapsed = time.monotonic() - t0
 

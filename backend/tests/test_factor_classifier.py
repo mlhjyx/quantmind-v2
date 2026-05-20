@@ -135,7 +135,9 @@ class TestFactorClassifierDecisionTree:
         assert result.recommended_selection == SelectionMethod.EVENT_TRIGGER
         assert result.recommended_config.get("signal_threshold") is not None
 
-    def test_condition_trigger_long_halflife_is_modifier(self, classifier: FactorClassifier) -> None:
+    def test_condition_trigger_long_halflife_is_modifier(
+        self, classifier: FactorClassifier
+    ) -> None:
         """条件触发+长半衰期 → 调节型（regime场景）。"""
         result = classifier.classify_factor(
             factor_name="regime_hmm",
@@ -239,7 +241,9 @@ class TestClassifyFromProfile:
 
         profile = FactorProfile.from_ic_decay("turnover_mean_20", ic_decay)
         result_profile = classifier.classify_from_profile(
-            profile, signal_sparsity=0.85, trigger_mode=TriggerMode.CONTINUOUS,
+            profile,
+            signal_sparsity=0.85,
+            trigger_mode=TriggerMode.CONTINUOUS,
         )
         result_direct = classifier.classify_factor(
             factor_name="turnover_mean_20",

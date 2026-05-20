@@ -7,6 +7,7 @@
   - 顺序命中 (L1 > L2 > L3 优先级)
   - RuleResult schema 完整 (rule_id 动态 / reason / metrics 含 level)
 """
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -39,8 +40,11 @@ def _pos(
     current: float = 127.0,
 ) -> Position:
     return Position(
-        code=code, shares=shares,
-        entry_price=entry, peak_price=peak, current_price=current,
+        code=code,
+        shares=shares,
+        entry_price=entry,
+        peak_price=peak,
+        current_price=current,
     )
 
 
@@ -187,9 +191,7 @@ class TestPMSRuleCustomLevels:
 
     def test_custom_levels_used(self):
         """覆盖默认 L1 30% 为 50%, gain 35% 不触发."""
-        custom = (
-            PMSThreshold(level=1, min_gain=0.50, max_drawdown=0.15),
-        )
+        custom = (PMSThreshold(level=1, min_gain=0.50, max_drawdown=0.15),)
         # gain=35% < 50% → not triggered with custom
         pos = _pos(entry=100, peak=200, current=135)
         results = PMSRule(levels=custom).evaluate(_make_context([pos]))
@@ -220,9 +222,14 @@ class TestPMSRuleRuleResultSchema:
         pos = _pos(entry=100, peak=200, current=150)
         r = PMSRule().evaluate(_make_context([pos]))[0]
         required = {
-            "level", "entry_price", "peak_price", "current_price",
-            "unrealized_pnl_pct", "drawdown_from_peak_pct",
-            "min_gain_threshold", "max_drawdown_threshold",
+            "level",
+            "entry_price",
+            "peak_price",
+            "current_price",
+            "unrealized_pnl_pct",
+            "drawdown_from_peak_pct",
+            "min_gain_threshold",
+            "max_drawdown_threshold",
         }
         assert required.issubset(r.metrics.keys())
 
@@ -273,9 +280,7 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
         assert any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
             f"期望 'ALL ... skipped' ERROR, 实际 logs: {error_msgs}"
         )
-        assert any("19" in msg for msg in error_msgs), (
-            f"期望 count 19 in log, 实际: {error_msgs}"
-        )
+        assert any("19" in msg for msg in error_msgs), f"期望 count 19 in log, 实际: {error_msgs}"
 
     def test_no_warn_when_few_positions_single_data_issue(self, caplog):
         """3 持仓 2 skip (ratio 67% > 60%, 但 total=3 <= 5) → 不告警.
@@ -449,9 +454,7 @@ class TestPMSRuleFailLoudOnHighSkipRatio:
         assert any("ALL" in msg and "skipped" in msg for msg in error_msgs), (
             f"1 持仓全 skip 必触 ERROR (LL-081 bypass 修), 实际 logs: {error_msgs}"
         )
-        assert any("1" in msg for msg in error_msgs), (
-            f"期望 count 1 in log, 实际: {error_msgs}"
-        )
+        assert any("1" in msg for msg in error_msgs), f"期望 count 1 in log, 实际: {error_msgs}"
 
     def test_errors_when_two_positions_all_skipped(self, caplog):
         """P0 修批 1: 2 持仓全 skip → ERROR (覆盖 1 < total <= 5 区间, 原 guard miss)."""

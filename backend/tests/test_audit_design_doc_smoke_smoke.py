@@ -6,6 +6,7 @@ Plan v8 §VIII #27 Living Documentation smoke verifier. Smoke gate:
 - Main entry responds to --help (or any recognized exit code)
 - Helper functions count_files() / count_grep_lines() callable without DB
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -15,11 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (
-    Path(__file__).resolve().parent.parent.parent
-    / "scripts"
-    / "audit_design_doc_smoke.py"
-)
+SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "audit_design_doc_smoke.py"
 
 
 @pytest.mark.smoke

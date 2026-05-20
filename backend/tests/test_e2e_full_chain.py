@@ -163,9 +163,7 @@ async def test_factor_service_get_values_missing_returns_empty(
 ):
     """查询不存在的因子返回空 DataFrame，不抛出异常。"""
     svc = FactorService(db_session)
-    df = await svc.get_factor_values(
-        "nonexistent_factor_xyz", date(2000, 1, 1), neutralized=True
-    )
+    df = await svc.get_factor_values("nonexistent_factor_xyz", date(2000, 1, 1), neutralized=True)
 
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
@@ -173,9 +171,7 @@ async def test_factor_service_get_values_missing_returns_empty(
 
 
 @pytest.mark.asyncio
-async def test_factor_service_raw_vs_neutral(
-    db_session: AsyncSession, seeded_factor_values
-):
+async def test_factor_service_raw_vs_neutral(db_session: AsyncSession, seeded_factor_values):
     """raw_value 和 neutral_value 返回不同数值（验证列选择逻辑正确）。"""
     svc = FactorService(db_session)
     trade_date = seeded_factor_values["trade_date"]
@@ -189,9 +185,7 @@ async def test_factor_service_raw_vs_neutral(
     )
 
     # raw_value ∈ [0, 1)，neutral_value ∈ [-0.5, 0.5)，两者不相等
-    assert not df_raw["value"].equals(df_neutral["value"]), (
-        "raw 和 neutral 值不应相同"
-    )
+    assert not df_raw["value"].equals(df_neutral["value"]), "raw 和 neutral 值不应相同"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -220,7 +214,8 @@ async def seeded_factor_registry(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_factor_service_get_factor_list(
-    db_session: AsyncSession, seeded_factor_registry  # noqa: F811
+    db_session: AsyncSession,
+    seeded_factor_registry,  # noqa: F811
 ):
     """get_factor_list 返回列表，每项含必需字段。"""
     svc = FactorService(db_session)
@@ -235,7 +230,8 @@ async def test_factor_service_get_factor_list(
 
 @pytest.mark.asyncio
 async def test_factor_service_get_factor_list_status_filter(
-    db_session: AsyncSession, seeded_factor_registry  # noqa: F811
+    db_session: AsyncSession,
+    seeded_factor_registry,  # noqa: F811
 ):
     """status 过滤返回正确子集。"""
     svc = FactorService(db_session)
@@ -243,9 +239,7 @@ async def test_factor_service_get_factor_list_status_filter(
     deprecated = await svc.get_factor_list(status="deprecated")
 
     assert all(f["status"] == "active" for f in active), "active 过滤含非 active 项"
-    assert all(f["status"] == "deprecated" for f in deprecated), (
-        "deprecated 过滤含非 deprecated 项"
-    )
+    assert all(f["status"] == "deprecated" for f in deprecated), "deprecated 过滤含非 deprecated 项"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -257,9 +251,7 @@ async def test_factor_service_get_factor_list_status_filter(
 async def test_factor_service_get_factor_stats_no_data(db_session: AsyncSession):
     """无数据时 get_factor_stats 返回 None 值，不抛出异常。"""
     svc = FactorService(db_session)
-    stats = await svc.get_factor_stats(
-        "nonexistent_xyz", date(2020, 1, 1), date(2020, 12, 31)
-    )
+    stats = await svc.get_factor_stats("nonexistent_xyz", date(2020, 1, 1), date(2020, 12, 31))
 
     assert isinstance(stats, dict)
     assert stats["data_points"] == 0
@@ -321,11 +313,13 @@ def _build_factor_df(codes: list[str], factor_names: list[str]) -> pd.DataFrame:
     rows = []
     for code in codes:
         for _, fname in enumerate(factor_names):
-            rows.append({
-                "code": code,
-                "factor_name": fname,
-                "neutral_value": float(hash(code + fname) % 1000) / 1000.0 - 0.5,
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "factor_name": fname,
+                    "neutral_value": float(hash(code + fname) % 1000) / 1000.0 - 0.5,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -407,9 +401,9 @@ async def test_signal_service_raises_on_missing_factor():
 
     factor_names = ["turnover_mean_20", "volatility_20"]
     # factor_df 只有一个因子，缺少另一个
-    partial_df = pd.DataFrame([
-        {"code": "000001.SZ", "factor_name": "turnover_mean_20", "neutral_value": 0.1}
-    ])
+    partial_df = pd.DataFrame(
+        [{"code": "000001.SZ", "factor_name": "turnover_mean_20", "neutral_value": 0.1}]
+    )
     config = SignalConfig(
         factor_names=factor_names,
         top_n=15,
@@ -442,10 +436,9 @@ async def test_signal_service_raises_on_low_coverage():
     factor_names = ["turnover_mean_20"]
     # 只有 5 只股票，远低于 1000 的最低门槛
     small_codes = [f"{i:06d}.SZ" for i in range(1, 6)]
-    small_df = pd.DataFrame([
-        {"code": c, "factor_name": "turnover_mean_20", "neutral_value": 0.1}
-        for c in small_codes
-    ])
+    small_df = pd.DataFrame(
+        [{"code": c, "factor_name": "turnover_mean_20", "neutral_value": 0.1} for c in small_codes]
+    )
     config = SignalConfig(
         factor_names=factor_names,
         top_n=15,
@@ -572,9 +565,7 @@ async def test_paper_trading_get_status_no_data(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_full_chain_factor_to_signal(
-    db_session: AsyncSession, seeded_factor_values
-):
+async def test_full_chain_factor_to_signal(db_session: AsyncSession, seeded_factor_values):
     """全链路: FactorService 查询 → 构建宽表 → SignalService 信号合成（dry_run）。
 
     验证两个 service 的数据格式兼容性。

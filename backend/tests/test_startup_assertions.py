@@ -14,6 +14,7 @@ silent skip 全部规则. 卓然 -29% / 南玻 -10% 7 天 risk_event_log 0 行�
 
 关联铁律: 33 fail-loud / 34 SSOT / 41 timezone (无, pure mode 字段)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -103,10 +104,10 @@ class TestAssertExecutionModeConsistency:
                 db_modes={},
             )  # no raise
         warning_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
-        assert any("empty" in msg.lower() or "skip" in msg.lower() or "30d" in msg.lower()
-                   for msg in warning_msgs), (
-            f"DB 空时应有 warning 提示 'skip mode assertion'. 实际: {warning_msgs}"
-        )
+        assert any(
+            "empty" in msg.lower() or "skip" in msg.lower() or "30d" in msg.lower()
+            for msg in warning_msgs
+        ), f"DB 空时应有 warning 提示 'skip mode assertion'. 实际: {warning_msgs}"
 
     def test_passes_when_env_in_multimode_db_during_migration(self):
         """env=live + DB 既有 paper 又有 live (迁移过渡期) → 容忍, 因 env 已在 db_modes 内."""
@@ -167,11 +168,9 @@ class TestStartupAssertionLifespanIntegration:
         import re
         from pathlib import Path
 
-        src = (
-            Path(__file__).resolve().parent.parent
-            / "app"
-            / "main.py"
-        ).read_text(encoding="utf-8")
+        src = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text(
+            encoding="utf-8"
+        )
         # 必 import + 必真 call (而非注释)
         assert "from app.services.startup_assertions import" in src, (
             "main.py 必 import startup_assertions"
@@ -189,11 +188,9 @@ class TestStartupAssertionLifespanIntegration:
         """
         from pathlib import Path
 
-        src = (
-            Path(__file__).resolve().parent.parent
-            / "app"
-            / "main.py"
-        ).read_text(encoding="utf-8")
+        src = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text(
+            encoding="utf-8"
+        )
         # lifespan 中必含 try/except 包 run_startup_assertions + engine.dispose
         assert "engine.dispose()" in src, (
             "main.py lifespan 必显式 dispose engine (启动失败 cleanup)"

@@ -17,6 +17,7 @@ scope:
 - V3 §20.1 #6 (LLM 月预算 $50 + 80% warn + 100% fallback)
 - LL-109 候选 (race window, P3 audit Week 2 候选, 本 PR cite 不 sediment)
 """
+
 from __future__ import annotations
 
 import logging
@@ -238,7 +239,9 @@ def test_budget_check_capped_100_state(budget: BudgetGuard, storage: _FakeStorag
     assert snapshot.state is BudgetState.CAPPED_100
 
 
-def test_budget_record_cost_upsert_atomic_concurrent_100x(budget: BudgetGuard, storage: _FakeStorage) -> None:
+def test_budget_record_cost_upsert_atomic_concurrent_100x(
+    budget: BudgetGuard, storage: _FakeStorage
+) -> None:
     """并发 record_cost(0.001) × 100 → SUM == 0.1 (0 lost update, 沿用 lock 体例)."""
     today = date(2026, 5, 15)
 
@@ -259,7 +262,9 @@ def test_budget_record_cost_upsert_atomic_concurrent_100x(budget: BudgetGuard, s
     assert row.capped_count == 0
 
 
-def test_budget_record_cost_increments_3_counters(budget: BudgetGuard, storage: _FakeStorage) -> None:
+def test_budget_record_cost_increments_3_counters(
+    budget: BudgetGuard, storage: _FakeStorage
+) -> None:
     """fallback_count + capped_count + call_count 区分 record."""
     today = date(2026, 5, 15)
     budget.record_cost(Decimal("0.01"), is_fallback=False, is_capped=False, today=today)
@@ -286,7 +291,9 @@ def test_aware_router_normal_passes_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """NORMAL 状态 → 透传 inner LiteLLMRouter.completion + record_cost."""
-    captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash", cost=0.0042)
+    captured = _patch_router_completion(
+        monkeypatch, actual_model="deepseek/deepseek-v4-flash", cost=0.0042
+    )
     aware = BudgetAwareRouter(litellm_router, budget)
 
     response = aware.completion(
@@ -379,14 +386,16 @@ def test_router_completion_with_alias_override_path_c(
     captured = _patch_router_completion(monkeypatch, actual_model="ollama/qwen3:8b")
 
     response = litellm_router.completion_with_alias_override(
-        task=RiskTaskType.JUDGE,            # primary v4-pro, 强制覆盖到 qwen3-local
+        task=RiskTaskType.JUDGE,  # primary v4-pro, 强制覆盖到 qwen3-local
         messages=[LLMMessage("user", "x")],
         model_alias=FALLBACK_ALIAS,
         decision_id="d-override-1",
     )
 
     assert captured["model"] == FALLBACK_ALIAS
-    assert response.is_fallback is True       # primary v4-pro 期望 deepseek-reasoner, qwen 命中 fallback 检测
+    assert (
+        response.is_fallback is True
+    )  # primary v4-pro 期望 deepseek-reasoner, qwen 命中 fallback 检测
     assert response.decision_id == "d-override-1"
 
 
@@ -396,6 +405,7 @@ def test_router_completion_with_alias_override_unknown_task_raises(
 ) -> None:
     """path C 仍 fail-loud unknown task (反 silent fallback, 沿用铁律 33)."""
     from backend.qm_platform.llm import UnknownTaskError
+
     _patch_router_completion(monkeypatch, actual_model="x")
 
     with pytest.raises(UnknownTaskError):
@@ -415,6 +425,7 @@ def test_router_completion_with_alias_override_unknown_alias_raises(
     沿用 reviewer Chunk C P3 hardening (defensive fail-loud, 铁律 33).
     """
     from backend.qm_platform.llm import RouterConfigError
+
     _patch_router_completion(monkeypatch, actual_model="x")
 
     with pytest.raises(RouterConfigError, match="不在 yaml model_list"):

@@ -20,6 +20,7 @@ import pytest
 #  但以函数形式封装，便于单元测试)
 # ────────────────────────────────────────────
 
+
 def check_factor_coverage(
     factor_name: str,
     stock_count: int,
@@ -71,9 +72,7 @@ def check_industry_concentration(
     if not target_weights:
         return None, None, 0.0
 
-    top20_codes = sorted(
-        target_weights, key=lambda c: target_weights[c], reverse=True
-    )[:20]
+    top20_codes = sorted(target_weights, key=lambda c: target_weights[c], reverse=True)[:20]
     top20_weights = {c: target_weights[c] for c in top20_codes}
 
     industry_weights: dict[str, float] = {}
@@ -88,9 +87,7 @@ def check_industry_concentration(
     max_ind_weight = industry_weights[max_ind]
 
     if max_ind_weight > threshold:
-        msg = (
-            f"Top20持仓行业集中度过高: {max_ind} 权重={max_ind_weight:.1%} > {threshold:.0%}。"
-        )
+        msg = f"Top20持仓行业集中度过高: {max_ind} 权重={max_ind_weight:.1%} > {threshold:.0%}。"
         return "P1", msg, max_ind_weight
 
     return None, None, max_ind_weight
@@ -116,12 +113,8 @@ def check_position_overlap(
     if not current_weights or not prev_weights:
         return None, None, 1.0
 
-    current_top = set(
-        sorted(current_weights, key=lambda c: current_weights[c], reverse=True)[:20]
-    )
-    prev_top = set(
-        sorted(prev_weights, key=lambda c: prev_weights[c], reverse=True)[:20]
-    )
+    current_top = set(sorted(current_weights, key=lambda c: current_weights[c], reverse=True)[:20])
+    prev_top = set(sorted(prev_weights, key=lambda c: prev_weights[c], reverse=True)[:20])
 
     if not prev_top:
         return None, None, 1.0
@@ -142,6 +135,7 @@ def check_position_overlap(
 # ────────────────────────────────────────────
 # 测试1: 因子覆盖率检查
 # ────────────────────────────────────────────
+
 
 class TestFactorCoverage:
     """因子截面覆盖率检查测试。"""
@@ -203,6 +197,7 @@ class TestFactorCoverage:
 # 测试2: 行业集中度检查
 # ────────────────────────────────────────────
 
+
 class TestIndustryConcentration:
     """Top20行业集中度检查测试。"""
 
@@ -221,10 +216,28 @@ class TestIndustryConcentration:
 
     def test_diversified_industries_no_alert(self) -> None:
         """行业分散 → 无告警。"""
-        industries = ["银行", "电子", "医药", "食品", "汽车",
-                       "地产", "钢铁", "有色", "化工", "电力",
-                       "机械", "通信", "计算机", "传媒", "军工",
-                       "建筑", "交运", "纺服", "商贸", "农林"]
+        industries = [
+            "银行",
+            "电子",
+            "医药",
+            "食品",
+            "汽车",
+            "地产",
+            "钢铁",
+            "有色",
+            "化工",
+            "电力",
+            "机械",
+            "通信",
+            "计算机",
+            "传媒",
+            "军工",
+            "建筑",
+            "交运",
+            "纺服",
+            "商贸",
+            "农林",
+        ]
         weights = {f"s{i}": 0.05 for i in range(20)}
         code_industry = {f"s{i}": industries[i] for i in range(20)}
         level, msg, max_w = check_industry_concentration(weights, code_industry)
@@ -293,6 +306,7 @@ class TestIndustryConcentration:
 # ────────────────────────────────────────────
 # 测试3: 持仓重合度检查
 # ────────────────────────────────────────────
+
 
 class TestPositionOverlap:
     """持仓重合度检查测试。"""

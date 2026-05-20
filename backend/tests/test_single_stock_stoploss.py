@@ -11,6 +11,7 @@
   - reason / metrics 内容
   - 互补 PMSRule: 浮盈+回撤场景 SingleStockStopLoss 不动
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

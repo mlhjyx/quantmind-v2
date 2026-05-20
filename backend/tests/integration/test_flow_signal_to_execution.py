@@ -5,6 +5,7 @@ Wave 3 MVP 3.3 Stage 3.0 end-to-end verify (PR #116).
 
 Phase B-1 frozen: pytest.mark.skip enforces 0 broker call sustained.
 """
+
 from __future__ import annotations
 
 import pytest

@@ -27,6 +27,7 @@ Phase 1 narrowed scope (沿用 PR #280/#281/#282/#283 LL-130 体例累积 + Cons
 - skill quantmind-v3-prompt-design-laws (PR #275)
 - LL-130 候选 + LL-133 候选 cumulative
 """
+
 from __future__ import annotations
 
 import json
@@ -128,9 +129,7 @@ def test_v1_law_4_neutralize_sustained() -> None:
 
 def test_v1_pt_protection_sustained() -> None:
     """v1 sustained: PT 核心链路文件保护."""
-    rc, out, _ = _run_hook(
-        _edit("backend/app/services/signal_service.py", "old", "new")
-    )
+    rc, out, _ = _run_hook(_edit("backend/app/services/signal_service.py", "old", "new"))
     assert rc == 0
     assert "PT 核心链路" in out
 

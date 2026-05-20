@@ -9,6 +9,7 @@ Coverage:
 - metrics 字段完整性
 - rule_id / severity / action 契约
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -22,9 +23,7 @@ from backend.qm_platform.risk.rules.qmt_fallback import (
 )
 
 
-def _make_context(
-    *, positions_count: int = 0, nav: float = 993520.16
-) -> RiskContext:
+def _make_context(*, positions_count: int = 0, nav: float = 993520.16) -> RiskContext:
     """构造 RiskContext (沿用 intraday.py 测试 pattern)."""
     return RiskContext(
         strategy_id="test-strategy",

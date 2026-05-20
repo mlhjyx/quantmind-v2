@@ -30,7 +30,9 @@ import pytest  # noqa: E402
 try:
     import pull_moneyflow as pmf  # noqa: E402
 except Exception as e:  # pragma: no cover - env guard
-    pytest.skip(f"pull_moneyflow import fail (likely missing TUSHARE_TOKEN): {e}", allow_module_level=True)
+    pytest.skip(
+        f"pull_moneyflow import fail (likely missing TUSHARE_TOKEN): {e}", allow_module_level=True
+    )
 
 
 class TestStatementTimeout:
@@ -105,6 +107,7 @@ class TestCheckTradingDay:
         Reviewer python-P2 采纳: 异常 path 必写 stderr 诊断痕迹, 避免 DB outage
         silently swallowed 使下游 FATAL 误归因.
         """
+
         def _boom():
             raise RuntimeError("DB not reachable")
 
@@ -261,6 +264,7 @@ class TestRunReturnContract:
     def _make_args(self, **overrides):
         """Default argparse.Namespace for pull_moneyflow CLI."""
         import argparse
+
         defaults = {"start": None, "end": pmf.DEFAULT_END, "verify": False, "recent": False}
         defaults.update(overrides)
         return argparse.Namespace(**defaults)

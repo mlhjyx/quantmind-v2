@@ -5,6 +5,7 @@ subprocess + 真 Baostock 网络 + 查 1 支股最近 15 天 5min bars.
 
 无网络 / Baostock 不可达时 pytest.skip (CI 环境兜底).
 """
+
 from __future__ import annotations
 
 import subprocess

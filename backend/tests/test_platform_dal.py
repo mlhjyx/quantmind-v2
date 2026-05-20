@@ -6,6 +6,7 @@
 
 不触 live PG / live FactorCache, 测试全独立.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -129,18 +130,86 @@ def sqlite_factory():
         "created_at, updated_at) VALUES "
         "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            ("uuid-1", "turnover_mean_20", "liquidity", -1, "expr_1",
-             None, "hypothesis_1", "builtin", 60, "active", "CORE",
-             -0.091, -0.9, None, -30.0, 0.85, "2024-01-01", "2024-01-01"),
-            ("uuid-2", "bp_ratio", "fundamental", 1, "inv(pb)",
-             None, "value_anomaly", "builtin", 60, "active", "CORE",
-             0.107, 0.9, None, 28.0, 0.92, "2024-01-01", "2024-01-01"),
-            ("uuid-3", "reversal_20", "momentum", -1, "expr_3",
-             None, "reversion", "builtin", 60, "warning", "CORE5_baseline",
-             -0.05, -0.4, None, -12.0, 0.43, "2024-01-01", "2024-01-01"),
-            ("uuid-4", "mf_divergence", "moneyflow", 1, "expr_4",
-             None, "bogus", "gp", 60, "deprecated", "INVALIDATED",
-             -0.022, -0.2, None, -3.0, 0.0, "2024-01-01", "2024-01-01"),
+            (
+                "uuid-1",
+                "turnover_mean_20",
+                "liquidity",
+                -1,
+                "expr_1",
+                None,
+                "hypothesis_1",
+                "builtin",
+                60,
+                "active",
+                "CORE",
+                -0.091,
+                -0.9,
+                None,
+                -30.0,
+                0.85,
+                "2024-01-01",
+                "2024-01-01",
+            ),
+            (
+                "uuid-2",
+                "bp_ratio",
+                "fundamental",
+                1,
+                "inv(pb)",
+                None,
+                "value_anomaly",
+                "builtin",
+                60,
+                "active",
+                "CORE",
+                0.107,
+                0.9,
+                None,
+                28.0,
+                0.92,
+                "2024-01-01",
+                "2024-01-01",
+            ),
+            (
+                "uuid-3",
+                "reversal_20",
+                "momentum",
+                -1,
+                "expr_3",
+                None,
+                "reversion",
+                "builtin",
+                60,
+                "warning",
+                "CORE5_baseline",
+                -0.05,
+                -0.4,
+                None,
+                -12.0,
+                0.43,
+                "2024-01-01",
+                "2024-01-01",
+            ),
+            (
+                "uuid-4",
+                "mf_divergence",
+                "moneyflow",
+                1,
+                "expr_4",
+                None,
+                "bogus",
+                "gp",
+                60,
+                "deprecated",
+                "INVALIDATED",
+                -0.022,
+                -0.2,
+                None,
+                -3.0,
+                0.0,
+                "2024-01-01",
+                "2024-01-01",
+            ),
         ],
     )
     db.commit()
@@ -253,8 +322,15 @@ def test_read_ohlc_returns_expected_columns(sqlite_factory) -> None:
         end=date(2024, 1, 10),
     )
     assert list(df.columns) == [
-        "code", "trade_date", "open", "high", "low", "close",
-        "volume", "amount", "adj_factor",
+        "code",
+        "trade_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "adj_factor",
     ]
     # 3 行 (600519 两天 + 000001 一天, 000002 volume=0 过滤)
     assert len(df) == 3
@@ -307,9 +383,7 @@ def test_read_fundamentals_field_whitelist(sqlite_factory) -> None:
 def test_read_fundamentals_empty_fields_raises(sqlite_factory) -> None:
     dal = PlatformDataAccessLayer(conn_factory=sqlite_factory, paramstyle="?")
     with pytest.raises(UnsupportedField, match="不能为空"):
-        dal.read_fundamentals(
-            codes=["600519.SH"], fields=[], as_of=date(2024, 1, 10)
-        )
+        dal.read_fundamentals(codes=["600519.SH"], fields=[], as_of=date(2024, 1, 10))
 
 
 def test_read_registry_all(sqlite_factory) -> None:
@@ -318,10 +392,24 @@ def test_read_registry_all(sqlite_factory) -> None:
     assert len(df) == 4
     # MVP 1.3a: 对齐 live PG 18 字段
     assert list(df.columns) == [
-        "id", "name", "category", "direction", "expression", "code_content",
-        "hypothesis", "source", "lookback_days", "status", "pool",
-        "gate_ic", "gate_ir", "gate_mono", "gate_t", "ic_decay_ratio",
-        "created_at", "updated_at",
+        "id",
+        "name",
+        "category",
+        "direction",
+        "expression",
+        "code_content",
+        "hypothesis",
+        "source",
+        "lookback_days",
+        "status",
+        "pool",
+        "gate_ic",
+        "gate_ir",
+        "gate_mono",
+        "gate_t",
+        "ic_decay_ratio",
+        "created_at",
+        "updated_at",
     ]
 
 
@@ -394,9 +482,7 @@ def test_read_factor_cache_exception_propagates() -> None:
 def test_read_factor_cache_invalid_column_raises_before_load() -> None:
     """column 白名单校验在 cache.load 之前发生."""
     cache = MagicMock()
-    dal = PlatformDataAccessLayer(
-        conn_factory=MagicMock(), factor_cache=cache
-    )
+    dal = PlatformDataAccessLayer(conn_factory=MagicMock(), factor_cache=cache)
     with pytest.raises(UnsupportedColumn):
         dal.read_factor("f1", date(2024, 1, 1), date(2024, 1, 31), column="bogus")
     cache.load.assert_not_called()

@@ -3,6 +3,7 @@
 subprocess 真启动验证: signal_service / execution_service / risk_engine 都 import
 qm_platform.observability.OutboxWriter 不破, 关键 dual-write 注入点存在.
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -9,6 +9,7 @@ F17 背景: .env EXECUTION_MODE=paper 17 天未切 live, config_guard triple-sou
 - mode='paper' + 近 7 天有 live trade_log → WARN (不 raise, avoid blast radius)
 - mode='live' → INFO (真金模式提示)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -55,6 +56,7 @@ class TestModeValidation:
     def test_mode_none_reads_settings_live(self, monkeypatch):
         """mode=None → settings.EXECUTION_MODE='live' (review MEDIUM 采纳: 生产默认路径覆盖)."""
         from app import config as app_config
+
         monkeypatch.setattr(app_config.settings, "EXECUTION_MODE", "live")
         mock_conn = MagicMock()
         # live 路径不碰 DB → cursor 不应被调用
@@ -64,6 +66,7 @@ class TestModeValidation:
     def test_mode_none_reads_settings_paper(self, monkeypatch):
         """mode=None → settings.EXECUTION_MODE='paper' + 无 live trade_log."""
         from app import config as app_config
+
         monkeypatch.setattr(app_config.settings, "EXECUTION_MODE", "paper")
         mock_conn = MagicMock()
         mock_cur = MagicMock()
@@ -97,9 +100,9 @@ class TestPaperLiveTradeDetection:
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn)
 
-        assert any(
-            "F17" in msg or "live trade_log" in msg for msg in warnings_captured
-        ), f"预期 warning 含 F17/live trade_log, 实际: {warnings_captured}"
+        assert any("F17" in msg or "live trade_log" in msg for msg in warnings_captured), (
+            f"预期 warning 含 F17/live trade_log, 实际: {warnings_captured}"
+        )
 
     def test_paper_with_no_recent_live_trades_emits_info(self, monkeypatch):
         """mode='paper' + 无 live trade → logger.info 校验通过."""
@@ -119,9 +122,9 @@ class TestPaperLiveTradeDetection:
 
         assert_execution_mode_integrity(mode="paper", conn=mock_conn)
 
-        assert any(
-            "校验通过" in msg for msg in infos_captured
-        ), f"预期 info 含 '校验通过', 实际: {infos_captured}"
+        assert any("校验通过" in msg for msg in infos_captured), (
+            f"预期 info 含 '校验通过', 实际: {infos_captured}"
+        )
 
     def test_paper_with_db_cursor_error_non_blocking(self, monkeypatch):
         """mode='paper' + DB cursor 异常 → 不 raise (非阻塞降级)."""
@@ -153,6 +156,7 @@ class TestSqlQueryShape:
     def test_recent_days_parameter_passed(self):
         """recent_days=30 → cutoff 参数对应 30 天前."""
         from datetime import date, timedelta
+
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = (0, None)

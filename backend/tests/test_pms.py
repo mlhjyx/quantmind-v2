@@ -1,7 +1,5 @@
 """PMS阶梯利润保护测试 — 验证adj_close使用和触发逻辑。"""
 
-
-
 from engines.backtest.config import BacktestConfig, PMSConfig
 from engines.slippage_model import SlippageConfig
 

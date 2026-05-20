@@ -19,13 +19,15 @@ class TestHealthGate:
         from app.tasks.daily_pipeline import _check_health_gate, _health_check_key
 
         mock_redis = MagicMock()
-        mock_redis.get.return_value = json.dumps({
-            "postgresql": True,
-            "data_freshness": True,
-            "redis": True,
-            "disk_space": True,
-            "all_pass": True,
-        })
+        mock_redis.get.return_value = json.dumps(
+            {
+                "postgresql": True,
+                "data_freshness": True,
+                "redis": True,
+                "disk_space": True,
+                "all_pass": True,
+            }
+        )
 
         with patch("app.tasks.daily_pipeline._get_redis_client", return_value=mock_redis):
             result = _check_health_gate(date(2024, 10, 8))
@@ -38,13 +40,15 @@ class TestHealthGate:
         from app.tasks.daily_pipeline import _check_health_gate
 
         mock_redis = MagicMock()
-        mock_redis.get.return_value = json.dumps({
-            "postgresql": True,
-            "data_freshness": False,
-            "redis": True,
-            "disk_space": True,
-            "all_pass": False,
-        })
+        mock_redis.get.return_value = json.dumps(
+            {
+                "postgresql": True,
+                "data_freshness": False,
+                "redis": True,
+                "disk_space": True,
+                "all_pass": False,
+            }
+        )
 
         with patch("app.tasks.daily_pipeline._get_redis_client", return_value=mock_redis):
             result = _check_health_gate(date(2024, 10, 8))
@@ -67,7 +71,9 @@ class TestHealthGate:
         """Redis连接失败 → 降级为 'missing'（放行）。"""
         from app.tasks.daily_pipeline import _check_health_gate
 
-        with patch("app.tasks.daily_pipeline._get_redis_client", side_effect=Exception("conn refused")):
+        with patch(
+            "app.tasks.daily_pipeline._get_redis_client", side_effect=Exception("conn refused")
+        ):
             result = _check_health_gate(date(2024, 10, 8))
 
         assert result == "missing"

@@ -24,23 +24,17 @@ class TestPaperModeDoubleLock:
 
     def test_paper_with_lock_enabled_no_raise(self) -> None:
         """paper + LIVE_TRADING_DISABLED=True → 不 raise (红线正常态)."""
-        assert_live_trading_lock_integrity(
-            execution_mode="paper", live_trading_disabled=True
-        )
+        assert_live_trading_lock_integrity(execution_mode="paper", live_trading_disabled=True)
 
     def test_paper_with_lock_disabled_raises(self) -> None:
         """paper + LIVE_TRADING_DISABLED=False → ConfigDriftError (双锁不一致)."""
         with pytest.raises(ConfigDriftError):
-            assert_live_trading_lock_integrity(
-                execution_mode="paper", live_trading_disabled=False
-            )
+            assert_live_trading_lock_integrity(execution_mode="paper", live_trading_disabled=False)
 
     def test_raise_payload_names_param(self) -> None:
         """ConfigDriftError payload 标 LIVE_TRADING_DISABLED param."""
         with pytest.raises(ConfigDriftError) as exc_info:
-            assert_live_trading_lock_integrity(
-                execution_mode="paper", live_trading_disabled=False
-            )
+            assert_live_trading_lock_integrity(execution_mode="paper", live_trading_disabled=False)
         assert "LIVE_TRADING_DISABLED" in str(exc_info.value)
 
 
@@ -49,15 +43,11 @@ class TestLiveMode:
 
     def test_live_with_lock_enabled_no_raise(self) -> None:
         """live + LIVE_TRADING_DISABLED=True → fail-secure 安全态, 不 raise."""
-        assert_live_trading_lock_integrity(
-            execution_mode="live", live_trading_disabled=True
-        )
+        assert_live_trading_lock_integrity(execution_mode="live", live_trading_disabled=True)
 
     def test_live_with_lock_disabled_no_raise(self) -> None:
         """live + LIVE_TRADING_DISABLED=False → 真金放行态, 不 raise."""
-        assert_live_trading_lock_integrity(
-            execution_mode="live", live_trading_disabled=False
-        )
+        assert_live_trading_lock_integrity(execution_mode="live", live_trading_disabled=False)
 
 
 class TestSettingsFallback:

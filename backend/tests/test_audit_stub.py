@@ -7,6 +7,7 @@
   - record_count property
   - 集成: PlatformOrderRouter audit hook 注入 + record 调用 + 计数
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,6 +86,7 @@ class TestRecord:
     def test_non_json_primitive_payload_raises(self):
         """P2 python-reviewer (PR #109) 采纳: payload values 必 JSON-primitive 防 MVP 3.4 outbox 炸."""
         from decimal import Decimal as Dec
+
         stub = StubExecutionAuditTrail()
         with pytest.raises(AssertionError, match="non-JSON-primitive"):
             stub.record("test.event", {"price": Dec("100.0")})  # Decimal 非 JSON-primitive
@@ -156,7 +158,8 @@ class TestRouterAuditHook:
         router = PlatformOrderRouter(audit_trail=None)
         sig = self._signal()
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(orders) == 1  # order 仍生成
@@ -170,7 +173,8 @@ class TestRouterAuditHook:
             self._signal(code="000001.SZ", weight=0.05),
         ]
         orders = router.route(
-            signals=sigs, current_positions={},
+            signals=sigs,
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(orders) == 2
@@ -184,7 +188,8 @@ class TestRouterAuditHook:
         sig = self._signal()
         with caplog.at_level(logging.INFO, logger="backend.qm_platform.signal.audit"):
             router.route(
-                signals=[sig], current_positions={},
+                signals=[sig],
+                current_positions={},
                 capital_allocation={"s1-uuid": Decimal("1000000")},
             )
         infos = [r for r in caplog.records if r.levelno == logging.INFO]
@@ -213,6 +218,7 @@ class TestRouterAuditHook:
         """P2 python-reviewer (PR #109) 采纳: turnover_cap raise 时 audit 0 records,
         防 MVP 3.4 outbox phantom records (route() 失败但 outbox 已写)."""
         from backend.qm_platform.signal.router import TurnoverCapExceeded
+
         stub = StubExecutionAuditTrail()
         router = PlatformOrderRouter(audit_trail=stub)
         # weight 0.60 > turnover_cap 0.50 → raise TurnoverCapExceeded
@@ -245,7 +251,8 @@ class TestRouterAuditHook:
         router = PlatformOrderRouter(audit_trail=stub)
         sig = self._signal()
         router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(recorded_payloads) == 1

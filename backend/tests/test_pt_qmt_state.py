@@ -115,9 +115,7 @@ def _monkey_strategy(monkeypatch, sid):
 # ─── Tests ───────────────────────────────────────────────────────
 
 
-def test_fail_loud_when_prev_has_positions_today_empty(
-    sync_conn, isolated_strategy, monkeypatch
-):
+def test_fail_loud_when_prev_has_positions_today_empty(sync_conn, isolated_strategy, monkeypatch):
     """回归 Session 10 P1-b: 前日 5 持仓 + 今日 QMT 返 0 → RAISE."""
     from app.services.pt_qmt_state import QMTEmptyPositionsError, save_qmt_state
 
@@ -170,9 +168,7 @@ def test_no_raise_when_no_prev_snapshot(sync_conn, isolated_strategy, monkeypatc
     assert r is not None and r[0] == 0, "fresh start 应正常写入 performance_series"
 
 
-def test_no_raise_when_prev_zero_qty_today_empty(
-    sync_conn, isolated_strategy, monkeypatch
-):
+def test_no_raise_when_prev_zero_qty_today_empty(sync_conn, isolated_strategy, monkeypatch):
     """prev row 但 quantity=0 + 今日 {} → 无 raise (prev_count=0 不触发)."""
     from app.services.pt_qmt_state import save_qmt_state
 
@@ -229,9 +225,7 @@ def test_no_raise_when_today_has_positions(sync_conn, isolated_strategy, monkeyp
     assert cur.fetchone()[0] == 3
 
 
-def test_fail_loud_across_weekend_gap_evaporation(
-    sync_conn, isolated_strategy, monkeypatch
-):
+def test_fail_loud_across_weekend_gap_evaporation(sync_conn, isolated_strategy, monkeypatch):
     """prev=周五 (2026-04-17) + today=周一 (2026-04-20) + 今日 {} → RAISE.
 
     覆盖 `MAX(trade_date) < %s` 跨周末查找路径下的 evaporation 真 raise.

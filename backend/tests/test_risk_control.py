@@ -176,9 +176,7 @@ class TestCircuitBreakerStateMachine:
             trigger_reason="单日亏损-3.5%(阈值-3%)，暂停1天",
             position_multiplier=Decimal("1.0"),
         )
-        service, mock_repo, mock_notif = _build_service(
-            get_state_returns=[normal_state, l1_state]
-        )
+        service, mock_repo, mock_notif = _build_service(get_state_returns=[normal_state, l1_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.035"),  # -3.5% > L1阈值-3%
@@ -218,9 +216,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,
             position_multiplier=Decimal("1.0"),
         )
-        service, mock_repo, mock_notif = _build_service(
-            get_state_returns=[l1_state, normal_state]
-        )
+        service, mock_repo, mock_notif = _build_service(get_state_returns=[l1_state, normal_state])
 
         # 正常日收益(不触发任何level)
         metrics = _make_metrics(
@@ -247,9 +243,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,  # 同一天
         )
         # get_state: 1) check_and_update 2) final get_current_state
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l1_state, l1_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l1_state, l1_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("0.005"),  # 正常
@@ -270,9 +264,7 @@ class TestCircuitBreakerStateMachine:
         """NORMAL状态下日亏超过5%触发L2_HALTED。"""
         normal_state = _make_db_state(current_level=0, entered_date=YESTERDAY)
         l2_state = _make_db_state(current_level=2, entered_date=TODAY)
-        service, mock_repo, mock_notif = _build_service(
-            get_state_returns=[normal_state, l2_state]
-        )
+        service, mock_repo, mock_notif = _build_service(get_state_returns=[normal_state, l2_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.06"),  # -6% > L2阈值-5%
@@ -300,9 +292,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=YESTERDAY,
         )
         normal_state = _make_db_state(current_level=0, entered_date=TODAY)
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l2_state, normal_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l2_state, normal_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("0.01"),
@@ -328,9 +318,7 @@ class TestCircuitBreakerStateMachine:
             position_multiplier=Decimal("0.5"),
         )
         # get_state calls: 1) check_and_update 2) get_current_state at end
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.02"),
@@ -354,9 +342,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,
             position_multiplier=Decimal("0.5"),
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.02"),
@@ -386,9 +372,7 @@ class TestCircuitBreakerStateMachine:
     async def test_l3_not_triggered_when_5d_none_and_20d_ok(self):
         """rolling_5d_return为None时仅用20d条件判断。"""
         normal_state = _make_db_state(current_level=0)
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, normal_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, normal_state])
 
         # 5d=None, 20d=-5%(不触发) → 应保持NORMAL
         metrics = RiskMetrics(
@@ -428,9 +412,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,
             position_multiplier=Decimal("1.0"),
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l3_state, normal_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l3_state, normal_state])
 
         # 当日收益正常(不触发任何level)
         metrics = _make_metrics(
@@ -460,9 +442,7 @@ class TestCircuitBreakerStateMachine:
         )
         # 未满足恢复条件(streak_days=1 < 3)，所以不恢复
         # get_state: 1) check_and_update 2) _update_recovery_streak 3) final state
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l3_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l3_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("0.003"),  # 盈利
@@ -497,9 +477,7 @@ class TestCircuitBreakerStateMachine:
             recovery_streak_days=2,
             recovery_streak_return=Decimal("0.008"),
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l3_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l3_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.001"),  # 亏损
@@ -525,9 +503,7 @@ class TestCircuitBreakerStateMachine:
             recovery_streak_days=2,
             recovery_streak_return=Decimal("0.008"),
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l3_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l3_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("0"),  # 持平
@@ -553,9 +529,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,
             position_multiplier=Decimal("0.0"),
         )
-        service, mock_repo, mock_notif = _build_service(
-            get_state_returns=[normal_state, l4_state]
-        )
+        service, mock_repo, mock_notif = _build_service(get_state_returns=[normal_state, l4_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.08"),
@@ -634,9 +608,7 @@ class TestCircuitBreakerStateMachine:
             position_multiplier=Decimal("0.0"),
             approval_id=None,  # 无审批ID
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l4_state, l4_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l4_state, l4_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("0.01"),
@@ -670,9 +642,7 @@ class TestCircuitBreakerStateMachine:
             position_multiplier=Decimal("0.5"),
         )
         # get_state calls: 1) check_and_update 2) get_current_state at end
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l1_state, l3_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l1_state, l3_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.035"),  # 触发L1
@@ -709,9 +679,7 @@ class TestCircuitBreakerStateMachine:
             entered_date=TODAY,
             position_multiplier=Decimal("0.5"),
         )
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[l1_state, l3_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[l1_state, l3_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.02"),  # 不触发L1
@@ -736,9 +704,7 @@ class TestCircuitBreakerStateMachine:
         """恰好等于L1阈值(-3%)应该触发。"""
         normal_state = _make_db_state(current_level=0)
         l1_state = _make_db_state(current_level=1)
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, l1_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, l1_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.03"),  # 恰好等于阈值
@@ -755,9 +721,7 @@ class TestCircuitBreakerStateMachine:
     async def test_just_above_l1_threshold_no_trigger(self):
         """日亏-2.99%不触发L1(未达到阈值)。"""
         normal_state = _make_db_state(current_level=0)
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, normal_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, normal_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.029"),  # > -0.03, 不触发
@@ -775,9 +739,7 @@ class TestCircuitBreakerStateMachine:
         """rolling_20d_return为None时跳过L3检查(不足20日)。"""
         normal_state = _make_db_state(current_level=0)
         l1_state = _make_db_state(current_level=1)
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[normal_state, l1_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[normal_state, l1_state])
 
         metrics = _make_metrics(
             daily_return=Decimal("-0.035"),  # 触发L1，但不是L3
@@ -795,9 +757,7 @@ class TestCircuitBreakerStateMachine:
     async def test_initialize_state_creates_normal(self):
         """首次运行时初始化为NORMAL状态。"""
         normal_state = _make_db_state(current_level=0, trigger_reason="初始化")
-        service, mock_repo, _ = _build_service(
-            get_state_returns=[None, normal_state]
-        )
+        service, mock_repo, _ = _build_service(get_state_returns=[None, normal_state])
 
         await service.initialize_state(STRATEGY_ID, EXEC_MODE)
 
@@ -817,9 +777,7 @@ class TestCircuitBreakerStateMachine:
             current_level=0,
             position_multiplier=Decimal("1.0"),
         )
-        service, mock_repo, mock_notif = _build_service(
-            get_state_returns=[l3_state, normal_state]
-        )
+        service, mock_repo, mock_notif = _build_service(get_state_returns=[l3_state, normal_state])
 
         await service.force_reset(STRATEGY_ID, EXEC_MODE, "紧急运维")
 
@@ -929,9 +887,7 @@ class TestRiskAPI:
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
 
         try:
-            resp = await api_client.get(
-                f"/api/risk/state/{STRATEGY_ID}?execution_mode=paper"
-            )
+            resp = await api_client.get(f"/api/risk/state/{STRATEGY_ID}?execution_mode=paper")
         finally:
             app.dependency_overrides.clear()
 
@@ -982,9 +938,7 @@ class TestRiskAPI:
         app.dependency_overrides[_get_risk_service] = lambda: mock_svc
 
         try:
-            resp = await api_client.get(
-                f"/api/risk/summary/{STRATEGY_ID}?execution_mode=paper"
-            )
+            resp = await api_client.get(f"/api/risk/summary/{STRATEGY_ID}?execution_mode=paper")
         finally:
             app.dependency_overrides.clear()
 

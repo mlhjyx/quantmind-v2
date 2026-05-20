@@ -2,6 +2,7 @@
 
 subprocess 真启动验证 qm_platform.eval 全套 import + 7 Gate concrete + Pipeline 跑.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -73,6 +74,4 @@ def test_mvp_3_5_batch_1_pipeline_imports_and_constructs():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK mvp_3_5_batch_1 boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK mvp_3_5_batch_1 boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

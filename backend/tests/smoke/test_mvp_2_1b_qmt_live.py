@@ -12,6 +12,7 @@ subprocess + Redis 探测 (QMTData 服务是否 running) + 若 running 则真 im
 
 CI / 无 Redis 环境: pytest.skip.
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -9,6 +9,7 @@
 
 不测 DingTalk send / argparse / main entrypoint (dry-run 已端到端验证).
 """
+
 from __future__ import annotations
 
 import sys
@@ -47,8 +48,11 @@ def test_missing_returns_p0_finding():
     spec = EXPECTED_SCHEDULE["risk_daily_check"]
     after_market = datetime(2026, 4, 29, 8, 0, tzinfo=UTC)  # 16:00 CST
     findings = _check_task(
-        conn, "risk_daily_check", spec,
-        after_market, window_hours=24,
+        conn,
+        "risk_daily_check",
+        spec,
+        after_market,
+        window_hours=24,
     )
     assert len(findings) == 1
     assert findings[0].severity == "P0"
@@ -65,8 +69,11 @@ def test_errored_returns_p1_finding():
     )
     spec = EXPECTED_SCHEDULE["risk_daily_check"]
     findings = _check_task(
-        conn, "risk_daily_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "risk_daily_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     # missing 不报 (有 4 runs), errored 报 P1
     assert any(f.severity == "P1" and f.kind == "errored" for f in findings)
@@ -81,8 +88,11 @@ def test_stale_returns_p1_finding():
         last_success=very_old,
     )
     findings = _check_task(
-        conn, "intraday_risk_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "intraday_risk_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     assert any(f.severity == "P1" and f.kind == "stale" for f in findings)
 
@@ -96,8 +106,11 @@ def test_under_count_returns_p1_finding():
     )
     spec = EXPECTED_SCHEDULE["intraday_risk_check"]
     findings = _check_task(
-        conn, "intraday_risk_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "intraday_risk_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     assert any(f.severity == "P1" and f.kind == "under_count" for f in findings)
 
@@ -111,8 +124,11 @@ def test_all_green_returns_no_findings():
     )
     spec = EXPECTED_SCHEDULE["risk_daily_check"]
     findings = _check_task(
-        conn, "risk_daily_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "risk_daily_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     assert findings == []
 
@@ -126,8 +142,11 @@ def test_intraday_all_green_returns_no_findings():
     )
     spec = EXPECTED_SCHEDULE["intraday_risk_check"]
     findings = _check_task(
-        conn, "intraday_risk_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "intraday_risk_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     assert findings == []
 
@@ -139,8 +158,11 @@ def test_naive_last_success_handled():
     spec = EXPECTED_SCHEDULE["risk_daily_check"]
     # 不应 raise (内部 if last_success.tzinfo is None: 补 UTC)
     findings = _check_task(
-        conn, "risk_daily_check", spec,
-        datetime.now(UTC), window_hours=24,
+        conn,
+        "risk_daily_check",
+        spec,
+        datetime.now(UTC),
+        window_hours=24,
     )
     # 期望不 raise + 结果合理 (1 success / 5min ago, max_gap 25h → 不 stale)
     assert all(f.kind != "stale" for f in findings)
@@ -157,8 +179,11 @@ def test_too_early_skip_missing_intraday():
     conn = _mk_conn({}, last_success=None)
     spec = EXPECTED_SCHEDULE["intraday_risk_check"]
     findings = _check_task(
-        conn, "intraday_risk_check", spec,
-        early_now, window_hours=24,
+        conn,
+        "intraday_risk_check",
+        spec,
+        early_now,
+        window_hours=24,
     )
     # 不应报 missing (too_early), 也不应 under_count (total=0 + too_early)
     assert not any(f.kind == "missing" for f in findings)
@@ -171,8 +196,11 @@ def test_normal_hour_reports_missing_intraday():
     conn = _mk_conn({}, last_success=None)
     spec = EXPECTED_SCHEDULE["intraday_risk_check"]
     findings = _check_task(
-        conn, "intraday_risk_check", spec,
-        normal_now, window_hours=24,
+        conn,
+        "intraday_risk_check",
+        spec,
+        normal_now,
+        window_hours=24,
     )
     # 期望: 正常时段 0 row → P0 missing 应报
     assert any(f.severity == "P0" and f.kind == "missing" for f in findings)

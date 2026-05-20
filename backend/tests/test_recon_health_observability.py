@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.5 unit tests — daily_reconciliation + factor_health_daily 迁 SDK."""
+
 from __future__ import annotations
 
 import sys
@@ -109,9 +110,7 @@ def test_fhd_send_alert_unified_sdk_path_when_flag_true():
         patch.object(fhd_mod, "_send_alert_via_platform_sdk") as mock_sdk,
         patch.object(fhd_mod, "_legacy_send_alert") as mock_legacy,
     ):
-        fhd_mod._send_alert_unified(
-            "P1", "因子健康 warning", "msg", date(2026, 4, 29), MagicMock()
-        )
+        fhd_mod._send_alert_unified("P1", "因子健康 warning", "msg", date(2026, 4, 29), MagicMock())
         mock_sdk.assert_called_once()
         mock_legacy.assert_not_called()
 
@@ -124,9 +123,7 @@ def test_fhd_send_alert_unified_legacy_path_when_flag_false():
         patch.object(fhd_mod, "_send_alert_via_platform_sdk") as mock_sdk,
         patch.object(fhd_mod, "_legacy_send_alert") as mock_legacy,
     ):
-        fhd_mod._send_alert_unified(
-            "P1", "因子健康 warning", "msg", date(2026, 4, 29), MagicMock()
-        )
+        fhd_mod._send_alert_unified("P1", "因子健康 warning", "msg", date(2026, 4, 29), MagicMock())
         mock_legacy.assert_called_once()
         mock_sdk.assert_not_called()
 
@@ -141,9 +138,7 @@ def test_fhd_sdk_path_severity_and_dedup():
         patch("qm_platform.observability.get_alert_router", return_value=mock_router),
         patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
     ):
-        fhd_mod._send_alert_via_platform_sdk(
-            "P1", "因子健康 warning", "msg", date(2026, 4, 29)
-        )
+        fhd_mod._send_alert_via_platform_sdk("P1", "因子健康 warning", "msg", date(2026, 4, 29))
 
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P1
@@ -176,9 +171,7 @@ def test_fhd_unknown_level_falls_back_to_p1():
         patch("qm_platform.observability.get_alert_router", return_value=mock_router),
         patch("qm_platform.observability.AlertRulesEngine.from_yaml", return_value=mock_engine),
     ):
-        fhd_mod._send_alert_via_platform_sdk(
-            "WARN", "title", "msg", date(2026, 4, 29)
-        )
+        fhd_mod._send_alert_via_platform_sdk("WARN", "title", "msg", date(2026, 4, 29))
 
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P1
@@ -225,10 +218,16 @@ def test_fhd_unified_legacy_path_requires_conn():
 
     with (
         patch.object(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False),
-        pytest.raises(ValueError, match="legacy notification_service.send_alert path requires conn"),
+        pytest.raises(
+            ValueError, match="legacy notification_service.send_alert path requires conn"
+        ),
     ):
         fhd_mod._send_alert_unified(
-            "P1", "title", "msg", date(2026, 4, 29), conn=None,
+            "P1",
+            "title",
+            "msg",
+            date(2026, 4, 29),
+            conn=None,
         )
 
 
@@ -245,7 +244,11 @@ def test_fhd_unified_sdk_path_accepts_none_conn():
         patch.object(fhd_mod, "_legacy_send_alert") as mock_legacy,
     ):
         fhd_mod._send_alert_unified(
-            "P1", "title", "msg", date(2026, 4, 29), conn=None,
+            "P1",
+            "title",
+            "msg",
+            date(2026, 4, 29),
+            conn=None,
         )
         mock_sdk.assert_called_once()
         mock_legacy.assert_not_called()

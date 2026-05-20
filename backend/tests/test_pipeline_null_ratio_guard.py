@@ -13,6 +13,7 @@ Fix (铁律 33 fail-loud):
 - 超阈值 → logger.error + IngestResult.null_ratio_warnings 写 {col: ratio}
 - 不 raise 不 drop rows (单列 100% NULL 时其他列可能正常, raise 阻断全批)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -159,10 +160,12 @@ class TestCheckNullRatio:
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(0.05)
         # 100 行, 4 NULL (4%)
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(100)],
-            "value": [1.0] * 96 + [None] * 4,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(100)],
+                "value": [1.0] * 96 + [None] * 4,
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert warnings == {}
 
@@ -184,10 +187,12 @@ class TestCheckNullRatio:
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(0.05)
         # 10 行, 3 NULL (30% > 2×5% → severe)
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(10)],
-            "value": [1.0] * 7 + [None] * 3,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(10)],
+                "value": [1.0] * 7 + [None] * 3,
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert "value" in warnings
         assert warnings["value"] == pytest.approx(0.30, abs=1e-4)
@@ -222,10 +227,12 @@ class TestCheckNullRatio:
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(0.05)
         # 100 行, 7 NULL = 7% (> 5%, < 10% = 2×threshold)
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(100)],
-            "value": [1.0] * 93 + [None] * 7,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(100)],
+                "value": [1.0] * 93 + [None] * 7,
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert warnings["value"] == pytest.approx(0.07, abs=1e-4)
         # drift 级: warning 1 次, error 0 次
@@ -238,10 +245,12 @@ class TestCheckNullRatio:
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(None)
         # 10 行, 全 NULL
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(10)],
-            "value": [None] * 10,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(10)],
+                "value": [None] * 10,
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert warnings == {}
 
@@ -259,10 +268,12 @@ class TestCheckNullRatio:
         pipeline = DataPipeline(conn=MagicMock())
         contract = _fake_contract(0.05)
         # 100 行, 5 NULL = 5% 正好等于阈值
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(100)],
-            "value": [1.0] * 95 + [None] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(100)],
+                "value": [1.0] * 95 + [None] * 5,
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert warnings == {}
 
@@ -281,11 +292,13 @@ class TestCheckNullRatio:
         )
         pipeline = DataPipeline(conn=MagicMock())
         # a: 30% NULL (>5% flag), b: 15% NULL (>10% flag)
-        df = pd.DataFrame({
-            "code": [f"c{i}" for i in range(20)],
-            "a": [1.0] * 14 + [None] * 6,  # 6/20 = 30%
-            "b": [1.0] * 17 + [None] * 3,  # 3/20 = 15%
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"c{i}" for i in range(20)],
+                "a": [1.0] * 14 + [None] * 6,  # 6/20 = 30%
+                "b": [1.0] * 17 + [None] * 3,  # 3/20 = 15%
+            }
+        )
         warnings = pipeline._check_null_ratio(df, contract)
         assert set(warnings.keys()) == {"a", "b"}
         assert warnings["a"] == pytest.approx(0.30, abs=1e-4)
@@ -308,13 +321,15 @@ class TestIngestIntegration:
         monkeypatch.setattr(pipeline, "_upsert", lambda df, c: len(df))
 
         # 20 行, 6 NULL dv_ttm = 30%
-        df = pd.DataFrame({
-            "code": [f"{i:06d}.SZ" for i in range(20)],
-            "trade_date": ["2026-04-20"] * 20,
-            "dv_ttm": [2.5] * 14 + [None] * 6,
-            "pe_ttm": [15.0] * 20,  # 0% NULL
-            "pb": [2.0] * 20,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"{i:06d}.SZ" for i in range(20)],
+                "trade_date": ["2026-04-20"] * 20,
+                "dv_ttm": [2.5] * 14 + [None] * 6,
+                "pe_ttm": [15.0] * 20,  # 0% NULL
+                "pb": [2.0] * 20,
+            }
+        )
         result = pipeline.ingest(df, DAILY_BASIC)
         assert "dv_ttm" in result.null_ratio_warnings
         assert result.null_ratio_warnings["dv_ttm"] == pytest.approx(0.30, abs=1e-4)
@@ -326,12 +341,14 @@ class TestIngestIntegration:
         monkeypatch.setattr(pipeline, "_fk_filter", lambda df, col: df)
         monkeypatch.setattr(pipeline, "_upsert", lambda df, c: len(df))
 
-        df = pd.DataFrame({
-            "code": [f"{i:06d}.SZ" for i in range(10)],
-            "trade_date": ["2026-04-14"] * 10,
-            "dv_ttm": [2.5] * 10,
-            "pe_ttm": [15.0] * 10,
-            "pb": [2.0] * 10,
-        })
+        df = pd.DataFrame(
+            {
+                "code": [f"{i:06d}.SZ" for i in range(10)],
+                "trade_date": ["2026-04-14"] * 10,
+                "dv_ttm": [2.5] * 10,
+                "pe_ttm": [15.0] * 10,
+                "pb": [2.0] * 10,
+            }
+        )
         result = pipeline.ingest(df, DAILY_BASIC)
         assert result.null_ratio_warnings == {}

@@ -256,9 +256,7 @@ def test_risk_control_load_cb_state_reads_own_mode(sync_conn, isolated_strategy,
     assert state["current_level"] == (2 if mode == "paper" else 0)
 
 
-def test_risk_control_upsert_cb_state_writes_own_mode(
-    sync_conn, isolated_strategy, mode
-):
+def test_risk_control_upsert_cb_state_writes_own_mode(sync_conn, isolated_strategy, mode):
     """_upsert_cb_state_sync 写 circuit_breaker_state 按 mode."""
     from app.services.risk_control_service import (
         _ensure_cb_tables_sync,
@@ -268,9 +266,14 @@ def test_risk_control_upsert_cb_state_writes_own_mode(
     _ensure_cb_tables_sync(sync_conn)
     sid = isolated_strategy
     _upsert_cb_state_sync(
-        sync_conn, sid, level=3, entered_date=date(2024, 4, 1),
-        reason="test_seed", metrics=None,
-        recovery_streak_days=0, recovery_streak_return=0.0,
+        sync_conn,
+        sid,
+        level=3,
+        entered_date=date(2024, 4, 1),
+        reason="test_seed",
+        metrics=None,
+        recovery_streak_days=0,
+        recovery_streak_return=0.0,
         position_multiplier=0.5,
     )
 
@@ -283,9 +286,7 @@ def test_risk_control_upsert_cb_state_writes_own_mode(
     assert rows == [(mode, 3)]
 
 
-def test_risk_control_insert_cb_log_writes_own_mode(
-    sync_conn, isolated_strategy, mode
-):
+def test_risk_control_insert_cb_log_writes_own_mode(sync_conn, isolated_strategy, mode):
     """_insert_cb_log_sync 写 circuit_breaker_log 按 mode."""
     from app.services.risk_control_service import (
         _ensure_cb_tables_sync,
@@ -295,9 +296,14 @@ def test_risk_control_insert_cb_log_writes_own_mode(
     _ensure_cb_tables_sync(sync_conn)
     sid = isolated_strategy
     _insert_cb_log_sync(
-        sync_conn, sid, trade_date=date(2024, 5, 1),
-        prev_level=0, new_level=1, transition_type="escalate",
-        reason="test_seed", metrics=None,
+        sync_conn,
+        sid,
+        trade_date=date(2024, 5, 1),
+        prev_level=0,
+        new_level=1,
+        transition_type="escalate",
+        reason="test_seed",
+        metrics=None,
     )
 
     cur = sync_conn.cursor()
@@ -309,9 +315,7 @@ def test_risk_control_insert_cb_log_writes_own_mode(
     assert rows == [mode]
 
 
-def test_risk_control_check_circuit_breaker_reads_own_perf(
-    sync_conn, isolated_strategy, mode
-):
+def test_risk_control_check_circuit_breaker_reads_own_perf(sync_conn, isolated_strategy, mode):
     """P0-α 根因回归: check_circuit_breaker_sync 能读到本 mode 的 performance_series,
     不再返回 L0 "首次运行".
     """
@@ -327,8 +331,10 @@ def test_risk_control_check_circuit_breaker_reads_own_perf(
     _seed_performance(sync_conn, sid, date(2024, 6, 2), 990_000.0, mode, daily_return=-0.01)
 
     result = check_circuit_breaker_sync(
-        conn=sync_conn, strategy_id=sid,
-        exec_date=date(2024, 6, 3), initial_capital=1_000_000.0,
+        conn=sync_conn,
+        strategy_id=sid,
+        exec_date=date(2024, 6, 3),
+        initial_capital=1_000_000.0,
     )
     # 有数据 → 不会是 "首次运行"
     assert result["reason"] != "无历史数据(首次运行)"
@@ -359,9 +365,7 @@ def test_risk_control_cross_mode_cb_state_isolation(sync_conn, isolated_strategy
     assert rows == [("live", 1), ("paper", 3)]
 
 
-def test_pt_monitor_opening_gap_reads_own_mode(
-    sync_conn, isolated_strategy, mode, monkeypatch
-):
+def test_pt_monitor_opening_gap_reads_own_mode(sync_conn, isolated_strategy, mode, monkeypatch):
     """pt_monitor.check_opening_gap 组合加权跳空按 mode 读 position_snapshot.
 
     P1-a 根因回归: live 模式此处读 'paper' → total_w=0 组合跳空静默失效.
@@ -375,9 +379,11 @@ def test_pt_monitor_opening_gap_reads_own_mode(
     _seed_position(sync_conn, sid, td, "000100.SZ", 1000, 10000.0, 1.0, mode)
 
     # 构造 price_data: open 比 pre_close 低 4% (未触发单股 5% 告警, 但触发组合 >3%)
-    price_df = pd.DataFrame([
-        {"code": "000100.SZ", "open": 9.6, "pre_close": 10.0},
-    ])
+    price_df = pd.DataFrame(
+        [
+            {"code": "000100.SZ", "open": 9.6, "pre_close": 10.0},
+        ]
+    )
 
     class _Notif:
         def send_sync(self, *a, **kw):
@@ -387,16 +393,17 @@ def test_pt_monitor_opening_gap_reads_own_mode(
     notif = _Notif()
     # 调用不应 crash, 内部 position_snapshot 查询应能匹配本 mode seed
     pt_monitor_service.check_opening_gap(
-        exec_date=td, price_data=price_df, conn=sync_conn,
-        notif_svc=notif, dry_run=True,
+        exec_date=td,
+        price_data=price_df,
+        conn=sync_conn,
+        notif_svc=notif,
+        dry_run=True,
     )
     # 断言: 本 mode 的 position row 被读到 (total_w=1.0), 组合跳空 ≈ -4% 触发 P0 path
     # 因 dry_run=True 不会实际发送, 只检查函数完成不 raise.
 
 
-def test_pt_monitor_opening_gap_cross_mode_invisible(
-    sync_conn, isolated_strategy, monkeypatch
-):
+def test_pt_monitor_opening_gap_cross_mode_invisible(sync_conn, isolated_strategy, monkeypatch):
     """paper 模式 check_opening_gap 看不到 live snapshot (total_w=0)."""
     from app.config import settings
     from app.services import pt_monitor_service
@@ -409,17 +416,23 @@ def test_pt_monitor_opening_gap_cross_mode_invisible(
     # 只种 live row, paper 模式应该 total_w=0 (跳空计算跳过, 不报错)
     _seed_position(sync_conn, sid, td, "000200.SZ", 500, 5000.0, 1.0, "live")
 
-    price_df = pd.DataFrame([
-        {"code": "000200.SZ", "open": 9.0, "pre_close": 10.0},
-    ])
+    price_df = pd.DataFrame(
+        [
+            {"code": "000200.SZ", "open": 9.0, "pre_close": 10.0},
+        ]
+    )
 
     class _Notif:
-        def send_sync(self, *a, **kw): pass
+        def send_sync(self, *a, **kw):
+            pass
 
     # 不应 raise; total_w=0 时组合跳空计算 skip
     pt_monitor_service.check_opening_gap(
-        exec_date=td, price_data=price_df, conn=sync_conn,
-        notif_svc=_Notif(), dry_run=True,
+        exec_date=td,
+        price_data=price_df,
+        conn=sync_conn,
+        notif_svc=_Notif(),
+        dry_run=True,
     )
 
 
@@ -467,17 +480,20 @@ def test_d3_signal_service_signals_table_stays_paper():
     # get_latest_signals SELECT signals WHERE 'paper'
     assert re.search(
         r"FROM signals\s+WHERE.{0,200}?execution_mode\s*=\s*'paper'",
-        src, re.DOTALL,
+        src,
+        re.DOTALL,
     ), "D3 破契约: signal_service.py get_latest_signals 必须保留 execution_mode='paper'"
     # _write_signals DELETE signals WHERE 'paper' (限 200 字符内)
     assert re.search(
         r"DELETE FROM signals\s+WHERE.{0,200}?execution_mode\s*=\s*'paper'",
-        src, re.DOTALL,
+        src,
+        re.DOTALL,
     ), "D3 破契约: signal_service.py _write_signals DELETE 必须保留 'paper'"
     # _write_signals INSERT signals VALUES 'paper' (限 500 字符内, INSERT 字段列表较长)
     assert re.search(
         r"INSERT INTO signals.{0,500}?VALUES.{0,300}?'paper'",
-        src, re.DOTALL,
+        src,
+        re.DOTALL,
     ), "D3 破契约: signal_service.py _write_signals INSERT VALUES 必须保留 'paper'"
 
 
@@ -486,7 +502,8 @@ def test_d3_run_paper_trading_signals_update_stays_paper():
     src = (_REPO / "scripts" / "run_paper_trading.py").read_text(encoding="utf-8")
     assert re.search(
         r"UPDATE signals.{0,300}?execution_mode\s*=\s*'paper'",
-        src, re.DOTALL,
+        src,
+        re.DOTALL,
     ), "D3 破契约: run_paper_trading.py L287 UPDATE signals 必须保留 'paper'"
 
 
@@ -506,7 +523,8 @@ def test_d2_run_paper_trading_prev_nav_parametric():
     # → SELECT 与 WHERE 之间会有 quote/whitespace/newline, 用 .{0,50}? 覆盖.
     assert re.search(
         r"SELECT nav FROM performance_series.{0,50}?WHERE.{0,500}?execution_mode\s*=\s*%s",
-        src, re.DOTALL,
+        src,
+        re.DOTALL,
     ), "D2 破契约: run_paper_trading prev_nav 必须参数化 execution_mode=%s"
 
 
@@ -578,7 +596,9 @@ def test_save_qmt_state_uses_settings_execution_mode():
     # 紧 SQL 上下文 regex: WHERE ... execution_mode = 'live'
     # (docstring 不会有 WHERE clause + 紧邻 execution_mode 字段)
     where_live = re.findall(
-        r"WHERE\b[^']{0,200}?execution_mode\s*=\s*'live'", src, re.DOTALL,
+        r"WHERE\b[^']{0,200}?execution_mode\s*=\s*'live'",
+        src,
+        re.DOTALL,
     )
     # SQL VALUES (...) 内 'live' literal (docstring 通常不会写 VALUES (..., 'live', ...))
     values_live = re.findall(r"VALUES\s*\([^)]{0,500}?'live'", src, re.DOTALL)
@@ -667,7 +687,7 @@ def test_write_signals_keeps_paper_per_d3():
     write_start = src.find("def _write_signals")
     assert write_start > 0, "_write_signals 函数未找到"
     next_def = src.find("\n    def ", write_start + 1)
-    body = src[write_start:next_def] if next_def > 0 else src[write_start:write_start + 3000]
+    body = src[write_start:next_def] if next_def > 0 else src[write_start : write_start + 3000]
 
     assert "'paper'" in body, (
         "_write_signals 必保留 hardcoded 'paper' (ADR-008 D3-KEEP, signals 跨模式共享). "

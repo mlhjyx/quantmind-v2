@@ -346,7 +346,9 @@ class TestSnapshotCaptureAndWrite:
         loaded = json.loads(out.read_text(encoding="utf-8"))
         assert loaded == snap
         # No tmp residue.
-        leftovers = [p for p in tmp_path.iterdir() if p.name.startswith("snap_") and p.suffix == ".tmp"]
+        leftovers = [
+            p for p in tmp_path.iterdir() if p.name.startswith("snap_") and p.suffix == ".tmp"
+        ]
         assert leftovers == []
 
     def test_atomic_write_creates_parent_dir(self, tmp_path: Path) -> None:
@@ -439,7 +441,8 @@ class TestJsonDefaultPassThrough:
         cur = _MockCursor(
             {
                 "table_name = 'position_snapshot'": [
-                    ("code",), ("turnover",),
+                    ("code",),
+                    ("turnover",),
                 ],
                 "FROM position_snapshot WHERE trade_date = ANY": [
                     ("600519.SH", None),  # turnover is NULL
@@ -458,7 +461,9 @@ class TestJsonDefaultPassThrough:
         cur = _MockCursor(
             {
                 "table_name = 'position_snapshot'": [
-                    ("code",), ("quantity",), ("ratio",),
+                    ("code",),
+                    ("quantity",),
+                    ("ratio",),
                 ],
                 "FROM position_snapshot WHERE trade_date = ANY": [
                     ("600519.SH", 10700, 0.5),

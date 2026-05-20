@@ -9,6 +9,7 @@ subprocess 启动 + live PG + 真调 signal_engine._get_direction, 验证:
   - DB 不可达 / feature_flags 表缺失 / factor_registry CORE3+dv_ttm 缺失
   - direction 值与 hardcoded 不一致 → Phase 2.4 PT 配置已破坏, 需修 registry
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -6,6 +6,7 @@ Plan v8 §VIII #30 Reverse Traceability Index script. Smoke gate:
 - Main entry responds to --help (or any recognized exit code)
 - find_code_modules() returns a non-empty set when called directly
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -15,11 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (
-    Path(__file__).resolve().parent.parent.parent
-    / "scripts"
-    / "build_traceability_index.py"
-)
+SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "build_traceability_index.py"
 
 
 @pytest.mark.smoke

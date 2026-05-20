@@ -25,6 +25,7 @@ try:
     from fastapi.testclient import TestClient
 
     from app.api.mining import _get_mining_service, router
+
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
@@ -38,6 +39,7 @@ pytestmark = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 # 辅助: 构建 TestClient，通过 dependency_overrides 注入 mock
 # ---------------------------------------------------------------------------
+
 
 def _mock_svc() -> MagicMock:
     """创建 MiningService mock（所有方法都是 AsyncMock）。"""
@@ -84,12 +86,15 @@ class TestRunMining:
         }
         _inject(app, svc)
 
-        resp = client.post("/api/mining/run", json={
-            "engine": "gp",
-            "generations": 50,
-            "population": 100,
-            "islands": 3,
-        })
+        resp = client.post(
+            "/api/mining/run",
+            json={
+                "engine": "gp",
+                "generations": 50,
+                "population": 100,
+                "islands": 3,
+            },
+        )
 
         assert resp.status_code == 202
         data = resp.json()
@@ -109,10 +114,13 @@ class TestRunMining:
         svc = _mock_svc()
         _inject(app, svc)
 
-        resp = client.post("/api/mining/run", json={
-            "engine": "unknown_engine",
-            "generations": 10,
-        })
+        resp = client.post(
+            "/api/mining/run",
+            json={
+                "engine": "unknown_engine",
+                "generations": 10,
+            },
+        )
 
         assert resp.status_code == 422  # pydantic pattern validation
 
@@ -366,8 +374,14 @@ class TestEvaluateFactor:
             "factor_name": "eval_a3f8c2d1",
             "factor_expr": "ts_mean(cs_rank(close), 20)",
             "gate_result": {
-                "G1": "PASS", "G2": "PASS", "G3": "PASS", "G4": "PASS",
-                "G5": "PASS", "G6": "PASS", "G7": "PENDING", "G8": "PENDING",
+                "G1": "PASS",
+                "G2": "PASS",
+                "G3": "PASS",
+                "G4": "PASS",
+                "G5": "PASS",
+                "G6": "PASS",
+                "G7": "PENDING",
+                "G8": "PENDING",
             },
             "overall_passed": True,
             "ic_mean": 0.0312,
@@ -377,9 +391,12 @@ class TestEvaluateFactor:
         }
         _inject(app, svc)
 
-        resp = client.post("/api/mining/evaluate", json={
-            "factor_expr": "ts_mean(cs_rank(close), 20)",
-        })
+        resp = client.post(
+            "/api/mining/evaluate",
+            json={
+                "factor_expr": "ts_mean(cs_rank(close), 20)",
+            },
+        )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -403,10 +420,13 @@ class TestEvaluateFactor:
         }
         _inject(app, svc)
 
-        client.post("/api/mining/evaluate", json={
-            "factor_expr": "ts_mean(close, 20)",
-            "run_quick_only": True,
-        })
+        client.post(
+            "/api/mining/evaluate",
+            json={
+                "factor_expr": "ts_mean(close, 20)",
+                "run_quick_only": True,
+            },
+        )
 
         svc.evaluate_factor_gate.assert_called_once_with(
             factor_expr="ts_mean(close, 20)",
@@ -430,10 +450,13 @@ class TestEvaluateFactor:
         }
         _inject(app, svc)
 
-        resp = client.post("/api/mining/evaluate", json={
-            "factor_expr": "ts_mean(close, 20)",
-            "factor_name": "my_custom_factor",
-        })
+        resp = client.post(
+            "/api/mining/evaluate",
+            json={
+                "factor_expr": "ts_mean(close, 20)",
+                "factor_name": "my_custom_factor",
+            },
+        )
 
         assert resp.status_code == 200
         svc.evaluate_factor_gate.assert_called_once_with(
@@ -449,9 +472,12 @@ class TestEvaluateFactor:
         svc.evaluate_factor_gate.side_effect = ValueError("DSL 表达式非法: 未知算子 unknown_op")
         _inject(app, svc)
 
-        resp = client.post("/api/mining/evaluate", json={
-            "factor_expr": "unknown_op(close, 5)",
-        })
+        resp = client.post(
+            "/api/mining/evaluate",
+            json={
+                "factor_expr": "unknown_op(close, 5)",
+            },
+        )
 
         assert resp.status_code == 400
         assert "DSL" in resp.json()["detail"] or "非法" in resp.json()["detail"]
@@ -463,8 +489,11 @@ class TestEvaluateFactor:
         svc.evaluate_factor_gate.side_effect = ConnectionError("行情数据加载失败")
         _inject(app, svc)
 
-        resp = client.post("/api/mining/evaluate", json={
-            "factor_expr": "ts_mean(close, 20)",
-        })
+        resp = client.post(
+            "/api/mining/evaluate",
+            json={
+                "factor_expr": "ts_mean(close, 20)",
+            },
+        )
 
         assert resp.status_code == 503

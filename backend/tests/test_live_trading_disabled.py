@@ -14,6 +14,7 @@
   TestBeatRiskTasksPaused — risk Beat 已暂停
   TestSettingsDefault — fail-secure 默认 True
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -39,9 +40,7 @@ class TestGuardBlocking:
 
     def test_override_disabled_raises(self, monkeypatch):
         """无 OVERRIDE → raise + 错误信息含修法提示."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         with pytest.raises(LiveTradingDisabledError) as exc:
             assert_live_trading_allowed(operation="place_order", code="600519.SH")
         msg = str(exc.value)
@@ -52,9 +51,7 @@ class TestGuardBlocking:
 
     def test_disabled_false_passes(self, monkeypatch):
         """LIVE_TRADING_DISABLED=False → 直接放行 (向后兼容路径)."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", False
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", False)
         # no raise expected
         assert_live_trading_allowed(operation="place_order", code="600519.SH")
 
@@ -64,9 +61,7 @@ class TestOverrideHardening1DoubleFactor:
 
     def test_override_without_reason_raises(self, monkeypatch):
         """OVERRIDE=1 + REASON 空 → raise (REASON 缺失)."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "1")
         # REASON 不设
         with pytest.raises(LiveTradingDisabledError) as exc:
@@ -77,9 +72,7 @@ class TestOverrideHardening1DoubleFactor:
 
     def test_override_with_whitespace_only_reason_raises(self, monkeypatch):
         """边界: REASON='   ' (全空格) → strip 后空 → raise."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "1")
         monkeypatch.setenv("LIVE_TRADING_OVERRIDE_REASON", "   ")
         with pytest.raises(LiveTradingDisabledError):
@@ -87,9 +80,7 @@ class TestOverrideHardening1DoubleFactor:
 
     def test_override_flag_zero_with_reason_still_raises(self, monkeypatch):
         """OVERRIDE=0 + REASON 设 → 仍 raise (FLAG 必精确 == '1')."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "0")
         monkeypatch.setenv("LIVE_TRADING_OVERRIDE_REASON", "test reason")
         with pytest.raises(LiveTradingDisabledError):
@@ -101,18 +92,15 @@ class TestOverrideBypassWithAudit:
 
     def test_override_with_reason_bypasses(self, monkeypatch):
         """OVERRIDE=1 + REASON 非空 → bypass (no raise) + DingTalk P0 推送."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "1")
         monkeypatch.setenv(
-            "LIVE_TRADING_OVERRIDE_REASON", "Emergency close 600519.SH after gap-down",
+            "LIVE_TRADING_OVERRIDE_REASON",
+            "Emergency close 600519.SH after gap-down",
         )
 
         with patch("app.security.live_trading_guard.send_alert") as mock_send:
-            assert_live_trading_allowed(
-                operation="place_order", code="600519.SH"
-            )  # no raise
+            assert_live_trading_allowed(operation="place_order", code="600519.SH")  # no raise
 
             mock_send.assert_called_once()
             call_kwargs = mock_send.call_args.kwargs
@@ -126,9 +114,7 @@ class TestOverrideBypassWithAudit:
 
     def test_override_logs_audit_trail(self, monkeypatch, caplog):
         """bypass 时 logger.warning audit 含 timestamp / reason / script / operation."""
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "1")
         monkeypatch.setenv("LIVE_TRADING_OVERRIDE_REASON", "T1 sprint emergency test")
 
@@ -139,12 +125,12 @@ class TestOverrideBypassWithAudit:
             assert_live_trading_allowed(operation="cancel_order", code="000001.SZ")
 
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelname == "WARNING" and "OVERRIDE bypass" in r.getMessage()
         ]
         assert matched, (
-            f"Expected OVERRIDE bypass warning, got: "
-            f"{[r.getMessage() for r in caplog.records]}"
+            f"Expected OVERRIDE bypass warning, got: {[r.getMessage() for r in caplog.records]}"
         )
         record = matched[0]
         assert hasattr(record, "audit"), "audit extra missing on log record"
@@ -161,9 +147,7 @@ class TestOverrideBypassWithAudit:
         防 DingTalk 不可达时 OVERRIDE 也 fail = 真紧急时 user 自己也救不了.
         审计 log 已写, DingTalk fail 是次要 channel. 沿用铁律 33-d silent_ok 注释模式.
         """
-        monkeypatch.setattr(
-            "app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True
-        )
+        monkeypatch.setattr("app.security.live_trading_guard.settings.LIVE_TRADING_DISABLED", True)
         monkeypatch.setenv("LIVE_TRADING_FORCE_OVERRIDE", "1")
         monkeypatch.setenv("LIVE_TRADING_OVERRIDE_REASON", "Network failure test")
 
@@ -180,9 +164,7 @@ class TestPaperBrokerUnaffected:
 
     def test_paper_broker_no_guard_import(self):
         """SAST: paper_broker.py 源码不 import live_trading_guard / 不调 assert."""
-        src = (_BACKEND_DIR / "engines" / "paper_broker.py").read_text(
-            encoding="utf-8"
-        )
+        src = (_BACKEND_DIR / "engines" / "paper_broker.py").read_text(encoding="utf-8")
         assert "live_trading_guard" not in src, (
             "paper_broker.py 不应 import live_trading_guard (物理隔离, "
             "guard 只挂 MiniQMTBroker.place_order/cancel_order)"
@@ -205,8 +187,7 @@ class TestBrokerQmtGuardSAST:
         src = (_BACKEND_DIR / "engines" / "broker_qmt.py").read_text(encoding="utf-8")
         count = src.count("assert_live_trading_allowed")
         assert count >= 2, (
-            f"assert_live_trading_allowed 至少 2 处 (place_order + cancel_order), "
-            f"实际 {count}"
+            f"assert_live_trading_allowed 至少 2 处 (place_order + cancel_order), 实际 {count}"
         )
 
 
@@ -242,8 +223,7 @@ class TestAllXtquantOrderCallsGuarded:
                     continue
                 src = py_file.read_text(encoding="utf-8")
                 has_order_stock = (
-                    "_trader.order_stock(" in src
-                    or "_trader.cancel_order_stock(" in src
+                    "_trader.order_stock(" in src or "_trader.cancel_order_stock(" in src
                 )
                 if has_order_stock and "assert_live_trading_allowed" not in src:
                     violations.append(str(py_file.relative_to(_BACKEND_DIR.parent)))
@@ -284,6 +264,5 @@ class TestSettingsDefault:
         field = Settings.model_fields.get("LIVE_TRADING_DISABLED")
         assert field is not None, "Settings 必含 LIVE_TRADING_DISABLED 字段"
         assert field.default is True, (
-            f"LIVE_TRADING_DISABLED 默认必 True (fail-secure 真金保护). "
-            f"实际默认值: {field.default}"
+            f"LIVE_TRADING_DISABLED 默认必 True (fail-secure 真金保护). 实际默认值: {field.default}"
         )

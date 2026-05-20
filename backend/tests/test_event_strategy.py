@@ -52,9 +52,7 @@ class _SimpleEventStrategy(EventStrategy):
         max_pos = self.config.get("max_position_size", 0.15)
         return min(max_pos, abs(event.signal_value) * 0.1)
 
-    def on_event(
-        self, event: TradingEvent, context: StrategyContext
-    ) -> dict[str, float] | None:
+    def on_event(self, event: TradingEvent, context: StrategyContext) -> dict[str, float] | None:
         """处理事件，返回{code: target_weight}。"""
         size = self.position_sizing(event, context)
         if size <= 0:

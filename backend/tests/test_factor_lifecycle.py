@@ -25,16 +25,12 @@ from engines.factor_lifecycle import (
 class TestActiveToWarning:
     def test_healthy_stays_active(self):
         # ratio = 0.9 > 0.8 → no transition
-        assert (
-            evaluate_transition("f", FactorStatus.ACTIVE.value, 0.090, 0.100) is None
-        )
+        assert evaluate_transition("f", FactorStatus.ACTIVE.value, 0.090, 0.100) is None
 
     def test_at_threshold_stays_active(self):
         # ratio == 0.8 (not strictly less than) → no transition
         # 用 0.4/0.5 保证 float 精确等于 0.8
-        assert (
-            evaluate_transition("f", FactorStatus.ACTIVE.value, 0.4, 0.5) is None
-        )
+        assert evaluate_transition("f", FactorStatus.ACTIVE.value, 0.4, 0.5) is None
 
     def test_below_threshold_transitions_to_warning(self):
         # ratio = 0.7 < 0.8 → warning
@@ -54,14 +50,20 @@ class TestActiveToWarning:
 class TestWarningToCritical:
     def test_below_critical_but_not_persistent_stays_warning(self):
         d = evaluate_transition(
-            "f", FactorStatus.WARNING.value, 0.020, 0.100,
+            "f",
+            FactorStatus.WARNING.value,
+            0.020,
+            0.100,
             days_below_critical=10,
         )
         assert d is None
 
     def test_persistent_below_critical_transitions(self):
         d = evaluate_transition(
-            "f", FactorStatus.WARNING.value, 0.020, 0.100,
+            "f",
+            FactorStatus.WARNING.value,
+            0.020,
+            0.100,
             days_below_critical=CRITICAL_PERSISTENCE_DAYS,
         )
         assert d is not None
@@ -72,7 +74,10 @@ class TestWarningToCritical:
     def test_persistence_threshold_at_exactly_20(self):
         # 恰好 20 天 → 转 critical
         d = evaluate_transition(
-            "f", FactorStatus.WARNING.value, 0.020, 0.100,
+            "f",
+            FactorStatus.WARNING.value,
+            0.020,
+            0.100,
             days_below_critical=20,
         )
         assert d is not None
@@ -81,7 +86,10 @@ class TestWarningToCritical:
     def test_ratio_above_critical_blocks_transition(self):
         # ratio = 0.6 (warning 区间), 持续 30 天不触发 critical
         d = evaluate_transition(
-            "f", FactorStatus.WARNING.value, 0.060, 0.100,
+            "f",
+            FactorStatus.WARNING.value,
+            0.060,
+            0.100,
             days_below_critical=30,
         )
         assert d is None
@@ -124,9 +132,7 @@ class TestEdgeCases:
 
     def test_baseline_ic_near_zero_skips(self):
         # |ic_ma60| < 1e-6 → 比率不稳定, 不转换
-        assert (
-            evaluate_transition("f", FactorStatus.ACTIVE.value, 0.05, 1e-7) is None
-        )
+        assert evaluate_transition("f", FactorStatus.ACTIVE.value, 0.05, 1e-7) is None
 
     def test_baseline_ic_zero_skips(self):
         assert evaluate_transition("f", FactorStatus.ACTIVE.value, 0.05, 0.0) is None

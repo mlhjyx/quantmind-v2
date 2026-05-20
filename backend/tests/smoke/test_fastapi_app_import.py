@@ -10,6 +10,7 @@
 
 运行: `pytest backend/tests/smoke/test_fastapi_app_import.py -v -m smoke`
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -92,7 +93,6 @@ def test_backend_platform_namespace_package_accessible() -> None:
     )
     if result.returncode != 0:
         pytest.fail(
-            f"`from backend.qm_platform.X import Y` failed:\n"
-            f"stderr[:1500]:\n{result.stderr[:1500]}"
+            f"`from backend.qm_platform.X import Y` failed:\nstderr[:1500]:\n{result.stderr[:1500]}"
         )
     assert "DBFeatureFlag: DBFeatureFlag" in result.stdout

@@ -9,6 +9,7 @@
   - AlertDispatchError 传播 (fail-loud, 铁律 33)
   - send_aggregated_alert 空 findings 跳过
 """
+
 from __future__ import annotations
 
 import sys
@@ -276,9 +277,7 @@ def test_run_audit_alert_dispatch_error_does_not_block_scheduler_log_or_exit_cod
 def test_get_rules_engine_caches_result():
     """reviewer P2 from batch 3.1: lru_cache 防 17 scripts 每次重复 yaml I/O."""
     pa_mod._get_rules_engine.cache_clear()
-    with patch(
-        "qm_platform.observability.AlertRulesEngine.from_yaml"
-    ) as mock_from_yaml:
+    with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_from_yaml:
         mock_from_yaml.return_value = MagicMock()
         engine1 = pa_mod._get_rules_engine()
         engine2 = pa_mod._get_rules_engine()
