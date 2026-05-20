@@ -7,19 +7,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from engines.mining.factor_dsl import (
     ALL_OPS,
     DIM_GROUPS,
     TERMINAL_DIM,
     DimType,
-    ExprNode,
     FactorDSL,
     OpType,
     check_dimensional_validity,
     infer_dimension,
 )
-
 
 # ============================================================
 # Fixtures

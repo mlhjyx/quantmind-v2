@@ -108,10 +108,10 @@ def test_strategy_g3_max_diff_zero_passes():
 
 
 def test_strategy_g3_max_diff_nonzero_fails():
-    runner = lambda: {
+    runner = lambda: {  # noqa: E731
         "max_diff": 1e-9,
         "sharpe": 0.65,
-    }  # 极小但非零, 铁律 15 严格 = 0  # noqa: E731
+    }  # 极小但非零, 铁律 15 严格 = 0
     ctx = build_strategy_context("S1", regression_runner=runner)
     result = StrategyG3RegressionGate().evaluate(ctx)
     assert result.passed is False
