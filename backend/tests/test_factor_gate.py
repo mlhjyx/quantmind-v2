@@ -561,6 +561,8 @@ def test_confirm_g6_auto_fills_g6_verdict() -> None:
     pipeline.confirm_g6_auto(report, ic_series)
     assert report.gates["G6"].status in (GateStatus.PASS, GateStatus.FAIL)
     assert "t_stat_newey_west" in report.gates["G6"].data
+    # p-value 自动算 (MEDIUM review fix) — G6 输出自包含。
+    assert report.gates["G6"].data.get("p_value") is not None
 
 
 def test_confirm_g6_auto_preserves_pending_when_uncomputable() -> None:

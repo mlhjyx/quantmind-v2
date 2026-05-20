@@ -511,7 +511,9 @@ class FactorGatePipeline:
                 report.factor_name,
             )
             return report
-        return self.confirm_g6(report, t_stat_newey_west=nw_t)
+        # 双侧 p-value: HAC t 渐近 N(0,1) → p = erfc(|t|/sqrt(2)) (stdlib math, 免 scipy)。
+        p_value = math.erfc(abs(nw_t) / math.sqrt(2.0))
+        return self.confirm_g6(report, t_stat_newey_west=nw_t, p_value=p_value)
 
     def confirm_g7(
         self,
@@ -703,7 +705,8 @@ def compute_newey_west_t(ic_series: list[float], *, max_lag: int | None = None) 
     其中 gamma_k = (1/n) * sum (x_t - mean)(x_{t-k} - mean) 为 lag-k 自协方差。
 
     Args:
-        ic_series: 月度 IC 序列 (原始未中性化, 与 G3 同源)。
+        ic_series: IC 序列 (原始未中性化, 与 G3 同源; onboarding 当前传月度 IC,
+            但本函数频率无关 — 自动 lag 规则对任意频率时序成立)。
         max_lag: Bartlett 核截断 lag L。None → Newey-West 1994 自动规则
             L = floor(4 * (n/100)^(2/9))。
 
@@ -715,9 +718,9 @@ def compute_newey_west_t(ic_series: list[float], *, max_lag: int | None = None) 
     n = len(arr)
     if n < 5:
         return None
-    # 常数序列 (方差退化) — np.ptp (max-min, 无求和舍入) 精确判定; 避免 np.mean
-    # 浮点舍入使 gamma_0 成 ~1e-35 伪正数, 进而 t 爆炸 (常数序列 t 应无定义)。
-    if float(np.ptp(arr)) == 0.0:
+    # 常数序列 (方差退化) — max-min (无求和舍入) 精确判定; 避免 np.mean 浮点舍入
+    # 使 gamma_0 成 ~1e-35 伪正数, 进而 t 爆炸 (常数序列 t 应无定义)。
+    if float(arr.max() - arr.min()) == 0.0:
         return None
     mean = float(np.mean(arr))
     demeaned = arr - mean
