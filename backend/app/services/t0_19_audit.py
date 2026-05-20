@@ -19,6 +19,7 @@ Idempotency (Phase 1 §2.3):
     - 33 (fail-loud): 任 1 失败 raise, 不 silent
     - X1 (Claude 边界): dry_run_audit=True 模式仅打印 SQL, 不真 INSERT
 """
+
 from __future__ import annotations
 
 import json
@@ -115,9 +116,7 @@ def _check_idempotency(conn: Any, trade_date: str, log_file: Path) -> None:
     # (b) Hook flag 文件
     flag_path = log_file.with_suffix(".DONE.flag")
     if flag_path.exists():
-        raise T0_19_AlreadyBackfilledError(
-            f"Hook flag 已存在: {flag_path}. 完整性证据存在, skip."
-        )
+        raise T0_19_AlreadyBackfilledError(f"Hook flag 已存在: {flag_path}. 完整性证据存在, skip.")
 
 
 def _parse_emergency_close_log(log_file: Path) -> dict[tuple[str, int], list[dict[str, Any]]]:
@@ -150,9 +149,7 @@ def _parse_emergency_close_log(log_file: Path) -> dict[tuple[str, int], list[dic
         )
 
     if not fills_by_order:
-        raise T0_19_LogParseError(
-            f"0 fill events 解析自 {log_file} (regex 不匹配 — 检查 log 格式)"
-        )
+        raise T0_19_LogParseError(f"0 fill events 解析自 {log_file} (regex 不匹配 — 检查 log 格式)")
 
     return fills_by_order
 
@@ -212,9 +209,11 @@ def _backfill_trade_log(
             agg["total_volume"],
         )
         if dry_run:
-            print(f"[DRY-RUN trade_log INSERT] code={code} order_id={order_id} "
-                  f"qty={agg['total_volume']} avg_price={agg['weighted_avg_price']:.4f} "
-                  f"ts={agg['earliest_ts']}")
+            print(
+                f"[DRY-RUN trade_log INSERT] code={code} order_id={order_id} "
+                f"qty={agg['total_volume']} avg_price={agg['weighted_avg_price']:.4f} "
+                f"ts={agg['earliest_ts']}"
+            )
         else:
             cur.execute(sql, params)
         inserted += 1
@@ -280,8 +279,10 @@ def _write_risk_event_log_audit(
     )
 
     if dry_run:
-        print(f"[DRY-RUN risk_event_log INSERT] id={audit_id} action={action} "
-              f"severity={severity} shares={submitted_count} trade_date={trade_date}")
+        print(
+            f"[DRY-RUN risk_event_log INSERT] id={audit_id} action={action} "
+            f"severity={severity} shares={submitted_count} trade_date={trade_date}"
+        )
     else:
         cur = conn.cursor()
         cur.execute(sql, params)
@@ -313,8 +314,10 @@ def _write_performance_series_row(
     params = (trade_date, strategy_id, nav, nav)
 
     if dry_run:
-        print(f"[DRY-RUN performance_series INSERT] trade_date={trade_date} "
-              f"strategy_id={strategy_id} nav={nav:,.2f} cash={nav:,.2f} position_count=0")
+        print(
+            f"[DRY-RUN performance_series INSERT] trade_date={trade_date} "
+            f"strategy_id={strategy_id} nav={nav:,.2f} cash={nav:,.2f} position_count=0"
+        )
     else:
         cur = conn.cursor()
         cur.execute(sql, params)
@@ -356,8 +359,10 @@ def _clear_position_snapshot_and_reset_cb_state(
     cb_params = (nav, cb_reason)
 
     if dry_run:
-        print(f"[DRY-RUN circuit_breaker_state UPDATE] execution_mode=live "
-              f"nav→{nav:,.2f} reason='{cb_reason}'")
+        print(
+            f"[DRY-RUN circuit_breaker_state UPDATE] execution_mode=live "
+            f"nav→{nav:,.2f} reason='{cb_reason}'"
+        )
         cb_rows = 1
     else:
         cur = conn.cursor()
@@ -382,8 +387,10 @@ def _clear_position_snapshot_and_reset_cb_state(
     ps_params = (trade_date, strategy_id, trade_date, strategy_id)
 
     if dry_run:
-        print(f"[DRY-RUN position_snapshot INSERT sentinel] trade_date={trade_date} "
-              f"code='_T0_19_SENTINEL_' qty=0 (4-28 stale 19 行 DELETE 留 PT 重启 gate)")
+        print(
+            f"[DRY-RUN position_snapshot INSERT sentinel] trade_date={trade_date} "
+            f"code='_T0_19_SENTINEL_' qty=0 (4-28 stale 19 行 DELETE 留 PT 重启 gate)"
+        )
         ps_rows = 1
     else:
         cur = conn.cursor()
@@ -443,9 +450,7 @@ def write_post_close_audit(
     if trade_date is None:
         m = re.search(r"emergency_close_(\d{4})(\d{2})(\d{2})_", log_file.name)
         if not m:
-            raise T0_19_LogParseError(
-                f"trade_date 未指定且 log 文件名无 YYYYMMDD: {log_file.name}"
-            )
+            raise T0_19_LogParseError(f"trade_date 未指定且 log 文件名无 YYYYMMDD: {log_file.name}")
         trade_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
 
     logger.info("[T0-19 audit] start trade_date=%s dry_run=%s", trade_date, dry_run_audit)
@@ -453,6 +458,7 @@ def write_post_close_audit(
     # DB connection
     if db_conn is None and not dry_run_audit:
         from app.services.db import get_conn  # type: ignore
+
         db_conn = get_conn()
 
     # Step 0: 重入检测 (dry_run 模式跳, 因可能多次 self-test)
@@ -465,7 +471,8 @@ def write_post_close_audit(
     if len(fills_by_order) != submitted_count and submitted_count > 0:
         logger.warning(
             "[T0-19 audit] order_id 数 (%d) ≠ submitted_count (%d) — partial fills 或 cancelled",
-            len(fills_by_order), submitted_count,
+            len(fills_by_order),
+            submitted_count,
         )
 
     # Step 1: trade_log backfill
@@ -475,7 +482,11 @@ def write_post_close_audit(
 
     # Step 2: risk_event_log audit
     audit_id = _write_risk_event_log_audit(
-        db_conn, sells_summary, chat_authorization, trade_date, strategy_id,
+        db_conn,
+        sells_summary,
+        chat_authorization,
+        trade_date,
+        strategy_id,
         dry_run=dry_run_audit,
     )
 

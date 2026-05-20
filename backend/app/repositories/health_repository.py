@@ -54,9 +54,7 @@ class HealthRepository(BaseRepository):
             for r in rows
         ]
 
-    async def get_circuit_breaker_history(
-        self, _strategy_id: str, days: int = 30
-    ) -> list[dict]:
+    async def get_circuit_breaker_history(self, _strategy_id: str, days: int = 30) -> list[dict]:
         """获取最近N天的熔断事件。"""
         rows = await self.fetch_all(
             """SELECT schedule_time, status, error_message, result_json

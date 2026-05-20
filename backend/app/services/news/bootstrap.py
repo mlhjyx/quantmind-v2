@@ -35,6 +35,7 @@ test isolation (沿用 alert.py reset_alert_router 体例):
 - backend/qm_platform/llm/bootstrap.py (LLM router factory, 0 wire 本 factory — 沿用
   inner injection: caller 调 get_llm_router(conn_factory) 后传给 NewsClassifierService)
 """
+
 from __future__ import annotations
 
 import threading
@@ -96,6 +97,7 @@ def get_news_classifier(
                 if router is None:
                     # 默认走 get_llm_router 真**唯一 sanctioned 入口** sustained ADR-032.
                     from backend.qm_platform.llm import get_llm_router
+
                     router = get_llm_router(conn_factory=conn_factory)
                 _classifier_singleton = NewsClassifierService(router=router)
     return _classifier_singleton

@@ -28,10 +28,14 @@ class MarketDataRepository(BaseRepository):
         rows = await self.fetch_all(sql, params)
         return [
             {
-                "code": r[0], "open": float(r[1]), "high": float(r[2]),
-                "low": float(r[3]), "close": float(r[4]),
+                "code": r[0],
+                "open": float(r[1]),
+                "high": float(r[2]),
+                "low": float(r[3]),
+                "close": float(r[4]),
                 "pre_close": float(r[5]) if r[5] else 0,
-                "volume": float(r[6]), "amount": float(r[7]),
+                "volume": float(r[6]),
+                "amount": float(r[7]),
                 "up_limit": float(r[8]) if r[8] else None,
                 "down_limit": float(r[9]) if r[9] else None,
             }
@@ -74,10 +78,15 @@ class MarketDataRepository(BaseRepository):
         if not row:
             return None
         return {
-            "code": row[0], "name": row[1], "industry_sw1": row[2],
-            "industry_sw2": row[3], "market": row[4],
-            "list_date": row[5], "delist_date": row[6],
-            "board_type": row[7], "price_limit": float(row[8]) if row[8] else 0.1,
+            "code": row[0],
+            "name": row[1],
+            "industry_sw1": row[2],
+            "industry_sw2": row[3],
+            "market": row[4],
+            "list_date": row[5],
+            "delist_date": row[6],
+            "board_type": row[7],
+            "price_limit": float(row[8]) if row[8] else 0.1,
         }
 
     async def is_trading_day(self, trade_date: date, market: str = "astock") -> bool:
@@ -89,9 +98,7 @@ class MarketDataRepository(BaseRepository):
         )
         return bool(val)
 
-    async def get_next_trading_day(
-        self, trade_date: date, market: str = "astock"
-    ) -> date | None:
+    async def get_next_trading_day(self, trade_date: date, market: str = "astock") -> date | None:
         """获取下一个交易日。"""
         return await self.fetch_scalar(
             """SELECT MIN(trade_date) FROM trading_calendar
@@ -113,9 +120,7 @@ class MarketDataRepository(BaseRepository):
             list[dict]: 每项含 label/code/value/change_pct/is_up。
         """
         # 获取指数最新日期
-        latest_date = await self.fetch_scalar(
-            "SELECT MAX(trade_date) FROM index_daily"
-        )
+        latest_date = await self.fetch_scalar("SELECT MAX(trade_date) FROM index_daily")
         if not latest_date:
             return []
 
@@ -138,13 +143,15 @@ class MarketDataRepository(BaseRepository):
         for r in rows:
             code, close, pct = r[0], r[1], r[2]
             change_pct = float(pct) if pct is not None else 0.0
-            result.append({
-                "label": label_map.get(code, code),
-                "code": code,
-                "value": float(close) if close else 0.0,
-                "change_pct": change_pct,
-                "is_up": change_pct >= 0,
-            })
+            result.append(
+                {
+                    "label": label_map.get(code, code),
+                    "code": code,
+                    "value": float(close) if close else 0.0,
+                    "change_pct": change_pct,
+                    "is_up": change_pct >= 0,
+                }
+            )
 
         # 全市场成交额（千元→亿元）
         amount_val = await self.fetch_scalar(
@@ -152,12 +159,14 @@ class MarketDataRepository(BaseRepository):
             {"td": latest_date},
         )
         total_amount_b = round(float(amount_val) / 1_000_000, 2) if amount_val else 0.0
-        result.append({
-            "label": "成交额(亿)",
-            "code": "TOTAL_AMOUNT",
-            "value": total_amount_b,
-            "change_pct": 0.0,
-            "is_up": True,
-        })
+        result.append(
+            {
+                "label": "成交额(亿)",
+                "code": "TOTAL_AMOUNT",
+                "value": total_amount_b,
+                "change_pct": 0.0,
+                "is_up": True,
+            }
+        )
 
         return result

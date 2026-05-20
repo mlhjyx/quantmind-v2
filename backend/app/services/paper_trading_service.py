@@ -35,15 +35,15 @@ logger = structlog.get_logger(__name__)
 # 毕业标准常量（CLAUDE.md §Paper Trading 毕业标准）
 GRADUATION_MIN_DAYS: int = 60
 GRADUATION_SHARPE_RATIO: float = 0.7  # >= 回测Sharpe × 70%
-GRADUATION_MDD_RATIO: float = 1.5     # <= 回测MDD × 1.5倍
+GRADUATION_MDD_RATIO: float = 1.5  # <= 回测MDD × 1.5倍
 GRADUATION_SLIPPAGE_TOLERANCE: float = 0.5  # 偏差 < 50%
 
 # Sprint 1.10 新增4项评估标准
-GRADUATION_FILL_RATE_MIN: float = 95.0     # 成交率 >= 95%
+GRADUATION_FILL_RATE_MIN: float = 95.0  # 成交率 >= 95%
 GRADUATION_AVG_SLIPPAGE_MAX: float = 30.0  # 平均滑点 <= 30bps（0.30%）
 GRADUATION_TRACKING_ERROR_MAX: float = 2.0  # 年化TE <= 2%
-GRADUATION_GAP_HOURS_MIN: float = 12.0     # 信号→执行最短12h（T日16:30→T+1 09:00）
-GRADUATION_GAP_HOURS_MAX: float = 20.0     # 信号→执行最长20h（正常链路16h，允许4h误差）
+GRADUATION_GAP_HOURS_MIN: float = 12.0  # 信号→执行最短12h（T日16:30→T+1 09:00）
+GRADUATION_GAP_HOURS_MAX: float = 20.0  # 信号→执行最长20h（正常链路16h，允许4h误差）
 
 
 class PaperTradingService:
@@ -57,9 +57,7 @@ class PaperTradingService:
         self.perf_repo = PerformanceRepository(session)
         self.trade_repo = TradeRepository(session)
 
-    async def get_status(
-        self, strategy_id: str
-    ) -> dict[str, Any]:
+    async def get_status(self, strategy_id: str) -> dict[str, Any]:
         """获取Paper Trading当前状态。
 
         Args:
@@ -78,14 +76,16 @@ class PaperTradingService:
         """
         latest = await self.perf_repo.get_latest_nav(strategy_id, "paper")
         # 用全量数据计算运行天数和统计指标
-        full_series = await self.perf_repo.get_nav_series(
-            strategy_id, execution_mode="paper"
-        )
+        full_series = await self.perf_repo.get_nav_series(strategy_id, execution_mode="paper")
         running_days = len(full_series)
 
-        rolling = await self.perf_repo.get_rolling_stats(
-            strategy_id, lookback_days=running_days, execution_mode="paper"
-        ) if running_days > 0 else None
+        rolling = (
+            await self.perf_repo.get_rolling_stats(
+                strategy_id, lookback_days=running_days, execution_mode="paper"
+            )
+            if running_days > 0
+            else None
+        )
 
         if not latest:
             return {
@@ -134,14 +134,16 @@ class PaperTradingService:
             - summary: 达标项数/总项数
         """
         # 获取全量Paper Trading数据
-        full_series = await self.perf_repo.get_nav_series(
-            strategy_id, execution_mode="paper"
-        )
+        full_series = await self.perf_repo.get_nav_series(strategy_id, execution_mode="paper")
         running_days = len(full_series)
 
-        rolling = await self.perf_repo.get_rolling_stats(
-            strategy_id, lookback_days=running_days, execution_mode="paper"
-        ) if running_days > 0 else None
+        rolling = (
+            await self.perf_repo.get_rolling_stats(
+                strategy_id, lookback_days=running_days, execution_mode="paper"
+            )
+            if running_days > 0
+            else None
+        )
 
         actual_sharpe = rolling["sharpe"] if rolling else 0
         actual_mdd = rolling["mdd"] if rolling else 0
@@ -198,34 +200,40 @@ class PaperTradingService:
         exec_metrics = await self.get_execution_metrics(strategy_id)
 
         fill_rate = exec_metrics["fill_rate"]
-        avg_slip_pct = exec_metrics["avg_slippage_pct"]    # 百分比(%)
-        tracking_err = exec_metrics["tracking_error"]       # 年化TE(%)
+        avg_slip_pct = exec_metrics["avg_slippage_pct"]  # 百分比(%)
+        tracking_err = exec_metrics["tracking_error"]  # 年化TE(%)
         gap_hours = exec_metrics["signal_execution_gap_hours"]
 
         # 成交率: >= 95%
-        criteria.append({
-            "name": "成交率",
-            "target": f">= {GRADUATION_FILL_RATE_MIN:.0f}%",
-            "actual": f"{fill_rate:.1f}%",
-            "passed": fill_rate >= GRADUATION_FILL_RATE_MIN,
-        })
+        criteria.append(
+            {
+                "name": "成交率",
+                "target": f">= {GRADUATION_FILL_RATE_MIN:.0f}%",
+                "actual": f"{fill_rate:.1f}%",
+                "passed": fill_rate >= GRADUATION_FILL_RATE_MIN,
+            }
+        )
 
         # 平均滑点: <= 30bps（0.30%）
         avg_slip_bps = avg_slip_pct * 100  # % → bps
-        criteria.append({
-            "name": "平均滑点",
-            "target": f"<= {GRADUATION_AVG_SLIPPAGE_MAX:.0f}bps",
-            "actual": f"{avg_slip_bps:.1f}bps",
-            "passed": avg_slip_bps <= GRADUATION_AVG_SLIPPAGE_MAX,
-        })
+        criteria.append(
+            {
+                "name": "平均滑点",
+                "target": f"<= {GRADUATION_AVG_SLIPPAGE_MAX:.0f}bps",
+                "actual": f"{avg_slip_bps:.1f}bps",
+                "passed": avg_slip_bps <= GRADUATION_AVG_SLIPPAGE_MAX,
+            }
+        )
 
         # 年化跟踪误差: <= 2%
-        criteria.append({
-            "name": "跟踪误差(TE)",
-            "target": f"<= {GRADUATION_TRACKING_ERROR_MAX:.0f}% (年化)",
-            "actual": f"{tracking_err:.2f}%",
-            "passed": tracking_err <= GRADUATION_TRACKING_ERROR_MAX,
-        })
+        criteria.append(
+            {
+                "name": "跟踪误差(TE)",
+                "target": f"<= {GRADUATION_TRACKING_ERROR_MAX:.0f}% (年化)",
+                "actual": f"{tracking_err:.2f}%",
+                "passed": tracking_err <= GRADUATION_TRACKING_ERROR_MAX,
+            }
+        )
 
         # 信号→执行时间差: 12h-20h（标准T日17:20→T+1 09:30≈16h）
         if gap_hours <= 0:
@@ -234,12 +242,14 @@ class PaperTradingService:
         else:
             gap_passed = GRADUATION_GAP_HOURS_MIN <= gap_hours <= GRADUATION_GAP_HOURS_MAX
             gap_note = f"{gap_hours:.1f}h"
-        criteria.append({
-            "name": "信号→执行时延",
-            "target": f"{GRADUATION_GAP_HOURS_MIN:.0f}h-{GRADUATION_GAP_HOURS_MAX:.0f}h (标准16h)",
-            "actual": gap_note,
-            "passed": gap_passed,
-        })
+        criteria.append(
+            {
+                "name": "信号→执行时延",
+                "target": f"{GRADUATION_GAP_HOURS_MIN:.0f}h-{GRADUATION_GAP_HOURS_MAX:.0f}h (标准16h)",
+                "actual": gap_note,
+                "passed": gap_passed,
+            }
+        )
 
         passed_count = sum(1 for c in criteria if c["passed"])
         total_count = len(criteria)
@@ -250,9 +260,7 @@ class PaperTradingService:
             "summary": f"{passed_count}/{total_count}",
         }
 
-    async def get_execution_metrics(
-        self, strategy_id: str
-    ) -> dict[str, Any]:
+    async def get_execution_metrics(self, strategy_id: str) -> dict[str, Any]:
         """获取执行质量指标（Sprint 1.10 新增4项）。
 
         Args:
@@ -267,13 +275,11 @@ class PaperTradingService:
         """
         import pandas as pd
 
-        trades = await self.trade_repo.get_trades(
-            strategy_id, execution_mode="paper", limit=10000
-        )
+        trades = await self.trade_repo.get_trades(strategy_id, execution_mode="paper", limit=10000)
 
         if not trades:
             return {
-                "fill_rate": 100.0,     # 无交易记录 = 无失败 = 100%
+                "fill_rate": 100.0,  # 无交易记录 = 无失败 = 100%
                 "avg_slippage_pct": 0.0,
                 "tracking_error": 0.0,
                 "signal_execution_gap_hours": 0.0,
@@ -282,38 +288,30 @@ class PaperTradingService:
         # ── 成交率: target_orders vs fills ──
         # trade_log中 status='filled'|'partial'为成功，'cancelled'|'rejected'为失败
         target_orders = len(trades)
-        successful = sum(
-            1 for t in trades
-            if t.get("status", "filled") in ("filled", "partial")
-        )
+        successful = sum(1 for t in trades if t.get("status", "filled") in ("filled", "partial"))
         fill_rate = calc_fill_rate(target_orders, successful)
 
         # ── 平均滑点(%) ──
         # trade_log.signal_price vs actual fill price
         class _FillProxy:
             """简单代理对象让calc_avg_slippage_pct可以访问fill.code和fill.price。"""
+
             def __init__(self, code: str, price: float):
                 self.code = code
                 self.price = price
 
         fills_with_price = [
-            _FillProxy(t["code"], float(t.get("price", 0) or 0))
-            for t in trades
-            if t.get("price")
+            _FillProxy(t["code"], float(t.get("price", 0) or 0)) for t in trades if t.get("price")
         ]
         signal_prices = {
-            t["code"]: float(t.get("signal_price", 0) or 0)
-            for t in trades
-            if t.get("signal_price")
+            t["code"]: float(t.get("signal_price", 0) or 0) for t in trades if t.get("signal_price")
         }
         avg_slip_pct = calc_avg_slippage_pct(fills_with_price, signal_prices)
 
         # ── 跟踪误差: 实际日收益 vs 目标日收益 ──
         # 需要performance_series + 重建目标收益（暂用actual_return近似，TE约0）
         # TODO(Phase 1): 存储target_return到performance_series后精确计算
-        full_series = await self.perf_repo.get_nav_series(
-            strategy_id, execution_mode="paper"
-        )
+        full_series = await self.perf_repo.get_nav_series(strategy_id, execution_mode="paper")
         if len(full_series) >= 3:
             actual_rets = pd.Series([s["daily_return"] for s in full_series]).dropna()
             # target_returns暂时用actual_returns的rolling mean作为近似
@@ -332,6 +330,7 @@ class PaperTradingService:
             if t.get("signal_date") and t.get("trade_date"):
                 try:
                     from datetime import datetime
+
                     # signal生成时间：信号日 17:20
                     sig_dt = datetime.combine(t["signal_date"], datetime.min.time()).replace(
                         hour=17, minute=20
@@ -354,9 +353,7 @@ class PaperTradingService:
             "signal_execution_gap_hours": gap_hours,
         }
 
-    async def _calc_avg_slippage(
-        self, strategy_id: str
-    ) -> float:
+    async def _calc_avg_slippage(self, strategy_id: str) -> float:
         """计算Paper Trading的平均滑点(bps)。
 
         Args:
@@ -365,9 +362,7 @@ class PaperTradingService:
         Returns:
             平均滑点，单位bps。无交易记录时返回0。
         """
-        trades = await self.trade_repo.get_trades(
-            strategy_id, execution_mode="paper", limit=10000
-        )
+        trades = await self.trade_repo.get_trades(strategy_id, execution_mode="paper", limit=10000)
         if not trades:
             return 0
 
@@ -412,9 +407,7 @@ class PaperTradingService:
         cur = conn.cursor()
 
         # 计算NAV
-        market_value = sum(
-            shares * prices.get(code, 0) for code, shares in holdings.items()
-        )
+        market_value = sum(shares * prices.get(code, 0) for code, shares in holdings.items())
         nav = market_value + cash
         position_count = len(holdings)
         cash_ratio = cash / nav if nav > 0 else 1.0
@@ -446,8 +439,7 @@ class PaperTradingService:
                    (code, trade_date, strategy_id, quantity, market_value,
                     weight, avg_cost, unrealized_pnl, execution_mode)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'paper')""",
-                (code, trade_date, strategy_id, shares, mv, weight,
-                 avg_cost, unrealized_pnl),
+                (code, trade_date, strategy_id, shares, mv, weight, avg_cost, unrealized_pnl),
             )
 
         # ── 2. performance_series ──
@@ -462,7 +454,7 @@ class PaperTradingService:
         prev_row = cur.fetchone()
         prev_nav = float(prev_row[0]) if prev_row else initial_capital
         daily_return = (nav / prev_nav - 1) if prev_nav > 0 else 0.0
-        cumulative_return = (nav / initial_capital - 1)
+        cumulative_return = nav / initial_capital - 1
 
         # 计算回撤（peak = max(initial_capital, 当日及之前所有NAV)）
         cur.execute(
@@ -505,9 +497,11 @@ class PaperTradingService:
         )
 
         logger.info(
-            "[PaperTradingService] NAV更新: date=%s, NAV=%.0f, "
-            "positions=%d, daily_return=%+.4f",
-            trade_date, nav, position_count, daily_return,
+            "[PaperTradingService] NAV更新: date=%s, NAV=%.0f, positions=%d, daily_return=%+.4f",
+            trade_date,
+            nav,
+            position_count,
+            daily_return,
         )
 
         return {

@@ -168,17 +168,15 @@ class TushareAPI:
         """拉取某日全市场基础指标(指定fields避免brotli错误)。"""
         return self.query("daily_basic", trade_date=trade_date, fields=DAILY_BASIC_FIELDS)
 
-    def fetch_index_daily(
-        self, ts_code: str, start_date: str, end_date: str
-    ) -> pd.DataFrame:
+    def fetch_index_daily(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
         """拉取指数日线数据。"""
         return self.query("index_daily", ts_code=ts_code, start_date=start_date, end_date=end_date)
 
-    def fetch_index_weight(
-        self, index_code: str, start_date: str, end_date: str
-    ) -> pd.DataFrame:
+    def fetch_index_weight(self, index_code: str, start_date: str, end_date: str) -> pd.DataFrame:
         """拉取指数成分股权重。"""
-        return self.query("index_weight", index_code=index_code, start_date=start_date, end_date=end_date)
+        return self.query(
+            "index_weight", index_code=index_code, start_date=start_date, end_date=end_date
+        )
 
     # ─── 合并单日数据为klines_daily格式 ────────────────────
 
@@ -232,10 +230,23 @@ class TushareAPI:
             df["turnover_rate"] = None
 
         cols = [
-            "code", "trade_date", "open", "high", "low", "close",
-            "pre_close", "change", "pct_change", "volume", "amount",
-            "turnover_rate", "adj_factor", "is_suspended", "is_st",
-            "up_limit", "down_limit",
+            "code",
+            "trade_date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "pre_close",
+            "change",
+            "pct_change",
+            "volume",
+            "amount",
+            "turnover_rate",
+            "adj_factor",
+            "is_suspended",
+            "is_st",
+            "up_limit",
+            "down_limit",
         ]
         return df[cols]
 

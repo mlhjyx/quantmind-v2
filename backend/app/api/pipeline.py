@@ -42,6 +42,7 @@ def _require_local(request: Request) -> None:
     if client_ip not in _LOCALHOST_IPS:
         raise HTTPException(status_code=403, detail="审批操作仅允许本机访问")
 
+
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 
