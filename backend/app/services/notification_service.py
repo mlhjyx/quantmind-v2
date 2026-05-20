@@ -172,6 +172,27 @@ class NotificationRepository(BaseRepository):
         )
         return result.rowcount
 
+    async def delete_old(self, days: int = 30) -> int:
+        """清理旧通知 —— 删除超过 days 天的已读通知。
+
+        仅删除 is_read = TRUE 的旧通知: 未读通知 (无论多旧) 一律保留, 避免
+        清理动作绕过用户未读感知 (前端铃铛未读计数完整性)。days 经
+        make_interval 参数化绑定, 不拼接 interval 字符串 (防注入)。
+
+        Args:
+            days: 保留天数; created_at 早于 NOW() - days 天的已读通知被删除。
+
+        Returns:
+            删除条数。
+        """
+        result = await self.execute(
+            "DELETE FROM notifications "
+            "WHERE is_read = TRUE "
+            "AND created_at < NOW() - make_interval(days => :days)",
+            {"days": days},
+        )
+        return result.rowcount
+
 
 class NotificationService:
     """统一通知服务。
