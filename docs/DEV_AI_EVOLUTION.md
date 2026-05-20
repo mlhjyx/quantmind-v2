@@ -223,22 +223,31 @@ AI 闭环需要回测引擎提供两种模式:
 
 | 模式 | 用途 | 时间范围 | 成本模型 | 速度 | 当前状态 |
 |---|---|---|---|---|---|
-| **快速回测** | ❺ 内循环淘汰 80% 弱候选 | 1 年 | 简化 (固定滑点) | ~1s | **需新增** |
+| **快速回测** | ❺ 内循环淘汰 80% 弱候选 | 1 年 | 简化 (固定滑点) | ~1s | ✅ 已实现 (Plan M) |
 | **完整 WF** | ❺ 外循环最终验证 Top 20% | 5-12 年 | 全成本 (三因素) | 15-75s | ✅ 已有 |
 
-快速回测入口 (待实现):
+快速回测入口 (✅ 已实现 — Plan M):
 ```python
 def run_quick_backtest(config: dict, years: int = 1) -> dict:
     """轻量回测: 1年, 简化成本, 返回 {sharpe, mdd, annual_return, turnover}"""
     # 复用 BacktestEngine 但跳过 WF / 跳过详细交易记录
 ```
 
-批量模式 (待实现):
+批量模式 (✅ 已实现 — Plan M):
 ```python
 def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
     """串行跑 N 个策略, 尊重 32GB 内存约束"""
     # 每个策略独立加载/释放数据, 避免 OOM
 ```
+
+> ✅ **实现状态 (Plan M, 2026-05-20)**: `run_quick_backtest` / `run_batch_backtest`
+> 已实现于 `backend/engines/mining/quick_backtester.py` (并 export 自
+> `engines.mining`)。薄封装既有 `QuickBacktester` —— config 提供
+> `price_data` / `factor_values` DataFrame (caller-provides-data, 同
+> QuickBacktester 契约, 不读 DB); 返回 `{sharpe, mdd, annual_return, turnover}`,
+> 失败时 sharpe=-999 + error 键。`run_batch_backtest` 串行逐个处理 (每策略
+> QuickBacktester 用完即弃, GC 释放内存索引, 反 OOM); `mode="quick"` 是本接口
+> 范围, `mode="full"` 走既有 `scripts/rolling_wf.py`。
 
 ### Orchestrator 实现位置
 
