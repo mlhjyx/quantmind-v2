@@ -252,6 +252,14 @@ def estimate_param_impact(param_name, old_value, new_value) -> str:
     return f"{param_name}: {old_value} → {new_value}"
 ```
 
+> ✅ **实现状态 (Plan L, 2026-05-20)**: `estimate_param_impact()` 已实现于
+> `app/services/param_service.py` + `GET /api/params/{key}/impact`。`_PARAM_IMPACT_FORMULAS`
+> 键为**真实** dotted 参数 key (`signal.top_n` / `signal.turnover_cap` /
+> `signal.industry_cap` / `signal.single_stock_cap` / `backtest.initial_capital`
+> —— 本节示例的 `holding_n` 等是早期占位名)。公式仅做**事实性陈述** (单位换算 /
+> 重述), 不做启发式预测 —— 凭空预测换手率/成本变化的数字会误导用户。未登记
+> 公式的参数 (及值无法转 float 时) 回退通用 `{name}: {old} → {new}` 串。
+
 ## 4.3 版本记录
 
 ```sql
@@ -293,9 +301,9 @@ async def rollback_to(timestamp, reason, changed_by="system") -> dict:
      skipped_created_after, skipped_count} 摘要"""
 ```
 
-> §4.2 `estimate_param_impact` 变更影响预估弹窗 —— 暂未实现 (该节示例的
-> lambda key `holding_n`/`single_stock_max` 与实际参数名 `holding_count_n`/
-> `single_stock_max_weight` 不一致, 需先对齐参数名映射, 留独立 follow-up)。
+> §4.2 `estimate_param_impact` 变更影响预估 —— ✅ 已实现 (Plan L, 见 §4.2
+> 实现状态注)。至此 DEV_PARAM_CONFIG §4 (4.2 影响预估 / 4.3 版本记录 /
+> 4.4 一键回滚) 全部落地。
 
 ---
 
