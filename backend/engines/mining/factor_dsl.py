@@ -380,6 +380,43 @@ def check_dimensional_validity(node: ExprNode) -> tuple[bool, str]:
     return True, "OK"
 
 
+def check_forbidden_combos(node: ExprNode) -> tuple[bool, str]:
+    """检查表达式是否含 DIMENSION_RULES.forbidden_combos 中的无意义组合。
+
+    GP_CLOSED_LOOP_DESIGN §2.4: 部分 (算子, 字段, 字段) 组合无经济学意义,
+    GP 应直接跳过 —— e.g. ts_corr(volume, pe_ttm) (量与估值的时序相关无意义) /
+    div(close, volume) (价格/成交量无量纲意义)。check_dimensional_validity 的
+    量纲推断覆盖不到这两类 (ts_corr 输出恒 RATIO / div 不同量纲→UNKNOWN, 均
+    不报错), 故用本显式黑名单补充。
+
+    匹配规则: 某节点 op == combo[0] 且其全部直接子节点均为终端字段, 字段 op
+    集合 == set(combo[1:]) —— 顺序无关 (覆盖对称算子 ts_corr; div 反向
+    volume/close 同样无经济意义)。仅匹配直接子终端, 嵌套表达式 (如
+    div(ts_mean(close, 20), volume)) 不命中 —— 与 §2.4 黑名单的字面组合语义一致。
+
+    Args:
+        node: 待检查的表达式树根节点。
+
+    Returns:
+        (is_valid, reason). is_valid=False 时 reason 说明命中的 combo。
+    """
+    for n in node.all_nodes():
+        if not n.children:
+            continue
+        for combo in DIMENSION_RULES.get("forbidden_combos", []):
+            combo_op = combo[0]
+            combo_fields = combo[1:]
+            if n.op != combo_op:
+                continue
+            child_ops = [c.op for c in n.children if c.is_terminal()]
+            if len(child_ops) == len(n.children) and set(child_ops) == set(combo_fields):
+                return False, (
+                    f"禁止组合 {combo_op}({', '.join(combo_fields)}): "
+                    f"无经济学意义 (DIMENSION_RULES.forbidden_combos)"
+                )
+    return True, "OK"
+
+
 # ---------------------------------------------------------------------------
 # 表达式树节点
 # ---------------------------------------------------------------------------
@@ -1031,6 +1068,11 @@ class FactorDSL:
         dim_ok, dim_reason = check_dimensional_validity(tree)
         if not dim_ok:
             return False, f"量纲违规: {dim_reason}"
+
+        # 禁止组合检查 (GP_CLOSED_LOOP_DESIGN §2.4 — 无经济学意义组合 GP 跳过)
+        combo_ok, combo_reason = check_forbidden_combos(tree)
+        if not combo_ok:
+            return False, combo_reason
 
         return True, "OK"
 
