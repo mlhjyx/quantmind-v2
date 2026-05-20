@@ -21,8 +21,11 @@ import pytest
 from engines.mining.quick_backtester import (
     QuickBacktester,
     QuickBacktestResult,
+    _annualized_return,
     _calc_mdd,
     _calc_sharpe,
+    run_batch_backtest,
+    run_quick_backtest,
 )
 
 # ---------------------------------------------------------------------------
@@ -480,3 +483,94 @@ class TestExtremeBoundary:
         bt = QuickBacktester(price_data=price_df, top_n=1)
         result = bt.backtest(factor_df)
         assert isinstance(result.sharpe, float)
+
+
+# ---------------------------------------------------------------------------
+# 模块级接口测试 (DEV_AI_EVOLUTION §二-A — run_quick_backtest / run_batch_backtest)
+# ---------------------------------------------------------------------------
+
+
+class TestRunQuickBacktest:
+    """run_quick_backtest 薄封装接口 (DEV_AI_EVOLUTION §二-A)。"""
+
+    def test_returns_spec_keys(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+        """正常 config → 返回 {sharpe, mdd, annual_return, turnover}, 无 error。"""
+        config = {"price_data": price_df, "factor_values": factor_df, "top_n": 15}
+        out = run_quick_backtest(config, years=1)
+        assert set(out) >= {"sharpe", "mdd", "annual_return", "turnover"}
+        assert isinstance(out["sharpe"], float)
+        assert isinstance(out["mdd"], float)
+        assert isinstance(out["annual_return"], float)
+        assert isinstance(out["turnover"], float)
+        assert "error" not in out
+
+    def test_missing_price_data_raises(self, factor_df: pd.DataFrame) -> None:
+        """config 缺 price_data → ValueError。"""
+        with pytest.raises(ValueError, match="price_data"):
+            run_quick_backtest({"factor_values": factor_df})
+
+    def test_missing_factor_values_raises(self, price_df: pd.DataFrame) -> None:
+        """config 缺 factor_values → ValueError。"""
+        with pytest.raises(ValueError, match="factor_values"):
+            run_quick_backtest({"price_data": price_df})
+
+    def test_backtest_failure_surfaces_error(self, price_df: pd.DataFrame) -> None:
+        """因子值为空 → sharpe=-999 + error 键 (不抛异常)。"""
+        empty = pd.DataFrame(columns=["trade_date", "code", "factor_value"])
+        out = run_quick_backtest({"price_data": price_df, "factor_values": empty})
+        assert out["sharpe"] == -999.0
+        assert "error" in out
+
+    def test_default_top_n(self, price_df: pd.DataFrame, factor_df: pd.DataFrame) -> None:
+        """config 不带 top_n → 用默认值, 仍返回有效结果。"""
+        out = run_quick_backtest({"price_data": price_df, "factor_values": factor_df})
+        assert isinstance(out["sharpe"], float)
+
+
+class TestRunBatchBacktest:
+    """run_batch_backtest 串行批量接口 (DEV_AI_EVOLUTION §二-A)。"""
+
+    def test_batch_returns_per_config_results(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
+        """N 个 config → N 个等序结果。"""
+        configs = [
+            {"price_data": price_df, "factor_values": factor_df, "top_n": 10},
+            {"price_data": price_df, "factor_values": factor_df, "top_n": 20},
+        ]
+        results = run_batch_backtest(configs, mode="quick")
+        assert len(results) == 2
+        for r in results:
+            assert set(r) >= {"sharpe", "mdd", "annual_return", "turnover"}
+
+    def test_batch_empty_configs(self) -> None:
+        """空 configs → 空结果列表。"""
+        assert run_batch_backtest([], mode="quick") == []
+
+    def test_batch_invalid_mode_raises(
+        self, price_df: pd.DataFrame, factor_df: pd.DataFrame
+    ) -> None:
+        """mode 非 'quick' → ValueError (完整 WF 走既有 rolling_wf)。"""
+        configs = [{"price_data": price_df, "factor_values": factor_df}]
+        with pytest.raises(ValueError, match="quick"):
+            run_batch_backtest(configs, mode="full")
+
+
+class TestAnnualizedReturn:
+    """_annualized_return 辅助函数。"""
+
+    def test_none_returns_zero(self) -> None:
+        """None 输入 → 0.0。"""
+        assert _annualized_return(None) == 0.0
+
+    def test_short_series_returns_zero(self) -> None:
+        """长度 < 2 → 0.0。"""
+        assert _annualized_return(pd.Series([0.01])) == 0.0
+
+    def test_positive_drift_positive_return(self) -> None:
+        """正漂移日收益 → 正年化收益。"""
+        assert _annualized_return(pd.Series([0.001] * 244)) > 0.0
+
+    def test_total_loss_clamped_to_minus_one(self) -> None:
+        """净值归零 (单日 -100%) → 年化 -1.0, 不产生 nan。"""
+        assert _annualized_return(pd.Series([-1.0, 0.0, 0.0])) == -1.0

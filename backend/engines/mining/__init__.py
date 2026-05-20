@@ -32,7 +32,12 @@ from .pipeline_utils import (
     run_full_gate,
     send_dingtalk_notification,
 )
-from .quick_backtester import QuickBacktester, QuickBacktestResult
+from .quick_backtester import (
+    QuickBacktester,
+    QuickBacktestResult,
+    run_batch_backtest,
+    run_quick_backtest,
+)
 
 __all__ = [
     # Sprint 1.14
@@ -42,6 +47,8 @@ __all__ = [
     "ASTDeduplicator",
     "QuickBacktester",
     "QuickBacktestResult",
+    "run_quick_backtest",
+    "run_batch_backtest",
     # Sprint 1.16 — FactorDSL
     "ExprNode",
     "FactorDSL",
