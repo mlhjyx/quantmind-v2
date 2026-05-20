@@ -895,12 +895,15 @@ class FactorOnboardingService:
         """运行 G1-G5 自动质量门 (engines.factor_gate.FactorGatePipeline)。
 
         G1 |IC|>0.02 / G2 Active-corr<0.7 / G3 t-stat (BH-FDR) / G4 中性化衰减<50%
-        / G5 方向一致。G6-G8 半自动 (Newey-West t / SimBroker 回测 / strategy 匹配)
-        由 run_gates 标 PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
+        / G5 方向一致。G7-G8 半自动 (SimBroker 回测 / strategy 匹配) 由 run_gates 标
+        PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
 
         G2 真正交 (Plan A): 通过 `_compute_active_factor_corr` 查 CORE (Active) 池
         因子的截面 Spearman 相关 → FactorGatePipeline G2 真强制 (旧版传 None →
         PASS-with-warning, 正交性从未真检验)。
+
+        G6 auto-assist (Plan B): Newey-West HAC t 机械可算 → `confirm_g6_auto` 自动算
+        并填充 G6 (非纯 PENDING), 辅助 L2 晋升复核。不改 auto_gates_passed (仅 G1-G5)。
 
         Args:
             conn: psycopg2 连接 (只读 — G2 查 CORE 因子值, Service 不 commit 铁律 32)。
@@ -939,14 +942,22 @@ class FactorOnboardingService:
         # _gate_g2 PASS-with-warning (退化, 但有 warning 日志, 非 silent failure)。
         active_factor_corr = self._compute_active_factor_corr(conn, factor_name, factor_values_df)
 
-        report = FactorGatePipeline().run_gates(
+        pipeline = FactorGatePipeline()
+        report = pipeline.run_gates(
             factor_name=factor_name,
             ic_series=raw_ic_series,
             neutral_ic_series=neutral_ic_series,
             active_factor_corr=active_factor_corr,
             expected_direction=expected_direction,
         )
-        return report.auto_gates_passed, report.summary(), report.failed_gates
+        # G6 auto-assist (Plan B): Newey-West HAC t 机械可算 (月度 IC 自相关需 HAC
+        # 校正) → 自动算并 confirm_g6, L2 人工晋升 ACTIVE 时 report.summary() 已含 G6
+        # 计算值 (非纯 PENDING)。不改 auto_gates_passed (G1-G5) → 不改 accept/reject。
+        pipeline.confirm_g6_auto(report, raw_ic_series)
+        # 返回 failed 仅 G1-G5 自动门 (决策相关, 驱动 OnboardingBlocked); G6 computed
+        # verdict 见 report.summary() (logged for L2)。
+        auto_failed = [g for g in report.failed_gates if g in ("G1", "G2", "G3", "G4", "G5")]
+        return report.auto_gates_passed, report.summary(), auto_failed
 
     def _compute_raw_ic_20d(
         self,
