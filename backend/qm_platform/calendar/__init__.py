@@ -30,6 +30,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 from datetime import date
@@ -107,7 +108,7 @@ def parse_pt_total_days() -> int:
     return 60
 
 
-def is_trading_day_today_or_skip(*, logger: Any = None) -> bool:
+def is_trading_day_today_or_skip(*, logger: Any = None, conn_factory: Any = None) -> bool:
     """H4 fix (Audit Section X §39 + ISSUES_PENDING_REGISTRY §4 A5/§9 H4):
     Celery Beat / Windows Schtask task wrapper helper — checks if today is
     trading day, returns False (caller should `return early`) on non-trading day.
@@ -128,20 +129,29 @@ def is_trading_day_today_or_skip(*, logger: Any = None) -> bool:
 
     Reason 沿用 (反 silent skip):
         crontab day_of_week='1-5' 仅过滤周末, A 股 ~15 法定假日/年 仍空触发.
-        本 helper 走 Calendar SSOT (4-layer fallback QMT/Tushare/DB/heuristic).
+
+    Layer 3 (Plan 1.5): the helper runs a conn-backed TradingDayChecker so the local
+    `trading_calendar` DB table (Layer 3) answers when the Tushare API is unreachable.
+    Without Layer 3 the 4-layer chain degrades to a weekday heuristic that CANNOT
+    detect 法定节假日 — defeating the gate's purpose (LL-181). A short-lived conn is
+    opened from `app.services.db.get_sync_conn` (lazy) and closed after the single
+    check; if the DB is unavailable (or under unit-test isolation) the helper degrades
+    gracefully to the conn-less Tushare→heuristic path.
 
     Args:
         logger: optional logger (stdlib logging.Logger or structlog BoundLogger)
             to record the skip event. Every production Beat/schtask caller passes
             a stdlib logging.Logger — the skip log is pre-formatted accordingly.
+        conn_factory: optional callable returning a psycopg2 connection (used for
+            TradingDayChecker Layer 3). None → lazy `app.services.db.get_sync_conn`;
+            if that is unavailable the check degrades to conn-less (Tushare→heuristic).
 
     Returns:
         True if today is trading day → caller proceeds.
         False if non-trading day → caller should return/exit early.
     """
-    cal = get_calendar()
     today = date.today()
-    is_td, reason = cal.is_trading_day_with_reason(today)
+    is_td, reason = _resolve_trading_day(today, conn_factory, logger)
     if not is_td and logger is not None:
         # Logger-agnostic skip log: a single pre-formatted string works with both
         # stdlib logging.Logger and structlog BoundLogger. Every Beat/schtask caller
@@ -151,3 +161,58 @@ def is_trading_day_today_or_skip(*, logger: Any = None) -> bool:
             f"Beat/schtask skip (non-trading day): today={today.isoformat()} reason={reason}"
         )
     return is_td
+
+
+def _default_conn_factory() -> Any:
+    """Lazy `app.services.db.get_sync_conn`, or None if unavailable.
+
+    Returns None under unit-test isolation / when `backend.app` is not importable —
+    the caller then degrades to a conn-less trading-day check. 铁律-34-exception:
+    same loose-coupling rationale as parse_pt_start_date (the calendar module must
+    stay loadable outside the backend.app context).
+    """
+    try:
+        from app.services.db import get_sync_conn  # noqa: PLC0415
+
+        return get_sync_conn
+    except Exception:
+        return None
+
+
+def _resolve_trading_day(today: date, conn_factory: Any, logger: Any) -> tuple[bool, str]:
+    """Resolve today's trading-day verdict with TradingDayChecker Layer 3 (local
+    `trading_calendar` DB table) live, so a Tushare outage falls back to the DB
+    table instead of the holiday-blind weekday heuristic.
+
+    Degrades to the conn-less `get_calendar()` path (Tushare→heuristic) if no DB
+    connection can be obtained — never raises (the gate must always return a verdict).
+    """
+    cf = conn_factory or _default_conn_factory()
+    if cf is None:
+        return get_calendar().is_trading_day_with_reason(today)
+
+    conn = None
+    try:
+        conn = cf()
+    except Exception as exc:
+        if logger is not None:
+            logger.warning(
+                f"calendar gate: DB conn unavailable, degrading to conn-less "
+                f"trading-day check (Layer 3 skipped): {exc}"
+            )
+        return get_calendar().is_trading_day_with_reason(today)
+
+    try:
+        # Lazy import — keep the calendar module loadable when engines/ is absent.
+        try:
+            from engines.trading_day_checker import TradingDayChecker  # noqa: PLC0415
+        except ImportError:
+            from backend.engines.trading_day_checker import (  # noqa: PLC0415
+                TradingDayChecker,
+            )
+        return TradingDayChecker(conn=conn).is_trading_day(today)
+    finally:
+        if conn is not None:
+            # silent_ok: conn close failure must not break the gate
+            with contextlib.suppress(Exception):
+                conn.close()
