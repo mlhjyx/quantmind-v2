@@ -18,8 +18,6 @@ import logging
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _mock_calendar(is_td: bool, reason: str = "test-reason") -> MagicMock:
     """Build a mock CalendarProvider returning a fixed is_trading_day verdict."""
@@ -172,4 +170,6 @@ class TestTaskSkipPaths:
 
 
 if __name__ == "__main__":
+    import pytest
+
     pytest.main([__file__, "-v"])

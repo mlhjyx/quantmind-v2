@@ -131,7 +131,9 @@ def is_trading_day_today_or_skip(*, logger: Any = None) -> bool:
         本 helper 走 Calendar SSOT (4-layer fallback QMT/Tushare/DB/heuristic).
 
     Args:
-        logger: optional structlog logger to record skip event.
+        logger: optional logger (stdlib logging.Logger or structlog BoundLogger)
+            to record the skip event. Every production Beat/schtask caller passes
+            a stdlib logging.Logger — the skip log is pre-formatted accordingly.
 
     Returns:
         True if today is trading day → caller proceeds.
