@@ -35,6 +35,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -595,13 +596,16 @@ def _push_dingtalk_slippage(
             json={"msgtype": "text", "text": {"content": text}},
             timeout=10,
         )
+        resp.raise_for_status()  # code-review M1 (PR #393): 4xx/5xx 不静默当成功
         print(f"[DingTalk] 滑点漂移告警已推送 http={resp.status_code}")
     except Exception as e:
         # 铁律 33 fail-soft: 校准已完成, 告警旁路失败不抛错.
         print(f"[DingTalk] 滑点漂移告警推送失败 (fail-soft): {e}")
 
 
-def _finalize_quarterly(report: str, result: CalibrationResult) -> None:
+def _finalize_quarterly(
+    report: str, result: CalibrationResult, repo_root: Path | None = None
+) -> None:
     """关闭 Beat `slippage-calibration-quarterly` 设计两项 (Plan v10):
 
     (1) 校准报告写入 docs/research/slippage_calibration_{YYYYQ}.md;
@@ -610,12 +614,14 @@ def _finalize_quarterly(report: str, result: CalibrationResult) -> None:
     Args:
         report: generate_calibration_report 产出的文本报告.
         result: CalibrationResult (含 .params 校准后系数).
+        repo_root: 仓库根 (None = 由 __file__ 推断; 测试可注入 tmp_path).
 
-    铁律 18 季度复核 enforcement; 铁律 33 告警 fail-soft.
+    铁律 18 季度复核 enforcement; 铁律 33 告警 fail-soft; 铁律 41 Asia/Shanghai.
     """
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))  # 铁律 41
     tag = f"{now.year}Q{(now.month - 1) // 3 + 1}"
-    repo_root = Path(__file__).resolve().parent.parent
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parent.parent
 
     # (1) 季度报告文件输出
     out_dir = repo_root / "docs" / "research"
@@ -623,7 +629,8 @@ def _finalize_quarterly(report: str, result: CalibrationResult) -> None:
     out_path = out_dir / f"slippage_calibration_{tag}.md"
     out_path.write_text(
         f"# Slippage Calibration {tag}\n\n"
-        f"> 自动生成 by scripts/bayesian_slippage_calibration.py (铁律 18 季度复核)\n\n"
+        f"> 自动生成 by scripts/bayesian_slippage_calibration.py (铁律 18 季度复核)\n"
+        f"> 生成时间: {now.isoformat()}\n\n"
         f"```\n{report}\n```\n",
         encoding="utf-8",
     )

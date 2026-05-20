@@ -111,3 +111,28 @@ def test_push_dingtalk_slippage_fail_soft_on_error() -> None:
         bsc._push_dingtalk_slippage(
             {"DINGTALK_WEBHOOK_URL": _WEBHOOK}, "2026Q2", {"base_bps": 0.5}
         )
+
+
+# §4 _finalize_quarterly (code-review PR #393: repo_root seam for testability)
+
+
+def test_finalize_quarterly_writes_report_and_alerts(tmp_path: Path) -> None:
+    """写季度报告文件; drift > 30% → 调 _push_dingtalk_slippage."""
+    fake_result = MagicMock()
+    fake_result.params = {"base_bps": bsc.DEFAULT_PARAMS["base_bps"] * 1.5}  # +50%
+    with patch.object(bsc, "_push_dingtalk_slippage") as mock_push:
+        bsc._finalize_quarterly("REPORT_BODY", fake_result, repo_root=tmp_path)
+
+    files = list((tmp_path / "docs" / "research").glob("slippage_calibration_*.md"))
+    assert len(files) == 1
+    assert "REPORT_BODY" in files[0].read_text(encoding="utf-8")
+    mock_push.assert_called_once()
+
+
+def test_finalize_quarterly_no_alert_when_within_threshold(tmp_path: Path) -> None:
+    """所有系数在阈值内 → 写报告但不调 _push_dingtalk_slippage."""
+    fake_result = MagicMock()
+    fake_result.params = {k: v * 1.05 for k, v in bsc.DEFAULT_PARAMS.items()}
+    with patch.object(bsc, "_push_dingtalk_slippage") as mock_push:
+        bsc._finalize_quarterly("R", fake_result, repo_root=tmp_path)
+    mock_push.assert_not_called()
