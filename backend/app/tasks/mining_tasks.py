@@ -352,6 +352,9 @@ async def _write_results_to_db(
                     (run_id, factor_name, factor_expr, ast_hash,
                      gate_report, status, created_at)
                 VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+                -- ON CONFLICT DO NOTHING: gp_approval_queue 无 ast_hash UNIQUE
+                -- 约束 → 当前对该子句无自然冲突键, 实为 no-op。真去重靠
+                -- mining_knowledge.ast_hash 黑名单 (UNIQUE 约束需 DDL, follow-up)。
                 ON CONFLICT DO NOTHING
                 """,
                 run_id,
