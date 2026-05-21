@@ -941,13 +941,13 @@ class PipelineOrchestrator:
     # ------------------------------------------------------------------
 
     async def _write_approval_queue(self, candidate: FactorCandidate) -> int | None:
-        """写入approval_queue表。无DB连接时返回None（内存模式）。
+        """写入 gp_approval_queue 表。无DB连接时返回None（内存模式）。
 
         Returns:
-            approval_queue 主键id，内存模式返回None。
+            gp_approval_queue 主键id，内存模式返回None。
         """
         if self._conn is None:
-            logger.debug("内存模式：跳过写入approval_queue: %s", candidate.factor_name)
+            logger.debug("内存模式：跳过写入 gp_approval_queue: %s", candidate.factor_name)
             return None
 
         gate_result_json = {}
@@ -957,13 +957,13 @@ class PipelineOrchestrator:
                 for g, r in candidate.gate_report.gates.items()
             }
 
+        # backtest 结果折叠进 gate_report JSONB 的 _backtest 子键 —
+        # gp_approval_queue 无独立 sharpe_1y / backtest_report 列 (Plan A 收口)。
         bt = candidate.backtest_result
-        sharpe_1y = float(bt.sharpe) if bt and bt.sharpe != -999.0 else None
-
-        backtest_report = None
         if bt:
-            backtest_report = {
+            gate_result_json["_backtest"] = {
                 "sharpe": bt.sharpe,
+                "sharpe_1y": float(bt.sharpe) if bt.sharpe != -999.0 else None,
                 "mdd": bt.mdd,
                 "turnover": bt.turnover,
                 "ic_mean": bt.ic_mean,
@@ -976,13 +976,12 @@ class PipelineOrchestrator:
             result = await self._conn.execute(
                 text(
                     """
-                    INSERT INTO approval_queue
+                    INSERT INTO gp_approval_queue
                         (run_id, factor_name, factor_expr, ast_hash,
-                         gate_result, sharpe_1y, backtest_report, status, created_at)
+                         gate_report, status, created_at)
                     VALUES
                         (:run_id, :factor_name, :factor_expr, :ast_hash,
-                         :gate_result::jsonb, :sharpe_1y, :backtest_report::jsonb,
-                         'pending', NOW())
+                         :gate_report::jsonb, 'pending', NOW())
                     RETURNING id
                     """
                 ),
@@ -991,16 +990,14 @@ class PipelineOrchestrator:
                     "factor_name": candidate.factor_name,
                     "factor_expr": candidate.factor_expr,
                     "ast_hash": candidate.ast_hash,
-                    "gate_result": json.dumps(gate_result_json),
-                    "sharpe_1y": sharpe_1y,
-                    "backtest_report": json.dumps(backtest_report) if backtest_report else None,
+                    "gate_report": json.dumps(gate_result_json),
                 },
             )
             row = result.fetchone()
             await self._conn.commit()
             return row[0] if row else None
         except Exception as exc:
-            logger.error("写入approval_queue失败: %s", exc)
+            logger.error("写入 gp_approval_queue 失败: %s", exc)
             await self._conn.rollback()
             return None
 

@@ -117,7 +117,7 @@ class FactorOnboardingService:
         """入库审批通过的因子 (sync 主入口)。
 
         Args:
-            approval_queue_id: approval_queue 表主键 id。
+            approval_queue_id: gp_approval_queue 表主键 id。
 
         Returns:
             入库结果摘要:
@@ -149,13 +149,13 @@ class FactorOnboardingService:
         approval_queue_id: int,
     ) -> dict[str, Any]:
         """入库核心逻辑 (单连接内顺序执行)。"""
-        # ── Step 1: 读取 approval_queue 记录 ──────────────────────────
+        # ── Step 1: 读取 gp_approval_queue 记录 ───────────────────────
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, run_id, factor_name, factor_expr, ast_hash,
-                       gate_result, sharpe_1y, sharpe_5y, backtest_report, status
-                FROM approval_queue
+                       gate_report, status
+                FROM gp_approval_queue
                 WHERE id = %s
                 """,
                 (approval_queue_id,),
@@ -174,8 +174,11 @@ class FactorOnboardingService:
 
         factor_name: str = aq_row["factor_name"]
         factor_expr: str = aq_row["factor_expr"]
+        # gp_approval_queue.gate_report 是 JSONB — psycopg2 默认返回 dict;
+        # 兼容历史 text 值 (str → json.loads)。
+        _gate_raw = aq_row["gate_report"]
         gate_result: dict[str, Any] = (
-            json.loads(aq_row["gate_result"]) if aq_row["gate_result"] else {}
+            json.loads(_gate_raw) if isinstance(_gate_raw, str) and _gate_raw else (_gate_raw or {})
         )
 
         logger.info(
@@ -191,7 +194,9 @@ class FactorOnboardingService:
             factor_expr=factor_expr,
             gate_result=gate_result,
             run_id=aq_row["run_id"],
-            sharpe_1y=float(aq_row["sharpe_1y"]) if aq_row["sharpe_1y"] else None,
+            # gp_approval_queue 无独立 sharpe 列; orchestrator 把 backtest
+            # 折叠进 gate_report._backtest (Plan A)。_upsert 不用于 register。
+            sharpe_1y=(gate_result.get("_backtest") or {}).get("sharpe_1y"),
         )
         logger.info("factor_registry 写入完成: id=%s", registry_id)
 

@@ -480,7 +480,7 @@ class QuickBacktester:
 - 期间: 2021-01 ~ 2025-12
 - 报告: 含年度分解/成本敏感性/Bootstrap CI
 - 标准: Sharpe≥基线0.39(volume_impact基线)，CI下界>0
-- 通过后进入 approval_queue 等待人工审批
+- 通过后进入 gp_approval_queue 等待人工审批
 
 ---
 
@@ -521,7 +521,7 @@ T日 22:00 Task Scheduler触发 GP Pipeline
 │
 ├── Step 6: 写入结果
 │   ├── 所有因子表达式 → mining_knowledge表(含AST hash)
-│   ├── 通过因子 → approval_queue(等待人工审批)
+│   ├── 通过因子 → gp_approval_queue(等待人工审批)
 │   └── 进化统计 → pipeline_runs表(成功率/最优适应度/耗时)
 │
 └── Step 7: 通知
@@ -592,7 +592,7 @@ CPU: GP进化用multiprocessing, 限制8核(留4核给OS+PG)
 内存: 行情数据缓存~500MB + GP种群~200MB + 回测~300MB = 总计<1.5GB
 GPU: 不使用(GP是CPU计算)
 磁盘: mining_knowledge每轮~1MB，年~52MB
-PG: pipeline_runs表 + approval_queue表 + mining_knowledge表
+PG: pipeline_runs表 + gp_approval_queue表 + mining_knowledge表
 ```
 
 ### 7.3 监控指标
@@ -678,7 +678,7 @@ CREATE TABLE approval_queue (
 ### 10.2 闭环标准（Sprint 1.17结束时验证）
 
 - [ ] GP每周自动运行(Task Scheduler)，无人工干预
-- [ ] 运行结果写入pipeline_runs + approval_queue
+- [ ] 运行结果写入pipeline_runs + gp_approval_queue
 - [ ] 钉钉自动通知候选因子
 - [ ] 下一轮GP自动加载上轮结果(种子扩展+黑名单)
 - [ ] 连续2轮GP，第2轮的种群初始化包含第1轮的Top因子
