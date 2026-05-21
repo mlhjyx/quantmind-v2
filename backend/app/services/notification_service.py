@@ -655,6 +655,7 @@ def send_alert(
     webhook_url: str = "",
     secret: str = "",
     conn: Any = None,
+    category: str = "alert",
 ) -> bool:
     """同步告警（兼容旧版接口，给pipeline脚本用）。
 
@@ -681,6 +682,7 @@ def send_alert(
         webhook_url: DingTalk Webhook地址。
         secret: DingTalk签名密钥。
         conn: psycopg2同步连接（可选，用于写DB + 读外发偏好）。
+        category: 通知分类（写入 notifications.category, 默认 'alert'）。
 
     Returns:
         True = 外发成功, 或按偏好/静默时段正确抑制 (均视为已正确处理);
@@ -696,7 +698,7 @@ def send_alert(
             cur.execute(
                 """INSERT INTO notifications (level, category, market, title, content)
                    VALUES (%s, %s, %s, %s, %s)""",
-                (level, "alert", "astock", title, content),
+                (level, category, "astock", title, content),
             )
             conn.commit()
         except Exception as e:
@@ -775,6 +777,7 @@ class _SyncNotificationFacade:
             webhook_url=webhook,
             secret=secret,
             conn=conn,
+            category=category,
         )
 
 
