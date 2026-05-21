@@ -26,9 +26,14 @@ PT_LIVE_YAML = PROJECT_ROOT / "configs" / "pt_live.yaml"
 
 @dataclass
 class _FakePythonConfig:
-    """模拟 PAPER_TRADING_CONFIG 属性结构."""
+    """模拟 PAPER_TRADING_CONFIG 属性结构.
 
-    top_n: int = 20
+    top_n 默认 5 — 对齐 2026-05-18 Stage 6 partial-pilot 灰度 (PT_TOP_N=20→5,
+    truth source backend/.env:33 + configs/pt_live.yaml:18). 模拟的是 .env
+    覆盖后的运行期 PAPER_TRADING_CONFIG, 非 config.py Settings 的 hardcoded 默认 20.
+    """
+
+    top_n: int = 5
     industry_cap: float = 1.0
     size_neutral_beta: float = 0.50
     turnover_cap: float = 0.50
@@ -64,7 +69,7 @@ def test_check_alignment_pt_live_aligned() -> None:
     report = PlatformConfigAuditor().check_alignment(
         yaml_path=PT_LIVE_YAML,
         env={
-            "PT_TOP_N": "20",
+            "PT_TOP_N": "5",
             "PT_INDUSTRY_CAP": "1.0",
             "PT_SIZE_NEUTRAL_BETA": "0.50",
         },
@@ -81,7 +86,7 @@ def test_check_alignment_env_drift_raises(tmp_path: Path) -> None:
         PlatformConfigAuditor().check_alignment(
             yaml_path=PT_LIVE_YAML,
             env={
-                "PT_TOP_N": "30",  # yaml/python 都是 20
+                "PT_TOP_N": "30",  # yaml/python 都是 5
                 "PT_SIZE_NEUTRAL_BETA": "0.50",
             },
             python_config=_FakePythonConfig(),
@@ -202,7 +207,7 @@ def test_dump_on_startup_creates_file(tmp_path: Path) -> None:
     assert entry["caller"] == "unit_test"
     assert len(entry["config_hash"]) == 16
     assert "git_commit" in entry
-    assert entry["config"]["strategy"]["top_n"] == 20
+    assert entry["config"]["strategy"]["top_n"] == 5
 
 
 def test_dump_on_startup_appends_same_day(tmp_path: Path) -> None:
