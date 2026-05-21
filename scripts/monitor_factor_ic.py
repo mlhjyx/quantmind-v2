@@ -31,8 +31,13 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-# 项目路径
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+# 项目路径 — 同时挂 backend/ (顶层 engines / app / qm_platform) 与 repo root
+# (backend namespace pkg, 供 qm_platform 内部 `from backend.qm_platform...` import).
+# 仅挂 backend/ 时 qm_platform 子模块的 backend 前缀 import 会 ModuleNotFoundError.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+for _p in (_PROJECT_ROOT / "backend", _PROJECT_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.append(str(_p))
 
 # Platform SDK 顶层 import (batch 3.1/3.2/3.3 模式延续).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
