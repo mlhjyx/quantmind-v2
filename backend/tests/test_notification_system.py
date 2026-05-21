@@ -7,7 +7,7 @@
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -640,3 +640,96 @@ class TestExternalDispatchCheck:
         conn = MagicMock()
         conn.cursor.return_value = cur
         assert _get_preferences_sync(conn) is None
+
+
+# ============================================================================
+# 7. send_alert sync wrapper — 外发检查 (DEV_NOTIFICATIONS §2 — Plan AI)
+# ============================================================================
+
+
+def _make_prefs_row(
+    *,
+    dispatch_p1: bool = True,
+    dispatch_p2: bool = False,
+    quiet_enabled: bool = True,
+    quiet_start: int = 23,
+    quiet_end: int = 7,
+) -> tuple:
+    """构造 notification_preferences SELECT 行 (14 列, 对齐 _prefs_row_to_dict)。"""
+    return (
+        "pref-id",
+        True,
+        True,
+        True,
+        True,  # id, toast_p0-3
+        False,
+        None,  # dingtalk_enabled, dingtalk_webhook
+        True,
+        dispatch_p1,
+        dispatch_p2,  # dispatch_p0-2
+        quiet_enabled,
+        quiet_start,
+        quiet_end,
+        None,  # quiet_*, updated_at
+    )
+
+
+def _make_conn_with_prefs(row: tuple) -> MagicMock:
+    """MagicMock psycopg2 conn — cursor.fetchone 返回给定 prefs row。"""
+    cur = MagicMock()
+    cur.fetchone.return_value = row
+    conn = MagicMock()
+    conn.cursor.return_value = cur
+    return conn
+
+
+class TestSendAlertDispatchCheck:
+    """send_alert 外发检查 — 复用 _should_dispatch_external (Plan AI)。"""
+
+    def test_p1_suppressed_by_toggle_off(self):
+        """P1 + dispatch_p1=False → 抑制, 返回 True, dingtalk 不调用。"""
+        from app.services import notification_service as ns
+
+        conn = _make_conn_with_prefs(_make_prefs_row(dispatch_p1=False))
+        with patch.object(ns.dingtalk, "send_markdown_sync") as mock_send:
+            result = ns.send_alert("P1", "t", "c", conn=conn)
+        assert result is True
+        mock_send.assert_not_called()
+
+    def test_p1_permissive_dispatches(self):
+        """P1 + dispatch_p1=True + quiet 关 → 外发, dingtalk 调用。"""
+        from app.services import notification_service as ns
+
+        conn = _make_conn_with_prefs(_make_prefs_row(dispatch_p1=True, quiet_enabled=False))
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True) as mock_send:
+            result = ns.send_alert("P1", "t", "c", conn=conn)
+        assert result is True
+        mock_send.assert_called_once()
+
+    def test_p0_always_dispatches_despite_suppressive_prefs(self):
+        """P0 始终发 — 即使偏好对 P1 抑制。"""
+        from app.services import notification_service as ns
+
+        conn = _make_conn_with_prefs(_make_prefs_row(dispatch_p1=False))
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True) as mock_send:
+            ns.send_alert("P0", "t", "c", conn=conn)
+        mock_send.assert_called_once()
+
+    def test_no_conn_skips_pref_gate_and_dispatches(self):
+        """conn=None → 无法读偏好 → fail-safe 照发。"""
+        from app.services import notification_service as ns
+
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True) as mock_send:
+            ns.send_alert("P1", "t", "c", conn=None)
+        mock_send.assert_called_once()
+
+    def test_pref_read_failure_fail_safe_dispatches(self):
+        """读偏好抛异常 → fail-safe 照发 (告警不被静默丢失)。"""
+        from app.services import notification_service as ns
+
+        conn = MagicMock()
+        conn.cursor.side_effect = RuntimeError("db down")
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True) as mock_send:
+            result = ns.send_alert("P1", "t", "c", conn=conn)
+        assert result is True
+        mock_send.assert_called_once()
