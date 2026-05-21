@@ -35,11 +35,12 @@ def list_pending(conn) -> None:
     """列出所有待审批的L4请求。"""
     cur = conn.cursor()
     cur.execute(
-        """SELECT aq.id, aq.reference_id, aq.notes, aq.created_at,
+        """SELECT aq.id, aq.detail_json->>'strategy_id',
+                  aq.detail_json->>'request_note', aq.created_at,
                   cbs.current_level, cbs.entered_date, cbs.trigger_reason
            FROM approval_queue aq
            LEFT JOIN circuit_breaker_state cbs
-             ON aq.reference_id::uuid = cbs.strategy_id
+             ON (aq.detail_json->>'strategy_id')::uuid = cbs.strategy_id
              AND cbs.execution_mode = 'paper'
            WHERE aq.approval_type = 'circuit_breaker_l4_recovery'
              AND aq.status = 'pending'
@@ -71,7 +72,7 @@ def approve_request(conn, approval_id: str) -> None:
 
     # 验证请求存在且pending
     cur.execute(
-        "SELECT status, reference_id FROM approval_queue WHERE id = %s",
+        "SELECT status, detail_json->>'strategy_id' FROM approval_queue WHERE id = %s",
         (approval_id,),
     )
     row = cur.fetchone()
@@ -88,7 +89,7 @@ def approve_request(conn, approval_id: str) -> None:
     cur.execute(
         """UPDATE approval_queue
            SET status = 'approved', reviewed_at = NOW(),
-               reviewer_notes = 'Manual approval via approve_l4.py'
+               reviewer_note = 'Manual approval via approve_l4.py'
            WHERE id = %s""",
         (approval_id,),
     )
@@ -127,7 +128,7 @@ def reject_request(conn, approval_id: str) -> None:
     cur.execute(
         """UPDATE approval_queue
            SET status = 'rejected', reviewed_at = NOW(),
-               reviewer_notes = 'Rejected via approve_l4.py'
+               reviewer_note = 'Rejected via approve_l4.py'
            WHERE id = %s""",
         (approval_id,),
     )
@@ -180,10 +181,10 @@ def force_reset(conn, reason: str) -> None:
     cur.execute(
         """UPDATE approval_queue
            SET status = 'cancelled', reviewed_at = NOW(),
-               reviewer_notes = %s
+               reviewer_note = %s
            WHERE approval_type = 'circuit_breaker_l4_recovery'
-             AND reference_id = %s AND status = 'pending'""",
-        (f"Force reset: {reason}", strategy_id),
+             AND detail_json->>'strategy_id' = %s AND status = 'pending'""",
+        (f"Force reset: {reason}", str(strategy_id)),
     )
     conn.commit()
 

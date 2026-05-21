@@ -396,17 +396,25 @@ class RiskControlService:
         if db_state is None or db_state["current_level"] != CircuitBreakerLevel.L4_STOPPED:
             raise ValueError(f"策略 {strategy_id} 当前不是L4_STOPPED状态，无法发起恢复审批")
 
-        # 插入approval_queue记录
+        # 插入 approval_queue 记录 (domain-11 通用审批表) — strategy_id / 执行模式 /
+        # 请求说明 入 detail_json JSONB; reviewer_note 列留给审批决定时填写。
         row = await self.repo.fetch_one(
             """INSERT INTO approval_queue
-                   (approval_type, reference_id, payload, submitted_by, notes)
+                   (approval_type, item_summary, detail_json)
                VALUES
-                   ('circuit_breaker_l4_recovery', :strategy_id,
-                    '{}', 'system', :notes)
+                   ('circuit_breaker_l4_recovery', :item_summary,
+                    CAST(:detail_json AS jsonb))
                RETURNING id""",
             {
-                "strategy_id": str(strategy_id),
-                "notes": reviewer_note,
+                "item_summary": f"L4熔断恢复审批: strategy={strategy_id}",
+                "detail_json": json.dumps(
+                    {
+                        "strategy_id": str(strategy_id),
+                        "execution_mode": execution_mode,
+                        "submitted_by": "system",
+                        "request_note": reviewer_note,
+                    }
+                ),
             },
         )
         approval_id = row[0]
@@ -453,7 +461,7 @@ class RiskControlService:
         new_status = "approved" if approved else "rejected"
         await self.repo.execute(
             """UPDATE approval_queue
-               SET status = :status, reviewed_at = NOW(), reviewer_notes = :notes
+               SET status = :status, reviewed_at = NOW(), reviewer_note = :notes
                WHERE id = :id""",
             {
                 "status": new_status,
