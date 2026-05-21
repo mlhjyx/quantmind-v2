@@ -1,6 +1,6 @@
 # ADR-085: PT 重启 staged paper-mode 5d dry-run → live flip (path B)
 
-> **Status**: Proposed (5-19 Session 58+1 起草, 等 user 第二 trigger "你执行" merge = Accept signal)
+> **Status**: Accepted (2026-05-22 — user §8 决议 4 GO + Path B Phase B-1 实际 launch 2026-05-20 实证: logs/.env-backup-pre-paper-dryrun-2026-05-20.bak + docs/audit/STATUS_REPORT_2026_05_20_pt_paper_dryrun_day1.md + scripts/pt_restart_path_b_step1.ps1/step2.ps1; sustained ADR-022 append-only) — 原 Proposed (5-19 Session 58+1 起草, 等 user 第二 trigger "你执行" merge = Accept signal)
 > **Date**: 2026-05-19
 > **Authors**: CC Session 58+1 + user 决议 "同意你的推荐" (5-19 evening SH)
 > **Related**:
