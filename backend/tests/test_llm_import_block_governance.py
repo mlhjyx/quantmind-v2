@@ -3,13 +3,16 @@
 V3 §5.5 + ADR-020 enforce — LiteLLMRouter (S2 sub-task) only path.
 
 测试覆盖:
-- 现 codebase clean (含 deepseek_client.py:222 marker) → exit 0 放行
+- 现 codebase clean (含 deepseek_client.py openai-import marker) → exit 0 放行
 - anthropic 直接 import (无 marker) → BLOCK exit 1
 - openai 直接 import (无 marker) → BLOCK exit 1
 - from anthropic / from openai → BLOCK exit 1
 - allowlist marker (`# llm-import-allow:...`) → 放行 + stderr log
 - tests/ subdir 的 mock import → 不触发 BLOCK
-- deepseek_client.py:222 必须保留 marker (防意外删除)
+- deepseek_client.py 的 openai import 必须保留 marker (防意外删除)
+
+注: 不锁定 deepseek_client.py 的具体行号 — 行号随文件演进漂移 (历史
+222 → 现 227). 按内容定位 `from openai import OpenAI` 行即可.
 """
 
 from __future__ import annotations
@@ -45,20 +48,21 @@ def violator_cleanup():
 
 
 def test_clean_codebase_passes_with_allowlist_log() -> None:
-    """现 codebase 含 deepseek_client.py:222 marker → exit 0, allowlist log 显示该行."""
+    """现 codebase 含 deepseek_client.py openai-import marker → exit 0, allowlist log 显示该行."""
     assert not VIOLATOR_PATH.exists(), (
         f"violator file {VIOLATOR_PATH} 已存在 (test pollution); 修: 手动 unlink."
     )
     result = _run_full()
     assert result.returncode == 0, (
-        f"现 codebase 应放行 (含 deepseek_client.py:222 marker), 但 exit={result.returncode}\n"
+        f"现 codebase 应放行 (含 deepseek_client.py openai-import marker), 但 exit={result.returncode}\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert "0 unauthorized import" in result.stdout
     assert "放行" in result.stdout
-    # allowlist log 必须显示 deepseek_client.py:222 (透明 + 可审计)
+    # allowlist log 必须显示 deepseek_client.py 的 allowlisted 行 (透明 + 可审计).
+    # 不锁行号 — `deepseek_client.py:<N>` 中 N 随文件演进漂移.
     assert "ALLOWLIST_HIT" in result.stderr
-    assert "deepseek_client.py:222" in result.stderr
+    assert "deepseek_client.py:" in result.stderr
     assert "S2-deferred" in result.stderr
 
 
@@ -126,22 +130,23 @@ def test_tests_subdir_mock_excluded() -> None:
 
 
 def test_deepseek_client_marker_preserved() -> None:
-    """deepseek_client.py:222 必须保留 allowlist marker (防意外删除).
+    """deepseek_client.py 的 openai lazy import 必须保留 allowlist marker (防意外删除).
 
     S2 LiteLLMRouter 完成后会 refactor 这个 lazy import. 在那之前 marker 必须保持,
     否则 hook --full 会 BLOCK 整个 push.
+
+    按内容定位 `from openai import OpenAI` 行 — 不锁行号 (行号随文件演进漂移,
+    历史 222 → 现 227, line-pin 必复发).
     """
     content = DEEPSEEK_CLIENT.read_text(encoding="utf-8")
-    lines = content.splitlines()
-    # line 222 (1-indexed) → index 221
-    line_222 = lines[221] if len(lines) > 221 else ""
-    assert "from openai import OpenAI" in line_222, (
-        f"deepseek_client.py:222 现 lazy import 行已变, 当前内容: {line_222!r}\n"
+    import_lines = [ln for ln in content.splitlines() if "from openai import OpenAI" in ln]
+    assert import_lines, (
+        "deepseek_client.py 不再含 `from openai import OpenAI` lazy import.\n"
         "可能 S2 LiteLLMRouter 已完成 (期待 marker 已删除), 请确认并更新 test."
     )
-    assert "# llm-import-allow:" in line_222, (
-        f"deepseek_client.py:222 缺 allowlist marker, hook --full 会 BLOCK push.\n"
-        f"当前内容: {line_222!r}\n"
+    assert all("# llm-import-allow:" in ln for ln in import_lines), (
+        f"deepseek_client.py 的 openai import 行缺 allowlist marker, hook --full 会 BLOCK push.\n"
+        f"当前 import 行: {import_lines!r}\n"
         "修复: 加 `# llm-import-allow:S2-deferred-PR-219` 或在 S2 完成后 refactor 这一行."
     )
 
