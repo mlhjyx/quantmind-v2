@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
+from app.services.mining_service import MiningService
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
@@ -82,9 +83,75 @@ class PipelineStatusResponse(BaseModel):
     error: str | None
 
 
+class TriggerPipelineRequest(BaseModel):
+    """手动触发 Pipeline 的请求体 (DEV_AI_EVOLUTION §12.2)。"""
+
+    engine: str = Field(
+        default="gp",
+        description="挖掘引擎: gp / bruteforce / llm",
+        pattern="^(gp|bruteforce|llm)$",
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="引擎配置 (generations/population/islands/time_budget_minutes 等)",
+    )
+
+
+class TriggerPipelineResponse(BaseModel):
+    """手动触发 Pipeline 的响应。"""
+
+    run_id: str
+    task_id: str
+    engine: str
+    status: str
+
+
 # ---------------------------------------------------------------------------
 # 端点
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/trigger",
+    summary="手动触发 Pipeline (DEV_AI_EVOLUTION §12.2)",
+    response_model=TriggerPipelineResponse,
+    status_code=202,
+)
+async def trigger_pipeline(
+    body: TriggerPipelineRequest,
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> TriggerPipelineResponse:
+    """手动提交一次因子挖掘 Pipeline 运行 (PipelineConsole 触发入口)。
+
+    委托 MiningService.start_mining_task — 校验引擎 / 防同引擎并发 (铁律 9
+    资源仲裁) / 写 pipeline_runs / 提交 Celery 任务。资源密集操作, 仅允许
+    本机访问 (沿用 approve/reject 的 _require_local 安全策略)。
+
+    Args:
+        body: 引擎类型 + 引擎配置。
+
+    Returns:
+        TriggerPipelineResponse: run_id / task_id / engine / status。
+
+    Raises:
+        400: engine 非法。
+        409: 同引擎任务已在运行 (防资源竞争)。
+    """
+    svc = MiningService(session)
+    try:
+        result = await svc.start_mining_task(engine=body.engine, config=body.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return TriggerPipelineResponse(
+        run_id=result["run_id"],
+        task_id=result["task_id"],
+        engine=body.engine,
+        status=result["status"],
+    )
 
 
 @router.get(
