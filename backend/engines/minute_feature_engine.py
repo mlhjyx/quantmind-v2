@@ -27,21 +27,21 @@ import numpy as np
 
 MINUTE_FEATURES: list[str] = [
     # Phase 3E 验证通过 (IC最强, noise ROBUST)
-    "high_freq_volatility_20",       # 已实现高频波动率
-    "volume_concentration_20",       # Herfindahl量集中度
-    "volume_autocorr_20",            # 量自相关
-    "smart_money_ratio_20",          # 尾盘/开盘量比
+    "high_freq_volatility_20",  # 已实现高频波动率
+    "volume_concentration_20",  # Herfindahl量集中度
+    "volume_autocorr_20",  # 量自相关
+    "smart_money_ratio_20",  # 尾盘/开盘量比
     # AlphaZero Alpha2 (ICIR=7.2)
-    "opening_volume_share_20",       # 开盘30分钟量能占比
+    "opening_volume_share_20",  # 开盘30分钟量能占比
     # AlphaZero Alpha1
-    "closing_trend_strength_20",     # 尾盘30分钟趋势强度
+    "closing_trend_strength_20",  # 尾盘30分钟趋势强度
     # FactorMiner 成交效率
-    "vwap_deviation_20",             # VWAP偏离度
+    "vwap_deviation_20",  # VWAP偏离度
     # Microstructure-Empowered
-    "order_flow_imbalance_20",       # 订单流不平衡代理
+    "order_flow_imbalance_20",  # 订单流不平衡代理
     # 学术共识
-    "intraday_momentum_20",          # 日内动量(前半段预测后半段)
-    "volume_price_divergence_20",    # 量价背离
+    "intraday_momentum_20",  # 日内动量(前半段预测后半段)
+    "volume_price_divergence_20",  # 量价背离
 ]
 
 # 因子方向 (唯一真相源: factor_engine/_constants.py, 此处 re-export 保持向后兼容)
@@ -123,9 +123,7 @@ def compute_daily_minute_features(
     result["intraday_momentum"] = _calc_intraday_momentum(bar_ret, n)
 
     # ---- 10. volume_price_divergence: 量价背离 ----
-    result["volume_price_divergence"] = _calc_volume_price_divergence(
-        v, valid_ret, ret
-    )
+    result["volume_price_divergence"] = _calc_volume_price_divergence(v, valid_ret, ret)
 
     return result
 
@@ -185,9 +183,7 @@ def _calc_smart_money_ratio(v: np.ndarray, mod: np.ndarray) -> float:
     return float(last_vol / first_vol)
 
 
-def _calc_opening_volume_share(
-    v: np.ndarray, mod: np.ndarray, total_vol: float
-) -> float:
+def _calc_opening_volume_share(v: np.ndarray, mod: np.ndarray, total_vol: float) -> float:
     """开盘30分钟量能占比 (AlphaZero Alpha2, ICIR=7.2)。
 
     经济机制: 开盘半小时量能占比高→散户追涨行为集中→当日已过度反应,
@@ -202,9 +198,7 @@ def _calc_opening_volume_share(
     return float(opening_vol / total_vol)
 
 
-def _calc_closing_trend_strength(
-    c: np.ndarray, o: np.ndarray, mod: np.ndarray
-) -> float:
+def _calc_closing_trend_strength(c: np.ndarray, o: np.ndarray, mod: np.ndarray) -> float:
     """尾盘30分钟趋势强度 (AlphaZero Alpha1)。
 
     经济机制: 尾盘趋势反映机构投资者的方向性判断,
@@ -236,9 +230,7 @@ def _calc_closing_trend_strength(
     return float(tail_ret / abs(day_ret))
 
 
-def _calc_vwap_deviation(
-    c: np.ndarray, amt: np.ndarray, v: np.ndarray
-) -> float:
+def _calc_vwap_deviation(c: np.ndarray, amt: np.ndarray, v: np.ndarray) -> float:
     """VWAP偏离度 (FactorMiner 成交效率因子)。
 
     经济机制: 收盘价低于VWAP→日内卖方占优→短期超卖→次日反弹;
@@ -329,7 +321,7 @@ def _calc_volume_price_divergence(
         return np.nan
 
     # ret 长度 = n-1, 对应 v[1:] (每个return对应那个bar的量)
-    v_aligned = v[1: len(ret) + 1]
+    v_aligned = v[1 : len(ret) + 1]
     mask = np.isfinite(ret) & (v_aligned > 0)
     if mask.sum() < 10:
         return np.nan
@@ -354,8 +346,19 @@ def _calc_volume_price_divergence(
 
 
 def compute_batch_features(
-    daily_groups: list[tuple[str, Any, np.ndarray, np.ndarray, np.ndarray,
-                             np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    daily_groups: list[
+        tuple[
+            str,
+            Any,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+        ]
+    ],
 ) -> list[tuple[str, Any, str, float]]:
     """批量计算日频特征。
 

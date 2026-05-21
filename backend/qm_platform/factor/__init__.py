@@ -1,4 +1,5 @@
 """Framework #2 Factor — Platform SDK sub-package."""
+
 from .interface import (
     FactorLifecycleMonitor,
     FactorMeta,

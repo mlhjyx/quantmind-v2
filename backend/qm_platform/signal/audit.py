@@ -22,6 +22,7 @@ MVP 3.4 batch 3 ✅ Concrete: OutboxBackedAuditTrail — outbox 写 + 反向 SQL
 
 OutboxBackedAuditTrail 不 replace OutboxWriter, 是补 SDK 层无 conn 调用方的 audit 路径.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -68,8 +69,11 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
         # P2 reviewer (PR #109) 采纳: 拓宽到 5 个标准 logging level (含 ERROR/CRITICAL),
         # 让 production 系统可选 ERROR 级别让 audit 在 Sentry 等聚合器突出.
         valid_levels = (
-            logging.DEBUG, logging.INFO, logging.WARNING,
-            logging.ERROR, logging.CRITICAL,
+            logging.DEBUG,
+            logging.INFO,
+            logging.WARNING,
+            logging.ERROR,
+            logging.CRITICAL,
         )
         if log_level not in valid_levels:
             raise ValueError(
@@ -104,21 +108,14 @@ class StubExecutionAuditTrail(ExecutionAuditTrail):
                 f"event_type 必须是 string, got {type(event_type).__name__}: {event_type!r}"
             )
         if not event_type:
-            raise ValueError(
-                f"event_type 必须是非空 string, got {event_type!r}"
-            )
+            raise ValueError(f"event_type 必须是非空 string, got {event_type!r}")
         if not isinstance(payload, dict):
-            raise ValueError(
-                f"payload 必须是 dict, got {type(payload).__name__}"
-            )
+            raise ValueError(f"payload 必须是 dict, got {type(payload).__name__}")
         # P2 python-reviewer (PR #109) 采纳: payload values 必须 JSON-serialisable primitives.
         # MVP 3.4 outbox concrete 写 DB 时 json.dumps(payload) 会炸非原始类型 (Decimal/date).
         # __debug__=True (默认) 时 assert; production __debug__=False 跳过 (保性能).
         # 调用方 (e.g. router.py audit hook) 必预序列化: trade_date.isoformat() 等.
-        assert all(
-            isinstance(v, (str, int, float, bool, type(None)))
-            for v in payload.values()
-        ), (
+        assert all(isinstance(v, (str, int, float, bool, type(None))) for v in payload.values()), (
             f"payload contains non-JSON-primitive values: "
             f"{ {k: type(v).__name__ for k, v in payload.items()} }"
         )
@@ -202,6 +199,7 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
     def __init__(self, conn_factory: Callable[[], Any] | None = None) -> None:
         if conn_factory is None:
             from app.services.db import get_sync_conn  # noqa: PLC0415
+
             conn_factory = get_sync_conn
         self._conn_factory = conn_factory
 
@@ -235,15 +233,11 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
                 f"e.g. 'order.routed' / 'signal.generated' / 'fill.executed'."
             )
         if not isinstance(payload, dict):
-            raise TypeError(
-                f"payload 必须是 dict, got {type(payload).__name__}."
-            )
+            raise TypeError(f"payload 必须是 dict, got {type(payload).__name__}.")
 
         aggregate_type, event_subtype = event_type.split(".", 1)
         if not aggregate_type or not event_subtype:
-            raise ValueError(
-                f"event_type 格式错 (空 aggregate_type 或 subtype): {event_type!r}."
-            )
+            raise ValueError(f"event_type 格式错 (空 aggregate_type 或 subtype): {event_type!r}.")
 
         agg_id_key = f"{aggregate_type}_id"
         if agg_id_key not in payload:
@@ -312,7 +306,9 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
             with conn.cursor() as cur:
                 # 1. fill event
                 fill_row = self._fetch_event_or_raise(
-                    cur, aggregate_type="fill", aggregate_id=fill_id,
+                    cur,
+                    aggregate_type="fill",
+                    aggregate_id=fill_id,
                     raise_msg=f"fill event_id={fill_id} 不存在 (链断点 1: fill)",
                 )
                 fill_payload, fill_created_at = fill_row
@@ -325,7 +321,9 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
 
                 # 2. order event
                 order_row = self._fetch_event_or_raise(
-                    cur, aggregate_type="order", aggregate_id=str(order_id),
+                    cur,
+                    aggregate_type="order",
+                    aggregate_id=str(order_id),
                     raise_msg=f"order event_id={order_id} 不存在 (链断点 2: order)",
                 )
                 order_payload, order_created_at = order_row
@@ -338,7 +336,9 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
 
                 # 3. signal event
                 signal_row = self._fetch_event_or_raise(
-                    cur, aggregate_type="signal", aggregate_id=str(signal_id),
+                    cur,
+                    aggregate_type="signal",
+                    aggregate_id=str(signal_id),
                     raise_msg=f"signal event_id={signal_id} 不存在 (链断点 3: signal)",
                 )
                 signal_payload, signal_created_at = signal_row
@@ -357,7 +357,8 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
                         "[OutboxBackedAuditTrail.trace] signal event 缺 factor_contributions "
                         "key (signal_id=%s, strategy_id=%s). 返空 dict 但记录 quality 可疑, "
                         "检查 signal record() 调用方是否漏传此 key.",
-                        signal_id, strategy_id,
+                        signal_id,
+                        strategy_id,
                     )
                 factor_contributions: dict[str, float] = (
                     signal_payload.get("factor_contributions") or {}
@@ -381,8 +382,7 @@ class OutboxBackedAuditTrail(ExecutionAuditTrail):
             conn.close()
 
     @staticmethod
-    def _fetch_event_or_raise(cur, *, aggregate_type: str, aggregate_id: str,
-                              raise_msg: str):
+    def _fetch_event_or_raise(cur, *, aggregate_type: str, aggregate_id: str, raise_msg: str):
         """SELECT payload + created_at WHERE aggregate_type=? AND aggregate_id=?.
 
         最新一条 (ORDER BY created_at DESC LIMIT 1) — 同 aggregate_id 多事件

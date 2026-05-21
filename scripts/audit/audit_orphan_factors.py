@@ -55,9 +55,7 @@ def _get_conn() -> psycopg2.extensions.connection:
     evict shared_buffers 可达 >120s. 300s 对 warm 场景 >60x 余量 + CI 冷 cache 兜底.
     """
     url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
-    return psycopg2.connect(
-        url, options=f"-c statement_timeout={_STATEMENT_TIMEOUT_MS}"
-    )
+    return psycopg2.connect(url, options=f"-c statement_timeout={_STATEMENT_TIMEOUT_MS}")
 
 
 def find_orphans(conn, only_active: bool = False) -> list[dict]:
@@ -70,8 +68,7 @@ def find_orphans(conn, only_active: bool = False) -> list[dict]:
         fv_names = {r[0] for r in cur.fetchall()}
 
         sql = (
-            "SELECT name, status, pool, direction, category, updated_at::date "
-            "FROM factor_registry "
+            "SELECT name, status, pool, direction, category, updated_at::date FROM factor_registry "
         )
         if only_active:
             sql += "WHERE status IN ('active', 'warning') "
@@ -92,7 +89,7 @@ def _print_table(orphans: list[dict]) -> None:
         return
     print(f"[audit] Orphan count: {len(orphans)}\n")
     print(f"  {'name':<44} {'status':<12} {'pool':<14} {'dir':<5} {'category':<15} updated_at")
-    print(f"  {'-'*44} {'-'*12} {'-'*14} {'-'*5} {'-'*15} {'-'*10}")
+    print(f"  {'-' * 44} {'-' * 12} {'-' * 14} {'-' * 5} {'-' * 15} {'-' * 10}")
     for r in orphans:
         pool = r["pool"] or "NULL"
         cat = r["category"] or "NULL"
@@ -145,10 +142,7 @@ def main() -> int:
                 {
                     "orphan_count": len(orphans),
                     "only_active": args.only_active,
-                    "orphans": [
-                        {**r, "updated_at": r["updated_at"].isoformat()}
-                        for r in orphans
-                    ],
+                    "orphans": [{**r, "updated_at": r["updated_at"].isoformat()} for r in orphans],
                 },
                 indent=2,
                 ensure_ascii=False,

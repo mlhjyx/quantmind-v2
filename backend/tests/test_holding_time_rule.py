@@ -1,4 +1,5 @@
 """Tests for PositionHoldingTimeRule (Phase 1.5b, Session 44)."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta

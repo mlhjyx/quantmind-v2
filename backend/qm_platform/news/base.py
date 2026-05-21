@@ -9,6 +9,7 @@ sub-PR 2-7 沿用 NewsFetcher abc 实现各源 plugin (Tavily / Anspire / GDELT 
 - 铁律 33 (fail-loud — NewsFetchError 显式 raise)
 - 铁律 41 (timezone — timestamp tz-aware)
 """
+
 from __future__ import annotations
 
 import abc

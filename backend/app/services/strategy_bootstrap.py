@@ -30,6 +30,7 @@
 关联铁律: 23 (独立可执行) / 31 (app 层允许 IO) / 32 (wiring 层管事务) /
           33 (fail-loud log, 不 silent) / 34 (Config SSOT)
 """
+
 from __future__ import annotations
 
 import logging

@@ -22,6 +22,7 @@ Usage:
     # 用 backup JSON 回滚
     python scripts/registry/audit_direction_conflicts.py --rollback <backup.json>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,16 +43,29 @@ if str(_PROJECT_ROOT / "backend") not in sys.path:
 # 保证和 signal_engine.py FACTOR_DIRECTION + _constants.py 完全一致
 
 _SIGNAL_ENGINE_DIRECTION: dict[str, int] = {
-    "momentum_5": 1, "momentum_10": 1, "momentum_20": 1,
-    "reversal_5": 1, "reversal_10": 1, "reversal_20": 1,
-    "volatility_20": -1, "volatility_60": -1, "volume_std_20": -1,
-    "turnover_mean_20": -1, "turnover_std_20": -1,
-    "amihud_20": 1, "ln_market_cap": -1,
-    "bp_ratio": 1, "ep_ratio": 1,
-    "price_volume_corr_20": -1, "high_low_range_20": -1,
-    "mf_momentum_divergence": -1, "earnings_surprise_car": 1,
-    "price_level_factor": -1, "relative_volume_20": -1,
-    "dv_ttm": 1, "turnover_surge_ratio": -1,
+    "momentum_5": 1,
+    "momentum_10": 1,
+    "momentum_20": 1,
+    "reversal_5": 1,
+    "reversal_10": 1,
+    "reversal_20": 1,
+    "volatility_20": -1,
+    "volatility_60": -1,
+    "volume_std_20": -1,
+    "turnover_mean_20": -1,
+    "turnover_std_20": -1,
+    "amihud_20": 1,
+    "ln_market_cap": -1,
+    "bp_ratio": 1,
+    "ep_ratio": 1,
+    "price_volume_corr_20": -1,
+    "high_low_range_20": -1,
+    "mf_momentum_divergence": -1,
+    "earnings_surprise_car": 1,
+    "price_level_factor": -1,
+    "relative_volume_20": -1,
+    "dv_ttm": 1,
+    "turnover_surge_ratio": -1,
     "high_vol_price_ratio_20": -1,
 }
 
@@ -66,6 +80,7 @@ def _load_hardcoded_directions() -> dict[str, int]:
         PHASE21_FACTOR_DIRECTION,
         RESERVE_FACTOR_DIRECTION,
     )
+
     merged: dict[str, int] = {}
     for d in (
         _SIGNAL_ENGINE_DIRECTION,
@@ -86,9 +101,7 @@ def _load_db_directions(conn) -> dict[str, int]:
         return {row[0]: int(row[1]) for row in cur.fetchall()}
 
 
-def _find_conflicts(
-    hardcoded: dict[str, int], db: dict[str, int]
-) -> list[dict[str, Any]]:
+def _find_conflicts(hardcoded: dict[str, int], db: dict[str, int]) -> list[dict[str, Any]]:
     """找 DB vs hardcoded 不一致的项."""
     conflicts: list[dict[str, Any]] = []
     for name, hc_dir in sorted(hardcoded.items()):
@@ -180,8 +193,9 @@ def _print_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description="MVP 1.3b direction conflict 审计")
     parser.add_argument("--apply", action="store_true", help="真正写入 DB (默认 dry-run)")
-    parser.add_argument("--rollback", type=str, default=None,
-                        help="从 backup JSON 回滚 (提供 path)")
+    parser.add_argument(
+        "--rollback", type=str, default=None, help="从 backup JSON 回滚 (提供 path)"
+    )
     args = parser.parse_args()
 
     from app.services.db import get_sync_conn
@@ -213,8 +227,10 @@ def main() -> None:
             print("=" * 78)
             n, backup_path = _apply_fix(conn, conflicts)
             print(f"✅ UPDATE {n} 行. Backup: {backup_path}")
-            print(f"   回滚命令: python scripts/registry/audit_direction_conflicts.py "
-                  f"--rollback {backup_path.relative_to(_PROJECT_ROOT)}")
+            print(
+                f"   回滚命令: python scripts/registry/audit_direction_conflicts.py "
+                f"--rollback {backup_path.relative_to(_PROJECT_ROOT)}"
+            )
         elif conflicts:
             print("\n" + "=" * 78)
             print("DRY-RUN: 不写 DB. 确认后跑 --apply.")

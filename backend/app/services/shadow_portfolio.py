@@ -184,27 +184,32 @@ def _write_shadow_portfolio(
         from app.data_fetcher.contracts import SHADOW_PORTFOLIO
         from app.data_fetcher.pipeline import DataPipeline
 
-        records = pd.DataFrame({
-            "strategy_name": strategy_name,
-            "trade_date": trade_date,
-            "rebalance_date": rebalance_date,
-            "symbol_code": df_top["code"].astype(str),
-            "predicted_score": df_top["predicted_score"].astype(float),
-            "weight": df_top["weight"].astype(float),
-            "rank_in_portfolio": df_top["rank_in_portfolio"].astype(int),
-        })
+        records = pd.DataFrame(
+            {
+                "strategy_name": strategy_name,
+                "trade_date": trade_date,
+                "rebalance_date": rebalance_date,
+                "symbol_code": df_top["code"].astype(str),
+                "predicted_score": df_top["predicted_score"].astype(float),
+                "weight": df_top["weight"].astype(float),
+                "rank_in_portfolio": df_top["rank_in_portfolio"].astype(int),
+            }
+        )
         pipeline = DataPipeline(conn)
         result = pipeline.ingest(records, SHADOW_PORTFOLIO)
         if result.rejected_rows > 0:
             logger.warning(
                 "[SHADOW] DataPipeline 拒绝 %d 行 (%s): %s",
-                result.rejected_rows, strategy_name, result.reject_reasons,
+                result.rejected_rows,
+                strategy_name,
+                result.reject_reasons,
             )
         # 铁律 32 (Phase D D2b-2): commit 由 DataPipeline._upsert 内部 commit
         # (DataPipeline 管连接生命周期, Service 层不干预). 调用方仍用 autocommit 模式.
         logger.info(
             "[SHADOW] 写入shadow_portfolio(%s): %d 行 (DataPipeline)",
-            strategy_name, result.upserted_rows,
+            strategy_name,
+            result.upserted_rows,
         )
 
 

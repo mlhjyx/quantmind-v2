@@ -35,30 +35,47 @@ sys.path.insert(0, str(BACKEND_DIR))
 # ─── 实验组定义 ─────────────────────────────────────────
 
 FEATURES_C = [
-    "turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio",
+    "turnover_mean_20",
+    "volatility_20",
+    "reversal_20",
+    "amihud_20",
+    "bp_ratio",
 ]
 
 # Exp-A: CORE5 + 可用的Tier1因子(需neutral_value)
 # ind_mom_60: 0行(未入库), nb_*: raw only(未中性化), hvp: partial
 # 先用可用的7因子运行, 后续补全后可重跑
 FEATURES_A = FEATURES_C + [
-    "RSQR_20", "QTLU_20",
+    "RSQR_20",
+    "QTLU_20",
 ]
 
 # Exp-A-full: 包含北向+HVP(中性化后可用)
 FEATURES_A_FULL = FEATURES_C + [
-    "RSQR_20", "QTLU_20",
-    "ind_mom_60", "high_vol_price_ratio_20",
-    "nb_change_rate_20d", "nb_trend_20d", "nb_ratio_change_5d", "nb_net_buy_5d_ratio",
+    "RSQR_20",
+    "QTLU_20",
+    "ind_mom_60",
+    "high_vol_price_ratio_20",
+    "nb_change_rate_20d",
+    "nb_trend_20d",
+    "nb_ratio_change_5d",
+    "nb_net_buy_5d_ratio",
 ]
 
 # Exp-B: 所有有neutral_value的因子 (16因子)
 # 排除: ind_mom_60/20(0行), nb_change_rate_20d/nb_trend_20d/nb_net_buy_5d_ratio(无neutral)
 FEATURES_B = FEATURES_C + [
-    "RSQR_20", "QTLU_20",
+    "RSQR_20",
+    "QTLU_20",
     "high_vol_price_ratio_20",
-    "IMAX_20", "IMIN_20", "RESI_20", "CORD_20",
-    "nb_ratio_change_5d", "nb_contrarian", "nb_increase_ratio_20d", "nb_new_entry",
+    "IMAX_20",
+    "IMIN_20",
+    "RESI_20",
+    "CORD_20",
+    "nb_ratio_change_5d",
+    "nb_contrarian",
+    "nb_increase_ratio_20d",
+    "nb_new_entry",
 ]
 
 EXPERIMENT_MAP = {
@@ -75,15 +92,21 @@ def run_experiment(exp_key: str) -> dict:
     name, features = EXPERIMENT_MAP[exp_key]
     model_dir = f"models/lgbm_phase21/exp_{exp_key.lower()}"
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Running {name}")
     print(f"  Features ({len(features)}): {features}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Exp-B用Parquet加载(避免DB OOM), 其他走DB
     parquet_path = ""
     if exp_key == "B":
-        pq = Path(__file__).resolve().parent.parent.parent / "backend" / "cache" / "phase21" / "features_expb_16.parquet"
+        pq = (
+            Path(__file__).resolve().parent.parent.parent
+            / "backend"
+            / "cache"
+            / "phase21"
+            / "features_expb_16.parquet"
+        )
         if pq.exists():
             parquet_path = str(pq)
             print(f"  Using Parquet: {parquet_path}")
@@ -111,10 +134,12 @@ def run_experiment(exp_key: str) -> dict:
     folds = engine.generate_folds()
     print(f"\n  Generated {len(folds)} folds:")
     for f in folds:
-        print(f"    Fold {f.fold_id}: train [{f.train_start}..{f.train_end}] "
-              f"valid [{f.valid_start}..{f.valid_end}] "
-              f"test [{f.test_start}..{f.test_end}]"
-              f"{' [expanding]' if f.is_expanding else ''}")
+        print(
+            f"    Fold {f.fold_id}: train [{f.train_start}..{f.train_end}] "
+            f"valid [{f.valid_start}..{f.valid_end}] "
+            f"test [{f.test_start}..{f.test_end}]"
+            f"{' [expanding]' if f.is_expanding else ''}"
+        )
 
     # 运行WF
     t0 = time.time()
@@ -122,9 +147,9 @@ def run_experiment(exp_key: str) -> dict:
     elapsed = time.time() - t0
 
     # 结果汇总
-    print(f"\n  {'='*60}")
-    print(f"  {name} Results ({elapsed/60:.1f} min):")
-    print(f"  {'='*60}")
+    print(f"\n  {'=' * 60}")
+    print(f"  {name} Results ({elapsed / 60:.1f} min):")
+    print(f"  {'=' * 60}")
 
     print(f"\n  Overall OOS IC: {result.overall_ic:.4f}")
     print(f"  Overall OOS RankIC: {result.overall_rank_ic:.4f}")
@@ -132,31 +157,39 @@ def run_experiment(exp_key: str) -> dict:
     print(f"  Folds used: {result.num_folds_used}/{len(result.fold_results)}")
 
     # Fold-by-fold
-    print(f"\n  {'Fold':<6} {'Train IC':>10} {'Valid IC':>10} {'OOS IC':>10} "
-          f"{'OOS RankIC':>12} {'Overfit':>10} {'Flag':>6}")
-    print(f"  {'-'*66}")
+    print(
+        f"\n  {'Fold':<6} {'Train IC':>10} {'Valid IC':>10} {'OOS IC':>10} "
+        f"{'OOS RankIC':>12} {'Overfit':>10} {'Flag':>6}"
+    )
+    print(f"  {'-' * 66}")
 
     fold_data = []
     for fr in result.fold_results:
         overfit_str = f"{fr.overfit_ratio:.2f}" if fr.overfit_ratio else "N/A"
         flag = "⚠️" if fr.is_overfit else "✅"
-        print(f"  F{fr.fold_id:<5} {fr.train_ic:>10.4f} {fr.valid_ic:>10.4f} "
-              f"{fr.oos_ic:>10.4f} {fr.oos_rank_ic:>12.4f} {overfit_str:>10} {flag:>6}")
-        fold_data.append({
-            "fold_id": fr.fold_id,
-            "train_ic": fr.train_ic,
-            "valid_ic": fr.valid_ic,
-            "oos_ic": fr.oos_ic,
-            "oos_rank_ic": fr.oos_rank_ic,
-            "overfit_ratio": fr.overfit_ratio,
-            "is_overfit": fr.is_overfit,
-        })
+        print(
+            f"  F{fr.fold_id:<5} {fr.train_ic:>10.4f} {fr.valid_ic:>10.4f} "
+            f"{fr.oos_ic:>10.4f} {fr.oos_rank_ic:>12.4f} {overfit_str:>10} {flag:>6}"
+        )
+        fold_data.append(
+            {
+                "fold_id": fr.fold_id,
+                "train_ic": fr.train_ic,
+                "valid_ic": fr.valid_ic,
+                "oos_ic": fr.oos_ic,
+                "oos_rank_ic": fr.oos_rank_ic,
+                "overfit_ratio": fr.overfit_ratio,
+                "is_overfit": fr.is_overfit,
+            }
+        )
 
     # trainIC/validIC 比率检查
     train_ics = [fr.train_ic for fr in result.fold_results if fr.train_ic > 0]
     valid_ics = [fr.valid_ic for fr in result.fold_results if fr.valid_ic > 0]
     if train_ics and valid_ics:
-        mean_ratio = np.mean(train_ics) / np.mean(valid_ics) if np.mean(valid_ics) > 0 else float("inf")
+        mean_ratio = (
+            np.mean(train_ics) / np.mean(valid_ics) if np.mean(valid_ics) > 0 else float("inf")
+        )
         print(f"\n  Mean trainIC/validIC ratio: {mean_ratio:.2f}")
         if mean_ratio > 3.0:
             print("  ❌ HARD STOP: trainIC/validIC > 3.0 (过拟合)")
@@ -215,14 +248,16 @@ def run_experiment(exp_key: str) -> dict:
 
 def compare_results(results: list[dict]):
     """对比多组实验结果。"""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("COMPARISON MATRIX: Layer 1 LightGBM Experiments")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"{'Experiment':<35} {'OOS IC':>8} {'ICIR':>8} {'#Features':>10} {'Folds':>7}")
     print("-" * 70)
     for r in results:
-        print(f"{r['name']:<35} {r['overall_ic']:>8.4f} {r['overall_icir']:>8.4f} "
-              f"{r['n_features']:>10} {r['num_folds_used']:>7}")
+        print(
+            f"{r['name']:<35} {r['overall_ic']:>8.4f} {r['overall_icir']:>8.4f} "
+            f"{r['n_features']:>10} {r['num_folds_used']:>7}"
+        )
 
     # Select best
     valid = [r for r in results if r["overall_ic"] > 0]
@@ -243,8 +278,9 @@ def compare_results(results: list[dict]):
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 2.1 Layer 1 LightGBM Experiments")
-    parser.add_argument("--exp", type=str, default="all",
-                        help="Experiment to run: C, A, B, or 'all' (default: all)")
+    parser.add_argument(
+        "--exp", type=str, default="all", help="Experiment to run: C, A, B, or 'all' (default: all)"
+    )
     args = parser.parse_args()
 
     exps_to_run = list(EXPERIMENT_MAP.keys()) if args.exp.lower() == "all" else [args.exp.upper()]

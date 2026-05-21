@@ -281,31 +281,22 @@ def evaluate_market_crisis(snapshot: MarketCrisisSnapshot) -> MetaAlert:
 
     if both_absent:
         detail = (
-            "no market data available (index_daily + klines_daily feeds both "
-            "absent) — no signal"
+            "no market data available (index_daily + klines_daily feeds both absent) — no signal"
         )
     elif triggered:
         reasons: list[str] = []
         if index_hit:
             reasons.append(
-                f"大盘 {snapshot.index_return:.2%} <= "
-                f"{MARKET_CRISIS_INDEX_RETURN_THRESHOLD:.0%}"
+                f"大盘 {snapshot.index_return:.2%} <= {MARKET_CRISIS_INDEX_RETURN_THRESHOLD:.0%}"
             )
         if limit_down_hit:
             reasons.append(
-                f"跌停家数 {snapshot.limit_down_count} > "
-                f"{MARKET_CRISIS_LIMIT_DOWN_THRESHOLD}"
+                f"跌停家数 {snapshot.limit_down_count} > {MARKET_CRISIS_LIMIT_DOWN_THRESHOLD}"
             )
         detail = f"千股跌停极端 regime — {' AND '.join(reasons)} — Crisis Mode 候选 (V3 §14.2)"
     else:
-        idx_str = (
-            f"{snapshot.index_return:.2%}" if snapshot.index_return is not None else "n/a"
-        )
-        ldc_str = (
-            str(snapshot.limit_down_count)
-            if snapshot.limit_down_count is not None
-            else "n/a"
-        )
+        idx_str = f"{snapshot.index_return:.2%}" if snapshot.index_return is not None else "n/a"
+        ldc_str = str(snapshot.limit_down_count) if snapshot.limit_down_count is not None else "n/a"
         detail = (
             f"market regime within bounds — 大盘 {idx_str} (threshold "
             f"{MARKET_CRISIS_INDEX_RETURN_THRESHOLD:.0%}), 跌停家数 {ldc_str} "

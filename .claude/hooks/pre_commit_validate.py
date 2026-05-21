@@ -40,9 +40,13 @@ def main():
                 text=True,
                 timeout=10,
             )
-            py_files = [f for f in staged_py.stdout.strip().split("\n")
-                        if f.strip() and (f.startswith("backend/") or f.startswith("scripts/"))
-                        and not f.startswith("scripts/archive/")]
+            py_files = [
+                f
+                for f in staged_py.stdout.strip().split("\n")
+                if f.strip()
+                and (f.startswith("backend/") or f.startswith("scripts/"))
+                and not f.startswith("scripts/archive/")
+            ]
             if py_files:
                 result = subprocess.run(
                     ["ruff", "check"] + py_files,
@@ -72,14 +76,20 @@ def main():
             timeout=10,
         )
         staged_files = staged.stdout.strip().split("\n") if staged.stdout.strip() else []
-        sensitive = [f for f in staged_files if f.endswith(".env") or "credentials" in f.lower() or "secret" in f.lower()]
+        sensitive = [
+            f
+            for f in staged_files
+            if f.endswith(".env") or "credentials" in f.lower() or "secret" in f.lower()
+        ]
         if sensitive:
             errors.append(f"敏感文件被staged: {', '.join(sensitive)}")
     except Exception:
         pass
 
     if errors:
-        msg = "Pre-commit验证FAILED:\n" + "\n".join(f"  [{i+1}] {e}" for i, e in enumerate(errors))
+        msg = "Pre-commit验证FAILED:\n" + "\n".join(
+            f"  [{i + 1}] {e}" for i, e in enumerate(errors)
+        )
         print(msg, file=sys.stderr)
         sys.exit(2)
 

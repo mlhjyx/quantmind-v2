@@ -9,7 +9,9 @@ import pytest
 # 旧 `_bear_prob_to_scale(float) -> float` 被替换为 `_probs_to_scale(state_probs, state_mapping)`,
 # 签名不兼容。本测试文件未迁移, 暂时 skip 避免阻塞 suite。
 # TODO: 按 3-state API 重写断言 (参考 engines.regime_detector._probs_to_scale).
-pytest.skip("TODO: 3-state HMM API (原 2-state _bear_prob_to_scale 已删除)", allow_module_level=True)
+pytest.skip(
+    "TODO: 3-state HMM API (原 2-state _bear_prob_to_scale 已删除)", allow_module_level=True
+)
 
 from datetime import date, timedelta  # noqa: E402
 

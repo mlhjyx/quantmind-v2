@@ -279,8 +279,12 @@ def test_invalid_column_raises(tmp_cache):
 def test_empty_factor_returns_empty_df(tmp_cache):
     """cache miss + no conn + auto_refresh=False → 空 DataFrame."""
     df = tmp_cache.load(
-        "never_computed", column="raw_value", conn=None, auto_refresh=False,
-        start=date(2020, 1, 1), end=date(2020, 12, 31),
+        "never_computed",
+        column="raw_value",
+        conn=None,
+        auto_refresh=False,
+        start=date(2020, 1, 1),
+        end=date(2020, 12, 31),
     )
     assert df.empty
     assert list(df.columns) == ["code", "trade_date", "value"]

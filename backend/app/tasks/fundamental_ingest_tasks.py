@@ -66,6 +66,13 @@ def fundamental_context_ingest(
     Raises:
         Exception: fetcher fail / DB UPSERT 真 raise (fail-loud 铁律 33).
     """
+    # Calendar gate (Plan 1 — DEV_SCHEDULER §6.12 Phase I): daily 16:00 cron fires on
+    # 法定节假日 too — skip cleanly instead of re-ingesting stale valuation (反 LL-181).
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        return {"status": "skipped", "reason": "non_trading_day"}
+
     from app.services.db import get_sync_conn
     from app.services.fundamental_context_service import FundamentalContextService
 

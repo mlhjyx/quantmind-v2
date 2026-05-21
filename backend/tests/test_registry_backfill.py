@@ -9,6 +9,7 @@
 
 不触 live PG, 全 Python 单元测试 (脚本逻辑独立 testable).
 """
+
 from __future__ import annotations
 
 import importlib.util

@@ -5,13 +5,14 @@
 
 预处理流程（铁律不可变）: MAD 5σ → WLS中性化(行业+市值) → z-score clip ±3
 """
+
 import gc
 import io
 import sys
 import time
 
 sys.stdout.reconfigure(line_buffering=True)
-sys.path.append(str(__import__('pathlib').Path(__file__).resolve().parents[2] / "backend"))
+sys.path.append(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "backend"))
 
 import numpy as np
 import pandas as pd
@@ -24,10 +25,16 @@ from engines.factor_engine.preprocess import (
 from app.services.db import get_sync_conn
 
 FACTORS = [
-    'high_freq_volatility_20', 'volume_concentration_20', 'volume_autocorr_20',
-    'smart_money_ratio_20', 'opening_volume_share_20', 'closing_trend_strength_20',
-    'vwap_deviation_20', 'order_flow_imbalance_20', 'intraday_momentum_20',
-    'volume_price_divergence_20',
+    "high_freq_volatility_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "opening_volume_share_20",
+    "closing_trend_strength_20",
+    "vwap_deviation_20",
+    "order_flow_imbalance_20",
+    "intraday_momentum_20",
+    "volume_price_divergence_20",
 ]
 
 
@@ -52,8 +59,9 @@ def load_shared_data(conn, start_date: str, end_date: str):
     return ind_dict, mv_lookup
 
 
-def neutralize_factor_year(conn, factor_name: str, start_date: str, end_date: str,
-                           ind_dict: dict, mv_lookup: pd.Series) -> int:
+def neutralize_factor_year(
+    conn, factor_name: str, start_date: str, end_date: str, ind_dict: dict, mv_lookup: pd.Series
+) -> int:
     """中性化单因子单年, 使用预加载的共享数据。"""
     cur = conn.cursor()
 
@@ -81,10 +89,7 @@ def neutralize_factor_year(conn, factor_name: str, start_date: str, end_date: st
 
         # 获取行业和市值
         industries = np.array([ind_dict.get(c, "其他") for c in codes])
-        ln_mcap = np.array([
-            np.log(mv_lookup.get((c, date), np.nan) + 1e-10)
-            for c in codes
-        ])
+        ln_mcap = np.array([np.log(mv_lookup.get((c, date), np.nan) + 1e-10) for c in codes])
 
         # WLS中性化
         valid_mask = np.isfinite(vals_mad) & np.isfinite(ln_mcap)
@@ -125,9 +130,12 @@ def neutralize_factor_year(conn, factor_name: str, start_date: str, end_date: st
         v_str = "\\N" if v is None else str(v)
         buf.write(f"{c}\t{d}\t{fn}\t{v_str}\n")
     buf.seek(0)
-    cur.copy_from(buf, "_neut_staging",
-                  columns=("code", "trade_date", "factor_name", "neutral_value"),
-                  null="\\N")
+    cur.copy_from(
+        buf,
+        "_neut_staging",
+        columns=("code", "trade_date", "factor_name", "neutral_value"),
+        null="\\N",
+    )
 
     cur.execute("""
         UPDATE factor_values fv
@@ -152,12 +160,15 @@ def main():
         print(f"\n=== {yr} ===", flush=True)
         t_shared = time.time()
         ind_dict, mv_lookup = load_shared_data(conn, sd, ed)
-        print(f"  Shared data: {len(ind_dict)} industries, {len(mv_lookup):,} mv rows ({time.time()-t_shared:.0f}s)", flush=True)
+        print(
+            f"  Shared data: {len(ind_dict)} industries, {len(mv_lookup):,} mv rows ({time.time() - t_shared:.0f}s)",
+            flush=True,
+        )
 
         for i, f in enumerate(FACTORS):
             t0 = time.time()
             n = neutralize_factor_year(conn, f, sd, ed, ind_dict, mv_lookup)
-            print(f"  [{i+1}/10] {f}: {n:,} rows ({time.time()-t0:.0f}s)", flush=True)
+            print(f"  [{i + 1}/10] {f}: {n:,} rows ({time.time() - t0:.0f}s)", flush=True)
             grand_total += n
 
         del mv_lookup
@@ -165,7 +176,7 @@ def main():
 
     conn.close()
     elapsed = time.time() - t_all
-    print(f"\nTotal neutralized: {grand_total:,} rows in {elapsed/60:.1f} min", flush=True)
+    print(f"\nTotal neutralized: {grand_total:,} rows in {elapsed / 60:.1f} min", flush=True)
 
 
 if __name__ == "__main__":

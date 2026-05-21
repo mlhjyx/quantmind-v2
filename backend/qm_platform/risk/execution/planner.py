@@ -22,6 +22,7 @@ State machine:
 from __future__ import annotations
 
 import logging
+import uuid  # Plan v8 code review LOW fix (5-20): module-level import (was in generate_plan body)
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -235,9 +236,7 @@ class L4ExecutionPlanner:
         now = at or datetime.now(UTC)
         deadline = self._compute_cancel_deadline(mode, now)
 
-        # Create plan
-        import uuid
-
+        # Create plan (uuid imported at module top per code review LOW fix 5-20)
         qty = result.shares if result.shares > 0 else 1
 
         plan = ExecutionPlan(

@@ -1,4 +1,15 @@
 # QuantMind V2 12年回测配置
+# ============================================================
+# BACKTEST BASELINE CONFIG — DO NOT change factor set without
+# regression baseline refresh (cache/baseline/regression_result_*.json).
+#
+# Production PT config = configs/pt_live.yaml (CORE3+dv_ttm post Step 6-H).
+# This 12yr config preserves CORE5 for historical regression validation.
+#
+# Refresh procedure: scripts/run_backtest.py --config configs/backtest_12yr.yaml
+# Last refresh: 2026-04-28 (22+d stale as of 2026-05-20, awaiting Phase B-2 refresh)
+# Plan v8 ref: PLAN_V8_FINAL_CLOSURE_STATUS_2026_05_20.md §3
+# ============================================================
 
 strategy:
   name: equal_weight_top20

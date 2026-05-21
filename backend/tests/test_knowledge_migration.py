@@ -1,4 +1,5 @@
 """MVP 1.4 migration script 解析单测 (纯函数, 不触 DB)."""
+
 from __future__ import annotations
 
 import sys

@@ -95,6 +95,8 @@ celery_app.conf.update(
         "app.tasks.market_regime_tasks",  # TB-2c: 3 daily Beat schedules (9:00/14:30/16:00) Bull/Bear/Judge V4-Pro → market_regime_log (ADR-036 + ADR-064 + ADR-066 cumulative)
         "app.tasks.risk_reflector_tasks",  # TB-4b: 2 Beat cadence (Sunday 19:00 weekly + 月 1 日 09:00 monthly) + event_reflection (L1 dispatch, no Beat) RiskReflector V4-Pro 5 维反思 → docs/risk_reflections/ + DingTalk push (ADR-064 + ADR-069 候选)
         "app.tasks.meta_monitor_tasks",  # HC-1b: 5min Beat 元告警 (alert-on-alert) — 5 风控系统失效场景 snapshot → 5 PURE rules → DingTalk push (V3 §13.3, ADR-072 + ADR-073 候选)
+        "app.tasks.llm_cost_audit_tasks",  # Plan v10: 月度 LLM cost audit Beat wire (P0-16 闭环, subprocess wrapper of scripts/llm_cost_monthly_audit.py)
+        "app.tasks.slippage_calibration_tasks",  # Plan v10: 季度滑点校准 Beat wire (P0-10 闭环, 铁律 18 季度复核, subprocess wrapper of scripts/bayesian_slippage_calibration.py)
         # app.tasks.dual_write_tasks 已退役 (MVP 2.1c Sub3.5, 2026-04-18): 老 3 fetcher 退役后
         # dual-write 监控无必要, Celery Beat 条目 + task 已删
     ],

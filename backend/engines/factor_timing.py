@@ -15,7 +15,6 @@
 Engine层规范: 纯计算，无IO，无数据库访问。
 """
 
-
 import numpy as np
 import pandas as pd
 import structlog
@@ -26,9 +25,9 @@ logger = structlog.get_logger(__name__)
 
 # ────────────────── 配置常量 ──────────────────
 
-TIMING_WEIGHT_MIN = 0.5   # 最低权重倍数
-TIMING_WEIGHT_MAX = 1.5   # 最高权重倍数
-MIN_IC_DAYS = 60           # IC数据最少天数（不够则不调整）
+TIMING_WEIGHT_MIN = 0.5  # 最低权重倍数
+TIMING_WEIGHT_MAX = 1.5  # 最高权重倍数
+MIN_IC_DAYS = 60  # IC数据最少天数（不够则不调整）
 
 
 def calc_timing_score(ic_daily: pd.Series) -> float | None:
@@ -144,7 +143,9 @@ def compare_timing_vs_equal(
     n = len(factor_names)
     equal_weights = {f: 1.0 / n for f in factor_names}
     timing_weights = calc_timing_weights(
-        factor_names, ic_data, decay_results=decay_results,
+        factor_names,
+        ic_data,
+        decay_results=decay_results,
     )
 
     # timing scores

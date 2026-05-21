@@ -66,6 +66,7 @@ def _get_price_limit(code: str, symbols_info: pd.DataFrame | None = None) -> flo
 # ValidatorChain — 可组合的交易验证器 (Phase 3)
 # ============================================================
 
+
 class BaseValidator:
     """交易验证器基类。返回None=通过, 返回str=拒绝原因。"""
 
@@ -175,4 +176,3 @@ class ValidatorChain:
             if reason:
                 return False, reason
         return True, None
-

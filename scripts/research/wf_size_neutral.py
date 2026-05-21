@@ -79,8 +79,11 @@ def run_wf_5fold(factor_df, price_df, bench_df, ln_mcap_pivot):
     )
 
     signal_func = make_equal_weight_signal_func(
-        factor_df, CORE_DIRECTIONS, price_df,
-        top_n=20, rebalance_freq="monthly",
+        factor_df,
+        CORE_DIRECTIONS,
+        price_df,
+        top_n=20,
+        rebalance_freq="monthly",
         size_neutral_beta=0.50,
         ln_mcap_pivot=ln_mcap_pivot,
     )
@@ -91,14 +94,16 @@ def run_wf_5fold(factor_df, price_df, bench_df, ln_mcap_pivot):
 
     fold_data = []
     for fr in result.fold_results:
-        fold_data.append({
-            "fold": fr.fold_idx,
-            "test_start": str(fr.test_period[0]),
-            "test_end": str(fr.test_period[1]),
-            "oos_sharpe": round(fr.oos_sharpe, 4),
-            "oos_mdd": round(fr.oos_mdd, 4),
-            "oos_annual_return": round(fr.oos_annual_return, 4),
-        })
+        fold_data.append(
+            {
+                "fold": fr.fold_idx,
+                "test_start": str(fr.test_period[0]),
+                "test_end": str(fr.test_period[1]),
+                "oos_sharpe": round(fr.oos_sharpe, 4),
+                "oos_mdd": round(fr.oos_mdd, 4),
+                "oos_annual_return": round(fr.oos_annual_return, 4),
+            }
+        )
 
     combined = {
         "combined_sharpe": round(result.combined_oos_sharpe, 4),
@@ -124,11 +129,17 @@ def run_annual_breakdown(factor_df, price_df, bench_df, ln_mcap_pivot):
 
     se_config = SEConfig(
         factor_names=list(CORE_DIRECTIONS.keys()),
-        top_n=20, weight_method="equal", rebalance_freq="monthly",
-        industry_cap=1.0, turnover_cap=1.0, cash_buffer=0.0,
+        top_n=20,
+        weight_method="equal",
+        rebalance_freq="monthly",
+        industry_cap=1.0,
+        turnover_cap=1.0,
+        cash_buffer=0.0,
     )
     bt_config = BacktestConfig(
-        top_n=20, rebalance_freq="monthly", initial_capital=1_000_000,
+        top_n=20,
+        rebalance_freq="monthly",
+        initial_capital=1_000_000,
     )
 
     exclusion_map = build_exclusion_map(price_df)
@@ -203,7 +214,7 @@ def main():
     t0 = time.time()
     trading_days = sorted(price_df["trade_date"].unique())
     ln_mcap_pivot = load_ln_mcap_pivot(min(trading_days), max(trading_days))
-    print(f"  ln_mcap pivot {ln_mcap_pivot.shape}, {time.time()-t0:.1f}s")
+    print(f"  ln_mcap pivot {ln_mcap_pivot.shape}, {time.time() - t0:.1f}s")
 
     # 5-fold WF
     wf_result = run_wf_5fold(factor_df, price_df, bench_df, ln_mcap_pivot)

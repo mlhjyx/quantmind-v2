@@ -1,4 +1,5 @@
 """Framework #6 Signal & Execution — Platform SDK sub-package."""
+
 from .audit import (
     AuditMissing,
     OutboxBackedAuditTrail,

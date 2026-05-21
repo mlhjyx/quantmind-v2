@@ -15,6 +15,7 @@
   - MVP 3.5 batch 2: factor_lifecycle 集成 (双路径并存 4 周观察)
   - MVP 3.5 batch 3: Strategy Eval Gate + ADR-013
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

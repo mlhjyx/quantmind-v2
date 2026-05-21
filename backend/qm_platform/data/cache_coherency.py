@@ -35,6 +35,7 @@ MVP 2.1c 集成路径:
   - `backend/data/factor_cache.py::load` 调用 MaxDateChecker/TTLGuard 替代 inline 判定
   - `FactorCache` 实现 Platform `FactorCacheProtocol` (MVP 1.1 ABC)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -13,6 +13,7 @@
 测试方式: SAST (regex 源码), 不依赖真 PT 运行. 镜像 test_pt_watchdog.py /
 test_execution_mode_isolation.py D3 SAST pattern.
 """
+
 from __future__ import annotations
 
 import re
@@ -20,11 +21,7 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPT = (
-    Path(__file__).resolve().parent.parent.parent
-    / "scripts"
-    / "run_paper_trading.py"
-)
+_SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "run_paper_trading.py"
 
 
 def test_script_exists():
@@ -72,7 +69,7 @@ def test_step5_9_no_hardcoded_zero_point_five():
     step6_end_anchor = src.find("Step 6", step59_start) if step59_start > 0 else -1
     if step59_start < 0 or step6_end_anchor < 0:
         pytest.skip("Step 5.9 / Step 6 markers not found, skipping (refactor possibly)")
-    step59_block = src[step59_start:step6_end_anchor + 500]  # +500 覆盖 execute_rebalance call
+    step59_block = src[step59_start : step6_end_anchor + 500]  # +500 覆盖 execute_rebalance call
 
     # 在该 block 内不允许 `position_multiplier=0.5` 字面量 (允许 fallback default 写在
     # cb.get("position_multiplier", 1.0) 中, 那是 1.0 不是 0.5).

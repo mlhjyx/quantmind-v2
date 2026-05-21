@@ -71,8 +71,14 @@ def fetch_risk_events(conn: Any, limit: int, log: logging.Logger) -> list[dict[s
             )
             rows = cur.fetchall()
             cols = [
-                "rule_id", "code", "triggered_at", "severity", "reason",
-                "action_taken", "context_snapshot", "realtime_metrics",
+                "rule_id",
+                "code",
+                "triggered_at",
+                "severity",
+                "reason",
+                "action_taken",
+                "context_snapshot",
+                "realtime_metrics",
             ]
             for row in rows:
                 record = dict(zip(cols, row, strict=False))
@@ -184,10 +190,17 @@ def map_risk_event_to_memory(event: dict[str, Any]) -> dict[str, Any]:
             "realtime_metrics": event.get("realtime_metrics", {}),
             "context_snapshot_original": event.get("context_snapshot", {}),
         },
-        "action_taken": event.get("action_taken") if event.get("action_taken") in (
-            'STAGED_executed', 'STAGED_cancelled', 'STAGED_timeout_executed',
-            'manual_sell', 'no_action', 'reentry'
-        ) else None,  # vocabulary CHECK constraint enforce
+        "action_taken": event.get("action_taken")
+        if event.get("action_taken")
+        in (
+            "STAGED_executed",
+            "STAGED_cancelled",
+            "STAGED_timeout_executed",
+            "manual_sell",
+            "no_action",
+            "reentry",
+        )
+        else None,  # vocabulary CHECK constraint enforce
         "outcome": None,
         "lesson": None,
     }
@@ -220,11 +233,14 @@ def map_trade_emergency_to_memory(event: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="RAG memory backfill (F-S7-005 P0)")
     parser.add_argument(
-        "--limit", type=int, default=500,
+        "--limit",
+        type=int,
+        default=500,
         help="每数据源最大读取 row 数 (默认 500)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="只 read + report, 不真 INSERT (审计模式)",
     )
     parser.add_argument("--dsn", default=None)
@@ -317,7 +333,7 @@ def _run_backfill(conn: Any, args: Any, log: logging.Logger) -> int:
         result = cur.fetchone()
         post_count = result[0] if result else 0
 
-    log.info(f"\n{'='*60}")
+    log.info(f"\n{'=' * 60}")
     log.info("RAG memory backfill 完成:")
     log.info(f"  pre-backfill rows: {pre_count}")
     log.info(f"  post-backfill rows: {post_count} (+{post_count - pre_count})")

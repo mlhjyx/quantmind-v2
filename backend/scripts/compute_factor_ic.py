@@ -62,19 +62,27 @@ logger = logging.getLogger(__name__)
 
 # ─── 常量 ────────────────────────────────────────────────────────────────────
 
+
 def _get_db_dsn() -> dict:
     """从 .env 或环境变量读取数据库连接信息，避免硬编码凭证。"""
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     # asyncpg URL: postgresql+asyncpg://user:pass@host:port/db
     url = os.environ.get("DATABASE_URL", "")
     if url:
         # 解析 postgresql+asyncpg://user:pass@host:port/dbname
         import re
+
         m = re.match(r"postgresql\+?\w*://(\w+):([^@]+)@([^:]+):(\d+)/(\w+)", url)
         if m:
-            return dict(user=m.group(1), password=m.group(2), host=m.group(3),
-                        port=int(m.group(4)), dbname=m.group(5))
+            return dict(
+                user=m.group(1),
+                password=m.group(2),
+                host=m.group(3),
+                port=int(m.group(4)),
+                dbname=m.group(5),
+            )
     return dict(
         dbname=os.environ.get("DB_NAME", "quantmind_v2"),
         user=os.environ.get("DB_USER", "xin"),
@@ -100,7 +108,7 @@ HORIZONS = [1, 5, 10, 20]  # 计算IC的持仓周期（交易日数）
 MIN_STOCKS = 30  # 截面有效样本最低要求
 
 DECAY_THRESHOLDS = {
-    "fast": 5,    # ic在5日窗口衰减超过50%
+    "fast": 5,  # ic在5日窗口衰减超过50%
     "medium": 10,
     "slow": 20,
 }
@@ -312,7 +320,10 @@ def compute_ic_for_factor(
         if processed % 100 == 0:
             logger.info(
                 "  %s: 已处理 %d/%d 个交易日 (当前: %s)",
-                factor_name, processed, len(factor_dates), dt,
+                factor_name,
+                processed,
+                len(factor_dates),
+                dt,
             )
 
     if not records:
@@ -340,8 +351,12 @@ def enrich_ic_df(ic_df: pd.DataFrame) -> pd.DataFrame:
     """
     df = ic_df.copy()
 
-    df["ic_abs_1d"] = pd.to_numeric(df["ic_1d"], errors="coerce").abs() if "ic_1d" in df.columns else np.nan
-    df["ic_abs_5d"] = pd.to_numeric(df["ic_5d"], errors="coerce").abs() if "ic_5d" in df.columns else np.nan
+    df["ic_abs_1d"] = (
+        pd.to_numeric(df["ic_1d"], errors="coerce").abs() if "ic_1d" in df.columns else np.nan
+    )
+    df["ic_abs_5d"] = (
+        pd.to_numeric(df["ic_5d"], errors="coerce").abs() if "ic_5d" in df.columns else np.nan
+    )
 
     # 滚动均值（min_periods=5避免首期噪音）
     df["ic_ma20"] = df["ic_20d"].rolling(window=20, min_periods=5).mean()
@@ -349,9 +364,7 @@ def enrich_ic_df(ic_df: pd.DataFrame) -> pd.DataFrame:
 
     # 衰减速度判断：比较各周期IC绝对均值
     ic_means = {
-        h: df[f"ic_{h}d"].dropna().abs().mean()
-        for h in HORIZONS
-        if f"ic_{h}d" in df.columns
+        h: df[f"ic_{h}d"].dropna().abs().mean() for h in HORIZONS if f"ic_{h}d" in df.columns
     }
 
     if all(v is not None and not np.isnan(v) for v in ic_means.values()):
@@ -402,24 +415,28 @@ def upsert_ic_history(
 
     rows = []
     for _, row in ic_df.iterrows():
-        rows.append((
-            factor_name,
-            row["trade_date"],
-            _safe_float(row.get("ic_1d")),
-            _safe_float(row.get("ic_5d")),
-            _safe_float(row.get("ic_10d")),
-            _safe_float(row.get("ic_20d")),
-            _safe_float(row.get("ic_abs_1d")),
-            _safe_float(row.get("ic_abs_5d")),
-            _safe_float(row.get("ic_ma20")),
-            _safe_float(row.get("ic_ma60")),
-            str(row.get("decay_level", "unknown")),
-        ))
+        rows.append(
+            (
+                factor_name,
+                row["trade_date"],
+                _safe_float(row.get("ic_1d")),
+                _safe_float(row.get("ic_5d")),
+                _safe_float(row.get("ic_10d")),
+                _safe_float(row.get("ic_20d")),
+                _safe_float(row.get("ic_abs_1d")),
+                _safe_float(row.get("ic_abs_5d")),
+                _safe_float(row.get("ic_ma20")),
+                _safe_float(row.get("ic_ma60")),
+                str(row.get("decay_level", "unknown")),
+            )
+        )
 
     if dry_run:
         logger.info(
             "  [DRY-RUN] %s: 将写入 %d 行到 factor_ic_history（示例: %s）",
-            factor_name, len(rows), rows[0] if rows else "无",
+            factor_name,
+            len(rows),
+            rows[0] if rows else "无",
         )
         return len(rows)
 
@@ -481,12 +498,20 @@ def update_factor_registry(
 
     logger.info(
         "  %s 汇总统计: IC均值=%.4f, IC_IR=%.4f, t_stat=%.4f, N=%d",
-        factor_name, gate_ic, gate_ir, gate_t, n,
+        factor_name,
+        gate_ic,
+        gate_ir,
+        gate_t,
+        n,
     )
 
     if dry_run:
-        logger.info("  [DRY-RUN] 将更新 factor_registry: gate_ic=%s, gate_ir=%s, gate_t=%s",
-                    gate_ic, gate_ir, gate_t)
+        logger.info(
+            "  [DRY-RUN] 将更新 factor_registry: gate_ic=%s, gate_ir=%s, gate_t=%s",
+            gate_ic,
+            gate_ir,
+            gate_t,
+        )
         return
 
     cur = conn.cursor()
@@ -500,10 +525,13 @@ def update_factor_registry(
     conn.commit()
 
     if rows_updated == 0:
-        logger.warning("  %s: factor_registry中未找到该因子记录（name=%s）", factor_name, factor_name)
+        logger.warning(
+            "  %s: factor_registry中未找到该因子记录（name=%s）", factor_name, factor_name
+        )
     else:
-        logger.info("  %s: factor_registry已更新 (gate_ic=%.4f, gate_t=%.4f)",
-                    factor_name, gate_ic, gate_t)
+        logger.info(
+            "  %s: factor_registry已更新 (gate_ic=%.4f, gate_t=%.4f)", factor_name, gate_ic, gate_t
+        )
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────
@@ -606,8 +634,12 @@ def run(
                 all_results[factor_name] = {"error": "no_factor_data"}
                 continue
 
-            logger.info("  %s: 加载到 %d 行因子数据 (%d 个日期)",
-                        factor_name, len(factor_df), factor_df["trade_date"].nunique())
+            logger.info(
+                "  %s: 加载到 %d 行因子数据 (%d 个日期)",
+                factor_name,
+                len(factor_df),
+                factor_df["trade_date"].nunique(),
+            )
 
             # 计算Rank IC
             ic_df = compute_ic_for_factor(

@@ -117,7 +117,7 @@
 | DataPipeline 入库管道 | `data_fetcher/pipeline.py` | ✅ |
 | Tushare 拉取 | `data_fetcher/tushare_fetcher.py` | ✅ |
 | 数据加载 | `data_fetcher/data_loader.py` | ✅ |
-| INSERT 违规残留 | 生产路径 6 处 CRITICAL | 🔧 待清理 |
+| 裸 INSERT (非 Contract 表) | factor_profile / trade_log / position_snapshot / execution_audit_log / approval_queue 等 ~6 处 | ✅ 非铁律 17 违规 — 铁律 17 仅辖 DataPipeline 10 张行情 Contract 表入库; 输出/审计/编排表自写是设计内, `check_insert_bypass` baseline 已接受 (Code > Docs 实测 2026-05-20) |
 
 ### 3.3 核心数据表
 
@@ -376,7 +376,7 @@ QMT Data Service (scripts/qmt_data_service.py) — 唯一 import xtquant 入口
 
 ---
 
-## §9 多策略框架 ⬜ TODO (决策 D3)
+## §9 多策略框架 🔧 PARTIAL (决策 D3)
 
 ### 9.1 目标架构
 
@@ -401,14 +401,14 @@ StrategyBase (抽象基类)
 
 ### 9.2 实现路径
 
-| 步骤 | 内容 | 优先级 |
+| 步骤 | 内容 | 状态 (Code > Docs 实测 2026-05-20) |
 |------|------|--------|
-| 1 | 抽象 StrategyBase 接口 (signal/portfolio/risk/config) | ⬜ 高 |
-| 2 | 当前等权策略封装为 EqualWeightStrategy | ⬜ 高 |
-| 3 | 资本分配层 (初期: 固定比例 YAML 配置) | ⬜ 中 |
-| 4 | 执行合并层 (同股冲突消解) | ⬜ 中 |
-| 5 | EventDrivenStrategy (PEAD/北向, 独立调仓频率) | ⬜ 后续 |
-| 6 | MLMicrostructureStrategy (新赛道 1 产出) | ⬜ 后续 |
+| 1 | 抽象 StrategyBase 接口 (signal/portfolio/risk/config) | ✅ `engines/base_strategy.py` `BaseStrategy` + `qm_platform/strategy/interface.py` `Strategy` |
+| 2 | 当前等权策略封装为 EqualWeightStrategy | ✅ `engines/strategies/equal_weight.py` (+ FastRanking / MultiFreq / Composite + `StrategyRegistry`) |
+| 3 | 资本分配层 (初期: 固定比例 YAML 配置) | 🔧 `qm_platform/strategy/` `CapitalAllocator` / `MultiStrategyCapitalAllocator` ABC 接口存在, 无 concrete 实现 |
+| 4 | 执行合并层 (同股冲突消解) | ⬜ 未实现 |
+| 5 | EventDrivenStrategy (PEAD/北向, 独立调仓频率) | ✅ `engines/strategies/event_strategy.py` `EventStrategy` |
+| 6 | MLMicrostructureStrategy (新赛道 1 产出) | ⬜ 未实现 |
 
 ### 9.3 与因子评估框架的对应
 
@@ -546,13 +546,21 @@ Orchestrator 状态机: 7 状态 + 16 转换规则
 
 ### 12.1 现有资产
 
-| 类别 | 数量 |
-|------|------|
-| 页面文件 | 24 个 |
-| API 客户端 | 12 个 |
-| 后端 API 端点 | ~96 个 |
-| 共享组件 | 53 个 |
-| Zustand Store | 4 个 |
+> **Code > Docs 实测修订** (Plan v9 Phase G, 2026-05-20): 下表数字均经 code-truth grep 验证，非设计文档估算。
+
+| 类别 | 数量 | 来源 / 验证方式 |
+|------|------|----------------|
+| 页面文件 | 24 个 | `ls frontend/src/pages/` |
+| API 客户端 | 12 个 | `ls frontend/src/api/` |
+| 后端 API 端点 | **148 个** (+54% vs ~96 设计文档) | `docs/API_COVERAGE.md` (Phase H 实测 2026-05-20) |
+| 共享组件 | **58 个** (含 Phase H W1-W6 +5 NEW) | `ls frontend/src/components/` |
+| Zustand Store | 4 个 | `ls frontend/src/store/` |
+| Service files | **57 个** (vs 25 设计文档估算) | `ls backend/app/services/` |
+| RAG memory events | 20 historical events backfilled (dry-run) | `scripts/rag_memory_backfill.py` |
+
+**Phase H W1-W6 NEW components** (2026-05-19): EnvStateBanner / ShutdownBanner / SafetyControlPanel / ConfirmModal (4-tier) / AssistPanel. 4 AI entry points. axios SSOT 14→0.
+
+**V3 §S5-S8 merged main**: ~330 tests (PR #343-346 cumulative, 104+28+48+154 breakdown).
 
 ### 12.2 页面清单与状态
 
@@ -743,7 +751,7 @@ config_guard 启动时检查:
 | # | 方向 | 说明 | 优先级 |
 |---|------|------|--------|
 | 1 | 前端运维功能 | 日志/服务管理/配置编辑替代 CLI | 高 |
-| 2 | INSERT 违规清理 | 生产路径 6 处 CRITICAL 残留 | 中 |
+| 2 | ~~INSERT 违规清理~~ 撤销 | 实测非铁律 17 违规 (写非 Contract 输出/审计/编排表), `check_insert_bypass` baseline 已接受 — 见 §3.2 (2026-05-20) | — |
 | 3 | financial_indicators upsert | 只更新 3/16 字段 (H4 遗留) | 低 |
 | 4 | 24 张空表清理 | 确认无用后删除 | 低 |
 
@@ -773,7 +781,7 @@ config_guard 启动时检查:
 | DEV_FOREX.md | 外汇模块设计 | ⏳ DEFERRED |
 | DEV_NOTIFICATIONS.md | 通知系统设计 | 🔧 |
 | GP_CLOSED_LOOP_DESIGN.md | GP 因子挖掘闭环 | 🔧 40% 实现 |
-| RISK_CONTROL_SERVICE_DESIGN.md | 风控 L1-L4 | ✅ |
+| RISK_CONTROL_SERVICE_DESIGN.md | 风控 L1-L4 (旧) | ⚠️ PARTIALLY DEPRECATED → QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (V3 SSOT) |
 | QUANTMIND_V2_DDL_FINAL.sql | 建表唯一来源 | ✅ |
 | FACTOR_TEST_REGISTRY.md | 因子测试注册表 | ✅ 持续维护 |
 | LESSONS_LEARNED.md | 经验教训 49 条 | ✅ |

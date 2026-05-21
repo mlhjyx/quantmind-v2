@@ -16,6 +16,7 @@ subprocess 启动 + 真 PG → 测试核心 Platform 层 round-trip:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -189,6 +190,11 @@ def test_mvp_2_3_backtest_live_log_run_and_round_trip() -> None:
     result = subprocess.run(
         [sys.executable, "-c", _SMOKE_CODE],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=60,

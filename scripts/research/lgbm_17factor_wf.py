@@ -24,10 +24,23 @@ from engines.metrics import calc_max_drawdown, calc_sharpe  # noqa: E402
 from engines.ml_engine import MLConfig, WalkForwardTrainer  # noqa: E402
 
 PASS_17_FACTORS = [
-    "a158_cord30", "a158_vsump60", "amihud_20", "bp_ratio", "dv_ttm",
-    "ep_ratio", "gap_frequency_20", "large_order_ratio", "price_volume_corr_20",
-    "relative_volume_20", "reversal_20", "reversal_60", "rsrs_raw_18",
-    "turnover_mean_20", "up_days_ratio_20", "volatility_20", "volume_std_20",
+    "a158_cord30",
+    "a158_vsump60",
+    "amihud_20",
+    "bp_ratio",
+    "dv_ttm",
+    "ep_ratio",
+    "gap_frequency_20",
+    "large_order_ratio",
+    "price_volume_corr_20",
+    "relative_volume_20",
+    "reversal_20",
+    "reversal_60",
+    "rsrs_raw_18",
+    "turnover_mean_20",
+    "up_days_ratio_20",
+    "volatility_20",
+    "volume_std_20",
 ]
 
 CACHE_DIR = Path("cache/baseline")
@@ -46,10 +59,7 @@ def predictions_to_backtest(
     oos_df["trade_date"] = pd.to_datetime(oos_df["trade_date"])
     all_dates = sorted(oos_df["trade_date"].unique())
     monthly_dates = (
-        pd.Series(all_dates)
-        .groupby(pd.Series(all_dates).dt.to_period("M"))
-        .last()
-        .values
+        pd.Series(all_dates).groupby(pd.Series(all_dates).dt.to_period("M")).last().values
     )
     monthly_set = set(pd.to_datetime(monthly_dates))
 
@@ -116,9 +126,11 @@ def main():
     folds = trainer.generate_folds()
     print(f"  {len(folds)} folds generated")
     for f in folds:
-        print(f"  F{f.fold_id}: train {f.train_start}..{f.train_end} | "
-              f"test {f.test_start}..{f.test_end} "
-              f"{'(expanding)' if f.is_expanding else '(fixed)'}")
+        print(
+            f"  F{f.fold_id}: train {f.train_start}..{f.train_end} | "
+            f"test {f.test_start}..{f.test_end} "
+            f"{'(expanding)' if f.is_expanding else '(fixed)'}"
+        )
 
     print("\n[2/3] Loading features from DB...")
     df = trainer.load_features(folds[0].train_start, folds[-1].test_end)
@@ -132,29 +144,39 @@ def main():
         print(f"\n--- Fold {fold.fold_id} ---")
         try:
             fr, preprocessor = trainer.train_fold(fold, df)
-            oos_df = trainer.predict_oos(fold, df, model_path=fr.model_path, preprocessor=preprocessor)
+            oos_df = trainer.predict_oos(
+                fold, df, model_path=fr.model_path, preprocessor=preprocessor
+            )
 
-            fold_results.append({
-                "fold_id": fold.fold_id,
-                "train_period": f"{fold.train_start}..{fold.train_end}",
-                "test_period": f"{fold.test_start}..{fold.test_end}",
-                "train_ic": round(float(fr.train_ic), 4),
-                "valid_ic": round(float(fr.valid_ic), 4),
-                "oos_ic": round(float(fr.oos_ic), 4),
-                "feature_importance_top5": dict(
-                    sorted(fr.feature_importance.items(), key=lambda x: -x[1])[:5]
-                ) if fr.feature_importance else {},
-            })
+            fold_results.append(
+                {
+                    "fold_id": fold.fold_id,
+                    "train_period": f"{fold.train_start}..{fold.train_end}",
+                    "test_period": f"{fold.test_start}..{fold.test_end}",
+                    "train_ic": round(float(fr.train_ic), 4),
+                    "valid_ic": round(float(fr.valid_ic), 4),
+                    "oos_ic": round(float(fr.oos_ic), 4),
+                    "feature_importance_top5": dict(
+                        sorted(fr.feature_importance.items(), key=lambda x: -x[1])[:5]
+                    )
+                    if fr.feature_importance
+                    else {},
+                }
+            )
             all_oos.append(oos_df)
 
-            print(f"  Train IC: {fr.train_ic:.4f}, Valid IC: {fr.valid_ic:.4f}, "
-                  f"OOS IC: {fr.oos_ic:.4f}")
+            print(
+                f"  Train IC: {fr.train_ic:.4f}, Valid IC: {fr.valid_ic:.4f}, "
+                f"OOS IC: {fr.oos_ic:.4f}"
+            )
         except Exception as e:
             print(f"  FAILED: {e}")
-            fold_results.append({
-                "fold_id": fold.fold_id,
-                "error": str(e),
-            })
+            fold_results.append(
+                {
+                    "fold_id": fold.fold_id,
+                    "error": str(e),
+                }
+            )
 
     elapsed = time.time() - t0
     print(f"\nTotal training time: {elapsed:.0f}s")
@@ -197,7 +219,11 @@ def main():
 
         if price_parts:
             price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
-            bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date") if bench_parts else None
+            bench_df = (
+                pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date")
+                if bench_parts
+                else None
+            )
             backtest_result = predictions_to_backtest(combined_oos, price_df, bench_df)
             print(f"  Sharpe: {backtest_result['sharpe']}")
             print(f"  MDD: {backtest_result['mdd']}")

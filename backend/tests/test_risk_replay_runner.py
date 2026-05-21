@@ -18,6 +18,7 @@ Tests cover:
 - ADR-066 候选 (TB-1 closure)
 - LL-159 (4-step preflight SOP)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -211,7 +212,9 @@ class TestReplayRunner:
         # Register stub tick rule that always returns 1 event per evaluate
         rule = _StubRule(
             "stub_rule",
-            results=[RuleResult(rule_id="stub_rule", code="600519.SH", shares=0, reason="x", metrics={})],
+            results=[
+                RuleResult(rule_id="stub_rule", code="600519.SH", shares=0, reason="x", metrics={})
+            ],
         )
         engine.register(rule, cadence="tick")
 
@@ -235,7 +238,9 @@ class TestReplayRunner:
         adapter, engine = self._make_adapter_engine()
         rule = _StubRule(
             "dedup_rule",
-            results=[RuleResult(rule_id="dedup_rule", code="600519.SH", shares=0, reason="", metrics={})],
+            results=[
+                RuleResult(rule_id="dedup_rule", code="600519.SH", shares=0, reason="", metrics={})
+            ],
         )
         engine.register(rule, cadence="tick")
 
@@ -275,7 +280,9 @@ class TestReplayRunner:
         adapter, engine = self._make_adapter_engine()
         rule = _StubRule(
             "tz_rule",
-            results=[RuleResult(rule_id="tz_rule", code="600519.SH", shares=0, reason="", metrics={})],
+            results=[
+                RuleResult(rule_id="tz_rule", code="600519.SH", shares=0, reason="", metrics={})
+            ],
         )
         engine.register(rule, cadence="tick")
 
@@ -309,14 +316,14 @@ class TestReplayRunner:
         # rule that fires once per bar
         rule = _StubRule(
             "loader_rule",
-            results=[RuleResult(rule_id="loader_rule", code="LOADER.SH", shares=0, reason="", metrics={})],
+            results=[
+                RuleResult(rule_id="loader_rule", code="LOADER.SH", shares=0, reason="", metrics={})
+            ],
         )
         engine.register(rule, cadence="tick")
 
         def fake_loader(start, end):
-            return [
-                self._make_bar(code="LOADER.SH", trade_time=datetime(2024, 1, 5, 10, 0))
-            ]
+            return [self._make_bar(code="LOADER.SH", trade_time=datetime(2024, 1, 5, 10, 0))]
 
         runner = ReplayRunner(adapter, engine, minute_bars_loader=fake_loader)
         result = runner.run_window(WINDOW_2024Q1_QUANT_CRASH)

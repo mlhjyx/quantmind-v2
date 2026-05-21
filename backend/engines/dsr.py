@@ -63,11 +63,7 @@ def _sharpe_std(
     t = max(n_observations, 1)
 
     # 非正态修正项
-    variance_numerator = (
-        1.0
-        - skewness * sr / 3.0
-        + (kurtosis - 3.0) * sr * sr / 4.0
-    )
+    variance_numerator = 1.0 - skewness * sr / 3.0 + (kurtosis - 3.0) * sr * sr / 4.0
     # 确保方差非负(极端偏度/峰度时可能出现)
     variance_numerator = max(variance_numerator, 1e-12)
 
@@ -100,10 +96,7 @@ def _expected_max_sharpe(
     p1 = min(1.0 - 1.0 / n, 1.0 - 1e-15)
     p2 = min(1.0 - 1.0 / (n * math.e), 1.0 - 1e-15)
 
-    e_max = sharpe_std * (
-        (1.0 - gamma) * float(norm.ppf(p1))
-        + gamma * float(norm.ppf(p2))
-    )
+    e_max = sharpe_std * ((1.0 - gamma) * float(norm.ppf(p1)) + gamma * float(norm.ppf(p2)))
     return e_max
 
 
@@ -170,9 +163,7 @@ def deflated_sharpe_ratio(
     if n_trials == 1:
         logger.debug("n_trials=1, DSR退化为原始Sharpe的显著性检验")
         # 单次试验: 直接检验Sharpe是否显著>0
-        sr_std = sharpe_std or _sharpe_std(
-            observed_sharpe, n_observations, skewness, kurtosis
-        )
+        sr_std = sharpe_std or _sharpe_std(observed_sharpe, n_observations, skewness, kurtosis)
         if sr_std < 1e-12:
             return 1.0 if observed_sharpe > 0 else 0.0
         z = observed_sharpe / sr_std
@@ -202,7 +193,11 @@ def deflated_sharpe_ratio(
 
     logger.debug(
         "DSR计算: SR_obs=%.4f(日频), E[max(SR)]=%.4f, sigma_SR=%.4f, z=%.4f, DSR=%.4f",
-        sr_daily, e_max_sr, sigma_sr, z, dsr,
+        sr_daily,
+        e_max_sr,
+        sigma_sr,
+        z,
+        dsr,
     )
 
     return dsr

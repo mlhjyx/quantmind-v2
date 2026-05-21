@@ -24,9 +24,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("p0_record_ic")
 
 MINUTE_FACTORS = [
-    "high_freq_volatility_20", "volume_concentration_20", "volume_autocorr_20",
-    "smart_money_ratio_20", "opening_volume_share_20", "closing_trend_strength_20",
-    "vwap_deviation_20", "order_flow_imbalance_20", "intraday_momentum_20",
+    "high_freq_volatility_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "opening_volume_share_20",
+    "closing_trend_strength_20",
+    "vwap_deviation_20",
+    "order_flow_imbalance_20",
+    "intraday_momentum_20",
     "volume_price_divergence_20",
 ]
 HORIZONS = [1, 5, 10, 20]
@@ -105,8 +111,11 @@ def main():
     for h in HORIZONS:
         logger.info(f"[fwd] horizon={h}d ...")
         fwd_by_h[h] = compute_forward_excess_returns(
-            price_df, benchmark_df, horizon=h,
-            price_col="adj_close", benchmark_price_col="close",
+            price_df,
+            benchmark_df,
+            horizon=h,
+            price_col="adj_close",
+            benchmark_price_col="close",
         )
 
     # 对每因子计算 IC, 生成 factor_ic_history 行
@@ -121,7 +130,10 @@ def main():
             continue
         nv["trade_date"] = pd.to_datetime(nv["trade_date"])
         factor_wide = nv.pivot_table(
-            index="trade_date", columns="code", values="value", aggfunc="last",
+            index="trade_date",
+            columns="code",
+            values="value",
+            aggfunc="last",
         )
 
         ic_by_h: dict[int, pd.Series] = {}
@@ -131,17 +143,13 @@ def main():
             ic_by_h[h] = ic
             stats_by_h[h] = summarize_ic_stats(ic)
 
-        ic_summary[fn] = {
-            f"ic_{h}d_mean": stats_by_h[h].get("mean") for h in HORIZONS
-        }
-        ic_summary[fn].update({
-            f"ic_{h}d_ir": stats_by_h[h].get("ir") for h in HORIZONS
-        })
+        ic_summary[fn] = {f"ic_{h}d_mean": stats_by_h[h].get("mean") for h in HORIZONS}
+        ic_summary[fn].update({f"ic_{h}d_ir": stats_by_h[h].get("ir") for h in HORIZONS})
         rows = build_ic_record(fn, ic_by_h)
         all_rows.extend(rows)
         logger.info(
-            f"  {fn}: 20d IC mean={stats_by_h[20].get('mean',0):.4f} "
-            f"IR={stats_by_h[20].get('ir',0):.3f} ({time.time()-t0:.1f}s)"
+            f"  {fn}: 20d IC mean={stats_by_h[20].get('mean', 0):.4f} "
+            f"IR={stats_by_h[20].get('ir', 0):.3f} ({time.time() - t0:.1f}s)"
         )
 
     if not all_rows:
@@ -181,7 +189,7 @@ def main():
     out.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     logger.info(f"[report] {out}")
 
-    logger.info(f"[P0-6] done in {(time.time()-t_all)/60:.2f} min")
+    logger.info(f"[P0-6] done in {(time.time() - t_all) / 60:.2f} min")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
 实施时机:
   - MVP 1.2 Config Management (Wave 1, 紧跟 1.1 之后)
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -121,9 +122,7 @@ class FeatureFlag(ABC):
         """
 
     @abstractmethod
-    def register(
-        self, name: str, default: bool, removal_date: str, description: str
-    ) -> None:
+    def register(self, name: str, default: bool, removal_date: str, description: str) -> None:
         """注册新 flag.
 
         Args:

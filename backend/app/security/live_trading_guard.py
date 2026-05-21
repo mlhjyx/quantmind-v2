@@ -28,6 +28,7 @@ OVERRIDE 用法 (紧急 manual):
 
 撤销: docs/audit/link_paused_2026_04_29.md
 """
+
 from __future__ import annotations
 
 import logging
@@ -138,6 +139,4 @@ def assert_live_trading_allowed(
         # reviewer P2 采纳: narrow exception types (网络/格式/超时) 而非裸 Exception,
         # 让 AttributeError 等真 config bug 浮出. 防 DingTalk 不可达时连紧急清仓也卡死.
         # audit log 已写, DingTalk fail 是次要 channel. 沿用铁律 33-d silent_ok.
-        logger.exception(
-            "[live-trading-guard] DingTalk P0 推送失败 (不阻断 bypass, audit 已写)"
-        )
+        logger.exception("[live-trading-guard] DingTalk P0 推送失败 (不阻断 bypass, audit 已写)")

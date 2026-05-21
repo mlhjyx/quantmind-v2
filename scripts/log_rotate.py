@@ -32,8 +32,19 @@ PROTECTED_FILES = {
 }
 
 # 清理的文件扩展名
-CLEANABLE_EXTENSIONS = {".log", ".log.1", ".log.2", ".log.3", ".log.4", ".log.5",
-                         ".log.6", ".log.7", ".log.8", ".log.9", ".log.10"}
+CLEANABLE_EXTENSIONS = {
+    ".log",
+    ".log.1",
+    ".log.2",
+    ".log.3",
+    ".log.4",
+    ".log.5",
+    ".log.6",
+    ".log.7",
+    ".log.8",
+    ".log.9",
+    ".log.10",
+}
 
 
 def should_clean(path: Path, max_age_days: int) -> bool:
@@ -70,11 +81,11 @@ def rotate_logs(max_age_days: int = 30, dry_run: bool = False) -> int:
             size = f.stat().st_size
             age = (time.time() - f.stat().st_mtime) / 86400
             if dry_run:
-                logger.info(f"[DRY-RUN] 待清理: {f.name} ({size/1024:.0f}KB, {age:.0f}天)")
+                logger.info(f"[DRY-RUN] 待清理: {f.name} ({size / 1024:.0f}KB, {age:.0f}天)")
             else:
                 try:
                     f.unlink()
-                    logger.info(f"已清理: {f.name} ({size/1024:.0f}KB, {age:.0f}天)")
+                    logger.info(f"已清理: {f.name} ({size / 1024:.0f}KB, {age:.0f}天)")
                 except OSError as e:
                     logger.error(f"清理失败: {f.name} — {e}")
                     continue
@@ -84,7 +95,7 @@ def rotate_logs(max_age_days: int = 30, dry_run: bool = False) -> int:
     if cleaned > 0:
         logger.info(
             f"{'[DRY-RUN] ' if dry_run else ''}共清理 {cleaned} 个文件, "
-            f"释放 {total_bytes/1024/1024:.1f}MB"
+            f"释放 {total_bytes / 1024 / 1024:.1f}MB"
         )
     else:
         logger.info(f"无需清理 (>{max_age_days}天的日志文件)")

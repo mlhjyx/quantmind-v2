@@ -137,7 +137,9 @@ class TestFallbackFullFieldMapping:
     def test_fallback_cost_model_full_sets_historical_true(self) -> None:
         """Sub1 兼容: cost_model='full' → historical_stamp_tax=True (覆盖 Platform 默认)."""
         runner = PlatformBacktestRunner(registry=MagicMock(), engine_config_builder=None)
-        cfg = _make_config(cost_model="full", historical_stamp_tax=False)  # cost_model=full 强制 True
+        cfg = _make_config(
+            cost_model="full", historical_stamp_tax=False
+        )  # cost_model=full 强制 True
         engine_cfg = runner._build_engine_config(cfg)
 
         assert engine_cfg.historical_stamp_tax is True

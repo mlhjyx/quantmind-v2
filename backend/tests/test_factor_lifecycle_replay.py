@@ -9,6 +9,7 @@ Session 43, 2026-04-28. 加速 4 周观察期 → 历史 12 周 replay 一日内
   - replay() (5 tests): aggregation counters / SUNSET 推荐 / DEFER P1 reverse /
     NO_DATA / JSON report 写入.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -114,10 +115,24 @@ def _mock_conn_with_queries(tail_rows=None, ic_series_rows=None, factor_meta_row
     description_queue = [
         [("trade_date",), ("ic_ma20",), ("ic_ma60",)],  # tail
         [
-            ("id",), ("name",), ("category",), ("direction",), ("expression",),
-            ("code_content",), ("hypothesis",), ("source",), ("lookback_days",),
-            ("status",), ("pool",), ("gate_ic",), ("gate_ir",), ("gate_mono",),
-            ("gate_t",), ("ic_decay_ratio",), ("created_at",), ("updated_at",),
+            ("id",),
+            ("name",),
+            ("category",),
+            ("direction",),
+            ("expression",),
+            ("code_content",),
+            ("hypothesis",),
+            ("source",),
+            ("lookback_days",),
+            ("status",),
+            ("pool",),
+            ("gate_ic",),
+            ("gate_ir",),
+            ("gate_mono",),
+            ("gate_t",),
+            ("ic_decay_ratio",),
+            ("created_at",),
+            ("updated_at",),
         ],  # factor_meta
     ]
     desc_idx = [0]
@@ -152,17 +167,30 @@ def test_replay_one_factor_returns_dict_on_happy_path(flm):
     """tail + ic_series >= 30 + factor_meta → 返完整 dict."""
     # tail: 30 rows, ascending in DB but query returns DESC then reversed
     tail_db = [
-        (date(2026, 4, 25) - timedelta(days=i), 0.05, 0.06)
-        for i in range(30)
+        (date(2026, 4, 25) - timedelta(days=i), 0.05, 0.06) for i in range(30)
     ]  # DB returns DESC
     ic_series_db = [
-        (date(2026, 4, 25) - timedelta(days=i), 0.05 + 0.001 * (i % 5))
-        for i in range(40)
+        (date(2026, 4, 25) - timedelta(days=i), 0.05 + 0.001 * (i % 5)) for i in range(40)
     ]
     factor_meta = (
-        1, "test_factor", "momentum", 1, "expr", None, "test hypothesis 长度 ≥ 20",
-        "manual", 60, "active", "CORE", 0.05, None, None, None, 0.5,
-        datetime(2026, 1, 1), datetime(2026, 4, 28),
+        1,
+        "test_factor",
+        "momentum",
+        1,
+        "expr",
+        None,
+        "test hypothesis 长度 ≥ 20",
+        "manual",
+        60,
+        "active",
+        "CORE",
+        0.05,
+        None,
+        None,
+        None,
+        0.5,
+        datetime(2026, 1, 1),
+        datetime(2026, 4, 28),
     )
     conn = _mock_conn_with_queries(
         tail_rows=tail_db, ic_series_rows=ic_series_db, factor_meta_row=factor_meta
@@ -187,9 +215,7 @@ def test_replay_no_data_when_no_factors(flm):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = []  # no factors
-    type(cur).description = property(
-        lambda _: [("name",), ("status",), ("updated_at",)]
-    )
+    type(cur).description = property(lambda _: [("name",), ("status",), ("updated_at",)])
     with patch.object(flm, "_get_conn", return_value=conn):
         result = flm.replay(start_date=date(2026, 4, 1), weeks=2)
     assert result["summary"]["recommendation"] == "NO_DATA"
@@ -239,14 +265,14 @@ def test_replay_aggregates_counters_and_writes_json(flm, tmp_path):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = [("f1", "active", datetime(2026, 4, 1))]
-    type(cur).description = property(
-        lambda _: [("name",), ("status",), ("updated_at",)]
-    )
+    type(cur).description = property(lambda _: [("name",), ("status",), ("updated_at",)])
 
     report_path = tmp_path / "replay.json"
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
-         patch.object(flm, "_load_factor_meta", return_value=None):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one),
+        patch.object(flm, "_load_factor_meta", return_value=None),
+    ):
         # Use start in past with weeks=2 to get 2 fridays, both <= today
         result = flm.replay(
             start_date=date(2026, 4, 17),  # 2026-04-17 is Friday
@@ -308,13 +334,13 @@ def test_replay_defer_when_p1_reverse_mismatch_present(flm):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = [("f1", "active", datetime(2026, 4, 1))]
-    type(cur).description = property(
-        lambda _: [("name",), ("status",), ("updated_at",)]
-    )
+    type(cur).description = property(lambda _: [("name",), ("status",), ("updated_at",)])
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
-         patch.object(flm, "_load_factor_meta", return_value=None):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one),
+        patch.object(flm, "_load_factor_meta", return_value=None),
+    ):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=2)
 
     summary = result["summary"]
@@ -329,26 +355,32 @@ def test_replay_defer_when_mismatch_rate_exceeds_threshold(flm):
     # 9 evaluations: 1 mismatch (keep_demote, P2 forward), 8 consistent → 1/9 ≈ 11% > 5%
     fake_rows = []
     for i in range(8):
-        fake_rows.append({
+        fake_rows.append(
+            {
+                "snapshot": "2026-04-17",
+                "factor": f"f{i}",
+                "old_label": "keep",
+                "new_label": "keep",
+                "new_decision_value": "accept",
+                "consistent": True,
+                "old_to_status": None,
+                "ic_ma20": 0.05,
+                "ic_ma60": 0.06,
+            }
+        )
+    fake_rows.append(
+        {
             "snapshot": "2026-04-17",
-            "factor": f"f{i}",
+            "factor": "f8",
             "old_label": "keep",
-            "new_label": "keep",
-            "new_decision_value": "accept",
-            "consistent": True,
+            "new_label": "demote",
+            "new_decision_value": "reject",
+            "consistent": False,
             "old_to_status": None,
-            "ic_ma20": 0.05, "ic_ma60": 0.06,
-        })
-    fake_rows.append({
-        "snapshot": "2026-04-17",
-        "factor": "f8",
-        "old_label": "keep",
-        "new_label": "demote",
-        "new_decision_value": "reject",
-        "consistent": False,
-        "old_to_status": None,
-        "ic_ma20": 0.05, "ic_ma60": 0.06,
-    })
+            "ic_ma20": 0.05,
+            "ic_ma60": 0.06,
+        }
+    )
     iter_rows = iter(fake_rows)
 
     def _fake_replay_one(_conn, _name, _snap, factor_meta=None):
@@ -362,16 +394,14 @@ def test_replay_defer_when_mismatch_rate_exceeds_threshold(flm):
     conn.cursor.return_value = cur
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
-    cur.fetchall.return_value = [
-        (f"f{i}", "active", datetime(2026, 4, 1)) for i in range(9)
-    ]
-    type(cur).description = property(
-        lambda _: [("name",), ("status",), ("updated_at",)]
-    )
+    cur.fetchall.return_value = [(f"f{i}", "active", datetime(2026, 4, 1)) for i in range(9)]
+    type(cur).description = property(lambda _: [("name",), ("status",), ("updated_at",)])
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
-         patch.object(flm, "_load_factor_meta", return_value=None):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one),
+        patch.object(flm, "_load_factor_meta", return_value=None),
+    ):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=1)
 
     summary = result["summary"]
@@ -396,13 +426,13 @@ def test_replay_skips_factors_with_no_data(flm):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = [("f1", "active", datetime(2026, 4, 1))]
-    type(cur).description = property(
-        lambda _: [("name",), ("status",), ("updated_at",)]
-    )
+    type(cur).description = property(lambda _: [("name",), ("status",), ("updated_at",)])
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one), \
-         patch.object(flm, "_load_factor_meta", return_value=None):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(flm, "_replay_one_factor", side_effect=_fake_replay_one),
+        patch.object(flm, "_load_factor_meta", return_value=None),
+    ):
         result = flm.replay(start_date=date(2026, 4, 17), weeks=2)
 
     summary = result["summary"]
@@ -422,9 +452,7 @@ def test_load_ic_tail_with_snapshot_uses_filter(flm):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = []
-    type(cur).description = property(
-        lambda _: [("trade_date",), ("ic_ma20",), ("ic_ma60",)]
-    )
+    type(cur).description = property(lambda _: [("trade_date",), ("ic_ma20",), ("ic_ma60",)])
 
     flm._load_ic_tail(conn, "f1", 30, snapshot_date=date(2026, 4, 25))
 
@@ -442,9 +470,7 @@ def test_load_ic_tail_without_snapshot_omits_filter(flm):
     cur.__enter__ = MagicMock(return_value=cur)
     cur.__exit__ = MagicMock(return_value=False)
     cur.fetchall.return_value = []
-    type(cur).description = property(
-        lambda _: [("trade_date",), ("ic_ma20",), ("ic_ma60",)]
-    )
+    type(cur).description = property(lambda _: [("trade_date",), ("ic_ma20",), ("ic_ma60",)])
 
     flm._load_ic_tail(conn, "f1", 30)
 

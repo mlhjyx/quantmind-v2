@@ -16,6 +16,7 @@
     python scripts/pg_backup.py --parquet-only  # 只导出Parquet快照
     python scripts/pg_backup.py --skip-parquet  # 跳过Parquet快照
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,7 +47,19 @@ MONTHLY_DIR = BACKUP_ROOT / "monthly"
 PARQUET_DIR = BACKUP_ROOT / "parquet"
 LOG_DIR = PROJECT_ROOT / "logs"
 
-PG_BIN = Path(os.environ.get("PG_BIN", r"C:\Program Files\PostgreSQL\16\bin"))
+# Plan v8 code review CRITICAL fix (5-20): default PG_BIN aligned with real install path.
+# CLAUDE.md sustains `D:\pgsql\bin` as the PG 16.8 install location (Servy bootstrap doc).
+# Previous default `C:\Program Files\PostgreSQL\16\bin` would silently FAIL daily backup
+# if PG_BIN env var not set → break DR chain. Multi-path probe defends against future moves.
+_PG_BIN_CANDIDATES = (
+    os.environ.get("PG_BIN"),
+    r"D:\pgsql\bin",
+    r"C:\Program Files\PostgreSQL\16\bin",
+)
+PG_BIN = next(
+    (Path(p) for p in _PG_BIN_CANDIDATES if p and Path(p).exists()),
+    Path(r"D:\pgsql\bin"),  # fallback (will fail-loud later if also missing)
+)
 PG_DUMP = PG_BIN / "pg_dump.exe"
 PG_RESTORE = PG_BIN / "pg_restore.exe"
 
@@ -100,8 +113,9 @@ def _pg_env() -> dict:
                             creds = line.split("://")[1].split("@")[0]
                             if ":" in creds:
                                 env["PGPASSWORD"] = creds.split(":")[1]
-                        except Exception:
-                            pass
+                        except (IndexError, ValueError):
+                            logger.warning("[pg_backup] DATABASE_URL parse failed: %s", line)
+                            continue  # silent_ok: malformed .env line is non-fatal, fall through to next line
                     elif line.startswith("PGPASSWORD="):
                         env["PGPASSWORD"] = line.split("=", 1)[1].strip()
     return env
@@ -162,11 +176,7 @@ def _send_alert_via_platform_sdk(title: str, content: str) -> None:
     engine = _get_rules_engine()
     if engine is not None:
         rule = engine.match(alert)
-        dedup_key = (
-            rule.format_dedup_key(alert)
-            if rule
-            else f"pg_backup:summary:{today_str}"
-        )
+        dedup_key = rule.format_dedup_key(alert) if rule else f"pg_backup:summary:{today_str}"
         suppress_minutes = rule.suppress_minutes if rule else 5
     else:
         dedup_key = f"pg_backup:summary:{today_str}"
@@ -219,13 +229,19 @@ def run_backup(dry_run: bool = False) -> Path | None:
 
     cmd = [
         str(PG_DUMP),
-        "-h", DB_HOST,
-        "-p", DB_PORT,
-        "-U", DB_USER,
-        "-d", DB_NAME,
-        "-Fc",        # 自定义压缩格式（内置压缩，支持 pg_restore 选择性恢复）
-        "-Z", "5",    # 压缩级别5（平衡速度和大小）
-        "-f", str(backup_file),
+        "-h",
+        DB_HOST,
+        "-p",
+        DB_PORT,
+        "-U",
+        DB_USER,
+        "-d",
+        DB_NAME,
+        "-Fc",  # 自定义压缩格式（内置压缩，支持 pg_restore 选择性恢复）
+        "-Z",
+        "5",  # 压缩级别5（平衡速度和大小）
+        "-f",
+        str(backup_file),
     ]
     logger.info(f"备份命令: {' '.join(cmd)}")
 
@@ -236,7 +252,11 @@ def run_backup(dry_run: bool = False) -> Path | None:
     start = datetime.now()
     try:
         result = subprocess.run(
-            cmd, env=_pg_env(), capture_output=True, text=True, timeout=1800,
+            cmd,
+            env=_pg_env(),
+            capture_output=True,
+            text=True,
+            timeout=1800,
         )
     except subprocess.TimeoutExpired:
         logger.error("pg_dump 超时(>30分钟)，已终止")
@@ -344,7 +364,7 @@ def export_parquet_snapshots() -> bool:
         df_klines.to_parquet(klines_file, compression="zstd", index=False)
         logger.info(
             f"klines_daily: {len(df_klines):,} 行 → {klines_file.name}"
-            f" ({klines_file.stat().st_size / (1024*1024):.1f}MB)"
+            f" ({klines_file.stat().st_size / (1024 * 1024):.1f}MB)"
         )
 
         # factor_values（前5个因子，近90天）
@@ -366,7 +386,7 @@ def export_parquet_snapshots() -> bool:
         df_fv.to_parquet(fv_file, compression="zstd", index=False)
         logger.info(
             f"factor_values: {len(df_fv):,} 行 → {fv_file.name}"
-            f" ({fv_file.stat().st_size / (1024*1024):.1f}MB)"
+            f" ({fv_file.stat().st_size / (1024 * 1024):.1f}MB)"
         )
 
         logger.info("Parquet 快照完成")
@@ -398,7 +418,9 @@ def verify_backup() -> bool:
     try:
         result = subprocess.run(
             [str(PG_RESTORE), "--list", str(latest)],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
     except subprocess.TimeoutExpired:
         logger.error("pg_restore --list 超时(>2分钟)")
@@ -409,7 +431,9 @@ def verify_backup() -> bool:
         return False
 
     table_count = sum(1 for line in result.stdout.splitlines() if " TABLE " in line)
-    total_objects = len([ln for ln in result.stdout.splitlines() if ln.strip() and not ln.startswith(";")])
+    total_objects = len(
+        [ln for ln in result.stdout.splitlines() if ln.strip() and not ln.startswith(";")]
+    )
     logger.info(f"验证通过: {latest.name} — {table_count} 个TABLE，{total_objects} 个总对象")
 
     if table_count < 40:  # 当前43张表，低于40说明有遗漏

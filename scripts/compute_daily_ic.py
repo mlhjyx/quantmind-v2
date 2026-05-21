@@ -50,9 +50,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
 # LL-076 phase 2 PR-1: TimeWindowResolver 抽象 (PR #99 phase 1 落盘)
-from app.utils.time_window_resolver import TimeWindow, TimeWindowResolver  # noqa: E402
-
 from dotenv import load_dotenv  # noqa: E402
+
+from app.utils.time_window_resolver import TimeWindow, TimeWindowResolver  # noqa: E402
 
 load_dotenv(BACKEND_DIR / ".env")
 
@@ -441,9 +441,7 @@ def _run(args: argparse.Namespace) -> int:
         # 此处 window.end_date 已 CST-aware, 跟移除前的 datetime.now(tz=ZoneInfo("Asia/Shanghai")) 等价.
         if not args.force:
             if not is_trading_day(conn, window.end_date):
-                logger.info(
-                    "[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", window.end_date
-                )
+                logger.info("[daily_ic] %s 非 A 股交易日, skip (use --force 覆盖)", window.end_date)
                 return 0
 
         result = compute_and_ingest(

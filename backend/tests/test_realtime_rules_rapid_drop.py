@@ -5,6 +5,7 @@
   - RapidDrop15min: 15min 快速下跌触发, 边界, skip 条件
   - 上涨不触发, 数据缺失 skip, partial 触发
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

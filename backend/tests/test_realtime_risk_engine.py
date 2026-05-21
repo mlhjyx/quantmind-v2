@@ -6,6 +6,7 @@
   - 规则内部异常不阻塞其他规则
   - registered_rules 属性
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -19,38 +20,45 @@ from backend.qm_platform.risk.realtime import RealtimeRiskEngine
 
 class _DummyTickRule(RiskRule):
     """Tick 级测试规则 — 始终触发."""
+
     rule_id: str = "dummy_tick"
     severity: Severity = Severity.P0
     action: str = "alert_only"
 
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
-        return [RuleResult(
-            rule_id=self.rule_id,
-            code="600519.SH",
-            shares=0,
-            reason="dummy tick trigger",
-            metrics={"val": 1.0},
-        )]
+        return [
+            RuleResult(
+                rule_id=self.rule_id,
+                code="600519.SH",
+                shares=0,
+                reason="dummy tick trigger",
+                metrics={"val": 1.0},
+            )
+        ]
 
 
 class _Dummy5minRule(RiskRule):
     """5min 级测试规则 — 始终触发."""
+
     rule_id: str = "dummy_5min"
     severity: Severity = Severity.P1
     action: str = "alert_only"
 
     def evaluate(self, context: RiskContext) -> list[RuleResult]:
-        return [RuleResult(
-            rule_id=self.rule_id,
-            code="",
-            shares=0,
-            reason="dummy 5min trigger",
-            metrics={"val": 2.0},
-        )]
+        return [
+            RuleResult(
+                rule_id=self.rule_id,
+                code="",
+                shares=0,
+                reason="dummy 5min trigger",
+                metrics={"val": 2.0},
+            )
+        ]
 
 
 class _DummyNoTriggerRule(RiskRule):
     """从不触发的规则."""
+
     rule_id: str = "dummy_noop"
     severity: Severity = Severity.INFO
     action: str = "bypass"
@@ -61,6 +69,7 @@ class _DummyNoTriggerRule(RiskRule):
 
 class _CrashRule(RiskRule):
     """evaluate 抛异常的规则 — 测试隔离."""
+
     rule_id: str = "dummy_crash"
     severity: Severity = Severity.P0
     action: str = "alert_only"

@@ -1,4 +1,5 @@
 """MVP 4.1 batch 2.2 — AlertRulesEngine + HealthReport live smoke (铁律 10b)."""
+
 from __future__ import annotations
 
 import subprocess
@@ -74,7 +75,6 @@ def test_mvp_4_1_batch_2_2_rules_health_imports_and_yaml_load():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_2_2 boot" in result.stdout

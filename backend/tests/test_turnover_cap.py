@@ -59,12 +59,12 @@ class TestTurnoverCapFix:
 
         turnover = (10新买 + 10旧卖) / 2 ÷ 1 = 50% = cap → 不触发blend。
         """
-        overlap = _make_codes("OV", 10)        # 10只重叠
-        new_only = _make_codes("NEW", 10)       # 10只新买
-        old_only = _make_codes("OLD", 10)       # 10只旧卖
+        overlap = _make_codes("OV", 10)  # 10只重叠
+        new_only = _make_codes("NEW", 10)  # 10只新买
+        old_only = _make_codes("OLD", 10)  # 10只旧卖
 
-        target_codes = overlap + new_only       # 20只
-        prev_codes = overlap + old_only         # 20只
+        target_codes = overlap + new_only  # 20只
+        prev_codes = overlap + old_only  # 20只
 
         scores = _make_scores(target_codes)
         industry = _make_industry(target_codes + old_only)
@@ -73,8 +73,7 @@ class TestTurnoverCapFix:
         result = self.builder.build(scores, industry, prev_holdings)
 
         assert len(result) <= 20, (
-            f"持仓膨胀! 期望≤20, 实际={len(result)}, "
-            f"codes={sorted(result.keys())}"
+            f"持仓膨胀! 期望≤20, 实际={len(result)}, codes={sorted(result.keys())}"
         )
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
 
@@ -94,15 +93,12 @@ class TestTurnoverCapFix:
         result = self.builder.build(scores, industry, prev_holdings)
 
         assert len(result) <= 20, (
-            f"持仓膨胀! 0重叠场景, 期望≤20, 实际={len(result)}, "
-            f"codes={sorted(result.keys())}"
+            f"持仓膨胀! 0重叠场景, 期望≤20, 实际={len(result)}, codes={sorted(result.keys())}"
         )
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
         # 所有输出股票必须来自target
         for code in result:
-            assert code in target_codes, (
-                f"输出中包含非target股票: {code}"
-            )
+            assert code in target_codes, f"输出中包含非target股票: {code}"
 
     def test_prev_already_bloated_43(self):
         """Case 3: prev已膨胀到43只 → 调仓后≤20只。
@@ -120,14 +116,11 @@ class TestTurnoverCapFix:
         result = self.builder.build(scores, industry, prev_holdings)
 
         assert len(result) <= 20, (
-            f"未能收缩膨胀持仓! 期望≤20, 实际={len(result)}, "
-            f"prev有43只, target有20只"
+            f"未能收缩膨胀持仓! 期望≤20, 实际={len(result)}, prev有43只, target有20只"
         )
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
         for code in result:
-            assert code in target_codes, (
-                f"输出中包含非target股票: {code}"
-            )
+            assert code in target_codes, f"输出中包含非target股票: {code}"
 
     def test_turnover_exactly_at_cap_no_blend(self):
         """Case 4: turnover刚好=cap → 不触发blend → exactly 20只。
@@ -146,9 +139,7 @@ class TestTurnoverCapFix:
 
         result = self.builder.build(scores, industry, prev_holdings)
 
-        assert len(result) == 20, (
-            f"完全相同持仓应输出exactly 20, 实际={len(result)}"
-        )
+        assert len(result) == 20, f"完全相同持仓应输出exactly 20, 实际={len(result)}"
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
 
     def test_turnover_at_cap_boundary(self):
@@ -172,9 +163,7 @@ class TestTurnoverCapFix:
 
         result = self.builder.build(scores, industry, prev_holdings)
 
-        assert len(result) == 20, (
-            f"turnover=cap时不应触发blend, 期望20, 实际={len(result)}"
-        )
+        assert len(result) == 20, f"turnover=cap时不应触发blend, 期望20, 实际={len(result)}"
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
 
     def test_apply_turnover_cap_directly(self):
@@ -187,14 +176,10 @@ class TestTurnoverCapFix:
 
         result = self.builder._apply_turnover_cap(target, prev)
 
-        assert len(result) <= 20, (
-            f"_apply_turnover_cap直接调用: 期望≤20, 实际={len(result)}"
-        )
+        assert len(result) <= 20, f"_apply_turnover_cap直接调用: 期望≤20, 实际={len(result)}"
         assert abs(sum(result.values()) - 1.0) < 1e-6, "权重之和应=1.0"
         for code in result:
-            assert code in target_codes, (
-                f"输出包含非target股票: {code}"
-            )
+            assert code in target_codes, f"输出包含非target股票: {code}"
 
 
 if __name__ == "__main__":

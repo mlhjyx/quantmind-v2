@@ -18,6 +18,7 @@ Fix (PR-X1):
     - test_sync_positions_failure_marks_disconnected: 同步失败 standalone setex disconnected
     - test_sync_positions_failure_silent_ok_on_redis_error: Redis 也挂时不 cascade fail
 """
+
 from __future__ import annotations
 
 import json
@@ -92,14 +93,14 @@ class TestConnectQmtTtl:
     def test_connect_qmt_success_uses_setex(self, qmt_module, service) -> None:
         """成功连接 → setex(QMT_STATUS, 180, "connected"), 非裸 set."""
         # mock MiniQMTBroker import + connect
-        with patch.object(qmt_module, "ensure_xtquant_path", lambda: None), patch(
-            "engines.broker_qmt.MiniQMTBroker"
-        ) as mock_broker_cls:
+        with (
+            patch.object(qmt_module, "ensure_xtquant_path", lambda: None),
+            patch("engines.broker_qmt.MiniQMTBroker") as mock_broker_cls,
+        ):
             mock_broker_cls.return_value.connect.return_value = None
-            with patch.object(
-                qmt_module.settings, "QMT_PATH", "C:/fake/path", create=True
-            ), patch.object(
-                qmt_module.settings, "QMT_ACCOUNT_ID", "fake-acct", create=True
+            with (
+                patch.object(qmt_module.settings, "QMT_PATH", "C:/fake/path", create=True),
+                patch.object(qmt_module.settings, "QMT_ACCOUNT_ID", "fake-acct", create=True),
             ):
                 ok = service._connect_qmt()
 
@@ -112,18 +113,16 @@ class TestConnectQmtTtl:
         )
         service._redis.set.assert_not_called()
 
-    def test_connect_qmt_failure_uses_setex_disconnected(
-        self, qmt_module, service
-    ) -> None:
+    def test_connect_qmt_failure_uses_setex_disconnected(self, qmt_module, service) -> None:
         """连接失败 (broker.connect raise) → setex(QMT_STATUS, 180, "disconnected")."""
-        with patch.object(qmt_module, "ensure_xtquant_path", lambda: None), patch(
-            "engines.broker_qmt.MiniQMTBroker"
-        ) as mock_broker_cls:
+        with (
+            patch.object(qmt_module, "ensure_xtquant_path", lambda: None),
+            patch("engines.broker_qmt.MiniQMTBroker") as mock_broker_cls,
+        ):
             mock_broker_cls.return_value.connect.side_effect = RuntimeError("xtquant 断")
-            with patch.object(
-                qmt_module.settings, "QMT_PATH", "C:/fake", create=True
-            ), patch.object(
-                qmt_module.settings, "QMT_ACCOUNT_ID", "fake", create=True
+            with (
+                patch.object(qmt_module.settings, "QMT_PATH", "C:/fake", create=True),
+                patch.object(qmt_module.settings, "QMT_ACCOUNT_ID", "fake", create=True),
             ):
                 ok = service._connect_qmt()
 
@@ -142,9 +141,7 @@ class TestConnectQmtTtl:
 
 
 class TestSyncPositionsHeartbeat:
-    def test_sync_positions_success_refreshes_status_and_nav(
-        self, qmt_module, service
-    ) -> None:
+    def test_sync_positions_success_refreshes_status_and_nav(self, qmt_module, service) -> None:
         """sync 成功 → setex(NAV, 180, json) + setex(QMT_STATUS, 180, "connected") heartbeat.
 
         关键: heartbeat 让 zombie 后 key 自然 expire, qmt_client.is_connected 自动 fail-loud.
@@ -179,9 +176,7 @@ class TestSyncPositionsHeartbeat:
             "防 zombie 永久 stale 'connected')"
         )
 
-    def test_sync_positions_failure_marks_disconnected(
-        self, qmt_module, service
-    ) -> None:
+    def test_sync_positions_failure_marks_disconnected(self, qmt_module, service) -> None:
         """sync 失败 (broker raise) → setex(QMT_STATUS, 180, "disconnected").
 
         这是 zombie 模式的唯一兜底: 即使 sync_loop 持续失败, status key 会被
@@ -207,9 +202,7 @@ class TestSyncPositionsHeartbeat:
             "sync 失败必须 setex(QMT_STATUS, 180, 'disconnected') 主动标 (LL-081 zombie 兜底)"
         )
 
-    def test_sync_positions_failure_silent_ok_on_redis_error(
-        self, qmt_module, service
-    ) -> None:
+    def test_sync_positions_failure_silent_ok_on_redis_error(self, qmt_module, service) -> None:
         """sync 失败 + setex 也失败 (Redis 挂) → 不 crash 主 loop (silent_ok 注释).
 
         铁律 33 silent_ok: Redis 也挂时主 logger.warning 已 record, 不重复 raise.

@@ -29,6 +29,7 @@ Usage (生产, 含 register):
     registry = DBFactorRegistry(dal, conn_factory=get_sync_conn)
     registry.register(FactorSpec(...))
 """
+
 from __future__ import annotations
 
 import ast
@@ -318,9 +319,7 @@ class DBFactorRegistry(FactorRegistry):
           WriteNotConfigured: conn_factory 未注入.
         """
         if self._conn_factory is None:
-            raise WriteNotConfigured(
-                "DBFactorRegistry.update_status 需要 conn_factory 注入."
-            )
+            raise WriteNotConfigured("DBFactorRegistry.update_status 需要 conn_factory 注入.")
         status_value = new_status.value if isinstance(new_status, FactorStatus) else str(new_status)
         conn = self._conn_factory()
         try:

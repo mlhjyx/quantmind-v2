@@ -15,11 +15,20 @@ def _make_price(codes, dates, base_price=10.0):
     for c in codes:
         for i, d in enumerate(dates):
             p = base_price + i * 0.1
-            rows.append({
-                "code": c, "trade_date": d, "open": p, "close": p,
-                "pre_close": p - 0.1, "volume": 1_000_000, "amount": p * 1_000_000,
-                "up_limit": p * 1.1, "down_limit": p * 0.9, "turnover_rate": 5.0,
-            })
+            rows.append(
+                {
+                    "code": c,
+                    "trade_date": d,
+                    "open": p,
+                    "close": p,
+                    "pre_close": p - 0.1,
+                    "volume": 1_000_000,
+                    "amount": p * 1_000_000,
+                    "up_limit": p * 1.1,
+                    "down_limit": p * 0.9,
+                    "turnover_rate": 5.0,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -47,9 +56,12 @@ class TestEventTrigger:
         price = _make_price(codes, DATES)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, trigger_direction="above",
-            hold_days=5, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            trigger_direction="above",
+            hold_days=5,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         assert result.total_signals >= 1
@@ -63,9 +75,12 @@ class TestEventTrigger:
         price = _make_price(codes, DATES)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=-0.5, trigger_direction="below",
-            hold_days=5, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=-0.5,
+            trigger_direction="below",
+            hold_days=5,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         assert result.total_signals >= 1
@@ -82,8 +97,11 @@ class TestHoldPeriod:
         price = _make_price(codes, DATES)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=3, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=3,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         assert result.total_buys == 1
@@ -102,8 +120,11 @@ class TestMaxPositions:
         price = pd.concat([_make_price([c], DATES) for c in codes])
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=10, max_positions=3,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=10,
+            max_positions=3,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         assert result.max_concurrent_positions <= 3
@@ -120,8 +141,11 @@ class TestTPlusOne:
         price = _make_price(codes, DATES)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=5, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=5,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         buys = [t for t in result.trades if t.direction == "buy"]
@@ -146,8 +170,11 @@ class TestLimitUp:
         price.loc[mask, "turnover_rate"] = 0.5
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=5, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=5,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         # 涨停跳过 → 买入数为0
@@ -165,8 +192,11 @@ class TestNoDuplicateBuy:
         price = _make_price(codes, DATES)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=10, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=10,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         # 同一只股票只应买入1次（持有期间不重复）
@@ -184,8 +214,11 @@ class TestCostModel:
         price = _make_price(codes, DATES, base_price=50.0)
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=3, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=3,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         buys = [t for t in result.trades if t.direction == "buy"]
@@ -215,15 +248,23 @@ class TestReport:
         price = pd.concat([_make_price([c], DATES) for c in codes])
 
         cfg = EventBacktestConfig(
-            trigger_threshold=0.8, hold_days=5, max_positions=5,
-            start_date=DATES[0], end_date=DATES[-1],
+            trigger_threshold=0.8,
+            hold_days=5,
+            max_positions=5,
+            start_date=DATES[0],
+            end_date=DATES[-1],
         )
         result = EventBacktester(cfg).run(factor, price)
         report = generate_event_report(result, cfg)
 
         required_keys = [
-            "sharpe", "max_drawdown", "total_signals", "total_buys",
-            "win_rate", "avg_hold_days", "annual_return",
+            "sharpe",
+            "max_drawdown",
+            "total_signals",
+            "total_buys",
+            "win_rate",
+            "avg_hold_days",
+            "annual_return",
         ]
         for k in required_keys:
             assert k in report, f"Missing key: {k}"

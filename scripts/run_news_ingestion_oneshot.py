@@ -27,6 +27,7 @@
 - backend/app/services/news/news_ingestion_service.py (sub-PR 7c orchestrator)
 - 铁律 25/32/33/41
 """
+
 from __future__ import annotations
 
 import sys
@@ -62,7 +63,9 @@ def main() -> int:
     print(f"[sub-PR 8a] EXECUTION_MODE={settings.EXECUTION_MODE}")
     print(f"[sub-PR 8a] LIVE_TRADING_DISABLED={settings.LIVE_TRADING_DISABLED}")
     if settings.EXECUTION_MODE != "paper" or not settings.LIVE_TRADING_DISABLED:
-        print("[sub-PR 8a STOP] 红线漂移 — EXECUTION_MODE != paper 或 LIVE_TRADING_DISABLED != true")
+        print(
+            "[sub-PR 8a STOP] 红线漂移 — EXECUTION_MODE != paper 或 LIVE_TRADING_DISABLED != true"
+        )
         return 1
 
     # 5 fetcher init (沿用 backend/app/api/news.py:_build_pipeline_5_sources)
@@ -71,7 +74,9 @@ def main() -> int:
         TavilyNewsFetcher(api_key=settings.TAVILY_API_KEY, base_url=settings.TAVILY_BASE_URL),
         AnspireNewsFetcher(api_key=settings.ANSPIRE_API_KEY, base_url=settings.ANSPIRE_BASE_URL),
         GdeltNewsFetcher(base_url=settings.GDELT_BASE_URL),
-        MarketauxNewsFetcher(api_key=settings.MARKETAUX_API_KEY, base_url=settings.MARKETAUX_BASE_URL),
+        MarketauxNewsFetcher(
+            api_key=settings.MARKETAUX_API_KEY, base_url=settings.MARKETAUX_BASE_URL
+        ),
     ]
     pipeline = DataPipeline(fetchers)
     classifier = get_news_classifier(conn_factory=get_sync_conn)
@@ -90,6 +95,7 @@ def main() -> int:
         conn.rollback()
         print(f"[sub-PR 8a STOP] ingest failed: {type(exc).__name__}: {exc}")
         import traceback
+
         traceback.print_exc()
         return 2
     finally:
@@ -103,7 +109,9 @@ def main() -> int:
 
     # acceptance gate verify (production-level)
     if stats.fetched == 0:
-        print("[sub-PR 8a WARN] fetched=0 — 全 5 源 fail-soft (sub-PR 7a contract), 检查网络 / API key / 配额")
+        print(
+            "[sub-PR 8a WARN] fetched=0 — 全 5 源 fail-soft (sub-PR 7a contract), 检查网络 / API key / 配额"
+        )
         return 3
     if stats.ingested == 0:
         print("[sub-PR 8a STOP] ingested=0 — INSERT news_raw 0 row, 严重")

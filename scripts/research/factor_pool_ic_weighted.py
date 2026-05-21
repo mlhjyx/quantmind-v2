@@ -31,14 +31,28 @@ RF_ANNUAL = 0.02
 CORE_FACTORS = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
 
 KNOWN_DIRECTIONS = {
-    "momentum_5": 1, "momentum_10": 1, "momentum_20": 1,
-    "reversal_5": 1, "reversal_10": 1, "reversal_20": 1, "reversal_60": 1,
-    "volatility_20": -1, "volatility_60": -1,
-    "volume_std_20": -1, "turnover_mean_20": -1, "turnover_std_20": -1,
-    "amihud_20": 1, "bp_ratio": 1, "ep_ratio": 1, "dv_ttm": 1,
-    "price_volume_corr_20": -1, "high_low_range_20": -1,
-    "price_level_factor": -1, "relative_volume_20": -1,
-    "turnover_surge_ratio": -1, "ln_market_cap": -1,
+    "momentum_5": 1,
+    "momentum_10": 1,
+    "momentum_20": 1,
+    "reversal_5": 1,
+    "reversal_10": 1,
+    "reversal_20": 1,
+    "reversal_60": 1,
+    "volatility_20": -1,
+    "volatility_60": -1,
+    "volume_std_20": -1,
+    "turnover_mean_20": -1,
+    "turnover_std_20": -1,
+    "amihud_20": 1,
+    "bp_ratio": 1,
+    "ep_ratio": 1,
+    "dv_ttm": 1,
+    "price_volume_corr_20": -1,
+    "high_low_range_20": -1,
+    "price_level_factor": -1,
+    "relative_volume_20": -1,
+    "turnover_surge_ratio": -1,
+    "ln_market_cap": -1,
 }
 
 EXCLUDE_FACTORS = {"ln_market_cap", "mf_divergence", "beta_market_20"}
@@ -58,12 +72,15 @@ def load_shared_data(conn) -> dict:
     cur = conn.cursor()
 
     # 月末调仓日
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date))
             trade_date
         FROM klines_daily WHERE trade_date >= %s AND trade_date <= %s
         ORDER BY EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date), trade_date DESC
-    """, (BT_START, BT_END))
+    """,
+        (BT_START, BT_END),
+    )
     rebal_dates = sorted([r[0] for r in cur.fetchall()])
     print(f"  调仓日: {len(rebal_dates)}个")
 
@@ -93,7 +110,8 @@ def load_shared_data(conn) -> dict:
         """SELECT code, trade_date, factor_name, neutral_value
            FROM factor_values
            WHERE trade_date = ANY(%s) AND factor_name = ANY(%s) AND neutral_value IS NOT NULL""",
-        conn, params=(sample_dates, list(candidates.keys())),
+        conn,
+        params=(sample_dates, list(candidates.keys())),
     )
 
     avg_corrs = {}
@@ -136,7 +154,8 @@ def load_shared_data(conn) -> dict:
         """SELECT code, trade_date, factor_name, neutral_value
            FROM factor_values
            WHERE trade_date = ANY(%s) AND factor_name = ANY(%s) AND neutral_value IS NOT NULL""",
-        conn, params=(rebal_dates, all_fnames),
+        conn,
+        params=(rebal_dates, all_fnames),
     )
     print(f"  因子数据: {len(factor_data):,}行")
 
@@ -144,7 +163,8 @@ def load_shared_data(conn) -> dict:
     prices = pd.read_sql(
         """SELECT code, trade_date, close * COALESCE(adj_factor, 1) AS adj_close
            FROM klines_daily WHERE trade_date >= %s AND trade_date <= %s AND volume > 0""",
-        conn, params=(BT_START, BT_END),
+        conn,
+        params=(BT_START, BT_END),
     )
     price_pivot = prices.pivot(index="trade_date", columns="code", values="adj_close").sort_index()
     daily_ret = price_pivot.pct_change(fill_method=None)
@@ -154,7 +174,8 @@ def load_shared_data(conn) -> dict:
     mv_data = pd.read_sql(
         """SELECT code, trade_date, total_mv FROM daily_basic
            WHERE trade_date = ANY(%s) AND total_mv > 0""",
-        conn, params=(rebal_dates,),
+        conn,
+        params=(rebal_dates,),
     )
 
     # 月度IC（用于IC_IR加权）——在每个月末对前月截面算rank IC
@@ -316,7 +337,9 @@ def run_backtest(
 
         new_codes = set(top_codes)
         if prev_codes:
-            monthly_turnover.append(1 - len(new_codes & prev_codes) / max(len(new_codes | prev_codes), 1))
+            monthly_turnover.append(
+                1 - len(new_codes & prev_codes) / max(len(new_codes | prev_codes), 1)
+            )
         prev_codes = new_codes
 
         # 持有期
@@ -326,7 +349,9 @@ def run_backtest(
             continue
         if i + 1 < len(rebal_dates):
             next_rd = pd.Timestamp(rebal_dates[i + 1])
-            end_idx = next((j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts))
+            end_idx = next(
+                (j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts)
+            )
         else:
             end_idx = len(all_dates_ts)
 
@@ -384,10 +409,15 @@ def run_backtest(
         yearly[year] = (round(yr_sharpe, 2), round(yr_mdd * 100, 1))
 
     return {
-        "sharpe": sharpe, "mdd": mdd, "calmar": calmar, "cagr": cagr,
-        "avg_turnover": avg_turnover, "mv_pct": mv_pct,
+        "sharpe": sharpe,
+        "mdd": mdd,
+        "calmar": calmar,
+        "cagr": cagr,
+        "avg_turnover": avg_turnover,
+        "mv_pct": mv_pct,
         "mv_median": np.median(mv_median_list) if mv_median_list else 0,
-        "yearly": yearly, "holdings": monthly_holdings,
+        "yearly": yearly,
+        "holdings": monthly_holdings,
         "weight_history": weight_history,
     }
 
@@ -408,7 +438,9 @@ def print_report(data: dict, eq_results: list, ic_results: list, lb_results: dic
         f"  {'组':<4s} {'因子':>4s}  │ {'等权Sharpe':>10s} {'等权MDD':>8s} {'等权Calmar':>10s}"
         f"  │ {'IC_IR Sharpe':>11s} {'IC_IR MDD':>9s} {'IC_IR Calmar':>11s}  │ {'判定':>6s}"
     )
-    print(f"  {'─'*4} {'─'*4}  ┼ {'─'*10} {'─'*8} {'─'*10}  ┼ {'─'*11} {'─'*9} {'─'*11}  ┼ {'─'*6}")
+    print(
+        f"  {'─' * 4} {'─' * 4}  ┼ {'─' * 10} {'─' * 8} {'─' * 10}  ┼ {'─' * 11} {'─' * 9} {'─' * 11}  ┼ {'─' * 6}"
+    )
 
     for (label, flist), eq, ic in zip(groups, eq_results, ic_results, strict=False):
         mark = ""
@@ -416,8 +448,8 @@ def print_report(data: dict, eq_results: list, ic_results: list, lb_results: dic
             mark = " ★"
         print(
             f"  {label:<4s} {len(flist):>4d}  │ "
-            f"{eq['sharpe']:>+10.2f} {eq['mdd']*100:>+8.1f} {eq['calmar']:>10.2f}  │ "
-            f"{ic['sharpe']:>+11.2f} {ic['mdd']*100:>+9.1f} {ic['calmar']:>11.2f}  │{mark}"
+            f"{eq['sharpe']:>+10.2f} {eq['mdd'] * 100:>+8.1f} {eq['calmar']:>10.2f}  │ "
+            f"{ic['sharpe']:>+11.2f} {ic['mdd'] * 100:>+9.1f} {ic['calmar']:>11.2f}  │{mark}"
         )
 
     # 最优IC_IR组
@@ -434,15 +466,15 @@ def print_report(data: dict, eq_results: list, ic_results: list, lb_results: dic
         sorted_w = avg_w.sort_values(ascending=False)
 
         print(f"\n  IC_IR加权 最优组({best_label}, {len(best_flist)}因子) 权重分布:")
-        print(f"    CORE 5因子合计权重: {core_w*100:.1f}%")
+        print(f"    CORE 5因子合计权重: {core_w * 100:.1f}%")
         print("    权重Top-5:")
         for fname, w in sorted_w.head(5).items():
             is_core = "●" if fname in CORE_FACTORS else " "
-            print(f"      {is_core} {fname:<30s}: {w*100:.1f}%")
+            print(f"      {is_core} {fname:<30s}: {w * 100:.1f}%")
         if len(sorted_w) > 5:
             print("    权重Bottom-3:")
             for fname, w in sorted_w.tail(3).items():
-                print(f"        {fname:<30s}: {w*100:.1f}%")
+                print(f"        {fname:<30s}: {w * 100:.1f}%")
 
     # 持仓风格对比
     print("\n  持仓风格对比:")
@@ -453,19 +485,27 @@ def print_report(data: dict, eq_results: list, ic_results: list, lb_results: dic
     small_beq = (best_eq["mv_pct"].get("<50亿", 0) + best_eq["mv_pct"].get("50-100亿", 0)) * 100
     small_bic = (best_ic["mv_pct"].get("<50亿", 0) + best_ic["mv_pct"].get("50-100亿", 0)) * 100
     print(f"  {'<100亿占比':>20s}  {small_core:>9.0f}%  {small_beq:>9.0f}%  {small_bic:>9.0f}%")
-    print(f"  {'市值中位数(亿)':>20s}  {core_eq['mv_median']:>10.0f}  {best_eq['mv_median']:>10.0f}  {best_ic['mv_median']:>10.0f}")
-    print(f"  {'月均换手率':>20s}  {core_eq['avg_turnover']*100:>9.0f}%  {best_eq['avg_turnover']*100:>9.0f}%  {best_ic['avg_turnover']*100:>9.0f}%")
+    print(
+        f"  {'市值中位数(亿)':>20s}  {core_eq['mv_median']:>10.0f}  {best_eq['mv_median']:>10.0f}  {best_ic['mv_median']:>10.0f}"
+    )
+    print(
+        f"  {'月均换手率':>20s}  {core_eq['avg_turnover'] * 100:>9.0f}%  {best_eq['avg_turnover'] * 100:>9.0f}%  {best_ic['avg_turnover'] * 100:>9.0f}%"
+    )
 
     # lookback敏感性
     if lb_results:
         print(f"\n  lookback敏感性（{best_label}组, IC_IR加权）:")
         for lb, r in sorted(lb_results.items()):
             lb_label = f"{lb}月" if lb > 0 else "expanding"
-            print(f"    {lb_label:<12s}: Sharpe={r['sharpe']:+.2f}  MDD={r['mdd']*100:+.1f}%  Calmar={r['calmar']:.2f}")
+            print(
+                f"    {lb_label:<12s}: Sharpe={r['sharpe']:+.2f}  MDD={r['mdd'] * 100:+.1f}%  Calmar={r['calmar']:.2f}"
+            )
 
     # 年度分解
     print(f"\n  年度分解 (CORE等权A vs 最优IC_IR {best_label}):")
-    print(f"  {'年份':>6s}  {'A Sharpe':>9s}  {'A MDD%':>8s}  {best_label+' Sharpe':>12s}  {best_label+' MDD%':>10s}")
+    print(
+        f"  {'年份':>6s}  {'A Sharpe':>9s}  {'A MDD%':>8s}  {best_label + ' Sharpe':>12s}  {best_label + ' MDD%':>10s}"
+    )
     for year in sorted(set(list(core_eq["yearly"].keys()) + list(best_ic["yearly"].keys()))):
         bs, bm = core_eq["yearly"].get(year, (0, 0))
         ms, mm = best_ic["yearly"].get(year, (0, 0))
@@ -478,19 +518,25 @@ def print_report(data: dict, eq_results: list, ic_results: list, lb_results: dic
 
     if best_ic["sharpe"] >= core_sharpe * 0.9 and best_ic["mdd"] > core_mdd:
         delta_mdd = (best_ic["mdd"] - core_mdd) * 100
-        print(f"    ✅ IC_IR加权 {best_label}({len(best_flist)}因子): Sharpe={best_ic['sharpe']:.2f} MDD={best_ic['mdd']*100:.1f}%")
-        print(f"       vs CORE等权: Sharpe变化{(best_ic['sharpe']/core_sharpe-1)*100:+.0f}%, MDD改善{delta_mdd:+.1f}pp")
+        print(
+            f"    ✅ IC_IR加权 {best_label}({len(best_flist)}因子): Sharpe={best_ic['sharpe']:.2f} MDD={best_ic['mdd'] * 100:.1f}%"
+        )
+        print(
+            f"       vs CORE等权: Sharpe变化{(best_ic['sharpe'] / core_sharpe - 1) * 100:+.0f}%, MDD改善{delta_mdd:+.1f}pp"
+        )
         print("       IC_IR加权解决了等权稀释问题")
     else:
         print("    IC_IR加权未能兼得Sharpe和MDD改善")
-        print(f"    最优IC_IR: Sharpe={best_ic['sharpe']:.2f} (CORE={core_sharpe:.2f}), MDD={best_ic['mdd']*100:.1f}% (CORE={core_mdd*100:.1f}%)")
+        print(
+            f"    最优IC_IR: Sharpe={best_ic['sharpe']:.2f} (CORE={core_sharpe:.2f}), MDD={best_ic['mdd'] * 100:.1f}% (CORE={core_mdd * 100:.1f}%)"
+        )
 
     # 等权vs IC_IR提升幅度
     print(f"\n    等权 vs IC_IR对比（{best_label}组）:")
-    print(f"      等权:   Sharpe={best_eq['sharpe']:.2f}  MDD={best_eq['mdd']*100:.1f}%")
-    print(f"      IC_IR:  Sharpe={best_ic['sharpe']:.2f}  MDD={best_ic['mdd']*100:.1f}%")
+    print(f"      等权:   Sharpe={best_eq['sharpe']:.2f}  MDD={best_eq['mdd'] * 100:.1f}%")
+    print(f"      IC_IR:  Sharpe={best_ic['sharpe']:.2f}  MDD={best_ic['mdd'] * 100:.1f}%")
     if best_ic["sharpe"] > best_eq["sharpe"]:
-        print(f"      IC_IR加权恢复了{(best_ic['sharpe']-best_eq['sharpe']):.2f} Sharpe")
+        print(f"      IC_IR加权恢复了{(best_ic['sharpe'] - best_eq['sharpe']):.2f} Sharpe")
 
     print(f"\n{'═' * 100}\n")
 
@@ -510,7 +556,7 @@ def main() -> None:
     for label, flist in groups:
         print(f"  {label}({len(flist)}因子)...", end=" ", flush=True)
         r = run_backtest(flist, candidates, data, weight_mode="equal")
-        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd']*100:.1f}%")
+        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd'] * 100:.1f}%")
         eq_results.append(r)
 
     # IC_IR加权回测（6组, lookback=12）
@@ -519,7 +565,7 @@ def main() -> None:
     for label, flist in groups:
         print(f"  {label}({len(flist)}因子)...", end=" ", flush=True)
         r = run_backtest(flist, candidates, data, weight_mode="ic_ir", lookback=12)
-        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd']*100:.1f}%")
+        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd'] * 100:.1f}%")
         ic_results.append(r)
 
     # lookback敏感性（最优IC_IR组）
@@ -531,7 +577,7 @@ def main() -> None:
         lb_name = f"{lb}月" if lb > 0 else "expanding"
         print(f"  lookback={lb_name}...", end=" ", flush=True)
         r = run_backtest(best_flist, candidates, data, weight_mode="ic_ir", lookback=lb)
-        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd']*100:.1f}%")
+        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd'] * 100:.1f}%")
         lb_results[lb] = r
 
     # 报告

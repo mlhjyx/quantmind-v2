@@ -260,8 +260,12 @@ def exp3_perfect_mvo(
             port.upperlng = max_weight
 
             w_df = port.optimization(
-                model="Classic", rm="MV", obj="Sharpe",
-                rf=0, l=0, hist=True,
+                model="Classic",
+                rm="MV",
+                obj="Sharpe",
+                rf=0,
+                l=0,
+                hist=True,
             )
 
             if w_df is not None and not w_df.empty:
@@ -313,7 +317,11 @@ def run_backtest(
 
     sharpe = calc_sharpe(returns) if len(returns) > 1 else 0
     mdd = calc_max_drawdown(nav)
-    ann_ret = (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1 if len(nav) > 1 else 0
+    ann_ret = (
+        (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1
+        if len(nav) > 1
+        else 0
+    )
     n_rebal = len(target_portfolios)
 
     print(f"\n  {name}:")
@@ -417,7 +425,7 @@ def main():
     print("\n  Baseline reference: SN b=0.50 inner Sharpe=0.68, WF OOS=0.6521")
 
     elapsed = time.time() - t_start
-    print(f"\nTotal elapsed: {elapsed/60:.1f} min")
+    print(f"\nTotal elapsed: {elapsed / 60:.1f} min")
 
     return results
 

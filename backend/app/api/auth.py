@@ -134,7 +134,6 @@ async def get_admin_token_status(
     if not admin_token_cookie:
         return {"cookie_present": False, "valid": False, "source": "none"}
     valid = bool(
-        settings.ADMIN_TOKEN
-        and secrets.compare_digest(admin_token_cookie, settings.ADMIN_TOKEN)
+        settings.ADMIN_TOKEN and secrets.compare_digest(admin_token_cookie, settings.ADMIN_TOKEN)
     )
     return {"cookie_present": True, "valid": valid, "source": "cookie"}

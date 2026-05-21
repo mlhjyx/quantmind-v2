@@ -108,15 +108,31 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
         df = pd.DataFrame(
             rows,
             columns=[
-                "trade_date", "code",
-                "open", "high", "low", "close", "volume", "amount",
+                "trade_date",
+                "code",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
                 "k_turnover_rate",
-                "turnover_rate", "pb", "pe", "pe_ttm", "ps", "ps_ttm",
-                "total_mv", "circ_mv",
-                "buy_sm_amount", "sell_sm_amount",
-                "buy_md_amount", "sell_md_amount",
-                "buy_lg_amount", "sell_lg_amount",
-                "buy_elg_amount", "sell_elg_amount",
+                "turnover_rate",
+                "pb",
+                "pe",
+                "pe_ttm",
+                "ps",
+                "ps_ttm",
+                "total_mv",
+                "circ_mv",
+                "buy_sm_amount",
+                "sell_sm_amount",
+                "buy_md_amount",
+                "sell_md_amount",
+                "buy_lg_amount",
+                "sell_lg_amount",
+                "buy_elg_amount",
+                "sell_elg_amount",
                 "net_mf_amount",
             ],
         )
@@ -127,13 +143,28 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
 
         # 数值类型转换 (asyncpg 可能返回 Decimal)
         numeric_cols = [
-            "open", "high", "low", "close", "volume", "amount",
-            "turnover_rate", "pb", "pe", "pe_ttm", "ps", "ps_ttm",
-            "total_mv", "circ_mv",
-            "buy_sm_amount", "sell_sm_amount",
-            "buy_md_amount", "sell_md_amount",
-            "buy_lg_amount", "sell_lg_amount",
-            "buy_elg_amount", "sell_elg_amount",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+            "turnover_rate",
+            "pb",
+            "pe",
+            "pe_ttm",
+            "ps",
+            "ps_ttm",
+            "total_mv",
+            "circ_mv",
+            "buy_sm_amount",
+            "sell_sm_amount",
+            "buy_md_amount",
+            "sell_md_amount",
+            "buy_lg_amount",
+            "sell_lg_amount",
+            "buy_elg_amount",
+            "sell_elg_amount",
             "net_mf_amount",
         ]
         for col in numeric_cols:
@@ -145,8 +176,12 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
         df["net_md_amount"] = df["buy_md_amount"].fillna(0) - df["sell_md_amount"].fillna(0)
         # vwap 元/股: amount 单位=元, volume 单位=手(100股) → amount / (volume * 100)
         df["vwap"] = (df["amount"] / (df["volume"].replace(0, pd.NA) * 100.0)).astype("float64")
-        df["close_open"] = ((df["close"] - df["open"]) / df["open"].replace(0, pd.NA)).astype("float64")
-        df["high_low"] = ((df["high"] - df["low"]) / df["close"].replace(0, pd.NA)).astype("float64")
+        df["close_open"] = ((df["close"] - df["open"]) / df["open"].replace(0, pd.NA)).astype(
+            "float64"
+        )
+        df["high_low"] = ((df["high"] - df["low"]) / df["close"].replace(0, pd.NA)).astype(
+            "float64"
+        )
 
         # 计算 returns (当日收益率, 用于 amihud 等因子)
         df = df.sort_values(["code", "trade_date"], kind="mergesort")
@@ -154,7 +189,8 @@ async def load_market_data(db_url: str, lookback_days: int = 365) -> pd.DataFram
 
         logger.info(
             "行情数据加载完成",
-            rows=len(df), codes=df["code"].nunique(),
+            rows=len(df),
+            codes=df["code"].nunique(),
             columns=len(df.columns),
             basic_coverage=float((df["pb"].notna()).mean()),
             moneyflow_coverage=float((df["buy_lg_amount"].notna()).mean()),

@@ -33,6 +33,7 @@ def _vwap(df: pd.DataFrame) -> pd.Series:
 
 def _slope(s: pd.Series, d: int) -> pd.Series:
     """滚动线性回归斜率。"""
+
     def _fit(x):
         if len(x) < d or x.isna().any():
             return np.nan
@@ -40,11 +41,13 @@ def _slope(s: pd.Series, d: int) -> pd.Series:
         t = np.arange(len(y), dtype=float)
         coeffs = np.polyfit(t, y, 1)
         return coeffs[0]
+
     return s.rolling(d, min_periods=d).apply(_fit, raw=False)
 
 
 def _rsquare(s: pd.Series, d: int) -> pd.Series:
     """滚动R²。"""
+
     def _fit(x):
         if len(x) < d or x.isna().any():
             return np.nan
@@ -55,11 +58,13 @@ def _rsquare(s: pd.Series, d: int) -> pd.Series:
         ss_res = np.sum((y - pred) ** 2)
         ss_tot = np.sum((y - np.mean(y)) ** 2)
         return 1 - ss_res / (ss_tot + 1e-12)
+
     return s.rolling(d, min_periods=d).apply(_fit, raw=False)
 
 
 def _resi(s: pd.Series, d: int) -> pd.Series:
     """滚动回归残差（最后一个点）。"""
+
     def _fit(x):
         if len(x) < d or x.isna().any():
             return np.nan
@@ -67,6 +72,7 @@ def _resi(s: pd.Series, d: int) -> pd.Series:
         t = np.arange(len(y), dtype=float)
         coeffs = np.polyfit(t, y, 1)
         return y[-1] - np.polyval(coeffs, t[-1])
+
     return s.rolling(d, min_periods=d).apply(_fit, raw=False)
 
 
@@ -82,10 +88,12 @@ def _idxmin(s: pd.Series, d: int) -> pd.Series:
 
 def _ts_rank(s: pd.Series, d: int) -> pd.Series:
     """时序百分位排名。"""
+
     def _rank_pct(x):
         if len(x) < d:
             return np.nan
         return (x.values < x.values[-1]).sum() / (d - 1) if d > 1 else 0.5
+
     return s.rolling(d, min_periods=d).apply(_rank_pct, raw=False)
 
 
@@ -93,12 +101,13 @@ def _ts_rank(s: pd.Series, d: int) -> pd.Series:
 # KBAR因子 (9个)
 # ═══════════════════════════════════════════════════════════
 
+
 def compute_kbar(df: pd.DataFrame) -> dict[str, pd.Series]:
     """K线形态因子。"""
     o, h, lo, c = df["open"], df["high"], df["low"], df["close"]
     hl = h - lo + 1e-12
     gt = pd.concat([o, c], axis=1).max(axis=1)  # Greater(open, close)
-    lt = pd.concat([o, c], axis=1).min(axis=1)   # Less(open, close)
+    lt = pd.concat([o, c], axis=1).min(axis=1)  # Less(open, close)
     return {
         "KMID": (c - o) / o,
         "KLEN": (h - lo) / o,
@@ -116,6 +125,7 @@ def compute_kbar(df: pd.DataFrame) -> dict[str, pd.Series]:
 # PRICE因子 (4个)
 # ═══════════════════════════════════════════════════════════
 
+
 def compute_price(df: pd.DataFrame) -> dict[str, pd.Series]:
     """价格归一化因子。"""
     c = df["close"]
@@ -130,6 +140,7 @@ def compute_price(df: pd.DataFrame) -> dict[str, pd.Series]:
 # ═══════════════════════════════════════════════════════════
 # ROLLING因子 (29算子 × 5窗口 = 145个)
 # ═══════════════════════════════════════════════════════════
+
 
 def compute_rolling(df: pd.DataFrame) -> dict[str, pd.Series]:
     """全部滚动因子，按股票分组计算。"""
@@ -222,7 +233,9 @@ def compute_rolling(df: pd.DataFrame) -> dict[str, pd.Series]:
 
         # WVMA
         wv = abs_ret * v
-        factors[f"WVMA{ds}"] = wv.rolling(d, min_periods=d).std() / (wv.rolling(d, min_periods=d).mean() + eps)
+        factors[f"WVMA{ds}"] = wv.rolling(d, min_periods=d).std() / (
+            wv.rolling(d, min_periods=d).mean() + eps
+        )
 
         # VSUMP, VSUMN, VSUMD
         pos_v = v_diff.clip(lower=0)
@@ -238,6 +251,7 @@ def compute_rolling(df: pd.DataFrame) -> dict[str, pd.Series]:
 # ═══════════════════════════════════════════════════════════
 # 统一入口
 # ═══════════════════════════════════════════════════════════
+
 
 def compute_all_alpha158(
     price_df: pd.DataFrame,
@@ -281,12 +295,14 @@ def compute_all_alpha158(
             mask = ~np.isnan(vals.astype(float))
             if mask.sum() == 0:
                 continue
-            sub = pd.DataFrame({
-                "code": code,
-                "trade_date": dates[mask],
-                "factor_name": fname,
-                "value": vals[mask],
-            })
+            sub = pd.DataFrame(
+                {
+                    "code": code,
+                    "trade_date": dates[mask],
+                    "factor_name": fname,
+                    "value": vals[mask],
+                }
+            )
             all_results.append(sub)
 
     if not all_results:
@@ -307,10 +323,35 @@ def get_alpha158_names() -> list[str]:
     names.extend(["OPEN0", "HIGH0", "LOW0", "VWAP0"])
     # ROLLING
     ops = [
-        "ROC", "MA", "STD", "BETA", "RSQR", "RESI", "MAX", "MIN",
-        "QTLU", "QTLD", "RANK", "RSV", "IMAX", "IMIN", "IMXD",
-        "CORR", "CORD", "CNTP", "CNTN", "CNTD", "SUMP", "SUMN", "SUMD",
-        "VMA", "VSTD", "WVMA", "VSUMP", "VSUMN", "VSUMD",
+        "ROC",
+        "MA",
+        "STD",
+        "BETA",
+        "RSQR",
+        "RESI",
+        "MAX",
+        "MIN",
+        "QTLU",
+        "QTLD",
+        "RANK",
+        "RSV",
+        "IMAX",
+        "IMIN",
+        "IMXD",
+        "CORR",
+        "CORD",
+        "CNTP",
+        "CNTN",
+        "CNTD",
+        "SUMP",
+        "SUMN",
+        "SUMD",
+        "VMA",
+        "VSTD",
+        "WVMA",
+        "VSUMP",
+        "VSUMN",
+        "VSUMD",
     ]
     for op in ops:
         for d in WINDOWS:

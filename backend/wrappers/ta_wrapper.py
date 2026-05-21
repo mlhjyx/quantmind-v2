@@ -45,9 +45,7 @@ def calculate_indicator(
     try:
         import talib
     except ImportError as err:
-        raise RuntimeError(
-            "TA-Lib未安装: brew install ta-lib && pip install TA-Lib"
-        ) from err
+        raise RuntimeError("TA-Lib未安装: brew install ta-lib && pip install TA-Lib") from err
 
     name = name.upper()
 
@@ -87,7 +85,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         return talib.ATR(
-            high, low, close,
+            high,
+            low,
+            close,
             timeperiod=params.get("period", 14),
         )
 
@@ -116,7 +116,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         return talib.ADX(
-            high, low, close,
+            high,
+            low,
+            close,
             timeperiod=params.get("period", 14),
         )
 
@@ -130,7 +132,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         return talib.CCI(
-            high, low, close,
+            high,
+            low,
+            close,
             timeperiod=params.get("period", 14),
         )
 
@@ -147,7 +151,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         return talib.WILLR(
-            high, low, close,
+            high,
+            low,
+            close,
             timeperiod=params.get("period", 14),
         )
 
@@ -157,7 +163,10 @@ def calculate_indicator(
         _require(close, "close", name)
         _require(volume, "volume", name)
         return talib.MFI(
-            high, low, close, volume,
+            high,
+            low,
+            close,
+            volume,
             timeperiod=params.get("period", 14),
         )
 
@@ -168,7 +177,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         k, d = talib.STOCH(
-            high, low, close,
+            high,
+            low,
+            close,
             fastk_period=params.get("fastk_period", 9),
             slowk_period=params.get("slowk_period", 3),
             slowk_matype=0,
@@ -188,7 +199,9 @@ def calculate_indicator(
         _require(low, "low", name)
         _require(close, "close", name)
         k, d = talib.STOCH(
-            high, low, close,
+            high,
+            low,
+            close,
             fastk_period=params.get("fastk_period", 5),
             slowk_period=params.get("slowk_period", 3),
             slowk_matype=0,
@@ -198,18 +211,27 @@ def calculate_indicator(
         return k  # default: slowK
 
     else:
-        raise ValueError(
-            f"未知指标: {name}。请在ta_wrapper.py中添加支持，"
-            f"或直接使用talib.{name}()"
-        )
+        raise ValueError(f"未知指标: {name}。请在ta_wrapper.py中添加支持，或直接使用talib.{name}()")
 
 
 def list_supported_indicators() -> list[str]:
     """返回当前wrapper支持的指标列表。"""
     return [
-        "RSI", "MACD", "MACD_FULL", "ATR", "BBANDS", "BBANDS_FULL",
-        "ADX", "OBV", "CCI", "SMA", "EMA", "WILLR", "MFI",
-        "KDJ", "STOCH",
+        "RSI",
+        "MACD",
+        "MACD_FULL",
+        "ATR",
+        "BBANDS",
+        "BBANDS_FULL",
+        "ADX",
+        "OBV",
+        "CCI",
+        "SMA",
+        "EMA",
+        "WILLR",
+        "MFI",
+        "KDJ",
+        "STOCH",
     ]
 
 
@@ -220,7 +242,4 @@ def _require(
 ) -> None:
     """检查必需的价格数据是否存在。"""
     if arr is None:
-        raise ValueError(
-            f"指标{indicator_name}需要'{field_name}'数据，"
-            f"但prices字典中未提供"
-        )
+        raise ValueError(f"指标{indicator_name}需要'{field_name}'数据，但prices字典中未提供")

@@ -9,6 +9,7 @@
 铁律 10b 意图: subprocess 从生产启动路径真启动, 捕 import-time / top-level 执行错误.
 本 smoke 额外验 fallback path 能真跑 (不是理论上 fallback, 是 runtime 实际可达).
 """
+
 from __future__ import annotations
 
 import subprocess

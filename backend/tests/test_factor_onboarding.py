@@ -80,17 +80,14 @@ def _make_svc():
     return svc
 
 
-# SELECT 列顺序与 factor_onboarding._onboard_inner 中的 approval_queue 查询一致
+# SELECT 列顺序与 factor_onboarding._onboard_inner 中的 gp_approval_queue 查询一致
 _AQ_COLUMNS = (
     "id",
     "run_id",
     "factor_name",
     "factor_expr",
     "ast_hash",
-    "gate_result",
-    "sharpe_1y",
-    "sharpe_5y",
-    "backtest_report",
+    "gate_report",
     "status",
 )
 
@@ -107,14 +104,14 @@ def _make_sync_conn(
             row = cur.fetchone()
 
     fetchone 返回值顺序 (按 _onboard_inner 中调用顺序):
-        1. approval_queue SELECT — 返回 aq_row 的 tuple
+        1. gp_approval_queue SELECT — 返回 aq_row 的 tuple
         2. _upsert_factor_registry INSERT ... RETURNING id — 返回 (registry_id,)
 
     cursor.description 设置为 _AQ_COLUMNS 以便 _onboard_inner 中
     `colnames = [desc[0] for desc in cur.description]` 正确工作.
 
     Args:
-        aq_row: approval_queue 记录字典 (None → fetchone 返回 None).
+        aq_row: gp_approval_queue 记录字典 (None → fetchone 返回 None).
         registry_id: registry upsert fetchone 返回的 id.
 
     Returns:
@@ -128,7 +125,7 @@ def _make_sync_conn(
 
     if aq_row is not None:
         aq_tuple = tuple(aq_row.get(c) for c in _AQ_COLUMNS)
-        # fetchone 按调用顺序返回: 第1次 = approval_queue, 第2次 = registry_id
+        # fetchone 按调用顺序返回: 第1次 = gp_approval_queue, 第2次 = registry_id
         cursor_mock.fetchone.side_effect = [aq_tuple, (registry_id,)]
     else:
         cursor_mock.fetchone.return_value = None
@@ -148,17 +145,15 @@ def _make_sync_conn(
 
 
 def _approved_aq_row(factor_name: str = "test_factor_v1", factor_expr: str = "close") -> dict:
-    """构造一条 status='approved' 的 approval_queue 记录."""
+    """构造一条 status='approved' 的 gp_approval_queue 记录."""
     return {
         "id": 1,
         "run_id": "run-001",
         "factor_name": factor_name,
         "factor_expr": factor_expr,
         "ast_hash": "abc123",
-        "gate_result": '{"hypothesis": "测试因子假设"}',
-        "sharpe_1y": 1.05,
-        "sharpe_5y": 0.95,
-        "backtest_report": None,
+        # gate_report 是 JSONB — psycopg2 读取时返回 dict (模拟真实行为)
+        "gate_report": {"hypothesis": "测试因子假设"},
         "status": "approved",
     }
 
@@ -271,6 +266,9 @@ def _patch_all_onboard_deps(
         patch.object(
             svc, "_upsert_factor_registry", return_value="aaaaaaaa-0000-0000-0000-000000000001"
         ),  # MVP 1.3c
+        patch.object(
+            svc, "_run_quality_gates", return_value=(True, "stubbed: G1-G5 PASS", [])
+        ),  # Plan 4 — G1-G5 gate is a precondition; orchestration tests stub it
     ]
 
 
@@ -296,6 +294,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -319,6 +318,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -339,6 +339,7 @@ class TestOnboardHappyPath:
             patch.object(svc, "_upsert_factor_values", return_value=42) as mock_fv,
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -359,6 +360,7 @@ class TestOnboardHappyPath:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -526,6 +528,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result1 = svc._onboard_inner(conn1, approval_queue_id=1)
 
@@ -539,6 +542,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result2 = svc._onboard_inner(conn2, approval_queue_id=2)
 
@@ -560,6 +564,7 @@ class TestOnboardIdempotent:
             _patch_all_onboard_deps(svc)[5],
             _patch_all_onboard_deps(svc)[6],
             _patch_all_onboard_deps(svc)[7],  # MVP 1.3c _upsert_factor_registry mock
+            _patch_all_onboard_deps(svc)[8],  # Plan 4 _run_quality_gates mock
         ):
             result = svc._onboard_inner(conn, approval_queue_id=1)
 
@@ -905,3 +910,68 @@ class TestBoundaryConditions:
                 sys.modules["engines.mining.factor_dsl"] = original_mod
 
         assert result_df.empty
+
+
+# ---------------------------------------------------------------------------
+# 8. G1-G5 质量门 wiring (Plan 4, P1-34)
+# ---------------------------------------------------------------------------
+
+
+class TestOnboardQualityGates:
+    """Plan 4 — the G1-G5 quality-gate result gates factor_registry.status.
+
+    The gate logic itself is covered by test_factor_gate.py; these tests verify the
+    _onboard_inner WIRING — _run_quality_gates is stubbed to a pass/fail verdict.
+    """
+
+    def test_gate_pass_sets_status_active(self):
+        """G1-G5 全 PASS → factor_registry.status='active', 入库成功."""
+        svc = _make_svc()
+        conn = _make_sync_conn(aq_row=_approved_aq_row())
+
+        with (
+            _patch_all_onboard_deps(svc)[0],
+            _patch_all_onboard_deps(svc)[1],
+            _patch_all_onboard_deps(svc)[2],
+            _patch_all_onboard_deps(svc)[3],
+            _patch_all_onboard_deps(svc)[4],
+            _patch_all_onboard_deps(svc)[5],
+            _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],
+            patch.object(svc, "_run_quality_gates", return_value=(True, "G1-G5 PASS", [])),
+        ):
+            result = svc._onboard_inner(conn, approval_queue_id=1)
+
+        assert result["success"] is True
+        # 最后一次 execute = UPDATE factor_registry; status 参数 (index 3) = 'active'
+        update_params = conn._test_cursor.execute.call_args_list[-1].args[1]
+        assert update_params[3] == "active"
+
+    def test_gate_fail_raises_onboarding_blocked_and_rejects(self):
+        """任一 G1-G5 FAIL → raise OnboardingBlocked + status='rejected'."""
+        from backend.qm_platform.factor.registry import OnboardingBlocked
+
+        svc = _make_svc()
+        conn = _make_sync_conn(aq_row=_approved_aq_row())
+
+        with (
+            _patch_all_onboard_deps(svc)[0],
+            _patch_all_onboard_deps(svc)[1],
+            _patch_all_onboard_deps(svc)[2],
+            _patch_all_onboard_deps(svc)[3],
+            _patch_all_onboard_deps(svc)[4],
+            _patch_all_onboard_deps(svc)[5],
+            _patch_all_onboard_deps(svc)[6],
+            _patch_all_onboard_deps(svc)[7],
+            patch.object(
+                svc,
+                "_run_quality_gates",
+                return_value=(False, "G1[FAIL] |IC|=0.005 <= 0.02", ["G1"]),
+            ),
+            pytest.raises(OnboardingBlocked, match="G1-G5"),
+        ):
+            svc._onboard_inner(conn, approval_queue_id=1)
+
+        # UPDATE 在 raise 之前执行 → status='rejected' 已写 (reject 审计 trail)
+        update_params = conn._test_cursor.execute.call_args_list[-1].args[1]
+        assert update_params[3] == "rejected"

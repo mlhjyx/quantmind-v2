@@ -30,6 +30,7 @@ Usage:
                 issues.append("close 列含负值")
             return issues
 """
+
 from __future__ import annotations
 
 from abc import abstractmethod
@@ -72,9 +73,7 @@ class BaseDataSource(DataSource):
 
     def __init__(self, nan_ratio_threshold: float = 0.1) -> None:
         if not 0.0 <= nan_ratio_threshold <= 1.0:
-            raise ValueError(
-                f"nan_ratio_threshold 必须在 [0.0, 1.0], 现: {nan_ratio_threshold}"
-            )
+            raise ValueError(f"nan_ratio_threshold 必须在 [0.0, 1.0], 现: {nan_ratio_threshold}")
         self._nan_ratio_threshold = nan_ratio_threshold
 
     # ---------- Template method ----------
@@ -131,8 +130,7 @@ class BaseDataSource(DataSource):
         missing = required - present
         if missing:
             issues.append(
-                f"[schema] missing required columns: {sorted(missing)} "
-                f"(contract={contract.name})"
+                f"[schema] missing required columns: {sorted(missing)} (contract={contract.name})"
             )
         return issues
 
@@ -150,14 +148,10 @@ class BaseDataSource(DataSource):
         duped = df.duplicated(subset=pk_cols, keep=False)
         n_duped = int(duped.sum())
         if n_duped > 0:
-            issues.append(
-                f"[pk] {n_duped} rows violate primary_key uniqueness on {pk_cols}"
-            )
+            issues.append(f"[pk] {n_duped} rows violate primary_key uniqueness on {pk_cols}")
         return issues
 
-    def _check_nan_ratio(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_nan_ratio(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """检查每列 NaN 比例 ≤ nan_ratio_threshold.
 
         PK 列 NaN 不允许 (100% 强制), 其他列看 threshold.
@@ -184,9 +178,7 @@ class BaseDataSource(DataSource):
                     )
         return issues
 
-    def _check_value_ranges(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_value_ranges(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """默认 no-op — 子类 override 实现业务特定 range 检查.
 
         e.g. TushareDataSource 可检查 close > 0, QMTDataSource 可检查 price >= 0.01.

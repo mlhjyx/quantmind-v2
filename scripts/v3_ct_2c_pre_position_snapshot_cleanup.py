@@ -132,9 +132,7 @@ def _check_preflight(rows: list[dict], xtquant: dict) -> list[str]:
     """Strict preflight verify."""
     failures = []
     if len(rows) != _EXPECTED_ROW_COUNT:
-        failures.append(
-            f"Row count drift: actual={len(rows)} expected={_EXPECTED_ROW_COUNT}"
-        )
+        failures.append(f"Row count drift: actual={len(rows)} expected={_EXPECTED_ROW_COUNT}")
     if xtquant["position_count"] != 0:
         failures.append(
             f"xtquant has {xtquant['position_count']} positions (expected 0 — clearance baseline)"
@@ -345,7 +343,8 @@ def _rollback() -> int:
             if restored != len(rows):
                 logger.warning(
                     "Rollback row-count mismatch: actual=%d expected=%d (may indicate partial prior restore)",
-                    restored, len(rows),
+                    restored,
+                    len(rows),
                 )
             print(f"  ✅ Restored {restored}/{len(rows)} rows")
             return 0
@@ -368,7 +367,9 @@ def _verify() -> int:
         )
         n = cur.fetchone()[0]
     if n == 0:
-        print(f"✅ Verify PASS — 0 live-mode position_snapshot rows for strategy {_TARGET_STRATEGY_ID}")
+        print(
+            f"✅ Verify PASS — 0 live-mode position_snapshot rows for strategy {_TARGET_STRATEGY_ID}"
+        )
         return 0
     print(f"❌ Verify FAIL — {n} rows remain (expected 0)")
     return 1
@@ -383,7 +384,9 @@ def main() -> int:
     g.add_argument("--apply", action="store_true", help="EXECUTE cleanup")
     g.add_argument("--rollback", action="store_true", help="restore from snapshot")
     g.add_argument("--verify", action="store_true", help="post-apply state verify")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     args = parser.parse_args()
 
     logging.basicConfig(

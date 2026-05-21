@@ -26,6 +26,7 @@ async def strat_repo(db_session: AsyncSession) -> StrategyRepository:
 # get_strategy
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_strategy_exists(strat_repo, strategy_id):
     """能正确读取已存在的strategy。"""
@@ -48,6 +49,7 @@ async def test_get_strategy_not_found(strat_repo):
 # create_config_version (重点测试)
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_create_config_version_first(strat_repo, strategy_id):
     """首次创建配置版本，版本号=1。"""
@@ -67,15 +69,9 @@ async def test_create_config_version_increments(strat_repo, strategy_id):
     """连续创建多个版本，版本号严格递增。"""
     sid = str(strategy_id)
 
-    v1 = await strat_repo.create_config_version(
-        sid, {"top_n": 30}, "v1: 30只"
-    )
-    v2 = await strat_repo.create_config_version(
-        sid, {"top_n": 50}, "v2: 50只"
-    )
-    v3 = await strat_repo.create_config_version(
-        sid, {"top_n": 20}, "v3: 20只"
-    )
+    v1 = await strat_repo.create_config_version(sid, {"top_n": 30}, "v1: 30只")
+    v2 = await strat_repo.create_config_version(sid, {"top_n": 50}, "v2: 50只")
+    v3 = await strat_repo.create_config_version(sid, {"top_n": 20}, "v3: 20只")
 
     assert v1 == 1
     assert v2 == 2
@@ -105,6 +101,7 @@ async def test_create_config_preserves_old_versions(strat_repo, strategy_id):
 # ──────────────────────────────────────────────
 # get_active_config
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_active_config(strat_repo, strategy_id):
@@ -139,6 +136,7 @@ async def test_get_active_config_no_config(strat_repo, strategy_id):
 # ──────────────────────────────────────────────
 # rollback_version
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_rollback_version(strat_repo, strategy_id):
@@ -189,6 +187,7 @@ async def test_rollback_then_create_new(strat_repo, strategy_id):
 # get_config_history
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_config_history_empty(strat_repo, strategy_id):
     """无配置记录时返回空列表。"""
@@ -213,6 +212,7 @@ async def test_get_config_history_changelog(strat_repo, strategy_id):
 # ──────────────────────────────────────────────
 # list_strategies
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_list_strategies_no_filter(strat_repo, strategy_id):

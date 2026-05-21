@@ -10,6 +10,7 @@
   - MVP 3.1 Strategy Framework: Strategy 基类 + Registry DB 表
   - MVP 3.0a PEAD 前置: PIT bias 修复 + PMS v2 + cost H0-v2 (平行 3 周)
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -39,12 +40,12 @@ class RebalanceFreq(Enum):
 class StrategyStatus(Enum):
     """策略状态."""
 
-    DRAFT = "draft"              # 设计阶段
-    BACKTEST = "backtest"        # 回测验证中
-    DRY_RUN = "dry_run"          # PT dry-run (paper)
-    LIVE = "live"                # 真实交易
-    PAUSED = "paused"            # 暂停 (保留仓位)
-    RETIRED = "retired"          # 退役 (清仓后)
+    DRAFT = "draft"  # 设计阶段
+    BACKTEST = "backtest"  # 回测验证中
+    DRY_RUN = "dry_run"  # PT dry-run (paper)
+    LIVE = "live"  # 真实交易
+    PAUSED = "paused"  # 暂停 (保留仓位)
+    RETIRED = "retired"  # 退役 (清仓后)
 
 
 @dataclass(frozen=True)
@@ -121,9 +122,7 @@ class StrategyRegistry(ABC):
         """
 
     @abstractmethod
-    def update_status(
-        self, strategy_id: str, new_status: StrategyStatus, reason: str
-    ) -> None:
+    def update_status(self, strategy_id: str, new_status: StrategyStatus, reason: str) -> None:
         """变更策略状态 (带审计日志)."""
 
 

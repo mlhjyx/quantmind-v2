@@ -3,6 +3,7 @@
 真生产事件回放: 卓然 (688121) 4-22 entry @ 10.90, 4-23 close 9.79 →
   holding_days=1, loss_pct=-10.17%. 默认阈值 (7d, 5%) → P1 触发.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta

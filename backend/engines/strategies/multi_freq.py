@@ -84,7 +84,9 @@ class MultiFreqStrategy(BaseStrategy):
 
         # ── 构建目标持仓 ──
         target = self.build_portfolio(
-            scores, context.industry_map, context.prev_holdings,
+            scores,
+            context.industry_map,
+            context.prev_holdings,
         )
 
         # ── 是否调仓日 ──
@@ -121,6 +123,4 @@ class MultiFreqStrategy(BaseStrategy):
         valid_freqs = {"daily", "weekly", "biweekly", "monthly"}
         freq = self.config.get("rebalance_freq", "monthly")
         if freq not in valid_freqs:
-            raise ValueError(
-                f"rebalance_freq必须是{valid_freqs}之一，当前: {freq}"
-            )
+            raise ValueError(f"rebalance_freq必须是{valid_freqs}之一，当前: {freq}")

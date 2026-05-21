@@ -13,6 +13,7 @@
 关联铁律: 24 (单一职责 wiring) / 31 (App 层允许 IO) / 33 (fail-loud send_alert) /
           34 (.env 配置 single source of truth)
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,14 +63,14 @@ class LoggingSellBroker:
     符合 engine.BrokerProtocol.sell 契约.
     """
 
-    def sell(
-        self, code: str, shares: int, reason: str, timeout: float = 5.0
-    ) -> dict[str, Any]:
+    def sell(self, code: str, shares: int, reason: str, timeout: float = 5.0) -> dict[str, Any]:
         """批 1 占位: 不实盘, 返 status='logged_only'. risk_event_log 仍记录完整触发."""
         logger.warning(
             "[risk-wiring] LoggingSellBroker placeholder: code=%s shares=%d reason=%s "
             "(批 1 仅记录, 批 2 接真 broker)",
-            code, shares, reason,
+            code,
+            shares,
+            reason,
         )
         return {
             "status": "logged_only",
@@ -111,7 +112,8 @@ class DingTalkRiskNotifier:
         except Exception as e:  # noqa: BLE001 — 通知失败不阻塞 Engine 主路径
             logger.warning(
                 "[risk-wiring] DingTalkRiskNotifier send failed: %s: %s",
-                type(e).__name__, e,
+                type(e).__name__,
+                e,
             )
 
 
@@ -188,7 +190,7 @@ def build_risk_engine(
     # silent skip (旧持仓 backfill 缺数据).
     engine.register(PositionHoldingTimeRule())
     engine.register(NewPositionVolatilityRule())
-    for rule in (extra_rules or []):
+    for rule in extra_rules or []:
         engine.register(rule)
     logger.info(
         "[risk-wiring] PlatformRiskEngine built, rules=%s",
@@ -202,9 +204,7 @@ def build_risk_engine(
 # ══════════════════════════════════════════════════════════════════════════
 
 
-def _load_prev_close_nav(
-    conn: Any, strategy_id: str, execution_mode: str
-) -> float | None:
+def _load_prev_close_nav(conn: Any, strategy_id: str, execution_mode: str) -> float | None:
     """从 performance_series 读前一交易日 NAV 作 prev_close_nav (intraday rules 用).
 
     查询: `SELECT nav FROM performance_series WHERE strategy_id=%s AND execution_mode=%s
@@ -241,12 +241,17 @@ def _load_prev_close_nav(
                     return nav
             logger.warning(
                 "[risk-wiring] prev_close_nav 数据缺失 strategy=%s mode=%s today_cn=%s",
-                strategy_id, execution_mode, today_cn,
+                strategy_id,
+                execution_mode,
+                today_cn,
             )
     except Exception as e:  # noqa: BLE001 — 读路径 fallback 允许 (铁律 33-c)
         logger.error(
             "[risk-wiring] _load_prev_close_nav 异常 strategy=%s mode=%s: %s: %s",
-            strategy_id, execution_mode, type(e).__name__, e,
+            strategy_id,
+            execution_mode,
+            type(e).__name__,
+            e,
         )
     return None
 
@@ -291,9 +296,7 @@ class IntradayAlertDedup:
         today = datetime.now(_CHINA_TZ).date().isoformat()
         return f"qm:risk:dedup:{rule_id}:{strategy_id}:{execution_mode}:{today}"
 
-    def should_alert(
-        self, rule_id: str, strategy_id: str, execution_mode: str
-    ) -> bool:
+    def should_alert(self, rule_id: str, strategy_id: str, execution_mode: str) -> bool:
         """判断是否应发告警. True = 未 mark 过 (首次) / Redis 异常 fail-open."""
         key = self._build_key(rule_id, strategy_id, execution_mode)
         try:
@@ -302,13 +305,13 @@ class IntradayAlertDedup:
             logger.error(
                 "[risk-wiring] IntradayAlertDedup.should_alert Redis 异常 key=%s: %s: %s "
                 "(fail-open, 允许告警)",
-                key, type(e).__name__, e,
+                key,
+                type(e).__name__,
+                e,
             )
             return True
 
-    def mark_alerted(
-        self, rule_id: str, strategy_id: str, execution_mode: str
-    ) -> None:
+    def mark_alerted(self, rule_id: str, strategy_id: str, execution_mode: str) -> None:
         """标记已告警. 失败 silent (dedup 失败不应阻塞主路径, 铁律 33-c).
 
         reviewer P2 采纳 (python): `import time` 已提到模块顶层, 不再 lazy.
@@ -319,7 +322,9 @@ class IntradayAlertDedup:
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "[risk-wiring] IntradayAlertDedup.mark_alerted Redis 异常 key=%s: %s: %s",
-                key, type(e).__name__, e,
+                key,
+                type(e).__name__,
+                e,
             )
 
 
@@ -364,7 +369,7 @@ def build_intraday_risk_engine(
     # 与 build_risk_engine (daily 14:30) 双频检查 — 任一频率触发都告警.
     # 卓然 -29% 真生产事件如果 SingleStockStopLossRule 已上线 → intraday 5min 必触发 P0.
     engine.register(SingleStockStopLossRule())
-    for rule in (extra_rules or []):
+    for rule in extra_rules or []:
         engine.register(rule)
     logger.info(
         "[risk-wiring] Intraday PlatformRiskEngine built, rules=%s",

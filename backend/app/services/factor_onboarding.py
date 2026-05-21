@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -48,6 +48,9 @@ import structlog
 
 from app.data_fetcher.contracts import FACTOR_IC_HISTORY, FACTOR_VALUES
 from app.data_fetcher.pipeline import DataPipeline
+
+if TYPE_CHECKING:
+    from engines.factor_gate import FactorGatePipeline, GateReport
 
 logger = structlog.get_logger(__name__)
 
@@ -65,6 +68,12 @@ LOOKBACK_BUFFER_DAYS: int = 60
 
 # CSI300 指数代码 (用于 ic_calculator 计算超额收益, 铁律 19)
 BENCHMARK_INDEX_CODE: str = "000300.SH"
+
+# G8 auto-assist (Plan F): FactorClassifier 标准 4 类 — 仅这些 signal_type 自动
+# confirm_g8; unclassified/hybrid/conditional/paired/adaptive → 保持 PENDING 待 L2。
+_G8_CLASSIFIABLE_SIGNAL_TYPES: frozenset[str] = frozenset(
+    {"ranking", "fast_ranking", "event", "modifier"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +117,7 @@ class FactorOnboardingService:
         """入库审批通过的因子 (sync 主入口)。
 
         Args:
-            approval_queue_id: approval_queue 表主键 id。
+            approval_queue_id: gp_approval_queue 表主键 id。
 
         Returns:
             入库结果摘要:
@@ -140,13 +149,13 @@ class FactorOnboardingService:
         approval_queue_id: int,
     ) -> dict[str, Any]:
         """入库核心逻辑 (单连接内顺序执行)。"""
-        # ── Step 1: 读取 approval_queue 记录 ──────────────────────────
+        # ── Step 1: 读取 gp_approval_queue 记录 ───────────────────────
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, run_id, factor_name, factor_expr, ast_hash,
-                       gate_result, sharpe_1y, sharpe_5y, backtest_report, status
-                FROM approval_queue
+                       gate_report, status
+                FROM gp_approval_queue
                 WHERE id = %s
                 """,
                 (approval_queue_id,),
@@ -165,8 +174,11 @@ class FactorOnboardingService:
 
         factor_name: str = aq_row["factor_name"]
         factor_expr: str = aq_row["factor_expr"]
+        # gp_approval_queue.gate_report 是 JSONB — psycopg2 默认返回 dict;
+        # 兼容历史 text 值 (str → json.loads)。
+        _gate_raw = aq_row["gate_report"]
         gate_result: dict[str, Any] = (
-            json.loads(aq_row["gate_result"]) if aq_row["gate_result"] else {}
+            json.loads(_gate_raw) if isinstance(_gate_raw, str) and _gate_raw else (_gate_raw or {})
         )
 
         logger.info(
@@ -182,7 +194,9 @@ class FactorOnboardingService:
             factor_expr=factor_expr,
             gate_result=gate_result,
             run_id=aq_row["run_id"],
-            sharpe_1y=float(aq_row["sharpe_1y"]) if aq_row["sharpe_1y"] else None,
+            # gp_approval_queue 无独立 sharpe 列; orchestrator 把 backtest
+            # 折叠进 gate_report._backtest (Plan A)。_upsert 不用于 register。
+            sharpe_1y=(gate_result.get("_backtest") or {}).get("sharpe_1y"),
         )
         logger.info("factor_registry 写入完成: id=%s", registry_id)
 
@@ -240,24 +254,58 @@ class FactorOnboardingService:
         ic_written = self._upsert_ic_history(conn, factor_name, ic_df)
         logger.info("factor_ic_history 写入完成: %d 行", ic_written)
 
-        # ── Step 6: 更新 factor_registry gate 统计 ────────────────────
+        # ── Step 5.5: G1-G5 自动质量门 (Plan 4, P1-34) ────────────────
+        # factor_gate.FactorGatePipeline G1-G5 (IC 量级 / Active-corr / t-stat /
+        # 中性化衰减 / 方向). G2 Active-corr 走 conn 查 CORE 池真正交 (Plan A).
+        # G6-G8 半自动 → run_gates 标 PENDING, L2 人工晋升处理.
+        gates_passed, gate_summary, failed_gates = self._run_quality_gates(
+            conn=conn,
+            factor_name=factor_name,
+            factor_values_df=factor_values_df,
+            ic_df=ic_df,
+            price_df=price_df,
+            benchmark_df=benchmark_df,
+            expected_direction=int(gate_result.get("direction", 1)),
+        )
+        logger.info(
+            "G1-G8 质量门: passed=%s, failed=%s\n%s",
+            gates_passed,
+            failed_gates,
+            gate_summary,
+        )
+
+        # ── Step 6: 更新 factor_registry gate 统计 + status (门控) ─────
         gate_ic, gate_ir, gate_t = self._compute_gate_stats(ic_df)
+        new_status = "active" if gates_passed else "rejected"
         with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE factor_registry
                 SET gate_ic = %s, gate_ir = %s, gate_t = %s,
-                    status = 'active', updated_at = NOW()
+                    status = %s, updated_at = NOW()
                 WHERE id = %s
                 """,
-                (gate_ic, gate_ir, gate_t, registry_id),
+                (gate_ic, gate_ir, gate_t, new_status, registry_id),
             )
         logger.info(
-            "factor_registry gate 更新完成: factor_name=%s, gate_ic=%.4f, gate_t=%.4f",
+            "factor_registry gate 更新完成: factor_name=%s, status=%s, gate_ic=%.4f, gate_t=%.4f",
             factor_name,
+            new_status,
             gate_ic or 0.0,
             gate_t or 0.0,
         )
+
+        if not gates_passed:
+            # 因子未通过 G1-G5 质量门 → status='rejected' + raise (沿用 G9/G10
+            # OnboardingBlocked 体例; 调用方 Celery onboarding_task 记录审计).
+            # factor_values / factor_ic_history 行保留作 reject 审计 trail.
+            from backend.qm_platform.factor.registry import (  # noqa: PLC0415
+                OnboardingBlocked,
+            )
+
+            raise OnboardingBlocked(
+                f"G1-G5 质量门未通过 (factor={factor_name}): failed={failed_gates}. {gate_summary}"
+            )
 
         return {
             "success": True,
@@ -294,20 +342,10 @@ class FactorOnboardingService:
             OnboardingBlocked: G9/G10 失败 (hypothesis 占位 / AST 太近似).
                 调用方 (Celery onboarding_task) 负责记录到 approval_queue 审计.
 
-        TODO P1-34 (Plan v8, 2026-05-19 sediment, 待 wire):
-            G1-G8 quality gates (factor_gate.py) **not yet wired** in onboarding service.
-            Current path: only G9 (AST) + G10 (hypothesis) gate.
-            Missing gates:
-              - G1 |IC_mean| > 0.02 (快筛)
-              - G2 与现有 Active 因子 截面 corr < 0.7 (正交性)
-              - G3 t-stat > 2.0 (宽松显著性)
-              - G4 中性化 IC 衰减 < 50%
-              - G5 方向与经济假设一致
-              - G6 BH-FDR 多重检验校正 (Harvey Liu Zhu 2016, t>2.5 硬标准)
-              - G7 SimBroker 回测 Sharpe ≥ 基线 1.03
-              - G8 strategy 策略匹配
-            Wire path: 在 _onboard_inner 末尾 (post G9/G10) 调用 factor_gate.run_gates
-            + 失败 raise OnboardingBlocked. Effort ~2h.
+        G1-G8 质量门 (Plan 4, P1-34, 2026-05-20): G1-G5 自动门已 wire 在
+        `_onboard_inner` Step 5.5 (`_run_quality_gates`) — 失败 → status='rejected'
+        + raise OnboardingBlocked。G6-G8 半自动 (run_gates 标 PENDING), L2 人工晋升
+        ACTIVE 时处理。本方法 (`_upsert_factor_registry`) 仅管 G9/G10。
         """
         from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
         from backend.qm_platform.factor.interface import FactorSpec
@@ -854,10 +892,411 @@ class FactorOnboardingService:
         gate_t = float(round(ic_mean / (ic_std / np.sqrt(n)), 4))
         return gate_ic, gate_ir, gate_t
 
+    # ------------------------------------------------------------------
+    # Step 5.5: G1-G5 质量门 (Plan 4, P1-34)
+    # ------------------------------------------------------------------
+
+    def _run_quality_gates(
+        self,
+        conn: psycopg2.extensions.connection,
+        factor_name: str,
+        factor_values_df: pd.DataFrame,
+        ic_df: pd.DataFrame,
+        price_df: pd.DataFrame,
+        benchmark_df: pd.DataFrame,
+        expected_direction: int,
+    ) -> tuple[bool, str, list[str]]:
+        """运行 G1-G5 自动质量门 (engines.factor_gate.FactorGatePipeline)。
+
+        G1 |IC|>0.02 / G2 Active-corr<0.7 / G3 t-stat (BH-FDR) / G4 中性化衰减<50%
+        / G5 方向一致。G7 半自动 (SimBroker 回测, 真需回测运行) 由 run_gates 标
+        PENDING — L2 人工晋升 ACTIVE 时处理, 本函数不强制。
+
+        G2 真正交 (Plan A): 通过 `_compute_active_factor_corr` 查 CORE (Active) 池
+        因子的截面 Spearman 相关 → FactorGatePipeline G2 真强制 (旧版传 None →
+        PASS-with-warning, 正交性从未真检验)。
+
+        G6 auto-assist (Plan B): Newey-West HAC t 机械可算 → `confirm_g6_auto` 自动算
+        并填充 G6 (非纯 PENDING), 辅助 L2 晋升复核。不改 auto_gates_passed (仅 G1-G5)。
+
+        G8 auto-assist (Plan F): FactorClassifier 自动分类 (IC 衰减半衰期 + 信号稀疏度
+        → signal_type / 调仓频率) → `confirm_g8` 填充 G8 策略匹配建议; 分类不确定
+        (unclassified/hybrid) → 保持 PENDING。同 G6 不改 auto_gates_passed。
+
+        Args:
+            conn: psycopg2 连接 (只读 — G2 查 CORE 因子值, Service 不 commit 铁律 32)。
+            factor_name: 因子名。
+            factor_values_df: [code, trade_date, raw_value, neutral_value]。
+            ic_df: _compute_ic_multi_horizon 输出 (neutral IC, 含 ic_20d)。
+            price_df: [code, trade_date, adj_close]。
+            benchmark_df: [trade_date, close] CSI300。
+            expected_direction: 经济假设方向 (G5)。
+
+        Returns:
+            (auto_gates_passed, report_summary, failed_gate_ids):
+              auto_gates_passed — G1-G5 全 PASS。
+              report_summary — GateReport.summary() 全文 (含 G6-G8 PENDING, 供 L2)。
+              failed_gate_ids — FAIL 的 gate id 列表。
+        """
+        from engines.factor_gate import FactorGatePipeline  # noqa: PLC0415
+
+        # Neutral 20d IC, indexed by trade_date (from _compute_ic_multi_horizon).
+        if not ic_df.empty and "ic_20d" in ic_df.columns and "trade_date" in ic_df.columns:
+            neutral_ic = ic_df.set_index("trade_date")["ic_20d"].dropna().astype(float)
+        else:
+            neutral_ic = pd.Series(dtype=float)
+        raw_ic = self._compute_raw_ic_20d(factor_values_df, price_df, benchmark_df)
+
+        # G4 decay = (|mean(raw)| - |mean(neutral)|)/|mean(raw)| — the two means MUST
+        # be over the SAME trade_date population, else the ratio is distorted (raw vs
+        # neutral can have different NaN dates). Inner-join on trade_date + dropna so
+        # both series cover identical dates before G1-G5 evaluate them.
+        aligned = pd.concat({"raw": raw_ic, "neutral": neutral_ic}, axis=1, join="inner").dropna()
+        raw_ic_series = [float(x) for x in aligned["raw"].tolist()]
+        neutral_ic_series = [float(x) for x in aligned["neutral"].tolist()]
+
+        # G2 真正交 (Plan A): 新因子 vs CORE (Active) 池各因子的平均截面 Spearman
+        # 相关 {core_name: corr}。空 dict (CORE 池空 / 查询失败 / 无重叠数据) →
+        # _gate_g2 PASS-with-warning (退化, 但有 warning 日志, 非 silent failure)。
+        active_factor_corr = self._compute_active_factor_corr(conn, factor_name, factor_values_df)
+
+        pipeline = FactorGatePipeline()
+        report = pipeline.run_gates(
+            factor_name=factor_name,
+            ic_series=raw_ic_series,
+            neutral_ic_series=neutral_ic_series,
+            active_factor_corr=active_factor_corr,
+            expected_direction=expected_direction,
+        )
+        # G6 auto-assist (Plan B): Newey-West HAC t 机械可算 (月度 IC 自相关需 HAC
+        # 校正) → 自动算并 confirm_g6, L2 人工晋升 ACTIVE 时 report.summary() 已含 G6
+        # 计算值 (非纯 PENDING)。不改 auto_gates_passed (G1-G5) → 不改 accept/reject。
+        pipeline.confirm_g6_auto(report, raw_ic_series)
+        # G8 auto-assist (Plan F): FactorClassifier 自动分类 (signal_type / 调仓频率)
+        # → confirm_g8, L2 人工晋升 ACTIVE 时 report 已含策略匹配建议。同 G6 不改
+        # auto_gates_passed; 分类不确定 (unclassified/hybrid) → G8 保持 PENDING。
+        self._run_g8_auto_assist(pipeline, report, factor_name, ic_df, factor_values_df)
+        # 返回 failed 仅 G1-G5 自动门 (决策相关, 驱动 OnboardingBlocked); G6/G8 computed
+        # verdict 见 report.summary() (logged for L2)。
+        auto_failed = [g for g in report.failed_gates if g in ("G1", "G2", "G3", "G4", "G5")]
+        return report.auto_gates_passed, report.summary(), auto_failed
+
+    def _run_g8_auto_assist(
+        self,
+        pipeline: FactorGatePipeline,
+        report: GateReport,
+        factor_name: str,
+        ic_df: pd.DataFrame,
+        factor_values_df: pd.DataFrame,
+    ) -> None:
+        """G8 半自动门 auto-assist — FactorClassifier 自动分类 → confirm_g8 (Plan F)。
+
+        G8 (strategy 策略匹配) 是半自动门 — run_gates 标 PENDING。FactorClassifier
+        以 IC 衰减半衰期 + 信号稀疏度判定 signal_type (ranking/fast_ranking/event/
+        modifier) + 推荐调仓频率, 入口是简单参数 (ic_decay dict + sparsity), 可在
+        onboarding 自动跑 → GateReport 的 G8 行带策略匹配建议供 L2 晋升复核。
+
+        分类不确定 (signal_type=unclassified/hybrid) 或数据异常 → G8 保持 run_gates
+        设定的 PENDING (fail-safe, 不臆造; 同 G6 confirm_g6_auto 体例)。本方法 in-place
+        改 report, 不改 auto_gates_passed (仅 G1-G5)。
+
+        Args:
+            pipeline: FactorGatePipeline 实例 (调 confirm_g8)。
+            report: run_gates 产出的 GateReport。
+            factor_name: 因子名。
+            ic_df: _compute_ic_multi_horizon 输出 (含 ic_1d/5d/10d/20d)。
+            factor_values_df: [code, trade_date, raw_value, neutral_value]。
+        """
+        from engines.factor_classifier import FactorClassifier  # noqa: PLC0415
+
+        try:
+            # ic_decay {horizon: mean IC} — FactorClassifier 拟合衰减半衰期用
+            ic_decay: dict[int, float] = {}
+            for h in HORIZONS:
+                col = f"ic_{h}d"
+                if col in ic_df.columns:
+                    vals = ic_df[col].dropna()
+                    if not vals.empty:
+                        ic_decay[h] = float(vals.mean())
+            if len(ic_decay) < 2:
+                logger.info(
+                    "G8 auto-assist: ic_decay 样本不足 (<2 horizon), G8 保持 PENDING (factor=%s)",
+                    factor_name,
+                )
+                return
+
+            # 信号稀疏度 — raw_value 非 NaN 占比 (event 因子 raw 多为空 → 低稀疏度;
+            # ranking 因子 raw 全覆盖 → 高稀疏度)。中性化后 neutral_value 经填充少
+            # NaN, 不能反映信号稀疏度 — 故用 raw_value。
+            if factor_values_df.empty or "raw_value" not in factor_values_df.columns:
+                logger.info(
+                    "G8 auto-assist: factor_values_df 空/无 raw_value, G8 保持 PENDING (factor=%s)",
+                    factor_name,
+                )
+                return
+            signal_sparsity = float(factor_values_df["raw_value"].notna().mean())
+
+            classification = FactorClassifier().classify_factor(
+                factor_name=factor_name,
+                ic_decay=ic_decay,
+                signal_sparsity=signal_sparsity,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # 数据/拟合异常 → G8 保持 PENDING (fail-safe, 不臆造 verdict)。
+            # TypeError/AttributeError/ImportError 是代码 bug, 不吞 — 让其 surface。
+            if isinstance(exc, (TypeError, AttributeError, ImportError)):
+                raise
+            logger.warning(
+                "G8 auto-assist: 分类失败, G8 保持 PENDING (factor=%s): %s",
+                factor_name,
+                exc,
+                exc_info=True,
+            )
+            return
+
+        # allowlist: 仅 FactorClassifier 标准 4 类自动 confirm_g8; unclassified /
+        # hybrid / conditional / paired / adaptive 等 → 保持 PENDING 待 L2 人工。
+        sig = classification.signal_type
+        if sig.value not in _G8_CLASSIFIABLE_SIGNAL_TYPES:
+            logger.info(
+                "G8 auto-assist: 分类=%s 非标准 4 类, G8 保持 PENDING 待 L2 (factor=%s)",
+                sig.value,
+                factor_name,
+            )
+            return
+
+        pipeline.confirm_g8(
+            report,
+            signal_type=sig.value,
+            rebalance_freq=classification.recommended_frequency,
+            strategy_notes=(
+                f"[auto-classified conf={classification.confidence:.2f}] {classification.reasoning}"
+            ),
+        )
+        logger.info(
+            "G8 auto-assist: factor=%s → signal_type=%s, freq=%s, conf=%.2f",
+            factor_name,
+            sig.value,
+            classification.recommended_frequency,
+            classification.confidence,
+        )
+
+    def _compute_raw_ic_20d(
+        self,
+        factor_values_df: pd.DataFrame,
+        price_df: pd.DataFrame,
+        benchmark_df: pd.DataFrame,
+    ) -> pd.Series:
+        """计算 raw (未中性化) 20 日 IC 序列 — G4 中性化衰减门需 raw vs neutral。
+
+        `_compute_ic_multi_horizon` 只算 `neutral_value` IC; FactorGatePipeline G4
+        比较 |raw_IC| vs |neutral_IC|, 故需 raw 序列。复用 ic_calculator 同一套
+        机制, horizon=20。
+
+        Returns:
+            trade_date 索引的 raw 20d IC Series (调用方按 trade_date 与 neutral IC
+            对齐, 见 `_run_quality_gates`)。输入不足 / 数据形状异常 → 空 Series
+            (G4 会因 raw 空 FAIL, fail-loud — 反 silent 通过)。`ValueError` /
+            `KeyError` (数据异常) 吞为空 Series; `TypeError` 等代码 bug 不吞, surface。
+        """
+        if factor_values_df.empty or price_df.empty or benchmark_df.empty:
+            return pd.Series(dtype=float)
+        try:
+            from engines.ic_calculator import (  # noqa: PLC0415
+                compute_forward_excess_returns,
+                compute_ic_series,
+            )
+
+            factor_wide = (
+                factor_values_df[["trade_date", "code", "raw_value"]]
+                .pivot_table(
+                    index="trade_date",
+                    columns="code",
+                    values="raw_value",
+                    aggfunc="first",
+                )
+                .sort_index()
+            )
+            fwd = compute_forward_excess_returns(
+                price_df,
+                benchmark_df,
+                horizon=20,
+                price_col="adj_close",
+                benchmark_price_col="close",
+            )
+            ic_series = compute_ic_series(factor_wide, fwd)
+            return ic_series.dropna().astype(float)
+        except (ValueError, KeyError) as exc:
+            # 数据形状异常 (空截面 / 列缺失) → 空 Series → G4 因 raw 空 FAIL (fail-loud).
+            # TypeError / AttributeError / ImportError 等代码 bug 不在此吞 — 让其 surface.
+            logger.warning(
+                "raw 20d IC 计算失败 (G4 将因 raw 空 FAIL): error=%s", exc, exc_info=True
+            )
+            return pd.Series(dtype=float)
+
+    # ------------------------------------------------------------------
+    # Step 5.5 (Plan A): G2 真正交性 — Active 池截面相关
+    # ------------------------------------------------------------------
+
+    def _compute_active_factor_corr(
+        self,
+        conn: psycopg2.extensions.connection,
+        factor_name: str,
+        factor_values_df: pd.DataFrame,
+    ) -> dict[str, float]:
+        """计算新因子与 CORE (Active) 池各因子的平均截面 Spearman 相关 (G2 门用)。
+
+        G2 正交性门要求新因子与现有 Active 因子的截面相关 < 0.7 (CLAUDE.md 因子审批
+        硬标准)。本方法查 factor_registry `pool='CORE'` 因子 (项目语境 "Active" 池 =
+        蓝图 §4.1 "CORE (Active)"), 从 factor_values 加载其 `neutral_value`, 与新因子
+        逐交易日截面相关, 返回 {core_factor_name: mean_corr} 供 FactorGatePipeline G2
+        真强制 (旧版传 None → _gate_g2 PASS-with-warning, 正交性从未真检验)。
+
+        资源 (铁律 9): CORE 池仅 ~4 因子, 查询按新因子 trade_date 范围 scoped, 单次
+        只读 SELECT (Service 不 commit, 铁律 32)。
+
+        Args:
+            conn: psycopg2 连接 (只读)。
+            factor_name: 新因子名 — 自身若已在 CORE 池则排除 (防自相关 corr=1.0)。
+            factor_values_df: 新因子值 [code, trade_date, raw_value, neutral_value]。
+
+        Returns:
+            {core_factor_name: mean_cross_sectional_corr} (signed)。CORE 池空 / 查询
+            失败 / 无重叠数据 → {} (调用方传给 _gate_g2 → PASS-with-warning, 退化但
+            有 warning 日志, 非 silent failure — 铁律 33)。
+        """
+        if factor_values_df.empty:
+            return {}
+        new_values = factor_values_df[["code", "trade_date", "neutral_value"]].copy()
+        new_values["trade_date"] = pd.to_datetime(new_values["trade_date"])
+        new_values["neutral_value"] = pd.to_numeric(new_values["neutral_value"], errors="coerce")
+        new_values = new_values.dropna(subset=["neutral_value"])
+        if new_values.empty:
+            return {}
+        min_date = new_values["trade_date"].min().date()
+        max_date = new_values["trade_date"].max().date()
+
+        try:
+            with conn.cursor() as cur:
+                # CORE (Active) 池因子名 — 排除新因子自身 (大小写不敏感) +
+                # 排除 retired/deprecated (已退役因子不在产, 与其冗余无治理意义;
+                # active/warning/critical 仍保留 — warning 如 dv_ttm 仍在 PT 配置)。
+                cur.execute(
+                    """
+                    SELECT name FROM factor_registry
+                    WHERE pool = 'CORE'
+                      AND status NOT IN ('retired', 'deprecated')
+                      AND lower(name) <> lower(%s)
+                    """,
+                    (factor_name,),
+                )
+                core_factors = [r[0] for r in cur.fetchall()]
+                if not core_factors:
+                    logger.info("G2: CORE 池无其他因子, 正交性门跳过 (factor=%s)", factor_name)
+                    return {}
+                # CORE 因子值 — 按新因子 trade_date 范围 scoped 单次只读。量级估算:
+                # ~4 CORE 因子 × ~250 交易日/年 × ~3000 股 ≈ 3M 行/年, 1-2 年
+                # onboarding 窗口可全量入内存 (铁律 9: 单次只读, 非并发重任务)。
+                cur.execute(
+                    """
+                    SELECT factor_name, code, trade_date, neutral_value
+                    FROM factor_values
+                    WHERE factor_name = ANY(%s)
+                      AND trade_date BETWEEN %s AND %s
+                      AND neutral_value IS NOT NULL
+                    """,
+                    (core_factors, min_date, max_date),
+                )
+                rows = cur.fetchall()
+        except psycopg2.Error as exc:
+            logger.warning(
+                "G2: CORE 因子相关查询失败, G2 退化为 PASS-with-warning: %s",
+                exc,
+                exc_info=True,
+            )
+            return {}
+
+        if not rows:
+            logger.warning(
+                "G2: CORE 因子在 %s~%s 无 factor_values 数据, G2 退化 (factor=%s)",
+                min_date,
+                max_date,
+                factor_name,
+            )
+            return {}
+
+        active_df = pd.DataFrame(
+            rows, columns=["factor_name", "code", "trade_date", "neutral_value"]
+        )
+        active_df["trade_date"] = pd.to_datetime(active_df["trade_date"])
+        active_df["neutral_value"] = pd.to_numeric(active_df["neutral_value"], errors="coerce")
+
+        result: dict[str, float] = {}
+        for core_name, sub in active_df.groupby("factor_name"):
+            corr = _mean_cross_sectional_corr(
+                new_values, sub[["code", "trade_date", "neutral_value"]]
+            )
+            if corr is not None:
+                result[str(core_name)] = corr
+
+        logger.info(
+            "G2: Active 正交相关计算完成 factor=%s, %d/%d CORE 因子有效, corr=%s",
+            factor_name,
+            len(result),
+            len(core_factors),
+            {k: round(v, 4) for k, v in result.items()},
+        )
+        return result
+
 
 # ---------------------------------------------------------------------------
 # 辅助函数 (module-level)
 # ---------------------------------------------------------------------------
+
+# G2 单日截面相关至少需的股票数 — 不足则 rank corr 噪声过大, 跳过该日。
+MIN_STOCKS_FOR_CORR = 20
+
+
+def _mean_cross_sectional_corr(
+    new_values: pd.DataFrame,
+    other_values: pd.DataFrame,
+    min_stocks: int = MIN_STOCKS_FOR_CORR,
+) -> float | None:
+    """计算两因子的平均截面 Spearman 相关系数 (G2 正交性门用, 纯计算)。
+
+    逐交易日: 在 (code) 截面上对两列 `neutral_value` 做 Spearman rank 相关, 再对
+    所有有效交易日取均值。单日有效股票 < min_stocks 或某列方差为 0 (corr=NaN) →
+    跳过该日。
+
+    Args:
+        new_values: [code, trade_date, neutral_value] — 新因子值。
+        other_values: [code, trade_date, neutral_value] — 某 Active 因子值。
+        min_stocks: 单日参与相关计算的最少股票数 (默认 MIN_STOCKS_FOR_CORR)。
+
+    Returns:
+        平均截面 Spearman 相关 (signed, -1~1); 无有效交易日 → None。调用方
+        (_gate_g2) 取 abs 与 0.7 阈值比较, 故此处保留符号 (镜像因子 corr<0)。
+    """
+    if new_values.empty or other_values.empty:
+        return None
+    merged = new_values.merge(
+        other_values,
+        on=["code", "trade_date"],
+        suffixes=("_new", "_other"),
+        how="inner",
+    )
+    if merged.empty:
+        return None
+    daily_corrs: list[float] = []
+    for _, group in merged.groupby("trade_date"):
+        if len(group) < min_stocks:
+            continue
+        corr = group["neutral_value_new"].corr(group["neutral_value_other"], method="spearman")
+        if not pd.isna(corr):
+            daily_corrs.append(float(corr))
+    if not daily_corrs:
+        return None
+    return float(np.mean(daily_corrs))
 
 
 def _compute_decay_level(ic_df: pd.DataFrame) -> str:

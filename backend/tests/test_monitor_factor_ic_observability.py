@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.3 unit tests — monitor_factor_ic 迁 Platform SDK."""
+
 from __future__ import annotations
 
 import sys
@@ -157,9 +158,7 @@ def test_sdk_dedup_key_summary_pattern():
     ):
         mfi_mod._send_alert_via_platform_sdk("report", [_transition()])
 
-    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith(
-        "monitor_factor_ic:summary:"
-    )
+    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith("monitor_factor_ic:summary:")
 
 
 def test_sdk_dispatch_error_propagates():

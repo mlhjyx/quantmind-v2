@@ -30,6 +30,7 @@ Usage (生产):
   - 不含 DataSource / DataContract (留 MVP 2.1)
   - 不含 Write 路径 (Write 继续走 DataPipeline)
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -162,9 +163,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
     ) -> pd.DataFrame:
         """读单因子时间序列 (优先 cache → fallback SQL)."""
         if column not in _FACTOR_VALUE_COLUMNS:
-            raise UnsupportedColumn(
-                f"column {column!r} 不在白名单 {sorted(_FACTOR_VALUE_COLUMNS)}"
-            )
+            raise UnsupportedColumn(f"column {column!r} 不在白名单 {sorted(_FACTOR_VALUE_COLUMNS)}")
 
         if self._cache is not None:
             conn = self._conn_factory()
@@ -220,8 +219,15 @@ class PlatformDataAccessLayer(DataAccessLayer):
         if not codes:
             return pd.DataFrame(
                 columns=[
-                    "code", "trade_date", "open", "high", "low", "close",
-                    "volume", "amount", "adj_factor",
+                    "code",
+                    "trade_date",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "amount",
+                    "adj_factor",
                 ]
             )
         code_list = _as_list(codes)
@@ -241,8 +247,15 @@ class PlatformDataAccessLayer(DataAccessLayer):
                 cur.execute(sql, (*code_list, start, end))
                 rows = cur.fetchall()
             columns = [
-                "code", "trade_date", "open", "high", "low", "close",
-                "volume", "amount", "adj_factor",
+                "code",
+                "trade_date",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
+                "adj_factor",
             ]
             if not rows:
                 return pd.DataFrame(columns=columns)
@@ -347,10 +360,24 @@ class PlatformDataAccessLayer(DataAccessLayer):
                 cur.execute(sql, tuple(params))
                 rows = cur.fetchall()
             columns = [
-                "id", "name", "category", "direction", "expression", "code_content",
-                "hypothesis", "source", "lookback_days", "status", "pool",
-                "gate_ic", "gate_ir", "gate_mono", "gate_t", "ic_decay_ratio",
-                "created_at", "updated_at",
+                "id",
+                "name",
+                "category",
+                "direction",
+                "expression",
+                "code_content",
+                "hypothesis",
+                "source",
+                "lookback_days",
+                "status",
+                "pool",
+                "gate_ic",
+                "gate_ir",
+                "gate_mono",
+                "gate_t",
+                "ic_decay_ratio",
+                "created_at",
+                "updated_at",
             ]
             if not rows:
                 return pd.DataFrame(columns=columns)
@@ -383,10 +410,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
             where_clauses.append(f"trade_date <= {self._ph}")
             params.append(end)
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-        sql = (
-            f"SELECT DISTINCT trade_date FROM klines_daily {where_sql} "
-            f"ORDER BY trade_date"
-        )
+        sql = f"SELECT DISTINCT trade_date FROM klines_daily {where_sql} ORDER BY trade_date"
         conn = self._conn_factory()
         try:
             with _conn_cursor(conn) as cur:
@@ -440,8 +464,13 @@ class PlatformDataAccessLayer(DataAccessLayer):
         消费方: services.pt_data_service / engines.factor_analyzer.
         """
         columns = [
-            "code", "is_st", "is_suspended", "is_new_stock",
-            "board", "list_date", "delist_date",
+            "code",
+            "is_st",
+            "is_suspended",
+            "is_new_stock",
+            "board",
+            "list_date",
+            "delist_date",
         ]
         if not codes:
             return pd.DataFrame(columns=columns)
@@ -485,14 +514,9 @@ class PlatformDataAccessLayer(DataAccessLayer):
         if source == "registry":
             sql = "SELECT DISTINCT name FROM factor_registry ORDER BY name"
         elif source == "values":
-            sql = (
-                "SELECT DISTINCT factor_name FROM factor_values "
-                "ORDER BY factor_name"
-            )
+            sql = "SELECT DISTINCT factor_name FROM factor_values ORDER BY factor_name"
         else:
-            raise ValueError(
-                f"source must be 'registry' or 'values', got {source!r}"
-            )
+            raise ValueError(f"source must be 'registry' or 'values', got {source!r}")
         conn = self._conn_factory()
         try:
             with _conn_cursor(conn) as cur:
@@ -516,9 +540,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
             return {}
         bad = [t for t in tables if t not in _FRESHNESS_TABLES]
         if bad:
-            raise UnsupportedTable(
-                f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}"
-            )
+            raise UnsupportedTable(f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}")
         out: dict[str, date | None] = {}
         conn = self._conn_factory()
         try:
@@ -552,9 +574,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
             return {}
         bad = [t for t in tables if t not in _FRESHNESS_TABLES]
         if bad:
-            raise UnsupportedTable(
-                f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}"
-            )
+            raise UnsupportedTable(f"tables 含非白名单 {bad}, 允许: {sorted(_FRESHNESS_TABLES)}")
         out: dict[str, int] = {}
         conn = self._conn_factory()
         try:
@@ -596,6 +616,7 @@ class PlatformDataAccessLayer(DataAccessLayer):
         columns = ["ts_code", "eps_surprise_pct", "ann_td"]
         # 日期窗口在 Python 层计算, 避免 PG-specific INTERVAL (sqlite 兼容)
         from datetime import timedelta as _td
+
         since = trade_date - _td(days=lookback_days)
         # 对齐 services/factor_repository.load_pead_announcements 原 SQL:
         # 输出列名 ann_td 是 trade_date 的 alias (非 DB 原生字段 ann_date)

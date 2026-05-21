@@ -45,16 +45,16 @@ from psycopg2 import sql
 
 # 重型表清单 (按数据量 + 维护优先级排序)
 HEAVY_TABLES = [
-    "factor_values",         # 840M rows / 172 GB (TimescaleDB hypertable)
-    "klines_daily",          # 11.8M rows / 4 GB
-    "minute_bars",           # 190M rows / 36 GB
-    "daily_basic",           # 11.7M rows / 3.7 GB
-    "factor_ic_history",     # 145K rows / 36 MB (IC SSOT)
-    "position_snapshot",     # 持仓快照 (write-heavy)
-    "trade_log",             # 交易流水 (append-only)
-    "stock_valuation",       # 估值
-    "moneyflow",             # 资金流向
-    "stream_outbox",         # event sourcing outbox (write-heavy)
+    "factor_values",  # 840M rows / 172 GB (TimescaleDB hypertable)
+    "klines_daily",  # 11.8M rows / 4 GB
+    "minute_bars",  # 190M rows / 36 GB
+    "daily_basic",  # 11.7M rows / 3.7 GB
+    "factor_ic_history",  # 145K rows / 36 MB (IC SSOT)
+    "position_snapshot",  # 持仓快照 (write-heavy)
+    "trade_log",  # 交易流水 (append-only)
+    "stock_valuation",  # 估值
+    "moneyflow",  # 资金流向
+    "stream_outbox",  # event sourcing outbox (write-heavy)
 ]
 
 
@@ -130,9 +130,7 @@ def vacuum_analyze_table(conn: Any, table: str, log: logging.Logger) -> dict[str
     conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
     with conn.cursor() as cur:
         # 反 SQL injection: 用 sql.Identifier 严格 escape (虽然 table 是固定 list)
-        cur.execute(
-            sql.SQL("VACUUM (VERBOSE, ANALYZE) {tbl}").format(tbl=sql.Identifier(table))
-        )
+        cur.execute(sql.SQL("VACUUM (VERBOSE, ANALYZE) {tbl}").format(tbl=sql.Identifier(table)))
 
     elapsed = time.time() - start
     size_after = get_table_size(conn, table)
@@ -174,10 +172,7 @@ def main() -> int:
     _heavy_set = set(HEAVY_TABLES)
     invalid = [t for t in args.tables if t not in _heavy_set]
     if invalid:
-        log.error(
-            f"非法表名 (不在 HEAVY_TABLES whitelist): {invalid}. "
-            f"允许的表: {HEAVY_TABLES}"
-        )
+        log.error(f"非法表名 (不在 HEAVY_TABLES whitelist): {invalid}. 允许的表: {HEAVY_TABLES}")
         return 1
 
     # P1 fix (python-reviewer + security-reviewer): 反 credential fallback (铁律 35)
@@ -211,7 +206,7 @@ def main() -> int:
         conn.close()
 
     overall_elapsed = time.time() - overall_start
-    log.info(f"\n{'='*60}")
+    log.info(f"\n{'=' * 60}")
     log.info(f"VACUUM ANALYZE 完成 elapsed={overall_elapsed:.1f}s")
     log.info(f"成功: {len(results)} / {len(args.tables)}")
     log.info(f"失败: {len(failures)}")

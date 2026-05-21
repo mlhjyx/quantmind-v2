@@ -286,9 +286,7 @@ def _send_alert_via_platform_sdk(title: str, content: str, trade_date: date) -> 
             dedup_key=dedup_key,
             suppress_minutes=suppress_minutes,
         )
-        logger.info(
-            "[Observability] AlertRouter.fire result=%s key=%s", result, dedup_key
-        )
+        logger.info("[Observability] AlertRouter.fire result=%s key=%s", result, dedup_key)
     except AlertDispatchError as e:
         logger.error("[Observability] AlertRouter sink_failed: %s", e)
         raise
@@ -364,9 +362,7 @@ def run_daily_summary(trade_date: date, dry_run: bool = False) -> dict:
                 _send_dingtalk(f"PT日报 {trade_date} {ret_str}", report, trade_date)
                 logger.info("[DingTalk] 日报已发送")
             except AlertDispatchError as e:
-                logger.error(
-                    "[Observability] AlertDispatchError — 日报未送达, 主流程继续: %s", e
-                )
+                logger.error("[Observability] AlertDispatchError — 日报未送达, 主流程继续: %s", e)
         else:
             logger.info("[DRY-RUN] 不发送 DingTalk")
 

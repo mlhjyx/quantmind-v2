@@ -134,9 +134,7 @@ def _is_bypassed(content: str) -> bool:
     """
     if os.environ.get("QM_DRIFT_BYPASS") == "1":
         return True
-    if content and BYPASS_MARKER_RE.search(content):
-        return True
-    return False
+    return bool(content and BYPASS_MARKER_RE.search(content))
 
 
 def _is_v3_path(file_path: str) -> bool:
@@ -146,10 +144,7 @@ def _is_v3_path(file_path: str) -> bool:
     """
     if not file_path:
         return False
-    for pattern in V3_PATH_PATTERNS:
-        if re.search(pattern, file_path, re.IGNORECASE):
-            return True
-    return False
+    return any(re.search(pattern, file_path, re.IGNORECASE) for pattern in V3_PATH_PATTERNS)
 
 
 def _check_cross_ref_drift(content: str) -> list[tuple[str, str]]:

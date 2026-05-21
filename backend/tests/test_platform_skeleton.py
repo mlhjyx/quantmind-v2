@@ -12,6 +12,7 @@
 执行:
   pytest backend/tests/test_platform_skeleton.py -v
 """
+
 from __future__ import annotations
 
 import ast
@@ -32,22 +33,72 @@ def test_sdk_imports_all_symbols() -> None:
     import backend.qm_platform as platform_pkg
 
     expected_symbols = [
-        "ADRRecord", "ADRRegistry", "AdmissionController", "AdmissionResult",
-        "Alert", "AlertRouter", "AuditChain", "BacktestConfig", "BacktestMode",
-        "BacktestRegistry", "BacktestResult", "BacktestRunner", "BackupManager",
-        "BackupResult", "BatchBacktestExecutor", "BudgetGuard", "CapitalAllocator",
-        "ConfigAuditor", "ConfigLoader", "ConfigSchema", "CoverageGate",
-        "DataAccessLayer", "DataContract", "DataSource", "DisasterRecoveryRunner",
-        "EvaluationPipeline", "EventBus", "ExecutionAuditTrail", "ExperimentRecord",
-        "ExperimentRegistry", "FactorCacheProtocol", "FactorLifecycleMonitor",
-        "FactorMeta", "FactorOnboardingPipeline", "FactorRegistry", "FactorSpec",
-        "FactorStatus", "FailedDirectionDB", "FailedDirectionRecord", "FeatureFlag",
-        "GateResult", "Metric", "MetricExporter", "OnboardResult", "Order",
-        "OrderRouter", "Priority", "RebalanceFreq", "ResourceManager",
-        "ResourceProfile", "ResourceSnapshot", "RestoreResult", "Severity",
-        "Signal", "SignalPipeline", "SmokeTestSuite", "Strategy", "StrategyContext",
-        "StrategyEvaluator", "StrategyRegistry", "StrategyStatus", "TestRunner",
-        "TestSummary", "TransitionDecision", "ValidationResult", "Verdict",
+        "ADRRecord",
+        "ADRRegistry",
+        "AdmissionController",
+        "AdmissionResult",
+        "Alert",
+        "AlertRouter",
+        "AuditChain",
+        "BacktestConfig",
+        "BacktestMode",
+        "BacktestRegistry",
+        "BacktestResult",
+        "BacktestRunner",
+        "BackupManager",
+        "BackupResult",
+        "BatchBacktestExecutor",
+        "BudgetGuard",
+        "CapitalAllocator",
+        "ConfigAuditor",
+        "ConfigLoader",
+        "ConfigSchema",
+        "CoverageGate",
+        "DataAccessLayer",
+        "DataContract",
+        "DataSource",
+        "DisasterRecoveryRunner",
+        "EvaluationPipeline",
+        "EventBus",
+        "ExecutionAuditTrail",
+        "ExperimentRecord",
+        "ExperimentRegistry",
+        "FactorCacheProtocol",
+        "FactorLifecycleMonitor",
+        "FactorMeta",
+        "FactorOnboardingPipeline",
+        "FactorRegistry",
+        "FactorSpec",
+        "FactorStatus",
+        "FailedDirectionDB",
+        "FailedDirectionRecord",
+        "FeatureFlag",
+        "GateResult",
+        "Metric",
+        "MetricExporter",
+        "OnboardResult",
+        "Order",
+        "OrderRouter",
+        "Priority",
+        "RebalanceFreq",
+        "ResourceManager",
+        "ResourceProfile",
+        "ResourceSnapshot",
+        "RestoreResult",
+        "Severity",
+        "Signal",
+        "SignalPipeline",
+        "SmokeTestSuite",
+        "Strategy",
+        "StrategyContext",
+        "StrategyEvaluator",
+        "StrategyRegistry",
+        "StrategyStatus",
+        "TestRunner",
+        "TestSummary",
+        "TransitionDecision",
+        "ValidationResult",
+        "Verdict",
         "requires_resources",
     ]
     missing = [s for s in expected_symbols if not hasattr(platform_pkg, s)]
@@ -206,12 +257,8 @@ def _is_inside_type_checking(tree: ast.AST, target_node: ast.AST) -> bool:
         if not isinstance(outer, ast.If):
             continue
         cond = outer.test
-        is_tc = (
-            (isinstance(cond, ast.Name) and cond.id == "TYPE_CHECKING")
-            or (
-                isinstance(cond, ast.Attribute)
-                and cond.attr == "TYPE_CHECKING"
-            )
+        is_tc = (isinstance(cond, ast.Name) and cond.id == "TYPE_CHECKING") or (
+            isinstance(cond, ast.Attribute) and cond.attr == "TYPE_CHECKING"
         )
         if not is_tc:
             continue
@@ -228,8 +275,18 @@ def test_frameworks_do_not_cross_import() -> None:
     允许: backend.qm_platform._types (共享) / 自身 Framework 内部 / TYPE_CHECKING guard 下的类型注解.
     """
     framework_names = (
-        "data", "factor", "strategy", "signal", "backtest", "eval",
-        "observability", "config", "ci", "knowledge", "resource", "backup",
+        "data",
+        "factor",
+        "strategy",
+        "signal",
+        "backtest",
+        "eval",
+        "observability",
+        "config",
+        "ci",
+        "knowledge",
+        "resource",
+        "backup",
     )
     cross_imports: list[str] = []
 
@@ -274,9 +331,17 @@ def test_platform_import_has_no_side_effects() -> None:
     是一等公民设计, pandas 必加载 (纯 module 加载, 非 IO 副作用). 只禁真正 IO 类
     依赖 (DB 驱动 / Redis 客户端 / ORM).
     """
+    import os
     import subprocess
     import sys
 
+    # 复刻真实运行环境的 sys.path: 项目混用两种 import 风格 —
+    #   - `from engines...` / `import qm_platform` (顶层, 需 backend/ 在 path)
+    #   - `from backend.qm_platform...` (带 backend 前缀, 需 repo root 在 path)
+    # 故子进程 PYTHONPATH 必须同时含 repo root + backend/ (生产由 .pth 挂载).
+    repo_root = PLATFORM_ROOT.parent.parent
+    backend_dir = PLATFORM_ROOT.parent
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(repo_root), str(backend_dir)])}
     result = subprocess.run(
         [
             sys.executable,
@@ -289,7 +354,8 @@ def test_platform_import_has_no_side_effects() -> None:
         ],
         capture_output=True,
         text=True,
-        cwd=str(PLATFORM_ROOT.parent.parent),
+        cwd=str(repo_root),
+        env=env,
     )
     assert result.returncode == 0, f"import 失败: {result.stderr}"
     assert "LOADED:" in result.stdout

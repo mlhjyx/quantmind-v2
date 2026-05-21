@@ -54,8 +54,12 @@ if str(BACKEND_DIR) not in sys.path:
 
 ALL_FACTORS = [
     "high_vol_price_ratio_20",
-    "IMAX_20", "IMIN_20", "QTLU_20", "CORD_20",
-    "RSQR_20", "RESI_20",
+    "IMAX_20",
+    "IMIN_20",
+    "QTLU_20",
+    "CORD_20",
+    "RSQR_20",
+    "RESI_20",
 ]
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache" / "backtest"
@@ -65,6 +69,7 @@ AVAILABLE_YEARS = list(range(2014, 2027))
 def get_conn():
     """获取数据库连接。"""
     from dotenv import load_dotenv
+
     env_path = BACKEND_DIR / ".env"
     if env_path.exists():
         load_dotenv(env_path)
@@ -123,13 +128,17 @@ def compute_all_factors(
     # HVP需要open/high/low
     if "high_vol_price_ratio_20" in factor_names:
         print("  Computing high_vol_price_ratio_20...")
-        open_wide = price.pivot_table(index="trade_date", columns="code", values="open").sort_index()
-        high_wide = price.pivot_table(index="trade_date", columns="code", values="high").sort_index()
+        open_wide = price.pivot_table(
+            index="trade_date", columns="code", values="open"
+        ).sort_index()
+        high_wide = price.pivot_table(
+            index="trade_date", columns="code", values="high"
+        ).sort_index()
         low_wide = price.pivot_table(index="trade_date", columns="code", values="low").sort_index()
         hvp = calc_high_vol_price_ratio_wide(close_wide, open_wide, high_wide, low_wide)
         results["high_vol_price_ratio_20"] = hvp
         n_valid = hvp.notna().sum().sum()
-        print(f"    high_vol_price_ratio_20: {n_valid:,} valid ({time.time()-t0:.1f}s)")
+        print(f"    high_vol_price_ratio_20: {n_valid:,} valid ({time.time() - t0:.1f}s)")
         del open_wide, high_wide, low_wide
         gc.collect()
 
@@ -143,7 +152,7 @@ def compute_all_factors(
         for fn in need_simple:
             results[fn] = four[fn]
             n_valid = four[fn].notna().sum().sum()
-            print(f"    {fn}: {n_valid:,} valid ({time.time()-t0:.1f}s)")
+            print(f"    {fn}: {n_valid:,} valid ({time.time() - t0:.1f}s)")
         del daily_ret
         gc.collect()
 
@@ -160,11 +169,11 @@ def compute_all_factors(
         for fn in need_rsqr:
             results[fn] = rr[fn]
             n_valid = rr[fn].notna().sum().sum()
-            print(f"    {fn}: {n_valid:,} valid ({time.time()-t0:.1f}s)")
+            print(f"    {fn}: {n_valid:,} valid ({time.time() - t0:.1f}s)")
         del daily_ret, market_ret
         gc.collect()
 
-    print(f"  All factors computed in {time.time()-t0:.1f}s")
+    print(f"  All factors computed in {time.time() - t0:.1f}s")
     return results
 
 
@@ -196,7 +205,7 @@ def ingest_to_db(factor_dfs: dict[str, pd.DataFrame], conn) -> dict[str, int]:
         batch_size = 500_000
         total_upserted = 0
         for start in range(0, len(long), batch_size):
-            batch = long.iloc[start:start + batch_size]
+            batch = long.iloc[start : start + batch_size]
             result = pipeline.ingest(batch, FACTOR_VALUES)
             total_upserted += result.upserted_rows
             if start % (batch_size * 5) == 0 and start > 0:
@@ -215,7 +224,7 @@ def run_neutralize(factor_names: list[str]):
     """SW1中性化(复用fast_neutralize_batch)。"""
     from engines.fast_neutralize import fast_neutralize_batch
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Neutralizing {len(factor_names)} factors...")
     n = fast_neutralize_batch(
         factor_names,
@@ -236,7 +245,7 @@ def run_ic_verification(factor_names: list[str], conn):
 
     from engines.factor_engine import PHASE21_FACTOR_DIRECTION
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("IC verification (via compute_factor_ic.py)...")
 
     ic_script = BACKEND_DIR / "scripts" / "compute_factor_ic.py"
@@ -245,10 +254,14 @@ def run_ic_verification(factor_names: list[str], conn):
     for fn in factor_names:
         print(f"\n  Computing IC for {fn}...")
         cmd = [
-            sys.executable, str(ic_script),
-            "--factor", fn,
-            "--start", "2014-01-01",
-            "--end", "2026-04-11",
+            sys.executable,
+            str(ic_script),
+            "--factor",
+            fn,
+            "--start",
+            "2014-01-01",
+            "--end",
+            "2026-04-11",
         ]
         result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=True, text=True)
         if result.returncode != 0:
@@ -260,18 +273,21 @@ def run_ic_verification(factor_names: list[str], conn):
                 print(f"    {line}")
 
     # Step 2: 从factor_ic_history读取结果, 做方向一致性校验
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("IC Direction Consistency Check:")
     cur = conn.cursor()
     results = {}
 
     for fn in factor_names:
         direction = PHASE21_FACTOR_DIRECTION.get(fn, 1)
-        cur.execute("""
+        cur.execute(
+            """
             SELECT trade_date, ic_20d FROM factor_ic_history
             WHERE factor_name = %s AND ic_20d IS NOT NULL
             ORDER BY trade_date
-        """, (fn,))
+        """,
+            (fn,),
+        )
         ic_rows = cur.fetchall()
 
         if not ic_rows:
@@ -282,38 +298,44 @@ def run_ic_verification(factor_names: list[str], conn):
         ic_values = [float(r[1]) for r in ic_rows]
         mean_ic = np.mean(ic_values)
         std_ic = np.std(ic_values, ddof=1)
-        t_stat = mean_ic / (std_ic / np.sqrt(len(ic_values))) if len(ic_values) > 1 and std_ic > 0 else 0
+        t_stat = (
+            mean_ic / (std_ic / np.sqrt(len(ic_values))) if len(ic_values) > 1 and std_ic > 0 else 0
+        )
         results[fn] = {"ic": mean_ic, "t": t_stat, "direction": direction, "n_days": len(ic_values)}
 
         # 方向一致性检查
         expected_sign = -1 if direction == -1 else 1
         actual_sign = 1 if mean_ic > 0 else -1
         consistent = "✅" if expected_sign == actual_sign else "⚠️ MISMATCH"
-        print(f"  {fn}: IC={mean_ic:.4f}, t={t_stat:.2f}, dir={direction}, n={len(ic_values)} {consistent}")
+        print(
+            f"  {fn}: IC={mean_ic:.4f}, t={t_stat:.2f}, dir={direction}, n={len(ic_values)} {consistent}"
+        )
 
         if expected_sign != actual_sign and abs(mean_ic) > 0.01:
-            print(f"    ⚠️ WARNING: IC方向({actual_sign})与预期direction({direction})不一致! 需停下报告。")
+            print(
+                f"    ⚠️ WARNING: IC方向({actual_sign})与预期direction({direction})不一致! 需停下报告。"
+            )
 
     return results
 
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 2.1: 7因子批量计算+入库+中性化+IC")
-    parser.add_argument("--factors", type=str, default=None,
-                        help="逗号分隔因子名(默认全部7个)")
-    parser.add_argument("--skip-neutralize", action="store_true",
-                        help="跳过中性化步骤")
-    parser.add_argument("--skip-ic", action="store_true",
-                        help="跳过IC验证步骤")
-    parser.add_argument("--skip-compute", action="store_true",
-                        help="跳过计算+入库(仅中性化+IC)")
-    parser.add_argument("--start-year", type=int, default=None,
-                        help="从指定年份的segment开始(跳过已完成segments, 用于OOM恢复)")
+    parser.add_argument("--factors", type=str, default=None, help="逗号分隔因子名(默认全部7个)")
+    parser.add_argument("--skip-neutralize", action="store_true", help="跳过中性化步骤")
+    parser.add_argument("--skip-ic", action="store_true", help="跳过IC验证步骤")
+    parser.add_argument("--skip-compute", action="store_true", help="跳过计算+入库(仅中性化+IC)")
+    parser.add_argument(
+        "--start-year",
+        type=int,
+        default=None,
+        help="从指定年份的segment开始(跳过已完成segments, 用于OOM恢复)",
+    )
     args = parser.parse_args()
 
     factor_names = args.factors.split(",") if args.factors else ALL_FACTORS
     print(f"Phase 2.1 Factor Computation: {factor_names}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     t_start = time.time()
 
@@ -343,7 +365,7 @@ def main():
             keep_start = date(seg_start, 1, 1) if seg_start > 2014 else date(2014, 1, 1)
             keep_end = date(seg_end, 12, 31)
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Segment {seg_start}-{seg_end} (loading {load_start}-{seg_end})...")
 
             price, bench = load_price_years(load_years)
@@ -369,7 +391,7 @@ def main():
             gc.collect()
 
         conn.close()
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("Ingest summary:")
         for fn, c in all_counts.items():
             print(f"  {fn}: {c:,} total rows")
@@ -384,17 +406,17 @@ def main():
         ic_results = run_ic_verification(factor_names, conn)
         conn.close()
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("IC Summary:")
         print(f"{'Factor':<30} {'IC':>8} {'t-stat':>8} {'Dir':>5}")
         print("-" * 55)
         for fn, r in ic_results.items():
-            ic = f"{r['ic']:.4f}" if r.get('ic') is not None else "N/A"
-            t = f"{r['t']:.2f}" if r.get('t') is not None else "N/A"
+            ic = f"{r['ic']:.4f}" if r.get("ic") is not None else "N/A"
+            t = f"{r['t']:.2f}" if r.get("t") is not None else "N/A"
             print(f"{fn:<30} {ic:>8} {t:>8} {r['direction']:>5}")
 
     elapsed = time.time() - t_start
-    print(f"\nTotal elapsed: {elapsed/60:.1f} min")
+    print(f"\nTotal elapsed: {elapsed / 60:.1f} min")
 
 
 if __name__ == "__main__":

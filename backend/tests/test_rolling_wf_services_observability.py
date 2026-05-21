@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.6 unit tests — rolling_wf + services_healthcheck 迁 SDK."""
+
 from __future__ import annotations
 
 import sys
@@ -74,9 +75,7 @@ def test_rwf_sdk_p1_severity_and_dedup():
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P1
     assert fired_alert.source == "rolling_wf"
-    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith(
-        "rolling_wf:summary:"
-    )
+    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith("rolling_wf:summary:")
 
 
 def test_rwf_sdk_warn_maps_to_p2():

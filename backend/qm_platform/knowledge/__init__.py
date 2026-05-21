@@ -1,4 +1,5 @@
 """Framework #10 Knowledge Registry — Platform SDK sub-package."""
+
 from .interface import (
     ADRRecord,
     ADRRegistry,

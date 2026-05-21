@@ -168,9 +168,7 @@ class TestMainExitCodes:
             "category": "fundamental",
             "updated_at": date(2026, 1, 1),
         }
-        monkeypatch.setattr(
-            aof, "find_orphans", lambda conn, only_active=False: [fake_orphan]
-        )
+        monkeypatch.setattr(aof, "find_orphans", lambda conn, only_active=False: [fake_orphan])
         monkeypatch.setattr(sys, "argv", ["audit_orphan_factors.py", "--strict"])
 
         rc = aof.main()
@@ -189,6 +187,7 @@ class TestMainExitCodes:
 
     def test_main_exit_2_on_fatal_exception(self, monkeypatch, capsys):
         """_get_conn raise → main 捕 + stderr FATAL + exit 2."""
+
         def _boom():
             raise RuntimeError("DB unreachable")
 
@@ -213,19 +212,21 @@ class TestBackfillRevertProtection:
     防护机制: _POOL_DEPRECATED 显式含 11 清理因子 + _SIGNAL_ENGINE_DIRECTION 删 2 条.
     """
 
-    _SESSION27_DEPRECATED = frozenset({
-        "mf_momentum_divergence",
-        "earnings_surprise_car",
-        "pead_q1",
-        "eps_acceleration",
-        "gross_margin_delta",
-        "net_margin_delta",
-        "revenue_growth_yoy",
-        "roe_delta",
-        "debt_change",
-        "days_since_announcement",
-        "reporting_season_flag",
-    })
+    _SESSION27_DEPRECATED = frozenset(
+        {
+            "mf_momentum_divergence",
+            "earnings_surprise_car",
+            "pead_q1",
+            "eps_acceleration",
+            "gross_margin_delta",
+            "net_margin_delta",
+            "revenue_growth_yoy",
+            "roe_delta",
+            "debt_change",
+            "days_since_announcement",
+            "reporting_season_flag",
+        }
+    )
 
     def test_pool_deprecated_contains_all_session27_names(self):
         """_POOL_DEPRECATED 必含 11 个 Session 27 清理因子, 否则 backfill 会 revert."""

@@ -1,4 +1,5 @@
 """MVP 1.2 test — DBFeatureFlag (sqlite in-memory 隔离, 不碰 live PG)."""
+
 from __future__ import annotations
 
 import sqlite3

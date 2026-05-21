@@ -86,13 +86,17 @@ def load_12yr_parquet_cache():
 
     price_df = pd.concat(pd_, ignore_index=True).sort_values(["code", "trade_date"])
     factor_df = pd.concat(fd, ignore_index=True)
-    bench_df = pd.concat(bm, ignore_index=True).sort_values("trade_date").drop_duplicates("trade_date")
+    bench_df = (
+        pd.concat(bm, ignore_index=True).sort_values("trade_date").drop_duplicates("trade_date")
+    )
 
     # cache/backtest/*.parquet 的 "raw_value" 实际是中性化值, rename 对齐 run_hybrid_backtest 约定
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
 
-    print(f"  price_df:  {price_df.shape}  {price_df['trade_date'].min()}..{price_df['trade_date'].max()}")
+    print(
+        f"  price_df:  {price_df.shape}  {price_df['trade_date'].min()}..{price_df['trade_date'].max()}"
+    )
     print(f"  factor_df: {factor_df.shape}")
     print(f"  bench_df:  {bench_df.shape}")
     print(f"  加载耗时: {time.time() - t0:.1f}s")
@@ -133,20 +137,17 @@ def run_fold(
 
     # price/bench 切 test 期
     fold_price = price_df[
-        (price_df["trade_date"] >= test_start)
-        & (price_df["trade_date"] <= test_end)
+        (price_df["trade_date"] >= test_start) & (price_df["trade_date"] <= test_end)
     ].copy()
     fold_bench = bench_df[
-        (bench_df["trade_date"] >= test_start)
-        & (bench_df["trade_date"] <= test_end)
+        (bench_df["trade_date"] >= test_start) & (bench_df["trade_date"] <= test_end)
     ].copy()
 
     # factor_df 留 lookback, 从 test_start - N 天开始
     # 因子是 rolling 20 天的, 60 天 lookback 足够让因子在 test_start 当天可用
     factor_start = test_start - timedelta(days=FACTOR_LOOKBACK_DAYS)
     fold_factor = factor_df[
-        (factor_df["trade_date"] >= factor_start)
-        & (factor_df["trade_date"] <= test_end)
+        (factor_df["trade_date"] >= factor_start) & (factor_df["trade_date"] <= test_end)
     ].copy()
 
     print(
@@ -182,9 +183,7 @@ def run_fold(
     t0 = time.time()
     platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
     if platform_result.engine_artifacts is None:
-        raise RuntimeError(
-            f"engine_artifacts=None (fold={fold_idx}) — LIVE_PT 应强制真跑"
-        )
+        raise RuntimeError(f"engine_artifacts=None (fold={fold_idx}) — LIVE_PT 应强制真跑")
     result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 
@@ -268,13 +267,19 @@ def main():
     print(f"  总交易日: {len(all_dates)} ({all_dates[0]}..{all_dates[-1]})")
 
     wf_config = WFConfig(n_splits=5, train_window=750, gap=5, test_window=250)
-    print(f"  配置: n_splits={wf_config.n_splits}, train={wf_config.train_window}, gap={wf_config.gap}, test={wf_config.test_window}")
-    print(f"  最少需要: {wf_config.train_window + wf_config.gap + wf_config.n_splits * wf_config.test_window} 交易日")
+    print(
+        f"  配置: n_splits={wf_config.n_splits}, train={wf_config.train_window}, gap={wf_config.gap}, test={wf_config.test_window}"
+    )
+    print(
+        f"  最少需要: {wf_config.train_window + wf_config.gap + wf_config.n_splits * wf_config.test_window} 交易日"
+    )
 
     splits = WalkForwardEngine(wf_config).generate_splits(all_dates)
     print(f"  生成了 {len(splits)} 折")
     for i, (tr, te) in enumerate(splits):
-        print(f"    Fold {i}: train[{tr[0]}..{tr[-1]}] ({len(tr)}d) → test[{te[0]}..{te[-1]}] ({len(te)}d)")
+        print(
+            f"    Fold {i}: train[{tr[0]}..{tr[-1]}] ({len(tr)}d) → test[{te[0]}..{te[-1]}] ({len(te)}d)"
+        )
 
     # 3. 逐折跑回测 (Platform Runner 注入 engine_cfg)
     engine_cfg = EngineBacktestConfig(
@@ -355,8 +360,7 @@ def main():
             "pms_enabled": True,
         },
         "folds": [
-            {k: v for k, v in r.items() if k not in ("nav", "returns")}
-            for r in fold_results
+            {k: v for k, v in r.items() if k not in ("nav", "returns")} for r in fold_results
         ],
         "fold_stats": {
             "sharpe_mean": round(float(sharpes.mean()), 4),
@@ -383,9 +387,7 @@ def main():
             "mdd": in_sample_mdd,
             "annual_return": in_sample_annual,
         },
-        "overfit_ratio": round(chain_sharpe / in_sample_sharpe, 4)
-        if in_sample_sharpe
-        else None,
+        "overfit_ratio": round(chain_sharpe / in_sample_sharpe, 4) if in_sample_sharpe else None,
         "elapsed_sec": round(elapsed_total, 0),
     }
 
@@ -433,8 +435,10 @@ def main():
     print("  Walk-Forward 5-Fold OOS 稳定性测试 — 结果")
     print("=" * 72)
     print("\n每折 OOS 指标:")
-    print(f"  {'Fold':>4}  {'Test Period':^23}  {'Sharpe':>7}  {'MDD':>8}  {'Annual':>8}  {'WinRate':>8}  {'Trades':>7}")
-    print(f"  {'-'*4}  {'-'*23}  {'-'*7}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*7}")
+    print(
+        f"  {'Fold':>4}  {'Test Period':^23}  {'Sharpe':>7}  {'MDD':>8}  {'Annual':>8}  {'WinRate':>8}  {'Trades':>7}"
+    )
+    print(f"  {'-' * 4}  {'-' * 23}  {'-' * 7}  {'-' * 8}  {'-' * 8}  {'-' * 8}  {'-' * 7}")
     for r in fold_results:
         period = f"{r['test_start']}~{r['test_end']}"
         print(

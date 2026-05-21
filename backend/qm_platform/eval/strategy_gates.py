@@ -16,6 +16,7 @@ Strategy Gates 复用 batch 1 Gate ABC + GateContext, 通过 `ctx.extra` (read-o
 设计意图: register() 不 inline wire (避免 5min 阻塞), 调用方在升 LIVE 前显式调
 PlatformStrategyEvaluator.evaluate_strategy(). 详见 ADR-014.
 """
+
 from __future__ import annotations
 
 from typing import Any

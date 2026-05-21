@@ -56,8 +56,12 @@ from typing import Final  # noqa: E402
 
 SYNC_INTERVAL_SEC: Final[int] = 60
 TICK_TTL_SEC: Final[int] = 90  # 价格缓存TTL，略大于同步间隔
-QMT_STATUS_TTL_SEC: Final[int] = 180  # LL-081: QMT 连接状态 TTL = 3x sync_loop. 防 zombie 时 key 永不过期 silent failure
-NAV_TTL_SEC: Final[int] = 180  # LL-081: portfolio:nav 同步 TTL, 防 zombie 时 stale NAV data 误导 ops
+QMT_STATUS_TTL_SEC: Final[int] = (
+    180  # LL-081: QMT 连接状态 TTL = 3x sync_loop. 防 zombie 时 key 永不过期 silent failure
+)
+NAV_TTL_SEC: Final[int] = (
+    180  # LL-081: portfolio:nav 同步 TTL, 防 zombie 时 stale NAV data 误导 ops
+)
 # reviewer code-reviewer P3-1 采纳 (一致性): pipe.expire(CACHE_PORTFOLIO_CURRENT, 180) 也用 const
 PORTFOLIO_CURRENT_TTL_SEC: Final[int] = 180
 
@@ -104,6 +108,7 @@ class QMTDataService:
             # across Servy restart, no per-restart mutex accumulation). role="qmtdata"
             # discriminator avoids collision with execute_phase / sell_adapter / staged.
             from engines.broker_qmt import _stable_session_id
+
             session_id = _stable_session_id(account_id, role="qmtdata")
             self._broker = MiniQMTBroker(qmt_path, account_id, session_id=session_id)
             self._broker.connect()
@@ -137,7 +142,9 @@ class QMTDataService:
             source="qmt_data_service",
         )
 
-    def _sync_positions(self) -> dict[str, str] | None:  # reviewer python-reviewer P1: 实际返 dict|None, 修 type
+    def _sync_positions(
+        self,
+    ) -> dict[str, str] | None:  # reviewer python-reviewer P1: 实际返 dict|None, 修 type
         """同步持仓和资产到Redis缓存。"""
         if not self._broker:
             return
@@ -221,11 +228,13 @@ class QMTDataService:
         logger.error(
             "[T0-16 fail-loud] qmt_data_service consecutive sync failures = %d "
             "(>= threshold %d × 60s = %d min). 持仓同步 silent skip 沉淀 → escalate.",
-            count, self._CONSECUTIVE_FAILURE_THRESHOLD,
+            count,
+            self._CONSECUTIVE_FAILURE_THRESHOLD,
             self._CONSECUTIVE_FAILURE_THRESHOLD,
         )
         try:
             from app.services.dingtalk_alert import send_with_dedup
+
             send_with_dedup(
                 dedup_key="qmt_data_service:consecutive_sync_failures",
                 severity="p0",
@@ -273,9 +282,7 @@ class QMTDataService:
             synced = 0
             for _, row in df.iterrows():
                 updated = row["updated_at"]
-                updated_iso = (
-                    updated.isoformat() if hasattr(updated, "isoformat") else str(updated)
-                )
+                updated_iso = updated.isoformat() if hasattr(updated, "isoformat") else str(updated)
                 # v2 (2026-04-20 Session 18): 盘中 live 事故修复 — 不再写 high/low 到 Redis.
                 # 根因: QMT_TICKS_CONTRACT v2 移除 high/low (xtquant snapshot 未订阅时返 0,
                 # 详见 qmt_source.py QMT_TICKS_CONTRACT 注释).

@@ -8,6 +8,7 @@
 
 铁律 10b 生产入口守门 + 铁律 40 测试债不增长.
 """
+
 from __future__ import annotations
 
 import sys

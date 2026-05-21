@@ -14,6 +14,7 @@
 
 测试不依赖 DB / Redis / network — 纯逻辑单测 (铁律 31 Engine 纯计算同方向).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -252,4 +253,4 @@ class TestCstToday:
 
     def test_cst_constant_is_shanghai(self) -> None:
         """CST 常量是 Asia/Shanghai (跟 PR #90 / services_healthcheck.py 对齐)."""
-        assert CST == ZoneInfo("Asia/Shanghai")
+        assert ZoneInfo("Asia/Shanghai") == CST

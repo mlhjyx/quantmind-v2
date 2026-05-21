@@ -52,12 +52,12 @@ FACTOR_DIRECTION = {
     "turnover_surge_ratio": -1,  # 换手率突增比, 方向-1: 低突增好
     # ---- Phase 2.1 E2E因子 ----
     "high_vol_price_ratio_20": -1,  # 高波动日价偏高=庄家出货
-    "IMAX_20": -1,   # 极端正收益=彩票偏好被高估
-    "IMIN_20": 1,    # 深跌后均值回归
-    "QTLU_20": -1,   # 上行偏度=过度乐观
-    "CORD_20": -1,   # 强上行趋势=反转
-    "RSQR_20": -1,   # 低R²=特质风险=散户溢价
-    "RESI_20": 1,    # 正alpha=近期跑赢
+    "IMAX_20": -1,  # 极端正收益=彩票偏好被高估
+    "IMIN_20": 1,  # 深跌后均值回归
+    "QTLU_20": -1,  # 上行偏度=过度乐观
+    "CORD_20": -1,  # 强上行趋势=反转
+    "RSQR_20": -1,  # 低R²=特质风险=散户溢价
+    "RESI_20": 1,  # 正alpha=近期跑赢
 }
 
 
@@ -72,7 +72,7 @@ FACTOR_DIRECTION = {
 # 注入 DBFactorRegistry + DBFeatureFlag 实例. 未注入时 _get_direction 直接走 hardcoded.
 
 _PLATFORM_REGISTRY = None  # type: ignore[var-annotated]  # DBFactorRegistry | None
-_PLATFORM_FLAG_DB = None   # type: ignore[var-annotated]  # DBFeatureFlag | None
+_PLATFORM_FLAG_DB = None  # type: ignore[var-annotated]  # DBFeatureFlag | None
 _USE_DB_DIRECTION_FLAG_NAME = "use_db_direction"
 
 
@@ -218,7 +218,9 @@ def _build_paper_trading_config() -> SignalConfig:
         factors_raw = strategy.get("factors", [])
         factor_names = [f["name"] for f in factors_raw if isinstance(f, dict) and "name" in f]
         if not factor_names:
-            raise ValueError("pt_live.yaml strategy.factors 为空或格式不符 (expect list[{name, direction}])")
+            raise ValueError(
+                "pt_live.yaml strategy.factors 为空或格式不符 (expect list[{name, direction}])"
+            )
         rebalance_freq = str(strategy.get("rebalance_freq", "monthly"))
         turnover_cap = float(strategy.get("turnover_cap", 0.50))
     except (FileNotFoundError, ValueError, yaml.YAMLError, KeyError) as e:
@@ -455,7 +457,7 @@ class PortfolioBuilder:
             vols_arr = np.clip(vols_arr, lo, hi)
 
         # 反波动率加权
-        inv_vol = 1.0 / (vols_arr ** power)
+        inv_vol = 1.0 / (vols_arr**power)
         weights = inv_vol / inv_vol.sum()
 
         # 单只上限: min(15%, 2/N)
@@ -540,7 +542,8 @@ def get_rebalance_dates(
     from backend.qm_platform.data.access_layer import PlatformDataAccessLayer
 
     dal = PlatformDataAccessLayer(
-        conn_factory=_get_sync_conn, paramstyle="%s",
+        conn_factory=_get_sync_conn,
+        paramstyle="%s",
     )
     all_dates = dal.read_calendar(start=start_date, end=end_date)
 

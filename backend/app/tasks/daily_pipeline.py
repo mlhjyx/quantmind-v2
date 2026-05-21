@@ -1052,11 +1052,13 @@ def data_quality_report_task(self, trade_date_str: str | None = None) -> dict:
 
     非交易日快速跳过.
     """
-    from engines.trading_day_checker import TradingDayChecker
+    from qm_platform.calendar import get_calendar
 
     td = datetime.strptime(trade_date_str, "%Y-%m-%d").date() if trade_date_str else date.today()
-    checker = TradingDayChecker()
-    is_td, reason = checker.is_trading_day(td)
+    # Calendar SSOT facade (Plan 1 — DEV_SCHEDULER §6.12 Phase I): migrated off the raw
+    # engines.trading_day_checker.TradingDayChecker() onto the single sanctioned
+    # entrypoint so the Plan 1.5 robustness fix covers this caller too (反 cross-script drift).
+    is_td, reason = get_calendar().is_trading_day_with_reason(td)
     if not is_td:
         logger.info(f"[QualityReport] 非交易日({reason}), 跳过")
         return {"status": "skipped", "reason": reason, "trade_date": str(td)}
@@ -1156,7 +1158,16 @@ def factor_lifecycle_task(self) -> dict:
         warning → critical (ratio < 0.5 持续 20 天)
     L2 critical → retired 需人确认, 本 task 不自动执行.
     铁律 23/24: 独立可执行 MVP. 铁律 32: task 负责 commit.
+
+    非交易日快速跳过 (Plan 1 — DEV_SCHEDULER §6.12 Phase I).
     """
+    # Calendar gate: 周五 19:00 cron 可落在法定节假日的周五 — 跳过避免对未计算的
+    # IC 数据做生命周期转换 (反 LL-181 节假日空跑; calendar SSOT 4-layer fallback).
+    from qm_platform.calendar import is_trading_day_today_or_skip  # noqa: PLC0415
+
+    if not is_trading_day_today_or_skip(logger=logger):
+        return {"status": "skipped", "reason": "non_trading_day"}
+
     import sys
     from pathlib import Path
 

@@ -77,7 +77,8 @@ D:\tools\Servy\servy-cli.exe import --path=D:\quantmind-v2\config\servy\QuantMin
 - PG 16.8 + TimescaleDB 2.26.0 + `D:\pgsql\bin\pg_ctl.exe -D D:\pgdata16 start` (详见 CLAUDE.md 硬件章节)
 - Redis 5.0.14.1
 - 建库/建表: `docs/QUANTMIND_V2_DDL_FINAL.sql` + `backend/migrations/*.sql` (幂等)
-- `.env`: 不入 git, 从上一环境拷贝 (DATABASE_URL / REDIS_URL / API keys / PT_* / PMS_* / SN_*)
+- `.env`: 不入 git, 从上一环境拷贝 (DATABASE_URL / REDIS_URL / API keys / PT_* / PMS_* / SN_* / **QM_DB_PASSWORD**)
+- `QM_DB_PASSWORD` (新, PR #387-#389 sediment): 8 ops/research script 共享 DB 密码, 与 DATABASE_URL 内嵌 password 一致. fallback `"quantmind"` 仍在 source 作 partial closure (铁律 35). 详见 PR #390 H-1 family closure 状态报告 (mergeable, 待合入).
 
 ---
 

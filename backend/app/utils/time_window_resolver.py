@@ -25,6 +25,7 @@ Phase 1 (本 commit): 抽象 + 单测.
 Phase 2 (Monday 后): 4 schtask scripts 迁移 (compute_daily_ic / compute_ic_rolling
                      / fast_ic_recompute / pull_moneyflow refactor).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -176,8 +177,7 @@ class TimeWindowResolver:
                 start = datetime.strptime(args.start, "%Y%m%d").date()
             except ValueError as e:
                 raise ValueError(
-                    f"--start '{args.start}' 格式错: 期望 YYYYMMDD (e.g. 20260427), "
-                    f"got {e}"
+                    f"--start '{args.start}' 格式错: 期望 YYYYMMDD (e.g. 20260427), got {e}"
                 ) from e
 
             # reviewer python-reviewer P2 采纳 (2026-04-26): `--end` 用 `is not None` 跟
@@ -188,8 +188,7 @@ class TimeWindowResolver:
                     end = datetime.strptime(args.end, "%Y%m%d").date()
                 except ValueError as e:
                     raise ValueError(
-                        f"--end '{args.end}' 格式错: 期望 YYYYMMDD (e.g. 20260427), "
-                        f"got {e}"
+                        f"--end '{args.end}' 格式错: 期望 YYYYMMDD (e.g. 20260427), got {e}"
                     ) from e
             else:
                 end = today
@@ -209,8 +208,7 @@ class TimeWindowResolver:
         # 模式 3: default
         if default_lookback < 0:
             raise ValueError(
-                f"default_lookback {default_lookback} 必须 >= 0 "
-                f"(由调用方传, 错配会 silent 错)"
+                f"default_lookback {default_lookback} 必须 >= 0 (由调用方传, 错配会 silent 错)"
             )
         start = today - timedelta(days=default_lookback)
         return TimeWindow(start_date=start, end_date=today, mode="default")

@@ -22,6 +22,7 @@ Usage:
     # 真正写入
     python scripts/registry/backfill_factor_registry.py --apply
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,8 +88,11 @@ _POOL_INVALIDATED: frozenset[str] = frozenset(
 _POOL_DEPRECATED: frozenset[str] = frozenset(
     {
         # Phase 6-F 废弃动量/波动系列 (CLAUDE.md §因子池状态):
-        "momentum_5", "momentum_10", "momentum_60",
-        "volatility_60", "turnover_std_20",
+        "momentum_5",
+        "momentum_10",
+        "momentum_60",
+        "volatility_60",
+        "turnover_std_20",
         # Session 27 Task B 清理 (2026-04-24, migration cleanup_orphan_factors_session27.sql):
         # factor_values 0 行 orphan, UPDATE status=deprecated + pool=DEPRECATED.
         # 加入本 set 防 backfill 重跑走 Layer 2 hardcoded direction 路径 revert 回 PASS.
@@ -240,8 +244,17 @@ def _load_layer1_existing_registry(conn) -> dict[str, dict[str, Any]]:
             "FROM factor_registry ORDER BY name"
         )
         rows = cur.fetchall()
-        cols = ["name", "category", "direction", "expression", "hypothesis",
-                "source", "lookback_days", "status", "pool"]
+        cols = [
+            "name",
+            "category",
+            "direction",
+            "expression",
+            "hypothesis",
+            "source",
+            "lookback_days",
+            "status",
+            "pool",
+        ]
     return {row[0]: dict(zip(cols, row, strict=True)) for row in rows}
 
 
@@ -255,6 +268,7 @@ def _load_layer2_hardcoded_directions() -> dict[str, int]:
         PHASE21_FACTOR_DIRECTION,
         RESERVE_FACTOR_DIRECTION,
     )
+
     merged: dict[str, int] = {}
     for d in (
         _SIGNAL_ENGINE_DIRECTION,
@@ -319,11 +333,13 @@ def _merge_plan(
                 or (existing.get("status") is None)
             )
             if needs_update:
-                to_update.append({
-                    "name": name,
-                    "pool": new_pool,
-                    "status": new_status,
-                })
+                to_update.append(
+                    {
+                        "name": name,
+                        "pool": new_pool,
+                        "status": new_status,
+                    }
+                )
             continue
 
         # Layer 1 不存在, 新建行
@@ -338,17 +354,19 @@ def _merge_plan(
             if has_hc
             else f"[AUTO_BACKFILL] {name}: 无元数据, 默认 direction=1. 人工审核后修正"
         )
-        to_insert.append({
-            "name": name,
-            "category": category,
-            "direction": direction,
-            "expression": None,  # legacy 因子无表达式, MVP 1.3b 再补
-            "hypothesis": hypothesis,
-            "source": "builtin" if has_hc else "legacy",
-            "lookback_days": 60,
-            "status": status,
-            "pool": pool,
-        })
+        to_insert.append(
+            {
+                "name": name,
+                "category": category,
+                "direction": direction,
+                "expression": None,  # legacy 因子无表达式, MVP 1.3b 再补
+                "hypothesis": hypothesis,
+                "source": "builtin" if has_hc else "legacy",
+                "lookback_days": 60,
+                "status": status,
+                "pool": pool,
+            }
+        )
 
     return to_insert, to_update, conflicts
 
@@ -367,9 +385,17 @@ def _apply_inserts(conn, rows: list[dict[str, Any]]) -> int:
     now = datetime.now(UTC)
     params = [
         (
-            r["name"], r["category"], r["direction"], r["expression"],
-            r["hypothesis"], r["source"], r["lookback_days"], r["status"],
-            r["pool"], now, now,
+            r["name"],
+            r["category"],
+            r["direction"],
+            r["expression"],
+            r["hypothesis"],
+            r["source"],
+            r["lookback_days"],
+            r["status"],
+            r["pool"],
+            now,
+            now,
         )
         for r in rows
     ]
@@ -422,19 +448,25 @@ def _print_diff(
     print("\n样本 (前 10 + 抽 pool=LEGACY 3 + pool=CORE 所有):")
     shown: set[str] = set()
     for r in to_insert[:10]:
-        print(f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
-              f"category={r['category']:15s} source={r['source']}")
+        print(
+            f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
+            f"category={r['category']:15s} source={r['source']}"
+        )
         shown.add(r["name"])
     core_samples = [r for r in to_insert if r["pool"] == "CORE"]
     for r in core_samples:
         if r["name"] not in shown:
-            print(f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
-                  f"category={r['category']:15s} (CORE 新增)")
+            print(
+                f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
+                f"category={r['category']:15s} (CORE 新增)"
+            )
     legacy_samples = [r for r in to_insert if r["pool"] == "LEGACY"][:3]
     for r in legacy_samples:
         if r["name"] not in shown:
-            print(f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
-                  f"category={r['category']:15s} (LEGACY 样本)")
+            print(
+                f"  {r['name']:35s} direction={r['direction']:+d} pool={r['pool']:15s} "
+                f"category={r['category']:15s} (LEGACY 样本)"
+            )
 
     print(f"\nUPDATE {len(to_update)} 行 (补 pool/status):")
     for r in to_update:

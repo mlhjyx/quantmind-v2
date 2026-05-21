@@ -60,19 +60,19 @@ def _make_mock_executions(
     quantities = rng.integers(2, 20, size=n) * 100  # 200-2000股整手
     fill_prices = rng.uniform(5.0, 50.0, size=n)
     target_prices = fill_prices * rng.uniform(0.99, 1.01, size=n)
-    slippage_bps = np.clip(
-        rng.normal(slippage_mean, slippage_std, size=n), 5.0, 200.0
-    )
+    slippage_bps = np.clip(rng.normal(slippage_mean, slippage_std, size=n), 5.0, 200.0)
     trade_dates = pd.date_range("2026-01-01", periods=n, freq="D")
 
-    return pd.DataFrame({
-        "direction": directions,
-        "quantity": quantities,
-        "fill_price": fill_prices,
-        "target_price": target_prices,
-        "slippage_bps": slippage_bps,
-        "trade_date": trade_dates,
-    })
+    return pd.DataFrame(
+        {
+            "direction": directions,
+            "quantity": quantities,
+            "fill_price": fill_prices,
+            "target_price": target_prices,
+            "slippage_bps": slippage_bps,
+            "trade_date": trade_dates,
+        }
+    )
 
 
 # ──────────────────────────────────────────────────────────────
@@ -88,8 +88,14 @@ class TestLoadPtExecutionData:
         with patch(
             "bayesian_slippage_calibration.load_pt_execution_data",
             return_value=pd.DataFrame(
-                columns=["direction", "quantity", "fill_price",
-                         "target_price", "slippage_bps", "trade_date"]
+                columns=[
+                    "direction",
+                    "quantity",
+                    "fill_price",
+                    "target_price",
+                    "slippage_bps",
+                    "trade_date",
+                ]
             ),
         ) as mock_load:
             result = mock_load(min_records=30)
@@ -103,8 +109,14 @@ class TestLoadPtExecutionData:
         # 通过monkey-patch模拟DB返回10条记录但min_records=30
         with patch("bayesian_slippage_calibration.load_pt_execution_data") as mock_fn:
             empty = pd.DataFrame(
-                columns=["direction", "quantity", "fill_price",
-                         "target_price", "slippage_bps", "trade_date"]
+                columns=[
+                    "direction",
+                    "quantity",
+                    "fill_price",
+                    "target_price",
+                    "slippage_bps",
+                    "trade_date",
+                ]
             )
             mock_fn.return_value = empty
             result = mock_fn(min_records=30)
@@ -113,8 +125,12 @@ class TestLoadPtExecutionData:
     def test_required_columns_in_empty_return(self) -> None:
         """空DataFrame必须包含所有必需列。"""
         required_cols = [
-            "direction", "quantity", "fill_price",
-            "target_price", "slippage_bps", "trade_date",
+            "direction",
+            "quantity",
+            "fill_price",
+            "target_price",
+            "slippage_bps",
+            "trade_date",
         ]
         with patch("bayesian_slippage_calibration.load_pt_execution_data") as mock_fn:
             mock_fn.return_value = pd.DataFrame(columns=required_cols)
@@ -196,14 +212,19 @@ class TestComputeModelSlippage:
         }
         buy_pred = compute_model_slippage(params, buy_df)
         sell_pred = compute_model_slippage(params, sell_df)
-        assert np.mean(sell_pred) > np.mean(buy_pred), \
-            "卖出方向平均预测滑点应高于买入"
+        assert np.mean(sell_pred) > np.mean(buy_pred), "卖出方向平均预测滑点应高于买入"
 
     def test_empty_executions_returns_empty_array(self) -> None:
         """空DataFrame返回空数组。"""
         empty = pd.DataFrame(
-            columns=["direction", "quantity", "fill_price",
-                     "target_price", "slippage_bps", "trade_date"]
+            columns=[
+                "direction",
+                "quantity",
+                "fill_price",
+                "target_price",
+                "slippage_bps",
+                "trade_date",
+            ]
         )
         params = {
             "base_bps": 8.0,
@@ -256,14 +277,19 @@ class TestMleCalibrateConvergence:
             lo = result.ci_lower[k]
             hi = result.ci_upper[k]
             val = result.params[k]
-            assert lo <= val <= hi, \
-                f"参数 {k}={val:.4f} 不在自身CI [{lo:.4f}, {hi:.4f}] 内"
+            assert lo <= val <= hi, f"参数 {k}={val:.4f} 不在自身CI [{lo:.4f}, {hi:.4f}] 内"
 
     def test_calibrate_raises_on_empty(self) -> None:
         """空DataFrame时抛ValueError。"""
         empty = pd.DataFrame(
-            columns=["direction", "quantity", "fill_price",
-                     "target_price", "slippage_bps", "trade_date"]
+            columns=[
+                "direction",
+                "quantity",
+                "fill_price",
+                "target_price",
+                "slippage_bps",
+                "trade_date",
+            ]
         )
         with pytest.raises(ValueError, match="空"):
             mle_calibrate(empty)
@@ -299,6 +325,7 @@ class TestGenerateCalibrationReport:
         df = _make_mock_executions(n=50)
         result = self._make_result()
         from bayesian_slippage_calibration import DEFAULT_PARAMS
+
         report = generate_calibration_report(DEFAULT_PARAMS, result, df)
 
         for k in result.params:
@@ -309,6 +336,7 @@ class TestGenerateCalibrationReport:
         df = _make_mock_executions(n=50, slippage_mean=60.0)
         result = self._make_result()
         from bayesian_slippage_calibration import DEFAULT_PARAMS
+
         report = generate_calibration_report(DEFAULT_PARAMS, result, df)
 
         assert "均值" in report
@@ -320,6 +348,7 @@ class TestGenerateCalibrationReport:
         df = _make_mock_executions(n=50)
         result = self._make_result()
         from bayesian_slippage_calibration import DEFAULT_PARAMS
+
         report = generate_calibration_report(DEFAULT_PARAMS, result, df)
 
         assert "mle_map" in report
@@ -329,6 +358,7 @@ class TestGenerateCalibrationReport:
         df = _make_mock_executions(n=50)
         result = self._make_result()
         from bayesian_slippage_calibration import DEFAULT_PARAMS
+
         report = generate_calibration_report(DEFAULT_PARAMS, result, df)
 
         assert "8.32" in report  # 对应rmse=8.32
@@ -338,6 +368,7 @@ class TestGenerateCalibrationReport:
         df = _make_mock_executions(n=50)
         result = self._make_result()
         from bayesian_slippage_calibration import DEFAULT_PARAMS
+
         report = generate_calibration_report(DEFAULT_PARAMS, result, df)
 
         assert isinstance(report, str)
@@ -356,9 +387,10 @@ class TestDryRunMode:
         """dry-run模式下bayesian_calibrate不应被调用。"""
         import bayesian_slippage_calibration as cal_module
 
-        with patch.object(cal_module, "load_pt_execution_data") as mock_load, \
-             patch.object(cal_module, "bayesian_calibrate") as mock_cal:
-
+        with (
+            patch.object(cal_module, "load_pt_execution_data") as mock_load,
+            patch.object(cal_module, "bayesian_calibrate") as mock_cal,
+        ):
             mock_load.return_value = _make_mock_executions(n=50)
 
             # 模拟dry_run逻辑（检查calibrate未被调用）
@@ -378,8 +410,14 @@ class TestDryRunMode:
 
         with patch.object(cal_module, "load_pt_execution_data") as mock_load:
             mock_load.return_value = pd.DataFrame(
-                columns=["direction", "quantity", "fill_price",
-                         "target_price", "slippage_bps", "trade_date"]
+                columns=[
+                    "direction",
+                    "quantity",
+                    "fill_price",
+                    "target_price",
+                    "slippage_bps",
+                    "trade_date",
+                ]
             )
             df = mock_load(min_records=30)
             assert df.empty
@@ -394,8 +432,7 @@ class TestDryRunMode:
         # 即使数据充足，dry-run不应修改PRIORS
         _ = _make_mock_executions(n=50)
 
-        assert original_priors == cal_module.PRIORS, \
-            "PRIORS不应在dry-run中被修改"
+        assert original_priors == cal_module.PRIORS, "PRIORS不应在dry-run中被修改"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -411,9 +448,7 @@ class TestPriorRangeValidity:
         for k, (mu, _sigma) in PRIORS.items():
             if k in PARAM_BOUNDS:
                 lo, hi = PARAM_BOUNDS[k]
-                assert lo <= mu <= hi, (
-                    f"先验均值 {k}={mu} 不在PARAM_BOUNDS [{lo}, {hi}] 内"
-                )
+                assert lo <= mu <= hi, f"先验均值 {k}={mu} 不在PARAM_BOUNDS [{lo}, {hi}] 内"
 
     def test_prior_sigmas_positive(self) -> None:
         """所有先验标准差应为正值。"""
@@ -431,19 +466,19 @@ class TestPriorRangeValidity:
             if rec_key in R4_MANUAL_RECOMMENDATIONS and bound_key in PARAM_BOUNDS:
                 val = R4_MANUAL_RECOMMENDATIONS[rec_key]
                 lo, hi = PARAM_BOUNDS[bound_key]
-                assert lo <= val <= hi, (
-                    f"R4推荐值 {rec_key}={val} 不在PARAM_BOUNDS [{lo}, {hi}] 内"
-                )
+                assert lo <= val <= hi, f"R4推荐值 {rec_key}={val} 不在PARAM_BOUNDS [{lo}, {hi}] 内"
 
     def test_r4_y_small_recommendation_gt_prior_mean(self) -> None:
         """R4建议y_small=1.8应大于先验均值1.5（R4实证支持更高值）。"""
-        assert R4_MANUAL_RECOMMENDATIONS["y_small"] > PRIORS["y_small"][0], \
+        assert R4_MANUAL_RECOMMENDATIONS["y_small"] > PRIORS["y_small"][0], (
             "R4建议y_small应高于先验均值（R4实证：小盘冲击被低估）"
+        )
 
     def test_r4_sell_penalty_recommendation_gt_prior_mean(self) -> None:
         """R4建议sell_penalty=1.3应大于先验均值1.2。"""
-        assert R4_MANUAL_RECOMMENDATIONS["sell_penalty"] > PRIORS["sell_penalty"][0], \
+        assert R4_MANUAL_RECOMMENDATIONS["sell_penalty"] > PRIORS["sell_penalty"][0], (
             "R4建议sell_penalty应高于先验均值（卖出冲击实证更大）"
+        )
 
     def test_param_bounds_lower_lt_upper(self) -> None:
         """PARAM_BOUNDS每项下界应严格小于上界。"""

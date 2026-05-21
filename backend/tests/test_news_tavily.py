@@ -5,6 +5,7 @@
 - e2e (requires_tavily): 真 TAVILY_API_KEY .env 走 minimal payload (反耗 credit)
 - smoke: 沿用 sub-PR 1 体例 (build/integration sanity)
 """
+
 from __future__ import annotations
 
 import os
@@ -121,9 +122,7 @@ def test_tavily_fetch_parses_valid_response(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     items = fetcher.fetch(query="Apple earnings", limit=5)
@@ -149,9 +148,7 @@ def test_tavily_fetch_4xx_400_raises_news_fetch_error_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     with pytest.raises(NewsFetchError, match="HTTP 400"):
@@ -169,9 +166,7 @@ def test_tavily_fetch_401_raises_news_fetch_error_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-bad-key")
     with pytest.raises(NewsFetchError, match="HTTP 401"):
@@ -189,9 +184,7 @@ def test_tavily_fetch_432_plan_limit_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     with pytest.raises(NewsFetchError, match="HTTP 432.*plan/PAYG limit"):
@@ -209,9 +202,7 @@ def test_tavily_fetch_433_payg_limit_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     with pytest.raises(NewsFetchError, match="HTTP 433.*plan/PAYG limit"):
@@ -229,9 +220,7 @@ def test_tavily_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.tavily.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
@@ -250,9 +239,7 @@ def test_tavily_fetch_5xx_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.tavily.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
@@ -263,14 +250,13 @@ def test_tavily_fetch_5xx_retries_then_raises(monkeypatch):
 
 def test_tavily_fetch_missing_results_returns_empty(monkeypatch):
     """API response 缺 results → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"query": "test"})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     items = fetcher.fetch(query="test")
@@ -279,14 +265,13 @@ def test_tavily_fetch_missing_results_returns_empty(monkeypatch):
 
 def test_tavily_fetch_invalid_results_type_returns_empty(monkeypatch):
     """results 反 list type → empty list."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"results": "not-a-list"})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     items = fetcher.fetch(query="test")
@@ -307,9 +292,7 @@ def test_tavily_fetch_empty_title_skipped(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     items = fetcher.fetch(query="test")
@@ -327,9 +310,7 @@ def test_tavily_fetch_timeout_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
     with patch("backend.qm_platform.news.tavily.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
@@ -348,14 +329,13 @@ def test_tavily_fetch_max_results_clamp_above_20(monkeypatch):
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         import json as _json
+
         captured["body"] = _json.loads(request.content)
         return httpx.Response(200, json={"results": []})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     fetcher.fetch(query="test", limit=100)
@@ -367,8 +347,7 @@ def test_tavily_fetch_max_results_clamp_above_20(monkeypatch):
 
 @pytest.mark.requires_tavily
 @pytest.mark.skipif(
-    not os.environ.get("TAVILY_API_KEY"),
-    reason="requires TAVILY_API_KEY env (e2e live API call)"
+    not os.environ.get("TAVILY_API_KEY"), reason="requires TAVILY_API_KEY env (e2e live API call)"
 )
 def test_tavily_fetch_e2e_minimal_payload():
     """e2e: 真 TAVILY_API_KEY 走 minimal 1-credit payload (反耗 credit).
@@ -407,18 +386,14 @@ def test_tavily_fetcher_import_smoke():
 
 def test_tavily_news_item_uses_en_lang(monkeypatch):
     """Tavily NewsItem 默认 lang="en" (V3§3.1 海外信号体例)."""
-    mock_api_resp = {
-        "results": [{"title": "Test", "url": "https://x", "content": "y"}]
-    }
+    mock_api_resp = {"results": [{"title": "Test", "url": "https://x", "content": "y"}]}
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=mock_api_resp)
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = TavilyNewsFetcher(api_key="tvly-test-key")
     items = fetcher.fetch(query="test")

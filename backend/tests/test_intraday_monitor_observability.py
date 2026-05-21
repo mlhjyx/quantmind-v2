@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.8 unit tests — intraday_monitor 迁 SDK (kind-aware dispatch)."""
+
 from __future__ import annotations
 
 import sys
@@ -34,7 +35,9 @@ def test_send_alert_sdk_path_when_flag_true():
         patch.object(im_mod, "_send_alert_via_platform_sdk") as mock_sdk,
         patch.object(im_mod, "_send_alert_via_legacy_dingtalk") as mock_legacy,
     ):
-        im_mod.send_alert("P0", "组合大跌", "msg", kind="portfolio_drop", details_extra={"cb_level": 2})
+        im_mod.send_alert(
+            "P0", "组合大跌", "msg", kind="portfolio_drop", details_extra={"cb_level": 2}
+        )
         mock_sdk.assert_called_once_with("P0", "组合大跌", "msg", "portfolio_drop", {"cb_level": 2})
         mock_legacy.assert_not_called()
 
@@ -72,7 +75,9 @@ def test_sdk_qmt_disconnect_dedup_key():
 
     p1, p2 = _setup_router_mock(mock_router, mock_engine)
     with p1, p2:
-        im_mod._send_alert_via_platform_sdk("P0", "QMT断连 10:00", "qmt fail", "qmt_disconnect", None)
+        im_mod._send_alert_via_platform_sdk(
+            "P0", "QMT断连 10:00", "qmt fail", "qmt_disconnect", None
+        )
 
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P0
@@ -102,6 +107,7 @@ def test_sdk_portfolio_drop_dedup_includes_cb_level():
     # PR #142 code-reviewer P1: dedup_key 必含 trade_date 后缀防跨日 silent suppress
     assert dedup_key.startswith("intraday:portfolio_drop:cb_l3:")
     from datetime import date
+
     assert str(date.today()) in dedup_key
 
 
@@ -114,8 +120,12 @@ def test_sdk_portfolio_drop_levels_distinct_dedup():
 
     p1, p2 = _setup_router_mock(mock_router, mock_engine)
     with p1, p2:
-        im_mod._send_alert_via_platform_sdk("P0", "组合大跌", "msg", "portfolio_drop", {"cb_level": 2})
-        im_mod._send_alert_via_platform_sdk("P0", "组合暴跌", "msg", "portfolio_drop", {"cb_level": 3})
+        im_mod._send_alert_via_platform_sdk(
+            "P0", "组合大跌", "msg", "portfolio_drop", {"cb_level": 2}
+        )
+        im_mod._send_alert_via_platform_sdk(
+            "P0", "组合暴跌", "msg", "portfolio_drop", {"cb_level": 3}
+        )
 
     keys = [c.kwargs["dedup_key"] for c in mock_router.fire.call_args_list]
     assert keys[0].startswith("intraday:portfolio_drop:cb_l2:")
@@ -135,12 +145,20 @@ def test_sdk_portfolio_drop_without_cb_level_raises_value_error():
     p1, p2 = _setup_router_mock(mock_router, mock_engine)
     with p1, p2, pytest.raises(ValueError, match="portfolio_drop.*cb_level"):
         im_mod._send_alert_via_platform_sdk(
-            "P0", "组合大跌", "msg", "portfolio_drop", None,
+            "P0",
+            "组合大跌",
+            "msg",
+            "portfolio_drop",
+            None,
         )
 
     with p1, p2, pytest.raises(ValueError, match="portfolio_drop.*cb_level"):
         im_mod._send_alert_via_platform_sdk(
-            "P0", "组合大跌", "msg", "portfolio_drop", {"pnl_pct": "-0.05"},  # cb_level missing
+            "P0",
+            "组合大跌",
+            "msg",
+            "portfolio_drop",
+            {"pnl_pct": "-0.05"},  # cb_level missing
         )
 
 
@@ -154,7 +172,10 @@ def test_sdk_emergency_stock_batch_dedup_key():
     p1, p2 = _setup_router_mock(mock_router, mock_engine)
     with p1, p2:
         im_mod._send_alert_via_platform_sdk(
-            "P1", "单股急跌 10:00", "msg", "emergency_stock_batch",
+            "P1",
+            "单股急跌 10:00",
+            "msg",
+            "emergency_stock_batch",
             {"stock_count": 3, "codes": "600519.SH,300750.SZ,000001.SZ"},
         )
 
@@ -209,7 +230,8 @@ def test_send_alert_swallows_dispatch_error():
     with (
         patch.object(settings, "OBSERVABILITY_USE_PLATFORM_SDK", True),
         patch.object(
-            im_mod, "_send_alert_via_platform_sdk",
+            im_mod,
+            "_send_alert_via_platform_sdk",
             side_effect=AlertDispatchError("sink failed"),
         ),
     ):

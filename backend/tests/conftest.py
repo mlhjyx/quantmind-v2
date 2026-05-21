@@ -36,11 +36,13 @@ def _reset_llm_singleton():
     yield
     try:
         from backend.qm_platform.llm import reset_llm_router
+
         reset_llm_router()
     except ImportError:
         # silent_ok: litellm SDK 0 装时 reset 真 noop (反 break 4222 非 LLM tests).
         # 沿用铁律 33 silent_ok 注释 + Chunk B P1 reviewer hardening.
         pass
+
 
 try:
     import pytest_asyncio

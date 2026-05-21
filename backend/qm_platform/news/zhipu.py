@@ -18,6 +18,7 @@ Retry 体例 (沿用 ADR-035 §4 Negative cite "free tier qps cap finding"):
 - glm-4.7-flash HTTP 429 rate limit code 1305 (free tier qps cap, 反 monthly quota)
 - 60s cooldown sustained Step 4-2 cold-start retry 实证
 """
+
 from __future__ import annotations
 
 import json
@@ -50,8 +51,8 @@ DEFAULT_TIMEOUT = 30.0  # 沿用 ADR-035 §4 Negative cite Step 4-2 cold-start 6
 DEFAULT_LIMIT = 10
 SYSTEM_PROMPT = (
     "你是金融新闻收集助手. 根据用户给的查询关键词, 输出最近的相关新闻列表.\n"
-    "严格输出 JSON 格式: {\"items\": [{\"title\": \"\", \"content\": \"\", "
-    "\"url\": \"\", \"timestamp\": \"YYYY-MM-DDTHH:MM:SS+08:00\"}]}\n"
+    '严格输出 JSON 格式: {"items": [{"title": "", "content": "", '
+    '"url": "", "timestamp": "YYYY-MM-DDTHH:MM:SS+08:00"}]}\n'
     "timestamp 用 ISO 8601 + Asia/Shanghai timezone. 反 markdown / 反 ```code fence```."
 )
 

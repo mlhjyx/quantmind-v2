@@ -52,6 +52,7 @@ class _PositionEntry(TypedDict):
     qty: int
     avg_cost: float
 
+
 # .env 加载 DATABASE_URL / PAPER_STRATEGY_ID
 _BACKEND = Path(__file__).resolve().parent.parent.parent / "backend"
 _ENV = _BACKEND / ".env"
@@ -71,9 +72,7 @@ logger = logging.getLogger("restore_snapshot_20260417")
 # Hard-coded 修复参数 (one-shot, 不可改)
 REPAIR_DATE = date(2026, 4, 17)
 REF_DATE = date(2026, 4, 16)
-DEFAULT_STRATEGY_ID = os.environ.get(
-    "PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
-)
+DEFAULT_STRATEGY_ID = os.environ.get("PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0")
 
 
 class PreconditionError(RuntimeError):
@@ -178,8 +177,7 @@ def reconstruct_positions(
         (ref_date, strategy_id),
     )
     positions: dict[str, _PositionEntry] = {
-        r[0]: _PositionEntry(qty=int(r[1]), avg_cost=float(r[2] or 0))
-        for r in cur.fetchall()
+        r[0]: _PositionEntry(qty=int(r[1]), avg_cost=float(r[2] or 0)) for r in cur.fetchall()
     }
 
     cur.execute(
@@ -206,7 +204,9 @@ def reconstruct_positions(
                 logger.warning(
                     "[reconstruction] %s sell qty=%d > prev_qty=%d (oversell) → 视为全平 qty=0. "
                     "数据完整性问题, 需审查 trade_log vs snapshot 一致性.",
-                    code, qty, prev_qty,
+                    code,
+                    qty,
+                    prev_qty,
                 )
                 new_qty = 0
             pos["qty"] = new_qty
@@ -306,7 +306,11 @@ def run(strategy_id: str, apply: bool) -> int:
         for r in rows:
             logger.info(
                 "  %s qty=%d mv=%.2f weight=%.4f avg_cost=%s",
-                r[0], r[4], r[6], r[7], r[5] if r[5] is not None else "NULL",
+                r[0],
+                r[4],
+                r[6],
+                r[7],
+                r[5] if r[5] is not None else "NULL",
             )
 
         if not apply:

@@ -3,6 +3,7 @@
 subprocess 真启动验证 module-top imports 不破 (compose + generate SDK 可访问).
 对齐 test_mvp_3_1_risk_live pattern: 显式 sys.path 注入 + LL-052 platform shadow 预热.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -62,6 +63,4 @@ def test_signal_pipeline_imports_and_construct():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK signal pipeline boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK signal pipeline boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"
