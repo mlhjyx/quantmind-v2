@@ -17,11 +17,18 @@ router = APIRouter(prefix="/api/realtime", tags=["realtime"])
 
 
 def _make_conn():
-    """创建psycopg2连接。延迟导入避免import-time阻塞。"""
+    """创建psycopg2连接。延迟导入避免import-time阻塞。
+
+    本连接仅供 RealtimeDataService 只读 SELECT，故 autocommit=True：每条查询
+    自动收尾，杜绝无前端流量时连接长期 idle-in-transaction 阻塞 autovacuum
+    (2026-05-22 实测 pg_stat_activity ~48h idle-in-txn 泄漏)。
+    """
     try:
         from app.services.db import get_sync_conn
 
-        return get_sync_conn()
+        conn = get_sync_conn()
+        conn.autocommit = True
+        return conn
     except Exception as e:
         logger.warning("realtime DB连接失败", error=str(e))
         return None
@@ -40,10 +47,12 @@ def _get_conn():
         _lazy_conn = _make_conn()
         if _lazy_conn:
             logger.info("realtime DB连接成功")
-    # 检查连接是否仍然有效
+    # 探活：autocommit 下 rollback() 不往返服务端，改用 SELECT 1 查询检测连接是否存活
     if _lazy_conn is not None:
         try:
-            _lazy_conn.rollback()  # 重置事务状态
+            with _lazy_conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
         except Exception:
             logger.warning("realtime DB连接已断开，重新连接")
             _lazy_conn = _make_conn()
