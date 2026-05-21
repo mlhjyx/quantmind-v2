@@ -610,42 +610,24 @@ PG: pipeline_runs表 + gp_approval_queue表 + mining_knowledge表
 
 ## 8. 数据库表设计
 
-### 8.1 新增表（DDL_FINAL.sql追加）
+### 8.1 数据库表
 
-```sql
--- GP Pipeline运行记录
-CREATE TABLE pipeline_runs (
-    run_id VARCHAR(32) PRIMARY KEY,       -- 格式: gp_2026w14
-    engine VARCHAR(20) NOT NULL,           -- 'gp' | 'bruteforce' | 'llm'
-    started_at TIMESTAMPTZ NOT NULL,
-    finished_at TIMESTAMPTZ,
-    status VARCHAR(20) DEFAULT 'running',  -- running/completed/failed/timeout
-    config JSONB NOT NULL,                 -- GPConfig序列化
-    stats JSONB,                           -- {total_evaluated, passed_gate, best_fitness, ...}
-    error_message TEXT
-);
+GP Pipeline 用 3 张表。**权威 schema 见 `docs/QUANTMIND_V2_DDL_FINAL.sql`**
+(铁律 34 单一真相源 — 本设计稿不重复定义 DDL, 避免漂移):
 
--- 审批队列
-CREATE TABLE approval_queue (
-    id SERIAL PRIMARY KEY,
-    run_id VARCHAR(32) REFERENCES pipeline_runs(run_id),
-    factor_name VARCHAR(100) NOT NULL,
-    factor_expr TEXT NOT NULL,              -- DSL表达式字符串
-    ast_hash VARCHAR(64) NOT NULL,
-    gate_result JSONB NOT NULL,            -- G1-G8详细结果
-    sharpe_1y DECIMAL(6,4),
-    sharpe_5y DECIMAL(6,4),
-    backtest_report JSONB,                 -- 完整回测报告
-    status VARCHAR(20) DEFAULT 'pending',  -- pending/approved/rejected
-    decision_by VARCHAR(50),               -- 'user' | 'auto'
-    decision_reason TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    decided_at TIMESTAMPTZ
-);
+| 表 | DDL 域 | 用途 |
+|---|---|---|
+| `pipeline_runs` | 域12 | GP/BruteForce/LLM 引擎每次运行记录 (`engine_type` / `status` / `config` / `result_summary`) |
+| `gp_approval_queue` | 域12 | 3 引擎产出因子的人工审批队列 (`factor_name` / `factor_expr` / `ast_hash` / `gate_report`) |
+| `mining_knowledge` | 域12 | 跨轮次学习知识库 (含 `ast_hash` 去重, §6.3) |
 
--- mining_knowledge已在DDL_FINAL.sql中设计，需追加列:
--- parent_seed, generation, param_slots (见§6.3)
-```
+> **命名历史 (2026-05-21 Plan AM/AN 收口)**: 本设计初稿曾把审批队列命名
+> `approval_queue` 且含 `sharpe_1y` / `sharpe_5y` / `backtest_report` 独立列。
+> 最终 DDL 定名 `gp_approval_queue` (域12, 与域11 通用审批表 `approval_queue`
+> 区分), 未保留 sharpe/backtest 独立列 — backtest 结果折叠进 `gate_report`
+> JSONB 的 `_backtest` 子键。写入/读取代码 (`mining_tasks` /
+> `pipeline_orchestrator` / `factor_onboarding`) 已于 PR #438 收口到
+> `gp_approval_queue`。
 
 ---
 
