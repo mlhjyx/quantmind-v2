@@ -15,6 +15,11 @@ fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
 httpx = pytest.importorskip("httpx", reason="httpx not installed")
 
 from app.main import app
+from app.services.notification_service import (
+    _get_preferences_sync,
+    _in_quiet_window,
+    _should_dispatch_external,
+)
 from app.services.notification_templates import (
     TEMPLATE_REGISTRY,
     NotificationTemplate,
@@ -536,3 +541,102 @@ class TestNotificationPreferences:
             json={"quiet_start": 25},
         )
         assert resp.status_code == 422
+
+
+# ============================================================================
+# 6. 外发检查 — dispatch 开关 + 静默时段 (DEV_NOTIFICATIONS §2 line 70 — Plan AH)
+# ============================================================================
+
+
+class TestExternalDispatchCheck:
+    """_in_quiet_window / _should_dispatch_external / _get_preferences_sync 单元测试。"""
+
+    @pytest.mark.parametrize(
+        "hour,start,end,expected",
+        [
+            (3, 23, 7, True),  # 跨午夜窗内 (凌晨)
+            (23, 23, 7, True),  # start 边界 (含)
+            (7, 23, 7, False),  # end 边界 (不含)
+            (12, 23, 7, False),  # 跨午夜窗外 (正午)
+            (10, 9, 17, True),  # 同日窗内
+            (9, 9, 17, True),  # 同日 start 边界 (含)
+            (17, 9, 17, False),  # 同日 end 边界 (不含)
+            (5, 5, 5, False),  # start==end → 空窗
+        ],
+    )
+    def test_in_quiet_window(self, hour, start, end, expected):
+        assert _in_quiet_window(hour, start, end) is expected
+
+    def test_p0_always_dispatches(self):
+        """P0 始终发 — 无视静默 + 无视开关。"""
+        assert _should_dispatch_external("P0", None, 3) is True  # 凌晨
+        assert (
+            _should_dispatch_external("P0", {"quiet_enabled": True, "dispatch_p1": False}, 3)
+            is True
+        )
+
+    def test_p3_and_unknown_never_dispatch(self):
+        assert _should_dispatch_external("P3", None, 12) is False
+        assert _should_dispatch_external("P9", None, 12) is False
+
+    def test_p1_defaults_noon_dispatches_night_suppressed(self):
+        """P1 列默认 (dispatch_p1=T, quiet 23-7): 正午发, 凌晨抑制。"""
+        assert _should_dispatch_external("P1", None, 12) is True
+        assert _should_dispatch_external("P1", None, 3) is False
+
+    def test_p1_toggle_off_never_dispatches(self):
+        assert _should_dispatch_external("P1", {"dispatch_p1": False}, 12) is False
+
+    def test_p1_quiet_disabled_dispatches_at_night(self):
+        assert _should_dispatch_external("P1", {"quiet_enabled": False}, 3) is True
+
+    def test_p2_default_toggle_off(self):
+        """P2 列默认 dispatch_p2=False → 不外发。"""
+        assert _should_dispatch_external("P2", None, 12) is False
+
+    def test_p2_toggle_on_respects_quiet(self):
+        assert _should_dispatch_external("P2", {"dispatch_p2": True}, 12) is True
+        assert _should_dispatch_external("P2", {"dispatch_p2": True}, 3) is False
+
+    def test_none_pref_values_fall_back_to_defaults(self):
+        """偏好字典中 None 值回退到列默认 (非当作 False)。"""
+        assert _should_dispatch_external("P1", {"dispatch_p1": None}, 12) is True
+        assert _should_dispatch_external("P1", {"dispatch_p1": None}, 3) is False
+
+    def test_get_preferences_sync_row(self):
+        """_get_preferences_sync 有行 → dict (列顺序对齐 _prefs_row_to_dict)。"""
+        from datetime import datetime as _dt
+
+        row = (
+            "pref-id",
+            True,
+            True,
+            True,
+            True,
+            False,
+            None,
+            True,
+            False,
+            True,
+            True,
+            22,
+            8,
+            _dt(2026, 5, 21, 9, 0),
+        )
+        cur = MagicMock()
+        cur.fetchone.return_value = row
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+        prefs = _get_preferences_sync(conn)
+        assert prefs is not None
+        assert prefs["dispatch_p1"] is False
+        assert prefs["quiet_start"] == 22
+        cur.close.assert_called_once()
+
+    def test_get_preferences_sync_no_row(self):
+        """_get_preferences_sync 无行 → None。"""
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        conn = MagicMock()
+        conn.cursor.return_value = cur
+        assert _get_preferences_sync(conn) is None

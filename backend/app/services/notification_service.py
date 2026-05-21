@@ -13,6 +13,7 @@
 import contextlib
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -408,9 +409,11 @@ class NotificationService:
         if not webhook_url:
             return
 
-        # P0始终发, P1默认发, P2/P3不外发
-        should_dispatch = level in ("P0", "P1")
-        if not should_dispatch:
+        # 外发检查 (DEV_NOTIFICATIONS §2 line 70): P0 始终发 (无视静默);
+        # P1/P2 受 dispatch_pN 开关 + 静默时段限制. 无偏好行时用列默认值兜底.
+        prefs = await self.repo.get_preferences()
+        hour_sh = datetime.now(ZoneInfo("Asia/Shanghai")).hour
+        if not _should_dispatch_external(level, prefs, hour_sh):
             return
 
         # 格式化钉钉消息
@@ -473,7 +476,7 @@ class NotificationService:
             logger.debug("[Notify] P3调试通知: title='%s'", title)
 
         # 3. 钉钉分发
-        self._dispatch_sync(level, title, content)
+        self._dispatch_sync(conn, level, title, content)
 
     def send_daily_report_sync(
         self,
@@ -602,12 +605,14 @@ class NotificationService:
             logger.warning("[Notify] sync执行报告写入DB失败: %s", e)
 
         # 发钉钉
-        self._dispatch_sync(alert_level, title, content)
+        self._dispatch_sync(conn, alert_level, title, content)
 
-    def _dispatch_sync(self, level: str, title: str, content: str) -> None:
-        """同步版钉钉分发。P0/P1发送，其余不发。
+    def _dispatch_sync(self, conn: Any, level: str, title: str, content: str) -> None:
+        """同步版钉钉分发。外发检查 (DEV_NOTIFICATIONS §2): P0 始终发;
+        P1/P2 受 dispatch_pN 开关 + 静默时段限制; P3 不外发.
 
         Args:
+            conn: psycopg2 同步连接 (读 notification_preferences 单例行)。
             level: 通知级别。
             title: 标题。
             content: Markdown内容。
@@ -616,8 +621,9 @@ class NotificationService:
         if not webhook_url:
             return
 
-        should_dispatch = level in ("P0", "P1")
-        if not should_dispatch:
+        prefs = _get_preferences_sync(conn)
+        hour_sh = datetime.now(ZoneInfo("Asia/Shanghai")).hour
+        if not _should_dispatch_external(level, prefs, hour_sh):
             return
 
         level_emoji = {
@@ -915,3 +921,85 @@ def _prefs_row_to_dict(row: Any) -> dict[str, Any]:
         "quiet_end": row[12],
         "updated_at": row[13].isoformat() if row[13] else None,
     }
+
+
+# ─── 外发检查 (DEV_NOTIFICATIONS §2 line 70) ───
+# notification_preferences 无行时用 DDL_FINAL.sql 列默认值兜底.
+_DISPATCH_PREF_DEFAULTS: dict[str, Any] = {
+    "dispatch_p1": True,
+    "dispatch_p2": False,
+    "quiet_enabled": True,
+    "quiet_start": 23,
+    "quiet_end": 7,
+}
+
+
+def _in_quiet_window(hour: int, start: int, end: int) -> bool:
+    """hour (0-23) 是否落在静默时段 [start, end) — 支持跨午夜 wrap-around。
+
+    start == end 视为空窗 (不静默)。start < end 为同日区间;
+    start > end (如 23→7) 为跨午夜区间。
+    """
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end
+
+
+def _should_dispatch_external(level: str, prefs: dict[str, Any] | None, hour_sh: int) -> bool:
+    """外发检查 (DEV_NOTIFICATIONS §2 line 70):
+
+    - P0: 始终发 (无视静默 + 无视开关) — 关键告警不可被抑制。
+    - P1/P2: 受 dispatch_pN 开关 + 静默时段限制 (quiet_enabled 时)。
+    - P3 / 未知 level: 不外发。
+
+    Args:
+        level: 通知级别 P0/P1/P2/P3。
+        prefs: get_preferences() 偏好字典; None (无偏好行) 时用列默认值兜底。
+        hour_sh: 当前 Asia/Shanghai 小时 (0-23, 铁律 41)。
+
+    Returns:
+        是否应外发到钉钉。
+    """
+    if level == "P0":
+        return True
+    if level not in ("P1", "P2"):
+        return False
+
+    prefs = prefs or {}
+
+    def _pref(key: str) -> Any:
+        val = prefs.get(key)
+        return _DISPATCH_PREF_DEFAULTS[key] if val is None else val
+
+    toggle_key = "dispatch_p1" if level == "P1" else "dispatch_p2"
+    if not _pref(toggle_key):
+        return False
+    in_quiet = _pref("quiet_enabled") and _in_quiet_window(
+        hour_sh, _pref("quiet_start"), _pref("quiet_end")
+    )
+    return not in_quiet
+
+
+def _get_preferences_sync(conn: Any) -> dict[str, Any] | None:
+    """同步读取 notification_preferences 单例行 (给 _dispatch_sync 复用调用方 conn)。
+
+    列顺序与 NotificationRepository.get_preferences 的 SELECT 一致 (供
+    _prefs_row_to_dict 索引)。无行返回 None。
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT id, toast_p0, toast_p1, toast_p2, toast_p3,
+                      dingtalk_enabled, dingtalk_webhook,
+                      dispatch_p0, dispatch_p1, dispatch_p2,
+                      quiet_enabled, quiet_start, quiet_end, updated_at
+               FROM notification_preferences
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 1"""
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+    return _prefs_row_to_dict(row) if row else None
