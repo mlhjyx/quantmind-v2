@@ -79,43 +79,58 @@ def find_commit_violations(file_path: Path) -> list[dict]:
         return violations
 
     # Track method context (current FunctionDef / AsyncFunctionDef)
+    # AI reviewer cycle 4 enhancement: track is_async flag per method context to
+    # surface async `await conn.commit()` patterns (Phase J coverage extension).
     class CommitVisitor(ast.NodeVisitor):
         def __init__(self) -> None:
-            self.method_stack: list[str] = []
+            self.method_stack: list[tuple[str, bool]] = []  # (name, is_async)
             self.found: list[dict] = []
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-            self.method_stack.append(node.name)
+            self.method_stack.append((node.name, False))
             self.generic_visit(node)
             self.method_stack.pop()
 
         def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-            self.method_stack.append(node.name)
+            self.method_stack.append((node.name, True))
             self.generic_visit(node)
             self.method_stack.pop()
 
         def visit_Call(self, node: ast.Call) -> None:
             # Match .commit() pattern
             if isinstance(node.func, ast.Attribute) and node.func.attr == "commit":
-                method_ctx = ".".join(self.method_stack) if self.method_stack else "<module>"
-                # Get receiver name (conn / cursor / etc)
-                receiver = "?"
-                if isinstance(node.func.value, ast.Name):
-                    receiver = node.func.value.id
-                elif isinstance(node.func.value, ast.Attribute):
-                    receiver = (
-                        f"{node.func.value.value.id}.{node.func.value.attr}"
-                        if isinstance(node.func.value.value, ast.Name)
-                        else "?"
-                    )
-                self.found.append(
-                    {
-                        "line": node.lineno,
-                        "col": node.col_offset,
-                        "receiver": receiver,
-                        "method": method_ctx,
-                    }
+                # AI reviewer cycle 4 enhancement: surface is_async context
+                method_ctx = (
+                    ".".join(name for name, _ in self.method_stack)
+                    if self.method_stack
+                    else "<module>"
                 )
+                # If any ancestor in stack is async, this commit is "in async context"
+                # (await conn.commit() OR sync conn.commit() inside async def — both surface)
+                is_async = any(is_async for _, is_async in self.method_stack)
+                # Get receiver name (conn / cursor / etc)
+                # AI reviewer MEDIUM fix (PR #385 iteration): defensive try/except wraps
+                # 2-level chain extraction — protects against triple+ chains like
+                # `self.db.conn.commit()` where node.func.value.value is ast.Attribute (no .id).
+                receiver = "?"
+                try:
+                    if isinstance(node.func.value, ast.Name):
+                        receiver = node.func.value.id
+                    elif isinstance(node.func.value, ast.Attribute):
+                        if isinstance(node.func.value.value, ast.Name):
+                            receiver = (
+                                f"{node.func.value.value.id}.{node.func.value.attr}"
+                            )
+                        # Deeper chains: fall back to receiver = "?"
+                except AttributeError:
+                    receiver = "?"
+                self.found.append({
+                    "line": node.lineno,
+                    "col": node.col_offset,
+                    "receiver": receiver,
+                    "method": method_ctx,
+                    "is_async": is_async,
+                })
             self.generic_visit(node)
 
     visitor = CommitVisitor()
@@ -137,14 +152,12 @@ def audit() -> dict:
             continue
         rel_path = str(py_file.relative_to(PROJECT_ROOT)).replace("\\", "/")
         tier = classify_tier(rel_path)
-        files_data.append(
-            {
-                "file": rel_path,
-                "tier": tier,
-                "violation_count": len(violations),
-                "violations": violations,
-            }
-        )
+        files_data.append({
+            "file": rel_path,
+            "tier": tier,
+            "violation_count": len(violations),
+            "violations": violations,
+        })
         total_violations += len(violations)
         by_tier[tier] += len(violations)
 
@@ -184,7 +197,12 @@ def print_human_report(result: dict, tier_filter: int | None = None) -> None:
         tier_label = {1: "T1 hot   ", 2: "T2 cold  ", 3: "T3 utility"}[f["tier"]]
         print(f"  [{tier_label}] {f['file']} ({f['violation_count']} violations)")
         for v in f["violations"]:
-            print(f"      line {v['line']:4d}: {v['receiver']}.commit() in {v['method']}()")
+            # AI reviewer cycle 4 enhancement: surface async/sync context indicator
+            async_tag = " [async]" if v.get("is_async") else ""
+            print(
+                f"      line {v['line']:4d}: {v['receiver']}.commit() in "
+                f"{v['method']}(){async_tag}"
+            )
 
 
 def main() -> int:
@@ -195,7 +213,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    result = audit()
+    # AI reviewer LOW fix (PR #385 iteration): wrap audit() in try/except
+    # to honor docstring exit code 2 contract (script error).
+    try:
+        result = audit()
+    except Exception as exc:
+        print(f"[FATAL] audit() raised unexpected exception: {exc}", file=sys.stderr)
+        return 2
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
