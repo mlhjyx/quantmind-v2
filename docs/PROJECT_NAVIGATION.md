@@ -6,7 +6,7 @@
 >
 > **not scope**: 设计内容 (走 V3_DESIGN / DEV_*.md) / sprint plan (走 V3_TIER_A/B/CROSSCUTTING_SPRINT_PLAN) / 进度日志 (走 memory `project_sprint_state.md` + ADR REGISTRY) / 30 min onboard playbook (走 ONBOARDING.md) / session 起手 SOP (走 SESSION_PROTOCOL.md).
 >
-> **本文件版本**: v0.1 (initial draft, 2026-05-22)
+> **本文件版本**: v0.2 (2026-05-22)
 > **创建动机**: 50+ docs/ 文件已存在但缺单一 task-oriented navigation 入口 — N×N 同步漂移实证 (e.g. API_COVERAGE.md 5-20 已生成 738 行 vs DEV_FRONTEND_UI.md 头部仍写"待建, Plan v9 backlog").
 > **维护体例**: append-only (沿用 ADR-022) + re-anchor 触发条件见 §5.
 > **关联**: [V3_IMPLEMENTATION_CONSTITUTION.md](V3_IMPLEMENTATION_CONSTITUTION.md) §0.1 锚点表 / [ONBOARDING.md](ONBOARDING.md) (linear playbook 互补) / [SESSION_PROTOCOL.md](SESSION_PROTOCOL.md) (4 doc fresh read SOP).
@@ -53,7 +53,7 @@
 
 | 我想做什么 | 主入口 doc | 辅助 doc |
 |---|---|---|
-| 看后端有哪些 endpoint / 前后端 API 覆盖 | `docs/API_COVERAGE.md` (738 行 5-20 generated) | `scripts/build_api_coverage.py` (regenerate) |
+| 看后端有哪些 endpoint / 前后端 API 覆盖 | `docs/API_COVERAGE.md` (738 行 5-20 generated) | (无 regenerate 脚本; `docs/API_COVERAGE.md` 头部 §Methodology 手动 grep) |
 | 看代码模块哪些没文档 mention | `docs/TRACEABILITY_INDEX.md` (588 modules / 154 dark / 66 critical) | `scripts/build_traceability_index.py` |
 | 看调度时间线 (何时跑何任务) | `docs/SCHEDULING_LAYOUT.md` | `scripts/setup_task_scheduler.ps1` (canonical source) |
 | 看 CC 可触发的 ops 操作 | `docs/runbook/cc_automation/00_INDEX.md` | 9 个 `NN_*_runbook.md` |
@@ -69,7 +69,7 @@
 | 看系统实际现状 | `SYSTEM_STATUS.md` | `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` Quickstart |
 | 红线决策 (.env / LIVE_TRADING / EXECUTION_MODE 切换) | `docs/V3_PT_CUTOVER_PLAN_v0.1.md` | ADR-027 / ADR-028 + Constitution §L10.5 |
 | 平台 12 Framework + 6 升维 + 17 MVP | `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (QPB v1.16) | Wave 1-4 各 MVP 设计 |
-| 因子相关 (定义 / 状态 / 测试) | `FACTOR_TEST_REGISTRY.md` | `FACTOR_COUNT_GLOSSARY.md` + `docs/FACTOR_ONBOARDING_SYSTEM.md` |
+| 因子相关 (定义 / 状态 / 测试) | `FACTOR_TEST_REGISTRY.md` | `docs/FACTOR_COUNT_GLOSSARY.md` + `docs/FACTOR_ONBOARDING_SYSTEM.md` |
 | 前端继续开发 / 主权交接路线 | §3 本节 | Phase J Roadmap §5+ + Phase K K6 (P1-36 frontend integration) |
 
 ---
@@ -159,3 +159,4 @@
 ### §5.4 版本历史 (append-only, ADR-022)
 
 - v0.1 (2026-05-22): initial draft. 触发 = 50+ docs/ 缺 navigation hub + N×N drift 实证 (API_COVERAGE vs DEV_FRONTEND_UI).
+- v0.2 (2026-05-22): §2 cite fix ×2 — Finding #2 phantom path `scripts/build_api_coverage.py` (glob/grep 实测 0 checked-in 脚本, 改指 `docs/API_COVERAGE.md` 头部 §Methodology) + Finding #3 `FACTOR_COUNT_GLOSSARY.md` → `docs/FACTOR_COUNT_GLOSSARY.md` 补全相对路径 (铁律 22b). 来源 = v0.1 commit 705f908 active discovery findings.
