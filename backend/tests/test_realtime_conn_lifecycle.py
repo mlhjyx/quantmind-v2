@@ -31,6 +31,8 @@ def _reset_lazy_conn():
 def test_make_conn_sets_autocommit(monkeypatch):
     """_make_conn() 必须把连接设为 autocommit — 防 idle-in-transaction 泄漏。"""
     fake_conn = MagicMock()
+    # _make_conn() 内是 function-local `from app.services.db import get_sync_conn`，
+    # 故 patch 目标为 app.services.db 模块属性（调用时刻才解析名字）。
     monkeypatch.setattr("app.services.db.get_sync_conn", lambda: fake_conn)
 
     conn = realtime._make_conn()

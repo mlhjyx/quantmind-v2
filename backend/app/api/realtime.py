@@ -52,6 +52,7 @@ def _get_conn():
         try:
             with _lazy_conn.cursor() as cur:
                 cur.execute("SELECT 1")
+                cur.fetchone()
         except Exception:
             logger.warning("realtime DB连接已断开，重新连接")
             _lazy_conn = _make_conn()
