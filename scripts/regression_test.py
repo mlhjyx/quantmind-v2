@@ -23,7 +23,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
+# 同时挂 backend/ (顶层 engines / app / qm_platform) 与 repo root (backend
+# namespace pkg, 供 `from backend.qm_platform...` 风格 import). 项目混用两种
+# import 风格 — 仅挂 backend/ 时 `from backend....` 会 ModuleNotFoundError.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+for _p in (_PROJECT_ROOT / "backend", _PROJECT_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.append(str(_p))
 logging.disable(logging.DEBUG)
 
 import structlog  # noqa: E402
