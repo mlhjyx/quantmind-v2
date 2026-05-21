@@ -1057,3 +1057,57 @@ class TestRiskAPI:
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 422  # Pydantic validation error
+
+
+# ============================================================================
+# L4 恢复审批 SQL — domain-11 approval_queue schema 对齐 (Plan AN)
+# ============================================================================
+
+
+class TestL4RecoveryApprovalSQL:
+    """L4 恢复审批读写 approval_queue (域11 通用审批表) 的 SQL 列名校验。
+
+    防回归: 历史代码用 phantom 列 (reference_id / payload / submitted_by /
+    notes / reviewer_notes) — 这些列在域11 approval_queue 中不存在,
+    INSERT/UPDATE 运行时崩溃。Plan AN 收口到真实列 (item_summary /
+    detail_json / reviewer_note)。
+    """
+
+    @pytest.mark.asyncio
+    async def test_request_l4_recovery_insert_uses_real_columns(self) -> None:
+        """request_l4_recovery INSERT 用 item_summary/detail_json, 不用 phantom 列。"""
+        service, mock_repo, _ = _build_service(
+            get_state_returns=[{"current_level": CircuitBreakerLevel.L4_STOPPED}],
+        )
+        mock_repo.fetch_one = AsyncMock(return_value=[uuid.uuid4()])
+
+        await service.request_l4_recovery(
+            strategy_id=uuid.uuid4(),
+            execution_mode="paper",
+            reviewer_note="策略已优化, 申请恢复",
+        )
+
+        insert_sql = mock_repo.fetch_one.await_args.args[0]
+        assert "INSERT INTO approval_queue" in insert_sql
+        # 精确列元组 = domain-11 真实列 (强正向断言)
+        assert "(approval_type, item_summary, detail_json)" in insert_sql
+        # 不得回退到旧 phantom 列名 (submitted_by 现为 detail_json 内的 JSON key)
+        for phantom in ("reference_id", "payload"):
+            assert phantom not in insert_sql, f"phantom 列 {phantom} 不应出现"
+
+    @pytest.mark.asyncio
+    async def test_approve_l4_recovery_update_uses_reviewer_note_singular(self) -> None:
+        """approve_l4_recovery UPDATE 用 reviewer_note (单数), 不用 reviewer_notes。"""
+        service, mock_repo, _ = _build_service()
+
+        result = await service.approve_l4_recovery(
+            approval_id=uuid.uuid4(),
+            approved=False,
+            reviewer_note="数据不足, 驳回",
+        )
+
+        assert result is None  # rejected → None
+        update_sql = mock_repo.execute.await_args.args[0]
+        assert "UPDATE approval_queue" in update_sql
+        assert "reviewer_note" in update_sql
+        assert "reviewer_notes" not in update_sql
