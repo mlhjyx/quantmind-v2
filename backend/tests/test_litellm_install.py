@@ -12,6 +12,7 @@ scope:
 - 0 真生产 API call (本 PR 只验 install + config 解析, 不调真 endpoint)
 - LiteLLMRouter wrapper 初始化在 S2 sub-task scope (NOT 本 PR)
 """
+
 from __future__ import annotations
 
 import re

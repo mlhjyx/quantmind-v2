@@ -134,19 +134,13 @@ def _load_prompt(path: Path = REFLECTOR_PROMPT_PATH) -> dict[str, Any]:
             f"reflector prompt yaml not found at {path} (铁律 34 SSOT violation)"
         ) from exc
     except yaml.YAMLError as exc:
-        raise PromptLoadError(
-            f"reflector prompt yaml parse failure at {path}"
-        ) from exc
+        raise PromptLoadError(f"reflector prompt yaml parse failure at {path}") from exc
 
     if not isinstance(data, dict):
-        raise PromptLoadError(
-            f"reflector prompt yaml root must be dict, got {type(data).__name__}"
-        )
+        raise PromptLoadError(f"reflector prompt yaml root must be dict, got {type(data).__name__}")
     for key in ("version", "system_prompt", "user_template"):
         if key not in data:
-            raise PromptLoadError(
-                f"reflector prompt yaml missing required key {key!r} at {path}"
-            )
+            raise PromptLoadError(f"reflector prompt yaml missing required key {key!r} at {path}")
         if not isinstance(data[key], str):
             raise PromptLoadError(
                 f"reflector prompt yaml {key!r} must be str, got {type(data[key]).__name__}"
@@ -202,9 +196,7 @@ def _parse_reflection_response(
 
     # Schema: {overall_summary: str, reflections: {detection: {...}, threshold: {...}, ...}}
     if "overall_summary" not in parsed:
-        raise ReflectorAgentError(
-            "reflector V4-Pro response missing 'overall_summary' field"
-        )
+        raise ReflectorAgentError("reflector V4-Pro response missing 'overall_summary' field")
     overall_summary = parsed["overall_summary"]
     if not isinstance(overall_summary, str):
         raise ReflectorAgentError(
@@ -213,9 +205,7 @@ def _parse_reflection_response(
         )
 
     if "reflections" not in parsed:
-        raise ReflectorAgentError(
-            "reflector V4-Pro response missing 'reflections' field"
-        )
+        raise ReflectorAgentError("reflector V4-Pro response missing 'reflections' field")
     reflections_raw = parsed["reflections"]
     if not isinstance(reflections_raw, dict):
         raise ReflectorAgentError(
@@ -241,8 +231,7 @@ def _parse_reflection_response(
         summary = dim_data.get("summary")
         if not isinstance(summary, str) or not summary.strip():
             raise ReflectorAgentError(
-                f"reflector V4-Pro response 'reflections.{key}.summary' must be "
-                f"non-empty str"
+                f"reflector V4-Pro response 'reflections.{key}.summary' must be non-empty str"
             )
         findings_raw = dim_data.get("findings", [])
         if not isinstance(findings_raw, list):
@@ -256,9 +245,7 @@ def _parse_reflection_response(
             )
         # Coerce each list item to str (V4-Pro may emit numbers / null, normalize).
         findings = [str(f).strip() for f in findings_raw if f is not None and str(f).strip()]
-        candidates = [
-            str(c).strip() for c in candidates_raw if c is not None and str(c).strip()
-        ]
+        candidates = [str(c).strip() for c in candidates_raw if c is not None and str(c).strip()]
         try:
             dim_outputs.append(
                 ReflectionDimensionOutput(

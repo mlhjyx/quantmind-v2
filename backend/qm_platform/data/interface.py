@@ -13,6 +13,7 @@
   - MVP 2.2 Data Lineage: DataContract + lineage 字段
   - DataAccessLayer: MVP 1.3 Factor Framework 先落地读路径
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

@@ -11,6 +11,7 @@ MVP 1.1b Shadow Fix 直接动机:
 
 运行: `pytest backend/tests/smoke/test_production_entry_imports.py -v -m smoke`
 """
+
 from __future__ import annotations
 
 import os
@@ -73,7 +74,9 @@ def test_script_help_runs(script: str) -> None:
         has_env = bool(os.environ.get("TUSHARE_TOKEN"))
         has_dotenv = (PROJECT_ROOT / "backend" / ".env").exists()
         if not (has_env or has_dotenv):
-            pytest.skip("pull_moneyflow smoke 需要 TUSHARE_TOKEN (env 或 backend/.env), 均缺失时 skip")
+            pytest.skip(
+                "pull_moneyflow smoke 需要 TUSHARE_TOKEN (env 或 backend/.env), 均缺失时 skip"
+            )
 
     # 关键: CWD=project root (Servy 配置后的标准启动路径, 铁律 10b)
     # 允许 exit code 0 (正常) 或 2 (argparse error, 但 import 通过)
@@ -104,8 +107,7 @@ def test_script_help_runs(script: str) -> None:
     for sig in shadow_signatures:
         if sig in result.stderr:
             pytest.fail(
-                f"{script} stderr 含 shadow 特征 {sig!r}:\n"
-                f"stderr[:1500]:\n{result.stderr[:1500]}"
+                f"{script} stderr 含 shadow 特征 {sig!r}:\nstderr[:1500]:\n{result.stderr[:1500]}"
             )
 
 
@@ -137,10 +139,7 @@ def test_daemon_script_ast_parse(script: str) -> None:
         errors="replace",
     )
     if result.returncode != 0 or "parse OK" not in result.stdout:
-        pytest.fail(
-            f"{script} AST parse failed:\n"
-            f"stderr[:1500]:\n{result.stderr[:1500]}"
-        )
+        pytest.fail(f"{script} AST parse failed:\nstderr[:1500]:\n{result.stderr[:1500]}")
 
 
 @pytest.mark.smoke
@@ -176,10 +175,7 @@ def test_oneshot_script_pre_main_imports(script: str) -> None:
         errors="replace",
     )
     if result.returncode != 0 or "pre-main OK" not in result.stdout:
-        pytest.fail(
-            f"{script} pre-main exec failed:\n"
-            f"stderr[:1500]:\n{result.stderr[:1500]}"
-        )
+        pytest.fail(f"{script} pre-main exec failed:\nstderr[:1500]:\n{result.stderr[:1500]}")
 
     # Shadow check (铁律 10b)
     shadow_signatures = (
@@ -190,6 +186,5 @@ def test_oneshot_script_pre_main_imports(script: str) -> None:
     for sig in shadow_signatures:
         if sig in result.stderr:
             pytest.fail(
-                f"{script} stderr 含 shadow 特征 {sig!r}:\n"
-                f"stderr[:1500]:\n{result.stderr[:1500]}"
+                f"{script} stderr 含 shadow 特征 {sig!r}:\nstderr[:1500]:\n{result.stderr[:1500]}"
             )

@@ -18,6 +18,7 @@ Usage (生产由 Beat 调度, 不需要直接 invoke):
     >>> from app.tasks.outbox_publisher import outbox_publisher_tick
     >>> outbox_publisher_tick.delay()  # 测试用
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,6 +76,7 @@ class OutboxPublisher:
         # Lazy import 防 Celery worker 启动期 settings 未就绪
         if conn_factory is None:
             from app.services.db import get_sync_conn
+
             conn_factory = get_sync_conn
         self._conn_factory = conn_factory
 
@@ -202,7 +204,8 @@ class OutboxPublisher:
                             logger.exception(
                                 "[outbox_publisher] DLQ publish 也失败 event_id=%s "
                                 "dlq_exc=%s (行仍会标 published_at 防 zombie 重试)",
-                                event_id, type(dlq_exc).__name__,
+                                event_id,
+                                type(dlq_exc).__name__,
                             )
                         cur.execute(
                             """UPDATE event_outbox
@@ -213,7 +216,9 @@ class OutboxPublisher:
                         dlq += 1
                         logger.warning(
                             "[outbox_publisher] event_id=%s 进 DLQ (retries=%d): stream=%s",
-                            event_id, new_retries, stream_name,
+                            event_id,
+                            new_retries,
+                            stream_name,
                         )
                     else:
                         cur.execute(
@@ -224,7 +229,9 @@ class OutboxPublisher:
                         logger.info(
                             "[outbox_publisher] event_id=%s publish 失败 retries=%d/%d, "
                             "下 tick 重试",
-                            event_id, new_retries, self._max_retries,
+                            event_id,
+                            new_retries,
+                            self._max_retries,
                         )
 
                 if publish_exc is not None:
@@ -282,8 +289,12 @@ def outbox_publisher_tick(self) -> dict[str, Any]:
             logger.info(
                 "[outbox_publisher] tick: selected=%d published=%d retried=%d dlq=%d "
                 "publisher_exceptions=%d elapsed=%.3fs",
-                summary["selected"], summary["published"], summary["retried"],
-                summary["dlq"], summary["publisher_exceptions"], elapsed,
+                summary["selected"],
+                summary["published"],
+                summary["retried"],
+                summary["dlq"],
+                summary["publisher_exceptions"],
+                elapsed,
             )
         else:
             logger.debug("[outbox_publisher] tick: 0 unpublished events (%.3fs)", elapsed)
@@ -291,7 +302,9 @@ def outbox_publisher_tick(self) -> dict[str, Any]:
     except Exception as exc:
         elapsed = time.time() - t0
         logger.exception(
-            "[outbox_publisher] tick 异常 (%.3fs): %s", elapsed, exc,
+            "[outbox_publisher] tick 异常 (%.3fs): %s",
+            elapsed,
+            exc,
         )
         # raise 让 Celery acks_late 机制把 task 标 failed (不重派, max_retries=0)
         raise

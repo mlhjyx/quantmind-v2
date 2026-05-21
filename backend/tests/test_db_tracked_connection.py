@@ -16,6 +16,7 @@ Fix (Session 40, 2026-04-28): 加 ``__del__`` finalizer 兜底 GC 路径.
   - test_get_sync_conn_increments: get_sync_conn 增计数 (regression baseline)
   - test_attribute_passthrough: __getattr__ / __setattr__ 透传 (regression baseline)
 """
+
 from __future__ import annotations
 
 import gc

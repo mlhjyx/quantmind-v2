@@ -96,7 +96,7 @@ class TestVerifyBackupIntegrity:
 
         # Build a list output with 42 TABLE entries (enough to pass threshold 40)
         table_lines = "\n".join(
-            f"{1000+i}; 2200 {16384+i} TABLE public table_{i} xin" for i in range(42)
+            f"{1000 + i}; 2200 {16384 + i} TABLE public table_{i} xin" for i in range(42)
         )
         mock_output = f"; Archive header\n{table_lines}\n"
 
@@ -117,7 +117,7 @@ class TestVerifyBackupIntegrity:
 
         # Only 5 tables — below the 40 threshold
         table_lines = "\n".join(
-            f"{1000+i}; 2200 {16384+i} TABLE public table_{i} xin" for i in range(5)
+            f"{1000 + i}; 2200 {16384 + i} TABLE public table_{i} xin" for i in range(5)
         )
         mock_output = f"; Archive header\n{table_lines}\n"
 
@@ -153,10 +153,10 @@ class TestVerifyBackupIntegrity:
         backup = self._make_fake_dump(tmp_path)
 
         table_lines = "\n".join(
-            f"{1000+i}; 2200 {16384+i} TABLE public table_{i} xin" for i in range(42)
+            f"{1000 + i}; 2200 {16384 + i} TABLE public table_{i} xin" for i in range(42)
         )
         index_lines = "\n".join(
-            f"{2000+i}; 2200 {17000+i} INDEX public idx_{i} xin" for i in range(10)
+            f"{2000 + i}; 2200 {17000 + i} INDEX public idx_{i} xin" for i in range(10)
         )
         mock_output = f"; header\n{table_lines}\n{index_lines}\n"
 
@@ -238,7 +238,7 @@ class TestSkipRestoreMode:
 
         # Build valid pg_restore output with 43 tables
         table_lines = "\n".join(
-            f"{1000+i}; 2200 {16384+i} TABLE public t_{i} xin" for i in range(43)
+            f"{1000 + i}; 2200 {16384 + i} TABLE public t_{i} xin" for i in range(43)
         )
 
         with patch("disaster_recovery_verify.subprocess.run") as mock_run:
@@ -274,7 +274,7 @@ class TestSkipRestoreMode:
 
         # Only 3 tables — should fail
         table_lines = "\n".join(
-            f"{1000+i}; 2200 {16384+i} TABLE public t_{i} xin" for i in range(3)
+            f"{1000 + i}; 2200 {16384 + i} TABLE public t_{i} xin" for i in range(3)
         )
         with patch("disaster_recovery_verify.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(

@@ -3,6 +3,7 @@
 覆盖: _compute_stock_daily_pnl / _get_current_price / dedup mechanism /
       ALERT_EMERGENCY_STOCK 常量锁定 (防未来误改)
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -40,30 +41,38 @@ class TestComputeStockDailyPnl:
 
     def test_normal_case_down_10pct(self, intraday_monitor):
         """current=90, prev=100 → pnl=-0.10."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=90.0), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=100.0):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=90.0),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=100.0),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result == pytest.approx(-0.10)
 
     def test_boundary_exactly_minus_8pct(self, intraday_monitor):
         """边界: 恰 -8% (触发阈值)."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=92.0), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=100.0):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=92.0),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=100.0),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result == pytest.approx(-0.08)
         assert result <= intraday_monitor.ALERT_EMERGENCY_STOCK  # 触发
 
     def test_just_above_threshold_minus_7_99pct(self, intraday_monitor):
         """边界: -7.99% 不触发."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=92.01), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=100.0):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=92.01),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=100.0),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result > intraday_monitor.ALERT_EMERGENCY_STOCK  # 不触发
 
     def test_up_ignored(self, intraday_monitor):
         """涨幅不会被 emergency 规则捕获 (仅跌才告警)."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=110.0), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=100.0):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=110.0),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=100.0),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result == pytest.approx(0.10)
         assert result > intraday_monitor.ALERT_EMERGENCY_STOCK
@@ -76,15 +85,19 @@ class TestComputeStockDailyPnl:
 
     def test_prev_close_missing_returns_none(self, intraday_monitor):
         """klines_daily prev_close 缺失 → None."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=95.0), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=None):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=95.0),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=None),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result is None
 
     def test_prev_close_zero_no_zerodiv(self, intraday_monitor):
         """prev_close=0 不触 ZeroDivisionError → None."""
-        with patch.object(intraday_monitor, "_get_current_price", return_value=95.0), \
-             patch.object(intraday_monitor, "_get_prev_close", return_value=0.0):
+        with (
+            patch.object(intraday_monitor, "_get_current_price", return_value=95.0),
+            patch.object(intraday_monitor, "_get_prev_close", return_value=0.0),
+        ):
             result = intraday_monitor._compute_stock_daily_pnl("600000.SH")
         assert result is None
 

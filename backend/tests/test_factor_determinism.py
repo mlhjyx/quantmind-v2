@@ -33,10 +33,7 @@ def test_factor_determinism():
         v1 = r1[col].fillna(-999999).round(6)
         v2 = r2[col].fillna(-999999).round(6)
         diff = (v1 - v2).abs()
-        assert diff.max() < 1e-6, (
-            f"{col} 不一致: max_diff={diff.max()}, "
-            f"at index={diff.idxmax()}"
-        )
+        assert diff.max() < 1e-6, f"{col} 不一致: max_diff={diff.max()}, at index={diff.idxmax()}"
 
 
 def test_preprocess_determinism():

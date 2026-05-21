@@ -74,8 +74,9 @@ def save_checkpoint(name: str, done_set: set) -> None:
         json.dump(list(done_set), f)
 
 
-def upsert_df(conn, table: str, df: pd.DataFrame, pk_cols: list[str],
-              batch_size: int = BATCH_SIZE) -> int:
+def upsert_df(
+    conn, table: str, df: pd.DataFrame, pk_cols: list[str], batch_size: int = BATCH_SIZE
+) -> int:
     """通用Upsert。"""
     if df.empty:
         return 0
@@ -98,10 +99,9 @@ def upsert_df(conn, table: str, df: pd.DataFrame, pk_cols: list[str],
     cur = conn.cursor()
     try:
         for i in range(0, len(df), batch_size):
-            chunk = df.iloc[i:i + batch_size]
+            chunk = df.iloc[i : i + batch_size]
             records = [
-                tuple(None if (isinstance(v, float) and np.isnan(v)) else v
-                      for v in row)
+                tuple(None if (isinstance(v, float) and np.isnan(v)) else v for v in row)
                 for row in chunk.itertuples(index=False)
             ]
             psycopg2.extras.execute_values(cur, sql, records)
@@ -134,7 +134,6 @@ def get_active_symbols(conn) -> list[str]:
     cur.close()
     print(f"[symbols] {len(codes)} codes loaded (excluding BJ)")
     return codes
-
 
 
 # ───────────────────────��────────────────────────────────────
@@ -235,9 +234,16 @@ BS_QUERY_MAP = {
             "CATurnRatio": "ca_turn_ratio",
             "AssetTurnRatio": "asset_turn_ratio",
         },
-        "db_cols": ["code", "end_date", "nr_turn_ratio", "nr_turn_days",
-                    "inv_turn_ratio", "inv_turn_days", "ca_turn_ratio",
-                    "asset_turn_ratio"],
+        "db_cols": [
+            "code",
+            "end_date",
+            "nr_turn_ratio",
+            "nr_turn_days",
+            "inv_turn_ratio",
+            "inv_turn_days",
+            "ca_turn_ratio",
+            "asset_turn_ratio",
+        ],
     },
     "growth_data": {
         "query_func": "query_growth_data",
@@ -250,8 +256,15 @@ BS_QUERY_MAP = {
             "YOYEPSBasic": "yoy_eps_basic",
             "YOYPNI": "yoy_pni",
         },
-        "db_cols": ["code", "end_date", "yoy_equity", "yoy_asset",
-                    "yoy_ni", "yoy_eps_basic", "yoy_pni"],
+        "db_cols": [
+            "code",
+            "end_date",
+            "yoy_equity",
+            "yoy_asset",
+            "yoy_ni",
+            "yoy_eps_basic",
+            "yoy_pni",
+        ],
     },
     "balance_data": {
         "query_func": "query_balance_data",
@@ -265,9 +278,16 @@ BS_QUERY_MAP = {
             "liabilityToAsset": "liability_to_asset",
             "assetToEquity": "asset_to_equity",
         },
-        "db_cols": ["code", "end_date", "current_ratio", "quick_ratio",
-                    "cash_ratio", "yoy_liability", "liability_to_asset",
-                    "asset_to_equity"],
+        "db_cols": [
+            "code",
+            "end_date",
+            "current_ratio",
+            "quick_ratio",
+            "cash_ratio",
+            "yoy_liability",
+            "liability_to_asset",
+            "asset_to_equity",
+        ],
     },
     "cash_flow_data": {
         "query_func": "query_cash_flow_data",
@@ -282,9 +302,17 @@ BS_QUERY_MAP = {
             "CFOToNP": "cfo_to_np",
             "CFOToGr": "cfo_to_gr",
         },
-        "db_cols": ["code", "end_date", "ca_to_asset", "nca_to_asset",
-                    "tangible_to_asset", "ebit_to_interest",
-                    "cfo_to_or", "cfo_to_np", "cfo_to_gr"],
+        "db_cols": [
+            "code",
+            "end_date",
+            "ca_to_asset",
+            "nca_to_asset",
+            "tangible_to_asset",
+            "ebit_to_interest",
+            "cfo_to_or",
+            "cfo_to_np",
+            "cfo_to_gr",
+        ],
     },
     "dupont_data": {
         "query_func": "query_dupont_data",
@@ -300,10 +328,17 @@ BS_QUERY_MAP = {
             "dupontIntburden": "dupont_ebit_to_gp",
             "dupontEbittogr": "dupont_ebit_to_gr",
         },
-        "db_cols": ["code", "end_date", "dupont_roe",
-                    "dupont_asset_to_equity", "dupont_asset_turn",
-                    "dupont_profit_to_gp", "dupont_tax_burden",
-                    "dupont_int_burden", "dupont_ebit_to_gp"],
+        "db_cols": [
+            "code",
+            "end_date",
+            "dupont_roe",
+            "dupont_asset_to_equity",
+            "dupont_asset_turn",
+            "dupont_profit_to_gp",
+            "dupont_tax_burden",
+            "dupont_int_burden",
+            "dupont_ebit_to_gp",
+        ],
     },
 }
 
@@ -316,6 +351,7 @@ def _ensure_bs_session():
     """Ensure current thread has a logged-in BaoStock session."""
     if not getattr(_thread_local, "logged_in", False):
         import baostock as _bs
+
         _thread_local.bs = _bs
         lg = _bs.login()
         if lg.error_code != "0":
@@ -323,8 +359,9 @@ def _ensure_bs_session():
         _thread_local.logged_in = True
 
 
-def _worker_fetch_batch(batch_codes: list[str], query_func_name: str,
-                        start_year: int, end_year: int) -> list[tuple[str, list]]:
+def _worker_fetch_batch(
+    batch_codes: list[str], query_func_name: str, start_year: int, end_year: int
+) -> list[tuple[str, list]]:
     """Worker线程: 复用BaoStock session, 拉取一批stocks, 返回原始行数据。
 
     Returns: [(code, [row_data, ...], fields), ...]
@@ -359,9 +396,14 @@ def _worker_fetch_batch(batch_codes: list[str], query_func_name: str,
     return results
 
 
-def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
-                       start_year: int = 2014, end_year: int = 2026,
-                       n_workers: int = 8) -> dict:
+def fetch_bs_quarterly(
+    task_name: str,
+    symbols: list[str],
+    conn,
+    start_year: int = 2014,
+    end_year: int = 2026,
+    n_workers: int = 8,
+) -> dict:
     """通用BaoStock季频数据拉取。多进程并行。"""
     config = BS_QUERY_MAP[task_name]
     table = config["table"]
@@ -381,18 +423,27 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
 
     remaining = [s for s in symbols if s not in done_set]
     n_quarters = (end_year - start_year) * 4 + 1
-    print(f"[{task_name}] {len(remaining)} stocks to fetch "
-          f"(skipping {len(done_set)} already done), "
-          f"{start_year}-{end_year} ({n_quarters} quarters/stock), "
-          f"{n_workers} workers", flush=True)
+    print(
+        f"[{task_name}] {len(remaining)} stocks to fetch "
+        f"(skipping {len(done_set)} already done), "
+        f"{start_year}-{end_year} ({n_quarters} quarters/stock), "
+        f"{n_workers} workers",
+        flush=True,
+    )
 
     if not remaining:
-        return {"table": table, "total_rows": 0, "elapsed_seconds": 0,
-                "failed_count": 0, "failed_codes": [], "requested": 0}
+        return {
+            "table": table,
+            "total_rows": 0,
+            "elapsed_seconds": 0,
+            "failed_count": 0,
+            "failed_codes": [],
+            "requested": 0,
+        }
 
     # 分批: 每批200个stocks (线程无序列化开销, 可以更大)
     BATCH_SZ = 200
-    batches = [remaining[i:i+BATCH_SZ] for i in range(0, len(remaining), BATCH_SZ)]
+    batches = [remaining[i : i + BATCH_SZ] for i in range(0, len(remaining), BATCH_SZ)]
 
     total_rows = 0
     failed = []
@@ -402,8 +453,7 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         futures = {
             executor.submit(
-                _worker_fetch_batch, batch, query_func_name,
-                start_year, end_year
+                _worker_fetch_batch, batch, query_func_name, start_year, end_year
             ): batch
             for batch in batches
         }
@@ -435,8 +485,11 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
                 # code格式转换
                 if "code" in df.columns:
                     df["code"] = df["code"].apply(
-                        lambda x: x.split(".")[1] + (".SH" if x.startswith("sh") else ".SZ")
-                        if isinstance(x, str) and "." in x else x
+                        lambda x: (
+                            x.split(".")[1] + (".SH" if x.startswith("sh") else ".SZ")
+                            if isinstance(x, str) and "." in x
+                            else x
+                        )
                     )
                 else:
                     df["code"] = code
@@ -460,8 +513,7 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
                 df = df.drop_duplicates(subset=["code", "end_date"], keep="first")
 
                 if not df.empty:
-                    rows_written = upsert_df(conn, table, df,
-                                             pk_cols=["code", "end_date"])
+                    rows_written = upsert_df(conn, table, df, pk_cols=["code", "end_date"])
                     batch_rows += rows_written
 
                 done_set.add(code)
@@ -472,10 +524,12 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
             elapsed = time.time() - start_time
             rate = stocks_done / elapsed * 60 if elapsed > 0 else 0
             eta_min = (len(remaining) - stocks_done) / max(rate, 0.1)
-            print(f"  [{stocks_done}/{len(remaining)}] {total_rows} rows, "
-                  f"{len(failed)} failed, {elapsed:.0f}s, {rate:.0f} stk/min, "
-                  f"ETA {eta_min:.0f}min",
-                  flush=True)
+            print(
+                f"  [{stocks_done}/{len(remaining)}] {total_rows} rows, "
+                f"{len(failed)} failed, {elapsed:.0f}s, {rate:.0f} stk/min, "
+                f"ETA {eta_min:.0f}min",
+                flush=True,
+            )
 
             # Checkpoint every batch
             save_checkpoint(checkpoint_key, done_set)
@@ -491,8 +545,9 @@ def fetch_bs_quarterly(task_name: str, symbols: list[str], conn,
         "failed_codes": failed[:20],
         "requested": len(remaining),
     }
-    print(f"[{task_name}] DONE: {total_rows} rows in {elapsed:.0f}s, "
-          f"{len(failed)} failed", flush=True)
+    print(
+        f"[{task_name}] DONE: {total_rows} rows in {elapsed:.0f}s, {len(failed)} failed", flush=True
+    )
     return stats
 
 
@@ -515,32 +570,29 @@ def verify_bs_table(table: str, conn) -> dict:
 # 主流程
 # ────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Phase 3B BaoStock季频数据拉取")
     parser.add_argument(
         "--task",
-        choices=["operation_data", "growth_data", "balance_data",
-                 "cash_flow_data", "dupont_data", "all"],
+        choices=[
+            "operation_data",
+            "growth_data",
+            "balance_data",
+            "cash_flow_data",
+            "dupont_data",
+            "all",
+        ],
         default="all",
-        help="要拉取的数据类型"
+        help="要拉取的数据类型",
     )
     parser.add_argument(
-        "--start-year",
-        type=int,
-        default=2014,
-        help="起始年份 (默认2014, 可设2020加速)"
+        "--start-year", type=int, default=2014, help="起始年份 (默认2014, 可设2020加速)"
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=8,
-        help="并行worker数 (默认8, BaoStock无频率限制)"
+        "--workers", type=int, default=8, help="并行worker数 (默认8, BaoStock无频率限制)"
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="只建表不拉取"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="只建表不拉取")
     args = parser.parse_args()
 
     # BaoStock登录
@@ -558,16 +610,16 @@ def main():
     }
 
     tasks_to_run = (
-        ["operation_data", "growth_data", "balance_data",
-         "cash_flow_data", "dupont_data"]
-        if args.task == "all" else [args.task]
+        ["operation_data", "growth_data", "balance_data", "cash_flow_data", "dupont_data"]
+        if args.task == "all"
+        else [args.task]
     )
 
     try:
         for task_name in tasks_to_run:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"TASK: {task_name}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             if args.dry_run:
                 config = BS_QUERY_MAP[task_name]
@@ -578,9 +630,9 @@ def main():
                 print(f"[dry-run] {config['table']} created OK")
                 report["tasks"][task_name] = {"dry_run": True}
             else:
-                fetch_stats = fetch_bs_quarterly(task_name, symbols, conn,
-                                                  start_year=args.start_year,
-                                                  n_workers=args.workers)
+                fetch_stats = fetch_bs_quarterly(
+                    task_name, symbols, conn, start_year=args.start_year, n_workers=args.workers
+                )
                 config = BS_QUERY_MAP[task_name]
                 verify_stats = verify_bs_table(config["table"], conn)
                 report["tasks"][task_name] = {
@@ -600,14 +652,16 @@ def main():
     print(f"\n[report] written to {REPORT_PATH}")
 
     # 摘要
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for task_name, stats in report["tasks"].items():
         if isinstance(stats, dict) and "total_rows" in stats:
             v = stats.get("verification", {})
-            print(f"  {task_name}: {stats['total_rows']:,} rows in {stats['elapsed_seconds']:.0f}s, "
-                  f"DB total={v.get('total_rows', 'N/A')}")
+            print(
+                f"  {task_name}: {stats['total_rows']:,} rows in {stats['elapsed_seconds']:.0f}s, "
+                f"DB total={v.get('total_rows', 'N/A')}"
+            )
 
 
 if __name__ == "__main__":

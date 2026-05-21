@@ -13,8 +13,10 @@ subprocess 启动 + live PG + 真调 3 concrete Knowledge Registries, 验证:
 
 关闭 Wave 1 Knowledge Framework 生产真启动最后一个盲区 (1.1/1.2/1.3b/1.3c/1.4/2.1a 全覆盖).
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +71,11 @@ def test_knowledge_registry_live_read_path() -> None:
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,

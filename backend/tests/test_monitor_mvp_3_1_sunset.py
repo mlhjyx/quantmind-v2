@@ -13,6 +13,7 @@
 - 铁律 33 fail-loud: DB error 传播 (本 test 验 raise 不 swallow)
 - 铁律 43: schtask script 4 项硬化 (statement_timeout / FileHandler / boot probe / 顶层 try/except)
 """
+
 from __future__ import annotations
 
 # PR-E1 (Session 36 2026-04-25) 后包名 backend/platform/ 已重命名 qm_platform/,
@@ -63,9 +64,7 @@ class TestConditionA:
     def test_days_lt_30_events_0_not_satisfied(self):
         """Session 31 初态: 0 日 + 0 event → 未满足."""
         conn = self._mock_conn_with_events(events_count=0)
-        r = check_condition_a(
-            conn, today=ADAPTER_LIVE_DATE, adapter_live=ADAPTER_LIVE_DATE
-        )
+        r = check_condition_a(conn, today=ADAPTER_LIVE_DATE, adapter_live=ADAPTER_LIVE_DATE)
         assert r.satisfied is False
         assert r.details["days_elapsed"] == 0
         assert r.details["days_satisfied"] is False
@@ -248,7 +247,7 @@ class TestBuildReport:
             (0, None),  # A events
             (0, None),  # B.1 L4 approved
             (0, None),  # B.2 cb_recover
-            None,       # C feature_flag 不存在
+            None,  # C feature_flag 不存在
         ]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
@@ -271,7 +270,7 @@ class TestBuildReport:
             (3, datetime(2026, 5, 20, 14, 30, tzinfo=UTC)),  # A
             (0, None),  # B.1
             (0, None),  # B.2
-            None,       # C feature_flag 不存在
+            None,  # C feature_flag 不存在
         ]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
@@ -304,9 +303,7 @@ class TestDingtalkDedup:
 
     def _mock_report(self, any_satisfied: bool) -> SunsetReport:
         def _cr(name: str, satisfied: bool) -> ConditionResult:
-            return ConditionResult(
-                name=name, description="test", satisfied=satisfied, details={}
-            )
+            return ConditionResult(name=name, description="test", satisfied=satisfied, details={})
 
         return SunsetReport(
             generated_at=datetime.now(UTC),
@@ -425,9 +422,7 @@ class TestFailLoud:
         import psycopg2.errors
 
         mock_conn = MagicMock()
-        mock_conn.cursor.side_effect = psycopg2.errors.ConnectionException(
-            "conn lost mid-query"
-        )
+        mock_conn.cursor.side_effect = psycopg2.errors.ConnectionException("conn lost mid-query")
 
         with pytest.raises(psycopg2.errors.ConnectionException):
             check_condition_a(mock_conn, today=date.today())
@@ -437,9 +432,7 @@ class TestFailLoud:
         import psycopg2.errors
 
         mock_conn = MagicMock()
-        mock_conn.cursor.side_effect = psycopg2.errors.ConnectionException(
-            "conn lost mid-query"
-        )
+        mock_conn.cursor.side_effect = psycopg2.errors.ConnectionException("conn lost mid-query")
 
         with pytest.raises(psycopg2.errors.ConnectionException):
             check_condition_b(mock_conn)
@@ -487,9 +480,7 @@ class TestConnectDb:
             call_log.append("get_sync_conn")
             return mock_conn
 
-        monkeypatch.setattr(
-            "monitor_mvp_3_1_sunset.get_sync_conn", _fake_get_sync_conn
-        )
+        monkeypatch.setattr("monitor_mvp_3_1_sunset.get_sync_conn", _fake_get_sync_conn)
 
         result = _connect_db()
 

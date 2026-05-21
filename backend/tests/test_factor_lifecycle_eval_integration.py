@@ -7,6 +7,7 @@
   - compare_paths 新路径分支 (3): ACCEPT / REJECT / WARNING
   - compare_paths 一致 / 不一致 (3): 全 keep / 全 demote / unknown 不一致
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -42,6 +43,7 @@ def test_default_lifecycle_pipeline_loader_injected():
     def loader(name: str):
         captured["called_with"] = name
         from qm_platform.eval import GateContext
+
         return GateContext(factor_name=name)
 
     pipeline = default_lifecycle_pipeline(context_loader=loader)
@@ -59,9 +61,7 @@ def test_default_lifecycle_pipeline_evaluates_full_factor():
     factor_meta.expression = "ts_mean(close, 20)"
 
     def loader(name: str):
-        return build_lifecycle_context(
-            name, ic_series=ic, factor_meta=factor_meta
-        )
+        return build_lifecycle_context(name, ic_series=ic, factor_meta=factor_meta)
 
     pipeline = default_lifecycle_pipeline(context_loader=loader)
     report = pipeline.evaluate_full("good_factor")

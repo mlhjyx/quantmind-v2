@@ -49,9 +49,10 @@ ALL_ENGINES = [ENGINE_BRUTEFORCE, ENGINE_GP, ENGINE_LLM]
 @dataclass
 class EngineStats:
     """单引擎的Beta分布参数和统计。"""
+
     name: str
-    alpha: float = 1.0       # Beta分布成功参数（先验=1）
-    beta: float = 1.0        # Beta分布失败参数（先验=1）
+    alpha: float = 1.0  # Beta分布成功参数（先验=1）
+    beta: float = 1.0  # Beta分布失败参数（先验=1）
     total_runs: int = 0
     total_successes: int = 0  # Gate通过次数
 
@@ -90,6 +91,7 @@ class EngineStats:
 @dataclass
 class SelectionResult:
     """引擎选择结果。"""
+
     selected_engine: str
     sampled_scores: dict[str, float]  # {engine: sampled_value}
     reason: str
@@ -125,7 +127,7 @@ class ThompsonSamplingSelector:
         seed: int | None = None,
     ) -> None:
         self._engines: dict[str, EngineStats] = {}
-        for name in (engines or ALL_ENGINES):
+        for name in engines or ALL_ENGINES:
             self._engines[name] = EngineStats(name=name)
         self._rng = np.random.RandomState(seed)
 
@@ -139,9 +141,7 @@ class ThompsonSamplingSelector:
 
         for name, stats in self._engines.items():
             # 从Beta(alpha, beta)分布采样
-            sampled[name] = float(
-                self._rng.beta(stats.alpha, stats.beta)
-            )
+            sampled[name] = float(self._rng.beta(stats.alpha, stats.beta))
 
         # 选最大值
         selected = max(sampled, key=sampled.get)  # type: ignore[arg-type]

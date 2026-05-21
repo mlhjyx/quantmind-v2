@@ -60,9 +60,7 @@ def load_ln_mcap_pivot(
     pivot = df.pivot_table(
         index="trade_date", columns="code", values="ln_mcap", aggfunc="first"
     ).sort_index()
-    logger.info(
-        "load_ln_mcap_pivot: %d dates x %d codes", pivot.shape[0], pivot.shape[1]
-    )
+    logger.info("load_ln_mcap_pivot: %d dates x %d codes", pivot.shape[0], pivot.shape[1])
     return pivot
 
 
@@ -91,9 +89,7 @@ def load_ln_mcap_for_date(trade_date: date, conn) -> pd.Series | None:
     cur.close()
     if not rows:
         return None
-    return pd.Series(
-        {r["code"]: r["ln_mcap"] for r in rows}, dtype=np.float64, name="ln_mcap"
-    )
+    return pd.Series({r["code"]: r["ln_mcap"] for r in rows}, dtype=np.float64, name="ln_mcap")
 
 
 def apply_size_neutral(

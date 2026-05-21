@@ -147,8 +147,11 @@ class EventBacktester:
 
         logger.info(
             "[EventBT] 开始: factor=%s threshold=%.2f hold=%dd max_pos=%d dates=%d",
-            cfg.trigger_factor, cfg.trigger_threshold, cfg.hold_days,
-            cfg.max_positions, len(trading_dates),
+            cfg.trigger_factor,
+            cfg.trigger_threshold,
+            cfg.hold_days,
+            cfg.max_positions,
+            len(trading_dates),
         )
 
         for _day_idx, td in enumerate(trading_dates):
@@ -177,7 +180,9 @@ class EventBacktester:
                 # 成交额限制
                 daily_amount = float(px.get("amount", 0))
                 if daily_amount > 0 and cfg.volume_cap_pct > 0:
-                    max_shares = int(daily_amount * cfg.volume_cap_pct / open_price / LOT_SIZE) * LOT_SIZE
+                    max_shares = (
+                        int(daily_amount * cfg.volume_cap_pct / open_price / LOT_SIZE) * LOT_SIZE
+                    )
                     shares = min(shares, max_shares)
                     if shares <= 0:
                         continue
@@ -197,17 +202,32 @@ class EventBacktester:
                     total_cost = comm + transfer
 
                 cash -= amount + total_cost
-                positions.append(Position(
-                    code=code, entry_date=td, entry_price=open_price,
-                    shares=shares, signal_date=pb["signal_date"],
-                    signal_value=pb["signal_value"], hold_trading_days=0,
-                ))
-                trades.append(EventFill(
-                    code=code, trade_date=td, direction="buy",
-                    price=open_price, shares=shares, amount=amount,
-                    commission=comm, tax=0, total_cost=total_cost,
-                    signal_date=pb["signal_date"], signal_value=pb["signal_value"],
-                ))
+                positions.append(
+                    Position(
+                        code=code,
+                        entry_date=td,
+                        entry_price=open_price,
+                        shares=shares,
+                        signal_date=pb["signal_date"],
+                        signal_value=pb["signal_value"],
+                        hold_trading_days=0,
+                    )
+                )
+                trades.append(
+                    EventFill(
+                        code=code,
+                        trade_date=td,
+                        direction="buy",
+                        price=open_price,
+                        shares=shares,
+                        amount=amount,
+                        commission=comm,
+                        tax=0,
+                        total_cost=total_cost,
+                        signal_date=pb["signal_date"],
+                        signal_value=pb["signal_value"],
+                    )
+                )
                 total_buys += 1
 
             pending_buys = new_pending
@@ -240,12 +260,21 @@ class EventBacktester:
                     total_cost = comm + tax + transfer
 
                     cash += amount - total_cost
-                    trades.append(EventFill(
-                        code=pos.code, trade_date=td, direction="sell",
-                        price=sell_price, shares=pos.shares, amount=amount,
-                        commission=comm, tax=tax, total_cost=total_cost,
-                        signal_date=pos.signal_date, signal_value=pos.signal_value,
-                    ))
+                    trades.append(
+                        EventFill(
+                            code=pos.code,
+                            trade_date=td,
+                            direction="sell",
+                            price=sell_price,
+                            shares=pos.shares,
+                            amount=amount,
+                            commission=comm,
+                            tax=tax,
+                            total_cost=total_cost,
+                            signal_date=pos.signal_date,
+                            signal_value=pos.signal_value,
+                        )
+                    )
                     total_sells += 1
                     hold_days_list.append(pos.hold_trading_days)
                 else:
@@ -267,7 +296,12 @@ class EventBacktester:
                     if code in held_codes or code in pending_codes:
                         continue
 
-                    if cfg.trigger_direction == "above" and fval > cfg.trigger_threshold or cfg.trigger_direction == "below" and fval < cfg.trigger_threshold:
+                    if (
+                        cfg.trigger_direction == "above"
+                        and fval > cfg.trigger_threshold
+                        or cfg.trigger_direction == "below"
+                        and fval < cfg.trigger_threshold
+                    ):
                         triggered.append((code, fval))
 
                 total_signals += len(triggered)
@@ -280,11 +314,13 @@ class EventBacktester:
 
                 slots = cfg.max_positions - len(positions) - len(pending_buys)
                 for code, fval in triggered[:slots]:
-                    pending_buys.append({
-                        "code": code,
-                        "signal_date": td,
-                        "signal_value": fval,
-                    })
+                    pending_buys.append(
+                        {
+                            "code": code,
+                            "signal_date": td,
+                            "signal_value": fval,
+                        }
+                    )
 
             # ── Step 4: 计算当日NAV ──
             position_value = 0.0
@@ -316,7 +352,11 @@ class EventBacktester:
 
         logger.info(
             "[EventBT] 完成: signals=%d buys=%d sells=%d avg_hold=%.1fd max_pos=%d final_nav=%.0f",
-            total_signals, total_buys, total_sells, avg_hold, max_concurrent,
+            total_signals,
+            total_buys,
+            total_sells,
+            avg_hold,
+            max_concurrent,
             nav_series.iloc[-1] if len(nav_series) > 0 else 0,
         )
 
@@ -337,7 +377,8 @@ class EventBacktester:
         up_limit = float(px.get("up_limit", 0) or 0)
         turnover = float(px.get("turnover_rate", 0) or 0)
         return (
-            up_limit > 0 and close > 0
+            up_limit > 0
+            and close > 0
             and abs(close - up_limit) / up_limit < 0.001
             and turnover < 1.0
         )
@@ -348,7 +389,8 @@ class EventBacktester:
         down_limit = float(px.get("down_limit", 0) or 0)
         turnover = float(px.get("turnover_rate", 0) or 0)
         return (
-            down_limit > 0 and close > 0
+            down_limit > 0
+            and close > 0
             and abs(close - down_limit) / down_limit < 0.001
             and turnover < 1.0
         )

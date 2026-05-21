@@ -220,9 +220,7 @@ class TestProcessCandidateCommand:
     def test_approve_sediments_record(self, tmp_path: Path) -> None:
         svc, reflections_dir, risk_findings_dir = self._service(tmp_path)
         _write_report(reflections_dir, "2026_W19")
-        parsed = ParsedCandidateWebhook(
-            command=CandidateCommand.APPROVE, candidate_id="2026_W19#2"
-        )
+        parsed = ParsedCandidateWebhook(command=CandidateCommand.APPROVE, candidate_id="2026_W19#2")
         result = svc.process_candidate_command(parsed, now=_NOW)
         assert result.outcome is CandidateOutcome.APPROVED_SEDIMENTED
         assert result.sediment_path is not None
@@ -237,9 +235,7 @@ class TestProcessCandidateCommand:
     def test_reject_sediments_record(self, tmp_path: Path) -> None:
         svc, reflections_dir, _ = self._service(tmp_path)
         _write_report(reflections_dir, "2026_W19")
-        parsed = ParsedCandidateWebhook(
-            command=CandidateCommand.REJECT, candidate_id="2026_W19#1"
-        )
+        parsed = ParsedCandidateWebhook(command=CandidateCommand.REJECT, candidate_id="2026_W19#1")
         result = svc.process_candidate_command(parsed, now=_NOW)
         assert result.outcome is CandidateOutcome.REJECTED_SEDIMENTED
         content = Path(result.sediment_path).read_text(encoding="utf-8")
@@ -249,9 +245,7 @@ class TestProcessCandidateCommand:
     def test_idempotent_re_reply(self, tmp_path: Path) -> None:
         svc, reflections_dir, _ = self._service(tmp_path)
         _write_report(reflections_dir, "2026_W19")
-        parsed = ParsedCandidateWebhook(
-            command=CandidateCommand.APPROVE, candidate_id="2026_W19#1"
-        )
+        parsed = ParsedCandidateWebhook(command=CandidateCommand.APPROVE, candidate_id="2026_W19#1")
         first = svc.process_candidate_command(parsed, now=_NOW)
         assert first.outcome is CandidateOutcome.APPROVED_SEDIMENTED
         # Re-reply same candidate_id → idempotent, no overwrite.
@@ -271,9 +265,7 @@ class TestProcessCandidateCommand:
 
     def test_report_not_found_raises(self, tmp_path: Path) -> None:
         svc, _, _ = self._service(tmp_path)
-        parsed = ParsedCandidateWebhook(
-            command=CandidateCommand.APPROVE, candidate_id="2026_W99#1"
-        )
+        parsed = ParsedCandidateWebhook(command=CandidateCommand.APPROVE, candidate_id="2026_W99#1")
         with pytest.raises(ReflectionCandidateError, match="source report not found"):
             svc.process_candidate_command(parsed, now=_NOW)
 
@@ -289,9 +281,7 @@ class TestProcessCandidateCommand:
     def test_naive_now_raises(self, tmp_path: Path) -> None:
         svc, reflections_dir, _ = self._service(tmp_path)
         _write_report(reflections_dir, "2026_W19")
-        parsed = ParsedCandidateWebhook(
-            command=CandidateCommand.APPROVE, candidate_id="2026_W19#1"
-        )
+        parsed = ParsedCandidateWebhook(command=CandidateCommand.APPROVE, candidate_id="2026_W19#1")
         with pytest.raises(ValueError, match="now must be tz-aware"):
             svc.process_candidate_command(parsed, now=datetime(2026, 5, 14, 19, 0))
 
@@ -303,11 +293,7 @@ class TestProcessCandidateCommand:
 
 def _load_pr_script():
     """Import scripts/generate_risk_candidate_pr.py as a module."""
-    script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "generate_risk_candidate_pr.py"
-    )
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "generate_risk_candidate_pr.py"
     spec = importlib.util.spec_from_file_location("generate_risk_candidate_pr", script_path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -330,9 +316,7 @@ class TestPrScriptRedlineSelfCheck:
     def test_redline_abort_on_env_mutation(self) -> None:
         mod = _load_pr_script()
         with pytest.raises(RuntimeError, match="RED-LINE SELF-CHECK FAILED"):
-            mod._redline_self_check(
-                ["docs/research-kb/risk_findings/x.md", "backend/.env"]
-            )
+            mod._redline_self_check(["docs/research-kb/risk_findings/x.md", "backend/.env"])
 
     def test_redline_abort_on_backend_production(self) -> None:
         mod = _load_pr_script()
@@ -430,16 +414,12 @@ class TestPrScriptDryRun:
         )
         # Initial commit so working tree is clean.
         subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True
-        )
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
 
         exit_code = mod.generate_pr(repo_root=repo, dry_run=True)
         assert exit_code == 0
         # Dry-run reverts the pr_generated flip → still false.
-        content = (rf_dir / "2026-05-14_2026_W19_idx1_approved.md").read_text(
-            encoding="utf-8"
-        )
+        content = (rf_dir / "2026-05-14_2026_W19_idx1_approved.md").read_text(encoding="utf-8")
         assert "pr_generated: false" in content
         # No new branch created (dry-run).
         branches = subprocess.run(

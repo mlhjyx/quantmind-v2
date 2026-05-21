@@ -24,6 +24,7 @@ field, only env var bypass applies):
 - LL-117 候选 / LL-124 候选 / LL-130 候选 / LL-131 候选
 - skill quantmind-v3-doc-sediment-auto (PR #281, full sediment SOP)
 """
+
 from __future__ import annotations
 
 import json
@@ -34,9 +35,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "handoff_sessionend.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "handoff_sessionend.py"
 
 
 def _run_hook(

@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.1 — data_quality_check Platform SDK 迁移 live smoke (铁律 10b)."""
+
 from __future__ import annotations
 
 import subprocess
@@ -66,7 +67,6 @@ def test_mvp_4_1_batch_3_1_data_quality_check_sdk_migration():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_3_1 boot" in result.stdout

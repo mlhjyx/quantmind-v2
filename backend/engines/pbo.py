@@ -83,20 +83,14 @@ def probability_of_backtest_overfitting(
     """
     # ── 参数校验 ──
     if returns_matrix.ndim != 2:
-        raise ValueError(
-            f"returns_matrix必须是2D数组(N策略×T时间), 收到{returns_matrix.ndim}D"
-        )
+        raise ValueError(f"returns_matrix必须是2D数组(N策略×T时间), 收到{returns_matrix.ndim}D")
 
     n_strategies, n_timepoints = returns_matrix.shape
 
     if n_strategies < 2:
-        raise ValueError(
-            f"至少需要2个策略/配置才能计算PBO, 收到{n_strategies}"
-        )
+        raise ValueError(f"至少需要2个策略/配置才能计算PBO, 收到{n_strategies}")
     if n_timepoints < n_partitions:
-        raise ValueError(
-            f"时间点数({n_timepoints})必须>=分区数({n_partitions})"
-        )
+        raise ValueError(f"时间点数({n_timepoints})必须>=分区数({n_partitions})")
     if n_partitions < 4:
         raise ValueError(f"n_partitions必须>=4, 收到{n_partitions}")
     if n_partitions % 2 != 0:
@@ -107,15 +101,20 @@ def probability_of_backtest_overfitting(
     if n_partitions > max_partitions:
         logger.warning(
             "n_partitions=%d 超过上限%d, 已截断",
-            n_partitions, max_partitions,
+            n_partitions,
+            max_partitions,
         )
         n_partitions = max_partitions
 
     total_combos = math.comb(n_partitions, n_partitions // 2)
     logger.debug(
         "PBO计算: %d策略 × %d时间点, %d分区, C(%d,%d)=%d种组合",
-        n_strategies, n_timepoints, n_partitions,
-        n_partitions, n_partitions // 2, total_combos,
+        n_strategies,
+        n_timepoints,
+        n_partitions,
+        n_partitions,
+        n_partitions // 2,
+        total_combos,
     )
 
     # ── 1. 将时间点分成S个block ──
@@ -144,9 +143,7 @@ def probability_of_backtest_overfitting(
     logit_values: list[float] = []
 
     for train_indices in combinations(all_indices, half):
-        test_indices = tuple(
-            i for i in all_indices if i not in train_indices
-        )
+        test_indices = tuple(i for i in all_indices if i not in train_indices)
 
         # 3a. 计算每个策略在train集的综合Sharpe
         train_perf = block_perf[list(train_indices), :].mean(axis=0)
@@ -166,9 +163,7 @@ def probability_of_backtest_overfitting(
         # rank=0(最优) → logit=-inf, rank=N-1(最差) → logit=+inf
         # rank=N/2(中位) → logit~0
         # 为避免log(0), 使用(rank + 0.5) / (N - rank - 0.5)
-        logit = math.log(
-            (rank + 0.5) / (n_strategies - rank - 0.5)
-        )
+        logit = math.log((rank + 0.5) / (n_strategies - rank - 0.5))
         logit_values.append(logit)
 
     # ── 4. PBO = P(logit > 0) ──
@@ -179,7 +174,9 @@ def probability_of_backtest_overfitting(
 
     logger.info(
         "PBO计算完成: pbo=%.4f, %d种组合, logit均值=%.4f",
-        pbo, total_combos, float(logit_array.mean()),
+        pbo,
+        total_combos,
+        float(logit_array.mean()),
     )
 
     return {

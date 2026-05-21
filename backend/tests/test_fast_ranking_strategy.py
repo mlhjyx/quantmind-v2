@@ -52,13 +52,12 @@ def _make_fast_config(**overrides) -> dict:
     return config
 
 
-def _make_factor_df(codes: list[str], factor_name: str = "vwap_bias", seed: int = 42) -> pd.DataFrame:
+def _make_factor_df(
+    codes: list[str], factor_name: str = "vwap_bias", seed: int = 42
+) -> pd.DataFrame:
     """生成模拟因子DataFrame。"""
     rng = np.random.RandomState(seed)
-    rows = [
-        {"code": c, "factor_name": factor_name, "neutral_value": rng.randn()}
-        for c in codes
-    ]
+    rows = [{"code": c, "factor_name": factor_name, "neutral_value": rng.randn()} for c in codes]
     return pd.DataFrame(rows)
 
 

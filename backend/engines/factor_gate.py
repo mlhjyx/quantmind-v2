@@ -44,19 +44,19 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 # 自动Gate阈值
-G1_IC_THRESHOLD = 0.02          # |IC_mean| 快筛宽松阈值
-G2_CORR_THRESHOLD = 0.70        # 与现有Active因子最大相关性
-G3_T_SOFT = 2.0                 # t统计量宽松下限（BH-FDR动态调整）
-G3_T_HARD = 2.5                 # Harvey Liu Zhu 2016硬性下限（G6用）
+G1_IC_THRESHOLD = 0.02  # |IC_mean| 快筛宽松阈值
+G2_CORR_THRESHOLD = 0.70  # 与现有Active因子最大相关性
+G3_T_SOFT = 2.0  # t统计量宽松下限（BH-FDR动态调整）
+G3_T_HARD = 2.5  # Harvey Liu Zhu 2016硬性下限（G6用）
 G4_NEUTRALIZATION_MAX_DECAY = 0.50  # 中性化后IC衰减上限（铁律2）
 
 # 半自动Gate阈值
-G7_SHARPE_BASELINE = 1.03       # v1.1基线Sharpe（CLAUDE.md 宪法）
+G7_SHARPE_BASELINE = 1.03  # v1.1基线Sharpe（CLAUDE.md 宪法）
 
 # BH-FDR动态调整：基础t阈值 + log(N) × 0.3（DEV_FACTOR_MINING §13.1）
 BH_FDR_BASE_T = 2.0
 BH_FDR_LOG_SCALE = 0.3
-BH_FDR_N_TRIGGER = 20           # N>20时开始动态调整
+BH_FDR_N_TRIGGER = 20  # N>20时开始动态调整
 
 
 # ---------------------------------------------------------------------------
@@ -66,9 +66,10 @@ BH_FDR_N_TRIGGER = 20           # N>20时开始动态调整
 
 class GateStatus(StrEnum):
     """Gate结果状态。"""
+
     PASS = "PASS"
     FAIL = "FAIL"
-    SKIP = "SKIP"       # 前置Gate失败时跳过
+    SKIP = "SKIP"  # 前置Gate失败时跳过
     PENDING = "PENDING"  # 半自动Gate等待人工
 
 
@@ -80,12 +81,13 @@ class GateStatus(StrEnum):
 @dataclass
 class GateResult:
     """单个Gate的检验结果。"""
-    gate_id: str            # "G1" ~ "G8"
+
+    gate_id: str  # "G1" ~ "G8"
     status: GateStatus
-    metric_name: str        # 被检验的指标名
+    metric_name: str  # 被检验的指标名
     metric_value: float | None
     threshold: float | None
-    reason: str             # 人类可读的原因
+    reason: str  # 人类可读的原因
     data: dict[str, Any] = field(default_factory=dict)  # 附加数据
 
     def __str__(self) -> str:
@@ -97,17 +99,19 @@ class GateResult:
 @dataclass
 class GateReport:
     """完整8个Gate的检验报告。"""
+
     factor_name: str
     gates: dict[str, GateResult] = field(default_factory=dict)
-    overall_status: str = "PENDING"   # PASS / FAIL / PARTIAL / PENDING
-    cumulative_m: int = 0             # BH-FDR用，当前累积测试总数
+    overall_status: str = "PENDING"  # PASS / FAIL / PARTIAL / PENDING
+    cumulative_m: int = 0  # BH-FDR用，当前累积测试总数
     notes: str = ""
 
     @property
     def auto_gates_passed(self) -> bool:
         """G1-G5全部通过（自动Gate）。"""
         return all(
-            self.gates.get(f"G{i}", GateResult(f"G{i}", GateStatus.FAIL, "", None, None, "")).status == GateStatus.PASS
+            self.gates.get(f"G{i}", GateResult(f"G{i}", GateStatus.FAIL, "", None, None, "")).status
+            == GateStatus.PASS
             for i in range(1, 6)
         )
 
@@ -214,7 +218,9 @@ class FactorGatePipeline:
             report.overall_status = "FAIL"
             report.notes = "ic_series为空，无法执行Gate检验"
             for gid in [f"G{i}" for i in range(1, 9)]:
-                report.gates[gid] = GateResult(gid, GateStatus.FAIL, "ic_series", None, None, "ic_series为空")
+                report.gates[gid] = GateResult(
+                    gid, GateStatus.FAIL, "ic_series", None, None, "ic_series为空"
+                )
             return report
 
         ic_arr = np.array(ic_series, dtype=float)
@@ -225,8 +231,12 @@ class FactorGatePipeline:
             report.notes = f"有效IC样本不足（n={len(ic_arr)}<5），统计检验不可靠"
             for gid in [f"G{i}" for i in range(1, 9)]:
                 report.gates[gid] = GateResult(
-                    gid, GateStatus.FAIL, "sample_size", float(len(ic_arr)), 5.0,
-                    f"IC样本n={len(ic_arr)}不足5个"
+                    gid,
+                    GateStatus.FAIL,
+                    "sample_size",
+                    float(len(ic_arr)),
+                    5.0,
+                    f"IC样本n={len(ic_arr)}不足5个",
                 )
             return report
 
@@ -262,8 +272,11 @@ class FactorGatePipeline:
 
         # ---- G6: BH-FDR（半自动，PENDING）----
         report.gates["G6"] = GateResult(
-            "G6", GateStatus.PENDING,
-            "t_stat_newey_west", t_stat, G3_T_HARD,
+            "G6",
+            GateStatus.PENDING,
+            "t_stat_newey_west",
+            t_stat,
+            G3_T_HARD,
             f"需quant审查: Newey-West t统计量>2.5硬性标准 (Harvey Liu Zhu 2016). "
             f"当前原始t={t_stat:.3f}, 累积M={m}, 调整阈值≈{self._bh_fdr_t_threshold(m):.3f}",
             data={
@@ -278,8 +291,11 @@ class FactorGatePipeline:
 
         # ---- G7: SimBroker回测Sharpe ≥ 基线（半自动，铁律3）----
         report.gates["G7"] = GateResult(
-            "G7", GateStatus.PENDING,
-            "simbroker_sharpe", None, G7_SHARPE_BASELINE,
+            "G7",
+            GateStatus.PENDING,
+            "simbroker_sharpe",
+            None,
+            G7_SHARPE_BASELINE,
             f"需SimBroker回测: Sharpe ≥ {G7_SHARPE_BASELINE} (v1.1基线). "
             "paired bootstrap p<0.05 required.",
             data={"baseline_sharpe": G7_SHARPE_BASELINE},
@@ -287,8 +303,11 @@ class FactorGatePipeline:
 
         # ---- G8: strategy策略匹配（半自动，铁律8）----
         report.gates["G8"] = GateResult(
-            "G8", GateStatus.PENDING,
-            "strategy_match", None, None,
+            "G8",
+            GateStatus.PENDING,
+            "strategy_match",
+            None,
+            None,
             "需strategy审查: FactorClassifier输出信号类型+调仓频率+铁律8确认",
             data={"expected_direction": expected_direction, "ic_ir": ic_ir},
         )
@@ -298,8 +317,10 @@ class FactorGatePipeline:
 
         logger.info(
             "GateReport[%s]: overall=%s, failed=%s, pending=%s",
-            factor_name, report.overall_status,
-            report.failed_gates, report.pending_gates,
+            factor_name,
+            report.overall_status,
+            report.failed_gates,
+            report.pending_gates,
         )
         return report
 
@@ -312,8 +333,11 @@ class FactorGatePipeline:
         abs_ic = abs(ic_mean)
         passed = abs_ic > G1_IC_THRESHOLD
         return GateResult(
-            "G1", GateStatus.PASS if passed else GateStatus.FAIL,
-            "ic_mean_abs", abs_ic, G1_IC_THRESHOLD,
+            "G1",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "ic_mean_abs",
+            abs_ic,
+            G1_IC_THRESHOLD,
             f"|IC_mean|={abs_ic:.4f} {'>' if passed else '<='} {G1_IC_THRESHOLD}",
         )
 
@@ -321,8 +345,11 @@ class FactorGatePipeline:
         """G2: 与现有Active因子截面相关性 < 0.7。"""
         if not active_factor_corr:
             return GateResult(
-                "G2", GateStatus.PASS,
-                "max_active_corr", 0.0, G2_CORR_THRESHOLD,
+                "G2",
+                GateStatus.PASS,
+                "max_active_corr",
+                0.0,
+                G2_CORR_THRESHOLD,
                 "无Active因子相关性数据，默认PASS（需后续验证）",
                 data={"warning": "no_active_corr_provided"},
             )
@@ -332,8 +359,11 @@ class FactorGatePipeline:
         passed = max_corr_abs < G2_CORR_THRESHOLD
 
         return GateResult(
-            "G2", GateStatus.PASS if passed else GateStatus.FAIL,
-            "max_active_corr", max_corr_abs, G2_CORR_THRESHOLD,
+            "G2",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "max_active_corr",
+            max_corr_abs,
+            G2_CORR_THRESHOLD,
             f"最高相关={max_corr_abs:.4f} with {most_correlated} "
             f"({'< 0.7, PASS' if passed else '>= 0.7, FAIL冗余'})",
             data={
@@ -350,8 +380,11 @@ class FactorGatePipeline:
         passed = abs_t > threshold
 
         return GateResult(
-            "G3", GateStatus.PASS if passed else GateStatus.FAIL,
-            "t_stat_abs", abs_t, threshold,
+            "G3",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "t_stat_abs",
+            abs_t,
+            threshold,
             f"|t|={abs_t:.3f} {'>' if passed else '<='} {threshold:.3f} "
             f"(base={G3_T_SOFT}, M={m}, log({m})×{BH_FDR_LOG_SCALE}={math.log(m) * BH_FDR_LOG_SCALE:.3f} "
             f"if M>{BH_FDR_N_TRIGGER})",
@@ -374,8 +407,11 @@ class FactorGatePipeline:
         """
         if neutral_ic_series is None or len(neutral_ic_series) == 0:
             return GateResult(
-                "G4", GateStatus.FAIL,
-                "neutralization_decay", None, G4_NEUTRALIZATION_MAX_DECAY,
+                "G4",
+                GateStatus.FAIL,
+                "neutralization_decay",
+                None,
+                G4_NEUTRALIZATION_MAX_DECAY,
                 "未提供中性化IC数据（铁律2强制要求），标记FAIL",
                 data={"missing_neutral_ic": True},
             )
@@ -385,8 +421,11 @@ class FactorGatePipeline:
 
         if len(neutral_arr) < 5:
             return GateResult(
-                "G4", GateStatus.FAIL,
-                "neutralization_decay", None, G4_NEUTRALIZATION_MAX_DECAY,
+                "G4",
+                GateStatus.FAIL,
+                "neutralization_decay",
+                None,
+                G4_NEUTRALIZATION_MAX_DECAY,
                 f"中性化IC样本不足（n={len(neutral_arr)}<5），铁律2验证失败",
             )
 
@@ -396,8 +435,11 @@ class FactorGatePipeline:
 
         if abs_raw < 1e-8:
             return GateResult(
-                "G4", GateStatus.FAIL,
-                "neutralization_decay", None, G4_NEUTRALIZATION_MAX_DECAY,
+                "G4",
+                GateStatus.FAIL,
+                "neutralization_decay",
+                None,
+                G4_NEUTRALIZATION_MAX_DECAY,
                 "原始|IC_mean|≈0，无法计算衰减比率",
             )
 
@@ -405,8 +447,11 @@ class FactorGatePipeline:
         passed = decay_ratio < G4_NEUTRALIZATION_MAX_DECAY
 
         return GateResult(
-            "G4", GateStatus.PASS if passed else GateStatus.FAIL,
-            "neutralization_decay", decay_ratio, G4_NEUTRALIZATION_MAX_DECAY,
+            "G4",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "neutralization_decay",
+            decay_ratio,
+            G4_NEUTRALIZATION_MAX_DECAY,
             f"中性化后IC衰减={decay_ratio:.1%} ({'< 50%, PASS' if passed else '>= 50%, FAIL虚假alpha'}). "
             f"原始|IC|={abs_raw:.4f} → 中性化|IC|={abs_neutral:.4f}",
             data={
@@ -424,8 +469,11 @@ class FactorGatePipeline:
         """
         if expected_direction == 0:
             return GateResult(
-                "G5", GateStatus.PASS,
-                "direction_consistency", float(ic_mean), None,
+                "G5",
+                GateStatus.PASS,
+                "direction_consistency",
+                float(ic_mean),
+                None,
                 "expected_direction=0（方向中性），跳过方向检验",
             )
 
@@ -433,8 +481,11 @@ class FactorGatePipeline:
         consistent = actual_direction == expected_direction
 
         return GateResult(
-            "G5", GateStatus.PASS if consistent else GateStatus.FAIL,
-            "direction_consistency", float(ic_mean), float(expected_direction),
+            "G5",
+            GateStatus.PASS if consistent else GateStatus.FAIL,
+            "direction_consistency",
+            float(ic_mean),
+            float(expected_direction),
             f"IC均值={ic_mean:.4f}（方向={'+' if actual_direction > 0 else '-'}），"
             f"期望方向={'+' if expected_direction > 0 else '-'}，"
             f"{'一致PASS' if consistent else '方向相反FAIL（需重新检验经济学假设）'}",
@@ -471,8 +522,11 @@ class FactorGatePipeline:
         passed = abs_t > threshold
 
         report.gates["G6"] = GateResult(
-            "G6", GateStatus.PASS if passed else GateStatus.FAIL,
-            "t_stat_newey_west", abs_t, threshold,
+            "G6",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "t_stat_newey_west",
+            abs_t,
+            threshold,
             f"Newey-West |t|={abs_t:.3f} {'>' if passed else '<='} {threshold:.3f} "
             f"(Harvey Liu Zhu 2016, M={m})",
             data={
@@ -484,6 +538,36 @@ class FactorGatePipeline:
         )
         report.overall_status = self._compute_overall_status(report)
         return report
+
+    def confirm_g6_auto(self, report: GateReport, ic_series: list[float]) -> GateReport:
+        """G6 自动 assist — 自动算 Newey-West HAC t 并 confirm_g6 (Plan B)。
+
+        G6 是半自动门 (run_gates 标 PENDING, 设计为 quant 人工审查)。但 Newey-West
+        HAC-adjusted t 是机械可算的 — onboarding 时自动算 → L2 人工晋升 ACTIVE 时
+        GateReport 已含 G6 计算值 (非纯 PENDING blank), 辅助 (非替代) 人工决策。
+        不改变 auto_gates_passed (仅 G1-G5), 仅 enrich report。
+
+        样本不足 (n<5) / 方差退化 → Newey-West t 不可算 → G6 保持 run_gates 设定的
+        PENDING 状态 (fail-safe, 不臆造 verdict)。
+
+        Args:
+            report: run_gates 产出的 GateReport (原地修改 + 返回)。
+            ic_series: 月度 IC 序列 (与 run_gates ic_series 同源, 原始未中性化 IC)。
+
+        Returns:
+            更新后的 GateReport: G6 PASS/FAIL (可算时) 或保持 PENDING (不可算时)。
+        """
+        nw_t = compute_newey_west_t(ic_series)
+        if nw_t is None:
+            logger.info(
+                "G6 auto-assist: Newey-West t 不可算 (样本不足/方差退化), "
+                "G6 保持 PENDING (factor=%s)",
+                report.factor_name,
+            )
+            return report
+        # 双侧 p-value: HAC t 渐近 N(0,1) → p = erfc(|t|/sqrt(2)) (stdlib math, 免 scipy)。
+        p_value = math.erfc(abs(nw_t) / math.sqrt(2.0))
+        return self.confirm_g6(report, t_stat_newey_west=nw_t, p_value=p_value)
 
     def confirm_g7(
         self,
@@ -514,8 +598,11 @@ class FactorGatePipeline:
             )
 
         report.gates["G7"] = GateResult(
-            "G7", GateStatus.PASS if passed else GateStatus.FAIL,
-            "simbroker_sharpe", simbroker_sharpe, G7_SHARPE_BASELINE,
+            "G7",
+            GateStatus.PASS if passed else GateStatus.FAIL,
+            "simbroker_sharpe",
+            simbroker_sharpe,
+            G7_SHARPE_BASELINE,
             " | ".join(reason_parts),
             data={
                 "simbroker_sharpe": simbroker_sharpe,
@@ -547,8 +634,11 @@ class FactorGatePipeline:
         confirmed = bool(signal_type) and bool(rebalance_freq)
 
         report.gates["G8"] = GateResult(
-            "G8", GateStatus.PASS if confirmed else GateStatus.FAIL,
-            "strategy_match", 1.0 if confirmed else 0.0, 1.0,
+            "G8",
+            GateStatus.PASS if confirmed else GateStatus.FAIL,
+            "strategy_match",
+            1.0 if confirmed else 0.0,
+            1.0,
             f"signal_type={signal_type}, rebalance_freq={rebalance_freq}. {strategy_notes}",
             data={
                 "signal_type": signal_type,
@@ -600,10 +690,7 @@ class FactorGatePipeline:
             return "PARTIAL"
 
         # 全PASS
-        all_pass = all(
-            statuses.get(f"G{i}") == GateStatus.PASS
-            for i in range(1, 9)
-        )
+        all_pass = all(statuses.get(f"G{i}") == GateStatus.PASS for i in range(1, 9))
         return "PASS" if all_pass else "PARTIAL"
 
     # ----------------------------------------------------------------
@@ -655,3 +742,59 @@ class FactorGatePipeline:
             return False, f"G3 FAIL: |t|={abs(t_stat):.3f}<={threshold:.3f}"
 
         return True, f"G1-G3 PASS: |IC|={abs(ic_mean):.4f}, |t|={abs(t_stat):.3f}"
+
+
+# ---------------------------------------------------------------------------
+# G6 辅助 — Newey-West HAC t (module-level 纯函数)
+# ---------------------------------------------------------------------------
+
+
+def compute_newey_west_t(ic_series: list[float], *, max_lag: int | None = None) -> float | None:
+    """计算 IC 均值的 Newey-West (HAC) 调整 t 统计量 (G6 用, 纯计算)。
+
+    G6 (Harvey Liu Zhu 2016, t>2.5 硬标准) 需 HAC-adjusted t: 月度 IC 序列存在
+    自相关, 普通 t (假设 iid) 会高估显著性。Newey-West 用 Bartlett 核加权自协方差
+    估计长期方差 (long-run variance):
+
+        LRV = gamma_0 + 2 * sum_{k=1}^{L} (1 - k/(L+1)) * gamma_k
+        Var(mean) = LRV / n,   t = mean / sqrt(Var(mean))
+
+    其中 gamma_k = (1/n) * sum (x_t - mean)(x_{t-k} - mean) 为 lag-k 自协方差。
+
+    Args:
+        ic_series: IC 序列 (原始未中性化, 与 G3 同源; onboarding 当前传月度 IC,
+            但本函数频率无关 — 自动 lag 规则对任意频率时序成立)。
+        max_lag: Bartlett 核截断 lag L。None → Newey-West 1994 自动规则
+            L = floor(4 * (n/100)^(2/9))。
+
+    Returns:
+        HAC-adjusted t 统计量 (signed); 有效样本 n<5 或方差退化 (gamma_0<=0) → None。
+    """
+    arr = np.asarray(ic_series, dtype=float)
+    arr = arr[~np.isnan(arr)]
+    n = len(arr)
+    if n < 5:
+        return None
+    # 常数序列 (方差退化) — max-min (无求和舍入) 精确判定; 避免 np.mean 浮点舍入
+    # 使 gamma_0 成 ~1e-35 伪正数, 进而 t 爆炸 (常数序列 t 应无定义)。
+    if float(arr.max() - arr.min()) == 0.0:
+        return None
+    mean = float(np.mean(arr))
+    demeaned = arr - mean
+    gamma0 = float(np.dot(demeaned, demeaned) / n)
+    if gamma0 <= 0:
+        # 防御性二次检查 (理论上 ptp>0 → gamma_0>0); fail-safe 返 None。
+        return None
+    if max_lag is None:
+        max_lag = int(np.floor(4.0 * (n / 100.0) ** (2.0 / 9.0)))
+    max_lag = max(0, min(max_lag, n - 1))
+    lrv = gamma0
+    for k in range(1, max_lag + 1):
+        gamma_k = float(np.dot(demeaned[k:], demeaned[:-k]) / n)
+        weight = 1.0 - k / (max_lag + 1)
+        lrv += 2.0 * weight * gamma_k
+    if lrv <= 0:
+        # HAC 长期方差非正 (强负自相关边界情形) — 退化用 gamma_0 (普通方差)。
+        lrv = gamma0
+    se = math.sqrt(lrv / n)
+    return mean / se

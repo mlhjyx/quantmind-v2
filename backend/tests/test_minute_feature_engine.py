@@ -28,6 +28,7 @@ from engines.minute_feature_engine import (
 # Fixtures: 合成48-bar数据
 # ============================================================
 
+
 @pytest.fixture
 def synthetic_bars():
     """生成一个典型交易日的48个5分钟bar数据。"""
@@ -47,7 +48,7 @@ def synthetic_bars():
 
     # 成交量: 开盘和尾盘偏高 (U型分布)
     base_vol = np.full(n, 1000.0)
-    base_vol[:6] *= 2.0   # 开盘30分钟量大
+    base_vol[:6] *= 2.0  # 开盘30分钟量大
     base_vol[-6:] *= 1.5  # 尾盘量大
     v = (base_vol * (1 + np.random.uniform(-0.2, 0.2, n))).astype(np.float64)
 
@@ -79,6 +80,7 @@ def flat_bars():
 # 注册表测试
 # ============================================================
 
+
 class TestRegistry:
     def test_feature_count(self):
         assert len(MINUTE_FEATURES) == 10
@@ -101,6 +103,7 @@ class TestRegistry:
 # 完整计算测试
 # ============================================================
 
+
 class TestComputeDaily:
     def test_returns_all_keys(self, synthetic_bars):
         result = compute_daily_minute_features(*synthetic_bars)
@@ -116,8 +119,12 @@ class TestComputeDaily:
         n = 5
         o = np.full(n, 10.0)
         result = compute_daily_minute_features(
-            o, o.copy(), o.copy(), o.copy(),
-            np.full(n, 100.0), np.full(n, 100000.0),
+            o,
+            o.copy(),
+            o.copy(),
+            o.copy(),
+            np.full(n, 100.0),
+            np.full(n, 100000.0),
             np.arange(n, dtype=np.int8),
         )
         for k, val in result.items():
@@ -134,6 +141,7 @@ class TestComputeDaily:
 # ============================================================
 # 各特征独立测试
 # ============================================================
+
 
 class TestHighFreqVolatility:
     def test_zero_for_constant_prices(self):
@@ -276,8 +284,8 @@ class TestIntradayMomentum:
         n = 48
         # 上午涨, 下午也涨 → 前后差>0
         bar_ret = np.zeros(n)
-        bar_ret[:24] = 0.005   # 上午正
-        bar_ret[24:] = 0.001   # 下午也正但弱
+        bar_ret[:24] = 0.005  # 上午正
+        bar_ret[24:] = 0.001  # 下午也正但弱
         mom = _calc_intraday_momentum(bar_ret, n)
         assert mom > 0  # 前>后
 

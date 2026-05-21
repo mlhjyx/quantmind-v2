@@ -24,27 +24,22 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
-import psycopg2
 import structlog
 
 # Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
 
+# 铁律 35: DB 连接走 app.services.db canonical get_sync_conn (从 settings.DATABASE_URL
+# 派生, 0 hardcoded 密码 + 连接泄漏跟踪). re-export 保持本模块 get_sync_conn 名称稳定
+# (test_recon_health_observability.py 的 patch 目标不变).
 from app.config import settings
+from app.services.db import get_sync_conn
 
 logger = structlog.get_logger("daily_reconciliation")
 
 # 告警阈值
-STOCK_DIFF_THRESHOLD = 0.01   # 单股差异>1% → P1
+STOCK_DIFF_THRESHOLD = 0.01  # 单股差异>1% → P1
 TOTAL_MV_DIFF_THRESHOLD = 0.05  # 总市值差异>5% → P0
-
-
-def get_sync_conn():
-    """获取psycopg2连接。"""
-    return psycopg2.connect(
-        dbname="quantmind_v2", user="xin",
-        password="quantmind", host="localhost",
-    )
 
 
 def is_trading_day(conn, d: date) -> bool:
@@ -69,11 +64,36 @@ def query_qmt_positions() -> dict[str, int] | None:
             return None
 
         # xtquant双层嵌套路径修复（CLAUDE.md规则）
-        _xt = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+        _xt = (
+            Path(__file__).resolve().parent.parent
+            / ".venv"
+            / "Lib"
+            / "site-packages"
+            / "Lib"
+            / "site-packages"
+        )
         if _xt.exists() and str(_xt) not in sys.path:
             sys.path.append(str(_xt))
 
-        os.environ["EXECUTION_MODE"] = "live"
+        # Plan v8 Wave 3 security fix H-2 (5-20): removed silent SSOT override,
+        # fail-loud per 铁律 34
+        # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
+        # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
+        # Pure FATAL retained only on EXECUTION_MODE undefined (bad config).
+        expected_mode = os.environ.get("EXECUTION_MODE")
+        if expected_mode == "paper":
+            logger.info(
+                "[daily_reconciliation] EXECUTION_MODE=paper detected — graceful skip "
+                "(Phase B-1 paper-mode dry-run, requires live for QMT reconciliation). "
+                "Exit 0 to keep schtask LastResult clean."
+            )
+            sys.exit(0)
+        if expected_mode != "live":
+            sys.exit(
+                f"[FATAL] daily_reconciliation.py requires EXECUTION_MODE=live in .env, "
+                f"got {expected_mode!r}. Refusing to silently override SSOT (铁律 34). "
+                "Set in .env explicitly OR run via cutover gate."
+            )
         from engines.broker_qmt import MiniQMTBroker
 
         broker = MiniQMTBroker(qmt_path, account_id)
@@ -111,7 +131,7 @@ def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:
     价格数据从klines_daily读取，QMT资产查询获取总资产用于weight计算。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         qmt_positions: {code_with_suffix: shares} QMT持仓（可能含.SH/.SZ后缀）。
 
@@ -146,9 +166,7 @@ def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:
     prices = {r[0]: float(r[1]) for r in cur.fetchall() if r[1]}
 
     # 获取QMT总资产（用于weight计算）
-    total_mv = sum(
-        qmt_positions.get(c, 0) * prices.get(c, 0) for c in codes
-    )
+    total_mv = sum(qmt_positions.get(c, 0) * prices.get(c, 0) for c in codes)
 
     # 获取成本（从trade_log live买入记录计算加权均价）
     cur.execute(
@@ -190,7 +208,7 @@ def write_live_performance(conn, d: date, nav_total: float, cash: float) -> None
     """将QMT当日净值写入performance_series (execution_mode='live')。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         nav_total: 当日总资产（QMT total_asset，已含持仓+现金+冻结）。
         cash: 当日可用现金（用于cash_ratio计算）。
@@ -252,8 +270,16 @@ def write_live_performance(conn, d: date, nav_total: float, cash: float) -> None
            (trade_date, strategy_id, nav, daily_return, cumulative_return,
             drawdown, cash_ratio, position_count, execution_mode)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'live')""",
-        (d, strategy_id, nav, daily_return, cumulative_return,
-         drawdown, cash_ratio, position_count),
+        (
+            d,
+            strategy_id,
+            nav,
+            daily_return,
+            cumulative_return,
+            drawdown,
+            cash_ratio,
+            position_count,
+        ),
     )
     conn.commit()
     logger.info(
@@ -348,7 +374,9 @@ def _send_alert_via_platform_sdk(level: str, title: str, content: str) -> None:
         )
         logger.info(
             "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
-            result, dedup_key, severity_value,
+            result,
+            dedup_key,
+            severity_value,
         )
     except AlertDispatchError as e:
         logger.error("[Observability] AlertRouter sink_failed: %s", e)
@@ -358,6 +386,7 @@ def _send_alert_via_platform_sdk(level: str, title: str, content: str) -> None:
 def _send_alert_via_legacy_dingtalk(level: str, title: str, content: str) -> None:
     """旧 path: httpx.post 直调 (fallback, settings flag=False 时走)."""
     import httpx
+
     webhook = settings.DINGTALK_WEBHOOK_URL
     if not webhook:
         logger.warning("DINGTALK_WEBHOOK_URL未配置，跳过告警")
@@ -416,17 +445,27 @@ def run_reconciliation(recon_date: date) -> None:
         qmt_total_asset = 0.0
         qmt_cash = 0.0
         try:
-            _xt = Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+            _xt = (
+                Path(__file__).resolve().parent.parent
+                / ".venv"
+                / "Lib"
+                / "site-packages"
+                / "Lib"
+                / "site-packages"
+            )
             if _xt.exists() and str(_xt) not in sys.path:
                 sys.path.append(str(_xt))
             from engines.broker_qmt import MiniQMTBroker
+
             broker = MiniQMTBroker(settings.QMT_PATH, settings.QMT_ACCOUNT_ID)
             broker.connect()
             asset = broker.query_asset()
             qmt_total_asset = float(asset.get("total_asset", 0))
             qmt_cash = float(asset.get("cash", 0))
             broker.disconnect()
-            logger.info(f"[Reconciliation] QMT资产: total={qmt_total_asset:.0f}, cash={qmt_cash:.0f}, mv={float(asset.get('market_value', 0)):.0f}")
+            logger.info(
+                f"[Reconciliation] QMT资产: total={qmt_total_asset:.0f}, cash={qmt_cash:.0f}, mv={float(asset.get('market_value', 0)):.0f}"
+            )
         except Exception as e:
             logger.warning(f"QMT资产查询失败，使用持仓市值+估算现金: {e}")
             qmt_total_asset = 0  # fallback below
@@ -456,12 +495,14 @@ def run_reconciliation(recon_date: date) -> None:
             db_shares = db_pos.get(code, 0)
             if qmt_shares != db_shares:
                 diff_pct = abs(qmt_shares - db_shares) / max(qmt_shares, db_shares, 1)
-                mismatches.append({
-                    "code": code,
-                    "qmt": qmt_shares,
-                    "db": db_shares,
-                    "diff_pct": round(diff_pct, 4),
-                })
+                mismatches.append(
+                    {
+                        "code": code,
+                        "qmt": qmt_shares,
+                        "db": db_shares,
+                        "diff_pct": round(diff_pct, 4),
+                    }
+                )
 
         # 4. 总市值对比（简化：用股数差异代替）
         qmt_total = sum(qmt_pos.values())
@@ -483,13 +524,17 @@ def run_reconciliation(recon_date: date) -> None:
         try:
             if total_diff > TOTAL_MV_DIFF_THRESHOLD:
                 send_alert(
-                    conn, "P0", f"对账严重差异 {recon_date}",
+                    conn,
+                    "P0",
+                    f"对账严重差异 {recon_date}",
                     f"QMT={qmt_total}股 vs DB={db_total}股, 差异={total_diff:.1%}\n"
                     f"差异股票: {json.dumps(significant[:5], ensure_ascii=False)}",
                 )
             elif significant:
                 send_alert(
-                    conn, "P1", f"对账差异 {recon_date}",
+                    conn,
+                    "P1",
+                    f"对账差异 {recon_date}",
                     f"{len(significant)}只股票持仓不一致\n"
                     f"{json.dumps(significant[:5], ensure_ascii=False)}",
                 )
@@ -521,7 +566,32 @@ def run_reconciliation(recon_date: date) -> None:
     except Exception as e:
         logger.error(f"[Reconciliation] 异常: {e}")
         import traceback
+
         traceback.print_exc()
+        # 铁律 43 fail-loud: 写 failed scheduler_task_log row (供 schtask 监控
+        # 可见) 并 re-raise —— 反 swallow → exit 0 把对账失败伪装成成功
+        # (旧行为: except 吞异常, 脚本仍 exit 0, schtask LastResult 误报 success).
+        # paper-mode 优雅退出走 SystemExit (BaseException, 不被本 except 捕获),
+        # 因此 Phase B-1 paper-mode exit 0 路径不受影响.
+        try:
+            # Code-review M1 (PR #392): 若原异常来自失败的 SQL, conn 处于
+            # aborted-transaction 状态, 直接 execute 抛 InFailedSqlTransaction →
+            # failed-row 静默丢失. 先 rollback 清状态再写 failed row.
+            conn.rollback()
+            fail_cur = conn.cursor()
+            fail_cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, status,
+                    error_message, result_json)
+                   VALUES ('reconciliation', 'astock', NOW(), NOW(), 'failed',
+                           %s, NULL)""",
+                (str(e)[:500],),
+            )
+            conn.commit()
+        except Exception as log_err:  # noqa: BLE001
+            # silent_ok: failed-row 写入失败不掩盖原异常 — 下方 raise 仍 fail-loud.
+            logger.error(f"[Reconciliation] failed-row 写入失败: {log_err}")
+        raise
     finally:
         conn.close()
 
@@ -529,16 +599,12 @@ def run_reconciliation(recon_date: date) -> None:
 def main() -> None:
     """CLI入口。"""
     import argparse
+
     parser = argparse.ArgumentParser(description="收盘对账: QMT vs DB")
-    parser.add_argument("--date", type=str, default=None,
-                        help="对账日期 YYYY-MM-DD (默认今天)")
+    parser.add_argument("--date", type=str, default=None, help="对账日期 YYYY-MM-DD (默认今天)")
     args = parser.parse_args()
 
-    recon_date = (
-        datetime.strptime(args.date, "%Y-%m-%d").date()
-        if args.date
-        else date.today()
-    )
+    recon_date = datetime.strptime(args.date, "%Y-%m-%d").date() if args.date else date.today()
     run_reconciliation(recon_date)
 
 

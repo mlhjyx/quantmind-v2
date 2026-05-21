@@ -5,6 +5,7 @@ Pipeline 顺序跑所有 Gate, 收集 GateResult, 聚合成 Verdict / Evaluation
 
 设计稿: docs/mvp/MVP_3_5_eval_gate_framework.md
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -36,8 +37,8 @@ def _json_safe(value: Any) -> Any:
 class EvaluationDecision(StrEnum):
     """聚合决策 — Pipeline 顶层 verdict."""
 
-    ACCEPT = "accept"   # 所有 Gate PASS
-    REJECT = "reject"   # ≥1 hard fail (业务不通过)
+    ACCEPT = "accept"  # 所有 Gate PASS
+    REJECT = "reject"  # ≥1 hard fail (业务不通过)
     WARNING = "warning"  # ≥1 data_unavailable, 不能下定论
 
 
@@ -107,8 +108,7 @@ def _classify_decision(results: list[GateResult]) -> tuple[EvaluationDecision, s
     # 设计意图: 基础设施崩溃 (DB timeout / Gate 内部 bug) 时保守 reject 而非 warn,
     # 避免有 bug 的因子 silently slip 进 active 池. 调用方需 retry 或修 Gate 实现.
     hard_fails = [
-        r for r in results
-        if not r.passed and r.details.get("reason") != "data_unavailable"
+        r for r in results if not r.passed and r.details.get("reason") != "data_unavailable"
     ]
     if hard_fails:
         first = hard_fails[0]
@@ -175,8 +175,7 @@ class PlatformEvaluationPipeline(EvaluationPipeline):
             if gate.name == gate_name:
                 return self._safe_evaluate(gate, ctx)
         raise ValueError(
-            f"unknown gate: {gate_name!r}, "
-            f"registered: {[g.name for g in self._gates]}"
+            f"unknown gate: {gate_name!r}, registered: {[g.name for g in self._gates]}"
         )
 
     # ---------- 扩展 API (返 EvaluationReport, 比 Verdict 更富信息) ----------

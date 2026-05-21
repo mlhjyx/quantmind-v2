@@ -23,6 +23,7 @@ Usage:
     python scripts/diag/f19_fill_reconciler.py --date 2026-04-17
     python scripts/diag/f19_fill_reconciler.py --date-range 2026-04-14 2026-04-21 --output docs/audit/f19_reconciliation.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,11 +79,19 @@ def parse_qmt_fills(log_path: Path, target_date: date) -> dict:
         raise FileNotFoundError(f"QMT log 不存在: {log_path}")
 
     target_prefix = target_date.strftime("%Y-%m-%d")
-    orders: dict[str, dict] = defaultdict(lambda: {
-        "code": None, "fills": [], "fill_count": 0, "total_volume": 0,
-        "first_ts": None, "last_ts": None, "final_status": None,
-        "final_traded": 0, "final_total": 0,
-    })
+    orders: dict[str, dict] = defaultdict(
+        lambda: {
+            "code": None,
+            "fills": [],
+            "fill_count": 0,
+            "total_volume": 0,
+            "first_ts": None,
+            "last_ts": None,
+            "final_status": None,
+            "final_traded": 0,
+            "final_total": 0,
+        }
+    )
 
     with log_path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -94,11 +103,13 @@ def parse_qmt_fills(log_path: Path, target_date: date) -> dict:
                 oid = m.group("order_id")
                 entry = orders[oid]
                 entry["code"] = m.group("code")
-                entry["fills"].append({
-                    "ts": m.group("ts"),
-                    "price": float(m.group("price")),
-                    "volume": int(m.group("volume")),
-                })
+                entry["fills"].append(
+                    {
+                        "ts": m.group("ts"),
+                        "price": float(m.group("price")),
+                        "volume": int(m.group("volume")),
+                    }
+                )
                 entry["fill_count"] += 1
                 entry["total_volume"] += int(m.group("volume"))
                 if entry["first_ts"] is None:
@@ -139,7 +150,9 @@ def load_trade_log(conn: psycopg2.extensions.connection, target_date: date) -> l
         rows = cur.fetchall()
     return [
         {
-            "code": r[0], "direction": r[1], "quantity": int(r[2]),
+            "code": r[0],
+            "direction": r[1],
+            "quantity": int(r[2]),
             "order_qty": int(r[3]) if r[3] is not None else None,
             "fill_price": float(r[4]) if r[4] is not None else None,
             "executed_at": r[5].isoformat() if r[5] else None,
@@ -169,29 +182,39 @@ def reconcile(target_date: date, output_path: Path | None = None) -> dict:
     print(f"[reconciler]   DB: {len(db_trades)} 行 trade_log 入库")
 
     # 按 code 聚合 QMT 实际成交总量
-    qmt_by_code: dict[str, dict] = defaultdict(lambda: {
-        "qmt_total_volume": 0, "qmt_fill_count": 0, "qmt_orders": [],
-    })
+    qmt_by_code: dict[str, dict] = defaultdict(
+        lambda: {
+            "qmt_total_volume": 0,
+            "qmt_fill_count": 0,
+            "qmt_orders": [],
+        }
+    )
     for oid, entry in qmt_orders.items():
         c = entry["code"]
         qmt_by_code[c]["qmt_total_volume"] += entry["total_volume"]
         qmt_by_code[c]["qmt_fill_count"] += entry["fill_count"]
-        qmt_by_code[c]["qmt_orders"].append({
-            "order_id": oid,
-            "fill_count": entry["fill_count"],
-            "total_volume": entry["total_volume"],
-            "final_status": entry["final_status"],
-            "final_traded": entry["final_traded"],
-            "final_total": entry["final_total"],
-            "avg_price": entry["avg_price"],
-            "first_ts": entry["first_ts"],
-            "last_ts": entry["last_ts"],
-        })
+        qmt_by_code[c]["qmt_orders"].append(
+            {
+                "order_id": oid,
+                "fill_count": entry["fill_count"],
+                "total_volume": entry["total_volume"],
+                "final_status": entry["final_status"],
+                "final_traded": entry["final_traded"],
+                "final_total": entry["final_total"],
+                "avg_price": entry["avg_price"],
+                "first_ts": entry["first_ts"],
+                "last_ts": entry["last_ts"],
+            }
+        )
 
     # 按 code 聚合 DB trade_log 入库总量
-    db_by_code: dict[str, dict] = defaultdict(lambda: {
-        "db_total_volume": 0, "db_row_count": 0, "db_rows": [],
-    })
+    db_by_code: dict[str, dict] = defaultdict(
+        lambda: {
+            "db_total_volume": 0,
+            "db_row_count": 0,
+            "db_rows": [],
+        }
+    )
     for r in db_trades:
         c = r["code"]
         db_by_code[c]["db_total_volume"] += r["quantity"]
@@ -207,22 +230,20 @@ def reconcile(target_date: date, output_path: Path | None = None) -> dict:
         db = db_by_code.get(c, {"db_total_volume": 0, "db_row_count": 0, "db_rows": []})
         loss = qmt["qmt_total_volume"] - db["db_total_volume"]
         total_loss += max(0, loss)  # 只算 QMT > DB 的丢失 (反向 = DB 多入不算丢失)
-        verdict = (
-            "EQUAL" if loss == 0 else
-            "DB_LEAKS_QMT" if loss > 0 else
-            "DB_EXCESS_QMT"
+        verdict = "EQUAL" if loss == 0 else "DB_LEAKS_QMT" if loss > 0 else "DB_EXCESS_QMT"
+        code_diff.append(
+            {
+                "code": c,
+                "qmt_total_volume": qmt["qmt_total_volume"],
+                "qmt_fill_count": qmt["qmt_fill_count"],
+                "db_total_volume": db["db_total_volume"],
+                "db_row_count": db["db_row_count"],
+                "diff_qmt_minus_db": loss,
+                "verdict": verdict,
+                "qmt_orders": qmt.get("qmt_orders", []),
+                "db_rows": db.get("db_rows", []),
+            }
         )
-        code_diff.append({
-            "code": c,
-            "qmt_total_volume": qmt["qmt_total_volume"],
-            "qmt_fill_count": qmt["qmt_fill_count"],
-            "db_total_volume": db["db_total_volume"],
-            "db_row_count": db["db_row_count"],
-            "diff_qmt_minus_db": loss,
-            "verdict": verdict,
-            "qmt_orders": qmt.get("qmt_orders", []),
-            "db_rows": db.get("db_rows", []),
-        })
 
     report = {
         "trade_date": target_date.isoformat(),
@@ -261,16 +282,20 @@ def main() -> int:
     # reviewer P2 采纳: --date / --date-range 互斥 (argparse 显式), 避免 silent ignore
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
-        "--date", type=str,
+        "--date",
+        type=str,
         help="单日 YYYY-MM-DD (default=today; F19 原始事件日 = 2026-04-17)",
     )
     mode_group.add_argument(
-        "--date-range", nargs=2, metavar=("START", "END"),
+        "--date-range",
+        nargs=2,
+        metavar=("START", "END"),
         help="日期范围 start end (YYYY-MM-DD). 多日时 --output 被忽略, "
-             "每日各自写 docs/audit/f19_reconciliation_{date}.json",
+        "每日各自写 docs/audit/f19_reconciliation_{date}.json",
     )
     parser.add_argument(
-        "--output", type=str,
+        "--output",
+        type=str,
         help="JSON 输出路径 (仅单日模式生效; default=docs/audit/f19_reconciliation_{date}.json)",
     )
     args = parser.parse_args()
@@ -297,8 +322,10 @@ def main() -> int:
 
     total_loss = 0
     for d in dates:
-        out = Path(args.output) if args.output and len(dates) == 1 else (
-            PROJECT_ROOT / "docs" / "audit" / f"f19_reconciliation_{d.isoformat()}.json"
+        out = (
+            Path(args.output)
+            if args.output and len(dates) == 1
+            else (PROJECT_ROOT / "docs" / "audit" / f"f19_reconciliation_{d.isoformat()}.json")
         )
         rpt = reconcile(d, out)
         total_loss += rpt["total_volume_loss_qmt_minus_db"]

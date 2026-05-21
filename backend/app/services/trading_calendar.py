@@ -30,6 +30,7 @@ def is_trading_day(conn, trade_date: date) -> bool:
     # 本地无记录: 用TradingDayChecker fallback
     try:
         from engines.trading_day_checker import TradingDayChecker
+
         checker = TradingDayChecker(conn)
         is_td, reason = checker.is_trading_day(trade_date)
         return is_td
@@ -55,9 +56,11 @@ def get_next_trading_day(conn, trade_date: date) -> date | None:
     # DB无记录: fallback
     try:
         from engines.trading_day_checker import TradingDayChecker
+
         return TradingDayChecker(conn).next_trading_day(trade_date)
     except Exception:
         from datetime import timedelta
+
         d = trade_date + timedelta(days=1)
         while d.weekday() >= 5:
             d += timedelta(days=1)
@@ -81,9 +84,11 @@ def get_prev_trading_day(conn, trade_date: date) -> date | None:
     # DB无记录: fallback
     try:
         from engines.trading_day_checker import TradingDayChecker
+
         return TradingDayChecker(conn).prev_trading_day(trade_date)
     except Exception:
         from datetime import timedelta
+
         d = trade_date - timedelta(days=1)
         while d.weekday() >= 5:
             d -= timedelta(days=1)

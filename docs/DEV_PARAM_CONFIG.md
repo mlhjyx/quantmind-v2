@@ -18,6 +18,16 @@
 
 # QuantMind V2 — 参数可配置性系统 详细开发文档
 
+> ⚠️ **DESIGN_OVERSIZED — DOC STATUS**:
+>
+> 本文档为设计阶段产物 (claim 220+ params). 实际系统 SSOT 走以下三处:
+>
+> 1. **`backend/app/config.py:Settings`** — Pydantic Settings class (~50 active fields)
+> 2. **`configs/pt_live.yaml`** — PT 生产策略配置 (63 lines)
+> 3. **`backend/engines/config_guard.py`** + **`backend/platform/config/auditor.py:PlatformConfigAuditor._TRIPLE_SOURCE_FIELDS`** (L57-64) — 铁律 34 三源对齐验证 (top_n / industry_cap / size_neutral_beta / turnover_cap / rebalance_freq 5 fields)
+>
+> 本文档 220+ params 表保留作设计参考, 实际查询应走 SSOT 三处. Last drift verify: 2026-05-20.
+
 > **对应总设计文档**: 第七章 §7.6
 > **版本**: 2.0 | **日期**: 2026-03-19
 > **设计哲学**: 最大化可配置——几乎所有参数都能在前端调
@@ -242,6 +252,14 @@ def estimate_param_impact(param_name, old_value, new_value) -> str:
     return f"{param_name}: {old_value} → {new_value}"
 ```
 
+> ✅ **实现状态 (Plan L, 2026-05-20)**: `estimate_param_impact()` 已实现于
+> `app/services/param_service.py` + `GET /api/params/{key}/impact`。`_PARAM_IMPACT_FORMULAS`
+> 键为**真实** dotted 参数 key (`signal.top_n` / `signal.turnover_cap` /
+> `signal.industry_cap` / `signal.single_stock_cap` / `backtest.initial_capital`
+> —— 本节示例的 `holding_n` 等是早期占位名)。公式仅做**事实性陈述** (单位换算 /
+> 重述), 不做启发式预测 —— 凭空预测换手率/成本变化的数字会误导用户。未登记
+> 公式的参数 (及值无法转 float 时) 回退通用 `{name}: {old} → {new}` 串。
+
 ## 4.3 版本记录
 
 ```sql
@@ -258,12 +276,34 @@ CREATE TABLE param_change_log (
 
 ## 4.4 一键回滚
 
+✅ **已实现 (Plan H, 2026-05-20)**: `ParamService.rollback_to(timestamp, reason,
+changed_by)` + `POST /api/params/rollback`。
+
+回滚 = 对每个在 `timestamp` 之后变更过的参数, 将其值恢复为该时点的值
+(`param_change_log` 中该参数 post-T 最早一条变更的 `old_value`)。
+
+实现要点:
+- **单条 CTE SQL 原子完成** 审计写入 + 值回滚 (`ParamRepository.rollback_to`):
+  `rollback_plan` (DISTINCT ON 取每参数 post-T 最早变更) → `applicable`
+  (过滤掉 `value_at_t IS NULL` 即 T 之后才创建的参数) → `audit_insert`
+  (写 `param_change_log` 审计行) → 主 `UPDATE ai_parameters`。
+- **JSONB 列对列直接复制**, 不经 Python `json.dumps` 序列化往返 —— 与
+  asyncpg 对 JSONB 列的返回类型无关, 杜绝双重编码。
+- **timestamp 之后才首次创建的参数不回滚也不删除参数行**, 在返回的
+  `skipped_created_after` 中报告 (`get_params_created_after`)。
+- 审计行 `reason` 带 `[rollback→T]` 前缀便于检索; `changed_by` 默认 `system`。
+- timestamp 之后无任何变更 → 返回空摘要 (合法情况, 非错误)。
+
 ```python
-def rollback_params_to(timestamp: datetime):
-    """回滚所有参数到指定时间点的状态"""
-    # 从param_change_log反向回放
-    # 支持前端一键操作
+async def rollback_to(timestamp, reason, changed_by="system") -> dict:
+    """回滚所有参数到 timestamp 时点状态; 返回
+    {timestamp, rolled_back, rolled_back_count,
+     skipped_created_after, skipped_count} 摘要"""
 ```
+
+> §4.2 `estimate_param_impact` 变更影响预估 —— ✅ 已实现 (Plan L, 见 §4.2
+> 实现状态注)。至此 DEV_PARAM_CONFIG §4 (4.2 影响预估 / 4.3 版本记录 /
+> 4.4 一键回滚) 全部落地。
 
 ---
 

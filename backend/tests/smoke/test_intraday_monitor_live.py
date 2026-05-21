@@ -8,6 +8,7 @@
   - Redis market:latest 读取
   - 真告警发送 (webhook 未必配置)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -31,7 +32,8 @@ def test_intraday_monitor_imports_and_runs() -> None:
     # 用 python -c 形式: import 脚本并检查关键 symbol (绕过真跑的 side effect)
     result = subprocess.run(
         [
-            sys.executable, "-c",
+            sys.executable,
+            "-c",
             "import sys, pathlib; "
             f"sys.path.insert(0, r'{project_root}'); "
             "import importlib.util; "

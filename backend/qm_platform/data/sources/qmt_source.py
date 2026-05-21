@@ -25,6 +25,7 @@ Usage:
     assets_df = source.fetch(QMT_ASSETS_CONTRACT, since=date.today())
     ticks_df = source.fetch(QMT_TICKS_CONTRACT, since=date.today())
 """
+
 from __future__ import annotations
 
 import logging
@@ -160,8 +161,7 @@ class QMTDataSource(BaseDataSource):
         name = contract.name
         if name not in _CONTRACT_NAMES:
             raise ValueError(
-                f"QMTDataSource 不支持 contract={name!r}, "
-                f"支持: {sorted(_CONTRACT_NAMES)}"
+                f"QMTDataSource 不支持 contract={name!r}, 支持: {sorted(_CONTRACT_NAMES)}"
             )
 
         if name == "qmt_positions":
@@ -284,9 +284,7 @@ class QMTDataSource(BaseDataSource):
 
     # ---------- _check_value_ranges override ----------
 
-    def _check_value_ranges(
-        self, df: pd.DataFrame, contract: DataContract
-    ) -> list[str]:
+    def _check_value_ranges(self, df: pd.DataFrame, contract: DataContract) -> list[str]:
         """业务约束: QMT 实盘价格必须 ≥ 0.01 元, volume ≥ 0, 现金/总资产 ≥ 0."""
         issues: list[str] = []
         if df.empty:

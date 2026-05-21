@@ -5,6 +5,7 @@
   - NearLimitDown: 接近跌停触发, 已跌停互斥 skip, 上涨 skip
   - GapDownOpen: 集合竞价跳空触发, 正常开盘 skip
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

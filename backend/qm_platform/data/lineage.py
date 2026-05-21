@@ -31,6 +31,7 @@ Usage (典型 FactorCompute 集成):
     )
     pipeline.ingest(df, FACTOR_VALUES, lineage=lineage)   # DataPipeline 自动补 outputs + write_lineage
 """
+
 from __future__ import annotations
 
 import json
@@ -101,7 +102,7 @@ def _to_jsonable(obj: Any) -> Any:
         try:
             return obj.isoformat()
         except TypeError:
-            pass
+            pass  # silent_ok: non-date objects fall through to str() repr
     if isinstance(obj, dict):
         return {k: _to_jsonable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -184,10 +185,7 @@ def write_lineage(lineage: Lineage, conn, *, paramstyle: str = "%s") -> _uuid.UU
             f"ON CONFLICT (lineage_id) DO NOTHING"
         )
     else:
-        sql = (
-            f"INSERT OR IGNORE INTO data_lineage (lineage_id, lineage_data) "
-            f"VALUES ({ph}, {ph})"
-        )
+        sql = f"INSERT OR IGNORE INTO data_lineage (lineage_id, lineage_data) VALUES ({ph}, {ph})"
     cur = conn.cursor()
     try:
         cur.execute(sql, (str(lineage.lineage_id), payload))
@@ -259,9 +257,7 @@ def get_lineage_for_row(
         # sqlite 测试路径: 全扫 + Python 过滤 (无 GIN)
         cur = conn.cursor()
         try:
-            cur.execute(
-                "SELECT lineage_data FROM data_lineage ORDER BY created_at DESC"
-            )
+            cur.execute("SELECT lineage_data FROM data_lineage ORDER BY created_at DESC")
             rows = cur.fetchall()
         finally:
             if hasattr(cur, "close"):

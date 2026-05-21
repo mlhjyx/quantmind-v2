@@ -19,6 +19,7 @@ Phase 1 narrowed scope (沿用 PR #280/#281/#282 LL-130 体例累积 + Constitut
 - skeleton §3.2 现有 hook 扩展真值
 - LL-130 候选 / 铁律 45 (4 doc fresh read SOP enforcement)
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "session_context_inject.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "session_context_inject.py"
 
 
 def _run_hook(payload: dict | None = None) -> tuple[int, str, str]:

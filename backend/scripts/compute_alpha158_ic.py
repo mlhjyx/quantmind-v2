@@ -65,7 +65,7 @@ def compute_forward_returns(df: pd.DataFrame) -> pd.DataFrame:
 
     fwd_tables = {}
     for h in HORIZONS:
-        fwd = (pivot.shift(-h) / pivot - 1)
+        fwd = pivot.shift(-h) / pivot - 1
         fwd_tables[h] = fwd
 
     logger.info("  前向收益计算完成")
@@ -75,6 +75,7 @@ def compute_forward_returns(df: pd.DataFrame) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════
 # 逐因子计算器（向量化，不用groupby.apply）
 # ═══════════════════════════════════════════════════════════
+
 
 def _grouped_rolling(pivot: pd.DataFrame, func: str, d: int, **kwargs) -> pd.DataFrame:
     """对pivot表（trade_date×code）按列做rolling操作。"""
@@ -94,40 +95,62 @@ def compute_single_factor(df: pd.DataFrame, factor_name: str) -> pd.DataFrame:
     eps = 1e-12
 
     # KBAR
-    if factor_name == "KMID": return (c - o) / o
-    if factor_name == "KLEN": return (h - lo) / o
-    if factor_name == "KMID2": return (c - o) / (h - lo + eps)
+    if factor_name == "KMID":
+        return (c - o) / o
+    if factor_name == "KLEN":
+        return (h - lo) / o
+    if factor_name == "KMID2":
+        return (c - o) / (h - lo + eps)
     gt = pd.DataFrame(np.maximum(o.values, c.values), index=o.index, columns=o.columns)
     lt = pd.DataFrame(np.minimum(o.values, c.values), index=o.index, columns=o.columns)
-    if factor_name == "KUP": return (h - gt) / o
-    if factor_name == "KUP2": return (h - gt) / (h - lo + eps)
-    if factor_name == "KLOW": return (lt - lo) / o
-    if factor_name == "KLOW2": return (lt - lo) / (h - lo + eps)
-    if factor_name == "KSFT": return (2 * c - h - lo) / o
-    if factor_name == "KSFT2": return (2 * c - h - lo) / (h - lo + eps)
+    if factor_name == "KUP":
+        return (h - gt) / o
+    if factor_name == "KUP2":
+        return (h - gt) / (h - lo + eps)
+    if factor_name == "KLOW":
+        return (lt - lo) / o
+    if factor_name == "KLOW2":
+        return (lt - lo) / (h - lo + eps)
+    if factor_name == "KSFT":
+        return (2 * c - h - lo) / o
+    if factor_name == "KSFT2":
+        return (2 * c - h - lo) / (h - lo + eps)
 
     # PRICE
-    if factor_name == "OPEN0": return o / c
-    if factor_name == "HIGH0": return h / c
-    if factor_name == "LOW0": return lo / c
-    if factor_name == "VWAP0": return (amt / v.replace(0, np.nan)) / c
+    if factor_name == "OPEN0":
+        return o / c
+    if factor_name == "HIGH0":
+        return h / c
+    if factor_name == "LOW0":
+        return lo / c
+    if factor_name == "VWAP0":
+        return (amt / v.replace(0, np.nan)) / c
 
     # ROLLING — 解析窗口
     for d in WINDOWS:
         ds = str(d)
         if not factor_name.endswith(ds):
             continue
-        op = factor_name[:-len(ds)]
+        op = factor_name[: -len(ds)]
 
-        if op == "ROC": return c.shift(d) / c
-        if op == "MA": return c.rolling(d, min_periods=d).mean() / c
-        if op == "STD": return c.rolling(d, min_periods=d).std() / c
-        if op == "MAX": return h.rolling(d, min_periods=d).max() / c
-        if op == "MIN": return lo.rolling(d, min_periods=d).min() / c
-        if op == "QTLU": return c.rolling(d, min_periods=d).quantile(0.8) / c
-        if op == "QTLD": return c.rolling(d, min_periods=d).quantile(0.2) / c
-        if op == "VMA": return v.rolling(d, min_periods=d).mean() / (v + eps)
-        if op == "VSTD": return v.rolling(d, min_periods=d).std() / (v + eps)
+        if op == "ROC":
+            return c.shift(d) / c
+        if op == "MA":
+            return c.rolling(d, min_periods=d).mean() / c
+        if op == "STD":
+            return c.rolling(d, min_periods=d).std() / c
+        if op == "MAX":
+            return h.rolling(d, min_periods=d).max() / c
+        if op == "MIN":
+            return lo.rolling(d, min_periods=d).min() / c
+        if op == "QTLU":
+            return c.rolling(d, min_periods=d).quantile(0.8) / c
+        if op == "QTLD":
+            return c.rolling(d, min_periods=d).quantile(0.2) / c
+        if op == "VMA":
+            return v.rolling(d, min_periods=d).mean() / (v + eps)
+        if op == "VSTD":
+            return v.rolling(d, min_periods=d).std() / (v + eps)
 
         ret = c / c.shift(1)
         c_diff = c - c.shift(1)
@@ -153,27 +176,38 @@ def compute_single_factor(df: pd.DataFrame, factor_name: str) -> pd.DataFrame:
         # CNTP/CNTN/CNTD
         up = (c > c.shift(1)).astype(float)
         dn = (c < c.shift(1)).astype(float)
-        if op == "CNTP": return up.rolling(d, min_periods=d).mean()
-        if op == "CNTN": return dn.rolling(d, min_periods=d).mean()
-        if op == "CNTD": return up.rolling(d, min_periods=d).mean() - dn.rolling(d, min_periods=d).mean()
+        if op == "CNTP":
+            return up.rolling(d, min_periods=d).mean()
+        if op == "CNTN":
+            return dn.rolling(d, min_periods=d).mean()
+        if op == "CNTD":
+            return up.rolling(d, min_periods=d).mean() - dn.rolling(d, min_periods=d).mean()
 
         # SUMP/SUMN/SUMD
         pos = c_diff.clip(lower=0)
         neg = (-c_diff).clip(lower=0)
         abs_sum = c_diff.abs().rolling(d, min_periods=d).sum() + eps
-        if op == "SUMP": return pos.rolling(d, min_periods=d).sum() / abs_sum
-        if op == "SUMN": return neg.rolling(d, min_periods=d).sum() / abs_sum
+        if op == "SUMP":
+            return pos.rolling(d, min_periods=d).sum() / abs_sum
+        if op == "SUMN":
+            return neg.rolling(d, min_periods=d).sum() / abs_sum
         if op == "SUMD":
-            return (pos.rolling(d, min_periods=d).sum() - neg.rolling(d, min_periods=d).sum()) / abs_sum
+            return (
+                pos.rolling(d, min_periods=d).sum() - neg.rolling(d, min_periods=d).sum()
+            ) / abs_sum
 
         # VSUMP/VSUMN/VSUMD
         vpos = v_diff.clip(lower=0)
         vneg = (-v_diff).clip(lower=0)
         vabs_sum = v_diff.abs().rolling(d, min_periods=d).sum() + eps
-        if op == "VSUMP": return vpos.rolling(d, min_periods=d).sum() / vabs_sum
-        if op == "VSUMN": return vneg.rolling(d, min_periods=d).sum() / vabs_sum
+        if op == "VSUMP":
+            return vpos.rolling(d, min_periods=d).sum() / vabs_sum
+        if op == "VSUMN":
+            return vneg.rolling(d, min_periods=d).sum() / vabs_sum
         if op == "VSUMD":
-            return (vpos.rolling(d, min_periods=d).sum() - vneg.rolling(d, min_periods=d).sum()) / vabs_sum
+            return (
+                vpos.rolling(d, min_periods=d).sum() - vneg.rolling(d, min_periods=d).sum()
+            ) / vabs_sum
 
         # WVMA
         if op == "WVMA":
@@ -252,9 +286,29 @@ def get_all_factor_names() -> list[str]:
     names = ["KMID", "KLEN", "KMID2", "KUP", "KUP2", "KLOW", "KLOW2", "KSFT", "KSFT2"]
     names += ["OPEN0", "HIGH0", "LOW0", "VWAP0"]
     fast_ops = [
-        "ROC", "MA", "STD", "MAX", "MIN", "QTLU", "QTLD", "RSV", "RANK",
-        "CORR", "CORD", "CNTP", "CNTN", "CNTD", "SUMP", "SUMN", "SUMD",
-        "VMA", "VSTD", "WVMA", "VSUMP", "VSUMN", "VSUMD",
+        "ROC",
+        "MA",
+        "STD",
+        "MAX",
+        "MIN",
+        "QTLU",
+        "QTLD",
+        "RSV",
+        "RANK",
+        "CORR",
+        "CORD",
+        "CNTP",
+        "CNTN",
+        "CNTD",
+        "SUMP",
+        "SUMN",
+        "SUMD",
+        "VMA",
+        "VSTD",
+        "WVMA",
+        "VSUMP",
+        "VSUMN",
+        "VSUMD",
     ]
     # 跳过: BETA, RSQR, RESI, IMAX, IMIN, IMXD (apply太慢)
     for op in fast_ops:
@@ -322,7 +376,10 @@ def main():
         for _, r in passed.head(30).iterrows():
             logger.info(
                 "  %-12s IC_20d=%.4f  IR=%.2f  months=%d",
-                r["factor_name"], r["ic_20d_mean"], r.get("ic_ir_20d", 0), r.get("n_months", 0)
+                r["factor_name"],
+                r["ic_20d_mean"],
+                r.get("ic_ir_20d", 0),
+                r.get("n_months", 0),
             )
 
 

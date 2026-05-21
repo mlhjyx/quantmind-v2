@@ -7,6 +7,7 @@
   - generate() Strategy ABC delegation: pass-through + log + invariant warning
   - 配置 SSOT: 默认 PAPER_TRADING_CONFIG / 自定义 config
 """
+
 from __future__ import annotations
 
 import logging
@@ -280,6 +281,7 @@ class TestGenerateDelegation:
 class TestConfigSSOT:
     def test_default_uses_paper_trading_config(self):
         from engines.signal_engine import PAPER_TRADING_CONFIG
+
         pipe = PlatformSignalPipeline()
         assert pipe.base_config is PAPER_TRADING_CONFIG
 

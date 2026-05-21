@@ -828,7 +828,7 @@ def main():
         try:
             conn.rollback()
         except Exception:
-            pass
+            pass  # silent_ok: rollback failure on already-closed conn is acceptable in diagnostic context
         print()
 
     # Summary

@@ -61,9 +61,7 @@ class PositionRepository(BaseRepository):
             for r in rows
         ]
 
-    async def get_position_count(
-        self, strategy_id: str, execution_mode: str = "paper"
-    ) -> int:
+    async def get_position_count(self, strategy_id: str, execution_mode: str = "paper") -> int:
         """获取最新持仓数量。"""
         val = await self.fetch_scalar(
             """SELECT COUNT(*) FROM position_snapshot
@@ -93,10 +91,7 @@ class PositionRepository(BaseRepository):
                ORDER BY total_weight DESC""",
             {"sid": strategy_id, "mode": execution_mode},
         )
-        return [
-            {"industry": r[0], "weight": float(r[1]), "n_stocks": r[2]}
-            for r in rows
-        ]
+        return [{"industry": r[0], "weight": float(r[1]), "n_stocks": r[2]} for r in rows]
 
     async def get_industry_distribution(
         self,
@@ -132,8 +127,16 @@ class PositionRepository(BaseRepository):
         )
         # 固定调色板（循环使用）
         palette = [
-            "#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de",
-            "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#d4a520",
+            "#5470c6",
+            "#91cc75",
+            "#fac858",
+            "#ee6666",
+            "#73c0de",
+            "#3ba272",
+            "#fc8452",
+            "#9a60b4",
+            "#ea7ccc",
+            "#d4a520",
         ]
         total = sum(float(r[1]) for r in rows) or 1.0
         return [

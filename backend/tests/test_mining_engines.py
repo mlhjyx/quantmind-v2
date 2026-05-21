@@ -65,9 +65,7 @@ def panel_data() -> pd.DataFrame:
     np.random.seed(42)
     dates = pd.date_range("2022-01-01", periods=60, freq="B")
     symbols = [f"stock_{i:02d}" for i in range(10)]
-    idx = pd.MultiIndex.from_product(
-        [dates, symbols], names=["date", "symbol_id"]
-    )
+    idx = pd.MultiIndex.from_product([dates, symbols], names=["date", "symbol_id"])
     n = len(idx)
 
     close = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01).reshape(60, 10)).flatten()
@@ -110,9 +108,7 @@ class TestFactorSandboxValidation:
     """AST静态安全检查测试"""
 
     def test_safe_expression_passes(self, sandbox: FactorSandbox) -> None:
-        result = sandbox.validate_expression(
-            "rank(close / delay(close, 20) - 1)"
-        )
+        result = sandbox.validate_expression("rank(close / delay(close, 20) - 1)")
         assert result.is_valid
         assert len(result.errors) == 0
 
@@ -159,15 +155,12 @@ class TestFactorSandboxValidation:
         assert result.is_valid
 
     def test_ts_operators_allowed(self, sandbox: FactorSandbox) -> None:
-        result = sandbox.validate_expression(
-            "ts_mean(close, 20) / ts_std(close, 20)"
-        )
+        result = sandbox.validate_expression("ts_mean(close, 20) / ts_std(close, 20)")
         assert result.is_valid
 
     def test_complex_safe_expression(self, sandbox: FactorSandbox) -> None:
         result = sandbox.validate_expression(
-            "rank(ts_corr(close / delay(close, 1) - 1, "
-            "volume / ts_mean(volume, 20), 20))"
+            "rank(ts_corr(close / delay(close, 1) - 1, volume / ts_mean(volume, 20), 20))"
         )
         assert result.is_valid
 
@@ -180,9 +173,7 @@ class TestFactorSandboxValidation:
 class TestFactorSandboxExecution:
     """沙箱执行测试"""
 
-    def test_simple_execution(
-        self, sandbox: FactorSandbox, simple_series: pd.Series
-    ) -> None:
+    def test_simple_execution(self, sandbox: FactorSandbox, simple_series: pd.Series) -> None:
         df = simple_series.to_frame("close")
         df.index.name = None
         result = sandbox.execute_safely("close * 2", df)
@@ -198,9 +189,7 @@ class TestFactorSandboxExecution:
         assert not result.success
         assert result.error is not None
 
-    def test_timeout_kills_process(
-        self, sandbox: FactorSandbox, simple_series: pd.Series
-    ) -> None:
+    def test_timeout_kills_process(self, sandbox: FactorSandbox, simple_series: pd.Series) -> None:
         # Windows subprocess spawn有额外开销，使用3s超时确保简单表达式能完成
         fast_sandbox = FactorSandbox(timeout=3)
         df = simple_series.to_frame("close")
@@ -221,28 +210,20 @@ class TestFactorTemplates:
 
     def test_all_templates_have_economic_rationale(self) -> None:
         for tmpl in FACTOR_TEMPLATES:
-            assert len(tmpl.economic_rationale) > 20, (
-                f"模板 {tmpl.name} 缺少经济学解释"
-            )
+            assert len(tmpl.economic_rationale) > 20, f"模板 {tmpl.name} 缺少经济学解释"
 
     def test_all_templates_have_required_fields(self) -> None:
         for tmpl in FACTOR_TEMPLATES:
-            assert len(tmpl.required_fields) > 0, (
-                f"模板 {tmpl.name} 缺少 required_fields"
-            )
+            assert len(tmpl.required_fields) > 0, f"模板 {tmpl.name} 缺少 required_fields"
 
     def test_all_templates_have_windows(self) -> None:
         for tmpl in FACTOR_TEMPLATES:
-            assert len(tmpl.windows) > 0, (
-                f"模板 {tmpl.name} 缺少 windows"
-            )
+            assert len(tmpl.windows) > 0, f"模板 {tmpl.name} 缺少 windows"
 
     def test_directions_valid(self) -> None:
         valid = {"positive", "negative"}
         for tmpl in FACTOR_TEMPLATES:
-            assert tmpl.direction in valid, (
-                f"模板 {tmpl.name} direction 非法: {tmpl.direction}"
-            )
+            assert tmpl.direction in valid, f"模板 {tmpl.name} direction 非法: {tmpl.direction}"
 
     def test_categories_cover_required_types(self) -> None:
         categories = {tmpl.category for tmpl in FACTOR_TEMPLATES}
@@ -253,26 +234,18 @@ class TestFactorTemplates:
 
     def test_flow_category_present(self) -> None:
         """类别③资金流向类（DESIGN_V5中全部未实现）必须有模板"""
-        flow_templates = [
-            t for t in FACTOR_TEMPLATES if t.category == "flow"
-        ]
-        assert len(flow_templates) >= 5, (
-            f"资金流向类模板不足，只有 {len(flow_templates)} 个"
-        )
+        flow_templates = [t for t in FACTOR_TEMPLATES if t.category == "flow"]
+        assert len(flow_templates) >= 5, f"资金流向类模板不足，只有 {len(flow_templates)} 个"
 
 
 class TestBruteForceEnumeration:
     """候选因子展开测试"""
 
-    def test_enumerate_returns_candidates(
-        self, engine: BruteForceEngine
-    ) -> None:
+    def test_enumerate_returns_candidates(self, engine: BruteForceEngine) -> None:
         candidates = engine.enumerate_candidates()
         assert len(candidates) > 50  # 40+ 模板 × 多窗口 > 50
 
-    def test_enumerate_with_custom_templates(
-        self, engine: BruteForceEngine
-    ) -> None:
+    def test_enumerate_with_custom_templates(self, engine: BruteForceEngine) -> None:
         custom = [
             FactorTemplate(
                 name="test_factor",
@@ -290,30 +263,20 @@ class TestBruteForceEnumeration:
         assert candidates[0].window == 5
         assert candidates[1].window == 10
 
-    def test_candidate_expression_has_window_substituted(
-        self, engine: BruteForceEngine
-    ) -> None:
+    def test_candidate_expression_has_window_substituted(self, engine: BruteForceEngine) -> None:
         candidates = engine.enumerate_candidates()
         for cand in candidates:
-            assert "{w}" not in cand.expression, (
-                f"{cand.name} 表达式中仍有 {{w}} 占位符"
-            )
+            assert "{w}" not in cand.expression, f"{cand.name} 表达式中仍有 {{w}} 占位符"
 
-    def test_template_summary_returns_dataframe(
-        self, engine: BruteForceEngine
-    ) -> None:
+    def test_template_summary_returns_dataframe(self, engine: BruteForceEngine) -> None:
         df = engine.get_template_summary()
         assert isinstance(df, pd.DataFrame)
         assert len(df) > 0
         assert "name" in df.columns
         assert "category" in df.columns
 
-    def test_required_fields_extraction(
-        self, engine: BruteForceEngine
-    ) -> None:
-        fields = BruteForceEngine._get_required_fields(
-            "ts_mean(close, 20) / (volume + 1e-10)"
-        )
+    def test_required_fields_extraction(self, engine: BruteForceEngine) -> None:
+        fields = BruteForceEngine._get_required_fields("ts_mean(close, 20) / (volume + 1e-10)")
         assert "close" in fields
         assert "volume" in fields
         assert "ts_mean" not in fields  # 算子不算字段
@@ -330,7 +293,8 @@ class TestBruteForceRun:
     ) -> None:
         # 只用价量模板，避免缺失字段导致跳过
         pv_templates = [
-            t for t in FACTOR_TEMPLATES
+            t
+            for t in FACTOR_TEMPLATES
             if t.category == "price_volume"
             and all(f in panel_data.columns for f in t.required_fields)
         ]
@@ -348,12 +312,8 @@ class TestBruteForceRun:
         forward_returns: pd.Series,
     ) -> None:
         # flow 模板需要 buy_lg_amount 等字段，panel_data 中没有，应被静默跳过
-        flow_templates = [
-            t for t in FACTOR_TEMPLATES if t.category == "flow"
-        ]
-        results = engine.run(
-            panel_data, forward_returns, templates=flow_templates
-        )
+        flow_templates = [t for t in FACTOR_TEMPLATES if t.category == "flow"]
+        results = engine.run(panel_data, forward_returns, templates=flow_templates)
         # 不崩溃即可
         assert isinstance(results, list)
 
@@ -365,13 +325,9 @@ class TestBruteForceRun:
     ) -> None:
         # 构造一个确定有IC的因子（reversal）
         reversal = (
-            panel_data["close"]
-            / panel_data.groupby(level="symbol_id")["close"].shift(20)
-            - 1
+            panel_data["close"] / panel_data.groupby(level="symbol_id")["close"].shift(20) - 1
         )
-        ic_series = BruteForceEngine._compute_ic_series(
-            reversal, forward_returns
-        )
+        ic_series = BruteForceEngine._compute_ic_series(reversal, forward_returns)
         assert len(ic_series) >= 1
         assert all(isinstance(v, float) for v in ic_series.values)
 
@@ -401,9 +357,7 @@ class TestASTNormalization:
         h2 = dedup.ast_hash("b + a")
         assert h1 == h2, "加法交换律规范化失败"
 
-    def test_commutativity_multiplication(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_commutativity_multiplication(self, dedup: ASTDeduplicator) -> None:
         h1 = dedup.ast_hash("x * y")
         h2 = dedup.ast_hash("y * x")
         assert h1 == h2, "乘法交换律规范化失败"
@@ -420,16 +374,12 @@ class TestASTNormalization:
         h2 = dedup.ast_hash("close * 1")
         assert h1 == h2, "浮点/整数统一化失败"
 
-    def test_different_expressions_different_hash(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_different_expressions_different_hash(self, dedup: ASTDeduplicator) -> None:
         h1 = dedup.ast_hash("ts_mean(close, 5)")
         h2 = dedup.ast_hash("ts_mean(close, 20)")
         assert h1 != h2, "不同窗口应有不同哈希"
 
-    def test_syntax_error_returns_empty(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_syntax_error_returns_empty(self, dedup: ASTDeduplicator) -> None:
         h = dedup.ast_hash("close +++")
         assert h == "", "语法错误应返回空哈希"
 
@@ -442,9 +392,7 @@ class TestASTEquivalence:
         assert dedup.are_equivalent("x * y", "y * x")
         assert dedup.are_equivalent("close * 1", "close * 1.0")
 
-    def test_non_equivalent_expressions(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_non_equivalent_expressions(self, dedup: ASTDeduplicator) -> None:
         assert not dedup.are_equivalent("ts_mean(close, 5)", "ts_mean(close, 20)")
         assert not dedup.are_equivalent("close + open", "close - open")
         assert not dedup.are_equivalent("rank(close)", "zscore(close)")
@@ -453,9 +401,7 @@ class TestASTEquivalence:
 class TestASTDeduplicate:
     """批量去重测试"""
 
-    def test_dedup_removes_commutative_duplicates(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_dedup_removes_commutative_duplicates(self, dedup: ASTDeduplicator) -> None:
         candidates = ["a + b", "b + a", "c + d"]
         result = dedup.deduplicate(candidates)
         assert result.n_input == 3
@@ -484,9 +430,7 @@ class TestASTDeduplicate:
         result = dedup.deduplicate(candidates)
         assert abs(result.dedup_rate - 1 / 3) < 0.01
 
-    def test_dedup_with_existing_factors(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_dedup_with_existing_factors(self, dedup: ASTDeduplicator) -> None:
         existing = ["ts_mean(close, 20)"]
         new_candidates = [
             "ts_mean(close, 5)",
@@ -542,22 +486,16 @@ class TestASTDeduplicate:
 class TestASTSimilarity:
     """AST相似度测试"""
 
-    def test_identical_expressions_similarity_one(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_identical_expressions_similarity_one(self, dedup: ASTDeduplicator) -> None:
         sim = dedup.compute_ast_similarity("close + open", "close + open")
         assert sim == 1.0
 
-    def test_completely_different_low_similarity(
-        self, dedup: ASTDeduplicator
-    ) -> None:
+    def test_completely_different_low_similarity(self, dedup: ASTDeduplicator) -> None:
         sim = dedup.compute_ast_similarity("a", "b + c + d + e + f")
         assert sim < 0.5
 
     def test_partial_similarity(self, dedup: ASTDeduplicator) -> None:
-        sim = dedup.compute_ast_similarity(
-            "ts_mean(close, 5)", "ts_mean(volume, 5)"
-        )
+        sim = dedup.compute_ast_similarity("ts_mean(close, 5)", "ts_mean(volume, 5)")
         # 两者共享 ts_mean 函数调用和窗口5，相似度应 > 0
         assert sim > 0
 
@@ -582,9 +520,7 @@ class TestIntegration:
         ]
 
         # 先过安全检查
-        safe_exprs = [
-            e for e in expressions if sandbox.validate_expression(e).is_valid
-        ]
+        safe_exprs = [e for e in expressions if sandbox.validate_expression(e).is_valid]
         assert len(safe_exprs) == 3  # exec 被过滤
 
         # 再去重

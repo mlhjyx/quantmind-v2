@@ -63,7 +63,9 @@ class PipelineResult:
         return all(s.success for s in self.stages.values())
 
     def summary(self) -> str:
-        lines = [f"Pipeline {self.run_id}: {'SUCCESS' if self.overall_success else 'FAILED'} ({self.total_elapsed:.1f}s)"]
+        lines = [
+            f"Pipeline {self.run_id}: {'SUCCESS' if self.overall_success else 'FAILED'} ({self.total_elapsed:.1f}s)"
+        ]
         for name, sr in self.stages.items():
             lines.append(f"  {name}: {sr.status} ({sr.rows_out} rows, {sr.elapsed_seconds:.1f}s)")
             if sr.quality:
@@ -96,12 +98,15 @@ class SharedDataPool:
 
             t0 = time.time()
             self._ctx = load_shared_context(
-                self._start, self._end, conn=self._conn,
+                self._start,
+                self._end,
+                conn=self._conn,
                 include_benchmark=True,
             )
             logger.info(
                 "SharedDataPool 加载: %d行业, %d市值行 (%.1fs)",
-                self._ctx["n_stocks"], self._ctx["n_mv_rows"],
+                self._ctx["n_stocks"],
+                self._ctx["n_mv_rows"],
                 time.time() - t0,
             )
         return self._ctx
@@ -146,9 +151,7 @@ class CheckpointTracker:
     def __init__(self, conn):
         self._conn = conn
 
-    def get_pending_neutralize_dates(
-        self, factor_name: str
-    ) -> list[date]:
+    def get_pending_neutralize_dates(self, factor_name: str) -> list[date]:
         """找出需要中性化的日期 (有raw_value但没neutral_value)。"""
         cur = self._conn.cursor()
         cur.execute(
@@ -253,6 +256,8 @@ class CheckpointTracker:
                 """,
                 (asset_name, trade_date, row_count),
             )
+            # F16-classC 例外: leaf utility — mark_success 是独立审计辅助方法, 非 Service 主流程;
+            # 调用方 (DataPipeline) 不管理此 conn 的事务边界, 此处 commit 封装完整 SAVEPOINT scope.
             self._conn.commit()
         except Exception:
             # silent_ok: pipeline_runs 可能未建, 不阻塞主流程
@@ -357,9 +362,7 @@ class QualityValidator:
 
     # ---- P0-3 新增: L2 raw-level 验证 ----
 
-    def validate_factor_raw(
-        self, factor_name: str, sample_dates: list[date] | None = None
-    ) -> dict:
+    def validate_factor_raw(self, factor_name: str, sample_dates: list[date] | None = None) -> dict:
         """L2: raw_value 输出校验 (NaN率<5%, coverage>90%, 无Inf)."""
         cur = self._conn.cursor()
 
@@ -439,7 +442,9 @@ class QualityValidator:
         mx, mn = max(counts.values()), min(counts.values())
         diff_pct = (mx - mn) / mx if mx > 0 else 0.0
 
-        overall = "PASS" if diff_pct < threshold else ("WARN" if diff_pct < threshold * 2 else "FAIL")
+        overall = (
+            "PASS" if diff_pct < threshold else ("WARN" if diff_pct < threshold * 2 else "FAIL")
+        )
         return {
             "overall": overall,
             "trade_date": str(trade_date),
@@ -448,9 +453,7 @@ class QualityValidator:
             "threshold": threshold,
         }
 
-    def reconcile_date_alignment(
-        self, tables: list[str] | None = None
-    ) -> dict:
+    def reconcile_date_alignment(self, tables: list[str] | None = None) -> dict:
         """L3: 交易表 MAX(trade_date) 对齐检查."""
         tables = tables or ["klines_daily", "daily_basic", "moneyflow_daily"]
         cur = self._conn.cursor()
@@ -540,7 +543,11 @@ class QualityValidator:
             report["l2_factor_raw"][fn] = raw_q
             report["l2_factor_neutral"][fn] = neu_q
             report["l3_reconcile"]["factor_coverage"][fn] = cov
-            for label, result in [(f"{fn}.raw", raw_q), (f"{fn}.neutral", neu_q), (f"{fn}.cov", cov)]:
+            for label, result in [
+                (f"{fn}.raw", raw_q),
+                (f"{fn}.neutral", neu_q),
+                (f"{fn}.cov", cov),
+            ]:
                 if result.get("overall") == "WARN":
                     report["warnings"].append(label)
                 elif result.get("overall") == "FAIL":
@@ -685,7 +692,8 @@ class DataOrchestrator:
                 if not pending:
                     logger.info("  %s: 无需中性化 (全部已完成)", factor_name)
                     result.stages[factor_name] = StageResult(
-                        stage="neutralize", status="skipped",
+                        stage="neutralize",
+                        status="skipped",
                     )
                     continue
                 # 用增量日期范围
@@ -693,7 +701,10 @@ class DataOrchestrator:
                 inc_end = str(max(pending))
                 logger.info(
                     "  %s: 增量 %d天 (%s ~ %s)",
-                    factor_name, len(pending), inc_start, inc_end,
+                    factor_name,
+                    len(pending),
+                    inc_start,
+                    inc_end,
                 )
             else:
                 inc_start = self._start
@@ -714,8 +725,10 @@ class DataOrchestrator:
             except Exception as e:
                 logger.error("中性化失败: %s — %s", factor_name, e)
                 result.stages[factor_name] = StageResult(
-                    stage="neutralize", status="failed",
-                    elapsed_seconds=time.time() - t0, error=str(e),
+                    stage="neutralize",
+                    status="failed",
+                    elapsed_seconds=time.time() - t0,
+                    error=str(e),
                 )
                 continue
 
@@ -724,19 +737,22 @@ class DataOrchestrator:
             if validate and n_rows > 0:
                 quality = self._validator.validate_neutralized(factor_name)
                 if quality["overall"] == "FAIL":
-                    logger.warning(
-                        "质量检查 FAIL: %s — %s", factor_name, quality["issues"]
-                    )
+                    logger.warning("质量检查 FAIL: %s — %s", factor_name, quality["issues"])
 
             elapsed = time.time() - t0
             result.stages[factor_name] = StageResult(
-                stage="neutralize", status=status,
-                rows_out=n_rows, elapsed_seconds=elapsed,
+                stage="neutralize",
+                status=status,
+                rows_out=n_rows,
+                elapsed_seconds=elapsed,
                 quality=quality,
             )
             logger.info(
                 "  %s: %s, %d行, %.0fs, quality=%s",
-                factor_name, status, n_rows, elapsed,
+                factor_name,
+                status,
+                n_rows,
+                elapsed,
                 quality["overall"] if quality else "skip",
             )
 
@@ -755,7 +771,11 @@ class DataOrchestrator:
     ) -> pd.DataFrame:
         """读 raw_value. 走 FactorCache, miss 则 DB+cache."""
         return self._cache.load(
-            factor_name, column="raw_value", start=start, end=end, conn=self._conn,
+            factor_name,
+            column="raw_value",
+            start=start,
+            end=end,
+            conn=self._conn,
         )
 
     def get_neutral_values(
@@ -766,7 +786,11 @@ class DataOrchestrator:
     ) -> pd.DataFrame:
         """读 neutral_value. 走 FactorCache, miss 则 DB+cache."""
         return self._cache.load(
-            factor_name, column="neutral_value", start=start, end=end, conn=self._conn,
+            factor_name,
+            column="neutral_value",
+            start=start,
+            end=end,
+            conn=self._conn,
         )
 
     def check_freshness(self, asset_names: list[str]) -> dict:
@@ -797,7 +821,8 @@ class DataOrchestrator:
     ) -> dict:
         """组合 L1 + L2 + L3 + 返回 §4.4 JSON 格式报告."""
         return self._validator.daily_report(
-            trade_date=trade_date, factor_names=factor_names,
+            trade_date=trade_date,
+            factor_names=factor_names,
         )
 
     def compute_ic(
@@ -858,20 +883,25 @@ class DataOrchestrator:
                 nv = self.get_neutral_values(factor_name)
                 if nv.empty:
                     result.stages[factor_name] = StageResult(
-                        stage="compute_ic", status="skipped",
+                        stage="compute_ic",
+                        status="skipped",
                         error="neutral_value 无数据",
                     )
                     continue
                 nv["trade_date"] = pd.to_datetime(nv["trade_date"])
                 factor_wide = nv.pivot_table(
-                    index="trade_date", columns="code", values="value", aggfunc="last",
+                    index="trade_date",
+                    columns="code",
+                    values="value",
+                    aggfunc="last",
                 )
                 ic_series = compute_ic_series(factor_wide, fwd_wide)
                 stats = summarize_ic_stats(ic_series)
                 elapsed = time.time() - t0
 
                 result.stages[factor_name] = StageResult(
-                    stage="compute_ic", status="success",
+                    stage="compute_ic",
+                    status="success",
                     rows_out=len(ic_series),
                     elapsed_seconds=elapsed,
                     quality={"ic_mean": stats.get("mean"), "ic_ir": stats.get("ir")},
@@ -887,8 +917,10 @@ class DataOrchestrator:
             except Exception as e:
                 logger.error("compute_ic 失败: %s — %s", factor_name, e)
                 result.stages[factor_name] = StageResult(
-                    stage="compute_ic", status="failed",
-                    elapsed_seconds=time.time() - t0, error=str(e),
+                    stage="compute_ic",
+                    status="failed",
+                    elapsed_seconds=time.time() - t0,
+                    error=str(e),
                 )
 
         result.total_elapsed = time.time() - t_all

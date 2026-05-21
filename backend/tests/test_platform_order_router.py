@@ -9,6 +9,7 @@
   - route() turnover_cap 边界
   - cancel_stale: stub raise NotImplementedError / DI delegation
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -189,8 +190,12 @@ class TestRouteHappyPath:
         """两 signals: 加仓 600519 + 减仓 000001."""
         router = PlatformOrderRouter()
         sigs = [
-            _signal(code="600519.SH", target_weight=0.20, price=100.0),  # target 2000, curr 1000 → BUY 1000
-            _signal(code="000001.SZ", target_weight=0.05, price=100.0),  # target 500→500整手 round 500, curr 1000 → SELL 500
+            _signal(
+                code="600519.SH", target_weight=0.20, price=100.0
+            ),  # target 2000, curr 1000 → BUY 1000
+            _signal(
+                code="000001.SZ", target_weight=0.05, price=100.0
+            ),  # target 500→500整手 round 500, curr 1000 → SELL 500
         ]
         orders = router.route(
             signals=sigs,
@@ -240,11 +245,13 @@ class TestRouteIdempotency:
         router2 = PlatformOrderRouter()
         sig = _signal(target_weight=0.10, price=100.0)
         o1 = router1.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         o2 = router2.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert o1[0].order_id == o2[0].order_id
@@ -400,7 +407,8 @@ class TestPriceTypeFlexibility:
             metadata={"price": Decimal("100.0")},  # Decimal!
         )
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(orders) == 1
@@ -411,13 +419,16 @@ class TestPriceTypeFlexibility:
         router = PlatformOrderRouter()
         sig = _signal(price=100)  # int 而非 float
         sig = Signal(
-            strategy_id="s1-uuid", code="600519.SH",
-            target_weight=0.10, score=1.0,
+            strategy_id="s1-uuid",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
             trade_date=date(2026, 4, 27),
             metadata={"price": 100},  # int!
         )
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(orders) == 1
@@ -428,7 +439,8 @@ class TestPriceTypeFlexibility:
         sig = _signal(price=float("nan"))
         with pytest.raises(ValueError, match="NaN/inf"):
             router.route(
-                signals=[sig], current_positions={},
+                signals=[sig],
+                current_positions={},
                 capital_allocation={"s1-uuid": Decimal("1000000")},
             )
 
@@ -438,7 +450,8 @@ class TestPriceTypeFlexibility:
         sig = _signal(price=float("inf"))
         with pytest.raises(ValueError, match="NaN/inf"):
             router.route(
-                signals=[sig], current_positions={},
+                signals=[sig],
+                current_positions={},
                 capital_allocation={"s1-uuid": Decimal("1000000")},
             )
 
@@ -446,13 +459,16 @@ class TestPriceTypeFlexibility:
         """numeric str (e.g. JSON 反序列化漏 cast) 可 float() 转换 — 接受不报错."""
         router = PlatformOrderRouter()
         sig = Signal(
-            strategy_id="s1-uuid", code="600519.SH",
-            target_weight=0.10, score=1.0,
+            strategy_id="s1-uuid",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
             trade_date=date(2026, 4, 27),
             metadata={"price": "100.0"},  # str numeric
         )
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("1000000")},
         )
         assert len(orders) == 1
@@ -461,14 +477,17 @@ class TestPriceTypeFlexibility:
         """非数值 str price → TypeError 明确诊断 (e.g. corruption / 占位字符串)."""
         router = PlatformOrderRouter()
         sig = Signal(
-            strategy_id="s1-uuid", code="600519.SH",
-            target_weight=0.10, score=1.0,
+            strategy_id="s1-uuid",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
             trade_date=date(2026, 4, 27),
             metadata={"price": "abc"},  # 非数值
         )
         with pytest.raises(TypeError, match="必须可 float"):
             router.route(
-                signals=[sig], current_positions={},
+                signals=[sig],
+                current_positions={},
                 capital_allocation={"s1-uuid": Decimal("1000000")},
             )
 
@@ -476,14 +495,17 @@ class TestPriceTypeFlexibility:
         """None price → TypeError."""
         router = PlatformOrderRouter()
         sig = Signal(
-            strategy_id="s1-uuid", code="600519.SH",
-            target_weight=0.10, score=1.0,
+            strategy_id="s1-uuid",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
             trade_date=date(2026, 4, 27),
             metadata={"price": None},
         )
         with pytest.raises(TypeError, match="必须可 float"):
             router.route(
-                signals=[sig], current_positions={},
+                signals=[sig],
+                current_positions={},
                 capital_allocation={"s1-uuid": Decimal("1000000")},
             )
 
@@ -494,6 +516,7 @@ class TestOrphanPositionWarning:
 
     def test_orphan_logged_warning(self, caplog):
         import logging
+
         router = PlatformOrderRouter()
         # signal 只覆盖 600519, 但 current 还有 000001 (orphan)
         sig = _signal(code="600519.SH", target_weight=0.10, price=100.0)
@@ -511,6 +534,7 @@ class TestOrphanPositionWarning:
     def test_no_orphan_no_warning(self, caplog):
         """所有 current_positions 都在 signals → 无 warning."""
         import logging
+
         router = PlatformOrderRouter()
         sig = _signal(code="600519.SH", target_weight=0.10, price=100.0)
         with caplog.at_level(logging.WARNING, logger="backend.qm_platform.signal.router"):
@@ -528,6 +552,7 @@ class TestZeroCapital:
 
     def test_zero_capital_warning(self, caplog):
         import logging
+
         router = PlatformOrderRouter()
         sig = _signal(target_weight=0.0, price=100.0)
         with caplog.at_level(logging.WARNING, logger="backend.qm_platform.signal.router"):
@@ -551,22 +576,30 @@ class TestOrderIdCollisionResistance:
         """strategy_id='s|x' vs 's' + 'x' 字段拼接, 用 json 后 hash 不同."""
         router = PlatformOrderRouter()
         sig_a = Signal(
-            strategy_id="strat|v2", code="600519.SH", target_weight=0.10,
-            score=1.0, trade_date=date(2026, 4, 27),
+            strategy_id="strat|v2",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
+            trade_date=date(2026, 4, 27),
             metadata={"price": 100.0},
         )
         sig_b = Signal(
-            strategy_id="strat", code="v2|600519.SH", target_weight=0.10,
-            score=1.0, trade_date=date(2026, 4, 27),
+            strategy_id="strat",
+            code="v2|600519.SH",
+            target_weight=0.10,
+            score=1.0,
+            trade_date=date(2026, 4, 27),
             metadata={"price": 100.0},
         )
         # 不同 strategy_id + code 必生成不同 order_id (无碰撞)
         orders_a = router.route(
-            signals=[sig_a], current_positions={},
+            signals=[sig_a],
+            current_positions={},
             capital_allocation={"strat|v2": Decimal("1000000")},
         )
         orders_b = router.route(
-            signals=[sig_b], current_positions={},
+            signals=[sig_b],
+            current_positions={},
             capital_allocation={"strat": Decimal("1000000")},
         )
         assert orders_a[0].order_id != orders_b[0].order_id, (
@@ -577,12 +610,16 @@ class TestOrderIdCollisionResistance:
         """中文 strategy_id (json ensure_ascii=False 保) 可 hash."""
         router = PlatformOrderRouter()
         sig = Signal(
-            strategy_id="策略一", code="600519.SH", target_weight=0.10,
-            score=1.0, trade_date=date(2026, 4, 27),
+            strategy_id="策略一",
+            code="600519.SH",
+            target_weight=0.10,
+            score=1.0,
+            trade_date=date(2026, 4, 27),
             metadata={"price": 100.0},
         )
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"策略一": Decimal("1000000")},
         )
         assert len(orders[0].order_id) == 16  # 仍 16 hex
@@ -599,7 +636,8 @@ class TestDecimalPrecision:
         # int(9.99) = 9, * lot_size 1 = 9. 用 Decimal 路径仍 9 (无浮点 noise).
         sig = _signal(target_weight=0.01, price=100.0)
         orders = router.route(
-            signals=[sig], current_positions={},
+            signals=[sig],
+            current_positions={},
             capital_allocation={"s1-uuid": Decimal("99999.99")},
             turnover_cap=1.0,
         )

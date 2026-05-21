@@ -73,9 +73,13 @@ class SignalRepository(BaseRepository):
                     target_weight, action, execution_mode)
                    VALUES (:code, :td, :sid, :score, :rank, :tw, :action, :mode)""",
                 {
-                    "code": sig["code"], "td": trade_date, "sid": strategy_id,
-                    "score": sig["alpha_score"], "rank": sig["rank"],
-                    "tw": sig["target_weight"], "action": sig["action"],
+                    "code": sig["code"],
+                    "td": trade_date,
+                    "sid": strategy_id,
+                    "score": sig["alpha_score"],
+                    "rank": sig["rank"],
+                    "tw": sig["target_weight"],
+                    "action": sig["action"],
                     "mode": execution_mode,
                 },
             )

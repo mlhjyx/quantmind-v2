@@ -63,7 +63,6 @@ def check_trading_day_today() -> tuple[bool, str]:
 
     # Primary: DB SSOT
     try:
-        import os
         import re
 
         import psycopg2
@@ -77,7 +76,9 @@ def check_trading_day_today() -> tuple[bool, str]:
         )
         if m:
             sys.path.insert(0, str(backend_dir))
-            from app.services.trading_calendar import is_trading_day  # type: ignore[import-not-found]
+            from app.services.trading_calendar import (
+                is_trading_day,  # type: ignore[import-not-found]
+            )
 
             u, p, h, port, db = m.groups()
             conn = psycopg2.connect(
@@ -107,7 +108,7 @@ def check_trading_day_today() -> tuple[bool, str]:
 def check_beat_alive() -> tuple[bool, str]:
     """Check Celery Beat alive via celerybeat-schedule.dat mtime (P0-5 reuse)."""
     if not BEAT_SCHEDULE_FILE.exists():
-        return False, f"celerybeat-schedule.dat missing"
+        return False, "celerybeat-schedule.dat missing"
 
     mtime = datetime.fromtimestamp(BEAT_SCHEDULE_FILE.stat().st_mtime, tz=UTC)
     age_sec = (datetime.now(UTC) - mtime).total_seconds()

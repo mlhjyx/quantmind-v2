@@ -36,10 +36,10 @@ CACHE_DIR = PROJECT_ROOT / "cache"
 
 # ── 配置 ─────────────────────────────────────────────
 HOLD_DAYS = [5, 7, 10, 15, 20]
-MIN_SEASONS = 4          # 标准化最低季度数
-SUE_CLIP = 5.0           # 极值截断
-MIN_EVENTS_FOR_IC = 50   # IC计算最低事件数
-FACTOR_DIRECTION = 1     # +1: 正surprise = 看多
+MIN_SEASONS = 4  # 标准化最低季度数
+SUE_CLIP = 5.0  # 极值截断
+MIN_EVENTS_FOR_IC = 50  # IC计算最低事件数
+FACTOR_DIRECTION = 1  # +1: 正surprise = 看多
 
 # IC slot映射备注（decay_level字段VARCHAR(10)，存"event"标识）
 # 完整映射: ic_1d=7d, ic_5d=5d, ic_10d=10d, ic_20d=20d, ic_abs_1d=15d
@@ -101,8 +101,10 @@ def compute_sue(conn) -> pd.DataFrame:
     df["sue"] = sue_values
     valid = df.dropna(subset=["sue"]).copy()
     print(f"  有效SUE: {len(valid):,} (需>=4季历史)")
-    print(f"  SUE分布: mean={valid['sue'].mean():.3f}, std={valid['sue'].std():.3f}, "
-          f"min={valid['sue'].min():.2f}, max={valid['sue'].max():.2f}")
+    print(
+        f"  SUE分布: mean={valid['sue'].mean():.3f}, std={valid['sue'].std():.3f}, "
+        f"min={valid['sue'].min():.2f}, max={valid['sue'].max():.2f}"
+    )
 
     # report_type分布
     rt_counts = valid["report_type"].value_counts().sort_index()
@@ -115,9 +117,7 @@ def compute_sue(conn) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════
 # Step B: Forward Return（EVENT per-event）
 # ═══════════════════════════════════════════════════════
-def compute_event_forward_returns(
-    sue_df: pd.DataFrame, conn
-) -> pd.DataFrame:
+def compute_event_forward_returns(sue_df: pd.DataFrame, conn) -> pd.DataFrame:
     """计算每个事件的T+1到T+h复权收益。
 
     T = trade_date (f_ann_date后第一个交易日)
@@ -164,7 +164,9 @@ def compute_event_forward_returns(
     print(f"  earnings ts_code样例: {sue_sample}")
 
     # 判断是否需要去后缀
-    needs_strip = any("." in str(c) for c in sue_sample) and not any("." in str(c) for c in sample_codes)
+    needs_strip = any("." in str(c) for c in sue_sample) and not any(
+        "." in str(c) for c in sample_codes
+    )
     if needs_strip:
         print("  代码格式转换: ts_code去后缀(.SZ/.SH/.BJ)")
 
@@ -282,7 +284,7 @@ def compute_event_ic(
 
             # t-stat = IC * sqrt(N) / sqrt(1 - IC^2)
             if ic_val is not None and not np.isnan(ic_val) and abs(ic_val) < 1.0:
-                t_stat = ic_val * np.sqrt(n) / np.sqrt(1 - ic_val ** 2)
+                t_stat = ic_val * np.sqrt(n) / np.sqrt(1 - ic_val**2)
             else:
                 t_stat = np.nan
 
@@ -313,18 +315,20 @@ def compute_event_ic(
                     ic_val, _ = stats.spearmanr(valid["sue"], valid[col])
                     ic_val = float(ic_val) if np.isfinite(ic_val) else np.nan
                     if ic_val is not None and not np.isnan(ic_val) and abs(ic_val) < 1.0:
-                        t_stat = ic_val * np.sqrt(n) / np.sqrt(1 - ic_val ** 2)
+                        t_stat = ic_val * np.sqrt(n) / np.sqrt(1 - ic_val**2)
                     else:
                         t_stat = np.nan
 
-                yearly_records.append({
-                    "report_type": rt,
-                    "year": int(year),
-                    "hold_days": h,
-                    "ic": ic_val,
-                    "t_stat": t_stat,
-                    "n": n,
-                })
+                yearly_records.append(
+                    {
+                        "report_type": rt,
+                        "year": int(year),
+                        "hold_days": h,
+                        "ic": ic_val,
+                        "t_stat": t_stat,
+                        "n": n,
+                    }
+                )
 
     yearly_df = pd.DataFrame(yearly_records)
     return ic_summary, yearly_df
@@ -333,9 +337,7 @@ def compute_event_ic(
 # ═══════════════════════════════════════════════════════
 # Step D: IC入库
 # ═══════════════════════════════════════════════════════
-def upsert_event_ic(
-    conn, ic_summary: pd.DataFrame, dry_run: bool = False
-) -> int:
+def upsert_event_ic(conn, ic_summary: pd.DataFrame, dry_run: bool = False) -> int:
     """将EVENT IC写入factor_ic_history（铁律11）。
 
     适配策略:
@@ -356,24 +358,28 @@ def upsert_event_ic(
         else:
             factor_name = f"sue_{rt.lower()}"
 
-        rows.append((
-            factor_name,
-            today,
-            _safe_float(r.get("ic_7d")),    # ic_1d slot → 7d
-            _safe_float(r.get("ic_5d")),     # ic_5d slot → 5d
-            _safe_float(r.get("ic_10d")),    # ic_10d slot → 10d
-            _safe_float(r.get("ic_20d")),    # ic_20d slot → 20d
-            _safe_float(r.get("ic_15d")),    # ic_abs_1d slot → 15d
-            None,                             # ic_abs_5d
-            None,                             # ic_ma20
-            None,                             # ic_ma60
-            IC_SLOT_NOTE,                     # decay_level → 备注
-        ))
+        rows.append(
+            (
+                factor_name,
+                today,
+                _safe_float(r.get("ic_7d")),  # ic_1d slot → 7d
+                _safe_float(r.get("ic_5d")),  # ic_5d slot → 5d
+                _safe_float(r.get("ic_10d")),  # ic_10d slot → 10d
+                _safe_float(r.get("ic_20d")),  # ic_20d slot → 20d
+                _safe_float(r.get("ic_15d")),  # ic_abs_1d slot → 15d
+                None,  # ic_abs_5d
+                None,  # ic_ma20
+                None,  # ic_ma60
+                IC_SLOT_NOTE,  # decay_level → 备注
+            )
+        )
 
     if dry_run:
         print(f"  [DRY RUN] 跳过入库，共 {len(rows)} 行")
         for row in rows:
-            print(f"    {row[0]}: 7d={row[2]}, 5d={row[3]}, 10d={row[4]}, 20d={row[5]}, 15d={row[6]}")
+            print(
+                f"    {row[0]}: 7d={row[2]}, 5d={row[3]}, 10d={row[4]}, 20d={row[5]}, 15d={row[6]}"
+            )
         return 0
 
     upsert_sql = """
@@ -456,7 +462,9 @@ def print_report(
             n_val = row.get(f"n_{h}d", 0)
 
             if ic_val is not None and not np.isnan(ic_val):
-                star = "★" if (t_val is not None and not np.isnan(t_val) and abs(t_val) > 2.0) else " "
+                star = (
+                    "★" if (t_val is not None and not np.isnan(t_val) and abs(t_val) > 2.0) else " "
+                )
                 line += f" │ {ic_val:+.4f}({t_val:+.1f}){star}"
             else:
                 line += f" │ {'N/A':>13s}"
@@ -515,8 +523,14 @@ def print_report(
         q1_t = q1_7d.iloc[0].get("t_7d")
         if q1_ic is not None and not np.isnan(q1_ic):
             direction = "正" if q1_ic > 0 else "负"
-            sig = "显著" if (q1_t is not None and not np.isnan(q1_t) and abs(q1_t) > 2.0) else "不显著"
-            print(f"\n  4/5结论验证: Q1 × 7d IC={q1_ic:+.4f} (t={q1_t:+.1f}), {direction}方向, {sig}")
+            sig = (
+                "显著"
+                if (q1_t is not None and not np.isnan(q1_t) and abs(q1_t) > 2.0)
+                else "不显著"
+            )
+            print(
+                f"\n  4/5结论验证: Q1 × 7d IC={q1_ic:+.4f} (t={q1_t:+.1f}), {direction}方向, {sig}"
+            )
             print(f"  4/5初步结论(Q1唯一正方向): {'确认' if q1_ic > 0 else '修正'}")
 
     neg_combos = []
@@ -589,7 +603,10 @@ def check_q3_neutralized_ic(event_df: pd.DataFrame, conn) -> None:
 
     # merge 市值 (用trade_date匹配)
     q3 = q3.merge(
-        mktcap, left_on=["code", "trade_date"], right_on=["code", "trade_date"], how="left",
+        mktcap,
+        left_on=["code", "trade_date"],
+        right_on=["code", "trade_date"],
+        how="left",
     )
     q3 = q3.merge(industry, on="code", how="left")
 
@@ -629,7 +646,9 @@ def check_q3_neutralized_ic(event_df: pd.DataFrame, conn) -> None:
 
     # 用中性化后的SUE重新算IC
     print("\n  Q3 IC对比 (raw vs neutral):")
-    print(f"  {'hold':>6s}  {'raw IC':>10s}  {'raw t':>8s}  {'neut IC':>10s}  {'neut t':>8s}  {'衰减%':>8s}  {'判定':>10s}")
+    print(
+        f"  {'hold':>6s}  {'raw IC':>10s}  {'raw t':>8s}  {'neut IC':>10s}  {'neut t':>8s}  {'衰减%':>8s}  {'判定':>10s}"
+    )
     print(f"  {'─' * 6}  {'─' * 10}  {'─' * 8}  {'─' * 10}  {'─' * 8}  {'─' * 8}  {'─' * 10}")
 
     for h in HOLD_DAYS:
@@ -642,10 +661,10 @@ def check_q3_neutralized_ic(event_df: pd.DataFrame, conn) -> None:
             continue
 
         ic_raw, _ = stats.spearmanr(v_raw["sue"], v_raw[col])
-        t_raw = ic_raw * np.sqrt(len(v_raw)) / np.sqrt(1 - ic_raw ** 2)
+        t_raw = ic_raw * np.sqrt(len(v_raw)) / np.sqrt(1 - ic_raw**2)
 
         ic_neut, _ = stats.spearmanr(v_neut["sue_neutral"], v_neut[col])
-        t_neut = ic_neut * np.sqrt(len(v_neut)) / np.sqrt(1 - ic_neut ** 2)
+        t_neut = ic_neut * np.sqrt(len(v_neut)) / np.sqrt(1 - ic_neut**2)
 
         # 衰减百分比
         if abs(ic_raw) > 1e-6:

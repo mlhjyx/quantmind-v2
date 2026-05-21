@@ -1069,7 +1069,6 @@ _register(
     # F2补全: 以下参数来自 DEV_PARAM_CONFIG.md §3.1-3.14
     # Sprint 1.33 补全 (106→220+)
     # ================================================================
-
     # ── §3.3 Factor Gate Pipeline 补全 ──
     ParamDef(
         key="factor.gate4_year_stability",
@@ -1077,7 +1076,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.FACTOR,
         description="Gate4: 分年稳定性要求(N/5年IC显著)",
-        min_value=1, max_value=5,
+        min_value=1,
+        max_value=5,
     ),
     ParamDef(
         key="factor.gate6_bh_fdr_t_hard",
@@ -1085,7 +1085,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.FACTOR,
         description="Gate6: BH-FDR多重检验t硬性下限(Harvey Liu Zhu 2016)",
-        min_value=2.0, max_value=4.0,
+        min_value=2.0,
+        max_value=4.0,
     ),
     ParamDef(
         key="factor.gate7_sharpe_baseline",
@@ -1093,9 +1094,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.FACTOR,
         description="Gate7: SimBroker回测Sharpe基线(volume_impact模式)",
-        min_value=0.0, max_value=3.0,
+        min_value=0.0,
+        max_value=3.0,
     ),
-
     # ── §3.6 风控补全 ──
     ParamDef(
         key="risk.forex_single_risk_pct",
@@ -1103,7 +1104,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.RISK,
         description="外汇单笔风险比例",
-        min_value=0.005, max_value=0.05,
+        min_value=0.005,
+        max_value=0.05,
     ),
     ParamDef(
         key="risk.forex_margin_cap",
@@ -1111,7 +1113,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.RISK,
         description="外汇保证金上限比例",
-        min_value=0.20, max_value=0.80,
+        min_value=0.20,
+        max_value=0.80,
     ),
     ParamDef(
         key="risk.forex_position_limit",
@@ -1119,7 +1122,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.RISK,
         description="外汇单品种限仓(手)",
-        min_value=0.5, max_value=10.0,
+        min_value=0.5,
+        max_value=10.0,
     ),
     ParamDef(
         key="risk.daily_loss_pause_pct",
@@ -1127,9 +1131,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.RISK,
         description="日亏损暂停阈值",
-        min_value=0.02, max_value=0.10,
+        min_value=0.02,
+        max_value=0.10,
     ),
-
     # ── §3.7 回测补全 ──
     ParamDef(
         key="backtest.end_date",
@@ -1144,7 +1148,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.BACKTEST,
         description="卖出惩罚系数(R4研究)",
-        min_value=1.0, max_value=2.0,
+        min_value=1.0,
+        max_value=2.0,
     ),
     ParamDef(
         key="backtest.sigma_daily",
@@ -1152,7 +1157,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.BACKTEST,
         description="日波动率σ默认值",
-        min_value=0.005, max_value=0.05,
+        min_value=0.005,
+        max_value=0.05,
     ),
     ParamDef(
         key="backtest.industry_cap",
@@ -1160,7 +1166,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.BACKTEST,
         description="回测单行业持仓上限",
-        min_value=0.10, max_value=0.50,
+        min_value=0.10,
+        max_value=0.50,
     ),
     ParamDef(
         key="backtest.single_stock_cap",
@@ -1168,7 +1175,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.BACKTEST,
         description="回测单股持仓上限",
-        min_value=0.03, max_value=0.15,
+        min_value=0.03,
+        max_value=0.15,
     ),
     ParamDef(
         key="backtest.market",
@@ -1184,7 +1192,16 @@ _register(
         param_type=ParamType.ENUM,
         module=ParamModule.BACKTEST,
         description="股票池预设",
-        enum_options=["all_a", "csi300", "csi500", "csi1000", "gem", "star", "main_board", "custom"],
+        enum_options=[
+            "all_a",
+            "csi300",
+            "csi500",
+            "csi1000",
+            "gem",
+            "star",
+            "main_board",
+            "custom",
+        ],
     ),
     ParamDef(
         key="backtest.weight_method",
@@ -1194,7 +1211,6 @@ _register(
         description="回测权重方式",
         enum_options=["equal", "score_weighted"],
     ),
-
     # ── §3.8 AI模型管理 ──
     ParamDef(
         key="ai_agent.hmm_n_states",
@@ -1202,7 +1218,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="HMM市场状态数",
-        min_value=2, max_value=5,
+        min_value=2,
+        max_value=5,
     ),
     ParamDef(
         key="ai_agent.isolation_forest_contamination",
@@ -1210,7 +1227,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="IsolationForest异常比例",
-        min_value=0.01, max_value=0.30,
+        min_value=0.01,
+        max_value=0.30,
     ),
     ParamDef(
         key="ai_agent.isolation_forest_n_estimators",
@@ -1218,7 +1236,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="IsolationForest树数量",
-        min_value=50, max_value=500,
+        min_value=50,
+        max_value=500,
     ),
     ParamDef(
         key="ai_agent.model_retrain_freq",
@@ -1234,9 +1253,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="模型替换阈值(新模型Sharpe/旧模型Sharpe)",
-        min_value=0.80, max_value=1.10,
+        min_value=0.80,
+        max_value=1.10,
     ),
-
     # ── §3.10 因子预处理补全 ──
     ParamDef(
         key="factor.fill_method",
@@ -1254,7 +1273,6 @@ _register(
         description="中性化变量组合",
         enum_options=["industry+market_cap", "industry_only", "market_cap_only", "none"],
     ),
-
     # ── §3.12 回测引擎V2新增 ──
     ParamDef(
         key="backtest.transfer_fee_rate",
@@ -1262,7 +1280,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.BACKTEST,
         description="过户费率(万0.1)",
-        min_value=0.0, max_value=0.0001,
+        min_value=0.0,
+        max_value=0.0001,
     ),
     ParamDef(
         key="backtest.rebalance_freq",
@@ -1278,9 +1297,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.BACKTEST,
         description="回测持仓数量",
-        min_value=5, max_value=50,
+        min_value=5,
+        max_value=50,
     ),
-
     # ── §3.12 Walk-Forward参数 ──
     ParamDef(
         key="walk_forward.enabled",
@@ -1295,7 +1314,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.WALK_FORWARD,
         description="WF训练期(月)",
-        min_value=12, max_value=60,
+        min_value=12,
+        max_value=60,
     ),
     ParamDef(
         key="walk_forward.validation_months",
@@ -1303,7 +1323,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.WALK_FORWARD,
         description="WF验证期(月)",
-        min_value=3, max_value=12,
+        min_value=3,
+        max_value=12,
     ),
     ParamDef(
         key="walk_forward.test_months",
@@ -1311,9 +1332,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.WALK_FORWARD,
         description="WF测试期(月)",
-        min_value=1, max_value=12,
+        min_value=1,
+        max_value=12,
     ),
-
     # ── §3.12 市场状态分析参数 ──
     ParamDef(
         key="backtest.regime_enabled",
@@ -1336,9 +1357,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.BACKTEST,
         description="市场状态均线窗口(天)",
-        min_value=60, max_value=240,
+        min_value=60,
+        max_value=240,
     ),
-
     # ── §3.13 Modifier策略参数 ──
     ParamDef(
         key="modifier.regime_enabled",
@@ -1353,7 +1374,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.MODIFIER,
         description="高波缩放系数(risk_off)",
-        min_value=0.3, max_value=1.0,
+        min_value=0.3,
+        max_value=1.0,
     ),
     ParamDef(
         key="modifier.regime_vol_baseline",
@@ -1369,7 +1391,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.MODIFIER,
         description="缩放clip下限",
-        min_value=0.1, max_value=1.0,
+        min_value=0.1,
+        max_value=1.0,
     ),
     ParamDef(
         key="modifier.regime_clip_high",
@@ -1377,7 +1400,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.MODIFIER,
         description="缩放clip上限",
-        min_value=1.0, max_value=3.0,
+        min_value=1.0,
+        max_value=3.0,
     ),
     ParamDef(
         key="modifier.cash_buffer_pct",
@@ -1385,7 +1409,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.MODIFIER,
         description="CompositeStrategy现金缓冲比例",
-        min_value=0.0, max_value=0.10,
+        min_value=0.0,
+        max_value=0.10,
     ),
     ParamDef(
         key="modifier.initial_capital",
@@ -1393,9 +1418,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.MODIFIER,
         description="CompositeStrategy初始资金(可配置)",
-        min_value=100000.0, max_value=100000000.0,
+        min_value=100000.0,
+        max_value=100000000.0,
     ),
-
     # ── §3.13 FactorClassifier参数 ──
     ParamDef(
         key="factor.classifier_fast_threshold",
@@ -1403,7 +1428,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.FACTOR,
         description="FactorClassifier快衰减阈值(天)",
-        min_value=3, max_value=10,
+        min_value=3,
+        max_value=10,
     ),
     ParamDef(
         key="factor.classifier_standard_threshold",
@@ -1411,7 +1437,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.FACTOR,
         description="FactorClassifier标准阈值(天)",
-        min_value=10, max_value=30,
+        min_value=10,
+        max_value=30,
     ),
     ParamDef(
         key="factor.classifier_confidence_min",
@@ -1419,9 +1446,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.FACTOR,
         description="分类置信度下限",
-        min_value=0.5, max_value=0.9,
+        min_value=0.5,
+        max_value=0.9,
     ),
-
     # ── §3.14 AI闭环Agent 全局控制 ──
     ParamDef(
         key="ai_agent.automation_level",
@@ -1437,9 +1464,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="Pipeline单轮最大循环次数",
-        min_value=1, max_value=5,
+        min_value=1,
+        max_value=5,
     ),
-
     # ── §3.14 因子发现Agent ──
     ParamDef(
         key="ai_agent.discovery_schedule",
@@ -1454,7 +1481,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="类别饱和阈值(达到后切换搜索方向)",
-        min_value=5, max_value=30,
+        min_value=5,
+        max_value=30,
     ),
     ParamDef(
         key="ai_agent.ic_decay_urgent_threshold",
@@ -1462,7 +1490,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="IC衰退紧急阈值(触发紧急挖掘)",
-        min_value=0.10, max_value=0.50,
+        min_value=0.10,
+        max_value=0.50,
     ),
     ParamDef(
         key="ai_agent.llm_model_selection",
@@ -1478,7 +1507,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="LLM温度(因子发现)",
-        min_value=0.0, max_value=1.5,
+        min_value=0.0,
+        max_value=1.5,
     ),
     ParamDef(
         key="ai_agent.candidates_per_round",
@@ -1486,7 +1516,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="每轮候选因子数",
-        min_value=3, max_value=20,
+        min_value=3,
+        max_value=20,
     ),
     ParamDef(
         key="ai_agent.ic_onboard_threshold",
@@ -1494,7 +1525,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="IC入库阈值",
-        min_value=0.01, max_value=0.05,
+        min_value=0.01,
+        max_value=0.05,
     ),
     ParamDef(
         key="ai_agent.ir_onboard_threshold",
@@ -1502,7 +1534,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="IC_IR入库阈值",
-        min_value=0.1, max_value=1.0,
+        min_value=0.1,
+        max_value=1.0,
     ),
     ParamDef(
         key="ai_agent.correlation_onboard_threshold",
@@ -1510,7 +1543,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="相关性入库阈值(低于此值才入库)",
-        min_value=0.5, max_value=0.9,
+        min_value=0.5,
+        max_value=0.9,
     ),
     ParamDef(
         key="ai_agent.gp_convergence_rounds",
@@ -1518,9 +1552,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="GP收敛轮数(连续N轮无新因子则切换引擎)",
-        min_value=2, max_value=5,
+        min_value=2,
+        max_value=5,
     ),
-
     # ── §3.14 策略构建Agent ──
     ParamDef(
         key="ai_agent.strategy_schedule",
@@ -1535,7 +1569,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="IC衰退阈值(触发策略重构)",
-        min_value=0.3, max_value=0.8,
+        min_value=0.3,
+        max_value=0.8,
     ),
     ParamDef(
         key="ai_agent.min_factor_count",
@@ -1543,7 +1578,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="策略最少因子数",
-        min_value=2, max_value=10,
+        min_value=2,
+        max_value=10,
     ),
     ParamDef(
         key="ai_agent.max_factor_count",
@@ -1551,9 +1587,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="策略最多因子数",
-        min_value=5, max_value=30,
+        min_value=5,
+        max_value=30,
     ),
-
     # ── §3.14 诊断优化Agent ──
     ParamDef(
         key="ai_agent.min_annual_return",
@@ -1561,7 +1597,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="最低年化收益目标",
-        min_value=0.05, max_value=0.30,
+        min_value=0.05,
+        max_value=0.30,
     ),
     ParamDef(
         key="ai_agent.max_mdd",
@@ -1569,7 +1606,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="最大回撤容忍度",
-        min_value=0.05, max_value=0.30,
+        min_value=0.05,
+        max_value=0.30,
     ),
     ParamDef(
         key="ai_agent.min_sharpe",
@@ -1577,7 +1615,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.AI_AGENT,
         description="最低Sharpe目标",
-        min_value=0.5, max_value=2.0,
+        min_value=0.5,
+        max_value=2.0,
     ),
     ParamDef(
         key="ai_agent.diagnosis_schedule",
@@ -1592,7 +1631,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.AI_AGENT,
         description="诊断回看天数",
-        min_value=20, max_value=252,
+        min_value=20,
+        max_value=252,
     ),
     ParamDef(
         key="ai_agent.auto_param_adjust",
@@ -1601,7 +1641,6 @@ _register(
         module=ParamModule.AI_AGENT,
         description="诊断后是否自动调参(L3级别)",
     ),
-
     # ── 通知参数 ──
     ParamDef(
         key="notification.dingtalk_enabled",
@@ -1637,7 +1676,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.NOTIFICATION,
         description="告警节流窗口(秒，同类告警间隔)",
-        min_value=60, max_value=3600,
+        min_value=60,
+        max_value=3600,
     ),
     ParamDef(
         key="notification.daily_digest_enabled",
@@ -1653,7 +1693,6 @@ _register(
         module=ParamModule.NOTIFICATION,
         description="每日汇总发送时间",
     ),
-
     # ── 监控参数 ──
     ParamDef(
         key="monitor.health_check_interval_sec",
@@ -1661,7 +1700,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.MONITOR,
         description="健康检查间隔(秒)",
-        min_value=60, max_value=3600,
+        min_value=60,
+        max_value=3600,
     ),
     ParamDef(
         key="monitor.pt_watchdog_enabled",
@@ -1676,7 +1716,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.MONITOR,
         description="PT心跳超时(分钟，超时触发P0)",
-        min_value=10, max_value=120,
+        min_value=10,
+        max_value=120,
     ),
     ParamDef(
         key="monitor.db_connection_pool_size",
@@ -1684,7 +1725,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.MONITOR,
         description="数据库连接池大小",
-        min_value=1, max_value=20,
+        min_value=1,
+        max_value=20,
     ),
     ParamDef(
         key="monitor.redis_health_check_enabled",
@@ -1699,7 +1741,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.MONITOR,
         description="磁盘使用率告警阈值(%)",
-        min_value=50, max_value=95,
+        min_value=50,
+        max_value=95,
     ),
     ParamDef(
         key="monitor.factor_ic_check_enabled",
@@ -1708,7 +1751,6 @@ _register(
         module=ParamModule.MONITOR,
         description="因子IC日检启用",
     ),
-
     # ── 系统参数 ──
     ParamDef(
         key="system.log_level",
@@ -1732,7 +1774,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SYSTEM,
         description="单日志文件最大字节(10MB)",
-        min_value=1048576, max_value=104857600,
+        min_value=1048576,
+        max_value=104857600,
     ),
     ParamDef(
         key="system.log_backup_count",
@@ -1740,7 +1783,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SYSTEM,
         description="日志轮转保留数",
-        min_value=3, max_value=30,
+        min_value=3,
+        max_value=30,
     ),
     ParamDef(
         key="system.api_cors_origins",
@@ -1755,7 +1799,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SYSTEM,
         description="API限流(请求/分钟)",
-        min_value=30, max_value=600,
+        min_value=30,
+        max_value=600,
     ),
     ParamDef(
         key="system.backup_retention_days",
@@ -1763,7 +1808,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SYSTEM,
         description="数据库备份保留天数",
-        min_value=3, max_value=30,
+        min_value=3,
+        max_value=30,
     ),
     ParamDef(
         key="system.backup_monthly_enabled",
@@ -1778,7 +1824,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SYSTEM,
         description="Redis缓存默认TTL(秒)",
-        min_value=60, max_value=3600,
+        min_value=60,
+        max_value=3600,
     ),
     ParamDef(
         key="system.timezone",
@@ -1787,7 +1834,6 @@ _register(
         module=ParamModule.SYSTEM,
         description="系统时区",
     ),
-
     # ── GP引擎补全 ──
     ParamDef(
         key="gp_engine.n_islands",
@@ -1795,7 +1841,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.GP_ENGINE,
         description="岛屿模型子种群数",
-        min_value=1, max_value=8,
+        min_value=1,
+        max_value=8,
     ),
     ParamDef(
         key="gp_engine.migration_interval",
@@ -1803,7 +1850,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.GP_ENGINE,
         description="岛屿迁移间隔(代)",
-        min_value=3, max_value=20,
+        min_value=3,
+        max_value=20,
     ),
     ParamDef(
         key="gp_engine.migration_size",
@@ -1811,7 +1859,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.GP_ENGINE,
         description="每次迁移个体数",
-        min_value=1, max_value=10,
+        min_value=1,
+        max_value=10,
     ),
     ParamDef(
         key="gp_engine.seed_ratio",
@@ -1819,7 +1868,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.GP_ENGINE,
         description="Warm Start种子比例",
-        min_value=0.0, max_value=1.0,
+        min_value=0.0,
+        max_value=1.0,
     ),
     ParamDef(
         key="gp_engine.complexity_penalty",
@@ -1827,7 +1877,8 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.GP_ENGINE,
         description="适应度-复杂度惩罚系数",
-        min_value=0.0, max_value=0.5,
+        min_value=0.0,
+        max_value=0.5,
     ),
     ParamDef(
         key="gp_engine.novelty_weight",
@@ -1835,9 +1886,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.GP_ENGINE,
         description="适应度-新颖性权重",
-        min_value=0.0, max_value=1.0,
+        min_value=0.0,
+        max_value=1.0,
     ),
-
     # ── LLM Mining补全 ──
     ParamDef(
         key="llm_mining.code_retry_count",
@@ -1845,7 +1896,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.LLM_MINING,
         description="代码生成重试次数",
-        min_value=0, max_value=5,
+        min_value=0,
+        max_value=5,
     ),
     ParamDef(
         key="llm_mining.hypotheses_per_round",
@@ -1853,7 +1905,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.LLM_MINING,
         description="每轮假设数量",
-        min_value=1, max_value=10,
+        min_value=1,
+        max_value=10,
     ),
     ParamDef(
         key="llm_mining.max_tokens",
@@ -1861,9 +1914,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.LLM_MINING,
         description="LLM最大token数",
-        min_value=512, max_value=8192,
+        min_value=512,
+        max_value=8192,
     ),
-
     # ── 调度补全 ──
     ParamDef(
         key="scheduler.gp_schedule",
@@ -1892,9 +1945,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.SCHEDULER,
         description="调度任务超时(秒)",
-        min_value=300, max_value=7200,
+        min_value=300,
+        max_value=7200,
     ),
-
     # ── Universe补全 ──
     ParamDef(
         key="universe.include_boards",
@@ -1909,9 +1962,9 @@ _register(
         param_type=ParamType.FLOAT,
         module=ParamModule.UNIVERSE,
         description="PE上限(排除极端估值)",
-        min_value=50.0, max_value=500.0,
+        min_value=50.0,
+        max_value=500.0,
     ),
-
     # ── Execution补全 ──
     ParamDef(
         key="execution.qmt_path",
@@ -1933,7 +1986,8 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.EXECUTION,
         description="下单超时(秒)",
-        min_value=60, max_value=600,
+        min_value=60,
+        max_value=600,
     ),
     ParamDef(
         key="execution.max_retry",
@@ -1941,9 +1995,9 @@ _register(
         param_type=ParamType.INT,
         module=ParamModule.EXECUTION,
         description="下单最大重试次数",
-        min_value=0, max_value=5,
+        min_value=0,
+        max_value=5,
     ),
-
     # ── Data补全 ──
     ParamDef(
         key="data.tushare_token",
@@ -1974,7 +2028,6 @@ _register(
         module=ParamModule.DATA,
         description="需拉取的指数代码(逗号分隔)",
     ),
-
     # ── Paper Trading补全 ──
     ParamDef(
         key="paper_trading.signal_time",

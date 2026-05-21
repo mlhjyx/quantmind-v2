@@ -103,14 +103,10 @@ def _parse_candidate_id(candidate_id: str) -> tuple[str, int]:
             already validated, but service re-checks per fail-loud 铁律 33).
     """
     if "#" not in candidate_id:
-        raise ReflectionCandidateError(
-            f"candidate_id {candidate_id!r} missing '#' separator"
-        )
+        raise ReflectionCandidateError(f"candidate_id {candidate_id!r} missing '#' separator")
     period_label, _, index_raw = candidate_id.rpartition("#")
     if not period_label:
-        raise ReflectionCandidateError(
-            f"candidate_id {candidate_id!r} has empty period_label"
-        )
+        raise ReflectionCandidateError(f"candidate_id {candidate_id!r} has empty period_label")
     try:
         index = int(index_raw)
     except ValueError as exc:
@@ -166,9 +162,7 @@ def _extract_candidate_text(report_path: Path, index: int) -> str:
     try:
         content = report_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ReflectionCandidateError(
-            f"failed to read source report {report_path}"
-        ) from exc
+        raise ReflectionCandidateError(f"failed to read source report {report_path}") from exc
 
     candidates: list[str] = []
     in_candidate_block = False
@@ -258,18 +252,12 @@ class ReflectionCandidateService:
 
         now_effective = now if now is not None else datetime.now(UTC)
         if now_effective.tzinfo is None:
-            raise ValueError(
-                "process_candidate_command: now must be tz-aware (铁律 41 sustained)"
-            )
+            raise ValueError("process_candidate_command: now must be tz-aware (铁律 41 sustained)")
 
         candidate_id = parsed.candidate_id
         period_label, index = _parse_candidate_id(candidate_id)
 
-        status = (
-            "approved"
-            if parsed.command is CandidateCommand.APPROVE
-            else "rejected"
-        )
+        status = "approved" if parsed.command is CandidateCommand.APPROVE else "rejected"
         outcome = (
             CandidateOutcome.APPROVED_SEDIMENTED
             if parsed.command is CandidateCommand.APPROVE

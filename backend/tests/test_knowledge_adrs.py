@@ -1,4 +1,5 @@
 """MVP 1.4 DBADRRegistry 单测 — register / supersede / get_by_id / list_by_ironlaw."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

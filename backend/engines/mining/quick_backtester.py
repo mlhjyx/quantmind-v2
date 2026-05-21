@@ -214,17 +214,16 @@ class QuickBacktester:
 
         if not valid_rebal_dates:
             raise ValueError(
-                f"无有效调仓日: 调仓日={len(self._rebalance_dates)}, "
-                f"因子日={len(factor_idx)}"
+                f"无有效调仓日: 调仓日={len(self._rebalance_dates)}, 因子日={len(factor_idx)}"
             )
 
         # 执行日映射: signal_date → exec_date (下一个交易日)
         exec_map: dict[date, date] = {}
         for sd in valid_rebal_dates:
             sd_key = sd if isinstance(sd, date) else sd.date()
-            future = [d for d in self._all_dates if (
-                (d if isinstance(d, date) else d.date()) > sd_key
-            )]
+            future = [
+                d for d in self._all_dates if ((d if isinstance(d, date) else d.date()) > sd_key)
+            ]
             if future:
                 exec_d = future[0]
                 if isinstance(exec_d, pd.Timestamp):
@@ -246,8 +245,7 @@ class QuickBacktester:
                 valid_codes = [
                     (code, val)
                     for code, val in factor_snapshot.items()
-                    if not math.isnan(val)
-                    and price_idx.get((code, td), {}).get("volume", 0) > 0
+                    if not math.isnan(val) and price_idx.get((code, td), {}).get("volume", 0) > 0
                 ]
                 valid_codes.sort(key=lambda x: x[1], reverse=True)
                 selected = [code for code, _ in valid_codes[: self.top_n]]
@@ -257,10 +255,13 @@ class QuickBacktester:
 
                     # 计算换手率（双边）
                     all_codes = set(new_portfolio) | set(current_portfolio)
-                    turnover = sum(
-                        abs(new_portfolio.get(c, 0.0) - current_portfolio.get(c, 0.0))
-                        for c in all_codes
-                    ) / 2.0
+                    turnover = (
+                        sum(
+                            abs(new_portfolio.get(c, 0.0) - current_portfolio.get(c, 0.0))
+                            for c in all_codes
+                        )
+                        / 2.0
+                    )
                     turnovers.append(turnover)
 
                     current_portfolio = new_portfolio
@@ -466,10 +467,9 @@ def _calc_ic_mean(
                 td = td.date()
             close_idx[(row["code"], td)] = float(row["close"])
 
-        all_dates = sorted({
-            d if isinstance(d, date) else d.date()
-            for d in price_data["trade_date"].unique()
-        })
+        all_dates = sorted(
+            {d if isinstance(d, date) else d.date() for d in price_data["trade_date"].unique()}
+        )
 
         ics: list[float] = []
         for _, grp in factor_values.groupby("trade_date"):
@@ -507,3 +507,112 @@ def _calc_ic_mean(
     except Exception as exc:  # noqa: BLE001
         logger.debug("[QuickBacktester] IC计算失败: %s", exc)
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# 模块级接口 (DEV_AI_EVOLUTION §二-A 回测引擎接口需求)
+# ---------------------------------------------------------------------------
+
+
+def _annualized_return(daily_returns: pd.Series | None) -> float:
+    """从日收益率序列计算年化收益 (复利口径)。
+
+    Args:
+        daily_returns: 日收益率序列; None / 长度 < 2 时返回 0.0。
+
+    Returns:
+        年化收益率。总收益 <= -100% (净值归零) 时返回 -1.0, 避免对负数开
+        分数次方产生 nan。
+    """
+    if daily_returns is None or len(daily_returns) < 2:
+        return 0.0
+    total_return = float((1.0 + daily_returns).prod() - 1.0)
+    if total_return <= -1.0:
+        return -1.0
+    years = len(daily_returns) / _TRADING_DAYS_PER_YEAR
+    if years < 1e-9:
+        return 0.0
+    return float((1.0 + total_return) ** (1.0 / years) - 1.0)
+
+
+def run_quick_backtest(config: dict, years: int = 1) -> dict:
+    """轻量回测入口 (DEV_AI_EVOLUTION §二-A) — 1 年窗口, 简化成本。
+
+    薄封装 QuickBacktester, 供 AI 闭环内循环快速淘汰弱候选 (~1-2s/策略)。
+    数据由 config 提供 (caller-provides-data —— 与 QuickBacktester 构造契约
+    一致, 见类 docstring "调用方传入预处理好的 DataFrame"); 本函数不读 DB。
+
+    Args:
+        config: 策略配置字典, 必须含:
+            - "price_data" (pd.DataFrame): 行情, 列见 QuickBacktester。
+            - "factor_values" (pd.DataFrame): 因子值, 列见 QuickBacktester.backtest。
+            可选: "top_n" (int, 默认 15) / "initial_capital" (float, 默认 1e6) /
+            "years" (int, 存在时覆盖 years 形参 —— 供 run_batch_backtest 按
+            config 定制窗口)。
+        years: 回测窗口年数默认值 (默认 1); config["years"] 存在时被其覆盖。
+            映射 QuickBacktester.lookback_days。
+
+    Returns:
+        {"sharpe", "mdd", "annual_return", "turnover"} —— 对齐 §二-A 规格。
+        回测失败时 sharpe=-999.0 且附加 "error" 键说明原因。
+
+    Raises:
+        ValueError: config 缺 price_data 或 factor_values。
+    """
+    price_data = config.get("price_data")
+    factor_values = config.get("factor_values")
+    if price_data is None or factor_values is None:
+        raise ValueError(
+            "run_quick_backtest: config 必须含 'price_data' 与 'factor_values' "
+            "(caller-provides-data 契约)"
+        )
+
+    # config["years"] 可覆盖 years 形参 (per-config 窗口定制)。
+    # lookback_days = years × 365 日历日 ≈ years × 244 交易日 —— 与
+    # _annualized_return 的 /_TRADING_DAYS_PER_YEAR (244) 年化口径一致。
+    effective_years = int(config.get("years", years))
+    bt = QuickBacktester(
+        price_data=price_data,
+        top_n=int(config.get("top_n", _DEFAULT_TOP_N)),
+        initial_capital=float(config.get("initial_capital", _DEFAULT_INITIAL_CAPITAL)),
+        lookback_days=effective_years * 365,
+    )
+    result = bt.backtest(factor_values)
+
+    out: dict = {
+        "sharpe": result.sharpe,
+        "mdd": result.mdd,
+        "annual_return": _annualized_return(result.daily_returns),
+        "turnover": result.turnover,
+    }
+    if result.error is not None:
+        out["error"] = result.error
+    return out
+
+
+def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
+    """批量回测 (DEV_AI_EVOLUTION §二-A) — 串行跑 N 个策略, 尊重内存约束。
+
+    串行 (非并行) 逐个处理: 每个策略的 QuickBacktester 在单次迭代内构造、用完
+    即弃, 由 GC 释放其内存索引, 避免同时持有多策略数据触发 OOM (铁律 9 ——
+    重数据 max 2 并发; 串行更保守)。
+
+    Args:
+        configs: 策略配置列表, 每项格式同 run_quick_backtest 的 config。
+            单个 config 可经 "years" 键自定回测窗口 (默认 1 年)。
+        mode: "quick" —— 逐个走 run_quick_backtest。其余值 raise ValueError:
+            完整 WF 批量是既有 scripts/rolling_wf.py 路径, 不在本接口重复实现。
+
+    Returns:
+        与 configs 等长、同序的结果 dict 列表。
+
+    Raises:
+        ValueError: mode 非 "quick"。
+    """
+    if mode != "quick":
+        raise ValueError(
+            f"run_batch_backtest 当前仅支持 mode='quick' (收到 {mode!r}); "
+            "完整 WF 批量走既有 scripts/rolling_wf.py 路径"
+        )
+    # 不强制 years —— 各 config 经 "years" 键自定窗口 (默认 1, 见 run_quick_backtest)。
+    return [run_quick_backtest(cfg) for cfg in configs]

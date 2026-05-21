@@ -159,9 +159,7 @@ def run_year(year: int, engine_cfg: EngineBacktestConfig) -> dict | None:
     t0 = time.time()
     platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
     if platform_result.engine_artifacts is None:
-        raise RuntimeError(
-            f"engine_artifacts=None (year={year}) — LIVE_PT 应强制真跑"
-        )
+        raise RuntimeError(f"engine_artifacts=None (year={year}) — LIVE_PT 应强制真跑")
     result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 
@@ -270,9 +268,7 @@ def main():
 
     # 12年 chain-link NAV (用于后续 FF3 归因)
     print("\n[Chain-Link] 拼接 12 年 NAV (收益率链接)...")
-    all_returns = pd.concat(
-        [r["nav_series"].pct_change().dropna() for r in results]
-    ).sort_index()
+    all_returns = pd.concat([r["nav_series"].pct_change().dropna() for r in results]).sort_index()
     all_returns = all_returns[~all_returns.index.duplicated(keep="first")]
     chain_nav = (1.0 + all_returns).cumprod() * 1_000_000
     print(f"  Chain NAV: {len(chain_nav)} 天 ({chain_nav.index[0]}..{chain_nav.index[-1]})")
@@ -291,9 +287,7 @@ def main():
             "pms_enabled": True,
             "universe": "exclude BJ/ST/suspended/new_stock",
         },
-        "years": [
-            {k: v for k, v in r.items() if k != "nav_series"} for r in results
-        ],
+        "years": [{k: v for k, v in r.items() if k != "nav_series"} for r in results],
         "stats": stats,
         "total_elapsed_sec": round(total_elapsed, 0),
     }
@@ -318,8 +312,8 @@ def main():
         f"{'Calmar':>8}  {'WinRate':>8}  {'Trades':>7}  {'Regime Hint'}"
     )
     print(
-        f"  {'----':>6}  {'-'*8:>8}  {'-'*8:>8}  {'-'*8:>8}  "
-        f"{'-'*8:>8}  {'-'*8:>8}  {'-'*7:>7}  {'-'*30}"
+        f"  {'----':>6}  {'-' * 8:>8}  {'-' * 8:>8}  {'-' * 8:>8}  "
+        f"{'-' * 8:>8}  {'-' * 8:>8}  {'-' * 7:>7}  {'-' * 30}"
     )
 
     regime_hints = {
@@ -348,9 +342,11 @@ def main():
         )
     print("\n  * = partial year")
 
-    print(f"\n  Full years ({len(full_years)}): "
-          f"Sharpe mean={stats['sharpe_mean']}, median={stats['sharpe_median']}, "
-          f"std={stats['sharpe_std']}")
+    print(
+        f"\n  Full years ({len(full_years)}): "
+        f"Sharpe mean={stats['sharpe_mean']}, median={stats['sharpe_median']}, "
+        f"std={stats['sharpe_std']}"
+    )
     print(f"  Sharpe range: [{stats['sharpe_min']}, {stats['sharpe_max']}]")
     print(f"  MDD mean / worst: {stats['mdd_mean']:.2%} / {stats['mdd_worst']:.2%}")
     print(f"  Annual mean: {stats['annual_mean']:.2%}")

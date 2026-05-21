@@ -95,9 +95,7 @@ def _get_session(session: AsyncSession = Depends(get_db)) -> AsyncSession:
 # ---------------------------------------------------------------------------
 
 
-async def _get_run_or_404(
-    session: AsyncSession, run_id: UUID
-) -> dict[str, Any]:
+async def _get_run_or_404(session: AsyncSession, run_id: UUID) -> dict[str, Any]:
     """从 backtest_run 获取记录，不存在则抛 404。"""
     result = await session.execute(
         text("SELECT * FROM backtest_run WHERE run_id = :rid"),
@@ -109,9 +107,7 @@ async def _get_run_or_404(
     return dict(row)
 
 
-async def _require_completed(
-    session: AsyncSession, run_id: UUID
-) -> dict[str, Any]:
+async def _require_completed(session: AsyncSession, run_id: UUID) -> dict[str, Any]:
     """获取回测记录并要求状态为 completed。"""
     run = await _get_run_or_404(session, run_id)
     if run["status"] != "completed":
@@ -188,10 +184,16 @@ async def submit_backtest(
             "run_id": run_id,
             "sid": req.strategy_id,
             "cfg": config_json,
-            "factors": req.extra_config.get("factor_list", [
-                "turnover_mean_20", "volatility_20", "reversal_20",
-                "amihud_20", "bp_ratio",
-            ]),
+            "factors": req.extra_config.get(
+                "factor_list",
+                [
+                    "turnover_mean_20",
+                    "volatility_20",
+                    "reversal_20",
+                    "amihud_20",
+                    "bp_ratio",
+                ],
+            ),
             "sd": req.start_date,
             "ed": req.end_date,
         },
@@ -199,6 +201,7 @@ async def submit_backtest(
     await session.commit()
 
     from app.tasks.backtest_tasks import run_backtest
+
     run_backtest.delay(run_id)
     logger.info("回测任务已提交: run_id=%s, strategy=%s", run_id, req.strategy_id)
 
@@ -411,10 +414,7 @@ async def get_nav_series(
         """,
         {"rid": str(run_id)},
     )
-    return [
-        {**r, "trade_date": str(r["trade_date"])}
-        for r in rows
-    ]
+    return [{**r, "trade_date": str(r["trade_date"])} for r in rows]
 
 
 @router.get("/{run_id}/trades")
@@ -561,10 +561,7 @@ async def get_holdings(
         )
 
     rows = result.mappings().all()
-    return [
-        {**dict(r), "trade_date": str(r["trade_date"])}
-        for r in rows
-    ]
+    return [{**dict(r), "trade_date": str(r["trade_date"])} for r in rows]
 
 
 @router.get("/{run_id}/annual")
@@ -622,14 +619,16 @@ async def get_annual_breakdown(
         avg_ret = r["avg_daily_return"] or 0
         std_ret = r["std_daily_return"] or 1
         trading_days = r["trading_days"] or 1
-        sharpe = (avg_ret / std_ret * (trading_days ** 0.5)) if std_ret > 0 else 0
-        annual_data.append({
-            "year": r["year"],
-            "annual_return": r["annual_return"],
-            "sharpe_ratio": round(sharpe, 4),
-            "trading_days": trading_days,
-            "worst_day": r["worst_day"],
-        })
+        sharpe = (avg_ret / std_ret * (trading_days**0.5)) if std_ret > 0 else 0
+        annual_data.append(
+            {
+                "year": r["year"],
+                "annual_return": r["annual_return"],
+                "sharpe_ratio": round(sharpe, 4),
+                "trading_days": trading_days,
+                "worst_day": r["worst_day"],
+            }
+        )
 
     return annual_data
 
@@ -812,9 +811,7 @@ async def get_market_state_performance(
         avg_ret = row["avg_daily_return"] or 0
         std_ret = row["std_daily_return"] or 1
         days = row["trading_days"] or 1
-        row["sharpe_estimate"] = round(
-            (avg_ret / std_ret * (days ** 0.5)) if std_ret > 0 else 0, 4
-        )
+        row["sharpe_estimate"] = round((avg_ret / std_ret * (days**0.5)) if std_ret > 0 else 0, 4)
         states.append(row)
 
     return {
@@ -887,11 +884,13 @@ async def get_cost_sensitivity(
 
     for mult in multipliers:
         if mult == 1.0:
-            sensitivity_rows.append({
-                "cost_multiplier": mult,
-                "label": "基准",
-                **base_metrics,
-            })
+            sensitivity_rows.append(
+                {
+                    "cost_multiplier": mult,
+                    "label": "基准",
+                    **base_metrics,
+                }
+            )
         else:
             # 简化计算：按成本差异调整年化收益和 Sharpe
             cost_delta_annual = daily_cost_impact * (mult - 1.0) * 252
@@ -901,17 +900,21 @@ async def get_cost_sensitivity(
 
             adj_annual = base_annual - cost_delta_annual
             # Sharpe 粗略调整
-            adj_sharpe = base_sharpe * (1 + adj_annual) / (1 + base_annual) if (1 + base_annual) != 0 else 0
+            adj_sharpe = (
+                base_sharpe * (1 + adj_annual) / (1 + base_annual) if (1 + base_annual) != 0 else 0
+            )
             adj_calmar = abs(adj_annual / base_mdd) if base_mdd and base_mdd != 0 else None
 
-            sensitivity_rows.append({
-                "cost_multiplier": mult,
-                "label": f"{mult}x",
-                "annual_return": round(adj_annual, 6) if adj_annual is not None else None,
-                "sharpe_ratio": round(adj_sharpe, 4) if adj_sharpe is not None else None,
-                "max_drawdown": base_mdd,  # MDD 基本不受成本影响
-                "calmar_ratio": round(adj_calmar, 4) if adj_calmar is not None else None,
-            })
+            sensitivity_rows.append(
+                {
+                    "cost_multiplier": mult,
+                    "label": f"{mult}x",
+                    "annual_return": round(adj_annual, 6) if adj_annual is not None else None,
+                    "sharpe_ratio": round(adj_sharpe, 4) if adj_sharpe is not None else None,
+                    "max_drawdown": base_mdd,  # MDD 基本不受成本影响
+                    "calmar_ratio": round(adj_calmar, 4) if adj_calmar is not None else None,
+                }
+            )
 
     # CLAUDE.md: 如果2倍成本下 Sharpe < 0.5，策略在实盘中大概率不行
     warning = None
@@ -986,9 +989,7 @@ async def get_quantstats_report(
     benchmark_returns = [float(r["benchmark_return"] or 0) for r in rows]
 
     returns_series = pd.Series(returns, index=pd.DatetimeIndex(dates), name="Strategy")
-    benchmark_series = pd.Series(
-        benchmark_returns, index=pd.DatetimeIndex(dates), name="Benchmark"
-    )
+    benchmark_series = pd.Series(benchmark_returns, index=pd.DatetimeIndex(dates), name="Benchmark")
 
     # 生成 HTML 到临时文件
     with tempfile.NamedTemporaryFile(
@@ -1052,20 +1053,22 @@ async def compare_strategies(
             raise HTTPException(status_code=400, detail=f"无效的 run_id: {rid_str}") from err
 
         run = await _get_run_or_404(session, rid)
-        results.append({
-            "run_id": str(run["run_id"]),
-            "strategy_id": str(run["strategy_id"]) if run.get("strategy_id") else None,
-            "run_name": run.get("run_name"),
-            "status": run["status"],
-            "start_date": str(run["start_date"]),
-            "end_date": str(run["end_date"]),
-            "annual_return": run.get("annual_return"),
-            "sharpe_ratio": run.get("sharpe_ratio"),
-            "max_drawdown": run.get("max_drawdown"),
-            "calmar_ratio": run.get("calmar_ratio"),
-            "total_turnover": run.get("total_turnover"),
-            "win_rate": run.get("win_rate"),
-        })
+        results.append(
+            {
+                "run_id": str(run["run_id"]),
+                "strategy_id": str(run["strategy_id"]) if run.get("strategy_id") else None,
+                "run_name": run.get("run_name"),
+                "status": run["status"],
+                "start_date": str(run["start_date"]),
+                "end_date": str(run["end_date"]),
+                "annual_return": run.get("annual_return"),
+                "sharpe_ratio": run.get("sharpe_ratio"),
+                "max_drawdown": run.get("max_drawdown"),
+                "calmar_ratio": run.get("calmar_ratio"),
+                "total_turnover": run.get("total_turnover"),
+                "win_rate": run.get("win_rate"),
+            }
+        )
 
     return results
 
@@ -1074,9 +1077,7 @@ class SensitivityRequest(BaseModel):
     """参数敏感性分析请求。"""
 
     param_name: str = Field(..., description="要分析的参数名")
-    param_values: list[float] = Field(
-        ..., min_length=2, max_length=20, description="参数取值列表"
-    )
+    param_values: list[float] = Field(..., min_length=2, max_length=20, description="参数取值列表")
 
 
 @router.post("/{run_id}/sensitivity")

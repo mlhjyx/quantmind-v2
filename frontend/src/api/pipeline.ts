@@ -98,11 +98,16 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
 }
 
 export async function triggerPipeline(): Promise<{ run_id: string }> {
+  // NOTE: No backend endpoint exists yet for pipeline trigger via HTTP.
+  // GP pipeline is started via Celery task directly. This will return 404 until
+  // a POST /api/pipeline/trigger endpoint is implemented in backend/app/api/pipeline.py.
   const res = await apiClient.post<{ run_id: string }>("/pipeline/trigger");
   return res.data;
 }
 
 export async function pausePipeline(): Promise<void> {
+  // NOTE: No backend endpoint exists yet for pipeline pause via HTTP.
+  // Will return 404 until POST /api/pipeline/pause is implemented.
   await apiClient.post("/pipeline/pause");
 }
 
@@ -119,23 +124,31 @@ export async function getPendingApprovals(): Promise<ApprovalItem[]> {
 }
 
 export async function approveItem(id: string, note?: string): Promise<void> {
-  await apiClient.post(`/pipeline/approve/${id}`, { note });
+  // Phase K fix: was /pipeline/approve/${id} (404). Backend route is POST /api/approval/queue/{id}/approve.
+  // Body field aligned: backend expects reviewer_notes (ApprovalActionRequest), not note.
+  await apiClient.post(`/approval/queue/${id}/approve`, { reviewer_notes: note ?? null });
 }
 
 export async function rejectItem(id: string, note?: string): Promise<void> {
-  await apiClient.post(`/pipeline/reject/${id}`, { note });
+  // Phase K fix: was /pipeline/reject/${id} (404). Backend route is POST /api/approval/queue/{id}/reject.
+  await apiClient.post(`/approval/queue/${id}/reject`, { reviewer_notes: note ?? null });
 }
 
 export async function holdItem(id: string, note?: string): Promise<void> {
-  await apiClient.post(`/pipeline/hold/${id}`, { note });
+  // Phase K fix: was /pipeline/hold/${id} (404). Backend route is POST /api/approval/queue/{id}/hold.
+  await apiClient.post(`/approval/queue/${id}/hold`, { reviewer_notes: note ?? null });
 }
 
 export async function getPipelineLogs(runId: string): Promise<PipelineLogEntry[]> {
+  // NOTE: No backend endpoint exists yet. GET /api/pipeline/{run_id}/logs is not
+  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
   const res = await apiClient.get<PipelineLogEntry[]>(`/pipeline/${runId}/logs`);
   return res.data;
 }
 
 export async function setAutomationLevel(level: AutomationLevel): Promise<void> {
+  // NOTE: No backend endpoint exists yet. PUT /api/pipeline/automation-level is not
+  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
   await apiClient.put("/pipeline/automation-level", { level });
 }
 

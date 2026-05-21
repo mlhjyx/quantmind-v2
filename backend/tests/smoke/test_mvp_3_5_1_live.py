@@ -10,6 +10,7 @@ subprocess 真启动验证:
   - record_evaluation 接受 Verdict
   - migration SQL 静态 marker (表定义 + 索引 + ON DELETE RESTRICT)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -21,7 +22,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-_SMOKE_TEMPLATE = '''
+_SMOKE_TEMPLATE = """
 import platform as _stdlib_platform
 _stdlib_platform.python_implementation()
 import sys
@@ -139,15 +140,13 @@ assert "_assert_eval_passed_for_live" in reg_src
 assert "DEFAULT_LIVE_EVAL_FRESHNESS_DAYS" in reg_src
 
 print("MVP_3_5_1_SMOKE_OK")
-'''
+"""
 
 
 def _build_smoke_code() -> str:
     backend_path = str(PROJECT_ROOT / "backend")
     project_root = str(PROJECT_ROOT)
-    return _SMOKE_TEMPLATE.format(
-        backend_path=backend_path, project_root=project_root
-    )
+    return _SMOKE_TEMPLATE.format(backend_path=backend_path, project_root=project_root)
 
 
 @pytest.mark.smoke
@@ -164,6 +163,4 @@ def test_mvp_3_5_1_subprocess_evaluation_required():
         f"smoke subprocess failed: returncode={result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert "MVP_3_5_1_SMOKE_OK" in result.stdout, (
-        f"missing success marker, stdout={result.stdout}"
-    )
+    assert "MVP_3_5_1_SMOKE_OK" in result.stdout, f"missing success marker, stdout={result.stdout}"

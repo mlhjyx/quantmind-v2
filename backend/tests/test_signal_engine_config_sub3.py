@@ -104,8 +104,10 @@ class TestBuildPaperTradingConfigYamlAuthority:
         # YAML 权威 (pt_live.yaml L15/17)
         assert PAPER_TRADING_CONFIG.rebalance_freq == "monthly"
         assert PAPER_TRADING_CONFIG.turnover_cap == 0.50
-        # .env 权威 (config.py Settings 默认, 若 .env 缺则 fallback)
-        assert PAPER_TRADING_CONFIG.top_n == 20
+        # .env 权威 (config.py Settings 默认, 若 .env 缺则 fallback).
+        # top_n=5: 2026-05-18 Stage 6 partial-pilot 灰度 (PT_TOP_N=20→5, user 同意);
+        # truth source backend/.env:33 + configs/pt_live.yaml:18. 历史默认 20.
+        assert PAPER_TRADING_CONFIG.top_n == 5
         assert PAPER_TRADING_CONFIG.industry_cap == 1.0
         assert PAPER_TRADING_CONFIG.size_neutral_beta == 0.50
 

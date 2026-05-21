@@ -12,7 +12,7 @@
 
 QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
-- **当前**: Phase A-F + Step 0→6-H 重构 + 研究收束完成. PT 配置 = CORE3+dv_ttm WF OOS Sharpe=0.8659 (2026-04-12 PASS). PT 真账户 0 持仓 + cash ¥993,520 (2026-04-29 user 决议清仓, 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md)). 主线 = Wave 4 MVP 4.1 Observability (batch 1+2.1+2.2 ✅).
+- **当前**: Phase A-F + Step 0→6-H 重构 + 研究收束完成. PT 配置 = CORE3+dv_ttm WF OOS Sharpe=0.8659 (2026-04-12 PASS). PT 真账户 0 持仓 + cash ¥993,520.66 (2026-04-29 user 决议清仓, 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md)). 主线 = Wave 4 MVP 4.1 Observability (batch 1+2.1+2.2 ✅).
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
 - **PMS**: v1.0阶梯利润保护3层 — **已并入 Wave 3 MVP 3.1 Risk Framework** (ADR-010, PMSRule L1/L2/L3 14:30 Beat)
 - **下一步**: Wave 4 MVP 4.1 batch 3.x (17 scripts SDK migration, 进行中) + Wave 4 剩 4.2/4.3/4.4. PT 重启 gate prerequisite 见 [SHUTDOWN_NOTICE_2026_04_30 §9](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). 历史 V4 路线图 (Phase 1.1-3 + Phase 4) 全 ✅ 或 NO-GO 沉淀, 详 SYSTEM_STATUS.md §0 / [QPB v1.16](docs/QUANTMIND_PLATFORM_BLUEPRINT.md).
@@ -47,9 +47,9 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 | LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
 ### 因子存储 (2026-04-30 Session 45 D3-B 实测)
-- **factor_values**: 840,478,083 行 (~172 GB, TimescaleDB hypertable 152 chunks)
+- **factor_values**: 840,478,083 行 (~172 GB, TimescaleDB hypertable 152 chunks) **[Session 45 D3-B 2026-04-30 实测, 跨 SSOT 漂移: SYSTEM_STATUS.md:732 = 501M 4-07 snapshot, 1.67x diff — 待 Phase B-2 post 5-27 fresh DB verify]**
 - **factor_ic_history**: 145,894 行 (~36 MB), IC唯一入库点 (铁律 11), 未入库IC视为不存在
-- **minute_bars**: 190,885,634 行 (~36 GB), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ)
+- **minute_bars**: 190,885,634 行 (~36 GB), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ) **[Session 45 D3-B 2026-04-30 实测, 跨 SSOT 漂移: SYSTEM_STATUS.md:726 = 139M 4-17 snapshot, 1.37x diff — 待 Phase B-2 fresh DB verify]**
 - **klines_daily**: 11,776,616 行 (~4 GB, TimescaleDB hypertable 53 chunks)
 - **daily_basic**: 11,681,799 行 (~3.7 GB)
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
@@ -90,7 +90,7 @@ quantmind-v2/
 │   ├── engines/                                 # 核心计算引擎 (factor_engine / backtest / fast_neutralize / config_guard / slippage_model / mining)
 │   ├── migrations/                              # SQL migration (幂等 + rollback 配对)
 │   ├── data/                                    # Data 层 (parquet_cache 等)
-│   └── tests/                                   # 100+ test files (Session 9 实测 2864 pass / 24 fail baseline)
+│   └── tests/                                   # **6251 tests collected 0 error (5-20 SH 实测)** (vs Session 9 实测 2864 pass / 24 fail)
 ├── frontend/src/                                # React (api / pages / components / store)
 ├── scripts/                                     # ⭐ run_paper_trading / run_backtest / qmt_data_service / health_check / pt_watchdog / pg_backup / approve_l4 / cancel_stale_orders / data_quality_check / monitor_factor_ic / registry / knowledge / archive / research
 ├── configs/                                     # YAML 配置 (pt_live / backtest_5yr / backtest_12yr)
@@ -166,7 +166,7 @@ quantmind-v2/
 - 连接状态通过StreamBus广播 `qm:qmt:status`
 
 #### PT核心参数（.env驱动）
-- `PT_TOP_N`: 选股数量（默认20, 改后重启服务生效）
+- `PT_TOP_N`: 选股数量（**5-18 灰度 sustained=5** (truth source: backend/.env:33 + configs/pt_live.yaml:18), 历史默认 20, 改后重启服务生效）
 - `PT_INDUSTRY_CAP`: 行业上限（默认1.0=不限, 改后重启服务生效）
 - 读取路径: `.env` → `config.py:Settings` → `signal_engine.py:PAPER_TRADING_CONFIG`
 - config_guard验证因子列表一致性（不验证top_n/industry_cap，因为是可配置的）
@@ -420,8 +420,8 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写前端页面 | docs/DEV_FRONTEND_UI.md |
 | 写调度任务 | docs/DEV_SCHEDULER.md |
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
-| 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
-| 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 705行) |
+| 写风控 (V3 风控框架, 当前 SSOT) | docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (L0-L5 实时风控, Tier A/B 已实现). 旧 docs/RISK_CONTROL_SERVICE_DESIGN.md 已 PARTIALLY DEPRECATED, 勿作当前设计 |
+| 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 650行). **实施进度**: Layer 1=~95% / Layer 2=~60% / Layer 3-4=0% (Q3-Q4 trigger per ADR-028). V3 §S5/S6/S7/S8 ✅ merged main (PR #343-346, ~330 tests). |
 | 写外汇模块(⏳ deferred Phase 2+) | **已 archive** 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, A股稳态前不启动) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (38条目: 8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订) |
@@ -454,7 +454,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | **Wave 2 ✅ 完结** | 🟢 (Session 9, 2026-04-19) | Data Framework / Lineage / MVP 2.1c / 2.2 / 2.3 Sub1+Sub2+Sub3 | SYSTEM_STATUS §0.0 |
 | **Wave 1 ✅ 完结 7/7** | 🟢 (2026-04-17) | Platform Skeleton / Config / DAL / Registry / Direction DB 化 / Knowledge Registry | docs/mvp/MVP_1_*.md |
 | **铁律 11+17 全链完工** | 🟢 (Session 21-23, 2026-04-21~22) | 28 commits / 16 PR (#31~#45), 3 IC 脚本分工 + 2 schtask wire | LL-066 (DataPipeline subset 例外) |
-| **PT 暂停清仓** | ⛔ (2026-04-29 user 决议) | 真账户 0 持仓, cash ¥993,520, 重启 gate prerequisite 见 SHUTDOWN_NOTICE | docs/audit/SHUTDOWN_NOTICE_2026_04_30.md |
+| **PT 暂停清仓** | ⛔ (2026-04-29 user 决议) | 真账户 0 持仓, cash ¥993,520.66, 重启 gate prerequisite 见 SHUTDOWN_NOTICE | docs/audit/SHUTDOWN_NOTICE_2026_04_30.md |
 | **Phase 3 MVP A 因子生命周期** | 🟡 (2026-04-17) | factor_lifecycle.py + Celery 周五 19:00 调度, 26/26 tests | docs/mvp/ |
 | **PT 配置 CORE3+dv_ttm WF PASS** | ✅ (2026-04-12) | Sharpe=0.8659, MDD=-13.91%, 0 negative folds | Phase 2.4 + WF 验证 |
 | **Phase 2.1/2.2/3B/3D/3E NO-GO** | ❌ | E2E Fusion / Gate / 第 5 因子 / ML Synthesis / 微结构 — 4 因子 = 等权 alpha 上限 | research-kb/findings + failed |
@@ -463,7 +463,7 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 - **Sprint 治理基础设施 5 块基石** (2026-04-30, Step 6-6.3a): IRONLAWS.md / ADR-021 / 第 19 条 memory 铁律 / X10+LL-098+pre-push hook / §23 双口径
 - **MVP 串行交付**: 完成一个再 plan 下一个, 不预批量写设计稿 (铁律 23/24)
-- **测试基线**: 2864 pass / 24 fail (Session 9 末实测, 铁律 40 baseline 保持) + smoke 28 PASS + regression 5yr+12yr max_diff=0
+- **测试基线** (5-20 SH 实测, 铁律 40 baseline 保持): **6251 collected / 0 collection error** (vs Session 9 实测 2864 pass / 24 fail, 接近 1 月增量 +3387 tests / +118%) + **smoke 70 PASS** (vs 28 stale) + regression 5yr+12yr max_diff=0 (baseline 2026-04-28, 22d stale, 待 Phase B-2 post 5-27 refresh)
 
 📋 系统蓝图: `docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md` (当前真相) + `docs/QUANTMIND_PLATFORM_BLUEPRINT.md` (演进规划)
 

@@ -38,6 +38,7 @@ def discover_get_endpoints() -> list[str]:
     """从FastAPI app自动发现所有GET端点。"""
     try:
         from app.main import app
+
         endpoints = []
         for route in app.routes:
             if hasattr(route, "methods") and hasattr(route, "path"):
@@ -73,7 +74,7 @@ def test_endpoint(path: str) -> dict:
             elif isinstance(body, dict):
                 items = "dict"
         except Exception:
-            pass
+            pass  # silent_ok: smoke test partial failure surfaced via summary, not abort
 
         return {
             "path": path,
@@ -94,6 +95,7 @@ def send_dingtalk_alert(level: str, title: str, content: str) -> None:
     """发送DingTalk告警。"""
     try:
         from app.config import settings
+
         webhook = settings.DINGTALK_WEBHOOK_URL
         if not webhook:
             print("[WARN] DINGTALK_WEBHOOK_URL未配置，跳过告警")
@@ -136,11 +138,22 @@ def write_log(results: list[dict], log_path: Path) -> None:
         ok_count = sum(1 for r in results if r["status"] == "ok")
         slow_count = sum(1 for r in results if r["status"] == "slow")
         fail_count = sum(1 for r in results if r["status"] not in ("ok", "slow"))
-        f.write(f"Total: {len(results)} | OK: {ok_count} | Slow: {slow_count} | Fail: {fail_count}\n\n")
+        f.write(
+            f"Total: {len(results)} | OK: {ok_count} | Slow: {slow_count} | Fail: {fail_count}\n\n"
+        )
 
         for r in results:
-            icon = {"ok": "✅", "slow": "⚠️", "fail": "❌", "timeout": "💀", "connection_error": "🔌", "error": "❌"}
-            f.write(f"{icon.get(r['status'], '?')} {r['code']:>3} {r['elapsed']:>5.1f}s items={r['items']:>6}  {r['path']}\n")
+            icon = {
+                "ok": "✅",
+                "slow": "⚠️",
+                "fail": "❌",
+                "timeout": "💀",
+                "connection_error": "🔌",
+                "error": "❌",
+            }
+            f.write(
+                f"{icon.get(r['status'], '?')} {r['code']:>3} {r['elapsed']:>5.1f}s items={r['items']:>6}  {r['path']}\n"
+            )
 
 
 def main():
@@ -171,13 +184,19 @@ def main():
                     else:
                         raise Exception("重启后仍无响应")
                 except Exception:
-                    send_dingtalk_alert("P0", "冒烟测试: 后端无响应", f"自动重启NSSM后仍无法连接\n时间: {now}")
+                    send_dingtalk_alert(
+                        "P0", "冒烟测试: 后端无响应", f"自动重启NSSM后仍无法连接\n时间: {now}"
+                    )
                     sys.exit(1)
             else:
                 send_dingtalk_alert("P0", "冒烟测试: 后端无响应", f"NSSM重启失败\n时间: {now}")
                 sys.exit(1)
         else:
-            send_dingtalk_alert("P0", "冒烟测试: 后端无响应", f"FastAPI服务不响应\n时间: {now}\n建议: nssm restart QuantMind-FastAPI")
+            send_dingtalk_alert(
+                "P0",
+                "冒烟测试: 后端无响应",
+                f"FastAPI服务不响应\n时间: {now}\n建议: nssm restart QuantMind-FastAPI",
+            )
             sys.exit(1)
 
     # 2. 发现端点
@@ -194,14 +213,18 @@ def main():
         results.append(result)
         if args.verbose:
             icon = {"ok": "✅", "slow": "⚠️"}.get(result["status"], "❌")
-            print(f"  {icon} [{i+1}/{len(endpoints)}] {result['code']:>3} {result['elapsed']:>5.1f}s {path}")
+            print(
+                f"  {icon} [{i + 1}/{len(endpoints)}] {result['code']:>3} {result['elapsed']:>5.1f}s {path}"
+            )
 
     # 4. 汇总
     ok_list = [r for r in results if r["status"] == "ok"]
     slow_list = [r for r in results if r["status"] == "slow"]
     fail_list = [r for r in results if r["status"] not in ("ok", "slow")]
 
-    print(f"\n[Result] ✅ {len(ok_list)} | ⚠️ {len(slow_list)} | ❌ {len(fail_list)} / {len(results)} total")
+    print(
+        f"\n[Result] ✅ {len(ok_list)} | ⚠️ {len(slow_list)} | ❌ {len(fail_list)} / {len(results)} total"
+    )
 
     # 5. 告警
     if fail_list:
@@ -212,23 +235,17 @@ def main():
         send_dingtalk_alert(
             "P0",
             f"冒烟测试失败: {len(fail_list)}个端点异常",
-            f"时间: {now.strftime('%H:%M')}\n"
-            f"总计: {len(results)} 端点\n"
-            f"失败:\n{fail_detail}",
+            f"时间: {now.strftime('%H:%M')}\n总计: {len(results)} 端点\n失败:\n{fail_detail}",
         )
         if args.auto_restart and any(r["status"] == "connection_error" for r in fail_list):
             print("[Action] 检测到连接错误，尝试重启...")
             auto_restart_nssm()
     elif slow_list:
-        slow_detail = "\n".join(
-            f"  {r['path']} ({r['elapsed']}s)"
-            for r in slow_list
-        )
+        slow_detail = "\n".join(f"  {r['path']} ({r['elapsed']}s)" for r in slow_list)
         send_dingtalk_alert(
             "P2",
             f"冒烟测试: {len(slow_list)}个端点响应慢",
-            f"时间: {now.strftime('%H:%M')}\n"
-            f"慢端点(>{SLOW_THRESHOLD}s):\n{slow_detail}",
+            f"时间: {now.strftime('%H:%M')}\n慢端点(>{SLOW_THRESHOLD}s):\n{slow_detail}",
         )
     else:
         if args.verbose:

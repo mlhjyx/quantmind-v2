@@ -209,7 +209,9 @@ def _apply() -> int:
     except Exception as e:  # noqa: BLE001 — broad catch to surface any compute_batch_factors failure with operator guidance
         logger.exception("Stage A FAILED")
         print(f"  ❌ Stage A FAILED: {e}")
-        print("  ℹ️  Any partially written raw_value rows are idempotent (ON CONFLICT DO UPDATE) — re-run with --apply is safe per code-reviewer P2 fix.")
+        print(
+            "  ℹ️  Any partially written raw_value rows are idempotent (ON CONFLICT DO UPDATE) — re-run with --apply is safe per code-reviewer P2 fix."
+        )
         return 1
     print()
 
@@ -273,10 +275,14 @@ def main() -> int:
     g = parser.add_mutually_exclusive_group()
     # NOTE: --dry-run via fallthrough dispatch, NOT default=True (mutex group ignores
     # the default per convergent reviewer P1-2 / P2 finding).
-    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation")
+    g.add_argument(
+        "--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation"
+    )
     g.add_argument("--apply", action="store_true", help="EXECUTE 2-stage pipeline")
     g.add_argument("--verify", action="store_true", help="post-apply state verify only")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     args = parser.parse_args()
 
     logging.basicConfig(

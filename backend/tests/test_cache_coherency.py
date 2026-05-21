@@ -1,4 +1,5 @@
 """MVP 2.1a CacheCoherencyPolicy + MaxDateChecker + TTLGuard + check_stale 单测."""
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -42,32 +43,41 @@ def test_policy_is_frozen() -> None:
 def test_max_date_db_ahead_is_stale() -> None:
     p = CacheCoherencyPolicy()
     checker = MaxDateChecker()
-    assert checker.is_stale(
-        db_max=date(2026, 4, 17),
-        cache_max=date(2026, 4, 10),
-        policy=p,
-    ) is True
+    assert (
+        checker.is_stale(
+            db_max=date(2026, 4, 17),
+            cache_max=date(2026, 4, 10),
+            policy=p,
+        )
+        is True
+    )
 
 
 def test_max_date_equal_is_fresh() -> None:
     p = CacheCoherencyPolicy()
     checker = MaxDateChecker()
-    assert checker.is_stale(
-        db_max=date(2026, 4, 17),
-        cache_max=date(2026, 4, 17),
-        policy=p,
-    ) is False
+    assert (
+        checker.is_stale(
+            db_max=date(2026, 4, 17),
+            cache_max=date(2026, 4, 17),
+            policy=p,
+        )
+        is False
+    )
 
 
 def test_max_date_cache_none_is_stale() -> None:
     """cache 空 (未写过) → stale, 需初次 refill."""
     p = CacheCoherencyPolicy()
     checker = MaxDateChecker()
-    assert checker.is_stale(
-        db_max=date(2026, 4, 17),
-        cache_max=None,
-        policy=p,
-    ) is True
+    assert (
+        checker.is_stale(
+            db_max=date(2026, 4, 17),
+            cache_max=None,
+            policy=p,
+        )
+        is True
+    )
 
 
 def test_max_date_db_none_cache_empty_is_fresh() -> None:
@@ -81,22 +91,28 @@ def test_max_date_db_none_cache_has_data_is_stale() -> None:
     """DB 无数据但 cache 有数据 → stale (安全策略)."""
     p = CacheCoherencyPolicy()
     checker = MaxDateChecker()
-    assert checker.is_stale(
-        db_max=None,
-        cache_max=date(2026, 4, 10),
-        policy=p,
-    ) is True
+    assert (
+        checker.is_stale(
+            db_max=None,
+            cache_max=date(2026, 4, 10),
+            policy=p,
+        )
+        is True
+    )
 
 
 def test_max_date_check_disabled_never_stale() -> None:
     """policy.db_max_date_check=False → 永远 fresh (离线场景)."""
     p = CacheCoherencyPolicy(db_max_date_check=False)
     checker = MaxDateChecker()
-    assert checker.is_stale(
-        db_max=date(2026, 4, 17),
-        cache_max=date(2026, 4, 10),
-        policy=p,
-    ) is False
+    assert (
+        checker.is_stale(
+            db_max=date(2026, 4, 17),
+            cache_max=date(2026, 4, 10),
+            policy=p,
+        )
+        is False
+    )
 
 
 # ---------- TTLGuard ----------

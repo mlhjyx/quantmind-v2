@@ -94,7 +94,11 @@ def _check_servy_services() -> dict:
             check=False,
         )
         if result.returncode != 0:
-            return {"name": "servy_services", "pass": False, "reason": f"powershell exit={result.returncode}: {result.stderr[:200]}"}
+            return {
+                "name": "servy_services",
+                "pass": False,
+                "reason": f"powershell exit={result.returncode}: {result.stderr[:200]}",
+            }
 
         parsed = json.loads(result.stdout) if result.stdout.strip() else []
         if isinstance(parsed, dict):
@@ -203,7 +207,9 @@ def _check_xtquant_truth() -> dict:
 
         issues = []
         if age_min > _FRESHNESS_THRESHOLD_MIN:
-            issues.append(f"portfolio:nav stale {age_min:.1f}min (threshold {_FRESHNESS_THRESHOLD_MIN}min)")
+            issues.append(
+                f"portfolio:nav stale {age_min:.1f}min (threshold {_FRESHNESS_THRESHOLD_MIN}min)"
+            )
         if position_count != pc_size:
             issues.append(f"position_count={position_count} != portfolio:current size={pc_size}")
 
@@ -212,7 +218,11 @@ def _check_xtquant_truth() -> dict:
                 "name": "xtquant_truth",
                 "pass": False,
                 "reason": "; ".join(issues),
-                "evidence": {"nav": nav, "portfolio_current_size": pc_size, "age_min": round(age_min, 1)},
+                "evidence": {
+                    "nav": nav,
+                    "portfolio_current_size": pc_size,
+                    "age_min": round(age_min, 1),
+                },
             }
         return {
             "name": "xtquant_truth",
@@ -270,7 +280,9 @@ def _check_db_freshness() -> dict:
             cur.execute("SELECT MAX(trade_date)::text FROM daily_basic")
             basic_latest = cur.fetchone()[0]
 
-        if (klines_latest or "") >= _TARGET_KLINES_DATE and (basic_latest or "") >= _TARGET_KLINES_DATE:
+        if (klines_latest or "") >= _TARGET_KLINES_DATE and (
+            basic_latest or ""
+        ) >= _TARGET_KLINES_DATE:
             return {
                 "name": "db_freshness",
                 "pass": True,
@@ -350,7 +362,11 @@ def _check_daily_execute_schtask() -> dict:
             "evidence": info,
         }
     except Exception as e:  # noqa: BLE001
-        return {"name": "daily_execute_schtask", "pass": False, "reason": f"{type(e).__name__}: {e}"}
+        return {
+            "name": "daily_execute_schtask",
+            "pass": False,
+            "reason": f"{type(e).__name__}: {e}",
+        }
 
 
 # NOTE: previous Check #5 "qm:qmt:status stream fresh" REMOVED — stream is
@@ -408,9 +424,7 @@ def _check_beat_dispatch_alive() -> dict:
             }
 
         latest_ts_str = matches[-1]
-        latest_dt = datetime.fromisoformat(latest_ts_str).replace(
-            tzinfo=ZoneInfo("Asia/Shanghai")
-        )
+        latest_dt = datetime.fromisoformat(latest_ts_str).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
         now_sh = _now_sh()
         delta_sec = (now_sh - latest_dt).total_seconds()
 
@@ -495,14 +509,20 @@ def _write_log(results: list[dict], all_pass: bool, sh_now: datetime) -> Path:
         "total_count": len(results),
         "checks": results,
     }
-    log_path.write_text(json.dumps(payload, indent=2, default=str, ensure_ascii=False), encoding="utf-8")
+    log_path.write_text(
+        json.dumps(payload, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
+    )
     return log_path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--json", action="store_true", help="output JSON only (no console formatting)")
-    parser.add_argument("--log-level", default="WARNING", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--json", action="store_true", help="output JSON only (no console formatting)"
+    )
+    parser.add_argument(
+        "--log-level", default="WARNING", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(message)s")
@@ -512,12 +532,19 @@ def main() -> int:
     log_path = _write_log(results, all_pass, sh_now)
 
     if args.json:
-        print(json.dumps({
-            "ran_at_sh": sh_now.isoformat(),
-            "all_pass": all_pass,
-            "checks": results,
-            "log_path": str(log_path),
-        }, indent=2, default=str, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "ran_at_sh": sh_now.isoformat(),
+                    "all_pass": all_pass,
+                    "checks": results,
+                    "log_path": str(log_path),
+                },
+                indent=2,
+                default=str,
+                ensure_ascii=False,
+            )
+        )
     else:
         print(_format_console(results, all_pass, sh_now))
         print(f"\nEvidence captured: {log_path}")

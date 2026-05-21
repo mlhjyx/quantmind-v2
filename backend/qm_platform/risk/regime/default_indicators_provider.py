@@ -349,5 +349,3 @@ class DefaultIndicatorsProvider:
                 e,
             )
             return None
-
-

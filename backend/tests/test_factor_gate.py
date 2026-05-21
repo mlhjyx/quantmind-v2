@@ -19,11 +19,13 @@ from engines.factor_gate import (
     G4_NEUTRALIZATION_MAX_DECAY,
     FactorGatePipeline,
     GateStatus,
+    compute_newey_west_t,
 )
 
 # ---------------------------------------------------------------------------
 # 测试数据：基于FACTOR_TEST_REGISTRY.md历史结论
 # ---------------------------------------------------------------------------
+
 
 # v1.1 Active因子的历史IC数据（从FACTOR_TEST_REGISTRY.md）
 # 月度IC序列：用均值+适当分布模拟，保证统计特征与历史一致
@@ -31,6 +33,7 @@ def make_ic_series(ic_mean: float, ic_std: float, n: int = 60) -> list[float]:
     """生成满足指定均值和标准差的IC序列（确定性，无随机）。"""
     # 用等差分布保证精确的均值和std
     import numpy as np
+
     rng = np.random.default_rng(42)
     series = rng.normal(ic_mean, ic_std, n)
     # 归一化到精确均值
@@ -41,10 +44,10 @@ def make_ic_series(ic_mean: float, ic_std: float, n: int = 60) -> list[float]:
 # v1.1因子参考数据（FACTOR_TEST_REGISTRY.md）
 V1_FACTORS = {
     "turnover_mean_20": {"ic_mean": -0.0643, "ic_std": 0.030, "direction": -1},
-    "volatility_20":    {"ic_mean": -0.0690, "ic_std": 0.038, "direction": -1},
-    "reversal_20":      {"ic_mean": +0.0386, "ic_std": 0.038, "direction": +1},
-    "amihud_20":        {"ic_mean": +0.0215, "ic_std": 0.028, "direction": +1},
-    "bp_ratio":         {"ic_mean": +0.0523, "ic_std": 0.030, "direction": +1},
+    "volatility_20": {"ic_mean": -0.0690, "ic_std": 0.038, "direction": -1},
+    "reversal_20": {"ic_mean": +0.0386, "ic_std": 0.038, "direction": +1},
+    "amihud_20": {"ic_mean": +0.0215, "ic_std": 0.028, "direction": +1},
+    "bp_ratio": {"ic_mean": +0.0523, "ic_std": 0.030, "direction": +1},
 }
 
 # Active因子互相关（近似，用于G2测试）
@@ -293,9 +296,7 @@ class TestRunGatesV11Factors:
         assert report.gates["G7"].status == GateStatus.PENDING
         assert report.gates["G8"].status == GateStatus.PENDING
         # 综合状态：G1-G5全PASS但G6-G8 PENDING → PARTIAL
-        assert report.overall_status == "PARTIAL", (
-            f"{fname} overall_status={report.overall_status}"
-        )
+        assert report.overall_status == "PARTIAL", f"{fname} overall_status={report.overall_status}"
 
     def test_report_has_all_8_gates(self, pipeline: FactorGatePipeline) -> None:
         """GateReport必须包含G1-G8全部8个Gate。"""
@@ -303,8 +304,11 @@ class TestRunGatesV11Factors:
         neutral_ic = make_ic_series(-0.055, 0.025, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates(
-                "turnover_mean_20", ic_series, neutral_ic,
-                ACTIVE_CORR_MOCK, expected_direction=-1,
+                "turnover_mean_20",
+                ic_series,
+                neutral_ic,
+                ACTIVE_CORR_MOCK,
+                expected_direction=-1,
             )
         for gid in ["G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"]:
             assert gid in report.gates, f"报告缺少 {gid}"
@@ -360,7 +364,8 @@ class TestKnownFailFactors:
         corr = {"reversal_20": 1.00}  # 完全冗余
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates(
-                "momentum_20", ic_series,
+                "momentum_20",
+                ic_series,
                 active_factor_corr=corr,
                 expected_direction=-1,
             )
@@ -378,9 +383,7 @@ class TestSemiAutoGateConfirm:
         ic_series = make_ic_series(-0.064, 0.03, 60)
         neutral_ic = make_ic_series(-0.055, 0.025, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
-            return pipeline.run_gates(
-                "test_factor", ic_series, neutral_ic, ACTIVE_CORR_MOCK, -1
-            )
+            return pipeline.run_gates("test_factor", ic_series, neutral_ic, ACTIVE_CORR_MOCK, -1)
 
     def test_confirm_g6_pass(self, pipeline: FactorGatePipeline) -> None:
         report = self._get_partial_report(pipeline)
@@ -432,9 +435,7 @@ class TestQuickScreen:
     def test_pass_strong_factor(self, pipeline: FactorGatePipeline) -> None:
         ic_series = make_ic_series(-0.064, 0.03, 60)
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
-            passed, reason = pipeline.quick_screen(
-                "turnover_mean_20", ic_series, ACTIVE_CORR_MOCK
-            )
+            passed, reason = pipeline.quick_screen("turnover_mean_20", ic_series, ACTIVE_CORR_MOCK)
         assert passed is True
 
     def test_fail_low_ic(self, pipeline: FactorGatePipeline) -> None:
@@ -476,6 +477,7 @@ class TestEdgeCases:
     def test_all_nan_ic(self, pipeline: FactorGatePipeline) -> None:
         """全NaN的IC序列应FAIL。"""
         import math
+
         ic_series = [math.nan] * 30
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates("all_nan", ic_series)
@@ -496,3 +498,79 @@ class TestEdgeCases:
         with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
             report = pipeline.run_gates("weak", ic_series)
         assert "G1" in report.failed_gates
+
+
+# ---------------------------------------------------------------------------
+# Plan B — G6 Newey-West HAC t auto-assist
+#   compute_newey_west_t (纯函数) + FactorGatePipeline.confirm_g6_auto
+# ---------------------------------------------------------------------------
+
+
+def _ordinary_t(series: list[float]) -> float:
+    """普通 (iid 假设) IC 均值 t — 测试对照用。"""
+    import numpy as np
+
+    arr = np.array(series, dtype=float)
+    n = len(arr)
+    return float(arr.mean() / (arr.std(ddof=1) / math.sqrt(n)))
+
+
+def test_newey_west_none_when_too_few_samples() -> None:
+    """有效样本 n<5 → None。"""
+    assert compute_newey_west_t([0.05, 0.04, 0.06]) is None
+    assert compute_newey_west_t([]) is None
+
+
+def test_newey_west_none_when_constant_series() -> None:
+    """常数序列方差退化 (gamma_0=0) → None。"""
+    assert compute_newey_west_t([0.03] * 30) is None
+
+
+def test_newey_west_sign_follows_mean() -> None:
+    """t 符号跟随 IC 均值符号。"""
+    pos = compute_newey_west_t(make_ic_series(0.05, 0.03, 40))
+    neg = compute_newey_west_t(make_ic_series(-0.05, 0.03, 40))
+    assert pos is not None and pos > 0
+    assert neg is not None and neg < 0
+
+
+def test_newey_west_strong_factor_significant() -> None:
+    """强因子 (mean=0.05, std=0.03, n=60) → HAC t 仍显著 (>2.5 G6 硬标准)。"""
+    nw_t = compute_newey_west_t(make_ic_series(0.05, 0.03, 60))
+    assert nw_t is not None
+    assert nw_t > 2.5
+
+
+def test_newey_west_penalizes_positive_autocorrelation() -> None:
+    """正自相关序列 → HAC t 量级 < 普通 t (Newey-West 下调高估的显著性)。"""
+    # 分块序列: 块内值相等 → 强正自相关。
+    series = ([0.06] * 8 + [0.02] * 8) * 3  # n=48, mean=0.04
+    nw_t = compute_newey_west_t(series)
+    naive_t = _ordinary_t(series)
+    assert nw_t is not None
+    assert nw_t > 0
+    assert nw_t < naive_t  # HAC 惩罚正自相关 → t 变小
+
+
+def test_confirm_g6_auto_fills_g6_verdict() -> None:
+    """confirm_g6_auto → G6 从 PENDING 变为 PASS/FAIL 计算值, data 含 NW t。"""
+    pipeline = FactorGatePipeline()
+    ic_series = make_ic_series(-0.064, 0.03, 60)
+    with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
+        report = pipeline.run_gates("turnover_mean_20", ic_series)
+    assert report.gates["G6"].status == GateStatus.PENDING  # run_gates 初始
+    pipeline.confirm_g6_auto(report, ic_series)
+    assert report.gates["G6"].status in (GateStatus.PASS, GateStatus.FAIL)
+    assert "t_stat_newey_west" in report.gates["G6"].data
+    # p-value 自动算 (MEDIUM review fix) — G6 输出自包含。
+    assert report.gates["G6"].data.get("p_value") is not None
+
+
+def test_confirm_g6_auto_preserves_pending_when_uncomputable() -> None:
+    """ic_series 太短 (NW 不可算) → G6 保持 run_gates 设定的 PENDING。"""
+    pipeline = FactorGatePipeline()
+    ic_series = make_ic_series(-0.064, 0.03, 60)
+    with patch("engines.factor_gate.get_cumulative_test_count", return_value=74):
+        report = pipeline.run_gates("turnover_mean_20", ic_series)
+    pipeline.confirm_g6_auto(report, [0.01, 0.02])  # n=2 <5, NW 不可算
+    assert report.gates["G6"].status == GateStatus.PENDING

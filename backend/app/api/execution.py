@@ -172,7 +172,9 @@ async def get_execution_log(
             "stamp_tax": float(r["stamp_tax"]) if r["stamp_tax"] else None,
             "total_cost": float(r["total_cost"]) if r["total_cost"] else None,
             "trade_date": r["trade_date"].isoformat() if r["trade_date"] else None,
-            "status": "rejected" if r["reject_reason"] else ("executed" if r["executed_at"] else "pending"),
+            "status": "rejected"
+            if r["reject_reason"]
+            else ("executed" if r["executed_at"] else "pending"),
             "reject_reason": r["reject_reason"],
             "executed_at": r["executed_at"].isoformat() if r["executed_at"] else None,
         }

@@ -39,7 +39,7 @@ class SignalResult:
     """信号生成结果。"""
 
     target_weights: dict[str, float]  # code -> weight
-    signals_list: list[dict]          # 写入signals表的记录
+    signals_list: list[dict]  # 写入signals表的记录
     beta: float
     is_rebalance: bool
     warnings: list[str] = field(default_factory=list)
@@ -120,8 +120,7 @@ class SignalService:
 
             if count < 1000:
                 msg = (
-                    f"因子 {fname} 截面覆盖率严重不足: {count}只 < 1000。"
-                    f"可能数据源故障或拉取异常。"
+                    f"因子 {fname} 截面覆盖率严重不足: {count}只 < 1000。可能数据源故障或拉取异常。"
                 )
                 raise ValueError(msg)
             elif count < 3000:
@@ -133,8 +132,12 @@ class SignalService:
                 warnings.append(msg)
                 if not dry_run:
                     send_alert(
-                        "P1", f"因子覆盖率偏低 {trade_date}", msg,
-                        settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+                        "P1",
+                        f"因子覆盖率偏低 {trade_date}",
+                        msg,
+                        settings.DINGTALK_WEBHOOK_URL,
+                        settings.DINGTALK_SECRET,
+                        conn,
                     )
             else:
                 logger.info(f"[SignalService] 因子 {fname} 覆盖率正常: {count}只")
@@ -166,13 +169,12 @@ class SignalService:
             _industry_map = industry.dropna().to_dict()
         elif isinstance(industry, dict):
             _industry_map = {
-                k: v for k, v in industry.items()
+                k: v
+                for k, v in industry.items()
                 if v is not None and not (isinstance(v, float) and pd.isna(v))
             }
         else:
-            raise TypeError(
-                f"industry 必须是 pd.Series 或 dict, got {type(industry).__name__}"
-            )
+            raise TypeError(f"industry 必须是 pd.Series 或 dict, got {type(industry).__name__}")
 
         # PR #116 reviewer P2.2 采纳: capital 字段当前 latent — PortfolioBuilder.build 不读
         # ctx.capital, 25 days bit-identical parity test 已证. 但 StrategyContext.capital
@@ -204,30 +206,31 @@ class SignalService:
         # SDK signals → legacy shape (target dict + scores dict for signals_list 构建)
         target: dict[str, float] = {s.code: s.target_weight for s in _sdk_signals}
         scores: dict[str, float] = {s.code: s.score for s in _sdk_signals}
-        logger.info(
-            f"[SignalService] 目标持仓: {len(target)}只, "
-            f"总权重={sum(target.values()):.3f}"
-        )
+        logger.info(f"[SignalService] 目标持仓: {len(target)}只, 总权重={sum(target.values()):.3f}")
 
         # ── Beta监控（只记录，不缩放权重）──
         # 对应 script L1190-1196
         # ADR-008 D2: beta 读 performance_series 按 settings.EXECUTION_MODE 命名空间隔离
         beta = calc_portfolio_beta(
-            trade_date, strategy_id,
+            trade_date,
+            strategy_id,
             execution_mode=settings.EXECUTION_MODE,
-            lookback_days=60, conn=conn,
+            lookback_days=60,
+            conn=conn,
         )
         hedged_target = target  # 不缩放，直接使用原始权重
         logger.info(
-            f"[SignalService] Beta={beta:.3f}(监控), "
-            f"总权重={sum(hedged_target.values()):.3f}"
+            f"[SignalService] Beta={beta:.3f}(监控), 总权重={sum(hedged_target.values()):.3f}"
         )
 
         # ── 检查3: 行业集中度（最大行业权重<25%）──
         # 对应 script L1198-1226
         if hedged_target:
             ind_warning = self._check_industry_concentration(
-                conn, hedged_target, trade_date, dry_run,
+                conn,
+                hedged_target,
+                trade_date,
+                dry_run,
             )
             if ind_warning:
                 warnings.append(ind_warning)
@@ -236,7 +239,11 @@ class SignalService:
         # 对应 script L1228-1244
         if hedged_target and prev_weights:
             overlap_warning = self._check_overlap(
-                hedged_target, prev_weights, trade_date, dry_run, conn,
+                hedged_target,
+                prev_weights,
+                trade_date,
+                dry_run,
+                conn,
             )
             if overlap_warning:
                 warnings.append(overlap_warning)
@@ -266,15 +273,17 @@ class SignalService:
             # (wrapper 早返 raise on empty SDK signals, 此处 scores 必非空).
             score_val = float(scores.get(code, 0))
             action = "rebalance" if is_rebalance else "hold"
-            signals_list.append({
-                "code": code,
-                "trade_date": trade_date,
-                "strategy_id": strategy_id,
-                "alpha_score": score_val,
-                "rank": rank,
-                "target_weight": hedged_target[code],
-                "action": action,
-            })
+            signals_list.append(
+                {
+                    "code": code,
+                    "trade_date": trade_date,
+                    "strategy_id": strategy_id,
+                    "alpha_score": score_val,
+                    "rank": rank,
+                    "target_weight": hedged_target[code],
+                    "action": action,
+                }
+            )
 
         if not dry_run:
             self._write_signals(conn, strategy_id, trade_date, signals_list)
@@ -382,7 +391,9 @@ class SignalService:
             告警消息字符串，无告警则返回None。
         """
         top_codes = sorted(
-            hedged_target, key=lambda c: hedged_target[c], reverse=True,
+            hedged_target,
+            key=lambda c: hedged_target[c],
+            reverse=True,
         )[:20]
         if not top_codes:
             return None
@@ -406,10 +417,7 @@ class SignalService:
 
         max_ind = max(industry_weights, key=industry_weights.get) if industry_weights else "N/A"
         max_ind_weight = industry_weights.get(max_ind, 0)
-        logger.info(
-            f"[SignalService] 行业集中度: 最大行业={max_ind} "
-            f"权重={max_ind_weight:.1%}"
-        )
+        logger.info(f"[SignalService] 行业集中度: 最大行业={max_ind} 权重={max_ind_weight:.1%}")
 
         if max_ind_weight > 0.25:
             top5 = sorted(industry_weights.items(), key=lambda x: -x[1])[:5]
@@ -421,8 +429,12 @@ class SignalService:
             logger.warning(f"[SignalService] P1 {msg}")
             if not dry_run:
                 send_alert(
-                    "P1", f"行业集中度超标 {trade_date}", msg,
-                    settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+                    "P1",
+                    f"行业集中度超标 {trade_date}",
+                    msg,
+                    settings.DINGTALK_WEBHOOK_URL,
+                    settings.DINGTALK_SECRET,
+                    conn,
                 )
             return msg
         return None
@@ -440,21 +452,14 @@ class SignalService:
         Returns:
             告警消息字符串，无告警则返回None。
         """
-        current_top = set(
-            sorted(hedged_target, key=lambda c: hedged_target[c], reverse=True)[:20]
-        )
-        prev_top = set(
-            sorted(prev_weights, key=lambda c: prev_weights[c], reverse=True)[:20]
-        )
+        current_top = set(sorted(hedged_target, key=lambda c: hedged_target[c], reverse=True)[:20])
+        prev_top = set(sorted(prev_weights, key=lambda c: prev_weights[c], reverse=True)[:20])
         if not prev_top:
             return None
 
         overlap = len(current_top & prev_top)
         overlap_ratio = overlap / max(len(prev_top), 1)
-        logger.info(
-            f"[SignalService] 持仓重合度: {overlap}/{len(prev_top)} "
-            f"= {overlap_ratio:.0%}"
-        )
+        logger.info(f"[SignalService] 持仓重合度: {overlap}/{len(prev_top)} = {overlap_ratio:.0%}")
 
         if overlap_ratio < 0.30:
             new_in = ", ".join(sorted(current_top - prev_top)[:10])
@@ -469,8 +474,12 @@ class SignalService:
             logger.warning(f"[SignalService] P1 {msg}")
             if not dry_run:
                 send_alert(
-                    "P1", f"持仓换手剧烈 {trade_date}", msg,
-                    settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+                    "P1",
+                    f"持仓换手剧烈 {trade_date}",
+                    msg,
+                    settings.DINGTALK_WEBHOOK_URL,
+                    settings.DINGTALK_SECRET,
+                    conn,
                 )
             return msg
         return None

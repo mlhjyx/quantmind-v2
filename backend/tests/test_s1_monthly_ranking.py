@@ -6,6 +6,7 @@ validate_signals + ClassVar + __repr__. 纯 metadata-injection 测试 (不触 DB
 
 对齐 test_s2_pead_event.py (PR #70) 测试风格.
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,9 +59,7 @@ def _mk_factor_df(
             else:
                 # 基于序号的递减值, code0 最好 (direction 无关 — 测试测排名行为)
                 val = 10.0 - i * 0.5 + j * 0.01
-            rows.append(
-                {"code": code, "factor_name": fname, "neutral_value": float(val)}
-            )
+            rows.append({"code": code, "factor_name": fname, "neutral_value": float(val)})
     return pd.DataFrame(rows)
 
 
@@ -302,9 +301,7 @@ def test_sn_beta_positive_with_all_nan_ln_mcap_warns(caplog):
         name="ln_mcap",
     )
     ctx = _mk_ctx(universe=universe, ln_mcap=ln_mcap)
-    with caplog.at_level(
-        logging.WARNING, logger="backend.engines.strategies.s1_monthly_ranking"
-    ):
+    with caplog.at_level(logging.WARNING, logger="backend.engines.strategies.s1_monthly_ranking"):
         signals = s1.generate_signals(ctx)
     # 5 signals 仍返回 (fallback to raw scores 语义上 OK, 但 warn 暴露 drift)
     assert len(signals) == 5
@@ -333,9 +330,7 @@ def test_sn_beta_positive_without_ln_mcap_warns_and_falls_back(caplog):
 
 def test_prev_holdings_respected_under_turnover_cap():
     """prev_holdings 提供 + turnover_cap=0.50 → 换手受限 (并非全换)."""
-    s1 = S1MonthlyRanking(
-        config=_mk_config(top_n=10, turnover_cap=0.50, size_neutral_beta=0.0)
-    )
+    s1 = S1MonthlyRanking(config=_mk_config(top_n=10, turnover_cap=0.50, size_neutral_beta=0.0))
     universe = [f"{i:06d}.SH" for i in range(600000, 600030)]
     # prev_holdings = universe[0:5] 低位 codes (现 scores 最差, 本应全换掉)
     prev = {universe[i]: 0.19 for i in range(5)}

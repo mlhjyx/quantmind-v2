@@ -6,6 +6,7 @@
   - 异常降级: Layer 1 exception → Layer 3 hardcoded (铁律 33 禁 silent)
   - init_platform_dependencies 幂等 / 可重置
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

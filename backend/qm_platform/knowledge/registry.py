@@ -24,6 +24,7 @@ Usage:
     fd = DBFailedDirectionDB(conn_factory=get_sync_conn)
     adr = DBADRRegistry(conn_factory=get_sync_conn)
 """
+
 from __future__ import annotations
 
 import re
@@ -255,9 +256,7 @@ class DBExperimentRegistry(ExperimentRegistry):
           WriteNotConfigured: conn_factory 未注入.
         """
         if status not in ("success", "failed", "inconclusive"):
-            raise ValueError(
-                f"status 必须是 success/failed/inconclusive, 现: {status!r}"
-            )
+            raise ValueError(f"status 必须是 success/failed/inconclusive, 现: {status!r}")
         factory = self._require_writer()
         conn = factory()
         try:
@@ -307,9 +306,7 @@ class DBExperimentRegistry(ExperimentRegistry):
                     )
                     cur.execute(sql, (k,))
                 else:
-                    conditions = " OR ".join(
-                        [f"hypothesis ILIKE {self._ph}" for _ in keywords]
-                    )
+                    conditions = " OR ".join([f"hypothesis ILIKE {self._ph}" for _ in keywords])
                     sql = (
                         f"SELECT {base_cols} FROM platform_experiments "
                         f"WHERE {conditions} "
@@ -325,8 +322,7 @@ class DBExperimentRegistry(ExperimentRegistry):
 
 def _row_to_experiment(row: tuple) -> ExperimentRecord:
     """PG/sqlite 行 → ExperimentRecord."""
-    (exp_id, hypothesis, status, author, started_at, completed_at,
-     verdict, artifacts, tags) = row
+    (exp_id, hypothesis, status, author, started_at, completed_at, verdict, artifacts, tags) = row
 
     # UUID 兼容 (PG 返 UUID, sqlite 返 str)
     eid = exp_id if isinstance(exp_id, UUID) else UUID(str(exp_id))
@@ -441,9 +437,7 @@ class DBFailedDirectionDB(FailedDirectionDB):
                     )
                     cur.execute(sql, (k,))
                 else:
-                    conditions = " OR ".join(
-                        [f"direction ILIKE {self._ph}" for _ in keywords]
-                    )
+                    conditions = " OR ".join([f"direction ILIKE {self._ph}" for _ in keywords])
                     sql = (
                         f"SELECT {base_cols} FROM failed_directions "
                         f"WHERE {conditions} "
@@ -467,8 +461,7 @@ class DBFailedDirectionDB(FailedDirectionDB):
                 base_cols = "direction, reason, evidence, recorded_at, severity"
                 if severity is None:
                     cur.execute(
-                        f"SELECT {base_cols} FROM failed_directions "
-                        f"ORDER BY recorded_at DESC"
+                        f"SELECT {base_cols} FROM failed_directions ORDER BY recorded_at DESC"
                     )
                 else:
                     cur.execute(
@@ -634,23 +627,19 @@ class DBADRRegistry(ADRRegistry):
             with conn.cursor() as cur:
                 if self._ph == "%s":
                     # psycopg2: int[] 有 ANY 原语
-                    sql = (
-                        f"""SELECT adr_id, title, status, context, decision,
+                    sql = f"""SELECT adr_id, title, status, context, decision,
                                     consequences, related_ironlaws, recorded_at
                               FROM adr_records
                              WHERE {self._ph} = ANY(related_ironlaws)
                              ORDER BY adr_id"""
-                    )
                     cur.execute(sql, (ironlaw_id,))
                 else:
                     # sqlite: related_ironlaws 存 JSON 字符串, LIKE 近似查
-                    sql = (
-                        f"""SELECT adr_id, title, status, context, decision,
+                    sql = f"""SELECT adr_id, title, status, context, decision,
                                     consequences, related_ironlaws, recorded_at
                               FROM adr_records
                              WHERE related_ironlaws LIKE {self._ph}
                              ORDER BY adr_id"""
-                    )
                     cur.execute(sql, (f"%{ironlaw_id}%",))
                 rows = cur.fetchall()
         finally:

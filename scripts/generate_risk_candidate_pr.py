@@ -73,8 +73,7 @@ def _run_git(args: list[str], *, repo_root: Path, check: bool = True) -> str:
     )
     if check and result.returncode != 0:
         raise RuntimeError(
-            f"git {' '.join(args)} failed (exit {result.returncode}): "
-            f"{result.stderr.strip()}"
+            f"git {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"
         )
     return result.stdout.strip()
 
@@ -196,13 +195,9 @@ def generate_pr(*, repo_root: Path, dry_run: bool) -> int:
             _run_git(["add", str(rel)], repo_root=repo_root)
 
         # RED-LINE SELF-CHECK — verify staged set touches ONLY risk_findings/.
-        staged = _run_git(
-            ["diff", "--cached", "--name-only"], repo_root=repo_root
-        ).splitlines()
+        staged = _run_git(["diff", "--cached", "--name-only"], repo_root=repo_root).splitlines()
         _redline_self_check([s for s in staged if s.strip()])
-        logger.info(
-            "[candidate-pr] red-line self-check PASSED (%d staged paths)", len(staged)
-        )
+        logger.info("[candidate-pr] red-line self-check PASSED (%d staged paths)", len(staged))
 
         if dry_run:
             logger.info(
@@ -247,9 +242,7 @@ def generate_pr(*, repo_root: Path, dry_run: bool) -> int:
 
 
 def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(
         description="Generate a PR branch carrying approved RiskReflector candidates."
     )

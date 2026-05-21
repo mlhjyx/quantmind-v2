@@ -281,9 +281,7 @@ def run_with_yaml(config_path: str):
             size_neutral_beta=float(strategy_cfg.get("size_neutral_beta", 0.0)),
             cost_model="full" if stamp_tax_mode == "historical" else "simplified",
             capital=str(backtest_cfg.get("initial_capital", 1_000_000)),
-            benchmark="csi300"
-            if backtest_cfg.get("benchmark") == "000300.SH"
-            else "none",
+            benchmark="csi300" if backtest_cfg.get("benchmark") == "000300.SH" else "none",
             extra={},
         )
 
@@ -418,7 +416,13 @@ def run_with_args(args):
             if len(closes_up_to) >= 21:
                 vol_regime_scale = calc_vol_regime(closes_up_to)
 
-        target = builder.build(scores, industry, prev_weights, vol_regime_scale=vol_regime_scale, volatility_map=vol_map)
+        target = builder.build(
+            scores,
+            industry,
+            prev_weights,
+            vol_regime_scale=vol_regime_scale,
+            volatility_map=vol_map,
+        )
         if target:
             target_portfolios[rd] = target
             prev_weights = target
@@ -450,8 +454,12 @@ def main():
     parser.add_argument("--freq", choices=["weekly", "biweekly", "monthly"], default="monthly")
     parser.add_argument("--capital", type=float, default=1_000_000)
     parser.add_argument("--slippage", type=float, default=10.0)
-    parser.add_argument("--slippage-mode", choices=["volume_impact", "fixed"], default="volume_impact")
-    parser.add_argument("--weight-method", choices=["equal", "risk_parity", "min_variance"], default="equal")
+    parser.add_argument(
+        "--slippage-mode", choices=["volume_impact", "fixed"], default="volume_impact"
+    )
+    parser.add_argument(
+        "--weight-method", choices=["equal", "risk_parity", "min_variance"], default="equal"
+    )
     parser.add_argument("--vol-regime", action="store_true")
     parser.add_argument("--vol-factor", default="volatility_20")
     parser.add_argument("--pms", choices=["off", "tiered", "tiered_close"], default="off")

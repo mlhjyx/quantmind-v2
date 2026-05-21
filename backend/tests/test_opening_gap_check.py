@@ -44,6 +44,7 @@ class TestOpeningGapCheck:
         """导入被测函数（每次测试前重新导入避免mock污染）。"""
         # Step 6-A 重构后: pt_monitor_service.check_opening_gap (见 S4 F72)
         from app.services.pt_monitor_service import check_opening_gap
+
         self.check_opening_gap = check_opening_gap
 
     def _make_conn(self, position_rows=None):
@@ -63,10 +64,12 @@ class TestOpeningGapCheck:
 
     def test_no_large_gaps_no_alert(self):
         """无大幅跳空时不发告警。"""
-        price_data = _make_price_data({
-            "600519": 0.01,  # +1%，不超过5%
-            "000001": -0.02,  # -2%，不超过5%
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.01,  # +1%，不超过5%
+                "000001": -0.02,  # -2%，不超过5%
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn()
 
@@ -82,10 +85,12 @@ class TestOpeningGapCheck:
 
     def test_single_stock_gap_over_5pct_sends_p1(self):
         """单股跳空>5%时发P1告警。"""
-        price_data = _make_price_data({
-            "600519": 0.06,  # +6%，超过5%阈值
-            "000001": 0.01,
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.06,  # +6%，超过5%阈值
+                "000001": 0.01,
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn()
 
@@ -103,9 +108,11 @@ class TestOpeningGapCheck:
 
     def test_single_stock_gap_negative_over_5pct_sends_p1(self):
         """单股跳空-6%（下跌超5%）也触发P1告警。"""
-        price_data = _make_price_data({
-            "000001": -0.07,  # -7%
-        })
+        price_data = _make_price_data(
+            {
+                "000001": -0.07,  # -7%
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn()
 
@@ -123,9 +130,11 @@ class TestOpeningGapCheck:
 
     def test_dry_run_no_notification(self):
         """dry-run模式：单股跳空>5%不发通知，只记录日志。"""
-        price_data = _make_price_data({
-            "600519": 0.10,  # +10%
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.10,  # +10%
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn()
 
@@ -143,11 +152,13 @@ class TestOpeningGapCheck:
         """组合加权跳空>3%触发P0告警。"""
         # 持仓：600519权重0.5，000001权重0.5
         # 跳空：600519 +8%，000001 +6% → 组合平均 7% > 3%
-        price_data = _make_price_data({
-            "600519": 0.08,
-            "000001": 0.06,
-            "600030": 0.01,  # 不在持仓中
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.08,
+                "000001": 0.06,
+                "600030": 0.01,  # 不在持仓中
+            }
+        )
         notif = self._make_notif()
         # position_snapshot rows: [(code, weight), ...]
         conn = self._make_conn(position_rows=[("600519", 0.485), ("000001", 0.485)])
@@ -168,18 +179,22 @@ class TestOpeningGapCheck:
     def test_portfolio_gap_under_3pct_no_p0(self):
         """组合加权跳空≤3%不触发P0告警（可能有P1）。"""
         # 600519跳空6%（触发P1），但持仓里只有小权重
-        price_data = _make_price_data({
-            "600519": 0.06,   # P1单股
-            "000001": 0.001,  # 小跳空
-            "000002": -0.001,
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.06,  # P1单股
+                "000001": 0.001,  # 小跳空
+                "000002": -0.001,
+            }
+        )
         notif = self._make_notif()
         # 持仓中600519只有5%权重，其余权重在低跳空股票
-        conn = self._make_conn(position_rows=[
-            ("600519", 0.05),
-            ("000001", 0.475),
-            ("000002", 0.475),
-        ])
+        conn = self._make_conn(
+            position_rows=[
+                ("600519", 0.05),
+                ("000001", 0.475),
+                ("000002", 0.475),
+            ]
+        )
 
         self.check_opening_gap(
             exec_date=date(2026, 3, 24),
@@ -211,9 +226,11 @@ class TestOpeningGapCheck:
 
     def test_custom_threshold(self):
         """自定义告警阈值：单股10%才告警。"""
-        price_data = _make_price_data({
-            "600519": 0.08,  # +8% < 自定义阈值10%
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.08,  # +8% < 自定义阈值10%
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn()
 
@@ -231,10 +248,12 @@ class TestOpeningGapCheck:
 
     def test_p0_commits_transaction(self):
         """P0告警后应commit事务。"""
-        price_data = _make_price_data({
-            "600519": 0.08,
-            "000001": 0.06,
-        })
+        price_data = _make_price_data(
+            {
+                "600519": 0.08,
+                "000001": 0.06,
+            }
+        )
         notif = self._make_notif()
         conn = self._make_conn(position_rows=[("600519", 0.485), ("000001", 0.485)])
 

@@ -13,6 +13,7 @@ MVP 1.2 minimum viable:
     操作), 但调用方可通过传入自带 conn + 手动 commit 实现跨 Service 事务.
   - 33: 禁 silent failure — FlagNotFound / FlagExpired 全部 raise.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

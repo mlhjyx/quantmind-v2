@@ -18,6 +18,7 @@ Bull/Bear 拆 2 task (走不同 prompt + 不同输出格式), 沿用 user 决议
 - V3 §5.5 / §11.1 / §16.2 / §20.1 #6
 - docs/LLM_IMPORT_POLICY.md §10
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,24 +29,24 @@ from enum import StrEnum
 class RiskTaskType(StrEnum):
     """V3 §5.5 真预约 7 任务路由."""
 
-    NEWS_CLASSIFY = "news_classify"                  # L0.2 V4-Flash
+    NEWS_CLASSIFY = "news_classify"  # L0.2 V4-Flash
     FUNDAMENTAL_SUMMARIZE = "fundamental_summarize"  # L2.2 V4-Flash
-    BULL_AGENT = "bull_agent"                        # L2.3 V4-Pro (ADR-036, debate reasoning capability)
-    BEAR_AGENT = "bear_agent"                        # L2.3 V4-Pro (ADR-036, debate reasoning capability)
-    JUDGE = "judge"                                  # L2.3 V4-Pro
-    RISK_REFLECTOR = "risk_reflector"                # L5 V4-Pro
+    BULL_AGENT = "bull_agent"  # L2.3 V4-Pro (ADR-036, debate reasoning capability)
+    BEAR_AGENT = "bear_agent"  # L2.3 V4-Pro (ADR-036, debate reasoning capability)
+    JUDGE = "judge"  # L2.3 V4-Pro
+    RISK_REFLECTOR = "risk_reflector"  # L5 V4-Pro
     # NOTE: EMBEDDING 这里走 completion() 真 LLM 文本 summarize for RAG ingest,
     # 不是 vector embedding API. V3 §5.5 真 "Embedding (RAG ingest)" 描述真 LLM
     # 概要生成路径 (chat completion), vector embedding (BGE-M3 本地 1024 维)
     # 走 V3 §20.1 #3 真独立 path, 跟 LiteLLMRouter 0 重叠. S3+ 真起手时确认.
-    EMBEDDING = "embedding"                          # RAG ingest summarize V4-Flash
+    EMBEDDING = "embedding"  # RAG ingest summarize V4-Flash
 
 
 @dataclass(frozen=True)
 class LLMMessage:
     """单条对话消息 (沿用 OpenAI Chat Completion 体例)."""
 
-    role: str   # "system" | "user" | "assistant"
+    role: str  # "system" | "user" | "assistant"
     content: str
 
 
@@ -63,14 +64,14 @@ class LLMResponse:
     Decimal migration 留 ADR-031 §6 渐进 deprecate timeline (S2 sediment 后).
     """
 
-    content: str            # 原始响应文本
-    model: str              # 实际路由后 model 名 (LiteLLM 真返)
+    content: str  # 原始响应文本
+    model: str  # 实际路由后 model 名 (LiteLLM 真返)
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: Decimal = Decimal("0")
     latency_ms: float = 0.0
     decision_id: str | None = None  # S2.3 audit trail 真依赖
-    is_fallback: bool = False       # S2.2 budget 状态判定 + S2.3 audit cite
+    is_fallback: bool = False  # S2.2 budget 状态判定 + S2.3 audit cite
 
 
 class UnknownTaskError(ValueError):

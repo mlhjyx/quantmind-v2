@@ -33,10 +33,10 @@ import asyncpg  # noqa: E402
 # 毕业阈值（CLAUDE.md §策略版本化纪律）
 # ─────────────────────────────────────────────
 SHARPE_THRESHOLD = 0.72
-MDD_THRESHOLD = 0.35          # 绝对值，35%
+MDD_THRESHOLD = 0.35  # 绝对值，35%
 SLIPPAGE_DEV_THRESHOLD = 0.50  # 50% 偏差
-MIN_TRADE_RECORDS = 20        # 数据不足判断线
-TRADING_DAYS_PER_YEAR = 244   # A股交易日
+MIN_TRADE_RECORDS = 20  # 数据不足判断线
+TRADING_DAYS_PER_YEAR = 244  # A股交易日
 
 # 理论滑点基点（v1.1 基线，双边各 5bps）
 THEORETICAL_SLIPPAGE_BPS = 5.0
@@ -45,6 +45,7 @@ THEORETICAL_SLIPPAGE_BPS = 5.0
 # ─────────────────────────────────────────────
 # 数据库工具
 # ─────────────────────────────────────────────
+
 
 def _get_dsn() -> str:
     """从环境变量或 backend/.env 读取 DATABASE_URL。"""
@@ -57,14 +58,13 @@ def _get_dsn() -> str:
             line = line.strip()
             if line.startswith("DATABASE_URL="):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")
-    raise RuntimeError(
-        "DATABASE_URL 未设置。请在环境变量或 backend/.env 中配置。"
-    )
+    raise RuntimeError("DATABASE_URL 未设置。请在环境变量或 backend/.env 中配置。")
 
 
 # ─────────────────────────────────────────────
 # 核心计算函数（纯函数，便于单元测试）
 # ─────────────────────────────────────────────
+
 
 def calc_sharpe(daily_returns: list[float]) -> float:
     """计算年化 Sharpe（无风险利率=0，A股常见做法）。
@@ -146,6 +146,7 @@ def calc_running_days(trade_dates: list) -> int:
 # 数据库查询
 # ─────────────────────────────────────────────
 
+
 async def fetch_trade_log(
     conn: asyncpg.Connection,
     strategy_id: str | None,
@@ -206,6 +207,7 @@ async def fetch_performance_series(
 # 报告输出
 # ─────────────────────────────────────────────
 
+
 def _fmt_pass(passed: bool) -> str:
     return "PASS" if passed else "FAIL"
 
@@ -239,10 +241,7 @@ def print_report(
     print(f"运行天数:    {running_days}天")
     print(f"交易记录数:  {trade_count}条")
     print()
-    print(
-        f"Sharpe:      {sharpe:>6.2f}  "
-        f"[{_fmt_pass(sharpe_pass)}]  阈值: ≥{SHARPE_THRESHOLD}"
-    )
+    print(f"Sharpe:      {sharpe:>6.2f}  [{_fmt_pass(sharpe_pass)}]  阈值: ≥{SHARPE_THRESHOLD}")
     print(
         f"MDD:         {-mdd * 100:>5.1f}%  "
         f"[{_fmt_pass(mdd_pass)}]  阈值: <{MDD_THRESHOLD * 100:.0f}%"
@@ -260,6 +259,7 @@ def print_report(
 # ─────────────────────────────────────────────
 # 主流程
 # ─────────────────────────────────────────────
+
 
 async def run_assessment(
     strategy_id: str | None,
@@ -291,23 +291,15 @@ async def run_assessment(
 
         # 滑点偏差
         slippage_bps_list: list[float] = [
-            float(r["slippage_bps"])
-            for r in trade_rows
-            if r["slippage_bps"] is not None
+            float(r["slippage_bps"]) for r in trade_rows if r["slippage_bps"] is not None
         ]
         slippage_dev = calc_slippage_deviation(slippage_bps_list, THEORETICAL_SLIPPAGE_BPS)
 
         # Sharpe + MDD — 来自 performance_series
         daily_returns: list[float] = [
-            float(r["daily_return"])
-            for r in perf_rows
-            if r["daily_return"] is not None
+            float(r["daily_return"]) for r in perf_rows if r["daily_return"] is not None
         ]
-        nav_series: list[float] = [
-            float(r["nav"])
-            for r in perf_rows
-            if r["nav"] is not None
-        ]
+        nav_series: list[float] = [float(r["nav"]) for r in perf_rows if r["nav"] is not None]
         sharpe = calc_sharpe(daily_returns)
         mdd = calc_mdd(nav_series)
 

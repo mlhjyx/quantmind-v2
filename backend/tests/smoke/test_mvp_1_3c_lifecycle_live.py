@@ -12,8 +12,10 @@ subprocess 启动 + live PG + 真调 DBFactorRegistry + PlatformLifecycleMonitor
   - factor_ic_history 表 schema 变化 / ic_ma20/ic_ma60 列缺失
   - PlatformLifecycleMonitor.evaluate_all 链路有 import-time or runtime 错
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -65,7 +67,7 @@ def test_lifecycle_live_evaluate_all() -> None:
         "try:\n"
         "    with conn_check.cursor() as cur:\n"
         "        cur.execute(\n"
-        "            \"SELECT name, status FROM factor_registry \"\n"
+        '            "SELECT name, status FROM factor_registry "\n'
         "            \"WHERE name = ANY(%s) AND status != 'deprecated'\",\n"
         "            (list(expected_core),),\n"
         "        )\n"
@@ -84,6 +86,11 @@ def test_lifecycle_live_evaluate_all() -> None:
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,

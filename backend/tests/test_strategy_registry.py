@@ -3,6 +3,7 @@
 覆盖: register / get_live / get_by_id / update_status + StrategyNotFound +
 StrategyRegistryIntegrityError. 用 in-memory mock conn (psycopg2 不启真 DB, 测试纯逻辑).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -24,6 +25,7 @@ from backend.qm_platform.strategy import (
 
 # ─── Test helpers ─────────────────────────────────────────────────────
 
+
 class _FakeStrategy(Strategy):
     """Minimal Strategy for testing — satisfies ABC requirements."""
 
@@ -39,9 +41,7 @@ class _FakeStrategy(Strategy):
         self.strategy_id = strategy_id
         self.name = name
         # distinguish None (default → sentinel) vs [] (explicit empty for test)
-        self.factor_pool = (
-            ["turnover_mean_20"] if factor_pool is None else factor_pool
-        )
+        self.factor_pool = ["turnover_mean_20"] if factor_pool is None else factor_pool
         self.rebalance_freq = rebalance_freq
         self.status = status
         self.config = config or {}
@@ -53,9 +53,7 @@ class _FakeStrategy(Strategy):
         return signals
 
 
-def _make_mock_conn_factory(
-    fetchone_queue: list | None = None, rowcounts: list | None = None
-):
+def _make_mock_conn_factory(fetchone_queue: list | None = None, rowcounts: list | None = None):
     """Build a mock conn_factory that returns queued SELECT results.
 
     fetchone_queue: sequentially returned from cursor.fetchone()
@@ -89,6 +87,7 @@ def _make_mock_conn_factory(
 
 
 # ─── register() tests ────────────────────────────────────────────────
+
 
 def test_register_first_time_inserts_row_and_audit_log():
     sid = uuid4()
@@ -181,6 +180,7 @@ def test_register_raises_on_invalid_uuid():
 
 # ─── get_live() tests ────────────────────────────────────────────────
 
+
 def test_get_live_returns_registered_live_instances():
     sid1 = uuid4()
     sid2 = uuid4()
@@ -220,6 +220,7 @@ def test_get_live_raises_integrity_error_when_db_has_live_but_cache_missing():
 
 # ─── get_by_id() tests ────────────────────────────────────────────────
 
+
 def test_get_by_id_returns_instance():
     sid = uuid4()
     s = _FakeStrategy(strategy_id=str(sid), name="s1")
@@ -249,6 +250,7 @@ def test_get_by_id_raises_when_db_ok_but_cache_missing():
 
 
 # ─── update_status() tests ───────────────────────────────────────────
+
 
 def test_update_status_writes_audit_log():
     """MVP 3.5.1 (Session 43, 2026-04-28) 后 LIVE 升迁需 strategy_evaluations 守门.
@@ -296,6 +298,7 @@ def test_update_status_raises_when_not_in_db():
 
 
 # ─── EqualWeightAllocator tests ───────────────────────────────────────
+
 
 def test_equal_weight_2_strategies_1M_total():
     s1 = _FakeStrategy(strategy_id=str(uuid4()))

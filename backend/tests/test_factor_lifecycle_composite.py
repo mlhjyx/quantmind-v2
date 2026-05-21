@@ -13,6 +13,7 @@ Session 43 (2026-04-28). 验证 OR 复合决策 (老 OR 新 → demote) 3 模式
   - compute_composite_decision STRICT (4): G1 only / G10 only / 双 fail / 全 pass
   - 合成决策 ic_ma 字段填入 (1)
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -33,9 +34,7 @@ def _make_gate_result(gate_name: str, passed: bool):
 def _make_report(failed_gates: list[str]):
     """Build a SimpleNamespace report with gate_results field (鸭子类型)."""
     all_gates = ["G1_ic_significance", "G10_hypothesis"]
-    results = [
-        _make_gate_result(g, passed=(g not in failed_gates)) for g in all_gates
-    ]
+    results = [_make_gate_result(g, passed=(g not in failed_gates)) for g in all_gates]
     return SimpleNamespace(gate_results=results)
 
 
@@ -355,7 +354,7 @@ def test_composite_g1_only_suppresses_recovery_when_g1_fails():
     result = compute_composite_decision(
         factor_name="f1",
         current_status=FactorStatus.WARNING.value,  # 真实场景: 当前 warning
-        old_decision=recovery,                       # 老路径建议恢复
+        old_decision=recovery,  # 老路径建议恢复
         new_report=report,
         mode=CompositeMode.G1_ONLY,
     )

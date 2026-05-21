@@ -7,6 +7,7 @@
   - execute 分发 (sell → broker / alert_only / bypass) + risk_event_log INSERT + notify
   - _root_rule_id 反查 (pms_l1 → pms)
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -29,7 +30,9 @@ from backend.qm_platform.risk.interface import (
 
 
 def _pos(code="600519.SH", shares=100, entry=100.0, peak=120.0, current=110.0) -> Position:
-    return Position(code=code, shares=shares, entry_price=entry, peak_price=peak, current_price=current)
+    return Position(
+        code=code, shares=shares, entry_price=entry, peak_price=peak, current_price=current
+    )
 
 
 def _ctx(positions=None) -> RiskContext:
@@ -87,9 +90,11 @@ def _mock_conn() -> MagicMock:
 
 def _conn_factory(mock_conn: MagicMock):
     """Return a factory that yields mock_conn as context manager."""
+
     @contextlib.contextmanager
     def factory():
         yield mock_conn
+
     return factory
 
 
@@ -99,9 +104,12 @@ def _conn_factory(mock_conn: MagicMock):
 class TestEngineRegister:
     def test_register_new_rule(self):
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=lambda: _mock_conn(),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=lambda: _mock_conn(),
         )
         rule = _SellRule()
         engine.register(rule)
@@ -109,9 +117,12 @@ class TestEngineRegister:
 
     def test_register_duplicate_raises(self):
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=lambda: _mock_conn(),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=lambda: _mock_conn(),
         )
         engine.register(_SellRule())
         with pytest.raises(ValueError, match="already registered"):
@@ -127,9 +138,12 @@ class TestEngineBuildContext:
         price_reader.get_nav.return_value = {"total_value": 999_000.0}
 
         engine = PlatformRiskEngine(
-            primary_source=primary, fallback_source=fallback,
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=price_reader, conn_factory=lambda: _mock_conn(),
+            primary_source=primary,
+            fallback_source=fallback,
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=price_reader,
+            conn_factory=lambda: _mock_conn(),
         )
         ctx = engine.build_context(
             strategy_id="00000000-0000-0000-0000-000000000001",
@@ -149,9 +163,12 @@ class TestEngineBuildContext:
         notifier = MagicMock()
 
         engine = PlatformRiskEngine(
-            primary_source=primary, fallback_source=fallback,
-            broker=MagicMock(), notifier=notifier,
-            price_reader=price_reader, conn_factory=lambda: _mock_conn(),
+            primary_source=primary,
+            fallback_source=fallback,
+            broker=MagicMock(),
+            notifier=notifier,
+            price_reader=price_reader,
+            conn_factory=lambda: _mock_conn(),
         )
         ctx = engine.build_context(
             strategy_id="00000000-0000-0000-0000-000000000001",
@@ -168,9 +185,12 @@ class TestEngineBuildContext:
         fallback.load.side_effect = PositionSourceError("fallback also fails")
 
         engine = PlatformRiskEngine(
-            primary_source=primary, fallback_source=fallback,
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=lambda: _mock_conn(),
+            primary_source=primary,
+            fallback_source=fallback,
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=lambda: _mock_conn(),
         )
         with pytest.raises(PositionSourceError, match="fallback also fails"):
             engine.build_context(
@@ -186,9 +206,12 @@ class TestEngineBuildContext:
         price_reader.get_nav.return_value = None
 
         engine = PlatformRiskEngine(
-            primary_source=primary, fallback_source=MagicMock(),
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=price_reader, conn_factory=lambda: _mock_conn(),
+            primary_source=primary,
+            fallback_source=MagicMock(),
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=price_reader,
+            conn_factory=lambda: _mock_conn(),
         )
         ctx = engine.build_context(strategy_id="x", execution_mode="paper")
         assert ctx.portfolio_nav == 200 * 110.0
@@ -197,16 +220,29 @@ class TestEngineBuildContext:
 class TestEngineRun:
     def test_run_aggregates_multiple_rules(self):
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=lambda: _mock_conn(),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=lambda: _mock_conn(),
         )
-        engine.register(_SellRule(results=[
-            RuleResult(rule_id="test_sell", code="A.SH", shares=100, reason="r", metrics={}),
-        ]))
-        engine.register(_AlertRule(results=[
-            RuleResult(rule_id="test_alert", code="", shares=0, reason="a", metrics={}),
-        ]))
+        engine.register(
+            _SellRule(
+                results=[
+                    RuleResult(
+                        rule_id="test_sell", code="A.SH", shares=100, reason="r", metrics={}
+                    ),
+                ]
+            )
+        )
+        engine.register(
+            _AlertRule(
+                results=[
+                    RuleResult(rule_id="test_alert", code="", shares=0, reason="a", metrics={}),
+                ]
+            )
+        )
 
         results = engine.run(_ctx())
         assert len(results) == 2
@@ -216,14 +252,21 @@ class TestEngineRun:
     def test_rule_exception_isolated(self):
         """一个 rule raise 不影响其他 rule."""
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=MagicMock(), notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=lambda: _mock_conn(),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=MagicMock(),
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=lambda: _mock_conn(),
         )
         engine.register(_RaisingRule())
-        engine.register(_AlertRule(results=[
-            RuleResult(rule_id="test_alert", code="", shares=0, reason="a", metrics={}),
-        ]))
+        engine.register(
+            _AlertRule(
+                results=[
+                    RuleResult(rule_id="test_alert", code="", shares=0, reason="a", metrics={}),
+                ]
+            )
+        )
 
         results = engine.run(_ctx())
         # RaisingRule skipped, AlertRule results still emitted
@@ -238,21 +281,29 @@ class TestEngineExecute:
         mock_conn = _mock_conn()
 
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=broker, notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=_conn_factory(mock_conn),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=broker,
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=_conn_factory(mock_conn),
         )
         engine.register(_SellRule())
 
         result = RuleResult(
-            rule_id="test_sell", code="600519.SH", shares=100,
-            reason="trigger", metrics={"level": 1.0},
+            rule_id="test_sell",
+            code="600519.SH",
+            shares=100,
+            reason="trigger",
+            metrics={"level": 1.0},
         )
         engine.execute([result], _ctx())
 
         broker.sell.assert_called_once_with(
-            code="600519.SH", shares=100,
-            reason="risk:test_sell", timeout=5.0,
+            code="600519.SH",
+            shares=100,
+            reason="risk:test_sell",
+            timeout=5.0,
         )
         # risk_event_log INSERT happened.
         # MVP 3.4 batch 5 dual-write: same `with conn:` block now writes BOTH
@@ -272,15 +323,21 @@ class TestEngineExecute:
         mock_conn = _mock_conn()
 
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=broker, notifier=notifier,
-            price_reader=MagicMock(), conn_factory=_conn_factory(mock_conn),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=broker,
+            notifier=notifier,
+            price_reader=MagicMock(),
+            conn_factory=_conn_factory(mock_conn),
         )
         engine.register(_AlertRule())
 
         result = RuleResult(
-            rule_id="test_alert", code="", shares=0,
-            reason="portfolio drop", metrics={},
+            rule_id="test_alert",
+            code="",
+            shares=0,
+            reason="portfolio drop",
+            metrics={},
         )
         engine.execute([result], _ctx())
 
@@ -303,15 +360,21 @@ class TestEngineExecute:
         mock_conn = _mock_conn()
 
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=broker, notifier=notifier,
-            price_reader=MagicMock(), conn_factory=_conn_factory(mock_conn),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=broker,
+            notifier=notifier,
+            price_reader=MagicMock(),
+            conn_factory=_conn_factory(mock_conn),
         )
         engine.register(_BypassRule())
 
         result = RuleResult(
-            rule_id="test_bypass", code="000001.SZ", shares=0,
-            reason="bypass test", metrics={},
+            rule_id="test_bypass",
+            code="000001.SZ",
+            shares=0,
+            reason="bypass test",
+            metrics={},
         )
         engine.execute([result], _ctx())
 
@@ -333,15 +396,21 @@ class TestEngineExecute:
         mock_conn = _mock_conn()
 
         engine = PlatformRiskEngine(
-            primary_source=MagicMock(), fallback_source=MagicMock(),
-            broker=broker, notifier=MagicMock(),
-            price_reader=MagicMock(), conn_factory=_conn_factory(mock_conn),
+            primary_source=MagicMock(),
+            fallback_source=MagicMock(),
+            broker=broker,
+            notifier=MagicMock(),
+            price_reader=MagicMock(),
+            conn_factory=_conn_factory(mock_conn),
         )
         engine.register(_SellRule())
 
         result = RuleResult(
-            rule_id="test_sell", code="600519.SH", shares=100,
-            reason="trigger", metrics={},
+            rule_id="test_sell",
+            code="600519.SH",
+            shares=100,
+            reason="trigger",
+            metrics={},
         )
         # 不 raise (内部捕)
         engine.execute([result], _ctx())
@@ -352,7 +421,8 @@ class TestEngineExecute:
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
         assert mock_cursor.execute.called
         risk_event_log_calls = [
-            c for c in mock_cursor.execute.call_args_list
+            c
+            for c in mock_cursor.execute.call_args_list
             if "INSERT INTO risk_event_log" in c.args[0]
         ]
         assert len(risk_event_log_calls) >= 1, (

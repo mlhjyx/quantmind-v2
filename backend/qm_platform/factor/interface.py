@@ -12,6 +12,7 @@
   - MVP 1.3 Factor Framework: FactorRegistry + FactorOnboardingPipeline 完整实施
   - MVP A (已落地): FactorLifecycleMonitor 纯规则 engine, 迁移到此 interface 作 Phase C 任务
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

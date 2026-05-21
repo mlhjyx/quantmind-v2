@@ -18,6 +18,7 @@ Application Pattern usage:
     >>> m.counter("orders.filled", 1.0, labels={"strategy": "S1"})
     >>> m.histogram("signal.latency_ms", 234.5, labels={"strategy": "S1"})
 """
+
 from __future__ import annotations
 
 import json
@@ -78,6 +79,7 @@ class PostgresMetricExporter(MetricExporter):
     ) -> None:
         if conn_factory is None:
             from app.services.db import get_sync_conn as _default_factory
+
             conn_factory = _default_factory
         self._conn_factory = conn_factory
         self._now_fn = now_fn or _now_utc
@@ -182,15 +184,9 @@ class PostgresMetricExporter(MetricExporter):
 
         out: list[Metric] = []
         for row_name, row_value, row_labels, row_ts in rows:
-            ts_iso = (
-                row_ts.isoformat()
-                if isinstance(row_ts, datetime)
-                else str(row_ts)
-            )
+            ts_iso = row_ts.isoformat() if isinstance(row_ts, datetime) else str(row_ts)
             # row_labels 来自 JSONB → psycopg2 自动 dict, 防 None
-            labels_dict: dict[str, str] = (
-                {k: str(v) for k, v in (row_labels or {}).items()}
-            )
+            labels_dict: dict[str, str] = {k: str(v) for k, v in (row_labels or {}).items()}
             out.append(
                 Metric(
                     name=str(row_name),
@@ -266,9 +262,7 @@ class PostgresMetricExporter(MetricExporter):
         if not isinstance(name, str) or not name.strip():
             raise ValueError("metric name 必须非空字符串")
         if len(name) > _METRIC_NAME_MAX_LEN:
-            raise ValueError(
-                f"metric name 超长 (>{_METRIC_NAME_MAX_LEN}): {len(name)}"
-            )
+            raise ValueError(f"metric name 超长 (>{_METRIC_NAME_MAX_LEN}): {len(name)}")
         # bool 是 int 子类, 显式 reject (避免 metric.gauge('x', True) 静默写入)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(
@@ -281,19 +275,13 @@ class PostgresMetricExporter(MetricExporter):
         if value == float("inf") or value == float("-inf"):
             raise ValueError(f"metric value 不允 Inf, got {value}")
         if metric_type not in ("gauge", "counter", "histogram"):
-            raise ValueError(
-                f"metric_type 必须 gauge/counter/histogram, got {metric_type!r}"
-            )
+            raise ValueError(f"metric_type 必须 gauge/counter/histogram, got {metric_type!r}")
         if labels is not None:
             if not isinstance(labels, dict):
-                raise TypeError(
-                    f"labels 必须 dict, got {type(labels).__name__}"
-                )
+                raise TypeError(f"labels 必须 dict, got {type(labels).__name__}")
             for k, v in labels.items():
                 if not isinstance(k, str):
-                    raise TypeError(
-                        f"label key 必须 str, got {type(k).__name__} ({k!r})"
-                    )
+                    raise TypeError(f"label key 必须 str, got {type(k).__name__} ({k!r})")
                 if not isinstance(v, str):
                     raise TypeError(
                         f"label value 必须 str (caller 自行 stringify), "

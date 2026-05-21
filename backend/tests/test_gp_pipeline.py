@@ -172,7 +172,7 @@ class TestWriteResultsToDB:
 
     @pytest.mark.asyncio
     async def test_write_empty_passed_factors(self) -> None:
-        """空passed_factors列表时只更新pipeline_runs，不写approval_queue。"""
+        """空passed_factors列表时只更新pipeline_runs，不写gp_approval_queue。"""
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         mock_conn.close = AsyncMock()
@@ -192,7 +192,7 @@ class TestWriteResultsToDB:
 
     @pytest.mark.asyncio
     async def test_write_with_passed_factors(self) -> None:
-        """有passed_factors时应写入approval_queue（INSERT）。"""
+        """有passed_factors时应写入gp_approval_queue（INSERT）。"""
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         mock_conn.close = AsyncMock()
@@ -221,6 +221,10 @@ class TestWriteResultsToDB:
         # 1次UPDATE + 2次INSERT
         assert mock_conn.execute.call_count == 3
         mock_conn.close.assert_called_once()
+        # INSERT 必须落在 gp_approval_queue (域12), 不是 approval_queue (域11)
+        insert_sqls = [c[0][0] for c in mock_conn.execute.call_args_list[1:]]
+        assert all("gp_approval_queue" in sql for sql in insert_sqls)
+        assert all("gate_report" in sql for sql in insert_sqls)
 
     @pytest.mark.asyncio
     async def test_write_db_unavailable_no_crash(self) -> None:

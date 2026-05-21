@@ -42,8 +42,10 @@ def insert_pending_rebalance(conn, signal_date: date, target: dict):
             error_message, result_json)
            VALUES ('pending_monthly_rebalance', 'astock', NOW(), NOW(), 'pending',
                    %s, %s)""",
-        (f"L1触发延迟月度调仓 signal_date={signal_date}",
-         json.dumps({"signal_date": str(signal_date), "target": target})),
+        (
+            f"L1触发延迟月度调仓 signal_date={signal_date}",
+            json.dumps({"signal_date": str(signal_date), "target": target}),
+        ),
     )
     conn.commit()
 
@@ -54,7 +56,8 @@ def get_pending_status(conn) -> str | None:
     cur.execute(
         """SELECT status FROM scheduler_task_log
            WHERE task_name = 'pending_monthly_rebalance'
-           ORDER BY created_at DESC LIMIT 1""")
+           ORDER BY created_at DESC LIMIT 1"""
+    )
     row = cur.fetchone()
     return row[0] if row else None
 
@@ -66,7 +69,8 @@ def count_trading_days_between(conn, d1: date, d2: date) -> int:
         """SELECT COUNT(*) FROM trading_calendar
            WHERE market='astock' AND is_trading_day=TRUE
            AND trade_date > %s AND trade_date < %s""",
-        (d1, d2))
+        (d1, d2),
+    )
     return cur.fetchone()[0]
 
 
@@ -91,7 +95,8 @@ class TestL1DelayRebalance:
                 FROM trading_calendar
                 WHERE market='astock' AND is_trading_day=TRUE
                   AND trade_date BETWEEN '2025-06-01' AND '2025-06-30'
-            ) t WHERE rn=1 LIMIT 1""")
+            ) t WHERE rn=1 LIMIT 1"""
+        )
         row = cur.fetchone()
         assert row, "需要有2025年6月交易日历数据"
         signal_date = row[0]
@@ -102,7 +107,8 @@ class TestL1DelayRebalance:
                WHERE market='astock' AND is_trading_day=TRUE
                  AND trade_date > %s
                ORDER BY trade_date LIMIT 2""",
-            (signal_date,))
+            (signal_date,),
+        )
         next_days = [r[0] for r in cur.fetchall()]
         assert len(next_days) >= 2, "需要至少2个后续交易日"
         next_days[0]  # L1触发日
@@ -128,7 +134,8 @@ class TestL1DelayRebalance:
             cur.execute(
                 """SELECT result_json FROM scheduler_task_log
                    WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'
-                   ORDER BY created_at DESC LIMIT 1""")
+                   ORDER BY created_at DESC LIMIT 1"""
+            )
             pending = cur.fetchone()
             assert pending is not None, "应该找到pending记录"
             pending_data = json.loads(pending[0]) if isinstance(pending[0], str) else pending[0]
@@ -139,6 +146,7 @@ class TestL1DelayRebalance:
             assert len(pending_target) == 3
 
             from datetime import datetime as dt
+
             p_date = dt.strptime(pending_signal_date, "%Y-%m-%d").date()
             gap_check = count_trading_days_between(db_conn, p_date, exec_date_t2)
 
@@ -147,7 +155,8 @@ class TestL1DelayRebalance:
                 is_rebalance = True
                 cur.execute(
                     """UPDATE scheduler_task_log SET status='executed'
-                       WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                       WHERE task_name='pending_monthly_rebalance' AND status='pending'"""
+                )
                 db_conn.commit()
 
         # 验证结果
@@ -172,7 +181,8 @@ class TestL1DelayRebalance:
                 FROM trading_calendar
                 WHERE market='astock' AND is_trading_day=TRUE
                   AND trade_date BETWEEN '2025-07-01' AND '2025-07-31'
-            ) t WHERE rn=1 LIMIT 1""")
+            ) t WHERE rn=1 LIMIT 1"""
+        )
         row = cur.fetchone()
         assert row, "需要有2025年7月交易日历数据"
         signal_date = row[0]
@@ -183,7 +193,8 @@ class TestL1DelayRebalance:
                WHERE market='astock' AND is_trading_day=TRUE
                  AND trade_date > %s
                ORDER BY trade_date LIMIT 4""",
-            (signal_date,))
+            (signal_date,),
+        )
         next_days = [r[0] for r in cur.fetchall()]
         assert len(next_days) >= 4, "需要至少4个后续交易日"
 
@@ -211,7 +222,8 @@ class TestL1DelayRebalance:
             cur.execute(
                 """SELECT result_json FROM scheduler_task_log
                    WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'
-                   ORDER BY created_at DESC LIMIT 1""")
+                   ORDER BY created_at DESC LIMIT 1"""
+            )
             pending = cur.fetchone()
             if pending and pending[0]:
                 pending_data = json.loads(pending[0]) if isinstance(pending[0], str) else pending[0]
@@ -219,6 +231,7 @@ class TestL1DelayRebalance:
                 pending_target = pending_data.get("target", {})
 
                 from datetime import datetime as dt
+
                 p_date = dt.strptime(pending_signal_date, "%Y-%m-%d").date()
                 gap = count_trading_days_between(db_conn, p_date, exec_date_late)
 
@@ -228,7 +241,8 @@ class TestL1DelayRebalance:
                     # 过期
                     cur.execute(
                         """UPDATE scheduler_task_log SET status='expired'
-                           WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                           WHERE task_name='pending_monthly_rebalance' AND status='pending'"""
+                    )
                     db_conn.commit()
 
         assert is_rebalance is False, "gap>2时延迟调仓应该被放弃"
@@ -244,7 +258,8 @@ class TestL1DelayRebalance:
         # 检查scheduler_task_log中没有pending记录
         cur.execute(
             """SELECT COUNT(*) FROM scheduler_task_log
-               WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'""")
+               WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'"""
+        )
         assert cur.fetchone()[0] == 0, "初始状态不应有pending记录"
 
         # 模拟L1触发 + 非调仓日
@@ -264,9 +279,16 @@ class TestL1DelayRebalance:
                         error_message, result_json)
                        VALUES ('pending_monthly_rebalance', 'astock', NOW(), NOW(), 'pending',
                                %s, %s)""",
-                    (f"L1触发延迟月度调仓 signal_date={signal_date}",
-                     json.dumps({"signal_date": str(signal_date),
-                                 "target": {k: round(v, 6) for k, v in hedged_target.items()}})))
+                    (
+                        f"L1触发延迟月度调仓 signal_date={signal_date}",
+                        json.dumps(
+                            {
+                                "signal_date": str(signal_date),
+                                "target": {k: round(v, 6) for k, v in hedged_target.items()},
+                            }
+                        ),
+                    ),
+                )
                 db_conn.commit()
             else:
                 # 非调仓日正常跳过
@@ -275,7 +297,8 @@ class TestL1DelayRebalance:
         # 验证：不应该有pending记录
         cur.execute(
             """SELECT COUNT(*) FROM scheduler_task_log
-               WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'""")
+               WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'"""
+        )
         count = cur.fetchone()[0]
         assert count == 0, "非调仓日L1不应写入pending记录"
         assert is_rebalance is False, "非调仓日应保持is_rebalance=False"
@@ -294,7 +317,8 @@ class TestL1DelayRebalance:
                WHERE market='astock' AND is_trading_day=TRUE
                  AND EXTRACT(DOW FROM trade_date) = 5  -- 周五
                  AND trade_date BETWEEN '2025-05-01' AND '2025-12-31'
-               ORDER BY trade_date LIMIT 1""")
+               ORDER BY trade_date LIMIT 1"""
+        )
         row = cur.fetchone()
         assert row, "需要找到一个周五交易日"
         friday_date = row[0]
@@ -305,7 +329,8 @@ class TestL1DelayRebalance:
                WHERE market='astock' AND is_trading_day=TRUE
                  AND trade_date > %s
                ORDER BY trade_date LIMIT 1""",
-            (friday_date,))
+            (friday_date,),
+        )
         next_td = cur.fetchone()
         assert next_td, "需要找到周五之后的下一个交易日"
         monday_date = next_td[0]
@@ -327,7 +352,8 @@ class TestL1DelayRebalance:
             cur.execute(
                 """SELECT result_json FROM scheduler_task_log
                    WHERE task_name = 'pending_monthly_rebalance' AND status = 'pending'
-                   ORDER BY created_at DESC LIMIT 1""")
+                   ORDER BY created_at DESC LIMIT 1"""
+            )
             pending = cur.fetchone()
             if pending and pending[0]:
                 pending_data = json.loads(pending[0]) if isinstance(pending[0], str) else pending[0]
@@ -335,6 +361,7 @@ class TestL1DelayRebalance:
                 pending_target = pending_data.get("target", {})
 
                 from datetime import datetime as dt
+
                 p_date = dt.strptime(pending_signal_date, "%Y-%m-%d").date()
                 gap_check = count_trading_days_between(db_conn, p_date, exec_date)
 
@@ -343,12 +370,14 @@ class TestL1DelayRebalance:
                     is_rebalance = True
                     cur.execute(
                         """UPDATE scheduler_task_log SET status='executed'
-                           WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                           WHERE task_name='pending_monthly_rebalance' AND status='pending'"""
+                    )
                     db_conn.commit()
                 else:
                     cur.execute(
                         """UPDATE scheduler_task_log SET status='expired'
-                           WHERE task_name='pending_monthly_rebalance' AND status='pending'""")
+                           WHERE task_name='pending_monthly_rebalance' AND status='pending'"""
+                    )
                     db_conn.commit()
 
         # 验证：gap=0<=2，应该执行，不应过期

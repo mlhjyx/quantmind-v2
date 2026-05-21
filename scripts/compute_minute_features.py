@@ -51,9 +51,9 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
     Returns:
         DataFrame [code, trade_date, factor_name, raw_value]
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Processing {year} — 10 minute features")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     t0 = time.time()
     df = cache.load_year(year)
@@ -82,16 +82,14 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
             daily_records.append((code, td, key, val))
 
         if (i + 1) % 50000 == 0:
-            print(f" {i+1}/{total_groups}", end="", flush=True)
+            print(f" {i + 1}/{total_groups}", end="", flush=True)
 
-    print(f" done ({time.time()-t1:.0f}s, {total_groups} groups)")
+    print(f" done ({time.time() - t1:.0f}s, {total_groups} groups)")
 
     del df, grouped
     gc.collect()
 
-    daily_df = pd.DataFrame(
-        daily_records, columns=["code", "trade_date", "factor_key", "value"]
-    )
+    daily_df = pd.DataFrame(daily_records, columns=["code", "trade_date", "factor_key", "value"])
     del daily_records
     print(f"  Daily metrics: {len(daily_df):,} rows")
 
@@ -107,14 +105,12 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
 
         # 选择rolling函数: min for opening_volume_share, mean for others
         if factor_key in ROLLING_MIN_FACTORS:
-            fdf["raw_value"] = (
-                fdf.groupby("code")["value"]
-                .transform(lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).min())
+            fdf["raw_value"] = fdf.groupby("code")["value"].transform(
+                lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).min()
             )
         else:
-            fdf["raw_value"] = (
-                fdf.groupby("code")["value"]
-                .transform(lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean())
+            fdf["raw_value"] = fdf.groupby("code")["value"].transform(
+                lambda x: x.rolling(ROLLING_WINDOW, min_periods=10).mean()
             )
 
         valid = fdf.dropna(subset=["raw_value"])
@@ -122,7 +118,7 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
         valid["factor_name"] = factor_name
         parts.append(valid)
 
-    print(f" done ({time.time()-t2:.0f}s)")
+    print(f" done ({time.time() - t2:.0f}s)")
     del daily_df
     gc.collect()
 
@@ -133,9 +129,7 @@ def process_year(year: int, cache: MinuteDataCache) -> pd.DataFrame:
 
     elapsed = time.time() - t0
     n_factors = result_df["factor_name"].nunique()
-    print(
-        f"  Result: {len(result_df):,} rows, {n_factors} factors, {elapsed:.0f}s total"
-    )
+    print(f"  Result: {len(result_df):,} rows, {n_factors} factors, {elapsed:.0f}s total")
     return result_df
 
 
@@ -200,17 +194,21 @@ def ic_screen(conn) -> None:
     print("-" * 80)
 
     for factor_name in MINUTE_FEATURES:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FROM factor_values
             WHERE factor_name = %s AND raw_value IS NOT NULL
-        """, (factor_name,))
+        """,
+            (factor_name,),
+        )
         count = cur.fetchone()[0]
         if count == 0:
             print(f"{factor_name:<35} {'NO DATA':>10}")
             continue
 
         # 按月计算IC
-        cur.execute("""
+        cur.execute(
+            """
             SELECT DATE_TRUNC('month', fv.trade_date) as month,
                    CORR(fv.raw_value, kd.close_pct) as ic
             FROM factor_values fv
@@ -225,7 +223,9 @@ def ic_screen(conn) -> None:
             GROUP BY month
             HAVING COUNT(*) >= 30
             ORDER BY month
-        """, (factor_name,))
+        """,
+            (factor_name,),
+        )
 
         rows = cur.fetchall()
         if len(rows) < 6:
@@ -282,7 +282,9 @@ def spot_check(cache: MinuteDataCache) -> None:
     print("\n--- Manual checks ---")
     print(f"  Bars: {len(group)}")
     print(f"  Realized vol (sum r²): {np.sum(ret**2):.8f} vs {metrics['high_freq_volatility']:.8f}")
-    print(f"  Volume HHI: {np.sum((v/v.sum())**2):.6f} vs {metrics['volume_concentration']:.6f}")
+    print(
+        f"  Volume HHI: {np.sum((v / v.sum()) ** 2):.6f} vs {metrics['volume_concentration']:.6f}"
+    )
     opening_share = v[mod <= 5].sum() / v.sum()
     print(f"  Opening vol share: {opening_share:.6f} vs {metrics['opening_volume_share']:.6f}")
 
@@ -308,7 +310,9 @@ def main():
         try:
             years = [args.year] if args.year else cache.years_available()
             if not years:
-                print("No minute_bars cache. Run: python scripts/research/minute_data_loader.py --build")
+                print(
+                    "No minute_bars cache. Run: python scripts/research/minute_data_loader.py --build"
+                )
                 return
 
             total_written = 0
@@ -319,7 +323,7 @@ def main():
                 del result_df
                 gc.collect()
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Total: {total_written:,} rows written to factor_values")
             print(f"Factors: {', '.join(MINUTE_FEATURES)}")
         finally:

@@ -31,6 +31,7 @@
   调用顺序: evaluator.evaluate_strategy(sid) → registry.record_evaluation(verdict) →
   registry.update_status(sid, LIVE, reason).
 """
+
 from __future__ import annotations
 
 import json
@@ -103,9 +104,7 @@ class DBStrategyRegistry(StrategyRegistry):
             最新评估超出此窗口视为过期, 拒绝升 LIVE. 必 > 0.
         """
         if live_eval_freshness_days <= 0:
-            raise ValueError(
-                f"live_eval_freshness_days 必须 > 0, 实测 {live_eval_freshness_days}"
-            )
+            raise ValueError(f"live_eval_freshness_days 必须 > 0, 实测 {live_eval_freshness_days}")
         self._conn_factory = conn_factory
         self._live_eval_freshness_days = live_eval_freshness_days
         # In-memory instance cache (boot-time populated via register())
@@ -242,9 +241,7 @@ class DBStrategyRegistry(StrategyRegistry):
         conn = self._conn_factory()
         # reviewer P1 cursor context manager
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM strategy_registry WHERE strategy_id = %s", (str(sid),)
-            )
+            cur.execute("SELECT 1 FROM strategy_registry WHERE strategy_id = %s", (str(sid),))
             row = cur.fetchone()
         if row is None:
             raise StrategyNotFound(f"strategy_id {sid} 不在 strategy_registry DB 表中")
@@ -278,9 +275,7 @@ class DBStrategyRegistry(StrategyRegistry):
             raise ValueError("update_status 必须附 reason (审计要求)")
         sid = self._parse_uuid(strategy_id, "strategy_id")
         new_status_text = (
-            new_status.value
-            if isinstance(new_status, StrategyStatus)
-            else str(new_status)
+            new_status.value if isinstance(new_status, StrategyStatus) else str(new_status)
         )
 
         conn = self._conn_factory()
@@ -503,6 +498,4 @@ class DBStrategyRegistry(StrategyRegistry):
         try:
             return UUID(val)
         except (TypeError, ValueError) as e:
-            raise ValueError(
-                f"{field_name} 必须是 UUID, 实测 {type(val).__name__}: {val!r}"
-            ) from e
+            raise ValueError(f"{field_name} 必须是 UUID, 实测 {type(val).__name__}: {val!r}") from e

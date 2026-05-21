@@ -3,6 +3,7 @@
 MVP 1.1 (2026-04-18): abstract interfaces (DataSource/DataContract/DataAccessLayer/FactorCacheProtocol).
 MVP 1.2a (2026-04-18): concrete `PlatformDataAccessLayer` read-only (4 方法).
 """
+
 from .access_layer import (
     DALError,
     PlatformDataAccessLayer,

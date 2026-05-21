@@ -32,6 +32,7 @@ BASELINE_JSON = PROJECT_ROOT / "cache" / "baseline" / "regression_result.json"
 
 # ── §2 数据库统计 ──
 
+
 def gather_db_stats() -> dict:
     """从 DB 拉表行数 + 时间范围 + 大小。"""
     from app.services.db import get_sync_conn
@@ -45,7 +46,7 @@ def gather_db_stats() -> dict:
         cur.execute("SELECT hypertable_name FROM timescaledb_information.hypertables")
         hypertables = {r[0] for r in cur.fetchall()}
     except Exception:
-        pass
+        pass  # silent_ok: diagnostic script, partial output acceptable
 
     # Hypertable 实际行数 (从 _timescaledb_catalog 或直接 COUNT)
     hypertable_rows: dict[str, int] = {}
@@ -54,7 +55,7 @@ def gather_db_stats() -> dict:
             cur.execute(f"SELECT COUNT(*) FROM {h}")
             hypertable_rows[h] = cur.fetchone()[0]
         except Exception:
-            pass
+            pass  # silent_ok: diagnostic script, partial output acceptable
 
     # 有数据的表按行数降序 (排除 TimescaleDB 内部 chunks 和目录表)
     cur.execute("""
@@ -78,8 +79,14 @@ def gather_db_stats() -> dict:
 
     # 核心表时间范围
     ranges = {}
-    for tbl in ["klines_daily", "daily_basic", "moneyflow_daily",
-                "factor_values", "northbound_holdings", "minute_bars"]:
+    for tbl in [
+        "klines_daily",
+        "daily_basic",
+        "moneyflow_daily",
+        "factor_values",
+        "northbound_holdings",
+        "minute_bars",
+    ]:
         try:
             col = "trade_date"
             if tbl == "minute_bars":
@@ -111,9 +118,7 @@ def gather_db_stats() -> dict:
         ("minute_bars", "code"),
     ]:
         try:
-            cur.execute(
-                f"SELECT COUNT(*) FILTER (WHERE {col} NOT LIKE '%.%') FROM {tbl}"
-            )
+            cur.execute(f"SELECT COUNT(*) FILTER (WHERE {col} NOT LIKE '%.%') FROM {tbl}")
             suffix_status[tbl] = cur.fetchone()[0]
         except Exception:
             suffix_status[tbl] = None
@@ -129,8 +134,10 @@ def gather_db_stats() -> dict:
 
 # ── §3 代码状态 ──
 
+
 def gather_code_stats() -> dict:
     """代码文件计数 + git + ruff + pytest 收集。"""
+
     def _count(glob_pattern: str, exclude: list[str] | None = None) -> int:
         cmd = ["git", "ls-files", glob_pattern]
         try:
@@ -147,7 +154,10 @@ def gather_code_stats() -> dict:
     try:
         commit = subprocess.run(
             ["git", "log", "-1", "--format=%H %s"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=10,
         ).stdout.strip()
     except Exception:
         commit = "unknown"
@@ -155,7 +165,10 @@ def gather_code_stats() -> dict:
     try:
         total_commits = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=10,
         ).stdout.strip()
     except Exception:
         total_commits = "?"
@@ -165,7 +178,10 @@ def gather_code_stats() -> dict:
     try:
         r = subprocess.run(
             ["ruff", "check", "backend/", "scripts/"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=30,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         out = r.stdout + r.stderr
         # 解析 "Found N errors"
@@ -181,7 +197,10 @@ def gather_code_stats() -> dict:
     try:
         r = subprocess.run(
             ["pytest", "--collect-only", "-q", "backend/tests/"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=60,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         import re
 
@@ -204,6 +223,7 @@ def gather_code_stats() -> dict:
 
 # ── §7 基线数据 ──
 
+
 def gather_baseline() -> dict:
     """从 cache/baseline/regression_result.json 读基线。"""
     if not BASELINE_JSON.exists():
@@ -215,6 +235,7 @@ def gather_baseline() -> dict:
 
 
 # ── 输出 ──
+
 
 def render_markdown(db: dict, code: dict, baseline: dict) -> str:
     """生成可插入 SYSTEM_STATUS.md 的 Markdown 段落。"""
@@ -232,60 +253,68 @@ def render_markdown(db: dict, code: dict, baseline: dict) -> str:
     for t in db["tables"]:
         lines.append(f"| {t['name']} | {t['rows']:,} |")
 
-    lines.extend([
-        "",
-        "### 核心表时间范围",
-        "",
-        "| 表 | 起始 | 截止 |",
-        "|----|------|------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "### 核心表时间范围",
+            "",
+            "| 表 | 起始 | 截止 |",
+            "|----|------|------|",
+        ]
+    )
     for tbl, (start, end) in db["ranges"].items():
         lines.append(f"| {tbl} | {start or '-'} | {end or '-'} |")
 
-    lines.extend([
-        "",
-        "### code 格式验证 (铁律 1 + 6-B, 应全部为 0)",
-        "",
-        "| 表 | 无后缀行数 |",
-        "|----|----------|",
-    ])
+    lines.extend(
+        [
+            "",
+            "### code 格式验证 (铁律 1 + 6-B, 应全部为 0)",
+            "",
+            "| 表 | 无后缀行数 |",
+            "|----|----------|",
+        ]
+    )
     for tbl, cnt in db["no_suffix_count"].items():
         flag = "✅" if cnt == 0 else ("❌" if cnt and cnt > 0 else "?")
         lines.append(f"| {tbl} | {cnt if cnt is not None else '?'} {flag} |")
 
-    lines.extend([
-        "",
-        f"### 空表 ({len(db['empty_tables'])} 张)",
-        "",
-        ", ".join(db["empty_tables"]) or "(无)",
-        "",
-        "## §3 代码状态 (自动生成)",
-        "",
-        f"- Git commits: {code['total_commits']}",
-        f"- 最新 commit: `{code['latest_commit']}`",
-        f"- backend/ Python: {code['backend_py']}",
-        f"- scripts/ Python (非 archive): {code['scripts_py']}",
-        f"- frontend/src TS/TSX: {code['frontend_ts']}",
-        f"- 测试文件: {code['test_files']}",
-        f"- 测试数 (pytest collect): {code['test_count']}",
-        f"- ruff errors: {code['ruff_errors']}",
-        "",
-        "## §7 基线回测 (自动生成)",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            f"### 空表 ({len(db['empty_tables'])} 张)",
+            "",
+            ", ".join(db["empty_tables"]) or "(无)",
+            "",
+            "## §3 代码状态 (自动生成)",
+            "",
+            f"- Git commits: {code['total_commits']}",
+            f"- 最新 commit: `{code['latest_commit']}`",
+            f"- backend/ Python: {code['backend_py']}",
+            f"- scripts/ Python (非 archive): {code['scripts_py']}",
+            f"- frontend/src TS/TSX: {code['frontend_ts']}",
+            f"- 测试文件: {code['test_files']}",
+            f"- 测试数 (pytest collect): {code['test_count']}",
+            f"- ruff errors: {code['ruff_errors']}",
+            "",
+            "## §7 基线回测 (自动生成)",
+            "",
+        ]
+    )
     if "error" in baseline:
         lines.append(f"⚠️ {baseline['error']}")
     else:
         b = baseline.get("run1", {})
-        lines.extend([
-            f"- timestamp: {baseline.get('timestamp', '-')}",
-            f"- baseline_file: `{baseline.get('baseline_file', '-')}`",
-            f"- days: {b.get('common_days', '-')}",
-            f"- Sharpe: {b.get('sharpe_current', '-')}",
-            f"- MDD: {b.get('mdd_current', '-')}%",
-            f"- max_diff: {b.get('max_diff', '-')}",
-            f"- elapsed: {baseline.get('elapsed_sec', '-')}s",
-        ])
+        lines.extend(
+            [
+                f"- timestamp: {baseline.get('timestamp', '-')}",
+                f"- baseline_file: `{baseline.get('baseline_file', '-')}`",
+                f"- days: {b.get('common_days', '-')}",
+                f"- Sharpe: {b.get('sharpe_current', '-')}",
+                f"- MDD: {b.get('mdd_current', '-')}%",
+                f"- max_diff: {b.get('max_diff', '-')}",
+                f"- elapsed: {baseline.get('elapsed_sec', '-')}s",
+            ]
+        )
 
     return "\n".join(lines) + "\n"
 
@@ -293,8 +322,9 @@ def render_markdown(db: dict, code: dict, baseline: dict) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="只输出 diff, 不写")
-    parser.add_argument("--inplace", action="store_true",
-                        help="(未实现) 原地替换 SYSTEM_STATUS.md 标记区段")
+    parser.add_argument(
+        "--inplace", action="store_true", help="(未实现) 原地替换 SYSTEM_STATUS.md 标记区段"
+    )
     parser.add_argument("--output", type=str, help="写到指定文件 (默认 stdout)")
     args = parser.parse_args()
 

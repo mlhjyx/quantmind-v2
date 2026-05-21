@@ -32,6 +32,7 @@ from engines.slippage_model import (
 # volume_impact_slippage 基本计算（旧路径, 无config）
 # ────────────────────────────────────────────
 
+
 class TestVolumeImpactSlippage:
     """滑点计算核心函数测试（旧路径向后兼容）。"""
 
@@ -66,13 +67,17 @@ class TestVolumeImpactSlippage:
     def test_larger_trade_more_slippage(self) -> None:
         """交易金额越大，滑点越高。"""
         s_small = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=100_000_000_000,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=100_000_000_000,
             direction="buy",
         )
         s_large = volume_impact_slippage(
-            trade_amount=10_000_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=100_000_000_000,
+            trade_amount=10_000_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=100_000_000_000,
             direction="buy",
         )
         assert s_large > s_small
@@ -101,14 +106,22 @@ class TestVolumeImpactSlippage:
     def test_custom_impact_coeff(self) -> None:
         """更高的冲击系数→更大滑点。"""
         s_low = volume_impact_slippage(
-            trade_amount=1_000_000, daily_volume=10_000_000,
-            daily_amount=100_000_000, market_cap=100_000_000_000,
-            direction="buy", base_bps=5.0, impact_coeff=0.05,
+            trade_amount=1_000_000,
+            daily_volume=10_000_000,
+            daily_amount=100_000_000,
+            market_cap=100_000_000_000,
+            direction="buy",
+            base_bps=5.0,
+            impact_coeff=0.05,
         )
         s_high = volume_impact_slippage(
-            trade_amount=1_000_000, daily_volume=10_000_000,
-            daily_amount=100_000_000, market_cap=100_000_000_000,
-            direction="buy", base_bps=5.0, impact_coeff=0.2,
+            trade_amount=1_000_000,
+            daily_volume=10_000_000,
+            daily_amount=100_000_000,
+            market_cap=100_000_000_000,
+            direction="buy",
+            base_bps=5.0,
+            impact_coeff=0.2,
         )
         assert s_high > s_low
 
@@ -303,6 +316,7 @@ class TestVolumeImpactSlippage:
 # estimate_execution_price 测试
 # ────────────────────────────────────────────
 
+
 class TestEstimateExecutionPrice:
     """成交价估计函数测试。"""
 
@@ -352,7 +366,10 @@ class TestEstimateExecutionPrice:
             market_cap=50_000_000_000,
             direction="buy",
         )
-        assert abs(result.total_bps - (result.base_bps + result.impact_bps + result.overnight_gap_bps)) < 0.01
+        assert (
+            abs(result.total_bps - (result.base_bps + result.impact_bps + result.overnight_gap_bps))
+            < 0.01
+        )
 
     def test_execution_price_matches_slippage(self) -> None:
         """成交价应与滑点百分比一致。"""
@@ -369,7 +386,9 @@ class TestEstimateExecutionPrice:
             1 + Decimal(str(result.total_bps)) / Decimal("10000")
         )
         # 精度到小数点后4位
-        assert abs(result.execution_price - expected_price.quantize(Decimal("0.0001"))) < Decimal("0.001")
+        assert abs(result.execution_price - expected_price.quantize(Decimal("0.0001"))) < Decimal(
+            "0.001"
+        )
 
     def test_slippage_amount_positive(self) -> None:
         """滑点金额应为正值。"""
@@ -475,23 +494,33 @@ class TestVolumeImpactWithConfig:
         """大盘股冲击 < 小盘股冲击(同等交易规模)。"""
         cfg = SlippageConfig()
         large = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=100_000_000_000,
-            direction="buy", config=cfg,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=100_000_000_000,
+            direction="buy",
+            config=cfg,
         )
         small = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=5_000_000_000,
-            direction="buy", config=cfg,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=5_000_000_000,
+            direction="buy",
+            config=cfg,
         )
         assert large < small
 
     def test_backward_compat_without_config(self) -> None:
         """不传config时走旧逻辑, 向后兼容。"""
         result = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=100_000_000_000,
-            direction="buy", base_bps=5.0, impact_coeff=0.1,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=100_000_000_000,
+            direction="buy",
+            base_bps=5.0,
+            impact_coeff=0.1,
         )
         assert result > 5.0
 
@@ -499,14 +528,20 @@ class TestVolumeImpactWithConfig:
         """卖出惩罚使用config.sell_penalty。"""
         cfg = SlippageConfig(sell_penalty=1.5)
         buy = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
         )
         sell = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="sell", config=cfg,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="sell",
+            config=cfg,
         )
         assert sell > buy
 
@@ -516,14 +551,22 @@ class TestVolumeImpactWithConfig:
         """高波动率股票冲击 > 低波动率股票冲击。"""
         cfg = SlippageConfig()
         s_low = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0.01,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.01,
         )
         s_high = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0.04,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.04,
         )
         assert s_high > s_low
 
@@ -532,14 +575,22 @@ class TestVolumeImpactWithConfig:
         cfg = SlippageConfig()
         mcap = 50_000_000_000  # 大盘500亿 → tiered base = base_bps_large = 3.0
         s1 = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=mcap,
-            direction="buy", config=cfg, sigma_daily=0.01,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=mcap,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.01,
         )
         s2 = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=mcap,
-            direction="buy", config=cfg, sigma_daily=0.02,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=mcap,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.02,
         )
         # tiered base for large cap = base_bps_large (3.0), not cfg.base_bps (5.0)
         actual_base = cfg.get_base_bps(mcap)
@@ -551,14 +602,21 @@ class TestVolumeImpactWithConfig:
         """默认sigma_daily=0.02时结果与显式传入一致。"""
         cfg = SlippageConfig()
         s_default = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
         )
         s_explicit = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0.02,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.02,
         )
         assert s_default == s_explicit
 
@@ -566,14 +624,22 @@ class TestVolumeImpactWithConfig:
         """sigma_daily=0时回退到默认0.02。"""
         cfg = SlippageConfig()
         s_zero = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0,
         )
         s_default = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0.02,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.02,
         )
         assert s_zero == s_default
 
@@ -581,14 +647,22 @@ class TestVolumeImpactWithConfig:
         """sigma_daily<0时回退到默认0.02。"""
         cfg = SlippageConfig()
         s_neg = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=-0.05,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=-0.05,
         )
         s_default = volume_impact_slippage(
-            trade_amount=100_000, daily_volume=50_000_000,
-            daily_amount=500_000_000, market_cap=50_000_000_000,
-            direction="buy", config=cfg, sigma_daily=0.02,
+            trade_amount=100_000,
+            daily_volume=50_000_000,
+            daily_amount=500_000_000,
+            market_cap=50_000_000_000,
+            direction="buy",
+            config=cfg,
+            sigma_daily=0.02,
         )
         assert s_neg == s_default
 
@@ -601,9 +675,13 @@ class TestVolumeImpactWithConfig:
         mcap = 100_000_000_000  # 大盘(>500亿) → Y=0.8, base_bps_large=3.0
 
         result = volume_impact_slippage(
-            trade_amount=trade, daily_volume=50_000_000,
-            daily_amount=daily_amt, market_cap=mcap,
-            direction="buy", config=cfg, sigma_daily=sigma,
+            trade_amount=trade,
+            daily_volume=50_000_000,
+            daily_amount=daily_amt,
+            market_cap=mcap,
+            direction="buy",
+            config=cfg,
+            sigma_daily=sigma,
         )
 
         # 手算: participation = 200000/1e9 = 0.0002
@@ -825,14 +903,14 @@ class TestThreeComponentSlippage:
             direction="buy",
             config=cfg,
             sigma_daily=0.025,
-            open_price=10.05,    # 0.5%隔夜跳空
+            open_price=10.05,  # 0.5%隔夜跳空
             prev_close=10.0,
         )
         # 目标: 54.8 ≤ total ≤ 74.2bps (PT实测64.5bps ±15%)
         assert 20.0 <= result.total_bps <= 200.0  # 宽松合理范围检查
         # 各分量合理性
-        assert result.base_bps == 8.0        # 小盘tiered base
-        assert result.impact_bps >= 0.0      # 冲击非负
+        assert result.base_bps == 8.0  # 小盘tiered base
+        assert result.impact_bps >= 0.0  # 冲击非负
         assert result.overnight_gap_bps >= 0.0
 
     def test_backward_compat_no_config(self) -> None:

@@ -285,10 +285,12 @@ def test_text_array_accepts_empty_list():
 def test_text_array_rejects_non_list():
     """输入 str / dict → reject, reason='invalid_text_array_tags'."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "tags": "alpha"},   # str 非 list
-        {"id": 2, "tags": {"a": 1}},  # dict 非 list
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "tags": "alpha"},  # str 非 list
+            {"id": 2, "tags": {"a": 1}},  # dict 非 list
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _text_array_contract())
     assert len(valid_df) == 0
     assert rejects == {"invalid_text_array_tags": 2}
@@ -297,11 +299,13 @@ def test_text_array_rejects_non_list():
 def test_text_array_rejects_list_with_non_str():
     """list 含 int/None/mixed → reject."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "tags": ["alpha", 123]},       # 含 int
-        {"id": 2, "tags": ["x", None]},          # 含 None
-        {"id": 3, "tags": [1, 2, 3]},            # 纯 int list
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "tags": ["alpha", 123]},  # 含 int
+            {"id": 2, "tags": ["x", None]},  # 含 None
+            {"id": 3, "tags": [1, 2, 3]},  # 纯 int list
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _text_array_contract())
     assert len(valid_df) == 0
     assert rejects == {"invalid_text_array_tags": 3}
@@ -313,9 +317,11 @@ def test_text_array_rejects_list_with_non_str():
 def test_decimal_array_accepts_mixed_numeric():
     """int/float/Decimal 混合 list → 直通."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "metrics": [1, 2.5, decimal.Decimal("3.14159")]},
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "metrics": [1, 2.5, decimal.Decimal("3.14159")]},
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _decimal_array_contract())
     assert len(valid_df) == 1
     assert rejects == {}
@@ -325,9 +331,11 @@ def test_decimal_array_accepts_mixed_numeric():
 def test_decimal_array_accepts_numpy_scalars():
     """numpy.int64 / numpy.float64 合法 (有 .item() method)."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "metrics": [np.int64(42), np.float64(3.14)]},
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "metrics": [np.int64(42), np.float64(3.14)]},
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _decimal_array_contract())
     assert len(valid_df) == 1
     assert rejects == {}
@@ -346,10 +354,12 @@ def test_decimal_array_accepts_none_when_nullable():
 def test_decimal_array_rejects_nan_and_inf():
     """NaN / inf 元素 → reject (铁律 29 防 NaN 写 DB)."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "metrics": [1.0, float("nan"), 3.0]},
-        {"id": 2, "metrics": [1.0, float("inf")]},
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "metrics": [1.0, float("nan"), 3.0]},
+            {"id": 2, "metrics": [1.0, float("inf")]},
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _decimal_array_contract())
     assert len(valid_df) == 0
     assert rejects == {"invalid_decimal_array_metrics": 2}
@@ -362,12 +372,17 @@ def test_decimal_array_rejects_decimal_nan_and_inf():
     用 Decimal.is_finite() 覆盖 nan/inf/snan 3 种异常 Decimal.
     """
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "metrics": [decimal.Decimal("nan")]},
-        {"id": 2, "metrics": [decimal.Decimal("inf")]},
-        {"id": 3, "metrics": [decimal.Decimal("snan")]},
-        {"id": 4, "metrics": [decimal.Decimal("1.5"), decimal.Decimal("-inf")]},  # 混合正常 + 异常
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "metrics": [decimal.Decimal("nan")]},
+            {"id": 2, "metrics": [decimal.Decimal("inf")]},
+            {"id": 3, "metrics": [decimal.Decimal("snan")]},
+            {
+                "id": 4,
+                "metrics": [decimal.Decimal("1.5"), decimal.Decimal("-inf")],
+            },  # 混合正常 + 异常
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _decimal_array_contract())
     assert len(valid_df) == 0
     assert rejects == {"invalid_decimal_array_metrics": 4}
@@ -376,11 +391,13 @@ def test_decimal_array_rejects_decimal_nan_and_inf():
 def test_decimal_array_rejects_bool_and_str():
     """bool (int 子类) / str 元素 → reject."""
     pipe = DataPipeline(conn=None)
-    df = pd.DataFrame([
-        {"id": 1, "metrics": [True, False]},         # bool 排除
-        {"id": 2, "metrics": ["1.5", "2.5"]},        # str 排除
-        {"id": 3, "metrics": "1,2,3"},               # 非 list 排除
-    ])
+    df = pd.DataFrame(
+        [
+            {"id": 1, "metrics": [True, False]},  # bool 排除
+            {"id": 2, "metrics": ["1.5", "2.5"]},  # str 排除
+            {"id": 3, "metrics": "1,2,3"},  # 非 list 排除
+        ]
+    )
     valid_df, rejects = pipe._validate(df, _decimal_array_contract())
     assert len(valid_df) == 0
     assert rejects == {"invalid_decimal_array_metrics": 3}

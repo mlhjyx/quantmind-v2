@@ -38,6 +38,7 @@ class TestBaseBrokerABC:
     def test_mini_qmt_broker_is_base_broker(self) -> None:
         """MiniQMTBroker是BaseBroker子类。"""
         from engines.broker_qmt import MiniQMTBroker
+
         broker = MiniQMTBroker(qmt_path="fake_path", account_id="12345")
         assert isinstance(broker, BaseBroker)
 
@@ -132,6 +133,7 @@ class TestGetBrokerFactory:
     def test_live_mode(self) -> None:
         """live模式返回MiniQMTBroker。"""
         from engines.broker_qmt import MiniQMTBroker
+
         broker = get_broker("live", qmt_path="fake", account_id="123")
         assert isinstance(broker, MiniQMTBroker)
         assert isinstance(broker, BaseBroker)

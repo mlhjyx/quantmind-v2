@@ -41,6 +41,7 @@ def _make_positions(n: int = 3) -> list[dict]:
 # save_snapshot + get_latest_positions
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_save_and_get_positions(pos_repo, strategy_id):
     """保存快照后能正确读回。"""
@@ -92,6 +93,7 @@ async def test_save_snapshot_idempotent_no_error(pos_repo, strategy_id):
 # get_latest_positions (多天数据取最新)
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_latest_positions_picks_most_recent(pos_repo, strategy_id):
     """存在多天快照时，返回最新日期的数据。"""
@@ -109,6 +111,7 @@ async def test_get_latest_positions_picks_most_recent(pos_repo, strategy_id):
 # ──────────────────────────────────────────────
 # get_positions_at_date
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_positions_at_date_specific_day(pos_repo, strategy_id):
@@ -137,6 +140,7 @@ async def test_get_positions_at_date_empty(pos_repo, strategy_id):
 # get_position_count
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_position_count(pos_repo, strategy_id):
     """持仓数量正确。"""
@@ -158,6 +162,7 @@ async def test_get_position_count_empty(pos_repo, strategy_id):
 # get_industry_exposure (需要symbols表有数据)
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_industry_exposure_empty(pos_repo, strategy_id):
     """无持仓时行业暴露为空。"""
@@ -169,6 +174,7 @@ async def test_get_industry_exposure_empty(pos_repo, strategy_id):
 # ──────────────────────────────────────────────
 # execution_mode隔离
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_execution_mode_isolation(pos_repo, strategy_id):

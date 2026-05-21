@@ -3,6 +3,7 @@
 subprocess 真启动验证: import + 实例化 + record() + trace() raise.
 对齐 batch 1/2 smoke pattern: LL-052 platform shadow + sys.path 注入.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -66,6 +67,4 @@ def test_audit_stub_imports_and_record():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK audit stub boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK audit stub boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

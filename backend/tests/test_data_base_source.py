@@ -1,4 +1,5 @@
 """MVP 2.1a BaseDataSource Template method + validation helpers 单测."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -102,8 +103,10 @@ def test_validate_nan_ratio_exceeded(contract) -> None:
         {
             "code": ["600000.SH", "000001.SZ", "600519.SH", "002415.SZ"],
             "trade_date": [
-                date(2026, 4, 15), date(2026, 4, 15),
-                date(2026, 4, 15), date(2026, 4, 15),
+                date(2026, 4, 15),
+                date(2026, 4, 15),
+                date(2026, 4, 15),
+                date(2026, 4, 15),
             ],
             "close": [10.0, None, None, None],  # 3/4 = 75% NaN
             "volume": [1000, 1100, 1200, 1300],

@@ -77,7 +77,9 @@ def main():
     # 执行 (D2 严格串行, 共享 SharedDataPool)
     logger.info("[build] 开始中性化 ...")
     result = orch.neutralize_factors(
-        MINUTE_FACTORS, incremental=True, validate=True,
+        MINUTE_FACTORS,
+        incremental=True,
+        validate=True,
     )
     logger.info("[build done]")
     print(result.summary())
@@ -126,12 +128,12 @@ def main():
     report_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     logger.info(f"[report] {report_path}")
 
-    logger.info(f"[P0-5] 总耗时 {elapsed/60:.2f} min")
+    logger.info(f"[P0-5] 总耗时 {elapsed / 60:.2f} min")
     if failures:
         logger.error(f"[FAIL] 覆盖率不达标: {failures}")
         sys.exit(3)
     if elapsed > 600:
-        logger.warning(f"[WARN] 超过 10min 目标 ({elapsed/60:.2f} min > 10 min)")
+        logger.warning(f"[WARN] 超过 10min 目标 ({elapsed / 60:.2f} min > 10 min)")
 
     logger.info("[P0-5] ✅ 验收通过")
 

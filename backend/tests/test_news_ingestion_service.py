@@ -8,6 +8,7 @@ scope (mock-only sustained + 1 e2e live, 沿用 sub-PR 7b.3 v2 体例):
 - TestIngestTransactionBoundary (2): 0 conn.commit (铁律 32) + DataPipeline raise propagate
 - TestE2ELive (1): full chain real V4-Flash + mock conn capture SQL
 """
+
 from __future__ import annotations
 
 import os
@@ -105,9 +106,7 @@ def mock_conn_with_returning() -> tuple[MagicMock, MagicMock]:
 
 
 @pytest.fixture
-def service(
-    mock_pipeline: MagicMock, mock_classifier: MagicMock
-) -> NewsIngestionService:
+def service(mock_pipeline: MagicMock, mock_classifier: MagicMock) -> NewsIngestionService:
     return NewsIngestionService(pipeline=mock_pipeline, classifier=mock_classifier)
 
 
@@ -117,18 +116,14 @@ def service(
 
 
 class TestConstructor:
-    def test_keyword_only_args(
-        self, mock_pipeline: MagicMock, mock_classifier: MagicMock
-    ) -> None:
+    def test_keyword_only_args(self, mock_pipeline: MagicMock, mock_classifier: MagicMock) -> None:
         with pytest.raises(TypeError, match="positional"):
             NewsIngestionService(mock_pipeline, mock_classifier)  # type: ignore[misc]
 
     def test_pipeline_and_classifier_stored(
         self, mock_pipeline: MagicMock, mock_classifier: MagicMock
     ) -> None:
-        service = NewsIngestionService(
-            pipeline=mock_pipeline, classifier=mock_classifier
-        )
+        service = NewsIngestionService(pipeline=mock_pipeline, classifier=mock_classifier)
         assert service._pipeline is mock_pipeline
         assert service._classifier is mock_classifier
 
@@ -193,9 +188,7 @@ class TestIngestHappyPath:
             decision_id_prefix="ingest-test",
         )
 
-        decision_ids = [
-            c.kwargs["decision_id"] for c in mock_classifier.classify.call_args_list
-        ]
+        decision_ids = [c.kwargs["decision_id"] for c in mock_classifier.classify.call_args_list]
         assert decision_ids == ["ingest-test-000", "ingest-test-001"]
 
 
@@ -407,9 +400,7 @@ class TestE2ELive:
         reset_news_classifier()
         try:
             classifier = get_news_classifier()  # 走 V4-Flash 真生产
-            service = NewsIngestionService(
-                pipeline=mock_pipeline, classifier=classifier
-            )
+            service = NewsIngestionService(pipeline=mock_pipeline, classifier=classifier)
 
             mock_cursor = MagicMock()
             mock_cursor.fetchone.return_value = (42,)  # mock RETURNING news_id

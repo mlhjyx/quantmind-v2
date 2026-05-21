@@ -1,4 +1,5 @@
 """MVP 1.4 DBFailedDirectionDB 单测 — add / check_similar / list_all."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

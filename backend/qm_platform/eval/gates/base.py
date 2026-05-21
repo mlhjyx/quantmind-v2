@@ -3,6 +3,7 @@
 Gate 是 pure function, 不 raise (异常包成 GateResult details["error"]).
 GateContext frozen dataclass, 所有字段 Optional, gates 缺数据返 GateResult(passed=False, details={"reason": "data_unavailable"}).
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

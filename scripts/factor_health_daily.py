@@ -164,7 +164,7 @@ def check_and_update_lifecycle(
     Returns:
         迁移记录列表，每项含 factor_name / old_status / new_status / reason。
     """
-    recent_days = 63   # ~3个月交易日
+    recent_days = 63  # ~3个月交易日
     degrade_ratio = 0.5
     min_history_days = 20  # 历史均IC至少需要这么多样本
 
@@ -198,13 +198,13 @@ def check_and_update_lifecycle(
         )
         hist_row = cur.fetchone()
         # SQL AVG 返回 Decimal, 显式 cast 避免与 float degrade_ratio 混合运算 TypeError
-        hist_abs_ic: float | None = float(hist_row[0]) if hist_row and hist_row[0] is not None else None
+        hist_abs_ic: float | None = (
+            float(hist_row[0]) if hist_row and hist_row[0] is not None else None
+        )
         hist_count: int = hist_row[1] if hist_row and hist_row[1] is not None else 0
 
         if hist_abs_ic is None or hist_count < min_history_days:
-            logger.debug(
-                f"[Lifecycle] {factor_name}: 历史数据不足({hist_count}条)，跳过迁移判断"
-            )
+            logger.debug(f"[Lifecycle] {factor_name}: 历史数据不足({hist_count}条)，跳过迁移判断")
             continue
 
         # 近3个月均IC
@@ -221,9 +221,7 @@ def check_and_update_lifecycle(
         recent_count: int = row[1] or 0
 
         if recent_abs_ic is None or recent_count < 5:
-            logger.debug(
-                f"[Lifecycle] {factor_name}: 近3个月数据不足({recent_count}条)，跳过"
-            )
+            logger.debug(f"[Lifecycle] {factor_name}: 近3个月数据不足({recent_count}条)，跳过")
             continue
 
         threshold = hist_abs_ic * degrade_ratio
@@ -240,8 +238,7 @@ def check_and_update_lifecycle(
         if current_status == "active" and recent_abs_ic < threshold:
             new_status = "warning"
             reason = (
-                f"近3月|IC|={recent_abs_ic:.4f} < 历史|IC|×0.5={threshold:.4f}"
-                f" (比率={ratio:.2f})"
+                f"近3月|IC|={recent_abs_ic:.4f} < 历史|IC|×0.5={threshold:.4f} (比率={ratio:.2f})"
             )
         elif current_status == "warning" and recent_abs_ic >= threshold:
             new_status = "active"
@@ -305,9 +302,7 @@ def _get_rules_engine():
         return None
 
 
-def _send_alert_via_platform_sdk(
-    level: str, title: str, content: str, trade_date: date
-) -> None:
+def _send_alert_via_platform_sdk(level: str, title: str, content: str, trade_date: date) -> None:
     """走 PlatformAlertRouter + AlertRulesEngine."""
     from datetime import UTC
     from datetime import datetime as _datetime
@@ -346,7 +341,9 @@ def _send_alert_via_platform_sdk(
         )
         logger.info(
             "[Observability] AlertRouter.fire result=%s key=%s severity=%s",
-            result, dedup_key, severity_value,
+            result,
+            dedup_key,
+            severity_value,
         )
     except AlertDispatchError as e:
         logger.error("[Observability] AlertRouter sink_failed: %s", e)
@@ -383,8 +380,12 @@ def _send_alert_unified(
                 "切回 SDK path: settings.OBSERVABILITY_USE_PLATFORM_SDK=True"
             )
         _legacy_send_alert(
-            level, title, content,
-            settings.DINGTALK_WEBHOOK_URL, settings.DINGTALK_SECRET, conn,
+            level,
+            title,
+            content,
+            settings.DINGTALK_WEBHOOK_URL,
+            settings.DINGTALK_SECRET,
+            conn,
         )
 
 
@@ -426,10 +427,10 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
             logger.warning(f"{trade_date} 因子数据尚未计算，跳过")
             return {"status": "skipped", "reason": "no_factor_data"}
 
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
         logger.info(f"[因子健康日报] {trade_date}")
         logger.info(f"检查因子: {', '.join(ACTIVE_FACTORS)}")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
 
         # 使用FactorAnalyzer执行健康检查
         analyzer = FactorAnalyzer(conn)
@@ -487,7 +488,7 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                 # 标记高相关对（>0.7，CLAUDE.md：Spearman>0.7判定重复）
                 high_corr_pairs = []
                 for i, f1 in enumerate(active_in_corr):
-                    for f2 in active_in_corr[i + 1:]:
+                    for f2 in active_in_corr[i + 1 :]:
                         val = sub_corr.loc[f1, f2]
                         if not pd.isna(val) and abs(val) > 0.7:
                             high_corr_pairs.append((f1, f2, val))
@@ -567,28 +568,38 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
                         level_marker = " [!]"
                         logger.warning(
                             "  %s: %s — %s%s",
-                            dr.factor_name, dr.decay_level.value, dr.reason, level_marker,
+                            dr.factor_name,
+                            dr.decay_level.value,
+                            dr.reason,
+                            level_marker,
                         )
                     elif dr.decay_level in (DecayLevel.L2, DecayLevel.L3):
                         level_marker = " [!!!]"
                         logger.error(
                             "  %s: %s — %s%s",
-                            dr.factor_name, dr.decay_level.value, dr.reason, level_marker,
+                            dr.factor_name,
+                            dr.decay_level.value,
+                            dr.reason,
+                            level_marker,
                         )
                     else:
                         logger.info(
                             "  %s: %s — %s",
-                            dr.factor_name, dr.decay_level.value, dr.reason,
+                            dr.factor_name,
+                            dr.decay_level.value,
+                            dr.reason,
                         )
-                    health["decay_results"].append({
-                        "factor_name": dr.factor_name,
-                        "decay_level": dr.decay_level.value,
-                        "ic_ma20": dr.ic_ma20,
-                        "ic_ma60": dr.ic_ma60,
-                        "consecutive_low_days": dr.consecutive_low_days,
-                        "weight_multiplier": dr.weight_multiplier,
-                        "reason": dr.reason,
-                    })
+                    health["decay_results"].append(
+                        {
+                            "factor_name": dr.factor_name,
+                            "decay_level": dr.decay_level.value,
+                            "ic_ma20": dr.ic_ma20,
+                            "ic_ma60": dr.ic_ma60,
+                            "consecutive_low_days": dr.consecutive_low_days,
+                            "weight_multiplier": dr.weight_multiplier,
+                            "reason": dr.reason,
+                        }
+                    )
 
                     # 写入factor_ic_history.decay_level（非dry_run）
                     if not dry_run and dr.decay_level != DecayLevel.L0:
@@ -673,8 +684,11 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
             # batch 3.5 dispatch (P1.1 模式: AlertDispatchError 单 catch)
             try:
                 _send_alert_unified(
-                    alert_level, f"因子健康{overall} {trade_date}", alert_msg,
-                    trade_date, conn,
+                    alert_level,
+                    f"因子健康{overall} {trade_date}",
+                    alert_msg,
+                    trade_date,
+                    conn,
                 )
             except AlertDispatchError as e:
                 logger.error("[Observability] AlertDispatchError — 因子健康告警未送达: %s", e)
@@ -727,6 +741,7 @@ def run_factor_health_daily(trade_date: date, dry_run: bool = False) -> dict:
     except Exception as e:
         logger.error(f"因子健康日报异常: {e}")
         import traceback
+
         traceback.print_exc()
         return {"status": "error", "error": str(e)}
     finally:
@@ -742,11 +757,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="不写DB")
     args = parser.parse_args()
 
-    trade_date = (
-        datetime.strptime(args.date, "%Y-%m-%d").date()
-        if args.date
-        else date.today()
-    )
+    trade_date = datetime.strptime(args.date, "%Y-%m-%d").date() if args.date else date.today()
 
     result = run_factor_health_daily(trade_date, dry_run=args.dry_run)
 

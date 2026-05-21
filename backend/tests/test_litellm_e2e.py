@@ -22,6 +22,7 @@ skip logic:
 - docs/runbook/cc_automation/03_ollama_install_runbook.md
 - backend/tests/test_litellm_budget.py (mock conn_factory 体例沿用)
 """
+
 from __future__ import annotations
 
 import socket
@@ -203,9 +204,7 @@ def test_e2e_budget_capped_forces_ollama_fallback(
 
     # 验证 mock 真返 CAPPED 状态
     snapshot = budget.check(today=date(2026, 5, 15))
-    assert snapshot.state is BudgetState.CAPPED_100, (
-        f"mock 反返 CAPPED, state={snapshot.state}"
-    )
+    assert snapshot.state is BudgetState.CAPPED_100, f"mock 反返 CAPPED, state={snapshot.state}"
 
     aware = BudgetAwareRouter(litellm_router_real, budget, strict=False)
 

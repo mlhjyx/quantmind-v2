@@ -99,7 +99,7 @@ def load_all_data():
     )
     conn.close()
     print(f"  ln_mcap: {ln_mcap.shape}")
-    print(f"  total load: {time.time()-t0:.1f}s")
+    print(f"  total load: {time.time() - t0:.1f}s")
     return price_df, bench_df, factor_df, ln_mcap
 
 
@@ -167,6 +167,7 @@ def build_size_neutral_target_portfolios(
         for rd in rebal_dates:
             # Find latest factor date <= rd via binary search
             import bisect
+
             idx = bisect.bisect_right(sorted_dates, rd) - 1
             if idx < 0:
                 continue
@@ -188,10 +189,12 @@ def build_size_neutral_target_portfolios(
                     idx = len(ln_mcap_pivot) - 1
                 ln_mcap_row = ln_mcap_pivot.iloc[idx]
 
-            df = pd.DataFrame({
-                "score": scores,
-                "ln_mcap": ln_mcap_row.reindex(scores.index),
-            }).dropna()
+            df = pd.DataFrame(
+                {
+                    "score": scores,
+                    "ln_mcap": ln_mcap_row.reindex(scores.index),
+                }
+            ).dropna()
 
             if len(df) < top_n + 5:
                 continue
@@ -261,9 +264,7 @@ def main():
     print("\n[Base] CORE 5 (no size constraint)")
     t0 = time.time()
     base_factor_df = factor_df[factor_df["factor_name"].isin(CORE_DIRECTIONS)].copy()
-    base_result = run_hybrid_backtest(
-        base_factor_df, CORE_DIRECTIONS, price_df, config, bench_df
-    )
+    base_result = run_hybrid_backtest(base_factor_df, CORE_DIRECTIONS, price_df, config, bench_df)
     base_metrics = metrics_from_nav(base_result.daily_nav)
     base_metrics["elapsed"] = round(time.time() - t0, 0)
     print(f"  {base_metrics}")
@@ -272,8 +273,12 @@ def main():
     print("\n[Size-Neutral] residualize scores by ln_mcap, then Top-20")
     t0 = time.time()
     target_portfolios = build_size_neutral_target_portfolios(
-        base_factor_df, price_df, ln_mcap_df, CORE_DIRECTIONS,
-        top_n=20, rebalance_freq="monthly",
+        base_factor_df,
+        price_df,
+        ln_mcap_df,
+        CORE_DIRECTIONS,
+        top_n=20,
+        rebalance_freq="monthly",
     )
     print(f"  target_portfolios: {len(target_portfolios)} 个调仓日")
 
@@ -290,7 +295,9 @@ def main():
 
     # === 持仓市值分布对比 (从最后一次调仓) ===
     last_signal_date = max(target_portfolios.keys()) if target_portfolios else None
-    sn_holdings = list(target_portfolios.get(last_signal_date, {}).keys()) if last_signal_date else []
+    sn_holdings = (
+        list(target_portfolios.get(last_signal_date, {}).keys()) if last_signal_date else []
+    )
 
     # base 的最后调仓持仓 (从 base_result.fills 推算)
     base_fills = base_result.trades if hasattr(base_result, "trades") else []
@@ -298,13 +305,17 @@ def main():
 
     # ln_mcap 分布
     if last_signal_date:
-        ln_mcap_at_signal = ln_mcap_df[ln_mcap_df["trade_date"] == last_signal_date].set_index("code")["ln_mcap"]
+        ln_mcap_at_signal = ln_mcap_df[ln_mcap_df["trade_date"] == last_signal_date].set_index(
+            "code"
+        )["ln_mcap"]
         sn_mcap = ln_mcap_at_signal.reindex(sn_holdings).dropna()
         base_mcap = ln_mcap_at_signal.reindex(base_recent).dropna()
         size_dist = {
             "signal_date": str(last_signal_date),
             "base_mean_ln_mcap": round(float(base_mcap.mean()), 4) if len(base_mcap) > 0 else None,
-            "base_median_ln_mcap": round(float(base_mcap.median()), 4) if len(base_mcap) > 0 else None,
+            "base_median_ln_mcap": round(float(base_mcap.median()), 4)
+            if len(base_mcap) > 0
+            else None,
             "sn_mean_ln_mcap": round(float(sn_mcap.mean()), 4) if len(sn_mcap) > 0 else None,
             "sn_median_ln_mcap": round(float(sn_mcap.median()), 4) if len(sn_mcap) > 0 else None,
             "base_n": len(base_mcap),
@@ -341,9 +352,15 @@ def main():
     print("\n" + "=" * 76)
     print("  Size-Neutral Backtest")
     print("=" * 76)
-    print(f"  Base:          Sharpe={base_metrics['sharpe']}, MDD={base_metrics['mdd']:.2%}, Annual={base_metrics['annual']:.2%}")
-    print(f"  Size-Neutral:  Sharpe={sn_metrics['sharpe']}, MDD={sn_metrics['mdd']:.2%}, Annual={sn_metrics['annual']:.2%}")
-    print(f"  Delta:         Sharpe={output['delta']['sharpe_diff']:+.4f}, MDD={output['delta']['mdd_diff']:+.2%}, Annual={output['delta']['annual_diff']:+.4f}")
+    print(
+        f"  Base:          Sharpe={base_metrics['sharpe']}, MDD={base_metrics['mdd']:.2%}, Annual={base_metrics['annual']:.2%}"
+    )
+    print(
+        f"  Size-Neutral:  Sharpe={sn_metrics['sharpe']}, MDD={sn_metrics['mdd']:.2%}, Annual={sn_metrics['annual']:.2%}"
+    )
+    print(
+        f"  Delta:         Sharpe={output['delta']['sharpe_diff']:+.4f}, MDD={output['delta']['mdd_diff']:+.2%}, Annual={output['delta']['annual_diff']:+.4f}"
+    )
     if size_dist:
         print(f"  Last signal: {size_dist['signal_date']}")
         print(f"    Base ln_mcap mean: {size_dist['base_mean_ln_mcap']}")

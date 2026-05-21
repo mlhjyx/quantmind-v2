@@ -15,6 +15,7 @@ scope:
 - V3 §5.5 (LLM 路由真预约, 7 任务 mapping)
 - config/litellm_router.yaml (PR #221 sediment, 本 test consume only)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -85,7 +86,9 @@ def _patch_router_completion(
         captured["model"] = kwargs.get("model")
         captured["messages"] = kwargs.get("messages")
         captured["timeout"] = kwargs.get("timeout")
-        captured["extra"] = {k: v for k, v in kwargs.items() if k not in {"model", "messages", "timeout"}}
+        captured["extra"] = {
+            k: v for k, v in kwargs.items() if k not in {"model", "messages", "timeout"}
+        }
         return _make_completion_obj(model=actual_model, content=content, cost=cost)
 
     monkeypatch.setattr(router_module.Router, "completion", mock_completion, raising=True)
@@ -133,9 +136,7 @@ def test_unknown_task_raises(router: LiteLLMRouter) -> None:
         router.model_for("not_a_real_task")  # type: ignore[arg-type]
 
 
-def test_completion_mock_happy_path(
-    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_completion_mock_happy_path(router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     """基本 happy path — JUDGE 路由 → deepseek-v4-pro → 真返 LLMResponse."""
     captured = _patch_router_completion(
         monkeypatch, actual_model="deepseek/deepseek-v4-pro", cost=0.0042
@@ -182,9 +183,7 @@ def test_response_dataclass_fields_complete(
     assert set(response.__dataclass_fields__.keys()) == expected_fields
 
 
-def test_decision_id_propagation(
-    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_decision_id_propagation(router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     """caller 传 decision_id → response 透传 (S2.3 audit trail 真依赖)."""
     _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
 
@@ -198,9 +197,7 @@ def test_decision_id_propagation(
     assert response.decision_id == decision_id
 
 
-def test_decision_id_default_none(
-    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_decision_id_default_none(router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     """caller 不传 decision_id → response 真 None (S2.3 真 fail-loud check 候选)."""
     _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     response = router.completion(
@@ -262,9 +259,7 @@ def test_messages_dict_input_supported(
     assert captured["messages"] == raw_messages
 
 
-def test_kwargs_passthrough(
-    router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_kwargs_passthrough(router: LiteLLMRouter, monkeypatch: pytest.MonkeyPatch) -> None:
     """kwargs (temperature / max_tokens) 透传 LiteLLM completion."""
     captured = _patch_router_completion(monkeypatch, actual_model="deepseek/deepseek-v4-flash")
     router.completion(
@@ -365,25 +360,37 @@ def test_is_fallback_case1_alias_pass_through_returns_false() -> None:
     from backend.qm_platform.llm._internal.router import _is_fallback
 
     # primary alias deepseek-v4-flash 真**返 alias** (Case 1 default LiteLLM behavior)
-    assert _is_fallback(
-        actual_model="deepseek-v4-flash",
-        primary_alias="deepseek-v4-flash",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="deepseek-v4-flash",
+            primary_alias="deepseek-v4-flash",
+        )
+        is False
+    )
     # primary alias deepseek-v4-pro 真**返 alias** (Case 1 cover 7 task type 全部)
-    assert _is_fallback(
-        actual_model="deepseek-v4-pro",
-        primary_alias="deepseek-v4-pro",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="deepseek-v4-pro",
+            primary_alias="deepseek-v4-pro",
+        )
+        is False
+    )
     # reviewer P1-1+P1-2 adopt (5-07): case-variant alias 真**反 introduce false positive**
     # 沿用 line 399 substring check 真 .lower() normalization 体例 sustained.
-    assert _is_fallback(
-        actual_model="DeepSeek-V4-Flash",
-        primary_alias="deepseek-v4-flash",
-    ) is False
-    assert _is_fallback(
-        actual_model="deepseek-v4-flash",
-        primary_alias="DEEPSEEK-V4-FLASH",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="DeepSeek-V4-Flash",
+            primary_alias="deepseek-v4-flash",
+        )
+        is False
+    )
+    assert (
+        _is_fallback(
+            actual_model="deepseek-v4-flash",
+            primary_alias="DEEPSEEK-V4-FLASH",
+        )
+        is False
+    )
 
 
 def test_is_fallback_case2_underlying_name_returns_false() -> None:
@@ -395,21 +402,30 @@ def test_is_fallback_case2_underlying_name_returns_false() -> None:
     from backend.qm_platform.llm._internal.router import _is_fallback
 
     # primary deepseek-v4-flash → "deepseek-chat" substring (Case 2 sustained)
-    assert _is_fallback(
-        actual_model="deepseek/deepseek-v4-flash",
-        primary_alias="deepseek-v4-flash",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="deepseek/deepseek-v4-flash",
+            primary_alias="deepseek-v4-flash",
+        )
+        is False
+    )
     # primary deepseek-v4-pro → "deepseek-reasoner" substring (Case 2 sustained)
-    assert _is_fallback(
-        actual_model="deepseek/deepseek-v4-pro",
-        primary_alias="deepseek-v4-pro",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="deepseek/deepseek-v4-pro",
+            primary_alias="deepseek-v4-pro",
+        )
+        is False
+    )
     # case-insensitive 沿用 actual_model.lower() (e.g. "DeepSeek/DeepSeek-V4-Flash")
     # sub-PR 8a-followup-B-yaml 5-07 reviewer P1-1 adopt: V4 underlying case-variant 沿用体例.
-    assert _is_fallback(
-        actual_model="DeepSeek/DeepSeek-V4-Flash",
-        primary_alias="deepseek-v4-flash",
-    ) is False
+    assert (
+        _is_fallback(
+            actual_model="DeepSeek/DeepSeek-V4-Flash",
+            primary_alias="deepseek-v4-flash",
+        )
+        is False
+    )
 
 
 def test_is_fallback_case3_fallback_underlying_returns_true() -> None:
@@ -424,20 +440,29 @@ def test_is_fallback_case3_fallback_underlying_returns_true() -> None:
     from backend.qm_platform.llm._internal.router import _is_fallback
 
     # fallback to qwen3-local (5-06 ADR-034 升级 qwen3.5:9b)
-    assert _is_fallback(
-        actual_model="ollama_chat/qwen3.5:9b",
-        primary_alias="deepseek-v4-flash",
-    ) is True
+    assert (
+        _is_fallback(
+            actual_model="ollama_chat/qwen3.5:9b",
+            primary_alias="deepseek-v4-flash",
+        )
+        is True
+    )
     # 历史 qwen3:8b path (ADR-034 升级前 baseline)
-    assert _is_fallback(
-        actual_model="ollama/qwen3:8b",
-        primary_alias="deepseek-v4-flash",
-    ) is True
+    assert (
+        _is_fallback(
+            actual_model="ollama/qwen3:8b",
+            primary_alias="deepseek-v4-flash",
+        )
+        is True
+    )
     # primary deepseek-v4-pro fallback to qwen3 (RISK_REFLECTOR / JUDGE 体例)
-    assert _is_fallback(
-        actual_model="ollama_chat/qwen3.5:9b",
-        primary_alias="deepseek-v4-pro",
-    ) is True
+    assert (
+        _is_fallback(
+            actual_model="ollama_chat/qwen3.5:9b",
+            primary_alias="deepseek-v4-pro",
+        )
+        is True
+    )
 
 
 # ── sub-PR 8a-followup-B-yaml (5-07): yaml V4 underlying routing + thinking 参数 cover ──
@@ -542,12 +567,8 @@ def test_extract_cost_litellm_provided_passthrough() -> None:
     from backend.qm_platform.llm._internal.router import _extract_cost_usd
 
     result = SimpleNamespace(_hidden_params={"response_cost": 0.00042})
-    cost = _extract_cost_usd(
-        result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500
-    )
-    assert cost == Decimal("0.00042"), (
-        "LiteLLM 真返 response_cost 真优先生效 (反 fallback 篡改)"
-    )
+    cost = _extract_cost_usd(result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500)
+    assert cost == Decimal("0.00042"), "LiteLLM 真返 response_cost 真优先生效 (反 fallback 篡改)"
 
 
 def test_extract_cost_fallback_deepseek_v4_flash() -> None:
@@ -555,9 +576,7 @@ def test_extract_cost_fallback_deepseek_v4_flash() -> None:
     from backend.qm_platform.llm._internal.router import _extract_cost_usd
 
     result = SimpleNamespace(_hidden_params=None)
-    cost = _extract_cost_usd(
-        result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500
-    )
+    cost = _extract_cost_usd(result, actual_model="deepseek-chat", tokens_in=1000, tokens_out=500)
     # 1000 × 0.00000007 + 500 × 0.00000027 = 0.00007 + 0.000135 = 0.000205
     assert cost == Decimal("0.000205"), f"V4-Flash 1000/500 expected $0.000205 got {cost}"
 
@@ -600,9 +619,7 @@ def test_extract_cost_unknown_model_silent_miss_zero() -> None:
     from backend.qm_platform.llm._internal.router import _extract_cost_usd
 
     result = SimpleNamespace(_hidden_params=None)
-    cost = _extract_cost_usd(
-        result, actual_model="gpt-4o-unknown", tokens_in=1000, tokens_out=500
-    )
+    cost = _extract_cost_usd(result, actual_model="gpt-4o-unknown", tokens_in=1000, tokens_out=500)
     assert cost == Decimal("0"), "未知模型 silent miss 返 0 (沿用旧体例)"
 
 

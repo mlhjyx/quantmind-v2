@@ -27,15 +27,19 @@ from app.config import settings
 from app.services.price_utils import _get_sync_conn
 
 # ── 毕业标准 & 基线参数 ──
-BASELINE_SHARPE = 1.037       # v1.1回测Sharpe (2021-2025)
-BASELINE_MDD = 0.397          # v1.1回测MDD (39.7%)
+BASELINE_SHARPE = 1.037  # v1.1回测Sharpe (2021-2025)
+BASELINE_MDD = 0.397  # v1.1回测MDD (39.7%)
 GRAD_MIN_DAYS = 60
-GRAD_SHARPE = BASELINE_SHARPE * 0.70   # ≥ 0.726
-GRAD_MDD = BASELINE_MDD * 1.50         # ≤ 59.6% (但CLAUDE.md写35%)
-GRAD_MDD_HARD = 0.35                   # CLAUDE.md硬标准
+GRAD_SHARPE = BASELINE_SHARPE * 0.70  # ≥ 0.726
+GRAD_MDD = BASELINE_MDD * 1.50  # ≤ 59.6% (但CLAUDE.md写35%)
+GRAD_MDD_HARD = 0.35  # CLAUDE.md硬标准
 
 V11_FACTORS = [
-    "turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio",
+    "turnover_mean_20",
+    "volatility_20",
+    "reversal_20",
+    "amihud_20",
+    "bp_ratio",
 ]
 FACTOR_DIRECTIONS = {
     "turnover_mean_20": -1,
@@ -110,7 +114,7 @@ def calc_dsr(sharpe: float, n_days: int, skew: float = 0.0, kurt: float = 3.0) -
     if n_days < 3 or np.isnan(sharpe):
         return np.nan
     sr = sharpe / np.sqrt(252)  # 转日频SR
-    denom_sq = 1 - skew * sr + (kurt - 1) / 4 * sr ** 2
+    denom_sq = 1 - skew * sr + (kurt - 1) / 4 * sr**2
     if denom_sq <= 0:
         return np.nan
     test_stat = sr * np.sqrt(n_days - 1) / np.sqrt(denom_sq)
@@ -218,14 +222,16 @@ def load_realtime_factor_ic(conn, n_recent_days: int = 20) -> pd.DataFrame:
         ic_std = grp["ic_5d"].std()
         ic_ir = ic_mean / ic_std if ic_std > 0 else 0
         n = len(grp)
-        result.append({
-            "factor_name": fname,
-            "ic_mean": ic_mean,
-            "ic_std": ic_std,
-            "ic_ir": ic_ir,
-            "n_days": n,
-            "pct_positive": (grp["ic_5d"] > 0).mean() * 100,
-        })
+        result.append(
+            {
+                "factor_name": fname,
+                "ic_mean": ic_mean,
+                "ic_std": ic_std,
+                "ic_ir": ic_ir,
+                "n_days": n,
+                "pct_positive": (grp["ic_5d"] > 0).mean() * 100,
+            }
+        )
     return pd.DataFrame(result)
 
 
@@ -234,7 +240,7 @@ def print_header(n_days: int, latest_date, nav: float, cum_ret: float):
     print("  QuantMind v1.1 Paper Trading — Daily Stats Tracker")
     print("=" * 70)
     print(f"  Date:       {latest_date}")
-    print(f"  Day:        {n_days} / {GRAD_MIN_DAYS} ({n_days/GRAD_MIN_DAYS*100:.0f}%)")
+    print(f"  Day:        {n_days} / {GRAD_MIN_DAYS} ({n_days / GRAD_MIN_DAYS * 100:.0f}%)")
     print(f"  NAV:        {nav:,.0f}")
     print(f"  Cum Return: {cum_ret:+.2%}")
     print()
@@ -257,7 +263,11 @@ def print_performance_section(df: pd.DataFrame):
     # Calmar, Sortino
     ann_ret = float(np.mean(rets) * 252)
     downside = rets[rets < 0]
-    sortino = float(np.mean(rets) / np.std(downside, ddof=1) * np.sqrt(252)) if len(downside) > 1 and np.std(downside, ddof=1) > 0 else np.nan
+    sortino = (
+        float(np.mean(rets) / np.std(downside, ddof=1) * np.sqrt(252))
+        if len(downside) > 1 and np.std(downside, ddof=1) > 0
+        else np.nan
+    )
     calmar = float(ann_ret / abs(mdd)) if abs(mdd) > 0.001 else np.nan
 
     # Win rate
@@ -281,14 +291,30 @@ def print_performance_section(df: pd.DataFrame):
     sharpe_gap = full_sharpe - GRAD_SHARPE if not np.isnan(full_sharpe) else np.nan
     status = "PASS" if not np.isnan(sharpe_gap) and sharpe_gap >= 0 else "BELOW"
     print(f"  {'  Gap to graduation:':28s} {sharpe_gap:+.3f}   [{status}]")
-    print(f"  {'Rolling 20d Sharpe:':28s} {rolling_sharpe_20:+.3f}" if not np.isnan(rolling_sharpe_20) else f"  {'Rolling 20d Sharpe:':28s} N/A (need 20d)")
+    print(
+        f"  {'Rolling 20d Sharpe:':28s} {rolling_sharpe_20:+.3f}"
+        if not np.isnan(rolling_sharpe_20)
+        else f"  {'Rolling 20d Sharpe:':28s} N/A (need 20d)"
+    )
     print(f"  {'Max Drawdown:':28s} {mdd:+.2%}   (hard limit: <{GRAD_MDD_HARD:.0%})")
     mdd_status = "PASS" if abs(mdd) < GRAD_MDD_HARD else "BREACH"
     print(f"  {'  Status:':28s} [{mdd_status}]")
     print(f"  {'Annualized Return:':28s} {ann_ret:+.2%}")
-    print(f"  {'Sortino Ratio:':28s} {sortino:+.3f}" if not np.isnan(sortino) else f"  {'Sortino Ratio:':28s} N/A")
-    print(f"  {'Calmar Ratio:':28s} {calmar:.3f}" if not np.isnan(calmar) else f"  {'Calmar Ratio:':28s} N/A")
-    print(f"  {'Win Rate:':28s} {win_rate:.1f}%   PnL Ratio: {pnl_ratio:.2f}" if not np.isnan(pnl_ratio) else f"  {'Win Rate:':28s} {win_rate:.1f}%")
+    print(
+        f"  {'Sortino Ratio:':28s} {sortino:+.3f}"
+        if not np.isnan(sortino)
+        else f"  {'Sortino Ratio:':28s} N/A"
+    )
+    print(
+        f"  {'Calmar Ratio:':28s} {calmar:.3f}"
+        if not np.isnan(calmar)
+        else f"  {'Calmar Ratio:':28s} N/A"
+    )
+    print(
+        f"  {'Win Rate:':28s} {win_rate:.1f}%   PnL Ratio: {pnl_ratio:.2f}"
+        if not np.isnan(pnl_ratio)
+        else f"  {'Win Rate:':28s} {win_rate:.1f}%"
+    )
     print(f"  {'Max Losing Streak:':28s} {max_streak}d")
     print()
 
@@ -336,7 +362,9 @@ def print_factor_ic_section(conn):
             n = len(sub)
             ic_mean = sub["ic_5d"].mean() if "ic_5d" in sub.columns else np.nan
             pct_pos = (sub["ic_5d"] > 0).mean() * 100 if "ic_5d" in sub.columns else np.nan
-            print(f"  {fname:25s}  IC_mean={ic_mean:+.4f}  MA20={ic_ma20:+.4f}  IC>0={pct_pos:.0f}%  [{decay}]  (N={n})")
+            print(
+                f"  {fname:25s}  IC_mean={ic_mean:+.4f}  MA20={ic_ma20:+.4f}  IC>0={pct_pos:.0f}%  [{decay}]  (N={n})"
+            )
     else:
         # 计算实时IC
         ic_rt = load_realtime_factor_ic(conn, n_recent_days=20)
@@ -365,7 +393,11 @@ def print_graduation_checklist(df: pd.DataFrame):
     print("  --- Graduation Checklist ---")
     checks = [
         ("Duration >= 60 days", n >= GRAD_MIN_DAYS, f"{n}/{GRAD_MIN_DAYS}"),
-        (f"Sharpe >= {GRAD_SHARPE:.3f}", not np.isnan(full_sharpe) and full_sharpe >= GRAD_SHARPE, f"{full_sharpe:.3f}" if not np.isnan(full_sharpe) else "N/A"),
+        (
+            f"Sharpe >= {GRAD_SHARPE:.3f}",
+            not np.isnan(full_sharpe) and full_sharpe >= GRAD_SHARPE,
+            f"{full_sharpe:.3f}" if not np.isnan(full_sharpe) else "N/A",
+        ),
         (f"MDD < {GRAD_MDD_HARD:.0%}", abs(mdd) < GRAD_MDD_HARD, f"{mdd:+.2%}"),
         ("Slippage deviation < 50%", None, "TBD (need live comparison)"),
         ("Full pipeline intact", None, "TBD (check scheduler_task_log)"),
@@ -388,8 +420,14 @@ def print_graduation_checklist(df: pd.DataFrame):
     else:
         print(f"  Days remaining: {days_remaining}")
         if not np.isnan(full_sharpe) and full_sharpe < GRAD_SHARPE:
-            needed_daily = (GRAD_SHARPE / np.sqrt(252)) * np.std(rets, ddof=1) if np.std(rets, ddof=1) > 0 else 0
-            print(f"  To reach Sharpe {GRAD_SHARPE:.3f}: need avg daily return >= {needed_daily:.4%}")
+            needed_daily = (
+                (GRAD_SHARPE / np.sqrt(252)) * np.std(rets, ddof=1)
+                if np.std(rets, ddof=1) > 0
+                else 0
+            )
+            print(
+                f"  To reach Sharpe {GRAD_SHARPE:.3f}: need avg daily return >= {needed_daily:.4%}"
+            )
     print()
 
 

@@ -4,6 +4,7 @@ subprocess 从生产启动路径真启动, 验证:
 - `from backend.qm_platform.strategy import DBStrategyRegistry, EqualWeightAllocator` 不炸
 - DDL migration 幂等 (可重跑不报错)
 """
+
 from __future__ import annotations
 
 import os
@@ -35,7 +36,13 @@ def test_platform_strategy_batch_1_imports_clean():
         text=True,
         cwd=str(_REPO),
         timeout=60,  # Plan v8 fix (5-20): bump from 30s — DB lock contention during Phase B-1 caused 30s timeout false-fail
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        # PYTHONPATH 同时含 repo root (backend namespace pkg) + backend/ (顶层
+        # engines/app/qm_platform) — qm_platform import 链两种风格都触发.
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONPATH": os.pathsep.join([str(_REPO), str(_REPO / "backend")]),
+        },
     )
     assert result.returncode == 0, (
         f"Platform strategy batch 1 import failed:\n"
@@ -76,7 +83,6 @@ def test_migration_idempotent_rerun():
     if "could not connect" in result.stderr or "authentication failed" in result.stderr:
         pytest.skip(f"DB unavailable: {result.stderr[:200]}")
     assert result.returncode == 0, (
-        f"Migration idempotent rerun failed:\n"
-        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        f"Migration idempotent rerun failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
     assert "MIGRATION_IDEMPOTENT_OK" in result.stdout
