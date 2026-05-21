@@ -680,10 +680,11 @@ def send_alert(
         content: 详细内容。
         webhook_url: DingTalk Webhook地址。
         secret: DingTalk签名密钥。
-        conn: psycopg2同步连接（可选，用于写DB）。
+        conn: psycopg2同步连接（可选，用于写DB + 读外发偏好）。
 
     Returns:
-        DingTalk是否发送成功。
+        True = 外发成功, 或按偏好/静默时段正确抑制 (均视为已正确处理);
+        False = 外发失败 (需关注)。
     """
     level_emoji = {"P0": "\U0001f534", "P1": "\U0001f7e1", "P2": "\U0001f535"}.get(level, "\u26aa")
     md = f"### {level_emoji} [{level}] {title}\n\n{content}"
@@ -702,6 +703,24 @@ def send_alert(
             logger.warning("[Notify] sync写入DB失败: %s", e)
             with contextlib.suppress(Exception):
                 conn.rollback()
+
+    # 外发检查 (DEV_NOTIFICATIONS §2 line 70): P0 始终发; P1/P2 受 dispatch_pN
+    # 开关 + 静默时段限制. conn 缺失或读偏好故障 → fail-safe 照发 (告警不可因
+    # 偏好读取问题被静默丢失). 与 NotificationService._dispatch_sync 同口径.
+    if conn is not None:
+        try:
+            _prefs = _get_preferences_sync(conn)
+            _suppressed = not _should_dispatch_external(
+                level, _prefs, datetime.now(ZoneInfo("Asia/Shanghai")).hour
+            )
+        except Exception as e:
+            logger.warning("[Notify] send_alert 读外发偏好失败, fail-safe 照发: %s", e)
+            _suppressed = False
+        if _suppressed:
+            logger.info(
+                "[Notify] send_alert 外发按偏好/静默抑制: level=%s title='%s'", level, title
+            )
+            return True
 
     # 发送DingTalk
     return dingtalk.send_markdown_sync(
