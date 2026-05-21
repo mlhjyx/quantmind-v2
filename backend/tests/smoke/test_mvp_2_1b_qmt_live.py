@@ -15,6 +15,7 @@ CI / 无 Redis 环境: pytest.skip.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,11 @@ def test_qmt_source_imports_and_contracts() -> None:
     result = subprocess.run(
         [sys.executable, "-c", _SMOKE_CODE],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,

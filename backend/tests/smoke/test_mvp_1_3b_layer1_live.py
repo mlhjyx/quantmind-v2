@@ -12,6 +12,7 @@ subprocess 启动 + live PG + 真调 signal_engine._get_direction, 验证:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +49,11 @@ def test_layer1_live_db_direction_matches_hardcoded() -> None:
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,

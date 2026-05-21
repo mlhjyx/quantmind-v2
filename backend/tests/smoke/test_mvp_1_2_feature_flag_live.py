@@ -13,6 +13,7 @@ subprocess 启动 + live PG + 真调 DBFeatureFlag, 验证:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +50,11 @@ def test_feature_flag_live_db_crud() -> None:
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,
