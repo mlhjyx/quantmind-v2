@@ -21,6 +21,7 @@ action 默认 alert_only:
 
 关联铁律: 24 (单一职责) / 31 (纯计算无 IO) / 33 (fail-loud) / 34 (config SSOT 阈值)
 """
+
 from __future__ import annotations
 
 import logging
@@ -126,7 +127,7 @@ class SingleStockStopLossRule(RiskRule):
         非 single_stock_stoploss_l{N} pattern passthrough (不声明拥有).
         """
         prefix = "single_stock_stoploss_l"
-        if triggered_rule_id.startswith(prefix) and triggered_rule_id[len(prefix):].isdigit():
+        if triggered_rule_id.startswith(prefix) and triggered_rule_id[len(prefix) :].isdigit():
             return "single_stock_stoploss"
         return triggered_rule_id
 

@@ -3,6 +3,7 @@
 Skips DB UPDATE — loads raw_value, neutralizes in-memory, computes IC directly.
 Much faster than waiting for fast_neutralize_batch DB writes.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,12 +24,23 @@ from engines.ic_calculator import (
 )
 
 MICRO_FACTORS = [
-    "intraday_skewness_20", "intraday_kurtosis_20", "high_freq_volatility_20",
-    "updown_vol_ratio_20", "max_intraday_drawdown_20", "volume_concentration_20",
-    "amihud_intraday_20", "volume_autocorr_20", "smart_money_ratio_20",
-    "volume_return_corr_20", "open_drive_20", "close_drive_20",
-    "morning_afternoon_ratio_20", "variance_ratio_20", "price_path_efficiency_20",
-    "autocorr_5min_20", "weighted_price_contribution_20",
+    "intraday_skewness_20",
+    "intraday_kurtosis_20",
+    "high_freq_volatility_20",
+    "updown_vol_ratio_20",
+    "max_intraday_drawdown_20",
+    "volume_concentration_20",
+    "amihud_intraday_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "volume_return_corr_20",
+    "open_drive_20",
+    "close_drive_20",
+    "morning_afternoon_ratio_20",
+    "variance_ratio_20",
+    "price_path_efficiency_20",
+    "autocorr_5min_20",
+    "weighted_price_contribution_20",
 ]
 
 CORE4 = ["turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm"]
@@ -57,12 +69,15 @@ def load_shared_data(conn):
 def load_raw_factor(factor_name: str, conn) -> pd.DataFrame:
     """Load raw_value as long DataFrame."""
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT trade_date, code, raw_value FROM factor_values
         WHERE factor_name = %s AND raw_value IS NOT NULL
           AND trade_date >= '2019-01-01'
         ORDER BY trade_date, code
-    """, (factor_name,))
+    """,
+        (factor_name,),
+    )
     rows = cur.fetchall()
     cur.close()
     if not rows:
@@ -73,7 +88,9 @@ def load_raw_factor(factor_name: str, conn) -> pd.DataFrame:
     return df
 
 
-def neutralize_in_memory(factor_long: pd.DataFrame, industry: pd.Series, mcap_df: pd.DataFrame) -> pd.DataFrame:
+def neutralize_in_memory(
+    factor_long: pd.DataFrame, industry: pd.Series, mcap_df: pd.DataFrame
+) -> pd.DataFrame:
     """Neutralize factor cross-sectionally per date, returning wide DataFrame."""
     # Sample dates for speed (monthly)
     dates = sorted(factor_long["trade_date"].unique())
@@ -148,6 +165,7 @@ def main():
     # 2. Load price + benchmark for IC
     print("\n[Step 2] Loading price data for IC...")
     from phase3d_ml_synthesis import load_price_benchmark
+
     price_df, bench_df = load_price_benchmark()
     fwd_ret = compute_forward_excess_returns(price_df, bench_df, horizon=20, price_col="close")
     print(f"  Forward returns: {fwd_ret.shape}")
@@ -212,10 +230,16 @@ def main():
         if status in ("PASS", "MARGINAL"):
             neutral_cache[fname] = neutral_wide
 
-        r_str = f"raw={raw_stats['mean']:+.4f}(t={raw_stats['t_stat']:.1f})" if raw_stats else "raw=N/A"
-        n_str = f"neu={neutral_stats['mean']:+.4f}(t={neutral_stats['t_stat']:.1f})" if neutral_stats else "neu=N/A"
+        r_str = (
+            f"raw={raw_stats['mean']:+.4f}(t={raw_stats['t_stat']:.1f})" if raw_stats else "raw=N/A"
+        )
+        n_str = (
+            f"neu={neutral_stats['mean']:+.4f}(t={neutral_stats['t_stat']:.1f})"
+            if neutral_stats
+            else "neu=N/A"
+        )
         d_str = f"decay={decay_pct:.0%}" if np.isfinite(decay_pct) else ""
-        print(f"  {r_str} | {n_str} | {d_str} → {status} ({time.time()-t1:.0f}s)")
+        print(f"  {r_str} | {n_str} | {d_str} → {status} ({time.time() - t1:.0f}s)")
 
     # 4. Save IC results
     ic_df = pd.DataFrame(ic_results)
@@ -277,7 +301,7 @@ def main():
     print("[Step 5] Inter-factor Correlation")
     print("=" * 70)
     for i, f1 in enumerate(check_factors):
-        for f2 in check_factors[i + 1:]:
+        for f2 in check_factors[i + 1 :]:
             if f1 in neutral_cache and f2 in neutral_cache:
                 corr = cross_section_corr(neutral_cache[f1], neutral_cache[f2])
                 corr_results.append({"factor": f1, "vs": f2, "corr": round(corr, 4)})

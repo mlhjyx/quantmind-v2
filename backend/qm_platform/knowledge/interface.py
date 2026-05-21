@@ -8,6 +8,7 @@
 实施时机:
   - MVP 1.4 Knowledge Registry (Wave 1)
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

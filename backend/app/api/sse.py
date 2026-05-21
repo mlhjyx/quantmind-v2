@@ -90,10 +90,7 @@ async def _stream_risk_events(severity_filter: str | None = None) -> AsyncGenera
         except Exception as exc:
             # 反 silent stream death: emit error event, then continue trying.
             logger.exception("SSE risk-events poll failed")
-            yield (
-                "event: error\n"
-                f"data: {json.dumps({'error': str(exc), 'will_retry': True})}\n\n"
-            )
+            yield (f"event: error\ndata: {json.dumps({'error': str(exc), 'will_retry': True})}\n\n")
             await asyncio.sleep(_POLL_INTERVAL_SEC * 2)
             continue
 

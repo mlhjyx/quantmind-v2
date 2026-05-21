@@ -10,6 +10,7 @@
   - 配置 (2): freshness_days 必 > 0 / EvaluationRequired 消息含 blockers
   - Edge (1): naive datetime defensive
 """
+
 from __future__ import annotations
 
 import json
@@ -283,9 +284,7 @@ def test_freshness_days_configurable_short_window():
     """live_eval_freshness_days=1: 2 天前的 eval 算 stale."""
     sid = uuid4()
     ts = datetime.now(UTC) - timedelta(days=2)
-    factory = _make_mock_conn_factory(
-        fetchone_queue=[("draft",), (True, [], ts)]
-    )
+    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], ts)])
     reg = DBStrategyRegistry(conn_factory=factory, live_eval_freshness_days=1)
 
     with pytest.raises(EvaluationRequired, match="已过期"):
@@ -318,9 +317,7 @@ def test_naive_datetime_treated_as_utc_defensive():
     """
     sid = uuid4()
     naive_fresh = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
-    factory = _make_mock_conn_factory(
-        fetchone_queue=[("draft",), (True, [], naive_fresh)]
-    )
+    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], naive_fresh)])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     # 应不抛 (naive 当 UTC, 1 天前在 30 天窗口内)
@@ -331,9 +328,7 @@ def test_naive_datetime_treated_as_utc_defensive():
 def test_non_datetime_evaluated_at_raises_evaluation_required():
     """defensive: evaluated_at 非 datetime (e.g. None / str) → fail-loud."""
     sid = uuid4()
-    factory = _make_mock_conn_factory(
-        fetchone_queue=[("draft",), (True, [], "not-a-datetime")]
-    )
+    factory = _make_mock_conn_factory(fetchone_queue=[("draft",), (True, [], "not-a-datetime")])
     reg = DBStrategyRegistry(conn_factory=factory)
 
     with pytest.raises(EvaluationRequired, match="非 datetime"):

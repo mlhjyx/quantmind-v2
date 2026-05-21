@@ -36,6 +36,7 @@ test isolation (沿用 alert.py reset_alert_router 体例):
 - docs/LLM_IMPORT_POLICY.md §10.9 (caller 接入文档)
 - backend/qm_platform/observability/alert.py:528-554 (factory 体例参考)
 """
+
 from __future__ import annotations
 
 import threading
@@ -95,6 +96,7 @@ def get_llm_router(
                 # default settings 走 backend.app.config (反 hidden coupling import).
                 if settings is None:
                     from backend.app.config import settings as default_settings
+
                     eff_settings = default_settings
                 else:
                     eff_settings = settings
@@ -108,6 +110,7 @@ def get_llm_router(
                 else:
                     # 全 governance mode (BudgetGuard + LLMCallLogger wire).
                     from decimal import Decimal
+
                     budget = BudgetGuard(
                         conn_factory,
                         monthly_budget_usd=Decimal(str(eff_settings.LLM_MONTHLY_BUDGET_USD)),
@@ -115,9 +118,7 @@ def get_llm_router(
                         cap_threshold=Decimal(str(eff_settings.LLM_BUDGET_CAP_THRESHOLD)),
                     )
                     audit = LLMCallLogger(conn_factory)
-                    _router_singleton = BudgetAwareRouter(
-                        inner_router, budget, audit=audit
-                    )
+                    _router_singleton = BudgetAwareRouter(inner_router, budget, audit=audit)
     return _router_singleton
 
 

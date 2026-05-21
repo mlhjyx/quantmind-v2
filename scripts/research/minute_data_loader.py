@@ -38,9 +38,15 @@ CACHE_DIR = Path("cache/minute_bars")
 
 # minute_bars表的列 (drop id, adjustflag)
 _COLUMNS = [
-    "code", "trade_date", "trade_time",
-    "open", "high", "low", "close",
-    "volume", "amount",
+    "code",
+    "trade_date",
+    "trade_time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
 ]
 
 # A股交易时段: 9:30-11:30 (24 bars) + 13:00-15:00 (24 bars) = 48 bars/day
@@ -114,7 +120,9 @@ class MinuteDataCache:
                     # 立即转类型避免Decimal object列OOM
                     for col in ["open", "high", "low", "close", "amount"]:
                         chunk[col] = pd.to_numeric(chunk[col], errors="coerce").astype(np.float32)
-                    chunk["volume"] = pd.to_numeric(chunk["volume"], errors="coerce").astype(np.int64)
+                    chunk["volume"] = pd.to_numeric(chunk["volume"], errors="coerce").astype(
+                        np.int64
+                    )
                     chunks.append(chunk)
                     print(".", end="", flush=True)
 
@@ -147,8 +155,10 @@ class MinuteDataCache:
                     "elapsed_sec": round(elapsed, 1),
                     "file_mb": round(file_mb, 1),
                 }
-                print(f" {len(df):,} rows, {n_stocks} stocks, {n_days} days, "
-                      f"{file_mb:.0f}MB, {elapsed:.1f}s")
+                print(
+                    f" {len(df):,} rows, {n_stocks} stocks, {n_days} days, "
+                    f"{file_mb:.0f}MB, {elapsed:.1f}s"
+                )
                 del df
         finally:
             conn.close()
@@ -246,7 +256,7 @@ class MinuteDataCache:
         print(f"\n=== Verify {year} ===")
         print(f"  Rows: {len(df):,}")
         print(f"  Stocks: {n_stocks}, Days: {n_days}")
-        print(f"  48-bar completeness: {full_bars*100:.1f}%")
+        print(f"  48-bar completeness: {full_bars * 100:.1f}%")
         if len(short_bars) > 0:
             print(f"  Short bars: {len(short_bars)} stock-days (mean={short_bars.mean():.0f} bars)")
         print(f"  Nulls: {null_counts.to_dict()}")
@@ -284,7 +294,9 @@ def _compute_minute_index(trade_time: pd.Series) -> pd.Series:
 
     # 下午
     afternoon_mask = (total_min >= afternoon_start_min) & (total_min <= 15 * 60)
-    idx.loc[afternoon_mask] = (24 + (total_min[afternoon_mask] - afternoon_start_min) // 5).astype(np.int8)
+    idx.loc[afternoon_mask] = (24 + (total_min[afternoon_mask] - afternoon_start_min) // 5).astype(
+        np.int8
+    )
 
     return idx
 
@@ -292,6 +304,7 @@ def _compute_minute_index(trade_time: pd.Series) -> pd.Series:
 # ============================================================
 # CLI
 # ============================================================
+
 
 def main():
     import argparse

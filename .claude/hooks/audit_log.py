@@ -11,7 +11,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
 TRACKED_TOOLS = {"Write", "Edit", "Bash", "Agent"}
 LOG_MAX_LINES = 500
 

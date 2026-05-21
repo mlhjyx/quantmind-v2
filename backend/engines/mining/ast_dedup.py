@@ -65,12 +65,8 @@ class _ASTNormalizer(ast.NodeTransformer):
         node = self.generic_visit(node)  # type: ignore[assignment]
 
         # 常数折叠
-        if isinstance(node.left, ast.Constant) and isinstance(
-            node.right, ast.Constant
-        ):
-            result = _eval_constant_binop(
-                node.op, node.left.value, node.right.value
-            )
+        if isinstance(node.left, ast.Constant) and isinstance(node.right, ast.Constant):
+            result = _eval_constant_binop(node.op, node.left.value, node.right.value)
             if result is not None:
                 return ast.Constant(value=result)
 
@@ -99,9 +95,7 @@ class _ASTNormalizer(ast.NodeTransformer):
         return node
 
 
-def _eval_constant_binop(
-    op: ast.operator, left: Any, right: Any
-) -> Any:
+def _eval_constant_binop(op: ast.operator, left: Any, right: Any) -> Any:
     """对常数二元运算求值"""
     try:
         if isinstance(op, ast.Add):
@@ -114,8 +108,8 @@ def _eval_constant_binop(
             return left / right if right != 0 else None
         if isinstance(op, ast.Pow):
             return left**right
-    except Exception:
-        pass
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass  # silent_ok: const-fold failures don't affect dedup semantics
     return None
 
 
@@ -242,14 +236,8 @@ class ASTDeduplicator:
                 continue
 
             # L3: Spearman 相关性去重（可选）
-            if (
-                self.use_l3_spearman
-                and factor_data is not None
-                and expr in factor_data
-            ):
-                is_dup, dup_reason = self._l3_spearman_check(
-                    expr, unique, factor_data
-                )
+            if self.use_l3_spearman and factor_data is not None and expr in factor_data:
+                is_dup, dup_reason = self._l3_spearman_check(expr, unique, factor_data)
                 if is_dup:
                     removed.append(expr)
                     reasons[expr] = dup_reason
@@ -312,11 +300,7 @@ class ASTDeduplicator:
                 extra_reasons[expr] = "L2_duplicate_with_existing"
                 continue
 
-            if (
-                self.use_l3_spearman
-                and factor_data is not None
-                and expr in factor_data
-            ):
+            if self.use_l3_spearman and factor_data is not None and expr in factor_data:
                 is_dup, dup_reason = self._l3_spearman_check(
                     expr, existing_expressions, factor_data
                 )
@@ -369,9 +353,7 @@ class ASTDeduplicator:
                     ref_series.loc[common].fillna(0).values,
                 )
                 if abs(float(corr)) >= self.spearman_threshold:
-                    return True, (
-                        f"L3_spearman_corr={corr:.3f}_with_{ref_expr[:40]}"
-                    )
+                    return True, (f"L3_spearman_corr={corr:.3f}_with_{ref_expr[:40]}")
             except Exception:
                 continue
 

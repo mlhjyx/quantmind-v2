@@ -14,6 +14,7 @@ Marketaux-specific tests (反 sub-PR 1+2+3+4 体例):
 - description over snippet (snippet 含 cookie wall noise)
 - LIMIT clamp [1, 100]
 """
+
 from __future__ import annotations
 
 import os
@@ -139,9 +140,7 @@ def test_marketaux_fetch_uses_get_with_api_token_query_param(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test-token-xxx")
     fetcher.fetch(query="Apple", limit=5)
@@ -164,9 +163,7 @@ def test_marketaux_fetch_custom_user_agent_in_request(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test", user_agent="Custom/2.0")
     fetcher.fetch(query="test")
@@ -183,9 +180,7 @@ def test_marketaux_fetch_limit_clamp_above_100(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     fetcher.fetch(query="test", limit=500)
@@ -202,9 +197,7 @@ def test_marketaux_fetch_limit_clamp_below_1(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     fetcher.fetch(query="test", limit=0)
@@ -246,9 +239,7 @@ def test_marketaux_fetch_parses_valid_response(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="news", limit=5)
@@ -290,9 +281,7 @@ def test_marketaux_fetch_description_over_snippet(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -319,9 +308,7 @@ def test_marketaux_fetch_snippet_fallback_when_description_empty(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -337,9 +324,7 @@ def test_marketaux_fetch_4xx_400_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     with pytest.raises(NewsFetchError, match="HTTP 400"):
@@ -356,9 +341,7 @@ def test_marketaux_fetch_401_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="bad")
     with pytest.raises(NewsFetchError, match="HTTP 401"):
@@ -375,9 +358,7 @@ def test_marketaux_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.marketaux.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = MarketauxNewsFetcher(api_key="test")
@@ -395,9 +376,7 @@ def test_marketaux_fetch_5xx_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.marketaux.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = MarketauxNewsFetcher(api_key="test")
@@ -415,9 +394,7 @@ def test_marketaux_fetch_timeout_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
     with patch("backend.qm_platform.news.marketaux.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = MarketauxNewsFetcher(api_key="test")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
@@ -427,14 +404,13 @@ def test_marketaux_fetch_timeout_retries_then_raises(monkeypatch):
 
 def test_marketaux_fetch_missing_data_returns_empty(monkeypatch):
     """`data` wrapper missing → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"meta": {}})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -443,14 +419,13 @@ def test_marketaux_fetch_missing_data_returns_empty(monkeypatch):
 
 def test_marketaux_fetch_invalid_data_type_returns_empty(monkeypatch):
     """`data` 反 list type → empty list."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"data": "not-a-list"})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -470,9 +445,7 @@ def test_marketaux_fetch_empty_title_skipped(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -482,14 +455,13 @@ def test_marketaux_fetch_empty_title_skipped(monkeypatch):
 
 def test_marketaux_fetch_invalid_json_returns_empty(monkeypatch):
     """Invalid JSON response → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<html>not json</html>")
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test")
     items = fetcher.fetch(query="test")
@@ -507,9 +479,7 @@ def test_marketaux_fetch_missing_language_uses_default(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = MarketauxNewsFetcher(api_key="test", language="zh")
     items = fetcher.fetch(query="test")
@@ -526,7 +496,7 @@ def test_marketaux_retryable_error_is_runtime_error():
 @pytest.mark.requires_marketaux
 @pytest.mark.skipif(
     not os.environ.get("MARKETAUX_API_KEY"),
-    reason="requires MARKETAUX_API_KEY env (e2e live API call)"
+    reason="requires MARKETAUX_API_KEY env (e2e live API call)",
 )
 def test_marketaux_fetch_e2e_minimal_payload():
     """e2e: 真 MARKETAUX_API_KEY 走 minimal 1-result payload (反耗 100/day quota).

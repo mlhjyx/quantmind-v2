@@ -20,6 +20,7 @@ def _make_conn():
     """创建psycopg2连接。延迟导入避免import-time阻塞。"""
     try:
         from app.services.db import get_sync_conn
+
         return get_sync_conn()
     except Exception as e:
         logger.warning("realtime DB连接失败", error=str(e))

@@ -28,6 +28,7 @@ Usage:
     ...     router.fire(alert, dedup_key=rule.format_dedup_key(alert),
     ...                 suppress_minutes=rule.suppress_minutes)
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,9 +70,7 @@ class AlertRule:
         """ALL match_* 满足 (AND, None 视通配)."""
         if self.match_severity is not None and alert.severity.value != self.match_severity:
             return False
-        return not (
-            self.match_source is not None and alert.source != self.match_source
-        )
+        return not (self.match_source is not None and alert.source != self.match_source)
 
     def format_dedup_key(self, alert: Alert) -> str:
         """从 template 生成实际 dedup_key, 占位符缺失 raise.
@@ -157,9 +156,7 @@ class AlertRulesEngine:
         return cls.from_dict(data, source_path=str(path))
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, Any], *, source_path: str = "<dict>"
-    ) -> AlertRulesEngine:
+    def from_dict(cls, data: dict[str, Any], *, source_path: str = "<dict>") -> AlertRulesEngine:
         """从已解析 dict 构造 (单测便利方法 + from_yaml 内部用)."""
         if not isinstance(data, dict):
             raise AlertRuleError(
@@ -174,9 +171,7 @@ class AlertRulesEngine:
         seen_names: set[str] = set()
         for idx, raw in enumerate(raw_rules):
             if not isinstance(raw, dict):
-                raise AlertRuleError(
-                    f"rules[{idx}] must be dict, got {type(raw).__name__}"
-                )
+                raise AlertRuleError(f"rules[{idx}] must be dict, got {type(raw).__name__}")
             name = raw.get("name")
             if not name or not isinstance(name, str):
                 raise AlertRuleError(f"rules[{idx}] missing or non-str 'name'")
@@ -187,21 +182,16 @@ class AlertRulesEngine:
             match = raw.get("match", {})
             action = raw.get("action", {})
             if not isinstance(match, dict) or not isinstance(action, dict):
-                raise AlertRuleError(
-                    f"rules[{idx}={name}] match/action must be dict"
-                )
+                raise AlertRuleError(f"rules[{idx}={name}] match/action must be dict")
 
             ms = match.get("severity")
             if ms is not None and ms not in ("p0", "p1", "p2", "info"):
                 raise AlertRuleError(
-                    f"rules[{idx}={name}] invalid severity {ms!r}, "
-                    f"must be p0/p1/p2/info"
+                    f"rules[{idx}={name}] invalid severity {ms!r}, must be p0/p1/p2/info"
                 )
             mo_src = match.get("source")
             if mo_src is not None and not isinstance(mo_src, str):
-                raise AlertRuleError(
-                    f"rules[{idx}={name}] match.source must be str"
-                )
+                raise AlertRuleError(f"rules[{idx}={name}] match.source must be str")
 
             channels = action.get("channels")
             if (
@@ -215,8 +205,7 @@ class AlertRulesEngine:
             sm = action.get("suppress_minutes")
             if not isinstance(sm, int) or isinstance(sm, bool) or sm <= 0:
                 raise AlertRuleError(
-                    f"rules[{idx}={name}] action.suppress_minutes must be positive int, "
-                    f"got {sm!r}"
+                    f"rules[{idx}={name}] action.suppress_minutes must be positive int, got {sm!r}"
                 )
             tpl = action.get("dedup_key_template")
             if not isinstance(tpl, str) or not tpl.strip():

@@ -198,11 +198,14 @@ def test_cache_miss_runs_engine():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),  # PR C1: 避免 fallback warn
-        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
+        signal_config_builder=lambda c: SimpleNamespace(
+            size_neutral_beta=c.size_neutral_beta
+        ),  # PR C3
     )
 
     with patch(
-        "backend.qm_platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest",
+        return_value=_fake_engine_result(),
     ):
         result = runner.run(BacktestMode.QUICK_1Y, _make_config())
 
@@ -220,12 +223,15 @@ def test_live_pt_does_not_check_cache():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
-        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
+        signal_config_builder=lambda c: SimpleNamespace(
+            size_neutral_beta=c.size_neutral_beta
+        ),  # PR C3
     )
 
     registry.log_run.return_value = uuid4()
     with patch(
-        "backend.qm_platform.backtest.runner.run_hybrid_backtest", return_value=_fake_engine_result()
+        "backend.qm_platform.backtest.runner.run_hybrid_backtest",
+        return_value=_fake_engine_result(),
     ):
         runner.run(BacktestMode.LIVE_PT, _make_config())
 
@@ -368,7 +374,9 @@ def test_run_end_to_end_mock_integration():
         data_loader=data_loader,
         conn="fake_conn",
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
-        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
+        signal_config_builder=lambda c: SimpleNamespace(
+            size_neutral_beta=c.size_neutral_beta
+        ),  # PR C3
     )
 
     with patch(
@@ -432,7 +440,9 @@ def test_run_cache_miss_populates_engine_artifacts():
         registry=registry,
         data_loader=data_loader,
         direction_provider=lambda pool: dict.fromkeys(pool, 1),
-        signal_config_builder=lambda c: SimpleNamespace(size_neutral_beta=c.size_neutral_beta),  # PR C3
+        signal_config_builder=lambda c: SimpleNamespace(
+            size_neutral_beta=c.size_neutral_beta
+        ),  # PR C3
     )
 
     fake_engine_result_obj = _fake_engine_result()
@@ -543,7 +553,8 @@ def test_build_signal_config_none_provider_no_warning_fallback_complete():
     assert sig_cfg.size_neutral_beta == 0.50
     # Sub3 C4: 去 signal_config_builder=None 的 UserWarning (降噪)
     signal_config_warnings = [
-        w for w in captured
+        w
+        for w in captured
         if issubclass(w.category, UserWarning) and "signal_config_builder=None" in str(w.message)
     ]
     assert not signal_config_warnings, (

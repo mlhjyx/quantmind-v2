@@ -70,9 +70,7 @@ class TestAutocorrAdjustedSharpe:
         assert 0.15 < rho < 0.45, f"Expected rho ~0.3, got {rho:.3f}"
 
         # adjusted < raw
-        assert adj < raw_sharpe, (
-            f"Expected adjusted ({adj:.3f}) < raw ({raw_sharpe:.3f})"
-        )
+        assert adj < raw_sharpe, f"Expected adjusted ({adj:.3f}) < raw ({raw_sharpe:.3f})"
 
         # 调整量应与理论接近：adjusted ≈ raw * sqrt((1-rho)/(1+rho))
         expected_adj = raw_sharpe * np.sqrt((1 - rho) / (1 + rho))

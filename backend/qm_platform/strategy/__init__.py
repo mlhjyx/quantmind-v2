@@ -1,4 +1,5 @@
 """Framework #3 Strategy — Platform SDK sub-package."""
+
 from .allocator import EqualWeightAllocator
 from .interface import (
     CapitalAllocator,

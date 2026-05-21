@@ -3,6 +3,7 @@
 包装 MVP 1.3c qm_platform/factor/registry.py:G10_HYPOTHESIS_MIN_LEN + G10_FORBIDDEN_PREFIXES.
 DDL 字段名是 `hypothesis` (factor_registry.hypothesis TEXT), 非 `economic_mechanism`.
 """
+
 from __future__ import annotations
 
 from ...factor.registry import G10_FORBIDDEN_PREFIXES, G10_HYPOTHESIS_MIN_LEN

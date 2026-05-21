@@ -28,9 +28,7 @@ class DashboardService:
         self.health_repo = HealthRepository(session)
         self.market_repo = MarketDataRepository(session)
 
-    async def get_summary(
-        self, strategy_id: str, execution_mode: str = "paper"
-    ) -> dict[str, Any]:
+    async def get_summary(self, strategy_id: str, execution_mode: str = "paper") -> dict[str, Any]:
         """获取Dashboard 7个指标卡数据。
 
         返回NAV、Sharpe、MDD、持仓数、日收益、累计收益、现金比。
@@ -100,9 +98,7 @@ class DashboardService:
             execution_mode=execution_mode,
         )
 
-    async def get_pending_actions(
-        self, strategy_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_pending_actions(self, strategy_id: str) -> list[dict[str, Any]]:
         """获取待处理事项（熔断/健康异常/管道失败）。
 
         聚合健康检查失败项、熔断事件、管道任务异常，
@@ -122,36 +118,40 @@ class DashboardService:
         health = await self.health_repo.get_latest_health()
         if health and not health["all_pass"]:
             failed = health.get("failed_items") or []
-            actions.append({
-                "type": "health",
-                "severity": "critical",
-                "message": f"健康检查未通过: {', '.join(failed) if isinstance(failed, list) else str(failed)}",
-                "time": health["check_date"],
-            })
+            actions.append(
+                {
+                    "type": "health",
+                    "severity": "critical",
+                    "message": f"健康检查未通过: {', '.join(failed) if isinstance(failed, list) else str(failed)}",
+                    "time": health["check_date"],
+                }
+            )
 
         # 2. 熔断事件（最近7天）
-        breakers = await self.health_repo.get_circuit_breaker_history(
-            strategy_id, days=7
-        )
+        breakers = await self.health_repo.get_circuit_breaker_history(strategy_id, days=7)
         for b in breakers:
-            actions.append({
-                "type": "circuit_breaker",
-                "severity": "critical" if b["action"] == "stop" else "warning",
-                "message": f"熔断触发: {b.get('reason', '未知原因')}",
-                "time": b["time"],
-            })
+            actions.append(
+                {
+                    "type": "circuit_breaker",
+                    "severity": "critical" if b["action"] == "stop" else "warning",
+                    "message": f"熔断触发: {b.get('reason', '未知原因')}",
+                    "time": b["time"],
+                }
+            )
 
         # 3. 管道任务失败（当日）
         today = date.today()
         pipeline = await self.health_repo.get_pipeline_status(today)
         for task in pipeline:
             if task["status"] in ("failed", "error"):
-                actions.append({
-                    "type": "pipeline",
-                    "severity": "warning",
-                    "message": f"任务失败: {task['task_name']} - {task.get('error', '')}",
-                    "time": task.get("start_time"),
-                })
+                actions.append(
+                    {
+                        "type": "pipeline",
+                        "severity": "warning",
+                        "message": f"任务失败: {task['task_name']} - {task.get('error', '')}",
+                        "time": task.get("start_time"),
+                    }
+                )
 
         return actions
 
@@ -213,9 +213,7 @@ class DashboardService:
         Returns:
             list[dict]: 每项含 name/pct/color。
         """
-        return await self.pos_repo.get_industry_distribution(
-            strategy_id, execution_mode
-        )
+        return await self.pos_repo.get_industry_distribution(strategy_id, execution_mode)
 
     @staticmethod
     def _resolve_period_start(period: str) -> date | None:

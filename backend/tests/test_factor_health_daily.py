@@ -50,6 +50,7 @@ check_and_update_lifecycle = _mod.check_and_update_lifecycle
 # 场景12: IC趋势判断 — 递增=上升，递减=衰减
 # ──────────────────────────────────────────────────────────
 
+
 class TestClassifyICTrend:
     """classify_ic_trend() 趋势分类测试。"""
 
@@ -86,6 +87,7 @@ class TestClassifyICTrend:
 # ──────────────────────────────────────────────────────────
 # 场景13: 相关矩阵格式化 — 对角线=1.00, >0.7标记
 # ──────────────────────────────────────────────────────────
+
 
 class TestFormatCorrelationMatrix:
     """format_correlation_matrix() 格式化测试。"""
@@ -130,6 +132,7 @@ class TestFormatCorrelationMatrix:
 # 场景14: 非交易日跳过
 # ──────────────────────────────────────────────────────────
 
+
 class TestNonTradingDaySkip:
     """非交易日应该跳过。"""
 
@@ -154,6 +157,7 @@ class TestNonTradingDaySkip:
 # ──────────────────────────────────────────────────────────
 # 场景15: 无因子数据跳过
 # ──────────────────────────────────────────────────────────
+
 
 class TestNoFactorDataSkip:
     """无因子数据应该跳过。"""
@@ -181,15 +185,15 @@ class TestNoFactorDataSkip:
 # 场景11 + 16: 正常运行 + DB写入 (集成测试，使用真实DB)
 # ──────────────────────────────────────────────────────────
 
+
 class TestFactorHealthIntegration:
     """使用真实数据库的集成测试。"""
 
     def _get_test_conn(self):
         """获取同步测试连接。"""
         import psycopg2
-        return psycopg2.connect(
-            "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
-        )
+
+        return psycopg2.connect("postgresql://xin:quantmind@localhost:5432/quantmind_v2")
 
     @patch("factor_health_daily._send_alert_unified")
     def test_dry_run_normal_date(self, mock_send_alert) -> None:
@@ -317,6 +321,7 @@ class TestFactorHealthIntegration:
             assert row[0] in ("healthy", "warning", "critical")
             # result_json应该是有效JSON
             import json  # noqa: PLC0415
+
             data = json.loads(row[1]) if isinstance(row[1], str) else row[1]
             assert "date" in data
             assert "overall_status" in data
@@ -339,6 +344,7 @@ class TestFactorHealthIntegration:
 # ──────────────────────────────────────────────────────────
 # 场景17: 退出码 — critical=2, error=1
 # ──────────────────────────────────────────────────────────
+
 
 class TestExitCodes:
     """main()退出码测试。"""
@@ -418,6 +424,7 @@ class TestExitCodes:
 # 因子生命周期自动迁移测试
 # ──────────────────────────────────────────────────────────
 
+
 def _make_mock_conn(fetchall_candidates, fetchone_side_effects):
     """构造模拟psycopg2连接。"""
     mock_conn = MagicMock()
@@ -455,10 +462,7 @@ class TestCheckAndUpdateLifecycle:
         assert result[0]["old_status"] == "active"
         assert result[0]["new_status"] == "warning"
         # dry_run不应有UPDATE调用
-        update_calls = [
-            c for c in mock_cursor.execute.call_args_list
-            if "UPDATE" in str(c)
-        ]
+        update_calls = [c for c in mock_cursor.execute.call_args_list if "UPDATE" in str(c)]
         assert len(update_calls) == 0
 
     def test_degraded_to_active_dry_run(self) -> None:
@@ -509,17 +513,14 @@ class TestCheckAndUpdateLifecycle:
         mock_conn, mock_cursor = _make_mock_conn(
             fetchall_candidates=[("bp_ratio", "active")],
             fetchone_side_effects=[
-                (0.05, 60),   # hist: mean=0.05, count=60
-                (0.01, 30),   # recent: mean=0.01 < 0.05×0.5=0.025
+                (0.05, 60),  # hist: mean=0.05, count=60
+                (0.01, 30),  # recent: mean=0.01 < 0.05×0.5=0.025
             ],
         )
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=False)
         assert len(result) == 1
         assert result[0]["new_status"] == "warning"
-        update_calls = [
-            c for c in mock_cursor.execute.call_args_list
-            if "UPDATE" in str(c)
-        ]
+        update_calls = [c for c in mock_cursor.execute.call_args_list if "UPDATE" in str(c)]
         assert len(update_calls) == 1
         mock_conn.commit.assert_called_once()
 
@@ -531,9 +532,9 @@ class TestCheckAndUpdateLifecycle:
                 ("factor_b", "active"),
             ],
             fetchone_side_effects=[
-                (0.04, 40),   # factor_a hist
-                (0.01, 20),   # factor_a recent → warning (0.01 < 0.04×0.5=0.02)
-                (0.03, 35),   # factor_b hist
+                (0.04, 40),  # factor_a hist
+                (0.01, 20),  # factor_a recent → warning (0.01 < 0.04×0.5=0.02)
+                (0.03, 35),  # factor_b hist
                 (0.025, 25),  # factor_b recent → no change (0.025 >= 0.03×0.5=0.015)
             ],
         )
@@ -548,7 +549,7 @@ class TestCheckAndUpdateLifecycle:
             fetchall_candidates=[("factor_c", "warning")],
             fetchone_side_effects=[
                 (0.03, 30),  # hist ok
-                (0.04, 3),   # recent count=3 < 5 → skip
+                (0.04, 3),  # recent count=3 < 5 → skip
             ],
         )
         result = check_and_update_lifecycle(mock_conn, date(2026, 3, 21), dry_run=True)

@@ -1,4 +1,4 @@
-> **文档状态: PARTIALLY_IMPLEMENTED (2026-04-16, Session 57 2026-05-19 G1 audit addendum)**
+> **文档状态: PARTIALLY_IMPLEMENTED — 🟡 ~60% Aligned (2026-05-20 audit sediment). Engine layer (alert.py) + Service layer (dingtalk_webhook_service.py) 双层架构, design 仅描述其一.**
 > 实现状态: ~35% (sustained) — notification_service+templates+throttler已实现。后端5个API端点已有(list/unread-count/read/detail/test)。notifications表已建(541行数据)。
 > **前端**: DEV_FRONTEND_UI.md §十三 定义了 Toast/铃铛/通知中心/分级/偏好, 前端页面待审计数据绑定状态。
 > 未实现: 邮件/微信推送、告警升级链、WebSocket实时推送(/ws/notifications)
@@ -34,6 +34,29 @@ NotificationService
 ```
 
 防洪泛: NotificationThrottler(Redis TTL, 同类通知最小间隔)
+
+### Notification Architecture (2026-05-20 truth sediment)
+
+两层架构 (per V3 §S6 + Wave 4 MVP 4.1):
+
+1. **Engine layer (Pure compute)**: `backend/qm_platform/risk/realtime/alert.py`
+   - AlertDispatcher class (224 lines)
+   - dispatch() / flush() / flush_and_send() — pure dispatch logic
+   - 28 tests
+   - 铁律 31: 无 IO 无 DB
+
+2. **Service layer (Side effects)**: `backend/app/services/risk/dingtalk_webhook_service.py`
+   - DingTalk webhook 真发送 (HMAC auth)
+   - PENDING_CONFIRM → CONFIRMED flow (audit-trail)
+   - REST API endpoints (list / unread-count / read / detail / test-dingtalk)
+   - PostgresAlertRouter (Wave 4 MVP 4.1 batch 2.1)
+
+### 25+ notification templates
+位置: `backend/app/services/notification_templates/` (categories: risk / trade / factor / backtest / pipeline / system)
+
+### Bonus: StagedExecutionService
+位置: `backend/app/services/risk/staged_execution_service.py`
+功能: V3 §S8 8c — staged execution gate (NORMAL → CONFIRMED → EXECUTED 三阶段)
 
 ---
 
@@ -202,6 +225,15 @@ CREATE TABLE notification_preferences (
 | /api/notifications/test-dingtalk | POST | 测试钉钉发送 |
 | /api/notifications/clear-old | DELETE | 清理旧通知 |
 | /ws/notifications | WS | 实时推送 |
+
+> ✅ **实现状态 (Plan I+K, 2026-05-20)**: `read-all` (PUT) + `clear-old` (DELETE)
+> + `preferences` GET/PUT 全部已实现 (`api/notifications.py` +
+> `NotificationRepository`)。`clear-old` 仅删除超过 N 天 (默认 30, 1-365) 的
+> **已读**通知, 未读一律保留。`preferences` 走单例表 `notification_preferences`
+> (无业务键 → singleton upsert: 无 WHERE 的 UPDATE, rowcount==0 时 INSERT);
+> GET 无记录时返回列默认值。字段以 `QUANTMIND_V2_DDL_FINAL.sql` 为准 (12 可编辑
+> 字段: toast_p0-3 / dingtalk_enabled+webhook / dispatch_p0-2 / quiet_enabled
+> +start+end —— §7 的 center_p*/sound_*/dingtalk_verified 不在 DDL_FINAL, 未实现)。
 
 ---
 

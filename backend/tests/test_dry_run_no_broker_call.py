@@ -16,6 +16,7 @@ If anyone re-introduces the missing-propagation bug at call site or removes the
 
 关联: docs/audit/V3_DRY_RUN_BUG_LL_183_2026_05_18.md / 铁律 33 (fail-loud here originally silent)
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -66,9 +67,11 @@ def test_dry_run_true_zero_broker_call_in_live_mode(mock_conn, target_weights, p
     svc = ExecutionService()
 
     # Patch `qmt_manager` and `QMTExecutionAdapter` so we can assert ZERO call.
-    with patch("app.services.execution_service.PaperBroker") as mock_paper_broker_cls, \
-         patch("app.services.qmt_connection_manager.qmt_manager") as mock_mgr, \
-         patch("engines.qmt_execution_adapter.QMTExecutionAdapter") as mock_adapter_cls:
+    with (
+        patch("app.services.execution_service.PaperBroker") as mock_paper_broker_cls,
+        patch("app.services.qmt_connection_manager.qmt_manager") as mock_mgr,
+        patch("engines.qmt_execution_adapter.QMTExecutionAdapter") as mock_adapter_cls,
+    ):
         # qmt_manager.ensure_connected() + qmt_manager.broker (used to query NAV/positions)
         mock_mgr.ensure_connected.return_value = None
         mock_broker = MagicMock()
@@ -86,8 +89,8 @@ def test_dry_run_true_zero_broker_call_in_live_mode(mock_conn, target_weights, p
             price_data=price_data,
             initial_capital=1_000_000.0,
             signal_date=date(2026, 5, 18),
-            dry_run=True,             # ← critical: dry-run engaged
-            execution_mode="live",    # ← critical: live mode (otherwise paper path)
+            dry_run=True,  # ← critical: dry-run engaged
+            execution_mode="live",  # ← critical: live mode (otherwise paper path)
         )
 
         # ── Assertions ──
@@ -116,9 +119,11 @@ def test_dry_run_false_invokes_broker_adapter_in_live_mode(mock_conn, target_wei
     """
     svc = ExecutionService()
 
-    with patch("app.services.execution_service.PaperBroker"), \
-         patch("app.services.qmt_connection_manager.qmt_manager") as mock_mgr, \
-         patch("engines.qmt_execution_adapter.QMTExecutionAdapter") as mock_adapter_cls:
+    with (
+        patch("app.services.execution_service.PaperBroker"),
+        patch("app.services.qmt_connection_manager.qmt_manager") as mock_mgr,
+        patch("engines.qmt_execution_adapter.QMTExecutionAdapter") as mock_adapter_cls,
+    ):
         mock_mgr.ensure_connected.return_value = None
         mock_broker = MagicMock()
         mock_broker.get_total_value.return_value = 993_520.66
@@ -140,7 +145,7 @@ def test_dry_run_false_invokes_broker_adapter_in_live_mode(mock_conn, target_wei
             price_data=price_data,
             initial_capital=1_000_000.0,
             signal_date=date(2026, 5, 18),
-            dry_run=False,            # ← critical: dry-run OFF
+            dry_run=False,  # ← critical: dry-run OFF
             execution_mode="live",
         )
 

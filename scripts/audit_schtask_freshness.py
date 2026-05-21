@@ -145,9 +145,7 @@ def classify(task: dict, stale_hours: int) -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="Output JSON only")
-    parser.add_argument(
-        "--no-alert", action="store_true", help="Skip DingTalk alert on FAIL/STALE"
-    )
+    parser.add_argument("--no-alert", action="store_true", help="Skip DingTalk alert on FAIL/STALE")
     parser.add_argument(
         "--stale-hours",
         type=int,

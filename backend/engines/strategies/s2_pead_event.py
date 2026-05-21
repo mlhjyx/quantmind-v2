@@ -38,6 +38,7 @@ PEAD = Post-Earnings Announcement Drift. 经典事件驱动异常: 盈余意外�
 - 2024: 22K rows / 2025: 23K rows, Q80 eps_surprise_pct = 0.486.
 - 预期回测: 3yr (2023-2026) OOS Sharpe TBD, 本批只交付策略实现, 回测见批 3 后续.
 """
+
 from __future__ import annotations
 
 import logging
@@ -252,9 +253,7 @@ class S2PEADEvent(Strategy):
         )
         return signals
 
-    def validate_signals(
-        self, signals: list[Signal], ctx: StrategyContext
-    ) -> list[Signal]:
+    def validate_signals(self, signals: list[Signal], ctx: StrategyContext) -> list[Signal]:
         """Pass-through validation — 批 3 简化, 靠 ctx.universe 已过滤 BJ/ST/停牌.
 
         后续批次可接入 Platform 公共 validator (流动性 / 涨跌停).
@@ -277,9 +276,7 @@ class S2PEADEvent(Strategy):
 
     # ─── Internal helpers ───────────────────────────────────────
 
-    def _find_expired_positions(
-        self, current_positions: dict[str, dict[str, Any]]
-    ) -> list[str]:
+    def _find_expired_positions(self, current_positions: dict[str, dict[str, Any]]) -> list[str]:
         """Return codes with holding_days >= HOLDING_DAYS."""
         return [
             code

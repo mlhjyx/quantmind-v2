@@ -16,6 +16,7 @@ Notes:
   - 单元 tests (1-4) 用 mock psycopg2 conn, 无 DB 依赖
   - Integration tests (5) 走真 DB (event_outbox 表已 migrate, conftest 提供 conn fixture)
 """
+
 from __future__ import annotations
 
 import json
@@ -54,6 +55,7 @@ def mock_conn():
 def outbox_module():
     """Import outbox module 一次, 跨测试共享."""
     from qm_platform.observability import outbox  # noqa: PLC0415
+
     return outbox
 
 
@@ -141,9 +143,11 @@ class TestParameterValidation:
     def test_payload_unserializable_raises(self, mock_conn, outbox_module) -> None:
         """不可 JSON 序列化的 payload (e.g., set 字段) → ValueError."""
         writer = outbox_module.OutboxWriter(mock_conn)
+
         # default=str fallback 会把 set 转 str (非 raise), 用真 unserializable: object()
         class _Unserializable:
             pass
+
         with pytest.raises(ValueError, match="JSON"):
             writer.enqueue(
                 aggregate_type="signal",
@@ -160,10 +164,16 @@ class TestEventIdHandling:
     def test_event_id_none_auto_generates(self, mock_conn, outbox_module) -> None:
         writer = outbox_module.OutboxWriter(mock_conn)
         eid1 = writer.enqueue(
-            aggregate_type="signal", aggregate_id="x", event_type="generated", payload={},
+            aggregate_type="signal",
+            aggregate_id="x",
+            event_type="generated",
+            payload={},
         )
         eid2 = writer.enqueue(
-            aggregate_type="signal", aggregate_id="x", event_type="generated", payload={},
+            aggregate_type="signal",
+            aggregate_id="x",
+            event_type="generated",
+            payload={},
         )
         assert eid1 != eid2  # 自动生成不同
 
@@ -171,8 +181,11 @@ class TestEventIdHandling:
         writer = outbox_module.OutboxWriter(mock_conn)
         explicit = "12345678-1234-1234-1234-123456789abc"
         eid = writer.enqueue(
-            aggregate_type="signal", aggregate_id="x", event_type="generated",
-            payload={}, event_id=explicit,
+            aggregate_type="signal",
+            aggregate_id="x",
+            event_type="generated",
+            payload={},
+            event_id=explicit,
         )
         assert str(eid) == explicit
 
@@ -180,8 +193,11 @@ class TestEventIdHandling:
         writer = outbox_module.OutboxWriter(mock_conn)
         explicit = uuid.uuid4()
         eid = writer.enqueue(
-            aggregate_type="signal", aggregate_id="x", event_type="generated",
-            payload={}, event_id=explicit,
+            aggregate_type="signal",
+            aggregate_id="x",
+            event_type="generated",
+            payload={},
+            event_id=explicit,
         )
         assert eid == explicit
 
@@ -190,8 +206,11 @@ class TestEventIdHandling:
         writer = outbox_module.OutboxWriter(mock_conn)
         with pytest.raises(ValueError):
             writer.enqueue(
-                aggregate_type="signal", aggregate_id="x", event_type="generated",
-                payload={}, event_id="not-a-uuid",
+                aggregate_type="signal",
+                aggregate_id="x",
+                event_type="generated",
+                payload={},
+                event_id="not-a-uuid",
             )
 
     def test_event_id_invalid_type_raises(self, mock_conn, outbox_module) -> None:
@@ -199,8 +218,11 @@ class TestEventIdHandling:
         writer = outbox_module.OutboxWriter(mock_conn)
         with pytest.raises(TypeError, match="event_id"):
             writer.enqueue(
-                aggregate_type="signal", aggregate_id="x", event_type="generated",
-                payload={}, event_id=42,  # type: ignore[arg-type]
+                aggregate_type="signal",
+                aggregate_id="x",
+                event_type="generated",
+                payload={},
+                event_id=42,  # type: ignore[arg-type]
             )
 
 

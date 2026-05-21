@@ -9,6 +9,7 @@ For each of the 17 PASS microstructure factors:
 Usage:
     python scripts/research/phase3e_neutral_eval.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,12 +30,23 @@ from engines.ic_calculator import (
 from phase3d_ml_synthesis import load_price_benchmark
 
 MICRO_FACTORS = [
-    "intraday_skewness_20", "intraday_kurtosis_20", "high_freq_volatility_20",
-    "updown_vol_ratio_20", "max_intraday_drawdown_20", "volume_concentration_20",
-    "amihud_intraday_20", "volume_autocorr_20", "smart_money_ratio_20",
-    "volume_return_corr_20", "open_drive_20", "close_drive_20",
-    "morning_afternoon_ratio_20", "variance_ratio_20", "price_path_efficiency_20",
-    "autocorr_5min_20", "weighted_price_contribution_20",
+    "intraday_skewness_20",
+    "intraday_kurtosis_20",
+    "high_freq_volatility_20",
+    "updown_vol_ratio_20",
+    "max_intraday_drawdown_20",
+    "volume_concentration_20",
+    "amihud_intraday_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "volume_return_corr_20",
+    "open_drive_20",
+    "close_drive_20",
+    "morning_afternoon_ratio_20",
+    "variance_ratio_20",
+    "price_path_efficiency_20",
+    "autocorr_5min_20",
+    "weighted_price_contribution_20",
 ]
 
 CORE4 = ["turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm"]
@@ -43,13 +55,16 @@ CORE4 = ["turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm"]
 def load_factor(factor_name: str, value_col: str, conn) -> pd.DataFrame:
     """Load factor from DB as wide DataFrame (dates x codes)."""
     cur = conn.cursor()
-    cur.execute(f"""
+    cur.execute(
+        f"""
         SELECT trade_date, code, {value_col}
         FROM factor_values
         WHERE factor_name = %s AND {value_col} IS NOT NULL
           AND trade_date >= '2019-01-01'
         ORDER BY trade_date, code
-    """, (factor_name,))
+    """,
+        (factor_name,),
+    )
     rows = cur.fetchall()
     cur.close()
     if not rows:
@@ -178,8 +193,16 @@ def main():
             ic_results.append(row)
 
             # Print summary
-            r_ic = f"raw={raw_stats['mean']:+.4f}(t={raw_stats['t_stat']:.1f})" if raw_stats else "raw=N/A"
-            n_ic = f"neu={neutral_stats['mean']:+.4f}(t={neutral_stats['t_stat']:.1f})" if neutral_stats else "neu=N/A"
+            r_ic = (
+                f"raw={raw_stats['mean']:+.4f}(t={raw_stats['t_stat']:.1f})"
+                if raw_stats
+                else "raw=N/A"
+            )
+            n_ic = (
+                f"neu={neutral_stats['mean']:+.4f}(t={neutral_stats['t_stat']:.1f})"
+                if neutral_stats
+                else "neu=N/A"
+            )
             d_str = f"decay={decay_pct:.0%}" if np.isfinite(decay_pct) else "decay=N/A"
             print(f"  {r_ic} | {n_ic} | {d_str} → {status} ({time.time() - t1:.0f}s)")
 
@@ -235,7 +258,7 @@ def main():
     print("=" * 70)
 
     for i, f1 in enumerate(pass_factors):
-        for f2 in pass_factors[i + 1:]:
+        for f2 in pass_factors[i + 1 :]:
             if f1 in neutral_wide_cache and f2 in neutral_wide_cache:
                 corr = cross_section_corr(neutral_wide_cache[f1], neutral_wide_cache[f2])
                 corr_results.append({"factor": f1, "core4": f2, "corr": round(corr, 4)})

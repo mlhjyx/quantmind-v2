@@ -88,7 +88,17 @@ def check_law_2_verify_code(file_path: str, content: str) -> list[str]:
     conclusion_kw = ["结论", "判定", "决策", "PASS", "FAIL", "KEEP", "Reverted"]
     if not any(kw in content[:2000] for kw in conclusion_kw):
         return []
-    evidence_kw = ["grep", "git log", "SELECT", "python", "测试结果", "回测结果", "Sharpe=", "IC=", "验证"]
+    evidence_kw = [
+        "grep",
+        "git log",
+        "SELECT",
+        "python",
+        "测试结果",
+        "回测结果",
+        "Sharpe=",
+        "IC=",
+        "验证",
+    ]
     if any(kw in content for kw in evidence_kw):
         return []
     return ["铁律 2: 结论性文档未包含代码/数据验证证据."]
@@ -115,8 +125,10 @@ def check_law_5_backtest(file_path: str, content: str) -> list[str]:
     norm = file_path.replace("\\", "/").lower()
     if not norm.endswith(".py"):
         return []
-    if not (("factor" in norm or "backtest" in norm) and
-            any(kw in content[:1000] for kw in ["组合", "portfolio", "入池", "入选", "上线"])):
+    if not (
+        ("factor" in norm or "backtest" in norm)
+        and any(kw in content[:1000] for kw in ["组合", "portfolio", "入池", "入选", "上线"])
+    ):
         return []
     bt_kw = ["backtest", "回测", "paired_bootstrap", "bootstrap", "backtest_engine"]
     if any(kw in content.lower() for kw in bt_kw):
@@ -129,11 +141,23 @@ def check_law_6_strategy_match(file_path: str, content: str) -> list[str]:
     norm = file_path.replace("\\", "/").lower()
     if not norm.endswith(".py"):
         return []
-    if not (("factor" in norm or "backtest" in norm) and
-            any(kw in content.lower()[:1000] for kw in ["因子", "factor", "alpha", "ic"])):
+    if not (
+        ("factor" in norm or "backtest" in norm)
+        and any(kw in content.lower()[:1000] for kw in ["因子", "factor", "alpha", "ic"])
+    ):
         return []
-    strat_kw = ["strategy", "策略", "ic_decay", "rebalance_freq", "RANKING", "FAST_RANKING",
-                "EVENT", "monthly", "weekly", "event_driven"]
+    strat_kw = [
+        "strategy",
+        "策略",
+        "ic_decay",
+        "rebalance_freq",
+        "RANKING",
+        "FAST_RANKING",
+        "EVENT",
+        "monthly",
+        "weekly",
+        "event_driven",
+    ]
     if any(kw in content for kw in strat_kw):
         return []
     return ["铁律 6: 因子评估未包含策略匹配. RANKING/FAST_RANKING/EVENT 不混用."]
@@ -143,12 +167,30 @@ def check_law_8_ml_oos(file_path: str, content: str) -> list[str]:
     """铁律 8: ML 实验必须 OOS 验证 (v1 sustained)."""
     if not file_path.endswith(".py"):
         return []
-    ml_kw = ["lightgbm", "lgbm", "xgboost", "sklearn", "model.fit", "model.train",
-             "optuna", "deap", "gp_engine", "torch"]
+    ml_kw = [
+        "lightgbm",
+        "lgbm",
+        "xgboost",
+        "sklearn",
+        "model.fit",
+        "model.train",
+        "optuna",
+        "deap",
+        "gp_engine",
+        "torch",
+    ]
     if not any(kw in content.lower() for kw in ml_kw):
         return []
-    oos_kw = ["oos", "out_of_sample", "out-of-sample", "test_set", "样本外",
-              "validation", "walk_forward", "三段"]
+    oos_kw = [
+        "oos",
+        "out_of_sample",
+        "out-of-sample",
+        "test_set",
+        "样本外",
+        "validation",
+        "walk_forward",
+        "三段",
+    ]
     if any(kw in content.lower() for kw in oos_kw):
         return []
     return ["铁律 8: ML 脚本未包含 OOS 验证. 训练/验证/测试三段分离."]
@@ -165,7 +207,9 @@ def check_law_11_ic_traceable(file_path: str, content: str) -> list[str]:
     if has_ic_ref and has_factor:
         traceable_kw = ["factor_ic_history", "compute_factor_ic", "compute_ic", "ic_results.csv"]
         if not any(kw in content for kw in traceable_kw):
-            return ["铁律 11: 引用了因子 IC 做决策但无可追溯计算来源. factor_ic_history 无记录的 IC 视为不存在."]
+            return [
+                "铁律 11: 引用了因子 IC 做决策但无可追溯计算来源. factor_ic_history 无记录的 IC 视为不存在."
+            ]
     return []
 
 

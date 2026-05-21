@@ -12,6 +12,7 @@ Mock-based 单测, 不连真 PG (smoke test_mvp_4_1_batch_1_live.py 走真 DB).
   - severity enum 映射 + 默认 suppress_minutes
   - timezone (铁律 41 UTC)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -171,7 +172,8 @@ def test_fire_returns_deduped_within_suppress_window(alert_p1, fixed_now):
     ch.send.assert_not_called()
     # UPDATE fire_count++ SQL 应被调
     update_calls = [
-        call for call in cur.execute.call_args_list
+        call
+        for call in cur.execute.call_args_list
         if "UPDATE alert_dedup" in call.args[0] and "fire_count + 1" in call.args[0]
     ]
     assert len(update_calls) == 1
@@ -216,7 +218,8 @@ def test_all_channels_failed_raises_dispatch_error(alert_p1, fixed_now):
 
     # row 仍 persist (UPSERT 调用过, fire_count++ 反映尝试) — 审计用
     upsert_calls = [
-        call for call in cur.execute.call_args_list
+        call
+        for call in cur.execute.call_args_list
         if "INSERT INTO alert_dedup" in call.args[0] and "ON CONFLICT" in call.args[0]
     ]
     assert len(upsert_calls) == 1
@@ -224,9 +227,7 @@ def test_all_channels_failed_raises_dispatch_error(alert_p1, fixed_now):
     last_fired_at = upsert_calls[0].args[1][3]
     suppress_until = upsert_calls[0].args[1][4]
     assert last_fired_at == fixed_now
-    assert suppress_until == fixed_now, (
-        "sink_failed 不抑制下次重试 (P0 真金可用性 > storm 防御)"
-    )
+    assert suppress_until == fixed_now, "sink_failed 不抑制下次重试 (P0 真金可用性 > storm 防御)"
 
 
 def test_sink_failed_does_not_suppress_next_retry(alert_p1, fixed_now):
@@ -354,8 +355,7 @@ def test_alert_payload_passes_suppress_minutes_through(fixed_now):
     )
     # UPSERT 用了 7min suppress 窗 (now+7min)
     upsert_call = next(
-        c for c in cur.execute.call_args_list
-        if "INSERT INTO alert_dedup" in c.args[0]
+        c for c in cur.execute.call_args_list if "INSERT INTO alert_dedup" in c.args[0]
     )
     suppress_until = upsert_call.args[1][4]  # 第 5 个参数
     assert suppress_until == fixed_now + timedelta(minutes=7)
@@ -429,8 +429,7 @@ def test_dedup_key_whitespace_stripped(alert_p1, fixed_now):
     router.fire(alert_p1, dedup_key="  factor:dv:warn  ")
 
     upsert_call = next(
-        c for c in cur.execute.call_args_list
-        if "INSERT INTO alert_dedup" in c.args[0]
+        c for c in cur.execute.call_args_list if "INSERT INTO alert_dedup" in c.args[0]
     )
     persisted_key = upsert_call.args[1][0]
     assert persisted_key == "factor:dv:warn", "dedup_key 应被 strip 后入库"
@@ -461,8 +460,7 @@ def test_now_uses_utc_tzaware(alert_p1):
     router.fire(alert_p1, dedup_key="k", suppress_minutes=10)
 
     upsert_call = next(
-        c for c in cur.execute.call_args_list
-        if "INSERT INTO alert_dedup" in c.args[0]
+        c for c in cur.execute.call_args_list if "INSERT INTO alert_dedup" in c.args[0]
     )
     last_fired_at = upsert_call.args[1][3]
     suppress_until = upsert_call.args[1][4]

@@ -187,7 +187,9 @@ def _apply() -> int:
     print("=== APPLY summary ===")
     for date_str, status, r in summary:
         if status == "ok":
-            print(f"  {date_str} ✅ klines={r['klines']} daily_basic={r['daily_basic']} ({r['elapsed_sec']}s)")
+            print(
+                f"  {date_str} ✅ klines={r['klines']} daily_basic={r['daily_basic']} ({r['elapsed_sec']}s)"
+            )
         else:
             print(f"  {date_str} ❌ {r.get('error', 'unknown')}")
 
@@ -202,7 +204,9 @@ def _apply() -> int:
     basic_ok = (state_post["daily_basic"] or "") >= "2026-05-15"
     if ok and klines_ok and basic_ok:
         print()
-        print("✅✅✅ BACKFILL SUCCESS — klines_daily + daily_basic both fresh through 2026-05-15 ✅✅✅")
+        print(
+            "✅✅✅ BACKFILL SUCCESS — klines_daily + daily_basic both fresh through 2026-05-15 ✅✅✅"
+        )
         return 0
 
     print()
@@ -234,10 +238,14 @@ def main() -> int:
     # NOTE: --dry-run is the default behavior via fallthrough dispatch (line ~244),
     # NOT via default=True (which is ignored by argparse inside mutex groups per
     # convergent reviewer P1/P2 finding — code-rev P2 + python-rev P1-2).
-    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation")
+    g.add_argument(
+        "--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation"
+    )
     g.add_argument("--apply", action="store_true", help="EXECUTE backfill")
     g.add_argument("--verify", action="store_true", help="post-apply state verify only")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     args = parser.parse_args()
 
     logging.basicConfig(

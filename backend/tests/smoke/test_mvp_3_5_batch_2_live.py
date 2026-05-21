@@ -6,6 +6,7 @@ subprocess 真启动验证:
   - scripts/factor_lifecycle_monitor.py argparse 新增 --compare flag
   - 静态 marker (防注入点被回退)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -77,6 +78,4 @@ def test_mvp_3_5_batch_2_lifecycle_dual_path_imports_and_markers():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK mvp_3_5_batch_2 boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK mvp_3_5_batch_2 boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

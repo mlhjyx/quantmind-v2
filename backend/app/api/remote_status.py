@@ -221,11 +221,7 @@ async def _get_last_signal_at(session: AsyncSession) -> str | None:
         ISO 8601 格式时间字符串，无记录时返回 None。
     """
     try:
-        row = await session.execute(
-            text(
-                "SELECT MAX(created_at) FROM daily_signals"
-            )
-        )
+        row = await session.execute(text("SELECT MAX(created_at) FROM daily_signals"))
         result = row.scalar()
         return result.isoformat() if result else None
     except Exception:
@@ -244,9 +240,7 @@ async def _get_last_execution_at(session: AsyncSession) -> str | None:
     """
     try:
         row = await session.execute(
-            text(
-                "SELECT MAX(started_at) FROM scheduler_task_log WHERE status = 'success'"
-            )
+            text("SELECT MAX(started_at) FROM scheduler_task_log WHERE status = 'success'")
         )
         result = row.scalar()
         return result.isoformat() if result else None

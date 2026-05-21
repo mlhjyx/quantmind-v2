@@ -96,6 +96,7 @@ def write_copy_upsert_fast(conn, codes, dates, factor_name: str, values) -> int:
 # Part 1: SUE/PEAD — vectorized merge_asof
 # ════════════════════════════════════════════════════════════
 
+
 def load_stock_dates_for_codes(conn, codes: list[str]) -> pd.DataFrame:
     """只加载指定股票的交易日（比加载全表轻10x）。"""
     if not codes:
@@ -103,14 +104,19 @@ def load_stock_dates_for_codes(conn, codes: list[str]) -> pd.DataFrame:
     # 分批IN查询避免太长SQL
     all_parts = []
     for i in range(0, len(codes), 500):
-        batch = codes[i:i + 500]
+        batch = codes[i : i + 500]
         placeholders = ",".join(["%s"] * len(batch))
         df = pd.read_sql(
             f"SELECT code, trade_date FROM klines_daily WHERE code IN ({placeholders}) AND volume > 0 ORDER BY code, trade_date",
-            conn, params=tuple(batch),
+            conn,
+            params=tuple(batch),
         )
         all_parts.append(df)
-    result = pd.concat(all_parts, ignore_index=True) if all_parts else pd.DataFrame(columns=["code", "trade_date"])
+    result = (
+        pd.concat(all_parts, ignore_index=True)
+        if all_parts
+        else pd.DataFrame(columns=["code", "trade_date"])
+    )
     result["trade_date"] = pd.to_datetime(result["trade_date"])
     return result
 
@@ -120,12 +126,15 @@ def compute_sue_pead(conn) -> int:
     print("\n── SUE/PEAD因子 ──")
 
     # 读取盈余公告
-    ea = pd.read_sql("""
+    ea = pd.read_sql(
+        """
         SELECT ts_code AS code, trade_date, eps_surprise_pct AS value
         FROM earnings_announcements
         WHERE eps_surprise_pct IS NOT NULL
         ORDER BY code, trade_date
-    """, conn)
+    """,
+        conn,
+    )
     ea["trade_date"] = pd.to_datetime(ea["trade_date"])
     ea["value"] = ea["value"].astype(float)
     ea = ea[ea["value"].notna() & np.isfinite(ea["value"])].copy()
@@ -201,12 +210,15 @@ def compute_fina_factors(conn) -> int:
 
     cols = list(set(f["col"] for f in FINA_FACTORS.values()))
     cols_str = ", ".join(cols)
-    fina = pd.read_sql(f"""
+    fina = pd.read_sql(
+        f"""
         SELECT code, ann_date, end_date, {cols_str}
         FROM fina_indicator
         WHERE ann_date IS NOT NULL
         ORDER BY code, ann_date, end_date
-    """, conn)
+    """,
+        conn,
+    )
     fina["ann_date"] = pd.to_datetime(fina["ann_date"])
     fina = fina.sort_values(["code", "ann_date", "end_date"]).drop_duplicates(
         ["code", "ann_date"], keep="last"
@@ -299,8 +311,11 @@ def main():
     cur = conn.cursor()
     all_factors = ["sue_pead"] + list(FINA_FACTORS.keys())
     for fname in all_factors:
-        cur.execute("""SELECT COUNT(*), MIN(trade_date), MAX(trade_date), AVG(raw_value::float)
-                       FROM factor_values WHERE factor_name = %s""", (fname,))
+        cur.execute(
+            """SELECT COUNT(*), MIN(trade_date), MAX(trade_date), AVG(raw_value::float)
+                       FROM factor_values WHERE factor_name = %s""",
+            (fname,),
+        )
         r = cur.fetchone()
         if r and r[0]:
             print(f"  {fname:>20s}: {r[0]:>10,} rows | {r[1]} ~ {r[2]} | avg={float(r[3]):.4f}")
@@ -310,8 +325,10 @@ def main():
     # NaN check
     print("\n── NaN检查 ──")
     for fname in all_factors:
-        cur.execute("SELECT COUNT(*) FROM factor_values WHERE factor_name = %s AND raw_value = 'NaN'",
-                    (fname,))
+        cur.execute(
+            "SELECT COUNT(*) FROM factor_values WHERE factor_name = %s AND raw_value = 'NaN'",
+            (fname,),
+        )
         nan_count = cur.fetchone()[0]
         status = "✅" if nan_count == 0 else f"❌ {nan_count} NaN rows"
         print(f"  {fname:>20s}: {status}")

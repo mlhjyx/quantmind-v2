@@ -9,6 +9,7 @@ Mock-based 单测, 不连真 PG (smoke test_mvp_4_1_batch_2_1_live.py 走真 DB)
   - reraise=True (default) → MetricExportError; reraise=False → log + 不抛
   - query_recent
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -77,8 +78,7 @@ def test_gauge_inserts_row(fixed_now):
     exp.gauge("pt.signal.count", 20.0, labels={"strategy": "S1"})
 
     insert_calls = [
-        c for c in cur.execute.call_args_list
-        if "INSERT INTO platform_metrics" in c.args[0]
+        c for c in cur.execute.call_args_list if "INSERT INTO platform_metrics" in c.args[0]
     ]
     assert len(insert_calls) == 1
     args = insert_calls[0].args[1]

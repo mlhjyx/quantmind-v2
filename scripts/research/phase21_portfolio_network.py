@@ -110,8 +110,9 @@ def get_monthly_rebalance_dates(trade_dates: list) -> list:
     return df.groupby("ym")["td"].max().sort_values().tolist()
 
 
-def compute_forward_returns(price: pd.DataFrame, bench: pd.DataFrame,
-                            rebal_dates: list, horizon: int = 20) -> dict:
+def compute_forward_returns(
+    price: pd.DataFrame, bench: pd.DataFrame, rebal_dates: list, horizon: int = 20
+) -> dict:
     """计算T+horizon前瞻收益。"""
     trade_dates = sorted(price["trade_date"].unique())
     td_idx = {d: i for i, d in enumerate(trade_dates)}
@@ -143,9 +144,9 @@ def run_portfolio_network(exp_key: str, feature_names: list[str]):
     from engines.metrics import TRADING_DAYS_PER_YEAR, calc_max_drawdown, calc_sharpe
     from engines.portfolio_network import PortfolioTrainer, TrainerConfig
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Phase 2.1 Layer 2: PortfolioNetwork (Exp-{exp_key})")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # 1. Load OOS predictions from Layer 1
     print("\n[1] Loading Layer 1 OOS predictions...")
@@ -303,13 +304,13 @@ def run_portfolio_network(exp_key: str, feature_names: list[str]):
     for rd_str in test_rebals:
         if rd_str not in test_scores:
             continue
-        codes = oos_preds[oos_preds["trade_date"] == date.fromisoformat(rd_str)]["code"].values.tolist()
+        codes = oos_preds[oos_preds["trade_date"] == date.fromisoformat(rd_str)][
+            "code"
+        ].values.tolist()
         if not codes:
             continue
 
-        weights = trainer.predict(
-            model, test_scores[rd_str], test_feats[rd_str], codes
-        )
+        weights = trainer.predict(model, test_scores[rd_str], test_feats[rd_str], codes)
 
         if weights:
             rd_date = date.fromisoformat(rd_str)
@@ -341,7 +342,11 @@ def run_portfolio_network(exp_key: str, feature_names: list[str]):
     returns = bt_result.daily_returns
     sharpe = calc_sharpe(returns) if len(returns) > 1 else 0
     mdd = calc_max_drawdown(nav)
-    ann_ret = (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1 if len(nav) > 1 else 0
+    ann_ret = (
+        (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1
+        if len(nav) > 1
+        else 0
+    )
 
     # 10. E2E简化回测Sharpe vs SimpleBacktester Sharpe diff检查
     # 简化Sharpe: 直接从test period返回序列算
@@ -349,6 +354,7 @@ def run_portfolio_network(exp_key: str, feature_names: list[str]):
     for rd_str in test_rebals:
         if rd_str in test_scores and rd_str in test_rets:
             import torch
+
             model.eval()
             with torch.no_grad():
                 s = torch.tensor(test_scores[rd_str], dtype=torch.float32).to(trainer.device)
@@ -364,9 +370,9 @@ def run_portfolio_network(exp_key: str, feature_names: list[str]):
 
     diff_pct = abs(sharpe - simple_sharpe) / (abs(sharpe) + 1e-8) * 100
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Layer 2 Results (Exp-{exp_key}):")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  SimpleBacktester Sharpe: {sharpe:.4f}")
     print(f"  SimpleBacktester MDD:    {mdd:.2%}")
     print(f"  SimpleBacktester Ann Ret:{ann_ret:.2%}")
@@ -413,8 +419,16 @@ def main():
 
     # Feature sets (must match Part 2)
     FEATURES_C = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
-    FEATURES_A = FEATURES_C + ["RSQR_20", "QTLU_20", "ind_mom_60", "high_vol_price_ratio_20",
-                                "nb_change_rate_20d", "nb_trend_20d", "nb_ratio_change_5d", "nb_net_buy_5d_ratio"]
+    FEATURES_A = FEATURES_C + [
+        "RSQR_20",
+        "QTLU_20",
+        "ind_mom_60",
+        "high_vol_price_ratio_20",
+        "nb_change_rate_20d",
+        "nb_trend_20d",
+        "nb_ratio_change_5d",
+        "nb_net_buy_5d_ratio",
+    ]
     FEATURES_B = FEATURES_A + ["IMAX_20", "IMIN_20", "RESI_20", "CORD_20", "ind_mom_20"]
 
     feature_map = {"C": FEATURES_C, "A": FEATURES_A, "B": FEATURES_B}

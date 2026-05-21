@@ -25,6 +25,7 @@ Exit code (沿用铁律 43 d):
     1 = warning (DingTalk push 失败但 report 真齐)
     2 = fatal (DB conn / SQL fail)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -252,7 +253,9 @@ def build_markdown_payload(
             )
         lines.append("")
 
-    lines.append(f"_关联: V3 §16.2 + ADR-031 §6 + S2.3 PR #224 (生成于 {datetime.now(CST):%Y-%m-%d %H:%M:%S CST})_")
+    lines.append(
+        f"_关联: V3 §16.2 + ADR-031 §6 + S2.3 PR #224 (生成于 {datetime.now(CST):%Y-%m-%d %H:%M:%S CST})_"
+    )
 
     return title, "\n".join(lines)
 

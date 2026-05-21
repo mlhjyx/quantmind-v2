@@ -67,6 +67,7 @@ def _increment_rate(action: str) -> None:
 # Dependencies
 # ---------------------------------------------------------------------------
 
+
 def _get_session(session: AsyncSession = Depends(get_db)) -> AsyncSession:
     return session
 
@@ -84,14 +85,18 @@ def _require_qmt_connected() -> None:
 # Async wrappers for sync QMT broker calls
 # ---------------------------------------------------------------------------
 
+
 async def _broker_query_positions():
     return await asyncio.to_thread(qmt_manager.broker.query_positions)
+
 
 async def _broker_query_asset():
     return await asyncio.to_thread(qmt_manager.broker.query_asset)
 
+
 async def _broker_query_orders():
     return await asyncio.to_thread(qmt_manager.broker.query_orders)
+
 
 async def _broker_query_trades():
     try:
@@ -102,11 +107,14 @@ async def _broker_query_trades():
     except TimeoutError:
         return []  # 盘后query_trades可能超时，返回空列表
 
+
 async def _broker_cancel_order(order_id: int):
     return await asyncio.to_thread(qmt_manager.broker.cancel_order, order_id)
 
+
 async def _broker_sell(code: str, volume: int, price: float = 0):
     return await asyncio.to_thread(qmt_manager.broker.sell, code, volume, price)
+
 
 async def _broker_buy(code: str, volume: int, price: float = 0, amount: float = 0):
     return await asyncio.to_thread(qmt_manager.broker.buy, code, volume, price, amount)
@@ -115,6 +123,7 @@ async def _broker_buy(code: str, volume: int, price: float = 0, amount: float = 
 # ---------------------------------------------------------------------------
 # Audit log helper
 # ---------------------------------------------------------------------------
+
 
 async def _audit_log(
     session: AsyncSession,
@@ -154,6 +163,7 @@ def _client_ip(request: Request) -> str:
 # ---------------------------------------------------------------------------
 # GET endpoints — 无需认证
 # ---------------------------------------------------------------------------
+
 
 @router.get("/qmt-status")
 async def get_qmt_status() -> dict[str, Any]:
@@ -326,7 +336,7 @@ async def get_drift(
     actual_positions: dict[str, dict[str, Any]] = {}
     if qmt_manager.state == "connected" and qmt_manager.broker is not None:
         try:
-            for p in (await _broker_query_positions()):
+            for p in await _broker_query_positions():
                 code = p["stock_code"]  # 统一带后缀格式，不strip
                 actual_positions[code] = {
                     "volume": p["volume"],
@@ -451,17 +461,19 @@ async def get_drift(
         else:
             status = "normal"
 
-        drift_items.append({
-            "code": code,
-            "name": signal.get("name") or code,
-            "target_weight": signal.get("target_weight", 0),
-            "target_value": round(target_value, 0),
-            "actual_volume": actual_volume,
-            "can_use_volume": can_use,
-            "actual_value": round(actual_value, 0),
-            "deviation_pct": round(deviation_pct, 1),
-            "status": status,
-        })
+        drift_items.append(
+            {
+                "code": code,
+                "name": signal.get("name") or code,
+                "target_weight": signal.get("target_weight", 0),
+                "target_value": round(target_value, 0),
+                "actual_volume": actual_volume,
+                "can_use_volume": can_use,
+                "actual_value": round(actual_value, 0),
+                "deviation_pct": round(deviation_pct, 1),
+                "status": status,
+            }
+        )
 
     # 排序: 异常在前
     status_order = {"overbought": 0, "missing": 1, "underweight": 2, "normal": 3}
@@ -517,13 +529,16 @@ async def get_drift(
 # POST endpoints — 需要 Admin Token
 # ---------------------------------------------------------------------------
 
+
 class ConfirmBody(BaseModel):
     """危险操作确认请求体。"""
+
     confirmation: str = ""
 
 
 class FixDriftExecuteBody(BaseModel):
     """偏差修复执行请求体。"""
+
     confirmation: str = "CONFIRM"
     sell_codes: list[str] = []
     buy_codes: list[str] = []
@@ -542,7 +557,9 @@ async def cancel_all_orders(
     try:
         orders = await _broker_query_orders()
         # 仅撤销未完成订单
-        pending = [o for o in orders if o["order_status"] not in (48, 50, 51, 52, 53, 54, 55, 56, 57)]
+        pending = [
+            o for o in orders if o["order_status"] not in (48, 50, 51, 52, 53, 54, 55, 56, 57)
+        ]
         cancelled = 0
         for o in pending:
             try:
@@ -553,7 +570,8 @@ async def cancel_all_orders(
 
         _increment_rate("cancel-all")
         await _audit_log(
-            session, "cancel-all",
+            session,
+            "cancel-all",
             {"pending_count": len(pending), "cancelled": cancelled},
             "success",
             f"撤销{cancelled}/{len(pending)}笔挂单",
@@ -581,7 +599,8 @@ async def cancel_single_order(
         success = await _broker_cancel_order(order_id)
         result_str = "success" if success else "failed"
         await _audit_log(
-            session, "cancel-order",
+            session,
+            "cancel-order",
             {"order_id": order_id},
             result_str,
             ip=_client_ip(request),
@@ -590,7 +609,9 @@ async def cancel_single_order(
     except HTTPException:
         raise
     except Exception as e:
-        await _audit_log(session, "cancel-order", {"order_id": order_id}, "error", str(e), _client_ip(request))
+        await _audit_log(
+            session, "cancel-order", {"order_id": order_id}, "error", str(e), _client_ip(request)
+        )
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
@@ -618,23 +639,27 @@ async def fix_drift_preview(
         if item["status"] == "overbought":
             sell_qty = min(item["actual_volume"], item["can_use_volume"])
             if sell_qty > 0:
-                sell_plan.append({
-                    "code": item["code"],
-                    "name": item["name"],
-                    "action": "sell",
-                    "volume": sell_qty,
-                    "estimated_amount": item["actual_value"],
-                    "reason": f"超买 {item['deviation_pct']:+.0f}%",
-                })
+                sell_plan.append(
+                    {
+                        "code": item["code"],
+                        "name": item["name"],
+                        "action": "sell",
+                        "volume": sell_qty,
+                        "estimated_amount": item["actual_value"],
+                        "reason": f"超买 {item['deviation_pct']:+.0f}%",
+                    }
+                )
         elif item["status"] == "missing":
             # 估算买入股数（用目标价值 / 近似价格）
-            buy_plan.append({
-                "code": item["code"],
-                "name": item["name"],
-                "action": "buy",
-                "target_value": item["target_value"],
-                "reason": "信号持有但实际缺失",
-            })
+            buy_plan.append(
+                {
+                    "code": item["code"],
+                    "name": item["name"],
+                    "action": "buy",
+                    "target_value": item["target_value"],
+                    "reason": "信号持有但实际缺失",
+                }
+            )
 
     return {
         "sell_plan": sell_plan,
@@ -674,9 +699,18 @@ async def fix_drift_execute(
             continue
         try:
             order_id = await _broker_sell(sell["code"], sell["volume"])
-            results.append({"code": sell["code"], "action": "sell", "order_id": order_id, "status": "submitted"})
+            results.append(
+                {
+                    "code": sell["code"],
+                    "action": "sell",
+                    "order_id": order_id,
+                    "status": "submitted",
+                }
+            )
         except Exception as e:
-            results.append({"code": sell["code"], "action": "sell", "error": str(e), "status": "failed"})
+            results.append(
+                {"code": sell["code"], "action": "sell", "error": str(e), "status": "failed"}
+            )
 
     # 等待卖单部分成交释放资金
     if sell_plan:
@@ -690,16 +724,30 @@ async def fix_drift_execute(
             available = float(asset.get("cash", 0))
             target = buy["target_value"]
             if available < target * 0.5:
-                results.append({"code": buy["code"], "action": "buy", "status": "skipped", "reason": "资金不足"})
+                results.append(
+                    {
+                        "code": buy["code"],
+                        "action": "buy",
+                        "status": "skipped",
+                        "reason": "资金不足",
+                    }
+                )
                 continue
-            order_id = await _broker_buy(buy["code"], 0, price=0, amount=min(target, available * 0.95))
-            results.append({"code": buy["code"], "action": "buy", "order_id": order_id, "status": "submitted"})
+            order_id = await _broker_buy(
+                buy["code"], 0, price=0, amount=min(target, available * 0.95)
+            )
+            results.append(
+                {"code": buy["code"], "action": "buy", "order_id": order_id, "status": "submitted"}
+            )
         except Exception as e:
-            results.append({"code": buy["code"], "action": "buy", "error": str(e), "status": "failed"})
+            results.append(
+                {"code": buy["code"], "action": "buy", "error": str(e), "status": "failed"}
+            )
 
     _increment_rate("fix-drift-execute")
     await _audit_log(
-        session, "fix-drift-execute",
+        session,
+        "fix-drift-execute",
         {"sell_count": len(sell_plan), "buy_count": len(buy_plan), "results": results},
         "success",
         f"卖{len(sell_plan)}只+买{len(buy_plan)}只",
@@ -725,7 +773,8 @@ async def trigger_rebalance(
 
     _increment_rate("trigger-rebalance")
     await _audit_log(
-        session, "trigger-rebalance",
+        session,
+        "trigger-rebalance",
         {"strategy_id": strategy_id or settings.PAPER_STRATEGY_ID},
         "accepted",
         "手动调仓已触发",
@@ -764,13 +813,21 @@ async def emergency_liquidate(
             continue
         try:
             order_id = await _broker_sell(p["stock_code"], sell_qty)
-            results.append({"code": p["stock_code"], "volume": sell_qty, "order_id": order_id, "status": "submitted"})
+            results.append(
+                {
+                    "code": p["stock_code"],
+                    "volume": sell_qty,
+                    "order_id": order_id,
+                    "status": "submitted",
+                }
+            )
         except Exception as e:
             results.append({"code": p["stock_code"], "status": "failed", "error": str(e)})
 
     _increment_rate("emergency-liquidate")
     await _audit_log(
-        session, "emergency-liquidate",
+        session,
+        "emergency-liquidate",
         {"position_count": len(positions), "results": results},
         "success",
         f"紧急清仓: {len(positions)}只持仓",
@@ -793,7 +850,9 @@ async def pause_trading(
     """暂停自动交易。"""
     global _trading_paused
     _trading_paused = True
-    await _audit_log(session, "pause-trading", None, "success", "自动交易已暂停", _client_ip(request))
+    await _audit_log(
+        session, "pause-trading", None, "success", "自动交易已暂停", _client_ip(request)
+    )
     return {"paused": True}
 
 
@@ -806,7 +865,9 @@ async def resume_trading(
     """恢复自动交易。"""
     global _trading_paused
     _trading_paused = False
-    await _audit_log(session, "resume-trading", None, "success", "自动交易已恢复", _client_ip(request))
+    await _audit_log(
+        session, "resume-trading", None, "success", "自动交易已恢复", _client_ip(request)
+    )
     return {"paused": False}
 
 
@@ -825,7 +886,8 @@ async def update_alert_config(
 ) -> dict[str, Any]:
     """修改告警阈值。"""
     await _audit_log(
-        session, "update-alert-config",
+        session,
+        "update-alert-config",
         config,
         "success",
         f"更新告警配置: {list(config.keys())}",

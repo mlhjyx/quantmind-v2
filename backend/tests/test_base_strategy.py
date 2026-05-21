@@ -52,11 +52,13 @@ def _make_factor_df(
     rows = []
     for code in codes:
         for fname in factor_names:
-            rows.append({
-                "code": code,
-                "factor_name": fname,
-                "neutral_value": rng.randn(),
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "factor_name": fname,
+                    "neutral_value": rng.randn(),
+                }
+            )
     return pd.DataFrame(rows)
 
 

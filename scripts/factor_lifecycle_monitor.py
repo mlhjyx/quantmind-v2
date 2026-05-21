@@ -293,9 +293,7 @@ def _load_factor_meta(conn, factor_name: str):
     rec = dict(zip(cols, row, strict=True))
 
     try:
-        status_val = (
-            FactorStatus(rec["status"]) if rec.get("status") else FactorStatus.CANDIDATE
-        )
+        status_val = FactorStatus(rec["status"]) if rec.get("status") else FactorStatus.CANDIDATE
     except ValueError:
         status_val = FactorStatus.CANDIDATE
 
@@ -406,7 +404,9 @@ def _evaluate_new_path(
     Returns:
       DualPathComparison or None (新路径数据不全跳过).
     """
-    report = cached_report if cached_report is not None else _evaluate_pipeline_report(conn, factor_name)
+    report = (
+        cached_report if cached_report is not None else _evaluate_pipeline_report(conn, factor_name)
+    )
     if report is None:
         return None
     return compare_paths(factor_name, old_decision, report)
@@ -454,8 +454,7 @@ def run(
     """
     logger.info("=" * 60)
     logger.info(
-        "[Lifecycle] 开始 (dry_run=%s, filter=%s, compare=%s, composite=%s, "
-        "critical_ratio=%s)",
+        "[Lifecycle] 开始 (dry_run=%s, filter=%s, compare=%s, composite=%s, critical_ratio=%s)",
         dry_run,
         factor_filter,
         compare,
@@ -522,16 +521,8 @@ def run(
             if composite_mode == CompositeMode.OFF:
                 decision = old_decision
             else:
-                ic_ma20 = (
-                    float(tail[-1]["ic_ma20"])
-                    if tail[-1]["ic_ma20"] is not None
-                    else None
-                )
-                ic_ma60 = (
-                    float(tail[-1]["ic_ma60"])
-                    if tail[-1]["ic_ma60"] is not None
-                    else None
-                )
+                ic_ma20 = float(tail[-1]["ic_ma20"]) if tail[-1]["ic_ma20"] is not None else None
+                ic_ma60 = float(tail[-1]["ic_ma60"]) if tail[-1]["ic_ma60"] is not None else None
                 decision = compute_composite_decision(
                     factor_name=name,
                     current_status=status,
@@ -595,13 +586,9 @@ def run(
     finally:
         conn.close()
 
-    summary = (
-        f"[Lifecycle] 完成: 检查={checked}, 无数据={no_data}, 转换={len(transitions)}"
-    )
+    summary = f"[Lifecycle] 完成: 检查={checked}, 无数据={no_data}, 转换={len(transitions)}"
     if compare:
-        summary += (
-            f", dual-path 已比对={len(comparisons)}, mismatch={len(mismatches)}"
-        )
+        summary += f", dual-path 已比对={len(comparisons)}, mismatch={len(mismatches)}"
     if composite_mode != CompositeMode.OFF:
         summary += (
             f", composite={composite_mode.value} 合成={len(composite_synthesized)} "
@@ -721,9 +708,7 @@ def _replay_one_factor(
     tail = _load_ic_tail(conn, factor_name, PERSISTENCE_LOOKBACK_DAYS, snapshot_date=snapshot)
     if not tail:
         return None
-    ic_series = _load_ic_series(
-        conn, factor_name, IC_SERIES_LOOKBACK_DAYS, snapshot_date=snapshot
-    )
+    ic_series = _load_ic_series(conn, factor_name, IC_SERIES_LOOKBACK_DAYS, snapshot_date=snapshot)
     if ic_series is None or ic_series.size < 30:
         return None
 
@@ -737,9 +722,7 @@ def _replay_one_factor(
 
     if factor_meta is None:
         factor_meta = _load_factor_meta(conn, factor_name)
-    ctx = build_lifecycle_context(
-        factor_name, ic_series=ic_series, factor_meta=factor_meta
-    )
+    ctx = build_lifecycle_context(factor_name, ic_series=ic_series, factor_meta=factor_meta)
     pipeline = default_lifecycle_pipeline(context_loader=lambda _n: ctx)
     report = pipeline.evaluate_full(factor_name)
     comparison = compare_paths(factor_name, old_decision=old_decision, new_report=report)
@@ -760,9 +743,7 @@ def _replay_one_factor(
             ic_ma60=ic_ma60_val,
         )
         # demote = decision 存在 AND to_status != active
-        composite_demote[mode.value] = (
-            decision is not None and decision.to_status != "active"
-        )
+        composite_demote[mode.value] = decision is not None and decision.to_status != "active"
 
     return {
         "snapshot": snapshot.isoformat(),
@@ -772,9 +753,7 @@ def _replay_one_factor(
         "new_decision_value": comparison.new_decision_value,
         "consistent": comparison.consistent,
         "old_to_status": (
-            comparison.old_decision.to_status
-            if comparison.old_decision is not None
-            else None
+            comparison.old_decision.to_status if comparison.old_decision is not None else None
         ),
         "ic_ma20": ic_ma20_val,
         "ic_ma60": ic_ma60_val,
@@ -862,14 +841,20 @@ def replay(
         # 防 compare_paths 未来扩 label 范围 (e.g. 'critical') 静默漏入 schema 外 key.
         EXPECTED_LABELS = {"keep", "demote", "unknown"}  # noqa: N806
         label_matrix: dict[str, int] = {
-            "keep_keep": 0, "keep_demote": 0, "keep_unknown": 0,
-            "demote_keep": 0, "demote_demote": 0, "demote_unknown": 0,
+            "keep_keep": 0,
+            "keep_demote": 0,
+            "keep_unknown": 0,
+            "demote_keep": 0,
+            "demote_demote": 0,
+            "demote_unknown": 0,
             "other": 0,
         }
         per_factor_mismatch: dict[str, int] = {}
         # MVP 3.5 Follow-up B: 各 composite mode 累计 demote count (分析用)
         composite_demote_counts: dict[str, int] = {
-            "off": 0, "g1-only": 0, "strict": 0,
+            "off": 0,
+            "g1-only": 0,
+            "strict": 0,
         }
 
         for snapshot in fridays:
@@ -927,9 +912,7 @@ def replay(
     # P2 正向 mismatch: 老 keep 但新 demote — 新路径更严, 可接受
     p2_old_keep_new_demote = label_matrix.get("keep_demote", 0)
     # 不可下定论: unknown — 数据不足, 不算 mismatch 实质
-    unknown_count = (
-        label_matrix.get("keep_unknown", 0) + label_matrix.get("demote_unknown", 0)
-    )
+    unknown_count = label_matrix.get("keep_unknown", 0) + label_matrix.get("demote_unknown", 0)
 
     if total == 0:
         recommendation = "NO_DATA"
@@ -981,8 +964,13 @@ def replay(
         "composite_demote_counts": composite_demote_counts,
     }
 
-    logger.info("[Replay] 完成: total=%d mismatch=%d (%.2f%%) → %s",
-                total, mismatch_count, mismatch_rate * 100, recommendation)
+    logger.info(
+        "[Replay] 完成: total=%d mismatch=%d (%.2f%%) → %s",
+        total,
+        mismatch_count,
+        mismatch_rate * 100,
+        recommendation,
+    )
     logger.info("[Replay] reasoning: %s", reasoning)
 
     result = {"summary": summary, "details": details}
@@ -1054,9 +1042,7 @@ def main():
         if args.weeks <= 0:
             parser.error(f"--weeks 必须 >= 1, got {args.weeks}")
         if not 0.0 <= args.sunset_threshold <= 1.0:
-            parser.error(
-                f"--sunset-threshold 必须在 [0.0, 1.0], got {args.sunset_threshold}"
-            )
+            parser.error(f"--sunset-threshold 必须在 [0.0, 1.0], got {args.sunset_threshold}")
         result = replay(
             start_date=start,
             weeks=args.weeks,

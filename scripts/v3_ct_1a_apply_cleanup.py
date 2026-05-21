@@ -87,10 +87,7 @@ _PERFORMANCE_SERIES_EXPECTED: int = 7
 
 # Migration SQL files (relative to PROJECT_ROOT).
 _MIGRATION_POS_SNAPSHOT: Path = (
-    PROJECT_ROOT
-    / "backend"
-    / "migrations"
-    / "2026_05_16_ct_1a_cleanup_stale_position_snapshot.sql"
+    PROJECT_ROOT / "backend" / "migrations" / "2026_05_16_ct_1a_cleanup_stale_position_snapshot.sql"
 )
 _MIGRATION_PERF_SERIES: Path = (
     PROJECT_ROOT
@@ -99,10 +96,7 @@ _MIGRATION_PERF_SERIES: Path = (
     / "2026_05_16_ct_1a_cleanup_stale_performance_series.sql"
 )
 _ROLLBACK_SNAPSHOT: Path = (
-    PROJECT_ROOT
-    / "docs"
-    / "audit"
-    / "v3_ct_1a_rollback_snapshot_2026_05_16.json"
+    PROJECT_ROOT / "docs" / "audit" / "v3_ct_1a_rollback_snapshot_2026_05_16.json"
 )
 
 
@@ -186,10 +180,7 @@ def _verify_preflight(conn: Any, *, env_check: bool = True) -> _PreflightResult:
             # float equality. Decimal→float roundtrip can introduce IEEE 754
             # binary representation error; tolerance ¥0.01 = 1 cent — well
             # below any meaningful NAV change but tolerates float noise.
-            if (
-                r.cb_state_live_nav is None
-                or abs(r.cb_state_live_nav - 993520.16) > 0.01
-            ):
+            if r.cb_state_live_nav is None or abs(r.cb_state_live_nav - 993520.16) > 0.01:
                 r.failures.append(
                     f"circuit_breaker_state.live nav drift: expected ~993520.16 "
                     f"(±0.01), got {r.cb_state_live_nav}"
@@ -373,9 +364,7 @@ def _rollback_from_snapshot(conn: Any, snapshot: dict[str, Any]) -> tuple[int, i
             _validate_column_names(cols, "position_snapshot")
             placeholders = ", ".join(["%s"] * len(cols))
             col_list = ", ".join(cols)
-            sql = (
-                f"INSERT INTO position_snapshot ({col_list}) VALUES ({placeholders})"
-            )
+            sql = f"INSERT INTO position_snapshot ({col_list}) VALUES ({placeholders})"
             for r in ps_rows:
                 cur.execute(sql, [r[c] for c in cols])
 
@@ -384,9 +373,7 @@ def _rollback_from_snapshot(conn: Any, snapshot: dict[str, Any]) -> tuple[int, i
             _validate_column_names(cols, "performance_series")
             placeholders = ", ".join(["%s"] * len(cols))
             col_list = ", ".join(cols)
-            sql = (
-                f"INSERT INTO performance_series ({col_list}) VALUES ({placeholders})"
-            )
+            sql = f"INSERT INTO performance_series ({col_list}) VALUES ({placeholders})"
             for r in prf_rows:
                 cur.execute(sql, [r[c] for c in cols])
 
@@ -413,8 +400,7 @@ def _print_preflight(r: _PreflightResult) -> None:
         f"(expected 993520.16, updated_at={r.cb_state_live_updated_at})"
     )
     print(
-        f"  performance_series latest: {r.perf_series_latest_date} "
-        f"(nav={r.perf_series_latest_nav})"
+        f"  performance_series latest: {r.perf_series_latest_date} (nav={r.perf_series_latest_nav})"
     )
     if r.failures:
         print("\n  FAILURES:")
@@ -449,7 +435,8 @@ def main() -> int:
         help="skip LIVE_TRADING_DISABLED/EXECUTION_MODE env check (tests only)",
     )
     parser.add_argument(
-        "--log-level", default="INFO",
+        "--log-level",
+        default="INFO",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
     )
     args = parser.parse_args()

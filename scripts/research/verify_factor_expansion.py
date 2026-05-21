@@ -41,7 +41,9 @@ from engines.signal_engine import (
 
 from app.services.price_utils import _get_sync_conn
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 # 抑制backtest_engine/structlog的debug日志
@@ -49,6 +51,7 @@ logging.getLogger("backtest_engine").setLevel(logging.WARNING)
 logging.getLogger("engines").setLevel(logging.WARNING)
 try:
     import structlog
+
     structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
 except Exception:
     pass
@@ -62,15 +65,27 @@ INITIAL_CAPITAL = 1_000_000.0
 CORE_5 = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
 
 FACTORS_10 = CORE_5 + [
-    "money_flow_strength", "a158_vsump5", "a158_vma5", "kbar_kmid", "a158_rank5",
+    "money_flow_strength",
+    "a158_vsump5",
+    "a158_vma5",
+    "kbar_kmid",
+    "a158_rank5",
 ]
 
 FACTORS_15 = FACTORS_10 + [
-    "kbar_ksft", "vwap_bias_1d", "a158_corr5", "turnover_surge_ratio", "chmom_60_20",
+    "kbar_ksft",
+    "vwap_bias_1d",
+    "a158_corr5",
+    "turnover_surge_ratio",
+    "chmom_60_20",
 ]
 
 FACTORS_20 = FACTORS_15 + [
-    "ep_ratio", "reversal_5", "kbar_kup", "dv_ttm", "relative_volume_20",
+    "ep_ratio",
+    "reversal_5",
+    "kbar_kup",
+    "dv_ttm",
+    "relative_volume_20",
 ]
 
 GROUPS = [
@@ -178,7 +193,7 @@ def run_backtest_for_factors(
     """用生产引擎运行单组回测。"""
     sig_config = SignalConfig(
         factor_names=factor_names,
-        top_n=PAPER_TRADING_CONFIG.top_n,          # 20 (from .env)
+        top_n=PAPER_TRADING_CONFIG.top_n,  # 20 (from .env)
         rebalance_freq="monthly",
         industry_cap=PAPER_TRADING_CONFIG.industry_cap,  # 1.0 (from .env)
         weight_method="equal",
@@ -212,7 +227,7 @@ def run_backtest_for_factors(
             prev_weights = target
 
         if (i + 1) % 12 == 0:
-            logger.info(f"[{label}]   [{i+1}/{len(rebalance_dates)}] {rd}: {len(target)}只")
+            logger.info(f"[{label}]   [{i + 1}/{len(rebalance_dates)}] {rd}: {len(target)}只")
 
     logger.info(f"[{label}] 信号完成: {len(target_portfolios)} 个调仓日")
 
@@ -263,7 +278,11 @@ def run_backtest_for_factors(
 
     # 换手率
     turnover_series = result.turnover_series
-    avg_turnover = float(turnover_series.mean()) if turnover_series is not None and len(turnover_series) > 0 else 0
+    avg_turnover = (
+        float(turnover_series.mean())
+        if turnover_series is not None and len(turnover_series) > 0
+        else 0
+    )
 
     return {
         "label": label,
@@ -285,7 +304,9 @@ def print_report(results: list[dict]) -> None:
     print("  因子扩展验证（生产级回测引擎）")
     print("  引擎: SimpleBacktester + SignalComposer + PortfolioBuilder")
     print("  成本: 佣金万0.854 + 印花税千0.5 + volume_impact滑点")
-    print(f"  配置: Top-{PAPER_TRADING_CONFIG.top_n} | 等权 | 月度调仓 | 行业上限{PAPER_TRADING_CONFIG.industry_cap}")
+    print(
+        f"  配置: Top-{PAPER_TRADING_CONFIG.top_n} | 等权 | 月度调仓 | 行业上限{PAPER_TRADING_CONFIG.industry_cap}"
+    )
     print(f"  期间: {START_DATE} ~ {END_DATE}")
     print("═" * 95)
 
@@ -294,23 +315,25 @@ def print_report(results: list[dict]) -> None:
         f"  {'组':<12s}  {'因子':>4s}  {'CAGR%':>7s}  {'Sharpe':>7s}  {'MDD%':>7s}  "
         f"{'Calmar':>7s}  {'<100亿%':>7s}  {'市值中位':>8s}  {'换手率':>6s}"
     )
-    print(f"  {'─'*12}  {'─'*4}  {'─'*7}  {'─'*7}  {'─'*7}  {'─'*7}  {'─'*7}  {'─'*8}  {'─'*6}")
+    print(
+        f"  {'─' * 12}  {'─' * 4}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 8}  {'─' * 6}"
+    )
 
     for r in results:
         print(
-            f"  {r['label']:<12s}  {r['n_factors']:>4d}  {r['cagr']*100:>+7.1f}  "
-            f"{r['sharpe']:>7.2f}  {r['mdd']*100:>+7.1f}  {r['calmar']:>7.2f}  "
-            f"{r['small_pct']*100:>6.0f}%  {r['mv_median']:>7.0f}亿  {r['avg_turnover']*100:>5.0f}%"
+            f"  {r['label']:<12s}  {r['n_factors']:>4d}  {r['cagr'] * 100:>+7.1f}  "
+            f"{r['sharpe']:>7.2f}  {r['mdd'] * 100:>+7.1f}  {r['calmar']:>7.2f}  "
+            f"{r['small_pct'] * 100:>6.0f}%  {r['mv_median']:>7.0f}亿  {r['avg_turnover'] * 100:>5.0f}%"
         )
 
     # vs ad-hoc对比
     d_result = next((r for r in results if "15" in r["label"]), None)
     if d_result:
         print("\n  D组(15因子) 验证对比:")
-        print(f"    生产引擎: Sharpe={d_result['sharpe']:.2f}, MDD={d_result['mdd']*100:.1f}%")
+        print(f"    生产引擎: Sharpe={d_result['sharpe']:.2f}, MDD={d_result['mdd'] * 100:.1f}%")
         print("    ad-hoc版1(factor_pool_expansion.py): Sharpe=0.78")
         print("    ad-hoc版2(factor_pool_ic_weighted.py): Sharpe=1.26")
-        if abs(d_result['sharpe'] - 1.26) < abs(d_result['sharpe'] - 0.78):
+        if abs(d_result["sharpe"] - 1.26) < abs(d_result["sharpe"] - 0.78):
             print("    → 版2(1.26)更接近生产级结果")
         else:
             print("    → 版1(0.78)更接近生产级结果")
@@ -321,7 +344,7 @@ def print_report(results: list[dict]) -> None:
     for r in results:
         header += f"  │ {r['label']:>12s}"
     print(header)
-    print(f"  {'─'*6}" + "  ┼ " + "  ┼ ".join(["─" * 12] * len(results)))
+    print(f"  {'─' * 6}" + "  ┼ " + "  ┼ ".join(["─" * 12] * len(results)))
 
     for year in range(START_DATE.year, END_DATE.year + 1):
         line = f"  {year:>6d}"
@@ -337,10 +360,14 @@ def print_report(results: list[dict]) -> None:
     max(results, key=lambda r: r["mdd"])
 
     print("    Sharpe趋势: " + " → ".join(f"{r['n_factors']}f={r['sharpe']:.2f}" for r in results))
-    print("    MDD趋势:    " + " → ".join(f"{r['n_factors']}f={r['mdd']*100:.1f}%" for r in results))
+    print(
+        "    MDD趋势:    " + " → ".join(f"{r['n_factors']}f={r['mdd'] * 100:.1f}%" for r in results)
+    )
 
     if best_calmar["label"] != base["label"]:
-        print(f"    最优Calmar: {best_calmar['label']} = {best_calmar['calmar']:.2f} (基线={base['calmar']:.2f})")
+        print(
+            f"    最优Calmar: {best_calmar['label']} = {best_calmar['calmar']:.2f} (基线={base['calmar']:.2f})"
+        )
         delta_sharpe = (best_calmar["sharpe"] - base["sharpe"]) / abs(base["sharpe"]) * 100
         delta_mdd = (best_calmar["mdd"] - base["mdd"]) * 100
         print(f"    vs基线: Sharpe变化{delta_sharpe:+.0f}%, MDD改善{delta_mdd:+.1f}pp")
@@ -364,23 +391,32 @@ def main() -> None:
     logger.info("加载共享数据...")
     t0 = time.perf_counter()
     price_data = load_price_data(conn)
-    logger.info(f"  价格: {len(price_data):,}行 ({time.perf_counter()-t0:.1f}s)")
+    logger.info(f"  价格: {len(price_data):,}行 ({time.perf_counter() - t0:.1f}s)")
 
     benchmark_data = load_benchmark(conn)
     industry = load_industry(conn)
     rebalance_dates = get_rebalance_dates(START_DATE, END_DATE, freq="monthly", conn=conn)
-    logger.info(f"  基准: {len(benchmark_data)}天, 行业: {len(industry)}只, 调仓日: {len(rebalance_dates)}个")
+    logger.info(
+        f"  基准: {len(benchmark_data)}天, 行业: {len(industry)}只, 调仓日: {len(rebalance_dates)}个"
+    )
 
     # 串行运行4组
     results = []
     for label, factor_names in GROUPS:
         t1 = time.perf_counter()
         r = run_backtest_for_factors(
-            factor_names, price_data, benchmark_data,
-            industry, rebalance_dates, conn, label=label,
+            factor_names,
+            price_data,
+            benchmark_data,
+            industry,
+            rebalance_dates,
+            conn,
+            label=label,
         )
         elapsed = time.perf_counter() - t1
-        logger.info(f"[{label}] 完成: Sharpe={r['sharpe']:.2f} MDD={r['mdd']*100:.1f}% ({elapsed:.1f}s)")
+        logger.info(
+            f"[{label}] 完成: Sharpe={r['sharpe']:.2f} MDD={r['mdd'] * 100:.1f}% ({elapsed:.1f}s)"
+        )
         results.append(r)
 
     print_report(results)

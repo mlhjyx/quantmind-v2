@@ -65,7 +65,9 @@ def main():
 
     train_dates_list = all_dates[train_start_idx:train_end_idx]
     test_dates_list = all_dates[test_start_idx:fold_end]
-    print(f"\nFold 0: Train {train_dates_list[0]}..{train_dates_list[-1]} ({len(train_dates_list)}d)")
+    print(
+        f"\nFold 0: Train {train_dates_list[0]}..{train_dates_list[-1]} ({len(train_dates_list)}d)"
+    )
     print(f"        Test  {test_dates_list[0]}..{test_dates_list[-1]} ({len(test_dates_list)}d)")
 
     # Split train data
@@ -115,8 +117,11 @@ def main():
         lgb.log_evaluation(50),
     ]
     model = lgb.train(
-        params, train_ds, num_boost_round=500,
-        valid_sets=[valid_ds], valid_names=["valid"],
+        params,
+        train_ds,
+        num_boost_round=500,
+        valid_sets=[valid_ds],
+        valid_names=["valid"],
         callbacks=callbacks,
     )
     best_iter = model.best_iteration
@@ -254,10 +259,12 @@ def main():
             top20_mcap = 0
             top20_sn_mcap = 0
 
-        print(f"  {rd}: IC={ic_day:+.4f} | "
-              f"Top20_ret={top_ret:+.4f} Bot20_ret={bot_ret:+.4f} | "
-              f"Top20+SN_ret={top_ret_sn:+.4f} | "
-              f"MCap(raw)={top20_mcap:.0f}亿 MCap(SN)={top20_sn_mcap:.0f}亿")
+        print(
+            f"  {rd}: IC={ic_day:+.4f} | "
+            f"Top20_ret={top_ret:+.4f} Bot20_ret={bot_ret:+.4f} | "
+            f"Top20+SN_ret={top_ret_sn:+.4f} | "
+            f"MCap(raw)={top20_mcap:.0f}亿 MCap(SN)={top20_sn_mcap:.0f}亿"
+        )
 
     if top20_returns:
         print(f"\n  Mean Top20 return (no SN): {np.mean(top20_returns):+.4f}")

@@ -28,6 +28,7 @@ silent skip. 改 30d 覆盖月度调仓周期 + 国庆/春节超长假期.
 关联铁律: 33 fail-loud / 34 SSOT / 36 precondition / 41 timezone (无 mode 字段不涉时区)
 关联文档: docs/audit/write_path_namespace_audit_2026_04_29.md
 """
+
 from __future__ import annotations
 
 import logging
@@ -106,7 +107,8 @@ def assert_execution_mode_consistency(
         logger.info(
             "[startup-assert] EXECUTION_MODE=%s aligns with DB position_snapshot "
             "last 30d modes=%s ✓",
-            env_mode, db_modes,
+            env_mode,
+            db_modes,
         )
         return
 
@@ -120,7 +122,9 @@ def assert_execution_mode_consistency(
     logger.critical(
         "[startup-assert] BLOCKING STARTUP — EXECUTION_MODE=%s drift vs DB modes=%s. "
         "Emergency bypass: set %s=1 in env (Windows User env via setx) and restart.",
-        env_mode, db_modes, _BYPASS_ENV_VAR,
+        env_mode,
+        db_modes,
+        _BYPASS_ENV_VAR,
     )
     raise NamespaceMismatchError(
         f"EXECUTION_MODE drift detected: .env={env_mode} but DB position_snapshot "

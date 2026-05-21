@@ -49,7 +49,9 @@ def _make_mock_session(fetchone_result: Any = None, execute_result: Any = None) 
         row_mock.latest_date = "2026-03-28"
         row_mock.row_count = 1000
         result_mock = MagicMock()
-        result_mock.fetchone = MagicMock(return_value=row_mock if fetchone_result is None else fetchone_result)
+        result_mock.fetchone = MagicMock(
+            return_value=row_mock if fetchone_result is None else fetchone_result
+        )
         session.execute = AsyncMock(return_value=result_mock)
     return session
 
@@ -167,8 +169,14 @@ class TestHealthEndpoint:
             with (
                 patch("app.api.system._check_redis", return_value={"ok": True}),
                 patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 1}),
-                patch("app.api.system._check_disk", return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0}),
-                patch("app.api.system._check_memory", return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
             ):
                 transport = ASGITransport(app=app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -191,8 +199,14 @@ class TestHealthEndpoint:
             with (
                 patch("app.api.system._check_redis", return_value={"ok": True}),
                 patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 2}),
-                patch("app.api.system._check_disk", return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0}),
-                patch("app.api.system._check_memory", return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
             ):
                 transport = ASGITransport(app=app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -213,8 +227,14 @@ class TestHealthEndpoint:
             with (
                 patch("app.api.system._check_redis", return_value={"ok": True}),
                 patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 1}),
-                patch("app.api.system._check_disk", return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0}),
-                patch("app.api.system._check_memory", return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
             ):
                 transport = ASGITransport(app=app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -233,9 +253,18 @@ class TestHealthEndpoint:
         try:
             with (
                 patch("app.api.system._check_redis", return_value={"ok": True}),
-                patch("app.api.system._check_celery", return_value={"ok": False, "worker_count": 0, "error": "no workers"}),
-                patch("app.api.system._check_disk", return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0}),
-                patch("app.api.system._check_memory", return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0}),
+                patch(
+                    "app.api.system._check_celery",
+                    return_value={"ok": False, "worker_count": 0, "error": "no workers"},
+                ),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": True, "free_gb": 500.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
             ):
                 transport = ASGITransport(app=app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -255,8 +284,14 @@ class TestHealthEndpoint:
             with (
                 patch("app.api.system._check_redis", return_value={"ok": True}),
                 patch("app.api.system._check_celery", return_value={"ok": True, "worker_count": 1}),
-                patch("app.api.system._check_disk", return_value={"ok": False, "free_gb": 50.0, "total_gb": 2000.0}),
-                patch("app.api.system._check_memory", return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0}),
+                patch(
+                    "app.api.system._check_disk",
+                    return_value={"ok": False, "free_gb": 50.0, "total_gb": 2000.0},
+                ),
+                patch(
+                    "app.api.system._check_memory",
+                    return_value={"ok": True, "used_gb": 8.0, "total_gb": 32.0, "percent": 25.0},
+                ),
             ):
                 transport = ASGITransport(app=app)
                 async with AsyncClient(transport=transport, base_url="http://test") as client:

@@ -1,22 +1,36 @@
 #!/usr/bin/env python3
 """紧急撤单脚本 — 撤销所有非终态QMT委托。"""
+
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
-sys.path.append(str(Path(__file__).resolve().parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"))
+sys.path.append(
+    str(
+        Path(__file__).resolve().parent.parent
+        / ".venv"
+        / "Lib"
+        / "site-packages"
+        / "Lib"
+        / "site-packages"
+    )
+)
+
 
 def main():
     print(f"[{time.strftime('%H:%M:%S')}] 撤单脚本启动", flush=True)
 
     # 1. 检查QMT进程
     try:
-        r = subprocess.run(["tasklist"], capture_output=True, timeout=10, encoding="gbk", errors="ignore")
+        r = subprocess.run(
+            ["tasklist"], capture_output=True, timeout=10, encoding="gbk", errors="ignore"
+        )
         if "XtMiniQmt.exe" not in (r.stdout or ""):
             print("QMT未运行，尝试启动...", flush=True)
             from app.config import settings
+
             exe = getattr(settings, "QMT_EXE_PATH", "")
             if exe:
                 subprocess.Popen([exe], cwd=str(Path(exe).parent))
@@ -28,6 +42,7 @@ def main():
     from engines.broker_qmt import MiniQMTBroker
 
     from app.config import settings
+
     broker = MiniQMTBroker(settings.QMT_PATH, settings.QMT_ACCOUNT_ID)
     broker.connect()
     print(f"[{time.strftime('%H:%M:%S')}] QMT已连接", flush=True)
@@ -49,7 +64,10 @@ def main():
 
     # 4. 确认
     asset = broker.query_asset()
-    print(f"[{time.strftime('%H:%M:%S')}] 撤单后: 总资产=¥{asset['total_asset']:,.2f}, 可用=¥{asset['cash']:,.2f}, 冻结=¥{asset['frozen_cash']:,.2f}", flush=True)
+    print(
+        f"[{time.strftime('%H:%M:%S')}] 撤单后: 总资产=¥{asset['total_asset']:,.2f}, 可用=¥{asset['cash']:,.2f}, 冻结=¥{asset['frozen_cash']:,.2f}",
+        flush=True,
+    )
 
     # 5. 二次检查
     orders2 = broker.query_orders()
@@ -60,10 +78,14 @@ def main():
             broker.cancel_order(o["order_id"])
         time.sleep(5)
         asset2 = broker.query_asset()
-        print(f"二次撤单后: 可用=¥{asset2['cash']:,.2f}, 冻结=¥{asset2['frozen_cash']:,.2f}", flush=True)
+        print(
+            f"二次撤单后: 可用=¥{asset2['cash']:,.2f}, 冻结=¥{asset2['frozen_cash']:,.2f}",
+            flush=True,
+        )
 
     broker.disconnect()
     print(f"[{time.strftime('%H:%M:%S')}] 完成", flush=True)
+
 
 if __name__ == "__main__":
     main()

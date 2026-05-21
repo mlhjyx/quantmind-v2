@@ -12,6 +12,7 @@
 实施时机:
   - MVP 3.2 Signal/Exec Framework: SignalPipeline + OrderRouter + 审计链
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

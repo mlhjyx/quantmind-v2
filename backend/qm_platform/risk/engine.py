@@ -16,6 +16,7 @@ Platform/App 边界:
             不适用, 因每次都是新 UUID INSERT 非 upsert) /
           22 / 24 / 31 (规则层纯计算, 本 engine 层允许 IO) / 33 / 34 / 41
 """
+
 from __future__ import annotations
 
 import json
@@ -46,9 +47,7 @@ class BrokerProtocol(Protocol):
     Platform 不直 import xtquant. Application 层 wire 时注入具体实现.
     """
 
-    def sell(
-        self, code: str, shares: int, reason: str, timeout: float = 5.0
-    ) -> dict[str, Any]:
+    def sell(self, code: str, shares: int, reason: str, timeout: float = 5.0) -> dict[str, Any]:
         """市价卖出 N 股. 超时 / 失败时 raise 或 return {'status': 'error', ...}."""
         ...
 
@@ -139,9 +138,7 @@ class PlatformRiskEngine:
         try:
             return self._primary.load(strategy_id, execution_mode)
         except PositionSourceError as e:
-            logger.warning(
-                "[risk-engine] primary source failed, switching to fallback: %s", e
-            )
+            logger.warning("[risk-engine] primary source failed, switching to fallback: %s", e)
             self._notifier.send(
                 title="[risk] primary position source failed",
                 text=f"{type(self._primary).__name__} raised {type(e).__name__}: {e}. "
@@ -250,14 +247,21 @@ class PlatformRiskEngine:
             )
             logger.info(
                 "[risk-engine] sell executed rule=%s code=%s shares=%d fill=%s",
-                result.rule_id, result.code, result.shares, fill,
+                result.rule_id,
+                result.code,
+                result.shares,
+                fill,
             )
             return {"status": "sell_executed", **fill}
         except Exception as e:  # noqa: BLE001
             logger.error(
                 "[risk-engine] broker.sell failed rule=%s code=%s shares=%d: %s: %s",
-                result.rule_id, result.code, result.shares,
-                type(e).__name__, e, exc_info=True,
+                result.rule_id,
+                result.code,
+                result.shares,
+                type(e).__name__,
+                e,
+                exc_info=True,
             )
             return {
                 "status": "sell_failed",
@@ -365,7 +369,10 @@ class PlatformRiskEngine:
         except Exception as e:  # noqa: BLE001 — log 失败不阻塞主路径
             logger.error(
                 "[risk-engine] risk_event_log INSERT failed rule=%s: %s: %s",
-                result.rule_id, type(e).__name__, e, exc_info=True,
+                result.rule_id,
+                type(e).__name__,
+                e,
+                exc_info=True,
             )
 
     def _notify(
@@ -389,9 +396,7 @@ class PlatformRiskEngine:
 
 # reviewer P1-3 采纳: module-level `_root_rule_id` hardcoded pms_l 反查已废.
 # 新设计: RiskRule.root_rule_id_for 方法 + _root_rule_id_via_rules 枚举调度.
-def _root_rule_id_via_rules(
-    triggered_rule_id: str, rules: dict[str, RiskRule]
-) -> RiskRule | None:
+def _root_rule_id_via_rules(triggered_rule_id: str, rules: dict[str, RiskRule]) -> RiskRule | None:
     """遍历注册 rules 寻找 triggered_rule_id 的 root rule.
 
     算法 (v2, fixes ownership edge case):

@@ -107,9 +107,7 @@ def _compose_context_snapshot(output: ReflectionOutput) -> dict[str, object]:
         "generated_at": output.generated_at.isoformat(),
         "total_findings": sum(len(r.findings) for r in output.reflections),
         "total_candidates": sum(len(r.candidates) for r in output.reflections),
-        "dimension_summaries": {
-            r.dimension.value: r.summary for r in output.reflections
-        },
+        "dimension_summaries": {r.dimension.value: r.summary for r in output.reflections},
     }
 
 
@@ -136,9 +134,7 @@ class RiskReflectorAgent:
     embedding_factory: Callable[[], EmbeddingService] | None = None
     agent_factory: Callable[[object], ReflectorAgent] | None = None
     _agent: ReflectorAgent | None = field(default=None, init=False, repr=False)
-    _embedding_service: EmbeddingService | None = field(
-        default=None, init=False, repr=False
-    )
+    _embedding_service: EmbeddingService | None = field(default=None, init=False, repr=False)
 
     def _ensure_agent(self) -> ReflectorAgent:
         """Lazy construct + cache ReflectorAgent (sustained TB-3b lazy load 体例)."""

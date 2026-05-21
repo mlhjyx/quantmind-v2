@@ -78,14 +78,44 @@ CORE_DIRECTIONS = {
 # ── P1候选因子定义 ─────────────────────────────────────────────
 
 P1_CANDIDATES = {
-    1: {"factor": "relative_volume_20", "direction": -1, "ic_20d": -0.037, "corr": 0.17, "mono": -1.0},
-    2: {"factor": "turnover_surge_ratio", "direction": -1, "ic_20d": -0.023, "corr": 0.11, "mono": -0.9},
+    1: {
+        "factor": "relative_volume_20",
+        "direction": -1,
+        "ic_20d": -0.037,
+        "corr": 0.17,
+        "mono": -1.0,
+    },
+    2: {
+        "factor": "turnover_surge_ratio",
+        "direction": -1,
+        "ic_20d": -0.023,
+        "corr": 0.11,
+        "mono": -0.9,
+    },
     3: {"factor": "rsrs_raw_18", "direction": -1, "ic_20d": -0.043, "corr": 0.28, "mono": -0.9},
-    4: {"factor": "price_volume_corr_20", "direction": -1, "ic_20d": -0.056, "corr": 0.28, "mono": -1.0},
-    5: {"factor": "large_order_ratio", "direction": -1, "ic_20d": -0.045, "corr": 0.29, "mono": -0.9},
+    4: {
+        "factor": "price_volume_corr_20",
+        "direction": -1,
+        "ic_20d": -0.056,
+        "corr": 0.28,
+        "mono": -1.0,
+    },
+    5: {
+        "factor": "large_order_ratio",
+        "direction": -1,
+        "ic_20d": -0.045,
+        "corr": 0.29,
+        "mono": -0.9,
+    },
     6: {"factor": "kbar_kup", "direction": -1, "ic_20d": -0.042, "corr": 0.23, "mono": -0.7},
     7: {"factor": "reversal_10", "direction": 1, "ic_20d": 0.037, "corr": 0.12, "mono": 0.6},
-    8: {"factor": "gain_loss_ratio_20", "direction": -1, "ic_20d": -0.032, "corr": 0.29, "mono": -0.7},
+    8: {
+        "factor": "gain_loss_ratio_20",
+        "direction": -1,
+        "ic_20d": -0.032,
+        "corr": 0.29,
+        "mono": -0.7,
+    },
 }
 
 # 基线 (Phase 2.4 WF OOS CORE3+dv_ttm+SN050)
@@ -98,6 +128,7 @@ OUTPUT_FILE = CACHE_DIR / "wf_p1_evaluation_results.json"
 
 
 # ── 数据加载（复用wf_phase24_validation模式）──────────────────
+
 
 def load_parquet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """从Parquet缓存加载12年price + benchmark数据。"""
@@ -114,9 +145,7 @@ def load_parquet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         if bf.exists():
             bench_parts.append(pd.read_parquet(bf))
 
-    price_df = pd.concat(price_parts, ignore_index=True).sort_values(
-        ["code", "trade_date"]
-    )
+    price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
     bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date")
 
     price_df["trade_date"] = pd.to_datetime(price_df["trade_date"]).dt.date
@@ -190,6 +219,7 @@ def load_factor_data(factor_names: list[str], conn) -> pd.DataFrame:
 
 # ── WF验证核心 ───────────────────────────────────────────────
 
+
 def run_wf_for_candidate(
     cand_id: int,
     cand: dict,
@@ -208,8 +238,14 @@ def run_wf_for_candidate(
 
     logger.info("=" * 70)
     logger.info("P1 Candidate %d: %s", cand_id, name)
-    logger.info("  Factor: %s (dir=%+d, IC_20d=%.3f, corr_CORE4=%.2f, mono=%.1f)",
-                factor_name, direction, cand["ic_20d"], cand["corr"], cand["mono"])
+    logger.info(
+        "  Factor: %s (dir=%+d, IC_20d=%.3f, corr_CORE4=%.2f, mono=%.1f)",
+        factor_name,
+        direction,
+        cand["ic_20d"],
+        cand["corr"],
+        cand["mono"],
+    )
     logger.info("  Factors: %s", list(directions.keys()))
     logger.info("=" * 70)
 
@@ -261,15 +297,17 @@ def run_wf_for_candidate(
     # 提取fold结果
     fold_data = []
     for fr in result.fold_results:
-        fold_data.append({
-            "fold": fr.fold_idx,
-            "train_period": [str(fr.train_period[0]), str(fr.train_period[1])],
-            "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
-            "oos_sharpe": round(fr.oos_sharpe, 4),
-            "oos_mdd": round(fr.oos_mdd, 4),
-            "oos_annual_return": round(fr.oos_annual_return, 4),
-            "test_days": fr.test_days,
-        })
+        fold_data.append(
+            {
+                "fold": fr.fold_idx,
+                "train_period": [str(fr.train_period[0]), str(fr.train_period[1])],
+                "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
+                "oos_sharpe": round(fr.oos_sharpe, 4),
+                "oos_mdd": round(fr.oos_mdd, 4),
+                "oos_annual_return": round(fr.oos_annual_return, 4),
+                "test_days": fr.test_days,
+            }
+        )
 
     # Full-sample backtest for overfit ratio
     logger.info("  Running full-sample backtest (2020-2026) for overfit ratio...")
@@ -331,17 +369,35 @@ def run_wf_for_candidate(
     for fd in fold_data:
         logger.info(
             "  Fold %d: Sharpe=%.4f  MDD=%.4f  AnnRet=%.4f  [%s ~ %s]",
-            fd["fold"], fd["oos_sharpe"], fd["oos_mdd"], fd["oos_annual_return"],
-            fd["test_period"][0], fd["test_period"][1],
+            fd["fold"],
+            fd["oos_sharpe"],
+            fd["oos_mdd"],
+            fd["oos_annual_return"],
+            fd["test_period"][0],
+            fd["test_period"][1],
         )
 
     delta_sharpe = oos_sharpe - BASELINE_WF_SHARPE
     logger.info("")
-    logger.info("  Combined OOS Sharpe:  %.4f (baseline=%.4f, delta=%+.4f)", oos_sharpe, BASELINE_WF_SHARPE, delta_sharpe)
+    logger.info(
+        "  Combined OOS Sharpe:  %.4f (baseline=%.4f, delta=%+.4f)",
+        oos_sharpe,
+        BASELINE_WF_SHARPE,
+        delta_sharpe,
+    )
     logger.info("  Combined OOS MDD:     %.4f (baseline=%.4f)", oos_mdd, BASELINE_WF_MDD)
     logger.info("  Overfit Ratio:        %s (full=%.4f)", overfit_ratio, full_sample_sharpe or 0)
-    logger.info("  Fold Stability:       %s (std=%.2f, %d negative folds)", stability, sharpe_std, n_negative)
-    logger.info("  Verdict:              %s %s", verdict, "✅" if verdict == "PASS" else "⚠️" if verdict == "MARGINAL" else "❌")
+    logger.info(
+        "  Fold Stability:       %s (std=%.2f, %d negative folds)",
+        stability,
+        sharpe_std,
+        n_negative,
+    )
+    logger.info(
+        "  Verdict:              %s %s",
+        verdict,
+        "✅" if verdict == "PASS" else "⚠️" if verdict == "MARGINAL" else "❌",
+    )
     logger.info("  Elapsed:              %.1fs", elapsed)
 
     return {
@@ -378,10 +434,14 @@ def run_wf_for_candidate(
 
 # ── Main ─────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Phase 3B P1 WF Evaluation")
     parser.add_argument(
-        "--factor", type=int, nargs="*", default=None,
+        "--factor",
+        type=int,
+        nargs="*",
+        default=None,
         help="指定候选因子ID (1-8), 不指定=全部",
     )
     args = parser.parse_args()
@@ -406,6 +466,7 @@ def main():
     price_df, bench_df = load_parquet_data()
 
     import psycopg2
+
     conn = psycopg2.connect(
         dbname=os.getenv("PG_DB", "quantmind_v2"),
         user=os.getenv("PG_USER", "xin"),
@@ -430,12 +491,18 @@ def main():
     results = {}
     for cid in cand_ids:
         result = run_wf_for_candidate(
-            cid, P1_CANDIDATES[cid], factor_df, price_df, bench_df, ln_mcap_pivot,
+            cid,
+            P1_CANDIDATES[cid],
+            factor_df,
+            price_df,
+            bench_df,
+            ln_mcap_pivot,
         )
         results[str(cid)] = result
 
         # 每个跑完后gc
         import gc
+
         gc.collect()
 
     conn.close()
@@ -446,15 +513,28 @@ def main():
     logger.info("=" * 100)
     logger.info(
         "%-4s %-28s %8s %8s %8s %8s %8s %8s",
-        "#", "Factor", "OOS_Sh", "Delta", "OOS_MDD", "Overfit", "NegFold", "Verdict",
+        "#",
+        "Factor",
+        "OOS_Sh",
+        "Delta",
+        "OOS_MDD",
+        "Overfit",
+        "NegFold",
+        "Verdict",
     )
     logger.info("-" * 100)
 
     # 基线行
     logger.info(
         "%-4s %-28s %8.4f %8s %8.4f %8s %8s %8s",
-        "-", "[BASELINE] CORE3+dv_ttm+SN050",
-        BASELINE_WF_SHARPE, "-", BASELINE_WF_MDD, "-", "0", "-",
+        "-",
+        "[BASELINE] CORE3+dv_ttm+SN050",
+        BASELINE_WF_SHARPE,
+        "-",
+        BASELINE_WF_MDD,
+        "-",
+        "0",
+        "-",
     )
 
     pass_count = 0
@@ -488,10 +568,13 @@ def main():
         logger.info("\n推荐: 以下因子可加入CORE配置:")
         for cid_str, r in sorted(results.items(), key=lambda x: int(x[0])):
             if r.get("analysis", {}).get("verdict") == "PASS":
-                logger.info("  ✅ %s (dir=%+d, OOS Sharpe=%.4f, delta=%+.4f)",
-                            r["factor"], r["direction"],
-                            r["combined"]["oos_sharpe"],
-                            r["analysis"]["delta_sharpe"])
+                logger.info(
+                    "  ✅ %s (dir=%+d, OOS Sharpe=%.4f, delta=%+.4f)",
+                    r["factor"],
+                    r["direction"],
+                    r["combined"]["oos_sharpe"],
+                    r["analysis"]["delta_sharpe"],
+                )
     else:
         logger.info("\n结论: 无P1因子通过WF验证。CORE3+dv_ttm是当前等权框架的alpha上限。")
 

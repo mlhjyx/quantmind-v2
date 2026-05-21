@@ -49,6 +49,7 @@ caller 真**唯一 sanctioned 入口** (沿用 sub-PR 7b.3 v2 bootstrap 体例 s
 - backend/migrations/2026_05_06_news_raw.sql (sub-PR 7b.1 v2 DDL)
 - backend/migrations/2026_05_06_news_classified.sql (sub-PR 7b.1 v2 DDL FK CASCADE)
 """
+
 from __future__ import annotations
 
 import logging
@@ -177,11 +178,7 @@ class NewsIngestionService:
             news_id = self._insert_news_raw(item, conn=conn)
             ingested += 1
 
-            decision_id = (
-                f"{decision_id_prefix}-{idx:03d}"
-                if decision_id_prefix
-                else None
-            )
+            decision_id = f"{decision_id_prefix}-{idx:03d}" if decision_id_prefix else None
             try:
                 result = self._classifier.classify(item, decision_id=decision_id)
                 self._classifier.persist(result, conn=conn, news_id=news_id)

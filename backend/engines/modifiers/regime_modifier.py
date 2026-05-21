@@ -195,4 +195,3 @@ class RegimeModifier(ModifierBase):
             with contextlib.suppress(Exception):
                 context.conn.rollback()
             return None
-

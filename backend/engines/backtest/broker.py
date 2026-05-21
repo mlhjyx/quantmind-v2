@@ -50,7 +50,9 @@ class SimBroker(BaseBroker):
         """
         ok, reason = self._validator.can_trade(code, direction, row, symbols_info)
         if not ok and reason:
-            logger.debug("交易拒绝: %s %s %s — %s", code, direction, row.get("trade_date", "?"), reason)
+            logger.debug(
+                "交易拒绝: %s %s %s — %s", code, direction, row.get("trade_date", "?"), reason
+            )
         return ok
 
     def calc_slippage(
@@ -134,11 +136,16 @@ class SimBroker(BaseBroker):
             daily_amt = self._daily_amount_yuan(row)
             if daily_amt > 0:
                 max_sell_value = daily_amt * self.config.volume_cap_pct
-                max_shares = int(max_sell_value / price / self.config.lot_size) * self.config.lot_size
+                max_shares = (
+                    int(max_sell_value / price / self.config.lot_size) * self.config.lot_size
+                )
                 if max_shares > 0 and shares > max_shares:
                     logger.debug(
                         "volume_cap卖出截断: code=%s shares=%d→%d (cap=%.0f元)",
-                        code, shares, max_shares, max_sell_value,
+                        code,
+                        shares,
+                        max_shares,
+                        max_sell_value,
                     )
                     shares = max_shares
         slippage = self.calc_slippage(price, shares * price, row, direction="sell")
@@ -201,7 +208,10 @@ class SimBroker(BaseBroker):
                 if target_amount > max_buy_value:
                     logger.debug(
                         "volume_cap买入截断: code=%s amount=%.0f→%.0f (cap=%.0f元)",
-                        code, target_amount, max_buy_value, max_buy_value,
+                        code,
+                        target_amount,
+                        max_buy_value,
+                        max_buy_value,
                     )
                     target_amount = max_buy_value
         slippage = self.calc_slippage(price, target_amount, row, direction="buy")
@@ -221,7 +231,17 @@ class SimBroker(BaseBroker):
 
         if total_needed > self.cash:
             # 资金不足，减少股数
-            shares = int(self.cash / (exec_price * (1 + self.config.commission_rate + self.config.transfer_fee_rate)) / self.config.lot_size) * self.config.lot_size
+            shares = (
+                int(
+                    self.cash
+                    / (
+                        exec_price
+                        * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
+                    )
+                    / self.config.lot_size
+                )
+                * self.config.lot_size
+            )
             if shares <= 0:
                 return None
             amount = exec_price * shares
@@ -248,10 +268,7 @@ class SimBroker(BaseBroker):
 
     def get_portfolio_value(self, prices: dict[str, float]) -> float:
         """计算组合市值 = 持仓市值 + 现金。"""
-        holdings_value = sum(
-            shares * prices.get(code, 0)
-            for code, shares in self.holdings.items()
-        )
+        holdings_value = sum(shares * prices.get(code, 0) for code, shares in self.holdings.items())
         return holdings_value + self.cash
 
     # ── BaseBroker统一接口 ──
@@ -273,7 +290,8 @@ class SimBroker(BaseBroker):
         self._sell_proceeds_today = 0.0
 
     def process_corporate_actions(
-        self, actions: list[CorporateAction],
+        self,
+        actions: list[CorporateAction],
     ) -> list[dict]:
         """处理分红/送股事件(P1+P2)，在每日开盘前调用。
 

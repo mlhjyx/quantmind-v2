@@ -3,6 +3,7 @@
 Mock MiniQMTBroker + xtquant 模块 (monkeypatch sys.modules).
 不依赖真 QMT / 真 xtquant 安装.
 """
+
 from __future__ import annotations
 
 import sys
@@ -69,12 +70,16 @@ def _install_fake_xtquant(
     xtdata_mod = ModuleType("xtquant.xtdata")
 
     if raise_err:
+
         def _raise(*_a, **_k):
             raise RuntimeError("xtdata network error")
+
         xtdata_mod.get_full_tick = _raise
     else:
+
         def _ret(codes):
             return {c: ticks_map.get(c) for c in codes} if ticks_map else {}
+
         xtdata_mod.get_full_tick = _ret
 
     xtquant_mod.xtdata = xtdata_mod
@@ -363,8 +368,20 @@ def test_fetch_positions_duplicate_code_raises(monkeypatch) -> None:
     # 构造 2 条同 stock_code 的 position (QMT 不该返回, 但防御式测 PK 验证链路)
     broker = _FakeBroker(
         positions=[
-            {"stock_code": "600519.SH", "volume": 100, "can_use_volume": 100, "avg_price": 1600.0, "market_value": 160000.0},
-            {"stock_code": "600519.SH", "volume": 200, "can_use_volume": 200, "avg_price": 1610.0, "market_value": 322000.0},
+            {
+                "stock_code": "600519.SH",
+                "volume": 100,
+                "can_use_volume": 100,
+                "avg_price": 1600.0,
+                "market_value": 160000.0,
+            },
+            {
+                "stock_code": "600519.SH",
+                "volume": 200,
+                "can_use_volume": 200,
+                "avg_price": 1610.0,
+                "market_value": 322000.0,
+            },
         ]
     )
     src = QMTDataSource(broker=broker)

@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.7 unit tests — pull_moneyflow + pg_backup 迁 SDK."""
+
 from __future__ import annotations
 
 import sys
@@ -76,9 +77,7 @@ def test_pmf_sdk_p0_severity_and_dedup():
     assert fired_alert.source == "pull_moneyflow"
     assert fired_alert.details["data_date"] == "20260429"
     assert fired_alert.details["max_retry"] == "5"
-    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith(
-        "pull_moneyflow:summary:"
-    )
+    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith("pull_moneyflow:summary:")
 
 
 def test_pmf_sdk_dedup_keys_distinct_per_data_date():
@@ -200,9 +199,7 @@ def test_pgb_sdk_p0_severity_and_dedup():
     fired_alert: Alert = mock_router.fire.call_args.args[0]
     assert fired_alert.severity == Severity.P0
     assert fired_alert.source == "pg_backup"
-    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith(
-        "pg_backup:summary:"
-    )
+    assert mock_router.fire.call_args.kwargs["dedup_key"].startswith("pg_backup:summary:")
 
 
 def test_pgb_send_alert_swallows_dispatch_error():
@@ -212,7 +209,8 @@ def test_pgb_send_alert_swallows_dispatch_error():
     with (
         patch.object(settings, "OBSERVABILITY_USE_PLATFORM_SDK", True),
         patch.object(
-            pgb_mod, "_send_alert_via_platform_sdk",
+            pgb_mod,
+            "_send_alert_via_platform_sdk",
             side_effect=AlertDispatchError("sink fail"),
         ),
     ):
@@ -227,7 +225,8 @@ def test_pgb_send_alert_swallows_legacy_exception():
     with (
         patch.object(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False),
         patch.object(
-            pgb_mod, "_send_alert_via_legacy_notification",
+            pgb_mod,
+            "_send_alert_via_legacy_notification",
             side_effect=ConnectionError("DB down"),
         ),
     ):

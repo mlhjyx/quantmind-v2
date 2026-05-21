@@ -9,6 +9,7 @@
 实施时机:
   - MVP 4.1 Observability Framework
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -71,7 +72,9 @@ class MetricExporter(ABC):
         """记录瞬时值 (e.g. current_nav, signal_count)."""
 
     @abstractmethod
-    def counter(self, name: str, increment: float = 1.0, labels: dict[str, str] | None = None) -> None:
+    def counter(
+        self, name: str, increment: float = 1.0, labels: dict[str, str] | None = None
+    ) -> None:
         """递增计数器 (e.g. orders_filled_total)."""
 
     @abstractmethod

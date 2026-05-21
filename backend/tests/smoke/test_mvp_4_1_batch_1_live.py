@@ -7,6 +7,7 @@ Note: ``python -c`` 多语句通过 ``;`` 分隔, 不能含 ``try:`` 块 (语法
         行为由 unit test (test_platform_alert_router.py) 覆盖, 此 smoke 验证 import +
         ABC 关系 + 静态契约 markers + migration 文件存在.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -87,8 +88,7 @@ def test_mvp_4_1_batch_1_alert_router_imports_and_contracts():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_1_alert_router boot" in result.stdout, (
         f"missing OK marker: stdout={result.stdout}"

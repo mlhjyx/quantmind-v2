@@ -129,8 +129,6 @@ def get_metrics(
         if not isinstance(benchmark.index, pd.DatetimeIndex):
             benchmark = benchmark.copy()
             benchmark.index = pd.to_datetime(benchmark.index)
-        metrics["information_ratio"] = _safe_float(
-            qs.stats.information_ratio(returns, benchmark)
-        )
+        metrics["information_ratio"] = _safe_float(qs.stats.information_ratio(returns, benchmark))
 
     return metrics

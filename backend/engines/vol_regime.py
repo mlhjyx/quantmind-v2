@@ -11,7 +11,6 @@ Sprint 1.1设计：高波动时缩减仓位，低波动时加仓，clip[0.5, 2.0
    - 当前波动率 < baseline → scale > 1 → 加仓
 """
 
-
 import numpy as np
 import pandas as pd
 import structlog
@@ -78,9 +77,7 @@ def calc_vol_regime(
             logger.warning("[VolRegime] 无法计算滚动波动率，返回1.0")
             return 1.0
         baseline_vol = float(rolling_vols.median()) * np.sqrt(244)
-        logger.debug(
-            f"[VolRegime] 自动baseline_vol(中位数)={baseline_vol:.4f}"
-        )
+        logger.debug(f"[VolRegime] 自动baseline_vol(中位数)={baseline_vol:.4f}")
 
     if baseline_vol < 1e-12:
         logger.warning("[VolRegime] baseline_vol接近0，返回1.0")

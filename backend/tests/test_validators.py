@@ -85,33 +85,45 @@ class TestPriceLimitValidator:
 
     def test_limit_up_buy_rejected(self):
         """涨停封板 + 低换手 → 买入被拒"""
-        row = pd.Series({
-            "close": 11.00, "pre_close": 10.00,
-            "up_limit": 11.00, "down_limit": 9.00,
-            "turnover_rate": 0.5,  # <1%
-        })
+        row = pd.Series(
+            {
+                "close": 11.00,
+                "pre_close": 10.00,
+                "up_limit": 11.00,
+                "down_limit": 9.00,
+                "turnover_rate": 0.5,  # <1%
+            }
+        )
         reason = self.v.validate("600519.SH", "buy", row)
         assert reason is not None
         assert "涨停" in reason
 
     def test_limit_down_sell_rejected(self):
         """跌停封板 + 低换手 → 卖出被拒"""
-        row = pd.Series({
-            "close": 9.00, "pre_close": 10.00,
-            "up_limit": 11.00, "down_limit": 9.00,
-            "turnover_rate": 0.3,
-        })
+        row = pd.Series(
+            {
+                "close": 9.00,
+                "pre_close": 10.00,
+                "up_limit": 11.00,
+                "down_limit": 9.00,
+                "turnover_rate": 0.3,
+            }
+        )
         reason = self.v.validate("600519.SH", "sell", row)
         assert reason is not None
         assert "跌停" in reason
 
     def test_normal_price_passes(self):
         """正常价格 → 通过"""
-        row = pd.Series({
-            "close": 10.50, "pre_close": 10.00,
-            "up_limit": 11.00, "down_limit": 9.00,
-            "turnover_rate": 5.0,
-        })
+        row = pd.Series(
+            {
+                "close": 10.50,
+                "pre_close": 10.00,
+                "up_limit": 11.00,
+                "down_limit": 9.00,
+                "turnover_rate": 5.0,
+            }
+        )
         assert self.v.validate("600519.SH", "buy", row) is None
 
     def test_inferred_limit_when_missing(self):
@@ -119,10 +131,13 @@ class TestPriceLimitValidator:
         # pd.Series converts None→NaN, 但validator用 `is None` 检查。
         # 只有真正缺列或row.get返回None时才触发推断。
         # 构造不含up_limit列的row来测试推断路径。
-        row = pd.Series({
-            "close": 11.00, "pre_close": 10.00,
-            "turnover_rate": 0.3,
-        })
+        row = pd.Series(
+            {
+                "close": 11.00,
+                "pre_close": 10.00,
+                "turnover_rate": 0.3,
+            }
+        )
         # 无up_limit列 → row.get("up_limit", None) = None → 推断
         # 主板10%: up_limit = round(10.0*1.1, 2) = 11.00
         # close=11.00 ≈ up_limit=11.00, turnover=0.3<1.0 → 涨停封板
@@ -136,10 +151,16 @@ class TestPriceLimitValidator:
 class TestValidatorChain:
     def test_default_chain_passes_normal(self):
         chain = ValidatorChain()
-        row = pd.Series({
-            "volume": 50000, "close": 10.5, "pre_close": 10.0,
-            "up_limit": 11.0, "down_limit": 9.0, "turnover_rate": 5.0,
-        })
+        row = pd.Series(
+            {
+                "volume": 50000,
+                "close": 10.5,
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+                "turnover_rate": 5.0,
+            }
+        )
         can, reason = chain.can_trade("600519.SH", "buy", row)
         assert can is True
         assert reason is None
@@ -147,10 +168,16 @@ class TestValidatorChain:
     def test_chain_first_fail_stops(self):
         """停牌(第一个validator) → 直接拒绝，不检查后续"""
         chain = ValidatorChain()
-        row = pd.Series({
-            "volume": 0, "close": 0, "pre_close": 0,
-            "up_limit": None, "down_limit": None, "turnover_rate": None,
-        })
+        row = pd.Series(
+            {
+                "volume": 0,
+                "close": 0,
+                "pre_close": 0,
+                "up_limit": None,
+                "down_limit": None,
+                "turnover_rate": None,
+            }
+        )
         can, reason = chain.can_trade("600519.SH", "buy", row)
         assert can is False
         assert "停牌" in reason  # SuspensionValidator先触发

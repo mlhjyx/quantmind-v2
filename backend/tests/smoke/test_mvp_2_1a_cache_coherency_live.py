@@ -13,8 +13,10 @@ BaseDataSource abstract 本次不 smoke (无 concrete), 待 MVP 2.1b 3 fetcher �
   - MaxDateChecker / TTLGuard / check_stale 语义回归
   - CacheCoherencyPolicy dataclass 签名变化
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +45,7 @@ def test_cache_coherency_live_max_date_checker() -> None:
         "try:\n"
         "    with conn.cursor() as cur:\n"
         "        cur.execute(\n"
-        "            \"SELECT MAX(trade_date) FROM factor_values \"\n"
+        '            "SELECT MAX(trade_date) FROM factor_values "\n'
         "            \"WHERE factor_name='turnover_mean_20'\"\n"
         "        )\n"
         "        db_max = cur.fetchone()[0]\n"
@@ -74,6 +76,11 @@ def test_cache_coherency_live_max_date_checker() -> None:
     result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=30,

@@ -88,10 +88,18 @@ def pull_klines(trading_dates: list[str], conn):
                         adj_factor=EXCLUDED.adj_factor,
                         up_limit=EXCLUDED.up_limit, down_limit=EXCLUDED.down_limit""",
                     (
-                        row.get("code"), td,
-                        row.get("open"), row.get("high"), row.get("low"), row.get("close"),
-                        row.get("pre_close"), row.get("volume"), row.get("amount"),
-                        row.get("adj_factor"), row.get("up_limit"), row.get("down_limit"),
+                        row.get("code"),
+                        td,
+                        row.get("open"),
+                        row.get("high"),
+                        row.get("low"),
+                        row.get("close"),
+                        row.get("pre_close"),
+                        row.get("volume"),
+                        row.get("amount"),
+                        row.get("adj_factor"),
+                        row.get("up_limit"),
+                        row.get("down_limit"),
                     ),
                 )
             conn.commit()
@@ -139,10 +147,15 @@ def pull_daily_basic(trading_dates: list[str], conn):
                             pb=EXCLUDED.pb, dv_ttm=EXCLUDED.dv_ttm,
                             total_mv=EXCLUDED.total_mv, circ_mv=EXCLUDED.circ_mv""",
                         (
-                            row.get("code"), td,
-                            row.get("turnover_rate"), row.get("volume_ratio"),
-                            row.get("pe_ttm"), row.get("pb"), row.get("dv_ttm"),
-                            row.get("total_mv"), row.get("circ_mv"),
+                            row.get("code"),
+                            td,
+                            row.get("turnover_rate"),
+                            row.get("volume_ratio"),
+                            row.get("pe_ttm"),
+                            row.get("pb"),
+                            row.get("dv_ttm"),
+                            row.get("total_mv"),
+                            row.get("circ_mv"),
                         ),
                     )
                     cur.execute("RELEASE SAVEPOINT sp_row")
@@ -178,9 +191,15 @@ def pull_index_daily(start: str, end: str, conn):
                        ON CONFLICT (index_code, trade_date) DO UPDATE SET
                         close=EXCLUDED.close, pct_change=EXCLUDED.pct_change""",
                     (
-                        idx_code, row.get("trade_date"),
-                        row.get("open"), row.get("high"), row.get("low"), row.get("close"),
-                        row.get("vol"), row.get("amount"), row.get("pct_chg"),
+                        idx_code,
+                        row.get("trade_date"),
+                        row.get("open"),
+                        row.get("high"),
+                        row.get("low"),
+                        row.get("close"),
+                        row.get("vol"),
+                        row.get("amount"),
+                        row.get("pct_chg"),
                     ),
                 )
             conn.commit()
@@ -217,11 +236,17 @@ def pull_moneyflow(trading_dates: list[str], conn):
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                            ON CONFLICT (code, trade_date) DO NOTHING""",
                         (
-                            row.get("code"), td,
-                            row.get("net_mf_amount"), row.get("buy_lg_amount"), row.get("sell_lg_amount"),
-                            row.get("buy_elg_amount"), row.get("sell_elg_amount"),
-                            row.get("buy_md_amount"), row.get("sell_md_amount"),
-                            row.get("buy_sm_amount"), row.get("sell_sm_amount"),
+                            row.get("code"),
+                            td,
+                            row.get("net_mf_amount"),
+                            row.get("buy_lg_amount"),
+                            row.get("sell_lg_amount"),
+                            row.get("buy_elg_amount"),
+                            row.get("sell_elg_amount"),
+                            row.get("buy_md_amount"),
+                            row.get("sell_md_amount"),
+                            row.get("buy_sm_amount"),
+                            row.get("sell_sm_amount"),
                         ),
                     )
                     cur.execute("RELEASE SAVEPOINT sp_mf")
@@ -241,7 +266,9 @@ def main():
     parser = argparse.ArgumentParser(description="补拉2014-2019历史数据")
     parser.add_argument("--start", default="2014-01-01")
     parser.add_argument("--end", default="2019-12-31")
-    parser.add_argument("--table", default="all", choices=["all", "klines", "basic", "index", "moneyflow"])
+    parser.add_argument(
+        "--table", default="all", choices=["all", "klines", "basic", "index", "moneyflow"]
+    )
     args = parser.parse_args()
 
     start_str = args.start.replace("-", "")
@@ -277,7 +304,9 @@ def main():
     # 验证
     cur = conn.cursor()
     for table in ["klines_daily", "daily_basic", "index_daily", "moneyflow_daily"]:
-        cur.execute(f"SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT trade_date) FROM {table}")
+        cur.execute(
+            f"SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT trade_date) FROM {table}"
+        )
         r = cur.fetchone()
         logger.info("  %s: %s ~ %s (%s天)", table, r[0], r[1], r[2])
 

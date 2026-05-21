@@ -44,20 +44,48 @@ CORE4_DIRECTIONS = {"turnover_mean_20": -1, "volatility_20": -1, "bp_ratio": 1, 
 
 # 32 significant factors from IC quick-screen
 SIGNIFICANT_FACTORS = [
-    "high_low_range_20", "volatility_60", "turnover_std_20", "maxret_20",
-    "CORD5", "turnover_f", "ivol_20", "gap_frequency_20",
-    "atr_norm_20", "turnover_stability_20", "large_order_ratio", "RSQR30",
-    "IMIN10", "HIGH0", "price_level_factor", "high_vol_price_ratio_20",
-    "CORD20", "kbar_kup", "sp_ttm", "momentum_20",
-    "gain_loss_ratio_20", "price_volume_corr_20", "reversal_60", "relative_volume_20",
-    "rsrs_raw_18", "mf_divergence", "volume_std_20", "reversal_10",
-    "momentum_10", "momentum_5", "reversal_5", "turnover_surge_ratio",
+    "high_low_range_20",
+    "volatility_60",
+    "turnover_std_20",
+    "maxret_20",
+    "CORD5",
+    "turnover_f",
+    "ivol_20",
+    "gap_frequency_20",
+    "atr_norm_20",
+    "turnover_stability_20",
+    "large_order_ratio",
+    "RSQR30",
+    "IMIN10",
+    "HIGH0",
+    "price_level_factor",
+    "high_vol_price_ratio_20",
+    "CORD20",
+    "kbar_kup",
+    "sp_ttm",
+    "momentum_20",
+    "gain_loss_ratio_20",
+    "price_volume_corr_20",
+    "reversal_60",
+    "relative_volume_20",
+    "rsrs_raw_18",
+    "mf_divergence",
+    "volume_std_20",
+    "reversal_10",
+    "momentum_10",
+    "momentum_5",
+    "reversal_5",
+    "turnover_surge_ratio",
 ]
 
 # Fundamental factors (level)
 FUNDAMENTAL_FACTORS = [
-    "roe_dt_q", "roa_q", "gross_margin_q", "net_margin_q",
-    "profit_growth_q", "leverage_q",
+    "roe_dt_q",
+    "roa_q",
+    "gross_margin_q",
+    "net_margin_q",
+    "profit_growth_q",
+    "leverage_q",
 ]
 
 # Change factor definitions
@@ -90,6 +118,7 @@ def get_conn():
 
 def save_result(result, name: str):
     """Save result to cache/phase3b/{name}.json."""
+
     def default_ser(obj):
         if isinstance(obj, (date, pd.Timestamp)):
             return str(obj)
@@ -149,6 +178,7 @@ def load_core4_factors(start_year=2020, end_year=2026):
 def compute_metrics(nav: pd.Series) -> dict:
     """Sharpe/MDD/annual return."""
     from engines.metrics import TRADING_DAYS_PER_YEAR, calc_max_drawdown, calc_sharpe
+
     returns = nav.pct_change().dropna()
     n_days = len(nav)
     total_ret = nav.iloc[-1] / nav.iloc[0] - 1.0
@@ -218,7 +248,7 @@ def compute_ic_for_factor(factor_df, fwd_df) -> dict:
         if len(common) < 30:
             continue
         result = sp_stats.spearmanr(common.values, fwd_common.values)
-        stat = result.statistic if hasattr(result, 'statistic') else result[0]
+        stat = result.statistic if hasattr(result, "statistic") else result[0]
         arr = np.asarray(stat)
         if arr.ndim == 2:
             ic = float(arr[0, 1])  # off-diagonal = cross-correlation
@@ -230,7 +260,13 @@ def compute_ic_for_factor(factor_df, fwd_df) -> dict:
             ic_list.append(ic)
 
     if len(ic_list) < 5:
-        return {"ic_mean": np.nan, "ic_std": np.nan, "ic_ir": np.nan, "t_stat": np.nan, "n_dates": len(ic_list)}
+        return {
+            "ic_mean": np.nan,
+            "ic_std": np.nan,
+            "ic_ir": np.nan,
+            "t_stat": np.nan,
+            "n_dates": len(ic_list),
+        }
 
     arr = np.array(ic_list)
     ic_mean = arr.mean()
@@ -281,17 +317,25 @@ def load_forward_returns_pivot(conn, start_date, end_date, horizon=20):
     else:
         # Fallback to DB
         print("  Parquet cache not found, loading from DB...")
-        price = pd.read_sql("""
+        price = pd.read_sql(
+            """
             SELECT code, trade_date, close FROM klines_daily
             WHERE trade_date >= %s AND trade_date <= %s AND volume > 0
             ORDER BY code, trade_date
-        """, conn, params=(start_date, end_date))
+        """,
+            conn,
+            params=(start_date, end_date),
+        )
         price["trade_date"] = pd.to_datetime(price["trade_date"]).dt.date
-        bench = pd.read_sql("""
+        bench = pd.read_sql(
+            """
             SELECT trade_date, close FROM index_daily
             WHERE index_code = '000300.SH' AND trade_date >= %s AND trade_date <= %s
             ORDER BY trade_date
-        """, conn, params=(start_date, end_date))
+        """,
+            conn,
+            params=(start_date, end_date),
+        )
         bench["trade_date"] = pd.to_datetime(bench["trade_date"]).dt.date
         bench_close = bench.set_index("trade_date")["close"]
 
@@ -317,14 +361,18 @@ def task_2_1a(conn):
 
     # Load level factors
     placeholders = ",".join(["%s"] * len(FUNDAMENTAL_FACTORS))
-    level_df = pd.read_sql(f"""
+    level_df = pd.read_sql(
+        f"""
         SELECT code, trade_date, factor_name, raw_value
         FROM factor_values
         WHERE factor_name IN ({placeholders})
           AND trade_date >= '2020-01-01' AND trade_date <= '2026-04-15'
           AND raw_value IS NOT NULL
         ORDER BY code, trade_date
-    """, conn, params=tuple(FUNDAMENTAL_FACTORS))
+    """,
+        conn,
+        params=tuple(FUNDAMENTAL_FACTORS),
+    )
     level_df["trade_date"] = pd.to_datetime(level_df["trade_date"]).dt.date
     level_df["raw_value"] = level_df["raw_value"].astype(float)
     print(f"  Loaded {len(level_df):,} fundamental rows")
@@ -376,7 +424,9 @@ def task_2_1a(conn):
 
         # Compute IC (only on 2023+ dates for consistency with quick-screen)
         ic_df = valid[valid["trade_date"] >= date(2023, 1, 1)].copy()
-        ic_df = ic_df.rename(columns={"delta_ffill": "raw_value"})[["code", "trade_date", "raw_value"]]
+        ic_df = ic_df.rename(columns={"delta_ffill": "raw_value"})[
+            ["code", "trade_date", "raw_value"]
+        ]
 
         # Sample every 20th trading date
         all_dates = sorted(ic_df["trade_date"].unique())
@@ -388,13 +438,17 @@ def task_2_1a(conn):
         ic_result["source"] = source_name
         results[change_name] = ic_result
 
-        ic_str = f"IC={ic_result['ic_mean']:+.4f}, t={ic_result.get('t_stat', 0):.2f}" if not np.isnan(ic_result.get("ic_mean", np.nan)) else "N/A"
+        ic_str = (
+            f"IC={ic_result['ic_mean']:+.4f}, t={ic_result.get('t_stat', 0):.2f}"
+            if not np.isnan(ic_result.get("ic_mean", np.nan))
+            else "N/A"
+        )
         print(f"    IC: {ic_str}")
 
     # Compare with level factors
     print("\n── Change vs Level IC Comparison ──")
     print(f"  {'Factor':>20s} | {'Level IC':>10s} | {'Change IC':>10s} | {'Improve?':>10s}")
-    print(f"  {'-'*20}-+-{'-'*10}-+-{'-'*10}-+-{'-'*10}")
+    print(f"  {'-' * 20}-+-{'-' * 10}-+-{'-' * 10}-+-{'-' * 10}")
 
     # Load level ICs from quick-screen CSV
     qs = pd.read_csv(CACHE_DIR / "phase3a_ic_quickscreen.csv")
@@ -433,6 +487,7 @@ def task_2_1b(conn):
 
     # Load industry mapping (SW1)
     from app.services.industry_utils import apply_sw2_to_sw1
+
     cur = conn.cursor()
     cur.execute("SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'")
     ind_raw = {r[0]: r[1] if r[1] and r[1] != "nan" else "other" for r in cur.fetchall()}
@@ -441,14 +496,18 @@ def task_2_1b(conn):
 
     # Load fundamental factors
     placeholders = ",".join(["%s"] * len(FUNDAMENTAL_FACTORS))
-    fund_df = pd.read_sql(f"""
+    fund_df = pd.read_sql(
+        f"""
         SELECT code, trade_date, factor_name, raw_value
         FROM factor_values
         WHERE factor_name IN ({placeholders})
           AND trade_date >= '2020-01-01' AND trade_date <= '2026-04-15'
           AND raw_value IS NOT NULL
         ORDER BY trade_date, code
-    """, conn, params=tuple(FUNDAMENTAL_FACTORS))
+    """,
+        conn,
+        params=tuple(FUNDAMENTAL_FACTORS),
+    )
     fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"]).dt.date
     fund_df["raw_value"] = fund_df["raw_value"].astype(float)
     fund_df["industry"] = fund_df["code"].map(ind_map).fillna("other")
@@ -498,7 +557,11 @@ def task_2_1b(conn):
         ic_result["source"] = source_name
         results[rank_name] = ic_result
 
-        ic_str = f"IC={ic_result['ic_mean']:+.4f}, t={ic_result.get('t_stat', 0):.2f}" if not np.isnan(ic_result.get("ic_mean", np.nan)) else "N/A"
+        ic_str = (
+            f"IC={ic_result['ic_mean']:+.4f}, t={ic_result.get('t_stat', 0):.2f}"
+            if not np.isnan(ic_result.get("ic_mean", np.nan))
+            else "N/A"
+        )
         print(f"    IC: {ic_str}")
 
     elapsed = time.time() - t0
@@ -527,13 +590,16 @@ def task_2_1c(conn):
     core4_df = load_core4_factors()
 
     # Load fundamentals for filtering
-    fund_df = pd.read_sql("""
+    fund_df = pd.read_sql(
+        """
         SELECT code, trade_date, factor_name, raw_value
         FROM factor_values
         WHERE factor_name IN ('roe_dt_q', 'leverage_q', 'gross_margin_q')
           AND trade_date >= '2020-01-01' AND trade_date <= '2026-04-15'
           AND raw_value IS NOT NULL
-    """, conn)
+    """,
+        conn,
+    )
     fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"]).dt.date
     fund_df["raw_value"] = fund_df["raw_value"].astype(float)
 
@@ -550,6 +616,7 @@ def task_2_1c(conn):
 
     # Load industry map for Filter D (median comparison)
     from app.services.industry_utils import apply_sw2_to_sw1
+
     cur = conn.cursor()
     cur.execute("SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'")
     ind_raw = {r[0]: r[1] if r[1] and r[1] != "nan" else "other" for r in cur.fetchall()}
@@ -621,7 +688,9 @@ def task_2_1c(conn):
         bt_config = BacktestConfig(top_n=20, rebalance_freq="monthly", initial_capital=1_000_000)
         sig_config = SignalConfig(
             factor_names=list(CORE4_DIRECTIONS.keys()),
-            top_n=20, weight_method="equal", rebalance_freq="monthly",
+            top_n=20,
+            weight_method="equal",
+            rebalance_freq="monthly",
             size_neutral_beta=0.50,
         )
 
@@ -639,7 +708,9 @@ def task_2_1c(conn):
             metrics["label"] = label
             metrics["universe_pct"] = round(pct, 1)
             results[label] = metrics
-            print(f"    Sharpe={metrics['sharpe']:.4f}, MDD={metrics['mdd']:.2%}, AnnRet={metrics['annual_return']:.2%}")
+            print(
+                f"    Sharpe={metrics['sharpe']:.4f}, MDD={metrics['mdd']:.2%}, AnnRet={metrics['annual_return']:.2%}"
+            )
         except Exception as e:
             print(f"    FAILED: {e}")
             results[label] = {"label": label, "error": str(e)[:100]}
@@ -647,12 +718,14 @@ def task_2_1c(conn):
     # Summary table
     print("\n── Pre-Filter Summary ──")
     print(f"  {'Config':>30s} | {'Sharpe':>8s} | {'MDD':>8s} | {'AnnRet':>8s} | {'Univ%':>6s}")
-    print(f"  {'-'*30}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}-+-{'-'*6}")
+    print(f"  {'-' * 30}-+-{'-' * 8}-+-{'-' * 8}-+-{'-' * 8}-+-{'-' * 6}")
     for label, r in results.items():
         if "error" in r:
             print(f"  {label:>30s} | {'ERROR':>8s}")
         else:
-            print(f"  {label:>30s} | {r['sharpe']:>8.4f} | {r['mdd']:>8.2%} | {r['annual_return']:>8.2%} | {r.get('universe_pct', 100):>6.1f}")
+            print(
+                f"  {label:>30s} | {r['sharpe']:>8.4f} | {r['mdd']:>8.2%} | {r['annual_return']:>8.2%} | {r.get('universe_pct', 100):>6.1f}"
+            )
 
     elapsed = time.time() - t0
     save_result(results, "task_2_1c_prefilter")
@@ -679,13 +752,16 @@ def task_2_1d(conn):
     core4_df = load_core4_factors()
 
     # Load fundamentals
-    fund_df = pd.read_sql("""
+    fund_df = pd.read_sql(
+        """
         SELECT code, trade_date, factor_name, raw_value
         FROM factor_values
         WHERE factor_name IN ('roe_dt_q', 'gross_margin_q', 'leverage_q', 'profit_growth_q')
           AND trade_date >= '2020-01-01' AND trade_date <= '2026-04-15'
           AND raw_value IS NOT NULL
-    """, conn)
+    """,
+        conn,
+    )
     fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"]).dt.date
     fund_df["raw_value"] = fund_df["raw_value"].astype(float)
 
@@ -696,10 +772,13 @@ def task_2_1d(conn):
         fund_pivots[fn] = sub.pivot(index="trade_date", columns="code", values="raw_value")
 
     # Load ln_mcap for size-neutral
-    mcap_df = pd.read_sql("""
+    mcap_df = pd.read_sql(
+        """
         SELECT code, trade_date, total_mv FROM daily_basic
         WHERE trade_date >= '2020-01-01' AND trade_date <= '2026-04-15' AND total_mv > 0
-    """, conn)
+    """,
+        conn,
+    )
     mcap_df["trade_date"] = pd.to_datetime(mcap_df["trade_date"]).dt.date
     mcap_df["total_mv"] = mcap_df["total_mv"].astype(float)
     mcap_df["ln_mcap"] = np.log(mcap_df["total_mv"] + 1)
@@ -752,9 +831,21 @@ def task_2_1d(conn):
 
     def screen_b(top30_codes, td):
         """Remove worst 10 by composite quality (ROE + margin - leverage)."""
-        roe = fund_pivots["roe_dt_q"].loc[td].reindex(top30_codes) if td in fund_pivots["roe_dt_q"].index else pd.Series(dtype=float)
-        margin = fund_pivots["gross_margin_q"].loc[td].reindex(top30_codes) if td in fund_pivots["gross_margin_q"].index else pd.Series(dtype=float)
-        lev = fund_pivots["leverage_q"].loc[td].reindex(top30_codes) if td in fund_pivots["leverage_q"].index else pd.Series(dtype=float)
+        roe = (
+            fund_pivots["roe_dt_q"].loc[td].reindex(top30_codes)
+            if td in fund_pivots["roe_dt_q"].index
+            else pd.Series(dtype=float)
+        )
+        margin = (
+            fund_pivots["gross_margin_q"].loc[td].reindex(top30_codes)
+            if td in fund_pivots["gross_margin_q"].index
+            else pd.Series(dtype=float)
+        )
+        lev = (
+            fund_pivots["leverage_q"].loc[td].reindex(top30_codes)
+            if td in fund_pivots["leverage_q"].index
+            else pd.Series(dtype=float)
+        )
 
         quality = pd.DataFrame({"roe": roe, "margin": margin, "lev": lev})
         quality = quality.dropna(how="all")
@@ -825,17 +916,21 @@ def task_2_1d(conn):
         metrics["label"] = label
         metrics["n_rebal"] = len(target_portfolios)
         results[label] = metrics
-        print(f"    Sharpe={metrics['sharpe']:.4f}, MDD={metrics['mdd']:.2%}, n_rebal={len(target_portfolios)}")
+        print(
+            f"    Sharpe={metrics['sharpe']:.4f}, MDD={metrics['mdd']:.2%}, n_rebal={len(target_portfolios)}"
+        )
 
     # Summary
     print("\n── Negative Screening Summary ──")
     print(f"  {'Config':>30s} | {'Sharpe':>8s} | {'MDD':>8s} | {'AnnRet':>8s}")
-    print(f"  {'-'*30}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}")
+    print(f"  {'-' * 30}-+-{'-' * 8}-+-{'-' * 8}-+-{'-' * 8}")
     for label, r in results.items():
         if "error" in r:
             print(f"  {label:>30s} | {'ERROR':>8s}")
         else:
-            print(f"  {label:>30s} | {r['sharpe']:>8.4f} | {r['mdd']:>8.2%} | {r['annual_return']:>8.2%}")
+            print(
+                f"  {label:>30s} | {r['sharpe']:>8.4f} | {r['mdd']:>8.2%} | {r['annual_return']:>8.2%}"
+            )
 
     elapsed = time.time() - t0
     save_result(results, "task_2_1d_negative_screening")
@@ -869,12 +964,17 @@ def task_2_2(conn):
     results = {}
     for i, fname in enumerate(SIGNIFICANT_FACTORS):
         t1 = time.time()
-        print(f"\n  [{i+1:>2}/{len(SIGNIFICANT_FACTORS)}] Profiling {fname}...")
+        print(f"\n  [{i + 1:>2}/{len(SIGNIFICANT_FACTORS)}] Profiling {fname}...")
 
         try:
             profile = profile_factor(
-                fname, close_pivot, fwd_excess, csi_monthly,
-                industry_map, trading_dates, conn=conn,
+                fname,
+                close_pivot,
+                fwd_excess,
+                csi_monthly,
+                industry_map,
+                trading_dates,
+                conn=conn,
                 all_factor_names=all_factor_names,
             )
 
@@ -930,8 +1030,10 @@ def task_2_2(conn):
             results[fname] = decay
             elapsed_f = time.time() - t1
             ic20_str = f"IC_20d={decay.get('ic_20d', 'N/A')}"
-            print(f"    {ic20_str}, halflife={decay.get('ic_halflife')}, "
-                  f"decay={decay['decay_type']}, mono={decay.get('monotonicity', 'N/A')} ({elapsed_f:.1f}s)")
+            print(
+                f"    {ic20_str}, halflife={decay.get('ic_halflife')}, "
+                f"decay={decay['decay_type']}, mono={decay.get('monotonicity', 'N/A')} ({elapsed_f:.1f}s)"
+            )
 
         except Exception as e:
             print(f"    {fname}: FAILED - {e}")
@@ -943,8 +1045,12 @@ def task_2_2(conn):
     print("\n" + "=" * 70)
     print("  IC Decay Summary")
     print("=" * 70)
-    print(f"  {'Factor':>25s} | {'IC_1d':>7s} | {'IC_5d':>7s} | {'IC_20d':>7s} | {'IC_60d':>7s} | {'IC_120d':>7s} | {'Half':>5s} | {'Type':>8s}")
-    print(f"  {'-'*25}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}-+-{'-'*5}-+-{'-'*8}")
+    print(
+        f"  {'Factor':>25s} | {'IC_1d':>7s} | {'IC_5d':>7s} | {'IC_20d':>7s} | {'IC_60d':>7s} | {'IC_120d':>7s} | {'Half':>5s} | {'Type':>8s}"
+    )
+    print(
+        f"  {'-' * 25}-+-{'-' * 7}-+-{'-' * 7}-+-{'-' * 7}-+-{'-' * 7}-+-{'-' * 7}-+-{'-' * 5}-+-{'-' * 8}"
+    )
 
     for fname in SIGNIFICANT_FACTORS:
         r = results.get(fname, {})
@@ -958,9 +1064,11 @@ def task_2_2(conn):
         hl = r.get("ic_halflife")
         hl_str = f"{hl:>5.0f}" if hl is not None else "  N/A"
 
-        print(f"  {fname:>25s} | {fmt(r.get('ic_1d')):>7s} | {fmt(r.get('ic_5d')):>7s} | "
-              f"{fmt(r.get('ic_20d')):>7s} | {fmt(r.get('ic_60d')):>7s} | {fmt(r.get('ic_120d')):>7s} | "
-              f"{hl_str} | {r.get('decay_type', 'N/A'):>8s}")
+        print(
+            f"  {fname:>25s} | {fmt(r.get('ic_1d')):>7s} | {fmt(r.get('ic_5d')):>7s} | "
+            f"{fmt(r.get('ic_20d')):>7s} | {fmt(r.get('ic_60d')):>7s} | {fmt(r.get('ic_120d')):>7s} | "
+            f"{hl_str} | {r.get('decay_type', 'N/A'):>8s}"
+        )
 
     # Decay type distribution
     decay_counts = {}
@@ -1024,18 +1132,24 @@ def task_2_3(conn, decay_results=None):
             corrs = []
             for td in sample_dates:
                 # Load both factors on this date
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT code, COALESCE(neutral_value, raw_value) AS val
                     FROM factor_values
                     WHERE factor_name = %s AND trade_date = %s AND raw_value IS NOT NULL
-                """, (fname, td))
+                """,
+                    (fname, td),
+                )
                 f1 = {r[0]: float(r[1]) for r in cur.fetchall()}
 
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT code, COALESCE(neutral_value, raw_value) AS val
                     FROM factor_values
                     WHERE factor_name = %s AND trade_date = %s AND raw_value IS NOT NULL
-                """, (core_fname, td))
+                """,
+                    (core_fname, td),
+                )
                 f2 = {r[0]: float(r[1]) for r in cur.fetchall()}
 
                 common = set(f1.keys()) & set(f2.keys())
@@ -1053,9 +1167,14 @@ def task_2_3(conn, decay_results=None):
                     max_corr = avg_corr
                     max_corr_factor = core_fname
 
-        corr_with_core4[fname] = {"max_corr": round(max_corr, 3), "max_corr_factor": max_corr_factor}
+        corr_with_core4[fname] = {
+            "max_corr": round(max_corr, 3),
+            "max_corr_factor": max_corr_factor,
+        }
         if (SIGNIFICANT_FACTORS.index(fname) + 1) % 8 == 0:
-            print(f"    Correlation progress: {SIGNIFICANT_FACTORS.index(fname)+1}/{len(SIGNIFICANT_FACTORS)}")
+            print(
+                f"    Correlation progress: {SIGNIFICANT_FACTORS.index(fname) + 1}/{len(SIGNIFICANT_FACTORS)}"
+            )
 
     # Build recommendation table
     recommendations = []
@@ -1122,14 +1241,20 @@ def task_2_3(conn, decay_results=None):
     print("\n" + "=" * 70)
     print("  Factor Usage Recommendation Table")
     print("=" * 70)
-    print(f"  {'Factor':>25s} | {'IC_20d':>7s} | {'t':>6s} | {'Corr':>5s} | {'Decay':>8s} | {'Mono':>5s} | {'Layer':>22s} | {'Pri':>3s}")
-    print(f"  {'-'*25}-+-{'-'*7}-+-{'-'*6}-+-{'-'*5}-+-{'-'*8}-+-{'-'*5}-+-{'-'*22}-+-{'-'*3}")
+    print(
+        f"  {'Factor':>25s} | {'IC_20d':>7s} | {'t':>6s} | {'Corr':>5s} | {'Decay':>8s} | {'Mono':>5s} | {'Layer':>22s} | {'Pri':>3s}"
+    )
+    print(
+        f"  {'-' * 25}-+-{'-' * 7}-+-{'-' * 6}-+-{'-' * 5}-+-{'-' * 8}-+-{'-' * 5}-+-{'-' * 22}-+-{'-' * 3}"
+    )
 
     for r in recommendations:
         ic_str = f"{r['ic_20d']:+.4f}" if r["ic_20d"] is not None else "  N/A"
         mono_str = f"{r['monotonicity']:.2f}" if r["monotonicity"] is not None else " N/A"
-        print(f"  {r['factor']:>25s} | {ic_str:>7s} | {r['t_stat']:>6.2f} | {r['max_corr_core4']:>5.2f} | "
-              f"{r['decay_type']:>8s} | {mono_str:>5s} | {r['layer']:>22s} | {r['priority']:>3s}")
+        print(
+            f"  {r['factor']:>25s} | {ic_str:>7s} | {r['t_stat']:>6.2f} | {r['max_corr_core4']:>5.2f} | "
+            f"{r['decay_type']:>8s} | {mono_str:>5s} | {r['layer']:>22s} | {r['priority']:>3s}"
+        )
 
     # Priority distribution
     pri_counts = {}
@@ -1147,7 +1272,10 @@ def task_2_3(conn, decay_results=None):
     rec_df.to_csv(csv_path, index=False)
     print(f"  CSV saved: {csv_path}")
 
-    save_result({"recommendations": recommendations, "corr_with_core4": corr_with_core4}, "task_2_3_recommendations")
+    save_result(
+        {"recommendations": recommendations, "corr_with_core4": corr_with_core4},
+        "task_2_3_recommendations",
+    )
     return recommendations
 
 
@@ -1158,8 +1286,9 @@ def task_2_3(conn, decay_results=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 3B: Factor Characteristics Analysis")
-    parser.add_argument("--task", type=str, default="all",
-                        help="Task to run: 2.1a/2.1b/2.1c/2.1d/2.2/2.3/all")
+    parser.add_argument(
+        "--task", type=str, default="all", help="Task to run: 2.1a/2.1b/2.1c/2.1d/2.2/2.3/all"
+    )
     parser.add_argument("--all", action="store_true", help="Run all tasks")
     args = parser.parse_args()
 
@@ -1195,10 +1324,10 @@ def main():
         task_2_3(conn, decay_results)
 
     total_elapsed = time.time() - t_total
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  Phase 3B complete ({total_elapsed:.0f}s)")
     print(f"  Results in: {PHASE3B_CACHE}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     conn.close()
 

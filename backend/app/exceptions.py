@@ -4,6 +4,7 @@
 
 铁律 33 (fail-loud): 类型化 exception 让上游能精确判定原因, 区别于裸 RuntimeError.
 """
+
 from __future__ import annotations
 
 

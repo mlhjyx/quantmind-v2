@@ -439,7 +439,7 @@ python scripts/approve_l4.py            # L4 熔断人工审批恢复
 | 回测引擎内部模块 | `docs/DEV_BACKTEST_ENGINE.md §0` (模块拆分) |
 | 因子计算 | `docs/DEV_FACTOR_MINING.md` |
 | GP 闭环 | `docs/GP_CLOSED_LOOP_DESIGN.md` |
-| 风控 L1-L4 | `docs/RISK_CONTROL_SERVICE_DESIGN.md` |
+| 风控 (V3 L0-L5, 当前 SSOT) | `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` (旧 `RISK_CONTROL_SERVICE_DESIGN.md` 已 PARTIALLY DEPRECATED) |
 | ML Walk-Forward | `docs/ML_WALKFORWARD_DESIGN.md` |
 | 因子测试注册表 (BH-FDR M) | `FACTOR_TEST_REGISTRY.md` |
 | 教训 | `LESSONS_LEARNED.md` (36 条) |

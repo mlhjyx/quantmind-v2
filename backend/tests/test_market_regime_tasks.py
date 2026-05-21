@@ -137,7 +137,13 @@ class TestClassifyMarketRegimeTask:
         mock_conn = MagicMock()
         with patch("app.tasks.market_regime_tasks.persist_market_regime") as mock_persist:
             mock_persist.return_value = 42  # synthetic regime_id
-            with patch("app.services.db.get_sync_conn", return_value=mock_conn):
+            with (
+                patch("app.services.db.get_sync_conn", return_value=mock_conn),
+                # Stub the calendar gate — it is a precondition guard, not part of the
+                # orchestration under test. Left live (post Plan 1.5) it consumes the
+                # shared get_sync_conn mock and pollutes the conn-call assertions.
+                patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
+            ):
                 result = task_mod.classify_market_regime.apply(
                     args=[], kwargs={"decision_id": "test-decision-1"}
                 ).get()
@@ -178,6 +184,7 @@ class TestClassifyMarketRegimeTask:
         with (
             patch("app.tasks.market_regime_tasks.persist_market_regime", return_value=1),
             patch("app.services.db.get_sync_conn", return_value=mock_conn),
+            patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
         ):
             result = task_mod.classify_market_regime.apply(args=[]).get()
 
@@ -209,6 +216,7 @@ class TestClassifyMarketRegimeTask:
                 side_effect=RuntimeError("persist boom"),
             ),
             patch("app.services.db.get_sync_conn", return_value=mock_conn),
+            patch("qm_platform.calendar.is_trading_day_today_or_skip", return_value=True),
             pytest.raises(RuntimeError, match="persist boom"),
         ):
             task_mod.classify_market_regime.apply(args=[]).get()

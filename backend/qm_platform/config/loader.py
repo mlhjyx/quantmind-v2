@@ -19,6 +19,7 @@ env 映射表硬编码 (显式, 避免隐式推断漂移):
 
 关联铁律 34: 配置 single source of truth — 本模块是 load 真相源.
 """
+
 from __future__ import annotations
 
 import os
@@ -193,9 +194,7 @@ class PlatformConfigLoader(ConfigLoader):
         elif schema is RootConfigSchema or isinstance(schema, ConfigSchema):
             root_cls = RootConfigSchema
         else:
-            raise TypeError(
-                f"PlatformConfigLoader expects RootConfigSchema class, got {schema!r}"
-            )
+            raise TypeError(f"PlatformConfigLoader expects RootConfigSchema class, got {schema!r}")
 
         # 2. YAML 加载 + 结构适配
         path = _resolve_yaml_path(yaml_path)

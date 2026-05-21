@@ -34,8 +34,10 @@ H4 fix (2026-05-19, Audit Section X §39 + ISSUES_PENDING_REGISTRY §4 A5/§9 H4
         if not is_trading_day_today_or_skip():
             sys.exit(0)
 
-    Helper ready in calendar module. 真 task body 加 gate 留 Phase I
-    (~4h, 10 task entrypoint × 1 line each).
+    Calendar gate Phase I — DONE (Plan 1, 2026-05-20): 7 trading-day-sensitive Beat
+    task functions gated via is_trading_day_today_or_skip; 3 deliberately NOT gated
+    (sweep_stuck_broker_plans 跨日对账 / meta_monitor_tick 元监控 all-hours /
+    announcement_ingest cron 含周末公告); 余下非交易日无关. 详 docs/DEV_SCHEDULER.md §〇.
 """
 
 from celery.schedules import crontab
@@ -374,13 +376,17 @@ CELERY_BEAT_SCHEDULE: dict = {
     #   - Output: stdout + 沉淀 to scheduler_log table
     # 反 hard collision: 月初 1日 09:00 SH risk-reflector-monthly (沿用 §risk-reflector-monthly)
     #   sequential queue tolerated (Beat solo dispatch). 月初 08:00 SH no other Beat fires.
-    # **NOTE**: 任务 wrapper (`app.tasks.llm_cost_audit_tasks.monthly_audit`) **未实现** — 留 follow-up
-    #   sub-PR autonomous implement OR user manual sched scripts/llm_cost_monthly_audit.py.
-    #   Beat entry 沉淀 ahead of time per Plan v8 §VIII #29 audit cadence体例 enforcement.
+    # **IMPLEMENTED Plan v10 (2026-05-20)**: task wrapper
+    #   `app.tasks.llm_cost_audit_tasks.monthly_audit` 是 scripts/llm_cost_monthly_audit.py
+    #   的 subprocess wrapper (隔离进程, 脚本自管 .env + psycopg2 + exit code). 真根因:
+    #   模块 Plan v8 P0-16 时已建但**漏注册 celery_app.py imports** → worker 不 import →
+    #   task 不注册. Plan v10 注册 imports list + 单测 (test_llm_cost_audit_tasks.py) +
+    #   smoke (test_plan_v10_beat_task_wire_live.py). Plan v9 matrix §3.3 闭环 ——
+    #   §8.2 曾误标 closed (仅改本注释未注册模块), Plan v10 真闭环.
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
-    #   (沿用 ADR-043 + LL-097 sediment).
+    #   (沿用 ADR-043 + LL-097 sediment; imports list 变更必须重启 worker 才注册).
     "llm-cost-monthly-audit": {
-        "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",  # **未实现** task, 待 follow-up sub-PR
+        "task": "app.tasks.llm_cost_audit_tasks.monthly_audit",  # implemented Plan v10 (subprocess wrapper)
         "schedule": crontab(hour=8, minute=0, day_of_month="1"),
         "options": {
             "queue": "default",
@@ -396,12 +402,16 @@ CELERY_BEAT_SCHEDULE: dict = {
     #   - Compare vs current calibration; alert if drift > 30% per coef
     #   - Output: docs/research/slippage_calibration_YYYYQ.md + 沉淀 calibration_history table
     # 反 hard collision: 02:00 SH 月初 1日 no other Beat fires (gp-weekly Sun 22:00 + outbox 30s only).
-    # **NOTE**: 任务 wrapper (`app.tasks.slippage_calibration_tasks.quarterly_recalibrate`) **未实现** —
-    #   留 follow-up sub-PR. Beat entry 沉淀 ahead of time per 铁律 18 enforcement + Plan v8 P0-10 closure.
+    # **IMPLEMENTED Plan v10 (2026-05-20)**: task wrapper
+    #   `app.tasks.slippage_calibration_tasks.quarterly_recalibrate` 是
+    #   scripts/bayesian_slippage_calibration.py 的 subprocess wrapper. 真根因同
+    #   llm-cost-monthly-audit: 模块 Plan v8 P0-10 时已建但漏注册 celery_app.py imports.
+    #   Plan v10 注册 imports list + 单测 (test_slippage_calibration_tasks.py) + smoke.
+    #   Plan v9 matrix §3.3 闭环 (§8.2 曾误标 closed, Plan v10 真闭环; 铁律 18 季度复核).
     # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
-    #   (沿用 ADR-043 + LL-097 sediment).
+    #   (沿用 ADR-043 + LL-097 sediment; imports list 变更必须重启 worker 才注册).
     "slippage-calibration-quarterly": {
-        "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",  # **未实现** task, 待 follow-up sub-PR
+        "task": "app.tasks.slippage_calibration_tasks.quarterly_recalibrate",  # implemented Plan v10 (subprocess wrapper)
         "schedule": crontab(hour=2, minute=0, day_of_month="1", month_of_year="1,4,7,10"),
         "options": {
             "queue": "default",

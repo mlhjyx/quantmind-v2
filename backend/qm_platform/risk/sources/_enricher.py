@@ -9,6 +9,7 @@
 铁律 31 此模块仍 IO (读 DB + Redis), 归属 sources 子包 (Platform concrete 实现层 IO OK,
 rules.pms / interface.py 则严格纯计算).
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,7 +29,9 @@ class PriceReader(Protocol):
         ...
 
 
-def load_entry_prices(conn, strategy_id: str, execution_mode: str, codes: list[str]) -> dict[str, float]:
+def load_entry_prices(
+    conn, strategy_id: str, execution_mode: str, codes: list[str]
+) -> dict[str, float]:
     """从 trade_log 加权平均买入成本.
 
     reviewer P1-2 采纳: 过滤"最近一次卖出之后的买入" (与 load_peak_prices entry_date
@@ -72,7 +75,10 @@ def load_entry_prices(conn, strategy_id: str, execution_mode: str, codes: list[s
 
 
 def _resolve_entry_date(
-    cur, code: str, strategy_id: str, execution_mode: str,
+    cur,
+    code: str,
+    strategy_id: str,
+    execution_mode: str,
 ) -> date | None:
     """私有 helper: entry_date = MIN(buy.trade_date) since last sell.
 
@@ -99,7 +105,10 @@ def _resolve_entry_date(
 
 
 def load_entry_dates(
-    conn, strategy_id: str, execution_mode: str, codes: list[str],
+    conn,
+    strategy_id: str,
+    execution_mode: str,
+    codes: list[str],
 ) -> dict[str, date]:
     """加载持仓首日 (Phase 1.5a, Session 44).
 
@@ -139,7 +148,9 @@ def load_entry_dates(
     return result
 
 
-def load_peak_prices(conn, strategy_id: str, execution_mode: str, codes: list[str]) -> dict[str, float]:
+def load_peak_prices(
+    conn, strategy_id: str, execution_mode: str, codes: list[str]
+) -> dict[str, float]:
     """从 klines_daily 持仓期间历史最高收盘价.
 
     持仓期间定义: entry_date = MIN(buy trade_date) since 最近一次 sell. 无卖出则取全部 buy.

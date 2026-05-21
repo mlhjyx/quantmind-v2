@@ -186,8 +186,9 @@ def test_includes_when_all_flags_false(sync_conn, seeded_universe):
     """happy path: ss 行 is_st=false/is_suspended=false/is_new_stock=false → 包含."""
     today, _seed, prefix = seeded_universe
     code = f"{prefix}02.SH"
-    _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
-          board="main")
+    _seed(
+        code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False}, board="main"
+    )
 
     universe = load_universe(today, sync_conn)
     assert code in universe, "所有 flag false 时应包含"
@@ -197,8 +198,9 @@ def test_excludes_ss_is_st_true(sync_conn, seeded_universe):
     """P0-ε 回归: 688184 场景 — is_st=true → 排除."""
     today, _seed, prefix = seeded_universe
     code = f"{prefix}03.SH"
-    _seed(code, ss_config={"is_st": True, "is_suspended": False, "is_new_stock": False},
-          board="main")
+    _seed(
+        code, ss_config={"is_st": True, "is_suspended": False, "is_new_stock": False}, board="main"
+    )
 
     universe = load_universe(today, sync_conn)
     assert code not in universe, "is_st=true 必须排除 (P0-ε 688184 场景)"
@@ -239,8 +241,9 @@ def test_uses_actual_trade_date_not_status_date_lag(sync_conn, seeded_universe):
         (code, yesterday),
     )
     # 今日 ss 行: is_st=true (新状态, 688184 场景)
-    _seed(code, ss_config={"is_st": True, "is_suspended": False, "is_new_stock": False},
-          board="main")
+    _seed(
+        code, ss_config={"is_st": True, "is_suspended": False, "is_new_stock": False}, board="main"
+    )
 
     universe = load_universe(today, sync_conn)
     assert code not in universe, (
@@ -253,8 +256,9 @@ def test_excludes_bse_board(sync_conn, seeded_universe):
     """board='bse' → 排除 (backward compat)."""
     today, _seed, prefix = seeded_universe
     code = f"{prefix}06.SH"
-    _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
-          board="bse")
+    _seed(
+        code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False}, board="bse"
+    )
 
     universe = load_universe(today, sync_conn)
     assert code not in universe, "board='bse' 必须排除"
@@ -264,8 +268,9 @@ def test_excludes_bj_suffix(sync_conn, seeded_universe):
     """code LIKE '%%.BJ' → 排除 (backward compat)."""
     today, _seed, prefix = seeded_universe
     code = f"{prefix}07.BJ"
-    _seed(code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False},
-          board="main")
+    _seed(
+        code, ss_config={"is_st": False, "is_suspended": False, "is_new_stock": False}, board="main"
+    )
 
     universe = load_universe(today, sync_conn)
     assert code not in universe, "code LIKE '%%.BJ' 必须排除"

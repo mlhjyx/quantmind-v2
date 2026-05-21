@@ -103,9 +103,7 @@ class TestActivationGate:
         assert "600519.SH" in rule._trail_state
         # Retrace to current=119 → pnl=19% (below 20% activation), BUT
         # stop=112.5 → 119 > 112.5 so no trigger; state should PERSIST.
-        results = rule.evaluate(
-            _ctx(_pos(entry_price=100, peak_price=125, current_price=119))
-        )
+        results = rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=119)))
         assert results == []  # no trigger
         assert "600519.SH" in rule._trail_state  # state persists
 
@@ -116,9 +114,7 @@ class TestActivationGate:
         rule = TrailingStop()
         rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=125)))
         # current=110 → stop=112.5 → 110 < 112.5 → TRIGGER → state purged
-        results = rule.evaluate(
-            _ctx(_pos(entry_price=100, peak_price=125, current_price=110))
-        )
+        results = rule.evaluate(_ctx(_pos(entry_price=100, peak_price=125, current_price=110)))
         assert len(results) == 1  # triggered
         assert "600519.SH" not in rule._trail_state  # state purged post-trigger
 

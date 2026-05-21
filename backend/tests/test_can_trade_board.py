@@ -27,6 +27,7 @@ def broker() -> SimBroker:
 # _infer_price_limit 单元测试
 # ============================================================
 
+
 class TestInferPriceLimit:
     """测试从股票代码推断涨跌幅。"""
 
@@ -66,6 +67,7 @@ class TestInferPriceLimit:
 # ============================================================
 # can_trade 板块涨跌停集成测试
 # ============================================================
+
 
 def _make_row(**kwargs) -> pd.Series:
     """构造行情数据行。"""
@@ -196,8 +198,11 @@ class TestCanTradeDataSourcePriority:
     def test_data_field_overrides_inference(self, broker):
         """即使代码是创业板(20%)，数据字段给10%也用数据字段"""
         row = _make_row(
-            close=11.0, pre_close=10.0, turnover_rate=0.5,
-            up_limit=11.0, down_limit=9.0,
+            close=11.0,
+            pre_close=10.0,
+            turnover_rate=0.5,
+            up_limit=11.0,
+            down_limit=9.0,
         )
         # up_limit=11.0(10%), close=11.0 → 涨停封板
         assert broker.can_trade("300750.SZ", "buy", row) is False

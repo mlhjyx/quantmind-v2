@@ -3,6 +3,7 @@
 调 utils.paired_bootstrap_pvalue 单边检验 ic > baseline.
 ctx.ic_series + ctx.ic_baseline_series 必需 (同长度对齐).
 """
+
 from __future__ import annotations
 
 from ..interface import GateResult

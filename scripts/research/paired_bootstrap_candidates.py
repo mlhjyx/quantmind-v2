@@ -134,13 +134,15 @@ def compute_paired_ic(
         ic5, _ = stats.spearmanr(z5.values, fwd_cross[common].values)
         ic6, _ = stats.spearmanr(z6.values, fwd_cross[common].values)
 
-        records.append({
-            "date": d_str,
-            "ic_5": ic5,
-            "ic_6": ic6,
-            "ic_diff": ic6 - ic5,
-            "n_stocks": len(common),
-        })
+        records.append(
+            {
+                "date": d_str,
+                "ic_5": ic5,
+                "ic_6": ic6,
+                "ic_diff": ic6 - ic5,
+                "n_stocks": len(common),
+            }
+        )
 
     return pd.DataFrame(records)
 
@@ -275,22 +277,27 @@ def main():
         print(f"  Testing: {candidate} (direction={FACTOR_DIRECTIONS.get(candidate, '?')})")
         print(f"{'─' * 75}")
 
-        paired_ic = compute_paired_ic(
-            factor_pivots, BASELINE_5, candidate, excess_fwd, month_ends
-        )
+        paired_ic = compute_paired_ic(factor_pivots, BASELINE_5, candidate, excess_fwd, month_ends)
 
         if len(paired_ic) < 10:
             print(f"  Only {len(paired_ic)} months. Too few.")
-            results_summary.append({
-                "factor": candidate, "verdict": "INSUFFICIENT_DATA",
-                "ic_diff": None, "p": None, "ci_95": None,
-            })
+            results_summary.append(
+                {
+                    "factor": candidate,
+                    "verdict": "INSUFFICIENT_DATA",
+                    "ic_diff": None,
+                    "p": None,
+                    "ci_95": None,
+                }
+            )
             continue
 
         ic5_mean = paired_ic["ic_5"].mean()
         ic6_mean = paired_ic["ic_6"].mean()
 
-        print(f"  5-factor IC: {ic5_mean:+.4f}  |  6-factor IC: {ic6_mean:+.4f}  |  diff: {paired_ic['ic_diff'].mean():+.4f}")
+        print(
+            f"  5-factor IC: {ic5_mean:+.4f}  |  6-factor IC: {ic6_mean:+.4f}  |  diff: {paired_ic['ic_diff'].mean():+.4f}"
+        )
         print(f"  Months: {len(paired_ic)}, avg stocks: {paired_ic['n_stocks'].mean():.0f}")
 
         result = paired_bootstrap_test(
@@ -311,15 +318,17 @@ def main():
         print(f"  t-stat: {result['t_stat']:+.3f}, t-pval: {result['t_pval']:.4f}")
         print(f"  >>> {verdict}")
 
-        results_summary.append({
-            "factor": candidate,
-            "verdict": verdict,
-            "ic_diff": result["observed_mean_diff"],
-            "p_one_sided": result["p_one_sided"],
-            "ci_95": result["ci_95"],
-            "t_stat": result["t_stat"],
-            "n_months": result["n_months"],
-        })
+        results_summary.append(
+            {
+                "factor": candidate,
+                "verdict": verdict,
+                "ic_diff": result["observed_mean_diff"],
+                "p_one_sided": result["p_one_sided"],
+                "ci_95": result["ci_95"],
+                "t_stat": result["t_stat"],
+                "n_months": result["n_months"],
+            }
+        )
 
     # ── 汇总 ──
     print(f"\n{'=' * 75}")

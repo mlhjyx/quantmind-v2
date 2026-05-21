@@ -5,6 +5,7 @@
 - e2e (requires_zhipu): 真 ZHIPU_API_KEY .env 走 minimal payload (反耗 quota)
 - smoke: 沿用 Step 4-2 + Step 4-3 体例 (build/integration sanity)
 """
+
 from __future__ import annotations
 
 import json
@@ -99,34 +100,32 @@ def test_parse_timestamp_empty_falls_back_to_now():
 
 def test_zhipu_fetch_parses_valid_response(monkeypatch):
     """mock httpx 走 valid JSON response → NewsItem list."""
-    mock_response_content = json.dumps({
-        "items": [
-            {
-                "title": "贵州茅台 Q1 财报披露",
-                "content": "营收 $X 亿",
-                "url": "https://example.com/news/1",
-                "timestamp": "2026-05-06T09:00:00+08:00",
-            },
-            {
-                "title": "茅台股价收涨 2%",
-                "content": None,
-                "url": "https://example.com/news/2",
-                "timestamp": "2026-05-06T15:00:00+08:00",
-            },
-        ]
-    })
-    mock_api_resp = {
-        "choices": [{"message": {"content": mock_response_content}}]
-    }
+    mock_response_content = json.dumps(
+        {
+            "items": [
+                {
+                    "title": "贵州茅台 Q1 财报披露",
+                    "content": "营收 $X 亿",
+                    "url": "https://example.com/news/1",
+                    "timestamp": "2026-05-06T09:00:00+08:00",
+                },
+                {
+                    "title": "茅台股价收涨 2%",
+                    "content": None,
+                    "url": "https://example.com/news/2",
+                    "timestamp": "2026-05-06T15:00:00+08:00",
+                },
+            ]
+        }
+    )
+    mock_api_resp = {"choices": [{"message": {"content": mock_response_content}}]}
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=mock_api_resp)
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = ZhipuNewsFetcher(api_key="test-key")
     items = fetcher.fetch(query="贵州茅台", limit=5)
@@ -150,9 +149,7 @@ def test_zhipu_fetch_4xx_raises_news_fetch_error_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = ZhipuNewsFetcher(api_key="bad-key")
     with pytest.raises(NewsFetchError, match="HTTP 401"):
@@ -170,9 +167,7 @@ def test_zhipu_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     # patch retry wait to 0 反实际 sleep (沿用 tenacity test 体例)
     with patch("backend.qm_platform.news.zhipu.wait_exponential", lambda **_: lambda *_: 0):
@@ -185,18 +180,14 @@ def test_zhipu_fetch_429_retries_then_raises(monkeypatch):
 
 def test_zhipu_fetch_malformed_json_returns_empty(monkeypatch):
     """智谱返回非法 JSON content → 沿用 audit log, 返 empty list (反 raise)."""
-    mock_api_resp = {
-        "choices": [{"message": {"content": "not json content"}}]
-    }
+    mock_api_resp = {"choices": [{"message": {"content": "not json content"}}]}
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=mock_api_resp)
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = ZhipuNewsFetcher(api_key="test-key")
     items = fetcher.fetch(query="test")
@@ -205,14 +196,13 @@ def test_zhipu_fetch_malformed_json_returns_empty(monkeypatch):
 
 def test_zhipu_fetch_missing_choices_returns_empty(monkeypatch):
     """API response 缺 choices → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"choices": []})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = ZhipuNewsFetcher(api_key="test-key")
     items = fetcher.fetch(query="test")
@@ -229,9 +219,7 @@ def test_zhipu_fetch_timeout_raises_news_fetch_error(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
     with patch("backend.qm_platform.news.zhipu.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = ZhipuNewsFetcher(api_key="test-key")
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
@@ -249,8 +237,7 @@ def test_zhipu_retryable_error_is_runtime_error():
 
 @pytest.mark.requires_zhipu
 @pytest.mark.skipif(
-    not os.environ.get("ZHIPU_API_KEY"),
-    reason="requires ZHIPU_API_KEY env (e2e live API call)"
+    not os.environ.get("ZHIPU_API_KEY"), reason="requires ZHIPU_API_KEY env (e2e live API call)"
 )
 def test_zhipu_fetch_e2e_minimal_payload():
     """e2e: 真 ZHIPU_API_KEY 走 minimal 1-token payload (反耗 quota).

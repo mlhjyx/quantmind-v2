@@ -9,6 +9,7 @@
   - rules yaml 加载失败 fallback 通用 dedup_key
   - AlertDispatchError 传播 (fail-loud, 铁律 33)
 """
+
 from __future__ import annotations
 
 import sys
@@ -116,9 +117,7 @@ def test_sdk_path_uses_correct_severity_and_dedup_key():
     mock_router.fire = MagicMock(return_value="sent")
 
     mock_rule = MagicMock()
-    mock_rule.format_dedup_key = MagicMock(
-        return_value="data_quality:summary:2026-04-29"
-    )
+    mock_rule.format_dedup_key = MagicMock(return_value="data_quality:summary:2026-04-29")
     mock_rule.suppress_minutes = 5
 
     mock_engine = MagicMock()
@@ -187,9 +186,7 @@ def test_sdk_path_yaml_load_failure_does_not_block_alert():
 def test_sdk_path_dispatch_error_propagates():
     """AlertDispatchError 必传播 (铁律 33 fail-loud, main() top-level catch → exit=2)."""
     mock_router = MagicMock()
-    mock_router.fire = MagicMock(
-        side_effect=AlertDispatchError("All channels failed")
-    )
+    mock_router.fire = MagicMock(side_effect=AlertDispatchError("All channels failed"))
 
     mock_engine = MagicMock()
     mock_engine.match = MagicMock(return_value=None)
@@ -255,9 +252,7 @@ def test_get_rules_engine_caches_result():
     # 清缓存
     dq_mod._get_rules_engine.cache_clear()
 
-    with patch(
-        "qm_platform.observability.AlertRulesEngine.from_yaml"
-    ) as mock_from_yaml:
+    with patch("qm_platform.observability.AlertRulesEngine.from_yaml") as mock_from_yaml:
         mock_from_yaml.return_value = MagicMock()
 
         # 多次调用
@@ -290,9 +285,7 @@ def test_run_checks_alert_dispatch_error_does_not_block_db_write_or_exit_code_1(
         patch.object(dq_mod, "get_connection", return_value=mock_conn),
         patch.object(dq_mod, "send_dingtalk_alert") as mock_send,
         patch.object(dq_mod, "write_db_alert") as mock_write_db,
-        patch.object(
-            dq_mod, "check_future_dates", return_value=["[P0] critical"]
-        ),
+        patch.object(dq_mod, "check_future_dates", return_value=["[P0] critical"]),
         patch.object(dq_mod, "check_row_counts", return_value=[]),
         patch.object(dq_mod, "check_null_ratios", return_value=[]),
         patch.object(dq_mod, "check_latest_dates", return_value=[]),
@@ -304,9 +297,7 @@ def test_run_checks_alert_dispatch_error_does_not_block_db_write_or_exit_code_1(
 
     # P1.1 验证三点:
     # 1. AlertDispatchError 被 catch (run_checks 不传播 exit=2)
-    assert exit_code == 1, (
-        f"exit_code=1 反映'发现 issue'与脚本异常 (=2) 区分, got: {exit_code}"
-    )
+    assert exit_code == 1, f"exit_code=1 反映'发现 issue'与脚本异常 (=2) 区分, got: {exit_code}"
     # 2. write_db_alert 仍调用 (审计留底)
     mock_write_db.assert_called_once()
     # 3. send_dingtalk_alert 被尝试

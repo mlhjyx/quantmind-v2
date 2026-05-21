@@ -137,6 +137,7 @@ def _seed_fill(conn, sid, td, code, direction, qty, price, executed_at=None):
     同日多 fill 时, 显式传不同时间戳.
     """
     from datetime import datetime, time
+
     if executed_at is None:
         executed_at = datetime.combine(td, time(9, 32, 0))
     cur = conn.cursor()
@@ -321,9 +322,7 @@ def test_dry_run_does_not_write(sync_conn, isolated_strategy, monkeypatch):
     assert cur.fetchone()[0] == 0, "dry-run 不应写任何行"
 
 
-def test_apply_is_idempotent_via_precondition_guard(
-    sync_conn, isolated_strategy, monkeypatch
-):
+def test_apply_is_idempotent_via_precondition_guard(sync_conn, isolated_strategy, monkeypatch):
     """第 2 次 apply → precondition (target count=0) fail → exit 1 (幂等守卫)."""
     sid, repair_date, ref_date = isolated_strategy
     _seed_snapshot(sync_conn, sid, ref_date, "T000A.SH", 100, 10.0)
@@ -349,6 +348,8 @@ def test_module_constants_and_contract():
     assert date(2026, 4, 17) == mod.REPAIR_DATE, "REPAIR_DATE 必须硬编码 4-17 (铁律 36 one-shot)"
     assert date(2026, 4, 16) == mod.REF_DATE, "REF_DATE 必须硬编码 4-16 (baseline 前一交易日)"
     assert hasattr(mod, "PreconditionError"), "fail-loud 异常类必须保留"
-    assert issubclass(mod.PreconditionError, RuntimeError), "PreconditionError 必须继承 RuntimeError"
+    assert issubclass(mod.PreconditionError, RuntimeError), (
+        "PreconditionError 必须继承 RuntimeError"
+    )
     # D2-c Session 15 标记仅作 docstring header 存在性验证 (非强断言)
     assert mod.__doc__ and "D2-c" in mod.__doc__, "module docstring 必须含 D2-c 定位"

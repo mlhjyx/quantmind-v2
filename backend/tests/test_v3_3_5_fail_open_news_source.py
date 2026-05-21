@@ -20,6 +20,7 @@ unaffected).
 - 铁律 33 (fail-loud at service boundary, fail-soft at aggregate boundary)
 - 铁律 25/36 (代码变更前必读 sustained, post 4-step preflight verify SOP)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -138,9 +139,7 @@ class TestV3FailOpenNewsSource:
             _MockFetcher("anspire", items=[_make_item("anspire", "news3")]),
             _MockFetcher("gdelt", items=[_make_item("gdelt", "news4")]),
         ]
-        pipeline = DataPipeline(
-            sources, early_return_threshold=2, hard_timeout_s=10.0
-        )
+        pipeline = DataPipeline(sources, early_return_threshold=2, hard_timeout_s=10.0)
         items = pipeline.fetch_all(query="test")
 
         # V3 §3.1 早返回: ≥ 2 sources hit, 剩余 sources 可能被 skip

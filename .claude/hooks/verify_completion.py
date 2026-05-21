@@ -30,6 +30,7 @@ constraint — BLOCK on Stop = block CC turn finish = bad UX)
 - memory #25 HARD BLOCK (真+词 whitelist 5 forms only)
 """
 
+import contextlib
 import json
 import re
 import subprocess
@@ -48,18 +49,29 @@ def check_docs_updated(project_root: Path) -> str | None:
     try:
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            cwd=str(project_root), capture_output=True, text=True, timeout=5,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         unstaged = subprocess.run(
             ["git", "diff", "--name-only"],
-            cwd=str(project_root), capture_output=True, text=True, timeout=5,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         all_changed = result.stdout.strip() + "\n" + unstaged.stdout.strip()
-        code_files = [f for f in all_changed.split("\n")
-                      if f.strip() and (f.endswith(".py") or f.endswith(".tsx") or f.endswith(".ts"))]
+        code_files = [
+            f
+            for f in all_changed.split("\n")
+            if f.strip() and (f.endswith(".py") or f.endswith(".tsx") or f.endswith(".ts"))
+        ]
 
         if len(code_files) >= 3:
-            docs_updated = any(f in all_changed for f in ["CLAUDE.md", "SYSTEM_STATUS.md", "SYSTEM_RUNBOOK.md"])
+            docs_updated = any(
+                f in all_changed for f in ["CLAUDE.md", "SYSTEM_STATUS.md", "SYSTEM_RUNBOOK.md"]
+            )
             if not docs_updated:
                 return f"铁律 15/重构原则: {len(code_files)} 个代码文件变更但 CLAUDE.md/SYSTEM_STATUS.md/SYSTEM_RUNBOOK.md 未更新."
     except Exception:
@@ -79,21 +91,31 @@ def check_banned_zhen_in_staged(project_root: Path) -> str | None:
         # Read staged diff content (git diff --cached for staged, fall back to HEAD diff)
         result = subprocess.run(
             ["git", "diff", "--cached"],
-            cwd=str(project_root), capture_output=True, text=True, timeout=5,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         staged_content = result.stdout
         if not staged_content:
             # Fallback: check unstaged + HEAD diff
             result = subprocess.run(
                 ["git", "diff", "HEAD"],
-                cwd=str(project_root), capture_output=True, text=True, timeout=5,
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             staged_content = result.stdout
         if not staged_content:
             return None
 
         # Filter to lines starting with `+` (added/modified content)
-        added_lines = [ln for ln in staged_content.split("\n") if ln.startswith("+") and not ln.startswith("+++")]
+        added_lines = [
+            ln
+            for ln in staged_content.split("\n")
+            if ln.startswith("+") and not ln.startswith("+++")
+        ]
         added_text = "\n".join(added_lines)
 
         matches = BANNED_ZHEN_PATTERN.findall(added_text)
@@ -126,10 +148,8 @@ def cite_source_lock_reminder() -> str:
 
 
 def main():
-    try:
+    with contextlib.suppress(json.JSONDecodeError, EOFError):
         json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
-        pass
 
     project_root = Path(__file__).resolve().parent.parent.parent
     issues = []

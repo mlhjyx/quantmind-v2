@@ -46,16 +46,16 @@ from engines.walk_forward import (  # noqa: E402
 
 # Feature-A: CORE4 + 7 independent factors (low corr with CORE4)
 FEATURES_A = [
-    "turnover_mean_20",   # CORE4, direction=-1
-    "volatility_20",      # CORE4, direction=-1
-    "bp_ratio",           # CORE4, direction=+1
-    "dv_ttm",             # CORE4, direction=+1
-    "CORD5",              # Alpha158 CORD5, corr=0.13
-    "RSQR_20",            # Alpha158, corr=0.15
-    "IMIN_20",            # Alpha158, corr=0.13
-    "a158_cord30",        # Alpha158 CORD20, corr=0.23
-    "reversal_60",        # Reserve, corr=0.30
-    "price_level_factor", # Reserve Tier1, corr=0.30
+    "turnover_mean_20",  # CORE4, direction=-1
+    "volatility_20",  # CORE4, direction=-1
+    "bp_ratio",  # CORE4, direction=+1
+    "dv_ttm",  # CORE4, direction=+1
+    "CORD5",  # Alpha158 CORD5, corr=0.13
+    "RSQR_20",  # Alpha158, corr=0.15
+    "IMIN_20",  # Alpha158, corr=0.13
+    "a158_cord30",  # Alpha158 CORD20, corr=0.23
+    "reversal_60",  # Reserve, corr=0.30
+    "price_level_factor",  # Reserve Tier1, corr=0.30
     "price_volume_corr_20",  # Reserve, corr=0.28, perfect monotonicity
 ]
 
@@ -64,23 +64,45 @@ FEATURES_A = [
 #   mf_divergence (INVALIDATED), ivol_20 (corr=0.967 with volatility_20)
 FEATURES_B = [
     # CORE4
-    "turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm",
+    "turnover_mean_20",
+    "volatility_20",
+    "bp_ratio",
+    "dv_ttm",
     # Reserve Tier 1
-    "reversal_20", "reversal_60", "reversal_5",
-    "price_level_factor", "price_volume_corr_20",
-    "ep_ratio", "ln_market_cap", "amihud_20",
+    "reversal_20",
+    "reversal_60",
+    "reversal_5",
+    "price_level_factor",
+    "price_volume_corr_20",
+    "ep_ratio",
+    "ln_market_cap",
+    "amihud_20",
     # Microstructure + Liquidity
-    "turnover_surge_ratio", "relative_volume_20",
-    "gap_frequency_20", "vwap_bias_1d", "rsrs_raw_18",
+    "turnover_surge_ratio",
+    "relative_volume_20",
+    "gap_frequency_20",
+    "vwap_bias_1d",
+    "rsrs_raw_18",
     "large_order_ratio",
     # Volatility
     "atr_norm_20",
     # Alpha158 Six
-    "RSQR_20", "QTLU_20", "IMAX_20", "IMIN_20", "CORD_20", "RESI_20",
+    "RSQR_20",
+    "QTLU_20",
+    "IMAX_20",
+    "IMIN_20",
+    "CORD_20",
+    "RESI_20",
     # a158 computed
-    "a158_cord30", "a158_corr5", "a158_vsump60", "a158_std60",
+    "a158_cord30",
+    "a158_corr5",
+    "a158_vsump60",
+    "a158_std60",
     # Phase 3B extras
-    "kbar_kup", "gain_loss_ratio_20", "up_days_ratio_20", "volume_std_20",
+    "kbar_kup",
+    "gain_loss_ratio_20",
+    "up_days_ratio_20",
+    "volume_std_20",
 ]
 # Removed (not in factor_values DB):
 #   net_mf_amount, big_small_divergence — moneyflow micro not stored as factors
@@ -132,13 +154,29 @@ RESULTS_FILE = CACHE_DIR / "phase3d_results.json"
 
 
 _PRICE_COLS = [
-    "code", "trade_date", "open", "close", "pre_close", "volume", "amount",
-    "up_limit", "down_limit", "turnover_rate",
-    "is_st", "is_suspended", "is_new_stock", "board",
+    "code",
+    "trade_date",
+    "open",
+    "close",
+    "pre_close",
+    "volume",
+    "amount",
+    "up_limit",
+    "down_limit",
+    "turnover_rate",
+    "is_st",
+    "is_suspended",
+    "is_new_stock",
+    "board",
 ]
 _FLOAT32_COLS = [
-    "open", "close", "pre_close", "up_limit", "down_limit",
-    "turnover_rate", "amount",
+    "open",
+    "close",
+    "pre_close",
+    "up_limit",
+    "down_limit",
+    "turnover_rate",
+    "amount",
 ]
 
 # WF needs ~750 train + 5×250 test = 2005 trading days from end
@@ -175,7 +213,11 @@ def load_price_benchmark() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
     del price_parts
-    bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date").sort_values("trade_date")
+    bench_df = (
+        pd.concat(bench_parts, ignore_index=True)
+        .drop_duplicates("trade_date")
+        .sort_values("trade_date")
+    )
     del bench_parts
 
     # Ensure date types
@@ -190,8 +232,10 @@ def load_price_benchmark() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     gc.collect()
     mem_mb = price_df.memory_usage(deep=True).sum() / 1024**2
-    print(f"  Price data: {len(price_df):,} rows, {price_df['code'].nunique()} stocks, "
-          f"{price_df['trade_date'].nunique()} days, {mem_mb:.0f}MB")
+    print(
+        f"  Price data: {len(price_df):,} rows, {price_df['code'].nunique()} stocks, "
+        f"{price_df['trade_date'].nunique()} days, {mem_mb:.0f}MB"
+    )
     print(f"  Benchmark: {len(bench_df):,} rows")
     return price_df, bench_df
 
@@ -218,9 +262,7 @@ def compute_target_labels(price_df: pd.DataFrame, bench_df: pd.DataFrame) -> pd.
     slim = price_df[["code", "trade_date", "close"]].copy()
     slim = slim.sort_values(["code", "trade_date"])
     slim["fwd_close"] = slim.groupby("code")["close"].shift(-20)
-    slim["stock_fwd"] = np.log1p(
-        (slim["fwd_close"] / slim["close"] - 1).astype(np.float32)
-    )
+    slim["stock_fwd"] = np.log1p((slim["fwd_close"] / slim["close"] - 1).astype(np.float32))
     slim.drop(columns=["fwd_close"], inplace=True)
 
     # Benchmark forward return
@@ -256,6 +298,7 @@ def verify_factors(feature_names: list[str]) -> list[str]:
     Uses EXISTS + LIMIT 1 queries for speed on 590M row table.
     """
     from app.services.db import get_sync_conn
+
     conn = get_sync_conn()
     cur = conn.cursor()
 
@@ -341,7 +384,7 @@ def load_factor_matrix(
         chunk = chunk.rename(columns={"value": fname})
 
         null_pct = chunk[fname].isna().mean() * 100
-        status = f"  [{i+1}/{len(feature_names)}] {fname}: {len(chunk):,} rows"
+        status = f"  [{i + 1}/{len(feature_names)}] {fname}: {len(chunk):,} rows"
         if null_pct > 30:
             status += f" (WARNING: {null_pct:.0f}% NaN)"
         print(status)
@@ -382,8 +425,10 @@ def prepare_ml_data(
     _downcast_floats(merged)
 
     # Coverage report (1.5): per-factor NaN rate after merge
-    print(f"  Merged data: {len(merged):,} rows, {merged['code'].nunique()} stocks, "
-          f"{merged['trade_date'].nunique()} days")
+    print(
+        f"  Merged data: {len(merged):,} rows, {merged['code'].nunique()} stocks, "
+        f"{merged['trade_date'].nunique()} days"
+    )
     print("  Feature coverage after merge:")
     for f in feature_names:
         if f in merged.columns:
@@ -463,6 +508,7 @@ def _to_rank_label_per_group(
 @dataclass
 class FoldDiagnostics:
     """Diagnostics for a single fold's ML training."""
+
     fold_idx: int
     train_samples: int = 0
     valid_samples: int = 0
@@ -593,12 +639,16 @@ def make_lgbm_signal_func(
             y_train_rank = _to_rank_label_per_group(train_processed)
             y_valid_rank = _to_rank_label_per_group(valid_processed)
             train_ds = lgb.Dataset(
-                X_train, label=y_train_rank,
-                group=train_groups, feature_name=actual_features,
+                X_train,
+                label=y_train_rank,
+                group=train_groups,
+                feature_name=actual_features,
             )
             valid_ds = lgb.Dataset(
-                X_valid, label=y_valid_rank,
-                group=valid_groups, reference=train_ds,
+                X_valid,
+                label=y_valid_rank,
+                group=valid_groups,
+                reference=train_ds,
             )
         else:
             train_ds = lgb.Dataset(X_train, label=y_train, feature_name=actual_features)
@@ -630,21 +680,25 @@ def make_lgbm_signal_func(
         feat_imp = dict(zip(actual_features, [float(v) for v in importance]))
 
         elapsed = time.time() - t0
-        print(f"  Train IC={train_ic:.4f}, Valid IC={valid_ic:.4f}, "
-              f"best_iter={best_iter}, {elapsed:.1f}s")
+        print(
+            f"  Train IC={train_ic:.4f}, Valid IC={valid_ic:.4f}, "
+            f"best_iter={best_iter}, {elapsed:.1f}s"
+        )
 
         # Record diagnostics
         if fold_diagnostics is not None:
-            fold_diagnostics.append(FoldDiagnostics(
-                fold_idx=fold_idx,
-                train_samples=len(X_train),
-                valid_samples=len(X_valid),
-                train_ic=train_ic,
-                valid_ic=valid_ic,
-                best_iter=best_iter,
-                feature_importance=feat_imp,
-                elapsed_s=elapsed,
-            ))
+            fold_diagnostics.append(
+                FoldDiagnostics(
+                    fold_idx=fold_idx,
+                    train_samples=len(X_train),
+                    valid_samples=len(X_valid),
+                    train_ic=train_ic,
+                    valid_ic=valid_ic,
+                    best_iter=best_iter,
+                    feature_importance=feat_imp,
+                    elapsed_s=elapsed,
+                )
+            )
 
         # 8. Generate signals for test period rebalance dates
         fold_rebal = [rd for rd in all_rebal_dates if rd in test_set]
@@ -690,6 +744,7 @@ def make_lgbm_signal_func(
             if size_neutral_beta > 0 and ln_mcap_pivot is not None:
                 if latest_date in ln_mcap_pivot.index:
                     from engines.size_neutral import apply_size_neutral
+
                     scores = apply_size_neutral(
                         scores, ln_mcap_pivot.loc[latest_date], size_neutral_beta
                     )
@@ -707,18 +762,22 @@ def make_lgbm_signal_func(
                 # Check code format alignment with price_data
                 price_codes = set(price_data["code"].unique())
                 n_in_price = sum(1 for c in top20_codes if c in price_codes)
-                print(f"    {rd}: IC={oos_ic:+.4f}, Top20_exret={top20_avg:+.4f}, "
-                      f"Bot20_exret={bot20_avg:+.4f}, n={valid_mask.sum()}, "
-                      f"codes_in_price={n_in_price}/20, "
-                      f"sample_codes={top20_codes[:3]}")
+                print(
+                    f"    {rd}: IC={oos_ic:+.4f}, Top20_exret={top20_avg:+.4f}, "
+                    f"Bot20_exret={bot20_avg:+.4f}, n={valid_mask.sum()}, "
+                    f"codes_in_price={n_in_price}/20, "
+                    f"sample_codes={top20_codes[:3]}"
+                )
 
             # Top-N equal-weight via PortfolioBuilder
             weights = builder.build(scores, pd.Series(dtype=str))
             if weights:
                 target_portfolios[rd] = weights
                 wt_sum = sum(weights.values())
-                print(f"    → Portfolio: {len(weights)} stocks, wt_sum={wt_sum:.4f}, "
-                      f"top3={list(weights.keys())[:3]}")
+                print(
+                    f"    → Portfolio: {len(weights)} stocks, wt_sum={wt_sum:.4f}, "
+                    f"top3={list(weights.keys())[:3]}"
+                )
 
         print(f"  Generated {len(target_portfolios)} rebalance signals")
         return target_portfolios
@@ -743,6 +802,7 @@ def load_ln_mcap_pivot(price_df: pd.DataFrame) -> pd.DataFrame:
         return pivot
 
     from app.services.db import get_sync_conn
+
     conn = get_sync_conn()
 
     min_date = price_df["trade_date"].min()
@@ -755,7 +815,8 @@ def load_ln_mcap_pivot(price_df: pd.DataFrame) -> pd.DataFrame:
            WHERE factor_name = 'ln_market_cap'
              AND trade_date BETWEEN %s AND %s
              AND neutral_value IS NOT NULL""",
-        conn, params=(min_date, max_date),
+        conn,
+        params=(min_date, max_date),
     )
     conn.close()
 
@@ -781,9 +842,9 @@ def run_experiment(
     sn_beta: float = 0.50,
 ) -> dict[str, Any]:
     """Run a single ML WF experiment."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Experiment: {exp_id} ({len(feature_names)} features, {mode}, SN_beta={sn_beta})")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Collect per-fold diagnostics
     fold_diagnostics: list[FoldDiagnostics] = []
@@ -825,20 +886,24 @@ def run_experiment(
     fold_results = []
     for fr in result.fold_results:
         diag = fold_diagnostics[fr.fold_idx] if fr.fold_idx < len(fold_diagnostics) else None
-        fold_results.append({
-            "fold_idx": fr.fold_idx,
-            "train_period": f"{fr.train_period[0]}..{fr.train_period[1]}",
-            "test_period": f"{fr.test_period[0]}..{fr.test_period[1]}",
-            "oos_sharpe": round(fr.oos_sharpe, 4),
-            "oos_mdd": round(fr.oos_mdd, 4),
-            "oos_annual_return": round(fr.oos_annual_return, 4),
-            "train_ic": round(diag.train_ic, 4) if diag else None,
-            "valid_ic": round(diag.valid_ic, 4) if diag else None,
-            "best_iter": diag.best_iter if diag else None,
-            "top5_features": dict(
-                sorted(diag.feature_importance.items(), key=lambda x: -x[1])[:5]
-            ) if diag and diag.feature_importance else {},
-        })
+        fold_results.append(
+            {
+                "fold_idx": fr.fold_idx,
+                "train_period": f"{fr.train_period[0]}..{fr.train_period[1]}",
+                "test_period": f"{fr.test_period[0]}..{fr.test_period[1]}",
+                "oos_sharpe": round(fr.oos_sharpe, 4),
+                "oos_mdd": round(fr.oos_mdd, 4),
+                "oos_annual_return": round(fr.oos_annual_return, 4),
+                "train_ic": round(diag.train_ic, 4) if diag else None,
+                "valid_ic": round(diag.valid_ic, 4) if diag else None,
+                "best_iter": diag.best_iter if diag else None,
+                "top5_features": dict(
+                    sorted(diag.feature_importance.items(), key=lambda x: -x[1])[:5]
+                )
+                if diag and diag.feature_importance
+                else {},
+            }
+        )
 
     # Feature importance stability across folds
     all_importances = [d.feature_importance for d in fold_diagnostics if d.feature_importance]
@@ -979,8 +1044,13 @@ def main():
 
         # Run experiment
         result = run_experiment(
-            exp_id, valid_features, mode,
-            price_df, bench_df, ln_mcap_pivot, ml_data,
+            exp_id,
+            valid_features,
+            mode,
+            price_df,
+            bench_df,
+            ln_mcap_pivot,
+            ml_data,
             sn_beta=args.beta,
         )
         all_results.append(result)
@@ -1013,26 +1083,32 @@ def main():
     }
     RESULTS_FILE.write_text(json.dumps(output, indent=2, default=str))
     all_results = merged  # For summary table
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Results saved to {RESULTS_FILE}")
 
     # Summary table
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("SUMMARY")
-    print(f"{'='*60}")
-    print(f"{'Exp':10s} {'Features':>8s} {'OOS Sharpe':>11s} {'OOS MDD':>9s} "
-          f"{'vs Base':>9s} {'Neg Folds':>9s} {'FI Stab':>8s}")
+    print(f"{'=' * 60}")
+    print(
+        f"{'Exp':10s} {'Features':>8s} {'OOS Sharpe':>11s} {'OOS MDD':>9s} "
+        f"{'vs Base':>9s} {'Neg Folds':>9s} {'FI Stab':>8s}"
+    )
     print("-" * 70)
-    print(f"{'Baseline':10s} {'4':>8s} {'0.8659':>11s} {'-13.91%':>9s} "
-          f"{'—':>9s} {'0/5':>9s} {'—':>8s}")
+    print(
+        f"{'Baseline':10s} {'4':>8s} {'0.8659':>11s} {'-13.91%':>9s} "
+        f"{'—':>9s} {'0/5':>9s} {'—':>8s}"
+    )
     for r in all_results:
         sharpe_str = f"{r['combined_oos_sharpe']:.4f}"
-        mdd_str = f"{r['combined_oos_mdd']*100:.1f}%"
+        mdd_str = f"{r['combined_oos_mdd'] * 100:.1f}%"
         vs_str = f"{r['vs_baseline']:+.4f}"
         neg_str = f"{r['n_negative_folds']}/5"
         fi_str = f"{r['fi_stability']:.3f}"
-        print(f"{r['exp_id']:10s} {r['n_features']:>8d} {sharpe_str:>11s} {mdd_str:>9s} "
-              f"{vs_str:>9s} {neg_str:>9s} {fi_str:>8s}")
+        print(
+            f"{r['exp_id']:10s} {r['n_features']:>8d} {sharpe_str:>11s} {mdd_str:>9s} "
+            f"{vs_str:>9s} {neg_str:>9s} {fi_str:>8s}"
+        )
 
 
 if __name__ == "__main__":
