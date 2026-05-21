@@ -18,7 +18,7 @@
 
 **Key findings**:
 - 50% of backend endpoints have no frontend consumer — primarily admin/ops endpoints (execution_ops admin actions), PMS (deprecated), news ingest, remote_status, report generation, paper_trading, SSE stream, approval workflow.
-- 10 frontend calls target paths with no matching backend endpoint — these are bug candidates (`/backtest/{id}/cancel`, `/pipeline/trigger`, `/pipeline/pause`, `/pipeline/approve`, `/pipeline/reject`, `/pipeline/hold`, `/pipeline/{id}/logs`, `/pipeline/automation-level`, `/factors/health` as POST, `/factors/correlation-prune`).
+- 10 frontend calls target paths with no matching backend endpoint — these are bug candidates (`/backtest/{id}/cancel`, `/pipeline/trigger`, `/pipeline/pause`, `/pipeline/approve`, `/pipeline/reject`, `/pipeline/hold`, `/pipeline/{id}/logs`, `/pipeline/automation-level`, `/factors/health` as POST, `/factors/correlation-prune`). **(2026-05-22 Phase K reconciliation: O2/O4/O5/O6 resolved — 6 orphans remain. See §6.1.)**
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -689,6 +689,26 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 | O10 | factors.ts:204 | POST | `/factors/correlation-prune` | No correlation-prune endpoint in factors.py |
 
 **Pipeline.ts is the highest-risk file**: 7 of 13 calls target non-existent backend paths. The approval workflow routes (`/pipeline/approve|reject|hold`) use the wrong prefix — should be `/approval/queue/{item_id}/approve|reject|hold` per approval.py router.
+
+### §6.1 Update — 2026-05-22 Phase K reconciliation (L4+R loop iteration 1)
+
+Re-verified against current code (`main` HEAD `f70b04a`). The §6 snapshot above (2026-05-20) is stale for the pipeline.ts orphans — 4 of the 7 are already resolved:
+
+| Orphan | Current state (2026-05-22) |
+|---|---|
+| O2 `/pipeline/trigger` | **RESOLVED.** Backend `POST /api/pipeline/trigger` exists and is fully implemented (`pipeline.py::trigger_pipeline`, requires `TriggerPipelineRequest {engine, config}`). Frontend `triggerPipeline()` was stale (sent no body → 422); fixed this iteration to send `{engine, config}` + a correct `TriggerPipelineResult` return type. |
+| O4 `/pipeline/approve/{id}` | **RESOLVED** (prior work). `approveItem()` now calls `POST /api/approval/queue/{id}/approve`. |
+| O5 `/pipeline/reject/{id}` | **RESOLVED** (prior work). `rejectItem()` now calls `POST /api/approval/queue/{id}/reject`. |
+| O6 `/pipeline/hold/{id}` | **RESOLVED** (prior work). `holdItem()` now calls `POST /api/approval/queue/{id}/hold`. |
+| O3 `/pipeline/pause` | **STILL ORPHAN.** No backend endpoint. Needs a build decision (pausing a running Celery GP task is non-trivial). |
+| O7 `/pipeline/{runId}/logs` | **STILL ORPHAN.** No backend endpoint. `getPipelineLogs` 404 is caught silently → "AI决策日志" tab shows empty. |
+| O8 `/pipeline/automation-level` | **STILL ORPHAN.** No backend endpoint. The L0–L3 automation selector in PipelineConsole 404s. Needs a persistence-model decision. |
+
+**Remaining orphans: 10 → 6** (O1, O3, O7, O8, O9, O10).
+
+**NEW finding (separate from orphan classification):** `GET /api/pipeline/status` *is* consumed (#102), but the backend response shape (`active_run_id` / `node_statuses` dict / `progress` / `config_summary` …) does **not** match the frontend `PipelineStatus` interface (`run_id` / `nodes[]` / `automation_level` / `is_running` / `is_paused` / `schedule_cron` / `next_run_at` / `last_run_at`). PipelineConsole's status display, FlowChart, automation-level and schedule cards are fed `undefined` for most fields. This is contract-shape drift, not an orphan — and `automation_level` / `schedule_cron` / `next_run_at` / `last_run_at` have no backend source at all.
+
+**Deferred:** O3 / O7 / O8 + the `/pipeline/status` contract reconciliation form a single PipelineConsole↔backend integration task with product-scope decisions (pipeline pausability, pipeline-log source, `automation_level` persistence) — not closed by this iteration; tracked as a backlog item.
 
 ---
 
