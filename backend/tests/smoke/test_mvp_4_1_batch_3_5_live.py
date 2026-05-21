@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.5 — daily_reconciliation + factor_health_daily Platform SDK live smoke."""
+
 from __future__ import annotations
 
 import subprocess
@@ -65,7 +66,6 @@ def test_mvp_4_1_batch_3_5_recon_health_sdk_migration():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_3_5 boot" in result.stdout

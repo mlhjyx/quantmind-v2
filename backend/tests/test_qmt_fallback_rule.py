@@ -9,9 +9,10 @@ Coverage:
 - metrics 字段完整性
 - rule_id / severity / action 契约
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from backend.qm_platform._types import Severity
@@ -22,14 +23,12 @@ from backend.qm_platform.risk.rules.qmt_fallback import (
 )
 
 
-def _make_context(
-    *, positions_count: int = 0, nav: float = 993520.16
-) -> RiskContext:
+def _make_context(*, positions_count: int = 0, nav: float = 993520.16) -> RiskContext:
     """构造 RiskContext (沿用 intraday.py 测试 pattern)."""
     return RiskContext(
         strategy_id="test-strategy",
         execution_mode="live",
-        timestamp=datetime(2026, 4, 30, 10, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 30, 10, 0, tzinfo=UTC),
         positions=[{"code": f"00000{i}.SZ", "qty": 100} for i in range(positions_count)],
         portfolio_nav=nav,
         prev_close_nav=nav,

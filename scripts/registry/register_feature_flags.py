@@ -20,6 +20,7 @@ Usage:
   - 33: 禁 silent failure — 所有异常向上 raise
   - 34: 配置 SSOT — feature_flags 表为权威, 本脚本仅 seed 新 flag
 """
+
 from __future__ import annotations
 
 import argparse
@@ -83,8 +84,12 @@ def cmd_list() -> None:
     for row in rows:
         logger.info(
             "  - %s: enabled=%s, removal_date=%s, desc=%s",
-            row["name"], row["enabled"], row["removal_date"],
-            row["description"][:60] + "..." if len(row["description"] or "") > 60 else row["description"],
+            row["name"],
+            row["enabled"],
+            row["removal_date"],
+            row["description"][:60] + "..."
+            if len(row["description"] or "") > 60
+            else row["description"],
         )
 
 
@@ -98,7 +103,9 @@ def cmd_apply(dry_run: bool, disable: bool) -> None:
             effective = (not cfg["default"]) if disable else cfg["default"]
             logger.info(
                 "  - %s → enabled=%s, removal_date=%s",
-                cfg["name"], effective, cfg["removal_date"],
+                cfg["name"],
+                effective,
+                cfg["removal_date"],
             )
         logger.info("[DRY-RUN] 结束. 加 --apply 真写 DB.")
         return
@@ -108,7 +115,9 @@ def cmd_apply(dry_run: bool, disable: bool) -> None:
         effective = (not cfg["default"]) if disable else cfg["default"]
         logger.info(
             "register: %s → enabled=%s, removal_date=%s",
-            cfg["name"], effective, cfg["removal_date"],
+            cfg["name"],
+            effective,
+            cfg["removal_date"],
         )
         flag_db.register(
             name=cfg["name"],
@@ -121,7 +130,9 @@ def cmd_apply(dry_run: bool, disable: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MVP 1.3c — register use_db_direction feature flag")
+    parser = argparse.ArgumentParser(
+        description="MVP 1.3c — register use_db_direction feature flag"
+    )
     parser.add_argument("--apply", action="store_true", help="真写 DB (默认 dry-run)")
     parser.add_argument("--list", action="store_true", help="列现有 feature_flags")
     parser.add_argument(

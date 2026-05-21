@@ -172,13 +172,15 @@ def _preflight_summary(pass_type: str, target_date: date | None, state: dict | N
         f"  Target trade_date: {target_date.isoformat() if target_date else '(non-trading day, will skip)'}",
     ]
     if state:
-        lines.extend([
-            "",
-            f"  Current state for {state['trade_date']}:",
-            f"    klines_daily rows: {state['klines_daily_count']:,}",
-            f"    daily_basic rows: {state['daily_basic_count']:,}",
-            f"    klines with adj_factor not null: {state['klines_with_adj_factor_count']:,}",
-        ])
+        lines.extend(
+            [
+                "",
+                f"  Current state for {state['trade_date']}:",
+                f"    klines_daily rows: {state['klines_daily_count']:,}",
+                f"    daily_basic rows: {state['daily_basic_count']:,}",
+                f"    klines with adj_factor not null: {state['klines_with_adj_factor_count']:,}",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -197,11 +199,15 @@ def _dry_run(pass_type: str, override_date: str | None) -> int:
     print("=== Plan ===")
     if pass_type == _PASS_POSTCLOSE:
         print(f"  1. TushareAPI.merge_daily_data('{target_date:%Y%m%d}') → upsert_klines_daily")
-        print(f"  2. TushareAPI.fetch_daily_basic_by_date('{target_date:%Y%m%d}') → upsert_daily_basic")
+        print(
+            f"  2. TushareAPI.fetch_daily_basic_by_date('{target_date:%Y%m%d}') → upsert_daily_basic"
+        )
         print("  Idempotent UPSERT via DataPipeline.ingest (铁律 17 合规).")
     else:  # preopen
         print(f"  1. TushareAPI.merge_daily_data('{target_date:%Y%m%d}') → upsert_klines_daily")
-        print("     (T-1 refresh — primarily updates adj_factor now published Tushare T 09:15-09:20)")
+        print(
+            "     (T-1 refresh — primarily updates adj_factor now published Tushare T 09:15-09:20)"
+        )
     print()
     print("=== DRY RUN COMPLETE — re-run with --apply to execute ===")
     return 0
@@ -249,9 +255,7 @@ def _apply(pass_type: str, override_date: str | None) -> int:
             logger.info("[%s] fetching daily_basic for %s...", pass_type, trade_date_str)
             df_basic = api.fetch_daily_basic_by_date(trade_date_str)
             if df_basic is None or len(df_basic) == 0:
-                raise RuntimeError(
-                    f"fetch_daily_basic_by_date returned empty for {trade_date_str}"
-                )
+                raise RuntimeError(f"fetch_daily_basic_by_date returned empty for {trade_date_str}")
             n_basic = upsert_daily_basic(df_basic)
             logger.info("[%s] daily_basic upserted: %d rows", pass_type, n_basic)
 
@@ -261,12 +265,16 @@ def _apply(pass_type: str, override_date: str | None) -> int:
         state_post = _read_state(target_date)
         print(_preflight_summary(pass_type, target_date, state_post))
         print()
-        print(f"✅✅✅ DAILY DATA INGEST SUCCESS — pass={pass_type} date={target_date} klines={n_klines} daily_basic={n_basic} elapsed={elapsed:.1f}s ✅✅✅")
+        print(
+            f"✅✅✅ DAILY DATA INGEST SUCCESS — pass={pass_type} date={target_date} klines={n_klines} daily_basic={n_basic} elapsed={elapsed:.1f}s ✅✅✅"
+        )
         return 0
     except Exception as e:  # noqa: BLE001 — broad catch to fail-loud + DingTalk alert
         logger.exception("[%s] FAILED", pass_type)
         elapsed = time.time() - t0
-        print(f"\n❌ DAILY DATA INGEST FAILED — pass={pass_type} date={target_date} after {elapsed:.1f}s: {e}")
+        print(
+            f"\n❌ DAILY DATA INGEST FAILED — pass={pass_type} date={target_date} after {elapsed:.1f}s: {e}"
+        )
         # TODO Step 12 BAU — wire DingTalk alert via AlertRouter on failure
         return 1
 
@@ -294,15 +302,28 @@ def _verify(pass_type: str, override_date: str | None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--pass", dest="pass_type", required=True, choices=_VALID_PASSES,
-                        help="preopen (T-1 adj_factor refresh @ 09:25 SH) | postclose (T-day full @ 17:30 SH)")
-    parser.add_argument("--trade-date", dest="trade_date", default=None,
-                        help="Override target date YYYY-MM-DD (default: today + auto-resolve T-1 for preopen)")
+    parser.add_argument(
+        "--pass",
+        dest="pass_type",
+        required=True,
+        choices=_VALID_PASSES,
+        help="preopen (T-1 adj_factor refresh @ 09:25 SH) | postclose (T-day full @ 17:30 SH)",
+    )
+    parser.add_argument(
+        "--trade-date",
+        dest="trade_date",
+        default=None,
+        help="Override target date YYYY-MM-DD (default: today + auto-resolve T-1 for preopen)",
+    )
     g = parser.add_mutually_exclusive_group()
-    g.add_argument("--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation")
+    g.add_argument(
+        "--dry-run", action="store_true", help="(default when no flag) preflight + plan, 0 mutation"
+    )
     g.add_argument("--apply", action="store_true", help="EXECUTE ingest")
     g.add_argument("--verify", action="store_true", help="post-apply state verify only")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     args = parser.parse_args()
 
     logging.basicConfig(

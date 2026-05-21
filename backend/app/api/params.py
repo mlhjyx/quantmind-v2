@@ -5,6 +5,7 @@ DEV_PARAM_CONFIG.md: L2级别参数通过前端界面实时调整。
 CLAUDE.md: Service依赖注入统一用FastAPI的Depends链注入。
 """
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +13,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.services.param_service import ParamService, ParamValidationError
+from app.services.param_service import (
+    ParamService,
+    ParamValidationError,
+    estimate_param_impact,
+)
 
 router = APIRouter(prefix="/api/params", tags=["params"])
 
@@ -35,6 +40,18 @@ class UpdateParamRequest(BaseModel):
     changed_by: str = Field(
         default="manual",
         description="变更者: manual/ai/system",
+        pattern=r"^(manual|ai|system)$",
+    )
+
+
+class RollbackParamsRequest(BaseModel):
+    """一键回滚的请求体。"""
+
+    timestamp: datetime = Field(..., description="回滚目标时间点 (ISO-8601, 建议带时区偏移)")
+    reason: str = Field(..., min_length=1, max_length=500, description="回滚原因（必填）")
+    changed_by: str = Field(
+        default="system",
+        description="发起者: manual/ai/system",
         pattern=r"^(manual|ai|system)$",
     )
 
@@ -86,6 +103,41 @@ async def get_changelog(
         变更日志列表，每项含 id/param_name/old_value/new_value/changed_by/reason/created_at。
     """
     return await svc.get_change_log(key=key or None, limit=limit)
+
+
+@router.get("/{key}/impact")
+async def estimate_impact(
+    key: str,
+    new_value: str = Query(..., description="拟变更的新值 (数值型参数将按数值解析)"),
+    svc: ParamService = Depends(_get_param_service),
+) -> dict[str, Any]:
+    """预估参数变更影响 (DEV_PARAM_CONFIG §4.2 — 变更确认弹窗)。
+
+    取参数当前值为 old_value, 结合 new_value 返回人类可读影响说明。
+    本路由必须注册在 GET /{key:path} 之前 —— 后者 :path 贪婪匹配会吞掉
+    `/impact` 后缀。
+
+    Args:
+        key: 参数 key。
+        new_value: 拟变更的新值。
+
+    Returns:
+        含 param_name / old_value / new_value / impact 的字典。
+
+    Raises:
+        HTTPException: 参数不存在时返回 404。
+    """
+    try:
+        param = await svc.get_param(key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    old_value = param.get("param_value")
+    return {
+        "param_name": key,
+        "old_value": old_value,
+        "new_value": new_value,
+        "impact": estimate_param_impact(key, old_value, new_value),
+    }
 
 
 @router.get("/{key:path}")
@@ -159,3 +211,32 @@ async def init_defaults(
     """
     count = await svc.init_defaults()
     return {"initialized_count": count}
+
+
+@router.post("/rollback")
+async def rollback_params(
+    body: RollbackParamsRequest,
+    svc: ParamService = Depends(_get_param_service),
+) -> dict[str, Any]:
+    """一键回滚: 将所有参数恢复到指定时间点的状态 (DEV_PARAM_CONFIG §4.4)。
+
+    对每个在 timestamp 之后变更过的参数, 将其值恢复为该时点的值, 并写入
+    param_change_log 审计。timestamp 之后才首次创建的参数不回滚也不删除,
+    在 skipped_created_after 中报告。timestamp 之后无任何变更时返回空摘要。
+
+    Args:
+        body: 含 timestamp（回滚目标时间点）、reason（必填原因）、changed_by。
+
+    Returns:
+        回滚摘要: timestamp / rolled_back / rolled_back_count /
+        skipped_created_after / skipped_count。
+    """
+    # 无领域错误映射 (不同于 update_param 的 400/404): rollback 无"校验失败"/
+    # "参数不存在"语义 —— timestamp 由 Pydantic 校验, 空结果 (T 之后无变更)
+    # 是合法 200。意外 DB 异常按本文件既有惯例向上传播 → FastAPI 默认 500
+    # (不在此 swallow, 铁律 33 fail-loud)。
+    return await svc.rollback_to(
+        timestamp=body.timestamp,
+        reason=body.reason,
+        changed_by=body.changed_by,
+    )

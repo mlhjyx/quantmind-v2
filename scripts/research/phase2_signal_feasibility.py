@@ -4,6 +4,7 @@
 从Parquet cache加载数据，计算IC，不改任何生产代码/表/cache。
 """
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -201,7 +202,8 @@ def compute_27_grouped_ic(price, bench, fwd_returns):
     import psycopg2
 
     conn = psycopg2.connect(
-        dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
+        dbname="quantmind_v2", user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost"
     )
 
     # Load CORE 5 factors
@@ -261,7 +263,8 @@ def load_core5_ic(fwd_returns):
     import psycopg2
 
     conn = psycopg2.connect(
-        dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
+        dbname="quantmind_v2", user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost"
     )
     core5 = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
     placeholders = ",".join(["%s"] * len(core5))

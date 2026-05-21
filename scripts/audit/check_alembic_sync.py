@@ -21,6 +21,7 @@ trigger 条件 (event-driven):
     - alembic upgrade / downgrade
     - 改 backend/migrations/ 文件
 """
+
 from __future__ import annotations
 
 import os
@@ -68,11 +69,7 @@ def _list_migration_files() -> list[Path]:
     migrations_dir = PROJECT_ROOT / "backend" / "migrations"
     if not migrations_dir.exists():
         return []
-    return sorted(
-        f
-        for f in migrations_dir.glob("*.sql")
-        if not f.name.endswith("_rollback.sql")
-    )
+    return sorted(f for f in migrations_dir.glob("*.sql") if not f.name.endswith("_rollback.sql"))
 
 
 def main() -> int:

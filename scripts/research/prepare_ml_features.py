@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import gc
+import os
 import sys
 import time
 from pathlib import Path
@@ -42,7 +43,8 @@ OUTPUT = CACHE_DIR / "features_17factor.parquet"
 def get_conn():
     return psycopg2.connect(
         host="127.0.0.1", port=5432,
-        dbname="quantmind_v2", user="xin", password="quantmind",
+        dbname="quantmind_v2", user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"),
     )
 
 

@@ -16,6 +16,7 @@ Blueprint Future Spec B6: 每个 Framework 提供标准 health() 接口, FastAPI
                        check_health 内部捕异常转 down 状态, 但保留 traceback 在 details.
   - 24 (单一职责): HealthReport 只描述状态, 不含恢复逻辑
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,9 +61,7 @@ class HealthReport:
         # in-place mutation. 包 MappingProxyType 让 details 真正不可变.
         # to_dict() 仍走 dict(self.details) 浅拷贝, 序列化语义不变.
         if not isinstance(self.details, types.MappingProxyType):
-            object.__setattr__(
-                self, "details", types.MappingProxyType(dict(self.details))
-            )
+            object.__setattr__(self, "details", types.MappingProxyType(dict(self.details)))
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-friendly 序列化 (FastAPI /health endpoint 用)."""
@@ -91,9 +90,7 @@ def safe_check(
     try:
         report = check_fn()
         if not isinstance(report, HealthReport):
-            raise TypeError(
-                f"check_fn must return HealthReport, got {type(report).__name__}"
-            )
+            raise TypeError(f"check_fn must return HealthReport, got {type(report).__name__}")
         return report
     except Exception as e:  # noqa: BLE001  intentional broad catch
         logger.exception("[Health] %s health check raised", framework)

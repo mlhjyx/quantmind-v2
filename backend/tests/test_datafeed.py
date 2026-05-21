@@ -25,6 +25,7 @@ from engines.datafeed import REQUIRED_COLUMNS, DataFeed, DataFeedValidationError
 # Helpers
 # ═══════════════════════════════════════════════════
 
+
 def _make_trading_days(start: date, n_days: int) -> list[date]:
     """生成n个交易日（跳过周末）。"""
     days = []
@@ -53,23 +54,25 @@ def _make_price_df(
             pre_close = close / (1 + ret)
             volume = int(rng.uniform(50000, 500000))
             amount = close * volume * 100 / 1000  # 千元
-            rows.append({
-                "code": code,
-                "trade_date": td,
-                "open": round(close * (1 + rng.normal(0, 0.005)), 2),
-                "high": round(close * 1.02, 2),
-                "low": round(close * 0.98, 2),
-                "close": round(close, 2),
-                "volume": volume,
-                "amount": round(amount, 2),
-                "pre_close": round(pre_close, 2),
-                "adj_factor": 1.0,
-                "turnover_rate": round(rng.uniform(1, 10), 2),
-                "total_mv": round(rng.uniform(100000, 5000000), 2),
-                "industry_sw1": f"sw_{int(code[:2]) % 5}",
-                "up_limit": round(pre_close * 1.10, 2),
-                "down_limit": round(pre_close * 0.90, 2),
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "trade_date": td,
+                    "open": round(close * (1 + rng.normal(0, 0.005)), 2),
+                    "high": round(close * 1.02, 2),
+                    "low": round(close * 0.98, 2),
+                    "close": round(close, 2),
+                    "volume": volume,
+                    "amount": round(amount, 2),
+                    "pre_close": round(pre_close, 2),
+                    "adj_factor": 1.0,
+                    "turnover_rate": round(rng.uniform(1, 10), 2),
+                    "total_mv": round(rng.uniform(100000, 5000000), 2),
+                    "industry_sw1": f"sw_{int(code[:2]) % 5}",
+                    "up_limit": round(pre_close * 1.10, 2),
+                    "down_limit": round(pre_close * 0.90, 2),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -84,6 +87,7 @@ def sample_df():
 # ═══════════════════════════════════════════════════
 # Test: from_dataframe
 # ═══════════════════════════════════════════════════
+
 
 class TestFromDataFrame:
     """DataFeed.from_dataframe 基本功能。"""
@@ -132,6 +136,7 @@ class TestFromDataFrame:
 # Test: from_parquet roundtrip
 # ═══════════════════════════════════════════════════
 
+
 class TestFromParquet:
     """Parquet读写roundtrip。"""
 
@@ -154,16 +159,16 @@ class TestFromParquet:
             assert set(feed_loaded.df.columns) == set(feed_orig.df.columns)
 
             # 数值一致（trade_date转换后比较）
-            orig_sorted = feed_orig.df.sort_values(
-                ["code", "trade_date"]
-            ).reset_index(drop=True)
-            loaded_sorted = feed_loaded.df.sort_values(
-                ["code", "trade_date"]
-            ).reset_index(drop=True)
+            orig_sorted = feed_orig.df.sort_values(["code", "trade_date"]).reset_index(drop=True)
+            loaded_sorted = feed_loaded.df.sort_values(["code", "trade_date"]).reset_index(
+                drop=True
+            )
 
             for col in ["open", "high", "low", "close", "volume", "amount"]:
                 pd.testing.assert_series_equal(
-                    orig_sorted[col], loaded_sorted[col], check_names=False,
+                    orig_sorted[col],
+                    loaded_sorted[col],
+                    check_names=False,
                 )
 
     def test_file_not_found(self):
@@ -189,33 +194,38 @@ class TestFromParquet:
 # Test: validate
 # ═══════════════════════════════════════════════════
 
+
 class TestValidate:
     """DataFeed.validate() 列检查。"""
 
     def test_missing_required_columns(self):
         """缺少必需列抛出DataFeedValidationError。"""
-        df = pd.DataFrame({
-            "code": ["000001.SZ"],
-            "trade_date": [date(2024, 1, 2)],
-            "open": [10.0],
-            # 缺少 high, low, close, volume, amount
-        })
+        df = pd.DataFrame(
+            {
+                "code": ["000001.SZ"],
+                "trade_date": [date(2024, 1, 2)],
+                "open": [10.0],
+                # 缺少 high, low, close, volume, amount
+            }
+        )
         with pytest.raises(DataFeedValidationError, match="缺少必需列"):
             DataFeed.from_dataframe(df)
 
     def test_wrong_dtype(self):
         """数值列为非数值类型抛出错误。"""
-        df = pd.DataFrame({
-            "code": ["000001.SZ"],
-            "trade_date": [date(2024, 1, 2)],
-            "open": ["not_a_number"],
-            "high": [11.0],
-            "low": [9.0],
-            "close": [10.5],
-            "pre_close": [10.0],
-            "volume": [100000],
-            "amount": [1050000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "code": ["000001.SZ"],
+                "trade_date": [date(2024, 1, 2)],
+                "open": ["not_a_number"],
+                "high": [11.0],
+                "low": [9.0],
+                "close": [10.5],
+                "pre_close": [10.0],
+                "volume": [100000],
+                "amount": [1050000.0],
+            }
+        )
         with pytest.raises(DataFeedValidationError, match="应为数值类型"):
             DataFeed.from_dataframe(df)
 
@@ -228,6 +238,7 @@ class TestValidate:
 # ═══════════════════════════════════════════════════
 # Test: DataFeed与回测引擎集成
 # ═══════════════════════════════════════════════════
+
 
 class TestDataFeedIntegration:
     """DataFeed传入run_hybrid_backtest。"""
@@ -246,12 +257,14 @@ class TestDataFeedIntegration:
         for td in days:
             for code in codes:
                 for f in factors:
-                    factor_rows.append({
-                        "code": code,
-                        "trade_date": td,
-                        "factor_name": f,
-                        "raw_value": round(rng.normal(0, 1), 4),
-                    })
+                    factor_rows.append(
+                        {
+                            "code": code,
+                            "trade_date": td,
+                            "factor_name": f,
+                            "raw_value": round(rng.normal(0, 1), 4),
+                        }
+                    )
         factor_df = pd.DataFrame(factor_rows)
 
         feed = DataFeed.from_dataframe(sample_df)
@@ -286,12 +299,14 @@ class TestDataFeedIntegration:
         for td in days:
             for code in codes:
                 for f in ["f1", "f2"]:
-                    factor_rows.append({
-                        "code": code,
-                        "trade_date": td,
-                        "factor_name": f,
-                        "raw_value": round(rng.normal(0, 1), 4),
-                    })
+                    factor_rows.append(
+                        {
+                            "code": code,
+                            "trade_date": td,
+                            "factor_name": f,
+                            "raw_value": round(rng.normal(0, 1), 4),
+                        }
+                    )
         factor_df = pd.DataFrame(factor_rows)
 
         config = BacktestConfig(

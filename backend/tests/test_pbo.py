@@ -34,9 +34,7 @@ class TestPBO:
 
         result = probability_of_backtest_overfitting(returns, n_partitions=8)
 
-        assert 0.2 <= result["pbo"] <= 0.8, (
-            f"随机策略PBO={result['pbo']:.3f}，应在0.2~0.8附近"
-        )
+        assert 0.2 <= result["pbo"] <= 0.8, f"随机策略PBO={result['pbo']:.3f}，应在0.2~0.8附近"
 
     def test_strong_strategy_low_pbo(self):
         """一个策略有明显持续alpha，PBO应接近0。
@@ -55,9 +53,7 @@ class TestPBO:
 
         result = probability_of_backtest_overfitting(returns, n_partitions=8)
 
-        assert result["pbo"] < 0.3, (
-            f"强alpha策略PBO={result['pbo']:.3f}，应 < 0.3"
-        )
+        assert result["pbo"] < 0.3, f"强alpha策略PBO={result['pbo']:.3f}，应 < 0.3"
 
     def test_overfit_strategies_high_pbo(self):
         """大量策略中最优者大概率是过拟合产物 → PBO偏高。
@@ -72,9 +68,7 @@ class TestPBO:
         result = probability_of_backtest_overfitting(returns, n_partitions=8)
 
         # 纯噪声策略PBO不应很低（即不应看起来像有真实alpha）
-        assert result["pbo"] >= 0.15, (
-            f"100个噪声策略PBO={result['pbo']:.3f}，不应低于0.15"
-        )
+        assert result["pbo"] >= 0.15, f"100个噪声策略PBO={result['pbo']:.3f}，不应低于0.15"
 
     def test_result_structure(self):
         """返回字典包含所有必要字段。"""
@@ -83,8 +77,14 @@ class TestPBO:
 
         result = probability_of_backtest_overfitting(returns, n_partitions=4)
 
-        required_keys = {"pbo", "logit_distribution", "n_combinations",
-                         "n_partitions", "n_strategies", "n_timepoints"}
+        required_keys = {
+            "pbo",
+            "logit_distribution",
+            "n_combinations",
+            "n_partitions",
+            "n_strategies",
+            "n_timepoints",
+        }
         assert required_keys.issubset(result.keys())
         assert 0 <= result["pbo"] <= 1
         assert result["n_strategies"] == 5

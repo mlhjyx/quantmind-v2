@@ -243,7 +243,8 @@ class TestPriceLimitBlock:
         result_blocked = SimpleBacktester(config).run(target_blocked, price_data)
         # 涨停封板日(1/4)买入应进入pending(非直接成交)
         direct_buys_d4 = [
-            t for t in result_blocked.trades
+            t
+            for t in result_blocked.trades
             if t.direction == "buy" and t.trade_date == date(2024, 1, 4)
         ]
         assert len(direct_buys_d4) == 0, "涨停封板日不应直接成交"

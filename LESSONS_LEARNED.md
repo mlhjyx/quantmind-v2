@@ -6719,3 +6719,28 @@ How could this have been detected sooner?
 **Heuristic backref**: #14 Documentation Lying (script docstring says "DingTalk alert escalation" while real path is dead) / #15 Test-Reality Gap (LL-183 父类 pattern recurrence) / #18 Alternative Path Thinking (alt: feature detection vs try/except ImportError pass-through)
 
 **ADR backref**: 候选 ADR-088 (Audit script alert path integration test SOP — mandatory cold-run alert assertion)
+
+---
+
+## LL-193 — Audit cascade error: partial-file read 导致 false alarm 上溯到 synthesis matrix (2026-05-20)
+
+**Pattern**:
+- Audit agent (Explore subagent_type) read partial file (105 / 178 行 validators.py) → false alarm "can_trade missing"
+- Same agent read partial broker.py → false alarm "印花税 historical 分段 缺失"
+- Synthesis layer (Plan v9 Phase B matrix) trusted agent output, sediment 到 §3.2 P0 "信号能成交幻觉"
+- Phase C-3 executor (write-doc 前先 code-truth grep verify) caught BOTH false positives:
+  - validators.py:147-177 实际有 ValidatorChain.can_trade() + 3 validators
+  - broker.py:150-154 实际有 historical_stamp_tax=True default + 2023-08-28 分段
+
+**Why**:
+- Read tool default limit 2000 行, agents 可能用 limit=100 或 默认未指定
+- Synthesis layer 不再 cross-verify, 直接 trust agent finding
+
+**Fix SOP** (Plan v9 沉淀):
+1. Audit agents MUST read 完整文件 OR use Grep 验证关键 symbol presence (e.g. `grep "def can_trade" validators.py`)
+2. Synthesis layer (matrix sediment) MUST cross-verify 2-3 critical findings before promote
+3. Executor agents (Phase C onwards) 写 doc 前 code-truth grep — primary defense (Phase C-3 agent 抓到 2 false positives 正是此 pattern)
+
+**Cross-ref**: LL-187 (Frontend audit cascade) / LL-115 (active discovery STOP) / quantmind-v3-active-discovery skill / superpowers:verification-before-completion skill
+
+**Sediment trigger**: 2026-05-20 Plan v9 Phase C-3 (commit c7db757)

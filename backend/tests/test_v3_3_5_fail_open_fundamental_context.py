@@ -24,6 +24,7 @@ Tests verify V3 §3.5 fail-open contract for fundamental_context layer:
 - ADR-053 (V3 §S4 minimal fundamental_context architecture)
 - 铁律 33 (service fail-loud, caller-side fail-open via default-empty/None)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

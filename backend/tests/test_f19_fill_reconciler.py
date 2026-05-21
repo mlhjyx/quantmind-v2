@@ -5,6 +5,7 @@ bug 后的补录工具. 本 tests 验证纯函数行为 (正则解析 + 对比�
 
 实测产出对比详见 `docs/adr/ADR-011-qmt-api-utilization-roadmap.md` + JSON `docs/audit/f19_reconciliation_2026-04-17.json`.
 """
+
 from __future__ import annotations
 
 import io
@@ -100,6 +101,7 @@ class TestParseQmtFills:
 
     def test_missing_log_raises(self, tmp_path):
         import pytest
+
         with pytest.raises(FileNotFoundError):
             fr.parse_qmt_fills(tmp_path / "nonexistent.log", date(2026, 4, 17))
 

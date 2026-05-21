@@ -479,7 +479,7 @@ def _extract_cost_usd(
         try:
             return Decimal(str(cost))
         except (ValueError, ArithmeticError):
-            pass  # silent_ok: cost decimal parse failed, fall through to LiteLLM fallback chain
+            pass  # fall through to fallback
 
     # Path 2: fallback compute from tokens × per-token rate (F-S7-001 + P9 修复)
     if tokens_in == 0 and tokens_out == 0:

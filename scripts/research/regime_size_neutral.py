@@ -64,7 +64,11 @@ def load_data():
             factor_parts.append(fp[fp["factor_name"].isin(CORE_DIRECTIONS)].copy())
 
     price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
-    bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date").sort_values("trade_date")
+    bench_df = (
+        pd.concat(bench_parts, ignore_index=True)
+        .drop_duplicates("trade_date")
+        .sort_values("trade_date")
+    )
     factor_df = pd.concat(factor_parts, ignore_index=True)
     if "neutral_value" not in factor_df.columns and "raw_value" in factor_df.columns:
         factor_df = factor_df.rename(columns={"raw_value": "neutral_value"})
@@ -84,15 +88,21 @@ def compute_rsv_schedule(bench_df: pd.DataFrame, window: int = 20) -> pd.Series:
     return beta
 
 
-def run_variant(name, factor_df, price_df, bench_df, ln_mcap_pivot, beta_schedule=None, static_beta=0.50):
+def run_variant(
+    name, factor_df, price_df, bench_df, ln_mcap_pivot, beta_schedule=None, static_beta=0.50
+):
     """跑一个 variant 的 12 年回测。"""
     print(f"\n[{name}]")
     t0 = time.time()
 
     se_config = SEConfig(
         factor_names=list(CORE_DIRECTIONS.keys()),
-        top_n=20, weight_method="equal", rebalance_freq="monthly",
-        industry_cap=1.0, turnover_cap=1.0, cash_buffer=0.0,
+        top_n=20,
+        weight_method="equal",
+        rebalance_freq="monthly",
+        industry_cap=1.0,
+        turnover_cap=1.0,
+        cash_buffer=0.0,
     )
     bt_config = BacktestConfig(top_n=20, rebalance_freq="monthly", initial_capital=1_000_000)
 
@@ -157,7 +167,10 @@ def run_variant(name, factor_df, price_df, bench_df, ln_mcap_pivot, beta_schedul
         if len(ret) < 2:
             return {}
         n = (1 + ret).cumprod()
-        return {"sharpe": round(float(calc_sharpe(ret)), 4), "mdd": round(float(calc_max_drawdown(n * 1e6)), 4)}
+        return {
+            "sharpe": round(float(calc_sharpe(ret)), 4),
+            "mdd": round(float(calc_max_drawdown(n * 1e6)), 4),
+        }
 
     metrics = {
         "sharpe": round(sharpe, 4),
@@ -190,7 +203,9 @@ def main():
     n_high = (beta_schedule == 0.75).sum()
     n_low = (beta_schedule == 0.25).sum()
     n_mid = (beta_schedule == 0.50).sum()
-    print(f"\nBeta schedule: {n_low} oversold(0.25), {n_mid} neutral(0.50), {n_high} overbought(0.75)")
+    print(
+        f"\nBeta schedule: {n_low} oversold(0.25), {n_mid} neutral(0.50), {n_high} overbought(0.75)"
+    )
 
     # Binary variant schedule
     beta_binary = pd.Series(0.50, index=beta_schedule.index)
@@ -200,21 +215,33 @@ def main():
 
     # Variant 1: static b=0.50 (control)
     results["static_b050"] = run_variant(
-        "Static b=0.50", factor_df, price_df, bench_df, ln_mcap_pivot, static_beta=0.50)
+        "Static b=0.50", factor_df, price_df, bench_df, ln_mcap_pivot, static_beta=0.50
+    )
 
     # Variant 2: dynamic beta (0.25/0.50/0.75)
     results["dynamic_rsv"] = run_variant(
-        "Dynamic RSV (0.25/0.50/0.75)", factor_df, price_df, bench_df, ln_mcap_pivot,
-        beta_schedule=beta_schedule)
+        "Dynamic RSV (0.25/0.50/0.75)",
+        factor_df,
+        price_df,
+        bench_df,
+        ln_mcap_pivot,
+        beta_schedule=beta_schedule,
+    )
 
     # Variant 3: binary (0.50/0.75)
     results["binary_rsv"] = run_variant(
-        "Binary RSV (0.50/0.75)", factor_df, price_df, bench_df, ln_mcap_pivot,
-        beta_schedule=beta_binary)
+        "Binary RSV (0.50/0.75)",
+        factor_df,
+        price_df,
+        bench_df,
+        ln_mcap_pivot,
+        beta_schedule=beta_binary,
+    )
 
     # Variant 4: base (no size-neutral)
     results["base_no_sn"] = run_variant(
-        "Base (no SN)", factor_df, price_df, bench_df, ln_mcap_pivot, static_beta=0.0)
+        "Base (no SN)", factor_df, price_df, bench_df, ln_mcap_pivot, static_beta=0.0
+    )
 
     # Summary
     print("\n" + "=" * 60)
@@ -223,11 +250,17 @@ def main():
     print(f"{'Variant':<30} {'Sharpe':>8} {'MDD':>10} {'Annual':>10} {'OOS Sharpe':>12}")
     for name, m in results.items():
         oos = m.get("test_2021_2026", {}).get("sharpe", "N/A")
-        print(f"{name:<30} {m['sharpe']:>8.4f} {m['mdd']:>10.4f} {m['annual_return']:>10.4f} {str(oos):>12}")
+        print(
+            f"{name:<30} {m['sharpe']:>8.4f} {m['mdd']:>10.4f} {m['annual_return']:>10.4f} {str(oos):>12}"
+        )
 
     output = {
         "regime_signal": "stoch_rsv_20 on CSI300",
-        "beta_distribution": {"oversold_025": int(n_low), "neutral_050": int(n_mid), "overbought_075": int(n_high)},
+        "beta_distribution": {
+            "oversold_025": int(n_low),
+            "neutral_050": int(n_mid),
+            "overbought_075": int(n_high),
+        },
         "results": results,
     }
     OUTPUT.write_text(json.dumps(output, indent=2, default=str))

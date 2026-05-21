@@ -11,6 +11,18 @@
 > - **真完成度**: ~30-45% (sustained Session 57 addendum, Layer 1+2 + AI Assist real LLM)
 > - **Future readers**: Layer 3+4 NOT_STARTED Q3-Q4 trigger (sustained S6 §VIII #16 + Phase J post Phase B-2 live restart)
 > - **Recommendation**: 沿用 ADR-022 append-only — 本 doc 设计 705 行 sustained as reference, 0 maintain Layer 3+4 章节 until Q3-Q4 trigger. Sustained ADR-028 (AUTO + RAG + backtest replay) Sprint M+1~N implementation timeline.
+>
+> **Plan v9 Phase C-2 sediment (2026-05-20)** — Status (2026-05-20):
+> - V3 §S5 RealtimeRiskEngine + 10 rules + 104 tests ✅ merged main (backend/qm_platform/risk/realtime/engine.py, PR #343)
+> - V3 §S6 AlertDispatcher + 28 tests ✅ merged main (backend/qm_platform/risk/realtime/alert.py, PR #344)
+> - V3 §S7 DynamicThresholdEngine + 48 tests ✅ merged main (backend/qm_platform/risk/dynamic_threshold/, PR #345)
+> - V3 §S8 RiskReflector TB-4a-d + 154 tests ✅ merged main (backend/qm_platform/risk/reflector/agent.py, PR #346)
+> - 6 news fetchers merged (anspire/gdelt/tavily/zhihu/marketaux/rsshub) — backend/qm_platform/news/
+> - Market Regime 3 daily cadence (9:00/14:30/16:00) — backend/qm_platform/risk/regime/agents.py
+> - Risk Memory closure (lesson→risk_event_log) — backend/qm_platform/risk/memory/repository.py
+> - LiteLLM cost tracking (F-S7-001 cache-hit fallback) — backend/qm_platform/llm/_internal/litellm_router.py
+> - **agents/ → app/services/ai/ relocation**: 2026-04-15 agents/ 目录删除 ≠ AI 闭环停止. 实际是 relocate 至 backend/app/services/ai/ + backend/qm_platform/risk/. Layer 1-2 持续运行.
+> - **Layer 1 (Trajectory) ~95% / Layer 2 (Agents) ~60% / Layer 3 (Feature Map) + Layer 4 (Capital Alloc) 0% (Q3-Q4 trigger per ADR-028)**
 > **状态**: DESIGN (基于 28 个失败方向 + 213 次因子测试 + 3 篇 2025 前沿论文实证校准)
 > **前版**: V1.0 (2026-03-19, 1064 行, 4-Agent + Pipeline 全自动闭环) → 本版精简重构
 > **路线图**: `docs/QUANTMIND_FACTOR_UPGRADE_PLAN_V4.md` §Phase 3
@@ -211,22 +223,31 @@ AI 闭环需要回测引擎提供两种模式:
 
 | 模式 | 用途 | 时间范围 | 成本模型 | 速度 | 当前状态 |
 |---|---|---|---|---|---|
-| **快速回测** | ❺ 内循环淘汰 80% 弱候选 | 1 年 | 简化 (固定滑点) | ~1s | **需新增** |
+| **快速回测** | ❺ 内循环淘汰 80% 弱候选 | 1 年 | 简化 (固定滑点) | ~1s | ✅ 已实现 (Plan M) |
 | **完整 WF** | ❺ 外循环最终验证 Top 20% | 5-12 年 | 全成本 (三因素) | 15-75s | ✅ 已有 |
 
-快速回测入口 (待实现):
+快速回测入口 (✅ 已实现 — Plan M):
 ```python
 def run_quick_backtest(config: dict, years: int = 1) -> dict:
     """轻量回测: 1年, 简化成本, 返回 {sharpe, mdd, annual_return, turnover}"""
     # 复用 BacktestEngine 但跳过 WF / 跳过详细交易记录
 ```
 
-批量模式 (待实现):
+批量模式 (✅ 已实现 — Plan M):
 ```python
 def run_batch_backtest(configs: list[dict], mode: str = "quick") -> list[dict]:
     """串行跑 N 个策略, 尊重 32GB 内存约束"""
     # 每个策略独立加载/释放数据, 避免 OOM
 ```
+
+> ✅ **实现状态 (Plan M, 2026-05-20)**: `run_quick_backtest` / `run_batch_backtest`
+> 已实现于 `backend/engines/mining/quick_backtester.py` (并 export 自
+> `engines.mining`)。薄封装既有 `QuickBacktester` —— config 提供
+> `price_data` / `factor_values` DataFrame (caller-provides-data, 同
+> QuickBacktester 契约, 不读 DB); 返回 `{sharpe, mdd, annual_return, turnover}`,
+> 失败时 sharpe=-999 + error 键。`run_batch_backtest` 串行逐个处理 (每策略
+> QuickBacktester 用完即弃, GC 释放内存索引, 反 OOM); `mode="quick"` 是本接口
+> 范围, `mode="full"` 走既有 `scripts/rolling_wf.py`。
 
 ### Orchestrator 实现位置
 
@@ -426,6 +447,8 @@ Step 8: 写入知识库 + 更新 FACTOR_TEST_REGISTRY (铁律 11)
 ---
 
 ## 五、Layer 3 — Feature Map (策略种群矩阵)
+
+> **Layer 3 (Feature Map) + Layer 4 (riskfolio-lib rebalance) 当前 0% 实现, deferred 至 Q3-Q4 per ADR-028.** 本节为参考保留, 0 maintenance until Q3-Q4 trigger. 真值 source: Plan v9 §6.8-6.9 (2026-05-20 verify).
 
 借鉴 [QuantEvolve (2025)](https://arxiv.org/abs/2510.18569) 的 Quality-Diversity 优化。
 

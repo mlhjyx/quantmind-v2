@@ -43,8 +43,15 @@ def main() -> None:
     # ── 2. 字段非空率 ────────────────────────────────
     print("\n[2] 字段非空率:")
     fields = [
-        "basic_eps", "eps_q4_ago", "eps_surprise", "eps_surprise_pct",
-        "ann_date", "f_ann_date", "trade_date", "report_type", "source",
+        "basic_eps",
+        "eps_q4_ago",
+        "eps_surprise",
+        "eps_surprise_pct",
+        "ann_date",
+        "f_ann_date",
+        "trade_date",
+        "report_type",
+        "source",
     ]
     for f in fields:
         non_null = df[f].notna().sum()
@@ -122,11 +129,7 @@ def main() -> None:
     print(f"    basic_eps 非空: {has_basic:,}")
     print(f"    eps_q4_ago 非空: {has_q4ago:,}")
     # 每股至少4季有eps_surprise_pct的覆盖
-    stock_seasons = (
-        df[df["eps_surprise_pct"].notna()]
-        .groupby("ts_code")
-        .size()
-    )
+    stock_seasons = df[df["eps_surprise_pct"].notna()].groupby("ts_code").size()
     ge4 = (stock_seasons >= 4).sum()
     ge8 = (stock_seasons >= 8).sum()
     print(f"    股票有 >=4季 surprise: {ge4:,}")

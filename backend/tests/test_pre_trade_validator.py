@@ -17,9 +17,9 @@ from engines.pre_trade_validator import PreTradeValidator, ValidationResult
 TOTAL_VALUE = 1_000_000.0  # 100万总资产
 
 DEFAULT_POSITIONS = {
-    "600519": 0.07,   # 贵州茅台 7%
-    "000001": 0.06,   # 平安银行 6%
-    "601318": 0.06,   # 中国平安 6%
+    "600519": 0.07,  # 贵州茅台 7%
+    "000001": 0.06,  # 平安银行 6%
+    "601318": 0.06,  # 中国平安 6%
 }
 
 DEFAULT_INDUSTRY = {
@@ -27,7 +27,7 @@ DEFAULT_INDUSTRY = {
     "000001": "银行",
     "601318": "保险",
     "000651": "家电",
-    "600036": "银行",   # 招商银行，同行业
+    "600036": "银行",  # 招商银行，同行业
 }
 
 
@@ -56,9 +56,9 @@ class TestNormalPass:
         result = v.validate(
             code="000651",
             direction="buy",
-            amount=50_000,       # 5%总资产，< 15%限额
+            amount=50_000,  # 5%总资产，< 15%限额
             price=100.0,
-            pre_close=98.0,      # 100 <= 98*1.05=102.9 ✓
+            pre_close=98.0,  # 100 <= 98*1.05=102.9 ✓
             industry="家电",
         )
         assert result.passed is True
@@ -71,7 +71,7 @@ class TestNormalPass:
             code="600519",
             direction="sell",
             amount=60_000,
-            price=50.0,         # 比前收低，但卖单不检查
+            price=50.0,  # 比前收低，但卖单不检查
             pre_close=1800.0,
             industry="白酒",
         )
@@ -87,9 +87,12 @@ class TestSingleOrderSize:
         """单笔15万 = 15% = 触发限额(要求<15%)。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
-            amount=150_000,     # 15% >= 15% FAIL
-            price=100.0, pre_close=99.0, industry="家电",
+            code="000651",
+            direction="buy",
+            amount=150_000,  # 15% >= 15% FAIL
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_ORDER_SIZE in result.failed_checks
         assert result.passed is False
@@ -98,9 +101,12 @@ class TestSingleOrderSize:
         """单笔14.9万 < 15%通过。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=149_999,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_ORDER_SIZE not in result.failed_checks
 
@@ -108,9 +114,12 @@ class TestSingleOrderSize:
         """边界：14.99万 < 15万通过。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=149_990,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_ORDER_SIZE not in result.failed_checks
 
@@ -118,9 +127,12 @@ class TestSingleOrderSize:
         """自定义上限10%：单笔10万刚好触发。"""
         v = make_validator(single_order_pct=0.10)
         result = v.validate(
-            code="000651", direction="buy",
-            amount=100_000,     # 10% >= 10% FAIL
-            price=100.0, pre_close=99.0, industry="家电",
+            code="000651",
+            direction="buy",
+            amount=100_000,  # 10% >= 10% FAIL
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_ORDER_SIZE in result.failed_checks
 
@@ -132,9 +144,10 @@ class TestPriceTolerance:
         """买入价 > 前收×1.05 拒绝。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=106.0,        # 106 > 100*1.05=105 FAIL
+            price=106.0,  # 106 > 100*1.05=105 FAIL
             pre_close=100.0,
             industry="家电",
         )
@@ -144,9 +157,10 @@ class TestPriceTolerance:
         """买入价 = 前收×1.05 通过（≤）。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=105.0,        # 105 == 100*1.05 PASS (<=)
+            price=105.0,  # 105 == 100*1.05 PASS (<=)
             pre_close=100.0,
             industry="家电",
         )
@@ -156,7 +170,8 @@ class TestPriceTolerance:
         """无前收盘价时跳过检查（宽松处理）。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
             price=999.0,
             pre_close=None,
@@ -168,9 +183,10 @@ class TestPriceTolerance:
         """卖单跳过价格检查。"""
         v = make_validator()
         result = v.validate(
-            code="600519", direction="sell",
+            code="600519",
+            direction="sell",
             amount=50_000,
-            price=10000.0,      # 极高价格但是卖单
+            price=10000.0,  # 极高价格但是卖单
             pre_close=100.0,
             industry="白酒",
         )
@@ -184,9 +200,11 @@ class TestIndustryConcentration:
         """银行: 已有6%，再买20%=26% > 25% 拒绝。"""
         v = make_validator()
         result = v.validate(
-            code="600036", direction="buy",
-            amount=200_000,     # 20%，银行现有6%+20%=26% FAIL
-            price=50.0, pre_close=49.0,
+            code="600036",
+            direction="buy",
+            amount=200_000,  # 20%，银行现有6%+20%=26% FAIL
+            price=50.0,
+            pre_close=49.0,
             industry="银行",
         )
         assert v.CHECK_INDUSTRY_CONCENTRATION in result.failed_checks
@@ -195,9 +213,11 @@ class TestIndustryConcentration:
         """银行: 已有6%，再买18%=24% <= 25% 通过。"""
         v = make_validator()
         result = v.validate(
-            code="600036", direction="buy",
-            amount=180_000,     # 18%，银行现有6%+18%=24% PASS
-            price=50.0, pre_close=49.0,
+            code="600036",
+            direction="buy",
+            amount=180_000,  # 18%，银行现有6%+18%=24% PASS
+            price=50.0,
+            pre_close=49.0,
             industry="银行",
         )
         assert v.CHECK_INDUSTRY_CONCENTRATION not in result.failed_checks
@@ -206,9 +226,11 @@ class TestIndustryConcentration:
         """新行业(无现有持仓)：买26%超上限。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
-            amount=260_000,     # 26%家电，无现有持仓 FAIL
-            price=100.0, pre_close=99.0,
+            code="000651",
+            direction="buy",
+            amount=260_000,  # 26%家电，无现有持仓 FAIL
+            price=100.0,
+            pre_close=99.0,
             industry="家电",
         )
         assert v.CHECK_INDUSTRY_CONCENTRATION in result.failed_checks
@@ -221,9 +243,12 @@ class TestDailyLossLimit:
         """当日亏损3% = 等于阈值，触发停单。"""
         v = make_validator(daily_return=-0.03)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_DAILY_LOSS_LIMIT in result.failed_checks
 
@@ -231,9 +256,12 @@ class TestDailyLossLimit:
         """当日亏损4% > 3%阈值，触发停单。"""
         v = make_validator(daily_return=-0.04)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_DAILY_LOSS_LIMIT in result.failed_checks
         assert result.passed is False
@@ -242,9 +270,12 @@ class TestDailyLossLimit:
         """当日亏损2.9% < 3%阈值，通过。"""
         v = make_validator(daily_return=-0.029)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_DAILY_LOSS_LIMIT not in result.failed_checks
 
@@ -252,9 +283,12 @@ class TestDailyLossLimit:
         """当日盈利，通过。"""
         v = make_validator(daily_return=0.01)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_DAILY_LOSS_LIMIT not in result.failed_checks
 
@@ -266,9 +300,12 @@ class TestSingleStockLimit:
         """600519已有7%，再买4%=11% >= 10% 拒绝。"""
         v = make_validator()
         result = v.validate(
-            code="600519", direction="buy",
-            amount=40_000,      # 4%，现有7%+4%=11% FAIL
-            price=1800.0, pre_close=1750.0, industry="白酒",
+            code="600519",
+            direction="buy",
+            amount=40_000,  # 4%，现有7%+4%=11% FAIL
+            price=1800.0,
+            pre_close=1750.0,
+            industry="白酒",
         )
         assert v.CHECK_SINGLE_STOCK_LIMIT in result.failed_checks
 
@@ -276,9 +313,12 @@ class TestSingleStockLimit:
         """600519已有7%，再买2%=9% < 10% 通过。"""
         v = make_validator()
         result = v.validate(
-            code="600519", direction="buy",
-            amount=20_000,      # 2%，现有7%+2%=9% PASS
-            price=1800.0, pre_close=1750.0, industry="白酒",
+            code="600519",
+            direction="buy",
+            amount=20_000,  # 2%，现有7%+2%=9% PASS
+            price=1800.0,
+            pre_close=1750.0,
+            industry="白酒",
         )
         assert v.CHECK_SINGLE_STOCK_LIMIT not in result.failed_checks
 
@@ -286,9 +326,12 @@ class TestSingleStockLimit:
         """新股(无现有持仓)：直接买11% 拒绝。"""
         v = make_validator()
         result = v.validate(
-            code="000651", direction="buy",
-            amount=110_000,     # 11% FAIL
-            price=100.0, pre_close=99.0, industry="家电",
+            code="000651",
+            direction="buy",
+            amount=110_000,  # 11% FAIL
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_STOCK_LIMIT in result.failed_checks
 
@@ -300,9 +343,12 @@ class TestMultipleFailures:
         """当日亏损4% + 单笔20万(20%>15%)：两项都失败。"""
         v = make_validator(daily_return=-0.04)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=200_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert v.CHECK_SINGLE_ORDER_SIZE in result.failed_checks
         assert v.CHECK_DAILY_LOSS_LIMIT in result.failed_checks
@@ -313,9 +359,12 @@ class TestMultipleFailures:
         """失败时details包含所有检查的说明信息。"""
         v = make_validator(daily_return=-0.05)
         result = v.validate(
-            code="000651", direction="buy",
+            code="000651",
+            direction="buy",
             amount=50_000,
-            price=100.0, pre_close=99.0, industry="家电",
+            price=100.0,
+            pre_close=99.0,
+            industry="家电",
         )
         assert len(result.details) == 5
         for check_name in [

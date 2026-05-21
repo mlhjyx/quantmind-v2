@@ -1,10 +1,30 @@
 # GP最小闭环设计文档
 
-> **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新)
-> **状态**: 🔧 PARTIAL (~40%) — GP引擎+FactorDSL+WarmStart已实现, Pipeline编排器8节点状态机已实现(超本文档4组件设计), 但端到端自动闭环未打通
-> **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py
+> **版本**: 1.1 | **日期**: 2026-03-28 (创建) / 2026-04-16 (状态更新) / 2026-05-20 (audit sediment)
+> **状态**: 🟡 ~45% Aligned (2026-05-20 audit) — schema ✅, GP operators 35 (factor_dsl.py ALL_OPS dict 注册表, Plan 3 verified), G9+G10 gates PARTIAL
+> **代码实现**: `backend/engines/mining/` — gp_engine.py(DEAP+岛屿模型) / factor_dsl.py(算子集) / pipeline_orchestrator.py(8节点: GENERATE→SANDBOX→GATE→CLASSIFY→STRATEGY_MATCH→BACKTEST→RISK_CHECK→APPROVAL) / pipeline_utils.py / ast_dedup.py / bruteforce_engine.py / engine_selector.py / factor_sandbox.py / quick_backtester.py / deepseek_client.py
 > **决策D6 (2026-04-16)**: GP先完善闭环(DSL→IC自动评估→Gate自动→入库) → LLM prompt改造(AlphaAgent范式) → 轨迹进化融合
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §11**
+
+---
+
+### Implementation Status (2026-05-20 真值 sediment)
+
+| Component | Design Claim | Actual Reality | Status |
+|---|---|---|---|
+| FactorDSL | §2.4 dimension rules + forbidden combos | `backend/engines/mining/factor_dsl.py` EXISTS | Verified |
+| GP Engine | DEAP + 岛屿模型 + Warm Start | `backend/engines/mining/gp_engine.py` EXISTS | Verified |
+| Pipeline Orchestrator | 4 组件设计 | 8节点状态机 EXISTS (`pipeline_orchestrator.py`) — 超设计 | Verified (exceeds design) |
+| Factor Gate Pipeline | G1-G4 quick + G1-G8 full | G1-G5 自动门 wired into onboarding (Plan 4 P1-34, `_onboard_inner` Step 5.5 `_run_quality_gates` — FAIL → status='rejected' + `OnboardingBlocked`); G2 真正交门 Plan A 实施 (`_compute_active_factor_corr` 查 CORE 池逐日截面 Spearman 相关 → FactorGatePipeline G2 真强制; Plan 4 之前传 `active_factor_corr=None` → `_gate_g2` PASS-with-warning, 正交性从未真检验); G9+G10 in `_upsert_factor_registry`; G6 Newey-West HAC t 由 Plan B `confirm_g6_auto` 自动算 (run_gates 后填充, 非纯 PENDING blank — 不改 auto_gates_passed/accept-reject, 辅助 L2 晋升复核); G8 由 Plan F `_run_g8_auto_assist` FactorClassifier 自动分类填充 (IC 衰减半衰期+稀疏度 → signal_type/调仓频率; 不确定 unclassified/hybrid → 保持 PENDING); G7 仍半自动 (真需 SimBroker 回测运行) → L2 人工晋升 ACTIVE 处理 | Verified (Plan 4 + A + B + F) |
+| GP operator pattern | Session 16d "7 new operators" claim | `factor_dsl.py` `ALL_OPS` = **35 算子** (6 类 dict 注册表, 非 class-based; TS 16 + TS_BINARY 2 + CS 3 + UNARY 6 + BINARY 7 + TERNARY 1); 8 项 tagged `# NEW` (commit `5b70440` 2026-04-17 AlphaZero 升级, commit msg "7 新算子") | Verified (Plan 3) |
+| "243 tests" (Session 16d claim) | 243 GP tests | "243" 无来源支撑; 实测 GP/mining 测试 (`test_gp_*` / `test_mining_*` / `test_factor_dsl` / `test_gp_upgrade`, 8 文件) `pytest --co` = **393 collected** | Verified — 243 错 (Plan 3) |
+| mining_knowledge table | ✅ schema defined | ✅ Plan v8 P1-35 closed | Verified |
+| ast_dedup | Not in original design | `backend/engines/mining/ast_dedup.py` EXISTS — added post-design | Implemented beyond design |
+| bruteforce_engine | Not in original design | `backend/engines/mining/bruteforce_engine.py` EXISTS | Implemented beyond design |
+| engine_selector | Not in original design | `backend/engines/mining/engine_selector.py` EXISTS | Implemented beyond design |
+| deepseek_client | Not in original design | `backend/engines/mining/deepseek_client.py` EXISTS | Implemented beyond design |
+
+**Plan 3 closed (2026-05-20)**: 真 GP operator audit 完成 — 35 算子 (factor_dsl.py `ALL_OPS`) + 393 GP/mining tests collected verified; "243 tests" claim 证伪 (无来源). git evidence = commit `5b70440`.
 
 ---
 
@@ -200,6 +220,13 @@ DIMENSION_RULES = {
     ],
 }
 ```
+
+> ✅ **实现状态 (Plan J, 2026-05-20)**: `forbidden_combos` 已 wire 进
+> `FactorDSL.validate()` —— `check_forbidden_combos()` 遍历表达式树, 任一节点
+> 命中 `(op, field, field)` 黑名单 (全部直接子节点为终端字段且字段集合相等,
+> 顺序无关) 即 validate 拒绝; GP 引擎 (`gp_engine.py` validate 调用) + IdeaAgent
+> 据此跳过。此前 `DIMENSION_RULES` 0 consumer (定义但未消费)。`dimensionless`
+> 规则由 `DIMENSIONLESS_TERMINALS` + `check_dimensional_validity` 量纲推断覆盖。
 
 ---
 
@@ -453,7 +480,7 @@ class QuickBacktester:
 - 期间: 2021-01 ~ 2025-12
 - 报告: 含年度分解/成本敏感性/Bootstrap CI
 - 标准: Sharpe≥基线0.39(volume_impact基线)，CI下界>0
-- 通过后进入 approval_queue 等待人工审批
+- 通过后进入 gp_approval_queue 等待人工审批
 
 ---
 
@@ -494,7 +521,7 @@ T日 22:00 Task Scheduler触发 GP Pipeline
 │
 ├── Step 6: 写入结果
 │   ├── 所有因子表达式 → mining_knowledge表(含AST hash)
-│   ├── 通过因子 → approval_queue(等待人工审批)
+│   ├── 通过因子 → gp_approval_queue(等待人工审批)
 │   └── 进化统计 → pipeline_runs表(成功率/最优适应度/耗时)
 │
 └── Step 7: 通知
@@ -565,7 +592,7 @@ CPU: GP进化用multiprocessing, 限制8核(留4核给OS+PG)
 内存: 行情数据缓存~500MB + GP种群~200MB + 回测~300MB = 总计<1.5GB
 GPU: 不使用(GP是CPU计算)
 磁盘: mining_knowledge每轮~1MB，年~52MB
-PG: pipeline_runs表 + approval_queue表 + mining_knowledge表
+PG: pipeline_runs表 + gp_approval_queue表 + mining_knowledge表
 ```
 
 ### 7.3 监控指标
@@ -583,42 +610,24 @@ PG: pipeline_runs表 + approval_queue表 + mining_knowledge表
 
 ## 8. 数据库表设计
 
-### 8.1 新增表（DDL_FINAL.sql追加）
+### 8.1 数据库表
 
-```sql
--- GP Pipeline运行记录
-CREATE TABLE pipeline_runs (
-    run_id VARCHAR(32) PRIMARY KEY,       -- 格式: gp_2026w14
-    engine VARCHAR(20) NOT NULL,           -- 'gp' | 'bruteforce' | 'llm'
-    started_at TIMESTAMPTZ NOT NULL,
-    finished_at TIMESTAMPTZ,
-    status VARCHAR(20) DEFAULT 'running',  -- running/completed/failed/timeout
-    config JSONB NOT NULL,                 -- GPConfig序列化
-    stats JSONB,                           -- {total_evaluated, passed_gate, best_fitness, ...}
-    error_message TEXT
-);
+GP Pipeline 用 3 张表。**权威 schema 见 `docs/QUANTMIND_V2_DDL_FINAL.sql`**
+(铁律 34 单一真相源 — 本设计稿不重复定义 DDL, 避免漂移):
 
--- 审批队列
-CREATE TABLE approval_queue (
-    id SERIAL PRIMARY KEY,
-    run_id VARCHAR(32) REFERENCES pipeline_runs(run_id),
-    factor_name VARCHAR(100) NOT NULL,
-    factor_expr TEXT NOT NULL,              -- DSL表达式字符串
-    ast_hash VARCHAR(64) NOT NULL,
-    gate_result JSONB NOT NULL,            -- G1-G8详细结果
-    sharpe_1y DECIMAL(6,4),
-    sharpe_5y DECIMAL(6,4),
-    backtest_report JSONB,                 -- 完整回测报告
-    status VARCHAR(20) DEFAULT 'pending',  -- pending/approved/rejected
-    decision_by VARCHAR(50),               -- 'user' | 'auto'
-    decision_reason TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    decided_at TIMESTAMPTZ
-);
+| 表 | DDL 域 | 用途 |
+|---|---|---|
+| `pipeline_runs` | 域12 | GP/BruteForce/LLM 引擎每次运行记录 (`engine_type` / `status` / `config` / `result_summary`) |
+| `gp_approval_queue` | 域12 | 3 引擎产出因子的人工审批队列 (`factor_name` / `factor_expr` / `ast_hash` / `gate_report`) |
+| `mining_knowledge` | 域12 | 跨轮次学习知识库 (含 `ast_hash` 去重, §6.3) |
 
--- mining_knowledge已在DDL_FINAL.sql中设计，需追加列:
--- parent_seed, generation, param_slots (见§6.3)
-```
+> **命名历史 (2026-05-21 Plan AM/AN 收口)**: 本设计初稿曾把审批队列命名
+> `approval_queue` 且含 `sharpe_1y` / `sharpe_5y` / `backtest_report` 独立列。
+> 最终 DDL 定名 `gp_approval_queue` (域12, 与域11 通用审批表 `approval_queue`
+> 区分), 未保留 sharpe/backtest 独立列 — backtest 结果折叠进 `gate_report`
+> JSONB 的 `_backtest` 子键。写入/读取代码 (`mining_tasks` /
+> `pipeline_orchestrator` / `factor_onboarding`) 已于 PR #438 收口到
+> `gp_approval_queue`。
 
 ---
 
@@ -651,7 +660,7 @@ CREATE TABLE approval_queue (
 ### 10.2 闭环标准（Sprint 1.17结束时验证）
 
 - [ ] GP每周自动运行(Task Scheduler)，无人工干预
-- [ ] 运行结果写入pipeline_runs + approval_queue
+- [ ] 运行结果写入pipeline_runs + gp_approval_queue
 - [ ] 钉钉自动通知候选因子
 - [ ] 下一轮GP自动加载上轮结果(种子扩展+黑名单)
 - [ ] 连续2轮GP，第2轮的种群初始化包含第1轮的Top因子

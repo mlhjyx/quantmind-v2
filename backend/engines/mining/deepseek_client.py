@@ -35,18 +35,18 @@ logger = structlog.get_logger(__name__)
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 # 模型ID (2026年3月)
-MODEL_DEEPSEEK_R1 = "deepseek-reasoner"          # Idea Agent / Diagnosis Agent
-MODEL_DEEPSEEK_V3 = "deepseek-chat"              # Factor Agent (fallback) / Eval Agent
+MODEL_DEEPSEEK_R1 = "deepseek-reasoner"  # Idea Agent / Diagnosis Agent
+MODEL_DEEPSEEK_V3 = "deepseek-chat"  # Factor Agent (fallback) / Eval Agent
 
 # 本地Qwen3 (Ollama/LM Studio兼容OpenAI格式)
 QWEN3_LOCAL_BASE_URL = "http://localhost:11434/v1"
-MODEL_QWEN3_LOCAL = "qwen3:30b-a3b"              # Qwen3-30B-A3B (MoE, fits 12GB VRAM)
+MODEL_QWEN3_LOCAL = "qwen3:30b-a3b"  # Qwen3-30B-A3B (MoE, fits 12GB VRAM)
 
 # 定价 ($/M tokens, 2026-03-28)
 _PRICING: dict[str, dict[str, float]] = {
     MODEL_DEEPSEEK_R1: {"input": 0.55, "output": 2.19},
     MODEL_DEEPSEEK_V3: {"input": 0.14, "output": 0.28},
-    MODEL_QWEN3_LOCAL: {"input": 0.0,  "output": 0.0},   # 本地零成本
+    MODEL_QWEN3_LOCAL: {"input": 0.0, "output": 0.0},  # 本地零成本
 }
 
 # QPM限制 (requests per minute)
@@ -64,9 +64,10 @@ _QPM_LIMITS: dict[str, int] = {
 
 class TaskType(StrEnum):
     """AI闭环任务类型，决定模型路由。"""
-    IDEA      = "idea"       # Idea Agent: 因子假设生成
-    FACTOR    = "factor"     # Factor Agent: 代码生成
-    EVAL      = "eval"       # Eval Agent: 统计评估
+
+    IDEA = "idea"  # Idea Agent: 因子假设生成
+    FACTOR = "factor"  # Factor Agent: 代码生成
+    EVAL = "eval"  # Eval Agent: 统计评估
     DIAGNOSIS = "diagnosis"  # Diagnosis Agent: 根因分析
 
 
@@ -78,26 +79,29 @@ class TaskType(StrEnum):
 @dataclass
 class LLMMessage:
     """单条对话消息。"""
-    role: str     # "system" | "user" | "assistant"
+
+    role: str  # "system" | "user" | "assistant"
     content: str
 
 
 @dataclass
 class LLMResponse:
     """LLM调用响应。"""
-    content: str                         # 原始响应文本
-    model: str                           # 实际使用的模型
+
+    content: str  # 原始响应文本
+    model: str  # 实际使用的模型
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
     latency_ms: float = 0.0
-    is_json: bool = False                # 是否为JSON模式响应
-    parsed: Any = None                   # JSON模式解析结果
+    is_json: bool = False  # 是否为JSON模式响应
+    parsed: Any = None  # JSON模式解析结果
 
 
 @dataclass
 class CostTracker:
     """累计成本追踪器。"""
+
     total_calls: int = 0
     total_input_tokens: int = 0
     total_output_tokens: int = 0
@@ -112,7 +116,9 @@ class CostTracker:
         self.total_output_tokens += response.output_tokens
         self.total_cost_usd += response.cost_usd
         self.calls_by_model[response.model] = self.calls_by_model.get(response.model, 0) + 1
-        self.cost_by_model[response.model] = self.cost_by_model.get(response.model, 0.0) + response.cost_usd
+        self.cost_by_model[response.model] = (
+            self.cost_by_model.get(response.model, 0.0) + response.cost_usd
+        )
 
     def summary(self) -> dict[str, Any]:
         """返回成本摘要字典。"""
@@ -206,8 +212,7 @@ class DeepSeekClient:
         self.mock_mode = mock_mode or not self.api_key
         if self.mock_mode and not mock_mode:
             logger.warning(
-                "DEEPSEEK_API_KEY未设置，DeepSeekClient进入mock模式。"
-                "生产环境请设置环境变量。"
+                "DEEPSEEK_API_KEY未设置，DeepSeekClient进入mock模式。生产环境请设置环境变量。"
             )
 
         # 限速状态 (简单令牌桶)
@@ -221,9 +226,7 @@ class DeepSeekClient:
         try:
             from openai import OpenAI  # type: ignore[import-untyped]  # llm-import-allow:S2-deferred-PR-219  # noqa: I001
         except ImportError as e:
-            raise ImportError(
-                "需要安装openai包: pip install openai>=1.0"
-            ) from e
+            raise ImportError("需要安装openai包: pip install openai>=1.0") from e
 
         # 本地模型不需要api_key
         key = self.api_key if self.api_key else "local"
@@ -252,15 +255,19 @@ class DeepSeekClient:
     ) -> LLMResponse:
         """Mock模式响应，用于测试和API key未配置时的graceful fallback。"""
         if json_mode:
-            content = json.dumps([{
-                "name": "mock_factor_001",
-                "expression": "cs_rank(ts_mean(returns, 20))",
-                "hypothesis": "Mock因子假设（API key未配置）",
-                "expected_ic_direction": "positive",
-                "expected_ic_range": [0.02, 0.05],
-                "category": "价量",
-                "novelty_vs_existing": "Mock模式，无实际内容",
-            }])
+            content = json.dumps(
+                [
+                    {
+                        "name": "mock_factor_001",
+                        "expression": "cs_rank(ts_mean(returns, 20))",
+                        "hypothesis": "Mock因子假设（API key未配置）",
+                        "expected_ic_direction": "positive",
+                        "expected_ic_range": [0.02, 0.05],
+                        "category": "价量",
+                        "novelty_vs_existing": "Mock模式，无实际内容",
+                    }
+                ]
+            )
         else:
             content = "[Mock模式] DeepSeek API key未配置，返回占位响应。"
 
@@ -352,23 +359,29 @@ class DeepSeekClient:
                 self.cost_tracker.record(resp)
                 logger.debug(
                     "LLM调用成功: model=%s tokens=%d+%d cost=$%.6f latency=%.0fms",
-                    model, input_tokens, output_tokens, cost, latency_ms,
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    cost,
+                    latency_ms,
                 )
                 return resp
 
             except Exception as e:
                 last_error = e
-                wait = 2 ** attempt  # 指数退避: 1s, 2s, 4s
+                wait = 2**attempt  # 指数退避: 1s, 2s, 4s
                 logger.warning(
                     "LLM调用失败 (attempt %d/%d): %s，%.1fs后重试",
-                    attempt + 1, self.max_retries, e, wait,
+                    attempt + 1,
+                    self.max_retries,
+                    e,
+                    wait,
                 )
                 if attempt < self.max_retries - 1:
                     time.sleep(wait)
 
         raise RuntimeError(
-            f"DeepSeek API调用失败，已重试{self.max_retries}次。"
-            f"最后一次错误: {last_error}"
+            f"DeepSeek API调用失败，已重试{self.max_retries}次。最后一次错误: {last_error}"
         )
 
 

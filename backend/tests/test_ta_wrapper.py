@@ -9,6 +9,7 @@ import pytest
 
 try:
     import talib  # noqa: F401
+
     _TALIB_AVAILABLE = True
 except ImportError:
     _TALIB_AVAILABLE = False

@@ -49,7 +49,7 @@ def main():
     t0 = time.time()
     profiles = profile_all_factors()
     elapsed = time.time() - t0
-    print(f"\n[Done] 总耗时: {elapsed:.0f}s ({elapsed/60:.1f} min)")
+    print(f"\n[Done] 总耗时: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
     print(f"[Done] 处理因子数: {len(profiles)}")
 
     # 汇总
@@ -83,10 +83,7 @@ def main():
         "fmp_candidates": fmp_count,
         "redundant_pairs": redundant_count,
         "template_distribution": template_dist,
-        "errors": [
-            {"factor": p.get("factor_name", "?"), "error": p.get("error")}
-            for p in errored
-        ],
+        "errors": [{"factor": p.get("factor_name", "?"), "error": p.get("error")} for p in errored],
     }
 
     out_path = BASELINE_DIR / "factor_profiles_summary.json"

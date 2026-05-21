@@ -21,6 +21,7 @@ LL-109 候选 (race window, P3 audit Week 2 sediment 候选):
     T0 BudgetGuard.check NORMAL → T1 别 task record_cost 撞 capped → T2 当前 task 仍透传 v4-pro
     处置: strict=False 默认走 fallback (软保护); strict=True per-task fail-loud (终极保护).
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,8 +45,8 @@ logger = logging.getLogger(__name__)
 class BudgetState(StrEnum):
     """LLM 月度预算状态 (V3 §20.1 #6 sediment, 3 阈值)."""
 
-    NORMAL = "normal"          # cost < warn_threshold × monthly_budget
-    WARN_80 = "warn_80"        # warn ≤ cost < cap × monthly_budget
+    NORMAL = "normal"  # cost < warn_threshold × monthly_budget
+    WARN_80 = "warn_80"  # warn ≤ cost < cap × monthly_budget
     CAPPED_100 = "capped_100"  # cost ≥ cap × monthly_budget (强制 Ollama fallback)
 
 

@@ -72,7 +72,9 @@ class QMTConnectionManager:
         """
         if not self.is_live_mode and not settings.QMT_ALWAYS_CONNECT:
             self._state = "disabled"
-            logger.info("[QMTManager] EXECUTION_MODE=paper且QMT_ALWAYS_CONNECT=false, QMT连接管理器已禁用")
+            logger.info(
+                "[QMTManager] EXECUTION_MODE=paper且QMT_ALWAYS_CONNECT=false, QMT连接管理器已禁用"
+            )
             return
 
         if not settings.QMT_PATH or not settings.QMT_ACCOUNT_ID:
@@ -82,15 +84,15 @@ class QMTConnectionManager:
                 logger.error(f"[QMTManager] {self._last_error}")
             else:
                 self._state = "disabled"
-                logger.info("[QMTManager] QMT_ALWAYS_CONNECT=true但QMT_PATH/ACCOUNT_ID未配置，跳过连接")
+                logger.info(
+                    "[QMTManager] QMT_ALWAYS_CONNECT=true但QMT_PATH/ACCOUNT_ID未配置，跳过连接"
+                )
             return
 
         self._connect()
         # QMT_ALWAYS_CONNECT模式下连接失败不阻塞启动
         if not self.is_live_mode and self._state != "connected":
-            logger.warning(
-                f"[QMTManager] QMT连接失败(state={self._state})，API将使用DB fallback"
-            )
+            logger.warning(f"[QMTManager] QMT连接失败(state={self._state})，API将使用DB fallback")
 
     def shutdown(self) -> None:
         """FastAPI关闭时调用。"""
@@ -108,7 +110,14 @@ class QMTConnectionManager:
         self._state = "connecting"
         # xtquant双层嵌套路径修复（与run_paper_trading.py一致）
         # append不insert，避免其旧numpy覆盖venv版本
-        _xt = Path(__file__).resolve().parent.parent.parent.parent / ".venv" / "Lib" / "site-packages" / "Lib" / "site-packages"
+        _xt = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / ".venv"
+            / "Lib"
+            / "site-packages"
+            / "Lib"
+            / "site-packages"
+        )
         if _xt.exists() and str(_xt) not in sys.path:
             sys.path.append(str(_xt))
             logger.info(f"[QMTManager] 已添加xtquant路径: {_xt}")
@@ -178,10 +187,7 @@ class QMTConnectionManager:
         if not self.is_live_mode:
             raise RuntimeError("当前为paper模式，不支持QMT执行")
         if self._state != "connected" or self._broker is None:
-            raise RuntimeError(
-                f"QMT未连接 (state={self._state}), "
-                f"last_error={self._last_error}"
-            )
+            raise RuntimeError(f"QMT未连接 (state={self._state}), last_error={self._last_error}")
 
 
 # 模块级单例

@@ -447,8 +447,18 @@ class TestGetFactorsSummary:
         resp = client.get("/api/factors/summary")
         data = resp.json()
         for item in data:
-            for field in ("id", "name", "category", "ic", "ir", "direction",
-                          "recommended_freq", "t_stat", "fdr_t_stat", "status"):
+            for field in (
+                "id",
+                "name",
+                "category",
+                "ic",
+                "ir",
+                "direction",
+                "recommended_freq",
+                "t_stat",
+                "fdr_t_stat",
+                "status",
+            ):
                 assert field in item, f"缺少字段: {field}"
 
     def test_status_mapped_to_frontend_enum(self, app_client) -> None:
@@ -557,8 +567,11 @@ class TestGetFactorsStats:
         resp = client.get("/api/factors/stats")
         data = resp.json()
         computed_total = (
-            data["active"] + data["candidate"] + data["warning"]
-            + data["critical"] + data["retired"]
+            data["active"]
+            + data["candidate"]
+            + data["warning"]
+            + data["critical"]
+            + data["retired"]
         )
         assert data["total"] == computed_total
 

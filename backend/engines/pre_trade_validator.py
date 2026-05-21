@@ -26,6 +26,7 @@ class ValidationResult:
         failed_checks: 失败的检查名称列表（通过时为空）。
         details: 各检查的详细信息 {check_name: message}。
     """
+
     passed: bool
     failed_checks: list[str]
     details: dict[str, str]
@@ -167,7 +168,10 @@ class PreTradeValidator:
         if not passed:
             logger.warning(
                 "[PreTrade] 订单拒绝 %s %s ¥%.0f: %s",
-                code, direction, amount, failed,
+                code,
+                direction,
+                amount,
+                failed,
             )
 
         return ValidationResult(
@@ -220,7 +224,8 @@ class PreTradeValidator:
         """检查3: 单行业持仓(含本次订单) ≤ industry_cap。"""
         # 计算现有行业持仓权重
         existing_weight = sum(
-            w for c, w in self.current_positions.items()
+            w
+            for c, w in self.current_positions.items()
             if self.industry_map.get(c, "其他") == industry
         )
 
@@ -242,9 +247,7 @@ class PreTradeValidator:
     def _check_daily_loss_limit(self) -> str:
         """检查4: 当日亏损 > |daily_loss_threshold| → 停止下单。"""
         if self.daily_return > self.daily_loss_threshold:
-            return (
-                f"PASS: 日收益{self.daily_return:.2%} > 阈值{self.daily_loss_threshold:.2%}"
-            )
+            return f"PASS: 日收益{self.daily_return:.2%} > 阈值{self.daily_loss_threshold:.2%}"
         return (
             f"FAIL: 日亏损{self.daily_return:.2%} <= 阈值{self.daily_loss_threshold:.2%}，"
             f"停止当日下单"

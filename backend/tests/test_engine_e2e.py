@@ -90,6 +90,7 @@ class TestEngineE2E:
 
         # 只取2024-06一个月
         from datetime import date
+
         m_start = date(2024, 6, 1)
         m_end = date(2024, 6, 30)
         p = price[(price["trade_date"] >= m_start) & (price["trade_date"] <= m_end)]

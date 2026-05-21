@@ -104,14 +104,11 @@ foreach ($target in $RotateTargets) {
 
         # Current file -> .1
         # Note: cannot truly rotate while process holds handle on Windows.
-        # Strategy: copy current to .1, then truncate via .NET API (no BOM).
-        # Plan v8 code review MEDIUM fix (5-20): Set-Content -Encoding UTF8 on PS 5.1 writes
-        # UTF-8-with-BOM, contaminating Servy/Celery log files with leading 0xEF 0xBB 0xBF
-        # bytes. Use [System.IO.File]::WriteAllText for clean truncation (no BOM, no encoding flag).
+        # Strategy: copy current to .1, then truncate (Set-Content empty).
         Copy-Item $filePath "$filePath.1" -Force
-        [System.IO.File]::WriteAllText($filePath, "")
+        Set-Content -Path $filePath -Value $null -Encoding UTF8
 
-        Write-Host "       [OK] rotated $target -> $target.1 (truncated, no BOM)"
+        Write-Host "       [OK] rotated $target -> $target.1 (truncated)"
         $rotated++
     } catch {
         Write-Host "       [ERR] failed: $_"

@@ -10,6 +10,8 @@
   2. NULL 比例: 关键字段 NULL>5% 告警
   3. 最新日期: 各表最新 trade_date 是否 = 最近交易日（漏拉检测）
   4. 脏数据守护: MAX(trade_date) > today+7 视为未来日期脏数据 (P0)
+  5. factor_values 巡检 (Plan E, Blueprint §10.5): 计算因子表新鲜度 / active 因子
+     覆盖缺失 / neutral_value NULL率 / 字面 NaN (铁律 29) / 越界值
 
 铁律 33 fail-loud:
   - PG `statement_timeout=60s` (防 cold-cache COUNT 长挂, 4-22/4-23 hang 根因)
@@ -87,6 +89,13 @@ NULL_CHECK_FIELDS = {
     "daily_basic": ["total_mv", "turnover_rate", "pe_ttm"],
     "moneyflow_daily": ["buy_sm_amount", "sell_sm_amount", "net_mf_amount"],
 }
+
+# factor_values 巡检阈值 (Plan E, Blueprint §10.5)
+# active 因子 neutral_value NULL 比例阈值: 中性化对缺行业/市值/新股天然有少量
+# NULL, 0.30 = 系统性故障级 (非细粒度劣化, 首版保守防钉钉误报刷屏)
+FACTOR_NULL_THRESHOLD = 0.30
+# neutral_value 绝对值上限: 预处理设计 clip ±3, >10 必为量纲错/污染 (零误报阈值)
+FACTOR_VALUE_ABS_LIMIT = 10.0
 
 
 def get_connection(
@@ -272,6 +281,136 @@ def check_latest_dates(
     return alerts
 
 
+def _summarize_factor_issue(level: str, issue: str, factors: list[str], d: date) -> str:
+    """汇总同类 factor_values 告警为单条 (防 N 因子异常 → N 条告警刷屏)。"""
+    n = len(factors)
+    shown = ", ".join(factors[:8])
+    suffix = " ..." if n > 8 else ""  # n 已在主文本 "{n} 个", suffix 仅标列表截断
+    return f"[{level}] factor_values {d} {n} 个 active 因子 {issue}: {shown}{suffix}"
+
+
+def check_factor_values(
+    cur: psycopg2.extensions.cursor, expected_date: date, today: date
+) -> list[str]:
+    """检查 factor_values (计算因子表) 数据质量 (Plan E, Blueprint §10.5).
+
+    factor_values (816M 行 hypertable) 喂养全部信号/回测/IC — 但旧巡检只覆盖
+    klines/daily_basic/moneyflow 原始行情, 不查计算因子。本步骤补上 5 项:
+      1. 新鲜度: factor_values MAX(trade_date) 滞后 expected_date → 因子未计算
+      2. 覆盖缺失: active 因子在最新因子日 0 行 → P0 (该因子当日未算出)
+      3. NULL 率: neutral_value NULL 比例 > FACTOR_NULL_THRESHOLD → P1
+      4. 字面 NaN: neutral_value = 'NaN' → P0 (铁律 29 — NaN 不得入库)
+      5. 越界值: |neutral_value| > FACTOR_VALUE_ABS_LIMIT → P1 (预处理设计 clip ±3)
+
+    查询 scoped 到 active 因子 (factor_registry.status='active') + 单一最新因子日,
+    走 idx_fv_date_factor (trade_date, factor_name) 索引 (铁律 9: 只读有界查询,
+    statement_timeout 兜底)。同类告警汇总为单条防刷屏。
+    """
+    alerts: list[str] = []
+
+    # 1. active 因子集
+    cur.execute("SELECT name FROM factor_registry WHERE status = 'active'")
+    active_factors = [r[0] for r in cur.fetchall()]
+    if not active_factors:
+        logger.info("factor_registry 无 active 因子, 跳过 factor_values 巡检")
+        return alerts
+
+    # 2. factor_values 最新日 (scoped active 因子, 排除未来日期脏数据 sentinel)。
+    # MAX(trade_date) 走 idx_fv_date_factor (trade_date, factor_name) 反向扫描 —
+    # 最新交易日含全部 active 因子, 反向扫到首个匹配行即得 MAX (扫描有界);
+    # statement_timeout=60s 兜底极端情形 (铁律 9)。
+    cutoff = today + timedelta(days=FUTURE_DATE_GUARD_DAYS)
+    cur.execute(
+        "SELECT MAX(trade_date) FROM factor_values "
+        "WHERE factor_name = ANY(%s) AND trade_date <= %s",
+        (active_factors, cutoff),
+    )
+    factor_max_date = cur.fetchone()[0]
+    if factor_max_date is None:
+        alerts.append(
+            f"[P0] factor_values 无 active 因子数据 (检查了 {len(active_factors)} 个 active 因子)"
+        )
+        return alerts
+
+    # 新鲜度: factor_values 最新日滞后于 expected_date
+    if factor_max_date < expected_date:
+        cur.execute(
+            """SELECT COUNT(*) FROM trading_calendar
+               WHERE is_trading_day = true AND market = 'astock'
+               AND trade_date > %s AND trade_date <= %s""",
+            (factor_max_date, expected_date),
+        )
+        lag = cur.fetchone()[0]
+        level = "P0" if lag > MAX_DATE_LAG else "P1"
+        alerts.append(
+            f"[{level}] factor_values 最新日={factor_max_date}, 预期={expected_date}, "
+            f"滞后{lag}个交易日 (因子未计算 → 信号 stale)"
+        )
+    else:
+        logger.info("factor_values 最新日=%s OK", factor_max_date)
+
+    # 3-5. 逐 active 因子在最新因子日的健康度 (单次 GROUP BY 聚合)
+    cur.execute(
+        """SELECT factor_name,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE neutral_value IS NULL) AS null_cnt,
+                  COUNT(*) FILTER (WHERE neutral_value = CAST('NaN' AS numeric)) AS nan_cnt,
+                  COUNT(*) FILTER (WHERE neutral_value <> CAST('NaN' AS numeric)
+                                   AND (neutral_value > %s OR neutral_value < %s)) AS oor_cnt
+           FROM factor_values
+           WHERE trade_date = %s AND factor_name = ANY(%s)
+           GROUP BY factor_name""",
+        (
+            FACTOR_VALUE_ABS_LIMIT,
+            -FACTOR_VALUE_ABS_LIMIT,
+            factor_max_date,
+            active_factors,
+        ),
+    )
+    stats = {row[0]: row[1:] for row in cur.fetchall()}
+
+    missing = [f for f in active_factors if f not in stats]
+    nan_bad: list[str] = []
+    null_bad: list[str] = []
+    oor_bad: list[str] = []
+    for fname, (total, null_cnt, nan_cnt, oor_cnt) in stats.items():
+        if nan_cnt > 0:
+            nan_bad.append(f"{fname}({nan_cnt})")
+        if total > 0 and null_cnt / total > FACTOR_NULL_THRESHOLD:
+            null_bad.append(f"{fname}({null_cnt}/{total})")
+        if oor_cnt > 0:
+            oor_bad.append(f"{fname}({oor_cnt})")
+
+    if missing:
+        alerts.append(
+            _summarize_factor_issue("P0", "覆盖缺失 (0 行, 当日未计算)", missing, factor_max_date)
+        )
+    if nan_bad:
+        alerts.append(
+            _summarize_factor_issue("P0", "含字面 NaN (铁律 29)", nan_bad, factor_max_date)
+        )
+    if null_bad:
+        alerts.append(
+            _summarize_factor_issue(
+                "P1",
+                f"neutral_value NULL率>{FACTOR_NULL_THRESHOLD:.0%}",
+                null_bad,
+                factor_max_date,
+            )
+        )
+    if oor_bad:
+        alerts.append(
+            _summarize_factor_issue(
+                "P1",
+                f"neutral_value 越界 |值|>{FACTOR_VALUE_ABS_LIMIT:.0f}",
+                oor_bad,
+                factor_max_date,
+            )
+        )
+
+    return alerts
+
+
 def _max_severity(alerts: list[str]) -> str:
     """从 alert 字符串列表提取最高 severity (p0 > p1 > p2). 默认 p1.
 
@@ -300,9 +439,7 @@ def _get_rules_engine():
     try:
         return AlertRulesEngine.from_yaml(PROJECT_ROOT / "configs" / "alert_rules.yaml")
     except Exception as e:  # noqa: BLE001
-        logger.warning(
-            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
-        )
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e)
         return None
 
 
@@ -343,9 +480,7 @@ def _build_alert_content(alerts: list[str], trade_date: date) -> str:
     lines = [f"### 数据质量巡检告警 {trade_date}", ""]
     lines.extend(f"{i}. {alert}" for i, alert in enumerate(alerts, 1))
     lines.append("")
-    lines.append(
-        f"---\n*巡检时间: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC*"
-    )
+    lines.append(f"---\n*巡检时间: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC*")
     return "\n".join(lines)
 
 
@@ -491,6 +626,7 @@ def run_checks(args: argparse.Namespace) -> int:
             ("row_counts", lambda: check_row_counts(cur, check_date)),
             ("null_ratios", lambda: check_null_ratios(cur, check_date)),
             ("latest_dates", lambda: check_latest_dates(cur, check_date, today)),
+            ("factor_values", lambda: check_factor_values(cur, check_date, today)),
         ):
             logger.info("→ %s 开始", step_name)
             try:

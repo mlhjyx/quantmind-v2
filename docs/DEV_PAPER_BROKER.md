@@ -58,25 +58,36 @@ class PaperState:
 
 ## §3 T+1 Semantics (A 股关键)
 
-### §3.1 Buy → Sell 隔日限制
+A 股 T+1 制度: 当日买入的股票当日不可卖. 以下为 PaperBroker / SimBroker 的**真实现**
+(code-truth verify, Plan 2 2026-05-20).
 
-A 股 T+1 制度: 当日买入的股票, **当日不可卖**.
+### §3.1 Share-side T+1 — 结构性保证 (非显式 guard)
 
-PaperBroker implementation:
-- `place_order(code, qty, side="buy", trade_date=T)`:
-  - 创建 PendingOrder, 状态 PENDING
-  - 撮合后 status=FILLED, holdings[code] += qty
-  - **flag**: `last_trade_date_per_code[code] = T` (新增字段)
-- `place_order(code, qty, side="sell", trade_date=T)`:
-  - 检查: `last_trade_date_per_code.get(code) < T` else raise `T1Violation`
+PaperBroker 是**月频调仓**引擎. `paper_broker.py:_do_rebalance` 在单次
+`execute_rebalance` 调用内**先卖后买**: 卖出操作的 `holdings` 来自最近一次
+`position_snapshot` 快照 (上一次调仓时 `save_state` 写入), 买入在卖出之后执行;
+两次调仓相隔 ~20 个交易日. 因此
+"当日买入又当日卖出" 在当前架构下**结构上不可能发生** —— share-side T+1 规则由
+调仓架构本身保证. `process_pending_orders` (T+1 封板补单) 只买不卖, 同样不产生违规.
 
-**Current gap** (P1-39 follow-up): 真实现需 review `paper_broker.py` 是否真有 last_trade_date_per_code 字段, 是否每 fill 真 update.
+**无 `last_trade_date_per_code` 字段, 无 `T1Violation` 异常** —— 当前架构下它们会是
+死代码 (永不触发). 显式 fail-loud guard 是 Phase J §8.2 (real-time / intraday fill)
+的前置项: 一旦支持日内成交, 同日 buy-then-sell 才可能发生, 届时才需要显式 guard.
 
-### §3.2 Cross-Day State Continuity
+**CI 锁定**: `backend/tests/test_paper_broker.py::TestT1Invariant` 断言单次调仓内
+无任何 code 同时出现 buy fill 与 sell fill (结构不变量).
 
-T 日收盘后 PaperBroker 写回 DB → T+1 日开盘前从 DB 加载:
-- holdings 持续 (T+1 卖出 yesterday-buy OK)
-- T-buy 标记 (last_trade_date_per_code) 必持久化否则 T+1 视为合法卖
+### §3.2 Cash-side — 卖出回款当日可用
+
+`SimBroker._sell_proceeds_today` (`backtest/broker.py`): 卖出净回款当日即计入
+`cash`, 当日买入可复用 (A 股资金 T+0 可复用). `new_day()` 每日重置该计数器.
+
+### §3.3 Cross-Day State Continuity
+
+T 日收盘后 `save_state` 写回 DB (position_snapshot / performance_series /
+trade_log) → T+1 日 `load_state` 从 DB 加载. holdings 跨进程持续 (Servy restart
+不丢 state); T+1 卖出 yesterday-buy 合法 —— 这正是 §3.1 结构性保证的另一面:
+跨调仓周期的持仓本就是上一周期买入的.
 
 ---
 
@@ -153,14 +164,22 @@ T 日收盘后 PaperBroker 写回 DB → T+1 日开盘前从 DB 加载:
 
 ### §7.1 Existing tests
 
-- `backend/tests/test_paper_broker.py` — P/L semantics + holdings continuity
-- `backend/tests/test_simbroker_*.py` — base broker matching logic
+- `backend/tests/test_paper_broker.py` — PaperBroker 行为单测 (Plan 2 NEW): load_state
+  cold-start / needs_rebalance 月末逻辑 / execute_rebalance 先卖后买 / T+1 结构不变量
+  / process_pending_orders 补单
+- `backend/tests/test_base_broker.py` — BaseBroker 统一接口 (PaperBroker 子类)
+- `backend/tests/test_pending_orders.py` — execute_rebalance / process_pending_orders
+  返回契约 + 封板 → PendingOrder
+- `backend/tests/test_execution_mode_isolation.py` — load_state 按 execution_mode 隔离
+- SimBroker 撮合 / 费用: `test_broker_costs.py` / `test_broker_executor.py`
 
-### §7.2 Gap (P1-39 follow-up)
+### §7.2 Gap
 
-- T+1 cross-day violation test (buy T → sell T raise T1Violation)
-- last_trade_date_per_code persistence verify
-- Cost model alignment H0 < 5bps quarterly verify
+- ~~T+1 cross-day violation test~~ → ✅ Plan 2: `TestT1Invariant` 锁定结构不变量
+  (当前架构 T+1 由先卖后买保证). 显式 `T1Violation` raise 测试 → Phase J §8.2
+  (随 real-time fill guard 一并补).
+- Cost model alignment H0 < 5bps 季度复核 — 走 `slippage_calibration_tasks`
+  (Plan v10 P0-10 closure, 铁律 18).
 
 ---
 
@@ -176,6 +195,9 @@ T 日收盘后 PaperBroker 写回 DB → T+1 日开盘前从 DB 加载:
 - 当前: Beat 16:30 SH 收盘后 batch fill
 - Phase J: tick-level fill (consume qm:qmt:status Redis stream)
 - 用 case: intraday signal (currently 0 use case, 但 V3 §16 Bull/Bear LLM 可能 trigger 真实 intraday)
+- **T+1 显式 guard 前置于此** (§3.1): real-time / intraday fill 下同日 buy-then-sell
+  才可能, 届时 SimBroker 需 `_bought_today` set + `execute_sell` fail-loud
+  (`T1ViolationError`). 当前月频架构下结构性保证已足够.
 
 ### §8.3 Cross-asset (deferred)
 
@@ -204,4 +226,4 @@ T 日收盘后 PaperBroker 写回 DB → T+1 日开盘前从 DB 加载:
 
 **Maintenance**: P1-39 起手 sediment, Phase J 候选 deep expansion (T+1 violation test + multi-account + tick-level).
 **Cross-ref**: backend/engines/paper_broker.py + SimBroker (backtest_engine.py)
-**Last updated**: 2026-05-19 Session 58+1 evening (Plan v8 P1-39 closure)
+**Last updated**: 2026-05-20 Plan 2 (§3 T+1 code-truth correction + §7 test consolidation)

@@ -17,12 +17,13 @@ logger = structlog.get_logger(__name__)
 
 # 对账阈值
 POSITION_MISMATCH_THRESHOLD = 0  # 股数差异容忍（0=精确匹配）
-CASH_MISMATCH_RATIO = 0.02       # 现金差异容忍2%
+CASH_MISMATCH_RATIO = 0.02  # 现金差异容忍2%
 
 
 @dataclass
 class ReconciliationResult:
     """对账结果。"""
+
     is_matched: bool = True
     position_mismatches: list[dict[str, Any]] = field(default_factory=list)
     cash_mismatch: dict[str, Any] | None = None
@@ -132,10 +133,7 @@ class QMTReconciliationService:
 
         # 5. 生成摘要
         if result.is_matched:
-            result.summary = (
-                f"对账通过: {len(qmt_positions)}只持仓一致, "
-                f"现金={qmt_cash:.0f}"
-            )
+            result.summary = f"对账通过: {len(qmt_positions)}只持仓一致, 现金={qmt_cash:.0f}"
             logger.info(f"[Reconciliation] {result.summary}")
         else:
             parts = []
@@ -180,15 +178,13 @@ class QMTReconciliationService:
 
             for m in result.position_mismatches:
                 msg_parts.append(
-                    f"  {m['code']}: QMT={m['qmt_shares']} "
-                    f"DB={m['db_shares']} diff={m['diff']}"
+                    f"  {m['code']}: QMT={m['qmt_shares']} DB={m['db_shares']} diff={m['diff']}"
                 )
 
             if result.cash_mismatch:
                 cm = result.cash_mismatch
                 msg_parts.append(
-                    f"  现金: QMT={cm['qmt_cash']:.0f} "
-                    f"DB={cm['db_cash']:.0f} diff={cm['diff']:.0f}"
+                    f"  现金: QMT={cm['qmt_cash']:.0f} DB={cm['db_cash']:.0f} diff={cm['diff']:.0f}"
                 )
 
             send_alert(

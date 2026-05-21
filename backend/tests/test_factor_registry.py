@@ -1,4 +1,5 @@
 """DBFactorRegistry 单测 — MVP 1.3b (get_direction + cache) + MVP 1.3c (register/get_active/update_status/novelty_check)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -42,7 +43,17 @@ def empty_dal() -> MagicMock:
     """DAL mock, read_registry 默认返空 DataFrame."""
     dal = MagicMock()
     dal.read_registry.return_value = pd.DataFrame(
-        columns=["id", "name", "direction", "expression", "hypothesis", "status", "pool", "category", "source"]
+        columns=[
+            "id",
+            "name",
+            "direction",
+            "expression",
+            "hypothesis",
+            "status",
+            "pool",
+            "category",
+            "source",
+        ]
     )
     return dal
 
@@ -189,9 +200,7 @@ def test_dal_exception_on_refresh_doesnt_corrupt_cache() -> None:
 
 def test_direction_fix_reversal_20() -> None:
     dal = MagicMock()
-    dal.read_registry.return_value = pd.DataFrame(
-        {"name": ["reversal_20"], "direction": [1]}
-    )
+    dal.read_registry.return_value = pd.DataFrame({"name": ["reversal_20"], "direction": [1]})
     r = DBFactorRegistry(dal=dal)
     assert r.get_direction("reversal_20") == 1
 
@@ -252,11 +261,24 @@ def test_get_active_handles_null_optional_fields() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": None, "name": "x", "category": None, "direction": -1,
-                "expression": None, "code_content": None, "hypothesis": None,
-                "source": None, "lookback_days": None, "status": "active", "pool": None,
-                "gate_ic": None, "gate_ir": None, "gate_mono": None, "gate_t": None,
-                "ic_decay_ratio": None, "created_at": None, "updated_at": None,
+                "id": None,
+                "name": "x",
+                "category": None,
+                "direction": -1,
+                "expression": None,
+                "code_content": None,
+                "hypothesis": None,
+                "source": None,
+                "lookback_days": None,
+                "status": "active",
+                "pool": None,
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -273,11 +295,23 @@ def test_get_active_invalid_status_falls_back_to_active() -> None:
         [
             {
                 "id": UUID("11111111-1111-1111-1111-111111111111"),
-                "name": "x", "category": "alpha", "direction": 1,
-                "expression": None, "code_content": None, "hypothesis": None,
-                "source": "manual", "lookback_days": None, "status": "unknown_status",
-                "pool": "CORE", "gate_ic": None, "gate_ir": None, "gate_mono": None,
-                "gate_t": None, "ic_decay_ratio": None, "created_at": None, "updated_at": None,
+                "name": "x",
+                "category": "alpha",
+                "direction": 1,
+                "expression": None,
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "unknown_status",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -305,12 +339,24 @@ def test_novelty_check_passes_low_similarity() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": uid, "name": "existing", "category": "alpha", "direction": 1,
-                "expression": "close / open", "code_content": None,
-                "hypothesis": None, "source": "manual", "lookback_days": None,
-                "status": "active", "pool": "CORE", "gate_ic": None, "gate_ir": None,
-                "gate_mono": None, "gate_t": None, "ic_decay_ratio": None,
-                "created_at": None, "updated_at": None,
+                "id": uid,
+                "name": "existing",
+                "category": "alpha",
+                "direction": 1,
+                "expression": "close / open",
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "active",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -326,12 +372,24 @@ def test_novelty_check_rejects_high_similarity() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": uid, "name": "existing_factor", "category": "alpha", "direction": 1,
-                "expression": "rank(close / open)", "code_content": None,
-                "hypothesis": None, "source": "manual", "lookback_days": None,
-                "status": "active", "pool": "CORE", "gate_ic": None, "gate_ir": None,
-                "gate_mono": None, "gate_t": None, "ic_decay_ratio": None,
-                "created_at": None, "updated_at": None,
+                "id": uid,
+                "name": "existing_factor",
+                "category": "alpha",
+                "direction": 1,
+                "expression": "rank(close / open)",
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "active",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -347,12 +405,24 @@ def test_novelty_check_custom_ast_similarity_fn() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": uid, "name": "existing", "category": "alpha", "direction": 1,
-                "expression": "a + b", "code_content": None, "hypothesis": None,
-                "source": "manual", "lookback_days": None, "status": "active",
-                "pool": "CORE", "gate_ic": None, "gate_ir": None, "gate_mono": None,
-                "gate_t": None, "ic_decay_ratio": None,
-                "created_at": None, "updated_at": None,
+                "id": uid,
+                "name": "existing",
+                "category": "alpha",
+                "direction": 1,
+                "expression": "a + b",
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "active",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -398,8 +468,13 @@ def test_register_g10_blocks_empty_hypothesis(empty_dal) -> None:
     factory, _, _ = _make_conn_factory(insert_id=UUID(int=1))
     r = DBFactorRegistry(dal=empty_dal, conn_factory=factory)
     spec = FactorSpec(
-        name="x", hypothesis="", expression="a", direction=1,
-        category="alpha", pool="CANDIDATE", author="test",
+        name="x",
+        hypothesis="",
+        expression="a",
+        direction=1,
+        category="alpha",
+        pool="CANDIDATE",
+        author="test",
     )
     with pytest.raises(OnboardingBlocked, match="G10"):
         r.register(spec)
@@ -409,8 +484,13 @@ def test_register_g10_blocks_short_hypothesis(empty_dal) -> None:
     factory, _, _ = _make_conn_factory(insert_id=UUID(int=1))
     r = DBFactorRegistry(dal=empty_dal, conn_factory=factory)
     spec = FactorSpec(
-        name="x", hypothesis="short", expression="a", direction=1,
-        category="alpha", pool="CANDIDATE", author="test",
+        name="x",
+        hypothesis="short",
+        expression="a",
+        direction=1,
+        category="alpha",
+        pool="CANDIDATE",
+        author="test",
     )
     with pytest.raises(OnboardingBlocked, match="G10"):
         r.register(spec)
@@ -426,7 +506,11 @@ def test_register_g10_blocks_forbidden_prefixes(empty_dal, forbidden_prefix) -> 
     spec = FactorSpec(
         name="x",
         hypothesis=forbidden_prefix + " padding to be long enough for length check",
-        expression="a", direction=1, category="alpha", pool="CANDIDATE", author="test",
+        expression="a",
+        direction=1,
+        category="alpha",
+        pool="CANDIDATE",
+        author="test",
     )
     with pytest.raises(OnboardingBlocked, match="G10"):
         r.register(spec)
@@ -438,12 +522,24 @@ def test_register_g9_blocks_high_ast_similarity() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": uid, "name": "existing", "category": "alpha", "direction": 1,
-                "expression": "rank(close / open)", "code_content": None,
-                "hypothesis": None, "source": "manual", "lookback_days": None,
-                "status": "active", "pool": "CORE", "gate_ic": None, "gate_ir": None,
-                "gate_mono": None, "gate_t": None, "ic_decay_ratio": None,
-                "created_at": None, "updated_at": None,
+                "id": uid,
+                "name": "existing",
+                "category": "alpha",
+                "direction": 1,
+                "expression": "rank(close / open)",
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "active",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )
@@ -460,12 +556,24 @@ def test_register_duplicate_factor() -> None:
     dal.read_registry.return_value = pd.DataFrame(
         [
             {
-                "id": uid, "name": "existing_name", "category": "alpha", "direction": 1,
-                "expression": "foo()", "code_content": None, "hypothesis": None,
-                "source": "manual", "lookback_days": None, "status": "active",
-                "pool": "CORE", "gate_ic": None, "gate_ir": None, "gate_mono": None,
-                "gate_t": None, "ic_decay_ratio": None,
-                "created_at": None, "updated_at": None,
+                "id": uid,
+                "name": "existing_name",
+                "category": "alpha",
+                "direction": 1,
+                "expression": "foo()",
+                "code_content": None,
+                "hypothesis": None,
+                "source": "manual",
+                "lookback_days": None,
+                "status": "active",
+                "pool": "CORE",
+                "gate_ic": None,
+                "gate_ir": None,
+                "gate_mono": None,
+                "gate_t": None,
+                "ic_decay_ratio": None,
+                "created_at": None,
+                "updated_at": None,
             }
         ]
     )

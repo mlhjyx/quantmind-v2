@@ -62,10 +62,18 @@ CORE_DIRECTIONS = {
 
 # ── Minute 候选因子 (方向修正后的 neutral IC, 铁律 11 可追溯 factor_ic_history) ──
 MINUTE_CANDIDATES = {
-    1: {"factor": "vwap_deviation_20", "direction": 1, "neutral_ic": 0.0509,
-        "note": "direction 修正 -1→+1 后的首次 WF 验证"},
-    2: {"factor": "volume_price_divergence_20", "direction": 1, "neutral_ic": 0.0711,
-        "note": "neutral IR=0.700, 当前最强 minute 候选"},
+    1: {
+        "factor": "vwap_deviation_20",
+        "direction": 1,
+        "neutral_ic": 0.0509,
+        "note": "direction 修正 -1→+1 后的首次 WF 验证",
+    },
+    2: {
+        "factor": "volume_price_divergence_20",
+        "direction": 1,
+        "neutral_ic": 0.0711,
+        "note": "neutral IR=0.700, 当前最强 minute 候选",
+    },
 }
 
 BASELINE_WF_SHARPE = 0.8659
@@ -94,7 +102,9 @@ def load_parquet_price_bench() -> tuple[pd.DataFrame, pd.DataFrame]:
     bench_df["trade_date"] = pd.to_datetime(bench_df["trade_date"]).dt.date
     logger.info(
         "Price %d rows %s~%s, Bench %d rows",
-        len(price_df), price_df["trade_date"].min(), price_df["trade_date"].max(),
+        len(price_df),
+        price_df["trade_date"].min(),
+        price_df["trade_date"].max(),
         len(bench_df),
     )
     return price_df, bench_df
@@ -167,16 +177,25 @@ def run_wf_single(cand_id, cand, factor_df, price_df, bench_df, ln_mcap_pivot):
         cnt = (sub_df["factor_name"] == fn).sum()
         logger.info("  %s: %d 行", fn, cnt)
         if cnt == 0:
-            return {"cand_id": cand_id, "name": name, "factor": factor_name,
-                    "verdict": "SKIP", "reason": f"no data for {fn}"}
+            return {
+                "cand_id": cand_id,
+                "name": name,
+                "factor": factor_name,
+                "verdict": "SKIP",
+                "reason": f"no data for {fn}",
+            }
 
     wf_config = WFConfig(n_splits=5, train_window=750, gap=5, test_window=250)
     bt_config = BacktestConfig(top_n=20, rebalance_freq="monthly", initial_capital=1_000_000)
 
     signal_func = make_equal_weight_signal_func(
-        sub_df, directions, price_df,
-        top_n=20, rebalance_freq="monthly",
-        size_neutral_beta=0.50, ln_mcap_pivot=ln_mcap_pivot,
+        sub_df,
+        directions,
+        price_df,
+        top_n=20,
+        rebalance_freq="monthly",
+        size_neutral_beta=0.50,
+        ln_mcap_pivot=ln_mcap_pivot,
     )
 
     all_dates = sorted(price_df["trade_date"].unique())
@@ -193,20 +212,26 @@ def run_wf_single(cand_id, cand, factor_df, price_df, bench_df, ln_mcap_pivot):
         oos_sharpes.append(s)
         if s < 0:
             neg_folds += 1
-        folds.append({
-            "fold": fr.fold_idx,
-            "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
-            "oos_sharpe": round(s, 4),
-            "oos_mdd": round(float(fr.oos_mdd), 4),
-            "oos_annual_return": round(float(fr.oos_annual_return), 4),
-        })
+        folds.append(
+            {
+                "fold": fr.fold_idx,
+                "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
+                "oos_sharpe": round(s, 4),
+                "oos_mdd": round(float(fr.oos_mdd), 4),
+                "oos_annual_return": round(float(fr.oos_annual_return), 4),
+            }
+        )
 
     mean_oos_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
     delta = mean_oos_sharpe - BASELINE_WF_SHARPE
     verdict = "PASS" if (mean_oos_sharpe > BASELINE_WF_SHARPE and neg_folds == 0) else "FAIL"
 
-    logger.info("  → mean OOS Sharpe=%.4f (baseline %.4f, Δ=%+.4f)",
-                mean_oos_sharpe, BASELINE_WF_SHARPE, delta)
+    logger.info(
+        "  → mean OOS Sharpe=%.4f (baseline %.4f, Δ=%+.4f)",
+        mean_oos_sharpe,
+        BASELINE_WF_SHARPE,
+        delta,
+    )
     logger.info("  → neg_folds=%d, verdict=%s, elapsed=%.1fs", neg_folds, verdict, elapsed)
 
     return {

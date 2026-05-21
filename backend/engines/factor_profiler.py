@@ -51,6 +51,7 @@ TMPL_NAMES = {1: "月度", 2: "周度", 7: "事件", 11: "仓位", 12: "regime�
 
 def _get_conn():
     from app.services.db import get_sync_conn
+
     return get_sync_conn()
 
 
@@ -117,8 +118,8 @@ def _load_shared_data(conn):
 
     fwd_excess = {}
     for h in HORIZONS:
-        entry = close_pivot.shift(-1)          # Buy at T+1 close
-        exit_p = close_pivot.shift(-(1 + h))   # Sell at T+1+h close (hold h days)
+        entry = close_pivot.shift(-1)  # Buy at T+1 close
+        exit_p = close_pivot.shift(-(1 + h))  # Sell at T+1+h close (hold h days)
         stock_ret = exit_p / entry - 1
         csi_entry = csi_close.shift(-1)
         csi_exit = csi_close.shift(-(1 + h))
@@ -132,6 +133,7 @@ def _load_shared_data(conn):
     industry = pd.read_sql("SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn)
     # SW2→SW1映射: 110组→29组, 避免小组WLS不稳定
     from app.services.industry_utils import apply_sw2_to_sw1
+
     sw2_series = industry.set_index("code")["industry_sw1"].fillna("其他")
     industry_map = apply_sw2_to_sw1(sw2_series, conn)
 
@@ -216,11 +218,16 @@ def profile_factor(
         from backend.data.factor_cache import FactorCache
 
     cache = FactorCache()
-    start_d = _dt.strptime(START_DATE, "%Y-%m-%d").date() if isinstance(START_DATE, str) else START_DATE
+    start_d = (
+        _dt.strptime(START_DATE, "%Y-%m-%d").date() if isinstance(START_DATE, str) else START_DATE
+    )
     end_d = _dt.strptime(END_DATE, "%Y-%m-%d").date() if isinstance(END_DATE, str) else END_DATE
     _fv_raw = cache.load(
-        factor_name, column="neutral_value",
-        start=start_d, end=end_d, conn=conn,
+        factor_name,
+        column="neutral_value",
+        start=start_d,
+        end=end_d,
+        conn=conn,
     )
     if _fv_raw.empty:
         fv = _fv_raw.rename(columns={"value": "neutral_value"})

@@ -318,9 +318,7 @@ class _ASTSecurityVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         self._node_count += 1
         func_name = self._get_call_name(node.func)
-        if func_name and (
-            func_name in _FORBIDDEN_NAMES or func_name in _FORBIDDEN_CALL_NAMES
-        ):
+        if func_name and (func_name in _FORBIDDEN_NAMES or func_name in _FORBIDDEN_CALL_NAMES):
             self.errors.append(f"禁止的函数调用: '{func_name}' (行 {node.lineno})")
         self.generic_visit(node)
 
@@ -385,9 +383,7 @@ class FactorSandbox:
         # 1. 长度检查
         if len(expr) > self.MAX_EXPR_LENGTH:
             result.is_valid = False
-            result.errors.append(
-                f"表达式过长: {len(expr)} 字符 (上限 {self.MAX_EXPR_LENGTH})"
-            )
+            result.errors.append(f"表达式过长: {len(expr)} 字符 (上限 {self.MAX_EXPR_LENGTH})")
             return result
 
         # 2. 解析 AST
@@ -409,9 +405,7 @@ class FactorSandbox:
 
         # 4. 节点数检查
         if visitor.node_count > self.MAX_NODES:
-            result.errors.append(
-                f"AST节点过多: {visitor.node_count} (上限 {self.MAX_NODES})"
-            )
+            result.errors.append(f"AST节点过多: {visitor.node_count} (上限 {self.MAX_NODES})")
 
         result.is_valid = len(result.errors) == 0
         return result
@@ -698,9 +692,7 @@ def _safe_pow(x: pd.Series, n: float) -> pd.Series:
     return np.power(x, n)
 
 
-def _if_else(
-    condition: pd.Series, x: pd.Series, y: pd.Series
-) -> pd.Series:
+def _if_else(condition: pd.Series, x: pd.Series, y: pd.Series) -> pd.Series:
     return pd.Series(
         np.where(condition, x, y),
         index=condition.index,

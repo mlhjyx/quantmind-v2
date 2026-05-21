@@ -138,13 +138,19 @@ class TestCostTracker:
     def test_record_accumulates(self) -> None:
         tracker = CostTracker()
         resp1 = LLMResponse(
-            content="x", model=MODEL_DEEPSEEK_R1,
-            input_tokens=1000, output_tokens=200, cost_usd=0.001,
+            content="x",
+            model=MODEL_DEEPSEEK_R1,
+            input_tokens=1000,
+            output_tokens=200,
+            cost_usd=0.001,
             latency_ms=500,
         )
         resp2 = LLMResponse(
-            content="y", model=MODEL_DEEPSEEK_V3,
-            input_tokens=500, output_tokens=100, cost_usd=0.0002,
+            content="y",
+            model=MODEL_DEEPSEEK_V3,
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.0002,
             latency_ms=200,
         )
         tracker.record(resp1)
@@ -158,11 +164,16 @@ class TestCostTracker:
     def test_record_by_model(self) -> None:
         tracker = CostTracker()
         for _ in range(3):
-            tracker.record(LLMResponse(
-                content="x", model=MODEL_DEEPSEEK_R1,
-                input_tokens=100, output_tokens=50, cost_usd=0.001,
-                latency_ms=100,
-            ))
+            tracker.record(
+                LLMResponse(
+                    content="x",
+                    model=MODEL_DEEPSEEK_R1,
+                    input_tokens=100,
+                    output_tokens=50,
+                    cost_usd=0.001,
+                    latency_ms=100,
+                )
+            )
         assert tracker.calls_by_model[MODEL_DEEPSEEK_R1] == 3
 
     def test_summary_keys(self) -> None:
@@ -215,8 +226,9 @@ class TestIdeaAgent:
     def test_generate_with_active_factors(self) -> None:
         agent = self._make_agent()
         active = [
-            ActiveFactor("test_factor", "cs_rank(returns)", ic=0.04,
-                         ic_direction="positive", category="价量"),
+            ActiveFactor(
+                "test_factor", "cs_rank(returns)", ic=0.04, ic_direction="positive", category="价量"
+            ),
         ]
         results = agent.generate(active_factors=active, n=2)
         assert isinstance(results, list)
@@ -255,17 +267,19 @@ class TestIdeaAgent:
     def test_parse_response_handles_nested_dict(self) -> None:
         """测试解析容错: 顶层是dict包裹list的情况。"""
         agent = self._make_agent()
-        nested = {"factors": [
-            {
-                "name": "test_factor",
-                "expression": "cs_rank(returns)",
-                "hypothesis": "测试",
-                "expected_ic_direction": "positive",
-                "expected_ic_range": [0.02, 0.05],
-                "category": "价量",
-                "novelty_vs_existing": "new",
-            }
-        ]}
+        nested = {
+            "factors": [
+                {
+                    "name": "test_factor",
+                    "expression": "cs_rank(returns)",
+                    "hypothesis": "测试",
+                    "expected_ic_direction": "positive",
+                    "expected_ic_range": [0.02, 0.05],
+                    "category": "价量",
+                    "novelty_vs_existing": "new",
+                }
+            ]
+        }
         results = agent._parse_response(json.dumps(nested), nested)
         assert len(results) == 1
         assert results[0].name == "test_factor"
@@ -304,6 +318,7 @@ class TestSingletons:
     def test_get_default_client_returns_same_instance(self) -> None:
         # 重置单例以避免跨测试污染
         import engines.mining.deepseek_client as mod
+
         mod._default_client = None
         c1 = get_default_client()
         c2 = get_default_client()
@@ -311,6 +326,7 @@ class TestSingletons:
 
     def test_get_default_router_returns_same_instance(self) -> None:
         import engines.mining.deepseek_client as mod
+
         mod._default_router = None
         r1 = get_default_router()
         r2 = get_default_router()
@@ -335,12 +351,17 @@ class TestDeepSeekClientRetryExhausted:
         fake_openai.chat.completions.create.side_effect = ConnectionError("network error")
 
         import pytest
-        with mock.patch.object(client, "_get_openai_client", return_value=fake_openai), mock.patch.object(client, "_rate_limit"), pytest.raises(RuntimeError) as exc_info:  # 跳过限速sleep
+
+        with (
+            mock.patch.object(client, "_get_openai_client", return_value=fake_openai),
+            mock.patch.object(client, "_rate_limit"),
+            pytest.raises(RuntimeError) as exc_info,
+        ):  # 跳过限速sleep
             client.chat(
                 messages=[LLMMessage(role="user", content="test")],
                 model=MODEL_DEEPSEEK_V3,
             )
-        assert "2" in str(exc_info.value)   # 错误信息应包含重试次数
+        assert "2" in str(exc_info.value)  # 错误信息应包含重试次数
 
     def test_retry_count_correct(self) -> None:
         """验证实际调用次数等于max_retries。"""
@@ -351,7 +372,13 @@ class TestDeepSeekClientRetryExhausted:
         fake_openai.chat.completions.create.side_effect = Exception("boom")
 
         import pytest
-        with mock.patch.object(client, "_get_openai_client", return_value=fake_openai), mock.patch.object(client, "_rate_limit"), mock.patch("time.sleep"), pytest.raises(RuntimeError):  # 不真正sleep
+
+        with (
+            mock.patch.object(client, "_get_openai_client", return_value=fake_openai),
+            mock.patch.object(client, "_rate_limit"),
+            mock.patch("time.sleep"),
+            pytest.raises(RuntimeError),
+        ):  # 不真正sleep
             client.chat(
                 messages=[LLMMessage(role="user", content="test")],
                 model=MODEL_DEEPSEEK_V3,
@@ -365,7 +392,9 @@ class TestDeepSeekClientCostAccuracy:
     def test_estimate_cost_r1(self) -> None:
         client = DeepSeekClient(mock_mode=True)
         # R1: input=0.55/M, output=2.19/M
-        cost = client._estimate_cost(MODEL_DEEPSEEK_R1, input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = client._estimate_cost(
+            MODEL_DEEPSEEK_R1, input_tokens=1_000_000, output_tokens=1_000_000
+        )
         assert abs(cost - (0.55 + 2.19)) < 1e-6
 
     def test_estimate_cost_v3(self) -> None:
@@ -383,18 +412,25 @@ class TestDeepSeekClientCostAccuracy:
     def test_estimate_cost_unknown_model_uses_v3_fallback(self) -> None:
         client = DeepSeekClient(mock_mode=True)
         # 未知model应fallback到V3定价（input=0.14, output=0.28）
-        cost_unknown = client._estimate_cost("unknown-model-xyz", input_tokens=1_000_000, output_tokens=0)
+        cost_unknown = client._estimate_cost(
+            "unknown-model-xyz", input_tokens=1_000_000, output_tokens=0
+        )
         cost_v3_input = 0.14
         assert abs(cost_unknown - cost_v3_input) < 1e-6
 
     def test_cost_tracker_summary_rounding(self) -> None:
         """summary中cost_by_model精度应为6位小数。"""
         tracker = CostTracker()
-        tracker.record(LLMResponse(
-            content="x", model=MODEL_DEEPSEEK_R1,
-            input_tokens=123, output_tokens=456, cost_usd=0.000001234567,
-            latency_ms=100,
-        ))
+        tracker.record(
+            LLMResponse(
+                content="x",
+                model=MODEL_DEEPSEEK_R1,
+                input_tokens=123,
+                output_tokens=456,
+                cost_usd=0.000001234567,
+                latency_ms=100,
+            )
+        )
         summary = tracker.summary()
         # 验证四舍五入到6位
         val = summary["cost_by_model"][MODEL_DEEPSEEK_R1]
@@ -488,8 +524,11 @@ class TestIdeaAgentContextConstruction:
 
     def test_format_active_factors_contains_ic(self) -> None:
         agent = self._make_agent()
-        factors = [ActiveFactor("f1", "cs_rank(returns)", ic=0.042,
-                                ic_direction="positive", category="价量")]
+        factors = [
+            ActiveFactor(
+                "f1", "cs_rank(returns)", ic=0.042, ic_direction="positive", category="价量"
+            )
+        ]
         text = agent._format_active_factors(factors)
         assert "f1" in text
         assert "0.042" in text
@@ -558,17 +597,19 @@ class TestIdeaAgentParseResponseEdgeCases:
     def test_parse_response_hypotheses_key(self) -> None:
         """顶层dict用'hypotheses'键包裹list。"""
         agent = self._make_agent()
-        data = {"hypotheses": [
-            {
-                "name": "h_factor",
-                "expression": "cs_zscore(close)",
-                "hypothesis": "用hypotheses键",
-                "expected_ic_direction": "negative",
-                "expected_ic_range": [0.01, 0.04],
-                "category": "价量",
-                "novelty_vs_existing": "",
-            }
-        ]}
+        data = {
+            "hypotheses": [
+                {
+                    "name": "h_factor",
+                    "expression": "cs_zscore(close)",
+                    "hypothesis": "用hypotheses键",
+                    "expected_ic_direction": "negative",
+                    "expected_ic_range": [0.01, 0.04],
+                    "category": "价量",
+                    "novelty_vs_existing": "",
+                }
+            ]
+        }
         results = agent._parse_response(json.dumps(data), data)
         assert len(results) == 1
         assert results[0].name == "h_factor"
@@ -596,15 +637,17 @@ class TestIdeaAgentParseResponseEdgeCases:
     def test_parse_response_pre_parsed_takes_priority(self) -> None:
         """pre_parsed不为None时直接使用，不重新解析raw_content。"""
         agent = self._make_agent()
-        pre_parsed = [{
-            "name": "pre_factor",
-            "expression": "cs_rank(returns)",
-            "hypothesis": "pre_parsed优先",
-            "expected_ic_direction": "positive",
-            "expected_ic_range": [0.02, 0.05],
-            "category": "价量",
-            "novelty_vs_existing": "",
-        }]
+        pre_parsed = [
+            {
+                "name": "pre_factor",
+                "expression": "cs_rank(returns)",
+                "hypothesis": "pre_parsed优先",
+                "expected_ic_direction": "positive",
+                "expected_ic_range": [0.02, 0.05],
+                "category": "价量",
+                "novelty_vs_existing": "",
+            }
+        ]
         # raw_content是损坏的JSON，但pre_parsed有效
         results = agent._parse_response("{{CORRUPTED}}", pre_parsed)
         assert len(results) == 1
@@ -618,8 +661,8 @@ class TestIdeaAgentParseResponseEdgeCases:
         assert len(results) == 1
         h = results[0]
         assert h.name == "minimal_factor"
-        assert h.expected_ic_direction == "positive"   # 默认值
-        assert h.category == "价量"                    # 默认值
+        assert h.expected_ic_direction == "positive"  # 默认值
+        assert h.category == "价量"  # 默认值
 
 
 class TestIdeaAgentRetryOnDSLFailure:
@@ -637,14 +680,17 @@ class TestIdeaAgentRetryOnDSLFailure:
             call_count[0] += 1
             captured_failed.append(list(failed_factors))
             # 直接返回解析好的FactorHypothesis列表（绕过_parse_response）
-            return [FactorHypothesis(
-                name="bad_factor",
-                expression="cs_rank(totally_unknown_field_xyz)",
-                hypothesis="bad",
-                expected_ic_direction="positive",
-            )]
+            return [
+                FactorHypothesis(
+                    name="bad_factor",
+                    expression="cs_rank(totally_unknown_field_xyz)",
+                    hypothesis="bad",
+                    expected_ic_direction="positive",
+                )
+            ]
 
         import unittest.mock as mock
+
         with mock.patch.object(agent, "_call_and_parse", side_effect=patched_call_and_parse):
             agent.generate(n=1)
 
@@ -671,7 +717,8 @@ class TestIdeaAgentRetryOnDSLFailure:
         )
 
         with mock.patch.object(
-            agent, "_call_and_parse",
+            agent,
+            "_call_and_parse",
             return_value=[always_invalid_hypothesis],
         ):
             results = agent.generate(n=1)

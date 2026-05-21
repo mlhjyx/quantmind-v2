@@ -26,6 +26,7 @@ logger = structlog.get_logger(__name__)
 
 class DecayLevel(StrEnum):
     """因子衰减等级。"""
+
     L0 = "L0"  # 正常
     L1 = "L1"  # 告警
     L2 = "L2"  # 自动降权
@@ -35,6 +36,7 @@ class DecayLevel(StrEnum):
 @dataclass
 class DecayResult:
     """单因子衰减检测结果。"""
+
     factor_name: str
     decay_level: DecayLevel
     ic_ma20: float
@@ -60,7 +62,7 @@ class DecayResult:
         """该衰减等级对应的factor_registry目标状态。"""
         return {
             DecayLevel.L0: "active",
-            DecayLevel.L1: "active",   # L1只告警，不改状态
+            DecayLevel.L1: "active",  # L1只告警，不改状态
             DecayLevel.L2: "warning",
             DecayLevel.L3: "candidate",
         }[self.decay_level]
@@ -68,8 +70,8 @@ class DecayResult:
 
 # ────────────────── 配置常量 ──────────────────
 
-L1_RATIO = 0.8    # IC_MA20 < IC_MA60 × 0.8 → L1
-L2_RATIO = 0.5    # IC_MA20 < IC_MA60 × 0.5 → L2
+L1_RATIO = 0.8  # IC_MA20 < IC_MA60 × 0.8 → L1
+L2_RATIO = 0.5  # IC_MA20 < IC_MA60 × 0.5 → L2
 L3_IC_THRESHOLD = 0.01  # IC绝对值阈值
 L3_CONSECUTIVE_DAYS = 60  # 连续低IC天数
 
@@ -176,15 +178,9 @@ def check_factor_decay(
     # 原因说明
     reasons = {
         DecayLevel.L0: "正常",
-        DecayLevel.L1: (
-            f"IC_MA20({ic_ma20:.4f}) < IC_MA60×0.8({l1_thresh:.4f})"
-        ),
-        DecayLevel.L2: (
-            f"IC_MA20({ic_ma20:.4f}) < IC_MA60×0.5({l2_thresh:.4f})"
-        ),
-        DecayLevel.L3: (
-            f"IC<{L3_IC_THRESHOLD}连续{consecutive_low}天(>={L3_CONSECUTIVE_DAYS}天)"
-        ),
+        DecayLevel.L1: (f"IC_MA20({ic_ma20:.4f}) < IC_MA60×0.8({l1_thresh:.4f})"),
+        DecayLevel.L2: (f"IC_MA20({ic_ma20:.4f}) < IC_MA60×0.5({l2_thresh:.4f})"),
+        DecayLevel.L3: (f"IC<{L3_IC_THRESHOLD}连续{consecutive_low}天(>={L3_CONSECUTIVE_DAYS}天)"),
     }
 
     return DecayResult(
@@ -217,6 +213,8 @@ def check_all_factors_decay(
         if result.decay_level != DecayLevel.L0:
             logger.warning(
                 "[Decay] %s: %s — %s",
-                fname, result.decay_level.value, result.reason,
+                fname,
+                result.decay_level.value,
+                result.reason,
             )
     return results

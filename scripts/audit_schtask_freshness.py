@@ -145,9 +145,7 @@ def classify(task: dict, stale_hours: int) -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="Output JSON only")
-    parser.add_argument(
-        "--no-alert", action="store_true", help="Skip DingTalk alert on FAIL/STALE"
-    )
+    parser.add_argument("--no-alert", action="store_true", help="Skip DingTalk alert on FAIL/STALE")
     parser.add_argument(
         "--stale-hours",
         type=int,
@@ -233,11 +231,10 @@ def _send_dingtalk_alert(summary: dict, report: list[dict]) -> None:
     backend_dir = Path(__file__).resolve().parent.parent / "backend"
     sys.path.insert(0, str(backend_dir))
 
-    # Plan v8 code review HIGH fix (5-20): real send_alert at notification_service
     try:
-        from app.services.notification_service import send_alert  # type: ignore[import-not-found]
+        from app.core.dingtalk import send_alert  # type: ignore[import-not-found]
     except ImportError:
-        print("[WARN] notification_service unavailable, skip alert", file=sys.stderr)
+        print("[WARN] app.core.dingtalk unavailable, skip alert", file=sys.stderr)
         return
 
     fail_tasks = [r for r in report if r["severity"] in ("FAIL", "STALE")]
@@ -248,7 +245,7 @@ def _send_dingtalk_alert(summary: dict, report: list[dict]) -> None:
     if len(fail_tasks) > 10:
         body_lines.append(f"... and {len(fail_tasks) - 10} more")
 
-    send_alert("P1", title, "\n".join(body_lines))
+    send_alert(title, "\n".join(body_lines))
 
 
 if __name__ == "__main__":

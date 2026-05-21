@@ -60,9 +60,7 @@ RF_DAILY = RF_ANNUAL / 244
 # ============================================================
 
 
-def build_ff3_factors(
-    start_date: date, end_date: date, conn
-) -> pd.DataFrame:
+def build_ff3_factors(start_date: date, end_date: date, conn) -> pd.DataFrame:
     """从 DB 构建 A股 FF3 因子日序列。
 
     SMB 和 HML 使用 daily reblancing + equal weight 简化版 (非 Fama 6-portfolio),
@@ -142,14 +140,16 @@ def build_ff3_factors(
             continue
         hml = float(high_bp["ret"].mean() - low_bp["ret"].mean())
 
-        factors_list.append({
-            "trade_date": trade_date,
-            "MKT_RF": float(mkt_ret) - RF_DAILY,
-            "SMB": smb,
-            "HML": hml,
-            "RF": RF_DAILY,
-            "n_stocks": len(day_df),
-        })
+        factors_list.append(
+            {
+                "trade_date": trade_date,
+                "MKT_RF": float(mkt_ret) - RF_DAILY,
+                "SMB": smb,
+                "HML": hml,
+                "RF": RF_DAILY,
+                "n_stocks": len(day_df),
+            }
+        )
 
         if (i + 1) % 500 == 0:
             print(f"  {i + 1}/{total_days} 天 ({(i + 1) / total_days * 100:.0f}%)")
@@ -165,9 +165,7 @@ def build_ff3_factors(
 # ============================================================
 
 
-def run_hac_regression(
-    strategy_ret: pd.Series, ff3: pd.DataFrame, label: str = "full"
-) -> dict:
+def run_hac_regression(strategy_ret: pd.Series, ff3: pd.DataFrame, label: str = "full") -> dict:
     """单次 HAC 回归。
 
     Args:
@@ -281,12 +279,18 @@ def main():
 
     # FF3 sanity check
     print("\n[FF3 Stats]")
-    print(f"  MKT_RF: mean={ff3['MKT_RF'].mean() * 244:.2%}/yr, "
-          f"std={ff3['MKT_RF'].std() * np.sqrt(244):.2%}/yr")
-    print(f"  SMB:    mean={ff3['SMB'].mean() * 244:.2%}/yr, "
-          f"std={ff3['SMB'].std() * np.sqrt(244):.2%}/yr")
-    print(f"  HML:    mean={ff3['HML'].mean() * 244:.2%}/yr, "
-          f"std={ff3['HML'].std() * np.sqrt(244):.2%}/yr")
+    print(
+        f"  MKT_RF: mean={ff3['MKT_RF'].mean() * 244:.2%}/yr, "
+        f"std={ff3['MKT_RF'].std() * np.sqrt(244):.2%}/yr"
+    )
+    print(
+        f"  SMB:    mean={ff3['SMB'].mean() * 244:.2%}/yr, "
+        f"std={ff3['SMB'].std() * np.sqrt(244):.2%}/yr"
+    )
+    print(
+        f"  HML:    mean={ff3['HML'].mean() * 244:.2%}/yr, "
+        f"std={ff3['HML'].std() * np.sqrt(244):.2%}/yr"
+    )
 
     # Step 3: 分期回归
     print("\n[Regression] HAC (Newey-West lag=5)...")
@@ -294,14 +298,10 @@ def main():
     results = {}
 
     # 全样本
-    results["full_12yr"] = run_hac_regression(
-        strategy_ret, ff3, label="2014-2026 full"
-    )
+    results["full_12yr"] = run_hac_regression(strategy_ret, ff3, label="2014-2026 full")
 
     # 2014-2020 (WF 盲区)
-    mask_pre = (strategy_ret.index >= date(2014, 1, 1)) & (
-        strategy_ret.index <= date(2020, 12, 31)
-    )
+    mask_pre = (strategy_ret.index >= date(2014, 1, 1)) & (strategy_ret.index <= date(2020, 12, 31))
     results["pre_wf_2014_2020"] = run_hac_regression(
         strategy_ret[mask_pre], ff3, label="2014-2020 (pre-WF blind spot)"
     )
@@ -315,9 +315,7 @@ def main():
     # 逐年
     yearly = []
     for year in range(2014, 2027):
-        mask = (strategy_ret.index >= date(year, 1, 1)) & (
-            strategy_ret.index <= date(year, 12, 31)
-        )
+        mask = (strategy_ret.index >= date(year, 1, 1)) & (strategy_ret.index <= date(year, 12, 31))
         sr = strategy_ret[mask]
         if len(sr) < 30:
             continue
@@ -357,8 +355,10 @@ def main():
 
     def print_row(r):
         sig = (
-            "***" if r.get("alpha_significant_1pct")
-            else "**" if r.get("alpha_significant_5pct")
+            "***"
+            if r.get("alpha_significant_1pct")
+            else "**"
+            if r.get("alpha_significant_5pct")
             else ""
         )
         print(

@@ -30,7 +30,8 @@ class FactorRepository(BaseRepository):
         rows = await self.fetch_all(sql, params)
         return [
             {
-                "code": r[0], "factor_name": r[1],
+                "code": r[0],
+                "factor_name": r[1],
                 "raw_value": float(r[2]) if r[2] else None,
                 "neutral_value": float(r[3]) if r[3] else None,
                 "zscore": float(r[4]) if r[4] else None,
@@ -81,9 +82,7 @@ class FactorRepository(BaseRepository):
 
     async def get_latest_factor_date(self) -> date | None:
         """获取最新因子计算日期。"""
-        return await self.fetch_scalar(
-            "SELECT MAX(trade_date) FROM factor_values"
-        )
+        return await self.fetch_scalar("SELECT MAX(trade_date) FROM factor_values")
 
     async def get_factor_coverage(self, trade_date: date) -> list[dict]:
         """获取指定日期各因子的覆盖率。"""

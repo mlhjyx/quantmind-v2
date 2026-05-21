@@ -33,6 +33,7 @@ from engines.paper_broker import PaperBroker, PaperState
 # 辅助函数
 # ──────────────────────────────────────────────────────────
 
+
 def _make_price_data(
     codes: list[str],
     dates: list[date],
@@ -60,51 +61,58 @@ def _make_price_data(
             if is_limit_up:
                 # 涨停封板: close == up_limit, turnover < 1%
                 up_limit = round(pre_close * 1.10, 2)
-                rows.append({
-                    "code": code,
-                    "trade_date": td,
-                    "open": up_limit,
-                    "high": up_limit,
-                    "low": pre_close * 1.05,
-                    "close": up_limit,
-                    "pre_close": pre_close,
-                    "volume": 100_000,
-                    "amount": up_limit * 100_000,
-                    "up_limit": up_limit,
-                    "down_limit": round(pre_close * 0.90, 2),
-                    "turnover_rate": 0.3,  # < 1% → 封板
-                })
+                rows.append(
+                    {
+                        "code": code,
+                        "trade_date": td,
+                        "open": up_limit,
+                        "high": up_limit,
+                        "low": pre_close * 1.05,
+                        "close": up_limit,
+                        "pre_close": pre_close,
+                        "volume": 100_000,
+                        "amount": up_limit * 100_000,
+                        "up_limit": up_limit,
+                        "down_limit": round(pre_close * 0.90, 2),
+                        "turnover_rate": 0.3,  # < 1% → 封板
+                    }
+                )
             else:
                 # 正常交易
-                rows.append({
-                    "code": code,
-                    "trade_date": td,
-                    "open": base_price * 1.005,
-                    "high": base_price * 1.02,
-                    "low": base_price * 0.99,
-                    "close": base_price * 1.01,
-                    "pre_close": pre_close,
-                    "volume": 5_000_000,
-                    "amount": base_price * 5_000_000,
-                    "up_limit": round(pre_close * 1.10, 2),
-                    "down_limit": round(pre_close * 0.90, 2),
-                    "turnover_rate": 5.0,
-                })
+                rows.append(
+                    {
+                        "code": code,
+                        "trade_date": td,
+                        "open": base_price * 1.005,
+                        "high": base_price * 1.02,
+                        "low": base_price * 0.99,
+                        "close": base_price * 1.01,
+                        "pre_close": pre_close,
+                        "volume": 5_000_000,
+                        "amount": base_price * 5_000_000,
+                        "up_limit": round(pre_close * 1.10, 2),
+                        "down_limit": round(pre_close * 0.90, 2),
+                        "turnover_rate": 5.0,
+                    }
+                )
 
     return pd.DataFrame(rows)
 
 
 def _make_benchmark(dates: list[date], base: float = 4000.0) -> pd.DataFrame:
     """构造基准数据。"""
-    return pd.DataFrame({
-        "trade_date": dates,
-        "close": [base * (1 + i * 0.001) for i in range(len(dates))],
-    })
+    return pd.DataFrame(
+        {
+            "trade_date": dates,
+            "close": [base * (1 + i * 0.001) for i in range(len(dates))],
+        }
+    )
 
 
 # ──────────────────────────────────────────────────────────
 # 场景1: 回测确定性不变 — 无封板时Sharpe与修改前一致
 # ──────────────────────────────────────────────────────────
+
 
 class TestBacktestDeterminism:
     """回测确定性: 无封板场景下结果不变。"""
@@ -147,19 +155,29 @@ class TestBacktestDeterminism:
 # 场景2: PendingOrder创建 — 涨停封板股产生pending记录
 # ──────────────────────────────────────────────────────────
 
+
 class TestPendingOrderCreation:
     """涨停封板时产生PendingOrder。"""
 
     def test_limit_up_creates_pending(self) -> None:
         """涨停封板的买入目标产生PendingOrder记录。"""
         codes = ["A", "B", "C"]
-        dates = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4),
-                 date(2024, 1, 5), date(2024, 1, 8)]
+        dates = [
+            date(2024, 1, 2),
+            date(2024, 1, 3),
+            date(2024, 1, 4),
+            date(2024, 1, 5),
+            date(2024, 1, 8),
+        ]
 
         # A在1/3涨停封板
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         # 信号日1/2, 执行日1/3
@@ -185,6 +203,7 @@ class TestPendingOrderCreation:
 # 场景3: 补单成功 — T+1打开后执行买入
 # ──────────────────────────────────────────────────────────
 
+
 class TestPendingOrderFill:
     """封板T+1打开后补单成功。"""
 
@@ -192,13 +211,16 @@ class TestPendingOrderFill:
         """T+1日不再封板，补单成功填充。"""
         codes = ["A", "B", "C"]
         # 需要足够多的交易日来让补单执行
-        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12,
-                                              15, 16, 17, 18, 19, 22]]
+        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 22]]
 
         # A在1/3涨停封板，1/4恢复正常
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         target = {c: 1.0 / 3 for c in codes}
@@ -210,12 +232,15 @@ class TestPendingOrderFill:
 
         # A应该被补单成功
         filled = [po for po in bt.pending_orders if po.code == "A" and po.status == "filled"]
-        assert len(filled) >= 1, f"A应该补单成功, 实际状态: {[po.status for po in bt.pending_orders if po.code == 'A']}"
+        assert len(filled) >= 1, (
+            f"A应该补单成功, 实际状态: {[po.status for po in bt.pending_orders if po.code == 'A']}"
+        )
 
 
 # ──────────────────────────────────────────────────────────
 # 场景4: 补单失败仍封板 — 标记cancelled
 # ──────────────────────────────────────────────────────────
+
 
 class TestPendingOrderCancelledStillLimit:
     """T+1日仍封板 → cancelled。"""
@@ -223,14 +248,17 @@ class TestPendingOrderCancelledStillLimit:
     def test_still_limit_up_cancelled(self) -> None:
         """T+1日仍然涨停封板，标记为cancelled。"""
         codes = ["A", "B"]
-        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12,
-                                              15, 16, 17, 18, 19]]
+        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19]]
 
         # A在1/3和1/4都涨停封板
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-            date(2024, 1, 4): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+                date(2024, 1, 4): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         target = {"A": 0.5, "B": 0.5}
@@ -241,15 +269,18 @@ class TestPendingOrderCancelledStillLimit:
         bt.run(target_portfolios, price_data, benchmark)
 
         # A应该被标记为cancelled
-        cancelled = [po for po in bt.pending_orders
-                     if po.code == "A" and po.status == "cancelled"]
+        cancelled = [po for po in bt.pending_orders if po.code == "A" and po.status == "cancelled"]
         assert len(cancelled) >= 1
-        assert "still_limit_up" in cancelled[0].cancel_reason or "expired" in cancelled[0].cancel_reason
+        assert (
+            "still_limit_up" in cancelled[0].cancel_reason
+            or "expired" in cancelled[0].cancel_reason
+        )
 
 
 # ──────────────────────────────────────────────────────────
 # 场景5: 距调仓日太近不补 — <=5天取消
 # ──────────────────────────────────────────────────────────
+
 
 class TestPendingOrderTooCloseToRebalance:
     """距下次调仓<=5天 → 不补。"""
@@ -261,9 +292,13 @@ class TestPendingOrderTooCloseToRebalance:
         dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10]]
 
         # A在1/3封板
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         # 两次调仓紧邻: 1/2和1/5 → retry日1/4距下次调仓1/8只有3天
@@ -280,13 +315,14 @@ class TestPendingOrderTooCloseToRebalance:
 
         # A的pending应该被取消（距下次调仓太近）
         [
-            po for po in bt.pending_orders
-            if po.code == "A" and po.status == "cancelled"
-            and "too_close" in po.cancel_reason
+            po
+            for po in bt.pending_orders
+            if po.code == "A" and po.status == "cancelled" and "too_close" in po.cancel_reason
         ]
         # 至少取消了一个（因为距离太近或者expired）
-        all_cancelled = [po for po in bt.pending_orders
-                         if po.code == "A" and po.status == "cancelled"]
+        all_cancelled = [
+            po for po in bt.pending_orders if po.code == "A" and po.status == "cancelled"
+        ]
         assert len(all_cancelled) >= 1, (
             f"A应该被取消, 实际: {[(po.status, po.cancel_reason) for po in bt.pending_orders if po.code == 'A']}"
         )
@@ -296,14 +332,14 @@ class TestPendingOrderTooCloseToRebalance:
 # 场景6: 最多补3只 — 5只封板只补前3
 # ──────────────────────────────────────────────────────────
 
+
 class TestMaxRetryOrders:
     """最多补3只限制。"""
 
     def test_only_top_3_retried(self) -> None:
         """5只封板，只补前3只（按original_score降序）。"""
         codes = [f"S{i}" for i in range(8)]
-        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12,
-                                              15, 16, 17, 18, 19, 22]]
+        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 22]]
 
         # S0-S4在1/3封板，S5-S7正常
         limit_up = {date(2024, 1, 3): [f"S{i}" for i in range(5)]}
@@ -336,19 +372,23 @@ class TestMaxRetryOrders:
 # 场景7: 单只上限10% — 补单金额不超组合10%
 # ──────────────────────────────────────────────────────────
 
+
 class TestRetryWeightCap:
     """补单权重上限10%。"""
 
     def test_retry_weight_capped_at_10pct(self) -> None:
         """即使目标权重>10%，补单时也限制在10%。"""
         codes = ["A", "B"]
-        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12,
-                                              15, 16, 17, 18, 19]]
+        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19]]
 
         # A在1/3封板，1/4恢复
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         # A目标权重50%（远超10%上限）
@@ -364,9 +404,11 @@ class TestRetryWeightCap:
         pending_a = [po for po in bt.pending_orders if po.code == "A"]
         if pending_a and pending_a[0].status == "filled":
             # 找到A的补单Fill
-            a_fills = [f for f in result.trades
-                       if f.code == "A" and f.direction == "buy"
-                       and f.trade_date > date(2024, 1, 3)]
+            a_fills = [
+                f
+                for f in result.trades
+                if f.code == "A" and f.direction == "buy" and f.trade_date > date(2024, 1, 3)
+            ]
             if a_fills:
                 fill = a_fills[0]
                 # 补单金额应约等于组合市值的10%（而不是50%）
@@ -381,6 +423,7 @@ class TestRetryWeightCap:
 # 场景8: PaperBroker返回值兼容 — tuple解包正确
 # ──────────────────────────────────────────────────────────
 
+
 class TestPaperBrokerReturnTuple:
     """PaperBroker.execute_rebalance()返回(fills, pending)二元组。"""
 
@@ -392,14 +435,14 @@ class TestPaperBrokerReturnTuple:
         # 构造价格数据（A涨停封板）
         price_data = _make_price_data(codes, [td], limit_up_codes={td: ["A"]})
 
-        broker = PaperBroker(strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000)
+        broker = PaperBroker(
+            strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000
+        )
         # 手动初始化状态（跳过DB load）
         broker.broker = SimBroker(BacktestConfig(initial_capital=1_000_000))
         broker.broker.cash = 1_000_000
         broker.broker.holdings = {}
-        broker.state = PaperState(
-            cash=1_000_000, holdings={}, nav=1_000_000
-        )
+        broker.state = PaperState(cash=1_000_000, holdings={}, nav=1_000_000)
 
         target = {"A": 0.50, "B": 0.50}
         result = broker.execute_rebalance(target, td, price_data, signal_date=td)
@@ -427,7 +470,9 @@ class TestPaperBrokerReturnTuple:
         codes = ["A"]
         price_data = _make_price_data(codes, [td])  # A正常交易
 
-        broker = PaperBroker(strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000)
+        broker = PaperBroker(
+            strategy_id="test_strategy", execution_mode="paper", initial_capital=1_000_000
+        )
         broker.broker = SimBroker(BacktestConfig(initial_capital=1_000_000))
         broker.broker.cash = 500_000
         broker.broker.holdings = {}
@@ -444,7 +489,9 @@ class TestPaperBrokerReturnTuple:
         ]
 
         result = broker.process_pending_orders(
-            pending_list, td, price_data,
+            pending_list,
+            td,
+            price_data,
         )
 
         assert isinstance(result, tuple)
@@ -458,6 +505,7 @@ class TestPaperBrokerReturnTuple:
 # ──────────────────────────────────────────────────────────
 # 场景9: Paper Trading补单持久化 — scheduler_task_log
 # ──────────────────────────────────────────────────────────
+
 
 class TestPendingOrderPersistence:
     """run_paper_trading.py中补单的序列化和反序列化。"""
@@ -514,9 +562,13 @@ class TestPendingOrderPersistence:
         import json
 
         orders = [
-            PendingOrder(code=f"00000{i}", signal_date=date(2026, 3, 19),
-                         exec_date=date(2026, 3, 20), target_weight=0.05 + i * 0.01,
-                         original_score=50_000 + i * 10_000)
+            PendingOrder(
+                code=f"00000{i}",
+                signal_date=date(2026, 3, 19),
+                exec_date=date(2026, 3, 20),
+                target_weight=0.05 + i * 0.01,
+                original_score=50_000 + i * 10_000,
+            )
             for i in range(5)
         ]
 
@@ -545,6 +597,7 @@ class TestPendingOrderPersistence:
 # ──────────────────────────────────────────────────────────
 # 场景10: PendingOrderStats统计
 # ──────────────────────────────────────────────────────────
+
 
 class TestPendingOrderStats:
     """PendingOrderStats统计准确性。"""
@@ -615,13 +668,16 @@ class TestPendingOrderStats:
     def test_avg_retry_return(self) -> None:
         """avg_retry_return_1d计算合理（非NaN）。"""
         codes = ["A", "B", "C"]
-        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12,
-                                              15, 16, 17, 18, 19]]
+        dates = [date(2024, 1, d) for d in [2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19]]
 
         # A在1/3封板，1/4恢复
-        price_data = _make_price_data(codes, dates, limit_up_codes={
-            date(2024, 1, 3): ["A"],
-        })
+        price_data = _make_price_data(
+            codes,
+            dates,
+            limit_up_codes={
+                date(2024, 1, 3): ["A"],
+            },
+        )
         benchmark = _make_benchmark(dates)
 
         target = {c: 1.0 / 3 for c in codes}

@@ -29,9 +29,9 @@ MIN_REGIME_DURATION: int = 20  # 最小持续交易日(与月度调仓对齐)
 SWITCH_PROB_THRESHOLD: float = 0.6  # 切换概率阈值(3-state下降低)
 
 # 3-state连续缩放权重
-SCALE_BULL: float = 1.0   # 牛市满仓
+SCALE_BULL: float = 1.0  # 牛市满仓
 SCALE_SIDEWAYS: float = 0.7  # 震荡7成
-SCALE_BEAR: float = 0.3   # 熊市3成
+SCALE_BEAR: float = 0.3  # 熊市3成
 REGIME_CLIP_LOW: float = 0.3
 REGIME_CLIP_HIGH: float = 1.0
 
@@ -259,7 +259,10 @@ class HMMRegimeDetector:
 
             logger.info(
                 "[HMMRegime] state=%s, bear_prob=%.3f, scale=%.3f, raw=%s, probs=%s",
-                state, bear_prob, scale, raw_state,
+                state,
+                bear_prob,
+                scale,
+                raw_state,
                 {v: round(float(current_probs[k]), 3) for k, v in self._state_mapping.items()},
             )
             return RegimeResult(

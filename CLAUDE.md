@@ -420,8 +420,8 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 | 写前端页面 | docs/DEV_FRONTEND_UI.md |
 | 写调度任务 | docs/DEV_SCHEDULER.md |
 | 写GP相关 | docs/GP_CLOSED_LOOP_DESIGN.md (FactorDSL/WarmStart) |
-| 写风控 | docs/RISK_CONTROL_SERVICE_DESIGN.md (L1-L4状态机) |
-| 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 705行) |
+| 写风控 (V3 风控框架, 当前 SSOT) | docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md (L0-L5 实时风控, Tier A/B 已实现). 旧 docs/RISK_CONTROL_SERVICE_DESIGN.md 已 PARTIALLY DEPRECATED, 勿作当前设计 |
+| 写AI闭环/因子发现 | docs/DEV_AI_EVOLUTION.md (V2.1, 650行). **实施进度**: Layer 1=~95% / Layer 2=~60% / Layer 3-4=0% (Q3-Q4 trigger per ADR-028). V3 §S5/S6/S7/S8 ✅ merged main (PR #343-346, ~330 tests). |
 | 写外汇模块(⏳ deferred Phase 2+) | **已 archive** 5-19 → docs/archive/DEV_FOREX_2026_05_19_archived.md (P1-37 closure, A股稳态前不启动) |
 | ML Walk-Forward设计/G1结论 | docs/ML_WALKFORWARD_DESIGN.md (v2.1, 1096行) |
 | 研究知识库(防重复失败) | `docs/research-kb/` (38条目: 8 failed + 25 findings + 5 decisions, Step 6.4 G1 实测修订) |

@@ -40,12 +40,13 @@ logger = structlog.get_logger(__name__)
 @dataclass
 class GeneratedFactorCode:
     """FactorAgent的输出 — 因子计算代码。"""
+
     hypothesis_name: str
-    expression: str           # 原始DSL表达式
-    code: str                 # Python代码字符串
-    function_name: str        # 函数名（默认compute_factor）
+    expression: str  # 原始DSL表达式
+    code: str  # Python代码字符串
+    function_name: str  # 函数名（默认compute_factor）
     imports: list[str] = field(default_factory=list)
-    is_valid: bool = False    # 语法+安全检查通过
+    is_valid: bool = False  # 语法+安全检查通过
     validation_error: str = ""
     retry_count: int = 0
 
@@ -134,13 +135,16 @@ class FactorAgent:
             try:
                 messages = [
                     LLMMessage(role="system", content=_SYSTEM_PROMPT),
-                    LLMMessage(role="user", content=_USER_TEMPLATE.format(
-                        name=hypothesis.name,
-                        expression=hypothesis.expression,
-                        hypothesis=hypothesis.hypothesis,
-                        direction=hypothesis.expected_ic_direction,
-                        category=hypothesis.category,
-                    )),
+                    LLMMessage(
+                        role="user",
+                        content=_USER_TEMPLATE.format(
+                            name=hypothesis.name,
+                            expression=hypothesis.expression,
+                            hypothesis=hypothesis.hypothesis,
+                            direction=hypothesis.expected_ic_direction,
+                            category=hypothesis.category,
+                        ),
+                    ),
                 ]
 
                 model_id, base_url = self._router.route(TaskType.FACTOR)
@@ -165,26 +169,32 @@ class FactorAgent:
                     result.validation_error = ""
                     logger.info(
                         "[FactorAgent] %s: 代码生成成功 (attempt %d)",
-                        hypothesis.name, attempt + 1,
+                        hypothesis.name,
+                        attempt + 1,
                     )
                     return result
                 else:
                     result.validation_error = error
                     logger.warning(
                         "[FactorAgent] %s: 代码验证失败 (attempt %d): %s",
-                        hypothesis.name, attempt + 1, error,
+                        hypothesis.name,
+                        attempt + 1,
+                        error,
                     )
 
             except Exception as exc:
                 result.validation_error = f"LLM调用失败: {exc}"
                 logger.warning(
                     "[FactorAgent] %s: 异常 (attempt %d): %s",
-                    hypothesis.name, attempt + 1, exc,
+                    hypothesis.name,
+                    attempt + 1,
+                    exc,
                 )
 
         logger.error(
             "[FactorAgent] %s: %d次尝试后仍失败",
-            hypothesis.name, self._max_retries,
+            hypothesis.name,
+            self._max_retries,
         )
         return result
 
@@ -222,9 +232,15 @@ class FactorAgent:
 
         # 3. 安全检查 — 禁止危险操作
         forbidden = [
-            "import os", "import sys", "import subprocess",
-            "eval(", "exec(", "__import__",
-            "open(", "os.system", "os.popen",
+            "import os",
+            "import sys",
+            "import subprocess",
+            "eval(",
+            "exec(",
+            "__import__",
+            "open(",
+            "os.system",
+            "os.popen",
         ]
         for f in forbidden:
             if f in code:

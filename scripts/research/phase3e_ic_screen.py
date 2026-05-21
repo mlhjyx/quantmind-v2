@@ -52,14 +52,17 @@ ALL_FACTORS = [
 def load_factor_from_db(factor_name: str, conn) -> pd.DataFrame:
     """Load a single factor's raw_value from factor_values."""
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT trade_date, code, raw_value
         FROM factor_values
         WHERE factor_name = %s
           AND raw_value IS NOT NULL
           AND trade_date >= '2019-01-01'
         ORDER BY trade_date, code
-    """, (factor_name,))
+    """,
+        (factor_name,),
+    )
     rows = cur.fetchall()
     cur.close()
     if not rows:
@@ -100,16 +103,18 @@ def main():
             factor_df = load_factor_from_db(factor_name, conn)
             if len(factor_df) < 10000:
                 print(f" SKIP (only {len(factor_df):,} rows)")
-                results.append({
-                    "factor": factor_name,
-                    "ic_mean": np.nan,
-                    "ic_std": np.nan,
-                    "ir": np.nan,
-                    "t_stat": np.nan,
-                    "hit_rate": np.nan,
-                    "n_days": 0,
-                    "status": "SKIP",
-                })
+                results.append(
+                    {
+                        "factor": factor_name,
+                        "ic_mean": np.nan,
+                        "ic_std": np.nan,
+                        "ir": np.nan,
+                        "t_stat": np.nan,
+                        "hit_rate": np.nan,
+                        "n_days": 0,
+                        "status": "SKIP",
+                    }
+                )
                 continue
 
             # Pivot to wide format
@@ -122,49 +127,63 @@ def main():
 
             if len(ic_series) < 30:
                 print(f" SKIP (only {len(ic_series)} IC days)")
-                results.append({
+                results.append(
+                    {
+                        "factor": factor_name,
+                        "ic_mean": np.nan,
+                        "ic_std": np.nan,
+                        "ir": np.nan,
+                        "t_stat": np.nan,
+                        "hit_rate": np.nan,
+                        "n_days": len(ic_series),
+                        "status": "SKIP",
+                    }
+                )
+                continue
+
+            stats = summarize_ic_stats(ic_series)
+            elapsed = time.time() - t1
+
+            status = (
+                "PASS"
+                if abs(stats["t_stat"]) > 2.5
+                else "WEAK"
+                if abs(stats["t_stat"]) > 1.5
+                else "FAIL"
+            )
+            print(
+                f" IC={stats['mean']:+.4f}, IR={stats['ir']:.3f}, "
+                f"t={stats['t_stat']:.2f}, hit={stats['hit_rate']:.1%}, "
+                f"n={stats['n_days']}, {elapsed:.1f}s → {status}"
+            )
+
+            results.append(
+                {
+                    "factor": factor_name,
+                    "ic_mean": round(stats["mean"], 5),
+                    "ic_std": round(stats["std"], 5),
+                    "ir": round(stats["ir"], 4),
+                    "t_stat": round(stats["t_stat"], 2),
+                    "hit_rate": round(stats["hit_rate"], 4),
+                    "n_days": stats["n_days"],
+                    "status": status,
+                }
+            )
+
+        except Exception as e:
+            print(f" ERROR: {e}")
+            results.append(
+                {
                     "factor": factor_name,
                     "ic_mean": np.nan,
                     "ic_std": np.nan,
                     "ir": np.nan,
                     "t_stat": np.nan,
                     "hit_rate": np.nan,
-                    "n_days": len(ic_series),
-                    "status": "SKIP",
-                })
-                continue
-
-            stats = summarize_ic_stats(ic_series)
-            elapsed = time.time() - t1
-
-            status = "PASS" if abs(stats["t_stat"]) > 2.5 else "WEAK" if abs(stats["t_stat"]) > 1.5 else "FAIL"
-            print(f" IC={stats['mean']:+.4f}, IR={stats['ir']:.3f}, "
-                  f"t={stats['t_stat']:.2f}, hit={stats['hit_rate']:.1%}, "
-                  f"n={stats['n_days']}, {elapsed:.1f}s → {status}")
-
-            results.append({
-                "factor": factor_name,
-                "ic_mean": round(stats["mean"], 5),
-                "ic_std": round(stats["std"], 5),
-                "ir": round(stats["ir"], 4),
-                "t_stat": round(stats["t_stat"], 2),
-                "hit_rate": round(stats["hit_rate"], 4),
-                "n_days": stats["n_days"],
-                "status": status,
-            })
-
-        except Exception as e:
-            print(f" ERROR: {e}")
-            results.append({
-                "factor": factor_name,
-                "ic_mean": np.nan,
-                "ic_std": np.nan,
-                "ir": np.nan,
-                "t_stat": np.nan,
-                "hit_rate": np.nan,
-                "n_days": 0,
-                "status": "ERROR",
-            })
+                    "n_days": 0,
+                    "status": "ERROR",
+                }
+            )
 
     conn.close()
 
@@ -179,10 +198,14 @@ def main():
     print("-" * 75)
     for _, r in results_df.iterrows():
         if pd.isna(r["ic_mean"]):
-            print(f"{r['factor']:<35} {'—':>8} {'—':>7} {'—':>7} {'—':>6} {r['n_days']:>5} {r['status']:>6}")
+            print(
+                f"{r['factor']:<35} {'—':>8} {'—':>7} {'—':>7} {'—':>6} {r['n_days']:>5} {r['status']:>6}"
+            )
         else:
-            print(f"{r['factor']:<35} {r['ic_mean']:>+8.4f} {r['ir']:>7.3f} "
-                  f"{r['t_stat']:>7.2f} {r['hit_rate']:>5.1%} {r['n_days']:>5} {r['status']:>6}")
+            print(
+                f"{r['factor']:<35} {r['ic_mean']:>+8.4f} {r['ir']:>7.3f} "
+                f"{r['t_stat']:>7.2f} {r['hit_rate']:>5.1%} {r['n_days']:>5} {r['status']:>6}"
+            )
 
     n_pass = sum(1 for r in results if r["status"] == "PASS")
     n_weak = sum(1 for r in results if r["status"] == "WEAK")

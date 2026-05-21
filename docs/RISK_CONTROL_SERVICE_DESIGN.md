@@ -1,6 +1,6 @@
 # RiskControlService 接口设计文档
 
-> ⚠️ **PARTIALLY DEPRECATED 2026-05-19** (Plan v8 P0-18 closure batch 2)
+> ⚠️ **PARTIALLY DEPRECATED — 🟡 L1-L3 ✅ (10 realtime rules) / L4 DEPRECATED (V3 ADR-027 SSOT). 14:30 Beat retired 2026-05-15 (IC-2b, V3 signal-path check_v3_circuit_breaker covers it now). (2026-05-20 audit sediment)**
 >
 > **L4 设计已被 ADR-027 重定义** — 本文档 §2.1 `L4_STOPPED ── 累计亏损>25%, 停止所有交易, 人工审批` (旧设计) 与 V3 ADR-027 §2.1 L4 STAGED default + 反向决策权 + 跌停 fallback (新设计) **存在 semantic conflict** (Plan v8 S2 Design vs Reality Gap §2.5 + Master P0-18).
 >
@@ -22,6 +22,7 @@
 > - 2026-03-22: Initial draft (Sprint 1.1)
 > - 2026-05-02: ADR-027 redefined L4 (Claude.ai+user 战略对话 sediment, V3 §20.1 #1 + #7)
 > - **2026-05-19: This DEPRECATION header added** (Plan v8 P0-18 closure, sustained Master Top 50 finding closure)
+> - **2026-05-20: Status line updated** (Plan v9 Doc Batch C — 10 realtime rules confirmed per rule_registry.py + 14:30 Beat retirement per beat_schedule.py IC-2b 2026-05-15)
 
 ---
 

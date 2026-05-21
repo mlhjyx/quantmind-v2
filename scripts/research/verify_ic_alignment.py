@@ -13,6 +13,7 @@
 用法:
     cd backend && python ../scripts/research/verify_ic_alignment.py
 """
+
 import sys
 from pathlib import Path
 
@@ -165,9 +166,7 @@ def test_time_alignment():
     print(f"  差异: {stats_aligned['mean'] - stats_shifted['mean']:.4f}")
 
     # 正确对齐应接近 1.0
-    assert stats_aligned["mean"] > 0.99, (
-        f"正确对齐因子 IC 应 > 0.99, 实际 {stats_aligned['mean']}"
-    )
+    assert stats_aligned["mean"] > 0.99, f"正确对齐因子 IC 应 > 0.99, 实际 {stats_aligned['mean']}"
     # 偏移因子应明显更差 (由于收益序列自相关，可能不为0，但应显著低于1.0)
     assert stats_aligned["mean"] > stats_shifted["mean"] + 0.05, (
         f"正确对齐({stats_aligned['mean']:.4f})应显著优于偏移({stats_shifted['mean']:.4f})"

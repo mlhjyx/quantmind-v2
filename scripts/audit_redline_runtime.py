@@ -124,11 +124,13 @@ def diff_baseline(current: dict[str, str], baseline: dict[str, str]) -> list[dic
         current_val = current.get(field, "MISSING")
         baseline_val = baseline_redline.get(field, "MISSING")
         if current_val != baseline_val:
-            drift.append({
-                "field": field,
-                "baseline": baseline_val,
-                "current": current_val,
-            })
+            drift.append(
+                {
+                    "field": field,
+                    "baseline": baseline_val,
+                    "current": current_val,
+                }
+            )
     return drift
 
 
@@ -195,7 +197,7 @@ def main() -> int:
                 print(f"  {d['field']}: baseline={d['baseline']!r} → current={d['current']!r}")
             print(f"  baseline captured: {baseline.get('captured_at')}")
         else:
-            print(f"[redline-runtime] ✅ All 5/5 红线 fields sustained vs baseline")
+            print("[redline-runtime] ✅ All 5/5 红线 fields sustained vs baseline")
             for field, val in current.items():
                 print(f"  {field} = {val}")
 
@@ -234,7 +236,9 @@ def _send_dingtalk_alert(summary: dict) -> None:
     for d in summary["drift"]:
         body_lines.append(f"- {d['field']}: {d['baseline']!r} → {d['current']!r}")
     body_lines.append("")
-    body_lines.append("Required action: IMMEDIATE — verify .env mutation source. If unauthorized, ROLLBACK from .env-backup-*.bak. Reset baseline post-verify via --reset.")
+    body_lines.append(
+        "Required action: IMMEDIATE — verify .env mutation source. If unauthorized, ROLLBACK from .env-backup-*.bak. Reset baseline post-verify via --reset."
+    )
 
     send_alert("P0", title, "\n".join(body_lines))
 

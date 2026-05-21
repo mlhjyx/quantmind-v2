@@ -24,6 +24,7 @@ from engines.dsr import (
 # _sharpe_std 内部函数测试
 # ────────────────────────────────────────────
 
+
 class TestSharpeStd:
     """Sharpe标准差估计函数测试。"""
 
@@ -74,6 +75,7 @@ class TestSharpeStd:
 # _expected_max_sharpe 内部函数测试
 # ────────────────────────────────────────────
 
+
 class TestExpectedMaxSharpe:
     """多重检验下期望最大Sharpe测试。"""
 
@@ -104,6 +106,7 @@ class TestExpectedMaxSharpe:
 # ────────────────────────────────────────────
 # deflated_sharpe_ratio 主函数测试
 # ────────────────────────────────────────────
+
 
 class TestDeflatedSharpeRatio:
     """DSR主函数测试。"""
@@ -309,6 +312,7 @@ class TestDeflatedSharpeRatio:
 # ────────────────────────────────────────────
 # interpret_dsr 测试
 # ────────────────────────────────────────────
+
 
 class TestInterpretDSR:
     """DSR解读函数测试。"""

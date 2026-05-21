@@ -65,9 +65,7 @@ def step1_rebuild_stock_status(conn, trade_date: date, dry_run: bool):
         if len(df) < 10000:
             break
 
-    nc = pd.concat(all_nc).drop_duplicates(
-        subset=["ts_code", "name", "start_date", "end_date"]
-    )
+    nc = pd.concat(all_nc).drop_duplicates(subset=["ts_code", "name", "start_date", "end_date"])
     st_mask = nc["name"].str.contains("ST", case=False, na=False)
     st_rows = nc[st_mask].copy()
     st_rows["code"] = st_rows["ts_code"]
@@ -101,14 +99,11 @@ def step1_rebuild_stock_status(conn, trade_date: date, dry_run: bool):
     # Load symbols
     cur.execute("SELECT code, list_date, delist_date, board FROM symbols")
     symbols = {
-        r[0]: {"list_date": r[1], "delist_date": r[2], "board": r[3]}
-        for r in cur.fetchall()
+        r[0]: {"list_date": r[1], "delist_date": r[2], "board": r[3]} for r in cur.fetchall()
     }
 
     # Process
-    cur.execute(
-        "SELECT code, volume FROM klines_daily WHERE trade_date = %s", (trade_date,)
-    )
+    cur.execute("SELECT code, volume FROM klines_daily WHERE trade_date = %s", (trade_date,))
     klines = cur.fetchall()
 
     records = []
@@ -121,9 +116,7 @@ def step1_rebuild_stock_status(conn, trade_date: date, dry_run: bool):
         _is_st = is_st(code, trade_date)
         is_suspended = volume is not None and int(volume) == 0
         is_new = list_dt is not None and 0 <= (trade_date - list_dt).days < 60
-        records.append(
-            (code, trade_date, _is_st, is_suspended, is_new, board, list_dt, delist_dt)
-        )
+        records.append((code, trade_date, _is_st, is_suspended, is_new, board, list_dt, delist_dt))
         if _is_st:
             st_count += 1
 

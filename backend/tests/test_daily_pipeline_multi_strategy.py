@@ -12,6 +12,7 @@ Mock 粒度: `get_live_strategies_for_risk_check` 返 [S1], [S1, S2], 空, 异�
 Note: 本测不触真 Celery broker, 用 `task.run()` 直调 task 函数内部逻辑. build_risk_engine
 + get_sync_conn + TradingDayChecker 全部 mock.
 """
+
 from __future__ import annotations
 
 from datetime import UTC
@@ -124,8 +125,14 @@ def test_risk_daily_check_single_strategy_monday_safe():
     # P2-A python-reviewer: `app.tasks.daily_pipeline.settings` 是正确 scope
     # (daily_pipeline L21 `from app.config import settings` module-top import).
     patches = _patch_daily_deps(strategies)
-    with patches[0], patches[1], patches[2], patches[3], patches[4], \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
 
@@ -146,8 +153,14 @@ def test_risk_daily_check_dual_strategy_iteration():
     s1 = _mk_mock_strategy("s1-uuid")
     s2 = _mk_mock_strategy("s2-uuid")
     patches = _patch_daily_deps([s1, s2])
-    with patches[0], patches[1], patches[2], patches[3], patches[4], \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
 
@@ -167,18 +180,20 @@ def test_risk_daily_check_no_positions_returns_ok_checked_zero():
     strategies = [_mk_mock_strategy("s1-uuid")]
     # engine 返 empty positions
     engine = _mk_engine_context(positions_count=0)
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=strategies,
-        ), \
-        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = risk_daily_check_task.run()
@@ -210,18 +225,20 @@ def test_risk_daily_check_per_strategy_error_isolated():
         # S2 iteration: OK
         return _mk_engine_context(positions_count=2)
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1, s2],
-        ), \
-        patch("app.services.risk_wiring.build_risk_engine", side_effect=engine_builder), \
-        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_risk_engine", side_effect=engine_builder),
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = risk_daily_check_task.run()
@@ -246,18 +263,20 @@ def test_risk_daily_check_all_failed_raises_retry():
     engine = MagicMock()
     engine.build_context = MagicMock(side_effect=RuntimeError("全挂"))
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1],
-        ), \
-        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
 
@@ -275,12 +294,14 @@ def test_risk_daily_check_skips_non_trading_day():
     from app.tasks.daily_pipeline import risk_daily_check_task
 
     # 不预设 strategy mock — 应早返 before 调 get_live_strategies
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(is_td=False),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = risk_daily_check_task.run()
@@ -296,12 +317,14 @@ def test_risk_daily_check_skips_when_pms_disabled():
     """PMS_ENABLED=False → 早返 disabled, 不 call strategy iteration."""
     from app.tasks.daily_pipeline import risk_daily_check_task
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(is_td=True),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = False  # 关掉
         result = risk_daily_check_task.run()
 
@@ -323,19 +346,21 @@ def test_intraday_risk_check_single_strategy_smoke():
     dedup_mock.should_alert = MagicMock(return_value=True)
     dedup_mock.mark_alerted = MagicMock()
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1],
-        ), \
-        patch("app.services.risk_wiring.build_intraday_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring._load_prev_close_nav", return_value=1_000_000.0), \
-        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_intraday_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring._load_prev_close_nav", return_value=1_000_000.0),
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = intraday_risk_check_task.run()
@@ -360,19 +385,21 @@ def test_intraday_risk_check_dual_strategy_dedup_isolated():
     dedup_mock.should_alert = MagicMock(return_value=True)  # 都允许
     dedup_mock.mark_alerted = MagicMock()
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1, s2],
-        ), \
-        patch("app.services.risk_wiring.build_intraday_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring._load_prev_close_nav", return_value=1_000_000.0), \
-        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_intraday_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring._load_prev_close_nav", return_value=1_000_000.0),
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = intraday_risk_check_task.run()
@@ -397,8 +424,11 @@ def _mk_engine_with_results(rule_ids: list[str], positions_count: int = 3):
     engine.run = MagicMock(
         return_value=[
             RuleResult(
-                rule_id=rid, code="600000.SH", shares=0,
-                reason=f"test {rid}", metrics={},
+                rule_id=rid,
+                code="600000.SH",
+                shares=0,
+                reason=f"test {rid}",
+                metrics={},
             )
             for rid in rule_ids
         ]
@@ -419,19 +449,21 @@ def test_risk_daily_check_dedup_allows_first_alert():
     dedup_mock.should_alert = MagicMock(return_value=True)
     dedup_mock.mark_alerted = MagicMock()
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1],
-        ), \
-        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
-        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()),
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = risk_daily_check_task.run()
@@ -455,19 +487,21 @@ def test_risk_daily_check_dedup_skips_already_alerted():
     dedup_mock.should_alert = MagicMock(return_value=False)  # intraday 已告警
     dedup_mock.mark_alerted = MagicMock()
 
-    with patch(
+    with (
+        patch(
             "engines.trading_day_checker.TradingDayChecker",
             return_value=_mk_trading_day_mock(),
-        ), \
-        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())), \
+        ),
+        patch("app.services.db.get_sync_conn", return_value=MagicMock(close=MagicMock())),
         patch(
             "app.services.strategy_bootstrap.get_live_strategies_for_risk_check",
             return_value=[s1],
-        ), \
-        patch("app.services.risk_wiring.build_risk_engine", return_value=engine), \
-        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()), \
-        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock), \
-        patch("app.tasks.daily_pipeline.settings") as mock_settings:
+        ),
+        patch("app.services.risk_wiring.build_risk_engine", return_value=engine),
+        patch("app.services.risk_wiring.build_circuit_breaker_rule", return_value=MagicMock()),
+        patch("app.services.risk_wiring.IntradayAlertDedup", return_value=dedup_mock),
+        patch("app.tasks.daily_pipeline.settings") as mock_settings,
+    ):
         mock_settings.PMS_ENABLED = True
         mock_settings.EXECUTION_MODE = "live"
         result = risk_daily_check_task.run()

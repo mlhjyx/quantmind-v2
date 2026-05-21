@@ -6,6 +6,7 @@
 Platform/App 边界: 本模块不 import xtquant (QMT Data Service 专属),
 通过 PriceReader + PositionReader Protocol 注入 QMTClient 实例.
 """
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -70,6 +71,9 @@ class QMTPositionSource(PositionSource):
 
         current_prices = self._reader.get_prices(codes)
         return build_positions(
-            shares_dict, entry_prices, peak_prices, current_prices,
+            shares_dict,
+            entry_prices,
+            peak_prices,
+            current_prices,
             entry_dates=entry_dates,
         )

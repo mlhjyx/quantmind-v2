@@ -20,8 +20,13 @@ def _build_price_data() -> pd.DataFrame:
     修复前: 10%涨停阈值 → close(11.5) > up_limit(11.0) → 被判为涨停封板
     修复后: 20%涨停阈值 → close(11.5) < up_limit(12.0) → 正常交易
     """
-    dates = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4),
-             date(2024, 1, 5), date(2024, 1, 8)]
+    dates = [
+        date(2024, 1, 2),
+        date(2024, 1, 3),
+        date(2024, 1, 4),
+        date(2024, 1, 5),
+        date(2024, 1, 8),
+    ]
 
     rows = []
     for d in dates:
@@ -33,15 +38,21 @@ def _build_price_data() -> pd.DataFrame:
             close_750 = 10.0
             open_750 = 10.0
 
-        rows.append({
-            "code": "300750.SZ", "trade_date": d,
-            "open": open_750, "close": close_750, "pre_close": 10.0,
-            "volume": 500_000, "amount": 5_000_000,
-            "turnover_rate": 0.8,  # 低换手 — 触发封板判断
-            "total_mv": 100_000,   # 万元
-            "volatility_20": 30.0,
-            # 不提供 up_limit/down_limit → 触发 fallback 路径
-        })
+        rows.append(
+            {
+                "code": "300750.SZ",
+                "trade_date": d,
+                "open": open_750,
+                "close": close_750,
+                "pre_close": 10.0,
+                "volume": 500_000,
+                "amount": 5_000_000,
+                "turnover_rate": 0.8,  # 低换手 — 触发封板判断
+                "total_mv": 100_000,  # 万元
+                "volatility_20": 30.0,
+                # 不提供 up_limit/down_limit → 触发 fallback 路径
+            }
+        )
 
         # 000001.SZ — 主板对照, 同样涨15%
         if d == date(2024, 1, 4):
@@ -51,25 +62,38 @@ def _build_price_data() -> pd.DataFrame:
             close_001 = 10.0
             open_001 = 10.0
 
-        rows.append({
-            "code": "000001.SZ", "trade_date": d,
-            "open": open_001, "close": close_001, "pre_close": 10.0,
-            "volume": 500_000, "amount": 5_000_000,
-            "turnover_rate": 0.8,
-            "total_mv": 100_000,
-            "volatility_20": 30.0,
-        })
+        rows.append(
+            {
+                "code": "000001.SZ",
+                "trade_date": d,
+                "open": open_001,
+                "close": close_001,
+                "pre_close": 10.0,
+                "volume": 500_000,
+                "amount": 5_000_000,
+                "turnover_rate": 0.8,
+                "total_mv": 100_000,
+                "volatility_20": 30.0,
+            }
+        )
 
     return pd.DataFrame(rows)
 
 
 def _build_benchmark() -> pd.DataFrame:
-    dates = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4),
-             date(2024, 1, 5), date(2024, 1, 8)]
-    return pd.DataFrame({
-        "trade_date": dates,
-        "close": [100.0, 100.5, 101.0, 100.8, 101.2],
-    })
+    dates = [
+        date(2024, 1, 2),
+        date(2024, 1, 3),
+        date(2024, 1, 4),
+        date(2024, 1, 5),
+        date(2024, 1, 8),
+    ]
+    return pd.DataFrame(
+        {
+            "trade_date": dates,
+            "close": [100.0, 100.5, 101.0, 100.8, 101.2],
+        }
+    )
 
 
 class TestGEMBacktestComparison:
@@ -99,8 +123,7 @@ class TestGEMBacktestComparison:
         result = engine.run(target, price_data, benchmark)
 
         # 验证300750确实有买入成交
-        buy_trades = [t for t in result.trades
-                      if t.code == "300750.SZ" and t.direction == "buy"]
+        buy_trades = [t for t in result.trades if t.code == "300750.SZ" and t.direction == "buy"]
         assert len(buy_trades) > 0, "创业板股票应该成功买入"
 
     def test_main_board_15pct_rise_blocked(self):
@@ -127,8 +150,7 @@ class TestGEMBacktestComparison:
         result = engine.run(target, price_data, benchmark)
 
         # 主板涨15%超过10%→涨停封板→买入应被阻止(或创建pending order)
-        [t for t in result.trades
-                      if t.code == "000001.SZ" and t.direction == "buy"]
+        [t for t in result.trades if t.code == "000001.SZ" and t.direction == "buy"]
         # 主板10%涨停: close=11.5 > up_limit=11.0 → 封板
         # 但执行日是1/3, 当天close=10.0(没涨), 实际1/3可以买
         # 涨15%发生在1/4, 此时已经持仓, 不影响买入
@@ -143,10 +165,14 @@ class TestGEMBacktestComparison:
         创业板: up_limit=12.0, close=11.0, 未封板 → True
         """
         broker = SimBroker(BacktestConfig())
-        row = pd.Series({
-            "close": 11.0, "pre_close": 10.0,
-            "volume": 500_000, "turnover_rate": 0.8,
-        })
+        row = pd.Series(
+            {
+                "close": 11.0,
+                "pre_close": 10.0,
+                "volume": 500_000,
+                "turnover_rate": 0.8,
+            }
+        )
 
         # 创业板20%阈值: up_limit=12.0, close=11.0 → 未封板 → 允许
         assert broker.can_trade("300750.SZ", "buy", row) is True

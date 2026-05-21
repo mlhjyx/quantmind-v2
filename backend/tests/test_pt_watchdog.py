@@ -67,9 +67,7 @@ def _call_with_mock_conn(fn, return_value: tuple | None = (0,)) -> str:
 
     assert mock_cur.execute.called, f"{fn.__name__} 未调用 cursor.execute"
     # Contract: cursor 资源必须 close (防 connection leak) — code-reviewer MEDIUM #2
-    assert mock_cur.close.called, (
-        f"{fn.__name__} 未调用 cursor.close(), 违反 psycopg2 资源管理契约"
-    )
+    assert mock_cur.close.called, f"{fn.__name__} 未调用 cursor.close(), 违反 psycopg2 资源管理契约"
     call_args = mock_cur.execute.call_args
     return call_args[0][0]
 
@@ -77,9 +75,7 @@ def _call_with_mock_conn(fn, return_value: tuple | None = (0,)) -> str:
 def _assert_symmetric_namespace(sql: str, function_name: str) -> None:
     """断言 SQL 含 ``IN ('paper', 'live')`` 跨命名空间读取, 无硬编 single-namespace."""
     # 容忍 IN 参数顺序
-    has_in_both = (
-        "IN ('paper', 'live')" in sql or "IN ('live', 'paper')" in sql
-    )
+    has_in_both = "IN ('paper', 'live')" in sql or "IN ('live', 'paper')" in sql
     assert has_in_both, (
         f"{function_name} SQL 必须跨 paper + live 命名空间读取 "
         f"(IN ('paper', 'live')), 实际 SQL:\n{sql}"

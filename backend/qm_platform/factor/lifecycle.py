@@ -31,6 +31,7 @@ Usage:
     for decision in monitor.evaluate_all():
         print(decision.factor_name, decision.from_status, decision.to_status, decision.reason)
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

@@ -44,6 +44,7 @@ from engines.factor_timing import (
 # Helpers
 # ═══════════════════════════════════════════════════
 
+
 def _make_ic_series(
     values: list[float],
     start_date: str = "2023-01-02",
@@ -56,6 +57,7 @@ def _make_ic_series(
 # ═══════════════════════════════════════════════════
 # C3: 因子衰减3级处置
 # ═══════════════════════════════════════════════════
+
 
 class TestDecayClassification:
     """classify_decay_level() 分级判定。"""
@@ -202,6 +204,7 @@ class TestCheckAllFactorsDecay:
 # C4: 因子择时权重调整
 # ═══════════════════════════════════════════════════
 
+
 class TestTimingScore:
     """calc_timing_score() 择时分数。"""
 
@@ -272,9 +275,7 @@ class TestTimingWeights:
         for f in factors:
             base = rng.uniform(0.02, 0.06)
             recent = rng.uniform(0.01, 0.08)
-            ic_data[f] = _make_ic_series(
-                [base] * 60 + [recent] * 20
-            )
+            ic_data[f] = _make_ic_series([base] * 60 + [recent] * 20)
         weights = calc_timing_weights(factors, ic_data)
         assert sum(weights.values()) == pytest.approx(1.0, abs=1e-10)
 
@@ -306,10 +307,12 @@ class TestTimingWeights:
             DecayResult(
                 factor_name="l2_decay",
                 decay_level=DecayLevel.L2,
-                ic_ma20=0.01, ic_ma60=0.04,
+                ic_ma20=0.01,
+                ic_ma60=0.04,
                 consecutive_low_days=0,
                 reason="test",
-                l1_threshold=0.032, l2_threshold=0.02,
+                l1_threshold=0.032,
+                l2_threshold=0.02,
             ),
         ]
 
@@ -329,10 +332,12 @@ class TestTimingWeights:
             DecayResult(
                 factor_name="retired",
                 decay_level=DecayLevel.L3,
-                ic_ma20=0.005, ic_ma60=0.04,
+                ic_ma20=0.005,
+                ic_ma60=0.04,
                 consecutive_low_days=65,
                 reason="test",
-                l1_threshold=0.032, l2_threshold=0.02,
+                l1_threshold=0.032,
+                l2_threshold=0.02,
             ),
         ]
 

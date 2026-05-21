@@ -1,4 +1,5 @@
 """MVP 4.1 batch 2.2 unit tests — HealthReport + safe_check + aggregate_status."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

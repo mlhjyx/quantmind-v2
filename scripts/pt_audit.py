@@ -96,14 +96,15 @@ from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 # 常量
 CHECK_LIST: tuple[str, ...] = (
-    "st_leak", "mode_mismatch", "turnover_abnormal",
-    "rebalance_date_mismatch", "db_drift",
+    "st_leak",
+    "mode_mismatch",
+    "turnover_abnormal",
+    "rebalance_date_mismatch",
+    "db_drift",
 )
 TURNOVER_THRESHOLD_DEFAULT = 0.30
 REBAL_TURNOVER_THRESHOLD = 0.01  # 非月末换手 > 1% 报警
-DEFAULT_STRATEGY_ID = os.environ.get(
-    "PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0"
-)
+DEFAULT_STRATEGY_ID = os.environ.get("PAPER_STRATEGY_ID", "28fc37e5-2d32-4ada-92e0-41c11a5103d0")
 
 # Severity ordering (P0 最严重 → 0) + exit code mapping (P0 → 1)
 # Reviewer P1 提点: 原分散两处 dict, 不一致. 统一提取为模块级常量.
@@ -143,7 +144,8 @@ def get_sync_conn() -> psycopg2.extensions.connection:
 
 
 def _is_trading_day(
-    conn: psycopg2.extensions.connection, d: date,
+    conn: psycopg2.extensions.connection,
+    d: date,
 ) -> bool:
     """Check trading_calendar (astock). 复用 daily_reconciliation.py:40-46 模式.
 
@@ -220,9 +222,7 @@ def _write_scheduler_log(
         logger.warning("[scheduler_task_log] write failed: %s", e)
 
 
-def _prev_trading_day(
-    cur: psycopg2.extensions.cursor, trade_date: date
-) -> date | None:
+def _prev_trading_day(cur: psycopg2.extensions.cursor, trade_date: date) -> date | None:
     """Return the most recent trading_calendar day < trade_date (astock)."""
     cur.execute(
         """SELECT MAX(trade_date) FROM trading_calendar
@@ -234,9 +234,7 @@ def _prev_trading_day(
     return row[0] if row and row[0] else None
 
 
-def _is_month_last_trading_day(
-    cur: psycopg2.extensions.cursor, trade_date: date
-) -> bool:
+def _is_month_last_trading_day(cur: psycopg2.extensions.cursor, trade_date: date) -> bool:
     """True if trade_date is the last trading day in its month (astock).
 
     实现: 同月后续无 is_trading_day=true 日期. DATE_TRUNC 简化 3 参数 → 2.
@@ -285,9 +283,7 @@ def _today_turnover_value(
     return float(cur.fetchone()[0])
 
 
-def _latest_live_nav(
-    cur: psycopg2.extensions.cursor, strategy_id: str, trade_date: date
-) -> float:
+def _latest_live_nav(cur: psycopg2.extensions.cursor, strategy_id: str, trade_date: date) -> float:
     """Return the most recent live NAV at-or-before trade_date (0 if none)."""
     cur.execute(
         """SELECT nav FROM performance_series
@@ -333,7 +329,9 @@ def _load_reconstruct_positions() -> Callable[
 
 
 def check_st_leak(
-    conn: psycopg2.extensions.connection, strategy_id: str, trade_date: date,
+    conn: psycopg2.extensions.connection,
+    strategy_id: str,
+    trade_date: date,
 ) -> list[Finding]:
     """C1: 今日 live buy codes ∩ stock_status_daily(today) is_st=true → P0 leak.
 
@@ -370,7 +368,9 @@ def check_st_leak(
 
 
 def check_mode_mismatch(
-    conn: psycopg2.extensions.connection, strategy_id: str, trade_date: date,
+    conn: psycopg2.extensions.connection,
+    strategy_id: str,
+    trade_date: date,
 ) -> list[Finding]:
     """C2: 同日同 sid trade_log 既有 paper 又有 live → P1 命名空间污染."""
     cur = conn.cursor()
@@ -418,7 +418,8 @@ def check_turnover_abnormal(
         # NAV unavailable — cannot compute ratio, skip (fail-safe, not fail-loud)
         logger.warning(
             "[turnover] NAV unavailable for strategy_id=%s @ %s, skipping check",
-            strategy_id, trade_date,
+            strategy_id,
+            trade_date,
         )
         return []
     ratio = turnover_value / nav
@@ -440,7 +441,9 @@ def check_turnover_abnormal(
 
 
 def check_rebalance_date_mismatch(
-    conn: psycopg2.extensions.connection, strategy_id: str, trade_date: date,
+    conn: psycopg2.extensions.connection,
+    strategy_id: str,
+    trade_date: date,
 ) -> list[Finding]:
     """C4: 月度策略非月末换手 > 1% → P2 日历漂移."""
     cur = conn.cursor()
@@ -455,7 +458,8 @@ def check_rebalance_date_mismatch(
         # 铁律 33(c): 读路径 fallback 必须 logger.warning (reviewer P1 一致提点, 对齐 C3)
         logger.warning(
             "[rebalance] NAV unavailable for strategy_id=%s @ %s, skipping C4",
-            strategy_id, trade_date,
+            strategy_id,
+            trade_date,
         )
         return []
     ratio = turnover_value / nav
@@ -477,7 +481,9 @@ def check_rebalance_date_mismatch(
 
 
 def check_db_drift(
-    conn: psycopg2.extensions.connection, strategy_id: str, trade_date: date,
+    conn: psycopg2.extensions.connection,
+    strategy_id: str,
+    trade_date: date,
 ) -> list[Finding]:
     """C5: reconstruct(yesterday live snapshot + today live fills) vs snapshot → P1 drift.
 
@@ -550,15 +556,11 @@ def _get_rules_engine():
     try:
         return AlertRulesEngine.from_yaml(project_root / "configs" / "alert_rules.yaml")
     except Exception as e:  # noqa: BLE001
-        logger.warning(
-            "[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e
-        )
+        logger.warning("[Observability] AlertRulesEngine load failed: %s, 用默认 dedup_key", e)
         return None
 
 
-def _send_alert_via_platform_sdk(
-    findings: list[Finding], audit_date: date
-) -> None:
+def _send_alert_via_platform_sdk(findings: list[Finding], audit_date: date) -> None:
     """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.2)."""
     from datetime import UTC
 
@@ -616,9 +618,7 @@ def _send_alert_via_platform_sdk(
         raise
 
 
-def _send_alert_via_legacy_dingtalk(
-    findings: list[Finding], audit_date: date
-) -> None:
+def _send_alert_via_legacy_dingtalk(findings: list[Finding], audit_date: date) -> None:
     """旧 path: httpx.post 直调 (fallback, settings flag=False 时走).
 
     保留作紧急回滚. 完全行为等价 batch 3.2 前实现.
@@ -633,6 +633,7 @@ def _send_alert_via_legacy_dingtalk(
     # 原 os.environ.get 直读是 SSOT 漂移, settings 读同源 .env 但保持 SDK path 一致性,
     # 防 .env 字段重命名时 legacy path silent 失效 (SDK path 走 settings 自动适配).
     from app.config import settings
+
     webhook = settings.DINGTALK_WEBHOOK_URL
     if not webhook:
         logger.warning("DINGTALK_WEBHOOK_URL 未配置, 跳过告警 (发 stdout)")
@@ -640,12 +641,8 @@ def _send_alert_via_legacy_dingtalk(
 
     top_level, text = _build_alert_text(findings, audit_date)
     try:
-        httpx.post(
-            webhook, json={"msgtype": "text", "text": {"content": text}}, timeout=10
-        )
-        logger.info(
-            "[DingTalk legacy] %s 聚合告警已发送 (%d findings)", top_level, len(findings)
-        )
+        httpx.post(webhook, json={"msgtype": "text", "text": {"content": text}}, timeout=10)
+        logger.info("[DingTalk legacy] %s 聚合告警已发送 (%d findings)", top_level, len(findings))
     except Exception as e:
         logger.error(f"告警发送失败 (legacy path): {e}")
 
@@ -683,7 +680,9 @@ def run_audit(
     """
     conn = get_sync_conn()
     all_findings: list[Finding] = []
-    exit_code_final: int = 0  # Reviewer P1 (code+python): 避免 send_aggregated_alert raise 时 UnboundLocalError
+    exit_code_final: int = (
+        0  # Reviewer P1 (code+python): 避免 send_aggregated_alert raise 时 UnboundLocalError
+    )
     try:
         # Stage 4: 非交易日 guard — 跳过审计, 写 skipped log (monitoring 可见)
         if not _is_trading_day(conn, audit_date):
@@ -694,7 +693,9 @@ def run_audit(
         checks = only_checks or list(CHECK_LIST)
         logger.info(
             "[audit] date=%s sid=%s... checks=%s",
-            audit_date, strategy_id[:8], checks,
+            audit_date,
+            strategy_id[:8],
+            checks,
         )
         # 构建 check_fn dict (reviewer P2 提点): functools.partial 消除 if-name 分支
         dispatch: dict[str, Callable] = {}
@@ -743,7 +744,12 @@ def run_audit(
         else:
             exit_code_final = min(_LEVEL_EXIT_CODE.get(f.level, 99) for f in all_findings)
             _write_scheduler_log(
-                conn, audit_date, strategy_id, "alert", exit_code_final, all_findings,
+                conn,
+                audit_date,
+                strategy_id,
+                "alert",
+                exit_code_final,
+                all_findings,
             )
     finally:
         conn.close()

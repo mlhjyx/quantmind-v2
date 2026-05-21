@@ -1,4 +1,5 @@
 """MVP 1.4 DBExperimentRegistry 单测 — register / complete / search_similar."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

@@ -27,7 +27,6 @@ Date: 2026-05-19 evening SH.
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -63,11 +62,14 @@ def _parse_env_file(env_path: Path) -> dict[str, str]:
 def _parse_database_url(url: str) -> dict[str, str]:
     """Parse postgresql+asyncpg://user:pass@host:port/db → connection dict."""
     # postgresql+asyncpg://xin:quantmind@localhost:5432/quantmind_v2
-    m = re.match(
-        r"postgresql\+?(?:asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)", url
-    )
+    m = re.match(r"postgresql\+?(?:asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)", url)
     if not m:
-        raise SystemExit(f"FAIL: DATABASE_URL parse failed: {url[:50]}...")
+        # Security-review M1 (PR #392): 不回显 url —— DATABASE_URL 含 DB 密码,
+        # url[:50] 会泄露明文密码到 stderr → Celery wrapper 捕获并传播.
+        raise SystemExit(
+            "FAIL: DATABASE_URL parse failed "
+            "(expected postgresql://user:pass@host:port/db) — value redacted"
+        )
     return {
         "user": m.group(1),
         "password": m.group(2),
@@ -77,10 +79,90 @@ def _parse_database_url(url: str) -> dict[str, str]:
     }
 
 
+def _push_dingtalk(
+    env: dict[str, str],
+    status: str,
+    mtd_total: float,
+    budget: float,
+    mtd_ratio: float,
+    mom_change: float | None,
+) -> None:
+    """LLM 成本告警 DingTalk 推送 (status != OK OR MoM 漂移 > 50% 时调用).
+
+    Plan v10 — 关闭本脚本原 TODO + Beat `llm-cost-monthly-audit` 设计要求
+    ("Push DingTalk if MoM change > 50% OR MTD > 80% budget").
+
+    沿用 scripts/daily_reconciliation.py 的 plain-post 体例 —— 读 .env 的
+    DINGTALK_WEBHOOK_URL, httpx.post text 消息. 若 .env 含 DINGTALK_SECRET 则
+    附加 DingTalk 加签 (timestamp + HMAC-SHA256 sign), 否则 plain post
+    (degraded but functional, 与 daily_reconciliation legacy path 一致;
+    HMAC secret 配置见 Plan v9 matrix §5 user touchpoint).
+
+    Args:
+        env: 解析后的 .env dict.
+        status: 审计状态 (WARN / CAP_EXCEEDED — OK 不会调本函数).
+        mtd_total: 月初至今 LLM 成本 (USD).
+        budget: 月度预算 (USD).
+        mtd_ratio: mtd_total / budget.
+        mom_change: 月环比变化百分比 (None = 无上月数据).
+
+    铁律 33: fail-soft —— 审计已完成 (exit code 已定), 告警推送是 best-effort
+        旁路, 推送失败仅 print log, 不抛错不改 exit code.
+    """
+    webhook = env.get("DINGTALK_WEBHOOK_URL", "").strip()
+    if not webhook:
+        print("[DingTalk] DINGTALK_WEBHOOK_URL 未配置 — 跳过成本告警推送")
+        return
+
+    mom_str = f"{mom_change:+.1f}%" if mom_change is not None else "N/A"
+    tail = (
+        "CAP 超标 → 触发 Ollama fallback (ADR-028 §3.3)"
+        if status == "CAP_EXCEEDED"
+        else "接近月度预算上限, 请复查 llm_call_log"
+    )
+    text = (
+        f"[LLM 成本告警 {status}] {NOW.strftime('%Y-%m')}\n"
+        f"MTD 成本: ${mtd_total:.4f} / 预算 ${budget:.2f} ({mtd_ratio * 100:.1f}%)\n"
+        f"月环比 (MoM): {mom_str}\n"
+        f"{tail}"
+    )
+
+    try:
+        import httpx
+
+        url = webhook
+        secret = env.get("DINGTALK_SECRET", "").strip()
+        if secret:
+            import base64
+            import hashlib
+            import hmac
+            import time
+            import urllib.parse
+
+            ts = str(round(time.time() * 1000))
+            hmac_code = hmac.new(
+                secret.encode("utf-8"),
+                f"{ts}\n{secret}".encode(),
+                digestmod=hashlib.sha256,
+            ).digest()
+            sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+            url = f"{webhook}&timestamp={ts}&sign={sign}"
+
+        resp = httpx.post(
+            url,
+            json={"msgtype": "text", "text": {"content": text}},
+            timeout=10,
+        )
+        print(f"[DingTalk] 成本告警已推送 status={status} http={resp.status_code}")
+    except Exception as e:
+        # 铁律 33 fail-soft: 审计已完成, 告警旁路失败不改变 exit code / 不抛错.
+        print(f"[DingTalk] 成本告警推送失败 (fail-soft, 审计结果不受影响): {e}")
+
+
 def main() -> int:
     """Run monthly audit, push DingTalk if cost > 80% threshold, exit 0/1."""
     print(f"=== LLM Cost Monthly Audit {NOW.isoformat()} ===")
-    print(f"Sustained: 铁律 9/33/35/41 + V3 §20.1 #6 + LL-190 sediment-then-forget enforcement")
+    print("Sustained: 铁律 9/33/35/41 + V3 §20.1 #6 + LL-190 sediment-then-forget enforcement")
     print()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -107,8 +189,8 @@ def main() -> int:
     # Connect DB
     try:
         import psycopg2  # noqa: F401
-    except ImportError:
-        raise SystemExit("FAIL: psycopg2 not installed (沿用 backend/.venv 体例)")
+    except ImportError as err:
+        raise SystemExit("FAIL: psycopg2 not installed (沿用 backend/.venv 体例)") from err
 
     import psycopg2
 
@@ -140,9 +222,7 @@ def main() -> int:
         rows = cur.fetchall()
         print(f"[Query] llm_call_log last 6 months, {len(rows)} groups:")
         print()
-        print(
-            f"  {'Month':<10} {'CallType':<25} {'Count':>8} {'Total$':>10} {'Avg$':>10}"
-        )
+        print(f"  {'Month':<10} {'CallType':<25} {'Count':>8} {'Total$':>10} {'Avg$':>10}")
         print(f"  {'-' * 10} {'-' * 25} {'-' * 8} {'-' * 10} {'-' * 10}")
         current_month = NOW.strftime("%Y-%m")
         mtd_total = 0.0
@@ -150,9 +230,7 @@ def main() -> int:
             month, call_type, count, total, avg = row
             total_f = float(total) if total else 0.0
             avg_f = float(avg) if avg else 0.0
-            print(
-                f"  {month:<10} {call_type:<25} {count:>8} {total_f:>10.4f} {avg_f:>10.6f}"
-            )
+            print(f"  {month:<10} {call_type:<25} {count:>8} {total_f:>10.4f} {avg_f:>10.6f}")
             if month == current_month:
                 mtd_total += total_f
         print()
@@ -164,15 +242,15 @@ def main() -> int:
 
         # Threshold evaluation
         if mtd_ratio >= CAP_RATIO:
-            print(f"[ALERT] CAP THRESHOLD EXCEEDED: trigger Ollama fallback per ADR-028 §3.3")
+            print("[ALERT] CAP THRESHOLD EXCEEDED: trigger Ollama fallback per ADR-028 §3.3")
             status = "CAP_EXCEEDED"
             exit_code = 1
         elif mtd_ratio >= WARN_RATIO:
-            print(f"[WARN] WARN THRESHOLD EXCEEDED: cost approaching $50 monthly budget")
+            print("[WARN] WARN THRESHOLD EXCEEDED: cost approaching $50 monthly budget")
             status = "WARN"
             exit_code = 0  # Warning still exit 0 (沿用 budget.py state machine — warning, not fail)
         else:
-            print(f"[OK] within budget")
+            print("[OK] within budget")
             status = "OK"
             exit_code = 0
 
@@ -187,18 +265,21 @@ def main() -> int:
             (last_month_dt,),
         )
         last_month_total = cur.fetchone()[0]
+        mom_change: float | None = None
         if last_month_total is not None:
             last_month_f = float(last_month_total)
-            mom_change = (
-                (mtd_total - last_month_f) / last_month_f * 100 if last_month_f > 0 else 0
-            )
+            mom_change = (mtd_total - last_month_f) / last_month_f * 100 if last_month_f > 0 else 0
             print(f"[Compare] Last month ({last_month_dt}): ${last_month_f:.4f}")
             print(f"[Compare] MoM change: {mom_change:+.1f}%")
 
         cur.close()
 
-        # TODO: DingTalk push if status != "OK"
-        # Phase B post-deployment wire via backend/app/services/dingtalk_alert.py
+        # DingTalk 推送 (Plan v10 — 关闭原 TODO + Beat `llm-cost-monthly-audit`
+        # 设计 "Push DingTalk if MoM change > 50% OR MTD > 80% budget").
+        # status != OK 已含 MTD >= 80% (WARN) / >= 100% (CAP); 另加 MoM 漂移 > 50%.
+        mom_alert = mom_change is not None and abs(mom_change) > 50.0
+        if status != "OK" or mom_alert:
+            _push_dingtalk(env, status, mtd_total, budget, mtd_ratio, mom_change)
 
         print()
         print(f"=== Audit COMPLETE — status={status} ===")

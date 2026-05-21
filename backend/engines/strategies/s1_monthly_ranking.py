@@ -36,6 +36,7 @@ Platform Strategy(ABC) 契约, 为 batch 4 multi-strategy daily_pipeline 铺路.
   OrderRouter sell 单). 对齐 PortfolioBuilder.build() 返 dict 语义.
 - 与 S2 event-driven 不同 — S2 emit 显式 sell (过期 = target_weight=0), S1 不 emit.
 """
+
 from __future__ import annotations
 
 import logging
@@ -140,8 +141,8 @@ class S1MonthlyRanking(Strategy):
 
     def __init__(self, config: SignalConfig | None = None) -> None:
         """Args:
-          config: SignalConfig. None → 使用 PAPER_TRADING_CONFIG (从 pt_live.yaml +
-            .env 自动构建, 铁律 34 SSOT).
+        config: SignalConfig. None → 使用 PAPER_TRADING_CONFIG (从 pt_live.yaml +
+          .env 自动构建, 铁律 34 SSOT).
         """
         self._config = config or PAPER_TRADING_CONFIG
         # Instance-level composer/builder 持有 config ref (config 变必重建 instance)
@@ -225,9 +226,7 @@ class S1MonthlyRanking(Strategy):
                 )
             else:
                 pre_sn_scores = scores
-                scores = apply_size_neutral(
-                    scores, ln_mcap, self._config.size_neutral_beta
-                )
+                scores = apply_size_neutral(scores, ln_mcap, self._config.size_neutral_beta)
                 # P1 code-reviewer (PR #71) 采纳: apply_size_neutral 对 all-NaN
                 # ln_mcap (reindex 后 dropna df empty) 会 silently return 原 scores
                 # (size_neutral.py L126-127), 违 铁律 33. 此处显式检测并 warn.
@@ -307,9 +306,7 @@ class S1MonthlyRanking(Strategy):
         )
         return signals
 
-    def validate_signals(
-        self, signals: list[Signal], ctx: StrategyContext
-    ) -> list[Signal]:
+    def validate_signals(self, signals: list[Signal], ctx: StrategyContext) -> list[Signal]:
         """Pass-through validation — 批 2 简化 (靠 ctx.universe 已 filter BJ/ST/停牌).
 
         未来批次 (MVP 3.3+) 可接入 Platform 公共 validator (流动性 / 涨跌停 / 最小订单额).
@@ -353,6 +350,7 @@ class S1MonthlyRanking(Strategy):
 
 
 # ─── Module-level Helper (test + batch 4 registry boot) ──────────
+
 
 def get_s1_factor_pool() -> tuple[str, ...]:
     """Expose _S1_FACTOR_POOL tuple for auditor / test drift check (铁律 34).

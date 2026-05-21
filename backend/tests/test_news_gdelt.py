@@ -14,6 +14,7 @@ GDELT-specific tests (反 sub-PR 1+2+3 体例):
 - MAXRECORDS clamp [1, 250]
 - 0 content field (ArtList mode 真值, 沿用 NewsItem.content=None)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -147,9 +148,7 @@ def test_gdelt_fetch_uses_get_method_with_no_auth_header(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     fetcher.fetch(query="Apple sourcelang:english", limit=10)
@@ -172,9 +171,7 @@ def test_gdelt_fetch_maxrecords_clamp_above_250(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     fetcher.fetch(query="test", limit=500)
@@ -191,9 +188,7 @@ def test_gdelt_fetch_maxrecords_clamp_below_1(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     fetcher.fetch(query="test", limit=0)
@@ -229,9 +224,7 @@ def test_gdelt_fetch_parses_valid_response(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="news", limit=5)
@@ -270,9 +263,7 @@ def test_gdelt_fetch_unknown_language_falls_back_to_default(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="test")
@@ -289,9 +280,7 @@ def test_gdelt_fetch_4xx_400_raises_no_retry(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     with pytest.raises(NewsFetchError, match="HTTP 400"):
@@ -308,9 +297,7 @@ def test_gdelt_fetch_429_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.gdelt.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = GdeltNewsFetcher()
@@ -328,9 +315,7 @@ def test_gdelt_fetch_5xx_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     with patch("backend.qm_platform.news.gdelt.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = GdeltNewsFetcher()
@@ -348,9 +333,7 @@ def test_gdelt_fetch_timeout_retries_then_raises(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
     with patch("backend.qm_platform.news.gdelt.wait_exponential", lambda **_: lambda *_: 0):
         fetcher = GdeltNewsFetcher()
         with pytest.raises(NewsFetchError, match="API call failed after retry"):
@@ -360,14 +343,13 @@ def test_gdelt_fetch_timeout_retries_then_raises(monkeypatch):
 
 def test_gdelt_fetch_missing_articles_returns_empty(monkeypatch):
     """`articles` wrapper missing → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="test")
@@ -376,14 +358,13 @@ def test_gdelt_fetch_missing_articles_returns_empty(monkeypatch):
 
 def test_gdelt_fetch_invalid_articles_type_returns_empty(monkeypatch):
     """`articles` 反 list type → empty list."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"articles": "not-a-list"})
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="test")
@@ -403,9 +384,7 @@ def test_gdelt_fetch_empty_title_skipped(monkeypatch):
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="test")
@@ -415,14 +394,13 @@ def test_gdelt_fetch_empty_title_skipped(monkeypatch):
 
 def test_gdelt_fetch_html_response_returns_empty(monkeypatch):
     """GDELT 真返 HTML on某些 query → JSON parse fail → empty list (反 raise)."""
+
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<html>not json</html>")
 
     transport = httpx.MockTransport(mock_handler)
     real_client = httpx.Client
-    monkeypatch.setattr(
-        httpx, "Client", lambda **kw: real_client(transport=transport, **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
 
     fetcher = GdeltNewsFetcher()
     items = fetcher.fetch(query="test")

@@ -29,6 +29,7 @@
     fail-loud)
   - 40 测试不破: integration tests 真 DB cleanup (finally DELETE)
 """
+
 from __future__ import annotations
 
 import sys
@@ -81,7 +82,7 @@ class TestSignalServiceDualWrite:
         idx = content.find("MVP 3.4 batch 5 sunset")
         assert idx > 0
         # 块内 200 字符内必含 signal_id payload key
-        block = content[idx:idx + 1200]
+        block = content[idx : idx + 1200]
         assert '"signal_id"' in block, (
             "signal_service.py batch 4 outbox payload 必须含 signal_id key "
             "(batch 3 audit chain trace() 反向锚点)"
@@ -115,12 +116,10 @@ class TestSignalServiceDualWrite:
         """
         signal_service_path = _BACKEND_DIR / "app" / "services" / "signal_service.py"
         content = signal_service_path.read_text(encoding="utf-8")
-        assert "batch 5 sunset" in content, (
-            "signal_service.py 未发现 batch 5 sunset 注入点"
-        )
+        assert "batch 5 sunset" in content, "signal_service.py 未发现 batch 5 sunset 注入点"
         idx = content.find("batch 5 sunset")
         # 下溯 1200 字符 (注释段 + if not dry_run: + OutboxWriter import + enqueue 调用)
-        lower = content[idx:idx + 1200]
+        lower = content[idx : idx + 1200]
         assert "OutboxWriter" in lower, "batch 5 sunset 注释后必有 OutboxWriter enqueue"
         assert "if not dry_run:" in lower, (
             "outbox enqueue 必在 `if not dry_run:` 块内, 防 dry-run 污染 event_outbox"
@@ -187,9 +186,7 @@ class TestExecutionServiceDualWrite:
                 f"{f.name} 仍存 silent_ok warning — sunset 未完成"
             )
             # POSITIVE: PR #130 实施印记
-            assert "batch 5 sunset" in content, (
-                f"{f.name} 缺 batch 5 sunset 实施 marker (PR #130)"
-            )
+            assert "batch 5 sunset" in content, f"{f.name} 缺 batch 5 sunset 实施 marker (PR #130)"
 
     def test_execution_service_has_dual_write_both_paths(self) -> None:
         """source code 静态校验: execution_service.py paper + live 各有 1 outbox 注入."""
@@ -265,21 +262,17 @@ class TestRiskEngineDualWrite:
             "risk/engine.py 仍存 silent_ok warning — sunset 未完成"
         )
         # POSITIVE: sunset marker (PR #130 印记)
-        assert "batch 5 sunset" in content, (
-            "risk/engine.py 缺 batch 5 sunset marker (PR #130)"
-        )
+        assert "batch 5 sunset" in content, "risk/engine.py 缺 batch 5 sunset marker (PR #130)"
         # POSITIVE: priority 注释明示 audit > event (reviewer P1)
         assert "priority: audit>event" in content, (
             "risk/engine.py 缺 priority audit>event 注释 (reviewer P1 fix)"
         )
         # POSITIVE: ERROR level (非 silent warning), narrow try/except 保留 audit
-        assert 'logger.error(' in content, (
+        assert "logger.error(" in content, (
             "risk/engine.py outbox 失败必 ERROR log (非 silent warning)"
         )
         # POSITIVE: OutboxWriter 仍调用
-        assert "OutboxWriter(conn).enqueue(" in content, (
-            "risk/engine.py outbox enqueue 不应被删"
-        )
+        assert "OutboxWriter(conn).enqueue(" in content, "risk/engine.py outbox enqueue 不应被删"
 
 
 # ─── 4. (integration) 真 DB end-to-end dual-write ────────────────
@@ -501,11 +494,19 @@ class TestDBIntegrationDualWrite:
         """
         # 设计契约: outbox payload ⊇ StreamBus payload + signal_id key
         outbox_payload_keys = {
-            "signal_id", "trade_date", "strategy_id", "stock_count",
-            "is_rebalance", "beta",
+            "signal_id",
+            "trade_date",
+            "strategy_id",
+            "stock_count",
+            "is_rebalance",
+            "beta",
         }
         streambus_payload_keys = {
-            "trade_date", "strategy_id", "stock_count", "is_rebalance", "beta",
+            "trade_date",
+            "strategy_id",
+            "stock_count",
+            "is_rebalance",
+            "beta",
         }
         # outbox 是 superset (加 signal_id)
         assert streambus_payload_keys.issubset(outbox_payload_keys), (
@@ -517,12 +518,11 @@ class TestDBIntegrationDualWrite:
     @staticmethod
     def _cleanup_outbox(agg_id: str) -> None:
         from app.services.db import get_sync_conn
+
         try:
             conn = get_sync_conn()
             cur = conn.cursor()
-            cur.execute(
-                "DELETE FROM event_outbox WHERE aggregate_id = %s", (agg_id,)
-            )
+            cur.execute("DELETE FROM event_outbox WHERE aggregate_id = %s", (agg_id,))
             conn.commit()
             conn.close()
         except Exception:  # noqa: BLE001
@@ -531,12 +531,11 @@ class TestDBIntegrationDualWrite:
     @staticmethod
     def _cleanup_risk_log(rule_id: str) -> None:
         from app.services.db import get_sync_conn
+
         try:
             conn = get_sync_conn()
             cur = conn.cursor()
-            cur.execute(
-                "DELETE FROM risk_event_log WHERE rule_id = %s", (rule_id,)
-            )
+            cur.execute("DELETE FROM risk_event_log WHERE rule_id = %s", (rule_id,))
             conn.commit()
             conn.close()
         except Exception:  # noqa: BLE001

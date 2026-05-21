@@ -20,6 +20,7 @@ Usage:
     ... )
     >>> conn.commit()  # 调用方 tx commit 时 outbox + 业务表原子持久化
 """
+
 from __future__ import annotations
 
 import json
@@ -36,13 +37,15 @@ if TYPE_CHECKING:
 
 # Aggregate type 白名单 (防 typo 散乱). MVP 3.4 batch 4 4 域全迁 outbox.
 # 新增 aggregate_type 必加此白名单 + 文档说明 (config_guard 启动期可校验, future hook).
-_VALID_AGGREGATE_TYPES: frozenset[str] = frozenset({
-    "signal",     # 信号生成 (signal_service)
-    "order",      # 订单路由 (PlatformOrderRouter)
-    "fill",       # 订单成交 (execution_service)
-    "risk",       # 风控触发 (risk_engine: PMS / CB / intraday)
-    "portfolio",  # 持仓变更 (paper_broker / qmt_data_service)
-})
+_VALID_AGGREGATE_TYPES: frozenset[str] = frozenset(
+    {
+        "signal",  # 信号生成 (signal_service)
+        "order",  # 订单路由 (PlatformOrderRouter)
+        "fill",  # 订单成交 (execution_service)
+        "risk",  # 风控触发 (risk_engine: PMS / CB / intraday)
+        "portfolio",  # 持仓变更 (paper_broker / qmt_data_service)
+    }
+)
 
 
 class OutboxWriter:
@@ -128,9 +131,7 @@ class OutboxWriter:
         elif isinstance(event_id, uuid.UUID):
             resolved_id = event_id
         else:
-            raise TypeError(
-                f"event_id 必须是 UUID / str / None, got {type(event_id).__name__}."
-            )
+            raise TypeError(f"event_id 必须是 UUID / str / None, got {type(event_id).__name__}.")
 
         # INSERT (铁律 32: 不 commit).
         # PR #119 reviewer P1.2 采纳: with 包 cursor 防 execute 异常时 cursor leak

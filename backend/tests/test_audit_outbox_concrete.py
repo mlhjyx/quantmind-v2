@@ -15,6 +15,7 @@
   - 32 例外: OutboxBackedAuditTrail 自管短 tx, docstring 显式声明
   - 33 fail-loud: event_type / aggregate_id / 链断 全 raise
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,6 +47,7 @@ def mock_conn():
 @pytest.fixture
 def audit_module():
     from qm_platform.signal import audit  # noqa: PLC0415
+
     return audit
 
 
@@ -83,9 +85,7 @@ class TestRecordValidation:
 
 
 class TestRecordHappyPath:
-    def test_order_routed_calls_enqueue(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_order_routed_calls_enqueue(self, mock_conn, audit_module) -> None:
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with patch("qm_platform.observability.OutboxWriter") as MockWriter:
             mock_writer = MagicMock()
@@ -102,9 +102,7 @@ class TestRecordHappyPath:
         assert kwargs["event_type"] == "routed"  # subtype, 非全 event_type
         assert kwargs["payload"]["signal_id"] == "sig-1"
 
-    def test_signal_generated_calls_enqueue(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_signal_generated_calls_enqueue(self, mock_conn, audit_module) -> None:
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with patch("qm_platform.observability.OutboxWriter") as MockWriter:
             mock_writer = MagicMock()
@@ -119,9 +117,7 @@ class TestRecordHappyPath:
         assert kwargs["aggregate_id"] == "sig-2"
         assert kwargs["event_type"] == "generated"
 
-    def test_fill_executed_calls_enqueue(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_fill_executed_calls_enqueue(self, mock_conn, audit_module) -> None:
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with patch("qm_platform.observability.OutboxWriter") as MockWriter:
             mock_writer = MagicMock()
@@ -149,9 +145,7 @@ class TestRecordTxBoundary:
         mock_conn.close.assert_called_once()
         mock_conn.rollback.assert_not_called()
 
-    def test_record_rollbacks_on_enqueue_raise(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_record_rollbacks_on_enqueue_raise(self, mock_conn, audit_module) -> None:
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with patch("qm_platform.observability.OutboxWriter") as MockWriter:
             MockWriter.return_value.enqueue.side_effect = RuntimeError("DB fail")
@@ -189,21 +183,27 @@ class TestTraceChainBreaks:
     def test_order_event_missing_raises(self, mock_conn, audit_module) -> None:
         # fill 存在, 拿到 order_id, order 0 行
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-x"}, ts),  # fill payload + ts
-            None,  # order 0 row
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-x"}, ts),  # fill payload + ts
+                None,  # order 0 row
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with pytest.raises(audit_module.AuditMissing, match="链断点 2: order"):
             trail.trace("fill-1")
 
     def test_signal_event_missing_raises(self, mock_conn, audit_module) -> None:
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-x"}, ts),  # fill
-            ({"signal_id": "sig-y"}, ts),  # order
-            None,  # signal 0 row
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-x"}, ts),  # fill
+                ({"signal_id": "sig-y"}, ts),  # order
+                None,  # signal 0 row
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with pytest.raises(audit_module.AuditMissing, match="链断点 3: signal"):
             trail.trace("fill-1")
@@ -213,25 +213,27 @@ class TestTraceChainBreaks:
 
 
 class TestTracePayloadMissingKey:
-    def test_fill_payload_missing_order_id_raises(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_fill_payload_missing_order_id_raises(self, mock_conn, audit_module) -> None:
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"some_other_key": 1}, ts),  # fill payload 无 order_id
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"some_other_key": 1}, ts),  # fill payload 无 order_id
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with pytest.raises(audit_module.AuditMissing, match="fill payload 缺 order_id"):
             trail.trace("fill-1")
 
-    def test_order_payload_missing_signal_id_raises(
-        self, mock_conn, audit_module
-    ) -> None:
+    def test_order_payload_missing_signal_id_raises(self, mock_conn, audit_module) -> None:
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-x"}, ts),
-            ({"some_other_key": 1}, ts),  # order payload 无 signal_id
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-x"}, ts),
+                ({"some_other_key": 1}, ts),  # order payload 无 signal_id
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with pytest.raises(audit_module.AuditMissing, match="order payload 缺 signal_id"):
             trail.trace("fill-1")
@@ -249,19 +251,22 @@ class TestTraceFactorContributionsWarn:
         import logging
 
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-1"}, ts),
-            ({"signal_id": "sig-1"}, ts),
-            # signal payload 缺 factor_contributions key
-            ({"strategy_id": "s1"}, ts),
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-1"}, ts),
+                ({"signal_id": "sig-1"}, ts),
+                # signal payload 缺 factor_contributions key
+                ({"strategy_id": "s1"}, ts),
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with caplog.at_level(logging.WARNING, logger="qm_platform.signal.audit"):
             chain = trail.trace("fill-1")
         # warn message 含 signal_id + strategy_id 便于 audit
-        assert any(
-            "缺 factor_contributions" in r.message for r in caplog.records
-        ), f"未触发 warning: {[r.message for r in caplog.records]}"
+        assert any("缺 factor_contributions" in r.message for r in caplog.records), (
+            f"未触发 warning: {[r.message for r in caplog.records]}"
+        )
         # 但 chain 仍返回 (空 dict, 不破调用方)
         assert chain.factor_contributions == {}
 
@@ -272,19 +277,22 @@ class TestTraceFactorContributionsWarn:
         import logging
 
         ts = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-1"}, ts),
-            ({"signal_id": "sig-1"}, ts),
-            # key 存但空 dict — 策略意图零 contribution
-            ({"strategy_id": "s1", "factor_contributions": {}}, ts),
-        ])
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-1"}, ts),
+                ({"signal_id": "sig-1"}, ts),
+                # key 存但空 dict — 策略意图零 contribution
+                ({"strategy_id": "s1", "factor_contributions": {}}, ts),
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         with caplog.at_level(logging.WARNING, logger="qm_platform.signal.audit"):
             chain = trail.trace("fill-1")
         # 空 dict 是 legal 不该 warn
-        assert not any(
-            "缺 factor_contributions" in r.message for r in caplog.records
-        ), "key 在 + 空 dict 不应 warn"
+        assert not any("缺 factor_contributions" in r.message for r in caplog.records), (
+            "key 在 + 空 dict 不应 warn"
+        )
         assert chain.factor_contributions == {}
 
 
@@ -293,24 +301,27 @@ class TestTraceHappyPath:
         ts_fill = datetime(2026, 4, 28, 10, 30, tzinfo=UTC)
         ts_order = datetime(2026, 4, 28, 10, 25, tzinfo=UTC)
         ts_signal = datetime(2026, 4, 28, 10, 0, tzinfo=UTC)
-        _seq_rows_cursor(mock_conn, [
-            ({"order_id": "ord-1", "qty": 100, "price": 50.5}, ts_fill),
-            ({"signal_id": "sig-1", "code": "600519.SH"}, ts_order),
-            (
-                {
-                    "strategy_id": "s1_monthly_ranking",
-                    "factor_contributions": {
-                        "turnover_mean_20": 0.25,
-                        "volatility_20": 0.25,
-                        "bp_ratio": 0.25,
-                        "dv_ttm": 0.25,
+        _seq_rows_cursor(
+            mock_conn,
+            [
+                ({"order_id": "ord-1", "qty": 100, "price": 50.5}, ts_fill),
+                ({"signal_id": "sig-1", "code": "600519.SH"}, ts_order),
+                (
+                    {
+                        "strategy_id": "s1_monthly_ranking",
+                        "factor_contributions": {
+                            "turnover_mean_20": 0.25,
+                            "volatility_20": 0.25,
+                            "bp_ratio": 0.25,
+                            "dv_ttm": 0.25,
+                        },
+                        "trade_date": "2026-04-28",
+                        "code": "600519.SH",
                     },
-                    "trade_date": "2026-04-28",
-                    "code": "600519.SH",
-                },
-                ts_signal,
-            ),
-        ])
+                    ts_signal,
+                ),
+            ],
+        )
         trail = audit_module.OutboxBackedAuditTrail(conn_factory=lambda: mock_conn)
         chain = trail.trace("fill-1")
 
@@ -386,7 +397,8 @@ class TestDBIntegration:
                 cleanup_conn = get_sync_conn()
                 cur = cleanup_conn.cursor()
                 cur.execute(
-                    "DELETE FROM event_outbox WHERE aggregate_id = %s", (order_id,),
+                    "DELETE FROM event_outbox WHERE aggregate_id = %s",
+                    (order_id,),
                 )
                 cleanup_conn.commit()
                 cleanup_conn.close()
@@ -408,24 +420,33 @@ class TestDBIntegration:
         trail = OutboxBackedAuditTrail()
         try:
             # seed 3 events 顺序: signal → order → fill
-            trail.record("signal.generated", {
-                "signal_id": signal_id,
-                "strategy_id": "s1_monthly_ranking",
-                "factor_contributions": {"turnover_mean_20": 0.5, "volatility_20": 0.5},
-                "code": "600519.SH",
-            })
-            trail.record("order.routed", {
-                "order_id": order_id,
-                "signal_id": signal_id,
-                "code": "600519.SH",
-                "qty": 100,
-            })
-            trail.record("fill.executed", {
-                "fill_id": fill_id,
-                "order_id": order_id,
-                "qty": 100,
-                "price": 1500.5,
-            })
+            trail.record(
+                "signal.generated",
+                {
+                    "signal_id": signal_id,
+                    "strategy_id": "s1_monthly_ranking",
+                    "factor_contributions": {"turnover_mean_20": 0.5, "volatility_20": 0.5},
+                    "code": "600519.SH",
+                },
+            )
+            trail.record(
+                "order.routed",
+                {
+                    "order_id": order_id,
+                    "signal_id": signal_id,
+                    "code": "600519.SH",
+                    "qty": 100,
+                },
+            )
+            trail.record(
+                "fill.executed",
+                {
+                    "fill_id": fill_id,
+                    "order_id": order_id,
+                    "qty": 100,
+                    "price": 1500.5,
+                },
+            )
 
             # trace
             chain = trail.trace(fill_id)
@@ -433,7 +454,8 @@ class TestDBIntegration:
             assert chain.order_id == order_id
             assert chain.strategy_id == "s1_monthly_ranking"
             assert chain.factor_contributions == {
-                "turnover_mean_20": 0.5, "volatility_20": 0.5,
+                "turnover_mean_20": 0.5,
+                "volatility_20": 0.5,
             }
             assert chain.signal_trace["code"] == "600519.SH"
             assert "fill" in chain.timestamps

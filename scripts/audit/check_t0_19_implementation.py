@@ -22,6 +22,7 @@ trigger 条件 (event-driven):
     - xtquant.trader.order_stock
     - LIVE_TRADING_DISABLED=False 模式跑 (双锁守门)
 """
+
 from __future__ import annotations
 
 import re

@@ -25,6 +25,7 @@ wrapper, 为 multi-strategy daily_pipeline (MVP 3.3 批 2 OrderRouter) 铺路.
   `daily_pipeline.py` 仍直调 `engines.signal_engine`, 等批 2 OrderRouter 落地后
   再切换. 本批 regression 硬门 max_diff=0 因 production caller 不动 trivially 通过.
 """
+
 from __future__ import annotations
 
 import logging
@@ -91,9 +92,7 @@ class PlatformSignalPipeline(SignalPipeline):
     def __init__(self, config: SignalConfig | None = None) -> None:
         # P2 code-reviewer (PR #107) 采纳: `is not None` 显式判 None, 防未来子类
         # `__bool__` override silently fallback (defensive pattern 对齐 LL-064).
-        self._base_config = (
-            config if config is not None else PAPER_TRADING_CONFIG
-        )
+        self._base_config = config if config is not None else PAPER_TRADING_CONFIG
 
     @property
     def base_config(self) -> SignalConfig:
@@ -129,9 +128,7 @@ class PlatformSignalPipeline(SignalPipeline):
           ValueError: factor_pool 空.
         """
         if not factor_pool:
-            raise ValueError(
-                "factor_pool 不能空. compose route 必须显式提供因子清单."
-            )
+            raise ValueError("factor_pool 不能空. compose route 必须显式提供因子清单.")
         if not ctx.universe:
             raise UniverseEmpty(
                 f"ctx.universe 空 (trade_date={trade_date}). 调用方应预 filter "
@@ -155,9 +152,7 @@ class PlatformSignalPipeline(SignalPipeline):
         volatility_map: dict[str, float] | None = ctx.metadata.get("volatility_map")
 
         if factor_df.empty:
-            _logger.info(
-                "compose: trade_date=%s factor_df empty -> no signals", trade_date
-            )
+            _logger.info("compose: trade_date=%s factor_df empty -> no signals", trade_date)
             return []
 
         # P1-1 reviewer (PR #107) 采纳: `tuple()` 与 SignalConfig.factor_names 字段

@@ -49,10 +49,17 @@ async def seeded_perf_data(db_session: AsyncSession, strategy_id):
                    VALUES (:td, :sid, :nav, :ret, :cum, :dd, :cr, :cash, :pc, :to, :bn, 'paper')"""
             ),
             {
-                "td": td, "sid": strategy_id, "nav": nav_val,
-                "ret": round(daily_ret, 8), "cum": round(cum_ret, 8),
-                "dd": round(dd, 8), "cr": 0.05, "cash": 50000.0,
-                "pc": 30, "to": 0.1, "bn": 1.0 + i * 0.003,
+                "td": td,
+                "sid": strategy_id,
+                "nav": nav_val,
+                "ret": round(daily_ret, 8),
+                "cum": round(cum_ret, 8),
+                "dd": round(dd, 8),
+                "cr": 0.05,
+                "cash": 50000.0,
+                "pc": 30,
+                "to": 0.1,
+                "bn": 1.0 + i * 0.003,
             },
         )
     return {"strategy_id": str(strategy_id), "base_date": base, "navs": navs}
@@ -61,6 +68,7 @@ async def seeded_perf_data(db_session: AsyncSession, strategy_id):
 # ──────────────────────────────────────────────
 # get_latest_nav
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_latest_nav_returns_most_recent(perf_repo, seeded_perf_data):
@@ -86,6 +94,7 @@ async def test_get_latest_nav_empty(perf_repo):
 # get_nav_series
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_nav_series_full(perf_repo, seeded_perf_data):
     """不带日期范围返回全部。"""
@@ -110,6 +119,7 @@ async def test_get_nav_series_with_date_range(perf_repo, seeded_perf_data):
 # ──────────────────────────────────────────────
 # get_rolling_stats (重点测试)
 # ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_rolling_stats_sharpe_calculation(perf_repo, seeded_perf_data):
@@ -191,6 +201,7 @@ async def test_rolling_stats_empty(perf_repo):
 # get_peak_nav
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_peak_nav(perf_repo, seeded_perf_data):
     """peak NAV应为序列中最大值。"""
@@ -210,16 +221,24 @@ async def test_get_peak_nav_empty(perf_repo):
 # upsert_daily (幂等性)
 # ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_upsert_daily_insert(perf_repo, strategy_id, db_session):
     """首次写入新增记录。"""
     td = date(2025, 6, 1)
     sid = str(strategy_id)
     await perf_repo.upsert_daily(
-        trade_date=td, strategy_id=sid,
-        nav=1.1, daily_return=0.01, cumulative_return=0.1,
-        drawdown=-0.02, cash_ratio=0.05, cash=50000.0,
-        position_count=30, turnover=0.15, benchmark_nav=1.05,
+        trade_date=td,
+        strategy_id=sid,
+        nav=1.1,
+        daily_return=0.01,
+        cumulative_return=0.1,
+        drawdown=-0.02,
+        cash_ratio=0.05,
+        cash=50000.0,
+        position_count=30,
+        turnover=0.15,
+        benchmark_nav=1.05,
     )
     result = await perf_repo.get_latest_nav(sid, "paper")
     assert result is not None
@@ -234,18 +253,32 @@ async def test_upsert_daily_idempotent(perf_repo, strategy_id, db_session):
 
     # 第一次写入
     await perf_repo.upsert_daily(
-        trade_date=td, strategy_id=sid,
-        nav=1.0, daily_return=0.0, cumulative_return=0.0,
-        drawdown=0.0, cash_ratio=0.1, cash=100000.0,
-        position_count=0, turnover=0.0, benchmark_nav=1.0,
+        trade_date=td,
+        strategy_id=sid,
+        nav=1.0,
+        daily_return=0.0,
+        cumulative_return=0.0,
+        drawdown=0.0,
+        cash_ratio=0.1,
+        cash=100000.0,
+        position_count=0,
+        turnover=0.0,
+        benchmark_nav=1.0,
     )
 
     # 第二次写入(更新NAV)
     await perf_repo.upsert_daily(
-        trade_date=td, strategy_id=sid,
-        nav=1.05, daily_return=0.05, cumulative_return=0.05,
-        drawdown=0.0, cash_ratio=0.08, cash=80000.0,
-        position_count=20, turnover=0.2, benchmark_nav=1.02,
+        trade_date=td,
+        strategy_id=sid,
+        nav=1.05,
+        daily_return=0.05,
+        cumulative_return=0.05,
+        drawdown=0.0,
+        cash_ratio=0.08,
+        cash=80000.0,
+        position_count=20,
+        turnover=0.2,
+        benchmark_nav=1.02,
     )
 
     result = await perf_repo.get_latest_nav(sid, "paper")

@@ -16,6 +16,7 @@ Notes:
   - Unit tests 用 mock conn + mock stream_publisher (无 DB / Redis 依赖)
   - Integration tests 走真 DB (event_outbox + StreamBus stub) — 标 @integration
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,11 +47,18 @@ def mock_conn():
 @pytest.fixture
 def publisher_module():
     from app.tasks import outbox_publisher  # noqa: PLC0415
+
     return outbox_publisher
 
 
-def _row(event_id=None, aggregate_type="signal", aggregate_id="sig-1",
-         event_type="generated", payload=None, retries=0):
+def _row(
+    event_id=None,
+    aggregate_type="signal",
+    aggregate_id="sig-1",
+    event_type="generated",
+    payload=None,
+    retries=0,
+):
     """构造 SELECT 返回行 tuple (与 publisher SELECT 列顺序一致)."""
     return (
         event_id or uuid.uuid4(),
@@ -66,9 +74,7 @@ def _row(event_id=None, aggregate_type="signal", aggregate_id="sig-1",
 
 
 class TestPublishHappyPath:
-    def test_single_row_published_marks_published_at(
-        self, mock_conn, publisher_module
-    ) -> None:
+    def test_single_row_published_marks_published_at(self, mock_conn, publisher_module) -> None:
         row = _row(aggregate_type="signal", event_type="generated")
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = [row]
@@ -81,7 +87,10 @@ class TestPublishHappyPath:
         result = pub.publish_batch()
 
         assert result == {
-            "selected": 1, "published": 1, "retried": 0, "dlq": 0,
+            "selected": 1,
+            "published": 1,
+            "retried": 0,
+            "dlq": 0,
             "publisher_exceptions": 0,
         }
         # publish_sync 调一次, stream 名拼接正确
@@ -99,7 +108,8 @@ class TestPublishHappyPath:
 
         # UPDATE published_at = NOW() 写一次
         update_calls = [
-            c for c in cur.execute.call_args_list
+            c
+            for c in cur.execute.call_args_list
             if "UPDATE event_outbox" in c[0][0] and "published_at = NOW()" in c[0][0]
         ]
         assert len(update_calls) == 1
@@ -156,9 +166,7 @@ class TestBatchPublish:
             "qm:fill:executed",
         ]
 
-    def test_empty_batch_skips_commit(
-        self, mock_conn, publisher_module
-    ) -> None:
+    def test_empty_batch_skips_commit(self, mock_conn, publisher_module) -> None:
         """P2.7 reviewer 采纳: 0 unpublished rows → 早退出, 不 commit (省 round-trip).
 
         Steady-state (0 backlog) 是 publisher 常态 (30s × 24h = 2880 ticks/日),
@@ -175,7 +183,10 @@ class TestBatchPublish:
         result = pub.publish_batch()
 
         assert result == {
-            "selected": 0, "published": 0, "retried": 0, "dlq": 0,
+            "selected": 0,
+            "published": 0,
+            "retried": 0,
+            "dlq": 0,
             "publisher_exceptions": 0,
         }
         stream_pub.assert_not_called()
@@ -187,9 +198,7 @@ class TestBatchPublish:
 
 
 class TestRetryOnFailure:
-    def test_publish_returns_none_increments_retries(
-        self, mock_conn, publisher_module
-    ) -> None:
+    def test_publish_returns_none_increments_retries(self, mock_conn, publisher_module) -> None:
         row = _row(retries=2)
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = [row]
@@ -207,16 +216,16 @@ class TestRetryOnFailure:
         assert result["dlq"] == 0
         # UPDATE retries=3 (不写 published_at)
         update_calls = [
-            c for c in cur.execute.call_args_list
-            if "UPDATE event_outbox" in c[0][0] and "retries = %s" in c[0][0]
+            c
+            for c in cur.execute.call_args_list
+            if "UPDATE event_outbox" in c[0][0]
+            and "retries = %s" in c[0][0]
             and "published_at" not in c[0][0]
         ]
         assert len(update_calls) == 1
         assert update_calls[0][0][1][0] == 3  # retries+1
 
-    def test_publish_exception_caught_as_failure(
-        self, mock_conn, publisher_module
-    ) -> None:
+    def test_publish_exception_caught_as_failure(self, mock_conn, publisher_module) -> None:
         """publisher 直接 raise (非 StreamBus 默认行为) → 视为失败计 publisher_exceptions+retried.
 
         P1.4 reviewer 采纳: counter 重命名 errors → publisher_exceptions
@@ -275,7 +284,8 @@ class TestDLQTermination:
 
         # UPDATE 标 published_at + retries=10 (终结防 zombie)
         update_calls = [
-            c for c in cur.execute.call_args_list
+            c
+            for c in cur.execute.call_args_list
             if "UPDATE event_outbox" in c[0][0]
             and "published_at = NOW()" in c[0][0]
             and "retries = %s" in c[0][0]
@@ -311,22 +321,24 @@ class TestDLQTermination:
         )
         # 行仍标 published_at (UPDATE 调用了)
         update_calls = [
-            c for c in cur.execute.call_args_list
+            c
+            for c in cur.execute.call_args_list
             if "UPDATE event_outbox" in c[0][0] and "published_at = NOW()" in c[0][0]
         ]
         assert len(update_calls) == 1
 
-    def test_exception_path_dlq_reason_includes_exc_type(
-        self, mock_conn, publisher_module
-    ) -> None:
+    def test_exception_path_dlq_reason_includes_exc_type(self, mock_conn, publisher_module) -> None:
         """publisher raise 路径下达 max → DLQ reason 含 exception 类型 (audit)."""
         row = _row(retries=9)
         cur = mock_conn.cursor.return_value
         cur.fetchall.return_value = [row]
 
-        stream_pub = MagicMock(side_effect=[
-            ConnectionError("redis timeout"), "dlq-msg",
-        ])
+        stream_pub = MagicMock(
+            side_effect=[
+                ConnectionError("redis timeout"),
+                "dlq-msg",
+            ]
+        )
         pub = publisher_module.OutboxPublisher(
             conn_factory=lambda: mock_conn,
             stream_publisher=stream_pub,
@@ -371,14 +383,18 @@ class TestTickTask:
         """outbox_publisher_tick 入口: 调 OutboxPublisher.publish_batch 并返 summary+elapsed."""
         # monkey patch OutboxPublisher 走 mock
         fake_summary = {
-            "selected": 5, "published": 4, "retried": 1, "dlq": 0,
+            "selected": 5,
+            "published": 4,
+            "retried": 1,
+            "dlq": 0,
             "publisher_exceptions": 0,
         }
         fake_publisher = MagicMock()
         fake_publisher.publish_batch.return_value = fake_summary
 
         monkeypatch.setattr(
-            publisher_module, "OutboxPublisher",
+            publisher_module,
+            "OutboxPublisher",
             MagicMock(return_value=fake_publisher),
         )
 
@@ -392,14 +408,13 @@ class TestTickTask:
         assert isinstance(result["elapsed_s"], float)
         fake_publisher.publish_batch.assert_called_once()
 
-    def test_tick_task_propagates_exception(
-        self, monkeypatch, publisher_module
-    ) -> None:
+    def test_tick_task_propagates_exception(self, monkeypatch, publisher_module) -> None:
         """publisher 抛异常 → task raise (Celery acks_late 标 failed, max_retries=0 不重派)."""
         fake_publisher = MagicMock()
         fake_publisher.publish_batch.side_effect = RuntimeError("DB down")
         monkeypatch.setattr(
-            publisher_module, "OutboxPublisher",
+            publisher_module,
+            "OutboxPublisher",
             MagicMock(return_value=fake_publisher),
         )
 
@@ -470,9 +485,7 @@ class TestDBIntegration:
             try:
                 cleanup_conn = get_sync_conn()
                 cur = cleanup_conn.cursor()
-                cur.execute(
-                    "DELETE FROM event_outbox WHERE event_id = %s", (str(test_id),)
-                )
+                cur.execute("DELETE FROM event_outbox WHERE event_id = %s", (str(test_id),))
                 cleanup_conn.commit()
                 cleanup_conn.close()
             except Exception:  # noqa: BLE001

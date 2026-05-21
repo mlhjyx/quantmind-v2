@@ -15,6 +15,7 @@ CLAUDE.md原则2: 数据源接入前必须过checklist。
     python scripts/pull_moneyflow.py --verify                # 仅验证
     python scripts/pull_moneyflow.py --recent                # 仅拉最近1个月（验证用）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,12 +61,26 @@ STATEMENT_TIMEOUT_MS = 60_000
 
 # Tushare moneyflow 字段
 MF_FIELDS = [
-    "ts_code", "trade_date",
-    "buy_sm_vol", "buy_sm_amount", "sell_sm_vol", "sell_sm_amount",
-    "buy_md_vol", "buy_md_amount", "sell_md_vol", "sell_md_amount",
-    "buy_lg_vol", "buy_lg_amount", "sell_lg_vol", "sell_lg_amount",
-    "buy_elg_vol", "buy_elg_amount", "sell_elg_vol", "sell_elg_amount",
-    "net_mf_vol", "net_mf_amount",
+    "ts_code",
+    "trade_date",
+    "buy_sm_vol",
+    "buy_sm_amount",
+    "sell_sm_vol",
+    "sell_sm_amount",
+    "buy_md_vol",
+    "buy_md_amount",
+    "sell_md_vol",
+    "sell_md_amount",
+    "buy_lg_vol",
+    "buy_lg_amount",
+    "sell_lg_vol",
+    "sell_lg_amount",
+    "buy_elg_vol",
+    "buy_elg_amount",
+    "sell_elg_vol",
+    "sell_elg_amount",
+    "net_mf_vol",
+    "net_mf_amount",
 ]
 
 DEFAULT_START = "20210101"
@@ -105,7 +120,8 @@ def _get_rules_engine() -> AlertRulesEngine | None:
         # 模块整体 stderr probe 模式.
         print(
             f"[Observability] AlertRulesEngine load failed: {e}, fallback",
-            flush=True, file=sys.stderr,
+            flush=True,
+            file=sys.stderr,
         )
         return None
 
@@ -151,11 +167,7 @@ def _send_alert_via_platform_sdk(td: str, max_retry: int, retry_wait: int) -> No
     engine = _get_rules_engine()
     if engine is not None:
         rule = engine.match(alert)
-        dedup_key = (
-            rule.format_dedup_key(alert)
-            if rule
-            else f"pull_moneyflow:summary:{td_iso}"
-        )
+        dedup_key = rule.format_dedup_key(alert) if rule else f"pull_moneyflow:summary:{td_iso}"
         suppress_minutes = rule.suppress_minutes if rule else 5
     else:
         dedup_key = f"pull_moneyflow:summary:{td_iso}"
@@ -254,13 +266,15 @@ def fetch_moneyflow_by_date(trade_date: str, retry: int = 3) -> pd.DataFrame:
                 raise
             else:
                 wait = 5 * (attempt + 1)
-                print(f"  [重试 {attempt+1}/{retry}] {e}, 等待{wait}s")
+                print(f"  [重试 {attempt + 1}/{retry}] {e}, 等待{wait}s")
                 time.sleep(wait)
     print(f"  [失败] {trade_date} 经过{retry}次重试仍失败，跳过")
     return pd.DataFrame()
 
 
-def upsert_moneyflow(conn: psycopg2.extensions.connection, df: pd.DataFrame, valid_codes: set[str]) -> int:
+def upsert_moneyflow(
+    conn: psycopg2.extensions.connection, df: pd.DataFrame, valid_codes: set[str]
+) -> int:
     """将moneyflow数据upsert入库（通过DataPipeline）。
 
     Pipeline自动处理: rename(ts_code→code) + 单位转换(万元→元) + 验证 + FK过滤 + upsert。
@@ -413,8 +427,7 @@ def _check_trading_day_or_skip(target_date: date | None = None) -> bool:
         # silent_ok: trading_calendar 不可用时 degrade 为无差别拉取 (铁律 33-d).
         # stderr 诊断痕迹便于事后 root cause.
         print(
-            f"[pull_moneyflow] trading_calendar check failed, proceeding: "
-            f"{type(e).__name__}: {e}",
+            f"[pull_moneyflow] trading_calendar check failed, proceeding: {type(e).__name__}: {e}",
             file=sys.stderr,
             flush=True,
         )
@@ -486,13 +499,17 @@ def _run(args: argparse.Namespace) -> int:
             is_recent = td >= (date.today() - timedelta(days=1)).strftime("%Y%m%d")
             if df.empty and is_recent:
                 for attempt in range(1, MAX_RETRY + 1):
-                    print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据，重试 {attempt}/{MAX_RETRY}（等待{RETRY_WAIT}s）")
+                    print(
+                        f"  [{i + 1}/{len(trading_dates)}] {td} — 空数据，重试 {attempt}/{MAX_RETRY}（等待{RETRY_WAIT}s）"
+                    )
                     time.sleep(RETRY_WAIT)
                     df = fetch_moneyflow_by_date(td)
                     if not df.empty:
                         break
                 if df.empty:
-                    print(f"  [{i+1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警")
+                    print(
+                        f"  [{i + 1}/{len(trading_dates)}] {td} — {MAX_RETRY}次重试后仍为空，发送告警"
+                    )
                     failed_dates.append(td)
                     # batch 3.7 dispatch (P1.1 模式): AlertDispatchError 单 catch fail-loud,
                     # 其他 (legacy DingTalk 网络/签名 错) silent_ok 不阻塞主数据写入 (铁律 33-d).
@@ -509,14 +526,14 @@ def _run(args: argparse.Namespace) -> int:
                         print(f"  [告警] DingTalk发送失败: {type(dt_exc).__name__}: {dt_exc}")
                     continue
             elif df.empty:
-                print(f"  [{i+1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")
+                print(f"  [{i + 1}/{len(trading_dates)}] {td} — 空数据（非近期，跳过）")
                 time.sleep(0.35)
                 continue
 
             rows = upsert_moneyflow(conn, df, valid_codes)
             elapsed = time.time() - t0
             total_rows += rows
-            print(f"  [{i+1}/{len(trading_dates)}] {td} — {rows:,} 行 ({elapsed:.1f}s)")
+            print(f"  [{i + 1}/{len(trading_dates)}] {td} — {rows:,} 行 ({elapsed:.1f}s)")
 
             # 限速: 200次/分钟 → 0.35s间隔
             sleep_time = max(0.35 - elapsed, 0)

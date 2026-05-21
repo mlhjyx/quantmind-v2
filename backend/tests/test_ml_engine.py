@@ -63,10 +63,12 @@ class TestFeaturePreprocessor:
 
     def _make_df(self, n: int = 1000) -> pd.DataFrame:
         rng = np.random.RandomState(42)
-        return pd.DataFrame({
-            "feat_a": rng.randn(n) * 10 + 50,
-            "feat_b": rng.randn(n) * 5 + 0,
-        })
+        return pd.DataFrame(
+            {
+                "feat_a": rng.randn(n) * 10 + 50,
+                "feat_b": rng.randn(n) * 5 + 0,
+            }
+        )
 
     def test_fit_transform(self) -> None:
         """fit后transform应该产生近似标准正态分布。"""
@@ -84,10 +86,12 @@ class TestFeaturePreprocessor:
         """transform使用训练集参数，不是测试集自身的参数。"""
         train_df = self._make_df(500)
         # 测试集分布偏移
-        test_df = pd.DataFrame({
-            "feat_a": np.ones(100) * 100,  # 远离训练集分布
-            "feat_b": np.ones(100) * -50,
-        })
+        test_df = pd.DataFrame(
+            {
+                "feat_a": np.ones(100) * 100,  # 远离训练集分布
+                "feat_b": np.ones(100) * -50,
+            }
+        )
 
         pp = FeaturePreprocessor()
         pp.fit(train_df, ["feat_a", "feat_b"])
@@ -98,9 +102,11 @@ class TestFeaturePreprocessor:
 
     def test_nan_handling(self) -> None:
         """缺失值应被填充为0后再zscore。"""
-        df = pd.DataFrame({
-            "feat_a": [1.0, 2.0, np.nan, 4.0, 5.0],
-        })
+        df = pd.DataFrame(
+            {
+                "feat_a": [1.0, 2.0, np.nan, 4.0, 5.0],
+            }
+        )
         pp = FeaturePreprocessor()
         pp.fit(df, ["feat_a"])
         result = pp.transform(df)
@@ -118,12 +124,14 @@ class TestComputeIC:
 
     def test_perfect_correlation(self) -> None:
         """完美相关IC应为1.0。"""
-        df = pd.DataFrame({
-            "trade_date": [date(2023, 1, 1)] * 50,
-            "code": [f"code_{i}" for i in range(50)],
-            "predicted": list(range(50)),
-            "actual": list(range(50)),
-        })
+        df = pd.DataFrame(
+            {
+                "trade_date": [date(2023, 1, 1)] * 50,
+                "code": [f"code_{i}" for i in range(50)],
+                "predicted": list(range(50)),
+                "actual": list(range(50)),
+            }
+        )
         ics = compute_daily_ic(df, method="spearman")
         assert abs(ics.iloc[0] - 1.0) < 1e-6
 
@@ -131,23 +139,27 @@ class TestComputeIC:
         """不相关的随机数IC应接近0。"""
         rng = np.random.RandomState(42)
         n = 200
-        df = pd.DataFrame({
-            "trade_date": [date(2023, 1, 1)] * n,
-            "code": [f"code_{i}" for i in range(n)],
-            "predicted": rng.randn(n),
-            "actual": rng.randn(n),
-        })
+        df = pd.DataFrame(
+            {
+                "trade_date": [date(2023, 1, 1)] * n,
+                "code": [f"code_{i}" for i in range(n)],
+                "predicted": rng.randn(n),
+                "actual": rng.randn(n),
+            }
+        )
         ics = compute_daily_ic(df, method="spearman")
         assert abs(ics.iloc[0]) < 0.2  # 接近0但有随机波动
 
     def test_too_few_samples(self) -> None:
         """样本数<30应返回空。"""
-        df = pd.DataFrame({
-            "trade_date": [date(2023, 1, 1)] * 10,
-            "code": [f"code_{i}" for i in range(10)],
-            "predicted": list(range(10)),
-            "actual": list(range(10)),
-        })
+        df = pd.DataFrame(
+            {
+                "trade_date": [date(2023, 1, 1)] * 10,
+                "code": [f"code_{i}" for i in range(10)],
+                "predicted": list(range(10)),
+                "actual": list(range(10)),
+            }
+        )
         ics = compute_daily_ic(df)
         assert len(ics) == 0
 
@@ -219,7 +231,7 @@ class TestFoldGeneration:
         for i in range(len(folds) - 1):
             assert folds[i].test_end < folds[i + 1].test_start, (
                 f"F{folds[i].fold_id}测试结束({folds[i].test_end}) "
-                f">= F{folds[i+1].fold_id}测试开始({folds[i+1].test_start})"
+                f">= F{folds[i + 1].fold_id}测试开始({folds[i + 1].test_start})"
             )
 
     def test_purge_gap(self) -> None:
@@ -264,8 +276,11 @@ class TestDataLoading:
         """测试F1 fold的数据加载。"""
         config = MLConfig(
             feature_names=[
-                "turnover_mean_20", "volatility_20", "reversal_20",
-                "amihud_20", "bp_ratio",
+                "turnover_mean_20",
+                "volatility_20",
+                "reversal_20",
+                "amihud_20",
+                "bp_ratio",
             ],
         )
         trainer = WalkForwardTrainer(config)
@@ -274,8 +289,9 @@ class TestDataLoading:
             folds = trainer.generate_folds()
             f1 = folds[0]
 
-            logger.info(f"F1: Train[{f1.train_start}~{f1.train_end}] "
-                       f"Test[{f1.test_start}~{f1.test_end}]")
+            logger.info(
+                f"F1: Train[{f1.train_start}~{f1.train_end}] Test[{f1.test_start}~{f1.test_end}]"
+            )
 
             # 只加载F1训练集范围的数据
             df = trainer.load_features(f1.train_start, f1.train_end)
@@ -288,8 +304,9 @@ class TestDataLoading:
                 assert feat in df.columns, f"应包含特征 {feat}"
 
             # 数据量检查（24个月 × ~4000股 × 22天 = 约200万行，不必这么多但至少要有数据）
-            logger.info(f"F1训练数据: {len(df)}行, {df['code'].nunique()}股, "
-                       f"{df['trade_date'].nunique()}天")
+            logger.info(
+                f"F1训练数据: {len(df)}行, {df['code'].nunique()}股, {df['trade_date'].nunique()}天"
+            )
             assert len(df) > 10000, f"F1训练数据太少: {len(df)}行"
 
             # 无NaN检查（合并后的数据不应有大量NaN）
@@ -299,9 +316,11 @@ class TestDataLoading:
 
             # 目标变量范围检查
             target = df["excess_return_20"]
-            logger.info(f"目标变量: mean={target.mean():.6f}, "
-                       f"std={target.std():.6f}, "
-                       f"min={target.min():.6f}, max={target.max():.6f}")
+            logger.info(
+                f"目标变量: mean={target.mean():.6f}, "
+                f"std={target.std():.6f}, "
+                f"min={target.min():.6f}, max={target.max():.6f}"
+            )
             assert target.std() > 0.001, "目标变量标准差过小"
             assert target.std() < 1.0, "目标变量标准差过大（可能单位错误）"
 

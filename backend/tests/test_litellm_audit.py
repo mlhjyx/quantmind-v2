@@ -16,6 +16,7 @@ scope (10 tests):
 - 沿用 backend/tests/test_litellm_budget.py mock conn_factory (FakeStorage + FakeCursor + FakeConn)
 - 沿用 backend/tests/test_litellm_budget.py monkeypatch Router.completion
 """
+
 from __future__ import annotations
 
 import logging
@@ -97,10 +98,19 @@ class _FakeCallLogCursor:
         sql_upper = sql.strip().upper()
         if "INSERT INTO LLM_CALL_LOG" in sql_upper:
             (
-                triggered_at, task, primary_alias, actual_model,
-                is_fallback, budget_state,
-                tokens_in, tokens_out, cost_usd, latency_ms,
-                decision_id, prompt_hash, error_class,
+                triggered_at,
+                task,
+                primary_alias,
+                actual_model,
+                is_fallback,
+                budget_state,
+                tokens_in,
+                tokens_out,
+                cost_usd,
+                latency_ms,
+                decision_id,
+                prompt_hash,
+                error_class,
             ) = params
             self._storage.insert(
                 triggered_at=triggered_at,
@@ -201,7 +211,9 @@ class _CombinedFakeCursor:
         sql_upper = sql.strip().upper()
         if sql_upper.startswith("INSERT INTO LLM_COST_DAILY"):
             day, cost_usd, fallback_inc, capped_inc = params
-            row = self._cost_storage.setdefault(day, {"cost": Decimal("0"), "calls": 0, "fb": 0, "cap": 0})
+            row = self._cost_storage.setdefault(
+                day, {"cost": Decimal("0"), "calls": 0, "fb": 0, "cap": 0}
+            )
             row["cost"] += cost_usd
             row["calls"] += 1
             row["fb"] += fallback_inc
@@ -216,10 +228,19 @@ class _CombinedFakeCursor:
             self._fetchone_value = (total,)
         elif "INSERT INTO LLM_CALL_LOG" in sql_upper:
             (
-                triggered_at, task, primary_alias, actual_model,
-                is_fallback, budget_state,
-                tokens_in, tokens_out, cost_usd, latency_ms,
-                decision_id, prompt_hash, error_class,
+                triggered_at,
+                task,
+                primary_alias,
+                actual_model,
+                is_fallback,
+                budget_state,
+                tokens_in,
+                tokens_out,
+                cost_usd,
+                latency_ms,
+                decision_id,
+                prompt_hash,
+                error_class,
             ) = params
             self._call_log_storage.insert(
                 triggered_at=triggered_at,
@@ -343,7 +364,8 @@ def test_llm_call_logger_inserts_row_on_success(
         actual_model="deepseek/deepseek-v4-pro",
         is_fallback=False,
         budget_state=BudgetState.WARN_80,
-        tokens_in=50, tokens_out=20,
+        tokens_in=50,
+        tokens_out=20,
         cost_usd=Decimal("0.005"),
         latency_ms=300,
         decision_id="d-100",
@@ -368,6 +390,7 @@ def test_llm_call_logger_insert_failure_returns_false_and_logs_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """INSERT 异常 → fail-loud warning + return False (决议 7 反 break completion)."""
+
     def factory() -> _FakeCallLogConn:
         return _FakeCallLogConn(call_log_storage, raise_on_execute=True)
 
@@ -391,6 +414,7 @@ def test_llm_call_logger_conn_factory_failure_returns_false(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """conn_factory raise → fail-loud warning + return False (反 break completion)."""
+
     def factory() -> _FakeCallLogConn:
         raise ConnectionError("PG unavailable")
 

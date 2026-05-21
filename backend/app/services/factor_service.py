@@ -126,9 +126,7 @@ class FactorService:
             按trade_date升序排列
         """
         # factor_ic_history存储多周期IC: ic_1d/ic_5d/ic_10d/ic_20d
-        ic_col = {1: "ic_1d", 5: "ic_5d", 10: "ic_10d", 20: "ic_20d"}.get(
-            forward_days, "ic_20d"
-        )
+        ic_col = {1: "ic_1d", 5: "ic_5d", 10: "ic_10d", 20: "ic_20d"}.get(forward_days, "ic_20d")
         sql = text(
             f"""
             SELECT trade_date, {ic_col} AS ic_value, factor_name

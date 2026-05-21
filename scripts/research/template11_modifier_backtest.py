@@ -32,7 +32,13 @@ BT_END = date(2025, 12, 31)
 DATA_START = date(2020, 1, 1)  # 北向rolling需要lookback
 
 CORE_FACTORS = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
-FACTOR_DIRECTIONS = {"turnover_mean_20": -1, "volatility_20": -1, "reversal_20": -1, "amihud_20": 1, "bp_ratio": 1}
+FACTOR_DIRECTIONS = {
+    "turnover_mean_20": -1,
+    "volatility_20": -1,
+    "reversal_20": -1,
+    "amihud_20": 1,
+    "bp_ratio": 1,
+}
 TOP_N = 20
 RF_ANNUAL = 0.02
 RF_DAILY = RF_ANNUAL / 252
@@ -66,14 +72,17 @@ def build_top20_daily_returns(conn) -> pd.Series:
 
     # 1. 月末交易日
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date))
             trade_date
         FROM klines_daily
         WHERE trade_date >= %s AND trade_date <= %s
         ORDER BY EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date),
                  trade_date DESC
-    """, (BT_START, BT_END))
+    """,
+        (BT_START, BT_END),
+    )
     rebal_dates = sorted([r[0] for r in cur.fetchall()])
     print(f"  月末调仓日: {len(rebal_dates)}个")
 
@@ -135,7 +144,9 @@ def build_top20_daily_returns(conn) -> pd.Series:
 
         if i + 1 < len(factor_dfs):
             next_rd = pd.Timestamp(factor_dfs[i + 1][0])
-            end_idx = next((j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts))
+            end_idx = next(
+                (j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts)
+            )
         else:
             end_idx = len(all_dates_ts)
 
@@ -159,7 +170,9 @@ def build_top20_daily_returns(conn) -> pd.Series:
     mdd = float(((nav - nav.cummax()) / nav.cummax()).min())
     calmar = cagr / abs(mdd) if abs(mdd) > 0 else 0
 
-    print(f"  基线: CAGR={cagr*100:.1f}%, Sharpe={sharpe:.2f}, MDD={mdd*100:.1f}%, Calmar={calmar:.2f}")
+    print(
+        f"  基线: CAGR={cagr * 100:.1f}%, Sharpe={sharpe:.2f}, MDD={mdd * 100:.1f}%, Calmar={calmar:.2f}"
+    )
     print(f"  日收益序列: {len(port_ret)}天, {port_ret.index[0]} ~ {port_ret.index[-1]}")
 
     return port_ret
@@ -175,51 +188,65 @@ def build_modifier_panel(conn) -> pd.DataFrame:
     cur = conn.cursor()
 
     # 北向持仓
-    cur.execute("""
+    cur.execute(
+        """
         SELECT code, trade_date, hold_vol FROM northbound_holdings
         WHERE trade_date >= %s AND trade_date <= %s AND hold_vol IS NOT NULL
         ORDER BY code, trade_date
-    """, (DATA_START, BT_END))
+    """,
+        (DATA_START, BT_END),
+    )
     nb_df = pd.DataFrame(cur.fetchall(), columns=["code", "trade_date", "hold_vol"])
     nb_df["trade_date"] = pd.to_datetime(nb_df["trade_date"])
     nb_df["hold_vol"] = nb_df["hold_vol"].astype(float)
     print(f"  北向: {len(nb_df):,}行, {nb_df['code'].nunique()}只")
 
     # 价格
-    cur.execute("""
+    cur.execute(
+        """
         SELECT code, trade_date, close * adj_factor as adj_close
         FROM klines_daily
         WHERE trade_date >= %s AND trade_date <= %s
           AND close IS NOT NULL AND adj_factor IS NOT NULL
         ORDER BY code, trade_date
-    """, (DATA_START, BT_END))
+    """,
+        (DATA_START, BT_END),
+    )
     price_df = pd.DataFrame(cur.fetchall(), columns=["code", "trade_date", "adj_close"])
     price_df["trade_date"] = pd.to_datetime(price_df["trade_date"])
     price_df["adj_close"] = price_df["adj_close"].astype(float)
     print(f"  价格: {len(price_df):,}行")
 
     # 市值
-    cur.execute("""
+    cur.execute(
+        """
         SELECT code, trade_date, circ_mv FROM daily_basic
         WHERE trade_date >= %s AND trade_date <= %s AND circ_mv IS NOT NULL
         ORDER BY code, trade_date
-    """, (DATA_START, BT_END))
+    """,
+        (DATA_START, BT_END),
+    )
     mv_df = pd.DataFrame(cur.fetchall(), columns=["code", "trade_date", "circ_mv"])
     mv_df["trade_date"] = pd.to_datetime(mv_df["trade_date"])
     mv_df["circ_mv"] = mv_df["circ_mv"].astype(float)
 
     # CSI300日收益
-    cur.execute("""
+    cur.execute(
+        """
         SELECT trade_date, pct_change FROM index_daily
         WHERE index_code = '000300.SH' AND trade_date >= %s ORDER BY trade_date
-    """, (DATA_START,))
+    """,
+        (DATA_START,),
+    )
     idx = pd.DataFrame(cur.fetchall(), columns=["trade_date", "pct_change"])
     idx["trade_date"] = pd.to_datetime(idx["trade_date"])
     idx["ret"] = idx["pct_change"].astype(float) / 100
     csi300_ret = idx.set_index("trade_date")["ret"]
 
     # 行业
-    cur.execute("SELECT code, industry_sw_l1 FROM symbols WHERE market='astock' AND industry_sw_l1 IS NOT NULL")
+    cur.execute(
+        "SELECT code, industry_sw_l1 FROM symbols WHERE market='astock' AND industry_sw_l1 IS NOT NULL"
+    )
     ind_map = dict(cur.fetchall())
 
     # Pivots
@@ -262,7 +289,7 @@ def build_modifier_panel(conn) -> pd.DataFrame:
         pos_amounts = nba_row[nba_row > 0].dropna()
         if len(pos_amounts) > 0 and pos_amounts.sum() > 0:
             shares = pos_amounts / pos_amounts.sum()
-            rec["nb_buy_concentration"] = float((shares ** 2).sum())
+            rec["nb_buy_concentration"] = float((shares**2).sum())
         else:
             rec["nb_buy_concentration"] = np.nan
 
@@ -270,7 +297,9 @@ def build_modifier_panel(conn) -> pd.DataFrame:
         if len(increasing) > 0 and len(decreasing) > 0:
             nb_prev = nb.iloc[i - 1].reindex(valid.index)
             inc_pct = (increasing / nb_prev.reindex(increasing.index).replace(0, np.nan)).dropna()
-            dec_pct = (decreasing.abs() / nb_prev.reindex(decreasing.index).replace(0, np.nan)).dropna()
+            dec_pct = (
+                decreasing.abs() / nb_prev.reindex(decreasing.index).replace(0, np.nan)
+            ).dropna()
             if len(inc_pct) > 0 and len(dec_pct) > 0:
                 rec["nb_asymmetry"] = inc_pct.mean() / max(dec_pct.mean(), 1e-10)
             else:
@@ -282,7 +311,9 @@ def build_modifier_panel(conn) -> pd.DataFrame:
         total_abs_diff = valid.abs().sum()
         net_diff = abs(valid.sum())
         prev_total = nb.iloc[i - 1].sum()
-        rec["nb_turnover"] = (total_abs_diff - net_diff) / 2 / prev_total if prev_total > 0 else np.nan
+        rec["nb_turnover"] = (
+            (total_abs_diff - net_diff) / 2 / prev_total if prev_total > 0 else np.nan
+        )
 
         # 汇总
         rec["daily_net_flow"] = valid.sum()
@@ -361,8 +392,14 @@ def build_modifier_panel(conn) -> pd.DataFrame:
 
     # 清理
     panel = panel.drop(
-        columns=["daily_net_flow", "sh_net", "sz_net", "nb_size_median",
-                 "nb_active_share_raw", "_ind_amounts"],
+        columns=[
+            "daily_net_flow",
+            "sh_net",
+            "sz_net",
+            "nb_size_median",
+            "nb_active_share_raw",
+            "_ind_amounts",
+        ],
         errors="ignore",
     )
 
@@ -427,9 +464,13 @@ def run_overlay_backtest(
     """在基线上叠加仓位系数。"""
     # 统一index为date类型再对齐
     br = base_ret.copy()
-    br.index = pd.Index([d.date() if hasattr(d, 'date') and callable(d.date) else d for d in br.index])
+    br.index = pd.Index(
+        [d.date() if hasattr(d, "date") and callable(d.date) else d for d in br.index]
+    )
     cf = coeff.copy()
-    cf.index = pd.Index([d.date() if hasattr(d, 'date') and callable(d.date) else d for d in cf.index])
+    cf.index = pd.Index(
+        [d.date() if hasattr(d, "date") and callable(d.date) else d for d in cf.index]
+    )
     common = br.index.intersection(cf.index)
     br = br.loc[common]
     cf = cf.loc[common]
@@ -456,7 +497,16 @@ def run_overlay_backtest(
     # 年度分解
     yearly = {}
     for year in range(BT_START.year, BT_END.year + 1):
-        mask = pd.Series([d.year if hasattr(d, 'year') else pd.Timestamp(d).year for d in modified_ret.index], index=modified_ret.index) == year
+        mask = (
+            pd.Series(
+                [
+                    d.year if hasattr(d, "year") else pd.Timestamp(d).year
+                    for d in modified_ret.index
+                ],
+                index=modified_ret.index,
+            )
+            == year
+        )
         yr = modified_ret[mask]
         if len(yr) < 20:
             continue
@@ -468,8 +518,14 @@ def run_overlay_backtest(
         yearly[year] = (round(yr_sharpe, 2), round(yr_mdd * 100, 1))
 
     return BacktestResult(
-        label=label, cagr=cagr, vol=vol, sharpe=sharpe, mdd=mdd,
-        calmar=calmar, reduce_pct=reduce_pct, extra_cost=total_extra_cost,
+        label=label,
+        cagr=cagr,
+        vol=vol,
+        sharpe=sharpe,
+        mdd=mdd,
+        calmar=calmar,
+        reduce_pct=reduce_pct,
+        extra_cost=total_extra_cost,
         yearly=yearly,
     )
 
@@ -495,7 +551,9 @@ def print_report(baseline: BacktestResult, results: list[BacktestResult]) -> Non
     for r in all_results:
         # 判定标记
         if r.label != baseline.label:
-            calmar_improve = (r.calmar - baseline.calmar) / abs(baseline.calmar) if baseline.calmar != 0 else 0
+            calmar_improve = (
+                (r.calmar - baseline.calmar) / abs(baseline.calmar) if baseline.calmar != 0 else 0
+            )
             sharpe_ratio = r.sharpe / baseline.sharpe if baseline.sharpe != 0 else 0
             if calmar_improve > 0.2 and sharpe_ratio >= 0.9:
                 mark = " ★"
@@ -507,21 +565,25 @@ def print_report(baseline: BacktestResult, results: list[BacktestResult]) -> Non
             mark = ""
 
         print(
-            f"  {r.label:<30s} │ {r.cagr*100:>+7.1f} │ {r.sharpe:>7.2f} │ "
-            f"{r.mdd*100:>+7.1f} │ {r.calmar:>7.2f} │ {r.reduce_pct*100:>6.1f}% │ "
-            f"{r.extra_cost*100:>7.2f}%{mark}"
+            f"  {r.label:<30s} │ {r.cagr * 100:>+7.1f} │ {r.sharpe:>7.2f} │ "
+            f"{r.mdd * 100:>+7.1f} │ {r.calmar:>7.2f} │ {r.reduce_pct * 100:>6.1f}% │ "
+            f"{r.extra_cost * 100:>7.2f}%{mark}"
         )
 
     # 最佳信号
     if results:
         best = max(results, key=lambda r: r.calmar)
-        print(f"\n  最佳Calmar: {best.label} (Calmar={best.calmar:.2f} vs 基线{baseline.calmar:.2f})")
+        print(
+            f"\n  最佳Calmar: {best.label} (Calmar={best.calmar:.2f} vs 基线{baseline.calmar:.2f})"
+        )
 
     # 年度分解（基线 + 最佳）
     if results:
         best = max(results, key=lambda r: r.calmar)
         print(f"\n  年度分解 (基线 vs {best.label}):")
-        print(f"  {'年份':>6s}  {'基线Sharpe':>10s}  {'基线MDD%':>9s}  {'MODIFIER Sharpe':>15s}  {'MODIFIER MDD%':>13s}")
+        print(
+            f"  {'年份':>6s}  {'基线Sharpe':>10s}  {'基线MDD%':>9s}  {'MODIFIER Sharpe':>15s}  {'MODIFIER MDD%':>13s}"
+        )
         for year in sorted(set(list(baseline.yearly.keys()) + list(best.yearly.keys()))):
             b_s, b_m = baseline.yearly.get(year, (0, 0))
             m_s, m_m = best.yearly.get(year, (0, 0))
@@ -529,19 +591,27 @@ def print_report(baseline: BacktestResult, results: list[BacktestResult]) -> Non
 
     # 结论
     print("\n  结论:")
-    improved = [r for r in results if r.calmar > baseline.calmar * 1.1 and r.sharpe >= baseline.sharpe * 0.85]
+    improved = [
+        r
+        for r in results
+        if r.calmar > baseline.calmar * 1.1 and r.sharpe >= baseline.sharpe * 0.85
+    ]
     if improved:
         print(f"  {len(improved)}个信号改善Calmar(>10%)且保持Sharpe(>85%基线):")
         for r in sorted(improved, key=lambda x: -x.calmar):
             delta_mdd = (r.mdd - baseline.mdd) * 100
-            print(f"    {r.label}: Calmar={r.calmar:.2f}, MDD改善{delta_mdd:+.1f}pp, 减仓{r.reduce_pct*100:.0f}%天")
+            print(
+                f"    {r.label}: Calmar={r.calmar:.2f}, MDD改善{delta_mdd:+.1f}pp, 减仓{r.reduce_pct * 100:.0f}%天"
+            )
         print(f"  推荐: {improved[0].label}")
     else:
         print("  无信号能有效改善Calmar且保持Sharpe")
         mdd_improved = [r for r in results if r.mdd > baseline.mdd]
         if mdd_improved:
             best_mdd = min(mdd_improved, key=lambda r: abs(r.mdd))
-            print(f"  MDD最优: {best_mdd.label} (MDD={best_mdd.mdd*100:.1f}% vs 基线{baseline.mdd*100:.1f}%)")
+            print(
+                f"  MDD最优: {best_mdd.label} (MDD={best_mdd.mdd * 100:.1f}% vs 基线{baseline.mdd * 100:.1f}%)"
+            )
             print(f"    但Sharpe={best_mdd.sharpe:.2f} vs 基线{baseline.sharpe:.2f}")
         print("  北向MODIFIER降级为G1特征池备选")
 
@@ -574,7 +644,9 @@ def main() -> None:
         coeff = compute_coefficients(panel, fname, direction)
         r = run_overlay_backtest(base_ret, coeff, f"+ {fname}")
         results.append(r)
-        print(f"  {fname:<35s}: Sharpe={r.sharpe:.2f} MDD={r.mdd*100:.1f}% Calmar={r.calmar:.2f} 减仓{r.reduce_pct*100:.0f}%")
+        print(
+            f"  {fname:<35s}: Sharpe={r.sharpe:.2f} MDD={r.mdd * 100:.1f}% Calmar={r.calmar:.2f} 减仓{r.reduce_pct * 100:.0f}%"
+        )
 
     # Part 5: 报告
     print_report(baseline, results)

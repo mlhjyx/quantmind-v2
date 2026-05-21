@@ -381,6 +381,7 @@ class RiskRepository(BaseRepository):
 # 行转换辅助函数
 # ─────────────────────────────────────────────
 
+
 def _state_row_to_dict(row: Any) -> dict[str, Any]:
     """将 circuit_breaker_state 行转为字典。"""
     return {

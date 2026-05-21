@@ -1,4 +1,5 @@
 """MVP 4.1 batch 3.6 — rolling_wf + services_healthcheck Platform SDK live smoke."""
+
 from __future__ import annotations
 
 import subprocess
@@ -68,7 +69,6 @@ def test_mvp_4_1_batch_3_6_rolling_wf_services_sdk_migration():
         timeout=30,
     )
     assert result.returncode == 0, (
-        f"smoke failed (exit={result.returncode}): "
-        f"stderr={result.stderr}\nstdout={result.stdout}"
+        f"smoke failed (exit={result.returncode}): stderr={result.stderr}\nstdout={result.stdout}"
     )
     assert "OK mvp_4_1_batch_3_6 boot" in result.stdout

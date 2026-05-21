@@ -5,6 +5,7 @@ READ-ONLY research script. Does not modify any production data.
 Morgan Stanley quant: "Localize research - reconstruct factors for different stock categories."
 """
 
+import os
 import sys
 
 sys.path.append("backend")
@@ -32,7 +33,8 @@ def main():
     # 1. Load factor_values
     print("\n[1/6] Loading factor_values from DB...")
     conn = psycopg2.connect(
-        dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
+        dbname="quantmind_v2", user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost"
     )
     factor_df = pd.read_sql(
         """

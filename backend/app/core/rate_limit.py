@@ -95,10 +95,7 @@ class RateLimiter:
 
     def _maybe_cleanup(self, now: float) -> None:
         """Purge stale entries (called when adding new bucket)."""
-        stale_keys = [
-            k for k, ts in self._last_seen.items()
-            if now - ts > self._CLEANUP_AFTER_SEC
-        ]
+        stale_keys = [k for k, ts in self._last_seen.items() if now - ts > self._CLEANUP_AFTER_SEC]
         for k in stale_keys:
             self._buckets.pop(k, None)
             self._last_seen.pop(k, None)

@@ -111,9 +111,7 @@ def _make_sandbox_mock(valid: bool = True, exec_success: bool = True) -> MagicMo
     exec_result.success = exec_success
     exec_result.elapsed_seconds = 0.05
     exec_result.error = None if exec_success else "Mock exec error"
-    exec_result.result = pd.Series(
-        np.random.default_rng(1).uniform(0, 1, 10), name="factor_value"
-    )
+    exec_result.result = pd.Series(np.random.default_rng(1).uniform(0, 1, 10), name="factor_value")
     mock.execute_safely.return_value = exec_result
     return mock
 
@@ -461,8 +459,7 @@ class TestBatchPipeline:
         orchestrator._classifier = _make_classifier_mock()
 
         candidates = [
-            {"factor_name": f"f_{i}", "factor_expr": f"ts_mean(close, {i + 5})"}
-            for i in range(3)
+            {"factor_name": f"f_{i}", "factor_expr": f"ts_mean(close, {i + 5})"} for i in range(3)
         ]
 
         state = await orchestrator.run_batch(
@@ -511,9 +508,7 @@ class TestPipelineRunState:
     ) -> None:
         assert orchestrator.get_run_state("nonexistent_run_id") is None
 
-    def test_list_runs_empty_initially(
-        self, orchestrator: PipelineOrchestrator
-    ) -> None:
+    def test_list_runs_empty_initially(self, orchestrator: PipelineOrchestrator) -> None:
         assert orchestrator.list_runs() == []
 
 
@@ -602,7 +597,7 @@ class TestStateCounts:
         )
 
         assert state.passed_sandbox == 2  # 两个都通过sandbox
-        assert state.passed_gate == 1     # 只有一个通过gate
+        assert state.passed_gate == 1  # 只有一个通过gate
 
 
 # ---------------------------------------------------------------------------
@@ -889,6 +884,7 @@ class TestBlacklistSeedFactors:
         # 明确标记发现的bug需要arch修复
         if overlap:
             import warnings
+
             warnings.warn(
                 f"P1 BUG: initialize_population step2变体未过滤黑名单, "
                 f"leaking {len(overlap)}/{len(all_seed_hashes)} 个种子hash. "
@@ -914,5 +910,74 @@ class TestBlacklistSeedFactors:
         pop_hashes = {ind[0].to_ast_hash() for ind in pop}
 
         # 非黑名单的种子至少有一个出现在种群中
-        other_hashes = {h for h in (t.to_ast_hash() for t in seed_trees.values()) if h != first_hash}
+        other_hashes = {
+            h for h in (t.to_ast_hash() for t in seed_trees.values()) if h != first_hash
+        }
         assert len(other_hashes & pop_hashes) > 0, "非黑名单种子应出现在种群中"
+
+
+# ---------------------------------------------------------------------------
+# 协作式暂停 — pause_check 回调 (DEV_AI_EVOLUTION §12.2 — Plan AL)
+# ---------------------------------------------------------------------------
+
+
+class TestCooperativePause:
+    """PipelineOrchestrator pause_check 协作式暂停。"""
+
+    @pytest.mark.asyncio
+    async def test_run_batch_paused_skips_all_candidates(self):
+        """pause_check 恒 True → 所有候选跳过, run 状态 PAUSED, 不计入节点通过数。"""
+        orch = PipelineOrchestrator(pause_check=lambda: True)
+        state = await orch.run_batch(
+            candidates=[
+                {"factor_name": "f1", "factor_expr": "close"},
+                {"factor_name": "f2", "factor_expr": "open"},
+            ],
+            run_id="pause_batch",
+            source_engine="gp",
+            market_data=pd.DataFrame(),
+            forward_returns=pd.DataFrame(),
+        )
+        assert state.status == RunStatus.PAUSED
+        assert len(state.candidate_details) == 2
+        assert all(d["skip_reason"] == "paused" for d in state.candidate_details)
+        assert state.passed_gate == 0
+        assert state.pending_approval == 0
+
+    @pytest.mark.asyncio
+    async def test_run_single_paused_skips_candidate(self):
+        """run_single + pause_check True → 唯一候选跳过, 状态 PAUSED。"""
+        orch = PipelineOrchestrator(pause_check=lambda: True)
+        state = await orch.run_single(
+            factor_name="f1",
+            factor_expr="close",
+            source_engine="gp",
+            run_id="pause_single",
+            market_data=pd.DataFrame(),
+            forward_returns=pd.DataFrame(),
+        )
+        assert state.status == RunStatus.PAUSED
+        assert state.candidate_details[0]["skip_reason"] == "paused"
+
+    @pytest.mark.asyncio
+    async def test_pause_check_called_once_per_candidate(self):
+        """pause_check 每候选恰调用一次。"""
+        calls: list[int] = []
+
+        def _check() -> bool:
+            calls.append(1)
+            return True
+
+        orch = PipelineOrchestrator(pause_check=_check)
+        await orch.run_batch(
+            candidates=[
+                {"factor_name": "f1", "factor_expr": "close"},
+                {"factor_name": "f2", "factor_expr": "open"},
+                {"factor_name": "f3", "factor_expr": "high"},
+            ],
+            run_id="pause_count",
+            source_engine="gp",
+            market_data=pd.DataFrame(),
+            forward_returns=pd.DataFrame(),
+        )
+        assert len(calls) == 3

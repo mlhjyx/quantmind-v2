@@ -14,6 +14,7 @@
 
 关联铁律: 24 / 31 / 33 / 34 / 41
 """
+
 from __future__ import annotations
 
 import math

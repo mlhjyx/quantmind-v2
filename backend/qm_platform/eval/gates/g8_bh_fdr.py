@@ -3,6 +3,7 @@
 ctx.bh_fdr_p_value + bh_fdr_rank + bh_fdr_m 由调用方从 FACTOR_TEST_REGISTRY 读.
 判定: p ≤ rank/m × 0.05 通过.
 """
+
 from __future__ import annotations
 
 from ..interface import GateResult
@@ -21,7 +22,7 @@ class G8BhFdrGate(Gate):
 
     def __init__(self, *, fdr: float = G8_FDR) -> None:
         """Args:
-          fdr: FDR 上限, 默认 0.05.
+        fdr: FDR 上限, 默认 0.05.
         """
         self.fdr = fdr
 
