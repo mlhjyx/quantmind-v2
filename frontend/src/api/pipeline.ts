@@ -7,6 +7,7 @@ export type AutomationLevel = "L0" | "L1" | "L2" | "L3";
 export type ApprovalItemType = "factor" | "strategy";
 export type ApprovalDecision = "approved" | "rejected" | "hold";
 export type CandidateStatus = "pending" | "approved" | "rejected";
+export type MiningEngine = "gp" | "bruteforce" | "llm";
 
 /** 单条候选因子（来自 approval_queue 表，由 GET /runs/{run_id} 返回）。 */
 export interface CandidateItem {
@@ -90,6 +91,14 @@ export interface PipelineLogEntry {
   content: string;
 }
 
+/** POST /api/pipeline/trigger 的响应（backend TriggerPipelineResponse）。 */
+export interface TriggerPipelineResult {
+  run_id: string;
+  task_id: string;
+  engine: MiningEngine;
+  status: string;
+}
+
 // ---- API calls ----
 
 export async function getPipelineStatus(): Promise<PipelineStatus> {
@@ -97,11 +106,16 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
   return res.data;
 }
 
-export async function triggerPipeline(): Promise<{ run_id: string }> {
-  // NOTE: No backend endpoint exists yet for pipeline trigger via HTTP.
-  // GP pipeline is started via Celery task directly. This will return 404 until
-  // a POST /api/pipeline/trigger endpoint is implemented in backend/app/api/pipeline.py.
-  const res = await apiClient.post<{ run_id: string }>("/pipeline/trigger");
+export async function triggerPipeline(
+  engine: MiningEngine = "gp",
+  config: Record<string, unknown> = {},
+): Promise<TriggerPipelineResult> {
+  // Backend endpoint: POST /api/pipeline/trigger (backend/app/api/pipeline.py::trigger_pipeline).
+  // It requires a TriggerPipelineRequest body {engine, config}; an empty body 422s.
+  const res = await apiClient.post<TriggerPipelineResult>("/pipeline/trigger", {
+    engine,
+    config,
+  });
   return res.data;
 }
 
