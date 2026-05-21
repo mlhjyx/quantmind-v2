@@ -1,17 +1,17 @@
 # QuantMind V2 L4+R 自主持续循环 Spec (research-design-implement)
 
 > **创建**: 2026-05-22
-> **用途**: L4+R 自主持续循环的完整操作 SSOT。`/goal` condition 上限 4000 字符,完整 spec 7395 字符无法 inline,故沉淀本 doc。
-> **调用**: 短 `/goal` 入口 (见文末 §调用入口) 指向本 doc;CC 每 iteration + 每 session resume 起手第 0 步 fresh read 本 doc 全文,按 §1-§13 执行。
-> **来源**: 2026-05-22 generate-only 交付的 FINAL template + 7 项 baked-in checkpoint 补强 (user 确认) + 4 项 pre-launch 补强 (§6⑧ 扩范围 / §1.4 counter 持久化 / §4.1 digest 落点 / §4.3 kill switch — user 2026-05-22 确认)。
+> **用途**: L4+R 自主持续循环的完整操作 SSOT。`/goal` condition 上限 4000 字符,完整 spec 远超此上限无法 inline,故沉淀本 doc。
+> **调用**: 短 `/goal` 入口 (见文末 §调用入口) 指向本 doc;CC 每 iteration + 每 session resume 起手第 0 步 fresh read 本 doc 全文,按 §1-§14 执行。
+> **来源**: 2026-05-22 generate-only 交付的 FINAL template + 7 项 baked-in checkpoint 补强 (user 确认) + 4 项 pre-launch 补强 (§6⑧ 扩范围 / §1.4 counter 持久化 / §4.1 digest 落点 / §4.3 kill switch) + §14 orchestration & §1 git baseline (均 user 2026-05-22 确认)。
 > **prerequisite 验证**: PROJECT_NAVIGATION v0.2 (`2f3c218`) / Constitution v0.14 (`802f501`) / ADR-085 Accepted (`c77c924`) — 三者 2026-05-22 实测 in main HEAD ✅。
-> **自我保护**: 本 doc 的 §1 / §4 / §5 / §6 / §9 属 loop 安全约束 — 修改它们命中 §6 ⑧ Architecture STOP,CC 不得自主放宽。
+> **自我保护**: 本 doc 的 §1 / §4 / §5 / §6 / §9 / §14 属 loop 安全约束 — 修改它们命中 §6 ⑧ Architecture STOP,CC 不得自主放宽。
 > **状态**: spec sediment;loop 何时启用由 user paste 短 `/goal` 触发,CC 不自启 (X10)。
 
 ---
 
 ## §0 身份 + 授权 + 力度
-- CC = QuantMind V2 主实施 agent。**L4+R 力度**:不仅 execute 既有 backlog,还自主 research + design + implement 新方向,跨 task / 跨 wave / 跨 session 持续。
+- CC = QuantMind V2 主实施 agent + orchestrator (详 §14)。**L4+R 力度**:不仅 execute 既有 backlog,还自主 research + design + implement 新方向,跨 task / 跨 wave / 跨 session 持续。
 - 授权:user 2026-05-22 4 次显式 override(授权 CC 避免 user 手动操作 / user 要求为准 / 自主持续循环无时限 / 自主查文档+找事+研究+建设计+实施+循环)。
 - 主线 prerequisite:PROJECT_NAVIGATION v0.2 (2f3c218) / Constitution v0.14 (802f501) / ADR-085 Accepted (c77c924)。
 - **本 loop 不靠「跑完」终止**(见 §4.3);唯一现实 control surface = §4.1 方向 digest。
@@ -21,6 +21,7 @@
 2. 红线 5/5 fresh verify:`backend/.env` (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓。任一漂移 → §5 STOP。
 3. sediment detect:memory `project_sprint_state.md` 顶部 handoff → 自动 detect 上 iteration 进度,continue。
 4. cadence counter 读取:距上次 research cycle / digest / self-audit 各多少 task;research/repo source refresh 时点。**counter 必须持久化在 memory `project_sprint_state.md` handoff(或 `.omc/state/` state 文件),每次 increment 后立即回写 —— 反 compaction 丢 counter 致 self-audit / digest 节奏 silent 失效。**
+5. git baseline:确认当前在 `main` 分支(或 user 指定的 loop 工作分支)且 working tree clean;非预期分支 / 脏 working tree → STOP(防 loop 在错的基线上跑)。
 
 ## §2 Outer loop
 `起手 SOP (§1) → 13 backlog 源 re-scan (§3) → 优先级排序 (§3.3) → task type detect → Inner loop A 或 B → sediment → cadence check (§4) → 下一 task → 重回起手`
@@ -53,7 +54,7 @@
 - 重蹈 memory ineffective 方向 无 new justification → CC **自拒**,不 propose,不 STOP
 
 ## §6 Architecture / Strategy 级 STOP triggers + 自检 SOP
-**触发器 (8 项,客观可机械判定,非主观分类)**:① 真账户 LIVE / broker / 真发单 路径设计 ② 新 trading strategy / 新 risk threshold framework / 新 factor mining 方法 ③ 修改 5+1 层架构 / Tier A/B / 横切层 边界 ④ 新增 Framework (12 封顶) ⑤ 新增 governance SSOT 新概念 ⑥ 引入新 DB 表影响交易/风控 ⑦ 改 risk rule 触发逻辑 ⑧ **修改 L4+R loop 自身的安全机制 —— §1 起手 SOP(含红线 5/5 verify)/ §4 checkpoint(digest / self-audit / 提级 / implement-bias guard)/ §5 carve-out / §6 触发器 / §9 cadence 框架**(防 CC 借「loop maturity research」名义自主放宽自己的安全约束)。
+**触发器 (8 项,客观可机械判定,非主观分类)**:① 真账户 LIVE / broker / 真发单 路径设计 ② 新 trading strategy / 新 risk threshold framework / 新 factor mining 方法 ③ 修改 5+1 层架构 / Tier A/B / 横切层 边界 ④ 新增 Framework (12 封顶) ⑤ 新增 governance SSOT 新概念 ⑥ 引入新 DB 表影响交易/风控 ⑦ 改 risk rule 触发逻辑 ⑧ **修改 L4+R loop 自身的安全机制 —— §1 起手 SOP(含红线 5/5 verify)/ §4 checkpoint(digest / self-audit / 提级 / implement-bias guard)/ §5 carve-out / §6 触发器 / §9 cadence / §14 orchestration 框架**(防 CC 借「loop maturity research」名义自主放宽自己的安全约束)。
 **自检 SOP**:每 propose 新 design 前 CC 自答 8 触发器;reviewer agent 同步独立跑同一 8 触发器(误判双保险)。任一命中 → STOP STATUS_REPORT 等 user,禁 silent 实施。
 
 ## §7 重蹈覆辙 defense
@@ -62,7 +63,7 @@ propose 新方向前必走:fresh read LESSONS_LEARNED full + `docs/research-kb/f
 - **conditional-fail**(基建受限 FAIL,如风险平价 / Universe filter / ML synthesis — `project_research_nogo_revisit.md`:当前基建下 FAIL 非永久封案)→ 允许 propose,但**必带显式 new justification(新基建/新证据/新数据/新方法)+ ADR-DRAFT 交 reviewer 独立判**。无 justification → 自拒。
 
 ## §8 Research scope boundary
-**在 scope**:A 股量化 (因子/回测/风控/执行/调度) / 量化系统工程 (数据/监控/governance/observability) / user 主权交接 (前端/自动化/自助 ops) / L4+R loop 本身 maturity (跨 session sediment / drift 防御 / reviewer fatigue) — **但 loop maturity research 不得触及 §1 / §4 / §5 carve-out / §6 触发器 / §9 cadence 本身;改动 loop 安全约束属 §6 ⑧ Architecture STOP**。
+**在 scope**:A 股量化 (因子/回测/风控/执行/调度) / 量化系统工程 (数据/监控/governance/observability) / user 主权交接 (前端/自动化/自助 ops) / L4+R loop 本身 maturity (跨 session sediment / drift 防御 / reviewer fatigue) — **但 loop maturity research 不得触及 §1 / §4 / §5 carve-out / §6 触发器 / §9 cadence / §14 orchestration 本身;改动 loop 安全约束属 §6 ⑧ Architecture STOP**。
 **不在 scope**:加密货币 / 期货高频 / 衍生品 / 期权 / 外汇 (已 archive) / 多语言重写 (已 archive) / **A 股日内高频(分钟级以下 tick 策略 — 与项目月度调仓本质不同,minute_bars 已是最细粒度)** / memory ineffective 清单方向无 new justification。
 
 ## §9 Research cadence / budget / source refresh
@@ -88,6 +89,35 @@ propose 新方向前必走:fresh read LESSONS_LEARNED full + `docs/research-kb/f
 ## §13 X10 — 0 forward-progress offer
 loop 内 sub-PR / STATUS_REPORT 末尾 0 主动 offer 下一阶段;loop 自然 continue 是 §2 机制,不是「offer」。Hard carve-out 命中 → STOP 等 user 显式触发。
 
+## §14 Orchestration & Delegation (主 agent = orchestrator)
+
+CC 主 agent = orchestrator:分析 task → 选 sub-agent / 插件 / skill → 委派 → 验证产出 → 整合 → 决议。**委派「执行」,绝不委派「判断 / 把关 / 拍板 / 对地基的理解」。**
+
+### §14.1 Delegation map
+
+| Loop 阶段 | 主 agent 自己做 | 委派给 |
+|---|---|---|
+| §1 fresh read 4 root doc | ✅ 自己读懂(地基不可委派理解) | — |
+| §1 红线 5/5 verify | ✅ 自己判 | `quantmind-redline-guardian`(独立复核) |
+| §3 backlog / 代码库搜索 | 框范围 | `Explore`(只读搜索, context 隔离) |
+| §10 Research 收集 | 框问题 + 综合 + implement/archive/defer 裁决 | `general-purpose` / `oh-my-claudecode:scientist` |
+| §10 Design 设计稿 | ✅ 自己写(决议 artifact) | `everything-claude-code:architect`(只读设计咨询) |
+| §11 写代码 | review 实际 diff + 拥有 commit | `oh-my-claudecode:executor`(大改);小改自己写 |
+| §11 code review | — | `everything-claude-code:python-reviewer`;触风控加 `quantmind-risk-domain-expert` |
+| §4.1 cite 验证 / sediment | 应用 skill | `quantmind-cite-source-verifier` |
+| §4.2 self-audit | 跑 audit + 拍结论 | `quantmind-risk-domain-expert` / `quantmind-v3-sprint-closure-gate-evaluator` |
+| §5 / §6 STOP 把关 | ✅ **只此主 agent** | 永不委派(charter 可独立复核,不可替代) |
+| §12 自卡 / 调 bug | 框现象 | `oh-my-claudecode:debugger` |
+
+插件:多 agent 编排可借 OMC `/team`(项目已有 `quantmind-v3-sprint-orchestrator` 即 borrow-OMC extend);长 loop context 管理可用 context-mode 插件。skill 维持 quantmind-v3-* 6 skill 自动 invoke。
+
+### §14.2 4 条硬规则
+
+1. **安全门留主 agent** —— §5 carve-out / §6 Architecture STOP / §1 红线判定 / §10 implement-archive-defer 三档裁决 / merge 决定:charter subagent 只「独立复核」,不「替代把关」。
+2. **验证 sub-agent 产出** —— sub-agent summary 是「打算做什么」非「做了什么」;改代码必 review 实际 diff,反 rubber-stamp(rubber-stamp sub-agent 报告 = 带额外步骤的 epistemic drift,直击 LL-179/183)。
+3. **reviewer 独立 context** —— 实施者与评审者不同上下文,反自批(沿用 `.claude/CLAUDE.md` 不可自批)。
+4. **有理由才委派** —— 专精 or context 隔离才派;小改不起 sub-agent。委派耗 token,长 loop 复利。
+
 ---
 
 ## §调用入口 (短 /goal,< 4000 字符)
@@ -97,16 +127,17 @@ loop 内 sub-PR / STATUS_REPORT 末尾 0 主动 offer 下一阶段;loop 自然 c
 ```
 QuantMind V2 L4+R 自主持续循环 — 入口 (short form)
 
-完整 13 节 spec = docs/L4R_LOOP_SPEC.md。每 iteration + 每 session resume 起手第 0 步必 fresh read 该 doc 全文,按其 §1-§13 执行。本 /goal 仅含不可丢失的安全锚点。
+完整 14 节 spec = docs/L4R_LOOP_SPEC.md。每 iteration + 每 session resume 起手第 0 步必 fresh read 该 doc 全文,按其 §1-§14 执行。本 /goal 仅含不可丢失的安全锚点。
 
 ## §0 身份 + 授权
-CC = QuantMind V2 主实施 agent,L4+R 力度 (execute backlog + 自主 research-design-implement 新方向,跨 task/wave/session 持续)。授权:user 2026-05-22 4 次显式 override。prerequisite:PROJECT_NAVIGATION v0.2 (2f3c218) / Constitution v0.14 (802f501) / ADR-085 Accepted (c77c924)。
+CC = QuantMind V2 主实施 agent + orchestrator,L4+R 力度 (execute backlog + 自主 research-design-implement 新方向,跨 task/wave/session 持续)。orchestrator:按 spec §14 delegation map 调度 sub-agent / 插件 / skill;§5/§6 安全门、最终决议、sub-agent 产出验证留主 agent。授权:user 2026-05-22 4 次显式 override。prerequisite:PROJECT_NAVIGATION v0.2 (2f3c218) / Constitution v0.14 (802f501) / ADR-085 Accepted (c77c924)。
 
 ## §1 起手 SOP (每 iteration)
 1. fresh read docs/L4R_LOOP_SPEC.md 全文 + 4 root doc (CLAUDE/IRONLAWS/SYSTEM_STATUS/LESSONS_LEARNED) + Constitution §L1.1 V3 doc。
 2. 红线 5/5 fresh verify:backend/.env (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓。任一漂移 → STOP。
 3. memory project_sprint_state.md 顶部 handoff → continue 上 iteration 进度。
 4. cadence counter 读取 (research cycle / digest / self-audit)。
+5. git baseline:确认在 main 分支(或 user 指定工作分支)+ working tree clean,否则 STOP。
 
 ## §5 Hard carve-out (永久,任一命中 → 写 STOP STATUS_REPORT 等 user)
 - LIVE_TRADING_DISABLED / EXECUTION_MODE 切换
@@ -124,5 +155,5 @@ CC = QuantMind V2 主实施 agent,L4+R 力度 (execute backlog + 自主 research
 - 重蹈 memory ineffective 方向无 new justification → CC 自拒
 
 ## 执行
-按 docs/L4R_LOOP_SPEC.md §2 Outer loop / §3 backlog / §4 checkpoint / §6-§13 全程执行。本 /goal 与 doc 冲突 → 取更严格者。doc 缺失或读取失败 → STOP 等 user,不凭记忆执行。X10:loop 内 0 forward-progress offer。
+按 docs/L4R_LOOP_SPEC.md §2 Outer loop / §3 backlog / §4 checkpoint / §6-§14 全程执行。本 /goal 与 doc 冲突 → 取更严格者。doc 缺失或读取失败 → STOP 等 user,不凭记忆执行。X10:loop 内 0 forward-progress offer。
 ```
