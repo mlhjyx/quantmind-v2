@@ -331,9 +331,17 @@ def test_platform_import_has_no_side_effects() -> None:
     是一等公民设计, pandas 必加载 (纯 module 加载, 非 IO 副作用). 只禁真正 IO 类
     依赖 (DB 驱动 / Redis 客户端 / ORM).
     """
+    import os
     import subprocess
     import sys
 
+    # 复刻真实运行环境的 sys.path: 项目混用两种 import 风格 —
+    #   - `from engines...` / `import qm_platform` (顶层, 需 backend/ 在 path)
+    #   - `from backend.qm_platform...` (带 backend 前缀, 需 repo root 在 path)
+    # 故子进程 PYTHONPATH 必须同时含 repo root + backend/ (生产由 .pth 挂载).
+    repo_root = PLATFORM_ROOT.parent.parent
+    backend_dir = PLATFORM_ROOT.parent
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(repo_root), str(backend_dir)])}
     result = subprocess.run(
         [
             sys.executable,
@@ -346,7 +354,8 @@ def test_platform_import_has_no_side_effects() -> None:
         ],
         capture_output=True,
         text=True,
-        cwd=str(PLATFORM_ROOT.parent.parent),
+        cwd=str(repo_root),
+        env=env,
     )
     assert result.returncode == 0, f"import 失败: {result.stderr}"
     assert "LOADED:" in result.stdout
