@@ -24,29 +24,22 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
-import psycopg2
 import structlog
 
 # Platform SDK 顶层 import (batch 3.x pattern, 防 import-in-try NameError).
 from qm_platform.observability import AlertDispatchError  # noqa: E402
 
+# 铁律 35: DB 连接走 app.services.db canonical get_sync_conn (从 settings.DATABASE_URL
+# 派生, 0 hardcoded 密码 + 连接泄漏跟踪). re-export 保持本模块 get_sync_conn 名称稳定
+# (test_recon_health_observability.py 的 patch 目标不变).
 from app.config import settings
+from app.services.db import get_sync_conn
 
 logger = structlog.get_logger("daily_reconciliation")
 
 # 告警阈值
 STOCK_DIFF_THRESHOLD = 0.01  # 单股差异>1% → P1
 TOTAL_MV_DIFF_THRESHOLD = 0.05  # 总市值差异>5% → P0
-
-
-def get_sync_conn():
-    """获取psycopg2连接。"""
-    return psycopg2.connect(
-        dbname="quantmind_v2",
-        user="xin",
-        password="quantmind",
-        host="localhost",
-    )
 
 
 def is_trading_day(conn, d: date) -> bool:
@@ -87,8 +80,7 @@ def query_qmt_positions() -> dict[str, int] | None:
         # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
         # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
         # Pure FATAL retained only on EXECUTION_MODE undefined (bad config).
-        # AI reviewer LOW fix iteration (PR #384): normalize case + strip whitespace
-        # to handle 'Paper' / 'paper ' / mixed-case .env values gracefully.
+        # PR #384 refinement: normalize case + strip whitespace ('Paper'/'paper ').
         expected_mode = (os.environ.get("EXECUTION_MODE") or "").strip().lower()
         if expected_mode == "paper":
             logger.info(
@@ -140,7 +132,7 @@ def write_live_snapshot(conn, d: date, qmt_positions: dict[str, int]) -> int:
     价格数据从klines_daily读取，QMT资产查询获取总资产用于weight计算。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         qmt_positions: {code_with_suffix: shares} QMT持仓（可能含.SH/.SZ后缀）。
 
@@ -217,7 +209,7 @@ def write_live_performance(conn, d: date, nav_total: float, cash: float) -> None
     """将QMT当日净值写入performance_series (execution_mode='live')。
 
     Args:
-        conn: psycopg2连接。
+        conn: DB 连接 (app.services.db.get_sync_conn 提供)。
         d: 日期。
         nav_total: 当日总资产（QMT total_asset，已含持仓+现金+冻结）。
         cash: 当日可用现金（用于cash_ratio计算）。
@@ -577,6 +569,30 @@ def run_reconciliation(recon_date: date) -> None:
         import traceback
 
         traceback.print_exc()
+        # 铁律 43 fail-loud: 写 failed scheduler_task_log row (供 schtask 监控
+        # 可见) 并 re-raise —— 反 swallow → exit 0 把对账失败伪装成成功
+        # (旧行为: except 吞异常, 脚本仍 exit 0, schtask LastResult 误报 success).
+        # paper-mode 优雅退出走 SystemExit (BaseException, 不被本 except 捕获),
+        # 因此 Phase B-1 paper-mode exit 0 路径不受影响.
+        try:
+            # Code-review M1 (PR #392): 若原异常来自失败的 SQL, conn 处于
+            # aborted-transaction 状态, 直接 execute 抛 InFailedSqlTransaction →
+            # failed-row 静默丢失. 先 rollback 清状态再写 failed row.
+            conn.rollback()
+            fail_cur = conn.cursor()
+            fail_cur.execute(
+                """INSERT INTO scheduler_task_log
+                   (task_name, market, schedule_time, start_time, status,
+                    error_message, result_json)
+                   VALUES ('reconciliation', 'astock', NOW(), NOW(), 'failed',
+                           %s, NULL)""",
+                (str(e)[:500],),
+            )
+            conn.commit()
+        except Exception as log_err:  # noqa: BLE001
+            # silent_ok: failed-row 写入失败不掩盖原异常 — 下方 raise 仍 fail-loud.
+            logger.error(f"[Reconciliation] failed-row 写入失败: {log_err}")
+        raise
     finally:
         conn.close()
 

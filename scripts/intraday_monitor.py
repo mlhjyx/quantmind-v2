@@ -45,7 +45,10 @@ import structlog
 # MVP 4.1 batch 3.8: AlertDispatchError 顶层 import (铁律 33 fail-loud).
 from qm_platform.observability import AlertDispatchError
 
+# 铁律 35: DB 连接走 app.services.db canonical get_sync_conn (从 settings.DATABASE_URL
+# 派生, 0 hardcoded 密码 + 连接泄漏跟踪).
 from app.config import settings
+from app.services.db import get_sync_conn
 
 if TYPE_CHECKING:
     from qm_platform.observability import AlertRulesEngine
@@ -71,15 +74,8 @@ def is_trading_hours(now: datetime | None = None) -> bool:
 
 def is_trading_day_today() -> bool:
     """从DB查询今天是否交易日。"""
-    import psycopg2
-
     try:
-        conn = psycopg2.connect(
-            dbname="quantmind_v2",
-            user="xin",
-            password="quantmind",
-            host="localhost",
-        )
+        conn = get_sync_conn()
         cur = conn.cursor()
         cur.execute(
             """SELECT is_trading_day FROM trading_calendar
@@ -101,15 +97,8 @@ def get_prev_close_mv() -> float | None:
     防 15:40 DailyReconciliation 写当日行后本函数读到今日 self,
     被当成"昨收" → 日内 pnl_pct=0. 对齐 run_paper_trading.py:230 + daily_reconciliation.py:206.
     """
-    import psycopg2
-
     try:
-        conn = psycopg2.connect(
-            dbname="quantmind_v2",
-            user="xin",
-            password="quantmind",
-            host="localhost",
-        )
+        conn = get_sync_conn()
         cur = conn.cursor()
         today = date.today()
         # 先尝试live模式，fallback到paper
@@ -149,7 +138,7 @@ def query_qmt_positions() -> tuple[float, list[dict]] | None:
         # fail-loud per 铁律 34
         # Plan v8 critic review fix (5-20): graceful paper-mode exit (exit 0)
         # to avoid polluting schtask LastResult during Phase B-1 paper-mode dry-run.
-        # AI reviewer LOW fix iteration (PR #384): normalize case + strip whitespace.
+        # PR #384 refinement: normalize case + strip whitespace ('Paper'/'paper ').
         expected_mode = (os.environ.get("EXECUTION_MODE") or "").strip().lower()
         if expected_mode == "paper":
             logger.info(
@@ -370,18 +359,9 @@ def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
     """
     if not codes:
         return {}
-    import psycopg2
-
     try:
         with (
-            closing(
-                psycopg2.connect(
-                    dbname="quantmind_v2",
-                    user="xin",
-                    password="quantmind",
-                    host="localhost",
-                )
-            ) as conn,
+            closing(get_sync_conn()) as conn,
             conn.cursor() as cur,
         ):
             # 对每个 code 取最近 trade_date < today 的 close (DISTINCT ON PG 语法)
@@ -401,18 +381,9 @@ def _get_prev_closes_batch(codes: list[str]) -> dict[str, float]:
 
 def _get_prev_close(code: str) -> float | None:
     """从 klines_daily 查单股前一交易日收盘价 (review P1 HIGH 修: try/finally close)."""
-    import psycopg2
-
     try:
         with (
-            closing(
-                psycopg2.connect(
-                    dbname="quantmind_v2",
-                    user="xin",
-                    password="quantmind",
-                    host="localhost",
-                )
-            ) as conn,
+            closing(get_sync_conn()) as conn,
             conn.cursor() as cur,
         ):
             cur.execute(
@@ -516,15 +487,8 @@ def save_monitor_log(
     alerts: list[str],
 ) -> None:
     """写入intraday_monitor_log表。"""
-    import psycopg2
-
     try:
-        conn = psycopg2.connect(
-            dbname="quantmind_v2",
-            user="xin",
-            password="quantmind",
-            host="localhost",
-        )
+        conn = get_sync_conn()
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO intraday_monitor_log
