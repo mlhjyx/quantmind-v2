@@ -1089,9 +1089,10 @@ class TestL4RecoveryApprovalSQL:
 
         insert_sql = mock_repo.fetch_one.await_args.args[0]
         assert "INSERT INTO approval_queue" in insert_sql
-        assert "item_summary" in insert_sql
-        assert "detail_json" in insert_sql
-        for phantom in ("reference_id", "payload", "submitted_by"):
+        # 精确列元组 = domain-11 真实列 (强正向断言)
+        assert "(approval_type, item_summary, detail_json)" in insert_sql
+        # 不得回退到旧 phantom 列名 (submitted_by 现为 detail_json 内的 JSON key)
+        for phantom in ("reference_id", "payload"):
             assert phantom not in insert_sql, f"phantom 列 {phantom} 不应出现"
 
     @pytest.mark.asyncio

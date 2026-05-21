@@ -41,7 +41,7 @@ def list_pending(conn) -> None:
            FROM approval_queue aq
            LEFT JOIN circuit_breaker_state cbs
              ON (aq.detail_json->>'strategy_id')::uuid = cbs.strategy_id
-             AND cbs.execution_mode = 'paper'
+             AND cbs.execution_mode = aq.detail_json->>'execution_mode'
            WHERE aq.approval_type = 'circuit_breaker_l4_recovery'
              AND aq.status = 'pending'
            ORDER BY aq.created_at DESC"""
