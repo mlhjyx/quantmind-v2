@@ -36,7 +36,13 @@ def test_platform_strategy_batch_1_imports_clean():
         text=True,
         cwd=str(_REPO),
         timeout=60,  # Plan v8 fix (5-20): bump from 30s — DB lock contention during Phase B-1 caused 30s timeout false-fail
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        # PYTHONPATH 同时含 repo root (backend namespace pkg) + backend/ (顶层
+        # engines/app/qm_platform) — qm_platform import 链两种风格都触发.
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONPATH": os.pathsep.join([str(_REPO), str(_REPO / "backend")]),
+        },
     )
     assert result.returncode == 0, (
         f"Platform strategy batch 1 import failed:\n"
