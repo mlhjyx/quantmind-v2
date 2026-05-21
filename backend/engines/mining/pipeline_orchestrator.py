@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -81,6 +82,7 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PAUSED = "paused"  # 协作式暂停 — 部分候选因 pause flag 被跳过 (DEV_AI_EVOLUTION §12.2)
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +241,7 @@ class PipelineOrchestrator:
         self,
         conn: Any | None = None,
         max_parallel: int = 4,
+        pause_check: Callable[[], bool] | None = None,
     ) -> None:
         """初始化编排器。
 
@@ -246,9 +249,14 @@ class PipelineOrchestrator:
             conn: 数据库连接（用于写入approval_queue / mining_knowledge）。
                   可为None（仅内存模式，不写DB）。
             max_parallel: 批量处理时的最大并行因子数量。
+            pause_check: 协作式暂停回调 (DEV_AI_EVOLUTION §12.2)。每个候选处理前
+                调用一次, 返回 True 时跳过该候选 (in-flight 候选完成当前 8 节点,
+                后续候选全跳过)。None=不启用暂停 (默认, 向后兼容)。回调由调用方
+                注入 (典型: 读 Redis pause flag), 保持本引擎层不直接持有 IO 句柄。
         """
         self._conn = conn
         self._max_parallel = max_parallel
+        self._pause_check = pause_check
 
         # 当前活跃的Run状态（key=run_id）
         self._runs: dict[str, PipelineRunState] = {}
@@ -313,7 +321,9 @@ class PipelineOrchestrator:
         # 汇总统计
         self._update_state_counts(state, [candidate])
         state.candidate_details = [self._candidate_summary(candidate)]
-        state.status = RunStatus.COMPLETED
+        state.status = (
+            RunStatus.PAUSED if candidate.skip_reason == "paused" else RunStatus.COMPLETED
+        )
         state.finished_at = datetime.now(tz=UTC)
         return state
 
@@ -382,7 +392,11 @@ class PipelineOrchestrator:
 
         self._update_state_counts(state, factor_candidates)
         state.candidate_details = [self._candidate_summary(c) for c in factor_candidates]
-        state.status = RunStatus.COMPLETED
+        state.status = (
+            RunStatus.PAUSED
+            if any(c.skip_reason == "paused" for c in factor_candidates)
+            else RunStatus.COMPLETED
+        )
         state.finished_at = datetime.now(tz=UTC)
 
         logger.info(
@@ -421,6 +435,13 @@ class PipelineOrchestrator:
         price_data: pd.DataFrame | None,
     ) -> None:
         """按顺序执行8个节点，任一节点FAIL则记录知识并停止。"""
+
+        # 协作式暂停检查 (DEV_AI_EVOLUTION §12.2): pause_check 回调返回 True 时,
+        # 跳过本候选 — in-flight 候选 (已过此检查点) 完成 8 节点, 后续候选全跳过。
+        if self._pause_check is not None and self._pause_check():
+            candidate.skip_reason = "paused"
+            logger.info("Pipeline 暂停, 跳过候选: %s", candidate.factor_name)
+            return
 
         # Node 1: GENERATE（候选体已由调用方产出，这里只做登记）
         await self._node_generate(candidate, state)
@@ -1101,6 +1122,7 @@ class PipelineOrchestrator:
             "source_engine": candidate.source_engine,
             "approval_id": candidate.approval_id,
             "risk_passed": candidate.risk_passed,
+            "skip_reason": candidate.skip_reason,
             "sharpe": float(bt.sharpe) if bt and bt.sharpe != -999.0 else None,
             "mdd": float(bt.mdd) if bt else None,
             "signal_type": str(candidate.classification.signal_type)
