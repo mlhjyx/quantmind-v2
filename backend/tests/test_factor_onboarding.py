@@ -80,17 +80,14 @@ def _make_svc():
     return svc
 
 
-# SELECT 列顺序与 factor_onboarding._onboard_inner 中的 approval_queue 查询一致
+# SELECT 列顺序与 factor_onboarding._onboard_inner 中的 gp_approval_queue 查询一致
 _AQ_COLUMNS = (
     "id",
     "run_id",
     "factor_name",
     "factor_expr",
     "ast_hash",
-    "gate_result",
-    "sharpe_1y",
-    "sharpe_5y",
-    "backtest_report",
+    "gate_report",
     "status",
 )
 
@@ -107,14 +104,14 @@ def _make_sync_conn(
             row = cur.fetchone()
 
     fetchone 返回值顺序 (按 _onboard_inner 中调用顺序):
-        1. approval_queue SELECT — 返回 aq_row 的 tuple
+        1. gp_approval_queue SELECT — 返回 aq_row 的 tuple
         2. _upsert_factor_registry INSERT ... RETURNING id — 返回 (registry_id,)
 
     cursor.description 设置为 _AQ_COLUMNS 以便 _onboard_inner 中
     `colnames = [desc[0] for desc in cur.description]` 正确工作.
 
     Args:
-        aq_row: approval_queue 记录字典 (None → fetchone 返回 None).
+        aq_row: gp_approval_queue 记录字典 (None → fetchone 返回 None).
         registry_id: registry upsert fetchone 返回的 id.
 
     Returns:
@@ -128,7 +125,7 @@ def _make_sync_conn(
 
     if aq_row is not None:
         aq_tuple = tuple(aq_row.get(c) for c in _AQ_COLUMNS)
-        # fetchone 按调用顺序返回: 第1次 = approval_queue, 第2次 = registry_id
+        # fetchone 按调用顺序返回: 第1次 = gp_approval_queue, 第2次 = registry_id
         cursor_mock.fetchone.side_effect = [aq_tuple, (registry_id,)]
     else:
         cursor_mock.fetchone.return_value = None
@@ -148,17 +145,15 @@ def _make_sync_conn(
 
 
 def _approved_aq_row(factor_name: str = "test_factor_v1", factor_expr: str = "close") -> dict:
-    """构造一条 status='approved' 的 approval_queue 记录."""
+    """构造一条 status='approved' 的 gp_approval_queue 记录."""
     return {
         "id": 1,
         "run_id": "run-001",
         "factor_name": factor_name,
         "factor_expr": factor_expr,
         "ast_hash": "abc123",
-        "gate_result": '{"hypothesis": "测试因子假设"}',
-        "sharpe_1y": 1.05,
-        "sharpe_5y": 0.95,
-        "backtest_report": None,
+        # gate_report 是 JSONB — psycopg2 读取时返回 dict (模拟真实行为)
+        "gate_report": {"hypothesis": "测试因子假设"},
         "status": "approved",
     }
 

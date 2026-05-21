@@ -1,7 +1,7 @@
 """因子挖掘 Celery 任务 — GP/BruteForce 引擎的异步执行封装。
 
 每个 task 用 asyncio.run() 包装 async 逻辑（DEV_BACKEND.md 标准写法）。
-完成后更新 pipeline_runs.status + stats，并写入 approval_queue。
+完成后更新 pipeline_runs.status + stats，并写入 gp_approval_queue。
 
 设计文档:
   - docs/GP_CLOSED_LOOP_DESIGN.md §6: 完整闭环流程
@@ -310,7 +310,7 @@ async def _write_results_to_db(
     stats: dict[str, Any],
     passed_factors: list[dict[str, Any]],
 ) -> None:
-    """将运行结果写入 pipeline_runs + approval_queue。
+    """将运行结果写入 pipeline_runs + gp_approval_queue。
 
     Args:
         db_url: PostgreSQL 连接字符串。
@@ -348,9 +348,9 @@ async def _write_results_to_db(
         for factor in passed_factors:
             await conn.execute(
                 """
-                INSERT INTO approval_queue
+                INSERT INTO gp_approval_queue
                     (run_id, factor_name, factor_expr, ast_hash,
-                     gate_result, status, created_at)
+                     gate_report, status, created_at)
                 VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
                 ON CONFLICT DO NOTHING
                 """,
