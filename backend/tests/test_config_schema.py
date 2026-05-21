@@ -181,7 +181,7 @@ def test_load_pt_live_yaml(tmp_path: Path) -> None:
         "bp_ratio": 1,
         "dv_ttm": 1,
     }
-    assert cfg.strategy.top_n == 20
+    assert cfg.strategy.top_n == 5
     assert cfg.strategy.size_neutral_beta == 0.50
     assert cfg.execution.slippage.Y_large == 0.8
     assert cfg.execution.costs.stamp_tax == "historical"
