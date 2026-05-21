@@ -1087,6 +1087,12 @@ class BruteForceEngine:
             except KeyError:
                 continue
 
+            # groupby(level="date") 保留 2 级 MultiIndex (date, symbol_id),
+            # 而 r.xs(..., level="date") 已 drop date 级 → 1 级 (symbol_id).
+            # 不对齐级数, 后续 grp_r.reindex(aligned.index) 会全 NaN →
+            # valid.sum()==0 → 整段 IC 序列空. droplevel 对齐到 symbol_id 单级.
+            grp_f = grp_f.droplevel("date")
+
             aligned = grp_f.align(grp_r, join="inner")[0]
             ret_aligned = grp_r.reindex(aligned.index)
             valid = (~grp_f.reindex(aligned.index).isna()) & (~ret_aligned.isna())
