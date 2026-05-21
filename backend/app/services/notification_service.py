@@ -663,7 +663,7 @@ def send_alert(
 
     .. note:: **铁律 32 Class C 例外** (Phase D D2 audited 2026-04-16)
 
-       本函数内部 ``conn.commit()`` (line ~575) 是 **leaf utility 例外**:
+       本函数内部 ``conn.commit()`` (写 DB 后) 是 **leaf utility 例外**:
 
        * 16 个调用方 (services + scripts + tests, 详见
          ``docs/audit/F16_service_commit_audit.md`` §send_alert callers),
