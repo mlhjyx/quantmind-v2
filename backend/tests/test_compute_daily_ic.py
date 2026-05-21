@@ -525,13 +525,9 @@ class TestLL076Phase2TimeWindowResolver:
         # 让 _fetch_active_factors 返非空, 避免早退跳过 _load_prices 调用
         monkeypatch.setattr(cdi, "_fetch_active_factors", lambda c: ["bp_ratio"])
         # mock _compute_factor_ic 返空 DataFrame 避免实际 IC 计算
-        monkeypatch.setattr(
-            cdi, "_compute_factor_ic", lambda *a, **kw: pd.DataFrame()
-        )
+        monkeypatch.setattr(cdi, "_compute_factor_ic", lambda *a, **kw: pd.DataFrame())
         # mock compute_forward_excess_returns 避免内部 KeyError 'close' (实际函数需完整 OHLC)
-        monkeypatch.setattr(
-            cdi, "compute_forward_excess_returns", lambda *a, **kw: pd.DataFrame()
-        )
+        monkeypatch.setattr(cdi, "compute_forward_excess_returns", lambda *a, **kw: pd.DataFrame())
 
         cdi.compute_and_ingest(
             conn=fake_conn,
@@ -546,7 +542,9 @@ class TestLL076Phase2TimeWindowResolver:
         # days=999 被忽略 (explicit start/end 覆盖)
         assert len(load_prices_calls) == 1, "_load_prices 应被调 1 次"
         called_start, called_end = load_prices_calls[0]
-        assert called_start == date(2026, 3, 1), f"start 应 = explicit start_date, 实际 {called_start}"
+        assert called_start == date(2026, 3, 1), (
+            f"start 应 = explicit start_date, 实际 {called_start}"
+        )
         expected_price_end = date(2026, 3, 5) + timedelta(days=cdi.FUTURE_BUFFER_DAYS)
         assert called_end == expected_price_end, (
             f"end 应 = explicit end_date + FUTURE_BUFFER_DAYS, 实际 {called_end}"
@@ -561,7 +559,12 @@ class TestLL076Phase2TimeWindowResolver:
 
         def mock_compute(**kw):
             captured_kwargs.update(kw)
-            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+            return {
+                "processed_factors": 1,
+                "total_rows": 10,
+                "elapsed_sec": 0.1,
+                "factor_summary": [],
+            }
 
         monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
         monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)
@@ -587,7 +590,12 @@ class TestLL076Phase2TimeWindowResolver:
 
         def mock_compute(**kw):
             captured_kwargs.update(kw)
-            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+            return {
+                "processed_factors": 1,
+                "total_rows": 10,
+                "elapsed_sec": 0.1,
+                "factor_summary": [],
+            }
 
         monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
         monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)
@@ -614,7 +622,12 @@ class TestLL076Phase2TimeWindowResolver:
 
         def mock_compute(**kw):
             captured_kwargs.update(kw)
-            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+            return {
+                "processed_factors": 1,
+                "total_rows": 10,
+                "elapsed_sec": 0.1,
+                "factor_summary": [],
+            }
 
         monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
         monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)
@@ -639,7 +652,12 @@ class TestLL076Phase2TimeWindowResolver:
 
         def mock_compute(**kw):
             captured_kwargs.update(kw)
-            return {"processed_factors": 1, "total_rows": 10, "elapsed_sec": 0.1, "factor_summary": []}
+            return {
+                "processed_factors": 1,
+                "total_rows": 10,
+                "elapsed_sec": 0.1,
+                "factor_summary": [],
+            }
 
         monkeypatch.setattr(cdi, "compute_and_ingest", mock_compute)
         monkeypatch.setattr(cdi, "is_trading_day", lambda c, d: True)

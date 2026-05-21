@@ -10,6 +10,7 @@
   - pipeline.ingest 传入 lineage 时 IngestResult.lineage_id 非空
   - pipeline.ingest 不传 lineage (默认 None) → IngestResult.lineage_id = None (向后兼容)
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -290,13 +291,19 @@ def test_ingest_result_lineage_id_default_none():
     """MVP 2.2 Sub2: IngestResult 新增 lineage_id 字段, 默认 None 保证不传 lineage 时向后兼容."""
     from app.data_fetcher.pipeline import IngestResult
 
-    r = IngestResult(table="factor_values", total_rows=5, valid_rows=5, rejected_rows=0, upserted_rows=5)
+    r = IngestResult(
+        table="factor_values", total_rows=5, valid_rows=5, rejected_rows=0, upserted_rows=5
+    )
     assert r.lineage_id is None
     assert r.success is True
 
     lid = uuid.uuid4()
     r2 = IngestResult(
-        table="factor_values", total_rows=5, valid_rows=5, rejected_rows=0, upserted_rows=5,
+        table="factor_values",
+        total_rows=5,
+        valid_rows=5,
+        rejected_rows=0,
+        upserted_rows=5,
         lineage_id=lid,
     )
     assert r2.lineage_id == lid
@@ -305,9 +312,7 @@ def test_ingest_result_lineage_id_default_none():
 # ---------- 13: DataPipeline._record_lineage 直接调用 (绕开 execute_values) ----------
 
 
-def test_record_lineage_merges_outputs_and_persists(
-    fake_pg_conn_with_lineage_table, monkeypatch
-):
+def test_record_lineage_merges_outputs_and_persists(fake_pg_conn_with_lineage_table, monkeypatch):
     """_record_lineage 从 valid_df PK 列自动补 outputs, 落 data_lineage.
 
     直接测 helper, 绕开 execute_values (psycopg2-specific, sqlite 不兼容)."""
@@ -315,6 +320,7 @@ def test_record_lineage_merges_outputs_and_persists(
     import backend.qm_platform.data.lineage as lineage_mod
     from app.data_fetcher.contracts import FACTOR_VALUES
     from app.data_fetcher.pipeline import DataPipeline
+
     orig = lineage_mod.write_lineage
     monkeypatch.setattr(
         lineage_mod,

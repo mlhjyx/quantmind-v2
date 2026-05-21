@@ -20,8 +20,6 @@ Cleanup (post-verify):
 
 from __future__ import annotations
 
-import json
-import uuid
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -31,16 +29,16 @@ TZ = ZoneInfo("Asia/Shanghai")
 
 # Per-day plan: (date, [(severity, count)], [(status, count)] for STAGED, AUTO count)
 PLAN = [
-    (date(2026, 5, 7), [("p0", 1), ("p1", 2), ("p2", 1)],
-     [("EXECUTED", 1), ("CANCELLED", 1)], 0),
-    (date(2026, 5, 8), [("p0", 2), ("p1", 1)],
-     [("EXECUTED", 1)], 0),
-    (date(2026, 5, 11), [("p0", 1), ("p1", 3), ("p2", 2)],
-     [("EXECUTED", 1), ("CANCELLED", 1), ("TIMEOUT_EXECUTED", 1)], 0),
-    (date(2026, 5, 12), [("p1", 2), ("p2", 1)],
-     [("EXECUTED", 2)], 1),
-    (date(2026, 5, 13), [("p0", 1), ("p2", 1)],
-     [("TIMEOUT_EXECUTED", 1)], 0),
+    (date(2026, 5, 7), [("p0", 1), ("p1", 2), ("p2", 1)], [("EXECUTED", 1), ("CANCELLED", 1)], 0),
+    (date(2026, 5, 8), [("p0", 2), ("p1", 1)], [("EXECUTED", 1)], 0),
+    (
+        date(2026, 5, 11),
+        [("p0", 1), ("p1", 3), ("p2", 2)],
+        [("EXECUTED", 1), ("CANCELLED", 1), ("TIMEOUT_EXECUTED", 1)],
+        0,
+    ),
+    (date(2026, 5, 12), [("p1", 2), ("p2", 1)], [("EXECUTED", 2)], 1),
+    (date(2026, 5, 13), [("p0", 1), ("p2", 1)], [("TIMEOUT_EXECUTED", 1)], 0),
 ]
 
 
@@ -78,9 +76,7 @@ def inject_risk_events(cur, d: date, severities: list[tuple[str, int]]) -> int:
     return inserted
 
 
-def inject_execution_plans(
-    cur, d: date, statuses: list[tuple[str, int]], auto_count: int
-) -> int:
+def inject_execution_plans(cur, d: date, statuses: list[tuple[str, int]], auto_count: int) -> int:
     """INSERT execution_plans rows; STAGED with varying status + AUTO."""
     inserted = 0
     base = _ts(d, 14, 0)  # 14:00 trigger

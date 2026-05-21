@@ -100,9 +100,7 @@ def get_all_factors(conn) -> list[str]:
     return [r[0] for r in cur.fetchall()]
 
 
-def compute_factor_ic_from_db(
-    factor_name: str, price_df, bench_df, fwd_ret_cache, conn
-) -> dict:
+def compute_factor_ic_from_db(factor_name: str, price_df, bench_df, fwd_ret_cache, conn) -> dict:
     """计算单因子 IC (走共享模块)."""
     # 优先 Parquet (CORE 5)
     parquet_has = False
@@ -306,18 +304,22 @@ def main():
         if verdict == "PASS":
             stats = gate_result["ic_stats"]
             print(
-                f"  [{i+1:>3}/{len(factor_list)}] {f:<35} {verdict} "
+                f"  [{i + 1:>3}/{len(factor_list)}] {f:<35} {verdict} "
                 f"IC={stats['mean']:+.4f} t={stats['t_stat']:+6.2f}"
             )
         elif verdict == "FAIL":
             stats = gate_result.get("ic_stats", {})
-            failed = [g for g in ("G1", "G2", "G3", "G4", "G6") if not gate_result["gates"][g].get("passed", False)]
+            failed = [
+                g
+                for g in ("G1", "G2", "G3", "G4", "G6")
+                if not gate_result["gates"][g].get("passed", False)
+            ]
             print(
-                f"  [{i+1:>3}/{len(factor_list)}] {f:<35} FAIL (fail={','.join(failed)}) "
+                f"  [{i + 1:>3}/{len(factor_list)}] {f:<35} FAIL (fail={','.join(failed)}) "
                 f"IC={stats.get('mean', 0):+.4f} t={stats.get('t_stat', 0):+6.2f}"
             )
         else:
-            print(f"  [{i+1:>3}/{len(factor_list)}] {f:<35} ERROR ({reason})")
+            print(f"  [{i + 1:>3}/{len(factor_list)}] {f:<35} ERROR ({reason})")
 
     elapsed = time.time() - t0
     print(f"\n总耗时: {elapsed:.0f}s")
@@ -328,7 +330,13 @@ def main():
     total = len(results)
     passed = sum(1 for r in results.values() if r.get("overall_verdict") == "PASS")
     failed = sum(1 for r in results.values() if r.get("overall_verdict") == "FAIL")
-    errored = sum(1 for r in results.values() if "error" in r.get("reason", "").lower() or "error" in r or r.get("overall_verdict") == "ERROR")
+    errored = sum(
+        1
+        for r in results.values()
+        if "error" in r.get("reason", "").lower()
+        or "error" in r
+        or r.get("overall_verdict") == "ERROR"
+    )
 
     # 5 CORE 是否全 PASS?
     core_verdicts = {f: results.get(f, {}).get("overall_verdict", "MISSING") for f in CORE_FACTORS}

@@ -10,6 +10,7 @@
 关联铁律:
   - 34: 配置 single source of truth — 漂移 fail-loud, 不允许 warning
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -166,7 +167,7 @@ def _git_commit() -> str:
         if result.returncode == 0:
             return result.stdout.strip()
     except (subprocess.SubprocessError, FileNotFoundError):
-        pass
+        pass  # silent_ok: fallback "unknown" 是 acceptable degradation
     return "unknown"
 
 
@@ -232,6 +233,7 @@ class PlatformConfigAuditor(ConfigAuditor):
                 from engines.signal_engine import PAPER_TRADING_CONFIG
             except ImportError:
                 import sys
+
                 backend_dir = Path(__file__).resolve().parents[2]
                 if str(backend_dir) not in sys.path:
                     sys.path.append(str(backend_dir))  # append 保 stdlib 优先
@@ -248,13 +250,15 @@ class PlatformConfigAuditor(ConfigAuditor):
             sources: dict[str, Any] = {"pt_live.yaml": yaml_val, "python": py_val}
 
             # env (如有)
-            if field.env_key is not None and field.env_key in env_dict and env_dict[field.env_key] != "":
+            if (
+                field.env_key is not None
+                and field.env_key in env_dict
+                and env_dict[field.env_key] != ""
+            ):
                 env_raw = env_dict[field.env_key]
                 env_val: Any = _cast_env(env_raw, field.cast)
                 sources[".env"] = env_val
-                if not (
-                    _values_equal(env_val, yaml_val) and _values_equal(yaml_val, py_val)
-                ):
+                if not (_values_equal(env_val, yaml_val) and _values_equal(yaml_val, py_val)):
                     drifts.append({"param": field.name, "sources": sources})
             else:
                 # 只比 yaml vs python
@@ -305,7 +309,9 @@ class PlatformConfigAuditor(ConfigAuditor):
         """
         # 1. 序列化 config (model_dump + sort_keys 保 hash 稳定)
         config_dict = schema.model_dump(mode="json")
-        canonical = json.dumps(config_dict, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        canonical = json.dumps(
+            config_dict, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
         config_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
         # 2. 构造 entry

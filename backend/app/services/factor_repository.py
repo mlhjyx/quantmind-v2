@@ -714,13 +714,8 @@ def load_shared_context(
         ed = str(end_date)
 
         # 1. 行业映射 (SW2 → SW1, 29组)
-        cur.execute(
-            "SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'"
-        )
-        ind_dict_sw2 = {
-            r[0]: r[1] if r[1] and r[1] != "nan" else "其他"
-            for r in cur.fetchall()
-        }
+        cur.execute("SELECT code, industry_sw1 FROM symbols WHERE market = 'astock'")
+        ind_dict_sw2 = {r[0]: r[1] if r[1] and r[1] != "nan" else "其他" for r in cur.fetchall()}
         ind_dict = apply_sw2_to_sw1(ind_dict_sw2, conn)
         if isinstance(ind_dict, pd.Series):
             ind_dict = ind_dict.to_dict()
@@ -748,13 +743,12 @@ def load_shared_context(
             bm_rows = cur.fetchall()
             if bm_rows:
                 benchmark_df = pd.DataFrame(bm_rows, columns=["trade_date", "close"])
-                benchmark_df["trade_date"] = pd.to_datetime(
-                    benchmark_df["trade_date"]
-                ).dt.date
+                benchmark_df["trade_date"] = pd.to_datetime(benchmark_df["trade_date"]).dt.date
 
         logger.info(
             "共享上下文加载: %d行业, %d市值行, benchmark=%s",
-            len(ind_dict), len(mv_df),
+            len(ind_dict),
+            len(mv_df),
             f"{len(benchmark_df)}行" if benchmark_df is not None else "未加载",
         )
 

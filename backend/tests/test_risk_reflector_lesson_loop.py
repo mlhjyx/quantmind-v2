@@ -107,12 +107,16 @@ class _StubResponse:
 class _StubRouter:
     """Stub LiteLLM router — returns configured response OR raises."""
 
-    def __init__(self, response_text: str | None = None, raise_exc: Exception | None = None) -> None:
+    def __init__(
+        self, response_text: str | None = None, raise_exc: Exception | None = None
+    ) -> None:
         self._text = response_text
         self._raise = raise_exc
         self.calls: list[dict[str, Any]] = []
 
-    def completion(self, task: Any, messages: Any, *, decision_id: str | None = None, **kw: Any) -> _StubResponse:
+    def completion(
+        self, task: Any, messages: Any, *, decision_id: str | None = None, **kw: Any
+    ) -> _StubResponse:
         self.calls.append({"task": task, "decision_id": decision_id})
         if self._raise is not None:
             raise self._raise
@@ -237,9 +241,7 @@ class TestSedimentLesson:
             embedding_factory=lambda: stub_emb,
         )
         out = _make_output()
-        memory_id = svc.sediment_lesson(
-            out, _StubConn(), event_type="WeeklyReflection"
-        )
+        memory_id = svc.sediment_lesson(out, _StubConn(), event_type="WeeklyReflection")
         assert memory_id == 99
         # BGE-M3 encode called with lesson text.
         assert len(stub_emb.calls) == 1
@@ -285,9 +287,7 @@ class TestSedimentLesson:
         svc = RiskReflectorAgent(router_factory=lambda: _StubRouter())
         # embedding_factory=None → sediment_lesson must fail-loud.
         with pytest.raises(RuntimeError, match="requires embedding_factory"):
-            svc.sediment_lesson(
-                _make_output(), _StubConn(), event_type="WeeklyReflection"
-            )
+            svc.sediment_lesson(_make_output(), _StubConn(), event_type="WeeklyReflection")
 
     def test_naive_event_timestamp_raises(self) -> None:
         svc = RiskReflectorAgent(
@@ -308,9 +308,7 @@ class TestSedimentLesson:
             embedding_factory=lambda: _StubEmbeddingService(fail=True),
         )
         with pytest.raises(RuntimeError, match="stub BGE-M3 encode failure"):
-            svc.sediment_lesson(
-                _make_output(), _StubConn(), event_type="WeeklyReflection"
-            )
+            svc.sediment_lesson(_make_output(), _StubConn(), event_type="WeeklyReflection")
 
     def test_embedding_service_cached(self, monkeypatch) -> None:
         """embedding_factory invoked once, then cached (sustained TB-3b 体例)."""
@@ -323,9 +321,7 @@ class TestSedimentLesson:
             factory_calls["n"] += 1
             return _StubEmbeddingService()
 
-        svc = RiskReflectorAgent(
-            router_factory=lambda: _StubRouter(), embedding_factory=_factory
-        )
+        svc = RiskReflectorAgent(router_factory=lambda: _StubRouter(), embedding_factory=_factory)
         svc.sediment_lesson(_make_output(), _StubConn(), event_type="WeeklyReflection")
         svc.sediment_lesson(_make_output(), _StubConn(), event_type="WeeklyReflection")
         assert factory_calls["n"] == 1  # cached after first

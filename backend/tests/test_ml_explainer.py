@@ -111,7 +111,7 @@ class TestSHAPExplainerGlobal:
         for i in range(len(result.mean_abs_shap) - 1):
             assert result.mean_abs_shap[i] >= result.mean_abs_shap[i + 1], (
                 f"mean_abs_shap未降序: [{i}]={result.mean_abs_shap[i]:.4f} < "
-                f"[{i+1}]={result.mean_abs_shap[i+1]:.4f}"
+                f"[{i + 1}]={result.mean_abs_shap[i + 1]:.4f}"
             )
 
     def test_feat0_is_top(self) -> None:
@@ -218,8 +218,8 @@ class TestSHAPExplainerTemporal:
         n = len(feat_df) // n_periods
         periods = {}
         for i in range(n_periods):
-            label = f"Period{i+1}"
-            periods[label] = feat_df.iloc[i * n: (i + 1) * n]
+            label = f"Period{i + 1}"
+            periods[label] = feat_df.iloc[i * n : (i + 1) * n]
         return periods
 
     def test_returns_correct_periods(self) -> None:
@@ -337,11 +337,13 @@ class TestComputeNdcgAtK:
         for i in range(n_dates):
             td = base_date + timedelta(days=i)
             for j in range(n_stocks):
-                rows.append({
-                    "trade_date": td,
-                    "code": f"S{j:04d}",
-                    "excess_return_20": rng.randn(),
-                })
+                rows.append(
+                    {
+                        "trade_date": td,
+                        "code": f"S{j:04d}",
+                        "excess_return_20": rng.randn(),
+                    }
+                )
         df = pd.DataFrame(rows)
         predictions = rng.randn(len(df))
         return df, predictions
@@ -514,9 +516,7 @@ class TestOOSThreeSplitValidation:
 
         if len(folds) >= n_expanding:
             starts = [folds[i].train_start for i in range(min(n_expanding, len(folds)))]
-            assert len(set(starts)) == 1, (
-                f"扩展窗口fold的train_start应相同: {starts}"
-            )
+            assert len(set(starts)) == 1, f"扩展窗口fold的train_start应相同: {starts}"
 
     def test_fold_result_has_overfit_ratio(self) -> None:
         """FoldResult应包含overfit_ratio字段（铁律7过拟合检测）。"""
@@ -636,11 +636,13 @@ class TestNDCGEdgeCases:
         for i in range(5):
             td = base_date + timedelta(days=i)
             for j in range(30):
-                rows.append({
-                    "trade_date": td,
-                    "code": f"S{j:04d}",
-                    "excess_return_20": float(j),
-                })
+                rows.append(
+                    {
+                        "trade_date": td,
+                        "code": f"S{j:04d}",
+                        "excess_return_20": float(j),
+                    }
+                )
         df = pd.DataFrame(rows)
 
         # 完美预测：预测值 = 实际值
@@ -660,9 +662,13 @@ class TestNDCGEdgeCases:
         rng = np.random.RandomState(42)
         base_date = date(2023, 1, 1)
         rows = [
-            {"trade_date": base_date + timedelta(days=i), "code": f"S{j:04d}",
-             "excess_return_20": rng.randn()}
-            for i in range(5) for j in range(20)
+            {
+                "trade_date": base_date + timedelta(days=i),
+                "code": f"S{j:04d}",
+                "excess_return_20": rng.randn(),
+            }
+            for i in range(5)
+            for j in range(20)
         ]
         df = pd.DataFrame(rows)
         preds = rng.randn(len(df))

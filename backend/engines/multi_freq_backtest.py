@@ -153,9 +153,7 @@ class MultiFreqBacktestRunner:
             # 推荐频率: Sharpe最高且CI下界>0
             valid = [r for r in comparison.results if r.sharpe_ci_low > 0]
             if valid:
-                comparison.recommended_freq = max(
-                    valid, key=lambda r: r.sharpe
-                ).freq
+                comparison.recommended_freq = max(valid, key=lambda r: r.sharpe).freq
             else:
                 comparison.recommended_freq = best.freq
 
@@ -185,18 +183,16 @@ class MultiFreqBacktestRunner:
 
         # 获取调仓日历
         rebalance_dates = get_rebalance_dates(
-            self.start_date, self.end_date, freq=freq, conn=self.conn,
+            self.start_date,
+            self.end_date,
+            freq=freq,
+            conn=self.conn,
         )
 
         if freq == "daily":
             # daily: 每个交易日都调仓
-            rebalance_dates = sorted(
-                price_data["trade_date"].unique()
-            )
-            rebalance_dates = [
-                d for d in rebalance_dates
-                if self.start_date <= d <= self.end_date
-            ]
+            rebalance_dates = sorted(price_data["trade_date"].unique())
+            rebalance_dates = [d for d in rebalance_dates if self.start_date <= d <= self.end_date]
 
         # 生成每个调仓日的目标持仓
         composer = SignalComposer(config)
@@ -226,10 +222,15 @@ class MultiFreqBacktestRunner:
         if not target_portfolios:
             logger.warning(f"[MultiFreq] {freq}: 无有效调仓日")
             return FreqBacktestResult(
-                freq=freq, sharpe=0.0, sharpe_ci_low=0.0,
-                sharpe_ci_high=0.0, annual_return=0.0,
-                max_drawdown=0.0, calmar=0.0,
-                annual_turnover=0.0, avg_holding_period=0.0,
+                freq=freq,
+                sharpe=0.0,
+                sharpe_ci_low=0.0,
+                sharpe_ci_high=0.0,
+                annual_return=0.0,
+                max_drawdown=0.0,
+                calmar=0.0,
+                annual_turnover=0.0,
+                avg_holding_period=0.0,
             )
 
         # 执行回测
@@ -393,7 +394,7 @@ class MultiFreqBacktestRunner:
             "",
             f"{'频率':<10} {'Sharpe':>8} {'CI_low':>8} {'CI_high':>8} "
             f"{'年化收益':>10} {'MDD':>8} {'Calmar':>8} {'年化换手':>10}",
-            f"{'-'*80}",
+            f"{'-' * 80}",
         ]
 
         for r in comparison.results:

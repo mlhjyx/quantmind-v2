@@ -31,6 +31,7 @@ CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "cache"
 
 # ─── 公共函数 ─────────────────────────────────────────
 
+
 def load_all_data():
     """加载12年price_data + benchmark。"""
     price_parts, bench_parts = [], []
@@ -61,6 +62,7 @@ def load_factor_data():
 
     import psycopg2
     from dotenv import load_dotenv
+
     load_dotenv(BACKEND_DIR / ".env")
     conn = psycopg2.connect(
         dbname=os.getenv("PG_DB", "quantmind_v2"),
@@ -88,6 +90,7 @@ def load_ic_weights():
 
     import psycopg2
     from dotenv import load_dotenv
+
     load_dotenv(BACKEND_DIR / ".env")
     conn = psycopg2.connect(
         dbname=os.getenv("PG_DB", "quantmind_v2"),
@@ -139,19 +142,32 @@ def run_backtest(name, target_portfolios, price, bench):
     rets = result.daily_returns
     sharpe = calc_sharpe(rets) if len(rets) > 1 else 0
     mdd = calc_max_drawdown(nav)
-    ann_ret = (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1 if len(nav) > 1 else 0
-    return {"name": name, "sharpe": sharpe, "mdd": mdd, "ann_ret": ann_ret,
-            "n_rebal": len(target_portfolios), "final_nav": float(nav.iloc[-1])}
+    ann_ret = (
+        (nav.iloc[-1] / nav.iloc[0]) ** (TRADING_DAYS_PER_YEAR / len(nav)) - 1
+        if len(nav) > 1
+        else 0
+    )
+    return {
+        "name": name,
+        "sharpe": sharpe,
+        "mdd": mdd,
+        "ann_ret": ann_ret,
+        "n_rebal": len(target_portfolios),
+        "final_nav": float(nav.iloc[-1]),
+    }
 
 
 # ─── Strategy #0: Baseline (SN b=0.50 等权) ────────────
+
 
 def strategy_0_baseline(factor_df, price, rebal_dates):
     """#0 Baseline: 等权Top-20 + SN b=0.50 (复用现有信号路径)。"""
     from engines.signal_engine import FACTOR_DIRECTION
 
-    directions = {f: FACTOR_DIRECTION.get(f, 1)
-                  for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]}
+    directions = {
+        f: FACTOR_DIRECTION.get(f, 1)
+        for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
+    }
 
     # Build composite score per (code, trade_date)
     close_wide = price.pivot_table(index="trade_date", columns="code", values="close").sort_index()
@@ -202,14 +218,18 @@ def strategy_0_baseline(factor_df, price, rebal_dates):
 
 # ─── Strategy #1: IC加权 ────────────────────────────
 
+
 def strategy_1_ic_weighted(factor_df, price, rebal_dates, ic_weights):
     """#1 IC加权: composite = Σ(factor × IC_IR) / Σ|IC_IR|。"""
     close_wide = price.pivot_table(index="trade_date", columns="code", values="close").sort_index()
     ln_mcap_wide = np.log(close_wide + 1e-12)
 
     from engines.signal_engine import FACTOR_DIRECTION
-    directions = {f: FACTOR_DIRECTION.get(f, 1)
-                  for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]}
+
+    directions = {
+        f: FACTOR_DIRECTION.get(f, 1)
+        for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
+    }
 
     total_abs_ir = sum(abs(v) for v in ic_weights.values()) + 1e-12
 
@@ -250,6 +270,7 @@ def strategy_1_ic_weighted(factor_df, price, rebal_dates, ic_weights):
 
 # ─── Strategy #2: MVO ────────────────────────────────
 
+
 def strategy_2_mvo(factor_df, price, rebal_dates):
     """#2 MVO: CORE 5等权得分选Top-40, riskfolio MVO优化权重。"""
     try:
@@ -259,8 +280,11 @@ def strategy_2_mvo(factor_df, price, rebal_dates):
         return {}
 
     from engines.signal_engine import FACTOR_DIRECTION
-    directions = {f: FACTOR_DIRECTION.get(f, 1)
-                  for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]}
+
+    directions = {
+        f: FACTOR_DIRECTION.get(f, 1)
+        for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
+    }
 
     close_wide = price.pivot_table(index="trade_date", columns="code", values="close").sort_index()
     daily_ret = close_wide.pct_change(fill_method=None)
@@ -330,6 +354,7 @@ def strategy_2_mvo(factor_df, price, rebal_dates):
 
 # ─── Strategy #3: IC加权 + MVO ────────────────────────
 
+
 def strategy_3_ic_mvo(factor_df, price, rebal_dates, ic_weights):
     """#3 IC加权选股 + MVO优化权重。"""
     try:
@@ -339,8 +364,11 @@ def strategy_3_ic_mvo(factor_df, price, rebal_dates, ic_weights):
         return {}
 
     from engines.signal_engine import FACTOR_DIRECTION
-    directions = {f: FACTOR_DIRECTION.get(f, 1)
-                  for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]}
+
+    directions = {
+        f: FACTOR_DIRECTION.get(f, 1)
+        for f in ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
+    }
     total_abs_ir = sum(abs(v) for v in ic_weights.values()) + 1e-12
 
     close_wide = price.pivot_table(index="trade_date", columns="code", values="close").sort_index()
@@ -407,6 +435,7 @@ def strategy_3_ic_mvo(factor_df, price, rebal_dates, ic_weights):
 
 # ─── Strategy #4: 融合MLP (从Part 3结果读取) ─────────
 
+
 def strategy_4_fusion(exp_key: str = "A"):
     """#4 融合MLP: 读取Part 3保存的结果。"""
     result_path = CACHE_DIR / "phase21" / f"l2_result_exp_{exp_key.lower()}.json"
@@ -419,6 +448,7 @@ def strategy_4_fusion(exp_key: str = "A"):
 
 
 # ─── Main ─────────────────────────────────────────────
+
 
 def main():
     t_start = time.time()
@@ -462,7 +492,9 @@ def main():
     if tp2:
         results.append(run_backtest("#2 MVO", tp2, price, bench))
     else:
-        results.append({"name": "#2 MVO", "sharpe": 0, "mdd": 0, "ann_ret": 0, "n_rebal": 0, "final_nav": 0})
+        results.append(
+            {"name": "#2 MVO", "sharpe": 0, "mdd": 0, "ann_ret": 0, "n_rebal": 0, "final_nav": 0}
+        )
 
     # #3 IC+MVO
     print("\n[#3] IC加权 + MVO...")
@@ -470,32 +502,47 @@ def main():
     if tp3:
         results.append(run_backtest("#3 IC+MVO", tp3, price, bench))
     else:
-        results.append({"name": "#3 IC+MVO", "sharpe": 0, "mdd": 0, "ann_ret": 0, "n_rebal": 0, "final_nav": 0})
+        results.append(
+            {"name": "#3 IC+MVO", "sharpe": 0, "mdd": 0, "ann_ret": 0, "n_rebal": 0, "final_nav": 0}
+        )
 
     # #4 Fusion MLP (from Part 3)
     print("\n[#4] Fusion MLP (from Part 3)...")
     fusion = strategy_4_fusion("A")
     if fusion:
-        results.append({
-            "name": "#4 Fusion MLP",
-            "sharpe": fusion.get("sharpe", 0),
-            "mdd": fusion.get("mdd", 0),
-            "ann_ret": fusion.get("ann_ret", 0),
-            "n_rebal": fusion.get("n_portfolios", 0),
-            "final_nav": 0,
-        })
+        results.append(
+            {
+                "name": "#4 Fusion MLP",
+                "sharpe": fusion.get("sharpe", 0),
+                "mdd": fusion.get("mdd", 0),
+                "ann_ret": fusion.get("ann_ret", 0),
+                "n_rebal": fusion.get("n_portfolios", 0),
+                "final_nav": 0,
+            }
+        )
     else:
-        results.append({"name": "#4 Fusion MLP", "sharpe": 0, "mdd": 0, "ann_ret": 0, "n_rebal": 0, "final_nav": 0})
+        results.append(
+            {
+                "name": "#4 Fusion MLP",
+                "sharpe": 0,
+                "mdd": 0,
+                "ann_ret": 0,
+                "n_rebal": 0,
+                "final_nav": 0,
+            }
+        )
 
     # Summary table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("COMPARISON MATRIX: Phase 2.1")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"{'Strategy':<30} {'Sharpe':>8} {'MDD':>10} {'Ann Ret':>10} {'Rebal':>7}")
     print("-" * 80)
     for r in results:
-        print(f"{r['name']:<30} {r['sharpe']:>8.4f} {r['mdd']:>10.2%} "
-              f"{r['ann_ret']:>10.2%} {r['n_rebal']:>7}")
+        print(
+            f"{r['name']:<30} {r['sharpe']:>8.4f} {r['mdd']:>10.2%} "
+            f"{r['ann_ret']:>10.2%} {r['n_rebal']:>7}"
+        )
 
     # Go condition
     baseline_sharpe = 0.6521
@@ -514,7 +561,7 @@ def main():
     print(f"\n  Saved: {out_path}")
 
     elapsed = time.time() - t_start
-    print(f"\nTotal elapsed: {elapsed/60:.1f} min")
+    print(f"\nTotal elapsed: {elapsed / 60:.1f} min")
 
 
 if __name__ == "__main__":

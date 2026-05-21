@@ -92,9 +92,7 @@ class TestRetentionPolicy:
         import logging
 
         with caplog.at_level(logging.WARNING):
-            p = RetentionPolicy(
-                hot_threshold=0.8, warm_threshold=0.5, cold_threshold=0.5
-            )
+            p = RetentionPolicy(hot_threshold=0.8, warm_threshold=0.5, cold_threshold=0.5)
         assert p.hot_threshold == 0.8  # constructed OK
         assert any("not monotonic" in r.message for r in caplog.records)
 
@@ -307,9 +305,7 @@ class TestFilterByRetention:
             filter_by_retention([_hit(1, 0.9)], naive)
 
     def test_custom_policy_loose(self) -> None:
-        loose = RetentionPolicy(
-            warm_threshold=0.3, cold_threshold=0.4, archive_threshold=0.5
-        )
+        loose = RetentionPolicy(warm_threshold=0.3, cold_threshold=0.4, archive_threshold=0.5)
         hits = [
             _hit(age_days=20, similarity=0.35),  # WARM keep under loose
             _hit(age_days=60, similarity=0.45),  # COLD keep under loose

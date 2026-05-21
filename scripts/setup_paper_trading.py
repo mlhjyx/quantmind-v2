@@ -59,9 +59,7 @@ def main():
     cur = conn.cursor()
 
     # 检查是否已存在
-    cur.execute(
-        "SELECT id FROM strategy WHERE name = 'Phase0_PaperTrading' LIMIT 1"
-    )
+    cur.execute("SELECT id FROM strategy WHERE name = 'Phase0_PaperTrading' LIMIT 1")
     existing = cur.fetchone()
     if existing:
         print(f"⚠️  策略已存在: {existing[0]}")
@@ -80,11 +78,13 @@ def main():
             "astock",
             "visual",
             json.dumps(LOCKED_CONFIG),
-            json.dumps({
-                "initial_capital": 1_000_000,
-                "benchmark": "000300.SH",
-                "start_date": "2026-03-21",
-            }),
+            json.dumps(
+                {
+                    "initial_capital": 1_000_000,
+                    "benchmark": "000300.SH",
+                    "start_date": "2026-03-21",
+                }
+            ),
             "paper",
         ),
     )
@@ -131,6 +131,7 @@ if __name__ == "__main__":
         "QM_ALLOW_SETUP_PAPER_TRADING=I_UNDERSTAND_ADR_023 in env."
     )
     import os
+
     if os.environ.get("QM_ALLOW_SETUP_PAPER_TRADING") != "I_UNDERSTAND_ADR_023":
         raise DeprecationWarning(msg)
     print(f"WARNING: bypass guard active — {msg}", file=sys.stderr)

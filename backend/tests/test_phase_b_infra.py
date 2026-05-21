@@ -17,21 +17,51 @@ sys.path.append(str(PROJECT_ROOT / "backend"))
 
 # DDL中定义的45张表
 DDL_TABLES = [
-    "symbols", "klines_daily", "forex_bars", "daily_basic", "trading_calendar",
-    "moneyflow_daily", "northbound_holdings", "margin_data", "chip_distribution",
-    "financial_indicators", "index_daily", "index_components",
-    "factor_registry", "factor_values", "factor_ic_history",
-    "universe_daily", "signals",
-    "trade_log", "position_snapshot", "performance_series",
-    "model_registry", "ai_parameters", "experiments",
-    "strategy", "strategy_configs", "notifications", "notification_preferences",
-    "health_checks", "scheduler_task_log",
-    "forex_swap_rates", "forex_events",
-    "backtest_run", "backtest_daily_nav", "backtest_trades",
-    "backtest_holdings", "backtest_wf_windows",
-    "factor_evaluation", "factor_mining_task", "mining_knowledge",
-    "pipeline_run", "agent_decision_log", "approval_queue", "param_change_log",
-    "pipeline_runs", "gp_approval_queue",
+    "symbols",
+    "klines_daily",
+    "forex_bars",
+    "daily_basic",
+    "trading_calendar",
+    "moneyflow_daily",
+    "northbound_holdings",
+    "margin_data",
+    "chip_distribution",
+    "financial_indicators",
+    "index_daily",
+    "index_components",
+    "factor_registry",
+    "factor_values",
+    "factor_ic_history",
+    "universe_daily",
+    "signals",
+    "trade_log",
+    "position_snapshot",
+    "performance_series",
+    "model_registry",
+    "ai_parameters",
+    "experiments",
+    "strategy",
+    "strategy_configs",
+    "notifications",
+    "notification_preferences",
+    "health_checks",
+    "scheduler_task_log",
+    "forex_swap_rates",
+    "forex_events",
+    "backtest_run",
+    "backtest_daily_nav",
+    "backtest_trades",
+    "backtest_holdings",
+    "backtest_wf_windows",
+    "factor_evaluation",
+    "factor_mining_task",
+    "mining_knowledge",
+    "pipeline_run",
+    "agent_decision_log",
+    "approval_queue",
+    "param_change_log",
+    "pipeline_runs",
+    "gp_approval_queue",
 ]
 
 
@@ -39,6 +69,7 @@ DDL_TABLES = [
 def db_conn():
     """获取sync psycopg2连接。"""
     from app.services.db import get_sync_conn
+
     conn = get_sync_conn()
     yield conn
     conn.close()
@@ -47,9 +78,7 @@ def db_conn():
 def test_all_ddl_tables_exist(db_conn):
     """B4: 验证DDL中定义的45张表全部存在于数据库。"""
     cur = db_conn.cursor()
-    cur.execute(
-        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-    )
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
     db_tables = {row[0] for row in cur.fetchall()}
 
     missing = [t for t in DDL_TABLES if t not in db_tables]
@@ -61,8 +90,7 @@ def test_mining_knowledge_has_required_columns(db_conn):
     """B4: mining_knowledge表应有Sprint 1.18扩展的所有列。"""
     cur = db_conn.cursor()
     cur.execute(
-        "SELECT column_name FROM information_schema.columns "
-        "WHERE table_name = 'mining_knowledge'"
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'mining_knowledge'"
     )
     columns = {row[0] for row in cur.fetchall()}
     required = {"factor_hash", "ic_stats", "failure_node", "failure_mode", "run_id", "tags"}
@@ -73,6 +101,7 @@ def test_mining_knowledge_has_required_columns(db_conn):
 # ═══════════════════════════════════════════════════
 # B5: 备份脚本逻辑测试
 # ═══════════════════════════════════════════════════
+
 
 class TestBackupScript:
     """B5: pg_backup.py 逻辑测试（不执行真实pg_dump）。"""
@@ -85,6 +114,7 @@ class TestBackupScript:
         import importlib
 
         import scripts.pg_backup as backup_mod
+
         backup_mod = importlib.reload(backup_mod)
 
         # 覆盖目录到tmp
@@ -115,6 +145,7 @@ class TestBackupScript:
         import importlib
 
         import scripts.pg_backup as backup_mod
+
         backup_mod = importlib.reload(backup_mod)
 
         daily_dir = tmp_path / "daily"
@@ -143,6 +174,7 @@ class TestBackupScript:
         import importlib
 
         import scripts.pg_backup as backup_mod
+
         backup_mod = importlib.reload(backup_mod)
 
         backup_mod.MONTHLY_DIR = tmp_path / "monthly"
@@ -159,6 +191,7 @@ class TestBackupScript:
         import importlib
 
         import scripts.pg_backup as backup_mod
+
         backup_mod = importlib.reload(backup_mod)
 
         backup_mod.MONTHLY_DIR = tmp_path / "monthly"
@@ -172,6 +205,7 @@ class TestBackupScript:
 # ═══════════════════════════════════════════════════
 # B6: 健康预检测试
 # ═══════════════════════════════════════════════════
+
 
 class TestHealthCheck:
     """B6: health_check.py 逻辑测试。"""
@@ -207,30 +241,31 @@ class TestHealthCheck:
         #   6. factor_nan.latest_factor_date
         td = date(2026, 3, 27)
         mock_cursor.fetchone.side_effect = [
-            (td,),       # data_fresh: prev trading day
-            (td,),       # data_fresh: max klines date
-            (td,),       # stock_status: max_status_date
-            (td,),       # stock_status: prev_trading_day (equal → no lag)
-            (5000,),     # stock_status: count
-            (td,),       # factor_nan: latest_factor_date
+            (td,),  # data_fresh: prev trading day
+            (td,),  # data_fresh: max klines date
+            (td,),  # stock_status: max_status_date
+            (td,),  # stock_status: prev_trading_day (equal → no lag)
+            (5000,),  # stock_status: count
+            (td,),  # factor_nan: latest_factor_date
         ]
         # factor_nan 用 fetchall 取 (factor_name, total, null_cnt). null_cnt=0 → pass
-        mock_cursor.fetchall.return_value = [
-            (name, 5000, 0) for name in core_factors
-        ]
+        mock_cursor.fetchall.return_value = [(name, 5000, 0) for name in core_factors]
 
         from scripts.health_check import run_health_check
-        with patch("scripts.health_check.check_redis", return_value=(True, "OK")), \
-             patch("scripts.health_check.check_celery", return_value=(True, "SKIP")), \
-             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")), \
-             patch(
-                 "scripts.health_check.check_qmt_connection",
-                 return_value=(True, "已连接, 总资产=0"),
-             ), \
-             patch(
-                 "scripts.health_check.check_config_drift",
-                 return_value=(True, "6 params aligned"),
-             ):
+
+        with (
+            patch("scripts.health_check.check_redis", return_value=(True, "OK")),
+            patch("scripts.health_check.check_celery", return_value=(True, "SKIP")),
+            patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")),
+            patch(
+                "scripts.health_check.check_qmt_connection",
+                return_value=(True, "已连接, 总资产=0"),
+            ),
+            patch(
+                "scripts.health_check.check_config_drift",
+                return_value=(True, "6 params aligned"),
+            ),
+        ):
             results = run_health_check(
                 trade_date=date(2026, 3, 28),
                 conn=mock_conn,
@@ -255,11 +290,14 @@ class TestHealthCheck:
         mock_cursor.execute.side_effect = Exception("connection refused")
 
         from scripts.health_check import run_health_check
-        with patch("scripts.health_check.check_redis", return_value=(True, "OK")), \
-             patch("scripts.health_check.check_celery", return_value=(True, "SKIP")), \
-             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")), \
-             patch("scripts.health_check.check_data_freshness", return_value=(True, "OK")), \
-             patch("scripts.health_check.check_factor_nan", return_value=(True, "OK")):
+
+        with (
+            patch("scripts.health_check.check_redis", return_value=(True, "OK")),
+            patch("scripts.health_check.check_celery", return_value=(True, "SKIP")),
+            patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")),
+            patch("scripts.health_check.check_data_freshness", return_value=(True, "OK")),
+            patch("scripts.health_check.check_factor_nan", return_value=(True, "OK")),
+        ):
             results = run_health_check(
                 trade_date=date(2026, 3, 28),
                 conn=mock_conn,
@@ -286,9 +324,12 @@ class TestHealthCheck:
         ]
 
         from scripts.health_check import run_health_check
-        with patch("scripts.health_check.check_redis", return_value=(False, "Connection refused")), \
-             patch("scripts.health_check.check_celery", return_value=(True, "SKIP")), \
-             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")):
+
+        with (
+            patch("scripts.health_check.check_redis", return_value=(False, "Connection refused")),
+            patch("scripts.health_check.check_celery", return_value=(True, "SKIP")),
+            patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")),
+        ):
             results = run_health_check(
                 trade_date=date(2026, 3, 28),
                 conn=mock_conn,
@@ -315,9 +356,12 @@ class TestHealthCheck:
         ]
 
         from scripts.health_check import run_health_check
-        with patch("scripts.health_check.check_redis", return_value=(True, "OK")), \
-             patch("scripts.health_check.check_celery", return_value=(True, "SKIP")), \
-             patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")):
+
+        with (
+            patch("scripts.health_check.check_redis", return_value=(True, "OK")),
+            patch("scripts.health_check.check_celery", return_value=(True, "SKIP")),
+            patch("scripts.health_check.check_disk_space", return_value=(True, "500GB可用")),
+        ):
             run_health_check(
                 trade_date=date(2026, 3, 28),
                 conn=mock_conn,
@@ -326,8 +370,7 @@ class TestHealthCheck:
 
         # 验证INSERT被调用
         insert_calls = [
-            c for c in mock_cursor.execute.call_args_list
-            if "INSERT INTO health_checks" in str(c)
+            c for c in mock_cursor.execute.call_args_list if "INSERT INTO health_checks" in str(c)
         ]
         assert len(insert_calls) == 1
         mock_conn.commit.assert_called_once()

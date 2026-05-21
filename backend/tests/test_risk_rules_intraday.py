@@ -7,6 +7,7 @@
   - QMTDisconnectRule connected/disconnected
   - RuleResult metrics schema + type (int vs float)
 """
+
 from __future__ import annotations
 
 import math
@@ -212,8 +213,11 @@ class TestIntradayRuleResultSchema:
         ctx = _make_context(portfolio_nav=900_000.0, prev_close_nav=1_000_000.0)
         result = rule.evaluate(ctx)[0]
         required = {
-            "drop_pct", "portfolio_nav", "prev_close_nav",
-            "threshold", "positions_count",
+            "drop_pct",
+            "portfolio_nav",
+            "prev_close_nav",
+            "threshold",
+            "positions_count",
         }
         assert required <= set(result.metrics.keys())
 

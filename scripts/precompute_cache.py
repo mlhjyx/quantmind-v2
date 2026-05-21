@@ -38,7 +38,8 @@ END_DATE = date(2026, 6, 30)  # 支持120d forward return
 
 def get_conn():
     return psycopg2.connect(
-        dbname="quantmind_v2", user="xin", password="quantmind", host="localhost"
+        dbname="quantmind_v2", user="xin",
+        password=os.environ.get("QM_DB_PASSWORD", "quantmind"), host="localhost"
     )
 
 
@@ -52,7 +53,8 @@ def export_profiler_shared(conn):
     close_df = pd.read_sql(
         "SELECT code, trade_date, close * adj_factor as adj_close "
         "FROM klines_daily WHERE trade_date BETWEEN %s AND %s AND volume > 0",
-        conn, params=(START_DATE, END_DATE),
+        conn,
+        params=(START_DATE, END_DATE),
     )
     close_pivot = close_df.pivot(
         index="trade_date", columns="code", values="adj_close"
@@ -66,7 +68,8 @@ def export_profiler_shared(conn):
     csi = pd.read_sql(
         "SELECT trade_date, close FROM index_daily "
         "WHERE index_code='000300.SH' AND trade_date BETWEEN %s AND %s",
-        conn, params=(START_DATE, END_DATE),
+        conn,
+        params=(START_DATE, END_DATE),
     )
     csi_close = csi.set_index("trade_date")["close"].sort_index().astype(float)
     csi_close.to_frame().to_parquet(f"{CACHE_DIR}/csi300_close.parquet")
@@ -75,8 +78,8 @@ def export_profiler_shared(conn):
     logger.info("计算 forward excess returns...")
     for h in HORIZONS:
         t1 = time.time()
-        entry = close_pivot.shift(-1)          # Buy at T+1 close
-        exit_p = close_pivot.shift(-(1 + h))   # Sell at T+1+h close (hold h days)
+        entry = close_pivot.shift(-1)  # Buy at T+1 close
+        exit_p = close_pivot.shift(-(1 + h))  # Sell at T+1+h close (hold h days)
         stock_ret = exit_p / entry - 1
         csi_entry = csi_close.shift(-1)
         csi_exit = csi_close.shift(-(1 + h))
@@ -85,7 +88,9 @@ def export_profiler_shared(conn):
         fwd_excess.to_parquet(f"{CACHE_DIR}/fwd_excess_{h}d.parquet")
         nonnull = int(fwd_excess.notna().sum().sum())
         meta[f"fwd_excess_{h}d"] = {"shape": list(fwd_excess.shape), "nonnull": nonnull}
-        logger.info("  fwd_excess_%dd: %s, %d非空 (%.1fs)", h, fwd_excess.shape, nonnull, time.time() - t1)
+        logger.info(
+            "  fwd_excess_%dd: %s, %d非空 (%.1fs)", h, fwd_excess.shape, nonnull, time.time() - t1
+        )
 
     # 4. CSI monthly
     csi_dt = csi_close.copy()
@@ -94,12 +99,12 @@ def export_profiler_shared(conn):
     csi_monthly.to_frame("monthly_ret").to_parquet(f"{CACHE_DIR}/csi_monthly.parquet")
 
     # 5. Industry map (SW2→SW1一级29组映射)
-    industry = pd.read_sql(
-        "SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn
+    industry = pd.read_sql("SELECT code, industry_sw1 FROM symbols WHERE market='astock'", conn)
+    l2_to_l1 = (
+        pd.read_sql("SELECT sw_l2_name, sw_l1_name FROM sw_industry_mapping", conn)
+        .set_index("sw_l2_name")["sw_l1_name"]
+        .to_dict()
     )
-    l2_to_l1 = pd.read_sql(
-        "SELECT sw_l2_name, sw_l1_name FROM sw_industry_mapping", conn
-    ).set_index("sw_l2_name")["sw_l1_name"].to_dict()
     industry["industry_sw1"] = industry["industry_sw1"].map(
         lambda x: l2_to_l1.get(x, "其他") if pd.notna(x) else "其他"
     )
@@ -124,7 +129,8 @@ def export_research_data(conn):
         df = pd.read_sql(
             "SELECT code, trade_date, factor_name, raw_value, neutral_value "
             "FROM factor_values WHERE factor_name = %s",
-            conn, params=(fname,),
+            conn,
+            params=(fname,),
         )
         all_chunks.append(df)
         if (i + 1) % 10 == 0:

@@ -11,6 +11,7 @@ scope (mock-only sustained, e2e live + bootstrap wire defer sub-PR 7b.3):
 
 沿用 sub-PR 1-6 + 7a + 7b.1 v2 体例 — mock LiteLLM router + yaml load + JSON parse.
 """
+
 from __future__ import annotations
 
 import os
@@ -298,9 +299,7 @@ class TestParseResponse:
         result = service.classify(sample_news_item)
         assert result.urgency == urgency
 
-    @pytest.mark.parametrize(
-        "confidence", ["0", "0.0", "0.5", "1", "1.0"]
-    )
+    @pytest.mark.parametrize("confidence", ["0", "0.0", "0.5", "1", "1.0"])
     def test_confidence_boundary_accepted(
         self,
         service: NewsClassifierService,
@@ -321,9 +320,7 @@ class TestParseResponse:
         result = service.classify(sample_news_item)
         assert Decimal("0") <= result.confidence <= Decimal("1")
 
-    @pytest.mark.parametrize(
-        "sentiment", ["-1", "-1.0", "0", "0.5", "1", "1.0"]
-    )
+    @pytest.mark.parametrize("sentiment", ["-1", "-1.0", "0", "0.5", "1", "1.0"])
     def test_sentiment_boundary_accepted(
         self,
         service: NewsClassifierService,
@@ -352,10 +349,10 @@ class TestParseResponse:
         """V4-Flash 真生产经常 wrap ```json ... ``` markdown fence."""
         mock_router.completion.return_value = LLMResponse(
             content=(
-                '```json\n'
+                "```json\n"
                 '{"sentiment_score": -0.5, "category": "利空", '
                 '"urgency": "P1", "confidence": 0.9, "profile": "ultra_short"}\n'
-                '```'
+                "```"
             ),
             model="deepseek-v4-flash",
             cost_usd=Decimal("0.002"),
@@ -521,9 +518,7 @@ class TestPersist:
             news_id=None,
         )
 
-    def test_persist_raises_when_news_id_missing(
-        self, service: NewsClassifierService
-    ) -> None:
+    def test_persist_raises_when_news_id_missing(self, service: NewsClassifierService) -> None:
         """news_id=None pre-persist 真 fail-loud (反 silent skip row corrupt 铁律 33)."""
         result = self._make_result()
         mock_conn = MagicMock()
@@ -531,9 +526,7 @@ class TestPersist:
             service.persist(result, conn=mock_conn)
         mock_conn.cursor.assert_not_called()  # 反 SQL 已 emit
 
-    def test_persist_uses_explicit_news_id_kwarg(
-        self, service: NewsClassifierService
-    ) -> None:
+    def test_persist_uses_explicit_news_id_kwarg(self, service: NewsClassifierService) -> None:
         """news_id 真 kwarg → 走 INSERT ... VALUES (news_id=given, ...)."""
         result = self._make_result()
         mock_cursor = MagicMock()
@@ -558,9 +551,7 @@ class TestPersist:
         assert params[7] == "v1"  # classifier_prompt_version
         assert params[8] == Decimal("0.0015")  # classifier_cost
 
-    def test_persist_falls_back_to_result_news_id(
-        self, service: NewsClassifierService
-    ) -> None:
+    def test_persist_falls_back_to_result_news_id(self, service: NewsClassifierService) -> None:
         """news_id kwarg 真 None → 走 result.news_id (caller pre-填 news_id 真模式)."""
         result = ClassificationResult(
             sentiment_score=Decimal("0"),
@@ -583,9 +574,7 @@ class TestPersist:
         assert params[0] == 99999
         assert params[8] is None  # classifier_cost NULL = Ollama fallback
 
-    def test_persist_does_not_commit(
-        self, service: NewsClassifierService
-    ) -> None:
+    def test_persist_does_not_commit(self, service: NewsClassifierService) -> None:
         """铁律 32 Service 不 commit — caller 真事务边界管理者."""
         result = self._make_result()
         mock_cursor = MagicMock()
@@ -611,6 +600,7 @@ class TestBootstrap:
             get_news_classifier,
             reset_news_classifier,
         )
+
         reset_news_classifier()
         try:
             c1 = get_news_classifier(router=mock_router)
@@ -619,14 +609,13 @@ class TestBootstrap:
         finally:
             reset_news_classifier()
 
-    def test_factory_accepts_pre_built_router(
-        self, mock_router: MagicMock
-    ) -> None:
+    def test_factory_accepts_pre_built_router(self, mock_router: MagicMock) -> None:
         from backend.app.services.news import (
             NewsClassifierService,
             get_news_classifier,
             reset_news_classifier,
         )
+
         reset_news_classifier()
         try:
             classifier = get_news_classifier(router=mock_router)
@@ -640,6 +629,7 @@ class TestBootstrap:
             get_news_classifier,
             reset_news_classifier,
         )
+
         reset_news_classifier()
         c1 = get_news_classifier(router=mock_router)
         reset_news_classifier()
@@ -664,9 +654,7 @@ class TestE2ELive:
     红线 sustained: LIVE_TRADING_DISABLED=true / EXECUTION_MODE=paper / minimal payload.
     """
 
-    def test_e2e_classify_real_v4_flash_minimal_payload(
-        self, sample_news_item: NewsItem
-    ) -> None:
+    def test_e2e_classify_real_v4_flash_minimal_payload(self, sample_news_item: NewsItem) -> None:
         """real DeepSeek V4-Flash API call → ClassificationResult (反 quota burn)."""
         from backend.app.services.news import get_news_classifier, reset_news_classifier
         from backend.qm_platform.llm import reset_llm_router
@@ -675,9 +663,7 @@ class TestE2ELive:
         reset_news_classifier()
         try:
             classifier = get_news_classifier()  # conn_factory=None 走降级 mode
-            result = classifier.classify(
-                sample_news_item, decision_id="e2e-live-7b.3-v2-test"
-            )
+            result = classifier.classify(sample_news_item, decision_id="e2e-live-7b.3-v2-test")
 
             assert isinstance(result, ClassificationResult)
             assert result.category in VALID_CATEGORIES
@@ -693,9 +679,7 @@ class TestE2ELive:
             reset_llm_router()
             reset_news_classifier()
 
-    def test_e2e_classify_then_persist_full_path(
-        self, sample_news_item: NewsItem
-    ) -> None:
+    def test_e2e_classify_then_persist_full_path(self, sample_news_item: NewsItem) -> None:
         """real V4-Flash → ClassificationResult → persist UPSERT SQL emit (mock conn).
 
         反 真 DB 接触 (test infrastructure decoupling sustained sub-PR 1-6 体例),

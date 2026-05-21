@@ -23,6 +23,7 @@ trigger 条件 (event-driven):
     - 改 cb_state live 真值
     - DELETE position_snapshot 4-28 stale 19 行
 """
+
 from __future__ import annotations
 
 import os
@@ -41,9 +42,7 @@ def _connect_db():
     import psycopg2
 
     pwd = os.environ.get("PGPASSWORD") or "quantmind"
-    return psycopg2.connect(
-        host="localhost", user="xin", password=pwd, dbname="quantmind_v2"
-    )
+    return psycopg2.connect(host="localhost", user="xin", password=pwd, dbname="quantmind_v2")
 
 
 def _check_t0_15_ll081_v2() -> tuple[bool, str]:
@@ -248,7 +247,9 @@ def main() -> int:
         for name in failed:
             print(f"     - {name}")
         print("\n  PT 重启**禁止** — user 必先修上列项目.")
-        print("  ℹ️  另 2 项 (paper-mode 5d dry-run + .env paper→live 显式授权) 是手工 user 决议项, 不在本脚本.")
+        print(
+            "  ℹ️  另 2 项 (paper-mode 5d dry-run + .env paper→live 显式授权) 是手工 user 决议项, 不在本脚本."
+        )
         print("=" * 80)
         return 1
 

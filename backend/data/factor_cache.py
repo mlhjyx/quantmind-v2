@@ -205,7 +205,9 @@ class FactorCache:
         # 增量加载: cache_max+1 → db_max
         start_date = cache_max + pd.Timedelta(days=1) if cache_max else date(2014, 1, 1)
         if hasattr(start_date, "date"):
-            start_date = start_date.date() if callable(getattr(start_date, "date", None)) else start_date
+            start_date = (
+                start_date.date() if callable(getattr(start_date, "date", None)) else start_date
+            )
 
         # 用 build 的内部逻辑构建需要的年份
         if isinstance(start_date, (date, datetime)):

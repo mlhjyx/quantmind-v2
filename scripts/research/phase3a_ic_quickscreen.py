@@ -28,30 +28,53 @@ DB_CONN = "dbname=quantmind_v2 user=xin password=quantmind host=localhost"
 
 # 已在CORE/PASS池中的因子 — 不需要重新筛
 KNOWN_FACTORS = {
-    "turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm",
-    "amihud_20", "reversal_20", "RSQR_20", "QTLU_20",
-    "IMAX_20", "IMIN_20", "CORD_20", "RESI_20",
-    "a158_cord30", "a158_corr5", "a158_rank5", "a158_std60",
-    "a158_vma5", "a158_vstd30", "a158_vsump5", "a158_vsump60",
+    "turnover_mean_20",
+    "volatility_20",
+    "bp_ratio",
+    "dv_ttm",
+    "amihud_20",
+    "reversal_20",
+    "RSQR_20",
+    "QTLU_20",
+    "IMAX_20",
+    "IMIN_20",
+    "CORD_20",
+    "RESI_20",
+    "a158_cord30",
+    "a158_corr5",
+    "a158_rank5",
+    "a158_std60",
+    "a158_vma5",
+    "a158_vstd30",
+    "a158_vsump5",
+    "a158_vsump60",
 }
 
 
 def load_forward_returns(conn, start_date: date, end_date: date) -> pd.DataFrame:
     """加载20日前瞻超额收益。"""
     print("  Loading price data for forward returns...")
-    price = pd.read_sql("""
+    price = pd.read_sql(
+        """
         SELECT code, trade_date, close FROM klines_daily
         WHERE trade_date >= %s AND trade_date <= %s AND volume > 0
         ORDER BY code, trade_date
-    """, conn, params=(start_date, end_date))
+    """,
+        conn,
+        params=(start_date, end_date),
+    )
     price["trade_date"] = pd.to_datetime(price["trade_date"])
 
     # CSI300 benchmark
-    bench = pd.read_sql("""
+    bench = pd.read_sql(
+        """
         SELECT trade_date, close FROM index_daily
         WHERE index_code = '000300.SH' AND trade_date >= %s AND trade_date <= %s
         ORDER BY trade_date
-    """, conn, params=(start_date, end_date))
+    """,
+        conn,
+        params=(start_date, end_date),
+    )
     bench["trade_date"] = pd.to_datetime(bench["trade_date"])
     bench = bench.set_index("trade_date")["close"]
 
@@ -78,7 +101,13 @@ def compute_ic_for_factor(factor_df: pd.DataFrame, fwd_df: pd.DataFrame) -> dict
     """
     merged = pd.merge(factor_df, fwd_df, on=["code", "trade_date"], how="inner")
     if len(merged) < 1000:
-        return {"ic_mean": np.nan, "ic_std": np.nan, "ic_ir": np.nan, "t_stat": np.nan, "n_obs": len(merged)}
+        return {
+            "ic_mean": np.nan,
+            "ic_std": np.nan,
+            "ic_ir": np.nan,
+            "t_stat": np.nan,
+            "n_obs": len(merged),
+        }
 
     # 按日期计算截面IC
     ic_list = []
@@ -90,7 +119,13 @@ def compute_ic_for_factor(factor_df: pd.DataFrame, fwd_df: pd.DataFrame) -> dict
             ic_list.append(ic)
 
     if len(ic_list) < 10:
-        return {"ic_mean": np.nan, "ic_std": np.nan, "ic_ir": np.nan, "t_stat": np.nan, "n_dates": len(ic_list)}
+        return {
+            "ic_mean": np.nan,
+            "ic_std": np.nan,
+            "ic_ir": np.nan,
+            "t_stat": np.nan,
+            "n_dates": len(ic_list),
+        }
 
     ic_arr = np.array(ic_list)
     ic_mean = ic_arr.mean()
@@ -109,7 +144,9 @@ def compute_ic_for_factor(factor_df: pd.DataFrame, fwd_df: pd.DataFrame) -> dict
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 3A IC Quick-Screen")
-    parser.add_argument("--all", action="store_true", help="Screen ALL factors including known ones")
+    parser.add_argument(
+        "--all", action="store_true", help="Screen ALL factors including known ones"
+    )
     parser.add_argument("--start", type=str, default="2023-01-01", help="IC计算起始日")
     parser.add_argument("--end", type=str, default="2026-04-01", help="IC计算结束日")
     parser.add_argument("--sample-dates", type=int, default=20, help="每N个交易日采样一次(加速)")
@@ -144,7 +181,7 @@ def main():
 
     # Step 3: 采样交易日(加速)
     all_dates = sorted(fwd_df["trade_date"].unique())
-    sampled_dates = all_dates[::args.sample_dates]
+    sampled_dates = all_dates[:: args.sample_dates]
     fwd_df = fwd_df[fwd_df["trade_date"].isin(sampled_dates)]
     print(f"  Sampled dates: {len(sampled_dates)} (from {len(all_dates)})")
 
@@ -155,13 +192,17 @@ def main():
         try:
             # 加载因子数据（只取采样日期）
             dates_str = ",".join(f"'{d.strftime('%Y-%m-%d')}'" for d in sampled_dates)
-            factor_df = pd.read_sql(f"""
+            factor_df = pd.read_sql(
+                f"""
                 SELECT code, trade_date, raw_value
                 FROM factor_values
                 WHERE factor_name = %s
                   AND trade_date IN ({dates_str})
                   AND raw_value IS NOT NULL
-            """, conn, params=(fname,))
+            """,
+                conn,
+                params=(fname,),
+            )
 
             if factor_df.empty:
                 results.append({"factor_name": fname, "ic_mean": np.nan, "note": "no data"})
@@ -179,14 +220,20 @@ def main():
             results.append(ic_result)
 
             elapsed = time.time() - t0
-            ic_str = f"IC={ic_result['ic_mean']:+.4f}" if not np.isnan(ic_result.get("ic_mean", np.nan)) else "IC=N/A"
+            ic_str = (
+                f"IC={ic_result['ic_mean']:+.4f}"
+                if not np.isnan(ic_result.get("ic_mean", np.nan))
+                else "IC=N/A"
+            )
             if (i + 1) % 10 == 0 or i == 0:
-                print(f"  [{i+1:>3}/{len(factors_to_screen)}] {fname:>15s}: {ic_str} ({elapsed:.1f}s)")
+                print(
+                    f"  [{i + 1:>3}/{len(factors_to_screen)}] {fname:>15s}: {ic_str} ({elapsed:.1f}s)"
+                )
 
         except Exception as e:
             results.append({"factor_name": fname, "ic_mean": np.nan, "note": str(e)[:50]})
             if (i + 1) % 10 == 0:
-                print(f"  [{i+1:>3}/{len(factors_to_screen)}] {fname:>15s}: ERROR - {e}")
+                print(f"  [{i + 1:>3}/{len(factors_to_screen)}] {fname:>15s}: ERROR - {e}")
 
     # Step 5: 汇总
     df = pd.DataFrame(results)
@@ -210,9 +257,11 @@ def main():
 
     print("\n── Top 30 by |IC| ──")
     print(f"  {'Factor':>25s} | {'IC_mean':>8s} | {'IC_IR':>7s} | {'t_stat':>7s} | {'n_dates':>7s}")
-    print(f"  {'-'*25}-+-{'-'*8}-+-{'-'*7}-+-{'-'*7}-+-{'-'*7}")
+    print(f"  {'-' * 25}-+-{'-' * 8}-+-{'-' * 7}-+-{'-' * 7}-+-{'-' * 7}")
     for _, r in valid_df.head(30).iterrows():
-        print(f"  {r['factor_name']:>25s} | {r['ic_mean']:>+8.4f} | {r.get('ic_ir', 0):>7.3f} | {r.get('t_stat', 0):>7.2f} | {r.get('n_dates', 0):>7.0f}")
+        print(
+            f"  {r['factor_name']:>25s} | {r['ic_mean']:>+8.4f} | {r.get('ic_ir', 0):>7.3f} | {r.get('t_stat', 0):>7.2f} | {r.get('n_dates', 0):>7.0f}"
+        )
 
     # t > 2.5 count (Harvey Liu Zhu threshold)
     sig_count = len(valid_df[valid_df["t_stat"].abs() > 2.5])
@@ -220,15 +269,30 @@ def main():
 
     # 分类统计
     print("\n── 分类统计 ──")
-    for prefix, label in [("K", "KBAR"), ("ROC", "ROC"), ("MA", "MA"), ("STD", "STD"),
-                           ("CORR", "CORR"), ("CORD", "CORD"), ("BETA", "BETA"),
-                           ("RSQR", "RSQR"), ("VMA", "VMA"), ("QTLU", "QTLU"),
-                           ("SUMP", "SUMP"), ("CNTP", "CNTP"), ("MIN", "MIN"),
-                           ("MAX", "MAX"), ("IMAX", "IMAX"), ("IMIN", "IMIN")]:
+    for prefix, label in [
+        ("K", "KBAR"),
+        ("ROC", "ROC"),
+        ("MA", "MA"),
+        ("STD", "STD"),
+        ("CORR", "CORR"),
+        ("CORD", "CORD"),
+        ("BETA", "BETA"),
+        ("RSQR", "RSQR"),
+        ("VMA", "VMA"),
+        ("QTLU", "QTLU"),
+        ("SUMP", "SUMP"),
+        ("CNTP", "CNTP"),
+        ("MIN", "MIN"),
+        ("MAX", "MAX"),
+        ("IMAX", "IMAX"),
+        ("IMIN", "IMIN"),
+    ]:
         sub = valid_df[valid_df["factor_name"].str.startswith(prefix)]
         if not sub.empty:
             best = sub.iloc[0]
-            print(f"  {label:>6s}: {len(sub)} factors, best={best['factor_name']} IC={best['ic_mean']:+.4f}")
+            print(
+                f"  {label:>6s}: {len(sub)} factors, best={best['factor_name']} IC={best['ic_mean']:+.4f}"
+            )
 
     print(f"\n  Output: {out_path}")
     conn.close()

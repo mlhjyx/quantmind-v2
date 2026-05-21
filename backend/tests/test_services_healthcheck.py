@@ -58,6 +58,7 @@ from services_healthcheck import (  # noqa: E402
 # _to_cst_display — 铁律 41 时区展示层 (Session 36 末 user 反馈)
 # ═════════════════════════════════════════════════════════════════
 
+
 class TestToCstDisplay:
     """_to_cst_display: UTC ISO → Asia/Shanghai 展示格式 (LL-074 钉钉告警友好化)."""
 
@@ -96,6 +97,7 @@ class TestToCstDisplay:
         """invalid ISO format → 返原始字符串 (fallback 不抛, 防 alert broken)."""
         garbage = "not-an-iso-string"
         assert _to_cst_display(garbage) == garbage
+
 
 # ═════════════════════════════════════════════════════════════════
 # query_service_state — sc query stdout parse

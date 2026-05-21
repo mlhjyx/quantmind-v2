@@ -15,6 +15,7 @@
 实施时机:
   - MVP 4.3 CI/CD Framework (Wave 4)
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

@@ -38,8 +38,11 @@ DB_URI = "postgresql://xin:quantmind@localhost:5432/quantmind_v2"
 # 基线5因子
 BASELINE_FACTORS = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20", "bp_ratio"]
 BASELINE_DIRECTIONS = {
-    "turnover_mean_20": -1, "volatility_20": -1, "reversal_20": +1,
-    "amihud_20": +1, "bp_ratio": +1,
+    "turnover_mean_20": -1,
+    "volatility_20": -1,
+    "reversal_20": +1,
+    "amihud_20": +1,
+    "bp_ratio": +1,
 }
 
 # vwap_bias_1d
@@ -101,8 +104,8 @@ def calc_metrics(result) -> dict:
     rets = result.daily_returns
     n_years = len(rets) / 252
     annual_ret = (nav.iloc[-1] / nav.iloc[0]) ** (1 / n_years) - 1 if n_years > 0 else 0
-    sharpe = rets.mean() / rets.std() * (252 ** 0.5) if rets.std() > 0 else 0
-    drawdown = (nav / nav.cummax() - 1)
+    sharpe = rets.mean() / rets.std() * (252**0.5) if rets.std() > 0 else 0
+    drawdown = nav / nav.cummax() - 1
     mdd = drawdown.min()
     calmar = annual_ret / abs(mdd) if abs(mdd) > 1e-6 else 0
     total_trades = len(result.trades)
@@ -158,7 +161,11 @@ def main():
     )
     fdf_baseline = factor_df[factor_df["factor_name"].isin(BASELINE_FACTORS)].copy()
     result_a = run_hybrid_backtest(
-        fdf_baseline, BASELINE_DIRECTIONS, price_data, config_a, benchmark,
+        fdf_baseline,
+        BASELINE_DIRECTIONS,
+        price_data,
+        config_a,
+        benchmark,
     )
     print_result("A) 5-factor Monthly Top-20 (Baseline)", result_a)
 
@@ -173,7 +180,11 @@ def main():
     )
     fdf_vwap = factor_df[factor_df["factor_name"] == VWAP_FACTOR].copy()
     result_b = run_hybrid_backtest(
-        fdf_vwap, VWAP_DIRECTION, price_data, config_b, benchmark,
+        fdf_vwap,
+        VWAP_DIRECTION,
+        price_data,
+        config_b,
+        benchmark,
     )
     print_result("B) vwap_bias_1d Weekly Top-15", result_b)
 
@@ -187,7 +198,11 @@ def main():
         pms=PMSConfig(enabled=False),
     )
     result_c = run_hybrid_backtest(
-        fdf_vwap, VWAP_DIRECTION, price_data, config_c, benchmark,
+        fdf_vwap,
+        VWAP_DIRECTION,
+        price_data,
+        config_c,
+        benchmark,
     )
     print_result("C) vwap_bias_1d Monthly Top-15 (Control)", result_c)
 
@@ -217,7 +232,9 @@ def main():
     sharpe_c = calc_metrics(result_c)["sharpe_ratio"]
     print(f"\n  Weekly vs Monthly Sharpe diff: {sharpe_b - sharpe_c:+.2f}")
     if sharpe_b > sharpe_c:
-        print("  >>> Weekly rebalance captures vwap_bias_1d signal better (as expected from IC decay)")
+        print(
+            "  >>> Weekly rebalance captures vwap_bias_1d signal better (as expected from IC decay)"
+        )
     else:
         print("  >>> Monthly performs better — weekly turnover cost exceeds signal gain")
 

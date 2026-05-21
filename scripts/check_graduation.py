@@ -66,6 +66,7 @@ def get_strategy_id(conn, name: str = "v1.1_equal_weight") -> str | None:
         return str(row[0])
     # fallback: 尝试从.env读取
     from app.config import settings
+
     if settings.PAPER_STRATEGY_ID:
         return settings.PAPER_STRATEGY_ID
     return None
@@ -98,7 +99,9 @@ def assess_graduation(conn, strategy_id: str, verbose: bool = False) -> dict:
     sharpe = None
     if len(returns) >= 5:
         mean_r = sum(returns) / len(returns)
-        var_r = sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1) if len(returns) > 1 else 0
+        var_r = (
+            sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1) if len(returns) > 1 else 0
+        )
         std_r = math.sqrt(var_r) if var_r > 0 else 0
         sharpe = (mean_r / std_r * math.sqrt(252)) if std_r > 0 else 0
 
@@ -187,8 +190,8 @@ def assess_graduation(conn, strategy_id: str, verbose: bool = False) -> dict:
     avg_gap_hours = None
     if gap_rows:
         # 查找signal→execute对, 计算gap
-        signals = [(r[1], r[2]) for r in gap_rows if r[0] == 'signal_phase']
-        executes = [(r[1], r[2]) for r in gap_rows if r[0] == 'execute_phase']
+        signals = [(r[1], r[2]) for r in gap_rows if r[0] == "signal_phase"]
+        executes = [(r[1], r[2]) for r in gap_rows if r[0] == "execute_phase"]
         gaps = []
         for _sig_start, sig_end in signals:
             if sig_end is None:
@@ -209,7 +212,9 @@ def assess_graduation(conn, strategy_id: str, verbose: bool = False) -> dict:
     if len(returns) >= 7:
         recent = returns[-7:]
         mean_r7 = sum(recent) / len(recent)
-        var_r7 = sum((r - mean_r7) ** 2 for r in recent) / (len(recent) - 1) if len(recent) > 1 else 0
+        var_r7 = (
+            sum((r - mean_r7) ** 2 for r in recent) / (len(recent) - 1) if len(recent) > 1 else 0
+        )
         std_r7 = math.sqrt(var_r7) if var_r7 > 0 else 0
         recent_sharpe = (mean_r7 / std_r7 * math.sqrt(252)) if std_r7 > 0 else 0
 
@@ -301,7 +306,9 @@ def print_report(results: dict, strategy_id: str) -> None:
     # 6. fill_rate
     if r["fill_rate"] is not None:
         fill_pass = r["fill_rate"] >= FILL_RATE_MIN
-        val = f"{r['fill_rate']:.1f}% / ≥{FILL_RATE_MIN}%  ({r['filled_orders']}/{r['total_orders']})"
+        val = (
+            f"{r['fill_rate']:.1f}% / ≥{FILL_RATE_MIN}%  ({r['filled_orders']}/{r['total_orders']})"
+        )
     else:
         fill_pass = None
         val = "无交易数据"
@@ -347,9 +354,11 @@ def print_report(results: dict, strategy_id: str) -> None:
     pending_count = sum(1 for p in all_results if p is None)
 
     print(f"\n  {'─' * 70}")
-    print(f"  {_BOLD}汇总: {_GREEN}{passed_count} PASS{_RESET}  "
-          f"{_RED}{failed_count} FAIL{_RESET}  "
-          f"{_YELLOW}{pending_count} PENDING{_RESET}")
+    print(
+        f"  {_BOLD}汇总: {_GREEN}{passed_count} PASS{_RESET}  "
+        f"{_RED}{failed_count} FAIL{_RESET}  "
+        f"{_YELLOW}{pending_count} PENDING{_RESET}"
+    )
 
     if failed_count == 0 and pending_count == 0:
         print(f"\n  {_BOLD}{_GREEN}>>> 全部达标，可以转实盘！ <<<{_RESET}")
@@ -369,11 +378,13 @@ def print_report(results: dict, strategy_id: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Paper Trading毕业评估CLI")
     parser.add_argument(
-        "--strategy-name", default="v1.1_equal_weight",
+        "--strategy-name",
+        default="v1.1_equal_weight",
         help="策略名称 (default: v1.1_equal_weight)",
     )
     parser.add_argument(
-        "--strategy-id", default=None,
+        "--strategy-id",
+        default=None,
         help="直接指定策略UUID (优先于--strategy-name)",
     )
     parser.add_argument("--verbose", "-v", action="store_true")

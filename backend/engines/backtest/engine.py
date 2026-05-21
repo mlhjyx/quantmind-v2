@@ -35,9 +35,9 @@ class SimpleBacktester:
     def __init__(self, config: BacktestConfig):
         self.config = config
         self.pending_orders: list[PendingOrder] = []
-        self.max_retry_orders: int = 3         # 单次调仓最多补3只
-        self.retry_weight_cap: float = 0.10    # 单只补单上限10%
-        self.min_days_to_next_rebal: int = 5   # 距下次调仓<5天不补
+        self.max_retry_orders: int = 3  # 单次调仓最多补3只
+        self.retry_weight_cap: float = 0.10  # 单只补单上限10%
+        self.min_days_to_next_rebal: int = 5  # 距下次调仓<5天不补
 
     def run(
         self,
@@ -74,6 +74,7 @@ class SimpleBacktester:
 
         # P17: 单位标准化(千元→元, 万元→元) — 在索引构建前完成
         from engines.datafeed import DataFeed as _DataFeed
+
         _feed = _DataFeed(price_data)
         _feed.standardize_units()
         price_data = _feed.df
@@ -92,7 +93,9 @@ class SimpleBacktester:
 
         class _PriceIdx:
             """price_idx.get((code, date))兼容层，底层用dict→iloc查询。"""
+
             __slots__ = ()
+
             def get(self, key, default=None):
                 idx = _price_dict.get(key)
                 if idx is not None:
@@ -158,7 +161,11 @@ class SimpleBacktester:
                                 broker.cash += proceeds
                                 logger.warning(
                                     "[%s] %s 退市清算: %d股 @ %.2f = ¥%.0f",
-                                    td, code, shares, last_price, proceeds,
+                                    td,
+                                    code,
+                                    shares,
+                                    last_price,
+                                    proceeds,
                                 )
                             _delist_count.pop(code, None)
                     # 记录最后已知价格
@@ -197,8 +204,7 @@ class SimpleBacktester:
             # ===== 处理封板补单 =====
             if self.pending_orders:
                 self._process_pending_orders(
-                    broker, td, price_idx, daily_close.get(td, {}),
-                    all_dates, exec_map, trades
+                    broker, td, price_idx, daily_close.get(td, {}), all_dates, exec_map, trades
                 )
 
             # ===== PMS: 日频利润保护检查(用adj_close避免除权日false trigger) =====
@@ -223,20 +229,29 @@ class SimpleBacktester:
 
                     # 计算PnL和从峰值回撤
                     pnl = (adj - state["buy_price"]) / state["buy_price"]
-                    dd = (adj - state["max_price"]) / state["max_price"] if state["max_price"] > 0 else 0
+                    dd = (
+                        (adj - state["max_price"]) / state["max_price"]
+                        if state["max_price"] > 0
+                        else 0
+                    )
 
                     # 阶梯式检查(tiers按pnl从高到低)
                     triggered = False
                     for pnl_thresh, trail_stop in self.config.pms.tiers:
                         if pnl > pnl_thresh and dd < -trail_stop:
                             triggered = True
-                            pms_events.append({
-                                "date": td, "code": code,
-                                "pnl": pnl, "dd": dd,
-                                "tier": f">{pnl_thresh:.0%}/>{trail_stop:.0%}",
-                                "buy_price": state["buy_price"],
-                                "close": close, "max_price": state["max_price"],
-                            })
+                            pms_events.append(
+                                {
+                                    "date": td,
+                                    "code": code,
+                                    "pnl": pnl,
+                                    "dd": dd,
+                                    "tier": f">{pnl_thresh:.0%}/>{trail_stop:.0%}",
+                                    "buy_price": state["buy_price"],
+                                    "close": close,
+                                    "max_price": state["max_price"],
+                                }
+                            )
                             break
 
                     if triggered:
@@ -264,8 +279,13 @@ class SimpleBacktester:
 
                 # 先卖后买（封板记录为pending）
                 day_fills, new_pending = self._rebalance_with_pending(
-                    broker, target, portfolio_value, td, price_idx,
-                    daily_close.get(td, {}), signal_date
+                    broker,
+                    target,
+                    portfolio_value,
+                    td,
+                    price_idx,
+                    daily_close.get(td, {}),
+                    signal_date,
                 )
                 trades.extend(day_fills)
                 self.pending_orders.extend(new_pending)
@@ -296,10 +316,13 @@ class SimpleBacktester:
                 if pv > 0:
                     new_weights[code] = shares * p / pv
 
-            turnover = sum(
-                abs(new_weights.get(c, 0) - prev_weights.get(c, 0))
-                for c in set(new_weights) | set(prev_weights)
-            ) / 2
+            turnover = (
+                sum(
+                    abs(new_weights.get(c, 0) - prev_weights.get(c, 0))
+                    for c in set(new_weights) | set(prev_weights)
+                )
+                / 2
+            )
             if turnover > 0.001:  # 忽略浮点噪声
                 turnover_dates[td] = turnover
             prev_weights = new_weights
@@ -349,8 +372,13 @@ class SimpleBacktester:
     ) -> list[Fill]:
         """执行调仓: 先卖后买（向后兼容，不记录pending）。"""
         fills, _ = self._rebalance_with_pending(
-            broker, target, portfolio_value, exec_date, price_idx,
-            today_close, exec_date,
+            broker,
+            target,
+            portfolio_value,
+            exec_date,
+            price_idx,
+            today_close,
+            exec_date,
         )
         return fills
 
@@ -378,7 +406,9 @@ class SimpleBacktester:
             close_price = today_close.get(code, 0)
             if close_price > 0:
                 target_value = portfolio_value * weight
-                shares = int(target_value / close_price / self.config.lot_size) * self.config.lot_size
+                shares = (
+                    int(target_value / close_price / self.config.lot_size) * self.config.lot_size
+                )
                 if shares > 0:
                     target_shares[code] = shares
 
@@ -422,13 +452,15 @@ class SimpleBacktester:
             if not broker.can_trade(code, "buy", row):
                 # ===== 封板: 记录为pending_order =====
                 logger.debug(f"[{exec_date}] {code} 买入封板，加入补单队列")
-                new_pending.append(PendingOrder(
-                    code=code,
-                    signal_date=signal_date,
-                    exec_date=exec_date,
-                    target_weight=weight,
-                    original_score=buy_amount,  # 用金额排序（等权下weight相同）
-                ))
+                new_pending.append(
+                    PendingOrder(
+                        code=code,
+                        signal_date=signal_date,
+                        exec_date=exec_date,
+                        target_weight=weight,
+                        original_score=buy_amount,  # 用金额排序（等权下weight相同）
+                    )
+                )
                 continue
 
             fill = broker.execute_buy(code, min(buy_amount, broker.cash), row)
@@ -481,7 +513,9 @@ class SimpleBacktester:
             next_rebal_dates = [d for d in exec_map if d > today]
             if next_rebal_dates:
                 next_rebal = min(next_rebal_dates)
-                next_rebal_idx = all_dates.index(next_rebal) if next_rebal in all_dates else len(all_dates)
+                next_rebal_idx = (
+                    all_dates.index(next_rebal) if next_rebal in all_dates else len(all_dates)
+                )
                 days_to_next = next_rebal_idx - today_idx
                 if days_to_next <= self.min_days_to_next_rebal:
                     po.status = "cancelled"
@@ -492,10 +526,10 @@ class SimpleBacktester:
 
         # 按original_score降序，最多补3只
         actionable.sort(key=lambda x: -x.original_score)
-        to_execute = actionable[:self.max_retry_orders]
+        to_execute = actionable[: self.max_retry_orders]
 
         # 超出数量上限的标记取消
-        for po in actionable[self.max_retry_orders:]:
+        for po in actionable[self.max_retry_orders :]:
             po.status = "cancelled"
             po.cancel_reason = "exceeded_max_retry_count"
 
@@ -541,8 +575,7 @@ class SimpleBacktester:
         stats.filled_count = sum(1 for po in self.pending_orders if po.status == "filled")
         stats.cancelled_count = sum(1 for po in self.pending_orders if po.status == "cancelled")
         stats.fill_rate = (
-            stats.filled_count / stats.total_pending
-            if stats.total_pending > 0 else 0.0
+            stats.filled_count / stats.total_pending if stats.total_pending > 0 else 0.0
         )
 
         # cancel_reasons统计
@@ -565,8 +598,6 @@ class SimpleBacktester:
                     if pre_close > 0 and open_price > 0:
                         retry_returns.append(open_price / pre_close - 1)
 
-        stats.avg_retry_return_1d = (
-            float(np.mean(retry_returns)) if retry_returns else 0.0
-        )
+        stats.avg_retry_return_1d = float(np.mean(retry_returns)) if retry_returns else 0.0
 
         return stats

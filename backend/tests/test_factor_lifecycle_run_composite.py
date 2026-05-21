@@ -10,6 +10,7 @@ Session 43 (2026-04-28). 验证 run() 主路径 composite_mode 接 wire-up 正�
   - result dict 含 composite_mode + composite_synthesized 字段
   - main() CLI 默认 composite-mode=g1-only (backward-compat 防破)
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -79,10 +80,7 @@ def _mk_conn(factor_rows: list, tail_rows: list):
 
 def _mk_report(failed_gates: list[str]):
     all_gates = ["G1_ic_significance", "G10_hypothesis"]
-    results = [
-        SimpleNamespace(gate_name=g, passed=(g not in failed_gates))
-        for g in all_gates
-    ]
+    results = [SimpleNamespace(gate_name=g, passed=(g not in failed_gates)) for g in all_gates]
     return SimpleNamespace(
         gate_results=results,
         decision=SimpleNamespace(value=("reject" if failed_gates else "accept")),
@@ -102,9 +100,11 @@ def test_run_composite_off_skips_pipeline_evaluation(flm):
     ]
     conn = _mk_conn(factor_rows, tail_rows)
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(flm, "_evaluate_pipeline_report") as eval_mock, \
-         patch.object(flm, "_publish_event"):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(flm, "_evaluate_pipeline_report") as eval_mock,
+        patch.object(flm, "_publish_event"),
+    ):
         result = flm.run(
             dry_run=True,
             factor_filter="f1",
@@ -125,12 +125,15 @@ def test_run_composite_g1_only_synthesizes_demote_when_g1_fails(flm):
     ]
     conn = _mk_conn(factor_rows, tail_rows)
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(
-             flm, "_evaluate_pipeline_report",
-             return_value=_mk_report(["G1_ic_significance"]),
-         ), \
-         patch.object(flm, "_publish_event"):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(
+            flm,
+            "_evaluate_pipeline_report",
+            return_value=_mk_report(["G1_ic_significance"]),
+        ),
+        patch.object(flm, "_publish_event"),
+    ):
         result = flm.run(
             dry_run=True,
             factor_filter="f1",
@@ -156,12 +159,15 @@ def test_run_composite_g1_only_preserves_old_demote(flm):
     ]
     conn = _mk_conn(factor_rows, tail_rows)
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(
-             flm, "_evaluate_pipeline_report",
-             return_value=_mk_report(["G1_ic_significance"]),
-         ), \
-         patch.object(flm, "_publish_event"):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(
+            flm,
+            "_evaluate_pipeline_report",
+            return_value=_mk_report(["G1_ic_significance"]),
+        ),
+        patch.object(flm, "_publish_event"),
+    ):
         result = flm.run(
             dry_run=True,
             factor_filter="f1",
@@ -181,12 +187,15 @@ def test_run_composite_g1_only_default_when_unspecified(flm):
     tail_rows = [(date(2026, 4, 25), 0.06, 0.06)]
     conn = _mk_conn(factor_rows, tail_rows)
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(
-             flm, "_evaluate_pipeline_report",
-             return_value=_mk_report([]),  # 全 pass
-         ), \
-         patch.object(flm, "_publish_event"):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(
+            flm,
+            "_evaluate_pipeline_report",
+            return_value=_mk_report([]),  # 全 pass
+        ),
+        patch.object(flm, "_publish_event"),
+    ):
         # 不传 composite_mode, 期望默认 g1-only
         result = flm.run(dry_run=True, factor_filter="f1")
 
@@ -225,12 +234,16 @@ def test_run_compare_and_composite_share_pipeline_report(flm):
     conn = _mk_conn(factor_rows, tail_rows)
     fake_report = _mk_report(["G1_ic_significance"])
 
-    with patch.object(flm, "_get_conn", return_value=conn), \
-         patch.object(
-             flm, "_evaluate_pipeline_report", return_value=fake_report,
-         ) as eval_mock, \
-         patch.object(flm, "_publish_event"), \
-         patch.object(flm, "_publish_dual_path_mismatch"):
+    with (
+        patch.object(flm, "_get_conn", return_value=conn),
+        patch.object(
+            flm,
+            "_evaluate_pipeline_report",
+            return_value=fake_report,
+        ) as eval_mock,
+        patch.object(flm, "_publish_event"),
+        patch.object(flm, "_publish_dual_path_mismatch"),
+    ):
         result = flm.run(
             dry_run=True,
             factor_filter="f1",

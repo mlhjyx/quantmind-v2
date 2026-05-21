@@ -37,6 +37,7 @@ import structlog
 # DEAP导入（已验证版本1.4）
 try:
     from deap import base, creator, tools
+
     _DEAP_AVAILABLE = True
 except ImportError:
     _DEAP_AVAILABLE = False
@@ -66,56 +67,56 @@ class GPConfig:
     """GP引擎配置（对应 GP_CLOSED_LOOP_DESIGN §3.4）。"""
 
     # 种群
-    n_islands: int = 2                  # 子种群数（生产用4，测试用2节省时间）
-    population_per_island: int = 50     # 每岛个体数（生产200，测试50）
+    n_islands: int = 2  # 子种群数（生产用4，测试用2节省时间）
+    population_per_island: int = 50  # 每岛个体数（生产200，测试50）
     # 进化
-    n_generations: int = 20             # 进化代数（生产50，测试20）
+    n_generations: int = 20  # 进化代数（生产50，测试20）
     crossover_prob: float = 0.7
     mutation_prob: float = 0.3
     tournament_size: int = 3
-    migration_interval: int = 5         # 每N代迁移一次（生产10）
-    migration_size: int = 3             # 每次迁移个体数（生产5）
+    migration_interval: int = 5  # 每N代迁移一次（生产10）
+    migration_size: int = 3  # 每次迁移个体数（生产5）
     # Warm Start
-    seed_ratio: float = 0.8             # 80%种群从种子初始化
-    random_ratio: float = 0.2           # 20%随机保持多样性
+    seed_ratio: float = 0.8  # 80%种群从种子初始化
+    random_ratio: float = 0.2  # 20%随机保持多样性
     # 约束
     max_depth: int = MAX_DEPTH
     max_nodes: int = MAX_NODES
     time_budget_minutes: float = 120.0  # 2小时预算
     # 逻辑/参数分离
-    use_optuna: bool = False            # Optuna参数优化（生产开启，测试关闭）
-    optuna_trials: int = 10             # 每个个体的Optuna搜索次数（生产20）
+    use_optuna: bool = False  # Optuna参数优化（生产开启，测试关闭）
+    optuna_trials: int = 10  # 每个个体的Optuna搜索次数（生产20）
     # 反拥挤
-    anti_crowd_threshold: float = 0.6   # 相关性>0.6判定为拥挤
+    anti_crowd_threshold: float = 0.6  # 相关性>0.6判定为拥挤
     # 快速Gate
     quick_gate_ic_threshold: float = 0.015  # GP快速筛选IC下限（宽松）
-    quick_gate_t_threshold: float = 2.0     # GP快速筛选t统计量下限
+    quick_gate_t_threshold: float = 2.0  # GP快速筛选t统计量下限
     # 并行
-    n_workers: int = 1                  # 评估并行进程数（1=串行）
+    n_workers: int = 1  # 评估并行进程数（1=串行）
     # NEW: 关联变异 (AlphaZero 10x效率)
-    correlated_mutation: bool = True    # True=结构感知变异, False=原始随机变异
+    correlated_mutation: bool = True  # True=结构感知变异, False=原始随机变异
     # NEW: 灾难算法 (AlphaZero 多样性保护)
-    catastrophe_interval: int = 10     # 每N代检测多样性
+    catastrophe_interval: int = 10  # 每N代检测多样性
     catastrophe_diversity_threshold: float = 0.3  # 多样性<此值触发灾难
-    catastrophe_survival_ratio: float = 0.2       # 灾难时保留Top-20%
+    catastrophe_survival_ratio: float = 0.2  # 灾难时保留Top-20%
 
 
 @dataclass
 class GPResult:
     """单个因子候选的GP产出结果。"""
 
-    factor_expr: str           # DSL表达式字符串
-    ast_hash: str              # 结构哈希（去重用）
-    fitness: float             # 综合适应度分数
-    sharpe_proxy: float        # IC_IR代理（未接SimBroker时）
-    complexity: float          # 节点数/MAX_NODES
-    novelty: float             # 正交性奖励
-    ic_mean: float             # 平均IC
-    t_stat: float              # t统计量
-    generation: int            # 哪一代产出
-    island_id: int             # 来自哪个岛
-    parent_seed: str           # 从哪个种子因子进化而来（或"random"）
-    gate_passed: bool = False   # 是否通过快速Gate G1-G3
+    factor_expr: str  # DSL表达式字符串
+    ast_hash: str  # 结构哈希（去重用）
+    fitness: float  # 综合适应度分数
+    sharpe_proxy: float  # IC_IR代理（未接SimBroker时）
+    complexity: float  # 节点数/MAX_NODES
+    novelty: float  # 正交性奖励
+    ic_mean: float  # 平均IC
+    t_stat: float  # t统计量
+    generation: int  # 哪一代产出
+    island_id: int  # 来自哪个岛
+    parent_seed: str  # 从哪个种子因子进化而来（或"random"）
+    gate_passed: bool = False  # 是否通过快速Gate G1-G3
     param_slots: dict[str, int] = field(default_factory=dict)  # 最优参数槽位
 
 
@@ -198,20 +199,22 @@ def save_run_results(
     # Top-K因子（已按fitness降序排列）
     top_results = []
     for r in results[:top_k]:
-        top_results.append({
-            "factor_expr": r.factor_expr,
-            "ast_hash": r.ast_hash,
-            "fitness": r.fitness,
-            "ic_mean": r.ic_mean,
-            "t_stat": r.t_stat,
-            "sharpe_proxy": r.sharpe_proxy,
-            "complexity": r.complexity,
-            "novelty": r.novelty,
-            "generation": r.generation,
-            "island_id": r.island_id,
-            "parent_seed": r.parent_seed,
-            "param_slots": r.param_slots,
-        })
+        top_results.append(
+            {
+                "factor_expr": r.factor_expr,
+                "ast_hash": r.ast_hash,
+                "fitness": r.fitness,
+                "ic_mean": r.ic_mean,
+                "t_stat": r.t_stat,
+                "sharpe_proxy": r.sharpe_proxy,
+                "complexity": r.complexity,
+                "novelty": r.novelty,
+                "generation": r.generation,
+                "island_id": r.island_id,
+                "parent_seed": r.parent_seed,
+                "param_slots": r.param_slots,
+            }
+        )
 
     # 黑名单：适应度<=0的因子的AST hash（这些是Gate FAIL的）
     # 注意：GPResult里只有通过快速Gate的因子，failed的在进化过程中已经被丢弃
@@ -220,7 +223,7 @@ def save_run_results(
     data = {
         "run_id": stats.run_id,
         "top_results": top_results,
-        "blacklisted_hashes": [],   # 调用方可通过 add_blacklist_to_results_file() 追加
+        "blacklisted_hashes": [],  # 调用方可通过 add_blacklist_to_results_file() 追加
         "rejection_reasons": {},
         "stats": {
             "total_evaluated": stats.total_evaluated,
@@ -238,7 +241,9 @@ def save_run_results(
 
     logger.info(
         "保存GP运行结果: path=%s, top_k=%d, blacklist=%d",
-        output_path, len(top_results), 0,
+        output_path,
+        len(top_results),
+        0,
     )
     return output_path
 
@@ -280,7 +285,9 @@ def add_blacklist_to_results_file(
 
     logger.info(
         "追加黑名单到结果文件: path=%s, new_hashes=%d, total_blacklist=%d",
-        results_file, len(failed_hashes), len(existing_bl),
+        results_file,
+        len(failed_hashes),
+        len(existing_bl),
     )
 
 
@@ -331,7 +338,9 @@ def load_previous_results(output_dir: Path, run_id: str | None = None) -> Previo
 
     logger.info(
         "加载上轮GP结果: source_run=%s, top_factors=%d, blacklist=%d",
-        previous.run_id, len(previous.top_results), len(previous.blacklisted_hashes),
+        previous.run_id,
+        len(previous.top_results),
+        len(previous.blacklisted_hashes),
     )
     return previous
 
@@ -396,9 +405,7 @@ class FitnessEvaluator:
                 return (-1.0,)
 
             # 3. 计算IC序列
-            ic_mean, ic_std, t_stat, n_obs = self._compute_ic_stats(
-                factor_values, forward_returns
-            )
+            ic_mean, ic_std, t_stat, n_obs = self._compute_ic_stats(factor_values, forward_returns)
 
             # 4. 快速Gate检查（G1-G3宽松版）
             if not self._quick_gate_check(ic_mean, t_stat):
@@ -415,10 +422,7 @@ class FitnessEvaluator:
 
             # 8. 综合适应度
             # fitness = Sharpe × (1 - 0.1 × complexity) + 0.3 × novelty
-            fitness = (
-                sharpe_proxy * (1.0 - 0.1 * complexity)
-                + 0.3 * novelty
-            )
+            fitness = sharpe_proxy * (1.0 - 0.1 * complexity) + 0.3 * novelty
 
             return (max(fitness, -1.0),)
 
@@ -450,9 +454,7 @@ class FitnessEvaluator:
         使用Spearman秩相关（Rank IC）。
         factor_values和forward_returns需要对齐index。
         """
-        common_idx = factor_values.dropna().index.intersection(
-            forward_returns.dropna().index
-        )
+        common_idx = factor_values.dropna().index.intersection(forward_returns.dropna().index)
         if len(common_idx) < 10:
             return 0.0, 1.0, 0.0, 0
 
@@ -514,17 +516,17 @@ class FitnessEvaluator:
 
         max_corr = 0.0
         for existing_series in self.existing_factor_data.values():
-            common = factor_values.dropna().index.intersection(
-                existing_series.dropna().index
-            )
+            common = factor_values.dropna().index.intersection(existing_series.dropna().index)
             if len(common) < 20:
                 continue
             try:
-                corr = abs(float(
-                    factor_values.loc[common].corr(
-                        existing_series.loc[common], method="spearman"
+                corr = abs(
+                    float(
+                        factor_values.loc[common].corr(
+                            existing_series.loc[common], method="spearman"
+                        )
                     )
-                ))
+                )
                 max_corr = max(max_corr, corr)
             except Exception:
                 continue
@@ -674,11 +676,7 @@ class GPEngine:
     def _mutate_op(self, ind: creator.Individual) -> tuple[creator.Individual,]:
         """DEAP变异算子（含黑名单检查，§6.5 + AlphaZero关联变异）。"""
         tree = _get_tree(ind)
-        blacklist = (
-            self.previous_run.blacklisted_hashes
-            if self.previous_run
-            else set()
-        )
+        blacklist = self.previous_run.blacklisted_hashes if self.previous_run else set()
         # 选择变异策略: 关联变异(结构感知) vs 原始随机变异
         mutate_fn = (
             self.dsl.correlated_mutate
@@ -706,9 +704,7 @@ class GPEngine:
         if market_data is None or forward_returns is None:
             return (-1.0,)
         tree = _get_tree(ind)
-        return self.evaluator.evaluate(
-            tree, market_data, forward_returns, generation, island_id
-        )
+        return self.evaluator.evaluate(tree, market_data, forward_returns, generation, island_id)
 
     # ----------------------------------------------------------------
     # Warm Start初始化
@@ -768,15 +764,18 @@ class GPEngine:
             # 每个岛注入不同的Top因子子集，保持岛间多样性
             n_top = len(self.previous_run.top_results)
             # 每岛最多注入top_k // n_islands个（均匀分配），最多取种群的20%
-            max_inject = max(1, min(
-                n_top // max(self.config.n_islands, 1),
-                int(pop_size * 0.2),
-            ))
+            max_inject = max(
+                1,
+                min(
+                    n_top // max(self.config.n_islands, 1),
+                    int(pop_size * 0.2),
+                ),
+            )
             # 按island_id偏移，不同岛注入不同因子
             offset = (island_id * max_inject) % max(n_top, 1)
             inject_candidates = (
-                self.previous_run.top_results[offset:offset + max_inject]
-                + self.previous_run.top_results[:max(0, offset + max_inject - n_top)]
+                self.previous_run.top_results[offset : offset + max_inject]
+                + self.previous_run.top_results[: max(0, offset + max_inject - n_top)]
             )[:max_inject]
 
             for factor_info in inject_candidates:
@@ -799,8 +798,10 @@ class GPEngine:
             if cross_round_count > 0:
                 logger.info(
                     "岛屿%d 跨轮次注入: source_run=%s, injected=%d/%d",
-                    island_id, self.previous_run.run_id,
-                    cross_round_count, len(inject_candidates),
+                    island_id,
+                    self.previous_run.run_id,
+                    cross_round_count,
+                    len(inject_candidates),
                 )
 
         # 4. 剪掉超出的
@@ -822,8 +823,11 @@ class GPEngine:
 
         logger.info(
             "岛屿%d 初始化: warm=%d, cross_round=%d, random=%d, total=%d",
-            island_id, seed_budget - cross_round_count,
-            cross_round_count, random_count, len(warm_inds),
+            island_id,
+            seed_budget - cross_round_count,
+            cross_round_count,
+            random_count,
+            len(warm_inds),
         )
         return warm_inds
 
@@ -867,8 +871,7 @@ class GPEngine:
 
         # 初始化各岛种群
         islands: list[list[creator.Individual]] = [
-            self.initialize_population(island_id=i)
-            for i in range(self.config.n_islands)
+            self.initialize_population(island_id=i) for i in range(self.config.n_islands)
         ]
 
         # 评估初始种群
@@ -889,7 +892,8 @@ class GPEngine:
             if elapsed > budget_seconds:
                 logger.warning(
                     "GP超时: elapsed=%.1fs > budget=%.1fs，停止进化",
-                    elapsed, budget_seconds,
+                    elapsed,
+                    budget_seconds,
                 )
                 stats.timeout = True
                 break
@@ -897,8 +901,11 @@ class GPEngine:
             # 每岛独立进化一代
             for island_id, pop in enumerate(islands):
                 pop[:] = self._evolve_one_generation(
-                    pop, market_data, forward_returns,
-                    generation=gen, island_id=island_id,
+                    pop,
+                    market_data,
+                    forward_returns,
+                    generation=gen,
+                    island_id=island_id,
                 )
                 stats.total_evaluated += len(pop)
 
@@ -912,17 +919,17 @@ class GPEngine:
                 logger.debug("第%d代: 岛屿迁移完成", gen)
 
             # NEW: 灾难算法 — 多样性低于阈值时重置种群 (AlphaZero)
-            if (self.config.catastrophe_interval > 0
-                    and gen % self.config.catastrophe_interval == 0):
+            if self.config.catastrophe_interval > 0 and gen % self.config.catastrophe_interval == 0:
                 for island_id, pop in enumerate(islands):
-                    triggered = self._check_and_apply_catastrophe(
-                        pop, gen, island_id, stats
-                    )
+                    triggered = self._check_and_apply_catastrophe(pop, gen, island_id, stats)
                     if triggered:
                         # 重新评估灾难后的新个体
                         self._evaluate_population(
-                            pop, market_data, forward_returns,
-                            generation=gen, island_id=island_id,
+                            pop,
+                            market_data,
+                            forward_returns,
+                            generation=gen,
+                            island_id=island_id,
                         )
                         stats.total_evaluated += len(pop)
 
@@ -936,7 +943,9 @@ class GPEngine:
                 )
                 logger.info(
                     "Gen %d/%d: best_fitness=%.4f, elapsed=%.1fs",
-                    gen, self.config.n_generations, best_fitness,
+                    gen,
+                    self.config.n_generations,
+                    best_fitness,
                     time.time() - start_time,
                 )
 
@@ -946,9 +955,7 @@ class GPEngine:
         stats.n_generations_completed = gen_completed
 
         # 从HallOfFame提取通过快速Gate的因子
-        results = self._extract_results(
-            halloffame, market_data, forward_returns, gen_completed
-        )
+        results = self._extract_results(halloffame, market_data, forward_returns, gen_completed)
 
         stats.passed_quick_gate = len(results)
         if results:
@@ -958,8 +965,12 @@ class GPEngine:
         logger.info(
             "GP进化完成: run_id=%s, gen=%d, evaluated=%d, passed_gate=%d, "
             "best_fitness=%.4f, elapsed=%.1fs",
-            run_id, gen_completed, stats.total_evaluated,
-            stats.passed_quick_gate, stats.best_fitness, elapsed,
+            run_id,
+            gen_completed,
+            stats.total_evaluated,
+            stats.passed_quick_gate,
+            stats.best_fitness,
+            elapsed,
         )
 
         return results, stats
@@ -988,9 +999,7 @@ class GPEngine:
                 self.toolbox.mutate(ind)
 
         # 评估未计算fitness的个体 (2026-04-17c 并行化, 复用 _evaluate_population)
-        self._evaluate_population(
-            offspring, market_data, forward_returns, generation, island_id
-        )
+        self._evaluate_population(offspring, market_data, forward_returns, generation, island_id)
 
         # 精英保留（取当前代和父代各50%的最好个体）
         pop[:] = tools.selBest(pop + offspring, len(pop))
@@ -1032,11 +1041,15 @@ class GPEngine:
             futures = [
                 pool.submit(
                     self._evaluate_individual,
-                    ind, market_data, forward_returns, generation, island_id,
+                    ind,
+                    market_data,
+                    forward_returns,
+                    generation,
+                    island_id,
                 )
                 for ind in invalid_inds
             ]
-            for ind, fut in zip(invalid_inds, futures):
+            for ind, fut in zip(invalid_inds, futures, strict=True):
                 ind.fitness.values = fut.result()
 
     def _evaluate_individual(
@@ -1049,9 +1062,7 @@ class GPEngine:
     ) -> tuple[float]:
         """评估单个个体。"""
         tree = _get_tree(ind)
-        return self.evaluator.evaluate(
-            tree, market_data, forward_returns, generation, island_id
-        )
+        return self.evaluator.evaluate(tree, market_data, forward_returns, generation, island_id)
 
     def _migrate(
         self,
@@ -1077,7 +1088,7 @@ class GPEngine:
             worst_indices = sorted(
                 range(len(pop)),
                 key=lambda j: pop[j].fitness.values[0] if pop[j].fitness.valid else -999.0,
-            )[:self.config.migration_size]
+            )[: self.config.migration_size]
             for idx, immigrant in zip(worst_indices, src, strict=False):
                 pop[idx] = deepcopy(immigrant)
 
@@ -1136,11 +1147,14 @@ class GPEngine:
         run_stats.catastrophe_generations.append(generation)
 
         logger.info(
-            "灾难触发: island=%d, gen=%d, diversity=%.2f<%.2f, "
-            "保留%d/%d, 重新生成%d个体",
-            island_id, generation, diversity,
+            "灾难触发: island=%d, gen=%d, diversity=%.2f<%.2f, 保留%d/%d, 重新生成%d个体",
+            island_id,
+            generation,
+            diversity,
             self.config.catastrophe_diversity_threshold,
-            n_survive, len(pop), len(pop) - n_survive,
+            n_survive,
+            len(pop),
+            len(pop) - n_survive,
         )
         return True
 
@@ -1252,26 +1266,24 @@ class GPEngine:
         # Warm Start初始化
         warm_pop = self.initialize_population(island_id=0)[:n_sample]
         self._evaluate_population(warm_pop, market_data, forward_returns, 0, 0)
-        warm_fitnesses = [
-            ind.fitness.values[0] for ind in warm_pop if ind.fitness.valid
-        ]
+        warm_fitnesses = [ind.fitness.values[0] for ind in warm_pop if ind.fitness.valid]
         warm_mean = float(np.mean(warm_fitnesses)) if warm_fitnesses else -1.0
 
         # 随机初始化
         random_pop = [creator.Individual([self.dsl.random_tree()]) for _ in range(n_sample)]
         self._evaluate_population(random_pop, market_data, forward_returns, 0, 0)
-        random_fitnesses = [
-            ind.fitness.values[0] for ind in random_pop if ind.fitness.valid
-        ]
+        random_fitnesses = [ind.fitness.values[0] for ind in random_pop if ind.fitness.valid]
         random_mean = float(np.mean(random_fitnesses)) if random_fitnesses else -1.0
 
         improvement = warm_mean / max(abs(random_mean), 1e-8) if random_mean != 0 else 0.0
         warm_better = warm_mean > random_mean
 
         logger.info(
-            "Warm Start验证: warm_mean=%.4f, random_mean=%.4f, "
-            "improvement=%.2fx, warm_better=%s",
-            warm_mean, random_mean, improvement, warm_better,
+            "Warm Start验证: warm_mean=%.4f, random_mean=%.4f, improvement=%.2fx, warm_better=%s",
+            warm_mean,
+            random_mean,
+            improvement,
+            warm_better,
         )
 
         return {
@@ -1312,6 +1324,7 @@ def optimize_params_optuna(
     """
     try:
         import optuna
+
         optuna.logging.set_verbosity(optuna.logging.WARNING)
     except ImportError:
         logger.warning("Optuna未安装，返回原始参数。pip install optuna")
@@ -1329,7 +1342,7 @@ def optimize_params_optuna(
             params[slot_name] = trial.suggest_categorical(slot_name, candidates)
 
         tree = dsl.apply_params(template, params)
-        fitness, = evaluator.evaluate(tree, market_data, forward_returns)
+        (fitness,) = evaluator.evaluate(tree, market_data, forward_returns)
         return fitness
 
     study = optuna.create_study(direction="maximize")

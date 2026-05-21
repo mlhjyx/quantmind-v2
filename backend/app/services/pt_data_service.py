@@ -105,9 +105,7 @@ def fetch_daily_data(trade_date: date, conn=None, skip_fetch: bool = False) -> d
             status_rows = update_stock_status_daily(trade_date, conn)
             results["status_rows"] = status_rows
         except Exception as e:
-            logger.error(
-                "[Data] stock_status_daily 更新失败 (FAIL-LOUD 铁律 33): %s", e
-            )
+            logger.error("[Data] stock_status_daily 更新失败 (FAIL-LOUD 铁律 33): %s", e)
             results["status_rows"] = 0
             raise  # 传播到 signal_phase except → scheduler_task_log "failed"
     else:
@@ -253,8 +251,14 @@ def _ingest_stock_status(conn, records: list[tuple]) -> None:
     df = pd.DataFrame(
         records,
         columns=[
-            "code", "trade_date", "is_st", "is_suspended", "is_new_stock",
-            "board", "list_date", "delist_date",
+            "code",
+            "trade_date",
+            "is_st",
+            "is_suspended",
+            "is_new_stock",
+            "board",
+            "list_date",
+            "delist_date",
         ],
     )
     pipeline = DataPipeline(conn)
@@ -262,7 +266,8 @@ def _ingest_stock_status(conn, records: list[tuple]) -> None:
     if result.rejected_rows > 0:
         logger.warning(
             "[Status] DataPipeline 拒绝 %d 行: %s",
-            result.rejected_rows, result.reject_reasons,
+            result.rejected_rows,
+            result.reject_reasons,
         )
 
 

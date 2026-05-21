@@ -224,9 +224,7 @@ class SHAPExplainer:
             rng = np.random.RandomState(42)
             idx = rng.choice(n, self.max_samples_global, replace=False)
             feat_arr = feat_arr[idx]
-            logger.info(
-                f"explain_global: 采样 {self.max_samples_global}/{n} 行计算SHAP"
-            )
+            logger.info(f"explain_global: 采样 {self.max_samples_global}/{n} 行计算SHAP")
 
         explainer = self._get_explainer(model)
         shap_values = explainer.shap_values(feat_arr)
@@ -372,10 +370,7 @@ class SHAPExplainer:
         order = np.argsort(overall_importance)[::-1]
 
         sorted_names = [feature_names[i] for i in order]
-        sorted_matrix = [
-            [row[i] for i in order]
-            for row in importance_matrix
-        ]
+        sorted_matrix = [[row[i] for i in order] for row in importance_matrix]
         sorted_drift = [drift_scores[i] for i in order]
 
         high_drift_count = sum(1 for cv in sorted_drift if cv > 0.5)

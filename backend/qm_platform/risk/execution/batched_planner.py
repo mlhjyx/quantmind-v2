@@ -168,9 +168,7 @@ def generate_batched_plans(
         # negative price would yield nonsensical limit_price=0; better to fail
         # fast than emit a 0-price sell order.
         if p.current_price <= 0:
-            raise ValueError(
-                f"position {p.code} current_price must be > 0, got {p.current_price}"
-            )
+            raise ValueError(f"position {p.code} current_price must be > 0, got {p.current_price}")
 
     n_batches = compute_batch_count(len(positions))
     sorted_positions = sorted(positions, key=_priority_key)

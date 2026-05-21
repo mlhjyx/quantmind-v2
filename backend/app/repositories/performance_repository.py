@@ -11,9 +11,7 @@ from app.repositories.base_repository import BaseRepository
 class PerformanceRepository(BaseRepository):
     """performance_series表的数据访问。"""
 
-    async def get_latest_nav(
-        self, strategy_id: str, execution_mode: str = "paper"
-    ) -> dict | None:
+    async def get_latest_nav(self, strategy_id: str, execution_mode: str = "paper") -> dict | None:
         """获取最新一天的绩效数据。"""
         row = await self.fetch_one(
             """SELECT trade_date, nav, daily_return, cumulative_return,
@@ -97,6 +95,7 @@ class PerformanceRepository(BaseRepository):
         n = len(rets)
 
         import numpy as np
+
         daily_mean = np.mean(rets)
         daily_std = np.std(rets, ddof=1) if n > 1 else 0
         sharpe = daily_mean / daily_std * np.sqrt(252) if daily_std > 0 else 0
@@ -117,9 +116,7 @@ class PerformanceRepository(BaseRepository):
             "latest_nav": navs[0],
         }
 
-    async def get_peak_nav(
-        self, strategy_id: str, execution_mode: str = "paper"
-    ) -> float:
+    async def get_peak_nav(self, strategy_id: str, execution_mode: str = "paper") -> float:
         """获取历史最高NAV（用于回撤计算）。"""
         val = await self.fetch_scalar(
             """SELECT COALESCE(MAX(nav), 0)
@@ -192,15 +189,17 @@ class PerformanceRepository(BaseRepository):
         )
         result = []
         for r in rows:
-            result.append({
-                "id": r[0],
-                "name": r[1],
-                "status": r[2],
-                "market": r[3],
-                "sharpe": None,  # 计算成本高，暂不计算rolling sharpe
-                "pnl": round(float(r[5]), 4) if r[5] is not None else None,
-                "mdd": round(float(r[6]), 4) if r[6] is not None else None,
-            })
+            result.append(
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "status": r[2],
+                    "market": r[3],
+                    "sharpe": None,  # 计算成本高，暂不计算rolling sharpe
+                    "pnl": round(float(r[5]), 4) if r[5] is not None else None,
+                    "mdd": round(float(r[6]), 4) if r[6] is not None else None,
+                }
+            )
         return result
 
     async def upsert_daily(
@@ -232,9 +231,17 @@ class PerformanceRepository(BaseRepository):
                 cash=EXCLUDED.cash, position_count=EXCLUDED.position_count,
                 turnover=EXCLUDED.turnover, benchmark_nav=EXCLUDED.benchmark_nav""",
             {
-                "td": trade_date, "sid": strategy_id, "nav": nav,
-                "ret": daily_return, "cum": cumulative_return, "dd": drawdown,
-                "cr": cash_ratio, "cash": cash, "pc": position_count,
-                "to": turnover, "bn": benchmark_nav, "mode": execution_mode,
+                "td": trade_date,
+                "sid": strategy_id,
+                "nav": nav,
+                "ret": daily_return,
+                "cum": cumulative_return,
+                "dd": drawdown,
+                "cr": cash_ratio,
+                "cash": cash,
+                "pc": position_count,
+                "to": turnover,
+                "bn": benchmark_nav,
+                "mode": execution_mode,
             },
         )

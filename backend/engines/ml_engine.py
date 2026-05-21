@@ -174,6 +174,7 @@ class WalkForwardResult:
 def _get_db_conn():
     """获取同步数据库连接。"""
     from app.services.db import get_sync_conn
+
     return get_sync_conn()
 
 
@@ -188,6 +189,7 @@ def _add_months(d: date, months: int) -> date:
         加减后的日期
     """
     import calendar
+
     month = d.month - 1 + months
     year = d.year + month // 12
     month = month % 12 + 1
@@ -395,9 +397,7 @@ def _build_rank_groups(df: pd.DataFrame, labels: np.ndarray) -> list[int]:
     """
     counts = df.groupby("trade_date", sort=True).size()
     groups = counts.tolist()
-    assert sum(groups) == len(labels), (
-        f"group总数{sum(groups)} != labels长度{len(labels)}"
-    )
+    assert sum(groups) == len(labels), f"group总数{sum(groups)} != labels长度{len(labels)}"
     return groups
 
 
@@ -556,13 +556,15 @@ class WalkForwardTrainer:
                 "verbose": -1,
             }
         if self.config.gpu:
-            self._default_lgb_params.update({
-                "device_type": "gpu",
-                "gpu_platform_id": 0,
-                "gpu_device_id": 0,
-                "gpu_use_dp": False,
-                "max_bin": 63,
-            })
+            self._default_lgb_params.update(
+                {
+                    "device_type": "gpu",
+                    "gpu_platform_id": 0,
+                    "gpu_device_id": 0,
+                    "gpu_use_dp": False,
+                    "max_bin": 63,
+                }
+            )
         else:
             self._default_lgb_params["max_bin"] = 255
 
@@ -584,8 +586,10 @@ class WalkForwardTrainer:
         """
         df = pd.read_sql(sql, conn, params=(self.config.data_start, self.config.data_end))
         self._trade_dates = [d.date() if hasattr(d, "date") else d for d in df["trade_date"]]
-        logger.info(f"加载交易日历: {len(self._trade_dates)}个交易日 "
-                    f"({self._trade_dates[0]} ~ {self._trade_dates[-1]})")
+        logger.info(
+            f"加载交易日历: {len(self._trade_dates)}个交易日 "
+            f"({self._trade_dates[0]} ~ {self._trade_dates[-1]})"
+        )
         return self._trade_dates
 
     def generate_folds(self) -> list[Fold]:
@@ -809,7 +813,8 @@ class WalkForwardTrainer:
           AND ABS(i.index_return_20) < 5.0
         """
         df_target = pd.read_sql(
-            sql_target, conn,
+            sql_target,
+            conn,
             params=(start_date, end_date, start_date, end_date),
         )
 
@@ -909,9 +914,11 @@ class WalkForwardTrainer:
             trade_date_col = trade_date_col.apply(lambda x: x.date() if hasattr(x, "date") else x)
 
         # P0-1修复: 训练集丢弃尾部日期，防止target标签(T+20)泄露到验证期
-        all_train_dates = sorted(trade_date_col[
-            (trade_date_col >= fold.train_start) & (trade_date_col <= fold.train_end)
-        ].unique())
+        all_train_dates = sorted(
+            trade_date_col[
+                (trade_date_col >= fold.train_start) & (trade_date_col <= fold.train_end)
+            ].unique()
+        )
         # 月度数据(≤100个日期): 丢弃最后1个月; 日频数据: 丢弃最后20个交易日
         purge_n = 1 if len(all_train_dates) <= 100 else 20
         if len(all_train_dates) > purge_n + 5:
@@ -964,7 +971,9 @@ class WalkForwardTrainer:
             logger.error(f"F{fold.fold_id} 数据不足，跳过")
             return FoldResult(
                 fold_id=fold.fold_id,
-                train_ic=0.0, valid_ic=0.0, oos_ic=0.0,
+                train_ic=0.0,
+                valid_ic=0.0,
+                oos_ic=0.0,
                 is_overfit=True,
             ), FeaturePreprocessor()
 
@@ -993,12 +1002,16 @@ class WalkForwardTrainer:
             y_train_rank = _to_rank_label(y_train)
             y_valid_rank = _to_rank_label(y_valid)
             train_data = lgb.Dataset(
-                X_train, label=y_train_rank,
-                group=train_groups, feature_name=feature_cols,
+                X_train,
+                label=y_train_rank,
+                group=train_groups,
+                feature_name=feature_cols,
             )
             valid_data = lgb.Dataset(
-                X_valid, label=y_valid_rank,
-                group=valid_groups, reference=train_data,
+                X_valid,
+                label=y_valid_rank,
+                group=valid_groups,
+                reference=train_data,
             )
         else:
             train_data = lgb.Dataset(X_train, label=y_train, feature_name=feature_cols)
@@ -1031,15 +1044,9 @@ class WalkForwardTrainer:
         test_pred = model.predict(X_test, num_iteration=best_iter)
 
         # 截面IC（按日计算再取均值）
-        train_ic_series = self._compute_daily_ic(
-            train_processed, train_pred, "excess_return_20"
-        )
-        valid_ic_series = self._compute_daily_ic(
-            valid_processed, valid_pred, "excess_return_20"
-        )
-        test_ic_series = self._compute_daily_ic(
-            test_processed, test_pred, "excess_return_20"
-        )
+        train_ic_series = self._compute_daily_ic(train_processed, train_pred, "excess_return_20")
+        valid_ic_series = self._compute_daily_ic(valid_processed, valid_pred, "excess_return_20")
+        test_ic_series = self._compute_daily_ic(test_processed, test_pred, "excess_return_20")
 
         train_ic = float(train_ic_series.mean()) if len(train_ic_series) > 0 else 0.0
         valid_ic = float(valid_ic_series.mean()) if len(valid_ic_series) > 0 else 0.0
@@ -1076,8 +1083,7 @@ class WalkForwardTrainer:
             is_overfit = True
         elif overfit_ratio > 2.0:
             logger.warning(
-                f"F{fold.fold_id} 过拟合比率={overfit_ratio:.1f} >= 2.0 "
-                f"(WARNING, 但继续)"
+                f"F{fold.fold_id} 过拟合比率={overfit_ratio:.1f} >= 2.0 (WARNING, 但继续)"
             )
 
         # 6. 特征重要性
@@ -1114,8 +1120,10 @@ class WalkForwardTrainer:
         ndcg_at_k_val = 0.0
         if self.config.mode == "lambdarank":
             ndcg_at_k_val = _compute_ndcg_at_k(
-                test_processed, test_pred,
-                "excess_return_20", k=self.config.ndcg_at_k,
+                test_processed,
+                test_pred,
+                "excess_return_20",
+                k=self.config.ndcg_at_k,
             )
             logger.info(
                 f"F{fold.fold_id} [lambdarank] NDCG@{self.config.ndcg_at_k}={ndcg_at_k_val:.4f}"
@@ -1176,13 +1184,15 @@ class WalkForwardTrainer:
         X_test = test_processed[feature_cols].values.astype(np.float32)
         predictions = model.predict(X_test)
 
-        result = pd.DataFrame({
-            "trade_date": test_processed["trade_date"].values,
-            "code": test_processed["code"].values,
-            "predicted": predictions,
-            "actual": test_processed["excess_return_20"].values,
-            "fold_id": fold.fold_id,
-        })
+        result = pd.DataFrame(
+            {
+                "trade_date": test_processed["trade_date"].values,
+                "code": test_processed["code"].values,
+                "predicted": predictions,
+                "actual": test_processed["excess_return_20"].values,
+                "fold_id": fold.fold_id,
+            }
+        )
         return result
 
     def run_full_walkforward(
@@ -1291,7 +1301,7 @@ class WalkForwardTrainer:
         logger.info(f"整体 OOS IC: {overall_ic:.4f}")
         logger.info(f"整体 OOS RankIC: {overall_rank_ic:.4f}")
         logger.info(f"整体 OOS ICIR: {overall_icir:.3f}")
-        logger.info(f"总耗时: {total_elapsed:.1f}s ({total_elapsed/60:.1f}min)")
+        logger.info(f"总耗时: {total_elapsed:.1f}s ({total_elapsed / 60:.1f}min)")
 
         if iron_law_7_triggered:
             logger.critical("铁律7已触发，实验作废，不可上线！")

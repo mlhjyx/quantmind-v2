@@ -146,12 +146,29 @@ python scripts/run_backtest.py --config configs/pt_live.yaml
 | 16 (信号路径唯一) | runner.py 调用 SignalComposer.compose(), 不再有 vectorized_signal 独立链路 |
 | 17 (DataPipeline 入库) | 回测引擎不入库, 只消费 DataFeed; DataFeed 的数据来源必须经 DataPipeline |
 
+### §0 追加状态 (2026-05-20 Plan v9 sediment)
+
+**Step 5-7 完成度**:
+- Step 5 (Parquet 缓存 `backend/data/parquet_cache.py`) ✅ 30min→1.6s 加速 (CLAUDE.md 性能表)
+- Step 6-H ✅ size_neutral_beta=0.50 激活 (`.env PT_SIZE_NEUTRAL_BETA=0.50`)
+- Step 7 (Walk-Forward) ✅ 实现 (`scripts/rolling_wf.py`), WF OOS Sharpe=0.8659 (CORE3+dv_ttm, 2026-04-12 PASS)
+- DSR (§4.12.1) ✅ 已 wire 进 `scripts/rolling_wf.py` 月度验证 — result JSON 含 `dsr`/`dsr_interpretation`, DSR<0.5 升级 OK→WARN (Plan G, 2026-05-20)
+
+**成本模型真值 (broker.py:150-154)**:
+- 印花税历史分段 ✅ **已实现** — `BacktestConfig.historical_stamp_tax=True` (default), `broker.py:154` 实现 `0.0005 if trade_date >= date(2023, 8, 28) else 0.001`. 12yr backtest 历史阶段税率正确.
+- `can_trade` 涨跌停/停牌 ✅ **已实现** — `backend/engines/backtest/validators.py` `ValidatorChain`: `SuspensionValidator` (volume=0) + `DataCompletenessValidator` + `PriceLimitValidator` (涨跌停封板检测, ST 5% price_limit via symbols_info override). 实际 105 → 178 行 (Session 36 PR fix 补 symbols_info contract).
+
 ---
 
 ## 一、概述
 
-> **⚠️ §一~§十 是 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
-> **已过时的关键点**: Rust 引擎(从未实现, 纯 Python) / VectorizedBacktester(Archived) / §五实现计划(全部完成) / §九待办(全部完成)
+> **⚠️ §一~§十 HISTORICAL — 2026-03-19 原始设计，部分内容已过时。实际代码结构请以 §0 和 Blueprint §6 为准。**
+>
+> **已过时的关键点 (2026-05-20 sediment)**:
+> - **Rust 引擎**: 从未实现, 纯 Python. `.env.example` 中 `RUST_ENGINE_PATH=./rust_engine/target/release/quant-backtest` 是 dead config (rust_engine/ 目录不存在).
+> - **真实回测引擎**: `backend/engines/backtest/` (8 模块) + `scripts/run_backtest.py`. Hybrid 架构 = Python CC; Qlib ML 信号层 + RD-Agent 均 NO-GO per Step 6-H.
+> - VectorizedBacktester → Archived / §五实现计划 → 全部完成 / §九待办 → 全部完成
+> - 历史章节保留作设计参考, 不执行.
 
 回测引擎是 QuantMind V2 的核心基础设施，负责将因子信号转化为模拟交易，验证策略有效性。本文档覆盖：
 
@@ -1051,6 +1068,15 @@ def calc_deflated_sharpe(self, observed_sharpe: float,
     return dsr
 ```
 
+> **✅ 实现状态 (Plan G, 2026-05-20)**: DSR 引擎 `backend/engines/dsr.py`
+> (`deflated_sharpe_ratio` + `interpret_dsr`) 已 wire 进 `scripts/rolling_wf.py:_run_wf` —
+> 每次月度 WF 验证后, 用 `combined_oos_sharpe` + `combined_oos_returns` (skew/kurt,
+> pandas 超额峰度 +3 转原始峰度) + `total_oos_days` 计算 DSR (n_trials=5 = WF
+> n_splits, doc 公式 N = n_windows × param_grid_size 在固定配置下 = 5×1), 写入
+> result JSON (`dsr`/`dsr_interpretation`) + 告警 msg + `_classify_result`
+> (DSR<0.5 时 OK→WARN 升级 label=DSR_LOW). 单测 `backend/tests/test_dsr.py` +
+> `backend/tests/test_rolling_wf_dsr.py`.
+
 ### 4.12.2 Probability of Backtest Overfitting (PBO)
 
 ```python
@@ -1090,6 +1116,16 @@ def calc_pbo(self, window_results: list) -> float:
     pbo = max(0, (1 - corr) / 2)
     return float(pbo)
 ```
+
+> **⬜ 实现状态 (Plan G, 2026-05-20)**: PBO 引擎 `backend/engines/pbo.py`
+> (`probability_of_backtest_overfitting`, 完整 CSCV 法) 已实现 + 单测
+> (`backend/tests/test_pbo.py`), 但**未 wire** 进生产路径. 原因: §4.12.2 简化 PBO
+> 需每窗口 `train_sharpe` vs `test_sharpe` 的 rank corr, 而当前等权
+> `WalkForwardEngine` 的 `signal_func` 不依赖 train 期参数 (等权策略无
+> train-dependent 参数, 见 `walk_forward.py:make_equal_weight_signal_func`
+> docstring) — 不产出 per-fold `train_sharpe`; 完整 CSCV 则需 N≥2 策略的收益
+> 矩阵 (多策略 / 参数网格搜索语境). rolling_wf 跑固定单配置, 两条路径均不适用 —
+> PBO wire 留待参数优化型 WF 或多策略回测语境接入 (discovered follow-up).
 
 ### 4.12.3 Celery Task模板（回测异步执行）
 

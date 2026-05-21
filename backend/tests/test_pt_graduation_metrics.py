@@ -76,7 +76,7 @@ class TestCalcAvgSlippagePct:
         """固定1%滑点：mean应为1%。"""
         fills = [
             _Fill("600519", 1818.0),  # 1800 * 1.01
-            _Fill("000001", 10.1),    # 10.0 * 1.01
+            _Fill("000001", 10.1),  # 10.0 * 1.01
         ]
         signal_prices = {"600519": 1800.0, "000001": 10.0}
         result = calc_avg_slippage_pct(fills, signal_prices)
@@ -86,7 +86,7 @@ class TestCalcAvgSlippagePct:
         """滑点方向无关（买入高于信号 or 卖出低于信号都算）。"""
         fills = [
             _Fill("600519", 1818.0),  # +1%
-            _Fill("000001", 9.9),     # -1%
+            _Fill("000001", 9.9),  # -1%
         ]
         signal_prices = {"600519": 1800.0, "000001": 10.0}
         result = calc_avg_slippage_pct(fills, signal_prices)
@@ -104,8 +104,8 @@ class TestCalcAvgSlippagePct:
     def test_missing_signal_price_skipped(self):
         """没有信号价格的成交跳过，不影响其他。"""
         fills = [
-            _Fill("600519", 1818.0),   # +1%，有信号价
-            _Fill("UNKNOWN", 100.0),   # 无信号价
+            _Fill("600519", 1818.0),  # +1%，有信号价
+            _Fill("UNKNOWN", 100.0),  # 无信号价
         ]
         signal_prices = {"600519": 1800.0}  # UNKNOWN不在这里
         result = calc_avg_slippage_pct(fills, signal_prices)
@@ -234,8 +234,8 @@ class TestCalcSignalExecutionGapHours:
             datetime.combine(base + timedelta(1), datetime.min.time()).replace(hour=17),
         ]
         execs = [
-            datetime.combine(base + timedelta(1), datetime.min.time()).replace(hour=9),    # 16h
-            datetime.combine(base + timedelta(2), datetime.min.time()).replace(hour=11),   # 18h
+            datetime.combine(base + timedelta(1), datetime.min.time()).replace(hour=9),  # 16h
+            datetime.combine(base + timedelta(2), datetime.min.time()).replace(hour=11),  # 18h
         ]
         result = calc_signal_execution_gap_hours(signals, execs)
         assert result == pytest.approx(17.0, abs=0.01)

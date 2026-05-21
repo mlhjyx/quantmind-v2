@@ -12,7 +12,9 @@ import pandas as pd
 from engines.factor_profile import FactorProfilePipeline
 
 
-def _make_trading_days(start: date, end: date, holidays: list[tuple[date, date]] | None = None) -> list[date]:
+def _make_trading_days(
+    start: date, end: date, holidays: list[tuple[date, date]] | None = None
+) -> list[date]:
     """生成交易日列表，排除周末和指定假期区间。"""
     holidays = holidays or []
     days = []
@@ -53,7 +55,8 @@ class TestOffsetTradingDay:
         """国庆7天假期：5交易日偏移应跳过假期。"""
         national_holiday = (date(2024, 10, 1), date(2024, 10, 7))
         trading_days = _make_trading_days(
-            date(2024, 9, 1), date(2024, 11, 30),
+            date(2024, 9, 1),
+            date(2024, 11, 30),
             holidays=[national_holiday],
         )
         pipeline = _make_mock_pipeline(trading_days)
@@ -71,7 +74,8 @@ class TestOffsetTradingDay:
         """春节假期：同样应跳过。"""
         spring_festival = (date(2024, 2, 10), date(2024, 2, 17))
         trading_days = _make_trading_days(
-            date(2024, 1, 1), date(2024, 3, 31),
+            date(2024, 1, 1),
+            date(2024, 3, 31),
             holidays=[spring_festival],
         )
         pipeline = _make_mock_pipeline(trading_days)
@@ -116,7 +120,8 @@ class TestIcDecayTradingDays:
         """
         national_holiday = (date(2024, 10, 1), date(2024, 10, 7))
         trading_days = _make_trading_days(
-            date(2024, 9, 1), date(2024, 12, 31),
+            date(2024, 9, 1),
+            date(2024, 12, 31),
             holidays=[national_holiday],
         )
 
@@ -135,11 +140,13 @@ class TestIcDecayTradingDays:
         factor_rows = []
         for dt in [date(2024, 9, 27), date(2024, 9, 30)]:
             for code in codes:
-                factor_rows.append({
-                    "code": code,
-                    "trade_date": dt,
-                    "neutral_value": np.random.randn(),
-                })
+                factor_rows.append(
+                    {
+                        "code": code,
+                        "trade_date": dt,
+                        "neutral_value": np.random.randn(),
+                    }
+                )
         factor_df = pd.DataFrame(factor_rows)
 
         # 构造超额收益数据（覆盖假期后的交易日）
@@ -147,11 +154,13 @@ class TestIcDecayTradingDays:
         post_holiday_days = [d for d in trading_days if d > date(2024, 9, 30)][:20]
         for dt in post_holiday_days:
             for code in codes:
-                ret_rows.append({
-                    "code": code,
-                    "trade_date": dt,
-                    "excess_ret": np.random.randn() * 0.02,
-                })
+                ret_rows.append(
+                    {
+                        "code": code,
+                        "trade_date": dt,
+                        "excess_ret": np.random.randn() * 0.02,
+                    }
+                )
         pipeline._excess_returns = pd.DataFrame(ret_rows)
 
         ic_decay = pipeline._calc_ic_decay(factor_df)
@@ -178,7 +187,8 @@ class TestIcDecayTradingDays:
         # 国庆假期10/1-10/7没有交易日
         national_holiday = (date(2024, 10, 1), date(2024, 10, 7))
         trading_days = _make_trading_days(
-            date(2024, 9, 1), date(2024, 10, 31),
+            date(2024, 9, 1),
+            date(2024, 10, 31),
             holidays=[national_holiday],
         )
 
@@ -197,9 +207,11 @@ class TestGetTradingDays:
         pipeline = FactorProfilePipeline(mock_conn)
 
         # 模拟 pd.read_sql 返回
-        fake_days = pd.DataFrame({
-            "cal_date": [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)],
-        })
+        fake_days = pd.DataFrame(
+            {
+                "cal_date": [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)],
+            }
+        )
 
         with patch("engines.factor_profile.pd.read_sql", return_value=fake_days) as mock_sql:
             result1 = pipeline._get_trading_days()

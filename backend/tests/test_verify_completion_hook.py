@@ -20,6 +20,7 @@ Phase 1 narrowed scope (沿用 PR #280/#281/#282 LL-130 体例累积 + Constitut
 - skill quantmind-v3-banned-words (PR #273)
 - memory #25 HARD BLOCK (真+词 whitelist 5 forms)
 """
+
 from __future__ import annotations
 
 import json
@@ -27,9 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "verify_completion.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "verify_completion.py"
 
 
 def _run_hook(payload: dict | None = None, cwd: str | None = None) -> tuple[int, str, str]:
@@ -119,6 +118,7 @@ def test_banned_zhen_pattern_compiled() -> None:
     Banned: 真[^账发生测值\\s] (anything else).
     """
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("verify_completion", HOOK_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

@@ -15,6 +15,7 @@ scope (~80 line, single chunk):
 
 关联铁律: 33 (fail-loud, parse error 沿用 fail-soft sys.exit(0)) / 42 (PR 分级审查制)
 """
+
 from __future__ import annotations
 
 import json

@@ -30,6 +30,7 @@ Wave 2 2.1c Sub3 启动前置硬门:
 
 铁律: 10 基础设施改动后全链路验证 / 17 数据入库唯一管道 / 36 precondition 核对
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,9 +48,7 @@ sys.path.append(str(PROJECT_ROOT / "backend"))
 from app.config import settings  # noqa: E402 — pydantic Settings 自动读 backend/.env
 from app.data_fetcher.data_loader import get_sync_conn  # noqa: E402
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("dual_write_check")
 
 STATE_FILE = PROJECT_ROOT / "cache" / "dual_write_state.json"
@@ -151,9 +150,7 @@ def load_new_path(trade_date: date) -> pd.DataFrame:
     # 精度归一: volume Tushare 原生 float 有 .5 小数, Contract schema="int64 手", DataPipeline 入库 int cast.
     # 不 cast → dual_write 对 4000+ 行半舍入差 (max_diff=0.5) 判 FAIL.
     if "volume" in df.columns:
-        df["volume"] = (
-            pd.to_numeric(df["volume"], errors="coerce").round().astype("Int64")
-        )
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce").round().astype("Int64")
     # trade_date 归一到 date
     if "trade_date" in df.columns:
         # Tushare 返回 'YYYYMMDD' str 或 Timestamp
@@ -239,13 +236,10 @@ def compare(old: pd.DataFrame, new: pd.DataFrame) -> dict:
     # codes_only_in_new > 0 但 ≤ 50: FK 噪音, 接受 (MVP 2.1b L173)
     # codes_only_in_old > 0: 老路径多行 (通常 0), 若大量说明新路径丢 code, 算 drift
     row_count_acceptable = (
-        report["codes_only_in_old"] == 0
-        and report["codes_only_in_new"] <= MAX_NEW_EXTRA_CODES
+        report["codes_only_in_old"] == 0 and report["codes_only_in_new"] <= MAX_NEW_EXTRA_CODES
     )
     report["row_count_acceptable"] = row_count_acceptable
-    report["status"] = (
-        "PASS" if (all_match and row_count_acceptable) else "FAIL"
-    )
+    report["status"] = "PASS" if (all_match and row_count_acceptable) else "FAIL"
     return report
 
 
@@ -263,9 +257,7 @@ def save_state(trade_date: date, report: dict) -> None:
         "codes_only_in_new": report.get("codes_only_in_new"),
         "checked_at": datetime.now().isoformat(),
     }
-    STATE_FILE.write_text(
-        json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def save_report(trade_date: date, report: dict) -> Path:
@@ -393,9 +385,7 @@ def main() -> int:
             status = r.get("status")
             # 非交易日双方 0 rows: ERROR 正常, skip 不算 fail
             is_nontrading = (
-                status == "ERROR"
-                and r.get("old_rows", 0) == 0
-                and r.get("new_rows", 0) == 0
+                status == "ERROR" and r.get("old_rows", 0) == 0 and r.get("new_rows", 0) == 0
             )
             if is_nontrading:
                 mark = "⏭"
@@ -412,9 +402,7 @@ def main() -> int:
                 f"match={r.get('all_columns_match', '-')}"
             )
             d += timedelta(days=1)
-        print(
-            f"\nSummary: {passes} PASS / {fails} FAIL / {skips} SKIP (non-trading day)"
-        )
+        print(f"\nSummary: {passes} PASS / {fails} FAIL / {skips} SKIP (non-trading day)")
         return 0 if fails == 0 else 1
 
     td = datetime.strptime(args.date, "%Y-%m-%d").date() if args.date else date.today()

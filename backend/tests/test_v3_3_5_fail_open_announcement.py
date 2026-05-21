@@ -20,6 +20,7 @@ extension (announcement is L0.4 layer per V3 §3.4 + V3 §11.1 row 5).
 - ADR-050 (V3 §S2.5 implementation closure + announcement_type inference)
 - 铁律 33 (fail-loud at service boundary, fail-soft at aggregate boundary)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -80,10 +81,10 @@ class TestV3FailOpenAnnouncement:
             _AnnouncementMockFetcher(
                 "rsshub_cninfo", items=[_make_announcement_item("rsshub_cninfo")]
             ),
-            _AnnouncementMockFetcher("rsshub_sse", raises=NewsFetchError("rsshub_sse", "mock timeout")),
             _AnnouncementMockFetcher(
-                "rsshub_szse", items=[_make_announcement_item("rsshub_szse")]
+                "rsshub_sse", raises=NewsFetchError("rsshub_sse", "mock timeout")
             ),
+            _AnnouncementMockFetcher("rsshub_szse", items=[_make_announcement_item("rsshub_szse")]),
         ]
         pipeline = DataPipeline(sources, early_return_threshold=3, hard_timeout_s=5.0)
         items = pipeline.fetch_all(query="600519")
@@ -100,8 +101,12 @@ class TestV3FailOpenAnnouncement:
             _AnnouncementMockFetcher(
                 "rsshub_cninfo", raises=NewsFetchError("rsshub_cninfo", "cninfo timeout")
             ),
-            _AnnouncementMockFetcher("rsshub_sse", raises=NewsFetchError("rsshub_sse", "sse timeout")),
-            _AnnouncementMockFetcher("rsshub_szse", raises=NewsFetchError("rsshub_szse", "szse timeout")),
+            _AnnouncementMockFetcher(
+                "rsshub_sse", raises=NewsFetchError("rsshub_sse", "sse timeout")
+            ),
+            _AnnouncementMockFetcher(
+                "rsshub_szse", raises=NewsFetchError("rsshub_szse", "szse timeout")
+            ),
         ]
         pipeline = DataPipeline(sources, early_return_threshold=3, hard_timeout_s=5.0)
 
@@ -139,9 +144,7 @@ class TestV3FailOpenAnnouncement:
             _AnnouncementMockFetcher(
                 "rsshub_cninfo", items=[_make_announcement_item("rsshub_cninfo")]
             ),
-            _AnnouncementMockFetcher(
-                "rsshub_sse", raises=ValueError("unexpected XML parse")
-            ),
+            _AnnouncementMockFetcher("rsshub_sse", raises=ValueError("unexpected XML parse")),
         ]
         pipeline = DataPipeline(sources, early_return_threshold=2, hard_timeout_s=5.0)
 

@@ -98,7 +98,20 @@ def _model_cache_exists() -> bool:
     return any((snap / "config.json").exists() for snap in snapshots.iterdir())
 
 
+def _sentence_transformers_installed() -> bool:
+    """Real-model smoke 前置: sentence-transformers 库是否可导入.
+
+    cache 存在但库未装时, 仅查 cache 的 skipif 会让 test 真跑起来再 ImportError
+    崩 (fail 而非 skip). 本检查补全 skip 前置 — 库缺失时干净 skip.
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("sentence_transformers") is not None
+
+
 _MODEL_CACHE_AVAILABLE = _model_cache_exists()
+# Real-model smoke 完整前置 = cache + 库. 任一缺失 → skip (非 fail).
+_REAL_MODEL_READY = _MODEL_CACHE_AVAILABLE and _sentence_transformers_installed()
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +302,11 @@ class TestConstructorDefaults:
 
 
 @pytest.mark.skipif(
-    not _MODEL_CACHE_AVAILABLE,
-    reason="BGE-M3 model cache not found at ./models/bge-m3/ — Phase A install required",
+    not _REAL_MODEL_READY,
+    reason=(
+        "real-model smoke 前置缺失 — 需 BGE-M3 cache (./models/bge-m3/) "
+        "+ sentence-transformers 库 (pip install sentence-transformers)"
+    ),
 )
 class TestRealModelSmoke:
     """Smoke against actual sentence-transformers + cached BGE-M3 model.

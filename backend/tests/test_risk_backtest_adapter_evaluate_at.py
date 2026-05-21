@@ -17,6 +17,7 @@ Plan v0.2 §A TB-1 sub-PR T1.5b...wait, TB-1a sediment. Tests cover:
 - ADR-066 候选 (TB-1a sediment 时机 决议)
 - LL-159 (CC self silent drift family + 4-step preflight SOP sustained)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -259,18 +260,14 @@ class TestPureFunctionContract:
         # Simulate sell call between before/after snapshot
         adapter.sell("600519.SH", 100, "test")
         with pytest.raises(AssertionError, match="pure-function contract violated.*sell_calls"):
-            adapter.verify_pure_function_contract(
-                before_sell_count=0, before_alert_count=0
-            )
+            adapter.verify_pure_function_contract(before_sell_count=0, before_alert_count=0)
 
     def test_verify_pure_function_contract_raises_on_alert(self):
         """verify_pure_function_contract raises AssertionError if alert occurred."""
         adapter = RiskBacktestAdapter()
         adapter.send("test_title", "test_text", "warning")
         with pytest.raises(AssertionError, match="pure-function contract violated.*alerts"):
-            adapter.verify_pure_function_contract(
-                before_sell_count=0, before_alert_count=0
-            )
+            adapter.verify_pure_function_contract(before_sell_count=0, before_alert_count=0)
 
 
 # ---------- register_all_realtime_rules helper ----------

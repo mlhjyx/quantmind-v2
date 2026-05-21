@@ -13,6 +13,7 @@ import pytest
 
 try:
     import quantstats  # noqa: F401
+
     _QS_AVAILABLE = True
 except ImportError:
     _QS_AVAILABLE = False
@@ -61,9 +62,7 @@ class TestGenerateHtmlReport:
         returns = _make_returns()
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "test_report.html"
-            result = generate_html_report(
-                returns, output_path=str(output), title="UnitTest"
-            )
+            result = generate_html_report(returns, output_path=str(output), title="UnitTest")
             assert Path(result).exists(), f"报告文件不存在: {result}"
             assert Path(result).stat().st_size > 0, "报告文件为空"
 
@@ -74,14 +73,12 @@ class TestGenerateHtmlReport:
         returns = _make_returns()
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "no_bench.html"
-            result = generate_html_report(
-                returns, benchmark=None, output_path=str(output)
-            )
+            result = generate_html_report(returns, benchmark=None, output_path=str(output))
             assert Path(result).exists()
 
     @pytest.mark.xfail(
         reason="quantstats内部pandas兼容性bug: metrics.replace([-0, '-0'], ...) "
-               "在新版pandas触发Series真值歧义。等上游修复。",
+        "在新版pandas触发Series真值歧义。等上游修复。",
         strict=False,
     )
     def test_report_with_benchmark(self):
@@ -92,9 +89,7 @@ class TestGenerateHtmlReport:
         bench = _make_benchmark()
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "with_bench.html"
-            result = generate_html_report(
-                returns, benchmark=bench, output_path=str(output)
-            )
+            result = generate_html_report(returns, benchmark=bench, output_path=str(output))
             assert Path(result).exists()
 
     def test_empty_returns_raises(self):
@@ -147,9 +142,7 @@ class TestGetMetrics:
         from wrappers.quantstats_wrapper import get_metrics
 
         metrics = get_metrics(_make_returns())
-        assert metrics["max_drawdown"] <= 0, (
-            f"max_drawdown应<=0, 实际={metrics['max_drawdown']}"
-        )
+        assert metrics["max_drawdown"] <= 0, f"max_drawdown应<=0, 实际={metrics['max_drawdown']}"
 
     def test_volatility_positive(self):
         """年化波动率应为正数。"""
@@ -229,8 +222,7 @@ class TestDualTrackVerification:
         diff = abs(qs_mdd - our_mdd)
         tolerance = 0.005  # 0.5%绝对值
         assert diff < tolerance, (
-            f"MDD双轨偏差过大: QuantStats={qs_mdd:.6f}, "
-            f"metrics.py={our_mdd:.6f}, diff={diff:.6f}"
+            f"MDD双轨偏差过大: QuantStats={qs_mdd:.6f}, metrics.py={our_mdd:.6f}, diff={diff:.6f}"
         )
 
     def test_sortino_dual_track(self):

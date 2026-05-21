@@ -54,30 +54,32 @@ def _make_market_data(n: int = 80, seed: int = 0) -> pd.DataFrame:
     volume = rng.uniform(1e6, 5e7, n)
     amount = close * volume
 
-    return pd.DataFrame({
-        "open":  close * rng.uniform(0.99, 1.01, n),
-        "high":  close * rng.uniform(1.00, 1.05, n),
-        "low":   close * rng.uniform(0.95, 1.00, n),
-        "close": close,
-        "volume": volume,
-        "amount": amount,
-        "turnover_rate": rng.uniform(0.001, 0.05, n),
-        "pe_ttm": rng.uniform(5.0, 80.0, n),
-        "pb": rng.uniform(0.5, 8.0, n),
-        "ps_ttm": rng.uniform(0.5, 15.0, n),
-        "total_mv": close * rng.uniform(1e8, 1e10, n),
-        "circ_mv": close * rng.uniform(5e7, 5e9, n),
-        "buy_lg_amount": rng.uniform(1e6, 5e6, n),
-        "sell_lg_amount": rng.uniform(1e6, 5e6, n),
-        "net_lg_amount": rng.normal(0, 1e6, n),
-        "buy_md_amount": rng.uniform(5e5, 2e6, n),
-        "sell_md_amount": rng.uniform(5e5, 2e6, n),
-        "net_md_amount": rng.normal(0, 5e5, n),
-        "returns": rng.normal(0.0, 0.02, n),
-        "vwap": amount / volume,
-        "high_low": rng.uniform(0.01, 0.08, n),
-        "close_open": rng.normal(0.0, 0.01, n),
-    })
+    return pd.DataFrame(
+        {
+            "open": close * rng.uniform(0.99, 1.01, n),
+            "high": close * rng.uniform(1.00, 1.05, n),
+            "low": close * rng.uniform(0.95, 1.00, n),
+            "close": close,
+            "volume": volume,
+            "amount": amount,
+            "turnover_rate": rng.uniform(0.001, 0.05, n),
+            "pe_ttm": rng.uniform(5.0, 80.0, n),
+            "pb": rng.uniform(0.5, 8.0, n),
+            "ps_ttm": rng.uniform(0.5, 15.0, n),
+            "total_mv": close * rng.uniform(1e8, 1e10, n),
+            "circ_mv": close * rng.uniform(5e7, 5e9, n),
+            "buy_lg_amount": rng.uniform(1e6, 5e6, n),
+            "sell_lg_amount": rng.uniform(1e6, 5e6, n),
+            "net_lg_amount": rng.normal(0, 1e6, n),
+            "buy_md_amount": rng.uniform(5e5, 2e6, n),
+            "sell_md_amount": rng.uniform(5e5, 2e6, n),
+            "net_md_amount": rng.normal(0, 5e5, n),
+            "returns": rng.normal(0.0, 0.02, n),
+            "vwap": amount / volume,
+            "high_low": rng.uniform(0.01, 0.08, n),
+            "close_open": rng.normal(0.0, 0.01, n),
+        }
+    )
 
 
 def _make_forward_returns(market_data: pd.DataFrame, seed: int = 1) -> pd.Series:
@@ -203,9 +205,7 @@ class TestWarmStartInit:
         seed_exprs = set(SEED_FACTORS.values())
         # 至少有一个种子因子在种群中
         found = pop_exprs.intersection(seed_exprs)
-        assert len(found) > 0, (
-            f"种群中未找到任何种子因子。种群表达式前5个: {list(pop_exprs)[:5]}"
-        )
+        assert len(found) > 0, f"种群中未找到任何种子因子。种群表达式前5个: {list(pop_exprs)[:5]}"
 
     def test_seed_ratio_respected(self, gp_engine: GPEngine) -> None:
         """种群中来自种子的个体比例 >= seed_ratio * 0.5（允许有效变体比例宽松）。"""
@@ -260,7 +260,7 @@ class TestFitnessEvaluator:
         """适应度分数应 >= -1.0（最低分）。"""
         for expr in SEED_FACTORS.values():
             tree = gp_engine.dsl.from_string(expr)
-            fitness, = gp_engine.evaluator.evaluate(tree, market_data, forward_returns)
+            (fitness,) = gp_engine.evaluator.evaluate(tree, market_data, forward_returns)
             assert fitness >= -1.0, f"适应度 {fitness} < -1.0"
 
     def test_bad_tree_returns_negative_fitness(
@@ -269,7 +269,7 @@ class TestFitnessEvaluator:
         """无效表达式（如全NaN）应返回 (-1.0,)。"""
         # 构造一个在当前数据中不存在的字段
         tree = ExprNode(op="nonexistent_field")
-        fitness, = gp_engine.evaluator.evaluate(tree, market_data, forward_returns)
+        (fitness,) = gp_engine.evaluator.evaluate(tree, market_data, forward_returns)
         assert fitness == -1.0
 
     def test_compute_ic_stats_single_section(
@@ -290,9 +290,7 @@ class TestFitnessEvaluator:
         novelty = evaluator._compute_novelty(dummy_series)
         assert novelty == pytest.approx(0.5)
 
-    def test_novelty_high_correlation_penalized(
-        self, market_data: pd.DataFrame
-    ) -> None:
+    def test_novelty_high_correlation_penalized(self, market_data: pd.DataFrame) -> None:
         """与现有因子高度相关（corr>0.7）时 novelty 应为 0。"""
         pb = market_data["pb"]
         # 用 pb 作为现有因子，同时测试 pb 本身的 novelty
@@ -303,14 +301,10 @@ class TestFitnessEvaluator:
         novelty = evaluator._compute_novelty(pb)
         assert novelty == pytest.approx(0.0, abs=0.05)
 
-    def test_novelty_low_correlation_rewarded(
-        self, market_data: pd.DataFrame
-    ) -> None:
+    def test_novelty_low_correlation_rewarded(self, market_data: pd.DataFrame) -> None:
         """与现有因子低相关时 novelty > 0。"""
         pb = market_data["pb"]
-        random_series = pd.Series(
-            np.random.default_rng(999).uniform(0, 1, len(pb)), index=pb.index
-        )
+        random_series = pd.Series(np.random.default_rng(999).uniform(0, 1, len(pb)), index=pb.index)
         evaluator = FitnessEvaluator(
             dsl=FactorDSL(),
             existing_factor_data={"pb": pb},
@@ -326,7 +320,7 @@ class TestFitnessEvaluator:
         """复杂度惩罚应使适应度 <= IC_IR。"""
         # 用最简单的因子和最复杂的因子比较
         simple_tree = gp_engine.dsl.from_string("inv(pb)")
-        simple_fit, = gp_engine.evaluator.evaluate(simple_tree, market_data, forward_returns)
+        (simple_fit,) = gp_engine.evaluator.evaluate(simple_tree, market_data, forward_returns)
         # 只要不报错即可（复杂度惩罚逻辑通过 fitness 公式体现）
         assert isinstance(simple_fit, float)
 
@@ -344,8 +338,7 @@ class TestIslandMigration:
     ) -> None:
         """迁移后岛屿数量不变。"""
         islands = [
-            gp_engine.initialize_population(island_id=i)
-            for i in range(gp_engine.config.n_islands)
+            gp_engine.initialize_population(island_id=i) for i in range(gp_engine.config.n_islands)
         ]
         # 先评估让 fitness 有效
         for island_id, pop in enumerate(islands):
@@ -359,8 +352,7 @@ class TestIslandMigration:
     ) -> None:
         """迁移后各岛种群大小不变。"""
         islands = [
-            gp_engine.initialize_population(island_id=i)
-            for i in range(gp_engine.config.n_islands)
+            gp_engine.initialize_population(island_id=i) for i in range(gp_engine.config.n_islands)
         ]
         for island_id, pop in enumerate(islands):
             gp_engine._evaluate_population(pop, market_data, forward_returns, 0, island_id)
@@ -500,7 +492,7 @@ class TestDeterminism:
 
         # Warm Start 部分（种子变体）应完全一致
         # 检查前 len(SEED_FACTORS) 个（原始种子）是否相同
-        assert exprs1[:len(SEED_FACTORS)] == exprs2[:len(SEED_FACTORS)], (
+        assert exprs1[: len(SEED_FACTORS)] == exprs2[: len(SEED_FACTORS)], (
             "两次 Warm Start 的原始种子部分不一致"
         )
 
@@ -550,7 +542,11 @@ class TestCompareWarmVsRandom:
     ) -> float:
         """计算种群平均适应度。"""
         engine._evaluate_population(pop, market_data, forward_returns, 0, 0)
-        valid = [ind.fitness.values[0] for ind in pop if ind.fitness.valid and ind.fitness.values[0] > -1.0]
+        valid = [
+            ind.fitness.values[0]
+            for ind in pop
+            if ind.fitness.valid and ind.fitness.values[0] > -1.0
+        ]
         return float(np.mean(valid)) if valid else -1.0
 
     def test_compare_warm_vs_random_executable(self) -> None:
@@ -576,8 +572,7 @@ class TestCompareWarmVsRandom:
         warm_pop = engine.initialize_population(island_id=0)
         engine._evaluate_population(warm_pop, market_data, forward_returns, 0, 0)
         valid_count = sum(
-            1 for ind in warm_pop
-            if ind.fitness.valid and ind.fitness.values[0] > -1.0
+            1 for ind in warm_pop if ind.fitness.valid and ind.fitness.values[0] > -1.0
         )
         # Warm Start 种群中至少有一些有效个体（种子因子应通过快速Gate）
         assert valid_count > 0, "Warm Start 种群中无任何有效个体"
@@ -596,8 +591,7 @@ class TestCompareWarmVsRandom:
         warm_pop = engine_warm.initialize_population(island_id=0)
         engine_warm._evaluate_population(warm_pop, market_data, forward_returns, 0, 0)
         warm_valid = sum(
-            1 for ind in warm_pop
-            if ind.fitness.valid and ind.fitness.values[0] > -1.0
+            1 for ind in warm_pop if ind.fitness.valid and ind.fitness.values[0] > -1.0
         )
 
         # 纯随机种群（用不同 island_id 生成，随机部分更多）
@@ -612,16 +606,17 @@ class TestCompareWarmVsRandom:
         rand_pop = engine_rand.initialize_population(island_id=99)
         engine_rand._evaluate_population(rand_pop, market_data, forward_returns, 0, 0)
         rand_valid = sum(
-            1 for ind in rand_pop
-            if ind.fitness.valid and ind.fitness.values[0] > -1.0
+            1 for ind in rand_pop if ind.fitness.valid and ind.fitness.values[0] > -1.0
         )
 
         # Warm Start 的有效个体数应 >= 随机的（宽松检查，因样本量小）
         # 记录结论（不强制 assert，因市场数据随机性会影响结果）
         assert warm_valid >= 0  # 至少执行完毕
         # 记录 warm_valid vs rand_valid，供人工审查
-        print(f"\n[Warm vs Random] warm_valid={warm_valid}, rand_valid={rand_valid}, "
-              f"pop_size={cfg.population_per_island}")
+        print(
+            f"\n[Warm vs Random] warm_valid={warm_valid}, rand_valid={rand_valid}, "
+            f"pop_size={cfg.population_per_island}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +676,7 @@ class TestGPResult:
             parent_seed="bp_ratio",
         )
         assert r.gate_passed is False  # 默认值
-        assert r.param_slots == {}     # 默认值
+        assert r.param_slots == {}  # 默认值
         assert r.fitness == pytest.approx(0.75)
 
     def test_gprunstats_fields(self) -> None:
@@ -726,7 +721,9 @@ class TestIslandIndependence:
 
         for gen in range(1, 4):
             pop = gp_engine._evolve_one_generation(pop, market_data, forward_returns, gen, 1)
-            assert len(pop) == original_size, f"第 {gen} 代后种群大小变化: {len(pop)} != {original_size}"
+            assert len(pop) == original_size, (
+                f"第 {gen} 代后种群大小变化: {len(pop)} != {original_size}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -740,19 +737,21 @@ def _make_gp_results(n: int = 5) -> list[GPResult]:
     results = []
     for i in range(n):
         tree = dsl.random_tree()
-        results.append(GPResult(
-            factor_expr=tree.to_string(),
-            ast_hash=tree.to_ast_hash(),
-            fitness=0.5 + i * 0.05,
-            sharpe_proxy=0.3 + i * 0.02,
-            complexity=0.3,
-            novelty=0.4,
-            ic_mean=0.02 + i * 0.001,
-            t_stat=2.6 + i * 0.1,
-            generation=10 + i,
-            island_id=i % 2,
-            parent_seed="turnover_mean_20",
-        ))
+        results.append(
+            GPResult(
+                factor_expr=tree.to_string(),
+                ast_hash=tree.to_ast_hash(),
+                fitness=0.5 + i * 0.05,
+                sharpe_proxy=0.3 + i * 0.02,
+                complexity=0.3,
+                novelty=0.4,
+                ic_mean=0.02 + i * 0.001,
+                t_stat=2.6 + i * 0.1,
+                generation=10 + i,
+                island_id=i % 2,
+                parent_seed="turnover_mean_20",
+            )
+        )
     return sorted(results, key=lambda r: r.fitness, reverse=True)
 
 
@@ -783,6 +782,7 @@ class TestSaveLoadResults:
     def test_saved_file_contains_top_k_results(self, tmp_path) -> None:
         """保存的文件应包含 Top-K 因子。"""
         import json
+
         results = _make_gp_results(10)
         stats = _make_stats("gp_topk_test")
         saved_path = save_run_results(results, stats, tmp_path, top_k=5)
@@ -839,6 +839,7 @@ class TestBlacklist:
     def test_add_blacklist_updates_file(self, tmp_path) -> None:
         """add_blacklist_to_results_file 应将 hash 写入文件。"""
         import json
+
         stats = _make_stats("gp_bl_test")
         path = save_run_results(_make_gp_results(2), stats, tmp_path)
 
@@ -852,6 +853,7 @@ class TestBlacklist:
     def test_add_blacklist_idempotent(self, tmp_path) -> None:
         """重复追加相同 hash 不应产生重复项。"""
         import json
+
         path = save_run_results(_make_gp_results(2), _make_stats("gp_idem"), tmp_path)
 
         add_blacklist_to_results_file(path, ["aabbcc"])
@@ -882,13 +884,15 @@ class TestCrossRoundInjection:
     def test_engine_accepts_previous_run(self) -> None:
         """GPEngine 应能接受 previous_run 参数并初始化。"""
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": "ts_mean(turnover_rate, 20)",
-                "ast_hash": "abc123",
-                "fitness": 0.8,
-                "ic_mean": 0.025,
-                "t_stat": 3.1,
-            }],
+            top_results=[
+                {
+                    "factor_expr": "ts_mean(turnover_rate, 20)",
+                    "ast_hash": "abc123",
+                    "fitness": 0.8,
+                    "ic_mean": 0.025,
+                    "t_stat": 3.1,
+                }
+            ],
             blacklisted_hashes={"deadfactor"},
             run_id="gp_prev_001",
         )
@@ -899,6 +903,7 @@ class TestCrossRoundInjection:
     def test_blacklist_checked_in_mutate(self) -> None:
         """_mutate_op 遇到黑名单 hash 应重试，不崩溃。"""
         from deap import creator
+
         big_blacklist = {f"hash_{i:08x}" for i in range(1000)}
         previous = PreviousRunData(blacklisted_hashes=big_blacklist, run_id="gp_bl")
         config = GPConfig(n_islands=1, population_per_island=10, n_generations=1)
@@ -922,13 +927,15 @@ class TestCrossRoundInjection:
     def test_cross_round_inject_valid_expr(self) -> None:
         """注入合法表达式时，种群大小应保持 population_per_island。"""
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": "ts_mean(turnover_rate, 20)",
-                "ast_hash": "validhash001",
-                "fitness": 0.9,
-                "ic_mean": 0.03,
-                "t_stat": 3.5,
-            }],
+            top_results=[
+                {
+                    "factor_expr": "ts_mean(turnover_rate, 20)",
+                    "ast_hash": "validhash001",
+                    "fitness": 0.9,
+                    "ic_mean": 0.03,
+                    "t_stat": 3.5,
+                }
+            ],
             blacklisted_hashes=set(),
             run_id="gp_inject_test",
         )
@@ -944,8 +951,10 @@ class TestSQLAlchemyModels:
     def test_pipeline_run_tablename(self) -> None:
         """PipelineRun 应映射到 pipeline_runs 表。"""
         import sys
+
         sys.path.insert(0, ".")
         from app.models.pipeline_run import PipelineRun
+
         assert PipelineRun.__tablename__ == "pipeline_runs"
 
     def test_pipeline_run_from_gp_stats(self) -> None:
@@ -953,6 +962,7 @@ class TestSQLAlchemyModels:
         import uuid
 
         from app.models.pipeline_run import PipelineRun
+
         run_id = uuid.uuid4()
         obj = PipelineRun.from_gp_stats(
             run_id=run_id,
@@ -968,6 +978,7 @@ class TestSQLAlchemyModels:
     def test_gp_approval_queue_tablename(self) -> None:
         """GPApprovalQueue 应映射到 gp_approval_queue 表。"""
         from app.models.approval_queue import GPApprovalQueue
+
         assert GPApprovalQueue.__tablename__ == "gp_approval_queue"
 
     def test_gp_approval_queue_from_gp_result(self) -> None:
@@ -975,6 +986,7 @@ class TestSQLAlchemyModels:
         import uuid
 
         from app.models.approval_queue import GPApprovalQueue
+
         run_id = uuid.uuid4()
         obj = GPApprovalQueue.from_gp_result(
             run_id=run_id,

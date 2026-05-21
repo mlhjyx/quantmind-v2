@@ -5,6 +5,7 @@ subprocess 真启动验证:
   - default_strategy_pipeline factory 可构造
   - ADR-014 文件存在 (静态 marker)
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -78,6 +79,4 @@ def test_mvp_3_5_batch_3_strategy_gates_imports_and_markers():
     assert result.returncode == 0, (
         f"smoke failed (exit={result.returncode}): stderr={result.stderr}"
     )
-    assert "OK mvp_3_5_batch_3 boot" in result.stdout, (
-        f"missing OK marker: stdout={result.stdout}"
-    )
+    assert "OK mvp_3_5_batch_3 boot" in result.stdout, f"missing OK marker: stdout={result.stdout}"

@@ -38,21 +38,35 @@ CORE_FACTORS = ["turnover_mean_20", "volatility_20", "reversal_20", "amihud_20",
 
 # 已知方向（signal_engine.py FACTOR_DIRECTION + IC符号推断）
 KNOWN_DIRECTIONS = {
-    "momentum_5": 1, "momentum_10": 1, "momentum_20": 1,
-    "reversal_5": 1, "reversal_10": 1, "reversal_20": 1, "reversal_60": 1,
-    "volatility_20": -1, "volatility_60": -1,
-    "volume_std_20": -1, "turnover_mean_20": -1, "turnover_std_20": -1,
-    "amihud_20": 1, "bp_ratio": 1, "ep_ratio": 1, "dv_ttm": 1,
-    "price_volume_corr_20": -1, "high_low_range_20": -1,
-    "price_level_factor": -1, "relative_volume_20": -1,
-    "turnover_surge_ratio": -1, "ln_market_cap": -1,
+    "momentum_5": 1,
+    "momentum_10": 1,
+    "momentum_20": 1,
+    "reversal_5": 1,
+    "reversal_10": 1,
+    "reversal_20": 1,
+    "reversal_60": 1,
+    "volatility_20": -1,
+    "volatility_60": -1,
+    "volume_std_20": -1,
+    "turnover_mean_20": -1,
+    "turnover_std_20": -1,
+    "amihud_20": 1,
+    "bp_ratio": 1,
+    "ep_ratio": 1,
+    "dv_ttm": 1,
+    "price_volume_corr_20": -1,
+    "high_low_range_20": -1,
+    "price_level_factor": -1,
+    "relative_volume_20": -1,
+    "turnover_surge_ratio": -1,
+    "ln_market_cap": -1,
 }
 
 # 排除列表
 EXCLUDE_FACTORS = {
-    "ln_market_cap",     # 风险因子，不是alpha
-    "mf_divergence",     # 已证伪 IC=-2.27%
-    "beta_market_20",    # |t|=2.18 < 2.5阈值
+    "ln_market_cap",  # 风险因子，不是alpha
+    "mf_divergence",  # 已证伪 IC=-2.27%
+    "beta_market_20",  # |t|=2.18 < 2.5阈值
 }
 
 # 市值分档阈值（亿元，daily_basic.total_mv单位=万元）
@@ -97,13 +111,15 @@ def prepare_candidates(conn) -> pd.DataFrame:
         if direction is None:
             # 从IC符号推断: IC负→选低的(direction=-1), IC正→选高的(direction=1)
             direction = 1 if float(avg_ic) > 0 else -1
-        candidates.append({
-            "factor_name": fname,
-            "ic": float(avg_ic),
-            "t_stat": float(t_stat),
-            "direction": direction,
-            "is_core": fname in CORE_FACTORS,
-        })
+        candidates.append(
+            {
+                "factor_name": fname,
+                "ic": float(avg_ic),
+                "t_stat": float(t_stat),
+                "direction": direction,
+                "is_core": fname in CORE_FACTORS,
+            }
+        )
 
     cand_df = pd.DataFrame(candidates)
     print(f"  T1候选因子: {len(cand_df)} (含{cand_df['is_core'].sum()}个CORE)")
@@ -151,6 +167,7 @@ def prepare_candidates(conn) -> pd.DataFrame:
                 common = f_vals.index.intersection(cf_vals.index)
                 if len(common) > 50:
                     from scipy.stats import spearmanr
+
                     c, _ = spearmanr(f_vals[common], cf_vals[common])
                     if np.isfinite(c):
                         corrs_with_core.append(abs(c))
@@ -236,7 +253,9 @@ def run_expansion_backtest(
 
         if i + 1 < len(rebal_dates):
             next_rd = pd.Timestamp(rebal_dates[i + 1])
-            end_idx = next((j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts))
+            end_idx = next(
+                (j for j, d in enumerate(all_dates_ts) if d > next_rd), len(all_dates_ts)
+            )
         else:
             end_idx = len(all_dates_ts)
 
@@ -284,7 +303,10 @@ def run_expansion_backtest(
     # 年度分解
     yearly = {}
     for year in range(BT_START.year, BT_END.year + 1):
-        dates_year = pd.Series([d.year if hasattr(d, "year") else pd.Timestamp(d).year for d in port_ret.index], index=port_ret.index)
+        dates_year = pd.Series(
+            [d.year if hasattr(d, "year") else pd.Timestamp(d).year for d in port_ret.index],
+            index=port_ret.index,
+        )
         mask = dates_year == year
         yr = port_ret[mask]
         if len(yr) < 20:
@@ -337,11 +359,13 @@ def print_report(candidates: pd.DataFrame, results: list[dict]) -> None:
     # 候选因子表
     non_core = candidates[~candidates["is_core"]].head(30)
     print("\n  候选因子池（按与CORE相关性排序, 前20）:")
-    print(f"  {'#':>3s}  {'因子':<30s}  {'IC':>8s}  {'t-stat':>8s}  {'corr_core5':>10s}  {'方向':>4s}")
-    print(f"  {'─'*3}  {'─'*30}  {'─'*8}  {'─'*8}  {'─'*10}  {'─'*4}")
+    print(
+        f"  {'#':>3s}  {'因子':<30s}  {'IC':>8s}  {'t-stat':>8s}  {'corr_core5':>10s}  {'方向':>4s}"
+    )
+    print(f"  {'─' * 3}  {'─' * 30}  {'─' * 8}  {'─' * 8}  {'─' * 10}  {'─' * 4}")
     for i, (_, r) in enumerate(non_core.head(20).iterrows()):
         print(
-            f"  {i+6:>3d}  {r['factor_name']:<30s}  {r['ic']:>+8.4f}  "
+            f"  {i + 6:>3d}  {r['factor_name']:<30s}  {r['ic']:>+8.4f}  "
             f"{r['t_stat']:>+8.1f}  {r['avg_corr_core5']:>10.3f}  {r['direction']:>+4d}"
         )
 
@@ -351,14 +375,16 @@ def print_report(candidates: pd.DataFrame, results: list[dict]) -> None:
         f"  {'组':<6s}  {'因子数':>6s}  {'CAGR%':>7s}  {'Sharpe':>7s}  {'MDD%':>7s}  "
         f"{'Calmar':>7s}  {'换手率':>6s}  {'市值中位(亿)':>10s}  {'<100亿%':>8s}"
     )
-    print(f"  {'─'*6}  {'─'*6}  {'─'*7}  {'─'*7}  {'─'*7}  {'─'*7}  {'─'*6}  {'─'*10}  {'─'*8}")
+    print(
+        f"  {'─' * 6}  {'─' * 6}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 6}  {'─' * 10}  {'─' * 8}"
+    )
 
     for r in results:
         small_pct = r["mv_pct"].get("<50亿", 0) + r["mv_pct"].get("50-100亿", 0)
         print(
-            f"  {r['label']:<6s}  {r['n_factors']:>6d}  {r['cagr']*100:>+7.1f}  "
-            f"{r['sharpe']:>7.2f}  {r['mdd']*100:>+7.1f}  {r['calmar']:>7.2f}  "
-            f"{r['avg_turnover']:>5.0f}%  {r['mv_median']:>10.0f}  {small_pct*100:>7.0f}%"
+            f"  {r['label']:<6s}  {r['n_factors']:>6d}  {r['cagr'] * 100:>+7.1f}  "
+            f"{r['sharpe']:>7.2f}  {r['mdd'] * 100:>+7.1f}  {r['calmar']:>7.2f}  "
+            f"{r['avg_turnover']:>5.0f}%  {r['mv_median']:>10.0f}  {small_pct * 100:>7.0f}%"
         )
 
     # 选股重叠度
@@ -367,14 +393,16 @@ def print_report(candidates: pd.DataFrame, results: list[dict]) -> None:
         print("\n  选股重叠度 (vs 基线CORE 5因子):")
         for r in results[1:]:
             overlap = compute_overlap(base_holdings, r["holdings"])
-            print(f"    {r['label']} ({r['n_factors']}因子) vs CORE: {overlap*100:.0f}%重叠")
+            print(f"    {r['label']} ({r['n_factors']}因子) vs CORE: {overlap * 100:.0f}%重叠")
 
     # 年度分解（基线 + 最优Calmar组）
     if results:
         best = max(results, key=lambda x: x["calmar"])
         base = results[0]
         print(f"\n  年度分解 (基线A vs 最优{best['label']}):")
-        print(f"  {'年份':>6s}  {'A Sharpe':>9s}  {'A MDD%':>8s}  {best['label']+' Sharpe':>12s}  {best['label']+' MDD%':>10s}")
+        print(
+            f"  {'年份':>6s}  {'A Sharpe':>9s}  {'A MDD%':>8s}  {best['label'] + ' Sharpe':>12s}  {best['label'] + ' MDD%':>10s}"
+        )
         for year in sorted(set(list(base["yearly"].keys()) + list(best["yearly"].keys()))):
             bs, bm = base["yearly"].get(year, (0, 0))
             ms, mm = best["yearly"].get(year, (0, 0))
@@ -389,17 +417,21 @@ def print_report(candidates: pd.DataFrame, results: list[dict]) -> None:
     best_calmar = max(results, key=lambda x: x["calmar"])
 
     print("    Sharpe趋势: " + " → ".join(f"{r['n_factors']}f={r['sharpe']:.2f}" for r in results))
-    print("    MDD趋势:    " + " → ".join(f"{r['n_factors']}f={r['mdd']*100:.1f}%" for r in results))
+    print(
+        "    MDD趋势:    " + " → ".join(f"{r['n_factors']}f={r['mdd'] * 100:.1f}%" for r in results)
+    )
 
     base = results[0]
     if best_calmar["calmar"] > base["calmar"] * 1.1:
-        print(f"    最优: {best_calmar['label']}({best_calmar['n_factors']}因子) Calmar={best_calmar['calmar']:.2f} vs 基线{base['calmar']:.2f}")
+        print(
+            f"    最优: {best_calmar['label']}({best_calmar['n_factors']}因子) Calmar={best_calmar['calmar']:.2f} vs 基线{base['calmar']:.2f}"
+        )
         small_pct = best_calmar["mv_pct"].get("<50亿", 0) + best_calmar["mv_pct"].get("50-100亿", 0)
         base_small = base["mv_pct"].get("<50亿", 0) + base["mv_pct"].get("50-100亿", 0)
         if small_pct < base_small - 0.05:
-            print(f"    小盘集中度降低: {base_small*100:.0f}% → {small_pct*100:.0f}%")
+            print(f"    小盘集中度降低: {base_small * 100:.0f}% → {small_pct * 100:.0f}%")
         else:
-            print(f"    小盘集中度未显著变化: {base_small*100:.0f}% → {small_pct*100:.0f}%")
+            print(f"    小盘集中度未显著变化: {base_small * 100:.0f}% → {small_pct * 100:.0f}%")
     else:
         print("    扩展因子未显著改善Calmar")
 
@@ -438,14 +470,17 @@ def main() -> None:
 
     # 月末调仓日
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT DISTINCT ON (EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date))
             trade_date
         FROM klines_daily
         WHERE trade_date >= %s AND trade_date <= %s
         ORDER BY EXTRACT(YEAR FROM trade_date), EXTRACT(MONTH FROM trade_date),
                  trade_date DESC
-    """, (BT_START, BT_END))
+    """,
+        (BT_START, BT_END),
+    )
     rebal_dates = sorted([r[0] for r in cur.fetchall()])
     print(f"  月末调仓日: {len(rebal_dates)}个")
 
@@ -488,10 +523,16 @@ def main() -> None:
     for label, factor_list in groups:
         print(f"  {label}组 ({len(factor_list)}因子)...", end=" ", flush=True)
         r = run_expansion_backtest(
-            factor_list, directions, factor_data, price_pivot, daily_ret,
-            mv_data, rebal_dates, label,
+            factor_list,
+            directions,
+            factor_data,
+            price_pivot,
+            daily_ret,
+            mv_data,
+            rebal_dates,
+            label,
         )
-        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd']*100:.1f}% Calmar={r['calmar']:.2f}")
+        print(f"Sharpe={r['sharpe']:.2f} MDD={r['mdd'] * 100:.1f}% Calmar={r['calmar']:.2f}")
         results.append(r)
 
     # 报告

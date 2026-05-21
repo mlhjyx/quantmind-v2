@@ -139,9 +139,7 @@ def _is_bypassed(command: str) -> bool:
     """
     if os.environ.get("QM_REDLINE_BYPASS") == "1":
         return True
-    if BYPASS_MARKER_RE.search(command):
-        return True
-    return False
+    return bool(BYPASS_MARKER_RE.search(command))
 
 
 def _check_block(command: str) -> tuple[str, str] | None:

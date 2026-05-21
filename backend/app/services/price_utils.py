@@ -31,7 +31,7 @@ def _get_sync_conn() -> psycopg2.extensions.connection:
     url = settings.DATABASE_URL
     for prefix in ("postgresql+asyncpg://", "postgres://"):
         if url.startswith(prefix):
-            url = "postgresql://" + url[len(prefix):]
+            url = "postgresql://" + url[len(prefix) :]
             break
     return psycopg2.connect(url)
 
@@ -149,6 +149,7 @@ WHERE a2.trade_date = %s AND a1.trade_date = %s
 # ============================================================
 # Python API
 # ============================================================
+
 
 def get_adj_prices(
     start_date: date,
@@ -270,14 +271,17 @@ def verify_adj_factor_event(
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # 获取event_date当天和前一交易日的adj_factor
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT trade_date, adj_factor
                 FROM klines_daily
                 WHERE code = %s
                   AND trade_date <= %s
                 ORDER BY trade_date DESC
                 LIMIT 2
-            """, (code, event_date))
+            """,
+                (code, event_date),
+            )
             rows = cur.fetchall()
 
             if len(rows) < 2:

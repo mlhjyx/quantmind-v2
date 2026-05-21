@@ -3,6 +3,7 @@
 单元覆盖 signal_engine._get_direction 3 层 fallback 已在 test_signal_engine_direction.py.
 本模块只测 helper 本身: 注入 / 幂等 / force / reset / fail-safe.
 """
+
 from __future__ import annotations
 
 import sys

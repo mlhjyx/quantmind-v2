@@ -24,6 +24,7 @@ Output:
   - DRY-RUN 模式不发任何单
   - --execute 模式发单后打印 order_id 列表 + summary
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,7 +101,6 @@ def _classify_market(code: str) -> str:
 def _fetch_market_price(code: str) -> float | None:
     """从 Redis market:latest:{code} 读最新成交价 (无价返 None, 仅做估算用)."""
     try:
-
         from app.core.qmt_client import _get_redis_client
 
         client = _get_redis_client()
@@ -185,8 +185,7 @@ def _confirm_execute() -> bool:
     print("  Action: place sell-market orders for all sellable positions")
     print("!" * 80)
     print(
-        "\nType exactly 'YES SELL ALL' (no quotes) to confirm execution, "
-        "or anything else to abort:"
+        "\nType exactly 'YES SELL ALL' (no quotes) to confirm execution, or anything else to abort:"
     )
     try:
         response = input(">>> ").strip()
@@ -284,9 +283,7 @@ def main() -> int:
 
     # --execute 路径
     if args.confirm_yes:
-        logger.warning(
-            "[Confirm] --confirm-yes flag bypass interactive prompt (chat-driven 授权)"
-        )
+        logger.warning("[Confirm] --confirm-yes flag bypass interactive prompt (chat-driven 授权)")
         print("⚠️  --confirm-yes 跳过交互确认 (audit trail 已 log)")
     elif not _confirm_execute():
         print("\n❌ Confirmation FAILED — no orders placed. Exiting.")
@@ -318,10 +315,12 @@ def main() -> int:
             dry_run_audit=False,
         )
         logger.info("[T0-19 audit] complete: %s", audit_summary)
-        print(f"\n✅ T0-19 audit hook complete: trade_log+{audit_summary['trade_log_inserted']} "
-              f"risk_event_log_id={audit_summary['risk_event_log_id'][:8]} "
-              f"perf_series=4-29 cb_state.nav={audit_summary['cb_state_reset_to_nav']:,.2f}",
-              flush=True)
+        print(
+            f"\n✅ T0-19 audit hook complete: trade_log+{audit_summary['trade_log_inserted']} "
+            f"risk_event_log_id={audit_summary['risk_event_log_id'][:8]} "
+            f"perf_series=4-29 cb_state.nav={audit_summary['cb_state_reset_to_nav']:,.2f}",
+            flush=True,
+        )
     except Exception as hook_err:
         logger.error("[T0-19 audit hook] FAILED: %s", hook_err, exc_info=True)
         print(f"\n⚠️  T0-19 audit hook FAILED: {hook_err}", file=sys.stderr, flush=True)

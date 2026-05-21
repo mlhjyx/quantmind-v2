@@ -5,6 +5,7 @@
   - DBPositionSource: snapshot rows / no rows (raise)
   - _enricher.build_positions 纯函数 (0 shares skip)
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -34,6 +35,7 @@ def _conn_factory(mock_conn: MagicMock):
     @contextlib.contextmanager
     def factory():
         yield mock_conn
+
     return factory
 
 
@@ -177,11 +179,13 @@ class TestDBPositionSource:
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
             [("600519.SH", 100)],  # position_snapshot rows
-            [],                    # load_entry_prices trade_log buys (empty → entry=0)
+            [],  # load_entry_prices trade_log buys (empty → entry=0)
         ]
         # P2 reviewer 采纳 (PR #147 fix): 显式注释 fetchone 覆盖 2 次 _resolve_entry_date
         # (load_peak_prices + load_entry_dates), 防 mock 顺序漂移 silent pass.
-        mock_cursor.fetchone.return_value = None  # _resolve_entry_date: 无 buy → peak/entry_date 都 None
+        mock_cursor.fetchone.return_value = (
+            None  # _resolve_entry_date: 无 buy → peak/entry_date 都 None
+        )
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_conn.cursor.return_value.__exit__.return_value = False
 

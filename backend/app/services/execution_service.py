@@ -102,12 +102,8 @@ class ExecutionService:
         elif cb_level == 3:
             # L3 REDUCE: 降仓
             # 对应 script L1479-1484
-            logger.warning(
-                f"[ExecutionService] L3 REDUCE, 仓位乘数={position_multiplier}"
-            )
-            hedged_target = {
-                k: v * position_multiplier for k, v in hedged_target.items()
-            }
+            logger.warning(f"[ExecutionService] L3 REDUCE, 仓位乘数={position_multiplier}")
+            hedged_target = {k: v * position_multiplier for k, v in hedged_target.items()}
             is_rebalance = True
 
         elif cb_level == 2:
@@ -124,11 +120,11 @@ class ExecutionService:
             if execution_mode == "live":
                 # P0-4 fix: live模式L1不支持pending恢复，发告警
                 logger.error(
-                    "[ExecutionService] live模式触发L1延迟, "
-                    "live路径无pending恢复机制, 告警通知"
+                    "[ExecutionService] live模式触发L1延迟, live路径无pending恢复机制, 告警通知"
                 )
                 try:
                     from app.services.notification_service import send_alert
+
                     send_alert(
                         level="P1",
                         title="Live模式L1熔断告警",
@@ -139,7 +135,9 @@ class ExecutionService:
                     logger.exception("[ExecutionService] L1告警发送失败")
             elif not dry_run:
                 self._save_pending_rebalance(
-                    conn, signal_date or exec_date, hedged_target,
+                    conn,
+                    signal_date or exec_date,
+                    hedged_target,
                 )
 
         # ── Intraday tradability pre-filter (P0-3, 2026-05-17) ──
@@ -161,9 +159,7 @@ class ExecutionService:
                 conn, exec_date, list(hedged_target.keys())
             )
             if nontradable:
-                filtered = {
-                    k: v for k, v in hedged_target.items() if k not in nontradable
-                }
+                filtered = {k: v for k, v in hedged_target.items() if k not in nontradable}
                 original_total = sum(hedged_target.values())
                 new_total = sum(filtered.values()) if filtered else 0.0
                 # Truncated preview for log readability (reviewer P3).
@@ -196,9 +192,16 @@ class ExecutionService:
         # ── 路由到对应Broker ──
         if execution_mode == "live":
             return self._execute_live(
-                conn, strategy_id, exec_date, hedged_target,
-                is_rebalance, price_data, signal_date, dry_run,
-                cb_level, result,
+                conn,
+                strategy_id,
+                exec_date,
+                hedged_target,
+                is_rebalance,
+                price_data,
+                signal_date,
+                dry_run,
+                cb_level,
+                result,
             )
 
         # ── paper模式（现有路径，保持不变） ──
@@ -220,13 +223,14 @@ class ExecutionService:
         if is_rebalance and hedged_target:
             logger.info("[ExecutionService] 执行调仓 (T+1 open价格)...")
             rebal_fills, new_pending = paper_broker.execute_rebalance(
-                hedged_target, exec_date, price_data,
+                hedged_target,
+                exec_date,
+                price_data,
                 signal_date=signal_date,
             )
             fills.extend(rebal_fills)
             logger.info(
-                f"[ExecutionService] 调仓完成: {len(rebal_fills)}笔成交, "
-                f"{len(new_pending)}只封板"
+                f"[ExecutionService] 调仓完成: {len(rebal_fills)}笔成交, {len(new_pending)}只封板"
             )
 
             # 保存封板补单记录
@@ -280,9 +284,7 @@ class ExecutionService:
         return result
 
     @staticmethod
-    def _filter_nontradable_codes(
-        conn, exec_date: date, codes: list[str]
-    ) -> dict[str, str]:
+    def _filter_nontradable_codes(conn, exec_date: date, codes: list[str]) -> dict[str, str]:
         """T+1 09:30 SH 执行前 prefilter: T日 known-untradable codes (P0-3 2026-05-17).
 
         2 类 untradable signal (T日 数据):
@@ -397,11 +399,17 @@ class ExecutionService:
         if is_rebalance and hedged_target:
             # 构建参考价dict（T日close优先，xtdata实时价在adapter内获取）
             prices: dict[str, float] = {}
-            if price_data is not None and not price_data.empty and "trade_date" in price_data.columns:
+            if (
+                price_data is not None
+                and not price_data.empty
+                and "trade_date" in price_data.columns
+            ):
                 day_data = price_data[price_data["trade_date"] == exec_date]
             else:
                 day_data = pd.DataFrame()
-                logger.warning("[ExecutionService] price_data为空或缺少trade_date列，将依赖xtdata实时价")
+                logger.warning(
+                    "[ExecutionService] price_data为空或缺少trade_date列，将依赖xtdata实时价"
+                )
             if not day_data.empty:
                 for _, row in day_data.iterrows():
                     # 优先用close（更接近T+1开盘），fallback到open
@@ -417,7 +425,9 @@ class ExecutionService:
                 adapter = QMTExecutionAdapter(broker, audit_conn=conn)
                 try:
                     rebal_fills, new_pending = adapter.execute_rebalance(
-                        hedged_target, exec_date, prices,
+                        hedged_target,
+                        exec_date,
+                        prices,
                         signal_date=signal_date,
                     )
                     fills.extend(rebal_fills)
@@ -425,8 +435,7 @@ class ExecutionService:
                     adapter.cleanup()
 
             logger.info(
-                f"[ExecutionService] live调仓完成: {len(fills)}笔成交, "
-                f"{len(new_pending)}笔pending"
+                f"[ExecutionService] live调仓完成: {len(fills)}笔成交, {len(new_pending)}笔pending"
             )
 
             if new_pending and not dry_run:
@@ -548,9 +557,7 @@ class ExecutionService:
         # L4/L2暂停时不处理补单
         # 对应 script L1585-1587
         if cb_level >= 4:
-            logger.warning(
-                f"[ExecutionService] L{cb_level}熔断中，跳过补单"
-            )
+            logger.warning(f"[ExecutionService] L{cb_level}熔断中，跳过补单")
             return []
 
         # 读取pending_orders
@@ -566,30 +573,24 @@ class ExecutionService:
             return []
 
         pending_data = (
-            json.loads(pending_row[0])
-            if isinstance(pending_row[0], str)
-            else pending_row[0]
+            json.loads(pending_row[0]) if isinstance(pending_row[0], str) else pending_row[0]
         )
         saved_pending: list[PendingOrder] = []
         for po_dict in pending_data.get("orders", []):
-            saved_pending.append(PendingOrder(
-                code=po_dict["code"],
-                signal_date=datetime.strptime(
-                    po_dict["signal_date"], "%Y-%m-%d"
-                ).date(),
-                exec_date=datetime.strptime(
-                    po_dict["exec_date"], "%Y-%m-%d"
-                ).date(),
-                target_weight=po_dict["target_weight"],
-                original_score=po_dict.get("original_score", 0),
-            ))
+            saved_pending.append(
+                PendingOrder(
+                    code=po_dict["code"],
+                    signal_date=datetime.strptime(po_dict["signal_date"], "%Y-%m-%d").date(),
+                    exec_date=datetime.strptime(po_dict["exec_date"], "%Y-%m-%d").date(),
+                    target_weight=po_dict["target_weight"],
+                    original_score=po_dict.get("original_score", 0),
+                )
+            )
 
         if not saved_pending:
             return []
 
-        logger.info(
-            f"[ExecutionService] 发现{len(saved_pending)}只封板待补单"
-        )
+        logger.info(f"[ExecutionService] 发现{len(saved_pending)}只封板待补单")
 
         # 获取下次调仓日
         # 对应 script L1590-1606
@@ -605,16 +606,16 @@ class ExecutionService:
         paper_broker.load_state(conn)
 
         retry_fills, updated_pending = paper_broker.process_pending_orders(
-            saved_pending, exec_date, price_data,
-            next_rebal_date=next_rebal_date, conn=conn,
+            saved_pending,
+            exec_date,
+            price_data,
+            next_rebal_date=next_rebal_date,
+            conn=conn,
         )
 
         filled = [po for po in updated_pending if po.status == "filled"]
         cancelled = [po for po in updated_pending if po.status == "cancelled"]
-        logger.info(
-            f"[ExecutionService] 补单结果: "
-            f"{len(filled)}成功, {len(cancelled)}取消"
-        )
+        logger.info(f"[ExecutionService] 补单结果: {len(filled)}成功, {len(cancelled)}取消")
         for po in cancelled:
             logger.info(f"  取消: {po.code} 原因={po.cancel_reason}")
 
@@ -669,11 +670,7 @@ class ExecutionService:
         if not pending or not pending[0]:
             return False, {}
 
-        pending_data = (
-            json.loads(pending[0])
-            if isinstance(pending[0], str)
-            else pending[0]
-        )
+        pending_data = json.loads(pending[0]) if isinstance(pending[0], str) else pending[0]
         pending_signal_date = pending_data.get("signal_date")
         pending_target = pending_data.get("target", {})
 
@@ -694,8 +691,7 @@ class ExecutionService:
 
         if gap <= 2:
             logger.info(
-                f"[ExecutionService] L1已恢复，执行延迟月度调仓"
-                f"(signal={pending_signal_date})"
+                f"[ExecutionService] L1已恢复，执行延迟月度调仓(signal={pending_signal_date})"
             )
             target = {k: float(v) for k, v in pending_target.items()}
             if not dry_run:
@@ -706,9 +702,7 @@ class ExecutionService:
                 )
             return True, target
         else:
-            logger.info(
-                f"[ExecutionService] 延迟调仓过期(gap={gap}交易日), 放弃"
-            )
+            logger.info(f"[ExecutionService] 延迟调仓过期(gap={gap}交易日), 放弃")
             if not dry_run:
                 cur.execute(
                     """UPDATE scheduler_task_log SET status='expired'
@@ -779,8 +773,7 @@ class ExecutionService:
             (json.dumps(pending_data),),
         )
         logger.info(
-            f"[ExecutionService] 封板补单已保存: "
-            f"{', '.join(po.code for po in pending_orders)}"
+            f"[ExecutionService] 封板补单已保存: {', '.join(po.code for po in pending_orders)}"
         )
 
     def _get_next_rebalance_date(

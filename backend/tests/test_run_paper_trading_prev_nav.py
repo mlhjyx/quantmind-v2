@@ -6,6 +6,7 @@
 
 修: 加 `AND trade_date < %s` 明确排除今日, 对齐 daily_reconciliation.py:206 的正确 query.
 """
+
 from __future__ import annotations
 
 import re
@@ -23,15 +24,14 @@ def test_prev_nav_query_contains_trade_date_filter() -> None:
     text = _load_script_text()
     # 找到 SELECT nav FROM performance_series 紧邻的 WHERE 子句
     match = re.search(
-        r'SELECT nav FROM performance_series.*?ORDER BY trade_date DESC LIMIT 1',
+        r"SELECT nav FROM performance_series.*?ORDER BY trade_date DESC LIMIT 1",
         text,
         re.DOTALL,
     )
     assert match is not None, "prev_nav SELECT query 未找到 — 脚本结构可能变化"
     query = match.group(0)
     assert "trade_date < %s" in query or "trade_date < CAST" in query, (
-        f"prev_nav query 缺 `trade_date < %s` 过滤 — P1-c bug 回归!\n"
-        f"实际 query 片段:\n{query}"
+        f"prev_nav query 缺 `trade_date < %s` 过滤 — P1-c bug 回归!\n实际 query 片段:\n{query}"
     )
 
 

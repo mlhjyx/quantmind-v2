@@ -230,7 +230,7 @@ class PlatformBacktestRunner(BacktestRunner):
             if result.returncode == 0:
                 return result.stdout.strip()
         except (subprocess.SubprocessError, FileNotFoundError):
-            pass
+            pass  # silent_ok: git unavailable in production env, build metadata 可空
         return None
 
     @staticmethod

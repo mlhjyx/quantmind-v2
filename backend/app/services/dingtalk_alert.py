@@ -179,6 +179,8 @@ def send_with_dedup(
         }
     finally:
         if own_conn and conn is not None:
+            # F16-classC 例外: leaf utility — own_conn=True 表示本函数自建连接 (无外部调用方管理事务);
+            # notification dedup UPSERT 必须在 finally 提交以防告警丢失, conn.close() 紧跟释放.
             conn.commit()
             conn.close()
 

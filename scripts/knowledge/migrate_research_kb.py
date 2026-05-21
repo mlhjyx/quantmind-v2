@@ -15,6 +15,7 @@ CLI:
 
 铁律: 22 (文档跟随代码) / 32 (Service 不 commit — orchestration 脚本负责) / 33 (禁 silent failure).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -230,7 +231,9 @@ def merge_failed_entries(*lists: list[FailedDirEntry]) -> list[FailedDirEntry]:
             key = e.direction.strip().lower()
             if key in by_dir:
                 # merge evidence + tags
-                merged_ev = by_dir[key].evidence + [ev for ev in e.evidence if ev not in by_dir[key].evidence]
+                merged_ev = by_dir[key].evidence + [
+                    ev for ev in e.evidence if ev not in by_dir[key].evidence
+                ]
                 merged_tags = list(dict.fromkeys(by_dir[key].tags + e.tags))
                 # 优先保 md-sourced (非 CLAUDE.md)
                 base = by_dir[key] if by_dir[key].source != "CLAUDE.md" else e
@@ -344,8 +347,11 @@ def main() -> None:
     if dry:
         logger.info("[DRY-RUN] 结束. 加 --apply 真写 DB.")
     else:
-        logger.info("✅ Migration 完成: failed_directions=%d, platform_experiments=%d",
-                    len(merged), len(experiments))
+        logger.info(
+            "✅ Migration 完成: failed_directions=%d, platform_experiments=%d",
+            len(merged),
+            len(experiments),
+        )
 
 
 if __name__ == "__main__":

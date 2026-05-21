@@ -20,6 +20,7 @@ Usage:
   - 33: 禁 silent failure — 本模块 catch 后 logger.warning, 属 read-path fallback 允许
   - 36: MVP 前核 precondition — MVP 2.1b 启动前必须确认 1.3b 真正激活
 """
+
 from __future__ import annotations
 
 import logging

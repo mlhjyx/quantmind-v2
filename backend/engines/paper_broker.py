@@ -176,9 +176,7 @@ class PaperBroker(BaseBroker):
         last_trading_day_of_month = row[0] if row else None
 
         if last_trading_day_of_month and trade_date == last_trading_day_of_month:
-            logger.info(
-                f"[PaperBroker] {trade_date} 是本月最后交易日，触发调仓"
-            )
+            logger.info(f"[PaperBroker] {trade_date} 是本月最后交易日，触发调仓")
             return True
 
         logger.info(f"[PaperBroker] {trade_date} 非调仓日")
@@ -225,7 +223,11 @@ class PaperBroker(BaseBroker):
 
         # 执行调仓（封板记录为pending）
         fills, new_pending = self._do_rebalance(
-            target_weights, portfolio_value, trade_date, price_idx, today_close,
+            target_weights,
+            portfolio_value,
+            trade_date,
+            price_idx,
+            today_close,
             signal_date or trade_date,
         )
 
@@ -392,13 +394,15 @@ class PaperBroker(BaseBroker):
                 continue
             if not broker.can_trade(code, "buy", row):
                 logger.debug(f"[{exec_date}] {code} 买入封板，加入补单队列")
-                new_pending.append(PendingOrder(
-                    code=code,
-                    signal_date=signal_date or exec_date,
-                    exec_date=exec_date,
-                    target_weight=weight,
-                    original_score=buy_amount,
-                ))
+                new_pending.append(
+                    PendingOrder(
+                        code=code,
+                        signal_date=signal_date or exec_date,
+                        exec_date=exec_date,
+                        target_weight=weight,
+                        original_score=buy_amount,
+                    )
+                )
                 continue
             fill = broker.execute_buy(code, min(buy_amount, broker.cash), row)
             if fill:
@@ -432,8 +436,7 @@ class PaperBroker(BaseBroker):
             if self.state is None:
                 return self.initial_capital
             holdings_value = sum(
-                shares * prices.get(code, 0)
-                for code, shares in self.state.holdings.items()
+                shares * prices.get(code, 0) for code, shares in self.state.holdings.items()
             )
             return holdings_value + self.state.cash
         return self.broker.get_portfolio_value(prices)
@@ -450,6 +453,7 @@ class PaperBroker(BaseBroker):
         if not fills:
             return
         from datetime import datetime
+
         now_utc = datetime.now(UTC)
         cur = conn.cursor()
         try:
@@ -499,6 +503,7 @@ class PaperBroker(BaseBroker):
         """
         assert self.broker is not None
         from datetime import datetime
+
         now_utc = datetime.now(UTC)
         cur = conn.cursor()
 
@@ -565,7 +570,7 @@ class PaperBroker(BaseBroker):
             prev_row = cur.fetchone()
             prev_nav = float(prev_row[0]) if prev_row else self.initial_capital
             daily_return = (nav / prev_nav - 1) if prev_nav > 0 else 0
-            cum_return = (nav / self.initial_capital - 1)
+            cum_return = nav / self.initial_capital - 1
 
             # 计算回撤（需要历史最高NAV）
             # peak = max(initial_capital, 当日及之前所有NAV)

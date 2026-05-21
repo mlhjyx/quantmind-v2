@@ -106,9 +106,7 @@ def build_and_insert(conn, st_lookup: dict, verify_only: bool = False):
     print(f"  {len(symbols)} symbols loaded")
 
     # 获取所有(code, trade_date)组合 + volume
-    cur.execute(
-        "SELECT code, trade_date, volume FROM klines_daily ORDER BY trade_date, code"
-    )
+    cur.execute("SELECT code, trade_date, volume FROM klines_daily ORDER BY trade_date, code")
     rows = cur.fetchall()
     total = len(rows)
     print(f"  {total:,} klines rows to process")
@@ -135,11 +133,7 @@ def build_and_insert(conn, st_lookup: dict, verify_only: bool = False):
 
             is_st = is_st_on_date(st_lookup, code, td)
             is_suspended = volume is not None and int(volume) == 0
-            is_new = (
-                list_dt is not None
-                and (td - list_dt).days < 60
-                and (td - list_dt).days >= 0
-            )
+            is_new = list_dt is not None and (td - list_dt).days < 60 and (td - list_dt).days >= 0
 
             records.append((code, td, is_st, is_suspended, is_new, board, list_dt, delist_dt))
 
@@ -223,9 +217,7 @@ def verify(conn):
     print(f"  ST抽查 000511.SZ (2016-05~2018-06): {st_511} days marked ST")
 
     # BJ股数量
-    cur.execute(
-        "SELECT COUNT(DISTINCT code) FROM stock_status_daily WHERE board = 'bse'"
-    )
+    cur.execute("SELECT COUNT(DISTINCT code) FROM stock_status_daily WHERE board = 'bse'")
     bj_count = cur.fetchone()[0]
     print(f"  BJ(北交所)股: {bj_count} codes")
 

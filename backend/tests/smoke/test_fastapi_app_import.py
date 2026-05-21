@@ -10,8 +10,10 @@
 
 运行: `pytest backend/tests/smoke/test_fastapi_app_import.py -v -m smoke`
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +21,16 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_BACKEND_DIR = PROJECT_ROOT / "backend"
+
+# 子进程 sys.path 复刻真实运行环境: 项目混用两种 import 风格 —
+#   - `from backend.qm_platform...` (需 repo root, backend namespace pkg)
+#   - 顶层 `from engines...` / `import app` (需 backend/ 在 path)
+# qm_platform 的 import 链两者都会触发, 故 PYTHONPATH 必须同时含两者.
+_SUBPROCESS_ENV = {
+    **os.environ,
+    "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(_BACKEND_DIR)]),
+}
 
 
 @pytest.mark.smoke
@@ -36,6 +48,7 @@ def test_fastapi_app_imports_from_project_root() -> None:
         timeout=30,
         encoding="utf-8",
         errors="replace",
+        env=_SUBPROCESS_ENV,
     )
 
     if result.returncode != 0:
@@ -89,10 +102,10 @@ def test_backend_platform_namespace_package_accessible() -> None:
         timeout=10,
         encoding="utf-8",
         errors="replace",
+        env=_SUBPROCESS_ENV,
     )
     if result.returncode != 0:
         pytest.fail(
-            f"`from backend.qm_platform.X import Y` failed:\n"
-            f"stderr[:1500]:\n{result.stderr[:1500]}"
+            f"`from backend.qm_platform.X import Y` failed:\nstderr[:1500]:\n{result.stderr[:1500]}"
         )
     assert "DBFeatureFlag: DBFeatureFlag" in result.stdout

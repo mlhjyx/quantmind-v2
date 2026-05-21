@@ -35,6 +35,7 @@ for _p in [str(_BACKEND), str(_PROJECT_ROOT)]:
 # helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _make_price_df(exec_date: date) -> pd.DataFrame:
     """构造最小价格 DataFrame 供 ExecutionService 使用。"""
     return pd.DataFrame(
@@ -61,6 +62,7 @@ def _make_mock_conn() -> MagicMock:
 # 1. ExecutionService
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestExecutionService:
     """ExecutionService 冒烟测试。
 
@@ -69,6 +71,7 @@ class TestExecutionService:
 
     def _get_service(self):
         from app.services.execution_service import ExecutionService
+
         return ExecutionService()
 
     def test_execute_rebalance_l4_halt_returns_immediately(self):
@@ -199,6 +202,7 @@ class TestExecutionService:
 # 2. PaperTradingService
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPaperTradingService:
     """PaperTradingService 冒烟测试。
 
@@ -207,6 +211,7 @@ class TestPaperTradingService:
 
     def _get_service(self):
         from app.services.paper_trading_service import PaperTradingService
+
         AsyncMock()
         svc = PaperTradingService.__new__(PaperTradingService)
         svc.perf_repo = MagicMock()
@@ -257,9 +262,7 @@ class TestPaperTradingService:
             backtest_mdd=-0.15,
         )
 
-        duration_criterion = next(
-            c for c in result["criteria"] if c["name"] == "运行时长"
-        )
+        duration_criterion = next(c for c in result["criteria"] if c["name"] == "运行时长")
         assert duration_criterion["passed"] is False
 
     @pytest.mark.asyncio
@@ -295,6 +298,7 @@ class TestPaperTradingService:
 # 3. NotificationService & NotificationThrottler
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestNotificationThrottler:
     """NotificationThrottler 节流逻辑测试。
 
@@ -303,6 +307,7 @@ class TestNotificationThrottler:
 
     def _get_throttler(self, intervals: dict | None = None):
         from app.services.notification_throttler import NotificationThrottler
+
         return NotificationThrottler(intervals=intervals or {"P0": 60, "P1": 600})
 
     def test_first_send_always_allowed(self):
@@ -446,6 +451,7 @@ class TestNotificationServiceSync:
 # 4. RiskControlService
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestRiskControlServiceTriggers:
     """RiskControlService 熔断判断逻辑测试。
 
@@ -574,6 +580,7 @@ class TestRiskControlServiceTriggers:
 # 5. DashboardService
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestDashboardService:
     """DashboardService 冒烟测试。
 
@@ -605,9 +612,7 @@ class TestDashboardService:
                 "trade_date": date(2025, 1, 15),
             }
         )
-        svc.perf_repo.get_rolling_stats = AsyncMock(
-            return_value={"sharpe": 1.05, "mdd": -0.12}
-        )
+        svc.perf_repo.get_rolling_stats = AsyncMock(return_value={"sharpe": 1.05, "mdd": -0.12})
 
         result = await svc.get_summary("v1.1")
 

@@ -35,6 +35,7 @@ from pt_graduation_assessment import (  # noqa: E402
 # calc_sharpe
 # ─────────────────────────────────────────────────────────────
 
+
 class TestCalcSharpe:
     def test_empty_returns_zero(self):
         assert calc_sharpe([]) == 0.0
@@ -83,6 +84,7 @@ class TestCalcSharpe:
 # calc_mdd
 # ─────────────────────────────────────────────────────────────
 
+
 class TestCalcMdd:
     def test_empty_returns_zero(self):
         assert calc_mdd([]) == 0.0
@@ -119,7 +121,7 @@ class TestCalcMdd:
 
     def test_mdd_threshold_35pct(self):
         """MDD < 35% 才毕业: 构造 30% 回撤的序列应 PASS。"""
-        nav = [1.0, 1.1, 0.77, 1.05]   # 回撤 = (1.1 - 0.77)/1.1 ≈ 30%
+        nav = [1.0, 1.1, 0.77, 1.05]  # 回撤 = (1.1 - 0.77)/1.1 ≈ 30%
         result = calc_mdd(nav)
         assert result < MDD_THRESHOLD
 
@@ -127,6 +129,7 @@ class TestCalcMdd:
 # ─────────────────────────────────────────────────────────────
 # calc_slippage_deviation
 # ─────────────────────────────────────────────────────────────
+
 
 class TestCalcSlippageDeviation:
     def test_empty_list_returns_zero(self):
@@ -177,6 +180,7 @@ class TestCalcSlippageDeviation:
 # calc_running_days
 # ─────────────────────────────────────────────────────────────
 
+
 class TestCalcRunningDays:
     def test_empty_returns_zero(self):
         assert calc_running_days([]) == 0
@@ -207,6 +211,7 @@ class TestCalcRunningDays:
 # ─────────────────────────────────────────────────────────────
 # 综合场景：毕业 / 不毕业
 # ─────────────────────────────────────────────────────────────
+
 
 class TestGraduationScenarios:
     def test_all_pass_scenario(self):

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 # BaseExecutor — 执行器抽象 (Phase 4)
 # ============================================================
 
+
 class BaseExecutor:
     """执行器基类。将交易决策转为实际成交。
 

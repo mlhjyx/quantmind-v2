@@ -177,14 +177,19 @@ def fast_backtest(
     """快速叠加回测（纯数组运算）。"""
     # 对齐index
     br = base_ret.copy()
-    br.index = pd.Index([d.date() if hasattr(d, "date") and callable(d.date) else d for d in br.index])
+    br.index = pd.Index(
+        [d.date() if hasattr(d, "date") and callable(d.date) else d for d in br.index]
+    )
     cf = coeff.copy()
-    cf.index = pd.Index([d.date() if hasattr(d, "date") and callable(d.date) else d for d in cf.index])
+    cf.index = pd.Index(
+        [d.date() if hasattr(d, "date") and callable(d.date) else d for d in cf.index]
+    )
     common = br.index.intersection(cf.index)
 
     if len(common) < 60:
-        return OptResult(signal_name, threshold, reduce_level, smooth, dead_zone,
-                         0, 0, 0, 0, 0, 0, {})
+        return OptResult(
+            signal_name, threshold, reduce_level, smooth, dead_zone, 0, 0, 0, 0, 0, 0, {}
+        )
 
     br = br.loc[common]
     cf = cf.loc[common]
@@ -224,10 +229,18 @@ def fast_backtest(
         yearly[year] = (round(yr_sharpe, 2), round(yr_mdd * 100, 1), round(yr_reduce * 100, 0))
 
     return OptResult(
-        signal=signal_name, threshold=threshold, reduce_level=reduce_level,
-        smooth=smooth, dead_zone=dead_zone, sharpe=sharpe, mdd=mdd,
-        calmar=calmar, reduce_pct=reduce_pct, extra_cost_annual=extra_cost_annual,
-        switch_count=switch_count, yearly=yearly,
+        signal=signal_name,
+        threshold=threshold,
+        reduce_level=reduce_level,
+        smooth=smooth,
+        dead_zone=dead_zone,
+        sharpe=sharpe,
+        mdd=mdd,
+        calmar=calmar,
+        reduce_pct=reduce_pct,
+        extra_cost_annual=extra_cost_annual,
+        switch_count=switch_count,
+        yearly=yearly,
     )
 
 
@@ -251,18 +264,20 @@ def print_results(
         for i, r in enumerate(near, 1):
             fails = []
             if r.reduce_pct >= MAX_REDUCE_PCT:
-                fails.append(f"减仓{r.reduce_pct*100:.0f}%>{MAX_REDUCE_PCT*100:.0f}%")
+                fails.append(f"减仓{r.reduce_pct * 100:.0f}%>{MAX_REDUCE_PCT * 100:.0f}%")
             if r.extra_cost_annual >= MAX_EXTRA_COST_ANNUAL:
-                fails.append(f"成本{r.extra_cost_annual*100:.1f}%>{MAX_EXTRA_COST_ANNUAL*100:.0f}%")
+                fails.append(
+                    f"成本{r.extra_cost_annual * 100:.1f}%>{MAX_EXTRA_COST_ANNUAL * 100:.0f}%"
+                )
             if r.mdd < MAX_MDD:
-                fails.append(f"MDD{r.mdd*100:.1f}%<{MAX_MDD*100:.1f}%")
+                fails.append(f"MDD{r.mdd * 100:.1f}%<{MAX_MDD * 100:.1f}%")
             if r.sharpe < MIN_SHARPE:
                 fails.append(f"Sharpe{r.sharpe:.2f}<{MIN_SHARPE:.2f}")
             print(
                 f"  {i}. P<{r.threshold:.2f} coeff={r.reduce_level} "
                 f"smooth={r.smooth}d dead={r.dead_zone}d | "
-                f"Sharpe={r.sharpe:.2f} MDD={r.mdd*100:.1f}% Calmar={r.calmar:.2f} "
-                f"减仓{r.reduce_pct*100:.0f}% 成本{r.extra_cost_annual*100:.2f}% "
+                f"Sharpe={r.sharpe:.2f} MDD={r.mdd * 100:.1f}% Calmar={r.calmar:.2f} "
+                f"减仓{r.reduce_pct * 100:.0f}% 成本{r.extra_cost_annual * 100:.2f}% "
                 f"切换{r.switch_count}次 | FAIL: {', '.join(fails)}"
             )
         return
@@ -274,7 +289,9 @@ def print_results(
         f"{'Sharpe':>7s}  {'MDD%':>7s}  {'Calmar':>7s}  {'减仓%':>6s}  {'成本%':>6s}  {'切换':>5s}"
     )
     print(header)
-    print(f"  {'─' * 2}  {'─' * 6}  {'─' * 4}  {'─' * 4}  {'─' * 4}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 6}  {'─' * 6}  {'─' * 5}")
+    print(
+        f"  {'─' * 2}  {'─' * 6}  {'─' * 4}  {'─' * 4}  {'─' * 4}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 6}  {'─' * 6}  {'─' * 5}"
+    )
 
     for i, r in enumerate(top5, 1):
         print(
@@ -287,7 +304,8 @@ def print_results(
     # 最优参数稳健性检查（邻近参数表现）
     best = top5[0]
     neighbors = [
-        r for r in all_results
+        r
+        for r in all_results
         if r.signal == best.signal
         and abs(THRESHOLDS.index(r.threshold) - THRESHOLDS.index(best.threshold)) <= 1
         and abs(REDUCE_LEVELS.index(r.reduce_level) - REDUCE_LEVELS.index(best.reduce_level)) <= 1
@@ -300,10 +318,14 @@ def print_results(
         avg_nbr = np.mean(nbr_calmars)
         min_nbr = np.min(nbr_calmars)
         robust = "稳健(参数平原)" if min_nbr > best.calmar * 0.7 else "脆弱(孤立尖峰⚠️)"
-        print(f"\n  稳健性: 最优Calmar={best.calmar:.2f}, 邻近{len(neighbors)}组 avg={avg_nbr:.2f} min={min_nbr:.2f} → {robust}")
+        print(
+            f"\n  稳健性: 最优Calmar={best.calmar:.2f}, 邻近{len(neighbors)}组 avg={avg_nbr:.2f} min={min_nbr:.2f} → {robust}"
+        )
 
     # 年度分解
-    print(f"\n  最优参数年度分解 (P<{best.threshold} coeff={best.reduce_level} smooth={best.smooth}d dead={best.dead_zone}d):")
+    print(
+        f"\n  最优参数年度分解 (P<{best.threshold} coeff={best.reduce_level} smooth={best.smooth}d dead={best.dead_zone}d):"
+    )
     print(f"  {'年份':>6s}  {'Sharpe':>8s}  {'MDD%':>7s}  {'减仓天%':>7s}")
     for year in sorted(best.yearly.keys()):
         s, m, rp = best.yearly[year]
@@ -323,15 +345,19 @@ def main() -> None:
     vol = float(base_ret.std() * np.sqrt(252))
     baseline_sharpe = (cagr - RF_ANNUAL) / vol if vol > 0 else 0
     baseline_mdd = float(((nav - nav.cummax()) / nav.cummax()).min())
-    print(f"\n  基线: Sharpe={baseline_sharpe:.2f}, MDD={baseline_mdd*100:.1f}%")
+    print(f"\n  基线: Sharpe={baseline_sharpe:.2f}, MDD={baseline_mdd * 100:.1f}%")
 
     # MODIFIER面板
     panel = build_modifier_panel(conn)
 
     print(f"\n{'═' * 80}")
     print("  模板11参数优化")
-    print(f"  搜索空间: {len(SIGNALS)} × {len(THRESHOLDS)} × {len(REDUCE_LEVELS)} × {len(SMOOTH_WINDOWS)} × {len(DEAD_ZONES)} = {len(SIGNALS)*len(THRESHOLDS)*len(REDUCE_LEVELS)*len(SMOOTH_WINDOWS)*len(DEAD_ZONES)}组")
-    print(f"  合格条件: 减仓<{MAX_REDUCE_PCT*100:.0f}% + 成本<{MAX_EXTRA_COST_ANNUAL*100:.0f}% + MDD>{MAX_MDD*100:.1f}% + Sharpe≥{MIN_SHARPE:.2f}")
+    print(
+        f"  搜索空间: {len(SIGNALS)} × {len(THRESHOLDS)} × {len(REDUCE_LEVELS)} × {len(SMOOTH_WINDOWS)} × {len(DEAD_ZONES)} = {len(SIGNALS) * len(THRESHOLDS) * len(REDUCE_LEVELS) * len(SMOOTH_WINDOWS) * len(DEAD_ZONES)}组"
+    )
+    print(
+        f"  合格条件: 减仓<{MAX_REDUCE_PCT * 100:.0f}% + 成本<{MAX_EXTRA_COST_ANNUAL * 100:.0f}% + MDD>{MAX_MDD * 100:.1f}% + Sharpe≥{MIN_SHARPE:.2f}"
+    )
     print(f"{'═' * 80}")
 
     t0 = time.perf_counter()
@@ -349,16 +375,27 @@ def main() -> None:
             THRESHOLDS, REDUCE_LEVELS, SMOOTH_WINDOWS, DEAD_ZONES
         ):
             coeff = compute_coeff_parameterized(
-                raw_signal, direction, threshold, reduce_level, smooth, dead_zone,
+                raw_signal,
+                direction,
+                threshold,
+                reduce_level,
+                smooth,
+                dead_zone,
             )
             r = fast_backtest(
-                base_ret, coeff, signal_name,
-                threshold, reduce_level, smooth, dead_zone,
+                base_ret,
+                coeff,
+                signal_name,
+                threshold,
+                reduce_level,
+                smooth,
+                dead_zone,
             )
             all_results.append(r)
 
         qualified = [
-            r for r in all_results
+            r
+            for r in all_results
             if r.reduce_pct < MAX_REDUCE_PCT
             and r.extra_cost_annual < MAX_EXTRA_COST_ANNUAL
             and r.mdd > MAX_MDD

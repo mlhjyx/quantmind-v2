@@ -7,6 +7,8 @@ DEV_PARAM_CONFIG.md四级控制体系中的L2级别参数管理。
 CLAUDE.md: Service依赖注入统一用FastAPI的Depends链注入。
 """
 
+from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -245,6 +247,49 @@ class ParamService:
         """
         return await self.repo.get_change_log(param_name=key, limit=limit)
 
+    async def rollback_to(
+        self,
+        timestamp: datetime,
+        reason: str,
+        changed_by: str = "system",
+    ) -> dict[str, Any]:
+        """将所有参数回滚到指定时间点的状态 (DEV_PARAM_CONFIG §4.4 一键回滚)。
+
+        回滚 = 对每个在 timestamp 之后变更过的参数, 将其值恢复为该时点的值
+        (param_change_log 中该参数 post-T 最早一条变更的 old_value)。回滚动作
+        本身写入 param_change_log 审计 (reason 带 [rollback→T] 前缀便于检索)。
+
+        timestamp 之后才首次创建的参数 (该时点尚不存在) 不回滚, 也不删除参数行,
+        在返回的 skipped_created_after 中报告, 由调用方决定是否单独处理。
+
+        回滚按历史值原样恢复, 不重新做 min/max 校验 —— 该值在当初被设置时已
+        校验通过, rollback 是状态还原而非新增变更。
+
+        Args:
+            timestamp: 回滚目标时间点 (tz-aware ISO datetime)。
+            reason: 回滚原因 (必填, 写入审计)。
+            changed_by: 发起者 manual/ai/system (审计 changed_by + updated_by)。
+
+        Returns:
+            回滚摘要字典:
+            - timestamp: 回滚目标时间点 ISO 串
+            - rolled_back: 已回滚的参数名列表 (按名称排序)
+            - rolled_back_count: 已回滚数量
+            - skipped_created_after: 因 T 之后才创建而跳过的参数名列表
+            - skipped_count: 跳过数量
+        """
+        audit_reason = f"[rollback→{timestamp.isoformat()}] {reason}"
+        outcome = await self.repo.rollback_to(timestamp, reason=audit_reason, changed_by=changed_by)
+        rolled_back = sorted(outcome["rolled_back"])
+        skipped = sorted(outcome["skipped"])
+        return {
+            "timestamp": timestamp.isoformat(),
+            "rolled_back": rolled_back,
+            "rolled_back_count": len(rolled_back),
+            "skipped_created_after": skipped,
+            "skipped_count": len(skipped),
+        }
+
     async def init_defaults(self) -> int:
         """将param_defaults中的参数定义初始化到DB。
 
@@ -345,3 +390,44 @@ class ParamService:
         if param_def.enum_options:
             d["enum_options"] = param_def.enum_options
         return d
+
+
+# ─── 参数变更影响预估 (DEV_PARAM_CONFIG §4.2) ───
+
+# 影响预估公式: 键为真实参数 key (param_defaults dotted key)。每个公式接收
+# float(old) / float(new), 返回人类可读影响串。仅做事实性陈述 (单位换算 /
+# 重述), 不做启发式预测 —— 凭空预测数字 (换手率/成本变化) 会误导用户。
+_PARAM_IMPACT_FORMULAS: dict[str, Callable[[float, float], str]] = {
+    "signal.top_n": lambda o, n: f"选股数 {int(o)} → {int(n)} 只",
+    "signal.turnover_cap": lambda o, n: f"换手率上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "signal.industry_cap": lambda o, n: f"行业权重上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "signal.single_stock_cap": lambda o, n: f"单股权重上限 {o * 100:.0f}% → {n * 100:.0f}%",
+    "backtest.initial_capital": lambda o, n: f"初始资金 ¥{o:,.0f} → ¥{n:,.0f}",
+}
+
+
+def estimate_param_impact(param_name: str, old_value: Any, new_value: Any) -> str:
+    """预估参数变更影响, 返回人类可读说明 (DEV_PARAM_CONFIG §4.2)。
+
+    用于前端参数变更确认弹窗。对 _PARAM_IMPACT_FORMULAS 中登记的数值型参数
+    给出单位换算后的事实陈述; 其余参数 (及任一值无法转 float 时) 回退为通用
+    `{name}: {old} → {new}` 串。不做启发式预测 (换手率/成本预测等 —— 凭空
+    数字会误导用户, 反 fake-precision)。
+
+    Args:
+        param_name: 参数 key (param_defaults dotted key)。
+        old_value: 当前值。
+        new_value: 拟变更的新值。
+
+    Returns:
+        影响说明字符串。
+    """
+    formula = _PARAM_IMPACT_FORMULAS.get(param_name)
+    if formula is not None:
+        try:
+            return formula(float(old_value), float(new_value))
+        except (TypeError, ValueError):
+            pass  # silent_ok: 值非数值 → 回退通用串 (formula 仅适用数值参数)
+    # old_value 可能为 None (STR 参数无 default 值) — 避免 "None" 字面泄漏到 UI。
+    old_display = old_value if old_value is not None else "(未设置)"
+    return f"{param_name}: {old_display} → {new_value}"

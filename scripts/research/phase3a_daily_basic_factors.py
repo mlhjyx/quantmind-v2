@@ -86,17 +86,19 @@ def compute_factors(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     for fname, fdef in FACTOR_DEFS.items():
         try:
             values = fdef["compute"](df)
-            fdf = pd.DataFrame({
-                "code": df["code"],
-                "trade_date": df["trade_date"],
-                "raw_value": pd.to_numeric(values, errors="coerce"),
-            })
+            fdf = pd.DataFrame(
+                {
+                    "code": df["code"],
+                    "trade_date": df["trade_date"],
+                    "raw_value": pd.to_numeric(values, errors="coerce"),
+                }
+            )
             # 铁律29: NaN → None (在写入时处理)
             # 移除完全无效的行
             valid_mask = fdf["raw_value"].notna() & np.isfinite(fdf["raw_value"])
             fdf = fdf[valid_mask].copy()
             results[fname] = fdf
-            print(f"    {fname}: {len(fdf):,} valid rows ({len(fdf)/len(df)*100:.1f}%)")
+            print(f"    {fname}: {len(fdf):,} valid rows ({len(fdf) / len(df) * 100:.1f}%)")
         except Exception as e:
             print(f"    {fname}: FAILED - {e}")
 
@@ -207,8 +209,10 @@ def main():
         )
         r = cur.fetchone()
         if r and r[0]:
-            print(f"  {fname:>20s} @ 2026-04-10: n={r[0]:,}, avg={float(r[1]):.4f}, "
-                  f"min={float(r[2]):.4f}, max={float(r[3]):.4f}")
+            print(
+                f"  {fname:>20s} @ 2026-04-10: n={r[0]:,}, avg={float(r[1]):.4f}, "
+                f"min={float(r[2]):.4f}, max={float(r[3]):.4f}"
+            )
         else:
             print(f"  {fname:>20s} @ 2026-04-10: NO DATA")
 

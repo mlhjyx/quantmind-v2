@@ -8,8 +8,10 @@ subprocess + TUSHARE_TOKEN (settings pydantic 从 backend/.env 读) + 查 1 个�
 [Session 5 末修正]: 原 os.environ.get('TUSHARE_TOKEN') 读不到 backend/.env 中的 token
 (pydantic-settings 只填 settings 对象, 不 push os.environ), 改用 settings.TUSHARE_TOKEN.
 """
+
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -90,15 +92,22 @@ def test_tushare_live_klines_fetch() -> None:
     # 外层 skip 判断走 settings (与 subprocess 内部一致)
     import sys as _sys
     from pathlib import Path as _Path
+
     _backend = _Path(__file__).resolve().parents[2]
     if str(_backend) not in _sys.path:
         _sys.path.append(str(_backend))
     from app.config import settings as _settings
+
     if not _settings.TUSHARE_TOKEN:
         pytest.skip("TUSHARE_TOKEN 未配置于 backend/.env (CI / 新环境), 跳过")
     result = subprocess.run(
         [sys.executable, "-c", _SMOKE_CODE],
         cwd=str(PROJECT_ROOT),
+        # PYTHONPATH: repo-root (backend namespace pkg) + backend/ (顶层 app/engines/qm_platform) — 两种 import 风格都需要.
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "backend")]),
+        },
         capture_output=True,
         text=True,
         timeout=60,

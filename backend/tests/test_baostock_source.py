@@ -3,6 +3,7 @@
 Mock Baostock 模块 (monkeypatch sys.modules["baostock"]).
 不依赖真网络, 也不依赖真 DB.
 """
+
 from __future__ import annotations
 
 import sys
@@ -283,8 +284,6 @@ def test_nan_ratio_threshold_configurable(fake_bs) -> None:
     # 刷新 fake 数据
     fake_bs._rows_map = {"sh.600519": [nan_row, good_row]}
     # threshold=0.6 → PASS
-    src_loose = BaostockDataSource(
-        codes=["600519"], nan_ratio_threshold=0.6, end=date(2026, 4, 15)
-    )
+    src_loose = BaostockDataSource(codes=["600519"], nan_ratio_threshold=0.6, end=date(2026, 4, 15))
     df = src_loose.fetch(MINUTE_BARS_DATA_CONTRACT, since=date(2026, 4, 15))
     assert len(df) == 2

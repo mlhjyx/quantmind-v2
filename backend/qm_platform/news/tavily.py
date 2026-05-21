@@ -19,6 +19,7 @@ Tavily-specific finding (sub-PR 2 fresh verify, 反 sub-PR 1 智谱体例):
 - Tavily 错码 432 (plan usage limit) + 433 (PAYG spending limit) NEW (反智谱)
 - 1000 credits/月永久免费 (V3§3.1 沿用)
 """
+
 from __future__ import annotations
 
 import time
@@ -153,8 +154,7 @@ class TavilyNewsFetcher(NewsFetcher):
             raise NewsFetchError(
                 source=self.source_name,
                 message=(
-                    f"HTTP {resp.status_code} (plan/PAYG limit, NOT retryable): "
-                    f"{resp.text[:200]}"
+                    f"HTTP {resp.status_code} (plan/PAYG limit, NOT retryable): {resp.text[:200]}"
                 ),
             )
 

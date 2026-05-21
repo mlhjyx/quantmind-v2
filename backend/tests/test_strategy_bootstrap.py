@@ -9,6 +9,7 @@
 
 纯 mock 测试, 不触真 DB. 对齐 test_s2_pead_event.py / test_strategy_registry.py 模式.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,9 +30,7 @@ def test_happy_path_returns_db_live_strategies():
     # `conn.cursor.return_value.__enter__.return_value = cursor` 是官方 CM 模式.
     cursor = MagicMock()
     cursor.fetchone = MagicMock(return_value=None)  # register() existing_status lookup
-    cursor.fetchall = MagicMock(
-        return_value=[(S1MonthlyRanking.strategy_id, "s1_monthly_ranking")]
-    )
+    cursor.fetchall = MagicMock(return_value=[(S1MonthlyRanking.strategy_id, "s1_monthly_ranking")])
 
     conn = MagicMock()
     # `with conn.cursor() as cur:` → __enter__ 返 cursor. conn.cursor() 返 MagicMock
@@ -69,8 +68,10 @@ def test_fallback_on_register_exception(caplog):
     conn.rollback = MagicMock()
     conn.close = MagicMock()
 
-    with patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn), \
-        caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"):
+    with (
+        patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn),
+        caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"),
+    ):
         from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
         result = get_live_strategies_for_risk_check()
@@ -91,10 +92,13 @@ def test_fallback_on_conn_failure(caplog):
     """get_sync_conn() 抛 connection error → fallback [S1MonthlyRanking()]."""
     from backend.engines.strategies.s1_monthly_ranking import S1MonthlyRanking
 
-    with patch(
-        "app.services.strategy_bootstrap.get_sync_conn",
-        side_effect=ConnectionError("simulated PG unreachable"),
-    ), caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"):
+    with (
+        patch(
+            "app.services.strategy_bootstrap.get_sync_conn",
+            side_effect=ConnectionError("simulated PG unreachable"),
+        ),
+        caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"),
+    ):
         from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
         result = get_live_strategies_for_risk_check()
@@ -123,8 +127,10 @@ def test_fallback_on_empty_live(caplog):
     conn.rollback = MagicMock()
     conn.close = MagicMock()
 
-    with patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn), \
-        caplog.at_level(logging.WARNING, logger="app.services.strategy_bootstrap"):
+    with (
+        patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn),
+        caplog.at_level(logging.WARNING, logger="app.services.strategy_bootstrap"),
+    ):
         from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
         result = get_live_strategies_for_risk_check()
@@ -133,8 +139,7 @@ def test_fallback_on_empty_live(caplog):
     assert isinstance(result[0], S1MonthlyRanking)
     # Warning 明确 "empty after register" 说明 S1 status 非 live
     assert any(
-        "get_live() empty" in r.message or "fallback" in r.message.lower()
-        for r in caplog.records
+        "get_live() empty" in r.message or "fallback" in r.message.lower() for r in caplog.records
     )
 
 
@@ -163,12 +168,14 @@ def test_fallback_on_integrity_error(caplog):
 
     from backend.qm_platform.strategy.registry import StrategyRegistryIntegrityError
 
-    with patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn), \
+    with (
+        patch("app.services.strategy_bootstrap.get_sync_conn", return_value=conn),
         patch(
             "backend.qm_platform.strategy.registry.DBStrategyRegistry.get_live",
             side_effect=StrategyRegistryIntegrityError("cache miss"),
-        ), \
-        caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"):
+        ),
+        caplog.at_level(logging.ERROR, logger="app.services.strategy_bootstrap"),
+    ):
         from app.services.strategy_bootstrap import get_live_strategies_for_risk_check
 
         result = get_live_strategies_for_risk_check()

@@ -22,7 +22,9 @@ def check_ddl_vs_db(project_root: Path) -> list[str]:
     import re
 
     # 提取CREATE TABLE语句中的表名
-    tables_in_ddl = re.findall(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", content, re.IGNORECASE)
+    tables_in_ddl = re.findall(
+        r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", content, re.IGNORECASE
+    )
 
     if not tables_in_ddl:
         return ["No CREATE TABLE statements found in DDL"]
@@ -50,13 +52,19 @@ def check_ddl_vs_db(project_root: Path) -> list[str]:
 
             missing_in_db = ddl_tables - db_tables
             if missing_in_db:
-                issues.append(f"DDL中定义但DB中缺失的表({len(missing_in_db)}): {', '.join(sorted(missing_in_db))}")
+                issues.append(
+                    f"DDL中定义但DB中缺失的表({len(missing_in_db)}): {', '.join(sorted(missing_in_db))}"
+                )
 
             extra_in_db = db_tables - ddl_tables
             # 过滤系统表
-            extra_in_db = {t for t in extra_in_db if not t.startswith("_") and t != "spatial_ref_sys"}
+            extra_in_db = {
+                t for t in extra_in_db if not t.startswith("_") and t != "spatial_ref_sys"
+            }
             if extra_in_db:
-                issues.append(f"DB中存在但DDL未定义的表({len(extra_in_db)}): {', '.join(sorted(extra_in_db))}")
+                issues.append(
+                    f"DB中存在但DDL未定义的表({len(extra_in_db)}): {', '.join(sorted(extra_in_db))}"
+                )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         issues.append("psql不可用，跳过DB schema验证")
 

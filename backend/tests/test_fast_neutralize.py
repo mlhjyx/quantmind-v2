@@ -38,10 +38,22 @@ def synthetic_day():
     mv = np.exp(np.random.normal(np.log(100e8), 1.5, n))  # median ~100亿
     log_mv = np.log(mv + 1)
     # 因子值: 部分受行业+市值驱动, 部分为alpha
-    ind_effect = pd.Series(industries).map(
-        {"电子": 0.5, "医药": -0.3, "银行": 0.2, "房地产": -0.4,
-         "汽车": 0.1, "食品": 0.3, "化工": -0.1, "机械": -0.2}
-    ).values
+    ind_effect = (
+        pd.Series(industries)
+        .map(
+            {
+                "电子": 0.5,
+                "医药": -0.3,
+                "银行": 0.2,
+                "房地产": -0.4,
+                "汽车": 0.1,
+                "食品": 0.3,
+                "化工": -0.1,
+                "机械": -0.2,
+            }
+        )
+        .values
+    )
     mv_effect = (log_mv - log_mv.mean()) * 0.1
     alpha = np.random.normal(0, 1, n)
     values = ind_effect + mv_effect + alpha
@@ -103,14 +115,12 @@ class TestWLSNeutralize:
             if valid.sum() < 5:
                 continue
             w_ind = weights[mask][valid]
-            weighted_means[ind_name] = np.sum(
-                out[mask][valid] * w_ind
-            ) / w_ind.sum()
+            weighted_means[ind_name] = np.sum(out[mask][valid] * w_ind) / w_ind.sum()
 
         # WLS保证: 至少 N-1 个非参照类别的加权均值接近0
         small_count = sum(1 for v in weighted_means.values() if abs(v) < 0.3)
         assert small_count >= n_ind - 1, (
-            f"只有 {small_count}/{n_ind} 个行业加权残差<0.3, 期望 >={n_ind-1}, "
+            f"只有 {small_count}/{n_ind} 个行业加权残差<0.3, 期望 >={n_ind - 1}, "
             f"详情: {weighted_means}"
         )
 
@@ -148,9 +158,7 @@ class TestWLSNeutralize:
         log_mv = np.array([10.0, 11.0, np.nan, np.nan])
         out = _wls_neutralize(values, industries, log_mv)
         # 降级为 values - mean
-        assert np.allclose(
-            out[:2], values[:2] - np.nanmean(values), equal_nan=True
-        )
+        assert np.allclose(out[:2], values[:2] - np.nanmean(values), equal_nan=True)
 
 
 class TestZScoreClip:
@@ -203,9 +211,7 @@ def _reference_neutralize_pipeline(
                 continue
             # 每code逐个查找 (OLD方式)
             industries = np.array([ind_dict.get(c, "其他") for c in codes])
-            log_mv = np.array([
-                np.log(mv_lookup.get((c, dt), np.nan) + 1) for c in codes
-            ])
+            log_mv = np.array([np.log(mv_lookup.get((c, dt), np.nan) + 1) for c in codes])
             values = _mad_winsorize(values)
             values = _wls_neutralize(values, industries, log_mv)
             values = _zscore_clip(values)
@@ -238,7 +244,8 @@ def _new_neutralize_pipeline(
             continue
         fdata = fdata.merge(
             ind_series.rename_axis("code").reset_index(),
-            on="code", how="left",
+            on="code",
+            how="left",
         )
         fdata["industry"] = fdata["industry"].fillna("其他")
         fdata = fdata.merge(mv_df_flat, on=["code", "trade_date"], how="left")
@@ -256,17 +263,22 @@ def _new_neutralize_pipeline(
             return pd.Series(values, index=group.index)
 
         fdata["neutral"] = fdata.groupby(
-            "trade_date", group_keys=False, sort=False,
+            "trade_date",
+            group_keys=False,
+            sort=False,
         ).apply(_neutralize_day)
 
         valid = fdata[~fdata["neutral"].isna()]
         if len(valid) > 0:
-            results.extend(zip(
-                valid["code"].values,
-                valid["trade_date"].values,
-                [fname] * len(valid),
-                valid["neutral"].astype(float).values, strict=False,
-            ))
+            results.extend(
+                zip(
+                    valid["code"].values,
+                    valid["trade_date"].values,
+                    [fname] * len(valid),
+                    valid["neutral"].astype(float).values,
+                    strict=False,
+                )
+            )
     return results
 
 
@@ -277,6 +289,7 @@ def synthetic_panel():
     n_days = 10
     n_stocks = 100
     from datetime import date, timedelta
+
     dates = [date(2025, 1, 1) + timedelta(days=i) for i in range(n_days)]
     codes = [f"{600000 + i:06d}.SH" for i in range(n_stocks)]
     industries_all = np.random.choice(
@@ -313,15 +326,12 @@ class TestPipelineEquivalence:
     def test_same_output_as_reference(self, synthetic_panel):
         factor_df, ind_dict, mv_lookup = synthetic_panel
 
-        ref_results = _reference_neutralize_pipeline(
-            factor_df, ind_dict, mv_lookup
-        )
-        new_results = _new_neutralize_pipeline(
-            factor_df, ind_dict, mv_lookup
-        )
+        ref_results = _reference_neutralize_pipeline(factor_df, ind_dict, mv_lookup)
+        new_results = _new_neutralize_pipeline(factor_df, ind_dict, mv_lookup)
 
-        assert len(ref_results) == len(new_results), \
+        assert len(ref_results) == len(new_results), (
             f"行数不一致: ref={len(ref_results)}, new={len(new_results)}"
+        )
 
         # 按 (code, trade_date, factor_name) 排序对比
         ref_sorted = sorted(ref_results, key=lambda r: (r[0], str(r[1]), r[2]))
@@ -332,8 +342,7 @@ class TestPipelineEquivalence:
             assert str(rd) == str(nd), f"date mismatch: {rd} vs {nd}"
             assert rn == nn, "factor_name mismatch"
             assert abs(rv - nv) < 1e-9, (
-                f"neutral_value差异太大: ref={rv:.6f}, new={nv:.6f}, "
-                f"diff={abs(rv-nv):.2e}"
+                f"neutral_value差异太大: ref={rv:.6f}, new={nv:.6f}, diff={abs(rv - nv):.2e}"
             )
 
     def test_math_invariants(self, synthetic_panel):

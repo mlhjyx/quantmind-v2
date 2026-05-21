@@ -120,6 +120,7 @@ OUTPUT_FILE = CACHE_DIR / "wf_validation_results.json"
 
 # ── 数据加载 ─────────────────────────────────────────────────
 
+
 def load_parquet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """从Parquet缓存加载12年price + benchmark数据。"""
     cache_root = PROJECT_ROOT / "cache" / "backtest"
@@ -135,9 +136,7 @@ def load_parquet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         if bf.exists():
             bench_parts.append(pd.read_parquet(bf))
 
-    price_df = pd.concat(price_parts, ignore_index=True).sort_values(
-        ["code", "trade_date"]
-    )
+    price_df = pd.concat(price_parts, ignore_index=True).sort_values(["code", "trade_date"])
     bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date")
 
     # 确保 trade_date 是 date 类型
@@ -214,6 +213,7 @@ def load_factor_data(factor_names: list[str], conn) -> pd.DataFrame:
 
 # ── 季度调仓支持 ─────────────────────────────────────────────
 
+
 def _patch_quarterly_rebalance():
     """为vectorized_signal.compute_rebalance_dates添加quarterly支持。
 
@@ -230,9 +230,7 @@ def _patch_quarterly_rebalance():
                 return []
             td_series = pd.Series(trading_days)
             return list(
-                td_series.groupby(
-                    td_series.apply(lambda d: (d.year, (d.month - 1) // 3))
-                ).last()
+                td_series.groupby(td_series.apply(lambda d: (d.year, (d.month - 1) // 3))).last()
             )
         return _original(trading_days, freq)
 
@@ -241,6 +239,7 @@ def _patch_quarterly_rebalance():
 
 
 # ── WF验证核心 ───────────────────────────────────────────────
+
 
 def run_wf_for_config(
     config_id: int,
@@ -300,15 +299,17 @@ def run_wf_for_config(
     # 提取fold结果
     fold_data = []
     for fr in result.fold_results:
-        fold_data.append({
-            "fold": fr.fold_idx,
-            "train_period": [str(fr.train_period[0]), str(fr.train_period[1])],
-            "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
-            "oos_sharpe": round(fr.oos_sharpe, 4),
-            "oos_mdd": round(fr.oos_mdd, 4),
-            "oos_annual_return": round(fr.oos_annual_return, 4),
-            "test_days": fr.test_days,
-        })
+        fold_data.append(
+            {
+                "fold": fr.fold_idx,
+                "train_period": [str(fr.train_period[0]), str(fr.train_period[1])],
+                "test_period": [str(fr.test_period[0]), str(fr.test_period[1])],
+                "oos_sharpe": round(fr.oos_sharpe, 4),
+                "oos_mdd": round(fr.oos_mdd, 4),
+                "oos_annual_return": round(fr.oos_annual_return, 4),
+                "test_days": fr.test_days,
+            }
+        )
 
     # 如果full_sample_sharpe未知,跑一次全样本回测
     if full_sample_sharpe is None:
@@ -367,15 +368,32 @@ def run_wf_for_config(
     for fd in fold_data:
         logger.info(
             "  Fold %d: Sharpe=%.4f  MDD=%.4f  AnnRet=%.4f  [%s ~ %s]",
-            fd["fold"], fd["oos_sharpe"], fd["oos_mdd"], fd["oos_annual_return"],
-            fd["test_period"][0], fd["test_period"][1],
+            fd["fold"],
+            fd["oos_sharpe"],
+            fd["oos_mdd"],
+            fd["oos_annual_return"],
+            fd["test_period"][0],
+            fd["test_period"][1],
         )
 
     logger.info("")
-    logger.info("  Combined OOS Sharpe:  %.4f (baseline=%.4f, target=%.2f)", oos_sharpe, BASELINE_WF_SHARPE, ACCEPTANCE_SHARPE)
+    logger.info(
+        "  Combined OOS Sharpe:  %.4f (baseline=%.4f, target=%.2f)",
+        oos_sharpe,
+        BASELINE_WF_SHARPE,
+        ACCEPTANCE_SHARPE,
+    )
     logger.info("  Combined OOS MDD:     %.4f (target>%.2f)", oos_mdd, ACCEPTANCE_MDD)
-    logger.info("  Overfit Ratio:        %s (full=%.4f, >0.50 needed)", overfit_ratio, full_sample_sharpe or 0)
-    logger.info("  Verdict:              %s %s", verdict, "✅" if verdict == "PASS" else "⚠️" if verdict == "MARGINAL" else "❌")
+    logger.info(
+        "  Overfit Ratio:        %s (full=%.4f, >0.50 needed)",
+        overfit_ratio,
+        full_sample_sharpe or 0,
+    )
+    logger.info(
+        "  Verdict:              %s %s",
+        verdict,
+        "✅" if verdict == "PASS" else "⚠️" if verdict == "MARGINAL" else "❌",
+    )
     logger.info("  Elapsed:              %.1fs", elapsed)
 
     # Fold稳定性分析
@@ -383,7 +401,12 @@ def run_wf_for_config(
     sharpe_std = float(np.std(fold_sharpes))
     n_negative = sum(1 for s in fold_sharpes if s < 0)
     stability = "STABLE" if sharpe_std < 1.0 and n_negative <= 1 else "UNSTABLE"
-    logger.info("  Fold Stability:       %s (std=%.2f, %d negative folds)", stability, sharpe_std, n_negative)
+    logger.info(
+        "  Fold Stability:       %s (std=%.2f, %d negative folds)",
+        stability,
+        sharpe_std,
+        n_negative,
+    )
 
     return {
         "config_id": config_id,
@@ -418,10 +441,14 @@ def run_wf_for_config(
 
 # ── Main ─────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Phase 2.4 WF Validation")
     parser.add_argument(
-        "--config", type=int, nargs="*", default=None,
+        "--config",
+        type=int,
+        nargs="*",
+        default=None,
         help="指定候选配置ID (1/2/3), 不指定=全部",
     )
     args = parser.parse_args()
@@ -450,6 +477,7 @@ def main():
     price_df, bench_df = load_parquet_data()
 
     import psycopg2
+
     conn = psycopg2.connect(
         dbname=os.getenv("PG_DB", "quantmind_v2"),
         user=os.getenv("PG_USER", "xin"),
@@ -474,7 +502,12 @@ def main():
     results = {}
     for cid in config_ids:
         result = run_wf_for_config(
-            cid, CONFIGS[cid], factor_df, price_df, bench_df, ln_mcap_pivot,
+            cid,
+            CONFIGS[cid],
+            factor_df,
+            price_df,
+            bench_df,
+            ln_mcap_pivot,
         )
         results[str(cid)] = result
 
@@ -486,7 +519,12 @@ def main():
     logger.info("=" * 70)
     logger.info(
         "%-45s %8s %8s %8s %8s %8s",
-        "Config", "OOS_Sh", "OOS_MDD", "Overfit", "Stable", "Verdict",
+        "Config",
+        "OOS_Sh",
+        "OOS_MDD",
+        "Overfit",
+        "Stable",
+        "Verdict",
     )
     logger.info("-" * 90)
 
@@ -494,7 +532,11 @@ def main():
     logger.info(
         "%-45s %8.4f %8.4f %8s %8s %8s",
         "[BASELINE] CORE5+SN050 WF OOS",
-        BASELINE_WF_SHARPE, BASELINE_WF_MDD, "-", "-", "-",
+        BASELINE_WF_SHARPE,
+        BASELINE_WF_MDD,
+        "-",
+        "-",
+        "-",
     )
 
     for cid_str, r in results.items():

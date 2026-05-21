@@ -31,16 +31,29 @@ logger = logging.getLogger("quality_report")
 
 # 默认监控的 active 因子 (CORE3+dv_ttm + 10 minute)
 DEFAULT_FACTORS = [
-    "turnover_mean_20", "volatility_20", "bp_ratio", "dv_ttm",
-    "high_freq_volatility_20", "volume_concentration_20", "volume_autocorr_20",
-    "smart_money_ratio_20", "opening_volume_share_20", "closing_trend_strength_20",
-    "vwap_deviation_20", "order_flow_imbalance_20", "intraday_momentum_20",
+    "turnover_mean_20",
+    "volatility_20",
+    "bp_ratio",
+    "dv_ttm",
+    "high_freq_volatility_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "opening_volume_share_20",
+    "closing_trend_strength_20",
+    "vwap_deviation_20",
+    "order_flow_imbalance_20",
+    "intraday_momentum_20",
     "volume_price_divergence_20",
 ]
 
 DEFAULT_L1_ASSETS = [
-    "klines_daily", "daily_basic", "moneyflow_daily",
-    "minute_bars", "index_daily", "symbols",
+    "klines_daily",
+    "daily_basic",
+    "moneyflow_daily",
+    "minute_bars",
+    "index_daily",
+    "symbols",
 ]
 
 
@@ -65,7 +78,9 @@ def broadcast_alert(level: str, report: dict):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", type=str, default=None, help="trade_date YYYY-MM-DD, 默认 MAX(klines_daily)")
+    parser.add_argument(
+        "--date", type=str, default=None, help="trade_date YYYY-MM-DD, 默认 MAX(klines_daily)"
+    )
     parser.add_argument("--factors", type=str, default=None, help="逗号分隔, 默认 14 active")
     parser.add_argument("--output-dir", type=str, default=str(REPO_ROOT / "logs"))
     parser.add_argument("--alert", action="store_true", help="启用 StreamBus 告警广播")
@@ -85,7 +100,8 @@ def main():
 
     # 使用短期 window (仅最近 30d 用于 validate)
     orch = DataOrchestrator(
-        start_date="2021-01-01", end_date="2025-12-31",
+        start_date="2021-01-01",
+        end_date="2025-12-31",
     )
 
     t0 = time.time()
@@ -100,7 +116,11 @@ def main():
     # 写文件
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    td_str = report["trade_date"] if isinstance(report["trade_date"], str) else str(trade_date or "today")
+    td_str = (
+        report["trade_date"]
+        if isinstance(report["trade_date"], str)
+        else str(trade_date or "today")
+    )
     out_path = out_dir / f"quality_report_{td_str}.json"
     out_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     logger.info(f"[report] {out_path} overall={report['overall']}")
@@ -110,17 +130,20 @@ def main():
         broadcast_alert(report["overall"], report)
 
     # 对齐 stdout (供 Celery beat log)
-    print(json.dumps(
-        {
-            "trade_date": report["trade_date"],
-            "overall": report["overall"],
-            "warnings": report["warnings"],
-            "failures": report["failures"],
-            "elapsed_sec": report["elapsed_sec"],
-            "output": str(out_path),
-        },
-        indent=2, default=str,
-    ))
+    print(
+        json.dumps(
+            {
+                "trade_date": report["trade_date"],
+                "overall": report["overall"],
+                "warnings": report["warnings"],
+                "failures": report["failures"],
+                "elapsed_sec": report["elapsed_sec"],
+                "output": str(out_path),
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
     # 退出码: FAIL=2, WARN=1, PASS=0
     if report["overall"] == "FAIL":

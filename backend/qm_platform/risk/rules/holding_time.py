@@ -19,6 +19,7 @@
 
 关联铁律: 24 (单一职责) / 31 (纯计算无 IO) / 33 (silent_ok skip 路径)
 """
+
 from __future__ import annotations
 
 import logging
@@ -61,12 +62,12 @@ class PositionHoldingTimeRule(RiskRule):
     action: Literal["sell", "alert_only", "bypass"] = "alert_only"
 
     def __init__(
-        self, threshold_days: int = _DEFAULT_HOLDING_DAYS_THRESHOLD,
+        self,
+        threshold_days: int = _DEFAULT_HOLDING_DAYS_THRESHOLD,
     ) -> None:
         if threshold_days < 1:
             raise ValueError(
-                f"PositionHoldingTimeRule threshold_days must be >= 1, "
-                f"got {threshold_days}"
+                f"PositionHoldingTimeRule threshold_days must be >= 1, got {threshold_days}"
             )
         self._threshold_days = threshold_days
 

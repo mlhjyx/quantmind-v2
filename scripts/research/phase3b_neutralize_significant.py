@@ -32,14 +32,38 @@ DB_CONN = "dbname=quantmind_v2 user=xin password=quantmind host=localhost"
 
 # 32 significant factors from IC quick-screen (|t| > 2.5)
 SIGNIFICANT_FACTORS = [
-    "high_low_range_20", "volatility_60", "turnover_std_20", "maxret_20",
-    "CORD5", "turnover_f", "ivol_20", "gap_frequency_20",
-    "atr_norm_20", "turnover_stability_20", "large_order_ratio", "RSQR30",
-    "IMIN10", "HIGH0", "price_level_factor", "high_vol_price_ratio_20",
-    "CORD20", "kbar_kup", "sp_ttm", "momentum_20",
-    "gain_loss_ratio_20", "price_volume_corr_20", "reversal_60", "relative_volume_20",
-    "rsrs_raw_18", "mf_divergence", "volume_std_20", "reversal_10",
-    "momentum_10", "momentum_5", "reversal_5", "turnover_surge_ratio",
+    "high_low_range_20",
+    "volatility_60",
+    "turnover_std_20",
+    "maxret_20",
+    "CORD5",
+    "turnover_f",
+    "ivol_20",
+    "gap_frequency_20",
+    "atr_norm_20",
+    "turnover_stability_20",
+    "large_order_ratio",
+    "RSQR30",
+    "IMIN10",
+    "HIGH0",
+    "price_level_factor",
+    "high_vol_price_ratio_20",
+    "CORD20",
+    "kbar_kup",
+    "sp_ttm",
+    "momentum_20",
+    "gain_loss_ratio_20",
+    "price_volume_corr_20",
+    "reversal_60",
+    "relative_volume_20",
+    "rsrs_raw_18",
+    "mf_divergence",
+    "volume_std_20",
+    "reversal_10",
+    "momentum_10",
+    "momentum_5",
+    "reversal_5",
+    "turnover_surge_ratio",
 ]
 
 
@@ -48,22 +72,28 @@ def check_already_neutralized(conn) -> set[str]:
     cur = conn.cursor()
     already = set()
     for fname in SIGNIFICANT_FACTORS:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FROM factor_values
             WHERE factor_name = %s
               AND neutral_value IS NOT NULL
               AND trade_date >= '2023-01-01'
             LIMIT 1
-        """, (fname,))
+        """,
+            (fname,),
+        )
         # Use EXISTS for speed
-        cur.execute("""
+        cur.execute(
+            """
             SELECT EXISTS(
                 SELECT 1 FROM factor_values
                 WHERE factor_name = %s
                   AND neutral_value IS NOT NULL
                   AND trade_date >= '2023-01-01'
             )
-        """, (fname,))
+        """,
+            (fname,),
+        )
         exists = cur.fetchone()[0]
         if exists:
             already.add(fname)
@@ -72,9 +102,11 @@ def check_already_neutralized(conn) -> set[str]:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Phase 3B: Neutralize significant factors")
-    parser.add_argument("--skip-existing", action="store_true",
-                        help="Skip factors that already have neutral_value")
+    parser.add_argument(
+        "--skip-existing", action="store_true", help="Skip factors that already have neutral_value"
+    )
     parser.add_argument("--start", default="2014-01-01", help="Start date")
     parser.add_argument("--end", default="2026-04-15", help="End date")
     args = parser.parse_args()
@@ -108,7 +140,7 @@ def main():
     results = {}
     for i, fname in enumerate(factors_to_process):
         t0 = time.time()
-        print(f"\n── [{i+1}/{len(factors_to_process)}] {fname} ──")
+        print(f"\n── [{i + 1}/{len(factors_to_process)}] {fname} ──")
 
         try:
             n_updated = fast_neutralize_batch(
@@ -159,10 +191,13 @@ def main():
     for fname in results:
         if results[fname]["status"] != "OK":
             continue
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COUNT(*) FROM factor_values
             WHERE factor_name = %s AND neutral_value = 'NaN'
-        """, (fname,))
+        """,
+            (fname,),
+        )
         nan_count = cur.fetchone()[0]
         status = "PASS" if nan_count == 0 else f"FAIL ({nan_count} NaN)"
         print(f"  {fname:>25s}: {status}")
@@ -179,7 +214,9 @@ def main():
     # Reminder for next steps
     print("\n" + "=" * 70)
     print("  NEXT STEPS:")
-    print("  1. python scripts/factor_health_check.py " + " ".join(list(results.keys())[:5]) + " ...")
+    print(
+        "  1. python scripts/factor_health_check.py " + " ".join(list(results.keys())[:5]) + " ..."
+    )
     print("  2. python scripts/build_backtest_cache.py  (铁律30)")
     print("=" * 70)
 

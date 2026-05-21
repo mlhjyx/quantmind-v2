@@ -114,7 +114,7 @@ class TestCashBuffer:
 
         lot_size = 100
         total_invested = 0.0
-        avg_price = 50.0   # 假设每只股票均价50元
+        avg_price = 50.0  # 假设每只股票均价50元
 
         for _code, weight in target.items():
             target_value = total_value * weight
@@ -129,9 +129,7 @@ class TestCashBuffer:
             f"现金拖累为负: cash={cash_remaining:.0f}，cash_pct={cash_buffer_pct:.2%}"
         )
         # 通过3%缓冲，现金至少≥3% - 因整手约束通常会保留更多
-        assert cash_buffer_pct >= 0.03 - 0.005, (
-            f"现金比例{cash_buffer_pct:.2%}低于预期最低值~2.5%"
-        )
+        assert cash_buffer_pct >= 0.03 - 0.005, f"现金比例{cash_buffer_pct:.2%}低于预期最低值~2.5%"
 
     def test_empty_universe_returns_empty(self):
         """空股票池返回空dict，不报错。"""

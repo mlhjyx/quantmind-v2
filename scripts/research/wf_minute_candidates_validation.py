@@ -60,12 +60,25 @@ BASELINE_WF_SHARPE = 0.8659
 
 # 候选 (基于 wf_minute_candidates 结果)
 CANDIDATES = [
-    {"factor": "vwap_deviation_20", "direction": 1, "wf_mean_sharpe": 1.2064,
-     "fold_sharpes": [2.9607, 1.1533, 0.0166, 0.6846, 1.2167]},
-    {"factor": "volume_price_divergence_20", "direction": 1, "wf_mean_sharpe": 0.8809,
-     "fold_sharpes": [1.2357, 0.2591, 0.4226, 0.818, 1.6692]},
-    {"factor": None, "direction": None, "wf_mean_sharpe": BASELINE_WF_SHARPE,
-     "fold_sharpes": [], "name": "baseline"},  # CORE3+dv_ttm (baseline)
+    {
+        "factor": "vwap_deviation_20",
+        "direction": 1,
+        "wf_mean_sharpe": 1.2064,
+        "fold_sharpes": [2.9607, 1.1533, 0.0166, 0.6846, 1.2167],
+    },
+    {
+        "factor": "volume_price_divergence_20",
+        "direction": 1,
+        "wf_mean_sharpe": 0.8809,
+        "fold_sharpes": [1.2357, 0.2591, 0.4226, 0.818, 1.6692],
+    },
+    {
+        "factor": None,
+        "direction": None,
+        "wf_mean_sharpe": BASELINE_WF_SHARPE,
+        "fold_sharpes": [],
+        "name": "baseline",
+    },  # CORE3+dv_ttm (baseline)
 ]
 
 FULL_START = date(2020, 1, 1)
@@ -90,16 +103,23 @@ def run_full_sample(cand, factor_df, price_df, bench_df, ln_mcap_pivot):
 
     bt_config = BacktestConfig(top_n=20, rebalance_freq="monthly", initial_capital=1_000_000)
     sig_config = SignalConfig(
-        factor_names=cfg_factors, top_n=20, weight_method="equal",
-        rebalance_freq="monthly", size_neutral_beta=0.50,
+        factor_names=cfg_factors,
+        top_n=20,
+        weight_method="equal",
+        rebalance_freq="monthly",
+        size_neutral_beta=0.50,
     )
 
     logger.info("  Full sample: %s (%d factors, %d rows)", name, len(cfg_factors), len(f20))
     t0 = time.time()
     result = run_hybrid_backtest(
-        factor_df=f20, directions=directions,
-        price_data=p20, config=bt_config,
-        benchmark_data=b20, signal_config=sig_config, conn=None,
+        factor_df=f20,
+        directions=directions,
+        price_data=p20,
+        config=bt_config,
+        benchmark_data=b20,
+        signal_config=sig_config,
+        conn=None,
     )
     nav = result.daily_nav
     if not isinstance(nav, pd.Series) or len(nav) == 0:
@@ -112,7 +132,10 @@ def run_full_sample(cand, factor_df, price_df, bench_df, ln_mcap_pivot):
 
 
 def paired_bootstrap_sharpe_diff(
-    baseline_rets: pd.Series, cand_rets: pd.Series, n: int = 1000, seed: int = 42,
+    baseline_rets: pd.Series,
+    cand_rets: pd.Series,
+    n: int = 1000,
+    seed: int = 42,
 ):
     """Paired bootstrap: resample (baseline, cand) 日期 pairs, compute Δ(Sharpe).
 
@@ -174,7 +197,14 @@ def final_verdict(cand_result, baseline_full_sharpe):
     p = bs.get("p_value_one_side") if bs else 1.0
 
     # 严格 PASS: 4 个都满足
-    if beats_baseline and stable and overfit is not None and overfit < 1.0 and p is not None and p < 0.05:
+    if (
+        beats_baseline
+        and stable
+        and overfit is not None
+        and overfit < 1.0
+        and p is not None
+        and p < 0.05
+    ):
         verdict = "STRICT_PASS"
     elif beats_baseline and p is not None and p < 0.05:
         verdict = "BOOTSTRAP_PASS_but_unstable"
@@ -204,9 +234,7 @@ def main():
     logger.info("=" * 72)
 
     price_df, bench_df = load_parquet_price_bench()
-    all_factors = list(CORE_DIRECTIONS.keys()) + [
-        c["factor"] for c in CANDIDATES if c["factor"]
-    ]
+    all_factors = list(CORE_DIRECTIONS.keys()) + [c["factor"] for c in CANDIDATES if c["factor"]]
     conn = get_sync_conn()
     try:
         factor_df = load_factor_data(all_factors, conn)
@@ -214,7 +242,8 @@ def main():
         conn.close()
 
     ln_mcap_pivot = load_ln_mcap_pivot(
-        min(price_df["trade_date"]), max(price_df["trade_date"]),
+        min(price_df["trade_date"]),
+        max(price_df["trade_date"]),
     )
 
     # Full-sample backtest for baseline + 2 candidates
@@ -237,11 +266,18 @@ def main():
         cand_full_sh = r["fs"]["full_sharpe"]
 
         bs = paired_bootstrap_sharpe_diff(
-            baseline_rets, cand_rets, n=N_BOOTSTRAP,
+            baseline_rets,
+            cand_rets,
+            n=N_BOOTSTRAP,
         )
-        logger.info("  %s bootstrap: p=%.4f Δ_mean=%.4f CI=[%.3f, %.3f]",
-                    cand["factor"], bs["p_value_one_side"],
-                    bs["delta_sharpe_bootstrap_mean"], bs["ci_95_lo"], bs["ci_95_hi"])
+        logger.info(
+            "  %s bootstrap: p=%.4f Δ_mean=%.4f CI=[%.3f, %.3f]",
+            cand["factor"],
+            bs["p_value_one_side"],
+            bs["delta_sharpe_bootstrap_mean"],
+            bs["ci_95_lo"],
+            bs["ci_95_hi"],
+        )
 
         cand_summary = {**cand, "full_sharpe": cand_full_sh, "bootstrap": bs}
         verdict = final_verdict(cand_summary, baseline_full_sh)
@@ -250,10 +286,14 @@ def main():
         final_results.append(cand_summary)
 
         logger.info("  %s verdict: %s", cand["factor"], verdict["verdict"])
-        logger.info("    wf=%.3f full=%s overfit=%s std=%.2f p=%s",
-                    verdict["wf_mean_sharpe"], verdict["full_sample_sharpe"],
-                    verdict["overfit_ratio"], verdict["fold_sharpe_std"],
-                    verdict["bootstrap_p"])
+        logger.info(
+            "    wf=%.3f full=%s overfit=%s std=%.2f p=%s",
+            verdict["wf_mean_sharpe"],
+            verdict["full_sample_sharpe"],
+            verdict["overfit_ratio"],
+            verdict["fold_sharpe_std"],
+            verdict["bootstrap_p"],
+        )
 
     # Report
     output = {
@@ -265,7 +305,12 @@ def main():
         "candidates": final_results,
         "elapsed_sec": round(time.time() - t_all, 1),
     }
-    out_path = PROJECT_ROOT / "cache" / "phase3b" / f"wf_minute_validation_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    out_path = (
+        PROJECT_ROOT
+        / "cache"
+        / "phase3b"
+        / f"wf_minute_validation_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    )
     out_path.write_text(json.dumps(output, indent=2, default=str), encoding="utf-8")
     logger.info("[report] %s", out_path)
 
@@ -276,9 +321,12 @@ def main():
         v = r["analysis"]["verdict"]
         logger.info(
             "  %s: %s  wf=%.3f full=%.3f overfit=%s p=%.3f",
-            r["factor"], v, r["analysis"]["wf_mean_sharpe"],
+            r["factor"],
+            v,
+            r["analysis"]["wf_mean_sharpe"],
             r["analysis"]["full_sample_sharpe"] or 0,
-            r["analysis"]["overfit_ratio"], r["analysis"]["bootstrap_p"],
+            r["analysis"]["overfit_ratio"],
+            r["analysis"]["bootstrap_p"],
         )
 
 

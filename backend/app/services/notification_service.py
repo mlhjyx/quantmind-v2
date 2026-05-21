@@ -13,6 +13,7 @@
 import contextlib
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,6 +173,105 @@ class NotificationRepository(BaseRepository):
         )
         return result.rowcount
 
+    async def delete_old(self, days: int = 30) -> int:
+        """清理旧通知 —— 删除超过 days 天的已读通知。
+
+        仅删除 is_read = TRUE 的旧通知: 未读通知 (无论多旧) 一律保留, 避免
+        清理动作绕过用户未读感知 (前端铃铛未读计数完整性)。days 经
+        make_interval 参数化绑定, 不拼接 interval 字符串 (防注入)。
+
+        Args:
+            days: 保留天数; created_at 早于 NOW() - days 天的已读通知被删除。
+
+        Returns:
+            删除条数。
+        """
+        result = await self.execute(
+            "DELETE FROM notifications "
+            "WHERE is_read = TRUE "
+            "AND created_at < NOW() - make_interval(days => :days)",
+            {"days": days},
+        )
+        return result.rowcount
+
+    # ─── 通知偏好 (DEV_NOTIFICATIONS §7+§8 — 单例设置表) ───
+
+    async def get_preferences(self) -> dict[str, Any] | None:
+        """读取通知偏好。
+
+        notification_preferences 是单用户单例设置表 (无业务键)。取最新一行;
+        无任何行时返回 None (调用方用列默认值兜底)。
+
+        Returns:
+            偏好字典, 无记录返回 None。
+        """
+        row = await self.fetch_one(
+            """SELECT id, toast_p0, toast_p1, toast_p2, toast_p3,
+                      dingtalk_enabled, dingtalk_webhook,
+                      dispatch_p0, dispatch_p1, dispatch_p2,
+                      quiet_enabled, quiet_start, quiet_end, updated_at
+               FROM notification_preferences
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 1"""
+        )
+        if not row:
+            return None
+        return _prefs_row_to_dict(row)
+
+    async def upsert_preferences(self, prefs: dict[str, Any]) -> dict[str, Any]:
+        """单例 upsert 通知偏好 (全量替换语义)。
+
+        notification_preferences 单例表无业务键: 先做无 WHERE 的 UPDATE
+        (单例下命中 0 或 1 行); rowcount==0 (尚无行) 时 INSERT 首行。
+
+        并发安全: 该表无唯一约束, 两个并发请求在空表上可能各自 rowcount==0
+        → 双 INSERT 破坏单例不变量。故先取 pg_advisory_xact_lock 串行化
+        upsert (事务级锁, get_db 提交时释放) —— code-review MED 采纳。
+
+        Args:
+            prefs: 含 12 个可编辑字段的字典 (由 NotificationPreferences 模型
+                model_dump() 产出, 字段齐全)。
+
+        Returns:
+            写入后的偏好字典 (含 id / updated_at)。
+        """
+        # 事务级 advisory lock: 串行化并发 upsert, 保单例不变量。
+        await self.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('notification_preferences_singleton'))"
+        )
+        result = await self.execute(
+            """UPDATE notification_preferences SET
+                   toast_p0 = :toast_p0, toast_p1 = :toast_p1,
+                   toast_p2 = :toast_p2, toast_p3 = :toast_p3,
+                   dingtalk_enabled = :dingtalk_enabled,
+                   dingtalk_webhook = :dingtalk_webhook,
+                   dispatch_p0 = :dispatch_p0, dispatch_p1 = :dispatch_p1,
+                   dispatch_p2 = :dispatch_p2,
+                   quiet_enabled = :quiet_enabled,
+                   quiet_start = :quiet_start, quiet_end = :quiet_end,
+                   updated_at = NOW()""",
+            prefs,
+        )
+        if result.rowcount == 0:
+            await self.execute(
+                """INSERT INTO notification_preferences (
+                       toast_p0, toast_p1, toast_p2, toast_p3,
+                       dingtalk_enabled, dingtalk_webhook,
+                       dispatch_p0, dispatch_p1, dispatch_p2,
+                       quiet_enabled, quiet_start, quiet_end
+                   ) VALUES (
+                       :toast_p0, :toast_p1, :toast_p2, :toast_p3,
+                       :dingtalk_enabled, :dingtalk_webhook,
+                       :dispatch_p0, :dispatch_p1, :dispatch_p2,
+                       :quiet_enabled, :quiet_start, :quiet_end
+                   )""",
+                prefs,
+            )
+        updated = await self.get_preferences()
+        if updated is None:  # pragma: no cover - 刚 upsert 必有行 (fail-loud)
+            raise RuntimeError("upsert_preferences: 写入后仍读不到偏好行")
+        return updated
+
 
 class NotificationService:
     """统一通知服务。
@@ -309,9 +409,11 @@ class NotificationService:
         if not webhook_url:
             return
 
-        # P0始终发, P1默认发, P2/P3不外发
-        should_dispatch = level in ("P0", "P1")
-        if not should_dispatch:
+        # 外发检查 (DEV_NOTIFICATIONS §2 line 70): P0 始终发 (无视静默);
+        # P1/P2 受 dispatch_pN 开关 + 静默时段限制. 无偏好行时用列默认值兜底.
+        prefs = await self.repo.get_preferences()
+        hour_sh = datetime.now(ZoneInfo("Asia/Shanghai")).hour
+        if not _should_dispatch_external(level, prefs, hour_sh):
             return
 
         # 格式化钉钉消息
@@ -374,7 +476,7 @@ class NotificationService:
             logger.debug("[Notify] P3调试通知: title='%s'", title)
 
         # 3. 钉钉分发
-        self._dispatch_sync(level, title, content)
+        self._dispatch_sync(conn, level, title, content)
 
     def send_daily_report_sync(
         self,
@@ -503,12 +605,14 @@ class NotificationService:
             logger.warning("[Notify] sync执行报告写入DB失败: %s", e)
 
         # 发钉钉
-        self._dispatch_sync(alert_level, title, content)
+        self._dispatch_sync(conn, alert_level, title, content)
 
-    def _dispatch_sync(self, level: str, title: str, content: str) -> None:
-        """同步版钉钉分发。P0/P1发送，其余不发。
+    def _dispatch_sync(self, conn: Any, level: str, title: str, content: str) -> None:
+        """同步版钉钉分发。外发检查 (DEV_NOTIFICATIONS §2): P0 始终发;
+        P1/P2 受 dispatch_pN 开关 + 静默时段限制; P3 不外发.
 
         Args:
+            conn: psycopg2 同步连接 (读 notification_preferences 单例行)。
             level: 通知级别。
             title: 标题。
             content: Markdown内容。
@@ -517,8 +621,9 @@ class NotificationService:
         if not webhook_url:
             return
 
-        should_dispatch = level in ("P0", "P1")
-        if not should_dispatch:
+        prefs = _get_preferences_sync(conn)
+        hour_sh = datetime.now(ZoneInfo("Asia/Shanghai")).hour
+        if not _should_dispatch_external(level, prefs, hour_sh):
             return
 
         level_emoji = {
@@ -550,6 +655,7 @@ def send_alert(
     webhook_url: str = "",
     secret: str = "",
     conn: Any = None,
+    category: str = "alert",
 ) -> bool:
     """同步告警（兼容旧版接口，给pipeline脚本用）。
 
@@ -558,7 +664,7 @@ def send_alert(
 
     .. note:: **铁律 32 Class C 例外** (Phase D D2 audited 2026-04-16)
 
-       本函数内部 ``conn.commit()`` (line ~575) 是 **leaf utility 例外**:
+       本函数内部 ``conn.commit()`` (写 DB 后) 是 **leaf utility 例外**:
 
        * 16 个调用方 (services + scripts + tests, 详见
          ``docs/audit/F16_service_commit_audit.md`` §send_alert callers),
@@ -575,10 +681,12 @@ def send_alert(
         content: 详细内容。
         webhook_url: DingTalk Webhook地址。
         secret: DingTalk签名密钥。
-        conn: psycopg2同步连接（可选，用于写DB）。
+        conn: psycopg2同步连接（可选，用于写DB + 读外发偏好）。
+        category: 通知分类（写入 notifications.category, 默认 'alert'）。
 
     Returns:
-        DingTalk是否发送成功。
+        True = 外发成功, 或按偏好/静默时段正确抑制 (均视为已正确处理);
+        False = 外发失败 (需关注)。
     """
     level_emoji = {"P0": "\U0001f534", "P1": "\U0001f7e1", "P2": "\U0001f535"}.get(level, "\u26aa")
     md = f"### {level_emoji} [{level}] {title}\n\n{content}"
@@ -590,13 +698,31 @@ def send_alert(
             cur.execute(
                 """INSERT INTO notifications (level, category, market, title, content)
                    VALUES (%s, %s, %s, %s, %s)""",
-                (level, "alert", "astock", title, content),
+                (level, category, "astock", title, content),
             )
             conn.commit()
         except Exception as e:
             logger.warning("[Notify] sync写入DB失败: %s", e)
             with contextlib.suppress(Exception):
                 conn.rollback()
+
+    # 外发检查 (DEV_NOTIFICATIONS §2 line 70): P0 始终发; P1/P2 受 dispatch_pN
+    # 开关 + 静默时段限制. conn 缺失或读偏好故障 → fail-safe 照发 (告警不可因
+    # 偏好读取问题被静默丢失). 与 NotificationService._dispatch_sync 同口径.
+    if conn is not None:
+        try:
+            _prefs = _get_preferences_sync(conn)
+            _suppressed = not _should_dispatch_external(
+                level, _prefs, datetime.now(ZoneInfo("Asia/Shanghai")).hour
+            )
+        except Exception as e:
+            logger.warning("[Notify] send_alert 读外发偏好失败, fail-safe 照发: %s", e)
+            _suppressed = False
+        if _suppressed:
+            logger.info(
+                "[Notify] send_alert 外发按偏好/静默抑制: level=%s title='%s'", level, title
+            )
+            return True
 
     # 发送DingTalk
     return dingtalk.send_markdown_sync(
@@ -651,6 +777,7 @@ class _SyncNotificationFacade:
             webhook_url=webhook,
             secret=secret,
             conn=conn,
+            category=category,
         )
 
 
@@ -789,3 +916,112 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "is_acted": row[8],
         "created_at": row[9].isoformat() if row[9] else None,
     }
+
+
+def _prefs_row_to_dict(row: Any) -> dict[str, Any]:
+    """将 notification_preferences 行转换为偏好字典。
+
+    Args:
+        row: SELECT 结果行 (列顺序见 get_preferences 的 SELECT)。
+
+    Returns:
+        偏好字典。
+    """
+    return {
+        "id": str(row[0]),
+        "toast_p0": row[1],
+        "toast_p1": row[2],
+        "toast_p2": row[3],
+        "toast_p3": row[4],
+        "dingtalk_enabled": row[5],
+        "dingtalk_webhook": row[6],
+        "dispatch_p0": row[7],
+        "dispatch_p1": row[8],
+        "dispatch_p2": row[9],
+        "quiet_enabled": row[10],
+        "quiet_start": row[11],
+        "quiet_end": row[12],
+        "updated_at": row[13].isoformat() if row[13] else None,
+    }
+
+
+# ─── 外发检查 (DEV_NOTIFICATIONS §2 line 70) ───
+# notification_preferences 无行时用 DDL_FINAL.sql 列默认值兜底.
+_DISPATCH_PREF_DEFAULTS: dict[str, Any] = {
+    "dispatch_p1": True,
+    "dispatch_p2": False,
+    "quiet_enabled": True,
+    "quiet_start": 23,
+    "quiet_end": 7,
+}
+
+
+def _in_quiet_window(hour: int, start: int, end: int) -> bool:
+    """hour (0-23) 是否落在静默时段 [start, end) — 支持跨午夜 wrap-around。
+
+    start == end 视为空窗 (不静默)。start < end 为同日区间;
+    start > end (如 23→7) 为跨午夜区间。
+    """
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end
+
+
+def _should_dispatch_external(level: str, prefs: dict[str, Any] | None, hour_sh: int) -> bool:
+    """外发检查 (DEV_NOTIFICATIONS §2 line 70):
+
+    - P0: 始终发 (无视静默 + 无视开关) — 关键告警不可被抑制。
+    - P1/P2: 受 dispatch_pN 开关 + 静默时段限制 (quiet_enabled 时)。
+    - P3 / 未知 level: 不外发。
+
+    Args:
+        level: 通知级别 P0/P1/P2/P3。
+        prefs: get_preferences() 偏好字典; None (无偏好行) 时用列默认值兜底。
+        hour_sh: 当前 Asia/Shanghai 小时 (0-23, 铁律 41)。
+
+    Returns:
+        是否应外发到钉钉。
+    """
+    if level == "P0":
+        return True
+    if level not in ("P1", "P2"):
+        return False
+
+    prefs = prefs or {}
+
+    def _pref(key: str) -> Any:
+        val = prefs.get(key)
+        return _DISPATCH_PREF_DEFAULTS[key] if val is None else val
+
+    toggle_key = "dispatch_p1" if level == "P1" else "dispatch_p2"
+    if not _pref(toggle_key):
+        return False
+    in_quiet = _pref("quiet_enabled") and _in_quiet_window(
+        hour_sh, _pref("quiet_start"), _pref("quiet_end")
+    )
+    return not in_quiet
+
+
+def _get_preferences_sync(conn: Any) -> dict[str, Any] | None:
+    """同步读取 notification_preferences 单例行 (给 _dispatch_sync 复用调用方 conn)。
+
+    列顺序与 NotificationRepository.get_preferences 的 SELECT 一致 (供
+    _prefs_row_to_dict 索引)。无行返回 None。
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT id, toast_p0, toast_p1, toast_p2, toast_p3,
+                      dingtalk_enabled, dingtalk_webhook,
+                      dispatch_p0, dispatch_p1, dispatch_p2,
+                      quiet_enabled, quiet_start, quiet_end, updated_at
+               FROM notification_preferences
+               ORDER BY updated_at DESC NULLS LAST
+               LIMIT 1"""
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+    return _prefs_row_to_dict(row) if row else None

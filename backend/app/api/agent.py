@@ -53,7 +53,9 @@ class AssistContext(BaseModel):
     """前端发送的对话上下文。"""
 
     page: AssistDomain = Field(description="当前页面 domain")
-    entity_id: str | None = Field(default=None, description="操作对象 ID (e.g. factor name, strategy id)")
+    entity_id: str | None = Field(
+        default=None, description="操作对象 ID (e.g. factor name, strategy id)"
+    )
     data_snapshot: dict[str, Any] | None = Field(default=None, description="可选的数据快照")
 
     @field_validator("entity_id")
@@ -394,9 +396,11 @@ _AGENT_DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
 # 真 persist + version diff support (反 LL-183 silent UI lie sustained).
 # Migration: backend/migrations/2026_05_19_prompt_history.sql
 
+
 def _get_db_conn() -> Any:
     """psycopg2 sync conn — 沿用 backend.app.services.db pattern."""
     from app.services.db import get_sync_conn
+
     return get_sync_conn()
 
 
@@ -544,9 +548,7 @@ def _insert_new_version(
                 if source_row is None:
                     # version 真不存在 (advisory lock held → strong consistency).
                     # 反 silent fail (铁律 33): endpoint maps to HTTP 404.
-                    raise ValueError(
-                        f"agent {name} version {source_version} not found"
-                    )
+                    raise ValueError(f"agent {name} version {source_version} not found")
                 current = source_row
             else:
                 # Pull current active to apply partial updates atop
@@ -634,7 +636,9 @@ def _insert_new_version(
 
     fetched = _fetch_active_config(name)
     if fetched is None:
-        raise RuntimeError("post-INSERT 拉 active row 真 None — atomic txn rollback 真 silent fail (铁律 33)")
+        raise RuntimeError(
+            "post-INSERT 拉 active row 真 None — atomic txn rollback 真 silent fail (铁律 33)"
+        )
     return fetched
 
 
@@ -714,7 +718,9 @@ async def reset_agent_config(
 @router.get("/{name}/history", summary="Agent prompt 版本历史 (last N versions)")
 async def get_agent_history(
     name: str,
-    limit: int = Query(default=20, ge=1, le=100),  # P3 fix: explicit bounds (反 unbounded sql LIMIT)
+    limit: int = Query(
+        default=20, ge=1, le=100
+    ),  # P3 fix: explicit bounds (反 unbounded sql LIMIT)
     _: None = Depends(verify_admin_token),  # P2-2 fix (treat P1): 反 prompt enumeration leak
 ) -> list[dict[str, Any]]:
     """返回 last N 版本 prompt_history rows (newest first)."""

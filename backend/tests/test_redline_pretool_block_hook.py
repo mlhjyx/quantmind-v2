@@ -19,6 +19,7 @@ bypass 体例 (沿用 quantmind-v3-redline-verify skill §3 SSOT):
 关联 SSOT: Constitution §L6.2 redline-pretool-block 决议 + §L8.1 (b) 真生产红线 user
 介入 + LL-117 候选 + skill quantmind-v3-redline-verify (PR #273)
 """
+
 from __future__ import annotations
 
 import json
@@ -29,9 +30,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "redline_pretool_block.py"
-)
+HOOK_PATH = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "redline_pretool_block.py"
 
 
 def _run_hook(command: str, env_override: dict | None = None) -> tuple[int, str, str]:

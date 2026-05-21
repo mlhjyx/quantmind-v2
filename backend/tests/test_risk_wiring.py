@@ -6,6 +6,7 @@
   - build_pms_thresholds 从 settings 读 L1/L2/L3 三层
   - build_risk_engine 工厂注册 PMSRule + primary/fallback source 正确接线
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -118,9 +119,7 @@ class TestBuildPMSThresholds:
 class TestBuildRiskEngine:
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
-    def test_factory_registers_pms_rule(
-        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
-    ):
+    def test_factory_registers_pms_rule(self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock):
         """build_risk_engine 返 PlatformRiskEngine 已 register MVP 3.1b Phase 1+1.5b 4 rule.
 
         Session 44 (PR #139/#147/#148) 真生产事件 (卓然 -29% / 南玻 -9.75%, PMS 0 触发)
@@ -156,9 +155,7 @@ class TestBuildRiskEngine:
 
     @patch("app.services.risk_wiring.get_qmt_client")
     @patch("app.services.risk_wiring.get_sync_conn")
-    def test_factory_accepts_extra_rules(
-        self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock
-    ):
+    def test_factory_accepts_extra_rules(self, mock_get_conn: MagicMock, mock_get_qmt: MagicMock):
         """reviewer P2-1 采纳 (architect): extra_rules 为批 2/3 铺路."""
         mock_get_qmt.return_value = MagicMock()
         mock_get_conn.return_value = MagicMock()

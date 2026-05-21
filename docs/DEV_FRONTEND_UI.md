@@ -10,6 +10,7 @@
 > **AI Assist 集成**: 4 entry points wired (Layout floating Cmd+J / Ctrl+J global / PipelineConsole 5th tab embedded / StrategyWorkspace inline / FactorLab embedded). Stub 模式默认开 (反 silent LLM cost 增长), .env AI_ASSIST_ENABLED=true + F-S7-001 P0 修复 (commit 23ebea5) 后真启用.
 > **决策D2 (2026-04-16)**: PROGRESSIVE — 12页面保留 + AI助手保留(上下文copilot) + 补运维操作功能(日志/服务管理/配置编辑). Phase H 2026-05-19 真闭环 4 entry points + OpsEscapeHatchPanel (Servy 4 + ENV 切换 2 + Schtask 3 + 紧急平仓 3, 12 ops with 4-tier risk badges).
 > 唯一设计真相源: **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md §12** + Frontend Design v3 实施: `docs/audit/V3_AUDIT_FRONTEND_DESIGN_v3.md` (409 lines, file-level refactor plan)
+> **端点覆盖**: 后端 **148 endpoints** (2026-05-20 grep `@router\.` truth, 来自 24 routers in backend/app/main.py:104-128) vs 前端 11 API modules (frontend/src/api/). 123 是 Phase H W1-W6 earlier audit snapshot (consumption rate 估算 角度), 148 是 backend 真总数. 端点覆盖率详细审计 Phase J defer (docs/API_COVERAGE.md 待建, 2026-05-20 Plan v9 backlog). Last drift verify: 2026-05-20.
 
 # QuantMind V2 — 前端 UI 详细开发文档
 
@@ -1061,6 +1062,48 @@ G4: 通知铃铛加下拉面板(最近5条+查看全部链接)
   仓位信息放到A股详情卡里(不是核心关注指标)
   超额收益是每日最关注的数字
 ```
+
+---
+
+## 十五、Phase H W1-W6 新组件沉淀 (2026-05-19, Plan v9 2026-05-20)
+
+> **来源**: 11 commits Session 57 2026-05-19. 文件真值: `frontend/src/components/` (全部 `True` Test-Path 实测 2026-05-20).
+
+### 5 个 Safety + AI Boundary 新组件
+
+#### 1. EnvStateBanner (`frontend/src/components/safety/EnvStateBanner.tsx`)
+- 4 状态: `safe` / `live` / `mismatch` / `unknown`
+- `GET /api/system/env-state` 5s 轮询
+- Layout 顶部插入, 覆盖 35 页面 ✅
+
+#### 2. ShutdownBanner (`frontend/src/components/safety/ShutdownBanner.tsx`)
+- 维护模式提醒 (0 持仓 + ¥950k+ cash 状态)
+- 仅展示业务事实 + reason, 无 ADR/LL 元数据
+
+#### 3. SafetyControlPanel (`frontend/src/components/safety/SafetyControlPanel.tsx`)
+- Circuit Breaker L0-L4 可视化
+- 6 CC-only 运维操作 frontend UI 化 (OpsEscapeHatchPanel: Servy 4 + ENV 切换 2 + Schtask 3 + 紧急平仓 3, 共 12 ops with 4-tier risk badges)
+- `fetchCircuitBreakerState` + `fetchEnvState` + `isAdminAuthed` 调用链
+
+#### 4. ConfirmModal (`frontend/src/components/ui/ConfirmModal.tsx`)
+- 4-tier 安全 modal (LOW / MED / HIGH / CRIT)
+- LOW: 立即 confirm
+- MED: 5s delay
+- HIGH: 文字输入确认
+- CRIT: 输入 + 5s delay + double-confirm
+
+#### 5. AssistPanel (`frontend/src/components/ai/AssistPanel.tsx`)
+- 4 entry points: Layout floating (Cmd+J / Ctrl+J global) / PipelineConsole 5th tab embedded / StrategyWorkspace inline / FactorLab embedded
+- AI Boundary 实装: CRIT ops block list 5 ops 服务端 enforce (NEVER LLM)
+- `POST /api/agent/chat` + `GET /api/agent/chat/status`
+- Stub 模式默认开 (`.env AI_ASSIST_ENABLED=true` + F-S7-001 P0 修复 commit 23ebea5 后真启用)
+
+### Axios SSOT 闭环 (14→0 raw axios)
+
+- 全部 API 调用走 `frontend/src/api/client.ts` (`apiClient`)
+- runtime config L2 fix: `window.__APP_CONFIG__.apiBaseUrl` (nginx envsubst deploy pattern)
+- 11 API modules: agent / backtest / dashboard / execution / factors / mining / pipeline / realtime / strategies / system / alerts
+- Audit Finding #5+#10 真闭环 (Phase H W5)
 
 **D2: 月度热力图改进**
 ```

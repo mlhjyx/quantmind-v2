@@ -27,9 +27,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("g_robust")
 
 MINUTE_FACTORS = [
-    "high_freq_volatility_20", "volume_concentration_20", "volume_autocorr_20",
-    "smart_money_ratio_20", "opening_volume_share_20", "closing_trend_strength_20",
-    "vwap_deviation_20", "order_flow_imbalance_20", "intraday_momentum_20",
+    "high_freq_volatility_20",
+    "volume_concentration_20",
+    "volume_autocorr_20",
+    "smart_money_ratio_20",
+    "opening_volume_share_20",
+    "closing_trend_strength_20",
+    "vwap_deviation_20",
+    "order_flow_imbalance_20",
+    "intraday_momentum_20",
     "volume_price_divergence_20",
 ]
 NOISE_PCTS = [0.05, 0.20]
@@ -81,7 +87,9 @@ def main():
             logger.warning(f"  {fn}: empty neutral_value, skip")
             continue
         nv["trade_date"] = pd.to_datetime(nv["trade_date"])
-        factor_wide = nv.pivot_table(index="trade_date", columns="code", values="value", aggfunc="last")
+        factor_wide = nv.pivot_table(
+            index="trade_date", columns="code", values="value", aggfunc="last"
+        )
         clean_std = factor_wide.stack().std()
         clean_ic = compute_ic_series(factor_wide, fwd)
         clean_stats = summarize_ic_stats(clean_ic)
@@ -99,7 +107,7 @@ def main():
             noisy_stats = summarize_ic_stats(noisy_ic)
             noisy_abs_mean = abs(noisy_stats.get("mean", 0.0))
             retention = noisy_abs_mean / clean_abs_mean if clean_abs_mean > 0 else 0.0
-            per_noise[f"noise_{int(noise_pct*100)}pct"] = {
+            per_noise[f"noise_{int(noise_pct * 100)}pct"] = {
                 "noisy_ic_mean": noisy_stats.get("mean"),
                 "retention": retention,
                 "fragile_at_20pct": noise_pct >= 0.20 and retention < 0.50,
@@ -113,7 +121,7 @@ def main():
         retention_5 = per_noise["noise_5pct"]["retention"]
         retention_20 = per_noise["noise_20pct"]["retention"]
         logger.info(
-            f"  {fn}: clean_IC={clean_stats.get('mean',0):.4f} "
+            f"  {fn}: clean_IC={clean_stats.get('mean', 0):.4f} "
             f"ret5%={retention_5:.3f} ret20%={retention_20:.3f} "
             f"{'FRAGILE' if per_noise['noise_20pct']['fragile_at_20pct'] else 'ROBUST'}"
         )
@@ -129,7 +137,7 @@ def main():
     out_path = REPO_ROOT / "reports" / f"p0_minute_g_robust_{time.strftime('%Y%m%d_%H%M%S')}.json"
     out_path.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
     logger.info(f"[report] {out_path}")
-    logger.info(f"[done] {(time.time()-t_all)/60:.2f} min")
+    logger.info(f"[done] {(time.time() - t_all) / 60:.2f} min")
 
 
 if __name__ == "__main__":

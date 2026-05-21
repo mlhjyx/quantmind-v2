@@ -203,10 +203,13 @@ settings = Settings()
 # 反向 verify .env file 真值 + mtime before commit msg / retroactive review.
 # Plan v8 audit 流 + Session 57+1 6 rounds 红线 claim 全程未真核, 3+ 周 silent drift.
 
-if (settings.EXECUTION_MODE == "live"
-        and not settings.LIVE_TRADING_DISABLED
-        and not settings.COOKIE_SECURE_FLAG):
+if (
+    settings.EXECUTION_MODE == "live"
+    and not settings.LIVE_TRADING_DISABLED
+    and not settings.COOKIE_SECURE_FLAG
+):
     import logging as _config_logging
+
     _config_logger = _config_logging.getLogger("config_guard")
     _is_external_bind = settings.API_HOST not in ("127.0.0.1", "localhost", "::1")
     _guard_msg = (

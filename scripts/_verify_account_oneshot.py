@@ -18,6 +18,7 @@ drift = 0 → ground truth verify ✅ → continue Week 1.
 
 本脚本 1 次性, 用完即删 (沿用 user 决议反问 5 d).
 """
+
 from __future__ import annotations
 
 import sys
@@ -79,11 +80,15 @@ def main() -> int:
     sprint_state_positions = 0
     actual_cash = float(asset.get("cash", 0)) if isinstance(asset, dict) else 0
     actual_positions = len(positions)
-    cash_drift_pct = abs(actual_cash - sprint_state_cash) / sprint_state_cash * 100 if sprint_state_cash else 0
+    cash_drift_pct = (
+        abs(actual_cash - sprint_state_cash) / sprint_state_cash * 100 if sprint_state_cash else 0
+    )
 
     print("=" * 60)
     print("[WI 0.5 cross-check sprint state 4-30 14:54]")
-    print(f"  cash:       sprint={sprint_state_cash:.2f}  actual={actual_cash:.2f}  drift={cash_drift_pct:.4f}%")
+    print(
+        f"  cash:       sprint={sprint_state_cash:.2f}  actual={actual_cash:.2f}  drift={cash_drift_pct:.4f}%"
+    )
     print(f"  positions:  sprint={sprint_state_positions}  actual={actual_positions}")
     print("=" * 60)
 
@@ -91,7 +96,9 @@ def main() -> int:
         print(f"[WI 0.5 STOP] cash drift {cash_drift_pct:.4f}% > 0.01% threshold")
         return 6
     if actual_positions != sprint_state_positions:
-        print(f"[WI 0.5 STOP] positions count mismatch: sprint={sprint_state_positions} actual={actual_positions}")
+        print(
+            f"[WI 0.5 STOP] positions count mismatch: sprint={sprint_state_positions} actual={actual_positions}"
+        )
         return 7
 
     print("[WI 0.5 ✅] ground truth verify PASS (drift < 0.01%, positions match)")

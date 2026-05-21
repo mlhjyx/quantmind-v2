@@ -42,6 +42,7 @@ from engines.mining.engine_selector import (
 # Helpers
 # ═══════════════════════════════════════════════════
 
+
 def _make_hypothesis() -> FactorHypothesis:
     return FactorHypothesis(
         name="test_factor",
@@ -64,18 +65,20 @@ def _make_price_data(n_dates: int = 30, n_stocks: int = 50) -> pd.DataFrame:
         for j in range(n_stocks):
             code = f"{j:06d}.SZ"
             close = rng.uniform(10, 50)
-            rows.append({
-                "code": code,
-                "trade_date": td,
-                "open": round(close * 0.99, 2),
-                "high": round(close * 1.02, 2),
-                "low": round(close * 0.98, 2),
-                "close": round(close, 2),
-                "volume": int(rng.uniform(50000, 500000)),
-                "amount": round(close * rng.uniform(1e4, 1e6), 2),
-                "turnover_rate": round(rng.uniform(1, 10), 2),
-                "total_mv": round(rng.uniform(1e5, 1e7), 2),
-            })
+            rows.append(
+                {
+                    "code": code,
+                    "trade_date": td,
+                    "open": round(close * 0.99, 2),
+                    "high": round(close * 1.02, 2),
+                    "low": round(close * 0.98, 2),
+                    "close": round(close, 2),
+                    "volume": int(rng.uniform(50000, 500000)),
+                    "amount": round(close * rng.uniform(1e4, 1e6), 2),
+                    "turnover_rate": round(rng.uniform(1, 10), 2),
+                    "total_mv": round(rng.uniform(1e5, 1e7), 2),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -88,17 +91,20 @@ def _make_forward_returns(price_data: pd.DataFrame) -> pd.DataFrame:
         for _, row in day.iterrows():
             # 与close负相关（模拟反转因子）
             fwd_ret = -0.001 * row["close"] / 30 + rng.normal(0, 0.02)
-            rows.append({
-                "code": row["code"],
-                "trade_date": td,
-                "fwd_ret_5d": fwd_ret,
-            })
+            rows.append(
+                {
+                    "code": row["code"],
+                    "trade_date": td,
+                    "fwd_ret_5d": fwd_ret,
+                }
+            )
     return pd.DataFrame(rows)
 
 
 # ═══════════════════════════════════════════════════
 # D5: FactorAgent
 # ═══════════════════════════════════════════════════
+
 
 class TestFactorAgentCodeExtraction:
     """FactorAgent._extract_code() 代码提取。"""
@@ -152,7 +158,7 @@ class TestFactorAgentValidation:
 
     def test_syntax_error(self):
         """语法错误。"""
-        code = 'def compute_factor(df)\n    return df'
+        code = "def compute_factor(df)\n    return df"
         valid, error = FactorAgent._validate_code(code)
         assert valid is False
         assert "语法" in error
@@ -162,14 +168,20 @@ class TestFactorAgentValidation:
 # D5: EvalAgent
 # ═══════════════════════════════════════════════════
 
+
 class TestEvalAgentExecution:
     """EvalAgent 代码执行和IC计算。"""
 
     def test_valid_factor_code_evaluates(self):
-        """有效因子代码能执行并产出IC。"""
+        """有效因子代码能执行并产出IC。
+
+        因子代码不写 `import` — pd/np 已由 EvalAgent 沙箱注入 (契约见
+        FactorAgent._SYSTEM_PROMPT 规则 3 "已导入为 pd, np" + 规则 6
+        "不能使用 import"). 2026-05-20 Plan v8 Wave 3 安全加固将沙箱
+        __builtins__ 置空, import 语句不再可用 — 本测试遵循该契约.
+        """
         code = """
 def compute_factor(df):
-    import pandas as pd
     return df["close"].rank(ascending=False)
 """
         price_data = _make_price_data(n_dates=40, n_stocks=50)
@@ -252,6 +264,7 @@ class TestEvalAgentRecommendation:
 # ═══════════════════════════════════════════════════
 # D6: Thompson Sampling
 # ═══════════════════════════════════════════════════
+
 
 class TestThompsonSamplingBasic:
     """Thompson Sampling基本功能。"""

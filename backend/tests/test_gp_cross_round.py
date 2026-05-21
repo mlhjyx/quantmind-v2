@@ -53,30 +53,32 @@ def _make_market_data(n: int = 80, seed: int = 0) -> pd.DataFrame:
     close = rng.uniform(5.0, 100.0, n)
     volume = rng.uniform(1e6, 5e7, n)
     amount = close * volume
-    return pd.DataFrame({
-        "open":  close * rng.uniform(0.99, 1.01, n),
-        "high":  close * rng.uniform(1.00, 1.05, n),
-        "low":   close * rng.uniform(0.95, 1.00, n),
-        "close": close,
-        "volume": volume,
-        "amount": amount,
-        "turnover_rate": rng.uniform(0.001, 0.05, n),
-        "pe_ttm": rng.uniform(5.0, 80.0, n),
-        "pb": rng.uniform(0.5, 8.0, n),
-        "ps_ttm": rng.uniform(0.5, 15.0, n),
-        "total_mv": close * rng.uniform(1e8, 1e10, n),
-        "circ_mv": close * rng.uniform(5e7, 5e9, n),
-        "buy_lg_amount": rng.uniform(1e6, 5e6, n),
-        "sell_lg_amount": rng.uniform(1e6, 5e6, n),
-        "net_lg_amount": rng.normal(0, 1e6, n),
-        "buy_md_amount": rng.uniform(5e5, 2e6, n),
-        "sell_md_amount": rng.uniform(5e5, 2e6, n),
-        "net_md_amount": rng.normal(0, 5e5, n),
-        "returns": rng.normal(0.0, 0.02, n),
-        "vwap": amount / volume,
-        "high_low": rng.uniform(0.01, 0.08, n),
-        "close_open": rng.normal(0.0, 0.01, n),
-    })
+    return pd.DataFrame(
+        {
+            "open": close * rng.uniform(0.99, 1.01, n),
+            "high": close * rng.uniform(1.00, 1.05, n),
+            "low": close * rng.uniform(0.95, 1.00, n),
+            "close": close,
+            "volume": volume,
+            "amount": amount,
+            "turnover_rate": rng.uniform(0.001, 0.05, n),
+            "pe_ttm": rng.uniform(5.0, 80.0, n),
+            "pb": rng.uniform(0.5, 8.0, n),
+            "ps_ttm": rng.uniform(0.5, 15.0, n),
+            "total_mv": close * rng.uniform(1e8, 1e10, n),
+            "circ_mv": close * rng.uniform(5e7, 5e9, n),
+            "buy_lg_amount": rng.uniform(1e6, 5e6, n),
+            "sell_lg_amount": rng.uniform(1e6, 5e6, n),
+            "net_lg_amount": rng.normal(0, 1e6, n),
+            "buy_md_amount": rng.uniform(5e5, 2e6, n),
+            "sell_md_amount": rng.uniform(5e5, 2e6, n),
+            "net_md_amount": rng.normal(0, 5e5, n),
+            "returns": rng.normal(0.0, 0.02, n),
+            "vwap": amount / volume,
+            "high_low": rng.uniform(0.01, 0.08, n),
+            "close_open": rng.normal(0.0, 0.01, n),
+        }
+    )
 
 
 def _make_forward_returns(market_data: pd.DataFrame, seed: int = 1) -> pd.Series:
@@ -114,19 +116,21 @@ def _make_gp_results(n: int = 5, dsl: FactorDSL | None = None) -> list[GPResult]
     for i in range(n):
         expr = seed_exprs[i % len(seed_exprs)]
         tree = dsl.from_string(expr)
-        results.append(GPResult(
-            factor_expr=expr,
-            ast_hash=tree.to_ast_hash() + f"_{i:04d}",
-            fitness=0.9 - i * 0.05,
-            sharpe_proxy=0.5 + i * 0.02,
-            complexity=0.2,
-            novelty=0.3,
-            ic_mean=0.025 + i * 0.001,
-            t_stat=3.0 + i * 0.1,
-            generation=10 + i,
-            island_id=i % 2,
-            parent_seed=seed_exprs[i % len(seed_exprs)],
-        ))
+        results.append(
+            GPResult(
+                factor_expr=expr,
+                ast_hash=tree.to_ast_hash() + f"_{i:04d}",
+                fitness=0.9 - i * 0.05,
+                sharpe_proxy=0.5 + i * 0.02,
+                complexity=0.2,
+                novelty=0.3,
+                ic_mean=0.025 + i * 0.001,
+                t_stat=3.0 + i * 0.1,
+                generation=10 + i,
+                island_id=i % 2,
+                parent_seed=seed_exprs[i % len(seed_exprs)],
+            )
+        )
     return results
 
 
@@ -193,9 +197,7 @@ class TestRoundTripCompleteness:
         previous = load_previous_results(tmp_path)
         assert previous is not None
         fitnesses = [r["fitness"] for r in previous.top_results]
-        assert fitnesses == sorted(fitnesses, reverse=True), (
-            "加载的top_results未按fitness降序"
-        )
+        assert fitnesses == sorted(fitnesses, reverse=True), "加载的top_results未按fitness降序"
 
     def test_run_id_in_loaded_data(self, tmp_path: Path) -> None:
         """loaded PreviousRunData.run_id 应与保存时 stats.run_id 一致。"""
@@ -242,13 +244,15 @@ class TestBlacklistEnforcement:
         )
 
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": expr,
-                "ast_hash": ast_hash,
-                "fitness": 0.9,
-                "ic_mean": 0.03,
-                "t_stat": 3.5,
-            }],
+            top_results=[
+                {
+                    "factor_expr": expr,
+                    "ast_hash": ast_hash,
+                    "fitness": 0.9,
+                    "ic_mean": 0.03,
+                    "t_stat": 3.5,
+                }
+            ],
             blacklisted_hashes={ast_hash},  # 同一hash在黑名单中
             run_id="gp_bl_enforce",
         )
@@ -258,9 +262,7 @@ class TestBlacklistEnforcement:
 
         # 验证blacklist check代码路径正确执行：hash在blacklist中，injection被跳过
         assert engine.previous_run is not None
-        assert ast_hash in engine.previous_run.blacklisted_hashes, (
-            "黑名单hash应在previous_run中"
-        )
+        assert ast_hash in engine.previous_run.blacklisted_hashes, "黑名单hash应在previous_run中"
 
     def test_non_blacklisted_factor_still_injected(self) -> None:
         """非黑名单因子（合法DSL）应正常注入下轮种群。
@@ -275,13 +277,15 @@ class TestBlacklistEnforcement:
         ast_hash = tree.to_ast_hash()
 
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": expr,
-                "ast_hash": ast_hash,
-                "fitness": 0.9,
-                "ic_mean": 0.03,
-                "t_stat": 3.5,
-            }],
+            top_results=[
+                {
+                    "factor_expr": expr,
+                    "ast_hash": ast_hash,
+                    "fitness": 0.9,
+                    "ic_mean": 0.03,
+                    "t_stat": 3.5,
+                }
+            ],
             blacklisted_hashes={"completely_different_hash_xyz"},  # 不同hash
             run_id="gp_no_bl",
         )
@@ -305,13 +309,15 @@ class TestBlacklistEnforcement:
         for expr in list(SEED_FACTORS.values())[:3]:
             tree = dsl.from_string(expr)
             h = tree.to_ast_hash()
-            top_results.append({
-                "factor_expr": expr,
-                "ast_hash": h,
-                "fitness": 0.8,
-                "ic_mean": 0.02,
-                "t_stat": 3.0,
-            })
+            top_results.append(
+                {
+                    "factor_expr": expr,
+                    "ast_hash": h,
+                    "fitness": 0.8,
+                    "ic_mean": 0.02,
+                    "t_stat": 3.0,
+                }
+            )
             hashes.add(h)
 
         previous = PreviousRunData(
@@ -367,13 +373,15 @@ class TestSeedInjection:
         ast_hash = tree.to_ast_hash()
 
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": target_expr,
-                "ast_hash": ast_hash,
-                "fitness": 0.95,
-                "ic_mean": 0.04,
-                "t_stat": 4.2,
-            }],
+            top_results=[
+                {
+                    "factor_expr": target_expr,
+                    "ast_hash": ast_hash,
+                    "fitness": 0.95,
+                    "ic_mean": 0.04,
+                    "t_stat": 4.2,
+                }
+            ],
             blacklisted_hashes=set(),
             run_id="gp_inject_verify",
         )
@@ -383,8 +391,7 @@ class TestSeedInjection:
 
         pop_exprs = {_get_tree(ind).to_string() for ind in pop}
         assert target_expr in pop_exprs, (
-            f"上轮Top因子 {target_expr!r} 未出现在下轮初始种群中。"
-            f"种群前5个: {list(pop_exprs)[:5]}"
+            f"上轮Top因子 {target_expr!r} 未出现在下轮初始种群中。种群前5个: {list(pop_exprs)[:5]}"
         )
 
     def test_multiple_top_factors_some_injected(self) -> None:
@@ -393,13 +400,15 @@ class TestSeedInjection:
         top_results = []
         for expr in list(SEED_FACTORS.values()):
             tree = dsl.from_string(expr)
-            top_results.append({
-                "factor_expr": expr,
-                "ast_hash": tree.to_ast_hash(),
-                "fitness": 0.8,
-                "ic_mean": 0.02,
-                "t_stat": 3.0,
-            })
+            top_results.append(
+                {
+                    "factor_expr": expr,
+                    "ast_hash": tree.to_ast_hash(),
+                    "fitness": 0.8,
+                    "ic_mean": 0.02,
+                    "t_stat": 3.0,
+                }
+            )
 
         previous = PreviousRunData(
             top_results=top_results,
@@ -419,13 +428,16 @@ class TestSeedInjection:
     def test_population_size_unchanged_with_previous_run(self) -> None:
         """有previous_run时，种群大小仍等于population_per_island。"""
         previous = PreviousRunData(
-            top_results=[{
-                "factor_expr": "inv(pb)",
-                "ast_hash": "somehash001",
-                "fitness": 0.7,
-                "ic_mean": 0.02,
-                "t_stat": 2.8,
-            }] * 10,  # 10个top因子
+            top_results=[
+                {
+                    "factor_expr": "inv(pb)",
+                    "ast_hash": "somehash001",
+                    "fitness": 0.7,
+                    "ic_mean": 0.02,
+                    "t_stat": 2.8,
+                }
+            ]
+            * 10,  # 10个top因子
             blacklisted_hashes=set(),
             run_id="gp_size_check",
         )
@@ -433,9 +445,7 @@ class TestSeedInjection:
             config = _make_tiny_config(n_islands=1, pop=pop_size)
             engine = GPEngine(config=config, previous_run=previous)
             pop = engine.initialize_population(island_id=0)
-            assert len(pop) == pop_size, (
-                f"pop_size={pop_size}: 实际种群大小={len(pop)}"
-            )
+            assert len(pop) == pop_size, f"pop_size={pop_size}: 实际种群大小={len(pop)}"
 
     def test_different_islands_inject_different_subsets(self) -> None:
         """多岛屿时，不同岛屿注入不同的Top因子子集（保证岛间多样性）。"""
@@ -445,13 +455,15 @@ class TestSeedInjection:
         top_results = []
         for i, expr in enumerate(exprs):
             tree = dsl.from_string(expr)
-            top_results.append({
-                "factor_expr": expr,
-                "ast_hash": tree.to_ast_hash(),
-                "fitness": 0.9 - i * 0.1,
-                "ic_mean": 0.03,
-                "t_stat": 3.5,
-            })
+            top_results.append(
+                {
+                    "factor_expr": expr,
+                    "ast_hash": tree.to_ast_hash(),
+                    "fitness": 0.9 - i * 0.1,
+                    "ic_mean": 0.03,
+                    "t_stat": 3.5,
+                }
+            )
 
         previous = PreviousRunData(
             top_results=top_results,
@@ -503,6 +515,7 @@ class TestFaultTolerance:
         # load_previous_results本身可能抛出json.JSONDecodeError
         # 测试验证这个行为是已知的（调用方应捕获）
         import contextlib
+
         with contextlib.suppress(json.JSONDecodeError, ValueError, KeyError):
             load_previous_results(tmp_path, run_id="gp_corrupt")
 
@@ -619,9 +632,7 @@ class TestRejectionReasons:
         with path.open(encoding="utf-8") as f:
             data = json.load(f)
 
-        assert data["rejection_reasons"]["ic_too_low"] == 15, (
-            "ic_too_low 应累加: 10+5=15"
-        )
+        assert data["rejection_reasons"]["ic_too_low"] == 15, "ic_too_low 应累加: 10+5=15"
         assert data["rejection_reasons"]["t_stat_fail"] == 3
 
     def test_rejection_reasons_loaded_in_previous_run(self, tmp_path: Path) -> None:
@@ -664,9 +675,7 @@ class TestLoadLatestByMtime:
 
         previous = load_previous_results(tmp_path)
         assert previous is not None
-        assert previous.run_id == "gp_run_B", (
-            f"应加载最新文件 gp_run_B，但加载了 {previous.run_id}"
-        )
+        assert previous.run_id == "gp_run_B", f"应加载最新文件 gp_run_B，但加载了 {previous.run_id}"
 
     def test_run_id_specified_overrides_mtime(self, tmp_path: Path) -> None:
         """指定run_id时，应忽略mtime，加载指定的文件。"""

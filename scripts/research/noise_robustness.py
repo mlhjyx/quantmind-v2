@@ -82,7 +82,7 @@ def load_price_bench():
         & (price_df["board"].fillna("") != "bse")
     ].copy()
     bench_df = pd.concat(bench_parts, ignore_index=True).drop_duplicates("trade_date")
-    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time()-t0:.1f}s")
+    print(f"  price: {price_df.shape}, bench: {bench_df.shape}, {time.time() - t0:.1f}s")
     return price_df, bench_df
 
 
@@ -92,10 +92,7 @@ def load_pass_factors_from_batch_gate() -> list[str]:
     if not p.exists():
         raise FileNotFoundError(f"{p} 不存在, 请先跑 batch_gate.py")
     data = json.loads(p.read_text())
-    pass_factors = [
-        f for f, r in data["results"].items()
-        if r.get("overall_verdict") == "PASS"
-    ]
+    pass_factors = [f for f, r in data["results"].items() if r.get("overall_verdict") == "PASS"]
     return pass_factors
 
 
@@ -191,7 +188,9 @@ def main():
 
     price_df, bench_df = load_price_bench()
     print("[Precompute] forward excess returns (horizon=20)...")
-    fwd_ret = compute_forward_excess_returns(price_df, bench_df, horizon=HORIZON, price_col="adj_close")
+    fwd_ret = compute_forward_excess_returns(
+        price_df, bench_df, horizon=HORIZON, price_col="adj_close"
+    )
     print(f"  fwd_ret: {fwd_ret.shape}")
 
     conn = get_sync_conn()
@@ -210,26 +209,27 @@ def main():
     for i, f in enumerate(factor_list):
         factor_df = load_factor(f, conn)
         if factor_df.empty:
-            print(f"  [{i+1}/{len(factor_list)}] {f}: SKIP (no data)")
+            print(f"  [{i + 1}/{len(factor_list)}] {f}: SKIP (no data)")
             continue
 
         try:
             r = compute_robustness(factor_df, fwd_ret, args.noise_pct, rng)
             if "error" in r:
-                print(f"  [{i+1}/{len(factor_list)}] {f}: {r['error']}")
+                print(f"  [{i + 1}/{len(factor_list)}] {f}: {r['error']}")
                 continue
             r["factor_name"] = f
             results.append(r)
             flag = " ❌FRAGILE" if r["fragile"] else " ✓"
             print(
-                f"  [{i+1}/{len(factor_list)}] {f:<28} "
+                f"  [{i + 1}/{len(factor_list)}] {f:<28} "
                 f"clean={r['clean_ic']:+.4f} noisy={r['noisy_ic']:+.4f} "
                 f"retention={r['retention']:.3f}{flag}"
             )
         except Exception as e:
             import traceback
+
             traceback.print_exc()
-            print(f"  [{i+1}/{len(factor_list)}] {f}: ERROR {str(e)[:80]}")
+            print(f"  [{i + 1}/{len(factor_list)}] {f}: ERROR {str(e)[:80]}")
 
     elapsed = time.time() - t0
     print(f"\n总耗时: {elapsed:.0f}s")
@@ -261,9 +261,7 @@ def main():
     print("\n" + "=" * 76)
     print(f"  噪声鲁棒性 ({args.noise_pct * 100:.0f}% Gaussian) — 21 PASS factors")
     print("=" * 76)
-    print(
-        f"  {'Factor':<28} {'Clean IC':>9} {'Noisy IC':>9} {'Retention':>10} {'Fragile':>8}"
-    )
+    print(f"  {'Factor':<28} {'Clean IC':>9} {'Noisy IC':>9} {'Retention':>10} {'Fragile':>8}")
     print("  " + "-" * 70)
     for r in results:
         flag = "❌YES" if r["fragile"] else "✓"

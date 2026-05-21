@@ -28,6 +28,7 @@ from engines.config_guard import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_registry(tmp_path: Path) -> Path:
     """创建一个包含5个因子的样本注册表。"""
@@ -91,6 +92,7 @@ def reset_registry_path():
 # get_cumulative_test_count 测试
 # ---------------------------------------------------------------------------
 
+
 class TestGetCumulativeTestCount:
     """get_cumulative_test_count 测试。"""
 
@@ -126,35 +128,28 @@ class TestGetCumulativeTestCount:
 # bh_fdr_adjusted_threshold 测试
 # ---------------------------------------------------------------------------
 
+
 class TestBhFdrAdjustedThreshold:
     """bh_fdr_adjusted_threshold 测试。"""
 
     def test_basic_calculation(self, sample_registry: Path) -> None:
         """threshold = alpha * rank / M。M=5, rank=1, alpha=0.05 → 0.01。"""
-        threshold = bh_fdr_adjusted_threshold(
-            alpha=0.05, rank=1, registry_path=sample_registry
-        )
+        threshold = bh_fdr_adjusted_threshold(alpha=0.05, rank=1, registry_path=sample_registry)
         assert threshold == pytest.approx(0.05 * 1 / 5, rel=1e-9)
 
     def test_rank_2(self, sample_registry: Path) -> None:
         """rank=2时，threshold = 0.05 * 2 / 5 = 0.02。"""
-        threshold = bh_fdr_adjusted_threshold(
-            alpha=0.05, rank=2, registry_path=sample_registry
-        )
+        threshold = bh_fdr_adjusted_threshold(alpha=0.05, rank=2, registry_path=sample_registry)
         assert threshold == pytest.approx(0.02, rel=1e-9)
 
     def test_rank_equals_m(self, sample_registry: Path) -> None:
         """rank=M时，threshold = alpha（最宽松）。"""
-        threshold = bh_fdr_adjusted_threshold(
-            alpha=0.05, rank=5, registry_path=sample_registry
-        )
+        threshold = bh_fdr_adjusted_threshold(alpha=0.05, rank=5, registry_path=sample_registry)
         assert threshold == pytest.approx(0.05, rel=1e-9)
 
     def test_different_alpha(self, sample_registry: Path) -> None:
         """alpha=0.10, rank=1, M=5 → 0.02。"""
-        threshold = bh_fdr_adjusted_threshold(
-            alpha=0.10, rank=1, registry_path=sample_registry
-        )
+        threshold = bh_fdr_adjusted_threshold(alpha=0.10, rank=1, registry_path=sample_registry)
         assert threshold == pytest.approx(0.10 / 5, rel=1e-9)
 
     def test_invalid_alpha_zero(self, sample_registry: Path) -> None:
@@ -207,7 +202,8 @@ class TestBhFdrAdjustedThreshold:
             "# Registry\n"
             "| # | 因子名 | IC_mean | t-stat | p-value | 测试日期 | 批次 | 结果 | 原因 |\n"
             "|---|--------|---------|--------|---------|----------|------|------|------|\n"
-            + rows + "\n"
+            + rows
+            + "\n"
         )
         p10 = tmp_path / "reg10.md"
         p10.write_text(content_10, encoding="utf-8")
@@ -217,13 +213,14 @@ class TestBhFdrAdjustedThreshold:
 
         # M=10的阈值更严格（更小）
         assert t10 < t5
-        assert t5 == pytest.approx(0.01, rel=1e-9)    # 0.05/5
-        assert t10 == pytest.approx(0.005, rel=1e-9)   # 0.05/10
+        assert t5 == pytest.approx(0.01, rel=1e-9)  # 0.05/5
+        assert t10 == pytest.approx(0.005, rel=1e-9)  # 0.05/10
 
 
 # ---------------------------------------------------------------------------
 # bh_fdr_check_significance 测试
 # ---------------------------------------------------------------------------
+
 
 class TestBhFdrCheckSignificance:
     """bh_fdr_check_significance BH步进法测试。"""
@@ -236,13 +233,11 @@ class TestBhFdrCheckSignificance:
     def test_all_significant(self, sample_registry: Path) -> None:
         """所有p-value都极小时，全部通过。M=5, alpha=0.05。"""
         p_values = {
-            "f1": 0.001,   # 阈值: 0.05*1/5=0.01 → pass
-            "f2": 0.005,   # 阈值: 0.05*2/5=0.02 → pass
-            "f3": 0.008,   # 阈值: 0.05*3/5=0.03 → pass
+            "f1": 0.001,  # 阈值: 0.05*1/5=0.01 → pass
+            "f2": 0.005,  # 阈值: 0.05*2/5=0.02 → pass
+            "f3": 0.008,  # 阈值: 0.05*3/5=0.03 → pass
         }
-        result = bh_fdr_check_significance(
-            p_values, alpha=0.05, registry_path=sample_registry
-        )
+        result = bh_fdr_check_significance(p_values, alpha=0.05, registry_path=sample_registry)
         assert all(result.values())
         assert len(result) == 3
 
@@ -252,9 +247,7 @@ class TestBhFdrCheckSignificance:
             "f1": 0.50,
             "f2": 0.80,
         }
-        result = bh_fdr_check_significance(
-            p_values, alpha=0.05, registry_path=sample_registry
-        )
+        result = bh_fdr_check_significance(p_values, alpha=0.05, registry_path=sample_registry)
         assert not any(result.values())
 
     def test_partial_significance(self, sample_registry: Path) -> None:
@@ -272,9 +265,7 @@ class TestBhFdrCheckSignificance:
             "f_b": 0.015,
             "f_c": 0.500,
         }
-        result = bh_fdr_check_significance(
-            p_values, alpha=0.05, registry_path=sample_registry
-        )
+        result = bh_fdr_check_significance(p_values, alpha=0.05, registry_path=sample_registry)
         assert result["f_a"] is True
         assert result["f_b"] is True
         assert result["f_c"] is False
@@ -294,9 +285,7 @@ class TestBhFdrCheckSignificance:
             "f3": 0.025,
             "f4": 0.800,
         }
-        result = bh_fdr_check_significance(
-            p_values, alpha=0.05, registry_path=sample_registry
-        )
+        result = bh_fdr_check_significance(p_values, alpha=0.05, registry_path=sample_registry)
         assert result["f1"] is True
         assert result["f2"] is True
         assert result["f3"] is True
@@ -320,6 +309,7 @@ class TestBhFdrCheckSignificance:
 # ---------------------------------------------------------------------------
 # 与真实FACTOR_TEST_REGISTRY.md集成测试
 # ---------------------------------------------------------------------------
+
 
 class TestRealRegistry:
     """与项目根目录的FACTOR_TEST_REGISTRY.md集成测试。"""
@@ -348,7 +338,5 @@ class TestRealRegistry:
 
         M~67时，阈值 = 0.05/67 ≈ 0.000746
         """
-        threshold = bh_fdr_adjusted_threshold(
-            alpha=0.05, rank=1, registry_path=real_registry
-        )
+        threshold = bh_fdr_adjusted_threshold(alpha=0.05, rank=1, registry_path=real_registry)
         assert 0.0001 < threshold < 0.005
