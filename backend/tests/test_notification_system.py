@@ -733,3 +733,25 @@ class TestSendAlertDispatchCheck:
             result = ns.send_alert("P1", "t", "c", conn=conn)
         assert result is True
         mock_send.assert_called_once()
+
+    def test_category_kwarg_written_to_db(self):
+        """category 参数写入 notifications.category — 修 pg_backup 的 TypeError。"""
+        from app.services import notification_service as ns
+
+        conn = _make_conn_with_prefs(_make_prefs_row(dispatch_p1=True, quiet_enabled=False))
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True):
+            ns.send_alert("P1", "t", "c", conn=conn, category="system")
+        insert_call = conn.cursor.return_value.execute.call_args_list[0]
+        assert "INSERT INTO notifications" in insert_call.args[0]
+        # 值元组 = (level, category, market, title, content)
+        assert insert_call.args[1][1] == "system"
+
+    def test_category_defaults_to_alert(self):
+        """不传 category → notifications.category 默认 'alert' (向后兼容)。"""
+        from app.services import notification_service as ns
+
+        conn = _make_conn_with_prefs(_make_prefs_row(dispatch_p1=True, quiet_enabled=False))
+        with patch.object(ns.dingtalk, "send_markdown_sync", return_value=True):
+            ns.send_alert("P1", "t", "c", conn=conn)
+        insert_call = conn.cursor.return_value.execute.call_args_list[0]
+        assert insert_call.args[1][1] == "alert"
