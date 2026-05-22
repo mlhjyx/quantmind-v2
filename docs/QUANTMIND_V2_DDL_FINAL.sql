@@ -560,7 +560,7 @@ CREATE TABLE backtest_run (
     name            VARCHAR(100),
     config_json     JSONB NOT NULL,
     factor_list     TEXT[] NOT NULL,
-    status          VARCHAR(20) DEFAULT 'pending',     -- pending/running/success/failed
+    status          VARCHAR(20) DEFAULT 'pending',     -- 实际值 running/completed/failed/cancelled (DEFAULT 'pending' 未启用, submit 显式写)
     -- 基础指标
     annual_return   DECIMAL(8,4),
     sharpe_ratio    DECIMAL(8,4),
