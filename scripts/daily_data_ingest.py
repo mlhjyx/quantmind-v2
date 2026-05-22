@@ -213,6 +213,34 @@ def _dry_run(pass_type: str, override_date: str | None) -> int:
     return 0
 
 
+def _send_failure_alert(pass_type: str, target_date: object, error: str) -> None:
+    """入库失败时发 P1 DingTalk 告警 (Step 12 BAU)。
+
+    best-effort: 告警自身的任何异常都被吞 (仅 log) —— 绝不掩盖入库失败,
+    `_apply` 仍返回 1。走 Platform AlertRouter (canonical sink), 与
+    intraday_monitor / factor_health_daily 一致。
+    """
+    date_str = str(target_date) if target_date else "unknown"
+    try:
+        from qm_platform._types import Severity
+        from qm_platform.observability import Alert, get_alert_router
+
+        alert = Alert(
+            title=f"[P1] 日线数据入库失败 — pass={pass_type} date={date_str}",
+            severity=Severity("p1"),
+            source="daily_data_ingest",
+            details={"pass_type": pass_type, "trade_date": date_str, "error": error[:500]},
+            trade_date=date_str,
+            timestamp_utc=datetime.now(UTC).isoformat(),
+        )
+        result = get_alert_router().fire(
+            alert, dedup_key=f"daily_ingest_fail:{pass_type}:{date_str}"
+        )
+        logger.info("[%s] 入库失败告警已发送: %s", pass_type, result)
+    except Exception as alert_exc:  # noqa: BLE001 — 告警异常绝不掩盖入库失败
+        logger.error("[%s] 入库失败告警发送失败: %s", pass_type, alert_exc)
+
+
 def _apply(pass_type: str, override_date: str | None) -> int:
     env_failures = _check_apply_env()
     if env_failures:
@@ -275,7 +303,7 @@ def _apply(pass_type: str, override_date: str | None) -> int:
         print(
             f"\n❌ DAILY DATA INGEST FAILED — pass={pass_type} date={target_date} after {elapsed:.1f}s: {e}"
         )
-        # TODO Step 12 BAU — wire DingTalk alert via AlertRouter on failure
+        _send_failure_alert(pass_type, target_date, str(e))
         return 1
 
 
