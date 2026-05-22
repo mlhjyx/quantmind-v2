@@ -96,8 +96,19 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         end_dt: date = row["end_date"]
         factors = row["factor_list"] or DEFAULT_FACTORS
 
-        # 2. Update status → running
-        await conn.execute("UPDATE backtest_run SET status = 'running' WHERE run_id = $1", rid)
+        # 2. Update status → running (cooperative cancel: 已取消则不复活)
+        await conn.execute(
+            "UPDATE backtest_run SET status = 'running' "
+            "WHERE run_id = $1 AND status != 'cancelled'",
+            rid,
+        )
+        # cooperative-cancel 检查点 1: worker 拾取前已取消 → 提前返回, 省去数据加载 + 引擎
+        if (
+            await conn.fetchval("SELECT status FROM backtest_run WHERE run_id = $1", rid)
+            == "cancelled"
+        ):
+            logger.info("回测在启动前已取消, 跳过执行: run_id=%s", run_id)
+            return {"run_id": run_id, "status": "cancelled"}
 
         # 3. Load data
         price_df = await _load_prices(conn, start_dt, end_dt)
@@ -126,6 +137,14 @@ async def _run_async(run_id: str) -> dict[str, Any]:
         t0 = time.monotonic()
         result = run_hybrid_backtest(factor_df, directions, price_df, bt_config, bench_df)
         elapsed = int(time.monotonic() - t0)
+
+        # cooperative-cancel 检查点 2: 引擎运行期间被取消 → 丢弃结果, 不写库
+        if (
+            await conn.fetchval("SELECT status FROM backtest_run WHERE run_id = $1", rid)
+            == "cancelled"
+        ):
+            logger.info("回测在引擎运行期间被取消, 结果丢弃: run_id=%s", run_id)
+            return {"run_id": run_id, "status": "cancelled"}
 
         # 6. Calc metrics & write results
         metrics = _calc_metrics(result)
@@ -414,7 +433,7 @@ async def _write_results(
             annual_turnover = $7, total_trades = $8,
             start_date = $9, end_date = $10, elapsed_sec = $11,
             factor_list = $12
-        WHERE run_id = $13
+        WHERE run_id = $13 AND status != 'cancelled'
         """,
         metrics.get("annual_return"),
         metrics.get("sharpe_ratio"),
@@ -500,7 +519,8 @@ async def _mark_failed(run_id: str, error_msg: str) -> None:
     try:
         conn = await asyncpg.connect(DB_URL)
         await conn.execute(
-            "UPDATE backtest_run SET status = 'failed', error_message = $1 WHERE run_id = $2",
+            "UPDATE backtest_run SET status = 'failed', error_message = $1 "
+            "WHERE run_id = $2 AND status != 'cancelled'",
             error_msg,
             uuid.UUID(run_id),
         )

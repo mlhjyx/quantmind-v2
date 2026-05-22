@@ -137,6 +137,21 @@ def _mock_session_multi_execute(*results: Any) -> MagicMock:
     return session
 
 
+def _mock_session_for_cancel(run_row: dict[str, Any], update_rowcount: int = 1) -> MagicMock:
+    """创建 cancel 端点的mock session：SELECT (_get_run_or_404) + UPDATE。"""
+    session = AsyncMock()
+
+    select_result = MagicMock()
+    select_result.mappings.return_value = MagicMock(first=MagicMock(return_value=run_row))
+
+    update_result = MagicMock()
+    update_result.rowcount = update_rowcount
+
+    session.execute = AsyncMock(side_effect=[select_result, update_result])
+    session.commit = AsyncMock()
+    return session
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -821,5 +836,69 @@ async def test_live_compare(completed_run: dict):
         assert data["live"] is None
         assert "backtest" in data
         assert data["backtest"]["sharpe_ratio"] == 1.21
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# 17. POST /{run_id}/cancel — 取消回测 (orphan O1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cancel_running_backtest(running_run: dict):
+    """POST /{run_id}/cancel 取消 running 回测 → 200 + status=cancelled。"""
+    session = _mock_session_for_cancel(running_run, update_rowcount=1)
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(f"/api/backtest/{running_run['run_id']}/cancel")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "cancelled"
+        assert data["run_id"] == running_run["run_id"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_cancel_completed_backtest_rejected(completed_run: dict):
+    """POST /{run_id}/cancel 对已 completed 回测 → 409（仅 running 可取消）。"""
+    session = _mock_session_with_run(completed_run)
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(f"/api/backtest/{completed_run['run_id']}/cancel")
+        assert resp.status_code == 409
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_cancel_not_found():
+    """POST /{run_id}/cancel 不存在的 run → 404。"""
+    session = _mock_session_no_run()
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(f"/api/backtest/{_uuid()}/cancel")
+        assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_cancel_race_update_zero_rows(running_run: dict):
+    """POST /{run_id}/cancel SELECT 后任务已结束（UPDATE rowcount=0）→ 409。"""
+    session = _mock_session_for_cancel(running_run, update_rowcount=0)
+    app.dependency_overrides[_get_session] = lambda: session
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(f"/api/backtest/{running_run['run_id']}/cancel")
+        assert resp.status_code == 409
     finally:
         app.dependency_overrides.clear()
