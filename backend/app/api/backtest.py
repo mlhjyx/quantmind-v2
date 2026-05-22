@@ -212,6 +212,55 @@ async def submit_backtest(
     )
 
 
+@router.post("/{run_id}/cancel", response_model=BacktestRunResponse)
+async def cancel_backtest(
+    run_id: UUID,
+    session: AsyncSession = Depends(_get_session),
+) -> BacktestRunResponse:
+    """取消一个进行中的回测任务（cooperative best-effort）。
+
+    将 backtest_run.status 置为 'cancelled'。run_backtest Celery 任务在数据加载前
+    与引擎运行后两个检查点 re-read 状态：
+    - 在 worker 拾取前 / 刚启动时取消 → 任务在加载数据前提前返回，省去计算。
+    - 引擎运行期间取消 → 引擎是单次不可中断调用，会跑完，但结果不入库
+      （status 保持 'cancelled'）。
+    仅 status='running' 的回测可取消；已 completed/failed/cancelled 的不可取消。
+
+    Args:
+        run_id: 回测运行 ID。
+
+    Returns:
+        BacktestRunResponse（status='cancelled'）。
+
+    Raises:
+        HTTPException 404: run_id 不存在。
+        HTTPException 409: 回测非 running 状态，无法取消。
+    """
+    run = await _get_run_or_404(session, run_id)
+    if run["status"] != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"回测状态为 '{run['status']}'，仅 'running' 可取消",
+        )
+    result = await session.execute(
+        text(
+            "UPDATE backtest_run SET status = 'cancelled' "
+            "WHERE run_id = :rid AND status = 'running'"
+        ),
+        {"rid": str(run_id)},
+    )
+    await session.commit()
+    if result.rowcount == 0:
+        # SELECT 与 UPDATE 之间任务已结束（race）
+        raise HTTPException(status_code=409, detail="回测已结束，无法取消")
+    logger.info("回测任务已取消: run_id=%s", str(run_id))
+    return BacktestRunResponse(
+        run_id=str(run_id),
+        status="cancelled",
+        message="回测已标记取消；进行中的引擎计算会跑完但结果不入库",
+    )
+
+
 @router.get("/history")
 async def get_backtest_history(
     strategy_id: str = Query(default="", description="按策略ID筛选"),
