@@ -197,7 +197,10 @@ export async function archiveFactor(name: string): Promise<void> {
 }
 
 export async function triggerHealthCheck(): Promise<void> {
-  await apiClient.post("/factors/health");
+  // Backend: POST /api/factors/health-check (factors.py::trigger_factor_health_check) —
+  // runs the same job as the daily FactorHealthDaily schtask. Was POST /factors/health,
+  // which 405'd: that path is GET-only (factor health overview read).
+  await apiClient.post("/factors/health-check");
 }
 
 export async function triggerCorrelationPrune(): Promise<void> {

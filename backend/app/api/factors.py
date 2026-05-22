@@ -1041,3 +1041,48 @@ async def archive_factor(
 
         raise HTTPException(status_code=404, detail=f"因子 {name} 不存在或已归档")
     return {"status": "archived", "factor_name": name}
+
+
+@router.post("/health-check", summary="手动触发因子健康检查")
+def trigger_factor_health_check() -> dict[str, Any]:
+    """手动触发一次因子健康检查（与每日 FactorHealthDaily schtask 同一作业）。
+
+    委托 scripts/factor_health_daily.py::run_factor_health_daily — 计算 Active 因子
+    当日 IC + 衰减 3 级检测 + 生命周期自动迁移 + 写 scheduler_task_log。非交易日或
+    因子数据未计算 → 返回 skipped。
+
+    同步执行（Active 因子池约 5 个，耗时数秒）。FastAPI 自动在外部线程池中运行
+    本 `def` 端点，不阻塞事件循环。
+
+    Returns:
+        dict: {status, overall_status, trade_date, message}。status ∈ {completed, skipped}。
+
+    Raises:
+        HTTPException 500: 健康检查内部异常。
+    """
+    # Lazy import — 保持 app import 轻量; 沿用 mining_service.py 的 scripts/ 导入体例。
+    from scripts.factor_health_daily import run_factor_health_daily
+
+    today = date.today()
+    result = run_factor_health_daily(today, dry_run=False)
+
+    if result.get("status") == "error":
+        raise HTTPException(
+            status_code=500,
+            detail=f"因子健康检查失败: {result.get('error', 'unknown')}",
+        )
+    if result.get("status") == "skipped":
+        return {
+            "status": "skipped",
+            "overall_status": None,
+            "trade_date": today.isoformat(),
+            "message": f"已跳过（{result.get('reason', 'unknown')}）",
+        }
+
+    overall = result.get("overall_status", "unknown")
+    return {
+        "status": "completed",
+        "overall_status": overall,
+        "trade_date": today.isoformat(),
+        "message": f"因子健康检查完成，总体状态: {overall}",
+    }
