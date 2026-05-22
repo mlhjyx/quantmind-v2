@@ -106,6 +106,22 @@ def app_client():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def fake_health_module(monkeypatch):
+    """注入假的 scripts.factor_health_daily 模块。
+
+    health-check 端点对 run_factor_health_daily 做 lazy import；注入 sys.modules
+    使其解析到 mock，而非运行真实(重 DB IO + 告警 + 生命周期迁移)的健康检查作业。
+    """
+    import sys
+    import types
+
+    fake = types.ModuleType("scripts.factor_health_daily")
+    fake.run_factor_health_daily = lambda *a, **k: {"overall_status": "healthy"}
+    monkeypatch.setitem(sys.modules, "scripts.factor_health_daily", fake)
+    return fake
+
+
 # ---------------------------------------------------------------------------
 # GET /api/factors — 列表端点
 # ---------------------------------------------------------------------------
@@ -616,3 +632,64 @@ class TestGetFactorsStats:
         data = resp.json()
         assert data["total"] == 0
         assert data["top_factors"] == []
+
+
+# ---------------------------------------------------------------------------
+# POST /api/factors/health-check — 手动触发因子健康检查 (orphan O9 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerFactorHealthCheck:
+    """POST /api/factors/health-check 测试。"""
+
+    def test_completed_returns_200(self, app_client, fake_health_module) -> None:
+        """健康检查正常完成 → 200 + status=completed + overall_status 透传。"""
+        _, client = app_client
+        fake_health_module.run_factor_health_daily = lambda trade_date, dry_run=False: {
+            "overall_status": "warning",
+            "factors": {},
+        }
+        resp = client.post("/api/factors/health-check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert data["overall_status"] == "warning"
+        assert "trade_date" in data
+
+    def test_skipped_non_trading_day_returns_200(self, app_client, fake_health_module) -> None:
+        """非交易日 → run_factor_health_daily 返回 skipped → 200 + status=skipped。"""
+        _, client = app_client
+        fake_health_module.run_factor_health_daily = lambda trade_date, dry_run=False: {
+            "status": "skipped",
+            "reason": "non_trading_day",
+        }
+        resp = client.post("/api/factors/health-check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "skipped"
+        assert data["overall_status"] is None
+
+    def test_error_returns_500(self, app_client, fake_health_module) -> None:
+        """健康检查内部异常 → run 返回 status=error → 端点 500。"""
+        _, client = app_client
+        fake_health_module.run_factor_health_daily = lambda trade_date, dry_run=False: {
+            "status": "error",
+            "error": "boom",
+        }
+        resp = client.post("/api/factors/health-check")
+        assert resp.status_code == 500
+
+    def test_runs_for_real_not_dry_run(self, app_client, fake_health_module) -> None:
+        """端点以 dry_run=False 触发真实作业 (与每日 FactorHealthDaily schtask 同一行为)。"""
+        _, client = app_client
+        calls: list[tuple] = []
+
+        def _capture(trade_date, dry_run=False):
+            calls.append((trade_date, dry_run))
+            return {"overall_status": "healthy"}
+
+        fake_health_module.run_factor_health_daily = _capture
+        resp = client.post("/api/factors/health-check")
+        assert resp.status_code == 200
+        assert len(calls) == 1
+        assert calls[0][1] is False
