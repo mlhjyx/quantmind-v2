@@ -29,3 +29,25 @@ The quick-task backlog seeded from the 2026-05-19/05-20 handoffs is **decayed** 
 **方向偏移**: N/A — first digest.
 
 **⚠️ user veto/redirect surface** (this is the §4.1 control surface — async, non-blocking): if you would rather the loop prioritize something other than the orphan-cluster builds — e.g. the 22-day-stale **regression baseline refresh** (铁律 15), a **frontier-research cycle**, the backend **"未实施" stubs** (BruteForce mining / report generation), or a specific orphan order — say so and the loop redirects. Otherwise it proceeds with the orphan-cluster builds starting at factors O9.
+
+---
+
+## Digest #2 — 2026-05-22 (iterations 3-7 + research cycle 1)
+
+**做了什么**
+- **Iterations 3-6 — 3 PRs merged** (Inner loop A): #445 factors O9 (`POST /api/factors/health-check` — wires the 因子体检/重评 buttons) · #446 backtest O1 (`POST /api/backtest/{run_id}/cancel` + cooperative-cancel guards) · #447 `daily_data_ingest` failure DingTalk alert (closes `# TODO Step 12 BAU`). All independent-reviewer APPROVE (0 P1/P2); ruff/test/smoke green.
+- **Iteration 6** also ran a fresh current-code re-scan and deep-investigated BruteForce-mining wiring → found it L-with-design (`run_full_gate` is GP-specific), re-scoped to Inner-loop-B (D3).
+- **Iteration 7 — research cycle 1** (Inner loop B, §10): re-tread defense + frontier scan → `docs/research/RN_001_frontier_scan_2026_05_22.md`.
+
+**commit / artifact**: PR #445 (c213d95) · #446 (ecde9c8 + d4151cd) · #447 (533a8df) · RN-001 (this commit).
+
+**方向判断**
+Research-cycle verdict = **ARCHIVE**. Two firm conclusions: (1) the A-share *alpha* frontier offers nothing genuinely new — every angle re-treads a documented mechanism-level failure or the equal-weight dilution wall; CORE3+dv_ttm is a real ceiling. (2) The scope-B "statistical-rigor" candidates a research subagent ranked "genuinely-new" were **all already built** (DSR wired in the standard metrics report + WF; 3-level factor-decay run daily; data-quality checker exists). **META-finding**: 4th time this session a research/backlog candidate "looked new" but was already in the codebase — QuantMind V2 has substantial built-but-dark code; candidates must be code-grep-verified before any verdict (LL-candidate; see RN-001 §6).
+
+**下一步计划**: The clean Inner-loop-A execute backlog is genuinely thin — the loop has shipped the easy items. What remains is design-scope (D1 orphan-cluster remainder O3/O7/O8/O10 + `/pipeline/status` contract; D3 BruteForce — all need product/architecture decisions) or user-gated (D2 cred rotation; the PT-restart path). §9.1 forbids a consecutive research cycle. The honest state: high-value remaining work is design-gated or user-gated.
+
+**与上次 digest 方向偏移**: Digest #1's "pivot to build scope" held — 3 build PRs shipped. New: the build backlog of *clean* items is now also near-exhausted; the loop is approaching the §4.3 low-actionable state for *clean autonomous* work (not at it — Inner-loop-B design work on D1/D3 remains possible).
+
+**implement : archive : defer** — cumulative 4 : 1 : 3 (the research cycle = the 1 archive). implement 50%, healthy.
+
+**⚠️ user veto/redirect surface** (§4.1 — async, non-blocking): the loop has shipped 4 PRs and surveyed the frontier. Genuinely-remaining work is design-gated (D1/D3 need product/architecture decisions a research-then-design Inner-loop-B cycle could tackle) or user-gated (D2; PT-restart). If you want the loop to (a) take a D1/D3 item through Inner-loop-B (design doc + ADR-DRAFT), (b) do the XS cleanup then idle-check, or (c) something specific — say so. Otherwise the loop continues with what clean autonomous work remains and will honestly report when it reaches §4.3 low-actionable.
