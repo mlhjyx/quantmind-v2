@@ -3,7 +3,7 @@
 > **创建**: 2026-05-22
 > **用途**: L4+R 自主持续循环的完整操作 SSOT。`/goal` condition 上限 4000 字符,完整 spec 远超此上限无法 inline,故沉淀本 doc。
 > **调用**: 短 `/goal` 入口 (见文末 §调用入口) 指向本 doc;CC 每 iteration + 每 session resume 起手第 0 步 fresh read 本 doc 全文,按 §1-§14 执行。
-> **来源**: 2026-05-22 generate-only 交付的 FINAL template + 7 项 baked-in checkpoint 补强 (user 确认) + 4 项 pre-launch 补强 (§6⑧ 扩范围 / §1.4 counter 持久化 / §4.1 digest 落点 / §4.3 kill switch) + §14 orchestration & §1 git baseline (均 user 2026-05-22 确认)。
+> **来源**: 2026-05-22 generate-only 交付的 FINAL template + 7 项 baked-in checkpoint 补强 (user 确认) + 4 项 pre-launch 补强 (§6⑧ 扩范围 / §1.4 counter 持久化 / §4.1 digest 落点 / §4.3 kill switch) + §14 orchestration & §1 git baseline + 2 项 trial-1 hardening (§1.2 psql -h/PGPASSWORD 强制 / §14.2 rule 5 subprocess timeout) (均 user 2026-05-22 确认)。
 > **prerequisite 验证**: PROJECT_NAVIGATION v0.2 (`2f3c218`) / Constitution v0.14 (`802f501`) / ADR-085 Accepted (`c77c924`) — 三者 2026-05-22 实测 in main HEAD ✅。
 > **自我保护**: 本 doc 的 §1 / §4 / §5 / §6 / §9 / §14 属 loop 安全约束 — 修改它们命中 §6 ⑧ Architecture STOP,CC 不得自主放宽。
 > **状态**: spec sediment;loop 何时启用由 user paste 短 `/goal` 触发,CC 不自启 (X10)。
@@ -18,7 +18,7 @@
 
 ## §1 起手 SOP (每 iteration + 每 session resume 必走)
 1. fresh read:SESSION_PROTOCOL §1.3 4 root doc (CLAUDE/IRONLAWS/SYSTEM_STATUS/LESSONS_LEARNED) + Constitution §L1.1 V3 doc。
-2. 红线 5/5 fresh verify:`backend/.env` (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓。任一漂移 → §5 STOP。
+2. 红线 5/5 fresh verify:`backend/.env` (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓。任一漂移 → §5 STOP。**bash/PowerShell 子进程查 DB(cash/持仓/trade_log)必须 `$env:PGPASSWORD=...; psql -h 127.0.0.1 -U xin -d quantmind_v2 -t -A -c "..."` —— 缺 `-h` 或 `PGPASSWORD` 会进 interactive password prompt 在 background subprocess 中 silent hang(2026-05-22 trial 1 实测 22min 卡死)。**
 3. sediment detect:memory `project_sprint_state.md` 顶部 handoff → 自动 detect 上 iteration 进度,continue。
 4. cadence counter 读取:距上次 research cycle / digest / self-audit 各多少 task;research/repo source refresh 时点。**counter 必须持久化在 memory `project_sprint_state.md` handoff(或 `.omc/state/` state 文件),每次 increment 后立即回写 —— 反 compaction 丢 counter 致 self-audit / digest 节奏 silent 失效。**
 5. git baseline:确认当前在 `main` 分支(或 user 指定的 loop 工作分支)且 working tree clean;非预期分支 / 脏 working tree → STOP(防 loop 在错的基线上跑)。
@@ -111,12 +111,13 @@ CC 主 agent = orchestrator:分析 task → 选 sub-agent / 插件 / skill → �
 
 插件:多 agent 编排可借 OMC `/team`(项目已有 `quantmind-v3-sprint-orchestrator` 即 borrow-OMC extend);长 loop context 管理可用 context-mode 插件。skill 维持 quantmind-v3-* 6 skill 自动 invoke。
 
-### §14.2 4 条硬规则
+### §14.2 5 条硬规则
 
 1. **安全门留主 agent** —— §5 carve-out / §6 Architecture STOP / §1 红线判定 / §10 implement-archive-defer 三档裁决 / merge 决定:charter subagent 只「独立复核」,不「替代把关」。
 2. **验证 sub-agent 产出** —— sub-agent summary 是「打算做什么」非「做了什么」;改代码必 review 实际 diff,反 rubber-stamp(rubber-stamp sub-agent 报告 = 带额外步骤的 epistemic drift,直击 LL-179/183)。
 3. **reviewer 独立 context** —— 实施者与评审者不同上下文,反自批(沿用 `.claude/CLAUDE.md` 不可自批)。
 4. **有理由才委派** —— 专精 or context 隔离才派;小改不起 sub-agent。委派耗 token,长 loop 复利。
+5. **subprocess 必须有 explicit timeout** —— 任何 bash/PowerShell 子进程默认 60s timeout(长查询/build 单独说明并 cap ≤600s)。反 silent hang(2026-05-22 trial 1 实测一条无 timeout 的 psql 卡 22min 才被 user 手动 stop)。
 
 ---
 
@@ -134,7 +135,7 @@ CC = QuantMind V2 主实施 agent + orchestrator,L4+R 力度 (execute backlog + 
 
 ## §1 起手 SOP (每 iteration)
 1. fresh read docs/L4R_LOOP_SPEC.md 全文 + 4 root doc (CLAUDE/IRONLAWS/SYSTEM_STATUS/LESSONS_LEARNED) + Constitution §L1.1 V3 doc。
-2. 红线 5/5 fresh verify:backend/.env (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓。任一漂移 → STOP。
+2. 红线 5/5 fresh verify:backend/.env (LIVE_TRADING_DISABLED / EXECUTION_MODE / QMT_ACCOUNT_ID) + cash + 持仓 (psql 必须 `$env:PGPASSWORD=...; psql -h 127.0.0.1 -t -A` 反 interactive prompt 死锁)。任一漂移 → STOP。
 3. memory project_sprint_state.md 顶部 handoff → continue 上 iteration 进度。
 4. cadence counter 读取 (research cycle / digest / self-audit)。
 5. git baseline:确认在 main 分支(或 user 指定工作分支)+ working tree clean,否则 STOP。
