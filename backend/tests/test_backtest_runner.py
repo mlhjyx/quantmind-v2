@@ -157,6 +157,50 @@ def test_apply_mode_live_pt_preserves_config_range():
     assert end == date(2026, 4, 19)
 
 
+def test_apply_mode_ad_hoc_preserves_config_range():
+    """AD_HOC: 沿用 config.start/end 原样 (iter 25 PR codification of mvp-2.3-sub3 TODO).
+
+    AD_HOC = analyst exploration mode. Same behavior as LIVE_PT (no date override
+    + cache bypass), but semantically distinct (LIVE_PT implies实盘 replay,
+    AD_HOC implies one-off exploration / YAML-driven 一次性 backtest run).
+    """
+    cfg = _make_config(start=date(2020, 1, 1), end=date(2026, 4, 19))
+    start, end = PlatformBacktestRunner._apply_mode(cfg, BacktestMode.AD_HOC)
+    assert start == date(2020, 1, 1)
+    assert end == date(2026, 4, 19)
+
+
+def test_ad_hoc_mode_bypasses_cache():
+    """AD_HOC mode 跳过 cache (与 LIVE_PT 同行为, iter 25 PR _CACHE_BYPASS_MODES 含两者).
+
+    Cache-bypass invariant: registry.get_by_hash 不应被调用 on AD_HOC mode.
+    Tests use a MagicMock registry that would return a sentinel "cached" object
+    if get_by_hash were called; if AD_HOC respected cache the run() would short-
+    circuit return that sentinel. We instead expect run() to go down the
+    cache-miss path (calls data_loader, then raises since loader is rigged).
+    """
+    registry = MagicMock()
+    # Sentinel return value: if cache were consulted, runner would return this.
+    registry.get_by_hash.return_value = MagicMock(spec=BacktestResult)
+
+    data_loader_called: list[bool] = []
+
+    def loader(_cfg, _start, _end):
+        data_loader_called.append(True)
+        # Raise sentinel exception to short-circuit downstream engine call; the
+        # raise itself proves data_loader was reached i.e. cache was bypassed.
+        raise RuntimeError("data_loader_called_after_cache_bypass")
+
+    runner = PlatformBacktestRunner(registry=registry, data_loader=loader)
+
+    with pytest.raises(RuntimeError, match="data_loader_called_after_cache_bypass"):
+        runner.run(BacktestMode.AD_HOC, _make_config())
+
+    # Cache bypass invariant: registry.get_by_hash not consulted, data_loader was called.
+    assert registry.get_by_hash.call_count == 0, "AD_HOC must skip cache lookup"
+    assert data_loader_called == [True], "AD_HOC must invoke data_loader (cache bypass path)"
+
+
 # ─── Cache 语义 (3 tests) ───────────────────────────────────
 
 

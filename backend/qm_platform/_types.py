@@ -94,6 +94,11 @@ class BacktestMode(Enum):
     - WF_5FOLD: 5-fold Walk-Forward 严格 OOS 验证 (铁律 8)
     - LIVE_PT: PT 实盘路径回测 (MVP 2.3 Sub3 U1 Parity, 对齐 signal_engine.SignalComposer).
                不走 config_hash cache, 每次强制 re-run (实盘需实时信号).
+    - AD_HOC: Ad-hoc analyst exploration / YAML-driven 一次性回测. config.start/end
+              原样沿用; 不走 cache (避免缓存污染分析结果). 与 LIVE_PT 行为同等,
+              但语义清晰 (LIVE_PT = 实盘 replay 隐含 T+1 settlement / live feed 语义,
+              AD_HOC = 探索性一次跑). iter 25 PR codified scripts/run_backtest.py 借用
+              LIVE_PT 语义的 TODO(mvp-2.3-sub3).
     """
 
     QUICK_1Y = "quick_1y"
@@ -101,6 +106,7 @@ class BacktestMode(Enum):
     FULL_12Y = "full_12y"
     WF_5FOLD = "wf_5fold"
     LIVE_PT = "live_pt"
+    AD_HOC = "ad_hoc"
 
 
 class Severity(Enum):
