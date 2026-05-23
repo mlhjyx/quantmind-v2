@@ -313,7 +313,9 @@ GET /api/factor/library, POST /api/factor/{id}/archive
 POST /api/factor/health-check, POST /api/factor/correlation-prune
 WS /ws/factor-mine/{task_id}
 
-### AI闭环模块(17个, 2026-05-24 design-truth audit refresh — iter 24)
+### AI闭环模块(22个, 2026-05-24 design-truth audit refresh — iter 24)
+> Endpoint count: 10 pipeline + 7 agent + 5 approval = 22 (reviewer PR #455
+> P3-corrected from initial "17" mid-edit miscount).
 > Previous "10个" header outdated; old cites `/api/pipeline/approve|reject|pending|history`
 > + `/api/agent/{name}/logs` + `WS /ws/pipeline/{run_id}` were all stale.
 > See PR #454 §1 anti-conflation methodology. Pipeline approval is split across
