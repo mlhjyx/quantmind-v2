@@ -20,6 +20,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any, Literal
 
 import structlog
@@ -282,6 +283,45 @@ async def _read_pause_state(
     return (row[0], row[1])
 
 
+async def _read_automation_level(session: AsyncSession) -> str:
+    """读取 pipeline_settings.automation_level (PN-004 iter 15 helper).
+
+    Sibling of `_read_pause_state` + the PN-001 GET /automation-level endpoint.
+    Returns 'L0' default when table is empty (PN-001 defensive default).
+    """
+    result = await session.execute(
+        text("SELECT automation_level FROM pipeline_settings WHERE id = 1")
+    )
+    row = result.first()
+    if row is None:
+        return "L0"
+    return row[0]
+
+
+def _gp_weekly_schedule_next() -> tuple[str, str]:
+    """Return (cron_str, next_run_iso_utc) for the gp-weekly-mining Beat task.
+
+    D1 PN-004 iter 15 helper. Hardcoded for the only Beat-driven pipeline task
+    post-PMS removal — `app/tasks/beat_schedule.py:53` SSOT
+    (`crontab(hour=22, minute=0, day_of_week="0")`, i.e. Sunday 22:00 SH).
+
+    China does not observe DST → SH UTC offset is permanently +08:00, so the
+    stdlib-only datetime math here is exact (no croniter dep needed).
+
+    Returns:
+        ("0 22 * * 0", ISO8601 UTC of the next Sunday 22:00 SH).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    SH = timezone(timedelta(hours=8))
+    now_sh = datetime.now(tz=SH)
+    days_ahead = (6 - now_sh.weekday()) % 7  # Sunday weekday() == 6
+    target = now_sh.replace(hour=22, minute=0, second=0, microsecond=0) + timedelta(days=days_ahead)
+    if target <= now_sh:
+        target += timedelta(days=7)
+    return ("0 22 * * 0", target.astimezone(UTC).isoformat())
+
+
 @router.post(
     "/pause",
     summary="暂停 Pipeline gate-at-entry (D1 O3, PN-003)",
@@ -381,31 +421,64 @@ async def get_pipeline_status(
     # D1 O3 (PN-003 iter 12) — surface pause state alongside run status
     paused_at, paused_reason = await _read_pause_state(session)
     paused_at_iso = paused_at.isoformat() if paused_at is not None else None
+    # D1 PN-004 iter 15 — frontend-aligned derived fields
+    automation_level = await _read_automation_level(session)
+    schedule_cron, next_run_at = _gp_weekly_schedule_next()
+    is_paused = paused_at is not None
 
     if row is None:
         return {
+            # NEW frontend-aligned keys (PN-004)
+            "run_id": None,
+            "is_running": False,
+            "is_paused": is_paused,
+            "automation_level": automation_level,
+            "nodes": [],
+            "schedule_cron": schedule_cron,
+            "next_run_at": next_run_at,
+            "last_run_at": None,
+            "current_node": None,
+            "paused_at": paused_at_iso,
+            "paused_reason": paused_reason,
+            # LEGACY aliases (deprecated, 1-sprint retention per PN-004 §2.2)
             "active_run_id": None,
             "active_engine": None,
             "status": "idle",
-            "current_node": None,
             "node_statuses": {},
             "progress": {},
             "started_at": None,
             "error": None,
-            "paused_at": paused_at_iso,
-            "paused_reason": paused_reason,
             "message": "无Pipeline运行记录",
         }
 
     stats: dict[str, Any] = row["stats"] or {}
     config: dict[str, Any] = row["config"] or {}
+    # Map node_statuses dict → ordered array for frontend FlowChart consumer
+    node_statuses_dict = stats.get("node_statuses") or {}
+    nodes_list = [{"name": k, "status": v} for k, v in node_statuses_dict.items()]
+    # last_run_at: prefer finished_at (completed run); fall back to started_at
+    last_run_dt = row["finished_at"] or row["started_at"]
+    last_run_iso = last_run_dt.isoformat() if last_run_dt else None
+    is_running = row["status"] == "running"
 
     return {
+        # NEW frontend-aligned keys (PN-004)
+        "run_id": row["run_id"],
+        "is_running": is_running,
+        "is_paused": is_paused,
+        "automation_level": automation_level,
+        "current_node": stats.get("current_node"),
+        "nodes": nodes_list,
+        "schedule_cron": schedule_cron,
+        "next_run_at": next_run_at,
+        "last_run_at": last_run_iso,
+        "paused_at": paused_at_iso,
+        "paused_reason": paused_reason,
+        # LEGACY aliases (deprecated, 1-sprint retention per PN-004 §2.2)
         "active_run_id": row["run_id"],
         "active_engine": row["engine"],
         "status": row["status"],
-        "current_node": stats.get("current_node"),
-        "node_statuses": stats.get("node_statuses", {}),
+        "node_statuses": node_statuses_dict,
         "progress": {
             "total_candidates": stats.get("total_evaluated", 0),
             "passed_gate": stats.get("passed_gate", 0),
@@ -414,8 +487,6 @@ async def get_pipeline_status(
         "started_at": row["started_at"].isoformat() if row["started_at"] else None,
         "finished_at": row["finished_at"].isoformat() if row["finished_at"] else None,
         "error": row["error_message"],
-        "paused_at": paused_at_iso,
-        "paused_reason": paused_reason,
         "config_summary": {
             "generations": config.get("generations"),
             "population": config.get("population"),
