@@ -913,11 +913,17 @@ CREATE TABLE IF NOT EXISTS pipeline_settings (
     automation_level VARCHAR(8) NOT NULL DEFAULT 'L0'
                         CHECK (automation_level IN ('L0','L1','L2','L3','L4')),
     updated_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_by       VARCHAR(64)  -- NULL 直至 auth/RBAC 接入 (PN-001 §6)
+    updated_by       VARCHAR(64),  -- NULL 直至 auth/RBAC 接入 (PN-001 §6)
+
+    -- D1 O3 pause gate (PN-003 iter 12, 2026-05-23/24) — gate-at-entry only
+    paused_at        TIMESTAMP WITH TIME ZONE NULL,
+    paused_reason    TEXT NULL
 );
-COMMENT ON TABLE pipeline_settings IS 'D1 O8 — Pipeline UI singleton 设置 (PN-001 iter 10, 2026-05-23)';
+COMMENT ON TABLE pipeline_settings IS 'D1 O8 — Pipeline UI singleton 设置 (PN-001 iter 10, 2026-05-23) + D1 O3 pause gate (PN-003 iter 12)';
 COMMENT ON COLUMN pipeline_settings.id IS 'Singleton enforce via CHECK (id = 1) + PK — 仅 1 row';
 COMMENT ON COLUMN pipeline_settings.automation_level IS '用户选定的自动化级别 (L4R spec L0-L4 enum)';
+COMMENT ON COLUMN pipeline_settings.paused_at IS 'NULL = active; NOT NULL = paused since (gate-at-entry only, mid-run not aborted)';
+COMMENT ON COLUMN pipeline_settings.paused_reason IS '可选暂停理由 (≤500 字), UI 显示用';
 
 CREATE OR REPLACE FUNCTION _pipeline_settings_touch_updated_at() RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at := NOW(); RETURN NEW; END;

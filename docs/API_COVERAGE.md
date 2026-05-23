@@ -700,7 +700,7 @@ Re-verified against current code (`main` HEAD `f70b04a`). The §6 snapshot above
 | O4 `/pipeline/approve/{id}` | **RESOLVED** (prior work). `approveItem()` now calls `POST /api/approval/queue/{id}/approve`. |
 | O5 `/pipeline/reject/{id}` | **RESOLVED** (prior work). `rejectItem()` now calls `POST /api/approval/queue/{id}/reject`. |
 | O6 `/pipeline/hold/{id}` | **RESOLVED** (prior work). `holdItem()` now calls `POST /api/approval/queue/{id}/hold`. |
-| O3 `/pipeline/pause` | **STILL ORPHAN.** No backend endpoint. Needs a build decision (pausing a running Celery GP task is non-trivial). |
+| O3 `/pipeline/pause` | **RESOLVED** (2026-05-23/24, iter 12 PN-003). Backend `POST /api/pipeline/pause` + `/resume` wired — gate-at-entry semantics (pipeline_settings.paused_at column; idempotent no-overwrite when already paused; mid-run cooperative abort explicitly out of scope per PN-003 §6). `GET /status` extended with `paused_at` + `paused_reason`. Frontend `pausePipeline(reason?)` + new `resumePipeline()` consumers. |
 | O7 `/pipeline/{runId}/logs` | **STILL ORPHAN.** No backend HTTP endpoint. `getPipelineLogs` 404s silently; the "AI决策日志" tab still receives live logs via the `ws/pipeline/{run_id}` WebSocket during an active run — the gap is the absence of an HTTP log-history backfill (empty tab when no run is active). |
 | O8 `/pipeline/automation-level` | **STILL ORPHAN.** No backend endpoint. The L0–L3 automation selector in PipelineConsole 404s. Needs a persistence-model decision. |
 

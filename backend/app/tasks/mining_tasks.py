@@ -70,6 +70,25 @@ def run_gp_mining(self, run_id: str | None, config: dict[str, Any]) -> dict[str,
     Returns:
         {"run_id": str, "status": str, "passed_factors": int, "stats": dict}
     """
+    # D1 O3 (PN-003 iter 12) — pause gate-at-entry. If pipeline_settings.paused_at
+    # is NOT NULL, skip this Beat tick entirely. No pipeline_runs row written, no
+    # failure marked. Next Beat tick re-attempts (advisory pause, not abort).
+    paused = asyncio.run(_is_pipeline_paused())
+    if paused is not None:
+        paused_at, paused_reason = paused
+        logger.info(
+            "GP 挖掘任务跳过 (pipeline paused)",
+            extra={
+                "event": "pipeline_skipped_paused",
+                "engine": "gp",
+                "paused_at": paused_at.isoformat()
+                if hasattr(paused_at, "isoformat")
+                else str(paused_at),
+                "paused_reason": paused_reason,
+            },
+        )
+        return {"status": "skipped_paused", "engine": "gp", "run_id": run_id}
+
     # Beat 触发时 run_id=None，自动生成并写入 pipeline_runs
     if run_id is None:
         run_id = _generate_run_id(config)
@@ -225,6 +244,23 @@ def run_bruteforce_mining(self, run_id: str, config: dict[str, Any]) -> dict[str
     Returns:
         {"run_id": str, "status": "not_implemented"}
     """
+    # D1 O3 (PN-003 iter 12) — pause gate-at-entry, see run_gp_mining for rationale.
+    paused = asyncio.run(_is_pipeline_paused())
+    if paused is not None:
+        paused_at, paused_reason = paused
+        logger.info(
+            "BruteForce 挖掘任务跳过 (pipeline paused)",
+            extra={
+                "event": "pipeline_skipped_paused",
+                "engine": "bruteforce",
+                "paused_at": paused_at.isoformat()
+                if hasattr(paused_at, "isoformat")
+                else str(paused_at),
+                "paused_reason": paused_reason,
+            },
+        )
+        return {"status": "skipped_paused", "engine": "bruteforce", "run_id": run_id}
+
     logger.warning("BruteForce 挖掘任务尚未实现", extra={"run_id": run_id})
     asyncio.run(_mark_run_failed(run_id, "BruteForce引擎尚未实现（Sprint 1.18）"))
     return {"run_id": run_id, "status": "not_implemented"}
@@ -233,6 +269,50 @@ def run_bruteforce_mining(self, run_id: str, config: dict[str, Any]) -> dict[str
 # ---------------------------------------------------------------------------
 # 内部辅助函数
 # ---------------------------------------------------------------------------
+
+
+async def _is_pipeline_paused() -> tuple[Any, str | None] | None:
+    """D1 O3 (PN-003 iter 12) — 检查 pipeline_settings.paused_at 状态.
+
+    Returns:
+        (paused_at, paused_reason) tuple when paused; None when active.
+        表无 row (migration 未跑) → None (defensive default mirrors API helper).
+        DB 查询失败 → None (fail-safe: 优先保证 Beat 调度不卡死, log warn).
+
+    沿用 _init_pipeline_run / _mark_run_failed 的 asyncpg DB_URL 体例.
+    """
+    import os
+
+    import asyncpg
+
+    db_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://xin:quantmind@localhost:5432/quantmind_v2",
+    )
+    try:
+        conn = await asyncpg.connect(db_url)
+        try:
+            row = await conn.fetchrow(
+                "SELECT paused_at, paused_reason FROM pipeline_settings WHERE id = 1"
+            )
+        finally:
+            await conn.close()
+        if row is None or row["paused_at"] is None:
+            return None
+        return (row["paused_at"], row["paused_reason"])
+    except Exception as exc:
+        # Fail-safe trade-off (PN-003 §6 R2 + P2 reviewer fix iter 12): on DB
+        # error we return None → Beat task proceeds. This trades pause-safety
+        # for Beat liveness — a pause request the DB can't surface lets a
+        # paused pipeline still fire. We accept this because (a) pause is
+        # advisory not a safety control (red lines live in .env + broker
+        # guard), and (b) blocking Beat indefinitely on transient DB blip is
+        # worse than the rare missed pause. 沿用铁律 33 显式 silent_ok 注释.
+        logger.warning(  # silent_ok: gate-at-entry fail-safe — Beat liveness > pause safety
+            "_is_pipeline_paused DB 查询失败 (跳过 pause 检查)",
+            extra={"error": str(exc)},
+        )
+        return None
 
 
 async def _init_pipeline_run(run_id: str, config: dict[str, Any]) -> None:

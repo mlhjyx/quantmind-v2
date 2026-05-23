@@ -46,6 +46,16 @@ export interface PipelineStatus {
   schedule_cron: string;
   next_run_at: string | null;
   last_run_at: string | null;
+  /** D1 O3 (PN-003 iter 12) — pause state, gate-at-entry semantics.
+   *  NULL = active; non-null = paused since ISO8601 timestamp. */
+  paused_at?: string | null;
+  paused_reason?: string | null;
+}
+
+/** D1 O3 (PN-003 iter 12) — pause / resume response payload. */
+export interface PauseStatus {
+  paused_at: string | null;
+  paused_reason: string | null;
 }
 
 export interface ApprovalItem {
@@ -119,10 +129,21 @@ export async function triggerPipeline(
   return res.data;
 }
 
-export async function pausePipeline(): Promise<void> {
-  // NOTE: No backend endpoint exists yet for pipeline pause via HTTP.
-  // Will return 404 until POST /api/pipeline/pause is implemented.
-  await apiClient.post("/pipeline/pause");
+/** D1 O3 (PN-003 iter 12) — Pause pipeline gate-at-entry.
+ *  Backend: POST /api/pipeline/pause (idempotent no-overwrite when already paused).
+ *  Optional `reason` (≤500 chars) is surfaced in /status response for UI display.
+ *  Returns the resulting pause state (paused_at + paused_reason). */
+export async function pausePipeline(reason?: string): Promise<PauseStatus> {
+  const body = reason !== undefined ? { reason } : {};
+  const res = await apiClient.post<PauseStatus>("/pipeline/pause", body);
+  return res.data;
+}
+
+/** D1 O3 (PN-003 iter 12) — Resume pipeline (clear pause state).
+ *  Backend: POST /api/pipeline/resume (idempotent — always returns null state). */
+export async function resumePipeline(): Promise<PauseStatus> {
+  const res = await apiClient.post<PauseStatus>("/pipeline/resume");
+  return res.data;
 }
 
 export async function getPipelineHistory(): Promise<PipelineRun[]> {
