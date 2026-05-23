@@ -20,7 +20,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Literal
 
 import structlog
@@ -311,8 +311,6 @@ def _gp_weekly_schedule_next() -> tuple[str, str]:
     Returns:
         ("0 22 * * 0", ISO8601 UTC of the next Sunday 22:00 SH).
     """
-    from datetime import datetime, timedelta, timezone
-
     SH = timezone(timedelta(hours=8))
     now_sh = datetime.now(tz=SH)
     days_ahead = (6 - now_sh.weekday()) % 7  # Sunday weekday() == 6
@@ -410,8 +408,17 @@ async def get_pipeline_status(
     返回最近一条 status='running' 的 pipeline_runs 记录。
     若无运行中任务则返回最近完成的记录。
 
+    PN-004 contract notes (P2-2 review clarification):
+        `last_run_at` is `finished_at ?? started_at` of the latest run row.
+        When `is_running=True` this surfaces the **currently-running run's
+        start time**, not a previous run's completion. Frontend consumers
+        should read `is_running` + `last_run_at` together: running=true →
+        "started at"; running=false → "last completed at".
+
     Returns:
-        包含节点状态、进度计数、当前节点名称的完整状态对象。
+        包含节点状态、进度计数、当前节点名称的完整状态对象 + PN-004
+        frontend-aligned keys (run_id/is_running/is_paused/automation_level/
+        nodes/schedule_cron/next_run_at/last_run_at).
     """
     # 优先查 running 状态，无则查最近完成
     row = await _fetch_latest_run(session, status_filter="running")
