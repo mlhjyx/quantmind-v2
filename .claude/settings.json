@@ -3,6 +3,7 @@
     "oh-my-claudecode@omc": true
   },
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(ruff check *)",
       "Bash(tasklist *)"
