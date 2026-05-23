@@ -18,7 +18,7 @@
 
 **Key findings**:
 - 50% of backend endpoints have no frontend consumer — primarily admin/ops endpoints (execution_ops admin actions), PMS (deprecated), news ingest, remote_status, report generation, paper_trading, SSE stream, approval workflow.
-- 10 frontend calls target paths with no matching backend endpoint — these are bug candidates (`/backtest/{id}/cancel`, `/pipeline/trigger`, `/pipeline/pause`, `/pipeline/approve`, `/pipeline/reject`, `/pipeline/hold`, `/pipeline/{id}/logs`, `/pipeline/automation-level`, `/factors/health` as POST, `/factors/correlation-prune`). **(2026-05-22 Phase K reconciliation: O2/O4/O5/O6 resolved — 6 orphans remain. See §6.1.)**
+- 10 frontend calls target paths with no matching backend endpoint — these are bug candidates (`/backtest/{id}/cancel`, `/pipeline/trigger`, `/pipeline/pause`, `/pipeline/approve`, `/pipeline/reject`, `/pipeline/hold`, `/pipeline/{id}/logs`, `/pipeline/automation-level`, `/factors/health` as POST, `/factors/correlation-prune`). **(2026-05-24 iter 17 reconciliation: 9 of 10 closed across iter 1 / 3-4 / 5 / 10 / 11 / 12 / 15 — only O7 `/pipeline/{id}/logs` remains as a deferred backlog item. See §6.1.)**
 - Auth gate (verify_admin_token): 22 endpoints gated, remainder public.
 
 ---
@@ -702,13 +702,13 @@ Re-verified against current code (`main` HEAD `f70b04a`). The §6 snapshot above
 | O6 `/pipeline/hold/{id}` | **RESOLVED** (prior work). `holdItem()` now calls `POST /api/approval/queue/{id}/hold`. |
 | O3 `/pipeline/pause` | **RESOLVED** (2026-05-23/24, iter 12 PN-003). Backend `POST /api/pipeline/pause` + `/resume` wired — gate-at-entry semantics (pipeline_settings.paused_at column; idempotent no-overwrite when already paused; mid-run cooperative abort explicitly out of scope per PN-003 §6). `GET /status` extended with `paused_at` + `paused_reason`. Frontend `pausePipeline(reason?)` + new `resumePipeline()` consumers. |
 | O7 `/pipeline/{runId}/logs` | **STILL ORPHAN.** No backend HTTP endpoint. `getPipelineLogs` 404s silently; the "AI决策日志" tab still receives live logs via the `ws/pipeline/{run_id}` WebSocket during an active run — the gap is the absence of an HTTP log-history backfill (empty tab when no run is active). |
-| O8 `/pipeline/automation-level` | **STILL ORPHAN.** No backend endpoint. The L0–L3 automation selector in PipelineConsole 404s. Needs a persistence-model decision. |
+| O8 `/pipeline/automation-level` | **RESOLVED** (2026-05-23, iter 10 PN-001). Backend `GET /api/pipeline/automation-level` + `PUT /api/pipeline/automation-level` wired against a singleton `pipeline_settings` table (level L0–L3 enum + audit columns). Frontend `setAutomationLevel()` + `getAutomationLevel()` consumers. PR #450 squash `d26ac2a` / ADR-087. |
 
-**Remaining orphans: 10 → 6** (O1, O3, O7, O8, O9, O10).
+**Remaining orphans: 10 → 1** (O7 only — O1 closed iter 5 PR #446 backtest cancel; O3 closed iter 12 PR #452 PN-003; O8 closed iter 10 PR #450 PN-001; O9 closed iters 3-4 PR #445 factor health POST; O10 closed iter 11 PR #451 PN-002 correlation-prune).
 
-**NEW finding (separate from orphan classification):** `GET /api/pipeline/status` *is* consumed (#102), but the backend response shape (`active_run_id` / `node_statuses` dict / `progress` / `config_summary` …) does **not** match the frontend `PipelineStatus` interface (`run_id` / `nodes[]` / `automation_level` / `is_running` / `is_paused` / `schedule_cron` / `next_run_at` / `last_run_at`). PipelineConsole's status display, FlowChart, automation-level and schedule cards are fed `undefined` for most fields. This is contract-shape drift, not an orphan — and `automation_level` / `schedule_cron` / `next_run_at` / `last_run_at` have no backend source at all.
+**NEW finding (separate from orphan classification) — RESOLVED 2026-05-24 iter 15 PR #453 squash `7218496` / ADR-090:** `GET /api/pipeline/status` *is* consumed (#102), but the backend response shape (`active_run_id` / `node_statuses` dict / `progress` / `config_summary` …) did **not** match the frontend `PipelineStatus` interface (`run_id` / `nodes[]` / `automation_level` / `is_running` / `is_paused` / `schedule_cron` / `next_run_at` / `last_run_at`). Refactored response now exposes 8 frontend-aligned keys (`is_running` = status=='running' / `is_paused` = paused_at IS NOT NULL / `nodes[]` array mapped from `node_statuses` dict / `automation_level` read from `pipeline_settings` / `schedule_cron` + `next_run_at` from stdlib-only weekly-cron helper / `last_run_at` / `run_id`); legacy keys (`active_run_id` / `node_statuses` / `progress` / `config_summary`) retained as 1-sprint backward-compat aliases. See `docs/design/PN_004_pipeline_status_contract_refactor.md`.
 
-**Deferred:** O3 / O7 / O8 + the `/pipeline/status` contract reconciliation form a single PipelineConsole↔backend integration task with product-scope decisions (pipeline pausability, pipeline-log source, `automation_level` persistence) — not closed by this iteration; tracked as a backlog item.
+**Deferred:** O7 (log-history) only — O3 / O8 + the `/pipeline/status` contract all shipped 2026-05-23/24 (PR #452 / #450 / #453). O7 storage decision (file vs DB vs sliding-window) + retention policy remains the open product-scope choice; tracked as a backlog item (D1 O7, candidate for iter 19+).
 
 ---
 
