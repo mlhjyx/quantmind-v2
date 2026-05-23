@@ -184,6 +184,150 @@ class FactorService:
         keys = ["factor_name", "category", "direction", "status", "description", "created_at"]
         return [dict(zip(keys, row, strict=False)) for row in rows]
 
+    async def analyze_correlation_prune(
+        self,
+        threshold: float = 0.85,
+        lookback_days: int = 365,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """分析 Active 因子相关性, 推荐裁剪冗余因子 (PN-002 iter 11, D1 O10).
+
+        复用 factors.py:148 GET /correlation 的 IC-series Spearman 算法 +
+        CLAUDE.md doctrine `|corr| > 0.85` → IC 较低者 (lower mean |IC|)
+        标记 drop_recommendation. dry_run=True 仅返回分析报告, 0 DB mutation.
+        dry_run=False 本 iter 显式 out-of-scope (PN-002 §6 — factor_registry
+        mutation 需 user 显式 approve flow).
+
+        Args:
+            threshold: |corr| >= threshold 视为冗余 pair. 默认 0.85 (doctrine).
+            lookback_days: IC 序列回看窗口(天). 默认 365.
+            dry_run: 必须为 True (本 iter scope); False → ValueError.
+
+        Returns:
+            dict: {threshold_used, lookback_days_used, pairs, dropped_count,
+                   total_pairs_above_threshold, computed_at}.
+
+        Raises:
+            ValueError: dry_run=False (out of scope this iter, PN-002 §6).
+        """
+        if not dry_run:
+            raise ValueError(
+                "dry_run=False out of scope this iter (PN-002 §6); "
+                "factor_registry mutation requires explicit user approval flow"
+            )
+
+        # Lazy imports (consistent with factors.py:217-218 + 1064 体例)
+        from datetime import datetime, timedelta
+
+        import numpy as np
+        from scipy import stats as sp_stats
+
+        # 1. Active factors (P3-2 reviewer fix: defensive catch matching sibling
+        # `factors.py:179-187` GET /correlation handler — early environment may
+        # lack factor_registry table; downgrade to empty list instead of 500).
+        try:
+            factors = await self.get_factor_list(status="active")
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" in err_msg or "relation" in err_msg:
+                logger.warning(
+                    "[FactorService] analyze_correlation_prune: factor_registry "
+                    f"table missing — returning empty report. {err_msg[:200]}"
+                )
+                factors = []
+            else:
+                raise
+        factor_names = [f["factor_name"] for f in factors]
+
+        empty_report = {
+            "threshold_used": threshold,
+            "lookback_days_used": lookback_days,
+            "pairs": [],
+            "dropped_count": 0,
+            "total_pairs_above_threshold": 0,
+            "computed_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+        if len(factor_names) < 2:
+            return empty_report
+
+        # 2. IC series per factor (沿用 factors.py:196-204 体例)
+        end_date = date.today()
+        start_date = end_date - timedelta(days=lookback_days)
+        ic_map: dict[str, list[float]] = {}
+        for name in factor_names:
+            ic_df = await self.get_factor_ic(name, start_date, end_date, forward_days=20)
+            if not ic_df.empty:
+                values = [float(v) for v in ic_df["ic_value"].tolist() if v is not None]
+                if values:
+                    ic_map[name] = values
+
+        available = [n for n in factor_names if n in ic_map]
+        if len(available) < 2:
+            return empty_report
+
+        # 3. Pairwise spearmanr + mean |IC| per factor
+        min_len = min(len(ic_map[n]) for n in available)
+        mean_abs_ic = {n: float(np.mean(np.abs(ic_map[n]))) for n in available}
+
+        # P3-3 reviewer fix: hoist `len(series) < 3` check above pair loop —
+        # `min_len` applies uniformly to all pairs (`series_*[-min_len:]` has
+        # `len == min_len` for every pair), so per-pair check was dead code.
+        if min_len < 3:
+            logger.info(
+                "[FactorService] analyze_correlation_prune: "
+                f"min_len={min_len} < 3 (insufficient IC history), skip pair enumeration"
+            )
+            return empty_report
+
+        pairs: list[dict[str, Any]] = []
+        for i in range(len(available)):
+            for j in range(i + 1, len(available)):
+                a, b = available[i], available[j]
+                series_a = ic_map[a][-min_len:]
+                series_b = ic_map[b][-min_len:]
+                corr, _ = sp_stats.spearmanr(series_a, series_b)
+                corr = float(corr) if not np.isnan(corr) else 0.0
+                if abs(corr) >= threshold:
+                    ic_a = mean_abs_ic[a]
+                    ic_b = mean_abs_ic[b]
+                    # Drop recommendation: lower mean |IC| (tied → alphabetical stable)
+                    if ic_a < ic_b or (ic_a == ic_b and a < b):
+                        drop, keep = a, b
+                    else:
+                        drop, keep = b, a
+                    pairs.append(
+                        {
+                            "factor_a": a,
+                            "factor_b": b,
+                            "correlation": round(corr, 4),
+                            "ic_a_mean_abs": round(ic_a, 6),
+                            "ic_b_mean_abs": round(ic_b, 6),
+                            "drop_recommendation": drop,
+                            "reason": (
+                                f"|corr|={abs(corr):.4f} >= threshold={threshold}; "
+                                f"mean_abs_ic({drop})={mean_abs_ic[drop]:.6f} < "
+                                f"mean_abs_ic({keep})={mean_abs_ic[keep]:.6f} — "
+                                f"recommend drop {drop}"
+                            ),
+                        }
+                    )
+
+        logger.info(
+            "[FactorService] analyze_correlation_prune: "
+            f"threshold={threshold}, active={len(available)}, "
+            f"pairs_above_threshold={len(pairs)}, dry_run={dry_run}"
+        )
+
+        return {
+            "threshold_used": threshold,
+            "lookback_days_used": lookback_days,
+            "pairs": pairs,
+            "dropped_count": len(pairs),
+            "total_pairs_above_threshold": len(pairs),
+            "computed_at": datetime.utcnow().isoformat() + "Z",
+        }
+
     async def compute_factor(
         self,
         factor_name: str,

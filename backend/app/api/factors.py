@@ -21,6 +21,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1086,3 +1087,75 @@ def trigger_factor_health_check() -> dict[str, Any]:
         "trade_date": today.isoformat(),
         "message": f"因子健康检查完成，总体状态: {overall}",
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/factors/correlation-prune  — D1 O10 (PN-002 iter 11)
+# ---------------------------------------------------------------------------
+
+_PRUNE_DEFAULT_THRESHOLD = 0.85  # CLAUDE.md doctrine
+_PRUNE_DEFAULT_LOOKBACK_DAYS = 365
+
+
+class CorrelationPruneRequest(BaseModel):
+    """Factor correlation prune 分析请求体 (PN-002 D1 O10, iter 11)."""
+
+    threshold: float = Field(
+        default=_PRUNE_DEFAULT_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        description="|corr| >= threshold 视为冗余 pair (CLAUDE.md doctrine 0.85)",
+    )
+    lookback_days: int = Field(
+        default=_PRUNE_DEFAULT_LOOKBACK_DAYS,
+        ge=30,
+        le=1825,
+        description="IC 序列回看窗口(天). 30 ~ 5 years (1825).",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="必须为 True (本 iter scope); False → 422 out-of-scope (PN-002 §6)",
+    )
+
+
+@router.post(
+    "/correlation-prune",
+    summary="分析 Active 因子相关性, 推荐裁剪冗余 (D1 O10, PN-002)",
+)
+async def trigger_correlation_prune(
+    body: CorrelationPruneRequest | None = None,
+    svc: FactorService = Depends(_get_factor_service),
+) -> dict[str, Any]:
+    """触发因子相关性裁剪分析 (FactorLibrary 相关性裁剪 button, PN-002 D1 O10).
+
+    复用 FactorService.analyze_correlation_prune (PN-002 §2.1 algorithm).
+    dry_run=True 仅返回分析报告 (PN-002 §2 contract); dry_run=False 当前 iter
+    显式 422 out-of-scope (PN-002 §6 — factor_registry mutation 需 user
+    显式 approve flow).
+
+    POST 无 body → 所有字段走 default (frontend factors.ts:206 当前模式).
+
+    Returns:
+        dict: PN-002 §2.2 contract — {threshold_used, lookback_days_used,
+              pairs, dropped_count, total_pairs_above_threshold, computed_at}.
+
+    Raises:
+        HTTPException 422: dry_run=False (out of scope this iter, PN-002 §6).
+    """
+    if body is None:
+        body = CorrelationPruneRequest()
+
+    if not body.dry_run:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "dry_run=False out of scope this iter (PN-002 §6); "
+                "factor_registry mutation requires explicit user approval flow"
+            ),
+        )
+
+    return await svc.analyze_correlation_prune(
+        threshold=body.threshold,
+        lookback_days=body.lookback_days,
+        dry_run=True,
+    )
