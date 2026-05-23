@@ -222,8 +222,21 @@ class FactorService:
         import numpy as np
         from scipy import stats as sp_stats
 
-        # 1. Active factors
-        factors = await self.get_factor_list(status="active")
+        # 1. Active factors (P3-2 reviewer fix: defensive catch matching sibling
+        # `factors.py:179-187` GET /correlation handler — early environment may
+        # lack factor_registry table; downgrade to empty list instead of 500).
+        try:
+            factors = await self.get_factor_list(status="active")
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" in err_msg or "relation" in err_msg:
+                logger.warning(
+                    "[FactorService] analyze_correlation_prune: factor_registry "
+                    f"table missing — returning empty report. {err_msg[:200]}"
+                )
+                factors = []
+            else:
+                raise
         factor_names = [f["factor_name"] for f in factors]
 
         empty_report = {
@@ -257,14 +270,22 @@ class FactorService:
         min_len = min(len(ic_map[n]) for n in available)
         mean_abs_ic = {n: float(np.mean(np.abs(ic_map[n]))) for n in available}
 
+        # P3-3 reviewer fix: hoist `len(series) < 3` check above pair loop —
+        # `min_len` applies uniformly to all pairs (`series_*[-min_len:]` has
+        # `len == min_len` for every pair), so per-pair check was dead code.
+        if min_len < 3:
+            logger.info(
+                "[FactorService] analyze_correlation_prune: "
+                f"min_len={min_len} < 3 (insufficient IC history), skip pair enumeration"
+            )
+            return empty_report
+
         pairs: list[dict[str, Any]] = []
         for i in range(len(available)):
             for j in range(i + 1, len(available)):
                 a, b = available[i], available[j]
                 series_a = ic_map[a][-min_len:]
                 series_b = ic_map[b][-min_len:]
-                if len(series_a) < 3:
-                    continue
                 corr, _ = sp_stats.spearmanr(series_a, series_b)
                 corr = float(corr) if not np.isnan(corr) else 0.0
                 if abs(corr) >= threshold:
