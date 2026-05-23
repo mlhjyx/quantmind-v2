@@ -2,6 +2,12 @@
   "enabledPlugins": {
     "oh-my-claudecode@omc": true
   },
+  "permissions": {
+    "allow": [
+      "Bash(ruff check *)",
+      "Bash(tasklist *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
