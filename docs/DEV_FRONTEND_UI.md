@@ -313,12 +313,28 @@ GET /api/factor/library, POST /api/factor/{id}/archive
 POST /api/factor/health-check, POST /api/factor/correlation-prune
 WS /ws/factor-mine/{task_id}
 
-### AI闭环模块(10个)
-GET /api/pipeline/status, POST /api/pipeline/trigger, POST /api/pipeline/pause
-GET /api/pipeline/history, GET /api/pipeline/pending
-POST /api/pipeline/approve/{id}, POST /api/pipeline/reject/{id}
-GET/PUT /api/agent/{name}/config, GET /api/agent/{name}/logs
-WS /ws/pipeline/{run_id}
+### AI闭环模块(22个, 2026-05-24 design-truth audit refresh — iter 24)
+> Endpoint count: 10 pipeline + 7 agent + 5 approval = 22 (reviewer PR #455
+> P3-corrected from initial "17" mid-edit miscount).
+> Previous "10个" header outdated; old cites `/api/pipeline/approve|reject|pending|history`
+> + `/api/agent/{name}/logs` + `WS /ws/pipeline/{run_id}` were all stale.
+> See PR #454 §1 anti-conflation methodology. Pipeline approval is split across
+> two routers: per-run path (`/api/pipeline/runs/{run_id}/...`) and queue path
+> (`/api/approval/queue/...`).
+
+GET /api/pipeline/status, POST /api/pipeline/trigger
+POST /api/pipeline/pause, POST /api/pipeline/resume
+GET/PUT /api/pipeline/automation-level (ADR-087 iter 10 PN-001)
+GET /api/pipeline/runs, GET /api/pipeline/runs/{run_id}
+POST /api/pipeline/runs/{run_id}/approve/{factor_id}, POST /api/pipeline/runs/{run_id}/reject/{factor_id}
+GET /api/approval/queue, GET /api/approval/queue/{id} (Phase K F63-P2-10 redirect)
+POST /api/approval/queue/{id}/approve, POST /api/approval/queue/{id}/reject, POST /api/approval/queue/{id}/hold
+GET/PUT /api/agent/{name}/config (DB-persisted prompt_history)
+POST /api/agent/{name}/config/reset, POST /api/agent/{name}/config/rollback
+GET /api/agent/{name}/history (prompt version history, replaces old /logs cite)
+POST /api/agent/chat, GET /api/agent/chat/status (AI Assist Panel, ADR-AI-Assist gated)
+[No WebSocket: iter 21 PN-005 code-grep verified `/ws/pipeline/{run_id}` does NOT exist;
+backend `websocket/manager.py` only handles `backtest:{run_id}` rooms.]
 
 ### 系统设置(8个)
 GET /api/system/datasources, POST /api/system/datasources/{name}/test
