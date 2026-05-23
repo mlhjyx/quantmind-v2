@@ -48,6 +48,30 @@ that file exists + has the expected `push_dingtalk(...)` API. If yes → small w
 **Action recommendation**: precondition-verify dingtalk_alert.py before queueing.
 Defer to iter 17+ once F-XS-1 (smaller + risk-free) ships.
 
+**Update — Iter 20 precondition verify (2026-05-24, post iter-19 F-XS-3 ship)**:
+- ✅ `backend/app/services/dingtalk_alert.py` EXISTS (303 lines).
+- ✅ Public callable: `send_with_dedup(dedup_key, severity, source, title, body, ...)` —
+  full kwargs interface with dedup + severity routing + double-lock + httpx POST retry.
+- ✅ 10 existing callers (qmt_data_service / risk_reflector_tasks / realtime_risk_engine_service /
+  meta_monitor_service / dingtalk_alert tests) — battle-tested.
+- ✅ `DINGTALK_ALERTS_ENABLED=true` sustained per `backend/.env:46` (C1a 2026-05-17 user
+  显式 '同意' + '你执行' 双 trigger). Wire would actually fire.
+- ⚠️ Inline TODO at `health_audit_v2.py:260` explicitly defers to a Phase B FastAPI
+  endpoint (`/api/system/dingtalk/audit-push`), not a direct import in the script.
+
+**Iter 20 verdict**: **DEFER to Phase B post-deployment gate** (§4.5 implement-bias guard
+ACTIVE @ 11:2:3 = 69%, rigorous justification required):
+1. **Design-intent mismatch** — implementing ad-hoc direct import in the script bypasses
+   the documented FastAPI gateway endpoint pattern. The TODO author intended that gate.
+2. **State-noise risk** — PT 0 持仓 + 0 trades since 4-29 sustained; 5 alert sources
+   already active. Adding a 6th in PT-paused state risks calibration confusion before
+   PT restart, could pollute the V3 §0.3 "5s actionable info" SLA hypothesis the user
+   wired DINGTALK_ALERTS_ENABLED=true to verify.
+3. **Coupling to PT-restart sequencing** — wire value materializes post-Phase-B as part
+   of the comprehensive alert audit-push channel; pre-Phase-B wire is premature.
+**Why not ARCHIVE**: wire genuinely valuable post-PT-restart, not dead code.
+**Ratio impact**: 11:2:3 → 11:2:4 = 64.7% (mid-band, §4.5 guard releases).
+
 ### §2.3 F56 (DEFERRED — gated on D3 BruteForce decision): `bruteforce_engine.py:1072` 铁律 19 violation
 
 ```
