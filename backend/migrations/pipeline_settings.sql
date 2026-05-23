@@ -27,7 +27,9 @@ COMMENT ON COLUMN pipeline_settings.id IS 'Singleton enforce: CHECK (id = 1) + P
 COMMENT ON COLUMN pipeline_settings.automation_level IS '用户选定的自动化级别 (L4R spec L0-L4). L0=手动, L4=完全自主';
 COMMENT ON COLUMN pipeline_settings.updated_by IS 'NULL 直至 auth/RBAC 引入 (PN-001 §6 显式 out-of-scope)';
 
--- 自动维护 updated_at (沿用 strategy_registry trigger 体例)
+-- 自动维护 updated_at (沿用 strategy_registry trigger 体例).
+-- 注: PostgreSQL ON CONFLICT DO UPDATE 路径触发 BEFORE UPDATE row trigger
+-- (DO UPDATE 在 trigger 语义上等同于普通 UPDATE), 所以 UPSERT 也会刷新 updated_at.
 CREATE OR REPLACE FUNCTION _pipeline_settings_touch_updated_at() RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at := NOW();

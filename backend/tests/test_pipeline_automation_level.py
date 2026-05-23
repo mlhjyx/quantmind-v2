@@ -25,14 +25,30 @@ from app.db import get_db
 from app.main import app
 
 
+def _mock_row(level: str) -> MagicMock:
+    """Tuple-like Row mock with strict index check (P2-1 review fix).
+
+    Returns `level` only for `row[0]`; raises IndexError for any other key.
+    This keeps the test honest: if the handler is later changed to use a
+    different access pattern (row[1] / row.attr / row['name']), the test
+    will fail loudly rather than silently passing.
+    """
+    row = MagicMock()
+
+    def _getitem(k: int) -> str:
+        if k == 0:
+            return level
+        raise IndexError(f"Row has only 1 column (automation_level), got index {k}")
+
+    row.__getitem__.side_effect = _getitem
+    return row
+
+
 def _mock_session_with_level(level: str) -> MagicMock:
-    """Mock session whose execute().first() returns a row with given level."""
+    """Mock session whose execute().first() returns a tuple-like Row at index 0."""
     session = AsyncMock()
-    row_mock = MagicMock()
-    # session.execute(...).first() → tuple-like with level at index 0
-    row_mock.__getitem__ = lambda self, k: level
     result_mock = MagicMock()
-    result_mock.first.return_value = row_mock
+    result_mock.first.return_value = _mock_row(level)
     session.execute.return_value = result_mock
     session.commit = AsyncMock()
     return session
@@ -135,5 +151,31 @@ async def test_put_automation_level_invalid_returns_422(
         # 422 path should NOT have called execute (pydantic rejects before handler)
         assert not session.execute.called
         assert not session.commit.called
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_put_automation_level_403_for_non_localhost() -> None:
+    """PUT from non-localhost IP returns 403 via _require_local guard (P2-2 review fix).
+
+    Pins the security contract: removing `_require_local` from the PUT handler
+    would let this test fail. Uses ASGITransport client tuple to spoof a remote IP.
+    """
+    session = _mock_session_with_level("L0")
+    app.dependency_overrides[get_db] = lambda: session
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app, client=("8.8.8.8", 12345)),
+            base_url="http://test",
+        ) as remote_client:
+            response = await remote_client.put(
+                "/api/pipeline/automation-level",
+                json={"level": "L2"},
+            )
+            assert response.status_code == 403, response.text
+            # Mutation must NOT have happened
+            assert not session.execute.called
+            assert not session.commit.called
     finally:
         app.dependency_overrides.pop(get_db, None)

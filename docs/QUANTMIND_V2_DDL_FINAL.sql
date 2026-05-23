@@ -907,6 +907,7 @@ COMMENT ON TABLE news_classified IS 'V3§3.2 NewsClassifier V4-Flash L0.2 output
 -- Singleton 表 — pipeline 运行时 UI 设置 (automation_level L0-L4)
 -- 设计: docs/design/PN_001_automation_level_persistence.md
 -- Migration: backend/migrations/pipeline_settings.sql (idempotent, ON CONFLICT)
+-- ⚠️ KEEP IN SYNC: 任何 schema 改动必同时修改 backend/migrations/pipeline_settings.sql
 CREATE TABLE IF NOT EXISTS pipeline_settings (
     id               INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- singleton enforce
     automation_level VARCHAR(8) NOT NULL DEFAULT 'L0'

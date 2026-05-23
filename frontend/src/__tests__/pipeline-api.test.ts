@@ -20,9 +20,14 @@ vi.mock("@/api/client", () => ({
 }));
 
 import apiClient from "@/api/client";
-import { triggerPipeline, type TriggerPipelineResult } from "@/api/pipeline";
+import {
+  triggerPipeline,
+  getAutomationLevel,
+  type TriggerPipelineResult,
+} from "@/api/pipeline";
 
 const post = apiClient.post as unknown as Mock;
+const get = apiClient.get as unknown as Mock;
 
 const sampleResult: TriggerPipelineResult = {
   run_id: "gp_2026w21_abc123",
@@ -69,5 +74,26 @@ describe("triggerPipeline", () => {
     expect(res).toEqual(sampleResult);
     expect(res.run_id).toBe("gp_2026w21_abc123");
     expect(res.task_id).toBe("task-xyz");
+  });
+});
+
+describe("getAutomationLevel (D1 O8 GET consumer)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("GETs /pipeline/automation-level and returns res.data unwrapped", async () => {
+    get.mockResolvedValue({ data: { level: "L2" } });
+    const res = await getAutomationLevel();
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith("/pipeline/automation-level");
+    expect(res).toEqual({ level: "L2" });
+  });
+
+  it("returns the backend default L0 when backend so reports", async () => {
+    get.mockResolvedValue({ data: { level: "L0" } });
+    const res = await getAutomationLevel();
+    expect(res.level).toBe("L0");
   });
 });

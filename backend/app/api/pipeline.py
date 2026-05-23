@@ -225,6 +225,9 @@ async def set_automation_level(
         {"level": body.level},
     )
     await session.commit()
+    # Audit trail for the mutation (P3-5 review fix) — single-row pipeline UI
+    # setting change is worth one info line, matches sibling mutating endpoints.
+    logger.info("pipeline_automation_level_set", new_level=body.level)
     return AutomationLevelResponse(level=body.level)
 
 
