@@ -48,7 +48,21 @@ INSERT INTO pipeline_settings (id, automation_level)
 VALUES (1, 'L0')
 ON CONFLICT (id) DO NOTHING;
 
+-- ── D1 O3 — Pause gate (PN-003 iter 12, 2026-05-23/24) ────────────
+-- Gate-at-entry semantics: paused_at IS NOT NULL → POST /trigger 409
+-- + Beat run_gp_mining / run_bruteforce_mining skip-and-log. Mid-run
+-- cooperative abort is OUT OF SCOPE (deferred to future iter).
+
+ALTER TABLE pipeline_settings
+    ADD COLUMN IF NOT EXISTS paused_at      TIMESTAMP WITH TIME ZONE NULL,
+    ADD COLUMN IF NOT EXISTS paused_reason  TEXT NULL;
+
+COMMENT ON COLUMN pipeline_settings.paused_at IS
+    'NULL = active; NOT NULL = paused since this timestamp (gate-at-entry only, mid-run not aborted)';
+COMMENT ON COLUMN pipeline_settings.paused_reason IS
+    '可选暂停理由 (≤500 字), UI 显示用 (PN-003 §3)';
+
 -- ── 验证 (注释, 迁移后手工跑) ──────────────────────────────────
--- SELECT * FROM pipeline_settings;  -- 预期 1 row (id=1, automation_level='L0')
+-- SELECT * FROM pipeline_settings;  -- 预期 1 row (id=1, automation_level='L0', paused_at=NULL)
 -- SELECT column_name, data_type, is_nullable, column_default
 --   FROM information_schema.columns WHERE table_name='pipeline_settings' ORDER BY ordinal_position;

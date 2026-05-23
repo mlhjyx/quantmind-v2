@@ -132,6 +132,34 @@ class AutomationLevelResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# D1 O3 — Pipeline pause gate (PN-003 iter 12, 2026-05-23/24)
+# ---------------------------------------------------------------------------
+
+
+class PauseRequest(BaseModel):
+    """Pipeline pause 请求体 (D1 O3, PN-003)。"""
+
+    reason: str | None = Field(
+        default=None,
+        max_length=500,
+        description="可选暂停理由 (UI 显示用, ≤500 字符)",
+    )
+
+
+class PauseStatusResponse(BaseModel):
+    """Pipeline pause 状态响应 (pause / resume 共用)。"""
+
+    paused_at: str | None = Field(
+        default=None,
+        description="ISO8601 时间戳; NULL = active",
+    )
+    paused_reason: str | None = Field(
+        default=None,
+        description="暂停理由 (若已设置)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # 端点
 # ---------------------------------------------------------------------------
 
@@ -231,6 +259,104 @@ async def set_automation_level(
     return AutomationLevelResponse(level=body.level)
 
 
+# ---------------------------------------------------------------------------
+# D1 O3 pause / resume endpoints (PN-003 iter 12)
+# ---------------------------------------------------------------------------
+
+
+async def _read_pause_state(
+    session: AsyncSession,
+) -> tuple[Any, str | None]:
+    """读取 pipeline_settings 当前 pause 状态 (paused_at, paused_reason).
+
+    Returns:
+        (paused_at, paused_reason) — paused_at 为 datetime | None.
+        表无 row → (None, None) — 与 PN-001 防御性默认对齐。
+    """
+    result = await session.execute(
+        text("SELECT paused_at, paused_reason FROM pipeline_settings WHERE id = 1")
+    )
+    row = result.first()
+    if row is None:
+        return (None, None)
+    return (row[0], row[1])
+
+
+@router.post(
+    "/pause",
+    summary="暂停 Pipeline gate-at-entry (D1 O3, PN-003)",
+    response_model=PauseStatusResponse,
+)
+async def pause_pipeline(
+    body: PauseRequest | None = None,
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> PauseStatusResponse:
+    """设置 pipeline_settings.paused_at = NOW() — gate-at-entry 暂停。
+
+    语义 (PN-003 §3):
+      - paused_at IS NULL → set NOW() + reason (从 body, 可空).
+      - paused_at IS NOT NULL → idempotent NO-overwrite — 不刷新 paused_at,
+        不覆盖 paused_reason (防止双击意外覆盖原因).
+    后续 POST /trigger 返回 409 / Beat 调度跳过, 直到 /resume 调用.
+    当前运行中任务 NOT aborted (mid-run cooperative abort 显式 out of scope).
+    """
+    body = body or PauseRequest()
+
+    paused_at, paused_reason = await _read_pause_state(session)
+
+    if paused_at is not None:
+        # Idempotent — return current state, do not overwrite
+        return PauseStatusResponse(
+            paused_at=paused_at.isoformat() if hasattr(paused_at, "isoformat") else str(paused_at),
+            paused_reason=paused_reason,
+        )
+
+    # Not paused yet — insert/update with reason
+    await session.execute(
+        text(
+            "INSERT INTO pipeline_settings (id, automation_level, paused_at, paused_reason) "
+            "VALUES (1, 'L0', NOW(), :reason) "
+            "ON CONFLICT (id) DO UPDATE SET paused_at = NOW(), paused_reason = EXCLUDED.paused_reason"
+        ),
+        {"reason": body.reason},
+    )
+    await session.commit()
+
+    # Re-read to get the actual NOW() timestamp the DB assigned
+    new_paused_at, new_reason = await _read_pause_state(session)
+    logger.info("pipeline_paused", paused_reason=body.reason)
+    return PauseStatusResponse(
+        paused_at=new_paused_at.isoformat() if new_paused_at is not None else None,
+        paused_reason=new_reason,
+    )
+
+
+@router.post(
+    "/resume",
+    summary="恢复 Pipeline (清除 pause 状态) (D1 O3, PN-003)",
+    response_model=PauseStatusResponse,
+)
+async def resume_pipeline(
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> PauseStatusResponse:
+    """清除 pipeline_settings.paused_at — 下次 Beat / /trigger 正常执行。
+
+    Idempotent: 已 active (paused_at IS NULL) 时 noop, 返回 NULL 状态。
+    """
+    await session.execute(
+        text(
+            "INSERT INTO pipeline_settings (id, automation_level, paused_at, paused_reason) "
+            "VALUES (1, 'L0', NULL, NULL) "
+            "ON CONFLICT (id) DO UPDATE SET paused_at = NULL, paused_reason = NULL"
+        )
+    )
+    await session.commit()
+    logger.info("pipeline_resumed")
+    return PauseStatusResponse(paused_at=None, paused_reason=None)
+
+
 @router.get(
     "/status",
     summary="当前Pipeline运行状态",
@@ -252,6 +378,10 @@ async def get_pipeline_status(
     if row is None:
         row = await _fetch_latest_run(session, status_filter=None)
 
+    # D1 O3 (PN-003 iter 12) — surface pause state alongside run status
+    paused_at, paused_reason = await _read_pause_state(session)
+    paused_at_iso = paused_at.isoformat() if paused_at is not None else None
+
     if row is None:
         return {
             "active_run_id": None,
@@ -262,6 +392,8 @@ async def get_pipeline_status(
             "progress": {},
             "started_at": None,
             "error": None,
+            "paused_at": paused_at_iso,
+            "paused_reason": paused_reason,
             "message": "无Pipeline运行记录",
         }
 
@@ -282,6 +414,8 @@ async def get_pipeline_status(
         "started_at": row["started_at"].isoformat() if row["started_at"] else None,
         "finished_at": row["finished_at"].isoformat() if row["finished_at"] else None,
         "error": row["error_message"],
+        "paused_at": paused_at_iso,
+        "paused_reason": paused_reason,
         "config_summary": {
             "generations": config.get("generations"),
             "population": config.get("population"),

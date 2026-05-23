@@ -50,6 +50,28 @@ class MiningService:
         self._session = session
 
     # ------------------------------------------------------------------
+    # D1 O3 — Pause gate helper (PN-003 iter 12)
+    # ------------------------------------------------------------------
+
+    async def _is_paused(self) -> tuple[Any, str | None] | None:
+        """读取 pipeline_settings 当前 pause 状态.
+
+        Returns:
+            (paused_at, paused_reason) when paused_at IS NOT NULL.
+            None when active (paused_at IS NULL or table is empty — defensive
+            default mirrors PN-001 GET /automation-level behavior).
+
+        Used by start_mining_task to gate-at-entry the /trigger path.
+        """
+        result = await self._session.execute(
+            text("SELECT paused_at, paused_reason FROM pipeline_settings WHERE id = 1")
+        )
+        row = result.first()
+        if row is None or row[0] is None:
+            return None
+        return (row[0], row[1])
+
+    # ------------------------------------------------------------------
     # start_mining_task
     # ------------------------------------------------------------------
 
@@ -77,6 +99,18 @@ class MiningService:
         valid_engines = {"gp", "bruteforce", "llm"}
         if engine not in valid_engines:
             raise ValueError(f"engine 必须是 {valid_engines} 之一，收到: {engine!r}")
+
+        # D1 O3 (PN-003 iter 12) — pause gate-at-entry. If pipeline_settings.paused_at
+        # is NOT NULL, refuse to start a new run regardless of engine availability.
+        # Route layer converts RuntimeError → 409 (same pattern as engine-running check).
+        paused_state = await self._is_paused()
+        if paused_state is not None:
+            paused_at, paused_reason = paused_state
+            reason_suffix = f" ({paused_reason})" if paused_reason else ""
+            raise RuntimeError(
+                f"Pipeline paused since {paused_at.isoformat()}{reason_suffix}; "
+                f"call POST /api/pipeline/resume before triggering."
+            )
 
         # 检查同引擎是否已有 running 任务
         running_check = await self._session.execute(

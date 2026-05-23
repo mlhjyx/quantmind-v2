@@ -23,6 +23,8 @@ import apiClient from "@/api/client";
 import {
   triggerPipeline,
   getAutomationLevel,
+  pausePipeline,
+  resumePipeline,
   type TriggerPipelineResult,
 } from "@/api/pipeline";
 
@@ -95,5 +97,53 @@ describe("getAutomationLevel (D1 O8 GET consumer)", () => {
     get.mockResolvedValue({ data: { level: "L0" } });
     const res = await getAutomationLevel();
     expect(res.level).toBe("L0");
+  });
+});
+
+describe("pausePipeline (D1 O3 PN-003)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("POSTs /pipeline/pause with empty body when no reason supplied", async () => {
+    post.mockResolvedValue({
+      data: { paused_at: "2026-05-24T00:30:00+00:00", paused_reason: null },
+    });
+    const res = await pausePipeline();
+
+    expect(post).toHaveBeenCalledTimes(1);
+    const [url, body] = post.mock.calls[0];
+    expect(url).toBe("/pipeline/pause");
+    expect(body).toEqual({});
+    expect(res.paused_at).toBe("2026-05-24T00:30:00+00:00");
+    expect(res.paused_reason).toBeNull();
+  });
+
+  it("POSTs /pipeline/pause with {reason} when reason supplied", async () => {
+    post.mockResolvedValue({
+      data: { paused_at: "2026-05-24T00:30:00+00:00", paused_reason: "maintenance" },
+    });
+    const res = await pausePipeline("maintenance");
+
+    const [, body] = post.mock.calls[0];
+    expect(body).toEqual({ reason: "maintenance" });
+    expect(res.paused_reason).toBe("maintenance");
+  });
+});
+
+describe("resumePipeline (D1 O3 PN-003)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("POSTs /pipeline/resume with no body and returns null state", async () => {
+    post.mockResolvedValue({
+      data: { paused_at: null, paused_reason: null },
+    });
+    const res = await resumePipeline();
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith("/pipeline/resume");
+    expect(res).toEqual({ paused_at: null, paused_reason: null });
   });
 });
