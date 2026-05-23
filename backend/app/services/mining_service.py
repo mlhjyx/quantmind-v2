@@ -53,7 +53,7 @@ class MiningService:
     # D1 O3 — Pause gate helper (PN-003 iter 12)
     # ------------------------------------------------------------------
 
-    async def _is_paused(self) -> tuple[Any, str | None] | None:
+    async def _is_paused(self) -> tuple[datetime, str | None] | None:
         """读取 pipeline_settings 当前 pause 状态.
 
         Returns:
@@ -62,6 +62,8 @@ class MiningService:
             default mirrors PN-001 GET /automation-level behavior).
 
         Used by start_mining_task to gate-at-entry the /trigger path.
+        Return-type-narrowed datetime (P2 reviewer fix iter 12) — row[0] is
+        a TIMESTAMPTZ column, asyncpg/SQLAlchemy decode it as datetime.
         """
         result = await self._session.execute(
             text("SELECT paused_at, paused_reason FROM pipeline_settings WHERE id = 1")

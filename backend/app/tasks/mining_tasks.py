@@ -301,8 +301,14 @@ async def _is_pipeline_paused() -> tuple[Any, str | None] | None:
             return None
         return (row["paused_at"], row["paused_reason"])
     except Exception as exc:
-        # Fail-safe: 0 block Beat 调度 (旁路 pause 检查). 沿用铁律 33 注释体例.
-        logger.warning(  # silent_ok: gate-at-entry fail-safe — Beat 优于 pause 检查
+        # Fail-safe trade-off (PN-003 §6 R2 + P2 reviewer fix iter 12): on DB
+        # error we return None → Beat task proceeds. This trades pause-safety
+        # for Beat liveness — a pause request the DB can't surface lets a
+        # paused pipeline still fire. We accept this because (a) pause is
+        # advisory not a safety control (red lines live in .env + broker
+        # guard), and (b) blocking Beat indefinitely on transient DB blip is
+        # worse than the rare missed pause. 沿用铁律 33 显式 silent_ok 注释.
+        logger.warning(  # silent_ok: gate-at-entry fail-safe — Beat liveness > pause safety
             "_is_pipeline_paused DB 查询失败 (跳过 pause 检查)",
             extra={"error": str(exc)},
         )
