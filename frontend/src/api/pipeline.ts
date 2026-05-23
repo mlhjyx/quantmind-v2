@@ -161,9 +161,17 @@ export async function getPipelineLogs(runId: string): Promise<PipelineLogEntry[]
 }
 
 export async function setAutomationLevel(level: AutomationLevel): Promise<void> {
-  // NOTE: No backend endpoint exists yet. PUT /api/pipeline/automation-level is not
-  // implemented in backend/app/api/pipeline.py. Will return 404 until added.
+  // Backend wired by D1 O8 (PN-001 iter 10, 2026-05-23):
+  // PUT /api/pipeline/automation-level → singleton pipeline_settings UPSERT.
   await apiClient.put("/pipeline/automation-level", { level });
+}
+
+/** Read persisted pipeline automation_level from backend (D1 O8 GET consumer).
+ *  Backend returns defensive default `{level:"L0"}` when no row exists.
+ */
+export async function getAutomationLevel(): Promise<{ level: AutomationLevel }> {
+  const res = await apiClient.get<{ level: AutomationLevel }>("/pipeline/automation-level");
+  return res.data;
 }
 
 /** 查询单次 Pipeline 运行详情，含 candidates（approval_queue）列表。 */

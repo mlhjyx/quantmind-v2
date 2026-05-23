@@ -903,7 +903,34 @@ CREATE INDEX ix_news_classified_urgency_time ON news_classified (urgency, classi
     WHERE urgency IN ('P0', 'P1');  -- partial index, P0/P1 真热查询 (intraday push)
 COMMENT ON TABLE news_classified IS 'V3§3.2 NewsClassifier V4-Flash L0.2 output 表 (sub-PR 7b.2 NewsClassifierService)';
 
+-- ── pipeline_settings (D1 O8 iter 10, PN-001, 2026-05-23) ──────────────────
+-- Singleton 表 — pipeline 运行时 UI 设置 (automation_level L0-L4)
+-- 设计: docs/design/PN_001_automation_level_persistence.md
+-- Migration: backend/migrations/pipeline_settings.sql (idempotent, ON CONFLICT)
+-- ⚠️ KEEP IN SYNC: 任何 schema 改动必同时修改 backend/migrations/pipeline_settings.sql
+CREATE TABLE IF NOT EXISTS pipeline_settings (
+    id               INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- singleton enforce
+    automation_level VARCHAR(8) NOT NULL DEFAULT 'L0'
+                        CHECK (automation_level IN ('L0','L1','L2','L3','L4')),
+    updated_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_by       VARCHAR(64)  -- NULL 直至 auth/RBAC 接入 (PN-001 §6)
+);
+COMMENT ON TABLE pipeline_settings IS 'D1 O8 — Pipeline UI singleton 设置 (PN-001 iter 10, 2026-05-23)';
+COMMENT ON COLUMN pipeline_settings.id IS 'Singleton enforce via CHECK (id = 1) + PK — 仅 1 row';
+COMMENT ON COLUMN pipeline_settings.automation_level IS '用户选定的自动化级别 (L4R spec L0-L4 enum)';
+
+CREATE OR REPLACE FUNCTION _pipeline_settings_touch_updated_at() RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at := NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_pipeline_settings_touch ON pipeline_settings;
+CREATE TRIGGER trg_pipeline_settings_touch
+    BEFORE UPDATE ON pipeline_settings
+    FOR EACH ROW EXECUTE FUNCTION _pipeline_settings_touch_updated_at();
+
+INSERT INTO pipeline_settings (id, automation_level) VALUES (1, 'L0') ON CONFLICT (id) DO NOTHING;
+
 -- ═══════════════════════════════════════════════════
--- 总计: 49张表（+4: stock_status_daily + minute_bars + news_raw + news_classified DDL化）
+-- 总计: 50张表（+5: stock_status_daily + minute_bars + news_raw + news_classified + pipeline_settings DDL化）
 -- 旧版QUANTMIND_V2_DDL_COMPLETE.sql 已废弃，以本文件为准
 -- ═══════════════════════════════════════════════════

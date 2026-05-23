@@ -20,7 +20,7 @@ ruff noqa: B008 — FastAPI Depends() in default args is the standard pattern.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -107,6 +107,31 @@ class TriggerPipelineResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# D1 O8 — Automation-level persistence (PN-001 iter 10)
+# ---------------------------------------------------------------------------
+
+AutomationLevel = Literal["L0", "L1", "L2", "L3", "L4"]
+
+
+class AutomationLevelRequest(BaseModel):
+    """Pipeline automation-level 更新请求体 (D1 O8, PN-001)。"""
+
+    level: AutomationLevel = Field(
+        ...,
+        description="自动化级别 (L4R spec L0-L4 enum)",
+    )
+
+
+class AutomationLevelResponse(BaseModel):
+    """Pipeline automation-level 响应。"""
+
+    level: AutomationLevel = Field(
+        ...,
+        description="当前 / 更新后的自动化级别",
+    )
+
+
+# ---------------------------------------------------------------------------
 # 端点
 # ---------------------------------------------------------------------------
 
@@ -152,6 +177,58 @@ async def trigger_pipeline(
         engine=body.engine,
         status=result["status"],
     )
+
+
+@router.get(
+    "/automation-level",
+    summary="读取当前 pipeline 自动化级别 (D1 O8, PN-001)",
+    response_model=AutomationLevelResponse,
+)
+async def get_automation_level(
+    session: AsyncSession = Depends(get_db),
+) -> AutomationLevelResponse:
+    """读取 pipeline_settings singleton 的 automation_level (D1 O8, PN-001).
+
+    防御性默认: 表无 row (migration 未跑) → 返回 'L0'。
+    """
+    result = await session.execute(
+        text("SELECT automation_level FROM pipeline_settings WHERE id = 1")
+    )
+    row = result.first()
+    if row is None:
+        return AutomationLevelResponse(level="L0")
+    return AutomationLevelResponse(level=row[0])
+
+
+@router.put(
+    "/automation-level",
+    summary="设置 pipeline 自动化级别 (D1 O8, PN-001)",
+    response_model=AutomationLevelResponse,
+)
+async def set_automation_level(
+    body: AutomationLevelRequest,
+    session: AsyncSession = Depends(get_db),
+    _local: None = Depends(_require_local),
+) -> AutomationLevelResponse:
+    """更新 pipeline_settings singleton 的 automation_level (D1 O8, PN-001).
+
+    仅本机访问 (沿用 trigger/approve/reject 的 _require_local 体例)。
+    Pydantic Literal 自动 422 invalid level。
+    UPSERT (CONFLICT-DO-UPDATE) — 表 singleton, 永远 id=1。
+    """
+    await session.execute(
+        text(
+            "INSERT INTO pipeline_settings (id, automation_level) "
+            "VALUES (1, :level) "
+            "ON CONFLICT (id) DO UPDATE SET automation_level = EXCLUDED.automation_level"
+        ),
+        {"level": body.level},
+    )
+    await session.commit()
+    # Audit trail for the mutation (P3-5 review fix) — single-row pipeline UI
+    # setting change is worth one info line, matches sibling mutating endpoints.
+    logger.info("pipeline_automation_level_set", new_level=body.level)
+    return AutomationLevelResponse(level=body.level)
 
 
 @router.get(
