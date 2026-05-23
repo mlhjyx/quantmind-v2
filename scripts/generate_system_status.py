@@ -9,7 +9,7 @@ Step 6-B 新增 (2026-04-09): 从 DB/git/代码统计自动生成 SYSTEM_STATUS.
 用法:
     python scripts/generate_system_status.py                    # 打印到 stdout
     python scripts/generate_system_status.py --dry-run          # 只 diff, 不写
-    python scripts/generate_system_status.py --inplace          # 原地更新 SYSTEM_STATUS.md 的标记区段
+    python scripts/generate_system_status.py --output <path>    # 写到指定文件
 
 设计原则: 只覆盖统计章节 (§1/§2/§3/§7), 深度章节 (§4 模块依赖 / §5 PT 调用链) 人工维护。
 """
@@ -322,9 +322,6 @@ def render_markdown(db: dict, code: dict, baseline: dict) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="只输出 diff, 不写")
-    parser.add_argument(
-        "--inplace", action="store_true", help="(未实现) 原地替换 SYSTEM_STATUS.md 标记区段"
-    )
     parser.add_argument("--output", type=str, help="写到指定文件 (默认 stdout)")
     args = parser.parse_args()
 
@@ -336,10 +333,6 @@ def main():
     baseline = gather_baseline()
 
     md = render_markdown(db, code, baseline)
-
-    if args.inplace:
-        print("--inplace 尚未实现。请复制输出手工粘贴。", file=sys.stderr)
-        sys.exit(1)
 
     if args.output:
         out_path = Path(args.output)
