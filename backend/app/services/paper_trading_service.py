@@ -361,6 +361,57 @@ class PaperTradingService:
         # ── 信号→执行时延 ──
         # trade_log.signal_date (信号日) vs trade_date (执行日)
         # 近似: signal_date=trade_date的前一交易日，时延约16h
+        #
+        # ─────────────────────────────────────────────────────────────────────
+        # DEFER sediment (iter 40 — PT-coupled premature precision; paired with
+        # iter 40 IMPLEMENT LL-194 codification per §5 same-commit-ship)
+        # ─────────────────────────────────────────────────────────────────────
+        # Original Phase 1 plan: hardcoded "signal生成时间=信号日17:20" +
+        # "执行时间=执行日09:30" timing for signal→execution gap calculation.
+        # iter 40 anti-assumption SOP verify (parallel to iter 36 target_return
+        # DEFER reasoning at line 311-350 above):
+        #
+        #   (i) Hardcoded 17:20 signal generation time: Risk Framework V3 Beat
+        #       schedules (backend/app/tasks/beat_schedule.py) include 14:30
+        #       (PMSRule daily check), 17:30 (DailyMoneyflow), 18:00 (DailyIC),
+        #       19:00 Fri (factor_lifecycle). 17:20 hardcode does not match any
+        #       current Beat entry and is not parameterized from settings. True
+        #       signal_ts source would be signal_log.created_at OR scheduler_
+        #       task_log if Risk Framework writes them.
+        #
+        #   (ii) Hardcoded 09:30 execution time: A-share market opens 09:30 but
+        #        QMT actual fill times vary (09:30:01 ~ 09:35 for opening
+        #        auction fills; later for queued limit orders). True exec_ts
+        #        source is trade_log.executed_at (TIMESTAMPTZ already in DDL
+        #        canonical line 349) — would replace the hardcoded combine().
+        #
+        #   (iii) Holiday/weekend signals: hardcoded combine(signal_date, 17:20)
+        #         does not account for signals generated on non-trading days
+        #         (rare but possible if Beat fires on holiday — silent drift).
+        #
+        #   (iv) PT-paused state (cash ¥993,520.66 / 0 持仓 since 2026-04-29 per
+        #        red lines 5/5 sustained). Approximation TE-like behavior — gap
+        #        ≈ 16h is honest stand-in until executed_at + signal_log are
+        #        populated post-Phase B-2 cutover. Changing the calculation
+        #        path during PT-paused window risks polluting performance_series
+        #        signal_execution_gap_hours snapshot used by Phase B-2 cutover
+        #        gate (per ADR-085).
+        #
+        # Verdict: DEFER to Phase B-2 post-PT-restart. Once trade_log.executed_at
+        # is populated by real QMT fills (not synthesized 09:30) AND signal_log
+        # or scheduler_task_log captures actual signal generation timestamp,
+        # ADR-XXX can design:
+        #   - signal_ts from signal_log.created_at (or scheduler_task_log
+        #     finished_at if Risk Framework writes them)
+        #   - exec_ts from trade_log.executed_at (DDL line 349 TIMESTAMPTZ)
+        # Both data sources have post-PT-restart provenance; pre-PT-restart
+        # synthesis would create lineage confusion (cf. iter 36 target_return
+        # DEFER same reasoning at line 330-336 above).
+        #
+        # Approximation kept inline (hardcoded 17:20/09:30) — honest about
+        # precision gap; gap_hours output reflects design-time approximation
+        # not measurement-time reality.
+        # ─────────────────────────────────────────────────────────────────────
         signal_ts_list = []
         exec_ts_list = []
         for t in trades:
@@ -368,11 +419,13 @@ class PaperTradingService:
                 try:
                     from datetime import datetime
 
-                    # signal生成时间：信号日 17:20
+                    # signal生成时间：信号日 17:20 (DEFER iter 40 — true source =
+                    # signal_log.created_at post-Phase B-2; current = hardcoded approximation)
                     sig_dt = datetime.combine(t["signal_date"], datetime.min.time()).replace(
                         hour=17, minute=20
                     )
-                    # 执行时间：执行日 09:30
+                    # 执行时间：执行日 09:30 (DEFER iter 40 — true source =
+                    # trade_log.executed_at TIMESTAMPTZ post-Phase B-2; current = hardcoded approximation)
                     exec_dt = datetime.combine(t["trade_date"], datetime.min.time()).replace(
                         hour=9, minute=30
                     )
