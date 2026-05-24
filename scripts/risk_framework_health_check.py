@@ -97,13 +97,26 @@ EXPECTED_SCHEDULE = {
     # 关联: audit P0-7 root cause (V3_FULL_PROJECT_DEEP_AUDIT_2026_05_18_MASTER.md)
     # + LL-187 候选 (script ↔ Beat schedule drift sediment).
     #
-    # TODO: Re-populate with V3 era active Beat tasks before next sprint:
-    #   - "risk-l4-sweep-1min" (line 211 beat_schedule.py, */1 9-14 CST = 360/day)
-    #   - "risk-market-regime-0900/1430/1600" (3x daily)
-    #   - "risk-dynamic-threshold-5min" (5min trading hours)
-    #   - "meta-monitor-tick" (5min ALL hours = 288/day)
-    #   - "risk-metrics-daily-extract-16-30" (1x daily Mon-Fri)
-    # Until repopulated, script is no-op (0 findings, 0 DingTalk alerts).
+    # ── [Re-population deferred 2026-05-24 iter 28 — premise verification FAILED] ──
+    # Prior TODO proposed repopulating with 5 V3-era Beat tasks (l4-sweep-1min /
+    # dynamic-threshold-5min / market-regime-0900/1430/1600 / meta-monitor-tick /
+    # risk-metrics-daily-extract-16-30). Iter 28 fresh-verify (DB query + code grep):
+    #   - scheduler_task_log 30d window: 0 rows for ANY of the 5 task_name patterns
+    #     (last entries are V2-era intraday_risk_check 83× / risk_daily_check 4×,
+    #     both ending 2026-04-30 — coincides with PT 清仓 sustained pause).
+    #   - grep scheduler_task_log across backend/app/tasks/*_tasks.py: 0 matches
+    #     in l4_sweep / dynamic_threshold / market_regime / meta_monitor /
+    #     daily_metrics_extract task modules. Only daily_pipeline.py + pt_data_service
+    #     + execution_service + factor_health_daily write rows (PT-era tasks).
+    # Re-populating per the original TODO would re-fire the exact 5-15~5-18 P0
+    # 'missing' cascade (P0 alert every check; 0 task_log rows ever to be found).
+    # V3-correct supervision = V3 §13.3 元监控 `meta-monitor-tick` (every 5min,
+    # `qm_platform/risk/metrics/meta_alert_rules`) running INSIDE Celery and
+    # observing Risk Framework state directly, not via scheduler_task_log polling.
+    # This script's role for V3 tasks is therefore obviated; dict stays empty
+    # by design until either V3 tasks are retrofit to write scheduler_task_log
+    # (no roadmap commitment) OR the script itself is archived.
+    # ARCHIVE candidate sediment: surfaceable on next §4.4 backlog rescan.
 }
 
 
