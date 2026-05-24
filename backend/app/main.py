@@ -21,7 +21,10 @@ from app.api.notifications import router as notifications_router
 from app.api.paper_trading import router as paper_trading_router
 from app.api.params import router as params_router
 from app.api.pipeline import router as pipeline_router
-from app.api.pms import router as pms_router
+
+# NOTE: app.api.pms removed iter 50 — PMS v1.0 物理退役 per ADR-010 §C sunset gate
+# (Wave 4 Observability MVP 4.x 启动满足). V3 风控走 qm_platform/risk/rules/pms.py
+# (Wave 3 PMSRule) + V3 §7.3 trailing_stop. 详 ADR-094.
 from app.api.portfolio import router as portfolio_router
 from app.api.realtime import router as realtime_router
 from app.api.remote_status import router as remote_status_router
@@ -113,7 +116,7 @@ app.include_router(realtime_router)
 app.include_router(market_router)
 app.include_router(notifications_router)
 app.include_router(paper_trading_router)
-app.include_router(pms_router)
+# pms_router removed iter 50 (PMS v1.0 物理退役)
 app.include_router(params_router)
 app.include_router(portfolio_router)
 app.include_router(report_router)

@@ -717,107 +717,22 @@ def intraday_risk_check_task(self) -> dict:
 
 
 # ════════════════════════════════════════════════════════════
-# DEPRECATED: 老 pms_check (ADR-010 Session 21 已停 Beat, MVP 3.1 批 1 新 risk_check 替代)
-# 保留 1 sprint 供紧急回滚, 批 3 CB adapter 完成后 + pms_engine.py 一并物理删除
+# RETIRED iter 50 (2026-05-24, ADR-094): PMS v1.0 物理退役
+#
+# 历史: pms_daily_check_task = PMS v1.0 阶梯利润保护 14:30 Beat (ADR-010 Session 21
+# 2026-04-21 已停 Beat schedule, sustained 7+ months 0 真账户触发). 物理保留 1 sprint
+# 紧急回滚窗口 sustained 至 iter 50; ADR-010 §C sunset gate "Wave 4 Observability
+# MVP 4.x 启动" 已满足 (Wave 4 MVP 4.1 batch 1+2.1+2.2 ✅ per CLAUDE.md "下一步" 主线).
+#
+# 替代路径 (V3 风控 SSOT per docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md):
+#   - V3 §4 L1 PMSRule (Wave 3 MVP 3.1 batch 1, backend/qm_platform/risk/rules/pms.py)
+#     走 daily_pipeline.risk_check via PlatformRiskEngine (active 14:30 Beat)
+#   - V3 §7.3 trailing_stop 动态替代 PMSRule v1 静态阈值 (subscribe_quote 实时触发,
+#     backend/qm_platform/risk/rules/realtime/trailing_stop.py)
+#
+# Git revert 路径 (若需紧急回滚): git revert <iter 50 commit> 完整恢复 task + 3 deleted
+# files. 仅保留 main 历史, 不留 in-tree dead code.
 # ════════════════════════════════════════════════════════════
-
-
-@celery_app.task(
-    bind=True,
-    name="daily_pipeline.pms_check",
-    acks_late=True,
-    max_retries=1,
-    default_retry_delay=60,
-    time_limit=300,
-)
-def pms_daily_check_task(self) -> dict:
-    """PMS阶梯利润保护检查 [DEPRECATED per ADR-010].
-
-    .. warning::
-       **DEPRECATED per ADR-010 (Session 21 2026-04-21) — MVP 3.1 批 1 Session 29 新任务替代**
-
-       Celery Beat pms-daily-check 调度已停 (beat_schedule.py Session 21).
-       本 task function 保留仅供参考, 手工触发 (task queue 直发) 仍能跑但**禁止**生产使用.
-       新生产任务 = `daily_pipeline.risk_check` (走 PlatformRiskEngine + PMSRule).
-       并入 Wave 3 MVP 3.1 Risk Framework (backend/qm_platform/risk/rules/pms.py).
-
-    14:30执行，检查所有持仓是否触发利润保护。
-    非交易日自动跳过。
-
-    Returns:
-        检查结果 dict。
-    """
-    # 交易日检查
-    from engines.trading_day_checker import TradingDayChecker
-
-    from app.core.qmt_client import get_qmt_client
-    from app.services.pms_engine import PMSEngine
-
-    checker = TradingDayChecker()
-    is_td, reason = checker.is_trading_day(date.today())
-    if not is_td:
-        logger.info("[PMS] 非交易日(%s)，跳过", reason)
-        return {"status": "skipped", "reason": reason}
-
-    if not settings.PMS_ENABLED:
-        logger.info("[PMS] PMS已禁用")
-        return {"status": "disabled"}
-
-    engine = PMSEngine()
-    strategy_id = getattr(settings, "PAPER_STRATEGY_ID", "")
-    if not strategy_id:
-        return {"status": "error", "message": "PAPER_STRATEGY_ID未配置"}
-
-    conn = _get_redis_client  # 占位，实际用sync DB连接
-    from app.services.db import get_sync_conn
-
-    conn = get_sync_conn()
-
-    try:
-        positions = engine.sync_positions(conn, strategy_id)
-        if not positions:
-            logger.info("[PMS] 无持仓，跳过")
-            return {"status": "ok", "checked": 0, "triggered": 0}
-
-        codes = [p["code"] for p in positions]
-        peak_prices = engine.get_peak_prices(conn, codes)
-
-        client = get_qmt_client()
-        current_prices = client.get_prices(codes)
-
-        sell_signals = engine.check_all_positions(positions, peak_prices, current_prices)
-
-        # ADR-010 F31 去重 (Session 21 2026-04-21, reviewer MEDIUM 采纳):
-        # 原此处有 StreamBus publish, 与 api/pms.py 重复且无消费者 (F27).
-        # PMS v1 整体 DEPRECATED per ADR-010, 仅保留 record_trigger + logger.info
-        # 供调试 (已停 Beat, 手工触发仍能跑但禁生产). Risk Framework MVP 3.1 批 2 迁移时删.
-        for sig in sell_signals:
-            engine.record_trigger(conn, sig, strategy_id, date.today())
-            logger.info(
-                "[PMS] 触发: %s 层级%d 浮盈=%.1f%% 回撤=%.1f%%",
-                sig.code,
-                sig.level,
-                sig.unrealized_pnl_pct * 100,
-                sig.drawdown_from_peak_pct * 100,
-            )
-
-        conn.commit()
-
-        result = {
-            "status": "ok",
-            "checked": len(positions),
-            "triggered": len(sell_signals),
-            "signals": [{"code": s.code, "level": s.level} for s in sell_signals],
-        }
-        logger.info("[PMS] 检查完成: %d只持仓, %d只触发", len(positions), len(sell_signals))
-        return result
-
-    except Exception as exc:
-        conn.rollback()
-        logger.error("[PMS] 检查异常: %s", exc, exc_info=True)
-        raise self.retry(exc=exc) from exc
-    finally:
-        conn.close()
 
 
 # ════════════════════════════════════════════════════════════

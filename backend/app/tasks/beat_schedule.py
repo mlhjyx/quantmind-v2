@@ -70,11 +70,12 @@ CELERY_BEAT_SCHEDULE: dict = {
     # ── [已移除] PT主链任务由Task Scheduler驱动，Beat不再触发 ──
     # daily-health-check: 移除(2026-04-06) — 由Task Scheduler QM-HealthCheck 16:25触发
     # daily-signal: 移除(2026-04-06) — 由Task Scheduler QuantMind_DailySignal 16:30触发
-    # ── [已停止] pms-daily-check: DEPRECATED per ADR-010 (Session 21 2026-04-21) ──
-    # PMS v1.0 整体死码 (F27-F31 5 重失效), 并入 Wave 3 MVP 3.1 Risk Framework 重构.
-    # 老 task function (daily_pipeline.pms_check) 保留 1 sprint 供紧急回滚,
-    # 批 3 CB adapter 完成后与 pms_engine.py 一并物理删除.
-    # 过渡期保护: scripts/intraday_monitor.py 单股急跌告警 (-8% 阈值).
+    # ── [物理退役 iter 50 2026-05-24 ADR-094] pms-daily-check ──
+    # PMS v1.0 整体物理退役 (Beat停 4-21 + 7+月0真账户触发 + ADR-010 §C sunset gate 满足).
+    # 删除文件: app/services/pms_engine.py + app/api/pms.py + tests/test_pms_engine.py +
+    # daily_pipeline.pms_daily_check_task. V3 风控走 qm_platform/risk/rules/pms.py
+    # (Wave 3 MVP 3.1 PMSRule) + V3 §7.3 trailing_stop (subscribe_quote 实时).
+    # 详 ADR-094 + iter 50 commit message. Git revert 路径完整可逆.
     # ── [RETIRED T1_SPRINT_2026_04_29 → IC-2b 2026-05-15] risk-daily-check + intraday-risk-check ──
     # 历史: T1 sprint 期间 14:30 daily + 5min intraday Beat 因 .env=paper / DB live 命名空间漂移
     # 触发 ALL_SKIPPED ERROR 钉钉刷屏 → 2026-04-29 暂停 (commented-out, 沿用 audit doc).
