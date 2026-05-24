@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import tempfile
 from contextlib import suppress
 from datetime import UTC, date, datetime
@@ -351,8 +352,131 @@ def latest_report_path(strategy_id: str, execution_mode: str = "paper") -> Path 
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+@celery_app.task(
+    name="app.tasks.report_tasks.cleanup_old_reports",
+    soft_time_limit=60,  # 60s soft — file walk + delete typically <5s for <10k files
+    time_limit=120,  # 120s hard kill (反 stuck task blocking Beat)
+)
+def cleanup_old_reports(
+    max_age_days: int = 90,
+    keep_per_tuple: int = 20,
+) -> dict[str, Any]:
+    """Reports retention Celery task (iter 31 — closes iter 30 P2-8).
+
+    Wraps `scripts/cleanup_old_reports.compute_deletes + execute_deletes` so the
+    same retention policy is enforceable via Beat OR ad-hoc CLI. Walks REPORTS_DIR,
+    drops files matching either age-rule (>max_age_days old) or count-rule
+    (oldest beyond keep_per_tuple per (sid, mode) tuple).
+
+    Beat schedule: `reports-cleanup-weekly` Sunday 04:30 SH (post-vacuum 03:00,
+    pre-Sunday-22:00-GP-mining; low-traffic window).
+
+    Args:
+        max_age_days: drop files older than N days (default 90).
+        keep_per_tuple: keep latest N per (sid, mode) tuple (default 20).
+
+    Returns:
+        {
+            "ok": bool,
+            "scanned": int (total artifacts found),
+            "skipped_non_artifacts": int (non-pattern files left untouched),
+            "deletes_planned": int,
+            "deletes_succeeded": int,
+            "deletes_failed": int,
+            "max_age_days": int,
+            "keep_per_tuple": int,
+        }
+
+    Raises:
+        ValueError: bad threshold args (passthrough from compute_deletes).
+        OSError: filesystem walk error propagates (反 silent retention failure).
+    """
+    # Import inside task to avoid scripts/-import side-effects in Celery worker boot.
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        from cleanup_old_reports import compute_deletes, execute_deletes  # noqa: PLC0415
+    finally:
+        # Pop the path entry (反 sys.path pollution across other tasks in same worker).
+        # silent_ok: another concurrent task may have already cleaned the entry.
+        with suppress(ValueError):
+            sys.path.remove(str(PROJECT_ROOT / "scripts"))
+
+    if not REPORTS_DIR.exists():
+        logger.info("[reports-cleanup] dir missing: %s (no-op)", REPORTS_DIR)
+        return {
+            "ok": True,
+            "scanned": 0,
+            "skipped_non_artifacts": 0,
+            "deletes_planned": 0,
+            "deletes_succeeded": 0,
+            "deletes_failed": 0,
+            "max_age_days": max_age_days,
+            "keep_per_tuple": keep_per_tuple,
+        }
+
+    deletes, skipped = compute_deletes(
+        REPORTS_DIR,
+        max_age_days=max_age_days,
+        keep_per_tuple=keep_per_tuple,
+    )
+
+    # Total artifacts found = deletes + (per-tuple kept), inferred by re-walking.
+    # For return-dict transparency, scanned = #artifacts (deletes + remaining).
+    total_artifacts = sum(
+        1 for p in REPORTS_DIR.iterdir() if p.is_file() and p not in set(skipped)
+    )
+
+    if not deletes:
+        logger.info(
+            "[reports-cleanup] 0 deletes (scanned=%d skipped=%d max_age=%d keep=%d)",
+            total_artifacts,
+            len(skipped),
+            max_age_days,
+            keep_per_tuple,
+        )
+        return {
+            "ok": True,
+            "scanned": total_artifacts,
+            "skipped_non_artifacts": len(skipped),
+            "deletes_planned": 0,
+            "deletes_succeeded": 0,
+            "deletes_failed": 0,
+            "max_age_days": max_age_days,
+            "keep_per_tuple": keep_per_tuple,
+        }
+
+    success, failures = execute_deletes(deletes)
+    logger.info(
+        "[reports-cleanup] planned=%d success=%d failures=%d scanned=%d skipped=%d",
+        len(deletes),
+        success,
+        len(failures),
+        total_artifacts,
+        len(skipped),
+    )
+
+    # 反 silent partial cleanup: raise on any delete failure (Celery retry sustained).
+    if failures:
+        raise OSError(
+            f"reports-cleanup: {len(failures)}/{len(deletes)} delete(s) failed; "
+            f"first error: {failures[0][1]}"
+        )
+
+    return {
+        "ok": True,
+        "scanned": total_artifacts,
+        "skipped_non_artifacts": len(skipped),
+        "deletes_planned": len(deletes),
+        "deletes_succeeded": success,
+        "deletes_failed": 0,
+        "max_age_days": max_age_days,
+        "keep_per_tuple": keep_per_tuple,
+    }
+
+
 __all__ = [
     "generate_performance_report",
+    "cleanup_old_reports",
     "latest_report_path",
     "REPORTS_DIR",
 ]

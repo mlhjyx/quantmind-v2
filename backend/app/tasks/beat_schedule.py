@@ -421,4 +421,28 @@ CELERY_BEAT_SCHEDULE: dict = {
     # dual-write-check-daily 已退役 (MVP 2.1c Sub3.5, 2026-04-18):
     #   老 3 fetcher (fetch_base_data/fetch_minute_bars/qmt 直 xtdata) 已删, dual-write 监控无必要
     #   Session 6 backfill 19/19 PASS 完成历史硬门, 新路径 (pt_data_service/QMTDataSource) 已生产
+    # ── reports-cleanup-weekly: 周日 04:30 SH (iter 31 — closes iter 30 PR #459 P2-8) ──
+    # 消费 backend/app/tasks/report_tasks.cleanup_old_reports — reports/ 目录 retention
+    # 2-rule policy (age >90d 或 count >20 per (sid,mode) tuple, union semantic).
+    # 时段选择 (反 hard collision):
+    #   - 03:00 SH QuantMind_VacuumAnalyze (schtask) — 90min buffer 前, VACUUM 完全独立 (DB ops vs FS ops)
+    #   - 22:00 SH gp-weekly-mining (Beat) — 17.5h buffer 后, 完全独立
+    #   - 03:30 SH QuantMind_CeleryNightlyRestart (若启用 ADR-086 候选) — 60min buffer 前
+    # 04:30 是周日凌晨低峰窗口, FS-only ops, ~0 CPU/IO 影响; weekly cadence 足够
+    # (iter 30 默认 keep=20 per (sid, mode), 1 dispatch/day = 20 days retention即上限).
+    # 铁律 44 X9 post-merge ops: `Servy restart QuantMind-CeleryBeat AND QuantMind-Celery`
+    #   (沿用 dynamic_threshold_tasks + market_regime_tasks + slippage-calibration 体例;
+    #   新增 Beat schedule entry 必须 restart Beat 才载入, restart Celery 才载入新 task).
+    "reports-cleanup-weekly": {
+        "task": "app.tasks.report_tasks.cleanup_old_reports",
+        "schedule": crontab(hour=4, minute=30, day_of_week="0"),  # 0=周日
+        "kwargs": {
+            "max_age_days": 90,
+            "keep_per_tuple": 20,
+        },
+        "options": {
+            "queue": "default",
+            "expires": 3600,  # 1h within next 23h cycle
+        },
+    },
 }
