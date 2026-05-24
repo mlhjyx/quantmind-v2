@@ -18,7 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
-from app.tasks.report_tasks import generate_performance_report, latest_report_path
+from app.tasks.report_tasks import (
+    generate_performance_report,
+    latest_report_path,
+    list_reports_for,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -276,3 +280,55 @@ async def get_latest_report(
 
     payload["_artifact_path"] = str(path)
     return payload
+
+
+@router.get("/{strategy_id}/list")
+async def list_strategy_reports(
+    strategy_id: str,
+    execution_mode: str | None = Query(
+        default=None,
+        description="过滤模式: paper / live; 不传则两者都返回",
+    ),
+    limit: int = Query(default=20, ge=1, le=100, description="最大条数 (cap 100)"),
+) -> list[dict[str, Any]]:
+    """列出指定策略的历史报告 artifacts (iter 32 — extends iter 30 /latest).
+
+    按 mtime DESC 排序, 返回 (target_date, execution_mode, artifact_path,
+    mtime_utc, summary preview) 元数据. 摘要从 JSON body 抽取 summary 字段,
+    artifact 损坏的条目 INCLUDE 在响应中 + `_corrupt=True` 标记 (反 silent
+    skip 让损坏 artifact 看不见).
+
+    与 iter 30 的 GET /{strategy_id}/latest 互补:
+      - /latest 单条最新, /list 历史多条
+      - /latest 返回完整 payload, /list 仅元数据 + summary preview (反 N×完整
+        payload over-the-wire 浪费 + N×JSON-parse 浪费)
+
+    Args:
+        strategy_id: 策略 UUID 字符串 (URL path arg).
+        execution_mode: 可选过滤 paper/live; 不传则不过滤.
+        limit: 最大条数 (1-100, default 20).
+
+    Returns:
+        list of {strategy_id, execution_mode, target_date, artifact_path,
+                 mtime_utc, summary | None, _corrupt: bool, _corrupt_reason?}.
+        空列表 (200) 表示该策略没有任何 artifact (NOT 404 — 列表型 endpoint
+        empty 是合法状态, 不同于 /latest 的 "no artifact" 404 语义).
+
+    Raises:
+        HTTPException 400: execution_mode 非法值 (非 None / paper / live).
+    """
+    if execution_mode is not None and execution_mode not in ("paper", "live"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"execution_mode must be None or 'paper'/'live', "
+                f"got {execution_mode!r}"
+            ),
+        )
+
+    try:
+        return list_reports_for(strategy_id, execution_mode=execution_mode, limit=limit)
+    except ValueError as e:
+        # list_reports_for raises ValueError on bad limit / bad mode; endpoint
+        # has its own validation but defensive convert to 400 for any leakage.
+        raise HTTPException(status_code=400, detail=str(e)) from e
