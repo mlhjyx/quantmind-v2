@@ -78,15 +78,17 @@
 
 ### 3.2 rule_id 动态模式 (对齐批 1 PMSRule)
 
+> ⚠️ **V3 SSOT redirect (iter 55 2026-05-25)**: 下表 L2→L4 transition `cb_escalate_l4 累计亏损 > 25%` 是 Wave 3 batch 3 CB adapter 旧设计 (ADR-010 addendum). **V3 风控 L4 已被 [ADR-027](../adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) 重定义**为 STAGED default + 反向决策权 + 跌停 fallback (NOT "累计亏损 > 25% → 停止 + 人工审批" 自动逻辑). V3 SSOT spec: [`QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md`](../QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md) §7 L4 执行优化层. 此表保留作 Wave 3 CB adapter 历史 reference, V3 实际 L4 触发逻辑走 ADR-027.
+
 | Transition | rule_id | Example |
 |---|---|---|
 | L0 → L1 | `cb_escalate_l1` | 单策略日亏 > 3% |
 | L0 → L2 | `cb_escalate_l2` | 总组合日亏 > 5% |
 | L1 → L3 | `cb_escalate_l3` | 滚动 5d/20d 亏损 |
-| L2 → L4 | `cb_escalate_l4` | 累计亏损 > 25% |
+| L2 → L4 | `cb_escalate_l4` | 累计亏损 > 25% ⚠️ V3 ADR-027 重定义 (见 §3.2 redirect note) |
 | L1 → L0 | `cb_recover_l0` | 次日自动恢复 |
 | L3 → L2 | `cb_recover_l2` | 降级部分恢复 |
-| L4 → L0 | `cb_recover_l0` | 人工 approve 后完全恢复 |
+| L4 → L0 | `cb_recover_l0` | 人工 approve 后完全恢复 ⚠️ V3 ADR-027 重定义 |
 
 ### 3.3 `root_rule_id_for` 反查
 

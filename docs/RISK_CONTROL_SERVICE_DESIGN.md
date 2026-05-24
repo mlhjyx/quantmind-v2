@@ -45,6 +45,13 @@
 
 ## 2. 4级熔断状态机
 
+> ⚠️ **V3 SSOT redirect (iter 55 2026-05-25, in-body marker, sustained doc header)**:
+> §2 body 描述 V2-era 4级熔断状态机 (L0-L4). **V3 ADR-027 重定义 L4** 为 STAGED default + 反向决策权 + 跌停 fallback, NOT 旧 `L4_STOPPED 累计亏损>25% 停止所有交易 人工审批` 自动逻辑.
+> - L0-L3 (NORMAL / L1_PAUSED / L2_HALTED / L3_REDUCED) 升级规则 sustained (V3 §4 L1 PMSRule + §6 L3 dynamic threshold 复用)
+> - **L4 portion** sustained 留作历史 reference, 不再 valid as L4 truth
+> - 真值 source priority: V3_DESIGN §4 L1-L4 ladder + ADR-027 §2.1-§2.3 L4 STAGED + 反向 + 跌停 fallback
+> 详 doc header DEPRECATED notice (lines 5-15) + V3_DESIGN §7 L4 执行优化层.
+
 ### 2.1 状态定义
 
 ```
@@ -52,7 +59,7 @@ NORMAL (L0) ── 正常交易
 L1_PAUSED   ── 单策略日亏>3%, 暂停1天
 L2_HALTED   ── 总组合日亏>5%, 全部暂停
 L3_REDUCED  ── 月亏(滚动20日)>10%, 降仓50%
-L4_STOPPED  ── 累计亏损>25%, 停止所有交易, 人工审批
+L4_STOPPED  ── 累计亏损>25%, 停止所有交易, 人工审批  ⚠️ V3 ADR-027 重定义 (见 §2 redirect note 上方)
 ```
 
 ### 2.2 状态转换规则

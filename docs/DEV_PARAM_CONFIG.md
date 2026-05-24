@@ -143,6 +143,8 @@ Level 3 AI自动调: AI闭环动态优化，前端可切换手动覆盖（14个A
 
 ## 3.6 风控（3个可调 + 5个只读）
 
+> ⚠️ **V3 SSOT redirect (iter 55 2026-05-25)**: L0/L1 静态阈值是 V2-era 设计的 frontend 参数面板, V3 风控真值 source = [`docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md`](QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md) §4 L1 PMSRule + §6 L3 dynamic threshold + §7 L4 STAGED + [ADR-027](adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) (L4 STAGED default + 反向决策权 + 跌停 fallback). 下表"累计亏损停止 25% L0" 是 V2 4层熔断旧设计 (RISK_CONTROL_SERVICE_DESIGN.md §2 L4_STOPPED), V3 不再走"累计亏损 > 25% → 停止所有交易 + 人工审批" 自动逻辑. 仅前端 readonly 显示保留, 后端 wire 走 V3.
+
 | 参数 | 类型 | 范围 | 默认值 | 前端控件 | 级别 |
 |------|------|------|--------|---------|------|
 | 外汇单笔风险 | float | [0.5%, 5%] | 2% | 滑块 | L2 |
@@ -151,7 +153,7 @@ Level 3 AI自动调: AI闭环动态优化，前端可切换手动覆盖（14个A
 | 单股硬上限 | float | — | 15% | 只读 | L0 |
 | 行业硬上限 | float | — | 35% | 只读 | L0 |
 | 月亏损降仓 | float | — | 10% | 只读 | L1 |
-| 累计亏损停止 | float | — | 25% | 只读 | L0 |
+| 累计亏损停止 | float | — | 25% | 只读 | L0 ⚠️ DEFER-TO-V3 [ADR-027](../adr/ADR-027-l4-staged-default-reverse-decision-with-limit-down-fallback.md) |
 | 日亏损暂停 | float | — | 5% | 只读 | L1 |
 
 ## 3.7 回测（7个参数）
