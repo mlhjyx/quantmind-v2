@@ -10,7 +10,6 @@ import {
   TrendingUp,
   Shield,
   ArrowLeftRight,
-  ShieldCheck,
   GraduationCap,
   Settings,
 } from "lucide-react";
@@ -43,7 +42,8 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: TrendingUp, label: "持仓管理", path: "/portfolio" },
       { icon: Shield, label: "风控监控", path: "/risk" },
       { icon: ArrowLeftRight, label: "交易执行", path: "/execution" },
-      { icon: ShieldCheck, label: "利润保护", path: "/pms" },
+      // "利润保护" PMS v1.0 nav entry 物理退役 iter 50 2026-05-24 (ADR-094) —
+      // V3 风控走 /risk dashboard (V3 §4 L1 PMSRule + V3 §7.3 trailing_stop active SSOT).
     ],
   },
   {

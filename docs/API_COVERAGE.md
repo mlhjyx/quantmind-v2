@@ -215,16 +215,16 @@ Router prefixes from `backend/app/api/<file>.py` → `APIRouter(prefix=...)`.
 | 105 | POST | `/api/pipeline/runs/{run_id}/approve/{factor_id}` | Approve factor | pipeline.py:310 | public |
 | 106 | POST | `/api/pipeline/runs/{run_id}/reject/{factor_id}` | Reject factor | pipeline.py:413 | public |
 
-### 2.17 pms — `/api/pms` (`backend/app/api/pms.py`)
+### 2.17 pms — RETIRED iter 50 2026-05-24 (ADR-094)
 
-*Note: PMS deprecated per ADR-010; Beat stopped PR #34*
+**Status**: 🗑️ PHYSICALLY RETIRED. `backend/app/api/pms.py` + `backend/app/services/pms_engine.py` + `pms_daily_check_task` deleted. Router unregistered from `app/main.py`. V3 风控 SSOT 走 `qm_platform/risk/rules/pms.py` (V3 §4 L1 PMSRule) + `qm_platform/risk/rules/realtime/trailing_stop.py` (V3 §7.3 dynamic). Frontend `/pms` page + Sidebar entry + router entry 同 PR 物理移除. Endpoints 107-110 全部 404 — historical rows below kept for audit trail only.
 
 | # | Method | Path | Handler | File:Line | Auth |
 |---|--------|------|---------|-----------|------|
-| 107 | GET | `/api/pms/positions` | PMS positions | pms.py:19 | public |
-| 108 | GET | `/api/pms/history` | PMS history | pms.py:60 | public |
-| 109 | GET | `/api/pms/config` | PMS config | pms.py:106 | public |
-| 110 | POST | `/api/pms/check` | PMS check | pms.py:131 | public |
+| 107 | GET | `/api/pms/positions` | RETIRED iter 50 | — | 404 |
+| 108 | GET | `/api/pms/history` | RETIRED iter 50 | — | 404 |
+| 109 | GET | `/api/pms/config` | RETIRED iter 50 | — | 404 |
+| 110 | POST | `/api/pms/check` | RETIRED iter 50 | — | 404 |
 
 ### 2.18 portfolio — `/api/portfolio` (`backend/app/api/portfolio.py`)
 
@@ -578,10 +578,10 @@ Legend: ✅ Consumed | ❌ Backend-only | 🚧 Frontend-only orphan
 | 104 | `/api/pipeline/runs/{run_id}` | GET | pipeline.ts:150 | ✅ |
 | 105 | `/api/pipeline/runs/{run_id}/approve/{factor_id}` | POST | pipeline.ts:160 | ✅ |
 | 106 | `/api/pipeline/runs/{run_id}/reject/{factor_id}` | POST | pipeline.ts:171 | ✅ |
-| 107 | `/api/pms/positions` | GET | — | ❌ |
-| 108 | `/api/pms/history` | GET | — | ❌ |
-| 109 | `/api/pms/config` | GET | — | ❌ |
-| 110 | `/api/pms/check` | POST | — | ❌ |
+| 107 | `/api/pms/positions` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
+| 108 | `/api/pms/history` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
+| 109 | `/api/pms/config` | GET | — | 🗑️ RETIRED iter 50 (ADR-094) |
+| 110 | `/api/pms/check` | POST | — | 🗑️ RETIRED iter 50 (ADR-094) |
 | 111 | `/api/portfolio/holdings` | GET | — | ❌ |
 | 112 | `/api/portfolio/sector-distribution` | GET | — | ❌ |
 | 113 | `/api/portfolio/daily-pnl` | GET | — | ❌ |
@@ -646,7 +646,7 @@ All 8 `/api/dashboard/*` endpoints (#36–43) have no frontend API module consum
 
 | # | Endpoint | Rationale |
 |---|----------|-----------|
-| 107–110 | `/api/pms/*` | PMS deprecated (ADR-010, PR #34 stopped Beat) |
+| 107–110 | `/api/pms/*` | **PHYSICALLY RETIRED iter 50 2026-05-24 (ADR-094)** — pms_engine.py + api/pms.py + frontend page/route/nav 同 PR 全部删除. V3 SSOT 走 V3 §4 L1 PMSRule + V3 §7.3 trailing_stop |
 | 98 | `/api/params/changelog` | No frontend UI for changelog |
 | 99 | `/api/params/{key}` GET | Only PUT consumed; GET by key unused |
 | 101 | `/api/params/init-defaults` | Init script only |
