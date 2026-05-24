@@ -630,6 +630,34 @@ def test_update_status_accepts_string_status(empty_dal) -> None:
     cursor.execute.assert_called_once()
 
 
+def test_update_status_logs_reason_for_audit_defense_in_depth(empty_dal, caplog) -> None:
+    """铁律 33 defense-in-depth: reason 必落 Servy log 防 silent discard.
+
+    iter 42 sediment: caller-log 契约 0 enforcement → method-internal log 兜底.
+    DDL 加 factor_status_history 后此 log 仍保留为热路径 audit.
+    """
+    import logging
+
+    factory, _, cursor = _make_conn_factory()
+    cursor.rowcount = 1
+    r = DBFactorRegistry(dal=empty_dal, conn_factory=factory)
+
+    with caplog.at_level(logging.INFO, logger="backend.qm_platform.factor.registry"):
+        r.update_status("turnover_mean_20", FactorStatus.DEPRECATED, "IC decay > 3 months")
+
+    # 反 silent discard: 必有 log record 含 name + status + reason 三元
+    matching = [
+        rec
+        for rec in caplog.records
+        if rec.name == "backend.qm_platform.factor.registry" and "update_status" in rec.getMessage()
+    ]
+    assert len(matching) == 1, f"expected 1 log record, got {len(matching)}: {caplog.text}"
+    msg = matching[0].getMessage()
+    assert "turnover_mean_20" in msg
+    assert "deprecated" in msg
+    assert "IC decay > 3 months" in msg
+
+
 # ================================================================
 # _default_ast_jaccard 纯函数
 # ================================================================

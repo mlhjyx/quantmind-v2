@@ -33,6 +33,7 @@ Usage (生产, 含 register):
 from __future__ import annotations
 
 import ast
+import logging
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -50,6 +51,8 @@ from .interface import (
 
 if TYPE_CHECKING:
     from ..data.interface import DataAccessLayer
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- 错误类型 ----------
@@ -338,7 +341,18 @@ class DBFactorRegistry(FactorRegistry):
                     raise FactorNotFound(f"{name} 未在 factor_registry 中")
             conn.commit()
             self.invalidate()  # status 变 → direction cache 可能关联 (保守失效)
-            del reason  # TODO MVP 1.3d: 落审计表 factor_status_history
+            # Defense-in-depth per 铁律 33: reason 写 Servy log 防 silent discard
+            # (caller-log 契约 0 enforcement — method-internal log 兜底). DDL
+            # 加 factor_status_history 表后 (MVP 1.3d), 此 log 仍保留为热路径 audit.
+            logger.info(
+                "factor_registry.update_status: name=%s status=%s reason=%s",
+                name,
+                status_value,
+                reason,
+            )
+            del (
+                reason
+            )  # TODO MVP 1.3d: 落审计表 factor_status_history (DDL pending; Servy log 兜底 above)
         finally:
             conn.close()
 
