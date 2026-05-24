@@ -12,12 +12,14 @@ import {
   type ReportArtifact,
   type ReportListingRow,
 } from "@/api/reports";
+import { getPaperStrategyId } from "@/api/system";
 
 // Iter 35 wire of iter 30/31/32 backend lifecycle: generateReport → task_id
 // capture + toast feedback; listStrategyReports → 策略报告 tab artifact rows.
-// DEFAULT_STRATEGY_ID is a placeholder; future iter can promote to user input
-// or settings.PAPER_STRATEGY_ID-equivalent context fetch.
-const DEFAULT_STRATEGY_ID = "default-strategy";
+// Iter 39 wire: PLACEHOLDER_STRATEGY_ID used only as fallback when backend
+// settings.PAPER_STRATEGY_ID is "" (unconfigured) — real value fetched via
+// getPaperStrategyId on mount and cached in react-query.
+const PLACEHOLDER_STRATEGY_ID = "default-strategy";
 const GENERATE_REFRESH_DELAY_MS = 3000;
 
 // ---- Types ----
@@ -96,14 +98,28 @@ export default function ReportCenter() {
     staleTime: 60_000,
   });
 
+  // Iter 39: fetch backend-configured paper_strategy_id (closes iter 35
+  // DEFAULT_STRATEGY_ID placeholder). Falls back to PLACEHOLDER_STRATEGY_ID
+  // when backend reports configured=false (empty settings.PAPER_STRATEGY_ID).
+  const { data: paperSidResp } = useQuery({
+    queryKey: ["system-paper-strategy-id"],
+    queryFn: () => getPaperStrategyId(),
+    staleTime: 5 * 60_000,  // 5min — config changes are rare
+  });
+  const activeStrategyId =
+    paperSidResp?.configured && paperSidResp.paper_strategy_id
+      ? paperSidResp.paper_strategy_id
+      : PLACEHOLDER_STRATEGY_ID;
+  const sidIsPlaceholder = !paperSidResp?.configured;
+
   // Iter 35: strategy report artifacts (iter 32 endpoint /api/reports/{sid}/list).
   const {
     data: strategyReports = [],
     isLoading: loadingStrategyReports,
     isError: errorStrategyReports,
   } = useQuery<ReportListingRow[]>({
-    queryKey: ["strategy-reports", DEFAULT_STRATEGY_ID],
-    queryFn: () => listStrategyReports(DEFAULT_STRATEGY_ID),
+    queryKey: ["strategy-reports", activeStrategyId],
+    queryFn: () => listStrategyReports(activeStrategyId),
     staleTime: 60_000,
   });
 
@@ -125,7 +141,7 @@ export default function ReportCenter() {
   // Iter 35: useMutation for /generate (iter 30 endpoint) — captures real Celery
   // task_id + provides UI feedback (reverts the iter 30 pre-fix fire-and-forget).
   const generateMutation = useMutation<GenerateReportResponse, Error>({
-    mutationFn: () => generateReport(),
+    mutationFn: () => generateReport(activeStrategyId),
     onSuccess: (data) => {
       setFeedback({
         kind: "success",
@@ -269,7 +285,12 @@ export default function ReportCenter() {
               titleEn="Strategy Performance Artifacts"
               right={
                 <span style={{ fontSize: 10, color: C.text4 }}>
-                  {strategyReports.length} 份 · sid={DEFAULT_STRATEGY_ID}
+                  {strategyReports.length} 份 · sid={activeStrategyId}
+                  {sidIsPlaceholder && (
+                    <span style={{ marginLeft: 6, color: C.warn }}>
+                      (placeholder — settings.PAPER_STRATEGY_ID 未配置)
+                    </span>
+                  )}
                 </span>
               }
             />
