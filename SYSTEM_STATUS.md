@@ -759,19 +759,19 @@ Deferred (5 项 DOC-CLOSED): #3 双轨样式 (50h) / #7 cron hardcoded / #12 PMS
 **核心行情表（全部2014起）**
 | 表 | 行数 | 时间范围 | 备注 |
 |----|------|----------|------|
-| klines_daily | 11,699,794 | 2014-01-02 ~ 2026-04-08 | TimescaleDB hypertable |
-| daily_basic | 11,604,975 | 2014-01-02 ~ 2026-04-08 | |
-| moneyflow_daily | 11,375,743 | 2014-01-02 ~ 2026-04-08 | 2020年已补 ✅ |
-| index_daily | 55,657 | 2014-01-02 ~ 2026-04-08 | |
-| northbound_holdings | 5,542,237 | 2017-01-03 ~ 2026-04-02 | 2019年238天 ✅ |
-| minute_bars | 139,303,467 | 2021-01-04 ~ 2025-12-31 | 列名ts_code(非code) |
-| symbols | 11,631 | - | 含5821只历史退市股 |
+| klines_daily | 11,858,676 | 2014-01-02 ~ ~2026-05-23 | TimescaleDB hypertable; **iter 52 2026-05-25 fresh verify** (was 11,699,794 4-08) |
+| daily_basic | 11,763,860 | 2014-01-02 ~ ~2026-05-23 | **iter 52 2026-05-25 fresh verify** (was 11,604,975 4-08) |
+| moneyflow_daily | 11,375,743 | 2014-01-02 ~ 2026-04-08 | 2020年已补 ✅ (待 iter 52+ fresh refresh) |
+| index_daily | 55,657 | 2014-01-02 ~ 2026-04-08 | (待 iter 52+ fresh refresh) |
+| northbound_holdings | 5,542,237 | 2017-01-03 ~ 2026-04-02 | 2019年238天 ✅ (待 iter 52+ fresh refresh) |
+| minute_bars | 190,885,634 | 2021-01-04 ~ 2025-12-31 | 列名ts_code(非code); **iter 52 2026-05-25 fresh verify** (was 139,303,467 4-17, 1.37x SSOT stale 闭环) |
+| symbols | 11,631 | - | 含5821只历史退市股 (待 iter 52+ fresh refresh) |
 
 **因子表**
 | 表 | 行数 | 时间范围 | 备注 |
 |----|------|----------|------|
-| factor_values | 501,360,926 | 2014-01-02 ~ 2026-04-07 | TimescaleDB hypertable, ~53GB |
-| factor_ic_history | 57,711 | 2021-01-04 ~ 2026-04-06 | |
+| factor_values | 841,376,039 | 2014-01-02 ~ ~2026-05-23 | TimescaleDB hypertable, ~172GB; **iter 52 2026-05-25 fresh verify** (was 501,360,926 4-07, 1.67x SSOT stale 闭环 + sustains Session 45 4-30 840M baseline +0.107% 25d 自然增长) |
+| factor_ic_history | 145,938 | 2021-01-04 ~ ~2026-05-24 | **iter 52 2026-05-25 fresh verify** (was 57,711 4-06, +153% 期间 IC backfill 累积) |
 | factor_registry | 5 | - | 仅Active 5因子 |
 | factor_profile | 51 | - | |
 

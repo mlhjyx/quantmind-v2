@@ -79,12 +79,12 @@ V3 sub-PR Phase 0 起手 + 闭前 sediment / 任何 broker / .env / yaml / DB ro
 | 北向个股RANKING | 15 | nb_ratio_change_5d等, IC反向(direction=-1), G1特征池 |
 | LGBM特征集 | 70 | 全部factor_values因子(48核心+15北向+7新因子Phase2.1, DB自动发现) |
 
-### 因子存储 (2026-04-30 Session 45 D3-B 实测)
-- **factor_values**: 840,478,083 行 (~172 GB, TimescaleDB hypertable 152 chunks) **[Session 45 D3-B 2026-04-30 实测, 跨 SSOT 漂移: SYSTEM_STATUS.md:732 = 501M 4-07 snapshot, 1.67x diff — 待 Phase B-2 post 5-27 fresh DB verify]**
-- **factor_ic_history**: 145,894 行 (~36 MB), IC唯一入库点 (铁律 11), 未入库IC视为不存在
-- **minute_bars**: 190,885,634 行 (~36 GB), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ) **[Session 45 D3-B 2026-04-30 实测, 跨 SSOT 漂移: SYSTEM_STATUS.md:726 = 139M 4-17 snapshot, 1.37x diff — 待 Phase B-2 fresh DB verify]**
-- **klines_daily**: 11,776,616 行 (~4 GB, TimescaleDB hypertable 53 chunks)
-- **daily_basic**: 11,681,799 行 (~3.7 GB)
+### 因子存储 (2026-05-25 iter 52 fresh DB verify, drift 注释闭环)
+- **factor_values**: 841,376,039 行 (~172 GB, TimescaleDB hypertable 152 chunks) **[iter 52 2026-05-25 fresh verify; vs Session 45 D3-B 4-30 840,478,083 = +897,956 / +0.107% drift (25d hypertable 自然增长); vs SYSTEM_STATUS.md:732 stale 501M 4-07 snapshot — 4-30 + 5-25 双 fresh verify 证实 1.67x diff 是 SYSTEM_STATUS stale, NOT CLAUDE.md 错误]**
+- **factor_ic_history**: 145,938 行 (~36 MB) **[iter 52 2026-05-25 fresh verify; vs Session 45 4-30 145,894 = +44 / +0.030% drift]**, IC唯一入库点 (铁律 11), 未入库 IC 视为不存在
+- **minute_bars**: 190,885,634 行 (~36 GB), 5年(2021-2025), Baostock 5分钟K线, 2537只股票(0/3/6开头, 无BJ) **[iter 52 2026-05-25 fresh verify 100% 匹配 Session 45 4-30; vs SYSTEM_STATUS.md:726 stale 139M 4-17 snapshot — 1.37x diff 是 SYSTEM_STATUS stale, NOT CLAUDE.md 错误; minute_bars 0 增量 since 4-30 sustained (PT 4-29 暂停 + 0 新 Baostock pull)]**
+- **klines_daily**: 11,858,676 行 (~4 GB, TimescaleDB hypertable 53 chunks) **[iter 52 2026-05-25 fresh verify; vs Session 45 4-30 11,776,616 = +82,060 / +0.697% drift (25d daily K bar 自然增长)]**
+- **daily_basic**: 11,763,860 行 (~3.7 GB) **[iter 52 2026-05-25 fresh verify; vs Session 45 4-30 11,681,799 = +82,061 / +0.702% drift]**
 - **Parquet缓存**: `_load_shared_data` 30min→1.6s(1000x), `fast_neutralize_batch` 15因子/17.5min
 
 ### 因子评估流程
