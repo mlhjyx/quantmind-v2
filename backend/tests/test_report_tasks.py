@@ -246,55 +246,58 @@ def test_latest_report_path_filters_by_sid(isolated_reports_dir):
     assert "sid-B" not in result.name
 
 
-def test_latest_report_path_regression_no_substring_prefix_leak(isolated_reports_dir):
-    """Iter 36 reviewer P2-2 regression guard: sid="abc" must NOT match abc-extended_*.json.
+def test_latest_report_path_parity_substring_prefix_sids(isolated_reports_dir):
+    """Iter 36 defense-in-depth parity test (NOT a regression-guard for a live bug).
 
-    Pre-iter-36 impl used `glob(f"{prefix}*{suffix}")` which would falsely match
-    when one sid is a substring prefix of another (e.g. caller asks for "abc"
-    but artifact for "abc-extended" exists — glob would return both, mtime-max
-    could leak the wrong-sid artifact). iter 32 `list_reports_for` already had
-    anchored-regex defense; iter 36 closes the same gap on `latest_report_path`.
+    Reviewer iter 36 mutation-test verified pre-fix `glob(f"{safe_sid}_*_{mode}.json")`
+    already rejects substring-prefix sids because the trailing `_` separator
+    anchors the sid boundary (`"abc-extended_...".startswith("abc_")` is False).
+    This test verifies the anchored regex behavior matches glob behavior on the
+    substring-prefix case — defense-in-depth parity, not a closed live exploit.
     """
     from app.tasks.report_tasks import latest_report_path
 
-    # sid="abc" requester; "abc-extended" is a substring-prefix sibling that
-    # MUST NOT bleed into the "abc" result.
     abc_artifact = isolated_reports_dir / "abc_2026-04-28_paper.json"
-    leaky_artifact = isolated_reports_dir / "abc-extended_2026-04-30_paper.json"
+    sibling_artifact = isolated_reports_dir / "abc-extended_2026-04-30_paper.json"
     abc_artifact.write_text('{"sid": "abc"}')
-    leaky_artifact.write_text('{"sid": "abc-extended"}')
-    # Ensure leaky_artifact has newer mtime (worst case — without anchored regex
-    # fix, mtime-max would return the leaky sid by date+mtime ordering).
-    import os
-    import time
-    os.utime(abc_artifact, (time.time() - 1000, time.time() - 1000))
+    sibling_artifact.write_text('{"sid": "abc-extended"}')
 
     result = latest_report_path("abc", "paper")
     assert result is not None
     assert result == abc_artifact, (
-        f"prefix-leak regression: latest_report_path('abc') returned {result.name!r} "
-        f"— expected {abc_artifact.name!r} (anchored regex must reject 'abc-extended_*')"
+        f"parity-failure: latest_report_path('abc') returned {result.name!r} "
+        f"— expected {abc_artifact.name!r} (substring-prefix sids must not bleed)"
     )
     # Confirm reverse direction also clean
     result_ext = latest_report_path("abc-extended", "paper")
-    assert result_ext == leaky_artifact
+    assert result_ext == sibling_artifact
 
 
-def test_latest_report_path_regression_substring_suffix_safe(isolated_reports_dir):
-    """Iter 36 regression guard: anchored regex must also reject suffix-similar sids.
+def test_latest_report_path_rejects_malformed_date_extension(isolated_reports_dir):
+    """Iter 36 actual defense-in-depth gain: anchored regex rejects edge cases
+    that pre-fix glob accepted (e.g. malformed date format or non-.json suffix).
 
-    e.g. caller "xy" must NOT match "wxy_*" (which doesn't have safe_sid_ prefix
-    anchored at filename start). Pre-iter-36 glob would correctly reject this
-    via prefix match, but verify the anchored regex is at-least-as-strict.
-    """
+    Reviewer iter 36 confirmed: pre-fix `glob(f"{safe_sid}_*_{mode}.json")` would
+    return a `.json.bak` file as `.json`-glob-match? NO — glob suffix `.json`
+    requires exact extension; .bak rejected by glob. But malformed date inside
+    matching the glob pattern DOES leak through pre-fix (since glob `*` matches
+    any chars). The anchored regex ``\\d{4}-\\d{2}-\\d{2}`` enforces ISO date
+    format — this is the meaningful defense gain from iter 36.
+    """  # noqa: D301 (escapes are intentional doc-text, not regex)
     from app.tasks.report_tasks import latest_report_path
 
-    (isolated_reports_dir / "xy_2026-04-28_paper.json").write_text('{"sid": "xy"}')
-    (isolated_reports_dir / "wxy_2026-04-29_paper.json").write_text('{"sid": "wxy"}')
+    valid_artifact = isolated_reports_dir / "sid-Z_2026-04-28_paper.json"
+    malformed_date = isolated_reports_dir / "sid-Z_not-a-date_paper.json"
+    valid_artifact.write_text('{"sid": "Z", "valid": true}')
+    malformed_date.write_text('{"sid": "Z", "malformed_date": true}')
 
-    result = latest_report_path("xy", "paper")
+    result = latest_report_path("sid-Z", "paper")
+    # Anchored regex MUST reject `not-a-date` segment; only valid artifact returned.
     assert result is not None
-    assert result.name == "xy_2026-04-28_paper.json"
+    assert result == valid_artifact, (
+        f"defense-in-depth failure: latest_report_path returned {result.name!r} "
+        f"— expected {valid_artifact.name!r} (malformed date must be rejected)"
+    )
 
 
 # ── _atomic_write_json ──────────────────────────────────────────────────────

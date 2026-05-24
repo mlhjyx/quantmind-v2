@@ -437,15 +437,23 @@ def latest_report_path(strategy_id: str, execution_mode: str = "paper") -> Path 
     matching artifact exists (caller should 404).
 
     Resolves by mtime; date in filename is informational. Files for OTHER
-    (sid, mode) tuples are filtered out by **anchored regex** (NOT just prefix
-    + suffix glob — iter 36 reviewer-flagged P2-2 fix per iter 32 reviewer note).
+    (sid, mode) tuples are filtered out by **anchored regex** (parity with
+    iter 32 `list_reports_for` defense; NOT a closed bug — defense-in-depth).
 
-    Reviewer P2-2 fix (iter 32 deferred → iter 36 closed): prior impl used
-    `glob(f"{prefix}*{suffix}")` which would match `abc-extended_*.json` when
-    sid="abc" — false-positive leak across sids that are substring prefixes
-    of other sids. iter 32 `list_reports_for` already used anchored regex
-    (same module); `latest_report_path` lacked the defense. This fix mirrors
-    the iter 32 pattern.
+    Iter 36 defense-in-depth hardening (NOT a closed live exploit — reviewer
+    mutation-test verified pre-fix `glob(f"{safe_sid}_*_{mode}.json")` already
+    rejects substring-prefix sids because the trailing `_` separator anchors
+    the sid boundary at filename start; `"abc-extended_...".startswith("abc_")`
+    is False). The anchored regex DOES tighten the filter against unrelated
+    edge cases not previously covered by glob alone:
+      - rejects malformed date strings (e.g. `abc_26-04-28_paper.json`)
+      - rejects extra-suffix artifacts (e.g. `abc_2026-04-28_paper.json.bak`)
+      - mirrors iter 32 `list_reports_for` pattern for module-wide consistency
+    Originally framed as "iter 32 reviewer P2-2 sustained sibling prefix-leak
+    fix" — reviewer iter 36 corrected the framing: iter 32's P2-2 note may
+    have been speculative or addressed a different scenario; no live exploit
+    on `main` pre-iter-36. Code change kept as defense-in-depth + parity
+    hardening; framing corrected here per reviewer.
     """
     if not REPORTS_DIR.exists():
         return None
