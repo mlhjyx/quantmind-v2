@@ -48,7 +48,15 @@ _MODE_TO_YEARS: dict[BacktestMode, int | None] = {
     BacktestMode.FULL_12Y: 12,  # 多 regime 长周期
     BacktestMode.WF_5FOLD: None,  # WF 走 config.start/end 完整窗, 不 override
     BacktestMode.LIVE_PT: None,  # 实盘走 config.start/end, 不 cache
+    BacktestMode.AD_HOC: None,  # iter 25 PR: 探索性一次跑, 不 override 不 cache (与 LIVE_PT 同行为不同语义)
 }
+
+# Modes that bypass config_hash cache (force re-run每次). LIVE_PT 实盘需 fresh 信号,
+# AD_HOC 探索分析需 fresh 计算 (避免 cache 污染分析结果). iter 25 PR codified.
+_CACHE_BYPASS_MODES: frozenset[BacktestMode] = frozenset({
+    BacktestMode.LIVE_PT,
+    BacktestMode.AD_HOC,
+})
 
 
 class PlatformBacktestRunner(BacktestRunner):
@@ -132,8 +140,8 @@ class PlatformBacktestRunner(BacktestRunner):
         config_hash = self._compute_config_hash(config)
         git_commit = self._get_git_commit()
 
-        # Cache hit (LIVE_PT always re-run — 实盘每次新信号)
-        if mode != BacktestMode.LIVE_PT:
+        # Cache hit (LIVE_PT + AD_HOC always re-run — 实盘 fresh 信号 / ad-hoc fresh 计算)
+        if mode not in _CACHE_BYPASS_MODES:
             cached = self._registry.get_by_hash(config_hash)
             if cached is not None:
                 return cached

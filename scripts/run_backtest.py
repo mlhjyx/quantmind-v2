@@ -296,11 +296,11 @@ def run_with_yaml(config_path: str):
 
         logger.info("运行回测 (Platform SDK)...")
         t1 = time.time()
-        # TODO(mvp-2.3-sub3): BacktestMode.AD_HOC 目前未实现, 借 LIVE_PT 语义
-        # (不 override config.start/end + 跳过 cache 强制真跑). 配 InMemoryBacktestRegistry
-        # get_by_hash 恒 None 双重保真跑. Sub3 真 LIVE_PT 实盘实现时, 评估新 AD_HOC mode
-        # 替代借用避免语义混淆.
-        result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+        # iter 25 PR: BacktestMode.AD_HOC codified (former TODO mvp-2.3-sub3 closure).
+        # AD_HOC = analyst exploration mode: config.start/end 原样沿用 + cache 跳过,
+        # 与 LIVE_PT 行为同等但语义清晰 (LIVE_PT = 实盘 replay 隐含语义).
+        # 配 InMemoryBacktestRegistry get_by_hash 恒 None 双重保 fresh 跑.
+        result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
         t_engine_done = time.time()  # PR C3 review M2 fix: 精准测 engine 耗时, 排除 report
 
         # PR C2 契约: cache-miss 真跑 → engine_artifacts 必塞; LIVE_PT 强制 always re-run
