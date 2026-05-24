@@ -199,13 +199,16 @@ class XtQuantTickSubscriber:
 
         if self._xtdata is not None and hasattr(self._xtdata, "unsubscribe_quote"):
             for s, seq in list(self._subscribe_ids.items()):
-                # TODO(铁律 1: 外部 API 必须先读官方文档): xtquant 0.0.x SDK ships
-                # `unsubscribe_quote(seq)` (single positional int arg per current
-                # xtdata.py); production activation MUST verify the actual installed
-                # xtquant version's signature — alternative forms `(stock_code,
-                # period)` exist in some forks. If signature differs, the call
-                # silently fails into the `except` below and the native sub leaks
-                # (the bug this code aims to fix). Reviewer P1-4 acknowledged.
+                # NOTE(铁律 1 — PT-restart-gated verify, not code-time action):
+                # xtquant 0.0.x SDK ships `unsubscribe_quote(seq)` (single positional
+                # int arg per current xtdata.py); production activation MUST verify
+                # the actual installed xtquant version's signature — alternative
+                # forms `(stock_code, period)` exist in some forks. If signature
+                # differs, the call silently fails into the `except` below and the
+                # native sub leaks (the bug this code aims to fix). PT 4-29 paused
+                # → action gated on PT-restart smoke walk-through (S5 audit P1-4
+                # acknowledged; converted from TODO 2026-05-24 iter 41 to reflect
+                # the genuinely-deferred state).
                 try:
                     self._xtdata.unsubscribe_quote(seq)
                     logger.info("[xt-subscriber] unsubscribed %s seq=%d", s, seq)
