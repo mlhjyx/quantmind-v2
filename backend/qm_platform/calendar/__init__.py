@@ -99,6 +99,9 @@ def parse_pt_start_date() -> date:
         try:
             return date.fromisoformat(raw)
         except ValueError:
+            # silent_ok: malformed PT_START_DATE env var (e.g. "2026-13-99" / "abc") →
+            # fall to hardcoded default 2026-03-15. fail-safe per 铁律 33 (3 选一:
+            # fail-safe / fail-loud / 注释; 此处 fail-safe + 显式注释).
             pass
     return date(2026, 3, 15)
 
@@ -110,6 +113,8 @@ def parse_pt_total_days() -> int:
         try:
             return int(raw)
         except ValueError:
+            # silent_ok: malformed PT_TOTAL_DAYS env var (e.g. "abc" / "1.5") →
+            # fall to hardcoded default 60 days. fail-safe per 铁律 33.
             pass
     return 60
 
