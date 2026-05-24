@@ -1,19 +1,24 @@
-"""Report API 路由 — 报告列表、快速统计、触发报告生成。
+"""Report API 路由 — 报告列表、快速统计、触发报告生成、获取最新报告。
 
-Sprint 1.23: 为前端Report页面补齐后端API。
-遵循CLAUDE.md: Depends注入 + 类型注解 + Google docstring(中文)。
+Sprint 1.23: 为前端Report页面补齐后端API.
+Sprint 1.24 (iter 30): /generate wired to real Celery task
+  `app.tasks.report_tasks.generate_performance_report`; added /{sid}/latest GET
+  endpoint to read latest filesystem JSON artifact. Closes the line 198 TODO.
+遵循CLAUDE.md: Depends注入 + 类型注解 + Google docstring(中文).
 """
 
+import json
 from datetime import date, timedelta
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
+from app.tasks.report_tasks import generate_performance_report, latest_report_path
 
 logger = structlog.get_logger(__name__)
 
@@ -193,17 +198,86 @@ async def generate_report(
     import uuid
 
     sid = strategy_id or settings.PAPER_STRATEGY_ID
+    if not sid:
+        raise HTTPException(
+            status_code=400,
+            detail="strategy_id required (no PAPER_STRATEGY_ID default configured)",
+        )
+    if execution_mode not in ("paper", "live"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"execution_mode must be 'paper' or 'live', got {execution_mode!r}",
+        )
 
-    # 报告生成Celery任务尚未实现，返回accepted占位
-    # TODO: Sprint 1.24 实现 generate_performance_report Celery任务后替换
-    task_id = str(uuid.uuid4())
-    status = "accepted"
-    message = "报告生成请求已接受"
+    # Sprint 1.24 closure (iter 30): dispatch real Celery task. Returns
+    # AsyncResult.id (Celery-tracked task_id); status pollable via standard
+    # celery result_backend, artifact readable via GET /{sid}/latest once task
+    # finishes (~1-3s typical).
+    async_result = generate_performance_report.delay(sid, execution_mode)
+
+    # uuid import kept import-line clean; no longer used in /generate body.
+    _ = uuid
 
     return {
-        "task_id": task_id,
-        "status": status,
-        "message": message,
+        "task_id": async_result.id,
+        "status": "dispatched",
+        "message": "报告生成任务已派发到 Celery worker; 完成后通过 GET /{strategy_id}/latest 获取",
         "strategy_id": sid,
         "execution_mode": execution_mode,
     }
+
+
+@router.get("/{strategy_id}/latest")
+async def get_latest_report(
+    strategy_id: str,
+    execution_mode: str = Query(default="paper", description="执行模式: paper/live"),
+) -> dict[str, Any]:
+    """获取指定策略的最新报告 (filesystem JSON artifact).
+
+    由 POST /generate 派发的 Celery task 写入 reports/{sid}_{date}_{mode}.json.
+    本端点按 (strategy_id, execution_mode) 前缀+后缀过滤 reports/ 目录, 返回
+    mtime 最新的一份. 0 匹配 → 404 (caller 应先调 /generate 派发任务).
+
+    Args:
+        strategy_id: 策略 UUID 字符串. URL path 参数, 不允许空.
+        execution_mode: paper / live, query 参数.
+
+    Returns:
+        报告 JSON 内容 (schema_version / summary / latest_nav / recent_trades /
+        trades_count / target_date_shanghai / generated_at_utc / 等), 由
+        report_tasks.generate_performance_report 写入.
+
+    Raises:
+        HTTPException 400: execution_mode 非法.
+        HTTPException 404: 该 (sid, mode) 没有任何报告 artifact.
+        HTTPException 500: 文件存在但 JSON 解析失败 (artifact corruption).
+    """
+    if execution_mode not in ("paper", "live"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"execution_mode must be 'paper' or 'live', got {execution_mode!r}",
+        )
+
+    path = latest_report_path(strategy_id, execution_mode)
+    if path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"no report artifact found for strategy_id={strategy_id} "
+                f"execution_mode={execution_mode}; dispatch one via "
+                f"POST /api/reports/generate first"
+            ),
+        )
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.exception("读取最新报告 artifact 失败 path=%s", path)
+        raise HTTPException(
+            status_code=500,
+            detail=f"report artifact unreadable: {type(e).__name__}: {e}",
+        ) from e
+
+    payload["_artifact_path"] = str(path)
+    return payload
