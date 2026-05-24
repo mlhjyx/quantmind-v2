@@ -370,6 +370,11 @@ def list_reports_for(
 
     # Filename pattern: {sid}_{YYYY-MM-DD}_{paper|live}.json
     # sid mode-filter is done after parsing (filename may contain `_` in sid).
+    # Reviewer P2-1: safe_sid is used for FS prefix lookup; the response
+    # preserves the caller's original `strategy_id` for request/response
+    # symmetry. In production strategy_id is a UUID so safe_sid == strategy_id;
+    # divergence only observable for sids containing `/` or `\` (currently
+    # unreachable per settings.PAPER_STRATEGY_ID = UUID).
     safe_sid = strategy_id.replace("/", "_").replace("\\", "_")
     prefix = f"{safe_sid}_"
     mode_pattern = re.compile(
