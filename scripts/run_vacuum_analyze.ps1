@@ -13,8 +13,9 @@
 #
 # 关联:
 #   - scripts/db_vacuum_analyze.py (script body, round-2 P1 hardening 已完成)
-#   - scripts/setup_task_scheduler.ps1 (register entry — TODO add full register
-#       block alongside this wrapper for setup re-run idempotency)
+#   - scripts/setup_task_scheduler.ps1 §16 QuantMind_VacuumAnalyze (lines 605-633)
+#       full register block (Sun 03:00, ExecutionTimeLimit 2h, -Force idempotency)
+#       — closed 2026-05-19 Session 57+1 round-5 F3 (iter 29 fresh-verify 2026-05-24).
 #   - 红线: 0 broker call (pure DB ops, isolated from trading)
 
 $ErrorActionPreference = "Stop"
