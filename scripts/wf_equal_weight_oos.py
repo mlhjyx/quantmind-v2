@@ -181,9 +181,10 @@ def run_fold(
     )
 
     t0 = time.time()
-    platform_result = runner.run(mode=BacktestMode.LIVE_PT, config=platform_cfg)
+    # iter 27 PR migration LIVE_PT→AD_HOC (PR #456 P2-1 closure; WF fold = analyst exploration path)
+    platform_result = runner.run(mode=BacktestMode.AD_HOC, config=platform_cfg)
     if platform_result.engine_artifacts is None:
-        raise RuntimeError(f"engine_artifacts=None (fold={fold_idx}) — LIVE_PT 应强制真跑")
+        raise RuntimeError(f"engine_artifacts=None (fold={fold_idx}) — AD_HOC 应强制 fresh re-run")
     result = platform_result.engine_artifacts["engine_result"]
     elapsed = time.time() - t0
 
