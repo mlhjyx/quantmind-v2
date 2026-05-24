@@ -437,15 +437,36 @@ def latest_report_path(strategy_id: str, execution_mode: str = "paper") -> Path 
     matching artifact exists (caller should 404).
 
     Resolves by mtime; date in filename is informational. Files for OTHER
-    (sid, mode) tuples are filtered out by prefix match.
+    (sid, mode) tuples are filtered out by **anchored regex** (parity with
+    iter 32 `list_reports_for` defense; NOT a closed bug — defense-in-depth).
+
+    Iter 36 defense-in-depth hardening (NOT a closed live exploit — reviewer
+    mutation-test verified pre-fix `glob(f"{safe_sid}_*_{mode}.json")` already
+    rejects substring-prefix sids because the trailing `_` separator anchors
+    the sid boundary at filename start; `"abc-extended_...".startswith("abc_")`
+    is False). The anchored regex DOES tighten the filter against unrelated
+    edge cases not previously covered by glob alone:
+      - rejects malformed date strings (e.g. `abc_26-04-28_paper.json`)
+      - rejects extra-suffix artifacts (e.g. `abc_2026-04-28_paper.json.bak`)
+      - mirrors iter 32 `list_reports_for` pattern for module-wide consistency
+    Originally framed as "iter 32 reviewer P2-2 sustained sibling prefix-leak
+    fix" — reviewer iter 36 corrected the framing: iter 32's P2-2 note may
+    have been speculative or addressed a different scenario; no live exploit
+    on `main` pre-iter-36. Code change kept as defense-in-depth + parity
+    hardening; framing corrected here per reviewer.
     """
     if not REPORTS_DIR.exists():
         return None
     safe_sid = strategy_id.replace("/", "_").replace("\\", "_")
-    prefix = f"{safe_sid}_"
-    suffix = f"_{execution_mode}.json"
+    # Anchored regex: matches ONLY {safe_sid}_{YYYY-MM-DD}_{paper|live}.json
+    # (filename equality after sid prefix, NOT substring prefix).
+    mode_re = re.compile(
+        rf"^{re.escape(safe_sid)}_\d{{4}}-\d{{2}}-\d{{2}}_{re.escape(execution_mode)}\.json$"
+    )
     candidates = [
-        p for p in REPORTS_DIR.glob(f"{prefix}*{suffix}") if p.is_file()
+        p
+        for p in REPORTS_DIR.glob(f"{safe_sid}_*_{execution_mode}.json")
+        if p.is_file() and mode_re.match(p.name)
     ]
     if not candidates:
         return None
