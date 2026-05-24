@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from contextlib import suppress
@@ -330,6 +331,105 @@ def generate_performance_report(
     }
 
 
+def list_reports_for(
+    strategy_id: str,
+    execution_mode: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Enumerate report artifacts for a strategy, sorted mtime DESC.
+
+    Iter 32 — extends iter 30 single-latest fetch (`latest_report_path`) with a
+    historical listing endpoint. Per file: parses filename for (sid, date, mode),
+    reads mtime, attempts to extract a small summary preview from the JSON body
+    (sharpe / mdd / days / total_return / latest_nav). Corrupt JSON entries are
+    INCLUDED in the listing with `summary=None` + `_corrupt=True` rather than
+    silently dropped (反 silent skip = silent dataloss perception).
+
+    Args:
+        strategy_id: Strategy UUID string (URL path arg, not optional).
+        execution_mode: Filter by mode if provided; None means both paper+live.
+        limit: Maximum entries to return (cap; default 20; <1 raises ValueError).
+
+    Returns:
+        list of {strategy_id, execution_mode, target_date, artifact_path,
+                 mtime_utc, summary | None, _corrupt: bool},
+        sorted by mtime DESC, length <= limit. Empty list if 0 matches.
+
+    Raises:
+        ValueError: limit < 1 or invalid execution_mode.
+    """
+    if limit < 1:
+        raise ValueError(f"limit must be >= 1, got {limit}")
+    if execution_mode is not None and execution_mode not in ("paper", "live"):
+        raise ValueError(
+            f"execution_mode must be None or 'paper'/'live', got {execution_mode!r}"
+        )
+
+    if not REPORTS_DIR.exists():
+        return []
+
+    # Filename pattern: {sid}_{YYYY-MM-DD}_{paper|live}.json
+    # sid mode-filter is done after parsing (filename may contain `_` in sid).
+    # Reviewer P2-1: safe_sid is used for FS prefix lookup; the response
+    # preserves the caller's original `strategy_id` for request/response
+    # symmetry. In production strategy_id is a UUID so safe_sid == strategy_id;
+    # divergence only observable for sids containing `/` or `\` (currently
+    # unreachable per settings.PAPER_STRATEGY_ID = UUID).
+    safe_sid = strategy_id.replace("/", "_").replace("\\", "_")
+    prefix = f"{safe_sid}_"
+    mode_pattern = re.compile(
+        rf"^{re.escape(safe_sid)}_(\d{{4}}-\d{{2}}-\d{{2}})_(paper|live)\.json$"
+    )
+
+    candidates: list[tuple[Path, str, str, float]] = []  # (path, date_iso, mode, mtime)
+    for p in REPORTS_DIR.glob(f"{prefix}*.json"):
+        if not p.is_file():
+            continue
+        m = mode_pattern.match(p.name)
+        if m is None:
+            continue
+        file_date_iso, file_mode = m.group(1), m.group(2)
+        if execution_mode is not None and file_mode != execution_mode:
+            continue
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            # Path-vanished race: skip without raising; reader is best-effort.
+            continue
+        candidates.append((p, file_date_iso, file_mode, mtime))
+
+    # Sort by mtime DESC, then apply limit
+    candidates.sort(key=lambda x: x[3], reverse=True)
+    candidates = candidates[:limit]
+
+    out: list[dict[str, Any]] = []
+    for path, file_date_iso, file_mode, mtime in candidates:
+        entry: dict[str, Any] = {
+            "strategy_id": strategy_id,
+            "execution_mode": file_mode,
+            "target_date": file_date_iso,
+            "artifact_path": str(path),
+            "mtime_utc": datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
+            "summary": None,
+            "_corrupt": False,
+        }
+        # Attempt to extract summary preview (small JSON subset; tolerates corruption)
+        try:
+            with open(path, encoding="utf-8") as f:
+                payload = json.load(f)
+            entry["summary"] = payload.get("summary")  # may be None if data unavailable
+        except (OSError, json.JSONDecodeError) as e:
+            # 反 silent skip — include with corruption marker so caller sees the issue
+            entry["_corrupt"] = True
+            entry["_corrupt_reason"] = f"{type(e).__name__}: {e}"
+            logger.warning(
+                "[list_reports_for] corrupt artifact: path=%s err=%s", path, e
+            )
+        out.append(entry)
+
+    return out
+
+
 def latest_report_path(strategy_id: str, execution_mode: str = "paper") -> Path | None:
     """Find the most-recent report JSON for (strategy_id, execution_mode).
 
@@ -481,5 +581,6 @@ __all__ = [
     "generate_performance_report",
     "cleanup_old_reports",
     "latest_report_path",
+    "list_reports_for",
     "REPORTS_DIR",
 ]
