@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,11 @@ logger = logging.getLogger("celery.report_generate")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
+
+# Reviewer P2-8 noted: reports/ dir grows unbounded (~36k files/year @ 100 strategies
+# daily cadence). Out-of-scope for iter 30; future Celery Beat cleanup task should
+# enforce retention (e.g. keep latest N per (sid, mode) + drop > 90 days). Tracked
+# as future-iter candidate; not blocking this PR.
 
 
 def _today_shanghai() -> date:
@@ -93,11 +99,10 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         # os.replace is atomic across POSIX + Windows (vs os.rename which fails on Win if dst exists)
         os.replace(tmp_path, str(path))
     except Exception:
-        # Cleanup tmp on failure (反 reports/.{name}.{rand}.tmp 累积 silent debt)
-        try:
+        # Cleanup tmp on failure (反 reports/.{name}.{rand}.tmp 累积 silent debt).
+        # silent_ok: cleanup-best-effort; tmp already gone (race) or perms issue.
+        with suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass  # silent_ok: cleanup-best-effort, tmp already gone or perms issue
         raise
 
 
@@ -142,8 +147,10 @@ def _fetch_rolling_stats(conn, strategy_id: str, execution_mode: str, lookback: 
         peak = max(peak, nav)
         max_dd = min(max_dd, nav / peak - 1)
 
+    # Key shape parity with PerformanceRepository.get_rolling_stats:111-117.
+    # Reviewer P1-3: docstring claims parity; use `days` (not `lookback_days`).
     return {
-        "lookback_days": n,
+        "days": n,
         "sharpe": round(sharpe, 4),
         "mdd": round(max_dd, 4),
         "total_return": round(navs[0] / navs[-1] - 1, 6) if navs[-1] > 0 else 0.0,
@@ -187,11 +194,18 @@ def _fetch_latest_nav_row(conn, strategy_id: str, execution_mode: str) -> dict |
 def _fetch_recent_trades(
     conn, strategy_id: str, execution_mode: str, limit: int = 20
 ) -> list[dict]:
-    """Sync fetch of recent trade_log rows for the (sid, mode) tuple."""
+    """Sync fetch of recent trade_log rows for the (sid, mode) tuple.
+
+    Reviewer P0-1 fix: trade_log column names are `direction` (NOT `side`) and
+    `fill_price` (NOT `price`). DDL canonical source = docs/QUANTMIND_V2_DDL_FINAL.sql
+    §trade_log; sustained pattern across 5 other `FROM trade_log` callsites in
+    backend/. JSON payload key uses canonical column name for parity.
+    """
     cur = conn.cursor()
     try:
         cur.execute(
-            """SELECT trade_date, code, side, quantity, price, signal_price, reject_reason
+            """SELECT trade_date, code, direction, quantity, fill_price,
+                      signal_price, reject_reason
                FROM trade_log
                WHERE strategy_id = CAST(%s AS uuid) AND execution_mode = %s
                ORDER BY trade_date DESC, code ASC
@@ -206,9 +220,9 @@ def _fetch_recent_trades(
         {
             "trade_date": r[0].isoformat() if r[0] else None,
             "code": r[1],
-            "side": r[2],
+            "direction": r[2],
             "quantity": int(r[3]) if r[3] is not None else 0,
-            "price": float(r[4]) if r[4] is not None else None,
+            "fill_price": float(r[4]) if r[4] is not None else None,
             "signal_price": float(r[5]) if r[5] is not None else None,
             "reject_reason": r[6],
         }

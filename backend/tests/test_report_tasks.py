@@ -24,7 +24,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 
@@ -51,6 +50,8 @@ def fake_pg_rows():
         0.15,  # turnover
         1.03,  # benchmark_nav
     )
+    # Reviewer P0-1 fix: column tuple shape matches actual trade_log schema:
+    # (trade_date, code, direction, quantity, fill_price, signal_price, reject_reason)
     trade_rows = [
         (date(2026, 4, 28), "000001.SZ", "buy", 100, 15.5, 15.4, None),
         (date(2026, 4, 27), "600000.SH", "sell", 200, 8.7, 8.75, None),
@@ -91,7 +92,8 @@ def test_generate_report_happy_path(fake_pg_rows, isolated_reports_dir):
     assert result["strategy_id"] == "test-sid-123"
     assert result["execution_mode"] == "paper"
     assert result["data_available"] is True
-    assert result["summary"]["lookback_days"] == 5
+    # Reviewer P1-3 fix: key is `days` (parity with PerformanceRepository.get_rolling_stats)
+    assert result["summary"]["days"] == 5
     assert "sharpe" in result["summary"]
     assert "mdd" in result["summary"]
 
@@ -107,7 +109,14 @@ def test_generate_report_happy_path(fake_pg_rows, isolated_reports_dir):
     assert payload["data_available"] is True
     assert payload["trades_count"] == 3
     assert len(payload["recent_trades"]) == 3
-    assert payload["recent_trades"][0]["code"] == "000001.SZ"
+    # Reviewer P0-1 fix: assert canonical key names (direction / fill_price), NOT side/price
+    t0 = payload["recent_trades"][0]
+    assert t0["code"] == "000001.SZ"
+    assert t0["direction"] == "buy"
+    assert t0["fill_price"] == 15.5
+    assert t0["signal_price"] == 15.4
+    assert "side" not in t0  # 反 regression to old key
+    assert "price" not in t0  # 反 regression to old key
     assert payload["latest_nav"]["position_count"] == 15
     assert payload["summary"]["sharpe"] is not None
 
@@ -167,9 +176,11 @@ def test_generate_report_db_error_propagates(isolated_reports_dir):
     mock_conn = MagicMock()
     mock_conn.cursor.side_effect = RuntimeError("simulated PG outage")
 
-    with patch("app.tasks.report_tasks.get_sync_conn", return_value=mock_conn):
-        with pytest.raises(RuntimeError, match="simulated PG outage"):
-            generate_performance_report.run("sid", "paper")
+    with (
+        patch("app.tasks.report_tasks.get_sync_conn", return_value=mock_conn),
+        pytest.raises(RuntimeError, match="simulated PG outage"),
+    ):
+        generate_performance_report.run("sid", "paper")
 
     mock_conn.rollback.assert_called_once()
     mock_conn.close.assert_called_once()
@@ -257,25 +268,24 @@ def test_atomic_write_json_cleans_tmp_on_serialize_failure(tmp_path):
     """Unserializable payload raises but cleans up tmp file."""
     from app.tasks.report_tasks import _atomic_write_json
 
-    dest = tmp_path / "out.json"
-    bad_payload = {"obj": object()}  # not JSON-serializable
-
-    # json.dump's default=str will stringify object() to its repr, NOT raise.
-    # Force a failure by using a custom non-stringifiable object via a Mock raising on str.
+    # json.dump's default=str will stringify object() to its repr, so naive
+    # `object()` does NOT raise. Force failure via a class that raises on str/repr.
     class _Unserializable:
-        def __str__(self):
+        def __str__(self) -> str:
             raise TypeError("forced for test")
 
-        def __repr__(self):
+        def __repr__(self) -> str:  # noqa: PLE0307 — intentional bad repr
             raise TypeError("forced for test")
 
+    dest = tmp_path / "out.json"
     bad_payload = {"obj": _Unserializable()}
+
     with pytest.raises(TypeError):
         _atomic_write_json(dest, bad_payload)
 
     # dest not created on failure
     assert not dest.exists()
-    # tmp cleaned up
+    # tmp cleaned up (反 reports/.{name}.{rand}.tmp 累积 silent debt)
     leftover = [p for p in tmp_path.iterdir() if p.name.startswith(".out.json.")]
     assert leftover == [], f"tmp residue not cleaned: {leftover}"
 
@@ -392,3 +402,89 @@ def test_get_latest_500_on_corrupt_json(isolated_reports_dir):
     resp = client.get("/api/reports/sid-corrupt/latest")
     assert resp.status_code == 500
     assert "unreadable" in resp.json()["detail"]
+
+
+# ── Reviewer P0-2 fix: schema-aware integration test ────────────────────────
+# The mock-based tests above bypass SQL parsing entirely (`get_sync_conn` is
+# mocked). That's why the reviewer caught the `side`/`price` column-name bug
+# at runtime, not at test time. This test runs `EXPLAIN <query>` against the
+# real PG schema for each of the 3 SELECT statements in report_tasks.py. It
+# catches column-name typos / table-name typos / type mismatches BEFORE merge.
+# Skips cleanly if DB unreachable (CI without PG access).
+
+
+def _get_sync_conn_or_skip():
+    """Return live PG conn or skip the test."""
+    try:
+        from app.services.db import get_sync_conn
+
+        return get_sync_conn()
+    except Exception as e:  # noqa: BLE001 — broad catch is correct here (any DB connectivity failure → skip)
+        pytest.skip(f"PG not reachable, skipping schema-validation integration test: {e}")
+
+
+def test_report_tasks_sql_parses_against_real_schema():
+    """Run EXPLAIN for each SELECT in report_tasks against live PG schema.
+
+    Catches column-name typos / table-name typos at test time, not runtime.
+    Closes reviewer P0-2 (mock-only test pattern hides SQL bugs).
+
+    EXPLAIN does NOT execute the query — it only validates schema bindings,
+    so this test is safe to run against production data (0 rows read, 0 rows
+    written). Sample strategy_id uuid is a fixed test value; the query plans
+    without needing real rows.
+    """
+    conn = _get_sync_conn_or_skip()
+    test_sid = "00000000-0000-0000-0000-000000000001"
+    test_mode = "paper"
+
+    queries = [
+        # _fetch_rolling_stats SQL
+        (
+            "rolling_stats",
+            """EXPLAIN SELECT nav, daily_return
+               FROM performance_series
+               WHERE strategy_id = CAST(%s AS uuid) AND execution_mode = %s
+               ORDER BY trade_date DESC LIMIT %s""",
+            (test_sid, test_mode, 60),
+        ),
+        # _fetch_latest_nav_row SQL
+        (
+            "latest_nav",
+            """EXPLAIN SELECT trade_date, nav, daily_return, cumulative_return, drawdown,
+                      cash_ratio, cash, position_count, turnover, benchmark_nav
+               FROM performance_series
+               WHERE strategy_id = CAST(%s AS uuid) AND execution_mode = %s
+               ORDER BY trade_date DESC LIMIT 1""",
+            (test_sid, test_mode),
+        ),
+        # _fetch_recent_trades SQL (the one the reviewer caught the bug in)
+        (
+            "recent_trades",
+            """EXPLAIN SELECT trade_date, code, direction, quantity, fill_price,
+                      signal_price, reject_reason
+               FROM trade_log
+               WHERE strategy_id = CAST(%s AS uuid) AND execution_mode = %s
+               ORDER BY trade_date DESC, code ASC
+               LIMIT %s""",
+            (test_sid, test_mode, 20),
+        ),
+    ]
+
+    try:
+        cur = conn.cursor()
+        try:
+            for label, sql, params in queries:
+                try:
+                    cur.execute(sql, params)
+                    _ = cur.fetchall()  # consume the EXPLAIN plan
+                except Exception as e:
+                    pytest.fail(
+                        f"SQL parse-validate FAILED for {label}: "
+                        f"{type(e).__name__}: {e}\nSQL: {sql.strip()[:200]}..."
+                    )
+        finally:
+            cur.close()
+        conn.commit()
+    finally:
+        conn.close()

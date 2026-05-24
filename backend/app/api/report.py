@@ -195,8 +195,6 @@ async def generate_report(
     Returns:
         任务确认字典，含 task_id/status/message。
     """
-    import uuid
-
     sid = strategy_id or settings.PAPER_STRATEGY_ID
     if not sid:
         raise HTTPException(
@@ -214,9 +212,6 @@ async def generate_report(
     # celery result_backend, artifact readable via GET /{sid}/latest once task
     # finishes (~1-3s typical).
     async_result = generate_performance_report.delay(sid, execution_mode)
-
-    # uuid import kept import-line clean; no longer used in /generate body.
-    _ = uuid
 
     return {
         "task_id": async_result.id,
