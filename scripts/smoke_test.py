@@ -91,8 +91,62 @@ def test_endpoint(path: str) -> dict:
         return {"path": path, "status": "error", "code": 0, "elapsed": 0, "items": str(e)[:50]}
 
 
-def send_dingtalk_alert(level: str, title: str, content: str) -> None:
-    """发送DingTalk告警。"""
+# ════════════════════════════════════════════════════════════
+# MVP 4.1 batch 3.12 LAST: Platform SDK migration (iter 57 2026-05-25)
+# 沿用 batch 3.8/3.9/3.10/3.11 体例. smoke_test 5 call sites (line 187/192/195/
+# 235/245), 同一 3-arg signature (level, title, content), kind-aware dispatch
+# (smoke_failure / backend_no_response / smoke_pass / etc).
+# 完成后 Wave 4 MVP 4.1 batch 3.x = 17/17 = 100% milestone.
+# ════════════════════════════════════════════════════════════
+
+
+def _send_alert_via_platform_sdk(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "smoke_test",
+    details_extra: dict[str, object] | None = None,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.12, iter 57).
+
+    smoke_test 5 call sites — kind-aware dispatch via title 字符串匹配:
+      - kind="backend_down": "后端无响应" / "NSSM重启失败" 失败 P0
+      - kind="smoke_fail": "冒烟测试失败" partial fail P1
+      - kind="smoke_pass": "冒烟测试通过" P2
+      - kind="generic": fallback
+
+    dedup_key = "smoke_test:{kind}:{trade_date}"; suppress_minutes=30
+    (cron 频次 5-10min, 30min dedup 防同窗 retry 风暴).
+    """
+    from datetime import UTC, date, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    severity = (
+        Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    )
+    details: dict[str, str] = {"trade_date": today_str, "kind": kind, "content": content}
+    if details_extra:
+        for k, v in details_extra.items():
+            details[k] = str(v) if not isinstance(v, str) else v
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="smoke_test",
+        details=details,
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+    router = get_alert_router()
+    dedup_key = f"smoke_test:{kind}:{today_str}"
+    suppress_minutes = 30  # smoke test 高频, 30min dedup
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _legacy_send_dingtalk_alert(level: str, title: str, content: str) -> None:
+    """Legacy DingTalk push (保留 pre-batch-3.12 体例)."""
     try:
         from app.config import settings
 
@@ -112,6 +166,48 @@ def send_dingtalk_alert(level: str, title: str, content: str) -> None:
         print(f"[DingTalk] {level} 告警已发送")
     except Exception as e:
         print(f"[DingTalk] 发送失败: {e}")
+
+
+def send_dingtalk_alert(level: str, title: str, content: str) -> None:
+    """smoke_test 告警 dispatch (MVP 4.1 batch 3.12 LAST, iter 57).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换:
+      True  → _send_alert_via_platform_sdk (PlatformAlertRouter SDK)
+      False → _legacy_send_dingtalk_alert (inline requests.post)
+
+    Signature 沿用原 3-arg (level, title, content); 5 call sites unchanged.
+    铁律 33 fail-soft (smoke_test 是 monitoring 旁路, dispatch 失败不阻断主流程).
+    """
+    try:
+        from qm_platform.observability import AlertDispatchError
+
+        from app.config import settings
+
+        use_sdk = getattr(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False)
+    except Exception:
+        # settings/SDK import 失败 → legacy fallback
+        _legacy_send_dingtalk_alert(level, title, content)
+        return
+
+    # kind-aware: title 字符串匹配 dispatch
+    if "后端无响应" in title or "NSSM重启失败" in title or "backend" in title.lower():
+        kind = "backend_down"
+    elif "失败" in title or "fail" in title.lower():
+        kind = "smoke_fail"
+    elif "通过" in title or "pass" in title.lower():
+        kind = "smoke_pass"
+    else:
+        kind = "generic"
+
+    try:
+        if use_sdk:
+            _send_alert_via_platform_sdk(level, title, content, kind=kind)
+        else:
+            _legacy_send_dingtalk_alert(level, title, content)
+    except AlertDispatchError as e:
+        print(f"[Observability] AlertDispatchError sink failed: {e} (fail-soft)")
+    except Exception as e:  # noqa: BLE001
+        print(f"[Observability] 告警 dispatch 失败 (fail-soft): {e}")
 
 
 def auto_restart_nssm() -> bool:
