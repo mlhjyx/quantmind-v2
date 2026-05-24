@@ -258,9 +258,18 @@ export default function Execution() {
   const totalAsset = asset?.total_asset ?? 0;
   const cash = asset?.cash ?? 0;
   const frozenCash = asset?.frozen_cash ?? 0;
-  const todayPnl = totalAsset > 0 && qmtStatus?.account_asset
-    ? 0 // Placeholder — real PnL needs yesterday's NAV
-    : 0;
+  // NOTE: Execution page does not currently fetch the realtime portfolio account
+  // (Portfolio.tsx pattern via `rtPortfolio?.account?.daily_pnl` does, see
+  // frontend/src/pages/Portfolio.tsx:133-136 + `daily_pnl: number` typed in
+  // frontend/src/api/realtime.ts:17). Execution page's data sources are the
+  // QMT asset summary (`getAsset`) + status/drift/orders/trades/audit, none of
+  // which carry today's PnL. Today's PnL display deferred to a future iter that
+  // either (a) adds the realtime account fetch (small wire, ~30 lines: useQuery
+  // + import + render) or (b) extends Asset payload to include daily_pnl.
+  // Pre-iter-44 the no-op ternary `totalAsset > 0 && qmtStatus?.account_asset ? 0 : 0`
+  // suggested a real code path existed when both branches returned 0; simplified
+  // to direct value to remove the LL-194 anti-pattern family signal.
+  const todayPnl = 0;
   const driftItems = drift?.items ?? [];
   const safeOrders = orders ?? [];
   const safeTrades = trades ?? [];
