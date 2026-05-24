@@ -26,9 +26,104 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "backend"))
 
+from qm_platform.observability import AlertDispatchError
+
 from app.config import settings
-from app.services.notification_service import send_alert
+from app.services.notification_service import send_alert as _legacy_send_alert
 from app.services.price_utils import _get_sync_conn
+
+# ════════════════════════════════════════════════════════════
+# MVP 4.1 batch 3.11: Platform SDK migration (iter 56 2026-05-25)
+# 沿用 batch 3.8/3.9/3.10 体例 (intraday_monitor / llm_cost_monthly_audit /
+# llm_cost_daily_report). approve_l4 = L4 approval workflow, alert-only path
+# (0 broker write, single-reviewer OK per §4.4 — verified iter 56 grep:
+# 0 broker.* / order_stock / sell / cancel_order references).
+# ════════════════════════════════════════════════════════════
+
+
+def _send_alert_via_platform_sdk(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "approve_l4",
+    details_extra: dict[str, object] | None = None,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.11, iter 56).
+
+    approve_l4 = L4 审批 workflow alert path (approve / reject / force_reset).
+    dedup_key = "approve_l4:{kind}:{trade_date}"; suppress_minutes=60
+    (L4 审批告警 1h dedup, approve/reject 不同 kind 独立 bucket).
+    """
+    from datetime import UTC, date, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    severity = (
+        Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    )
+    details: dict[str, str] = {"trade_date": today_str, "kind": kind, "content": content}
+    if details_extra:
+        for k, v in details_extra.items():
+            details[k] = str(v) if not isinstance(v, str) else v
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="approve_l4",
+        details=details,
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+    router = get_alert_router()
+    dedup_key = f"approve_l4:{kind}:{today_str}"
+    suppress_minutes = 60  # L4 审批 1h dedup
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def send_alert(
+    level: str,
+    title: str,
+    content: str,
+    webhook_url: str,
+    secret: str,
+    conn,
+) -> None:
+    """L4 审批告警 dispatch (MVP 4.1 batch 3.11, iter 56).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换:
+      True  → _send_alert_via_platform_sdk (PlatformAlertRouter SDK)
+      False → _legacy_send_alert (notification_service.send_alert existing path)
+
+    Signature 沿用 notification_service.send_alert 6-arg contract (call sites
+    line 101/194 不需改). 铁律 33 fail-soft (审批已完成, dispatch 失败不抛错).
+    """
+    use_sdk = getattr(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False)
+    # kind 区分 approve / reject / force_reset (title 字符串匹配, 简化无 enum)
+    if "审批已通过" in title or "approve" in title.lower():
+        kind = "approve"
+    elif "审批已拒绝" in title or "reject" in title.lower():
+        kind = "reject"
+    elif "force" in title.lower() or "重置" in title:
+        kind = "force_reset"
+    else:
+        kind = "generic"
+
+    try:
+        if use_sdk:
+            _send_alert_via_platform_sdk(
+                level=level,
+                title=title,
+                content=content,
+                kind=kind,
+                details_extra={"webhook_configured": "1" if webhook_url else "0"},
+            )
+        else:
+            _legacy_send_alert(level, title, content, webhook_url, secret, conn)
+    except AlertDispatchError as e:
+        print(f"[Observability] AlertDispatchError sink failed: {e} (fail-soft)")
+    except Exception as e:  # noqa: BLE001
+        print(f"[Observability] 告警 dispatch 失败 (fail-soft): {e}")
 
 
 def list_pending(conn) -> None:
