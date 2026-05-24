@@ -6744,3 +6744,35 @@ How could this have been detected sooner?
 **Cross-ref**: LL-187 (Frontend audit cascade) / LL-115 (active discovery STOP) / quantmind-v3-active-discovery skill / superpowers:verification-before-completion skill
 
 **Sediment trigger**: 2026-05-20 Plan v9 Phase C-3 (commit c7db757)
+
+---
+
+## LL-194 — Verify retrospective bug claim pre-fix (mutation test before claiming "fix") (2026-05-24)
+
+**Pattern** (iter 36 L4+R loop, PR #464):
+- Implementer wrote PR #464 latest_report_path defense-in-depth change framing it as "prefix-leak fix":
+  > "iter 32 list_reports_for parity fix — anchored regex prevents `strategy-abc` matching `strategy-abc-extra-*.json` substring-prefix leak"
+- Reviewer (general-purpose Opus 4.7 fresh-context agent) P1-1: ran mutation test against pre-fix `glob("strategy-{sid}-*.json")` and proved glob `-` separator already rejected substring-prefix candidates (`strategy-abc-extra-*.json` ≠ `strategy-abc-*.json` pattern in glob semantics; would need `strategy-abc-*-*.json` collision which is contrived).
+- Real diff value: defense-in-depth + parity with iter 32 `list_reports_for` regex pattern + consistency across helpers. **Not** a bug-fix.
+- Reframe applied via Option A: PR body + commit message reworded to "defense-in-depth + parity with list_reports_for" — honest framing accepted, merged e106f0f.
+
+**Why this matters**:
+- Inflating framing as "fix bug X" when X didn't exist is a form of fabricated-claim drift (LL-101 / LL-103 N×N synchronization drift family).
+- Reviewer trust degrades when implementer's PR descriptions don't survive independent mutation testing.
+- Cumulative impact across many small PRs = artificial-progress narrative drift (cousin of doc-theatre HARD BAN in L4R spec §4).
+
+**Fix SOP** (前置 verify before claim):
+1. Before writing "fixes bug X" or "prevents leak Y" in commit msg / PR body, run a **mutation test against pre-fix code** confirming the claimed bug class manifests:
+   - For glob/regex anchoring fixes: construct concrete substring-prefix candidate filename, run pre-fix matcher, verify it matches (= bug exists) → ONLY THEN claim "fix"
+   - For SQL injection/sanitization fixes: construct payload, run pre-fix path, verify exploitation → ONLY THEN claim "fix"
+   - For race-condition fixes: construct timing sequence, run pre-fix logic, verify race window → ONLY THEN claim "fix"
+2. If mutation test PASSES on pre-fix (= no bug), reframe as one of: "defense-in-depth", "parity with X", "harden for future change", "anchor for clarity" — never "fix bug X".
+3. Reviewer asks: "does the pre-fix code actually exhibit the claimed bug?" — answer must be YES with reproduction, not assumed.
+
+**Heuristic backref**: #15 Test-Reality Gap (claim ≠ reality), #16 Verification-First (verify before commit msg), #18 Alternative Path Thinking (alt: "defense-in-depth" / "parity" / "harden" reframings).
+
+**Cross-ref**: LL-098 X10 (forward-progress detection), LL-101 (fabricated-number drift), LL-103 Part 1 (Claude.ai vs CC source drift), superpowers:verification-before-completion skill, quantmind-v3-anti-pattern-guard skill (v3 anti-pattern check before sediment).
+
+**ADR backref**: 候选 ADR-094 (PR description framing SOP — mutation-test-backed bug-fix claims).
+
+**Sediment trigger**: 2026-05-24 L4+R loop iter 36 reviewer P1-1 catch (PR #464, commit e106f0f); meta-LL appended iter 40 via PR pending merge per §5 same-commit-ship pair with paper_trading_service.py:361 signal→exec timing DEFER.
