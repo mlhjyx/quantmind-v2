@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
 # Asia/Shanghai timezone (铁律 41)
@@ -79,7 +79,82 @@ def _parse_database_url(url: str) -> dict[str, str]:
     }
 
 
-def _push_dingtalk(
+# ════════════════════════════════════════════════════════════
+# MVP 4.1 batch 3.9: Platform SDK migration (iter 51 2026-05-25)
+# 沿用 batch 3.8 intraday_monitor 体例 (commit a79a810):
+#   - send_alert(level, title, content, kind, details_extra) — top-level dispatch
+#   - _send_alert_via_platform_sdk — SDK path (PlatformAlertRouter + Alert + dedup)
+#   - _send_alert_via_legacy_dingtalk — legacy fallback (HMAC signing preserved)
+#   - settings.OBSERVABILITY_USE_PLATFORM_SDK toggle
+# 铁律 33 fail-soft: 顶层 send_alert catch AlertDispatchError + Exception
+#   (审计已完成, 告警 dispatch 失败不改 exit code / 不抛错).
+# ════════════════════════════════════════════════════════════
+
+# MVP 4.1 batch 3.9: AlertDispatchError 顶层 import (铁律 33 fail-loud at SDK layer,
+# fail-soft at top-level dispatch — 与 intraday_monitor batch 3.8 体例一致).
+from qm_platform.observability import AlertDispatchError  # noqa: E402
+
+
+def _send_alert_via_platform_sdk(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "llm_cost_monthly_audit",
+    details_extra: dict[str, object] | None = None,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.9, iter 51).
+
+    llm_cost_monthly_audit 1 call site (vs intraday_monitor batch 3.8 5 call sites):
+    monthly cadence, status ∈ {WARN, CAP_EXCEEDED} only triggers push.
+
+    kind-aware dedup_key 构造在代码端 (yaml 仅提供 suppress_minutes, 沿用 batch 3.8
+    设计避免 yaml format_dedup_key cb_level placeholder 缺失 raise):
+      dedup_key = "llm_cost_monthly:{status}:{year_month}"
+
+    Monthly cadence: suppress_minutes=1440 (24h, 防同月重复 push).
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 (顶层 send_alert) try/except 包裹.
+    """
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    severity = (
+        Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    )
+
+    details: dict[str, str] = {
+        "trade_date": today_str,
+        "kind": kind,
+        "content": content,
+    }
+    if details_extra:
+        for k, v in details_extra.items():
+            details[k] = str(v) if not isinstance(v, str) else v
+
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="llm_cost_monthly_audit",
+        details=details,
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+
+    # kind-aware dedup: monthly cadence, 按 (status, year_month) 去重
+    year_month = NOW.strftime("%Y-%m")
+    status_str = str(details.get("status", "unknown"))
+    dedup_key = f"llm_cost_monthly:{status_str}:{year_month}"
+
+    # Monthly cadence: 24h suppress (1440min, 防同月重复 push).
+    suppress_minutes = 1440
+
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _send_alert_via_legacy_dingtalk(
     env: dict[str, str],
     status: str,
     mtd_total: float,
@@ -87,27 +162,14 @@ def _push_dingtalk(
     mtd_ratio: float,
     mom_change: float | None,
 ) -> None:
-    """LLM 成本告警 DingTalk 推送 (status != OK OR MoM 漂移 > 50% 时调用).
-
-    Plan v10 — 关闭本脚本原 TODO + Beat `llm-cost-monthly-audit` 设计要求
-    ("Push DingTalk if MoM change > 50% OR MTD > 80% budget").
+    """Legacy 直接 httpx.post + HMAC 签名 (保留向后兼容路径, sustained pre-batch-3.9 体例).
 
     沿用 scripts/daily_reconciliation.py 的 plain-post 体例 —— 读 .env 的
     DINGTALK_WEBHOOK_URL, httpx.post text 消息. 若 .env 含 DINGTALK_SECRET 则
     附加 DingTalk 加签 (timestamp + HMAC-SHA256 sign), 否则 plain post
-    (degraded but functional, 与 daily_reconciliation legacy path 一致;
-    HMAC secret 配置见 Plan v9 matrix §5 user touchpoint).
+    (HMAC secret 配置见 Plan v9 matrix §5 user touchpoint).
 
-    Args:
-        env: 解析后的 .env dict.
-        status: 审计状态 (WARN / CAP_EXCEEDED — OK 不会调本函数).
-        mtd_total: 月初至今 LLM 成本 (USD).
-        budget: 月度预算 (USD).
-        mtd_ratio: mtd_total / budget.
-        mom_change: 月环比变化百分比 (None = 无上月数据).
-
-    铁律 33: fail-soft —— 审计已完成 (exit code 已定), 告警推送是 best-effort
-        旁路, 推送失败仅 print log, 不抛错不改 exit code.
+    铁律 33 fail-soft —— 审计已完成 (exit code 已定), 告警推送是 best-effort 旁路.
     """
     webhook = env.get("DINGTALK_WEBHOOK_URL", "").strip()
     if not webhook:
@@ -157,6 +219,80 @@ def _push_dingtalk(
     except Exception as e:
         # 铁律 33 fail-soft: 审计已完成, 告警旁路失败不改变 exit code / 不抛错.
         print(f"[DingTalk] 成本告警推送失败 (fail-soft, 审计结果不受影响): {e}")
+
+
+def send_alert(
+    env: dict[str, str],
+    status: str,
+    mtd_total: float,
+    budget: float,
+    mtd_ratio: float,
+    mom_change: float | None,
+) -> None:
+    """LLM 成本告警 dispatch (MVP 4.1 batch 3.9, iter 51 2026-05-25).
+
+    `settings.OBSERVABILITY_USE_PLATFORM_SDK` 控制路径切换:
+      - True  → `_send_alert_via_platform_sdk` (PlatformAlertRouter SDK)
+      - False → `_send_alert_via_legacy_dingtalk` (httpx + HMAC fallback)
+
+    铁律 33 fail-soft (审计已完成, dispatch 失败不阻塞 exit code):
+      - SDK path AlertDispatchError → log + continue (不抛 / 不改 exit code)
+      - Legacy path 内部已 try/except
+      - 顶层 catch generic Exception (settings/import 等错误)
+
+    沿用 batch 3.8 intraday_monitor 体例 (commit a79a810). Signature 保持 env-based
+    (domain-specific args), 不改 caller call site contract.
+    """
+    # Settings import scoped (反 module-level circular)
+    try:
+        from app.config import settings
+
+        use_sdk = getattr(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False)
+    except Exception:
+        # settings unavailable (test / standalone) → legacy fallback
+        use_sdk = False
+
+    # Build title/content shared by SDK path (legacy path 内部自建)
+    mom_str = f"{mom_change:+.1f}%" if mom_change is not None else "N/A"
+    tail = (
+        "CAP 超标 → 触发 Ollama fallback (ADR-028 §3.3)"
+        if status == "CAP_EXCEEDED"
+        else "接近月度预算上限, 请复查 llm_call_log"
+    )
+    level = "P0" if status == "CAP_EXCEEDED" else "P1"
+    title = f"LLM 成本告警 {status} {NOW.strftime('%Y-%m')}"
+    content = (
+        f"MTD 成本: ${mtd_total:.4f} / 预算 ${budget:.2f} ({mtd_ratio * 100:.1f}%)\n"
+        f"月环比 (MoM): {mom_str}\n"
+        f"{tail}"
+    )
+    details_extra: dict[str, object] = {
+        "status": status,
+        "mtd_total": f"{mtd_total:.4f}",
+        "budget": f"{budget:.2f}",
+        "mtd_ratio": f"{mtd_ratio:.4f}",
+        "mom_change": f"{mom_change:.4f}" if mom_change is not None else "null",
+    }
+
+    try:
+        if use_sdk:
+            _send_alert_via_platform_sdk(
+                level, title, content, "llm_cost_monthly_audit", details_extra
+            )
+        else:
+            _send_alert_via_legacy_dingtalk(env, status, mtd_total, budget, mtd_ratio, mom_change)
+    except AlertDispatchError as e:
+        # SDK path P0/P1 sink failed — log + continue (审计 exit code 不变).
+        print(f"[Observability] AlertDispatchError sink failed: {e} (fail-soft, 审计结果不受影响)")
+    except Exception as e:
+        # 顶层 catch: settings/import / 配置错 等剩余路径 (legacy 已自带 except).
+        # 铁律 33 fail-soft 沿用 — 审计已完成.
+        print(f"[Observability] 告警 dispatch 失败 (fail-soft, 审计结果不受影响): {e}")
+
+
+# Backward-compat alias: 沿用 _push_dingtalk 旧名供潜在 caller (此 script 内仅 main()
+# 调一处, 但留 alias 防隐藏 caller surface 后 silent break).
+_push_dingtalk = send_alert
 
 
 def main() -> int:
