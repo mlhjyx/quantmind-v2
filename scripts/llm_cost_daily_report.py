@@ -50,6 +50,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(BACKEND_DIR / ".env")
 
 import psycopg2  # noqa: E402
+from qm_platform.observability import AlertDispatchError  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.services.dispatchers.dingtalk import send_markdown_sync  # noqa: E402
@@ -260,6 +261,141 @@ def build_markdown_payload(
     return title, "\n".join(lines)
 
 
+# ════════════════════════════════════════════════════════════
+# MVP 4.1 batch 3.10: Platform SDK migration (iter 54 2026-05-25)
+# 沿用 batch 3.8/3.9 体例:
+#   - send_alert(level, title, content, kind, details_extra) — top-level dispatch
+#   - _send_alert_via_platform_sdk — SDK path (PlatformAlertRouter + Alert + dedup)
+#   - _send_alert_via_legacy_dingtalk — legacy fallback (复用 existing send_markdown_sync)
+#   - settings.OBSERVABILITY_USE_PLATFORM_SDK toggle
+# 铁律 33 fail-soft: 顶层 send_alert catch AlertDispatchError + Exception
+#   (daily report 已生成 + log 落本地, 告警 dispatch 失败不阻 exit code).
+# ════════════════════════════════════════════════════════════
+
+
+def _send_alert_via_platform_sdk(
+    level: str,
+    title: str,
+    content: str,
+    kind: str = "llm_cost_daily_report",
+    details_extra: dict[str, object] | None = None,
+) -> None:
+    """走 PlatformAlertRouter + AlertRulesEngine (MVP 4.1 batch 3.10, iter 54).
+
+    Daily cadence (vs batch 3.9 monthly): kind="llm_cost_daily_report",
+    dedup_key="llm_cost_daily:{trade_date}", suppress_minutes=1440 (24h).
+
+    AlertDispatchError 必传播 (铁律 33). 调用方 send_alert try/except 包裹.
+    """
+    from datetime import UTC, date, datetime
+
+    from qm_platform._types import Severity
+    from qm_platform.observability import Alert, get_alert_router
+
+    today_str = str(date.today())
+    severity = (
+        Severity(level.lower()) if level.lower() in {"p0", "p1", "p2", "info"} else Severity.P1
+    )
+
+    details: dict[str, str] = {"trade_date": today_str, "kind": kind, "content": content}
+    if details_extra:
+        for k, v in details_extra.items():
+            details[k] = str(v) if not isinstance(v, str) else v
+
+    alert = Alert(
+        title=f"[{level}] {title}",
+        severity=severity,
+        source="llm_cost_daily_report",
+        details=details,
+        trade_date=today_str,
+        timestamp_utc=datetime.now(UTC).isoformat(),
+    )
+
+    router = get_alert_router()
+    dedup_key = f"llm_cost_daily:{today_str}"
+    suppress_minutes = 1440  # daily cadence: 24h prevent same-day duplicate
+    router.fire(alert, dedup_key=dedup_key, suppress_minutes=suppress_minutes)
+
+
+def _send_alert_via_legacy_dingtalk(
+    webhook_url: str,
+    title: str,
+    content: str,
+    secret: str = "",
+    keyword: str = "",
+) -> bool:
+    """Legacy 走 existing send_markdown_sync (复用现 dispatcher service).
+
+    Args:
+        webhook_url: DingTalk webhook URL
+        title: markdown title
+        content: markdown body
+        secret: optional HMAC secret
+        keyword: optional keyword
+
+    Returns:
+        bool — True if pushed successfully.
+    """
+    return send_markdown_sync(
+        webhook_url=webhook_url, title=title, content=content, secret=secret, keyword=keyword
+    )
+
+
+def send_alert(
+    webhook_url: str,
+    title: str,
+    content: str,
+    secret: str = "",
+    keyword: str = "",
+) -> int:
+    """LLM 成本日报告警 dispatch (MVP 4.1 batch 3.10, iter 54 2026-05-25).
+
+    settings.OBSERVABILITY_USE_PLATFORM_SDK 控制路径切换:
+      True  → _send_alert_via_platform_sdk (PlatformAlertRouter SDK)
+      False → _send_alert_via_legacy_dingtalk (existing send_markdown_sync)
+
+    铁律 33 fail-soft (report 已生成 + log 落本地, dispatch 失败不阻 exit code):
+      - SDK path AlertDispatchError → log + return 1 (报告生成 OK 但 dispatch fail)
+      - Legacy path send_markdown_sync returns bool — False → return 1
+      - 顶层 catch generic Exception → return 1
+
+    Returns:
+        int — 0 if pushed successfully, 1 if dispatch failed.
+    """
+    use_sdk = getattr(settings, "OBSERVABILITY_USE_PLATFORM_SDK", False)
+
+    try:
+        if use_sdk:
+            _send_alert_via_platform_sdk(
+                level="P1",
+                title=title,
+                content=content,
+                kind="llm_cost_daily_report",
+                details_extra={"webhook_configured": "1" if webhook_url else "0"},
+            )
+            logger.info("DingTalk push (SDK) 成功")
+            return 0
+        else:
+            pushed = _send_alert_via_legacy_dingtalk(
+                webhook_url=webhook_url,
+                title=title,
+                content=content,
+                secret=secret,
+                keyword=keyword,
+            )
+            if pushed:
+                logger.info("DingTalk push (legacy) 成功")
+                return 0
+            logger.error("DingTalk push (legacy) 失败 — report 已生成 + log 落本地")
+            return 1
+    except AlertDispatchError as e:
+        logger.error("[Observability] AlertDispatchError sink failed: %s (fail-soft)", e)
+        return 1
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Observability] 告警 dispatch 失败 (fail-soft): %s", e, exc_info=True)
+        return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="LLM cost daily aggregate report")
     parser.add_argument(
@@ -340,19 +476,15 @@ def main() -> int:
         logger.info("DINGTALK_ALERTS_ENABLED=False, 反 push (沿用 .env 双锁)")
         return 0
 
-    pushed = send_markdown_sync(
+    # MVP 4.1 batch 3.10: route via send_alert dispatch (SDK or legacy per
+    # settings.OBSERVABILITY_USE_PLATFORM_SDK toggle). 沿用 batch 3.8/3.9 体例.
+    return send_alert(
         webhook_url=webhook_url,
         title=title,
         content=markdown_text,
         secret=settings.DINGTALK_SECRET or "",
         keyword=settings.DINGTALK_KEYWORD or "",
     )
-    if pushed:
-        logger.info("DingTalk push 成功")
-        return 0
-    else:
-        logger.error("DingTalk push 失败 — report 已生成 + log 落本地")
-        return 1
 
 
 if __name__ == "__main__":
