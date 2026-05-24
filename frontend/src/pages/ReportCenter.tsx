@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Download, TrendingUp, BarChart3, Shield, Brain, AlertCircle, CheckCircle2 } from "lucide-react";
+import { FileText, Download, TrendingUp, BarChart3, Shield, Brain, AlertCircle, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { C } from "@/theme";
 import { Card, CardHeader, PageHeader, TabButtons } from "@/components/shared";
 import apiClient from "@/api/client";
 import {
   generateReport,
+  getLatestReport,
   listStrategyReports,
   type GenerateReportResponse,
+  type ReportArtifact,
   type ReportListingRow,
 } from "@/api/reports";
 
@@ -77,6 +79,10 @@ export default function ReportCenter() {
   const queryClient = useQueryClient();
   // Reviewer P2-2 fix: track refresh timer for cleanup on unmount (反 setTimeout leak).
   const refreshTimerRef = useRef<number | null>(null);
+  // Iter 37: track which strategy report row (artifact_path identifier) is
+  // expanded for full latest-payload view. Single-expand at a time pattern;
+  // null = nothing expanded. artifact_path is unique per (sid, date, mode).
+  const [expandedArtifactPath, setExpandedArtifactPath] = useState<string | null>(null);
 
   const { data: reports = [], isLoading: loadingReports, isError: errorReports } = useQuery<ReportItem[]>({
     queryKey: ["reports-list"],
@@ -98,6 +104,21 @@ export default function ReportCenter() {
   } = useQuery<ReportListingRow[]>({
     queryKey: ["strategy-reports", DEFAULT_STRATEGY_ID],
     queryFn: () => listStrategyReports(DEFAULT_STRATEGY_ID),
+    staleTime: 60_000,
+  });
+
+  // Iter 37: expanded row fetches full payload via iter 30 endpoint /api/reports/{sid}/latest.
+  // useQuery enabled only when expandedArtifactPath is set + matching row found
+  // (avoids prefetching all artifacts; row click is the trigger).
+  const expandedRow = strategyReports.find((r) => r.artifact_path === expandedArtifactPath);
+  const {
+    data: expandedArtifact,
+    isLoading: loadingExpandedArtifact,
+    isError: errorExpandedArtifact,
+  } = useQuery<ReportArtifact>({
+    queryKey: ["strategy-report-latest", expandedRow?.strategy_id, expandedRow?.execution_mode],
+    queryFn: () => getLatestReport(expandedRow!.strategy_id, expandedRow!.execution_mode),
+    enabled: expandedRow !== undefined,
     staleTime: 60_000,
   });
 
@@ -265,69 +286,172 @@ export default function ReportCenter() {
               </div>
             ) : (
               <div className="p-3 space-y-2">
-                {strategyReports.map((r) => (
-                  <div
-                    key={r.artifact_path}
-                    className="flex items-center gap-4 px-4 py-3.5 rounded-xl"
-                    style={{
-                      background: r._corrupt ? `${C.down}08` : C.bg2,
-                      border: `1px solid ${r._corrupt ? C.down : C.border}`,
-                    }}
-                  >
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ background: r._corrupt ? `${C.down}15` : C.accentSoft }}
-                    >
-                      {r._corrupt ? <AlertCircle size={18} color={C.down} /> : <FileText size={18} color={C.accent} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span style={{ fontSize: 13, color: C.text1, fontWeight: 500 }}>
-                          {r.target_date} · {r.execution_mode}
-                        </span>
-                        {r._corrupt && (
-                          <span className="px-2 py-0.5 rounded" style={{ fontSize: 9, color: C.down, background: `${C.down}15` }}>
-                            artifact 损坏
-                          </span>
+                {strategyReports.map((r) => {
+                  const isExpanded = expandedArtifactPath === r.artifact_path;
+                  // Iter 37: corrupt rows are NOT click-expandable (no full payload to show
+                  // — getLatestReport would also fail on the same corruption).
+                  const expandable = !r._corrupt;
+                  return (
+                    <div key={r.artifact_path}>
+                      <div
+                        className={`flex items-center gap-4 px-4 py-3.5 rounded-xl ${expandable ? "cursor-pointer" : ""}`}
+                        style={{
+                          background: r._corrupt ? `${C.down}08` : C.bg2,
+                          border: `1px solid ${r._corrupt ? C.down : C.border}`,
+                        }}
+                        onClick={() => {
+                          if (!expandable) return;
+                          setExpandedArtifactPath(isExpanded ? null : r.artifact_path);
+                        }}
+                        role={expandable ? "button" : undefined}
+                        aria-expanded={expandable ? isExpanded : undefined}
+                      >
+                        {expandable && (
+                          isExpanded ? <ChevronDown size={14} color={C.text3} /> : <ChevronRight size={14} color={C.text3} />
+                        )}
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center"
+                          style={{ background: r._corrupt ? `${C.down}15` : C.accentSoft }}
+                        >
+                          {r._corrupt ? <AlertCircle size={18} color={C.down} /> : <FileText size={18} color={C.accent} />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span style={{ fontSize: 13, color: C.text1, fontWeight: 500 }}>
+                              {r.target_date} · {r.execution_mode}
+                            </span>
+                            {r._corrupt && (
+                              <span className="px-2 py-0.5 rounded" style={{ fontSize: 9, color: C.down, background: `${C.down}15` }}>
+                                artifact 损坏
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1" style={{ fontSize: 10, color: C.text4 }}>
+                            <span>{fmtDate(r.mtime_utc)}</span>
+                            {r._corrupt && r._corrupt_reason && (
+                              <span style={{ color: C.down }}>{r._corrupt_reason.slice(0, 60)}</span>
+                            )}
+                          </div>
+                        </div>
+                        {r.summary && (
+                          <div className="flex items-center gap-4" style={{ fontSize: 11 }}>
+                            <div className="text-right">
+                              <div style={{ color: C.text4, fontSize: 9 }}>Sharpe</div>
+                              <div style={{ fontFamily: C.mono, color: C.text1, fontWeight: 600 }}>
+                                {r.summary.sharpe.toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div style={{ color: C.text4, fontSize: 9 }}>MDD</div>
+                              <div style={{ fontFamily: C.mono, color: C.down, fontWeight: 600 }}>
+                                {(r.summary.mdd * 100).toFixed(2)}%
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div style={{ color: C.text4, fontSize: 9 }}>{r.summary.days}d 累计</div>
+                              <div
+                                style={{
+                                  fontFamily: C.mono,
+                                  color: r.summary.total_return >= 0 ? C.up : C.down,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {fmtPct(r.summary.total_return)}
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 mt-1" style={{ fontSize: 10, color: C.text4 }}>
-                        <span>{fmtDate(r.mtime_utc)}</span>
-                        {r._corrupt && r._corrupt_reason && (
-                          <span style={{ color: C.down }}>{r._corrupt_reason.slice(0, 60)}</span>
-                        )}
-                      </div>
+                      {isExpanded && expandable && (
+                        <div
+                          className="ml-12 mr-4 mt-2 mb-2 p-4 rounded-lg"
+                          style={{ background: C.bg3, border: `1px solid ${C.border}`, fontSize: 11 }}
+                        >
+                          {loadingExpandedArtifact ? (
+                            <div style={{ color: C.text4 }}>加载完整 artifact 中...</div>
+                          ) : errorExpandedArtifact ? (
+                            <div style={{ color: C.down }}>
+                              加载失败 — artifact 可能已被清理 (iter 31 retention) 或被并发 generate 覆盖
+                            </div>
+                          ) : expandedArtifact && expandedArtifact.data_available ? (
+                            <div className="space-y-3">
+                              {expandedArtifact.latest_nav && (
+                                <div>
+                                  <div style={{ color: C.text3, fontWeight: 500, marginBottom: 4 }}>
+                                    最新 NAV 快照 ({expandedArtifact.latest_nav.trade_date})
+                                  </div>
+                                  <div className="grid grid-cols-4 gap-2" style={{ fontSize: 10 }}>
+                                    {[
+                                      { l: "NAV", v: expandedArtifact.latest_nav.nav.toFixed(4) },
+                                      { l: "日收益", v: fmtPct(expandedArtifact.latest_nav.daily_return) },
+                                      { l: "累计收益", v: fmtPct(expandedArtifact.latest_nav.cumulative_return) },
+                                      { l: "回撤", v: fmtPct(expandedArtifact.latest_nav.drawdown) },
+                                      { l: "现金比", v: fmtPct(expandedArtifact.latest_nav.cash_ratio) },
+                                      { l: "现金", v: expandedArtifact.latest_nav.cash.toFixed(0) },
+                                      { l: "持仓数", v: String(expandedArtifact.latest_nav.position_count) },
+                                      { l: "换手", v: fmtPct(expandedArtifact.latest_nav.turnover) },
+                                    ].map((item) => (
+                                      <div key={item.l} className="flex justify-between" style={{ background: C.bg2, padding: "4px 8px", borderRadius: 4 }}>
+                                        <span style={{ color: C.text4 }}>{item.l}</span>
+                                        <span style={{ fontFamily: C.mono, color: C.text1, fontWeight: 500 }}>{item.v}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {expandedArtifact.recent_trades.length > 0 && (
+                                <div>
+                                  <div style={{ color: C.text3, fontWeight: 500, marginBottom: 4 }}>
+                                    最近 {expandedArtifact.trades_count} 条交易
+                                  </div>
+                                  <div className="space-y-1">
+                                    {expandedArtifact.recent_trades.slice(0, 10).map((t, i) => (
+                                      <div
+                                        key={`${t.trade_date}-${t.code}-${i}`}
+                                        className="flex items-center gap-3"
+                                        style={{ fontSize: 10, fontFamily: C.mono }}
+                                      >
+                                        <span style={{ color: C.text4, minWidth: 80 }}>{fmtDate(t.trade_date)}</span>
+                                        <span style={{ color: C.text1, minWidth: 90 }}>{t.code}</span>
+                                        <span
+                                          style={{
+                                            color: t.direction === "buy" ? C.up : C.down,
+                                            minWidth: 30,
+                                          }}
+                                        >
+                                          {t.direction}
+                                        </span>
+                                        <span style={{ color: C.text2 }}>{t.quantity}</span>
+                                        {t.fill_price != null && (
+                                          <span style={{ color: C.text2 }}>@ {t.fill_price.toFixed(2)}</span>
+                                        )}
+                                        {t.reject_reason && (
+                                          <span style={{ color: C.warn }}>reject: {t.reject_reason}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {!expandedArtifact.latest_nav && expandedArtifact.recent_trades.length === 0 && (
+                                <div style={{ color: C.text4 }}>
+                                  artifact 标记 data_available=true 但 latest_nav + recent_trades 均空 (reviewer P2-1 edge case — backend rare row state)
+                                </div>
+                              )}
+                              <div style={{ color: C.text4, fontSize: 9 }}>
+                                schema_version={expandedArtifact.schema_version} · generated_at={fmtDate(expandedArtifact.generated_at_utc)}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ color: C.text4 }}>
+                              artifact data_available=false (策略可能尚未产生 performance_series 数据)
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {r.summary && (
-                      <div className="flex items-center gap-4" style={{ fontSize: 11 }}>
-                        <div className="text-right">
-                          <div style={{ color: C.text4, fontSize: 9 }}>Sharpe</div>
-                          <div style={{ fontFamily: C.mono, color: C.text1, fontWeight: 600 }}>
-                            {r.summary.sharpe.toFixed(2)}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div style={{ color: C.text4, fontSize: 9 }}>MDD</div>
-                          <div style={{ fontFamily: C.mono, color: C.down, fontWeight: 600 }}>
-                            {(r.summary.mdd * 100).toFixed(2)}%
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div style={{ color: C.text4, fontSize: 9 }}>{r.summary.days}d 累计</div>
-                          <div
-                            style={{
-                              fontFamily: C.mono,
-                              color: r.summary.total_return >= 0 ? C.up : C.down,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {fmtPct(r.summary.total_return)}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
