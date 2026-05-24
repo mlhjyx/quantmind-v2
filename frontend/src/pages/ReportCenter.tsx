@@ -433,6 +433,11 @@ export default function ReportCenter() {
                                   </div>
                                 </div>
                               )}
+                              {!expandedArtifact.latest_nav && expandedArtifact.recent_trades.length === 0 && (
+                                <div style={{ color: C.text4 }}>
+                                  artifact 标记 data_available=true 但 latest_nav + recent_trades 均空 (reviewer P2-1 edge case — backend rare row state)
+                                </div>
+                              )}
                               <div style={{ color: C.text4, fontSize: 9 }}>
                                 schema_version={expandedArtifact.schema_version} · generated_at={fmtDate(expandedArtifact.generated_at_utc)}
                               </div>
