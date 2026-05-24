@@ -1,10 +1,10 @@
 # CLAUDE.md — QuantMind V2
 
-> **Claude Code 入口文件。启动时自动读取。只含编码必需信息。**
-> **系统现状**: SYSTEM_STATUS.md（环境/数据库/代码/架构全景）
-> **铁律 SSOT (v3.0, 2026-04-30)**: [IRONLAWS.md](IRONLAWS.md) — 完整铁律 (1-44 + X9 + X10) + tier 标识 (T1/T2/T3) + LL/ADR backref. 本文件铁律段已 reference 化, 详 [ADR-021](docs/adr/ADR-021-ironlaws-v3-refactor.md).
-> **D 决议 (4-30 user 决议)**: D-1=A 硬 scope (仅铁律段 reference) / D-2=A 仅 X10 inline / D-3=A ADR-021 编号锁定.
-> **Step 6.3b 重构 (2026-04-30/05-01)**: 全文件温和精简 (Path C, 0 新文件创建). 目录结构 / 已知失败方向 / 策略配置 / 当前进度 4 段大幅精简, 详细历史→ SYSTEM_STATUS.md / docs/audit/. ADR-021 §4.5 "~150 行" target 实测与 SSOT 现实冲突 (STOP-1+STOP-2 双触发), Path C 折中 (~530 行), 详 [Step 6.3b STATUS_REPORT](docs/audit/STATUS_REPORT_2026_05_01_step6_3b.md).
+> **入口文件** (Claude Code 启动自动读取). 只含编码必需信息.
+> **铁律 SSOT**: [IRONLAWS.md](IRONLAWS.md) v3.0 — 1-44 + X9/X10 + Tier (T1/T2/T3) + LL/ADR backref
+> **系统现状 + Sprint state**: [SYSTEM_STATUS.md](SYSTEM_STATUS.md) (环境/DB/架构) + `memory/project_sprint_state.md` (当前 handoff)
+> **历史教训 SSOT**: [LESSONS_LEARNED.md](LESSONS_LEARNED.md) (LL-XXX 引用源, 防重蹈覆辙)
+> **重构沿革**: [ADR-021](docs/adr/ADR-021-ironlaws-v3-refactor.md) (铁律 v3.0) + [Step 6.3b STATUS_REPORT](docs/audit/STATUS_REPORT_2026_05_01_step6_3b.md) (CLAUDE.md Path C 精简)
 
 ---
 
@@ -14,8 +14,41 @@ QuantMind V2: 个人A股+外汇量化交易系统，Python-first 全栈。
 - **目标**: 年化15-25%, Sharpe 1.0-2.0, MDD <15%
 - **当前**: Phase A-F + Step 0→6-H 重构 + 研究收束完成. PT 配置 = CORE3+dv_ttm WF OOS Sharpe=0.8659 (2026-04-12 PASS). PT 真账户 0 持仓 + cash ¥993,520.66 (2026-04-29 user 决议清仓, 详 [SHUTDOWN_NOTICE_2026_04_30](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md)). 主线 = Wave 4 MVP 4.1 Observability (batch 1+2.1+2.2 ✅).
 - **硬件**: Windows 11 Pro, R9-9900X3D, RTX 5070 12GB(PyTorch cu128), 32GB DDR5
-- **PMS**: v1.0阶梯利润保护3层 — **已并入 Wave 3 MVP 3.1 Risk Framework** (ADR-010, PMSRule L1/L2/L3 14:30 Beat)
+- **PMS**: v1.0 (pms_engine + api/pms + Beat task) **物理退役 iter 50 2026-05-24** (ADR-094). V3 风控走 V3 §4 L1 PMSRule (`backend/qm_platform/risk/rules/pms.py`, 14:30 Beat via PlatformRiskEngine) + V3 §7.3 trailing_stop (subscribe_quote 实时, 动态替代 PMSRule v1 静态阈值)
 - **下一步**: Wave 4 MVP 4.1 batch 3.x (17 scripts SDK migration, 进行中) + Wave 4 剩 4.2/4.3/4.4. PT 重启 gate prerequisite 见 [SHUTDOWN_NOTICE_2026_04_30 §9](docs/audit/SHUTDOWN_NOTICE_2026_04_30.md). 历史 V4 路线图 (Phase 1.1-3 + Phase 4) 全 ✅ 或 NO-GO 沉淀, 详 SYSTEM_STATUS.md §0 / [QPB v1.16](docs/QUANTMIND_PLATFORM_BLUEPRINT.md).
+- **⚠️ 操作状态 (PT / DB 行数 / sprint handoff)**: 本文件 §项目概述 / §因子存储 中的数字是历史快照, 真值以 [SYSTEM_STATUS.md](SYSTEM_STATUS.md) + `memory/project_sprint_state.md` 为准 (铁律 22 同步, 漂移容忍).
+
+## Session 启动 / 续接 SOP
+
+> SessionStart hook 自动执行下列 fresh-read; 若 hook 失效, 手动按此顺序读. **V3 实施期** (Constitution v0.2 active) sub-PR 起手 + cross-session resume 必走全 8 doc 完整 fresh-read (沿用 Constitution §L0.3 step 3 + §L1.1 8-doc SSOT, LL-106 反 fresh-read silent skip).
+
+| 步 | 文件 | 用途 |
+|---|------|------|
+| 1 | `CLAUDE.md` (本文件) | 编码规则 + 铁律 tier 索引 + 文档地图 |
+| 2 | `IRONLAWS.md` §1-§18 | 铁律完整定义 (1-44 + X9/X10) |
+| 3 | `SYSTEM_STATUS.md` §0 | 当前 Sprint / 操作状态真值 |
+| 4 | `memory/project_sprint_state.md` 顶部 handoff | 上 session 收束点 + 本 session 入口 |
+| 5 | `docs/V3_IMPLEMENTATION_CONSTITUTION.md` | V3 治理宪法 (Tier A/B/横切 + Gate 链 + 决议链) |
+| 6 | `docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md` | V3 skill/hook/agent 调用映射 |
+| 7 | `docs/QUANTMIND_RISK_FRAMEWORK_V3_DESIGN.md` | V3 风控设计 spec (当前 SSOT, 非旧 RISK_CONTROL_SERVICE_DESIGN.md) |
+| 8 | `docs/adr/REGISTRY.md` | ADR 索引 (LL-105 SOP-6 SSOT, 71 ADR cite source) |
+
+**MVP 启动追加**: 对应 `docs/mvp/MVP_X_Y_*.md` 设计稿 (若存在) + QPB v1.16 Part 0+1 (Application Usage Patterns + 双角色切换表).
+
+### V3 sub-PR 必启 skills (Constitution + Skeleton 联动)
+
+V3 sub-PR Phase 0 起手 + 闭前 sediment / 任何 broker / .env / yaml / DB row mutation / production code 改动前, **mandatory 调用** (非可选):
+
+- `quantmind-v3-fresh-read-sop` — 8 doc fresh-read 起手 (反 LL-106 N×N 同步漂移)
+- `quantmind-v3-anti-pattern-guard` — v1-v5 anti-pattern check (反凭空数字/path / silent overwrite / fail-soft silent)
+- `quantmind-v3-cite-source-lock` — cite 4 元素 (path + line# + section + fresh verify timestamp)
+- `quantmind-v3-banned-words` — reply + prompt 出前 banned-words check (5 白名单严格 enforce)
+- `quantmind-v3-redline-verify` — 任 mutation 前 5/5 红线 + 5 condition 严核
+- `quantmind-v3-sprint-closure-gate` — sprint 闭前 stage gate criteria 机器可验证 enforce
+- `quantmind-v3-active-discovery` — sub-PR Phase 0 + 闭前 active discovery (finding ≥1)
+- `quantmind-v3-doc-sediment-auto` — sub-PR 闭后 4 类 sediment 同步 (LL append / ADR row / STATUS_REPORT / handoff)
+
+详 [`docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md`](docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md).
 
 ## 技术栈（实际使用，非设计文档）
 
@@ -65,6 +98,47 @@ Router(api/) → Service(services/) → Engine(engines/) + DB
   Service: 所有业务逻辑, 内部不commit, sync psycopg2
   Engine: 纯计算(无IO无DB), 输入/输出DataFrame/dict
 ```
+
+## 常用命令 (Quick Reference)
+
+> 项目无 root `pyproject.toml` / `Makefile` / `README.md`. 依赖管理走 `.venv` + `.pth` (见 [docs/SETUP_DEV.md](docs/SETUP_DEV.md)). 下列是 Windows PowerShell 视角.
+
+### 后端 (Python)
+| 操作 | 命令 |
+|---|---|
+| 全量测试 | `pytest backend/tests/` |
+| 单文件 | `pytest backend/tests/test_factor_registry.py` |
+| 单测试函数 | `pytest backend/tests/test_factor_registry.py::test_register_returns_id -v` |
+| 冒烟 (铁律 10b) | `pytest -m smoke` (跳网络: `pytest -m "smoke and not live_tushare"`) |
+| Lint + format | `ruff check backend/ ; ruff format backend/` |
+| 类型检查 (若用) | 项目无统一 mypy 强制 |
+| 本地启 FastAPI | `cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload` (调试前先停 Servy 同名服务) |
+
+### 前端 (frontend/)
+| 操作 | 命令 |
+|---|---|
+| Dev server (Vite) | `cd frontend ; npm run dev` |
+| 生产构建 | `cd frontend ; npm run build` (`tsc -b && vite build`) |
+| Preview | `cd frontend ; npm run preview` |
+
+### 服务管理 (Servy v7.6, 见 §部署规则)
+- 全重启: `powershell -File scripts\service_manager.ps1 restart all`
+- 单服务: `powershell -File scripts\service_manager.ps1 restart fastapi` (or `celery` / `celery-beat` / `qmt-data`)
+- 状态: `powershell -File scripts\service_manager.ps1 status`
+
+### 回测 / IC / 因子
+- 回测 (PT 配置): `python scripts/run_backtest.py --config configs/pt_live.yaml`
+- 每日 IC 入库 (铁律 11, schtask Mon-Fri 18:00): `python scripts/compute_daily_ic.py`
+- IC rolling (Mon-Fri 18:15): `python scripts/compute_ic_rolling.py --all-factors`
+- Paper trading: `python scripts/run_paper_trading.py`
+
+### Git pre-push (`config/hooks/pre-push`, 启用: `git config core.hooksPath config/hooks`)
+push 前自动跑 3 道守门, 失败 → push 阻断:
+1. **铁律 X10 cutover-bias scan** — 扫 branch name + 最近 5 commit subject 是否命中 hard pattern (`/schedule agent` / `paper-mode 5d` / `paper-mode dry-run` / `paper→live` / `auto cutover` / `自动 cutover`)
+2. **S6 LLM import block** (V3 §5.5 + ADR-020) — `scripts/check_llm_imports.sh --full` 扫 `backend/` + `scripts/` 非白名单 LLM import
+3. **铁律 10b smoke** — `pytest -m "smoke and not live_tushare"` 全绿 (含网络版本: `pytest -m smoke`)
+
+紧急绕过: `git push --no-verify` (需 commit message 显式声明违规原因, 铁律 X10 main 条款)
 
 ## 目录结构 (high-level)
 
@@ -133,12 +207,13 @@ quantmind-v2/
 - 调试: `redis-cli XRANGE qm:signal:generated - + COUNT 5`
 - 管理端点: `GET /api/system/streams`
 
-### PMS 阶梯利润保护规则
+### PMS 阶梯利润保护规则 (V3 SSOT)
 
-- **当前实施**: 已并入 Wave 3 MVP 3.1 Risk Framework (ADR-010), PMSRule L1/L2/L3 在 risk-daily-check Celery Beat (14:30) 触发
-- 三层保护: L1(浮盈>30%+回撤>15%), L2(>20%+>12%), L3(>10%+>10%)
-- 配置在.env: `PMS_ENABLED`, `PMS_LEVEL{1,2,3}_GAIN`, `PMS_LEVEL{1,2,3}_DRAWDOWN`
-- 旧版 PMS Beat (`pms.py` daily_pipeline 调用 + `api/pms`) 已 deprecated (PR #34 停 Beat + 去重)
+- **当前实施 (V3)**: V3 §4 L1 `PMSRule` (`backend/qm_platform/risk/rules/pms.py`) 在 risk-daily-check Celery Beat (14:30) 触发, via PlatformRiskEngine; **V3 §7.3 `trailing_stop`** (`backend/qm_platform/risk/rules/realtime/trailing_stop.py`) 动态替代 v1 静态阈值, subscribe_quote 实时触发
+- 静态三层保护 (V3 PMSRule): L1(浮盈>30%+回撤>15%), L2(>20%+>12%), L3(>10%+>10%)
+- 动态 trailing (V3 §7.3): peak-tracking + ratchet stop, 比静态阈值精细
+- 配置在 `.env`: `PMS_ENABLED`, `PMS_LEVEL{1,2,3}_GAIN`, `PMS_LEVEL{1,2,3}_DRAWDOWN` (映射 V3 PMSRule via qm_platform/config/loader.py)
+- **旧版 PMS v1.0 物理退役 iter 50 2026-05-24** (ADR-094): `app/services/pms_engine.py` + `app/api/pms.py` + `pms_daily_check_task` + `test_pms_engine.py` 全部物理删除. 历史 PR #34 停 Beat (2026-04-21 ADR-010 Session 21) + sustained 7+ 月 0 真账户触发 + ADR-010 §C sunset gate "Wave 4 Observability MVP 4.x 启动" 满足 (Wave 4 MVP 4.1 batch 1+2.1+2.2 ✅)
 
 ### 部署规则（Servy服务管理）
 - **服务管理工具**: Servy v7.6 (`D:\tools\Servy\servy-cli.exe`)，替代NSSM（2026-04-04迁移）
@@ -407,6 +482,11 @@ Modifier: Partial Size-Neutral b=0.50 (Step 6-H 验证, .env PT_SIZE_NEUTRAL_BET
 
 | 你要做什么 | 读这个 |
 |-----------|--------|
+| **查铁律完整定义** (T1/T2/T3 + LL/ADR backref) | **IRONLAWS.md** ⭐ (v3.0 SSOT, 44 条 + X9/X10) |
+| **查 LL-XXX 历史教训** (防重蹈覆辙, 50+ cite 源) | **LESSONS_LEARNED.md** ⭐ (根目录 5 doc 之一) |
+| **查 ADR 决议** (71 ADR sparse numbering) | **docs/adr/REGISTRY.md** ⭐ (LL-105 SOP-6 SSOT 索引) |
+| **V3 治理宪法 + Tier A/B Gate 链 + 决议链** | **docs/V3_IMPLEMENTATION_CONSTITUTION.md** ⭐ (v0.2 实施期 active) |
+| **V3 skill/hook/agent 调用映射** | **docs/V3_SKILL_HOOK_AGENT_INVOCATION_MAP.md** ⭐ (Skeleton v0.1) |
 | **系统总设计/架构全景** | **docs/QUANTMIND_V2_SYSTEM_BLUEPRINT.md** ⭐ (唯一设计真相源, 791行, 16章节) |
 | **平台化演进蓝图 (下阶段主线)** | **docs/QUANTMIND_PLATFORM_BLUEPRINT.md** ⭐ (QPB v1.16, 12 Framework + 6 升维 + 4 Wave, 2026-04-17) |
 | MVP 设计文档 (Wave 1+) | `docs/mvp/MVP_*.md` (每个 MVP ≤ 2 页, 铁律 24) |

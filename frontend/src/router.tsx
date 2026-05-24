@@ -72,8 +72,8 @@ export const router = createBrowserRouter([
       { path: "pipeline", element: lazyPage(() => import("@/pages/PipelineConsole")) },
       { path: "pipeline/agents", element: lazyPage(() => import("@/pages/AgentConfig")) },
 
-      // PMS
-      { path: "pms", element: lazyPage(() => import("@/pages/PMS")) },
+      // PMS v1.0 route physically retired iter 50 2026-05-24 (ADR-094)
+      // V3 风控 routes via /risk dashboard (V3 §4 L1 PMSRule + V3 §7.3 trailing_stop SSOT)
 
       // PT Graduation
       { path: "pt-graduation", element: lazyPage(() => import("@/pages/PTGraduation")) },
